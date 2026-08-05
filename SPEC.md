@@ -1087,8 +1087,12 @@ measure, §6.1. Both DECIDED.)*
    future"* — his working name: **`enum_index`**, and the pattern is wider than enums:
    *"in space game i turn everything into an index, it's a pattern. object ids, enums
    etc."* A field that indexes a declared set derives its range from the set, never
-   restates it. Design pass owed; evidence: `examples/README.md` finding 1 and `Ship.h`'s
-   hand-repeated `[0, SHIP_MAX_LASERS-1]` bounds.
+   restates it. **The requirement in his final form: both kinds exist** — *"sometimes you
+   need to represent null, eg. an enum type that can have null (nothing), and other times
+   it is an index of valid values in that enum (like laser index, missile index). we need
+   to support both types of indexes driven by enums."* Design pass owed; evidence:
+   `examples/README.md` finding 1 and `Ship.h`'s hand-repeated `[0, SHIP_MAX_LASERS-1]`
+   bounds.
 12. ~~**`int` → `int32`?**~~ — **RESOLVED 2026-08-05 by the integer family**: bare `int` is
     gone; every integer names its width, Go-style, and `int`/`uint` are reserved purely to
     give a helpful diagnostic.
