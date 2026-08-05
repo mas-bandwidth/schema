@@ -82,6 +82,38 @@ language before the model."* Two things are true at once:
   reconstruct the sequence at all. A design history you can audit is not a defect of the
   design. We keep the discipline and take the sequencing lesson.
 
+## The two approaches, settled in the main channel (2026-08-05 morning)
+
+Glenn, reading this evaluation: *"We are focused on the networking and delta encoding, and
+then maybe moving down to more general purpose stuff. I think this explains the difference
+between our two approaches."* And on Patrick: *"Patrick seems to be focused mostly on the
+tools/render/assets side, and over time moving up towards networking."*
+
+**Same hub, entered from opposite ends.** We start at the wire — serialize family,
+byte-identity, quantized realtime state — and move down toward general-purpose data if/when
+it earns its turn. Atlas starts at tools/assets — the inspector, ADN, the asset layer — and
+moves up toward networking, last in their own dependency order. Each stack is mature where
+the other is early, so each side's evaluation of the other undervalues exactly the half its
+author hasn't reached yet. Their doc concedes this for the wire catalog ("relevant only
+once codegen exists"); the mirror holds for us on their asset patterns.
+
+**What this sets for our roadmap:**
+
+- **Delta encoding is the next major design phase**, and it is where the banked
+  model-before-grammar lesson lands immediately: settle the semantic model (baseline
+  selection, prediction arithmetic, the surveyed inexpressibles — delta/baseline,
+  sentinel-terminated streams, int_relative) before any syntax. Tycho's net/sync
+  description is a direct model input: interpolate functions, smoothed-prefix ordering,
+  step-quantized floats are the artifacts the delta layer must generate.
+- **The general-purpose side (Config.schema/Assets.schema) is explicitly "maybe, later"** —
+  direction stands from 08-04, priority does not. When it comes up, Atlas's shipped asset
+  patterns (Config/Content/Both channels, per-field UI hints, emit-only-when-differs
+  defaults, layered composition, schema-driven generic editor) are our reference vocabulary
+  — the exact reciprocal of them using our encoding table.
+- **The trade with Atlas is reciprocal with a time lag**: their wire needs arrive when they
+  reach networking; our asset-side needs arrive if we descend to general-purpose data.
+  Nothing to coordinate now; worth remembering when the broader collaboration next moves.
+
 ## Also worth keeping
 
 - Their read-back of what the catalog is for — *"a worked catalog of wire-encoding
