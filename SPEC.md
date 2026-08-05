@@ -92,9 +92,9 @@ for every platform, with zero compile-time tax on the consumer.**
   generates them (§6). Mapping onto pre-existing hand-written types may come later.
 - **No imports across compilation units.** One unit, one package, all files compiled together
   (§3.2). Cross-unit composition is a later problem.
-- **No flatbuffers-style evolvable tables.** Named as a future direction for config and
-  asset data (Glenn, 2026-08-04); explicitly out of scope for the bitpacked v1. See "The
-  horizon" below.
+- **The config/asset table layer is not in v1** — but it is a **committed direction, and it
+  is schema-native, not flatbuffers-style**: flatbuffers is being replaced outright (Glenn,
+  2026-08-05). See "The horizon" below.
 - **No self-describing wire data.** The wire stays an unattributed bit stream; all knowledge
   lives in the generated code on both ends.
 - **Deferred constructs:** wide strings (`serialize_wstring`) and relative integers
@@ -145,15 +145,38 @@ source. Two v1 implications, noted and then set aside:
 - Nothing in v1's grammar may squat on syntax the horizon will want (`packet`, `table`,
   `delta`, `baseline` are informally reserved for future use).
 
-Surveyed 2026-08-04 (Glenn: *"eventually, this should all move to the schema language"*):
-the current layer is ~600 lines of `.fbs` across asset, config, definitions, events and
-server schemas, already hashed into a `schema_hash.h` — the protocol-id-as-hash instinct has
-prior art in his own tree. The structural shapes it uses that v1 does not have, recorded as
-the horizon's requirements list: **constants** (faked today as single-value enums — solved in
-v1, above), **enums with explicit values and bit-flag enums**, **unions** (v1's enum + switch
-covers the wire pattern; the type-level union is the table-layer question), **field
-defaults**, and **vectors of tables**. None of these blocks the bitpacked v1; all of them
-shape what the table layer must eventually be.
+**THE FLATBUFFERS REPLACEMENT — DECIDED IN DIRECTION, 2026-08-05.** Glenn: *"I don't want to
+use flatbuffers. What I want to do is to bring across definitions for config and assets into
+Config.schema and Assets.schema respectively, and have all the boilerplate code to generate
+and load them created by the schema compiler. The golang tool, the code in C++
+ConfigManager / AssetsManager and so on."* — *"Everything should be in schema."*
+
+The scope rule that governs the pass: **not a flatbuffers equivalent** — *"It should be able
+to effectively act as flatbuffers (at least, the subset of flatbuffers that we're using here
+in space game)... flatbuffers was just a means to an end there."* And the governing
+principle, which is really the whole language's thesis: ***"as always the goal is the
+minimal representation of the true thing in the schema language, with the boilerplate and
+all that code just tracked and generated"* — versus 1:1 porting of the flatbuffers stuff.**
+
+What gets absorbed (surveyed 2026-08-05): `game/config/` (Explosions, Global, Lasers,
+Missiles, Props, Ships, Teams — JSON + .flat pairs) and `game/assets/` (Levels, Missiles,
+Props, Ships, Turrets); the Go pipeline (`cmd/update_schemas` 132 lines,
+`cmd/update_config` 928 lines) that compiles and collates JSON definitions into
+`Config.bin`/`Assets.bin`; and the C++ `ConfigManager`/`AssetsManager` loading code — all
+becoming schema compiler outputs driven by `Config.schema` and `Assets.schema`.
+
+**And the enum convergence, his catch:** some enums are hand-declared today only as
+flatbuffers residue — *"some enums should actually be generated parts of config/assets —
+manually specifying them here is just an artifact of working with flatbuffers."* `ShipType`
+is really a derived set (each ship config/asset defines a type), so the table pass generates
+it from the definitions — **the set-extraction move a third time**: messages → `MessageType`,
+objects → `ObjectType`, config/asset definitions → their type enums. Hand-declared enums
+remain for genuinely hand-owned sets (`Team`).
+
+From the 2026-08-04 `.fbs` survey, the structural shapes the table layer still owes beyond
+v1: enums with explicit values and bit-flag enums, unions at the type level, **field
+defaults**, and vectors of tables — each now scoped to *the subset space game actually
+uses*, per the rule above.
 
 **The nearest edge of the horizon is the event set** — Glenn: *"the set of events could also
 be defined fully in the schema language, along with how to serialize each event type."* Its
@@ -168,7 +191,15 @@ per-property."*
 ## 2. The name and the files — DECIDED
 
 The language is called **schema**. Schema files use the `.schema` extension, named in
-UpperCamelCase after their contents: `Messages.schema`, `Snapshot.schema`.
+UpperCamelCase after their contents.
+
+**The file layout convention is aspect-oriented** (Glenn, 2026-08-05: *"I like aspect
+oriented programming, eg. all constants here, all messages there, all objects there and so
+on"* — with his hedge kept: *"This is not a hard requirement, just a personal preference"*):
+`Constants.schema`, `Enums.schema`, `Types.schema`, `Messages.schema`, `Objects.schema`,
+and — when their passes land — `Config.schema` and `Assets.schema`. A convention the corpus
+and docs follow and `schemafmt` respects, never compiler-enforced; order-free cross-file
+resolution (§4.2) is what makes it free.
 
 ## 3. Versioning: the protocol id — DECIDED, mechanism PROPOSED
 
@@ -250,15 +281,16 @@ application's choice — netcode-style stacks already carry one.
   type**, Go's order (*"we can do golang order of setup vars and types"*); scalar names are
   Go's — **`float32` and `float64`, never `float`/`double`** (*"we can use type names from
   golang instead of C++"*); `if` and `switch` take no parentheses; the canonical formatter
-  is **`schemafmt`**, gofmt's philosophy included — one style, no options; fields read
-  flatbuffers-plain. His reasons: *"we don't want to ape C/C++ but write something a bit
+  is **`schemafmt`**, gofmt's philosophy included — one style, no options; array bounds are
+  a **prefix**, Go's order (`[<= MaxObjects]ObjectState`); fields read flatbuffers-plain. His reasons: *"we don't want to ape C/C++ but write something a bit
   cleaner. Nobody working in C# or Rust will feel like they want to be coding in C++ to
   specify types."* The principle outlives the individual decisions: when a syntax choice
   arises, Go is the model to consult first, and the neutral form beats the C-family reflex.
 - **Integer literals:** decimal, hex (`0x`), binary (`0b`). **Float literals** (decimal, with
   optional fraction and exponent) appear only as float attribute values (`min`/`max`/`resolution` on `float32`).
 - **Punctuation and operators:** `{ } ( ) [ ] , : = ! .. <= + - * / %`.
-- **Reserved words:** `package const enum type message if else switch case align reserved`
+- **Reserved words:** `package const enum type message object if else switch case align
+  reserved`
   and the wire-type keywords `bits bool float32 float64 string bytes` plus the
   integer family `int8 int16 int32 int64 uint8 uint16 uint32 uint64` (and `int128 uint128
   int uint`, reserved — the first two for the deferred 128-bit construct (§4.10), the bare
@@ -277,7 +309,8 @@ EBNF (`NL` = the newline terminator; `{X}` repetition; `[X]` option):
 
 ```
 File        = { Declaration } .
-Declaration = Package | Const | Enum | TypeDecl | Message .
+Declaration = Package | Const | Enum | TypeDecl | Message | Object .
+Object      = "object" ident Block NL .
 Package     = "package" ident NL .
 Const       = "const" ident "=" IntExpr NL .
 Enum        = "enum" ident [ Attributes ] "{" { ident } "}" NL .
@@ -291,7 +324,7 @@ ConstField  = "const" "(" IntExpr "," IntExpr ")" NL .          // (value, bits)
 Reserved    = "reserved" "(" IntExpr ")" NL .
 Align       = "align" NL .
 
-Type        = Scalar [ "[" Bound "]" ] .
+Type        = [ "[" Bound "]" ] Scalar .                         // array bound is a PREFIX, Go's order
 Scalar      = IntType
             | "bits" "(" IntExpr ")"
             | "bool" | "float32" | "float64"
@@ -303,7 +336,8 @@ IntType     = "int8" | "int16" | "int32" | "int64"
 Bound       = IntExpr | "<=" IntExpr | IntExpr ".." IntExpr .
 
 Attributes  = "[" Attr { "," Attr } "]" .                        // trailing, optional, per field
-Attr        = ident "=" ( IntExpr | FloatLit ) .                 // always key = value in v1
+Attr        = ident "=" ( IntExpr | FloatLit )                   // valued:    min = 0
+            | ident [ "(" Attr { "," Attr } ")" ] .              // valueless: shallow — or with args: shallow(quantize = K)
 
 If          = "if" [ "!" ] ident Block [ "else" Block ] NL .
 Switch      = "switch" ident "{" { Case } "}" NL .
@@ -350,12 +384,15 @@ orientation float32 [min = -180.0, max = 180.0, resolution = 0.01]
 sequence    uint16
 ```
 
-- **Brackets never collide with array bounds** because a v1 attribute is always
-  `key = value`: after `[`, an identifier followed by `=` means attributes; anything else
-  (a literal, a const name alone, `<=`, a range) is an array bound. Valueless attributes
-  (the fbs `(required)` shape) are deferred until a real need arrives, precisely to keep
-  this disambiguation trivial. Attributes trail the complete type, array bound included;
-  scalar constraints like `min`/`max` apply per element.
+- **Brackets never collide with array bounds, structurally** (Glenn, 2026-08-05: *"We can do
+  the golang array thing, eg. prefix [] before the type... helps"*): an array bound is a
+  **prefix** — `[<= MaxObjects]ObjectState`, Go's order — and attributes **trail** the
+  complete type. Position alone disambiguates; no lookahead. Scalar constraints like
+  `min`/`max` apply per element.
+- **Valueless and argumented attributes are in** — deferred in the first draft of this
+  section, restored the same day when the real need arrived: **object view markers** (§4.8)
+  need `[shallow]` and `[shallow(quantize = K)]`, and the prefix-array decision had already
+  removed the collision that motivated the deferral.
 
 - **The line between positional and attribute:** a *size* that defines the type's shape stays
   positional — `bits(64)`, `string(64)`, `bytes(<= N)`, array bounds. A *constraint or
@@ -414,8 +451,8 @@ the wire oracle. (Contracts: `notes/serialize-cpp-api.md`.)
 | `f string(N)` | length in [0, N−1], align, then the bytes | `serialize_string` |
 | `f bytes(N)` | align, then exactly N bytes | `serialize_bytes` |
 | `f bytes(<= N)` | length in [0, N], align, then the bytes | `serialize_int` + `serialize_bytes` |
-| `f T[N]` | N elements, back to back | element per element |
-| `f T[<= N]` / `f T[Min..N]` | count in [Min, N] encoded relative to Min, then that many elements | `serialize_int` + the element loop |
+| `f [N]T` | N elements, back to back | element per element |
+| `f [<= N]T` / `f [Min..N]T` | count in [Min, N] encoded relative to Min, then that many elements | `serialize_int` + the element loop |
 
 Arrays: the element may be any scalar or named type; arrays of arrays are not in v1 (wrap the
 inner array in a type). Runtime-count arrays carry their own count on the wire — there is no
@@ -433,7 +470,7 @@ check.
 
 **The count-range cap is lifted.** serialize.modern caps `array_n`'s count range at 16 because
 each possible count is a separately spliced compile-time path. schema's generated code uses an
-honest loop (§6.2), so `T[<= N]` is bounded only by what the count's integer range can
+honest loop (§6.2), so `[<= N]T` is bounded only by what the count's integer range can
 express.
 
 ### 4.4 Decisions: `if` and `switch`
@@ -496,7 +533,7 @@ All compile errors with positions:
   that does not take it, `min` without `max` (or vice versa), and `resolution` without both
   bounds are compile errors, each naming the field and the legal vocabulary for its type.
 - **Degenerate ranges:** any ranged integer with min ≥ max (the diagnostic suggests `const`
-  for a fixed value); `T[Min..N]` with Min ≥ N; `string(N)` with N < 2; `bytes(<= N)` with
+  for a fixed value); `[Min..N]T` with Min ≥ N; `string(N)` with N < 2; `bytes(<= N)` with
   N < 1; an enum whose max is 0 (fewer than two wire values); `resolution` ≤ 0. Every
   runtime treats `min == max` range serialization as API misuse, so the language rejects
   what the runtimes would reject.
@@ -527,7 +564,7 @@ lets the targets agree:
 For every legal write the wire bits are identical to `serialize_string`. If UTF-8 text with
 enforced validity is wanted later, it is a new wire type, not a redefinition of this one.
 
-### 4.8 Message sets — `MessageType` is implicit
+### 4.8 Declaration sets — `message` and `object`, their types implicit
 
 **DECIDED (Glenn, 2026-08-05):** each message is its own declaration; the discriminant enum,
 the wire tag and the dispatch are the compiler's job, not the author's — *"I'd like
@@ -573,9 +610,51 @@ generates, per target:
 - Every message is also an ordinary type: its own `Write`/`Read`/`MaxBits`/`MaxBytes`, usable
   standalone and composable as a field.
 
-**The 0-reserved principle generalizes** — when the horizon's object-type sets arrive, their
-generated discriminants follow the same rule: 0 = none, then the types in the same
-deterministic order.
+#### Object sets — `object`, `ObjectType`, and the generated views
+
+**DECIDED (Glenn, 2026-08-05) — the horizon's object layer arrived the same day.** `object`
+declarations are tracked exactly like messages — *"you track all object types like messages,
+and generate ObjectType per-type of object. Same as messages"* — so the resolver extracts
+the object set and generates **`ObjectType` with `None = 0`** and each object in the same
+deterministic order. The 0-reserved principle is now uniform across every generated
+discriminant — and `ObjectType_None` is precisely the sentinel the surveyed baseline packets
+already terminate with.
+
+**The goal, his words:** *"generate ShipState, ShipData_Deep, ShipData_Shallow,
+ShipData_Interpolate from one ship definition"* — *"there should be a single definition of
+object Ship {} in the schema language that drives this generated code."* The view structs
+exist **in generated code only**; the schema holds one definition per object.
+
+**The views, his semantics verbatim:**
+
+- **`[shallow]`** — *"this is sent to the client for interpolation, it's visual state."*
+- **deep** — *"this is only sent to the client for client side prediction, eg. full state"*
+  — and **deep is the default**: an unmarked field is full-state only.
+- **`[local]`** (PROPOSED) — simulation-only state that reaches no wire: lives in
+  `ShipState`, absent from every network struct.
+
+**What one definition generates per object, per target** (shapes per language, behavior
+identical — the message-set rule):
+
+| artifact | contents |
+|---|---|
+| `ShipState` | every field — the simulation struct |
+| `ShipData_Deep` + serialize | every non-`[local]` field, deep encodings |
+| `ShipData_Shallow` + serialize | the `[shallow]` fields, **quantized wire encodings** from the view's attribute arguments |
+| `ShipData_Interpolate` | the same `[shallow]` fields in **continuous storage** (the un-quantized twin) |
+| `Quantize` / `Unquantize` | the mapping pair between Interpolate and Shallow — the hand-written `Quantize()` in today's `Ship.h`, generated |
+
+**PROPOSED view-encoding syntax** (the delta-pass design surface, opened early — argumented
+attributes): `[shallow]` alone means *same encoding as deep*; `[shallow(quantize = K,
+max = Bound)]` means *quantized at scale K within ±Bound on the shallow wire, continuous in
+Interpolate*; `[shallow(min = A, max = B)]` on a float means *ranged-int projection on the
+shallow wire* (today's health/thrust pattern). The worked example is
+[`examples/Ship.schema`](examples/Ship.schema); **Missile, DynamicProp and Turret follow
+once the Ship shape is approved** (his list, same day).
+
+**And the payoff he named:** *"Once we have proper definitions of all object types, and
+structs per-object type, we will be able to generate all the baseline and delta compression
+code."* The object set is the prerequisite the delta pass was waiting for.
 
 ### 4.9 A complete example
 
@@ -615,7 +694,7 @@ message Chat {
 
 message Snapshot {
     base_sequence uint16
-    objects       ObjectState[<= MaxObjects]
+    objects       [<= MaxObjects]ObjectState
 }
 ```
 
@@ -637,6 +716,21 @@ sets arrived, exactly the boilerplate §4.8 exists to eat.)*
   (`i128`/`u128`) and C# (`Int128`/`UInt128`), emulated in C++ and Go (two-qword structs).
   The surveyed delta-prediction arithmetic already needs 128-bit intermediates too. Keywords
   reserved now so nothing squats on them.
+- **C++-style bitfields (`uint64 blah : 8`) — considered 2026-08-05, DECLINED across the
+  targets, with Glenn's own expectation confirmed** (*"want to know if this is
+  possible/advisable across our target generated languages. expect it will not be"* — it is
+  not, for three reasons with a family receipt). (1) **The wire half already exists**:
+  `bits(N)` is exactly the bitfield's wire — N bits, named, packed back to back — with
+  honest per-field storage. (2) **As storage, only C++ has the syntax at all**, its layout
+  is implementation-defined (order and padding vary by compiler — the reason serialize
+  itself never uses bitfields), and C#/Go/Rust would need generated shift/mask accessors
+  over a backing word — unnatural in all three. (3) **The killer is addressability**:
+  generated serialize methods take `ref`/`&mut`/pointers, and bitfield members cannot be
+  addressed — serialize.modern's own SCHEMA.md hit this exact wall: *"bit-field members
+  cannot be used (widen them, or keep those packets on the streams)."* If memory packing of
+  hot object arrays ever demands it, the door is an opt-in `[packed]` attribute on a type
+  generating accessor-based storage — a generator-kind decision for the horizon, not a v1
+  wire construct.
 - **Fixed point** — coming, runtime-first (Glenn, 2026-08-05: *"we will also be doing fixed
   point in serialize there first, and then bringing that to this language"*). The sequencing
   is the decision: the wire construct gets designed and proven in the serialize C++ library,
@@ -689,8 +783,8 @@ Per `type`, per target:
    | `string(N)` | `char[N]` | `byte[]` (bound-checked) | `string` | `Vec<u8>` (bound-checked) |
    | `bytes(N)` | `uint8_t[N]` | `byte[]` (length-checked) | `[N]byte` | `[u8; N]` |
    | `bytes(<=N)` | `uint8_t[N]` + `int32_t` count | `byte[]` (bound-checked) | `[]byte` (cap-checked) | `Vec<u8>` (bound-checked) |
-   | `T[N]` | `T[N]` | `T[]` (length-checked) | `[N]T` | `[T; N]` |
-   | `T[<=N]` | `T[N]` + `int32_t` count | `T[]` (bound-checked) | `[]T` (bound-checked) | `Vec<T>` (bound-checked) |
+   | `[N]T` | `T[N]` | `T[]` (length-checked) | `[N]T` | `[T; N]` |
+   | `[<=N]T` | `T[N]` + `int32_t` count | `T[]` (bound-checked) | `[]T` (bound-checked) | `Vec<T>` (bound-checked) |
 
    Enums are integer-backed named types in every target because `[max = ...]` headroom makes
    non-variant values wire-legal; a native Rust `enum` cannot hold them — C#'s `enum E : uint`

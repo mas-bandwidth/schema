@@ -1,0 +1,20 @@
+// Enums.schema — all hand-declared enums for the unit.
+// Aspect-oriented layout (SPEC §2): one aspect per file.
+//
+// NOTE (Glenn, 2026-08-05): some of these are flatbuffers residue — hand-declared
+// only because flatbuffers gave no better tool. ShipType is really a DERIVED set
+// (each ship config/asset defines a type), and when the Config/Assets layer
+// lands, enums of that class are GENERATED from their definitions — the same
+// set-extraction move as MessageType and ObjectType. Hand-declared enums remain
+// for genuinely hand-owned sets (Team).
+
+package example
+
+enum Team      { None Red Blue }
+enum CraftKind { None Light Medium Heavy }
+
+// flatbuffers-residue class: eventually generated from Assets/Config definitions.
+enum ShipType  { None Fighter Corvette Bomber Destroyer Carrier }
+
+// demo-local, used by the switch idiom in Types.schema.
+enum RecordKind { None Craft Debris }

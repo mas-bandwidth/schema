@@ -14,13 +14,24 @@ protocol.
 **The standing check: every file here must compile under SPEC.md as written.** A corpus
 example the spec's own rules reject is a finding — in one document or the other.
 
-## The files
+## The files — aspect-oriented layout
 
-| file | exercises |
-|---|---|
-| `Input.schema` | counted array of composed types, bare `uintN` header fields, self-counting `T[<= N]` |
-| `Messages.schema` | `message` declarations — the implicit `MessageType` set (SPEC §4.8): empty message, byte blocks, storage-typed ranged ints |
-| `ObjectCreate.schema` | quantized-int vector/quaternion types (`int16`/`int32` storage), constants composing in ranges, bool-gated optional fields, enums, and the explicit `switch` on an object-record kind |
+One aspect per file (Glenn, 2026-08-05: *"I like aspect oriented programming, eg. all
+constants here, all messages there, all objects there and so on"* — **his hedge kept: "This
+is not a hard requirement, just a personal preference."** A convention `schemafmt` and the
+docs follow, never compiler-enforced; cross-file order-free resolution is what makes it
+free):
+
+| file | holds | exercises |
+|---|---|---|
+| `Constants.schema` | every `const` | constants composing (`const C = A * 2 + B`), order-free references |
+| `Enums.schema` | every hand-declared `enum` | enum wire; notes which enums are flatbuffers residue destined to be GENERATED from Config/Assets definitions |
+| `Types.schema` | every `type` | quantized-int types, bare `uintN` fields, prefix arrays `[<= N]T`, bool-gated `if`, the explicit `switch` dispatch idiom, storage-typed ranged ints |
+| `Messages.schema` | every `message` | the implicit `MessageType` set (SPEC §4.8): empty message, byte blocks |
+| `Objects.schema` | every `object` | **the worked Ship** — one definition driving ShipState / Deep / Shallow / Interpolate + Quantize, view markers `[shallow]`/`[local]` (PROPOSED syntax) |
+
+*Coming when their design passes open: `Config.schema` and `Assets.schema` (SPEC, "The
+horizon" — the flatbuffers replacement).*
 
 ## What the corpus already found
 

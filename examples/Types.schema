@@ -1,0 +1,106 @@
+// Types.schema — all enums and types for the unit.
+// Aspect-oriented layout (SPEC §2): one aspect per file.
+
+package example
+
+// Continuous vector and quaternion — float64 components, the deep wire.
+type Vec3 {
+    x float64
+    y float64
+    z float64
+}
+
+type Quat {
+    x float64
+    y float64
+    z float64
+    w float64
+}
+
+// A handle to another object: id + generation sequence.
+type Handle {
+    object_id       int32 [min = 0, max = MaxObjects - 1]
+    object_sequence uint8
+}
+
+// Hand-quantized vectors — the v1-expressible idiom ObjectCreate.schema uses.
+// (object views express the same thing with [shallow(quantize = ...)]; both
+// belong in the corpus while the view syntax is PROPOSED.)
+type QuantizedPosition {
+    x int32 [min = -MaxPositionUnits, max = MaxPositionUnits]
+    y int32 [min = -MaxPositionUnits, max = MaxPositionUnits]
+    z int32 [min = -MaxPositionUnits, max = MaxPositionUnits]
+}
+
+type QuantizedVelocity {
+    x int32 [min = -MaxVelocityUnits, max = MaxVelocityUnits]
+    y int32 [min = -MaxVelocityUnits, max = MaxVelocityUnits]
+    z int32 [min = -MaxVelocityUnits, max = MaxVelocityUnits]
+}
+
+type QuantizedRotation {
+    x int16 [min = -RotationUnits, max = RotationUnits]
+    y int16 [min = -RotationUnits, max = RotationUnits]
+    z int16 [min = -RotationUnits, max = RotationUnits]
+    w int16 [min = -RotationUnits, max = RotationUnits]
+}
+
+// ---- input ----
+
+type Input {
+    stick_x  float32
+    stick_y  float32
+    throttle float32
+    yaw      float32
+    pitch    float32
+
+    fire     bool
+    alt_fire bool
+    boost    bool
+    brake    bool
+    aim      bool
+    lock_on  bool
+    zoom     bool
+    ping     bool
+}
+
+type InputPacket {
+    synchronize_sequence uint16
+    current_frame        uint64
+    start_frame          uint64
+
+    // wire: count in [0, MaxInputsPerPacket], then that many Input elements
+    inputs [<= MaxInputsPerPacket]Input
+}
+
+// ---- the v1-expressible create/dispatch idiom (pre-object-views) ----
+
+type CraftCreate {
+    // Finding 1 in README.md: the hand-written equivalent encodes kind as
+    // [1, max] — None excluded from the wire. schema's enum wire is [0, max],
+    // spending one unused value. Ranged enums are an open question.
+    kind CraftKind
+
+    position        QuantizedPosition
+    rotation        QuantizedRotation
+    linear_velocity QuantizedVelocity
+
+    has_flags bool
+    if has_flags {
+        flags bits(64)
+    }
+
+    team   Team
+    health int16 [min = 0, max = MaxHealth]
+    thrust int8  [min = 0, max = 100]
+}
+
+// The explicit-switch pattern — for dispatch that is NOT a declaration set.
+type ObjectRecord {
+    object_id   int32 [min = 0, max = 9999]
+    record_kind RecordKind
+    switch record_kind {
+    case Craft:  craft CraftCreate
+    case Debris: debris_seed uint32
+    }
+}

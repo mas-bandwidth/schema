@@ -1,0 +1,27 @@
+// Constants.schema — all constants for the unit, in one place.
+// Aspect-oriented layout (SPEC §2): one aspect per file. Constants compose and
+// resolve order-free across the unit's files.
+
+package example
+
+// world quantization
+const UnitsPerMeter    = 1024
+const MaxWorldMeters   = 8192
+const MaxPositionUnits = MaxWorldMeters * UnitsPerMeter
+
+const MaxSpeedMeters   = 2048
+const MaxVelocityUnits = MaxSpeedMeters * UnitsPerMeter
+
+const RotationUnits    = 1024
+
+// gameplay bounds
+const MaxHealth = 1000
+const MaxObjects = 10000
+
+const ShipMaxLasers   = 16
+const ShipMaxMissiles = 16
+
+// packet bounds
+const MaxInputsPerPacket = 16
+const MaxBlockSize       = 2000
+const MaxChatLength      = 256

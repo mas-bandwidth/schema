@@ -1,0 +1,73 @@
+// Objects.schema — all object definitions for the unit.
+// Aspect-oriented layout (SPEC §2): one aspect per file.
+//
+// THE WORKED EXAMPLE: one definition drives the generated family. From each
+// object the compiler generates, per target:
+//   ObjectType            (None = 0, then each object, deterministic order)
+//   ShipState             (every field — the simulation struct)
+//   ShipData_Deep         + serialize (every non-local field; deep = full state,
+//                           sent to the client for client-side prediction)
+//   ShipData_Shallow      + serialize (the [shallow] fields, quantized — visual
+//                           state, sent to the client for interpolation)
+//   ShipData_Interpolate  (the [shallow] fields in continuous storage)
+//   Quantize / Unquantize (the Interpolate <-> Shallow mapping pair)
+//
+// Field inventory is faithful to the real Ship.h (2026-08-05). View-encoding
+// attribute syntax is PROPOSED (SPEC §4.8) — the deep/shallow semantics and the
+// generated artifact list are DECIDED. Missile, DynamicProp and Turret follow
+// once the Ship shape is approved.
+//
+// NOTE before this repo ever goes public: this file mirrors the real Space Game
+// ship — review with Glenn first.
+
+package example
+
+object Ship {
+    // ---- visual state: on the shallow wire (quantized) and in Interpolate ----
+
+    ship_type ShipType [shallow]
+
+    position        Vec3 [shallow(quantize = UnitsPerMeter, max = MaxWorldMeters)]
+    rotation        Quat [shallow(quantize = RotationUnits)]
+    linear_velocity Vec3 [shallow(quantize = UnitsPerMeter, max = MaxSpeedMeters)]
+
+    flags uint64 [shallow]
+    team  Team   [shallow]
+
+    // float in deep, ranged-int projection on the shallow wire — the real
+    // health/thrust pattern in ShipData_Shallow.
+    health float32 [shallow(min = 0, max = MaxHealth)]
+    thrust float32 [shallow(min = 0, max = 100)]
+
+    // ---- full state: deep only (the default — no marker) ----
+
+    angular_velocity Vec3
+
+    laser_cooldown   float32
+    missile_cooldown float32
+
+    speed_current  float32
+    speed_velocity float32
+
+    stick_current  Vec3
+    stick_velocity Vec3
+
+    sensitivity_current  float32
+    sensitivity_velocity float32
+
+    roll_current  float32
+    roll_velocity float32
+
+    aim_current  float32
+    aim_velocity float32
+
+    laser_index   int8 [min = 0, max = ShipMaxLasers - 1]
+    missile_index int8 [min = 0, max = ShipMaxMissiles - 1]
+
+    target          Handle
+    lock_start_time float64
+
+    // ---- simulation-only: no wire at all (PROPOSED marker) ----
+
+    invulnerable bool [local]
+}
