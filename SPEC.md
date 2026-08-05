@@ -29,7 +29,7 @@ targeting the serialize family of libraries:
 | target | runtime library |
 |---|---|
 | C++ | [serialize](https://github.com/mas-bandwidth/serialize) |
-| C# | serialize.cs — **does not exist yet**; a prerequisite work item (below) |
+| C# | [serialize.cs](https://github.com/mas-bandwidth/serialize.cs) — ported 2026-08-05 (private; 32/32 tests, wire-verified vs C++ both directions; license + CI pending) |
 | Go | [serialize.go](https://github.com/mas-bandwidth/serialize.go) |
 | Rust | [serialize.rs](https://github.com/mas-bandwidth/serialize.rs) |
 
@@ -37,11 +37,15 @@ The existing three runtimes are bit-for-bit wire compatible and pin that propert
 golden bytes. schema inherits that foundation: **a struct serialized by generated code in any
 target language decodes identically in the others.**
 
-**C# — DECIDED (Glenn, 2026-08-04), with its prerequisite named.** No serialize C# runtime
-exists (measured against the mas-bandwidth repo list the same night). The C# backend therefore
-waits on **serialize.cs**: a wire-compatible sibling built the way serialize.go and
-serialize.rs were — golden bytes copied from the C++ suite, head-to-head byte-identity CI, the
-same buffer and error conventions adapted to the language. The compiler architecture does not
+**C# — DECIDED (Glenn, 2026-08-04), prerequisite MET overnight.** serialize.cs was ported the
+same night by the red/blue method — golden bytes verbatim from the family's shared 72-byte
+pin, byte-identical head-to-head against real `serialize.h` under clang++, cross-reads both
+directions, Go-style sticky errors. Private pending Glenn's license call and CI. One wire
+finding worth knowing came out of the port: **default-flags C++ on ARM64 FMA-contracts the
+compressed-float write** and diverges from strict IEEE by one quantization step at boundary
+values — strict IEEE is declared the normative wire, and the compat harness mandates
+`-ffp-contract=off` with an FMA-boundary value in the sequence so a contracted build fails
+the gate loudly. The schema compiler's conformance suite (§7.2) inherits that rule. The compiler architecture does not
 change: a new target is a new dumb printer over the same IR — and since the protocol id
 hashes the schema files (§3.1), adding a target moves no deployed id, ever.
 
