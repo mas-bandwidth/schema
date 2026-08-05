@@ -24,7 +24,7 @@ type Handle {
 }
 
 // Hand-quantized vectors — the v1-expressible idiom ObjectCreate.schema uses.
-// (object views express the same thing with [interpolated, quantize = ...]; both
+// (object views express the same thing with [interpolate, quantize = ...]; both
 // belong in the corpus while the view syntax is PROPOSED.)
 type QuantizedPosition {
     x int32 [min = -MaxPositionUnits, max = MaxPositionUnits]

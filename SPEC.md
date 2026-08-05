@@ -454,9 +454,9 @@ sequence    uint16
   `min`/`max` apply per element.
 - **Valueless attributes are in** — deferred in the first draft of this section, restored
   the same day when the real need arrived: **object view markers** (§4.8) need
-  `[interpolated]` and `[local]`, and the prefix-array decision had already removed the
+  `[interpolate]` and `[local]`, and the prefix-array decision had already removed the
   collision that motivated the deferral. **Attribute lists stay flat** (Glenn:
-  `[interpolated, min = x, max = y]`) — a marker and its encoding parameters sit side by
+  `[interpolate, min = x, max = y]`) — a marker and its encoding parameters sit side by
   side; no nested argument syntax.
 
 - **The line between positional and attribute:** a *size* that defines the type's shape stays
@@ -693,7 +693,7 @@ exist **in generated code only**; the schema holds one definition per object.
 **The views, his semantics verbatim — and the marker is named for the purpose, not the
 plumbing:**
 
-- **`[interpolated]`** — *"this is sent to the client for interpolation, it's visual
+- **`[interpolate]`** — *"this is sent to the client for interpolation, it's visual
   state."* The marker was `shallow` for an hour; renamed on his call because *"shallow is an
   implementation detail on the way to interpolation on the client"* — the quantized shallow
   wire struct still exists, in generated code, as that implementation detail.
@@ -712,14 +712,14 @@ identical — the message-set rule):
 |---|---|
 | `ShipState` | every field — the simulation struct |
 | `ShipData_Deep` + serialize | every non-`[local]` field, deep encodings |
-| `ShipData_Shallow` + serialize | the `[interpolated]` fields, **quantized wire encodings** from the field's attributes — the wire-side implementation detail of interpolation |
-| `ShipData_Interpolate` | the same `[interpolated]` fields in **continuous storage** (the un-quantized twin) |
+| `ShipData_Shallow` + serialize | the `[interpolate]` fields, **quantized wire encodings** from the field's attributes — the wire-side implementation detail of interpolation |
+| `ShipData_Interpolate` | the same `[interpolate]` fields in **continuous storage** (the un-quantized twin) |
 | `Quantize` / `Unquantize` | the mapping pair between Interpolate and Shallow — the hand-written `Quantize()` in today's `Ship.h`, generated |
 
 **PROPOSED view-encoding syntax** (the delta-pass design surface, opened early — flat
-attribute lists, his form): `[interpolated]` alone means *same encoding as deep*;
-`[interpolated, quantize = K, max = Bound]` means *quantized at scale K within ±Bound on the
-shallow wire, continuous in Interpolate*; `[interpolated, min = A, max = B]` on a float
+attribute lists, his form): `[interpolate]` alone means *same encoding as deep*;
+`[interpolate, quantize = K, max = Bound]` means *quantized at scale K within ±Bound on the
+shallow wire, continuous in Interpolate*; `[interpolate, min = A, max = B]` on a float
 means *ranged-int projection on the shallow wire* (today's health/thrust pattern). The
 worked example is [`examples/Objects.schema`](examples/Objects.schema); **Missile,
 DynamicProp and Turret follow once the Ship shape is approved** (his list, same day).

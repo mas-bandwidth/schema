@@ -26,19 +26,19 @@ object Ship {
     // ---- visual state, [interpolated]: sent for client interpolation, rides
     // the quantized shallow wire (an implementation detail) into Interpolate ----
 
-    ship_type ShipType [interpolated]
+    ship_type ShipType [interpolate]
 
-    position        Vec3 [interpolated, quantize = UnitsPerMeter, max = MaxWorldMeters]
-    rotation        Quat [interpolated, quantize = RotationUnits]
-    linear_velocity Vec3 [interpolated, quantize = UnitsPerMeter, max = MaxSpeedMeters]
+    position        Vec3 [interpolate, quantize = UnitsPerMeter, max = MaxWorldMeters]
+    rotation        Quat [interpolate, quantize = RotationUnits]
+    linear_velocity Vec3 [interpolate, quantize = UnitsPerMeter, max = MaxSpeedMeters]
 
-    flags uint64 [interpolated]
-    team  Team   [interpolated]
+    flags uint64 [interpolate]
+    team  Team   [interpolate]
 
     // float in deep, ranged-int projection on the shallow wire — the real
     // health/thrust pattern in ShipData_Shallow.
-    health float32 [interpolated, min = 0, max = MaxHealth]
-    thrust float32 [interpolated, min = 0, max = 100]
+    health float32 [interpolate, min = 0, max = MaxHealth]
+    thrust float32 [interpolate, min = 0, max = 100]
 
     // ---- full state: deep only (the default — no marker) ----
 

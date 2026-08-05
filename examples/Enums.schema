@@ -1,4 +1,6 @@
 // Enums.schema — all hand-declared enums for the unit.
+// Every enum has None = 0 implicitly (SPEC §4.2); declared variants pack from 1;
+// storage derives from the enum's own max.
 // Aspect-oriented layout (SPEC §2): one aspect per file.
 //
 // NOTE (Glenn, 2026-08-05): some of these are flatbuffers residue — hand-declared
@@ -10,11 +12,11 @@
 
 package example
 
-enum Team      { None Red Blue }
-enum CraftKind { None Light Medium Heavy }
+enum Team      { Red Blue }
+enum CraftKind { Light Medium Heavy }
 
 // flatbuffers-residue class: eventually generated from Assets/Config definitions.
-enum ShipType  { None Fighter Corvette Bomber Destroyer Carrier }
+enum ShipType  { Fighter Corvette Bomber Destroyer Carrier }
 
 // demo-local, used by the switch idiom in Types.schema.
-enum RecordKind { None Craft Debris }
+enum RecordKind { Craft Debris }
