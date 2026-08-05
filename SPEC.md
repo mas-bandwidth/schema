@@ -72,12 +72,42 @@ for every platform, with zero compile-time tax on the consumer.**
   generates them (§6). Mapping onto pre-existing structs may come later.
 - **No imports across compilation units.** One unit, one package, all files compiled together
   (§3.2). Cross-unit composition is a later problem.
-- **No flatbuffers-style evolvable tables.** Named as a likely future direction for config and
-  asset data (Glenn, 2026-08-04); explicitly out of scope for the bitpacked v1.
+- **No flatbuffers-style evolvable tables.** Named as a future direction for config and
+  asset data (Glenn, 2026-08-04); explicitly out of scope for the bitpacked v1. See "The
+  horizon" below.
 - **No self-describing wire data.** The wire stays an unattributed bit stream; all knowledge
   lives in the generated code on both ends.
 - **Deferred constructs:** wide strings (`serialize_wstring`) and relative integers
   (`serialize_int_relative`) are not in v1 — see §4.9.
+
+### The horizon — recorded so v1 does not foreclose it
+
+Glenn, 2026-08-04, on the eventual scope for Space Game: *"all the object types and event
+types and all the flatbuffer stuff, eventually i hope to have all that in the schema
+language"* — *"and all the delta stuff, and object type definitions, and the baseline, all
+generated from schema level definitions in this custom language. NOT right now, but
+eventually :)"*
+
+So the long arc is: schema as the single data-definition language for the game — bitpacked
+realtime messages (v1, this spec), object and event type definitions, flatbuffers-style
+versioned config/asset data, and **delta encoding against a baseline** all generated from one
+source. Two v1 implications, noted and then set aside:
+
+- Delta-against-baseline changes the generated function *signature* (it takes the current
+  object and a baseline), not the wire model or the compiler architecture — it fits the
+  pipeline when its design pass comes.
+- Nothing in v1's grammar may squat on syntax the horizon will want (`packet`, `table`,
+  `delta`, `baseline` are informally reserved for future use).
+
+Surveyed 2026-08-04 (Glenn: *"eventually, this should all move to the schema language"*):
+the current layer is ~600 lines of `.fbs` across asset, config, definitions, events and
+server schemas, already hashed into a `schema_hash.h` — the protocol-id-as-hash instinct has
+prior art in his own tree. The structural shapes it uses that v1 does not have, recorded as
+the horizon's requirements list: **constants** (faked today as single-value enums — solved in
+v1, above), **enums with explicit values and bit-flag enums**, **unions** (v1's enum + switch
+covers the wire pattern; the type-level union is the table-layer question), **field
+defaults**, and **vectors of tables**. None of these blocks the bitpacked v1; all of them
+shape what the table layer must eventually be.
 
 ## 2. The name and the files — DECIDED
 
@@ -223,6 +253,27 @@ IntExpr     = integer expression over literals and const names:
 - **Type references are order-free** — a struct or enum may be used before its declaration,
   in any file of the unit. (Field *back-references* are not order-free; §4.5.)
 - `if` and `switch` nest freely inside blocks and case bodies.
+
+### Constants and enums are exported — DECIDED
+
+Glenn, 2026-08-04: *"We'll need support for constants too, because those are referred to from
+the serialize functions"* — *"and enums."* Both are first-class in both directions:
+
+- **Into the wire:** a `const` is usable in any range, bound, width or case label, folded at
+  compile time; an enum is a wire type.
+- **Out to the code:** every `const` and every `enum` is **exported in the generated output
+  of all three targets** — `inline constexpr int64_t MaxPlayers = ...;` / `const MaxPlayers
+  int64 = ...` / `pub const MAX_PLAYERS: i64 = ...;` and the integer-backed enum types of
+  §6.1 — because the values that shape the wire are the same values game code sizes its
+  arrays and loops with. One declaration, everywhere, and the game references the schema's
+  constant instead of a hand-copied twin.
+
+The evidence this is load-bearing sits in Space Game's current flatbuffers layer:
+**flatbuffers has no constants, so today's `definitions.fbs` encodes them as single-value
+enums** — a real constant declaration is one of the concrete things schema improves on day
+one. *(v1 constants are integers; if the corpus shows serialize functions referring to named
+float constants — e.g. ranges for compressed floats — `const` widens to floats in that design
+pass.)*
 
 ### 4.3 Field types and their wire encodings
 
@@ -617,6 +668,12 @@ measure, §6.1. Both DECIDED.)*
 6. **A root/packet marker** — scopes the protocol id to reachable declarations (fixes the
    unused-helper-moves-the-id wart, §3.2), names which structs get buffer-sizing guidance,
    and is the natural place for a future `packet` keyword. v1 or v2?
+7. **Explicit enum variant values and flag enums.** v1 numbers variants implicitly 0..n−1;
+   Space Game's real enums all write `None = 0` explicitly and one is a `(bit_flags)` mask.
+   Implicit numbering happens to match the None-first style, but the evidence says explicit
+   values (and possibly a `flags` enum form whose wire is `bits(N)`) deserve a v1 decision,
+   not a deferral — this also settles whether variants stay whitespace-separated or gain a
+   separator to make room for `= value`.
 
 ---
 
