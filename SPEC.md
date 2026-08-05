@@ -282,8 +282,15 @@ of all game/Schemas/*.fbs files. generated. do not edit!"* — folded with `PROT
 into the protocol id that gates every encrypted packet. schema does for the bitpacked layer
 exactly what that mechanism already does for the flatbuffers layer.
 
-Definition, precise so two compiler builds agree: the unit's `*.schema` files ordered by
-sorted basename, each file's raw bytes hashed in sequence; low 64 bits of the SHA-256.
+~~Definition, precise so two compiler builds agree: the unit's `*.schema` files ordered by
+sorted basename, each file's raw bytes hashed in sequence; low 64 bits of the SHA-256.~~
+*(Superseded 2026-08-05 by the pinned procedure below — which is NOT only edge-case
+pinning: it changes the hash input. Bare concatenation lets two textually different units
+hash identically — "AB"+"C" equals "A"+"BC" — so the procedure below delimits each file
+with its basename, which also means every file RENAME moves the id, not only
+order-changing ones. A semantic change to the PROPOSED mechanism, surfaced on the
+road-to-v1 decision list rather than slipped through as tidying — a first version of this
+edit did exactly that and a cold reader blocked it.)*
 
 Properties, stated honestly in both directions:
 
@@ -314,7 +321,8 @@ form" cheap to define. The full argument is the paragraph above plus
 `notes/external-feedback-learnings.md`; the exchange record lives outside this repo.)*
 
 **The hash procedure, pinned so two compiler builds agree — PROPOSED (Rowan, 2026-08-05;
-the file-hash decision is Glenn's, this edge-case pinning is the mechanism half):** the
+the file-hash decision is Glenn's, this procedure is the mechanism half, and it CHANGES
+the input relative to the superseded sentence above — decision list, road-to-v1):** the
 unit's `*.schema` files (non-recursive; only the `.schema` extension; a duplicate basename
 in an explicit file list is a compile error) ordered by **bytewise ascending basename**;
 for each file, hash its basename bytes, then a single `0x00`, then its raw content bytes
@@ -355,8 +363,9 @@ application's choice — netcode-style stacks already carry one.
 
 ### 4.1 Lexical structure
 
-- UTF-8 source, no BOM (a BOM is rejected at parse — it would silently move the protocol
-  id, §3.1). `//` line comments and `/* */` block comments (non-nesting).
+- UTF-8 source; no BOM — PROPOSED (Rowan, 2026-08-05, the completion-pins batch): a BOM is
+  rejected at parse, because it would silently move the protocol id (§3.1). `//` line
+  comments and `/* */` block comments (non-nesting).
 - **Doc comments — PROPOSED (Rowan, 2026-08-05; §9 q5, recommended v1):** a `//` comment
   block whose last line immediately precedes a declaration, field, or enum variant — no
   blank line between — is that item's doc comment, carried through the IR and emitted in
@@ -478,7 +487,8 @@ FloatExpr   = float expression over float literals, int literals and const names
   `const MaxPositionUnits = MaxWorldMeters * UnitsPerMeter`.
 - **Constants are typed, and not just integers** — DECIDED (Glenn, 2026-08-05: *"They won't
   just be integer"*), on Go's untyped-constant model: a bare `const` takes its **kind** from
-  its expression — integer (checked signed 64-bit arithmetic) or float (float64 arithmetic;
+  its expression — integer (arbitrary-precision arithmetic, fit-checked at each use —
+  the expression rule above) or float (float64 arithmetic;
   `+ - * /` and parentheses, no `%`) — and converts wherever that kind fits: integer
   constants in any range, bound, width, case label or float position; float constants in
   float attribute values (`resolution`, quantize scales) and float contexts. An **explicit
@@ -551,7 +561,8 @@ FloatExpr   = float expression over float literals, int literals and const names
   `None = 0` rides the wire, range `[0, max]`, the same shape as the generated
   `MessageType`/`ObjectType` tags (§4.8); an enum field marked **`[no_none]`** is an
   **index of valid variants** — `None` is not a wire value, range `[1, max]` encoded as
-  value − 1 (§4.3's ranged-int rule), and a read of 0 is a validation failure. The marker
+  value − 1 (§4.3's ranged-int rule — so `None` cannot arrive from a legal decode: decoded
+  values start at 1 by construction, and reads reject above max). The marker
   moves wire and validation only: storage still derives from the enum's own max, and the
   in-memory type still represents `None` — the surveyed ship holds `ShipType_None` in state
   while every wire write of the same enum is `[1, max]`, so the two kinds coexist per-field,
@@ -651,7 +662,8 @@ family's measured invariants, restated here as the spec's own)*:
 - **All >32-bit quantities go low 32 bits first**, then the high remainder (`bits(N>32)`,
   `uint64`, `float64`, ranged encodings wider than 32 bits).
 - **Ranged integers encode `value − min`, unsigned, in exactly `bits_required(min, max)`
-  bits** (32 − clz(max − min)); no zigzag on the wire, ever.
+  bits** — the bit width of (max − min), computed in the range's own width (clz over 32 or
+  64 bits as the range demands); no zigzag on the wire, ever.
 - **`align` emits zero bits up to the next byte boundary — zero bits when already
   aligned**; readers verify the padding is zero.
 - **Length prefixes** (`string(N)`, `bytes(<= N)`, `[<= N]T`, `[Min..N]T`) are ranged
@@ -671,7 +683,7 @@ siblings — design inputs, re-verified against library source at implementation
 | `f float64` | 64 raw bits (low dword first) | `serialize_double` |
 | `f float32 [min = A, max = B, resolution = R]` | quantized to ceil((B−A)/R) steps — the actual step is (B−A)/ceil((B−A)/R), ≤ R *(the row said "R-sized steps", exact only when (B−A)/R is integral — corrected 2026-08-05)*; read rejects values above the step count | `serialize_compressed_float` (exact formulas incl. the ceil, +0.5f rounding and clamp) — **the former `compressed_float` keyword, dissolved into attributes: storage stays `float32`, the attributes describe the wire** |
 | `f Weapon` (an enum) | minimal bits for [0, max]; read rejects above max | `serialize_int` over [0, max] |
-| `f Weapon [no_none]` (an enum) — PROPOSED, §9 q11 | minimal bits for [1, max], value − 1; read rejects 0 and above max | `serialize_int` over [1, max] — the surveyed create path's exact call |
+| `f Weapon [no_none]` (an enum) — PROPOSED, §9 q11 | minimal bits for [1, max], value − 1 (decoded values start at 1 by construction; read rejects above max) | `serialize_int` over [1, max] — the surveyed create path's exact call |
 | `f Damage` (a `[flags]` enum) — PROPOSED, §9 q9 | W raw bits, W = highest position + 1 (or [max] + 1); every pattern legal | `serialize_bits` |
 | `f Inner` (a type) | Inner's fields, in place | `serialize_object` |
 | `const(Value, Bits)` | the constant; read **rejects** any other value | `serialize_bits` + compare |
@@ -726,7 +738,7 @@ type Body {
   identically on write and read, so the wire stays symmetric.
 - **Case labels:** for an enum subject, bare variant names of that enum (resolved through the
   subject's type); for an integer subject, constant integer expressions. Duplicate case
-  values are a compile error. **Corner rules** *(pinned 2026-08-05)*: a `bits(N)` field is a
+  values are a compile error. **Corner rules** *(PROPOSED, Rowan 2026-08-05 — the completion-pins batch, road-to-v1 decision 1)*: a `bits(N)` field is a
   legal integer subject; `case None:` is legal for an enum subject (the implicit variant is
   a variant); a user-declared variant literally named `None` is a compile error everywhere —
   the name is claimed by the implicit rule.
@@ -881,7 +893,7 @@ generates, per target:
 - Every message is also an ordinary type: its own `Write`/`Read`/`MaxBits`/`MaxBytes`, usable
   standalone and composable as a field (the grammar's `ident // a declared type or enum`
   includes message names — a message IS an ordinary type). **An `object` name is NOT a field
-  type in v1** *(pinned 2026-08-05)*: an object has no single wire form (Deep vs Shallow),
+  type in v1** *(PROPOSED, Rowan 2026-08-05 — the completion-pins batch, road-to-v1 decision 1)*: an object has no single wire form (Deep vs Shallow),
   so `ship Ship` inside a message is a compile error naming this rule; view-qualified
   references are a later pass if ever needed. **And an `object` body admits plain fields
   only in v1** — no `if`/`switch`/`const()`/`reserved`/`align` — because the view-splitting
@@ -946,8 +958,11 @@ bare storage type's encoding.
    pass owns cleverer encodings.
 3. **Unit quaternions** — `type Quat [unit]` declares a 4-float composite whose components
    are bounded ±1 and which renormalizes on unquantize. A `[quantize = K]` use of a
-   `[unit]` type needs no `max`; the implied bound is 1. *(This is what makes the corpus's
-   max-less `rotation Quat [interpolate, quantize = RotationUnits]` well-defined.)*
+   `[unit]` type needs no `max`; the implied bound is 1. *(Grammar consequence: `TypeDecl`
+   gains the optional trailing `Attributes` slot enums already have. Corpus consequence on
+   approval: `Types.schema`'s `Quat` gains `[unit]`, which is what makes Objects.schema's
+   max-less `rotation Quat [interpolate, quantize = RotationUnits]` well-defined — as the
+   corpus stands today that line is exercising a rule that only lands with this approval.)*
 4. **Ranged-int projection** — on `float32`/`float64`,
    `[interpolate, min = A, max = B, resolution = R]` reuses §4.3's compressed-float
    triple: min/max name the **CONTINUOUS domain**, the shallow wire is the int
@@ -1093,7 +1108,7 @@ exhaustion: running out of input mid-read is a read failure like any other** *(a
 2026-08-05 — it was the one malformed-input class the list omitted)* — and fail on any
 violation, because network input is the trust boundary. Generated read code never lets a
 value that controls iteration go unchecked before use (serialize.go documents this exact DoS
-vector). **Read termination** *(pinned 2026-08-05)*: `Read` consumes exactly the encoded
+vector). **Read termination** *(PROPOSED, Rowan 2026-08-05 — the completion-pins batch, road-to-v1 decision 1)*: `Read` consumes exactly the encoded
 bits and reports bits consumed (so callers can frame several objects in one buffer); bytes
 remaining after the last field are the caller's concern, not a validation failure —
 `ReadMessage` streams end on the `None` tag by design.
@@ -1107,7 +1122,7 @@ attacker-influenced values as min/max.
 **Read failure leaves the output object in an unspecified state**; callers use it only on
 success. **Read success fully initializes it**: fields in untaken branches are set to their
 zero values — 0, 0.0, false, empty bytes, zero count, **`None` for an enum, recursively
-zeroed for a nested type, element-wise zeroed for a fixed array** *(the three cases pinned
+zeroed for a nested type, element-wise zeroed for a fixed array** *(the three cases PROPOSED, Rowan
 2026-08-05; whole-object comparison needs them defined)*. Write reads only taken fields.
 This is what makes whole-object comparison in the conformance matrix well-defined.
 
@@ -1144,7 +1159,9 @@ Per `type`, per target:
 2. **`Write(buffer, object) -> bytesWritten`** — straight-line write code in wire order.
 3. **`Read(buffer, object) -> ok/error`** — straight-line read code with full validation, in
    each runtime's native error idiom (`bool` in C++, `bool` + latched `Error` in C#, `error`
-   in Go, `Result` in Rust), reporting bits consumed on success (§5).
+   in Go, `Result` in Rust). The consumed size (§5) surfaces per target idiom — a success
+   value that carries bits consumed where the idiom allows, an out-parameter where it does
+   not (C++'s `bool`); pinned per backend at implementation.
 4. **`MaxBits` / `MaxBytes`** — constants: the longest path through the schema, with
    worst-case (7-bit) padding assumed at each alignment point. Size write buffers from
    `MaxBytes`. Conservative is correct for a buffer bound.
@@ -1190,8 +1207,11 @@ is a correctness bug, not a size regression. This was always true by constructio
 stated so it cannot be quietly traded away.
 
 **Derives — PROPOSED (Rowan, 2026-08-05, revised after the evidence pass; awaiting
-Glenn).** Three additional generated functions per `type`, `message` and `object`, in every
-target, **generated by default — no schema syntax, no compiler flag.** They are projections
+Glenn).** Three additional generated functions per `type` and `message`, in every
+target, **generated by default — no schema syntax, no compiler flag.** *(Scoped to
+`type`/`message` in v1: an `object` has no single wire form — Deep vs Shallow, §4.8 — so
+which encoding its `Equal`/`Checksum` would speak is undefined; objects get per-view
+derives with the delta pass.)* They are projections
 of the same declaration the read/write pair comes from, put nothing on the wire, and never
 touch the protocol id (the id hashes schema files, §3.1; derives are generated code only).
 Each is funded by a real networking need, not convenience:
@@ -1214,7 +1234,8 @@ Each is funded by a real networking need, not convenience:
   would be a second wire-sized conformance contract (float-bit rules, field order, a
   parallel matrix) and is rejected on that arithmetic; hash-over-bytes collapses it into
   the first. The only new pinned artifact is the two FNV constants, which the conformance
-  suite pins with a checksum-of-golden-bytes assert. *(Honesty note: the earlier draft
+  suite pins with a checksum-of-golden-bytes assert that §7.2 gains on acceptance of this
+  block. *(Honesty note: the earlier draft
   said this is "the pattern Space Game already gates packets with" — measured, the game
   gates connections and content with hashes over bytes and has no per-object state
   checksum yet; every hash the codebase has ever shipped hashes bytes, which is the
@@ -1230,7 +1251,7 @@ id for a wire-irrelevant switch (§3.1 hashes every byte) and needs grammar that
 exist; a compiler flag forks the generated API per invocation, the drift goal 1 exists to
 kill. Default-on costs only size, and two-thirds of the machinery (the dump format, the
 whole-object comparison) is §7.2 gate 4's own budgeted scaffolding emitted public instead
-of private. Consistency is mechanically checkable and §7.2 asserts it:
+of private. Consistency is mechanically checkable, and on acceptance §7.2 asserts it:
 `Equal(a, b)` ⇔ encoded bytes equal ⇒ `Checksum(a) == Checksum(b)` — three implementations
 of one equivalence relation. Evidence the category pays: the external engine evaluation
 ships its own equivalents and calls derives "value on their own."

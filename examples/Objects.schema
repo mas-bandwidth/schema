@@ -23,7 +23,7 @@
 package example
 
 object Ship {
-    // ---- visual state, [interpolated]: sent for client interpolation, rides
+    // ---- visual state, [interpolate]: sent for client interpolation, rides
     // the quantized shallow wire (an implementation detail) into Interpolate ----
 
     ship_type ShipType [interpolate]

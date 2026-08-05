@@ -56,6 +56,16 @@ attention last.
    - **q10** sentinel-terminated collections defer into the delta pass (the surveyed
      packets use three different terminator idioms; the construct is inseparable from
      budget-driven packet splitting).
+   - **the §3.1 hash procedure** — one real semantic choice inside it, named plainly: each
+     file is hashed as basename + `0x00` + content, which closes a genuine hole (bare
+     concatenation lets two different units hash identically) and means every file RENAME
+     moves the id, not only order-changing ones. A cold reader caught the first version of
+     this edit presenting that as mere tidying.
+   - **the completion-pins batch** — the small PROPOSED corner rules added throughout
+     (§4.4 case-label corners; §4.8 object-not-a-field + plain-fields-only object bodies;
+     §5 read termination + zero-value completions; §4.1 BOM rejection; §4.6 namespace +
+     claimed generated names; §6.1 symbol naming). All are forced consequences or
+     transcriptions; none changes a decided design.
 2. **The Ship object shape + view-encoding semantics + q13 (one package).** The corpus
    Ship is verified faithful against the real `Ship.h`, field for field — zero
    misclassifications, zero inventions, one noted omission (client-only
@@ -134,17 +144,17 @@ gap.
 Three latent defects in `~/space`, reported here because schema's generators are the
 structural fix for exactly this class (none of them blocks the spec):
 
-1. **`Libraries/core/core_interpolation.h:247`** — the shortest-arc dot product reads
+1. **`game/Libraries/core/core_interpolation.h:247`** — the shortest-arc dot product reads
    `a.x*b.x + a.y*b.y + a.z*a.z + a.w*b.w`: the z term is `a.z*a.z` (a·a), not `a.z*b.z`.
    The negate-on-dot<0 decision is wrong for some rotation pairs — occasional
    long-way-around interpolation, subtle visual spin. One character fix.
-2. **`Source/Ship.h:681` and `:740`** — `core_assert( current->ship_type <=
+2. **`game/Source/Ship.h:682` and `:741`** — `core_assert( current->ship_type <=
    generated::PropType_MAX )` guards `ship_type` with the *wrong enum's* MAX (PropType 6
    vs ShipType 5; the adjacent writes use the correct `ShipType_MAX`). The assert is too
    loose — it would admit an invalid ship type 6.
-3. **`Source/Turret.h:29` vs `:266/:279`** — `turret_index` is written
+3. **`game/Source/Turret.h:29` vs `:266/:279`** — `turret_index` is written
    `[0, MAX_TURRETS_PER_SHIP - 1]` on the deep path but `[0, MAX_TURRETS_PER_SHIP]` on
    the create path: 8 bits on one wire, 9 on the other, for one field. Each path's
    write/read pair agrees, so nothing desyncs today — it is the hand-restated-bound drift
-   class, live. (Also `MAX_TURRETS_PER_SHIP` is `#define`d twice, `Constants.h:58` and
-   `:76`, identical values.)
+   class, live. (Also `MAX_TURRETS_PER_SHIP` is `#define`d twice,
+   `game/Source/Constants.h:58` and `:76`, identical values.)
