@@ -140,7 +140,8 @@ source. Two v1 implications, noted and then set aside:
   interpolation, render data, struct-to-struct mapping × C++ tomorrow — his example: *"take
   the interpolated ship and then copy it to the ship render struct and so on"*) — per-field
   metadata beyond the wire (how a field interpolates, its delta tiers, which mapped struct a
-  field lands in) must have somewhere to attach when its pass comes.
+  field lands in) attaches through the per-field attribute mechanism of §4.2 — the
+  attachment point exists in v1's grammar already.
 - Nothing in v1's grammar may squat on syntax the horizon will want (`packet`, `table`,
   `delta`, `baseline` are informally reserved for future use).
 
@@ -257,12 +258,13 @@ application's choice — netcode-style stacks already carry one.
 - **Integer literals:** decimal, hex (`0x`), binary (`0b`). **Float literals** (decimal, with
   optional fraction and exponent) appear only as `compressed_float` parameters.
 - **Punctuation and operators:** `{ } ( ) [ ] , : = ! .. <= + - * / %`.
-- **Reserved words:** `package const enum type message if else switch case align reserved
-  max` and the wire-type keywords `bits bool float32 float64 compressed_float string bytes` plus the
+- **Reserved words:** `package const enum type message if else switch case align reserved`
+  and the wire-type keywords `bits bool float32 float64 string bytes` plus the
   integer family `int8 int16 int32 int64 uint8 uint16 uint32 uint64` (and `int128 uint128
   int uint`, reserved — the first two for the deferred 128-bit construct (§4.10), the bare
   two so `int` gets a "did you mean int32?" diagnostic instead of a parse error).
-  Reserved words cannot be used as names.
+  Reserved words cannot be used as names. Attribute keys (`min`, `max`, `resolution`, ...)
+  are contextual — they live only inside `( )` and are not reserved.
 - **Newlines terminate declarations and fields — there are no semicolons, like Go.** The
   newline is a terminator token,
   suppressed: immediately after `{`, `(`, `[`, `,`, `:`, `=`, `else`, and an infix operator;
@@ -278,28 +280,30 @@ File        = { Declaration } .
 Declaration = Package | Const | Enum | TypeDecl | Message .
 Package     = "package" ident NL .
 Const       = "const" ident "=" IntExpr NL .
-Enum        = "enum" ident [ "(" "max" "=" IntExpr ")" ] "{" { ident } "}" NL .
+Enum        = "enum" ident [ Attributes ] "{" { ident } "}" NL .
 TypeDecl    = "type" ident Block NL .
 Message     = "message" ident Block NL .
 
 Block       = "{" { Item } "}" .
 Item        = Field | ConstField | Reserved | Align | If | Switch .
-Field       = ident Type NL .
+Field       = ident Type [ Attributes ] NL .
 ConstField  = "const" "(" IntExpr "," IntExpr ")" NL .          // (value, bits)
 Reserved    = "reserved" "(" IntExpr ")" NL .
 Align       = "align" NL .
 
 Type        = Scalar [ "[" Bound "]" ] .
-Scalar      = IntType [ "(" IntExpr "," IntExpr ")" ]            // bare = raw width; ranged = minimal bits
+Scalar      = IntType
             | "bits" "(" IntExpr ")"
             | "bool" | "float32" | "float64"
-            | "compressed_float" "(" FloatLit "," FloatLit "," FloatLit ")"
             | "string" "(" IntExpr ")"
             | "bytes" "(" [ "<=" ] IntExpr ")"
             | ident .                                            // a declared type or enum
 IntType     = "int8" | "int16" | "int32" | "int64"
             | "uint8" | "uint16" | "uint32" | "uint64" .
 Bound       = IntExpr | "<=" IntExpr | IntExpr ".." IntExpr .
+
+Attributes  = "(" Attr { "," Attr } ")" .                        // trailing, optional, per field
+Attr        = ident [ "=" ( IntExpr | FloatLit ) ] .
 
 If          = "if" [ "!" ] ident Block [ "else" Block ] NL .
 Switch      = "switch" ident "{" { Case } "}" NL .
@@ -312,7 +316,8 @@ IntExpr     = integer expression over literals and const names:
 
 - **Integer expressions** evaluate in checked signed 64-bit at compile time. Overflow,
   division by zero, and a negative result where a width, bound or count is required are
-  compile errors. `compressed_float` parameters are float literals only in v1.
+  compile errors. Float attribute values (`min`/`max`/`resolution` on `float32`) are float
+  literals only in v1.
 - **Constants compose** — DECIDED (Glenn, 2026-08-05: *"constants can refer to other
   constants, so we can build up things, const C = A * 2 + B"*). A `const` may reference any
   other `const` in the unit, order-free across files like type references; reference cycles
@@ -328,6 +333,33 @@ IntExpr     = integer expression over literals and const names:
 - **Type references are order-free** — a type or enum may be used before its declaration,
   in any file of the unit. (Field *back-references* are not order-free; §4.5.)
 - `if` and `switch` nest freely inside blocks and case bodies.
+
+### Attributes — per-field, optional, keyed — DECIDED
+
+**Ranges and refinements are trailing per-field attributes, not call syntax** (Glenn,
+2026-08-05: *"a more go like thing, where per-variable there are attributes per-variable
+(optional) instead of the (min,max)"* — *"this way we can express multiple things
+per-variable as needed"*):
+
+```
+health      int16   (min = 0, max = MaxHealth)
+thrust      int8    (min = 0, max = 100)
+orientation float32 (min = -180.0, max = 180.0, resolution = 0.01)
+sequence    uint16
+```
+
+- **The line between positional and attribute:** a *size* that defines the type's shape stays
+  positional — `bits(64)`, `string(64)`, `bytes(<= N)`, array bounds. A *constraint or
+  refinement* of a named type is an attribute. The enum's `(max = 15)` was already this
+  syntax; it is now the one general mechanism.
+- **The vocabulary is typed and closed per compiler version — an unknown attribute is a
+  compile error**, never a silently ignored string (the anti-Go-struct-tag decision: keyed
+  like Go, checked like Go is not). v1: integers take `min`/`max` (both together or
+  neither); `float32` takes `min`/`max`/`resolution` (all three together — see §4.3: this IS
+  the compressed float); `enum` declarations take `max`.
+- **Attributes are the horizon's attachment point.** Per-field delta tiers, interpolation
+  modes, struct-mapping targets — *"what properties and attributes per-property"* — land
+  here as new keys with new generator passes, without touching the grammar again.
 
 ### Constants and enums are exported — DECIDED
 
@@ -360,11 +392,11 @@ the wire oracle. (Contracts: `notes/serialize-cpp-api.md`.)
 |---|---|---|
 | `f bits(N)` | N raw bits, N in [1,64] | `serialize_bits` ([1,64]; >32 = low 32 bits first, then the high remainder) |
 | `f intN` / `f uintN` (bare, N ∈ 8/16/32/64) | N raw bits (two's complement for signed) | `serialize_uint8/16/32/64`; signed raw is the same bits, cast |
-| `f intN(Min, Max)` / `f uintN(Min, Max)` | minimal bits for the range, value − Min; read rejects out-of-range; **the range must fit the declared storage** | `serialize_int` (≤32-bit int ranges) / `serialize_int64` / width-computed `serialize_bits` for full-unsigned ranges |
+| `f intN (min = A, max = B)` / `f uintN (min = A, max = B)` | minimal bits for the range, value − A; read rejects out-of-range; **the range must fit the declared storage** | `serialize_int` (≤32-bit int ranges) / `serialize_int64` / width-computed `serialize_bits` for full-unsigned ranges |
 | `f bool` | 1 bit | `serialize_bool` |
 | `f float32` | 32 raw IEEE-754 bits | `serialize_float` |
 | `f float64` | 64 raw bits (low dword first) | `serialize_double` |
-| `f compressed_float(Min, Max, Res)` | quantized to Res-sized steps; read rejects values above the step count | `serialize_compressed_float` (exact formulas incl. the ceil, +0.5f rounding and clamp) |
+| `f float32 (min = A, max = B, resolution = R)` | quantized to R-sized steps; read rejects values above the step count | `serialize_compressed_float` (exact formulas incl. the ceil, +0.5f rounding and clamp) — **the former `compressed_float` keyword, dissolved into attributes: storage stays `float32`, the attributes describe the wire** |
 | `f Weapon` (an enum) | minimal bits for [0, max]; read rejects above max | `serialize_int` over [0, max] |
 | `f Inner` (a type) | Inner's fields, in place | `serialize_object` |
 | `const(Value, Bits)` | the constant; read **rejects** any other value | `serialize_bits` + compare |
@@ -451,11 +483,14 @@ All compile errors with positions:
   value the storage truncates would be silent corruption that passes read validation. (This
   check left the spec in draft 2 as vestigial — storage was derived then; with the integer
   family naming storage explicitly, it returns with a real job.)
-- **Degenerate ranges:** any ranged integer with Min ≥ Max (the diagnostic suggests `const`
+- **Attribute discipline:** an unknown attribute key, a key repeated, an attribute on a type
+  that does not take it, `min` without `max` (or vice versa), and `resolution` without both
+  bounds are compile errors, each naming the field and the legal vocabulary for its type.
+- **Degenerate ranges:** any ranged integer with min ≥ max (the diagnostic suggests `const`
   for a fixed value); `T[Min..N]` with Min ≥ N; `string(N)` with N < 2; `bytes(<= N)` with
-  N < 1; an enum whose max is 0 (fewer than two wire values). Every runtime treats
-  `min == max` range serialization as API misuse, so the language rejects what the runtimes
-  would reject.
+  N < 1; an enum whose max is 0 (fewer than two wire values); `resolution` ≤ 0. Every
+  runtime treats `min == max` range serialization as API misuse, so the language rejects
+  what the runtimes would reject.
 - Enum `max` below variant count − 1; enum values above `max` unreachable by construction.
 - **Duplicate field names anywhere in one type — including across branch sides and cases.**
   One name, one field, declared once. (serialize.modern permits exclusive-side member reuse
@@ -549,11 +584,11 @@ type Vec {
 }
 
 type ObjectState {
-    id       int32(0, MaxObjects - 1)
+    id       int32 (min = 0, max = MaxObjects - 1)
     position Vec
     active   bool
     if active {
-        orientation compressed_float(-180.0, 180.0, 0.01)
+        orientation float32 (min = -180.0, max = 180.0, resolution = 0.01)
     }
 }
 
@@ -640,8 +675,7 @@ Per `type`, per target:
    | `uint8/16/32/64` (bare or ranged) | `uint8_t/16/32/64_t` | `byte/ushort/uint/ulong` | `uint8/16/32/64` | `u8/16/32/64` |
    | `bits(N≤32)` / `bits(N>32)` | `uint32_t` / `uint64_t` | `uint` / `ulong` | `uint32` / `uint64` | `u32` / `u64` |
    | `bool` | `bool` | `bool` | `bool` | `bool` |
-   | `float32` / `float64` | `float` / `double` | `float` / `double` | `float32` / `float64` | `f32` / `f64` |
-   | `compressed_float` | `float` | `float` | `float32` | `f32` |
+   | `float32` / `float64` (attributed or bare) | `float` / `double` | `float` / `double` | `float32` / `float64` | `f32` / `f64` |
    | enum `E` | `enum class E : uint32_t` | `enum E : uint` | `type E uint32` + consts | `#[repr(transparent)] struct E(pub u32)` + consts |
    | `string(N)` | `char[N]` | `byte[]` (bound-checked) | `string` | `Vec<u8>` (bound-checked) |
    | `bytes(N)` | `uint8_t[N]` | `byte[]` (length-checked) | `[N]byte` | `[u8; N]` |

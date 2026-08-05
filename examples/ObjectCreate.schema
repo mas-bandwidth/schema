@@ -21,24 +21,24 @@ enum CraftKind { None Light Medium Heavy }
 
 // A world position, quantized to 1/1024 meter.
 type QuantizedPosition {
-    x int32(-MaxPositionUnits, MaxPositionUnits)
-    y int32(-MaxPositionUnits, MaxPositionUnits)
-    z int32(-MaxPositionUnits, MaxPositionUnits)
+    x int32 (min = -MaxPositionUnits, max = MaxPositionUnits)
+    y int32 (min = -MaxPositionUnits, max = MaxPositionUnits)
+    z int32 (min = -MaxPositionUnits, max = MaxPositionUnits)
 }
 
 // A velocity, quantized at the same scale with its own bound.
 type QuantizedVelocity {
-    x int32(-MaxVelocityUnits, MaxVelocityUnits)
-    y int32(-MaxVelocityUnits, MaxVelocityUnits)
-    z int32(-MaxVelocityUnits, MaxVelocityUnits)
+    x int32 (min = -MaxVelocityUnits, max = MaxVelocityUnits)
+    y int32 (min = -MaxVelocityUnits, max = MaxVelocityUnits)
+    z int32 (min = -MaxVelocityUnits, max = MaxVelocityUnits)
 }
 
 // A unit quaternion, components quantized to [-1024, 1024].
 type QuantizedRotation {
-    x int16(-RotationUnits, RotationUnits)
-    y int16(-RotationUnits, RotationUnits)
-    z int16(-RotationUnits, RotationUnits)
-    w int16(-RotationUnits, RotationUnits)
+    x int16 (min = -RotationUnits, max = RotationUnits)
+    y int16 (min = -RotationUnits, max = RotationUnits)
+    z int16 (min = -RotationUnits, max = RotationUnits)
+    w int16 (min = -RotationUnits, max = RotationUnits)
 }
 
 type CraftCreate {
@@ -57,8 +57,8 @@ type CraftCreate {
     }
 
     team   Team
-    health int16(0, MaxHealth)
-    thrust int8(0, 100)
+    health int16 (min = 0, max = MaxHealth)
+    thrust int8  (min = 0, max = 100)
 }
 
 // The explicit-switch pattern — for dispatch that is NOT a message set
@@ -66,7 +66,7 @@ type CraftCreate {
 enum RecordKind { None Craft Debris }
 
 type ObjectRecord {
-    object_id   int32(0, 9999)
+    object_id   int32 (min = 0, max = 9999)
     record_kind RecordKind
     switch record_kind {
     case Craft:  craft CraftCreate
