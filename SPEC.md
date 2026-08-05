@@ -173,6 +173,43 @@ it from the definitions — **the set-extraction move a third time**: messages �
 objects → `ObjectType`, config/asset definitions → their type enums. Hand-declared enums
 remain for genuinely hand-owned sets (`Team`).
 
+**And the shape of the table layer itself — ASPIRATIONAL, his preference stated with its
+fallback (Glenn, 2026-08-05):** *"If we do this correctly, Config.bin and Assets.bin are
+just expressions of this pattern, not hard coded things. This is aspirational, if not
+possible, then we can fall back on config and assets being first class concepts in the
+language, but I think it will be more flexible if they weren't."* The evidence for the
+general pattern is in his own `Constants.h`: **four** data blobs already exist —
+`MAX_CONFIG_DATA_BYTES`, `MAX_OPTIONS_DATA_BYTES`, `MAX_ASSETS_DATA_BYTES`,
+`MAX_USER_SETTINGS_DATA_BYTES` — so first-class `config`/`assets` keywords would undercount
+the game's own usage on day one. The general mechanism to design: **a declared collection of
+typed instances, living as data files, collated by the compiler into a versioned, hashed
+binary with generated loaders, accessors and derived enums** — of which config, assets,
+options and user settings are four expressions.
+
+**The frame that completes it (Glenn, 2026-08-05): the schema compiler is a
+compiler-linker for data.** *"the json files are sort of 'compiled' and 'linked' into the
+*.bin file"* — *"and the contents are verified... as they are processed."* The JSON
+instances are **source files with human authors**: designers editing config; artists
+authoring assets out of tools inside Maya or Blender (collider sets and the like).
+Verification becomes a compile step — which closes the survey's trust-boundary hole at
+exactly the place his own `update_config.go:794` comment asked for. *"you can see all this
+is implemented in space game right now, just with flatbuffers and the golang tools doing
+the compile+link step with a lot of boilerplate gross code."*
+
+**Collections are the same mechanism differentiated by declared PROPERTIES, not different
+kinds** — *"point is they are really just the same thing"* — and the two properties already
+visible:
+
+- **Reload semantics.** Assets: *"loaded once and can't be reloaded unless you reload the
+  whole level."* Config: *"expected to be tweakable and can be tweaked (atomically, whole
+  config.bin at once) while the game is playing, and it can handle it. this is very
+  powerful!!!"* — a per-collection property driving which generated loader the collection
+  gets (hot-swap path vs load-once).
+- **Cross-collection references, one direction.** *"config can back refer to assets...
+  assets don't know about config, but config can refer to and expect things in the asset"*
+  — possibly a new language concept (a declared, directional expectation between
+  collections — a DAG, verified at data-compile time), TBD.
+
 From the 2026-08-04 `.fbs` survey, the structural shapes the table layer still owes beyond
 v1: enums with explicit values and bit-flag enums, unions at the type level, **field
 defaults**, and vectors of tables — each now scoped to *the subset space game actually
@@ -374,7 +411,15 @@ IntExpr     = integer expression over literals and const names:
   constants-hacked-as-single-value-enums (`MaxPlayers`, `MaxObjects`, `MaxShips`, ...,
   `MaxBounds : uint64`) become thirteen `const` lines in `Constants.schema`, generated into
   C++ exactly as game code consumes them today — *"the same set of constants (non-enum
-  hacked this time)."*
+  hacked this time)."* **The second migration source is `game/Source/Constants.h`** (194
+  lines, surveyed 2026-08-05), sorting into four piles: **straight migrations** (the numeric
+  limits and tuning — including six-plus float/double constants, the existence proof for
+  float `const`); **absorbed by generated sets** (`OBJECT_TYPE_*`/`NUM_OBJECT_TYPES` die
+  into the generated `ObjectType`; packet-type ids into the message/packet tag story;
+  `DELTA_ACTION_*` into the delta pass); **already-covered bridges** (`MAX_PLAYERS` etc.
+  alias the fake-enum constants above); and **two new language needs, filed as open
+  questions** — const expressions over enum counts (`NUM_TEAMS = Team_MAX + 1`, `MAX_PROPS`
+  as a sum) and platform-conditional constants (`FRAME_SAFETY` differs under `__linux__`).
 - Inside a type body one token of lookahead disambiguates every item: `const` + `(` is a
   constant field (versus the top-level `const name =` declaration); `if` / `switch` /
   `align` / `reserved` are keywords; any other identifier begins a field. The grammar is
@@ -991,7 +1036,7 @@ License: AGPL-3.0 (DECIDED, 2026-08-04). Repo private until Glenn opens it.
 
 ## 9. Open questions, gathered
 
-*(Settled this evening: the protocol id — generated-code hash, §3.1 — and no generated
+*(Settled 2026-08-04/05: the protocol id — schema-file hash, §3.1 — and no generated
 measure, §6.1. Both DECIDED.)*
 
 1. **Strings as byte strings** (§4.7) — confirm; a validated UTF-8 wire type can come later.
@@ -1006,23 +1051,30 @@ measure, §6.1. Both DECIDED.)*
 6. **A root/packet marker** — scopes the protocol id to reachable declarations (fixes the
    unused-helper-moves-the-id wart, §3.2), names which structs get buffer-sizing guidance,
    and is the natural place for a future `packet` keyword. v1 or v2?
-7. **Explicit enum variant values and flag enums.** v1 numbers variants implicitly 0..n−1;
+7. **Const expressions over enum counts** — `Constants.h` computes `NUM_TEAMS =
+   Team_MAX + 1` and `MAX_PROPS` as a sum of limits; the language wants a way for a `const`
+   to reference an enum's variant count / max (`len(Team)`? `Team.max`?). Surfaced
+   2026-08-05.
+8. **Platform-conditional constants** — `FRAME_SAFETY` differs under `__linux__`; schema
+   constants are platform-uniform today. Stays hand-written in game code, or gains a
+   target/platform story later. Surfaced 2026-08-05.
+9. **Explicit enum variant values and flag enums.** v1 numbers variants implicitly 0..n−1;
    Space Game's real enums all write `None = 0` explicitly and one is a `(bit_flags)` mask.
    Implicit numbering happens to match the None-first style, but the evidence says explicit
    values (and possibly a `flags` enum form whose wire is `bits(N)`) deserve a v1 decision,
    not a deferral — this also settles whether variants stay whitespace-separated or gain a
    separator to make room for `= value`.
-8. **Sentinel-terminated collections.** The surveyed baseline/delta/explosion packets do not
+10. **Sentinel-terminated collections.** The surveyed baseline/delta/explosion packets do not
    use counted arrays — they are bool/sentinel-terminated element streams (serialize.go ships
    `Continue`/`Until` helpers for exactly this), sized by mid-stream packet splitting. v1
    cannot express them. The splitting half is emitter-driven and probably stays application
    code; whether the plain bool-continuation list deserves a v1 construct is the open half.
    Evidence: `examples/README.md`, finding 3.
-9. **Enum subranges.** The surveyed create path writes an object kind as `[1, max]`,
+11. **Enum subranges.** The surveyed create path writes an object kind as `[1, max]`,
    excluding the `None` variant from the wire; schema's enum wire is always `[0, max]`.
    Cheap to live without (one wasted wire value), cheap to add (`kind CraftKind(1, max)` or a
    `no-None` form). Evidence: `examples/README.md`, finding 1.
-10. ~~**`int` → `int32`?**~~ — **RESOLVED 2026-08-05 by the integer family**: bare `int` is
+12. ~~**`int` → `int32`?**~~ — **RESOLVED 2026-08-05 by the integer family**: bare `int` is
     gone; every integer names its width, Go-style, and `int`/`uint` are reserved purely to
     give a helpful diagnostic.
 
