@@ -424,9 +424,14 @@ IntExpr     = integer expression over literals and const names:
   constant field (versus the top-level `const name =` declaration); `if` / `switch` /
   `align` / `reserved` are keywords; any other identifier begins a field. The grammar is
   LL(2) and hand-written recursive descent is the intended implementation.
-- **Enum variants** are whitespace-separated identifiers (newlines included), numbered 0..n−1
-  in declaration order. Explicit variant values are not in v1 — noted because the bare
-  space-separated form forecloses adding `= value` without a separator change.
+- **Enum variants** are whitespace-separated identifiers (newlines included). **Every enum
+  has `None = 0` implicitly — universal, never declared** (Glenn, 2026-08-05: *"all enums
+  should have 0 = none, and then the max value above all tightly packed values"*); declared
+  variants pack tightly from 1, max derives as the count (the `[max = K]` headroom attribute
+  can still widen the wire). **Enum storage derives from the enum's own max** — the smallest
+  unsigned integer that fits (his ask: *"it works out the underlying integer type based on
+  the size of the enum values"*). Explicit variant values are not in v1 — noted because the
+  bare space-separated form forecloses adding `= value` without a separator change.
 - **Type references are order-free** — a type or enum may be used before its declaration,
   in any file of the unit. (Field *back-references* are not order-free; §4.5.)
 - `if` and `switch` nest freely inside blocks and case bodies.
@@ -851,7 +856,7 @@ Per `type`, per target:
    | `bits(N≤32)` / `bits(N>32)` | `uint32_t` / `uint64_t` | `uint` / `ulong` | `uint32` / `uint64` | `u32` / `u64` |
    | `bool` | `bool` | `bool` | `bool` | `bool` |
    | `float32` / `float64` (attributed or bare) | `float` / `double` | `float` / `double` | `float32` / `float64` | `f32` / `f64` |
-   | enum `E` | `enum class E : uint32_t` | `enum E : uint` | `type E uint32` + consts | `#[repr(transparent)] struct E(pub u32)` + consts |
+   | enum `E` | `enum class E : uintN_t` (N = smallest fitting max) | `enum E : uintN` | `type E uintN` + consts | `#[repr(transparent)] struct E(pub uN)` + consts |
    | `string(N)` | `char[N]` | `byte[]` (bound-checked) | `string` | `Vec<u8>` (bound-checked) |
    | `bytes(N)` | `uint8_t[N]` | `byte[]` (length-checked) | `[N]byte` | `[u8; N]` |
    | `bytes(<=N)` | `uint8_t[N]` + `int32_t` count | `byte[]` (bound-checked) | `[]byte` (cap-checked) | `Vec<u8>` (bound-checked) |
