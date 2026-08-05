@@ -28,7 +28,7 @@ free):
 | `Enums.schema` | every hand-declared `enum` | enum wire; notes which enums are flatbuffers residue destined to be GENERATED from Config/Assets definitions |
 | `Types.schema` | every `type` | quantized-int types, bare `uintN` fields, prefix arrays `[<= N]T`, bool-gated `if`, the explicit `switch` dispatch idiom, storage-typed ranged ints |
 | `Messages.schema` | every `message` | the implicit `MessageType` set (SPEC §4.8): empty message, byte blocks |
-| `Objects.schema` | every `object` | **the worked Ship** — one definition driving ShipState / Deep / Shallow / Interpolate + Quantize, view markers `[shallow]`/`[local]` (PROPOSED syntax) |
+| `Objects.schema` | every `object` | **the worked Ship** — one definition driving ShipState / Deep / Shallow / Interpolate + Quantize, view markers `[interpolated]`/`[local]` (PROPOSED syntax; deep is the default) |
 
 *Coming when their design passes open: `Config.schema` and `Assets.schema` (SPEC, "The
 horizon" — the flatbuffers replacement).*
