@@ -1168,29 +1168,28 @@ measure, §6.1. Both DECIDED.)*
     evaluation). *(External data point the same day, opposite the lean — the Atlas
     adoption notes: per-type policy entries "need a home even if the replication engine,
     not the codec, consumes them." Recorded; no work owed now.)*
-15. **The Atlas interop surface — direction set, mechanism TBD (Glenn, 2026-08-05, his
-    words banked).** The likely integration point between schema-in-Space-Game and
-    Patrick's Atlas is **the render objects level** — *"eg. RenderShip"*: *"we should have
-    types that the two systems can both shim and know from each other, then we can work
-    together."* The boundary is firm on one side: *"I will not consider atlas stuff to
-    replace config/assets"* — schema stays the source of truth for shared types, messages,
-    and config/asset data. Patrick *"will use atlas stuff in the client to represent
-    everything else (client-only things, UI, whatever he needs to do there)"*, and: *"Some
-    sort of ability for atlas to import and work with our types, messages, would be good,
-    and to refer to our config/assets would be good"* — *"it could be a shim layer or
-    cross compatibility between the two, probably build by Patrick? TBD."* What schema
-    likely owes this when it firms up: nothing new for the shim case (goal 4's plain
-    generated C++ types are the shimmable surface), possibly an export/manifest surface if
-    a foreign runtime wants more than the generated headers. No design pass owed until the
+15. **The engine interop surface — direction set, mechanism TBD (Glenn, 2026-08-05, his
+    words banked).** The likely integration point between schema-in-Space-Game and an
+    engine-side client stack is **the render objects level** — *"eg. RenderShip"*: *"we
+    should have types that the two systems can both shim and know from each other, then we
+    can work together."* The boundary is firm on one side — the engine side will not
+    replace the config/asset layer; schema stays the source of truth for shared types,
+    messages, and config/asset data. The engine side represents everything else in the
+    client (client-only state, UI), and the wanted capability is for it to import and work
+    with schema's types and messages, and to refer to schema's config/assets — via a shim
+    or cross-compatibility layer, likely built on the engine side. TBD. What schema likely
+    owes this when it firms up: nothing new for the shim case (goal 4's plain generated
+    C++ types are the shimmable surface), possibly an export/manifest surface if a foreign
+    runtime wants more than the generated headers. No design pass owed until the
     collaboration reaches it.
-16. **The Atlas adoption asks — GATHERED, HELD LOOSELY. Glenn's ruling, 2026-08-05, banked
-    verbatim and governing this row:** *"let's hold off on any big work merging schema and
-    atlas, just keep it in mind, and let's hold it loosely"* — *"our job is to make schema
-    awesome, and possible for Patrick to work with later on when he decides"* — *"not to do
-    all this work up front and speculatively."* The second Atlas document
-    (`notes/2026-08-05-atlas-adoption-requirements.md`) reads schema seriously as a
-    candidate for their replication layer and lists what adoption would need. Indexed here
-    so it is findable the day Patrick decides, and deliberately NOT designed now:
+16. **The engine adoption asks — GATHERED, HELD LOOSELY. Glenn's ruling, 2026-08-05,
+    governing this row:** *"let's hold off on any big work"* merging the two — *"just keep
+    it in mind, and let's hold it loosely"* — *"our job is to make schema awesome"*, and
+    possible for the engine side to work with later, when they decide — *"not to do all
+    this work up front and speculatively."* The second feedback document (in this repo's
+    history) reads schema seriously as a candidate for their replication layer and lists
+    what adoption would need. Indexed here so it is findable the day adoption is decided,
+    and deliberately NOT designed now:
     **open extension** (cross-unit composition — currently a non-goal; declared base types;
     open-vs-closed set identity per set, with their correct jab that sorted-by-name
     discriminants renumber every engine tag when a game adds a message named `Aardvark`);
