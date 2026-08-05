@@ -256,7 +256,7 @@ application's choice — netcode-style stacks already carry one.
   specify types."* The principle outlives the individual decisions: when a syntax choice
   arises, Go is the model to consult first, and the neutral form beats the C-family reflex.
 - **Integer literals:** decimal, hex (`0x`), binary (`0b`). **Float literals** (decimal, with
-  optional fraction and exponent) appear only as `compressed_float` parameters.
+  optional fraction and exponent) appear only as float attribute values (`min`/`max`/`resolution` on `float32`).
 - **Punctuation and operators:** `{ } ( ) [ ] , : = ! .. <= + - * / %`.
 - **Reserved words:** `package const enum type message if else switch case align reserved`
   and the wire-type keywords `bits bool float32 float64 string bytes` plus the
