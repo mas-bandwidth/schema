@@ -264,7 +264,7 @@ application's choice — netcode-style stacks already carry one.
   int uint`, reserved — the first two for the deferred 128-bit construct (§4.10), the bare
   two so `int` gets a "did you mean int32?" diagnostic instead of a parse error).
   Reserved words cannot be used as names. Attribute keys (`min`, `max`, `resolution`, ...)
-  are contextual — they live only inside `( )` and are not reserved.
+  are contextual — they live only inside `[ ]` and are not reserved.
 - **Newlines terminate declarations and fields — there are no semicolons, like Go.** The
   newline is a terminator token,
   suppressed: immediately after `{`, `(`, `[`, `,`, `:`, `=`, `else`, and an infix operator;
@@ -302,8 +302,8 @@ IntType     = "int8" | "int16" | "int32" | "int64"
             | "uint8" | "uint16" | "uint32" | "uint64" .
 Bound       = IntExpr | "<=" IntExpr | IntExpr ".." IntExpr .
 
-Attributes  = "(" Attr { "," Attr } ")" .                        // trailing, optional, per field
-Attr        = ident [ "=" ( IntExpr | FloatLit ) ] .
+Attributes  = "[" Attr { "," Attr } "]" .                        // trailing, optional, per field
+Attr        = ident "=" ( IntExpr | FloatLit ) .                 // always key = value in v1
 
 If          = "if" [ "!" ] ident Block [ "else" Block ] NL .
 Switch      = "switch" ident "{" { Case } "}" NL .
@@ -336,21 +336,30 @@ IntExpr     = integer expression over literals and const names:
 
 ### Attributes — per-field, optional, keyed — DECIDED
 
-**Ranges and refinements are trailing per-field attributes, not call syntax** (Glenn,
-2026-08-05: *"a more go like thing, where per-variable there are attributes per-variable
-(optional) instead of the (min,max)"* — *"this way we can express multiple things
-per-variable as needed"*):
+**Ranges and refinements are trailing per-field attributes in `[ ]`, not call syntax**
+(Glenn, 2026-08-05: *"a more go like thing, where per-variable there are attributes
+per-variable (optional) instead of the (min,max)"* — *"this way we can express multiple
+things per-variable as needed"*; brackets his call the same day, **with his hedge kept
+attached: "just a personal preference, could be wrong but let's see in time"** — held
+loosely, cheap to revisit while nothing is implemented):
 
 ```
-health      int16   (min = 0, max = MaxHealth)
-thrust      int8    (min = 0, max = 100)
-orientation float32 (min = -180.0, max = 180.0, resolution = 0.01)
+health      int16   [min = 0, max = MaxHealth]
+thrust      int8    [min = 0, max = 100]
+orientation float32 [min = -180.0, max = 180.0, resolution = 0.01]
 sequence    uint16
 ```
 
+- **Brackets never collide with array bounds** because a v1 attribute is always
+  `key = value`: after `[`, an identifier followed by `=` means attributes; anything else
+  (a literal, a const name alone, `<=`, a range) is an array bound. Valueless attributes
+  (the fbs `(required)` shape) are deferred until a real need arrives, precisely to keep
+  this disambiguation trivial. Attributes trail the complete type, array bound included;
+  scalar constraints like `min`/`max` apply per element.
+
 - **The line between positional and attribute:** a *size* that defines the type's shape stays
   positional — `bits(64)`, `string(64)`, `bytes(<= N)`, array bounds. A *constraint or
-  refinement* of a named type is an attribute. The enum's `(max = 15)` was already this
+  refinement* of a named type is an attribute. The enum's `[max = 15]` was already this
   syntax; it is now the one general mechanism.
 - **The vocabulary is typed and closed per compiler version — an unknown attribute is a
   compile error**, never a silently ignored string (the anti-Go-struct-tag decision: keyed
@@ -392,11 +401,11 @@ the wire oracle. (Contracts: `notes/serialize-cpp-api.md`.)
 |---|---|---|
 | `f bits(N)` | N raw bits, N in [1,64] | `serialize_bits` ([1,64]; >32 = low 32 bits first, then the high remainder) |
 | `f intN` / `f uintN` (bare, N ∈ 8/16/32/64) | N raw bits (two's complement for signed) | `serialize_uint8/16/32/64`; signed raw is the same bits, cast |
-| `f intN (min = A, max = B)` / `f uintN (min = A, max = B)` | minimal bits for the range, value − A; read rejects out-of-range; **the range must fit the declared storage** | `serialize_int` (≤32-bit int ranges) / `serialize_int64` / width-computed `serialize_bits` for full-unsigned ranges |
+| `f intN [min = A, max = B]` / `f uintN [min = A, max = B]` | minimal bits for the range, value − A; read rejects out-of-range; **the range must fit the declared storage** | `serialize_int` (≤32-bit int ranges) / `serialize_int64` / width-computed `serialize_bits` for full-unsigned ranges |
 | `f bool` | 1 bit | `serialize_bool` |
 | `f float32` | 32 raw IEEE-754 bits | `serialize_float` |
 | `f float64` | 64 raw bits (low dword first) | `serialize_double` |
-| `f float32 (min = A, max = B, resolution = R)` | quantized to R-sized steps; read rejects values above the step count | `serialize_compressed_float` (exact formulas incl. the ceil, +0.5f rounding and clamp) — **the former `compressed_float` keyword, dissolved into attributes: storage stays `float32`, the attributes describe the wire** |
+| `f float32 [min = A, max = B, resolution = R]` | quantized to R-sized steps; read rejects values above the step count | `serialize_compressed_float` (exact formulas incl. the ceil, +0.5f rounding and clamp) — **the former `compressed_float` keyword, dissolved into attributes: storage stays `float32`, the attributes describe the wire** |
 | `f Weapon` (an enum) | minimal bits for [0, max]; read rejects above max | `serialize_int` over [0, max] |
 | `f Inner` (a type) | Inner's fields, in place | `serialize_object` |
 | `const(Value, Bits)` | the constant; read **rejects** any other value | `serialize_bits` + compare |
@@ -584,11 +593,11 @@ type Vec {
 }
 
 type ObjectState {
-    id       int32 (min = 0, max = MaxObjects - 1)
+    id       int32 [min = 0, max = MaxObjects - 1]
     position Vec
     active   bool
     if active {
-        orientation float32 (min = -180.0, max = 180.0, resolution = 0.01)
+        orientation float32 [min = -180.0, max = 180.0, resolution = 0.01]
     }
 }
 
@@ -683,7 +692,7 @@ Per `type`, per target:
    | `T[N]` | `T[N]` | `T[]` (length-checked) | `[N]T` | `[T; N]` |
    | `T[<=N]` | `T[N]` + `int32_t` count | `T[]` (bound-checked) | `[]T` (bound-checked) | `Vec<T>` (bound-checked) |
 
-   Enums are integer-backed named types in every target because `(max = ...)` headroom makes
+   Enums are integer-backed named types in every target because `[max = ...]` headroom makes
    non-variant values wire-legal; a native Rust `enum` cannot hold them — C#'s `enum E : uint`
    can, natively, which is why it needs no newtype.
 

@@ -35,7 +35,7 @@ corpus doing its job:
    library and is used *nowhere* in the game — floats that matter are pre-quantized to
    integers at a fixed scale and sent as ranged ints. The corpus therefore leans on
    quantized-int types. *(Outcome, 2026-08-05: the `compressed_float` keyword was dissolved
-   when attributes arrived — the compressed wire is now `float32 (min, max, resolution)`,
+   when attributes arrived — the compressed wire is now `float32 [min, max, resolution]`,
    so the rarely-used construct stopped costing a keyword.)*
 3. **Sentinel-terminated collections.** The real baseline/delta/explosion packets do not use
    counted arrays — they are bool/sentinel-terminated streams (serialize.go even ships
