@@ -258,7 +258,10 @@ application's choice — netcode-style stacks already carry one.
   optional fraction and exponent) appear only as `compressed_float` parameters.
 - **Punctuation and operators:** `{ } ( ) [ ] , : = ! .. <= + - * / %`.
 - **Reserved words:** `package const enum type if else switch case align reserved max` and
-  the wire-type keywords `bits int int64 bool float32 float64 compressed_float string bytes`.
+  the wire-type keywords `bits bool float32 float64 compressed_float string bytes` plus the
+  integer family `int8 int16 int32 int64 uint8 uint16 uint32 uint64` (and `int128 uint128
+  int uint`, reserved — the first two for the deferred 128-bit construct (§4.9), the bare
+  two so `int` gets a "did you mean int32?" diagnostic instead of a parse error).
   Reserved words cannot be used as names.
 - **Newlines terminate declarations and fields — there are no semicolons, like Go.** The
   newline is a terminator token,
@@ -286,14 +289,15 @@ Reserved    = "reserved" "(" IntExpr ")" NL .
 Align       = "align" NL .
 
 Type        = Scalar [ "[" Bound "]" ] .
-Scalar      = "bits" "(" IntExpr ")"
-            | "int" "(" IntExpr "," IntExpr ")"
-            | "int64" "(" IntExpr "," IntExpr ")"
+Scalar      = IntType [ "(" IntExpr "," IntExpr ")" ]            // bare = raw width; ranged = minimal bits
+            | "bits" "(" IntExpr ")"
             | "bool" | "float32" | "float64"
             | "compressed_float" "(" FloatLit "," FloatLit "," FloatLit ")"
             | "string" "(" IntExpr ")"
             | "bytes" "(" [ "<=" ] IntExpr ")"
             | ident .                                            // a declared type or enum
+IntType     = "int8" | "int16" | "int32" | "int64"
+            | "uint8" | "uint16" | "uint32" | "uint64" .
 Bound       = IntExpr | "<=" IntExpr | IntExpr ".." IntExpr .
 
 If          = "if" [ "!" ] ident Block [ "else" Block ] NL .
@@ -354,8 +358,8 @@ the wire oracle. (Contracts: `notes/serialize-cpp-api.md`.)
 | schema | wire | classic twin |
 |---|---|---|
 | `f bits(N)` | N raw bits, N in [1,64] | `serialize_bits` ([1,64]; >32 = low 32 bits first, then the high remainder) |
-| `f int(Min, Max)` | minimal bits for the range, value − Min; read rejects out-of-range | `serialize_int` |
-| `f int64(Min, Max)` | minimal bits for the 64-bit range | `serialize_int64` |
+| `f intN` / `f uintN` (bare, N ∈ 8/16/32/64) | N raw bits (two's complement for signed) | `serialize_uint8/16/32/64`; signed raw is the same bits, cast |
+| `f intN(Min, Max)` / `f uintN(Min, Max)` | minimal bits for the range, value − Min; read rejects out-of-range; **the range must fit the declared storage** | `serialize_int` (≤32-bit int ranges) / `serialize_int64` / width-computed `serialize_bits` for full-unsigned ranges |
 | `f bool` | 1 bit | `serialize_bool` |
 | `f float32` | 32 raw IEEE-754 bits | `serialize_float` |
 | `f float64` | 64 raw bits (low dword first) | `serialize_double` |
@@ -441,10 +445,16 @@ All compile errors with positions:
 
 - `bits`, `const`, `reserved` widths outside [1,64]; a `const` value that does not fit its
   width.
-- **Degenerate ranges:** `int`/`int64` with Min ≥ Max (the diagnostic suggests `const` for a
-  fixed value); `T[Min..N]` with Min ≥ N; `string(N)` with N < 2; `bytes(<= N)` with N < 1;
-  an enum whose max is 0 (fewer than two wire values). Every runtime treats `min == max`
-  range serialization as API misuse, so the language rejects what the runtimes would reject.
+- **A range that does not fit its declared storage:** `int8(0, 1000)` is a compile error —
+  the range determines the wire, the type name determines the storage, and a legal wire
+  value the storage truncates would be silent corruption that passes read validation. (This
+  check left the spec in draft 2 as vestigial — storage was derived then; with the integer
+  family naming storage explicitly, it returns with a real job.)
+- **Degenerate ranges:** any ranged integer with Min ≥ Max (the diagnostic suggests `const`
+  for a fixed value); `T[Min..N]` with Min ≥ N; `string(N)` with N < 2; `bytes(<= N)` with
+  N < 1; an enum whose max is 0 (fewer than two wire values). Every runtime treats
+  `min == max` range serialization as API misuse, so the language rejects what the runtimes
+  would reject.
 - Enum `max` below variant count − 1; enum values above `max` unreachable by construction.
 - **Duplicate field names anywhere in one type — including across branch sides and cases.**
   One name, one field, declared once. (serialize.modern permits exclusive-side member reuse
@@ -490,7 +500,7 @@ type Vec {
 }
 
 type ObjectState {
-    id       int(0, MaxObjects - 1)
+    id       int32(0, MaxObjects - 1)
     position Vec
     active   bool
     if active {
@@ -499,14 +509,14 @@ type ObjectState {
 }
 
 type Message {
-    crc          bits(32)
+    crc          uint32
     message_type MessageType
     switch message_type {
-    case Ping:  ping_sequence bits(16)
-    case Pong:  pong_sequence bits(16)
+    case Ping:  ping_sequence uint16
+    case Pong:  pong_sequence uint16
     case Chat:  text string(MaxChatLength)
     case Snapshot:
-        base_sequence bits(16)
+        base_sequence uint16
         objects       ObjectState[<= MaxObjects]
     }
 }
@@ -519,6 +529,19 @@ spec as written.)*
 
 ### 4.9 Deferred constructs
 
+- **`int128` / `uint128`** — DECIDED as part of the integer family (Glenn, 2026-08-05), with
+  a named customer: **ludicrous mode** (*"we will need int 128 for ludicrous mode :)"*).
+  Deferred on a named prerequisite: **no serialize runtime speaks 128 bits today** — the wire
+  construct (two qwords, low first, per the family's low-first rule) needs serialize methods
+  added across all four runtimes before the keyword goes live. Storage is native in Rust
+  (`i128`/`u128`) and C# (`Int128`/`UInt128`), emulated in C++ and Go (two-qword structs).
+  The surveyed delta-prediction arithmetic already needs 128-bit intermediates too. Keywords
+  reserved now so nothing squats on them.
+- **Fixed point** — coming, runtime-first (Glenn, 2026-08-05: *"we will also be doing fixed
+  point in serialize there first, and then bringing that to this language"*). The sequencing
+  is the decision: the wire construct gets designed and proven in the serialize C++ library,
+  propagated across the family, and only then surfaces as a schema wire type — the same
+  order serialize.cs followed. `fixed` is informally reserved alongside the horizon words.
 - **Wide strings** (`serialize_wstring`): no near-term need; when added, they match the
   classic wire exactly (length, then unaligned 32 bits per code point).
 - **Relative integers** (`serialize_int_relative`): the classic use is a strictly-increasing
@@ -551,12 +574,14 @@ what makes whole-object comparison in the conformance matrix well-defined.
 
 Per `type`, per target:
 
-1. **The type itself.** Storage derivation, complete:
+1. **The type itself.** Storage, complete — **the integer family names its storage directly**
+   (Glenn, 2026-08-05: the type name fixes the storage, the optional range refines the wire);
+   everything else derives by fixed rule:
 
    | schema | C++ | C# | Go | Rust |
    |---|---|---|---|---|
-   | `int(Min,Max)` | `int32_t` | `int` | `int32` | `i32` |
-   | `int64(Min,Max)` | `int64_t` | `long` | `int64` | `i64` |
+   | `int8/16/32/64` (bare or ranged) | `int8_t/16/32/64_t` | `sbyte/short/int/long` | `int8/16/32/64` | `i8/16/32/64` |
+   | `uint8/16/32/64` (bare or ranged) | `uint8_t/16/32/64_t` | `byte/ushort/uint/ulong` | `uint8/16/32/64` | `u8/16/32/64` |
    | `bits(N≤32)` / `bits(N>32)` | `uint32_t` / `uint64_t` | `uint` / `ulong` | `uint32` / `uint64` | `u32` / `u64` |
    | `bool` | `bool` | `bool` | `bool` | `bool` |
    | `float32` / `float64` | `float` / `double` | `float` / `double` | `float32` / `float64` | `f32` / `f64` |
@@ -734,8 +759,8 @@ License: AGPL-3.0 (DECIDED, 2026-08-04). Repo private until Glenn opens it.
 measure, §6.1. Both DECIDED.)*
 
 1. **Strings as byte strings** (§4.7) — confirm; a validated UTF-8 wire type can come later.
-2. **Storage-type overrides** — is derived storage (§6.1) enough for v1, or does Space Game
-   need e.g. `u8` storage for a ranged int immediately?
+2. ~~**Storage-type overrides**~~ — **RESOLVED 2026-08-05 by the integer family**: storage
+   is declared by the type name (`thrust int8(0, 100)`), no override mechanism needed.
 3. **Wide strings and relative integers deferred** (§4.9) — confirm nothing near-term needs
    them; int_relative wants a cross-element design.
 4. **`schemafmt` timing** — the tool is DECIDED (name, gofmt philosophy: one style, no
@@ -761,10 +786,9 @@ measure, §6.1. Both DECIDED.)*
    excluding the `None` variant from the wire; schema's enum wire is always `[0, max]`.
    Cheap to live without (one wasted wire value), cheap to add (`kind CraftKind(1, max)` or a
    `no-None` form). Evidence: `examples/README.md`, finding 1.
-10. **`int` → `int32`?** With `float32`/`float64` adopted from Go, the ranged `int(Min,Max)`
-    (int32 semantics) and `int64(Min,Max)` pair is the remaining C-flavored asymmetry —
-    full Go alignment would name them `int32(Min,Max)`/`int64(Min,Max)`. Glenn's call;
-    mechanical rename either way.
+10. ~~**`int` → `int32`?**~~ — **RESOLVED 2026-08-05 by the integer family**: bare `int` is
+    gone; every integer names its width, Go-style, and `int`/`uint` are reserved purely to
+    give a helpful diagnostic.
 
 ---
 

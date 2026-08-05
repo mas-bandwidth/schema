@@ -17,22 +17,22 @@ type Message {
         // empty body — presence of the message is the payload
 
     case Test:
-        test_a bits(16)
-        test_b int(0, 1000)
-        test_c int(0, 1000)
-        test_d int(0, 1000)
+        test_a uint16
+        test_b int16(0, 1000)
+        test_c int16(0, 1000)
+        test_d int16(0, 1000)
 
     case Block:
         // wire: length in [0, MaxBlockSize], align, then the bytes
         block_data bytes(<= MaxBlockSize)
 
     case Synchronize:
-        sync_frame    bits(64)
-        sync_sequence bits(16)
+        sync_frame    uint64
+        sync_sequence uint16
 
     case Timescale:
         timescale double
-        frame_a   bits(32)
-        frame_b   bits(32)
+        frame_a   uint32
+        frame_b   uint32
     }
 }

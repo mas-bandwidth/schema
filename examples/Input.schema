@@ -24,9 +24,9 @@ type Input {
 }
 
 type InputPacket {
-    synchronize_sequence bits(16)
-    current_frame        bits(64)
-    start_frame          bits(64)
+    synchronize_sequence uint16
+    current_frame        uint64
+    start_frame          uint64
 
     // wire: count in [0, MaxInputsPerPacket], then that many Input elements
     inputs Input[<= MaxInputsPerPacket]
