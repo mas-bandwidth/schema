@@ -290,7 +290,8 @@ application's choice — netcode-style stacks already carry one.
   tiebreak, choosing `[local]` over `[unsynchronized]`). Authorship is not a criterion:
   *"it doesn't matter where the good ideas come from. let the best idea win."*
 - **Integer literals:** decimal, hex (`0x`), binary (`0b`). **Float literals** (decimal, with
-  optional fraction and exponent) appear only as float attribute values (`min`/`max`/`resolution` on `float32`).
+  optional fraction and exponent) appear in float constants and as float attribute values
+  (`min`/`max`/`resolution` on `float32`).
 - **Punctuation and operators:** `{ } ( ) [ ] , : = ! .. <= + - * / %`.
 - **Reserved words:** `package const enum type message object if else switch case align
   reserved`
@@ -315,7 +316,9 @@ File        = { Declaration } .
 Declaration = Package | Const | Enum | TypeDecl | Message | Object .
 Object      = "object" ident Block NL .
 Package     = "package" ident NL .
-Const       = "const" ident "=" IntExpr NL .
+Const       = "const" ident [ ConstType ] "=" ConstExpr NL .
+ConstType   = IntType | "float32" | "float64" .
+ConstExpr   = IntExpr | FloatExpr .
 Enum        = "enum" ident [ Attributes ] "{" { ident } "}" NL .
 TypeDecl    = "type" ident Block NL .
 Message     = "message" ident Block NL .
@@ -360,6 +363,18 @@ IntExpr     = integer expression over literals and const names:
   other `const` in the unit, order-free across files like type references; reference cycles
   are a compile error naming the cycle. The corpus exercises it:
   `const MaxPositionUnits = MaxWorldMeters * UnitsPerMeter`.
+- **Constants are typed, and not just integers** — DECIDED (Glenn, 2026-08-05: *"They won't
+  just be integer"*), on Go's untyped-constant model: a bare `const` takes its **kind** from
+  its expression — integer (checked signed 64-bit arithmetic) or float (float64 arithmetic;
+  `+ - * /` and parentheses, no `%`) — and converts wherever that kind fits: integer
+  constants in any range, bound, width, case label or float position; float constants in
+  float attribute values (`resolution`, quantize scales) and float contexts. An **explicit
+  type makes a typed constant** — `const MaxBounds uint64 = 12000` — which pins the exported
+  type in every target. The worked migration case is `definitions.fbs`: its thirteen
+  constants-hacked-as-single-value-enums (`MaxPlayers`, `MaxObjects`, `MaxShips`, ...,
+  `MaxBounds : uint64`) become thirteen `const` lines in `Constants.schema`, generated into
+  C++ exactly as game code consumes them today — *"the same set of constants (non-enum
+  hacked this time)."*
 - Inside a type body one token of lookahead disambiguates every item: `const` + `(` is a
   constant field (versus the top-level `const name =` declaration); `if` / `switch` /
   `align` / `reserved` are keywords; any other identifier begins a field. The grammar is
