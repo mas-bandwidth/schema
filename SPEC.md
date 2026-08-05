@@ -1166,8 +1166,8 @@ measure, §6.1. Both DECIDED.)*
     SHAPE in schema, replication POLICY in code? Lean: the latter, stated as a non-goal;
     policy is tuned live and is not shape. Glenn's call. Surfaced 2026-08-05 (Atlas
     evaluation). *(External data point the same day, opposite the lean — the Atlas
-    adoption notes: per-type policy "needs a home even if the replication engine, not the
-    codec, consumes them." Recorded; no work owed now.)*
+    adoption notes: per-type policy entries "need a home even if the replication engine,
+    not the codec, consumes them." Recorded; no work owed now.)*
 15. **The Atlas interop surface — direction set, mechanism TBD (Glenn, 2026-08-05, his
     words banked).** The likely integration point between schema-in-Space-Game and
     Patrick's Atlas is **the render objects level** — *"eg. RenderShip"*: *"we should have
