@@ -34,15 +34,14 @@ exchange record lives outside this repo.*
   produce identical bytes, deterministically, across compiler versions. Always true by
   construction; stated because a consumer pattern exists (byte-compare dirty detection)
   for which it is correctness, not hygiene.
-- **§6.1: Derives PROPOSED** — `Equal` / `Checksum` / `Print`, each funded by a real
-  networking need (delta detection, desync detection, desync diagnosis).
 - **§4.8: generated layout is the generator's** — layout rules kept alive by prose are
   exactly what generated view structs absorb.
-- **§9 movement:** q13 (interpolation policy vocabulary) and q14 (the replication-policy
-  boundary) opened with external evidence attached; q5 (doc comments) and q9 (explicit
-  enum values, flag enums) gained external need votes; q6 (root/reachability marker)
-  externally corroborated; q15/q16 hold the interop and adoption directions, gathered and
-  deliberately not designed.
+- **§9 movement — and the 2026-08-05 pruning:** several rows opened or gained votes from
+  the round; the same day, Glenn ruled the externally-derived concepts (replication-policy
+  knobs, interop/adoption asks, the derives helpers) **DISCARDED** — *"those concepts are
+  from Atlas. Discard. we don't use them."* What survives of the round is this file's
+  first section: the independent convergent validation of the object layer, and the
+  protocol-id challenge §3.1 held against, twice.
 
 ## Method learnings
 
