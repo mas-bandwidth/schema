@@ -910,6 +910,15 @@ a clean later addition.
 The generated API mirrors serialize.modern's `schema<...>` members — `Write`, `Read`,
 `MaxBits`, `MaxBytes` — so the two feel like one family.
 
+**Canonical encoding is a CONTRACT, stated 2026-08-05 (from the Atlas adoption notes,
+which need it as correctness rather than hygiene):** for a given schema and target, equal
+post-quantization values produce identical bytes — deterministically, forever, across
+compiler versions; the golden-wire gate is what pins it (§3.1, §7.2). Consumers may
+byte-compare encoded forms as a dirty/equality check — Atlas's delta-snapshot replication
+does exactly this (the wire form is the dirty detector), so a canonicalization slip there
+is a correctness bug, not a size regression. This was always true by construction; it is
+stated so it cannot be quietly traded away.
+
 **Derives — PROPOSED (Rowan, 2026-08-05, from the Atlas evaluation; network-motivated, not
 general-purpose reflection).** Three optional generated functions per type, each funded by a
 real networking need rather than convenience:
@@ -1092,6 +1101,8 @@ measure, §6.1. Both DECIDED.)*
    options); is it v1 alongside the compiler, or fast-follow? Its style rules should be
    written while the corpus is small either way.
 5. **Doc comments** carried into generated code — cheap, worth having; v1 or later?
+   *(Externally needed 2026-08-05, Atlas adoption notes: they are the inspector tooltips
+   and the header docs — and they'd want them in any exported schema artifact too.)*
 6. **A root/packet marker** — scopes the protocol id to reachable declarations (fixes the
    unused-helper-moves-the-id wart, §3.2), names which structs get buffer-sizing guidance,
    and is the natural place for a future `packet` keyword. v1 or v2? *(Externally
@@ -1110,7 +1121,9 @@ measure, §6.1. Both DECIDED.)*
    Implicit numbering happens to match the None-first style, but the evidence says explicit
    values (and possibly a `flags` enum form whose wire is `bits(N)`) deserve a v1 decision,
    not a deferral — this also settles whether variants stay whitespace-separated or gain a
-   separator to make room for `= value`.
+   separator to make room for `= value`. *(Second external vote 2026-08-05, Atlas adoption
+   notes: their real enums pin values and bitmask enums are pervasive; the variant
+   separator is "the only thing in the way.")*
 10. **Sentinel-terminated collections.** The surveyed baseline/delta/explosion packets do not
    use counted arrays — they are bool/sentinel-terminated element streams (serialize.go ships
    `Continue`/`Until` helpers for exactly this), sized by mid-stream packet splitting. v1
@@ -1144,12 +1157,17 @@ measure, §6.1. Both DECIDED.)*
     triple per kind (serialize/deserialize/interpolate with per-field policy), evidence the
     policy belongs beside the marker and that `Interpolate()` is generatable from it.
     Belongs to the delta/object design pass. Surfaced 2026-08-05 (Atlas evaluation).
+    *(Corroborated the same day by the Atlas adoption notes with the exact vocabulary —
+    lerp vs. snap vs. angular, plus smoothing eligibility — and generated interpolate named
+    "the first non-serialize generator we'd actually use.")*
 14. **The replication-policy boundary.** Atlas binds replication policy (priority,
     despawn/TTL, coherence) into its per-kind schema; Space Game keeps policy in manager
     code. Does schema ever carry policy attributes, or is the boundary deliberate — wire
     SHAPE in schema, replication POLICY in code? Lean: the latter, stated as a non-goal;
     policy is tuned live and is not shape. Glenn's call. Surfaced 2026-08-05 (Atlas
-    evaluation).
+    evaluation). *(External data point the same day, opposite the lean — the Atlas
+    adoption notes: per-type policy "needs a home even if the replication engine, not the
+    codec, consumes them." Recorded; no work owed now.)*
 15. **The Atlas interop surface — direction set, mechanism TBD (Glenn, 2026-08-05, his
     words banked).** The likely integration point between schema-in-Space-Game and
     Patrick's Atlas is **the render objects level** — *"eg. RenderShip"*: *"we should have
@@ -1165,6 +1183,25 @@ measure, §6.1. Both DECIDED.)*
     generated C++ types are the shimmable surface), possibly an export/manifest surface if
     a foreign runtime wants more than the generated headers. No design pass owed until the
     collaboration reaches it.
+16. **The Atlas adoption asks — GATHERED, HELD LOOSELY. Glenn's ruling, 2026-08-05, banked
+    verbatim and governing this row:** *"let's hold off on any big work merging schema and
+    atlas, just keep it in mind, and let's hold it loosely"* — *"our job is to make schema
+    awesome, and possible for Patrick to work with later on when he decides"* — *"not to do
+    all this work up front and speculatively."* The second Atlas document
+    (`notes/2026-08-05-atlas-adoption-requirements.md`) reads schema seriously as a
+    candidate for their replication layer and lists what adoption would need. Indexed here
+    so it is findable the day Patrick decides, and deliberately NOT designed now:
+    **open extension** (cross-unit composition — currently a non-goal; declared base types;
+    open-vs-closed set identity per set, with their correct jab that sorted-by-name
+    discriminants renumber every engine tag when a game adds a message named `Aardvark`);
+    **extern vocabulary types** (host `Vec3`/`String`/containers, house-style emission —
+    the non-goals' "may come later," asked for concretely); **resolved-schema export**
+    (a machine-readable schema artifact, optional C++ reflection tables); **the id at a
+    closure point** (their composed-world protocol-id argument — it binds only if
+    cross-unit composition ever exists, and would be designed with it). What v1 already
+    gives them without new work: the canonical-encoding contract (§6.1) and goal 4's plain
+    generated C++ types as the shimmable surface (q15). No design pass owed; nothing here
+    may tax the current path.
 
 ---
 
