@@ -285,7 +285,10 @@ application's choice — netcode-style stacks already carry one.
   a **prefix**, Go's order (`[<= MaxObjects]ObjectState`); fields read flatbuffers-plain. His reasons: *"we don't want to ape C/C++ but write something a bit
   cleaner. Nobody working in C# or Rust will feel like they want to be coding in C++ to
   specify types."* The principle outlives the individual decisions: when a syntax choice
-  arises, Go is the model to consult first, and the neutral form beats the C-family reflex.
+  arises, Go is the model to consult first, the neutral form beats the C-family reflex, and
+  between two workable forms the shorter wins — *"I always like, shorter, simpler"* (his
+  tiebreak, choosing `[local]` over `[unsynchronized]`). Authorship is not a criterion:
+  *"it doesn't matter where the good ideas come from. let the best idea win."*
 - **Integer literals:** decimal, hex (`0x`), binary (`0b`). **Float literals** (decimal, with
   optional fraction and exponent) appear only as float attribute values (`min`/`max`/`resolution` on `float32`).
 - **Punctuation and operators:** `{ } ( ) [ ] , : = ! .. <= + - * / %`.
@@ -637,8 +640,10 @@ plumbing:**
 - **deep** — *"this is only sent to the client for client side prediction, eg. full state"*
   — and **deep is the default**: *"interpolated = off by default. deep by default"* — an
   unmarked field is full-state only.
-- **`[local]`** (PROPOSED) — simulation-only state that reaches no wire: lives in
-  `ShipState`, absent from every network struct.
+- **`[local]`** — DECIDED (Glenn, 2026-08-05): simulation-only state that reaches no wire —
+  lives in `ShipState`, absent from every network struct. *(He first spelled it
+  `[unsynchronized]`, then took `[local]` on sight: "shorter. much shorter." — the register
+  principle applied to a keyword.)*
 
 **What one definition generates per object, per target** (shapes per language, behavior
 identical — the message-set rule):
@@ -844,6 +849,16 @@ schema emits **source**, and its contract is different on purpose:
 > constant-folding are the target compiler's job — it sees straight-line calls into an
 > inline-friendly library with every width and range a literal constant, which is precisely
 > the input optimizers are built for.
+
+**Ratified by the owner against his own objects, 2026-08-05:** *"for ship I don't want to
+generate 'Serialize' functions anymore from schema. we should generate read/write functions,
+completely custom and tailored... because now that the serialize is defined in schema, we
+don't need a unified write anymore."* The unified `template <Stream> Serialize` was always
+C++'s trick for keeping read and write from drifting apart — **the schema is that
+single source of truth now, so the trick retires from generated code** and every target gets
+split, tailored `Read`/`Write` per type and per view: *"this way we get all the benefits of
+hard-coded read/writes in the gen code."* The runtimes' unified paths are untouched — *"that's
+for people coding the serialize manually in their language and not using schema."*
 
 What this buys: generated source stays small and reviewable, count ranges need no cap, and
 three backends stay simple enough to verify against each other. What it forgoes: the

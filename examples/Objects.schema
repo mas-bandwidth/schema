@@ -68,7 +68,7 @@ object Ship {
     target          Handle
     lock_start_time float64
 
-    // ---- simulation-only: no wire at all (PROPOSED marker) ----
+    // ---- simulation-only: no wire at all ----
 
     invulnerable bool [local]
 }
