@@ -290,6 +290,14 @@ code of every target; deciding C# an hour later exposed the cost — the target 
 the id, so adding a language moved every deployed id. File hashing keeps names in the id,
 needs no frozen IR encoding, and decouples the id from both the emitters and the target set.)*
 
+*(Challenged externally 2026-08-05: the Atlas evaluation argued for a canonical layout hash —
+whitespace-insensitive, names kept. Declined, with the trade named: any canonicalized hash
+converts the second property above — the id not moving on a compiler upgrade — from a
+structural fact into a maintained promise, because every parser/canonicalization change then
+risks moving deployed ids. File bytes keep that property structural, and the whitespace cost
+fails safe. Revisit only if `schemafmt` (§9 q4) lands, which would make "hash the canonical
+form" cheap to define. Full argument: `notes/2026-08-05-atlas-eval-response.md`.)*
+
 ### 3.2 The unit
 
 A compilation unit is a set of `*.schema` files compiled together (one directory by default).
@@ -733,6 +741,14 @@ means *ranged-int projection on the shallow wire* (today's health/thrust pattern
 worked example is [`examples/Objects.schema`](examples/Objects.schema); **Missile,
 DynamicProp and Turret follow once the Ship shape is approved** (his list, same day).
 
+**Generated layout is the generator's — PROPOSED principle (Rowan, 2026-08-05).** The
+hand-written world keeps layout rules alive by comment — Atlas's `correctionFloats` requires
+smoothed floats to lead the struct, "enforced by prose," their own named pain. Generated
+structs invert that: field order inside every generated view derives from need (wire order
+for wire structs, contiguous smoothed/correction spans where the interpolation machinery
+wants them), never a convention a human maintains. Per-field interpolation POLICY — lerp vs
+snap, shortest-arc angles, and whether `Interpolate()` itself is generated — is §9 q13.
+
 **And the payoff he named:** *"Once we have proper definitions of all object types, and
 structs per-object type, we will be able to generate all the baseline and delta compression
 code."* The object set is the prerequisite the delta pass was waiting for.
@@ -893,6 +909,25 @@ a clean later addition.
 
 The generated API mirrors serialize.modern's `schema<...>` members — `Write`, `Read`,
 `MaxBits`, `MaxBytes` — so the two feel like one family.
+
+**Derives — PROPOSED (Rowan, 2026-08-05, from the Atlas evaluation; network-motivated, not
+general-purpose reflection).** Three optional generated functions per type, each funded by a
+real networking need rather than convenience:
+
+- **`Equal(a, b)`** — per-field comparison. The send-if-changed / delta-detection primitive;
+  the delta pass needs exactly this comparison anyway, and generating it now makes it
+  available to today's hand-written delta code before that pass lands.
+- **`Checksum(object)`** — a stable hash over field values, for desync detection — the
+  pattern Space Game already gates packets with.
+- **`Print(object)`** — a field-by-field dump, for the exact moment two `Checksum`s
+  disagree, and for debugging generated wire code generally.
+
+All three are projections of the same declaration the read/write pair comes from, put
+nothing on the wire, and stay inside goal 2 — straight-line code, no reflection. Whether
+they are default or opt-in (a `[derive(...)]` attribute? a compiler flag?) is part of the
+decision, which is Glenn's. Evidence the category pays: Atlas ships
+`schemaFieldEquals`/`schemaLayoutHash` as its equivalents and its evaluation calls derives
+"value on their own."
 
 **Alignment is stream-relative**: a type containing `align`, `string` or `bytes` has
 layout dependent on its entry bit offset. Generated functions are correct at any entry
@@ -1059,7 +1094,10 @@ measure, §6.1. Both DECIDED.)*
 5. **Doc comments** carried into generated code — cheap, worth having; v1 or later?
 6. **A root/packet marker** — scopes the protocol id to reachable declarations (fixes the
    unused-helper-moves-the-id wart, §3.2), names which structs get buffer-sizing guidance,
-   and is the natural place for a future `packet` keyword. v1 or v2?
+   and is the natural place for a future `packet` keyword. v1 or v2? *(Externally
+   corroborated 2026-08-05: the Atlas evaluation's layout-hash critique is this same wart
+   seen from outside — reachability scoping addresses it without giving up file hashing,
+   §3.1.)*
 7. **Const expressions over enum counts** — `Constants.h` computes `NUM_TEAMS =
    Team_MAX + 1` and `MAX_PROPS` as a sum of limits; the language wants a way for a `const`
    to reference an enum's variant count / max (`len(Team)`? `Team.max`?). Surfaced
@@ -1100,6 +1138,33 @@ measure, §6.1. Both DECIDED.)*
 12. ~~**`int` → `int32`?**~~ — **RESOLVED 2026-08-05 by the integer family**: bare `int` is
     gone; every integer names its width, Go-style, and `int`/`uint` are reserved purely to
     give a helpful diagnostic.
+13. **Interpolation policy vocabulary.** `[interpolate]` names WHICH fields reach the
+    interpolation view; nothing yet says HOW each interpolates — lerp vs snap, shortest-arc
+    for angles, the smoothed-correction span. Atlas's net/sync hand-writes exactly this
+    triple per kind (serialize/deserialize/interpolate with per-field policy), evidence the
+    policy belongs beside the marker and that `Interpolate()` is generatable from it.
+    Belongs to the delta/object design pass. Surfaced 2026-08-05 (Atlas evaluation).
+14. **The replication-policy boundary.** Atlas binds replication policy (priority,
+    despawn/TTL, coherence) into its per-kind schema; Space Game keeps policy in manager
+    code. Does schema ever carry policy attributes, or is the boundary deliberate — wire
+    SHAPE in schema, replication POLICY in code? Lean: the latter, stated as a non-goal;
+    policy is tuned live and is not shape. Glenn's call. Surfaced 2026-08-05 (Atlas
+    evaluation).
+15. **The Atlas interop surface — direction set, mechanism TBD (Glenn, 2026-08-05, his
+    words banked).** The likely integration point between schema-in-Space-Game and
+    Patrick's Atlas is **the render objects level** — *"eg. RenderShip"*: *"we should have
+    types that the two systems can both shim and know from each other, then we can work
+    together."* The boundary is firm on one side: *"I will not consider atlas stuff to
+    replace config/assets"* — schema stays the source of truth for shared types, messages,
+    and config/asset data. Patrick *"will use atlas stuff in the client to represent
+    everything else (client-only things, UI, whatever he needs to do there)"*, and: *"Some
+    sort of ability for atlas to import and work with our types, messages, would be good,
+    and to refer to our config/assets would be good"* — *"it could be a shim layer or
+    cross compatibility between the two, probably build by Patrick? TBD."* What schema
+    likely owes this when it firms up: nothing new for the shim case (goal 4's plain
+    generated C++ types are the shimmable surface), possibly an export/manifest surface if
+    a foreign runtime wants more than the generated headers. No design pass owed until the
+    collaboration reaches it.
 
 ---
 
