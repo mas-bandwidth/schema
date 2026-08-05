@@ -1,10 +1,11 @@
 // Messages.schema — the reliable message set
 // Each message is its own declaration. The compiler extracts the set into a
 // symbol table and generates the rest (SPEC §4.8): the MessageType enum —
-// None = 0, then each message SORTED BY NAME (so here: Block = 1, Heartbeat = 2,
-// Synchronize = 3, Test = 4, Timescale = 5 — independent of file layout and
-// cut & paste) — the wire tag in minimal bits, and WriteMessage/ReadMessage
-// dispatch in each language's own idiom. No hand-written enum, no switch.
+// None = 0, then each message SORTED BY NAME (so here: Block = 1, Chat = 2,
+// Heartbeat = 3, Synchronize = 4, Test = 5, Timescale = 6 — independent of file
+// layout and cut & paste) — the wire tag in minimal bits, and
+// WriteMessage/ReadMessage dispatch in each language's own idiom. No
+// hand-written enum, no switch.
 
 package example
 
@@ -26,6 +27,12 @@ message Test {
 message Block {
     // wire: length in [0, MaxBlockSize], align, then the bytes
     block_data bytes(<= MaxBlockSize)
+}
+
+message Chat {
+    // wire: length in [0, MaxChatLength - 1], align, then the raw bytes —
+    // byte strings, no UTF-8 rule, interior 0x00 rejected (SPEC §4.7)
+    text string(MaxChatLength)
 }
 
 message Synchronize {

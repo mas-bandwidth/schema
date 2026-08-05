@@ -32,7 +32,7 @@ hard requirement, just a personal preference"*; order-free cross-file resolution
 | `Enums.schema` | the enum family | all three forms: `enum` (with-None), `enum_index` (wire = value − 1), `enum_flags` (uint64, bit-per-variant) |
 | `Types.schema` | every `type` | quantized-int types, prefix arrays `[<= N]T`, bool-gated `if` with an `enum_flags` field, the explicit `switch` idiom, storage-typed ranged ints |
 | `Messages.schema` | every `message` | the implicit `MessageType` set, sorted-by-name tags, empty message, byte blocks |
-| `Objects.schema` | all four `object`s | the view markers (`[interpolate]`/`[local]`, deep by default), built-in `quat`, composite `quantize`, ranged-int projection with `round = up`, per-field wire treatment divergences between objects |
+| `Objects.schema` | all four `object`s | the view markers (`[interpolate]`/`[local]`, deep by default), tagged user types (`Quat [quat4]`) with explicit-bound composite `quantize`, ranged-int projection with `round = up`, per-field wire treatment divergences between objects |
 
 *Coming when their design passes open: `Config.schema` and `Assets.schema` (SPEC, "The
 horizon" — the flatbuffers replacement), and the delta pass (out of v1 scope by decision).*

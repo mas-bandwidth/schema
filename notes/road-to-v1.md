@@ -25,8 +25,10 @@ git.*
   wire, [0, Max−1]) — §4.2. *"suspect it's better done as a type"* → *"#3 is confirmed."*
 - **`enum_flags`**: uint64 storage, one field per bit, up to 64 — §4.2. *"yes, we can and
   should support flags too."*
-- **`quat` is built-in, unit by definition** — §4.8. *"quaternions are used to represent
-  rotation, therefore always unit length."*
+- ~~`quat` is built-in~~ — **superseded the same evening by the type-tags decision (see
+  the addendum below)**; what survives of this row is the unit-length fact itself:
+  *"quaternions are used to represent rotation, therefore always unit length."* — now the
+  reason a rotation field's quantize bound is written `max = 1`.
 - **Tag order is SORTED BY NAME** — §4.8 (overruling my declaration-order proposal).
   *"alphabetical order is better, because it's independent of formatting and cut & paste
   stuff."*
@@ -39,9 +41,10 @@ git.*
 - **DISCARDED as a family** — replication-policy knobs, interop/adoption asks, the
   Equal/Checksum/Print helpers: *"those concepts are from [the external engine]. Discard.
   we don't use them. our networking techniques are stronger than [theirs]"* — *"built
-  around deltas and snapshots, not around priority accumulators."* No external-engine
-  name mentions remain in this repo (grep-verified; bracketed elisions in his quotes are
-  the sweep applied to the quotes themselves).
+  around deltas and snapshots, not around priority accumulators […]"* No external-engine
+  name mentions remain in this repo's tracked files (grep-verified; bracketed elisions in
+  his quotes are the sweep applied to the quotes themselves; the full sentences are in
+  SPEC.md §9 q14).
 
 ## Landed outside the spec the same day
 

@@ -1,4 +1,4 @@
-# schema — specification (draft 4)
+# schema — specification (draft 5)
 
 > **Status: DRAFT, pre-implementation — the language is the deliverable right now.** This
 > spec precedes the decision to build (house doctrine), and deliberately so: the language is
@@ -36,7 +36,7 @@
 > float-expression holes closed; a normative wire model added (§4.3.0); read termination
 > defined (§5); §6.1/§7.1 completed with the DECIDED object artifacts; §7.2 gains the
 > golden-wire-bytes and fp-contract gates its own promises relied on; and every §9 open
-> question now carries a worked recommendation with its evidence, awaiting Glenn's calls —
+> question now carries a worked recommendation with its evidence, his calls landed the same evening, item by item —
 > the decision list is `notes/road-to-v1.md`.*
 
 ## 1. What schema is
@@ -263,7 +263,7 @@ and — when their passes land — `Config.schema` and `Assets.schema`. A conven
 and docs follow and `schemafmt` respects, never compiler-enforced; order-free cross-file
 resolution (§4.2) is what makes it free.
 
-## 3. Versioning: the protocol id — DECIDED, mechanism PROPOSED
+## 3. Versioning: the protocol id — DECIDED, mechanism DECIDED
 
 **Only two sides holding the same protocol id can talk. There is no versioning overhead on the
 wire, no optional-field tags, no evolution machinery.** This is the serialize-family model:
@@ -942,7 +942,9 @@ generates, per target:
 - **The `MessageType` enum, with `None = 0`** — *"Message types (and all other types...)
   should have 0 = no type, so we can express null"* — **then each message in a deterministic
   order. The order is SORTED BY NAME — DECIDED (Glenn, 2026-08-05: *"alphabetical order is
-  better, because it's independent of formatting and cut & paste stuff."*).** Tags are a
+  better, because it's independent of formatting and cut & paste stuff."*).** The sort is
+  bytewise ascending over the declared names (the same collation §3.1 pins for basenames —
+  one rule, stated so two compiler builds agree). Tags are a
   pure function of the declared name set — independent of file layout, declaration order,
   and any cut-and-paste reshuffling. Renumbering on growth is wire-safe by construction:
   adding a message edits a schema file, the id moves, both sides regenerate together.
@@ -1069,7 +1071,7 @@ The worked example is [`examples/Objects.schema`](examples/Objects.schema) — v
 field-for-field against the real `Ship.h` on 2026-08-05: zero misclassifications, zero
 invented fields, one measured omission (the client-only `predictedExplode`, which waits on
 a side-conditional story and is noted rather than silently absent); **Missile, DynamicProp
-and Turret follow once the Ship shape is approved** (his list, same day).
+and Turret are now written beside it — all four objects are in the corpus for his review.**
 
 **Generated layout is the generator's — PROPOSED principle (Rowan, 2026-08-05).**
 Hand-written code keeps struct-layout rules alive by comment, and prose-enforced layout is
@@ -1243,7 +1245,7 @@ Per `type`, per target:
    `MaxBytes`. Conservative is correct for a buffer bound.
 5. **`ProtocolId`** — one constant per unit (§3).
 6. **For a unit with `message` declarations (§4.8):** the `MessageType` enum (`None = 0`,
-   then the messages in the §4.8 deterministic order — declaration order, PROPOSED there),
+   then the messages sorted by name — DECIDED, §4.8),
    `WriteMessage`/`ReadMessage` with the tag framing, a message-level
    `MaxBytes` (tag plus the largest message), and the dispatch surface in each language's
    own idiom — representation per target, behavior identical.
@@ -1458,8 +1460,8 @@ parser in the id path — the §3.1 revisit clause closes in the good direction.
    entries, no padding inside the brackets. Valueless markers first, then valued keys.
 4. **Expressions**: single spaces around binary operators.
 5. **Enums**: one line while they fit; the wrap trigger is decided at the first multi-line
-   instance (no line-length limit exists yet). *(Under §9 q9's newline-variant proposal
-   this rule becomes: one variant per line, like fields.)*
+   instance (no line-length limit exists yet). *(q9 settled canonical whitespace variants,
+   so one-line enum bodies are the standing form.)*
 6. **switch/case**: `case` at the same indent as its `switch`; a single-item case body
    inline after the label, bodies column-aligned across the cases of one switch; multi-item
    bodies on following lines, one level in.
