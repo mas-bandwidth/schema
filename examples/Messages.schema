@@ -9,7 +9,7 @@ const MaxBlockSize = 2000
 
 enum MessageKind { Heartbeat Test Block Synchronize Timescale }
 
-struct Message {
+type Message {
     kind MessageKind
 
     switch kind {
@@ -17,22 +17,22 @@ struct Message {
         // empty body — presence of the message is the payload
 
     case Test:
-        testA bits(16)
-        testB int(0, 1000)
-        testC int(0, 1000)
-        testD int(0, 1000)
+        test_a bits(16)
+        test_b int(0, 1000)
+        test_c int(0, 1000)
+        test_d int(0, 1000)
 
     case Block:
         // wire: length in [0, MaxBlockSize], align, then the bytes
-        blockData bytes(<= MaxBlockSize)
+        block_data bytes(<= MaxBlockSize)
 
     case Synchronize:
-        syncFrame    bits(64)
-        syncSequence bits(16)
+        sync_frame    bits(64)
+        sync_sequence bits(16)
 
     case Timescale:
         timescale double
-        frameA    bits(32)
-        frameB    bits(32)
+        frame_a   bits(32)
+        frame_b   bits(32)
     }
 }

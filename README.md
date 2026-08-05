@@ -1,13 +1,14 @@
 # schema
 
 **schema** is a language for describing bitpacked network data, and a compiler — written in Go —
-that translates `*.schema` files into generated C++, Go and Rust serialization code targeting
+that translates `*.schema` files into generated C++, C#, Go and Rust serialization code targeting
 [serialize](https://github.com/mas-bandwidth/serialize),
+[serialize.cs](https://github.com/mas-bandwidth/serialize.cs),
 [serialize.go](https://github.com/mas-bandwidth/serialize.go) and
 [serialize.rs](https://github.com/mas-bandwidth/serialize.rs).
 
 Define your types and their wire encoding once; get minimal, straight-line read/write code for
-every platform, byte-identical on the wire across all three — with none of the compile-time cost
+every platform, byte-identical on the wire across all four — with none of the compile-time cost
 of doing this inside a C++ compiler with template metaprogramming.
 
 The idea is extracted from

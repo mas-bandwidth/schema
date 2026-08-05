@@ -33,9 +33,10 @@ targeting the serialize family of libraries:
 | Go | [serialize.go](https://github.com/mas-bandwidth/serialize.go) |
 | Rust | [serialize.rs](https://github.com/mas-bandwidth/serialize.rs) |
 
-The existing three runtimes are bit-for-bit wire compatible and pin that property in CI with
-golden bytes. schema inherits that foundation: **a struct serialized by generated code in any
-target language decodes identically in the others.**
+All four runtimes are bit-for-bit wire compatible — the original three pin it in CI with
+golden bytes; serialize.cs pins the same 72 golden bytes and byte-identical clang++ interop,
+with CI to follow. schema inherits that foundation: **a type serialized by generated code
+in any target language decodes identically in the others.**
 
 **C# — DECIDED (Glenn, 2026-08-04), prerequisite MET overnight.** serialize.cs was ported the
 same night by the red/blue method — golden bytes verbatim from the family's shared 72-byte
@@ -63,11 +64,11 @@ for every platform, with zero compile-time tax on the consumer.**
 ### Goals
 
 1. **One source of truth for a protocol.** Types and their wire encoding defined once, in
-   `*.schema` files; read/write code generated for C++, Go and Rust.
+   `*.schema` files; read/write code generated for C++, C#, Go and Rust.
 2. **Minimal generated code.** Separate, straight-line read and write functions per type — the
    code a careful expert would hand-write against each serialize library — with no runtime
    schema interpretation, no reflection, and no `IsWriting` branching.
-3. **Byte-identical wire output across all three targets**, enforced by a conformance matrix
+3. **Byte-identical wire output across all four targets**, enforced by a conformance matrix
    in CI, with classic serialize as the oracle. The three generated readers also **agree on
    what they reject** — acceptance is part of the wire contract here.
 4. **Compile-time cost near zero for consumers.** Generated code is plain source; the C++
@@ -82,7 +83,7 @@ for every platform, with zero compile-time tax on the consumer.**
 - **No unbounded collections.** Everything on the wire has a declared bound, as everywhere in
   the serialize family.
 - **No annotation of existing hand-written types.** schema owns the types it serializes and
-  generates them (§6). Mapping onto pre-existing structs may come later.
+  generates them (§6). Mapping onto pre-existing hand-written types may come later.
 - **No imports across compilation units.** One unit, one package, all files compiled together
   (§3.2). Cross-unit composition is a later problem.
 - **No flatbuffers-style evolvable tables.** Named as a future direction for config and
@@ -218,7 +219,7 @@ the unit; the id depends only on the set of declarations, never on their file la
 per unit, exposed as a constant (`ProtocolId` / `PROTOCOL_ID`) and printed by `schema id`.
 
 **Known consequence, documented rather than hidden:** every declaration in the unit
-contributes to the id, so adding an unused helper struct moves it. A root/packet marker that
+contributes to the id, so adding an unused helper type moves it. A root/packet marker that
 scopes the id to reachable declarations is the natural door (§9, open question 7).
 
 `reserved(bits)` fields remain useful *within* a protocol id — not to dodge redeploys (any
@@ -233,14 +234,28 @@ application's choice — netcode-style stacks already carry one.
 ### 4.1 Lexical structure
 
 - UTF-8 source. `//` line comments and `/* */` block comments (non-nesting).
-- **Identifiers:** `[A-Za-z_][A-Za-z0-9_]*`.
+- **Identifiers:** `[A-Za-z_][A-Za-z0-9_]*`. Conventions, matching the flatbuffers layer the
+  language will eventually absorb: type and enum names `UpperCamelCase`, enum variants
+  `UpperCamelCase`, **fields `lower_snake_case`**, constants `UpperCamelCase`. The compiler
+  does not enforce case, but the corpus and all documentation follow it.
+- **The register is Go-inspired — "C-like but not too C"** — DECIDED (Glenn, 2026-08-05):
+  types are declared with `type`, not `struct`; declarations put the **name first, then the
+  type**, Go's order (*"we can do golang order of setup vars and types"*); scalar names are
+  Go's — **`float32` and `float64`, never `float`/`double`** (*"we can use type names from
+  golang instead of C++"*); `if` and `switch` take no parentheses; the canonical formatter
+  is **`schemafmt`**, gofmt's philosophy included — one style, no options; fields read
+  flatbuffers-plain. His reasons: *"we don't want to ape C/C++ but write something a bit
+  cleaner. Nobody working in C# or Rust will feel like they want to be coding in C++ to
+  specify types."* The principle outlives the individual decisions: when a syntax choice
+  arises, Go is the model to consult first, and the neutral form beats the C-family reflex.
 - **Integer literals:** decimal, hex (`0x`), binary (`0b`). **Float literals** (decimal, with
   optional fraction and exponent) appear only as `compressed_float` parameters.
 - **Punctuation and operators:** `{ } ( ) [ ] , : = ! .. <= + - * / %`.
-- **Reserved words:** `package const enum struct if else switch case align reserved max` and
-  the wire-type keywords `bits int int64 bool float double compressed_float string bytes`.
+- **Reserved words:** `package const enum type if else switch case align reserved max` and
+  the wire-type keywords `bits int int64 bool float32 float64 compressed_float string bytes`.
   Reserved words cannot be used as names.
-- **Newlines terminate declarations and fields.** The newline is a terminator token,
+- **Newlines terminate declarations and fields — there are no semicolons, like Go.** The
+  newline is a terminator token,
   suppressed: immediately after `{`, `(`, `[`, `,`, `:`, `=`, `else`, and an infix operator;
   and immediately before `)`, `]`, `}`. Blank lines are insignificant. `{` sits on the same
   line as its construct; `} else {` is written on one line.
@@ -251,11 +266,11 @@ EBNF (`NL` = the newline terminator; `{X}` repetition; `[X]` option):
 
 ```
 File        = { Declaration } .
-Declaration = Package | Const | Enum | Struct .
+Declaration = Package | Const | Enum | TypeDecl .
 Package     = "package" ident NL .
 Const       = "const" ident "=" IntExpr NL .
 Enum        = "enum" ident [ "(" "max" "=" IntExpr ")" ] "{" { ident } "}" NL .
-Struct      = "struct" ident Block NL .
+TypeDecl    = "type" ident Block NL .
 
 Block       = "{" { Item } "}" .
 Item        = Field | ConstField | Reserved | Align | If | Switch .
@@ -268,11 +283,11 @@ Type        = Scalar [ "[" Bound "]" ] .
 Scalar      = "bits" "(" IntExpr ")"
             | "int" "(" IntExpr "," IntExpr ")"
             | "int64" "(" IntExpr "," IntExpr ")"
-            | "bool" | "float" | "double"
+            | "bool" | "float32" | "float64"
             | "compressed_float" "(" FloatLit "," FloatLit "," FloatLit ")"
             | "string" "(" IntExpr ")"
             | "bytes" "(" [ "<=" ] IntExpr ")"
-            | ident .                                            // struct or enum type
+            | ident .                                            // a declared type or enum
 Bound       = IntExpr | "<=" IntExpr | IntExpr ".." IntExpr .
 
 If          = "if" [ "!" ] ident Block [ "else" Block ] NL .
@@ -287,14 +302,19 @@ IntExpr     = integer expression over literals and const names:
 - **Integer expressions** evaluate in checked signed 64-bit at compile time. Overflow,
   division by zero, and a negative result where a width, bound or count is required are
   compile errors. `compressed_float` parameters are float literals only in v1.
-- Inside a struct body one token of lookahead disambiguates every item: `const` + `(` is a
+- **Constants compose** — DECIDED (Glenn, 2026-08-05: *"constants can refer to other
+  constants, so we can build up things, const C = A * 2 + B"*). A `const` may reference any
+  other `const` in the unit, order-free across files like type references; reference cycles
+  are a compile error naming the cycle. The corpus exercises it:
+  `const MaxPositionUnits = MaxWorldMeters * UnitsPerMeter`.
+- Inside a type body one token of lookahead disambiguates every item: `const` + `(` is a
   constant field (versus the top-level `const name =` declaration); `if` / `switch` /
   `align` / `reserved` are keywords; any other identifier begins a field. The grammar is
   LL(2) and hand-written recursive descent is the intended implementation.
 - **Enum variants** are whitespace-separated identifiers (newlines included), numbered 0..n−1
   in declaration order. Explicit variant values are not in v1 — noted because the bare
   space-separated form forecloses adding `= value` without a separator change.
-- **Type references are order-free** — a struct or enum may be used before its declaration,
+- **Type references are order-free** — a type or enum may be used before its declaration,
   in any file of the unit. (Field *back-references* are not order-free; §4.5.)
 - `if` and `switch` nest freely inside blocks and case bodies.
 
@@ -306,8 +326,9 @@ the serialize functions"* — *"and enums."* Both are first-class in both direct
 - **Into the wire:** a `const` is usable in any range, bound, width or case label, folded at
   compile time; an enum is a wire type.
 - **Out to the code:** every `const` and every `enum` is **exported in the generated output
-  of all three targets** — `inline constexpr int64_t MaxPlayers = ...;` / `const MaxPlayers
-  int64 = ...` / `pub const MAX_PLAYERS: i64 = ...;` and the integer-backed enum types of
+  of all four targets** — `inline constexpr int64_t MaxPlayers = ...;` /
+  `public const long MaxPlayers = ...;` / `const MaxPlayers int64 = ...` /
+  `pub const MAX_PLAYERS: i64 = ...;` and the integer-backed enum types of
   §6.1 — because the values that shape the wire are the same values game code sizes its
   arrays and loops with. One declaration, everywhere, and the game references the schema's
   constant instead of a hand-copied twin.
@@ -330,11 +351,11 @@ the wire oracle. (Contracts: `notes/serialize-cpp-api.md`.)
 | `f int(Min, Max)` | minimal bits for the range, value − Min; read rejects out-of-range | `serialize_int` |
 | `f int64(Min, Max)` | minimal bits for the 64-bit range | `serialize_int64` |
 | `f bool` | 1 bit | `serialize_bool` |
-| `f float` | 32 raw IEEE-754 bits | `serialize_float` |
-| `f double` | 64 raw bits (low dword first) | `serialize_double` |
+| `f float32` | 32 raw IEEE-754 bits | `serialize_float` |
+| `f float64` | 64 raw bits (low dword first) | `serialize_double` |
 | `f compressed_float(Min, Max, Res)` | quantized to Res-sized steps; read rejects values above the step count | `serialize_compressed_float` (exact formulas incl. the ceil, +0.5f rounding and clamp) |
 | `f Weapon` (an enum) | minimal bits for [0, max]; read rejects above max | `serialize_int` over [0, max] |
-| `f Inner` (a struct) | Inner's fields, in place | `serialize_object` |
+| `f Inner` (a type) | Inner's fields, in place | `serialize_object` |
 | `const(Value, Bits)` | the constant; read **rejects** any other value | `serialize_bits` + compare |
 | `reserved(Bits)` | zeros; read rejects nonzero | `serialize_bits` + compare |
 | `align` | zero-pad to the next byte boundary; read rejects nonzero padding | `serialize_align` |
@@ -345,7 +366,7 @@ the wire oracle. (Contracts: `notes/serialize-cpp-api.md`.)
 | `f T[<= N]` / `f T[Min..N]` | count in [Min, N] encoded relative to Min, then that many elements | `serialize_int` + the element loop |
 
 Arrays: the element may be any scalar or named type; arrays of arrays are not in v1 (wrap the
-inner array in a struct). Runtime-count arrays carry their own count on the wire — there is no
+inner array in a type). Runtime-count arrays carry their own count on the wire — there is no
 separately-declared count field in v1 (draft 1 sketched a back-referenced `: count(field)`
 form; it was cut after a reader showed the draft's own example violated the draft's own
 back-reference rule with it).
@@ -355,7 +376,7 @@ serialize.modern's one documented deviation (`wstring_` alignment) does not aris
 schema emits sequential stream operations, and wide strings are deferred anyway. On the
 *read* side, schema's generated readers enforce the language's validation rules uniformly
 (e.g. the interior-null rule of §4.7), which can be stricter than a hand-written classic
-reader; acceptance is uniform across the three targets, which is what the conformance gates
+reader; acceptance is uniform across the four targets, which is what the conformance gates
 check.
 
 **The count-range cap is lifted.** serialize.modern caps `array_n`'s count range at 16 because
@@ -369,12 +390,12 @@ Conditional serialization branches on a previously serialized field — a back-r
 branch itself costs no wire bits; the referenced field was already paid for.
 
 ```
-struct Body {
+type Body {
     position Vec
-    atRest   bool
-    if !atRest {
-        velocity        Vec
-        angularVelocity Vec
+    at_rest  bool
+    if !at_rest {
+        velocity         Vec
+        angular_velocity Vec
     }
 }
 ```
@@ -398,13 +419,13 @@ check in the resolver.
 
 ```
 case Snapshot:
-    hasDelta bool
-    if hasDelta { ... }       // legal: same block, earlier — dominated
+    has_delta bool
+    if has_delta { ... }      // legal: same block, earlier — dominated
 ```
 
 Forward references, references into sibling branches or other cases, and references to array
 element fields are compile errors naming the offending reference and the rule. *(Draft 1
-required the referent be unconditionally serialized at struct top level, which outlawed the
+required the referent be unconditionally serialized at type top level, which outlawed the
 example above and contradicted the fused-branch subsumption claim; the dominance rule is
 strictly more expressive and equally static.)*
 
@@ -419,13 +440,13 @@ All compile errors with positions:
   an enum whose max is 0 (fewer than two wire values). Every runtime treats `min == max`
   range serialization as API misuse, so the language rejects what the runtimes would reject.
 - Enum `max` below variant count − 1; enum values above `max` unreachable by construction.
-- **Duplicate field names anywhere in one struct — including across branch sides and cases.**
+- **Duplicate field names anywhere in one type — including across branch sides and cases.**
   One name, one field, declared once. (serialize.modern permits exclusive-side member reuse
-  because members pre-exist there; schema owns the struct, and unique names keep the
-  flattened generated type unambiguous.)
+  because members pre-exist there; schema owns the type, and unique names keep the
+  flattened generated output unambiguous.)
 - Back-reference violations (§4.5); a `switch` subject that is not an integer or enum field;
   duplicate case values; `if` conditions that are not `bool` fields.
-- Cycles in struct composition, undefined types, duplicate declarations, `package` mismatch.
+- Cycles in type composition, undefined types, duplicate declarations, `package` mismatch.
 - **Target-name safety:** a declaration or field name that is a reserved word in any target
   language (`type`, `match`, `impl`, `func`, `class`, ...) or that collides with another name
   after Go export-casing (`atRest` → `AtRest`) is rejected, with a diagnostic naming the
@@ -433,9 +454,9 @@ All compile errors with positions:
 
 ### 4.7 Strings are byte strings — PROPOSED
 
-`string(N)` carries **arbitrary bytes excluding 0x00**, length in [0, N−1]. All three
+`string(N)` carries **arbitrary bytes excluding 0x00**, length in [0, N−1]. All four
 generated readers reject interior nulls; writes assert per §5. This single tightening is what
-lets the three targets agree:
+lets the targets agree:
 
 - Classic C++ `serialize_string` is strlen-based `char[N]` — it cannot represent interior
   nulls; a Go writer must not be able to produce a payload the C++ reader silently truncates.
@@ -456,13 +477,13 @@ const MaxChatLength = 256
 
 enum MessageType { Ping Pong Chat Snapshot }
 
-struct Vec {
-    x float
-    y float
-    z float
+type Vec {
+    x float32
+    y float32
+    z float32
 }
 
-struct ObjectState {
+type ObjectState {
     id       int(0, MaxObjects - 1)
     position Vec
     active   bool
@@ -471,22 +492,22 @@ struct ObjectState {
     }
 }
 
-struct Message {
-    crc         bits(32)
-    messageType MessageType
-    switch messageType {
-    case Ping:  pingSequence bits(16)
-    case Pong:  pongSequence bits(16)
+type Message {
+    crc          bits(32)
+    message_type MessageType
+    switch message_type {
+    case Ping:  ping_sequence bits(16)
+    case Pong:  pong_sequence bits(16)
     case Chat:  text string(MaxChatLength)
     case Snapshot:
-        baseSequence bits(16)
-        objects      ObjectState[<= MaxObjects]
+        base_sequence bits(16)
+        objects       ObjectState[<= MaxObjects]
     }
 }
 ```
 
 *(Ping's and Pong's sequence fields carry distinct names because §4.6 makes field names
-unique per struct — including across cases. Draft 1's showcase violated its own rules; the
+unique per type — including across cases. Draft 1's showcase violated its own rules; the
 standing check is that every example in this spec and in `examples/` must compile under the
 spec as written.)*
 
@@ -496,7 +517,7 @@ spec as written.)*
   classic wire exactly (length, then unaligned 32 bits per code point).
 - **Relative integers** (`serialize_int_relative`): the classic use is a strictly-increasing
   sequence across *array elements* (previous element's field feeding the next), which the
-  back-reference rule cannot express; a scalar-to-scalar form inside one struct earns too
+  back-reference rule cannot express; a scalar-to-scalar form inside one type earns too
   little to carry the construct. Deferred until a cross-element form is designed.
 
 ## 5. Trust model — inherited
@@ -508,8 +529,10 @@ value that controls iteration go unchecked before use (serialize.go documents th
 vector).
 
 Writes assume trusted data. Misuse follows each runtime's own convention: C++ debug asserts
-(unchecked in release), **Go and Rust panic on misuse in all build modes** — the generated
-write code's job is to make misuse impossible by construction (bounds come from the schema).
+(unchecked in release), **Go and Rust panic and C# throws on misuse in all build modes** —
+the generated write code's job is to make misuse impossible by construction (bounds come from
+the schema). Ranges are trusted inputs everywhere: generated code never feeds
+attacker-influenced values as min/max.
 
 **Read failure leaves the output object in an unspecified state**; callers use it only on
 success. **Read success fully initializes it**: fields in untaken branches are set to their
@@ -520,27 +543,28 @@ what makes whole-object comparison in the conformance matrix well-defined.
 
 ### 6.1 What is generated
 
-Per `struct`, per target:
+Per `type`, per target:
 
 1. **The type itself.** Storage derivation, complete:
 
-   | schema | C++ | Go | Rust |
-   |---|---|---|---|
-   | `int(Min,Max)` | `int32_t` | `int32` | `i32` |
-   | `int64(Min,Max)` | `int64_t` | `int64` | `i64` |
-   | `bits(N≤32)` / `bits(N>32)` | `uint32_t` / `uint64_t` | `uint32` / `uint64` | `u32` / `u64` |
-   | `bool` | `bool` | `bool` | `bool` |
-   | `float` / `double` | `float` / `double` | `float32` / `float64` | `f32` / `f64` |
-   | `compressed_float` | `float` | `float32` | `f32` |
-   | enum `E` | `enum class E : uint32_t` | `type E uint32` + consts | `#[repr(transparent)] struct E(pub u32)` + consts |
-   | `string(N)` | `char[N]` | `string` | `Vec<u8>` (bound-checked) |
-   | `bytes(N)` | `uint8_t[N]` | `[N]byte` | `[u8; N]` |
-   | `bytes(<=N)` | `uint8_t[N]` + `int32_t` count | `[]byte` (cap-checked) | `Vec<u8>` (bound-checked) |
-   | `T[N]` | `T[N]` | `[N]T` | `[T; N]` |
-   | `T[<=N]` | `T[N]` + `int32_t` count | `[]T` (bound-checked) | `Vec<T>` (bound-checked) |
+   | schema | C++ | C# | Go | Rust |
+   |---|---|---|---|---|
+   | `int(Min,Max)` | `int32_t` | `int` | `int32` | `i32` |
+   | `int64(Min,Max)` | `int64_t` | `long` | `int64` | `i64` |
+   | `bits(N≤32)` / `bits(N>32)` | `uint32_t` / `uint64_t` | `uint` / `ulong` | `uint32` / `uint64` | `u32` / `u64` |
+   | `bool` | `bool` | `bool` | `bool` | `bool` |
+   | `float32` / `float64` | `float` / `double` | `float` / `double` | `float32` / `float64` | `f32` / `f64` |
+   | `compressed_float` | `float` | `float` | `float32` | `f32` |
+   | enum `E` | `enum class E : uint32_t` | `enum E : uint` | `type E uint32` + consts | `#[repr(transparent)] struct E(pub u32)` + consts |
+   | `string(N)` | `char[N]` | `byte[]` (bound-checked) | `string` | `Vec<u8>` (bound-checked) |
+   | `bytes(N)` | `uint8_t[N]` | `byte[]` (length-checked) | `[N]byte` | `[u8; N]` |
+   | `bytes(<=N)` | `uint8_t[N]` + `int32_t` count | `byte[]` (bound-checked) | `[]byte` (cap-checked) | `Vec<u8>` (bound-checked) |
+   | `T[N]` | `T[N]` | `T[]` (length-checked) | `[N]T` | `[T; N]` |
+   | `T[<=N]` | `T[N]` + `int32_t` count | `T[]` (bound-checked) | `[]T` (bound-checked) | `Vec<T>` (bound-checked) |
 
    Enums are integer-backed named types in every target because `(max = ...)` headroom makes
-   non-variant values wire-legal; a native Rust `enum` cannot hold them.
+   non-variant values wire-legal; a native Rust `enum` cannot hold them — C#'s `enum E : uint`
+   can, natively, which is why it needs no newtype.
 
 2. **`Write(buffer, object) -> bytesWritten`** — straight-line write code in wire order.
 3. **`Read(buffer, object) -> ok/error`** — straight-line read code with full validation, in
@@ -561,13 +585,13 @@ a clean later addition.
 The generated API mirrors serialize.modern's `schema<...>` members — `Write`, `Read`,
 `MaxBits`, `MaxBytes` — so the two feel like one family.
 
-**Alignment is stream-relative**: a struct containing `align`, `string` or `bytes` has
+**Alignment is stream-relative**: a type containing `align`, `string` or `bytes` has
 layout dependent on its entry bit offset. Generated functions are correct at any entry
-offset; the same struct works standalone and nested. `MaxBits` covers the worst case.
+offset; the same type works standalone and nested. `MaxBits` covers the worst case.
 
 **Output layout**: one file per target per unit — `<package>.schema.h` (header-only, C++),
-`<package>_schema.go`, `<package>_schema.rs` — each headed by the compiler version, the
-source files, the protocol id, and a do-not-edit line. Output is **deterministic to the
+`<package>.schema.cs`, `<package>_schema.go`, `<package>_schema.rs` — each headed by the
+compiler version, the source files, the protocol id, and a do-not-edit line. Output is **deterministic to the
 byte** for identical input; no external formatter runs in the build or test path (goldens pin
 the emitters' own output — clang-format/rustfmt version drift must not be able to break a
 golden). The emitters are written to produce formatter-clean code instead.
@@ -596,11 +620,11 @@ lever, behind the same byte-identity tests.
 
 ### 6.3 Per-target notes
 
-| | C++ | Go | Rust |
-|---|---|---|---|
-| emits against | `WriteStream`/`ReadStream` methods (or `serialize_*`-equivalent calls) | `WriteStream`/`ReadStream` concrete types (no interface dispatch) | `WriteStream`/`ReadStream` via the `Stream` trait, monomorphized |
-| error idiom | `return false` early-out | sticky stream errors; counts checked before loops; `return stream.Err()` | `?` propagation of `serialize::Error` |
-| buffer contract | write buffers multiple of 8 (asserted); read allocations extend ≥8 bytes past packet data (required) | write buffers multiple of 8; ≥7 bytes read slack for the fast path | write buffers multiple of 8; ≥8 bytes read slack for the fast path |
+| | C++ | C# | Go | Rust |
+|---|---|---|---|---|
+| emits against | `WriteStream`/`ReadStream` methods (or `serialize_*`-equivalent calls) | sealed `WriteStream`/`ReadStream` (`ref` params, `bool` returns + sticky `Error`) | `WriteStream`/`ReadStream` concrete types (no interface dispatch) | `WriteStream`/`ReadStream` via the `Stream` trait, monomorphized |
+| error idiom | `return false` early-out | `bool` early-out; counts checked before loops; latched `Error` for callers | sticky stream errors; counts checked before loops; `return stream.Err()` | `?` propagation of `serialize::Error` |
+| buffer contract | write buffers multiple of 8 (asserted); read allocations extend ≥8 bytes past packet data (required) | write buffers multiple of 8 (throws); reader takes (buffer, bytes), no slack required | write buffers multiple of 8; ≥7 bytes read slack for the fast path | write buffers multiple of 8; ≥8 bytes read slack for the fast path |
 
 ## 7. The compiler
 
@@ -608,9 +632,10 @@ Go, zero third-party dependencies, one static binary: `schema`.
 
 ```
 schema check  [dir|files...]          // parse + typecheck; exit code for CI
-schema generate --lang cpp,go,rust --out <dir> [dir|files...]
+schema generate --lang cpp,cs,go,rust --out <dir> [dir|files...]
 schema id     [dir|files...]          // print the protocol id
-schema fmt    [dir|files...]          // canonical formatter (post-v1)
+schemafmt     [dir|files...]          // the canonical formatter — gofmt's philosophy:
+                                      // one style, no options ("schema fmt" is its alias)
 ```
 
 ### 7.1 Pipeline
@@ -650,7 +675,7 @@ schema fmt    [dir|files...]          // canonical formatter (post-v1)
 3. **The wire oracle**: for each conformance schema, a hand-written classic-serialize stream
    twin in C++. Generated C++ must produce byte-identical output to the twin and each must
    decode the other — the same gate serialize.modern runs, against the same oracle.
-4. **The cross-language matrix — the whole point**: every writer × every reader (9 pairs),
+4. **The cross-language matrix — the whole point**: every writer × every reader (16 pairs),
    property-driven random instances, identical bytes, identical decoded values under §5's
    whole-object rule. **This needs per-target generated test scaffolding** — instance
    generators respecting every range/branch/count, and a canonical dump format for
@@ -688,7 +713,7 @@ internal/ast/
 internal/check/        resolver, constant folding, shape checks, dominance rule
 internal/ir/           the lowered form + its canonical encoding (protocol id)
 internal/codegen/
-    cpp/  golang/  rust/
+    cpp/  csharp/  golang/  rust/
 testdata/              golden schemas, golden generated source, golden ids, diagnostics
 conformance/           oracle twins + the cross-language matrix harness
 notes/                 extracted runtime API contracts (design inputs)
@@ -707,7 +732,9 @@ measure, §6.1. Both DECIDED.)*
    need e.g. `u8` storage for a ranged int immediately?
 3. **Wide strings and relative integers deferred** (§4.9) — confirm nothing near-term needs
    them; int_relative wants a cross-element design.
-4. **`schema fmt`** — post-v1, unless a canonical form becomes load-bearing earlier.
+4. **`schemafmt` timing** — the tool is DECIDED (name, gofmt philosophy: one style, no
+   options); is it v1 alongside the compiler, or fast-follow? Its style rules should be
+   written while the corpus is small either way.
 5. **Doc comments** carried into generated code — cheap, worth having; v1 or later?
 6. **A root/packet marker** — scopes the protocol id to reachable declarations (fixes the
    unused-helper-moves-the-id wart, §3.2), names which structs get buffer-sizing guidance,
@@ -728,6 +755,10 @@ measure, §6.1. Both DECIDED.)*
    excluding the `None` variant from the wire; schema's enum wire is always `[0, max]`.
    Cheap to live without (one wasted wire value), cheap to add (`kind CraftKind(1, max)` or a
    `no-None` form). Evidence: `examples/README.md`, finding 1.
+10. **`int` → `int32`?** With `float32`/`float64` adopted from Go, the ranged `int(Min,Max)`
+    (int32 semantics) and `int64(Min,Max)` pair is the remaining C-flavored asymmetry —
+    full Go alignment would name them `int32(Min,Max)`/`int64(Min,Max)`. Glenn's call;
+    mechanical rename either way.
 
 ---
 

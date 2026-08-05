@@ -18,9 +18,9 @@ example the spec's own rules reject is a finding — in one document or the othe
 
 | file | exercises |
 |---|---|
-| `Input.schema` | counted array of composed structs, raw-bit fields, self-counting `T[<= N]` |
+| `Input.schema` | counted array of composed types, raw-bit fields, self-counting `T[<= N]` |
 | `Messages.schema` | enum-dispatched message union: `switch`, empty case, byte blocks, per-case fields |
-| `ObjectCreate.schema` | quantized-int vector/quaternion structs, constants composing in ranges, bool-gated optional fields, enums |
+| `ObjectCreate.schema` | quantized-int vector/quaternion types, constants composing in ranges, bool-gated optional fields, enums |
 
 ## What the corpus already found
 
@@ -34,7 +34,7 @@ corpus doing its job:
 2. **Quantized ints are the real float idiom.** `serialize_compressed_float` exists in the
    library and is used *nowhere* in the game — floats that matter are pre-quantized to
    integers at a fixed scale and sent as ranged ints. The corpus therefore leans on
-   quantized-int structs; `compressed_float`'s seat in v1 is worth a second look.
+   quantized-int types; `compressed_float`'s seat in v1 is worth a second look.
 3. **Sentinel-terminated collections.** The real baseline/delta/explosion packets do not use
    counted arrays — they are bool/sentinel-terminated streams (serialize.go even ships
    `Continue`/`Until` helpers for the pattern), sized by mid-stream packet splitting. Not

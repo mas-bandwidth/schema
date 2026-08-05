@@ -1,33 +1,33 @@
 // Input.schema — client -> server input stream
 // Shape: a header of raw-bit fields, then a bounded, self-counting array of
-// composed input structs. The most common realtime packet shape there is.
+// composed input types. The most common realtime packet shape there is.
 
 package example
 
 const MaxInputsPerPacket = 16
 
-struct Input {
-    stickX   float
-    stickY   float
-    throttle float
-    yaw      float
-    pitch    float
+type Input {
+    stick_x  float32
+    stick_y  float32
+    throttle float32
+    yaw      float32
+    pitch    float32
 
     fire     bool
-    altFire  bool
+    alt_fire bool
     boost    bool
     brake    bool
     aim      bool
-    lockOn   bool
+    lock_on  bool
     zoom     bool
     ping     bool
 }
 
-struct InputPacket {
-    synchronizeSequence bits(16)
-    currentFrame        bits(64)
-    startFrame          bits(64)
+type InputPacket {
+    synchronize_sequence bits(16)
+    current_frame        bits(64)
+    start_frame          bits(64)
 
-    // wire: count in [0, MaxInputsPerPacket], then that many Input structs
+    // wire: count in [0, MaxInputsPerPacket], then that many Input elements
     inputs Input[<= MaxInputsPerPacket]
 }
