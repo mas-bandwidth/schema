@@ -1,22 +1,35 @@
-// Enums.schema — all hand-declared enums for the unit.
-// Every enum has None = 0 implicitly (SPEC §4.2); declared variants pack from 1;
-// storage derives from the enum's own max.
+// Enums.schema — the enum family: all three declaration forms (SPEC §4.2).
+// Canonical form only — 0 = None implicit, variants dense from 1, never sparse,
+// never explicit values. The distinction between the forms lives at the TYPE:
+//
+//   enum        with-None: None = 0 rides the wire, range [0, Max]
+//   enum_index  index of valid values: wire = value - 1, range [0, Max - 1];
+//               storage keeps 0 as an unset sentinel, never wire-legal
+//   enum_flags  one bit per variant from bit 0, up to 64; storage uint64 in
+//               every target; wire = variant-count raw bits; no implicit None
+//               (the empty mask is 0 and needs no name)
+//
 // Aspect-oriented layout (SPEC §2): one aspect per file.
 //
 // NOTE (Glenn, 2026-08-05): some of these are flatbuffers residue — hand-declared
-// only because flatbuffers gave no better tool. ShipType is really a DERIVED set
-// (each ship config/asset defines a type), and when the Config/Assets layer
-// lands, enums of that class are GENERATED from their definitions — the same
-// set-extraction move as MessageType and ObjectType. Hand-declared enums remain
-// for genuinely hand-owned sets (Team).
+// only because flatbuffers gave no better tool. The *Type sets are really DERIVED
+// (each config/asset definition defines one), and when the Config/Assets layer
+// lands they are GENERATED — the same set-extraction move as MessageType and
+// ObjectType. Hand-declared enums remain for genuinely hand-owned sets (Team).
 
 package example
 
-enum Team      { Red Blue }
-enum CraftKind { Light Medium Heavy }
+// nullable on the wire — a team field can be "no team"
+enum Team { Red Blue }
 
-// flatbuffers-residue class: eventually generated from Assets/Config definitions.
-enum ShipType  { Fighter Corvette Bomber Destroyer Carrier }
+// index kinds — the create-path pattern: None never rides the wire
+enum_index CraftKind   { Light Medium Heavy }
+enum_index ShipType    { Fighter Corvette Bomber Destroyer Carrier }
+enum_index MissileType { Heatseeker Torpedo Nuke }
+enum_index PropType    { Asteroid Chunk Fragment Sphere BlackHole DysonPanel }
 
-// demo-local, used by the switch idiom in Types.schema.
+// demo-local, used by the switch idiom in Types.schema
 enum RecordKind { Craft Debris }
+
+// flags — named bits over a uint64, consumed as masks
+enum_flags ShipFlags { FiringLaser Boosting Braking Aiming }

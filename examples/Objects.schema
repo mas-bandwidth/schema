@@ -1,44 +1,46 @@
 // Objects.schema — all object definitions for the unit.
 // Aspect-oriented layout (SPEC §2): one aspect per file.
 //
-// THE WORKED EXAMPLE: one definition drives the generated family. From each
-// object the compiler generates, per target:
-//   ObjectType            (None = 0, then each object, deterministic order)
-//   ShipState             (every field — the simulation struct)
-//   ShipData_Deep         + serialize (every non-local field; deep = full state,
-//                           sent to the client for client-side prediction)
-//   ShipData_Shallow      + serialize (the [interpolate] fields, quantized —
-//                           the wire-side implementation detail of interpolation)
-//   ShipData_Interpolate  (the [interpolate] fields in continuous storage)
+// From each object the compiler generates, per target (SPEC §4.8, §6.1 item 7):
+//   ObjectType            (None = 0, then each object, sorted by name)
+//   XState                (every field — the simulation struct)
+//   XData_Deep            + split read/write (every non-local field, deep encodings)
+//   XData_Shallow         + split read/write (the [interpolate] fields, quantized wire)
+//   XData_Interpolate     (the [interpolate] fields; projected fields in wire-int
+//                          domain, quantized composites continuous — SPEC §4.8 rule 5)
 //   Quantize / Unquantize (the Interpolate <-> Shallow mapping pair)
 //
-// Field inventory is faithful to the real Ship.h (2026-08-05). View-encoding
-// attribute syntax is PROPOSED (SPEC §4.8) — the deep/shallow semantics and the
-// generated artifact list are DECIDED. Missile, DynamicProp and Turret follow
-// once the Ship shape is approved.
+// The v1 deliverable, Glenn's words: "just build the structs from the definition
+// in schema lang to start. (shallow, deep, interpolated, quantize)". Interpolation
+// policy is type-derived (q13): lerp floats, shortest-arc nlerp quats, snap discrete.
 //
-// NOTE before this repo ever goes public: this file mirrors the real Space Game
-// ship — review with Glenn first.
+// Field inventories are faithful to the real Ship.h / Missile.h / DynamicProp.h /
+// Turret.h (measured 2026-08-05); names and tuning values genericized per README.
+// Where the hand-written code and the generated model diverge, the divergence is
+// noted honestly at the field — divergences are drift the generator normalizes,
+// not features it must reproduce.
 
 package example
 
 object Ship {
     // ---- visual state, [interpolate]: sent for client interpolation, rides
-    // the quantized shallow wire (an implementation detail) into Interpolate ----
+    // the quantized shallow wire into ShipData_Interpolate ----
 
     ship_type ShipType [interpolate]
 
-    position        Vec3 [interpolate, quantize = UnitsPerMeter, max = MaxWorldMeters]
-    rotation        Quat [interpolate, quantize = RotationUnits]
-    linear_velocity Vec3 [interpolate, quantize = UnitsPerMeter, max = MaxSpeedMeters]
+    position        Vec3 [interpolate, quantize = PositionUnits, max = MaxWorldMeters]
+    rotation        quat [interpolate, quantize = RotationUnits]
+    linear_velocity Vec3 [interpolate, quantize = VelocityUnits, max = MaxSpeedMeters]
 
-    flags uint64 [interpolate]
-    team  Team   [interpolate]
+    flags ShipFlags [interpolate]
+    team  Team      [interpolate]
 
-    // float in deep, ranged-int projection on the shallow wire — the real
-    // health/thrust pattern in ShipData_Shallow.
-    health float32 [interpolate, min = 0, max = MaxHealth]
-    thrust float32 [interpolate, min = 0, max = 100]
+    // float in deep; ranged-int projection on the shallow wire (SPEC §4.8 rule 4).
+    // health rounds UP so any living fractional health quantizes alive — the
+    // hand-written ceil is load-bearing. thrust's continuous domain is [0, 1];
+    // resolution 0.01 gives the wire int [0, 100], identical bits to today.
+    health float32 [interpolate, min = 0, max = MaxHealth, resolution = 1, round = up]
+    thrust float32 [interpolate, min = 0, max = 1, resolution = 0.01]
 
     // ---- full state: deep only (the default — no marker) ----
 
@@ -71,4 +73,76 @@ object Ship {
     // ---- simulation-only: no wire at all ----
 
     invulnerable bool [local]
+
+    // omitted, noted rather than silent: the real ShipState carries a client-only
+    // predictedExplode bool under #if GAME_CLIENT — the language has no
+    // side-conditional field construct, and it is [local] in every other respect.
+}
+
+object Missile {
+    // The hand-written Missile has NO deep structs (shallow/interpolate only);
+    // v1 generates the full family regardless — the unused deep view costs
+    // nothing and the model stays uniform. Hand-code also writes missile_type
+    // [1,MAX] on create but [0,MAX] on delta — drift, normalized by enum_index.
+
+    missile_type MissileType [interpolate]
+
+    position        Vec3 [interpolate, quantize = PositionUnits, max = MaxWorldMeters]
+    rotation        quat [interpolate, quantize = RotationUnits]
+    linear_velocity Vec3 [interpolate, quantize = VelocityUnits, max = MaxSpeedMeters]
+
+    team Team [interpolate]
+
+    // real field is an anonymous uint64 — bits unnamed in hand code; named bits
+    // move to an enum_flags when they are identified
+    flags uint64 [interpolate]
+
+    // ---- simulation-only ----
+
+    angular_velocity Vec3   [local]
+    target           Handle [local]
+
+    // omitted, noted: a server-only double timer (#if GAME_SERVER) — the same
+    // side-conditional gap as Ship's predictedExplode.
+}
+
+object DynamicProp {
+    // Also shallow/interpolate-only in hand code; prop_type is the clean
+    // enum_index case — [1, MAX] on both hand-written wire paths.
+
+    prop_type PropType [interpolate]
+
+    position        Vec3 [interpolate, quantize = PositionUnits, max = MaxWorldMeters]
+    rotation        quat [interpolate, quantize = RotationUnits]
+    linear_velocity Vec3 [interpolate, quantize = VelocityUnits, max = MaxSpeedMeters]
+
+    flags uint64 [interpolate]
+    team  Team   [interpolate]
+
+    // ---- simulation-only ----
+
+    angular_velocity Vec3 [local]
+}
+
+object Turret {
+    // The turret rides its parent ship: the parent Handle and turret_index are
+    // on every wire path, interpolated by snap (Handle components are discrete).
+    // The hand-written deep struct is a stub (carries parent/index/flags, not
+    // rotation, comment says "more data like cooldowns... etc"); the generated
+    // deep view is full-state per the model — the stub is unfinished hand code,
+    // not a design to reproduce.
+
+    parent       Handle [interpolate]
+    turret_index int32  [interpolate, min = 0, max = MaxTurretsPerShip - 1]
+
+    rotation quat [interpolate, quantize = RotationUnits]
+
+    flags uint64 [interpolate]
+
+    // ---- simulation-only ----
+
+    // real TurretState carries team with zero wire presence — [local] here,
+    // unlike Ship where team is [interpolate]. Same name, different wire
+    // treatment, per object: the marker is per-field, so this is free.
+    team Team [local]
 }

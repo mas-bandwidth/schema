@@ -1,31 +1,27 @@
-// Types.schema — all enums and types for the unit.
+// Types.schema — all plain types for the unit.
 // Aspect-oriented layout (SPEC §2): one aspect per file.
+// Quaternions use the built-in `quat` (unit by definition, SPEC §4.8) — there is
+// no user-declared quaternion type in this language.
 
 package example
 
-// Continuous vector and quaternion — float64 components, the deep wire.
+// Continuous vector — float64 components, the deep wire.
 type Vec3 {
     x float64
     y float64
     z float64
 }
 
-type Quat {
-    x float64
-    y float64
-    z float64
-    w float64
-}
-
 // A handle to another object: id + generation sequence.
+// object_id 0 doubles as the null sentinel (the surveyed NULL_OBJECT convention).
 type Handle {
     object_id       int32 [min = 0, max = MaxObjects - 1]
     object_sequence uint8
 }
 
-// Hand-quantized vectors — the v1-expressible idiom ObjectCreate.schema uses.
-// (object views express the same thing with [interpolate, quantize = ...]; both
-// belong in the corpus while the view syntax is PROPOSED.)
+// Hand-quantized vectors — the pre-object-views idiom CraftCreate uses below.
+// (Object views express the same thing with [interpolate, quantize = ...]; both
+// belong in the corpus while both idioms exist in real code.)
 type QuantizedPosition {
     x int32 [min = -MaxPositionUnits, max = MaxPositionUnits]
     y int32 [min = -MaxPositionUnits, max = MaxPositionUnits]
@@ -73,21 +69,21 @@ type InputPacket {
     inputs [<= MaxInputsPerPacket]Input
 }
 
-// ---- the v1-expressible create/dispatch idiom (pre-object-views) ----
+// ---- the create/dispatch idiom (pre-object-views) ----
 
 type CraftCreate {
-    // Finding 1 in README.md: the hand-written equivalent encodes kind as
-    // [1, max] — None excluded from the wire. schema's enum wire is [0, max],
-    // spending one unused value. Ranged enums are an open question.
+    // CraftKind is an enum_index: the wire is value - 1 in [0, CraftKind.Max - 1]
+    // — None never rides the wire, exactly the hand-written [1, MAX] create path.
     kind CraftKind
 
     position        QuantizedPosition
     rotation        QuantizedRotation
     linear_velocity QuantizedVelocity
 
+    // the flags gate idiom: one bool saves the flag bits in the common all-zero case
     has_flags bool
     if has_flags {
-        flags bits(64)
+        flags ShipFlags
     }
 
     team   Team
@@ -97,7 +93,7 @@ type CraftCreate {
 
 // The explicit-switch pattern — for dispatch that is NOT a declaration set.
 type ObjectRecord {
-    object_id   int32 [min = 0, max = 9999]
+    object_id   int32 [min = 0, max = MaxObjects - 1]
     record_kind RecordKind
     switch record_kind {
     case Craft:  craft CraftCreate

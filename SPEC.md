@@ -370,7 +370,7 @@ application's choice — netcode-style stacks already carry one.
 
 ### 4.1 Lexical structure
 
-- UTF-8 source; no BOM — PROPOSED (Rowan, 2026-08-05, the completion-pins batch): a BOM is
+- UTF-8 source; no BOM — DECIDED (corner-pins list, Glenn 2026-08-05): a BOM is
   rejected at parse, because it would silently move the protocol id (§3.1). `//` line
   comments and `/* */` block comments (non-nesting).
 - **Doc comments — DEFERRED, not v1 (Glenn, 2026-08-05: "don't care. leave for later."). The design below is kept for the day it lands:** a `//` comment
@@ -401,7 +401,8 @@ application's choice — netcode-style stacks already carry one.
 - **Integer literals:** decimal, hex (`0x`), binary (`0b`). **Float literals** (decimal, with
   optional fraction and exponent) appear in float constants and as float attribute values
   (`min`/`max`/`resolution` on `float32`).
-- **Punctuation and operators:** `{ } ( ) [ ] , : = ! .. <= + - * / %`.
+- **Punctuation and operators:** `{ } ( ) [ ] , : = ! . .. <= + - * / %` (maximal munch:
+  `..` wins over `.`).
 - **Reserved words:** `package const enum enum_index enum_flags type message object if
   else switch case align reserved`
   and the wire-type keywords `bits bool float32 float64 string bytes quat` plus the
@@ -430,8 +431,10 @@ EBNF (`NL` = the newline terminator; `{X}` repetition; `[X]` option):
 
 ```
 File        = { Declaration } .
-Declaration = Package | Const | Enum | TypeDecl | Message | Object .
+Declaration = Package | Const | Enum | EnumIndex | EnumFlags | TypeDecl | Message | Object .
 Object      = "object" ident Block NL .
+EnumIndex   = "enum_index" ident [ Attributes ] "{" { ident } "}" NL .
+EnumFlags   = "enum_flags" ident [ Attributes ] "{" { ident } "}" NL .
 Package     = "package" ident NL .
 Const       = "const" ident [ ConstType ] "=" ConstExpr NL .
 ConstType   = IntType | "float32" | "float64" .
@@ -459,8 +462,11 @@ IntType     = "int8" | "int16" | "int32" | "int64"
 Bound       = IntExpr | "<=" IntExpr | IntExpr ".." IntExpr .
 
 Attributes  = "[" Attr { "," Attr } "]" .                        // trailing, optional, per field
-Attr        = ident "=" ConstExpr                                // valued:    min = 0, max = -180.0
+Attr        = ident "=" ( ConstExpr | ident )                    // valued:    min = 0, round = up
             | ident .                                            // valueless: interpolate, local
+                                                                 // (ident values are keyword-like:
+                                                                 // each valued key declares whether
+                                                                 // it takes an expression or a word)
 
 If          = "if" [ "!" ] ident Block [ "else" Block ] NL .
 Switch      = "switch" ident "{" { Case } "}" NL .
@@ -471,7 +477,8 @@ CaseLabel   = ident | IntExpr .                                  // variant name
                                                                  // enum-subject labels resolve
                                                                  // as variants first)
 
-IntExpr     = integer expression over literals and const names:
+IntExpr     = integer expression over literals, const names, and enum max
+              references ( ident "." "Max" ):
               "+" "-" "*" "/" "%", unary "-", parentheses.
 FloatExpr   = float expression over float literals, int literals and const names:
               "+" "-" "*" "/", unary "-", parentheses — float64 arithmetic, no "%".
@@ -752,7 +759,7 @@ type Body {
   identically on write and read, so the wire stays symmetric.
 - **Case labels:** for an enum subject, bare variant names of that enum (resolved through the
   subject's type); for an integer subject, constant integer expressions. Duplicate case
-  values are a compile error. **Corner rules** *(PROPOSED, Rowan 2026-08-05 — the completion-pins batch, road-to-v1 decision 1)*: a `bits(N)` field is a
+  values are a compile error. **Corner rules** *(DECIDED — corner-pins list, Glenn 2026-08-05: "Yes, sounds good.")*: a `bits(N)` field is a
   legal integer subject; `case None:` is legal for an enum subject (the implicit variant is
   a variant); a user-declared variant literally named `None` is a compile error everywhere —
   the name is claimed by the implicit rule.
@@ -800,7 +807,7 @@ All compile errors with positions:
   rejects what the runtimes would reject. An empty `type` or `message` body is legal — zero
   wire bits, the Heartbeat precedent; an empty `object` body is an error (it generates a
   meaningless view family); a unit with no `.schema` files is an error.
-- **One flat namespace, and the compiler's claimed names — PROPOSED (Rowan, 2026-08-05):**
+- **One flat namespace, and the compiler's claimed names — DECIDED (corner-pins list, Glenn 2026-08-05):**
   all five declaration kinds share one unit-level namespace (`const Foo` and `type Foo`
   collide). A unit with `message` declarations may not declare `MessageType` (already
   stated in §4.8); symmetrically, a unit with `object` declarations may not declare
@@ -900,7 +907,7 @@ generates, per target:
 - Every message is also an ordinary type: its own `Write`/`Read`/`MaxBits`/`MaxBytes`, usable
   standalone and composable as a field (the grammar's `ident // a declared type or enum`
   includes message names — a message IS an ordinary type). **An `object` name is NOT a field
-  type in v1** *(PROPOSED, Rowan 2026-08-05 — the completion-pins batch, road-to-v1 decision 1)*: an object has no single wire form (Deep vs Shallow),
+  type in v1** *(DECIDED — corner-pins list, Glenn 2026-08-05: "Yes, sounds good.")*: an object has no single wire form (Deep vs Shallow),
   so `ship Ship` inside a message is a compile error naming this rule; view-qualified
   references are a later pass if ever needed. **And an `object` body admits plain fields
   only in v1** — no `if`/`switch`/`const()`/`reserved`/`align` — because the view-splitting
@@ -992,7 +999,7 @@ bare storage type's encoding.
 **§9 q13, RESOLVED for v1 — PROPOSED: interpolation policy is type-derived, with no
 per-field syntax.** Generated `Interpolate(t, a, b, out)` uses **lerp** for float
 components (vectors, floats); **shortest-arc normalized lerp** (negate on dot < 0, lerp,
-renormalize, identity fallback — nlerp, not slerp) for `[unit]` quaternions; **snap**
+renormalize, identity fallback — nlerp, not slerp) for `quat` (unit by definition); **snap**
 (`t < 0.5 ? a : b`) for bool, integers, enums, flags, handles, and rule-4 projections.
 Measured across all four real objects' `Interpolate()` functions: policy is 100%
 type-derived today — no field anywhere overrides its type's policy — so v1 needs a table,
@@ -1117,7 +1124,7 @@ exhaustion: running out of input mid-read is a read failure like any other** *(a
 2026-08-05 — it was the one malformed-input class the list omitted)* — and fail on any
 violation, because network input is the trust boundary. Generated read code never lets a
 value that controls iteration go unchecked before use (serialize.go documents this exact DoS
-vector). **Read termination** *(PROPOSED, Rowan 2026-08-05 — the completion-pins batch, road-to-v1 decision 1)*: `Read` consumes exactly the encoded
+vector). **Read termination** *(DECIDED — corner-pins list, Glenn 2026-08-05: "Yes, sounds good.")*: `Read` consumes exactly the encoded
 bits and reports bits consumed (so callers can frame several objects in one buffer); bytes
 remaining after the last field are the caller's concern, not a validation failure —
 `ReadMessage` streams end on the `None` tag by design.
@@ -1131,7 +1138,7 @@ attacker-influenced values as min/max.
 **Read failure leaves the output object in an unspecified state**; callers use it only on
 success. **Read success fully initializes it**: fields in untaken branches are set to their
 zero values — 0, 0.0, false, empty bytes, zero count, **`None` for an enum, recursively
-zeroed for a nested type, element-wise zeroed for a fixed array** *(the three cases PROPOSED, Rowan
+zeroed for a nested type, element-wise zeroed for a fixed array** *(the three cases DECIDED — corner-pins list, Glenn
 2026-08-05; whole-object comparison needs them defined)*. Write reads only taken fields.
 This is what makes whole-object comparison in the conformance matrix well-defined.
 
@@ -1153,6 +1160,9 @@ Per `type`, per target:
    | `bool` | `bool` | `bool` | `bool` | `bool` |
    | `float32` / `float64` (attributed or bare) | `float` / `double` | `float` / `double` | `float32` / `float64` | `f32` / `f64` |
    | enum `E` | `enum class E : uintN_t` (N = smallest fitting max) | `enum E : uintN` | `type E uintN` + consts | `#[repr(transparent)] struct E(pub uN)` + consts |
+   | `enum_index E` | same as enum (values 1..max; 0 = unset, never wire) | same | same | same |
+   | `enum_flags E` | `uint64_t` + one mask const per variant | `ulong` + consts | `uint64` + consts | `u64` + consts |
+   | `quat` (built-in) | 4 × `double` struct | 4 × `double` struct | 4 × `float64` struct | 4 × `f64` struct |
    | `string(N)` | `char[N]` | `byte[]` (bound-checked) | `string` | `Vec<u8>` (bound-checked) |
    | `bytes(N)` | `uint8_t[N]` | `byte[]` (length-checked) | `[N]byte` | `[u8; N]` |
    | `bytes(<=N)` | `uint8_t[N]` + `int32_t` count | `byte[]` (bound-checked) | `[]byte` (cap-checked) | `Vec<u8>` (bound-checked) |
@@ -1188,7 +1198,7 @@ Per `type`, per target:
    entire generated family missing from the generated-output contract; completed
    2026-08-05.)*
 
-**Generated symbol naming — PROPOSED (Rowan, 2026-08-05):** functions attach per target
+**Generated symbol naming — DECIDED (corner-pins list, Glenn 2026-08-05):** functions attach per target
 idiom — C++: free functions `WriteShip(...)` in `namespace <package>`; C#:
 `static class Schema` members in `namespace <Package>`; Go: free functions
 `WriteShip(stream, &ship)` in package `<package>` (no overloading — the type name is in the

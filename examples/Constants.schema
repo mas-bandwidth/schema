@@ -1,25 +1,31 @@
 // Constants.schema — all constants for the unit, in one place.
 // Aspect-oriented layout (SPEC §2): one aspect per file. Constants compose and
-// resolve order-free across the unit's files.
+// resolve order-free across the unit's files. Values are genericized — the
+// corpus carries the structure of a real protocol, not the game's tuning.
 
 package example
 
-// world quantization
-const UnitsPerMeter    = 1024
+// world quantization — one scale per domain, independently tunable
+const PositionUnits = 1024
+const VelocityUnits = 1024
+const RotationUnits = 1024
+
 const MaxWorldMeters   = 8192
-const MaxPositionUnits = MaxWorldMeters * UnitsPerMeter
+const MaxPositionUnits = MaxWorldMeters * PositionUnits
 
 const MaxSpeedMeters   = 2048
-const MaxVelocityUnits = MaxSpeedMeters * UnitsPerMeter
-
-const RotationUnits    = 1024
+const MaxVelocityUnits = MaxSpeedMeters * VelocityUnits
 
 // gameplay bounds
-const MaxHealth = 1000
+const MaxHealth  = 1000
 const MaxObjects = 10000
 
-const ShipMaxLasers   = 16
-const ShipMaxMissiles = 16
+const ShipMaxLasers     = 16
+const ShipMaxMissiles   = 16
+const MaxTurretsPerShip = 256
+
+// enum-derived counts — E.Max in constant expressions (SPEC §4.2)
+const NumTeams = Team.Max + 1
 
 // packet bounds
 const MaxInputsPerPacket = 16
