@@ -1215,8 +1215,8 @@ is stated so it cannot be quietly traded away.
 
 *(A "derives" block — three generated helper functions, `Equal`/`Checksum`/`Print`, from
 the external evaluation round — stood here for part of 2026-08-05 and was **DISCARDED on
-Glenn's word the same day:** *"those concepts are from Atlas. Discard. we don't use
-them."* / *"discard and throw in bin."* Git holds the design if a delta-pass need ever
+Glenn's word the same day:** *"those concepts are from [the external engine]. Discard. we
+don't use them."* / *"discard and throw in bin."* Git holds the design if a delta-pass need ever
 resurrects any of it under our own name.)*
 
 **Alignment is stream-relative**: a type containing `align`, `string` or `bytes` has
@@ -1509,8 +1509,8 @@ measure, §6.1. Both DECIDED.)*
     with the attribute values reserved.
 14. ~~The replication-policy boundary~~ — **DISCARDED (Glenn, 2026-08-05):** *"there are
     no send scheduling knobs in my game engine. i don't do priority/TTL/coherence."* /
-    *"those concepts are from Atlas. Discard. we don't use them. our networking
-    techniques are stronger than Patrick's"* — *"built around deltas and snapshots, not
+    *"those concepts are from [the external engine]. Discard. we don't use them. our
+    networking techniques are stronger than [theirs]"* — *"built around deltas and snapshots, not
     around priority accumulators and packing n most important objects into a small
     packet."* / *"discard and throw in bin."* No policy attributes, ever; the question
     came from an external evaluation of a different architecture and does not apply to

@@ -39,7 +39,7 @@ exchange record lives outside this repo.*
 - **§9 movement — and the 2026-08-05 pruning:** several rows opened or gained votes from
   the round; the same day, Glenn ruled the externally-derived concepts (replication-policy
   knobs, interop/adoption asks, the derives helpers) **DISCARDED** — *"those concepts are
-  from Atlas. Discard. we don't use them."* What survives of the round is this file's
+  from [the external engine]. Discard. we don't use them."* What survives of the round is this file's
   first section: the independent convergent validation of the object layer, and the
   protocol-id challenge §3.1 held against, twice.
 

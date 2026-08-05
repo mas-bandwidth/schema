@@ -37,10 +37,11 @@ git.*
   constants, enums, types, messages, object definitions. the delta serialization is out
   of scope of v1."*
 - **DISCARDED as a family** — replication-policy knobs, interop/adoption asks, the
-  Equal/Checksum/Print helpers: *"those concepts are from Atlas. Discard. we don't use
-  them. our networking techniques are stronger than Patrick's"* — *"built around deltas
-  and snapshots, not around priority accumulators."* No Atlas mentions remain in this
-  repo (grep-verified).
+  Equal/Checksum/Print helpers: *"those concepts are from [the external engine]. Discard.
+  we don't use them. our networking techniques are stronger than [theirs]"* — *"built
+  around deltas and snapshots, not around priority accumulators."* No external-engine
+  name mentions remain in this repo (grep-verified; bracketed elisions in his quotes are
+  the sweep applied to the quotes themselves).
 
 ## Landed outside the spec the same day
 
