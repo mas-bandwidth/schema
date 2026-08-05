@@ -1,4 +1,4 @@
-# schema — specification (draft 3)
+# schema — specification (draft 4)
 
 > **Status: DRAFT, pre-implementation — the language is the deliverable right now.** This
 > spec precedes the decision to build (house doctrine), and deliberately so: the language is
@@ -19,6 +19,12 @@
 > *Draft 3, same evening, on Glenn's word: the protocol id hashes the **generated code**
 > (superseding both draft 1's name-stripped IR hash and draft 2's named-IR hash), and
 > generated measure functions are dropped.*
+>
+> *Draft 4, 2026-08-05, on Glenn's word: the protocol id reversed once more to **hash the
+> schema files themselves** (§3.1 keeps all three designs with why each fell); C# joined as
+> the fourth target and serialize.cs was ported the same night; and the register went
+> **Go-inspired** — `type` not `struct`, `float32`/`float64`, snake_case fields, no
+> semicolons, `schemafmt` (§4.1).*
 
 ## 1. What schema is
 
@@ -69,7 +75,7 @@ for every platform, with zero compile-time tax on the consumer.**
    code a careful expert would hand-write against each serialize library — with no runtime
    schema interpretation, no reflection, and no `IsWriting` branching.
 3. **Byte-identical wire output across all four targets**, enforced by a conformance matrix
-   in CI, with classic serialize as the oracle. The three generated readers also **agree on
+   in CI, with classic serialize as the oracle. The four generated readers also **agree on
    what they reject** — acceptance is part of the wire contract here.
 4. **Compile-time cost near zero for consumers.** Generated code is plain source; the C++
    target requires only what classic serialize requires.
