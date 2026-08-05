@@ -1,15 +1,28 @@
 // Types.schema — all plain types for the unit.
 // Aspect-oriented layout (SPEC §2): one aspect per file.
-// Quaternions use the built-in `quat` (unit by definition, SPEC §4.8) — there is
-// no user-declared quaternion type in this language.
+// The language pre-defines NO composite types (SPEC §4.2, Type tags): these are
+// ours, minimal for this protocol's needs. The [vec3]/[quat4] tags are inert in
+// v1 — user-chosen labels the delta pass later CLAIMS to assign actions
+// (interpolation, prediction, normalization). Types on one side; a layer that
+// defines the needed actions for those types on the other.
 
 package example
 
 // Continuous vector — float64 components, the deep wire.
-type Vec3 {
+type Vec3 [vec3] {
     x float64
     y float64
     z float64
+}
+
+// Unit rotation quaternion — always unit length (rotations are). The tag is
+// what the delta pass will claim for renormalize + shortest-arc actions; in v1
+// this is a plain 4-float type and the hand-written rotation actions remain.
+type Quat [quat4] {
+    x float64
+    y float64
+    z float64
+    w float64
 }
 
 // A handle to another object: id + generation sequence.

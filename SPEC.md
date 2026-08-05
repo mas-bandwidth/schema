@@ -405,7 +405,7 @@ application's choice — netcode-style stacks already carry one.
   `..` wins over `.`).
 - **Reserved words:** `package const enum enum_index enum_flags type message object if
   else switch case align reserved`
-  and the wire-type keywords `bits bool float32 float64 string bytes quat` plus the
+  and the wire-type keywords `bits bool float32 float64 string bytes` plus the
   integer family `int8 int16 int32 int64 uint8 uint16 uint32 uint64` (and `int128 uint128
   int uint`, reserved — the first two for the deferred 128-bit construct (§4.10), the bare
   two so `int` gets a "did you mean int32?" diagnostic instead of a parse error).
@@ -440,7 +440,7 @@ Const       = "const" ident [ ConstType ] "=" ConstExpr NL .
 ConstType   = IntType | "float32" | "float64" .
 ConstExpr   = IntExpr | FloatExpr .
 Enum        = "enum" ident [ Attributes ] "{" { ident } "}" NL .
-TypeDecl    = "type" ident Block NL .
+TypeDecl    = "type" ident [ Attributes ] Block NL .        // attributes = the type CLASS, §4.2
 Message     = "message" ident Block NL .
 
 Block       = "{" { Item } "}" .
@@ -453,7 +453,7 @@ Align       = "align" NL .
 Type        = [ "[" Bound "]" ] Scalar .                         // array bound is a PREFIX, Go's order
 Scalar      = IntType
             | "bits" "(" IntExpr ")"
-            | "bool" | "float32" | "float64" | "quat"
+            | "bool" | "float32" | "float64"
             | "string" "(" IntExpr ")"
             | "bytes" "(" [ "<=" ] IntExpr ")"
             | ident .                                            // a declared type or enum
@@ -638,11 +638,71 @@ sequence    uint16
   enumeration lagged the valueless-markers decision above until 2026-08-05, which made the
   spec's own §4.8 examples compile errors). Still PROPOSED, riding the corpus review:
   `quantize`/`round` inside the §4.8 view-encoding rules. *(The former `[no_none]` and
-  `[unit]` markers are dead — their jobs moved to the `enum_index` declaration form and the
-  built-in `quat` type.)*
+  `[unit]` markers are dead — their jobs moved to the `enum_index` declaration form and
+  the type-tag mechanism below; a built-in `quat` and a class vocabulary each lived for
+  under an hour on the way to it.)*
 - **Attributes are the horizon's attachment point.** Per-field delta tiers, interpolation
   modes, struct-mapping targets — *"what properties and attributes per-property"* — land
   here as new keys with new generator passes, without touching the grammar again.
+
+### Type tags — DECIDED (Glenn, 2026-08-05): types are the user's; meaning is claimed later
+
+**The language pre-defines NO composite types** — no built-in vec3, no built-in quat, no
+privileged class list (Glenn: *"we don't have a pre-defined set of types"* / *"it's meant
+to be something bigger than space game, and somebody should be able to define their own
+types in there"*). A user declares a type and may **tag** it:
+
+```
+type Vec3 [vec3] {
+    x float64
+    y float64
+    z float64
+}
+
+type Quat [quat4] {
+    x float64
+    y float64
+    z float64
+    w float64
+}
+```
+
+- **The type is entirely the user's** — name, body, component precision. The body alone
+  defines storage and wire, like any type; a declared type composes anywhere in the unit,
+  order-free — *"as if a keyword from that point forward"* (his phrase; it is the
+  language's existing composition rule).
+- **The tag is one user-chosen identifier, in its own namespace** — any identifier is
+  legal there, unlike field-attribute keys, which stay closed and checked. **In v1 a tag
+  is inert**: parsed, carried through the IR, emitted as an annotation on the generated
+  type, and it changes zero generated code.
+- **Meaning arrives by CLAIMING** (his call, over both a built-in type set and a
+  compiler-known class vocabulary: *"I like the idea of claiming these tags and assigning
+  meaning and 'how to' interpolate and do stuff with these types."*): a future pass — the
+  delta pass first — claims a tag and assigns its semantics and generated actions
+  (interpolation, prediction, normalization, render mapping). Claiming is an ordinary
+  compiler-version event; the protocol id never moves for it (the id hashes the schema
+  files, and the files already carried the tag). The claiming pass defines its own shape
+  validation for claimed tags (e.g. `[quat4]` requiring four float components) and its
+  own policy toward unclaimed strangers.
+- **The architecture in his words:** *"so it's more like there is a series of types, and
+  then there is something that defines needed actions for those types."* Types on one
+  side; a layer that defines the needed actions for those types on the other. v1 ships
+  the types; the actions layer opens with the delta pass — *"but now the set of types is
+  entirely settable in schema language for deltas later on."* And the provenance, which
+  is the best argument for it: *"this is really what i was doing btw. with the manually
+  coded boiler plate for interpolate and quantize/unquantize"* — *"it's per-type but
+  these types are for my game, they may not be general."* His hand-written code is
+  already plain type structs plus separate per-type action functions, and those types
+  are one game's, not the world's — which is precisely why the language pre-defines
+  none: each schema declares its own types, and each game's actions bind to them by
+  claiming. The tag mechanism is that practice made declarative, not an invention. The
+  closing argument is his: *"it also lets my types be minimal for what my game needs,
+  vs. trying to implement a set of first class types that are sufficient for any game
+  (which is impossible)."* And the clincher from his own roadmap: *"all the types will
+  change soon, we'll go fully fixed point in space game, and all scalars, quats and
+  vectors will become fixed point, so these hard coded types are immediately obsolete."*
+  — under user-defined types, the fixed-point migration (§4.10, runtime-first) is a
+  re-declaration in his schemas, not a language change.
 
 ### Constants and enums are exported — DECIDED
 
@@ -705,7 +765,6 @@ siblings — design inputs, re-verified against library source at implementation
 | `f Weapon` (an enum) | minimal bits for [0, max]; read rejects above max | `serialize_int` over [0, max] |
 | `f Kind` (an `enum_index`, §4.2 DECIDED) | minimal bits for [0, max − 1], wire = value − 1 (decoded values are ≥ 1 by construction; read rejects above max) | `serialize_int` over [1, max] — the surveyed create path's exact call |
 | `f Damage` (an `enum_flags`, §4.2) | W raw bits, W = variant count (or [max]); every pattern legal; storage `uint64` in every target | `serialize_bits` |
-| `f quat` (built-in, unit by definition, §4.8) | bare: 4 × 64 raw bits (each low-dword-first); `[quantize = K]`: 4 ranged ints [−K, +K], renormalize on unquantize | 4 × `serialize_double` / the surveyed `write_rotation` |
 | `f Inner` (a type) | Inner's fields, in place | `serialize_object` |
 | `const(Value, Bits)` | the constant; read **rejects** any other value | `serialize_bits` + compare |
 | `reserved(Bits)` | zeros; read rejects nonzero | `serialize_bits` + compare |
@@ -970,16 +1029,17 @@ bare storage type's encoding.
    the range; read rejects out-of-range; unquantize maps `q → q / K`. The quantized twin's
    storage derives from the range. All components are sent — no smallest-three; the delta
    pass owns cleverer encodings.
-3. **Quaternions — `quat` is a BUILT-IN wire type, unit by definition. DECIDED (Glenn,
-   2026-08-05:** *"we don't support non-uniform quaternions."* / *"quaternions are used to
-   represent rotation, therefore always unit length."***)** Four float64 components;
-   storage generates the 4-float struct per target; bare wire is 4 × 64 raw bits;
-   `[quantize = K]` needs no `max` — the implied component bound is ±1, wire per component
-   is a ranged int `[−K, +K]`, and **unquantize renormalizes**. Interpolation policy is
-   shortest-arc nlerp (the q13 table). The `[unit]` marker from an earlier draft of this
-   rule is dead — there is nothing to mark when non-unit quaternions do not exist.
-   *(Grammar: `quat` joins the wire-type keywords in `Scalar` and the reserved words;
-   the corpus's user-declared `type Quat` dies in favor of the built-in.)*
+3. **No special composite cases in v1 — tags are inert (§4.2, Type tags).** Rule 2 is
+   the whole of composite quantization: every composite quantizes per-component with an
+   explicit `max` — a rotation field states its bound like anything else
+   (`rotation Quat [interpolate, quantize = RotationUnits, max = 1]`; unit quaternions
+   are always unit length — Glenn — so the bound is 1, written rather than implied).
+   Rotation-specific actions (renormalize on unquantize, shortest-arc interpolation) are
+   the delta pass claiming `[quat4]` — v1 generates the structural mapping only, and the
+   application keeps its hand-written rotation actions meanwhile, exactly as it does
+   today. *(Two earlier drafts — a built-in `quat` keyword, then a compiler-known class
+   vocabulary — died the same day on his direction that the language pre-define no
+   types.)*
 4. **Ranged-int projection** — on `float32`/`float64`,
    `[interpolate, min = A, max = B, resolution = R]` reuses §4.3's compressed-float
    triple: min/max name the **CONTINUOUS domain**, the shallow wire is the int
@@ -996,16 +1056,14 @@ bare storage type's encoding.
    artifact table's blanket "continuous storage" phrasing is corrected by this rule — the
    real `ShipData_Interpolate` stores health/thrust as ints.)*
 
-**§9 q13, RESOLVED for v1 — PROPOSED: interpolation policy is type-derived, with no
-per-field syntax.** Generated `Interpolate(t, a, b, out)` uses **lerp** for float
-components (vectors, floats); **shortest-arc normalized lerp** (negate on dot < 0, lerp,
-renormalize, identity fallback — nlerp, not slerp) for `quat` (unit by definition); **snap**
-(`t < 0.5 ? a : b`) for bool, integers, enums, flags, handles, and rule-4 projections.
-Measured across all four real objects' `Interpolate()` functions: policy is 100%
-type-derived today — no field anywhere overrides its type's policy — so v1 needs a table,
-not a vocabulary. Per-field overrides, angular floats, and smoothing eligibility defer to
-the delta/object pass; `lerp`, `slerp`, `snap`, `angle`, `smooth` are informally reserved
-as attribute values.
+**§9 q13, RESOLVED for v1 — no interpolation generation in v1 at all.** v1 generates the
+STRUCTS (State, Deep, Shallow, Interpolate) and the `Quantize`/`Unquantize` mapping pair —
+his scope sentence exactly: *"just build the structs from the definition in schema lang to
+start. (shallow, deep, interpolated, quantize)."* The `Interpolate(t, a, b, out)` FUNCTION
+stays hand-written until the delta pass claims type tags and assigns actions (§4.2, Type
+tags) — the measured fact that policy is 100% type-derived in all four real objects is
+recorded there as that pass's design input; `lerp`, `slerp`, `snap`, `angle`, `smooth`
+stay informally reserved as attribute values for it.
 
 The worked example is [`examples/Objects.schema`](examples/Objects.schema) — verified
 field-for-field against the real `Ship.h` on 2026-08-05: zero misclassifications, zero
@@ -1162,7 +1220,6 @@ Per `type`, per target:
    | enum `E` | `enum class E : uintN_t` (N = smallest fitting max) | `enum E : uintN` | `type E uintN` + consts | `#[repr(transparent)] struct E(pub uN)` + consts |
    | `enum_index E` | same as enum (values 1..max; 0 = unset, never wire) | same | same | same |
    | `enum_flags E` | `uint64_t` + one mask const per variant | `ulong` + consts | `uint64` + consts | `u64` + consts |
-   | `quat` (built-in) | 4 × `double` struct | 4 × `double` struct | 4 × `float64` struct | 4 × `f64` struct |
    | `string(N)` | `char[N]` | `byte[]` (bound-checked) | `string` | `Vec<u8>` (bound-checked) |
    | `bytes(N)` | `uint8_t[N]` | `byte[]` (length-checked) | `[N]byte` | `[u8; N]` |
    | `bytes(<=N)` | `uint8_t[N]` + `int32_t` count | `byte[]` (bound-checked) | `[]byte` (cap-checked) | `Vec<u8>` (bound-checked) |
@@ -1510,13 +1567,14 @@ measure, §6.1. Both DECIDED.)*
 12. ~~**`int` → `int32`?**~~ — **RESOLVED 2026-08-05 by the integer family**: bare `int` is
     gone; every integer names its width, Go-style, and `int`/`uint` are reserved purely to
     give a helpful diagnostic.
-13. **Interpolation policy — RESOLVED for v1 (PROPOSED mechanism, rides the corpus
-    review): a table, not a vocabulary.** Measured across all four real objects'
-    `Interpolate()` functions, policy is 100% type-derived — lerp for float components,
-    shortest-arc nlerp for `quat` (unit by definition, §4.8), snap for everything
-    discrete — and no field anywhere overrides its type's policy, so v1 needs zero
-    syntax; per-field overrides, angular floats and smoothing wait for the delta pass
-    with the attribute values reserved.
+13. ~~Interpolation policy~~ — **RESOLVED 2026-08-05: no interpolation generation in v1
+    at all** (§4.8). v1 builds the structs and the Quantize/Unquantize pair;
+    `Interpolate()` stays hand-written until the delta pass claims type tags and
+    assigns actions — **tag → specifying behavior, his architecture** (Glenn: *"this
+    alone points to the tag -> specifying behavior being the correct way to go."*).
+    Design input recorded for that pass: measured across all four real objects, policy
+    is 100% type-derived today (lerp floats, shortest-arc nlerp rotations, snap
+    discrete), and no field anywhere overrides its type's policy.
 14. ~~The replication-policy boundary~~ — **DISCARDED (Glenn, 2026-08-05):** *"there are
     no send scheduling knobs in my game engine. i don't do priority/TTL/coherence."* /
     *"those concepts are from [the external engine]. Discard. we don't use them. our

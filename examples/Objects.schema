@@ -11,8 +11,9 @@
 //   Quantize / Unquantize (the Interpolate <-> Shallow mapping pair)
 //
 // The v1 deliverable, Glenn's words: "just build the structs from the definition
-// in schema lang to start. (shallow, deep, interpolated, quantize)". Interpolation
-// policy is type-derived (q13): lerp floats, shortest-arc nlerp quats, snap discrete.
+// in schema lang to start. (shallow, deep, interpolated, quantize)". No
+// interpolation generation in v1 — the Interpolate() function stays hand-written
+// until the delta pass claims type tags and assigns actions (SPEC §4.2, §4.8).
 //
 // Field inventories are faithful to the real Ship.h / Missile.h / DynamicProp.h /
 // Turret.h (measured 2026-08-05); names and tuning values genericized per README.
@@ -29,7 +30,7 @@ object Ship {
     ship_type ShipType [interpolate]
 
     position        Vec3 [interpolate, quantize = PositionUnits, max = MaxWorldMeters]
-    rotation        quat [interpolate, quantize = RotationUnits]
+    rotation        Quat [interpolate, quantize = RotationUnits, max = 1]
     linear_velocity Vec3 [interpolate, quantize = VelocityUnits, max = MaxSpeedMeters]
 
     flags ShipFlags [interpolate]
@@ -88,7 +89,7 @@ object Missile {
     missile_type MissileType [interpolate]
 
     position        Vec3 [interpolate, quantize = PositionUnits, max = MaxWorldMeters]
-    rotation        quat [interpolate, quantize = RotationUnits]
+    rotation        Quat [interpolate, quantize = RotationUnits, max = 1]
     linear_velocity Vec3 [interpolate, quantize = VelocityUnits, max = MaxSpeedMeters]
 
     team Team [interpolate]
@@ -113,7 +114,7 @@ object DynamicProp {
     prop_type PropType [interpolate]
 
     position        Vec3 [interpolate, quantize = PositionUnits, max = MaxWorldMeters]
-    rotation        quat [interpolate, quantize = RotationUnits]
+    rotation        Quat [interpolate, quantize = RotationUnits, max = 1]
     linear_velocity Vec3 [interpolate, quantize = VelocityUnits, max = MaxSpeedMeters]
 
     flags uint64 [interpolate]
@@ -126,7 +127,8 @@ object DynamicProp {
 
 object Turret {
     // The turret rides its parent ship: the parent Handle and turret_index are
-    // on every wire path, interpolated by snap (Handle components are discrete).
+    // on every wire path, in the interpolate set (discrete fields; their action
+    // when the claiming pass arrives is snap).
     // The hand-written deep struct is a stub (carries parent/index/flags, not
     // rotation, comment says "more data like cooldowns... etc"); the generated
     // deep view is full-state per the model — the stub is unfinished hand code,
@@ -135,7 +137,7 @@ object Turret {
     parent       Handle [interpolate]
     turret_index int32  [interpolate, min = 0, max = MaxTurretsPerShip - 1]
 
-    rotation quat [interpolate, quantize = RotationUnits]
+    rotation Quat [interpolate, quantize = RotationUnits, max = 1]
 
     flags uint64 [interpolate]
 

@@ -62,3 +62,20 @@ git.*
    he reviews the `.schema` files. *"Before we implement, let's land all design
    questions, generate final language example source code in *.schema in repo and i'll
    review."*
+
+## Addendum — the type-tags decision (2026-08-05, evening, after the corner pins)
+
+The last design question opened and closed the same hour: does the language pre-define
+composite types? **No — DECIDED.** Three candidate designs died on the way (a built-in
+`quat` keyword; a `type Quat [rotation]` behavior attribute; a compiler-known class
+vocabulary), each on Glenn's direction that the language stay general and pre-define no
+types. What landed (SPEC §4.2, Type tags, his words throughout): **types are entirely
+user-defined and user-tagged (`type Vec3 [vec3]`); tags are inert in v1; the delta pass
+CLAIMS tags and assigns meaning and actions** — "tag -> specifying behavior." His
+arguments, all banked verbatim: types are per-game, not general; a first-class set
+sufficient for any game is impossible; and the fixed-point migration would make any
+hard-coded float types immediately obsolete, while under user types it is a
+re-declaration in his schemas, not a language change. v1 consequence: no interpolation
+generation at all — v1 builds the structs and Quantize/Unquantize; Interpolate() stays
+hand-written until claiming. Corpus updated to match (tagged Vec3/Quat in Types.schema;
+rotation fields carry the explicit `max = 1`).
