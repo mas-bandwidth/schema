@@ -98,7 +98,7 @@ for every platform, with zero compile-time tax on the consumer.**
 - **No self-describing wire data.** The wire stays an unattributed bit stream; all knowledge
   lives in the generated code on both ends.
 - **Deferred constructs:** wide strings (`serialize_wstring`) and relative integers
-  (`serialize_int_relative`) are not in v1 — see §4.9.
+  (`serialize_int_relative`) are not in v1 — see §4.10.
 
 ### The horizon — recorded so v1 does not foreclose it
 
@@ -257,10 +257,10 @@ application's choice — netcode-style stacks already carry one.
 - **Integer literals:** decimal, hex (`0x`), binary (`0b`). **Float literals** (decimal, with
   optional fraction and exponent) appear only as `compressed_float` parameters.
 - **Punctuation and operators:** `{ } ( ) [ ] , : = ! .. <= + - * / %`.
-- **Reserved words:** `package const enum type if else switch case align reserved max` and
-  the wire-type keywords `bits bool float32 float64 compressed_float string bytes` plus the
+- **Reserved words:** `package const enum type message if else switch case align reserved
+  max` and the wire-type keywords `bits bool float32 float64 compressed_float string bytes` plus the
   integer family `int8 int16 int32 int64 uint8 uint16 uint32 uint64` (and `int128 uint128
-  int uint`, reserved — the first two for the deferred 128-bit construct (§4.9), the bare
+  int uint`, reserved — the first two for the deferred 128-bit construct (§4.10), the bare
   two so `int` gets a "did you mean int32?" diagnostic instead of a parse error).
   Reserved words cannot be used as names.
 - **Newlines terminate declarations and fields — there are no semicolons, like Go.** The
@@ -275,11 +275,12 @@ EBNF (`NL` = the newline terminator; `{X}` repetition; `[X]` option):
 
 ```
 File        = { Declaration } .
-Declaration = Package | Const | Enum | TypeDecl .
+Declaration = Package | Const | Enum | TypeDecl | Message .
 Package     = "package" ident NL .
 Const       = "const" ident "=" IntExpr NL .
 Enum        = "enum" ident [ "(" "max" "=" IntExpr ")" ] "{" { ident } "}" NL .
 TypeDecl    = "type" ident Block NL .
+Message     = "message" ident Block NL .
 
 Block       = "{" { Item } "}" .
 Item        = Field | ConstField | Reserved | Align | If | Switch .
@@ -482,7 +483,57 @@ lets the targets agree:
 For every legal write the wire bits are identical to `serialize_string`. If UTF-8 text with
 enforced validity is wanted later, it is a new wire type, not a redefinition of this one.
 
-### 4.8 A complete example
+### 4.8 Message sets — `MessageType` is implicit
+
+**DECIDED (Glenn, 2026-08-05):** each message is its own declaration; the discriminant enum,
+the wire tag and the dispatch are the compiler's job, not the author's — *"I'd like
+MessageType to be implicit in the generation, and for the messages definition in the schema
+language to just be each message"* / *"This way we specify the minimal things, this means you
+have to extract the message types yourself in a symbol table."*
+
+```
+message Ping {
+    sequence uint16
+}
+
+message Chat {
+    text string(MaxChatLength)
+}
+
+message Heartbeat {
+    // empty body — presence is the payload
+}
+```
+
+From the unit's `message` declarations the resolver extracts the message set and the compiler
+generates, per target:
+
+- **The `MessageType` enum, with `None = 0`** — *"Message types (and all other types...)
+  should have 0 = no type, so we can express null"* — **then each message in a deterministic
+  order** (his words). The order is **sorted by message name** (PROPOSED: independent of file
+  layout and declaration shuffles; declaration-order is the alternative if he prefers
+  append-at-the-end reading). `MessageType` is a claimed name: a unit with messages may not
+  declare its own.
+- **The wire framing**: the tag in minimal bits for `[0, count]` (the enum wire rule; read
+  rejects tags above count), then the message body. **Tag 0 = None is a valid wire value
+  meaning *no message*** — the null that gives message streams a natural terminator, the
+  same shape as the surveyed protocol's `OBJECT_TYPE_NONE` sentinel.
+- **`WriteMessage` / `ReadMessage`** plus a dispatch surface in each language's idiom: a real
+  `enum Message { None, Chat(Chat), Ping(Ping), ... }` in Rust, an interface + type switch in
+  Go, a base type + pattern match in C#, and in C++ whatever fits — union, variant, factory.
+  **Representation is per-language and explicitly NOT part of the contract** (Glenn,
+  2026-08-05: *"I do messages as unions in C++ but that doesn't mean they have to be or
+  should be that way in other languages. That's just a C++ implementation detail."*) What
+  binds every target is behavioral only: identical bytes, **reading `None` is a valid
+  none-result, reading an out-of-range tag is a validation failure.**
+- Every message is also an ordinary type: its own `Write`/`Read`/`MaxBits`/`MaxBytes`, usable
+  standalone and composable as a field.
+
+**The 0-reserved principle generalizes** — when the horizon's object-type sets arrive, their
+generated discriminants follow the same rule: 0 = none, then the types in the same
+deterministic order.
+
+### 4.9 A complete example
 
 ```
 // Messages.schema
@@ -490,8 +541,6 @@ package protocol
 
 const MaxObjects    = 1024
 const MaxChatLength = 256
-
-enum MessageType { Ping Pong Chat Snapshot }
 
 type Vec {
     x float32
@@ -508,26 +557,33 @@ type ObjectState {
     }
 }
 
-type Message {
-    crc          uint32
-    message_type MessageType
-    switch message_type {
-    case Ping:  ping_sequence uint16
-    case Pong:  pong_sequence uint16
-    case Chat:  text string(MaxChatLength)
-    case Snapshot:
-        base_sequence uint16
-        objects       ObjectState[<= MaxObjects]
-    }
+message Ping {
+    sequence uint16
+}
+
+message Pong {
+    sequence uint16
+}
+
+message Chat {
+    text string(MaxChatLength)
+}
+
+message Snapshot {
+    base_sequence uint16
+    objects       ObjectState[<= MaxObjects]
 }
 ```
 
-*(Ping's and Pong's sequence fields carry distinct names because §4.6 makes field names
-unique per type — including across cases. Draft 1's showcase violated its own rules; the
+No `MessageType` enum is declared and no dispatch is written — the compiler extracts the
+message set and generates both (§4.8): `MessageType { None = 0, Chat, Ping, Pong, Snapshot }`
+and the per-language `WriteMessage`/`ReadMessage`. *(Ping and Pong may both name a field
+`sequence` because they are separate types; §4.6's unique-names rule is per type. The
 standing check is that every example in this spec and in `examples/` must compile under the
-spec as written.)*
+spec as written — the enum `MessageType` at the top of this example was deleted when message
+sets arrived, exactly the boilerplate §4.8 exists to eat.)*
 
-### 4.9 Deferred constructs
+### 4.10 Deferred constructs
 
 - **`int128` / `uint128`** — DECIDED as part of the integer family (Glenn, 2026-08-05), with
   a named customer: **ludicrous mode** (*"we will need int 128 for ludicrous mode :)"*).
@@ -604,6 +660,10 @@ Per `type`, per target:
    worst-case (7-bit) padding assumed at each alignment point. Size write buffers from
    `MaxBytes`. Conservative is correct for a buffer bound.
 5. **`ProtocolId`** — one constant per unit (§3).
+6. **For a unit with `message` declarations (§4.8):** the `MessageType` enum (`None = 0`,
+   then the messages, sorted by name), `WriteMessage`/`ReadMessage` with the tag framing,
+   and the dispatch surface in each language's own idiom — representation per target,
+   behavior identical.
 
 **There is no generated measure function** — DECIDED (Glenn, 2026-08-04: measure *"was
 always a bit of a hack"*). `Write` returns the actual size, `MaxBytes` sizes buffers, and
@@ -680,7 +740,9 @@ schemafmt     [dir|files...]          // the canonical formatter — gofmt's phi
   is what makes precise diagnostics cheap. The parser recovers at declaration boundaries so
   one error does not hide the rest.
 - **Resolver/checker**: name resolution across the unit's files, constant folding (checked
-  signed 64-bit), the shape checks of §4.6, the dominance rule of §4.5.
+  signed 64-bit), the shape checks of §4.6, the dominance rule of §4.5, and **the message-set
+  extraction** — the symbol table over `message` declarations from which `MessageType` and
+  the dispatch are generated (§4.8).
 - **IR — the load-bearing design decision.** The checker lowers to a small, fully-resolved
   intermediate representation, and backends consume only the IR — a C++/Go/Rust divergence
   must be written into a printer to exist at all. **The IR preservation invariant: the IR
@@ -761,7 +823,7 @@ measure, §6.1. Both DECIDED.)*
 1. **Strings as byte strings** (§4.7) — confirm; a validated UTF-8 wire type can come later.
 2. ~~**Storage-type overrides**~~ — **RESOLVED 2026-08-05 by the integer family**: storage
    is declared by the type name (`thrust int8(0, 100)`), no override mechanism needed.
-3. **Wide strings and relative integers deferred** (§4.9) — confirm nothing near-term needs
+3. **Wide strings and relative integers deferred** (§4.10) — confirm nothing near-term needs
    them; int_relative wants a cross-element design.
 4. **`schemafmt` timing** — the tool is DECIDED (name, gofmt philosophy: one style, no
    options); is it v1 alongside the compiler, or fast-follow? Its style rules should be

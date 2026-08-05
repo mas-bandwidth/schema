@@ -1,38 +1,37 @@
 // Messages.schema — the reliable message set
-// Shape: one enum-dispatched message union. The kind field is serialized once,
-// the switch back-references it for free, and each case carries its own fields.
-// An empty case is a legal, zero-bit message body.
+// Each message is its own declaration. The compiler extracts the set into a
+// symbol table and generates the rest (SPEC §4.8): the MessageType enum
+// (None = 0, then each message in deterministic order), the wire tag in
+// minimal bits, and WriteMessage/ReadMessage dispatch in each language's own
+// idiom. No hand-written enum, no hand-written switch.
 
 package example
 
 const MaxBlockSize = 2000
 
-enum MessageKind { Heartbeat Test Block Synchronize Timescale }
+message Heartbeat {
+    // empty body — presence of the message is the payload
+}
 
-type Message {
-    kind MessageKind
+message Test {
+    test_a uint16
+    test_b int16(0, 1000)
+    test_c int16(0, 1000)
+    test_d int16(0, 1000)
+}
 
-    switch kind {
-    case Heartbeat:
-        // empty body — presence of the message is the payload
+message Block {
+    // wire: length in [0, MaxBlockSize], align, then the bytes
+    block_data bytes(<= MaxBlockSize)
+}
 
-    case Test:
-        test_a uint16
-        test_b int16(0, 1000)
-        test_c int16(0, 1000)
-        test_d int16(0, 1000)
+message Synchronize {
+    sync_frame    uint64
+    sync_sequence uint16
+}
 
-    case Block:
-        // wire: length in [0, MaxBlockSize], align, then the bytes
-        block_data bytes(<= MaxBlockSize)
-
-    case Synchronize:
-        sync_frame    uint64
-        sync_sequence uint16
-
-    case Timescale:
-        timescale double
-        frame_a   uint32
-        frame_b   uint32
-    }
+message Timescale {
+    timescale float64
+    frame_a   uint32
+    frame_b   uint32
 }

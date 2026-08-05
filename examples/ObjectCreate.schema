@@ -60,3 +60,16 @@ type CraftCreate {
     health int16(0, MaxHealth)
     thrust int8(0, 100)
 }
+
+// The explicit-switch pattern — for dispatch that is NOT a message set
+// (object records inside a snapshot packet, the baseline/delta shape).
+enum RecordKind { None Craft Debris }
+
+type ObjectRecord {
+    object_id   int32(0, 9999)
+    record_kind RecordKind
+    switch record_kind {
+    case Craft:  craft CraftCreate
+    case Debris: debris_seed uint32
+    }
+}

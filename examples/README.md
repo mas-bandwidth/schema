@@ -18,9 +18,9 @@ example the spec's own rules reject is a finding — in one document or the othe
 
 | file | exercises |
 |---|---|
-| `Input.schema` | counted array of composed types, raw-bit fields, self-counting `T[<= N]` |
-| `Messages.schema` | enum-dispatched message union: `switch`, empty case, byte blocks, per-case fields |
-| `ObjectCreate.schema` | quantized-int vector/quaternion types, constants composing in ranges, bool-gated optional fields, enums |
+| `Input.schema` | counted array of composed types, bare `uintN` header fields, self-counting `T[<= N]` |
+| `Messages.schema` | `message` declarations — the implicit `MessageType` set (SPEC §4.8): empty message, byte blocks, storage-typed ranged ints |
+| `ObjectCreate.schema` | quantized-int vector/quaternion types (`int16`/`int32` storage), constants composing in ranges, bool-gated optional fields, enums, and the explicit `switch` on an object-record kind |
 
 ## What the corpus already found
 
