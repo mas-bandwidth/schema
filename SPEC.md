@@ -23,18 +23,27 @@
 ## 1. What schema is
 
 **schema** is a small language for describing bitpacked network data, and a compiler — written
-in Go — that translates `*.schema` files into generated C++, Go and Rust source code targeting
-the serialize family of libraries:
+in Go — that translates `*.schema` files into generated C++, C#, Go and Rust source code
+targeting the serialize family of libraries:
 
 | target | runtime library |
 |---|---|
 | C++ | [serialize](https://github.com/mas-bandwidth/serialize) |
+| C# | serialize.cs — **does not exist yet**; a prerequisite work item (below) |
 | Go | [serialize.go](https://github.com/mas-bandwidth/serialize.go) |
 | Rust | [serialize.rs](https://github.com/mas-bandwidth/serialize.rs) |
 
-All three runtimes are bit-for-bit wire compatible and pin that property in CI with golden
-bytes. schema inherits that foundation: **a struct serialized by generated code in any target
-language decodes identically in the other two.**
+The existing three runtimes are bit-for-bit wire compatible and pin that property in CI with
+golden bytes. schema inherits that foundation: **a struct serialized by generated code in any
+target language decodes identically in the others.**
+
+**C# — DECIDED (Glenn, 2026-08-04), with its prerequisite named.** No serialize C# runtime
+exists (measured against the mas-bandwidth repo list the same night). The C# backend therefore
+waits on **serialize.cs**: a wire-compatible sibling built the way serialize.go and
+serialize.rs were — golden bytes copied from the C++ suite, head-to-head byte-identity CI, the
+same buffer and error conventions adapted to the language. The compiler architecture does not
+change: a new target is a new dumb printer over the same IR — and since the protocol id
+hashes the schema files (§3.1), adding a target moves no deployed id, ever.
 
 The idea is extracted from
 [serialize.modern](https://github.com/mas-bandwidth/serialize.modern)'s compile-time schema
@@ -125,46 +134,42 @@ they exchange a byte, which radically simplifies everything downstream. (Glenn, 
 maintains it by hand; two sides with different wire formats cannot accidentally claim
 compatibility.
 
-### 3.1 The hash — DECIDED: hash the generated code
+### 3.1 The hash — DECIDED: hash the schema files
 
-**The id is the low 64 bits of SHA-256 over the generated source code — all target languages,
-always** (Glenn, 2026-08-04: *"hash the generated codes"*). The generated functions ARE the
-protocol; if they change in any target, the protocol changed. The context that sets the bar
-(Glenn, same conversation): *"we would manually bump version id in games when we changed the
-serialize functions, and that's super unsafe"* — the id exists so that forgetting to bump is
-structurally impossible, and hashing the artifact that actually does the serializing is the
-most direct form of that.
+**The id is the low 64 bits of SHA-256 over the unit's `*.schema` files themselves** (Glenn,
+2026-08-04: *"just hash the schema files themselves, instead of generated. Seems cleaner,
+because the schemas generates the files, it would be faster, and now the protocol id does not
+change when we add a new language"*). The context that sets the bar (Glenn, same
+conversation): *"we would manually bump version id in games when we changed the serialize
+functions, and that's super unsafe"* — the id exists so that forgetting to bump is
+structurally impossible.
 
-Definition, precise so two compiler builds agree:
+**This is the production-proven pattern**: Space Game already ships `schema_hash.h` — *"hash
+of all game/Schemas/*.fbs files. generated. do not edit!"* — folded with `PROTOCOL_VERSION`
+into the protocol id that gates every encrypted packet. schema does for the bitpacked layer
+exactly what that mechanism already does for the flatbuffers layer.
 
-- The hash covers the generated output for **every supported target, in fixed order (cpp, go,
-  rust), regardless of which `--lang` set was requested** — `schema id` and
-  `schema generate --lang go` must never disagree about the id. The compiler runs all
-  emitters internally for the id even when writing only one.
-- The per-file **header block is excluded** from the hashed content — it embeds the compiler
-  version and the protocol id itself (circularity), so: generate bodies → hash → inject the
-  id constant and header.
-- Generation is already deterministic to the byte (§6.1), which is what makes this
-  well-defined.
+Definition, precise so two compiler builds agree: the unit's `*.schema` files ordered by
+sorted basename, each file's raw bytes hashed in sequence; low 64 bits of the SHA-256.
 
 Properties, stated honestly in both directions:
 
-- **Cannot false-negative.** Two builds that claim the same id have byte-identical serialize
-  code in every language; renames, range changes, reordering, validation changes all move the
-  id. The unsafe direction — talking while incompatible — is closed by construction.
-- **Can false-positive.** A compiler upgrade whose emitters change formatting moves every id
-  without any schema edit, forcing a lockstep redeploy that the wire did not require. This
-  fails safe (sides refuse to talk when they actually could), and under the deployment model
-  — client and server ship together at one protocol version — it is an accepted cost.
-  Emitter output is treated as stable between compiler versions for exactly this reason, and
-  `schema id` outputs over the conformance corpus are pinned as golden values so an id-moving
-  compiler change is loud in our own CI, never a surprise in the field.
+- **Any schema file edit moves the id** — including comments and whitespace. Accepted: under
+  the ship-together model a spurious id change costs a redeploy that was probably happening
+  anyway, and it fails safe (sides refuse to talk when they actually could).
+- **The id does not move when a target language is added or the compiler upgrades.** The
+  corollary is a real obligation on the compiler, named rather than hidden: **the same schema
+  must produce the same wire across compiler versions** — a wire-affecting emitter change
+  under an unchanged schema would be a silent false-negative, so the conformance corpus's
+  golden wire bytes pin every construct's encoding permanently, and a compiler change that
+  breaks a wire golden is a stop-the-line event, never a quiet fix.
 
-*(Draft 1 proposed hashing a canonical IR encoding and recommended rename-invariance; a cold
-reader refuted rename-invariance — name-stripped hashes let two builds swap `health`/`armor`
-and silently read each other's slots crosswise. Hashing generated code keeps names in the id
-for free, since generated code contains them, and removes the need to freeze an IR encoding
-as a public contract at all.)*
+*(Two designs preceded this one tonight. Draft 1 hashed a canonical IR and prized
+rename-invariance; a cold reader killed that — name-stripped hashes let two builds swap
+`health`/`armor` and silently read each other's slots crosswise. Draft 3 hashed the generated
+code of every target; deciding C# an hour later exposed the cost — the target set was part of
+the id, so adding a language moved every deployed id. File hashing keeps names in the id,
+needs no frozen IR encoding, and decouples the id from both the emitters and the target set.)*
 
 ### 3.2 The unit
 
