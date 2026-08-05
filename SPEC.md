@@ -184,7 +184,11 @@ general pattern is in his own `Constants.h`: **four** data blobs already exist �
 the game's own usage on day one. The general mechanism to design: **a declared collection of
 typed instances, living as data files, collated by the compiler into a versioned, hashed
 binary with generated loaders, accessors and derived enums** — of which config, assets,
-options and user settings are four expressions.
+options and user settings are four expressions. His closing formulation of the shape, the
+collection triple: *"the pattern for Config.bin and Assets.bin is a source directory of
+json files working against some schema pattern, eg. set of config types, set of asset
+types, compiling and linking into *.bin"* — **one source directory, against one declared
+set of types, into one binary.**
 
 **The frame that completes it (Glenn, 2026-08-05): the schema compiler is a
 compiler-linker for data.** *"the json files are sort of 'compiled' and 'linked' into the
