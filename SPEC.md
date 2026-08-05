@@ -1075,10 +1075,20 @@ measure, §6.1. Both DECIDED.)*
    cannot express them. The splitting half is emitter-driven and probably stays application
    code; whether the plain bool-continuation list deserves a v1 construct is the open half.
    Evidence: `examples/README.md`, finding 3.
-11. **Enum subranges.** The surveyed create path writes an object kind as `[1, max]`,
-   excluding the `None` variant from the wire; schema's enum wire is always `[0, max]`.
-   Cheap to live without (one wasted wire value), cheap to add (`kind CraftKind(1, max)` or a
-   `no-None` form). Evidence: `examples/README.md`, finding 1.
+11. **Enum subranges, and the enum-as-index pattern** — widened 2026-08-05 with Glenn's
+   design thoughts for the future, banked verbatim. The surveyed create path writes an
+   object kind as `[1, max]`, excluding `None` from the wire. With universal implicit
+   `None = 0`, two related wants emerged: **(a) index enums without None** — *"for these
+   index values, that index is not there... it's like, shifted left, 0 is no longer valid"*
+   (laser_index/missile_index going *"off the enum directly and we don't have to repeat
+   min/max"*); **(b) enum-as-index as an explicit language feature** — *"this enum -> an
+   index to the values the enum represents, is a common pattern... tying it explicitly to
+   the enum as a language feature/pattern helps avoid manual mistakes being made here in
+   future"* — his working name: **`enum_index`**, and the pattern is wider than enums:
+   *"in space game i turn everything into an index, it's a pattern. object ids, enums
+   etc."* A field that indexes a declared set derives its range from the set, never
+   restates it. Design pass owed; evidence: `examples/README.md` finding 1 and `Ship.h`'s
+   hand-repeated `[0, SHIP_MAX_LASERS-1]` bounds.
 12. ~~**`int` → `int32`?**~~ — **RESOLVED 2026-08-05 by the integer family**: bare `int` is
     gone; every integer names its width, Go-style, and `int`/`uint` are reserved purely to
     give a helpful diagnostic.
