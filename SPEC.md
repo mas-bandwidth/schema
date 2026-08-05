@@ -25,6 +25,19 @@
 > the fourth target and serialize.cs was ported the same night; and the register went
 > **Go-inspired** — `type` not `struct`, `float32`/`float64`, snake_case fields, no
 > semicolons, `schemafmt` (§4.1).*
+>
+> *Draft 5, 2026-08-05 afternoon — the road-to-1.0 audit: three independent audits
+> (corpus-on-paper, self-consistency, wire fidelity vs all four runtime contracts), eight
+> decision dossiers, and an adversarial verification pass over all of it (17 of 19 findings
+> confirmed at their cited lines). What changed: stale draft-1/2 residue repaired wherever it
+> contradicted DECIDED text (the §3.2 layout-independence sentence, the IR-as-id-input
+> sentences, the three-targets leftovers, the enum-max off-by-one, dead call-syntax ranges,
+> the float-attribute literals-only clash); the grammar's newline-suppression and
+> float-expression holes closed; a normative wire model added (§4.3.0); read termination
+> defined (§5); §6.1/§7.1 completed with the DECIDED object artifacts; §7.2 gains the
+> golden-wire-bytes and fp-contract gates its own promises relied on; and every §9 open
+> question now carries a worked recommendation with its evidence, awaiting Glenn's calls —
+> the decision list is `notes/road-to-v1.md`.*
 
 ## 1. What schema is
 
@@ -143,7 +156,8 @@ source. Two v1 implications, noted and then set aside:
   field lands in) attaches through the per-field attribute mechanism of §4.2 — the
   attachment point exists in v1's grammar already.
 - Nothing in v1's grammar may squat on syntax the horizon will want (`packet`, `table`,
-  `delta`, `baseline` are informally reserved for future use).
+  `delta`, `baseline`, `index` are informally reserved for future use — `index` for the
+  everything-is-an-index feature, §9 q11).
 
 **THE FLATBUFFERS REPLACEMENT — DECIDED IN DIRECTION, 2026-08-05.** Glenn: *"I don't want to
 use flatbuffers. What I want to do is to bring across definitions for config and assets into
@@ -290,24 +304,45 @@ code of every target; deciding C# an hour later exposed the cost — the target 
 the id, so adding a language moved every deployed id. File hashing keeps names in the id,
 needs no frozen IR encoding, and decouples the id from both the emitters and the target set.)*
 
-*(Challenged externally 2026-08-05: the Atlas evaluation argued for a canonical layout hash —
+*(Challenged externally 2026-08-05: the evaluation argued for a canonical layout hash —
 whitespace-insensitive, names kept. Declined, with the trade named: any canonicalized hash
 converts the second property above — the id not moving on a compiler upgrade — from a
 structural fact into a maintained promise, because every parser/canonicalization change then
 risks moving deployed ids. File bytes keep that property structural, and the whitespace cost
 fails safe. Revisit only if `schemafmt` (§9 q4) lands, which would make "hash the canonical
-form" cheap to define. Full argument: `notes/2026-08-05-atlas-eval-response.md`.)*
+form" cheap to define. The full argument is the paragraph above plus
+`notes/external-feedback-learnings.md`; the exchange record lives outside this repo.)*
+
+**The hash procedure, pinned so two compiler builds agree — PROPOSED (Rowan, 2026-08-05;
+the file-hash decision is Glenn's, this edge-case pinning is the mechanism half):** the
+unit's `*.schema` files (non-recursive; only the `.schema` extension; a duplicate basename
+in an explicit file list is a compile error) ordered by **bytewise ascending basename**;
+for each file, hash its basename bytes, then a single `0x00`, then its raw content bytes
+(the delimiter prevents two textually different units from concatenating identically, and
+puts renames in the hash by construction); the id is the **final 8 bytes of the SHA-256
+digest interpreted big-endian** as a uint64. A UTF-8 BOM is rejected at parse (it would
+silently move the id). File bytes are the contract — a CRLF checkout moves the id;
+repositories should pin LF for `*.schema`.
 
 ### 3.2 The unit
 
 A compilation unit is a set of `*.schema` files compiled together (one directory by default).
-**Exactly one `package` per unit** — a mismatch is an error. Names resolve across all files in
-the unit; the id depends only on the set of declarations, never on their file layout. One id
-per unit, exposed as a constant (`ProtocolId` / `PROTOCOL_ID`) and printed by `schema id`.
+**Exactly one `package` per unit** — a mismatch is an error; `package` appears once per file,
+as its first declaration. Names resolve across all files in the unit — a declaration may sit
+in any file, in any order, with no *semantic* effect. **The id is §3.1's file hash: it depends
+on the unit's bytes — file layout, declaration order, comments and whitespace included.**
+*(This paragraph said "the id depends only on the set of declarations, never on their file
+layout" until 2026-08-05 — a true sentence about drafts 1–2's IR hash that survived two hash
+reversals; under DECIDED §3.1 it was false, and it is corrected rather than left to disagree.)*
+One id per unit, exposed as a constant (`ProtocolId` / `PROTOCOL_ID`) and printed by `schema id`.
 
-**Known consequence, documented rather than hidden:** every declaration in the unit
-contributes to the id, so adding an unused helper type moves it. A root/packet marker that
-scopes the id to reachable declarations is the natural door (§9, open question 7).
+**Known consequence, documented rather than hidden:** every byte of the unit contributes to
+the id — an unused helper type moves it, exactly as a comment does (§3.1), accepted under the
+same rationale: fails safe, and under the ship-together model the redeploy was happening
+anyway. Scoping the id to reachable declarations is **not** an available fix while §3.1
+stands: reachability is a front-end computation, so excluding unreachable declarations means
+hashing something other than raw file bytes — the parser enters the id path, the exact trade
+§3.1 declined (§9, open question 6).
 
 `reserved(bits)` fields remain useful *within* a protocol id — not to dodge redeploys (any
 claim of reserved bits moves the id like any other change), but to keep packet sizes and
@@ -320,7 +355,16 @@ application's choice — netcode-style stacks already carry one.
 
 ### 4.1 Lexical structure
 
-- UTF-8 source. `//` line comments and `/* */` block comments (non-nesting).
+- UTF-8 source, no BOM (a BOM is rejected at parse — it would silently move the protocol
+  id, §3.1). `//` line comments and `/* */` block comments (non-nesting).
+- **Doc comments — PROPOSED (Rowan, 2026-08-05; §9 q5, recommended v1):** a `//` comment
+  block whose last line immediately precedes a declaration, field, or enum variant — no
+  blank line between — is that item's doc comment, carried through the IR and emitted in
+  each target's idiom (`///` Rust, `/// <summary>` C#, preceding-line `//` Go, `//` C++),
+  so the schema's documentation is the generated headers' documentation. All other comments
+  are preserved by `schemafmt` and invisible to codegen. Comments already participate in
+  the protocol id (§3.1 hashes file bytes), so doc comments add no new id sensitivity —
+  and the comment-carrying scanner they need is machinery `schemafmt` requires anyway.
 - **Identifiers:** `[A-Za-z_][A-Za-z0-9_]*`. Conventions, matching the flatbuffers layer the
   language will eventually absorb: type and enum names `UpperCamelCase`, enum variants
   `UpperCamelCase`, **fields `lower_snake_case`**, constants `UpperCamelCase`. The compiler
@@ -354,7 +398,15 @@ application's choice — netcode-style stacks already carry one.
   newline is a terminator token,
   suppressed: immediately after `{`, `(`, `[`, `,`, `:`, `=`, `else`, and an infix operator;
   and immediately before `)`, `]`, `}`. Blank lines are insignificant. `{` sits on the same
-  line as its construct; `} else {` is written on one line.
+  line as its construct; `} else {` is written on one line — and a newline between `}` and
+  `else` is tolerated by the parser (the formatter rewrites it to one line).
+  **Two consequences, stated so the grammar is implementable as written** *(repaired
+  2026-08-05 — the suppression rule as first stated made every NL-terminated production
+  unable to complete before `}`)*: **a closing `}` also terminates the item before it** — in
+  every production below, a trailing `NL` is satisfied by an actual newline OR by the
+  immediately following `}`; and **end-of-file synthesizes a terminator**, so a file without
+  a trailing newline still parses. Within an enum body, newlines between variants are
+  ordinary whitespace — variants are not items and need no terminator.
 
 ### 4.2 Grammar
 
@@ -391,22 +443,34 @@ IntType     = "int8" | "int16" | "int32" | "int64"
 Bound       = IntExpr | "<=" IntExpr | IntExpr ".." IntExpr .
 
 Attributes  = "[" Attr { "," Attr } "]" .                        // trailing, optional, per field
-Attr        = ident "=" ( IntExpr | FloatLit )                   // valued:    min = 0
-            | ident .                                            // valueless: interpolated, local
+Attr        = ident "=" ConstExpr                                // valued:    min = 0, max = -180.0
+            | ident .                                            // valueless: interpolate, local
 
 If          = "if" [ "!" ] ident Block [ "else" Block ] NL .
 Switch      = "switch" ident "{" { Case } "}" NL .
 Case        = "case" CaseLabel ":" { Item } .                    // ends at next case or }
 CaseLabel   = ident | IntExpr .                                  // variant name, or integer
+                                                                 // (an ident that is a const
+                                                                 // name resolves as IntExpr;
+                                                                 // enum-subject labels resolve
+                                                                 // as variants first)
 
 IntExpr     = integer expression over literals and const names:
               "+" "-" "*" "/" "%", unary "-", parentheses.
+FloatExpr   = float expression over float literals, int literals and const names:
+              "+" "-" "*" "/", unary "-", parentheses — float64 arithmetic, no "%".
 ```
 
-- **Integer expressions** evaluate in checked signed 64-bit at compile time. Overflow,
-  division by zero, and a negative result where a width, bound or count is required are
-  compile errors. Float attribute values (`min`/`max`/`resolution` on `float32`) are float
-  literals only in v1.
+- **Integer expressions** evaluate at compile time in arbitrary precision, Go's
+  untyped-constant style, with a fit-check at each use site — so `0xFFFFFFFFFFFFFFFF` is
+  writable for a full-range `uint64` bound while overflow at a use site stays a compile
+  error *(was "checked signed 64-bit", which made every uint64 value ≥ 2^63 unwritable —
+  repaired 2026-08-05)*. Division by zero, and a negative result where a width, bound or
+  count is required, are compile errors. Integer division truncates toward zero, Go's rule.
+  **Float attribute values (`min`/`max`/`resolution` on `float32`) are float expressions** —
+  literals, const names, and arithmetic, per `FloatExpr`; integer constants convert in float
+  positions *(this bullet said "float literals only" while the typed-constants bullet below
+  said constants convert there — the DECIDED typed-constants rule wins; repaired 2026-08-05)*.
 - **Constants compose** — DECIDED (Glenn, 2026-08-05: *"constants can refer to other
   constants, so we can build up things, const C = A * 2 + B"*). A `const` may reference any
   other `const` in the unit, order-free across files like type references; reference cycles
@@ -432,6 +496,26 @@ IntExpr     = integer expression over literals and const names:
   alias the fake-enum constants above); and **two new language needs, filed as open
   questions** — const expressions over enum counts (`NUM_TEAMS = Team_MAX + 1`, `MAX_PROPS`
   as a sum) and platform-conditional constants (`FRAME_SAFETY` differs under `__linux__`).
+- **Enum max references — PROPOSED (Rowan, 2026-08-05; resolves §9 q7):** `E.max` in any
+  integer expression names enum `E`'s max — the derived count, or the widened `[max = K]` —
+  the same number the enum's wire range and storage already derive. The count of wire values
+  is `E.max + 1` by ordinary constant arithmetic, and sizing enum-indexed tables with it
+  stays correct under headroom, where non-variant values are wire-legal (§6.1). The worked
+  migration is `Constants.h`'s `NUM_TEAMS = ( Team_MAX + 1 )` becoming
+  `const NumTeams = Team.max + 1`, exported to all four targets like any const; it works on
+  generated sets too (`MessageType.max`). `max` after `.` is contextual, like attribute keys;
+  the lexer keeps maximal munch so `..` still wins over `.`. *(`len(Team)` was considered and
+  declined: three plausible meanings, and every one of them sizes enum-indexed tables wrong
+  under headroom — the max is the true primitive. The other half of q7 as originally filed —
+  `MAX_PROPS` as a sum — needed nothing: constant composition already expresses it.)*
+- **Constants are platform-uniform — PROPOSED (Rowan, 2026-08-05; resolves §9 q8), a rule
+  with a reason rather than an economy:** a schema has no platform conditionals. The protocol
+  id hashes the schema files (§3.1), so one schema is one id on every platform — a
+  platform-conditional constant reaching any range, bound or width would let two builds carry
+  the same id with different wires, the exact bug class the id exists to make impossible. The
+  survey's one platform-conditional (`FRAME_SAFETY`, two call sites, zero wire contact) stays
+  hand-written in game code; if it ever wants central ownership it is tweakable timing
+  tuning — config-layer material, not a schema constant.
 - Inside a type body one token of lookahead disambiguates every item: `const` + `(` is a
   constant field (versus the top-level `const name =` declaration); `if` / `switch` /
   `align` / `reserved` are keywords; any other identifier begins a field. The grammar is
@@ -444,6 +528,41 @@ IntExpr     = integer expression over literals and const names:
   unsigned integer that fits (his ask: *"it works out the underlying integer type based on
   the size of the enum values"*). Explicit variant values are not in v1 — noted because the
   bare space-separated form forecloses adding `= value` without a separator change.
+- **PROPOSED (Rowan, 2026-08-05; §9 q9 — the separator is the one irreversible piece, so
+  decide it while the corpus is five files):** variants become **newline-terminated, one per
+  line, like fields** (`Variant = ident [ "=" IntExpr ] NL`), with two riders. **Explicit
+  values:** `= 0` is a compile error (`None` owns 0); pinned values strictly ascending; an
+  unpinned variant takes previous + 1; max derives as the LAST variant's value (equal to the
+  count when nothing is pinned); values skipped by pinning are wire-legal non-variant values,
+  the same class as `[max]` headroom — the read rule is unchanged, reject above max.
+  **Flag enums: `enum Name [flags] { ... }`** — variants name **bit positions** (implicitly
+  0, 1, 2, ...; `= N` pins a position, strictly ascending); **no implicit `None`** — the
+  empty mask is 0 and needs no name (the migration source's own generated header proves
+  None-in-flags mints an unused mask burning bit 0); wire is raw `bits(W)`, W = highest
+  position + 1 (`[max = K]` widens to W = K + 1); every W-bit pattern is legal — a mask
+  field's domain is all subsets; each target exports one mask constant per variant
+  (`1 << position`), because mask tests are how flag state is consumed. *(Why now: the
+  surveyed game flies one named flags enum plus three anonymous `uint64` flags fields with
+  hand-kept masks; the separator cannot be added later without breaking every shipped
+  schema; and comma separation was declined — it would be the language's only
+  comma-separated declaration list, and Go's own const block is line-per-item.)*
+- **Enum fields index their set two ways — PROPOSED (Rowan, 2026-08-05; resolves §9 q11,
+  Glenn's both-kinds requirement banked there):** a bare enum field is **nullable** —
+  `None = 0` rides the wire, range `[0, max]`, the same shape as the generated
+  `MessageType`/`ObjectType` tags (§4.8); an enum field marked **`[no_none]`** is an
+  **index of valid variants** — `None` is not a wire value, range `[1, max]` encoded as
+  value − 1 (§4.3's ranged-int rule), and a read of 0 is a validation failure. The marker
+  moves wire and validation only: storage still derives from the enum's own max, and the
+  in-memory type still represents `None` — the surveyed ship holds `ShipType_None` in state
+  while every wire write of the same enum is `[1, max]`, so the two kinds coexist per-field,
+  which is what rules out a type-level split. **The derived-range rule, normative:** a field
+  that indexes a declared set derives its range from the set, never restates it — both enum
+  wires derive from the enum declaration; `min`/`max` are not valid on enum fields. *(The
+  wider pattern — integer indexes over declared sets and collections, object ids with
+  0 = null — is the horizon's everything-is-an-index feature; `index` joins the informally
+  reserved words, and its ranges will derive under this same rule. Dependency: both enum
+  wires assume tight packing; if q9's explicit values land, enum validation restates as
+  membership.)*
 - **Type references are order-free** — a type or enum may be used before its declaration,
   in any file of the unit. (Field *back-references* are not order-free; §4.5.)
 - `if` and `switch` nest freely inside blocks and case bodies.
@@ -484,7 +603,12 @@ sequence    uint16
   compile error**, never a silently ignored string (the anti-Go-struct-tag decision: keyed
   like Go, checked like Go is not). v1: integers take `min`/`max` (both together or
   neither); `float32` takes `min`/`max`/`resolution` (all three together — see §4.3: this IS
-  the compressed float); `enum` declarations take `max`.
+  the compressed float); `enum` declarations take `max`; **the valueless view markers
+  `interpolate` and `local` are in the vocabulary for `object` bodies** (§4.8 — this
+  enumeration lagged the valueless-markers decision above until 2026-08-05, which made the
+  spec's own §4.8 examples compile errors). PROPOSED additions awaiting their decisions:
+  `no_none` on enum fields (q11), `quantize`/`round` and the `unit` type marker inside the
+  §4.8 view-encoding rules, `flags` on enum declarations (q9).
 - **Attributes are the horizon's attachment point.** Per-field delta tiers, interpolation
   modes, struct-mapping targets — *"what properties and attributes per-property"* — land
   here as new keys with new generator passes, without touching the grammar again.
@@ -513,8 +637,29 @@ pass.)*
 
 ### 4.3 Field types and their wire encodings
 
+**The wire model — normative** *(added 2026-08-05: the table below defined every construct
+only by pointing at its classic twin, whose contract lives outside this document; an
+implementer working from the spec alone could not produce one correct byte. These are the
+family's measured invariants, restated here as the spec's own)*:
+
+- **Bit order is LSB-first**: successive values OR into the stream at increasing bit
+  offsets, no per-value reversal — **bit i of the stream lives in byte i/8 at bit position
+  i%8.**
+- The writer accumulates into a 64-bit scratch flushed as **little-endian words**; the final
+  flush zero-fills — the stream's logical length is **ceil(bits/8) bytes**, and `Write`
+  returns exactly that.
+- **All >32-bit quantities go low 32 bits first**, then the high remainder (`bits(N>32)`,
+  `uint64`, `float64`, ranged encodings wider than 32 bits).
+- **Ranged integers encode `value − min`, unsigned, in exactly `bits_required(min, max)`
+  bits** (32 − clz(max − min)); no zigzag on the wire, ever.
+- **`align` emits zero bits up to the next byte boundary — zero bits when already
+  aligned**; readers verify the padding is zero.
+- **Length prefixes** (`string(N)`, `bytes(<= N)`, `[<= N]T`, `[Min..N]T`) are ranged
+  integers over their declared count range, per the row below.
+
 The wire encodings are exactly classic serialize's — each row names its classic twin, which is
-the wire oracle. (Contracts: `notes/serialize-cpp-api.md`.)
+the wire oracle for the stated model. (Extracted contracts: `notes/serialize-cpp-api.md` and
+siblings — design inputs, re-verified against library source at implementation time.)
 
 | schema | wire | classic twin |
 |---|---|---|
@@ -524,8 +669,10 @@ the wire oracle. (Contracts: `notes/serialize-cpp-api.md`.)
 | `f bool` | 1 bit | `serialize_bool` |
 | `f float32` | 32 raw IEEE-754 bits | `serialize_float` |
 | `f float64` | 64 raw bits (low dword first) | `serialize_double` |
-| `f float32 [min = A, max = B, resolution = R]` | quantized to R-sized steps; read rejects values above the step count | `serialize_compressed_float` (exact formulas incl. the ceil, +0.5f rounding and clamp) — **the former `compressed_float` keyword, dissolved into attributes: storage stays `float32`, the attributes describe the wire** |
+| `f float32 [min = A, max = B, resolution = R]` | quantized to ceil((B−A)/R) steps — the actual step is (B−A)/ceil((B−A)/R), ≤ R *(the row said "R-sized steps", exact only when (B−A)/R is integral — corrected 2026-08-05)*; read rejects values above the step count | `serialize_compressed_float` (exact formulas incl. the ceil, +0.5f rounding and clamp) — **the former `compressed_float` keyword, dissolved into attributes: storage stays `float32`, the attributes describe the wire** |
 | `f Weapon` (an enum) | minimal bits for [0, max]; read rejects above max | `serialize_int` over [0, max] |
+| `f Weapon [no_none]` (an enum) — PROPOSED, §9 q11 | minimal bits for [1, max], value − 1; read rejects 0 and above max | `serialize_int` over [1, max] — the surveyed create path's exact call |
+| `f Damage` (a `[flags]` enum) — PROPOSED, §9 q9 | W raw bits, W = highest position + 1 (or [max] + 1); every pattern legal | `serialize_bits` |
 | `f Inner` (a type) | Inner's fields, in place | `serialize_object` |
 | `const(Value, Bits)` | the constant; read **rejects** any other value | `serialize_bits` + compare |
 | `reserved(Bits)` | zeros; read rejects nonzero | `serialize_bits` + compare |
@@ -579,7 +726,10 @@ type Body {
   identically on write and read, so the wire stays symmetric.
 - **Case labels:** for an enum subject, bare variant names of that enum (resolved through the
   subject's type); for an integer subject, constant integer expressions. Duplicate case
-  values are a compile error.
+  values are a compile error. **Corner rules** *(pinned 2026-08-05)*: a `bits(N)` field is a
+  legal integer subject; `case None:` is legal for an enum subject (the implicit variant is
+  a variant); a user-declared variant literally named `None` is a compile error everywhere —
+  the name is claimed by the implicit rule.
 
 ### 4.5 Back-references: the dominance rule
 
@@ -606,20 +756,35 @@ All compile errors with positions:
 
 - `bits`, `const`, `reserved` widths outside [1,64]; a `const` value that does not fit its
   width.
-- **A range that does not fit its declared storage:** `int8(0, 1000)` is a compile error —
-  the range determines the wire, the type name determines the storage, and a legal wire
-  value the storage truncates would be silent corruption that passes read validation. (This
-  check left the spec in draft 2 as vestigial — storage was derived then; with the integer
-  family naming storage explicitly, it returns with a real job.)
+- **A range that does not fit its declared storage:** `int8 [min = 0, max = 1000]` is a
+  compile error — the range determines the wire, the type name determines the storage, and a
+  legal wire value the storage truncates would be silent corruption that passes read
+  validation. (This check left the spec in draft 2 as vestigial — storage was derived then;
+  with the integer family naming storage explicitly, it returns with a real job. *The worked
+  example here carried the dead call syntax `int8(0, 1000)` until 2026-08-05 — unparseable
+  under the grammar since attributes landed.*)
 - **Attribute discipline:** an unknown attribute key, a key repeated, an attribute on a type
   that does not take it, `min` without `max` (or vice versa), and `resolution` without both
   bounds are compile errors, each naming the field and the legal vocabulary for its type.
 - **Degenerate ranges:** any ranged integer with min ≥ max (the diagnostic suggests `const`
   for a fixed value); `[Min..N]T` with Min ≥ N; `string(N)` with N < 2; `bytes(<= N)` with
-  N < 1; an enum whose max is 0 (fewer than two wire values); `resolution` ≤ 0. Every
-  runtime treats `min == max` range serialization as API misuse, so the language rejects
-  what the runtimes would reject.
-- Enum `max` below variant count − 1; enum values above `max` unreachable by construction.
+  N < 1; **`bytes(N)` with N < 1; `[N]T` with N < 1; `[<= N]T` with N < 1** *(three holes
+  closed 2026-08-05)*; an enum whose max is 0 (fewer than two wire values); `resolution` ≤ 0.
+  Every runtime treats `min == max` range serialization as API misuse, so the language
+  rejects what the runtimes would reject. An empty `type` or `message` body is legal — zero
+  wire bits, the Heartbeat precedent; an empty `object` body is an error (it generates a
+  meaningless view family); a unit with no `.schema` files is an error.
+- **One flat namespace, and the compiler's claimed names — PROPOSED (Rowan, 2026-08-05):**
+  all five declaration kinds share one unit-level namespace (`const Foo` and `type Foo`
+  collide). A unit with `message` declarations may not declare `MessageType` (already
+  stated in §4.8); symmetrically, a unit with `object` declarations may not declare
+  `ObjectType`, nor — per object `X` — the generated family names (`XState`, `XData_Deep`,
+  `XData_Shallow`, `XData_Interpolate`); and no unit declares `ProtocolId`. Diagnostics name
+  the generated artifact that claims the name.
+- Enum `max` below variant count; enum values above `max` unreachable by construction.
+  *(Said "count − 1" until 2026-08-05 — a leftover from a pack-from-0 model. Under implicit
+  `None = 0` with variants packing from 1, the top variant's value IS the count, so
+  `[max = count − 1]` would make it unencodable while passing the check.)*
 - **Duplicate field names anywhere in one type — including across branch sides and cases.**
   One name, one field, declared once. (serialize.modern permits exclusive-side member reuse
   because members pre-exist there; schema owns the type, and unique names keep the
@@ -645,6 +810,17 @@ lets the targets agree:
 
 For every legal write the wire bits are identical to `serialize_string`. If UTF-8 text with
 enforced validity is wanted later, it is a new wire type, not a redefinition of this one.
+
+**Generated-code consequence, stated so no backend discovers it late** *(added 2026-08-05
+from the contract audit)*: the runtimes' `serialize_string` is the **wire oracle** for
+`string(N)`, not necessarily the emitted call. The §6.1 storage rules make the runtime
+string methods unusable in two targets — C# stores `byte[]` but `SerializeString` takes
+`ref string`; Rust stores `Vec<u8>` but `serialize_string` takes `&mut String` **and
+rejects non-UTF-8 bytes, which are legal here** — so the C# and Rust backends compose the
+wire from primitives: length over [0, N−1], then align, then raw bytes. C++ and Go may use
+their runtime string call for the framing. **The interior-null check is generated-code
+validation in all four targets** — no runtime primitive performs it (classic C++ read
+appends `'\0'` and would silently truncate).
 
 ### 4.8 Declaration sets — `message` and `object`, their types implicit
 
@@ -673,9 +849,22 @@ generates, per target:
 
 - **The `MessageType` enum, with `None = 0`** — *"Message types (and all other types...)
   should have 0 = no type, so we can express null"* — **then each message in a deterministic
-  order** (his words). The order is **sorted by message name** (PROPOSED: independent of file
-  layout and declaration shuffles; declaration-order is the alternative if he prefers
-  append-at-the-end reading). `MessageType` is a claimed name: a unit with messages may not
+  order** (his words; the *which* order is Rowan's to propose). The order is **declaration
+  order** (PROPOSED, 2026-08-05: files in sorted-basename order — the same order §3.1
+  already fixes — then top-to-bottom within each file; append new messages at the end and
+  existing tag values never move, the numbering discipline every discriminant in the
+  surveyed game already follows). A convention, like the aspect layout, not enforced: any
+  reorder, cross-file move or file rename is *wire-safe* — the id moves with the bytes and
+  both sides regenerate — it only renumbers the values that logs, dashboards and humans
+  remember. **`schemafmt` never reorders declarations; the order is tag-bearing.**
+  *(Sorted-by-name was the first proposal, reversed on the evidence: inside one
+  ship-together unit the wire cannot tell the orders apart — the id moves on any schema
+  change and both sides regenerate — so the decision falls entirely to the off-wire
+  surfaces, and sorted renumbers most tags on every ordinary addition (the external
+  "Aardvark" jab at q16, valid in-unit too) while declaration order renumbers only on
+  deliberate refactor. All three discriminant sets in the shipping game are
+  append-ordered. An explicit stable-tag attribute remains the q16-era escape; neither
+  order forecloses it.)* `MessageType` is a claimed name: a unit with messages may not
   declare its own.
 - **The wire framing**: the tag in minimal bits for `[0, count]` (the enum wire rule; read
   rejects tags above count), then the message body. **Tag 0 = None is a valid wire value
@@ -690,7 +879,14 @@ generates, per target:
   binds every target is behavioral only: identical bytes, **reading `None` is a valid
   none-result, reading an out-of-range tag is a validation failure.**
 - Every message is also an ordinary type: its own `Write`/`Read`/`MaxBits`/`MaxBytes`, usable
-  standalone and composable as a field.
+  standalone and composable as a field (the grammar's `ident // a declared type or enum`
+  includes message names — a message IS an ordinary type). **An `object` name is NOT a field
+  type in v1** *(pinned 2026-08-05)*: an object has no single wire form (Deep vs Shallow),
+  so `ship Ship` inside a message is a compile error naming this rule; view-qualified
+  references are a later pass if ever needed. **And an `object` body admits plain fields
+  only in v1** — no `if`/`switch`/`const()`/`reserved`/`align` — because the view-splitting
+  rules assign *fields* to views and say nothing about what a branch means for
+  Shallow/Interpolate/Quantize; the restriction lifts when the delta pass defines it.
 
 #### Object sets — `object`, `ObjectType`, and the generated views
 
@@ -733,13 +929,57 @@ identical — the message-set rule):
 | `ShipData_Interpolate` | the same `[interpolate]` fields in **continuous storage** (the un-quantized twin) |
 | `Quantize` / `Unquantize` | the mapping pair between Interpolate and Shallow — the hand-written `Quantize()` in today's `Ship.h`, generated |
 
-**PROPOSED view-encoding syntax** (the delta-pass design surface, opened early — flat
-attribute lists, his form): `[interpolate]` alone means *same encoding as deep*;
-`[interpolate, quantize = K, max = Bound]` means *quantized at scale K within ±Bound on the
-shallow wire, continuous in Interpolate*; `[interpolate, min = A, max = B]` on a float
-means *ranged-int projection on the shallow wire* (today's health/thrust pattern). The
-worked example is [`examples/Objects.schema`](examples/Objects.schema); **Missile,
-DynamicProp and Turret follow once the Ship shape is approved** (his list, same day).
+**PROPOSED view-encoding semantics (Rowan, 2026-08-05 — expanded from the three-sentence
+draft-4 form; each rule is a transcription of the measured hand-written referent in
+`Ship.h` / `core_quantize.h` / `core_delta.h`, so the risk of inventing wrong semantics is
+minimal).** Inside an `object` body the attribute vocabulary widens: `interpolate` and
+`local` (valueless, DECIDED) and `quantize` / `round` (valued, PROPOSED) join the set.
+View-encoding attributes describe the SHALLOW wire only; the deep wire always uses the
+bare storage type's encoding.
+
+1. **`[interpolate]` alone** — the shallow wire is the deep encoding, unchanged.
+2. **Composite quantization** — `[interpolate, quantize = K, max = B]` on a field whose
+   type is a composite of float components applies component-wise: shallow wire per
+   component is a ranged int `[−B·K, +B·K]`; write maps `c → floor(c·K + 0.5)`, clamped to
+   the range; read rejects out-of-range; unquantize maps `q → q / K`. The quantized twin's
+   storage derives from the range. All components are sent — no smallest-three; the delta
+   pass owns cleverer encodings.
+3. **Unit quaternions** — `type Quat [unit]` declares a 4-float composite whose components
+   are bounded ±1 and which renormalizes on unquantize. A `[quantize = K]` use of a
+   `[unit]` type needs no `max`; the implied bound is 1. *(This is what makes the corpus's
+   max-less `rotation Quat [interpolate, quantize = RotationUnits]` well-defined.)*
+4. **Ranged-int projection** — on `float32`/`float64`,
+   `[interpolate, min = A, max = B, resolution = R]` reuses §4.3's compressed-float
+   triple: min/max name the **CONTINUOUS domain**, the shallow wire is the int
+   `[0, (B−A)/R]`, write maps `v → round((v−A)/R)` clamped, unproject maps `q → A + q·R`.
+   The optional `round = nearest|up|down` key (default `nearest`, half away from zero)
+   selects the write rounding — `up` exists because the surveyed health quantization's
+   ceil is load-bearing: any positive health must quantize alive. *(Corpus consequence on
+   approval: `thrust [interpolate, min = 0, max = 1, resolution = 0.01]` — the current
+   `max = 100` conflates the wire-int range with the float domain, whose true bound is
+   1.0 — and `health [..., resolution = 1, round = up]`.)*
+5. **Interpolate storage** — projected fields (rule 4) are stored in the Interpolate
+   struct in the WIRE integer domain and snap-interpolate, matching the shipped game;
+   quantized composites (rules 2–3) are stored continuous (the un-quantized twin). *(The
+   artifact table's blanket "continuous storage" phrasing is corrected by this rule — the
+   real `ShipData_Interpolate` stores health/thrust as ints.)*
+
+**§9 q13, RESOLVED for v1 — PROPOSED: interpolation policy is type-derived, with no
+per-field syntax.** Generated `Interpolate(t, a, b, out)` uses **lerp** for float
+components (vectors, floats); **shortest-arc normalized lerp** (negate on dot < 0, lerp,
+renormalize, identity fallback — nlerp, not slerp) for `[unit]` quaternions; **snap**
+(`t < 0.5 ? a : b`) for bool, integers, enums, flags, handles, and rule-4 projections.
+Measured across all four real objects' `Interpolate()` functions: policy is 100%
+type-derived today — no field anywhere overrides its type's policy — so v1 needs a table,
+not a vocabulary. Per-field overrides, angular floats, and smoothing eligibility defer to
+the delta/object pass; `lerp`, `slerp`, `snap`, `angle`, `smooth` are informally reserved
+as attribute values.
+
+The worked example is [`examples/Objects.schema`](examples/Objects.schema) — verified
+field-for-field against the real `Ship.h` on 2026-08-05: zero misclassifications, zero
+invented fields, one measured omission (the client-only `predictedExplode`, which waits on
+a side-conditional story and is noted rather than silently absent); **Missile, DynamicProp
+and Turret follow once the Ship shape is approved** (his list, same day).
 
 **Generated layout is the generator's — PROPOSED principle (Rowan, 2026-08-05).** The
 hand-written world keeps layout rules alive by comment — Atlas's `correctionFloats` requires
@@ -839,14 +1079,24 @@ sets arrived, exactly the boilerplate §4.8 exists to eat.)*
   sequence across *array elements* (previous element's field feeding the next), which the
   back-reference rule cannot express; a scalar-to-scalar form inside one type earns too
   little to carry the construct. Deferred until a cross-element form is designed.
+  **Confirmed against the game tree 2026-08-05:** every live use site (ten calls,
+  `PacketReader.h`/`PacketWriter.h`) is the ascending-object-id chain inside
+  sentinel-terminated, mid-stream-split packet streams — the constructs held at §9 q10 and
+  the delta pass. `int_relative` is designed **with that pass**, never standalone; wide
+  strings have zero usage anywhere in the tree.
 
 ## 5. Trust model — inherited
 
 Reads validate everything — integer ranges, enum bounds, alignment padding, constants,
-reserved bits, count bounds, string lengths and the interior-null rule — and fail on any
+reserved bits, count bounds, string lengths, the interior-null rule, **and buffer
+exhaustion: running out of input mid-read is a read failure like any other** *(added
+2026-08-05 — it was the one malformed-input class the list omitted)* — and fail on any
 violation, because network input is the trust boundary. Generated read code never lets a
 value that controls iteration go unchecked before use (serialize.go documents this exact DoS
-vector).
+vector). **Read termination** *(pinned 2026-08-05)*: `Read` consumes exactly the encoded
+bits and reports bits consumed (so callers can frame several objects in one buffer); bytes
+remaining after the last field are the caller's concern, not a validation failure —
+`ReadMessage` streams end on the `None` tag by design.
 
 Writes assume trusted data. Misuse follows each runtime's own convention: C++ debug asserts
 (unchecked in release), **Go and Rust panic and C# throws on misuse in all build modes** —
@@ -856,8 +1106,10 @@ attacker-influenced values as min/max.
 
 **Read failure leaves the output object in an unspecified state**; callers use it only on
 success. **Read success fully initializes it**: fields in untaken branches are set to their
-zero values (0, 0.0, false, empty bytes, zero count). Write reads only taken fields. This is
-what makes whole-object comparison in the conformance matrix well-defined.
+zero values — 0, 0.0, false, empty bytes, zero count, **`None` for an enum, recursively
+zeroed for a nested type, element-wise zeroed for a fixed array** *(the three cases pinned
+2026-08-05; whole-object comparison needs them defined)*. Write reads only taken fields.
+This is what makes whole-object comparison in the conformance matrix well-defined.
 
 ## 6. Generated code
 
@@ -882,6 +1134,8 @@ Per `type`, per target:
    | `bytes(<=N)` | `uint8_t[N]` + `int32_t` count | `byte[]` (bound-checked) | `[]byte` (cap-checked) | `Vec<u8>` (bound-checked) |
    | `[N]T` | `T[N]` | `T[]` (length-checked) | `[N]T` | `[T; N]` |
    | `[<=N]T` | `T[N]` + `int32_t` count | `T[]` (bound-checked) | `[]T` (bound-checked) | `Vec<T>` (bound-checked) |
+   | `[Min..N]T` | as `[<=N]T` (count validated to [Min, N]) | as `[<=N]T` | as `[<=N]T` | as `[<=N]T` |
+   | `f Inner` (a named type) | `Inner` | `Inner` | `Inner` | `Inner` |
 
    Enums are integer-backed named types in every target because `[max = ...]` headroom makes
    non-variant values wire-legal; a native Rust `enum` cannot hold them — C#'s `enum E : uint`
@@ -889,15 +1143,31 @@ Per `type`, per target:
 
 2. **`Write(buffer, object) -> bytesWritten`** — straight-line write code in wire order.
 3. **`Read(buffer, object) -> ok/error`** — straight-line read code with full validation, in
-   each runtime's native error idiom (`bool` in C++, `error` in Go, `Result` in Rust).
+   each runtime's native error idiom (`bool` in C++, `bool` + latched `Error` in C#, `error`
+   in Go, `Result` in Rust), reporting bits consumed on success (§5).
 4. **`MaxBits` / `MaxBytes`** — constants: the longest path through the schema, with
    worst-case (7-bit) padding assumed at each alignment point. Size write buffers from
    `MaxBytes`. Conservative is correct for a buffer bound.
 5. **`ProtocolId`** — one constant per unit (§3).
 6. **For a unit with `message` declarations (§4.8):** the `MessageType` enum (`None = 0`,
-   then the messages, sorted by name), `WriteMessage`/`ReadMessage` with the tag framing,
-   and the dispatch surface in each language's own idiom — representation per target,
-   behavior identical.
+   then the messages in the §4.8 deterministic order — declaration order, PROPOSED there),
+   `WriteMessage`/`ReadMessage` with the tag framing, a message-level
+   `MaxBytes` (tag plus the largest message), and the dispatch surface in each language's
+   own idiom — representation per target, behavior identical.
+7. **For a unit with `object` declarations (§4.8):** the `ObjectType` enum (`None = 0`,
+   same deterministic order) and, per object, the DECIDED generated family — the full
+   simulation struct, the Deep and Shallow wire structs with their split read/write pairs,
+   the Interpolate struct, and the `Quantize`/`Unquantize` mapping pair (§4.8's artifact
+   table). *(This list ended at item 6 while §4.8's object artifacts were DECIDED — an
+   entire generated family missing from the generated-output contract; completed
+   2026-08-05.)*
+
+**Generated symbol naming — PROPOSED (Rowan, 2026-08-05):** functions attach per target
+idiom — C++: free functions `WriteShip(...)` in `namespace <package>`; C#:
+`static class Schema` members in `namespace <Package>`; Go: free functions
+`WriteShip(stream, &ship)` in package `<package>` (no overloading — the type name is in the
+function name in every target for uniformity); Rust: module functions in `mod <package>`.
+The `package` ident maps to the target's namespace/module/package concept verbatim.
 
 **There is no generated measure function** — DECIDED (Glenn, 2026-08-04: measure *"was
 always a bit of a hack"*). `Write` returns the actual size, `MaxBytes` sizes buffers, and
@@ -919,24 +1189,51 @@ does exactly this (the wire form is the dirty detector), so a canonicalization s
 is a correctness bug, not a size regression. This was always true by construction; it is
 stated so it cannot be quietly traded away.
 
-**Derives — PROPOSED (Rowan, 2026-08-05, from the Atlas evaluation; network-motivated, not
-general-purpose reflection).** Three optional generated functions per type, each funded by a
-real networking need rather than convenience:
+**Derives — PROPOSED (Rowan, 2026-08-05, revised after the evidence pass; awaiting
+Glenn).** Three additional generated functions per `type`, `message` and `object`, in every
+target, **generated by default — no schema syntax, no compiler flag.** They are projections
+of the same declaration the read/write pair comes from, put nothing on the wire, and never
+touch the protocol id (the id hashes schema files, §3.1; derives are generated code only).
+Each is funded by a real networking need, not convenience:
 
-- **`Equal(a, b)`** — per-field comparison. The send-if-changed / delta-detection primitive;
-  the delta pass needs exactly this comparison anyway, and generating it now makes it
-  available to today's hand-written delta code before that pass lands.
-- **`Checksum(object)`** — a stable hash over field values, for desync detection — the
-  pattern Space Game already gates packets with.
-- **`Print(object)`** — a field-by-field dump, for the exact moment two `Checksum`s
-  disagree, and for debugging generated wire code generally.
+- **`Equal(a, b)`** — wire equality: compares exactly the fields `Write` would read,
+  following the same branch structure (§5's taken-fields rule is what makes this
+  well-defined — untaken-branch fields never participate; a naive all-fields comparison
+  could disagree on two objects whose wire bytes are identical). `Equal(a, b)` is true iff
+  the two canonical encodings are byte-identical. This is the send-if-changed /
+  delta-detection primitive; the delta pass composes its per-field form (the surveyed
+  `core_delta.h` "different" bit), and generating it now serves today's hand-written delta
+  code.
+- **`Checksum(object) -> uint64`** — FNV-1a-64 (offset `0xCBF29CE484222325`, prime
+  `0x100000001B3` — the family's existing blob-identity hash, already bit-identical between
+  the Go tools and `core_hash.h`) over the object's **canonical encoded bytes**: `Write`
+  into a `MaxBytes` scratch buffer, then hash of the bytes written. Defined only for
+  wire-valid objects (write preconditions, §5). **Cross-language stability is inherited,
+  not built**: equal values produce identical bytes (the canonical-encoding contract
+  above, gated by §7.2), so they produce identical checksums — a field-walking checksum
+  would be a second wire-sized conformance contract (float-bit rules, field order, a
+  parallel matrix) and is rejected on that arithmetic; hash-over-bytes collapses it into
+  the first. The only new pinned artifact is the two FNV constants, which the conformance
+  suite pins with a checksum-of-golden-bytes assert. *(Honesty note: the earlier draft
+  said this is "the pattern Space Game already gates packets with" — measured, the game
+  gates connections and content with hashes over bytes and has no per-object state
+  checksum yet; every hash the codebase has ever shipped hashes bytes, which is the
+  argument for this definition.)*
+- **`Print(object)`** — the canonical field-by-field dump, in the exact format §7.2 gate 4
+  already budgets for cross-language value comparison; one spec'd format shared by the
+  conformance harness and the human debugging the moment two `Checksum`s disagree. Floats
+  print as decimal plus exact bit pattern (`1.5 (0x3FC00000)`) so the artifact is
+  byte-comparable across targets.
 
-All three are projections of the same declaration the read/write pair comes from, put
-nothing on the wire, and stay inside goal 2 — straight-line code, no reflection. Whether
-they are default or opt-in (a `[derive(...)]` attribute? a compiler flag?) is part of the
-decision, which is Glenn's. Evidence the category pays: Atlas ships
-`schemaFieldEquals`/`schemaLayoutHash` as its equivalents and its evaluation calls derives
-"value on their own."
+**Why default-on**: an in-schema `[derive(...)]` toggle would move every deployed protocol
+id for a wire-irrelevant switch (§3.1 hashes every byte) and needs grammar that does not
+exist; a compiler flag forks the generated API per invocation, the drift goal 1 exists to
+kill. Default-on costs only size, and two-thirds of the machinery (the dump format, the
+whole-object comparison) is §7.2 gate 4's own budgeted scaffolding emitted public instead
+of private. Consistency is mechanically checkable and §7.2 asserts it:
+`Equal(a, b)` ⇔ encoded bytes equal ⇒ `Checksum(a) == Checksum(b)` — three implementations
+of one equivalence relation. Evidence the category pays: the external engine evaluation
+ships its own equivalents and calls derives "value on their own."
 
 **Alignment is stream-relative**: a type containing `align`, `string` or `bytes` has
 layout dependent on its entry bit offset. Generated functions are correct at any entry
@@ -974,7 +1271,7 @@ hard-coded read/writes in the gen code."* The runtimes' unified paths are untouc
 for people coding the serialize manually in their language and not using schema."*
 
 What this buys: generated source stays small and reviewable, count ranges need no cap, and
-three backends stay simple enough to verify against each other. What it forgoes: the
+four backends stay simple enough to verify against each other. What it forgoes: the
 last-mile instruction-level guarantees of the TMP splicer. The v1 performance thesis is that
 eliminating unified-serialize-function branching and runtime range computation captures most
 of the win; if measurement against serialize.modern's schema mode on the C++ target shows a
@@ -1004,17 +1301,19 @@ schemafmt     [dir|files...]          // the canonical formatter — gofmt's phi
 ### 7.1 Pipeline
 
 ```
-*.schema → scanner → parser → AST → resolver/checker → IR → {cpp, go, rust} backends
+*.schema → scanner → parser → AST → resolver/checker → IR → {cpp, csharp, go, rust} backends
 ```
 
 - **Scanner/parser: hand-written, recursive descent**, in the style of the Go toolchain's own
   `go/scanner`/`go/parser`. No parser generators. The language is LL(2); hand-rolled parsing
   is what makes precise diagnostics cheap. The parser recovers at declaration boundaries so
   one error does not hide the rest.
-- **Resolver/checker**: name resolution across the unit's files, constant folding (checked
-  signed 64-bit), the shape checks of §4.6, the dominance rule of §4.5, and **the message-set
-  extraction** — the symbol table over `message` declarations from which `MessageType` and
-  the dispatch are generated (§4.8).
+- **Resolver/checker**: name resolution across the unit's files, constant folding
+  (arbitrary-precision with per-use fit checks, §4.2), the shape checks of §4.6, the
+  dominance rule of §4.5, and **the message-set AND object-set extractions** — the symbol
+  tables over `message` and `object` declarations from which `MessageType`/`ObjectType`,
+  the dispatch, and the per-object view families are generated (§4.8). *(The object half
+  was DECIDED in §4.8 and missing here until 2026-08-05.)*
 - **IR — the load-bearing design decision.** The checker lowers to a small, fully-resolved
   intermediate representation, and backends consume only the IR — a C++/Go/Rust divergence
   must be written into a printer to exist at all. **The IR preservation invariant: the IR
@@ -1025,8 +1324,12 @@ schemafmt     [dir|files...]          // the canonical formatter — gofmt's phi
   resolution)` with derived step count (min and resolution determine decoded values);
   enums keep `(variant count, max)`; strings, bytes and arrays keep exact bounds; `const`
   keeps `(value, bits)`; back-references resolve to field indices; branches and counts are
-  explicit; names of structs, fields and variants are carried (§3.1). The canonical encoding
-  of this IR is the protocol-id input and a frozen public contract.
+  explicit; names of structs, fields and variants are carried — the backends print them.
+  *(Until 2026-08-05 this bullet ended "the canonical encoding of this IR is the protocol-id
+  input and a frozen public contract" — the dead draft-1/2 design; DECIDED §3.1 hashes the
+  schema files and the IR is not in the id path at all. The IR's stability obligation is
+  real but different: it is what the golden-wire gate (§7.2) holds still across compiler
+  versions.)*
 - **Backends: dumb printers.** Hand-written emitters (a small indent-aware writer helper),
   not `text/template` — codegen wants precision. Each backend is a single file a reviewer can
   hold.
@@ -1034,9 +1337,12 @@ schemafmt     [dir|files...]          // the canonical formatter — gofmt's phi
 ### 7.2 Testing
 
 1. **Golden source tests**: schema in, generated source compared byte-for-byte against
-   checked-in goldens, all three backends. Deterministic output makes this exact.
+   checked-in goldens, all four backends. Deterministic output makes this exact.
 2. **Golden ids**: `schema id` over the conformance corpus pinned as exact values — the
-   frozen-encoding contract's tripwire.
+   tripwire on §3.1's hash procedure (sort order, delimiting, truncation): any change to
+   how the id is computed breaks every pinned value loudly. *(Re-pointed 2026-08-05 — this
+   said "the frozen-encoding contract's tripwire," the dead IR-hash design's rationale;
+   the gate itself was always right.)*
 3. **The wire oracle**: for each conformance schema, a hand-written classic-serialize stream
    twin in C++. Generated C++ must produce byte-identical output to the twin and each must
    decode the other — the same gate serialize.modern runs, against the same oracle.
@@ -1046,14 +1352,26 @@ schemafmt     [dir|files...]          // the canonical formatter — gofmt's phi
    generators respecting every range/branch/count, and a canonical dump format for
    cross-language value comparison — budgeted as part of the conformance harness, not
    hand-written per schema.
-5. **Malformed-input agreement**: bit-flip sweeps over valid packets; all three generated
-   readers must agree on accept/reject and on the decoded value — serialize.modern's
-   brute-force read-validation gate, extended across languages.
+5. **Malformed-input agreement**: bit-flip sweeps over valid packets; all four generated
+   readers must agree on accept/reject — and, for accepted inputs, on the decoded value
+   (§5 leaves rejected outputs unspecified) — serialize.modern's brute-force
+   read-validation gate, extended across languages.
 6. **Compiler robustness**: Go-native fuzzing on scanner, parser and checker; every
    diagnostic in the suite asserted by exact message and position.
+7. **Golden wire bytes** *(added 2026-08-05 — §3.1 and §6.1 both leaned on this gate by
+   name and the list did not contain it)*: per conformance schema, fixed instances with
+   **checked-in expected wire bytes**, all four targets. This is the one artifact that
+   survives a coordinated emitter-plus-oracle change, and a golden-wire break is the
+   stop-the-line event §3.1 describes — never a quiet re-pin.
 
-CI needs all three toolchains for gates 3–5; that cost is accepted — it is the product's
-central claim.
+**Floating-point discipline, inherited from the serialize.cs port finding (§1):** all C++
+conformance builds compile with `-ffp-contract=off`, and the golden-wire corpus includes an
+FMA-boundary compressed-float value, so a contracted build fails gate 7 loudly rather than
+diverging by one quantization step in production. *(§1 promised §7.2 inherits this rule;
+until 2026-08-05 this section did not state it.)*
+
+CI needs all four toolchains for gates 3–5 and 7; that cost is accepted — it is the
+product's central claim.
 
 ### 7.3 The path — DECIDED order of work (Glenn, 2026-08-04)
 
@@ -1068,6 +1386,38 @@ central claim.
 3. **Only then, implementation** — and the corpus graduates into `testdata/` and
    `conformance/` as the compiler's first test suite.
 
+### 7.4 schemafmt — the one style — PROPOSED (Rowan, 2026-08-05; the timing decision is §9 q4)
+
+gofmt's philosophy (§4.1): one style, no options. Codified from the corpus's own formatting
+while it was five files; the recommendation is that `schemafmt` is **part of the v1
+deliverable, built early as the parser's first consumer** — under §3.1's file-byte hash, a
+later reformat of a deployed schema **moves its protocol id**, so the only free time to
+canonicalize is before any schema exists outside this repo. With every file
+formatter-canonical, §3.1's raw-byte hash is a canonical-form hash in practice with no
+parser in the id path — the §3.1 revisit clause closes in the good direction. Rules:
+
+1. **Indent: 4 spaces** per block level, never tabs (the corpus's unanimous vote). `{` on
+   the construct's line; `} else {` on one line. One field or declaration per line.
+2. **Alignment groups**: within a contiguous run of fields — broken by blank lines and by
+   comment lines — pad names to align the type column and types to align the `[` attribute
+   column. The same rule aligns `=` in const runs. Single space minimum between columns.
+   *(The corpus already drifted on exactly this in ~330 lines: one unaligned const pair,
+   and two enum braces treating a comment break differently — the argument for the tool.)*
+3. **Attributes**: `[min = 0, max = MaxHealth]` — spaces around `=`, comma-space between
+   entries, no padding inside the brackets. Valueless markers first, then valued keys.
+4. **Expressions**: single spaces around binary operators.
+5. **Enums**: one line while they fit; the wrap trigger is decided at the first multi-line
+   instance (no line-length limit exists yet). *(Under §9 q9's newline-variant proposal
+   this rule becomes: one variant per line, like fields.)*
+6. **switch/case**: `case` at the same indent as its `switch`; a single-item case body
+   inline after the label, bodies column-aligned across the cases of one switch; multi-item
+   bodies on following lines, one level in.
+7. **Blank lines**: collapsed to one; preserved as group separators.
+8. **Comments preserved, never reflowed** — file-header block, section dividers
+   (`// ---- name ----`), and doc comments stay attached to what they precede.
+9. **schemafmt never reorders declarations** — the aspect layout (§2) stays a convention,
+   and declaration order is tag-bearing (§4.8).
+
 ## 8. Repository layout
 
 ```
@@ -1076,7 +1426,7 @@ internal/scanner/      tokens, positions
 internal/parser/       AST construction, error recovery
 internal/ast/
 internal/check/        resolver, constant folding, shape checks, dominance rule
-internal/ir/           the lowered form + its canonical encoding (protocol id)
+internal/ir/           the lowered form (wire-frozen; the id is §3.1's file hash)
 internal/codegen/
     cpp/  csharp/  golang/  rust/
 testdata/              golden schemas, golden generated source, golden ids, diagnostics
@@ -1092,44 +1442,77 @@ License: AGPL-3.0 (DECIDED, 2026-08-04). Repo private until Glenn opens it.
 *(Settled 2026-08-04/05: the protocol id — schema-file hash, §3.1 — and no generated
 measure, §6.1. Both DECIDED.)*
 
-1. **Strings as byte strings** (§4.7) — confirm; a validated UTF-8 wire type can come later.
+1. **Strings as byte strings** (§4.7) — **recommendation: CONFIRM to DECIDED**, with the
+   generated-code consequence now stated in §4.7 (C#/Rust compose the wire from primitives —
+   the Rust runtime's own string method would *reject* legal byte-string payloads; the
+   interior-null check is generated-code validation in all four targets). Measured: string
+   usage on the realtime wire is zero today, and the validated-UTF-8 door stays open as a
+   new type. **Awaiting Glenn: "q1 yes."**
 2. ~~**Storage-type overrides**~~ — **RESOLVED 2026-08-05 by the integer family**: storage
-   is declared by the type name (`thrust int8(0, 100)`), no override mechanism needed.
-3. **Wide strings and relative integers deferred** (§4.10) — confirm nothing near-term needs
-   them; int_relative wants a cross-element design.
-4. **`schemafmt` timing** — the tool is DECIDED (name, gofmt philosophy: one style, no
-   options); is it v1 alongside the compiler, or fast-follow? Its style rules should be
-   written while the corpus is small either way.
-5. **Doc comments** carried into generated code — cheap, worth having; v1 or later?
-   *(Externally needed 2026-08-05, Atlas adoption notes: they are the inspector tooltips
-   and the header docs — and they'd want them in any exported schema artifact too.)*
-6. **A root/packet marker** — scopes the protocol id to reachable declarations (fixes the
-   unused-helper-moves-the-id wart, §3.2), names which structs get buffer-sizing guidance,
-   and is the natural place for a future `packet` keyword. v1 or v2? *(Externally
-   corroborated 2026-08-05: the Atlas evaluation's layout-hash critique is this same wart
-   seen from outside — reachability scoping addresses it without giving up file hashing,
-   §3.1.)*
-7. **Const expressions over enum counts** — `Constants.h` computes `NUM_TEAMS =
-   Team_MAX + 1` and `MAX_PROPS` as a sum of limits; the language wants a way for a `const`
-   to reference an enum's variant count / max (`len(Team)`? `Team.max`?). Surfaced
-   2026-08-05.
-8. **Platform-conditional constants** — `FRAME_SAFETY` differs under `__linux__`; schema
-   constants are platform-uniform today. Stays hand-written in game code, or gains a
-   target/platform story later. Surfaced 2026-08-05.
-9. **Explicit enum variant values and flag enums.** v1 numbers variants implicitly 0..n−1;
-   Space Game's real enums all write `None = 0` explicitly and one is a `(bit_flags)` mask.
-   Implicit numbering happens to match the None-first style, but the evidence says explicit
-   values (and possibly a `flags` enum form whose wire is `bits(N)`) deserve a v1 decision,
-   not a deferral — this also settles whether variants stay whitespace-separated or gain a
-   separator to make room for `= value`. *(Second external vote 2026-08-05, Atlas adoption
-   notes: their real enums pin values and bitmask enums are pervasive; the variant
-   separator is "the only thing in the way.")*
-10. **Sentinel-terminated collections.** The surveyed baseline/delta/explosion packets do not
-   use counted arrays — they are bool/sentinel-terminated element streams (serialize.go ships
-   `Continue`/`Until` helpers for exactly this), sized by mid-stream packet splitting. v1
-   cannot express them. The splitting half is emitter-driven and probably stays application
-   code; whether the plain bool-continuation list deserves a v1 construct is the open half.
-   Evidence: `examples/README.md`, finding 3.
+   is declared by the type name (`thrust int8 [min = 0, max = 100]`), no override mechanism
+   needed. *(This row carried the dead call syntax until 2026-08-05.)*
+3. **Wide strings and relative integers deferred** (§4.10) — **recommendation: CONFIRM
+   both.** Measured: wide strings appear nowhere in the game tree; all ten `int_relative`
+   sites are the ascending-id chain inside sentinel-terminated, mid-stream-split streams —
+   inexpressible in v1 for independent reasons, so the construct is designed with the
+   delta pass (§4.10's note). **Awaiting Glenn: "q3 yes."**
+4. **`schemafmt` timing** — the tool is DECIDED (name, gofmt philosophy); the style rules
+   are now written (§7.4, PROPOSED). **Recommendation: v1 deliverable, built early as the
+   parser's first consumer** — under §3.1's file-byte hash, reformatting a deployed schema
+   moves its protocol id, so the only free canonicalization window is before v1 ships;
+   fast-follow buys a shorter critical path at the price of an id-churn window that grows
+   with adoption. **Awaiting Glenn: "q4 v1" or "q4 fast-follow", plus §7.4's three
+   sub-calls (4-space indent; comment lines break alignment groups; no line-length
+   limit) or delegate them.**
+5. **Doc comments** — the attachment rule and per-target emission are drafted (§4.1,
+   PROPOSED). **Recommendation: v1** — two external consumers named (tooltips, header
+   docs); the comment-carrying scanner is `schemafmt` machinery anyway; deferring rewrites
+   every golden once and ships undocumented headers meanwhile. **Awaiting Glenn: "q5 v1"
+   or "q5 attach-now-emit-later."**
+6. **A root/packet marker** — **the id-scoping half is CLOSED while §3.1 stands, on worked
+   evidence** *(the parenthetical here claimed reachability scoping works "without giving
+   up file hashing" — false: reachability is a front-end computation, so every
+   implementation puts the parser in the id path, the exact trade §3.1 declined; and
+   file-granularity scoping fails under the aspect layout anyway, where the unused helper
+   shares `Types.schema` with everything used; §3.2 states the consequence)*. What
+   survives for v2, as a non-id feature: marking entry-point types for buffer-sizing
+   guidance, dead-declaration warnings, and the reserved `packet` door. Reopen id-scoping
+   only if §3.1's own revisit condition (`schemafmt` canonical-form hashing) is ever
+   taken. **Awaiting Glenn: "q6 yes — marker to v2, id-scoping closed."**
+7. ~~**Const expressions over enum counts**~~ — **RESOLVED (PROPOSED) 2026-08-05 by
+   `E.max`** (§4.2): `const NumTeams = Team.max + 1`; `len(Team)` declined (ambiguous
+   three ways, and every reading sizes enum-indexed tables wrong under headroom); the
+   `MAX_PROPS` sum was already covered by constant composition. **Awaiting Glenn: "q7
+   E.max yes" (or prefer another spelling).**
+8. ~~**Platform-conditional constants**~~ — **RESOLVED (PROPOSED) 2026-08-05: constants
+   are platform-uniform** (§4.2, a rule with the one-id/one-wire rationale);
+   `FRAME_SAFETY` (two call sites, zero wire contact) stays in game code, the config
+   layer named as its eventual home. **Awaiting Glenn: "q8 yes."**
+9. **Explicit enum variant values, flag enums, and the variant separator** — the full
+   proposal is drafted in §4.2 (newline-terminated variants like fields; `= value` with
+   None-owns-0 and strictly-ascending rules; `[flags]` with bit positions, no implicit
+   None, `bits(W)` wire). **Recommendation: all of it in v1 — the separator is the one
+   irreversible piece** (retrofitting it later breaks every shipped schema), the flags
+   form has direct in-game demand (one named flags enum plus three anonymous `uint64`
+   flags fields flying with hand-kept masks), and the enum census shows the hand-declared
+   class shrinking to `Team`-plus-flags once the table layer derives the type enums — so
+   the one-liner brevity lost is brevity almost nobody will spend. *(This row said "v1
+   numbers variants implicitly 0..n−1" until 2026-08-05 — the pre-None model; §4.2's rule
+   is None = 0 plus 1..n.)* **Awaiting Glenn: "q9 B" (all in v1), "q9 D" (separator now,
+   values/flags fast-follow), or keep the status quo.**
+10. **Sentinel-terminated collections** — **recommendation: DEFER into the object/delta
+   pass, on measured evidence.** The surveyed packets use **three** terminator idioms, not
+   one (bool-continuation — explosions; sentinel VALUE — the baseline's
+   `OBJECT_TYPE_NONE`; a 2-bit stop action — deltas), and the terminated form exists
+   *because* of mid-stream packet splitting: the writer cannot know the count before the
+   byte budget cuts, so the construct is inseparable from budget-driven, element-granular
+   emission that a v1 whole-collection `Write` cannot deliver. Measured resolution of the
+   splitting half: readers are structurally oblivious to splits (each packet is
+   self-delimiting), so the language owes readers only a terminated-stream loop; the
+   emitter half stays application-shaped until the delta pass designs all three idioms
+   at once, with §4.8's `None = 0` principle as the sentinel-value half's foundation.
+   Deferral blocks nothing: baseline/delta packets are independently inexpressible in v1
+   (`int_relative` threading, delta bodies). **Awaiting Glenn: "q10 defer."**
 11. **Enum subranges, and the enum-as-index pattern** — widened 2026-08-05 with Glenn's
    design thoughts for the future, banked verbatim. The surveyed create path writes an
    object kind as `[1, max]`, excluding `None` from the wire. With universal implicit
@@ -1148,6 +1531,17 @@ measure, §6.1. Both DECIDED.)*
    to support both types of indexes driven by enums."* Design pass owed; evidence:
    `examples/README.md` finding 1 and `Ship.h`'s hand-repeated `[0, SHIP_MAX_LASERS-1]`
    bounds.
+   **The design pass ran 2026-08-05 — proposal drafted in §4.2, three-way split:** kind (a)
+   is the existing bare enum field (nullable, `[0, max]` — no new syntax, the decided
+   `MessageType`/`ObjectType` shape); kind (b) ships in v1 as the field attribute
+   **`[no_none]`** (wire `[1, max]`, value − 1, read rejects 0 — the surveyed create
+   path's exact wire, measured at sixteen sites across five enums, with the same enum
+   needing both kinds per-field, which rules out a type-level form on evidence); the
+   general `index(Set)` feature defers to the config/assets–delta horizon with `index`
+   reserved and the derived-range rule banked as normative now. The manual-mistake class
+   the requirement predicts is already measurable in the tree (a wrong-enum `MAX` guard, a
+   bound restated divergently on two paths of one field). **Awaiting Glenn: "q11 yes —
+   and the spelling: `[no_none]`, or your `[index]`."**
 12. ~~**`int` → `int32`?**~~ — **RESOLVED 2026-08-05 by the integer family**: bare `int` is
     gone; every integer names its width, Go-style, and `int`/`uint` are reserved purely to
     give a helpful diagnostic.
@@ -1160,6 +1554,13 @@ measure, §6.1. Both DECIDED.)*
     *(Corroborated the same day by the Atlas adoption notes with the exact vocabulary —
     lerp vs. snap vs. angular, plus smoothing eligibility — and generated interpolate named
     "the first non-serialize generator we'd actually use.")*
+    **RESOLVED for v1 (PROPOSED) 2026-08-05 — a table, not a vocabulary** (§4.8): measured
+    across all four real objects' `Interpolate()` functions, policy is 100% type-derived —
+    lerp for float components, shortest-arc nlerp for `[unit]` quaternions, snap for
+    everything discrete — and no field anywhere overrides its type's policy, so v1 needs
+    zero syntax; per-field overrides, angular floats and smoothing defer to the delta pass
+    with the attribute values reserved. **Awaiting Glenn: "q13 yes" (rides the Ship-shape
+    approval, decision 2 in `notes/road-to-v1.md`).**
 14. **The replication-policy boundary.** Atlas binds replication policy (priority,
     despawn/TTL, coherence) into its per-kind schema; Space Game keeps policy in manager
     code. Does schema ever carry policy attributes, or is the boundary deliberate — wire
@@ -1168,6 +1569,9 @@ measure, §6.1. Both DECIDED.)*
     evaluation). *(External data point the same day, opposite the lean — the Atlas
     adoption notes: per-type policy entries "need a home even if the replication engine,
     not the codec, consumes them." Recorded; no work owed now.)*
+    **Awaiting Glenn: "q14 — boundary stated as a v1 non-goal, yes/no."** (If yes, one
+    line joins the non-goals list; the external data point stays recorded here for the
+    day the delta pass revisits it.)
 15. **The engine interop surface — direction set, mechanism TBD (Glenn, 2026-08-05, his
     words banked).** The likely integration point between schema-in-Space-Game and an
     engine-side client stack is **the render objects level** — *"eg. RenderShip"*: *"we

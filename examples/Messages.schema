@@ -7,7 +7,9 @@
 
 package example
 
-const MaxBlockSize = 2000
+// MaxBlockSize lives in Constants.schema (the aspect home) and resolves
+// cross-file, order-free (SPEC §4.2). A duplicate declaration here was a real
+// §4.6 compile error — caught 2026-08-05 by the corpus standing check.
 
 message Heartbeat {
     // empty body — presence of the message is the payload

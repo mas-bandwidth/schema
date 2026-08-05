@@ -7,9 +7,9 @@
 //   ShipState             (every field — the simulation struct)
 //   ShipData_Deep         + serialize (every non-local field; deep = full state,
 //                           sent to the client for client-side prediction)
-//   ShipData_Shallow      + serialize (the [interpolated] fields, quantized —
+//   ShipData_Shallow      + serialize (the [interpolate] fields, quantized —
 //                           the wire-side implementation detail of interpolation)
-//   ShipData_Interpolate  (the [interpolated] fields in continuous storage)
+//   ShipData_Interpolate  (the [interpolate] fields in continuous storage)
 //   Quantize / Unquantize (the Interpolate <-> Shallow mapping pair)
 //
 // Field inventory is faithful to the real Ship.h (2026-08-05). View-encoding
