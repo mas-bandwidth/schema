@@ -1,0 +1,38 @@
+// Messages.schema — the reliable message set
+// Shape: one enum-dispatched message union. The kind field is serialized once,
+// the switch back-references it for free, and each case carries its own fields.
+// An empty case is a legal, zero-bit message body.
+
+package example
+
+const MaxBlockSize = 2000
+
+enum MessageKind { Heartbeat Test Block Synchronize Timescale }
+
+struct Message {
+    kind MessageKind
+
+    switch kind {
+    case Heartbeat:
+        // empty body — presence of the message is the payload
+
+    case Test:
+        testA bits(16)
+        testB int(0, 1000)
+        testC int(0, 1000)
+        testD int(0, 1000)
+
+    case Block:
+        // wire: length in [0, MaxBlockSize], align, then the bytes
+        blockData bytes(<= MaxBlockSize)
+
+    case Synchronize:
+        syncFrame    bits(64)
+        syncSequence bits(16)
+
+    case Timescale:
+        timescale double
+        frameA    bits(32)
+        frameB    bits(32)
+    }
+}

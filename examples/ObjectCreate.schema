@@ -1,0 +1,62 @@
+// ObjectCreate.schema — object creation state
+// Shape: the create-path pattern — quantized-integer vectors (the real float
+// idiom: pre-quantize at a fixed scale, send ranged ints), constants composing
+// into ranges, a bool-gated optional field, enums for kind and team.
+
+package example
+
+const UnitsPerMeter    = 1024
+const MaxWorldMeters   = 8192
+const MaxPositionUnits = MaxWorldMeters * UnitsPerMeter
+
+const MaxSpeedMeters   = 2048
+const MaxVelocityUnits = MaxSpeedMeters * UnitsPerMeter
+
+const RotationUnits    = 1024
+
+const MaxHealth = 1000
+
+enum Team      { None Red Blue }
+enum CraftKind { None Light Medium Heavy }
+
+// A world position, quantized to 1/1024 meter.
+struct QuantizedPosition {
+    x int(-MaxPositionUnits, MaxPositionUnits)
+    y int(-MaxPositionUnits, MaxPositionUnits)
+    z int(-MaxPositionUnits, MaxPositionUnits)
+}
+
+// A velocity, quantized at the same scale with its own bound.
+struct QuantizedVelocity {
+    x int(-MaxVelocityUnits, MaxVelocityUnits)
+    y int(-MaxVelocityUnits, MaxVelocityUnits)
+    z int(-MaxVelocityUnits, MaxVelocityUnits)
+}
+
+// A unit quaternion, components quantized to [-1024, 1024].
+struct QuantizedRotation {
+    x int(-RotationUnits, RotationUnits)
+    y int(-RotationUnits, RotationUnits)
+    z int(-RotationUnits, RotationUnits)
+    w int(-RotationUnits, RotationUnits)
+}
+
+struct CraftCreate {
+    // Finding 1 in examples/README.md: the hand-written equivalent encodes
+    // kind as [1, max] — None excluded from the wire. schema's enum wire is
+    // [0, max], spending one unused value. Ranged enums are an open question.
+    kind CraftKind
+
+    position       QuantizedPosition
+    rotation       QuantizedRotation
+    linearVelocity QuantizedVelocity
+
+    hasFlags bool
+    if hasFlags {
+        flags bits(64)
+    }
+
+    team   Team
+    health int(0, MaxHealth)
+    thrust int(0, 100)
+}

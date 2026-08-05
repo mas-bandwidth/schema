@@ -104,7 +104,32 @@ source. Two v1 implications, noted and then set aside:
 
 - Delta-against-baseline changes the generated function *signature* (it takes the current
   object and a baseline), not the wire model or the compiler architecture — it fits the
-  pipeline when its design pass comes.
+  pipeline when its design pass comes. Glenn's concrete shape for it (2026-08-04): *"define
+  ship properties and types and attributes in the schema language, and then combined with the
+  existing C++ code in space game, it would spit out the full delta code for that object
+  hardcoded."* The 2026-08-04 survey of `core_delta.h` shows the hand-written delta code
+  already follows one uniform grammar — **per-field encoding tiers tried cheapest-first, one
+  bit selecting the tier** (small-window delta vs absolute; or error-vs-*prediction*, where
+  the prediction is arithmetic over other fields plus an external parameter like
+  `deltaFrames`). So the delta pass needs three language surfaces: per-field tier lists,
+  prediction expressions over sibling fields, and declared external parameters — and the
+  generated output is the full hardcoded WriteDelta/ReadDelta per object type.
+  And the scope is wider than the serialize functions — Glenn: *"It would WRITE the delta
+  functions, and the different struct definitions for the ship, and everywhere that ship
+  object type is hooked in to the code etc etc"* / *"it's a huge amount of hard coding in
+  space game that I've done so far, the intent was always, this will move out to code
+  generation."* **schema eventually owns the object TYPE, not just its wire format**: the
+  deep/shallow struct definitions, the capacity constants, the per-type dispatch cases, the
+  integration points into the game's managers — generated from one declaration, woven into
+  the existing C++ codebase. And the generator family is open-ended — Glenn: *"it could also
+  generate functions to interpolate the ship structs, generate render data for them, lots of
+  codegen could be done."* The architectural consequence lands on v1's IR design: the IR is
+  not merely wire semantics, it is a **typed object model**, and backends generalize from
+  language targets to *generator kinds* (serialize × four languages today; delta,
+  interpolation, render data, struct-to-struct mapping × C++ tomorrow — his example: *"take
+  the interpolated ship and then copy it to the ship render struct and so on"*) — per-field
+  metadata beyond the wire (how a field interpolates, its delta tiers, which mapped struct a
+  field lands in) must have somewhere to attach when its pass comes.
 - Nothing in v1's grammar may squat on syntax the horizon will want (`packet`, `table`,
   `delta`, `baseline` are informally reserved for future use).
 
@@ -117,6 +142,16 @@ v1, above), **enums with explicit values and bit-flag enums**, **unions** (v1's 
 covers the wire pattern; the type-level union is the table-layer question), **field
 defaults**, and **vectors of tables**. None of these blocks the bitpacked v1; all of them
 shape what the table layer must eventually be.
+
+**The nearest edge of the horizon is the event set** — Glenn: *"the set of events could also
+be defined fully in the schema language, along with how to serialize each event type."* Its
+wire half is already expressible in v1: an enum-dispatched union with per-case fields
+(`examples/Messages.schema` is exactly that shape, and the current `events.fbs` union maps
+onto it directly). Only its table-layer half waits.
+
+**The whole horizon in his one sentence:** *"so much boilerplate would just go away, replaced
+with a definition of what object types there are, and what properties and attributes
+per-property."*
 
 ## 2. The name and the files — DECIDED
 
@@ -679,6 +714,16 @@ measure, §6.1. Both DECIDED.)*
    values (and possibly a `flags` enum form whose wire is `bits(N)`) deserve a v1 decision,
    not a deferral — this also settles whether variants stay whitespace-separated or gain a
    separator to make room for `= value`.
+8. **Sentinel-terminated collections.** The surveyed baseline/delta/explosion packets do not
+   use counted arrays — they are bool/sentinel-terminated element streams (serialize.go ships
+   `Continue`/`Until` helpers for exactly this), sized by mid-stream packet splitting. v1
+   cannot express them. The splitting half is emitter-driven and probably stays application
+   code; whether the plain bool-continuation list deserves a v1 construct is the open half.
+   Evidence: `examples/README.md`, finding 3.
+9. **Enum subranges.** The surveyed create path writes an object kind as `[1, max]`,
+   excluding the `None` variant from the wire; schema's enum wire is always `[0, max]`.
+   Cheap to live without (one wasted wire value), cheap to add (`kind CraftKind(1, max)` or a
+   `no-None` form). Evidence: `examples/README.md`, finding 1.
 
 ---
 
