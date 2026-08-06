@@ -75,16 +75,18 @@ object Ship {
 
     invulnerable bool [local]
 
-    // omitted, noted rather than silent: the real ShipState carries a client-only
-    // predictedExplode bool under #if GAME_CLIENT — the language has no
-    // side-conditional field construct, and it is [local] in every other respect.
+    // context-scoped local state (SPEC §4.2, Contexts): exists only in the
+    // client's generated type (ClientShipState) — the declared replacement for
+    // the hand-written #if GAME_CLIENT
+    predicted_explode bool [local, context = client]
 }
 
 object Missile {
     // The hand-written Missile has NO deep structs (shallow/interpolate only);
     // v1 generates the full family regardless — the unused deep view costs
-    // nothing and the model stays uniform. Hand-code also writes missile_type
-    // [1,MAX] on create but [0,MAX] on delta — drift, normalized by enum_index.
+    // nothing and the model stays uniform. Hand-code writes missile_type
+    // [1,MAX] on create but [0,MAX] on delta — drift; as a plain enum the
+    // generated wire is [0,MAX] on both paths (enum_index is cut, SPEC §9 q11).
 
     missile_type MissileType [interpolate]
 
@@ -103,13 +105,15 @@ object Missile {
     angular_velocity Vec3   [local]
     target           Handle [local]
 
-    // omitted, noted: a server-only double timer (#if GAME_SERVER) — the same
-    // side-conditional gap as Ship's predictedExplode.
+    // server-only sim state — exists only in ServerMissileState (SPEC §4.2)
+    timer float64 [local, context = server]
 }
 
 object DynamicProp {
-    // Also shallow/interpolate-only in hand code; prop_type is the clean
-    // enum_index case — [1, MAX] on both hand-written wire paths.
+    // Also shallow/interpolate-only in hand code; prop_type's hand wire is
+    // [1, MAX] on both paths — the cleanest future enum_index customer when
+    // that form returns (SPEC §9 q11); a plain enum spends the None value
+    // meanwhile.
 
     prop_type PropType [interpolate]
 

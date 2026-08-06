@@ -82,11 +82,13 @@ type InputPacket {
     inputs [<= MaxInputsPerPacket]Input
 }
 
-// ---- the create/dispatch idiom (pre-object-views) ----
+// ---- the create idiom (pre-object-views) ----
 
 type CraftCreate {
-    // CraftKind is an enum_index: the wire is value - 1 in [0, CraftKind.Max - 1]
-    // — None never rides the wire, exactly the hand-written [1, MAX] create path.
+    // kind is a plain enum: wire [0, CraftKind.Max], None wire-legal. The
+    // hand-written create path writes [1, MAX] — that index form (enum_index)
+    // was designed and cut for now (SPEC §9 q11); one unused wire value is the
+    // recorded v1 cost.
     kind CraftKind
 
     position        QuantizedPosition
@@ -104,12 +106,3 @@ type CraftCreate {
     thrust int8  [min = 0, max = 100]
 }
 
-// The explicit-switch pattern — for dispatch that is NOT a declaration set.
-type ObjectRecord {
-    object_id   int32 [min = 0, max = MaxObjects - 1]
-    record_kind RecordKind
-    switch record_kind {
-    case Craft:  craft CraftCreate
-    case Debris: debris_seed uint32
-    }
-}

@@ -1,0 +1,9 @@
+// Contexts.schema — the unit's build contexts (SPEC §4.2). User-declared, like
+// everything else in this language — nothing pre-defined. A [local] field may
+// scope itself with context = <name>; unscoped fields default to context = all.
+// Generation emits a type per context where contexts diverge (ClientShipState,
+// ServerShipState) — no preprocessor in any target.
+
+package example
+
+contexts { client, server }

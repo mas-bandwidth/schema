@@ -1,13 +1,15 @@
-// Enums.schema — the enum family: all three declaration forms (SPEC §4.2).
+// Enums.schema — the enum family: both declaration forms (SPEC §4.2).
 // Canonical form only — 0 = None implicit, variants dense from 1, never sparse,
-// never explicit values. The distinction between the forms lives at the TYPE:
+// never explicit values. Variants are comma-separated (trailing comma allowed).
 //
-//   enum        with-None: None = 0 rides the wire, range [0, Max]
-//   enum_index  index of valid values: wire = value - 1, range [0, Max - 1];
-//               storage keeps 0 as an unset sentinel, never wire-legal
-//   enum_flags  one bit per variant from bit 0, up to 64; storage uint64 in
-//               every target; wire = variant-count raw bits; no implicit None
-//               (the empty mask is 0 and needs no name)
+//   enum   with-None: None = 0 rides the wire, range [0, Max]
+//   flags  one bit per variant from bit 0, up to 64; storage uint64 in every
+//          target; wire = variant-count raw bits; no implicit None (the empty
+//          mask is 0 and needs no name)
+//
+// (enum_index — the [1, Max] index form with None off the wire — was designed
+// and CUT for now; SPEC §9 q11 keeps the design. Kind fields below are plain
+// enums and spend the unused None wire value, the recorded v1 cost.)
 //
 // Aspect-oriented layout (SPEC §2): one aspect per file.
 //
@@ -19,17 +21,12 @@
 
 package example
 
-// nullable on the wire — a team field can be "no team"
-enum Team { Red Blue }
+enum Team { Red, Blue }
 
-// index kinds — the create-path pattern: None never rides the wire
-enum_index CraftKind   { Light Medium Heavy }
-enum_index ShipType    { Fighter Corvette Bomber Destroyer Carrier }
-enum_index MissileType { Heatseeker Torpedo Nuke }
-enum_index PropType    { Asteroid Chunk Fragment Sphere BlackHole DysonPanel }
-
-// demo-local, used by the switch idiom in Types.schema
-enum RecordKind { Craft Debris }
+enum CraftKind   { Light, Medium, Heavy }
+enum ShipType    { Fighter, Corvette, Bomber, Destroyer, Carrier }
+enum MissileType { Heatseeker, Torpedo, Nuke }
+enum PropType    { Asteroid, Chunk, Fragment, Sphere, BlackHole, DysonPanel }
 
 // flags — named bits over a uint64, consumed as masks
-enum_flags ShipFlags { FiringLaser Boosting Braking Aiming }
+flags ShipFlags { FiringLaser, Boosting, Braking, Aiming }

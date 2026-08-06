@@ -28,19 +28,22 @@ hard requirement, just a personal preference"*; order-free cross-file resolution
 
 | file | holds | exercises |
 |---|---|---|
+| `Contexts.schema` | the build contexts | `contexts { client, server }` — user-declared sides, per-context generated types |
 | `Constants.schema` | every `const` | composition (`const C = A * B`), `Team.Max` enum references, order-free cross-file refs |
-| `Enums.schema` | the enum family | all three forms: `enum` (with-None), `enum_index` (wire = value − 1), `enum_flags` (uint64, bit-per-variant) |
-| `Types.schema` | every `type` | quantized-int types, prefix arrays `[<= N]T`, bool-gated `if` with an `enum_flags` field, the explicit `switch` idiom, storage-typed ranged ints |
-| `Messages.schema` | every `message` | the implicit `MessageType` set, sorted-by-name tags, empty message, byte blocks |
-| `Objects.schema` | all four `object`s | the view markers (`[interpolate]`/`[local]`, deep by default), tagged user types (`Quat [quat4]`) with explicit-bound composite `quantize`, ranged-int projection with `round = up`, per-field wire treatment divergences between objects |
+| `Enums.schema` | the enum family | both forms, comma-separated variants: `enum` (with-None) and `flags` (uint64, bit-per-variant) |
+| `Types.schema` | every `type` | tagged user types (`Vec3 [vec3]`, `Quat [quat4]` — tags inert in v1, claimed by the delta pass), quantized-int types, prefix arrays `[<= N]T`, bool-gated `if` with a `flags` field |
+| `Messages.schema` | every `message` | the implicit `MessageType` set, sorted-by-name tags, empty message, unified `string(N)`/`bytes(N)` (fixed buffers, used-length wire) |
+| `Objects.schema` | all four `object`s | the view markers (`[interpolate]`/`[local]`, deep by default), explicit-bound composite `quantize`, ranged-int projection with `round = up`, `[local, context = ...]` scoped fields, per-field wire treatment divergences between objects |
 
 *Coming when their design passes open: `Config.schema` and `Assets.schema` (SPEC, "The
 horizon" — the flatbuffers replacement), and the delta pass (out of v1 scope by decision).*
 
 ## What the corpus found, and what became of it
 
-1. **Enum subranges** (the `[1, MAX]` create-path wire) — **resolved 2026-08-05 by
-   `enum_index`**: the distinction lives at the type declaration; the wire is value − 1.
+1. **Enum subranges** (the `[1, MAX]` create-path wire) — designed as `enum_index`
+   2026-08-05, then **CUT for now on Glenn's word the same evening**; the design is
+   recorded at SPEC §9 q11. Kind fields are plain enums spending one unused wire value —
+   the honest v1 cost, back to this finding's original state.
 2. **Quantized ints are the real float idiom** — *(outcome, 2026-08-05: the
    `compressed_float` keyword dissolved into `float32 [min, max, resolution]`; the
    ranged-int projection in object views carries the same triple plus `round`.)*
@@ -54,5 +57,6 @@ The delta pass (out of v1 scope — Glenn: *"the delta serialization is out of s
 we will hit that once we lay the foundation of types/objects."*): delta-against-baseline
 with prediction expressions, `int_relative` ascending-id streams, mid-stream packet
 splitting, sentinel-terminated streams. The table layer: `Config.schema`/`Assets.schema`
-and the derived type enums. Side-conditional fields (`#if GAME_CLIENT`/`GAME_SERVER`
-state), noted at their omission sites in `Objects.schema`.
+and the derived type enums. *(Side-conditional fields, once an omission note here, are
+now first-class: `Contexts.schema` + `[local, context = ...]` — both former omission
+sites are declared fields in `Objects.schema`.)*

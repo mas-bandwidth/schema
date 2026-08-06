@@ -25,13 +25,15 @@ message Test {
 }
 
 message Block {
-    // wire: length in [0, MaxBlockSize], align, then the bytes
-    block_data bytes(<= MaxBlockSize)
+    // wire: length in [0, MaxBlockSize], align, then the used bytes — same
+    // shape as string(N); pre-allocated fixed buffer + used length (SPEC §4.7)
+    block_data bytes(MaxBlockSize)
 }
 
 message Chat {
-    // wire: length in [0, MaxChatLength - 1], align, then the raw bytes —
-    // byte strings, no UTF-8 rule, interior 0x00 rejected (SPEC §4.7)
+    // wire: length in [0, MaxChatLength], align, then the used bytes —
+    // byte strings, no UTF-8 rule, interior 0x00 rejected; N is the max
+    // length, and the bound exists to size the length prefix's bits (SPEC §4.7)
     text string(MaxChatLength)
 }
 
