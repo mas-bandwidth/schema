@@ -12,6 +12,11 @@
 // foreign-Message and typed-nil refusal cases have no Rust twin: the Message
 // enum is closed, so no out-of-set or null message value exists to refuse.
 
+// Instances are built field-by-field from Default exactly like the Go test
+// (the two files stay diffable side by side), so clippy's initializer-style
+// suggestion is silenced for the whole binary.
+#![allow(clippy::field_reassign_with_default)]
+
 use std::sync::atomic::{AtomicBool, Ordering};
 
 use example::*;
@@ -545,6 +550,80 @@ fn main() {
         );
     }
 
+    // ---- write-side refusals: serialize.rs only debug_asserts on write, so
+    // the GENERATED guards are what stand between an out-of-contract caller
+    // value and silently corrupt wire in release builds (the Go target gets
+    // these refusals from its runtime; here they are emitted) ----
+    {
+        // enum headroom: Weapon(200) against wire [0, 15]
+        let mut sample = ProbeSample::new();
+        sample.samples_count = 1;
+        sample.weapon = Weapon(200);
+        let mut buffer = [0u8; 2048];
+        let mut ws = WriteStream::new(&mut buffer);
+        check(
+            matches!(
+                write_probe_sample(&mut ws, &sample),
+                Err(Error::Stream(serialize::Error::ValueOutOfRange))
+            ),
+            "an out-of-set enum value is refused on write",
+        );
+
+        // a freshly constructed ProbeSample is wire-illegal (samples_count = 0
+        // against [1, 8]) — the write must refuse loudly, exactly as Go does,
+        // never emit a corrupt packet with Ok
+        let fresh = ProbeSample::new();
+        let mut buffer2 = [0u8; 2048];
+        let mut ws2 = WriteStream::new(&mut buffer2);
+        check(
+            matches!(
+                write_probe_sample(&mut ws2, &fresh),
+                Err(Error::Stream(serialize::Error::ValueOutOfRange))
+            ),
+            "a below-minimum array count is refused on write",
+        );
+
+        // ranged int: Test.test_b = 2000 against wire [0, 1000]
+        let mut test = Test::default();
+        test.test_b = 2000;
+        let mut buffer3 = [0u8; 2048];
+        let mut ws3 = WriteStream::new(&mut buffer3);
+        check(
+            matches!(
+                write_test(&mut ws3, &test),
+                Err(Error::Stream(serialize::Error::ValueOutOfRange))
+            ),
+            "an out-of-range int value is refused on write",
+        );
+
+        // bits(9): a tenth bit set
+        let mut bits = ProbeBits::default();
+        bits.small = 512;
+        bits.nonce = 0; // in range
+        let mut buffer4 = [0u8; 2048];
+        let mut ws4 = WriteStream::new(&mut buffer4);
+        check(
+            matches!(
+                write_probe_bits(&mut ws4, &bits),
+                Err(Error::Stream(serialize::Error::ValueOutOfRange))
+            ),
+            "a bit above a bits(N) wire width is refused on write",
+        );
+
+        // string length beyond the buffer bound: refused, never a slice panic
+        let mut chat = Chat::default();
+        chat.text_length = 300;
+        let mut buffer5 = [0u8; 2048];
+        let mut ws5 = WriteStream::new(&mut buffer5);
+        check(
+            matches!(
+                write_chat(&mut ws5, &chat),
+                Err(Error::Stream(serialize::Error::ValueOutOfRange))
+            ),
+            "an over-length string is refused on write, not panicked",
+        );
+    }
+
     // ---- Block: the bytes(N) framing ----
     {
         let mut input = Block::default();
@@ -743,7 +822,10 @@ fn main() {
 }
 
 // test_data_instance is the deterministic TestData the C++ test pins — the
-// values must stay mirrored on both sides.
+// values must stay mirrored on both sides (float_value's 3.1415926 is the
+// pinned instance's digits, so approx_constant is silenced rather than the
+// wire value changed).
+#[allow(clippy::approx_constant)]
 fn test_data_instance() -> TestData {
     let mut input = TestData::default();
     input.a = -100;

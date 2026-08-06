@@ -314,6 +314,9 @@ pub const SHIP_DATA_DEEP_MAX_BITS: u64 = 1703;
 pub const SHIP_DATA_DEEP_MAX_BYTES: usize = 216; // rounded up to the 8-byte write-buffer granularity
 
 pub fn write_ship_data_deep(stream: &mut WriteStream<'_>, value: &ShipData_Deep) -> Result {
+    if value.ship_type.0 > 5 {
+        return Err(Error::Stream(serialize::Error::ValueOutOfRange));
+    }
     {
         let mut enum_value = value.ship_type.0 as i32;
         stream.serialize_int(&mut enum_value, 0, 5)?;
@@ -328,6 +331,9 @@ pub fn write_ship_data_deep(stream: &mut WriteStream<'_>, value: &ShipData_Deep)
     {
         let mut flags_value = value.flags as u32;
         stream.serialize_bits(&mut flags_value, 4)?;
+    }
+    if value.team.0 > 2 {
+        return Err(Error::Stream(serialize::Error::ValueOutOfRange));
     }
     {
         let mut enum_value = value.team.0 as i32;
@@ -384,9 +390,15 @@ pub fn write_ship_data_deep(stream: &mut WriteStream<'_>, value: &ShipData_Deep)
         let mut float_value = value.aim_velocity;
         stream.serialize_f32(&mut float_value)?;
     }
+    if value.laser_index < 0 || value.laser_index > 15 { // out-of-contract writes are refused, not wrapped
+        return Err(Error::Stream(serialize::Error::ValueOutOfRange));
+    }
     {
         let mut range_value = value.laser_index as i32;
         stream.serialize_int(&mut range_value, 0, (SHIP_MAX_LASERS - 1) as i32)?;
+    }
+    if value.missile_index < 0 || value.missile_index > 15 { // out-of-contract writes are refused, not wrapped
+        return Err(Error::Stream(serialize::Error::ValueOutOfRange));
     }
     {
         let mut range_value = value.missile_index as i32;
@@ -453,6 +465,9 @@ pub const SHIP_DATA_SHALLOW_MAX_BITS: u64 = 218;
 pub const SHIP_DATA_SHALLOW_MAX_BYTES: usize = 32; // rounded up to the 8-byte write-buffer granularity
 
 pub fn write_ship_data_shallow(stream: &mut WriteStream<'_>, value: &ShipData_Shallow) -> Result {
+    if value.ship_type.0 > 5 {
+        return Err(Error::Stream(serialize::Error::ValueOutOfRange));
+    }
     {
         let mut enum_value = value.ship_type.0 as i32;
         stream.serialize_int(&mut enum_value, 0, 5)?;
@@ -504,6 +519,9 @@ pub fn write_ship_data_shallow(stream: &mut WriteStream<'_>, value: &ShipData_Sh
     {
         let mut flags_value = value.flags as u32;
         stream.serialize_bits(&mut flags_value, 4)?;
+    }
+    if value.team.0 > 2 {
+        return Err(Error::Stream(serialize::Error::ValueOutOfRange));
     }
     {
         let mut enum_value = value.team.0 as i32;
@@ -578,104 +596,114 @@ pub fn read_ship_data_shallow(stream: &mut ReadStream<'_>, value: &mut ShipData_
 pub fn quantize_ship(input: &ShipData_Interpolate, output: &mut ShipData_Shallow) {
     output.ship_type = input.ship_type;
     {
-        let mut quantized_value = (input.position.x * POSITION_UNITS as f64 + 0.5).floor() as i64;
-        if quantized_value > 8388608 {
-            quantized_value = 8388608;
-        }
-        if quantized_value < -8388608 {
-            quantized_value = -8388608;
-        }
-        output.position_x = quantized_value as i32;
+        let quantized_value = (input.position.x * POSITION_UNITS as f64 + 0.5).floor();
+        let component_value: i64 = if quantized_value > 8388608.0_f64 {
+            8388608
+        } else if quantized_value >= -8388608.0_f64 {
+            quantized_value as i64
+        } else {
+            -8388608
+        };
+        output.position_x = component_value as i32;
     }
     {
-        let mut quantized_value = (input.position.y * POSITION_UNITS as f64 + 0.5).floor() as i64;
-        if quantized_value > 8388608 {
-            quantized_value = 8388608;
-        }
-        if quantized_value < -8388608 {
-            quantized_value = -8388608;
-        }
-        output.position_y = quantized_value as i32;
+        let quantized_value = (input.position.y * POSITION_UNITS as f64 + 0.5).floor();
+        let component_value: i64 = if quantized_value > 8388608.0_f64 {
+            8388608
+        } else if quantized_value >= -8388608.0_f64 {
+            quantized_value as i64
+        } else {
+            -8388608
+        };
+        output.position_y = component_value as i32;
     }
     {
-        let mut quantized_value = (input.position.z * POSITION_UNITS as f64 + 0.5).floor() as i64;
-        if quantized_value > 8388608 {
-            quantized_value = 8388608;
-        }
-        if quantized_value < -8388608 {
-            quantized_value = -8388608;
-        }
-        output.position_z = quantized_value as i32;
+        let quantized_value = (input.position.z * POSITION_UNITS as f64 + 0.5).floor();
+        let component_value: i64 = if quantized_value > 8388608.0_f64 {
+            8388608
+        } else if quantized_value >= -8388608.0_f64 {
+            quantized_value as i64
+        } else {
+            -8388608
+        };
+        output.position_z = component_value as i32;
     }
     {
-        let mut quantized_value = (input.rotation.x * ROTATION_UNITS as f64 + 0.5).floor() as i64;
-        if quantized_value > 1024 {
-            quantized_value = 1024;
-        }
-        if quantized_value < -1024 {
-            quantized_value = -1024;
-        }
-        output.rotation_x = quantized_value as i16;
+        let quantized_value = (input.rotation.x * ROTATION_UNITS as f64 + 0.5).floor();
+        let component_value: i64 = if quantized_value > 1024.0_f64 {
+            1024
+        } else if quantized_value >= -1024.0_f64 {
+            quantized_value as i64
+        } else {
+            -1024
+        };
+        output.rotation_x = component_value as i16;
     }
     {
-        let mut quantized_value = (input.rotation.y * ROTATION_UNITS as f64 + 0.5).floor() as i64;
-        if quantized_value > 1024 {
-            quantized_value = 1024;
-        }
-        if quantized_value < -1024 {
-            quantized_value = -1024;
-        }
-        output.rotation_y = quantized_value as i16;
+        let quantized_value = (input.rotation.y * ROTATION_UNITS as f64 + 0.5).floor();
+        let component_value: i64 = if quantized_value > 1024.0_f64 {
+            1024
+        } else if quantized_value >= -1024.0_f64 {
+            quantized_value as i64
+        } else {
+            -1024
+        };
+        output.rotation_y = component_value as i16;
     }
     {
-        let mut quantized_value = (input.rotation.z * ROTATION_UNITS as f64 + 0.5).floor() as i64;
-        if quantized_value > 1024 {
-            quantized_value = 1024;
-        }
-        if quantized_value < -1024 {
-            quantized_value = -1024;
-        }
-        output.rotation_z = quantized_value as i16;
+        let quantized_value = (input.rotation.z * ROTATION_UNITS as f64 + 0.5).floor();
+        let component_value: i64 = if quantized_value > 1024.0_f64 {
+            1024
+        } else if quantized_value >= -1024.0_f64 {
+            quantized_value as i64
+        } else {
+            -1024
+        };
+        output.rotation_z = component_value as i16;
     }
     {
-        let mut quantized_value = (input.rotation.w * ROTATION_UNITS as f64 + 0.5).floor() as i64;
-        if quantized_value > 1024 {
-            quantized_value = 1024;
-        }
-        if quantized_value < -1024 {
-            quantized_value = -1024;
-        }
-        output.rotation_w = quantized_value as i16;
+        let quantized_value = (input.rotation.w * ROTATION_UNITS as f64 + 0.5).floor();
+        let component_value: i64 = if quantized_value > 1024.0_f64 {
+            1024
+        } else if quantized_value >= -1024.0_f64 {
+            quantized_value as i64
+        } else {
+            -1024
+        };
+        output.rotation_w = component_value as i16;
     }
     {
-        let mut quantized_value = (input.linear_velocity.x * VELOCITY_UNITS as f64 + 0.5).floor() as i64;
-        if quantized_value > 2097152 {
-            quantized_value = 2097152;
-        }
-        if quantized_value < -2097152 {
-            quantized_value = -2097152;
-        }
-        output.linear_velocity_x = quantized_value as i32;
+        let quantized_value = (input.linear_velocity.x * VELOCITY_UNITS as f64 + 0.5).floor();
+        let component_value: i64 = if quantized_value > 2097152.0_f64 {
+            2097152
+        } else if quantized_value >= -2097152.0_f64 {
+            quantized_value as i64
+        } else {
+            -2097152
+        };
+        output.linear_velocity_x = component_value as i32;
     }
     {
-        let mut quantized_value = (input.linear_velocity.y * VELOCITY_UNITS as f64 + 0.5).floor() as i64;
-        if quantized_value > 2097152 {
-            quantized_value = 2097152;
-        }
-        if quantized_value < -2097152 {
-            quantized_value = -2097152;
-        }
-        output.linear_velocity_y = quantized_value as i32;
+        let quantized_value = (input.linear_velocity.y * VELOCITY_UNITS as f64 + 0.5).floor();
+        let component_value: i64 = if quantized_value > 2097152.0_f64 {
+            2097152
+        } else if quantized_value >= -2097152.0_f64 {
+            quantized_value as i64
+        } else {
+            -2097152
+        };
+        output.linear_velocity_y = component_value as i32;
     }
     {
-        let mut quantized_value = (input.linear_velocity.z * VELOCITY_UNITS as f64 + 0.5).floor() as i64;
-        if quantized_value > 2097152 {
-            quantized_value = 2097152;
-        }
-        if quantized_value < -2097152 {
-            quantized_value = -2097152;
-        }
-        output.linear_velocity_z = quantized_value as i32;
+        let quantized_value = (input.linear_velocity.z * VELOCITY_UNITS as f64 + 0.5).floor();
+        let component_value: i64 = if quantized_value > 2097152.0_f64 {
+            2097152
+        } else if quantized_value >= -2097152.0_f64 {
+            quantized_value as i64
+        } else {
+            -2097152
+        };
+        output.linear_velocity_z = component_value as i32;
     }
     output.flags = input.flags;
     output.team = input.team;
@@ -868,6 +896,9 @@ pub const MISSILE_DATA_DEEP_MAX_BITS: u64 = 708;
 pub const MISSILE_DATA_DEEP_MAX_BYTES: usize = 96; // rounded up to the 8-byte write-buffer granularity
 
 pub fn write_missile_data_deep(stream: &mut WriteStream<'_>, value: &MissileData_Deep) -> Result {
+    if value.missile_type.0 > 3 {
+        return Err(Error::Stream(serialize::Error::ValueOutOfRange));
+    }
     {
         let mut enum_value = value.missile_type.0 as i32;
         stream.serialize_int(&mut enum_value, 0, 3)?;
@@ -875,6 +906,9 @@ pub fn write_missile_data_deep(stream: &mut WriteStream<'_>, value: &MissileData
     write_vec3(stream, &value.position)?;
     write_quat(stream, &value.rotation)?;
     write_vec3(stream, &value.linear_velocity)?;
+    if value.team.0 > 2 {
+        return Err(Error::Stream(serialize::Error::ValueOutOfRange));
+    }
     {
         let mut enum_value = value.team.0 as i32;
         stream.serialize_int(&mut enum_value, 0, 2)?;
@@ -908,6 +942,9 @@ pub const MISSILE_DATA_SHALLOW_MAX_BITS: u64 = 260;
 pub const MISSILE_DATA_SHALLOW_MAX_BYTES: usize = 40; // rounded up to the 8-byte write-buffer granularity
 
 pub fn write_missile_data_shallow(stream: &mut WriteStream<'_>, value: &MissileData_Shallow) -> Result {
+    if value.missile_type.0 > 3 {
+        return Err(Error::Stream(serialize::Error::ValueOutOfRange));
+    }
     {
         let mut enum_value = value.missile_type.0 as i32;
         stream.serialize_int(&mut enum_value, 0, 3)?;
@@ -951,6 +988,9 @@ pub fn write_missile_data_shallow(stream: &mut WriteStream<'_>, value: &MissileD
     {
         let mut component_value = value.linear_velocity_z;
         stream.serialize_int(&mut component_value, -2097152, 2097152)?;
+    }
+    if value.team.0 > 2 {
+        return Err(Error::Stream(serialize::Error::ValueOutOfRange));
     }
     {
         let mut enum_value = value.team.0 as i32;
@@ -1007,104 +1047,114 @@ pub fn read_missile_data_shallow(stream: &mut ReadStream<'_>, value: &mut Missil
 pub fn quantize_missile(input: &MissileData_Interpolate, output: &mut MissileData_Shallow) {
     output.missile_type = input.missile_type;
     {
-        let mut quantized_value = (input.position.x * POSITION_UNITS as f64 + 0.5).floor() as i64;
-        if quantized_value > 8388608 {
-            quantized_value = 8388608;
-        }
-        if quantized_value < -8388608 {
-            quantized_value = -8388608;
-        }
-        output.position_x = quantized_value as i32;
+        let quantized_value = (input.position.x * POSITION_UNITS as f64 + 0.5).floor();
+        let component_value: i64 = if quantized_value > 8388608.0_f64 {
+            8388608
+        } else if quantized_value >= -8388608.0_f64 {
+            quantized_value as i64
+        } else {
+            -8388608
+        };
+        output.position_x = component_value as i32;
     }
     {
-        let mut quantized_value = (input.position.y * POSITION_UNITS as f64 + 0.5).floor() as i64;
-        if quantized_value > 8388608 {
-            quantized_value = 8388608;
-        }
-        if quantized_value < -8388608 {
-            quantized_value = -8388608;
-        }
-        output.position_y = quantized_value as i32;
+        let quantized_value = (input.position.y * POSITION_UNITS as f64 + 0.5).floor();
+        let component_value: i64 = if quantized_value > 8388608.0_f64 {
+            8388608
+        } else if quantized_value >= -8388608.0_f64 {
+            quantized_value as i64
+        } else {
+            -8388608
+        };
+        output.position_y = component_value as i32;
     }
     {
-        let mut quantized_value = (input.position.z * POSITION_UNITS as f64 + 0.5).floor() as i64;
-        if quantized_value > 8388608 {
-            quantized_value = 8388608;
-        }
-        if quantized_value < -8388608 {
-            quantized_value = -8388608;
-        }
-        output.position_z = quantized_value as i32;
+        let quantized_value = (input.position.z * POSITION_UNITS as f64 + 0.5).floor();
+        let component_value: i64 = if quantized_value > 8388608.0_f64 {
+            8388608
+        } else if quantized_value >= -8388608.0_f64 {
+            quantized_value as i64
+        } else {
+            -8388608
+        };
+        output.position_z = component_value as i32;
     }
     {
-        let mut quantized_value = (input.rotation.x * ROTATION_UNITS as f64 + 0.5).floor() as i64;
-        if quantized_value > 1024 {
-            quantized_value = 1024;
-        }
-        if quantized_value < -1024 {
-            quantized_value = -1024;
-        }
-        output.rotation_x = quantized_value as i16;
+        let quantized_value = (input.rotation.x * ROTATION_UNITS as f64 + 0.5).floor();
+        let component_value: i64 = if quantized_value > 1024.0_f64 {
+            1024
+        } else if quantized_value >= -1024.0_f64 {
+            quantized_value as i64
+        } else {
+            -1024
+        };
+        output.rotation_x = component_value as i16;
     }
     {
-        let mut quantized_value = (input.rotation.y * ROTATION_UNITS as f64 + 0.5).floor() as i64;
-        if quantized_value > 1024 {
-            quantized_value = 1024;
-        }
-        if quantized_value < -1024 {
-            quantized_value = -1024;
-        }
-        output.rotation_y = quantized_value as i16;
+        let quantized_value = (input.rotation.y * ROTATION_UNITS as f64 + 0.5).floor();
+        let component_value: i64 = if quantized_value > 1024.0_f64 {
+            1024
+        } else if quantized_value >= -1024.0_f64 {
+            quantized_value as i64
+        } else {
+            -1024
+        };
+        output.rotation_y = component_value as i16;
     }
     {
-        let mut quantized_value = (input.rotation.z * ROTATION_UNITS as f64 + 0.5).floor() as i64;
-        if quantized_value > 1024 {
-            quantized_value = 1024;
-        }
-        if quantized_value < -1024 {
-            quantized_value = -1024;
-        }
-        output.rotation_z = quantized_value as i16;
+        let quantized_value = (input.rotation.z * ROTATION_UNITS as f64 + 0.5).floor();
+        let component_value: i64 = if quantized_value > 1024.0_f64 {
+            1024
+        } else if quantized_value >= -1024.0_f64 {
+            quantized_value as i64
+        } else {
+            -1024
+        };
+        output.rotation_z = component_value as i16;
     }
     {
-        let mut quantized_value = (input.rotation.w * ROTATION_UNITS as f64 + 0.5).floor() as i64;
-        if quantized_value > 1024 {
-            quantized_value = 1024;
-        }
-        if quantized_value < -1024 {
-            quantized_value = -1024;
-        }
-        output.rotation_w = quantized_value as i16;
+        let quantized_value = (input.rotation.w * ROTATION_UNITS as f64 + 0.5).floor();
+        let component_value: i64 = if quantized_value > 1024.0_f64 {
+            1024
+        } else if quantized_value >= -1024.0_f64 {
+            quantized_value as i64
+        } else {
+            -1024
+        };
+        output.rotation_w = component_value as i16;
     }
     {
-        let mut quantized_value = (input.linear_velocity.x * VELOCITY_UNITS as f64 + 0.5).floor() as i64;
-        if quantized_value > 2097152 {
-            quantized_value = 2097152;
-        }
-        if quantized_value < -2097152 {
-            quantized_value = -2097152;
-        }
-        output.linear_velocity_x = quantized_value as i32;
+        let quantized_value = (input.linear_velocity.x * VELOCITY_UNITS as f64 + 0.5).floor();
+        let component_value: i64 = if quantized_value > 2097152.0_f64 {
+            2097152
+        } else if quantized_value >= -2097152.0_f64 {
+            quantized_value as i64
+        } else {
+            -2097152
+        };
+        output.linear_velocity_x = component_value as i32;
     }
     {
-        let mut quantized_value = (input.linear_velocity.y * VELOCITY_UNITS as f64 + 0.5).floor() as i64;
-        if quantized_value > 2097152 {
-            quantized_value = 2097152;
-        }
-        if quantized_value < -2097152 {
-            quantized_value = -2097152;
-        }
-        output.linear_velocity_y = quantized_value as i32;
+        let quantized_value = (input.linear_velocity.y * VELOCITY_UNITS as f64 + 0.5).floor();
+        let component_value: i64 = if quantized_value > 2097152.0_f64 {
+            2097152
+        } else if quantized_value >= -2097152.0_f64 {
+            quantized_value as i64
+        } else {
+            -2097152
+        };
+        output.linear_velocity_y = component_value as i32;
     }
     {
-        let mut quantized_value = (input.linear_velocity.z * VELOCITY_UNITS as f64 + 0.5).floor() as i64;
-        if quantized_value > 2097152 {
-            quantized_value = 2097152;
-        }
-        if quantized_value < -2097152 {
-            quantized_value = -2097152;
-        }
-        output.linear_velocity_z = quantized_value as i32;
+        let quantized_value = (input.linear_velocity.z * VELOCITY_UNITS as f64 + 0.5).floor();
+        let component_value: i64 = if quantized_value > 2097152.0_f64 {
+            2097152
+        } else if quantized_value >= -2097152.0_f64 {
+            quantized_value as i64
+        } else {
+            -2097152
+        };
+        output.linear_velocity_z = component_value as i32;
     }
     output.team = input.team;
     output.flags = input.flags;
@@ -1258,6 +1308,9 @@ pub const DYNAMIC_PROP_DATA_DEEP_MAX_BITS: u64 = 709;
 pub const DYNAMIC_PROP_DATA_DEEP_MAX_BYTES: usize = 96; // rounded up to the 8-byte write-buffer granularity
 
 pub fn write_dynamic_prop_data_deep(stream: &mut WriteStream<'_>, value: &DynamicPropData_Deep) -> Result {
+    if value.prop_type.0 > 6 {
+        return Err(Error::Stream(serialize::Error::ValueOutOfRange));
+    }
     {
         let mut enum_value = value.prop_type.0 as i32;
         stream.serialize_int(&mut enum_value, 0, 6)?;
@@ -1268,6 +1321,9 @@ pub fn write_dynamic_prop_data_deep(stream: &mut WriteStream<'_>, value: &Dynami
     {
         let mut raw_value = value.flags;
         stream.serialize_bits64(&mut raw_value, 64)?;
+    }
+    if value.team.0 > 2 {
+        return Err(Error::Stream(serialize::Error::ValueOutOfRange));
     }
     {
         let mut enum_value = value.team.0 as i32;
@@ -1298,6 +1354,9 @@ pub const DYNAMIC_PROP_DATA_SHALLOW_MAX_BITS: u64 = 261;
 pub const DYNAMIC_PROP_DATA_SHALLOW_MAX_BYTES: usize = 40; // rounded up to the 8-byte write-buffer granularity
 
 pub fn write_dynamic_prop_data_shallow(stream: &mut WriteStream<'_>, value: &DynamicPropData_Shallow) -> Result {
+    if value.prop_type.0 > 6 {
+        return Err(Error::Stream(serialize::Error::ValueOutOfRange));
+    }
     {
         let mut enum_value = value.prop_type.0 as i32;
         stream.serialize_int(&mut enum_value, 0, 6)?;
@@ -1345,6 +1404,9 @@ pub fn write_dynamic_prop_data_shallow(stream: &mut WriteStream<'_>, value: &Dyn
     {
         let mut raw_value = value.flags;
         stream.serialize_bits64(&mut raw_value, 64)?;
+    }
+    if value.team.0 > 2 {
+        return Err(Error::Stream(serialize::Error::ValueOutOfRange));
     }
     {
         let mut enum_value = value.team.0 as i32;
@@ -1397,104 +1459,114 @@ pub fn read_dynamic_prop_data_shallow(stream: &mut ReadStream<'_>, value: &mut D
 pub fn quantize_dynamic_prop(input: &DynamicPropData_Interpolate, output: &mut DynamicPropData_Shallow) {
     output.prop_type = input.prop_type;
     {
-        let mut quantized_value = (input.position.x * POSITION_UNITS as f64 + 0.5).floor() as i64;
-        if quantized_value > 8388608 {
-            quantized_value = 8388608;
-        }
-        if quantized_value < -8388608 {
-            quantized_value = -8388608;
-        }
-        output.position_x = quantized_value as i32;
+        let quantized_value = (input.position.x * POSITION_UNITS as f64 + 0.5).floor();
+        let component_value: i64 = if quantized_value > 8388608.0_f64 {
+            8388608
+        } else if quantized_value >= -8388608.0_f64 {
+            quantized_value as i64
+        } else {
+            -8388608
+        };
+        output.position_x = component_value as i32;
     }
     {
-        let mut quantized_value = (input.position.y * POSITION_UNITS as f64 + 0.5).floor() as i64;
-        if quantized_value > 8388608 {
-            quantized_value = 8388608;
-        }
-        if quantized_value < -8388608 {
-            quantized_value = -8388608;
-        }
-        output.position_y = quantized_value as i32;
+        let quantized_value = (input.position.y * POSITION_UNITS as f64 + 0.5).floor();
+        let component_value: i64 = if quantized_value > 8388608.0_f64 {
+            8388608
+        } else if quantized_value >= -8388608.0_f64 {
+            quantized_value as i64
+        } else {
+            -8388608
+        };
+        output.position_y = component_value as i32;
     }
     {
-        let mut quantized_value = (input.position.z * POSITION_UNITS as f64 + 0.5).floor() as i64;
-        if quantized_value > 8388608 {
-            quantized_value = 8388608;
-        }
-        if quantized_value < -8388608 {
-            quantized_value = -8388608;
-        }
-        output.position_z = quantized_value as i32;
+        let quantized_value = (input.position.z * POSITION_UNITS as f64 + 0.5).floor();
+        let component_value: i64 = if quantized_value > 8388608.0_f64 {
+            8388608
+        } else if quantized_value >= -8388608.0_f64 {
+            quantized_value as i64
+        } else {
+            -8388608
+        };
+        output.position_z = component_value as i32;
     }
     {
-        let mut quantized_value = (input.rotation.x * ROTATION_UNITS as f64 + 0.5).floor() as i64;
-        if quantized_value > 1024 {
-            quantized_value = 1024;
-        }
-        if quantized_value < -1024 {
-            quantized_value = -1024;
-        }
-        output.rotation_x = quantized_value as i16;
+        let quantized_value = (input.rotation.x * ROTATION_UNITS as f64 + 0.5).floor();
+        let component_value: i64 = if quantized_value > 1024.0_f64 {
+            1024
+        } else if quantized_value >= -1024.0_f64 {
+            quantized_value as i64
+        } else {
+            -1024
+        };
+        output.rotation_x = component_value as i16;
     }
     {
-        let mut quantized_value = (input.rotation.y * ROTATION_UNITS as f64 + 0.5).floor() as i64;
-        if quantized_value > 1024 {
-            quantized_value = 1024;
-        }
-        if quantized_value < -1024 {
-            quantized_value = -1024;
-        }
-        output.rotation_y = quantized_value as i16;
+        let quantized_value = (input.rotation.y * ROTATION_UNITS as f64 + 0.5).floor();
+        let component_value: i64 = if quantized_value > 1024.0_f64 {
+            1024
+        } else if quantized_value >= -1024.0_f64 {
+            quantized_value as i64
+        } else {
+            -1024
+        };
+        output.rotation_y = component_value as i16;
     }
     {
-        let mut quantized_value = (input.rotation.z * ROTATION_UNITS as f64 + 0.5).floor() as i64;
-        if quantized_value > 1024 {
-            quantized_value = 1024;
-        }
-        if quantized_value < -1024 {
-            quantized_value = -1024;
-        }
-        output.rotation_z = quantized_value as i16;
+        let quantized_value = (input.rotation.z * ROTATION_UNITS as f64 + 0.5).floor();
+        let component_value: i64 = if quantized_value > 1024.0_f64 {
+            1024
+        } else if quantized_value >= -1024.0_f64 {
+            quantized_value as i64
+        } else {
+            -1024
+        };
+        output.rotation_z = component_value as i16;
     }
     {
-        let mut quantized_value = (input.rotation.w * ROTATION_UNITS as f64 + 0.5).floor() as i64;
-        if quantized_value > 1024 {
-            quantized_value = 1024;
-        }
-        if quantized_value < -1024 {
-            quantized_value = -1024;
-        }
-        output.rotation_w = quantized_value as i16;
+        let quantized_value = (input.rotation.w * ROTATION_UNITS as f64 + 0.5).floor();
+        let component_value: i64 = if quantized_value > 1024.0_f64 {
+            1024
+        } else if quantized_value >= -1024.0_f64 {
+            quantized_value as i64
+        } else {
+            -1024
+        };
+        output.rotation_w = component_value as i16;
     }
     {
-        let mut quantized_value = (input.linear_velocity.x * VELOCITY_UNITS as f64 + 0.5).floor() as i64;
-        if quantized_value > 2097152 {
-            quantized_value = 2097152;
-        }
-        if quantized_value < -2097152 {
-            quantized_value = -2097152;
-        }
-        output.linear_velocity_x = quantized_value as i32;
+        let quantized_value = (input.linear_velocity.x * VELOCITY_UNITS as f64 + 0.5).floor();
+        let component_value: i64 = if quantized_value > 2097152.0_f64 {
+            2097152
+        } else if quantized_value >= -2097152.0_f64 {
+            quantized_value as i64
+        } else {
+            -2097152
+        };
+        output.linear_velocity_x = component_value as i32;
     }
     {
-        let mut quantized_value = (input.linear_velocity.y * VELOCITY_UNITS as f64 + 0.5).floor() as i64;
-        if quantized_value > 2097152 {
-            quantized_value = 2097152;
-        }
-        if quantized_value < -2097152 {
-            quantized_value = -2097152;
-        }
-        output.linear_velocity_y = quantized_value as i32;
+        let quantized_value = (input.linear_velocity.y * VELOCITY_UNITS as f64 + 0.5).floor();
+        let component_value: i64 = if quantized_value > 2097152.0_f64 {
+            2097152
+        } else if quantized_value >= -2097152.0_f64 {
+            quantized_value as i64
+        } else {
+            -2097152
+        };
+        output.linear_velocity_y = component_value as i32;
     }
     {
-        let mut quantized_value = (input.linear_velocity.z * VELOCITY_UNITS as f64 + 0.5).floor() as i64;
-        if quantized_value > 2097152 {
-            quantized_value = 2097152;
-        }
-        if quantized_value < -2097152 {
-            quantized_value = -2097152;
-        }
-        output.linear_velocity_z = quantized_value as i32;
+        let quantized_value = (input.linear_velocity.z * VELOCITY_UNITS as f64 + 0.5).floor();
+        let component_value: i64 = if quantized_value > 2097152.0_f64 {
+            2097152
+        } else if quantized_value >= -2097152.0_f64 {
+            quantized_value as i64
+        } else {
+            -2097152
+        };
+        output.linear_velocity_z = component_value as i32;
     }
     output.flags = input.flags;
     output.team = input.team;
@@ -1623,6 +1695,9 @@ pub const TURRET_DATA_DEEP_MAX_BYTES: usize = 48; // rounded up to the 8-byte wr
 
 pub fn write_turret_data_deep(stream: &mut WriteStream<'_>, value: &TurretData_Deep) -> Result {
     write_handle(stream, &value.parent)?;
+    if value.turret_index < 0 || value.turret_index > 255 { // out-of-contract writes are refused, not wrapped
+        return Err(Error::Stream(serialize::Error::ValueOutOfRange));
+    }
     {
         let mut range_value = value.turret_index;
         stream.serialize_int(&mut range_value, 0, (MAX_TURRETS_PER_SHIP - 1) as i32)?;
@@ -1648,6 +1723,9 @@ pub const TURRET_DATA_SHALLOW_MAX_BYTES: usize = 24; // rounded up to the 8-byte
 
 pub fn write_turret_data_shallow(stream: &mut WriteStream<'_>, value: &TurretData_Shallow) -> Result {
     write_handle(stream, &value.parent)?;
+    if value.turret_index < 0 || value.turret_index > 255 { // out-of-contract writes are refused, not wrapped
+        return Err(Error::Stream(serialize::Error::ValueOutOfRange));
+    }
     {
         let mut range_value = value.turret_index;
         stream.serialize_int(&mut range_value, 0, (MAX_TURRETS_PER_SHIP - 1) as i32)?;
@@ -1706,44 +1784,48 @@ pub fn quantize_turret(input: &TurretData_Interpolate, output: &mut TurretData_S
     output.parent = input.parent;
     output.turret_index = input.turret_index;
     {
-        let mut quantized_value = (input.rotation.x * ROTATION_UNITS as f64 + 0.5).floor() as i64;
-        if quantized_value > 1024 {
-            quantized_value = 1024;
-        }
-        if quantized_value < -1024 {
-            quantized_value = -1024;
-        }
-        output.rotation_x = quantized_value as i16;
+        let quantized_value = (input.rotation.x * ROTATION_UNITS as f64 + 0.5).floor();
+        let component_value: i64 = if quantized_value > 1024.0_f64 {
+            1024
+        } else if quantized_value >= -1024.0_f64 {
+            quantized_value as i64
+        } else {
+            -1024
+        };
+        output.rotation_x = component_value as i16;
     }
     {
-        let mut quantized_value = (input.rotation.y * ROTATION_UNITS as f64 + 0.5).floor() as i64;
-        if quantized_value > 1024 {
-            quantized_value = 1024;
-        }
-        if quantized_value < -1024 {
-            quantized_value = -1024;
-        }
-        output.rotation_y = quantized_value as i16;
+        let quantized_value = (input.rotation.y * ROTATION_UNITS as f64 + 0.5).floor();
+        let component_value: i64 = if quantized_value > 1024.0_f64 {
+            1024
+        } else if quantized_value >= -1024.0_f64 {
+            quantized_value as i64
+        } else {
+            -1024
+        };
+        output.rotation_y = component_value as i16;
     }
     {
-        let mut quantized_value = (input.rotation.z * ROTATION_UNITS as f64 + 0.5).floor() as i64;
-        if quantized_value > 1024 {
-            quantized_value = 1024;
-        }
-        if quantized_value < -1024 {
-            quantized_value = -1024;
-        }
-        output.rotation_z = quantized_value as i16;
+        let quantized_value = (input.rotation.z * ROTATION_UNITS as f64 + 0.5).floor();
+        let component_value: i64 = if quantized_value > 1024.0_f64 {
+            1024
+        } else if quantized_value >= -1024.0_f64 {
+            quantized_value as i64
+        } else {
+            -1024
+        };
+        output.rotation_z = component_value as i16;
     }
     {
-        let mut quantized_value = (input.rotation.w * ROTATION_UNITS as f64 + 0.5).floor() as i64;
-        if quantized_value > 1024 {
-            quantized_value = 1024;
-        }
-        if quantized_value < -1024 {
-            quantized_value = -1024;
-        }
-        output.rotation_w = quantized_value as i16;
+        let quantized_value = (input.rotation.w * ROTATION_UNITS as f64 + 0.5).floor();
+        let component_value: i64 = if quantized_value > 1024.0_f64 {
+            1024
+        } else if quantized_value >= -1024.0_f64 {
+            quantized_value as i64
+        } else {
+            -1024
+        };
+        output.rotation_w = component_value as i16;
     }
     output.flags = input.flags;
 }

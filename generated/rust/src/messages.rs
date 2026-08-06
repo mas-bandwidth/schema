@@ -76,13 +76,22 @@ pub fn write_test(stream: &mut WriteStream<'_>, value: &Test) -> Result {
         let mut raw_value = value.test_a as u32;
         stream.serialize_bits(&mut raw_value, 16)?;
     }
+    if value.test_b < 0 || value.test_b > 1000 { // out-of-contract writes are refused, not wrapped
+        return Err(Error::Stream(serialize::Error::ValueOutOfRange));
+    }
     {
         let mut range_value = value.test_b as i32;
         stream.serialize_int(&mut range_value, 0, 1000)?;
     }
+    if value.test_c < 0 || value.test_c > 1000 { // out-of-contract writes are refused, not wrapped
+        return Err(Error::Stream(serialize::Error::ValueOutOfRange));
+    }
     {
         let mut range_value = value.test_c as i32;
         stream.serialize_int(&mut range_value, 0, 1000)?;
+    }
+    if value.test_d < 0 || value.test_d > 1000 { // out-of-contract writes are refused, not wrapped
+        return Err(Error::Stream(serialize::Error::ValueOutOfRange));
     }
     {
         let mut range_value = value.test_d as i32;
@@ -138,6 +147,9 @@ pub const BLOCK_MAX_BITS: u64 = 16018;
 pub const BLOCK_MAX_BYTES: usize = 2008;
 
 pub fn write_block(stream: &mut WriteStream<'_>, value: &Block) -> Result {
+    if value.block_data_length < 0 || value.block_data_length > 2000 { // refused, not wrapped or panicked: guards the slice too
+        return Err(Error::Stream(serialize::Error::ValueOutOfRange));
+    }
     {
         let mut length_value = value.block_data_length;
         stream.serialize_int(&mut length_value, 0, MAX_BLOCK_SIZE as i32)?; // the length guards the slice (§6.3)
@@ -179,6 +191,9 @@ pub const CHAT_MAX_BITS: u64 = 2064;
 pub const CHAT_MAX_BYTES: usize = 264;
 
 pub fn write_chat(stream: &mut WriteStream<'_>, value: &Chat) -> Result {
+    if value.text_length < 0 || value.text_length > 256 { // refused, not wrapped or panicked: guards the slice too
+        return Err(Error::Stream(serialize::Error::ValueOutOfRange));
+    }
     {
         let mut length_value = value.text_length;
         stream.serialize_int(&mut length_value, 0, MAX_CHAT_LENGTH as i32)?; // the length guards the slice (§6.3)
@@ -318,6 +333,7 @@ pub const MESSAGE_MAX_BYTES: usize = 2008;
 // the tag; nothing heap-allocates per message, SPEC §6.1). Message::None is
 // the stream terminator (SPEC §4.8).
 #[derive(Clone, Copy, PartialEq, Debug)]
+#[allow(clippy::large_enum_variant)]
 pub enum Message {
     None,
     Block(Block),

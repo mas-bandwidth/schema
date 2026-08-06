@@ -168,14 +168,19 @@ func (g *gen) emitQuantizeField(f *ir.Field, ind string) {
 		scale := g.renderInt(f.QuantScaleExpr, big.NewInt(f.QuantScale))
 		for _, comp := range st.Fields {
 			// double math regardless of component width — the referent's own
-			// arithmetic, and a float product would pre-round before the + 0.5
-			g.pf("%s{\n%s    int64_t quantized_value = int64_t( floor( double( input.%s.%s ) * double( %s ) + 0.5 ) );\n",
+			// arithmetic, and a float product would pre-round before the + 0.5.
+			// The clamp happens in the DOUBLE domain before the int conversion:
+			// float->int of out-of-range or NaN input is target- and
+			// arch-dependent, so this shape quantizes even garbage input
+			// identically in every target (NaN clamps low)
+			g.pf("%s{\n%s    double quantized_value = floor( double( input.%s.%s ) * double( %s ) + 0.5 );\n",
 				ind, ind, f.Name, comp.Name, scale)
-			g.pf("%s    if ( quantized_value > %d )\n%s    {\n%s        quantized_value = %d;\n%s    }\n",
+			g.pf("%s    int64_t component_value = -%dll;\n", ind, f.QuantBound)
+			g.pf("%s    if ( quantized_value > %d.0 )\n%s    {\n%s        component_value = %dll;\n%s    }\n",
 				ind, f.QuantBound, ind, ind, f.QuantBound, ind)
-			g.pf("%s    if ( quantized_value < -%d )\n%s    {\n%s        quantized_value = -%d;\n%s    }\n",
-				ind, f.QuantBound, ind, ind, f.QuantBound, ind)
-			g.pf("%s    output.%s_%s = %s( quantized_value );\n%s}\n", ind, f.Name, comp.Name, compT, ind)
+			g.pf("%s    else if ( quantized_value >= -%d.0 )\n%s    {\n%s        component_value = int64_t( quantized_value );\n%s    }\n",
+				ind, f.QuantBound, ind, ind, ind)
+			g.pf("%s    output.%s_%s = %s( component_value );\n%s}\n", ind, f.Name, comp.Name, compT, ind)
 		}
 	default:
 		g.pf("%soutput.%s = input.%s;\n", ind, f.Name, f.Name)

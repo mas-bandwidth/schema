@@ -169,10 +169,16 @@ func (g *gen) emitQuantizeField(f *ir.Field, ind string) {
 			if comp.Type.Kind == ir.TFloat32 {
 				compIn = compIn + " as f64"
 			}
-			g.pf("%s{\n%s    let mut quantized_value = (%s * %s + 0.5).floor() as i64;\n", ind, ind, compIn, scale)
-			g.pf("%s    if quantized_value > %d {\n%s        quantized_value = %d;\n%s    }\n", ind, f.QuantBound, ind, f.QuantBound, ind)
-			g.pf("%s    if quantized_value < -%d {\n%s        quantized_value = -%d;\n%s    }\n", ind, f.QuantBound, ind, f.QuantBound, ind)
-			g.pf("%s    output.%s_%s = quantized_value as %s;\n%s}\n", ind, f.Name, comp.Name, compT, ind)
+			// the clamp happens in the F64 domain before the int conversion:
+			// float->int of out-of-range or NaN input is target- and
+			// arch-dependent in the other targets' languages, so this shape
+			// quantizes even garbage input identically in every target
+			// (NaN clamps low)
+			g.pf("%s{\n%s    let quantized_value = (%s * %s + 0.5).floor();\n", ind, ind, compIn, scale)
+			g.pf("%s    let component_value: i64 = if quantized_value > %d.0_f64 {\n%s        %d\n", ind, f.QuantBound, ind, f.QuantBound)
+			g.pf("%s    } else if quantized_value >= -%d.0_f64 {\n%s        quantized_value as i64\n", ind, f.QuantBound, ind)
+			g.pf("%s    } else {\n%s        -%d\n%s    };\n", ind, ind, f.QuantBound, ind)
+			g.pf("%s    output.%s_%s = component_value as %s;\n%s}\n", ind, f.Name, comp.Name, compT, ind)
 		}
 	default:
 		g.pf("%soutput.%s = input.%s;\n", ind, f.Name, f.Name)

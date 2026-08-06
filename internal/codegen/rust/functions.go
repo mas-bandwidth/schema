@@ -212,12 +212,52 @@ func intRangePath(min, max *big.Int) string {
 	return "bits64" // full-range unsigned: width-computed raw bits over value - min
 }
 
+// storageMin and storageMax bound an integer field's STORAGE domain — the
+// range its Rust type can physically hold.
+func storageMin(t ir.FieldType) *big.Int {
+	if !t.Signed {
+		return big.NewInt(0)
+	}
+	return new(big.Int).Neg(new(big.Int).Lsh(big.NewInt(1), uint(t.Width-1)))
+}
+
+func storageMax(t ir.FieldType) *big.Int {
+	if t.Signed {
+		return new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), uint(t.Width-1)), big.NewInt(1))
+	}
+	return new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), uint(t.Width)), big.NewInt(1))
+}
+
+// emitWriteRangeGuard refuses an out-of-contract caller value BEFORE it
+// reaches the runtime. serialize.rs's write side only debug_asserts — in a
+// release build an out-of-range value wraps and ORs stray bits over
+// NEIGHBORING fields, and the reader can accept the corrupt packet — so the
+// generated code supplies the refusal the Go runtime provides natively.
+// Halves vacuous against the storage domain are elided.
+func (g *gen) emitWriteRangeGuard(name string, f *ir.Field, ind string) {
+	loVacuous := f.IntMin.Cmp(storageMin(f.Type)) <= 0
+	hiVacuous := f.IntMax.Cmp(storageMax(f.Type)) >= 0
+	switch {
+	case !loVacuous && !hiVacuous:
+		g.pf("%sif %s < %s || %s > %s { // out-of-contract writes are refused, not wrapped\n", ind, name, f.IntMin.String(), name, f.IntMax.String())
+		g.pf("%s    return Err(Error::Stream(serialize::Error::ValueOutOfRange));\n%s}\n", ind, ind)
+	case !loVacuous:
+		g.pf("%sif %s < %s { // out-of-contract writes are refused, not wrapped\n", ind, name, f.IntMin.String())
+		g.pf("%s    return Err(Error::Stream(serialize::Error::ValueOutOfRange));\n%s}\n", ind, ind)
+	case !hiVacuous:
+		g.pf("%sif %s > %s { // out-of-contract writes are refused, not wrapped\n", ind, name, f.IntMax.String())
+		g.pf("%s    return Err(Error::Stream(serialize::Error::ValueOutOfRange));\n%s}\n", ind, ind)
+	}
+}
+
 func (g *gen) emitWriteField(f *ir.Field, ind string) {
 	g.needsStreamTrait = true
 	name := "value." + f.Name
 	if f.Array != ir.ArrayNone {
 		if f.Array == ir.ArrayCounted {
 			bound := g.renderArg(f.ArrayExpr, big.NewInt(f.ArrayBound), "i32")
+			g.pf("%sif %s_count < %d || %s_count > %d { // refused, not wrapped: the runtime's write side only debug_asserts\n", ind, name, f.ArrayMin, name, f.ArrayBound)
+			g.pf("%s    return Err(Error::Stream(serialize::Error::ValueOutOfRange));\n%s}\n", ind, ind)
 			g.pf("%s{\n%s    let mut count_value = %s_count;\n", ind, ind, name)
 			g.pf("%s    stream.serialize_int(&mut count_value, %d, %s)?; // the count guards the loop (§6.3)\n", ind, f.ArrayMin, bound)
 			g.pf("%s}\n", ind)
@@ -239,6 +279,7 @@ func (g *gen) emitWriteScalar(f *ir.Field, name, ind string) {
 			switch intRangePath(f.IntMin, f.IntMax) {
 			case "int32":
 				lo, hi := g.rangeArgs(f, "i32")
+				g.emitWriteRangeGuard(name, f, ind)
 				if f.Type.Signed && f.Type.Width == 32 {
 					g.pf("%s{\n%s    let mut range_value = %s;\n", ind, ind, name)
 				} else {
@@ -247,6 +288,7 @@ func (g *gen) emitWriteScalar(f *ir.Field, name, ind string) {
 				g.pf("%s    stream.serialize_int(&mut range_value, %s, %s)?;\n%s}\n", ind, lo, hi, ind)
 			case "int64":
 				lo, hi := g.rangeArgs(f, "i64")
+				g.emitWriteRangeGuard(name, f, ind)
 				if f.Type.Signed && f.Type.Width == 64 {
 					g.pf("%s{\n%s    let mut range_value = %s;\n", ind, ind, name)
 				} else {
@@ -255,10 +297,11 @@ func (g *gen) emitWriteScalar(f *ir.Field, name, ind string) {
 				g.pf("%s    stream.serialize_int64(&mut range_value, %s, %s)?;\n%s}\n", ind, lo, hi, ind)
 			default:
 				// full-range unsigned: raw offset bits (u64 storage only — no
-				// narrower storage can hold a range past i64). This path
-				// bypasses the runtime's ranged calls, so it supplies their
-				// write-side range refusal (a misuse value must not wrap into
-				// valid-looking wire); vacuous halves are elided
+				// narrower storage can hold a range past i64). Like every
+				// bounded write path in this target, the range refusal is
+				// generated: serialize.rs's write side only debug_asserts,
+				// so a misuse value must be refused here or it wraps into
+				// valid-looking wire; vacuous halves are elided
 				lo, _ := g.rangeArgs(f, "u64")
 				loVacuous := f.IntMin.Sign() == 0
 				hiVacuous := f.IntMax.Cmp(maxUint64) == 0
@@ -284,6 +327,13 @@ func (g *gen) emitWriteScalar(f *ir.Field, name, ind string) {
 		}
 		g.emitWriteBareInt(f, name, ind)
 	case ir.TBits:
+		if f.Type.Width != 32 && f.Type.Width != 64 {
+			// storage is the wider unsigned type: bits above the wire width
+			// are refused, not wrapped (the runtime's write side only
+			// debug_asserts)
+			g.pf("%sif %s >= 1 << %d {\n", ind, name, f.Type.Width)
+			g.pf("%s    return Err(Error::Stream(serialize::Error::ValueOutOfRange));\n%s}\n", ind, ind)
+		}
 		g.pf("%s{\n%s    let mut raw_value = %s;\n", ind, ind, name)
 		if f.Type.Width <= 32 {
 			g.pf("%s    stream.serialize_bits(&mut raw_value, %d)?;\n%s}\n", ind, f.Type.Width, ind)
@@ -310,6 +360,8 @@ func (g *gen) emitWriteScalar(f *ir.Field, name, ind string) {
 		// length in [0, N], align, then the used bytes — the classic
 		// serialize_string framing over a buffer of N + 1 (SPEC §4.7).
 		// Interior nulls are writer misuse; the read side rejects them (§4.7).
+		g.pf("%sif %s_length < 0 || %s_length > %d { // refused, not wrapped or panicked: guards the slice too\n", ind, name, name, f.Type.Size)
+		g.pf("%s    return Err(Error::Stream(serialize::Error::ValueOutOfRange));\n%s}\n", ind, ind)
 		g.pf("%s{\n%s    let mut length_value = %s_length;\n", ind, ind, name)
 		g.pf("%s    stream.serialize_int(&mut length_value, 0, %s)?; // the length guards the slice (§6.3)\n",
 			ind, g.renderArg(f.Type.SizeExpr, big.NewInt(f.Type.Size), "i32"))
@@ -320,6 +372,12 @@ func (g *gen) emitWriteScalar(f *ir.Field, name, ind string) {
 	case ir.TNamed:
 		switch ref := f.Type.Ref.(type) {
 		case *ir.Enum:
+			if ref.Max < (int64(1)<<uint(ref.StorageBits))-1 {
+				// headroom storage can exceed the wire range: refused, not
+				// wrapped (the runtime's write side only debug_asserts)
+				g.pf("%sif %s.0 > %d {\n", ind, name, ref.Max)
+				g.pf("%s    return Err(Error::Stream(serialize::Error::ValueOutOfRange));\n%s}\n", ind, ind)
+			}
 			g.pf("%s{\n%s    let mut enum_value = %s.0 as i32;\n", ind, ind, name)
 			g.pf("%s    stream.serialize_int(&mut enum_value, 0, %d)?;\n%s}\n", ind, ref.Max, ind)
 		case *ir.Flags:
@@ -558,6 +616,10 @@ func (g *gen) emitMessageTagFunctions() {
 	g.pf("// the tag; nothing heap-allocates per message, SPEC §6.1). Message::None is\n")
 	g.pf("// the stream terminator (SPEC §4.8).\n")
 	g.pf("#[derive(Clone, Copy, PartialEq, Debug)]\n")
+	// size == the largest message is the DESIGN — the enum is the tagged
+	// union (SPEC §6.1: fixed pre-allocated storage, no heap per message), so
+	// clippy's boxing suggestion is refused where it fires
+	g.pf("#[allow(clippy::large_enum_variant)]\n")
 	g.pf("pub enum Message {\n")
 	g.pf("    None,\n")
 	for _, m := range msgs {

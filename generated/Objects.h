@@ -387,124 +387,134 @@ inline void QuantizeShip( const ShipData_Interpolate & input, ShipData_Shallow &
 {
     output.ship_type = input.ship_type;
     {
-        int64_t quantized_value = int64_t( floor( double( input.position.x ) * double( PositionUnits ) + 0.5 ) );
-        if ( quantized_value > 8388608 )
+        double quantized_value = floor( double( input.position.x ) * double( PositionUnits ) + 0.5 );
+        int64_t component_value = -8388608ll;
+        if ( quantized_value > 8388608.0 )
         {
-            quantized_value = 8388608;
+            component_value = 8388608ll;
         }
-        if ( quantized_value < -8388608 )
+        else if ( quantized_value >= -8388608.0 )
         {
-            quantized_value = -8388608;
+            component_value = int64_t( quantized_value );
         }
-        output.position_x = int32_t( quantized_value );
+        output.position_x = int32_t( component_value );
     }
     {
-        int64_t quantized_value = int64_t( floor( double( input.position.y ) * double( PositionUnits ) + 0.5 ) );
-        if ( quantized_value > 8388608 )
+        double quantized_value = floor( double( input.position.y ) * double( PositionUnits ) + 0.5 );
+        int64_t component_value = -8388608ll;
+        if ( quantized_value > 8388608.0 )
         {
-            quantized_value = 8388608;
+            component_value = 8388608ll;
         }
-        if ( quantized_value < -8388608 )
+        else if ( quantized_value >= -8388608.0 )
         {
-            quantized_value = -8388608;
+            component_value = int64_t( quantized_value );
         }
-        output.position_y = int32_t( quantized_value );
+        output.position_y = int32_t( component_value );
     }
     {
-        int64_t quantized_value = int64_t( floor( double( input.position.z ) * double( PositionUnits ) + 0.5 ) );
-        if ( quantized_value > 8388608 )
+        double quantized_value = floor( double( input.position.z ) * double( PositionUnits ) + 0.5 );
+        int64_t component_value = -8388608ll;
+        if ( quantized_value > 8388608.0 )
         {
-            quantized_value = 8388608;
+            component_value = 8388608ll;
         }
-        if ( quantized_value < -8388608 )
+        else if ( quantized_value >= -8388608.0 )
         {
-            quantized_value = -8388608;
+            component_value = int64_t( quantized_value );
         }
-        output.position_z = int32_t( quantized_value );
+        output.position_z = int32_t( component_value );
     }
     {
-        int64_t quantized_value = int64_t( floor( double( input.rotation.x ) * double( RotationUnits ) + 0.5 ) );
-        if ( quantized_value > 1024 )
+        double quantized_value = floor( double( input.rotation.x ) * double( RotationUnits ) + 0.5 );
+        int64_t component_value = -1024ll;
+        if ( quantized_value > 1024.0 )
         {
-            quantized_value = 1024;
+            component_value = 1024ll;
         }
-        if ( quantized_value < -1024 )
+        else if ( quantized_value >= -1024.0 )
         {
-            quantized_value = -1024;
+            component_value = int64_t( quantized_value );
         }
-        output.rotation_x = int16_t( quantized_value );
+        output.rotation_x = int16_t( component_value );
     }
     {
-        int64_t quantized_value = int64_t( floor( double( input.rotation.y ) * double( RotationUnits ) + 0.5 ) );
-        if ( quantized_value > 1024 )
+        double quantized_value = floor( double( input.rotation.y ) * double( RotationUnits ) + 0.5 );
+        int64_t component_value = -1024ll;
+        if ( quantized_value > 1024.0 )
         {
-            quantized_value = 1024;
+            component_value = 1024ll;
         }
-        if ( quantized_value < -1024 )
+        else if ( quantized_value >= -1024.0 )
         {
-            quantized_value = -1024;
+            component_value = int64_t( quantized_value );
         }
-        output.rotation_y = int16_t( quantized_value );
+        output.rotation_y = int16_t( component_value );
     }
     {
-        int64_t quantized_value = int64_t( floor( double( input.rotation.z ) * double( RotationUnits ) + 0.5 ) );
-        if ( quantized_value > 1024 )
+        double quantized_value = floor( double( input.rotation.z ) * double( RotationUnits ) + 0.5 );
+        int64_t component_value = -1024ll;
+        if ( quantized_value > 1024.0 )
         {
-            quantized_value = 1024;
+            component_value = 1024ll;
         }
-        if ( quantized_value < -1024 )
+        else if ( quantized_value >= -1024.0 )
         {
-            quantized_value = -1024;
+            component_value = int64_t( quantized_value );
         }
-        output.rotation_z = int16_t( quantized_value );
+        output.rotation_z = int16_t( component_value );
     }
     {
-        int64_t quantized_value = int64_t( floor( double( input.rotation.w ) * double( RotationUnits ) + 0.5 ) );
-        if ( quantized_value > 1024 )
+        double quantized_value = floor( double( input.rotation.w ) * double( RotationUnits ) + 0.5 );
+        int64_t component_value = -1024ll;
+        if ( quantized_value > 1024.0 )
         {
-            quantized_value = 1024;
+            component_value = 1024ll;
         }
-        if ( quantized_value < -1024 )
+        else if ( quantized_value >= -1024.0 )
         {
-            quantized_value = -1024;
+            component_value = int64_t( quantized_value );
         }
-        output.rotation_w = int16_t( quantized_value );
+        output.rotation_w = int16_t( component_value );
     }
     {
-        int64_t quantized_value = int64_t( floor( double( input.linear_velocity.x ) * double( VelocityUnits ) + 0.5 ) );
-        if ( quantized_value > 2097152 )
+        double quantized_value = floor( double( input.linear_velocity.x ) * double( VelocityUnits ) + 0.5 );
+        int64_t component_value = -2097152ll;
+        if ( quantized_value > 2097152.0 )
         {
-            quantized_value = 2097152;
+            component_value = 2097152ll;
         }
-        if ( quantized_value < -2097152 )
+        else if ( quantized_value >= -2097152.0 )
         {
-            quantized_value = -2097152;
+            component_value = int64_t( quantized_value );
         }
-        output.linear_velocity_x = int32_t( quantized_value );
+        output.linear_velocity_x = int32_t( component_value );
     }
     {
-        int64_t quantized_value = int64_t( floor( double( input.linear_velocity.y ) * double( VelocityUnits ) + 0.5 ) );
-        if ( quantized_value > 2097152 )
+        double quantized_value = floor( double( input.linear_velocity.y ) * double( VelocityUnits ) + 0.5 );
+        int64_t component_value = -2097152ll;
+        if ( quantized_value > 2097152.0 )
         {
-            quantized_value = 2097152;
+            component_value = 2097152ll;
         }
-        if ( quantized_value < -2097152 )
+        else if ( quantized_value >= -2097152.0 )
         {
-            quantized_value = -2097152;
+            component_value = int64_t( quantized_value );
         }
-        output.linear_velocity_y = int32_t( quantized_value );
+        output.linear_velocity_y = int32_t( component_value );
     }
     {
-        int64_t quantized_value = int64_t( floor( double( input.linear_velocity.z ) * double( VelocityUnits ) + 0.5 ) );
-        if ( quantized_value > 2097152 )
+        double quantized_value = floor( double( input.linear_velocity.z ) * double( VelocityUnits ) + 0.5 );
+        int64_t component_value = -2097152ll;
+        if ( quantized_value > 2097152.0 )
         {
-            quantized_value = 2097152;
+            component_value = 2097152ll;
         }
-        if ( quantized_value < -2097152 )
+        else if ( quantized_value >= -2097152.0 )
         {
-            quantized_value = -2097152;
+            component_value = int64_t( quantized_value );
         }
-        output.linear_velocity_z = int32_t( quantized_value );
+        output.linear_velocity_z = int32_t( component_value );
     }
     output.flags = input.flags;
     output.team = input.team;
@@ -746,124 +756,134 @@ inline void QuantizeMissile( const MissileData_Interpolate & input, MissileData_
 {
     output.missile_type = input.missile_type;
     {
-        int64_t quantized_value = int64_t( floor( double( input.position.x ) * double( PositionUnits ) + 0.5 ) );
-        if ( quantized_value > 8388608 )
+        double quantized_value = floor( double( input.position.x ) * double( PositionUnits ) + 0.5 );
+        int64_t component_value = -8388608ll;
+        if ( quantized_value > 8388608.0 )
         {
-            quantized_value = 8388608;
+            component_value = 8388608ll;
         }
-        if ( quantized_value < -8388608 )
+        else if ( quantized_value >= -8388608.0 )
         {
-            quantized_value = -8388608;
+            component_value = int64_t( quantized_value );
         }
-        output.position_x = int32_t( quantized_value );
+        output.position_x = int32_t( component_value );
     }
     {
-        int64_t quantized_value = int64_t( floor( double( input.position.y ) * double( PositionUnits ) + 0.5 ) );
-        if ( quantized_value > 8388608 )
+        double quantized_value = floor( double( input.position.y ) * double( PositionUnits ) + 0.5 );
+        int64_t component_value = -8388608ll;
+        if ( quantized_value > 8388608.0 )
         {
-            quantized_value = 8388608;
+            component_value = 8388608ll;
         }
-        if ( quantized_value < -8388608 )
+        else if ( quantized_value >= -8388608.0 )
         {
-            quantized_value = -8388608;
+            component_value = int64_t( quantized_value );
         }
-        output.position_y = int32_t( quantized_value );
+        output.position_y = int32_t( component_value );
     }
     {
-        int64_t quantized_value = int64_t( floor( double( input.position.z ) * double( PositionUnits ) + 0.5 ) );
-        if ( quantized_value > 8388608 )
+        double quantized_value = floor( double( input.position.z ) * double( PositionUnits ) + 0.5 );
+        int64_t component_value = -8388608ll;
+        if ( quantized_value > 8388608.0 )
         {
-            quantized_value = 8388608;
+            component_value = 8388608ll;
         }
-        if ( quantized_value < -8388608 )
+        else if ( quantized_value >= -8388608.0 )
         {
-            quantized_value = -8388608;
+            component_value = int64_t( quantized_value );
         }
-        output.position_z = int32_t( quantized_value );
+        output.position_z = int32_t( component_value );
     }
     {
-        int64_t quantized_value = int64_t( floor( double( input.rotation.x ) * double( RotationUnits ) + 0.5 ) );
-        if ( quantized_value > 1024 )
+        double quantized_value = floor( double( input.rotation.x ) * double( RotationUnits ) + 0.5 );
+        int64_t component_value = -1024ll;
+        if ( quantized_value > 1024.0 )
         {
-            quantized_value = 1024;
+            component_value = 1024ll;
         }
-        if ( quantized_value < -1024 )
+        else if ( quantized_value >= -1024.0 )
         {
-            quantized_value = -1024;
+            component_value = int64_t( quantized_value );
         }
-        output.rotation_x = int16_t( quantized_value );
+        output.rotation_x = int16_t( component_value );
     }
     {
-        int64_t quantized_value = int64_t( floor( double( input.rotation.y ) * double( RotationUnits ) + 0.5 ) );
-        if ( quantized_value > 1024 )
+        double quantized_value = floor( double( input.rotation.y ) * double( RotationUnits ) + 0.5 );
+        int64_t component_value = -1024ll;
+        if ( quantized_value > 1024.0 )
         {
-            quantized_value = 1024;
+            component_value = 1024ll;
         }
-        if ( quantized_value < -1024 )
+        else if ( quantized_value >= -1024.0 )
         {
-            quantized_value = -1024;
+            component_value = int64_t( quantized_value );
         }
-        output.rotation_y = int16_t( quantized_value );
+        output.rotation_y = int16_t( component_value );
     }
     {
-        int64_t quantized_value = int64_t( floor( double( input.rotation.z ) * double( RotationUnits ) + 0.5 ) );
-        if ( quantized_value > 1024 )
+        double quantized_value = floor( double( input.rotation.z ) * double( RotationUnits ) + 0.5 );
+        int64_t component_value = -1024ll;
+        if ( quantized_value > 1024.0 )
         {
-            quantized_value = 1024;
+            component_value = 1024ll;
         }
-        if ( quantized_value < -1024 )
+        else if ( quantized_value >= -1024.0 )
         {
-            quantized_value = -1024;
+            component_value = int64_t( quantized_value );
         }
-        output.rotation_z = int16_t( quantized_value );
+        output.rotation_z = int16_t( component_value );
     }
     {
-        int64_t quantized_value = int64_t( floor( double( input.rotation.w ) * double( RotationUnits ) + 0.5 ) );
-        if ( quantized_value > 1024 )
+        double quantized_value = floor( double( input.rotation.w ) * double( RotationUnits ) + 0.5 );
+        int64_t component_value = -1024ll;
+        if ( quantized_value > 1024.0 )
         {
-            quantized_value = 1024;
+            component_value = 1024ll;
         }
-        if ( quantized_value < -1024 )
+        else if ( quantized_value >= -1024.0 )
         {
-            quantized_value = -1024;
+            component_value = int64_t( quantized_value );
         }
-        output.rotation_w = int16_t( quantized_value );
+        output.rotation_w = int16_t( component_value );
     }
     {
-        int64_t quantized_value = int64_t( floor( double( input.linear_velocity.x ) * double( VelocityUnits ) + 0.5 ) );
-        if ( quantized_value > 2097152 )
+        double quantized_value = floor( double( input.linear_velocity.x ) * double( VelocityUnits ) + 0.5 );
+        int64_t component_value = -2097152ll;
+        if ( quantized_value > 2097152.0 )
         {
-            quantized_value = 2097152;
+            component_value = 2097152ll;
         }
-        if ( quantized_value < -2097152 )
+        else if ( quantized_value >= -2097152.0 )
         {
-            quantized_value = -2097152;
+            component_value = int64_t( quantized_value );
         }
-        output.linear_velocity_x = int32_t( quantized_value );
+        output.linear_velocity_x = int32_t( component_value );
     }
     {
-        int64_t quantized_value = int64_t( floor( double( input.linear_velocity.y ) * double( VelocityUnits ) + 0.5 ) );
-        if ( quantized_value > 2097152 )
+        double quantized_value = floor( double( input.linear_velocity.y ) * double( VelocityUnits ) + 0.5 );
+        int64_t component_value = -2097152ll;
+        if ( quantized_value > 2097152.0 )
         {
-            quantized_value = 2097152;
+            component_value = 2097152ll;
         }
-        if ( quantized_value < -2097152 )
+        else if ( quantized_value >= -2097152.0 )
         {
-            quantized_value = -2097152;
+            component_value = int64_t( quantized_value );
         }
-        output.linear_velocity_y = int32_t( quantized_value );
+        output.linear_velocity_y = int32_t( component_value );
     }
     {
-        int64_t quantized_value = int64_t( floor( double( input.linear_velocity.z ) * double( VelocityUnits ) + 0.5 ) );
-        if ( quantized_value > 2097152 )
+        double quantized_value = floor( double( input.linear_velocity.z ) * double( VelocityUnits ) + 0.5 );
+        int64_t component_value = -2097152ll;
+        if ( quantized_value > 2097152.0 )
         {
-            quantized_value = 2097152;
+            component_value = 2097152ll;
         }
-        if ( quantized_value < -2097152 )
+        else if ( quantized_value >= -2097152.0 )
         {
-            quantized_value = -2097152;
+            component_value = int64_t( quantized_value );
         }
-        output.linear_velocity_z = int32_t( quantized_value );
+        output.linear_velocity_z = int32_t( component_value );
     }
     output.team = input.team;
     output.flags = input.flags;
@@ -1085,124 +1105,134 @@ inline void QuantizeDynamicProp( const DynamicPropData_Interpolate & input, Dyna
 {
     output.prop_type = input.prop_type;
     {
-        int64_t quantized_value = int64_t( floor( double( input.position.x ) * double( PositionUnits ) + 0.5 ) );
-        if ( quantized_value > 8388608 )
+        double quantized_value = floor( double( input.position.x ) * double( PositionUnits ) + 0.5 );
+        int64_t component_value = -8388608ll;
+        if ( quantized_value > 8388608.0 )
         {
-            quantized_value = 8388608;
+            component_value = 8388608ll;
         }
-        if ( quantized_value < -8388608 )
+        else if ( quantized_value >= -8388608.0 )
         {
-            quantized_value = -8388608;
+            component_value = int64_t( quantized_value );
         }
-        output.position_x = int32_t( quantized_value );
+        output.position_x = int32_t( component_value );
     }
     {
-        int64_t quantized_value = int64_t( floor( double( input.position.y ) * double( PositionUnits ) + 0.5 ) );
-        if ( quantized_value > 8388608 )
+        double quantized_value = floor( double( input.position.y ) * double( PositionUnits ) + 0.5 );
+        int64_t component_value = -8388608ll;
+        if ( quantized_value > 8388608.0 )
         {
-            quantized_value = 8388608;
+            component_value = 8388608ll;
         }
-        if ( quantized_value < -8388608 )
+        else if ( quantized_value >= -8388608.0 )
         {
-            quantized_value = -8388608;
+            component_value = int64_t( quantized_value );
         }
-        output.position_y = int32_t( quantized_value );
+        output.position_y = int32_t( component_value );
     }
     {
-        int64_t quantized_value = int64_t( floor( double( input.position.z ) * double( PositionUnits ) + 0.5 ) );
-        if ( quantized_value > 8388608 )
+        double quantized_value = floor( double( input.position.z ) * double( PositionUnits ) + 0.5 );
+        int64_t component_value = -8388608ll;
+        if ( quantized_value > 8388608.0 )
         {
-            quantized_value = 8388608;
+            component_value = 8388608ll;
         }
-        if ( quantized_value < -8388608 )
+        else if ( quantized_value >= -8388608.0 )
         {
-            quantized_value = -8388608;
+            component_value = int64_t( quantized_value );
         }
-        output.position_z = int32_t( quantized_value );
+        output.position_z = int32_t( component_value );
     }
     {
-        int64_t quantized_value = int64_t( floor( double( input.rotation.x ) * double( RotationUnits ) + 0.5 ) );
-        if ( quantized_value > 1024 )
+        double quantized_value = floor( double( input.rotation.x ) * double( RotationUnits ) + 0.5 );
+        int64_t component_value = -1024ll;
+        if ( quantized_value > 1024.0 )
         {
-            quantized_value = 1024;
+            component_value = 1024ll;
         }
-        if ( quantized_value < -1024 )
+        else if ( quantized_value >= -1024.0 )
         {
-            quantized_value = -1024;
+            component_value = int64_t( quantized_value );
         }
-        output.rotation_x = int16_t( quantized_value );
+        output.rotation_x = int16_t( component_value );
     }
     {
-        int64_t quantized_value = int64_t( floor( double( input.rotation.y ) * double( RotationUnits ) + 0.5 ) );
-        if ( quantized_value > 1024 )
+        double quantized_value = floor( double( input.rotation.y ) * double( RotationUnits ) + 0.5 );
+        int64_t component_value = -1024ll;
+        if ( quantized_value > 1024.0 )
         {
-            quantized_value = 1024;
+            component_value = 1024ll;
         }
-        if ( quantized_value < -1024 )
+        else if ( quantized_value >= -1024.0 )
         {
-            quantized_value = -1024;
+            component_value = int64_t( quantized_value );
         }
-        output.rotation_y = int16_t( quantized_value );
+        output.rotation_y = int16_t( component_value );
     }
     {
-        int64_t quantized_value = int64_t( floor( double( input.rotation.z ) * double( RotationUnits ) + 0.5 ) );
-        if ( quantized_value > 1024 )
+        double quantized_value = floor( double( input.rotation.z ) * double( RotationUnits ) + 0.5 );
+        int64_t component_value = -1024ll;
+        if ( quantized_value > 1024.0 )
         {
-            quantized_value = 1024;
+            component_value = 1024ll;
         }
-        if ( quantized_value < -1024 )
+        else if ( quantized_value >= -1024.0 )
         {
-            quantized_value = -1024;
+            component_value = int64_t( quantized_value );
         }
-        output.rotation_z = int16_t( quantized_value );
+        output.rotation_z = int16_t( component_value );
     }
     {
-        int64_t quantized_value = int64_t( floor( double( input.rotation.w ) * double( RotationUnits ) + 0.5 ) );
-        if ( quantized_value > 1024 )
+        double quantized_value = floor( double( input.rotation.w ) * double( RotationUnits ) + 0.5 );
+        int64_t component_value = -1024ll;
+        if ( quantized_value > 1024.0 )
         {
-            quantized_value = 1024;
+            component_value = 1024ll;
         }
-        if ( quantized_value < -1024 )
+        else if ( quantized_value >= -1024.0 )
         {
-            quantized_value = -1024;
+            component_value = int64_t( quantized_value );
         }
-        output.rotation_w = int16_t( quantized_value );
+        output.rotation_w = int16_t( component_value );
     }
     {
-        int64_t quantized_value = int64_t( floor( double( input.linear_velocity.x ) * double( VelocityUnits ) + 0.5 ) );
-        if ( quantized_value > 2097152 )
+        double quantized_value = floor( double( input.linear_velocity.x ) * double( VelocityUnits ) + 0.5 );
+        int64_t component_value = -2097152ll;
+        if ( quantized_value > 2097152.0 )
         {
-            quantized_value = 2097152;
+            component_value = 2097152ll;
         }
-        if ( quantized_value < -2097152 )
+        else if ( quantized_value >= -2097152.0 )
         {
-            quantized_value = -2097152;
+            component_value = int64_t( quantized_value );
         }
-        output.linear_velocity_x = int32_t( quantized_value );
+        output.linear_velocity_x = int32_t( component_value );
     }
     {
-        int64_t quantized_value = int64_t( floor( double( input.linear_velocity.y ) * double( VelocityUnits ) + 0.5 ) );
-        if ( quantized_value > 2097152 )
+        double quantized_value = floor( double( input.linear_velocity.y ) * double( VelocityUnits ) + 0.5 );
+        int64_t component_value = -2097152ll;
+        if ( quantized_value > 2097152.0 )
         {
-            quantized_value = 2097152;
+            component_value = 2097152ll;
         }
-        if ( quantized_value < -2097152 )
+        else if ( quantized_value >= -2097152.0 )
         {
-            quantized_value = -2097152;
+            component_value = int64_t( quantized_value );
         }
-        output.linear_velocity_y = int32_t( quantized_value );
+        output.linear_velocity_y = int32_t( component_value );
     }
     {
-        int64_t quantized_value = int64_t( floor( double( input.linear_velocity.z ) * double( VelocityUnits ) + 0.5 ) );
-        if ( quantized_value > 2097152 )
+        double quantized_value = floor( double( input.linear_velocity.z ) * double( VelocityUnits ) + 0.5 );
+        int64_t component_value = -2097152ll;
+        if ( quantized_value > 2097152.0 )
         {
-            quantized_value = 2097152;
+            component_value = 2097152ll;
         }
-        if ( quantized_value < -2097152 )
+        else if ( quantized_value >= -2097152.0 )
         {
-            quantized_value = -2097152;
+            component_value = int64_t( quantized_value );
         }
-        output.linear_velocity_z = int32_t( quantized_value );
+        output.linear_velocity_z = int32_t( component_value );
     }
     output.flags = input.flags;
     output.team = input.team;
@@ -1355,52 +1385,56 @@ inline void QuantizeTurret( const TurretData_Interpolate & input, TurretData_Sha
     output.parent = input.parent;
     output.turret_index = input.turret_index;
     {
-        int64_t quantized_value = int64_t( floor( double( input.rotation.x ) * double( RotationUnits ) + 0.5 ) );
-        if ( quantized_value > 1024 )
+        double quantized_value = floor( double( input.rotation.x ) * double( RotationUnits ) + 0.5 );
+        int64_t component_value = -1024ll;
+        if ( quantized_value > 1024.0 )
         {
-            quantized_value = 1024;
+            component_value = 1024ll;
         }
-        if ( quantized_value < -1024 )
+        else if ( quantized_value >= -1024.0 )
         {
-            quantized_value = -1024;
+            component_value = int64_t( quantized_value );
         }
-        output.rotation_x = int16_t( quantized_value );
+        output.rotation_x = int16_t( component_value );
     }
     {
-        int64_t quantized_value = int64_t( floor( double( input.rotation.y ) * double( RotationUnits ) + 0.5 ) );
-        if ( quantized_value > 1024 )
+        double quantized_value = floor( double( input.rotation.y ) * double( RotationUnits ) + 0.5 );
+        int64_t component_value = -1024ll;
+        if ( quantized_value > 1024.0 )
         {
-            quantized_value = 1024;
+            component_value = 1024ll;
         }
-        if ( quantized_value < -1024 )
+        else if ( quantized_value >= -1024.0 )
         {
-            quantized_value = -1024;
+            component_value = int64_t( quantized_value );
         }
-        output.rotation_y = int16_t( quantized_value );
+        output.rotation_y = int16_t( component_value );
     }
     {
-        int64_t quantized_value = int64_t( floor( double( input.rotation.z ) * double( RotationUnits ) + 0.5 ) );
-        if ( quantized_value > 1024 )
+        double quantized_value = floor( double( input.rotation.z ) * double( RotationUnits ) + 0.5 );
+        int64_t component_value = -1024ll;
+        if ( quantized_value > 1024.0 )
         {
-            quantized_value = 1024;
+            component_value = 1024ll;
         }
-        if ( quantized_value < -1024 )
+        else if ( quantized_value >= -1024.0 )
         {
-            quantized_value = -1024;
+            component_value = int64_t( quantized_value );
         }
-        output.rotation_z = int16_t( quantized_value );
+        output.rotation_z = int16_t( component_value );
     }
     {
-        int64_t quantized_value = int64_t( floor( double( input.rotation.w ) * double( RotationUnits ) + 0.5 ) );
-        if ( quantized_value > 1024 )
+        double quantized_value = floor( double( input.rotation.w ) * double( RotationUnits ) + 0.5 );
+        int64_t component_value = -1024ll;
+        if ( quantized_value > 1024.0 )
         {
-            quantized_value = 1024;
+            component_value = 1024ll;
         }
-        if ( quantized_value < -1024 )
+        else if ( quantized_value >= -1024.0 )
         {
-            quantized_value = -1024;
+            component_value = int64_t( quantized_value );
         }
-        output.rotation_w = int16_t( quantized_value );
+        output.rotation_w = int16_t( component_value );
     }
     output.flags = input.flags;
 }

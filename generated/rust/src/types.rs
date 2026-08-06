@@ -130,6 +130,9 @@ pub const HANDLE_MAX_BITS: u64 = 22;
 pub const HANDLE_MAX_BYTES: usize = 8;
 
 pub fn write_handle(stream: &mut WriteStream<'_>, value: &Handle) -> Result {
+    if value.object_id < 0 || value.object_id > 9999 { // out-of-contract writes are refused, not wrapped
+        return Err(Error::Stream(serialize::Error::ValueOutOfRange));
+    }
     {
         let mut range_value = value.object_id;
         stream.serialize_int(&mut range_value, 0, (MAX_OBJECTS - 1) as i32)?;
@@ -176,13 +179,22 @@ pub const QUANTIZED_POSITION_MAX_BITS: u64 = 75;
 pub const QUANTIZED_POSITION_MAX_BYTES: usize = 16;
 
 pub fn write_quantized_position(stream: &mut WriteStream<'_>, value: &QuantizedPosition) -> Result {
+    if value.x < -8388608 || value.x > 8388608 { // out-of-contract writes are refused, not wrapped
+        return Err(Error::Stream(serialize::Error::ValueOutOfRange));
+    }
     {
         let mut range_value = value.x;
         stream.serialize_int(&mut range_value, (-MAX_POSITION_UNITS) as i32, MAX_POSITION_UNITS as i32)?;
     }
+    if value.y < -8388608 || value.y > 8388608 { // out-of-contract writes are refused, not wrapped
+        return Err(Error::Stream(serialize::Error::ValueOutOfRange));
+    }
     {
         let mut range_value = value.y;
         stream.serialize_int(&mut range_value, (-MAX_POSITION_UNITS) as i32, MAX_POSITION_UNITS as i32)?;
+    }
+    if value.z < -8388608 || value.z > 8388608 { // out-of-contract writes are refused, not wrapped
+        return Err(Error::Stream(serialize::Error::ValueOutOfRange));
     }
     {
         let mut range_value = value.z;
@@ -223,13 +235,22 @@ pub const QUANTIZED_VELOCITY_MAX_BITS: u64 = 69;
 pub const QUANTIZED_VELOCITY_MAX_BYTES: usize = 16;
 
 pub fn write_quantized_velocity(stream: &mut WriteStream<'_>, value: &QuantizedVelocity) -> Result {
+    if value.x < -2097152 || value.x > 2097152 { // out-of-contract writes are refused, not wrapped
+        return Err(Error::Stream(serialize::Error::ValueOutOfRange));
+    }
     {
         let mut range_value = value.x;
         stream.serialize_int(&mut range_value, (-MAX_VELOCITY_UNITS) as i32, MAX_VELOCITY_UNITS as i32)?;
     }
+    if value.y < -2097152 || value.y > 2097152 { // out-of-contract writes are refused, not wrapped
+        return Err(Error::Stream(serialize::Error::ValueOutOfRange));
+    }
     {
         let mut range_value = value.y;
         stream.serialize_int(&mut range_value, (-MAX_VELOCITY_UNITS) as i32, MAX_VELOCITY_UNITS as i32)?;
+    }
+    if value.z < -2097152 || value.z > 2097152 { // out-of-contract writes are refused, not wrapped
+        return Err(Error::Stream(serialize::Error::ValueOutOfRange));
     }
     {
         let mut range_value = value.z;
@@ -272,17 +293,29 @@ pub const QUANTIZED_ROTATION_MAX_BITS: u64 = 48;
 pub const QUANTIZED_ROTATION_MAX_BYTES: usize = 8;
 
 pub fn write_quantized_rotation(stream: &mut WriteStream<'_>, value: &QuantizedRotation) -> Result {
+    if value.x < -1024 || value.x > 1024 { // out-of-contract writes are refused, not wrapped
+        return Err(Error::Stream(serialize::Error::ValueOutOfRange));
+    }
     {
         let mut range_value = value.x as i32;
         stream.serialize_int(&mut range_value, (-ROTATION_UNITS) as i32, ROTATION_UNITS as i32)?;
+    }
+    if value.y < -1024 || value.y > 1024 { // out-of-contract writes are refused, not wrapped
+        return Err(Error::Stream(serialize::Error::ValueOutOfRange));
     }
     {
         let mut range_value = value.y as i32;
         stream.serialize_int(&mut range_value, (-ROTATION_UNITS) as i32, ROTATION_UNITS as i32)?;
     }
+    if value.z < -1024 || value.z > 1024 { // out-of-contract writes are refused, not wrapped
+        return Err(Error::Stream(serialize::Error::ValueOutOfRange));
+    }
     {
         let mut range_value = value.z as i32;
         stream.serialize_int(&mut range_value, (-ROTATION_UNITS) as i32, ROTATION_UNITS as i32)?;
+    }
+    if value.w < -1024 || value.w > 1024 { // out-of-contract writes are refused, not wrapped
+        return Err(Error::Stream(serialize::Error::ValueOutOfRange));
     }
     {
         let mut range_value = value.w as i32;
@@ -532,6 +565,9 @@ pub fn write_input_packet(stream: &mut WriteStream<'_>, value: &InputPacket) -> 
         let mut raw_value = value.start_frame;
         stream.serialize_bits64(&mut raw_value, 64)?;
     }
+    if value.inputs_count < 0 || value.inputs_count > 16 { // refused, not wrapped: the runtime's write side only debug_asserts
+        return Err(Error::Stream(serialize::Error::ValueOutOfRange));
+    }
     {
         let mut count_value = value.inputs_count;
         stream.serialize_int(&mut count_value, 0, MAX_INPUTS_PER_PACKET as i32)?; // the count guards the loop (§6.3)
@@ -598,6 +634,9 @@ pub const SHIP_CREATE_MAX_BITS: u64 = 219;
 pub const SHIP_CREATE_MAX_BYTES: usize = 32;
 
 pub fn write_ship_create(stream: &mut WriteStream<'_>, value: &ShipCreate) -> Result {
+    if value.ship_type.0 > 5 {
+        return Err(Error::Stream(serialize::Error::ValueOutOfRange));
+    }
     {
         let mut enum_value = value.ship_type.0 as i32;
         stream.serialize_int(&mut enum_value, 0, 5)?;
@@ -619,13 +658,22 @@ pub fn write_ship_create(stream: &mut WriteStream<'_>, value: &ShipCreate) -> Re
             stream.serialize_bits(&mut flags_value, 4)?;
         }
     }
+    if value.team.0 > 2 {
+        return Err(Error::Stream(serialize::Error::ValueOutOfRange));
+    }
     {
         let mut enum_value = value.team.0 as i32;
         stream.serialize_int(&mut enum_value, 0, 2)?;
     }
+    if value.health < 0 || value.health > 1000 { // out-of-contract writes are refused, not wrapped
+        return Err(Error::Stream(serialize::Error::ValueOutOfRange));
+    }
     {
         let mut range_value = value.health as i32;
         stream.serialize_int(&mut range_value, 0, MAX_HEALTH as i32)?;
+    }
+    if value.thrust < 0 || value.thrust > 100 { // out-of-contract writes are refused, not wrapped
+        return Err(Error::Stream(serialize::Error::ValueOutOfRange));
     }
     {
         let mut range_value = value.thrust as i32;

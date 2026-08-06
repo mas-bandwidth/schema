@@ -1388,6 +1388,13 @@ func (c *checker) checkClaimedNames() {
 	// unit-level symbols first, so every collision reports at the DECL side
 	unitPos := ast.Pos{}
 	add("ProtocolId", "the unit's generated ProtocolId", unitPos)
+	// names the generated Rust references unqualified: the serialize imports
+	// (use serialize::{Stream, ReadStream, WriteStream}) and the prelude
+	// items its emitted impls and expressions resolve through — a declaration
+	// with any of these names shadows them and the crate cannot compile
+	for _, gen := range []string{"serialize", "Stream", "ReadStream", "WriteStream", "Default", "From", "Ok", "Err"} {
+		add(gen, "a name the generated Rust references unqualified (imports and prelude)", unitPos)
+	}
 	add("ErrValidation", "the unit's generated ErrValidation (Go)", unitPos)
 	add("PROTOCOL_ID", "the unit's generated PROTOCOL_ID (Rust form)", unitPos)
 	add("Error", "the unit's generated Error type (Rust form)", unitPos)
@@ -1438,11 +1445,21 @@ func (c *checker) checkClaimedNames() {
 			// crate namespace
 			addRust(ir.RustConstName(name), fmt.Sprintf("const %s's generated constant (Rust form)", name), d.DeclPos(), name)
 		case *ast.EnumDecl:
-			// the Go target flattens variants into the package namespace
-			// (Rust variants are associated consts — nothing flat to claim)
+			// the Go target flattens variants into the package namespace;
+			// the Rust target scopes them as associated consts, so their
+			// SCREAMING_SNAKE spellings need only be unique WITHIN the enum —
+			// including against the implicit NONE
 			add(name+"None", fmt.Sprintf("enum %s's generated None constant", name), d.Pos)
+			assoc := map[string]string{"NONE": "the implicit None variant"}
 			for _, v := range d.Variants {
 				add(name+v.Text, fmt.Sprintf("enum %s's generated variant constant", name), v.Pos)
+				rv := ir.RustConstName(v.Text)
+				if prev, dup := assoc[rv]; dup {
+					c.errf(v.Pos, "variant %s collides with %s inside enum %s (both become the associated constant %s in Rust) — rename at the source (SPEC §4.6)",
+						v.Text, prev, name, rv)
+				} else {
+					assoc[rv] = "variant " + v.Text
+				}
 			}
 		case *ast.FlagsDecl:
 			for _, v := range d.Variants {

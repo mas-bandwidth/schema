@@ -58,6 +58,9 @@ pub fn write_probe_header(stream: &mut WriteStream<'_>, value: &ProbeHeader) -> 
         let mut const_value: u32 = 171;
         stream.serialize_bits(&mut const_value, 8)?; // const(171, 8) — SPEC §4.3
     }
+    if value.version >= 1 << 3 {
+        return Err(Error::Stream(serialize::Error::ValueOutOfRange));
+    }
     {
         let mut raw_value = value.version;
         stream.serialize_bits(&mut raw_value, 3)?;
@@ -126,9 +129,15 @@ pub const PROBE_BITS_MAX_BITS: u64 = 202;
 pub const PROBE_BITS_MAX_BYTES: usize = 32;
 
 pub fn write_probe_bits(stream: &mut WriteStream<'_>, value: &ProbeBits) -> Result {
+    if value.small >= 1 << 9 {
+        return Err(Error::Stream(serialize::Error::ValueOutOfRange));
+    }
     {
         let mut raw_value = value.small;
         stream.serialize_bits(&mut raw_value, 9)?;
+    }
+    if value.boundary >= 1 << 33 {
+        return Err(Error::Stream(serialize::Error::ValueOutOfRange));
     }
     {
         let mut raw_value = value.boundary;
@@ -243,6 +252,9 @@ pub fn write_probe_sample(stream: &mut WriteStream<'_>, value: &ProbeSample) -> 
         stream.serialize_bits64(&mut raw_value, 64)?;
     }
     if value.active {
+        if value.weapon.0 > 15 {
+            return Err(Error::Stream(serialize::Error::ValueOutOfRange));
+        }
         {
             let mut enum_value = value.weapon.0 as i32;
             stream.serialize_int(&mut enum_value, 0, 15)?;
@@ -262,6 +274,9 @@ pub fn write_probe_sample(stream: &mut WriteStream<'_>, value: &ProbeSample) -> 
             let mut raw_value = value.idle_ticks;
             stream.serialize_bits(&mut raw_value, 32)?;
         }
+    }
+    if value.samples_count < 1 || value.samples_count > 8 { // refused, not wrapped: the runtime's write side only debug_asserts
+        return Err(Error::Stream(serialize::Error::ValueOutOfRange));
     }
     {
         let mut count_value = value.samples_count;
@@ -361,6 +376,9 @@ pub fn write_probe_config(stream: &mut WriteStream<'_>, value: &ProbeConfig) -> 
     {
         let mut raw_value = value.retries as u32;
         stream.serialize_bits(&mut raw_value, 32)?;
+    }
+    if value.preferred.0 > 15 {
+        return Err(Error::Stream(serialize::Error::ValueOutOfRange));
     }
     {
         let mut enum_value = value.preferred.0 as i32;
@@ -549,25 +567,43 @@ pub const TEST_DATA_MAX_BITS: u64 = 2735;
 pub const TEST_DATA_MAX_BYTES: usize = 344;
 
 pub fn write_test_data(stream: &mut WriteStream<'_>, value: &TestData) -> Result {
+    if value.a < -100 || value.a > 100 { // out-of-contract writes are refused, not wrapped
+        return Err(Error::Stream(serialize::Error::ValueOutOfRange));
+    }
     {
         let mut range_value = value.a;
         stream.serialize_int(&mut range_value, -100, 100)?;
+    }
+    if value.b < -100 || value.b > 100 { // out-of-contract writes are refused, not wrapped
+        return Err(Error::Stream(serialize::Error::ValueOutOfRange));
     }
     {
         let mut range_value = value.b;
         stream.serialize_int(&mut range_value, -100, 100)?;
     }
+    if value.c < -100 || value.c > 150 { // out-of-contract writes are refused, not wrapped
+        return Err(Error::Stream(serialize::Error::ValueOutOfRange));
+    }
     {
         let mut range_value = value.c;
         stream.serialize_int(&mut range_value, -100, 150)?;
+    }
+    if value.d >= 1 << 8 {
+        return Err(Error::Stream(serialize::Error::ValueOutOfRange));
     }
     {
         let mut raw_value = value.d;
         stream.serialize_bits(&mut raw_value, 8)?;
     }
+    if value.e >= 1 << 8 {
+        return Err(Error::Stream(serialize::Error::ValueOutOfRange));
+    }
     {
         let mut raw_value = value.e;
         stream.serialize_bits(&mut raw_value, 8)?;
+    }
+    if value.f >= 1 << 8 {
+        return Err(Error::Stream(serialize::Error::ValueOutOfRange));
     }
     {
         let mut raw_value = value.f;
@@ -577,11 +613,17 @@ pub fn write_test_data(stream: &mut WriteStream<'_>, value: &TestData) -> Result
         let mut bool_value = value.g;
         stream.serialize_bool(&mut bool_value)?;
     }
+    if value.items_count < 0 || value.items_count > 16 { // refused, not wrapped: the runtime's write side only debug_asserts
+        return Err(Error::Stream(serialize::Error::ValueOutOfRange));
+    }
     {
         let mut count_value = value.items_count;
         stream.serialize_int(&mut count_value, 0, 16)?; // the count guards the loop (§6.3)
     }
     for i in 0..value.items_count as usize {
+        if value.items[i] < 0 || value.items[i] > 255 { // out-of-contract writes are refused, not wrapped
+            return Err(Error::Stream(serialize::Error::ValueOutOfRange));
+        }
         {
             let mut range_value = value.items[i];
             stream.serialize_int(&mut range_value, 0, 255)?;
@@ -627,6 +669,9 @@ pub fn write_test_data(stream: &mut WriteStream<'_>, value: &TestData) -> Result
         let mut raw_value = value.int64_full as u64;
         stream.serialize_bits64(&mut raw_value, 64)?;
     }
+    if value.int64_range < -1000000000000 || value.int64_range > 1000000000000 { // out-of-contract writes are refused, not wrapped
+        return Err(Error::Stream(serialize::Error::ValueOutOfRange));
+    }
     {
         let mut range_value = value.int64_range;
         stream.serialize_int64(&mut range_value, -1000000000000, 1000000000000)?;
@@ -637,6 +682,9 @@ pub fn write_test_data(stream: &mut WriteStream<'_>, value: &TestData) -> Result
             let mut raw_value = value.fixed_bytes[i] as u32;
             stream.serialize_bits(&mut raw_value, 8)?;
         }
+    }
+    if value.text_length < 0 || value.text_length > 255 { // refused, not wrapped or panicked: guards the slice too
+        return Err(Error::Stream(serialize::Error::ValueOutOfRange));
     }
     {
         let mut length_value = value.text_length;

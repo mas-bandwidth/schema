@@ -395,104 +395,104 @@ func ReadShipData_Shallow(stream *serialize.ReadStream, value *ShipData_Shallow)
 func QuantizeShip(input *ShipData_Interpolate, output *ShipData_Shallow) {
 	output.ShipType = input.ShipType
 	{
-		quantizedValue := int64(math.Floor(float64(input.Position.X)*float64(PositionUnits) + 0.5))
-		if quantizedValue > 8388608 {
-			quantizedValue = 8388608
+		quantizedValue := math.Floor(float64(input.Position.X)*float64(PositionUnits) + 0.5)
+		componentValue := int64(-8388608)
+		if quantizedValue > 8388608.0 {
+			componentValue = 8388608
+		} else if quantizedValue >= -8388608.0 {
+			componentValue = int64(quantizedValue)
 		}
-		if quantizedValue < -8388608 {
-			quantizedValue = -8388608
-		}
-		output.PositionX = int32(quantizedValue)
+		output.PositionX = int32(componentValue)
 	}
 	{
-		quantizedValue := int64(math.Floor(float64(input.Position.Y)*float64(PositionUnits) + 0.5))
-		if quantizedValue > 8388608 {
-			quantizedValue = 8388608
+		quantizedValue := math.Floor(float64(input.Position.Y)*float64(PositionUnits) + 0.5)
+		componentValue := int64(-8388608)
+		if quantizedValue > 8388608.0 {
+			componentValue = 8388608
+		} else if quantizedValue >= -8388608.0 {
+			componentValue = int64(quantizedValue)
 		}
-		if quantizedValue < -8388608 {
-			quantizedValue = -8388608
-		}
-		output.PositionY = int32(quantizedValue)
+		output.PositionY = int32(componentValue)
 	}
 	{
-		quantizedValue := int64(math.Floor(float64(input.Position.Z)*float64(PositionUnits) + 0.5))
-		if quantizedValue > 8388608 {
-			quantizedValue = 8388608
+		quantizedValue := math.Floor(float64(input.Position.Z)*float64(PositionUnits) + 0.5)
+		componentValue := int64(-8388608)
+		if quantizedValue > 8388608.0 {
+			componentValue = 8388608
+		} else if quantizedValue >= -8388608.0 {
+			componentValue = int64(quantizedValue)
 		}
-		if quantizedValue < -8388608 {
-			quantizedValue = -8388608
-		}
-		output.PositionZ = int32(quantizedValue)
+		output.PositionZ = int32(componentValue)
 	}
 	{
-		quantizedValue := int64(math.Floor(float64(input.Rotation.X)*float64(RotationUnits) + 0.5))
-		if quantizedValue > 1024 {
-			quantizedValue = 1024
+		quantizedValue := math.Floor(float64(input.Rotation.X)*float64(RotationUnits) + 0.5)
+		componentValue := int64(-1024)
+		if quantizedValue > 1024.0 {
+			componentValue = 1024
+		} else if quantizedValue >= -1024.0 {
+			componentValue = int64(quantizedValue)
 		}
-		if quantizedValue < -1024 {
-			quantizedValue = -1024
-		}
-		output.RotationX = int16(quantizedValue)
+		output.RotationX = int16(componentValue)
 	}
 	{
-		quantizedValue := int64(math.Floor(float64(input.Rotation.Y)*float64(RotationUnits) + 0.5))
-		if quantizedValue > 1024 {
-			quantizedValue = 1024
+		quantizedValue := math.Floor(float64(input.Rotation.Y)*float64(RotationUnits) + 0.5)
+		componentValue := int64(-1024)
+		if quantizedValue > 1024.0 {
+			componentValue = 1024
+		} else if quantizedValue >= -1024.0 {
+			componentValue = int64(quantizedValue)
 		}
-		if quantizedValue < -1024 {
-			quantizedValue = -1024
-		}
-		output.RotationY = int16(quantizedValue)
+		output.RotationY = int16(componentValue)
 	}
 	{
-		quantizedValue := int64(math.Floor(float64(input.Rotation.Z)*float64(RotationUnits) + 0.5))
-		if quantizedValue > 1024 {
-			quantizedValue = 1024
+		quantizedValue := math.Floor(float64(input.Rotation.Z)*float64(RotationUnits) + 0.5)
+		componentValue := int64(-1024)
+		if quantizedValue > 1024.0 {
+			componentValue = 1024
+		} else if quantizedValue >= -1024.0 {
+			componentValue = int64(quantizedValue)
 		}
-		if quantizedValue < -1024 {
-			quantizedValue = -1024
-		}
-		output.RotationZ = int16(quantizedValue)
+		output.RotationZ = int16(componentValue)
 	}
 	{
-		quantizedValue := int64(math.Floor(float64(input.Rotation.W)*float64(RotationUnits) + 0.5))
-		if quantizedValue > 1024 {
-			quantizedValue = 1024
+		quantizedValue := math.Floor(float64(input.Rotation.W)*float64(RotationUnits) + 0.5)
+		componentValue := int64(-1024)
+		if quantizedValue > 1024.0 {
+			componentValue = 1024
+		} else if quantizedValue >= -1024.0 {
+			componentValue = int64(quantizedValue)
 		}
-		if quantizedValue < -1024 {
-			quantizedValue = -1024
-		}
-		output.RotationW = int16(quantizedValue)
+		output.RotationW = int16(componentValue)
 	}
 	{
-		quantizedValue := int64(math.Floor(float64(input.LinearVelocity.X)*float64(VelocityUnits) + 0.5))
-		if quantizedValue > 2097152 {
-			quantizedValue = 2097152
+		quantizedValue := math.Floor(float64(input.LinearVelocity.X)*float64(VelocityUnits) + 0.5)
+		componentValue := int64(-2097152)
+		if quantizedValue > 2097152.0 {
+			componentValue = 2097152
+		} else if quantizedValue >= -2097152.0 {
+			componentValue = int64(quantizedValue)
 		}
-		if quantizedValue < -2097152 {
-			quantizedValue = -2097152
-		}
-		output.LinearVelocityX = int32(quantizedValue)
+		output.LinearVelocityX = int32(componentValue)
 	}
 	{
-		quantizedValue := int64(math.Floor(float64(input.LinearVelocity.Y)*float64(VelocityUnits) + 0.5))
-		if quantizedValue > 2097152 {
-			quantizedValue = 2097152
+		quantizedValue := math.Floor(float64(input.LinearVelocity.Y)*float64(VelocityUnits) + 0.5)
+		componentValue := int64(-2097152)
+		if quantizedValue > 2097152.0 {
+			componentValue = 2097152
+		} else if quantizedValue >= -2097152.0 {
+			componentValue = int64(quantizedValue)
 		}
-		if quantizedValue < -2097152 {
-			quantizedValue = -2097152
-		}
-		output.LinearVelocityY = int32(quantizedValue)
+		output.LinearVelocityY = int32(componentValue)
 	}
 	{
-		quantizedValue := int64(math.Floor(float64(input.LinearVelocity.Z)*float64(VelocityUnits) + 0.5))
-		if quantizedValue > 2097152 {
-			quantizedValue = 2097152
+		quantizedValue := math.Floor(float64(input.LinearVelocity.Z)*float64(VelocityUnits) + 0.5)
+		componentValue := int64(-2097152)
+		if quantizedValue > 2097152.0 {
+			componentValue = 2097152
+		} else if quantizedValue >= -2097152.0 {
+			componentValue = int64(quantizedValue)
 		}
-		if quantizedValue < -2097152 {
-			quantizedValue = -2097152
-		}
-		output.LinearVelocityZ = int32(quantizedValue)
+		output.LinearVelocityZ = int32(componentValue)
 	}
 	output.Flags = input.Flags
 	output.Team = input.Team
@@ -722,104 +722,104 @@ func ReadMissileData_Shallow(stream *serialize.ReadStream, value *MissileData_Sh
 func QuantizeMissile(input *MissileData_Interpolate, output *MissileData_Shallow) {
 	output.MissileType = input.MissileType
 	{
-		quantizedValue := int64(math.Floor(float64(input.Position.X)*float64(PositionUnits) + 0.5))
-		if quantizedValue > 8388608 {
-			quantizedValue = 8388608
+		quantizedValue := math.Floor(float64(input.Position.X)*float64(PositionUnits) + 0.5)
+		componentValue := int64(-8388608)
+		if quantizedValue > 8388608.0 {
+			componentValue = 8388608
+		} else if quantizedValue >= -8388608.0 {
+			componentValue = int64(quantizedValue)
 		}
-		if quantizedValue < -8388608 {
-			quantizedValue = -8388608
-		}
-		output.PositionX = int32(quantizedValue)
+		output.PositionX = int32(componentValue)
 	}
 	{
-		quantizedValue := int64(math.Floor(float64(input.Position.Y)*float64(PositionUnits) + 0.5))
-		if quantizedValue > 8388608 {
-			quantizedValue = 8388608
+		quantizedValue := math.Floor(float64(input.Position.Y)*float64(PositionUnits) + 0.5)
+		componentValue := int64(-8388608)
+		if quantizedValue > 8388608.0 {
+			componentValue = 8388608
+		} else if quantizedValue >= -8388608.0 {
+			componentValue = int64(quantizedValue)
 		}
-		if quantizedValue < -8388608 {
-			quantizedValue = -8388608
-		}
-		output.PositionY = int32(quantizedValue)
+		output.PositionY = int32(componentValue)
 	}
 	{
-		quantizedValue := int64(math.Floor(float64(input.Position.Z)*float64(PositionUnits) + 0.5))
-		if quantizedValue > 8388608 {
-			quantizedValue = 8388608
+		quantizedValue := math.Floor(float64(input.Position.Z)*float64(PositionUnits) + 0.5)
+		componentValue := int64(-8388608)
+		if quantizedValue > 8388608.0 {
+			componentValue = 8388608
+		} else if quantizedValue >= -8388608.0 {
+			componentValue = int64(quantizedValue)
 		}
-		if quantizedValue < -8388608 {
-			quantizedValue = -8388608
-		}
-		output.PositionZ = int32(quantizedValue)
+		output.PositionZ = int32(componentValue)
 	}
 	{
-		quantizedValue := int64(math.Floor(float64(input.Rotation.X)*float64(RotationUnits) + 0.5))
-		if quantizedValue > 1024 {
-			quantizedValue = 1024
+		quantizedValue := math.Floor(float64(input.Rotation.X)*float64(RotationUnits) + 0.5)
+		componentValue := int64(-1024)
+		if quantizedValue > 1024.0 {
+			componentValue = 1024
+		} else if quantizedValue >= -1024.0 {
+			componentValue = int64(quantizedValue)
 		}
-		if quantizedValue < -1024 {
-			quantizedValue = -1024
-		}
-		output.RotationX = int16(quantizedValue)
+		output.RotationX = int16(componentValue)
 	}
 	{
-		quantizedValue := int64(math.Floor(float64(input.Rotation.Y)*float64(RotationUnits) + 0.5))
-		if quantizedValue > 1024 {
-			quantizedValue = 1024
+		quantizedValue := math.Floor(float64(input.Rotation.Y)*float64(RotationUnits) + 0.5)
+		componentValue := int64(-1024)
+		if quantizedValue > 1024.0 {
+			componentValue = 1024
+		} else if quantizedValue >= -1024.0 {
+			componentValue = int64(quantizedValue)
 		}
-		if quantizedValue < -1024 {
-			quantizedValue = -1024
-		}
-		output.RotationY = int16(quantizedValue)
+		output.RotationY = int16(componentValue)
 	}
 	{
-		quantizedValue := int64(math.Floor(float64(input.Rotation.Z)*float64(RotationUnits) + 0.5))
-		if quantizedValue > 1024 {
-			quantizedValue = 1024
+		quantizedValue := math.Floor(float64(input.Rotation.Z)*float64(RotationUnits) + 0.5)
+		componentValue := int64(-1024)
+		if quantizedValue > 1024.0 {
+			componentValue = 1024
+		} else if quantizedValue >= -1024.0 {
+			componentValue = int64(quantizedValue)
 		}
-		if quantizedValue < -1024 {
-			quantizedValue = -1024
-		}
-		output.RotationZ = int16(quantizedValue)
+		output.RotationZ = int16(componentValue)
 	}
 	{
-		quantizedValue := int64(math.Floor(float64(input.Rotation.W)*float64(RotationUnits) + 0.5))
-		if quantizedValue > 1024 {
-			quantizedValue = 1024
+		quantizedValue := math.Floor(float64(input.Rotation.W)*float64(RotationUnits) + 0.5)
+		componentValue := int64(-1024)
+		if quantizedValue > 1024.0 {
+			componentValue = 1024
+		} else if quantizedValue >= -1024.0 {
+			componentValue = int64(quantizedValue)
 		}
-		if quantizedValue < -1024 {
-			quantizedValue = -1024
-		}
-		output.RotationW = int16(quantizedValue)
+		output.RotationW = int16(componentValue)
 	}
 	{
-		quantizedValue := int64(math.Floor(float64(input.LinearVelocity.X)*float64(VelocityUnits) + 0.5))
-		if quantizedValue > 2097152 {
-			quantizedValue = 2097152
+		quantizedValue := math.Floor(float64(input.LinearVelocity.X)*float64(VelocityUnits) + 0.5)
+		componentValue := int64(-2097152)
+		if quantizedValue > 2097152.0 {
+			componentValue = 2097152
+		} else if quantizedValue >= -2097152.0 {
+			componentValue = int64(quantizedValue)
 		}
-		if quantizedValue < -2097152 {
-			quantizedValue = -2097152
-		}
-		output.LinearVelocityX = int32(quantizedValue)
+		output.LinearVelocityX = int32(componentValue)
 	}
 	{
-		quantizedValue := int64(math.Floor(float64(input.LinearVelocity.Y)*float64(VelocityUnits) + 0.5))
-		if quantizedValue > 2097152 {
-			quantizedValue = 2097152
+		quantizedValue := math.Floor(float64(input.LinearVelocity.Y)*float64(VelocityUnits) + 0.5)
+		componentValue := int64(-2097152)
+		if quantizedValue > 2097152.0 {
+			componentValue = 2097152
+		} else if quantizedValue >= -2097152.0 {
+			componentValue = int64(quantizedValue)
 		}
-		if quantizedValue < -2097152 {
-			quantizedValue = -2097152
-		}
-		output.LinearVelocityY = int32(quantizedValue)
+		output.LinearVelocityY = int32(componentValue)
 	}
 	{
-		quantizedValue := int64(math.Floor(float64(input.LinearVelocity.Z)*float64(VelocityUnits) + 0.5))
-		if quantizedValue > 2097152 {
-			quantizedValue = 2097152
+		quantizedValue := math.Floor(float64(input.LinearVelocity.Z)*float64(VelocityUnits) + 0.5)
+		componentValue := int64(-2097152)
+		if quantizedValue > 2097152.0 {
+			componentValue = 2097152
+		} else if quantizedValue >= -2097152.0 {
+			componentValue = int64(quantizedValue)
 		}
-		if quantizedValue < -2097152 {
-			quantizedValue = -2097152
-		}
-		output.LinearVelocityZ = int32(quantizedValue)
+		output.LinearVelocityZ = int32(componentValue)
 	}
 	output.Team = input.Team
 	output.Flags = input.Flags
@@ -1029,104 +1029,104 @@ func ReadDynamicPropData_Shallow(stream *serialize.ReadStream, value *DynamicPro
 func QuantizeDynamicProp(input *DynamicPropData_Interpolate, output *DynamicPropData_Shallow) {
 	output.PropType = input.PropType
 	{
-		quantizedValue := int64(math.Floor(float64(input.Position.X)*float64(PositionUnits) + 0.5))
-		if quantizedValue > 8388608 {
-			quantizedValue = 8388608
+		quantizedValue := math.Floor(float64(input.Position.X)*float64(PositionUnits) + 0.5)
+		componentValue := int64(-8388608)
+		if quantizedValue > 8388608.0 {
+			componentValue = 8388608
+		} else if quantizedValue >= -8388608.0 {
+			componentValue = int64(quantizedValue)
 		}
-		if quantizedValue < -8388608 {
-			quantizedValue = -8388608
-		}
-		output.PositionX = int32(quantizedValue)
+		output.PositionX = int32(componentValue)
 	}
 	{
-		quantizedValue := int64(math.Floor(float64(input.Position.Y)*float64(PositionUnits) + 0.5))
-		if quantizedValue > 8388608 {
-			quantizedValue = 8388608
+		quantizedValue := math.Floor(float64(input.Position.Y)*float64(PositionUnits) + 0.5)
+		componentValue := int64(-8388608)
+		if quantizedValue > 8388608.0 {
+			componentValue = 8388608
+		} else if quantizedValue >= -8388608.0 {
+			componentValue = int64(quantizedValue)
 		}
-		if quantizedValue < -8388608 {
-			quantizedValue = -8388608
-		}
-		output.PositionY = int32(quantizedValue)
+		output.PositionY = int32(componentValue)
 	}
 	{
-		quantizedValue := int64(math.Floor(float64(input.Position.Z)*float64(PositionUnits) + 0.5))
-		if quantizedValue > 8388608 {
-			quantizedValue = 8388608
+		quantizedValue := math.Floor(float64(input.Position.Z)*float64(PositionUnits) + 0.5)
+		componentValue := int64(-8388608)
+		if quantizedValue > 8388608.0 {
+			componentValue = 8388608
+		} else if quantizedValue >= -8388608.0 {
+			componentValue = int64(quantizedValue)
 		}
-		if quantizedValue < -8388608 {
-			quantizedValue = -8388608
-		}
-		output.PositionZ = int32(quantizedValue)
+		output.PositionZ = int32(componentValue)
 	}
 	{
-		quantizedValue := int64(math.Floor(float64(input.Rotation.X)*float64(RotationUnits) + 0.5))
-		if quantizedValue > 1024 {
-			quantizedValue = 1024
+		quantizedValue := math.Floor(float64(input.Rotation.X)*float64(RotationUnits) + 0.5)
+		componentValue := int64(-1024)
+		if quantizedValue > 1024.0 {
+			componentValue = 1024
+		} else if quantizedValue >= -1024.0 {
+			componentValue = int64(quantizedValue)
 		}
-		if quantizedValue < -1024 {
-			quantizedValue = -1024
-		}
-		output.RotationX = int16(quantizedValue)
+		output.RotationX = int16(componentValue)
 	}
 	{
-		quantizedValue := int64(math.Floor(float64(input.Rotation.Y)*float64(RotationUnits) + 0.5))
-		if quantizedValue > 1024 {
-			quantizedValue = 1024
+		quantizedValue := math.Floor(float64(input.Rotation.Y)*float64(RotationUnits) + 0.5)
+		componentValue := int64(-1024)
+		if quantizedValue > 1024.0 {
+			componentValue = 1024
+		} else if quantizedValue >= -1024.0 {
+			componentValue = int64(quantizedValue)
 		}
-		if quantizedValue < -1024 {
-			quantizedValue = -1024
-		}
-		output.RotationY = int16(quantizedValue)
+		output.RotationY = int16(componentValue)
 	}
 	{
-		quantizedValue := int64(math.Floor(float64(input.Rotation.Z)*float64(RotationUnits) + 0.5))
-		if quantizedValue > 1024 {
-			quantizedValue = 1024
+		quantizedValue := math.Floor(float64(input.Rotation.Z)*float64(RotationUnits) + 0.5)
+		componentValue := int64(-1024)
+		if quantizedValue > 1024.0 {
+			componentValue = 1024
+		} else if quantizedValue >= -1024.0 {
+			componentValue = int64(quantizedValue)
 		}
-		if quantizedValue < -1024 {
-			quantizedValue = -1024
-		}
-		output.RotationZ = int16(quantizedValue)
+		output.RotationZ = int16(componentValue)
 	}
 	{
-		quantizedValue := int64(math.Floor(float64(input.Rotation.W)*float64(RotationUnits) + 0.5))
-		if quantizedValue > 1024 {
-			quantizedValue = 1024
+		quantizedValue := math.Floor(float64(input.Rotation.W)*float64(RotationUnits) + 0.5)
+		componentValue := int64(-1024)
+		if quantizedValue > 1024.0 {
+			componentValue = 1024
+		} else if quantizedValue >= -1024.0 {
+			componentValue = int64(quantizedValue)
 		}
-		if quantizedValue < -1024 {
-			quantizedValue = -1024
-		}
-		output.RotationW = int16(quantizedValue)
+		output.RotationW = int16(componentValue)
 	}
 	{
-		quantizedValue := int64(math.Floor(float64(input.LinearVelocity.X)*float64(VelocityUnits) + 0.5))
-		if quantizedValue > 2097152 {
-			quantizedValue = 2097152
+		quantizedValue := math.Floor(float64(input.LinearVelocity.X)*float64(VelocityUnits) + 0.5)
+		componentValue := int64(-2097152)
+		if quantizedValue > 2097152.0 {
+			componentValue = 2097152
+		} else if quantizedValue >= -2097152.0 {
+			componentValue = int64(quantizedValue)
 		}
-		if quantizedValue < -2097152 {
-			quantizedValue = -2097152
-		}
-		output.LinearVelocityX = int32(quantizedValue)
+		output.LinearVelocityX = int32(componentValue)
 	}
 	{
-		quantizedValue := int64(math.Floor(float64(input.LinearVelocity.Y)*float64(VelocityUnits) + 0.5))
-		if quantizedValue > 2097152 {
-			quantizedValue = 2097152
+		quantizedValue := math.Floor(float64(input.LinearVelocity.Y)*float64(VelocityUnits) + 0.5)
+		componentValue := int64(-2097152)
+		if quantizedValue > 2097152.0 {
+			componentValue = 2097152
+		} else if quantizedValue >= -2097152.0 {
+			componentValue = int64(quantizedValue)
 		}
-		if quantizedValue < -2097152 {
-			quantizedValue = -2097152
-		}
-		output.LinearVelocityY = int32(quantizedValue)
+		output.LinearVelocityY = int32(componentValue)
 	}
 	{
-		quantizedValue := int64(math.Floor(float64(input.LinearVelocity.Z)*float64(VelocityUnits) + 0.5))
-		if quantizedValue > 2097152 {
-			quantizedValue = 2097152
+		quantizedValue := math.Floor(float64(input.LinearVelocity.Z)*float64(VelocityUnits) + 0.5)
+		componentValue := int64(-2097152)
+		if quantizedValue > 2097152.0 {
+			componentValue = 2097152
+		} else if quantizedValue >= -2097152.0 {
+			componentValue = int64(quantizedValue)
 		}
-		if quantizedValue < -2097152 {
-			quantizedValue = -2097152
-		}
-		output.LinearVelocityZ = int32(quantizedValue)
+		output.LinearVelocityZ = int32(componentValue)
 	}
 	output.Flags = input.Flags
 	output.Team = input.Team
@@ -1279,44 +1279,44 @@ func QuantizeTurret(input *TurretData_Interpolate, output *TurretData_Shallow) {
 	output.Parent = input.Parent
 	output.TurretIndex = input.TurretIndex
 	{
-		quantizedValue := int64(math.Floor(float64(input.Rotation.X)*float64(RotationUnits) + 0.5))
-		if quantizedValue > 1024 {
-			quantizedValue = 1024
+		quantizedValue := math.Floor(float64(input.Rotation.X)*float64(RotationUnits) + 0.5)
+		componentValue := int64(-1024)
+		if quantizedValue > 1024.0 {
+			componentValue = 1024
+		} else if quantizedValue >= -1024.0 {
+			componentValue = int64(quantizedValue)
 		}
-		if quantizedValue < -1024 {
-			quantizedValue = -1024
-		}
-		output.RotationX = int16(quantizedValue)
+		output.RotationX = int16(componentValue)
 	}
 	{
-		quantizedValue := int64(math.Floor(float64(input.Rotation.Y)*float64(RotationUnits) + 0.5))
-		if quantizedValue > 1024 {
-			quantizedValue = 1024
+		quantizedValue := math.Floor(float64(input.Rotation.Y)*float64(RotationUnits) + 0.5)
+		componentValue := int64(-1024)
+		if quantizedValue > 1024.0 {
+			componentValue = 1024
+		} else if quantizedValue >= -1024.0 {
+			componentValue = int64(quantizedValue)
 		}
-		if quantizedValue < -1024 {
-			quantizedValue = -1024
-		}
-		output.RotationY = int16(quantizedValue)
+		output.RotationY = int16(componentValue)
 	}
 	{
-		quantizedValue := int64(math.Floor(float64(input.Rotation.Z)*float64(RotationUnits) + 0.5))
-		if quantizedValue > 1024 {
-			quantizedValue = 1024
+		quantizedValue := math.Floor(float64(input.Rotation.Z)*float64(RotationUnits) + 0.5)
+		componentValue := int64(-1024)
+		if quantizedValue > 1024.0 {
+			componentValue = 1024
+		} else if quantizedValue >= -1024.0 {
+			componentValue = int64(quantizedValue)
 		}
-		if quantizedValue < -1024 {
-			quantizedValue = -1024
-		}
-		output.RotationZ = int16(quantizedValue)
+		output.RotationZ = int16(componentValue)
 	}
 	{
-		quantizedValue := int64(math.Floor(float64(input.Rotation.W)*float64(RotationUnits) + 0.5))
-		if quantizedValue > 1024 {
-			quantizedValue = 1024
+		quantizedValue := math.Floor(float64(input.Rotation.W)*float64(RotationUnits) + 0.5)
+		componentValue := int64(-1024)
+		if quantizedValue > 1024.0 {
+			componentValue = 1024
+		} else if quantizedValue >= -1024.0 {
+			componentValue = int64(quantizedValue)
 		}
-		if quantizedValue < -1024 {
-			quantizedValue = -1024
-		}
-		output.RotationW = int16(quantizedValue)
+		output.RotationW = int16(componentValue)
 	}
 	output.Flags = input.Flags
 }

@@ -5,3 +5,5 @@
 /generated/rust/Cargo.lock
 /test/rust/target/
 /test/rust/Cargo.lock
+generated/go/.stamp
+generated/rust/.stamp
