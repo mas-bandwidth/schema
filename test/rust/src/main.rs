@@ -628,9 +628,9 @@ fn main() {
     {
         let mut input = Block::default();
         for i in 0..100 {
-            input.block_data[i] = i as u8;
+            input.data[i] = i as u8;
         }
-        input.block_data_length = 100;
+        input.data_length = 100;
 
         let mut buffer = [0u8; 2048];
         let mut ws = WriteStream::new(&mut buffer);

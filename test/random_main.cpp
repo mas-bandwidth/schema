@@ -227,14 +227,14 @@ static bool equal( const Test & a, const Test & b )
 
 static void fill( Rng & r, Block & blk )
 {
-    blk.block_data_length = (int32_t) r.range( 0, MaxBlockSize );
-    for ( int32_t i = 0; i < blk.block_data_length; i++ )
-        blk.block_data[i] = (uint8_t) r.range( 0, 255 );
+    blk.data_length = (int32_t) r.range( 0, MaxBlockSize );
+    for ( int32_t i = 0; i < blk.data_length; i++ )
+        blk.data[i] = (uint8_t) r.range( 0, 255 );
 }
 static bool equal( const Block & a, const Block & b )
 {
-    return a.block_data_length == b.block_data_length &&
-           std::memcmp( a.block_data, b.block_data, (size_t) a.block_data_length ) == 0;
+    return a.data_length == b.data_length &&
+           std::memcmp( a.data, b.data, (size_t) a.data_length ) == 0;
 }
 
 static void fill( Rng & r, Chat & c )

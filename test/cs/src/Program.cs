@@ -161,7 +161,7 @@ static class Program
 
     static bool EqBlock(Block a, Block b)
     {
-        return a.BlockDataLength == b.BlockDataLength && EqBytes(a.BlockData, b.BlockData);
+        return a.DataLength == b.DataLength && EqBytes(a.Data, b.Data);
     }
 
     static bool EqProbeHeader(ProbeHeader a, ProbeHeader b)
@@ -681,9 +681,9 @@ static class Program
             Block input = new Block();
             for (int i = 0; i < 100; i++)
             {
-                input.BlockData[i] = (byte)i;
+                input.Data[i] = (byte)i;
             }
-            input.BlockDataLength = 100;
+            input.DataLength = 100;
 
             WriteStream ws = NewWriteStream();
             Check(WriteBlock(ws, input), "write Block");

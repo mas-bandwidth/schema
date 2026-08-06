@@ -798,6 +798,16 @@ one. *(v1 constants are integers; if the corpus shows serialize functions referr
 float constants — e.g. ranges for compressed floats — `const` widens to floats in that design
 pass.)*
 
+**The sentinel-zero counting convention — DECIDED (Glenn, 2026-08-06).** Entry 0 of every
+enum is the none/sentinel value, so **the count of real things is always `Enum.Max`, never
+`Enum.Max + 1`**. His words: *"0 is the 'none' or sentinel... This is the case for all enums,
+so if you are to count the number of things, it is always going to be `<EnumName>.Max`"* —
+with his two worked examples: `Team { None, Red, Blue }` → two real teams, `NumTeams =
+Team.Max = 2`; `ShipType_None, ShipType_A, ShipType_B, ShipType_C` → three real ship types,
+`ShipType.Max = 3`. A convention over the corpus and generated-code usage, not a language
+rule — the language does not enforce entry 0's meaning — and the corpus follows it
+everywhere (the 2026-08-06 `NumTeams` correction is the worked instance).
+
 ### 4.3 Field types and their wire encodings
 
 **The wire model — normative** *(added 2026-08-05: the table below defined every construct

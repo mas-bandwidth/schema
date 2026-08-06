@@ -449,9 +449,9 @@ func main() {
 	{
 		in := example.Block{}
 		for i := 0; i < 100; i++ {
-			in.BlockData[i] = byte(i)
+			in.Data[i] = byte(i)
 		}
-		in.BlockDataLength = 100
+		in.DataLength = 100
 
 		ws, _ := newWriteStream()
 		checkErr(example.WriteBlock(ws, &in), "write Block")

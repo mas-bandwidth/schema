@@ -131,7 +131,7 @@ int main()
 
     // constants fold and export (SPEC §4.2)
     static_assert(MaxPositionUnits == MaxWorldMeters * PositionUnits, "constants compose");
-    static_assert(NumTeams == 3, "NumTeams = Team.Max + 1 (None rides the wire, Max = 2)");
+    static_assert(NumTeams == 2, "NumTeams = Team.Max — entry 0 is the None sentinel in every enum, so the count of real things is always Enum.Max");
     static_assert(ProtocolId != 0, "the unit has a protocol id");
 
     // enums: None = 0 implicit, variants dense from 1 (SPEC §4.2)
