@@ -54,18 +54,15 @@ git.*
   (`05f134c2`, `114ea1bc`); turret wire change free because turret is unused (*"turret is
   currently unused... fix now."*).
 
-## Remaining before the corpus review
+## State at the 2026-08-05 close
 
-1. The corner-rule pins, presented one by one for his check (his ask).
-2. `files.go` — his call once the explanation lands (his own tooling file; Readdir order
-   feeds the flatbuffers protocol id; fix is one sort line, redeploy-together).
-3. **Then: regenerate the full example corpus** — all aspect files under the final
-   language (`quat`, `enum_index`, `enum_flags`, `E.Max`, corrected thrust/health forms)
-   plus `object Missile` / `DynamicProp` / `Turret` from the measured inventories — and
-   he reviews the `.schema` files. *"Before we implement, let's land all design
-   questions, generate final language example source code in *.schema in repo and i'll
-   review."*
-
+Everything above is landed. The evening review round then pruned further, live, each cut
+with his words in the spec: switch/case cut ("simple as possible first pass"), enum_index
+cut, commas for variant lists, string(N)/bytes(N) unified under the no-dynamic-storage
+principle, the CONTEXTS design born (his idea, end to end), CraftKind/RecordKind removed.
+The corpus stands at seven files under the final v1 language. **His review continues in
+the next session; implementation (§7.3: corpus to testdata, scanner first) begins on his
+word once the read completes.**
 ## Addendum — the type-tags decision (2026-08-05, evening, after the corner pins)
 
 The last design question opened and closed the same hour: does the language pre-define
