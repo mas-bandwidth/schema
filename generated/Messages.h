@@ -5,6 +5,8 @@
 
 #include <cstdint>
 
+#include "serialize.h"
+
 #include "Constants.h"
 
 namespace example {
@@ -24,6 +26,23 @@ enum class MessageType : uint8_t {
 struct Heartbeat {
 };
 
+inline constexpr int64_t HeartbeatMaxBits = 0; // longest wire path; align pads at worst case (SPEC §6.1)
+inline constexpr int64_t HeartbeatMaxBytes = 0;
+
+inline bool WriteHeartbeat( serialize::WriteStream & stream, const Heartbeat & value )
+{
+    (void) stream;
+    (void) value; // empty body — presence is the payload (SPEC §4.6)
+    return true;
+}
+
+inline bool ReadHeartbeat( serialize::ReadStream & stream, Heartbeat & value )
+{
+    (void) stream;
+    (void) value;
+    return true;
+}
+
 // message Test
 struct Test {
     uint16_t test_a = 0;
@@ -32,11 +51,65 @@ struct Test {
     int16_t test_d = 0; // wire [0, 1000]
 };
 
+inline constexpr int64_t TestMaxBits = 46; // longest wire path; align pads at worst case (SPEC §6.1)
+inline constexpr int64_t TestMaxBytes = 6;
+
+inline bool WriteTest( serialize::WriteStream & stream, const Test & value )
+{
+    write_bits( stream, value.test_a, 16 );
+    write_int( stream, value.test_b, 0, 1000 );
+    write_int( stream, value.test_c, 0, 1000 );
+    write_int( stream, value.test_d, 0, 1000 );
+    return true;
+}
+
+inline bool ReadTest( serialize::ReadStream & stream, Test & value )
+{
+    {
+        uint32_t raw_value = 0;
+        read_bits( stream, raw_value, 16 );
+        value.test_a = uint16_t( raw_value );
+    }
+    {
+        int32_t range_value = 0;
+        read_int( stream, range_value, 0, 1000 );
+        value.test_b = int16_t( range_value );
+    }
+    {
+        int32_t range_value = 0;
+        read_int( stream, range_value, 0, 1000 );
+        value.test_c = int16_t( range_value );
+    }
+    {
+        int32_t range_value = 0;
+        read_int( stream, range_value, 0, 1000 );
+        value.test_d = int16_t( range_value );
+    }
+    return true;
+}
+
 // message Block
 struct Block {
     uint8_t block_data[MaxBlockSize] = {}; // bytes(MaxBlockSize): fixed buffer, used length beside it (SPEC §4.7)
     int32_t block_data_length = 0;
 };
+
+inline constexpr int64_t BlockMaxBits = 16018; // longest wire path; align pads at worst case (SPEC §6.1)
+inline constexpr int64_t BlockMaxBytes = 2003;
+
+inline bool WriteBlock( serialize::WriteStream & stream, const Block & value )
+{
+    write_int( stream, value.block_data_length, 0, MaxBlockSize );
+    write_bytes( stream, value.block_data, value.block_data_length );
+    return true;
+}
+
+inline bool ReadBlock( serialize::ReadStream & stream, Block & value )
+{
+    read_int( stream, value.block_data_length, 0, MaxBlockSize );
+    read_bytes( stream, value.block_data, value.block_data_length );
+    return true;
+}
 
 // message Chat
 struct Chat {
@@ -44,11 +117,61 @@ struct Chat {
     int32_t text_length = 0;
 };
 
+inline constexpr int64_t ChatMaxBits = 2064; // longest wire path; align pads at worst case (SPEC §6.1)
+inline constexpr int64_t ChatMaxBytes = 258;
+
+inline bool WriteChat( serialize::WriteStream & stream, const Chat & value )
+{
+    for ( int32_t i = 0; i < value.text_length; i++ )
+    {
+        serialize_assert( value.text[i] != 0 );
+    }
+    write_int( stream, value.text_length, 0, MaxChatLength );
+    write_bytes( stream, value.text, value.text_length );
+    return true;
+}
+
+inline bool ReadChat( serialize::ReadStream & stream, Chat & value )
+{
+    read_int( stream, value.text_length, 0, MaxChatLength );
+    read_bytes( stream, value.text, value.text_length );
+    for ( int32_t i = 0; i < value.text_length; i++ )
+    {
+        if ( value.text[i] == 0 )
+        {
+            return false;
+        }
+    }
+    value.text[value.text_length] = 0;
+    return true;
+}
+
 // message Synchronize
 struct Synchronize {
     uint64_t sync_frame = 0;
     uint16_t sync_sequence = 0;
 };
+
+inline constexpr int64_t SynchronizeMaxBits = 80; // longest wire path; align pads at worst case (SPEC §6.1)
+inline constexpr int64_t SynchronizeMaxBytes = 10;
+
+inline bool WriteSynchronize( serialize::WriteStream & stream, const Synchronize & value )
+{
+    write_bits( stream, value.sync_frame, 64 );
+    write_bits( stream, value.sync_sequence, 16 );
+    return true;
+}
+
+inline bool ReadSynchronize( serialize::ReadStream & stream, Synchronize & value )
+{
+    read_bits( stream, value.sync_frame, 64 );
+    {
+        uint32_t raw_value = 0;
+        read_bits( stream, raw_value, 16 );
+        value.sync_sequence = uint16_t( raw_value );
+    }
+    return true;
+}
 
 // message Timescale
 struct Timescale {
@@ -56,5 +179,44 @@ struct Timescale {
     uint32_t frame_a = 0;
     uint32_t frame_b = 0;
 };
+
+inline constexpr int64_t TimescaleMaxBits = 128; // longest wire path; align pads at worst case (SPEC §6.1)
+inline constexpr int64_t TimescaleMaxBytes = 16;
+
+inline bool WriteTimescale( serialize::WriteStream & stream, const Timescale & value )
+{
+    write_double( stream, value.timescale );
+    write_bits( stream, value.frame_a, 32 );
+    write_bits( stream, value.frame_b, 32 );
+    return true;
+}
+
+inline bool ReadTimescale( serialize::ReadStream & stream, Timescale & value )
+{
+    read_double( stream, value.timescale );
+    read_bits( stream, value.frame_a, 32 );
+    read_bits( stream, value.frame_b, 32 );
+    return true;
+}
+
+// The message tag wire: MessageType in [0, 6], minimal bits; None = 0 is a
+// valid wire value meaning *no message* — the stream terminator (SPEC §4.8).
+inline bool WriteMessageType( serialize::WriteStream & stream, MessageType value )
+{
+    write_int( stream, int32_t( value ), 0, 6 );
+    return true;
+}
+
+inline bool ReadMessageType( serialize::ReadStream & stream, MessageType & value )
+{
+    int32_t tag_value = 0;
+    read_int( stream, tag_value, 0, 6 );
+    value = MessageType( tag_value );
+    return true;
+}
+
+// The message-level bound: the tag plus the largest message (SPEC §6.1)
+inline constexpr int64_t MessageMaxBits = 16021;
+inline constexpr int64_t MessageMaxBytes = 2003;
 
 } // namespace example

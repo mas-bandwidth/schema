@@ -69,8 +69,47 @@ type Struct struct {
 	Name      string
 	IsMessage bool
 	Tags      []string // inert in v1 (SPEC §4.2)
-	Fields    []*Field // flattened; branch fields carry Guard
+	Fields    []*Field // flattened; branch fields carry Guard — storage emission
+	Items     []Item   // the wire tree: fields and branches in wire order — function emission
 }
+
+// Item is one wire-ordered element of a struct body: a field, an if branch
+// whose untaken side a read zeroes (SPEC §5), or one of the storage-less wire
+// constructs (const, reserved, align — SPEC §4.3).
+type Item interface{ irItem() }
+
+type FieldItem struct {
+	F *Field
+}
+
+type Branch struct {
+	Neg  bool   // if !cond
+	Cond string // the back-referenced bool field's name (SPEC §4.5)
+	Then []Item
+	Else []Item // nil when no else block
+}
+
+// ConstItem is const(value, bits): the constant on the wire; a read REJECTS
+// any other value (SPEC §4.3).
+type ConstItem struct {
+	Value *big.Int
+	Bits  int64
+}
+
+// ReservedItem is reserved(bits): zeros on the wire; a read rejects nonzero.
+type ReservedItem struct {
+	Bits int64
+}
+
+// AlignItem is align: zero-pad to the next byte boundary; a read rejects
+// nonzero padding.
+type AlignItem struct{}
+
+func (*FieldItem) irItem()    {}
+func (*Branch) irItem()       {}
+func (*ConstItem) irItem()    {}
+func (*ReservedItem) irItem() {}
+func (*AlignItem) irItem()    {}
 
 type Object struct {
 	Name   string
@@ -121,6 +160,8 @@ type Field struct {
 	HasIntRange    bool
 	IntMin         *big.Int
 	IntMax         *big.Int
+	IntMinExpr     ast.Expr // for symbolic rendering in generated code
+	IntMaxExpr     ast.Expr
 	HasFloatRange  bool // the compressed-float triple (SPEC §4.3) / projection (§4.8 rule 4)
 	FMin           float64
 	FMax           float64

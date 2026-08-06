@@ -9,6 +9,7 @@ package cpp
 
 import (
 	"fmt"
+	"math"
 	"math/big"
 	"sort"
 	"strconv"
@@ -156,9 +157,11 @@ type gen struct {
 	unit *ir.Unit
 	file *ir.File
 
-	body     strings.Builder
-	includes map[string]bool
-	emitted  map[string]bool // consts of this file emitted so far (symbolic-reference safety)
+	body           strings.Builder
+	includes       map[string]bool
+	emitted        map[string]bool // consts of this file emitted so far (symbolic-reference safety)
+	needsSerialize bool            // the file emits wire functions -> include "serialize.h"
+	needsCstring   bool            // the file emits memset -> include <cstring>
 }
 
 func (g *gen) pf(format string, args ...any) {
@@ -171,6 +174,12 @@ func (g *gen) assemble() []byte {
 	fmt.Fprintf(&h, "// package %s — protocol id 0x%016x\n\n", g.unit.Package, g.unit.ProtocolId)
 	h.WriteString("#pragma once\n\n")
 	h.WriteString("#include <cstdint>\n")
+	if g.needsCstring {
+		h.WriteString("#include <cstring>\n")
+	}
+	if g.needsSerialize {
+		h.WriteString("\n#include \"serialize.h\"\n")
+	}
 	if len(g.includes) > 0 {
 		names := make([]string, 0, len(g.includes))
 		for n := range g.includes {
@@ -228,9 +237,14 @@ func (g *gen) emitFile(carriesProtocolId bool) {
 			g.pf("// fields plus its own context's. No preprocessor in any target.\n\n")
 		case *ir.Struct:
 			g.emitStruct(d)
+			g.emitStructFunctions(d)
 		case *ir.Object:
 			g.emitObject(d)
 		}
+	}
+
+	if g.fileHasMessages() {
+		g.emitMessageTagFunctions()
 	}
 }
 
@@ -646,6 +660,9 @@ func (g *gen) noteRef(name string) {
 // included file — and folds to the computed value otherwise (an E.Max
 // reference always folds; the schema source rides in a comment).
 func (g *gen) renderInt(e ast.Expr, folded *big.Int) string {
+	if folded != nil && folded.IsInt64() && folded.Int64() == math.MinInt64 {
+		return "( -9223372036854775807ll - 1 )" // INT64_MIN has no literal spelling in C++
+	}
 	if e == nil || containsMax(e) || !g.renderable(e) {
 		return folded.String()
 	}

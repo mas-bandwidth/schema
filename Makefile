@@ -4,6 +4,10 @@
 CXX      ?= c++
 CXXFLAGS ?= -std=c++17 -Wall -Wextra -Werror -ffp-contract=off
 
+# the classic serialize runtime the generated C++ targets (header-only)
+SERIALIZE ?= ../serialize-cs-port/serialize
+CXXFLAGS  += -I$(SERIALIZE)
+
 GO_SOURCES := $(shell find cmd internal -name '*.go') go.mod
 SCHEMAS    := $(wildcard examples/*.schema)
 

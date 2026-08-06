@@ -1296,7 +1296,17 @@ attacker-influenced values as min/max.
 success. **Read success fully initializes it**: fields in untaken branches are set to their
 zero values — 0, 0.0, false, empty bytes, zero count, **`None` for an enum, recursively
 zeroed for a nested type, element-wise zeroed for a fixed array** *(the three cases DECIDED — corner-pins list, Glenn
-2026-08-05; whole-object comparison needs them defined)*. Write reads only taken fields.
+2026-08-05; whole-object comparison needs them defined)*. **ZERO values, not specified
+defaults** — the defaults of §4.2 are storage initialization at construction; the wire
+contract stays a pure function of the encodings *(stated 2026-08-05 when defaults landed;
+whether untaken branches should instead restore defaults is Glenn's call if a real case
+ever wants it)*. **Scope, PROPOSED (found by the 2026-08-05 emission audit):** *fully
+initializes* is relative to a zero-initialized output object — elements past a used count
+and bytes past a used length are not rewritten by a successful read, so a REUSED output
+object keeps stale tail data there (the classic runtime's own prefix convention).
+Whole-object comparison in the conformance matrix is defined over a fresh output or the
+used prefix; if tail-clearing on read is ever wanted instead, it is a generated-code
+change, priced then. Write reads only taken fields.
 This is what makes whole-object comparison in the conformance matrix well-defined.
 
 ## 6. Generated code

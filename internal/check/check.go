@@ -586,11 +586,11 @@ func (c *checker) resolveBodies() {
 		for _, d := range f.AST.Decls {
 			switch d := d.(type) {
 			case *ast.TypeDecl:
-				c.structs[d.Name].Fields = c.resolveBody(typeD, d.Name, d.Body)
+				c.structs[d.Name].Fields, c.structs[d.Name].Items = c.resolveBody(typeD, d.Name, d.Body)
 			case *ast.MessageDecl:
-				c.structs[d.Name].Fields = c.resolveBody(messageD, d.Name, d.Body)
+				c.structs[d.Name].Fields, c.structs[d.Name].Items = c.resolveBody(messageD, d.Name, d.Body)
 			case *ast.ObjectDecl:
-				fields := c.resolveBody(objectD, d.Name, d.Body)
+				fields, _ := c.resolveBody(objectD, d.Name, d.Body)
 				if len(fields) == 0 {
 					c.errf(d.Pos, "empty object body — it generates a meaningless view family (SPEC §4.6)")
 				}
@@ -604,11 +604,12 @@ type scopeFrame struct {
 	fields map[string]*ir.Field
 }
 
-func (c *checker) resolveBody(kind declKind, owner string, body *ast.Block) []*ir.Field {
+func (c *checker) resolveBody(kind declKind, owner string, body *ast.Block) ([]*ir.Field, []ir.Item) {
 	var out []*ir.Field
 	names := map[string]ast.Pos{}
-	var walk func(b *ast.Block, guard string, scopes []*scopeFrame)
-	walk = func(b *ast.Block, guard string, scopes []*scopeFrame) {
+	var walk func(b *ast.Block, guard string, scopes []*scopeFrame) []ir.Item
+	walk = func(b *ast.Block, guard string, scopes []*scopeFrame) []ir.Item {
+		var items []ir.Item
 		frame := scopes[len(scopes)-1]
 		for _, item := range b.Items {
 			switch item := item.(type) {
@@ -626,6 +627,7 @@ func (c *checker) resolveBody(kind declKind, owner string, body *ast.Block) []*i
 				f.Guard = guard
 				out = append(out, f)
 				frame.fields[item.Name] = f
+				items = append(items, &ir.FieldItem{F: f})
 			case *ast.IfItem:
 				if kind == objectD {
 					c.errf(item.Pos, "an object body admits plain fields only in v1 — no if (SPEC §4.8)")
@@ -645,10 +647,12 @@ func (c *checker) resolveBody(kind declKind, owner string, body *ast.Block) []*i
 				if guard != "" {
 					g = guard + " / " + g
 				}
-				walk(item.Then, g, append(scopes, &scopeFrame{fields: map[string]*ir.Field{}}))
+				br := &ir.Branch{Neg: item.Neg, Cond: item.Cond.Text}
+				br.Then = walk(item.Then, g, append(scopes, &scopeFrame{fields: map[string]*ir.Field{}}))
 				if item.Else != nil {
-					walk(item.Else, g+" else", append(scopes, &scopeFrame{fields: map[string]*ir.Field{}}))
+					br.Else = walk(item.Else, g+" else", append(scopes, &scopeFrame{fields: map[string]*ir.Field{}}))
 				}
+				items = append(items, br)
 			case *ast.ConstField:
 				if kind == objectD {
 					c.errf(item.Pos, "an object body admits plain fields only in v1 — no const() (SPEC §4.8)")
@@ -664,24 +668,29 @@ func (c *checker) resolveBody(kind declKind, owner string, body *ast.Block) []*i
 				}
 				if v.Sign() < 0 || v.BitLen() > int(bits) {
 					c.errf(item.Pos, "const value %s does not fit %d bits (SPEC §4.6)", v, bits)
+					continue
 				}
-				// wire-only: no storage; carried into IR by the write/read pass
+				items = append(items, &ir.ConstItem{Value: v, Bits: bits}) // wire-only: no storage
 			case *ast.ReservedItem:
 				if kind == objectD {
 					c.errf(item.Pos, "an object body admits plain fields only in v1 — no reserved (SPEC §4.8)")
 					continue
 				}
-				c.evalWidth(item.Bits, "reserved width")
+				if bits, ok := c.evalWidth(item.Bits, "reserved width"); ok {
+					items = append(items, &ir.ReservedItem{Bits: bits})
+				}
 			case *ast.AlignItem:
 				if kind == objectD {
 					c.errf(item.Pos, "an object body admits plain fields only in v1 — no align (SPEC §4.8)")
+					continue
 				}
-				// wire-only: no storage
+				items = append(items, &ir.AlignItem{})
 			}
 		}
+		return items
 	}
-	walk(body, "", []*scopeFrame{{fields: map[string]*ir.Field{}}})
-	return out
+	items := walk(body, "", []*scopeFrame{{fields: map[string]*ir.Field{}}})
+	return out, items
 }
 
 func (c *checker) lookupScope(scopes []*scopeFrame, name string) *ir.Field {
@@ -741,6 +750,10 @@ func (c *checker) resolveField(kind declKind, owner string, f *ast.Field) *ir.Fi
 			c.errf(f.Type.Pos, "%s(%s): N below %d (SPEC §4.6)", what, n, minN)
 			return nil
 		}
+		if n.Int64() > math.MaxInt32 {
+			c.errf(f.Type.Pos, "%s(%s): N above %d — lengths live in int32 storage and the count's integer range is the bound (SPEC §4.3, §6.1)", what, n, math.MaxInt32)
+			return nil
+		}
 		out.Type = ir.FieldType{Kind: k, Size: n.Int64(), SizeExpr: f.Type.Arg}
 	case ast.ScalarNamed:
 		d, ok := c.astDecls[f.Type.Name]
@@ -777,6 +790,10 @@ func (c *checker) resolveField(kind declKind, owner string, f *ast.Field) *ir.Fi
 		}
 		if !hi.IsInt64() || hi.Int64() < 1 {
 			c.errf(f.Pos, "array bound %s below 1 (SPEC §4.6)", hi)
+			return nil
+		}
+		if hi.Int64() > math.MaxInt32 {
+			c.errf(f.Pos, "array bound %s above %d — counts live in int32 storage (SPEC §4.3, §6.1)", hi, math.MaxInt32)
 			return nil
 		}
 		out.ArrayBound = hi.Int64()
@@ -1033,6 +1050,10 @@ func (c *checker) resolveAttrs(kind declKind, owner string, f *ast.Field, out *i
 			c.errf(byKey["resolution"].Pos, "resolution applies to float fields (SPEC §4.6)")
 			return
 		}
+		if out.Type.Kind == ir.TFloat64 && kind != objectD {
+			c.errf(f.Pos, "field %s: the compressed float is float32 (SPEC §4.3) — float64 takes the triple only as an object-view projection (SPEC §4.8 rule 4)", f.Name)
+			return
+		}
 		if !(hasMin && hasMax && hasRes) {
 			c.errf(f.Pos, "field %s: a float range is min, max and resolution, all three together (SPEC §4.6)", f.Name)
 			return
@@ -1109,6 +1130,7 @@ func (c *checker) resolveAttrs(kind declKind, owner string, f *ast.Field, out *i
 		}
 		out.HasIntRange = true
 		out.IntMin, out.IntMax = vmin, vmax
+		out.IntMinExpr, out.IntMaxExpr = byKey["min"].Value, byKey["max"].Value
 	}
 }
 
