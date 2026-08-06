@@ -313,6 +313,7 @@ impl Default for ShipData_Interpolate {
 pub const SHIP_DATA_DEEP_MAX_BITS: u64 = 1703;
 pub const SHIP_DATA_DEEP_MAX_BYTES: usize = 216; // rounded up to the 8-byte write-buffer granularity
 
+#[inline]
 pub fn write_ship_data_deep(stream: &mut WriteStream<'_>, value: &ShipData_Deep) -> Result {
     if value.ship_type.0 > 5 {
         return Err(Error::Stream(serialize::Error::ValueOutOfRange));
@@ -412,6 +413,7 @@ pub fn write_ship_data_deep(stream: &mut WriteStream<'_>, value: &ShipData_Deep)
     Ok(())
 }
 
+#[inline]
 pub fn read_ship_data_deep(stream: &mut ReadStream<'_>, value: &mut ShipData_Deep) -> Result {
     {
         let mut enum_value: i32 = 0;
@@ -464,6 +466,7 @@ pub fn read_ship_data_deep(stream: &mut ReadStream<'_>, value: &mut ShipData_Dee
 pub const SHIP_DATA_SHALLOW_MAX_BITS: u64 = 218;
 pub const SHIP_DATA_SHALLOW_MAX_BYTES: usize = 32; // rounded up to the 8-byte write-buffer granularity
 
+#[inline]
 pub fn write_ship_data_shallow(stream: &mut WriteStream<'_>, value: &ShipData_Shallow) -> Result {
     if value.ship_type.0 > 5 {
         return Err(Error::Stream(serialize::Error::ValueOutOfRange));
@@ -538,6 +541,7 @@ pub fn write_ship_data_shallow(stream: &mut WriteStream<'_>, value: &ShipData_Sh
     Ok(())
 }
 
+#[inline]
 pub fn read_ship_data_shallow(stream: &mut ReadStream<'_>, value: &mut ShipData_Shallow) -> Result {
     {
         let mut enum_value: i32 = 0;
@@ -895,6 +899,7 @@ impl Default for MissileData_Interpolate {
 pub const MISSILE_DATA_DEEP_MAX_BITS: u64 = 708;
 pub const MISSILE_DATA_DEEP_MAX_BYTES: usize = 96; // rounded up to the 8-byte write-buffer granularity
 
+#[inline]
 pub fn write_missile_data_deep(stream: &mut WriteStream<'_>, value: &MissileData_Deep) -> Result {
     if value.missile_type.0 > 3 {
         return Err(Error::Stream(serialize::Error::ValueOutOfRange));
@@ -920,6 +925,7 @@ pub fn write_missile_data_deep(stream: &mut WriteStream<'_>, value: &MissileData
     Ok(())
 }
 
+#[inline]
 pub fn read_missile_data_deep(stream: &mut ReadStream<'_>, value: &mut MissileData_Deep) -> Result {
     {
         let mut enum_value: i32 = 0;
@@ -941,6 +947,7 @@ pub fn read_missile_data_deep(stream: &mut ReadStream<'_>, value: &mut MissileDa
 pub const MISSILE_DATA_SHALLOW_MAX_BITS: u64 = 260;
 pub const MISSILE_DATA_SHALLOW_MAX_BYTES: usize = 40; // rounded up to the 8-byte write-buffer granularity
 
+#[inline]
 pub fn write_missile_data_shallow(stream: &mut WriteStream<'_>, value: &MissileData_Shallow) -> Result {
     if value.missile_type.0 > 3 {
         return Err(Error::Stream(serialize::Error::ValueOutOfRange));
@@ -1003,6 +1010,7 @@ pub fn write_missile_data_shallow(stream: &mut WriteStream<'_>, value: &MissileD
     Ok(())
 }
 
+#[inline]
 pub fn read_missile_data_shallow(stream: &mut ReadStream<'_>, value: &mut MissileData_Shallow) -> Result {
     {
         let mut enum_value: i32 = 0;
@@ -1307,6 +1315,7 @@ impl Default for DynamicPropData_Interpolate {
 pub const DYNAMIC_PROP_DATA_DEEP_MAX_BITS: u64 = 709;
 pub const DYNAMIC_PROP_DATA_DEEP_MAX_BYTES: usize = 96; // rounded up to the 8-byte write-buffer granularity
 
+#[inline]
 pub fn write_dynamic_prop_data_deep(stream: &mut WriteStream<'_>, value: &DynamicPropData_Deep) -> Result {
     if value.prop_type.0 > 6 {
         return Err(Error::Stream(serialize::Error::ValueOutOfRange));
@@ -1332,6 +1341,7 @@ pub fn write_dynamic_prop_data_deep(stream: &mut WriteStream<'_>, value: &Dynami
     Ok(())
 }
 
+#[inline]
 pub fn read_dynamic_prop_data_deep(stream: &mut ReadStream<'_>, value: &mut DynamicPropData_Deep) -> Result {
     {
         let mut enum_value: i32 = 0;
@@ -1353,6 +1363,7 @@ pub fn read_dynamic_prop_data_deep(stream: &mut ReadStream<'_>, value: &mut Dyna
 pub const DYNAMIC_PROP_DATA_SHALLOW_MAX_BITS: u64 = 261;
 pub const DYNAMIC_PROP_DATA_SHALLOW_MAX_BYTES: usize = 40; // rounded up to the 8-byte write-buffer granularity
 
+#[inline]
 pub fn write_dynamic_prop_data_shallow(stream: &mut WriteStream<'_>, value: &DynamicPropData_Shallow) -> Result {
     if value.prop_type.0 > 6 {
         return Err(Error::Stream(serialize::Error::ValueOutOfRange));
@@ -1415,6 +1426,7 @@ pub fn write_dynamic_prop_data_shallow(stream: &mut WriteStream<'_>, value: &Dyn
     Ok(())
 }
 
+#[inline]
 pub fn read_dynamic_prop_data_shallow(stream: &mut ReadStream<'_>, value: &mut DynamicPropData_Shallow) -> Result {
     {
         let mut enum_value: i32 = 0;
@@ -1693,6 +1705,7 @@ impl Default for TurretData_Interpolate {
 pub const TURRET_DATA_DEEP_MAX_BITS: u64 = 350;
 pub const TURRET_DATA_DEEP_MAX_BYTES: usize = 48; // rounded up to the 8-byte write-buffer granularity
 
+#[inline]
 pub fn write_turret_data_deep(stream: &mut WriteStream<'_>, value: &TurretData_Deep) -> Result {
     write_handle(stream, &value.parent)?;
     if value.turret_index < 0 || value.turret_index > 255 { // out-of-contract writes are refused, not wrapped
@@ -1710,6 +1723,7 @@ pub fn write_turret_data_deep(stream: &mut WriteStream<'_>, value: &TurretData_D
     Ok(())
 }
 
+#[inline]
 pub fn read_turret_data_deep(stream: &mut ReadStream<'_>, value: &mut TurretData_Deep) -> Result {
     read_handle(stream, &mut value.parent)?;
     stream.serialize_int(&mut value.turret_index, 0, (MAX_TURRETS_PER_SHIP - 1) as i32)?;
@@ -1721,6 +1735,7 @@ pub fn read_turret_data_deep(stream: &mut ReadStream<'_>, value: &mut TurretData
 pub const TURRET_DATA_SHALLOW_MAX_BITS: u64 = 142;
 pub const TURRET_DATA_SHALLOW_MAX_BYTES: usize = 24; // rounded up to the 8-byte write-buffer granularity
 
+#[inline]
 pub fn write_turret_data_shallow(stream: &mut WriteStream<'_>, value: &TurretData_Shallow) -> Result {
     write_handle(stream, &value.parent)?;
     if value.turret_index < 0 || value.turret_index > 255 { // out-of-contract writes are refused, not wrapped
@@ -1753,6 +1768,7 @@ pub fn write_turret_data_shallow(stream: &mut WriteStream<'_>, value: &TurretDat
     Ok(())
 }
 
+#[inline]
 pub fn read_turret_data_shallow(stream: &mut ReadStream<'_>, value: &mut TurretData_Shallow) -> Result {
     read_handle(stream, &mut value.parent)?;
     stream.serialize_int(&mut value.turret_index, 0, (MAX_TURRETS_PER_SHIP - 1) as i32)?;
@@ -1842,12 +1858,14 @@ pub fn unquantize_turret(input: &TurretData_Shallow, output: &mut TurretData_Int
 
 // The object tag wire: ObjectType in [0, 4], minimal bits; None = 0 is the
 // null — the sentinel the surveyed baseline streams terminate with (SPEC §4.8).
+#[inline]
 pub fn write_object_type(stream: &mut WriteStream<'_>, value: ObjectType) -> Result {
     let mut tag_value = value.0 as i32;
     stream.serialize_int(&mut tag_value, 0, 4)?;
     Ok(())
 }
 
+#[inline]
 pub fn read_object_type(stream: &mut ReadStream<'_>, value: &mut ObjectType) -> Result {
     let mut tag_value: i32 = 0;
     stream.serialize_int(&mut tag_value, 0, 4)?;
