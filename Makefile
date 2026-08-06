@@ -36,9 +36,14 @@ build/schema_test_variant: build/generated-variant/.stamp test/variant_main.cpp
 	@mkdir -p build
 	$(CXX) $(CXXFLAGS) -Ibuild/generated-variant test/variant_main.cpp -o $@
 
-test: build/schema_test build/schema_test_variant
+build/schema_test_random: generated/.stamp test/random_main.cpp
+	@mkdir -p build
+	$(CXX) $(CXXFLAGS) -Igenerated test/random_main.cpp -o $@
+
+test: build/schema_test build/schema_test_variant build/schema_test_random
 	./build/schema_test
 	./build/schema_test_variant
+	./build/schema_test_random
 	go test ./...
 
 # Re-pin the goldens DELIBERATELY (SPEC §7.2 gates 1, 2, 7). A wire golden

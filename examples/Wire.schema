@@ -1,0 +1,118 @@
+// Wire.schema — wire-construct coverage: the constructs the protocol shapes
+// in the other files don't reach, so every emitter codepath is exercised in
+// the corpus (Glenn's ask, 2026-08-05). Each type is a realistic probe shape,
+// not a kitchen sink for its own sake.
+
+package example
+
+// typed constants pin their exported type in every target (SPEC §4.2);
+// float constants exist since the integer-only note was retired
+const ProbeId uint64   = 0xDEADBEEFCAFE
+const HalfTurn float64 = 180.0
+const TickRate float32 = 60.0
+
+// enum headroom: the wire range is [0, 15] whatever the variant count, and
+// non-variant values are wire-legal (SPEC §4.2, §6.1)
+enum Weapon [max = 15] { Laser, Missile, Railgun }
+
+// flags widening: 8 wire bits with three named so far (SPEC §4.2)
+flags ProbeFlags [max = 8] { Armed, Cloaked, Damaged }
+
+// the storage-less wire constructs (SPEC §4.3): a magic byte the read
+// REJECTS if wrong, reserved bits held at zero, and an alignment point
+type ProbeHeader {
+    const(0xAB, 8)
+    version     bits(3)
+    reserved(5)
+    align
+    probe_id uint64
+}
+
+// bits at the interesting widths — 9, the 33-bit low-first boundary, 64 —
+// and the ranged-integer emission paths past int32: a full-range uint32
+// (the int64 call family) and a full-range uint64 (raw offset bits)
+type ProbeBits {
+    small    bits(9)
+    boundary bits(33)
+    wide     bits(64)
+    sensor   uint32   [min = 0, max = 4294967295]
+    nonce    uint64   [min = 0, max = 18446744073709551615]
+}
+
+// a compressed float on a plain type's wire (SPEC §4.3 — the object-view
+// projection is a different codepath), a specified default, if/else with a
+// nested branch, bare int32/int64, and a range-counted array whose count
+// can never be zero
+type ProbeSample {
+    active      bool    = true
+    orientation float32 [min = -HalfTurn, max = HalfTurn, resolution = 0.01]
+    raw_delta   int32
+    big_delta   int64
+    if active {
+        weapon     Weapon
+        has_target bool
+        if has_target {
+            target_id uint16
+        }
+    } else {
+        idle_ticks uint32
+    }
+    samples [1..8]uint16
+}
+
+// specified defaults past bool (SPEC §4.2): a negative integer and an enum
+// variant — zero init everywhere else
+type ProbeConfig {
+    retries   int32  = -1
+    preferred Weapon = Railgun
+}
+
+// a message used as an ordinary field type — a message IS an ordinary type
+// (SPEC §4.8)
+type ProbeReport {
+    header ProbeHeader
+    flags  ProbeFlags
+    echo   Test
+}
+
+// serialize.h's own TestData, schema-specified — the representability claim
+// made concrete: everything the vanilla library's test object serializes,
+// the language declares. Differences, stated honestly: a/b/c use declared
+// ranges (the library test feeds theirs from a runtime context, which is not
+// a wire feature); the fixed 17-byte block is a fixed byte array behind an
+// explicit align (the exact-N bytes form died in the §4.7 unification); and
+// two constructs are v1-deferred by decision and absent — int_relative
+// (§4.10, the delta pass) and wstring.
+type TestData {
+    a int32 [min = -100, max = 100]
+    b int32 [min = -100, max = 100]
+    c int32 [min = -100, max = 150]
+
+    d bits(8)
+    e bits(8)
+    f bits(8)
+
+    g bool
+
+    items [<= 16]int32 [min = 0, max = 255]
+
+    float_value            float32
+    compressed_float_value float32 [min = 0, max = 10, resolution = 0.01]
+    double_value           float64
+
+    int8_value  int8
+    int16_value int16
+
+    uint8_value  uint8
+    uint16_value uint16
+    uint32_value uint32
+    uint64_value uint64
+
+    int64_full  int64
+    int64_range int64 [min = -1000000000000, max = 1000000000000]
+
+    align
+    fixed_bytes [17]uint8
+
+    text string(255)
+}

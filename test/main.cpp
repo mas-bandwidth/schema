@@ -14,6 +14,7 @@
 #include "Messages.h"
 #include "Objects.h"
 #include "Types.h"
+#include "Wire.h"
 
 // defined in second.cpp — proves cross-TU linkage over the same headers
 int touch_generated_types();
@@ -409,6 +410,26 @@ int main()
         check( in.test.test_b == 42 );
         check( ReadMessage( rs, in ) );
         check( GetMessageType( in ) == MessageType::None ); // the terminator
+    }
+
+    // ---- the wire constants: const(0xAB, 8) leads, reserved holds zero,
+    // and a corrupted constant is REJECTED on read (SPEC §4.3) ----
+    {
+        ProbeHeader h;
+        h.version = 5;
+        h.probe_id = 0x1122334455667788ull;
+        serialize::WriteStream ws( buffer, sizeof( buffer ) );
+        check( WriteProbeHeader( ws, h ) );
+        ws.Flush();
+        check( buffer[0] == 0xAB );
+        check( golden_wire( "probe_header", buffer, ws.GetBytesProcessed() ) );
+        ProbeHeader out;
+        serialize::ReadStream rs( buffer, ws.GetBytesProcessed() );
+        check( ReadProbeHeader( rs, out ) );
+        check( out.version == 5 && out.probe_id == 0x1122334455667788ull );
+        buffer[0] = 0xAC; // corrupt the wire constant
+        serialize::ReadStream rs2( buffer, ws.GetBytesProcessed() );
+        check( !ReadProbeHeader( rs2, out ) );
     }
 
     // ---- the object views: Quantize/Unquantize and the two wires (SPEC §4.8) ----

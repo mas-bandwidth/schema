@@ -7,6 +7,7 @@
 #include "Messages.h"
 #include "Objects.h"
 #include "Types.h"
+#include "Wire.h"
 
 int touch_generated_types()
 {
