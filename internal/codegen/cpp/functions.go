@@ -476,4 +476,51 @@ func (g *gen) emitMessageTagFunctions() {
 	g.pf("// The message-level bound: the tag plus the largest message (SPEC §6.1)\n")
 	g.pf("inline constexpr int64_t MessageMaxBits = %d;\n", tagBits+largest)
 	g.pf("inline constexpr int64_t MessageMaxBytes = %d;\n\n", (tagBits+largest+7)/8)
+
+	g.emitMessageDispatch()
+}
+
+// emitMessageDispatch is the C++ dispatch surface (SPEC §4.8: representation
+// per language): a std::variant whose INDEX equals the wire tag — monostate is
+// None = 0, then each message in tag order. std::variant never heap-allocates
+// (storage is inline, the size of the largest message — the same footprint as
+// a tagged union), and every generated message is trivially copyable, so the
+// variant is too. Generated dispatch is a plain switch on the index; std::visit
+// stays available to callers who want compile-time exhaustiveness and costs
+// nothing here.
+func (g *gen) emitMessageDispatch() {
+	g.needsVariant = true
+	msgs := g.unit.Messages
+	count := int64(len(msgs))
+
+	g.pf("// The message value: index == wire tag (std::monostate is None = 0, then each\n")
+	g.pf("// message in tag order). Inline storage, no heap, trivially copyable.\n")
+	g.pf("using Message = std::variant<std::monostate")
+	for _, m := range msgs {
+		g.pf(", %s", m)
+	}
+	g.pf(">;\n\n")
+	g.pf("static_assert( std::variant_size_v<Message> == %d, \"one alternative per message plus None\" );\n\n", count+1)
+
+	g.pf("inline MessageType GetMessageType( const Message & message )\n{\n")
+	g.pf("    return MessageType( message.index() );\n}\n\n")
+
+	g.pf("inline bool WriteMessage( serialize::WriteStream & stream, const Message & message )\n{\n")
+	g.pf("    write_int( stream, int32_t( message.index() ), 0, %d );\n", count)
+	g.pf("    switch ( message.index() )\n    {\n")
+	g.pf("        case 0:\n            return true; // None — the stream terminator (SPEC §4.8)\n")
+	for i, m := range msgs {
+		g.pf("        case %d:\n            return Write%s( stream, *std::get_if<%s>( &message ) );\n", i+1, m, m)
+	}
+	g.pf("    }\n    return false;\n}\n\n")
+
+	g.pf("inline bool ReadMessage( serialize::ReadStream & stream, Message & message )\n{\n")
+	g.pf("    int32_t tag_value = 0;\n")
+	g.pf("    read_int( stream, tag_value, 0, %d );\n", count)
+	g.pf("    switch ( tag_value )\n    {\n")
+	g.pf("        case 0:\n            message.emplace<std::monostate>();\n            return true;\n")
+	for i, m := range msgs {
+		g.pf("        case %d:\n            return Read%s( stream, message.emplace<%s>() );\n", i+1, m, m)
+	}
+	g.pf("    }\n    return false;\n}\n\n")
 }

@@ -4,6 +4,7 @@
 #pragma once
 
 #include <cstdint>
+#include <variant>
 
 #include "serialize.h"
 
@@ -218,5 +219,64 @@ inline bool ReadMessageType( serialize::ReadStream & stream, MessageType & value
 // The message-level bound: the tag plus the largest message (SPEC §6.1)
 inline constexpr int64_t MessageMaxBits = 16021;
 inline constexpr int64_t MessageMaxBytes = 2003;
+
+// The message value: index == wire tag (std::monostate is None = 0, then each
+// message in tag order). Inline storage, no heap, trivially copyable.
+using Message = std::variant<std::monostate, Block, Chat, Heartbeat, Synchronize, Test, Timescale>;
+
+static_assert( std::variant_size_v<Message> == 7, "one alternative per message plus None" );
+
+inline MessageType GetMessageType( const Message & message )
+{
+    return MessageType( message.index() );
+}
+
+inline bool WriteMessage( serialize::WriteStream & stream, const Message & message )
+{
+    write_int( stream, int32_t( message.index() ), 0, 6 );
+    switch ( message.index() )
+    {
+        case 0:
+            return true; // None — the stream terminator (SPEC §4.8)
+        case 1:
+            return WriteBlock( stream, *std::get_if<Block>( &message ) );
+        case 2:
+            return WriteChat( stream, *std::get_if<Chat>( &message ) );
+        case 3:
+            return WriteHeartbeat( stream, *std::get_if<Heartbeat>( &message ) );
+        case 4:
+            return WriteSynchronize( stream, *std::get_if<Synchronize>( &message ) );
+        case 5:
+            return WriteTest( stream, *std::get_if<Test>( &message ) );
+        case 6:
+            return WriteTimescale( stream, *std::get_if<Timescale>( &message ) );
+    }
+    return false;
+}
+
+inline bool ReadMessage( serialize::ReadStream & stream, Message & message )
+{
+    int32_t tag_value = 0;
+    read_int( stream, tag_value, 0, 6 );
+    switch ( tag_value )
+    {
+        case 0:
+            message.emplace<std::monostate>();
+            return true;
+        case 1:
+            return ReadBlock( stream, message.emplace<Block>() );
+        case 2:
+            return ReadChat( stream, message.emplace<Chat>() );
+        case 3:
+            return ReadHeartbeat( stream, message.emplace<Heartbeat>() );
+        case 4:
+            return ReadSynchronize( stream, message.emplace<Synchronize>() );
+        case 5:
+            return ReadTest( stream, message.emplace<Test>() );
+        case 6:
+            return ReadTimescale( stream, message.emplace<Timescale>() );
+    }
+    return false;
+}
 
 } // namespace example

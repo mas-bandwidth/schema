@@ -1058,6 +1058,21 @@ generates, per target:
   should be that way in other languages. That's just a C++ implementation detail."*) What
   binds every target is behavioral only: identical bytes, **reading `None` is a valid
   none-result, reading an out-of-range tag is a validation failure.**
+
+  **The C++ representation — implemented 2026-08-05 under Glenn's stated conditions:**
+  `using Message = std::variant<std::monostate, <messages in tag order>>` — the variant
+  INDEX equals the wire tag and `std::monostate` is `None = 0`. His conditions, verbatim,
+  each held: *"as long as it doesn't blow out compile times"* (measured: ~50 ms per TU on
+  arm64 clang, whole two-TU test build 0.17 s → 0.27 s including the new tests), *"and
+  make code slower"* (generated dispatch is a plain `switch` on `index()` + `get_if` —
+  the same code as switch-on-enum + union member; **no `std::visit` anywhere in generated
+  code**, it stays a caller's option for compile-time exhaustiveness), *"and harder to
+  read"* (the emitted functions are a switch of plain calls), and *"if using std:: stuff
+  will require allocations, then it's a hard no"* — `std::variant` never heap-allocates
+  (inline storage, the largest alternative — a tagged union's exact footprint), and every
+  generated message is trivially copyable so the variant is too, **enforced by a
+  `static_assert(std::is_trivially_copyable<Message>)` in the test**. Rides his
+  generated-code review like the rest of the C++ surface.
 - Every message is also an ordinary type: its own `Write`/`Read`/`MaxBits`/`MaxBytes`, usable
   standalone and composable as a field (the grammar's `ident // a declared type or enum`
   includes message names — a message IS an ordinary type). **An `object` name is NOT a field

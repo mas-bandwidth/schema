@@ -334,6 +334,39 @@ int main()
         check( std::memcmp( buffer, twin_buffer, (size_t) ws.GetBytesProcessed() ) == 0 );
     }
 
+    // ---- the Message dispatch surface: variant index == wire tag ----
+    {
+        static_assert(std::is_trivially_copyable<Message>::value,
+                      "every message is trivially copyable, so the variant is too — no heap anywhere");
+
+        Message stream_out[3];
+        Chat chat;
+        std::memcpy( chat.text, "dispatch", 8 );
+        chat.text_length = 8;
+        stream_out[0] = chat;
+        Test t;
+        t.test_b = 42;
+        stream_out[1] = t;
+        stream_out[2] = std::monostate{}; // None terminates the stream (SPEC §4.8)
+
+        serialize::WriteStream ws( buffer, sizeof( buffer ) );
+        for ( const Message & m : stream_out )
+            check( WriteMessage( ws, m ) );
+        ws.Flush();
+
+        serialize::ReadStream rs( buffer, ws.GetBytesProcessed() );
+        Message in;
+        check( ReadMessage( rs, in ) );
+        check( GetMessageType( in ) == MessageType::Chat );
+        check( std::get_if<Chat>( &in ) && std::get_if<Chat>( &in )->text_length == 8 );
+        check( std::strcmp( std::get_if<Chat>( &in )->text, "dispatch" ) == 0 );
+        check( ReadMessage( rs, in ) );
+        check( GetMessageType( in ) == MessageType::Test );
+        check( std::get_if<Test>( &in ) && std::get_if<Test>( &in )->test_b == 42 );
+        check( ReadMessage( rs, in ) );
+        check( GetMessageType( in ) == MessageType::None ); // the terminator
+    }
+
     // ---- the object views: Quantize/Unquantize and the two wires (SPEC §4.8) ----
     {
         ShipData_Interpolate interp;

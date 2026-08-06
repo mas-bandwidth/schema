@@ -163,6 +163,7 @@ type gen struct {
 	needsSerialize bool            // the file emits wire functions -> include "serialize.h"
 	needsCstring   bool            // the file emits memset -> include <cstring>
 	needsCmath     bool            // the file emits floor() -> include <cmath>
+	needsVariant   bool            // the file emits the Message dispatch -> include <variant>
 }
 
 func (g *gen) pf(format string, args ...any) {
@@ -180,6 +181,9 @@ func (g *gen) assemble() []byte {
 	}
 	if g.needsCstring {
 		h.WriteString("#include <cstring>\n")
+	}
+	if g.needsVariant {
+		h.WriteString("#include <variant>\n")
 	}
 	if g.needsSerialize {
 		h.WriteString("\n#include \"serialize.h\"\n")
