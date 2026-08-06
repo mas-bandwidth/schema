@@ -477,18 +477,70 @@ func (g *gen) emitMessageTagFunctions() {
 	g.pf("inline constexpr int64_t MessageMaxBits = %d;\n", tagBits+largest)
 	g.pf("inline constexpr int64_t MessageMaxBytes = %d;\n\n", (tagBits+largest+7)/8)
 
-	g.emitMessageDispatch()
+	if g.opts.MessageRepr == "variant" {
+		g.emitMessageDispatchVariant()
+	} else {
+		g.emitMessageDispatchUnion()
+	}
 }
 
-// emitMessageDispatch is the C++ dispatch surface (SPEC §4.8: representation
-// per language): a std::variant whose INDEX equals the wire tag — monostate is
+// emitMessageDispatchUnion is the DEFAULT C++ dispatch surface: a tagged
+// struct over an anonymous union — the classic game idiom, zero template
+// machinery, zero extra includes beyond <cstring>. Zero-initialized on
+// construction (the house rule); the payload member matching `type` is the
+// active one, the caller's discipline exactly as in hand-written code.
+func (g *gen) emitMessageDispatchUnion() {
+	g.needsCstring = true
+	msgs := g.unit.Messages
+	count := int64(len(msgs))
+
+	g.pf("// The message value: a tagged union — the payload member matching `type` is\n")
+	g.pf("// the active one. Zero-initialized on construction; no heap, no templates.\n")
+	g.pf("// (--cpp-message variant generates a std::variant surface instead.)\n")
+	g.pf("struct Message\n{\n")
+	g.pf("    MessageType type;\n\n    union\n    {\n")
+	for _, m := range msgs {
+		g.pf("        %s %s;\n", m, camelToSnake(m))
+	}
+	g.pf("    };\n\n")
+	g.pf("    Message() { memset( static_cast<void*>( this ), 0, sizeof( *this ) ); }\n")
+	g.pf("};\n\n")
+
+	g.pf("inline MessageType GetMessageType( const Message & message )\n{\n")
+	g.pf("    return message.type;\n}\n\n")
+
+	g.pf("inline bool WriteMessage( serialize::WriteStream & stream, const Message & message )\n{\n")
+	g.pf("    write_int( stream, int32_t( message.type ), 0, %d );\n", count)
+	g.pf("    switch ( message.type )\n    {\n")
+	g.pf("        case MessageType::None:\n            return true; // the stream terminator (SPEC §4.8)\n")
+	for _, m := range msgs {
+		g.pf("        case MessageType::%s:\n            return Write%s( stream, message.%s );\n", m, m, camelToSnake(m))
+	}
+	g.pf("    }\n    return false;\n}\n\n")
+
+	g.pf("inline bool ReadMessage( serialize::ReadStream & stream, Message & message )\n{\n")
+	g.pf("    int32_t tag_value = 0;\n")
+	g.pf("    read_int( stream, tag_value, 0, %d );\n", count)
+	g.pf("    message.type = MessageType( tag_value );\n")
+	g.pf("    switch ( message.type )\n    {\n")
+	g.pf("        case MessageType::None:\n            return true;\n")
+	for _, m := range msgs {
+		g.pf("        case MessageType::%s:\n            message.%s = %s{};\n            return Read%s( stream, message.%s );\n",
+			m, camelToSnake(m), m, m, camelToSnake(m))
+	}
+	g.pf("    }\n    return false;\n}\n\n")
+}
+
+// emitMessageDispatchVariant is the OPT-IN modern surface (--cpp-message
+// variant): a std::variant whose INDEX equals the wire tag — monostate is
 // None = 0, then each message in tag order. std::variant never heap-allocates
 // (storage is inline, the size of the largest message — the same footprint as
 // a tagged union), and every generated message is trivially copyable, so the
 // variant is too. Generated dispatch is a plain switch on the index; std::visit
 // stays available to callers who want compile-time exhaustiveness and costs
-// nothing here.
-func (g *gen) emitMessageDispatch() {
+// nothing here. Measured cost of <variant>: ~50ms per TU (arm64 clang), which
+// is why it is not the default.
+func (g *gen) emitMessageDispatchVariant() {
 	g.needsVariant = true
 	msgs := g.unit.Messages
 	count := int64(len(msgs))

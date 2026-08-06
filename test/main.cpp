@@ -5,6 +5,7 @@
 
 #include <cstdio>
 #include <cstring>
+#include <type_traits>
 
 #include "Constants.h"
 #include "Contexts.h"
@@ -334,20 +335,18 @@ int main()
         check( std::memcmp( buffer, twin_buffer, (size_t) ws.GetBytesProcessed() ) == 0 );
     }
 
-    // ---- the Message dispatch surface: variant index == wire tag ----
+    // ---- the Message dispatch surface (default: tagged union) ----
     {
         static_assert(std::is_trivially_copyable<Message>::value,
-                      "every message is trivially copyable, so the variant is too — no heap anywhere");
+                      "the tagged union is trivially copyable — no heap anywhere");
 
-        Message stream_out[3];
-        Chat chat;
-        std::memcpy( chat.text, "dispatch", 8 );
-        chat.text_length = 8;
-        stream_out[0] = chat;
-        Test t;
-        t.test_b = 42;
-        stream_out[1] = t;
-        stream_out[2] = std::monostate{}; // None terminates the stream (SPEC §4.8)
+        Message stream_out[3]; // zero-initialized by construction: type == None
+        check( stream_out[2].type == MessageType::None );
+        stream_out[0].type = MessageType::Chat;
+        std::memcpy( stream_out[0].chat.text, "dispatch", 8 );
+        stream_out[0].chat.text_length = 8;
+        stream_out[1].type = MessageType::Test;
+        stream_out[1].test.test_b = 42;
 
         serialize::WriteStream ws( buffer, sizeof( buffer ) );
         for ( const Message & m : stream_out )
@@ -358,11 +357,11 @@ int main()
         Message in;
         check( ReadMessage( rs, in ) );
         check( GetMessageType( in ) == MessageType::Chat );
-        check( std::get_if<Chat>( &in ) && std::get_if<Chat>( &in )->text_length == 8 );
-        check( std::strcmp( std::get_if<Chat>( &in )->text, "dispatch" ) == 0 );
+        check( in.chat.text_length == 8 );
+        check( std::strcmp( in.chat.text, "dispatch" ) == 0 );
         check( ReadMessage( rs, in ) );
         check( GetMessageType( in ) == MessageType::Test );
-        check( std::get_if<Test>( &in ) && std::get_if<Test>( &in )->test_b == 42 );
+        check( in.test.test_b == 42 );
         check( ReadMessage( rs, in ) );
         check( GetMessageType( in ) == MessageType::None ); // the terminator
     }

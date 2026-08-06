@@ -1059,20 +1059,33 @@ generates, per target:
   binds every target is behavioral only: identical bytes, **reading `None` is a valid
   none-result, reading an out-of-range tag is a validation failure.**
 
-  **The C++ representation — implemented 2026-08-05 under Glenn's stated conditions:**
+  **The C++ representation — the CALLER'S CHOICE, DECIDED (Glenn, 2026-08-05:
+  *"let's leave this up to the caller. I'd like for there to be an option to generate a
+  regular union, and an option to use variant"*): `schema generate --cpp-message
+  union|variant`, and the DEFAULT IS UNION** — a tagged struct over an anonymous union,
+  the classic game idiom, zero-initialized on construction, plain-switch dispatch,
+  `GetMessageType` reads the tag field. The default was going to be variant until the
+  measurement: isolating pure header cost (one identical representation-agnostic TU
+  against each mode, arm64 clang), **union 0.09 s vs variant 0.13 s — the variant
+  surface alone costs +44% header compile time**, and his ruling on the first, cruder
+  number stands as the principle: *"0.17 -> 0.27 is not trivial for me. it's almost
+  2X"* / *"I'm very negative on modern C++ for this reason... you almost always pay
+  through the nose for it at compile time."*
+
+  **The opt-in variant surface** (`--cpp-message variant`):
   `using Message = std::variant<std::monostate, <messages in tag order>>` — the variant
-  INDEX equals the wire tag and `std::monostate` is `None = 0`. His conditions, verbatim,
-  each held: *"as long as it doesn't blow out compile times"* (measured: ~50 ms per TU on
-  arm64 clang, whole two-TU test build 0.17 s → 0.27 s including the new tests), *"and
-  make code slower"* (generated dispatch is a plain `switch` on `index()` + `get_if` —
-  the same code as switch-on-enum + union member; **no `std::visit` anywhere in generated
-  code**, it stays a caller's option for compile-time exhaustiveness), *"and harder to
-  read"* (the emitted functions are a switch of plain calls), and *"if using std:: stuff
-  will require allocations, then it's a hard no"* — `std::variant` never heap-allocates
-  (inline storage, the largest alternative — a tagged union's exact footprint), and every
-  generated message is trivially copyable so the variant is too, **enforced by a
-  `static_assert(std::is_trivially_copyable<Message>)` in the test**. Rides his
-  generated-code review like the rest of the C++ surface.
+  INDEX equals the wire tag, `std::monostate` is `None = 0`. No heap ever
+  (`std::variant` stores inline at the largest alternative — the union's exact
+  footprint), trivially copyable (asserted in the test), dispatch via `switch` on
+  `index()` + `get_if` (**no `std::visit` in generated code** — it remains a caller's
+  option for compile-time exhaustiveness). Both representations are compiled and run in
+  the test chain so neither rots; both speak the identical wire (the tag + the same
+  per-message functions).
+
+  **And the standing generation principle his ruling sets, wider than this choice:
+  generated C++ defaults to the C-flavored idiom; modern constructs enter only behind
+  opt-in flags, and any proposal to use one arrives with a measured compile-time cost,
+  never an asserted one.**
 - Every message is also an ordinary type: its own `Write`/`Read`/`MaxBits`/`MaxBytes`, usable
   standalone and composable as a field (the grammar's `ident // a declared type or enum`
   includes message names — a message IS an ordinary type). **An `object` name is NOT a field

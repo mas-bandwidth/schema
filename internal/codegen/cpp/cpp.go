@@ -19,12 +19,37 @@ import (
 	"github.com/mas-bandwidth/schema/internal/ir"
 )
 
+// Options selects caller-facing generation choices (SPEC §4.8).
+type Options struct {
+	// MessageRepr is the C++ message dispatch representation: "union" (a
+	// tagged struct over an anonymous union, the classic game idiom — the
+	// DEFAULT) or "variant" (std::variant, index == wire tag, opt-in).
+	// Caller's choice per Glenn 2026-08-05; the default is union on his
+	// compile-time measurement the same hour: 0.17s -> 0.27s "is not trivial
+	// for me. it's almost 2X" / "I'm very negative on modern C++ for this
+	// reason... you almost always pay through the nose for it at compile
+	// time."
+	MessageRepr string
+}
+
 // Generate returns basename.h -> file contents for every file of the unit.
 // It fails loudly on a cross-file include cycle: schema references are
 // order-free (SPEC §4.2), but a by-value C++ member needs a complete type, so
 // mutually-including headers cannot compile and the fix is moving a
 // declaration, which only the author can choose.
-func Generate(u *ir.Unit) (map[string][]byte, error) {
+func Generate(u *ir.Unit, opts Options) (map[string][]byte, error) {
+	switch opts.MessageRepr {
+	case "":
+		opts.MessageRepr = "union"
+	case "variant", "union":
+	default:
+		return nil, fmt.Errorf("unknown --cpp-message %q — the choices are union (default) and variant", opts.MessageRepr)
+	}
+	if opts.MessageRepr == "union" {
+		if err := checkUnionMemberNames(u); err != nil {
+			return nil, err
+		}
+	}
 	if cycle := includeCycle(u); cycle != "" {
 		return nil, fmt.Errorf(
 			"generated C++ headers would include each other in a cycle (%s) — types compose across files order-free in schema, but C++ headers cannot include mutually; move a declaration so the file graph is acyclic", cycle)
@@ -32,11 +57,49 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 	out := map[string][]byte{}
 	protocolIdHome := protocolIdHome(u)
 	for _, f := range u.Files {
-		g := &gen{unit: u, file: f}
+		g := &gen{unit: u, file: f, opts: opts}
 		g.emitFile(f.Base == protocolIdHome)
 		out[f.Base+".h"] = g.assemble()
 	}
 	return out, nil
+}
+
+// camelToSnake maps an UpperCamelCase declaration name to the
+// lower_snake_case union member name: ShipCreate -> ship_create,
+// ABTest -> ab_test.
+func camelToSnake(name string) string {
+	var b strings.Builder
+	runes := []rune(name)
+	for i, r := range runes {
+		if r >= 'A' && r <= 'Z' {
+			prevLower := i > 0 && runes[i-1] >= 'a' && runes[i-1] <= 'z'
+			nextLower := i+1 < len(runes) && runes[i+1] >= 'a' && runes[i+1] <= 'z'
+			if i > 0 && (prevLower || nextLower) {
+				b.WriteByte('_')
+			}
+			b.WriteRune(r - 'A' + 'a')
+			continue
+		}
+		b.WriteRune(r)
+	}
+	return b.String()
+}
+
+// checkUnionMemberNames guards the union representation's derived member
+// names: distinct after snake-casing, and never the tag field's own name.
+func checkUnionMemberNames(u *ir.Unit) error {
+	seen := map[string]string{}
+	for _, m := range u.Messages {
+		s := camelToSnake(m)
+		if s == "type" {
+			return fmt.Errorf("message %s: its union member name would be %q, which is the tag field — rename the message (SPEC §4.8)", m, s)
+		}
+		if prev, dup := seen[s]; dup {
+			return fmt.Errorf("messages %s and %s share the union member name %q after snake-casing — rename one (SPEC §4.8)", prev, m, s)
+		}
+		seen[s] = m
+	}
+	return nil
 }
 
 // fileDeps collects, per file, the other files its declarations reference —
@@ -156,6 +219,7 @@ func protocolIdHome(u *ir.Unit) string {
 type gen struct {
 	unit *ir.Unit
 	file *ir.File
+	opts Options
 
 	body           strings.Builder
 	includes       map[string]bool

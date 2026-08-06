@@ -21,12 +21,24 @@ generated/.stamp: bin/schema $(SCHEMAS)
 	./bin/schema generate --lang cpp --out generated examples
 	@touch $@
 
+# the opt-in variant dispatch surface, generated beside the default so both
+# representations stay compiled and run (--cpp-message variant)
+build/generated-variant/.stamp: bin/schema $(SCHEMAS)
+	@mkdir -p build
+	./bin/schema generate --lang cpp --cpp-message variant --out build/generated-variant examples
+	@touch $@
+
 build/schema_test: generated/.stamp test/main.cpp test/second.cpp
 	@mkdir -p build
 	$(CXX) $(CXXFLAGS) -Igenerated test/main.cpp test/second.cpp -o $@
 
-test: build/schema_test
+build/schema_test_variant: build/generated-variant/.stamp test/variant_main.cpp
+	@mkdir -p build
+	$(CXX) $(CXXFLAGS) -Ibuild/generated-variant test/variant_main.cpp -o $@
+
+test: build/schema_test build/schema_test_variant
 	./build/schema_test
+	./build/schema_test_variant
 
 check: bin/schema
 	./bin/schema check examples

@@ -4,7 +4,7 @@
 #pragma once
 
 #include <cstdint>
-#include <variant>
+#include <cstring>
 
 #include "serialize.h"
 
@@ -220,36 +220,50 @@ inline bool ReadMessageType( serialize::ReadStream & stream, MessageType & value
 inline constexpr int64_t MessageMaxBits = 16021;
 inline constexpr int64_t MessageMaxBytes = 2003;
 
-// The message value: index == wire tag (std::monostate is None = 0, then each
-// message in tag order). Inline storage, no heap, trivially copyable.
-using Message = std::variant<std::monostate, Block, Chat, Heartbeat, Synchronize, Test, Timescale>;
+// The message value: a tagged union — the payload member matching `type` is
+// the active one. Zero-initialized on construction; no heap, no templates.
+// (--cpp-message variant generates a std::variant surface instead.)
+struct Message
+{
+    MessageType type;
 
-static_assert( std::variant_size_v<Message> == 7, "one alternative per message plus None" );
+    union
+    {
+        Block block;
+        Chat chat;
+        Heartbeat heartbeat;
+        Synchronize synchronize;
+        Test test;
+        Timescale timescale;
+    };
+
+    Message() { memset( static_cast<void*>( this ), 0, sizeof( *this ) ); }
+};
 
 inline MessageType GetMessageType( const Message & message )
 {
-    return MessageType( message.index() );
+    return message.type;
 }
 
 inline bool WriteMessage( serialize::WriteStream & stream, const Message & message )
 {
-    write_int( stream, int32_t( message.index() ), 0, 6 );
-    switch ( message.index() )
+    write_int( stream, int32_t( message.type ), 0, 6 );
+    switch ( message.type )
     {
-        case 0:
-            return true; // None — the stream terminator (SPEC §4.8)
-        case 1:
-            return WriteBlock( stream, *std::get_if<Block>( &message ) );
-        case 2:
-            return WriteChat( stream, *std::get_if<Chat>( &message ) );
-        case 3:
-            return WriteHeartbeat( stream, *std::get_if<Heartbeat>( &message ) );
-        case 4:
-            return WriteSynchronize( stream, *std::get_if<Synchronize>( &message ) );
-        case 5:
-            return WriteTest( stream, *std::get_if<Test>( &message ) );
-        case 6:
-            return WriteTimescale( stream, *std::get_if<Timescale>( &message ) );
+        case MessageType::None:
+            return true; // the stream terminator (SPEC §4.8)
+        case MessageType::Block:
+            return WriteBlock( stream, message.block );
+        case MessageType::Chat:
+            return WriteChat( stream, message.chat );
+        case MessageType::Heartbeat:
+            return WriteHeartbeat( stream, message.heartbeat );
+        case MessageType::Synchronize:
+            return WriteSynchronize( stream, message.synchronize );
+        case MessageType::Test:
+            return WriteTest( stream, message.test );
+        case MessageType::Timescale:
+            return WriteTimescale( stream, message.timescale );
     }
     return false;
 }
@@ -258,23 +272,29 @@ inline bool ReadMessage( serialize::ReadStream & stream, Message & message )
 {
     int32_t tag_value = 0;
     read_int( stream, tag_value, 0, 6 );
-    switch ( tag_value )
+    message.type = MessageType( tag_value );
+    switch ( message.type )
     {
-        case 0:
-            message.emplace<std::monostate>();
+        case MessageType::None:
             return true;
-        case 1:
-            return ReadBlock( stream, message.emplace<Block>() );
-        case 2:
-            return ReadChat( stream, message.emplace<Chat>() );
-        case 3:
-            return ReadHeartbeat( stream, message.emplace<Heartbeat>() );
-        case 4:
-            return ReadSynchronize( stream, message.emplace<Synchronize>() );
-        case 5:
-            return ReadTest( stream, message.emplace<Test>() );
-        case 6:
-            return ReadTimescale( stream, message.emplace<Timescale>() );
+        case MessageType::Block:
+            message.block = Block{};
+            return ReadBlock( stream, message.block );
+        case MessageType::Chat:
+            message.chat = Chat{};
+            return ReadChat( stream, message.chat );
+        case MessageType::Heartbeat:
+            message.heartbeat = Heartbeat{};
+            return ReadHeartbeat( stream, message.heartbeat );
+        case MessageType::Synchronize:
+            message.synchronize = Synchronize{};
+            return ReadSynchronize( stream, message.synchronize );
+        case MessageType::Test:
+            message.test = Test{};
+            return ReadTest( stream, message.test );
+        case MessageType::Timescale:
+            message.timescale = Timescale{};
+            return ReadTimescale( stream, message.timescale );
     }
     return false;
 }

@@ -35,6 +35,7 @@ func main() {
 		fs := flag.NewFlagSet("generate", flag.ExitOnError)
 		lang := fs.String("lang", "cpp", "comma-separated target languages (cpp, cs, go, rust)")
 		out := fs.String("out", "generated", "output directory")
+		cppMessage := fs.String("cpp-message", "union", "C++ message representation: union (default) or variant")
 		fs.Parse(os.Args[2:])
 		for _, l := range strings.Split(*lang, ",") {
 			if l != "cpp" {
@@ -45,7 +46,7 @@ func main() {
 		if err := os.MkdirAll(*out, 0o755); err != nil {
 			fatalf("%v", err)
 		}
-		files, err := cpp.Generate(unit)
+		files, err := cpp.Generate(unit, cpp.Options{MessageRepr: *cppMessage})
 		if err != nil {
 			fatalf("%v", err)
 		}
