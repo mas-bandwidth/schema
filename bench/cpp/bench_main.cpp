@@ -735,10 +735,14 @@ static void bench_batch()
 static void check_message_stream_golden()
 {
     Message stream_out[3];
+    // an arm is SELECTED by assigning it (establishes the arm zeroed);
+    // construction alone initializes only the tag (None)
     stream_out[0].type = MessageType::Chat;
+    stream_out[0].chat = Chat{};
     memcpy( stream_out[0].chat.text, "dispatch", 8 );
     stream_out[0].chat.text_length = 8;
     stream_out[1].type = MessageType::Test;
+    stream_out[1].test = Test{};
     stream_out[1].test.test_b = 42;
 
     serialize::WriteStream ws( g_buffer, BufferSize );
