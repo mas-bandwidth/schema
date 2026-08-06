@@ -32,7 +32,7 @@ type Handle {
     object_sequence uint8
 }
 
-// Hand-quantized vectors and rotation — the pre-object-views idiom CraftCreate uses below.
+// Hand-quantized vectors and rotation — the pre-object-views idiom ShipCreate uses below.
 // (Object views express the same thing with [interpolate, quantize = ...]; both
 // belong in the corpus while both idioms exist in real code.)
 type QuantizedPosition {
