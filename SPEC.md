@@ -806,7 +806,14 @@ with his two worked examples: `Team { None, Red, Blue }` → two real teams, `Nu
 Team.Max = 2`; `ShipType_None, ShipType_A, ShipType_B, ShipType_C` → three real ship types,
 `ShipType.Max = 3`. A convention over the corpus and generated-code usage, not a language
 rule — the language does not enforce entry 0's meaning — and the corpus follows it
-everywhere (the 2026-08-06 `NumTeams` correction is the worked instance).
+everywhere (the 2026-08-06 `NumTeams` correction is the worked instance). **The why, his
+words:** *"this lets us pass in the 'null', eg. 'no team' in the same variable that
+specifies the team"* — optionality rides in-band, no separate has-flag. The
+counterfactual, also his: *"without this, we have to do lots of annoying serialize
+everywhere like, `bool hasTeam, enum team`, and check the `if hasTeam` every time.
+Stupid."* And it composes with §4.2's zero-initialization: a zero-initialized enum field
+**is** `None` by construction, so a fresh struct starts in the null state without any
+code saying so.
 
 ### 4.3 Field types and their wire encodings
 
