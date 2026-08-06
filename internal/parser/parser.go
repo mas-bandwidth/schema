@@ -1,0 +1,544 @@
+// Package parser builds the AST from tokens — hand-written recursive descent
+// in the style of the Go toolchain's own parser (SPEC §7.1). The grammar is
+// LL(2); the parser recovers at declaration boundaries so one error does not
+// hide the rest.
+package parser
+
+import (
+	"fmt"
+	"math/big"
+	"path/filepath"
+	"strconv"
+	"strings"
+
+	"github.com/mas-bandwidth/schema/internal/ast"
+	"github.com/mas-bandwidth/schema/internal/scanner"
+)
+
+// Parse scans and parses one file.
+func Parse(path string, src []byte) (*ast.File, []error) {
+	toks, errs := scanner.Scan(path, src)
+	if len(errs) > 0 {
+		return nil, errs
+	}
+	base := strings.TrimSuffix(filepath.Base(path), ".schema")
+	p := &parser{toks: toks, file: &ast.File{Path: path, Base: base}}
+	p.parseFile()
+	return p.file, p.errs
+}
+
+type parser struct {
+	toks []scanner.Token
+	i    int
+	file *ast.File
+	errs []error
+}
+
+func (p *parser) tok() scanner.Token { return p.toks[p.i] }
+func (p *parser) kind() scanner.Kind { return p.toks[p.i].Kind }
+func (p *parser) peek() scanner.Token {
+	if p.i+1 < len(p.toks) {
+		return p.toks[p.i+1]
+	}
+	return p.toks[len(p.toks)-1]
+}
+
+func (p *parser) advance() scanner.Token {
+	t := p.toks[p.i]
+	if p.kind() != scanner.EOF {
+		p.i++
+	}
+	return t
+}
+
+func (p *parser) errf(pos ast.Pos, format string, args ...any) {
+	p.errs = append(p.errs, fmt.Errorf("%s: %s", pos, fmt.Sprintf(format, args...)))
+}
+
+func (p *parser) expect(k scanner.Kind, what string) scanner.Token {
+	if p.kind() != k {
+		t := p.tok()
+		p.errf(t.Pos, "expected %s, found %q", what, describe(t))
+		return t
+	}
+	return p.advance()
+}
+
+func describe(t scanner.Token) string {
+	switch t.Kind {
+	case scanner.EOF:
+		return "end of file"
+	case scanner.Newline:
+		return "newline"
+	default:
+		return t.Text
+	}
+}
+
+// terminator: an actual newline, or the closing } of the enclosing block
+// (not consumed), or EOF (SPEC §4.1).
+func (p *parser) expectTerminator(what string) {
+	switch p.kind() {
+	case scanner.Newline:
+		p.advance()
+	case scanner.RBrace, scanner.EOF:
+		// } terminates the item before it; EOF synthesizes a terminator
+	default:
+		t := p.tok()
+		p.errf(t.Pos, "expected newline after %s, found %q", what, describe(t))
+		p.skipToTerminator()
+	}
+}
+
+func (p *parser) skipToTerminator() {
+	for p.kind() != scanner.Newline && p.kind() != scanner.RBrace && p.kind() != scanner.EOF {
+		p.advance()
+	}
+	if p.kind() == scanner.Newline {
+		p.advance()
+	}
+}
+
+// skipDecl recovers at a declaration boundary: skip to a top-level newline,
+// balancing braces, so one bad declaration does not hide the rest.
+func (p *parser) skipDecl() {
+	depth := 0
+	for p.kind() != scanner.EOF {
+		switch p.kind() {
+		case scanner.LBrace:
+			depth++
+		case scanner.RBrace:
+			if depth > 0 {
+				depth--
+			}
+		case scanner.Newline:
+			if depth == 0 {
+				p.advance()
+				return
+			}
+		}
+		p.advance()
+	}
+}
+
+func (p *parser) parseFile() {
+	for p.kind() != scanner.EOF {
+		if p.kind() == scanner.Newline {
+			p.advance()
+			continue
+		}
+		before := p.i
+		p.parseDecl()
+		if p.i == before {
+			p.skipDecl() // ensure progress on a parse error
+		}
+	}
+	if p.file.Package == "" && len(p.errs) == 0 {
+		p.errf(ast.Pos{File: p.file.Path, Line: 1, Col: 1},
+			"missing package declaration (package appears once per file, as its first declaration — SPEC §3.2)")
+	}
+}
+
+func (p *parser) parseDecl() {
+	t := p.tok()
+	switch t.Kind {
+	case scanner.KwPackage:
+		p.advance()
+		name := p.expect(scanner.Ident, "package name")
+		p.expectTerminator("package declaration")
+		if p.file.Package != "" {
+			p.errf(t.Pos, "duplicate package declaration (one per file — SPEC §3.2)")
+			return
+		}
+		if len(p.file.Decls) > 0 {
+			p.errf(t.Pos, "package must be the file's first declaration (SPEC §3.2)")
+		}
+		p.file.Package = name.Text
+		p.file.PkgPos = t.Pos
+
+	case scanner.KwConst:
+		p.advance()
+		name := p.expect(scanner.Ident, "constant name")
+		d := &ast.ConstDecl{Name: name.Text, Pos: t.Pos}
+		if typ, ok := p.constType(); ok {
+			d.Type = typ
+		}
+		p.expect(scanner.Assign, "=")
+		d.Expr = p.parseExpr()
+		p.expectTerminator("constant declaration")
+		p.file.Decls = append(p.file.Decls, d)
+
+	case scanner.KwEnum:
+		p.advance()
+		name := p.expect(scanner.Ident, "enum name")
+		d := &ast.EnumDecl{Name: name.Text, Pos: t.Pos}
+		if p.kind() == scanner.LBrack {
+			d.Attrs = p.parseAttrs()
+		}
+		d.Variants = p.parseVariantList("enum")
+		p.expectTerminator("enum declaration")
+		p.file.Decls = append(p.file.Decls, d)
+
+	case scanner.KwType:
+		p.advance()
+		name := p.expect(scanner.Ident, "type name")
+		d := &ast.TypeDecl{Name: name.Text, Pos: t.Pos}
+		if p.kind() == scanner.LBrack {
+			d.Attrs = p.parseAttrs()
+		}
+		d.Body = p.parseBlock()
+		p.expectTerminator("type declaration")
+		p.file.Decls = append(p.file.Decls, d)
+
+	case scanner.KwMessage:
+		p.advance()
+		name := p.expect(scanner.Ident, "message name")
+		d := &ast.MessageDecl{Name: name.Text, Pos: t.Pos}
+		d.Body = p.parseBlock()
+		p.expectTerminator("message declaration")
+		p.file.Decls = append(p.file.Decls, d)
+
+	case scanner.KwObject:
+		p.advance()
+		name := p.expect(scanner.Ident, "object name")
+		d := &ast.ObjectDecl{Name: name.Text, Pos: t.Pos}
+		d.Body = p.parseBlock()
+		p.expectTerminator("object declaration")
+		p.file.Decls = append(p.file.Decls, d)
+
+	case scanner.KwSwitch, scanner.KwCase:
+		p.errf(t.Pos, "switch is cut from v1 (SPEC §4.4); the keyword stays reserved")
+		p.skipDecl()
+
+	case scanner.KwInt, scanner.KwUint:
+		p.errf(t.Pos, "%q is reserved — did you mean %s32?", t.Text, t.Text)
+		p.skipDecl()
+
+	case scanner.Ident:
+		// contextual keywords at file scope: flags, contexts (SPEC §4.2)
+		switch t.Text {
+		case "flags":
+			p.advance()
+			name := p.expect(scanner.Ident, "flags name")
+			d := &ast.FlagsDecl{Name: name.Text, Pos: t.Pos}
+			if p.kind() == scanner.LBrack {
+				d.Attrs = p.parseAttrs()
+			}
+			d.Variants = p.parseVariantList("flags")
+			p.expectTerminator("flags declaration")
+			p.file.Decls = append(p.file.Decls, d)
+		case "contexts":
+			p.advance()
+			d := &ast.ContextsDecl{Pos: t.Pos}
+			d.Names = p.parseVariantList("contexts")
+			p.expectTerminator("contexts declaration")
+			p.file.Decls = append(p.file.Decls, d)
+		default:
+			p.errf(t.Pos, "unexpected %q at file scope (declarations begin with package, const, enum, flags, type, message, object or contexts)", t.Text)
+			p.skipDecl()
+		}
+
+	default:
+		p.errf(t.Pos, "unexpected %q at file scope", describe(t))
+		p.skipDecl()
+	}
+}
+
+// constType parses the optional explicit type of a const declaration.
+func (p *parser) constType() (string, bool) {
+	switch p.kind() {
+	case scanner.KwInt8, scanner.KwInt16, scanner.KwInt32, scanner.KwInt64,
+		scanner.KwUint8, scanner.KwUint16, scanner.KwUint32, scanner.KwUint64,
+		scanner.KwFloat32, scanner.KwFloat64:
+		return p.advance().Text, true
+	}
+	return "", false
+}
+
+func (p *parser) parseVariantList(what string) []ast.Name {
+	var names []ast.Name
+	p.expect(scanner.LBrace, "{")
+	for p.kind() != scanner.RBrace && p.kind() != scanner.EOF {
+		t := p.expect(scanner.Ident, what+" variant name")
+		if t.Kind != scanner.Ident {
+			break
+		}
+		names = append(names, ast.Name{Text: t.Text, Pos: t.Pos})
+		if p.kind() == scanner.Comma {
+			p.advance() // trailing comma allowed; newlines around commas are whitespace
+			continue
+		}
+		break
+	}
+	p.expect(scanner.RBrace, "}")
+	return names
+}
+
+func (p *parser) parseBlock() *ast.Block {
+	b := &ast.Block{}
+	p.expect(scanner.LBrace, "{")
+	for {
+		switch p.kind() {
+		case scanner.RBrace:
+			p.advance()
+			return b
+		case scanner.EOF:
+			p.errf(p.tok().Pos, "unexpected end of file inside block (missing } )")
+			return b
+		case scanner.Newline:
+			p.advance()
+		default:
+			before := p.i
+			if item := p.parseItem(); item != nil {
+				b.Items = append(b.Items, item)
+			}
+			if p.i == before {
+				p.skipToTerminator()
+			}
+		}
+	}
+}
+
+func (p *parser) parseItem() ast.Item {
+	t := p.tok()
+	switch t.Kind {
+	case scanner.KwConst: // const(value, bits) — one token of lookahead disambiguates
+		p.advance()
+		p.expect(scanner.LParen, "(")
+		v := p.parseExpr()
+		p.expect(scanner.Comma, ",")
+		b := p.parseExpr()
+		p.expect(scanner.RParen, ")")
+		p.expectTerminator("const field")
+		return &ast.ConstField{Pos: t.Pos, Value: v, Bits: b}
+
+	case scanner.KwReserved:
+		p.advance()
+		p.expect(scanner.LParen, "(")
+		b := p.parseExpr()
+		p.expect(scanner.RParen, ")")
+		p.expectTerminator("reserved field")
+		return &ast.ReservedItem{Pos: t.Pos, Bits: b}
+
+	case scanner.KwAlign:
+		p.advance()
+		p.expectTerminator("align")
+		return &ast.AlignItem{Pos: t.Pos}
+
+	case scanner.KwIf:
+		p.advance()
+		item := &ast.IfItem{Pos: t.Pos}
+		if p.kind() == scanner.Not {
+			p.advance()
+			item.Neg = true
+		}
+		cond := p.expect(scanner.Ident, "condition field name")
+		item.Cond = ast.Name{Text: cond.Text, Pos: cond.Pos}
+		item.Then = p.parseBlock()
+		// a newline between } and else is tolerated; the formatter rewrites
+		// it to `} else {` on one line (SPEC §4.1)
+		if p.kind() == scanner.Newline && p.peek().Kind == scanner.KwElse {
+			p.advance()
+		}
+		if p.kind() == scanner.KwElse {
+			p.advance()
+			item.Else = p.parseBlock()
+		}
+		p.expectTerminator("if")
+		return item
+
+	case scanner.KwSwitch, scanner.KwCase:
+		p.errf(t.Pos, "switch is cut from v1 (SPEC §4.4); the keyword stays reserved")
+		p.skipToTerminator()
+		return nil
+
+	case scanner.Ident:
+		p.advance()
+		f := &ast.Field{Name: t.Text, Pos: t.Pos}
+		if p.kind() == scanner.LBrack {
+			f.Array = p.parseArrayBound()
+		}
+		f.Type = p.parseScalar()
+		if p.kind() == scanner.LBrack {
+			f.Attrs = p.parseAttrs()
+		}
+		if p.kind() == scanner.Assign {
+			// optional specified default: `invulnerable bool [local] = true`
+			// (Glenn, 2026-08-05: zero initialization everywhere, "unless we
+			// allow some specified default, eg. ... = true")
+			p.advance()
+			f.Default = p.parseExpr()
+		}
+		p.expectTerminator("field")
+		return f
+
+	default:
+		p.errf(t.Pos, "unexpected %q inside block", describe(t))
+		p.skipToTerminator()
+		return nil
+	}
+}
+
+func (p *parser) parseArrayBound() *ast.ArrayBound {
+	p.expect(scanner.LBrack, "[")
+	b := &ast.ArrayBound{}
+	if p.kind() == scanner.LessEq {
+		p.advance()
+		b.Kind = ast.ArrayUpTo
+		b.Hi = p.parseExpr()
+	} else {
+		first := p.parseExpr()
+		if p.kind() == scanner.DotDot {
+			p.advance()
+			b.Kind = ast.ArrayRange
+			b.Lo = first
+			b.Hi = p.parseExpr()
+		} else {
+			b.Kind = ast.ArrayFixed
+			b.Hi = first
+		}
+	}
+	p.expect(scanner.RBrack, "]")
+	return b
+}
+
+func (p *parser) parseScalar() ast.ScalarType {
+	t := p.tok()
+	switch t.Kind {
+	case scanner.KwInt8, scanner.KwInt16, scanner.KwInt32, scanner.KwInt64,
+		scanner.KwUint8, scanner.KwUint16, scanner.KwUint32, scanner.KwUint64:
+		p.advance()
+		signed := t.Text[0] == 'i'
+		width, _ := strconv.Atoi(strings.TrimPrefix(strings.TrimPrefix(t.Text, "uint"), "int"))
+		return ast.ScalarType{Kind: ast.ScalarInt, Signed: signed, Width: width, Pos: t.Pos}
+	case scanner.KwBool:
+		p.advance()
+		return ast.ScalarType{Kind: ast.ScalarBool, Pos: t.Pos}
+	case scanner.KwFloat32:
+		p.advance()
+		return ast.ScalarType{Kind: ast.ScalarFloat32, Pos: t.Pos}
+	case scanner.KwFloat64:
+		p.advance()
+		return ast.ScalarType{Kind: ast.ScalarFloat64, Pos: t.Pos}
+	case scanner.KwBits, scanner.KwString, scanner.KwBytes:
+		p.advance()
+		p.expect(scanner.LParen, "(")
+		arg := p.parseExpr()
+		p.expect(scanner.RParen, ")")
+		kind := ast.ScalarBits
+		if t.Kind == scanner.KwString {
+			kind = ast.ScalarString
+		} else if t.Kind == scanner.KwBytes {
+			kind = ast.ScalarBytes
+		}
+		return ast.ScalarType{Kind: kind, Arg: arg, Pos: t.Pos}
+	case scanner.KwInt, scanner.KwUint:
+		p.advance()
+		p.errf(t.Pos, "%q is reserved — did you mean %s32?", t.Text, t.Text)
+		return ast.ScalarType{Kind: ast.ScalarInt, Signed: t.Kind == scanner.KwInt, Width: 32, Pos: t.Pos}
+	case scanner.Ident:
+		p.advance()
+		return ast.ScalarType{Kind: ast.ScalarNamed, Name: t.Text, Pos: t.Pos}
+	default:
+		p.errf(t.Pos, "expected a field type, found %q", describe(t))
+		return ast.ScalarType{Kind: ast.ScalarNamed, Name: "<error>", Pos: t.Pos}
+	}
+}
+
+func (p *parser) parseAttrs() []ast.Attr {
+	var attrs []ast.Attr
+	p.expect(scanner.LBrack, "[")
+	for p.kind() != scanner.RBrack && p.kind() != scanner.EOF {
+		key := p.expect(scanner.Ident, "attribute key")
+		if key.Kind != scanner.Ident {
+			break
+		}
+		a := ast.Attr{Key: key.Text, Pos: key.Pos}
+		if p.kind() == scanner.Assign {
+			p.advance()
+			a.Value = p.parseExpr() // a bare word value (round = up) parses as an IdentExpr
+		}
+		attrs = append(attrs, a)
+		if p.kind() == scanner.Comma {
+			p.advance()
+			continue
+		}
+		break
+	}
+	p.expect(scanner.RBrack, "]")
+	return attrs
+}
+
+// Expressions — precedence climbing: unary minus binds tightest, then * / %,
+// then + - (SPEC §4.2 IntExpr/FloatExpr).
+
+func (p *parser) parseExpr() ast.Expr { return p.parseAdd() }
+
+func (p *parser) parseAdd() ast.Expr {
+	x := p.parseMul()
+	for p.kind() == scanner.Plus || p.kind() == scanner.Minus {
+		op := p.advance()
+		y := p.parseMul()
+		x = &ast.BinaryExpr{Pos: op.Pos, Op: op.Text, X: x, Y: y}
+	}
+	return x
+}
+
+func (p *parser) parseMul() ast.Expr {
+	x := p.parseUnary()
+	for p.kind() == scanner.Star || p.kind() == scanner.Slash || p.kind() == scanner.Percent {
+		op := p.advance()
+		y := p.parseUnary()
+		x = &ast.BinaryExpr{Pos: op.Pos, Op: op.Text, X: x, Y: y}
+	}
+	return x
+}
+
+func (p *parser) parseUnary() ast.Expr {
+	if p.kind() == scanner.Minus {
+		t := p.advance()
+		return &ast.UnaryExpr{Pos: t.Pos, Op: "-", X: p.parseUnary()}
+	}
+	return p.parsePrimary()
+}
+
+func (p *parser) parsePrimary() ast.Expr {
+	t := p.tok()
+	switch t.Kind {
+	case scanner.Int:
+		p.advance()
+		v := new(big.Int)
+		if _, ok := v.SetString(t.Text, 0); !ok {
+			p.errf(t.Pos, "malformed integer literal %q", t.Text)
+		}
+		return &ast.IntLit{Pos: t.Pos, Value: v, Text: t.Text}
+	case scanner.Float:
+		p.advance()
+		v, err := strconv.ParseFloat(t.Text, 64)
+		if err != nil {
+			p.errf(t.Pos, "malformed float literal %q", t.Text)
+		}
+		return &ast.FloatLit{Pos: t.Pos, Value: v, Text: t.Text}
+	case scanner.Ident:
+		p.advance()
+		// E.Max — Max is contextual after '.' (SPEC §4.2)
+		if p.kind() == scanner.Dot {
+			dot := p.advance()
+			m := p.expect(scanner.Ident, `"Max"`)
+			if m.Text != "Max" {
+				p.errf(dot.Pos, "only .Max is legal after an enum name (found .%s)", m.Text)
+			}
+			return &ast.MaxExpr{Pos: t.Pos, Enum: t.Text}
+		}
+		return &ast.IdentExpr{Pos: t.Pos, Name: t.Text}
+	case scanner.LParen:
+		p.advance()
+		x := p.parseExpr()
+		p.expect(scanner.RParen, ")")
+		return &ast.ParenExpr{Pos: t.Pos, X: x}
+	default:
+		p.advance()
+		p.errf(t.Pos, "expected an expression, found %q", describe(t))
+		return &ast.IntLit{Pos: t.Pos, Value: big.NewInt(0), Text: "0"}
+	}
+}

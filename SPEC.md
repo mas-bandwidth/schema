@@ -1,13 +1,13 @@
 # schema — specification (draft 5)
 
-> **Status: DRAFT, pre-implementation — the language is the deliverable right now.** This
-> spec precedes the decision to build (house doctrine), and deliberately so: the language is
-> the part that will evolve, and every change to it ripples into the compiler and three
-> codegens (Glenn, 2026-08-04). **§4 — the language — is the chapter under active design and
-> the one to review hardest.** §6–§8 (generated code, compiler, layout) are engineering
-> sketches recorded so decisions have somewhere to live; they are not started and stay cheap
-> to change until the language settles. Sections are marked **DECIDED** (Glenn, 2026-08-04)
-> or **PROPOSED** (Rowan's recommendation, awaiting review). Nothing here is wire-tested yet.
+> **Status: IMPLEMENTATION STARTED 2026-08-05, on Glenn's word, mid-corpus-review.** The
+> first slice is in the tree: scanner, parser, resolver/checker and the C++ storage
+> emission (structs, constants, enums, flags, the object view families) — `make` builds the
+> compiler, generates `generated/*.h` from `examples/`, and compiles+links+runs a test that
+> prints OK. Write/Read generation, Quantize/Unquantize, and the other three targets are
+> next; nothing is wire-tested yet. Sections are marked **DECIDED** (Glenn) or **PROPOSED**
+> (Rowan's recommendation, awaiting review). **§4 — the language — remains the chapter to
+> review hardest.**
 >
 > *Draft 2, 2026-08-04: draft 1 taken apart by two independent cold readers — one attacking
 > every wire claim against the extracted runtime contracts, one attacking the language design
@@ -431,9 +431,11 @@ EBNF (`NL` = the newline terminator; `{X}` repetition; `[X]` option):
 
 ```
 File        = { Declaration } .
-Declaration = Package | Const | Enum | Flags | TypeDecl | Message | Object .
+Declaration = Package | Const | Enum | Flags | TypeDecl | Message | Object | Contexts .
 Object      = "object" ident Block NL .
 Flags       = "flags" ident [ Attributes ] VariantList NL .        // "flags" contextual, §4.2
+Contexts    = "contexts" VariantList NL .                          // "contexts" contextual, §4.2;
+                                                                   // one list per unit
 Package     = "package" ident NL .
 Const       = "const" ident [ ConstType ] "=" ConstExpr NL .
 ConstType   = IntType | "float32" | "float64" .
@@ -445,7 +447,9 @@ Message     = "message" ident Block NL .
 
 Block       = "{" { Item } "}" .
 Item        = Field | ConstField | Reserved | Align | If .
-Field       = ident Type [ Attributes ] NL .
+Field       = ident Type [ Attributes ] [ "=" Default ] NL .
+Default     = ConstExpr | ident .                    // specified default (see below):
+                                                     // ident = true | false | an enum variant
 ConstField  = "const" "(" IntExpr "," IntExpr ")" NL .          // (value, bits)
 Reserved    = "reserved" "(" IntExpr ")" NL .
 Align       = "align" NL .
@@ -494,11 +498,28 @@ FloatExpr   = float expression over float literals, int literals and const names
   literals, const names, and arithmetic, per `FloatExpr`; integer constants convert in float
   positions *(this bullet said "float literals only" while the typed-constants bullet below
   said constants convert there — the DECIDED typed-constants rule wins; repaired 2026-08-05)*.
+- **Zero initialization is the rule, in every generated language — DECIDED (Glenn,
+  2026-08-05: *"can we use golang's rule of zero initialization for all types in all
+  generated langs"*), with an optional SPECIFIED DEFAULT overriding it (his same message:
+  *"unless we allow some specified default, eg. ... = true"*).** Every generated type
+  fully initializes to zero values on construction — 0, 0.0, false, `None` for an enum, 0
+  for a flags mask, zeroed buffers and counts, recursively for nested types — in all four
+  targets (C++ emits default member initializers; Go/C#/Rust get it from their languages'
+  own rules, stated so the C++ target cannot silently be the odd one out). A field may
+  override its zero with `= value` after the attributes: `invulnerable bool [local] = true`.
+  v1 defaults cover bool (`true`/`false`), integer and float fields (constant
+  expressions, fit-checked like any use site) and enum fields (a variant name); arrays,
+  strings, bytes and composite fields zero-initialize with no override. **The default is
+  STORAGE initialization — what a freshly constructed object holds. It does not touch the
+  wire, and §5's read rule is deliberately unchanged: fields in untaken branches read as
+  ZERO values, not as defaults** — the wire contract stays a pure function of the schema's
+  encodings, and whether untaken branches should instead restore defaults is a question
+  for Glenn if a real case ever wants it.
 - **Constants compose** — DECIDED (Glenn, 2026-08-05: *"constants can refer to other
   constants, so we can build up things, const C = A * 2 + B"*). A `const` may reference any
   other `const` in the unit, order-free across files like type references; reference cycles
   are a compile error naming the cycle. The corpus exercises it:
-  `const MaxPositionUnits = MaxWorldMeters * UnitsPerMeter`.
+  `const MaxPositionUnits = MaxWorldMeters * PositionUnits`.
 - **Constants are typed, and not just integers** — DECIDED (Glenn, 2026-08-05: *"They won't
   just be integer"*), on Go's untyped-constant model: a bare `const` takes its **kind** from
   its expression — integer (arbitrary-precision arithmetic, fit-checked at each use —
@@ -638,7 +659,9 @@ sequence    uint16
   the compressed float); `enum` declarations take `max`; **the valueless view markers
   `interpolate` and `local` are in the vocabulary for `object` bodies** (§4.8 — this
   enumeration lagged the valueless-markers decision above until 2026-08-05, which made the
-  spec's own §4.8 examples compile errors). Still PROPOSED, riding the corpus review:
+  spec's own §4.8 examples compile errors), **and so is `context = <name>`, legal only
+  beside `[local]`** (§4.2 Contexts — the same lag, caught by a cold audit the same day
+  the corpus started using it). Still PROPOSED, riding the corpus review:
   `quantize`/`round` inside the §4.8 view-encoding rules. *(The former `[no_none]` and
   `[unit]` markers are dead — their jobs moved to the type-tag mechanism and
   the type-tag mechanism below; a built-in `quat` and a class vocabulary each lived for
@@ -909,6 +932,11 @@ All compile errors with positions:
 - **Attribute discipline:** an unknown attribute key, a key repeated, an attribute on a type
   that does not take it, `min` without `max` (or vice versa), and `resolution` without both
   bounds are compile errors, each naming the field and the legal vocabulary for its type.
+  **One scoped exception, stated rather than implied** *(the corpus sat on this conflict
+  for a day — six fields — before a cold audit caught it, 2026-08-05)*: in the composite
+  quantization form `[interpolate, quantize = K, max = B]` (§4.8 rule 2), `max` is the
+  quantize bound and appears WITHOUT `min` by design — `min` is forbidden there, the
+  domain being symmetric [-B, +B].
 - **Degenerate ranges:** any ranged integer with min ≥ max (the diagnostic suggests `const`
   for a fixed value); `[Min..N]T` with Min ≥ N; `string(N)` with N < 2; `bytes(<= N)` with
   N < 1; **`bytes(N)` with N < 1; `[N]T` with N < 1; `[<= N]T` with N < 1** *(three holes
@@ -1134,9 +1162,13 @@ stay informally reserved as attribute values for it.
 
 The worked example is [`examples/Objects.schema`](examples/Objects.schema) — verified
 field-for-field against the real `Ship.h` on 2026-08-05: zero misclassifications, zero
-invented fields, one measured omission (the client-only `predictedExplode`, which waits on
-a side-conditional story and is noted rather than silently absent); **Missile, DynamicProp
-and Turret are now written beside it — all four objects are in the corpus for his review.**
+invented fields. *(The one measured omission of that survey — the client-only
+`predictedExplode` — is an omission no longer: it is declared as
+`predicted_explode bool [local, context = client]` under the Contexts mechanism, and on
+Glenn's ask the same evening the wrapper class's sim-local state — previous position,
+collider count and armor table — was folded in too, so the generated per-context state
+structs carry the FULL working ship state.)* **Missile, DynamicProp and Turret are
+written beside it — all four objects are in the corpus.**
 
 **Generated layout is the generator's — PROPOSED principle (Rowan, 2026-08-05).**
 Hand-written code keeps struct-layout rules alive by comment, and prose-enforced layout is
@@ -1363,12 +1395,22 @@ resurrects any of it under our own name.)*
 layout dependent on its entry bit offset. Generated functions are correct at any entry
 offset; the same type works standalone and nested. `MaxBits` covers the worst case.
 
-**Output layout**: one file per target per unit — `<package>.schema.h` (header-only, C++),
-`<package>.schema.cs`, `<package>_schema.go`, `<package>_schema.rs` — each headed by the
-compiler version, the source files, the protocol id, and a do-not-edit line. Output is **deterministic to the
-byte** for identical input; no external formatter runs in the build or test path (goldens pin
-the emitters' own output — clang-format/rustfmt version drift must not be able to break a
-golden). The emitters are written to produce formatter-clean code instead.
+**Output layout — REVISED for C++ at implementation, DECIDED (Glenn, 2026-08-05):** the
+C++ target emits **one header per schema file** — `examples/Constants.schema` →
+`generated/Constants.h` — everything inside `namespace <package>`, **`#pragma once`**
+(his call; *"if beneficial, you can use both sentinels and pragma once"* — pragma alone
+until portability demands both), with cross-file `#include`s derived from actual
+references, so the generated tree mirrors the schema tree a person navigates. *(This
+paragraph previously said one file per target per unit — `<package>.schema.h` — which
+stands as the sketch for the single-file targets until each is implemented; per-file
+output is the decided C++ shape.)* Each header is headed by the source file, the protocol
+id, and a do-not-edit line. Output is **deterministic to the byte** for identical input;
+no external formatter runs in the build or test path (goldens pin the emitters' own
+output — clang-format/rustfmt version drift must not be able to break a golden). The
+emitters are written to produce formatter-clean code instead. Build: **plain Makefile for
+now, graduating to CMake as needed** (Glenn, 2026-08-05: *"use Makefile directly, for
+now... probably preferable to keep it simple."* / *"We can graduate to CMake as
+needed."*).
 
 ### 6.2 Code shape — a stated divergence from serialize.modern
 

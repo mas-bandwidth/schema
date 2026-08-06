@@ -31,9 +31,9 @@ hard requirement, just a personal preference"*; order-free cross-file resolution
 | `Contexts.schema` | the build contexts | `contexts { client, server }` — user-declared sides, per-context generated types |
 | `Constants.schema` | every `const` | composition (`const C = A * B`), `Team.Max` enum references, order-free cross-file refs |
 | `Enums.schema` | the enum family | both forms, comma-separated variants: `enum` (with-None) and `flags` (uint64, bit-per-variant) |
-| `Types.schema` | every `type` | tagged user types (`Vec3 [vec3]`, `Quat [quat4]` — tags inert in v1, claimed by the delta pass), quantized-int types, prefix arrays `[<= N]T`, bool-gated `if` with a `flags` field |
+| `Types.schema` | every `type` | tagged user types (`Vec3 [vec3]`, `Quat [quat4]` — tags inert in v1, claimed by the delta pass), quantized-int types, prefix arrays `[<= N]T`, bool-gated `if` with a `flags` field, and `RigidBody` — the serialize README's own example, schema-specified: the velocity group rides only when `!at_rest`, and §5's zero-on-untaken-branch rule is the hand-written `else if ( Stream::IsReading )` zeroing made contract |
 | `Messages.schema` | every `message` | the implicit `MessageType` set, sorted-by-name tags, empty message, unified `string(N)`/`bytes(N)` (fixed buffers, used-length wire) |
-| `Objects.schema` | all four `object`s | the view markers (`[interpolate]`/`[local]`, deep by default), explicit-bound composite `quantize`, ranged-int projection with `round = up`, `[local, context = ...]` scoped fields, per-field wire treatment divergences between objects |
+| `Objects.schema` | all four `object`s | the view markers (`[interpolate]`/`[local]`, deep by default), explicit-bound composite `quantize`, ranged-int projection with `round = up`, `[local, context = ...]` scoped fields, per-field wire treatment divergences between objects — and the FULL working ship state: the wrapper class's sim-local fields (previous position, collider armor table) folded in, so the generated per-context state structs could serve as the simulation struct outright |
 
 *Coming when their design passes open: `Config.schema` and `Assets.schema` (SPEC, "The
 horizon" — the flatbuffers replacement), and the delta pass (out of v1 scope by decision).*

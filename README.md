@@ -15,8 +15,13 @@ The idea is extracted from
 [serialize.modern](https://github.com/mas-bandwidth/serialize.modern)'s compile-time schema
 language, moved out of the templates and into an external compiler.
 
-> **Status: design stage.** The specification is being drafted and nothing is implemented yet.
-> Start with [SPEC.md](SPEC.md).
+> **Status: v1 implementation underway** (started 2026-08-05). The first slice is live:
+> `make` builds the compiler, generates C++ headers from [`examples/`](examples/) into
+> `generated/`, and compiles, links and runs a test program that prints OK. Landed so far:
+> scanner, parser, resolver/checker, protocol id, and C++ storage emission (constants,
+> enums, flags, type/message structs, the object view families, per-context state types,
+> zero initialization with specified defaults). Next: generated `Write`/`Read`,
+> `Quantize`/`Unquantize`, then the C#/Go/Rust backends. Start with [SPEC.md](SPEC.md).
 
 Versioning is by **protocol id** — a hash of the schema itself, computed by the compiler. Two
 sides at the same protocol id speak identical bits; there is no versioning overhead on the wire.

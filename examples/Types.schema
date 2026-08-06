@@ -54,6 +54,26 @@ type QuantizedRotation {
     w int16 [min = -RotationUnits, max = RotationUnits]
 }
 
+// ---- the back-reference worked example (SPEC §4.4, §4.5, §5) ----
+
+// The serialize README's own RigidBody example, schema-specified — field for
+// field, the generated serialize function IS that hand-written one. The group
+// of velocity fields rides the wire only when !at_rest; when the at-rest side
+// is taken, the hand-written version zeroes both velocities under
+// `else if ( Stream::IsReading )` — here that is SPEC §5's
+// zero-on-untaken-branch rule, the language's contract rather than a
+// convention the caller remembers. The branch costs no wire bits beyond the
+// bool already paid for (back-referencing, SPEC §4.5).
+type RigidBody {
+    position    Vec3
+    orientation Quat
+    at_rest     bool
+    if !at_rest {
+        linear_velocity  Vec3
+        angular_velocity Vec3
+    }
+}
+
 // ---- input ----
 
 type Input {

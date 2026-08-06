@@ -75,6 +75,15 @@ object Ship {
 
     invulnerable bool [local]
 
+    // the wrapper class's sim-local state, folded in so the generated state is
+    // the FULL working ship state (surveyed from the hand-written Ship class
+    // 2026-08-05): previous position, and the per-collider armor table. Engine
+    // runtime handles (the physics body id) stay in engine code — they are
+    // process-local resources, not state the schema owns.
+    previous_position Vec3  [local]
+    num_colliders     int32 [local]
+    collider_armor    [MaxCollidersPerShip]int32 [local]
+
     // context-scoped local state (SPEC §4.2, Contexts): exists only in the
     // client's generated type (ClientShipState) — the declared replacement for
     // the hand-written #if GAME_CLIENT
@@ -97,7 +106,7 @@ object Missile {
     team Team [interpolate]
 
     // real field is an anonymous uint64 — bits unnamed in hand code; named bits
-    // move to an enum_flags when they are identified
+    // move to a flags declaration when they are identified
     flags uint64 [interpolate]
 
     // ---- simulation-only ----

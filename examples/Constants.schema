@@ -20,9 +20,10 @@ const MaxVelocityUnits = MaxSpeedMeters * VelocityUnits
 const MaxHealth  = 1000
 const MaxObjects = 10000
 
-const ShipMaxLasers     = 16
-const ShipMaxMissiles   = 16
-const MaxTurretsPerShip = 256
+const ShipMaxLasers       = 16
+const ShipMaxMissiles     = 16
+const MaxTurretsPerShip   = 256
+const MaxCollidersPerShip = 64
 
 // enum-derived counts — E.Max in constant expressions (SPEC §4.2)
 const NumTeams = Team.Max + 1
