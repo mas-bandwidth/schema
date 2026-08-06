@@ -4,6 +4,9 @@
 #pragma once
 
 #include <cstdint>
+#include <cmath>
+
+#include "serialize.h"
 
 #include "Constants.h"
 #include "Enums.h"
@@ -158,6 +161,374 @@ struct ShipData_Interpolate {
     uint8_t thrust = 0; // float [0, 1] @ resolution 0.01 -> wire int [0, 100] — wire-int domain, snap-interpolated (SPEC §4.8 rule 5)
 };
 
+inline constexpr int64_t ShipData_DeepMaxBits = 1703;
+inline constexpr int64_t ShipData_DeepMaxBytes = 213;
+
+inline bool WriteShipData_Deep( serialize::WriteStream & stream, const ShipData_Deep & value )
+{
+    write_int( stream, int32_t( value.ship_type ), 0, 5 );
+    if ( !WriteVec3( stream, value.position ) )
+    {
+        return false;
+    }
+    if ( !WriteQuat( stream, value.rotation ) )
+    {
+        return false;
+    }
+    if ( !WriteVec3( stream, value.linear_velocity ) )
+    {
+        return false;
+    }
+    write_bits( stream, value.flags, 4 );
+    write_int( stream, int32_t( value.team ), 0, 2 );
+    write_float( stream, value.health );
+    write_float( stream, value.thrust );
+    if ( !WriteVec3( stream, value.angular_velocity ) )
+    {
+        return false;
+    }
+    write_float( stream, value.laser_cooldown );
+    write_float( stream, value.missile_cooldown );
+    write_float( stream, value.speed_current );
+    write_float( stream, value.speed_velocity );
+    if ( !WriteVec3( stream, value.stick_current ) )
+    {
+        return false;
+    }
+    if ( !WriteVec3( stream, value.stick_velocity ) )
+    {
+        return false;
+    }
+    write_float( stream, value.sensitivity_current );
+    write_float( stream, value.sensitivity_velocity );
+    write_float( stream, value.roll_current );
+    write_float( stream, value.roll_velocity );
+    write_float( stream, value.aim_current );
+    write_float( stream, value.aim_velocity );
+    write_int( stream, value.laser_index, 0, ShipMaxLasers - 1 );
+    write_int( stream, value.missile_index, 0, ShipMaxMissiles - 1 );
+    if ( !WriteHandle( stream, value.target ) )
+    {
+        return false;
+    }
+    write_double( stream, value.lock_start_time );
+    return true;
+}
+
+inline bool ReadShipData_Deep( serialize::ReadStream & stream, ShipData_Deep & value )
+{
+    {
+        int32_t enum_value = 0;
+        read_int( stream, enum_value, 0, 5 );
+        value.ship_type = ShipType( enum_value );
+    }
+    if ( !ReadVec3( stream, value.position ) )
+    {
+        return false;
+    }
+    if ( !ReadQuat( stream, value.rotation ) )
+    {
+        return false;
+    }
+    if ( !ReadVec3( stream, value.linear_velocity ) )
+    {
+        return false;
+    }
+    read_bits( stream, value.flags, 4 );
+    {
+        int32_t enum_value = 0;
+        read_int( stream, enum_value, 0, 2 );
+        value.team = Team( enum_value );
+    }
+    read_float( stream, value.health );
+    read_float( stream, value.thrust );
+    if ( !ReadVec3( stream, value.angular_velocity ) )
+    {
+        return false;
+    }
+    read_float( stream, value.laser_cooldown );
+    read_float( stream, value.missile_cooldown );
+    read_float( stream, value.speed_current );
+    read_float( stream, value.speed_velocity );
+    if ( !ReadVec3( stream, value.stick_current ) )
+    {
+        return false;
+    }
+    if ( !ReadVec3( stream, value.stick_velocity ) )
+    {
+        return false;
+    }
+    read_float( stream, value.sensitivity_current );
+    read_float( stream, value.sensitivity_velocity );
+    read_float( stream, value.roll_current );
+    read_float( stream, value.roll_velocity );
+    read_float( stream, value.aim_current );
+    read_float( stream, value.aim_velocity );
+    {
+        int32_t range_value = 0;
+        read_int( stream, range_value, 0, ShipMaxLasers - 1 );
+        value.laser_index = int8_t( range_value );
+    }
+    {
+        int32_t range_value = 0;
+        read_int( stream, range_value, 0, ShipMaxMissiles - 1 );
+        value.missile_index = int8_t( range_value );
+    }
+    if ( !ReadHandle( stream, value.target ) )
+    {
+        return false;
+    }
+    read_double( stream, value.lock_start_time );
+    return true;
+}
+
+inline constexpr int64_t ShipData_ShallowMaxBits = 218;
+inline constexpr int64_t ShipData_ShallowMaxBytes = 28;
+
+inline bool WriteShipData_Shallow( serialize::WriteStream & stream, const ShipData_Shallow & value )
+{
+    write_int( stream, int32_t( value.ship_type ), 0, 5 );
+    write_int( stream, value.position_x, -8388608, 8388608 );
+    write_int( stream, value.position_y, -8388608, 8388608 );
+    write_int( stream, value.position_z, -8388608, 8388608 );
+    write_int( stream, value.rotation_x, -1024, 1024 );
+    write_int( stream, value.rotation_y, -1024, 1024 );
+    write_int( stream, value.rotation_z, -1024, 1024 );
+    write_int( stream, value.rotation_w, -1024, 1024 );
+    write_int( stream, value.linear_velocity_x, -2097152, 2097152 );
+    write_int( stream, value.linear_velocity_y, -2097152, 2097152 );
+    write_int( stream, value.linear_velocity_z, -2097152, 2097152 );
+    write_bits( stream, value.flags, 4 );
+    write_int( stream, int32_t( value.team ), 0, 2 );
+    write_int( stream, value.health, 0, 1000 );
+    write_int( stream, value.thrust, 0, 100 );
+    return true;
+}
+
+inline bool ReadShipData_Shallow( serialize::ReadStream & stream, ShipData_Shallow & value )
+{
+    {
+        int32_t enum_value = 0;
+        read_int( stream, enum_value, 0, 5 );
+        value.ship_type = ShipType( enum_value );
+    }
+    {
+        int32_t component_value = 0;
+        read_int( stream, component_value, -8388608, 8388608 );
+        value.position_x = int32_t( component_value );
+    }
+    {
+        int32_t component_value = 0;
+        read_int( stream, component_value, -8388608, 8388608 );
+        value.position_y = int32_t( component_value );
+    }
+    {
+        int32_t component_value = 0;
+        read_int( stream, component_value, -8388608, 8388608 );
+        value.position_z = int32_t( component_value );
+    }
+    {
+        int32_t component_value = 0;
+        read_int( stream, component_value, -1024, 1024 );
+        value.rotation_x = int16_t( component_value );
+    }
+    {
+        int32_t component_value = 0;
+        read_int( stream, component_value, -1024, 1024 );
+        value.rotation_y = int16_t( component_value );
+    }
+    {
+        int32_t component_value = 0;
+        read_int( stream, component_value, -1024, 1024 );
+        value.rotation_z = int16_t( component_value );
+    }
+    {
+        int32_t component_value = 0;
+        read_int( stream, component_value, -1024, 1024 );
+        value.rotation_w = int16_t( component_value );
+    }
+    {
+        int32_t component_value = 0;
+        read_int( stream, component_value, -2097152, 2097152 );
+        value.linear_velocity_x = int32_t( component_value );
+    }
+    {
+        int32_t component_value = 0;
+        read_int( stream, component_value, -2097152, 2097152 );
+        value.linear_velocity_y = int32_t( component_value );
+    }
+    {
+        int32_t component_value = 0;
+        read_int( stream, component_value, -2097152, 2097152 );
+        value.linear_velocity_z = int32_t( component_value );
+    }
+    read_bits( stream, value.flags, 4 );
+    {
+        int32_t enum_value = 0;
+        read_int( stream, enum_value, 0, 2 );
+        value.team = Team( enum_value );
+    }
+    {
+        int32_t projected_value = 0;
+        read_int( stream, projected_value, 0, 1000 );
+        value.health = uint16_t( projected_value );
+    }
+    {
+        int32_t projected_value = 0;
+        read_int( stream, projected_value, 0, 100 );
+        value.thrust = uint8_t( projected_value );
+    }
+    return true;
+}
+
+inline void QuantizeShip( const ShipData_Interpolate & input, ShipData_Shallow & output )
+{
+    output.ship_type = input.ship_type;
+    {
+        int64_t quantized_value = int64_t( floor( double( input.position.x ) * double( PositionUnits ) + 0.5 ) );
+        if ( quantized_value > 8388608 )
+        {
+            quantized_value = 8388608;
+        }
+        if ( quantized_value < -8388608 )
+        {
+            quantized_value = -8388608;
+        }
+        output.position_x = int32_t( quantized_value );
+    }
+    {
+        int64_t quantized_value = int64_t( floor( double( input.position.y ) * double( PositionUnits ) + 0.5 ) );
+        if ( quantized_value > 8388608 )
+        {
+            quantized_value = 8388608;
+        }
+        if ( quantized_value < -8388608 )
+        {
+            quantized_value = -8388608;
+        }
+        output.position_y = int32_t( quantized_value );
+    }
+    {
+        int64_t quantized_value = int64_t( floor( double( input.position.z ) * double( PositionUnits ) + 0.5 ) );
+        if ( quantized_value > 8388608 )
+        {
+            quantized_value = 8388608;
+        }
+        if ( quantized_value < -8388608 )
+        {
+            quantized_value = -8388608;
+        }
+        output.position_z = int32_t( quantized_value );
+    }
+    {
+        int64_t quantized_value = int64_t( floor( double( input.rotation.x ) * double( RotationUnits ) + 0.5 ) );
+        if ( quantized_value > 1024 )
+        {
+            quantized_value = 1024;
+        }
+        if ( quantized_value < -1024 )
+        {
+            quantized_value = -1024;
+        }
+        output.rotation_x = int16_t( quantized_value );
+    }
+    {
+        int64_t quantized_value = int64_t( floor( double( input.rotation.y ) * double( RotationUnits ) + 0.5 ) );
+        if ( quantized_value > 1024 )
+        {
+            quantized_value = 1024;
+        }
+        if ( quantized_value < -1024 )
+        {
+            quantized_value = -1024;
+        }
+        output.rotation_y = int16_t( quantized_value );
+    }
+    {
+        int64_t quantized_value = int64_t( floor( double( input.rotation.z ) * double( RotationUnits ) + 0.5 ) );
+        if ( quantized_value > 1024 )
+        {
+            quantized_value = 1024;
+        }
+        if ( quantized_value < -1024 )
+        {
+            quantized_value = -1024;
+        }
+        output.rotation_z = int16_t( quantized_value );
+    }
+    {
+        int64_t quantized_value = int64_t( floor( double( input.rotation.w ) * double( RotationUnits ) + 0.5 ) );
+        if ( quantized_value > 1024 )
+        {
+            quantized_value = 1024;
+        }
+        if ( quantized_value < -1024 )
+        {
+            quantized_value = -1024;
+        }
+        output.rotation_w = int16_t( quantized_value );
+    }
+    {
+        int64_t quantized_value = int64_t( floor( double( input.linear_velocity.x ) * double( VelocityUnits ) + 0.5 ) );
+        if ( quantized_value > 2097152 )
+        {
+            quantized_value = 2097152;
+        }
+        if ( quantized_value < -2097152 )
+        {
+            quantized_value = -2097152;
+        }
+        output.linear_velocity_x = int32_t( quantized_value );
+    }
+    {
+        int64_t quantized_value = int64_t( floor( double( input.linear_velocity.y ) * double( VelocityUnits ) + 0.5 ) );
+        if ( quantized_value > 2097152 )
+        {
+            quantized_value = 2097152;
+        }
+        if ( quantized_value < -2097152 )
+        {
+            quantized_value = -2097152;
+        }
+        output.linear_velocity_y = int32_t( quantized_value );
+    }
+    {
+        int64_t quantized_value = int64_t( floor( double( input.linear_velocity.z ) * double( VelocityUnits ) + 0.5 ) );
+        if ( quantized_value > 2097152 )
+        {
+            quantized_value = 2097152;
+        }
+        if ( quantized_value < -2097152 )
+        {
+            quantized_value = -2097152;
+        }
+        output.linear_velocity_z = int32_t( quantized_value );
+    }
+    output.flags = input.flags;
+    output.team = input.team;
+    output.health = input.health;
+    output.thrust = input.thrust;
+}
+
+inline void UnquantizeShip( const ShipData_Shallow & input, ShipData_Interpolate & output )
+{
+    output.ship_type = input.ship_type;
+    output.position.x = double( input.position_x ) / double( PositionUnits );
+    output.position.y = double( input.position_y ) / double( PositionUnits );
+    output.position.z = double( input.position_z ) / double( PositionUnits );
+    output.rotation.x = double( input.rotation_x ) / double( RotationUnits );
+    output.rotation.y = double( input.rotation_y ) / double( RotationUnits );
+    output.rotation.z = double( input.rotation_z ) / double( RotationUnits );
+    output.rotation.w = double( input.rotation_w ) / double( RotationUnits );
+    output.linear_velocity.x = double( input.linear_velocity_x ) / double( VelocityUnits );
+    output.linear_velocity.y = double( input.linear_velocity_y ) / double( VelocityUnits );
+    output.linear_velocity.z = double( input.linear_velocity_z ) / double( VelocityUnits );
+    output.flags = input.flags;
+    output.team = input.team;
+    output.health = input.health;
+    output.thrust = input.thrust;
+}
+
 // ---- object Missile — one definition, a generated family per target (SPEC §4.8) ----
 
 // ClientMissileState — the full simulation struct for the client context: every `all`
@@ -231,6 +602,288 @@ struct MissileData_Interpolate {
     uint64_t flags = 0;
 };
 
+inline constexpr int64_t MissileData_DeepMaxBits = 708;
+inline constexpr int64_t MissileData_DeepMaxBytes = 89;
+
+inline bool WriteMissileData_Deep( serialize::WriteStream & stream, const MissileData_Deep & value )
+{
+    write_int( stream, int32_t( value.missile_type ), 0, 3 );
+    if ( !WriteVec3( stream, value.position ) )
+    {
+        return false;
+    }
+    if ( !WriteQuat( stream, value.rotation ) )
+    {
+        return false;
+    }
+    if ( !WriteVec3( stream, value.linear_velocity ) )
+    {
+        return false;
+    }
+    write_int( stream, int32_t( value.team ), 0, 2 );
+    write_bits( stream, value.flags, 64 );
+    return true;
+}
+
+inline bool ReadMissileData_Deep( serialize::ReadStream & stream, MissileData_Deep & value )
+{
+    {
+        int32_t enum_value = 0;
+        read_int( stream, enum_value, 0, 3 );
+        value.missile_type = MissileType( enum_value );
+    }
+    if ( !ReadVec3( stream, value.position ) )
+    {
+        return false;
+    }
+    if ( !ReadQuat( stream, value.rotation ) )
+    {
+        return false;
+    }
+    if ( !ReadVec3( stream, value.linear_velocity ) )
+    {
+        return false;
+    }
+    {
+        int32_t enum_value = 0;
+        read_int( stream, enum_value, 0, 2 );
+        value.team = Team( enum_value );
+    }
+    read_bits( stream, value.flags, 64 );
+    return true;
+}
+
+inline constexpr int64_t MissileData_ShallowMaxBits = 260;
+inline constexpr int64_t MissileData_ShallowMaxBytes = 33;
+
+inline bool WriteMissileData_Shallow( serialize::WriteStream & stream, const MissileData_Shallow & value )
+{
+    write_int( stream, int32_t( value.missile_type ), 0, 3 );
+    write_int( stream, value.position_x, -8388608, 8388608 );
+    write_int( stream, value.position_y, -8388608, 8388608 );
+    write_int( stream, value.position_z, -8388608, 8388608 );
+    write_int( stream, value.rotation_x, -1024, 1024 );
+    write_int( stream, value.rotation_y, -1024, 1024 );
+    write_int( stream, value.rotation_z, -1024, 1024 );
+    write_int( stream, value.rotation_w, -1024, 1024 );
+    write_int( stream, value.linear_velocity_x, -2097152, 2097152 );
+    write_int( stream, value.linear_velocity_y, -2097152, 2097152 );
+    write_int( stream, value.linear_velocity_z, -2097152, 2097152 );
+    write_int( stream, int32_t( value.team ), 0, 2 );
+    write_bits( stream, value.flags, 64 );
+    return true;
+}
+
+inline bool ReadMissileData_Shallow( serialize::ReadStream & stream, MissileData_Shallow & value )
+{
+    {
+        int32_t enum_value = 0;
+        read_int( stream, enum_value, 0, 3 );
+        value.missile_type = MissileType( enum_value );
+    }
+    {
+        int32_t component_value = 0;
+        read_int( stream, component_value, -8388608, 8388608 );
+        value.position_x = int32_t( component_value );
+    }
+    {
+        int32_t component_value = 0;
+        read_int( stream, component_value, -8388608, 8388608 );
+        value.position_y = int32_t( component_value );
+    }
+    {
+        int32_t component_value = 0;
+        read_int( stream, component_value, -8388608, 8388608 );
+        value.position_z = int32_t( component_value );
+    }
+    {
+        int32_t component_value = 0;
+        read_int( stream, component_value, -1024, 1024 );
+        value.rotation_x = int16_t( component_value );
+    }
+    {
+        int32_t component_value = 0;
+        read_int( stream, component_value, -1024, 1024 );
+        value.rotation_y = int16_t( component_value );
+    }
+    {
+        int32_t component_value = 0;
+        read_int( stream, component_value, -1024, 1024 );
+        value.rotation_z = int16_t( component_value );
+    }
+    {
+        int32_t component_value = 0;
+        read_int( stream, component_value, -1024, 1024 );
+        value.rotation_w = int16_t( component_value );
+    }
+    {
+        int32_t component_value = 0;
+        read_int( stream, component_value, -2097152, 2097152 );
+        value.linear_velocity_x = int32_t( component_value );
+    }
+    {
+        int32_t component_value = 0;
+        read_int( stream, component_value, -2097152, 2097152 );
+        value.linear_velocity_y = int32_t( component_value );
+    }
+    {
+        int32_t component_value = 0;
+        read_int( stream, component_value, -2097152, 2097152 );
+        value.linear_velocity_z = int32_t( component_value );
+    }
+    {
+        int32_t enum_value = 0;
+        read_int( stream, enum_value, 0, 2 );
+        value.team = Team( enum_value );
+    }
+    read_bits( stream, value.flags, 64 );
+    return true;
+}
+
+inline void QuantizeMissile( const MissileData_Interpolate & input, MissileData_Shallow & output )
+{
+    output.missile_type = input.missile_type;
+    {
+        int64_t quantized_value = int64_t( floor( double( input.position.x ) * double( PositionUnits ) + 0.5 ) );
+        if ( quantized_value > 8388608 )
+        {
+            quantized_value = 8388608;
+        }
+        if ( quantized_value < -8388608 )
+        {
+            quantized_value = -8388608;
+        }
+        output.position_x = int32_t( quantized_value );
+    }
+    {
+        int64_t quantized_value = int64_t( floor( double( input.position.y ) * double( PositionUnits ) + 0.5 ) );
+        if ( quantized_value > 8388608 )
+        {
+            quantized_value = 8388608;
+        }
+        if ( quantized_value < -8388608 )
+        {
+            quantized_value = -8388608;
+        }
+        output.position_y = int32_t( quantized_value );
+    }
+    {
+        int64_t quantized_value = int64_t( floor( double( input.position.z ) * double( PositionUnits ) + 0.5 ) );
+        if ( quantized_value > 8388608 )
+        {
+            quantized_value = 8388608;
+        }
+        if ( quantized_value < -8388608 )
+        {
+            quantized_value = -8388608;
+        }
+        output.position_z = int32_t( quantized_value );
+    }
+    {
+        int64_t quantized_value = int64_t( floor( double( input.rotation.x ) * double( RotationUnits ) + 0.5 ) );
+        if ( quantized_value > 1024 )
+        {
+            quantized_value = 1024;
+        }
+        if ( quantized_value < -1024 )
+        {
+            quantized_value = -1024;
+        }
+        output.rotation_x = int16_t( quantized_value );
+    }
+    {
+        int64_t quantized_value = int64_t( floor( double( input.rotation.y ) * double( RotationUnits ) + 0.5 ) );
+        if ( quantized_value > 1024 )
+        {
+            quantized_value = 1024;
+        }
+        if ( quantized_value < -1024 )
+        {
+            quantized_value = -1024;
+        }
+        output.rotation_y = int16_t( quantized_value );
+    }
+    {
+        int64_t quantized_value = int64_t( floor( double( input.rotation.z ) * double( RotationUnits ) + 0.5 ) );
+        if ( quantized_value > 1024 )
+        {
+            quantized_value = 1024;
+        }
+        if ( quantized_value < -1024 )
+        {
+            quantized_value = -1024;
+        }
+        output.rotation_z = int16_t( quantized_value );
+    }
+    {
+        int64_t quantized_value = int64_t( floor( double( input.rotation.w ) * double( RotationUnits ) + 0.5 ) );
+        if ( quantized_value > 1024 )
+        {
+            quantized_value = 1024;
+        }
+        if ( quantized_value < -1024 )
+        {
+            quantized_value = -1024;
+        }
+        output.rotation_w = int16_t( quantized_value );
+    }
+    {
+        int64_t quantized_value = int64_t( floor( double( input.linear_velocity.x ) * double( VelocityUnits ) + 0.5 ) );
+        if ( quantized_value > 2097152 )
+        {
+            quantized_value = 2097152;
+        }
+        if ( quantized_value < -2097152 )
+        {
+            quantized_value = -2097152;
+        }
+        output.linear_velocity_x = int32_t( quantized_value );
+    }
+    {
+        int64_t quantized_value = int64_t( floor( double( input.linear_velocity.y ) * double( VelocityUnits ) + 0.5 ) );
+        if ( quantized_value > 2097152 )
+        {
+            quantized_value = 2097152;
+        }
+        if ( quantized_value < -2097152 )
+        {
+            quantized_value = -2097152;
+        }
+        output.linear_velocity_y = int32_t( quantized_value );
+    }
+    {
+        int64_t quantized_value = int64_t( floor( double( input.linear_velocity.z ) * double( VelocityUnits ) + 0.5 ) );
+        if ( quantized_value > 2097152 )
+        {
+            quantized_value = 2097152;
+        }
+        if ( quantized_value < -2097152 )
+        {
+            quantized_value = -2097152;
+        }
+        output.linear_velocity_z = int32_t( quantized_value );
+    }
+    output.team = input.team;
+    output.flags = input.flags;
+}
+
+inline void UnquantizeMissile( const MissileData_Shallow & input, MissileData_Interpolate & output )
+{
+    output.missile_type = input.missile_type;
+    output.position.x = double( input.position_x ) / double( PositionUnits );
+    output.position.y = double( input.position_y ) / double( PositionUnits );
+    output.position.z = double( input.position_z ) / double( PositionUnits );
+    output.rotation.x = double( input.rotation_x ) / double( RotationUnits );
+    output.rotation.y = double( input.rotation_y ) / double( RotationUnits );
+    output.rotation.z = double( input.rotation_z ) / double( RotationUnits );
+    output.rotation.w = double( input.rotation_w ) / double( RotationUnits );
+    output.linear_velocity.x = double( input.linear_velocity_x ) / double( VelocityUnits );
+    output.linear_velocity.y = double( input.linear_velocity_y ) / double( VelocityUnits );
+    output.linear_velocity.z = double( input.linear_velocity_z ) / double( VelocityUnits );
+    output.team = input.team;
+    output.flags = input.flags;
+}
+
 // ---- object DynamicProp — one definition, a generated family per target (SPEC §4.8) ----
 
 // DynamicPropState — the full simulation struct: every field
@@ -288,6 +941,288 @@ struct DynamicPropData_Interpolate {
     Team team = Team::None;
 };
 
+inline constexpr int64_t DynamicPropData_DeepMaxBits = 709;
+inline constexpr int64_t DynamicPropData_DeepMaxBytes = 89;
+
+inline bool WriteDynamicPropData_Deep( serialize::WriteStream & stream, const DynamicPropData_Deep & value )
+{
+    write_int( stream, int32_t( value.prop_type ), 0, 6 );
+    if ( !WriteVec3( stream, value.position ) )
+    {
+        return false;
+    }
+    if ( !WriteQuat( stream, value.rotation ) )
+    {
+        return false;
+    }
+    if ( !WriteVec3( stream, value.linear_velocity ) )
+    {
+        return false;
+    }
+    write_bits( stream, value.flags, 64 );
+    write_int( stream, int32_t( value.team ), 0, 2 );
+    return true;
+}
+
+inline bool ReadDynamicPropData_Deep( serialize::ReadStream & stream, DynamicPropData_Deep & value )
+{
+    {
+        int32_t enum_value = 0;
+        read_int( stream, enum_value, 0, 6 );
+        value.prop_type = PropType( enum_value );
+    }
+    if ( !ReadVec3( stream, value.position ) )
+    {
+        return false;
+    }
+    if ( !ReadQuat( stream, value.rotation ) )
+    {
+        return false;
+    }
+    if ( !ReadVec3( stream, value.linear_velocity ) )
+    {
+        return false;
+    }
+    read_bits( stream, value.flags, 64 );
+    {
+        int32_t enum_value = 0;
+        read_int( stream, enum_value, 0, 2 );
+        value.team = Team( enum_value );
+    }
+    return true;
+}
+
+inline constexpr int64_t DynamicPropData_ShallowMaxBits = 261;
+inline constexpr int64_t DynamicPropData_ShallowMaxBytes = 33;
+
+inline bool WriteDynamicPropData_Shallow( serialize::WriteStream & stream, const DynamicPropData_Shallow & value )
+{
+    write_int( stream, int32_t( value.prop_type ), 0, 6 );
+    write_int( stream, value.position_x, -8388608, 8388608 );
+    write_int( stream, value.position_y, -8388608, 8388608 );
+    write_int( stream, value.position_z, -8388608, 8388608 );
+    write_int( stream, value.rotation_x, -1024, 1024 );
+    write_int( stream, value.rotation_y, -1024, 1024 );
+    write_int( stream, value.rotation_z, -1024, 1024 );
+    write_int( stream, value.rotation_w, -1024, 1024 );
+    write_int( stream, value.linear_velocity_x, -2097152, 2097152 );
+    write_int( stream, value.linear_velocity_y, -2097152, 2097152 );
+    write_int( stream, value.linear_velocity_z, -2097152, 2097152 );
+    write_bits( stream, value.flags, 64 );
+    write_int( stream, int32_t( value.team ), 0, 2 );
+    return true;
+}
+
+inline bool ReadDynamicPropData_Shallow( serialize::ReadStream & stream, DynamicPropData_Shallow & value )
+{
+    {
+        int32_t enum_value = 0;
+        read_int( stream, enum_value, 0, 6 );
+        value.prop_type = PropType( enum_value );
+    }
+    {
+        int32_t component_value = 0;
+        read_int( stream, component_value, -8388608, 8388608 );
+        value.position_x = int32_t( component_value );
+    }
+    {
+        int32_t component_value = 0;
+        read_int( stream, component_value, -8388608, 8388608 );
+        value.position_y = int32_t( component_value );
+    }
+    {
+        int32_t component_value = 0;
+        read_int( stream, component_value, -8388608, 8388608 );
+        value.position_z = int32_t( component_value );
+    }
+    {
+        int32_t component_value = 0;
+        read_int( stream, component_value, -1024, 1024 );
+        value.rotation_x = int16_t( component_value );
+    }
+    {
+        int32_t component_value = 0;
+        read_int( stream, component_value, -1024, 1024 );
+        value.rotation_y = int16_t( component_value );
+    }
+    {
+        int32_t component_value = 0;
+        read_int( stream, component_value, -1024, 1024 );
+        value.rotation_z = int16_t( component_value );
+    }
+    {
+        int32_t component_value = 0;
+        read_int( stream, component_value, -1024, 1024 );
+        value.rotation_w = int16_t( component_value );
+    }
+    {
+        int32_t component_value = 0;
+        read_int( stream, component_value, -2097152, 2097152 );
+        value.linear_velocity_x = int32_t( component_value );
+    }
+    {
+        int32_t component_value = 0;
+        read_int( stream, component_value, -2097152, 2097152 );
+        value.linear_velocity_y = int32_t( component_value );
+    }
+    {
+        int32_t component_value = 0;
+        read_int( stream, component_value, -2097152, 2097152 );
+        value.linear_velocity_z = int32_t( component_value );
+    }
+    read_bits( stream, value.flags, 64 );
+    {
+        int32_t enum_value = 0;
+        read_int( stream, enum_value, 0, 2 );
+        value.team = Team( enum_value );
+    }
+    return true;
+}
+
+inline void QuantizeDynamicProp( const DynamicPropData_Interpolate & input, DynamicPropData_Shallow & output )
+{
+    output.prop_type = input.prop_type;
+    {
+        int64_t quantized_value = int64_t( floor( double( input.position.x ) * double( PositionUnits ) + 0.5 ) );
+        if ( quantized_value > 8388608 )
+        {
+            quantized_value = 8388608;
+        }
+        if ( quantized_value < -8388608 )
+        {
+            quantized_value = -8388608;
+        }
+        output.position_x = int32_t( quantized_value );
+    }
+    {
+        int64_t quantized_value = int64_t( floor( double( input.position.y ) * double( PositionUnits ) + 0.5 ) );
+        if ( quantized_value > 8388608 )
+        {
+            quantized_value = 8388608;
+        }
+        if ( quantized_value < -8388608 )
+        {
+            quantized_value = -8388608;
+        }
+        output.position_y = int32_t( quantized_value );
+    }
+    {
+        int64_t quantized_value = int64_t( floor( double( input.position.z ) * double( PositionUnits ) + 0.5 ) );
+        if ( quantized_value > 8388608 )
+        {
+            quantized_value = 8388608;
+        }
+        if ( quantized_value < -8388608 )
+        {
+            quantized_value = -8388608;
+        }
+        output.position_z = int32_t( quantized_value );
+    }
+    {
+        int64_t quantized_value = int64_t( floor( double( input.rotation.x ) * double( RotationUnits ) + 0.5 ) );
+        if ( quantized_value > 1024 )
+        {
+            quantized_value = 1024;
+        }
+        if ( quantized_value < -1024 )
+        {
+            quantized_value = -1024;
+        }
+        output.rotation_x = int16_t( quantized_value );
+    }
+    {
+        int64_t quantized_value = int64_t( floor( double( input.rotation.y ) * double( RotationUnits ) + 0.5 ) );
+        if ( quantized_value > 1024 )
+        {
+            quantized_value = 1024;
+        }
+        if ( quantized_value < -1024 )
+        {
+            quantized_value = -1024;
+        }
+        output.rotation_y = int16_t( quantized_value );
+    }
+    {
+        int64_t quantized_value = int64_t( floor( double( input.rotation.z ) * double( RotationUnits ) + 0.5 ) );
+        if ( quantized_value > 1024 )
+        {
+            quantized_value = 1024;
+        }
+        if ( quantized_value < -1024 )
+        {
+            quantized_value = -1024;
+        }
+        output.rotation_z = int16_t( quantized_value );
+    }
+    {
+        int64_t quantized_value = int64_t( floor( double( input.rotation.w ) * double( RotationUnits ) + 0.5 ) );
+        if ( quantized_value > 1024 )
+        {
+            quantized_value = 1024;
+        }
+        if ( quantized_value < -1024 )
+        {
+            quantized_value = -1024;
+        }
+        output.rotation_w = int16_t( quantized_value );
+    }
+    {
+        int64_t quantized_value = int64_t( floor( double( input.linear_velocity.x ) * double( VelocityUnits ) + 0.5 ) );
+        if ( quantized_value > 2097152 )
+        {
+            quantized_value = 2097152;
+        }
+        if ( quantized_value < -2097152 )
+        {
+            quantized_value = -2097152;
+        }
+        output.linear_velocity_x = int32_t( quantized_value );
+    }
+    {
+        int64_t quantized_value = int64_t( floor( double( input.linear_velocity.y ) * double( VelocityUnits ) + 0.5 ) );
+        if ( quantized_value > 2097152 )
+        {
+            quantized_value = 2097152;
+        }
+        if ( quantized_value < -2097152 )
+        {
+            quantized_value = -2097152;
+        }
+        output.linear_velocity_y = int32_t( quantized_value );
+    }
+    {
+        int64_t quantized_value = int64_t( floor( double( input.linear_velocity.z ) * double( VelocityUnits ) + 0.5 ) );
+        if ( quantized_value > 2097152 )
+        {
+            quantized_value = 2097152;
+        }
+        if ( quantized_value < -2097152 )
+        {
+            quantized_value = -2097152;
+        }
+        output.linear_velocity_z = int32_t( quantized_value );
+    }
+    output.flags = input.flags;
+    output.team = input.team;
+}
+
+inline void UnquantizeDynamicProp( const DynamicPropData_Shallow & input, DynamicPropData_Interpolate & output )
+{
+    output.prop_type = input.prop_type;
+    output.position.x = double( input.position_x ) / double( PositionUnits );
+    output.position.y = double( input.position_y ) / double( PositionUnits );
+    output.position.z = double( input.position_z ) / double( PositionUnits );
+    output.rotation.x = double( input.rotation_x ) / double( RotationUnits );
+    output.rotation.y = double( input.rotation_y ) / double( RotationUnits );
+    output.rotation.z = double( input.rotation_z ) / double( RotationUnits );
+    output.rotation.w = double( input.rotation_w ) / double( RotationUnits );
+    output.linear_velocity.x = double( input.linear_velocity_x ) / double( VelocityUnits );
+    output.linear_velocity.y = double( input.linear_velocity_y ) / double( VelocityUnits );
+    output.linear_velocity.z = double( input.linear_velocity_z ) / double( VelocityUnits );
+    output.flags = input.flags;
+    output.team = input.team;
+}
+
 // ---- object Turret — one definition, a generated family per target (SPEC §4.8) ----
 
 // TurretState — the full simulation struct: every field
@@ -330,5 +1265,169 @@ struct TurretData_Interpolate {
     Quat rotation;
     uint64_t flags = 0;
 };
+
+inline constexpr int64_t TurretData_DeepMaxBits = 350;
+inline constexpr int64_t TurretData_DeepMaxBytes = 44;
+
+inline bool WriteTurretData_Deep( serialize::WriteStream & stream, const TurretData_Deep & value )
+{
+    if ( !WriteHandle( stream, value.parent ) )
+    {
+        return false;
+    }
+    write_int( stream, value.turret_index, 0, MaxTurretsPerShip - 1 );
+    if ( !WriteQuat( stream, value.rotation ) )
+    {
+        return false;
+    }
+    write_bits( stream, value.flags, 64 );
+    return true;
+}
+
+inline bool ReadTurretData_Deep( serialize::ReadStream & stream, TurretData_Deep & value )
+{
+    if ( !ReadHandle( stream, value.parent ) )
+    {
+        return false;
+    }
+    read_int( stream, value.turret_index, 0, MaxTurretsPerShip - 1 );
+    if ( !ReadQuat( stream, value.rotation ) )
+    {
+        return false;
+    }
+    read_bits( stream, value.flags, 64 );
+    return true;
+}
+
+inline constexpr int64_t TurretData_ShallowMaxBits = 142;
+inline constexpr int64_t TurretData_ShallowMaxBytes = 18;
+
+inline bool WriteTurretData_Shallow( serialize::WriteStream & stream, const TurretData_Shallow & value )
+{
+    if ( !WriteHandle( stream, value.parent ) )
+    {
+        return false;
+    }
+    write_int( stream, value.turret_index, 0, MaxTurretsPerShip - 1 );
+    write_int( stream, value.rotation_x, -1024, 1024 );
+    write_int( stream, value.rotation_y, -1024, 1024 );
+    write_int( stream, value.rotation_z, -1024, 1024 );
+    write_int( stream, value.rotation_w, -1024, 1024 );
+    write_bits( stream, value.flags, 64 );
+    return true;
+}
+
+inline bool ReadTurretData_Shallow( serialize::ReadStream & stream, TurretData_Shallow & value )
+{
+    if ( !ReadHandle( stream, value.parent ) )
+    {
+        return false;
+    }
+    read_int( stream, value.turret_index, 0, MaxTurretsPerShip - 1 );
+    {
+        int32_t component_value = 0;
+        read_int( stream, component_value, -1024, 1024 );
+        value.rotation_x = int16_t( component_value );
+    }
+    {
+        int32_t component_value = 0;
+        read_int( stream, component_value, -1024, 1024 );
+        value.rotation_y = int16_t( component_value );
+    }
+    {
+        int32_t component_value = 0;
+        read_int( stream, component_value, -1024, 1024 );
+        value.rotation_z = int16_t( component_value );
+    }
+    {
+        int32_t component_value = 0;
+        read_int( stream, component_value, -1024, 1024 );
+        value.rotation_w = int16_t( component_value );
+    }
+    read_bits( stream, value.flags, 64 );
+    return true;
+}
+
+inline void QuantizeTurret( const TurretData_Interpolate & input, TurretData_Shallow & output )
+{
+    output.parent = input.parent;
+    output.turret_index = input.turret_index;
+    {
+        int64_t quantized_value = int64_t( floor( double( input.rotation.x ) * double( RotationUnits ) + 0.5 ) );
+        if ( quantized_value > 1024 )
+        {
+            quantized_value = 1024;
+        }
+        if ( quantized_value < -1024 )
+        {
+            quantized_value = -1024;
+        }
+        output.rotation_x = int16_t( quantized_value );
+    }
+    {
+        int64_t quantized_value = int64_t( floor( double( input.rotation.y ) * double( RotationUnits ) + 0.5 ) );
+        if ( quantized_value > 1024 )
+        {
+            quantized_value = 1024;
+        }
+        if ( quantized_value < -1024 )
+        {
+            quantized_value = -1024;
+        }
+        output.rotation_y = int16_t( quantized_value );
+    }
+    {
+        int64_t quantized_value = int64_t( floor( double( input.rotation.z ) * double( RotationUnits ) + 0.5 ) );
+        if ( quantized_value > 1024 )
+        {
+            quantized_value = 1024;
+        }
+        if ( quantized_value < -1024 )
+        {
+            quantized_value = -1024;
+        }
+        output.rotation_z = int16_t( quantized_value );
+    }
+    {
+        int64_t quantized_value = int64_t( floor( double( input.rotation.w ) * double( RotationUnits ) + 0.5 ) );
+        if ( quantized_value > 1024 )
+        {
+            quantized_value = 1024;
+        }
+        if ( quantized_value < -1024 )
+        {
+            quantized_value = -1024;
+        }
+        output.rotation_w = int16_t( quantized_value );
+    }
+    output.flags = input.flags;
+}
+
+inline void UnquantizeTurret( const TurretData_Shallow & input, TurretData_Interpolate & output )
+{
+    output.parent = input.parent;
+    output.turret_index = input.turret_index;
+    output.rotation.x = double( input.rotation_x ) / double( RotationUnits );
+    output.rotation.y = double( input.rotation_y ) / double( RotationUnits );
+    output.rotation.z = double( input.rotation_z ) / double( RotationUnits );
+    output.rotation.w = double( input.rotation_w ) / double( RotationUnits );
+    output.flags = input.flags;
+}
+
+// The object tag wire: ObjectType in [0, 4], minimal bits; None = 0 is the
+// null — the sentinel the surveyed baseline streams terminate with (SPEC §4.8).
+inline bool WriteObjectType( serialize::WriteStream & stream, ObjectType value )
+{
+    write_int( stream, int32_t( value ), 0, 4 );
+    return true;
+}
+
+inline bool ReadObjectType( serialize::ReadStream & stream, ObjectType & value )
+{
+    int32_t tag_value = 0;
+    read_int( stream, tag_value, 0, 4 );
+    value = ObjectType( tag_value );
+    return true;
+}
 
 } // namespace example

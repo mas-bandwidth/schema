@@ -1050,8 +1050,8 @@ func (c *checker) resolveAttrs(kind declKind, owner string, f *ast.Field, out *i
 			c.errf(byKey["resolution"].Pos, "resolution applies to float fields (SPEC §4.6)")
 			return
 		}
-		if out.Type.Kind == ir.TFloat64 && kind != objectD {
-			c.errf(f.Pos, "field %s: the compressed float is float32 (SPEC §4.3) — float64 takes the triple only as an object-view projection (SPEC §4.8 rule 4)", f.Name)
+		if out.Type.Kind == ir.TFloat64 && !(kind == objectD && out.Interpolate) {
+			c.errf(f.Pos, "field %s: the compressed float is float32 (SPEC §4.3) — float64 takes the triple only as an [interpolate] object-view projection (SPEC §4.8 rule 4)", f.Name)
 			return
 		}
 		if !(hasMin && hasMax && hasRes) {

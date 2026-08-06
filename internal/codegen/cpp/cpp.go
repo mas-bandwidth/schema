@@ -162,6 +162,7 @@ type gen struct {
 	emitted        map[string]bool // consts of this file emitted so far (symbolic-reference safety)
 	needsSerialize bool            // the file emits wire functions -> include "serialize.h"
 	needsCstring   bool            // the file emits memset -> include <cstring>
+	needsCmath     bool            // the file emits floor() -> include <cmath>
 }
 
 func (g *gen) pf(format string, args ...any) {
@@ -174,6 +175,9 @@ func (g *gen) assemble() []byte {
 	fmt.Fprintf(&h, "// package %s — protocol id 0x%016x\n\n", g.unit.Package, g.unit.ProtocolId)
 	h.WriteString("#pragma once\n\n")
 	h.WriteString("#include <cstdint>\n")
+	if g.needsCmath {
+		h.WriteString("#include <cmath>\n")
+	}
 	if g.needsCstring {
 		h.WriteString("#include <cstring>\n")
 	}
@@ -240,11 +244,15 @@ func (g *gen) emitFile(carriesProtocolId bool) {
 			g.emitStructFunctions(d)
 		case *ir.Object:
 			g.emitObject(d)
+			g.emitObjectFunctions(d)
 		}
 	}
 
 	if g.fileHasMessages() {
 		g.emitMessageTagFunctions()
+	}
+	if g.fileHasObjects() {
+		g.emitObjectTagFunctions()
 	}
 }
 

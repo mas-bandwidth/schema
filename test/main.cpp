@@ -334,6 +334,77 @@ int main()
         check( std::memcmp( buffer, twin_buffer, (size_t) ws.GetBytesProcessed() ) == 0 );
     }
 
+    // ---- the object views: Quantize/Unquantize and the two wires (SPEC §4.8) ----
+    {
+        ShipData_Interpolate interp;
+        interp.ship_type = ShipType::Corvette;
+        interp.position = { 1.5, -2.25, 100.0 };
+        interp.rotation = { 0.0, 0.0, 0.0, 1.0 };
+        interp.linear_velocity = { 3.0, 0.0, -1.0 };
+        interp.flags = ShipFlags_Boosting;
+        interp.team = Team::Red;
+        interp.health = 750; // wire-int domain (rule 5)
+        interp.thrust = 55;
+
+        ShipData_Shallow q;
+        QuantizeShip( interp, q );
+        check( q.position_x == 1536 );          // 1.5 * 1024
+        check( q.position_y == -2304 );         // -2.25 * 1024
+        check( q.rotation_w == 1024 );          // 1.0 * 1024
+        check( q.health == 750 && q.thrust == 55 ); // projected fields copy
+        check( q.team == Team::Red && q.flags == ShipFlags_Boosting );
+
+        // the shallow wire round-trips the quantized struct
+        serialize::WriteStream ws( buffer, sizeof( buffer ) );
+        check( WriteShipData_Shallow( ws, q ) );
+        ws.Flush();
+        ShipData_Shallow q2;
+        serialize::ReadStream rs( buffer, ws.GetBytesProcessed() );
+        check( ReadShipData_Shallow( rs, q2 ) );
+        check( q2.position_x == 1536 && q2.rotation_w == 1024 && q2.health == 750 );
+
+        // unquantize recovers within one step of the scale
+        ShipData_Interpolate back;
+        UnquantizeShip( q2, back );
+        check( back.position.x == 1536.0 / 1024.0 );
+        check( back.position.y == -2304.0 / 1024.0 );
+        check( back.rotation.w == 1.0 );
+        check( back.health == 750 && back.team == Team::Red );
+
+        // the deep wire: [interpolate] float triples ride as BARE floats here —
+        // the view-encoding attributes describe the shallow wire only (SPEC §4.8)
+        ShipData_Deep deep;
+        deep.ship_type = ShipType::Carrier;
+        deep.health = 333.25f; // fractional survives the deep wire exactly
+        deep.laser_index = 15;
+        deep.target.object_id = 4242;
+        deep.lock_start_time = 12.5;
+        serialize::WriteStream ws2( buffer, sizeof( buffer ) );
+        check( WriteShipData_Deep( ws2, deep ) );
+        ws2.Flush();
+        ShipData_Deep deep2;
+        serialize::ReadStream rs2( buffer, ws2.GetBytesProcessed() );
+        check( ReadShipData_Deep( rs2, deep2 ) );
+        check( deep2.ship_type == ShipType::Carrier );
+        check( deep2.health == 333.25f );
+        check( deep2.laser_index == 15 && deep2.target.object_id == 4242 );
+        check( deep2.lock_start_time == 12.5 );
+    }
+
+    // ---- the object tag wire ----
+    {
+        serialize::WriteStream ws( buffer, sizeof( buffer ) );
+        check( WriteObjectType( ws, ObjectType::Turret ) );
+        check( WriteObjectType( ws, ObjectType::None ) ); // the baseline sentinel
+        ws.Flush();
+        serialize::ReadStream rs( buffer, ws.GetBytesProcessed() );
+        ObjectType tag = ObjectType::None;
+        check( ReadObjectType( rs, tag ) );
+        check( tag == ObjectType::Turret );
+        check( ReadObjectType( rs, tag ) );
+        check( tag == ObjectType::None );
+    }
+
     if ( touch_generated_types() != 0 )
         return 1;
 
