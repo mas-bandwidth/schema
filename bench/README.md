@@ -8,8 +8,9 @@ Message dispatch surface) for steady-state throughput.
 
 `bench/run.sh` builds and runs whichever language runners are available and
 collects everything into one CSV under `bench/results/`. The C++ runner
-(`bench/cpp/bench_main.cpp`) is the reference implementation; the go/rust/cs
-runners land with their serialize ports and plug in per the contract below.
+(`bench/cpp/bench_main.cpp`) is the reference implementation; the go, rust,
+and cs runners (`bench/go`, `bench/rust`, `bench/cs`) are its ports, wired
+per the contract below.
 
 ## Running
 
@@ -110,4 +111,5 @@ A runner is a standalone program in `bench/<lang>/` that:
 - **cs**: `bench/cs/*.csproj` (wiring like `test/cs`) — run as
   `dotnet run -c Release -- --csv`
 
-Until a runner lands, `run.sh` prints `SKIP <lang>` with the reason.
+If a runner or its toolchain is missing, `run.sh` prints `SKIP <lang>`
+with the reason.

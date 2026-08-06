@@ -1,13 +1,20 @@
-# bench/rust — STUB: the Rust runner lands with the serialize.rs port
+# bench/rust — the Rust runner
 
-Entry point `run.sh` expects: `bench/rust/Cargo.toml` + `src/main.rs`
-(manifest wired like `test/rust/Cargo.toml` — path dependencies on
-`../../generated/rust` and the sibling serialize.rs checkout). Run as
-`cargo run --release -- --csv`.
+`src/main.rs` is the Rust port of the C++ reference
+(`bench/cpp/bench_main.cpp`): same pinned corpus instances, same `vary_*`
+field mappings, same LCG (wrapping mul/add), same batch builder, golden +
+round-trip self-checks before any number is produced (a corpus mismatch
+REFUSES to bench), warmup + 7 runs + median/min/max/spread, CSV rows with
+`lang=rust`. Full contract: `bench/README.md`.
 
-Port the C++ reference exactly (`bench/cpp/bench_main.cpp`): the `pin_*`
-instances, the `vary_*` field mappings, the LCG (wrapping mul/add), the
-batch builder, the golden + round-trip self-checks, warmup + 7 runs +
-median/min/max/spread, and the CSV row format with `lang=rust`. Use
-`std::hint::black_box` as the escape barrier. Full contract:
-`bench/README.md`.
+Wiring: `Cargo.toml` path-depends on `../../generated/rust` and the sibling
+serialize.rs checkout, exactly like `test/rust`. `run.sh` runs it as
+`cargo run --release -- --csv` from this directory (default release
+profile: opt-level 3, no LTO).
+
+Escape barrier: `std::hint::black_box` on the written buffer and every
+decoded value. Streams borrow their buffers, so per-iteration construction
+is free — the C++ shape exactly; the generic driver monomorphizes and
+inlines like the C++ template reference. One deliberate API-shape cost:
+`read_message` returns the ~2 KB `Message` enum by value, which the batch
+read pays per message.

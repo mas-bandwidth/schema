@@ -63,6 +63,16 @@ case "$(uname -s)" in
     *) CPU="$(grep -m1 'model name' /proc/cpuinfo | sed 's/.*: //')" ;;
 esac
 
+# language toolchain versions — every CSV carries its exact builders
+GO_VERSION="$(go version 2>/dev/null | head -1 || true)"
+RUST_VERSION=""
+if command -v cargo >/dev/null 2>&1; then
+    RUST_VERSION="$(cargo --version 2>/dev/null | head -1); $(rustc --version 2>/dev/null | head -1)"
+elif [ -x /opt/homebrew/opt/rustup/bin/cargo ]; then
+    RUST_VERSION="$(/opt/homebrew/opt/rustup/bin/cargo --version | head -1); $(/opt/homebrew/opt/rustup/bin/rustc --version | head -1)"
+fi
+DOTNET_VERSION="$(dotnet --version 2>/dev/null | head -1 || true)"
+
 # Release flags: the schema repo's own flags (-std=c++17 -Wall -Wextra -Werror
 # -ffp-contract=off) plus the serialize repo's Release bench configuration
 # (-O3 -DNDEBUG -fno-rtti, SERIALIZE_RELEASE). Deliberate divergence from
@@ -93,6 +103,9 @@ emit_preamble() {
         echo "# build: $build"
         echo "# cpp compiler: $($CXX_BIN --version 2>/dev/null | head -1)"
         echo "# cpp flags: $([ "$build" = Release ] && echo "$RELEASE_FLAGS" || echo "$DEBUG_FLAGS")"
+        echo "# go: ${GO_VERSION:-not present} (go run, default optimized build)"
+        echo "# rust: ${RUST_VERSION:-not present} (cargo run --release: opt-level 3, no LTO)"
+        echo "# dotnet: ${DOTNET_VERSION:-not present} (dotnet run -c Release, workstation GC)"
         echo "# pinning: $PIN_DESC"
         echo "# noise: ${BENCH_NOISE:-unlabelled}"
         echo "# schema commit: $(git rev-parse --short HEAD 2>/dev/null || echo unknown)"

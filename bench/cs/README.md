@@ -1,14 +1,22 @@
-# bench/cs — STUB: the C# runner lands with the serialize.cs port
+# bench/cs — the C# runner
 
-Entry point `run.sh` expects: `bench/cs/schemabench.csproj` + `src/`
-(wired like `test/cs/schematest.csproj` — `<Compile Include>` items for
-`../../generated/cs` and the sibling serialize.cs runtime sources). Run as
-`dotnet run -c Release -- --csv`.
+`src/Program.cs` is the C# port of the C++ reference
+(`bench/cpp/bench_main.cpp`): same pinned corpus instances, same `vary_*`
+field mappings, same LCG (unchecked ulong arithmetic), same batch builder,
+golden + round-trip self-checks before any number is produced (a corpus
+mismatch REFUSES to bench), warmup + 7 runs + median/min/max/spread, CSV
+rows with `lang=cs`. Full contract: `bench/README.md`.
 
-Port the C++ reference exactly (`bench/cpp/bench_main.cpp`): the `pin_*`
-instances, the `vary_*` field mappings, the LCG (unchecked arithmetic), the
-batch builder, the golden + round-trip self-checks, warmup + 7 runs +
-median/min/max/spread, and the CSV row format with `lang=cs`. Keep results
-observed (e.g. a static sink field + `GC.KeepAlive`) so the JIT cannot
-eliminate the work; do a real JIT warmup run per path. Full contract:
-`bench/README.md`.
+Wiring: `schemabench.csproj` compiles `../../generated/cs` beside the
+sibling serialize.cs runtime sources, exactly like `test/cs`. `run.sh` runs
+it as `dotnet run -c Release -- --csv` from this directory; the per-path
+warmup run doubles as the JIT warmup.
+
+Escape barriers: a static sink field accumulates observed bytes/counts and
+`GC.KeepAlive` holds decoded objects. Streams are reused via `Reset` (the
+runtime's documented no-allocation reuse path). The read path decodes into
+one reused instance per bench — the `MessageStorage` discipline, the C#
+stand-in for C++'s free stack temporary (§5 zeroing makes reuse equivalent
+on every field that rides). The driver passes write/read/vary as delegates:
+one indirect call per op that the C++ and Rust drivers don't pay; noted
+with the results.
