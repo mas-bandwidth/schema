@@ -1319,6 +1319,9 @@ func (c *checker) checkTargetNames() {
 					case *ast.Field:
 						checkName(item.Name, item.Pos, "field name")
 						register(item.Pos, item.Name, goExportName(item.Name), "")
+						if owner != "" && goExportName(item.Name) == owner {
+							c.errf(item.Pos, "field %s's exported name equals its declaring type %s — C# forbids a member sharing its enclosing type's name; rename at the source (SPEC §4.6)", item.Name, owner)
+						}
 						// generated companion storage claims names too: the
 						// used length beside string/bytes, the used count
 						// beside a counted array (SPEC §6.1)
@@ -1340,13 +1343,23 @@ func (c *checker) checkTargetNames() {
 			case *ast.TypeDecl:
 				walkBlock(d.Body, d.Name, map[string]claim{})
 			case *ast.MessageDecl:
+				// the C# dispatch property is named Type, and a C# member
+				// cannot share its enclosing class's name — a message named
+				// Type has no compilable C# class
+				if d.Name == "Type" {
+					c.errf(d.DeclPos(), "message Type collides with its own generated C# Type dispatch property (a member cannot share its enclosing class's name) — rename at the source (SPEC §4.6)")
+				}
 				// the Go dispatch surface gives every message a MessageType()
-				// method, so a field exporting to that name cannot compile
+				// method, and the C# dispatch gives every message a Type
+				// property — a field exporting to either name cannot compile
 				walkBlock(d.Body, d.Name, map[string]claim{
 					"MessageType": {as: "the generated MessageType dispatch method (SPEC §6.1 item 6)"},
+					"Type":        {as: "the generated Type dispatch property (C#, SPEC §6.1 item 6)"},
 				})
 			case *ast.ObjectDecl:
-				walkBlock(d.Body, d.Name, map[string]claim{})
+				// owner "" — objects generate XState/XData_* classes, never a
+				// class named X, so the member-equals-class refusal cannot apply
+				walkBlock(d.Body, "", map[string]claim{})
 			case *ast.EnumDecl:
 				for _, v := range d.Variants {
 					checkName(v.Text, v.Pos, "enum variant")
@@ -1396,6 +1409,9 @@ func (c *checker) checkClaimedNames() {
 		add(gen, "a name the generated Rust references unqualified (imports and prelude)", unitPos)
 	}
 	add("ErrValidation", "the unit's generated ErrValidation (Go)", unitPos)
+	// the C# target's one namespace-level home for functions and constants:
+	// a declaration named Schema would collide with the static class itself
+	add("Schema", "the generated C# Schema class", unitPos)
 	add("PROTOCOL_ID", "the unit's generated PROTOCOL_ID (Rust form)", unitPos)
 	add("Error", "the unit's generated Error type (Rust form)", unitPos)
 	add("Result", "the unit's generated Result alias (Rust form)", unitPos)
@@ -1515,6 +1531,7 @@ func (c *checker) addStructSymbols(add func(name, what string, pos ast.Pos), add
 	add("Write"+name, why, pos)
 	add("Read"+name, why, pos)
 	add("New"+name, why, pos)
+	add("Zero"+name, why, pos) // the C# §5 zero-form helper (branch zeroing, storage reset)
 	add(name+"MaxBits", why, pos)
 	add(name+"MaxBytes", why, pos)
 	whyRust := fmt.Sprintf("type %s's generated functions and constants (Rust form)", name)

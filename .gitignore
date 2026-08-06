@@ -5,5 +5,8 @@
 /generated/rust/Cargo.lock
 /test/rust/target/
 /test/rust/Cargo.lock
+/test/cs/bin/
+/test/cs/obj/
 generated/go/.stamp
 generated/rust/.stamp
+generated/cs/.stamp

@@ -18,6 +18,7 @@ import (
 
 	"github.com/mas-bandwidth/schema/internal/check"
 	"github.com/mas-bandwidth/schema/internal/codegen/cpp"
+	"github.com/mas-bandwidth/schema/internal/codegen/csharp"
 	"github.com/mas-bandwidth/schema/internal/codegen/golang"
 	"github.com/mas-bandwidth/schema/internal/codegen/rust"
 	"github.com/mas-bandwidth/schema/internal/format"
@@ -152,6 +153,17 @@ func TestGoldenSourceRust(t *testing.T) {
 		t.Fatal(err)
 	}
 	pinDir(t, filepath.Join(goldenDir, "rust"), files)
+}
+
+// TestGoldenSourceCs pins the generated C# byte-for-byte (SPEC §7.2 gate 1,
+// fourth target).
+func TestGoldenSourceCs(t *testing.T) {
+	u := loadCorpus(t)
+	files, err := csharp.Generate(u)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pinDir(t, filepath.Join(goldenDir, "cs"), files)
 }
 
 // pinDir compares (or, under -update, rewrites) one directory of goldens.

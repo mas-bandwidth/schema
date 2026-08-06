@@ -262,13 +262,13 @@ static bool equal( const Synchronize & a, const Synchronize & b )
 
 static void fill( Rng & r, Timescale & t )
 {
-    t.timescale = r.real( 0.01, 100.0 );
+    t.scale = r.real( 0.01, 100.0 );
     t.frame_a = (uint32_t) r.next();
     t.frame_b = (uint32_t) r.next();
 }
 static bool equal( const Timescale & a, const Timescale & b )
 {
-    return a.timescale == b.timescale && a.frame_a == b.frame_a && a.frame_b == b.frame_b;
+    return a.scale == b.scale && a.frame_a == b.frame_a && a.frame_b == b.frame_b;
 }
 
 // ---- object views ----

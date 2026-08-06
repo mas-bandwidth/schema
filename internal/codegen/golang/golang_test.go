@@ -10,6 +10,7 @@ import (
 
 	"github.com/mas-bandwidth/schema/internal/check"
 	"github.com/mas-bandwidth/schema/internal/codegen/cpp"
+	"github.com/mas-bandwidth/schema/internal/codegen/csharp"
 	"github.com/mas-bandwidth/schema/internal/codegen/rust"
 	"github.com/mas-bandwidth/schema/internal/ir"
 	"github.com/mas-bandwidth/schema/internal/parser"
@@ -83,6 +84,24 @@ func TestDispatchSurfaceEmittedOnce(t *testing.T) {
 	// both messages ride the one dispatch enum, in the owner file
 	if got := countAcross(rustFiles, "(value) => {"); got != 2 {
 		t.Errorf("Rust: expected 2 write dispatch arms (one per message), got %d", got)
+	}
+
+	csFiles, err := csharp.Generate(u)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, needle := range []string{
+		"public enum MessageType", "public abstract class Message", "public sealed class MessageStorage",
+		"public static bool WriteMessage(", "public static bool ReadMessage(", "public static bool WriteMessageType(",
+		"public enum ObjectType", "public static bool WriteObjectType(",
+	} {
+		if got := countAcross(csFiles, needle); got != 1 {
+			t.Errorf("C#: %q emitted %d times across the unit — the compilation cannot succeed unless it is exactly once", needle, got)
+		}
+	}
+	// both messages carry the dispatch property, beside their own class
+	if got := countAcross(csFiles, "public override MessageType Type =>"); got != 2 {
+		t.Errorf("C#: expected 2 Type dispatch overrides (one per message), got %d", got)
 	}
 
 	for _, mode := range []string{"union", "variant"} {

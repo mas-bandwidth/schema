@@ -43,7 +43,7 @@ message Synchronize {
 }
 
 message Timescale {
-    timescale float64
-    frame_a   uint32
-    frame_b   uint32
+    scale   float64
+    frame_a uint32
+    frame_b uint32
 }

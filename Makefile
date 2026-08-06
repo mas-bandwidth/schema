@@ -5,12 +5,14 @@ CXX      ?= c++
 CXXFLAGS ?= -std=c++17 -Wall -Wextra -Werror -ffp-contract=off
 
 # the classic serialize runtime the generated C++ targets (header-only), the
-# Go port the generated Go targets, and the Rust port the generated Rust
-# targets (sibling checkouts; test/go/go.mod and test/rust/Cargo.toml carry
-# the same relative paths)
+# Go port the generated Go targets, the Rust port the generated Rust targets,
+# and the C# port the generated C# targets (sibling checkouts; test/go/go.mod,
+# test/rust/Cargo.toml and test/cs/schematest.csproj carry the same relative
+# paths)
 SERIALIZE    ?= ../serialize-cs-port/serialize
 SERIALIZE_GO ?= ../serialize-cs-port/serialize.go
 SERIALIZE_RS ?= ../serialize-cs-port/serialize.rs
+SERIALIZE_CS ?= ../serialize-cs-port/serialize.cs
 CXXFLAGS     += -I$(SERIALIZE)
 
 # cargo lives in the rustup keg, which is not on PATH by default
@@ -51,6 +53,12 @@ generated/rust/.stamp: bin/schema $(SCHEMAS)
 	@printf '[package]\nname = "example"\nversion = "0.0.0"\nedition = "2024"\n\n[dependencies]\nserialize = { path = "../../$(SERIALIZE_RS)" }\n' > generated/rust/Cargo.toml
 	@touch $@
 
+# the C# target: generated sources only — test/cs/schematest.csproj compiles
+# them beside the serialize.cs runtime via <Compile Include> items
+generated/cs/.stamp: bin/schema $(SCHEMAS)
+	./bin/schema generate --lang cs --out generated/cs examples
+	@touch $@
+
 build/schema_test: generated/.stamp test/main.cpp test/second.cpp
 	@mkdir -p build
 	$(CXX) $(CXXFLAGS) -Igenerated test/main.cpp test/second.cpp -o $@
@@ -63,12 +71,13 @@ build/schema_test_random: generated/.stamp test/random_main.cpp
 	@mkdir -p build
 	$(CXX) $(CXXFLAGS) -Igenerated test/random_main.cpp -o $@
 
-test: build/schema_test build/schema_test_variant build/schema_test_random generated/go/.stamp generated/rust/.stamp
+test: build/schema_test build/schema_test_variant build/schema_test_random generated/go/.stamp generated/rust/.stamp generated/cs/.stamp
 	./build/schema_test
 	./build/schema_test_variant
 	./build/schema_test_random
 	cd test/go && go run .
 	cd test/rust && PATH="$(RUSTUP_BIN):$$PATH" cargo run --quiet
+	cd test/cs && dotnet run
 	go test ./...
 
 # Re-pin the goldens DELIBERATELY (SPEC §7.2 gates 1, 2, 7). A wire golden

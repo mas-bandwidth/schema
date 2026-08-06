@@ -1,0 +1,26 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- The C# wire-test console project: compiles the generated C# beside the
+       serialize.cs runtime (sibling checkout, same relative-path convention as
+       the Go and Rust test projects) and runs src/Program.cs — the twin of
+       test/go/main.go. TreatWarningsAsErrors is the refuser for the generated
+       source; no test framework, exit code = verdict (the family rule). -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <!-- annotations, not disable: Serialize.cs carries `object?` annotations,
+         which warn (CS8632 -> error) outside an annotation context; the
+         annotations context admits them without enabling nullable warnings,
+         which the annotation-free generated code would otherwise trip. -->
+    <Nullable>annotations</Nullable>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <AssemblyName>schematest</AssemblyName>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="../../generated/cs/*.cs" />
+    <Compile Include="../../../serialize-cs-port/serialize.cs/src/Serialize.cs" />
+  </ItemGroup>
+
+</Project>
