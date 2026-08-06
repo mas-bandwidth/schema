@@ -1455,7 +1455,14 @@ paragraph previously said one file per target per unit — `<package>.schema.h` 
 stands as the sketch for the single-file targets until each is implemented; per-file
 output is the decided C++ shape.)* **The Go target (BUILT 2026-08-05) mirrors it: one
 `.go` file per schema file, all in `package <package>` — Go packages are order-free
-across files, so there is no topo sort and no include graph to refuse.** Each generated
+across files, so there is no topo sort and no include graph to refuse. The Rust target
+(BUILT 2026-08-06): one module per schema file (lowercased basename) plus a generated
+`lib.rs` declaring and glob re-exporting them; the C# target (BUILT 2026-08-06): one
+`.cs` file per schema file, types at namespace level and every function and constant on
+`public static partial class Schema`, in `namespace <Package>`. The unit-level dispatch
+surface (the tag enums, tag pairs, dispatch value and functions) is emitted exactly ONCE
+per unit in every target, in the topologically last carrying file, so declarations
+spread across files never redeclare it.** Each generated
 file is headed by the source file's BASENAME (never an invocation-relative path — the
 same input must produce the same bytes wherever the compiler runs), the protocol id, and
 a do-not-edit line. Output is **deterministic to the byte** for identical input; no
@@ -1570,21 +1577,22 @@ never change meaning), and it verifies its own idempotence on every run.
 
 ### 7.2 Testing
 
-**Status 2026-08-05 (late): gates 1, 2 and 7 are LIVE for the C++ AND Go targets, and
-gate 4's first pair is live in pinned-instance form** — `testdata/golden/` pins the
-generated source of both C++ message representations AND the Go package byte-for-byte
-plus the protocol id; `testdata/wire/` pins eleven instances' wire bytes, written by the
-C++ test and **byte-compared by the Go test (`test/go`), so C++↔Go wire identity is a
+**Status 2026-08-06: gates 1, 2 and 7 are LIVE for ALL FOUR TARGETS, and gate 4 is live
+in pinned-instance form across the whole matrix** — `testdata/golden/` pins the
+generated source of both C++ message representations, the Go package, the Rust crate and
+the C# sources byte-for-byte plus the protocol id; `testdata/wire/` pins eleven
+instances' wire bytes, written by the C++ test and **byte-compared by the Go, Rust and
+C# tests (`test/go`, `test/rust`, `test/cs`), so cross-language wire identity is a
 standing gate, not an assumption** (the C++ test also proves the two message
 representations produce identical bytes); a fmt-drift gate asserts the corpus stays
-formatter-canonical; and the Go test asserts the readers agree on what they REJECT
-(interior nulls, nonzero reserved bits, corrupted constants, out-of-range counts — with
-truncation surfacing as the stream's own error, never a content verdict). `make test`
-runs all of it; `make update-goldens` re-pins DELIBERATELY. Gate 3 (the oracle) exists in
-seed form — the RigidBody and string classic twins in `test/main.cpp` — and grows with
-the corpus; gate 4's full random matrix and gate 5 wait on the remaining backends; gate 6
-is live in diagnostics-suite form (the break-the-language suite, 50+ cases), with fuzzing
-owed. Gate 6's diagnostics now also cover generated-name collisions: companion
+formatter-canonical; and each target's test asserts the readers agree on what they
+REJECT (interior nulls, nonzero reserved bits, corrupted constants, out-of-range
+counts — with truncation surfacing as the stream's own error, never a content verdict).
+`make test` runs all of it — six binaries; `make update-goldens` re-pins DELIBERATELY.
+Gate 3 (the oracle) exists in seed form — the RigidBody and string classic twins in
+`test/main.cpp` — and grows with the corpus; gate 4's full random matrix and gate 5 are
+the remaining conformance work now that all four targets exist; gate 6 is live in
+diagnostics-suite form (the break-the-language suite, 60+ cases), with fuzzing owed. Gate 6's diagnostics now also cover generated-name collisions: companion
 length/count names, the Go dispatch method, and the per-declaration generated symbols
 (Write*/Read*/New*/\*MaxBits/\*MaxBytes) are claimed names the checker refuses.
 

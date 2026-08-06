@@ -630,6 +630,19 @@ func formatFloat(v float64) string {
 	return s
 }
 
+// formatFloat32 renders a compressed-float parameter at FLOAT32 precision:
+// the shortest literal that parses to exactly float32(v) in every target
+// language — the same narrowing ir.CompressedFloatBits computes widths with,
+// so all four targets and the advertised MaxBits agree even at f32 rounding
+// ties (a 64-bit literal re-rounded per-language can land on different f32s).
+func formatFloat32(v float64) string {
+	s := strconv.FormatFloat(v, 'g', -1, 32)
+	if !strings.ContainsAny(s, ".eE") {
+		s += ".0"
+	}
+	return s
+}
+
 func capitalize(s string) string {
 	if s == "" {
 		return s

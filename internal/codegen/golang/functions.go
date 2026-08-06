@@ -296,7 +296,7 @@ func (g *gen) emitWriteScalar(f *ir.Field, name, ind string) {
 			// a temp so the wire quantization cannot write back into the input
 			g.pf("%s{\n%s\tcompressedValue := %s\n", ind, ind, name)
 			g.pf("%s\tstream.SerializeCompressedFloat32(&compressedValue, %s, %s, %s)\n%s}\n",
-				ind, formatFloat(f.FMin), formatFloat(f.FMax), formatFloat(f.Resolution), ind)
+				ind, formatFloat32(f.FMin), formatFloat32(f.FMax), formatFloat32(f.Resolution), ind)
 			return
 		}
 		g.pf("%sstream.SerializeFloat32(&%s)\n", ind, name)
@@ -427,7 +427,7 @@ func (g *gen) emitReadScalar(f *ir.Field, name, ind string) {
 	case ir.TFloat32:
 		if f.HasFloatRange {
 			g.pf("%sstream.SerializeCompressedFloat32(&%s, %s, %s, %s)\n",
-				ind, name, formatFloat(f.FMin), formatFloat(f.FMax), formatFloat(f.Resolution))
+				ind, name, formatFloat32(f.FMin), formatFloat32(f.FMax), formatFloat32(f.Resolution))
 			return
 		}
 		g.pf("%sstream.SerializeFloat32(&%s)\n", ind, name)

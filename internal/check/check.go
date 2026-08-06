@@ -500,6 +500,11 @@ func (c *checker) resolveEnum(d *ast.EnumDecl) *ir.Enum {
 			c.errf(a.Pos, "enum %s [max = %s] is below its variant count %d (SPEC §4.6)", d.Name, v, max)
 			continue
 		}
+		if v.Int64() > math.MaxInt32 {
+			// the enum wire rides the 32-bit ranged call in every target
+			c.errf(a.Pos, "enum %s [max = %s] exceeds the 32-bit tag wire's ceiling %d (SPEC §4.6)", d.Name, v, int64(math.MaxInt32))
+			continue
+		}
 		max = v.Int64()
 	}
 	en := &ir.Enum{Name: d.Name, Variants: variants, Max: max, StorageBits: ir.StorageBitsFor(max)}
@@ -1078,6 +1083,17 @@ func (c *checker) resolveAttrs(kind declKind, owner string, f *ast.Field, out *i
 			c.errf(byKey["min"].Pos, "degenerate float range [%g, %g] — min must be below max (SPEC §4.6)", fmin, fmax)
 			return
 		}
+		// every runtime narrows the triple to FLOAT32 at the call; a triple
+		// that only survives in float64 generates code that throws/panics
+		// unconditionally — including on the hostile-read path
+		if float32(res) <= 0 {
+			c.errf(byKey["resolution"].Pos, "resolution %g collapses to zero at float32, where every runtime evaluates it (SPEC §4.6)", res)
+			return
+		}
+		if float32(fmin) >= float32(fmax) {
+			c.errf(byKey["min"].Pos, "float range [%g, %g] is degenerate at float32, where every runtime evaluates it (SPEC §4.6)", fmin, fmax)
+			return
+		}
 		steps := math.Ceil((fmax - fmin) / res)
 		if math.IsNaN(steps) || steps < 1 || steps > 4294967295 {
 			c.errf(byKey["resolution"].Pos,
@@ -1357,9 +1373,22 @@ func (c *checker) checkTargetNames() {
 					"Type":        {as: "the generated Type dispatch property (C#, SPEC §6.1 item 6)"},
 				})
 			case *ast.ObjectDecl:
-				// owner "" — objects generate XState/XData_* classes, never a
-				// class named X, so the member-equals-class refusal cannot apply
-				walkBlock(d.Body, "", map[string]claim{})
+				// objects generate XState/XData_*/CtxXState classes, never a
+				// class named X — but a FIELD exporting to one of those class
+				// names lands INSIDE that class and C# forbids a member
+				// sharing its enclosing class's name (CS0542), so the family
+				// names are seeded as claims
+				family := map[string]claim{}
+				for _, cls := range []string{d.Name + "State", d.Name + "Data_Deep", d.Name + "Data_Shallow", d.Name + "Data_Interpolate"} {
+					family[cls] = claim{as: "the generated " + cls + " class name (a C# member cannot share its enclosing class's name)"}
+				}
+				if c.ctxDecl != nil {
+					for _, ctx := range c.unit.Contexts {
+						cls := capitalize(ctx) + d.Name + "State"
+						family[cls] = claim{as: "the generated " + cls + " class name (a C# member cannot share its enclosing class's name)"}
+					}
+				}
+				walkBlock(d.Body, "", family)
 			case *ast.EnumDecl:
 				for _, v := range d.Variants {
 					checkName(v.Text, v.Pos, "enum variant")

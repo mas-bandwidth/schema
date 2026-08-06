@@ -195,16 +195,16 @@ func (g *gen) emitZeroField(f *ir.Field, ind string) {
 	switch {
 	case f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes:
 		g.needsSystem = true
-		g.sf("%sArray.Clear(%s, 0, %s.Length);\n%svalue.%s = 0;\n", ind, name, name, ind, g.m(base+"Length"))
+		g.sf("%sArray.Clear(%s, 0, %s);\n%svalue.%s = 0;\n", ind, name, g.renderArg(f.Type.SizeExpr, big.NewInt(f.Type.Size), "int", false), ind, g.m(base+"Length"))
 	case f.Array != ir.ArrayNone:
 		if _, isStruct := f.Type.Ref.(*ir.Struct); isStruct && f.Type.Kind == ir.TNamed {
 			// clearing a class array would null the pre-allocated elements —
-			// zero through them instead
-			g.sf("%sfor (int i = 0; i < %s.Length; i++)\n%s{\n", ind, name, ind)
+			// zero through them instead (the SCHEMA bound, like the wire loops)
+			g.sf("%sfor (int i = 0; i < %s; i++)\n%s{\n", ind, g.renderArg(f.ArrayExpr, big.NewInt(f.ArrayBound), "int", false), ind)
 			g.sf("%s    Zero%s(%s[i]);\n%s}\n", ind, f.Type.Name, name, ind)
 		} else {
 			g.needsSystem = true
-			g.sf("%sArray.Clear(%s, 0, %s.Length);\n", ind, name, name)
+			g.sf("%sArray.Clear(%s, 0, %s);\n", ind, name, g.renderArg(f.ArrayExpr, big.NewInt(f.ArrayBound), "int", false))
 		}
 		if f.Array == ir.ArrayCounted {
 			g.sf("%svalue.%s = 0;\n", ind, g.m(base+"Count"))
@@ -271,7 +271,9 @@ func (g *gen) emitWriteField(f *ir.Field, ind string) {
 				" // the count guards the loop (§6.3); the runtime refuses out-of-range on write")
 			g.sf("%sfor (int i = 0; i < %s; i++)\n%s{\n", ind, count, ind)
 		} else {
-			g.sf("%sfor (int i = 0; i < %s.Length; i++)\n%s{\n", ind, name, ind)
+			// the SCHEMA bound, never the storage's Length: reassigned-short
+			// storage must fault loudly, not silently write fewer elements
+			g.sf("%sfor (int i = 0; i < %s; i++)\n%s{\n", ind, g.renderArg(f.ArrayExpr, big.NewInt(f.ArrayBound), "int", false), ind)
 		}
 		g.emitWriteScalar(f, name+"[i]", ind+"    ")
 		g.sf("%s}\n", ind)
@@ -430,7 +432,8 @@ func (g *gen) emitReadField(f *ir.Field, ind string) {
 				" // the count guards the loop (§6.3)")
 			g.sf("%sfor (int i = 0; i < %s; i++)\n%s{\n", ind, count, ind)
 		} else {
-			g.sf("%sfor (int i = 0; i < %s.Length; i++)\n%s{\n", ind, name, ind)
+			// the SCHEMA bound, never the storage's Length (see the write twin)
+			g.sf("%sfor (int i = 0; i < %s; i++)\n%s{\n", ind, g.renderArg(f.ArrayExpr, big.NewInt(f.ArrayBound), "int", false), ind)
 		}
 		g.emitReadScalar(f, name+"[i]", ind+"    ")
 		g.sf("%s}\n", ind)

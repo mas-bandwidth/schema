@@ -322,7 +322,7 @@ public static partial class Schema
         value.HasTarget = false;
         value.TargetId = 0;
         value.IdleTicks = 0;
-        Array.Clear(value.Samples, 0, value.Samples.Length);
+        Array.Clear(value.Samples, 0, 8);
         value.SamplesCount = 0;
     }
 
@@ -548,7 +548,7 @@ public static partial class Schema
     // defaults live in construction only and are NOT reapplied here.
     public static void ZeroProbeArray(ProbeArray value)
     {
-        for (int i = 0; i < value.Samples.Length; i++)
+        for (int i = 0; i < 2; i++)
         {
             ZeroProbeSample(value.Samples[i]);
         }
@@ -557,7 +557,7 @@ public static partial class Schema
 
     public static bool WriteProbeArray(WriteStream stream, ProbeArray value)
     {
-        for (int i = 0; i < value.Samples.Length; i++)
+        for (int i = 0; i < 2; i++)
         {
             if (!WriteProbeSample(stream, value.Samples[i]))
             {
@@ -573,7 +573,7 @@ public static partial class Schema
 
     public static bool ReadProbeArray(ReadStream stream, ProbeArray value)
     {
-        for (int i = 0; i < value.Samples.Length; i++)
+        for (int i = 0; i < 2; i++)
         {
             if (!ReadProbeSample(stream, value.Samples[i]))
             {
@@ -662,7 +662,7 @@ public static partial class Schema
         value.E = 0;
         value.F = 0;
         value.G = false;
-        Array.Clear(value.Items, 0, value.Items.Length);
+        Array.Clear(value.Items, 0, 16);
         value.ItemsCount = 0;
         value.FloatValue = 0.0f;
         value.CompressedFloatValue = 0.0f;
@@ -675,8 +675,8 @@ public static partial class Schema
         value.Uint64Value = 0;
         value.Int64Full = 0;
         value.Int64Range = 0;
-        Array.Clear(value.FixedBytes, 0, value.FixedBytes.Length);
-        Array.Clear(value.Text, 0, value.Text.Length);
+        Array.Clear(value.FixedBytes, 0, 17);
+        Array.Clear(value.Text, 0, 255);
         value.TextLength = 0;
     }
 
@@ -787,7 +787,7 @@ public static partial class Schema
         {
             return false;
         }
-        for (int i = 0; i < value.FixedBytes.Length; i++)
+        for (int i = 0; i < 17; i++)
         {
             {
                 uint rawValue = value.FixedBytes[i];
@@ -917,7 +917,7 @@ public static partial class Schema
         {
             return false;
         }
-        for (int i = 0; i < value.FixedBytes.Length; i++)
+        for (int i = 0; i < 17; i++)
         {
             {
                 uint rawValue = 0;

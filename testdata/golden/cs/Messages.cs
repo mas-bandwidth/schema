@@ -224,7 +224,7 @@ public static partial class Schema
     // defaults live in construction only and are NOT reapplied here.
     public static void ZeroBlock(Block value)
     {
-        Array.Clear(value.BlockData, 0, value.BlockData.Length);
+        Array.Clear(value.BlockData, 0, (int)MaxBlockSize);
         value.BlockDataLength = 0;
     }
 
@@ -263,7 +263,7 @@ public static partial class Schema
     // defaults live in construction only and are NOT reapplied here.
     public static void ZeroChat(Chat value)
     {
-        Array.Clear(value.Text, 0, value.Text.Length);
+        Array.Clear(value.Text, 0, (int)MaxChatLength);
         value.TextLength = 0;
     }
 

@@ -694,7 +694,7 @@ public static partial class Schema
         value.SynchronizeSequence = 0;
         value.CurrentFrame = 0;
         value.StartFrame = 0;
-        for (int i = 0; i < value.Inputs.Length; i++)
+        for (int i = 0; i < (int)MaxInputsPerPacket; i++)
         {
             ZeroInput(value.Inputs[i]);
         }
