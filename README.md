@@ -21,6 +21,25 @@ language, moved out of the templates and into an external compiler.
 Versioning is by **protocol id** — a hash of the schema itself, computed by the compiler. Two
 sides at the same protocol id speak identical bits; there is no versioning overhead on the wire.
 
+## Performance
+
+Generated-code throughput of the four backends relative to C++ (medians across the corpus
+benchmarks; mixed-dispatch batch shown separately). Apple M2, quiet host, 2026-08-06 baseline —
+full tables, raw CSVs and methodology in [bench/results/](bench/results/):
+
+| backend | write | read | batch write | batch read |
+|---|---:|---:|---:|---:|
+| C++ | 1.00 | 1.00 | 1.00 | 1.00 |
+| Rust | 0.58x | 0.41x | 0.63x | 0.67x |
+| C# | 0.42x | 0.33x | 0.62x | **1.26x** |
+| Go | 0.33x | 0.14x | 0.42x | 1.01x |
+
+The spread behind the medians is wide and systematic: C++'s lead is an inlining margin that
+grows as messages shrink (on 6–10 byte messages it reaches 6–16x), while on the mixed batch the
+gap closes and C# reads fastest of all four. Numbers move as optimization lands — the Go read
+median predates a read-path fix measured at +14–69% — so treat the table as a dated snapshot,
+not a verdict.
+
 `notes/` holds extracted API references for the three target runtimes, gathered 2026-08-04 as
 design inputs — re-verify against each library's source at implementation time.
 
