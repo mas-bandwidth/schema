@@ -15,20 +15,8 @@ The idea is extracted from
 [serialize.modern](https://github.com/mas-bandwidth/serialize.modern)'s compile-time schema
 language, moved out of the templates and into an external compiler.
 
-> **Status: all four v1 backends are live** (implementation started 2026-08-05). `make`
-> builds the compiler, generates C++ headers, a Go package, a Rust crate and C# sources
-> from [`examples/`](examples/) into `generated/`, and runs the test suite — six
-> binaries: the C++ tests (both message representations plus a randomized round-trip
-> suite) and the Go, Rust and C# wire tests, each byte-comparing its output against the
-> same eleven C++-pinned wire goldens — **cross-language wire identity is a standing
-> gate** — plus the break-the-language diagnostics suite (60+ ways the language refuses
-> to break) and the source/id/wire golden pins. Each backend emits the code a careful
-> expert would write against its serialize runtime: split `Write`/`Read` per type,
-> per-target dispatch (C++ tagged union or opt-in `std::variant`; Go interface + storage;
-> Rust enum; C# abstract class + storage), object view families with
-> `Quantize`/`Unquantize` (deterministic across targets and architectures), zero
-> initialization with specified defaults, and schemafmt canonicalizing every input.
-> Start with [SPEC.md](SPEC.md).
+> **Status: all four v1 backends — C++, Go, Rust and C# — are live**, and
+> cross-language wire identity is a standing test gate. Start with [SPEC.md](SPEC.md).
 
 Versioning is by **protocol id** — a hash of the schema itself, computed by the compiler. Two
 sides at the same protocol id speak identical bits; there is no versioning overhead on the wire.

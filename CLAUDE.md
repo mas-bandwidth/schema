@@ -13,6 +13,19 @@
   caught a real gap every time it ran by hand, and it is now mechanical: `make check`
   runs the compiler over the corpus, and `make` proves the generated C++ compiles, links
   and runs.
+- **What `make` proves, in full** (moved here from README 2026-08-06 — too dense for the
+  human front page, load-bearing for a working session): all four v1 backends live; `make`
+  builds the compiler, generates C++ headers (`generated/cpp/`), a Go package, a Rust
+  crate and C# sources from `examples/`, and runs six binaries — the C++ tests (both
+  message representations plus a randomized round-trip suite) and the Go, Rust and C#
+  wire tests, each byte-comparing against the same eleven C++-pinned wire goldens
+  (cross-language wire identity is a standing gate) — plus the break-the-language
+  diagnostics suite (60+ refusal cases) and the source/id/wire golden pins. Each backend
+  emits what a careful expert would write against its serialize runtime: split
+  `Write`/`Read` per type; per-target dispatch (C++ tagged union or opt-in
+  `std::variant`; Go interface + storage; Rust enum; C# abstract class + storage); object
+  view families with deterministic `Quantize`/`Unquantize`; zero initialization with
+  specified defaults; `schemafmt` canonicalizing every input in place.
 - **Trajectory** (Glenn, 2026-08-05): once design settles and implementation starts, this
   repo represents the most recent state only, not the total history of everything —
   prune toward that; git history is the archive.
