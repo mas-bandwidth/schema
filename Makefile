@@ -4,12 +4,17 @@
 CXX      ?= c++
 CXXFLAGS ?= -std=c++17 -Wall -Wextra -Werror -ffp-contract=off
 
-# the classic serialize runtime the generated C++ targets (header-only), and
-# the Go port the generated Go targets (a sibling checkout; test/go/go.mod
-# carries the same relative path)
+# the classic serialize runtime the generated C++ targets (header-only), the
+# Go port the generated Go targets, and the Rust port the generated Rust
+# targets (sibling checkouts; test/go/go.mod and test/rust/Cargo.toml carry
+# the same relative paths)
 SERIALIZE    ?= ../serialize-cs-port/serialize
 SERIALIZE_GO ?= ../serialize-cs-port/serialize.go
+SERIALIZE_RS ?= ../serialize-cs-port/serialize.rs
 CXXFLAGS     += -I$(SERIALIZE)
+
+# cargo lives in the rustup keg, which is not on PATH by default
+RUSTUP_BIN ?= /opt/homebrew/opt/rustup/bin
 
 GO_SOURCES := $(shell find cmd internal -name '*.go') go.mod
 SCHEMAS    := $(wildcard examples/*.schema)
@@ -38,6 +43,14 @@ generated/go/.stamp: bin/schema $(SCHEMAS)
 	@printf 'module example\n\ngo 1.23\n\nrequire github.com/mas-bandwidth/serialize.go v0.0.0\n\nreplace github.com/mas-bandwidth/serialize.go => ../../$(SERIALIZE_GO)\n' > generated/go/go.mod
 	@touch $@
 
+# the Rust target: generated crate + manifest wiring (the Cargo.toml is build
+# wiring, not schema output — the emitter writes only .rs files; the manifest
+# sits one level above src/, so the runtime path gains one more ../)
+generated/rust/.stamp: bin/schema $(SCHEMAS)
+	./bin/schema generate --lang rust --out generated/rust/src examples
+	@printf '[package]\nname = "example"\nversion = "0.0.0"\nedition = "2024"\n\n[dependencies]\nserialize = { path = "../../$(SERIALIZE_RS)" }\n' > generated/rust/Cargo.toml
+	@touch $@
+
 build/schema_test: generated/.stamp test/main.cpp test/second.cpp
 	@mkdir -p build
 	$(CXX) $(CXXFLAGS) -Igenerated test/main.cpp test/second.cpp -o $@
@@ -50,11 +63,12 @@ build/schema_test_random: generated/.stamp test/random_main.cpp
 	@mkdir -p build
 	$(CXX) $(CXXFLAGS) -Igenerated test/random_main.cpp -o $@
 
-test: build/schema_test build/schema_test_variant build/schema_test_random generated/go/.stamp
+test: build/schema_test build/schema_test_variant build/schema_test_random generated/go/.stamp generated/rust/.stamp
 	./build/schema_test
 	./build/schema_test_variant
 	./build/schema_test_random
 	cd test/go && go run .
+	cd test/rust && PATH="$(RUSTUP_BIN):$$PATH" cargo run --quiet
 	go test ./...
 
 # Re-pin the goldens DELIBERATELY (SPEC §7.2 gates 1, 2, 7). A wire golden

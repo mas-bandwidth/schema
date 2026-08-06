@@ -10,6 +10,7 @@ import (
 
 	"github.com/mas-bandwidth/schema/internal/check"
 	"github.com/mas-bandwidth/schema/internal/codegen/cpp"
+	"github.com/mas-bandwidth/schema/internal/codegen/rust"
 	"github.com/mas-bandwidth/schema/internal/ir"
 	"github.com/mas-bandwidth/schema/internal/parser"
 )
@@ -65,6 +66,23 @@ func TestDispatchSurfaceEmittedOnce(t *testing.T) {
 	// both messages' dispatch methods live with the surface, in the owner file
 	if got := countAcross(goFiles, ") MessageType() MessageType {"); got != 2 {
 		t.Errorf("Go: expected 2 dispatch methods (one per message), got %d", got)
+	}
+
+	rustFiles, err := rust.Generate(u)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, needle := range []string{
+		"pub struct MessageType(", "pub enum Message {", "pub fn write_message(", "pub fn read_message(",
+		"pub fn write_message_type(", "pub struct ObjectType(", "pub fn write_object_type(",
+	} {
+		if got := countAcross(rustFiles, needle); got != 1 {
+			t.Errorf("Rust: %q emitted %d times across the unit — the crate cannot compile unless it is exactly once", needle, got)
+		}
+	}
+	// both messages ride the one dispatch enum, in the owner file
+	if got := countAcross(rustFiles, "(value) => {"); got != 2 {
+		t.Errorf("Rust: expected 2 write dispatch arms (one per message), got %d", got)
 	}
 
 	for _, mode := range []string{"union", "variant"} {

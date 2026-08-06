@@ -1389,16 +1389,26 @@ func (c *checker) checkClaimedNames() {
 	unitPos := ast.Pos{}
 	add("ProtocolId", "the unit's generated ProtocolId", unitPos)
 	add("ErrValidation", "the unit's generated ErrValidation (Go)", unitPos)
+	add("PROTOCOL_ID", "the unit's generated PROTOCOL_ID (Rust form)", unitPos)
+	add("Error", "the unit's generated Error type (Rust form)", unitPos)
+	add("Result", "the unit's generated Result alias (Rust form)", unitPos)
 	hasMessages := countMessages(c.astDecls) > 0
 	if hasMessages {
 		for _, gen := range []string{"MessageType", "MessageTypeNone", "Message", "MessageStorage",
 			"WriteMessage", "ReadMessage", "WriteMessageType", "ReadMessageType", "MessageMaxBits", "MessageMaxBytes"} {
 			add(gen, "the generated message dispatch surface", unitPos)
 		}
+		for _, gen := range []string{"write_message", "read_message", "write_message_type",
+			"read_message_type", "MESSAGE_MAX_BITS", "MESSAGE_MAX_BYTES"} {
+			add(gen, "the generated message dispatch surface (Rust form)", unitPos)
+		}
 	}
 	if len(c.objects) > 0 {
 		for _, gen := range []string{"ObjectType", "ObjectTypeNone", "WriteObjectType", "ReadObjectType"} {
 			add(gen, "the generated object tag surface", unitPos)
+		}
+		for _, gen := range []string{"write_object_type", "read_object_type"} {
+			add(gen, "the generated object tag surface (Rust form)", unitPos)
 		}
 	}
 
@@ -1407,12 +1417,29 @@ func (c *checker) checkClaimedNames() {
 		declNames = append(declNames, name)
 	}
 	sort.Strings(declNames)
+	// addRust registers a derived Rust spelling beside its Go/C++ siblings,
+	// skipping a spelling that coincides with one already registered for the
+	// same declaration (identical names would self-collide, not collide).
+	addRust := func(name, what string, pos ast.Pos, siblings ...string) {
+		for _, s := range siblings {
+			if s == name {
+				return
+			}
+		}
+		add(name, what, pos)
+	}
+
 	for _, name := range declNames {
 		d := c.astDecls[name]
 		add(name, fmt.Sprintf("declaration %s", name), d.DeclPos())
 		switch d := d.(type) {
+		case *ast.ConstDecl:
+			// the Rust target spells constants SCREAMING_SNAKE in the flat
+			// crate namespace
+			addRust(ir.RustConstName(name), fmt.Sprintf("const %s's generated constant (Rust form)", name), d.DeclPos(), name)
 		case *ast.EnumDecl:
 			// the Go target flattens variants into the package namespace
+			// (Rust variants are associated consts — nothing flat to claim)
 			add(name+"None", fmt.Sprintf("enum %s's generated None constant", name), d.Pos)
 			for _, v := range d.Variants {
 				add(name+v.Text, fmt.Sprintf("enum %s's generated variant constant", name), v.Pos)
@@ -1421,11 +1448,15 @@ func (c *checker) checkClaimedNames() {
 			for _, v := range d.Variants {
 				add(name+v.Text, fmt.Sprintf("flags %s's generated mask constant (Go form)", name), v.Pos)
 				add(name+"_"+v.Text, fmt.Sprintf("flags %s's generated mask constant (C++ form)", name), v.Pos)
+				addRust(ir.RustConstName(name)+"_"+ir.RustConstName(v.Text),
+					fmt.Sprintf("flags %s's generated mask constant (Rust form)", name), v.Pos,
+					name+v.Text, name+"_"+v.Text)
 			}
 		case *ast.TypeDecl:
-			c.addStructSymbols(add, name, d.DeclPos())
+			c.addStructSymbols(add, addRust, name, d.DeclPos())
 		case *ast.MessageDecl:
-			c.addStructSymbols(add, name, d.DeclPos())
+			c.addStructSymbols(add, addRust, name, d.DeclPos())
+			// the Rust tag constant is associated (MessageType::NAME) — no flat claim
 			add("MessageType"+name, fmt.Sprintf("message %s's generated tag constant", name), d.DeclPos())
 		case *ast.ObjectDecl:
 			pos := d.DeclPos()
@@ -1442,6 +1473,15 @@ func (c *checker) checkClaimedNames() {
 				add(name+view+"MaxBits", why, pos)
 				add(name+view+"MaxBytes", why, pos)
 			}
+			whyRust := fmt.Sprintf("object %s's generated family (Rust form)", name)
+			addRust("quantize_"+ir.RustSnake(name), whyRust, pos, "Quantize"+name)
+			addRust("unquantize_"+ir.RustSnake(name), whyRust, pos, "Unquantize"+name)
+			for _, view := range []string{"Data_Deep", "Data_Shallow"} {
+				addRust("write_"+ir.RustSnake(name+view), whyRust, pos, "Write"+name+view)
+				addRust("read_"+ir.RustSnake(name+view), whyRust, pos, "Read"+name+view)
+				addRust(ir.RustConstName(name+view+"MaxBits"), whyRust, pos, name+view+"MaxBits")
+				addRust(ir.RustConstName(name+view+"MaxBytes"), whyRust, pos, name+view+"MaxBytes")
+			}
 			add("ObjectType"+name, fmt.Sprintf("object %s's generated tag constant", name), pos)
 			for _, ctx := range c.unit.Contexts {
 				add(capitalize(ctx)+name+"State", fmt.Sprintf("object %s's generated %s-context state", name, ctx), pos)
@@ -1451,14 +1491,20 @@ func (c *checker) checkClaimedNames() {
 }
 
 // addStructSymbols registers the per-type generated names shared by types and
-// messages: the split functions, the constructor, and the size constants.
-func (c *checker) addStructSymbols(add func(name, what string, pos ast.Pos), name string, pos ast.Pos) {
+// messages: the split functions, the constructor, and the size constants —
+// plus their flat Rust spellings (new() is associated and claims nothing).
+func (c *checker) addStructSymbols(add func(name, what string, pos ast.Pos), addRust func(name, what string, pos ast.Pos, siblings ...string), name string, pos ast.Pos) {
 	why := fmt.Sprintf("type %s's generated functions and constants", name)
 	add("Write"+name, why, pos)
 	add("Read"+name, why, pos)
 	add("New"+name, why, pos)
 	add(name+"MaxBits", why, pos)
 	add(name+"MaxBytes", why, pos)
+	whyRust := fmt.Sprintf("type %s's generated functions and constants (Rust form)", name)
+	addRust("write_"+ir.RustSnake(name), whyRust, pos, "Write"+name)
+	addRust("read_"+ir.RustSnake(name), whyRust, pos, "Read"+name)
+	addRust(ir.RustConstName(name+"MaxBits"), whyRust, pos, name+"MaxBits")
+	addRust(ir.RustConstName(name+"MaxBytes"), whyRust, pos, name+"MaxBytes")
 }
 
 func countMessages(decls map[string]ast.Decl) int {

@@ -221,6 +221,47 @@ func GoExportName(name string) string {
 	return string(out)
 }
 
+// RustSnake is the one true mapping from an UpperCamelCase declaration name
+// to its snake_case Rust spelling (functions, modules): ShipCreate ->
+// ship_create, ABTest -> ab_test, ShipData_Deep -> ship_data_deep (an
+// explicit underscore collapses with the derived one). The checker's
+// claimed-name registry and the Rust backend must share it, or the check lies.
+func RustSnake(name string) string {
+	out := make([]byte, 0, len(name)+4)
+	for i := 0; i < len(name); i++ {
+		c := name[i]
+		if c >= 'A' && c <= 'Z' {
+			prevLower := i > 0 && name[i-1] >= 'a' && name[i-1] <= 'z'
+			nextLower := i+1 < len(name) && name[i+1] >= 'a' && name[i+1] <= 'z'
+			if i > 0 && (prevLower || nextLower) && len(out) > 0 && out[len(out)-1] != '_' {
+				out = append(out, '_')
+			}
+			out = append(out, c-'A'+'a')
+			continue
+		}
+		if c == '_' && len(out) > 0 && out[len(out)-1] == '_' {
+			continue // collapse doubled separators (ShipData_Deep)
+		}
+		out = append(out, c)
+	}
+	return string(out)
+}
+
+// RustConstName is the SCREAMING_SNAKE Rust constant spelling of a
+// declaration name: MaxHealth -> MAX_HEALTH, ChatMaxBits -> CHAT_MAX_BITS.
+func RustConstName(name string) string {
+	s := RustSnake(name)
+	out := make([]byte, len(s))
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		if c >= 'a' && c <= 'z' {
+			c = c - 'a' + 'A'
+		}
+		out[i] = c
+	}
+	return string(out)
+}
+
 // StorageBitsFor returns the smallest unsigned storage width holding max.
 func StorageBitsFor(max int64) int {
 	switch {

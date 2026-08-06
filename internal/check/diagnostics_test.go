@@ -152,6 +152,10 @@ func TestDiagnostics(t *testing.T) {
 			src: "package t\ntype T {\n    items [<= 4]uint8\n    items_count uint8\n}\n"},
 		{name: "message field would shadow the dispatch method", want: "dispatch method",
 			src: "package t\nmessage M { message_type uint8 }\n"},
+		{name: "two types whose Rust snake spellings collide", want: "both generate the symbol write_ab_test",
+			src: "package t\ntype ABTest { x uint8 }\ntype AbTest { y uint8 }\n"},
+		{name: "two consts whose Rust constant spellings collide", want: "both generate the symbol AB_MAX",
+			src: "package t\nconst ABMax = 1\nconst AbMax = 2\n"},
 		{name: "package mismatch across files", want: "does not match",
 			srcs: map[string]string{
 				"A.schema": "package a\ntype T { x uint8 }\n",

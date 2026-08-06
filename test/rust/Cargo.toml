@@ -1,0 +1,8 @@
+[package]
+name = "schematest"
+version = "0.0.0"
+edition = "2024"
+
+[dependencies]
+example = { path = "../../generated/rust" }
+serialize = { path = "../../../serialize-cs-port/serialize.rs" }

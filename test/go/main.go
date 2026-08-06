@@ -489,14 +489,18 @@ func main() {
 		rs3 := serialize.NewReadStream(corrupt2)
 		check(example.ReadProbeHeader(rs3, &out3) == example.ErrValidation, "a nonzero reserved bit is rejected")
 
-		// an out-of-range array count is refused before any element rides
-		ws, _ := newWriteStream()
-		badCount := uint32(17) // InputPacket's count rides 5 bits over [0, 16]
-		ws.SerializeBits(&badCount, 5)
-		ws.Flush()
+		// an out-of-range array count is refused before any element rides —
+		// corrupt the count bits INSIDE a complete valid wire (the preamble is
+		// 16+64+64 = 144 bits, so the 5-bit count sits at byte 18 bits 0-4),
+		// so the refusal is the RANGE check, not a truncation overflow
+		packetGolden, err := os.ReadFile("../../testdata/wire/inputpacket.bin")
+		checkErr(err, "read inputpacket golden for corruption")
+		corrupt3 := append([]byte(nil), packetGolden...)
+		corrupt3[18] = (corrupt3[18] &^ 0x1F) | 17 // count 2 -> 17, over [0, 16]
 		out4 := example.InputPacket{}
-		rs4 := serialize.NewReadStream(ws.Data())
-		check(example.ReadInputPacket(rs4, &out4) != nil, "an out-of-range count is refused before the loop")
+		rs4 := serialize.NewReadStream(corrupt3)
+		err = example.ReadInputPacket(rs4, &out4)
+		check(err != nil && err != example.ErrValidation, "an out-of-range count is refused before the loop")
 	}
 
 	// ---- RigidBody: the moving branch read back whole ----

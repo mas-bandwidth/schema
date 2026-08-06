@@ -1,3 +1,7 @@
 /bin/
 /build/
 /generated/.stamp
+/generated/rust/target/
+/generated/rust/Cargo.lock
+/test/rust/target/
+/test/rust/Cargo.lock

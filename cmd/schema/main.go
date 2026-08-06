@@ -16,6 +16,7 @@ import (
 	"github.com/mas-bandwidth/schema/internal/check"
 	"github.com/mas-bandwidth/schema/internal/codegen/cpp"
 	"github.com/mas-bandwidth/schema/internal/codegen/golang"
+	"github.com/mas-bandwidth/schema/internal/codegen/rust"
 	"github.com/mas-bandwidth/schema/internal/format"
 	"github.com/mas-bandwidth/schema/internal/ir"
 	"github.com/mas-bandwidth/schema/internal/parser"
@@ -41,7 +42,7 @@ func main() {
 		}
 	case "generate":
 		fs := flag.NewFlagSet("generate", flag.ExitOnError)
-		lang := fs.String("lang", "cpp", "target language (cpp, go; cs and rust to come)")
+		lang := fs.String("lang", "cpp", "target language (cpp, go, rust; cs to come)")
 		out := fs.String("out", "generated", "output directory")
 		cppMessage := fs.String("cpp-message", "union", "C++ message representation: union (default) or variant")
 		fs.Parse(os.Args[2:])
@@ -53,8 +54,10 @@ func main() {
 			files, err = cpp.Generate(unit, cpp.Options{MessageRepr: *cppMessage})
 		case "go":
 			files, err = golang.Generate(unit)
+		case "rust":
+			files, err = rust.Generate(unit)
 		default:
-			fatalf("target %q is not implemented yet — cpp and go are the live targets", *lang)
+			fatalf("target %q is not implemented yet — cpp, go and rust are the live targets", *lang)
 		}
 		if err != nil {
 			fatalf("%v", err)
@@ -83,7 +86,7 @@ func main() {
 func usage() {
 	fmt.Fprintf(os.Stderr, `usage:
   schema check    [dir|files...]
-  schema generate [--lang cpp|go] [--cpp-message union|variant] [--out generated] [dir|files...]
+  schema generate [--lang cpp|go|rust] [--cpp-message union|variant] [--out generated] [dir|files...]
   schema id       [dir|files...]
   schema fmt      [dir|files...]
 

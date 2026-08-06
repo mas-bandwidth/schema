@@ -19,6 +19,7 @@ import (
 	"github.com/mas-bandwidth/schema/internal/check"
 	"github.com/mas-bandwidth/schema/internal/codegen/cpp"
 	"github.com/mas-bandwidth/schema/internal/codegen/golang"
+	"github.com/mas-bandwidth/schema/internal/codegen/rust"
 	"github.com/mas-bandwidth/schema/internal/format"
 	"github.com/mas-bandwidth/schema/internal/ir"
 	"github.com/mas-bandwidth/schema/internal/parser"
@@ -140,6 +141,17 @@ func TestGoldenSourceGo(t *testing.T) {
 		t.Fatal(err)
 	}
 	pinDir(t, filepath.Join(goldenDir, "go"), files)
+}
+
+// TestGoldenSourceRust pins the generated Rust byte-for-byte (SPEC §7.2
+// gate 1, third target).
+func TestGoldenSourceRust(t *testing.T) {
+	u := loadCorpus(t)
+	files, err := rust.Generate(u)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pinDir(t, filepath.Join(goldenDir, "rust"), files)
 }
 
 // pinDir compares (or, under -update, rewrites) one directory of goldens.
