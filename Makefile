@@ -90,6 +90,12 @@ update-goldens: build/schema_test build/schema_test_variant
 	./build/schema_test_variant
 	go test ./...
 
+# the cross-language serialize profiling harness (bench/README.md): builds and
+# runs whichever language runners are available, Release flags, results CSV
+# under bench/results/
+bench:
+	bench/run.sh
+
 check: bin/schema
 	./bin/schema check examples
 
@@ -102,4 +108,4 @@ fmt: bin/schema
 clean:
 	rm -rf bin build generated
 
-.PHONY: all test check id fmt clean update-goldens
+.PHONY: all test check id fmt clean update-goldens bench
