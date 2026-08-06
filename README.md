@@ -25,22 +25,23 @@ sides at the same protocol id speak identical bits; there is no versioning overh
 
 Generated-code performance of the four backends as **time taken relative to C++** — C++ is
 100%, higher is slower: 200% means the same work takes twice as long as C++. Medians across the
-corpus benchmarks; the mixed-dispatch batch shown separately because its ranking inverts.
-Apple M2, quiet host, 2026-08-06 baseline — full tables, raw CSVs and methodology in
-[bench/results/](bench/results/):
+corpus benchmarks; the mixed-dispatch batch shown separately. Apple M2, quiet host, 2026-08-06
+(v2 harness) — full tables, raw CSVs and methodology in [bench/results/](bench/results/):
 
 | backend | write | read | batch write | batch read |
 |---|---:|---:|---:|---:|
 | C++ | 100% | 100% | 100% | 100% |
-| Rust | 173% | 243% | 159% | 148% |
-| C# | 238% | 306% | 161% | **80%** |
-| Go | 300% | 719% | 236% | 99% |
+| Rust | 174% | 259% | 150% | 326% |
+| C# | 249% | 323% | 179% | 189% |
+| Go | 297% | 594% | 230% | 216% |
 
 The spread behind the medians is wide and systematic: C++'s lead is an inlining margin that
-grows as messages shrink (on 6–10 byte messages the others take 600–1600% of C++'s time), while
-on the mixed batch the gap closes and C# reads it in 80% of C++'s time. Numbers move as
-optimization lands — the Go read median predates a read-path fix measured at +14–69%, and the
-C++ batch read has a 2x fix in flight — so treat the table as a dated snapshot, not a verdict.
+grows as messages shrink — on 6–10 byte messages the others take roughly 300–1500% of C++'s
+time. C++ leads every column; an earlier draft of this table showed C# winning the batch read,
+and that turned out to be a benchmark-harness artifact, which is why every number here is gated
+on wire-golden verification before it is believed. Numbers move as optimization lands — several
+measured fixes (Go reads, Rust dispatch, C++ byte paths) are in review — so treat the table as
+a dated snapshot, not a verdict.
 
 `notes/` holds extracted API references for the three target runtimes, gathered 2026-08-04 as
 design inputs — re-verify against each library's source at implementation time.
