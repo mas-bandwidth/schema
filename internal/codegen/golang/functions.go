@@ -576,6 +576,7 @@ func (g *gen) emitMessageTagFunctions() {
 	g.pf("\tcase nil:\n\t\treturn WriteMessageType(stream, MessageTypeNone) // the stream terminator (SPEC §4.8)\n")
 	for _, m := range msgs {
 		g.pf("\tcase *%s:\n", m)
+		g.pf("\t\tif m == nil { // a typed nil is not a writable message; nothing rides\n\t\t\treturn ErrValidation\n\t\t}\n")
 		g.pf("\t\tif err := WriteMessageType(stream, MessageType%s); err != nil {\n\t\t\treturn err\n\t\t}\n", m)
 		g.pf("\t\treturn Write%s(stream, m)\n", m)
 	}

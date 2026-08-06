@@ -271,31 +271,49 @@ func WriteMessage(stream *serialize.WriteStream, message Message) error {
 	case nil:
 		return WriteMessageType(stream, MessageTypeNone) // the stream terminator (SPEC §4.8)
 	case *Block:
+		if m == nil { // a typed nil is not a writable message; nothing rides
+			return ErrValidation
+		}
 		if err := WriteMessageType(stream, MessageTypeBlock); err != nil {
 			return err
 		}
 		return WriteBlock(stream, m)
 	case *Chat:
+		if m == nil { // a typed nil is not a writable message; nothing rides
+			return ErrValidation
+		}
 		if err := WriteMessageType(stream, MessageTypeChat); err != nil {
 			return err
 		}
 		return WriteChat(stream, m)
 	case *Heartbeat:
+		if m == nil { // a typed nil is not a writable message; nothing rides
+			return ErrValidation
+		}
 		if err := WriteMessageType(stream, MessageTypeHeartbeat); err != nil {
 			return err
 		}
 		return WriteHeartbeat(stream, m)
 	case *Synchronize:
+		if m == nil { // a typed nil is not a writable message; nothing rides
+			return ErrValidation
+		}
 		if err := WriteMessageType(stream, MessageTypeSynchronize); err != nil {
 			return err
 		}
 		return WriteSynchronize(stream, m)
 	case *Test:
+		if m == nil { // a typed nil is not a writable message; nothing rides
+			return ErrValidation
+		}
 		if err := WriteMessageType(stream, MessageTypeTest); err != nil {
 			return err
 		}
 		return WriteTest(stream, m)
 	case *Timescale:
+		if m == nil { // a typed nil is not a writable message; nothing rides
+			return ErrValidation
+		}
 		if err := WriteMessageType(stream, MessageTypeTimescale); err != nil {
 			return err
 		}

@@ -56,8 +56,10 @@ func Generate(u *ir.Unit, opts Options) (map[string][]byte, error) {
 	}
 	out := map[string][]byte{}
 	protocolIdHome := protocolIdHome(u)
+	msgOwner := ir.MessageOwner(u)
+	objOwner := ir.ObjectOwner(u)
 	for _, f := range u.Files {
-		g := &gen{unit: u, file: f, opts: opts}
+		g := &gen{unit: u, file: f, opts: opts, msgOwner: msgOwner, objOwner: objOwner}
 		g.emitFile(f.Base == protocolIdHome)
 		out[f.Base+".h"] = g.assemble()
 	}
@@ -102,65 +104,9 @@ func checkUnionMemberNames(u *ir.Unit) error {
 	return nil
 }
 
-// fileDeps collects, per file, the other files its declarations reference —
-// named types by value, and constants named in emitted expressions.
-func fileDeps(u *ir.Unit) map[string]map[string]bool {
-	deps := map[string]map[string]bool{}
-	for _, f := range u.Files {
-		set := map[string]bool{}
-		note := func(name string) {
-			if base, ok := u.DeclFile[name]; ok && base != f.Base {
-				set[base] = true
-			}
-		}
-		var noteExpr func(e ast.Expr)
-		noteExpr = func(e ast.Expr) {
-			switch e := e.(type) {
-			case *ast.IdentExpr:
-				note(e.Name)
-			case *ast.MaxExpr:
-				// folds to a literal — no include needed
-			case *ast.UnaryExpr:
-				noteExpr(e.X)
-			case *ast.BinaryExpr:
-				noteExpr(e.X)
-				noteExpr(e.Y)
-			case *ast.ParenExpr:
-				noteExpr(e.X)
-			}
-		}
-		noteFields := func(fields []*ir.Field) {
-			for _, fld := range fields {
-				if fld.Type.Kind == ir.TNamed {
-					note(fld.Type.Name)
-				}
-				for _, e := range []ast.Expr{fld.ArrayExpr, fld.Type.SizeExpr, fld.DefExpr, fld.QuantScaleExpr, fld.QuantMaxExpr} {
-					if e != nil {
-						noteExpr(e)
-					}
-				}
-			}
-		}
-		for _, d := range f.Decls {
-			switch d := d.(type) {
-			case *ir.Const:
-				if d.Expr != nil {
-					noteExpr(d.Expr)
-				}
-			case *ir.Struct:
-				noteFields(d.Fields)
-			case *ir.Object:
-				noteFields(d.Fields)
-			}
-		}
-		deps[f.Base] = set
-	}
-	return deps
-}
-
 // includeCycle returns a printable cycle among generated headers, or "".
 func includeCycle(u *ir.Unit) string {
-	deps := fileDeps(u)
+	deps := ir.FileDeps(u)
 	const (
 		white = 0
 		grey  = 1
@@ -217,9 +163,11 @@ func protocolIdHome(u *ir.Unit) string {
 }
 
 type gen struct {
-	unit *ir.Unit
-	file *ir.File
-	opts Options
+	unit     *ir.Unit
+	file     *ir.File
+	opts     Options
+	msgOwner string // the one file that carries the message dispatch surface
+	objOwner string // the one file that carries the object tag surface
 
 	body           strings.Builder
 	includes       map[string]bool
@@ -285,12 +233,15 @@ func (g *gen) emitFile(carriesProtocolId bool) {
 		g.pf("inline constexpr uint64_t ProtocolId = 0x%016xull;\n\n", g.unit.ProtocolId)
 	}
 
-	// MessageType / ObjectType lead their aspect files (SPEC §4.8).
-	if g.fileHasMessages() {
+	// MessageType / ObjectType lead their OWNER file — the unit-level surface
+	// is emitted exactly once, in the topologically last carrying file, so
+	// declarations spread across files never redeclare it (SPEC §2 keeps the
+	// aspect layout non-enforced; ir.MessageOwner picks the file).
+	if g.file.Base == g.msgOwner && len(g.unit.Messages) > 0 {
 		g.emitTagEnum("MessageType", g.unit.Messages,
 			"the message set, extracted by the compiler — None = 0, then each message sorted by name (SPEC §4.8)")
 	}
-	if g.fileHasObjects() {
+	if g.file.Base == g.objOwner && len(g.unit.ObjNames) > 0 {
 		g.emitTagEnum("ObjectType", g.unit.ObjNames,
 			"the object set, extracted by the compiler — None = 0, then each object sorted by name (SPEC §4.8)")
 	}
@@ -318,10 +269,10 @@ func (g *gen) emitFile(carriesProtocolId bool) {
 		}
 	}
 
-	if g.fileHasMessages() {
+	if g.file.Base == g.msgOwner && len(g.unit.Messages) > 0 {
 		g.emitMessageTagFunctions()
 	}
-	if g.fileHasObjects() {
+	if g.file.Base == g.objOwner && len(g.unit.ObjNames) > 0 {
 		g.emitObjectTagFunctions()
 	}
 }
@@ -392,24 +343,6 @@ func (g *gen) emissionOrder() []ir.Decl {
 		}
 	}
 	return order
-}
-
-func (g *gen) fileHasMessages() bool {
-	for _, d := range g.file.Decls {
-		if st, ok := d.(*ir.Struct); ok && st.IsMessage {
-			return true
-		}
-	}
-	return false
-}
-
-func (g *gen) fileHasObjects() bool {
-	for _, d := range g.file.Decls {
-		if _, ok := d.(*ir.Object); ok {
-			return true
-		}
-	}
-	return false
 }
 
 func (g *gen) emitTagEnum(name string, members []string, comment string) {

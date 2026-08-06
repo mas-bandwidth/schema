@@ -1362,67 +1362,103 @@ func (c *checker) checkTargetNames() {
 
 // ---- claimed names (SPEC §4.6) ----
 
+// checkClaimedNames builds the FULL top-level symbol table generation will
+// produce — every declaration plus every derived name any target emits (the
+// split functions, constructors, size constants, tag/variant constants, the
+// dispatch surface, the object families) — and refuses ANY duplicate. The
+// registry is one map, so declared-vs-generated AND generated-vs-generated
+// collisions are both caught (a unit whose generated symbols collide with
+// each other cannot compile in any target, whatever the checker thinks).
 func (c *checker) checkClaimedNames() {
-	claim := func(name, why string) {
-		if d, ok := c.astDecls[name]; ok {
-			c.errf(d.DeclPos(), "%s is a claimed name — %s (SPEC §4.6)", name, why)
-		}
+	type origin struct {
+		what string
+		pos  ast.Pos
 	}
-	claim("ProtocolId", "the compiler generates it for the unit")
-	claim("ErrValidation", "the Go target generates it for the unit")
-	if countMessages(c.astDecls) > 0 {
-		claim("MessageType", "a unit with message declarations generates it")
-		claim("Message", "a unit with message declarations generates the dispatch value")
-		claim("MessageStorage", "a unit with message declarations generates the Go read storage")
-		for _, gen := range []string{"WriteMessage", "ReadMessage", "WriteMessageType", "ReadMessageType", "MessageMaxBits", "MessageMaxBytes"} {
-			claim(gen, "a unit with message declarations generates it")
+	registry := map[string]origin{}
+	var add func(name, what string, pos ast.Pos)
+	add = func(name, what string, pos ast.Pos) {
+		if prev, ok := registry[name]; ok {
+			c.errf(pos, "%s collides with %s — both generate the symbol %s; rename at the source (SPEC §4.6)",
+				what, prev.what, name)
+			return
+		}
+		registry[name] = origin{what: what, pos: pos}
+	}
+
+	// unit-level symbols first, so every collision reports at the DECL side
+	unitPos := ast.Pos{}
+	add("ProtocolId", "the unit's generated ProtocolId", unitPos)
+	add("ErrValidation", "the unit's generated ErrValidation (Go)", unitPos)
+	hasMessages := countMessages(c.astDecls) > 0
+	if hasMessages {
+		for _, gen := range []string{"MessageType", "MessageTypeNone", "Message", "MessageStorage",
+			"WriteMessage", "ReadMessage", "WriteMessageType", "ReadMessageType", "MessageMaxBits", "MessageMaxBytes"} {
+			add(gen, "the generated message dispatch surface", unitPos)
 		}
 	}
 	if len(c.objects) > 0 {
-		claim("ObjectType", "a unit with object declarations generates it")
-		claim("WriteObjectType", "a unit with object declarations generates it")
-		claim("ReadObjectType", "a unit with object declarations generates it")
+		for _, gen := range []string{"ObjectType", "ObjectTypeNone", "WriteObjectType", "ReadObjectType"} {
+			add(gen, "the generated object tag surface", unitPos)
+		}
 	}
-	// per-struct generated symbols: the split functions, the constructor, and
-	// the size constants all live in the declaration namespace of every target
-	// (sorted iteration — diagnostics are deterministic)
+
 	declNames := make([]string, 0, len(c.astDecls))
 	for name := range c.astDecls {
 		declNames = append(declNames, name)
 	}
 	sort.Strings(declNames)
 	for _, name := range declNames {
-		switch c.astDecls[name].(type) {
-		case *ast.TypeDecl, *ast.MessageDecl:
-			for _, prefix := range []string{"Write", "Read", "New"} {
-				claim(prefix+name, fmt.Sprintf("generated for type %s", name))
+		d := c.astDecls[name]
+		add(name, fmt.Sprintf("declaration %s", name), d.DeclPos())
+		switch d := d.(type) {
+		case *ast.EnumDecl:
+			// the Go target flattens variants into the package namespace
+			add(name+"None", fmt.Sprintf("enum %s's generated None constant", name), d.Pos)
+			for _, v := range d.Variants {
+				add(name+v.Text, fmt.Sprintf("enum %s's generated variant constant", name), v.Pos)
 			}
-			claim(name+"MaxBits", fmt.Sprintf("generated for type %s", name))
-			claim(name+"MaxBytes", fmt.Sprintf("generated for type %s", name))
+		case *ast.FlagsDecl:
+			for _, v := range d.Variants {
+				add(name+v.Text, fmt.Sprintf("flags %s's generated mask constant (Go form)", name), v.Pos)
+				add(name+"_"+v.Text, fmt.Sprintf("flags %s's generated mask constant (C++ form)", name), v.Pos)
+			}
+		case *ast.TypeDecl:
+			c.addStructSymbols(add, name, d.DeclPos())
+		case *ast.MessageDecl:
+			c.addStructSymbols(add, name, d.DeclPos())
+			add("MessageType"+name, fmt.Sprintf("message %s's generated tag constant", name), d.DeclPos())
+		case *ast.ObjectDecl:
+			pos := d.DeclPos()
+			why := fmt.Sprintf("object %s's generated family", name)
+			add(name+"State", why, pos)
+			add(name+"Data_Deep", why, pos)
+			add(name+"Data_Shallow", why, pos)
+			add(name+"Data_Interpolate", why, pos)
+			add("Quantize"+name, why, pos)
+			add("Unquantize"+name, why, pos)
+			for _, view := range []string{"Data_Deep", "Data_Shallow"} {
+				add("Write"+name+view, why, pos)
+				add("Read"+name+view, why, pos)
+				add(name+view+"MaxBits", why, pos)
+				add(name+view+"MaxBytes", why, pos)
+			}
+			add("ObjectType"+name, fmt.Sprintf("object %s's generated tag constant", name), pos)
+			for _, ctx := range c.unit.Contexts {
+				add(capitalize(ctx)+name+"State", fmt.Sprintf("object %s's generated %s-context state", name, ctx), pos)
+			}
 		}
 	}
-	objNames := make([]string, 0, len(c.objects))
-	for name := range c.objects {
-		objNames = append(objNames, name)
-	}
-	sort.Strings(objNames)
-	for _, name := range objNames {
-		claim(name+"State", fmt.Sprintf("generated by object %s", name))
-		claim(name+"Data_Deep", fmt.Sprintf("generated by object %s", name))
-		claim(name+"Data_Shallow", fmt.Sprintf("generated by object %s", name))
-		claim(name+"Data_Interpolate", fmt.Sprintf("generated by object %s", name))
-		claim("Quantize"+name, fmt.Sprintf("generated by object %s", name))
-		claim("Unquantize"+name, fmt.Sprintf("generated by object %s", name))
-		for _, view := range []string{"Data_Deep", "Data_Shallow"} {
-			claim("Write"+name+view, fmt.Sprintf("generated by object %s", name))
-			claim("Read"+name+view, fmt.Sprintf("generated by object %s", name))
-			claim(name+view+"MaxBits", fmt.Sprintf("generated by object %s", name))
-			claim(name+view+"MaxBytes", fmt.Sprintf("generated by object %s", name))
-		}
-		for _, ctx := range c.unit.Contexts {
-			claim(capitalize(ctx)+name+"State", fmt.Sprintf("generated by object %s in context %s", name, ctx))
-		}
-	}
+}
+
+// addStructSymbols registers the per-type generated names shared by types and
+// messages: the split functions, the constructor, and the size constants.
+func (c *checker) addStructSymbols(add func(name, what string, pos ast.Pos), name string, pos ast.Pos) {
+	why := fmt.Sprintf("type %s's generated functions and constants", name)
+	add("Write"+name, why, pos)
+	add("Read"+name, why, pos)
+	add("New"+name, why, pos)
+	add(name+"MaxBits", why, pos)
+	add(name+"MaxBytes", why, pos)
 }
 
 func countMessages(decls map[string]ast.Decl) int {

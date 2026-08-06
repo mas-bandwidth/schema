@@ -394,6 +394,11 @@ func (g *gen) emitReadScalar(f *ir.Field, name, ind string) {
 // and not part of the contract.
 func (g *gen) emitMessageTagFunctions() {
 	g.needsSerialize = true
+	// the dispatch value holds every message by value — the owner file
+	// includes each message's home (safe: the owner is topologically last)
+	for _, m := range g.unit.Messages {
+		g.noteRef(m)
+	}
 	count := int64(len(g.unit.Messages))
 	g.pf("// The message tag wire: MessageType in [0, %d], minimal bits; None = 0 is a\n", count)
 	g.pf("// valid wire value meaning *no message* — the stream terminator (SPEC §4.8).\n")

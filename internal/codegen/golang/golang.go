@@ -1,8 +1,10 @@
 // Package golang emits the Go target: one .go file per schema file, all in
 // package <package>, deterministic to the byte (SPEC §6.1). Emitted source is
 // passed through go/format before it is returned — the stdlib formatter is an
-// in-process refuser (invalid generated code fails generation loudly), and it
-// keeps the output gofmt-clean without an external formatter in the build path.
+// in-process SYNTAX refuser (unparsable generated code fails generation
+// loudly; symbol-level validity — no duplicate top-level names — is the
+// checker's claimed-name registry's job), and it keeps the output gofmt-clean
+// without an external formatter in the build path.
 //
 // Storage follows the §6.1 Go column: integer families name their storage
 // directly, enums are integer-backed named types with prefixed variant
@@ -33,8 +35,10 @@ import (
 func Generate(u *ir.Unit) (map[string][]byte, error) {
 	out := map[string][]byte{}
 	home := protocolIdHome(u)
+	msgOwner := ir.MessageOwner(u)
+	objOwner := ir.ObjectOwner(u)
 	for _, f := range u.Files {
-		g := &gen{unit: u, file: f}
+		g := &gen{unit: u, file: f, msgOwner: msgOwner, objOwner: objOwner}
 		g.emitFile(f.Base == home)
 		src, err := format.Source(g.assemble())
 		if err != nil {
@@ -60,8 +64,10 @@ func protocolIdHome(u *ir.Unit) string {
 }
 
 type gen struct {
-	unit *ir.Unit
-	file *ir.File
+	unit     *ir.Unit
+	file     *ir.File
+	msgOwner string // the one file that carries the message dispatch surface
+	objOwner string // the one file that carries the object tag surface
 
 	body           strings.Builder
 	needsSerialize bool // the file emits wire functions -> import the runtime
@@ -118,12 +124,15 @@ func (g *gen) emitFile(carriesProtocolId bool) {
 		g.pf("var ErrValidation = errors.New(\"%s: wire validation failed\")\n\n", g.unit.Package)
 	}
 
-	// MessageType / ObjectType lead their aspect files (SPEC §4.8).
-	if g.fileHasMessages() {
+	// MessageType / ObjectType lead their OWNER file — the unit-level surface
+	// is emitted exactly once, in the topologically last carrying file, so
+	// declarations spread across files never redeclare it in the package
+	// (SPEC §2 keeps the aspect layout non-enforced; ir.MessageOwner picks).
+	if g.file.Base == g.msgOwner && len(g.unit.Messages) > 0 {
 		g.emitTagEnum("MessageType", g.unit.Messages,
 			"the message set, extracted by the compiler — None = 0, then each message sorted by name (SPEC §4.8)")
 	}
-	if g.fileHasObjects() {
+	if g.file.Base == g.objOwner && len(g.unit.ObjNames) > 0 {
 		g.emitTagEnum("ObjectType", g.unit.ObjNames,
 			"the object set, extracted by the compiler — None = 0, then each object sorted by name (SPEC §4.8)")
 	}
@@ -153,30 +162,12 @@ func (g *gen) emitFile(carriesProtocolId bool) {
 		}
 	}
 
-	if g.fileHasMessages() {
+	if g.file.Base == g.msgOwner && len(g.unit.Messages) > 0 {
 		g.emitMessageTagFunctions()
 	}
-	if g.fileHasObjects() {
+	if g.file.Base == g.objOwner && len(g.unit.ObjNames) > 0 {
 		g.emitObjectTagFunctions()
 	}
-}
-
-func (g *gen) fileHasMessages() bool {
-	for _, d := range g.file.Decls {
-		if st, ok := d.(*ir.Struct); ok && st.IsMessage {
-			return true
-		}
-	}
-	return false
-}
-
-func (g *gen) fileHasObjects() bool {
-	for _, d := range g.file.Decls {
-		if _, ok := d.(*ir.Object); ok {
-			return true
-		}
-	}
-	return false
 }
 
 func (g *gen) emitTagEnum(name string, members []string, comment string) {

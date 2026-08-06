@@ -6,6 +6,9 @@ import (
 	"math"
 	"math/big"
 	"math/bits"
+	"sort"
+
+	"github.com/mas-bandwidth/schema/internal/ast"
 )
 
 // BitsRequired mirrors the runtimes' bits_required(min, max): the bit length
@@ -149,4 +152,141 @@ func MaxBitsView(fields []*Field, v View) int64 {
 		}
 	}
 	return total
+}
+
+// FileDeps collects, per file, the other files its declarations reference —
+// named types by value, and constants named in emitted expressions. The C++
+// backend derives its #include graph from this; owner selection for the
+// unit-level dispatch surfaces uses its topo order in every target, so the
+// surface lands in the same file across languages.
+func FileDeps(u *Unit) map[string]map[string]bool {
+	deps := map[string]map[string]bool{}
+	for _, f := range u.Files {
+		set := map[string]bool{}
+		note := func(name string) {
+			if base, ok := u.DeclFile[name]; ok && base != f.Base {
+				set[base] = true
+			}
+		}
+		var noteExpr func(e ast.Expr)
+		noteExpr = func(e ast.Expr) {
+			switch e := e.(type) {
+			case *ast.IdentExpr:
+				note(e.Name)
+			case *ast.MaxExpr:
+				// folds to a literal — no reference needed
+			case *ast.UnaryExpr:
+				noteExpr(e.X)
+			case *ast.BinaryExpr:
+				noteExpr(e.X)
+				noteExpr(e.Y)
+			case *ast.ParenExpr:
+				noteExpr(e.X)
+			}
+		}
+		noteFields := func(fields []*Field) {
+			for _, fld := range fields {
+				if fld.Type.Kind == TNamed {
+					note(fld.Type.Name)
+				}
+				for _, e := range []ast.Expr{fld.ArrayExpr, fld.Type.SizeExpr, fld.DefExpr, fld.QuantScaleExpr, fld.QuantMaxExpr} {
+					if e != nil {
+						noteExpr(e)
+					}
+				}
+			}
+		}
+		for _, d := range f.Decls {
+			switch d := d.(type) {
+			case *Const:
+				if d.Expr != nil {
+					noteExpr(d.Expr)
+				}
+			case *Struct:
+				noteFields(d.Fields)
+			case *Object:
+				noteFields(d.Fields)
+			}
+		}
+		deps[f.Base] = set
+	}
+	return deps
+}
+
+// MessageOwner and ObjectOwner name the file that carries a unit-level
+// dispatch surface (the MessageType/ObjectType enums, the tag pairs, the
+// dispatch functions): the LAST file in the unit's dependency topo order
+// containing that kind of declaration. Emitting the surface once fixes the
+// duplicate-symbol break when messages or objects span files (legal — the
+// aspect layout is never compiler-enforced, SPEC §2); choosing the
+// topologically last file means the C++ owner can include every other
+// carrying file without ever creating an include cycle.
+func MessageOwner(u *Unit) string {
+	return dispatchOwner(u, func(f *File) bool {
+		for _, d := range f.Decls {
+			if st, ok := d.(*Struct); ok && st.IsMessage {
+				return true
+			}
+		}
+		return false
+	})
+}
+
+func ObjectOwner(u *Unit) string {
+	return dispatchOwner(u, func(f *File) bool {
+		for _, d := range f.Decls {
+			if _, ok := d.(*Object); ok {
+				return true
+			}
+		}
+		return false
+	})
+}
+
+func dispatchOwner(u *Unit, has func(*File) bool) string {
+	deps := FileDeps(u)
+	// Kahn's algorithm over sorted bases — the same deterministic order the
+	// C++ emitter's includes resolve in
+	bases := make([]string, 0, len(u.Files))
+	byBase := map[string]*File{}
+	for _, f := range u.Files {
+		bases = append(bases, f.Base)
+		byBase[f.Base] = f
+	}
+	sort.Strings(bases)
+	indeg := map[string]int{}
+	for _, b := range bases {
+		indeg[b] = len(deps[b])
+	}
+	done := map[string]bool{}
+	owner := ""
+	for range bases {
+		pick := ""
+		for _, b := range bases {
+			if !done[b] && indeg[b] == 0 {
+				pick = b
+				break
+			}
+		}
+		if pick == "" {
+			// a file cycle — the C++ backend refuses it separately; fall back
+			// to any remaining base so owner selection still terminates
+			for _, b := range bases {
+				if !done[b] {
+					pick = b
+					break
+				}
+			}
+		}
+		done[pick] = true
+		if has(byBase[pick]) {
+			owner = pick
+		}
+		for _, b := range bases {
+			if !done[b] && deps[b][pick] {
+				indeg[b]--
+			}
+		}
+	}
+	return owner
 }

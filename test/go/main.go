@@ -186,6 +186,15 @@ func main() {
 		check(err != nil, "a foreign Message implementation is refused")
 		ws3.Flush()
 		check(ws3.BytesProcessed() == 0, "and nothing was written")
+
+		// a typed nil inside the interface is refused the same way — no tag,
+		// no panic, nothing on the stream
+		ws4, _ := newWriteStream()
+		var nilChat *example.Chat
+		err = example.WriteMessage(ws4, nilChat)
+		check(err != nil, "a typed-nil message is refused")
+		ws4.Flush()
+		check(ws4.BytesProcessed() == 0, "and nothing was written for the typed nil")
 	}
 
 	// ---- ProbeHeader: const/reserved/align on the wire; corruption rejected ----

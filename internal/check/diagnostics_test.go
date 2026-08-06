@@ -136,8 +136,16 @@ func TestDiagnostics(t *testing.T) {
 			src: "package t\ntype T { class uint8 }\n"},
 		{name: "Go export-casing collision", want: "both become AtRest",
 			src: "package t\ntype T {\n    at_rest bool\n    atRest bool\n}\n"},
-		{name: "MessageType is a claimed name", want: "claimed name",
+		{name: "MessageType is a claimed name", want: "generated message dispatch surface",
 			src: "package t\nmessage M { }\nenum MessageType { A }\n"},
+		{name: "a decl collides with an enum's flat variant constant (Go)", want: "variant constant",
+			src: "package t\nenum Team { Red }\ntype TeamRed { x uint8 }\n"},
+		{name: "a decl collides with a message's tag constant", want: "tag constant",
+			src: "package t\nmessage Chat { }\ntype MessageTypeChat { x uint8 }\n"},
+		{name: "a decl collides with a flags mask constant", want: "mask constant",
+			src: "package t\nflags Caps { Fast }\nconst CapsFast = 1\n"},
+		{name: "two decls whose GENERATED symbols collide", want: "both generate the symbol WriteFooMaxBits",
+			src: "package t\ntype WriteFoo { x uint8 }\ntype FooMaxBits { y uint8 }\n"},
 		{name: "field collides with its sibling's length companion", want: "length companion",
 			src: "package t\ntype T {\n    text string(8)\n    text_length uint8\n}\n"},
 		{name: "field collides with its sibling's count companion", want: "count companion",
@@ -187,6 +195,7 @@ func TestGoodCornersStillCompile(t *testing.T) {
 	cases := []struct {
 		name string
 		src  string
+		srcs map[string]string
 	}{
 		{name: "nested if with cond in the same branch",
 			src: "package t\ntype T {\n    a bool\n    if a {\n        b bool\n        if b { x uint8 }\n    }\n}\n"},
@@ -202,10 +211,21 @@ func TestGoodCornersStillCompile(t *testing.T) {
 			src: "package t\nenum E [max = 15] { A, B }\ntype T { e E }\n"},
 		{name: "field named message_type on a plain type (only messages claim the method)",
 			src: "package t\ntype T { message_type uint8 }\n"},
+		{name: "a type named WriteFoo with no type Foo anywhere",
+			src: "package t\ntype WriteFoo { x uint8 }\n"},
+		{name: "messages spread across two files (aspect layout is not enforced)",
+			srcs: map[string]string{
+				"A.schema": "package t\nmessage Ping { x uint8 }\n",
+				"B.schema": "package t\nmessage Pong { y uint8 }\n",
+			}},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			if errs := runUnit(t, map[string]string{"T.schema": tc.src}); len(errs) > 0 {
+			sources := tc.srcs
+			if sources == nil {
+				sources = map[string]string{"T.schema": tc.src}
+			}
+			if errs := runUnit(t, sources); len(errs) > 0 {
 				t.Fatalf("legal schema rejected: %v", errs)
 			}
 		})
