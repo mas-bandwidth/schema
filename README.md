@@ -23,24 +23,24 @@ sides at the same protocol id speak identical bits; there is no versioning overh
 
 ## Performance
 
-Generated-code throughput of the four backends **as a fraction of C++ throughput** — 1.00 is
-C++'s speed, higher is faster, so 0.58x means 58% of C++'s throughput (slower). Medians across
-the corpus benchmarks; the mixed-dispatch batch shown separately because its ranking inverts.
+Generated-code performance of the four backends as **time taken relative to C++** — C++ is
+100%, higher is slower: 200% means the same work takes twice as long as C++. Medians across the
+corpus benchmarks; the mixed-dispatch batch shown separately because its ranking inverts.
 Apple M2, quiet host, 2026-08-06 baseline — full tables, raw CSVs and methodology in
 [bench/results/](bench/results/):
 
 | backend | write | read | batch write | batch read |
 |---|---:|---:|---:|---:|
-| C++ | 1.00 | 1.00 | 1.00 | 1.00 |
-| Rust | 0.58x | 0.41x | 0.63x | 0.67x |
-| C# | 0.42x | 0.33x | 0.62x | **1.26x** |
-| Go | 0.33x | 0.14x | 0.42x | 1.01x |
+| C++ | 100% | 100% | 100% | 100% |
+| Rust | 173% | 243% | 159% | 148% |
+| C# | 238% | 306% | 161% | **80%** |
+| Go | 300% | 719% | 236% | 99% |
 
 The spread behind the medians is wide and systematic: C++'s lead is an inlining margin that
-grows as messages shrink (on 6–10 byte messages it reaches 6–16x), while on the mixed batch the
-gap closes and C# reads fastest of all four. Numbers move as optimization lands — the Go read
-median predates a read-path fix measured at +14–69% — so treat the table as a dated snapshot,
-not a verdict.
+grows as messages shrink (on 6–10 byte messages the others take 600–1600% of C++'s time), while
+on the mixed batch the gap closes and C# reads it in 80% of C++'s time. Numbers move as
+optimization lands — the Go read median predates a read-path fix measured at +14–69%, and the
+C++ batch read has a 2x fix in flight — so treat the table as a dated snapshot, not a verdict.
 
 `notes/` holds extracted API references for the three target runtimes, gathered 2026-08-04 as
 design inputs — re-verify against each library's source at implementation time.
