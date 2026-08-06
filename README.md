@@ -23,9 +23,11 @@ sides at the same protocol id speak identical bits; there is no versioning overh
 
 ## Performance
 
-Generated-code throughput of the four backends relative to C++ (medians across the corpus
-benchmarks; mixed-dispatch batch shown separately). Apple M2, quiet host, 2026-08-06 baseline —
-full tables, raw CSVs and methodology in [bench/results/](bench/results/):
+Generated-code throughput of the four backends **as a fraction of C++ throughput** — 1.00 is
+C++'s speed, higher is faster, so 0.58x means 58% of C++'s throughput (slower). Medians across
+the corpus benchmarks; the mixed-dispatch batch shown separately because its ranking inverts.
+Apple M2, quiet host, 2026-08-06 baseline — full tables, raw CSVs and methodology in
+[bench/results/](bench/results/):
 
 | backend | write | read | batch write | batch read |
 |---|---:|---:|---:|---:|
