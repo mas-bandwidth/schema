@@ -125,4 +125,3 @@ type ShipCreate {
     health int16 [min = 0, max = MaxHealth]
     thrust int8  [min = 0, max = 100]
 }
-

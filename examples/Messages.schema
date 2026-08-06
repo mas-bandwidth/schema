@@ -19,9 +19,9 @@ message Heartbeat {
 
 message Test {
     test_a uint16
-    test_b int16 [min = 0, max = 1000]
-    test_c int16 [min = 0, max = 1000]
-    test_d int16 [min = 0, max = 1000]
+    test_b int16  [min = 0, max = 1000]
+    test_c int16  [min = 0, max = 1000]
+    test_d int16  [min = 0, max = 1000]
 }
 
 message Block {

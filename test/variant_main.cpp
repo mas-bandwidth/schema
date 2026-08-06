@@ -44,6 +44,18 @@ int main()
         check( WriteMessage( ws, m ) );
     ws.Flush();
 
+    // cross-representation wire identity: the variant surface must produce
+    // exactly the bytes the union surface pinned (SPEC §7.2 gate 7)
+    {
+        FILE * f = fopen( "testdata/wire/message_stream.bin", "rb" );
+        check( f != nullptr ); // run: make update-goldens
+        static uint8_t expected[4096];
+        size_t n = fread( expected, 1, sizeof( expected ), f );
+        fclose( f );
+        check( (int64_t) n == ws.GetBytesProcessed() );
+        check( std::memcmp( expected, buffer, n ) == 0 );
+    }
+
     serialize::ReadStream rs( buffer, ws.GetBytesProcessed() );
     Message in;
     check( ReadMessage( rs, in ) );

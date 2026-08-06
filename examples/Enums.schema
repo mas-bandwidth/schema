@@ -23,9 +23,9 @@ package example
 
 enum Team { Red, Blue }
 
-enum ShipType    { Fighter, Corvette, Bomber, Destroyer, Carrier }
+enum ShipType { Fighter, Corvette, Bomber, Destroyer, Carrier }
 enum MissileType { Heatseeker, Torpedo, Nuke }
-enum PropType    { Asteroid, Chunk, Fragment, Sphere, BlackHole, DysonPanel }
+enum PropType { Asteroid, Chunk, Fragment, Sphere, BlackHole, DysonPanel }
 
 // flags — named bits over a uint64, consumed as masks
 flags ShipFlags { FiringLaser, Boosting, Braking, Aiming }

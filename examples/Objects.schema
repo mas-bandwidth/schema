@@ -80,8 +80,8 @@ object Ship {
     // 2026-08-05): previous position, and the per-collider armor table. Engine
     // runtime handles (the physics body id) stay in engine code — they are
     // process-local resources, not state the schema owns.
-    previous_position Vec3  [local]
-    num_colliders     int32 [local]
+    previous_position Vec3                       [local]
+    num_colliders     int32                      [local]
     collider_armor    [MaxCollidersPerShip]int32 [local]
 
     // context-scoped local state (SPEC §4.2, Contexts): exists only in the

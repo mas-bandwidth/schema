@@ -1496,11 +1496,22 @@ Go, zero third-party dependencies, one static binary: `schema`.
 
 ```
 schema check  [dir|files...]          // parse + typecheck; exit code for CI
-schema generate --lang cpp,cs,go,rust --out <dir> [dir|files...]
+schema generate --lang cpp,cs,go,rust [--cpp-message union|variant] --out <dir> [dir|files...]
 schema id     [dir|files...]          // print the protocol id
-schemafmt     [dir|files...]          // the canonical formatter — gofmt's philosophy:
-                                      // one style, no options ("schema fmt" is its alias)
+schema fmt    [dir|files...]          // the canonical formatter, standalone (editors, hooks)
 ```
+
+**Every command formats the unit's schema files IN PLACE before processing them —
+DECIDED (Glenn, 2026-08-05: *"Can we do schemafmt just as like, a flag passed in to
+schema tool"* / *"or even, just schema format every file before we process it."* /
+*"we can be super opinionated here, it's fine :)"*).** One style, no options, no
+separate binary; a file already in format is never touched (*"Obviously, if it is
+already in format, we don't write to the file, capiche?"*). The consequence lands on
+§3.1: the id is only ever computed over canonical bytes, so **the raw-byte hash IS a
+canonical-form hash, structurally** — the §3.1 revisit clause is closed. The formatter
+carries two built-in refusers: it re-parses its own output and structurally compares
+the AST against the input's (refusing to write on any difference — a formatter must
+never change meaning), and it verifies its own idempotence on every run.
 
 ### 7.1 Pipeline
 
@@ -1539,6 +1550,15 @@ schemafmt     [dir|files...]          // the canonical formatter — gofmt's phi
   hold.
 
 ### 7.2 Testing
+
+**Status 2026-08-05: gates 1, 2 and 7 are LIVE for the C++ target** — `testdata/golden/`
+pins the generated source of both C++ message representations byte-for-byte plus the
+protocol id, `testdata/wire/` pins six instances' wire bytes (checked by the C++ test,
+which also proves the two message representations produce identical bytes), and a
+fmt-drift gate asserts the corpus stays formatter-canonical. `make test` runs all of it;
+`make update-goldens` re-pins DELIBERATELY. Gates 3 (the oracle) exists in seed form —
+the RigidBody and string classic twins in `test/main.cpp` — and grows with the corpus;
+gates 4–5 wait on a second backend; gate 6 is owed.
 
 1. **Golden source tests**: schema in, generated source compared byte-for-byte against
    checked-in goldens, all four backends. Deterministic output makes this exact.
@@ -1590,15 +1610,18 @@ product's central claim.
 3. **Only then, implementation** — and the corpus graduates into `testdata/` and
    `conformance/` as the compiler's first test suite.
 
-### 7.4 schemafmt — the one style — DECIDED for v1 (Glenn, 2026-08-05: "yes, schemafmt is important, same reason as per-go. there is a canonical syntax form from which we generate the hash"; the rules below remain Rowan's PROPOSED cut, reviewed with the corpus)
+### 7.4 schemafmt — the one style — BUILT 2026-08-05, as the compiler's own front step (Glenn: "yes, schemafmt is important, same reason as per-go. there is a canonical syntax form from which we generate the hash"; his design the same evening — every command formats before processing, §7's CLI block carries the words)
 
 gofmt's philosophy (§4.1): one style, no options. Codified from the corpus's own formatting
-while it was five files; the recommendation is that `schemafmt` is **part of the v1
-deliverable, built early as the parser's first consumer** — under §3.1's file-byte hash, a
-later reformat of a deployed schema **moves its protocol id**, so the only free time to
-canonicalize is before any schema exists outside this repo. With every file
-formatter-canonical, §3.1's raw-byte hash is a canonical-form hash in practice with no
-parser in the id path — the §3.1 revisit clause closes in the good direction. Rules:
+while it was five files; built as **the parser's first consumer** and run by every
+`schema` command over the unit before processing — under §3.1's file-byte hash, a
+later reformat of a deployed schema **moves its protocol id**, so canonicalization
+had to land before any schema existed outside this repo, and it did: **the corpus was
+canonicalized 2026-08-05 (whitespace-only, meaning-preservation enforced by the
+formatter's AST-equivalence refuser) and the id settled at its canonical value —
+the one §7.2's golden pins.** With the compiler formatting before hashing, §3.1's
+raw-byte hash is a canonical-form hash structurally, with no parser in the id path —
+the §3.1 revisit clause is closed. Rules:
 
 1. **Indent: 4 spaces** per block level, never tabs (the corpus's unanimous vote). `{` on
    the construct's line; `} else {` on one line. One field or declaration per line.

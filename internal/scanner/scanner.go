@@ -19,6 +19,7 @@ const (
 	Ident
 	Int
 	Float
+	Comment // raw-scan mode only (schemafmt) — Text carries the comment verbatim
 
 	LBrace // {
 	RBrace // }
@@ -126,13 +127,34 @@ func Scan(file string, src []byte) ([]Token, []error) {
 	return filter(raw), s.errs
 }
 
+// ScanRaw tokenizes src preserving comments and every newline — the
+// comment-carrying scan schemafmt requires (SPEC §4.1, §7.4). No suppression
+// filter runs: the formatter assembles its own lines.
+func ScanRaw(file string, src []byte) ([]Token, []error) {
+	if bytes.HasPrefix(src, []byte{0xEF, 0xBB, 0xBF}) {
+		return nil, []error{Error{Pos{file, 1, 1},
+			"UTF-8 BOM rejected: it would silently move the protocol id (SPEC §4.1)"}}
+	}
+	s := &state{file: file, src: src, line: 1, col: 1, keepComments: true}
+	var raw []Token
+	for {
+		t := s.next()
+		raw = append(raw, t)
+		if t.Kind == EOF {
+			break
+		}
+	}
+	return raw, s.errs
+}
+
 type state struct {
-	file string
-	src  []byte
-	off  int
-	line int
-	col  int
-	errs []error
+	file         string
+	src          []byte
+	off          int
+	line         int
+	col          int
+	errs         []error
+	keepComments bool // raw-scan mode: comments become tokens
 }
 
 func (s *state) pos() Pos { return Pos{s.file, s.line, s.col} }
@@ -184,13 +206,19 @@ func (s *state) next() Token {
 				continue
 			}
 			if c == '/' && s.peek2() == '/' {
+				p := s.pos()
+				start := s.off
 				for s.off < len(s.src) && s.peek() != '\n' {
 					s.advance()
+				}
+				if s.keepComments {
+					return Token{Comment, string(s.src[start:s.off]), p}
 				}
 				continue
 			}
 			if c == '/' && s.peek2() == '*' {
 				p := s.pos()
+				start := s.off
 				startLine := s.line
 				s.advance()
 				s.advance()
@@ -206,6 +234,9 @@ func (s *state) next() Token {
 				}
 				if !closed {
 					s.errf(p, "unterminated block comment")
+				}
+				if s.keepComments {
+					return Token{Comment, string(s.src[start:s.off]), p}
 				}
 				if s.line > startLine {
 					// a block comment spanning lines acts as a newline (Go's rule)

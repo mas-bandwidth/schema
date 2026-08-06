@@ -4,6 +4,7 @@
 // proves the headers are multiple-inclusion safe.
 
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <type_traits>
 
@@ -84,6 +85,44 @@ namespace oracle
             return 1;                                                         \
         }                                                                     \
     } while ( 0 )
+
+// Golden wire bytes (SPEC §7.2 gate 7): every pinned instance's encoding is
+// checked byte-for-byte against testdata/wire/<name>.bin. A break here under
+// an unchanged schema is the stop-the-line event of SPEC §3.1, never a quiet
+// re-pin. SCHEMA_UPDATE_WIRE_GOLDENS=1 rewrites the goldens deliberately.
+static bool golden_wire( const char * name, const uint8_t * data, int64_t bytes )
+{
+    char path[256];
+    snprintf( path, sizeof( path ), "testdata/wire/%s.bin", name );
+    if ( std::getenv( "SCHEMA_UPDATE_WIRE_GOLDENS" ) )
+    {
+        FILE * f = fopen( path, "wb" );
+        if ( !f )
+        {
+            printf( "cannot write %s\n", path );
+            return false;
+        }
+        fwrite( data, 1, (size_t) bytes, f );
+        fclose( f );
+        return true;
+    }
+    FILE * f = fopen( path, "rb" );
+    if ( !f )
+    {
+        printf( "missing wire golden %s (run: make update-goldens)\n", path );
+        return false;
+    }
+    static uint8_t expected[4096];
+    size_t n = fread( expected, 1, sizeof( expected ), f );
+    fclose( f );
+    if ( (int64_t) n != bytes || std::memcmp( expected, data, (size_t) bytes ) != 0 )
+    {
+        printf( "WIRE GOLDEN MISMATCH: %s (%lld golden vs %lld actual bytes) — stop-the-line (SPEC §3.1, §7.2 gate 7)\n",
+                name, (long long) n, (long long) bytes );
+        return false;
+    }
+    return true;
+}
 
 int main()
 {
@@ -259,6 +298,7 @@ int main()
         serialize::WriteStream ws( buffer, sizeof( buffer ) );
         check( WriteShipCreate( ws, in ) );
         ws.Flush();
+        check( golden_wire( "shipcreate_flags", buffer, ws.GetBytesProcessed() ) );
 
         ShipCreate out;
         serialize::ReadStream rs( buffer, ws.GetBytesProcessed() );
@@ -302,6 +342,7 @@ int main()
         tws.Flush();
         check( ws.GetBytesProcessed() == tws.GetBytesProcessed() );
         check( std::memcmp( buffer, twin_buffer, (size_t) ws.GetBytesProcessed() ) == 0 );
+        check( golden_wire( "rigidbody_moving", buffer, ws.GetBytesProcessed() ) );
 
         // and the at-rest wire, which drops the branch
         in.at_rest = true;
@@ -314,6 +355,7 @@ int main()
         tws2.Flush();
         check( ws2.GetBytesProcessed() == tws2.GetBytesProcessed() );
         check( std::memcmp( buffer, twin_buffer, (size_t) ws2.GetBytesProcessed() ) == 0 );
+        check( golden_wire( "rigidbody_at_rest", buffer, ws2.GetBytesProcessed() ) );
     }
 
     // ---- the string framing == classic serialize_string over buffer N + 1 ----
@@ -333,6 +375,7 @@ int main()
         tws.Flush();
         check( ws.GetBytesProcessed() == tws.GetBytesProcessed() );
         check( std::memcmp( buffer, twin_buffer, (size_t) ws.GetBytesProcessed() ) == 0 );
+        check( golden_wire( "chat", buffer, ws.GetBytesProcessed() ) );
     }
 
     // ---- the Message dispatch surface (default: tagged union) ----
@@ -352,6 +395,8 @@ int main()
         for ( const Message & m : stream_out )
             check( WriteMessage( ws, m ) );
         ws.Flush();
+
+        check( golden_wire( "message_stream", buffer, ws.GetBytesProcessed() ) );
 
         serialize::ReadStream rs( buffer, ws.GetBytesProcessed() );
         Message in;
@@ -390,6 +435,7 @@ int main()
         serialize::WriteStream ws( buffer, sizeof( buffer ) );
         check( WriteShipData_Shallow( ws, q ) );
         ws.Flush();
+        check( golden_wire( "ship_shallow", buffer, ws.GetBytesProcessed() ) );
         ShipData_Shallow q2;
         serialize::ReadStream rs( buffer, ws.GetBytesProcessed() );
         check( ReadShipData_Shallow( rs, q2 ) );
