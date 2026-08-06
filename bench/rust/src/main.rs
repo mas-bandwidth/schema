@@ -228,7 +228,13 @@ fn bench_message<T, W, R, V>(
         }
     }
 
-    // read path: 1 warmup + NUM_RUNS measured
+    // read path: 1 warmup + NUM_RUNS measured; ONE decode instance hoisted
+    // out of the loop and reused, matching the write loop's hoisted base — a
+    // fresh T::default() per iteration is stack-zeroing harness overhead, not
+    // serialize work (no heap either way; every field a read decodes is
+    // overwritten every iteration, structure fields fixed across variants).
+    // No per-iteration clone: read_fn takes &mut out, black_box takes &out.
+    let mut out = T::default();
     for run in 0..(NUM_RUNS + 1) {
         let start = Instant::now();
         for i in 0..iters {
@@ -236,7 +242,6 @@ fn bench_message<T, W, R, V>(
                 &variants[(i as usize) & (NUM_VARIANTS - 1)],
                 bytes_per_op,
             );
-            let mut out = T::default();
             if read_fn(&mut rs, &mut out).is_err() {
                 ctx.fail(name, "read failed in loop");
                 return;

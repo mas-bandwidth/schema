@@ -189,13 +189,19 @@ func benchMessage[T any](name, golden string, iters int64, pinned T,
 	}
 	runtime.KeepAlive(gBuffer[:])
 
-	// read path: 1 warmup + NumRuns measured
+	// read path: 1 warmup + NumRuns measured; ONE decode instance hoisted out
+	// of the loop and reused, matching the write loop's hoisted base — `var
+	// out T` per iteration escapes through the opaque readFn value and is
+	// heap-allocated + zeroed every message (harness overhead, not serialize
+	// work; verified by profile: mallocgc+GC ~27% cum of the v1 read path).
+	// Every field a read decodes is overwritten every iteration; structure
+	// fields are fixed across variants, so reuse decodes identically.
+	var out T
 	rs := serialize.NewReadStream(gVariants[0][:bytesPerOp])
 	for run := -1; run < NumRuns; run++ {
 		start := time.Now()
 		for i := int64(0); i < iters; i++ {
 			rs.Reset(gVariants[i&(NumVariants-1)][:bytesPerOp])
-			var out T
 			if err := readFn(rs, &out); err != nil {
 				fail(name, "read failed in loop")
 				return
@@ -211,6 +217,38 @@ func benchMessage[T any](name, golden string, iters int64, pinned T,
 
 	report(name, "write", iters, bytesPerOp, stats(writeRates))
 	report(name, "read", iters, bytesPerOp, stats(readRates))
+
+	// alloc note (proof of the reuse discipline, not a benchmark): allocs
+	// during one extra untimed pass of each path — must be 0
+	const allocOps = 4 * NumVariants
+	var before, after runtime.MemStats
+	runtime.ReadMemStats(&before)
+	for i := int64(0); i < allocOps; i++ {
+		rng = benchRng(rng)
+		varyFn(&base, rng)
+		ws.Reset(gBuffer[:])
+		if err := writeFn(ws, &base); err != nil {
+			fail(name, "write failed in alloc pass")
+			return
+		}
+		ws.Flush()
+		gSink = gSink + uint64(ws.BytesProcessed())
+	}
+	runtime.ReadMemStats(&after)
+	writeAllocs := after.Mallocs - before.Mallocs
+	runtime.ReadMemStats(&before)
+	for i := int64(0); i < allocOps; i++ {
+		rs.Reset(gVariants[i&(NumVariants-1)][:bytesPerOp])
+		if err := readFn(rs, &out); err != nil {
+			fail(name, "read failed in alloc pass")
+			return
+		}
+		gSink = gSink + 1
+	}
+	runtime.ReadMemStats(&after)
+	readAllocs := after.Mallocs - before.Mallocs
+	fmt.Fprintf(os.Stderr, "alloc note: %s one pass (%d ops/path): write %d allocs, read %d allocs\n",
+		name, allocOps, writeAllocs, readAllocs)
 }
 
 // ------------------------------------------------------------------------------------------

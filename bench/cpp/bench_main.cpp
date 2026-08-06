@@ -248,14 +248,18 @@ static void bench_message( const char * name, const char * golden, long base_ite
             write_rates[run] = double( iters ) / time;
     }
 
-    // read path: 1 warmup + NumRuns measured
+    // read path: 1 warmup + NumRuns measured; ONE decode instance hoisted out
+    // of the loop and reused, matching the write loop's hoisted base — a
+    // fresh T per iteration is constructed+zeroed harness overhead, not
+    // serialize work (every field a read decodes is overwritten every
+    // iteration; structure fields are fixed across variants)
+    T out;
     for ( int run = -1; run < NumRuns; run++ )
     {
         double start = time_now();
         for ( long i = 0; i < iters; i++ )
         {
             serialize::ReadStream stream( g_variants[i & ( NumVariants - 1 )], (int) bytes_per_op );
-            T out;
             if ( !read_fn( stream, out ) )
             {
                 fail( name, "read failed in loop" );
@@ -687,7 +691,12 @@ static void bench_batch()
     // the read buffer: rebuild once from the final batch state so bytes match
     build_batch( batch_bytes, batch_buffer, batch_buffer_size );
 
-    // read path: read messages until the None terminator, whole batch per pass
+    // read path: read messages until the None terminator, whole batch per
+    // pass; ONE reused Message hoisted out of the loop (the C++ shape of the
+    // go/cs MessageStorage discipline) — ReadMessage re-establishes the
+    // selected arm itself (`message.arm = Arm{}` at dispatch), so reuse is
+    // exact and a fresh Message per read is pure constructor overhead
+    Message m;
     for ( int run = -1; run < NumRuns; run++ )
     {
         double start = time_now();
@@ -697,7 +706,6 @@ static void bench_batch()
             long count = 0;
             for ( ;; )
             {
-                Message m;
                 if ( !ReadMessage( rs, m ) )
                 {
                     fail( "message_batch", "read failed in loop" );

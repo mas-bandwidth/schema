@@ -239,6 +239,39 @@ static class Program
 
         Report(name, "write", iters, bytesPerOp, Stats(writeRates));
         Report(name, "read", iters, bytesPerOp, Stats(readRates));
+
+        // alloc note (proof of the reuse discipline, not a benchmark): bytes
+        // allocated during one extra untimed pass of each path — must be 0
+        const int allocOps = 4 * NumVariants;
+        long allocBefore = GC.GetAllocatedBytesForCurrentThread();
+        for (int i = 0; i < allocOps; i++)
+        {
+            rng = BenchRng(rng);
+            varyFn(baseValue, rng);
+            ws.Reset(gBuffer);
+            if (!writeFn(ws, baseValue))
+            {
+                Fail(name, "write failed in alloc pass");
+                return;
+            }
+            ws.Flush();
+            gSink = gSink + (ulong)ws.BytesProcessed;
+        }
+        long writeAlloc = GC.GetAllocatedBytesForCurrentThread() - allocBefore;
+        allocBefore = GC.GetAllocatedBytesForCurrentThread();
+        for (int i = 0; i < allocOps; i++)
+        {
+            rs.Reset(gVariants[i & (NumVariants - 1)], (int)bytesPerOp);
+            if (!readFn(rs, outValue))
+            {
+                Fail(name, "read failed in alloc pass");
+                return;
+            }
+            gSink = gSink + 1;
+        }
+        long readAlloc = GC.GetAllocatedBytesForCurrentThread() - allocBefore;
+        Console.Error.WriteLine(
+            $"alloc note: {name} one pass ({allocOps} ops/path): write {writeAlloc} bytes, read {readAlloc} bytes");
     }
 
     // ------------------------------------------------------------------------------------------
