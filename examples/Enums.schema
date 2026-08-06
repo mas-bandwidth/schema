@@ -23,7 +23,6 @@ package example
 
 enum Team { Red, Blue }
 
-enum CraftKind   { Light, Medium, Heavy }
 enum ShipType    { Fighter, Corvette, Bomber, Destroyer, Carrier }
 enum MissileType { Heatseeker, Torpedo, Nuke }
 enum PropType    { Asteroid, Chunk, Fragment, Sphere, BlackHole, DysonPanel }

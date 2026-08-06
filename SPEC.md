@@ -444,7 +444,7 @@ TypeDecl    = "type" ident [ Attributes ] Block NL .        // attribute = the t
 Message     = "message" ident Block NL .
 
 Block       = "{" { Item } "}" .
-Item        = Field | ConstField | Reserved | Align | If | Switch .
+Item        = Field | ConstField | Reserved | Align | If .
 Field       = ident Type [ Attributes ] NL .
 ConstField  = "const" "(" IntExpr "," IntExpr ")" NL .          // (value, bits)
 Reserved    = "reserved" "(" IntExpr ")" NL .
@@ -469,9 +469,9 @@ Attr        = ident "=" ( ConstExpr | ident )                    // valued:    m
                                                                  // it takes an expression or a word)
 
 If          = "if" [ "!" ] ident Block [ "else" Block ] NL .
-Switch      = "switch" ident "{" { Case } "}" NL .
-Case        = "case" CaseLabel ":" { Item } .                    // ends at next case or }
-CaseLabel   = ident | IntExpr .                                  // variant name, or integer
+
+
+
                                                                  // (an ident that is a const
                                                                  // name resolves as IntExpr;
                                                                  // enum-subject labels resolve
@@ -597,7 +597,7 @@ FloatExpr   = float expression over float literals, int literals and const names
     `enum`.
 - **Type references are order-free** — a type or enum may be used before its declaration,
   in any file of the unit. (Field *back-references* are not order-free; §4.5.)
-- `if` and `switch` nest freely inside blocks and case bodies.
+- `if` nests freely inside blocks (`switch` is cut for now, §4.4).
 
 ### Attributes — per-field, optional, keyed — DECIDED
 
@@ -842,7 +842,7 @@ each possible count is a separately spliced compile-time path. schema's generate
 honest loop (§6.2), so `[<= N]T` is bounded only by what the count's integer range can
 express.
 
-### 4.4 Decisions: `if` and `switch`
+### 4.4 Decisions: `if` — and `switch` is CUT for now
 
 Conditional serialization branches on a previously serialized field — a back-reference. The
 branch itself costs no wire bits; the referenced field was already paid for.
@@ -861,34 +861,37 @@ type Body {
 - `if cond { ... } else { ... }` — `cond` is a previously serialized `bool` field, optionally
   negated. Wire = the taken side only. A `bool` field followed by an `if` on it produces the
   identical wire to serialize.modern's fused `branch`.
-- `switch field { case ... }` — `field` is a previously serialized integer or enum field.
-  Wire = the matching case's fields; a value matching no case serializes nothing —
-  identically on write and read, so the wire stays symmetric.
-- **Case labels:** for an enum subject, bare variant names of that enum (resolved through the
-  subject's type); for an integer subject, constant integer expressions. Duplicate case
-  values are a compile error. **Corner rules** *(DECIDED — corner-pins list, Glenn 2026-08-05: "Yes, sounds good.")*: a `bits(N)` field is a
-  legal integer subject; `case None:` is legal for an enum subject (the implicit variant is
-  a variant); a user-declared variant literally named `None` is a compile error everywhere —
-  the name is claimed by the implicit rule.
+- **`switch` / `case` — CUT from v1 (Glenn, 2026-08-05: *"cut for now."* / *"simple as
+  possible first pass."*).** The trigger: the corpus's only `switch` example was removed as
+  not useful, and §7.3's own doctrine says a construct no example needs is a construct v1
+  may not need; the generated message/object dispatch never used it (that surface is
+  compiler-emitted, §4.8). The keywords stay reserved, and the design is preserved here for
+  its return: `switch field { case ... }` over a previously serialized integer or enum
+  field; wire = the matching case's fields, a value matching no case serializing nothing,
+  identically both directions; case labels are bare variant names for an enum subject and
+  constant integer expressions for an integer subject; duplicate case values a compile
+  error; `bits(N)` a legal subject; `case None:` legal. *(The corner rule that survives
+  the cut because it binds enums generally: a user-declared variant literally named `None`
+  is a compile error — the name is claimed by the implicit rule.)*
 
 ### 4.5 Back-references: the dominance rule
 
 The referenced field must be declared **earlier in the same block or in an enclosing block** —
-never in a sibling branch side, another case, or inside an array element. Equivalently: the
+never in a sibling branch side, or inside an array element. Equivalently: the
 referent is serialized on every path that reaches the reference. This is a lexical-scope
 check in the resolver.
 
 ```
-case Snapshot:
     has_delta bool
     if has_delta { ... }      // legal: same block, earlier — dominated
 ```
 
-Forward references, references into sibling branches or other cases, and references to array
+Forward references, references into a sibling branch side, and references to array
 element fields are compile errors naming the offending reference and the rule. *(Draft 1
 required the referent be unconditionally serialized at type top level, which outlawed the
 example above and contradicted the fused-branch subsumption claim; the dominance rule is
-strictly more expressive and equally static.)*
+strictly more expressive and equally static. The rule is stated over `if` sides; it
+extends unchanged to `case` bodies when `switch` returns.)*
 
 ### 4.6 Shape checks
 
@@ -929,8 +932,8 @@ All compile errors with positions:
   One name, one field, declared once. (serialize.modern permits exclusive-side member reuse
   because members pre-exist there; schema owns the type, and unique names keep the
   flattened generated output unambiguous.)
-- Back-reference violations (§4.5); a `switch` subject that is not an integer or enum field;
-  duplicate case values; `if` conditions that are not `bool` fields.
+- Back-reference violations (§4.5); `if` conditions that are not `bool` fields. *(The
+  `switch` subject and case-value checks are shelved with the construct, §4.4.)*
 - Cycles in type composition, undefined types, duplicate declarations, `package` mismatch.
 - **Target-name safety:** a declaration or field name that is a reserved word in any target
   language (`type`, `match`, `impl`, `func`, `class`, ...) or that collides with another name

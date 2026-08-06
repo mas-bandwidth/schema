@@ -84,12 +84,12 @@ type InputPacket {
 
 // ---- the create idiom (pre-object-views) ----
 
-type CraftCreate {
-    // kind is a plain enum: wire [0, CraftKind.Max], None wire-legal. The
+type ShipCreate {
+    // ship_type is a plain enum: wire [0, ShipType.Max], None wire-legal. The
     // hand-written create path writes [1, MAX] — that index form (enum_index)
     // was designed and cut for now (SPEC §9 q11); one unused wire value is the
     // recorded v1 cost.
-    kind CraftKind
+    ship_type ShipType
 
     position        QuantizedPosition
     rotation        QuantizedRotation
