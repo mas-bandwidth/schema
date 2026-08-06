@@ -1104,7 +1104,15 @@ generates, per target:
   *"let's leave this up to the caller. I'd like for there to be an option to generate a
   regular union, and an option to use variant"*): `schema generate --cpp-message
   union|variant`, and the DEFAULT IS UNION** — a tagged struct over an anonymous union,
-  the classic game idiom, zero-initialized on construction, plain-switch dispatch,
+  the classic game idiom, constructed as the None message (the tag initializes to
+  `None`; an arm's storage is established ZEROED when the arm is selected — by
+  `ReadMessage` before it decodes, per §5's zero-baseline read rule, or by a writer
+  assigning the arm) *(was "zero-initialized on construction": the constructor's
+  whole-union memset zeroed the Block-sized union — ~2 KB per ~25 B message, measured
+  at 60.6% of batch-read self-cycles on Zen 4 by the 2026-08-06 bench pass — while
+  this same section pins representation as non-contract and the variant surface's
+  monostate never zeroed payload storage; zeroing moved to arm selection, the exact
+  work §5 requires and no more; repaired 2026-08-06)*, plain-switch dispatch,
   `GetMessageType` reads the tag field. The default was going to be variant until the
   measurement: isolating pure header cost (one identical representation-agnostic TU
   against each mode, arm64 clang), **union 0.09 s vs variant 0.13 s — the variant

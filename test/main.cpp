@@ -384,12 +384,17 @@ int main()
         static_assert(std::is_trivially_copyable<Message>::value,
                       "the tagged union is trivially copyable — no heap anywhere");
 
-        Message stream_out[3]; // zero-initialized by construction: type == None
+        Message stream_out[3]; // constructed as the None message: type == None
         check( stream_out[2].type == MessageType::None );
+        // a writer SELECTS an arm by assigning it — the assignment establishes
+        // the arm's storage as its zero value (default member initializers);
+        // construction alone initializes only the tag
         stream_out[0].type = MessageType::Chat;
+        stream_out[0].chat = Chat{};
         std::memcpy( stream_out[0].chat.text, "dispatch", 8 );
         stream_out[0].chat.text_length = 8;
         stream_out[1].type = MessageType::Test;
+        stream_out[1].test = Test{};
         stream_out[1].test.test_b = 42;
 
         serialize::WriteStream ws( buffer, sizeof( buffer ) );
@@ -410,6 +415,45 @@ int main()
         check( in.test.test_b == 42 );
         check( ReadMessage( rs, in ) );
         check( GetMessageType( in ) == MessageType::None ); // the terminator
+    }
+
+    // ---- union arm re-init: a re-read must not leak a previous arm's bytes ----
+    // SPEC §5: read success fully initializes relative to a ZERO-INITIALIZED
+    // output object — ReadMessage provides that baseline for exactly the arm
+    // the wire tag selects, so a Block full of nonzero bytes decoded into a
+    // Message must not remain readable through the chat arm after a smaller
+    // Chat is decoded into the SAME value. This pins the arm re-init: remove
+    // `message.chat = Chat{};` from ReadMessage and this fails.
+    {
+        serialize::WriteStream ws( buffer, sizeof( buffer ) );
+        Message big;
+        big.type = MessageType::Block;
+        big.block = Block{};
+        big.block.data_length = MaxBlockSize;
+        std::memset( big.block.data, 0xFF, MaxBlockSize ); // stand-in attacker bytes
+        check( WriteMessage( ws, big ) );
+        Message small;
+        small.type = MessageType::Chat;
+        small.chat = Chat{};
+        std::memcpy( small.chat.text, "hi", 2 );
+        small.chat.text_length = 2;
+        check( WriteMessage( ws, small ) );
+        ws.Flush();
+
+        Message reused; // ONE value, reused across reads — the arm-swap case
+        serialize::ReadStream rs( buffer, ws.GetBytesProcessed() );
+        check( ReadMessage( rs, reused ) );
+        check( GetMessageType( reused ) == MessageType::Block );
+        check( reused.block.data_length == MaxBlockSize );
+        check( reused.block.data[0] == 0xFF && reused.block.data[MaxBlockSize - 1] == 0xFF );
+        check( ReadMessage( rs, reused ) ); // the same value, now a Chat
+        check( GetMessageType( reused ) == MessageType::Chat );
+        check( reused.chat.text_length == 2 );
+        check( std::strcmp( reused.chat.text, "hi" ) == 0 );
+        for ( int i = 3; i < MaxChatLength + 1; i++ )
+        {
+            check( reused.chat.text[i] == 0 ); // no Block byte survives in the arm
+        }
     }
 
     // ---- the wire constants: const(0xAB, 8) leads, reserved holds zero,
