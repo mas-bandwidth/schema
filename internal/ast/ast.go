@@ -122,21 +122,23 @@ type ArrayBound struct {
 type ScalarKind int
 
 const (
-	ScalarInt ScalarKind = iota // Bits field width — 8/16/32/64 — Signed flag
+	ScalarInt ScalarKind = iota // Bits field width — 8/16/32/64/128 — Signed flag
 	ScalarBits
 	ScalarBool
 	ScalarFloat32
 	ScalarFloat64
 	ScalarString
 	ScalarBytes
+	ScalarFixed // fixed(I, F) — signed fixed point (SPEC §4.3)
 	ScalarNamed
 )
 
 type ScalarType struct {
 	Kind   ScalarKind
 	Signed bool   // ScalarInt
-	Width  int    // ScalarInt: 8/16/32/64
-	Arg    Expr   // ScalarBits/ScalarString/ScalarBytes: the (N)
+	Width  int    // ScalarInt: 8/16/32/64/128
+	Arg    Expr   // ScalarBits/ScalarString/ScalarBytes: the (N); ScalarFixed: I
+	Arg2   Expr   // ScalarFixed: F
 	Name   string // ScalarNamed
 	Pos    Pos
 }

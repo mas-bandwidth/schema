@@ -59,6 +59,7 @@ const (
 	KwFloat64
 	KwString
 	KwBytes
+	KwFixed // fixed(I, F) — signed fixed point (SPEC §4.3)
 	KwInt8
 	KwInt16
 	KwInt32
@@ -67,8 +68,8 @@ const (
 	KwUint16
 	KwUint32
 	KwUint64
-	KwInt128  // reserved (SPEC §4.10)
-	KwUint128 // reserved (SPEC §4.10)
+	KwInt128  // live: ranged 128-bit integer (SPEC §4.3)
+	KwUint128 // live: raw 128-bit unsigned integer (SPEC §4.3)
 	KwInt     // reserved: "did you mean int32?"
 	KwUint    // reserved: "did you mean uint32?"
 	keywordEnd
@@ -79,7 +80,7 @@ var keywords = map[string]Kind{
 	"message": KwMessage, "object": KwObject, "if": KwIf, "else": KwElse,
 	"switch": KwSwitch, "case": KwCase, "align": KwAlign, "reserved": KwReserved,
 	"bits": KwBits, "bool": KwBool, "float32": KwFloat32, "float64": KwFloat64,
-	"string": KwString, "bytes": KwBytes,
+	"string": KwString, "bytes": KwBytes, "fixed": KwFixed,
 	"int8": KwInt8, "int16": KwInt16, "int32": KwInt32, "int64": KwInt64,
 	"uint8": KwUint8, "uint16": KwUint16, "uint32": KwUint32, "uint64": KwUint64,
 	"int128": KwInt128, "uint128": KwUint128, "int": KwInt, "uint": KwUint,

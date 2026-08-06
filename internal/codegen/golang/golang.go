@@ -33,6 +33,13 @@ import (
 // Go packages are order-free across files, so unlike C++ there is no topo
 // sort and no cross-file include graph to refuse.
 func Generate(u *ir.Unit) (map[string][]byte, error) {
+	// fixed(I, F), int128 and uint128 landed in the C++ serialize runtime
+	// first (runtime-first, SPEC §4.10); the serialize.go port does not carry
+	// the 128-bit/fixed surface yet, so this backend REFUSES the unit by name
+	// rather than miscompiling it silently. Lift when the port lands.
+	if fields := ir.Fixed128Fields(u); len(fields) > 0 {
+		return nil, fmt.Errorf("the Go backend does not support fixed(I, F), int128 or uint128 yet — serialize.go has no 128-bit/fixed-point surface (the port is in flight; C++ is the reference target). Offending fields: %s", strings.Join(fields, "; "))
+	}
 	out := map[string][]byte{}
 	home := protocolIdHome(u)
 	msgOwner := ir.MessageOwner(u)

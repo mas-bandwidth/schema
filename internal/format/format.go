@@ -301,7 +301,7 @@ func needSpace(prev, cur scanner.Token, tokens []scanner.Token, i int) bool {
 		// unary minus; spaced after operators and separators
 		switch prev.Kind {
 		case scanner.Ident, scanner.KwBits, scanner.KwString, scanner.KwBytes,
-			scanner.KwConst, scanner.KwReserved:
+			scanner.KwFixed, scanner.KwConst, scanner.KwReserved:
 			return false
 		case scanner.Minus:
 			return isUnary(tokens, i-1)
@@ -597,6 +597,8 @@ func fpScalar(t ast.ScalarType) string {
 		return fmt.Sprintf("string(%s)", fpExpr(t.Arg))
 	case ast.ScalarBytes:
 		return fmt.Sprintf("bytes(%s)", fpExpr(t.Arg))
+	case ast.ScalarFixed:
+		return fmt.Sprintf("fixed(%s,%s)", fpExpr(t.Arg), fpExpr(t.Arg2))
 	default:
 		return t.Name
 	}

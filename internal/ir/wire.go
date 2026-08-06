@@ -63,7 +63,11 @@ func maxBitsScalar(f *Field) int64 {
 		if f.HasIntRange {
 			return BitsRequired(f.IntMin, f.IntMax)
 		}
-		return int64(f.Type.Width)
+		return int64(f.Type.Width) // bare: raw storage-width bits (uint128 = 128)
+	case TFixed:
+		// the raw range is the whole-unit range shifted by F, and shifting a
+		// range left by F adds exactly F to its bit length (STANDARD.md, fixed)
+		return BitsRequired(f.IntMin, f.IntMax) + int64(f.Type.FracBits)
 	case TBits:
 		return int64(f.Type.Width)
 	case TBool:

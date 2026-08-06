@@ -740,6 +740,33 @@ func (c *checker) resolveField(kind declKind, owner string, f *ast.Field) *ir.Fi
 			return nil
 		}
 		out.Type = ir.FieldType{Kind: ir.TBits, Width: int(w)}
+	case ast.ScalarFixed:
+		// fixed(I, F) — SIGNED (Glenn, 2026-08-06: "fixed point is signed");
+		// the storage is an integer of exactly I+F bits and the sign bit
+		// counts toward I, mirroring serialize_fixed's static_asserts
+		// (SPEC §4.3, §4.6). The unsigned spelling is an OPEN question (§9).
+		iv, ok1 := c.evalInt(f.Type.Arg)
+		fv, ok2 := c.evalInt(f.Type.Arg2)
+		if !ok1 || !ok2 {
+			return nil
+		}
+		if !iv.IsInt64() || iv.Int64() < 1 {
+			c.errf(f.Type.Pos, "fixed(%s, %s): at least one integer bit is required — the sign bit counts toward I (SPEC §4.6)", iv, fv)
+			return nil
+		}
+		if fv.Sign() < 0 || !fv.IsInt64() {
+			c.errf(f.Type.Pos, "fixed(%s, %s): fractional bits cannot be negative (SPEC §4.6)", iv, fv)
+			return nil
+		}
+		total := iv.Int64() + fv.Int64()
+		switch total {
+		case 8, 16, 32, 64, 128:
+		default:
+			c.errf(f.Type.Pos, "fixed(%s, %s): I + F = %d must equal a storage width — 8, 16, 32, 64 or 128 (SPEC §4.6)", iv, fv, total)
+			return nil
+		}
+		out.Type = ir.FieldType{Kind: ir.TFixed, Signed: true, Width: int(total),
+			IntBits: int(iv.Int64()), FracBits: int(fv.Int64())}
 	case ast.ScalarString, ast.ScalarBytes:
 		n, ok := c.evalInt(f.Type.Arg)
 		if !ok {
@@ -825,6 +852,37 @@ func (c *checker) resolveField(kind declKind, owner string, f *ast.Field) *ir.Fi
 	}
 
 	c.resolveAttrs(kind, owner, f, out)
+
+	// the fixed and 128-bit families mirror serialize's own surface exactly
+	// (SPEC §4.3, runtime-first): fixed(I, F) and int128 are RANGED — the
+	// bounds are part of the wire format — and uint128 is the raw field.
+	// [local] fields reach no wire, so they carry no bounds (resolveAttrs
+	// already rejects encoding attributes there); a field whose declared
+	// bounds failed above was already diagnosed, so the requirement error
+	// fires only when no bounds were attempted at all.
+	attempted := false
+	for _, a := range f.Attrs {
+		if a.Key == "min" || a.Key == "max" {
+			attempted = true
+		}
+	}
+	if !out.Local && !attempted && out.Type.Kind == ir.TFixed && !out.HasIntRange {
+		c.errf(f.Pos, "field %s: fixed(%d, %d) requires [min = A, max = B] — the whole-unit bounds are part of the wire format, exactly like a ranged integer's (SPEC §4.3)",
+			f.Name, out.Type.IntBits, out.Type.FracBits)
+		return nil
+	}
+	if !out.Local && !attempted && out.Type.Kind == ir.TInt && out.Type.Width == 128 && out.Type.Signed && !out.HasIntRange {
+		c.errf(f.Pos, "field %s: int128 requires [min = A, max = B] — serialize_int128 is the only ranged 128-bit operation; a raw 128-bit field is uint128 (SPEC §4.3)",
+			f.Name)
+		return nil
+	}
+	if !out.Local && out.Type.Kind == ir.TFixed && !out.HasIntRange {
+		return nil // bounds attempted and rejected above — already diagnosed
+	}
+	if !out.Local && out.Type.Kind == ir.TInt && out.Type.Width == 128 && out.Type.Signed && !out.HasIntRange {
+		return nil // bounds attempted and rejected above — already diagnosed
+	}
+
 	c.resolveDefault(f, out)
 	return out
 }
@@ -1049,6 +1107,7 @@ func (c *checker) resolveAttrs(kind declKind, owner string, f *ast.Field, out *i
 	}
 
 	isInt := out.Type.Kind == ir.TInt
+	isFixed := out.Type.Kind == ir.TFixed
 	isFloat := out.Type.Kind == ir.TFloat32 || out.Type.Kind == ir.TFloat64
 
 	if hasRes || (isFloat && (hasMin || hasMax)) {
@@ -1123,12 +1182,18 @@ func (c *checker) resolveAttrs(kind declKind, owner string, f *ast.Field, out *i
 		return
 	}
 	if hasMin && hasMax {
-		if !isInt {
+		if !isInt && !isFixed {
 			if out.Type.Kind == ir.TNamed {
 				c.errf(byKey["min"].Pos, "min/max are not valid on %s — a field that indexes a declared set derives its range from the set (SPEC §4.2)", out.Type.Name)
 			} else {
 				c.errf(byKey["min"].Pos, "min/max apply to integer fields (SPEC §4.6)")
 			}
+			return
+		}
+		if isInt && out.Type.Width == 128 && !out.Type.Signed {
+			// serialize's own surface: serialize_uint128 is the RAW 128-bit
+			// field; the only ranged 128-bit operation is serialize_int128
+			c.errf(byKey["min"].Pos, "min/max are not valid on uint128 — it is the raw 128-bit field, always 128 bits on the wire; a ranged 128-bit integer is int128 (SPEC §4.3)")
 			return
 		}
 		vmin, ok1 := c.evalInt(byKey["min"].Value)
@@ -1140,16 +1205,44 @@ func (c *checker) resolveAttrs(kind declKind, owner string, f *ast.Field, out *i
 			c.errf(byKey["min"].Pos, "degenerate range [%s, %s] — for a fixed value use const (SPEC §4.6)", vmin, vmax)
 			return
 		}
-		lo, hi := storageBounds(out.Type.Signed, out.Type.Width)
-		if vmin.Cmp(lo) < 0 || vmax.Cmp(hi) > 0 {
-			c.errf(f.Pos, "field %s: range [%s, %s] does not fit its declared storage %s (SPEC §4.6 — a legal wire value the storage truncates would be silent corruption)",
-				f.Name, vmin, vmax, intTypeName(out.Type.Signed, out.Type.Width))
-			return
+		if isFixed {
+			// the bounds are WHOLE UNITS and must be representable in the Q
+			// format — Q I.F with the sign bit in I — and in int64, where the
+			// runtime's compile-time bound parameters live (serialize_fixed's
+			// static_asserts, restated as language rules — SPEC §4.6)
+			lo, hi := fixedUnitBounds(out.Type.IntBits)
+			if vmin.Cmp(lo) < 0 || vmax.Cmp(hi) > 0 {
+				c.errf(f.Pos, "field %s: bounds [%s, %s] whole units do not fit fixed(%d, %d) — Q%d.%d holds [%s, %s] (SPEC §4.6)",
+					f.Name, vmin, vmax, out.Type.IntBits, out.Type.FracBits, out.Type.IntBits, out.Type.FracBits, lo, hi)
+				return
+			}
+		} else {
+			lo, hi := storageBounds(out.Type.Signed, out.Type.Width)
+			if vmin.Cmp(lo) < 0 || vmax.Cmp(hi) > 0 {
+				c.errf(f.Pos, "field %s: range [%s, %s] does not fit its declared storage %s (SPEC §4.6 — a legal wire value the storage truncates would be silent corruption)",
+					f.Name, vmin, vmax, intTypeName(out.Type.Signed, out.Type.Width))
+				return
+			}
 		}
 		out.HasIntRange = true
 		out.IntMin, out.IntMax = vmin, vmax
 		out.IntMinExpr, out.IntMaxExpr = byKey["min"].Value, byKey["max"].Value
 	}
+}
+
+// fixedUnitBounds is the whole-unit domain of a signed Q I.F format —
+// [-2^(I-1), 2^(I-1) - 1] — clamped to int64, where serialize_fixed's
+// compile-time MinUnits/MaxUnits parameters live (SPEC §4.6).
+func fixedUnitBounds(intBits int) (*big.Int, *big.Int) {
+	lo, hi := storageBounds(true, intBits)
+	i64lo, i64hi := storageBounds(true, 64)
+	if lo.Cmp(i64lo) < 0 {
+		lo = i64lo
+	}
+	if hi.Cmp(i64hi) > 0 {
+		hi = i64hi
+	}
+	return lo, hi
 }
 
 func kindName(k declKind) string {
