@@ -30,12 +30,18 @@ var update = flag.Bool("update", false, "rewrite the golden files from current o
 
 const (
 	corpusDir = "../../examples"
-	goldenDir = "../../testdata/golden"
+	// the fixed-point + 128-bit unit: C++-only until the go/rs/cs runtime
+	// ports carry the phase-1 surface (those backends refuse it by name —
+	// the refusal is itself pinned below)
+	corpus128Dir = "../../examples128"
+	goldenDir    = "../../testdata/golden"
 )
 
-func loadCorpus(t *testing.T) *ir.Unit {
+func loadCorpus(t *testing.T) *ir.Unit { return loadCorpusDir(t, corpusDir) }
+
+func loadCorpusDir(t *testing.T, dir string) *ir.Unit {
 	t.Helper()
-	entries, err := os.ReadDir(corpusDir)
+	entries, err := os.ReadDir(dir)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -44,7 +50,7 @@ func loadCorpus(t *testing.T) *ir.Unit {
 		if e.IsDir() || !strings.HasSuffix(e.Name(), ".schema") {
 			continue
 		}
-		p := filepath.Join(corpusDir, e.Name())
+		p := filepath.Join(dir, e.Name())
 		data, err := os.ReadFile(p)
 		if err != nil {
 			t.Fatal(err)
@@ -72,25 +78,27 @@ func loadCorpus(t *testing.T) *ir.Unit {
 // be in schemafmt's one style (the compiler formats before processing, so a
 // non-canonical file in git means someone bypassed the tool).
 func TestCorpusIsCanonical(t *testing.T) {
-	entries, err := os.ReadDir(corpusDir)
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, e := range entries {
-		if e.IsDir() || !strings.HasSuffix(e.Name(), ".schema") {
-			continue
-		}
-		p := filepath.Join(corpusDir, e.Name())
-		data, err := os.ReadFile(p)
+	for _, dir := range []string{corpusDir, corpus128Dir} {
+		entries, err := os.ReadDir(dir)
 		if err != nil {
 			t.Fatal(err)
 		}
-		out, err := format.Format(p, data)
-		if err != nil {
-			t.Fatalf("%s: %v", p, err)
-		}
-		if string(out) != string(data) {
-			t.Errorf("%s is not formatter-canonical — run: bin/schema fmt examples", p)
+		for _, e := range entries {
+			if e.IsDir() || !strings.HasSuffix(e.Name(), ".schema") {
+				continue
+			}
+			p := filepath.Join(dir, e.Name())
+			data, err := os.ReadFile(p)
+			if err != nil {
+				t.Fatal(err)
+			}
+			out, err := format.Format(p, data)
+			if err != nil {
+				t.Fatalf("%s: %v", p, err)
+			}
+			if string(out) != string(data) {
+				t.Errorf("%s is not formatter-canonical — run: make fmt", p)
+			}
 		}
 	}
 }
@@ -164,6 +172,75 @@ func TestGoldenSourceCs(t *testing.T) {
 		t.Fatal(err)
 	}
 	pinDir(t, filepath.Join(goldenDir, "cs"), files)
+}
+
+// TestGoldenLudicrousId pins the fixed-point + 128-bit unit's protocol id.
+func TestGoldenLudicrousId(t *testing.T) {
+	u := loadCorpusDir(t, corpus128Dir)
+	got := fmt.Sprintf("0x%016x\n", u.ProtocolId)
+	path := filepath.Join(goldenDir, "ludicrous", "id.txt")
+	if *update {
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte(got), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		return
+	}
+	want, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("missing golden id (run: make update-goldens): %v", err)
+	}
+	if got != string(want) {
+		t.Errorf("ludicrous protocol id moved: got %s want %s — if the schema files changed this is expected once (re-pin deliberately); if they did not, the §3.1 hash procedure changed and that is stop-the-line", got, string(want))
+	}
+}
+
+// TestGoldenLudicrousSource pins the fixed-point + 128-bit unit's generated
+// C++ byte-for-byte, both message representations. The other targets pin
+// nothing here BY DESIGN — they refuse the unit (see TestLudicrous128Refusals).
+func TestGoldenLudicrousSource(t *testing.T) {
+	u := loadCorpusDir(t, corpus128Dir)
+	for _, mode := range []string{"union", "variant"} {
+		files, err := cpp.Generate(u, cpp.Options{MessageRepr: mode})
+		if err != nil {
+			t.Fatal(err)
+		}
+		pinDir(t, filepath.Join(goldenDir, "ludicrous", mode), files)
+	}
+}
+
+// TestLudicrous128Refusals pins the OTHER half of the phase-1 contract: until
+// the serialize.go/.rs/.cs ports carry the 128-bit/fixed surface, their
+// backends must REFUSE a unit using it — loudly, naming the fields — never
+// emit code for it. A backend starting to succeed here is the signal to wire
+// its port in and lift the refusal, not a bug.
+func TestLudicrous128Refusals(t *testing.T) {
+	u := loadCorpusDir(t, corpus128Dir)
+	if _, err := cpp.Generate(u, cpp.Options{}); err != nil {
+		t.Fatalf("the C++ backend is the reference for fixed/int128/uint128 and must generate this unit: %v", err)
+	}
+	refusals := []struct {
+		name string
+		gen  func() error
+	}{
+		{"go", func() error { _, err := golang.Generate(u); return err }},
+		{"rust", func() error { _, err := rust.Generate(u); return err }},
+		{"cs", func() error { _, err := csharp.Generate(u); return err }},
+	}
+	for _, r := range refusals {
+		err := r.gen()
+		if err == nil {
+			t.Errorf("the %s backend accepted the fixed/128 unit — it must refuse until its serialize port carries the surface (or this pin is lifted deliberately)", r.name)
+			continue
+		}
+		for _, want := range []string{"does not support fixed(I, F), int128 or uint128", "FixedProbe.angle: fixed(16, 16)", "WideProbe.entity_id: uint128", "WideProbe.energy: int128"} {
+			if !strings.Contains(err.Error(), want) {
+				t.Errorf("the %s backend's refusal must carry %q; got: %v", r.name, want, err)
+			}
+		}
+	}
 }
 
 // pinDir compares (or, under -update, rewrites) one directory of goldens.

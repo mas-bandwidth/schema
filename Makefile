@@ -20,6 +20,7 @@ RUSTUP_BIN ?= /opt/homebrew/opt/rustup/bin
 
 GO_SOURCES := $(shell find cmd internal -name '*.go') go.mod
 SCHEMAS    := $(wildcard examples/*.schema)
+SCHEMAS128 := $(wildcard examples128/*.schema)
 
 all: test
 
@@ -29,6 +30,14 @@ bin/schema: $(GO_SOURCES)
 # one generate run emits every header; the stamp carries the dependency
 generated/cpp/.stamp: bin/schema $(SCHEMAS)
 	./bin/schema generate --lang cpp --out generated/cpp examples
+	@touch $@
+
+# the fixed-point + 128-bit unit (examples128/) generates C++ ONLY until the
+# go/rs/cs runtime ports carry the phase-1 surface — those backends refuse it
+# by field name. It compiles against serialize's fixed-point surface: until
+# that merges into the sibling checkout, build with SERIALIZE=../serialize
+generated/cpp/ludicrous/.stamp: bin/schema $(SCHEMAS128)
+	./bin/schema generate --lang cpp --out generated/cpp/ludicrous examples128
 	@touch $@
 
 # the opt-in variant dispatch surface, generated beside the default so both
@@ -71,10 +80,15 @@ build/schema_test_random: generated/cpp/.stamp test/random_main.cpp
 	@mkdir -p build
 	$(CXX) $(CXXFLAGS) -Igenerated/cpp test/random_main.cpp -o $@
 
-test: build/schema_test build/schema_test_variant build/schema_test_random generated/go/.stamp generated/rust/.stamp generated/cs/.stamp
+build/schema_test_ludicrous: generated/cpp/ludicrous/.stamp test/ludicrous_main.cpp
+	@mkdir -p build
+	$(CXX) $(CXXFLAGS) -Igenerated/cpp/ludicrous test/ludicrous_main.cpp -o $@
+
+test: build/schema_test build/schema_test_variant build/schema_test_random build/schema_test_ludicrous generated/go/.stamp generated/rust/.stamp generated/cs/.stamp
 	./build/schema_test
 	./build/schema_test_variant
 	./build/schema_test_random
+	./build/schema_test_ludicrous
 	cd test/go && go run .
 	cd test/rust && PATH="$(RUSTUP_BIN):$$PATH" cargo run --quiet
 	cd test/cs && dotnet run
@@ -83,21 +97,25 @@ test: build/schema_test build/schema_test_variant build/schema_test_random gener
 # Re-pin the goldens DELIBERATELY (SPEC §7.2 gates 1, 2, 7). A wire golden
 # breaking under an unchanged schema is stop-the-line, never a quiet re-pin
 # (SPEC §3.1) — this target is for intentional emitter/schema changes only.
-update-goldens: build/schema_test build/schema_test_variant
+update-goldens: build/schema_test build/schema_test_variant build/schema_test_ludicrous
 	@mkdir -p testdata/golden testdata/wire
 	go test ./internal/goldens -update -run 'TestGolden'
 	SCHEMA_UPDATE_WIRE_GOLDENS=1 ./build/schema_test
+	SCHEMA_UPDATE_WIRE_GOLDENS=1 ./build/schema_test_ludicrous
 	./build/schema_test_variant
 	go test ./...
 
 check: bin/schema
 	./bin/schema check examples
+	./bin/schema check examples128
 
 id: bin/schema
 	./bin/schema id examples
+	./bin/schema id examples128
 
 fmt: bin/schema
 	./bin/schema fmt examples
+	./bin/schema fmt examples128
 
 clean:
 	rm -rf bin build generated
