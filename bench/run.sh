@@ -70,6 +70,16 @@ esac
 # determinism with -ffp-contract=off, and the generated quantize paths do
 # real float math. Recorded here so the numbers carry their flags.
 COMMON_FLAGS="-std=c++17 -Wall -Wextra -Werror -ffp-contract=off -fno-rtti -Igenerated/cpp -I$SERIALIZE"
+
+# g++ (13.3 checked) rejects two things in the GENERATED code that clang never
+# flags: -Wclass-memaccess (branch zeroing memsets non-trivial generated
+# structs, Types.h ReadRigidBody) and -Wtype-limits (read_int64 on a uint32
+# full-range field expands to unsigned < 0, Wire.h ReadProbeBits). Those are
+# emitter findings, not bench findings — tracked for a fix; suppressed here so
+# the bench builds on both compilers with -Werror otherwise live.
+if $CXX_BIN --version 2>/dev/null | head -1 | grep -qi 'g++\|gcc'; then
+    COMMON_FLAGS="$COMMON_FLAGS -Wno-class-memaccess -Wno-type-limits"
+fi
 RELEASE_FLAGS="-O3 -DNDEBUG -DSERIALIZE_RELEASE $COMMON_FLAGS"
 DEBUG_FLAGS="-O0 -g -DSERIALIZE_DEBUG $COMMON_FLAGS"
 
