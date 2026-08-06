@@ -26,7 +26,7 @@ const MaxTurretsPerShip   = 256
 const MaxCollidersPerShip = 64
 
 // enum-derived counts — E.Max in constant expressions (SPEC §4.2)
-const NumTeams = Team.Max + 1
+const NumTeams = Team.Max
 
 // packet bounds
 const MaxInputsPerPacket = 16
