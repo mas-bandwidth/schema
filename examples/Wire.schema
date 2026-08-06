@@ -67,6 +67,14 @@ type ProbeConfig {
     preferred Weapon = Railgun
 }
 
+// a type composing DEFAULTED types — through a fixed array and a plain
+// member: New*/construction must install the inner defaults transitively in
+// every target (zero init reaches only fields with no specified default)
+type ProbeArray {
+    samples [2]ProbeSample
+    config  ProbeConfig
+}
+
 // a message used as an ordinary field type — a message IS an ordinary type
 // (SPEC §4.8)
 type ProbeReport {

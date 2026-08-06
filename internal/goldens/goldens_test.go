@@ -18,6 +18,7 @@ import (
 
 	"github.com/mas-bandwidth/schema/internal/check"
 	"github.com/mas-bandwidth/schema/internal/codegen/cpp"
+	"github.com/mas-bandwidth/schema/internal/codegen/golang"
 	"github.com/mas-bandwidth/schema/internal/format"
 	"github.com/mas-bandwidth/schema/internal/ir"
 	"github.com/mas-bandwidth/schema/internal/parser"
@@ -126,32 +127,48 @@ func TestGoldenSource(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		dir := filepath.Join(goldenDir, mode)
+		pinDir(t, filepath.Join(goldenDir, mode), files)
+	}
+}
+
+// TestGoldenSourceGo pins the generated Go byte-for-byte (SPEC §7.2 gate 1,
+// second target).
+func TestGoldenSourceGo(t *testing.T) {
+	u := loadCorpus(t)
+	files, err := golang.Generate(u)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pinDir(t, filepath.Join(goldenDir, "go"), files)
+}
+
+// pinDir compares (or, under -update, rewrites) one directory of goldens.
+func pinDir(t *testing.T, dir string, files map[string][]byte) {
+	t.Helper()
+	if *update {
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	names := make([]string, 0, len(files))
+	for n := range files {
+		names = append(names, n)
+	}
+	sort.Strings(names)
+	for _, n := range names {
+		path := filepath.Join(dir, n)
 		if *update {
-			if err := os.MkdirAll(dir, 0o755); err != nil {
+			if err := os.WriteFile(path, files[n], 0o644); err != nil {
 				t.Fatal(err)
 			}
+			continue
 		}
-		names := make([]string, 0, len(files))
-		for n := range files {
-			names = append(names, n)
+		want, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatalf("missing golden %s (run: make update-goldens): %v", path, err)
 		}
-		sort.Strings(names)
-		for _, n := range names {
-			path := filepath.Join(dir, n)
-			if *update {
-				if err := os.WriteFile(path, files[n], 0o644); err != nil {
-					t.Fatal(err)
-				}
-				continue
-			}
-			want, err := os.ReadFile(path)
-			if err != nil {
-				t.Fatalf("missing golden %s (run: make update-goldens): %v", path, err)
-			}
-			if string(files[n]) != string(want) {
-				t.Errorf("%s/%s: generated source diverged from its golden — deliberate emitter change? re-pin with make update-goldens; if the WIRE moved under an unchanged schema, that is stop-the-line (SPEC §3.1)", mode, n)
-			}
+		if string(files[n]) != string(want) {
+			t.Errorf("%s: generated source diverged from its golden — deliberate emitter change? re-pin with make update-goldens; if the WIRE moved under an unchanged schema, that is stop-the-line (SPEC §3.1)", path)
 		}
 	}
 }

@@ -31,7 +31,7 @@ func (g *gen) emitObjectFunctions(d *ir.Object) {
 	deepName := d.Name + "Data_Deep"
 	deepBits := g.maxBitsView(deep, viewDeep)
 	g.pf("inline constexpr int64_t %sMaxBits = %d;\n", deepName, deepBits)
-	g.pf("inline constexpr int64_t %sMaxBytes = %d;\n\n", deepName, (deepBits+7)/8)
+	g.pf("inline constexpr int64_t %sMaxBytes = %d; // rounded up to the 8-byte write-buffer granularity\n\n", deepName, ir.MaxBytes(deepBits))
 
 	g.pf("inline bool Write%s( serialize::WriteStream & stream, const %s & value )\n{\n", deepName, deepName)
 	for _, f := range deep {
@@ -48,7 +48,7 @@ func (g *gen) emitObjectFunctions(d *ir.Object) {
 	shName := d.Name + "Data_Shallow"
 	shBits := g.maxBitsView(interp, viewShallow)
 	g.pf("inline constexpr int64_t %sMaxBits = %d;\n", shName, shBits)
-	g.pf("inline constexpr int64_t %sMaxBytes = %d;\n\n", shName, (shBits+7)/8)
+	g.pf("inline constexpr int64_t %sMaxBytes = %d; // rounded up to the 8-byte write-buffer granularity\n\n", shName, ir.MaxBytes(shBits))
 
 	g.pf("inline bool Write%s( serialize::WriteStream & stream, const %s & value )\n{\n", shName, shName)
 	for _, f := range interp {
@@ -76,37 +76,14 @@ func (g *gen) emitObjectFunctions(d *ir.Object) {
 	g.pf("}\n\n")
 }
 
-type objView int
+type objView = ir.View
 
 const (
-	viewDeep objView = iota
-	viewShallow
+	viewDeep    = ir.ViewDeep
+	viewShallow = ir.ViewShallow
 )
 
-// maxBitsView is the worst-case wire bits of a view's field list.
-func (g *gen) maxBitsView(fields []*ir.Field, v objView) int64 {
-	var total int64
-	for _, f := range fields {
-		switch {
-		case v == viewShallow && f.HasQuantize:
-			st := f.Type.Ref.(*ir.Struct)
-			per := bitsRequired(big.NewInt(-f.QuantBound), big.NewInt(f.QuantBound))
-			total += per * int64(len(st.Fields))
-		case v == viewShallow && f.HasFloatRange:
-			total += bitsRequired(big.NewInt(0), big.NewInt(f.Steps))
-		case v == viewDeep && f.HasFloatRange && f.Interpolate:
-			// bare storage encoding on the deep wire (SPEC §4.8)
-			if f.Type.Kind == ir.TFloat64 {
-				total += 64
-			} else {
-				total += 32
-			}
-		default:
-			total += g.maxBitsField(f)
-		}
-	}
-	return total
-}
+func (g *gen) maxBitsView(fields []*ir.Field, v objView) int64 { return ir.MaxBitsView(fields, v) }
 
 // emitViewWriteField emits one field of a view wire function.
 func (g *gen) emitViewWriteField(f *ir.Field, v objView, ind string) {

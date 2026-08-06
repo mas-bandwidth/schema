@@ -194,6 +194,7 @@ func (c *checker) resolveConst(name string, usePos ast.Pos) *ir.Const {
 		out.IsFloat = true
 		out.Float = v
 		out.Storage = e.decl.Type
+		out.Explicit = e.decl.Type != ""
 		if out.Storage == "" {
 			out.Storage = "float64"
 		}
@@ -216,6 +217,7 @@ func (c *checker) resolveConst(name string, usePos ast.Pos) *ir.Const {
 		}
 		out.Int = v
 		out.Storage = e.decl.Type
+		out.Explicit = e.decl.Type != ""
 		if out.Storage == "" {
 			out.Storage = "int64"
 		}
@@ -1263,16 +1265,11 @@ var targetReserved = func() map[string]string {
 	return m
 }()
 
-// goExportName is the presumptive Go export-casing of a schema name:
-// lower_snake_case -> UpperCamelCase. Two names that collide under it cannot
+// goExportName delegates to the one true mapping (ir.GoExportName), which
+// the Go backend also emits with — two names that collide under it cannot
 // coexist in one type (SPEC §4.6).
 func goExportName(name string) string {
-	parts := strings.Split(name, "_")
-	var b strings.Builder
-	for _, p := range parts {
-		b.WriteString(capitalize(p))
-	}
-	return b.String()
+	return ir.GoExportName(name)
 }
 
 func (c *checker) checkTargetNames() {
@@ -1287,18 +1284,49 @@ func (c *checker) checkTargetNames() {
 			if d.DeclName() != "" {
 				checkName(d.DeclName(), d.DeclPos(), "declaration name")
 			}
-			var walkBlock func(b *ast.Block, owner string, export map[string]string)
-			walkBlock = func(b *ast.Block, owner string, export map[string]string) {
+			// each generated name records which field claims it and AS WHAT —
+			// its own export, a length/count companion (SPEC §6.1), or a
+			// claimed dispatch name — so a collision names the mechanism
+			type claim struct {
+				field string
+				as    string // "" = the field's own name; else a description
+			}
+			var walkBlock func(b *ast.Block, owner string, export map[string]claim)
+			walkBlock = func(b *ast.Block, owner string, export map[string]claim) {
+				register := func(pos ast.Pos, fieldName, exp, as string) {
+					prev, ok := export[exp]
+					if !ok {
+						export[exp] = claim{field: fieldName, as: as}
+						return
+					}
+					if prev.field == fieldName {
+						return
+					}
+					describe := func(cl claim) string {
+						if cl.field == "" {
+							return cl.as // a claimed generated name, no field behind it
+						}
+						if cl.as == "" {
+							return "field " + cl.field
+						}
+						return cl.as + " of field " + cl.field
+					}
+					c.errf(pos, "%s collides with %s (both become %s in generated code) — rename at the source (SPEC §4.6)",
+						describe(claim{field: fieldName, as: as}), describe(prev), exp)
+				}
 				for _, item := range b.Items {
 					switch item := item.(type) {
 					case *ast.Field:
 						checkName(item.Name, item.Pos, "field name")
-						exp := goExportName(item.Name)
-						if prev, ok := export[exp]; ok && prev != item.Name {
-							c.errf(item.Pos, "field %s collides with field %s after Go export-casing (both become %s) — rename at the source (SPEC §4.6)",
-								item.Name, prev, exp)
-						} else {
-							export[exp] = item.Name
+						register(item.Pos, item.Name, goExportName(item.Name), "")
+						// generated companion storage claims names too: the
+						// used length beside string/bytes, the used count
+						// beside a counted array (SPEC §6.1)
+						if item.Type.Kind == ast.ScalarString || item.Type.Kind == ast.ScalarBytes {
+							register(item.Pos, item.Name, goExportName(item.Name)+"Length", "the generated length companion")
+						}
+						if item.Array != nil && item.Array.Kind != ast.ArrayFixed {
+							register(item.Pos, item.Name, goExportName(item.Name)+"Count", "the generated count companion")
 						}
 					case *ast.IfItem:
 						walkBlock(item.Then, owner, export)
@@ -1310,11 +1338,15 @@ func (c *checker) checkTargetNames() {
 			}
 			switch d := d.(type) {
 			case *ast.TypeDecl:
-				walkBlock(d.Body, d.Name, map[string]string{})
+				walkBlock(d.Body, d.Name, map[string]claim{})
 			case *ast.MessageDecl:
-				walkBlock(d.Body, d.Name, map[string]string{})
+				// the Go dispatch surface gives every message a MessageType()
+				// method, so a field exporting to that name cannot compile
+				walkBlock(d.Body, d.Name, map[string]claim{
+					"MessageType": {as: "the generated MessageType dispatch method (SPEC §6.1 item 6)"},
+				})
 			case *ast.ObjectDecl:
-				walkBlock(d.Body, d.Name, map[string]string{})
+				walkBlock(d.Body, d.Name, map[string]claim{})
 			case *ast.EnumDecl:
 				for _, v := range d.Variants {
 					checkName(v.Text, v.Pos, "enum variant")
@@ -1337,17 +1369,56 @@ func (c *checker) checkClaimedNames() {
 		}
 	}
 	claim("ProtocolId", "the compiler generates it for the unit")
+	claim("ErrValidation", "the Go target generates it for the unit")
 	if countMessages(c.astDecls) > 0 {
 		claim("MessageType", "a unit with message declarations generates it")
+		claim("Message", "a unit with message declarations generates the dispatch value")
+		claim("MessageStorage", "a unit with message declarations generates the Go read storage")
+		for _, gen := range []string{"WriteMessage", "ReadMessage", "WriteMessageType", "ReadMessageType", "MessageMaxBits", "MessageMaxBytes"} {
+			claim(gen, "a unit with message declarations generates it")
+		}
 	}
 	if len(c.objects) > 0 {
 		claim("ObjectType", "a unit with object declarations generates it")
+		claim("WriteObjectType", "a unit with object declarations generates it")
+		claim("ReadObjectType", "a unit with object declarations generates it")
 	}
+	// per-struct generated symbols: the split functions, the constructor, and
+	// the size constants all live in the declaration namespace of every target
+	// (sorted iteration — diagnostics are deterministic)
+	declNames := make([]string, 0, len(c.astDecls))
+	for name := range c.astDecls {
+		declNames = append(declNames, name)
+	}
+	sort.Strings(declNames)
+	for _, name := range declNames {
+		switch c.astDecls[name].(type) {
+		case *ast.TypeDecl, *ast.MessageDecl:
+			for _, prefix := range []string{"Write", "Read", "New"} {
+				claim(prefix+name, fmt.Sprintf("generated for type %s", name))
+			}
+			claim(name+"MaxBits", fmt.Sprintf("generated for type %s", name))
+			claim(name+"MaxBytes", fmt.Sprintf("generated for type %s", name))
+		}
+	}
+	objNames := make([]string, 0, len(c.objects))
 	for name := range c.objects {
+		objNames = append(objNames, name)
+	}
+	sort.Strings(objNames)
+	for _, name := range objNames {
 		claim(name+"State", fmt.Sprintf("generated by object %s", name))
 		claim(name+"Data_Deep", fmt.Sprintf("generated by object %s", name))
 		claim(name+"Data_Shallow", fmt.Sprintf("generated by object %s", name))
 		claim(name+"Data_Interpolate", fmt.Sprintf("generated by object %s", name))
+		claim("Quantize"+name, fmt.Sprintf("generated by object %s", name))
+		claim("Unquantize"+name, fmt.Sprintf("generated by object %s", name))
+		for _, view := range []string{"Data_Deep", "Data_Shallow"} {
+			claim("Write"+name+view, fmt.Sprintf("generated by object %s", name))
+			claim("Read"+name+view, fmt.Sprintf("generated by object %s", name))
+			claim(name+view+"MaxBits", fmt.Sprintf("generated by object %s", name))
+			claim(name+view+"MaxBytes", fmt.Sprintf("generated by object %s", name))
+		}
 		for _, ctx := range c.unit.Contexts {
 			claim(capitalize(ctx)+name+"State", fmt.Sprintf("generated by object %s in context %s", name, ctx))
 		}

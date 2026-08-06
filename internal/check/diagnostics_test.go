@@ -134,10 +134,16 @@ func TestDiagnostics(t *testing.T) {
 			src: "package t\ntype T {\n    c bool\n    if c { x uint8 } else { x uint8 }\n}\n"},
 		{name: "reserved word in a target language", want: "reserved word",
 			src: "package t\ntype T { class uint8 }\n"},
-		{name: "Go export-casing collision", want: "Go export-casing",
+		{name: "Go export-casing collision", want: "both become AtRest",
 			src: "package t\ntype T {\n    at_rest bool\n    atRest bool\n}\n"},
 		{name: "MessageType is a claimed name", want: "claimed name",
 			src: "package t\nmessage M { }\nenum MessageType { A }\n"},
+		{name: "field collides with its sibling's length companion", want: "length companion",
+			src: "package t\ntype T {\n    text string(8)\n    text_length uint8\n}\n"},
+		{name: "field collides with its sibling's count companion", want: "count companion",
+			src: "package t\ntype T {\n    items [<= 4]uint8\n    items_count uint8\n}\n"},
+		{name: "message field would shadow the dispatch method", want: "dispatch method",
+			src: "package t\nmessage M { message_type uint8 }\n"},
 		{name: "package mismatch across files", want: "does not match",
 			srcs: map[string]string{
 				"A.schema": "package a\ntype T { x uint8 }\n",
@@ -194,6 +200,8 @@ func TestGoodCornersStillCompile(t *testing.T) {
 			src: "package t\ntype T { n uint64 [min = 0, max = 18446744073709551615] }\n"},
 		{name: "headroom enum with non-variant wire values",
 			src: "package t\nenum E [max = 15] { A, B }\ntype T { e E }\n"},
+		{name: "field named message_type on a plain type (only messages claim the method)",
+			src: "package t\ntype T { message_type uint8 }\n"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

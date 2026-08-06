@@ -428,6 +428,27 @@ static bool equal( const ProbeConfig & a, const ProbeConfig & b )
     return a.retries == b.retries && a.preferred == b.preferred;
 }
 
+static void fill( Rng & r, ProbeArray & p )
+{
+    for ( int i = 0; i < 2; i++ )
+    {
+        fill( r, p.samples[i] );
+    }
+    fill( r, p.config );
+}
+
+static bool equal( const ProbeArray & a, const ProbeArray & b )
+{
+    for ( int i = 0; i < 2; i++ )
+    {
+        if ( !equal( a.samples[i], b.samples[i] ) )
+        {
+            return false;
+        }
+    }
+    return equal( a.config, b.config );
+}
+
 static void fill( Rng & r, ProbeReport & p )
 {
     fill( r, p.header );
@@ -553,6 +574,7 @@ int main()
         if ( !roundtrip<ProbeBits>( r, fill, equal, WriteProbeBits, ReadProbeBits, ProbeBitsMaxBytes ) ) return 1;
         if ( !roundtrip<ProbeSample>( r, fill, equal, WriteProbeSample, ReadProbeSample, ProbeSampleMaxBytes ) ) return 1;
         if ( !roundtrip<ProbeConfig>( r, fill, equal, WriteProbeConfig, ReadProbeConfig, ProbeConfigMaxBytes ) ) return 1;
+        if ( !roundtrip<ProbeArray>( r, fill, equal, WriteProbeArray, ReadProbeArray, ProbeArrayMaxBytes ) ) return 1;
         if ( !roundtrip<ProbeReport>( r, fill, equal, WriteProbeReport, ReadProbeReport, ProbeReportMaxBytes ) ) return 1;
         if ( !roundtrip<TestData>( r, fill, equal, WriteTestData, ReadTestData, TestDataMaxBytes ) ) return 1;
     }
@@ -569,6 +591,13 @@ int main()
         if ( !sample_fresh.active )
         {
             printf( "FAILED: bool default true\n" );
+            return 1;
+        }
+        ProbeArray array_fresh; // transitive: defaults reach through composition
+        if ( !array_fresh.samples[0].active || !array_fresh.samples[1].active ||
+             array_fresh.config.retries != -1 || array_fresh.config.preferred != Weapon::Railgun )
+        {
+            printf( "FAILED: transitive defaults through ProbeArray\n" );
             return 1;
         }
     }

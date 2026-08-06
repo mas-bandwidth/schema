@@ -37,12 +37,13 @@ type File struct {
 type Decl interface{ irDecl() }
 
 type Const struct {
-	Name    string
-	IsFloat bool
-	Storage string // schema storage name: explicit type, else "int64" / "float64"
-	Int     *big.Int
-	Float   float64
-	Expr    ast.Expr // for symbolic rendering in generated code
+	Name     string
+	IsFloat  bool
+	Storage  string // schema storage name: explicit type, else "int64" / "float64"
+	Explicit bool   // the declaration named its storage — typed in every target (SPEC §4.2)
+	Int      *big.Int
+	Float    float64
+	Expr     ast.Expr // for symbolic rendering in generated code
 }
 
 type Enum struct {
@@ -197,6 +198,27 @@ type FieldType struct {
 	SizeExpr ast.Expr // TString/TBytes: the declared N expression
 	Name     string   // TNamed
 	Ref      Decl     // TNamed: *Struct, *Enum or *Flags
+}
+
+// GoExportName is the one true mapping from a schema field name to its
+// exported Go identifier: lower_snake_case -> UpperCamelCase. The checker's
+// collision detection and the Go backend must share it, or the check lies.
+func GoExportName(name string) string {
+	out := make([]byte, 0, len(name))
+	upper := true
+	for i := 0; i < len(name); i++ {
+		c := name[i]
+		if c == '_' {
+			upper = true
+			continue
+		}
+		if upper && c >= 'a' && c <= 'z' {
+			c = c - 'a' + 'A'
+		}
+		upper = false
+		out = append(out, c)
+	}
+	return string(out)
 }
 
 // StorageBitsFor returns the smallest unsigned storage width holding max.

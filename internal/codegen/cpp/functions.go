@@ -8,113 +8,16 @@ package cpp
 import (
 	"math"
 	"math/big"
-	"math/bits"
 
 	"github.com/mas-bandwidth/schema/internal/ir"
 )
 
-// ---- worst-case wire size (SPEC §6.1 item 4) ----
+// ---- worst-case wire size: shared in ir/wire.go ----
 
-// bitsRequired mirrors the runtime's bits_required(min, max): the bit length
-// of (max - min). Streams require min < max, so the zero case cannot arise.
-func bitsRequired(min, max *big.Int) int64 {
-	diff := new(big.Int).Sub(max, min)
-	return int64(diff.BitLen())
-}
+func bitsRequired(min, max *big.Int) int64 { return ir.BitsRequired(min, max) }
 
-// compressedFloatBits replicates serialize_compressed_float's width
-// derivation exactly (float32 arithmetic, the clamp, the ceil — the extracted
-// contract's formulas).
-func compressedFloatBits(fmin, fmax, res float64) int64 {
-	delta := float32(fmax) - float32(fmin)
-	values := delta / float32(res)
-	if !(values >= 1.0) { // the runtime's own form — it also catches NaN
-		values = 1.0
-	}
-	if values > 4294967040.0 {
-		values = 4294967040.0
-	}
-	maxIntegerValue := uint64(math.Ceil(float64(values)))
-	return int64(bits.Len64(maxIntegerValue))
-}
-
-// maxBitsField is one field's worst-case wire bits, alignment points counted
-// at the worst 7 (SPEC §6.1 item 4).
-func (g *gen) maxBitsField(f *ir.Field) int64 {
-	elem := g.maxBitsScalar(f)
-	switch f.Array {
-	case ir.ArrayFixed:
-		return f.ArrayBound * elem
-	case ir.ArrayCounted:
-		return bitsRequired(big.NewInt(f.ArrayMin), big.NewInt(f.ArrayBound)) + f.ArrayBound*elem
-	default:
-		return elem
-	}
-}
-
-func (g *gen) maxBitsScalar(f *ir.Field) int64 {
-	switch f.Type.Kind {
-	case ir.TInt:
-		if f.HasIntRange {
-			return bitsRequired(f.IntMin, f.IntMax)
-		}
-		return int64(f.Type.Width)
-	case ir.TBits:
-		return int64(f.Type.Width)
-	case ir.TBool:
-		return 1
-	case ir.TFloat32:
-		if f.HasFloatRange {
-			return compressedFloatBits(f.FMin, f.FMax, f.Resolution)
-		}
-		return 32
-	case ir.TFloat64:
-		return 64
-	case ir.TString, ir.TBytes:
-		// length prefix + worst-case align pad + the bytes
-		return bitsRequired(big.NewInt(0), big.NewInt(f.Type.Size)) + 7 + f.Type.Size*8
-	case ir.TNamed:
-		switch ref := f.Type.Ref.(type) {
-		case *ir.Enum:
-			return bitsRequired(big.NewInt(0), big.NewInt(ref.Max))
-		case *ir.Flags:
-			return int64(ref.WireBits)
-		case *ir.Struct:
-			return g.maxBitsStruct(ref)
-		}
-	}
-	return 0
-}
-
-// maxBitsStruct is the longest wire path through a struct: branches take the
-// larger side (composition cycles are compile errors, so recursion ends).
-func (g *gen) maxBitsStruct(st *ir.Struct) int64 {
-	var walk func(items []ir.Item) int64
-	walk = func(items []ir.Item) int64 {
-		var total int64
-		for _, item := range items {
-			switch item := item.(type) {
-			case *ir.FieldItem:
-				total += g.maxBitsField(item.F)
-			case *ir.Branch:
-				then, els := walk(item.Then), walk(item.Else)
-				if then > els {
-					total += then
-				} else {
-					total += els
-				}
-			case *ir.ConstItem:
-				total += item.Bits
-			case *ir.ReservedItem:
-				total += item.Bits
-			case *ir.AlignItem:
-				total += 7 // worst-case pad (SPEC §6.1 item 4)
-			}
-		}
-		return total
-	}
-	return walk(st.Items)
-}
+func (g *gen) maxBitsField(f *ir.Field) int64    { return ir.MaxBitsField(f) }
+func (g *gen) maxBitsStruct(st *ir.Struct) int64 { return ir.MaxBitsStruct(st) }
 
 // ---- function emission ----
 
@@ -124,7 +27,7 @@ func (g *gen) emitStructFunctions(st *ir.Struct) {
 	g.needsSerialize = true
 	maxBits := g.maxBitsStruct(st)
 	g.pf("inline constexpr int64_t %sMaxBits = %d; // longest wire path; align pads at worst case (SPEC §6.1)\n", st.Name, maxBits)
-	g.pf("inline constexpr int64_t %sMaxBytes = %d;\n\n", st.Name, (maxBits+7)/8)
+	g.pf("inline constexpr int64_t %sMaxBytes = %d; // rounded up to the 8-byte write-buffer granularity\n\n", st.Name, ir.MaxBytes(maxBits))
 
 	g.pf("inline bool Write%s( serialize::WriteStream & stream, const %s & value )\n{\n", st.Name, st.Name)
 	if len(st.Items) == 0 {
@@ -267,6 +170,10 @@ func (g *gen) rangeArgs(f *ir.Field) (string, string) {
 	return g.renderInt(f.IntMinExpr, f.IntMin), g.renderInt(f.IntMaxExpr, f.IntMax)
 }
 
+// maxUint64 is 2^64 - 1, the top of unsigned-64 storage — the bound against
+// which a range guard becomes vacuous.
+var maxUint64 = new(big.Int).SetUint64(math.MaxUint64)
+
 // intRangePath picks the runtime call family for a ranged integer.
 func intRangePath(min, max *big.Int) string {
 	i32 := big.NewInt(math.MaxInt32)
@@ -310,7 +217,26 @@ func (g *gen) emitWriteScalar(f *ir.Field, name, ind string) {
 			case "int64":
 				g.pf("%swrite_int64( stream, %s, %s, %s );\n", ind, name, lo, hi)
 			default:
-				g.pf("%swrite_bits( stream, uint64_t( %s ) - %s, %d );\n", ind, name, lo, bitsRequired(f.IntMin, f.IntMax))
+				// full-range unsigned raw offset: this path bypasses the
+				// runtime's ranged calls, so it supplies the write-side range
+				// assert those calls carry (writer misuse must not wrap into
+				// valid-looking wire); vacuous halves are elided — the uint64
+				// storage cannot go below 0 or above 2^64-1
+				loVacuous := f.IntMin.Sign() == 0
+				hiVacuous := f.IntMax.Cmp(maxUint64) == 0
+				switch {
+				case !loVacuous && !hiVacuous:
+					g.pf("%sserialize_assert( %s >= %s && %s <= %sull );\n", ind, name, lo, name, f.IntMax.String())
+				case !loVacuous:
+					g.pf("%sserialize_assert( %s >= %s );\n", ind, name, lo)
+				case !hiVacuous:
+					g.pf("%sserialize_assert( %s <= %sull );\n", ind, name, f.IntMax.String())
+				}
+				if loVacuous {
+					g.pf("%swrite_bits( stream, %s, %d );\n", ind, name, bitsRequired(f.IntMin, f.IntMax))
+				} else {
+					g.pf("%swrite_bits( stream, uint64_t( %s ) - %s, %d );\n", ind, name, lo, bitsRequired(f.IntMin, f.IntMax))
+				}
 			}
 			return
 		}
@@ -352,6 +278,11 @@ func (g *gen) emitWriteScalar(f *ir.Field, name, ind string) {
 		case *ir.Enum:
 			g.pf("%swrite_int( stream, int32_t( %s ), 0, %d );\n", ind, name, ref.Max)
 		case *ir.Flags:
+			if ref.WireBits < 64 {
+				// storage is wider than the wire: a mask bit above the wire
+				// width is writer misuse, not silent truncation
+				g.pf("%sserialize_assert( %s < ( 1ull << %d ) );\n", ind, name, ref.WireBits)
+			}
 			g.pf("%swrite_bits( stream, %s, %d );\n", ind, name, ref.WireBits)
 		case *ir.Struct:
 			g.pf("%sif ( !Write%s( stream, %s ) )\n%s{\n%s    return false;\n%s}\n", ind, f.Type.Name, name, ind, ind, ind)
@@ -398,8 +329,15 @@ func (g *gen) emitReadScalar(f *ir.Field, name, ind string) {
 				diff := new(big.Int).Sub(f.IntMax, f.IntMin)
 				g.pf("%s{\n%s    uint64_t offset_value = 0;\n", ind, ind)
 				g.pf("%s    read_bits( stream, offset_value, %d );\n", ind, bitsRequired(f.IntMin, f.IntMax))
-				g.pf("%s    if ( offset_value > %sull )\n%s    {\n%s        return false;\n%s    }\n", ind, diff.String(), ind, ind, ind)
-				g.pf("%s    %s = offset_value + %s;\n%s}\n", ind, name, lo, ind)
+				if diff.Cmp(maxUint64) != 0 {
+					// a full-width diff cannot overflow its own read — elided
+					g.pf("%s    if ( offset_value > %sull )\n%s    {\n%s        return false;\n%s    }\n", ind, diff.String(), ind, ind, ind)
+				}
+				if f.IntMin.Sign() == 0 {
+					g.pf("%s    %s = offset_value;\n%s}\n", ind, name, ind)
+				} else {
+					g.pf("%s    %s = offset_value + %s;\n%s}\n", ind, name, lo, ind)
+				}
 			}
 			return
 		}
@@ -475,7 +413,7 @@ func (g *gen) emitMessageTagFunctions() {
 	}
 	g.pf("// The message-level bound: the tag plus the largest message (SPEC §6.1)\n")
 	g.pf("inline constexpr int64_t MessageMaxBits = %d;\n", tagBits+largest)
-	g.pf("inline constexpr int64_t MessageMaxBytes = %d;\n\n", (tagBits+largest+7)/8)
+	g.pf("inline constexpr int64_t MessageMaxBytes = %d; // rounded up to the 8-byte write-buffer granularity\n\n", ir.MaxBytes(tagBits+largest))
 
 	if g.opts.MessageRepr == "variant" {
 		g.emitMessageDispatchVariant()
@@ -492,7 +430,6 @@ func (g *gen) emitMessageTagFunctions() {
 func (g *gen) emitMessageDispatchUnion() {
 	g.needsCstring = true
 	msgs := g.unit.Messages
-	count := int64(len(msgs))
 
 	g.pf("// The message value: a tagged union — the payload member matching `type` is\n")
 	g.pf("// the active one. Zero-initialized on construction; no heap, no templates.\n")
@@ -509,19 +446,23 @@ func (g *gen) emitMessageDispatchUnion() {
 	g.pf("inline MessageType GetMessageType( const Message & message )\n{\n")
 	g.pf("    return message.type;\n}\n\n")
 
+	// dispatch validates BEFORE the tag rides the wire: an out-of-set type
+	// value writes nothing (a tag with no payload would desynchronize the
+	// stream), and the tag framing is the tag pair's — one source
 	g.pf("inline bool WriteMessage( serialize::WriteStream & stream, const Message & message )\n{\n")
-	g.pf("    write_int( stream, int32_t( message.type ), 0, %d );\n", count)
 	g.pf("    switch ( message.type )\n    {\n")
-	g.pf("        case MessageType::None:\n            return true; // the stream terminator (SPEC §4.8)\n")
+	g.pf("        case MessageType::None:\n            return WriteMessageType( stream, MessageType::None ); // the stream terminator (SPEC §4.8)\n")
 	for _, m := range msgs {
-		g.pf("        case MessageType::%s:\n            return Write%s( stream, message.%s );\n", m, m, camelToSnake(m))
+		g.pf("        case MessageType::%s:\n", m)
+		g.pf("            if ( !WriteMessageType( stream, MessageType::%s ) )\n            {\n                return false;\n            }\n", m)
+		g.pf("            return Write%s( stream, message.%s );\n", m, camelToSnake(m))
 	}
-	g.pf("    }\n    return false;\n}\n\n")
+	g.pf("    }\n    return false; // not a message type; nothing was written\n}\n\n")
 
 	g.pf("inline bool ReadMessage( serialize::ReadStream & stream, Message & message )\n{\n")
-	g.pf("    int32_t tag_value = 0;\n")
-	g.pf("    read_int( stream, tag_value, 0, %d );\n", count)
-	g.pf("    message.type = MessageType( tag_value );\n")
+	g.pf("    MessageType tag_value = MessageType::None;\n")
+	g.pf("    if ( !ReadMessageType( stream, tag_value ) )\n    {\n        return false;\n    }\n")
+	g.pf("    message.type = tag_value;\n")
 	g.pf("    switch ( message.type )\n    {\n")
 	g.pf("        case MessageType::None:\n            return true;\n")
 	for _, m := range msgs {
@@ -557,8 +498,10 @@ func (g *gen) emitMessageDispatchVariant() {
 	g.pf("inline MessageType GetMessageType( const Message & message )\n{\n")
 	g.pf("    return MessageType( message.index() );\n}\n\n")
 
+	// the variant's index is always in-set, so no pre-validation is needed;
+	// the tag framing is the tag pair's — one source
 	g.pf("inline bool WriteMessage( serialize::WriteStream & stream, const Message & message )\n{\n")
-	g.pf("    write_int( stream, int32_t( message.index() ), 0, %d );\n", count)
+	g.pf("    if ( !WriteMessageType( stream, MessageType( message.index() ) ) )\n    {\n        return false;\n    }\n")
 	g.pf("    switch ( message.index() )\n    {\n")
 	g.pf("        case 0:\n            return true; // None — the stream terminator (SPEC §4.8)\n")
 	for i, m := range msgs {
@@ -567,9 +510,9 @@ func (g *gen) emitMessageDispatchVariant() {
 	g.pf("    }\n    return false;\n}\n\n")
 
 	g.pf("inline bool ReadMessage( serialize::ReadStream & stream, Message & message )\n{\n")
-	g.pf("    int32_t tag_value = 0;\n")
-	g.pf("    read_int( stream, tag_value, 0, %d );\n", count)
-	g.pf("    switch ( tag_value )\n    {\n")
+	g.pf("    MessageType tag_value = MessageType::None;\n")
+	g.pf("    if ( !ReadMessageType( stream, tag_value ) )\n    {\n        return false;\n    }\n")
+	g.pf("    switch ( int32_t( tag_value ) )\n    {\n")
 	g.pf("        case 0:\n            message.emplace<std::monostate>();\n            return true;\n")
 	for i, m := range msgs {
 		g.pf("        case %d:\n            return Read%s( stream, message.emplace<%s>() );\n", i+1, m, m)

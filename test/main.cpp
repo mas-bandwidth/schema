@@ -504,6 +504,118 @@ int main()
         check( tag == ObjectType::None );
     }
 
+    // ---- cross-language pins: the shapes the Go test round-trips get C++
+    // wire goldens too, so byte identity is enforced rather than assumed ----
+    {
+        TestData in;
+        in.a = -100;
+        in.b = 100;
+        in.c = 149;
+        in.d = 0x11;
+        in.e = 0x22;
+        in.f = 0x33;
+        in.g = true;
+        in.items_count = 3;
+        in.items[0] = 0;
+        in.items[1] = 128;
+        in.items[2] = 255;
+        in.float_value = 3.1415926f;
+        in.compressed_float_value = 2.5f;
+        in.double_value = 1.0 / 3.0;
+        in.int8_value = -128;
+        in.int16_value = -32768;
+        in.uint8_value = 255;
+        in.uint16_value = 65535;
+        in.uint32_value = 4294967295u;
+        in.uint64_value = 18446744073709551615ull;
+        in.int64_full = ( -9223372036854775807ll - 1 );
+        in.int64_range = -999999999999ll;
+        for ( int i = 0; i < 17; i++ )
+        {
+            in.fixed_bytes[i] = (uint8_t) ( i * 3 );
+        }
+        std::memcpy( in.text, "the quick brown fox", 19 );
+        in.text_length = 19;
+
+        serialize::WriteStream ws( buffer, sizeof( buffer ) );
+        check( WriteTestData( ws, in ) );
+        ws.Flush();
+        check( golden_wire( "testdata", buffer, ws.GetBytesProcessed() ) );
+
+        TestData out;
+        serialize::ReadStream rs( buffer, ws.GetBytesProcessed() );
+        check( ReadTestData( rs, out ) );
+        check( out.int8_value == -128 && out.int16_value == -32768 );
+        check( out.int64_full == ( -9223372036854775807ll - 1 ) );
+        check( out.uint64_value == 18446744073709551615ull );
+    }
+    {
+        InputPacket in;
+        in.synchronize_sequence = 7;
+        in.current_frame = 123456789ull;
+        in.start_frame = 123456780ull;
+        in.inputs_count = 2;
+        in.inputs[0].throttle = 0.5f;
+        in.inputs[0].fire = true;
+        in.inputs[1].stick_x = -0.25f;
+        in.inputs[1].boost = true;
+
+        serialize::WriteStream ws( buffer, sizeof( buffer ) );
+        check( WriteInputPacket( ws, in ) );
+        ws.Flush();
+        check( golden_wire( "inputpacket", buffer, ws.GetBytesProcessed() ) );
+    }
+    {
+        ProbeBits in;
+        in.small = 0x1FF;
+        in.boundary = 0x1FFFFFFFFull;
+        in.wide = 0xFEDCBA9876543210ull;
+        in.sensor = 4294967295u;
+        in.nonce = 18446744073709551615ull;
+
+        serialize::WriteStream ws( buffer, sizeof( buffer ) );
+        check( WriteProbeBits( ws, in ) );
+        ws.Flush();
+        check( golden_wire( "probebits", buffer, ws.GetBytesProcessed() ) );
+    }
+    {
+        ProbeArray in; // defaults are the constructed state, transitively
+        check( in.samples[0].active && in.samples[1].active );
+        check( in.config.retries == -1 && in.config.preferred == Weapon::Railgun );
+
+        in.samples[0].orientation = 90.0f;
+        in.samples[0].raw_delta = -5;
+        in.samples[0].big_delta = -1234567890123ll;
+        in.samples[0].weapon = Weapon::Laser;
+        in.samples[0].has_target = true;
+        in.samples[0].target_id = 777;
+        in.samples[0].samples_count = 1;
+        in.samples[0].samples[0] = 42;
+        in.samples[1].active = false;
+        in.samples[1].orientation = -45.5f;
+        in.samples[1].raw_delta = 7;
+        in.samples[1].big_delta = 99;
+        in.samples[1].idle_ticks = 1000;
+        in.samples[1].samples_count = 2;
+        in.samples[1].samples[0] = 7;
+        in.samples[1].samples[1] = 8;
+        in.config.retries = 3;
+        in.config.preferred = Weapon::Missile;
+
+        serialize::WriteStream ws( buffer, sizeof( buffer ) );
+        check( WriteProbeArray( ws, in ) );
+        ws.Flush();
+        check( golden_wire( "probearray", buffer, ws.GetBytesProcessed() ) );
+
+        ProbeArray out;
+        serialize::ReadStream rs( buffer, ws.GetBytesProcessed() );
+        check( ReadProbeArray( rs, out ) );
+        check( !out.samples[1].active && out.samples[1].idle_ticks == 1000 );
+        // the untaken active-branch fields of samples[1] read as ZERO (SPEC §5)
+        check( out.samples[1].weapon == Weapon::None && !out.samples[1].has_target );
+        check( out.config.retries == 3 && out.config.preferred == Weapon::Missile );
+    }
+
     if ( touch_generated_types() != 0 )
         return 1;
 

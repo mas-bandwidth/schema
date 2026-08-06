@@ -15,13 +15,19 @@ The idea is extracted from
 [serialize.modern](https://github.com/mas-bandwidth/serialize.modern)'s compile-time schema
 language, moved out of the templates and into an external compiler.
 
-> **Status: v1 implementation underway** (started 2026-08-05). The first slice is live:
-> `make` builds the compiler, generates C++ headers from [`examples/`](examples/) into
-> `generated/`, and compiles, links and runs a test program that prints OK. Landed so far:
-> scanner, parser, resolver/checker, protocol id, and C++ storage emission (constants,
-> enums, flags, type/message structs, the object view families, per-context state types,
-> zero initialization with specified defaults). Next: generated `Write`/`Read`,
-> `Quantize`/`Unquantize`, then the C#/Go/Rust backends. Start with [SPEC.md](SPEC.md).
+> **Status: v1 implementation underway** (started 2026-08-05). The C++ and Go backends are
+> live: `make` builds the compiler, generates C++ headers and a Go package from
+> [`examples/`](examples/) into `generated/`, and runs the test suite — the C++ binaries
+> (both message representations plus a randomized round-trip suite), the Go wire test
+> (byte-compares the generated Go's output against the C++-pinned wire goldens —
+> cross-language wire identity is a standing gate), the break-the-language diagnostics
+> suite, and the source/id/wire golden pins. Landed so far: scanner, parser,
+> resolver/checker, protocol id, schemafmt (every command formats in place before
+> processing), and full C++ + Go emission — storage, split `Write`/`Read` per type and
+> message, the message dispatch surfaces (C++ tagged union or opt-in `std::variant`; Go
+> interface + type switch), the object view families with `Quantize`/`Unquantize`, and
+> zero initialization with specified defaults. Next: the Rust backend, then C#. Start
+> with [SPEC.md](SPEC.md).
 
 Versioning is by **protocol id** — a hash of the schema itself, computed by the compiler. Two
 sides at the same protocol id speak identical bits; there is no versioning overhead on the wire.

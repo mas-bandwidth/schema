@@ -4,9 +4,12 @@
 CXX      ?= c++
 CXXFLAGS ?= -std=c++17 -Wall -Wextra -Werror -ffp-contract=off
 
-# the classic serialize runtime the generated C++ targets (header-only)
-SERIALIZE ?= ../serialize-cs-port/serialize
-CXXFLAGS  += -I$(SERIALIZE)
+# the classic serialize runtime the generated C++ targets (header-only), and
+# the Go port the generated Go targets (a sibling checkout; test/go/go.mod
+# carries the same relative path)
+SERIALIZE    ?= ../serialize-cs-port/serialize
+SERIALIZE_GO ?= ../serialize-cs-port/serialize.go
+CXXFLAGS     += -I$(SERIALIZE)
 
 GO_SOURCES := $(shell find cmd internal -name '*.go') go.mod
 SCHEMAS    := $(wildcard examples/*.schema)
@@ -28,6 +31,13 @@ build/generated-variant/.stamp: bin/schema $(SCHEMAS)
 	./bin/schema generate --lang cpp --cpp-message variant --out build/generated-variant examples
 	@touch $@
 
+# the Go target: generated package + module wiring (the go.mod is build
+# wiring, not schema output — the emitter writes only .go files)
+generated/go/.stamp: bin/schema $(SCHEMAS)
+	./bin/schema generate --lang go --out generated/go examples
+	@printf 'module example\n\ngo 1.23\n\nrequire github.com/mas-bandwidth/serialize.go v0.0.0\n\nreplace github.com/mas-bandwidth/serialize.go => ../../$(SERIALIZE_GO)\n' > generated/go/go.mod
+	@touch $@
+
 build/schema_test: generated/.stamp test/main.cpp test/second.cpp
 	@mkdir -p build
 	$(CXX) $(CXXFLAGS) -Igenerated test/main.cpp test/second.cpp -o $@
@@ -40,10 +50,11 @@ build/schema_test_random: generated/.stamp test/random_main.cpp
 	@mkdir -p build
 	$(CXX) $(CXXFLAGS) -Igenerated test/random_main.cpp -o $@
 
-test: build/schema_test build/schema_test_variant build/schema_test_random
+test: build/schema_test build/schema_test_variant build/schema_test_random generated/go/.stamp
 	./build/schema_test
 	./build/schema_test_variant
 	./build/schema_test_random
+	cd test/go && go run .
 	go test ./...
 
 # Re-pin the goldens DELIBERATELY (SPEC §7.2 gates 1, 2, 7). A wire golden

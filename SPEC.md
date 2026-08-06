@@ -1383,13 +1383,25 @@ Per `type`, per target:
    not (C++'s `bool`); pinned per backend at implementation.
 4. **`MaxBits` / `MaxBytes`** — constants: the longest path through the schema, with
    worst-case (7-bit) padding assumed at each alignment point. Size write buffers from
-   `MaxBytes`. Conservative is correct for a buffer bound.
+   `MaxBytes`. Conservative is correct for a buffer bound. **`MaxBytes` is rounded up to
+   the 8-byte write-buffer granularity every serialize runtime requires** *(2026-08-05,
+   found by the backend audit: every runtime asserts/panics on write buffers that are not
+   a multiple of 8, so an exact-bytes constant advertised for buffer sizing was a
+   guaranteed trap — the constant's one documented use)*.
 5. **`ProtocolId`** — one constant per unit (§3).
 6. **For a unit with `message` declarations (§4.8):** the `MessageType` enum (`None = 0`,
    then the messages sorted by name — DECIDED, §4.8),
    `WriteMessage`/`ReadMessage` with the tag framing, a message-level
    `MaxBytes` (tag plus the largest message), and the dispatch surface in each language's
-   own idiom — representation per target, behavior identical.
+   own idiom — representation per target, behavior identical. **The Go dispatch (BUILT
+   2026-08-05): a `Message` interface the message structs satisfy, `nil` as the None
+   terminator, a type switch — and reads land in a caller-supplied `MessageStorage`
+   struct holding one field per message, the Go stand-in for the C++ tagged union, so
+   the receive path never heap-allocates per message (the storage principle above,
+   honored by the dispatch surface too).** In every target, `WriteMessage` validates the
+   message BEFORE the tag rides the wire — an out-of-set value writes nothing, because a
+   tag with no payload would desynchronize the stream — and both dispatch functions
+   frame the tag through the `WriteMessageType`/`ReadMessageType` pair (one source).
 7. **For a unit with `object` declarations (§4.8):** the `ObjectType` enum (`None = 0`,
    same deterministic order) and, per object, the DECIDED generated family — the full
    simulation struct, the Deep and Shallow wire structs with their split read/write pairs,
@@ -1441,11 +1453,18 @@ until portability demands both), with cross-file `#include`s derived from actual
 references, so the generated tree mirrors the schema tree a person navigates. *(This
 paragraph previously said one file per target per unit — `<package>.schema.h` — which
 stands as the sketch for the single-file targets until each is implemented; per-file
-output is the decided C++ shape.)* Each header is headed by the source file, the protocol
-id, and a do-not-edit line. Output is **deterministic to the byte** for identical input;
-no external formatter runs in the build or test path (goldens pin the emitters' own
+output is the decided C++ shape.)* **The Go target (BUILT 2026-08-05) mirrors it: one
+`.go` file per schema file, all in `package <package>` — Go packages are order-free
+across files, so there is no topo sort and no include graph to refuse.** Each generated
+file is headed by the source file's BASENAME (never an invocation-relative path — the
+same input must produce the same bytes wherever the compiler runs), the protocol id, and
+a do-not-edit line. Output is **deterministic to the byte** for identical input; no
+external formatter runs in the build or test path (goldens pin the emitters' own
 output — clang-format/rustfmt version drift must not be able to break a golden). The
-emitters are written to produce formatter-clean code instead. Build: **plain Makefile for
+emitters are written to produce formatter-clean code instead — **except the Go emitter,
+which routes its output through the stdlib `go/format` in-process (not an external
+tool; versioned with the compiler's own toolchain): gofmt-clean by construction, and a
+free refuser — generated code that does not parse fails generation loudly.** Build: **plain Makefile for
 now, graduating to CMake as needed** (Glenn, 2026-08-05: *"use Makefile directly, for
 now... probably preferable to keep it simple."* / *"We can graduate to CMake as
 needed."*).
@@ -1551,14 +1570,23 @@ never change meaning), and it verifies its own idempotence on every run.
 
 ### 7.2 Testing
 
-**Status 2026-08-05: gates 1, 2 and 7 are LIVE for the C++ target** — `testdata/golden/`
-pins the generated source of both C++ message representations byte-for-byte plus the
-protocol id, `testdata/wire/` pins six instances' wire bytes (checked by the C++ test,
-which also proves the two message representations produce identical bytes), and a
-fmt-drift gate asserts the corpus stays formatter-canonical. `make test` runs all of it;
-`make update-goldens` re-pins DELIBERATELY. Gates 3 (the oracle) exists in seed form —
-the RigidBody and string classic twins in `test/main.cpp` — and grows with the corpus;
-gates 4–5 wait on a second backend; gate 6 is owed.
+**Status 2026-08-05 (late): gates 1, 2 and 7 are LIVE for the C++ AND Go targets, and
+gate 4's first pair is live in pinned-instance form** — `testdata/golden/` pins the
+generated source of both C++ message representations AND the Go package byte-for-byte
+plus the protocol id; `testdata/wire/` pins eleven instances' wire bytes, written by the
+C++ test and **byte-compared by the Go test (`test/go`), so C++↔Go wire identity is a
+standing gate, not an assumption** (the C++ test also proves the two message
+representations produce identical bytes); a fmt-drift gate asserts the corpus stays
+formatter-canonical; and the Go test asserts the readers agree on what they REJECT
+(interior nulls, nonzero reserved bits, corrupted constants, out-of-range counts — with
+truncation surfacing as the stream's own error, never a content verdict). `make test`
+runs all of it; `make update-goldens` re-pins DELIBERATELY. Gate 3 (the oracle) exists in
+seed form — the RigidBody and string classic twins in `test/main.cpp` — and grows with
+the corpus; gate 4's full random matrix and gate 5 wait on the remaining backends; gate 6
+is live in diagnostics-suite form (the break-the-language suite, 50+ cases), with fuzzing
+owed. Gate 6's diagnostics now also cover generated-name collisions: companion
+length/count names, the Go dispatch method, and the per-declaration generated symbols
+(Write*/Read*/New*/\*MaxBits/\*MaxBytes) are claimed names the checker refuses.
 
 1. **Golden source tests**: schema in, generated source compared byte-for-byte against
    checked-in goldens, all four backends. Deterministic output makes this exact.

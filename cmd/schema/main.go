@@ -15,6 +15,7 @@ import (
 
 	"github.com/mas-bandwidth/schema/internal/check"
 	"github.com/mas-bandwidth/schema/internal/codegen/cpp"
+	"github.com/mas-bandwidth/schema/internal/codegen/golang"
 	"github.com/mas-bandwidth/schema/internal/format"
 	"github.com/mas-bandwidth/schema/internal/ir"
 	"github.com/mas-bandwidth/schema/internal/parser"
@@ -40,21 +41,25 @@ func main() {
 		}
 	case "generate":
 		fs := flag.NewFlagSet("generate", flag.ExitOnError)
-		lang := fs.String("lang", "cpp", "comma-separated target languages (cpp, cs, go, rust)")
+		lang := fs.String("lang", "cpp", "target language (cpp, go; cs and rust to come)")
 		out := fs.String("out", "generated", "output directory")
 		cppMessage := fs.String("cpp-message", "union", "C++ message representation: union (default) or variant")
 		fs.Parse(os.Args[2:])
-		for _, l := range strings.Split(*lang, ",") {
-			if l != "cpp" {
-				fatalf("target %q is not implemented yet — cpp is the first target", l)
-			}
-		}
 		unit := loadUnit(fs.Args())
-		if err := os.MkdirAll(*out, 0o755); err != nil {
+		var files map[string][]byte
+		var err error
+		switch *lang {
+		case "cpp":
+			files, err = cpp.Generate(unit, cpp.Options{MessageRepr: *cppMessage})
+		case "go":
+			files, err = golang.Generate(unit)
+		default:
+			fatalf("target %q is not implemented yet — cpp and go are the live targets", *lang)
+		}
+		if err != nil {
 			fatalf("%v", err)
 		}
-		files, err := cpp.Generate(unit, cpp.Options{MessageRepr: *cppMessage})
-		if err != nil {
+		if err := os.MkdirAll(*out, 0o755); err != nil {
 			fatalf("%v", err)
 		}
 		names := make([]string, 0, len(files))
@@ -78,7 +83,7 @@ func main() {
 func usage() {
 	fmt.Fprintf(os.Stderr, `usage:
   schema check    [dir|files...]
-  schema generate [--lang cpp] [--cpp-message union|variant] [--out generated] [dir|files...]
+  schema generate [--lang cpp|go] [--cpp-message union|variant] [--out generated] [dir|files...]
   schema id       [dir|files...]
   schema fmt      [dir|files...]
 
