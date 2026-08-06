@@ -27,8 +27,8 @@ bin/schema: $(GO_SOURCES)
 	go build -o $@ ./cmd/schema
 
 # one generate run emits every header; the stamp carries the dependency
-generated/.stamp: bin/schema $(SCHEMAS)
-	./bin/schema generate --lang cpp --out generated examples
+generated/cpp/.stamp: bin/schema $(SCHEMAS)
+	./bin/schema generate --lang cpp --out generated/cpp examples
 	@touch $@
 
 # the opt-in variant dispatch surface, generated beside the default so both
@@ -59,17 +59,17 @@ generated/cs/.stamp: bin/schema $(SCHEMAS)
 	./bin/schema generate --lang cs --out generated/cs examples
 	@touch $@
 
-build/schema_test: generated/.stamp test/main.cpp test/second.cpp
+build/schema_test: generated/cpp/.stamp test/main.cpp test/second.cpp
 	@mkdir -p build
-	$(CXX) $(CXXFLAGS) -Igenerated test/main.cpp test/second.cpp -o $@
+	$(CXX) $(CXXFLAGS) -Igenerated/cpp test/main.cpp test/second.cpp -o $@
 
 build/schema_test_variant: build/generated-variant/.stamp test/variant_main.cpp
 	@mkdir -p build
 	$(CXX) $(CXXFLAGS) -Ibuild/generated-variant test/variant_main.cpp -o $@
 
-build/schema_test_random: generated/.stamp test/random_main.cpp
+build/schema_test_random: generated/cpp/.stamp test/random_main.cpp
 	@mkdir -p build
-	$(CXX) $(CXXFLAGS) -Igenerated test/random_main.cpp -o $@
+	$(CXX) $(CXXFLAGS) -Igenerated/cpp test/random_main.cpp -o $@
 
 test: build/schema_test build/schema_test_variant build/schema_test_random generated/go/.stamp generated/rust/.stamp generated/cs/.stamp
 	./build/schema_test

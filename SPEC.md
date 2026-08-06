@@ -3,7 +3,7 @@
 > **Status: IMPLEMENTATION STARTED 2026-08-05, on Glenn's word, mid-corpus-review.** The
 > first slice is in the tree: scanner, parser, resolver/checker and the C++ storage
 > emission (structs, constants, enums, flags, the object view families) — `make` builds the
-> compiler, generates `generated/*.h` from `examples/`, and compiles+links+runs a test that
+> compiler, generates `generated/cpp/*.h` from `examples/`, and compiles+links+runs a test that
 > prints OK. Write/Read generation, Quantize/Unquantize, and the other three targets are
 > next; nothing is wire-tested yet. Sections are marked **DECIDED** (Glenn) or **PROPOSED**
 > (Rowan's recommendation, awaiting review). **§4 — the language — remains the chapter to
@@ -1447,7 +1447,7 @@ offset; the same type works standalone and nested. `MaxBits` covers the worst ca
 
 **Output layout — REVISED for C++ at implementation, DECIDED (Glenn, 2026-08-05):** the
 C++ target emits **one header per schema file** — `examples/Constants.schema` →
-`generated/Constants.h` — everything inside `namespace <package>`, **`#pragma once`**
+`generated/cpp/Constants.h` — everything inside `namespace <package>`, **`#pragma once`**
 (his call; *"if beneficial, you can use both sentinels and pragma once"* — pragma alone
 until portability demands both), with cross-file `#include`s derived from actual
 references, so the generated tree mirrors the schema tree a person navigates. *(This

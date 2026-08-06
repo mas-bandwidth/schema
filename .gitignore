@@ -1,12 +1,12 @@
 /bin/
 /build/
-/generated/.stamp
 /generated/rust/target/
 /generated/rust/Cargo.lock
 /test/rust/target/
 /test/rust/Cargo.lock
 /test/cs/bin/
 /test/cs/obj/
+generated/cpp/.stamp
 generated/go/.stamp
 generated/rust/.stamp
 generated/cs/.stamp
