@@ -27,7 +27,7 @@ message Test {
 message Block {
     // wire: length in [0, MaxBlockSize], align, then the used bytes — same
     // shape as string(N); pre-allocated fixed buffer + used length (SPEC §4.7)
-    block_data bytes(MaxBlockSize)
+    data bytes(MaxBlockSize)
 }
 
 message Chat {
