@@ -7,12 +7,17 @@
 # missing are SKIPPED with the reason printed — the go/rust/cs runners land
 # with the serialize ports (see bench/README.md for the runner contract).
 #
-# usage: bench/run.sh [--debug] [--out FILE] [--compiler CXX]
+# usage: bench/run.sh [--debug] [--out FILE] [--compiler CXX] [--only LANG]
 #   --debug       also build and run the Debug pair (matched-pair methodology;
 #                 only Release numbers are meaningful, Debug is recorded so
 #                 pathological debug regressions are visible)
 #   --out FILE    results CSV (default bench/results/<date>-<arch>-<host>.csv)
 #   --compiler    C++ compiler (default: $CXX, else c++)
+#   --only LANG   run a single language leg (cpp|go|rust|cs). For shared boxes
+#                 under one-profile-at-a-time discipline: a driver runs the
+#                 legs serially with quiet-window checks between them. Each
+#                 leg's CSV carries the full preamble; measurement code and
+#                 flags are identical to the all-language invocation.
 #
 # environment:
 #   SERIALIZE     path to the classic serialize runtime checkout
@@ -27,16 +32,22 @@ cd "$(dirname "$0")/.."     # repo root
 
 DEBUG=0
 OUT=""
+ONLY=""
 CXX_BIN="${CXX:-c++}"
 while [ $# -gt 0 ]; do
     case "$1" in
         --debug) DEBUG=1 ;;
         --out) OUT="$2"; shift ;;
         --compiler) CXX_BIN="$2"; shift ;;
+        --only) ONLY="$2"; shift ;;
         *) echo "unknown argument: $1" >&2; exit 1 ;;
     esac
     shift
 done
+case "$ONLY" in
+    ""|cpp|go|rust|cs) ;;
+    *) echo "unknown --only language: $ONLY (cpp|go|rust|cs)" >&2; exit 1 ;;
+esac
 
 SERIALIZE="${SERIALIZE:-../serialize-cs-port/serialize}"
 if [ ! -f "$SERIALIZE/serialize.h" ]; then
@@ -113,58 +124,67 @@ emit_preamble() {
     } >> "$OUT"
 }
 
-# ---- C++ (the reference runner) ----
-echo "== cpp: build (Release) ==" >&2
-$CXX_BIN $RELEASE_FLAGS bench/cpp/bench_main.cpp -o build/bench/schema_bench_cpp
-
 : > "$OUT"
 emit_preamble Release
-echo "== cpp: run (Release) ==" >&2
-$PIN ./build/bench/schema_bench_cpp --csv >> "$OUT"
 
-if [ "$DEBUG" = 1 ]; then
-    echo "== cpp: build (Debug) ==" >&2
-    $CXX_BIN $DEBUG_FLAGS bench/cpp/bench_main.cpp -o build/bench/schema_bench_cpp_debug
-    echo "" >> "$OUT"
-    emit_preamble Debug
-    echo "== cpp: run (Debug) ==" >&2
-    $PIN ./build/bench/schema_bench_cpp_debug --csv >> "$OUT"
+# ---- C++ (the reference runner) ----
+if [ -z "$ONLY" ] || [ "$ONLY" = cpp ]; then
+    echo "== cpp: build (Release) ==" >&2
+    $CXX_BIN $RELEASE_FLAGS bench/cpp/bench_main.cpp -o build/bench/schema_bench_cpp
+
+    echo "== cpp: run (Release) ==" >&2
+    $PIN ./build/bench/schema_bench_cpp --csv >> "$OUT"
+
+    if [ "$DEBUG" = 1 ]; then
+        echo "== cpp: build (Debug) ==" >&2
+        $CXX_BIN $DEBUG_FLAGS bench/cpp/bench_main.cpp -o build/bench/schema_bench_cpp_debug
+        echo "" >> "$OUT"
+        emit_preamble Debug
+        echo "== cpp: run (Debug) ==" >&2
+        $PIN ./build/bench/schema_bench_cpp_debug --csv >> "$OUT"
+    fi
 fi
 
 # ---- Go (lands with the serialize.go port) ----
-if [ -f bench/go/main.go ]; then
-    if command -v go >/dev/null 2>&1; then
-        echo "== go: run ==" >&2
-        ( cd bench/go && $PIN go run . --csv ) >> "$OUT"
+if [ -z "$ONLY" ] || [ "$ONLY" = go ]; then
+    if [ -f bench/go/main.go ]; then
+        if command -v go >/dev/null 2>&1; then
+            echo "== go: run ==" >&2
+            ( cd bench/go && $PIN go run . --csv ) >> "$OUT"
+        else
+            echo "SKIP go: runner present but no go toolchain" >&2
+        fi
     else
-        echo "SKIP go: runner present but no go toolchain" >&2
+        echo "SKIP go: runner not landed yet (bench/go/main.go — see bench/go/README.md)" >&2
     fi
-else
-    echo "SKIP go: runner not landed yet (bench/go/main.go — see bench/go/README.md)" >&2
 fi
 
 # ---- Rust (lands with the serialize.rs port) ----
-if [ -f bench/rust/Cargo.toml ]; then
-    if command -v cargo >/dev/null 2>&1 || [ -x /opt/homebrew/opt/rustup/bin/cargo ]; then
-        echo "== rust: run ==" >&2
-        ( cd bench/rust && PATH="/opt/homebrew/opt/rustup/bin:$PATH" $PIN cargo run --release --quiet -- --csv ) >> "$OUT"
+if [ -z "$ONLY" ] || [ "$ONLY" = rust ]; then
+    if [ -f bench/rust/Cargo.toml ]; then
+        if command -v cargo >/dev/null 2>&1 || [ -x /opt/homebrew/opt/rustup/bin/cargo ]; then
+            echo "== rust: run ==" >&2
+            ( cd bench/rust && PATH="/opt/homebrew/opt/rustup/bin:$PATH" $PIN cargo run --release --quiet -- --csv ) >> "$OUT"
+        else
+            echo "SKIP rust: runner present but no cargo" >&2
+        fi
     else
-        echo "SKIP rust: runner present but no cargo" >&2
+        echo "SKIP rust: runner not landed yet (bench/rust/Cargo.toml — see bench/rust/README.md)" >&2
     fi
-else
-    echo "SKIP rust: runner not landed yet (bench/rust/Cargo.toml — see bench/rust/README.md)" >&2
 fi
 
 # ---- C# (lands with the serialize.cs port) ----
-if ls bench/cs/*.csproj >/dev/null 2>&1; then
-    if command -v dotnet >/dev/null 2>&1; then
-        echo "== cs: run ==" >&2
-        ( cd bench/cs && $PIN dotnet run -c Release -- --csv ) >> "$OUT"
+if [ -z "$ONLY" ] || [ "$ONLY" = cs ]; then
+    if ls bench/cs/*.csproj >/dev/null 2>&1; then
+        if command -v dotnet >/dev/null 2>&1; then
+            echo "== cs: run ==" >&2
+            ( cd bench/cs && $PIN dotnet run -c Release -- --csv ) >> "$OUT"
+        else
+            echo "SKIP cs: runner present but no dotnet" >&2
+        fi
     else
-        echo "SKIP cs: runner present but no dotnet" >&2
+        echo "SKIP cs: runner not landed yet (bench/cs/*.csproj — see bench/cs/README.md)" >&2
     fi
-else
-    echo "SKIP cs: runner not landed yet (bench/cs/*.csproj — see bench/cs/README.md)" >&2
 fi
 
 echo "results: $OUT" >&2
