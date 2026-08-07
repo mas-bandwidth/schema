@@ -7,6 +7,7 @@
 package cpp
 
 import (
+	"fmt"
 	"math/big"
 
 	"github.com/mas-bandwidth/schema/internal/ir"
@@ -92,18 +93,22 @@ func (g *gen) emitViewWriteField(f *ir.Field, v objView, ind string) {
 	case v == viewShallow && f.HasQuantize:
 		st := f.Type.Ref.(*ir.Struct)
 		wide := f.QuantBound > 2147483647 // the int32 family truncates past this (same switch as intRangePath)
+		quantBits := bitsRequired(big.NewInt(-f.QuantBound), big.NewInt(f.QuantBound))
 		for _, comp := range st.Fields {
 			if wide {
-				g.pf("%swrite_int64( stream, %s_%s, -%dll, %dll );\n", ind, name, comp.Name, f.QuantBound, f.QuantBound)
+				g.emitWriteRangedFold64(fmt.Sprintf("%s_%s", name, comp.Name),
+					fmt.Sprintf("-%dll", f.QuantBound), fmt.Sprintf("%dll", f.QuantBound), quantBits, false, ind)
 			} else {
-				g.pf("%swrite_int( stream, %s_%s, -%d, %d );\n", ind, name, comp.Name, f.QuantBound, f.QuantBound)
+				g.emitWriteRangedFold32(fmt.Sprintf("%s_%s", name, comp.Name),
+					fmt.Sprintf("-%d", f.QuantBound), fmt.Sprintf("%d", f.QuantBound), quantBits, false, ind)
 			}
 		}
 	case v == viewShallow && f.HasFloatRange:
+		stepBits := bitsRequired(big.NewInt(0), big.NewInt(f.Steps))
 		if f.Steps > 2147483647 {
-			g.pf("%swrite_int64( stream, %s, 0, %dll );\n", ind, name, f.Steps)
+			g.emitWriteRangedFold64(name, "0", fmt.Sprintf("%dll", f.Steps), stepBits, true, ind)
 		} else {
-			g.pf("%swrite_int( stream, %s, 0, %d );\n", ind, name, f.Steps)
+			g.emitWriteRangedFold32(name, "0", fmt.Sprintf("%d", f.Steps), stepBits, true, ind)
 		}
 	case v == viewDeep && f.HasFloatRange && f.Interpolate:
 		// the triple describes the shallow wire only — deep is the bare float
@@ -216,7 +221,9 @@ func (g *gen) emitObjectTagFunctions() {
 	g.pf("// The object tag wire: ObjectType in [0, %d], minimal bits; None = 0 is the\n", count)
 	g.pf("// null — the sentinel the surveyed baseline streams terminate with (SPEC §4.8).\n")
 	g.pf("inline bool WriteObjectType( serialize::WriteStream & stream, ObjectType value )\n{\n")
-	g.pf("    write_int( stream, int32_t( value ), 0, %d );\n    return true;\n}\n\n", count)
+	g.emitWriteRangedFold32("value", "0", fmt.Sprintf("%d", count),
+		bitsRequired(big.NewInt(0), big.NewInt(count)), true, "    ")
+	g.pf("    return true;\n}\n\n")
 	g.pf("inline bool ReadObjectType( serialize::ReadStream & stream, ObjectType & value )\n{\n")
 	g.pf("    int32_t tag_value = 0;\n")
 	g.pf("    read_int( stream, tag_value, 0, %d );\n", count)

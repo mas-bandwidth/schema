@@ -166,7 +166,8 @@ inline constexpr int64_t ShipData_DeepMaxBytes = 216; // rounded up to the 8-byt
 
 inline bool WriteShipData_Deep( serialize::WriteStream & stream, const ShipData_Deep & value )
 {
-    write_int( stream, int32_t( value.ship_type ), 0, 5 );
+    serialize_assert( int32_t( value.ship_type ) >= int32_t( 0 ) && int32_t( value.ship_type ) <= int32_t( 5 ) );
+    write_bits( stream, uint32_t( value.ship_type ), 3 );
     if ( !WriteVec3( stream, value.position ) )
     {
         return false;
@@ -181,7 +182,8 @@ inline bool WriteShipData_Deep( serialize::WriteStream & stream, const ShipData_
     }
     serialize_assert( value.flags < ( 1ull << 4 ) );
     write_bits( stream, value.flags, 4 );
-    write_int( stream, int32_t( value.team ), 0, 2 );
+    serialize_assert( int32_t( value.team ) >= int32_t( 0 ) && int32_t( value.team ) <= int32_t( 2 ) );
+    write_bits( stream, uint32_t( value.team ), 2 );
     write_float( stream, value.health );
     write_float( stream, value.thrust );
     if ( !WriteVec3( stream, value.angular_velocity ) )
@@ -206,8 +208,10 @@ inline bool WriteShipData_Deep( serialize::WriteStream & stream, const ShipData_
     write_float( stream, value.roll_velocity );
     write_float( stream, value.aim_current );
     write_float( stream, value.aim_velocity );
-    write_int( stream, value.laser_index, 0, ShipMaxLasers - 1 );
-    write_int( stream, value.missile_index, 0, ShipMaxMissiles - 1 );
+    serialize_assert( int32_t( value.laser_index ) >= int32_t( 0 ) && int32_t( value.laser_index ) <= int32_t( ShipMaxLasers - 1 ) );
+    write_bits( stream, uint32_t( value.laser_index ), 4 );
+    serialize_assert( int32_t( value.missile_index ) >= int32_t( 0 ) && int32_t( value.missile_index ) <= int32_t( ShipMaxMissiles - 1 ) );
+    write_bits( stream, uint32_t( value.missile_index ), 4 );
     if ( !WriteHandle( stream, value.target ) )
     {
         return false;
@@ -288,22 +292,36 @@ inline constexpr int64_t ShipData_ShallowMaxBytes = 32; // rounded up to the 8-b
 
 inline bool WriteShipData_Shallow( serialize::WriteStream & stream, const ShipData_Shallow & value )
 {
-    write_int( stream, int32_t( value.ship_type ), 0, 5 );
-    write_int( stream, value.position_x, -8388608, 8388608 );
-    write_int( stream, value.position_y, -8388608, 8388608 );
-    write_int( stream, value.position_z, -8388608, 8388608 );
-    write_int( stream, value.rotation_x, -1024, 1024 );
-    write_int( stream, value.rotation_y, -1024, 1024 );
-    write_int( stream, value.rotation_z, -1024, 1024 );
-    write_int( stream, value.rotation_w, -1024, 1024 );
-    write_int( stream, value.linear_velocity_x, -2097152, 2097152 );
-    write_int( stream, value.linear_velocity_y, -2097152, 2097152 );
-    write_int( stream, value.linear_velocity_z, -2097152, 2097152 );
+    serialize_assert( int32_t( value.ship_type ) >= int32_t( 0 ) && int32_t( value.ship_type ) <= int32_t( 5 ) );
+    write_bits( stream, uint32_t( value.ship_type ), 3 );
+    serialize_assert( int32_t( value.position_x ) >= int32_t( -8388608 ) && int32_t( value.position_x ) <= int32_t( 8388608 ) );
+    write_bits( stream, uint32_t( value.position_x ) - uint32_t( -8388608 ), 25 );
+    serialize_assert( int32_t( value.position_y ) >= int32_t( -8388608 ) && int32_t( value.position_y ) <= int32_t( 8388608 ) );
+    write_bits( stream, uint32_t( value.position_y ) - uint32_t( -8388608 ), 25 );
+    serialize_assert( int32_t( value.position_z ) >= int32_t( -8388608 ) && int32_t( value.position_z ) <= int32_t( 8388608 ) );
+    write_bits( stream, uint32_t( value.position_z ) - uint32_t( -8388608 ), 25 );
+    serialize_assert( int32_t( value.rotation_x ) >= int32_t( -1024 ) && int32_t( value.rotation_x ) <= int32_t( 1024 ) );
+    write_bits( stream, uint32_t( value.rotation_x ) - uint32_t( -1024 ), 12 );
+    serialize_assert( int32_t( value.rotation_y ) >= int32_t( -1024 ) && int32_t( value.rotation_y ) <= int32_t( 1024 ) );
+    write_bits( stream, uint32_t( value.rotation_y ) - uint32_t( -1024 ), 12 );
+    serialize_assert( int32_t( value.rotation_z ) >= int32_t( -1024 ) && int32_t( value.rotation_z ) <= int32_t( 1024 ) );
+    write_bits( stream, uint32_t( value.rotation_z ) - uint32_t( -1024 ), 12 );
+    serialize_assert( int32_t( value.rotation_w ) >= int32_t( -1024 ) && int32_t( value.rotation_w ) <= int32_t( 1024 ) );
+    write_bits( stream, uint32_t( value.rotation_w ) - uint32_t( -1024 ), 12 );
+    serialize_assert( int32_t( value.linear_velocity_x ) >= int32_t( -2097152 ) && int32_t( value.linear_velocity_x ) <= int32_t( 2097152 ) );
+    write_bits( stream, uint32_t( value.linear_velocity_x ) - uint32_t( -2097152 ), 23 );
+    serialize_assert( int32_t( value.linear_velocity_y ) >= int32_t( -2097152 ) && int32_t( value.linear_velocity_y ) <= int32_t( 2097152 ) );
+    write_bits( stream, uint32_t( value.linear_velocity_y ) - uint32_t( -2097152 ), 23 );
+    serialize_assert( int32_t( value.linear_velocity_z ) >= int32_t( -2097152 ) && int32_t( value.linear_velocity_z ) <= int32_t( 2097152 ) );
+    write_bits( stream, uint32_t( value.linear_velocity_z ) - uint32_t( -2097152 ), 23 );
     serialize_assert( value.flags < ( 1ull << 4 ) );
     write_bits( stream, value.flags, 4 );
-    write_int( stream, int32_t( value.team ), 0, 2 );
-    write_int( stream, value.health, 0, 1000 );
-    write_int( stream, value.thrust, 0, 100 );
+    serialize_assert( int32_t( value.team ) >= int32_t( 0 ) && int32_t( value.team ) <= int32_t( 2 ) );
+    write_bits( stream, uint32_t( value.team ), 2 );
+    serialize_assert( int32_t( value.health ) >= int32_t( 0 ) && int32_t( value.health ) <= int32_t( 1000 ) );
+    write_bits( stream, uint32_t( value.health ), 10 );
+    serialize_assert( int32_t( value.thrust ) >= int32_t( 0 ) && int32_t( value.thrust ) <= int32_t( 100 ) );
+    write_bits( stream, uint32_t( value.thrust ), 7 );
     return true;
 }
 
@@ -619,7 +637,8 @@ inline constexpr int64_t MissileData_DeepMaxBytes = 96; // rounded up to the 8-b
 
 inline bool WriteMissileData_Deep( serialize::WriteStream & stream, const MissileData_Deep & value )
 {
-    write_int( stream, int32_t( value.missile_type ), 0, 3 );
+    serialize_assert( int32_t( value.missile_type ) >= int32_t( 0 ) && int32_t( value.missile_type ) <= int32_t( 3 ) );
+    write_bits( stream, uint32_t( value.missile_type ), 2 );
     if ( !WriteVec3( stream, value.position ) )
     {
         return false;
@@ -632,7 +651,8 @@ inline bool WriteMissileData_Deep( serialize::WriteStream & stream, const Missil
     {
         return false;
     }
-    write_int( stream, int32_t( value.team ), 0, 2 );
+    serialize_assert( int32_t( value.team ) >= int32_t( 0 ) && int32_t( value.team ) <= int32_t( 2 ) );
+    write_bits( stream, uint32_t( value.team ), 2 );
     write_bits( stream, value.flags, 64 );
     return true;
 }
@@ -670,18 +690,30 @@ inline constexpr int64_t MissileData_ShallowMaxBytes = 40; // rounded up to the 
 
 inline bool WriteMissileData_Shallow( serialize::WriteStream & stream, const MissileData_Shallow & value )
 {
-    write_int( stream, int32_t( value.missile_type ), 0, 3 );
-    write_int( stream, value.position_x, -8388608, 8388608 );
-    write_int( stream, value.position_y, -8388608, 8388608 );
-    write_int( stream, value.position_z, -8388608, 8388608 );
-    write_int( stream, value.rotation_x, -1024, 1024 );
-    write_int( stream, value.rotation_y, -1024, 1024 );
-    write_int( stream, value.rotation_z, -1024, 1024 );
-    write_int( stream, value.rotation_w, -1024, 1024 );
-    write_int( stream, value.linear_velocity_x, -2097152, 2097152 );
-    write_int( stream, value.linear_velocity_y, -2097152, 2097152 );
-    write_int( stream, value.linear_velocity_z, -2097152, 2097152 );
-    write_int( stream, int32_t( value.team ), 0, 2 );
+    serialize_assert( int32_t( value.missile_type ) >= int32_t( 0 ) && int32_t( value.missile_type ) <= int32_t( 3 ) );
+    write_bits( stream, uint32_t( value.missile_type ), 2 );
+    serialize_assert( int32_t( value.position_x ) >= int32_t( -8388608 ) && int32_t( value.position_x ) <= int32_t( 8388608 ) );
+    write_bits( stream, uint32_t( value.position_x ) - uint32_t( -8388608 ), 25 );
+    serialize_assert( int32_t( value.position_y ) >= int32_t( -8388608 ) && int32_t( value.position_y ) <= int32_t( 8388608 ) );
+    write_bits( stream, uint32_t( value.position_y ) - uint32_t( -8388608 ), 25 );
+    serialize_assert( int32_t( value.position_z ) >= int32_t( -8388608 ) && int32_t( value.position_z ) <= int32_t( 8388608 ) );
+    write_bits( stream, uint32_t( value.position_z ) - uint32_t( -8388608 ), 25 );
+    serialize_assert( int32_t( value.rotation_x ) >= int32_t( -1024 ) && int32_t( value.rotation_x ) <= int32_t( 1024 ) );
+    write_bits( stream, uint32_t( value.rotation_x ) - uint32_t( -1024 ), 12 );
+    serialize_assert( int32_t( value.rotation_y ) >= int32_t( -1024 ) && int32_t( value.rotation_y ) <= int32_t( 1024 ) );
+    write_bits( stream, uint32_t( value.rotation_y ) - uint32_t( -1024 ), 12 );
+    serialize_assert( int32_t( value.rotation_z ) >= int32_t( -1024 ) && int32_t( value.rotation_z ) <= int32_t( 1024 ) );
+    write_bits( stream, uint32_t( value.rotation_z ) - uint32_t( -1024 ), 12 );
+    serialize_assert( int32_t( value.rotation_w ) >= int32_t( -1024 ) && int32_t( value.rotation_w ) <= int32_t( 1024 ) );
+    write_bits( stream, uint32_t( value.rotation_w ) - uint32_t( -1024 ), 12 );
+    serialize_assert( int32_t( value.linear_velocity_x ) >= int32_t( -2097152 ) && int32_t( value.linear_velocity_x ) <= int32_t( 2097152 ) );
+    write_bits( stream, uint32_t( value.linear_velocity_x ) - uint32_t( -2097152 ), 23 );
+    serialize_assert( int32_t( value.linear_velocity_y ) >= int32_t( -2097152 ) && int32_t( value.linear_velocity_y ) <= int32_t( 2097152 ) );
+    write_bits( stream, uint32_t( value.linear_velocity_y ) - uint32_t( -2097152 ), 23 );
+    serialize_assert( int32_t( value.linear_velocity_z ) >= int32_t( -2097152 ) && int32_t( value.linear_velocity_z ) <= int32_t( 2097152 ) );
+    write_bits( stream, uint32_t( value.linear_velocity_z ) - uint32_t( -2097152 ), 23 );
+    serialize_assert( int32_t( value.team ) >= int32_t( 0 ) && int32_t( value.team ) <= int32_t( 2 ) );
+    write_bits( stream, uint32_t( value.team ), 2 );
     write_bits( stream, value.flags, 64 );
     return true;
 }
@@ -968,7 +1000,8 @@ inline constexpr int64_t DynamicPropData_DeepMaxBytes = 96; // rounded up to the
 
 inline bool WriteDynamicPropData_Deep( serialize::WriteStream & stream, const DynamicPropData_Deep & value )
 {
-    write_int( stream, int32_t( value.prop_type ), 0, 6 );
+    serialize_assert( int32_t( value.prop_type ) >= int32_t( 0 ) && int32_t( value.prop_type ) <= int32_t( 6 ) );
+    write_bits( stream, uint32_t( value.prop_type ), 3 );
     if ( !WriteVec3( stream, value.position ) )
     {
         return false;
@@ -982,7 +1015,8 @@ inline bool WriteDynamicPropData_Deep( serialize::WriteStream & stream, const Dy
         return false;
     }
     write_bits( stream, value.flags, 64 );
-    write_int( stream, int32_t( value.team ), 0, 2 );
+    serialize_assert( int32_t( value.team ) >= int32_t( 0 ) && int32_t( value.team ) <= int32_t( 2 ) );
+    write_bits( stream, uint32_t( value.team ), 2 );
     return true;
 }
 
@@ -1019,19 +1053,31 @@ inline constexpr int64_t DynamicPropData_ShallowMaxBytes = 40; // rounded up to 
 
 inline bool WriteDynamicPropData_Shallow( serialize::WriteStream & stream, const DynamicPropData_Shallow & value )
 {
-    write_int( stream, int32_t( value.prop_type ), 0, 6 );
-    write_int( stream, value.position_x, -8388608, 8388608 );
-    write_int( stream, value.position_y, -8388608, 8388608 );
-    write_int( stream, value.position_z, -8388608, 8388608 );
-    write_int( stream, value.rotation_x, -1024, 1024 );
-    write_int( stream, value.rotation_y, -1024, 1024 );
-    write_int( stream, value.rotation_z, -1024, 1024 );
-    write_int( stream, value.rotation_w, -1024, 1024 );
-    write_int( stream, value.linear_velocity_x, -2097152, 2097152 );
-    write_int( stream, value.linear_velocity_y, -2097152, 2097152 );
-    write_int( stream, value.linear_velocity_z, -2097152, 2097152 );
+    serialize_assert( int32_t( value.prop_type ) >= int32_t( 0 ) && int32_t( value.prop_type ) <= int32_t( 6 ) );
+    write_bits( stream, uint32_t( value.prop_type ), 3 );
+    serialize_assert( int32_t( value.position_x ) >= int32_t( -8388608 ) && int32_t( value.position_x ) <= int32_t( 8388608 ) );
+    write_bits( stream, uint32_t( value.position_x ) - uint32_t( -8388608 ), 25 );
+    serialize_assert( int32_t( value.position_y ) >= int32_t( -8388608 ) && int32_t( value.position_y ) <= int32_t( 8388608 ) );
+    write_bits( stream, uint32_t( value.position_y ) - uint32_t( -8388608 ), 25 );
+    serialize_assert( int32_t( value.position_z ) >= int32_t( -8388608 ) && int32_t( value.position_z ) <= int32_t( 8388608 ) );
+    write_bits( stream, uint32_t( value.position_z ) - uint32_t( -8388608 ), 25 );
+    serialize_assert( int32_t( value.rotation_x ) >= int32_t( -1024 ) && int32_t( value.rotation_x ) <= int32_t( 1024 ) );
+    write_bits( stream, uint32_t( value.rotation_x ) - uint32_t( -1024 ), 12 );
+    serialize_assert( int32_t( value.rotation_y ) >= int32_t( -1024 ) && int32_t( value.rotation_y ) <= int32_t( 1024 ) );
+    write_bits( stream, uint32_t( value.rotation_y ) - uint32_t( -1024 ), 12 );
+    serialize_assert( int32_t( value.rotation_z ) >= int32_t( -1024 ) && int32_t( value.rotation_z ) <= int32_t( 1024 ) );
+    write_bits( stream, uint32_t( value.rotation_z ) - uint32_t( -1024 ), 12 );
+    serialize_assert( int32_t( value.rotation_w ) >= int32_t( -1024 ) && int32_t( value.rotation_w ) <= int32_t( 1024 ) );
+    write_bits( stream, uint32_t( value.rotation_w ) - uint32_t( -1024 ), 12 );
+    serialize_assert( int32_t( value.linear_velocity_x ) >= int32_t( -2097152 ) && int32_t( value.linear_velocity_x ) <= int32_t( 2097152 ) );
+    write_bits( stream, uint32_t( value.linear_velocity_x ) - uint32_t( -2097152 ), 23 );
+    serialize_assert( int32_t( value.linear_velocity_y ) >= int32_t( -2097152 ) && int32_t( value.linear_velocity_y ) <= int32_t( 2097152 ) );
+    write_bits( stream, uint32_t( value.linear_velocity_y ) - uint32_t( -2097152 ), 23 );
+    serialize_assert( int32_t( value.linear_velocity_z ) >= int32_t( -2097152 ) && int32_t( value.linear_velocity_z ) <= int32_t( 2097152 ) );
+    write_bits( stream, uint32_t( value.linear_velocity_z ) - uint32_t( -2097152 ), 23 );
     write_bits( stream, value.flags, 64 );
-    write_int( stream, int32_t( value.team ), 0, 2 );
+    serialize_assert( int32_t( value.team ) >= int32_t( 0 ) && int32_t( value.team ) <= int32_t( 2 ) );
+    write_bits( stream, uint32_t( value.team ), 2 );
     return true;
 }
 
@@ -1307,7 +1353,8 @@ inline bool WriteTurretData_Deep( serialize::WriteStream & stream, const TurretD
     {
         return false;
     }
-    write_int( stream, value.turret_index, 0, MaxTurretsPerShip - 1 );
+    serialize_assert( int32_t( value.turret_index ) >= int32_t( 0 ) && int32_t( value.turret_index ) <= int32_t( MaxTurretsPerShip - 1 ) );
+    write_bits( stream, uint32_t( value.turret_index ), 8 );
     if ( !WriteQuat( stream, value.rotation ) )
     {
         return false;
@@ -1340,11 +1387,16 @@ inline bool WriteTurretData_Shallow( serialize::WriteStream & stream, const Turr
     {
         return false;
     }
-    write_int( stream, value.turret_index, 0, MaxTurretsPerShip - 1 );
-    write_int( stream, value.rotation_x, -1024, 1024 );
-    write_int( stream, value.rotation_y, -1024, 1024 );
-    write_int( stream, value.rotation_z, -1024, 1024 );
-    write_int( stream, value.rotation_w, -1024, 1024 );
+    serialize_assert( int32_t( value.turret_index ) >= int32_t( 0 ) && int32_t( value.turret_index ) <= int32_t( MaxTurretsPerShip - 1 ) );
+    write_bits( stream, uint32_t( value.turret_index ), 8 );
+    serialize_assert( int32_t( value.rotation_x ) >= int32_t( -1024 ) && int32_t( value.rotation_x ) <= int32_t( 1024 ) );
+    write_bits( stream, uint32_t( value.rotation_x ) - uint32_t( -1024 ), 12 );
+    serialize_assert( int32_t( value.rotation_y ) >= int32_t( -1024 ) && int32_t( value.rotation_y ) <= int32_t( 1024 ) );
+    write_bits( stream, uint32_t( value.rotation_y ) - uint32_t( -1024 ), 12 );
+    serialize_assert( int32_t( value.rotation_z ) >= int32_t( -1024 ) && int32_t( value.rotation_z ) <= int32_t( 1024 ) );
+    write_bits( stream, uint32_t( value.rotation_z ) - uint32_t( -1024 ), 12 );
+    serialize_assert( int32_t( value.rotation_w ) >= int32_t( -1024 ) && int32_t( value.rotation_w ) <= int32_t( 1024 ) );
+    write_bits( stream, uint32_t( value.rotation_w ) - uint32_t( -1024 ), 12 );
     write_bits( stream, value.flags, 64 );
     return true;
 }
@@ -1454,7 +1506,8 @@ inline void UnquantizeTurret( const TurretData_Shallow & input, TurretData_Inter
 // null — the sentinel the surveyed baseline streams terminate with (SPEC §4.8).
 inline bool WriteObjectType( serialize::WriteStream & stream, ObjectType value )
 {
-    write_int( stream, int32_t( value ), 0, 4 );
+    serialize_assert( int32_t( value ) >= int32_t( 0 ) && int32_t( value ) <= int32_t( 4 ) );
+    write_bits( stream, uint32_t( value ), 3 );
     return true;
 }
 

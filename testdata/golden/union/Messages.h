@@ -57,9 +57,12 @@ inline constexpr int64_t TestMaxBytes = 8; // rounded up to the 8-byte write-buf
 inline bool WriteTest( serialize::WriteStream & stream, const Test & value )
 {
     write_bits( stream, value.test_a, 16 );
-    write_int( stream, value.test_b, 0, 1000 );
-    write_int( stream, value.test_c, 0, 1000 );
-    write_int( stream, value.test_d, 0, 1000 );
+    serialize_assert( int32_t( value.test_b ) >= int32_t( 0 ) && int32_t( value.test_b ) <= int32_t( 1000 ) );
+    write_bits( stream, uint32_t( value.test_b ), 10 );
+    serialize_assert( int32_t( value.test_c ) >= int32_t( 0 ) && int32_t( value.test_c ) <= int32_t( 1000 ) );
+    write_bits( stream, uint32_t( value.test_c ), 10 );
+    serialize_assert( int32_t( value.test_d ) >= int32_t( 0 ) && int32_t( value.test_d ) <= int32_t( 1000 ) );
+    write_bits( stream, uint32_t( value.test_d ), 10 );
     return true;
 }
 
@@ -99,7 +102,8 @@ inline constexpr int64_t BlockMaxBytes = 2008; // rounded up to the 8-byte write
 
 inline bool WriteBlock( serialize::WriteStream & stream, const Block & value )
 {
-    write_int( stream, value.data_length, 0, MaxBlockSize );
+    serialize_assert( int32_t( value.data_length ) >= int32_t( 0 ) && int32_t( value.data_length ) <= int32_t( MaxBlockSize ) );
+    write_bits( stream, uint32_t( value.data_length ), 11 );
     write_bytes( stream, value.data, value.data_length );
     return true;
 }
@@ -126,7 +130,8 @@ inline bool WriteChat( serialize::WriteStream & stream, const Chat & value )
     {
         serialize_assert( value.text[i] != 0 );
     }
-    write_int( stream, value.text_length, 0, MaxChatLength );
+    serialize_assert( int32_t( value.text_length ) >= int32_t( 0 ) && int32_t( value.text_length ) <= int32_t( MaxChatLength ) );
+    write_bits( stream, uint32_t( value.text_length ), 9 );
     write_bytes( stream, value.text, value.text_length );
     return true;
 }
@@ -203,7 +208,8 @@ inline bool ReadTimescale( serialize::ReadStream & stream, Timescale & value )
 // valid wire value meaning *no message* — the stream terminator (SPEC §4.8).
 inline bool WriteMessageType( serialize::WriteStream & stream, MessageType value )
 {
-    write_int( stream, int32_t( value ), 0, 6 );
+    serialize_assert( int32_t( value ) >= int32_t( 0 ) && int32_t( value ) <= int32_t( 6 ) );
+    write_bits( stream, uint32_t( value ), 3 );
     return true;
 }
 

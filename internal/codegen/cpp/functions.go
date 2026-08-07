@@ -6,6 +6,7 @@
 package cpp
 
 import (
+	"fmt"
 	"math"
 	"math/big"
 
@@ -194,6 +195,52 @@ func intRangePath(min, max *big.Int) string {
 	return "bits64" // full-range unsigned: width-computed raw bits over value - min
 }
 
+// ---- compile-time bound emission (the const-params lever, serialize #25) ----
+//
+// A ranged integer's min/max/bit count are schema constants, so the GENERATOR
+// folds them: the write emits the offset from min in a bit count computed at
+// generation time, through the always-inline write_bits macro — no runtime
+// bits_required, no min/max parameter traffic, and the 32/64 dword split
+// resolves here, not at run time. The wire bytes are identical to the runtime
+// SerializeInteger/SerializeInteger64 forms (#25's wire-identity property,
+// re-proven by the wire golden gate), and the range assert the runtime form
+// carried survives for debug parity. Reads stay on the runtime macros: the
+// branchless reader already folds — #25 measured nothing to gain there.
+//
+// Deliberately NOT serialize's SerializeIntConst/SerializeBitsConst template
+// forms, though they compute the same encoding: instantiations shared by
+// several call sites (repeated bounds are the norm in real schemas) get
+// OUTLINED — measured on this corpus (clang 17, M2): every shared
+// instantiation went out of line and the by-reference value forced a stack
+// round-trip per field, costing 10-33% on ranged-int-heavy writes, while the
+// macro expansion is unconditionally inline and keeps the bit writer's state
+// in registers across consecutive fields. The generator folding its own
+// constants gets the entire benefit the templates exist to deliver with no
+// new call boundary.
+
+// emitWriteRangedFold32 writes an int in [lo,hi] as offset-from-lo in a
+// generation-time bit count (the int32 family: SerializeInteger's encoding).
+func (g *gen) emitWriteRangedFold32(expr, lo, hi string, bits int64, loZero bool, ind string) {
+	g.pf("%sserialize_assert( int32_t( %s ) >= int32_t( %s ) && int32_t( %s ) <= int32_t( %s ) );\n", ind, expr, lo, expr, hi)
+	if loZero {
+		g.pf("%swrite_bits( stream, uint32_t( %s ), %d );\n", ind, expr, bits)
+	} else {
+		g.pf("%swrite_bits( stream, uint32_t( %s ) - uint32_t( %s ), %d );\n", ind, expr, lo, bits)
+	}
+}
+
+// emitWriteRangedFold64 is the int64 family twin (SerializeInteger64's
+// encoding: low dword first, then the high remainder — the write_bits macro's
+// own >32 split, byte-identical).
+func (g *gen) emitWriteRangedFold64(expr, lo, hi string, bits int64, loZero bool, ind string) {
+	g.pf("%sserialize_assert( int64_t( %s ) >= int64_t( %s ) && int64_t( %s ) <= int64_t( %s ) );\n", ind, expr, lo, expr, hi)
+	if loZero {
+		g.pf("%swrite_bits( stream, uint64_t( %s ), %d );\n", ind, expr, bits)
+	} else {
+		g.pf("%swrite_bits( stream, uint64_t( %s ) - uint64_t( %s ), %d );\n", ind, expr, lo, bits)
+	}
+}
+
 func (g *gen) emitWriteField(f *ir.Field, ind string) {
 	name := "value." + f.Name
 	if f.Array != ir.ArrayNone {
@@ -206,7 +253,8 @@ func (g *gen) emitWriteField(f *ir.Field, ind string) {
 			return
 		}
 		if f.Array == ir.ArrayCounted {
-			g.pf("%swrite_int( stream, %s_count, %d, %s );\n", ind, name, f.ArrayMin, bound)
+			g.emitWriteRangedFold32(name+"_count", fmt.Sprintf("%d", f.ArrayMin), bound,
+				bitsRequired(big.NewInt(f.ArrayMin), big.NewInt(f.ArrayBound)), f.ArrayMin == 0, ind)
 			g.pf("%sfor ( int32_t i = 0; i < %s_count; i++ )\n%s{\n", ind, name, ind)
 		} else {
 			g.pf("%sfor ( int32_t i = 0; i < %s; i++ )\n%s{\n", ind, bound, ind)
@@ -250,9 +298,9 @@ func (g *gen) emitWriteScalar(f *ir.Field, name, ind string) {
 			lo, hi := g.rangeArgs(f)
 			switch intRangePath(f.IntMin, f.IntMax) {
 			case "int32":
-				g.pf("%swrite_int( stream, %s, %s, %s );\n", ind, name, lo, hi)
+				g.emitWriteRangedFold32(name, lo, hi, bitsRequired(f.IntMin, f.IntMax), f.IntMin.Sign() == 0, ind)
 			case "int64":
-				g.pf("%swrite_int64( stream, %s, %s, %s );\n", ind, name, lo, hi)
+				g.emitWriteRangedFold64(name, lo, hi, bitsRequired(f.IntMin, f.IntMax), f.IntMin.Sign() == 0, ind)
 			default:
 				// full-range unsigned raw offset: this path bypasses the
 				// runtime's ranged calls, so it supplies the write-side range
@@ -308,12 +356,14 @@ func (g *gen) emitWriteScalar(f *ir.Field, name, ind string) {
 			g.pf("%sfor ( int32_t i = 0; i < %s_length; i++ )\n%s{\n", ind, name, ind)
 			g.pf("%s    serialize_assert( %s[i] != 0 );\n%s}\n", ind, name, ind)
 		}
-		g.pf("%swrite_int( stream, %s_length, 0, %s );\n", ind, name, g.renderInt(f.Type.SizeExpr, big.NewInt(f.Type.Size)))
+		g.emitWriteRangedFold32(name+"_length", "0", g.renderInt(f.Type.SizeExpr, big.NewInt(f.Type.Size)),
+			bitsRequired(big.NewInt(0), big.NewInt(f.Type.Size)), true, ind)
 		g.pf("%swrite_bytes( stream, %s, %s_length );\n", ind, name, name)
 	case ir.TNamed:
 		switch ref := f.Type.Ref.(type) {
 		case *ir.Enum:
-			g.pf("%swrite_int( stream, int32_t( %s ), 0, %d );\n", ind, name, ref.Max)
+			g.emitWriteRangedFold32(name, "0", fmt.Sprintf("%d", ref.Max),
+				bitsRequired(big.NewInt(0), big.NewInt(ref.Max)), true, ind)
 		case *ir.Flags:
 			if ref.WireBits < 64 {
 				// storage is wider than the wire: a mask bit above the wire
@@ -459,7 +509,9 @@ func (g *gen) emitMessageTagFunctions() {
 	g.pf("// The message tag wire: MessageType in [0, %d], minimal bits; None = 0 is a\n", count)
 	g.pf("// valid wire value meaning *no message* — the stream terminator (SPEC §4.8).\n")
 	g.pf("inline bool WriteMessageType( serialize::WriteStream & stream, MessageType value )\n{\n")
-	g.pf("    write_int( stream, int32_t( value ), 0, %d );\n    return true;\n}\n\n", count)
+	g.emitWriteRangedFold32("value", "0", fmt.Sprintf("%d", count),
+		bitsRequired(big.NewInt(0), big.NewInt(count)), true, "    ")
+	g.pf("    return true;\n}\n\n")
 	g.pf("inline bool ReadMessageType( serialize::ReadStream & stream, MessageType & value )\n{\n")
 	g.pf("    int32_t tag_value = 0;\n")
 	g.pf("    read_int( stream, tag_value, 0, %d );\n", count)

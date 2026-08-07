@@ -89,7 +89,8 @@ inline bool WriteProbeBits( serialize::WriteStream & stream, const ProbeBits & v
     write_bits( stream, value.small, 9 );
     write_bits( stream, value.boundary, 33 );
     write_bits( stream, value.wide, 64 );
-    write_int64( stream, value.sensor, 0, 4294967295 );
+    serialize_assert( int64_t( value.sensor ) >= int64_t( 0 ) && int64_t( value.sensor ) <= int64_t( 4294967295 ) );
+    write_bits( stream, uint64_t( value.sensor ), 32 );
     write_bits( stream, value.nonce, 64 );
     return true;
 }
@@ -146,7 +147,8 @@ inline bool WriteProbeSample( serialize::WriteStream & stream, const ProbeSample
     write_bits( stream, value.big_delta, 64 );
     if ( value.active )
     {
-        write_int( stream, int32_t( value.weapon ), 0, 15 );
+        serialize_assert( int32_t( value.weapon ) >= int32_t( 0 ) && int32_t( value.weapon ) <= int32_t( 15 ) );
+        write_bits( stream, uint32_t( value.weapon ), 4 );
         write_bool( stream, value.has_target );
         if ( value.has_target )
         {
@@ -157,7 +159,8 @@ inline bool WriteProbeSample( serialize::WriteStream & stream, const ProbeSample
     {
         write_bits( stream, value.idle_ticks, 32 );
     }
-    write_int( stream, value.samples_count, 1, 8 );
+    serialize_assert( int32_t( value.samples_count ) >= int32_t( 1 ) && int32_t( value.samples_count ) <= int32_t( 8 ) );
+    write_bits( stream, uint32_t( value.samples_count ) - uint32_t( 1 ), 3 );
     for ( int32_t i = 0; i < value.samples_count; i++ )
     {
         write_bits( stream, value.samples[i], 16 );
@@ -232,7 +235,8 @@ inline constexpr int64_t ProbeConfigMaxBytes = 8; // rounded up to the 8-byte wr
 inline bool WriteProbeConfig( serialize::WriteStream & stream, const ProbeConfig & value )
 {
     write_bits( stream, uint32_t( value.retries ), 32 );
-    write_int( stream, int32_t( value.preferred ), 0, 15 );
+    serialize_assert( int32_t( value.preferred ) >= int32_t( 0 ) && int32_t( value.preferred ) <= int32_t( 15 ) );
+    write_bits( stream, uint32_t( value.preferred ), 4 );
     return true;
 }
 
@@ -363,17 +367,22 @@ inline constexpr int64_t TestDataMaxBytes = 344; // rounded up to the 8-byte wri
 
 inline bool WriteTestData( serialize::WriteStream & stream, const TestData & value )
 {
-    write_int( stream, value.a, -100, 100 );
-    write_int( stream, value.b, -100, 100 );
-    write_int( stream, value.c, -100, 150 );
+    serialize_assert( int32_t( value.a ) >= int32_t( -100 ) && int32_t( value.a ) <= int32_t( 100 ) );
+    write_bits( stream, uint32_t( value.a ) - uint32_t( -100 ), 8 );
+    serialize_assert( int32_t( value.b ) >= int32_t( -100 ) && int32_t( value.b ) <= int32_t( 100 ) );
+    write_bits( stream, uint32_t( value.b ) - uint32_t( -100 ), 8 );
+    serialize_assert( int32_t( value.c ) >= int32_t( -100 ) && int32_t( value.c ) <= int32_t( 150 ) );
+    write_bits( stream, uint32_t( value.c ) - uint32_t( -100 ), 8 );
     write_bits( stream, value.d, 8 );
     write_bits( stream, value.e, 8 );
     write_bits( stream, value.f, 8 );
     write_bool( stream, value.g );
-    write_int( stream, value.items_count, 0, 16 );
+    serialize_assert( int32_t( value.items_count ) >= int32_t( 0 ) && int32_t( value.items_count ) <= int32_t( 16 ) );
+    write_bits( stream, uint32_t( value.items_count ), 5 );
     for ( int32_t i = 0; i < value.items_count; i++ )
     {
-        write_int( stream, value.items[i], 0, 255 );
+        serialize_assert( int32_t( value.items[i] ) >= int32_t( 0 ) && int32_t( value.items[i] ) <= int32_t( 255 ) );
+        write_bits( stream, uint32_t( value.items[i] ), 8 );
     }
     write_float( stream, value.float_value );
     {
@@ -388,14 +397,16 @@ inline bool WriteTestData( serialize::WriteStream & stream, const TestData & val
     write_bits( stream, value.uint32_value, 32 );
     write_bits( stream, value.uint64_value, 64 );
     write_bits( stream, value.int64_full, 64 );
-    write_int64( stream, value.int64_range, -1000000000000, 1000000000000 );
+    serialize_assert( int64_t( value.int64_range ) >= int64_t( -1000000000000 ) && int64_t( value.int64_range ) <= int64_t( 1000000000000 ) );
+    write_bits( stream, uint64_t( value.int64_range ) - uint64_t( -1000000000000 ), 41 );
     write_align( stream );
     write_bytes( stream, value.fixed_bytes, 17 ); // byte-aligned [N]uint8 — bulk copy, wire-identical to the per-byte loop
     for ( int32_t i = 0; i < value.text_length; i++ )
     {
         serialize_assert( value.text[i] != 0 );
     }
-    write_int( stream, value.text_length, 0, 255 );
+    serialize_assert( int32_t( value.text_length ) >= int32_t( 0 ) && int32_t( value.text_length ) <= int32_t( 255 ) );
+    write_bits( stream, uint32_t( value.text_length ), 8 );
     write_bytes( stream, value.text, value.text_length );
     return true;
 }
