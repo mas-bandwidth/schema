@@ -469,15 +469,27 @@ func (g *gen) emitMessageTagFunctions() {
 
 // emitMessageDispatchUnion is the DEFAULT C++ dispatch surface: a tagged
 // struct over an anonymous union — the classic game idiom, zero template
-// machinery, zero extra includes beyond <cstring>. Zero-initialized on
-// construction (the house rule); the payload member matching `type` is the
-// active one, the caller's discipline exactly as in hand-written code.
+// machinery, zero extra includes. Construction initializes the tag only
+// (None); an arm's storage is zero-established when the arm is SELECTED —
+// by ReadMessage before it decodes (SPEC §5's read rule is relative to a
+// zero-initialized output object, and the arm re-init below provides that
+// baseline for exactly the arm the wire tag selects), or by the writer
+// assigning the arm (message.chat = Chat{} — the generated structs'
+// default member initializers make that a zero value). The constructor
+// used to memset the whole Block-sized union; the 2026-08-06 bench pass
+// measured that memset at 60.6% of batch-read self-cycles (Zen 4, ~2 KB
+// zeroed per ~25 B message), and the zeroing moved to arm selection —
+// the exact shape the variant surface always had: default construction
+// is monostate, emplace<T>() value-initializes only the selected arm.
 func (g *gen) emitMessageDispatchUnion() {
-	g.needsCstring = true
 	msgs := g.unit.Messages
 
 	g.pf("// The message value: a tagged union — the payload member matching `type` is\n")
-	g.pf("// the active one. Zero-initialized on construction; no heap, no templates.\n")
+	g.pf("// the active one. Construction is the None message: the tag alone is\n")
+	g.pf("// initialized (sentinel-zero — a zero tag is None); an arm's storage is\n")
+	g.pf("// established ZEROED when the arm is selected — by ReadMessage before it\n")
+	g.pf("// decodes (SPEC §5), or by assigning it: message.chat = Chat{}. Bytes of\n")
+	g.pf("// unselected arms are indeterminate. No heap, no templates.\n")
 	g.pf("// (--cpp-message variant generates a std::variant surface instead.)\n")
 	g.pf("struct Message\n{\n")
 	g.pf("    MessageType type;\n\n    union\n    {\n")
@@ -485,7 +497,7 @@ func (g *gen) emitMessageDispatchUnion() {
 		g.pf("        %s %s;\n", m, camelToSnake(m))
 	}
 	g.pf("    };\n\n")
-	g.pf("    Message() { memset( static_cast<void*>( this ), 0, sizeof( *this ) ); }\n")
+	g.pf("    Message() : type( MessageType::None ) {} // the tag only — arms are zero-established at selection\n")
 	g.pf("};\n\n")
 
 	g.pf("inline MessageType GetMessageType( const Message & message )\n{\n")

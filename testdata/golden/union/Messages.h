@@ -4,7 +4,6 @@
 #pragma once
 
 #include <cstdint>
-#include <cstring>
 
 #include "serialize.h"
 
@@ -221,7 +220,11 @@ inline constexpr int64_t MessageMaxBits = 16021;
 inline constexpr int64_t MessageMaxBytes = 2008; // rounded up to the 8-byte write-buffer granularity
 
 // The message value: a tagged union — the payload member matching `type` is
-// the active one. Zero-initialized on construction; no heap, no templates.
+// the active one. Construction is the None message: the tag alone is
+// initialized (sentinel-zero — a zero tag is None); an arm's storage is
+// established ZEROED when the arm is selected — by ReadMessage before it
+// decodes (SPEC §5), or by assigning it: message.chat = Chat{}. Bytes of
+// unselected arms are indeterminate. No heap, no templates.
 // (--cpp-message variant generates a std::variant surface instead.)
 struct Message
 {
@@ -237,7 +240,7 @@ struct Message
         Timescale timescale;
     };
 
-    Message() { memset( static_cast<void*>( this ), 0, sizeof( *this ) ); }
+    Message() : type( MessageType::None ) {} // the tag only — arms are zero-established at selection
 };
 
 inline MessageType GetMessageType( const Message & message )
