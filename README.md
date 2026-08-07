@@ -26,23 +26,23 @@ sides at the same protocol id speak identical bits; there is no versioning overh
 Generated-code performance of the four backends as **time taken relative to C++** — C++ is
 100%, higher is slower: 200% means the same work takes twice as long as C++. Medians across the
 corpus benchmarks; the mixed-dispatch batch shown separately. Apple M2, quiet host, 2026-08-07
-(v3 — the post-merge mains after the day's optimization program; the Rust batch-read cell
-updated same-day from the paired schema#10 run, which adopted the `read_message_into` reuse
-surface in the batch read loop) — full tables, raw CSVs and methodology in
-[bench/results/](bench/results/):
+(v4 — the post-restrict mains: serialize#30's restrict-qualified writer made the generated
+C++ writes 1.4–2.6x faster, which widened every other backend's relative write column without
+any of them regressing; schema#10's `read_message_into` batch read is composed in) — full
+tables, raw CSVs and methodology in [bench/results/](bench/results/):
 
 | backend | write | read | batch write | batch read |
 |---|---:|---:|---:|---:|
 | C++ | 100% | 100% | 100% | 100% |
-| Rust | 100% | 238% | 121% | 138% |
-| C# | 251% | 353% | 151% | 172% |
-| Go | 305% | 386% | 239% | 176% |
+| Rust | 188% | 236% | 110% | 156% |
+| C# | 379% | 343% | 155% | 204% |
+| Go | 490% | 387% | 236% | 208% |
 
 The spread behind the medians is wide and systematic: C++'s lead is an inlining margin that
 grows as messages shrink — on 6–10 byte messages the others take roughly 300–1500% of C++'s
-time. Rust now reaches write parity at the corpus median (it beats C++ outright on several
-mid-size writes; the tiny-message rows are where C++ keeps its margin); C++ leads every read
-column. An earlier draft of this table showed C# winning the batch read, and that turned out
+time. C++ leads every column; Rust is the nearest chaser (it briefly held write parity at the
+v3 mains, until the C++ writer's restrict pass moved the reference — its own write speeds are
+unchanged). An earlier draft of this table showed C# winning the batch read, and that turned out
 to be a benchmark-harness artifact, which is why every number here is gated on wire-golden
 verification before it is believed. The remaining gaps are decomposed, cause by cause, in
 [bench/results/2026-08-07-gap-ledger.md](bench/results/2026-08-07-gap-ledger.md) — treat the

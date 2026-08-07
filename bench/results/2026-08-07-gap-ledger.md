@@ -25,6 +25,29 @@ is stated.
 same-run C++, CSVs `2026-08-07-rust-read-into-{before,after}-arm64-m2.csv`.
 Every other cell is v3's.
 
+**The v4 scoreboard** (2026-08-07, the post-restrict mains,
+`2026-08-07-four-language-v4.md` — serialize#30's writer restrict composed
+at +38%…+158% on the C++ write rows, so every relative write cell widened
+with no backend regressing; the analysis below still reads against v3 and
+its causes stand):
+
+| backend | write | read | batch write | batch read |
+|---|---:|---:|---:|---:|
+| Rust | 188% | 236% | 110% | 156% |
+| C# | 379% | 343% | 155% | 204% |
+| Go | 490% | 387% | 236% | 208% |
+
+- **Rust**: write 100% → 188% is the moved C++ denominator, not a rust
+  change (rust write rows ±6%); batch read reads 156% not 138% because
+  same-run C++ batch read rose 17% unattributed (v4 finding 4) while
+  rust's absolute held (50.24 vs the paired 50.10) — schema#10 composed
+  at 2.27x.
+- **Go**: write 305% → 490% and batch read 176% → 208% are denominator
+  moves only (every go row within noise of v3); the unattributed write
+  column below is now the widest gap on the board.
+- **C#**: write 251% → 379% likewise denominator-only; the v3 caveat on
+  cs shipcreate's dip is resolved (v4 puts it back at v1 levels).
+
 ---
 
 ## Rust
