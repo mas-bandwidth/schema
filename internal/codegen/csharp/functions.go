@@ -38,19 +38,87 @@ func (g *gen) emitStructFunctions(st *ir.Struct) {
 
 	g.emitZeroFunction(st)
 
-	g.sf("public static bool Write%s(WriteStream stream, %s value)\n{\n", st.Name, st.Name)
-	if len(st.Items) == 0 {
-		g.sf("    // empty body — presence is the payload (SPEC §4.6)\n")
-	} else {
-		g.emitWriteItems(st.Items, "    ")
-	}
-	g.sf("    return true;\n}\n\n")
+	g.emitPair(st.Name, st.Name,
+		func() {
+			if len(st.Items) == 0 {
+				g.sf("    // empty body — presence is the payload (SPEC §4.6)\n")
+			} else {
+				g.emitWriteItems(st.Items, "    ")
+			}
+			g.sf("    return true;\n")
+		},
+		func() {
+			if len(st.Items) > 0 {
+				g.emitReadItems(st.Items, "    ")
+			}
+			g.sf("    return true;\n")
+		})
+}
 
-	g.sf("public static bool Read%s(ReadStream stream, %s value)\n{\n", st.Name, st.Name)
-	if len(st.Items) > 0 {
-		g.emitReadItems(st.Items, "    ")
+// emitPair emits the Write/Read pair named pair over the C# type typ, honoring
+// the batch plan: a batched pair keeps its public stream signature but runs an
+// AggressiveInlining batch-form core against register-resident stream state
+// (serialize.cs WriteBatch/ReadBatch — PR #3's emitter follow-up); a pair
+// composed under a batched one gets the core beside its stream form. The two
+// laws the shape obeys — inline-only composition and per-type opt-in by
+// scalar density — are #3's measured rules; see batch.go for the density
+// threshold. Wire bytes and the error model are identical on every path.
+func (g *gen) emitPair(pair, typ string, writeBody, readBody func()) {
+	batched := g.batched[pair]
+	if batched {
+		g.sf("// Write%s/Read%s run as a batch: the stream state lives in registers\n", pair, pair)
+		g.sf("// across the body's serialize calls and is stored back once at End —\n")
+		g.sf("// the tiny-message hot path (serialize.cs WriteBatch/ReadBatch). Same\n")
+		g.sf("// wire bytes, same validation, same latched-error model.\n")
+		g.sf("public static bool Write%s(WriteStream stream, %s value)\n{\n", pair, typ)
+		g.sf("    WriteBatch batch = stream.BeginBatch();\n")
+		g.sf("    bool result = Write%sBatch(ref batch, value);\n", pair)
+		g.sf("    batch.End(); // on every path out — End publishes the state and the error\n")
+		g.sf("    return result;\n}\n\n")
+	} else {
+		g.sf("public static bool Write%s(WriteStream stream, %s value)\n{\n", pair, typ)
+		writeBody()
+		g.sf("}\n\n")
 	}
-	g.sf("    return true;\n}\n\n")
+	if g.needCore[pair] {
+		g.emitCoreAttr()
+		g.sf("private static bool Write%sBatch(ref WriteBatch batch, %s value)\n{\n", pair, typ)
+		g.inBatch = true
+		writeBody()
+		g.inBatch = false
+		g.sf("}\n\n")
+	}
+	if batched {
+		g.sf("public static bool Read%s(ReadStream stream, %s value)\n{\n", pair, typ)
+		g.sf("    ReadBatch batch = stream.BeginBatch();\n")
+		g.sf("    bool result = Read%sBatch(ref batch, value);\n", pair)
+		g.sf("    batch.End(); // on every path out — End publishes the cursor and the error\n")
+		g.sf("    return result;\n}\n\n")
+	} else {
+		g.sf("public static bool Read%s(ReadStream stream, %s value)\n{\n", pair, typ)
+		readBody()
+		g.sf("}\n\n")
+	}
+	if g.needCore[pair] {
+		g.emitCoreAttr()
+		g.sf("private static bool Read%sBatch(ref ReadBatch batch, %s value)\n{\n", pair, typ)
+		g.inBatch = true
+		readBody()
+		g.inBatch = false
+		g.sf("}\n\n")
+	}
+}
+
+// emitCoreAttr marks a batch core INLINE-ONLY. Law (serialize.cs #3): a real
+// call taking `ref WriteBatch` address-exposes the ref struct and
+// enregistration dies for the whole calling scope — measured 0.71x, slower
+// than no batch at all. Composition is core-to-core by ref, always inlined.
+func (g *gen) emitCoreAttr() {
+	g.needsCompiler = true
+	g.sf("// The batch-form core — INLINE-ONLY: a non-inlined call taking the batch by\n")
+	g.sf("// ref address-exposes it and enregistration dies (measured 0.71x, worse than\n")
+	g.sf("// no batch). Nested types compose core-to-core by ref, never via the stream.\n")
+	g.sf("[MethodImpl(MethodImplOptions.AggressiveInlining)]\n")
 }
 
 // emitZeroFunction emits the §5 ZERO form for a class — all-zero storage,

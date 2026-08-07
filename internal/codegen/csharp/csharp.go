@@ -63,8 +63,9 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 	home := protocolIdHome(u)
 	msgOwner := ir.MessageOwner(u)
 	objOwner := ir.ObjectOwner(u)
+	batched, needCore := batchPlan(u)
 	for _, f := range u.Files {
-		g := &gen{unit: u, file: f, msgOwner: msgOwner, objOwner: objOwner}
+		g := &gen{unit: u, file: f, msgOwner: msgOwner, objOwner: objOwner, batched: batched, needCore: needCore}
 		g.emitFile(f.Base == home)
 		out[f.Base+".cs"] = g.assemble()
 	}

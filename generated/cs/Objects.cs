@@ -9,6 +9,7 @@
 // latch. Callers get bool always; Error tells the two apart.
 
 using System;
+using System.Runtime.CompilerServices;
 using Serialize;
 
 namespace Example;
@@ -360,7 +361,23 @@ public static partial class Schema
     public const long ShipData_DeepMaxBits = 1703;
     public const long ShipData_DeepMaxBytes = 216; // rounded up to the 8-byte write-buffer granularity
 
+    // WriteShipData_Deep/ReadShipData_Deep run as a batch: the stream state lives in registers
+    // across the body's serialize calls and is stored back once at End —
+    // the tiny-message hot path (serialize.cs WriteBatch/ReadBatch). Same
+    // wire bytes, same validation, same latched-error model.
     public static bool WriteShipData_Deep(WriteStream stream, ShipData_Deep value)
+    {
+        WriteBatch batch = stream.BeginBatch();
+        bool result = WriteShipData_DeepBatch(ref batch, value);
+        batch.End(); // on every path out — End publishes the state and the error
+        return result;
+    }
+
+    // The batch-form core — INLINE-ONLY: a non-inlined call taking the batch by
+    // ref address-exposes it and enregistration dies (measured 0.71x, worse than
+    // no batch). Nested types compose core-to-core by ref, never via the stream.
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static bool WriteShipData_DeepBatch(ref WriteBatch batch, ShipData_Deep value)
     {
         {
             uint enumValue = (uint)value.ShipType;
@@ -368,20 +385,20 @@ public static partial class Schema
             {
                 return false;
             }
-            if (!stream.SerializeBits(ref enumValue, 3))
+            if (!batch.SerializeBits(ref enumValue, 3))
             {
                 return false;
             }
         }
-        if (!WriteVec3(stream, value.Position))
+        if (!WriteVec3Batch(ref batch, value.Position))
         {
             return false;
         }
-        if (!WriteQuat(stream, value.Rotation))
+        if (!WriteQuatBatch(ref batch, value.Rotation))
         {
             return false;
         }
-        if (!WriteVec3(stream, value.LinearVelocity))
+        if (!WriteVec3Batch(ref batch, value.LinearVelocity))
         {
             return false;
         }
@@ -391,7 +408,7 @@ public static partial class Schema
         }
         {
             uint flagsValue = (uint)value.Flags;
-            if (!stream.SerializeBits(ref flagsValue, 4))
+            if (!batch.SerializeBits(ref flagsValue, 4))
             {
                 return false;
             }
@@ -402,68 +419,68 @@ public static partial class Schema
             {
                 return false;
             }
-            if (!stream.SerializeBits(ref enumValue, 2))
+            if (!batch.SerializeBits(ref enumValue, 2))
             {
                 return false;
             }
         }
-        if (!stream.SerializeFloat(ref value.Health))
+        if (!batch.SerializeFloat(ref value.Health))
         {
             return false;
         }
-        if (!stream.SerializeFloat(ref value.Thrust))
+        if (!batch.SerializeFloat(ref value.Thrust))
         {
             return false;
         }
-        if (!WriteVec3(stream, value.AngularVelocity))
+        if (!WriteVec3Batch(ref batch, value.AngularVelocity))
         {
             return false;
         }
-        if (!stream.SerializeFloat(ref value.LaserCooldown))
+        if (!batch.SerializeFloat(ref value.LaserCooldown))
         {
             return false;
         }
-        if (!stream.SerializeFloat(ref value.MissileCooldown))
+        if (!batch.SerializeFloat(ref value.MissileCooldown))
         {
             return false;
         }
-        if (!stream.SerializeFloat(ref value.SpeedCurrent))
+        if (!batch.SerializeFloat(ref value.SpeedCurrent))
         {
             return false;
         }
-        if (!stream.SerializeFloat(ref value.SpeedVelocity))
+        if (!batch.SerializeFloat(ref value.SpeedVelocity))
         {
             return false;
         }
-        if (!WriteVec3(stream, value.StickCurrent))
+        if (!WriteVec3Batch(ref batch, value.StickCurrent))
         {
             return false;
         }
-        if (!WriteVec3(stream, value.StickVelocity))
+        if (!WriteVec3Batch(ref batch, value.StickVelocity))
         {
             return false;
         }
-        if (!stream.SerializeFloat(ref value.SensitivityCurrent))
+        if (!batch.SerializeFloat(ref value.SensitivityCurrent))
         {
             return false;
         }
-        if (!stream.SerializeFloat(ref value.SensitivityVelocity))
+        if (!batch.SerializeFloat(ref value.SensitivityVelocity))
         {
             return false;
         }
-        if (!stream.SerializeFloat(ref value.RollCurrent))
+        if (!batch.SerializeFloat(ref value.RollCurrent))
         {
             return false;
         }
-        if (!stream.SerializeFloat(ref value.RollVelocity))
+        if (!batch.SerializeFloat(ref value.RollVelocity))
         {
             return false;
         }
-        if (!stream.SerializeFloat(ref value.AimCurrent))
+        if (!batch.SerializeFloat(ref value.AimCurrent))
         {
             return false;
         }
-        if (!stream.SerializeFloat(ref value.AimVelocity))
+        if (!batch.SerializeFloat(ref value.AimVelocity))
         {
             return false;
         }
@@ -473,7 +490,7 @@ public static partial class Schema
         }
         {
             uint offsetValue = (uint)(value.LaserIndex);
-            if (!stream.SerializeBits(ref offsetValue, 4))
+            if (!batch.SerializeBits(ref offsetValue, 4))
             {
                 return false;
             }
@@ -484,16 +501,16 @@ public static partial class Schema
         }
         {
             uint offsetValue = (uint)(value.MissileIndex);
-            if (!stream.SerializeBits(ref offsetValue, 4))
+            if (!batch.SerializeBits(ref offsetValue, 4))
             {
                 return false;
             }
         }
-        if (!WriteHandle(stream, value.Target))
+        if (!WriteHandleBatch(ref batch, value.Target))
         {
             return false;
         }
-        if (!stream.SerializeDouble(ref value.LockStartTime))
+        if (!batch.SerializeDouble(ref value.LockStartTime))
         {
             return false;
         }
@@ -502,29 +519,41 @@ public static partial class Schema
 
     public static bool ReadShipData_Deep(ReadStream stream, ShipData_Deep value)
     {
+        ReadBatch batch = stream.BeginBatch();
+        bool result = ReadShipData_DeepBatch(ref batch, value);
+        batch.End(); // on every path out — End publishes the cursor and the error
+        return result;
+    }
+
+    // The batch-form core — INLINE-ONLY: a non-inlined call taking the batch by
+    // ref address-exposes it and enregistration dies (measured 0.71x, worse than
+    // no batch). Nested types compose core-to-core by ref, never via the stream.
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static bool ReadShipData_DeepBatch(ref ReadBatch batch, ShipData_Deep value)
+    {
         {
             int enumValue = 0;
-            if (!stream.SerializeInt(ref enumValue, 0, 5))
+            if (!batch.SerializeInt(ref enumValue, 0, 5))
             {
                 return false;
             }
             value.ShipType = (ShipType)enumValue;
         }
-        if (!ReadVec3(stream, value.Position))
+        if (!ReadVec3Batch(ref batch, value.Position))
         {
             return false;
         }
-        if (!ReadQuat(stream, value.Rotation))
+        if (!ReadQuatBatch(ref batch, value.Rotation))
         {
             return false;
         }
-        if (!ReadVec3(stream, value.LinearVelocity))
+        if (!ReadVec3Batch(ref batch, value.LinearVelocity))
         {
             return false;
         }
         {
             uint flagsValue = 0;
-            if (!stream.SerializeBits(ref flagsValue, 4))
+            if (!batch.SerializeBits(ref flagsValue, 4))
             {
                 return false;
             }
@@ -532,75 +561,75 @@ public static partial class Schema
         }
         {
             int enumValue = 0;
-            if (!stream.SerializeInt(ref enumValue, 0, 2))
+            if (!batch.SerializeInt(ref enumValue, 0, 2))
             {
                 return false;
             }
             value.Team = (Team)enumValue;
         }
-        if (!stream.SerializeFloat(ref value.Health))
+        if (!batch.SerializeFloat(ref value.Health))
         {
             return false;
         }
-        if (!stream.SerializeFloat(ref value.Thrust))
+        if (!batch.SerializeFloat(ref value.Thrust))
         {
             return false;
         }
-        if (!ReadVec3(stream, value.AngularVelocity))
+        if (!ReadVec3Batch(ref batch, value.AngularVelocity))
         {
             return false;
         }
-        if (!stream.SerializeFloat(ref value.LaserCooldown))
+        if (!batch.SerializeFloat(ref value.LaserCooldown))
         {
             return false;
         }
-        if (!stream.SerializeFloat(ref value.MissileCooldown))
+        if (!batch.SerializeFloat(ref value.MissileCooldown))
         {
             return false;
         }
-        if (!stream.SerializeFloat(ref value.SpeedCurrent))
+        if (!batch.SerializeFloat(ref value.SpeedCurrent))
         {
             return false;
         }
-        if (!stream.SerializeFloat(ref value.SpeedVelocity))
+        if (!batch.SerializeFloat(ref value.SpeedVelocity))
         {
             return false;
         }
-        if (!ReadVec3(stream, value.StickCurrent))
+        if (!ReadVec3Batch(ref batch, value.StickCurrent))
         {
             return false;
         }
-        if (!ReadVec3(stream, value.StickVelocity))
+        if (!ReadVec3Batch(ref batch, value.StickVelocity))
         {
             return false;
         }
-        if (!stream.SerializeFloat(ref value.SensitivityCurrent))
+        if (!batch.SerializeFloat(ref value.SensitivityCurrent))
         {
             return false;
         }
-        if (!stream.SerializeFloat(ref value.SensitivityVelocity))
+        if (!batch.SerializeFloat(ref value.SensitivityVelocity))
         {
             return false;
         }
-        if (!stream.SerializeFloat(ref value.RollCurrent))
+        if (!batch.SerializeFloat(ref value.RollCurrent))
         {
             return false;
         }
-        if (!stream.SerializeFloat(ref value.RollVelocity))
+        if (!batch.SerializeFloat(ref value.RollVelocity))
         {
             return false;
         }
-        if (!stream.SerializeFloat(ref value.AimCurrent))
+        if (!batch.SerializeFloat(ref value.AimCurrent))
         {
             return false;
         }
-        if (!stream.SerializeFloat(ref value.AimVelocity))
+        if (!batch.SerializeFloat(ref value.AimVelocity))
         {
             return false;
         }
         {
             int rangeValue = 0;
-            if (!stream.SerializeInt(ref rangeValue, 0, (int)(ShipMaxLasers - 1)))
+            if (!batch.SerializeInt(ref rangeValue, 0, (int)(ShipMaxLasers - 1)))
             {
                 return false;
             }
@@ -608,17 +637,17 @@ public static partial class Schema
         }
         {
             int rangeValue = 0;
-            if (!stream.SerializeInt(ref rangeValue, 0, (int)(ShipMaxMissiles - 1)))
+            if (!batch.SerializeInt(ref rangeValue, 0, (int)(ShipMaxMissiles - 1)))
             {
                 return false;
             }
             value.MissileIndex = (sbyte)rangeValue;
         }
-        if (!ReadHandle(stream, value.Target))
+        if (!ReadHandleBatch(ref batch, value.Target))
         {
             return false;
         }
-        if (!stream.SerializeDouble(ref value.LockStartTime))
+        if (!batch.SerializeDouble(ref value.LockStartTime))
         {
             return false;
         }
@@ -628,7 +657,23 @@ public static partial class Schema
     public const long ShipData_ShallowMaxBits = 218;
     public const long ShipData_ShallowMaxBytes = 32; // rounded up to the 8-byte write-buffer granularity
 
+    // WriteShipData_Shallow/ReadShipData_Shallow run as a batch: the stream state lives in registers
+    // across the body's serialize calls and is stored back once at End —
+    // the tiny-message hot path (serialize.cs WriteBatch/ReadBatch). Same
+    // wire bytes, same validation, same latched-error model.
     public static bool WriteShipData_Shallow(WriteStream stream, ShipData_Shallow value)
+    {
+        WriteBatch batch = stream.BeginBatch();
+        bool result = WriteShipData_ShallowBatch(ref batch, value);
+        batch.End(); // on every path out — End publishes the state and the error
+        return result;
+    }
+
+    // The batch-form core — INLINE-ONLY: a non-inlined call taking the batch by
+    // ref address-exposes it and enregistration dies (measured 0.71x, worse than
+    // no batch). Nested types compose core-to-core by ref, never via the stream.
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static bool WriteShipData_ShallowBatch(ref WriteBatch batch, ShipData_Shallow value)
     {
         {
             uint enumValue = (uint)value.ShipType;
@@ -636,7 +681,7 @@ public static partial class Schema
             {
                 return false;
             }
-            if (!stream.SerializeBits(ref enumValue, 3))
+            if (!batch.SerializeBits(ref enumValue, 3))
             {
                 return false;
             }
@@ -647,7 +692,7 @@ public static partial class Schema
         }
         {
             uint offsetValue = (uint)(value.PositionX) - unchecked((uint)(-8388608));
-            if (!stream.SerializeBits(ref offsetValue, 25))
+            if (!batch.SerializeBits(ref offsetValue, 25))
             {
                 return false;
             }
@@ -658,7 +703,7 @@ public static partial class Schema
         }
         {
             uint offsetValue = (uint)(value.PositionY) - unchecked((uint)(-8388608));
-            if (!stream.SerializeBits(ref offsetValue, 25))
+            if (!batch.SerializeBits(ref offsetValue, 25))
             {
                 return false;
             }
@@ -669,7 +714,7 @@ public static partial class Schema
         }
         {
             uint offsetValue = (uint)(value.PositionZ) - unchecked((uint)(-8388608));
-            if (!stream.SerializeBits(ref offsetValue, 25))
+            if (!batch.SerializeBits(ref offsetValue, 25))
             {
                 return false;
             }
@@ -680,7 +725,7 @@ public static partial class Schema
         }
         {
             uint offsetValue = (uint)(value.RotationX) - unchecked((uint)(-1024));
-            if (!stream.SerializeBits(ref offsetValue, 12))
+            if (!batch.SerializeBits(ref offsetValue, 12))
             {
                 return false;
             }
@@ -691,7 +736,7 @@ public static partial class Schema
         }
         {
             uint offsetValue = (uint)(value.RotationY) - unchecked((uint)(-1024));
-            if (!stream.SerializeBits(ref offsetValue, 12))
+            if (!batch.SerializeBits(ref offsetValue, 12))
             {
                 return false;
             }
@@ -702,7 +747,7 @@ public static partial class Schema
         }
         {
             uint offsetValue = (uint)(value.RotationZ) - unchecked((uint)(-1024));
-            if (!stream.SerializeBits(ref offsetValue, 12))
+            if (!batch.SerializeBits(ref offsetValue, 12))
             {
                 return false;
             }
@@ -713,7 +758,7 @@ public static partial class Schema
         }
         {
             uint offsetValue = (uint)(value.RotationW) - unchecked((uint)(-1024));
-            if (!stream.SerializeBits(ref offsetValue, 12))
+            if (!batch.SerializeBits(ref offsetValue, 12))
             {
                 return false;
             }
@@ -724,7 +769,7 @@ public static partial class Schema
         }
         {
             uint offsetValue = (uint)(value.LinearVelocityX) - unchecked((uint)(-2097152));
-            if (!stream.SerializeBits(ref offsetValue, 23))
+            if (!batch.SerializeBits(ref offsetValue, 23))
             {
                 return false;
             }
@@ -735,7 +780,7 @@ public static partial class Schema
         }
         {
             uint offsetValue = (uint)(value.LinearVelocityY) - unchecked((uint)(-2097152));
-            if (!stream.SerializeBits(ref offsetValue, 23))
+            if (!batch.SerializeBits(ref offsetValue, 23))
             {
                 return false;
             }
@@ -746,7 +791,7 @@ public static partial class Schema
         }
         {
             uint offsetValue = (uint)(value.LinearVelocityZ) - unchecked((uint)(-2097152));
-            if (!stream.SerializeBits(ref offsetValue, 23))
+            if (!batch.SerializeBits(ref offsetValue, 23))
             {
                 return false;
             }
@@ -757,7 +802,7 @@ public static partial class Schema
         }
         {
             uint flagsValue = (uint)value.Flags;
-            if (!stream.SerializeBits(ref flagsValue, 4))
+            if (!batch.SerializeBits(ref flagsValue, 4))
             {
                 return false;
             }
@@ -768,7 +813,7 @@ public static partial class Schema
             {
                 return false;
             }
-            if (!stream.SerializeBits(ref enumValue, 2))
+            if (!batch.SerializeBits(ref enumValue, 2))
             {
                 return false;
             }
@@ -779,7 +824,7 @@ public static partial class Schema
         }
         {
             uint offsetValue = (uint)(value.Health);
-            if (!stream.SerializeBits(ref offsetValue, 10))
+            if (!batch.SerializeBits(ref offsetValue, 10))
             {
                 return false;
             }
@@ -790,7 +835,7 @@ public static partial class Schema
         }
         {
             uint offsetValue = (uint)(value.Thrust);
-            if (!stream.SerializeBits(ref offsetValue, 7))
+            if (!batch.SerializeBits(ref offsetValue, 7))
             {
                 return false;
             }
@@ -800,29 +845,41 @@ public static partial class Schema
 
     public static bool ReadShipData_Shallow(ReadStream stream, ShipData_Shallow value)
     {
+        ReadBatch batch = stream.BeginBatch();
+        bool result = ReadShipData_ShallowBatch(ref batch, value);
+        batch.End(); // on every path out — End publishes the cursor and the error
+        return result;
+    }
+
+    // The batch-form core — INLINE-ONLY: a non-inlined call taking the batch by
+    // ref address-exposes it and enregistration dies (measured 0.71x, worse than
+    // no batch). Nested types compose core-to-core by ref, never via the stream.
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static bool ReadShipData_ShallowBatch(ref ReadBatch batch, ShipData_Shallow value)
+    {
         {
             int enumValue = 0;
-            if (!stream.SerializeInt(ref enumValue, 0, 5))
+            if (!batch.SerializeInt(ref enumValue, 0, 5))
             {
                 return false;
             }
             value.ShipType = (ShipType)enumValue;
         }
-        if (!stream.SerializeInt(ref value.PositionX, -8388608, 8388608))
+        if (!batch.SerializeInt(ref value.PositionX, -8388608, 8388608))
         {
             return false;
         }
-        if (!stream.SerializeInt(ref value.PositionY, -8388608, 8388608))
+        if (!batch.SerializeInt(ref value.PositionY, -8388608, 8388608))
         {
             return false;
         }
-        if (!stream.SerializeInt(ref value.PositionZ, -8388608, 8388608))
+        if (!batch.SerializeInt(ref value.PositionZ, -8388608, 8388608))
         {
             return false;
         }
         {
             int componentValue = 0;
-            if (!stream.SerializeInt(ref componentValue, -1024, 1024))
+            if (!batch.SerializeInt(ref componentValue, -1024, 1024))
             {
                 return false;
             }
@@ -830,7 +887,7 @@ public static partial class Schema
         }
         {
             int componentValue = 0;
-            if (!stream.SerializeInt(ref componentValue, -1024, 1024))
+            if (!batch.SerializeInt(ref componentValue, -1024, 1024))
             {
                 return false;
             }
@@ -838,7 +895,7 @@ public static partial class Schema
         }
         {
             int componentValue = 0;
-            if (!stream.SerializeInt(ref componentValue, -1024, 1024))
+            if (!batch.SerializeInt(ref componentValue, -1024, 1024))
             {
                 return false;
             }
@@ -846,27 +903,27 @@ public static partial class Schema
         }
         {
             int componentValue = 0;
-            if (!stream.SerializeInt(ref componentValue, -1024, 1024))
+            if (!batch.SerializeInt(ref componentValue, -1024, 1024))
             {
                 return false;
             }
             value.RotationW = (short)componentValue;
         }
-        if (!stream.SerializeInt(ref value.LinearVelocityX, -2097152, 2097152))
+        if (!batch.SerializeInt(ref value.LinearVelocityX, -2097152, 2097152))
         {
             return false;
         }
-        if (!stream.SerializeInt(ref value.LinearVelocityY, -2097152, 2097152))
+        if (!batch.SerializeInt(ref value.LinearVelocityY, -2097152, 2097152))
         {
             return false;
         }
-        if (!stream.SerializeInt(ref value.LinearVelocityZ, -2097152, 2097152))
+        if (!batch.SerializeInt(ref value.LinearVelocityZ, -2097152, 2097152))
         {
             return false;
         }
         {
             uint flagsValue = 0;
-            if (!stream.SerializeBits(ref flagsValue, 4))
+            if (!batch.SerializeBits(ref flagsValue, 4))
             {
                 return false;
             }
@@ -874,7 +931,7 @@ public static partial class Schema
         }
         {
             int enumValue = 0;
-            if (!stream.SerializeInt(ref enumValue, 0, 2))
+            if (!batch.SerializeInt(ref enumValue, 0, 2))
             {
                 return false;
             }
@@ -882,7 +939,7 @@ public static partial class Schema
         }
         {
             int projectedValue = 0;
-            if (!stream.SerializeInt(ref projectedValue, 0, 1000))
+            if (!batch.SerializeInt(ref projectedValue, 0, 1000))
             {
                 return false;
             }
@@ -890,7 +947,7 @@ public static partial class Schema
         }
         {
             int projectedValue = 0;
-            if (!stream.SerializeInt(ref projectedValue, 0, 100))
+            if (!batch.SerializeInt(ref projectedValue, 0, 100))
             {
                 return false;
             }
@@ -1060,7 +1117,23 @@ public static partial class Schema
     public const long MissileData_DeepMaxBits = 708;
     public const long MissileData_DeepMaxBytes = 96; // rounded up to the 8-byte write-buffer granularity
 
+    // WriteMissileData_Deep/ReadMissileData_Deep run as a batch: the stream state lives in registers
+    // across the body's serialize calls and is stored back once at End —
+    // the tiny-message hot path (serialize.cs WriteBatch/ReadBatch). Same
+    // wire bytes, same validation, same latched-error model.
     public static bool WriteMissileData_Deep(WriteStream stream, MissileData_Deep value)
+    {
+        WriteBatch batch = stream.BeginBatch();
+        bool result = WriteMissileData_DeepBatch(ref batch, value);
+        batch.End(); // on every path out — End publishes the state and the error
+        return result;
+    }
+
+    // The batch-form core — INLINE-ONLY: a non-inlined call taking the batch by
+    // ref address-exposes it and enregistration dies (measured 0.71x, worse than
+    // no batch). Nested types compose core-to-core by ref, never via the stream.
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static bool WriteMissileData_DeepBatch(ref WriteBatch batch, MissileData_Deep value)
     {
         {
             uint enumValue = (uint)value.MissileType;
@@ -1068,20 +1141,20 @@ public static partial class Schema
             {
                 return false;
             }
-            if (!stream.SerializeBits(ref enumValue, 2))
+            if (!batch.SerializeBits(ref enumValue, 2))
             {
                 return false;
             }
         }
-        if (!WriteVec3(stream, value.Position))
+        if (!WriteVec3Batch(ref batch, value.Position))
         {
             return false;
         }
-        if (!WriteQuat(stream, value.Rotation))
+        if (!WriteQuatBatch(ref batch, value.Rotation))
         {
             return false;
         }
-        if (!WriteVec3(stream, value.LinearVelocity))
+        if (!WriteVec3Batch(ref batch, value.LinearVelocity))
         {
             return false;
         }
@@ -1091,12 +1164,12 @@ public static partial class Schema
             {
                 return false;
             }
-            if (!stream.SerializeBits(ref enumValue, 2))
+            if (!batch.SerializeBits(ref enumValue, 2))
             {
                 return false;
             }
         }
-        if (!stream.SerializeBits64(ref value.Flags, 64))
+        if (!batch.SerializeBits64(ref value.Flags, 64))
         {
             return false;
         }
@@ -1105,35 +1178,47 @@ public static partial class Schema
 
     public static bool ReadMissileData_Deep(ReadStream stream, MissileData_Deep value)
     {
+        ReadBatch batch = stream.BeginBatch();
+        bool result = ReadMissileData_DeepBatch(ref batch, value);
+        batch.End(); // on every path out — End publishes the cursor and the error
+        return result;
+    }
+
+    // The batch-form core — INLINE-ONLY: a non-inlined call taking the batch by
+    // ref address-exposes it and enregistration dies (measured 0.71x, worse than
+    // no batch). Nested types compose core-to-core by ref, never via the stream.
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static bool ReadMissileData_DeepBatch(ref ReadBatch batch, MissileData_Deep value)
+    {
         {
             int enumValue = 0;
-            if (!stream.SerializeInt(ref enumValue, 0, 3))
+            if (!batch.SerializeInt(ref enumValue, 0, 3))
             {
                 return false;
             }
             value.MissileType = (MissileType)enumValue;
         }
-        if (!ReadVec3(stream, value.Position))
+        if (!ReadVec3Batch(ref batch, value.Position))
         {
             return false;
         }
-        if (!ReadQuat(stream, value.Rotation))
+        if (!ReadQuatBatch(ref batch, value.Rotation))
         {
             return false;
         }
-        if (!ReadVec3(stream, value.LinearVelocity))
+        if (!ReadVec3Batch(ref batch, value.LinearVelocity))
         {
             return false;
         }
         {
             int enumValue = 0;
-            if (!stream.SerializeInt(ref enumValue, 0, 2))
+            if (!batch.SerializeInt(ref enumValue, 0, 2))
             {
                 return false;
             }
             value.Team = (Team)enumValue;
         }
-        if (!stream.SerializeBits64(ref value.Flags, 64))
+        if (!batch.SerializeBits64(ref value.Flags, 64))
         {
             return false;
         }
@@ -1143,7 +1228,23 @@ public static partial class Schema
     public const long MissileData_ShallowMaxBits = 260;
     public const long MissileData_ShallowMaxBytes = 40; // rounded up to the 8-byte write-buffer granularity
 
+    // WriteMissileData_Shallow/ReadMissileData_Shallow run as a batch: the stream state lives in registers
+    // across the body's serialize calls and is stored back once at End —
+    // the tiny-message hot path (serialize.cs WriteBatch/ReadBatch). Same
+    // wire bytes, same validation, same latched-error model.
     public static bool WriteMissileData_Shallow(WriteStream stream, MissileData_Shallow value)
+    {
+        WriteBatch batch = stream.BeginBatch();
+        bool result = WriteMissileData_ShallowBatch(ref batch, value);
+        batch.End(); // on every path out — End publishes the state and the error
+        return result;
+    }
+
+    // The batch-form core — INLINE-ONLY: a non-inlined call taking the batch by
+    // ref address-exposes it and enregistration dies (measured 0.71x, worse than
+    // no batch). Nested types compose core-to-core by ref, never via the stream.
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static bool WriteMissileData_ShallowBatch(ref WriteBatch batch, MissileData_Shallow value)
     {
         {
             uint enumValue = (uint)value.MissileType;
@@ -1151,7 +1252,7 @@ public static partial class Schema
             {
                 return false;
             }
-            if (!stream.SerializeBits(ref enumValue, 2))
+            if (!batch.SerializeBits(ref enumValue, 2))
             {
                 return false;
             }
@@ -1162,7 +1263,7 @@ public static partial class Schema
         }
         {
             uint offsetValue = (uint)(value.PositionX) - unchecked((uint)(-8388608));
-            if (!stream.SerializeBits(ref offsetValue, 25))
+            if (!batch.SerializeBits(ref offsetValue, 25))
             {
                 return false;
             }
@@ -1173,7 +1274,7 @@ public static partial class Schema
         }
         {
             uint offsetValue = (uint)(value.PositionY) - unchecked((uint)(-8388608));
-            if (!stream.SerializeBits(ref offsetValue, 25))
+            if (!batch.SerializeBits(ref offsetValue, 25))
             {
                 return false;
             }
@@ -1184,7 +1285,7 @@ public static partial class Schema
         }
         {
             uint offsetValue = (uint)(value.PositionZ) - unchecked((uint)(-8388608));
-            if (!stream.SerializeBits(ref offsetValue, 25))
+            if (!batch.SerializeBits(ref offsetValue, 25))
             {
                 return false;
             }
@@ -1195,7 +1296,7 @@ public static partial class Schema
         }
         {
             uint offsetValue = (uint)(value.RotationX) - unchecked((uint)(-1024));
-            if (!stream.SerializeBits(ref offsetValue, 12))
+            if (!batch.SerializeBits(ref offsetValue, 12))
             {
                 return false;
             }
@@ -1206,7 +1307,7 @@ public static partial class Schema
         }
         {
             uint offsetValue = (uint)(value.RotationY) - unchecked((uint)(-1024));
-            if (!stream.SerializeBits(ref offsetValue, 12))
+            if (!batch.SerializeBits(ref offsetValue, 12))
             {
                 return false;
             }
@@ -1217,7 +1318,7 @@ public static partial class Schema
         }
         {
             uint offsetValue = (uint)(value.RotationZ) - unchecked((uint)(-1024));
-            if (!stream.SerializeBits(ref offsetValue, 12))
+            if (!batch.SerializeBits(ref offsetValue, 12))
             {
                 return false;
             }
@@ -1228,7 +1329,7 @@ public static partial class Schema
         }
         {
             uint offsetValue = (uint)(value.RotationW) - unchecked((uint)(-1024));
-            if (!stream.SerializeBits(ref offsetValue, 12))
+            if (!batch.SerializeBits(ref offsetValue, 12))
             {
                 return false;
             }
@@ -1239,7 +1340,7 @@ public static partial class Schema
         }
         {
             uint offsetValue = (uint)(value.LinearVelocityX) - unchecked((uint)(-2097152));
-            if (!stream.SerializeBits(ref offsetValue, 23))
+            if (!batch.SerializeBits(ref offsetValue, 23))
             {
                 return false;
             }
@@ -1250,7 +1351,7 @@ public static partial class Schema
         }
         {
             uint offsetValue = (uint)(value.LinearVelocityY) - unchecked((uint)(-2097152));
-            if (!stream.SerializeBits(ref offsetValue, 23))
+            if (!batch.SerializeBits(ref offsetValue, 23))
             {
                 return false;
             }
@@ -1261,7 +1362,7 @@ public static partial class Schema
         }
         {
             uint offsetValue = (uint)(value.LinearVelocityZ) - unchecked((uint)(-2097152));
-            if (!stream.SerializeBits(ref offsetValue, 23))
+            if (!batch.SerializeBits(ref offsetValue, 23))
             {
                 return false;
             }
@@ -1272,12 +1373,12 @@ public static partial class Schema
             {
                 return false;
             }
-            if (!stream.SerializeBits(ref enumValue, 2))
+            if (!batch.SerializeBits(ref enumValue, 2))
             {
                 return false;
             }
         }
-        if (!stream.SerializeBits64(ref value.Flags, 64))
+        if (!batch.SerializeBits64(ref value.Flags, 64))
         {
             return false;
         }
@@ -1286,29 +1387,41 @@ public static partial class Schema
 
     public static bool ReadMissileData_Shallow(ReadStream stream, MissileData_Shallow value)
     {
+        ReadBatch batch = stream.BeginBatch();
+        bool result = ReadMissileData_ShallowBatch(ref batch, value);
+        batch.End(); // on every path out — End publishes the cursor and the error
+        return result;
+    }
+
+    // The batch-form core — INLINE-ONLY: a non-inlined call taking the batch by
+    // ref address-exposes it and enregistration dies (measured 0.71x, worse than
+    // no batch). Nested types compose core-to-core by ref, never via the stream.
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static bool ReadMissileData_ShallowBatch(ref ReadBatch batch, MissileData_Shallow value)
+    {
         {
             int enumValue = 0;
-            if (!stream.SerializeInt(ref enumValue, 0, 3))
+            if (!batch.SerializeInt(ref enumValue, 0, 3))
             {
                 return false;
             }
             value.MissileType = (MissileType)enumValue;
         }
-        if (!stream.SerializeInt(ref value.PositionX, -8388608, 8388608))
+        if (!batch.SerializeInt(ref value.PositionX, -8388608, 8388608))
         {
             return false;
         }
-        if (!stream.SerializeInt(ref value.PositionY, -8388608, 8388608))
+        if (!batch.SerializeInt(ref value.PositionY, -8388608, 8388608))
         {
             return false;
         }
-        if (!stream.SerializeInt(ref value.PositionZ, -8388608, 8388608))
+        if (!batch.SerializeInt(ref value.PositionZ, -8388608, 8388608))
         {
             return false;
         }
         {
             int componentValue = 0;
-            if (!stream.SerializeInt(ref componentValue, -1024, 1024))
+            if (!batch.SerializeInt(ref componentValue, -1024, 1024))
             {
                 return false;
             }
@@ -1316,7 +1429,7 @@ public static partial class Schema
         }
         {
             int componentValue = 0;
-            if (!stream.SerializeInt(ref componentValue, -1024, 1024))
+            if (!batch.SerializeInt(ref componentValue, -1024, 1024))
             {
                 return false;
             }
@@ -1324,7 +1437,7 @@ public static partial class Schema
         }
         {
             int componentValue = 0;
-            if (!stream.SerializeInt(ref componentValue, -1024, 1024))
+            if (!batch.SerializeInt(ref componentValue, -1024, 1024))
             {
                 return false;
             }
@@ -1332,33 +1445,33 @@ public static partial class Schema
         }
         {
             int componentValue = 0;
-            if (!stream.SerializeInt(ref componentValue, -1024, 1024))
+            if (!batch.SerializeInt(ref componentValue, -1024, 1024))
             {
                 return false;
             }
             value.RotationW = (short)componentValue;
         }
-        if (!stream.SerializeInt(ref value.LinearVelocityX, -2097152, 2097152))
+        if (!batch.SerializeInt(ref value.LinearVelocityX, -2097152, 2097152))
         {
             return false;
         }
-        if (!stream.SerializeInt(ref value.LinearVelocityY, -2097152, 2097152))
+        if (!batch.SerializeInt(ref value.LinearVelocityY, -2097152, 2097152))
         {
             return false;
         }
-        if (!stream.SerializeInt(ref value.LinearVelocityZ, -2097152, 2097152))
+        if (!batch.SerializeInt(ref value.LinearVelocityZ, -2097152, 2097152))
         {
             return false;
         }
         {
             int enumValue = 0;
-            if (!stream.SerializeInt(ref enumValue, 0, 2))
+            if (!batch.SerializeInt(ref enumValue, 0, 2))
             {
                 return false;
             }
             value.Team = (Team)enumValue;
         }
-        if (!stream.SerializeBits64(ref value.Flags, 64))
+        if (!batch.SerializeBits64(ref value.Flags, 64))
         {
             return false;
         }
@@ -1522,7 +1635,23 @@ public static partial class Schema
     public const long DynamicPropData_DeepMaxBits = 709;
     public const long DynamicPropData_DeepMaxBytes = 96; // rounded up to the 8-byte write-buffer granularity
 
+    // WriteDynamicPropData_Deep/ReadDynamicPropData_Deep run as a batch: the stream state lives in registers
+    // across the body's serialize calls and is stored back once at End —
+    // the tiny-message hot path (serialize.cs WriteBatch/ReadBatch). Same
+    // wire bytes, same validation, same latched-error model.
     public static bool WriteDynamicPropData_Deep(WriteStream stream, DynamicPropData_Deep value)
+    {
+        WriteBatch batch = stream.BeginBatch();
+        bool result = WriteDynamicPropData_DeepBatch(ref batch, value);
+        batch.End(); // on every path out — End publishes the state and the error
+        return result;
+    }
+
+    // The batch-form core — INLINE-ONLY: a non-inlined call taking the batch by
+    // ref address-exposes it and enregistration dies (measured 0.71x, worse than
+    // no batch). Nested types compose core-to-core by ref, never via the stream.
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static bool WriteDynamicPropData_DeepBatch(ref WriteBatch batch, DynamicPropData_Deep value)
     {
         {
             uint enumValue = (uint)value.PropType;
@@ -1530,24 +1659,24 @@ public static partial class Schema
             {
                 return false;
             }
-            if (!stream.SerializeBits(ref enumValue, 3))
+            if (!batch.SerializeBits(ref enumValue, 3))
             {
                 return false;
             }
         }
-        if (!WriteVec3(stream, value.Position))
+        if (!WriteVec3Batch(ref batch, value.Position))
         {
             return false;
         }
-        if (!WriteQuat(stream, value.Rotation))
+        if (!WriteQuatBatch(ref batch, value.Rotation))
         {
             return false;
         }
-        if (!WriteVec3(stream, value.LinearVelocity))
+        if (!WriteVec3Batch(ref batch, value.LinearVelocity))
         {
             return false;
         }
-        if (!stream.SerializeBits64(ref value.Flags, 64))
+        if (!batch.SerializeBits64(ref value.Flags, 64))
         {
             return false;
         }
@@ -1557,7 +1686,7 @@ public static partial class Schema
             {
                 return false;
             }
-            if (!stream.SerializeBits(ref enumValue, 2))
+            if (!batch.SerializeBits(ref enumValue, 2))
             {
                 return false;
             }
@@ -1567,33 +1696,45 @@ public static partial class Schema
 
     public static bool ReadDynamicPropData_Deep(ReadStream stream, DynamicPropData_Deep value)
     {
+        ReadBatch batch = stream.BeginBatch();
+        bool result = ReadDynamicPropData_DeepBatch(ref batch, value);
+        batch.End(); // on every path out — End publishes the cursor and the error
+        return result;
+    }
+
+    // The batch-form core — INLINE-ONLY: a non-inlined call taking the batch by
+    // ref address-exposes it and enregistration dies (measured 0.71x, worse than
+    // no batch). Nested types compose core-to-core by ref, never via the stream.
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static bool ReadDynamicPropData_DeepBatch(ref ReadBatch batch, DynamicPropData_Deep value)
+    {
         {
             int enumValue = 0;
-            if (!stream.SerializeInt(ref enumValue, 0, 6))
+            if (!batch.SerializeInt(ref enumValue, 0, 6))
             {
                 return false;
             }
             value.PropType = (PropType)enumValue;
         }
-        if (!ReadVec3(stream, value.Position))
+        if (!ReadVec3Batch(ref batch, value.Position))
         {
             return false;
         }
-        if (!ReadQuat(stream, value.Rotation))
+        if (!ReadQuatBatch(ref batch, value.Rotation))
         {
             return false;
         }
-        if (!ReadVec3(stream, value.LinearVelocity))
+        if (!ReadVec3Batch(ref batch, value.LinearVelocity))
         {
             return false;
         }
-        if (!stream.SerializeBits64(ref value.Flags, 64))
+        if (!batch.SerializeBits64(ref value.Flags, 64))
         {
             return false;
         }
         {
             int enumValue = 0;
-            if (!stream.SerializeInt(ref enumValue, 0, 2))
+            if (!batch.SerializeInt(ref enumValue, 0, 2))
             {
                 return false;
             }
@@ -1605,7 +1746,23 @@ public static partial class Schema
     public const long DynamicPropData_ShallowMaxBits = 261;
     public const long DynamicPropData_ShallowMaxBytes = 40; // rounded up to the 8-byte write-buffer granularity
 
+    // WriteDynamicPropData_Shallow/ReadDynamicPropData_Shallow run as a batch: the stream state lives in registers
+    // across the body's serialize calls and is stored back once at End —
+    // the tiny-message hot path (serialize.cs WriteBatch/ReadBatch). Same
+    // wire bytes, same validation, same latched-error model.
     public static bool WriteDynamicPropData_Shallow(WriteStream stream, DynamicPropData_Shallow value)
+    {
+        WriteBatch batch = stream.BeginBatch();
+        bool result = WriteDynamicPropData_ShallowBatch(ref batch, value);
+        batch.End(); // on every path out — End publishes the state and the error
+        return result;
+    }
+
+    // The batch-form core — INLINE-ONLY: a non-inlined call taking the batch by
+    // ref address-exposes it and enregistration dies (measured 0.71x, worse than
+    // no batch). Nested types compose core-to-core by ref, never via the stream.
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static bool WriteDynamicPropData_ShallowBatch(ref WriteBatch batch, DynamicPropData_Shallow value)
     {
         {
             uint enumValue = (uint)value.PropType;
@@ -1613,7 +1770,7 @@ public static partial class Schema
             {
                 return false;
             }
-            if (!stream.SerializeBits(ref enumValue, 3))
+            if (!batch.SerializeBits(ref enumValue, 3))
             {
                 return false;
             }
@@ -1624,7 +1781,7 @@ public static partial class Schema
         }
         {
             uint offsetValue = (uint)(value.PositionX) - unchecked((uint)(-8388608));
-            if (!stream.SerializeBits(ref offsetValue, 25))
+            if (!batch.SerializeBits(ref offsetValue, 25))
             {
                 return false;
             }
@@ -1635,7 +1792,7 @@ public static partial class Schema
         }
         {
             uint offsetValue = (uint)(value.PositionY) - unchecked((uint)(-8388608));
-            if (!stream.SerializeBits(ref offsetValue, 25))
+            if (!batch.SerializeBits(ref offsetValue, 25))
             {
                 return false;
             }
@@ -1646,7 +1803,7 @@ public static partial class Schema
         }
         {
             uint offsetValue = (uint)(value.PositionZ) - unchecked((uint)(-8388608));
-            if (!stream.SerializeBits(ref offsetValue, 25))
+            if (!batch.SerializeBits(ref offsetValue, 25))
             {
                 return false;
             }
@@ -1657,7 +1814,7 @@ public static partial class Schema
         }
         {
             uint offsetValue = (uint)(value.RotationX) - unchecked((uint)(-1024));
-            if (!stream.SerializeBits(ref offsetValue, 12))
+            if (!batch.SerializeBits(ref offsetValue, 12))
             {
                 return false;
             }
@@ -1668,7 +1825,7 @@ public static partial class Schema
         }
         {
             uint offsetValue = (uint)(value.RotationY) - unchecked((uint)(-1024));
-            if (!stream.SerializeBits(ref offsetValue, 12))
+            if (!batch.SerializeBits(ref offsetValue, 12))
             {
                 return false;
             }
@@ -1679,7 +1836,7 @@ public static partial class Schema
         }
         {
             uint offsetValue = (uint)(value.RotationZ) - unchecked((uint)(-1024));
-            if (!stream.SerializeBits(ref offsetValue, 12))
+            if (!batch.SerializeBits(ref offsetValue, 12))
             {
                 return false;
             }
@@ -1690,7 +1847,7 @@ public static partial class Schema
         }
         {
             uint offsetValue = (uint)(value.RotationW) - unchecked((uint)(-1024));
-            if (!stream.SerializeBits(ref offsetValue, 12))
+            if (!batch.SerializeBits(ref offsetValue, 12))
             {
                 return false;
             }
@@ -1701,7 +1858,7 @@ public static partial class Schema
         }
         {
             uint offsetValue = (uint)(value.LinearVelocityX) - unchecked((uint)(-2097152));
-            if (!stream.SerializeBits(ref offsetValue, 23))
+            if (!batch.SerializeBits(ref offsetValue, 23))
             {
                 return false;
             }
@@ -1712,7 +1869,7 @@ public static partial class Schema
         }
         {
             uint offsetValue = (uint)(value.LinearVelocityY) - unchecked((uint)(-2097152));
-            if (!stream.SerializeBits(ref offsetValue, 23))
+            if (!batch.SerializeBits(ref offsetValue, 23))
             {
                 return false;
             }
@@ -1723,12 +1880,12 @@ public static partial class Schema
         }
         {
             uint offsetValue = (uint)(value.LinearVelocityZ) - unchecked((uint)(-2097152));
-            if (!stream.SerializeBits(ref offsetValue, 23))
+            if (!batch.SerializeBits(ref offsetValue, 23))
             {
                 return false;
             }
         }
-        if (!stream.SerializeBits64(ref value.Flags, 64))
+        if (!batch.SerializeBits64(ref value.Flags, 64))
         {
             return false;
         }
@@ -1738,7 +1895,7 @@ public static partial class Schema
             {
                 return false;
             }
-            if (!stream.SerializeBits(ref enumValue, 2))
+            if (!batch.SerializeBits(ref enumValue, 2))
             {
                 return false;
             }
@@ -1748,29 +1905,41 @@ public static partial class Schema
 
     public static bool ReadDynamicPropData_Shallow(ReadStream stream, DynamicPropData_Shallow value)
     {
+        ReadBatch batch = stream.BeginBatch();
+        bool result = ReadDynamicPropData_ShallowBatch(ref batch, value);
+        batch.End(); // on every path out — End publishes the cursor and the error
+        return result;
+    }
+
+    // The batch-form core — INLINE-ONLY: a non-inlined call taking the batch by
+    // ref address-exposes it and enregistration dies (measured 0.71x, worse than
+    // no batch). Nested types compose core-to-core by ref, never via the stream.
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static bool ReadDynamicPropData_ShallowBatch(ref ReadBatch batch, DynamicPropData_Shallow value)
+    {
         {
             int enumValue = 0;
-            if (!stream.SerializeInt(ref enumValue, 0, 6))
+            if (!batch.SerializeInt(ref enumValue, 0, 6))
             {
                 return false;
             }
             value.PropType = (PropType)enumValue;
         }
-        if (!stream.SerializeInt(ref value.PositionX, -8388608, 8388608))
+        if (!batch.SerializeInt(ref value.PositionX, -8388608, 8388608))
         {
             return false;
         }
-        if (!stream.SerializeInt(ref value.PositionY, -8388608, 8388608))
+        if (!batch.SerializeInt(ref value.PositionY, -8388608, 8388608))
         {
             return false;
         }
-        if (!stream.SerializeInt(ref value.PositionZ, -8388608, 8388608))
+        if (!batch.SerializeInt(ref value.PositionZ, -8388608, 8388608))
         {
             return false;
         }
         {
             int componentValue = 0;
-            if (!stream.SerializeInt(ref componentValue, -1024, 1024))
+            if (!batch.SerializeInt(ref componentValue, -1024, 1024))
             {
                 return false;
             }
@@ -1778,7 +1947,7 @@ public static partial class Schema
         }
         {
             int componentValue = 0;
-            if (!stream.SerializeInt(ref componentValue, -1024, 1024))
+            if (!batch.SerializeInt(ref componentValue, -1024, 1024))
             {
                 return false;
             }
@@ -1786,7 +1955,7 @@ public static partial class Schema
         }
         {
             int componentValue = 0;
-            if (!stream.SerializeInt(ref componentValue, -1024, 1024))
+            if (!batch.SerializeInt(ref componentValue, -1024, 1024))
             {
                 return false;
             }
@@ -1794,31 +1963,31 @@ public static partial class Schema
         }
         {
             int componentValue = 0;
-            if (!stream.SerializeInt(ref componentValue, -1024, 1024))
+            if (!batch.SerializeInt(ref componentValue, -1024, 1024))
             {
                 return false;
             }
             value.RotationW = (short)componentValue;
         }
-        if (!stream.SerializeInt(ref value.LinearVelocityX, -2097152, 2097152))
+        if (!batch.SerializeInt(ref value.LinearVelocityX, -2097152, 2097152))
         {
             return false;
         }
-        if (!stream.SerializeInt(ref value.LinearVelocityY, -2097152, 2097152))
+        if (!batch.SerializeInt(ref value.LinearVelocityY, -2097152, 2097152))
         {
             return false;
         }
-        if (!stream.SerializeInt(ref value.LinearVelocityZ, -2097152, 2097152))
+        if (!batch.SerializeInt(ref value.LinearVelocityZ, -2097152, 2097152))
         {
             return false;
         }
-        if (!stream.SerializeBits64(ref value.Flags, 64))
+        if (!batch.SerializeBits64(ref value.Flags, 64))
         {
             return false;
         }
         {
             int enumValue = 0;
-            if (!stream.SerializeInt(ref enumValue, 0, 2))
+            if (!batch.SerializeInt(ref enumValue, 0, 2))
             {
                 return false;
             }
@@ -1984,9 +2153,25 @@ public static partial class Schema
     public const long TurretData_DeepMaxBits = 350;
     public const long TurretData_DeepMaxBytes = 48; // rounded up to the 8-byte write-buffer granularity
 
+    // WriteTurretData_Deep/ReadTurretData_Deep run as a batch: the stream state lives in registers
+    // across the body's serialize calls and is stored back once at End —
+    // the tiny-message hot path (serialize.cs WriteBatch/ReadBatch). Same
+    // wire bytes, same validation, same latched-error model.
     public static bool WriteTurretData_Deep(WriteStream stream, TurretData_Deep value)
     {
-        if (!WriteHandle(stream, value.Parent))
+        WriteBatch batch = stream.BeginBatch();
+        bool result = WriteTurretData_DeepBatch(ref batch, value);
+        batch.End(); // on every path out — End publishes the state and the error
+        return result;
+    }
+
+    // The batch-form core — INLINE-ONLY: a non-inlined call taking the batch by
+    // ref address-exposes it and enregistration dies (measured 0.71x, worse than
+    // no batch). Nested types compose core-to-core by ref, never via the stream.
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static bool WriteTurretData_DeepBatch(ref WriteBatch batch, TurretData_Deep value)
+    {
+        if (!WriteHandleBatch(ref batch, value.Parent))
         {
             return false;
         }
@@ -1996,16 +2181,16 @@ public static partial class Schema
         }
         {
             uint offsetValue = (uint)(value.TurretIndex);
-            if (!stream.SerializeBits(ref offsetValue, 8))
+            if (!batch.SerializeBits(ref offsetValue, 8))
             {
                 return false;
             }
         }
-        if (!WriteQuat(stream, value.Rotation))
+        if (!WriteQuatBatch(ref batch, value.Rotation))
         {
             return false;
         }
-        if (!stream.SerializeBits64(ref value.Flags, 64))
+        if (!batch.SerializeBits64(ref value.Flags, 64))
         {
             return false;
         }
@@ -2014,19 +2199,31 @@ public static partial class Schema
 
     public static bool ReadTurretData_Deep(ReadStream stream, TurretData_Deep value)
     {
-        if (!ReadHandle(stream, value.Parent))
+        ReadBatch batch = stream.BeginBatch();
+        bool result = ReadTurretData_DeepBatch(ref batch, value);
+        batch.End(); // on every path out — End publishes the cursor and the error
+        return result;
+    }
+
+    // The batch-form core — INLINE-ONLY: a non-inlined call taking the batch by
+    // ref address-exposes it and enregistration dies (measured 0.71x, worse than
+    // no batch). Nested types compose core-to-core by ref, never via the stream.
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static bool ReadTurretData_DeepBatch(ref ReadBatch batch, TurretData_Deep value)
+    {
+        if (!ReadHandleBatch(ref batch, value.Parent))
         {
             return false;
         }
-        if (!stream.SerializeInt(ref value.TurretIndex, 0, (int)(MaxTurretsPerShip - 1)))
+        if (!batch.SerializeInt(ref value.TurretIndex, 0, (int)(MaxTurretsPerShip - 1)))
         {
             return false;
         }
-        if (!ReadQuat(stream, value.Rotation))
+        if (!ReadQuatBatch(ref batch, value.Rotation))
         {
             return false;
         }
-        if (!stream.SerializeBits64(ref value.Flags, 64))
+        if (!batch.SerializeBits64(ref value.Flags, 64))
         {
             return false;
         }
@@ -2036,9 +2233,25 @@ public static partial class Schema
     public const long TurretData_ShallowMaxBits = 142;
     public const long TurretData_ShallowMaxBytes = 24; // rounded up to the 8-byte write-buffer granularity
 
+    // WriteTurretData_Shallow/ReadTurretData_Shallow run as a batch: the stream state lives in registers
+    // across the body's serialize calls and is stored back once at End —
+    // the tiny-message hot path (serialize.cs WriteBatch/ReadBatch). Same
+    // wire bytes, same validation, same latched-error model.
     public static bool WriteTurretData_Shallow(WriteStream stream, TurretData_Shallow value)
     {
-        if (!WriteHandle(stream, value.Parent))
+        WriteBatch batch = stream.BeginBatch();
+        bool result = WriteTurretData_ShallowBatch(ref batch, value);
+        batch.End(); // on every path out — End publishes the state and the error
+        return result;
+    }
+
+    // The batch-form core — INLINE-ONLY: a non-inlined call taking the batch by
+    // ref address-exposes it and enregistration dies (measured 0.71x, worse than
+    // no batch). Nested types compose core-to-core by ref, never via the stream.
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static bool WriteTurretData_ShallowBatch(ref WriteBatch batch, TurretData_Shallow value)
+    {
+        if (!WriteHandleBatch(ref batch, value.Parent))
         {
             return false;
         }
@@ -2048,7 +2261,7 @@ public static partial class Schema
         }
         {
             uint offsetValue = (uint)(value.TurretIndex);
-            if (!stream.SerializeBits(ref offsetValue, 8))
+            if (!batch.SerializeBits(ref offsetValue, 8))
             {
                 return false;
             }
@@ -2059,7 +2272,7 @@ public static partial class Schema
         }
         {
             uint offsetValue = (uint)(value.RotationX) - unchecked((uint)(-1024));
-            if (!stream.SerializeBits(ref offsetValue, 12))
+            if (!batch.SerializeBits(ref offsetValue, 12))
             {
                 return false;
             }
@@ -2070,7 +2283,7 @@ public static partial class Schema
         }
         {
             uint offsetValue = (uint)(value.RotationY) - unchecked((uint)(-1024));
-            if (!stream.SerializeBits(ref offsetValue, 12))
+            if (!batch.SerializeBits(ref offsetValue, 12))
             {
                 return false;
             }
@@ -2081,7 +2294,7 @@ public static partial class Schema
         }
         {
             uint offsetValue = (uint)(value.RotationZ) - unchecked((uint)(-1024));
-            if (!stream.SerializeBits(ref offsetValue, 12))
+            if (!batch.SerializeBits(ref offsetValue, 12))
             {
                 return false;
             }
@@ -2092,12 +2305,12 @@ public static partial class Schema
         }
         {
             uint offsetValue = (uint)(value.RotationW) - unchecked((uint)(-1024));
-            if (!stream.SerializeBits(ref offsetValue, 12))
+            if (!batch.SerializeBits(ref offsetValue, 12))
             {
                 return false;
             }
         }
-        if (!stream.SerializeBits64(ref value.Flags, 64))
+        if (!batch.SerializeBits64(ref value.Flags, 64))
         {
             return false;
         }
@@ -2106,17 +2319,29 @@ public static partial class Schema
 
     public static bool ReadTurretData_Shallow(ReadStream stream, TurretData_Shallow value)
     {
-        if (!ReadHandle(stream, value.Parent))
+        ReadBatch batch = stream.BeginBatch();
+        bool result = ReadTurretData_ShallowBatch(ref batch, value);
+        batch.End(); // on every path out — End publishes the cursor and the error
+        return result;
+    }
+
+    // The batch-form core — INLINE-ONLY: a non-inlined call taking the batch by
+    // ref address-exposes it and enregistration dies (measured 0.71x, worse than
+    // no batch). Nested types compose core-to-core by ref, never via the stream.
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static bool ReadTurretData_ShallowBatch(ref ReadBatch batch, TurretData_Shallow value)
+    {
+        if (!ReadHandleBatch(ref batch, value.Parent))
         {
             return false;
         }
-        if (!stream.SerializeInt(ref value.TurretIndex, 0, (int)(MaxTurretsPerShip - 1)))
+        if (!batch.SerializeInt(ref value.TurretIndex, 0, (int)(MaxTurretsPerShip - 1)))
         {
             return false;
         }
         {
             int componentValue = 0;
-            if (!stream.SerializeInt(ref componentValue, -1024, 1024))
+            if (!batch.SerializeInt(ref componentValue, -1024, 1024))
             {
                 return false;
             }
@@ -2124,7 +2349,7 @@ public static partial class Schema
         }
         {
             int componentValue = 0;
-            if (!stream.SerializeInt(ref componentValue, -1024, 1024))
+            if (!batch.SerializeInt(ref componentValue, -1024, 1024))
             {
                 return false;
             }
@@ -2132,7 +2357,7 @@ public static partial class Schema
         }
         {
             int componentValue = 0;
-            if (!stream.SerializeInt(ref componentValue, -1024, 1024))
+            if (!batch.SerializeInt(ref componentValue, -1024, 1024))
             {
                 return false;
             }
@@ -2140,13 +2365,13 @@ public static partial class Schema
         }
         {
             int componentValue = 0;
-            if (!stream.SerializeInt(ref componentValue, -1024, 1024))
+            if (!batch.SerializeInt(ref componentValue, -1024, 1024))
             {
                 return false;
             }
             value.RotationW = (short)componentValue;
         }
-        if (!stream.SerializeBits64(ref value.Flags, 64))
+        if (!batch.SerializeBits64(ref value.Flags, 64))
         {
             return false;
         }

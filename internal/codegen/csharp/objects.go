@@ -28,16 +28,19 @@ func (g *gen) emitObjectFunctions(d *ir.Object) {
 	g.sf("public const long %sMaxBits = %d;\n", deepName, deepBits)
 	g.sf("public const long %sMaxBytes = %d; // rounded up to the 8-byte write-buffer granularity\n\n", deepName, ir.MaxBytes(deepBits))
 
-	g.sf("public static bool Write%s(WriteStream stream, %s value)\n{\n", deepName, deepName)
-	for _, f := range deep {
-		g.emitViewWriteField(f, ir.ViewDeep, "    ")
-	}
-	g.sf("    return true;\n}\n\n")
-	g.sf("public static bool Read%s(ReadStream stream, %s value)\n{\n", deepName, deepName)
-	for _, f := range deep {
-		g.emitViewReadField(f, ir.ViewDeep, "    ")
-	}
-	g.sf("    return true;\n}\n\n")
+	g.emitPair(deepName, deepName,
+		func() {
+			for _, f := range deep {
+				g.emitViewWriteField(f, ir.ViewDeep, "    ")
+			}
+			g.sf("    return true;\n")
+		},
+		func() {
+			for _, f := range deep {
+				g.emitViewReadField(f, ir.ViewDeep, "    ")
+			}
+			g.sf("    return true;\n")
+		})
 
 	shName := d.Name + "Data_Shallow"
 	shBits := ir.MaxBitsView(interp, ir.ViewShallow)
@@ -45,16 +48,19 @@ func (g *gen) emitObjectFunctions(d *ir.Object) {
 	g.sf("public const long %sMaxBits = %d;\n", shName, shBits)
 	g.sf("public const long %sMaxBytes = %d; // rounded up to the 8-byte write-buffer granularity\n\n", shName, ir.MaxBytes(shBits))
 
-	g.sf("public static bool Write%s(WriteStream stream, %s value)\n{\n", shName, shName)
-	for _, f := range interp {
-		g.emitViewWriteField(f, ir.ViewShallow, "    ")
-	}
-	g.sf("    return true;\n}\n\n")
-	g.sf("public static bool Read%s(ReadStream stream, %s value)\n{\n", shName, shName)
-	for _, f := range interp {
-		g.emitViewReadField(f, ir.ViewShallow, "    ")
-	}
-	g.sf("    return true;\n}\n\n")
+	g.emitPair(shName, shName,
+		func() {
+			for _, f := range interp {
+				g.emitViewWriteField(f, ir.ViewShallow, "    ")
+			}
+			g.sf("    return true;\n")
+		},
+		func() {
+			for _, f := range interp {
+				g.emitViewReadField(f, ir.ViewShallow, "    ")
+			}
+			g.sf("    return true;\n")
+		})
 
 	// ---- Quantize / Unquantize: the Interpolate <-> Shallow mapping pair
 	// (SPEC §4.8's artifact table — the hand-written Quantize(), generated).
