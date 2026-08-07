@@ -164,7 +164,13 @@ const ShipData_DeepMaxBytes = 216 // rounded up to the 8-byte write-buffer granu
 func WriteShipData_Deep(stream *serialize.WriteStream, value *ShipData_Deep) error {
 	{
 		enumValue := int32(value.ShipType)
-		stream.SerializeInt(&enumValue, 0, 5)
+		if enumValue < 0 || enumValue > 5 { // the runtime range refusal, folded (SPEC §5)
+			return serialize.ErrValueOutOfRange
+		}
+		{
+			offsetValue := uint32(enumValue)
+			stream.SerializeBits(&offsetValue, 3)
+		}
 	}
 	if err := WriteVec3(stream, &value.Position); err != nil {
 		return err
@@ -184,7 +190,13 @@ func WriteShipData_Deep(stream *serialize.WriteStream, value *ShipData_Deep) err
 	}
 	{
 		enumValue := int32(value.Team)
-		stream.SerializeInt(&enumValue, 0, 2)
+		if enumValue < 0 || enumValue > 2 { // the runtime range refusal, folded (SPEC §5)
+			return serialize.ErrValueOutOfRange
+		}
+		{
+			offsetValue := uint32(enumValue)
+			stream.SerializeBits(&offsetValue, 2)
+		}
 	}
 	stream.SerializeFloat32(&value.Health)
 	stream.SerializeFloat32(&value.Thrust)
@@ -209,11 +221,23 @@ func WriteShipData_Deep(stream *serialize.WriteStream, value *ShipData_Deep) err
 	stream.SerializeFloat32(&value.AimVelocity)
 	{
 		rangeValue := int32(value.LaserIndex)
-		stream.SerializeInt(&rangeValue, 0, ShipMaxLasers-1)
+		if rangeValue < 0 || rangeValue > ShipMaxLasers-1 { // the runtime range refusal, folded (SPEC §5)
+			return serialize.ErrValueOutOfRange
+		}
+		{
+			offsetValue := uint32(rangeValue)
+			stream.SerializeBits(&offsetValue, 4)
+		}
 	}
 	{
 		rangeValue := int32(value.MissileIndex)
-		stream.SerializeInt(&rangeValue, 0, ShipMaxMissiles-1)
+		if rangeValue < 0 || rangeValue > ShipMaxMissiles-1 { // the runtime range refusal, folded (SPEC §5)
+			return serialize.ErrValueOutOfRange
+		}
+		{
+			offsetValue := uint32(rangeValue)
+			stream.SerializeBits(&offsetValue, 4)
+		}
 	}
 	if err := WriteHandle(stream, &value.Target); err != nil {
 		return err
@@ -291,30 +315,96 @@ const ShipData_ShallowMaxBytes = 32 // rounded up to the 8-byte write-buffer gra
 func WriteShipData_Shallow(stream *serialize.WriteStream, value *ShipData_Shallow) error {
 	{
 		enumValue := int32(value.ShipType)
-		stream.SerializeInt(&enumValue, 0, 5)
+		if enumValue < 0 || enumValue > 5 { // the runtime range refusal, folded (SPEC §5)
+			return serialize.ErrValueOutOfRange
+		}
+		{
+			offsetValue := uint32(enumValue)
+			stream.SerializeBits(&offsetValue, 3)
+		}
 	}
-	stream.SerializeInt(&value.PositionX, -8388608, 8388608)
-	stream.SerializeInt(&value.PositionY, -8388608, 8388608)
-	stream.SerializeInt(&value.PositionZ, -8388608, 8388608)
+	if value.PositionX < -8388608 || value.PositionX > 8388608 { // the runtime range refusal, folded (SPEC §5)
+		return serialize.ErrValueOutOfRange
+	}
+	{
+		offsetValue := uint32(value.PositionX - (-8388608))
+		stream.SerializeBits(&offsetValue, 25)
+	}
+	if value.PositionY < -8388608 || value.PositionY > 8388608 { // the runtime range refusal, folded (SPEC §5)
+		return serialize.ErrValueOutOfRange
+	}
+	{
+		offsetValue := uint32(value.PositionY - (-8388608))
+		stream.SerializeBits(&offsetValue, 25)
+	}
+	if value.PositionZ < -8388608 || value.PositionZ > 8388608 { // the runtime range refusal, folded (SPEC §5)
+		return serialize.ErrValueOutOfRange
+	}
+	{
+		offsetValue := uint32(value.PositionZ - (-8388608))
+		stream.SerializeBits(&offsetValue, 25)
+	}
 	{
 		componentValue := int32(value.RotationX)
-		stream.SerializeInt(&componentValue, -1024, 1024)
+		if componentValue < -1024 || componentValue > 1024 { // the runtime range refusal, folded (SPEC §5)
+			return serialize.ErrValueOutOfRange
+		}
+		{
+			offsetValue := uint32(componentValue - (-1024))
+			stream.SerializeBits(&offsetValue, 12)
+		}
 	}
 	{
 		componentValue := int32(value.RotationY)
-		stream.SerializeInt(&componentValue, -1024, 1024)
+		if componentValue < -1024 || componentValue > 1024 { // the runtime range refusal, folded (SPEC §5)
+			return serialize.ErrValueOutOfRange
+		}
+		{
+			offsetValue := uint32(componentValue - (-1024))
+			stream.SerializeBits(&offsetValue, 12)
+		}
 	}
 	{
 		componentValue := int32(value.RotationZ)
-		stream.SerializeInt(&componentValue, -1024, 1024)
+		if componentValue < -1024 || componentValue > 1024 { // the runtime range refusal, folded (SPEC §5)
+			return serialize.ErrValueOutOfRange
+		}
+		{
+			offsetValue := uint32(componentValue - (-1024))
+			stream.SerializeBits(&offsetValue, 12)
+		}
 	}
 	{
 		componentValue := int32(value.RotationW)
-		stream.SerializeInt(&componentValue, -1024, 1024)
+		if componentValue < -1024 || componentValue > 1024 { // the runtime range refusal, folded (SPEC §5)
+			return serialize.ErrValueOutOfRange
+		}
+		{
+			offsetValue := uint32(componentValue - (-1024))
+			stream.SerializeBits(&offsetValue, 12)
+		}
 	}
-	stream.SerializeInt(&value.LinearVelocityX, -2097152, 2097152)
-	stream.SerializeInt(&value.LinearVelocityY, -2097152, 2097152)
-	stream.SerializeInt(&value.LinearVelocityZ, -2097152, 2097152)
+	if value.LinearVelocityX < -2097152 || value.LinearVelocityX > 2097152 { // the runtime range refusal, folded (SPEC §5)
+		return serialize.ErrValueOutOfRange
+	}
+	{
+		offsetValue := uint32(value.LinearVelocityX - (-2097152))
+		stream.SerializeBits(&offsetValue, 23)
+	}
+	if value.LinearVelocityY < -2097152 || value.LinearVelocityY > 2097152 { // the runtime range refusal, folded (SPEC §5)
+		return serialize.ErrValueOutOfRange
+	}
+	{
+		offsetValue := uint32(value.LinearVelocityY - (-2097152))
+		stream.SerializeBits(&offsetValue, 23)
+	}
+	if value.LinearVelocityZ < -2097152 || value.LinearVelocityZ > 2097152 { // the runtime range refusal, folded (SPEC §5)
+		return serialize.ErrValueOutOfRange
+	}
+	{
+		offsetValue := uint32(value.LinearVelocityZ - (-2097152))
+		stream.SerializeBits(&offsetValue, 23)
+	}
 	if value.Flags >= 1<<4 { // a mask bit above the wire width cannot ride
 		return serialize.ErrValueOutOfRange
 	}
@@ -324,15 +414,33 @@ func WriteShipData_Shallow(stream *serialize.WriteStream, value *ShipData_Shallo
 	}
 	{
 		enumValue := int32(value.Team)
-		stream.SerializeInt(&enumValue, 0, 2)
+		if enumValue < 0 || enumValue > 2 { // the runtime range refusal, folded (SPEC §5)
+			return serialize.ErrValueOutOfRange
+		}
+		{
+			offsetValue := uint32(enumValue)
+			stream.SerializeBits(&offsetValue, 2)
+		}
 	}
 	{
 		projectedValue := int32(value.Health)
-		stream.SerializeInt(&projectedValue, 0, 1000)
+		if projectedValue < 0 || projectedValue > 1000 { // the runtime range refusal, folded (SPEC §5)
+			return serialize.ErrValueOutOfRange
+		}
+		{
+			offsetValue := uint32(projectedValue)
+			stream.SerializeBits(&offsetValue, 10)
+		}
 	}
 	{
 		projectedValue := int32(value.Thrust)
-		stream.SerializeInt(&projectedValue, 0, 100)
+		if projectedValue < 0 || projectedValue > 100 { // the runtime range refusal, folded (SPEC §5)
+			return serialize.ErrValueOutOfRange
+		}
+		{
+			offsetValue := uint32(projectedValue)
+			stream.SerializeBits(&offsetValue, 7)
+		}
 	}
 	return stream.Err()
 }
@@ -597,7 +705,13 @@ const MissileData_DeepMaxBytes = 96 // rounded up to the 8-byte write-buffer gra
 func WriteMissileData_Deep(stream *serialize.WriteStream, value *MissileData_Deep) error {
 	{
 		enumValue := int32(value.MissileType)
-		stream.SerializeInt(&enumValue, 0, 3)
+		if enumValue < 0 || enumValue > 3 { // the runtime range refusal, folded (SPEC §5)
+			return serialize.ErrValueOutOfRange
+		}
+		{
+			offsetValue := uint32(enumValue)
+			stream.SerializeBits(&offsetValue, 2)
+		}
 	}
 	if err := WriteVec3(stream, &value.Position); err != nil {
 		return err
@@ -610,7 +724,13 @@ func WriteMissileData_Deep(stream *serialize.WriteStream, value *MissileData_Dee
 	}
 	{
 		enumValue := int32(value.Team)
-		stream.SerializeInt(&enumValue, 0, 2)
+		if enumValue < 0 || enumValue > 2 { // the runtime range refusal, folded (SPEC §5)
+			return serialize.ErrValueOutOfRange
+		}
+		{
+			offsetValue := uint32(enumValue)
+			stream.SerializeBits(&offsetValue, 2)
+		}
 	}
 	stream.SerializeBits64(&value.Flags, 64)
 	return stream.Err()
@@ -646,33 +766,105 @@ const MissileData_ShallowMaxBytes = 40 // rounded up to the 8-byte write-buffer 
 func WriteMissileData_Shallow(stream *serialize.WriteStream, value *MissileData_Shallow) error {
 	{
 		enumValue := int32(value.MissileType)
-		stream.SerializeInt(&enumValue, 0, 3)
+		if enumValue < 0 || enumValue > 3 { // the runtime range refusal, folded (SPEC §5)
+			return serialize.ErrValueOutOfRange
+		}
+		{
+			offsetValue := uint32(enumValue)
+			stream.SerializeBits(&offsetValue, 2)
+		}
 	}
-	stream.SerializeInt(&value.PositionX, -8388608, 8388608)
-	stream.SerializeInt(&value.PositionY, -8388608, 8388608)
-	stream.SerializeInt(&value.PositionZ, -8388608, 8388608)
+	if value.PositionX < -8388608 || value.PositionX > 8388608 { // the runtime range refusal, folded (SPEC §5)
+		return serialize.ErrValueOutOfRange
+	}
+	{
+		offsetValue := uint32(value.PositionX - (-8388608))
+		stream.SerializeBits(&offsetValue, 25)
+	}
+	if value.PositionY < -8388608 || value.PositionY > 8388608 { // the runtime range refusal, folded (SPEC §5)
+		return serialize.ErrValueOutOfRange
+	}
+	{
+		offsetValue := uint32(value.PositionY - (-8388608))
+		stream.SerializeBits(&offsetValue, 25)
+	}
+	if value.PositionZ < -8388608 || value.PositionZ > 8388608 { // the runtime range refusal, folded (SPEC §5)
+		return serialize.ErrValueOutOfRange
+	}
+	{
+		offsetValue := uint32(value.PositionZ - (-8388608))
+		stream.SerializeBits(&offsetValue, 25)
+	}
 	{
 		componentValue := int32(value.RotationX)
-		stream.SerializeInt(&componentValue, -1024, 1024)
+		if componentValue < -1024 || componentValue > 1024 { // the runtime range refusal, folded (SPEC §5)
+			return serialize.ErrValueOutOfRange
+		}
+		{
+			offsetValue := uint32(componentValue - (-1024))
+			stream.SerializeBits(&offsetValue, 12)
+		}
 	}
 	{
 		componentValue := int32(value.RotationY)
-		stream.SerializeInt(&componentValue, -1024, 1024)
+		if componentValue < -1024 || componentValue > 1024 { // the runtime range refusal, folded (SPEC §5)
+			return serialize.ErrValueOutOfRange
+		}
+		{
+			offsetValue := uint32(componentValue - (-1024))
+			stream.SerializeBits(&offsetValue, 12)
+		}
 	}
 	{
 		componentValue := int32(value.RotationZ)
-		stream.SerializeInt(&componentValue, -1024, 1024)
+		if componentValue < -1024 || componentValue > 1024 { // the runtime range refusal, folded (SPEC §5)
+			return serialize.ErrValueOutOfRange
+		}
+		{
+			offsetValue := uint32(componentValue - (-1024))
+			stream.SerializeBits(&offsetValue, 12)
+		}
 	}
 	{
 		componentValue := int32(value.RotationW)
-		stream.SerializeInt(&componentValue, -1024, 1024)
+		if componentValue < -1024 || componentValue > 1024 { // the runtime range refusal, folded (SPEC §5)
+			return serialize.ErrValueOutOfRange
+		}
+		{
+			offsetValue := uint32(componentValue - (-1024))
+			stream.SerializeBits(&offsetValue, 12)
+		}
 	}
-	stream.SerializeInt(&value.LinearVelocityX, -2097152, 2097152)
-	stream.SerializeInt(&value.LinearVelocityY, -2097152, 2097152)
-	stream.SerializeInt(&value.LinearVelocityZ, -2097152, 2097152)
+	if value.LinearVelocityX < -2097152 || value.LinearVelocityX > 2097152 { // the runtime range refusal, folded (SPEC §5)
+		return serialize.ErrValueOutOfRange
+	}
+	{
+		offsetValue := uint32(value.LinearVelocityX - (-2097152))
+		stream.SerializeBits(&offsetValue, 23)
+	}
+	if value.LinearVelocityY < -2097152 || value.LinearVelocityY > 2097152 { // the runtime range refusal, folded (SPEC §5)
+		return serialize.ErrValueOutOfRange
+	}
+	{
+		offsetValue := uint32(value.LinearVelocityY - (-2097152))
+		stream.SerializeBits(&offsetValue, 23)
+	}
+	if value.LinearVelocityZ < -2097152 || value.LinearVelocityZ > 2097152 { // the runtime range refusal, folded (SPEC §5)
+		return serialize.ErrValueOutOfRange
+	}
+	{
+		offsetValue := uint32(value.LinearVelocityZ - (-2097152))
+		stream.SerializeBits(&offsetValue, 23)
+	}
 	{
 		enumValue := int32(value.Team)
-		stream.SerializeInt(&enumValue, 0, 2)
+		if enumValue < 0 || enumValue > 2 { // the runtime range refusal, folded (SPEC §5)
+			return serialize.ErrValueOutOfRange
+		}
+		{
+			offsetValue := uint32(enumValue)
+			stream.SerializeBits(&offsetValue, 2)
+		}
 	}
 	stream.SerializeBits64(&value.Flags, 64)
 	return stream.Err()
@@ -904,7 +1096,13 @@ const DynamicPropData_DeepMaxBytes = 96 // rounded up to the 8-byte write-buffer
 func WriteDynamicPropData_Deep(stream *serialize.WriteStream, value *DynamicPropData_Deep) error {
 	{
 		enumValue := int32(value.PropType)
-		stream.SerializeInt(&enumValue, 0, 6)
+		if enumValue < 0 || enumValue > 6 { // the runtime range refusal, folded (SPEC §5)
+			return serialize.ErrValueOutOfRange
+		}
+		{
+			offsetValue := uint32(enumValue)
+			stream.SerializeBits(&offsetValue, 3)
+		}
 	}
 	if err := WriteVec3(stream, &value.Position); err != nil {
 		return err
@@ -918,7 +1116,13 @@ func WriteDynamicPropData_Deep(stream *serialize.WriteStream, value *DynamicProp
 	stream.SerializeBits64(&value.Flags, 64)
 	{
 		enumValue := int32(value.Team)
-		stream.SerializeInt(&enumValue, 0, 2)
+		if enumValue < 0 || enumValue > 2 { // the runtime range refusal, folded (SPEC §5)
+			return serialize.ErrValueOutOfRange
+		}
+		{
+			offsetValue := uint32(enumValue)
+			stream.SerializeBits(&offsetValue, 2)
+		}
 	}
 	return stream.Err()
 }
@@ -953,34 +1157,106 @@ const DynamicPropData_ShallowMaxBytes = 40 // rounded up to the 8-byte write-buf
 func WriteDynamicPropData_Shallow(stream *serialize.WriteStream, value *DynamicPropData_Shallow) error {
 	{
 		enumValue := int32(value.PropType)
-		stream.SerializeInt(&enumValue, 0, 6)
+		if enumValue < 0 || enumValue > 6 { // the runtime range refusal, folded (SPEC §5)
+			return serialize.ErrValueOutOfRange
+		}
+		{
+			offsetValue := uint32(enumValue)
+			stream.SerializeBits(&offsetValue, 3)
+		}
 	}
-	stream.SerializeInt(&value.PositionX, -8388608, 8388608)
-	stream.SerializeInt(&value.PositionY, -8388608, 8388608)
-	stream.SerializeInt(&value.PositionZ, -8388608, 8388608)
+	if value.PositionX < -8388608 || value.PositionX > 8388608 { // the runtime range refusal, folded (SPEC §5)
+		return serialize.ErrValueOutOfRange
+	}
+	{
+		offsetValue := uint32(value.PositionX - (-8388608))
+		stream.SerializeBits(&offsetValue, 25)
+	}
+	if value.PositionY < -8388608 || value.PositionY > 8388608 { // the runtime range refusal, folded (SPEC §5)
+		return serialize.ErrValueOutOfRange
+	}
+	{
+		offsetValue := uint32(value.PositionY - (-8388608))
+		stream.SerializeBits(&offsetValue, 25)
+	}
+	if value.PositionZ < -8388608 || value.PositionZ > 8388608 { // the runtime range refusal, folded (SPEC §5)
+		return serialize.ErrValueOutOfRange
+	}
+	{
+		offsetValue := uint32(value.PositionZ - (-8388608))
+		stream.SerializeBits(&offsetValue, 25)
+	}
 	{
 		componentValue := int32(value.RotationX)
-		stream.SerializeInt(&componentValue, -1024, 1024)
+		if componentValue < -1024 || componentValue > 1024 { // the runtime range refusal, folded (SPEC §5)
+			return serialize.ErrValueOutOfRange
+		}
+		{
+			offsetValue := uint32(componentValue - (-1024))
+			stream.SerializeBits(&offsetValue, 12)
+		}
 	}
 	{
 		componentValue := int32(value.RotationY)
-		stream.SerializeInt(&componentValue, -1024, 1024)
+		if componentValue < -1024 || componentValue > 1024 { // the runtime range refusal, folded (SPEC §5)
+			return serialize.ErrValueOutOfRange
+		}
+		{
+			offsetValue := uint32(componentValue - (-1024))
+			stream.SerializeBits(&offsetValue, 12)
+		}
 	}
 	{
 		componentValue := int32(value.RotationZ)
-		stream.SerializeInt(&componentValue, -1024, 1024)
+		if componentValue < -1024 || componentValue > 1024 { // the runtime range refusal, folded (SPEC §5)
+			return serialize.ErrValueOutOfRange
+		}
+		{
+			offsetValue := uint32(componentValue - (-1024))
+			stream.SerializeBits(&offsetValue, 12)
+		}
 	}
 	{
 		componentValue := int32(value.RotationW)
-		stream.SerializeInt(&componentValue, -1024, 1024)
+		if componentValue < -1024 || componentValue > 1024 { // the runtime range refusal, folded (SPEC §5)
+			return serialize.ErrValueOutOfRange
+		}
+		{
+			offsetValue := uint32(componentValue - (-1024))
+			stream.SerializeBits(&offsetValue, 12)
+		}
 	}
-	stream.SerializeInt(&value.LinearVelocityX, -2097152, 2097152)
-	stream.SerializeInt(&value.LinearVelocityY, -2097152, 2097152)
-	stream.SerializeInt(&value.LinearVelocityZ, -2097152, 2097152)
+	if value.LinearVelocityX < -2097152 || value.LinearVelocityX > 2097152 { // the runtime range refusal, folded (SPEC §5)
+		return serialize.ErrValueOutOfRange
+	}
+	{
+		offsetValue := uint32(value.LinearVelocityX - (-2097152))
+		stream.SerializeBits(&offsetValue, 23)
+	}
+	if value.LinearVelocityY < -2097152 || value.LinearVelocityY > 2097152 { // the runtime range refusal, folded (SPEC §5)
+		return serialize.ErrValueOutOfRange
+	}
+	{
+		offsetValue := uint32(value.LinearVelocityY - (-2097152))
+		stream.SerializeBits(&offsetValue, 23)
+	}
+	if value.LinearVelocityZ < -2097152 || value.LinearVelocityZ > 2097152 { // the runtime range refusal, folded (SPEC §5)
+		return serialize.ErrValueOutOfRange
+	}
+	{
+		offsetValue := uint32(value.LinearVelocityZ - (-2097152))
+		stream.SerializeBits(&offsetValue, 23)
+	}
 	stream.SerializeBits64(&value.Flags, 64)
 	{
 		enumValue := int32(value.Team)
-		stream.SerializeInt(&enumValue, 0, 2)
+		if enumValue < 0 || enumValue > 2 { // the runtime range refusal, folded (SPEC §5)
+			return serialize.ErrValueOutOfRange
+		}
+		{
+			offsetValue := uint32(enumValue)
+			stream.SerializeBits(&offsetValue, 2)
+		}
 	}
 	return stream.Err()
 }
@@ -1198,7 +1474,13 @@ func WriteTurretData_Deep(stream *serialize.WriteStream, value *TurretData_Deep)
 	if err := WriteHandle(stream, &value.Parent); err != nil {
 		return err
 	}
-	stream.SerializeInt(&value.TurretIndex, 0, MaxTurretsPerShip-1)
+	if value.TurretIndex < 0 || value.TurretIndex > MaxTurretsPerShip-1 { // the runtime range refusal, folded (SPEC §5)
+		return serialize.ErrValueOutOfRange
+	}
+	{
+		offsetValue := uint32(value.TurretIndex)
+		stream.SerializeBits(&offsetValue, 8)
+	}
 	if err := WriteQuat(stream, &value.Rotation); err != nil {
 		return err
 	}
@@ -1225,22 +1507,52 @@ func WriteTurretData_Shallow(stream *serialize.WriteStream, value *TurretData_Sh
 	if err := WriteHandle(stream, &value.Parent); err != nil {
 		return err
 	}
-	stream.SerializeInt(&value.TurretIndex, 0, MaxTurretsPerShip-1)
+	if value.TurretIndex < 0 || value.TurretIndex > MaxTurretsPerShip-1 { // the runtime range refusal, folded (SPEC §5)
+		return serialize.ErrValueOutOfRange
+	}
+	{
+		offsetValue := uint32(value.TurretIndex)
+		stream.SerializeBits(&offsetValue, 8)
+	}
 	{
 		componentValue := int32(value.RotationX)
-		stream.SerializeInt(&componentValue, -1024, 1024)
+		if componentValue < -1024 || componentValue > 1024 { // the runtime range refusal, folded (SPEC §5)
+			return serialize.ErrValueOutOfRange
+		}
+		{
+			offsetValue := uint32(componentValue - (-1024))
+			stream.SerializeBits(&offsetValue, 12)
+		}
 	}
 	{
 		componentValue := int32(value.RotationY)
-		stream.SerializeInt(&componentValue, -1024, 1024)
+		if componentValue < -1024 || componentValue > 1024 { // the runtime range refusal, folded (SPEC §5)
+			return serialize.ErrValueOutOfRange
+		}
+		{
+			offsetValue := uint32(componentValue - (-1024))
+			stream.SerializeBits(&offsetValue, 12)
+		}
 	}
 	{
 		componentValue := int32(value.RotationZ)
-		stream.SerializeInt(&componentValue, -1024, 1024)
+		if componentValue < -1024 || componentValue > 1024 { // the runtime range refusal, folded (SPEC §5)
+			return serialize.ErrValueOutOfRange
+		}
+		{
+			offsetValue := uint32(componentValue - (-1024))
+			stream.SerializeBits(&offsetValue, 12)
+		}
 	}
 	{
 		componentValue := int32(value.RotationW)
-		stream.SerializeInt(&componentValue, -1024, 1024)
+		if componentValue < -1024 || componentValue > 1024 { // the runtime range refusal, folded (SPEC §5)
+			return serialize.ErrValueOutOfRange
+		}
+		{
+			offsetValue := uint32(componentValue - (-1024))
+			stream.SerializeBits(&offsetValue, 12)
+		}
 	}
 	stream.SerializeBits64(&value.Flags, 64)
 	return stream.Err()
@@ -1335,7 +1647,13 @@ func UnquantizeTurret(input *TurretData_Shallow, output *TurretData_Interpolate)
 // null — the sentinel the surveyed baseline streams terminate with (SPEC §4.8).
 func WriteObjectType(stream *serialize.WriteStream, value ObjectType) error {
 	tagValue := int32(value)
-	stream.SerializeInt(&tagValue, 0, 4)
+	if tagValue < 0 || tagValue > 4 { // the runtime range refusal, folded (SPEC §5)
+		return serialize.ErrValueOutOfRange
+	}
+	{
+		offsetValue := uint32(tagValue)
+		stream.SerializeBits(&offsetValue, 3)
+	}
 	return stream.Err()
 }
 

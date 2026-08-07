@@ -59,15 +59,33 @@ func WriteTest(stream *serialize.WriteStream, value *Test) error {
 	}
 	{
 		rangeValue := int32(value.TestB)
-		stream.SerializeInt(&rangeValue, 0, 1000)
+		if rangeValue < 0 || rangeValue > 1000 { // the runtime range refusal, folded (SPEC §5)
+			return serialize.ErrValueOutOfRange
+		}
+		{
+			offsetValue := uint32(rangeValue)
+			stream.SerializeBits(&offsetValue, 10)
+		}
 	}
 	{
 		rangeValue := int32(value.TestC)
-		stream.SerializeInt(&rangeValue, 0, 1000)
+		if rangeValue < 0 || rangeValue > 1000 { // the runtime range refusal, folded (SPEC §5)
+			return serialize.ErrValueOutOfRange
+		}
+		{
+			offsetValue := uint32(rangeValue)
+			stream.SerializeBits(&offsetValue, 10)
+		}
 	}
 	{
 		rangeValue := int32(value.TestD)
-		stream.SerializeInt(&rangeValue, 0, 1000)
+		if rangeValue < 0 || rangeValue > 1000 { // the runtime range refusal, folded (SPEC §5)
+			return serialize.ErrValueOutOfRange
+		}
+		{
+			offsetValue := uint32(rangeValue)
+			stream.SerializeBits(&offsetValue, 10)
+		}
 	}
 	return stream.Err()
 }
@@ -108,7 +126,13 @@ const BlockMaxBits = 16018
 const BlockMaxBytes = 2008
 
 func WriteBlock(stream *serialize.WriteStream, value *Block) error {
-	stream.SerializeInt(&value.DataLength, 0, MaxBlockSize)
+	if value.DataLength < 0 || value.DataLength > MaxBlockSize { // the runtime range refusal, folded (SPEC §5)
+		return serialize.ErrValueOutOfRange
+	}
+	{
+		offsetValue := uint32(value.DataLength)
+		stream.SerializeBits(&offsetValue, 11)
+	}
 	if stream.Err() != nil { // the length guards the slice (§6.3)
 		return stream.Err()
 	}
@@ -137,7 +161,13 @@ const ChatMaxBits = 2064
 const ChatMaxBytes = 264
 
 func WriteChat(stream *serialize.WriteStream, value *Chat) error {
-	stream.SerializeInt(&value.TextLength, 0, MaxChatLength)
+	if value.TextLength < 0 || value.TextLength > MaxChatLength { // the runtime range refusal, folded (SPEC §5)
+		return serialize.ErrValueOutOfRange
+	}
+	{
+		offsetValue := uint32(value.TextLength)
+		stream.SerializeBits(&offsetValue, 9)
+	}
 	if stream.Err() != nil { // the length guards the slice (§6.3)
 		return stream.Err()
 	}
@@ -222,7 +252,13 @@ func ReadTimescale(stream *serialize.ReadStream, value *Timescale) error {
 // valid wire value meaning *no message* — the stream terminator (SPEC §4.8).
 func WriteMessageType(stream *serialize.WriteStream, value MessageType) error {
 	tagValue := int32(value)
-	stream.SerializeInt(&tagValue, 0, 6)
+	if tagValue < 0 || tagValue > 6 { // the runtime range refusal, folded (SPEC §5)
+		return serialize.ErrValueOutOfRange
+	}
+	{
+		offsetValue := uint32(tagValue)
+		stream.SerializeBits(&offsetValue, 3)
+	}
 	return stream.Err()
 }
 

@@ -80,6 +80,12 @@ type gen struct {
 	needsSerialize bool // the file emits wire functions -> import the runtime
 	needsMath      bool // the file emits math.Floor -> import math
 	needsErrors    bool // the file declares ErrValidation -> import errors
+
+	// bulkBytes marks the current struct's statically byte-aligned [N]uint8
+	// arrays (ir.AlignedFixedByteArrays): these serialize through the
+	// runtime's bulk-bytes path instead of a per-byte loop — byte-identical
+	// wire, proven by the position analysis and re-proven by the wire goldens
+	bulkBytes map[*ir.Field]bool
 }
 
 func (g *gen) pf(format string, args ...any) {
