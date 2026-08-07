@@ -25,6 +25,11 @@ func (g *gen) maxBitsStruct(st *ir.Struct) int64 { return ir.MaxBitsStruct(st) }
 // for a type or message, in the topo order the struct itself was emitted.
 func (g *gen) emitStructFunctions(st *ir.Struct) {
 	g.needsSerialize = true
+	// fixed [N]uint8 arrays at statically byte-aligned positions take the
+	// runtime's bulk-bytes path instead of a per-byte loop — byte-identical
+	// wire (the internal align is zero bits when already aligned), measured
+	// ~2x on byte-array-heavy types
+	g.bulkBytes = ir.AlignedFixedByteArrays(st)
 	maxBits := g.maxBitsStruct(st)
 	g.pf("inline constexpr int64_t %sMaxBits = %d; // longest wire path; align pads at worst case (SPEC §6.1)\n", st.Name, maxBits)
 	g.pf("inline constexpr int64_t %sMaxBytes = %d; // rounded up to the 8-byte write-buffer granularity\n\n", st.Name, ir.MaxBytes(maxBits))
@@ -193,6 +198,13 @@ func (g *gen) emitWriteField(f *ir.Field, ind string) {
 	name := "value." + f.Name
 	if f.Array != ir.ArrayNone {
 		bound := g.renderInt(f.ArrayExpr, big.NewInt(f.ArrayBound))
+		if g.bulkBytes[f] {
+			// statically byte-aligned [N]uint8: the bulk path is
+			// byte-identical to the per-byte loop (its internal align is
+			// zero bits here) and memcpys instead of 8-bit packing
+			g.pf("%swrite_bytes( stream, %s, %s ); // byte-aligned [N]uint8 — bulk copy, wire-identical to the per-byte loop\n", ind, name, bound)
+			return
+		}
 		if f.Array == ir.ArrayCounted {
 			g.pf("%swrite_int( stream, %s_count, %d, %s );\n", ind, name, f.ArrayMin, bound)
 			g.pf("%sfor ( int32_t i = 0; i < %s_count; i++ )\n%s{\n", ind, name, ind)
@@ -319,6 +331,10 @@ func (g *gen) emitReadField(f *ir.Field, ind string) {
 	name := "value." + f.Name
 	if f.Array != ir.ArrayNone {
 		bound := g.renderInt(f.ArrayExpr, big.NewInt(f.ArrayBound))
+		if g.bulkBytes[f] {
+			g.pf("%sread_bytes( stream, %s, %s ); // byte-aligned [N]uint8 — bulk copy, wire-identical to the per-byte loop\n", ind, name, bound)
+			return
+		}
 		if f.Array == ir.ArrayCounted {
 			g.pf("%sread_int( stream, %s_count, %d, %s );\n", ind, name, f.ArrayMin, bound)
 			g.pf("%sfor ( int32_t i = 0; i < %s_count; i++ )\n%s{\n", ind, name, ind)

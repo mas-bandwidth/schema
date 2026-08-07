@@ -171,11 +171,12 @@ type gen struct {
 
 	body           strings.Builder
 	includes       map[string]bool
-	emitted        map[string]bool // consts of this file emitted so far (symbolic-reference safety)
-	needsSerialize bool            // the file emits wire functions -> include "serialize.h"
-	needsCstring   bool            // the file emits memset -> include <cstring>
-	needsCmath     bool            // the file emits floor() -> include <cmath>
-	needsVariant   bool            // the file emits the Message dispatch -> include <variant>
+	emitted        map[string]bool    // consts of this file emitted so far (symbolic-reference safety)
+	bulkBytes      map[*ir.Field]bool // fixed [N]uint8 arrays at statically byte-aligned positions (ir.AlignedFixedByteArrays)
+	needsSerialize bool               // the file emits wire functions -> include "serialize.h"
+	needsCstring   bool               // the file emits memset -> include <cstring>
+	needsCmath     bool               // the file emits floor() -> include <cmath>
+	needsVariant   bool               // the file emits the Message dispatch -> include <variant>
 }
 
 func (g *gen) pf(format string, args ...any) {
