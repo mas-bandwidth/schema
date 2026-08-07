@@ -26,13 +26,15 @@ sides at the same protocol id speak identical bits; there is no versioning overh
 Generated-code performance of the four backends as **time taken relative to C++** — C++ is
 100%, higher is slower: 200% means the same work takes twice as long as C++. Medians across the
 corpus benchmarks; the mixed-dispatch batch shown separately. Apple M2, quiet host, 2026-08-07
-(v3 — the post-merge mains after the day's optimization program) — full tables, raw CSVs and
-methodology in [bench/results/](bench/results/):
+(v3 — the post-merge mains after the day's optimization program; the Rust batch-read cell
+updated same-day from the paired schema#10 run, which adopted the `read_message_into` reuse
+surface in the batch read loop) — full tables, raw CSVs and methodology in
+[bench/results/](bench/results/):
 
 | backend | write | read | batch write | batch read |
 |---|---:|---:|---:|---:|
 | C++ | 100% | 100% | 100% | 100% |
-| Rust | 100% | 238% | 121% | 303% |
+| Rust | 100% | 238% | 121% | 138% |
 | C# | 251% | 353% | 151% | 172% |
 | Go | 305% | 386% | 239% | 176% |
 

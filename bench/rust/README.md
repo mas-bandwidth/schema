@@ -15,6 +15,10 @@ profile: opt-level 3, no LTO).
 Escape barrier: `std::hint::black_box` on the written buffer and every
 decoded value. Streams borrow their buffers, so per-iteration construction
 is free — the C++ shape exactly; the generic driver monomorphizes and
-inlines like the C++ template reference. One deliberate API-shape cost:
-`read_message` returns the ~2 KB `Message` enum by value, which the batch
-read pays per message.
+inlines like the C++ template reference. The batch read hoists ONE reused
+`Message` and fills it through `read_message_into` — the Rust shape of the
+go/cs runners' hoisted `MessageStorage` and the C++ runner's reused
+`Message` (`read_message`'s by-value return copies the ~2 KB enum out of
+the call per message; measured 2.6x apart on the M2, schema#5). The
+self-check byte-verifies BOTH dispatch read surfaces against the
+`message_stream` golden before any number is produced.

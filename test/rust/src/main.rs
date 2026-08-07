@@ -204,6 +204,48 @@ fn main() {
             other => check(false, &format!("message 3 is the None terminator (got {other:?})")),
         }
 
+        // read_message_into — the reuse-loop surface — is held to the SAME
+        // pinned wire: decode the golden bytes into ONE reused storage,
+        // pre-poisoned with a full Block so the zero-form reset (SPEC §5) is
+        // what equality proves (stale bytes from the previous occupant must
+        // not survive the variant switch), then re-write each decode and
+        // byte-compare the rewrite against the golden itself.
+        let mut storage = {
+            let mut b = Block::default();
+            b.data_length = b.data.len() as i32;
+            for byte in b.data.iter_mut() {
+                *byte = 0xFF;
+            }
+            Message::Block(b)
+        };
+        let mut twin = [0u8; 2048];
+        let twin_n;
+        {
+            let mut tws = WriteStream::new(&mut twin);
+            let mut rs3 = ReadStream::new(&buffer, n);
+            check_err(read_message_into(&mut rs3, &mut storage), "read_message_into chat");
+            check(
+                storage == Message::Chat(chat),
+                "into-path message 1 equals the pinned chat (zero form held over poisoned storage)",
+            );
+            check_err(write_message(&mut tws, &storage), "re-write into-path chat");
+            check_err(read_message_into(&mut rs3, &mut storage), "read_message_into test");
+            check(
+                storage == Message::Test(test),
+                "into-path message 2 equals the pinned test (reused storage across variants)",
+            );
+            check_err(write_message(&mut tws, &storage), "re-write into-path test");
+            check_err(
+                read_message_into(&mut rs3, &mut storage),
+                "read_message_into terminator",
+            );
+            check(storage == Message::None, "into-path message 3 is the None terminator");
+            check_err(write_message(&mut tws, &storage), "re-write into-path terminator");
+            tws.flush();
+            twin_n = tws.bytes_processed() as usize;
+        }
+        golden_wire("message_stream", &twin[..twin_n]);
+
         // the tag pair stands alone too
         let mut buffer2 = [0u8; 2048];
         let mut ws2 = WriteStream::new(&mut buffer2);

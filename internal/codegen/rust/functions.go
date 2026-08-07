@@ -663,6 +663,13 @@ func (g *gen) emitMessageTagFunctions() {
 	g.pf("// variant is reset to its zero form (SPEC §5), then its fields decode in\n")
 	g.pf("// place — no per-message copy of the union out of the call. On error the\n")
 	g.pf("// storage holds the partially decoded zero form: discard it.\n")
+	g.pf("//\n")
+	g.pf("// Choosing a read surface: read_message for one-shot by-value reads;\n")
+	g.pf("// read_message_into for reuse loops — hoist ONE Message and read every\n")
+	g.pf("// message into it (the Go/C# MessageStorage discipline). Reuse removes the\n")
+	g.pf("// per-message copy-out of the union and measured 2.6x on the steady-state\n")
+	g.pf("// batch read (M2, 2026-08-06). The two surfaces stay separate on purpose —\n")
+	g.pf("// see the note on read_message.\n")
 	g.pf("#[inline]\n")
 	g.pf("pub fn read_message_into(stream: &mut ReadStream<'_>, message: &mut Message) -> Result {\n")
 	g.pf("    let mut tag_value = MessageType::NONE;\n")
@@ -691,6 +698,11 @@ func (g *gen) emitMessageTagFunctions() {
 	// LLVM's in-place construction of the returned union and cost the batch
 	// read 23% (measured M2, 2026-08-06) — each arm constructing directly
 	// into the return slot is what keeps the by-value surface cheap
+	g.pf("// read_message decodes the next message by value — the one-shot surface.\n")
+	g.pf("// It deliberately does NOT delegate to read_message_into: routing the\n")
+	g.pf("// return through a &mut out-param defeated LLVM's in-place construction\n")
+	g.pf("// of the returned union and cost the batch read 23%% (measured M2,\n")
+	g.pf("// 2026-08-06). Both surfaces stay; reuse loops call read_message_into.\n")
 	g.pf("#[inline]\n")
 	g.pf("pub fn read_message(stream: &mut ReadStream<'_>) -> Result<Message> {\n")
 	g.pf("    let mut tag_value = MessageType::NONE;\n")
