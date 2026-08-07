@@ -27,6 +27,11 @@ func (g *gen) emitStructFunctions(st *ir.Struct) {
 	g.pf("pub const %s: u64 = %d;\n", ir.RustConstName(st.Name+"MaxBits"), maxBits)
 	g.pf("pub const %s: usize = %d;\n\n", ir.RustConstName(st.Name+"MaxBytes"), ir.MaxBytes(maxBits))
 
+	// #[inline] on every wire function: the generated crate is a separate
+	// compilation unit from the caller, and without the hint a 6-10 byte
+	// message pays a full call (and loses constant folding of its bit widths)
+	// per serialize — measured 2-6x on tiny messages (bench 2026-08-06)
+	g.pf("#[inline]\n")
 	g.pf("pub fn write_%s(stream: &mut WriteStream<'_>, value: &%s) -> Result {\n", snake, st.Name)
 	if len(st.Items) == 0 {
 		g.pf("    let _ = (stream, value); // empty body — presence is the payload (SPEC §4.6)\n")
@@ -35,6 +40,7 @@ func (g *gen) emitStructFunctions(st *ir.Struct) {
 	}
 	g.pf("    Ok(())\n}\n\n")
 
+	g.pf("#[inline]\n")
 	g.pf("pub fn read_%s(stream: &mut ReadStream<'_>, value: &mut %s) -> Result {\n", snake, st.Name)
 	if len(st.Items) == 0 {
 		g.pf("    let _ = (stream, value);\n")
@@ -588,10 +594,12 @@ func (g *gen) emitMessageTagFunctions() {
 	count := int64(len(g.unit.Messages))
 	g.pf("// The message tag wire: MessageType in [0, %d], minimal bits; None = 0 is a\n", count)
 	g.pf("// valid wire value meaning *no message* — the stream terminator (SPEC §4.8).\n")
+	g.pf("#[inline]\n")
 	g.pf("pub fn write_message_type(stream: &mut WriteStream<'_>, value: MessageType) -> Result {\n")
 	g.pf("    let mut tag_value = value.0 as i32;\n")
 	g.pf("    stream.serialize_int(&mut tag_value, 0, %d)?;\n", count)
 	g.pf("    Ok(())\n}\n\n")
+	g.pf("#[inline]\n")
 	g.pf("pub fn read_message_type(stream: &mut ReadStream<'_>, value: &mut MessageType) -> Result {\n")
 	g.pf("    let mut tag_value: i32 = 0;\n")
 	g.pf("    stream.serialize_int(&mut tag_value, 0, %d)?;\n", count)
@@ -630,6 +638,7 @@ func (g *gen) emitMessageTagFunctions() {
 	// the tag rides through the tag pair (one source), inside each arm BEFORE
 	// its payload; the out-of-set refusal the other targets carry has no Rust
 	// twin — the enum is closed, so no such value exists to refuse
+	g.pf("#[inline]\n")
 	g.pf("pub fn write_message(stream: &mut WriteStream<'_>, message: &Message) -> Result {\n")
 	g.pf("    match message {\n")
 	g.pf("        Message::None => write_message_type(stream, MessageType::NONE), // the stream terminator (SPEC §4.8)\n")
@@ -641,6 +650,46 @@ func (g *gen) emitMessageTagFunctions() {
 	}
 	g.pf("    }\n}\n\n")
 
+	// the read-into surface: decodes into caller-owned storage, so steady
+	// loops re-read into one Message with no per-message copy-out of the
+	// ~largest-message-sized union — the Go/C# MessageStorage discipline in
+	// Rust shape. The tagged variant starts from the zero form before its
+	// fields decode (§5), exactly as the C# ReadMessage zeroes its storage;
+	// on error the message holds that zero form plus whatever fields decoded
+	// before the failure — discard it, as with any failed read.
+	g.pf("// read_message_into decodes the next message into caller-owned storage: the\n")
+	g.pf("// variant is reset to its zero form (SPEC §5), then its fields decode in\n")
+	g.pf("// place — no per-message copy of the union out of the call. On error the\n")
+	g.pf("// storage holds the partially decoded zero form: discard it.\n")
+	g.pf("#[inline]\n")
+	g.pf("pub fn read_message_into(stream: &mut ReadStream<'_>, message: &mut Message) -> Result {\n")
+	g.pf("    let mut tag_value = MessageType::NONE;\n")
+	g.pf("    read_message_type(stream, &mut tag_value)?;\n")
+	g.pf("    match tag_value {\n")
+	g.pf("        MessageType::NONE => {\n")
+	g.pf("            *message = Message::None; // the stream terminator (SPEC §4.8)\n")
+	g.pf("            Ok(())\n")
+	g.pf("        }\n")
+	for _, m := range msgs {
+		g.pf("        MessageType::%s => {\n", ir.RustConstName(m))
+		g.pf("            *message = Message::%s(%s::default()); // reused storage starts from the zero form, as the union does\n", m, m)
+		g.pf("            let Message::%s(value) = message else {\n", m)
+		g.pf("                unreachable!()\n")
+		g.pf("            };\n")
+		g.pf("            read_%s(stream, value)\n", ir.RustSnake(m))
+		g.pf("        }\n")
+	}
+	g.pf("        // read_message_type already rejected tags past the set; the match\n")
+	g.pf("        // still needs the arm because tag constants are never exhaustive\n")
+	g.pf("        _ => Err(Error::Validation),\n")
+	g.pf("    }\n}\n\n")
+
+	// read_message keeps its original by-value body rather than delegating to
+	// read_message_into: routing the return through a &mut out-param defeated
+	// LLVM's in-place construction of the returned union and cost the batch
+	// read 23% (measured M2, 2026-08-06) — each arm constructing directly
+	// into the return slot is what keeps the by-value surface cheap
+	g.pf("#[inline]\n")
 	g.pf("pub fn read_message(stream: &mut ReadStream<'_>) -> Result<Message> {\n")
 	g.pf("    let mut tag_value = MessageType::NONE;\n")
 	g.pf("    read_message_type(stream, &mut tag_value)?;\n")

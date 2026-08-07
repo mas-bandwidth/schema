@@ -22,11 +22,13 @@ func (g *gen) emitObjectFunctions(d *ir.Object) {
 	g.pf("pub const %s: u64 = %d;\n", ir.RustConstName(deepName+"MaxBits"), deepBits)
 	g.pf("pub const %s: usize = %d; // rounded up to the 8-byte write-buffer granularity\n\n", ir.RustConstName(deepName+"MaxBytes"), ir.MaxBytes(deepBits))
 
+	g.pf("#[inline]\n")
 	g.pf("pub fn write_%s(stream: &mut WriteStream<'_>, value: &%s) -> Result {\n", deepSnake, deepName)
 	for _, f := range deep {
 		g.emitViewWriteField(f, ir.ViewDeep, "    ")
 	}
 	g.pf("    Ok(())\n}\n\n")
+	g.pf("#[inline]\n")
 	g.pf("pub fn read_%s(stream: &mut ReadStream<'_>, value: &mut %s) -> Result {\n", deepSnake, deepName)
 	for _, f := range deep {
 		g.emitViewReadField(f, ir.ViewDeep, "    ")
@@ -39,11 +41,13 @@ func (g *gen) emitObjectFunctions(d *ir.Object) {
 	g.pf("pub const %s: u64 = %d;\n", ir.RustConstName(shName+"MaxBits"), shBits)
 	g.pf("pub const %s: usize = %d; // rounded up to the 8-byte write-buffer granularity\n\n", ir.RustConstName(shName+"MaxBytes"), ir.MaxBytes(shBits))
 
+	g.pf("#[inline]\n")
 	g.pf("pub fn write_%s(stream: &mut WriteStream<'_>, value: &%s) -> Result {\n", shSnake, shName)
 	for _, f := range interp {
 		g.emitViewWriteField(f, ir.ViewShallow, "    ")
 	}
 	g.pf("    Ok(())\n}\n\n")
+	g.pf("#[inline]\n")
 	g.pf("pub fn read_%s(stream: &mut ReadStream<'_>, value: &mut %s) -> Result {\n", shSnake, shName)
 	for _, f := range interp {
 		g.emitViewReadField(f, ir.ViewShallow, "    ")
@@ -213,10 +217,12 @@ func (g *gen) emitObjectTagFunctions() {
 	count := int64(len(g.unit.ObjNames))
 	g.pf("// The object tag wire: ObjectType in [0, %d], minimal bits; None = 0 is the\n", count)
 	g.pf("// null — the sentinel the surveyed baseline streams terminate with (SPEC §4.8).\n")
+	g.pf("#[inline]\n")
 	g.pf("pub fn write_object_type(stream: &mut WriteStream<'_>, value: ObjectType) -> Result {\n")
 	g.pf("    let mut tag_value = value.0 as i32;\n")
 	g.pf("    stream.serialize_int(&mut tag_value, 0, %d)?;\n", count)
 	g.pf("    Ok(())\n}\n\n")
+	g.pf("#[inline]\n")
 	g.pf("pub fn read_object_type(stream: &mut ReadStream<'_>, value: &mut ObjectType) -> Result {\n")
 	g.pf("    let mut tag_value: i32 = 0;\n")
 	g.pf("    stream.serialize_int(&mut tag_value, 0, %d)?;\n", count)

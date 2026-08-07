@@ -35,11 +35,13 @@ impl Default for Heartbeat {
 pub const HEARTBEAT_MAX_BITS: u64 = 0;
 pub const HEARTBEAT_MAX_BYTES: usize = 0;
 
+#[inline]
 pub fn write_heartbeat(stream: &mut WriteStream<'_>, value: &Heartbeat) -> Result {
     let _ = (stream, value); // empty body — presence is the payload (SPEC §4.6)
     Ok(())
 }
 
+#[inline]
 pub fn read_heartbeat(stream: &mut ReadStream<'_>, value: &mut Heartbeat) -> Result {
     let _ = (stream, value);
     Ok(())
@@ -71,6 +73,7 @@ impl Default for Test {
 pub const TEST_MAX_BITS: u64 = 46;
 pub const TEST_MAX_BYTES: usize = 8;
 
+#[inline]
 pub fn write_test(stream: &mut WriteStream<'_>, value: &Test) -> Result {
     {
         let mut raw_value = value.test_a as u32;
@@ -100,6 +103,7 @@ pub fn write_test(stream: &mut WriteStream<'_>, value: &Test) -> Result {
     Ok(())
 }
 
+#[inline]
 pub fn read_test(stream: &mut ReadStream<'_>, value: &mut Test) -> Result {
     {
         let mut raw_value: u32 = 0;
@@ -146,6 +150,7 @@ impl Default for Block {
 pub const BLOCK_MAX_BITS: u64 = 16018;
 pub const BLOCK_MAX_BYTES: usize = 2008;
 
+#[inline]
 pub fn write_block(stream: &mut WriteStream<'_>, value: &Block) -> Result {
     if value.data_length < 0 || value.data_length > 2000 { // refused, not wrapped or panicked: guards the slice too
         return Err(Error::Stream(serialize::Error::ValueOutOfRange));
@@ -162,6 +167,7 @@ pub fn write_block(stream: &mut WriteStream<'_>, value: &Block) -> Result {
     Ok(())
 }
 
+#[inline]
 pub fn read_block(stream: &mut ReadStream<'_>, value: &mut Block) -> Result {
     stream.serialize_int(&mut value.data_length, 0, MAX_BLOCK_SIZE as i32)?; // the length guards the slice (§6.3)
     stream.serialize_bytes(&mut value.data[..value.data_length as usize])?;
@@ -190,6 +196,7 @@ impl Default for Chat {
 pub const CHAT_MAX_BITS: u64 = 2064;
 pub const CHAT_MAX_BYTES: usize = 264;
 
+#[inline]
 pub fn write_chat(stream: &mut WriteStream<'_>, value: &Chat) -> Result {
     if value.text_length < 0 || value.text_length > 256 { // refused, not wrapped or panicked: guards the slice too
         return Err(Error::Stream(serialize::Error::ValueOutOfRange));
@@ -206,6 +213,7 @@ pub fn write_chat(stream: &mut WriteStream<'_>, value: &Chat) -> Result {
     Ok(())
 }
 
+#[inline]
 pub fn read_chat(stream: &mut ReadStream<'_>, value: &mut Chat) -> Result {
     stream.serialize_int(&mut value.text_length, 0, MAX_CHAT_LENGTH as i32)?; // the length guards the slice (§6.3)
     stream.serialize_bytes(&mut value.text[..value.text_length as usize])?;
@@ -239,6 +247,7 @@ impl Default for Synchronize {
 pub const SYNCHRONIZE_MAX_BITS: u64 = 80;
 pub const SYNCHRONIZE_MAX_BYTES: usize = 16;
 
+#[inline]
 pub fn write_synchronize(stream: &mut WriteStream<'_>, value: &Synchronize) -> Result {
     {
         let mut raw_value = value.sync_frame;
@@ -251,6 +260,7 @@ pub fn write_synchronize(stream: &mut WriteStream<'_>, value: &Synchronize) -> R
     Ok(())
 }
 
+#[inline]
 pub fn read_synchronize(stream: &mut ReadStream<'_>, value: &mut Synchronize) -> Result {
     stream.serialize_bits64(&mut value.sync_frame, 64)?;
     {
@@ -285,6 +295,7 @@ impl Default for Timescale {
 pub const TIMESCALE_MAX_BITS: u64 = 128;
 pub const TIMESCALE_MAX_BYTES: usize = 16;
 
+#[inline]
 pub fn write_timescale(stream: &mut WriteStream<'_>, value: &Timescale) -> Result {
     {
         let mut float_value = value.scale;
@@ -301,6 +312,7 @@ pub fn write_timescale(stream: &mut WriteStream<'_>, value: &Timescale) -> Resul
     Ok(())
 }
 
+#[inline]
 pub fn read_timescale(stream: &mut ReadStream<'_>, value: &mut Timescale) -> Result {
     stream.serialize_f64(&mut value.scale)?;
     stream.serialize_bits(&mut value.frame_a, 32)?;
@@ -310,12 +322,14 @@ pub fn read_timescale(stream: &mut ReadStream<'_>, value: &mut Timescale) -> Res
 
 // The message tag wire: MessageType in [0, 6], minimal bits; None = 0 is a
 // valid wire value meaning *no message* — the stream terminator (SPEC §4.8).
+#[inline]
 pub fn write_message_type(stream: &mut WriteStream<'_>, value: MessageType) -> Result {
     let mut tag_value = value.0 as i32;
     stream.serialize_int(&mut tag_value, 0, 6)?;
     Ok(())
 }
 
+#[inline]
 pub fn read_message_type(stream: &mut ReadStream<'_>, value: &mut MessageType) -> Result {
     let mut tag_value: i32 = 0;
     stream.serialize_int(&mut tag_value, 0, 6)?;
@@ -344,6 +358,7 @@ pub enum Message {
     Timescale(Timescale),
 }
 
+#[inline]
 pub fn write_message(stream: &mut WriteStream<'_>, message: &Message) -> Result {
     match message {
         Message::None => write_message_type(stream, MessageType::NONE), // the stream terminator (SPEC §4.8)
@@ -374,6 +389,68 @@ pub fn write_message(stream: &mut WriteStream<'_>, message: &Message) -> Result 
     }
 }
 
+// read_message_into decodes the next message into caller-owned storage: the
+// variant is reset to its zero form (SPEC §5), then its fields decode in
+// place — no per-message copy of the union out of the call. On error the
+// storage holds the partially decoded zero form: discard it.
+#[inline]
+pub fn read_message_into(stream: &mut ReadStream<'_>, message: &mut Message) -> Result {
+    let mut tag_value = MessageType::NONE;
+    read_message_type(stream, &mut tag_value)?;
+    match tag_value {
+        MessageType::NONE => {
+            *message = Message::None; // the stream terminator (SPEC §4.8)
+            Ok(())
+        }
+        MessageType::BLOCK => {
+            *message = Message::Block(Block::default()); // reused storage starts from the zero form, as the union does
+            let Message::Block(value) = message else {
+                unreachable!()
+            };
+            read_block(stream, value)
+        }
+        MessageType::CHAT => {
+            *message = Message::Chat(Chat::default()); // reused storage starts from the zero form, as the union does
+            let Message::Chat(value) = message else {
+                unreachable!()
+            };
+            read_chat(stream, value)
+        }
+        MessageType::HEARTBEAT => {
+            *message = Message::Heartbeat(Heartbeat::default()); // reused storage starts from the zero form, as the union does
+            let Message::Heartbeat(value) = message else {
+                unreachable!()
+            };
+            read_heartbeat(stream, value)
+        }
+        MessageType::SYNCHRONIZE => {
+            *message = Message::Synchronize(Synchronize::default()); // reused storage starts from the zero form, as the union does
+            let Message::Synchronize(value) = message else {
+                unreachable!()
+            };
+            read_synchronize(stream, value)
+        }
+        MessageType::TEST => {
+            *message = Message::Test(Test::default()); // reused storage starts from the zero form, as the union does
+            let Message::Test(value) = message else {
+                unreachable!()
+            };
+            read_test(stream, value)
+        }
+        MessageType::TIMESCALE => {
+            *message = Message::Timescale(Timescale::default()); // reused storage starts from the zero form, as the union does
+            let Message::Timescale(value) = message else {
+                unreachable!()
+            };
+            read_timescale(stream, value)
+        }
+        // read_message_type already rejected tags past the set; the match
+        // still needs the arm because tag constants are never exhaustive
+        _ => Err(Error::Validation),
+    }
+}
+
+#[inline]
 pub fn read_message(stream: &mut ReadStream<'_>) -> Result<Message> {
     let mut tag_value = MessageType::NONE;
     read_message_type(stream, &mut tag_value)?;
