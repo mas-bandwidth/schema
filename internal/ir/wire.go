@@ -125,6 +125,137 @@ func MaxBitsStruct(st *Struct) int64 {
 	return walk(st.Items)
 }
 
+// ---- static byte-alignment analysis ----
+//
+// wirePos tracks the wire bit position modulo 8 through a struct's items.
+// known=false means the position cannot be determined statically; the
+// analysis is conservative — unknown never enables an optimization, so a
+// wrong "unknown" costs speed, never wire bytes.
+type wirePos struct {
+	mod   int64
+	known bool
+}
+
+func (p wirePos) add(bits int64) wirePos {
+	if !p.known {
+		return p
+	}
+	return wirePos{mod: ((p.mod+bits)%8 + 8) % 8, known: true}
+}
+
+var wireUnknown = wirePos{known: false}
+var wireAligned = wirePos{mod: 0, known: true}
+
+// AlignedFixedByteArrays returns the fixed [N]uint8 array fields of st whose
+// element bytes are statically guaranteed to begin on a byte boundary —
+// after an `align` item, after a string/bytes field (whose wire ends on a
+// byte boundary by §4.7), or any position provably ≡ 0 (mod 8) from there.
+//
+// At such a site, N consecutive unranged 8-bit writes produce exactly the N
+// array bytes in stream order (§4.3: bit i of the stream lives in byte i/8),
+// which is byte-identical to serialize's align-then-memcpy bulk path — the
+// align contributes zero bits when already aligned. A backend may therefore
+// serialize these fields with SerializeBytes instead of a per-byte loop
+// WITHOUT changing the wire. Fields not in the map must keep the per-byte
+// loop: bulk-copying them would insert padding the wire does not have.
+//
+// Entry position is unknown (a struct may be embedded at any bit offset),
+// so nothing before the first alignment-forcing item is ever marked.
+// Counted arrays ([<= N]uint8) are tracked for position but not marked —
+// extending the bulk path to them is future work.
+func AlignedFixedByteArrays(st *Struct) map[*Field]bool {
+	out := map[*Field]bool{}
+	walkAligned(st.Items, wireUnknown, out)
+	return out
+}
+
+// walkAligned advances the position across items, marking qualifying fields
+// into out (nil out = position tracking only, used for nested structs).
+func walkAligned(items []Item, pos wirePos, out map[*Field]bool) wirePos {
+	for _, item := range items {
+		switch item := item.(type) {
+		case *AlignItem:
+			pos = wireAligned
+		case *ConstItem:
+			pos = pos.add(item.Bits)
+		case *ReservedItem:
+			pos = pos.add(item.Bits)
+		case *Branch:
+			then := walkAligned(item.Then, pos, out)
+			els := pos
+			if item.Else != nil {
+				els = walkAligned(item.Else, pos, out)
+			}
+			// the untaken side writes nothing, so the position after the
+			// branch is known only when both sides agree
+			if then.known && els.known && then.mod == els.mod {
+				pos = then
+			} else {
+				pos = wireUnknown
+			}
+		case *FieldItem:
+			f := item.F
+			if out != nil && isFixedByteArray(f) && pos.known && pos.mod == 0 {
+				out[f] = true
+			}
+			pos = afterField(f, pos)
+		}
+	}
+	return pos
+}
+
+// isFixedByteArray: a fixed [N]uint8 array with the full 8-bit wire — the
+// shape whose per-element wire is exactly one byte with no transformation.
+// (int8 and bits(8) would also be byte-exact on the wire, but their C++
+// storage or wire casts differ; they can join when a profile convicts them.)
+func isFixedByteArray(f *Field) bool {
+	return f.Array == ArrayFixed && f.Type.Kind == TInt &&
+		f.Type.Width == 8 && !f.Type.Signed && !f.HasIntRange
+}
+
+// afterField advances the position across one field's wire.
+func afterField(f *Field, pos wirePos) wirePos {
+	isStruct := false
+	if f.Type.Kind == TNamed {
+		_, isStruct = f.Type.Ref.(*Struct)
+	}
+	switch f.Array {
+	case ArrayFixed:
+		switch {
+		case f.Type.Kind == TString || f.Type.Kind == TBytes:
+			// each element ends aligned (§4.7); bounds are ≥ 1 (§4.4)
+			return wireAligned
+		case isStruct:
+			// exit-from-unknown is entry-independent: if it is known, every
+			// element exits there (bounds are ≥ 1); otherwise give up
+			if e := walkAligned(f.Type.Ref.(*Struct).Items, wireUnknown, nil); e.known {
+				return e
+			}
+			return wireUnknown
+		}
+		return pos.add(f.ArrayBound * maxBitsScalar(f))
+	case ArrayCounted:
+		// count prefix, then count elements: the exit is static only when
+		// each element is a whole number of bytes
+		if f.Type.Kind == TString || f.Type.Kind == TBytes || isStruct || maxBitsScalar(f)%8 != 0 {
+			return wireUnknown
+		}
+		return pos.add(BitsRequired(big.NewInt(f.ArrayMin), big.NewInt(f.ArrayBound)))
+	}
+	switch {
+	case f.Type.Kind == TString || f.Type.Kind == TBytes:
+		// length prefix, align, then whole bytes — ends aligned (§4.7)
+		return wireAligned
+	case isStruct:
+		// nested structs are analyzed on their own; here only the exit
+		// position matters
+		return walkAligned(f.Type.Ref.(*Struct).Items, pos, nil)
+	}
+	// every remaining scalar kind is fixed-width, and maxBitsScalar is exact
+	// for it (TInt/TBits/TBool/TFloat32±compressed/TFloat64/Enum/Flags)
+	return pos.add(maxBitsScalar(f))
+}
+
 // View selects an object view's wire (SPEC §4.8).
 type View int
 

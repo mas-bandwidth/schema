@@ -390,10 +390,7 @@ inline bool WriteTestData( serialize::WriteStream & stream, const TestData & val
     write_bits( stream, value.int64_full, 64 );
     write_int64( stream, value.int64_range, -1000000000000, 1000000000000 );
     write_align( stream );
-    for ( int32_t i = 0; i < 17; i++ )
-    {
-        write_bits( stream, value.fixed_bytes[i], 8 );
-    }
+    write_bytes( stream, value.fixed_bytes, 17 ); // byte-aligned [N]uint8 — bulk copy, wire-identical to the per-byte loop
     for ( int32_t i = 0; i < value.text_length; i++ )
     {
         serialize_assert( value.text[i] != 0 );
@@ -449,14 +446,7 @@ inline bool ReadTestData( serialize::ReadStream & stream, TestData & value )
     }
     read_int64( stream, value.int64_range, -1000000000000, 1000000000000 );
     read_align( stream ); // rejects nonzero padding (SPEC §4.3)
-    for ( int32_t i = 0; i < 17; i++ )
-    {
-        {
-            uint32_t raw_value = 0;
-            read_bits( stream, raw_value, 8 );
-            value.fixed_bytes[i] = uint8_t( raw_value );
-        }
-    }
+    read_bytes( stream, value.fixed_bytes, 17 ); // byte-aligned [N]uint8 — bulk copy, wire-identical to the per-byte loop
     read_int( stream, value.text_length, 0, 255 );
     read_bytes( stream, value.text, value.text_length );
     for ( int32_t i = 0; i < value.text_length; i++ )
