@@ -372,9 +372,11 @@ func (g *gen) emitWriteScalar(f *ir.Field, name, ind string) {
 		g.pf("%s    stream.serialize_int(&mut length_value, 0, %s)?; // the length guards the slice (§6.3)\n",
 			ind, g.renderArg(f.Type.SizeExpr, big.NewInt(f.Type.Size), "i32"))
 		g.pf("%s}\n", ind)
-		g.pf("%s{\n%s    // arrays are Copy: a mutable local because serialize_bytes takes &mut even on write\n", ind, ind)
-		g.pf("%s    let mut bytes_value = %s;\n", ind, name)
-		g.pf("%s    stream.serialize_bytes(&mut bytes_value[..%s_length as usize])?;\n%s}\n", ind, name, ind)
+		// the write side borrows the used bytes in place: WriteStream::write_bytes
+		// takes &[u8] (same wire as serialize_bytes — align, then the block copy),
+		// where the unified &mut signature forced a whole-array copy into a mutable
+		// local first — 256 B per chat, 2 KB per block, visible in perf (2026-08-06)
+		g.pf("%sstream.write_bytes(&%s[..%s_length as usize])?; // borrowed in place: the write side never mutates\n", ind, name, name)
 	case ir.TNamed:
 		switch ref := f.Type.Ref.(type) {
 		case *ir.Enum:
