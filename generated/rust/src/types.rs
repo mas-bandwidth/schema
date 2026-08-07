@@ -139,8 +139,8 @@ pub fn write_handle(stream: &mut WriteStream<'_>, value: &Handle) -> Result {
         return Err(Error::Stream(serialize::Error::ValueOutOfRange));
     }
     {
-        let mut range_value = value.object_id;
-        stream.serialize_int(&mut range_value, 0, (MAX_OBJECTS - 1) as i32)?;
+        let mut offset_value = value.object_id as u32;
+        stream.serialize_bits(&mut offset_value, 14)?;
     }
     {
         let mut raw_value = value.object_sequence as u32;
@@ -190,22 +190,22 @@ pub fn write_quantized_position(stream: &mut WriteStream<'_>, value: &QuantizedP
         return Err(Error::Stream(serialize::Error::ValueOutOfRange));
     }
     {
-        let mut range_value = value.x;
-        stream.serialize_int(&mut range_value, (-MAX_POSITION_UNITS) as i32, MAX_POSITION_UNITS as i32)?;
+        let mut offset_value = (value.x as u32).wrapping_sub(((-MAX_POSITION_UNITS) as i32) as u32);
+        stream.serialize_bits(&mut offset_value, 25)?;
     }
     if value.y < -8388608 || value.y > 8388608 { // out-of-contract writes are refused, not wrapped
         return Err(Error::Stream(serialize::Error::ValueOutOfRange));
     }
     {
-        let mut range_value = value.y;
-        stream.serialize_int(&mut range_value, (-MAX_POSITION_UNITS) as i32, MAX_POSITION_UNITS as i32)?;
+        let mut offset_value = (value.y as u32).wrapping_sub(((-MAX_POSITION_UNITS) as i32) as u32);
+        stream.serialize_bits(&mut offset_value, 25)?;
     }
     if value.z < -8388608 || value.z > 8388608 { // out-of-contract writes are refused, not wrapped
         return Err(Error::Stream(serialize::Error::ValueOutOfRange));
     }
     {
-        let mut range_value = value.z;
-        stream.serialize_int(&mut range_value, (-MAX_POSITION_UNITS) as i32, MAX_POSITION_UNITS as i32)?;
+        let mut offset_value = (value.z as u32).wrapping_sub(((-MAX_POSITION_UNITS) as i32) as u32);
+        stream.serialize_bits(&mut offset_value, 25)?;
     }
     Ok(())
 }
@@ -248,22 +248,22 @@ pub fn write_quantized_velocity(stream: &mut WriteStream<'_>, value: &QuantizedV
         return Err(Error::Stream(serialize::Error::ValueOutOfRange));
     }
     {
-        let mut range_value = value.x;
-        stream.serialize_int(&mut range_value, (-MAX_VELOCITY_UNITS) as i32, MAX_VELOCITY_UNITS as i32)?;
+        let mut offset_value = (value.x as u32).wrapping_sub(((-MAX_VELOCITY_UNITS) as i32) as u32);
+        stream.serialize_bits(&mut offset_value, 23)?;
     }
     if value.y < -2097152 || value.y > 2097152 { // out-of-contract writes are refused, not wrapped
         return Err(Error::Stream(serialize::Error::ValueOutOfRange));
     }
     {
-        let mut range_value = value.y;
-        stream.serialize_int(&mut range_value, (-MAX_VELOCITY_UNITS) as i32, MAX_VELOCITY_UNITS as i32)?;
+        let mut offset_value = (value.y as u32).wrapping_sub(((-MAX_VELOCITY_UNITS) as i32) as u32);
+        stream.serialize_bits(&mut offset_value, 23)?;
     }
     if value.z < -2097152 || value.z > 2097152 { // out-of-contract writes are refused, not wrapped
         return Err(Error::Stream(serialize::Error::ValueOutOfRange));
     }
     {
-        let mut range_value = value.z;
-        stream.serialize_int(&mut range_value, (-MAX_VELOCITY_UNITS) as i32, MAX_VELOCITY_UNITS as i32)?;
+        let mut offset_value = (value.z as u32).wrapping_sub(((-MAX_VELOCITY_UNITS) as i32) as u32);
+        stream.serialize_bits(&mut offset_value, 23)?;
     }
     Ok(())
 }
@@ -308,29 +308,29 @@ pub fn write_quantized_rotation(stream: &mut WriteStream<'_>, value: &QuantizedR
         return Err(Error::Stream(serialize::Error::ValueOutOfRange));
     }
     {
-        let mut range_value = value.x as i32;
-        stream.serialize_int(&mut range_value, (-ROTATION_UNITS) as i32, ROTATION_UNITS as i32)?;
+        let mut offset_value = (value.x as u32).wrapping_sub(((-ROTATION_UNITS) as i32) as u32);
+        stream.serialize_bits(&mut offset_value, 12)?;
     }
     if value.y < -1024 || value.y > 1024 { // out-of-contract writes are refused, not wrapped
         return Err(Error::Stream(serialize::Error::ValueOutOfRange));
     }
     {
-        let mut range_value = value.y as i32;
-        stream.serialize_int(&mut range_value, (-ROTATION_UNITS) as i32, ROTATION_UNITS as i32)?;
+        let mut offset_value = (value.y as u32).wrapping_sub(((-ROTATION_UNITS) as i32) as u32);
+        stream.serialize_bits(&mut offset_value, 12)?;
     }
     if value.z < -1024 || value.z > 1024 { // out-of-contract writes are refused, not wrapped
         return Err(Error::Stream(serialize::Error::ValueOutOfRange));
     }
     {
-        let mut range_value = value.z as i32;
-        stream.serialize_int(&mut range_value, (-ROTATION_UNITS) as i32, ROTATION_UNITS as i32)?;
+        let mut offset_value = (value.z as u32).wrapping_sub(((-ROTATION_UNITS) as i32) as u32);
+        stream.serialize_bits(&mut offset_value, 12)?;
     }
     if value.w < -1024 || value.w > 1024 { // out-of-contract writes are refused, not wrapped
         return Err(Error::Stream(serialize::Error::ValueOutOfRange));
     }
     {
-        let mut range_value = value.w as i32;
-        stream.serialize_int(&mut range_value, (-ROTATION_UNITS) as i32, ROTATION_UNITS as i32)?;
+        let mut offset_value = (value.w as u32).wrapping_sub(((-ROTATION_UNITS) as i32) as u32);
+        stream.serialize_bits(&mut offset_value, 12)?;
     }
     Ok(())
 }
@@ -586,8 +586,8 @@ pub fn write_input_packet(stream: &mut WriteStream<'_>, value: &InputPacket) -> 
         return Err(Error::Stream(serialize::Error::ValueOutOfRange));
     }
     {
-        let mut count_value = value.inputs_count;
-        stream.serialize_int(&mut count_value, 0, MAX_INPUTS_PER_PACKET as i32)?; // the count guards the loop (§6.3)
+        let mut offset_value = value.inputs_count as u32;
+        stream.serialize_bits(&mut offset_value, 5)?; // the count guards the loop (§6.3)
     }
     for i in 0..value.inputs_count as usize {
         write_input(stream, &value.inputs[i])?;
@@ -657,8 +657,8 @@ pub fn write_ship_create(stream: &mut WriteStream<'_>, value: &ShipCreate) -> Re
         return Err(Error::Stream(serialize::Error::ValueOutOfRange));
     }
     {
-        let mut enum_value = value.ship_type.0 as i32;
-        stream.serialize_int(&mut enum_value, 0, 5)?;
+        let mut offset_value = value.ship_type.0 as u32;
+        stream.serialize_bits(&mut offset_value, 3)?;
     }
     write_quantized_position(stream, &value.position)?;
     write_quantized_rotation(stream, &value.rotation)?;
@@ -681,22 +681,22 @@ pub fn write_ship_create(stream: &mut WriteStream<'_>, value: &ShipCreate) -> Re
         return Err(Error::Stream(serialize::Error::ValueOutOfRange));
     }
     {
-        let mut enum_value = value.team.0 as i32;
-        stream.serialize_int(&mut enum_value, 0, 2)?;
+        let mut offset_value = value.team.0 as u32;
+        stream.serialize_bits(&mut offset_value, 2)?;
     }
     if value.health < 0 || value.health > 1000 { // out-of-contract writes are refused, not wrapped
         return Err(Error::Stream(serialize::Error::ValueOutOfRange));
     }
     {
-        let mut range_value = value.health as i32;
-        stream.serialize_int(&mut range_value, 0, MAX_HEALTH as i32)?;
+        let mut offset_value = value.health as u32;
+        stream.serialize_bits(&mut offset_value, 10)?;
     }
     if value.thrust < 0 || value.thrust > 100 { // out-of-contract writes are refused, not wrapped
         return Err(Error::Stream(serialize::Error::ValueOutOfRange));
     }
     {
-        let mut range_value = value.thrust as i32;
-        stream.serialize_int(&mut range_value, 0, 100)?;
+        let mut offset_value = value.thrust as u32;
+        stream.serialize_bits(&mut offset_value, 7)?;
     }
     Ok(())
 }

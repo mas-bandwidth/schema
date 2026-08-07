@@ -319,8 +319,8 @@ pub fn write_ship_data_deep(stream: &mut WriteStream<'_>, value: &ShipData_Deep)
         return Err(Error::Stream(serialize::Error::ValueOutOfRange));
     }
     {
-        let mut enum_value = value.ship_type.0 as i32;
-        stream.serialize_int(&mut enum_value, 0, 5)?;
+        let mut offset_value = value.ship_type.0 as u32;
+        stream.serialize_bits(&mut offset_value, 3)?;
     }
     write_vec3(stream, &value.position)?;
     write_quat(stream, &value.rotation)?;
@@ -337,8 +337,8 @@ pub fn write_ship_data_deep(stream: &mut WriteStream<'_>, value: &ShipData_Deep)
         return Err(Error::Stream(serialize::Error::ValueOutOfRange));
     }
     {
-        let mut enum_value = value.team.0 as i32;
-        stream.serialize_int(&mut enum_value, 0, 2)?;
+        let mut offset_value = value.team.0 as u32;
+        stream.serialize_bits(&mut offset_value, 2)?;
     }
     {
         let mut float_value = value.health;
@@ -395,15 +395,15 @@ pub fn write_ship_data_deep(stream: &mut WriteStream<'_>, value: &ShipData_Deep)
         return Err(Error::Stream(serialize::Error::ValueOutOfRange));
     }
     {
-        let mut range_value = value.laser_index as i32;
-        stream.serialize_int(&mut range_value, 0, (SHIP_MAX_LASERS - 1) as i32)?;
+        let mut offset_value = value.laser_index as u32;
+        stream.serialize_bits(&mut offset_value, 4)?;
     }
     if value.missile_index < 0 || value.missile_index > 15 { // out-of-contract writes are refused, not wrapped
         return Err(Error::Stream(serialize::Error::ValueOutOfRange));
     }
     {
-        let mut range_value = value.missile_index as i32;
-        stream.serialize_int(&mut range_value, 0, (SHIP_MAX_MISSILES - 1) as i32)?;
+        let mut offset_value = value.missile_index as u32;
+        stream.serialize_bits(&mut offset_value, 4)?;
     }
     write_handle(stream, &value.target)?;
     {
@@ -472,48 +472,58 @@ pub fn write_ship_data_shallow(stream: &mut WriteStream<'_>, value: &ShipData_Sh
         return Err(Error::Stream(serialize::Error::ValueOutOfRange));
     }
     {
-        let mut enum_value = value.ship_type.0 as i32;
-        stream.serialize_int(&mut enum_value, 0, 5)?;
+        let mut offset_value = value.ship_type.0 as u32;
+        stream.serialize_bits(&mut offset_value, 3)?;
     }
+    debug_assert!(value.position_x >= -8388608 && value.position_x <= 8388608);
     {
-        let mut component_value = value.position_x;
-        stream.serialize_int(&mut component_value, -8388608, 8388608)?;
+        let mut offset_value = (value.position_x as u32).wrapping_sub((-8388608_i32) as u32);
+        stream.serialize_bits(&mut offset_value, 25)?;
     }
+    debug_assert!(value.position_y >= -8388608 && value.position_y <= 8388608);
     {
-        let mut component_value = value.position_y;
-        stream.serialize_int(&mut component_value, -8388608, 8388608)?;
+        let mut offset_value = (value.position_y as u32).wrapping_sub((-8388608_i32) as u32);
+        stream.serialize_bits(&mut offset_value, 25)?;
     }
+    debug_assert!(value.position_z >= -8388608 && value.position_z <= 8388608);
     {
-        let mut component_value = value.position_z;
-        stream.serialize_int(&mut component_value, -8388608, 8388608)?;
+        let mut offset_value = (value.position_z as u32).wrapping_sub((-8388608_i32) as u32);
+        stream.serialize_bits(&mut offset_value, 25)?;
     }
+    debug_assert!(value.rotation_x >= -1024 && value.rotation_x <= 1024);
     {
-        let mut component_value = value.rotation_x as i32;
-        stream.serialize_int(&mut component_value, -1024, 1024)?;
+        let mut offset_value = (value.rotation_x as u32).wrapping_sub((-1024_i32) as u32);
+        stream.serialize_bits(&mut offset_value, 12)?;
     }
+    debug_assert!(value.rotation_y >= -1024 && value.rotation_y <= 1024);
     {
-        let mut component_value = value.rotation_y as i32;
-        stream.serialize_int(&mut component_value, -1024, 1024)?;
+        let mut offset_value = (value.rotation_y as u32).wrapping_sub((-1024_i32) as u32);
+        stream.serialize_bits(&mut offset_value, 12)?;
     }
+    debug_assert!(value.rotation_z >= -1024 && value.rotation_z <= 1024);
     {
-        let mut component_value = value.rotation_z as i32;
-        stream.serialize_int(&mut component_value, -1024, 1024)?;
+        let mut offset_value = (value.rotation_z as u32).wrapping_sub((-1024_i32) as u32);
+        stream.serialize_bits(&mut offset_value, 12)?;
     }
+    debug_assert!(value.rotation_w >= -1024 && value.rotation_w <= 1024);
     {
-        let mut component_value = value.rotation_w as i32;
-        stream.serialize_int(&mut component_value, -1024, 1024)?;
+        let mut offset_value = (value.rotation_w as u32).wrapping_sub((-1024_i32) as u32);
+        stream.serialize_bits(&mut offset_value, 12)?;
     }
+    debug_assert!(value.linear_velocity_x >= -2097152 && value.linear_velocity_x <= 2097152);
     {
-        let mut component_value = value.linear_velocity_x;
-        stream.serialize_int(&mut component_value, -2097152, 2097152)?;
+        let mut offset_value = (value.linear_velocity_x as u32).wrapping_sub((-2097152_i32) as u32);
+        stream.serialize_bits(&mut offset_value, 23)?;
     }
+    debug_assert!(value.linear_velocity_y >= -2097152 && value.linear_velocity_y <= 2097152);
     {
-        let mut component_value = value.linear_velocity_y;
-        stream.serialize_int(&mut component_value, -2097152, 2097152)?;
+        let mut offset_value = (value.linear_velocity_y as u32).wrapping_sub((-2097152_i32) as u32);
+        stream.serialize_bits(&mut offset_value, 23)?;
     }
+    debug_assert!(value.linear_velocity_z >= -2097152 && value.linear_velocity_z <= 2097152);
     {
-        let mut component_value = value.linear_velocity_z;
-        stream.serialize_int(&mut component_value, -2097152, 2097152)?;
+        let mut offset_value = (value.linear_velocity_z as u32).wrapping_sub((-2097152_i32) as u32);
+        stream.serialize_bits(&mut offset_value, 23)?;
     }
     if value.flags >= 1 << 4 {
         // a mask bit above the wire width cannot ride
@@ -527,16 +537,18 @@ pub fn write_ship_data_shallow(stream: &mut WriteStream<'_>, value: &ShipData_Sh
         return Err(Error::Stream(serialize::Error::ValueOutOfRange));
     }
     {
-        let mut enum_value = value.team.0 as i32;
-        stream.serialize_int(&mut enum_value, 0, 2)?;
+        let mut offset_value = value.team.0 as u32;
+        stream.serialize_bits(&mut offset_value, 2)?;
     }
+    debug_assert!(value.health <= 1000);
     {
-        let mut projected_value = value.health as i32;
-        stream.serialize_int(&mut projected_value, 0, 1000)?;
+        let mut offset_value = value.health as u32;
+        stream.serialize_bits(&mut offset_value, 10)?;
     }
+    debug_assert!(value.thrust <= 100);
     {
-        let mut projected_value = value.thrust as i32;
-        stream.serialize_int(&mut projected_value, 0, 100)?;
+        let mut offset_value = value.thrust as u32;
+        stream.serialize_bits(&mut offset_value, 7)?;
     }
     Ok(())
 }
@@ -905,8 +917,8 @@ pub fn write_missile_data_deep(stream: &mut WriteStream<'_>, value: &MissileData
         return Err(Error::Stream(serialize::Error::ValueOutOfRange));
     }
     {
-        let mut enum_value = value.missile_type.0 as i32;
-        stream.serialize_int(&mut enum_value, 0, 3)?;
+        let mut offset_value = value.missile_type.0 as u32;
+        stream.serialize_bits(&mut offset_value, 2)?;
     }
     write_vec3(stream, &value.position)?;
     write_quat(stream, &value.rotation)?;
@@ -915,8 +927,8 @@ pub fn write_missile_data_deep(stream: &mut WriteStream<'_>, value: &MissileData
         return Err(Error::Stream(serialize::Error::ValueOutOfRange));
     }
     {
-        let mut enum_value = value.team.0 as i32;
-        stream.serialize_int(&mut enum_value, 0, 2)?;
+        let mut offset_value = value.team.0 as u32;
+        stream.serialize_bits(&mut offset_value, 2)?;
     }
     {
         let mut raw_value = value.flags;
@@ -953,55 +965,65 @@ pub fn write_missile_data_shallow(stream: &mut WriteStream<'_>, value: &MissileD
         return Err(Error::Stream(serialize::Error::ValueOutOfRange));
     }
     {
-        let mut enum_value = value.missile_type.0 as i32;
-        stream.serialize_int(&mut enum_value, 0, 3)?;
+        let mut offset_value = value.missile_type.0 as u32;
+        stream.serialize_bits(&mut offset_value, 2)?;
     }
+    debug_assert!(value.position_x >= -8388608 && value.position_x <= 8388608);
     {
-        let mut component_value = value.position_x;
-        stream.serialize_int(&mut component_value, -8388608, 8388608)?;
+        let mut offset_value = (value.position_x as u32).wrapping_sub((-8388608_i32) as u32);
+        stream.serialize_bits(&mut offset_value, 25)?;
     }
+    debug_assert!(value.position_y >= -8388608 && value.position_y <= 8388608);
     {
-        let mut component_value = value.position_y;
-        stream.serialize_int(&mut component_value, -8388608, 8388608)?;
+        let mut offset_value = (value.position_y as u32).wrapping_sub((-8388608_i32) as u32);
+        stream.serialize_bits(&mut offset_value, 25)?;
     }
+    debug_assert!(value.position_z >= -8388608 && value.position_z <= 8388608);
     {
-        let mut component_value = value.position_z;
-        stream.serialize_int(&mut component_value, -8388608, 8388608)?;
+        let mut offset_value = (value.position_z as u32).wrapping_sub((-8388608_i32) as u32);
+        stream.serialize_bits(&mut offset_value, 25)?;
     }
+    debug_assert!(value.rotation_x >= -1024 && value.rotation_x <= 1024);
     {
-        let mut component_value = value.rotation_x as i32;
-        stream.serialize_int(&mut component_value, -1024, 1024)?;
+        let mut offset_value = (value.rotation_x as u32).wrapping_sub((-1024_i32) as u32);
+        stream.serialize_bits(&mut offset_value, 12)?;
     }
+    debug_assert!(value.rotation_y >= -1024 && value.rotation_y <= 1024);
     {
-        let mut component_value = value.rotation_y as i32;
-        stream.serialize_int(&mut component_value, -1024, 1024)?;
+        let mut offset_value = (value.rotation_y as u32).wrapping_sub((-1024_i32) as u32);
+        stream.serialize_bits(&mut offset_value, 12)?;
     }
+    debug_assert!(value.rotation_z >= -1024 && value.rotation_z <= 1024);
     {
-        let mut component_value = value.rotation_z as i32;
-        stream.serialize_int(&mut component_value, -1024, 1024)?;
+        let mut offset_value = (value.rotation_z as u32).wrapping_sub((-1024_i32) as u32);
+        stream.serialize_bits(&mut offset_value, 12)?;
     }
+    debug_assert!(value.rotation_w >= -1024 && value.rotation_w <= 1024);
     {
-        let mut component_value = value.rotation_w as i32;
-        stream.serialize_int(&mut component_value, -1024, 1024)?;
+        let mut offset_value = (value.rotation_w as u32).wrapping_sub((-1024_i32) as u32);
+        stream.serialize_bits(&mut offset_value, 12)?;
     }
+    debug_assert!(value.linear_velocity_x >= -2097152 && value.linear_velocity_x <= 2097152);
     {
-        let mut component_value = value.linear_velocity_x;
-        stream.serialize_int(&mut component_value, -2097152, 2097152)?;
+        let mut offset_value = (value.linear_velocity_x as u32).wrapping_sub((-2097152_i32) as u32);
+        stream.serialize_bits(&mut offset_value, 23)?;
     }
+    debug_assert!(value.linear_velocity_y >= -2097152 && value.linear_velocity_y <= 2097152);
     {
-        let mut component_value = value.linear_velocity_y;
-        stream.serialize_int(&mut component_value, -2097152, 2097152)?;
+        let mut offset_value = (value.linear_velocity_y as u32).wrapping_sub((-2097152_i32) as u32);
+        stream.serialize_bits(&mut offset_value, 23)?;
     }
+    debug_assert!(value.linear_velocity_z >= -2097152 && value.linear_velocity_z <= 2097152);
     {
-        let mut component_value = value.linear_velocity_z;
-        stream.serialize_int(&mut component_value, -2097152, 2097152)?;
+        let mut offset_value = (value.linear_velocity_z as u32).wrapping_sub((-2097152_i32) as u32);
+        stream.serialize_bits(&mut offset_value, 23)?;
     }
     if value.team.0 > 2 {
         return Err(Error::Stream(serialize::Error::ValueOutOfRange));
     }
     {
-        let mut enum_value = value.team.0 as i32;
-        stream.serialize_int(&mut enum_value, 0, 2)?;
+        let mut offset_value = value.team.0 as u32;
+        stream.serialize_bits(&mut offset_value, 2)?;
     }
     {
         let mut raw_value = value.flags;
@@ -1321,8 +1343,8 @@ pub fn write_dynamic_prop_data_deep(stream: &mut WriteStream<'_>, value: &Dynami
         return Err(Error::Stream(serialize::Error::ValueOutOfRange));
     }
     {
-        let mut enum_value = value.prop_type.0 as i32;
-        stream.serialize_int(&mut enum_value, 0, 6)?;
+        let mut offset_value = value.prop_type.0 as u32;
+        stream.serialize_bits(&mut offset_value, 3)?;
     }
     write_vec3(stream, &value.position)?;
     write_quat(stream, &value.rotation)?;
@@ -1335,8 +1357,8 @@ pub fn write_dynamic_prop_data_deep(stream: &mut WriteStream<'_>, value: &Dynami
         return Err(Error::Stream(serialize::Error::ValueOutOfRange));
     }
     {
-        let mut enum_value = value.team.0 as i32;
-        stream.serialize_int(&mut enum_value, 0, 2)?;
+        let mut offset_value = value.team.0 as u32;
+        stream.serialize_bits(&mut offset_value, 2)?;
     }
     Ok(())
 }
@@ -1369,48 +1391,58 @@ pub fn write_dynamic_prop_data_shallow(stream: &mut WriteStream<'_>, value: &Dyn
         return Err(Error::Stream(serialize::Error::ValueOutOfRange));
     }
     {
-        let mut enum_value = value.prop_type.0 as i32;
-        stream.serialize_int(&mut enum_value, 0, 6)?;
+        let mut offset_value = value.prop_type.0 as u32;
+        stream.serialize_bits(&mut offset_value, 3)?;
     }
+    debug_assert!(value.position_x >= -8388608 && value.position_x <= 8388608);
     {
-        let mut component_value = value.position_x;
-        stream.serialize_int(&mut component_value, -8388608, 8388608)?;
+        let mut offset_value = (value.position_x as u32).wrapping_sub((-8388608_i32) as u32);
+        stream.serialize_bits(&mut offset_value, 25)?;
     }
+    debug_assert!(value.position_y >= -8388608 && value.position_y <= 8388608);
     {
-        let mut component_value = value.position_y;
-        stream.serialize_int(&mut component_value, -8388608, 8388608)?;
+        let mut offset_value = (value.position_y as u32).wrapping_sub((-8388608_i32) as u32);
+        stream.serialize_bits(&mut offset_value, 25)?;
     }
+    debug_assert!(value.position_z >= -8388608 && value.position_z <= 8388608);
     {
-        let mut component_value = value.position_z;
-        stream.serialize_int(&mut component_value, -8388608, 8388608)?;
+        let mut offset_value = (value.position_z as u32).wrapping_sub((-8388608_i32) as u32);
+        stream.serialize_bits(&mut offset_value, 25)?;
     }
+    debug_assert!(value.rotation_x >= -1024 && value.rotation_x <= 1024);
     {
-        let mut component_value = value.rotation_x as i32;
-        stream.serialize_int(&mut component_value, -1024, 1024)?;
+        let mut offset_value = (value.rotation_x as u32).wrapping_sub((-1024_i32) as u32);
+        stream.serialize_bits(&mut offset_value, 12)?;
     }
+    debug_assert!(value.rotation_y >= -1024 && value.rotation_y <= 1024);
     {
-        let mut component_value = value.rotation_y as i32;
-        stream.serialize_int(&mut component_value, -1024, 1024)?;
+        let mut offset_value = (value.rotation_y as u32).wrapping_sub((-1024_i32) as u32);
+        stream.serialize_bits(&mut offset_value, 12)?;
     }
+    debug_assert!(value.rotation_z >= -1024 && value.rotation_z <= 1024);
     {
-        let mut component_value = value.rotation_z as i32;
-        stream.serialize_int(&mut component_value, -1024, 1024)?;
+        let mut offset_value = (value.rotation_z as u32).wrapping_sub((-1024_i32) as u32);
+        stream.serialize_bits(&mut offset_value, 12)?;
     }
+    debug_assert!(value.rotation_w >= -1024 && value.rotation_w <= 1024);
     {
-        let mut component_value = value.rotation_w as i32;
-        stream.serialize_int(&mut component_value, -1024, 1024)?;
+        let mut offset_value = (value.rotation_w as u32).wrapping_sub((-1024_i32) as u32);
+        stream.serialize_bits(&mut offset_value, 12)?;
     }
+    debug_assert!(value.linear_velocity_x >= -2097152 && value.linear_velocity_x <= 2097152);
     {
-        let mut component_value = value.linear_velocity_x;
-        stream.serialize_int(&mut component_value, -2097152, 2097152)?;
+        let mut offset_value = (value.linear_velocity_x as u32).wrapping_sub((-2097152_i32) as u32);
+        stream.serialize_bits(&mut offset_value, 23)?;
     }
+    debug_assert!(value.linear_velocity_y >= -2097152 && value.linear_velocity_y <= 2097152);
     {
-        let mut component_value = value.linear_velocity_y;
-        stream.serialize_int(&mut component_value, -2097152, 2097152)?;
+        let mut offset_value = (value.linear_velocity_y as u32).wrapping_sub((-2097152_i32) as u32);
+        stream.serialize_bits(&mut offset_value, 23)?;
     }
+    debug_assert!(value.linear_velocity_z >= -2097152 && value.linear_velocity_z <= 2097152);
     {
-        let mut component_value = value.linear_velocity_z;
-        stream.serialize_int(&mut component_value, -2097152, 2097152)?;
+        let mut offset_value = (value.linear_velocity_z as u32).wrapping_sub((-2097152_i32) as u32);
+        stream.serialize_bits(&mut offset_value, 23)?;
     }
     {
         let mut raw_value = value.flags;
@@ -1420,8 +1452,8 @@ pub fn write_dynamic_prop_data_shallow(stream: &mut WriteStream<'_>, value: &Dyn
         return Err(Error::Stream(serialize::Error::ValueOutOfRange));
     }
     {
-        let mut enum_value = value.team.0 as i32;
-        stream.serialize_int(&mut enum_value, 0, 2)?;
+        let mut offset_value = value.team.0 as u32;
+        stream.serialize_bits(&mut offset_value, 2)?;
     }
     Ok(())
 }
@@ -1712,8 +1744,8 @@ pub fn write_turret_data_deep(stream: &mut WriteStream<'_>, value: &TurretData_D
         return Err(Error::Stream(serialize::Error::ValueOutOfRange));
     }
     {
-        let mut range_value = value.turret_index;
-        stream.serialize_int(&mut range_value, 0, (MAX_TURRETS_PER_SHIP - 1) as i32)?;
+        let mut offset_value = value.turret_index as u32;
+        stream.serialize_bits(&mut offset_value, 8)?;
     }
     write_quat(stream, &value.rotation)?;
     {
@@ -1742,24 +1774,28 @@ pub fn write_turret_data_shallow(stream: &mut WriteStream<'_>, value: &TurretDat
         return Err(Error::Stream(serialize::Error::ValueOutOfRange));
     }
     {
-        let mut range_value = value.turret_index;
-        stream.serialize_int(&mut range_value, 0, (MAX_TURRETS_PER_SHIP - 1) as i32)?;
+        let mut offset_value = value.turret_index as u32;
+        stream.serialize_bits(&mut offset_value, 8)?;
     }
+    debug_assert!(value.rotation_x >= -1024 && value.rotation_x <= 1024);
     {
-        let mut component_value = value.rotation_x as i32;
-        stream.serialize_int(&mut component_value, -1024, 1024)?;
+        let mut offset_value = (value.rotation_x as u32).wrapping_sub((-1024_i32) as u32);
+        stream.serialize_bits(&mut offset_value, 12)?;
     }
+    debug_assert!(value.rotation_y >= -1024 && value.rotation_y <= 1024);
     {
-        let mut component_value = value.rotation_y as i32;
-        stream.serialize_int(&mut component_value, -1024, 1024)?;
+        let mut offset_value = (value.rotation_y as u32).wrapping_sub((-1024_i32) as u32);
+        stream.serialize_bits(&mut offset_value, 12)?;
     }
+    debug_assert!(value.rotation_z >= -1024 && value.rotation_z <= 1024);
     {
-        let mut component_value = value.rotation_z as i32;
-        stream.serialize_int(&mut component_value, -1024, 1024)?;
+        let mut offset_value = (value.rotation_z as u32).wrapping_sub((-1024_i32) as u32);
+        stream.serialize_bits(&mut offset_value, 12)?;
     }
+    debug_assert!(value.rotation_w >= -1024 && value.rotation_w <= 1024);
     {
-        let mut component_value = value.rotation_w as i32;
-        stream.serialize_int(&mut component_value, -1024, 1024)?;
+        let mut offset_value = (value.rotation_w as u32).wrapping_sub((-1024_i32) as u32);
+        stream.serialize_bits(&mut offset_value, 12)?;
     }
     {
         let mut raw_value = value.flags;
@@ -1860,8 +1896,11 @@ pub fn unquantize_turret(input: &TurretData_Shallow, output: &mut TurretData_Int
 // null — the sentinel the surveyed baseline streams terminate with (SPEC §4.8).
 #[inline]
 pub fn write_object_type(stream: &mut WriteStream<'_>, value: ObjectType) -> Result {
-    let mut tag_value = value.0 as i32;
-    stream.serialize_int(&mut tag_value, 0, 4)?;
+    debug_assert!(value.0 as u32 <= 4); // the runtime ranged form's write assert, kept (debug parity)
+    {
+        let mut offset_value = value.0 as u32;
+        stream.serialize_bits(&mut offset_value, 3)?;
+    }
     Ok(())
 }
 

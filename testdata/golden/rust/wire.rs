@@ -151,8 +151,8 @@ pub fn write_probe_bits(stream: &mut WriteStream<'_>, value: &ProbeBits) -> Resu
         stream.serialize_bits64(&mut raw_value, 64)?;
     }
     {
-        let mut range_value = value.sensor as i64;
-        stream.serialize_int64(&mut range_value, 0, 4294967295)?;
+        let mut offset_value = value.sensor;
+        stream.serialize_bits(&mut offset_value, 32)?;
     }
     {
         let mut offset_value = value.nonce;
@@ -261,8 +261,8 @@ pub fn write_probe_sample(stream: &mut WriteStream<'_>, value: &ProbeSample) -> 
             return Err(Error::Stream(serialize::Error::ValueOutOfRange));
         }
         {
-            let mut enum_value = value.weapon.0 as i32;
-            stream.serialize_int(&mut enum_value, 0, 15)?;
+            let mut offset_value = value.weapon.0 as u32;
+            stream.serialize_bits(&mut offset_value, 4)?;
         }
         {
             let mut bool_value = value.has_target;
@@ -284,8 +284,8 @@ pub fn write_probe_sample(stream: &mut WriteStream<'_>, value: &ProbeSample) -> 
         return Err(Error::Stream(serialize::Error::ValueOutOfRange));
     }
     {
-        let mut count_value = value.samples_count;
-        stream.serialize_int(&mut count_value, 1, 8)?; // the count guards the loop (§6.3)
+        let mut offset_value = (value.samples_count as u32).wrapping_sub((1_i32) as u32);
+        stream.serialize_bits(&mut offset_value, 3)?; // the count guards the loop (§6.3)
     }
     for i in 0..value.samples_count as usize {
         {
@@ -388,8 +388,8 @@ pub fn write_probe_config(stream: &mut WriteStream<'_>, value: &ProbeConfig) -> 
         return Err(Error::Stream(serialize::Error::ValueOutOfRange));
     }
     {
-        let mut enum_value = value.preferred.0 as i32;
-        stream.serialize_int(&mut enum_value, 0, 15)?;
+        let mut offset_value = value.preferred.0 as u32;
+        stream.serialize_bits(&mut offset_value, 4)?;
     }
     Ok(())
 }
@@ -584,22 +584,22 @@ pub fn write_test_data(stream: &mut WriteStream<'_>, value: &TestData) -> Result
         return Err(Error::Stream(serialize::Error::ValueOutOfRange));
     }
     {
-        let mut range_value = value.a;
-        stream.serialize_int(&mut range_value, -100, 100)?;
+        let mut offset_value = (value.a as u32).wrapping_sub((-100_i32) as u32);
+        stream.serialize_bits(&mut offset_value, 8)?;
     }
     if value.b < -100 || value.b > 100 { // out-of-contract writes are refused, not wrapped
         return Err(Error::Stream(serialize::Error::ValueOutOfRange));
     }
     {
-        let mut range_value = value.b;
-        stream.serialize_int(&mut range_value, -100, 100)?;
+        let mut offset_value = (value.b as u32).wrapping_sub((-100_i32) as u32);
+        stream.serialize_bits(&mut offset_value, 8)?;
     }
     if value.c < -100 || value.c > 150 { // out-of-contract writes are refused, not wrapped
         return Err(Error::Stream(serialize::Error::ValueOutOfRange));
     }
     {
-        let mut range_value = value.c;
-        stream.serialize_int(&mut range_value, -100, 150)?;
+        let mut offset_value = (value.c as u32).wrapping_sub((-100_i32) as u32);
+        stream.serialize_bits(&mut offset_value, 8)?;
     }
     if value.d >= 1 << 8 {
         return Err(Error::Stream(serialize::Error::ValueOutOfRange));
@@ -630,16 +630,16 @@ pub fn write_test_data(stream: &mut WriteStream<'_>, value: &TestData) -> Result
         return Err(Error::Stream(serialize::Error::ValueOutOfRange));
     }
     {
-        let mut count_value = value.items_count;
-        stream.serialize_int(&mut count_value, 0, 16)?; // the count guards the loop (§6.3)
+        let mut offset_value = value.items_count as u32;
+        stream.serialize_bits(&mut offset_value, 5)?; // the count guards the loop (§6.3)
     }
     for i in 0..value.items_count as usize {
         if value.items[i] < 0 || value.items[i] > 255 { // out-of-contract writes are refused, not wrapped
             return Err(Error::Stream(serialize::Error::ValueOutOfRange));
         }
         {
-            let mut range_value = value.items[i];
-            stream.serialize_int(&mut range_value, 0, 255)?;
+            let mut offset_value = value.items[i] as u32;
+            stream.serialize_bits(&mut offset_value, 8)?;
         }
     }
     {
@@ -686,22 +686,17 @@ pub fn write_test_data(stream: &mut WriteStream<'_>, value: &TestData) -> Result
         return Err(Error::Stream(serialize::Error::ValueOutOfRange));
     }
     {
-        let mut range_value = value.int64_range;
-        stream.serialize_int64(&mut range_value, -1000000000000, 1000000000000)?;
+        let mut offset_value = (value.int64_range as u64).wrapping_sub((-1000000000000_i64) as u64);
+        stream.serialize_bits64(&mut offset_value, 41)?;
     }
     stream.serialize_align()?;
-    for i in 0..17 {
-        {
-            let mut raw_value = value.fixed_bytes[i] as u32;
-            stream.serialize_bits(&mut raw_value, 8)?;
-        }
-    }
+    stream.write_bytes(&value.fixed_bytes)?; // byte-aligned [N]u8 — bulk copy, wire-identical to the per-byte loop
     if value.text_length < 0 || value.text_length > 255 { // refused, not wrapped or panicked: guards the slice too
         return Err(Error::Stream(serialize::Error::ValueOutOfRange));
     }
     {
-        let mut length_value = value.text_length;
-        stream.serialize_int(&mut length_value, 0, 255)?; // the length guards the slice (§6.3)
+        let mut offset_value = value.text_length as u32;
+        stream.serialize_bits(&mut offset_value, 8)?; // the length guards the slice (§6.3)
     }
     stream.write_bytes(&value.text[..value.text_length as usize])?; // borrowed in place: the write side never mutates
     Ok(())
@@ -752,13 +747,7 @@ pub fn read_test_data(stream: &mut ReadStream<'_>, value: &mut TestData) -> Resu
     }
     stream.serialize_int64(&mut value.int64_range, -1000000000000, 1000000000000)?;
     stream.serialize_align()?; // rejects nonzero padding (SPEC §4.3)
-    for i in 0..17 {
-        {
-            let mut raw_value: u32 = 0;
-            stream.serialize_bits(&mut raw_value, 8)?;
-            value.fixed_bytes[i] = raw_value as u8;
-        }
-    }
+    stream.serialize_bytes(&mut value.fixed_bytes)?; // byte-aligned [N]u8 — bulk copy, wire-identical to the per-byte loop
     stream.serialize_int(&mut value.text_length, 0, 255)?; // the length guards the slice (§6.3)
     stream.serialize_bytes(&mut value.text[..value.text_length as usize])?;
     for i in 0..value.text_length as usize {
