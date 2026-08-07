@@ -1,0 +1,55 @@
+// Ludicrous.schema — the fixed-point + 128-bit corpus unit (SPEC §4.3), named
+// for the construct's named customer ("we will need int 128 for ludicrous
+// mode"). Its own unit beside examples/: the Go/Rust/C# backends REFUSE these
+// wire families by field name until their serialize ports carry the phase-1
+// surface, so the main corpus stays four-target green while this unit
+// exercises the new families in C++, the reference target. When the ports
+// land, this unit joins the cross-language wire gate like any other.
+
+package ludicrous
+
+// a fixed field's whole-unit bounds compose from constants like any range
+const MaxWorldUnits = 30000
+
+// sentinel-zero (SPEC §4.2): None = 0 implicit — a zero-initialized mode IS
+// the null, no has-flag pair
+enum DriveMode { Cruise, Warp, Ludicrous }
+
+// the fixed storage widths and the F = 0 corner: Q16.16 (one wire group),
+// Q48.16 (32-bit wire, the single-group boundary), Q112.16 (the wide path,
+// two groups), Q32.0 (a fixed with no fraction IS a ranged integer —
+// STANDARD.md), and a fixed array (per-element encoding)
+type FixedProbe {
+    angle    fixed(16, 16)    [min = -180, max = 180]
+    position fixed(48, 16)    [min = -MaxWorldUnits, max = MaxWorldUnits]
+    reach    fixed(112, 16)   [min = -1000000, max = 1000000]
+    ticks    fixed(32, 0)     [min = 0, max = 1000000]
+    samples  [2]fixed(16, 16) [min = -8, max = 8]
+}
+
+// the 128-bit integers: the raw field (always 128 bits, low qword first), a
+// ranged field whose range fits 64 bits (bytes identical to serialize_int64
+// over the same bounds — STANDARD.md), a ranged field only 128 bits can hold
+// (serialize's own ±2^100 band: 102 wire bits, four groups), and specified
+// defaults on both kinds — including one beyond int64, which C++ renders as
+// composed unsigned halves (no 128-bit literal exists)
+type WideProbe {
+    entity_id uint128
+    energy    int128  [min = -5000000000, max = 5000000000]
+    flux      int128  [min = -1267650600228229401496703205376, max = 1267650600228229401496703205376]
+    bias      int128  [min = -1000, max = 1000] = -250
+    seed      uint128 = 36893488147419103232
+}
+
+// composition, a counted array of the raw field, and branch zeroing over a
+// 128-bit field (SPEC §5: the untaken side reads back as zero)
+message LudicrousState {
+    mode       DriveMode
+    probe      FixedProbe
+    wide       WideProbe
+    keys       [<= 4]uint128
+    has_target bool
+    if has_target {
+        target_id uint128
+    }
+}

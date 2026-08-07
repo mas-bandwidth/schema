@@ -405,10 +405,12 @@ application's choice — netcode-style stacks already carry one.
   `..` wins over `.`).
 - **Reserved words:** `package const enum type message object if
   else switch case align reserved`
-  and the wire-type keywords `bits bool float32 float64 string bytes` plus the
-  integer family `int8 int16 int32 int64 uint8 uint16 uint32 uint64` (and `int128 uint128
-  int uint`, reserved — the first two for the deferred 128-bit construct (§4.10), the bare
-  two so `int` gets a "did you mean int32?" diagnostic instead of a parse error).
+  and the wire-type keywords `bits bool float32 float64 string bytes fixed` plus the
+  integer family `int8 int16 int32 int64 uint8 uint16 uint32 uint64 int128 uint128`
+  (and `int uint`, reserved so `int` gets a "did you mean int32?" diagnostic instead of
+  a parse error). *(`int128`, `uint128` and `fixed` were reserved-for-later until
+  2026-08-06, when the serialize runtime's phase-1 surface landed and they went live —
+  §4.3, §4.10.)*
   Reserved words cannot be used as names. Attribute keys (`min`, `max`, `resolution`, ...)
   are contextual — they live only inside `[ ]` and are not reserved.
 - **Newlines terminate declarations and fields — there are no semicolons, like Go.** The
@@ -456,10 +458,15 @@ Align       = "align" NL .
 
 Type        = [ "[" Bound "]" ] Scalar .                         // array bound is a PREFIX, Go's order
 Scalar      = IntType
+            | "int128" | "uint128"                               // 128-bit integers (§4.3);
+                                                                 // field types only, not ConstType
             | "bits" "(" IntExpr ")"
             | "bool" | "float32" | "float64"
             | "string" "(" IntExpr ")"
             | "bytes" "(" IntExpr ")"
+            | "fixed" "(" IntExpr "," IntExpr ")"                // fixed(I, F) — signed Q I.F (§4.3);
+                                                                 // the Q format is the type's SHAPE,
+                                                                 // so it is positional like bits(N)
             | ident .                                            // a declared type or enum
 IntType     = "int8" | "int16" | "int32" | "int64"
             | "uint8" | "uint16" | "uint32" | "uint64" .
@@ -829,7 +836,10 @@ family's measured invariants, restated here as the spec's own)*:
   flush zero-fills — the stream's logical length is **ceil(bits/8) bytes**, and `Write`
   returns exactly that.
 - **All >32-bit quantities go low 32 bits first**, then the high remainder (`bits(N>32)`,
-  `uint64`, `float64`, ranged encodings wider than 32 bits).
+  `uint64`, `float64`, ranged encodings wider than 32 bits). **The 128-bit family and
+  fixed point generalize the same rule: the value splits into full 32-bit groups from
+  the least significant upward, the final group carrying the remainder, up to four
+  groups** (STANDARD.md's own statement of the split).
 - **Ranged integers encode `value − min`, unsigned, in exactly `bits_required(min, max)`
   bits** — the bit width of (max − min), computed in the range's own width (clz over 32 or
   64 bits as the range demands); no zigzag on the wire, ever.
@@ -847,6 +857,9 @@ siblings — design inputs, re-verified against library source at implementation
 | `f bits(N)` | N raw bits, N in [1,64] | `serialize_bits` ([1,64]; >32 = low 32 bits first, then the high remainder) |
 | `f intN` / `f uintN` (bare, N ∈ 8/16/32/64) | N raw bits (two's complement for signed) | `serialize_uint8/16/32/64`; signed raw is the same bits, cast |
 | `f intN [min = A, max = B]` / `f uintN [min = A, max = B]` | minimal bits for the range, value − A; read rejects out-of-range; **the range must fit the declared storage** | `serialize_int` (≤32-bit int ranges) / `serialize_int64` / width-computed `serialize_bits` for full-unsigned ranges |
+| `f uint128` (bare ONLY) | 128 raw bits — the low 64-bit half first, then the high half; representation-independent (native `__int128` and the emulated two-lane pair produce identical bytes) | `serialize_uint128` |
+| `f int128 [min = A, max = B]` (range REQUIRED) | value − A in `bits_required128(A, B)` bits, 32-bit groups from the bottom; read rejects an offset above B − A — reject, never clamp; **where the range fits 64 bits or fewer the bytes are identical to `serialize_int64` over the same bounds.** Bare `int128` and ranged `uint128` are compile errors — serialize's own surface, mirrored exactly (uint→raw, int→ranged) | `serialize_int128` |
+| `f fixed(I, F) [min = A, max = B]` (range REQUIRED; **SIGNED** — Glenn 2026-08-06, the unsigned spelling is OPEN, §9 q17) | Q I.F, the sign bit counting toward I; storage is a signed integer of exactly I+F bits (I+F ∈ 8/16/32/64/128, I ≥ 1, F ≥ 0); bounds are compile-time WHOLE UNITS fitting the Q format and int64; wire = raw − (A << F) in bitlen(B − A) + F bits, 32-bit groups from the bottom; read rejects above the raw range; round trip is EXACT (no quantization step), and with F = 0 the operation IS a ranged integer | `serialize_fixed` |
 | `f bool` | 1 bit | `serialize_bool` |
 | `f float32` | 32 raw IEEE-754 bits | `serialize_float` |
 | `f float64` | 64 raw bits (low dword first) | `serialize_double` |
@@ -939,6 +952,17 @@ All compile errors with positions:
 
 - `bits`, `const`, `reserved` widths outside [1,64]; a `const` value that does not fit its
   width.
+- **The fixed and 128-bit family rules (2026-08-06, serialize's static_asserts restated
+  as language rules so generated code cannot fail to compile):** `fixed(I, F)` requires
+  I ≥ 1 (the sign bit counts toward I), F ≥ 0, and I + F equal to a storage width —
+  8, 16, 32, 64 or 128; a `fixed` field requires `[min = A, max = B]` in whole units,
+  A < B, both fitting the Q format's whole-unit domain [−2^(I−1), 2^(I−1) − 1] AND
+  int64 (where the runtime's compile-time bound parameters live); `int128` requires
+  `[min = A, max = B]` (bare `int128` is a compile error — serialize has no raw signed
+  128-bit operation); `uint128` refuses `min`/`max` (ranged 128-bit is `int128`);
+  specified defaults cover `int128`/`uint128` (fit-checked like any integer) but NOT
+  `fixed` — a raw-scaled default invites unit confusion, and the door reopens with a
+  real case.
 - **A range that does not fit its declared storage:** `int8 [min = 0, max = 1000]` is a
   compile error — the range determines the wire, the type name determines the storage, and a
   legal wire value the storage truncates would be silent corruption that passes read
@@ -1278,14 +1302,17 @@ sets arrived, exactly the boilerplate §4.8 exists to eat.)*
 
 ### 4.10 Deferred constructs
 
-- **`int128` / `uint128`** — DECIDED as part of the integer family (Glenn, 2026-08-05), with
-  a named customer: **ludicrous mode** (*"we will need int 128 for ludicrous mode :)"*).
-  Deferred on a named prerequisite: **no serialize runtime speaks 128 bits today** — the wire
-  construct (two qwords, low first, per the family's low-first rule) needs serialize methods
-  added across all four runtimes before the keyword goes live. Storage is native in Rust
-  (`i128`/`u128`) and C# (`Int128`/`UInt128`), emulated in C++ and Go (two-qword structs).
-  The surveyed delta-prediction arithmetic already needs 128-bit intermediates too. Keywords
-  reserved now so nothing squats on them.
+- **`int128` / `uint128` — LANDED 2026-08-06** (DECIDED as part of the integer family,
+  Glenn 2026-08-05, with a named customer: **ludicrous mode** — *"we will need int 128
+  for ludicrous mode :)"*). The named prerequisite resolved in order: the serialize C++
+  runtime's phase-1 surface (`serialize_uint128` raw, `serialize_int128` ranged, the
+  `serialize::uint128_t`/`int128_t` pair — native `__int128` or the emulated two-lane
+  struct, byte-identical wire) shipped first, and the keywords went live against it —
+  §4.3 rows, `examples128/` corpus, C++ emission. **The Go/Rust/C# backends REFUSE a
+  unit using the family, by field name, until their serialize ports carry the surface**
+  (the ports are in flight; a port landing lifts its refusal and joins the unit to the
+  cross-language wire gate). Storage per target when they do: native `i128`/`u128`
+  (Rust) and `Int128`/`UInt128` (C#), a two-qword struct in Go.
 - **C++-style bitfields (`uint64 blah : 8`) — considered 2026-08-05, DECLINED across the
   targets, with Glenn's own expectation confirmed** (*"want to know if this is
   possible/advisable across our target generated languages. expect it will not be"* — it is
@@ -1301,11 +1328,17 @@ sets arrived, exactly the boilerplate §4.8 exists to eat.)*
   hot object arrays ever demands it, the door is an opt-in `[packed]` attribute on a type
   generating accessor-based storage — a generator-kind decision for the horizon, not a v1
   wire construct.
-- **Fixed point** — coming, runtime-first (Glenn, 2026-08-05: *"we will also be doing fixed
-  point in serialize there first, and then bringing that to this language"*). The sequencing
-  is the decision: the wire construct gets designed and proven in the serialize C++ library,
-  propagated across the family, and only then surfaces as a schema wire type — the same
-  order serialize.cs followed. `fixed` is informally reserved alongside the horizon words.
+- **Fixed point — LANDED 2026-08-06 as `fixed(I, F)`**, in exactly the runtime-first
+  order Glenn set (2026-08-05: *"we will also be doing fixed point in serialize there
+  first, and then bringing that to this language"*): the wire construct was designed and
+  proven in the serialize C++ library (`serialize_fixed`, its STANDARD.md section, its
+  own goldens), and only then surfaced as this wire type — §4.3 row, §4.6 rules,
+  `examples128/` corpus. **SIGNED only** (Glenn, 2026-08-06: fixed point is signed);
+  the spelling is positional `fixed(I, F)` because the Q format is the type's shape,
+  the same line `bits(N)`/`string(N)` sit on. **The unsigned spelling is an OPEN
+  question with Glenn (§9 q17)** — derive signedness from `min < 0` vs an explicit
+  `ufixed` — and no syntax is invented ahead of his call. The same port gap and refusal
+  discipline as the 128-bit family applies (the bullet above).
 - **Wide strings** (`serialize_wstring`): no near-term need; when added, they match the
   classic wire exactly (length, then unaligned 32 bits per code point).
 - **Relative integers** (`serialize_int_relative`): the classic use is a strictly-increasing
@@ -1368,6 +1401,8 @@ Per `type`, per target:
    |---|---|---|---|---|
    | `int8/16/32/64` (bare or ranged) | `int8_t/16/32/64_t` | `sbyte/short/int/long` | `int8/16/32/64` | `i8/16/32/64` |
    | `uint8/16/32/64` (bare or ranged) | `uint8_t/16/32/64_t` | `byte/ushort/uint/ulong` | `uint8/16/32/64` | `u8/16/32/64` |
+   | `int128` (ranged) / `uint128` (raw) | `serialize::int128_t` / `serialize::uint128_t` (native `__int128` or the emulated pair) | `Int128` / `UInt128` *(port pending — backend refuses, §4.10)* | two-qword struct *(port pending — backend refuses)* | `i128` / `u128` *(port pending — backend refuses)* |
+   | `fixed(I, F)` (SIGNED, ranged) | signed integer of I+F bits: `int8_t`..`int64_t`, `serialize::int128_t` at 128 — holding the RAW scaled value | *(port pending — backend refuses, §4.10)* | *(port pending — backend refuses)* | *(port pending — backend refuses)* |
    | `bits(N≤32)` / `bits(N>32)` | `uint32_t` / `uint64_t` | `uint` / `ulong` | `uint32` / `uint64` | `u32` / `u64` |
    | `bool` | `bool` | `bool` | `bool` | `bool` |
    | `float32` / `float64` (attributed or bare) | `float` / `double` | `float` / `double` | `float32` / `float64` | `f32` / `f64` |
@@ -1605,7 +1640,13 @@ representations produce identical bytes); a fmt-drift gate asserts the corpus st
 formatter-canonical; and each target's test asserts the readers agree on what they
 REJECT (interior nulls, nonzero reserved bits, corrupted constants, out-of-range
 counts — with truncation surfacing as the stream's own error, never a content verdict).
-`make test` runs all of it — six binaries; `make update-goldens` re-pins DELIBERATELY.
+`make test` runs all of it — seven binaries; `make update-goldens` re-pins DELIBERATELY.
+**The fixed-point + 128-bit unit (`examples128/`, 2026-08-06) extends gates 1, 2 and 7
+to the new wire families in C++ only** — its two wire goldens were DERIVED from
+STANDARD.md's wire law independently of serialize and then asserted against the
+generated writer (`test/ludicrous_main.cpp` carries the derivation field by field), and
+the Go/Rust/C# backends' REFUSAL of the unit is itself a pinned test — so the port gap
+is a named, tested state, not an untested absence (§4.10).
 Gate 3 (the oracle) exists in seed form — the RigidBody and string classic twins in
 `test/main.cpp` — and grows with the corpus; gate 4's full random matrix and gate 5 are
 the remaining conformance work now that all four targets exist; gate 6 is live in
@@ -1817,6 +1858,18 @@ measure, §6.1. Both DECIDED.)*
     the same ruling, 2026-08-05.** Externally-derived interop and adoption material is
     out of this repo; the exchange record lives outside it. If a cross-engine
     collaboration ever becomes real work, it starts fresh from what schema IS then.
+17. **The unsigned fixed-point spelling — OPEN with Glenn (2026-08-06).** v1 ships
+    `fixed(I, F)` SIGNED only, his confirmed baseline ("fixed point is signed" — the
+    runtime's `serialize_fixed` accepts unsigned storage, so the wire construct already
+    exists). The open choice is how the language would spell unsigned if it ever wants
+    it: **(a) derive signedness from the bounds** — `min >= 0` means unsigned storage,
+    no new syntax, but a field's storage type then changes when a bound crosses zero —
+    versus **(b) an explicit `ufixed(I, F)`** — one more keyword, storage always
+    manifest in the type name, the integer family's own int/uint precedent. No syntax
+    is invented ahead of his call. The interim costs nothing on the wire — the wire is
+    range-derived either way — signedness only decides which storage widths can host a
+    given non-negative whole-unit domain (signed Q8.8 tops out at 127 units where
+    unsigned reaches 255).
 
 ---
 

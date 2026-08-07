@@ -208,7 +208,32 @@ func (g *gen) emitWriteField(f *ir.Field, ind string) {
 
 func (g *gen) emitWriteScalar(f *ir.Field, name, ind string) {
 	switch f.Type.Kind {
+	case ir.TFixed:
+		// the Q format and the whole-unit bounds are compile-time constants of
+		// the call site — part of the wire format, exactly like a ranged
+		// integer's bounds (STANDARD.md, fixed); write misuse debug-asserts
+		// inside the macro per §5. The macro's unified serializer takes a
+		// mutable reference, so the write side goes through a local — the
+		// compressed-float write's own shape
+		lo, hi := g.rangeArgs(f)
+		typ, _ := g.cppFieldType(f.Type)
+		g.pf("%s{\n%s    %s fixed_value = %s;\n", ind, ind, typ, name)
+		g.pf("%s    write_fixed( stream, fixed_value, %d, %d, %s, %s );\n", ind, f.Type.IntBits, f.Type.FracBits, lo, hi)
+		g.pf("%s}\n", ind)
 	case ir.TInt:
+		if f.Type.Width == 128 {
+			if f.HasIntRange {
+				// int128 is ALWAYS ranged (SPEC §4.3): offset from min in
+				// bits_required128 bits — identical bytes to serialize_int64
+				// wherever the range fits 64 bits or fewer
+				g.pf("%swrite_int128( stream, %s, %s, %s );\n", ind, name,
+					g.render128(f.IntMinExpr, f.IntMin, true), g.render128(f.IntMaxExpr, f.IntMax, true))
+			} else {
+				// uint128 is the raw field: 128 bits, low 64-bit half first
+				g.pf("%swrite_uint128( stream, %s );\n", ind, name)
+			}
+			return
+		}
 		if f.HasIntRange {
 			lo, hi := g.rangeArgs(f)
 			switch intRangePath(f.IntMin, f.IntMax) {
@@ -309,7 +334,22 @@ func (g *gen) emitReadField(f *ir.Field, ind string) {
 
 func (g *gen) emitReadScalar(f *ir.Field, name, ind string) {
 	switch f.Type.Kind {
+	case ir.TFixed:
+		// the macro validates the raw offset against the raw bounds and
+		// rejects — never clamps — returning false on a hostile stream
+		lo, hi := g.rangeArgs(f)
+		g.pf("%sread_fixed( stream, %s, %d, %d, %s, %s );\n", ind, name, f.Type.IntBits, f.Type.FracBits, lo, hi)
 	case ir.TInt:
+		if f.Type.Width == 128 {
+			if f.HasIntRange {
+				// rejects a decoded offset beyond max - min (reject, never clamp)
+				g.pf("%sread_int128( stream, %s, %s, %s );\n", ind, name,
+					g.render128(f.IntMinExpr, f.IntMin, true), g.render128(f.IntMaxExpr, f.IntMax, true))
+			} else {
+				g.pf("%sread_uint128( stream, %s );\n", ind, name)
+			}
+			return
+		}
 		if f.HasIntRange {
 			lo, hi := g.rangeArgs(f)
 			switch intRangePath(f.IntMin, f.IntMax) {

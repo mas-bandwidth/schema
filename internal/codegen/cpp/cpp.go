@@ -578,6 +578,9 @@ func (g *gen) initializer(f *ir.Field, typ string, isStructType bool) string {
 		case f.Type.Kind == ir.TFloat64:
 			return " = " + formatFloat(f.DefFloat, false)
 		default:
+			if f.Type.Kind == ir.TInt && f.Type.Width == 128 {
+				return " = " + g.render128(f.DefExpr, f.DefInt, f.Type.Signed)
+			}
 			return " = " + g.renderInt(f.DefExpr, f.DefInt)
 		}
 	}
@@ -603,6 +606,10 @@ func (g *gen) initializer(f *ir.Field, typ string, isStructType bool) string {
 
 func (g *gen) fieldComment(f *ir.Field) string {
 	var parts []string
+	if f.Type.Kind == ir.TFixed {
+		parts = append(parts, fmt.Sprintf("fixed(%d, %d) — Q%d.%d, raw value scaled by 2^%d; bounds in whole units",
+			f.Type.IntBits, f.Type.FracBits, f.Type.IntBits, f.Type.FracBits, f.Type.FracBits))
+	}
 	if f.HasIntRange {
 		parts = append(parts, fmt.Sprintf("wire [%s, %s]", f.IntMin, f.IntMax))
 	}
@@ -639,7 +646,25 @@ func (g *gen) fieldComment(f *ir.Field) string {
 func (g *gen) cppFieldType(t ir.FieldType) (string, bool) {
 	switch t.Kind {
 	case ir.TInt:
+		if t.Width == 128 {
+			// serialize::int128_t / serialize::uint128_t — native __int128
+			// where the compiler provides it, the emulated pair where it
+			// doesn't; byte-identical wire either way (STANDARD.md, uint128)
+			g.needsSerialize = true
+			if t.Signed {
+				return "serialize::int128_t", false
+			}
+			return "serialize::uint128_t", false
+		}
 		return cppInt2(t.Signed, t.Width), false
+	case ir.TFixed:
+		// the raw scaled integer, in signed storage of exactly I+F bits —
+		// serialize_fixed's own storage convention (STANDARD.md, fixed)
+		if t.Width == 128 {
+			g.needsSerialize = true
+			return "serialize::int128_t", false
+		}
+		return cppInt2(true, t.Width), false
 	case ir.TBits:
 		if t.Width <= 32 {
 			return "uint32_t", false
@@ -678,6 +703,36 @@ func (g *gen) renderInt(e ast.Expr, folded *big.Int) string {
 		return folded.String()
 	}
 	return g.renderExpr(e)
+}
+
+// render128 renders a 128-bit integer constant (a bound or a default). C++
+// has no 128-bit literals, so a value that fits int64 renders like any other
+// integer (symbolically where safe), a value that fits uint64 renders with
+// the ull suffix, and anything wider composes its two's-complement halves in
+// the unsigned domain — the runtime's own test spelling
+// (`i128( ( serialize::uint128_t( 1 ) << 127 ) )`), exact for native and
+// emulated storage alike.
+func (g *gen) render128(e ast.Expr, folded *big.Int, signed bool) string {
+	i64lo := new(big.Int).Neg(new(big.Int).Lsh(big.NewInt(1), 63))
+	i64hi := new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), 63), big.NewInt(1))
+	if folded.Cmp(i64lo) >= 0 && folded.Cmp(i64hi) <= 0 {
+		return g.renderInt(e, folded)
+	}
+	if folded.Sign() > 0 && folded.Cmp(maxUint64) <= 0 {
+		return folded.String() + "ull"
+	}
+	// two's complement over 128 bits, split into 64-bit lanes
+	u := new(big.Int).Set(folded)
+	if u.Sign() < 0 {
+		u.Add(u, new(big.Int).Lsh(big.NewInt(1), 128))
+	}
+	hi := new(big.Int).Rsh(u, 64)
+	lo := new(big.Int).And(u, maxUint64)
+	composed := fmt.Sprintf("( ( serialize::uint128_t( %sull ) << 64 ) | serialize::uint128_t( %sull ) )", hi, lo)
+	if signed {
+		return "serialize::int128_t" + composed
+	}
+	return composed
 }
 
 func (g *gen) renderable(e ast.Expr) bool {

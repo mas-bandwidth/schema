@@ -406,11 +406,22 @@ func (p *parser) parseScalar() ast.ScalarType {
 	t := p.tok()
 	switch t.Kind {
 	case scanner.KwInt8, scanner.KwInt16, scanner.KwInt32, scanner.KwInt64,
-		scanner.KwUint8, scanner.KwUint16, scanner.KwUint32, scanner.KwUint64:
+		scanner.KwUint8, scanner.KwUint16, scanner.KwUint32, scanner.KwUint64,
+		scanner.KwInt128, scanner.KwUint128:
 		p.advance()
 		signed := t.Text[0] == 'i'
 		width, _ := strconv.Atoi(strings.TrimPrefix(strings.TrimPrefix(t.Text, "uint"), "int"))
 		return ast.ScalarType{Kind: ast.ScalarInt, Signed: signed, Width: width, Pos: t.Pos}
+	case scanner.KwFixed:
+		// fixed(I, F) — the Q format is the type's shape, so it is positional
+		// like bits(N)/string(N) (SPEC §4.2, the positional/attribute line)
+		p.advance()
+		p.expect(scanner.LParen, "(")
+		i := p.parseExpr()
+		p.expect(scanner.Comma, ",")
+		f := p.parseExpr()
+		p.expect(scanner.RParen, ")")
+		return ast.ScalarType{Kind: ast.ScalarFixed, Arg: i, Arg2: f, Pos: t.Pos}
 	case scanner.KwBool:
 		p.advance()
 		return ast.ScalarType{Kind: ast.ScalarBool, Pos: t.Pos}

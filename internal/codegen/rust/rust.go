@@ -35,6 +35,13 @@ import (
 // re-export into the crate root, so schema references stay order-free across
 // files exactly as in Go.
 func Generate(u *ir.Unit) (map[string][]byte, error) {
+	// fixed(I, F), int128 and uint128 landed in the C++ serialize runtime
+	// first (runtime-first, SPEC §4.10); the serialize.rs port does not carry
+	// the 128-bit/fixed surface yet, so this backend REFUSES the unit by name
+	// rather than miscompiling it silently. Lift when the port lands.
+	if fields := ir.Fixed128Fields(u); len(fields) > 0 {
+		return nil, fmt.Errorf("the Rust backend does not support fixed(I, F), int128 or uint128 yet — serialize.rs has no 128-bit/fixed-point surface (the port is in flight; C++ is the reference target). Offending fields: %s", strings.Join(fields, "; "))
+	}
 	out := map[string][]byte{}
 	home := protocolIdHome(u)
 	msgOwner := ir.MessageOwner(u)
