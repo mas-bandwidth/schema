@@ -159,11 +159,7 @@ pub fn write_block(stream: &mut WriteStream<'_>, value: &Block) -> Result {
         let mut length_value = value.data_length;
         stream.serialize_int(&mut length_value, 0, MAX_BLOCK_SIZE as i32)?; // the length guards the slice (§6.3)
     }
-    {
-        // arrays are Copy: a mutable local because serialize_bytes takes &mut even on write
-        let mut bytes_value = value.data;
-        stream.serialize_bytes(&mut bytes_value[..value.data_length as usize])?;
-    }
+    stream.write_bytes(&value.data[..value.data_length as usize])?; // borrowed in place: the write side never mutates
     Ok(())
 }
 
@@ -205,11 +201,7 @@ pub fn write_chat(stream: &mut WriteStream<'_>, value: &Chat) -> Result {
         let mut length_value = value.text_length;
         stream.serialize_int(&mut length_value, 0, MAX_CHAT_LENGTH as i32)?; // the length guards the slice (§6.3)
     }
-    {
-        // arrays are Copy: a mutable local because serialize_bytes takes &mut even on write
-        let mut bytes_value = value.text;
-        stream.serialize_bytes(&mut bytes_value[..value.text_length as usize])?;
-    }
+    stream.write_bytes(&value.text[..value.text_length as usize])?; // borrowed in place: the write side never mutates
     Ok(())
 }
 

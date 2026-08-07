@@ -703,11 +703,7 @@ pub fn write_test_data(stream: &mut WriteStream<'_>, value: &TestData) -> Result
         let mut length_value = value.text_length;
         stream.serialize_int(&mut length_value, 0, 255)?; // the length guards the slice (§6.3)
     }
-    {
-        // arrays are Copy: a mutable local because serialize_bytes takes &mut even on write
-        let mut bytes_value = value.text;
-        stream.serialize_bytes(&mut bytes_value[..value.text_length as usize])?;
-    }
+    stream.write_bytes(&value.text[..value.text_length as usize])?; // borrowed in place: the write side never mutates
     Ok(())
 }
 
