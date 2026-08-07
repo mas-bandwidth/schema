@@ -9,12 +9,16 @@ package csharp
 
 import (
 	"fmt"
+	"math/big"
 
 	"github.com/mas-bandwidth/schema/internal/ir"
 )
 
 func (g *gen) emitObjectFunctions(d *ir.Object) {
 	g.needsSerialize = true
+	// view field lists embed at unknown alignment — no bulk-bytes marks here
+	// (ir.AlignedFixedByteArrays is a per-struct proof; unknown never optimizes)
+	g.bulkBytes = nil
 
 	deep, interp := splitObjectFields(d)
 
@@ -24,16 +28,19 @@ func (g *gen) emitObjectFunctions(d *ir.Object) {
 	g.sf("public const long %sMaxBits = %d;\n", deepName, deepBits)
 	g.sf("public const long %sMaxBytes = %d; // rounded up to the 8-byte write-buffer granularity\n\n", deepName, ir.MaxBytes(deepBits))
 
-	g.sf("public static bool Write%s(WriteStream stream, %s value)\n{\n", deepName, deepName)
-	for _, f := range deep {
-		g.emitViewWriteField(f, ir.ViewDeep, "    ")
-	}
-	g.sf("    return true;\n}\n\n")
-	g.sf("public static bool Read%s(ReadStream stream, %s value)\n{\n", deepName, deepName)
-	for _, f := range deep {
-		g.emitViewReadField(f, ir.ViewDeep, "    ")
-	}
-	g.sf("    return true;\n}\n\n")
+	g.emitPair(deepName, deepName,
+		func() {
+			for _, f := range deep {
+				g.emitViewWriteField(f, ir.ViewDeep, "    ")
+			}
+			g.sf("    return true;\n")
+		},
+		func() {
+			for _, f := range deep {
+				g.emitViewReadField(f, ir.ViewDeep, "    ")
+			}
+			g.sf("    return true;\n")
+		})
 
 	shName := d.Name + "Data_Shallow"
 	shBits := ir.MaxBitsView(interp, ir.ViewShallow)
@@ -41,16 +48,19 @@ func (g *gen) emitObjectFunctions(d *ir.Object) {
 	g.sf("public const long %sMaxBits = %d;\n", shName, shBits)
 	g.sf("public const long %sMaxBytes = %d; // rounded up to the 8-byte write-buffer granularity\n\n", shName, ir.MaxBytes(shBits))
 
-	g.sf("public static bool Write%s(WriteStream stream, %s value)\n{\n", shName, shName)
-	for _, f := range interp {
-		g.emitViewWriteField(f, ir.ViewShallow, "    ")
-	}
-	g.sf("    return true;\n}\n\n")
-	g.sf("public static bool Read%s(ReadStream stream, %s value)\n{\n", shName, shName)
-	for _, f := range interp {
-		g.emitViewReadField(f, ir.ViewShallow, "    ")
-	}
-	g.sf("    return true;\n}\n\n")
+	g.emitPair(shName, shName,
+		func() {
+			for _, f := range interp {
+				g.emitViewWriteField(f, ir.ViewShallow, "    ")
+			}
+			g.sf("    return true;\n")
+		},
+		func() {
+			for _, f := range interp {
+				g.emitViewReadField(f, ir.ViewShallow, "    ")
+			}
+			g.sf("    return true;\n")
+		})
 
 	// ---- Quantize / Unquantize: the Interpolate <-> Shallow mapping pair
 	// (SPEC §4.8's artifact table — the hand-written Quantize(), generated).
@@ -70,43 +80,41 @@ func (g *gen) emitObjectFunctions(d *ir.Object) {
 	g.sf("}\n\n")
 }
 
-// emitViewWriteField emits one field of a view wire function.
+// emitViewWriteField emits one field of a view wire function. Quantized
+// components and projected floats fold their bounds at generation time — the
+// same lever as ranged integers (see functions.go), byte-identical wire.
 func (g *gen) emitViewWriteField(f *ir.Field, v ir.View, ind string) {
 	name := "value." + g.fieldBase(f)
 	switch {
 	case v == ir.ViewShallow && f.HasQuantize:
 		st := f.Type.Ref.(*ir.Struct)
 		wide := f.QuantBound > 2147483647 // the int32 family truncates past this
+		qb := big.NewInt(f.QuantBound)
+		nqb := new(big.Int).Neg(qb)
+		// component storage is the smallest signed type holding the bound, so
+		// neither guard half is ever vacuous unless the bound fills the type
+		sMin, sMax := storageBounds(ir.FieldType{Kind: ir.TInt, Signed: true, Width: smallestSigned(f.QuantBound)})
 		for _, comp := range st.Fields {
 			compName := name + ir.GoExportName(comp.Name)
-			if wide {
-				g.sf("%s{\n%s    long componentValue = (long)%s;\n", ind, ind, compName)
-				g.call(ind+"    ", fmt.Sprintf("stream.SerializeInt64(ref componentValue, -%d, %d)", f.QuantBound, f.QuantBound), "")
-				g.sf("%s}\n", ind)
-			} else if smallestSigned(f.QuantBound) == 32 {
-				g.call(ind, fmt.Sprintf("stream.SerializeInt(ref %s, -%d, %d)", compName, f.QuantBound, f.QuantBound), "")
-			} else {
-				g.sf("%s{\n%s    int componentValue = (int)%s;\n", ind, ind, compName)
-				g.call(ind+"    ", fmt.Sprintf("stream.SerializeInt(ref componentValue, -%d, %d)", f.QuantBound, f.QuantBound), "")
-				g.sf("%s}\n", ind)
-			}
+			g.emitWriteFoldedRange(compName, fmt.Sprintf("-%d", f.QuantBound), fmt.Sprintf("%d", f.QuantBound),
+				nqb, qb, wide, nqb.Cmp(sMin) > 0, qb.Cmp(sMax) < 0,
+				" // out-of-contract writes are refused, not wrapped", ind)
 		}
 	case v == ir.ViewShallow && f.HasFloatRange:
-		if f.Steps > 2147483647 {
-			g.sf("%s{\n%s    long projectedValue = (long)%s;\n", ind, ind, name)
-			g.call(ind+"    ", fmt.Sprintf("stream.SerializeInt64(ref projectedValue, 0, %d)", f.Steps), "")
-			g.sf("%s}\n", ind)
-		} else {
-			g.sf("%s{\n%s    int projectedValue = (int)%s;\n", ind, ind, name)
-			g.call(ind+"    ", fmt.Sprintf("stream.SerializeInt(ref projectedValue, 0, %d)", f.Steps), "")
-			g.sf("%s}\n", ind)
-		}
+		wide := f.Steps > 2147483647
+		steps := big.NewInt(f.Steps)
+		// projected storage is unsigned, sized to the step count: the low
+		// guard is vacuous; the high guard drops only if the steps fill it
+		_, sMax := storageBounds(ir.FieldType{Kind: ir.TInt, Signed: false, Width: ir.StorageBitsFor(f.Steps)})
+		g.emitWriteFoldedRange(name, "0", fmt.Sprintf("%d", f.Steps),
+			big.NewInt(0), steps, wide, false, steps.Cmp(sMax) < 0,
+			" // out-of-contract writes are refused, not wrapped", ind)
 	case v == ir.ViewDeep && f.HasFloatRange && f.Interpolate:
 		// the triple describes the shallow wire only — deep is the bare float
 		if f.Type.Kind == ir.TFloat64 {
-			g.call(ind, fmt.Sprintf("stream.SerializeDouble(ref %s)", name), "")
+			g.call(ind, fmt.Sprintf("%s.SerializeDouble(ref %s)", g.rv(), name), "")
 		} else {
-			g.call(ind, fmt.Sprintf("stream.SerializeFloat(ref %s)", name), "")
+			g.call(ind, fmt.Sprintf("%s.SerializeFloat(ref %s)", g.rv(), name), "")
 		}
 	default:
 		g.emitWriteField(f, ind)
@@ -124,13 +132,13 @@ func (g *gen) emitViewReadField(f *ir.Field, v ir.View, ind string) {
 			compName := name + ir.GoExportName(comp.Name)
 			if wide {
 				g.sf("%s{\n%s    long componentValue = 0;\n", ind, ind)
-				g.call(ind+"    ", fmt.Sprintf("stream.SerializeInt64(ref componentValue, -%d, %d)", f.QuantBound, f.QuantBound), "")
+				g.call(ind+"    ", fmt.Sprintf("%s.SerializeInt64(ref componentValue, -%d, %d)", g.rv(), f.QuantBound, f.QuantBound), "")
 				g.sf("%s    %s = (%s)componentValue;\n%s}\n", ind, compName, compT, ind)
 			} else if smallestSigned(f.QuantBound) == 32 {
-				g.call(ind, fmt.Sprintf("stream.SerializeInt(ref %s, -%d, %d)", compName, f.QuantBound, f.QuantBound), "")
+				g.call(ind, fmt.Sprintf("%s.SerializeInt(ref %s, -%d, %d)", g.rv(), compName, f.QuantBound, f.QuantBound), "")
 			} else {
 				g.sf("%s{\n%s    int componentValue = 0;\n", ind, ind)
-				g.call(ind+"    ", fmt.Sprintf("stream.SerializeInt(ref componentValue, -%d, %d)", f.QuantBound, f.QuantBound), "")
+				g.call(ind+"    ", fmt.Sprintf("%s.SerializeInt(ref componentValue, -%d, %d)", g.rv(), f.QuantBound, f.QuantBound), "")
 				g.sf("%s    %s = (%s)componentValue;\n%s}\n", ind, compName, compT, ind)
 			}
 		}
@@ -138,18 +146,18 @@ func (g *gen) emitViewReadField(f *ir.Field, v ir.View, ind string) {
 		storT := csUint(ir.StorageBitsFor(f.Steps))
 		if f.Steps > 2147483647 {
 			g.sf("%s{\n%s    long projectedValue = 0;\n", ind, ind)
-			g.call(ind+"    ", fmt.Sprintf("stream.SerializeInt64(ref projectedValue, 0, %d)", f.Steps), "")
+			g.call(ind+"    ", fmt.Sprintf("%s.SerializeInt64(ref projectedValue, 0, %d)", g.rv(), f.Steps), "")
 			g.sf("%s    %s = (%s)projectedValue;\n%s}\n", ind, name, storT, ind)
 		} else {
 			g.sf("%s{\n%s    int projectedValue = 0;\n", ind, ind)
-			g.call(ind+"    ", fmt.Sprintf("stream.SerializeInt(ref projectedValue, 0, %d)", f.Steps), "")
+			g.call(ind+"    ", fmt.Sprintf("%s.SerializeInt(ref projectedValue, 0, %d)", g.rv(), f.Steps), "")
 			g.sf("%s    %s = (%s)projectedValue;\n%s}\n", ind, name, storT, ind)
 		}
 	case v == ir.ViewDeep && f.HasFloatRange && f.Interpolate:
 		if f.Type.Kind == ir.TFloat64 {
-			g.call(ind, fmt.Sprintf("stream.SerializeDouble(ref %s)", name), "")
+			g.call(ind, fmt.Sprintf("%s.SerializeDouble(ref %s)", g.rv(), name), "")
 		} else {
-			g.call(ind, fmt.Sprintf("stream.SerializeFloat(ref %s)", name), "")
+			g.call(ind, fmt.Sprintf("%s.SerializeFloat(ref %s)", g.rv(), name), "")
 		}
 	default:
 		g.emitReadField(f, ind)
@@ -277,9 +285,12 @@ func (g *gen) emitObjectTagFunctions() {
 	count := int64(len(g.unit.ObjNames))
 	g.sf("// The object tag wire: ObjectType in [0, %d], minimal bits; None = 0 is the\n", count)
 	g.sf("// null — the sentinel the surveyed baseline streams terminate with (SPEC §4.8).\n")
+	g.sf("// The write folds the tag's bit count at generation time (byte-identical to\n")
+	g.sf("// the ranged form); a tag outside the set is refused — bool alone.\n")
 	g.sf("public static bool WriteObjectType(WriteStream stream, ObjectType value)\n{\n")
-	g.sf("    int tagValue = (int)value;\n")
-	g.sf("    return stream.SerializeInt(ref tagValue, 0, %d);\n}\n\n", count)
+	g.sf("    uint tagValue = (uint)value;\n")
+	g.sf("    if (tagValue > %d)\n    {\n        return false;\n    }\n", count)
+	g.sf("    return stream.SerializeBits(ref tagValue, %d);\n}\n\n", ir.BitsRequired(big.NewInt(0), big.NewInt(count)))
 	g.sf("public static bool ReadObjectType(ReadStream stream, ref ObjectType value)\n{\n")
 	g.sf("    int tagValue = 0;\n")
 	g.sf("    if (!stream.SerializeInt(ref tagValue, 0, %d))\n    {\n        return false;\n    }\n", count)

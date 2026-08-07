@@ -63,8 +63,9 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 	home := protocolIdHome(u)
 	msgOwner := ir.MessageOwner(u)
 	objOwner := ir.ObjectOwner(u)
+	batched, needCore := batchPlan(u)
 	for _, f := range u.Files {
-		g := &gen{unit: u, file: f, msgOwner: msgOwner, objOwner: objOwner}
+		g := &gen{unit: u, file: f, msgOwner: msgOwner, objOwner: objOwner, batched: batched, needCore: needCore}
 		g.emitFile(f.Base == home)
 		out[f.Base+".cs"] = g.assemble()
 	}
@@ -93,10 +94,25 @@ type gen struct {
 	objOwner string // the one file that carries the object tag surface
 	owner    string // the class whose members are being emitted (CS0542 escape)
 
+	batched   map[string]bool    // Write/Read pair names whose entry runs a batch
+	needCore  map[string]bool    // pair names that get a *Batch core (batched or composed under one)
+	inBatch   bool               // emitting a batch-form core: receiver is `batch`, composition by ref
+	bulkBytes map[*ir.Field]bool // statically byte-aligned [N]uint8 fields — bulk path (ir.AlignedFixedByteArrays)
+
 	types          strings.Builder // namespace-level declarations (enums, classes)
 	schema         strings.Builder // members of the partial static Schema class
 	needsSerialize bool            // the file emits wire functions -> using Serialize;
 	needsSystem    bool            // the file references System (Array, Math, AsSpan)
+	needsCompiler  bool            // the file emits [MethodImpl] -> using System.Runtime.CompilerServices;
+}
+
+// rv is the serialize receiver of the function being emitted: the stream, or
+// the register-resident batch inside a *Batch core.
+func (g *gen) rv() string {
+	if g.inBatch {
+		return "batch"
+	}
+	return "stream"
 }
 
 // m maps an exported member name into the class currently being emitted. A
@@ -140,10 +156,13 @@ func (g *gen) assemble() []byte {
 	if g.needsSystem {
 		h.WriteString("using System;\n")
 	}
+	if g.needsCompiler {
+		h.WriteString("using System.Runtime.CompilerServices;\n")
+	}
 	if g.needsSerialize {
 		h.WriteString("using Serialize;\n")
 	}
-	if g.needsSystem || g.needsSerialize {
+	if g.needsSystem || g.needsCompiler || g.needsSerialize {
 		h.WriteString("\n")
 	}
 	fmt.Fprintf(&h, "namespace %s;\n\n", capitalize(g.unit.Package))

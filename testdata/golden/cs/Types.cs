@@ -8,6 +8,7 @@
 // latching; stream failures latch on stream.Error — the runtime's own sticky
 // latch. Callers get bool always; Error tells the two apart.
 
+using System.Runtime.CompilerServices;
 using Serialize;
 
 namespace Example;
@@ -149,17 +150,33 @@ public static partial class Schema
         value.Z = 0.0;
     }
 
+    // WriteVec3/ReadVec3 run as a batch: the stream state lives in registers
+    // across the body's serialize calls and is stored back once at End —
+    // the tiny-message hot path (serialize.cs WriteBatch/ReadBatch). Same
+    // wire bytes, same validation, same latched-error model.
     public static bool WriteVec3(WriteStream stream, Vec3 value)
     {
-        if (!stream.SerializeDouble(ref value.X))
+        WriteBatch batch = stream.BeginBatch();
+        bool result = WriteVec3Batch(ref batch, value);
+        batch.End(); // on every path out — End publishes the state and the error
+        return result;
+    }
+
+    // The batch-form core — INLINE-ONLY: a non-inlined call taking the batch by
+    // ref address-exposes it and enregistration dies (measured 0.71x, worse than
+    // no batch). Nested types compose core-to-core by ref, never via the stream.
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static bool WriteVec3Batch(ref WriteBatch batch, Vec3 value)
+    {
+        if (!batch.SerializeDouble(ref value.X))
         {
             return false;
         }
-        if (!stream.SerializeDouble(ref value.Y))
+        if (!batch.SerializeDouble(ref value.Y))
         {
             return false;
         }
-        if (!stream.SerializeDouble(ref value.Z))
+        if (!batch.SerializeDouble(ref value.Z))
         {
             return false;
         }
@@ -168,15 +185,27 @@ public static partial class Schema
 
     public static bool ReadVec3(ReadStream stream, Vec3 value)
     {
-        if (!stream.SerializeDouble(ref value.X))
+        ReadBatch batch = stream.BeginBatch();
+        bool result = ReadVec3Batch(ref batch, value);
+        batch.End(); // on every path out — End publishes the cursor and the error
+        return result;
+    }
+
+    // The batch-form core — INLINE-ONLY: a non-inlined call taking the batch by
+    // ref address-exposes it and enregistration dies (measured 0.71x, worse than
+    // no batch). Nested types compose core-to-core by ref, never via the stream.
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static bool ReadVec3Batch(ref ReadBatch batch, Vec3 value)
+    {
+        if (!batch.SerializeDouble(ref value.X))
         {
             return false;
         }
-        if (!stream.SerializeDouble(ref value.Y))
+        if (!batch.SerializeDouble(ref value.Y))
         {
             return false;
         }
-        if (!stream.SerializeDouble(ref value.Z))
+        if (!batch.SerializeDouble(ref value.Z))
         {
             return false;
         }
@@ -198,21 +227,37 @@ public static partial class Schema
         value.W = 0.0;
     }
 
+    // WriteQuat/ReadQuat run as a batch: the stream state lives in registers
+    // across the body's serialize calls and is stored back once at End —
+    // the tiny-message hot path (serialize.cs WriteBatch/ReadBatch). Same
+    // wire bytes, same validation, same latched-error model.
     public static bool WriteQuat(WriteStream stream, Quat value)
     {
-        if (!stream.SerializeDouble(ref value.X))
+        WriteBatch batch = stream.BeginBatch();
+        bool result = WriteQuatBatch(ref batch, value);
+        batch.End(); // on every path out — End publishes the state and the error
+        return result;
+    }
+
+    // The batch-form core — INLINE-ONLY: a non-inlined call taking the batch by
+    // ref address-exposes it and enregistration dies (measured 0.71x, worse than
+    // no batch). Nested types compose core-to-core by ref, never via the stream.
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static bool WriteQuatBatch(ref WriteBatch batch, Quat value)
+    {
+        if (!batch.SerializeDouble(ref value.X))
         {
             return false;
         }
-        if (!stream.SerializeDouble(ref value.Y))
+        if (!batch.SerializeDouble(ref value.Y))
         {
             return false;
         }
-        if (!stream.SerializeDouble(ref value.Z))
+        if (!batch.SerializeDouble(ref value.Z))
         {
             return false;
         }
-        if (!stream.SerializeDouble(ref value.W))
+        if (!batch.SerializeDouble(ref value.W))
         {
             return false;
         }
@@ -221,19 +266,31 @@ public static partial class Schema
 
     public static bool ReadQuat(ReadStream stream, Quat value)
     {
-        if (!stream.SerializeDouble(ref value.X))
+        ReadBatch batch = stream.BeginBatch();
+        bool result = ReadQuatBatch(ref batch, value);
+        batch.End(); // on every path out — End publishes the cursor and the error
+        return result;
+    }
+
+    // The batch-form core — INLINE-ONLY: a non-inlined call taking the batch by
+    // ref address-exposes it and enregistration dies (measured 0.71x, worse than
+    // no batch). Nested types compose core-to-core by ref, never via the stream.
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static bool ReadQuatBatch(ref ReadBatch batch, Quat value)
+    {
+        if (!batch.SerializeDouble(ref value.X))
         {
             return false;
         }
-        if (!stream.SerializeDouble(ref value.Y))
+        if (!batch.SerializeDouble(ref value.Y))
         {
             return false;
         }
-        if (!stream.SerializeDouble(ref value.Z))
+        if (!batch.SerializeDouble(ref value.Z))
         {
             return false;
         }
-        if (!stream.SerializeDouble(ref value.W))
+        if (!batch.SerializeDouble(ref value.W))
         {
             return false;
         }
@@ -253,15 +310,38 @@ public static partial class Schema
         value.ObjectSequence = 0;
     }
 
+    // WriteHandle/ReadHandle run as a batch: the stream state lives in registers
+    // across the body's serialize calls and is stored back once at End —
+    // the tiny-message hot path (serialize.cs WriteBatch/ReadBatch). Same
+    // wire bytes, same validation, same latched-error model.
     public static bool WriteHandle(WriteStream stream, Handle value)
     {
-        if (!stream.SerializeInt(ref value.ObjectId, 0, (int)(MaxObjects - 1)))
+        WriteBatch batch = stream.BeginBatch();
+        bool result = WriteHandleBatch(ref batch, value);
+        batch.End(); // on every path out — End publishes the state and the error
+        return result;
+    }
+
+    // The batch-form core — INLINE-ONLY: a non-inlined call taking the batch by
+    // ref address-exposes it and enregistration dies (measured 0.71x, worse than
+    // no batch). Nested types compose core-to-core by ref, never via the stream.
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static bool WriteHandleBatch(ref WriteBatch batch, Handle value)
+    {
+        if (value.ObjectId < 0 || value.ObjectId > (int)(MaxObjects - 1)) // out-of-contract writes are refused, not wrapped
         {
             return false;
         }
         {
+            uint offsetValue = (uint)(value.ObjectId);
+            if (!batch.SerializeBits(ref offsetValue, 14))
+            {
+                return false;
+            }
+        }
+        {
             uint rawValue = value.ObjectSequence;
-            if (!stream.SerializeBits(ref rawValue, 8))
+            if (!batch.SerializeBits(ref rawValue, 8))
             {
                 return false;
             }
@@ -271,13 +351,25 @@ public static partial class Schema
 
     public static bool ReadHandle(ReadStream stream, Handle value)
     {
-        if (!stream.SerializeInt(ref value.ObjectId, 0, (int)(MaxObjects - 1)))
+        ReadBatch batch = stream.BeginBatch();
+        bool result = ReadHandleBatch(ref batch, value);
+        batch.End(); // on every path out — End publishes the cursor and the error
+        return result;
+    }
+
+    // The batch-form core — INLINE-ONLY: a non-inlined call taking the batch by
+    // ref address-exposes it and enregistration dies (measured 0.71x, worse than
+    // no batch). Nested types compose core-to-core by ref, never via the stream.
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static bool ReadHandleBatch(ref ReadBatch batch, Handle value)
+    {
+        if (!batch.SerializeInt(ref value.ObjectId, 0, (int)(MaxObjects - 1)))
         {
             return false;
         }
         {
             uint rawValue = 0;
-            if (!stream.SerializeBits(ref rawValue, 8))
+            if (!batch.SerializeBits(ref rawValue, 8))
             {
                 return false;
             }
@@ -300,34 +392,83 @@ public static partial class Schema
         value.Z = 0;
     }
 
+    // WriteQuantizedPosition/ReadQuantizedPosition run as a batch: the stream state lives in registers
+    // across the body's serialize calls and is stored back once at End —
+    // the tiny-message hot path (serialize.cs WriteBatch/ReadBatch). Same
+    // wire bytes, same validation, same latched-error model.
     public static bool WriteQuantizedPosition(WriteStream stream, QuantizedPosition value)
     {
-        if (!stream.SerializeInt(ref value.X, (int)(-MaxPositionUnits), (int)MaxPositionUnits))
+        WriteBatch batch = stream.BeginBatch();
+        bool result = WriteQuantizedPositionBatch(ref batch, value);
+        batch.End(); // on every path out — End publishes the state and the error
+        return result;
+    }
+
+    // The batch-form core — INLINE-ONLY: a non-inlined call taking the batch by
+    // ref address-exposes it and enregistration dies (measured 0.71x, worse than
+    // no batch). Nested types compose core-to-core by ref, never via the stream.
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static bool WriteQuantizedPositionBatch(ref WriteBatch batch, QuantizedPosition value)
+    {
+        if (value.X < (int)(-MaxPositionUnits) || value.X > (int)MaxPositionUnits) // out-of-contract writes are refused, not wrapped
         {
             return false;
         }
-        if (!stream.SerializeInt(ref value.Y, (int)(-MaxPositionUnits), (int)MaxPositionUnits))
+        {
+            uint offsetValue = (uint)(value.X) - unchecked((uint)((int)(-MaxPositionUnits)));
+            if (!batch.SerializeBits(ref offsetValue, 25))
+            {
+                return false;
+            }
+        }
+        if (value.Y < (int)(-MaxPositionUnits) || value.Y > (int)MaxPositionUnits) // out-of-contract writes are refused, not wrapped
         {
             return false;
         }
-        if (!stream.SerializeInt(ref value.Z, (int)(-MaxPositionUnits), (int)MaxPositionUnits))
+        {
+            uint offsetValue = (uint)(value.Y) - unchecked((uint)((int)(-MaxPositionUnits)));
+            if (!batch.SerializeBits(ref offsetValue, 25))
+            {
+                return false;
+            }
+        }
+        if (value.Z < (int)(-MaxPositionUnits) || value.Z > (int)MaxPositionUnits) // out-of-contract writes are refused, not wrapped
         {
             return false;
+        }
+        {
+            uint offsetValue = (uint)(value.Z) - unchecked((uint)((int)(-MaxPositionUnits)));
+            if (!batch.SerializeBits(ref offsetValue, 25))
+            {
+                return false;
+            }
         }
         return true;
     }
 
     public static bool ReadQuantizedPosition(ReadStream stream, QuantizedPosition value)
     {
-        if (!stream.SerializeInt(ref value.X, (int)(-MaxPositionUnits), (int)MaxPositionUnits))
+        ReadBatch batch = stream.BeginBatch();
+        bool result = ReadQuantizedPositionBatch(ref batch, value);
+        batch.End(); // on every path out — End publishes the cursor and the error
+        return result;
+    }
+
+    // The batch-form core — INLINE-ONLY: a non-inlined call taking the batch by
+    // ref address-exposes it and enregistration dies (measured 0.71x, worse than
+    // no batch). Nested types compose core-to-core by ref, never via the stream.
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static bool ReadQuantizedPositionBatch(ref ReadBatch batch, QuantizedPosition value)
+    {
+        if (!batch.SerializeInt(ref value.X, (int)(-MaxPositionUnits), (int)MaxPositionUnits))
         {
             return false;
         }
-        if (!stream.SerializeInt(ref value.Y, (int)(-MaxPositionUnits), (int)MaxPositionUnits))
+        if (!batch.SerializeInt(ref value.Y, (int)(-MaxPositionUnits), (int)MaxPositionUnits))
         {
             return false;
         }
-        if (!stream.SerializeInt(ref value.Z, (int)(-MaxPositionUnits), (int)MaxPositionUnits))
+        if (!batch.SerializeInt(ref value.Z, (int)(-MaxPositionUnits), (int)MaxPositionUnits))
         {
             return false;
         }
@@ -348,34 +489,83 @@ public static partial class Schema
         value.Z = 0;
     }
 
+    // WriteQuantizedVelocity/ReadQuantizedVelocity run as a batch: the stream state lives in registers
+    // across the body's serialize calls and is stored back once at End —
+    // the tiny-message hot path (serialize.cs WriteBatch/ReadBatch). Same
+    // wire bytes, same validation, same latched-error model.
     public static bool WriteQuantizedVelocity(WriteStream stream, QuantizedVelocity value)
     {
-        if (!stream.SerializeInt(ref value.X, (int)(-MaxVelocityUnits), (int)MaxVelocityUnits))
+        WriteBatch batch = stream.BeginBatch();
+        bool result = WriteQuantizedVelocityBatch(ref batch, value);
+        batch.End(); // on every path out — End publishes the state and the error
+        return result;
+    }
+
+    // The batch-form core — INLINE-ONLY: a non-inlined call taking the batch by
+    // ref address-exposes it and enregistration dies (measured 0.71x, worse than
+    // no batch). Nested types compose core-to-core by ref, never via the stream.
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static bool WriteQuantizedVelocityBatch(ref WriteBatch batch, QuantizedVelocity value)
+    {
+        if (value.X < (int)(-MaxVelocityUnits) || value.X > (int)MaxVelocityUnits) // out-of-contract writes are refused, not wrapped
         {
             return false;
         }
-        if (!stream.SerializeInt(ref value.Y, (int)(-MaxVelocityUnits), (int)MaxVelocityUnits))
+        {
+            uint offsetValue = (uint)(value.X) - unchecked((uint)((int)(-MaxVelocityUnits)));
+            if (!batch.SerializeBits(ref offsetValue, 23))
+            {
+                return false;
+            }
+        }
+        if (value.Y < (int)(-MaxVelocityUnits) || value.Y > (int)MaxVelocityUnits) // out-of-contract writes are refused, not wrapped
         {
             return false;
         }
-        if (!stream.SerializeInt(ref value.Z, (int)(-MaxVelocityUnits), (int)MaxVelocityUnits))
+        {
+            uint offsetValue = (uint)(value.Y) - unchecked((uint)((int)(-MaxVelocityUnits)));
+            if (!batch.SerializeBits(ref offsetValue, 23))
+            {
+                return false;
+            }
+        }
+        if (value.Z < (int)(-MaxVelocityUnits) || value.Z > (int)MaxVelocityUnits) // out-of-contract writes are refused, not wrapped
         {
             return false;
+        }
+        {
+            uint offsetValue = (uint)(value.Z) - unchecked((uint)((int)(-MaxVelocityUnits)));
+            if (!batch.SerializeBits(ref offsetValue, 23))
+            {
+                return false;
+            }
         }
         return true;
     }
 
     public static bool ReadQuantizedVelocity(ReadStream stream, QuantizedVelocity value)
     {
-        if (!stream.SerializeInt(ref value.X, (int)(-MaxVelocityUnits), (int)MaxVelocityUnits))
+        ReadBatch batch = stream.BeginBatch();
+        bool result = ReadQuantizedVelocityBatch(ref batch, value);
+        batch.End(); // on every path out — End publishes the cursor and the error
+        return result;
+    }
+
+    // The batch-form core — INLINE-ONLY: a non-inlined call taking the batch by
+    // ref address-exposes it and enregistration dies (measured 0.71x, worse than
+    // no batch). Nested types compose core-to-core by ref, never via the stream.
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static bool ReadQuantizedVelocityBatch(ref ReadBatch batch, QuantizedVelocity value)
+    {
+        if (!batch.SerializeInt(ref value.X, (int)(-MaxVelocityUnits), (int)MaxVelocityUnits))
         {
             return false;
         }
-        if (!stream.SerializeInt(ref value.Y, (int)(-MaxVelocityUnits), (int)MaxVelocityUnits))
+        if (!batch.SerializeInt(ref value.Y, (int)(-MaxVelocityUnits), (int)MaxVelocityUnits))
         {
             return false;
         }
-        if (!stream.SerializeInt(ref value.Z, (int)(-MaxVelocityUnits), (int)MaxVelocityUnits))
+        if (!batch.SerializeInt(ref value.Z, (int)(-MaxVelocityUnits), (int)MaxVelocityUnits))
         {
             return false;
         }
@@ -397,32 +587,64 @@ public static partial class Schema
         value.W = 0;
     }
 
+    // WriteQuantizedRotation/ReadQuantizedRotation run as a batch: the stream state lives in registers
+    // across the body's serialize calls and is stored back once at End —
+    // the tiny-message hot path (serialize.cs WriteBatch/ReadBatch). Same
+    // wire bytes, same validation, same latched-error model.
     public static bool WriteQuantizedRotation(WriteStream stream, QuantizedRotation value)
     {
+        WriteBatch batch = stream.BeginBatch();
+        bool result = WriteQuantizedRotationBatch(ref batch, value);
+        batch.End(); // on every path out — End publishes the state and the error
+        return result;
+    }
+
+    // The batch-form core — INLINE-ONLY: a non-inlined call taking the batch by
+    // ref address-exposes it and enregistration dies (measured 0.71x, worse than
+    // no batch). Nested types compose core-to-core by ref, never via the stream.
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static bool WriteQuantizedRotationBatch(ref WriteBatch batch, QuantizedRotation value)
+    {
+        if (value.X < (int)(-RotationUnits) || value.X > (int)RotationUnits) // out-of-contract writes are refused, not wrapped
         {
-            int rangeValue = (int)value.X;
-            if (!stream.SerializeInt(ref rangeValue, (int)(-RotationUnits), (int)RotationUnits))
+            return false;
+        }
+        {
+            uint offsetValue = (uint)(value.X) - unchecked((uint)((int)(-RotationUnits)));
+            if (!batch.SerializeBits(ref offsetValue, 12))
             {
                 return false;
             }
         }
+        if (value.Y < (int)(-RotationUnits) || value.Y > (int)RotationUnits) // out-of-contract writes are refused, not wrapped
         {
-            int rangeValue = (int)value.Y;
-            if (!stream.SerializeInt(ref rangeValue, (int)(-RotationUnits), (int)RotationUnits))
+            return false;
+        }
+        {
+            uint offsetValue = (uint)(value.Y) - unchecked((uint)((int)(-RotationUnits)));
+            if (!batch.SerializeBits(ref offsetValue, 12))
             {
                 return false;
             }
         }
+        if (value.Z < (int)(-RotationUnits) || value.Z > (int)RotationUnits) // out-of-contract writes are refused, not wrapped
         {
-            int rangeValue = (int)value.Z;
-            if (!stream.SerializeInt(ref rangeValue, (int)(-RotationUnits), (int)RotationUnits))
+            return false;
+        }
+        {
+            uint offsetValue = (uint)(value.Z) - unchecked((uint)((int)(-RotationUnits)));
+            if (!batch.SerializeBits(ref offsetValue, 12))
             {
                 return false;
             }
         }
+        if (value.W < (int)(-RotationUnits) || value.W > (int)RotationUnits) // out-of-contract writes are refused, not wrapped
         {
-            int rangeValue = (int)value.W;
-            if (!stream.SerializeInt(ref rangeValue, (int)(-RotationUnits), (int)RotationUnits))
+            return false;
+        }
+        {
+            uint offsetValue = (uint)(value.W) - unchecked((uint)((int)(-RotationUnits)));
+            if (!batch.SerializeBits(ref offsetValue, 12))
             {
                 return false;
             }
@@ -432,9 +654,21 @@ public static partial class Schema
 
     public static bool ReadQuantizedRotation(ReadStream stream, QuantizedRotation value)
     {
+        ReadBatch batch = stream.BeginBatch();
+        bool result = ReadQuantizedRotationBatch(ref batch, value);
+        batch.End(); // on every path out — End publishes the cursor and the error
+        return result;
+    }
+
+    // The batch-form core — INLINE-ONLY: a non-inlined call taking the batch by
+    // ref address-exposes it and enregistration dies (measured 0.71x, worse than
+    // no batch). Nested types compose core-to-core by ref, never via the stream.
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static bool ReadQuantizedRotationBatch(ref ReadBatch batch, QuantizedRotation value)
+    {
         {
             int rangeValue = 0;
-            if (!stream.SerializeInt(ref rangeValue, (int)(-RotationUnits), (int)RotationUnits))
+            if (!batch.SerializeInt(ref rangeValue, (int)(-RotationUnits), (int)RotationUnits))
             {
                 return false;
             }
@@ -442,7 +676,7 @@ public static partial class Schema
         }
         {
             int rangeValue = 0;
-            if (!stream.SerializeInt(ref rangeValue, (int)(-RotationUnits), (int)RotationUnits))
+            if (!batch.SerializeInt(ref rangeValue, (int)(-RotationUnits), (int)RotationUnits))
             {
                 return false;
             }
@@ -450,7 +684,7 @@ public static partial class Schema
         }
         {
             int rangeValue = 0;
-            if (!stream.SerializeInt(ref rangeValue, (int)(-RotationUnits), (int)RotationUnits))
+            if (!batch.SerializeInt(ref rangeValue, (int)(-RotationUnits), (int)RotationUnits))
             {
                 return false;
             }
@@ -458,7 +692,7 @@ public static partial class Schema
         }
         {
             int rangeValue = 0;
-            if (!stream.SerializeInt(ref rangeValue, (int)(-RotationUnits), (int)RotationUnits))
+            if (!batch.SerializeInt(ref rangeValue, (int)(-RotationUnits), (int)RotationUnits))
             {
                 return false;
             }
@@ -483,27 +717,43 @@ public static partial class Schema
         ZeroVec3(value.AngularVelocity);
     }
 
+    // WriteRigidBody/ReadRigidBody run as a batch: the stream state lives in registers
+    // across the body's serialize calls and is stored back once at End —
+    // the tiny-message hot path (serialize.cs WriteBatch/ReadBatch). Same
+    // wire bytes, same validation, same latched-error model.
     public static bool WriteRigidBody(WriteStream stream, RigidBody value)
     {
-        if (!WriteVec3(stream, value.Position))
+        WriteBatch batch = stream.BeginBatch();
+        bool result = WriteRigidBodyBatch(ref batch, value);
+        batch.End(); // on every path out — End publishes the state and the error
+        return result;
+    }
+
+    // The batch-form core — INLINE-ONLY: a non-inlined call taking the batch by
+    // ref address-exposes it and enregistration dies (measured 0.71x, worse than
+    // no batch). Nested types compose core-to-core by ref, never via the stream.
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static bool WriteRigidBodyBatch(ref WriteBatch batch, RigidBody value)
+    {
+        if (!WriteVec3Batch(ref batch, value.Position))
         {
             return false;
         }
-        if (!WriteQuat(stream, value.Orientation))
+        if (!WriteQuatBatch(ref batch, value.Orientation))
         {
             return false;
         }
-        if (!stream.SerializeBool(ref value.AtRest))
+        if (!batch.SerializeBool(ref value.AtRest))
         {
             return false;
         }
         if (!value.AtRest)
         {
-            if (!WriteVec3(stream, value.LinearVelocity))
+            if (!WriteVec3Batch(ref batch, value.LinearVelocity))
             {
                 return false;
             }
-            if (!WriteVec3(stream, value.AngularVelocity))
+            if (!WriteVec3Batch(ref batch, value.AngularVelocity))
             {
                 return false;
             }
@@ -513,25 +763,37 @@ public static partial class Schema
 
     public static bool ReadRigidBody(ReadStream stream, RigidBody value)
     {
-        if (!ReadVec3(stream, value.Position))
+        ReadBatch batch = stream.BeginBatch();
+        bool result = ReadRigidBodyBatch(ref batch, value);
+        batch.End(); // on every path out — End publishes the cursor and the error
+        return result;
+    }
+
+    // The batch-form core — INLINE-ONLY: a non-inlined call taking the batch by
+    // ref address-exposes it and enregistration dies (measured 0.71x, worse than
+    // no batch). Nested types compose core-to-core by ref, never via the stream.
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static bool ReadRigidBodyBatch(ref ReadBatch batch, RigidBody value)
+    {
+        if (!ReadVec3Batch(ref batch, value.Position))
         {
             return false;
         }
-        if (!ReadQuat(stream, value.Orientation))
+        if (!ReadQuatBatch(ref batch, value.Orientation))
         {
             return false;
         }
-        if (!stream.SerializeBool(ref value.AtRest))
+        if (!batch.SerializeBool(ref value.AtRest))
         {
             return false;
         }
         if (!value.AtRest)
         {
-            if (!ReadVec3(stream, value.LinearVelocity))
+            if (!ReadVec3Batch(ref batch, value.LinearVelocity))
             {
                 return false;
             }
-            if (!ReadVec3(stream, value.AngularVelocity))
+            if (!ReadVec3Batch(ref batch, value.AngularVelocity))
             {
                 return false;
             }
@@ -568,57 +830,73 @@ public static partial class Schema
         value.Ping = false;
     }
 
+    // WriteInput/ReadInput run as a batch: the stream state lives in registers
+    // across the body's serialize calls and is stored back once at End —
+    // the tiny-message hot path (serialize.cs WriteBatch/ReadBatch). Same
+    // wire bytes, same validation, same latched-error model.
     public static bool WriteInput(WriteStream stream, Input value)
     {
-        if (!stream.SerializeFloat(ref value.StickX))
+        WriteBatch batch = stream.BeginBatch();
+        bool result = WriteInputBatch(ref batch, value);
+        batch.End(); // on every path out — End publishes the state and the error
+        return result;
+    }
+
+    // The batch-form core — INLINE-ONLY: a non-inlined call taking the batch by
+    // ref address-exposes it and enregistration dies (measured 0.71x, worse than
+    // no batch). Nested types compose core-to-core by ref, never via the stream.
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static bool WriteInputBatch(ref WriteBatch batch, Input value)
+    {
+        if (!batch.SerializeFloat(ref value.StickX))
         {
             return false;
         }
-        if (!stream.SerializeFloat(ref value.StickY))
+        if (!batch.SerializeFloat(ref value.StickY))
         {
             return false;
         }
-        if (!stream.SerializeFloat(ref value.Throttle))
+        if (!batch.SerializeFloat(ref value.Throttle))
         {
             return false;
         }
-        if (!stream.SerializeFloat(ref value.Yaw))
+        if (!batch.SerializeFloat(ref value.Yaw))
         {
             return false;
         }
-        if (!stream.SerializeFloat(ref value.Pitch))
+        if (!batch.SerializeFloat(ref value.Pitch))
         {
             return false;
         }
-        if (!stream.SerializeBool(ref value.Fire))
+        if (!batch.SerializeBool(ref value.Fire))
         {
             return false;
         }
-        if (!stream.SerializeBool(ref value.AltFire))
+        if (!batch.SerializeBool(ref value.AltFire))
         {
             return false;
         }
-        if (!stream.SerializeBool(ref value.Boost))
+        if (!batch.SerializeBool(ref value.Boost))
         {
             return false;
         }
-        if (!stream.SerializeBool(ref value.Brake))
+        if (!batch.SerializeBool(ref value.Brake))
         {
             return false;
         }
-        if (!stream.SerializeBool(ref value.Aim))
+        if (!batch.SerializeBool(ref value.Aim))
         {
             return false;
         }
-        if (!stream.SerializeBool(ref value.LockOn))
+        if (!batch.SerializeBool(ref value.LockOn))
         {
             return false;
         }
-        if (!stream.SerializeBool(ref value.Zoom))
+        if (!batch.SerializeBool(ref value.Zoom))
         {
             return false;
         }
-        if (!stream.SerializeBool(ref value.Ping))
+        if (!batch.SerializeBool(ref value.Ping))
         {
             return false;
         }
@@ -627,55 +905,67 @@ public static partial class Schema
 
     public static bool ReadInput(ReadStream stream, Input value)
     {
-        if (!stream.SerializeFloat(ref value.StickX))
+        ReadBatch batch = stream.BeginBatch();
+        bool result = ReadInputBatch(ref batch, value);
+        batch.End(); // on every path out — End publishes the cursor and the error
+        return result;
+    }
+
+    // The batch-form core — INLINE-ONLY: a non-inlined call taking the batch by
+    // ref address-exposes it and enregistration dies (measured 0.71x, worse than
+    // no batch). Nested types compose core-to-core by ref, never via the stream.
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static bool ReadInputBatch(ref ReadBatch batch, Input value)
+    {
+        if (!batch.SerializeFloat(ref value.StickX))
         {
             return false;
         }
-        if (!stream.SerializeFloat(ref value.StickY))
+        if (!batch.SerializeFloat(ref value.StickY))
         {
             return false;
         }
-        if (!stream.SerializeFloat(ref value.Throttle))
+        if (!batch.SerializeFloat(ref value.Throttle))
         {
             return false;
         }
-        if (!stream.SerializeFloat(ref value.Yaw))
+        if (!batch.SerializeFloat(ref value.Yaw))
         {
             return false;
         }
-        if (!stream.SerializeFloat(ref value.Pitch))
+        if (!batch.SerializeFloat(ref value.Pitch))
         {
             return false;
         }
-        if (!stream.SerializeBool(ref value.Fire))
+        if (!batch.SerializeBool(ref value.Fire))
         {
             return false;
         }
-        if (!stream.SerializeBool(ref value.AltFire))
+        if (!batch.SerializeBool(ref value.AltFire))
         {
             return false;
         }
-        if (!stream.SerializeBool(ref value.Boost))
+        if (!batch.SerializeBool(ref value.Boost))
         {
             return false;
         }
-        if (!stream.SerializeBool(ref value.Brake))
+        if (!batch.SerializeBool(ref value.Brake))
         {
             return false;
         }
-        if (!stream.SerializeBool(ref value.Aim))
+        if (!batch.SerializeBool(ref value.Aim))
         {
             return false;
         }
-        if (!stream.SerializeBool(ref value.LockOn))
+        if (!batch.SerializeBool(ref value.LockOn))
         {
             return false;
         }
-        if (!stream.SerializeBool(ref value.Zoom))
+        if (!batch.SerializeBool(ref value.Zoom))
         {
             return false;
         }
-        if (!stream.SerializeBool(ref value.Ping))
+        if (!batch.SerializeBool(ref value.Ping))
         {
             return false;
         }
@@ -701,30 +991,53 @@ public static partial class Schema
         value.InputsCount = 0;
     }
 
+    // WriteInputPacket/ReadInputPacket run as a batch: the stream state lives in registers
+    // across the body's serialize calls and is stored back once at End —
+    // the tiny-message hot path (serialize.cs WriteBatch/ReadBatch). Same
+    // wire bytes, same validation, same latched-error model.
     public static bool WriteInputPacket(WriteStream stream, InputPacket value)
+    {
+        WriteBatch batch = stream.BeginBatch();
+        bool result = WriteInputPacketBatch(ref batch, value);
+        batch.End(); // on every path out — End publishes the state and the error
+        return result;
+    }
+
+    // The batch-form core — INLINE-ONLY: a non-inlined call taking the batch by
+    // ref address-exposes it and enregistration dies (measured 0.71x, worse than
+    // no batch). Nested types compose core-to-core by ref, never via the stream.
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static bool WriteInputPacketBatch(ref WriteBatch batch, InputPacket value)
     {
         {
             uint rawValue = value.SynchronizeSequence;
-            if (!stream.SerializeBits(ref rawValue, 16))
+            if (!batch.SerializeBits(ref rawValue, 16))
             {
                 return false;
             }
         }
-        if (!stream.SerializeBits64(ref value.CurrentFrame, 64))
+        if (!batch.SerializeBits64(ref value.CurrentFrame, 64))
         {
             return false;
         }
-        if (!stream.SerializeBits64(ref value.StartFrame, 64))
+        if (!batch.SerializeBits64(ref value.StartFrame, 64))
         {
             return false;
         }
-        if (!stream.SerializeInt(ref value.InputsCount, 0, (int)MaxInputsPerPacket)) // the count guards the loop (§6.3); the runtime refuses out-of-range on write
+        if (value.InputsCount < 0 || value.InputsCount > (int)MaxInputsPerPacket) // the count guards the loop (§6.3); out-of-contract writes are refused
         {
             return false;
+        }
+        {
+            uint offsetValue = (uint)(value.InputsCount);
+            if (!batch.SerializeBits(ref offsetValue, 5))
+            {
+                return false;
+            }
         }
         for (int i = 0; i < value.InputsCount; i++)
         {
-            if (!WriteInput(stream, value.Inputs[i]))
+            if (!WriteInputBatch(ref batch, value.Inputs[i]))
             {
                 return false;
             }
@@ -734,29 +1047,41 @@ public static partial class Schema
 
     public static bool ReadInputPacket(ReadStream stream, InputPacket value)
     {
+        ReadBatch batch = stream.BeginBatch();
+        bool result = ReadInputPacketBatch(ref batch, value);
+        batch.End(); // on every path out — End publishes the cursor and the error
+        return result;
+    }
+
+    // The batch-form core — INLINE-ONLY: a non-inlined call taking the batch by
+    // ref address-exposes it and enregistration dies (measured 0.71x, worse than
+    // no batch). Nested types compose core-to-core by ref, never via the stream.
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static bool ReadInputPacketBatch(ref ReadBatch batch, InputPacket value)
+    {
         {
             uint rawValue = 0;
-            if (!stream.SerializeBits(ref rawValue, 16))
+            if (!batch.SerializeBits(ref rawValue, 16))
             {
                 return false;
             }
             value.SynchronizeSequence = (ushort)rawValue;
         }
-        if (!stream.SerializeBits64(ref value.CurrentFrame, 64))
+        if (!batch.SerializeBits64(ref value.CurrentFrame, 64))
         {
             return false;
         }
-        if (!stream.SerializeBits64(ref value.StartFrame, 64))
+        if (!batch.SerializeBits64(ref value.StartFrame, 64))
         {
             return false;
         }
-        if (!stream.SerializeInt(ref value.InputsCount, 0, (int)MaxInputsPerPacket)) // the count guards the loop (§6.3)
+        if (!batch.SerializeInt(ref value.InputsCount, 0, (int)MaxInputsPerPacket)) // the count guards the loop (§6.3)
         {
             return false;
         }
         for (int i = 0; i < value.InputsCount; i++)
         {
-            if (!ReadInput(stream, value.Inputs[i]))
+            if (!ReadInputBatch(ref batch, value.Inputs[i]))
             {
                 return false;
             }
@@ -784,28 +1109,48 @@ public static partial class Schema
         value.Thrust = 0;
     }
 
+    // WriteShipCreate/ReadShipCreate run as a batch: the stream state lives in registers
+    // across the body's serialize calls and is stored back once at End —
+    // the tiny-message hot path (serialize.cs WriteBatch/ReadBatch). Same
+    // wire bytes, same validation, same latched-error model.
     public static bool WriteShipCreate(WriteStream stream, ShipCreate value)
     {
+        WriteBatch batch = stream.BeginBatch();
+        bool result = WriteShipCreateBatch(ref batch, value);
+        batch.End(); // on every path out — End publishes the state and the error
+        return result;
+    }
+
+    // The batch-form core — INLINE-ONLY: a non-inlined call taking the batch by
+    // ref address-exposes it and enregistration dies (measured 0.71x, worse than
+    // no batch). Nested types compose core-to-core by ref, never via the stream.
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static bool WriteShipCreateBatch(ref WriteBatch batch, ShipCreate value)
+    {
         {
-            int enumValue = (int)value.ShipType;
-            if (!stream.SerializeInt(ref enumValue, 0, 5))
+            uint enumValue = (uint)value.ShipType;
+            if (enumValue > 5) // headroom above the wire range cannot ride
+            {
+                return false;
+            }
+            if (!batch.SerializeBits(ref enumValue, 3))
             {
                 return false;
             }
         }
-        if (!WriteQuantizedPosition(stream, value.Position))
+        if (!WriteQuantizedPositionBatch(ref batch, value.Position))
         {
             return false;
         }
-        if (!WriteQuantizedRotation(stream, value.Rotation))
+        if (!WriteQuantizedRotationBatch(ref batch, value.Rotation))
         {
             return false;
         }
-        if (!WriteQuantizedVelocity(stream, value.LinearVelocity))
+        if (!WriteQuantizedVelocityBatch(ref batch, value.LinearVelocity))
         {
             return false;
         }
-        if (!stream.SerializeBool(ref value.HasFlags))
+        if (!batch.SerializeBool(ref value.HasFlags))
         {
             return false;
         }
@@ -817,29 +1162,41 @@ public static partial class Schema
             }
             {
                 uint flagsValue = (uint)value.Flags;
-                if (!stream.SerializeBits(ref flagsValue, 4))
+                if (!batch.SerializeBits(ref flagsValue, 4))
                 {
                     return false;
                 }
             }
         }
         {
-            int enumValue = (int)value.Team;
-            if (!stream.SerializeInt(ref enumValue, 0, 2))
+            uint enumValue = (uint)value.Team;
+            if (enumValue > 2) // headroom above the wire range cannot ride
+            {
+                return false;
+            }
+            if (!batch.SerializeBits(ref enumValue, 2))
             {
                 return false;
             }
         }
+        if (value.Health < 0 || value.Health > (int)MaxHealth) // out-of-contract writes are refused, not wrapped
         {
-            int rangeValue = (int)value.Health;
-            if (!stream.SerializeInt(ref rangeValue, 0, (int)MaxHealth))
+            return false;
+        }
+        {
+            uint offsetValue = (uint)(value.Health);
+            if (!batch.SerializeBits(ref offsetValue, 10))
             {
                 return false;
             }
         }
+        if (value.Thrust < 0 || value.Thrust > 100) // out-of-contract writes are refused, not wrapped
         {
-            int rangeValue = (int)value.Thrust;
-            if (!stream.SerializeInt(ref rangeValue, 0, 100))
+            return false;
+        }
+        {
+            uint offsetValue = (uint)(value.Thrust);
+            if (!batch.SerializeBits(ref offsetValue, 7))
             {
                 return false;
             }
@@ -849,27 +1206,39 @@ public static partial class Schema
 
     public static bool ReadShipCreate(ReadStream stream, ShipCreate value)
     {
+        ReadBatch batch = stream.BeginBatch();
+        bool result = ReadShipCreateBatch(ref batch, value);
+        batch.End(); // on every path out — End publishes the cursor and the error
+        return result;
+    }
+
+    // The batch-form core — INLINE-ONLY: a non-inlined call taking the batch by
+    // ref address-exposes it and enregistration dies (measured 0.71x, worse than
+    // no batch). Nested types compose core-to-core by ref, never via the stream.
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static bool ReadShipCreateBatch(ref ReadBatch batch, ShipCreate value)
+    {
         {
             int enumValue = 0;
-            if (!stream.SerializeInt(ref enumValue, 0, 5))
+            if (!batch.SerializeInt(ref enumValue, 0, 5))
             {
                 return false;
             }
             value.ShipType = (ShipType)enumValue;
         }
-        if (!ReadQuantizedPosition(stream, value.Position))
+        if (!ReadQuantizedPositionBatch(ref batch, value.Position))
         {
             return false;
         }
-        if (!ReadQuantizedRotation(stream, value.Rotation))
+        if (!ReadQuantizedRotationBatch(ref batch, value.Rotation))
         {
             return false;
         }
-        if (!ReadQuantizedVelocity(stream, value.LinearVelocity))
+        if (!ReadQuantizedVelocityBatch(ref batch, value.LinearVelocity))
         {
             return false;
         }
-        if (!stream.SerializeBool(ref value.HasFlags))
+        if (!batch.SerializeBool(ref value.HasFlags))
         {
             return false;
         }
@@ -877,7 +1246,7 @@ public static partial class Schema
         {
             {
                 uint flagsValue = 0;
-                if (!stream.SerializeBits(ref flagsValue, 4))
+                if (!batch.SerializeBits(ref flagsValue, 4))
                 {
                     return false;
                 }
@@ -890,7 +1259,7 @@ public static partial class Schema
         }
         {
             int enumValue = 0;
-            if (!stream.SerializeInt(ref enumValue, 0, 2))
+            if (!batch.SerializeInt(ref enumValue, 0, 2))
             {
                 return false;
             }
@@ -898,7 +1267,7 @@ public static partial class Schema
         }
         {
             int rangeValue = 0;
-            if (!stream.SerializeInt(ref rangeValue, 0, (int)MaxHealth))
+            if (!batch.SerializeInt(ref rangeValue, 0, (int)MaxHealth))
             {
                 return false;
             }
@@ -906,7 +1275,7 @@ public static partial class Schema
         }
         {
             int rangeValue = 0;
-            if (!stream.SerializeInt(ref rangeValue, 0, 100))
+            if (!batch.SerializeInt(ref rangeValue, 0, 100))
             {
                 return false;
             }
