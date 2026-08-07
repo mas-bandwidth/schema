@@ -94,10 +94,10 @@ type gen struct {
 	objOwner string // the one file that carries the object tag surface
 	owner    string // the class whose members are being emitted (CS0542 escape)
 
-	batched  map[string]bool          // Write/Read pair names whose entry runs a batch
-	needCore map[string]bool          // pair names that get a *Batch core (batched or composed under one)
-	inBatch  bool                     // emitting a batch-form core: receiver is `batch`, composition by ref
-	bulkBytes map[*ir.Field]bool      // statically byte-aligned [N]uint8 fields — bulk path (ir.AlignedFixedByteArrays)
+	batched   map[string]bool    // Write/Read pair names whose entry runs a batch
+	needCore  map[string]bool    // pair names that get a *Batch core (batched or composed under one)
+	inBatch   bool               // emitting a batch-form core: receiver is `batch`, composition by ref
+	bulkBytes map[*ir.Field]bool // statically byte-aligned [N]uint8 fields — bulk path (ir.AlignedFixedByteArrays)
 
 	types          strings.Builder // namespace-level declarations (enums, classes)
 	schema         strings.Builder // members of the partial static Schema class
