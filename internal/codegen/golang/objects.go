@@ -71,25 +71,33 @@ func (g *gen) emitViewWriteField(f *ir.Field, v ir.View, ind string) {
 	case v == ir.ViewShallow && f.HasQuantize:
 		st := f.Type.Ref.(*ir.Struct)
 		wide := f.QuantBound > 2147483647 // the int32 family truncates past this
+		quantBits := ir.BitsRequired(big.NewInt(-f.QuantBound), big.NewInt(f.QuantBound))
+		lo := big.NewInt(-f.QuantBound).String()
+		hi := big.NewInt(f.QuantBound).String()
 		for _, comp := range st.Fields {
 			compName := name + ir.GoExportName(comp.Name)
 			if wide {
 				g.pf("%s{\n%s\tcomponentValue := int64(%s)\n", ind, ind, compName)
-				g.pf("%s\tstream.SerializeInt64(&componentValue, -%d, %d)\n%s}\n", ind, f.QuantBound, f.QuantBound, ind)
+				g.emitWriteRangedFold64("componentValue", lo, hi, quantBits, false, ind+"\t")
+				g.pf("%s}\n", ind)
 			} else if smallestSigned(f.QuantBound) == 32 {
-				g.pf("%sstream.SerializeInt(&%s, -%d, %d)\n", ind, compName, f.QuantBound, f.QuantBound)
+				g.emitWriteRangedFold32(compName, lo, hi, quantBits, false, ind)
 			} else {
 				g.pf("%s{\n%s\tcomponentValue := int32(%s)\n", ind, ind, compName)
-				g.pf("%s\tstream.SerializeInt(&componentValue, -%d, %d)\n%s}\n", ind, f.QuantBound, f.QuantBound, ind)
+				g.emitWriteRangedFold32("componentValue", lo, hi, quantBits, false, ind+"\t")
+				g.pf("%s}\n", ind)
 			}
 		}
 	case v == ir.ViewShallow && f.HasFloatRange:
+		stepBits := ir.BitsRequired(big.NewInt(0), big.NewInt(f.Steps))
 		if f.Steps > 2147483647 {
 			g.pf("%s{\n%s\tprojectedValue := int64(%s)\n", ind, ind, name)
-			g.pf("%s\tstream.SerializeInt64(&projectedValue, 0, %d)\n%s}\n", ind, f.Steps, ind)
+			g.emitWriteRangedFold64("projectedValue", "0", big.NewInt(f.Steps).String(), stepBits, true, ind+"\t")
+			g.pf("%s}\n", ind)
 		} else {
 			g.pf("%s{\n%s\tprojectedValue := int32(%s)\n", ind, ind, name)
-			g.pf("%s\tstream.SerializeInt(&projectedValue, 0, %d)\n%s}\n", ind, f.Steps, ind)
+			g.emitWriteRangedFold32("projectedValue", "0", big.NewInt(f.Steps).String(), stepBits, true, ind+"\t")
+			g.pf("%s}\n", ind)
 		}
 	case v == ir.ViewDeep && f.HasFloatRange && f.Interpolate:
 		// the triple describes the shallow wire only — deep is the bare float
@@ -207,7 +215,8 @@ func (g *gen) emitObjectTagFunctions() {
 	g.pf("// null — the sentinel the surveyed baseline streams terminate with (SPEC §4.8).\n")
 	g.pf("func WriteObjectType(stream *serialize.WriteStream, value ObjectType) error {\n")
 	g.pf("\ttagValue := int32(value)\n")
-	g.pf("\tstream.SerializeInt(&tagValue, 0, %d)\n", count)
+	g.emitWriteRangedFold32("tagValue", "0", big.NewInt(count).String(),
+		ir.BitsRequired(big.NewInt(0), big.NewInt(count)), true, "\t")
 	g.pf("\treturn stream.Err()\n}\n\n")
 	g.pf("func ReadObjectType(stream *serialize.ReadStream, value *ObjectType) error {\n")
 	g.pf("\ttagValue := int32(0)\n")
