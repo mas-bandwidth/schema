@@ -385,6 +385,13 @@ pub fn write_message(stream: &mut WriteStream<'_>, message: &Message) -> Result 
 // variant is reset to its zero form (SPEC §5), then its fields decode in
 // place — no per-message copy of the union out of the call. On error the
 // storage holds the partially decoded zero form: discard it.
+//
+// Choosing a read surface: read_message for one-shot by-value reads;
+// read_message_into for reuse loops — hoist ONE Message and read every
+// message into it (the Go/C# MessageStorage discipline). Reuse removes the
+// per-message copy-out of the union and measured 2.6x on the steady-state
+// batch read (M2, 2026-08-06). The two surfaces stay separate on purpose —
+// see the note on read_message.
 #[inline]
 pub fn read_message_into(stream: &mut ReadStream<'_>, message: &mut Message) -> Result {
     let mut tag_value = MessageType::NONE;
@@ -442,6 +449,11 @@ pub fn read_message_into(stream: &mut ReadStream<'_>, message: &mut Message) -> 
     }
 }
 
+// read_message decodes the next message by value — the one-shot surface.
+// It deliberately does NOT delegate to read_message_into: routing the
+// return through a &mut out-param defeated LLVM's in-place construction
+// of the returned union and cost the batch read 23% (measured M2,
+// 2026-08-06). Both surfaces stay; reuse loops call read_message_into.
 #[inline]
 pub fn read_message(stream: &mut ReadStream<'_>) -> Result<Message> {
     let mut tag_value = MessageType::NONE;

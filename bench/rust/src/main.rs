@@ -692,24 +692,30 @@ fn bench_batch(ctx: &Ctx) {
         return;
     }
 
-    // read path: read messages until the None terminator, whole batch per pass
+    // read path: read messages until the None terminator, whole batch per
+    // pass; ONE reused Message hoisted out of the loop, filled through
+    // read_message_into (the Rust shape of the go/cs runners' hoisted
+    // MessageStorage and the C++ runner's reused Message) — read_message's
+    // by-value return copies the ~2 KB union out of the call per message,
+    // which is harness shape, not serialize work. The into-path is
+    // byte-verified against the corpus golden in check_message_stream_golden
+    // before any number is produced.
+    let mut storage = Message::None;
     for run in 0..(NUM_RUNS + 1) {
         let start = Instant::now();
         for _ in 0..passes {
             let mut rs = ReadStream::new(&batch_buffer, batch_bytes as usize);
             let mut count: i64 = 0;
             loop {
-                match read_message(&mut rs) {
-                    Ok(Message::None) => break,
-                    Ok(m) => {
-                        black_box(&m);
-                        count += 1;
-                    }
-                    Err(_) => {
-                        ctx.fail("message_batch", "read failed in loop");
-                        return;
-                    }
+                if read_message_into(&mut rs, &mut storage).is_err() {
+                    ctx.fail("message_batch", "read failed in loop");
+                    return;
                 }
+                if matches!(storage, Message::None) {
+                    break;
+                }
+                black_box(&storage); // every decoded field is observed
+                count += 1;
             }
             if count != NUM_BATCH_MESSAGES as i64 {
                 ctx.fail("message_batch", "batch message count mismatch on read");
@@ -742,7 +748,11 @@ fn bench_batch(ctx: &Ctx) {
 
 // ------------------------------------------------------------------------------------------
 
-// the message_stream golden: dispatch wire self-check (not a benchmark)
+// the message_stream golden: dispatch wire self-check (not a benchmark).
+// Both dispatch read surfaces are held to the golden bytes — read_message
+// (by-value) and read_message_into (the reused-storage surface the batch
+// read loop runs on) must decode the golden to equal messages, and the
+// into-path decode must re-write to the golden byte-for-byte.
 fn check_message_stream_golden(ctx: &Ctx) {
     let mut chat = Chat::default();
     chat.text[..8].copy_from_slice(b"dispatch");
@@ -756,6 +766,7 @@ fn check_message_stream_golden(ctx: &Ctx) {
         let mut ws = WriteStream::new(&mut buffer);
         if write_message(&mut ws, &Message::Chat(chat)).is_err()
             || write_message(&mut ws, &Message::Test(test)).is_err()
+            || write_message(&mut ws, &Message::None).is_err()
         {
             ctx.fail("message_stream", "dispatch write failed");
             return;
@@ -765,6 +776,80 @@ fn check_message_stream_golden(ctx: &Ctx) {
     }
     if !ctx.check_golden("message_stream", &buffer[..n]) {
         ctx.failed.set(true);
+        return;
+    }
+
+    // by-value decode of the golden bytes
+    let mut by_value = Vec::new();
+    {
+        let mut rs = ReadStream::new(&buffer, n);
+        loop {
+            match read_message(&mut rs) {
+                Ok(Message::None) => break,
+                Ok(m) => by_value.push(m),
+                Err(_) => {
+                    ctx.fail("message_stream", "by-value dispatch read failed");
+                    return;
+                }
+            }
+        }
+    }
+
+    // into-path decode into ONE reused storage, pre-poisoned with a full
+    // Block so the zero-form reset (SPEC §5) is what equality proves
+    let mut storage = {
+        let mut b = Block::default();
+        b.data_length = b.data.len() as i32;
+        for byte in b.data.iter_mut() {
+            *byte = 0xFF;
+        }
+        Message::Block(b)
+    };
+    let mut into_msgs = Vec::new();
+    {
+        let mut rs = ReadStream::new(&buffer, n);
+        loop {
+            if read_message_into(&mut rs, &mut storage).is_err() {
+                ctx.fail("message_stream", "read_message_into failed on the golden bytes");
+                return;
+            }
+            if matches!(storage, Message::None) {
+                break;
+            }
+            into_msgs.push(storage);
+        }
+    }
+    if by_value.len() != 2 || into_msgs != by_value {
+        ctx.fail(
+            "message_stream",
+            "read_message_into decode differs from read_message on the golden bytes",
+        );
+        return;
+    }
+
+    // and the into-path decode re-writes to the golden bytes exactly
+    let mut twin = vec![0u8; BUFFER_SIZE];
+    let twin_n;
+    {
+        let mut tws = WriteStream::new(&mut twin);
+        for m in &into_msgs {
+            if write_message(&mut tws, m).is_err() {
+                ctx.fail("message_stream", "re-write of into-path decode failed");
+                return;
+            }
+        }
+        if write_message(&mut tws, &Message::None).is_err() {
+            ctx.fail("message_stream", "re-write of into-path terminator failed");
+            return;
+        }
+        tws.flush();
+        twin_n = tws.bytes_processed() as usize;
+    }
+    if twin_n != n || twin[..twin_n] != buffer[..n] {
+        ctx.fail(
+            "message_stream",
+            "into-path round-trip bytes differ from the golden",
+        );
     }
 }
 

@@ -15,17 +15,24 @@ is stated.
 
 | backend | write | read | batch write | batch read |
 |---|---:|---:|---:|---:|
-| Rust | 100% | 238% | 121% | 303% |
+| Rust | 100% | 238% | 121% | 303% → **138%** |
 | C# | 251% | 353% | 151% | 172% |
 | Go | 305% | 386% | 239% | 176% |
+
+**Cell updated after v3** (2026-08-07, schema#10): the Rust batch read moved
+303% → 138% when the harness batch read loop adopted `read_message_into`
+(the ledger item below, now closed) — paired same-sitting M2 run beside
+same-run C++, CSVs `2026-08-07-rust-read-into-{before,after}-arm64-m2.csv`.
+Every other cell is v3's.
 
 ---
 
 ## Rust
 
-**Bottom line: the write gap is CLOSED at the corpus median (174% → 100%);
-what remains is tiny-message C++ constant-folding (measured, partly a
-policy floor), an unadopted 2.6x batch-read API, and a read column that
+**Bottom line: the write gap is CLOSED at the corpus median (174% → 100%),
+and the batch-read gap closed most of the way when `read_message_into` was
+adopted (303% → 138%, schema#10); what remains is tiny-message C++
+constant-folding (measured, partly a policy floor) and a read column that
 never got a read-shaped pass.**
 
 ### Closed today
@@ -35,6 +42,7 @@ never got a read-shaped pass.**
 | `#[inline]` on Stream trait default methods + `bits_required*` | ship_shallow write 1.96x, inputpacket write 1.89x, probebits read 1.85x, testdata write 1.57x, rigidbody_moving read 1.34x (paired M2) | serialize.rs#19 |
 | `#[inline]` on every generated wire function | combined with #19: inputpacket write 2.11x, probearray read 2.16x, shipcreate write 1.71x, chat write 1.66x vs pre-both baseline | schema#5 |
 | `WriteStream::write_bytes(&[u8])` + emitter borrow-in-place (kills the 256 B–2 KB per-message array copy, `sub sp, #0x7d0` + memcpy gone) | chat write +74–78%, message_batch write +32–49% (paired M2) | serialize.rs#20 + schema#6 |
+| `read_message_into` adoption in the batch read loop (ONE hoisted `Message`, the Go/C# MessageStorage discipline; the into-path now byte-verified against the pinned wire in `test/rust` and the bench self-check) | message_batch read 22.29 → 50.10 M msg/s (**2.25x** paired M2), batch read 306% → **138%** of same-run C++. Refutation recorded: the banked ~2.6x/~114% (schema#5's 58.57 side experiment) was NOT reached at the composed mains — 2.25x/138% is the measured close; the residual to 58.57 is unattributed (composition/layout; #5's number was beside a different runtime state). Side movement, also unattributed: batch WRITE rose 1.15x (68.29 → 78.28) on a byte-identical write loop with flat cpp/go/cs controls — binary layout is the suspicion, recorded, not claimed | schema#10 |
 
 v3 confirms the composition against v2: inputpacket write 2.13x, probearray
 read 2.10x, ship_shallow write 1.94x, chat write 1.80x, probebits read
@@ -58,14 +66,6 @@ spread.
 
 ### Named-but-open
 
-- **`read_message_into` adoption in generated dispatch.** Measured 2.6x on
-  batch read (22.28 → 58.57 M msg/s, M2 side experiment in schema#5; 2.1x
-  EPYC), API landed in the emitter — and nothing generated or benched calls
-  it: v3 batch read is 22.12, still the by-value ~2 KB return (`__memmove`
-  3.7% of profile, schema#5). Adopting it would price the batch-read column
-  from 303% to roughly 114% of C++ (66.95/58.57). Next step: emit the
-  dispatch read loop through `read_message_into`, re-pin source goldens,
-  re-bench.
 - **The read column (238%) never had a read-shaped pass — unattributed,
   next profile target.** The day's rust wins were write-heavy; ship_shallow
   read did not move all day (38.27 v3 vs 38.75 v2) while its write doubled,
@@ -246,8 +246,10 @@ measurement of record.
 
 PR bodies quoted: serialize#25/#26/#27; serialize.go#16/#17;
 serialize.rs#18/#19/#20; serialize.cs#1/#2/#3; schema#1–#8 (schema#4 open
-by design). Results docs: `2026-08-06-baseline.md`,
-`2026-08-06-four-language.md` (v1), `2026-08-06-four-language-v2.md` (v2),
-`2026-08-06-const-emit.md`, `2026-08-07-four-language-v3.md` (v3) and its
-CSV. Every ratio quoted from v3/v2/v1 is recomputable from the committed
-CSVs; every isolated-effect ratio cites its PR pairing.
+by design), schema#10 (the post-v3 batch-read close). Results docs:
+`2026-08-06-baseline.md`, `2026-08-06-four-language.md` (v1),
+`2026-08-06-four-language-v2.md` (v2), `2026-08-06-const-emit.md`,
+`2026-08-07-four-language-v3.md` (v3) and its CSV, and the paired
+`2026-08-07-rust-read-into-{before,after}-arm64-m2.csv`. Every ratio quoted
+from v3/v2/v1 is recomputable from the committed CSVs; every
+isolated-effect ratio cites its PR pairing.
