@@ -8,6 +8,9 @@
 package rust
 
 import (
+	"fmt"
+	"math/big"
+
 	"github.com/mas-bandwidth/schema/internal/ir"
 )
 
@@ -78,26 +81,37 @@ func (g *gen) emitViewWriteField(f *ir.Field, v ir.View, ind string) {
 	case v == ir.ViewShallow && f.HasQuantize:
 		st := f.Type.Ref.(*ir.Struct)
 		wide := f.QuantBound > 2147483647 // the i32 family truncates past this
+		quantBits := ir.BitsRequired(big.NewInt(-f.QuantBound), big.NewInt(f.QuantBound))
 		for _, comp := range st.Fields {
 			compName := name + "_" + comp.Name
-			if wide {
-				g.pf("%s{\n%s    let mut component_value = %s as i64;\n", ind, ind, compName)
-				g.pf("%s    stream.serialize_int64(&mut component_value, -%d, %d)?;\n%s}\n", ind, f.QuantBound, f.QuantBound, ind)
-			} else if smallestSigned(f.QuantBound) == 32 {
-				g.pf("%s{\n%s    let mut component_value = %s;\n", ind, ind, compName)
-				g.pf("%s    stream.serialize_int(&mut component_value, -%d, %d)?;\n%s}\n", ind, f.QuantBound, f.QuantBound, ind)
+			// the runtime ranged form's write assert, kept (debug parity);
+			// a half vacuous against the storage domain is elided
+			if f.QuantBound < (int64(1)<<uint(smallestSigned(f.QuantBound)-1))-1 {
+				g.pf("%sdebug_assert!(%s >= -%d && %s <= %d);\n", ind, compName, f.QuantBound, compName, f.QuantBound)
 			} else {
-				g.pf("%s{\n%s    let mut component_value = %s as i32;\n", ind, ind, compName)
-				g.pf("%s    stream.serialize_int(&mut component_value, -%d, %d)?;\n%s}\n", ind, f.QuantBound, f.QuantBound, ind)
+				g.pf("%sdebug_assert!(%s >= -%d);\n", ind, compName, f.QuantBound)
+			}
+			if wide {
+				g.emitWriteRangedFold64(compName, false, false,
+					fmt.Sprintf("-%d_i64", f.QuantBound), false, quantBits, "", ind)
+			} else {
+				g.emitWriteRangedFold32(compName, false,
+					fmt.Sprintf("-%d_i32", f.QuantBound), false, quantBits, "", ind)
 			}
 		}
 	case v == ir.ViewShallow && f.HasFloatRange:
+		stepBits := ir.BitsRequired(big.NewInt(0), big.NewInt(f.Steps))
+		storageBits := ir.StorageBitsFor(f.Steps)
+		// the runtime ranged form's write assert, kept (debug parity); the
+		// unsigned lower half is vacuous, and so is an upper bound filling
+		// its storage type exactly
+		if storageBits == 64 || f.Steps < (int64(1)<<uint(storageBits))-1 {
+			g.pf("%sdebug_assert!(%s <= %d);\n", ind, name, f.Steps)
+		}
 		if f.Steps > 2147483647 {
-			g.pf("%s{\n%s    let mut projected_value = %s as i64;\n", ind, ind, name)
-			g.pf("%s    stream.serialize_int64(&mut projected_value, 0, %d)?;\n%s}\n", ind, f.Steps, ind)
+			g.emitWriteRangedFold64(name, storageBits == 64, storageBits == 32, "0", true, stepBits, "", ind)
 		} else {
-			g.pf("%s{\n%s    let mut projected_value = %s as i32;\n", ind, ind, name)
-			g.pf("%s    stream.serialize_int(&mut projected_value, 0, %d)?;\n%s}\n", ind, f.Steps, ind)
+			g.emitWriteRangedFold32(name, storageBits == 32, "0", true, stepBits, "", ind)
 		}
 	case v == ir.ViewDeep && f.HasFloatRange && f.Interpolate:
 		// the triple describes the shallow wire only — deep is the bare float
@@ -219,8 +233,9 @@ func (g *gen) emitObjectTagFunctions() {
 	g.pf("// null — the sentinel the surveyed baseline streams terminate with (SPEC §4.8).\n")
 	g.pf("#[inline]\n")
 	g.pf("pub fn write_object_type(stream: &mut WriteStream<'_>, value: ObjectType) -> Result {\n")
-	g.pf("    let mut tag_value = value.0 as i32;\n")
-	g.pf("    stream.serialize_int(&mut tag_value, 0, %d)?;\n", count)
+	g.pf("    debug_assert!(value.0 as u32 <= %d); // the runtime ranged form's write assert, kept (debug parity)\n", count)
+	g.emitWriteRangedFold32("value.0", ir.StorageBitsFor(count) == 32, "0", true,
+		ir.BitsRequired(big.NewInt(0), big.NewInt(count)), "", "    ")
 	g.pf("    Ok(())\n}\n\n")
 	g.pf("#[inline]\n")
 	g.pf("pub fn read_object_type(stream: &mut ReadStream<'_>, value: &mut ObjectType) -> Result {\n")

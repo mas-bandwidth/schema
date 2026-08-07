@@ -13,6 +13,7 @@ import (
 	"math"
 	"math/big"
 
+	"github.com/mas-bandwidth/schema/internal/ast"
 	"github.com/mas-bandwidth/schema/internal/ir"
 )
 
@@ -20,6 +21,11 @@ import (
 // for a type or message.
 func (g *gen) emitStructFunctions(st *ir.Struct) {
 	g.needsStreams = true
+	// fixed [N]u8 arrays at statically byte-aligned positions take the
+	// runtime's bulk-bytes path instead of a per-byte loop — byte-identical
+	// wire (the internal align is zero bits when already aligned); the same
+	// ir.AlignedFixedByteArrays proof the C++ backend adopted (schema #7)
+	g.bulkBytes = ir.AlignedFixedByteArrays(st)
 	snake := ir.RustSnake(st.Name)
 	maxBits := ir.MaxBitsStruct(st)
 	g.pf("// %s is the longest wire path; align pads at worst case (SPEC §6.1).\n", ir.RustConstName(st.Name+"MaxBits"))
@@ -218,6 +224,94 @@ func intRangePath(min, max *big.Int) string {
 	return "bits64" // full-range unsigned: width-computed raw bits over value - min
 }
 
+// ---- generation-time bound folding (C++ PR #8's mechanism, Rust shape) ----
+//
+// A ranged integer's min/max/bit count are schema constants, so the GENERATOR
+// folds them: a ranged write emits the offset from min in a bit count computed
+// at generation time, straight into serialize_bits/serialize_bits64 with a
+// literal width — no runtime bits_required, no min/max parameter traffic, and
+// the 32/64 dword split resolves here, not at run time. The wire bytes are
+// identical to the runtime serialize_int/serialize_int64 forms, which compute
+// exactly this encoding ((value as uN).wrapping_sub(min as uN) in
+// bits_required(0, max - min) bits, low dword first past 32) — re-proven by
+// the wire golden gates.
+//
+// Deliberately NOT const-generic call forms (a serialize_int_const::<MIN,
+// MAX>): C++ PR #8 built the template twin of that design and measurement
+// disqualified it — instantiations shared by repeated bounds get outlined and
+// the call boundary cost 10-33% on ranged-int-heavy writes. The Rust hazard
+// is the same shape (each generic instantiation is a fresh function the
+// inliner may keep out of line), so the fold emits literals, never generics —
+// the entire benefit with no new call boundary.
+//
+// Reads stay on the runtime methods: serialize #25 measured the branchless
+// reader has nothing to gain from constant bounds, unchallenged since.
+
+// foldOffset32 renders the u32 offset expression for a fold site —
+// serialize_int's `(*value as u32).wrapping_sub(min as u32)` with the bounds
+// in hand. exprIsU32 skips the cast when the storage is already u32.
+func foldOffset32(expr string, exprIsU32 bool, lo string, loZero bool) string {
+	cast := expr + " as u32"
+	if exprIsU32 {
+		cast = expr
+	}
+	if loZero {
+		return cast
+	}
+	return fmt.Sprintf("(%s).wrapping_sub((%s) as u32)", cast, lo)
+}
+
+// emitWriteRangedFold32 emits the folded write for the int32 family: the
+// offset from lo in a generation-time bit count, byte-identical to
+// stream.serialize_int(&mut value, lo, hi). Release-mode range refusal (or
+// debug parity) is the CALLER's job — every fold site either follows a
+// generated guard or emits its own debug_assert first.
+func (g *gen) emitWriteRangedFold32(expr string, exprIsU32 bool, lo string, loZero bool, bits int64, comment, ind string) {
+	g.pf("%s{\n%s    let mut offset_value = %s;\n", ind, ind, foldOffset32(expr, exprIsU32, lo, loZero))
+	g.pf("%s    stream.serialize_bits(&mut offset_value, %d)?;%s\n%s}\n", ind, bits, comment, ind)
+}
+
+// emitWriteRangedFold64 is the int64 family twin (serialize_int64's encoding).
+// The dword split resolves here: an offset fitting one dword takes
+// serialize_bits directly — exactly the low-dword path serialize_int64
+// branches to at run time (truncation commutes with the wrapping subtract, so
+// computing the offset at u32 width is bit-identical). exprIsU32 feeds that
+// delegation: a 64-family RANGE can sit over u32 storage (uint32 full-range).
+func (g *gen) emitWriteRangedFold64(expr string, exprIsU64, exprIsU32 bool, lo string, loZero bool, bits int64, comment, ind string) {
+	if bits <= 32 {
+		g.emitWriteRangedFold32(expr, exprIsU32, lo, loZero, bits, comment, ind)
+		return
+	}
+	cast := expr + " as u64"
+	if exprIsU64 {
+		cast = expr
+	}
+	offset := cast
+	if !loZero {
+		offset = fmt.Sprintf("(%s).wrapping_sub((%s) as u64)", cast, lo)
+	}
+	g.pf("%s{\n%s    let mut offset_value = %s;\n", ind, ind, offset)
+	g.pf("%s    stream.serialize_bits64(&mut offset_value, %d)?;%s\n%s}\n", ind, bits, comment, ind)
+}
+
+// foldArg32 and foldArg64 render a bound for a cast context: a bare literal
+// gains an explicit type suffix — `expr as uN` propagates the UNSIGNED target
+// into an unconstrained literal, so `(-100) as u32` refuses to compile — while
+// a symbolic render keeps its own typing through the referenced consts.
+func (g *gen) foldArg32(e ast.Expr, folded *big.Int) string {
+	if e == nil || containsMax(e) || !g.renderable(e) || !containsIdent(e) {
+		return folded.String() + "_i32"
+	}
+	return g.renderArg(e, folded, "i32")
+}
+
+func (g *gen) foldArg64(e ast.Expr, folded *big.Int) string {
+	if e == nil || containsMax(e) || !g.renderable(e) || !containsIdent(e) {
+		return folded.String() + "_i64"
+	}
+	return g.renderArg(e, folded, "i64")
+}
+
 // storageMin and storageMax bound an integer field's STORAGE domain — the
 // range its Rust type can physically hold.
 func storageMin(t ir.FieldType) *big.Int {
@@ -260,13 +354,19 @@ func (g *gen) emitWriteField(f *ir.Field, ind string) {
 	g.needsStreamTrait = true
 	name := "value." + f.Name
 	if f.Array != ir.ArrayNone {
+		if g.bulkBytes[f] {
+			// statically byte-aligned [N]u8: the bulk path is byte-identical
+			// to the per-byte loop (its internal align is zero bits here) and
+			// block-copies instead of 8-bit packing; borrowed in place via
+			// WriteStream::write_bytes, as the length-prefixed fields already are
+			g.pf("%sstream.write_bytes(&%s)?; // byte-aligned [N]u8 — bulk copy, wire-identical to the per-byte loop\n", ind, name)
+			return
+		}
 		if f.Array == ir.ArrayCounted {
-			bound := g.renderArg(f.ArrayExpr, big.NewInt(f.ArrayBound), "i32")
 			g.pf("%sif %s_count < %d || %s_count > %d { // refused, not wrapped: the runtime's write side only debug_asserts\n", ind, name, f.ArrayMin, name, f.ArrayBound)
 			g.pf("%s    return Err(Error::Stream(serialize::Error::ValueOutOfRange));\n%s}\n", ind, ind)
-			g.pf("%s{\n%s    let mut count_value = %s_count;\n", ind, ind, name)
-			g.pf("%s    stream.serialize_int(&mut count_value, %d, %s)?; // the count guards the loop (§6.3)\n", ind, f.ArrayMin, bound)
-			g.pf("%s}\n", ind)
+			g.emitWriteRangedFold32(name+"_count", false, fmt.Sprintf("%d_i32", f.ArrayMin), f.ArrayMin == 0,
+				ir.BitsRequired(big.NewInt(f.ArrayMin), big.NewInt(f.ArrayBound)), " // the count guards the loop (§6.3)", ind)
 			g.pf("%sfor i in 0..%s_count as usize {\n", ind, name)
 		} else {
 			g.pf("%sfor i in 0..%s {\n", ind, g.renderArg(f.ArrayExpr, big.NewInt(f.ArrayBound), "usize"))
@@ -284,23 +384,15 @@ func (g *gen) emitWriteScalar(f *ir.Field, name, ind string) {
 		if f.HasIntRange {
 			switch intRangePath(f.IntMin, f.IntMax) {
 			case "int32":
-				lo, hi := g.rangeArgs(f, "i32")
+				lo := g.foldArg32(f.IntMinExpr, f.IntMin)
 				g.emitWriteRangeGuard(name, f, ind)
-				if f.Type.Signed && f.Type.Width == 32 {
-					g.pf("%s{\n%s    let mut range_value = %s;\n", ind, ind, name)
-				} else {
-					g.pf("%s{\n%s    let mut range_value = %s as i32;\n", ind, ind, name)
-				}
-				g.pf("%s    stream.serialize_int(&mut range_value, %s, %s)?;\n%s}\n", ind, lo, hi, ind)
+				g.emitWriteRangedFold32(name, !f.Type.Signed && f.Type.Width == 32, lo, f.IntMin.Sign() == 0,
+					ir.BitsRequired(f.IntMin, f.IntMax), "", ind)
 			case "int64":
-				lo, hi := g.rangeArgs(f, "i64")
+				lo := g.foldArg64(f.IntMinExpr, f.IntMin)
 				g.emitWriteRangeGuard(name, f, ind)
-				if f.Type.Signed && f.Type.Width == 64 {
-					g.pf("%s{\n%s    let mut range_value = %s;\n", ind, ind, name)
-				} else {
-					g.pf("%s{\n%s    let mut range_value = %s as i64;\n", ind, ind, name)
-				}
-				g.pf("%s    stream.serialize_int64(&mut range_value, %s, %s)?;\n%s}\n", ind, lo, hi, ind)
+				g.emitWriteRangedFold64(name, !f.Type.Signed && f.Type.Width == 64, !f.Type.Signed && f.Type.Width == 32,
+					lo, f.IntMin.Sign() == 0, ir.BitsRequired(f.IntMin, f.IntMax), "", ind)
 			default:
 				// full-range unsigned: raw offset bits (u64 storage only — no
 				// narrower storage can hold a range past i64). Like every
@@ -368,10 +460,8 @@ func (g *gen) emitWriteScalar(f *ir.Field, name, ind string) {
 		// Interior nulls are writer misuse; the read side rejects them (§4.7).
 		g.pf("%sif %s_length < 0 || %s_length > %d { // refused, not wrapped or panicked: guards the slice too\n", ind, name, name, f.Type.Size)
 		g.pf("%s    return Err(Error::Stream(serialize::Error::ValueOutOfRange));\n%s}\n", ind, ind)
-		g.pf("%s{\n%s    let mut length_value = %s_length;\n", ind, ind, name)
-		g.pf("%s    stream.serialize_int(&mut length_value, 0, %s)?; // the length guards the slice (§6.3)\n",
-			ind, g.renderArg(f.Type.SizeExpr, big.NewInt(f.Type.Size), "i32"))
-		g.pf("%s}\n", ind)
+		g.emitWriteRangedFold32(name+"_length", false, "0", true,
+			ir.BitsRequired(big.NewInt(0), big.NewInt(f.Type.Size)), " // the length guards the slice (§6.3)", ind)
 		// the write side borrows the used bytes in place: WriteStream::write_bytes
 		// takes &[u8] (same wire as serialize_bytes — align, then the block copy),
 		// where the unified &mut signature forced a whole-array copy into a mutable
@@ -386,8 +476,8 @@ func (g *gen) emitWriteScalar(f *ir.Field, name, ind string) {
 				g.pf("%sif %s.0 > %d {\n", ind, name, ref.Max)
 				g.pf("%s    return Err(Error::Stream(serialize::Error::ValueOutOfRange));\n%s}\n", ind, ind)
 			}
-			g.pf("%s{\n%s    let mut enum_value = %s.0 as i32;\n", ind, ind, name)
-			g.pf("%s    stream.serialize_int(&mut enum_value, 0, %d)?;\n%s}\n", ind, ref.Max, ind)
+			g.emitWriteRangedFold32(name+".0", ref.StorageBits == 32, "0", true,
+				ir.BitsRequired(big.NewInt(0), big.NewInt(ref.Max)), "", ind)
 		case *ir.Flags:
 			g.emitWriteFlagsValue(name, ref.WireBits, ind)
 		case *ir.Struct:
@@ -430,6 +520,10 @@ func (g *gen) emitReadField(f *ir.Field, ind string) {
 	g.needsStreamTrait = true
 	name := "value." + f.Name
 	if f.Array != ir.ArrayNone {
+		if g.bulkBytes[f] {
+			g.pf("%sstream.serialize_bytes(&mut %s)?; // byte-aligned [N]u8 — bulk copy, wire-identical to the per-byte loop\n", ind, name)
+			return
+		}
 		if f.Array == ir.ArrayCounted {
 			bound := g.renderArg(f.ArrayExpr, big.NewInt(f.ArrayBound), "i32")
 			g.pf("%sstream.serialize_int(&mut %s_count, %d, %s)?; // the count guards the loop (§6.3)\n", ind, name, f.ArrayMin, bound)
@@ -598,8 +692,9 @@ func (g *gen) emitMessageTagFunctions() {
 	g.pf("// valid wire value meaning *no message* — the stream terminator (SPEC §4.8).\n")
 	g.pf("#[inline]\n")
 	g.pf("pub fn write_message_type(stream: &mut WriteStream<'_>, value: MessageType) -> Result {\n")
-	g.pf("    let mut tag_value = value.0 as i32;\n")
-	g.pf("    stream.serialize_int(&mut tag_value, 0, %d)?;\n", count)
+	g.pf("    debug_assert!(value.0 as u32 <= %d); // the runtime ranged form's write assert, kept (debug parity)\n", count)
+	g.emitWriteRangedFold32("value.0", ir.StorageBitsFor(count) == 32, "0", true,
+		ir.BitsRequired(big.NewInt(0), big.NewInt(count)), "", "    ")
 	g.pf("    Ok(())\n}\n\n")
 	g.pf("#[inline]\n")
 	g.pf("pub fn read_message_type(stream: &mut ReadStream<'_>, value: &mut MessageType) -> Result {\n")

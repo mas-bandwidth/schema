@@ -83,22 +83,22 @@ pub fn write_test(stream: &mut WriteStream<'_>, value: &Test) -> Result {
         return Err(Error::Stream(serialize::Error::ValueOutOfRange));
     }
     {
-        let mut range_value = value.test_b as i32;
-        stream.serialize_int(&mut range_value, 0, 1000)?;
+        let mut offset_value = value.test_b as u32;
+        stream.serialize_bits(&mut offset_value, 10)?;
     }
     if value.test_c < 0 || value.test_c > 1000 { // out-of-contract writes are refused, not wrapped
         return Err(Error::Stream(serialize::Error::ValueOutOfRange));
     }
     {
-        let mut range_value = value.test_c as i32;
-        stream.serialize_int(&mut range_value, 0, 1000)?;
+        let mut offset_value = value.test_c as u32;
+        stream.serialize_bits(&mut offset_value, 10)?;
     }
     if value.test_d < 0 || value.test_d > 1000 { // out-of-contract writes are refused, not wrapped
         return Err(Error::Stream(serialize::Error::ValueOutOfRange));
     }
     {
-        let mut range_value = value.test_d as i32;
-        stream.serialize_int(&mut range_value, 0, 1000)?;
+        let mut offset_value = value.test_d as u32;
+        stream.serialize_bits(&mut offset_value, 10)?;
     }
     Ok(())
 }
@@ -156,8 +156,8 @@ pub fn write_block(stream: &mut WriteStream<'_>, value: &Block) -> Result {
         return Err(Error::Stream(serialize::Error::ValueOutOfRange));
     }
     {
-        let mut length_value = value.data_length;
-        stream.serialize_int(&mut length_value, 0, MAX_BLOCK_SIZE as i32)?; // the length guards the slice (§6.3)
+        let mut offset_value = value.data_length as u32;
+        stream.serialize_bits(&mut offset_value, 11)?; // the length guards the slice (§6.3)
     }
     stream.write_bytes(&value.data[..value.data_length as usize])?; // borrowed in place: the write side never mutates
     Ok(())
@@ -198,8 +198,8 @@ pub fn write_chat(stream: &mut WriteStream<'_>, value: &Chat) -> Result {
         return Err(Error::Stream(serialize::Error::ValueOutOfRange));
     }
     {
-        let mut length_value = value.text_length;
-        stream.serialize_int(&mut length_value, 0, MAX_CHAT_LENGTH as i32)?; // the length guards the slice (§6.3)
+        let mut offset_value = value.text_length as u32;
+        stream.serialize_bits(&mut offset_value, 9)?; // the length guards the slice (§6.3)
     }
     stream.write_bytes(&value.text[..value.text_length as usize])?; // borrowed in place: the write side never mutates
     Ok(())
@@ -316,8 +316,11 @@ pub fn read_timescale(stream: &mut ReadStream<'_>, value: &mut Timescale) -> Res
 // valid wire value meaning *no message* — the stream terminator (SPEC §4.8).
 #[inline]
 pub fn write_message_type(stream: &mut WriteStream<'_>, value: MessageType) -> Result {
-    let mut tag_value = value.0 as i32;
-    stream.serialize_int(&mut tag_value, 0, 6)?;
+    debug_assert!(value.0 as u32 <= 6); // the runtime ranged form's write assert, kept (debug parity)
+    {
+        let mut offset_value = value.0 as u32;
+        stream.serialize_bits(&mut offset_value, 3)?;
+    }
     Ok(())
 }
 

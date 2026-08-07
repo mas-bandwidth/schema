@@ -144,9 +144,10 @@ type gen struct {
 	objOwner string // the one file that carries the object tag surface
 
 	body             strings.Builder
-	needsStreams     bool // the file emits wire functions -> import the stream types
-	needsStreamTrait bool // the file calls stream.serialize_* -> the trait must be in scope
-	needsCrate       bool // the file references sibling modules -> use crate::*
+	bulkBytes        map[*ir.Field]bool // fixed [N]u8 arrays at statically byte-aligned positions (ir.AlignedFixedByteArrays)
+	needsStreams     bool               // the file emits wire functions -> import the stream types
+	needsStreamTrait bool               // the file calls stream.serialize_* -> the trait must be in scope
+	needsCrate       bool               // the file references sibling modules -> use crate::*
 }
 
 func (g *gen) pf(format string, args ...any) {
