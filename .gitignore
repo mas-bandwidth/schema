@@ -11,3 +11,7 @@ generated/cpp/ludicrous/.stamp
 generated/go/.stamp
 generated/rust/.stamp
 generated/cs/.stamp
+/bench/rust/target/
+/bench/rust/Cargo.lock
+/bench/cs/bin/
+/bench/cs/obj/

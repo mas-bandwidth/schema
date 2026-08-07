@@ -1,0 +1,827 @@
+// schema bench — the Rust runner.
+//
+// A port of bench/cpp/bench_main.cpp (the reference implementation) against
+// the generated Rust crate and the serialize.rs runtime: same benchmark set,
+// same pinned corpus instances, same LCG (wrapping mul/add) and vary-function
+// field mappings, same golden + round-trip self-checks (a mismatch REFUSES to
+// bench), same warmup + 7 measured runs + median/min/max/spread, same CSV row
+// format with lang=rust. See bench/README.md for the runner contract.
+//
+// Language-specific discipline:
+//   - escape barrier: std::hint::black_box on the written buffer and on every
+//     decoded value (the stub's sanctioned equivalent of the C++ empty-asm
+//     clobber), plus a sink accumulator observed at exit
+//   - streams borrow stack/heap buffers — construction per iteration is free,
+//     exactly the C++ shape
+//   - the driver is generic; write/read/vary monomorphize and inline like the
+//     C++ template reference
+
+#![allow(clippy::field_reassign_with_default)]
+#![allow(clippy::too_many_arguments)]
+
+use std::cell::Cell;
+use std::hint::black_box;
+use std::time::Instant;
+
+use example::*;
+use serialize::{ReadStream, Stream, WriteStream};
+
+const NUM_RUNS: usize = 7; // median of 7 (N >= 5), after 1 warmup run
+const NUM_VARIANTS: usize = 64; // read-path variant buffers
+
+// buffers: write buffers must be a multiple of 8 bytes (qword-flush contract);
+// variant buffers keep slack past the packet for the reader's window loads.
+// 4096 covers MESSAGE_MAX_BYTES (2008) with slack on both contracts.
+const BUFFER_SIZE: usize = 4096;
+
+// the LCG every runner must use (Knuth MMIX, as in serialize bench.cpp)
+fn bench_rng(rng: u64) -> u64 {
+    rng.wrapping_mul(6364136223846793005)
+        .wrapping_add(1442695040888963407)
+}
+
+struct Ctx {
+    csv: bool,
+    wire_dir: String,
+    failed: Cell<bool>,
+    sink: Cell<u64>,
+}
+
+struct RunStats {
+    median: f64, // ops/sec
+    min: f64,
+    max: f64,
+    spread: f64, // (max - min) / median * 100
+}
+
+fn run_stats(rates: &mut [f64]) -> RunStats {
+    rates.sort_by(|a, b| a.partial_cmp(b).unwrap());
+    let n = rates.len();
+    RunStats {
+        median: rates[n / 2],
+        min: rates[0],
+        max: rates[n - 1],
+        spread: (rates[n - 1] - rates[0]) / rates[n / 2] * 100.0,
+    }
+}
+
+impl Ctx {
+    fn fail(&self, name: &str, what: &str) {
+        eprintln!("FAILED: {name}: {what}");
+        self.failed.set(true);
+    }
+
+    fn check_golden(&self, name: &str, data: &[u8]) -> bool {
+        let path = format!("{}/{}.bin", self.wire_dir, name);
+        match std::fs::read(&path) {
+            Ok(expected) => {
+                if expected != data {
+                    eprintln!(
+                        "WIRE GOLDEN MISMATCH: {} ({} golden vs {} actual bytes) — refusing to bench code that does not match the corpus",
+                        name,
+                        expected.len(),
+                        data.len()
+                    );
+                    return false;
+                }
+                true
+            }
+            Err(_) => {
+                eprintln!("missing wire golden {path} — run from bench/rust (or pass --wire-dir)");
+                false
+            }
+        }
+    }
+
+    fn report(&self, bench: &str, path: &str, iters: i64, bytes_per_op: i64, s: &RunStats) {
+        let mbps = s.median * bytes_per_op as f64 / (1024.0 * 1024.0);
+        eprintln!(
+            "{:<18} {:<5} {:>10.2} M msg/s {:>10.1} MB/s   (min {:.2}, max {:.2}, spread {:.1}%)",
+            bench,
+            path,
+            s.median / 1e6,
+            mbps,
+            s.min / 1e6,
+            s.max / 1e6,
+            s.spread
+        );
+        if self.csv {
+            println!(
+                "rust,{},{},{},{},{},{:.0},{:.0},{:.0},{:.2},{:.2}",
+                bench, path, iters, bytes_per_op, NUM_RUNS, s.median, s.min, s.max, mbps, s.spread
+            );
+        }
+    }
+}
+
+// ------------------------------------------------------------------------------------------
+// the per-message benchmark driver
+// ------------------------------------------------------------------------------------------
+
+fn bench_message<T, W, R, V>(
+    ctx: &Ctx,
+    name: &str,
+    golden: Option<&str>,
+    iters: i64,
+    pinned: T,
+    write_fn: W,
+    read_fn: R,
+    mut vary_fn: V,
+) where
+    T: Copy + Default,
+    W: Fn(&mut WriteStream<'_>, &T) -> example::Result,
+    R: Fn(&mut ReadStream<'_>, &mut T) -> example::Result,
+    V: FnMut(&mut T, u64),
+{
+    let mut buffer = vec![0u8; BUFFER_SIZE];
+    let mut twin = vec![0u8; BUFFER_SIZE];
+    let mut variants = vec![[0u8; BUFFER_SIZE]; NUM_VARIANTS];
+
+    // self-check 1: the pinned instance matches its wire golden byte-for-byte
+    let mut base = pinned;
+    let bytes_per_op;
+    {
+        let mut ws = WriteStream::new(&mut buffer);
+        if write_fn(&mut ws, &base).is_err() {
+            ctx.fail(name, "write of pinned instance failed");
+            return;
+        }
+        ws.flush();
+        bytes_per_op = ws.bytes_processed() as usize;
+    }
+    if let Some(golden) = golden {
+        if !ctx.check_golden(golden, &buffer[..bytes_per_op]) {
+            ctx.failed.set(true);
+            return;
+        }
+    }
+
+    // self-check 2: round-trip write -> read -> re-write -> identical bytes
+    {
+        let mut out = T::default();
+        let mut rs = ReadStream::new(&buffer, bytes_per_op);
+        if read_fn(&mut rs, &mut out).is_err() {
+            ctx.fail(name, "read of pinned instance failed");
+            return;
+        }
+        let twin_bytes;
+        {
+            let mut tws = WriteStream::new(&mut twin);
+            if write_fn(&mut tws, &out).is_err() {
+                ctx.fail(name, "re-write of decoded instance failed");
+                return;
+            }
+            tws.flush();
+            twin_bytes = tws.bytes_processed() as usize;
+        }
+        if twin_bytes != bytes_per_op || buffer[..bytes_per_op] != twin[..bytes_per_op] {
+            ctx.fail(name, "round-trip bytes differ");
+            return;
+        }
+    }
+
+    // variant buffers for the read path (and proof that variation keeps bytes/op constant)
+    let mut rng: u64 = 1;
+    for k in 0..NUM_VARIANTS {
+        rng = bench_rng(rng);
+        vary_fn(&mut base, rng);
+        let mut vs = WriteStream::new(&mut variants[k]);
+        if write_fn(&mut vs, &base).is_err() {
+            ctx.fail(name, "write of varied instance failed");
+            return;
+        }
+        vs.flush();
+        if vs.bytes_processed() as usize != bytes_per_op {
+            ctx.fail(
+                name,
+                "variation changed bytes/op — vary must keep structure fields fixed",
+            );
+            return;
+        }
+    }
+
+    let mut write_rates = [0.0f64; NUM_RUNS];
+    let mut read_rates = [0.0f64; NUM_RUNS];
+
+    // write path: 1 warmup + NUM_RUNS measured
+    for run in 0..(NUM_RUNS + 1) {
+        let start = Instant::now();
+        for _ in 0..iters {
+            rng = bench_rng(rng);
+            vary_fn(&mut base, rng);
+            let n;
+            {
+                let mut ws = WriteStream::new(&mut buffer);
+                if write_fn(&mut ws, &base).is_err() {
+                    ctx.fail(name, "write failed in loop");
+                    return;
+                }
+                ws.flush();
+                n = ws.bytes_processed();
+            }
+            black_box(&buffer);
+            ctx.sink.set(ctx.sink.get().wrapping_add(n));
+        }
+        let time = start.elapsed().as_secs_f64();
+        if run >= 1 {
+            write_rates[run - 1] = iters as f64 / time;
+        }
+    }
+
+    // read path: 1 warmup + NUM_RUNS measured; ONE decode instance hoisted
+    // out of the loop and reused, matching the write loop's hoisted base — a
+    // fresh T::default() per iteration is stack-zeroing harness overhead, not
+    // serialize work (no heap either way; every field a read decodes is
+    // overwritten every iteration, structure fields fixed across variants).
+    // No per-iteration clone: read_fn takes &mut out, black_box takes &out.
+    let mut out = T::default();
+    for run in 0..(NUM_RUNS + 1) {
+        let start = Instant::now();
+        for i in 0..iters {
+            let mut rs = ReadStream::new(
+                &variants[(i as usize) & (NUM_VARIANTS - 1)],
+                bytes_per_op,
+            );
+            if read_fn(&mut rs, &mut out).is_err() {
+                ctx.fail(name, "read failed in loop");
+                return;
+            }
+            black_box(&out); // every decoded field is observed
+            ctx.sink.set(ctx.sink.get().wrapping_add(1));
+        }
+        let time = start.elapsed().as_secs_f64();
+        if run >= 1 {
+            read_rates[run - 1] = iters as f64 / time;
+        }
+    }
+
+    ctx.report(
+        name,
+        "write",
+        iters,
+        bytes_per_op as i64,
+        &run_stats(&mut write_rates),
+    );
+    ctx.report(
+        name,
+        "read",
+        iters,
+        bytes_per_op as i64,
+        &run_stats(&mut read_rates),
+    );
+}
+
+// ------------------------------------------------------------------------------------------
+// pinned corpus instances — the C++ reference's pin_* functions exactly
+// (the same instances test/rust/src/main.rs pins to the wire goldens)
+// ------------------------------------------------------------------------------------------
+
+fn pin_rigidbody_moving() -> RigidBody {
+    let mut input = RigidBody::default();
+    input.position = Vec3 {
+        x: 1.5,
+        y: -2.5,
+        z: 3.25,
+    };
+    input.orientation = Quat {
+        x: 0.1,
+        y: 0.2,
+        z: 0.3,
+        w: 0.9,
+    };
+    input.at_rest = false;
+    input.linear_velocity = Vec3 {
+        x: 10.0,
+        y: 20.0,
+        z: -3.0,
+    };
+    input.angular_velocity = Vec3 {
+        x: 0.25,
+        y: 0.5,
+        z: 0.75,
+    };
+    input
+}
+
+fn pin_chat() -> Chat {
+    let mut input = Chat::default();
+    input.text[..11].copy_from_slice(b"wire parity");
+    input.text_length = 11;
+    input
+}
+
+fn pin_inputpacket() -> InputPacket {
+    let mut input = InputPacket::default();
+    input.synchronize_sequence = 7;
+    input.current_frame = 123456789;
+    input.start_frame = 123456780;
+    input.inputs_count = 2;
+    input.inputs[0].throttle = 0.5;
+    input.inputs[0].fire = true;
+    input.inputs[1].stick_x = -0.25;
+    input.inputs[1].boost = true;
+    input
+}
+
+fn pin_shipcreate() -> ShipCreate {
+    let mut input = ShipCreate::default();
+    input.ship_type = ShipType::BOMBER;
+    input.position = QuantizedPosition {
+        x: 1000,
+        y: -2000,
+        z: 3000,
+    };
+    input.has_flags = true;
+    input.flags = SHIP_FLAGS_BOOSTING | SHIP_FLAGS_AIMING;
+    input.team = Team::BLUE;
+    input.health = 750;
+    input.thrust = 55;
+    input
+}
+
+fn pin_ship_shallow() -> ShipData_Shallow {
+    let mut interp = ShipData_Interpolate::default();
+    interp.ship_type = ShipType::CORVETTE;
+    interp.position = Vec3 {
+        x: 1.5,
+        y: -2.25,
+        z: 100.0,
+    };
+    interp.rotation = Quat {
+        x: 0.0,
+        y: 0.0,
+        z: 0.0,
+        w: 1.0,
+    };
+    interp.linear_velocity = Vec3 {
+        x: 3.0,
+        y: 0.0,
+        z: -1.0,
+    };
+    interp.flags = SHIP_FLAGS_BOOSTING;
+    interp.team = Team::RED;
+    interp.health = 750;
+    interp.thrust = 55;
+    let mut q = ShipData_Shallow::default();
+    quantize_ship(&interp, &mut q);
+    q
+}
+
+fn pin_probe_header() -> ProbeHeader {
+    ProbeHeader {
+        version: 5,
+        probe_id: 0x1122334455667788,
+    }
+}
+
+fn pin_probebits() -> ProbeBits {
+    let mut input = ProbeBits::default();
+    input.small = 0x1FF;
+    input.boundary = 0x1FFFFFFFF;
+    input.wide = 0xFEDCBA9876543210;
+    input.sensor = 4294967295;
+    input.nonce = 18446744073709551615;
+    input
+}
+
+fn pin_probearray() -> ProbeArray {
+    let mut input = ProbeArray::new(); // defaults: samples active, retries -1 — as the C++ default ctor
+    input.samples[0].orientation = 90.0;
+    input.samples[0].raw_delta = -5;
+    input.samples[0].big_delta = -1234567890123;
+    input.samples[0].weapon = Weapon::LASER;
+    input.samples[0].has_target = true;
+    input.samples[0].target_id = 777;
+    input.samples[0].samples_count = 1;
+    input.samples[0].samples[0] = 42;
+    input.samples[1].active = false;
+    input.samples[1].orientation = -45.5;
+    input.samples[1].raw_delta = 7;
+    input.samples[1].big_delta = 99;
+    input.samples[1].idle_ticks = 1000;
+    input.samples[1].samples_count = 2;
+    input.samples[1].samples[0] = 7;
+    input.samples[1].samples[1] = 8;
+    input.config.retries = 3;
+    input.config.preferred = Weapon::MISSILE;
+    input
+}
+
+#[allow(clippy::approx_constant)]
+fn pin_testdata() -> TestData {
+    let mut input = TestData::default();
+    input.a = -100;
+    input.b = 100;
+    input.c = 149;
+    input.d = 0x11;
+    input.e = 0x22;
+    input.f = 0x33;
+    input.g = true;
+    input.items_count = 3;
+    input.items[0] = 0;
+    input.items[1] = 128;
+    input.items[2] = 255;
+    input.float_value = 3.1415926;
+    input.compressed_float_value = 2.5;
+    input.double_value = 1.0 / 3.0;
+    input.int8_value = -128;
+    input.int16_value = -32768;
+    input.uint8_value = 255;
+    input.uint16_value = 65535;
+    input.uint32_value = 4294967295;
+    input.uint64_value = 18446744073709551615;
+    input.int64_full = i64::MIN;
+    input.int64_range = -999999999999;
+    for i in 0..17 {
+        input.fixed_bytes[i] = (i * 3) as u8;
+    }
+    input.text[..19].copy_from_slice(b"the quick brown fox");
+    input.text_length = 19;
+    input
+}
+
+// ------------------------------------------------------------------------------------------
+// vary functions — the C++ reference's vary_* field mappings exactly: VALUE
+// fields mutate within wire ranges through the LCG; structure fields (counts,
+// lengths, branch bools) stay fixed so bytes/op is constant.
+// ------------------------------------------------------------------------------------------
+
+fn vary_rigidbody(m: &mut RigidBody, rng: u64) {
+    m.position.x = ((rng >> 8) & 0xFFFF) as f64 * 0.25;
+    m.position.y = ((rng >> 16) & 0xFFFF) as f64 * 0.5;
+    m.position.z = ((rng >> 24) & 0xFFFF) as f64 * 0.125;
+    m.orientation.x = (rng & 0xFF) as f64 * 0.001;
+    m.linear_velocity.x = ((rng >> 32) & 0xFFF) as f64 * 0.25;
+    m.angular_velocity.z = ((rng >> 40) & 0xFFF) as f64 * 0.125;
+}
+
+fn vary_rigidbody_at_rest(m: &mut RigidBody, rng: u64) {
+    m.position.x = ((rng >> 8) & 0xFFFF) as f64 * 0.25;
+    m.position.y = ((rng >> 16) & 0xFFFF) as f64 * 0.5;
+    m.orientation.x = (rng & 0xFF) as f64 * 0.001;
+}
+
+fn vary_chat(m: &mut Chat, rng: u64) {
+    for i in 0..m.text_length as usize {
+        m.text[i] = b'a' + ((rng >> (i & 7)) & 15) as u8; // never zero
+    }
+}
+
+fn vary_test(m: &mut Test, rng: u64) {
+    m.test_a = rng as u16;
+    m.test_b = ((rng >> 16) & 511) as i16; // within [0, 1000]
+    m.test_c = ((rng >> 25) & 511) as i16;
+    m.test_d = ((rng >> 34) & 511) as i16;
+}
+
+fn vary_inputpacket(m: &mut InputPacket, rng: u64) {
+    m.synchronize_sequence = rng as u16;
+    m.current_frame = rng;
+    m.start_frame = rng >> 1;
+    m.inputs[0].throttle = ((rng as u32) & 0xFF) as f32 / 256.0;
+    m.inputs[0].fire = (rng & 1) != 0;
+    m.inputs[1].stick_x = (((rng >> 8) as u32) & 0xFF) as f32 / 256.0 - 0.5;
+    m.inputs[1].boost = (rng & 2) != 0;
+}
+
+fn vary_shipcreate(m: &mut ShipCreate, rng: u64) {
+    m.position.x = (((rng >> 8) & 0xFFFFF) as i32) - 0x80000; // within [-8388608, 8388608]
+    m.position.y = (((rng >> 16) & 0xFFFFF) as i32) - 0x80000;
+    m.position.z = (((rng >> 24) & 0xFFFFF) as i32) - 0x80000;
+    m.rotation.x = ((rng & 0x7FF) as i32 - 1024) as i16; // within [-1024, 1024]
+    m.linear_velocity.x = (((rng >> 32) & 0x3FFFFF) as i32) - 2097152;
+    m.flags = rng & 15; // 4 wire bits, has_flags stays true
+    m.health = ((rng >> 5) & 511) as i16; // within [0, 1000]
+    m.thrust = ((rng >> 14) & 63) as i8; // within [0, 100]
+}
+
+fn vary_ship_shallow(m: &mut ShipData_Shallow, rng: u64) {
+    m.position_x = (((rng >> 8) & 0xFFFFF) as i32) - 0x80000;
+    m.position_y = (((rng >> 16) & 0xFFFFF) as i32) - 0x80000;
+    m.position_z = (((rng >> 24) & 0xFFFFF) as i32) - 0x80000;
+    m.rotation_x = ((rng & 0x7FF) as i32 - 1024) as i16;
+    m.rotation_w = (((rng >> 11) & 0x7FF) as i32 - 1024) as i16;
+    m.linear_velocity_x = (((rng >> 32) & 0x3FFFFF) as i32) - 2097152;
+    m.flags = rng & 15;
+    m.health = ((rng >> 5) & 511) as u16;
+    m.thrust = ((rng >> 14) & 63) as u8;
+}
+
+fn vary_probe_header(m: &mut ProbeHeader, rng: u64) {
+    m.version = (rng as u32) & 7; // 3 wire bits
+    m.probe_id = rng;
+}
+
+fn vary_probebits(m: &mut ProbeBits, rng: u64) {
+    m.small = (rng as u32) & 511; // 9 bits
+    m.boundary = rng & ((1u64 << 33) - 1); // 33 bits
+    m.wide = rng.wrapping_mul(3);
+    m.sensor = (rng >> 16) as u32;
+    m.nonce = rng ^ 0x5555555555555555;
+}
+
+fn vary_probearray(m: &mut ProbeArray, rng: u64) {
+    m.samples[0].orientation = -180.0 + ((rng as u32) & 0x3FFF) as f32 * 0.02;
+    m.samples[0].raw_delta = (rng >> 8) as u32 as i32;
+    m.samples[0].big_delta = rng.wrapping_mul(5) as i64;
+    m.samples[0].target_id = (rng >> 24) as u16;
+    m.samples[0].samples[0] = (rng >> 40) as u16;
+    m.samples[1].orientation = -180.0 + (((rng >> 3) as u32) & 0x3FFF) as f32 * 0.02;
+    m.samples[1].idle_ticks = (rng >> 32) as u32;
+    m.samples[1].samples[0] = (rng >> 4) as u16;
+    m.samples[1].samples[1] = (rng >> 12) as u16;
+    m.config.retries = (rng >> 20) as u32 as i32;
+}
+
+fn vary_testdata(m: &mut TestData, rng: u64) {
+    m.a = (rng & 127) as i32 - 64; // within [-100, 100]
+    m.b = ((rng >> 7) & 127) as i32 - 64;
+    m.c = ((rng >> 14) & 127) as i32 - 64; // within [-100, 150]
+    m.d = (rng as u32) & 255;
+    m.e = ((rng >> 8) as u32) & 255;
+    m.f = ((rng >> 16) as u32) & 255;
+    m.items[0] = (rng & 255) as i32; // items_count stays 3
+    m.items[1] = ((rng >> 8) & 255) as i32;
+    m.items[2] = ((rng >> 16) & 255) as i32;
+    m.float_value = ((rng as u32) & 0xFFFF) as f32;
+    m.compressed_float_value = ((rng as u32) & 1023) as f32 * 0.005; // within [0, 10] (max 5.115)
+    m.double_value = (((rng >> 16) as i64) & 0xFFFFFF) as f64 * 0.5;
+    m.int8_value = rng as i8;
+    m.int16_value = (rng >> 8) as i16;
+    m.uint8_value = (rng >> 16) as u8;
+    m.uint16_value = (rng >> 24) as u16;
+    m.uint32_value = (rng >> 32) as u32;
+    m.uint64_value = rng.wrapping_mul(7);
+    m.int64_full = rng.wrapping_mul(11) as i64;
+    m.int64_range = (((rng >> 24) & ((1u64 << 37) - 1)) as i64) - (1i64 << 36); // within +/- 1e12
+    m.fixed_bytes[0] = rng as u8;
+    m.fixed_bytes[16] = (rng >> 8) as u8;
+    for i in 0..m.text_length as usize {
+        m.text[i] = b'a' + ((rng >> (i & 7)) & 15) as u8; // never zero
+    }
+}
+
+// ------------------------------------------------------------------------------------------
+// the synthetic steady-state batch: NUM_BATCH_MESSAGES messages through the
+// Message dispatch surface (write_message/read_message) plus the None
+// terminator, mixed types driven by the LCG — the C++ batch builder exactly.
+// ------------------------------------------------------------------------------------------
+
+const NUM_BATCH_MESSAGES: usize = 4096;
+const BATCH_PASSES: usize = 800;
+
+fn build_batch(ctx: &Ctx, messages: &mut Vec<Message>, batch_buffer: &mut [u8]) -> Option<i64> {
+    messages.clear();
+
+    let mut rng: u64 = 12345;
+    for _ in 0..NUM_BATCH_MESSAGES {
+        rng = bench_rng(rng);
+        let pick = ((rng >> 32) % 20) as i32;
+        let m = if pick < 5 {
+            // 25% Chat
+            let mut c = Chat::default();
+            c.text_length = 16 + (rng & 15) as i32;
+            for i in 0..c.text_length as usize {
+                c.text[i] = b'a' + ((rng >> (i & 7)) & 15) as u8;
+            }
+            Message::Chat(c)
+        } else if pick < 10 {
+            // 25% Test
+            let mut t = Test::default();
+            t.test_a = rng as u16;
+            t.test_b = ((rng >> 16) & 511) as i16;
+            t.test_c = ((rng >> 25) & 511) as i16;
+            t.test_d = ((rng >> 34) & 511) as i16;
+            Message::Test(t)
+        } else if pick < 13 {
+            // 15% Synchronize
+            let mut s = Synchronize::default();
+            s.sync_frame = rng;
+            s.sync_sequence = (rng >> 8) as u16;
+            Message::Synchronize(s)
+        } else if pick < 16 {
+            // 15% Timescale
+            let mut t = Timescale::default();
+            t.scale = ((rng as u32) & 0xFFFF) as f64 / 65536.0;
+            t.frame_a = (rng >> 16) as u32;
+            t.frame_b = (rng >> 24) as u32;
+            Message::Timescale(t)
+        } else if pick < 18 {
+            // 10% Heartbeat
+            Message::Heartbeat(Heartbeat::default())
+        } else {
+            // 10% Block
+            let mut b = Block::default();
+            b.data_length = 64 + (rng & 127) as i32;
+            for i in 0..b.data_length as usize {
+                b.data[i] = (rng >> (i & 31)) as u8;
+            }
+            Message::Block(b)
+        };
+        messages.push(m);
+    }
+
+    let mut ws = WriteStream::new(batch_buffer);
+    for m in messages.iter() {
+        if write_message(&mut ws, m).is_err() {
+            ctx.fail("message_batch", "batch write failed during setup");
+            return None;
+        }
+    }
+    if write_message(&mut ws, &Message::None).is_err() {
+        ctx.fail("message_batch", "terminator write failed during setup");
+        return None;
+    }
+    ws.flush();
+    Some(ws.bytes_processed() as i64)
+}
+
+fn bench_batch(ctx: &Ctx) {
+    // worst case is NUM_BATCH_MESSAGES * MESSAGE_MAX_BYTES; actual is far
+    // less. + 8 read slack, and the size is a multiple of 8 (write contract).
+    let batch_buffer_size = (NUM_BATCH_MESSAGES + 1) * MESSAGE_MAX_BYTES + 8;
+    let mut batch_buffer = vec![0u8; batch_buffer_size];
+
+    let mut messages: Vec<Message> = Vec::with_capacity(NUM_BATCH_MESSAGES);
+    let Some(batch_bytes) = build_batch(ctx, &mut messages, &mut batch_buffer) else {
+        return;
+    };
+
+    let passes = BATCH_PASSES;
+    let total_msgs = (passes * NUM_BATCH_MESSAGES) as i64;
+
+    let mut write_rates = [0.0f64; NUM_RUNS];
+    let mut read_rates = [0.0f64; NUM_RUNS];
+    let mut rng: u64 = 999;
+
+    // write path: whole batch per pass; one message mutates per pass so the
+    // batch is never loop-invariant
+    for run in 0..(NUM_RUNS + 1) {
+        let start = Instant::now();
+        for _ in 0..passes {
+            rng = bench_rng(rng);
+            match &mut messages[((rng >> 16) as usize) % NUM_BATCH_MESSAGES] {
+                Message::Synchronize(s) => s.sync_frame = rng,
+                Message::Test(t) => t.test_a = rng as u16,
+                _ => {}
+            }
+            let n;
+            {
+                let mut ws = WriteStream::new(&mut batch_buffer);
+                for m in messages.iter() {
+                    if write_message(&mut ws, m).is_err() {
+                        ctx.fail("message_batch", "write failed in loop");
+                        return;
+                    }
+                }
+                let _ = write_message(&mut ws, &Message::None);
+                ws.flush();
+                n = ws.bytes_processed();
+            }
+            black_box(&batch_buffer);
+            ctx.sink.set(ctx.sink.get().wrapping_add(n));
+        }
+        let time = start.elapsed().as_secs_f64();
+        if run >= 1 {
+            write_rates[run - 1] = total_msgs as f64 / time;
+        }
+    }
+
+    // the read buffer: rebuild once from the deterministic batch state so bytes match
+    if build_batch(ctx, &mut messages, &mut batch_buffer).is_none() {
+        return;
+    }
+
+    // read path: read messages until the None terminator, whole batch per pass
+    for run in 0..(NUM_RUNS + 1) {
+        let start = Instant::now();
+        for _ in 0..passes {
+            let mut rs = ReadStream::new(&batch_buffer, batch_bytes as usize);
+            let mut count: i64 = 0;
+            loop {
+                match read_message(&mut rs) {
+                    Ok(Message::None) => break,
+                    Ok(m) => {
+                        black_box(&m);
+                        count += 1;
+                    }
+                    Err(_) => {
+                        ctx.fail("message_batch", "read failed in loop");
+                        return;
+                    }
+                }
+            }
+            if count != NUM_BATCH_MESSAGES as i64 {
+                ctx.fail("message_batch", "batch message count mismatch on read");
+                return;
+            }
+            ctx.sink.set(ctx.sink.get().wrapping_add(count as u64));
+        }
+        let time = start.elapsed().as_secs_f64();
+        if run >= 1 {
+            read_rates[run - 1] = total_msgs as f64 / time;
+        }
+    }
+
+    let bytes_per_msg = batch_bytes / NUM_BATCH_MESSAGES as i64;
+    ctx.report(
+        "message_batch",
+        "write",
+        total_msgs,
+        bytes_per_msg,
+        &run_stats(&mut write_rates),
+    );
+    ctx.report(
+        "message_batch",
+        "read",
+        total_msgs,
+        bytes_per_msg,
+        &run_stats(&mut read_rates),
+    );
+}
+
+// ------------------------------------------------------------------------------------------
+
+// the message_stream golden: dispatch wire self-check (not a benchmark)
+fn check_message_stream_golden(ctx: &Ctx) {
+    let mut chat = Chat::default();
+    chat.text[..8].copy_from_slice(b"dispatch");
+    chat.text_length = 8;
+    let mut test = Test::default();
+    test.test_b = 42;
+
+    let mut buffer = vec![0u8; BUFFER_SIZE];
+    let n;
+    {
+        let mut ws = WriteStream::new(&mut buffer);
+        if write_message(&mut ws, &Message::Chat(chat)).is_err()
+            || write_message(&mut ws, &Message::Test(test)).is_err()
+        {
+            ctx.fail("message_stream", "dispatch write failed");
+            return;
+        }
+        ws.flush();
+        n = ws.bytes_processed() as usize;
+    }
+    if !ctx.check_golden("message_stream", &buffer[..n]) {
+        ctx.failed.set(true);
+    }
+}
+
+fn main() {
+    let mut csv = false;
+    let mut wire_dir = String::from("../../testdata/wire");
+    let args: Vec<String> = std::env::args().collect();
+    let mut i = 1;
+    while i < args.len() {
+        match args[i].as_str() {
+            "--csv" => csv = true,
+            "--wire-dir" if i + 1 < args.len() => {
+                i += 1;
+                wire_dir = args[i].clone();
+            }
+            _ => {
+                eprintln!("usage: {} [--csv] [--wire-dir <dir>]", args[0]);
+                std::process::exit(1);
+            }
+        }
+        i += 1;
+    }
+
+    let ctx = Ctx {
+        csv,
+        wire_dir,
+        failed: Cell::new(false),
+        sink: Cell::new(0),
+    };
+
+    eprintln!("schema bench (rust)");
+
+    check_message_stream_golden(&ctx);
+
+    // rigidbody_at_rest: the pinned at-rest twin of rigidbody_moving
+    let mut at_rest = pin_rigidbody_moving();
+    at_rest.at_rest = true;
+
+    bench_message(&ctx, "rigidbody_moving", Some("rigidbody_moving"), 2000000, pin_rigidbody_moving(), write_rigid_body, read_rigid_body, vary_rigidbody);
+    bench_message(&ctx, "rigidbody_at_rest", Some("rigidbody_at_rest"), 4000000, at_rest, write_rigid_body, read_rigid_body, vary_rigidbody_at_rest);
+    bench_message(&ctx, "chat", Some("chat"), 4000000, pin_chat(), write_chat, read_chat, vary_chat);
+    bench_message(&ctx, "test", None, 16000000, Test::default(), write_test, read_test, vary_test);
+    bench_message(&ctx, "inputpacket", Some("inputpacket"), 2000000, pin_inputpacket(), write_input_packet, read_input_packet, vary_inputpacket);
+    bench_message(&ctx, "shipcreate", Some("shipcreate_flags"), 4000000, pin_shipcreate(), write_ship_create, read_ship_create, vary_shipcreate);
+    bench_message(&ctx, "ship_shallow", Some("ship_shallow"), 4000000, pin_ship_shallow(), write_ship_data_shallow, read_ship_data_shallow, vary_ship_shallow);
+    bench_message(&ctx, "probe_header", Some("probe_header"), 16000000, pin_probe_header(), write_probe_header, read_probe_header, vary_probe_header);
+    bench_message(&ctx, "probebits", Some("probebits"), 4000000, pin_probebits(), write_probe_bits, read_probe_bits, vary_probebits);
+    bench_message(&ctx, "probearray", Some("probearray"), 2000000, pin_probearray(), write_probe_array, read_probe_array, vary_probearray);
+    bench_message(&ctx, "testdata", Some("testdata"), 1000000, pin_testdata(), write_test_data, read_test_data, vary_testdata);
+
+    bench_batch(&ctx);
+
+    if ctx.failed.get() {
+        eprintln!("BENCH FAILED");
+        std::process::exit(1);
+    }
+
+    eprintln!("OK");
+    black_box(ctx.sink.get());
+}
