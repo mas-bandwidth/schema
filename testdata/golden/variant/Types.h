@@ -81,7 +81,8 @@ inline constexpr int64_t HandleMaxBytes = 8; // rounded up to the 8-byte write-b
 
 inline bool WriteHandle( serialize::WriteStream & stream, const Handle & value )
 {
-    write_int( stream, value.object_id, 0, MaxObjects - 1 );
+    serialize_assert( int32_t( value.object_id ) >= int32_t( 0 ) && int32_t( value.object_id ) <= int32_t( MaxObjects - 1 ) );
+    write_bits( stream, uint32_t( value.object_id ), 14 );
     write_bits( stream, value.object_sequence, 8 );
     return true;
 }
@@ -109,9 +110,12 @@ inline constexpr int64_t QuantizedPositionMaxBytes = 16; // rounded up to the 8-
 
 inline bool WriteQuantizedPosition( serialize::WriteStream & stream, const QuantizedPosition & value )
 {
-    write_int( stream, value.x, -MaxPositionUnits, MaxPositionUnits );
-    write_int( stream, value.y, -MaxPositionUnits, MaxPositionUnits );
-    write_int( stream, value.z, -MaxPositionUnits, MaxPositionUnits );
+    serialize_assert( int32_t( value.x ) >= int32_t( -MaxPositionUnits ) && int32_t( value.x ) <= int32_t( MaxPositionUnits ) );
+    write_bits( stream, uint32_t( value.x ) - uint32_t( -MaxPositionUnits ), 25 );
+    serialize_assert( int32_t( value.y ) >= int32_t( -MaxPositionUnits ) && int32_t( value.y ) <= int32_t( MaxPositionUnits ) );
+    write_bits( stream, uint32_t( value.y ) - uint32_t( -MaxPositionUnits ), 25 );
+    serialize_assert( int32_t( value.z ) >= int32_t( -MaxPositionUnits ) && int32_t( value.z ) <= int32_t( MaxPositionUnits ) );
+    write_bits( stream, uint32_t( value.z ) - uint32_t( -MaxPositionUnits ), 25 );
     return true;
 }
 
@@ -135,9 +139,12 @@ inline constexpr int64_t QuantizedVelocityMaxBytes = 16; // rounded up to the 8-
 
 inline bool WriteQuantizedVelocity( serialize::WriteStream & stream, const QuantizedVelocity & value )
 {
-    write_int( stream, value.x, -MaxVelocityUnits, MaxVelocityUnits );
-    write_int( stream, value.y, -MaxVelocityUnits, MaxVelocityUnits );
-    write_int( stream, value.z, -MaxVelocityUnits, MaxVelocityUnits );
+    serialize_assert( int32_t( value.x ) >= int32_t( -MaxVelocityUnits ) && int32_t( value.x ) <= int32_t( MaxVelocityUnits ) );
+    write_bits( stream, uint32_t( value.x ) - uint32_t( -MaxVelocityUnits ), 23 );
+    serialize_assert( int32_t( value.y ) >= int32_t( -MaxVelocityUnits ) && int32_t( value.y ) <= int32_t( MaxVelocityUnits ) );
+    write_bits( stream, uint32_t( value.y ) - uint32_t( -MaxVelocityUnits ), 23 );
+    serialize_assert( int32_t( value.z ) >= int32_t( -MaxVelocityUnits ) && int32_t( value.z ) <= int32_t( MaxVelocityUnits ) );
+    write_bits( stream, uint32_t( value.z ) - uint32_t( -MaxVelocityUnits ), 23 );
     return true;
 }
 
@@ -162,10 +169,14 @@ inline constexpr int64_t QuantizedRotationMaxBytes = 8; // rounded up to the 8-b
 
 inline bool WriteQuantizedRotation( serialize::WriteStream & stream, const QuantizedRotation & value )
 {
-    write_int( stream, value.x, -RotationUnits, RotationUnits );
-    write_int( stream, value.y, -RotationUnits, RotationUnits );
-    write_int( stream, value.z, -RotationUnits, RotationUnits );
-    write_int( stream, value.w, -RotationUnits, RotationUnits );
+    serialize_assert( int32_t( value.x ) >= int32_t( -RotationUnits ) && int32_t( value.x ) <= int32_t( RotationUnits ) );
+    write_bits( stream, uint32_t( value.x ) - uint32_t( -RotationUnits ), 12 );
+    serialize_assert( int32_t( value.y ) >= int32_t( -RotationUnits ) && int32_t( value.y ) <= int32_t( RotationUnits ) );
+    write_bits( stream, uint32_t( value.y ) - uint32_t( -RotationUnits ), 12 );
+    serialize_assert( int32_t( value.z ) >= int32_t( -RotationUnits ) && int32_t( value.z ) <= int32_t( RotationUnits ) );
+    write_bits( stream, uint32_t( value.z ) - uint32_t( -RotationUnits ), 12 );
+    serialize_assert( int32_t( value.w ) >= int32_t( -RotationUnits ) && int32_t( value.w ) <= int32_t( RotationUnits ) );
+    write_bits( stream, uint32_t( value.w ) - uint32_t( -RotationUnits ), 12 );
     return true;
 }
 
@@ -337,7 +348,8 @@ inline bool WriteInputPacket( serialize::WriteStream & stream, const InputPacket
     write_bits( stream, value.synchronize_sequence, 16 );
     write_bits( stream, value.current_frame, 64 );
     write_bits( stream, value.start_frame, 64 );
-    write_int( stream, value.inputs_count, 0, MaxInputsPerPacket );
+    serialize_assert( int32_t( value.inputs_count ) >= int32_t( 0 ) && int32_t( value.inputs_count ) <= int32_t( MaxInputsPerPacket ) );
+    write_bits( stream, uint32_t( value.inputs_count ), 5 );
     for ( int32_t i = 0; i < value.inputs_count; i++ )
     {
         if ( !WriteInput( stream, value.inputs[i] ) )
@@ -390,7 +402,8 @@ inline constexpr int64_t ShipCreateMaxBytes = 32; // rounded up to the 8-byte wr
 
 inline bool WriteShipCreate( serialize::WriteStream & stream, const ShipCreate & value )
 {
-    write_int( stream, int32_t( value.ship_type ), 0, 5 );
+    serialize_assert( int32_t( value.ship_type ) >= int32_t( 0 ) && int32_t( value.ship_type ) <= int32_t( 5 ) );
+    write_bits( stream, uint32_t( value.ship_type ), 3 );
     if ( !WriteQuantizedPosition( stream, value.position ) )
     {
         return false;
@@ -409,9 +422,12 @@ inline bool WriteShipCreate( serialize::WriteStream & stream, const ShipCreate &
         serialize_assert( value.flags < ( 1ull << 4 ) );
         write_bits( stream, value.flags, 4 );
     }
-    write_int( stream, int32_t( value.team ), 0, 2 );
-    write_int( stream, value.health, 0, MaxHealth );
-    write_int( stream, value.thrust, 0, 100 );
+    serialize_assert( int32_t( value.team ) >= int32_t( 0 ) && int32_t( value.team ) <= int32_t( 2 ) );
+    write_bits( stream, uint32_t( value.team ), 2 );
+    serialize_assert( int32_t( value.health ) >= int32_t( 0 ) && int32_t( value.health ) <= int32_t( MaxHealth ) );
+    write_bits( stream, uint32_t( value.health ), 10 );
+    serialize_assert( int32_t( value.thrust ) >= int32_t( 0 ) && int32_t( value.thrust ) <= int32_t( 100 ) );
+    write_bits( stream, uint32_t( value.thrust ), 7 );
     return true;
 }
 

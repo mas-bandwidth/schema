@@ -132,7 +132,8 @@ inline constexpr int64_t LudicrousStateMaxBytes = 152; // rounded up to the 8-by
 
 inline bool WriteLudicrousState( serialize::WriteStream & stream, const LudicrousState & value )
 {
-    write_int( stream, int32_t( value.mode ), 0, 3 );
+    serialize_assert( int32_t( value.mode ) >= int32_t( 0 ) && int32_t( value.mode ) <= int32_t( 3 ) );
+    write_bits( stream, uint32_t( value.mode ), 2 );
     if ( !WriteFixedProbe( stream, value.probe ) )
     {
         return false;
@@ -141,7 +142,8 @@ inline bool WriteLudicrousState( serialize::WriteStream & stream, const Ludicrou
     {
         return false;
     }
-    write_int( stream, value.keys_count, 0, 4 );
+    serialize_assert( int32_t( value.keys_count ) >= int32_t( 0 ) && int32_t( value.keys_count ) <= int32_t( 4 ) );
+    write_bits( stream, uint32_t( value.keys_count ), 3 );
     for ( int32_t i = 0; i < value.keys_count; i++ )
     {
         write_uint128( stream, value.keys[i] );
@@ -190,7 +192,8 @@ inline bool ReadLudicrousState( serialize::ReadStream & stream, LudicrousState &
 // valid wire value meaning *no message* — the stream terminator (SPEC §4.8).
 inline bool WriteMessageType( serialize::WriteStream & stream, MessageType value )
 {
-    write_int( stream, int32_t( value ), 0, 1 );
+    serialize_assert( int32_t( value ) >= int32_t( 0 ) && int32_t( value ) <= int32_t( 1 ) );
+    write_bits( stream, uint32_t( value ), 1 );
     return true;
 }
 
