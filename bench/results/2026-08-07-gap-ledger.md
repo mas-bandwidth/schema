@@ -48,6 +48,31 @@ its causes stand):
 - **C#**: write 251% → 379% likewise denominator-only; the v3 caveat on
   cs shipcreate's dip is resolved (v4 puts it back at v1 levels).
 
+**The v5 scoreboard — the program's closing pass** (2026-08-07, all three
+per-language lanes composed at the fresh mains,
+`2026-08-07-four-language-v5.md`; zero rows regressed beyond spread):
+
+| backend | write | read | batch write | batch read |
+|---|---:|---:|---:|---:|
+| Rust | 177% | 204% | 121% | 153% |
+| C# | 199% | 214% | 140% | 175% |
+| Go | 323% | 387% | 204% | 198% |
+
+- **Rust**: final columns 177/204/121/153 — schema#14 closed testdata read
+  (+49% composed, moving the read median 236→204); the read column beyond
+  testdata and the tiny-message floor remain the open items below.
+- **C#**: final columns 199/214/140/175 — schema#12's density-ruled batch
+  opt-in + bulk-bytes composed at 16-of-22 rows past spread (up to 2.39x),
+  making the "emitter batch opt-in" item below CLOSED; batch-scope widening
+  stays open.
+- **Go**: final columns 323/387/204/198 — serialize.go#19 + schema#13
+  closed the write-column item below exactly at the lane's 323%; the read
+  column (387%, flat by design this pass) keeps the shared tiny-message
+  floor question open.
+
+The analysis below reads against v3/v4 and stands; items closed after it
+was written are marked in their sections' own docs, not rewritten here.
+
 ---
 
 ## Rust

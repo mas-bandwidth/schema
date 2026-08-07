@@ -26,23 +26,24 @@ sides at the same protocol id speak identical bits; there is no versioning overh
 Generated-code performance of the four backends as **time taken relative to C++** — C++ is
 100%, higher is slower: 200% means the same work takes twice as long as C++. Medians across the
 corpus benchmarks; the mixed-dispatch batch shown separately. Apple M2, quiet host, 2026-08-07
-(v4 — the post-restrict mains: serialize#30's restrict-qualified writer made the generated
-C++ writes 1.4–2.6x faster, which widened every other backend's relative write column without
-any of them regressing; schema#10's `read_message_into` batch read is composed in) — full
-tables, raw CSVs and methodology in [bench/results/](bench/results/):
+(v5 — the optimization program's closing pass: the three per-language lanes composed on top of
+the post-restrict C++ ceiling — C# batch opt-in + bulk-bytes (schema#12), the Go write program
+(serialize.go#19 + schema#13), and the Rust emitter levers (schema#14) — with zero rows
+regressing beyond spread anywhere) — full tables, raw CSVs and methodology in
+[bench/results/](bench/results/):
 
 | backend | write | read | batch write | batch read |
 |---|---:|---:|---:|---:|
 | C++ | 100% | 100% | 100% | 100% |
-| Rust | 188% | 236% | 110% | 156% |
-| C# | 379% | 343% | 155% | 204% |
-| Go | 490% | 387% | 236% | 208% |
+| Rust | 177% | 204% | 121% | 153% |
+| C# | 199% | 214% | 140% | 175% |
+| Go | 323% | 387% | 204% | 198% |
 
 The spread behind the medians is wide and systematic: C++'s lead is an inlining margin that
-grows as messages shrink — on 6–10 byte messages the others take roughly 300–1500% of C++'s
-time. C++ leads every column; Rust is the nearest chaser (it briefly held write parity at the
-v3 mains, until the C++ writer's restrict pass moved the reference — its own write speeds are
-unchanged). An earlier draft of this table showed C# winning the batch read, and that turned out
+grows as messages shrink — on 6–10 byte messages the others take roughly 3–12x C++'s
+time. C++ leads every column; Rust is the nearest chaser overall (it briefly held write parity
+at the v3 mains, until the C++ writer's restrict pass moved the reference), with C# two points
+behind on the write median after its batch opt-in landed. An earlier draft of this table showed C# winning the batch read, and that turned out
 to be a benchmark-harness artifact, which is why every number here is gated on wire-golden
 verification before it is believed. The remaining gaps are decomposed, cause by cause, in
 [bench/results/2026-08-07-gap-ledger.md](bench/results/2026-08-07-gap-ledger.md) — treat the
