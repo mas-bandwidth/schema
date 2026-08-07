@@ -154,23 +154,35 @@ public static partial class Schema
                 return false;
             }
         }
+        if (value.TestB < 0 || value.TestB > 1000) // out-of-contract writes are refused, not wrapped
         {
-            int rangeValue = (int)value.TestB;
-            if (!stream.SerializeInt(ref rangeValue, 0, 1000))
+            return false;
+        }
+        {
+            uint offsetValue = (uint)(value.TestB);
+            if (!stream.SerializeBits(ref offsetValue, 10))
             {
                 return false;
             }
         }
+        if (value.TestC < 0 || value.TestC > 1000) // out-of-contract writes are refused, not wrapped
         {
-            int rangeValue = (int)value.TestC;
-            if (!stream.SerializeInt(ref rangeValue, 0, 1000))
+            return false;
+        }
+        {
+            uint offsetValue = (uint)(value.TestC);
+            if (!stream.SerializeBits(ref offsetValue, 10))
             {
                 return false;
             }
         }
+        if (value.TestD < 0 || value.TestD > 1000) // out-of-contract writes are refused, not wrapped
         {
-            int rangeValue = (int)value.TestD;
-            if (!stream.SerializeInt(ref rangeValue, 0, 1000))
+            return false;
+        }
+        {
+            uint offsetValue = (uint)(value.TestD);
+            if (!stream.SerializeBits(ref offsetValue, 10))
             {
                 return false;
             }
@@ -230,9 +242,16 @@ public static partial class Schema
 
     public static bool WriteBlock(WriteStream stream, Block value)
     {
-        if (!stream.SerializeInt(ref value.DataLength, 0, (int)MaxBlockSize)) // the length guards the slice (§6.3)
+        if (value.DataLength < 0 || value.DataLength > (int)MaxBlockSize) // the length guards the slice (§6.3); out-of-contract writes are refused
         {
             return false;
+        }
+        {
+            uint offsetValue = (uint)(value.DataLength);
+            if (!stream.SerializeBits(ref offsetValue, 11))
+            {
+                return false;
+            }
         }
         if (!stream.SerializeBytes(value.Data.AsSpan(0, value.DataLength)))
         {
@@ -269,9 +288,16 @@ public static partial class Schema
 
     public static bool WriteChat(WriteStream stream, Chat value)
     {
-        if (!stream.SerializeInt(ref value.TextLength, 0, (int)MaxChatLength)) // the length guards the slice (§6.3)
+        if (value.TextLength < 0 || value.TextLength > (int)MaxChatLength) // the length guards the slice (§6.3); out-of-contract writes are refused
         {
             return false;
+        }
+        {
+            uint offsetValue = (uint)(value.TextLength);
+            if (!stream.SerializeBits(ref offsetValue, 9))
+            {
+                return false;
+            }
         }
         if (!stream.SerializeBytes(value.Text.AsSpan(0, value.TextLength)))
         {
@@ -396,10 +422,16 @@ public static partial class Schema
 
     // The message tag wire: MessageType in [0, 6], minimal bits; None = 0 is a
     // valid wire value meaning *no message* — the stream terminator (SPEC §4.8).
+    // The write folds the tag's bit count at generation time (byte-identical to
+    // the ranged form); a tag outside the set is refused — bool alone.
     public static bool WriteMessageType(WriteStream stream, MessageType value)
     {
-        int tagValue = (int)value;
-        return stream.SerializeInt(ref tagValue, 0, 6);
+        uint tagValue = (uint)value;
+        if (tagValue > 6)
+        {
+            return false;
+        }
+        return stream.SerializeBits(ref tagValue, 3);
     }
 
     public static bool ReadMessageType(ReadStream stream, ref MessageType value)

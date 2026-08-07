@@ -256,8 +256,8 @@ public static partial class Schema
             return false;
         }
         {
-            long rangeValue = (long)value.Sensor;
-            if (!stream.SerializeInt64(ref rangeValue, 0, 4294967295))
+            ulong offsetValue = (ulong)(value.Sensor);
+            if (!stream.SerializeBits64(ref offsetValue, 32))
             {
                 return false;
             }
@@ -356,8 +356,12 @@ public static partial class Schema
         if (value.Active)
         {
             {
-                int enumValue = (int)value.Weapon;
-                if (!stream.SerializeInt(ref enumValue, 0, 15))
+                uint enumValue = (uint)value.Weapon;
+                if (enumValue > 15) // headroom above the wire range cannot ride
+                {
+                    return false;
+                }
+                if (!stream.SerializeBits(ref enumValue, 4))
                 {
                     return false;
                 }
@@ -384,9 +388,16 @@ public static partial class Schema
                 return false;
             }
         }
-        if (!stream.SerializeInt(ref value.SamplesCount, 1, 8)) // the count guards the loop (§6.3); the runtime refuses out-of-range on write
+        if (value.SamplesCount < 1 || value.SamplesCount > 8) // the count guards the loop (§6.3); out-of-contract writes are refused
         {
             return false;
+        }
+        {
+            uint offsetValue = (uint)(value.SamplesCount) - (uint)(1);
+            if (!stream.SerializeBits(ref offsetValue, 3))
+            {
+                return false;
+            }
         }
         for (int i = 0; i < value.SamplesCount; i++)
         {
@@ -509,8 +520,12 @@ public static partial class Schema
             }
         }
         {
-            int enumValue = (int)value.Preferred;
-            if (!stream.SerializeInt(ref enumValue, 0, 15))
+            uint enumValue = (uint)value.Preferred;
+            if (enumValue > 15) // headroom above the wire range cannot ride
+            {
+                return false;
+            }
+            if (!stream.SerializeBits(ref enumValue, 4))
             {
                 return false;
             }
@@ -682,17 +697,38 @@ public static partial class Schema
 
     public static bool WriteTestData(WriteStream stream, TestData value)
     {
-        if (!stream.SerializeInt(ref value.A, -100, 100))
+        if (value.A < -100 || value.A > 100) // out-of-contract writes are refused, not wrapped
         {
             return false;
         }
-        if (!stream.SerializeInt(ref value.B, -100, 100))
+        {
+            uint offsetValue = (uint)(value.A) - unchecked((uint)(-100));
+            if (!stream.SerializeBits(ref offsetValue, 8))
+            {
+                return false;
+            }
+        }
+        if (value.B < -100 || value.B > 100) // out-of-contract writes are refused, not wrapped
         {
             return false;
         }
-        if (!stream.SerializeInt(ref value.C, -100, 150))
+        {
+            uint offsetValue = (uint)(value.B) - unchecked((uint)(-100));
+            if (!stream.SerializeBits(ref offsetValue, 8))
+            {
+                return false;
+            }
+        }
+        if (value.C < -100 || value.C > 150) // out-of-contract writes are refused, not wrapped
         {
             return false;
+        }
+        {
+            uint offsetValue = (uint)(value.C) - unchecked((uint)(-100));
+            if (!stream.SerializeBits(ref offsetValue, 8))
+            {
+                return false;
+            }
         }
         if (!stream.SerializeBits(ref value.D, 8))
         {
@@ -710,15 +746,29 @@ public static partial class Schema
         {
             return false;
         }
-        if (!stream.SerializeInt(ref value.ItemsCount, 0, 16)) // the count guards the loop (§6.3); the runtime refuses out-of-range on write
+        if (value.ItemsCount < 0 || value.ItemsCount > 16) // the count guards the loop (§6.3); out-of-contract writes are refused
         {
             return false;
         }
-        for (int i = 0; i < value.ItemsCount; i++)
         {
-            if (!stream.SerializeInt(ref value.Items[i], 0, 255))
+            uint offsetValue = (uint)(value.ItemsCount);
+            if (!stream.SerializeBits(ref offsetValue, 5))
             {
                 return false;
+            }
+        }
+        for (int i = 0; i < value.ItemsCount; i++)
+        {
+            if (value.Items[i] < 0 || value.Items[i] > 255) // out-of-contract writes are refused, not wrapped
+            {
+                return false;
+            }
+            {
+                uint offsetValue = (uint)(value.Items[i]);
+                if (!stream.SerializeBits(ref offsetValue, 8))
+                {
+                    return false;
+                }
             }
         }
         if (!stream.SerializeFloat(ref value.FloatValue))
@@ -779,27 +829,35 @@ public static partial class Schema
                 return false;
             }
         }
-        if (!stream.SerializeInt64(ref value.Int64Range, -1000000000000, 1000000000000))
+        if (value.Int64Range < -1000000000000 || value.Int64Range > 1000000000000) // out-of-contract writes are refused, not wrapped
         {
             return false;
+        }
+        {
+            ulong offsetValue = (ulong)(value.Int64Range) - unchecked((ulong)(-1000000000000));
+            if (!stream.SerializeBits64(ref offsetValue, 41))
+            {
+                return false;
+            }
         }
         if (!stream.SerializeAlign())
         {
             return false;
         }
-        for (int i = 0; i < 17; i++)
-        {
-            {
-                uint rawValue = value.FixedBytes[i];
-                if (!stream.SerializeBits(ref rawValue, 8))
-                {
-                    return false;
-                }
-            }
-        }
-        if (!stream.SerializeInt(ref value.TextLength, 0, 255)) // the length guards the slice (§6.3)
+        if (!stream.SerializeBytes(value.FixedBytes.AsSpan(0, 17))) // byte-aligned [N]uint8 — bulk copy, wire-identical to the per-byte loop
         {
             return false;
+        }
+        if (value.TextLength < 0 || value.TextLength > 255) // the length guards the slice (§6.3); out-of-contract writes are refused
+        {
+            return false;
+        }
+        {
+            uint offsetValue = (uint)(value.TextLength);
+            if (!stream.SerializeBits(ref offsetValue, 8))
+            {
+                return false;
+            }
         }
         if (!stream.SerializeBytes(value.Text.AsSpan(0, value.TextLength)))
         {
@@ -917,16 +975,9 @@ public static partial class Schema
         {
             return false;
         }
-        for (int i = 0; i < 17; i++)
+        if (!stream.SerializeBytes(value.FixedBytes.AsSpan(0, 17))) // byte-aligned [N]uint8 — bulk copy, wire-identical to the per-byte loop
         {
-            {
-                uint rawValue = 0;
-                if (!stream.SerializeBits(ref rawValue, 8))
-                {
-                    return false;
-                }
-                value.FixedBytes[i] = (byte)rawValue;
-            }
+            return false;
         }
         if (!stream.SerializeInt(ref value.TextLength, 0, 255)) // the length guards the slice (§6.3)
         {

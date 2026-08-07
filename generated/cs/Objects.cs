@@ -363,8 +363,12 @@ public static partial class Schema
     public static bool WriteShipData_Deep(WriteStream stream, ShipData_Deep value)
     {
         {
-            int enumValue = (int)value.ShipType;
-            if (!stream.SerializeInt(ref enumValue, 0, 5))
+            uint enumValue = (uint)value.ShipType;
+            if (enumValue > 5) // headroom above the wire range cannot ride
+            {
+                return false;
+            }
+            if (!stream.SerializeBits(ref enumValue, 3))
             {
                 return false;
             }
@@ -393,8 +397,12 @@ public static partial class Schema
             }
         }
         {
-            int enumValue = (int)value.Team;
-            if (!stream.SerializeInt(ref enumValue, 0, 2))
+            uint enumValue = (uint)value.Team;
+            if (enumValue > 2) // headroom above the wire range cannot ride
+            {
+                return false;
+            }
+            if (!stream.SerializeBits(ref enumValue, 2))
             {
                 return false;
             }
@@ -459,16 +467,24 @@ public static partial class Schema
         {
             return false;
         }
+        if (value.LaserIndex < 0 || value.LaserIndex > (int)(ShipMaxLasers - 1)) // out-of-contract writes are refused, not wrapped
         {
-            int rangeValue = (int)value.LaserIndex;
-            if (!stream.SerializeInt(ref rangeValue, 0, (int)(ShipMaxLasers - 1)))
+            return false;
+        }
+        {
+            uint offsetValue = (uint)(value.LaserIndex);
+            if (!stream.SerializeBits(ref offsetValue, 4))
             {
                 return false;
             }
         }
+        if (value.MissileIndex < 0 || value.MissileIndex > (int)(ShipMaxMissiles - 1)) // out-of-contract writes are refused, not wrapped
         {
-            int rangeValue = (int)value.MissileIndex;
-            if (!stream.SerializeInt(ref rangeValue, 0, (int)(ShipMaxMissiles - 1)))
+            return false;
+        }
+        {
+            uint offsetValue = (uint)(value.MissileIndex);
+            if (!stream.SerializeBits(ref offsetValue, 4))
             {
                 return false;
             }
@@ -615,63 +631,125 @@ public static partial class Schema
     public static bool WriteShipData_Shallow(WriteStream stream, ShipData_Shallow value)
     {
         {
-            int enumValue = (int)value.ShipType;
-            if (!stream.SerializeInt(ref enumValue, 0, 5))
+            uint enumValue = (uint)value.ShipType;
+            if (enumValue > 5) // headroom above the wire range cannot ride
+            {
+                return false;
+            }
+            if (!stream.SerializeBits(ref enumValue, 3))
             {
                 return false;
             }
         }
-        if (!stream.SerializeInt(ref value.PositionX, -8388608, 8388608))
-        {
-            return false;
-        }
-        if (!stream.SerializeInt(ref value.PositionY, -8388608, 8388608))
-        {
-            return false;
-        }
-        if (!stream.SerializeInt(ref value.PositionZ, -8388608, 8388608))
+        if (value.PositionX < -8388608 || value.PositionX > 8388608) // out-of-contract writes are refused, not wrapped
         {
             return false;
         }
         {
-            int componentValue = (int)value.RotationX;
-            if (!stream.SerializeInt(ref componentValue, -1024, 1024))
+            uint offsetValue = (uint)(value.PositionX) - unchecked((uint)(-8388608));
+            if (!stream.SerializeBits(ref offsetValue, 25))
             {
                 return false;
             }
         }
+        if (value.PositionY < -8388608 || value.PositionY > 8388608) // out-of-contract writes are refused, not wrapped
         {
-            int componentValue = (int)value.RotationY;
-            if (!stream.SerializeInt(ref componentValue, -1024, 1024))
+            return false;
+        }
+        {
+            uint offsetValue = (uint)(value.PositionY) - unchecked((uint)(-8388608));
+            if (!stream.SerializeBits(ref offsetValue, 25))
             {
                 return false;
             }
         }
+        if (value.PositionZ < -8388608 || value.PositionZ > 8388608) // out-of-contract writes are refused, not wrapped
         {
-            int componentValue = (int)value.RotationZ;
-            if (!stream.SerializeInt(ref componentValue, -1024, 1024))
+            return false;
+        }
+        {
+            uint offsetValue = (uint)(value.PositionZ) - unchecked((uint)(-8388608));
+            if (!stream.SerializeBits(ref offsetValue, 25))
             {
                 return false;
             }
         }
+        if (value.RotationX < -1024 || value.RotationX > 1024) // out-of-contract writes are refused, not wrapped
         {
-            int componentValue = (int)value.RotationW;
-            if (!stream.SerializeInt(ref componentValue, -1024, 1024))
+            return false;
+        }
+        {
+            uint offsetValue = (uint)(value.RotationX) - unchecked((uint)(-1024));
+            if (!stream.SerializeBits(ref offsetValue, 12))
             {
                 return false;
             }
         }
-        if (!stream.SerializeInt(ref value.LinearVelocityX, -2097152, 2097152))
+        if (value.RotationY < -1024 || value.RotationY > 1024) // out-of-contract writes are refused, not wrapped
         {
             return false;
         }
-        if (!stream.SerializeInt(ref value.LinearVelocityY, -2097152, 2097152))
+        {
+            uint offsetValue = (uint)(value.RotationY) - unchecked((uint)(-1024));
+            if (!stream.SerializeBits(ref offsetValue, 12))
+            {
+                return false;
+            }
+        }
+        if (value.RotationZ < -1024 || value.RotationZ > 1024) // out-of-contract writes are refused, not wrapped
         {
             return false;
         }
-        if (!stream.SerializeInt(ref value.LinearVelocityZ, -2097152, 2097152))
+        {
+            uint offsetValue = (uint)(value.RotationZ) - unchecked((uint)(-1024));
+            if (!stream.SerializeBits(ref offsetValue, 12))
+            {
+                return false;
+            }
+        }
+        if (value.RotationW < -1024 || value.RotationW > 1024) // out-of-contract writes are refused, not wrapped
         {
             return false;
+        }
+        {
+            uint offsetValue = (uint)(value.RotationW) - unchecked((uint)(-1024));
+            if (!stream.SerializeBits(ref offsetValue, 12))
+            {
+                return false;
+            }
+        }
+        if (value.LinearVelocityX < -2097152 || value.LinearVelocityX > 2097152) // out-of-contract writes are refused, not wrapped
+        {
+            return false;
+        }
+        {
+            uint offsetValue = (uint)(value.LinearVelocityX) - unchecked((uint)(-2097152));
+            if (!stream.SerializeBits(ref offsetValue, 23))
+            {
+                return false;
+            }
+        }
+        if (value.LinearVelocityY < -2097152 || value.LinearVelocityY > 2097152) // out-of-contract writes are refused, not wrapped
+        {
+            return false;
+        }
+        {
+            uint offsetValue = (uint)(value.LinearVelocityY) - unchecked((uint)(-2097152));
+            if (!stream.SerializeBits(ref offsetValue, 23))
+            {
+                return false;
+            }
+        }
+        if (value.LinearVelocityZ < -2097152 || value.LinearVelocityZ > 2097152) // out-of-contract writes are refused, not wrapped
+        {
+            return false;
+        }
+        {
+            uint offsetValue = (uint)(value.LinearVelocityZ) - unchecked((uint)(-2097152));
+            if (!stream.SerializeBits(ref offsetValue, 23))
+            {
+                return false;
+            }
         }
         if (value.Flags >= 1ul << 4) // a mask bit above the wire width cannot ride
         {
@@ -685,22 +763,34 @@ public static partial class Schema
             }
         }
         {
-            int enumValue = (int)value.Team;
-            if (!stream.SerializeInt(ref enumValue, 0, 2))
+            uint enumValue = (uint)value.Team;
+            if (enumValue > 2) // headroom above the wire range cannot ride
+            {
+                return false;
+            }
+            if (!stream.SerializeBits(ref enumValue, 2))
             {
                 return false;
             }
         }
+        if (value.Health > 1000) // out-of-contract writes are refused, not wrapped
         {
-            int projectedValue = (int)value.Health;
-            if (!stream.SerializeInt(ref projectedValue, 0, 1000))
+            return false;
+        }
+        {
+            uint offsetValue = (uint)(value.Health);
+            if (!stream.SerializeBits(ref offsetValue, 10))
             {
                 return false;
             }
         }
+        if (value.Thrust > 100) // out-of-contract writes are refused, not wrapped
         {
-            int projectedValue = (int)value.Thrust;
-            if (!stream.SerializeInt(ref projectedValue, 0, 100))
+            return false;
+        }
+        {
+            uint offsetValue = (uint)(value.Thrust);
+            if (!stream.SerializeBits(ref offsetValue, 7))
             {
                 return false;
             }
@@ -973,8 +1063,12 @@ public static partial class Schema
     public static bool WriteMissileData_Deep(WriteStream stream, MissileData_Deep value)
     {
         {
-            int enumValue = (int)value.MissileType;
-            if (!stream.SerializeInt(ref enumValue, 0, 3))
+            uint enumValue = (uint)value.MissileType;
+            if (enumValue > 3) // headroom above the wire range cannot ride
+            {
+                return false;
+            }
+            if (!stream.SerializeBits(ref enumValue, 2))
             {
                 return false;
             }
@@ -992,8 +1086,12 @@ public static partial class Schema
             return false;
         }
         {
-            int enumValue = (int)value.Team;
-            if (!stream.SerializeInt(ref enumValue, 0, 2))
+            uint enumValue = (uint)value.Team;
+            if (enumValue > 2) // headroom above the wire range cannot ride
+            {
+                return false;
+            }
+            if (!stream.SerializeBits(ref enumValue, 2))
             {
                 return false;
             }
@@ -1048,67 +1146,133 @@ public static partial class Schema
     public static bool WriteMissileData_Shallow(WriteStream stream, MissileData_Shallow value)
     {
         {
-            int enumValue = (int)value.MissileType;
-            if (!stream.SerializeInt(ref enumValue, 0, 3))
+            uint enumValue = (uint)value.MissileType;
+            if (enumValue > 3) // headroom above the wire range cannot ride
+            {
+                return false;
+            }
+            if (!stream.SerializeBits(ref enumValue, 2))
             {
                 return false;
             }
         }
-        if (!stream.SerializeInt(ref value.PositionX, -8388608, 8388608))
-        {
-            return false;
-        }
-        if (!stream.SerializeInt(ref value.PositionY, -8388608, 8388608))
-        {
-            return false;
-        }
-        if (!stream.SerializeInt(ref value.PositionZ, -8388608, 8388608))
+        if (value.PositionX < -8388608 || value.PositionX > 8388608) // out-of-contract writes are refused, not wrapped
         {
             return false;
         }
         {
-            int componentValue = (int)value.RotationX;
-            if (!stream.SerializeInt(ref componentValue, -1024, 1024))
+            uint offsetValue = (uint)(value.PositionX) - unchecked((uint)(-8388608));
+            if (!stream.SerializeBits(ref offsetValue, 25))
+            {
+                return false;
+            }
+        }
+        if (value.PositionY < -8388608 || value.PositionY > 8388608) // out-of-contract writes are refused, not wrapped
+        {
+            return false;
+        }
+        {
+            uint offsetValue = (uint)(value.PositionY) - unchecked((uint)(-8388608));
+            if (!stream.SerializeBits(ref offsetValue, 25))
+            {
+                return false;
+            }
+        }
+        if (value.PositionZ < -8388608 || value.PositionZ > 8388608) // out-of-contract writes are refused, not wrapped
+        {
+            return false;
+        }
+        {
+            uint offsetValue = (uint)(value.PositionZ) - unchecked((uint)(-8388608));
+            if (!stream.SerializeBits(ref offsetValue, 25))
+            {
+                return false;
+            }
+        }
+        if (value.RotationX < -1024 || value.RotationX > 1024) // out-of-contract writes are refused, not wrapped
+        {
+            return false;
+        }
+        {
+            uint offsetValue = (uint)(value.RotationX) - unchecked((uint)(-1024));
+            if (!stream.SerializeBits(ref offsetValue, 12))
+            {
+                return false;
+            }
+        }
+        if (value.RotationY < -1024 || value.RotationY > 1024) // out-of-contract writes are refused, not wrapped
+        {
+            return false;
+        }
+        {
+            uint offsetValue = (uint)(value.RotationY) - unchecked((uint)(-1024));
+            if (!stream.SerializeBits(ref offsetValue, 12))
+            {
+                return false;
+            }
+        }
+        if (value.RotationZ < -1024 || value.RotationZ > 1024) // out-of-contract writes are refused, not wrapped
+        {
+            return false;
+        }
+        {
+            uint offsetValue = (uint)(value.RotationZ) - unchecked((uint)(-1024));
+            if (!stream.SerializeBits(ref offsetValue, 12))
+            {
+                return false;
+            }
+        }
+        if (value.RotationW < -1024 || value.RotationW > 1024) // out-of-contract writes are refused, not wrapped
+        {
+            return false;
+        }
+        {
+            uint offsetValue = (uint)(value.RotationW) - unchecked((uint)(-1024));
+            if (!stream.SerializeBits(ref offsetValue, 12))
+            {
+                return false;
+            }
+        }
+        if (value.LinearVelocityX < -2097152 || value.LinearVelocityX > 2097152) // out-of-contract writes are refused, not wrapped
+        {
+            return false;
+        }
+        {
+            uint offsetValue = (uint)(value.LinearVelocityX) - unchecked((uint)(-2097152));
+            if (!stream.SerializeBits(ref offsetValue, 23))
+            {
+                return false;
+            }
+        }
+        if (value.LinearVelocityY < -2097152 || value.LinearVelocityY > 2097152) // out-of-contract writes are refused, not wrapped
+        {
+            return false;
+        }
+        {
+            uint offsetValue = (uint)(value.LinearVelocityY) - unchecked((uint)(-2097152));
+            if (!stream.SerializeBits(ref offsetValue, 23))
+            {
+                return false;
+            }
+        }
+        if (value.LinearVelocityZ < -2097152 || value.LinearVelocityZ > 2097152) // out-of-contract writes are refused, not wrapped
+        {
+            return false;
+        }
+        {
+            uint offsetValue = (uint)(value.LinearVelocityZ) - unchecked((uint)(-2097152));
+            if (!stream.SerializeBits(ref offsetValue, 23))
             {
                 return false;
             }
         }
         {
-            int componentValue = (int)value.RotationY;
-            if (!stream.SerializeInt(ref componentValue, -1024, 1024))
+            uint enumValue = (uint)value.Team;
+            if (enumValue > 2) // headroom above the wire range cannot ride
             {
                 return false;
             }
-        }
-        {
-            int componentValue = (int)value.RotationZ;
-            if (!stream.SerializeInt(ref componentValue, -1024, 1024))
-            {
-                return false;
-            }
-        }
-        {
-            int componentValue = (int)value.RotationW;
-            if (!stream.SerializeInt(ref componentValue, -1024, 1024))
-            {
-                return false;
-            }
-        }
-        if (!stream.SerializeInt(ref value.LinearVelocityX, -2097152, 2097152))
-        {
-            return false;
-        }
-        if (!stream.SerializeInt(ref value.LinearVelocityY, -2097152, 2097152))
-        {
-            return false;
-        }
-        if (!stream.SerializeInt(ref value.LinearVelocityZ, -2097152, 2097152))
-        {
-            return false;
-        }
-        {
-            int enumValue = (int)value.Team;
-            if (!stream.SerializeInt(ref enumValue, 0, 2))
+            if (!stream.SerializeBits(ref enumValue, 2))
             {
                 return false;
             }
@@ -1361,8 +1525,12 @@ public static partial class Schema
     public static bool WriteDynamicPropData_Deep(WriteStream stream, DynamicPropData_Deep value)
     {
         {
-            int enumValue = (int)value.PropType;
-            if (!stream.SerializeInt(ref enumValue, 0, 6))
+            uint enumValue = (uint)value.PropType;
+            if (enumValue > 6) // headroom above the wire range cannot ride
+            {
+                return false;
+            }
+            if (!stream.SerializeBits(ref enumValue, 3))
             {
                 return false;
             }
@@ -1384,8 +1552,12 @@ public static partial class Schema
             return false;
         }
         {
-            int enumValue = (int)value.Team;
-            if (!stream.SerializeInt(ref enumValue, 0, 2))
+            uint enumValue = (uint)value.Team;
+            if (enumValue > 2) // headroom above the wire range cannot ride
+            {
+                return false;
+            }
+            if (!stream.SerializeBits(ref enumValue, 2))
             {
                 return false;
             }
@@ -1436,71 +1608,137 @@ public static partial class Schema
     public static bool WriteDynamicPropData_Shallow(WriteStream stream, DynamicPropData_Shallow value)
     {
         {
-            int enumValue = (int)value.PropType;
-            if (!stream.SerializeInt(ref enumValue, 0, 6))
+            uint enumValue = (uint)value.PropType;
+            if (enumValue > 6) // headroom above the wire range cannot ride
+            {
+                return false;
+            }
+            if (!stream.SerializeBits(ref enumValue, 3))
             {
                 return false;
             }
         }
-        if (!stream.SerializeInt(ref value.PositionX, -8388608, 8388608))
-        {
-            return false;
-        }
-        if (!stream.SerializeInt(ref value.PositionY, -8388608, 8388608))
-        {
-            return false;
-        }
-        if (!stream.SerializeInt(ref value.PositionZ, -8388608, 8388608))
+        if (value.PositionX < -8388608 || value.PositionX > 8388608) // out-of-contract writes are refused, not wrapped
         {
             return false;
         }
         {
-            int componentValue = (int)value.RotationX;
-            if (!stream.SerializeInt(ref componentValue, -1024, 1024))
+            uint offsetValue = (uint)(value.PositionX) - unchecked((uint)(-8388608));
+            if (!stream.SerializeBits(ref offsetValue, 25))
             {
                 return false;
             }
         }
+        if (value.PositionY < -8388608 || value.PositionY > 8388608) // out-of-contract writes are refused, not wrapped
         {
-            int componentValue = (int)value.RotationY;
-            if (!stream.SerializeInt(ref componentValue, -1024, 1024))
+            return false;
+        }
+        {
+            uint offsetValue = (uint)(value.PositionY) - unchecked((uint)(-8388608));
+            if (!stream.SerializeBits(ref offsetValue, 25))
             {
                 return false;
             }
         }
+        if (value.PositionZ < -8388608 || value.PositionZ > 8388608) // out-of-contract writes are refused, not wrapped
         {
-            int componentValue = (int)value.RotationZ;
-            if (!stream.SerializeInt(ref componentValue, -1024, 1024))
+            return false;
+        }
+        {
+            uint offsetValue = (uint)(value.PositionZ) - unchecked((uint)(-8388608));
+            if (!stream.SerializeBits(ref offsetValue, 25))
             {
                 return false;
             }
         }
+        if (value.RotationX < -1024 || value.RotationX > 1024) // out-of-contract writes are refused, not wrapped
         {
-            int componentValue = (int)value.RotationW;
-            if (!stream.SerializeInt(ref componentValue, -1024, 1024))
+            return false;
+        }
+        {
+            uint offsetValue = (uint)(value.RotationX) - unchecked((uint)(-1024));
+            if (!stream.SerializeBits(ref offsetValue, 12))
             {
                 return false;
             }
         }
-        if (!stream.SerializeInt(ref value.LinearVelocityX, -2097152, 2097152))
+        if (value.RotationY < -1024 || value.RotationY > 1024) // out-of-contract writes are refused, not wrapped
         {
             return false;
         }
-        if (!stream.SerializeInt(ref value.LinearVelocityY, -2097152, 2097152))
+        {
+            uint offsetValue = (uint)(value.RotationY) - unchecked((uint)(-1024));
+            if (!stream.SerializeBits(ref offsetValue, 12))
+            {
+                return false;
+            }
+        }
+        if (value.RotationZ < -1024 || value.RotationZ > 1024) // out-of-contract writes are refused, not wrapped
         {
             return false;
         }
-        if (!stream.SerializeInt(ref value.LinearVelocityZ, -2097152, 2097152))
+        {
+            uint offsetValue = (uint)(value.RotationZ) - unchecked((uint)(-1024));
+            if (!stream.SerializeBits(ref offsetValue, 12))
+            {
+                return false;
+            }
+        }
+        if (value.RotationW < -1024 || value.RotationW > 1024) // out-of-contract writes are refused, not wrapped
         {
             return false;
+        }
+        {
+            uint offsetValue = (uint)(value.RotationW) - unchecked((uint)(-1024));
+            if (!stream.SerializeBits(ref offsetValue, 12))
+            {
+                return false;
+            }
+        }
+        if (value.LinearVelocityX < -2097152 || value.LinearVelocityX > 2097152) // out-of-contract writes are refused, not wrapped
+        {
+            return false;
+        }
+        {
+            uint offsetValue = (uint)(value.LinearVelocityX) - unchecked((uint)(-2097152));
+            if (!stream.SerializeBits(ref offsetValue, 23))
+            {
+                return false;
+            }
+        }
+        if (value.LinearVelocityY < -2097152 || value.LinearVelocityY > 2097152) // out-of-contract writes are refused, not wrapped
+        {
+            return false;
+        }
+        {
+            uint offsetValue = (uint)(value.LinearVelocityY) - unchecked((uint)(-2097152));
+            if (!stream.SerializeBits(ref offsetValue, 23))
+            {
+                return false;
+            }
+        }
+        if (value.LinearVelocityZ < -2097152 || value.LinearVelocityZ > 2097152) // out-of-contract writes are refused, not wrapped
+        {
+            return false;
+        }
+        {
+            uint offsetValue = (uint)(value.LinearVelocityZ) - unchecked((uint)(-2097152));
+            if (!stream.SerializeBits(ref offsetValue, 23))
+            {
+                return false;
+            }
         }
         if (!stream.SerializeBits64(ref value.Flags, 64))
         {
             return false;
         }
         {
-            int enumValue = (int)value.Team;
-            if (!stream.SerializeInt(ref enumValue, 0, 2))
+            uint enumValue = (uint)value.Team;
+            if (enumValue > 2) // headroom above the wire range cannot ride
+            {
+                return false;
+            }
+            if (!stream.SerializeBits(ref enumValue, 2))
             {
                 return false;
             }
@@ -1752,9 +1990,16 @@ public static partial class Schema
         {
             return false;
         }
-        if (!stream.SerializeInt(ref value.TurretIndex, 0, (int)(MaxTurretsPerShip - 1)))
+        if (value.TurretIndex < 0 || value.TurretIndex > (int)(MaxTurretsPerShip - 1)) // out-of-contract writes are refused, not wrapped
         {
             return false;
+        }
+        {
+            uint offsetValue = (uint)(value.TurretIndex);
+            if (!stream.SerializeBits(ref offsetValue, 8))
+            {
+                return false;
+            }
         }
         if (!WriteQuat(stream, value.Rotation))
         {
@@ -1797,34 +2042,57 @@ public static partial class Schema
         {
             return false;
         }
-        if (!stream.SerializeInt(ref value.TurretIndex, 0, (int)(MaxTurretsPerShip - 1)))
+        if (value.TurretIndex < 0 || value.TurretIndex > (int)(MaxTurretsPerShip - 1)) // out-of-contract writes are refused, not wrapped
         {
             return false;
         }
         {
-            int componentValue = (int)value.RotationX;
-            if (!stream.SerializeInt(ref componentValue, -1024, 1024))
+            uint offsetValue = (uint)(value.TurretIndex);
+            if (!stream.SerializeBits(ref offsetValue, 8))
             {
                 return false;
             }
         }
+        if (value.RotationX < -1024 || value.RotationX > 1024) // out-of-contract writes are refused, not wrapped
         {
-            int componentValue = (int)value.RotationY;
-            if (!stream.SerializeInt(ref componentValue, -1024, 1024))
+            return false;
+        }
+        {
+            uint offsetValue = (uint)(value.RotationX) - unchecked((uint)(-1024));
+            if (!stream.SerializeBits(ref offsetValue, 12))
             {
                 return false;
             }
         }
+        if (value.RotationY < -1024 || value.RotationY > 1024) // out-of-contract writes are refused, not wrapped
         {
-            int componentValue = (int)value.RotationZ;
-            if (!stream.SerializeInt(ref componentValue, -1024, 1024))
+            return false;
+        }
+        {
+            uint offsetValue = (uint)(value.RotationY) - unchecked((uint)(-1024));
+            if (!stream.SerializeBits(ref offsetValue, 12))
             {
                 return false;
             }
         }
+        if (value.RotationZ < -1024 || value.RotationZ > 1024) // out-of-contract writes are refused, not wrapped
         {
-            int componentValue = (int)value.RotationW;
-            if (!stream.SerializeInt(ref componentValue, -1024, 1024))
+            return false;
+        }
+        {
+            uint offsetValue = (uint)(value.RotationZ) - unchecked((uint)(-1024));
+            if (!stream.SerializeBits(ref offsetValue, 12))
+            {
+                return false;
+            }
+        }
+        if (value.RotationW < -1024 || value.RotationW > 1024) // out-of-contract writes are refused, not wrapped
+        {
+            return false;
+        }
+        {
+            uint offsetValue = (uint)(value.RotationW) - unchecked((uint)(-1024));
+            if (!stream.SerializeBits(ref offsetValue, 12))
             {
                 return false;
             }
@@ -1959,10 +2227,16 @@ public static partial class Schema
 
     // The object tag wire: ObjectType in [0, 4], minimal bits; None = 0 is the
     // null — the sentinel the surveyed baseline streams terminate with (SPEC §4.8).
+    // The write folds the tag's bit count at generation time (byte-identical to
+    // the ranged form); a tag outside the set is refused — bool alone.
     public static bool WriteObjectType(WriteStream stream, ObjectType value)
     {
-        int tagValue = (int)value;
-        return stream.SerializeInt(ref tagValue, 0, 4);
+        uint tagValue = (uint)value;
+        if (tagValue > 4)
+        {
+            return false;
+        }
+        return stream.SerializeBits(ref tagValue, 3);
     }
 
     public static bool ReadObjectType(ReadStream stream, ref ObjectType value)

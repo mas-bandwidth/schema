@@ -255,9 +255,16 @@ public static partial class Schema
 
     public static bool WriteHandle(WriteStream stream, Handle value)
     {
-        if (!stream.SerializeInt(ref value.ObjectId, 0, (int)(MaxObjects - 1)))
+        if (value.ObjectId < 0 || value.ObjectId > (int)(MaxObjects - 1)) // out-of-contract writes are refused, not wrapped
         {
             return false;
+        }
+        {
+            uint offsetValue = (uint)(value.ObjectId);
+            if (!stream.SerializeBits(ref offsetValue, 14))
+            {
+                return false;
+            }
         }
         {
             uint rawValue = value.ObjectSequence;
@@ -302,17 +309,38 @@ public static partial class Schema
 
     public static bool WriteQuantizedPosition(WriteStream stream, QuantizedPosition value)
     {
-        if (!stream.SerializeInt(ref value.X, (int)(-MaxPositionUnits), (int)MaxPositionUnits))
+        if (value.X < (int)(-MaxPositionUnits) || value.X > (int)MaxPositionUnits) // out-of-contract writes are refused, not wrapped
         {
             return false;
         }
-        if (!stream.SerializeInt(ref value.Y, (int)(-MaxPositionUnits), (int)MaxPositionUnits))
+        {
+            uint offsetValue = (uint)(value.X) - unchecked((uint)((int)(-MaxPositionUnits)));
+            if (!stream.SerializeBits(ref offsetValue, 25))
+            {
+                return false;
+            }
+        }
+        if (value.Y < (int)(-MaxPositionUnits) || value.Y > (int)MaxPositionUnits) // out-of-contract writes are refused, not wrapped
         {
             return false;
         }
-        if (!stream.SerializeInt(ref value.Z, (int)(-MaxPositionUnits), (int)MaxPositionUnits))
+        {
+            uint offsetValue = (uint)(value.Y) - unchecked((uint)((int)(-MaxPositionUnits)));
+            if (!stream.SerializeBits(ref offsetValue, 25))
+            {
+                return false;
+            }
+        }
+        if (value.Z < (int)(-MaxPositionUnits) || value.Z > (int)MaxPositionUnits) // out-of-contract writes are refused, not wrapped
         {
             return false;
+        }
+        {
+            uint offsetValue = (uint)(value.Z) - unchecked((uint)((int)(-MaxPositionUnits)));
+            if (!stream.SerializeBits(ref offsetValue, 25))
+            {
+                return false;
+            }
         }
         return true;
     }
@@ -350,17 +378,38 @@ public static partial class Schema
 
     public static bool WriteQuantizedVelocity(WriteStream stream, QuantizedVelocity value)
     {
-        if (!stream.SerializeInt(ref value.X, (int)(-MaxVelocityUnits), (int)MaxVelocityUnits))
+        if (value.X < (int)(-MaxVelocityUnits) || value.X > (int)MaxVelocityUnits) // out-of-contract writes are refused, not wrapped
         {
             return false;
         }
-        if (!stream.SerializeInt(ref value.Y, (int)(-MaxVelocityUnits), (int)MaxVelocityUnits))
+        {
+            uint offsetValue = (uint)(value.X) - unchecked((uint)((int)(-MaxVelocityUnits)));
+            if (!stream.SerializeBits(ref offsetValue, 23))
+            {
+                return false;
+            }
+        }
+        if (value.Y < (int)(-MaxVelocityUnits) || value.Y > (int)MaxVelocityUnits) // out-of-contract writes are refused, not wrapped
         {
             return false;
         }
-        if (!stream.SerializeInt(ref value.Z, (int)(-MaxVelocityUnits), (int)MaxVelocityUnits))
+        {
+            uint offsetValue = (uint)(value.Y) - unchecked((uint)((int)(-MaxVelocityUnits)));
+            if (!stream.SerializeBits(ref offsetValue, 23))
+            {
+                return false;
+            }
+        }
+        if (value.Z < (int)(-MaxVelocityUnits) || value.Z > (int)MaxVelocityUnits) // out-of-contract writes are refused, not wrapped
         {
             return false;
+        }
+        {
+            uint offsetValue = (uint)(value.Z) - unchecked((uint)((int)(-MaxVelocityUnits)));
+            if (!stream.SerializeBits(ref offsetValue, 23))
+            {
+                return false;
+            }
         }
         return true;
     }
@@ -399,30 +448,46 @@ public static partial class Schema
 
     public static bool WriteQuantizedRotation(WriteStream stream, QuantizedRotation value)
     {
+        if (value.X < (int)(-RotationUnits) || value.X > (int)RotationUnits) // out-of-contract writes are refused, not wrapped
         {
-            int rangeValue = (int)value.X;
-            if (!stream.SerializeInt(ref rangeValue, (int)(-RotationUnits), (int)RotationUnits))
+            return false;
+        }
+        {
+            uint offsetValue = (uint)(value.X) - unchecked((uint)((int)(-RotationUnits)));
+            if (!stream.SerializeBits(ref offsetValue, 12))
             {
                 return false;
             }
         }
+        if (value.Y < (int)(-RotationUnits) || value.Y > (int)RotationUnits) // out-of-contract writes are refused, not wrapped
         {
-            int rangeValue = (int)value.Y;
-            if (!stream.SerializeInt(ref rangeValue, (int)(-RotationUnits), (int)RotationUnits))
+            return false;
+        }
+        {
+            uint offsetValue = (uint)(value.Y) - unchecked((uint)((int)(-RotationUnits)));
+            if (!stream.SerializeBits(ref offsetValue, 12))
             {
                 return false;
             }
         }
+        if (value.Z < (int)(-RotationUnits) || value.Z > (int)RotationUnits) // out-of-contract writes are refused, not wrapped
         {
-            int rangeValue = (int)value.Z;
-            if (!stream.SerializeInt(ref rangeValue, (int)(-RotationUnits), (int)RotationUnits))
+            return false;
+        }
+        {
+            uint offsetValue = (uint)(value.Z) - unchecked((uint)((int)(-RotationUnits)));
+            if (!stream.SerializeBits(ref offsetValue, 12))
             {
                 return false;
             }
         }
+        if (value.W < (int)(-RotationUnits) || value.W > (int)RotationUnits) // out-of-contract writes are refused, not wrapped
         {
-            int rangeValue = (int)value.W;
-            if (!stream.SerializeInt(ref rangeValue, (int)(-RotationUnits), (int)RotationUnits))
+            return false;
+        }
+        {
+            uint offsetValue = (uint)(value.W) - unchecked((uint)((int)(-RotationUnits)));
+            if (!stream.SerializeBits(ref offsetValue, 12))
             {
                 return false;
             }
@@ -718,9 +783,16 @@ public static partial class Schema
         {
             return false;
         }
-        if (!stream.SerializeInt(ref value.InputsCount, 0, (int)MaxInputsPerPacket)) // the count guards the loop (§6.3); the runtime refuses out-of-range on write
+        if (value.InputsCount < 0 || value.InputsCount > (int)MaxInputsPerPacket) // the count guards the loop (§6.3); out-of-contract writes are refused
         {
             return false;
+        }
+        {
+            uint offsetValue = (uint)(value.InputsCount);
+            if (!stream.SerializeBits(ref offsetValue, 5))
+            {
+                return false;
+            }
         }
         for (int i = 0; i < value.InputsCount; i++)
         {
@@ -787,8 +859,12 @@ public static partial class Schema
     public static bool WriteShipCreate(WriteStream stream, ShipCreate value)
     {
         {
-            int enumValue = (int)value.ShipType;
-            if (!stream.SerializeInt(ref enumValue, 0, 5))
+            uint enumValue = (uint)value.ShipType;
+            if (enumValue > 5) // headroom above the wire range cannot ride
+            {
+                return false;
+            }
+            if (!stream.SerializeBits(ref enumValue, 3))
             {
                 return false;
             }
@@ -824,22 +900,34 @@ public static partial class Schema
             }
         }
         {
-            int enumValue = (int)value.Team;
-            if (!stream.SerializeInt(ref enumValue, 0, 2))
+            uint enumValue = (uint)value.Team;
+            if (enumValue > 2) // headroom above the wire range cannot ride
+            {
+                return false;
+            }
+            if (!stream.SerializeBits(ref enumValue, 2))
             {
                 return false;
             }
         }
+        if (value.Health < 0 || value.Health > (int)MaxHealth) // out-of-contract writes are refused, not wrapped
         {
-            int rangeValue = (int)value.Health;
-            if (!stream.SerializeInt(ref rangeValue, 0, (int)MaxHealth))
+            return false;
+        }
+        {
+            uint offsetValue = (uint)(value.Health);
+            if (!stream.SerializeBits(ref offsetValue, 10))
             {
                 return false;
             }
         }
+        if (value.Thrust < 0 || value.Thrust > 100) // out-of-contract writes are refused, not wrapped
         {
-            int rangeValue = (int)value.Thrust;
-            if (!stream.SerializeInt(ref rangeValue, 0, 100))
+            return false;
+        }
+        {
+            uint offsetValue = (uint)(value.Thrust);
+            if (!stream.SerializeBits(ref offsetValue, 7))
             {
                 return false;
             }
