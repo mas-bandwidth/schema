@@ -8,6 +8,7 @@ package cpp
 
 import (
 	"fmt"
+	"math/big"
 	"strings"
 
 	"github.com/mas-bandwidth/schema/internal/ir"
@@ -247,16 +248,55 @@ inline uint64_t table_double_to_bits( double d ) { uint64_t b; memcpy( &b, &d, 8
 `
 }
 
+// tableTainted computes the types the table wire cannot carry —
+// int128/uint128, fixed(I, F), and bits wider than 64 have no wire kind
+// (config data has never needed them; the Go encoder refuses them the same
+// way) — transitively through nested type references. Tainted types get a
+// comment instead of table functions.
+func tableTainted(u *ir.Unit) map[string]bool {
+	tainted := map[string]bool{}
+	for name, st := range u.Structs {
+		for _, f := range st.Fields {
+			switch {
+			case f.Type.Kind == ir.TInt && f.Type.Width == 128,
+				f.Type.Kind == ir.TFixed,
+				f.Type.Kind == ir.TBits && f.Type.Width > 64:
+				tainted[name] = true
+			}
+		}
+	}
+	for changed := true; changed; {
+		changed = false
+		for name, st := range u.Structs {
+			if tainted[name] {
+				continue
+			}
+			for _, f := range st.Fields {
+				if _, isStruct := f.Type.Ref.(*ir.Struct); f.Type.Kind == ir.TNamed && isStruct && tainted[f.Type.Name] {
+					tainted[name] = true
+					changed = true
+				}
+			}
+		}
+	}
+	return tainted
+}
+
 // GenerateTable emits <Base>Table.h for every unit file.
 func GenerateTable(u *ir.Unit) (map[string][]byte, error) {
 	if err := pack.CheckTableIds(u); err != nil {
 		return nil, err
 	}
+	tainted := tableTainted(u)
 	out := map[string][]byte{}
 	for _, f := range u.Files {
 		g := &tableGen{unit: u, file: f, includes: map[string]bool{}}
 		for _, d := range f.Decls {
 			if st, ok := d.(*ir.Struct); ok {
+				if tainted[st.Name] {
+					g.pf("// %s: no table functions — a field type here (int128/uint128, fixed, or bits wider than 64) has no table-wire kind (notes/table-wire.md)\n\n", st.Name)
+					continue
+				}
 				g.emitTableWrite(st)
 				g.emitTableRead(st)
 			}
@@ -315,7 +355,12 @@ func (g *tableGen) fieldDefaultExpr(f *ir.Field) string {
 		return "0.0"
 	case ir.TInt, ir.TBits:
 		if f.HasDefault && f.DefInt != nil {
-			return f.DefInt.String()
+			signed := f.Type.Kind == ir.TInt && f.Type.Signed
+			width := 4
+			if f.Type.Width > 32 {
+				width = 8
+			}
+			return tableIntLit(f.DefInt, signed, width)
 		}
 		return "0"
 	case ir.TNamed:
@@ -366,8 +411,27 @@ func tableGuardExprs(st *ir.Struct) map[string]string {
 	return guards
 }
 
+// tableIntLit renders an integer literal safely at 64-bit width: unsigned
+// values past INT64_MAX need ull, and INT64_MIN has no single-literal form.
+func tableIntLit(v *big.Int, signed bool, widthBytes int) string {
+	s := v.String()
+	if widthBytes < 8 {
+		return s
+	}
+	if !signed {
+		return s + "ull"
+	}
+	if s == "-9223372036854775808" {
+		return "( -9223372036854775807ll - 1 )"
+	}
+	return s + "ll"
+}
+
 func (g *tableGen) emitTableWrite(st *ir.Struct) {
 	g.pf("inline bool TableWrite%s( TableWriter & w, const %s & value )\n{\n", st.Name, st.Name)
+	if len(st.Fields) == 0 {
+		g.pf("    (void) value; // empty type: presence is the payload\n")
+	}
 	guards := tableGuardExprs(st)
 	for _, f := range st.Fields {
 		if cond, guarded := guards[f.Name]; guarded {
@@ -412,8 +476,9 @@ func (g *tableGen) emitTableWriteField(f *ir.Field) {
 			g.emitTableWriteElement(f, kind, fmt.Sprintf("value.%s[i]", f.Name), "            ")
 			g.pf("        }\n")
 			g.pf("        w.patch32( len_at_%s, uint32_t( w.offset - len_at_%s - 4 ) );\n    }\n", f.Name, f.Name)
-		case f.Array == ir.ArrayFixed:
-			// fixed arrays have no authored count in storage — all elements ride
+		case f.Array == ir.ArrayFixed && kind == tkTable:
+			// fixed arrays of tables always ride — no cheap element-default
+			// compare in C++ (an all-default element costs 6 bytes)
 			g.pf("    {\n")
 			g.pf("        w.put16( 0x%04x ); w.put8( %d ); // %s (fixed [%d])\n", id, tkArray, f.Name, f.ArrayBound)
 			g.pf("        int64_t len_at_%s = w.offset; w.put32( 0 );\n", f.Name)
@@ -422,6 +487,21 @@ func (g *tableGen) emitTableWriteField(f *ir.Field) {
 			g.emitTableWriteElement(f, kind, fmt.Sprintf("value.%s[i]", f.Name), "            ")
 			g.pf("        }\n")
 			g.pf("        w.patch32( len_at_%s, uint32_t( w.offset - len_at_%s - 4 ) );\n    }\n", f.Name, f.Name)
+		case f.Array == ir.ArrayFixed:
+			// fixed arrays are positional; an all-default array elides entirely
+			// (parity with the Go writer and the reader's prefill)
+			g.pf("    {\n")
+			g.pf("        bool all_default_%s = true;\n", f.Name)
+			g.pf("        for ( int32_t i = 0; i < %d; i++ ) { if ( value.%s[i] != %s ) { all_default_%s = false; break; } }\n",
+				f.ArrayBound, f.Name, g.fieldDefaultExpr(f), f.Name)
+			g.pf("        if ( !all_default_%s )\n        {\n", f.Name)
+			g.pf("            w.put16( 0x%04x ); w.put8( %d ); // %s (fixed [%d])\n", id, tkArray, f.Name, f.ArrayBound)
+			g.pf("            int64_t len_at_%s = w.offset; w.put32( 0 );\n", f.Name)
+			g.pf("            w.put8( %d ); w.put16( %d );\n", kind, f.ArrayBound)
+			g.pf("            for ( int32_t i = 0; i < %d; i++ )\n            {\n", f.ArrayBound)
+			g.emitTableWriteElement(f, kind, fmt.Sprintf("value.%s[i]", f.Name), "                ")
+			g.pf("            }\n")
+			g.pf("            w.patch32( len_at_%s, uint32_t( w.offset - len_at_%s - 4 ) );\n        }\n    }\n", f.Name, f.Name)
 		case kind == tkTable:
 			g.pf("    {\n")
 			g.pf("        int64_t field_at_%s = w.offset;\n", f.Name)
@@ -475,6 +555,9 @@ func (g *tableGen) emitTableRead(st *ir.Struct) {
 		wireKind := kind
 		if f.Array != ir.ArrayNone || f.Type.Kind == ir.TBytes {
 			wireKind = tkArray
+		}
+		if f.Type.Kind == ir.TBytes {
+			kind = tkU8 // bytes travel as an array of u8 elements
 		}
 		g.pf("            case 0x%04x: // %s\n            {\n", id, f.Name)
 		g.pf("                if ( kind != %d )\n                {\n", wireKind)
@@ -571,8 +654,22 @@ func (g *tableGen) emitTableReadScalarInto(f *ir.Field, kind int, lvalue, ind st
 	case tkBool:
 		g.pf("%s%s = r.get8() != 0;\n", ind, lvalue)
 	case tkF32:
+		if f.HasFloatRange {
+			g.pf("%sfloat decoded = table_bits_to_float( r.get32() );\n", ind)
+			g.pf("%sif ( decoded < %s ) { decoded = %s; r.report->clamped++; }\n", ind, formatFloat(f.FMin, true), formatFloat(f.FMin, true))
+			g.pf("%selse if ( decoded > %s ) { decoded = %s; r.report->clamped++; }\n", ind, formatFloat(f.FMax, true), formatFloat(f.FMax, true))
+			g.pf("%s%s = decoded;\n", ind, lvalue)
+			return
+		}
 		g.pf("%s%s = table_bits_to_float( r.get32() );\n", ind, lvalue)
 	case tkF64:
+		if f.HasFloatRange {
+			g.pf("%sdouble decoded = table_bits_to_double( r.get64() );\n", ind)
+			g.pf("%sif ( decoded < %s ) { decoded = %s; r.report->clamped++; }\n", ind, formatFloat(f.FMin, false), formatFloat(f.FMin, false))
+			g.pf("%selse if ( decoded > %s ) { decoded = %s; r.report->clamped++; }\n", ind, formatFloat(f.FMax, false), formatFloat(f.FMax, false))
+			g.pf("%s%s = decoded;\n", ind, lvalue)
+			return
+		}
 		g.pf("%s%s = table_bits_to_double( r.get64() );\n", ind, lvalue)
 	default:
 		if enum, isEnum := f.Type.Ref.(*ir.Enum); f.Type.Kind == ir.TNamed && isEnum {
@@ -588,8 +685,14 @@ func (g *tableGen) emitTableReadScalarInto(f *ir.Field, kind int, lvalue, ind st
 		}
 		g.pf("%s%s decoded = %s( r.%s( ) );\n", ind, storage, storage, tableGet(width))
 		if f.HasIntRange {
-			g.pf("%sif ( decoded < %s ) { decoded = %s; r.report->clamped++; }\n", ind, f.IntMin.String(), f.IntMin.String())
-			g.pf("%selse if ( decoded > %s ) { decoded = %s; r.report->clamped++; }\n", ind, f.IntMax.String(), f.IntMax.String())
+			lo := tableIntLit(f.IntMin, signed, width)
+			hi := tableIntLit(f.IntMax, signed, width)
+			g.pf("%sif ( decoded < %s ) { decoded = %s; r.report->clamped++; }\n", ind, lo, lo)
+			g.pf("%selse if ( decoded > %s ) { decoded = %s; r.report->clamped++; }\n", ind, hi, hi)
+		}
+		if f.Type.Kind == ir.TBits && f.Type.Width < width*8 {
+			maxv := (uint64(1) << f.Type.Width) - 1
+			g.pf("%sif ( decoded > %dull ) { decoded = %dull; r.report->clamped++; } // bits(%d) width clamp\n", ind, maxv, maxv, f.Type.Width)
 		}
 		g.pf("%s%s = decoded;\n", ind, lvalue)
 	}

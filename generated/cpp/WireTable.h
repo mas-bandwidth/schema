@@ -144,6 +144,7 @@ inline bool TableReadProbeHeader( TableReader & r, ProbeHeader & value )
                 }
                 if ( !r.has( 1 ) ) { r.report->malformed = true; return false; }
                 uint8_t decoded = uint8_t( r.get8( ) );
+                if ( decoded > 7ull ) { decoded = 7ull; r.report->clamped++; } // bits(3) width clamp
                 value.version = decoded;
                 break;
             }
@@ -229,6 +230,7 @@ inline bool TableReadProbeBits( TableReader & r, ProbeBits & value )
                 }
                 if ( !r.has( 2 ) ) { r.report->malformed = true; return false; }
                 uint16_t decoded = uint16_t( r.get16( ) );
+                if ( decoded > 511ull ) { decoded = 511ull; r.report->clamped++; } // bits(9) width clamp
                 value.small = decoded;
                 break;
             }
@@ -242,6 +244,7 @@ inline bool TableReadProbeBits( TableReader & r, ProbeBits & value )
                 }
                 if ( !r.has( 8 ) ) { r.report->malformed = true; return false; }
                 uint64_t decoded = uint64_t( r.get64( ) );
+                if ( decoded > 8589934591ull ) { decoded = 8589934591ull; r.report->clamped++; } // bits(33) width clamp
                 value.boundary = decoded;
                 break;
             }
@@ -283,8 +286,8 @@ inline bool TableReadProbeBits( TableReader & r, ProbeBits & value )
                 }
                 if ( !r.has( 8 ) ) { r.report->malformed = true; return false; }
                 uint64_t decoded = uint64_t( r.get64( ) );
-                if ( decoded < 0 ) { decoded = 0; r.report->clamped++; }
-                else if ( decoded > 18446744073709551615 ) { decoded = 18446744073709551615; r.report->clamped++; }
+                if ( decoded < 0ull ) { decoded = 0ull; r.report->clamped++; }
+                else if ( decoded > 18446744073709551615ull ) { decoded = 18446744073709551615ull; r.report->clamped++; }
                 value.nonce = decoded;
                 break;
             }
@@ -406,7 +409,10 @@ inline bool TableReadProbeSample( TableReader & r, ProbeSample & value )
                     break;
                 }
                 if ( !r.has( 4 ) ) { r.report->malformed = true; return false; }
-                value.orientation = table_bits_to_float( r.get32() );
+                float decoded = table_bits_to_float( r.get32() );
+                if ( decoded < -180.0f ) { decoded = -180.0f; r.report->clamped++; }
+                else if ( decoded > 180.0f ) { decoded = 180.0f; r.report->clamped++; }
+                value.orientation = decoded;
                 break;
             }
             case 0x933d: // raw_delta
@@ -923,14 +929,19 @@ inline bool TableWriteTestData( TableWriter & w, const TestData & value )
         w.put64( uint64_t( value.int64_range ) );
     }
     {
-        w.put16( 0x14fc ); w.put8( 14 ); // fixed_bytes (fixed [17])
-        int64_t len_at_fixed_bytes = w.offset; w.put32( 0 );
-        w.put8( 6 ); w.put16( 17 );
-        for ( int32_t i = 0; i < 17; i++ )
+        bool all_default_fixed_bytes = true;
+        for ( int32_t i = 0; i < 17; i++ ) { if ( value.fixed_bytes[i] != 0 ) { all_default_fixed_bytes = false; break; } }
+        if ( !all_default_fixed_bytes )
         {
-            w.put8( uint8_t( value.fixed_bytes[i] ) );
+            w.put16( 0x14fc ); w.put8( 14 ); // fixed_bytes (fixed [17])
+            int64_t len_at_fixed_bytes = w.offset; w.put32( 0 );
+            w.put8( 6 ); w.put16( 17 );
+            for ( int32_t i = 0; i < 17; i++ )
+            {
+                w.put8( uint8_t( value.fixed_bytes[i] ) );
+            }
+            w.patch32( len_at_fixed_bytes, uint32_t( w.offset - len_at_fixed_bytes - 4 ) );
         }
-        w.patch32( len_at_fixed_bytes, uint32_t( w.offset - len_at_fixed_bytes - 4 ) );
     }
     if ( value.text_length > 0 )
     {
@@ -1103,7 +1114,10 @@ inline bool TableReadTestData( TableReader & r, TestData & value )
                     break;
                 }
                 if ( !r.has( 4 ) ) { r.report->malformed = true; return false; }
-                value.compressed_float_value = table_bits_to_float( r.get32() );
+                float decoded = table_bits_to_float( r.get32() );
+                if ( decoded < 0.0f ) { decoded = 0.0f; r.report->clamped++; }
+                else if ( decoded > 10.0f ) { decoded = 10.0f; r.report->clamped++; }
+                value.compressed_float_value = decoded;
                 break;
             }
             case 0x6a50: // double_value
@@ -1219,8 +1233,8 @@ inline bool TableReadTestData( TableReader & r, TestData & value )
                 }
                 if ( !r.has( 8 ) ) { r.report->malformed = true; return false; }
                 int64_t decoded = int64_t( r.get64( ) );
-                if ( decoded < -1000000000000 ) { decoded = -1000000000000; r.report->clamped++; }
-                else if ( decoded > 1000000000000 ) { decoded = 1000000000000; r.report->clamped++; }
+                if ( decoded < -1000000000000ll ) { decoded = -1000000000000ll; r.report->clamped++; }
+                else if ( decoded > 1000000000000ll ) { decoded = 1000000000000ll; r.report->clamped++; }
                 value.int64_range = decoded;
                 break;
             }

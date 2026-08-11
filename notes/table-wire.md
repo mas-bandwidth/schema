@@ -92,14 +92,53 @@ table bins: a protocol id mismatch is a WARNING, not a rejection — the TLV
 wire carries its own compatibility. The content hash still gates corruption
 absolutely.
 
+## Decisions banked during implementation (2026-08-12)
+
+- Branch guards are honored by every WRITER: both writers walk the wire tree
+  (the dense encoder's own Items walk), so untaken-branch fields stay off
+  the wire entirely and the reader's prefilled defaults stand in for the
+  untaken side. Readers do not enforce guard consistency — consumers consult
+  the guard bool. This is the exact mechanism the space gunner_settings
+  presence seam rides (fbs null table ↔ guard false).
+- Fixed arrays are POSITIONAL: writers pad to the declared bound (absent
+  trailing JSON elements encode as the element default) and elide the field
+  entirely when every element is at the default. Fixed arrays of tables
+  always ride (no cheap element compare in C++; an all-default element costs
+  6 bytes). Counted arrays elide only at count zero — a count of N default
+  elements is data.
+- bytes(N) travels as an array of u8: writers say elem-kind u8, readers
+  expect exactly that.
+- Types the wire cannot carry — int128/uint128, fixed(I, F), bits wider
+  than 64 — get NO table functions in C++ (a comment names the reason,
+  transitively through nesting); the Go backend refuses such units outright
+  (no 128-bit surface); `schema pack` errors per-field.
+- Read-side clamps, complete: declared int ranges, declared float ranges,
+  bits(W) width overflow (a wider wire kind carrying more than W bits),
+  string/array bounds, enum out-of-set -> None. All count in the report.
+- The bare terminator: an instance at its declared defaults encodes as
+  2 bytes, in every writer.
+
 ## What implements it
 
-- `schema pack` (Go): TLV writer per the manifest. The dense interpreter and
-  its wire-golden test remain (the realtime wire's independent check).
+- `schema pack` (Go): TLV writer per the manifest — DONE, guard-honoring.
+  The dense interpreter and its wire-golden test remain (the realtime
+  wire's independent check).
 - Go TLV decoder (internal/pack): the evolution TEST harness — encode under
-  schema A, decode under edited schema B, assert defaults/skips/counts; also
-  the natural reader if the backend ever stops treating Config.bin as opaque.
+  schema A, decode under edited schema B, assert defaults/skips/counts.
+  DONE (internal/pack/table_test.go: evolution both directions, guards,
+  bytes, clamps).
 - C++ emitter: `<Base>Table.h` — TableWrite/TableRead per `type`, no
-  serialize dependency (plain byte code), includable anywhere.
+  serialize dependency (plain byte code), includable anywhere. DONE; corpus
+  compiles under -Wall -Wextra -Werror, ODR-proven across two TUs.
+- Go emitter: `<Base>Table.go` + TableRuntime.go — TableWriteX(value)
+  []byte / TableReadX(data, &value, &report) bool, typed codecs in the
+  generated package. DONE. This is what lets the Go backend
+  (cmd/backend/backend.go in space) open the SAME Config.bin/Assets.bin the
+  game server reads — one file, native readers in every language (Glenn,
+  2026-08-12).
+- Cross-language goldens: testdata/table/*.bin pinned by the C++ test
+  (rigidbody moving/at-rest, probearray, testdata), byte-compared by the Go
+  test; both sides also exercise the permissive contract on hand-built
+  buffers (unknown id, changed kind, truncation, out-of-range). DONE.
 - C# emitter: the same pair for Unity (writes UserSettings, reads
-  config/assets/events).
+  config/assets/events). NEXT.

@@ -229,6 +229,38 @@ func TestTableClamping(t *testing.T) {
 	}
 }
 
+// TestTableBytes: bytes(N) travels as an array of u8 — the writer says so and
+// the reader must expect exactly that (a reader expecting kArray elements
+// would skip every bytes field as a kind mismatch).
+func TestTableBytes(t *testing.T) {
+	u := unitFromSource(t, `package evo
+
+type Blob {
+    data bytes(8)
+    tag  int32
+}
+`)
+	enc := &Encoder{Unit: u}
+	wire, err := enc.EncodeTable("Blob", obj(t, `{ "data": [1, 2, 250], "tag": 7 }`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	out, rep, err := DecodeTable(u, "Blob", wire)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rep.Unknown != 0 || rep.KindMismatch != 0 || rep.Clamped != 0 || rep.Malformed {
+		t.Fatalf("bytes round trip not silent: %+v", rep)
+	}
+	data := out["data"].([]any)
+	if len(data) != 3 || data[0].(*big.Int).Int64() != 1 || data[2].(*big.Int).Int64() != 250 {
+		t.Fatalf("bytes lost: %v", out["data"])
+	}
+	if out["tag"].(*big.Int).Int64() != 7 {
+		t.Fatalf("tag lost: %v", out["tag"])
+	}
+}
+
 // TestTableBranchGuards: fields on an untaken branch stay off the wire —
 // TLV's native optionality carries the branch, and the reader's prefilled
 // defaults stand in for the untaken side (notes/table-wire.md).

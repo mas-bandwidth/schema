@@ -88,9 +88,10 @@ func scalarKind(f *ir.Field) (byte, error) {
 			return kU16, nil
 		case f.Type.Width <= 32:
 			return kU32, nil
-		default:
+		case f.Type.Width <= 64:
 			return kU64, nil
 		}
+		return 0, fmt.Errorf("bits(%d) exceeds the widest table-wire kind (u64)", f.Type.Width)
 	case ir.TFloat32:
 		return kF32, nil
 	case ir.TFloat64:
@@ -261,6 +262,31 @@ func (e *Encoder) encodeTableField(w *tableWriter, f *ir.Field, obj map[string]a
 		}
 		if int64(len(arr)) > bound {
 			return fmt.Errorf("%s: %d elements exceeds bound %d", fpath, len(arr), bound)
+		}
+		if f.Array == ir.ArrayFixed {
+			// fixed arrays are positional: pad to the bound (absent trailing
+			// elements encode as the element default), and elide entirely when
+			// EVERY element is default — parity with the C++ writer and the
+			// reader's prefill. Table elements always ride (no cheap compare).
+			for int64(len(arr)) < bound {
+				arr = append(arr, nil)
+			}
+			if kind != kTable {
+				allDefault := true
+				for _, elem := range arr {
+					def, derr := e.isDefault(f, elem, fpath)
+					if derr != nil {
+						return derr
+					}
+					if !def {
+						allDefault = false
+						break
+					}
+				}
+				if allDefault {
+					return nil
+				}
+			}
 		}
 		body := &tableWriter{}
 		body.u8(kind)
@@ -595,11 +621,22 @@ func decodePayload(u *ir.Unit, f *ir.Field, kind byte, data []byte, rep *TableRe
 		}
 		body, rest := data[4:4+n], data[4+n:]
 		if len(body) < 3 {
-			return nil, nil, false
+			return defaultValue(u, f), rest, true // no element header: an empty array
 		}
 		elemKind := body[0]
 		count := int(binary.LittleEndian.Uint16(body[1:]))
 		body = body[3:]
+		expected, err := scalarKind(f)
+		if err != nil {
+			return nil, nil, false
+		}
+		if f.Type.Kind == ir.TBytes {
+			expected = kU8 // bytes travel as an array of u8
+		}
+		if elemKind != expected {
+			rep.KindMismatch++ // element type changed: keep the default
+			return defaultValue(u, f), rest, true
+		}
 		bound := f.ArrayBound
 		if f.Type.Kind == ir.TBytes {
 			bound = f.Type.Size
@@ -631,13 +668,26 @@ func decodeScalarPayload(u *ir.Unit, f *ir.Field, kind byte, data []byte, rep *T
 		}
 		raw := data[:n]
 		rest := data[n:]
+		clampFloat := func(v float64) float64 {
+			if f != nil && f.HasFloatRange {
+				if v < f.FMin {
+					rep.Clamped++
+					return f.FMin
+				}
+				if v > f.FMax {
+					rep.Clamped++
+					return f.FMax
+				}
+			}
+			return v
+		}
 		switch kind {
 		case kBool:
 			return raw[0] != 0, rest, true
 		case kF32:
-			return float64(math.Float32frombits(binary.LittleEndian.Uint32(raw))), rest, true
+			return clampFloat(float64(math.Float32frombits(binary.LittleEndian.Uint32(raw)))), rest, true
 		case kF64:
-			return math.Float64frombits(binary.LittleEndian.Uint64(raw)), rest, true
+			return clampFloat(math.Float64frombits(binary.LittleEndian.Uint64(raw))), rest, true
 		default:
 			var u64 uint64
 			switch n {
@@ -664,6 +714,21 @@ func decodeScalarPayload(u *ir.Unit, f *ir.Field, kind byte, data []byte, rep *T
 				} else if v.Cmp(f.IntMax) > 0 {
 					rep.Clamped++
 					v = new(big.Int).Set(f.IntMax)
+				}
+			}
+			if f != nil && f.Type.Kind == ir.TBits {
+				max := new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), uint(f.Type.Width)), big.NewInt(1))
+				if v.Cmp(max) > 0 { // wire kind is wider than bits(W): width overflow clamps
+					rep.Clamped++
+					v = max
+				}
+			}
+			if f != nil {
+				if enum, isEnum := f.Type.Ref.(*ir.Enum); f.Type.Kind == ir.TNamed && isEnum {
+					if v.Sign() < 0 || v.Cmp(big.NewInt(enum.Max)) > 0 { // out-of-set -> None
+						rep.Clamped++
+						v = big.NewInt(0)
+					}
 				}
 			}
 			return v, rest, true

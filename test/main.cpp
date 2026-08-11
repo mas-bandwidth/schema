@@ -16,6 +16,15 @@
 #include "TypesWire.h"
 #include "WireWire.h"
 
+// the TABLE wire (notes/table-wire.md) — serialize-free, coexists in this TU
+#include "ConstantsTable.h"
+#include "ContextsTable.h"
+#include "EnumsTable.h"
+#include "MessagesTable.h"
+#include "ObjectsTable.h"
+#include "TypesTable.h"
+#include "WireTable.h"
+
 // defined in second.cpp — proves cross-TU linkage over the same headers
 int touch_generated_types();
 
@@ -119,6 +128,42 @@ static bool golden_wire( const char * name, const uint8_t * data, int64_t bytes 
     if ( (int64_t) n != bytes || std::memcmp( expected, data, (size_t) bytes ) != 0 )
     {
         printf( "WIRE GOLDEN MISMATCH: %s (%lld golden vs %lld actual bytes) — stop-the-line (SPEC §3.1, §7.2 gate 7)\n",
+                name, (long long) n, (long long) bytes );
+        return false;
+    }
+    return true;
+}
+
+// Table-wire goldens: same discipline, testdata/table/*.bin — pinned here,
+// byte-checked by the Go test against the generated Go table writer.
+static bool golden_table( const char * name, const uint8_t * data, int64_t bytes )
+{
+    char path[256];
+    snprintf( path, sizeof( path ), "testdata/table/%s.bin", name );
+    if ( std::getenv( "SCHEMA_UPDATE_WIRE_GOLDENS" ) )
+    {
+        FILE * f = fopen( path, "wb" );
+        if ( !f )
+        {
+            printf( "cannot write %s\n", path );
+            return false;
+        }
+        fwrite( data, 1, (size_t) bytes, f );
+        fclose( f );
+        return true;
+    }
+    FILE * f = fopen( path, "rb" );
+    if ( !f )
+    {
+        printf( "missing table golden %s (run: make update-goldens)\n", path );
+        return false;
+    }
+    static uint8_t expected[4096];
+    size_t n = fread( expected, 1, sizeof( expected ), f );
+    fclose( f );
+    if ( (int64_t) n != bytes || std::memcmp( expected, data, (size_t) bytes ) != 0 )
+    {
+        printf( "TABLE GOLDEN MISMATCH: %s (%lld golden vs %lld actual bytes) — stop-the-line (SPEC §3.1)\n",
                 name, (long long) n, (long long) bytes );
         return false;
     }
@@ -658,6 +703,189 @@ int main()
         // the untaken active-branch fields of samples[1] read as ZERO (SPEC §5)
         check( out.samples[1].weapon == Weapon::None && !out.samples[1].has_target );
         check( out.config.retries == 3 && out.config.preferred == Weapon::Missile );
+    }
+
+    // ================= THE TABLE WIRE (notes/table-wire.md) =================
+    // Same pinned instances as the dense wire where they exist; the table
+    // goldens in testdata/table/*.bin are written here and byte-checked by the
+    // Go test against the generated Go table writer — cross-language identity
+    // for the evolution-tolerant wire.
+
+    // ---- RigidBody: round-trip, branch-guard elision, pins ----
+    {
+        RigidBody in;
+        in.position = { 1.5, -2.5, 3.25 };
+        in.orientation = { 0.1, 0.2, 0.3, 0.9 };
+        in.at_rest = false;
+        in.linear_velocity = { 10.0, 20.0, -3.0 };
+        in.angular_velocity = { 0.25, 0.5, 0.75 };
+
+        TableWriter tw( buffer, sizeof( buffer ) );
+        check( TableWriteRigidBody( tw, in ) );
+        check( golden_table( "rigidbody_moving", buffer, tw.offset ) );
+
+        RigidBody out;
+        TableReport rep;
+        check( TableReadRigidBody( buffer, tw.offset, out, rep ) );
+        check( rep.unknown == 0 && rep.kind_mismatch == 0 && rep.clamped == 0 && !rep.malformed );
+        check( out.position.x == 1.5 && out.position.y == -2.5 && out.position.z == 3.25 );
+        check( out.orientation.w == 0.9 && !out.at_rest );
+        check( out.linear_velocity.y == 20.0 && out.angular_velocity.z == 0.75 );
+
+        // at rest: the guard keeps both velocities off the wire entirely
+        in.at_rest = true;
+        TableWriter tw2( buffer, sizeof( buffer ) );
+        check( TableWriteRigidBody( tw2, in ) );
+        check( golden_table( "rigidbody_at_rest", buffer, tw2.offset ) );
+
+        RigidBody out2;
+        out2.linear_velocity = { 99.0, 99.0, 99.0 }; // dirty — prefill must reset
+        TableReport rep2;
+        check( TableReadRigidBody( buffer, tw2.offset, out2, rep2 ) );
+        check( out2.at_rest );
+        check( out2.linear_velocity.x == 0.0 && out2.angular_velocity.z == 0.0 );
+    }
+
+    // ---- the all-default instance is a bare terminator: 2 bytes ----
+    {
+        RigidBody in;
+        TableWriter tw( buffer, sizeof( buffer ) );
+        check( TableWriteRigidBody( tw, in ) );
+        check( tw.offset == 2 );
+
+        ProbeConfig config; // NSDMI defaults: retries -1, preferred Railgun
+        TableWriter tw2( buffer, sizeof( buffer ) );
+        check( TableWriteProbeConfig( tw2, config ) );
+        check( tw2.offset == 2 );
+
+        ProbeConfig out;
+        out.retries = 99;
+        TableReport rep;
+        check( TableReadProbeConfig( buffer, tw2.offset, out, rep ) );
+        check( out.retries == -1 && out.preferred == Weapon::Railgun ); // prefill restores defaults
+    }
+
+    // ---- ProbeArray: fixed table array, nested defaults, its pin ----
+    {
+        ProbeArray in;
+        in.samples[0].orientation = 90.0f;
+        in.samples[0].raw_delta = -5;
+        in.samples[0].big_delta = -1234567890123ll;
+        in.samples[0].weapon = Weapon::Laser;
+        in.samples[0].has_target = true;
+        in.samples[0].target_id = 777;
+        in.samples[0].samples_count = 1;
+        in.samples[0].samples[0] = 42;
+        in.samples[1].active = false;
+        in.samples[1].orientation = -45.5f;
+        in.samples[1].raw_delta = 7;
+        in.samples[1].big_delta = 99;
+        in.samples[1].idle_ticks = 1000;
+        in.samples[1].samples_count = 2;
+        in.samples[1].samples[0] = 7;
+        in.samples[1].samples[1] = 8;
+        in.config.retries = 3;
+        in.config.preferred = Weapon::Missile;
+
+        TableWriter tw( buffer, sizeof( buffer ) );
+        check( TableWriteProbeArray( tw, in ) );
+        check( golden_table( "probearray", buffer, tw.offset ) );
+
+        ProbeArray out;
+        TableReport rep;
+        check( TableReadProbeArray( buffer, tw.offset, out, rep ) );
+        check( rep.unknown == 0 && rep.kind_mismatch == 0 && !rep.malformed );
+        check( out.samples[0].weapon == Weapon::Laser && out.samples[0].target_id == 777 );
+        check( !out.samples[1].active && out.samples[1].idle_ticks == 1000 );
+        // guard kept the untaken active-side fields off the wire -> defaults
+        check( out.samples[1].weapon == Weapon::None && !out.samples[1].has_target );
+        check( out.samples[1].samples_count == 2 && out.samples[1].samples[1] == 8 );
+        check( out.config.retries == 3 && out.config.preferred == Weapon::Missile );
+    }
+
+    // ---- TestData: strings, counted arrays, bits, fixed bytes, its pin ----
+    {
+        TestData in;
+        in.a = -100;
+        in.b = 100;
+        in.c = 149;
+        in.d = 0x11;
+        in.e = 0x22;
+        in.f = 0x33;
+        in.g = true;
+        in.items_count = 3;
+        in.items[0] = 0;
+        in.items[1] = 128;
+        in.items[2] = 255;
+        in.float_value = 3.1415926f;
+        in.compressed_float_value = 2.5f;
+        in.double_value = 1.0 / 3.0;
+        in.int8_value = -128;
+        in.int16_value = -32768;
+        in.uint8_value = 255;
+        in.uint16_value = 65535;
+        in.uint32_value = 4294967295u;
+        in.uint64_value = 18446744073709551615ull;
+        in.int64_full = ( -9223372036854775807ll - 1 );
+        in.int64_range = -999999999999ll;
+        for ( int i = 0; i < 17; i++ )
+        {
+            in.fixed_bytes[i] = (uint8_t) ( i * 3 );
+        }
+        std::memcpy( in.text, "the quick brown fox", 19 );
+        in.text_length = 19;
+
+        TableWriter tw( buffer, sizeof( buffer ) );
+        check( TableWriteTestData( tw, in ) );
+        check( golden_table( "testdata", buffer, tw.offset ) );
+
+        TestData out;
+        TableReport rep;
+        check( TableReadTestData( buffer, tw.offset, out, rep ) );
+        check( rep.unknown == 0 && rep.kind_mismatch == 0 && rep.clamped == 0 && !rep.malformed );
+        check( out.a == -100 && out.g && out.items_count == 3 && out.items[2] == 255 );
+        check( out.int64_full == ( -9223372036854775807ll - 1 ) );
+        check( out.uint64_value == 18446744073709551615ull );
+        check( out.fixed_bytes[16] == 48 );
+        check( out.text_length == 19 && std::memcmp( out.text, "the quick brown fox", 19 ) == 0 );
+    }
+
+    // ---- the permissive read contract, exercised with hand-built buffers ----
+    {
+        // unknown field id: skipped and counted, decode continues
+        const uint8_t unknown_field[] = { 0xEF, 0xBE, 6, 42, 0x00, 0x00 };
+        RigidBody out;
+        TableReport rep;
+        check( TableReadRigidBody( unknown_field, sizeof( unknown_field ), out, rep ) );
+        check( rep.unknown == 1 && !rep.malformed );
+        check( out.position.x == 0.0 );
+
+        // kind mismatch on a known id (at_rest as f32): skipped, default kept
+        const uint8_t changed_kind[] = { 0xEB, 0xF9, 10, 0, 0, 0, 0, 0x00, 0x00 };
+        RigidBody out2;
+        TableReport rep2;
+        check( TableReadRigidBody( changed_kind, sizeof( changed_kind ), out2, rep2 ) );
+        check( rep2.kind_mismatch == 1 && !rep2.malformed );
+        check( !out2.at_rest );
+
+        // truncation: malformed reported, decode stops without crashing
+        const uint8_t truncated[] = { 0xEB, 0xF9, 1 };
+        RigidBody out3;
+        TableReport rep3;
+        check( !TableReadRigidBody( truncated, sizeof( truncated ), out3, rep3 ) );
+        check( rep3.malformed );
+
+        // out-of-range int clamps and counts (TestData.a is [-100, 100]):
+        // write a = 50, damage the payload byte to 200 -> the read clamps
+        TableWriter tw( buffer, sizeof( buffer ) );
+        TestData narrow;
+        narrow.a = 50;
+        check( TableWriteTestData( tw, narrow ) );
+        buffer[3] = 200; // low byte of a's i32 payload: 50 -> 200
+        TestData out4;
+        TableReport rep4;
+        check( TableReadTestData( buffer, tw.offset, out4, rep4 ) );
+        check( rep4.clamped == 1 && out4.a == 100 );
     }
 
     if ( touch_generated_types() != 0 )

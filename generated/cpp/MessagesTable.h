@@ -107,6 +107,7 @@ namespace example {
 
 inline bool TableWriteHeartbeat( TableWriter & w, const Heartbeat & value )
 {
+    (void) value; // empty type: presence is the payload
     w.put16( 0 ); // terminator
     return !w.overflow;
 }
@@ -292,13 +293,13 @@ inline bool TableReadBlock( TableReader & r, Block & value )
                 {
                     uint8_t elem_kind = r.get8();
                     uint16_t count = r.get16();
-                    if ( elem_kind != 14 ) { r.report->kind_mismatch++; r.offset = body_end; break; }
+                    if ( elem_kind != 6 ) { r.report->kind_mismatch++; r.offset = body_end; break; }
                     uint16_t keep = count;
                     if ( keep > 2000 ) { keep = 2000; r.report->clamped++; }
                     for ( uint16_t i = 0; i < keep; i++ )
                     {
-                        if ( !r.has( 0 ) ) { r.report->malformed = true; return false; }
-                        uint0_t decoded = uint0_t( r.get0( ) );
+                        if ( !r.has( 1 ) ) { r.report->malformed = true; return false; }
+                        uint8_t decoded = uint8_t( r.get8( ) );
                         value.data[i] = decoded;
                     }
                     value.data_length = keep;
