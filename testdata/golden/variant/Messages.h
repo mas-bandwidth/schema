@@ -6,8 +6,6 @@
 #include <cstdint>
 #include <variant>
 
-#include "serialize.h"
-
 #include "Constants.h"
 
 namespace example {
@@ -30,20 +28,6 @@ struct Heartbeat {
 inline constexpr int64_t HeartbeatMaxBits = 0; // longest wire path; align pads at worst case (SPEC §6.1)
 inline constexpr int64_t HeartbeatMaxBytes = 0; // rounded up to the 8-byte write-buffer granularity
 
-inline bool WriteHeartbeat( serialize::WriteStream & stream, const Heartbeat & value )
-{
-    (void) stream;
-    (void) value; // empty body — presence is the payload (SPEC §4.6)
-    return true;
-}
-
-inline bool ReadHeartbeat( serialize::ReadStream & stream, Heartbeat & value )
-{
-    (void) stream;
-    (void) value;
-    return true;
-}
-
 // message Test
 struct Test {
     uint16_t test_a = 0;
@@ -55,43 +39,6 @@ struct Test {
 inline constexpr int64_t TestMaxBits = 46; // longest wire path; align pads at worst case (SPEC §6.1)
 inline constexpr int64_t TestMaxBytes = 8; // rounded up to the 8-byte write-buffer granularity
 
-inline bool WriteTest( serialize::WriteStream & stream, const Test & value )
-{
-    write_bits( stream, value.test_a, 16 );
-    serialize_assert( int32_t( value.test_b ) >= int32_t( 0 ) && int32_t( value.test_b ) <= int32_t( 1000 ) );
-    write_bits( stream, uint32_t( value.test_b ), 10 );
-    serialize_assert( int32_t( value.test_c ) >= int32_t( 0 ) && int32_t( value.test_c ) <= int32_t( 1000 ) );
-    write_bits( stream, uint32_t( value.test_c ), 10 );
-    serialize_assert( int32_t( value.test_d ) >= int32_t( 0 ) && int32_t( value.test_d ) <= int32_t( 1000 ) );
-    write_bits( stream, uint32_t( value.test_d ), 10 );
-    return true;
-}
-
-inline bool ReadTest( serialize::ReadStream & stream, Test & value )
-{
-    {
-        uint32_t raw_value = 0;
-        read_bits( stream, raw_value, 16 );
-        value.test_a = uint16_t( raw_value );
-    }
-    {
-        int32_t range_value = 0;
-        read_int( stream, range_value, 0, 1000 );
-        value.test_b = int16_t( range_value );
-    }
-    {
-        int32_t range_value = 0;
-        read_int( stream, range_value, 0, 1000 );
-        value.test_c = int16_t( range_value );
-    }
-    {
-        int32_t range_value = 0;
-        read_int( stream, range_value, 0, 1000 );
-        value.test_d = int16_t( range_value );
-    }
-    return true;
-}
-
 // message Block
 struct Block {
     uint8_t data[MaxBlockSize] = {}; // bytes(MaxBlockSize): fixed buffer, used length beside it (SPEC §4.7)
@@ -100,21 +47,6 @@ struct Block {
 
 inline constexpr int64_t BlockMaxBits = 16018; // longest wire path; align pads at worst case (SPEC §6.1)
 inline constexpr int64_t BlockMaxBytes = 2008; // rounded up to the 8-byte write-buffer granularity
-
-inline bool WriteBlock( serialize::WriteStream & stream, const Block & value )
-{
-    serialize_assert( int32_t( value.data_length ) >= int32_t( 0 ) && int32_t( value.data_length ) <= int32_t( MaxBlockSize ) );
-    write_bits( stream, uint32_t( value.data_length ), 11 );
-    write_bytes( stream, value.data, value.data_length );
-    return true;
-}
-
-inline bool ReadBlock( serialize::ReadStream & stream, Block & value )
-{
-    read_int( stream, value.data_length, 0, MaxBlockSize );
-    read_bytes( stream, value.data, value.data_length );
-    return true;
-}
 
 // message Chat
 struct Chat {
@@ -125,33 +57,6 @@ struct Chat {
 inline constexpr int64_t ChatMaxBits = 2064; // longest wire path; align pads at worst case (SPEC §6.1)
 inline constexpr int64_t ChatMaxBytes = 264; // rounded up to the 8-byte write-buffer granularity
 
-inline bool WriteChat( serialize::WriteStream & stream, const Chat & value )
-{
-    for ( int32_t i = 0; i < value.text_length; i++ )
-    {
-        serialize_assert( value.text[i] != 0 );
-    }
-    serialize_assert( int32_t( value.text_length ) >= int32_t( 0 ) && int32_t( value.text_length ) <= int32_t( MaxChatLength ) );
-    write_bits( stream, uint32_t( value.text_length ), 9 );
-    write_bytes( stream, value.text, value.text_length );
-    return true;
-}
-
-inline bool ReadChat( serialize::ReadStream & stream, Chat & value )
-{
-    read_int( stream, value.text_length, 0, MaxChatLength );
-    read_bytes( stream, value.text, value.text_length );
-    for ( int32_t i = 0; i < value.text_length; i++ )
-    {
-        if ( value.text[i] == 0 )
-        {
-            return false;
-        }
-    }
-    value.text[value.text_length] = 0;
-    return true;
-}
-
 // message Synchronize
 struct Synchronize {
     uint64_t sync_frame = 0;
@@ -160,24 +65,6 @@ struct Synchronize {
 
 inline constexpr int64_t SynchronizeMaxBits = 80; // longest wire path; align pads at worst case (SPEC §6.1)
 inline constexpr int64_t SynchronizeMaxBytes = 16; // rounded up to the 8-byte write-buffer granularity
-
-inline bool WriteSynchronize( serialize::WriteStream & stream, const Synchronize & value )
-{
-    write_bits( stream, value.sync_frame, 64 );
-    write_bits( stream, value.sync_sequence, 16 );
-    return true;
-}
-
-inline bool ReadSynchronize( serialize::ReadStream & stream, Synchronize & value )
-{
-    read_bits( stream, value.sync_frame, 64 );
-    {
-        uint32_t raw_value = 0;
-        read_bits( stream, raw_value, 16 );
-        value.sync_sequence = uint16_t( raw_value );
-    }
-    return true;
-}
 
 // message Timescale
 struct Timescale {
@@ -188,39 +75,6 @@ struct Timescale {
 
 inline constexpr int64_t TimescaleMaxBits = 128; // longest wire path; align pads at worst case (SPEC §6.1)
 inline constexpr int64_t TimescaleMaxBytes = 16; // rounded up to the 8-byte write-buffer granularity
-
-inline bool WriteTimescale( serialize::WriteStream & stream, const Timescale & value )
-{
-    write_double( stream, value.scale );
-    write_bits( stream, value.frame_a, 32 );
-    write_bits( stream, value.frame_b, 32 );
-    return true;
-}
-
-inline bool ReadTimescale( serialize::ReadStream & stream, Timescale & value )
-{
-    read_double( stream, value.scale );
-    read_bits( stream, value.frame_a, 32 );
-    read_bits( stream, value.frame_b, 32 );
-    return true;
-}
-
-// The message tag wire: MessageType in [0, 6], minimal bits; None = 0 is a
-// valid wire value meaning *no message* — the stream terminator (SPEC §4.8).
-inline bool WriteMessageType( serialize::WriteStream & stream, MessageType value )
-{
-    serialize_assert( int32_t( value ) >= int32_t( 0 ) && int32_t( value ) <= int32_t( 6 ) );
-    write_bits( stream, uint32_t( value ), 3 );
-    return true;
-}
-
-inline bool ReadMessageType( serialize::ReadStream & stream, MessageType & value )
-{
-    int32_t tag_value = 0;
-    read_int( stream, tag_value, 0, 6 );
-    value = MessageType( tag_value );
-    return true;
-}
 
 // The message-level bound: the tag plus the largest message (SPEC §6.1)
 inline constexpr int64_t MessageMaxBits = 16021;
@@ -235,60 +89,6 @@ static_assert( std::variant_size_v<Message> == 7, "one alternative per message p
 inline MessageType GetMessageType( const Message & message )
 {
     return MessageType( message.index() );
-}
-
-inline bool WriteMessage( serialize::WriteStream & stream, const Message & message )
-{
-    if ( !WriteMessageType( stream, MessageType( message.index() ) ) )
-    {
-        return false;
-    }
-    switch ( message.index() )
-    {
-        case 0:
-            return true; // None — the stream terminator (SPEC §4.8)
-        case 1:
-            return WriteBlock( stream, *std::get_if<Block>( &message ) );
-        case 2:
-            return WriteChat( stream, *std::get_if<Chat>( &message ) );
-        case 3:
-            return WriteHeartbeat( stream, *std::get_if<Heartbeat>( &message ) );
-        case 4:
-            return WriteSynchronize( stream, *std::get_if<Synchronize>( &message ) );
-        case 5:
-            return WriteTest( stream, *std::get_if<Test>( &message ) );
-        case 6:
-            return WriteTimescale( stream, *std::get_if<Timescale>( &message ) );
-    }
-    return false;
-}
-
-inline bool ReadMessage( serialize::ReadStream & stream, Message & message )
-{
-    MessageType tag_value = MessageType::None;
-    if ( !ReadMessageType( stream, tag_value ) )
-    {
-        return false;
-    }
-    switch ( int32_t( tag_value ) )
-    {
-        case 0:
-            message.emplace<std::monostate>();
-            return true;
-        case 1:
-            return ReadBlock( stream, message.emplace<Block>() );
-        case 2:
-            return ReadChat( stream, message.emplace<Chat>() );
-        case 3:
-            return ReadHeartbeat( stream, message.emplace<Heartbeat>() );
-        case 4:
-            return ReadSynchronize( stream, message.emplace<Synchronize>() );
-        case 5:
-            return ReadTest( stream, message.emplace<Test>() );
-        case 6:
-            return ReadTimescale( stream, message.emplace<Timescale>() );
-    }
-    return false;
 }
 
 } // namespace example

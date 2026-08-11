@@ -22,18 +22,23 @@ func (g *gen) maxBitsStruct(st *ir.Struct) int64 { return ir.MaxBitsStruct(st) }
 
 // ---- function emission ----
 
-// emitStructFunctions emits MaxBits/MaxBytes and the split Write/Read pair
-// for a type or message, in the topo order the struct itself was emitted.
-func (g *gen) emitStructFunctions(st *ir.Struct) {
+// emitStructMaxBits emits the MaxBits/MaxBytes bounds beside the struct —
+// data-side, because buffer sizing needs no serialize dependency.
+func (g *gen) emitStructMaxBits(st *ir.Struct) {
+	maxBits := g.maxBitsStruct(st)
+	g.pf("inline constexpr int64_t %sMaxBits = %d; // longest wire path; align pads at worst case (SPEC §6.1)\n", st.Name, maxBits)
+	g.pf("inline constexpr int64_t %sMaxBytes = %d; // rounded up to the 8-byte write-buffer granularity\n\n", st.Name, ir.MaxBytes(maxBits))
+}
+
+// emitStructWire emits the split Write/Read pair for a type or message, in
+// the topo order the struct itself was emitted in the data header.
+func (g *gen) emitStructWire(st *ir.Struct) {
 	g.needsSerialize = true
 	// fixed [N]uint8 arrays at statically byte-aligned positions take the
 	// runtime's bulk-bytes path instead of a per-byte loop — byte-identical
 	// wire (the internal align is zero bits when already aligned), measured
 	// ~2x on byte-array-heavy types
 	g.bulkBytes = ir.AlignedFixedByteArrays(st)
-	maxBits := g.maxBitsStruct(st)
-	g.pf("inline constexpr int64_t %sMaxBits = %d; // longest wire path; align pads at worst case (SPEC §6.1)\n", st.Name, maxBits)
-	g.pf("inline constexpr int64_t %sMaxBytes = %d; // rounded up to the 8-byte write-buffer granularity\n\n", st.Name, ir.MaxBytes(maxBits))
 
 	g.pf("inline bool Write%s( serialize::WriteStream & stream, const %s & value )\n{\n", st.Name, st.Name)
 	if len(st.Items) == 0 {
@@ -494,14 +499,41 @@ func (g *gen) emitReadScalar(f *ir.Field, name, ind string) {
 	}
 }
 
-// emitMessageTagFunctions emits the tag wire pair and the message-level bound
-// (SPEC §4.8, §6.1 item 6). The per-language dispatch surface (union, variant,
-// factory) is deliberately not chosen here — representation is per-language
-// and not part of the contract.
-func (g *gen) emitMessageTagFunctions() {
-	g.needsSerialize = true
+// emitMessageData emits the message-level bound and the Message storage
+// surface (union or variant) — data-side: holding and routing messages needs
+// no serialize dependency (SPEC §4.8, §6.1 item 6).
+func (g *gen) emitMessageData() {
 	// the dispatch value holds every message by value — the owner file
 	// includes each message's home (safe: the owner is topologically last)
+	for _, m := range g.unit.Messages {
+		g.noteRef(m)
+	}
+	count := int64(len(g.unit.Messages))
+	tagBits := bitsRequired(big.NewInt(0), big.NewInt(count))
+	largest := int64(0)
+	for _, m := range g.unit.Messages {
+		if b := g.maxBitsStruct(g.unit.Structs[m]); b > largest {
+			largest = b
+		}
+	}
+	g.pf("// The message-level bound: the tag plus the largest message (SPEC §6.1)\n")
+	g.pf("inline constexpr int64_t MessageMaxBits = %d;\n", tagBits+largest)
+	g.pf("inline constexpr int64_t MessageMaxBytes = %d; // rounded up to the 8-byte write-buffer granularity\n\n", ir.MaxBytes(tagBits+largest))
+
+	if g.opts.MessageRepr == "variant" {
+		g.emitMessageStorageVariant()
+	} else {
+		g.emitMessageStorageUnion()
+	}
+}
+
+// emitMessageWire emits the tag wire pair and the WriteMessage/ReadMessage
+// dispatch. The per-language dispatch surface (union, variant, factory) is
+// deliberately not chosen here — representation is per-language and not part
+// of the contract.
+func (g *gen) emitMessageWire() {
+	g.needsSerialize = true
+	// dispatch calls every message's Write/Read — the deps ride the wire headers
 	for _, m := range g.unit.Messages {
 		g.noteRef(m)
 	}
@@ -517,25 +549,15 @@ func (g *gen) emitMessageTagFunctions() {
 	g.pf("    read_int( stream, tag_value, 0, %d );\n", count)
 	g.pf("    value = MessageType( tag_value );\n    return true;\n}\n\n")
 
-	tagBits := bitsRequired(big.NewInt(0), big.NewInt(count))
-	largest := int64(0)
-	for _, m := range g.unit.Messages {
-		if b := g.maxBitsStruct(g.unit.Structs[m]); b > largest {
-			largest = b
-		}
-	}
-	g.pf("// The message-level bound: the tag plus the largest message (SPEC §6.1)\n")
-	g.pf("inline constexpr int64_t MessageMaxBits = %d;\n", tagBits+largest)
-	g.pf("inline constexpr int64_t MessageMaxBytes = %d; // rounded up to the 8-byte write-buffer granularity\n\n", ir.MaxBytes(tagBits+largest))
-
 	if g.opts.MessageRepr == "variant" {
-		g.emitMessageDispatchVariant()
+		g.emitMessageWireVariant()
 	} else {
-		g.emitMessageDispatchUnion()
+		g.emitMessageWireUnion()
 	}
 }
 
-// emitMessageDispatchUnion is the DEFAULT C++ dispatch surface: a tagged
+// emitMessageStorageUnion (+ emitMessageWireUnion) is the DEFAULT C++
+// dispatch surface: a tagged
 // struct over an anonymous union — the classic game idiom, zero template
 // machinery, zero extra includes. Construction initializes the tag only
 // (None); an arm's storage is zero-established when the arm is SELECTED —
@@ -549,7 +571,7 @@ func (g *gen) emitMessageTagFunctions() {
 // zeroed per ~25 B message), and the zeroing moved to arm selection —
 // the exact shape the variant surface always had: default construction
 // is monostate, emplace<T>() value-initializes only the selected arm.
-func (g *gen) emitMessageDispatchUnion() {
+func (g *gen) emitMessageStorageUnion() {
 	msgs := g.unit.Messages
 
 	g.pf("// The message value: a tagged union — the payload member matching `type` is\n")
@@ -570,6 +592,10 @@ func (g *gen) emitMessageDispatchUnion() {
 
 	g.pf("inline MessageType GetMessageType( const Message & message )\n{\n")
 	g.pf("    return message.type;\n}\n\n")
+}
+
+func (g *gen) emitMessageWireUnion() {
+	msgs := g.unit.Messages
 
 	// dispatch validates BEFORE the tag rides the wire: an out-of-set type
 	// value writes nothing (a tag with no payload would desynchronize the
@@ -597,7 +623,8 @@ func (g *gen) emitMessageDispatchUnion() {
 	g.pf("    }\n    return false;\n}\n\n")
 }
 
-// emitMessageDispatchVariant is the OPT-IN modern surface (--cpp-message
+// emitMessageStorageVariant (+ emitMessageWireVariant) is the OPT-IN modern
+// surface (--cpp-message
 // variant): a std::variant whose INDEX equals the wire tag — monostate is
 // None = 0, then each message in tag order. std::variant never heap-allocates
 // (storage is inline, the size of the largest message — the same footprint as
@@ -606,7 +633,7 @@ func (g *gen) emitMessageDispatchUnion() {
 // stays available to callers who want compile-time exhaustiveness and costs
 // nothing here. Measured cost of <variant>: ~50ms per TU (arm64 clang), which
 // is why it is not the default.
-func (g *gen) emitMessageDispatchVariant() {
+func (g *gen) emitMessageStorageVariant() {
 	g.needsVariant = true
 	msgs := g.unit.Messages
 	count := int64(len(msgs))
@@ -622,6 +649,10 @@ func (g *gen) emitMessageDispatchVariant() {
 
 	g.pf("inline MessageType GetMessageType( const Message & message )\n{\n")
 	g.pf("    return MessageType( message.index() );\n}\n\n")
+}
+
+func (g *gen) emitMessageWireVariant() {
+	msgs := g.unit.Messages
 
 	// the variant's index is always in-set, so no pre-validation is needed;
 	// the tag framing is the tag pair's — one source

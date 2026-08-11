@@ -1,10 +1,18 @@
-// Package cpp emits the C++ target: one header per schema file, everything in
+// Package cpp emits the C++ target: TWO headers per schema file, everything in
 // namespace <package>, #pragma once, deterministic to the byte (SPEC §6.1).
 //
-// v1 start: the storage — constants, enums, flags, type/message structs, and
-// the per-object view families (State per context, Data_Deep, Data_Shallow,
-// Data_Interpolate). Every member zero-initializes unless the schema specifies
-// a default (Glenn, 2026-08-05). Write/Read and Quantize/Unquantize follow.
+// <Base>.h is the DATA header — constants, enums, flags, type/message structs,
+// the per-object view families, MaxBits/MaxBytes bounds and the Message
+// storage surface — and depends on serialize.h only when a storage type
+// requires it (int128/fixed). <Base>Wire.h is the WIRE header — the
+// Write/Read functions, Quantize/Unquantize and the tag/dispatch wire — and
+// includes <Base>.h plus serialize.h. The split exists so data consumers (a
+// game basing its math types on generated structs) never inherit the
+// serialize runtime or its macro namespace, which collides with vendored
+// older serialize copies (the space integration finding, 2026-08-11).
+//
+// Every member zero-initializes unless the schema specifies a default
+// (Glenn, 2026-08-05).
 package cpp
 
 import (
@@ -54,14 +62,27 @@ func Generate(u *ir.Unit, opts Options) (map[string][]byte, error) {
 		return nil, fmt.Errorf(
 			"generated C++ headers would include each other in a cycle (%s) — types compose across files order-free in schema, but C++ headers cannot include mutually; move a declaration so the file graph is acyclic", cycle)
 	}
+	bases := map[string]bool{}
+	for _, f := range u.Files {
+		bases[f.Base] = true
+	}
+	for _, f := range u.Files {
+		if bases[f.Base+"Wire"] {
+			return nil, fmt.Errorf("schema files %s and %sWire collide — the C++ emitter writes %sWire.h as %s's wire header; rename one file (SPEC §6.1)", f.Base, f.Base, f.Base, f.Base)
+		}
+	}
 	out := map[string][]byte{}
 	protocolIdHome := protocolIdHome(u)
 	msgOwner := ir.MessageOwner(u)
 	objOwner := ir.ObjectOwner(u)
 	for _, f := range u.Files {
 		g := &gen{unit: u, file: f, opts: opts, msgOwner: msgOwner, objOwner: objOwner}
-		g.emitFile(f.Base == protocolIdHome)
+		g.emitDataFile(f.Base == protocolIdHome)
 		out[f.Base+".h"] = g.assemble()
+
+		w := &gen{unit: u, file: f, opts: opts, msgOwner: msgOwner, objOwner: objOwner, wire: true}
+		w.emitWireFile()
+		out[f.Base+"Wire.h"] = w.assemble()
 	}
 	return out, nil
 }
@@ -168,6 +189,7 @@ type gen struct {
 	opts     Options
 	msgOwner string // the one file that carries the message dispatch surface
 	objOwner string // the one file that carries the object tag surface
+	wire     bool   // emitting the wire half (<Base>Wire.h): functions over serialize streams
 
 	body           strings.Builder
 	includes       map[string]bool
@@ -203,15 +225,26 @@ func (g *gen) assemble() []byte {
 	if g.needsSerialize {
 		h.WriteString("\n#include \"serialize.h\"\n")
 	}
+	if g.wire {
+		// the wire half sits on its own data half; cross-file wire calls ride
+		// the dep's wire header (whose data header arrives transitively)
+		fmt.Fprintf(&h, "\n#include \"%s.h\"\n", g.file.Base)
+	}
 	if len(g.includes) > 0 {
 		names := make([]string, 0, len(g.includes))
 		for n := range g.includes {
 			names = append(names, n)
 		}
 		sort.Strings(names)
-		h.WriteString("\n")
+		if !g.wire {
+			h.WriteString("\n")
+		}
 		for _, n := range names {
-			fmt.Fprintf(&h, "#include \"%s.h\"\n", n)
+			if g.wire {
+				fmt.Fprintf(&h, "#include \"%sWire.h\"\n", n)
+			} else {
+				fmt.Fprintf(&h, "#include \"%s.h\"\n", n)
+			}
 		}
 	}
 	fmt.Fprintf(&h, "\nnamespace %s {\n\n", g.unit.Package)
@@ -224,7 +257,7 @@ func (g *gen) assemble() []byte {
 	return []byte(h.String())
 }
 
-func (g *gen) emitFile(carriesProtocolId bool) {
+func (g *gen) emitDataFile(carriesProtocolId bool) {
 	g.includes = map[string]bool{}
 	g.emitted = map[string]bool{}
 
@@ -263,18 +296,59 @@ func (g *gen) emitFile(carriesProtocolId bool) {
 			g.pf("// fields plus its own context's. No preprocessor in any target.\n\n")
 		case *ir.Struct:
 			g.emitStruct(d)
-			g.emitStructFunctions(d)
+			g.emitStructMaxBits(d)
 		case *ir.Object:
 			g.emitObject(d)
-			g.emitObjectFunctions(d)
+			g.emitObjectMaxBits(d)
 		}
 	}
 
 	if g.file.Base == g.msgOwner && len(g.unit.Messages) > 0 {
-		g.emitMessageTagFunctions()
+		g.emitMessageData()
+	}
+}
+
+// emitWireFile emits the wire half: every serialize-stream function for the
+// file's declarations. Same-file constants are pre-marked emitted — they live
+// in the data header this file includes, so symbolic references stay
+// renderable rather than folding to literals.
+func (g *gen) emitWireFile() {
+	g.includes = map[string]bool{}
+	g.emitted = map[string]bool{}
+	for _, d := range g.file.Decls {
+		if c, ok := d.(*ir.Const); ok {
+			g.emitted[c.Name] = true
+		}
+	}
+
+	for _, d := range g.emissionOrder() {
+		var fields []*ir.Field
+		switch d := d.(type) {
+		case *ir.Struct:
+			fields = d.Fields
+		case *ir.Object:
+			fields = d.Fields
+		}
+		// cross-file field types mean cross-file wire calls (WriteVector3 from
+		// another file's wire header) — record the dep before emitting
+		for _, f := range fields {
+			if f.Type.Kind == ir.TNamed {
+				g.noteRef(f.Type.Name)
+			}
+		}
+		switch d := d.(type) {
+		case *ir.Struct:
+			g.emitStructWire(d)
+		case *ir.Object:
+			g.emitObjectWire(d)
+		}
+	}
+
+	if g.file.Base == g.msgOwner && len(g.unit.Messages) > 0 {
+		g.emitMessageWire()
 	}
 	if g.file.Base == g.objOwner && len(g.unit.ObjNames) > 0 {
-		g.emitObjectTagFunctions()
+		g.emitObjectTagWire()
 	}
 }
 

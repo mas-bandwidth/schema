@@ -13,7 +13,29 @@ import (
 	"github.com/mas-bandwidth/schema/internal/ir"
 )
 
-func (g *gen) emitObjectFunctions(d *ir.Object) {
+// emitObjectMaxBits emits the Deep and Shallow view bounds — data-side,
+// because buffer sizing needs no serialize dependency.
+func (g *gen) emitObjectMaxBits(d *ir.Object) {
+	var deep, interp []*ir.Field
+	for _, f := range d.Fields {
+		if !f.Local {
+			deep = append(deep, f)
+		}
+		if f.Interpolate {
+			interp = append(interp, f)
+		}
+	}
+	deepName := d.Name + "Data_Deep"
+	deepBits := g.maxBitsView(deep, viewDeep)
+	g.pf("inline constexpr int64_t %sMaxBits = %d;\n", deepName, deepBits)
+	g.pf("inline constexpr int64_t %sMaxBytes = %d; // rounded up to the 8-byte write-buffer granularity\n\n", deepName, ir.MaxBytes(deepBits))
+	shName := d.Name + "Data_Shallow"
+	shBits := g.maxBitsView(interp, viewShallow)
+	g.pf("inline constexpr int64_t %sMaxBits = %d;\n", shName, shBits)
+	g.pf("inline constexpr int64_t %sMaxBytes = %d; // rounded up to the 8-byte write-buffer granularity\n\n", shName, ir.MaxBytes(shBits))
+}
+
+func (g *gen) emitObjectWire(d *ir.Object) {
 	g.needsSerialize = true
 
 	var deep, interp []*ir.Field
@@ -30,10 +52,6 @@ func (g *gen) emitObjectFunctions(d *ir.Object) {
 	// attributes describe the SHALLOW wire only, so an [interpolate] float
 	// triple serializes as a bare float here (SPEC §4.8)
 	deepName := d.Name + "Data_Deep"
-	deepBits := g.maxBitsView(deep, viewDeep)
-	g.pf("inline constexpr int64_t %sMaxBits = %d;\n", deepName, deepBits)
-	g.pf("inline constexpr int64_t %sMaxBytes = %d; // rounded up to the 8-byte write-buffer granularity\n\n", deepName, ir.MaxBytes(deepBits))
-
 	g.pf("inline bool Write%s( serialize::WriteStream & stream, const %s & value )\n{\n", deepName, deepName)
 	for _, f := range deep {
 		g.emitViewWriteField(f, viewDeep, "    ")
@@ -47,10 +65,6 @@ func (g *gen) emitObjectFunctions(d *ir.Object) {
 
 	// ---- Shallow: the [interpolate] fields on the quantized wire
 	shName := d.Name + "Data_Shallow"
-	shBits := g.maxBitsView(interp, viewShallow)
-	g.pf("inline constexpr int64_t %sMaxBits = %d;\n", shName, shBits)
-	g.pf("inline constexpr int64_t %sMaxBytes = %d; // rounded up to the 8-byte write-buffer granularity\n\n", shName, ir.MaxBytes(shBits))
-
 	g.pf("inline bool Write%s( serialize::WriteStream & stream, const %s & value )\n{\n", shName, shName)
 	for _, f := range interp {
 		g.emitViewWriteField(f, viewShallow, "    ")
@@ -214,8 +228,8 @@ func (g *gen) emitUnquantizeField(f *ir.Field, ind string) {
 	}
 }
 
-// emitObjectTagFunctions is the ObjectType twin of the message tag pair.
-func (g *gen) emitObjectTagFunctions() {
+// emitObjectTagWire is the ObjectType twin of the message tag pair.
+func (g *gen) emitObjectTagWire() {
 	g.needsSerialize = true
 	count := int64(len(g.unit.ObjNames))
 	g.pf("// The object tag wire: ObjectType in [0, %d], minimal bits; None = 0 is the\n", count)
