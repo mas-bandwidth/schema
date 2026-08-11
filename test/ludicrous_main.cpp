@@ -14,7 +14,7 @@
 #include <cstdlib>
 #include <cstring>
 
-#include "Ludicrous.h"
+#include "LudicrousWire.h"
 
 #define check( condition )                                                    \
     do                                                                        \

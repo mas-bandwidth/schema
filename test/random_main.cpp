@@ -8,13 +8,13 @@
 #include <cstdlib>
 #include <cstring>
 
-#include "Constants.h"
-#include "Contexts.h"
-#include "Enums.h"
-#include "Messages.h"
-#include "Objects.h"
-#include "Types.h"
-#include "Wire.h"
+#include "ConstantsWire.h"
+#include "ContextsWire.h"
+#include "EnumsWire.h"
+#include "MessagesWire.h"
+#include "ObjectsWire.h"
+#include "TypesWire.h"
+#include "WireWire.h"
 
 #define check( condition )                                                    \
     do                                                                        \

@@ -4,9 +4,6 @@
 #pragma once
 
 #include <cstdint>
-#include <cstring>
-
-#include "serialize.h"
 
 #include "Constants.h"
 #include "Enums.h"
@@ -24,22 +21,6 @@ struct Vec3 {
 inline constexpr int64_t Vec3MaxBits = 192; // longest wire path; align pads at worst case (SPEC §6.1)
 inline constexpr int64_t Vec3MaxBytes = 24; // rounded up to the 8-byte write-buffer granularity
 
-inline bool WriteVec3( serialize::WriteStream & stream, const Vec3 & value )
-{
-    write_double( stream, value.x );
-    write_double( stream, value.y );
-    write_double( stream, value.z );
-    return true;
-}
-
-inline bool ReadVec3( serialize::ReadStream & stream, Vec3 & value )
-{
-    read_double( stream, value.x );
-    read_double( stream, value.y );
-    read_double( stream, value.z );
-    return true;
-}
-
 // type Quat [quat4] — the tag is user-chosen and inert in v1; the delta pass
 // claims tags and assigns actions (SPEC §4.2, Type tags)
 struct Quat {
@@ -52,24 +33,6 @@ struct Quat {
 inline constexpr int64_t QuatMaxBits = 256; // longest wire path; align pads at worst case (SPEC §6.1)
 inline constexpr int64_t QuatMaxBytes = 32; // rounded up to the 8-byte write-buffer granularity
 
-inline bool WriteQuat( serialize::WriteStream & stream, const Quat & value )
-{
-    write_double( stream, value.x );
-    write_double( stream, value.y );
-    write_double( stream, value.z );
-    write_double( stream, value.w );
-    return true;
-}
-
-inline bool ReadQuat( serialize::ReadStream & stream, Quat & value )
-{
-    read_double( stream, value.x );
-    read_double( stream, value.y );
-    read_double( stream, value.z );
-    read_double( stream, value.w );
-    return true;
-}
-
 // type Handle
 struct Handle {
     int32_t object_id = 0; // wire [0, 9999]
@@ -78,25 +41,6 @@ struct Handle {
 
 inline constexpr int64_t HandleMaxBits = 22; // longest wire path; align pads at worst case (SPEC §6.1)
 inline constexpr int64_t HandleMaxBytes = 8; // rounded up to the 8-byte write-buffer granularity
-
-inline bool WriteHandle( serialize::WriteStream & stream, const Handle & value )
-{
-    serialize_assert( int32_t( value.object_id ) >= int32_t( 0 ) && int32_t( value.object_id ) <= int32_t( MaxObjects - 1 ) );
-    write_bits( stream, uint32_t( value.object_id ), 14 );
-    write_bits( stream, value.object_sequence, 8 );
-    return true;
-}
-
-inline bool ReadHandle( serialize::ReadStream & stream, Handle & value )
-{
-    read_int( stream, value.object_id, 0, MaxObjects - 1 );
-    {
-        uint32_t raw_value = 0;
-        read_bits( stream, raw_value, 8 );
-        value.object_sequence = uint8_t( raw_value );
-    }
-    return true;
-}
 
 // type QuantizedPosition
 struct QuantizedPosition {
@@ -108,25 +52,6 @@ struct QuantizedPosition {
 inline constexpr int64_t QuantizedPositionMaxBits = 75; // longest wire path; align pads at worst case (SPEC §6.1)
 inline constexpr int64_t QuantizedPositionMaxBytes = 16; // rounded up to the 8-byte write-buffer granularity
 
-inline bool WriteQuantizedPosition( serialize::WriteStream & stream, const QuantizedPosition & value )
-{
-    serialize_assert( int32_t( value.x ) >= int32_t( -MaxPositionUnits ) && int32_t( value.x ) <= int32_t( MaxPositionUnits ) );
-    write_bits( stream, uint32_t( value.x ) - uint32_t( -MaxPositionUnits ), 25 );
-    serialize_assert( int32_t( value.y ) >= int32_t( -MaxPositionUnits ) && int32_t( value.y ) <= int32_t( MaxPositionUnits ) );
-    write_bits( stream, uint32_t( value.y ) - uint32_t( -MaxPositionUnits ), 25 );
-    serialize_assert( int32_t( value.z ) >= int32_t( -MaxPositionUnits ) && int32_t( value.z ) <= int32_t( MaxPositionUnits ) );
-    write_bits( stream, uint32_t( value.z ) - uint32_t( -MaxPositionUnits ), 25 );
-    return true;
-}
-
-inline bool ReadQuantizedPosition( serialize::ReadStream & stream, QuantizedPosition & value )
-{
-    read_int( stream, value.x, -MaxPositionUnits, MaxPositionUnits );
-    read_int( stream, value.y, -MaxPositionUnits, MaxPositionUnits );
-    read_int( stream, value.z, -MaxPositionUnits, MaxPositionUnits );
-    return true;
-}
-
 // type QuantizedVelocity
 struct QuantizedVelocity {
     int32_t x = 0; // wire [-2097152, 2097152]
@@ -136,25 +61,6 @@ struct QuantizedVelocity {
 
 inline constexpr int64_t QuantizedVelocityMaxBits = 69; // longest wire path; align pads at worst case (SPEC §6.1)
 inline constexpr int64_t QuantizedVelocityMaxBytes = 16; // rounded up to the 8-byte write-buffer granularity
-
-inline bool WriteQuantizedVelocity( serialize::WriteStream & stream, const QuantizedVelocity & value )
-{
-    serialize_assert( int32_t( value.x ) >= int32_t( -MaxVelocityUnits ) && int32_t( value.x ) <= int32_t( MaxVelocityUnits ) );
-    write_bits( stream, uint32_t( value.x ) - uint32_t( -MaxVelocityUnits ), 23 );
-    serialize_assert( int32_t( value.y ) >= int32_t( -MaxVelocityUnits ) && int32_t( value.y ) <= int32_t( MaxVelocityUnits ) );
-    write_bits( stream, uint32_t( value.y ) - uint32_t( -MaxVelocityUnits ), 23 );
-    serialize_assert( int32_t( value.z ) >= int32_t( -MaxVelocityUnits ) && int32_t( value.z ) <= int32_t( MaxVelocityUnits ) );
-    write_bits( stream, uint32_t( value.z ) - uint32_t( -MaxVelocityUnits ), 23 );
-    return true;
-}
-
-inline bool ReadQuantizedVelocity( serialize::ReadStream & stream, QuantizedVelocity & value )
-{
-    read_int( stream, value.x, -MaxVelocityUnits, MaxVelocityUnits );
-    read_int( stream, value.y, -MaxVelocityUnits, MaxVelocityUnits );
-    read_int( stream, value.z, -MaxVelocityUnits, MaxVelocityUnits );
-    return true;
-}
 
 // type QuantizedRotation
 struct QuantizedRotation {
@@ -166,44 +72,6 @@ struct QuantizedRotation {
 
 inline constexpr int64_t QuantizedRotationMaxBits = 48; // longest wire path; align pads at worst case (SPEC §6.1)
 inline constexpr int64_t QuantizedRotationMaxBytes = 8; // rounded up to the 8-byte write-buffer granularity
-
-inline bool WriteQuantizedRotation( serialize::WriteStream & stream, const QuantizedRotation & value )
-{
-    serialize_assert( int32_t( value.x ) >= int32_t( -RotationUnits ) && int32_t( value.x ) <= int32_t( RotationUnits ) );
-    write_bits( stream, uint32_t( value.x ) - uint32_t( -RotationUnits ), 12 );
-    serialize_assert( int32_t( value.y ) >= int32_t( -RotationUnits ) && int32_t( value.y ) <= int32_t( RotationUnits ) );
-    write_bits( stream, uint32_t( value.y ) - uint32_t( -RotationUnits ), 12 );
-    serialize_assert( int32_t( value.z ) >= int32_t( -RotationUnits ) && int32_t( value.z ) <= int32_t( RotationUnits ) );
-    write_bits( stream, uint32_t( value.z ) - uint32_t( -RotationUnits ), 12 );
-    serialize_assert( int32_t( value.w ) >= int32_t( -RotationUnits ) && int32_t( value.w ) <= int32_t( RotationUnits ) );
-    write_bits( stream, uint32_t( value.w ) - uint32_t( -RotationUnits ), 12 );
-    return true;
-}
-
-inline bool ReadQuantizedRotation( serialize::ReadStream & stream, QuantizedRotation & value )
-{
-    {
-        int32_t range_value = 0;
-        read_int( stream, range_value, -RotationUnits, RotationUnits );
-        value.x = int16_t( range_value );
-    }
-    {
-        int32_t range_value = 0;
-        read_int( stream, range_value, -RotationUnits, RotationUnits );
-        value.y = int16_t( range_value );
-    }
-    {
-        int32_t range_value = 0;
-        read_int( stream, range_value, -RotationUnits, RotationUnits );
-        value.z = int16_t( range_value );
-    }
-    {
-        int32_t range_value = 0;
-        read_int( stream, range_value, -RotationUnits, RotationUnits );
-        value.w = int16_t( range_value );
-    }
-    return true;
-}
 
 // type RigidBody
 struct RigidBody {
@@ -219,61 +87,6 @@ struct RigidBody {
 
 inline constexpr int64_t RigidBodyMaxBits = 833; // longest wire path; align pads at worst case (SPEC §6.1)
 inline constexpr int64_t RigidBodyMaxBytes = 112; // rounded up to the 8-byte write-buffer granularity
-
-inline bool WriteRigidBody( serialize::WriteStream & stream, const RigidBody & value )
-{
-    if ( !WriteVec3( stream, value.position ) )
-    {
-        return false;
-    }
-    if ( !WriteQuat( stream, value.orientation ) )
-    {
-        return false;
-    }
-    write_bool( stream, value.at_rest );
-    if ( !value.at_rest )
-    {
-        if ( !WriteVec3( stream, value.linear_velocity ) )
-        {
-            return false;
-        }
-        if ( !WriteVec3( stream, value.angular_velocity ) )
-        {
-            return false;
-        }
-    }
-    return true;
-}
-
-inline bool ReadRigidBody( serialize::ReadStream & stream, RigidBody & value )
-{
-    if ( !ReadVec3( stream, value.position ) )
-    {
-        return false;
-    }
-    if ( !ReadQuat( stream, value.orientation ) )
-    {
-        return false;
-    }
-    read_bool( stream, value.at_rest );
-    if ( !value.at_rest )
-    {
-        if ( !ReadVec3( stream, value.linear_velocity ) )
-        {
-            return false;
-        }
-        if ( !ReadVec3( stream, value.angular_velocity ) )
-        {
-            return false;
-        }
-    }
-    else
-    {
-        memset( &value.linear_velocity, 0, sizeof( value.linear_velocity ) );
-        memset( &value.angular_velocity, 0, sizeof( value.angular_velocity ) );
-    }
-    return true;
-}
 
 // type Input
 struct Input {
@@ -295,42 +108,6 @@ struct Input {
 inline constexpr int64_t InputMaxBits = 168; // longest wire path; align pads at worst case (SPEC §6.1)
 inline constexpr int64_t InputMaxBytes = 24; // rounded up to the 8-byte write-buffer granularity
 
-inline bool WriteInput( serialize::WriteStream & stream, const Input & value )
-{
-    write_float( stream, value.stick_x );
-    write_float( stream, value.stick_y );
-    write_float( stream, value.throttle );
-    write_float( stream, value.yaw );
-    write_float( stream, value.pitch );
-    write_bool( stream, value.fire );
-    write_bool( stream, value.alt_fire );
-    write_bool( stream, value.boost );
-    write_bool( stream, value.brake );
-    write_bool( stream, value.aim );
-    write_bool( stream, value.lock_on );
-    write_bool( stream, value.zoom );
-    write_bool( stream, value.ping );
-    return true;
-}
-
-inline bool ReadInput( serialize::ReadStream & stream, Input & value )
-{
-    read_float( stream, value.stick_x );
-    read_float( stream, value.stick_y );
-    read_float( stream, value.throttle );
-    read_float( stream, value.yaw );
-    read_float( stream, value.pitch );
-    read_bool( stream, value.fire );
-    read_bool( stream, value.alt_fire );
-    read_bool( stream, value.boost );
-    read_bool( stream, value.brake );
-    read_bool( stream, value.aim );
-    read_bool( stream, value.lock_on );
-    read_bool( stream, value.zoom );
-    read_bool( stream, value.ping );
-    return true;
-}
-
 // type InputPacket
 struct InputPacket {
     uint16_t synchronize_sequence = 0;
@@ -342,43 +119,6 @@ struct InputPacket {
 
 inline constexpr int64_t InputPacketMaxBits = 2837; // longest wire path; align pads at worst case (SPEC §6.1)
 inline constexpr int64_t InputPacketMaxBytes = 360; // rounded up to the 8-byte write-buffer granularity
-
-inline bool WriteInputPacket( serialize::WriteStream & stream, const InputPacket & value )
-{
-    write_bits( stream, value.synchronize_sequence, 16 );
-    write_bits( stream, value.current_frame, 64 );
-    write_bits( stream, value.start_frame, 64 );
-    serialize_assert( int32_t( value.inputs_count ) >= int32_t( 0 ) && int32_t( value.inputs_count ) <= int32_t( MaxInputsPerPacket ) );
-    write_bits( stream, uint32_t( value.inputs_count ), 5 );
-    for ( int32_t i = 0; i < value.inputs_count; i++ )
-    {
-        if ( !WriteInput( stream, value.inputs[i] ) )
-        {
-            return false;
-        }
-    }
-    return true;
-}
-
-inline bool ReadInputPacket( serialize::ReadStream & stream, InputPacket & value )
-{
-    {
-        uint32_t raw_value = 0;
-        read_bits( stream, raw_value, 16 );
-        value.synchronize_sequence = uint16_t( raw_value );
-    }
-    read_bits( stream, value.current_frame, 64 );
-    read_bits( stream, value.start_frame, 64 );
-    read_int( stream, value.inputs_count, 0, MaxInputsPerPacket );
-    for ( int32_t i = 0; i < value.inputs_count; i++ )
-    {
-        if ( !ReadInput( stream, value.inputs[i] ) )
-        {
-            return false;
-        }
-    }
-    return true;
-}
 
 // type ShipCreate
 struct ShipCreate {
@@ -399,82 +139,5 @@ struct ShipCreate {
 
 inline constexpr int64_t ShipCreateMaxBits = 219; // longest wire path; align pads at worst case (SPEC §6.1)
 inline constexpr int64_t ShipCreateMaxBytes = 32; // rounded up to the 8-byte write-buffer granularity
-
-inline bool WriteShipCreate( serialize::WriteStream & stream, const ShipCreate & value )
-{
-    serialize_assert( int32_t( value.ship_type ) >= int32_t( 0 ) && int32_t( value.ship_type ) <= int32_t( 5 ) );
-    write_bits( stream, uint32_t( value.ship_type ), 3 );
-    if ( !WriteQuantizedPosition( stream, value.position ) )
-    {
-        return false;
-    }
-    if ( !WriteQuantizedRotation( stream, value.rotation ) )
-    {
-        return false;
-    }
-    if ( !WriteQuantizedVelocity( stream, value.linear_velocity ) )
-    {
-        return false;
-    }
-    write_bool( stream, value.has_flags );
-    if ( value.has_flags )
-    {
-        serialize_assert( value.flags < ( 1ull << 4 ) );
-        write_bits( stream, value.flags, 4 );
-    }
-    serialize_assert( int32_t( value.team ) >= int32_t( 0 ) && int32_t( value.team ) <= int32_t( 2 ) );
-    write_bits( stream, uint32_t( value.team ), 2 );
-    serialize_assert( int32_t( value.health ) >= int32_t( 0 ) && int32_t( value.health ) <= int32_t( MaxHealth ) );
-    write_bits( stream, uint32_t( value.health ), 10 );
-    serialize_assert( int32_t( value.thrust ) >= int32_t( 0 ) && int32_t( value.thrust ) <= int32_t( 100 ) );
-    write_bits( stream, uint32_t( value.thrust ), 7 );
-    return true;
-}
-
-inline bool ReadShipCreate( serialize::ReadStream & stream, ShipCreate & value )
-{
-    {
-        int32_t enum_value = 0;
-        read_int( stream, enum_value, 0, 5 );
-        value.ship_type = ShipType( enum_value );
-    }
-    if ( !ReadQuantizedPosition( stream, value.position ) )
-    {
-        return false;
-    }
-    if ( !ReadQuantizedRotation( stream, value.rotation ) )
-    {
-        return false;
-    }
-    if ( !ReadQuantizedVelocity( stream, value.linear_velocity ) )
-    {
-        return false;
-    }
-    read_bool( stream, value.has_flags );
-    if ( value.has_flags )
-    {
-        read_bits( stream, value.flags, 4 );
-    }
-    else
-    {
-        value.flags = 0;
-    }
-    {
-        int32_t enum_value = 0;
-        read_int( stream, enum_value, 0, 2 );
-        value.team = Team( enum_value );
-    }
-    {
-        int32_t range_value = 0;
-        read_int( stream, range_value, 0, MaxHealth );
-        value.health = int16_t( range_value );
-    }
-    {
-        int32_t range_value = 0;
-        read_int( stream, range_value, 0, 100 );
-        value.thrust = int8_t( range_value );
-    }
-    return true;
-}
 
 } // namespace example

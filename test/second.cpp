@@ -1,13 +1,13 @@
 // The second translation unit: includes every generated header again, so the
 // link step proves the headers define no duplicate symbols across TUs.
 
-#include "Constants.h"
-#include "Contexts.h"
-#include "Enums.h"
-#include "Messages.h"
-#include "Objects.h"
-#include "Types.h"
-#include "Wire.h"
+#include "ConstantsWire.h"
+#include "ContextsWire.h"
+#include "EnumsWire.h"
+#include "MessagesWire.h"
+#include "ObjectsWire.h"
+#include "TypesWire.h"
+#include "WireWire.h"
 
 int touch_generated_types()
 {

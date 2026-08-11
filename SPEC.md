@@ -1510,7 +1510,23 @@ C++ target emits **one header per schema file** — `examples/Constants.schema` 
 `generated/cpp/Constants.h` — everything inside `namespace <package>`, **`#pragma once`**
 (his call; *"if beneficial, you can use both sentinels and pragma once"* — pragma alone
 until portability demands both), with cross-file `#include`s derived from actual
-references, so the generated tree mirrors the schema tree a person navigates. *(This
+references, so the generated tree mirrors the schema tree a person navigates.
+
+**REVISED AGAIN 2026-08-11 — the C++ header SPLITS into a data/wire pair,** decided
+during the space game integration and announced in channel before landing: `<Base>.h`
+is the DATA header (constants, enums, flags, structs, object view families,
+MaxBits/MaxBytes bounds, the Message storage surface and `GetMessageType`) and includes
+`serialize.h` only when a storage type demands it (int128/fixed); `<Base>Wire.h` is the
+WIRE header (`Write*`/`Read*`, `Quantize`/`Unquantize`, the tag pairs and
+`WriteMessage`/`ReadMessage`) and includes `<Base>.h` plus `serialize.h`, with
+cross-file wire deps riding the deps' wire headers. **The finding that forced it:** the
+space game vendors an older serialize as `core_serialize.h`, and both serialize
+generations claim the same macro namespace (`write_int`, `serialize_int`, …14+ names) —
+so a game basing its MATH TYPES on generated structs must be able to consume the data
+half without inheriting the serialize runtime at all. Data consumers include `<Base>.h`;
+wire consumers include `<Base>Wire.h`. A unit may not contain files named both `X` and
+`XWire` (the emitter refuses the collision). Wire bytes are untouched by the split —
+the full four-language suite and every wire golden held across the change. *(This
 paragraph previously said one file per target per unit — `<package>.schema.h` — which
 stands as the sketch for the single-file targets until each is implemented; per-file
 output is the decided C++ shape.)* **The Go target (BUILT 2026-08-05) mirrors it: one
