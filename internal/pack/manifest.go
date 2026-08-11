@@ -169,6 +169,11 @@ func BuildOutput(u *ir.Unit, enc *Encoder, out Output, baseDir string) ([]byte, 
 	if err := CheckTableIds(u); err != nil {
 		return nil, err
 	}
+	for _, c := range out.Collections {
+		if st, ok := u.Structs[c.Type]; !ok || !st.IsTable {
+			return nil, fmt.Errorf("collection type %s is not declared as a `table` — pack roots must be tables (reflection and table codecs follow the declaration)", c.Type)
+		}
+	}
 	var payload []byte
 	for _, c := range out.Collections {
 		instances, err := collectInstances(u, c, baseDir)

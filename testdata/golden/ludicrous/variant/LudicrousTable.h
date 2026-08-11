@@ -106,10 +106,6 @@ inline uint64_t table_double_to_bits( double d ) { uint64_t b; memcpy( &b, &d, 8
 
 namespace ludicrous {
 
-// FixedProbe: no table functions — a field type here (int128/uint128, fixed, or bits wider than 64) has no table-wire kind (notes/table-wire.md)
-
-// WideProbe: no table functions — a field type here (int128/uint128, fixed, or bits wider than 64) has no table-wire kind (notes/table-wire.md)
-
-// LudicrousState: no table functions — a field type here (int128/uint128, fixed, or bits wider than 64) has no table-wire kind (notes/table-wire.md)
-
+// no tables declared or referenced in this file — codecs are emitted
+// for the table closure only (`table` declarations and what they reach)
 } // namespace ludicrous

@@ -47,7 +47,7 @@ type Inner {
     factor float32 = 2.5
 }
 
-type Cfg {
+table Cfg {
     a     int32   [min = 0, max = 1000] = 5
     b     float32                       = 1.5
     mode  Mode                          = Beta
@@ -67,7 +67,7 @@ type Inner {
     gain   float32 = 1.0
 }
 
-type Cfg {
+table Cfg {
     a     float32 = 5.0
     c     bool    = true
     mode  Mode    = Beta
@@ -235,7 +235,7 @@ func TestTableClamping(t *testing.T) {
 func TestTableBytes(t *testing.T) {
 	u := unitFromSource(t, `package evo
 
-type Blob {
+table Blob {
     data bytes(8)
     tag  int32
 }
@@ -267,7 +267,7 @@ type Blob {
 func TestTableBranchGuards(t *testing.T) {
 	u := unitFromSource(t, `package evo
 
-type Body {
+table Body {
     at_rest bool
     if !at_rest {
         vx float32

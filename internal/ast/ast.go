@@ -50,10 +50,13 @@ type ContextsDecl struct {
 }
 
 type TypeDecl struct {
-	Name  string
-	Pos   Pos
-	Attrs []Attr // type TAGS — user-chosen, inert in v1 (SPEC §4.2)
-	Body  *Block
+	Name    string
+	Pos     Pos
+	Attrs   []Attr // type TAGS — user-chosen, inert in v1 (SPEC §4.2)
+	Body    *Block
+	IsTable bool // declared with `table` instead of `type`: a reflection/
+	// table-wire root — it and everything it references get table codecs
+	// and field descriptors
 }
 
 type MessageDecl struct {

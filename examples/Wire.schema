@@ -70,7 +70,7 @@ type ProbeConfig {
 // a type composing DEFAULTED types — through a fixed array and a plain
 // member: New*/construction must install the inner defaults transitively in
 // every target (zero init reaches only fields with no specified default)
-type ProbeArray {
+table ProbeArray {
     samples [2]ProbeSample
     config  ProbeConfig
 }
@@ -91,7 +91,7 @@ type ProbeReport {
 // explicit align (the exact-N bytes form died in the §4.7 unification); and
 // two constructs are v1-deferred by decision and absent — int_relative
 // (§4.10, the delta pass) and wstring.
-type TestData {
+table TestData {
     a int32 [min = -100, max = 100]
     b int32 [min = -100, max = 100]
     c int32 [min = -100, max = 150]

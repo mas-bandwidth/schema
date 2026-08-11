@@ -165,11 +165,15 @@ func (w *tableWriter) raw(b []byte) { w.buf = append(w.buf, b...) }
 
 // EncodeTable encodes a JSON object as typeName on the TABLE wire.
 // Fields at their declared default (or zero) are elided — absent means
-// default on this wire, by contract.
+// default on this wire, by contract. typeName must be in the unit's table
+// closure (a `table` declaration or something one references).
 func (e *Encoder) EncodeTable(typeName string, obj map[string]any) ([]byte, error) {
 	st, ok := e.Unit.Structs[typeName]
 	if !ok {
 		return nil, fmt.Errorf("schema type %s: not declared in the unit", typeName)
+	}
+	if !ir.TableClosure(e.Unit)[typeName] {
+		return nil, fmt.Errorf("%s is not in the table closure — declare it (or a root that references it) with `table` instead of `type`", typeName)
 	}
 	return e.encodeTableStruct(st, obj, typeName)
 }
@@ -523,10 +527,16 @@ type TableReport struct {
 // (field name -> bool / *big.Int / float64 / string / []any / map).
 // Absent fields appear with their DECLARED defaults — the reader's
 // prefill-then-overlay contract.
+// DecodeTable decodes typeName's table wire generically (the evolution
+// harness and any Go tooling). Like EncodeTable, typeName must be in the
+// unit's table closure.
 func DecodeTable(u *ir.Unit, typeName string, data []byte) (map[string]any, *TableReport, error) {
 	st, ok := u.Structs[typeName]
 	if !ok {
 		return nil, nil, fmt.Errorf("schema type %s: not declared in the unit", typeName)
+	}
+	if !ir.TableClosure(u)[typeName] {
+		return nil, nil, fmt.Errorf("%s is not in the table closure — declare it (or a root that references it) with `table` instead of `type`", typeName)
 	}
 	rep := &TableReport{}
 	out, rest := decodeTableStruct(u, st, data, rep)

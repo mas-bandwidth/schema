@@ -190,6 +190,19 @@ func (p *parser) parseDecl() {
 		p.expectTerminator("type declaration")
 		p.file.Decls = append(p.file.Decls, d)
 
+	case scanner.KwTable:
+		// a table is a type that is ALSO a table-wire/reflection root: it and
+		// everything it references get table codecs and field descriptors
+		p.advance()
+		name := p.expect(scanner.Ident, "table name")
+		d := &ast.TypeDecl{Name: name.Text, Pos: t.Pos, IsTable: true}
+		if p.kind() == scanner.LBrack {
+			d.Attrs = p.parseAttrs()
+		}
+		d.Body = p.parseBlock()
+		p.expectTerminator("table declaration")
+		p.file.Decls = append(p.file.Decls, d)
+
 	case scanner.KwMessage:
 		p.advance()
 		name := p.expect(scanner.Ident, "message name")
@@ -234,7 +247,7 @@ func (p *parser) parseDecl() {
 			p.expectTerminator("contexts declaration")
 			p.file.Decls = append(p.file.Decls, d)
 		default:
-			p.errf(t.Pos, "unexpected %q at file scope (declarations begin with package, const, enum, flags, type, message, object or contexts)", t.Text)
+			p.errf(t.Pos, "unexpected %q at file scope (declarations begin with package, const, enum, flags, type, table, message, object or contexts)", t.Text)
 			p.skipDecl()
 		}
 

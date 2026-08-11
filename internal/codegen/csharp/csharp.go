@@ -181,16 +181,22 @@ func (g *gen) assemble() []byte {
 	if g.needsSystem || g.needsCompiler || g.needsSerialize {
 		h.WriteString("\n")
 	}
-	fmt.Fprintf(&h, "namespace %s;\n\n", capitalize(g.unit.Package))
-	h.WriteString(g.types.String())
+	// block namespace, not file-scoped: Unity's compiler is C# 9 and
+	// file-scoped namespaces are C# 10 — the generated code must compile
+	// everywhere the game does
+	fmt.Fprintf(&h, "namespace %s\n{\n\n", capitalize(g.unit.Package))
+	var body strings.Builder
+	body.WriteString(g.types.String())
 	if g.schema.Len() > 0 {
-		h.WriteString("// Schema carries every generated function and constant of the unit — C# has\n")
-		h.WriteString("// no namespace-level functions or constants, so the static class is their\n")
-		h.WriteString("// home (SPEC §6.1 naming); partial, one slice per generated file.\n")
-		h.WriteString("public static partial class Schema\n{\n")
-		h.WriteString(indent4(g.schema.String()))
-		h.WriteString("}\n")
+		body.WriteString("// Schema carries every generated function and constant of the unit — C# has\n")
+		body.WriteString("// no namespace-level functions or constants, so the static class is their\n")
+		body.WriteString("// home (SPEC §6.1 naming); partial, one slice per generated file.\n")
+		body.WriteString("public static partial class Schema\n{\n")
+		body.WriteString(indent4(g.schema.String()))
+		body.WriteString("}\n")
 	}
+	h.WriteString(indent4(body.String()))
+	h.WriteString("\n}\n")
 	return []byte(h.String())
 }
 

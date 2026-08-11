@@ -45,6 +45,7 @@ const (
 	KwConst
 	KwEnum
 	KwType
+	KwTable
 	KwMessage
 	KwObject
 	KwIf
@@ -77,6 +78,7 @@ const (
 
 var keywords = map[string]Kind{
 	"package": KwPackage, "const": KwConst, "enum": KwEnum, "type": KwType,
+	"table": KwTable,
 	"message": KwMessage, "object": KwObject, "if": KwIf, "else": KwElse,
 	"switch": KwSwitch, "case": KwCase, "align": KwAlign, "reserved": KwReserved,
 	"bits": KwBits, "bool": KwBool, "float32": KwFloat32, "float64": KwFloat64,

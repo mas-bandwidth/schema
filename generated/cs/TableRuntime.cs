@@ -5,250 +5,252 @@
 
 using System;
 
-namespace Example;
-
-// TableReport counts the permissive read contract's events: how far the data
-// diverged from this build's schema, without anything crashing or rejecting.
-public sealed class TableReport
+namespace Example
 {
-    public int Unknown;      // fields this schema does not declare (newer data)
-    public int KindMismatch; // fields whose wire kind changed (skipped, defaults kept)
-    public int Clamped;      // values pulled into declared ranges / sets / bounds
-    public bool Malformed;   // structurally broken buffer; partial decode was kept
-}
-
-// TableWriter is the generated writers' growable little-endian buffer —
-// array doubling, floats via BitConverter's bit casts (byte-identical
-// little-endian on every platform the runtime targets).
-internal sealed class TableWriter
-{
-    public byte[] Buf = new byte[256];
-    public int Len;
-
-    private void Reserve(int bytes)
+    // TableReport counts the permissive read contract's events: how far the data
+    // diverged from this build's schema, without anything crashing or rejecting.
+    public sealed class TableReport
     {
-        if (Len + bytes <= Buf.Length)
+        public int Unknown;      // fields this schema does not declare (newer data)
+        public int KindMismatch; // fields whose wire kind changed (skipped, defaults kept)
+        public int Clamped;      // values pulled into declared ranges / sets / bounds
+        public bool Malformed;   // structurally broken buffer; partial decode was kept
+    }
+
+    // TableWriter is the generated writers' growable little-endian buffer —
+    // array doubling, floats via BitConverter's bit casts (byte-identical
+    // little-endian on every platform the runtime targets).
+    internal sealed class TableWriter
+    {
+        public byte[] Buf = new byte[256];
+        public int Len;
+
+        private void Reserve(int bytes)
         {
-            return;
+            if (Len + bytes <= Buf.Length)
+            {
+                return;
+            }
+            int capacity = Buf.Length * 2;
+            while (capacity < Len + bytes)
+            {
+                capacity *= 2;
+            }
+            Array.Resize(ref Buf, capacity);
         }
-        int capacity = Buf.Length * 2;
-        while (capacity < Len + bytes)
+
+        public void U8(byte v)
         {
-            capacity *= 2;
+            Reserve(1);
+            Buf[Len] = v;
+            Len += 1;
         }
-        Array.Resize(ref Buf, capacity);
-    }
 
-    public void U8(byte v)
-    {
-        Reserve(1);
-        Buf[Len] = v;
-        Len += 1;
-    }
-
-    public void U16(ushort v)
-    {
-        Reserve(2);
-        Buf[Len] = (byte)v;
-        Buf[Len + 1] = (byte)(v >> 8);
-        Len += 2;
-    }
-
-    public void U32(uint v)
-    {
-        Reserve(4);
-        Buf[Len] = (byte)v;
-        Buf[Len + 1] = (byte)(v >> 8);
-        Buf[Len + 2] = (byte)(v >> 16);
-        Buf[Len + 3] = (byte)(v >> 24);
-        Len += 4;
-    }
-
-    public void U64(ulong v)
-    {
-        U32((uint)v);
-        U32((uint)(v >> 32));
-    }
-
-    public void F32(float v)
-    {
-        U32((uint)BitConverter.SingleToInt32Bits(v));
-    }
-
-    public void F64(double v)
-    {
-        U64((ulong)BitConverter.DoubleToInt64Bits(v));
-    }
-
-    public void Raw(byte[] data, int count)
-    {
-        Reserve(count);
-        Array.Copy(data, 0, Buf, Len, count);
-        Len += count;
-    }
-
-    public void Patch32(int at, uint v)
-    {
-        Buf[at] = (byte)v;
-        Buf[at + 1] = (byte)(v >> 8);
-        Buf[at + 2] = (byte)(v >> 16);
-        Buf[at + 3] = (byte)(v >> 24);
-    }
-
-    public byte[] ToArray()
-    {
-        byte[] wire = new byte[Len];
-        Array.Copy(Buf, wire, Len);
-        return wire;
-    }
-}
-
-// TableReader walks one table value inside [Off, End) — nested tables get a
-// sub-reader over the same buffer, bounded by their length prefix.
-internal sealed class TableReader
-{
-    public byte[] Buf;
-    public int Off;
-    public int End;
-    public TableReport Report;
-
-    public TableReader(byte[] buf, int off, int end, TableReport report)
-    {
-        Buf = buf;
-        Off = off;
-        End = end;
-        Report = report;
-    }
-
-    public bool Has(int bytes)
-    {
-        return bytes >= 0 && bytes <= End - Off;
-    }
-
-    public byte Get8()
-    {
-        byte v = Buf[Off];
-        Off += 1;
-        return v;
-    }
-
-    public ushort Get16()
-    {
-        ushort v = (ushort)(Buf[Off] | (Buf[Off + 1] << 8));
-        Off += 2;
-        return v;
-    }
-
-    public uint Get32()
-    {
-        uint v = (uint)(Buf[Off] | (Buf[Off + 1] << 8) | (Buf[Off + 2] << 16) | (Buf[Off + 3] << 24));
-        Off += 4;
-        return v;
-    }
-
-    public ulong Get64()
-    {
-        ulong lo = Get32();
-        ulong hi = Get32();
-        return lo | (hi << 32);
-    }
-
-    public float GetF32()
-    {
-        return BitConverter.Int32BitsToSingle((int)Get32());
-    }
-
-    public double GetF64()
-    {
-        return BitConverter.Int64BitsToDouble((long)Get64());
-    }
-
-    // CopyOut copies the next count bytes without advancing — the caller
-    // advances by the full wire length, past any truncated excess.
-    public void CopyOut(byte[] dst, int count)
-    {
-        Array.Copy(Buf, Off, dst, 0, count);
-    }
-
-    // Skip advances past one field payload of the given kind — how unknown
-    // and kind-changed fields stay harmless.
-    public bool Skip(byte kind)
-    {
-        switch (kind)
+        public void U16(ushort v)
         {
-            case 1: // bool
-            case 2: // i8
-            case 6: // u8
-            {
-                if (!Has(1))
-                {
-                    return false;
-                }
-                Off += 1;
-                return true;
-            }
-            case 3: // i16
-            case 7: // u16
-            {
-                if (!Has(2))
-                {
-                    return false;
-                }
-                Off += 2;
-                return true;
-            }
-            case 4: // i32
-            case 8: // u32
-            case 10: // f32
-            {
-                if (!Has(4))
-                {
-                    return false;
-                }
-                Off += 4;
-                return true;
-            }
-            case 5: // i64
-            case 9: // u64
-            case 11: // f64
-            {
-                if (!Has(8))
-                {
-                    return false;
-                }
-                Off += 8;
-                return true;
-            }
-            case 12: // string: u16 length + bytes
-            {
-                if (!Has(2))
-                {
-                    return false;
-                }
-                int stringLen = Get16();
-                if (!Has(stringLen))
-                {
-                    return false;
-                }
-                Off += stringLen;
-                return true;
-            }
-            case 13: // table: u32 length + body
-            case 14: // array: u32 length + body
-            {
-                if (!Has(4))
-                {
-                    return false;
-                }
-                int bodyLen = (int)Get32();
-                if (!Has(bodyLen))
-                {
-                    return false;
-                }
-                Off += bodyLen;
-                return true;
-            }
+            Reserve(2);
+            Buf[Len] = (byte)v;
+            Buf[Len + 1] = (byte)(v >> 8);
+            Len += 2;
         }
-        return false; // unknown kind: cannot know its length
+
+        public void U32(uint v)
+        {
+            Reserve(4);
+            Buf[Len] = (byte)v;
+            Buf[Len + 1] = (byte)(v >> 8);
+            Buf[Len + 2] = (byte)(v >> 16);
+            Buf[Len + 3] = (byte)(v >> 24);
+            Len += 4;
+        }
+
+        public void U64(ulong v)
+        {
+            U32((uint)v);
+            U32((uint)(v >> 32));
+        }
+
+        public void F32(float v)
+        {
+            U32((uint)BitConverter.SingleToInt32Bits(v));
+        }
+
+        public void F64(double v)
+        {
+            U64((ulong)BitConverter.DoubleToInt64Bits(v));
+        }
+
+        public void Raw(byte[] data, int count)
+        {
+            Reserve(count);
+            Array.Copy(data, 0, Buf, Len, count);
+            Len += count;
+        }
+
+        public void Patch32(int at, uint v)
+        {
+            Buf[at] = (byte)v;
+            Buf[at + 1] = (byte)(v >> 8);
+            Buf[at + 2] = (byte)(v >> 16);
+            Buf[at + 3] = (byte)(v >> 24);
+        }
+
+        public byte[] ToArray()
+        {
+            byte[] wire = new byte[Len];
+            Array.Copy(Buf, wire, Len);
+            return wire;
+        }
     }
+
+    // TableReader walks one table value inside [Off, End) — nested tables get a
+    // sub-reader over the same buffer, bounded by their length prefix.
+    internal sealed class TableReader
+    {
+        public byte[] Buf;
+        public int Off;
+        public int End;
+        public TableReport Report;
+
+        public TableReader(byte[] buf, int off, int end, TableReport report)
+        {
+            Buf = buf;
+            Off = off;
+            End = end;
+            Report = report;
+        }
+
+        public bool Has(int bytes)
+        {
+            return bytes >= 0 && bytes <= End - Off;
+        }
+
+        public byte Get8()
+        {
+            byte v = Buf[Off];
+            Off += 1;
+            return v;
+        }
+
+        public ushort Get16()
+        {
+            ushort v = (ushort)(Buf[Off] | (Buf[Off + 1] << 8));
+            Off += 2;
+            return v;
+        }
+
+        public uint Get32()
+        {
+            uint v = (uint)(Buf[Off] | (Buf[Off + 1] << 8) | (Buf[Off + 2] << 16) | (Buf[Off + 3] << 24));
+            Off += 4;
+            return v;
+        }
+
+        public ulong Get64()
+        {
+            ulong lo = Get32();
+            ulong hi = Get32();
+            return lo | (hi << 32);
+        }
+
+        public float GetF32()
+        {
+            return BitConverter.Int32BitsToSingle((int)Get32());
+        }
+
+        public double GetF64()
+        {
+            return BitConverter.Int64BitsToDouble((long)Get64());
+        }
+
+        // CopyOut copies the next count bytes without advancing — the caller
+        // advances by the full wire length, past any truncated excess.
+        public void CopyOut(byte[] dst, int count)
+        {
+            Array.Copy(Buf, Off, dst, 0, count);
+        }
+
+        // Skip advances past one field payload of the given kind — how unknown
+        // and kind-changed fields stay harmless.
+        public bool Skip(byte kind)
+        {
+            switch (kind)
+            {
+                case 1: // bool
+                case 2: // i8
+                case 6: // u8
+                {
+                    if (!Has(1))
+                    {
+                        return false;
+                    }
+                    Off += 1;
+                    return true;
+                }
+                case 3: // i16
+                case 7: // u16
+                {
+                    if (!Has(2))
+                    {
+                        return false;
+                    }
+                    Off += 2;
+                    return true;
+                }
+                case 4: // i32
+                case 8: // u32
+                case 10: // f32
+                {
+                    if (!Has(4))
+                    {
+                        return false;
+                    }
+                    Off += 4;
+                    return true;
+                }
+                case 5: // i64
+                case 9: // u64
+                case 11: // f64
+                {
+                    if (!Has(8))
+                    {
+                        return false;
+                    }
+                    Off += 8;
+                    return true;
+                }
+                case 12: // string: u16 length + bytes
+                {
+                    if (!Has(2))
+                    {
+                        return false;
+                    }
+                    int stringLen = Get16();
+                    if (!Has(stringLen))
+                    {
+                        return false;
+                    }
+                    Off += stringLen;
+                    return true;
+                }
+                case 13: // table: u32 length + body
+                case 14: // array: u32 length + body
+                {
+                    if (!Has(4))
+                    {
+                        return false;
+                    }
+                    int bodyLen = (int)Get32();
+                    if (!Has(bodyLen))
+                    {
+                        return false;
+                    }
+                    Off += bodyLen;
+                    return true;
+                }
+            }
+            return false; // unknown kind: cannot know its length
+        }
+    }
+
 }
