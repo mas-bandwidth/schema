@@ -44,6 +44,14 @@ type Collection struct {
 	// Unions declares the flatbuffers-JSON union lowerings for this
 	// collection's types — the transition adapter; dies with flatbuffers.
 	Unions []UnionRule `json:"unions,omitempty"`
+	// Renames maps JSON keys onto schema field names per owner type — for
+	// keys the schema language cannot spell (`type` is a keyword). Applied
+	// before encoding; the JSON stays untouched on disk.
+	Renames map[string]map[string]string `json:"renames,omitempty"`
+	// ClampBounds opts this collection into clamp-with-warning for
+	// out-of-range integers (the historical LevelInfo semantics; see
+	// Encoder.ClampBounds). Strict refusal is the default.
+	ClampBounds bool `json:"clamp_bounds,omitempty"`
 }
 
 // UnionRule lowers one flatbuffers-JSON union field pair onto bool-guarded
@@ -59,15 +67,20 @@ type UnionRule struct {
 	Arms map[string][2]string `json:"arms"`
 }
 
-// lowerUnions applies this type's union rules to a JSON object, returning a
-// rewritten copy (the input is never mutated — instances may share maps).
+// lowerUnions applies this type's rename and union rules to a JSON object,
+// returning a rewritten copy (the input is never mutated — instances may
+// share maps).
 func (e *Encoder) lowerUnions(typeName string, obj map[string]any, path string) (map[string]any, error) {
 	rules := e.UnionLower[typeName]
-	if len(rules) == 0 {
+	renames := e.Renames[typeName]
+	if len(rules) == 0 && len(renames) == 0 {
 		return obj, nil
 	}
 	out := make(map[string]any, len(obj))
 	for k, v := range obj {
+		if to, ok := renames[k]; ok {
+			k = to
+		}
 		out[k] = v
 	}
 	for _, r := range rules {
@@ -155,6 +168,12 @@ func BuildOutput(u *ir.Unit, enc *Encoder, out Output, baseDir string) ([]byte, 
 		payload = putU32(payload, uint32(len(instances)))
 		for _, inst := range instances {
 			enc.UnionLower = unionIndex(c.Unions)
+			enc.Renames = c.Renames
+			enc.ClampBounds = c.ClampBounds
+			source := inst.source
+			enc.Warn = func(format string, args ...any) {
+				fmt.Fprintf(os.Stderr, "pack warning: %s: %s\n", source, fmt.Sprintf(format, args...))
+			}
 			wire, err := enc.EncodeInstance(c.Type, inst.obj)
 			if err != nil {
 				return nil, fmt.Errorf("%s: %w", inst.source, err)
@@ -200,16 +219,23 @@ func collectInstances(u *ir.Unit, c Collection, baseDir string) ([]instance, err
 		return []instance{{source: c.File, obj: obj}}, nil
 	}
 	dir := filepath.Join(baseDir, c.Dir)
-	entries, err := os.ReadDir(dir)
+	byName := map[string]string{} // basename -> path (recursive: levels nest per-level dirs)
+	err := filepath.WalkDir(dir, func(p string, d os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if d.IsDir() || !strings.HasSuffix(d.Name(), ".json") {
+			return nil
+		}
+		base := strings.TrimSuffix(d.Name(), ".json")
+		if prev, dup := byName[base]; dup {
+			return fmt.Errorf("collection %s: two instance files named %s (%s, %s)", c.Type, base, prev, p)
+		}
+		byName[base] = p
+		return nil
+	})
 	if err != nil {
 		return nil, fmt.Errorf("collection %s: %w", c.Type, err)
-	}
-	byName := map[string]string{} // basename -> path
-	for _, ent := range entries {
-		if ent.IsDir() || !strings.HasSuffix(ent.Name(), ".json") {
-			continue
-		}
-		byName[strings.TrimSuffix(ent.Name(), ".json")] = filepath.Join(dir, ent.Name())
 	}
 	if c.KeyEnum == "" {
 		// unkeyed collection: deterministic name order
@@ -265,10 +291,52 @@ func loadJSON(path string) (map[string]any, error) {
 		return nil, err
 	}
 	var obj map[string]any
-	dec := json.NewDecoder(strings.NewReader(string(data)))
+	dec := json.NewDecoder(strings.NewReader(stripTrailingCommas(string(data))))
 	dec.UseNumber() // full-range uint64 values must survive exactly (json.Number)
 	if err := dec.Decode(&obj); err != nil {
 		return nil, fmt.Errorf("%s: %w", path, err)
 	}
 	return obj, nil
+}
+
+// stripTrailingCommas makes the game's flatbuffers-JSON dialect strict:
+// flatc's parser tolerates a comma before a closing } or ] (the shipped
+// config files use it liberally) and strict JSON does not. String-aware —
+// a comma inside a quoted string is never touched. This is the dialect
+// adapter's whole extent: the files carry no comments (checked 2026-08-11).
+func stripTrailingCommas(s string) string {
+	var b strings.Builder
+	b.Grow(len(s))
+	inString := false
+	escaped := false
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		if inString {
+			b.WriteByte(c)
+			if escaped {
+				escaped = false
+			} else if c == '\\' {
+				escaped = true
+			} else if c == '"' {
+				inString = false
+			}
+			continue
+		}
+		if c == '"' {
+			inString = true
+			b.WriteByte(c)
+			continue
+		}
+		if c == ',' {
+			j := i + 1
+			for j < len(s) && (s[j] == ' ' || s[j] == '\t' || s[j] == '\n' || s[j] == '\r') {
+				j++
+			}
+			if j < len(s) && (s[j] == '}' || s[j] == ']') {
+				continue // drop the trailing comma
+			}
+		}
+		b.WriteByte(c)
+	}
+	return b.String()
 }

@@ -17,6 +17,23 @@ type Encoder struct {
 	// UnionLower rewrites flatbuffers-JSON union shapes onto bool-guarded
 	// schema arms before encoding — the transition adapter (see manifest.go).
 	UnionLower map[string][]UnionRule // schema type name -> rules
+	// Renames maps JSON keys onto schema field names per owner type (see
+	// manifest.go — `type` is a schema keyword).
+	Renames map[string]map[string]string
+	// ClampBounds reproduces the game's historical LevelInfo semantics for a
+	// collection that opts in: an out-of-range integer CLAMPS to its bound
+	// with a loud warning instead of refusing — the level runs exactly as it
+	// does today, and the authoring discrepancy becomes visible instead of
+	// silent. Strict refusal stays the default.
+	ClampBounds bool
+	// Warn receives clamp warnings; nil discards them.
+	Warn func(format string, args ...any)
+}
+
+func (e *Encoder) warnf(format string, args ...any) {
+	if e.Warn != nil {
+		e.Warn(format, args...)
+	}
 }
 
 // EncodeInstance encodes one JSON object as schema type typeName, returning
@@ -163,7 +180,15 @@ func (e *Encoder) encodeScalar(w *bitWriter, f *ir.Field, val any, fpath string)
 		}
 		if f.HasIntRange {
 			if iv.Cmp(f.IntMin) < 0 || iv.Cmp(f.IntMax) > 0 {
-				return fmt.Errorf("%s: %s outside wire range [%s, %s]", fpath, iv, f.IntMin, f.IntMax)
+				if !e.ClampBounds {
+					return fmt.Errorf("%s: %s outside wire range [%s, %s]", fpath, iv, f.IntMin, f.IntMax)
+				}
+				clamped := f.IntMax
+				if iv.Cmp(f.IntMin) < 0 {
+					clamped = f.IntMin
+				}
+				e.warnf("%s: %s outside wire range [%s, %s] — CLAMPED to %s (the historical LevelInfo semantics; fix the data)", fpath, iv, f.IntMin, f.IntMax, clamped)
+				iv = clamped
 			}
 			w.writeBits(new(big.Int).Sub(iv, f.IntMin).Uint64(), ir.BitsRequired(f.IntMin, f.IntMax))
 			return nil
