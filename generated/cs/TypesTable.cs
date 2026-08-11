@@ -586,6 +586,314 @@ namespace Example
                 }
             }
         }
+
+        // ---- reflection descriptors (tables only, notes/table-wire.md) ----
+        //
+        // One flat TableFieldInfo[] per closure type (SPEC §4.11: contiguous
+        // structs, sequential walks, zero per-instance weight), built lazily on
+        // first use: C# gives partial classes no cross-file static initializer
+        // order, so an eager initializer could observe a not-yet-built nested
+        // descriptor — the accessors compose in dependency order instead (the
+        // closure is acyclic). A double-build under a race is benign: equivalent
+        // data, last write wins.
+
+        private static TableTypeInfo _tableTypeVec3;
+
+        // TableTypeVec3 returns Vec3's reflection descriptor — field names, wire
+        // ids/kinds, bounds, ranges, enum names and branch guards. Pair it with
+        // TableGetVec3/TableSetVec3 to walk, print, diff or edit values generically
+        // (walk the flat Fields array with `ref readonly var f = ref fields[i];`).
+        public static TableTypeInfo TableTypeVec3()
+        {
+            if (_tableTypeVec3 != null)
+            {
+                return _tableTypeVec3;
+            }
+            TableFieldInfo[] fields = new TableFieldInfo[3];
+            fields[0] = new TableFieldInfo { Name = "x", TypeName = "float64", Id = 0xad8b, Kind = 11, EnumMax = -1, Guard = "" };
+            fields[1] = new TableFieldInfo { Name = "y", TypeName = "float64", Id = 0xb2f8, Kind = 11, EnumMax = -1, Guard = "" };
+            fields[2] = new TableFieldInfo { Name = "z", TypeName = "float64", Id = 0xaca1, Kind = 11, EnumMax = -1, Guard = "" };
+            TableTypeInfo info = new TableTypeInfo();
+            info.Name = "Vec3";
+            info.Fields = fields;
+            _tableTypeVec3 = info;
+            return info;
+        }
+
+        // TableGetVec3 reads the named field from value into a TableValue — no
+        // boxing (SPEC §4.11): scalars normalize (signed -> I, unsigned/bits -> U,
+        // floats -> F, bools -> B), enums and flags -> U, strings decode into S
+        // (the one allocating path), nested tables put the member reference in
+        // Obj, arrays put the member array in Obj and the used element count in
+        // Count (fixed arrays: the full bound). Unknown field names return false.
+        public static bool TableGetVec3(Vec3 value, string field, out TableValue result)
+        {
+            switch (field)
+            {
+                case "x":
+                {
+                    result = new TableValue { Kind = TableValueKind.Float, F = value.X };
+                    return true;
+                }
+                case "y":
+                {
+                    result = new TableValue { Kind = TableValueKind.Float, F = value.Y };
+                    return true;
+                }
+                case "z":
+                {
+                    result = new TableValue { Kind = TableValueKind.Float, F = value.Z };
+                    return true;
+                }
+            }
+            result = new TableValue();
+            return false;
+        }
+
+        // TableSetVec3 writes the named field — the editor write path: scalars,
+        // enums, flags, bools and strings only. Numerics accept the Int, Uint and
+        // Float kinds; out-of-range values CLAMP exactly as the table-wire read
+        // side does (declared ranges, bits width, enum out-of-set -> None), and
+        // strings truncate to the declared max. Unknown fields, nested tables and
+        // arrays return false.
+        public static bool TableSetVec3(Vec3 value, string field, in TableValue v)
+        {
+            switch (field)
+            {
+                case "x":
+                {
+                    double n;
+                    if (!v.AsDouble(out n))
+                    {
+                        return false;
+                    }
+                    value.X = n;
+                    return true;
+                }
+                case "y":
+                {
+                    double n;
+                    if (!v.AsDouble(out n))
+                    {
+                        return false;
+                    }
+                    value.Y = n;
+                    return true;
+                }
+                case "z":
+                {
+                    double n;
+                    if (!v.AsDouble(out n))
+                    {
+                        return false;
+                    }
+                    value.Z = n;
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        private static TableTypeInfo _tableTypeQuat;
+
+        // TableTypeQuat returns Quat's reflection descriptor — field names, wire
+        // ids/kinds, bounds, ranges, enum names and branch guards. Pair it with
+        // TableGetQuat/TableSetQuat to walk, print, diff or edit values generically
+        // (walk the flat Fields array with `ref readonly var f = ref fields[i];`).
+        public static TableTypeInfo TableTypeQuat()
+        {
+            if (_tableTypeQuat != null)
+            {
+                return _tableTypeQuat;
+            }
+            TableFieldInfo[] fields = new TableFieldInfo[4];
+            fields[0] = new TableFieldInfo { Name = "x", TypeName = "float64", Id = 0xad8b, Kind = 11, EnumMax = -1, Guard = "" };
+            fields[1] = new TableFieldInfo { Name = "y", TypeName = "float64", Id = 0xb2f8, Kind = 11, EnumMax = -1, Guard = "" };
+            fields[2] = new TableFieldInfo { Name = "z", TypeName = "float64", Id = 0xaca1, Kind = 11, EnumMax = -1, Guard = "" };
+            fields[3] = new TableFieldInfo { Name = "w", TypeName = "float64", Id = 0xcd3a, Kind = 11, EnumMax = -1, Guard = "" };
+            TableTypeInfo info = new TableTypeInfo();
+            info.Name = "Quat";
+            info.Fields = fields;
+            _tableTypeQuat = info;
+            return info;
+        }
+
+        // TableGetQuat reads the named field from value into a TableValue — no
+        // boxing (SPEC §4.11): scalars normalize (signed -> I, unsigned/bits -> U,
+        // floats -> F, bools -> B), enums and flags -> U, strings decode into S
+        // (the one allocating path), nested tables put the member reference in
+        // Obj, arrays put the member array in Obj and the used element count in
+        // Count (fixed arrays: the full bound). Unknown field names return false.
+        public static bool TableGetQuat(Quat value, string field, out TableValue result)
+        {
+            switch (field)
+            {
+                case "x":
+                {
+                    result = new TableValue { Kind = TableValueKind.Float, F = value.X };
+                    return true;
+                }
+                case "y":
+                {
+                    result = new TableValue { Kind = TableValueKind.Float, F = value.Y };
+                    return true;
+                }
+                case "z":
+                {
+                    result = new TableValue { Kind = TableValueKind.Float, F = value.Z };
+                    return true;
+                }
+                case "w":
+                {
+                    result = new TableValue { Kind = TableValueKind.Float, F = value.W };
+                    return true;
+                }
+            }
+            result = new TableValue();
+            return false;
+        }
+
+        // TableSetQuat writes the named field — the editor write path: scalars,
+        // enums, flags, bools and strings only. Numerics accept the Int, Uint and
+        // Float kinds; out-of-range values CLAMP exactly as the table-wire read
+        // side does (declared ranges, bits width, enum out-of-set -> None), and
+        // strings truncate to the declared max. Unknown fields, nested tables and
+        // arrays return false.
+        public static bool TableSetQuat(Quat value, string field, in TableValue v)
+        {
+            switch (field)
+            {
+                case "x":
+                {
+                    double n;
+                    if (!v.AsDouble(out n))
+                    {
+                        return false;
+                    }
+                    value.X = n;
+                    return true;
+                }
+                case "y":
+                {
+                    double n;
+                    if (!v.AsDouble(out n))
+                    {
+                        return false;
+                    }
+                    value.Y = n;
+                    return true;
+                }
+                case "z":
+                {
+                    double n;
+                    if (!v.AsDouble(out n))
+                    {
+                        return false;
+                    }
+                    value.Z = n;
+                    return true;
+                }
+                case "w":
+                {
+                    double n;
+                    if (!v.AsDouble(out n))
+                    {
+                        return false;
+                    }
+                    value.W = n;
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        private static TableTypeInfo _tableTypeRigidBody;
+
+        // TableTypeRigidBody returns RigidBody's reflection descriptor — field names, wire
+        // ids/kinds, bounds, ranges, enum names and branch guards. Pair it with
+        // TableGetRigidBody/TableSetRigidBody to walk, print, diff or edit values generically
+        // (walk the flat Fields array with `ref readonly var f = ref fields[i];`).
+        public static TableTypeInfo TableTypeRigidBody()
+        {
+            if (_tableTypeRigidBody != null)
+            {
+                return _tableTypeRigidBody;
+            }
+            TableFieldInfo[] fields = new TableFieldInfo[5];
+            fields[0] = new TableFieldInfo { Name = "position", TypeName = "Vec3", Id = 0xdd45, Kind = 13, Table = TableTypeVec3(), EnumMax = -1, Guard = "" };
+            fields[1] = new TableFieldInfo { Name = "orientation", TypeName = "Quat", Id = 0x7964, Kind = 13, Table = TableTypeQuat(), EnumMax = -1, Guard = "" };
+            fields[2] = new TableFieldInfo { Name = "at_rest", TypeName = "bool", Id = 0xf9eb, Kind = 1, EnumMax = -1, Guard = "" };
+            fields[3] = new TableFieldInfo { Name = "linear_velocity", TypeName = "Vec3", Id = 0x0637, Kind = 13, Table = TableTypeVec3(), EnumMax = -1, Guard = "!at_rest" };
+            fields[4] = new TableFieldInfo { Name = "angular_velocity", TypeName = "Vec3", Id = 0x01a7, Kind = 13, Table = TableTypeVec3(), EnumMax = -1, Guard = "!at_rest" };
+            TableTypeInfo info = new TableTypeInfo();
+            info.Name = "RigidBody";
+            info.Fields = fields;
+            _tableTypeRigidBody = info;
+            return info;
+        }
+
+        // TableGetRigidBody reads the named field from value into a TableValue — no
+        // boxing (SPEC §4.11): scalars normalize (signed -> I, unsigned/bits -> U,
+        // floats -> F, bools -> B), enums and flags -> U, strings decode into S
+        // (the one allocating path), nested tables put the member reference in
+        // Obj, arrays put the member array in Obj and the used element count in
+        // Count (fixed arrays: the full bound). Unknown field names return false.
+        public static bool TableGetRigidBody(RigidBody value, string field, out TableValue result)
+        {
+            switch (field)
+            {
+                case "position":
+                {
+                    result = new TableValue { Kind = TableValueKind.Table, Obj = value.Position };
+                    return true;
+                }
+                case "orientation":
+                {
+                    result = new TableValue { Kind = TableValueKind.Table, Obj = value.Orientation };
+                    return true;
+                }
+                case "at_rest":
+                {
+                    result = new TableValue { Kind = TableValueKind.Bool, B = value.AtRest };
+                    return true;
+                }
+                case "linear_velocity":
+                {
+                    result = new TableValue { Kind = TableValueKind.Table, Obj = value.LinearVelocity };
+                    return true;
+                }
+                case "angular_velocity":
+                {
+                    result = new TableValue { Kind = TableValueKind.Table, Obj = value.AngularVelocity };
+                    return true;
+                }
+            }
+            result = new TableValue();
+            return false;
+        }
+
+        // TableSetRigidBody writes the named field — the editor write path: scalars,
+        // enums, flags, bools and strings only. Numerics accept the Int, Uint and
+        // Float kinds; out-of-range values CLAMP exactly as the table-wire read
+        // side does (declared ranges, bits width, enum out-of-set -> None), and
+        // strings truncate to the declared max. Unknown fields, nested tables and
+        // arrays return false.
+        public static bool TableSetRigidBody(RigidBody value, string field, in TableValue v)
+        {
+            switch (field)
+            {
+                case "at_rest":
+                {
+                    if (v.Kind != TableValueKind.Bool)
+                    {
+                        return false;
+                    }
+                    value.AtRest = v.B;
+                    return true;
+                }
+            }
+            return false;
+        }
     }
 
 }

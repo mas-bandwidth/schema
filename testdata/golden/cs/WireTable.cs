@@ -1492,6 +1492,776 @@ namespace Example
                 }
             }
         }
+
+        // ---- reflection descriptors (tables only, notes/table-wire.md) ----
+        //
+        // One flat TableFieldInfo[] per closure type (SPEC §4.11: contiguous
+        // structs, sequential walks, zero per-instance weight), built lazily on
+        // first use: C# gives partial classes no cross-file static initializer
+        // order, so an eager initializer could observe a not-yet-built nested
+        // descriptor — the accessors compose in dependency order instead (the
+        // closure is acyclic). A double-build under a race is benign: equivalent
+        // data, last write wins.
+
+        private static TableTypeInfo _tableTypeProbeSample;
+
+        // TableTypeProbeSample returns ProbeSample's reflection descriptor — field names, wire
+        // ids/kinds, bounds, ranges, enum names and branch guards. Pair it with
+        // TableGetProbeSample/TableSetProbeSample to walk, print, diff or edit values generically
+        // (walk the flat Fields array with `ref readonly var f = ref fields[i];`).
+        public static TableTypeInfo TableTypeProbeSample()
+        {
+            if (_tableTypeProbeSample != null)
+            {
+                return _tableTypeProbeSample;
+            }
+            TableFieldInfo[] fields = new TableFieldInfo[9];
+            fields[0] = new TableFieldInfo { Name = "active", TypeName = "bool", Id = 0x405a, Kind = 1, EnumMax = -1, Guard = "" };
+            fields[1] = new TableFieldInfo { Name = "orientation", TypeName = "float32", Id = 0x7964, Kind = 10, HasRange = true, RangeMin = -180.0, RangeMax = 180.0, EnumMax = -1, Guard = "" };
+            fields[2] = new TableFieldInfo { Name = "raw_delta", TypeName = "int32", Id = 0x933d, Kind = 4, EnumMax = -1, Guard = "" };
+            fields[3] = new TableFieldInfo { Name = "big_delta", TypeName = "int64", Id = 0x078b, Kind = 5, EnumMax = -1, Guard = "" };
+            fields[4] = new TableFieldInfo { Name = "weapon", TypeName = "Weapon", Id = 0x4f72, Kind = 6, EnumMax = 15, EnumName = EnumNameWeapon, Guard = "active" };
+            fields[5] = new TableFieldInfo { Name = "has_target", TypeName = "bool", Id = 0xb0a7, Kind = 1, EnumMax = -1, Guard = "active" };
+            fields[6] = new TableFieldInfo { Name = "target_id", TypeName = "uint16", Id = 0xdf6a, Kind = 7, EnumMax = -1, Guard = "active && has_target" };
+            fields[7] = new TableFieldInfo { Name = "idle_ticks", TypeName = "uint32", Id = 0x9555, Kind = 8, EnumMax = -1, Guard = "!active" };
+            fields[8] = new TableFieldInfo { Name = "samples", TypeName = "uint16", Id = 0xaf9a, Kind = 7, IsArray = true, Counted = true, ArrayBound = 8, EnumMax = -1, Guard = "" };
+            TableTypeInfo info = new TableTypeInfo();
+            info.Name = "ProbeSample";
+            info.Fields = fields;
+            _tableTypeProbeSample = info;
+            return info;
+        }
+
+        // TableGetProbeSample reads the named field from value into a TableValue — no
+        // boxing (SPEC §4.11): scalars normalize (signed -> I, unsigned/bits -> U,
+        // floats -> F, bools -> B), enums and flags -> U, strings decode into S
+        // (the one allocating path), nested tables put the member reference in
+        // Obj, arrays put the member array in Obj and the used element count in
+        // Count (fixed arrays: the full bound). Unknown field names return false.
+        public static bool TableGetProbeSample(ProbeSample value, string field, out TableValue result)
+        {
+            switch (field)
+            {
+                case "active":
+                {
+                    result = new TableValue { Kind = TableValueKind.Bool, B = value.Active };
+                    return true;
+                }
+                case "orientation":
+                {
+                    result = new TableValue { Kind = TableValueKind.Float, F = value.Orientation };
+                    return true;
+                }
+                case "raw_delta":
+                {
+                    result = new TableValue { Kind = TableValueKind.Int, I = value.RawDelta };
+                    return true;
+                }
+                case "big_delta":
+                {
+                    result = new TableValue { Kind = TableValueKind.Int, I = value.BigDelta };
+                    return true;
+                }
+                case "weapon":
+                {
+                    result = new TableValue { Kind = TableValueKind.Uint, U = (ulong)value.Weapon };
+                    return true;
+                }
+                case "has_target":
+                {
+                    result = new TableValue { Kind = TableValueKind.Bool, B = value.HasTarget };
+                    return true;
+                }
+                case "target_id":
+                {
+                    result = new TableValue { Kind = TableValueKind.Uint, U = value.TargetId };
+                    return true;
+                }
+                case "idle_ticks":
+                {
+                    result = new TableValue { Kind = TableValueKind.Uint, U = value.IdleTicks };
+                    return true;
+                }
+                case "samples":
+                {
+                    result = new TableValue { Kind = TableValueKind.Array, Obj = value.Samples, Count = value.SamplesCount };
+                    return true;
+                }
+            }
+            result = new TableValue();
+            return false;
+        }
+
+        // TableSetProbeSample writes the named field — the editor write path: scalars,
+        // enums, flags, bools and strings only. Numerics accept the Int, Uint and
+        // Float kinds; out-of-range values CLAMP exactly as the table-wire read
+        // side does (declared ranges, bits width, enum out-of-set -> None), and
+        // strings truncate to the declared max. Unknown fields, nested tables and
+        // arrays return false.
+        public static bool TableSetProbeSample(ProbeSample value, string field, in TableValue v)
+        {
+            switch (field)
+            {
+                case "active":
+                {
+                    if (v.Kind != TableValueKind.Bool)
+                    {
+                        return false;
+                    }
+                    value.Active = v.B;
+                    return true;
+                }
+                case "orientation":
+                {
+                    double n;
+                    if (!v.AsDouble(out n))
+                    {
+                        return false;
+                    }
+                    if (n < -180.0)
+                    {
+                        n = -180.0;
+                    }
+                    else if (n > 180.0)
+                    {
+                        n = 180.0;
+                    }
+                    value.Orientation = (float)n;
+                    return true;
+                }
+                case "raw_delta":
+                {
+                    long n;
+                    if (!v.AsLong(out n))
+                    {
+                        return false;
+                    }
+                    value.RawDelta = (int)n;
+                    return true;
+                }
+                case "big_delta":
+                {
+                    long n;
+                    if (!v.AsLong(out n))
+                    {
+                        return false;
+                    }
+                    value.BigDelta = n;
+                    return true;
+                }
+                case "weapon":
+                {
+                    ulong n;
+                    if (!v.AsUlong(out n))
+                    {
+                        return false;
+                    }
+                    if (n > 15UL)
+                    {
+                        n = 0; // out-of-set -> None, as the read side does
+                    }
+                    value.Weapon = (Weapon)n;
+                    return true;
+                }
+                case "has_target":
+                {
+                    if (v.Kind != TableValueKind.Bool)
+                    {
+                        return false;
+                    }
+                    value.HasTarget = v.B;
+                    return true;
+                }
+                case "target_id":
+                {
+                    ulong n;
+                    if (!v.AsUlong(out n))
+                    {
+                        return false;
+                    }
+                    value.TargetId = (ushort)n;
+                    return true;
+                }
+                case "idle_ticks":
+                {
+                    ulong n;
+                    if (!v.AsUlong(out n))
+                    {
+                        return false;
+                    }
+                    value.IdleTicks = (uint)n;
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        private static TableTypeInfo _tableTypeProbeConfig;
+
+        // TableTypeProbeConfig returns ProbeConfig's reflection descriptor — field names, wire
+        // ids/kinds, bounds, ranges, enum names and branch guards. Pair it with
+        // TableGetProbeConfig/TableSetProbeConfig to walk, print, diff or edit values generically
+        // (walk the flat Fields array with `ref readonly var f = ref fields[i];`).
+        public static TableTypeInfo TableTypeProbeConfig()
+        {
+            if (_tableTypeProbeConfig != null)
+            {
+                return _tableTypeProbeConfig;
+            }
+            TableFieldInfo[] fields = new TableFieldInfo[2];
+            fields[0] = new TableFieldInfo { Name = "retries", TypeName = "int32", Id = 0x460c, Kind = 4, EnumMax = -1, Guard = "" };
+            fields[1] = new TableFieldInfo { Name = "preferred", TypeName = "Weapon", Id = 0x3982, Kind = 6, EnumMax = 15, EnumName = EnumNameWeapon, Guard = "" };
+            TableTypeInfo info = new TableTypeInfo();
+            info.Name = "ProbeConfig";
+            info.Fields = fields;
+            _tableTypeProbeConfig = info;
+            return info;
+        }
+
+        // TableGetProbeConfig reads the named field from value into a TableValue — no
+        // boxing (SPEC §4.11): scalars normalize (signed -> I, unsigned/bits -> U,
+        // floats -> F, bools -> B), enums and flags -> U, strings decode into S
+        // (the one allocating path), nested tables put the member reference in
+        // Obj, arrays put the member array in Obj and the used element count in
+        // Count (fixed arrays: the full bound). Unknown field names return false.
+        public static bool TableGetProbeConfig(ProbeConfig value, string field, out TableValue result)
+        {
+            switch (field)
+            {
+                case "retries":
+                {
+                    result = new TableValue { Kind = TableValueKind.Int, I = value.Retries };
+                    return true;
+                }
+                case "preferred":
+                {
+                    result = new TableValue { Kind = TableValueKind.Uint, U = (ulong)value.Preferred };
+                    return true;
+                }
+            }
+            result = new TableValue();
+            return false;
+        }
+
+        // TableSetProbeConfig writes the named field — the editor write path: scalars,
+        // enums, flags, bools and strings only. Numerics accept the Int, Uint and
+        // Float kinds; out-of-range values CLAMP exactly as the table-wire read
+        // side does (declared ranges, bits width, enum out-of-set -> None), and
+        // strings truncate to the declared max. Unknown fields, nested tables and
+        // arrays return false.
+        public static bool TableSetProbeConfig(ProbeConfig value, string field, in TableValue v)
+        {
+            switch (field)
+            {
+                case "retries":
+                {
+                    long n;
+                    if (!v.AsLong(out n))
+                    {
+                        return false;
+                    }
+                    value.Retries = (int)n;
+                    return true;
+                }
+                case "preferred":
+                {
+                    ulong n;
+                    if (!v.AsUlong(out n))
+                    {
+                        return false;
+                    }
+                    if (n > 15UL)
+                    {
+                        n = 0; // out-of-set -> None, as the read side does
+                    }
+                    value.Preferred = (Weapon)n;
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        private static TableTypeInfo _tableTypeProbeArray;
+
+        // TableTypeProbeArray returns ProbeArray's reflection descriptor — field names, wire
+        // ids/kinds, bounds, ranges, enum names and branch guards. Pair it with
+        // TableGetProbeArray/TableSetProbeArray to walk, print, diff or edit values generically
+        // (walk the flat Fields array with `ref readonly var f = ref fields[i];`).
+        public static TableTypeInfo TableTypeProbeArray()
+        {
+            if (_tableTypeProbeArray != null)
+            {
+                return _tableTypeProbeArray;
+            }
+            TableFieldInfo[] fields = new TableFieldInfo[2];
+            fields[0] = new TableFieldInfo { Name = "samples", TypeName = "ProbeSample", Id = 0xaf9a, Kind = 13, IsArray = true, ArrayBound = 2, Table = TableTypeProbeSample(), EnumMax = -1, Guard = "" };
+            fields[1] = new TableFieldInfo { Name = "config", TypeName = "ProbeConfig", Id = 0x4538, Kind = 13, Table = TableTypeProbeConfig(), EnumMax = -1, Guard = "" };
+            TableTypeInfo info = new TableTypeInfo();
+            info.Name = "ProbeArray";
+            info.Fields = fields;
+            _tableTypeProbeArray = info;
+            return info;
+        }
+
+        // TableGetProbeArray reads the named field from value into a TableValue — no
+        // boxing (SPEC §4.11): scalars normalize (signed -> I, unsigned/bits -> U,
+        // floats -> F, bools -> B), enums and flags -> U, strings decode into S
+        // (the one allocating path), nested tables put the member reference in
+        // Obj, arrays put the member array in Obj and the used element count in
+        // Count (fixed arrays: the full bound). Unknown field names return false.
+        public static bool TableGetProbeArray(ProbeArray value, string field, out TableValue result)
+        {
+            switch (field)
+            {
+                case "samples":
+                {
+                    result = new TableValue { Kind = TableValueKind.Array, Obj = value.Samples, Count = value.Samples.Length };
+                    return true;
+                }
+                case "config":
+                {
+                    result = new TableValue { Kind = TableValueKind.Table, Obj = value.Config };
+                    return true;
+                }
+            }
+            result = new TableValue();
+            return false;
+        }
+
+        // TableSetProbeArray writes the named field — the editor write path: scalars,
+        // enums, flags, bools and strings only. Numerics accept the Int, Uint and
+        // Float kinds; out-of-range values CLAMP exactly as the table-wire read
+        // side does (declared ranges, bits width, enum out-of-set -> None), and
+        // strings truncate to the declared max. Unknown fields, nested tables and
+        // arrays return false.
+        public static bool TableSetProbeArray(ProbeArray value, string field, in TableValue v)
+        {
+            // no directly-settable fields: nested tables and arrays edit through
+            // their own descriptors and accessors
+            return false;
+        }
+
+        private static TableTypeInfo _tableTypeTestData;
+
+        // TableTypeTestData returns TestData's reflection descriptor — field names, wire
+        // ids/kinds, bounds, ranges, enum names and branch guards. Pair it with
+        // TableGetTestData/TableSetTestData to walk, print, diff or edit values generically
+        // (walk the flat Fields array with `ref readonly var f = ref fields[i];`).
+        public static TableTypeInfo TableTypeTestData()
+        {
+            if (_tableTypeTestData != null)
+            {
+                return _tableTypeTestData;
+            }
+            TableFieldInfo[] fields = new TableFieldInfo[21];
+            fields[0] = new TableFieldInfo { Name = "a", TypeName = "int32", Id = 0xcd20, Kind = 4, HasRange = true, RangeMin = -100.0, RangeMax = 100.0, EnumMax = -1, Guard = "" };
+            fields[1] = new TableFieldInfo { Name = "b", TypeName = "int32", Id = 0xcae9, Kind = 4, HasRange = true, RangeMin = -100.0, RangeMax = 100.0, EnumMax = -1, Guard = "" };
+            fields[2] = new TableFieldInfo { Name = "c", TypeName = "int32", Id = 0xca5e, Kind = 4, HasRange = true, RangeMin = -100.0, RangeMax = 150.0, EnumMax = -1, Guard = "" };
+            fields[3] = new TableFieldInfo { Name = "d", TypeName = "bits(8)", Id = 0xc57f, Kind = 6, EnumMax = -1, Guard = "" };
+            fields[4] = new TableFieldInfo { Name = "e", TypeName = "bits(8)", Id = 0xc2ec, Kind = 6, EnumMax = -1, Guard = "" };
+            fields[5] = new TableFieldInfo { Name = "f", TypeName = "bits(8)", Id = 0xc495, Kind = 6, EnumMax = -1, Guard = "" };
+            fields[6] = new TableFieldInfo { Name = "g", TypeName = "bool", Id = 0xc40a, Kind = 1, EnumMax = -1, Guard = "" };
+            fields[7] = new TableFieldInfo { Name = "items", TypeName = "int32", Id = 0x09f6, Kind = 4, IsArray = true, Counted = true, ArrayBound = 16, HasRange = true, RangeMin = 0.0, RangeMax = 255.0, EnumMax = -1, Guard = "" };
+            fields[8] = new TableFieldInfo { Name = "float_value", TypeName = "float32", Id = 0xbbaf, Kind = 10, EnumMax = -1, Guard = "" };
+            fields[9] = new TableFieldInfo { Name = "compressed_float_value", TypeName = "float32", Id = 0x8aa5, Kind = 10, HasRange = true, RangeMin = 0.0, RangeMax = 10.0, EnumMax = -1, Guard = "" };
+            fields[10] = new TableFieldInfo { Name = "double_value", TypeName = "float64", Id = 0x6a50, Kind = 11, EnumMax = -1, Guard = "" };
+            fields[11] = new TableFieldInfo { Name = "int8_value", TypeName = "int8", Id = 0x6592, Kind = 2, EnumMax = -1, Guard = "" };
+            fields[12] = new TableFieldInfo { Name = "int16_value", TypeName = "int16", Id = 0x68f3, Kind = 3, EnumMax = -1, Guard = "" };
+            fields[13] = new TableFieldInfo { Name = "uint8_value", TypeName = "uint8", Id = 0x5645, Kind = 6, EnumMax = -1, Guard = "" };
+            fields[14] = new TableFieldInfo { Name = "uint16_value", TypeName = "uint16", Id = 0xd185, Kind = 7, EnumMax = -1, Guard = "" };
+            fields[15] = new TableFieldInfo { Name = "uint32_value", TypeName = "uint32", Id = 0x3ba7, Kind = 8, EnumMax = -1, Guard = "" };
+            fields[16] = new TableFieldInfo { Name = "uint64_value", TypeName = "uint64", Id = 0xc4d6, Kind = 9, EnumMax = -1, Guard = "" };
+            fields[17] = new TableFieldInfo { Name = "int64_full", TypeName = "int64", Id = 0xc2b7, Kind = 5, EnumMax = -1, Guard = "" };
+            fields[18] = new TableFieldInfo { Name = "int64_range", TypeName = "int64", Id = 0xab05, Kind = 5, HasRange = true, RangeMin = -1e+12, RangeMax = 1e+12, EnumMax = -1, Guard = "" };
+            fields[19] = new TableFieldInfo { Name = "fixed_bytes", TypeName = "uint8", Id = 0x14fc, Kind = 6, IsArray = true, ArrayBound = 17, EnumMax = -1, Guard = "" };
+            fields[20] = new TableFieldInfo { Name = "text", TypeName = "string", Id = 0xf3d8, Kind = 12, Counted = true, ArrayBound = 255, EnumMax = -1, Guard = "" };
+            TableTypeInfo info = new TableTypeInfo();
+            info.Name = "TestData";
+            info.Fields = fields;
+            _tableTypeTestData = info;
+            return info;
+        }
+
+        // TableGetTestData reads the named field from value into a TableValue — no
+        // boxing (SPEC §4.11): scalars normalize (signed -> I, unsigned/bits -> U,
+        // floats -> F, bools -> B), enums and flags -> U, strings decode into S
+        // (the one allocating path), nested tables put the member reference in
+        // Obj, arrays put the member array in Obj and the used element count in
+        // Count (fixed arrays: the full bound). Unknown field names return false.
+        public static bool TableGetTestData(TestData value, string field, out TableValue result)
+        {
+            switch (field)
+            {
+                case "a":
+                {
+                    result = new TableValue { Kind = TableValueKind.Int, I = value.A };
+                    return true;
+                }
+                case "b":
+                {
+                    result = new TableValue { Kind = TableValueKind.Int, I = value.B };
+                    return true;
+                }
+                case "c":
+                {
+                    result = new TableValue { Kind = TableValueKind.Int, I = value.C };
+                    return true;
+                }
+                case "d":
+                {
+                    result = new TableValue { Kind = TableValueKind.Uint, U = value.D };
+                    return true;
+                }
+                case "e":
+                {
+                    result = new TableValue { Kind = TableValueKind.Uint, U = value.E };
+                    return true;
+                }
+                case "f":
+                {
+                    result = new TableValue { Kind = TableValueKind.Uint, U = value.F };
+                    return true;
+                }
+                case "g":
+                {
+                    result = new TableValue { Kind = TableValueKind.Bool, B = value.G };
+                    return true;
+                }
+                case "items":
+                {
+                    result = new TableValue { Kind = TableValueKind.Array, Obj = value.Items, Count = value.ItemsCount };
+                    return true;
+                }
+                case "float_value":
+                {
+                    result = new TableValue { Kind = TableValueKind.Float, F = value.FloatValue };
+                    return true;
+                }
+                case "compressed_float_value":
+                {
+                    result = new TableValue { Kind = TableValueKind.Float, F = value.CompressedFloatValue };
+                    return true;
+                }
+                case "double_value":
+                {
+                    result = new TableValue { Kind = TableValueKind.Float, F = value.DoubleValue };
+                    return true;
+                }
+                case "int8_value":
+                {
+                    result = new TableValue { Kind = TableValueKind.Int, I = value.Int8Value };
+                    return true;
+                }
+                case "int16_value":
+                {
+                    result = new TableValue { Kind = TableValueKind.Int, I = value.Int16Value };
+                    return true;
+                }
+                case "uint8_value":
+                {
+                    result = new TableValue { Kind = TableValueKind.Uint, U = value.Uint8Value };
+                    return true;
+                }
+                case "uint16_value":
+                {
+                    result = new TableValue { Kind = TableValueKind.Uint, U = value.Uint16Value };
+                    return true;
+                }
+                case "uint32_value":
+                {
+                    result = new TableValue { Kind = TableValueKind.Uint, U = value.Uint32Value };
+                    return true;
+                }
+                case "uint64_value":
+                {
+                    result = new TableValue { Kind = TableValueKind.Uint, U = value.Uint64Value };
+                    return true;
+                }
+                case "int64_full":
+                {
+                    result = new TableValue { Kind = TableValueKind.Int, I = value.Int64Full };
+                    return true;
+                }
+                case "int64_range":
+                {
+                    result = new TableValue { Kind = TableValueKind.Int, I = value.Int64Range };
+                    return true;
+                }
+                case "fixed_bytes":
+                {
+                    result = new TableValue { Kind = TableValueKind.Array, Obj = value.FixedBytes, Count = value.FixedBytes.Length };
+                    return true;
+                }
+                case "text":
+                {
+                    result = new TableValue { Kind = TableValueKind.String, S = System.Text.Encoding.UTF8.GetString(value.Text, 0, value.TextLength) };
+                    return true;
+                }
+            }
+            result = new TableValue();
+            return false;
+        }
+
+        // TableSetTestData writes the named field — the editor write path: scalars,
+        // enums, flags, bools and strings only. Numerics accept the Int, Uint and
+        // Float kinds; out-of-range values CLAMP exactly as the table-wire read
+        // side does (declared ranges, bits width, enum out-of-set -> None), and
+        // strings truncate to the declared max. Unknown fields, nested tables and
+        // arrays return false.
+        public static bool TableSetTestData(TestData value, string field, in TableValue v)
+        {
+            switch (field)
+            {
+                case "a":
+                {
+                    long n;
+                    if (!v.AsLong(out n))
+                    {
+                        return false;
+                    }
+                    if (n < -100L)
+                    {
+                        n = -100L;
+                    }
+                    else if (n > 100L)
+                    {
+                        n = 100L;
+                    }
+                    value.A = (int)n;
+                    return true;
+                }
+                case "b":
+                {
+                    long n;
+                    if (!v.AsLong(out n))
+                    {
+                        return false;
+                    }
+                    if (n < -100L)
+                    {
+                        n = -100L;
+                    }
+                    else if (n > 100L)
+                    {
+                        n = 100L;
+                    }
+                    value.B = (int)n;
+                    return true;
+                }
+                case "c":
+                {
+                    long n;
+                    if (!v.AsLong(out n))
+                    {
+                        return false;
+                    }
+                    if (n < -100L)
+                    {
+                        n = -100L;
+                    }
+                    else if (n > 150L)
+                    {
+                        n = 150L;
+                    }
+                    value.C = (int)n;
+                    return true;
+                }
+                case "d":
+                {
+                    ulong n;
+                    if (!v.AsUlong(out n))
+                    {
+                        return false;
+                    }
+                    if (n > 255UL)
+                    {
+                        n = 255UL; // bits(8) width clamp
+                    }
+                    value.D = (uint)n;
+                    return true;
+                }
+                case "e":
+                {
+                    ulong n;
+                    if (!v.AsUlong(out n))
+                    {
+                        return false;
+                    }
+                    if (n > 255UL)
+                    {
+                        n = 255UL; // bits(8) width clamp
+                    }
+                    value.E = (uint)n;
+                    return true;
+                }
+                case "f":
+                {
+                    ulong n;
+                    if (!v.AsUlong(out n))
+                    {
+                        return false;
+                    }
+                    if (n > 255UL)
+                    {
+                        n = 255UL; // bits(8) width clamp
+                    }
+                    value.F = (uint)n;
+                    return true;
+                }
+                case "g":
+                {
+                    if (v.Kind != TableValueKind.Bool)
+                    {
+                        return false;
+                    }
+                    value.G = v.B;
+                    return true;
+                }
+                case "float_value":
+                {
+                    double n;
+                    if (!v.AsDouble(out n))
+                    {
+                        return false;
+                    }
+                    value.FloatValue = (float)n;
+                    return true;
+                }
+                case "compressed_float_value":
+                {
+                    double n;
+                    if (!v.AsDouble(out n))
+                    {
+                        return false;
+                    }
+                    if (n < 0.0)
+                    {
+                        n = 0.0;
+                    }
+                    else if (n > 10.0)
+                    {
+                        n = 10.0;
+                    }
+                    value.CompressedFloatValue = (float)n;
+                    return true;
+                }
+                case "double_value":
+                {
+                    double n;
+                    if (!v.AsDouble(out n))
+                    {
+                        return false;
+                    }
+                    value.DoubleValue = n;
+                    return true;
+                }
+                case "int8_value":
+                {
+                    long n;
+                    if (!v.AsLong(out n))
+                    {
+                        return false;
+                    }
+                    value.Int8Value = (sbyte)n;
+                    return true;
+                }
+                case "int16_value":
+                {
+                    long n;
+                    if (!v.AsLong(out n))
+                    {
+                        return false;
+                    }
+                    value.Int16Value = (short)n;
+                    return true;
+                }
+                case "uint8_value":
+                {
+                    ulong n;
+                    if (!v.AsUlong(out n))
+                    {
+                        return false;
+                    }
+                    value.Uint8Value = (byte)n;
+                    return true;
+                }
+                case "uint16_value":
+                {
+                    ulong n;
+                    if (!v.AsUlong(out n))
+                    {
+                        return false;
+                    }
+                    value.Uint16Value = (ushort)n;
+                    return true;
+                }
+                case "uint32_value":
+                {
+                    ulong n;
+                    if (!v.AsUlong(out n))
+                    {
+                        return false;
+                    }
+                    value.Uint32Value = (uint)n;
+                    return true;
+                }
+                case "uint64_value":
+                {
+                    ulong n;
+                    if (!v.AsUlong(out n))
+                    {
+                        return false;
+                    }
+                    value.Uint64Value = n;
+                    return true;
+                }
+                case "int64_full":
+                {
+                    long n;
+                    if (!v.AsLong(out n))
+                    {
+                        return false;
+                    }
+                    value.Int64Full = n;
+                    return true;
+                }
+                case "int64_range":
+                {
+                    long n;
+                    if (!v.AsLong(out n))
+                    {
+                        return false;
+                    }
+                    if (n < -1000000000000L)
+                    {
+                        n = -1000000000000L;
+                    }
+                    else if (n > 1000000000000L)
+                    {
+                        n = 1000000000000L;
+                    }
+                    value.Int64Range = n;
+                    return true;
+                }
+                case "text":
+                {
+                    if (v.Kind != TableValueKind.String || v.S == null)
+                    {
+                        return false;
+                    }
+                    byte[] encoded = System.Text.Encoding.UTF8.GetBytes(v.S);
+                    int keep = encoded.Length;
+                    if (keep > 255)
+                    {
+                        keep = 255; // truncate to the declared max, as the read side does
+                    }
+                    System.Array.Copy(encoded, value.Text, keep);
+                    value.TextLength = keep;
+                    return true;
+                }
+            }
+            return false;
+        }
     }
 
 }

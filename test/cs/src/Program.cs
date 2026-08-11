@@ -959,6 +959,131 @@ static class Program
             Check(EqTestData(output, input), "TestData table round-trips");
         }
 
+        // ---- reflection descriptors: walk, read and WRITE a table generically ----
+        {
+            TableTypeInfo info = TableTypeRigidBody();
+            Check(info.Name == "RigidBody", "descriptor names its type");
+            Check(info.Fields.Length == 5, "RigidBody descriptor carries 5 fields");
+
+            // find fields by name — the flat-array walk, ref readonly: no copies
+            int atRest = -1, position = -1, linearVelocity = -1;
+            for (int i = 0; i < info.Fields.Length; i++)
+            {
+                ref readonly TableFieldInfo f = ref info.Fields[i];
+                switch (f.Name)
+                {
+                    case "at_rest":
+                        atRest = i;
+                        break;
+                    case "position":
+                        position = i;
+                        break;
+                    case "linear_velocity":
+                        linearVelocity = i;
+                        break;
+                }
+            }
+            Check(atRest >= 0 && position >= 0 && linearVelocity >= 0, "fields found by name");
+            Check(info.Fields[atRest].Kind == 1 && info.Fields[atRest].Guard == "", "at_rest is an unguarded bool");
+            Check(ReferenceEquals(info.Fields[position].Table, TableTypeVec3()),
+                "nested descriptor link IS the Vec3 descriptor");
+            Check(info.Fields[position].TypeName == "Vec3", "nested field carries its schema type name");
+            Check(info.Fields[linearVelocity].Guard == "!at_rest", "the branch guard is machine-usable");
+
+            // generic WRITE by name (the accessor stand-in for the C++ offset
+            // write), then prove the storage sees it — directly AND back
+            // through TableGet
+            RigidBody body = new RigidBody();
+            Check(TableSetRigidBody(body, "at_rest", TableValue.FromBool(true)), "TableSet writes a bool by name");
+            Check(body.AtRest, "the storage sees the generic write");
+            TableValue got;
+            Check(TableGetRigidBody(body, "at_rest", out got), "TableGet reads the bool back");
+            Check(got.Kind == TableValueKind.Bool && got.B, "the bool reads back true, unboxed");
+            Check(!TableSetRigidBody(body, "position", TableValue.FromFloat(1.0)),
+                "nested tables refuse the scalar write path");
+            Check(!TableSetRigidBody(body, "no_such_field", TableValue.FromFloat(1.0)), "unknown fields refuse");
+
+            // generic READ of a nested double through two descriptor hops
+            body.Position.Y = -2.5;
+            TableValue nested;
+            Check(TableGetRigidBody(body, "position", out nested), "nested table reads by name");
+            Vec3 vec = nested.Obj as Vec3;
+            Check(nested.Kind == TableValueKind.Table && vec != null, "nested tables surface the member reference");
+            Check(vec != null && vec.Y == -2.5, "the reference IS the member — its Y reads directly");
+            TableValue y;
+            Check(TableGetVec3(vec, "y", out y), "vector component reads by name");
+            Check(y.Kind == TableValueKind.Float && y.F == -2.5, "nested double reads through two hops");
+
+            // enum metadata: ProbeSample.weapon names its values and knows its max
+            TableTypeInfo sample = TableTypeProbeSample();
+            int weapon = -1, samples = -1;
+            for (int i = 0; i < sample.Fields.Length; i++)
+            {
+                switch (sample.Fields[i].Name)
+                {
+                    case "weapon":
+                        weapon = i;
+                        break;
+                    case "samples":
+                        samples = i;
+                        break;
+                }
+            }
+            // EnumMax is the declared WIRE max ([max = 15] widening), not the
+            // current variant count — future variants decode without clamping
+            Check(weapon >= 0 && sample.Fields[weapon].EnumName != null && sample.Fields[weapon].EnumMax == 15,
+                "weapon carries enum metadata");
+            Check(sample.Fields[weapon].EnumName(0) == "None", "the None value names itself");
+            Check(sample.Fields[weapon].EnumName(1) == "Laser", "enum values name themselves");
+            Check(sample.Fields[weapon].EnumName(200) == "???", "out-of-set values name as ???");
+            Check(sample.Fields[weapon].Guard == "active", "weapon's branch guard");
+
+            // counted array metadata: element kind, bound, count companion
+            Check(samples >= 0 && sample.Fields[samples].IsArray && sample.Fields[samples].Counted,
+                "samples is a counted array");
+            Check(sample.Fields[samples].ArrayBound == 8 && sample.Fields[samples].Kind == 7,
+                "bound 8, element kind u16");
+
+            // counted arrays read allocation-free: the member array reference
+            // in Obj, the used count in Count — no copy, no ArraySegment box
+            ProbeSample ps = new ProbeSample();
+            ps.SamplesCount = 2;
+            ps.Samples[0] = 7;
+            ps.Samples[1] = 8;
+            TableValue arr;
+            Check(TableGetProbeSample(ps, "samples", out arr), "counted array reads by name");
+            Check(arr.Kind == TableValueKind.Array && ReferenceEquals(arr.Obj, ps.Samples) && arr.Count == 2,
+                "the member array reference plus the used count");
+
+            // enum set clamps like the read side: out-of-set -> None
+            Check(TableSetProbeSample(ps, "weapon", TableValue.FromUint(1)), "TableSet writes an enum by name");
+            Check(ps.Weapon == Weapon.Laser, "the enum storage sees the write");
+            Check(TableSetProbeSample(ps, "weapon", TableValue.FromUint(200)), "out-of-set enum write is accepted");
+            Check(ps.Weapon == Weapon.None, "out-of-set -> None, as the read side does");
+
+            // declared ranges surface for editors (TestData.a is [-100, 100])
+            TableTypeInfo testdata = TableTypeTestData();
+            int aField = -1;
+            for (int i = 0; i < testdata.Fields.Length; i++)
+            {
+                if (testdata.Fields[i].Name == "a")
+                {
+                    aField = i;
+                }
+            }
+            Check(aField >= 0 && testdata.Fields[aField].HasRange, "TestData.a has a declared range");
+            Check(testdata.Fields[aField].RangeMin == -100.0 && testdata.Fields[aField].RangeMax == 100.0,
+                "the [-100, 100] editor range");
+
+            // TableSet clamps exactly like the read side: a = 500 -> 100
+            TestData td = new TestData();
+            Check(TableSetTestData(td, "a", TableValue.FromInt(500)), "TableSet accepts an editor numeric");
+            Check(td.A == 100, "TableSet clamped to the declared max");
+            TableValue a;
+            Check(TableGetTestData(td, "a", out a), "the clamped value reads back");
+            Check(a.Kind == TableValueKind.Int && a.I == 100, "TableGet agrees with the storage");
+        }
+
         // ---- the permissive read contract, exercised with hand-built buffers ----
         {
             // unknown field id: skipped and counted, decode continues

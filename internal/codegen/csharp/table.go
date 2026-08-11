@@ -9,6 +9,16 @@
 // This is what lets Unity write UserSettings and read the same
 // Config.bin/Assets.bin the game server reads — one file, native typed
 // readers in every language.
+//
+// Every closure type also carries reflection: TableTypeX() returns a static
+// field descriptor (name, wire id/kind, bounds, ranges, enum names, branch
+// guards — the C++ TableType<X>() surface), data-oriented per SPEC §4.11:
+// one flat TableFieldInfo[] of contiguous structs per type, separate from
+// table data, walked sequentially, zero per-instance weight. Where C++
+// exposes storage offsets, C# emits typed accessors instead —
+// TableGetX/TableSetX read and write fields by name through the TableValue
+// variant struct, no boxing on the numeric and bool paths. This is what
+// runtime config editors (Unity) and generic tooling bind against.
 package csharp
 
 import (
@@ -571,6 +581,336 @@ func (g *tableGen) emitTableReadScalarInto(f *ir.Field, kind int, lvalue, ind st
 	}
 }
 
+// tableGuardStrings composes each guarded field's branch condition WITHOUT
+// the value. prefix — the reflection descriptor's machine-usable guard
+// ("at_rest", "!at_rest", composed with " && " for nesting), matching the
+// C++ and Go descriptors byte for byte.
+func tableGuardStrings(st *ir.Struct) map[string]string {
+	guards := map[string]string{}
+	var walk func(items []ir.Item, cond string)
+	walk = func(items []ir.Item, cond string) {
+		for _, item := range items {
+			switch item := item.(type) {
+			case *ir.FieldItem:
+				if cond != "" {
+					guards[item.F.Name] = cond
+				}
+			case *ir.Branch:
+				pos, neg := item.Cond, "!"+item.Cond
+				if item.Neg {
+					pos, neg = neg, pos
+				}
+				and := func(a, b string) string {
+					if a == "" {
+						return b
+					}
+					return a + " && " + b
+				}
+				walk(item.Then, and(cond, pos))
+				walk(item.Else, and(cond, neg))
+			}
+		}
+	}
+	walk(st.Items, "")
+	return guards
+}
+
+// tableFieldTypeName renders a field's schema-facing type name for the
+// descriptor ("float32", "bits(9)", "ShipType", "GunnerSettings").
+func tableFieldTypeName(f *ir.Field) string {
+	switch f.Type.Kind {
+	case ir.TBool:
+		return "bool"
+	case ir.TInt:
+		prefix := "int"
+		if !f.Type.Signed {
+			prefix = "uint"
+		}
+		return fmt.Sprintf("%s%d", prefix, f.Type.Width)
+	case ir.TBits:
+		return fmt.Sprintf("bits(%d)", f.Type.Width)
+	case ir.TFloat32:
+		return "float32"
+	case ir.TFloat64:
+		return "float64"
+	case ir.TString:
+		return "string"
+	case ir.TBytes:
+		return "bytes"
+	case ir.TNamed:
+		return f.Type.Name
+	}
+	return "?"
+}
+
+// bigToFloat64 narrows a declared integer bound to the descriptor's double
+// range field (precision past 2^53 is documented as lost).
+func bigToFloat64(v *big.Int) float64 {
+	f, _ := new(big.Float).SetInt(v).Float64()
+	return f
+}
+
+// emitTableDescriptor emits TableTypeX() — the descriptor accessor over one
+// flat TableFieldInfo[] (SPEC §4.11: contiguous structs, sequential walks,
+// zero per-instance weight), built lazily on first use: C# gives partial
+// classes NO cross-file static initializer order, so an eager initializer
+// could observe a not-yet-built nested descriptor — the accessors compose
+// in dependency order instead (the closure is acyclic). A double-build
+// under a race is benign: equivalent data, last write wins.
+func (g *tableGen) emitTableDescriptor(st *ir.Struct) {
+	guards := tableGuardStrings(st)
+	g.pf("private static TableTypeInfo _tableType%s;\n\n", st.Name)
+	g.pf("// TableType%s returns %s's reflection descriptor — field names, wire\n", st.Name, st.Name)
+	g.pf("// ids/kinds, bounds, ranges, enum names and branch guards. Pair it with\n")
+	g.pf("// TableGet%s/TableSet%s to walk, print, diff or edit values generically\n", st.Name, st.Name)
+	g.pf("// (walk the flat Fields array with `ref readonly var f = ref fields[i];`).\n")
+	g.pf("public static TableTypeInfo TableType%s()\n{\n", st.Name)
+	g.pf("    if (_tableType%s != null)\n    {\n        return _tableType%s;\n    }\n", st.Name, st.Name)
+	g.pf("    TableFieldInfo[] fields = new TableFieldInfo[%d];\n", len(st.Fields))
+	for i, f := range st.Fields {
+		g.pf("    fields[%d] = new TableFieldInfo { %s };\n", i, strings.Join(g.tableDescriptorParts(f, guards[f.Name]), ", "))
+	}
+	g.pf("    TableTypeInfo info = new TableTypeInfo();\n")
+	g.pf("    info.Name = \"%s\";\n", st.Name)
+	g.pf("    info.Fields = fields;\n")
+	g.pf("    _tableType%s = info;\n", st.Name)
+	g.pf("    return info;\n}\n\n")
+}
+
+// tableDescriptorParts renders one field's TableFieldInfo initializer —
+// default-valued members stay unwritten (the struct's zero carries them),
+// except EnumMax whose not-an-enum value is -1 and Guard whose unguarded
+// value is "" (a C# 9 struct cannot default a field to it), so both always
+// ride.
+func (g *tableGen) tableDescriptorParts(f *ir.Field, guard string) []string {
+	kind := tableScalarKind(f)
+	if f.Type.Kind == ir.TBytes {
+		kind = tkU8 // bytes surface as an array of u8 elements
+	}
+	parts := []string{
+		fmt.Sprintf("Name = %q", f.Name),
+		fmt.Sprintf("TypeName = %q", tableFieldTypeName(f)),
+		fmt.Sprintf("Id = 0x%04x", pack.FieldId(f.Name)),
+		fmt.Sprintf("Kind = %d", kind),
+	}
+	if f.Array != ir.ArrayNone || f.Type.Kind == ir.TBytes {
+		parts = append(parts, "IsArray = true")
+	}
+	if f.Array == ir.ArrayCounted || f.Type.Kind == ir.TBytes || f.Type.Kind == ir.TString {
+		parts = append(parts, "Counted = true")
+	}
+	switch {
+	case f.Array != ir.ArrayNone:
+		parts = append(parts, fmt.Sprintf("ArrayBound = %d", f.ArrayBound))
+	case f.Type.Kind == ir.TBytes, f.Type.Kind == ir.TString:
+		parts = append(parts, fmt.Sprintf("ArrayBound = %d", f.Type.Size))
+	}
+	if _, isStruct := f.Type.Ref.(*ir.Struct); f.Type.Kind == ir.TNamed && isStruct {
+		parts = append(parts, "Table = TableType"+f.Type.Name+"()")
+	}
+	if f.HasIntRange {
+		parts = append(parts, "HasRange = true",
+			"RangeMin = "+formatFloat(bigToFloat64(f.IntMin)),
+			"RangeMax = "+formatFloat(bigToFloat64(f.IntMax)))
+	} else if f.HasFloatRange {
+		parts = append(parts, "HasRange = true",
+			"RangeMin = "+formatFloat(f.FMin),
+			"RangeMax = "+formatFloat(f.FMax))
+	}
+	if enum, isEnum := f.Type.Ref.(*ir.Enum); f.Type.Kind == ir.TNamed && isEnum {
+		parts = append(parts, fmt.Sprintf("EnumMax = %d", enum.Max),
+			"EnumName = EnumName"+f.Type.Name)
+	} else {
+		parts = append(parts, "EnumMax = -1")
+	}
+	parts = append(parts, fmt.Sprintf("Guard = %q", guard))
+	return parts
+}
+
+// emitTableGet emits TableGetX — the read half of the accessor pair that
+// stands in for C++'s storage offsets.
+func (g *tableGen) emitTableGet(st *ir.Struct) {
+	g.pf("// TableGet%s reads the named field from value into a TableValue — no\n", st.Name)
+	g.pf("// boxing (SPEC §4.11): scalars normalize (signed -> I, unsigned/bits -> U,\n")
+	g.pf("// floats -> F, bools -> B), enums and flags -> U, strings decode into S\n")
+	g.pf("// (the one allocating path), nested tables put the member reference in\n")
+	g.pf("// Obj, arrays put the member array in Obj and the used element count in\n")
+	g.pf("// Count (fixed arrays: the full bound). Unknown field names return false.\n")
+	g.pf("public static bool TableGet%s(%s value, string field, out TableValue result)\n{\n", st.Name, st.Name)
+	if len(st.Fields) > 0 {
+		g.pf("    switch (field)\n    {\n")
+		for _, f := range st.Fields {
+			name := ir.GoExportName(f.Name)
+			var init string
+			switch {
+			case f.Type.Kind == ir.TString:
+				init = fmt.Sprintf("Kind = TableValueKind.String, S = System.Text.Encoding.UTF8.GetString(value.%s, 0, value.%sLength)", name, name)
+			case f.Type.Kind == ir.TBytes:
+				init = fmt.Sprintf("Kind = TableValueKind.Array, Obj = value.%s, Count = value.%sLength", name, name)
+			case f.Array == ir.ArrayCounted:
+				init = fmt.Sprintf("Kind = TableValueKind.Array, Obj = value.%s, Count = value.%sCount", name, name)
+			case f.Array == ir.ArrayFixed:
+				init = fmt.Sprintf("Kind = TableValueKind.Array, Obj = value.%s, Count = value.%s.Length", name, name)
+			case f.Type.Kind == ir.TBool:
+				init = fmt.Sprintf("Kind = TableValueKind.Bool, B = value.%s", name)
+			case f.Type.Kind == ir.TFloat32, f.Type.Kind == ir.TFloat64:
+				init = fmt.Sprintf("Kind = TableValueKind.Float, F = value.%s", name)
+			case f.Type.Kind == ir.TInt && f.Type.Signed:
+				init = fmt.Sprintf("Kind = TableValueKind.Int, I = value.%s", name)
+			case f.Type.Kind == ir.TInt, f.Type.Kind == ir.TBits:
+				init = fmt.Sprintf("Kind = TableValueKind.Uint, U = value.%s", name)
+			default: // TNamed
+				switch f.Type.Ref.(type) {
+				case *ir.Enum:
+					init = fmt.Sprintf("Kind = TableValueKind.Uint, U = (ulong)value.%s", name)
+				case *ir.Flags:
+					init = fmt.Sprintf("Kind = TableValueKind.Uint, U = value.%s", name)
+				case *ir.Struct:
+					init = fmt.Sprintf("Kind = TableValueKind.Table, Obj = value.%s", name)
+				}
+			}
+			g.pf("        case %q:\n        {\n", f.Name)
+			g.pf("            result = new TableValue { %s };\n", init)
+			g.pf("            return true;\n        }\n")
+		}
+		g.pf("    }\n")
+	}
+	g.pf("    result = new TableValue();\n    return false;\n}\n\n")
+}
+
+// tableSettable reports whether TableSetX carries a field: the editor write
+// path is scalars, enums, flags, bools and strings only.
+func tableSettable(f *ir.Field) bool {
+	if f.Array != ir.ArrayNone || f.Type.Kind == ir.TBytes {
+		return false
+	}
+	if _, isStruct := f.Type.Ref.(*ir.Struct); f.Type.Kind == ir.TNamed && isStruct {
+		return false
+	}
+	return true
+}
+
+// emitTableSet emits TableSetX — the write half of the accessor pair. Values
+// clamp exactly like the table-wire read side: declared int/float ranges,
+// bits width, enum out-of-set -> None, string truncation to the bound.
+func (g *tableGen) emitTableSet(st *ir.Struct) {
+	g.pf("// TableSet%s writes the named field — the editor write path: scalars,\n", st.Name)
+	g.pf("// enums, flags, bools and strings only. Numerics accept the Int, Uint and\n")
+	g.pf("// Float kinds; out-of-range values CLAMP exactly as the table-wire read\n")
+	g.pf("// side does (declared ranges, bits width, enum out-of-set -> None), and\n")
+	g.pf("// strings truncate to the declared max. Unknown fields, nested tables and\n")
+	g.pf("// arrays return false.\n")
+	g.pf("public static bool TableSet%s(%s value, string field, in TableValue v)\n{\n", st.Name, st.Name)
+	settable := 0
+	for _, f := range st.Fields {
+		if tableSettable(f) {
+			settable++
+		}
+	}
+	if settable == 0 {
+		g.pf("    // no directly-settable fields: nested tables and arrays edit through\n")
+		g.pf("    // their own descriptors and accessors\n")
+		g.pf("    return false;\n}\n\n")
+		return
+	}
+	g.pf("    switch (field)\n    {\n")
+	for _, f := range st.Fields {
+		if tableSettable(f) {
+			g.emitTableSetField(f)
+		}
+	}
+	g.pf("    }\n    return false;\n}\n\n")
+}
+
+func (g *tableGen) emitTableSetField(f *ir.Field) {
+	ind := "            "
+	name := ir.GoExportName(f.Name)
+	g.pf("        case %q:\n        {\n", f.Name)
+	switch f.Type.Kind {
+	case ir.TBool:
+		g.pf("%sif (v.Kind != TableValueKind.Bool)\n%s{\n%s    return false;\n%s}\n", ind, ind, ind, ind)
+		g.pf("%svalue.%s = v.B;\n%sreturn true;\n", ind, name, ind)
+	case ir.TString:
+		g.pf("%sif (v.Kind != TableValueKind.String || v.S == null)\n%s{\n%s    return false;\n%s}\n", ind, ind, ind, ind)
+		g.pf("%sbyte[] encoded = System.Text.Encoding.UTF8.GetBytes(v.S);\n", ind)
+		g.pf("%sint keep = encoded.Length;\n", ind)
+		g.pf("%sif (keep > %d)\n%s{\n%s    keep = %d; // truncate to the declared max, as the read side does\n%s}\n", ind, f.Type.Size, ind, ind, f.Type.Size, ind)
+		g.pf("%sSystem.Array.Copy(encoded, value.%s, keep);\n", ind, name)
+		g.pf("%svalue.%sLength = keep;\n%sreturn true;\n", ind, name, ind)
+	case ir.TFloat32, ir.TFloat64:
+		g.pf("%sdouble n;\n%sif (!v.AsDouble(out n))\n%s{\n%s    return false;\n%s}\n", ind, ind, ind, ind, ind)
+		if f.HasFloatRange {
+			g.emitTableSetClamp(ind, formatFloat(f.FMin), formatFloat(f.FMax), "")
+		}
+		if f.Type.Kind == ir.TFloat32 {
+			g.pf("%svalue.%s = (float)n;\n%sreturn true;\n", ind, name, ind)
+		} else {
+			g.pf("%svalue.%s = n;\n%sreturn true;\n", ind, name, ind)
+		}
+	case ir.TInt:
+		if f.Type.Signed {
+			g.pf("%slong n;\n%sif (!v.AsLong(out n))\n%s{\n%s    return false;\n%s}\n", ind, ind, ind, ind, ind)
+			if f.HasIntRange {
+				g.emitTableSetClamp(ind, tableIntLit(f.IntMin, true, 8), tableIntLit(f.IntMax, true, 8), "")
+			}
+			g.emitTableSetAssign(ind, name, csInt(f.Type.Width), "long")
+		} else {
+			g.pf("%sulong n;\n%sif (!v.AsUlong(out n))\n%s{\n%s    return false;\n%s}\n", ind, ind, ind, ind, ind)
+			if f.HasIntRange {
+				min := ""
+				if f.IntMin.Sign() > 0 {
+					min = tableIntLit(f.IntMin, false, 8)
+				}
+				g.emitTableSetClamp(ind, min, tableIntLit(f.IntMax, false, 8), "")
+			}
+			g.emitTableSetAssign(ind, name, csUint(f.Type.Width), "ulong")
+		}
+	case ir.TBits:
+		g.pf("%sulong n;\n%sif (!v.AsUlong(out n))\n%s{\n%s    return false;\n%s}\n", ind, ind, ind, ind, ind)
+		storage := "uint"
+		storageBits := 32
+		if f.Type.Width > 32 {
+			storage = "ulong"
+			storageBits = 64
+		}
+		if f.Type.Width < storageBits {
+			maxv := (uint64(1) << f.Type.Width) - 1
+			g.emitTableSetClamp(ind, "", fmt.Sprintf("%dUL", maxv), fmt.Sprintf(" // bits(%d) width clamp", f.Type.Width))
+		}
+		g.emitTableSetAssign(ind, name, storage, "ulong")
+	case ir.TNamed:
+		g.pf("%sulong n;\n%sif (!v.AsUlong(out n))\n%s{\n%s    return false;\n%s}\n", ind, ind, ind, ind, ind)
+		if enum, isEnum := f.Type.Ref.(*ir.Enum); isEnum {
+			g.pf("%sif (n > %dUL)\n%s{\n%s    n = 0; // out-of-set -> None, as the read side does\n%s}\n", ind, enum.Max, ind, ind, ind)
+			g.pf("%svalue.%s = (%s)n;\n%sreturn true;\n", ind, name, f.Type.Name, ind)
+		} else { // flags: plain ulong storage, no clamp — as the read side
+			g.pf("%svalue.%s = n;\n%sreturn true;\n", ind, name, ind)
+		}
+	}
+	g.pf("        }\n")
+}
+
+// emitTableSetClamp clamps n to [min, max]; an empty min means the low side
+// cannot underflow (unsigned with a non-positive declared min).
+func (g *tableGen) emitTableSetClamp(ind, min, max, note string) {
+	if min != "" {
+		g.pf("%sif (n < %s)\n%s{\n%s    n = %s;\n%s}\n", ind, min, ind, ind, min, ind)
+		g.pf("%selse if (n > %s)\n%s{\n%s    n = %s;%s\n%s}\n", ind, max, ind, ind, max, note, ind)
+		return
+	}
+	g.pf("%sif (n > %s)\n%s{\n%s    n = %s;%s\n%s}\n", ind, max, ind, ind, max, note, ind)
+}
+
+// emitTableSetAssign writes the normalized n into the storage member, casting
+// only where the storage type is narrower than the normalization domain.
+func (g *tableGen) emitTableSetAssign(ind, name, storage, normType string) {
+	if storage == normType {
+		g.pf("%svalue.%s = n;\n%sreturn true;\n", ind, name, ind)
+		return
+	}
+	g.pf("%svalue.%s = (%s)n;\n%sreturn true;\n", ind, name, storage, ind)
+}
+
 // tableRuntime is TableRuntime.cs: the report type plus the byte-level
 // writer/reader the generated table functions share.
 func tableRuntime(ns string) string {
@@ -591,6 +931,187 @@ public sealed class TableReport
     public int KindMismatch; // fields whose wire kind changed (skipped, defaults kept)
     public int Clamped;      // values pulled into declared ranges / sets / bounds
     public bool Malformed;   // structurally broken buffer; partial decode was kept
+}
+
+// ---- reflection (tables only, notes/table-wire.md) ----
+//
+// Static field descriptors for every type in the table closure: name, wire
+// id/kind, bounds, ranges, enum names and branch guards — enough to walk,
+// print, diff, edit or bind any table value at runtime with no schema files
+// and no System.Reflection. Data-oriented by ruling (SPEC §4.11): reflection
+// data stays SEPARATE from table data — TableFieldInfo is a struct and each
+// type's descriptor is ONE flat TableFieldInfo[], contiguous value elements
+// walked sequentially, built once, shared by every instance, zero
+// per-instance weight. Walk without copies:
+//
+//     TableFieldInfo[] fields = Schema.TableTypeX().Fields;
+//     for (int i = 0; i < fields.Length; i++)
+//     {
+//         ref readonly var f = ref fields[i];
+//         // f.Name, f.Kind, f.Guard, ...
+//     }
+//
+// Where C++ hands out storage offsets, C# hands out generated accessors:
+// Schema.TableGetX/TableSetX read and write fields by name through the
+// TableValue variant below — no boxing on the numeric and bool paths.
+
+// TableFieldInfo describes one field of a table-closure type.
+public struct TableFieldInfo
+{
+    public string Name;                  // schema field name, e.g. "health"
+    public string TypeName;              // schema type name, e.g. "float32", "ShipType"
+    public ushort Id;                    // table-wire field id (name hash)
+    public byte Kind;                    // table-wire kind; for arrays/bytes, the ELEMENT kind
+    public bool IsArray;                 // fixed or counted array (bytes included)
+    public bool Counted;                 // a Count/Length companion exists (counted arrays, strings, bytes)
+    public int ArrayBound;               // array capacity / string max length; 0 for plain scalars
+    public TableTypeInfo Table;          // nested table's descriptor, or null
+    public bool HasRange;                // a declared [min, max] (int or float)
+    public double RangeMin;              // NOTE: int64 ranges beyond 2^53 lose precision here
+    public double RangeMax;
+    public long EnumMax;                 // enums: highest valid wire value (None = 0 always valid); else -1
+    public Func<ulong, string> EnumName; // enums: value -> name; else null
+    public string Guard;                 // branch guard, e.g. "at_rest" or "!at_rest"; "" if unguarded
+}
+
+// TableTypeInfo is one closure type's descriptor: the schema type name over
+// the flat field array. One instance per type — Schema.TableTypeX() returns
+// it, and nested-field descriptors link the same instances.
+public sealed class TableTypeInfo
+{
+    public string Name; // schema type name
+    public TableFieldInfo[] Fields;
+}
+
+// TableValueKind tags which TableValue channel is live.
+public enum TableValueKind : byte
+{
+    None = 0,
+    Bool = 1,   // -> B
+    Int = 2,    // signed integers -> I
+    Uint = 3,   // unsigned integers, bits, enums, flags -> U
+    Float = 4,  // float32/float64 -> F
+    String = 5, // -> S
+    Table = 6,  // nested table reference -> Obj
+    Array = 7,  // array reference -> Obj, used element count -> Count
+}
+
+// TableValue is the variant the generated TableGetX/TableSetX accessors move
+// values through — a plain struct: numerics and bools travel in value fields
+// (no boxing, no allocation), strings in S (System.String must allocate),
+// nested tables and arrays as references in Obj. Counted arrays pair the raw
+// member array in Obj with the used element count in Count — reference plus
+// int, no ArraySegment box, no copy.
+public struct TableValue
+{
+    public TableValueKind Kind;
+    public bool B;
+    public long I;
+    public ulong U;
+    public double F;
+    public string S;
+    public object Obj;
+    public int Count;
+
+    // From* build the editor-path values TableSetX consumes — plain struct
+    // returns, no allocation.
+    public static TableValue FromBool(bool value)
+    {
+        TableValue result = new TableValue();
+        result.Kind = TableValueKind.Bool;
+        result.B = value;
+        return result;
+    }
+
+    public static TableValue FromInt(long value)
+    {
+        TableValue result = new TableValue();
+        result.Kind = TableValueKind.Int;
+        result.I = value;
+        return result;
+    }
+
+    public static TableValue FromUint(ulong value)
+    {
+        TableValue result = new TableValue();
+        result.Kind = TableValueKind.Uint;
+        result.U = value;
+        return result;
+    }
+
+    public static TableValue FromFloat(double value)
+    {
+        TableValue result = new TableValue();
+        result.Kind = TableValueKind.Float;
+        result.F = value;
+        return result;
+    }
+
+    public static TableValue FromString(string value)
+    {
+        TableValue result = new TableValue();
+        result.Kind = TableValueKind.String;
+        result.S = value;
+        return result;
+    }
+
+    // As* normalize the three numeric kinds into one domain for the generated
+    // set path (plain casts — the declared-range clamps follow per field);
+    // false = not a numeric. readonly members: no defensive copies through
+    // the accessors' in parameters.
+    public readonly bool AsLong(out long result)
+    {
+        switch (Kind)
+        {
+            case TableValueKind.Int:
+                result = I;
+                return true;
+            case TableValueKind.Uint:
+                result = (long)U;
+                return true;
+            case TableValueKind.Float:
+                result = (long)F;
+                return true;
+        }
+        result = 0;
+        return false;
+    }
+
+    public readonly bool AsUlong(out ulong result)
+    {
+        switch (Kind)
+        {
+            case TableValueKind.Int:
+                result = (ulong)I;
+                return true;
+            case TableValueKind.Uint:
+                result = U;
+                return true;
+            case TableValueKind.Float:
+                result = (ulong)F;
+                return true;
+        }
+        result = 0;
+        return false;
+    }
+
+    public readonly bool AsDouble(out double result)
+    {
+        switch (Kind)
+        {
+            case TableValueKind.Int:
+                result = I;
+                return true;
+            case TableValueKind.Uint:
+                result = U;
+                return true;
+            case TableValueKind.Float:
+                result = F;
+                return true;
+        }
+        result = 0.0;
+        return false;
+    }
 }
 
 // TableWriter is the generated writers' growable little-endian buffer —
@@ -849,18 +1370,32 @@ func GenerateTable(u *ir.Unit) (map[string][]byte, error) {
 	out := map[string][]byte{}
 	for _, f := range u.Files {
 		g := &tableGen{unit: u, file: f}
-		emitted := 0
+		var members []*ir.Struct
 		for _, d := range f.Decls {
-			if st, ok := d.(*ir.Struct); ok {
-				if !closure[st.Name] {
-					continue
-				}
-				g.emitTableWrite(st)
-				g.emitTableRead(st)
-				emitted++
+			if st, ok := d.(*ir.Struct); ok && closure[st.Name] {
+				members = append(members, st)
 			}
 		}
-		if emitted == 0 {
+		for _, st := range members {
+			g.emitTableWrite(st)
+			g.emitTableRead(st)
+		}
+		if len(members) > 0 {
+			g.pf("// ---- reflection descriptors (tables only, notes/table-wire.md) ----\n")
+			g.pf("//\n")
+			g.pf("// One flat TableFieldInfo[] per closure type (SPEC §4.11: contiguous\n")
+			g.pf("// structs, sequential walks, zero per-instance weight), built lazily on\n")
+			g.pf("// first use: C# gives partial classes no cross-file static initializer\n")
+			g.pf("// order, so an eager initializer could observe a not-yet-built nested\n")
+			g.pf("// descriptor — the accessors compose in dependency order instead (the\n")
+			g.pf("// closure is acyclic). A double-build under a race is benign: equivalent\n")
+			g.pf("// data, last write wins.\n\n")
+			for _, st := range members {
+				g.emitTableDescriptor(st)
+				g.emitTableGet(st)
+				g.emitTableSet(st)
+			}
+		} else {
 			g.pf("    // no tables declared or referenced in this file — codecs are emitted\n")
 			g.pf("    // for the table closure only (`table` declarations and what they reach)\n")
 		}

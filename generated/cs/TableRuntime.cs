@@ -17,6 +17,187 @@ namespace Example
         public bool Malformed;   // structurally broken buffer; partial decode was kept
     }
 
+    // ---- reflection (tables only, notes/table-wire.md) ----
+    //
+    // Static field descriptors for every type in the table closure: name, wire
+    // id/kind, bounds, ranges, enum names and branch guards — enough to walk,
+    // print, diff, edit or bind any table value at runtime with no schema files
+    // and no System.Reflection. Data-oriented by ruling (SPEC §4.11): reflection
+    // data stays SEPARATE from table data — TableFieldInfo is a struct and each
+    // type's descriptor is ONE flat TableFieldInfo[], contiguous value elements
+    // walked sequentially, built once, shared by every instance, zero
+    // per-instance weight. Walk without copies:
+    //
+    //     TableFieldInfo[] fields = Schema.TableTypeX().Fields;
+    //     for (int i = 0; i < fields.Length; i++)
+    //     {
+    //         ref readonly var f = ref fields[i];
+    //         // f.Name, f.Kind, f.Guard, ...
+    //     }
+    //
+    // Where C++ hands out storage offsets, C# hands out generated accessors:
+    // Schema.TableGetX/TableSetX read and write fields by name through the
+    // TableValue variant below — no boxing on the numeric and bool paths.
+
+    // TableFieldInfo describes one field of a table-closure type.
+    public struct TableFieldInfo
+    {
+        public string Name;                  // schema field name, e.g. "health"
+        public string TypeName;              // schema type name, e.g. "float32", "ShipType"
+        public ushort Id;                    // table-wire field id (name hash)
+        public byte Kind;                    // table-wire kind; for arrays/bytes, the ELEMENT kind
+        public bool IsArray;                 // fixed or counted array (bytes included)
+        public bool Counted;                 // a Count/Length companion exists (counted arrays, strings, bytes)
+        public int ArrayBound;               // array capacity / string max length; 0 for plain scalars
+        public TableTypeInfo Table;          // nested table's descriptor, or null
+        public bool HasRange;                // a declared [min, max] (int or float)
+        public double RangeMin;              // NOTE: int64 ranges beyond 2^53 lose precision here
+        public double RangeMax;
+        public long EnumMax;                 // enums: highest valid wire value (None = 0 always valid); else -1
+        public Func<ulong, string> EnumName; // enums: value -> name; else null
+        public string Guard;                 // branch guard, e.g. "at_rest" or "!at_rest"; "" if unguarded
+    }
+
+    // TableTypeInfo is one closure type's descriptor: the schema type name over
+    // the flat field array. One instance per type — Schema.TableTypeX() returns
+    // it, and nested-field descriptors link the same instances.
+    public sealed class TableTypeInfo
+    {
+        public string Name; // schema type name
+        public TableFieldInfo[] Fields;
+    }
+
+    // TableValueKind tags which TableValue channel is live.
+    public enum TableValueKind : byte
+    {
+        None = 0,
+        Bool = 1,   // -> B
+        Int = 2,    // signed integers -> I
+        Uint = 3,   // unsigned integers, bits, enums, flags -> U
+        Float = 4,  // float32/float64 -> F
+        String = 5, // -> S
+        Table = 6,  // nested table reference -> Obj
+        Array = 7,  // array reference -> Obj, used element count -> Count
+    }
+
+    // TableValue is the variant the generated TableGetX/TableSetX accessors move
+    // values through — a plain struct: numerics and bools travel in value fields
+    // (no boxing, no allocation), strings in S (System.String must allocate),
+    // nested tables and arrays as references in Obj. Counted arrays pair the raw
+    // member array in Obj with the used element count in Count — reference plus
+    // int, no ArraySegment box, no copy.
+    public struct TableValue
+    {
+        public TableValueKind Kind;
+        public bool B;
+        public long I;
+        public ulong U;
+        public double F;
+        public string S;
+        public object Obj;
+        public int Count;
+
+        // From* build the editor-path values TableSetX consumes — plain struct
+        // returns, no allocation.
+        public static TableValue FromBool(bool value)
+        {
+            TableValue result = new TableValue();
+            result.Kind = TableValueKind.Bool;
+            result.B = value;
+            return result;
+        }
+
+        public static TableValue FromInt(long value)
+        {
+            TableValue result = new TableValue();
+            result.Kind = TableValueKind.Int;
+            result.I = value;
+            return result;
+        }
+
+        public static TableValue FromUint(ulong value)
+        {
+            TableValue result = new TableValue();
+            result.Kind = TableValueKind.Uint;
+            result.U = value;
+            return result;
+        }
+
+        public static TableValue FromFloat(double value)
+        {
+            TableValue result = new TableValue();
+            result.Kind = TableValueKind.Float;
+            result.F = value;
+            return result;
+        }
+
+        public static TableValue FromString(string value)
+        {
+            TableValue result = new TableValue();
+            result.Kind = TableValueKind.String;
+            result.S = value;
+            return result;
+        }
+
+        // As* normalize the three numeric kinds into one domain for the generated
+        // set path (plain casts — the declared-range clamps follow per field);
+        // false = not a numeric. readonly members: no defensive copies through
+        // the accessors' in parameters.
+        public readonly bool AsLong(out long result)
+        {
+            switch (Kind)
+            {
+                case TableValueKind.Int:
+                    result = I;
+                    return true;
+                case TableValueKind.Uint:
+                    result = (long)U;
+                    return true;
+                case TableValueKind.Float:
+                    result = (long)F;
+                    return true;
+            }
+            result = 0;
+            return false;
+        }
+
+        public readonly bool AsUlong(out ulong result)
+        {
+            switch (Kind)
+            {
+                case TableValueKind.Int:
+                    result = (ulong)I;
+                    return true;
+                case TableValueKind.Uint:
+                    result = U;
+                    return true;
+                case TableValueKind.Float:
+                    result = (ulong)F;
+                    return true;
+            }
+            result = 0;
+            return false;
+        }
+
+        public readonly bool AsDouble(out double result)
+        {
+            switch (Kind)
+            {
+                case TableValueKind.Int:
+                    result = I;
+                    return true;
+                case TableValueKind.Uint:
+                    result = U;
+                    return true;
+                case TableValueKind.Float:
+                    result = F;
+                    return true;
+            }
+            result = 0.0;
+            return false;
+        }
+    }
+
     // TableWriter is the generated writers' growable little-endian buffer —
     // array doubling, floats via BitConverter's bit casts (byte-identical
     // little-endian on every platform the runtime targets).

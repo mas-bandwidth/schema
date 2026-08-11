@@ -57,6 +57,90 @@ namespace Example
     // home (SPEC §6.1 naming); partial, one slice per generated file.
     public static partial class Schema
     {
+        // EnumNameTeam: debug/log/tooling name for any Team wire value —
+        // out-of-set values (wire-legal up to the declared max) name as "???"
+        public static string EnumNameTeam(ulong value)
+        {
+            switch (value)
+            {
+                case (ulong)Team.None:
+                    return "None";
+                case (ulong)Team.Red:
+                    return "Red";
+                case (ulong)Team.Blue:
+                    return "Blue";
+                default:
+                    return "???";
+            }
+        }
+
+        // EnumNameShipType: debug/log/tooling name for any ShipType wire value —
+        // out-of-set values (wire-legal up to the declared max) name as "???"
+        public static string EnumNameShipType(ulong value)
+        {
+            switch (value)
+            {
+                case (ulong)ShipType.None:
+                    return "None";
+                case (ulong)ShipType.Fighter:
+                    return "Fighter";
+                case (ulong)ShipType.Corvette:
+                    return "Corvette";
+                case (ulong)ShipType.Bomber:
+                    return "Bomber";
+                case (ulong)ShipType.Destroyer:
+                    return "Destroyer";
+                case (ulong)ShipType.Carrier:
+                    return "Carrier";
+                default:
+                    return "???";
+            }
+        }
+
+        // EnumNameMissileType: debug/log/tooling name for any MissileType wire value —
+        // out-of-set values (wire-legal up to the declared max) name as "???"
+        public static string EnumNameMissileType(ulong value)
+        {
+            switch (value)
+            {
+                case (ulong)MissileType.None:
+                    return "None";
+                case (ulong)MissileType.Heatseeker:
+                    return "Heatseeker";
+                case (ulong)MissileType.Torpedo:
+                    return "Torpedo";
+                case (ulong)MissileType.Nuke:
+                    return "Nuke";
+                default:
+                    return "???";
+            }
+        }
+
+        // EnumNamePropType: debug/log/tooling name for any PropType wire value —
+        // out-of-set values (wire-legal up to the declared max) name as "???"
+        public static string EnumNamePropType(ulong value)
+        {
+            switch (value)
+            {
+                case (ulong)PropType.None:
+                    return "None";
+                case (ulong)PropType.Asteroid:
+                    return "Asteroid";
+                case (ulong)PropType.Chunk:
+                    return "Chunk";
+                case (ulong)PropType.Fragment:
+                    return "Fragment";
+                case (ulong)PropType.Sphere:
+                    return "Sphere";
+                case (ulong)PropType.BlackHole:
+                    return "BlackHole";
+                case (ulong)PropType.DysonPanel:
+                    return "DysonPanel";
+                default:
+                    return "???";
+            }
+        }
+
         // ShipFlags — one bit per variant, consumed as masks; flags-typed fields store a
         // plain ulong, wire 4 bits (SPEC §4.2). Masks are flat PascalCase — the Go
         // target's spelling exactly, so the checker's existing claims cover them.

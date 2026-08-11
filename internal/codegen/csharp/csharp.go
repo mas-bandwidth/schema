@@ -320,6 +320,18 @@ func (g *gen) emitEnum(d *ir.Enum) {
 		g.tf("    %s = %d,\n", v, i+1)
 	}
 	g.tf("}\n\n")
+	// the ulong parameter (not the enum type) keeps out-of-set values exact:
+	// a cast through a narrower backing would truncate 256 -> 0 -> "None"
+	// for an 8-bit enum
+	g.sf("// EnumName%s: debug/log/tooling name for any %s wire value —\n", d.Name, d.Name)
+	g.sf("// out-of-set values (wire-legal up to the declared max) name as \"???\"\n")
+	g.sf("public static string EnumName%s(ulong value)\n{\n", d.Name)
+	g.sf("    switch (value)\n    {\n")
+	g.sf("        case (ulong)%s.None:\n            return \"None\";\n", d.Name)
+	for _, v := range d.Variants {
+		g.sf("        case (ulong)%s.%s:\n            return %q;\n", d.Name, v, v)
+	}
+	g.sf("        default:\n            return \"???\";\n    }\n}\n\n")
 }
 
 func (g *gen) emitFlags(d *ir.Flags) {

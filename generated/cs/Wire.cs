@@ -137,6 +137,25 @@ namespace Example
 
         public const float TickRate = 60.0f;
 
+        // EnumNameWeapon: debug/log/tooling name for any Weapon wire value —
+        // out-of-set values (wire-legal up to the declared max) name as "???"
+        public static string EnumNameWeapon(ulong value)
+        {
+            switch (value)
+            {
+                case (ulong)Weapon.None:
+                    return "None";
+                case (ulong)Weapon.Laser:
+                    return "Laser";
+                case (ulong)Weapon.Missile:
+                    return "Missile";
+                case (ulong)Weapon.Railgun:
+                    return "Railgun";
+                default:
+                    return "???";
+            }
+        }
+
         // ProbeFlags — one bit per variant, consumed as masks; flags-typed fields store a
         // plain ulong, wire 8 bits (SPEC §4.2). Masks are flat PascalCase — the Go
         // target's spelling exactly, so the checker's existing claims cover them.
