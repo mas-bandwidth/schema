@@ -15,3 +15,6 @@ generated/cs/.stamp
 /bench/rust/Cargo.lock
 /bench/cs/bin/
 /bench/cs/obj/
+
+# bench-local scratch/verification debris — never repo content
+tending/
