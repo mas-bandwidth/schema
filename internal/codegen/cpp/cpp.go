@@ -308,6 +308,7 @@ func (g *gen) emitDataFile(carriesProtocolId bool) {
 			g.emitStructMaxBits(d)
 		case *ir.Object:
 			g.emitObject(d)
+			g.emitObjectQuantize(d)
 			g.emitObjectMaxBits(d)
 		}
 	}

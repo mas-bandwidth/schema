@@ -4,6 +4,7 @@
 #pragma once
 
 #include <cstdint>
+#include <cmath>
 
 #include "Constants.h"
 #include "Enums.h"
@@ -158,6 +159,164 @@ struct ShipData_Interpolate {
     uint8_t thrust = 0; // float [0, 1] @ resolution 0.01 -> wire int [0, 100] — wire-int domain, snap-interpolated (SPEC §4.8 rule 5)
 };
 
+inline void QuantizeShip( const ShipData_Interpolate & input, ShipData_Shallow & output )
+{
+    output.ship_type = input.ship_type;
+    {
+        double quantized_value = floor( double( input.position.x ) * double( PositionUnits ) + 0.5 );
+        int64_t component_value = -8388608ll;
+        if ( quantized_value > 8388608.0 )
+        {
+            component_value = 8388608ll;
+        }
+        else if ( quantized_value >= -8388608.0 )
+        {
+            component_value = int64_t( quantized_value );
+        }
+        output.position_x = int32_t( component_value );
+    }
+    {
+        double quantized_value = floor( double( input.position.y ) * double( PositionUnits ) + 0.5 );
+        int64_t component_value = -8388608ll;
+        if ( quantized_value > 8388608.0 )
+        {
+            component_value = 8388608ll;
+        }
+        else if ( quantized_value >= -8388608.0 )
+        {
+            component_value = int64_t( quantized_value );
+        }
+        output.position_y = int32_t( component_value );
+    }
+    {
+        double quantized_value = floor( double( input.position.z ) * double( PositionUnits ) + 0.5 );
+        int64_t component_value = -8388608ll;
+        if ( quantized_value > 8388608.0 )
+        {
+            component_value = 8388608ll;
+        }
+        else if ( quantized_value >= -8388608.0 )
+        {
+            component_value = int64_t( quantized_value );
+        }
+        output.position_z = int32_t( component_value );
+    }
+    {
+        double quantized_value = floor( double( input.rotation.x ) * double( RotationUnits ) + 0.5 );
+        int64_t component_value = -1024ll;
+        if ( quantized_value > 1024.0 )
+        {
+            component_value = 1024ll;
+        }
+        else if ( quantized_value >= -1024.0 )
+        {
+            component_value = int64_t( quantized_value );
+        }
+        output.rotation_x = int16_t( component_value );
+    }
+    {
+        double quantized_value = floor( double( input.rotation.y ) * double( RotationUnits ) + 0.5 );
+        int64_t component_value = -1024ll;
+        if ( quantized_value > 1024.0 )
+        {
+            component_value = 1024ll;
+        }
+        else if ( quantized_value >= -1024.0 )
+        {
+            component_value = int64_t( quantized_value );
+        }
+        output.rotation_y = int16_t( component_value );
+    }
+    {
+        double quantized_value = floor( double( input.rotation.z ) * double( RotationUnits ) + 0.5 );
+        int64_t component_value = -1024ll;
+        if ( quantized_value > 1024.0 )
+        {
+            component_value = 1024ll;
+        }
+        else if ( quantized_value >= -1024.0 )
+        {
+            component_value = int64_t( quantized_value );
+        }
+        output.rotation_z = int16_t( component_value );
+    }
+    {
+        double quantized_value = floor( double( input.rotation.w ) * double( RotationUnits ) + 0.5 );
+        int64_t component_value = -1024ll;
+        if ( quantized_value > 1024.0 )
+        {
+            component_value = 1024ll;
+        }
+        else if ( quantized_value >= -1024.0 )
+        {
+            component_value = int64_t( quantized_value );
+        }
+        output.rotation_w = int16_t( component_value );
+    }
+    {
+        double quantized_value = floor( double( input.linear_velocity.x ) * double( VelocityUnits ) + 0.5 );
+        int64_t component_value = -2097152ll;
+        if ( quantized_value > 2097152.0 )
+        {
+            component_value = 2097152ll;
+        }
+        else if ( quantized_value >= -2097152.0 )
+        {
+            component_value = int64_t( quantized_value );
+        }
+        output.linear_velocity_x = int32_t( component_value );
+    }
+    {
+        double quantized_value = floor( double( input.linear_velocity.y ) * double( VelocityUnits ) + 0.5 );
+        int64_t component_value = -2097152ll;
+        if ( quantized_value > 2097152.0 )
+        {
+            component_value = 2097152ll;
+        }
+        else if ( quantized_value >= -2097152.0 )
+        {
+            component_value = int64_t( quantized_value );
+        }
+        output.linear_velocity_y = int32_t( component_value );
+    }
+    {
+        double quantized_value = floor( double( input.linear_velocity.z ) * double( VelocityUnits ) + 0.5 );
+        int64_t component_value = -2097152ll;
+        if ( quantized_value > 2097152.0 )
+        {
+            component_value = 2097152ll;
+        }
+        else if ( quantized_value >= -2097152.0 )
+        {
+            component_value = int64_t( quantized_value );
+        }
+        output.linear_velocity_z = int32_t( component_value );
+    }
+    output.flags = input.flags;
+    output.team = input.team;
+    output.health = input.health;
+    output.thrust = input.thrust;
+}
+
+inline void UnquantizeShip( const ShipData_Shallow & input, ShipData_Interpolate & output )
+{
+    output.ship_type = input.ship_type;
+    output.position.x = double( input.position_x ) / double( PositionUnits );
+    output.position.y = double( input.position_y ) / double( PositionUnits );
+    output.position.z = double( input.position_z ) / double( PositionUnits );
+    output.rotation.x = double( input.rotation_x ) / double( RotationUnits );
+    output.rotation.y = double( input.rotation_y ) / double( RotationUnits );
+    output.rotation.z = double( input.rotation_z ) / double( RotationUnits );
+    output.rotation.w = double( input.rotation_w ) / double( RotationUnits );
+    output.linear_velocity.x = double( input.linear_velocity_x ) / double( VelocityUnits );
+    output.linear_velocity.y = double( input.linear_velocity_y ) / double( VelocityUnits );
+    output.linear_velocity.z = double( input.linear_velocity_z ) / double( VelocityUnits );
+    output.flags = input.flags;
+    output.team = input.team;
+    output.health = input.health;
+    output.thrust = input.thrust;
+}
+
 inline constexpr int64_t ShipData_DeepMaxBits = 1703;
 inline constexpr int64_t ShipData_DeepMaxBytes = 216; // rounded up to the 8-byte write-buffer granularity
 
@@ -237,6 +396,160 @@ struct MissileData_Interpolate {
     uint64_t flags = 0;
 };
 
+inline void QuantizeMissile( const MissileData_Interpolate & input, MissileData_Shallow & output )
+{
+    output.missile_type = input.missile_type;
+    {
+        double quantized_value = floor( double( input.position.x ) * double( PositionUnits ) + 0.5 );
+        int64_t component_value = -8388608ll;
+        if ( quantized_value > 8388608.0 )
+        {
+            component_value = 8388608ll;
+        }
+        else if ( quantized_value >= -8388608.0 )
+        {
+            component_value = int64_t( quantized_value );
+        }
+        output.position_x = int32_t( component_value );
+    }
+    {
+        double quantized_value = floor( double( input.position.y ) * double( PositionUnits ) + 0.5 );
+        int64_t component_value = -8388608ll;
+        if ( quantized_value > 8388608.0 )
+        {
+            component_value = 8388608ll;
+        }
+        else if ( quantized_value >= -8388608.0 )
+        {
+            component_value = int64_t( quantized_value );
+        }
+        output.position_y = int32_t( component_value );
+    }
+    {
+        double quantized_value = floor( double( input.position.z ) * double( PositionUnits ) + 0.5 );
+        int64_t component_value = -8388608ll;
+        if ( quantized_value > 8388608.0 )
+        {
+            component_value = 8388608ll;
+        }
+        else if ( quantized_value >= -8388608.0 )
+        {
+            component_value = int64_t( quantized_value );
+        }
+        output.position_z = int32_t( component_value );
+    }
+    {
+        double quantized_value = floor( double( input.rotation.x ) * double( RotationUnits ) + 0.5 );
+        int64_t component_value = -1024ll;
+        if ( quantized_value > 1024.0 )
+        {
+            component_value = 1024ll;
+        }
+        else if ( quantized_value >= -1024.0 )
+        {
+            component_value = int64_t( quantized_value );
+        }
+        output.rotation_x = int16_t( component_value );
+    }
+    {
+        double quantized_value = floor( double( input.rotation.y ) * double( RotationUnits ) + 0.5 );
+        int64_t component_value = -1024ll;
+        if ( quantized_value > 1024.0 )
+        {
+            component_value = 1024ll;
+        }
+        else if ( quantized_value >= -1024.0 )
+        {
+            component_value = int64_t( quantized_value );
+        }
+        output.rotation_y = int16_t( component_value );
+    }
+    {
+        double quantized_value = floor( double( input.rotation.z ) * double( RotationUnits ) + 0.5 );
+        int64_t component_value = -1024ll;
+        if ( quantized_value > 1024.0 )
+        {
+            component_value = 1024ll;
+        }
+        else if ( quantized_value >= -1024.0 )
+        {
+            component_value = int64_t( quantized_value );
+        }
+        output.rotation_z = int16_t( component_value );
+    }
+    {
+        double quantized_value = floor( double( input.rotation.w ) * double( RotationUnits ) + 0.5 );
+        int64_t component_value = -1024ll;
+        if ( quantized_value > 1024.0 )
+        {
+            component_value = 1024ll;
+        }
+        else if ( quantized_value >= -1024.0 )
+        {
+            component_value = int64_t( quantized_value );
+        }
+        output.rotation_w = int16_t( component_value );
+    }
+    {
+        double quantized_value = floor( double( input.linear_velocity.x ) * double( VelocityUnits ) + 0.5 );
+        int64_t component_value = -2097152ll;
+        if ( quantized_value > 2097152.0 )
+        {
+            component_value = 2097152ll;
+        }
+        else if ( quantized_value >= -2097152.0 )
+        {
+            component_value = int64_t( quantized_value );
+        }
+        output.linear_velocity_x = int32_t( component_value );
+    }
+    {
+        double quantized_value = floor( double( input.linear_velocity.y ) * double( VelocityUnits ) + 0.5 );
+        int64_t component_value = -2097152ll;
+        if ( quantized_value > 2097152.0 )
+        {
+            component_value = 2097152ll;
+        }
+        else if ( quantized_value >= -2097152.0 )
+        {
+            component_value = int64_t( quantized_value );
+        }
+        output.linear_velocity_y = int32_t( component_value );
+    }
+    {
+        double quantized_value = floor( double( input.linear_velocity.z ) * double( VelocityUnits ) + 0.5 );
+        int64_t component_value = -2097152ll;
+        if ( quantized_value > 2097152.0 )
+        {
+            component_value = 2097152ll;
+        }
+        else if ( quantized_value >= -2097152.0 )
+        {
+            component_value = int64_t( quantized_value );
+        }
+        output.linear_velocity_z = int32_t( component_value );
+    }
+    output.team = input.team;
+    output.flags = input.flags;
+}
+
+inline void UnquantizeMissile( const MissileData_Shallow & input, MissileData_Interpolate & output )
+{
+    output.missile_type = input.missile_type;
+    output.position.x = double( input.position_x ) / double( PositionUnits );
+    output.position.y = double( input.position_y ) / double( PositionUnits );
+    output.position.z = double( input.position_z ) / double( PositionUnits );
+    output.rotation.x = double( input.rotation_x ) / double( RotationUnits );
+    output.rotation.y = double( input.rotation_y ) / double( RotationUnits );
+    output.rotation.z = double( input.rotation_z ) / double( RotationUnits );
+    output.rotation.w = double( input.rotation_w ) / double( RotationUnits );
+    output.linear_velocity.x = double( input.linear_velocity_x ) / double( VelocityUnits );
+    output.linear_velocity.y = double( input.linear_velocity_y ) / double( VelocityUnits );
+    output.linear_velocity.z = double( input.linear_velocity_z ) / double( VelocityUnits );
+    output.team = input.team;
+    output.flags = input.flags;
+}
+
 inline constexpr int64_t MissileData_DeepMaxBits = 708;
 inline constexpr int64_t MissileData_DeepMaxBytes = 96; // rounded up to the 8-byte write-buffer granularity
 
@@ -300,6 +613,160 @@ struct DynamicPropData_Interpolate {
     Team team = Team::None;
 };
 
+inline void QuantizeDynamicProp( const DynamicPropData_Interpolate & input, DynamicPropData_Shallow & output )
+{
+    output.prop_type = input.prop_type;
+    {
+        double quantized_value = floor( double( input.position.x ) * double( PositionUnits ) + 0.5 );
+        int64_t component_value = -8388608ll;
+        if ( quantized_value > 8388608.0 )
+        {
+            component_value = 8388608ll;
+        }
+        else if ( quantized_value >= -8388608.0 )
+        {
+            component_value = int64_t( quantized_value );
+        }
+        output.position_x = int32_t( component_value );
+    }
+    {
+        double quantized_value = floor( double( input.position.y ) * double( PositionUnits ) + 0.5 );
+        int64_t component_value = -8388608ll;
+        if ( quantized_value > 8388608.0 )
+        {
+            component_value = 8388608ll;
+        }
+        else if ( quantized_value >= -8388608.0 )
+        {
+            component_value = int64_t( quantized_value );
+        }
+        output.position_y = int32_t( component_value );
+    }
+    {
+        double quantized_value = floor( double( input.position.z ) * double( PositionUnits ) + 0.5 );
+        int64_t component_value = -8388608ll;
+        if ( quantized_value > 8388608.0 )
+        {
+            component_value = 8388608ll;
+        }
+        else if ( quantized_value >= -8388608.0 )
+        {
+            component_value = int64_t( quantized_value );
+        }
+        output.position_z = int32_t( component_value );
+    }
+    {
+        double quantized_value = floor( double( input.rotation.x ) * double( RotationUnits ) + 0.5 );
+        int64_t component_value = -1024ll;
+        if ( quantized_value > 1024.0 )
+        {
+            component_value = 1024ll;
+        }
+        else if ( quantized_value >= -1024.0 )
+        {
+            component_value = int64_t( quantized_value );
+        }
+        output.rotation_x = int16_t( component_value );
+    }
+    {
+        double quantized_value = floor( double( input.rotation.y ) * double( RotationUnits ) + 0.5 );
+        int64_t component_value = -1024ll;
+        if ( quantized_value > 1024.0 )
+        {
+            component_value = 1024ll;
+        }
+        else if ( quantized_value >= -1024.0 )
+        {
+            component_value = int64_t( quantized_value );
+        }
+        output.rotation_y = int16_t( component_value );
+    }
+    {
+        double quantized_value = floor( double( input.rotation.z ) * double( RotationUnits ) + 0.5 );
+        int64_t component_value = -1024ll;
+        if ( quantized_value > 1024.0 )
+        {
+            component_value = 1024ll;
+        }
+        else if ( quantized_value >= -1024.0 )
+        {
+            component_value = int64_t( quantized_value );
+        }
+        output.rotation_z = int16_t( component_value );
+    }
+    {
+        double quantized_value = floor( double( input.rotation.w ) * double( RotationUnits ) + 0.5 );
+        int64_t component_value = -1024ll;
+        if ( quantized_value > 1024.0 )
+        {
+            component_value = 1024ll;
+        }
+        else if ( quantized_value >= -1024.0 )
+        {
+            component_value = int64_t( quantized_value );
+        }
+        output.rotation_w = int16_t( component_value );
+    }
+    {
+        double quantized_value = floor( double( input.linear_velocity.x ) * double( VelocityUnits ) + 0.5 );
+        int64_t component_value = -2097152ll;
+        if ( quantized_value > 2097152.0 )
+        {
+            component_value = 2097152ll;
+        }
+        else if ( quantized_value >= -2097152.0 )
+        {
+            component_value = int64_t( quantized_value );
+        }
+        output.linear_velocity_x = int32_t( component_value );
+    }
+    {
+        double quantized_value = floor( double( input.linear_velocity.y ) * double( VelocityUnits ) + 0.5 );
+        int64_t component_value = -2097152ll;
+        if ( quantized_value > 2097152.0 )
+        {
+            component_value = 2097152ll;
+        }
+        else if ( quantized_value >= -2097152.0 )
+        {
+            component_value = int64_t( quantized_value );
+        }
+        output.linear_velocity_y = int32_t( component_value );
+    }
+    {
+        double quantized_value = floor( double( input.linear_velocity.z ) * double( VelocityUnits ) + 0.5 );
+        int64_t component_value = -2097152ll;
+        if ( quantized_value > 2097152.0 )
+        {
+            component_value = 2097152ll;
+        }
+        else if ( quantized_value >= -2097152.0 )
+        {
+            component_value = int64_t( quantized_value );
+        }
+        output.linear_velocity_z = int32_t( component_value );
+    }
+    output.flags = input.flags;
+    output.team = input.team;
+}
+
+inline void UnquantizeDynamicProp( const DynamicPropData_Shallow & input, DynamicPropData_Interpolate & output )
+{
+    output.prop_type = input.prop_type;
+    output.position.x = double( input.position_x ) / double( PositionUnits );
+    output.position.y = double( input.position_y ) / double( PositionUnits );
+    output.position.z = double( input.position_z ) / double( PositionUnits );
+    output.rotation.x = double( input.rotation_x ) / double( RotationUnits );
+    output.rotation.y = double( input.rotation_y ) / double( RotationUnits );
+    output.rotation.z = double( input.rotation_z ) / double( RotationUnits );
+    output.rotation.w = double( input.rotation_w ) / double( RotationUnits );
+    output.linear_velocity.x = double( input.linear_velocity_x ) / double( VelocityUnits );
+    output.linear_velocity.y = double( input.linear_velocity_y ) / double( VelocityUnits );
+    output.linear_velocity.z = double( input.linear_velocity_z ) / double( VelocityUnits );
+    output.flags = input.flags;
+    output.team = input.team;
+}
+
 inline constexpr int64_t DynamicPropData_DeepMaxBits = 709;
 inline constexpr int64_t DynamicPropData_DeepMaxBytes = 96; // rounded up to the 8-byte write-buffer granularity
 
@@ -348,6 +815,76 @@ struct TurretData_Interpolate {
     Quat rotation;
     uint64_t flags = 0;
 };
+
+inline void QuantizeTurret( const TurretData_Interpolate & input, TurretData_Shallow & output )
+{
+    output.parent = input.parent;
+    output.turret_index = input.turret_index;
+    {
+        double quantized_value = floor( double( input.rotation.x ) * double( RotationUnits ) + 0.5 );
+        int64_t component_value = -1024ll;
+        if ( quantized_value > 1024.0 )
+        {
+            component_value = 1024ll;
+        }
+        else if ( quantized_value >= -1024.0 )
+        {
+            component_value = int64_t( quantized_value );
+        }
+        output.rotation_x = int16_t( component_value );
+    }
+    {
+        double quantized_value = floor( double( input.rotation.y ) * double( RotationUnits ) + 0.5 );
+        int64_t component_value = -1024ll;
+        if ( quantized_value > 1024.0 )
+        {
+            component_value = 1024ll;
+        }
+        else if ( quantized_value >= -1024.0 )
+        {
+            component_value = int64_t( quantized_value );
+        }
+        output.rotation_y = int16_t( component_value );
+    }
+    {
+        double quantized_value = floor( double( input.rotation.z ) * double( RotationUnits ) + 0.5 );
+        int64_t component_value = -1024ll;
+        if ( quantized_value > 1024.0 )
+        {
+            component_value = 1024ll;
+        }
+        else if ( quantized_value >= -1024.0 )
+        {
+            component_value = int64_t( quantized_value );
+        }
+        output.rotation_z = int16_t( component_value );
+    }
+    {
+        double quantized_value = floor( double( input.rotation.w ) * double( RotationUnits ) + 0.5 );
+        int64_t component_value = -1024ll;
+        if ( quantized_value > 1024.0 )
+        {
+            component_value = 1024ll;
+        }
+        else if ( quantized_value >= -1024.0 )
+        {
+            component_value = int64_t( quantized_value );
+        }
+        output.rotation_w = int16_t( component_value );
+    }
+    output.flags = input.flags;
+}
+
+inline void UnquantizeTurret( const TurretData_Shallow & input, TurretData_Interpolate & output )
+{
+    output.parent = input.parent;
+    output.turret_index = input.turret_index;
+    output.rotation.x = double( input.rotation_x ) / double( RotationUnits );
+    output.rotation.y = double( input.rotation_y ) / double( RotationUnits );
+    output.rotation.z = double( input.rotation_z ) / double( RotationUnits );
+    output.rotation.w = double( input.rotation_w ) / double( RotationUnits );
+    output.flags = input.flags;
+}
 
 inline constexpr int64_t TurretData_DeepMaxBits = 350;
 inline constexpr int64_t TurretData_DeepMaxBytes = 48; // rounded up to the 8-byte write-buffer granularity

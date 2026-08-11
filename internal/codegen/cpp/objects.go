@@ -76,8 +76,22 @@ func (g *gen) emitObjectWire(d *ir.Object) {
 	}
 	g.pf("    return true;\n}\n\n")
 
-	// ---- Quantize / Unquantize: the Interpolate <-> Shallow mapping pair
-	// (SPEC §4.8's artifact table — the hand-written Quantize(), generated)
+}
+
+// emitObjectQuantize emits the Quantize/Unquantize pair (the Interpolate <->
+// Shallow mapping, SPEC §4.8's artifact table — the hand-written Quantize(),
+// generated). Emitted into the DATA header, not the wire header: the pair is
+// pure struct math with no serialize dependency, and consumers living in a
+// core_serialize world (the game's snapshot path) must be able to include it
+// without the wire header's serialize.h.
+func (g *gen) emitObjectQuantize(d *ir.Object) {
+	var interp []*ir.Field
+	for _, f := range d.Fields {
+		if f.Interpolate {
+			interp = append(interp, f)
+		}
+	}
+	shName := d.Name + "Data_Shallow"
 	inName := d.Name + "Data_Interpolate"
 	g.pf("inline void Quantize%s( const %s & input, %s & output )\n{\n", d.Name, inName, shName)
 	for _, f := range interp {
