@@ -250,6 +250,28 @@ onto it directly). Only its table-layer half waits.
 with a definition of what object types there are, and what properties and attributes
 per-property."*
 
+**ORDERING AND MIGRATION STRATEGY — DECIDED (Glenn, 2026-08-11, live, during the space
+integration):**
+
+- **The table layer comes BEFORE the delta pass.** His words: *"we also want to replace the
+  flatbuffers stuff and the config/asset stuff and express that in schema language. We'll
+  need a new language feature to express this, it won't fit into bitpacked types, and it
+  needs proper versioning like flatbuffers. Maybe after you do messages, this is the next
+  thing to do?"* then *"This would actually be better before the delta stuff, and will be
+  less complicated."* Sequence: messages (landed 2026-08-11, byte-identical to the
+  hand-written wire) → table layer → delta.
+- **Constants migrate through a temporary duplicate set.** *"we need to work at getting
+  constants into schema language, and we can only do that by having a duplicate set of
+  constants in schema and flatbuffers temporarily (eventually, it should all be in
+  schema)"* — because the .fbs constant-wrapper enums are consumed by other .fbs files
+  until flatbuffers is fully removed. Enacted in space the same day: `Constants.schema` is
+  the one home, the C++ game reads generated `space::` values through name-preserving
+  aliases, and a static_assert guard block makes schema↔flatbuffers drift a compile error.
+- **Generated files are checked into a consumer repo exactly when consumers exist that
+  cannot run the generator** (Unity, a Go module on fresh clone) — his principle verbatim:
+  *"If it were just C++ only, I would not."* C++-only consumers generate at build (the
+  space CMake `schema_generate` target is the worked example).
+
 ## 2. The name and the files — DECIDED
 
 The language is called **schema**. Schema files use the `.schema` extension, named in
