@@ -1,0 +1,452 @@
+package pack
+
+import (
+	"encoding/base64"
+	"encoding/json"
+	"fmt"
+	"math"
+	"math/big"
+
+	"github.com/mas-bandwidth/schema/internal/ir"
+)
+
+// Encoder packs JSON instance values (decoded via encoding/json: map[string]any,
+// []any, float64, string, bool, nil) into schema wire bytes for one unit.
+type Encoder struct {
+	Unit *ir.Unit
+	// UnionLower rewrites flatbuffers-JSON union shapes onto bool-guarded
+	// schema arms before encoding — the transition adapter (see manifest.go).
+	UnionLower map[string][]UnionRule // schema type name -> rules
+}
+
+// EncodeInstance encodes one JSON object as schema type typeName, returning
+// the wire bytes (byte-aligned at the end, GetBytesProcessed shape).
+func (e *Encoder) EncodeInstance(typeName string, obj map[string]any) ([]byte, error) {
+	st, ok := e.Unit.Structs[typeName]
+	if !ok {
+		return nil, fmt.Errorf("schema type %s: not declared in the unit", typeName)
+	}
+	w := &bitWriter{}
+	if err := e.encodeStruct(w, st, obj, typeName); err != nil {
+		return nil, err
+	}
+	return w.bytes(), nil
+}
+
+func (e *Encoder) encodeStruct(w *bitWriter, st *ir.Struct, obj map[string]any, path string) error {
+	obj, err := e.lowerUnions(st.Name, obj, path)
+	if err != nil {
+		return err
+	}
+	// unknown keys are AUTHORING ERRORS — a typo'd field name silently becoming
+	// a default is exactly the failure class the compile step exists to refuse
+	allowed := map[string]bool{}
+	for _, f := range st.Fields {
+		allowed[f.Name] = true
+	}
+	for k := range obj {
+		if !allowed[k] {
+			return fmt.Errorf("%s: unknown field %q (schema type %s declares no such field)", path, k, st.Name)
+		}
+	}
+	return e.encodeItems(w, st.Items, obj, path)
+}
+
+func (e *Encoder) encodeItems(w *bitWriter, items []ir.Item, obj map[string]any, path string) error {
+	for _, item := range items {
+		switch item := item.(type) {
+		case *ir.FieldItem:
+			if err := e.encodeField(w, item.F, obj, path); err != nil {
+				return err
+			}
+		case *ir.Branch:
+			cond, err := boolField(obj, item.Cond, path)
+			if err != nil {
+				return err
+			}
+			taken := item.Then
+			if cond == item.Neg { // if !cond with cond true, or if cond with cond false
+				taken = item.Else
+			}
+			if taken != nil {
+				if err := e.encodeItems(w, taken, obj, path); err != nil {
+					return err
+				}
+			}
+		case *ir.ConstItem:
+			w.writeBits(item.Value.Uint64(), item.Bits)
+		case *ir.ReservedItem:
+			w.writeBits(0, item.Bits)
+		case *ir.AlignItem:
+			w.align()
+		}
+	}
+	return nil
+}
+
+// boolField reads a previously-encoded branch guard's value from the object.
+func boolField(obj map[string]any, name, path string) (bool, error) {
+	v, present := obj[name]
+	if !present || v == nil {
+		return false, nil // absent bool = zero value = false (defaults on guards
+		// would make branch-taking invisible in the JSON; the schema checker
+		// does not currently default guards in the corpus)
+	}
+	b, ok := v.(bool)
+	if !ok {
+		return false, fmt.Errorf("%s.%s: branch guard must be a JSON boolean, got %T", path, name, v)
+	}
+	return b, nil
+}
+
+func (e *Encoder) encodeField(w *bitWriter, f *ir.Field, obj map[string]any, path string) error {
+	val := obj[f.Name]
+	fpath := path + "." + f.Name
+
+	switch f.Array {
+	case ir.ArrayFixed, ir.ArrayCounted:
+		arr, err := jsonArray(val, fpath)
+		if err != nil {
+			return err
+		}
+		n := int64(len(arr))
+		if f.Array == ir.ArrayCounted {
+			if n < f.ArrayMin || n > f.ArrayBound {
+				return fmt.Errorf("%s: %d elements, wire count range is [%d, %d]", fpath, n, f.ArrayMin, f.ArrayBound)
+			}
+			w.writeBits(uint64(n-f.ArrayMin), ir.BitsRequired(big.NewInt(f.ArrayMin), big.NewInt(f.ArrayBound)))
+		} else {
+			if n > f.ArrayBound {
+				return fmt.Errorf("%s: %d elements exceeds fixed bound %d", fpath, n, f.ArrayBound)
+			}
+			// fixed arrays serialize all Bound elements; short JSON pads zeros
+			for int64(len(arr)) < f.ArrayBound {
+				arr = append(arr, nil)
+			}
+		}
+		for i, elem := range arr {
+			if err := e.encodeScalar(w, f, elem, fmt.Sprintf("%s[%d]", fpath, i)); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
+	return e.encodeScalar(w, f, val, fpath)
+}
+
+func (e *Encoder) encodeScalar(w *bitWriter, f *ir.Field, val any, fpath string) error {
+	switch f.Type.Kind {
+	case ir.TBool:
+		b := false
+		if val != nil {
+			var ok bool
+			if b, ok = val.(bool); !ok {
+				return fmt.Errorf("%s: expected JSON boolean, got %T", fpath, val)
+			}
+		} else if f.HasDefault {
+			b = f.DefBool
+		}
+		bit := uint64(0)
+		if b {
+			bit = 1
+		}
+		w.writeBits(bit, 1)
+		return nil
+
+	case ir.TInt:
+		if f.Type.Width == 128 {
+			return fmt.Errorf("%s: int128/uint128 packing is not implemented (nothing in the config corpus uses it)", fpath)
+		}
+		iv, err := intValue(val, f, fpath)
+		if err != nil {
+			return err
+		}
+		if f.HasIntRange {
+			if iv.Cmp(f.IntMin) < 0 || iv.Cmp(f.IntMax) > 0 {
+				return fmt.Errorf("%s: %s outside wire range [%s, %s]", fpath, iv, f.IntMin, f.IntMax)
+			}
+			w.writeBits(new(big.Int).Sub(iv, f.IntMin).Uint64(), ir.BitsRequired(f.IntMin, f.IntMax))
+			return nil
+		}
+		w.writeBits(twosComplement(iv, f.Type.Width), int64(f.Type.Width))
+		return nil
+
+	case ir.TBits:
+		iv, err := intValue(val, f, fpath)
+		if err != nil {
+			return err
+		}
+		if iv.Sign() < 0 || iv.BitLen() > f.Type.Width {
+			return fmt.Errorf("%s: %s does not fit bits(%d)", fpath, iv, f.Type.Width)
+		}
+		w.writeBits(iv.Uint64(), int64(f.Type.Width))
+		return nil
+
+	case ir.TFloat32:
+		if f.HasFloatRange {
+			return fmt.Errorf("%s: compressed-float packing is not implemented (nothing in the config corpus uses it)", fpath)
+		}
+		fv, err := floatValue(val, f, fpath)
+		if err != nil {
+			return err
+		}
+		w.writeBits(uint64(math.Float32bits(float32(fv))), 32)
+		return nil
+
+	case ir.TFloat64:
+		fv, err := floatValue(val, f, fpath)
+		if err != nil {
+			return err
+		}
+		w.writeBits(math.Float64bits(fv), 64)
+		return nil
+
+	case ir.TString:
+		s := ""
+		if val != nil {
+			var ok bool
+			if s, ok = val.(string); !ok {
+				return fmt.Errorf("%s: expected JSON string, got %T", fpath, val)
+			}
+		}
+		if int64(len(s)) > f.Type.Size {
+			return fmt.Errorf("%s: %d bytes exceeds string(%d)", fpath, len(s), f.Type.Size)
+		}
+		for i := 0; i < len(s); i++ {
+			if s[i] == 0 {
+				return fmt.Errorf("%s: interior 0x00 byte (SPEC §4.7 rejects it)", fpath)
+			}
+		}
+		w.writeBits(uint64(len(s)), ir.BitsRequired(big.NewInt(0), big.NewInt(f.Type.Size)))
+		w.align()
+		for i := 0; i < len(s); i++ {
+			w.writeBits(uint64(s[i]), 8)
+		}
+		return nil
+
+	case ir.TBytes:
+		data, err := bytesValue(val, fpath)
+		if err != nil {
+			return err
+		}
+		if int64(len(data)) > f.Type.Size {
+			return fmt.Errorf("%s: %d bytes exceeds bytes(%d)", fpath, len(data), f.Type.Size)
+		}
+		w.writeBits(uint64(len(data)), ir.BitsRequired(big.NewInt(0), big.NewInt(f.Type.Size)))
+		w.align()
+		for _, b := range data {
+			w.writeBits(uint64(b), 8)
+		}
+		return nil
+
+	case ir.TFixed:
+		return fmt.Errorf("%s: fixed-point packing is not implemented (nothing in the config corpus uses it)", fpath)
+
+	case ir.TNamed:
+		switch ref := f.Type.Ref.(type) {
+		case *ir.Enum:
+			idx, err := enumValue(ref, f, val, fpath)
+			if err != nil {
+				return err
+			}
+			w.writeBits(uint64(idx), ir.BitsRequired(big.NewInt(0), big.NewInt(ref.Max)))
+			return nil
+		case *ir.Flags:
+			mask, err := flagsValue(ref, val, fpath)
+			if err != nil {
+				return err
+			}
+			w.writeBits(mask, int64(ref.WireBits))
+			return nil
+		case *ir.Struct:
+			sub := map[string]any{}
+			if val != nil {
+				var ok bool
+				if sub, ok = val.(map[string]any); !ok {
+					return fmt.Errorf("%s: expected JSON object for %s, got %T", fpath, f.Type.Name, val)
+				}
+			}
+			return e.encodeStruct(w, ref, sub, fpath)
+		}
+	}
+	return fmt.Errorf("%s: unhandled field kind", fpath)
+}
+
+// twosComplement maps a big.Int onto width bits, negative values in two's
+// complement — the raw storage-width wire (SPEC §4.3).
+func twosComplement(v *big.Int, width int) uint64 {
+	u := new(big.Int).Set(v)
+	if u.Sign() < 0 {
+		u.Add(u, new(big.Int).Lsh(big.NewInt(1), uint(width)))
+	}
+	if width >= 64 {
+		return u.Uint64()
+	}
+	return u.Uint64() & ((1 << uint(width)) - 1)
+}
+
+func jsonArray(val any, fpath string) ([]any, error) {
+	if val == nil {
+		return nil, nil
+	}
+	arr, ok := val.([]any)
+	if !ok {
+		return nil, fmt.Errorf("%s: expected JSON array, got %T", fpath, val)
+	}
+	return arr, nil
+}
+
+// intValue resolves a JSON value (or the field's default, or zero) to an
+// integer, rejecting non-integral numbers — 1.5 in an int field is an
+// authoring error, never a truncation. json.Number is the decode form
+// (loadJSON uses UseNumber), so full-range uint64 values survive exactly;
+// float64 is accepted for programmatic callers.
+func intValue(val any, f *ir.Field, fpath string) (*big.Int, error) {
+	switch v := val.(type) {
+	case nil:
+		if f.HasDefault && f.DefInt != nil {
+			return f.DefInt, nil
+		}
+		return big.NewInt(0), nil
+	case json.Number:
+		iv, ok := new(big.Int).SetString(v.String(), 10)
+		if !ok {
+			return nil, fmt.Errorf("%s: %s is not an integer", fpath, v)
+		}
+		return iv, nil
+	case float64:
+		iv := int64(v)
+		if float64(iv) != v {
+			return nil, fmt.Errorf("%s: %v is not an integer", fpath, v)
+		}
+		return big.NewInt(iv), nil
+	}
+	return nil, fmt.Errorf("%s: expected JSON number, got %T", fpath, val)
+}
+
+func floatValue(val any, f *ir.Field, fpath string) (float64, error) {
+	switch v := val.(type) {
+	case nil:
+		if f.HasDefault {
+			return f.DefFloat, nil
+		}
+		return 0, nil
+	case json.Number:
+		n, err := v.Float64()
+		if err != nil {
+			return 0, fmt.Errorf("%s: %s is not a number: %v", fpath, v, err)
+		}
+		return n, nil
+	case float64:
+		return v, nil
+	}
+	return 0, fmt.Errorf("%s: expected JSON number, got %T", fpath, val)
+}
+
+// bytesValue accepts an array of byte-valued numbers or a base64 string.
+func bytesValue(val any, fpath string) ([]byte, error) {
+	switch v := val.(type) {
+	case nil:
+		return nil, nil
+	case string:
+		data, err := base64.StdEncoding.DecodeString(v)
+		if err != nil {
+			return nil, fmt.Errorf("%s: not valid base64: %v", fpath, err)
+		}
+		return data, nil
+	case []any:
+		out := make([]byte, len(v))
+		for i, elem := range v {
+			n, err := numberValue(elem)
+			if err != nil || n < 0 || n > 255 {
+				return nil, fmt.Errorf("%s[%d]: not a byte value", fpath, i)
+			}
+			out[i] = byte(n)
+		}
+		return out, nil
+	}
+	return nil, fmt.Errorf("%s: expected byte array or base64 string, got %T", fpath, val)
+}
+
+// numberValue reads a small non-negative integer from either decode form.
+func numberValue(val any) (int64, error) {
+	switch v := val.(type) {
+	case json.Number:
+		return v.Int64()
+	case float64:
+		iv := int64(v)
+		if float64(iv) != v {
+			return 0, fmt.Errorf("not an integer")
+		}
+		return iv, nil
+	}
+	return 0, fmt.Errorf("not a number")
+}
+
+// enumValue resolves a variant name string (the flatbuffers-JSON idiom), a
+// number, or the field default to the wire value: None = 0, variants from 1.
+func enumValue(ref *ir.Enum, f *ir.Field, val any, fpath string) (int64, error) {
+	switch v := val.(type) {
+	case nil:
+		if f.HasDefault && f.DefVariant != "" {
+			for i, name := range ref.Variants {
+				if name == f.DefVariant {
+					return int64(i + 1), nil
+				}
+			}
+		}
+		return 0, nil // None
+	case string:
+		if v == "None" {
+			return 0, nil
+		}
+		for i, name := range ref.Variants {
+			if name == v {
+				return int64(i + 1), nil
+			}
+		}
+		return 0, fmt.Errorf("%s: %q is not a variant of enum %s", fpath, v, ref.Name)
+	case json.Number, float64:
+		iv, err := numberValue(v)
+		if err != nil || iv < 0 || iv > ref.Max {
+			return 0, fmt.Errorf("%s: %v is not a valid %s wire value [0, %d]", fpath, v, ref.Name, ref.Max)
+		}
+		return iv, nil
+	}
+	return 0, fmt.Errorf("%s: expected enum variant name or number, got %T", fpath, val)
+}
+
+// flagsValue resolves an array of variant names or a number to the mask.
+func flagsValue(ref *ir.Flags, val any, fpath string) (uint64, error) {
+	switch v := val.(type) {
+	case nil:
+		return 0, nil
+	case json.Number, float64:
+		iv, err := numberValue(v)
+		if err != nil || iv < 0 {
+			return 0, fmt.Errorf("%s: %v is not an integer mask", fpath, v)
+		}
+		return uint64(iv), nil
+	case []any:
+		var mask uint64
+		for _, elem := range v {
+			name, ok := elem.(string)
+			if !ok {
+				return 0, fmt.Errorf("%s: flags array elements must be variant names", fpath)
+			}
+			found := false
+			for i, variant := range ref.Variants {
+				if variant == name {
+					mask |= 1 << uint(i)
+					found = true
+					break
+				}
+			}
+			if !found {
+				return 0, fmt.Errorf("%s: %q is not a variant of flags %s", fpath, name, ref.Name)
+			}
+		}
+		return mask, nil
+	}
+	return 0, fmt.Errorf("%s: expected flags mask or variant-name array, got %T", fpath, val)
+}
