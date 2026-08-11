@@ -9,6 +9,7 @@
 #include <cstring>
 #include <cstddef> // offsetof, for the reflection descriptors
 #include <new> // in-place prefill (placement new): no giant stack temporaries
+#include <type_traits> // the enforced relocatability asserts
 
 #include "Contexts.h"
 

@@ -9,6 +9,7 @@
 #include <cstring>
 #include <cstddef> // offsetof, for the reflection descriptors
 #include <new> // in-place prefill (placement new): no giant stack temporaries
+#include <type_traits> // the enforced relocatability asserts
 
 #include "Wire.h"
 
@@ -1033,6 +1034,21 @@ inline bool TableReadTestData( const uint8_t * buffer, int64_t bytes, TestData &
     TableReader r( buffer, bytes, &report );
     return TableReadTestData( r, value );
 }
+
+// ---- relocatability, enforced (beyond flatbuffers: the wire is a pure
+// length-prefixed stream AND the decoded storage is pointer-free) — every
+// closure type must stay trivially copyable and standard-layout, so
+// instances can be memcpy'd, mmap'd, shared across processes, and walked
+// through descriptor offsets. A failure here means a pointer, virtual or
+// non-trivial member crept into generated storage.
+static_assert( std::is_trivially_copyable<ProbeSample>::value, "ProbeSample must stay relocatable" );
+static_assert( std::is_standard_layout<ProbeSample>::value, "ProbeSample must stay standard-layout for offsetof" );
+static_assert( std::is_trivially_copyable<ProbeConfig>::value, "ProbeConfig must stay relocatable" );
+static_assert( std::is_standard_layout<ProbeConfig>::value, "ProbeConfig must stay standard-layout for offsetof" );
+static_assert( std::is_trivially_copyable<ProbeArray>::value, "ProbeArray must stay relocatable" );
+static_assert( std::is_standard_layout<ProbeArray>::value, "ProbeArray must stay standard-layout for offsetof" );
+static_assert( std::is_trivially_copyable<TestData>::value, "TestData must stay relocatable" );
+static_assert( std::is_standard_layout<TestData>::value, "TestData must stay standard-layout for offsetof" );
 
 // ---- reflection descriptors (tables only, notes/table-wire.md) ----
 

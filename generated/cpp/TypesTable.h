@@ -9,6 +9,7 @@
 #include <cstring>
 #include <cstddef> // offsetof, for the reflection descriptors
 #include <new> // in-place prefill (placement new): no giant stack temporaries
+#include <type_traits> // the enforced relocatability asserts
 
 #include "Types.h"
 
@@ -496,6 +497,19 @@ inline bool TableReadRigidBody( const uint8_t * buffer, int64_t bytes, RigidBody
     TableReader r( buffer, bytes, &report );
     return TableReadRigidBody( r, value );
 }
+
+// ---- relocatability, enforced (beyond flatbuffers: the wire is a pure
+// length-prefixed stream AND the decoded storage is pointer-free) — every
+// closure type must stay trivially copyable and standard-layout, so
+// instances can be memcpy'd, mmap'd, shared across processes, and walked
+// through descriptor offsets. A failure here means a pointer, virtual or
+// non-trivial member crept into generated storage.
+static_assert( std::is_trivially_copyable<Vec3>::value, "Vec3 must stay relocatable" );
+static_assert( std::is_standard_layout<Vec3>::value, "Vec3 must stay standard-layout for offsetof" );
+static_assert( std::is_trivially_copyable<Quat>::value, "Quat must stay relocatable" );
+static_assert( std::is_standard_layout<Quat>::value, "Quat must stay standard-layout for offsetof" );
+static_assert( std::is_trivially_copyable<RigidBody>::value, "RigidBody must stay relocatable" );
+static_assert( std::is_standard_layout<RigidBody>::value, "RigidBody must stay standard-layout for offsetof" );
 
 // ---- reflection descriptors (tables only, notes/table-wire.md) ----
 

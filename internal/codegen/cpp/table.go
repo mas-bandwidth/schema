@@ -310,6 +310,17 @@ func GenerateTable(u *ir.Unit) (map[string][]byte, error) {
 			g.emitTableRead(st)
 		}
 		if len(members) > 0 {
+			g.pf("// ---- relocatability, enforced (beyond flatbuffers: the wire is a pure\n")
+			g.pf("// length-prefixed stream AND the decoded storage is pointer-free) — every\n")
+			g.pf("// closure type must stay trivially copyable and standard-layout, so\n")
+			g.pf("// instances can be memcpy'd, mmap'd, shared across processes, and walked\n")
+			g.pf("// through descriptor offsets. A failure here means a pointer, virtual or\n")
+			g.pf("// non-trivial member crept into generated storage.\n")
+			for _, st := range members {
+				g.pf("static_assert( std::is_trivially_copyable<%s>::value, \"%s must stay relocatable\" );\n", st.Name, st.Name)
+				g.pf("static_assert( std::is_standard_layout<%s>::value, \"%s must stay standard-layout for offsetof\" );\n", st.Name, st.Name)
+			}
+			g.pf("\n")
 			g.pf("// ---- reflection descriptors (tables only, notes/table-wire.md) ----\n\n")
 			for _, st := range members {
 				g.pf("inline const TableTypeInfo * TableType%s();\n", st.Name)
@@ -327,7 +338,7 @@ func GenerateTable(u *ir.Unit) (map[string][]byte, error) {
 		fmt.Fprintf(&h, "// package %s — protocol id 0x%016x\n", u.Package, u.ProtocolId)
 		h.WriteString("// The TABLE wire (evolution-tolerant, notes/table-wire.md): no serialize\n")
 		h.WriteString("// dependency — includable from any TU.\n\n")
-		h.WriteString("#pragma once\n\n#include <cstdint>\n#include <cstring>\n#include <cstddef> // offsetof, for the reflection descriptors\n#include <new> // in-place prefill (placement new): no giant stack temporaries\n")
+		h.WriteString("#pragma once\n\n#include <cstdint>\n#include <cstring>\n#include <cstddef> // offsetof, for the reflection descriptors\n#include <new> // in-place prefill (placement new): no giant stack temporaries\n#include <type_traits> // the enforced relocatability asserts\n")
 		fmt.Fprintf(&h, "\n#include \"%s.h\"\n", f.Base)
 		names := make([]string, 0, len(g.includes))
 		for n := range g.includes {
