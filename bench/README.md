@@ -16,6 +16,8 @@ per the contract below.
 
     bench/run.sh                 # Release, results in bench/results/<date>-<arch>-<host>.csv
     bench/run.sh --debug         # also the Debug pair (matched-pair methodology)
+    bench/run.sh --only cpp|go|rust|cs   # one language leg — serial one-profile-at-a-time
+                                         # passes on shared boxes (the EPYC discipline)
     SERIALIZE=path/to/serialize bench/run.sh
     BENCH_NOISE="NOISY: ..." bench/run.sh    # label a noisy host in the preamble
 

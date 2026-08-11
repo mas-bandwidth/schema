@@ -1,0 +1,313 @@
+===== v5 EPYC pass START 2026-08-07T15:55:32Z host=spacegame =====
+toolchains: g++ (Ubuntu 13.3.0-6ubuntu2~24.04.1) 13.3.0 | Ubuntu clang version 18.1.3 (1ubuntu1) | go version go1.26.5 linux/amd64 | cargo 1.97.1 (c980f4866 2026-06-30) / rustc 1.97.1 (8bab26f4f 2026-07-14) | dotnet 10.0.302
+isolated cpus: 1-15
+--- pscheck [before-cpp-gcc-start] 2026-08-07T15:55:32Z load=6.35 5.90 5.58
+  clean: none of ours running
+  cpu0 pre : cpu0 51426909 121122 19748851 1838903340 40608 0 317796 0 0 0
+  cpu0 post: cpu0 51426999 121122 19748855 1838903749 40608 0 317796 0 0 0
+=== leg cpp-gcc-start START 2026-08-07T15:55:37Z (--only cpp --compiler g++)
+== cpp: build (Release) ==
+== cpp: run (Release) ==
+schema bench (cpp, Release)
+rigidbody_moving   write      24.59 M msg/s     2461.9 MB/s   (min 21.62, max 25.50, spread 15.8%)
+rigidbody_moving   read       30.43 M msg/s     3046.6 MB/s   (min 30.33, max 31.83, spread 4.9%)
+rigidbody_at_rest  write      40.92 M msg/s     2224.4 MB/s   (min 40.87, max 42.18, spread 3.2%)
+rigidbody_at_rest  read       59.71 M msg/s     3245.7 MB/s   (min 51.17, max 59.96, spread 14.7%)
+chat               write      35.71 M msg/s      442.8 MB/s   (min 35.60, max 36.55, spread 2.7%)
+chat               read       75.21 M msg/s      932.4 MB/s   (min 62.21, max 75.34, spread 17.4%)
+test               write     118.14 M msg/s      676.0 MB/s   (min 114.92, max 118.60, spread 3.1%)
+test               read      226.01 M msg/s     1293.2 MB/s   (min 194.85, max 226.74, spread 14.1%)
+inputpacket        write      31.88 M msg/s     1854.8 MB/s   (min 31.76, max 33.36, spread 5.0%)
+inputpacket        read       36.48 M msg/s     2121.9 MB/s   (min 34.68, max 36.54, spread 5.1%)
+shipcreate         write      34.32 M msg/s      916.5 MB/s   (min 34.30, max 34.35, spread 0.1%)
+shipcreate         read       74.55 M msg/s     1990.6 MB/s   (min 70.70, max 74.67, spread 5.3%)
+ship_shallow       write      55.86 M msg/s     1491.7 MB/s   (min 53.73, max 55.98, spread 4.0%)
+ship_shallow       read       77.89 M msg/s     2079.8 MB/s   (min 77.74, max 78.05, spread 0.4%)
+probe_header       write     120.98 M msg/s     1153.7 MB/s   (min 119.72, max 122.16, spread 2.0%)
+probe_header       read      180.68 M msg/s     1723.1 MB/s   (min 160.68, max 181.05, spread 11.3%)
+probebits          write      83.35 M msg/s     2066.8 MB/s   (min 83.10, max 88.71, spread 6.7%)
+probebits          read      142.00 M msg/s     3521.0 MB/s   (min 140.86, max 158.19, spread 12.2%)
+probearray         write      25.70 M msg/s     1152.1 MB/s   (min 24.45, max 28.12, spread 14.3%)
+probearray         read       57.29 M msg/s     2567.8 MB/s   (min 52.99, max 57.44, spread 7.8%)
+testdata           write       9.18 M msg/s      805.2 MB/s   (min 9.14, max 9.40, spread 2.9%)
+testdata           read       25.42 M msg/s     2230.4 MB/s   (min 23.69, max 25.48, spread 7.0%)
+message_batch      write      61.41 M msg/s     1464.2 MB/s   (min 50.97, max 61.76, spread 17.6%)
+message_batch      read       41.96 M msg/s     1000.5 MB/s   (min 41.61, max 43.58, spread 4.7%)
+OK
+results: /home/ubuntu/rowan-bench/v5-epyc/results/cpp-gcc-start.csv
+=== leg cpp-gcc-start OK 2026-08-07T15:55:53Z
+--- pscheck [before-go] 2026-08-07T15:55:56Z load=5.97 5.87 5.58
+  clean: none of ours running
+  cpu0 pre : cpu0 51428646 121122 19748887 1838903996 40608 0 317796 0 0 0
+  cpu0 post: cpu0 51428729 121122 19748891 1838904405 40608 0 317796 0 0 0
+=== leg go START 2026-08-07T15:56:01Z (--only go)
+== go: run ==
+schema bench (go)
+rigidbody_moving   write      13.86 M msg/s     1387.5 MB/s   (min 13.11, max 14.15, spread 7.5%)
+rigidbody_moving   read       15.77 M msg/s     1578.7 MB/s   (min 14.88, max 16.13, spread 8.0%)
+alloc note: rigidbody_moving one pass (256 ops/path): write 0 allocs, read 0 allocs
+rigidbody_at_rest  write      24.89 M msg/s     1353.1 MB/s   (min 23.65, max 25.34, spread 6.8%)
+rigidbody_at_rest  read       27.70 M msg/s     1506.0 MB/s   (min 26.19, max 28.25, spread 7.4%)
+alloc note: rigidbody_at_rest one pass (256 ops/path): write 0 allocs, read 0 allocs
+chat               write      24.44 M msg/s      303.0 MB/s   (min 24.40, max 24.89, spread 2.0%)
+chat               read       47.79 M msg/s      592.5 MB/s   (min 39.45, max 47.89, spread 17.7%)
+alloc note: chat one pass (256 ops/path): write 0 allocs, read 0 allocs
+test               write      69.48 M msg/s      397.6 MB/s   (min 68.10, max 70.29, spread 3.2%)
+test               read       54.98 M msg/s      314.6 MB/s   (min 53.39, max 55.57, spread 4.0%)
+alloc note: test one pass (256 ops/path): write 0 allocs, read 0 allocs
+inputpacket        write      11.91 M msg/s      692.9 MB/s   (min 11.39, max 11.95, spread 4.7%)
+inputpacket        read       11.78 M msg/s      685.2 MB/s   (min 11.59, max 11.79, spread 1.7%)
+alloc note: inputpacket one pass (256 ops/path): write 0 allocs, read 0 allocs
+shipcreate         write      19.72 M msg/s      526.6 MB/s   (min 18.77, max 19.83, spread 5.4%)
+shipcreate         read       14.70 M msg/s      392.4 MB/s   (min 14.15, max 14.89, spread 5.1%)
+alloc note: shipcreate one pass (256 ops/path): write 0 allocs, read 0 allocs
+ship_shallow       write      22.32 M msg/s      596.1 MB/s   (min 21.83, max 22.95, spread 5.0%)
+ship_shallow       read       16.83 M msg/s      449.3 MB/s   (min 16.29, max 17.05, spread 4.5%)
+alloc note: ship_shallow one pass (256 ops/path): write 0 allocs, read 0 allocs
+probe_header       write      51.92 M msg/s      495.2 MB/s   (min 50.58, max 52.53, spread 3.7%)
+probe_header       read       48.83 M msg/s      465.7 MB/s   (min 47.69, max 49.20, spread 3.1%)
+alloc note: probe_header one pass (256 ops/path): write 0 allocs, read 0 allocs
+probebits          write      38.03 M msg/s      943.0 MB/s   (min 37.18, max 38.22, spread 2.7%)
+probebits          read       38.69 M msg/s      959.4 MB/s   (min 35.10, max 38.77, spread 9.5%)
+alloc note: probebits one pass (256 ops/path): write 0 allocs, read 0 allocs
+probearray         write      12.94 M msg/s      580.1 MB/s   (min 11.47, max 13.02, spread 12.0%)
+probearray         read       11.01 M msg/s      493.4 MB/s   (min 10.54, max 11.02, spread 4.4%)
+alloc note: probearray one pass (256 ops/path): write 0 allocs, read 0 allocs
+testdata           write       6.78 M msg/s      594.9 MB/s   (min 6.42, max 6.91, spread 7.2%)
+testdata           read        6.26 M msg/s      549.5 MB/s   (min 6.12, max 6.38, spread 4.1%)
+alloc note: testdata one pass (256 ops/path): write 0 allocs, read 0 allocs
+message_batch      write      31.31 M msg/s      746.5 MB/s   (min 28.38, max 31.39, spread 9.6%)
+message_batch      read       38.68 M msg/s      922.2 MB/s   (min 37.39, max 38.85, spread 3.8%)
+alloc note: message_batch one pass (4096 msgs): write 0 allocs, read 0 allocs
+OK
+results: /home/ubuntu/rowan-bench/v5-epyc/results/go.csv
+=== leg go OK 2026-08-07T15:56:37Z
+--- pscheck [before-rust] 2026-08-07T15:56:40Z load=6.10 5.91 5.61
+  clean: none of ours running
+  cpu0 pre : cpu0 51432245 121122 19748947 1838904650 40608 0 317797 0 0 0
+  cpu0 post: cpu0 51432334 121122 19748950 1838905059 40608 0 317797 0 0 0
+=== leg rust START 2026-08-07T15:56:45Z (--only rust)
+== rust: run ==
+schema bench (rust)
+rigidbody_moving   write      19.99 M msg/s     2001.6 MB/s   (min 19.85, max 20.16, spread 1.5%)
+rigidbody_moving   read       36.18 M msg/s     3622.9 MB/s   (min 34.55, max 36.57, spread 5.6%)
+rigidbody_at_rest  write      32.02 M msg/s     1740.6 MB/s   (min 30.91, max 32.78, spread 5.8%)
+rigidbody_at_rest  read       64.67 M msg/s     3515.2 MB/s   (min 64.39, max 67.92, spread 5.5%)
+chat               write      41.91 M msg/s      519.7 MB/s   (min 41.76, max 43.25, spread 3.6%)
+chat               read       41.74 M msg/s      517.5 MB/s   (min 41.69, max 43.12, spread 3.4%)
+test               write     132.93 M msg/s      760.6 MB/s   (min 121.57, max 133.02, spread 8.6%)
+test               read       64.08 M msg/s      366.7 MB/s   (min 61.42, max 64.17, spread 4.3%)
+inputpacket        write      28.63 M msg/s     1665.3 MB/s   (min 24.71, max 28.74, spread 14.1%)
+inputpacket        read       12.29 M msg/s      714.7 MB/s   (min 12.27, max 12.51, spread 1.9%)
+shipcreate         write      41.00 M msg/s     1094.9 MB/s   (min 37.82, max 42.29, spread 10.9%)
+shipcreate         read       26.81 M msg/s      716.0 MB/s   (min 25.44, max 26.84, spread 5.2%)
+ship_shallow       write      50.64 M msg/s     1352.3 MB/s   (min 50.46, max 52.56, spread 4.2%)
+ship_shallow       read       19.79 M msg/s      528.5 MB/s   (min 18.52, max 19.83, spread 6.6%)
+probe_header       write     112.50 M msg/s     1072.9 MB/s   (min 111.30, max 115.13, spread 3.4%)
+probe_header       read       55.88 M msg/s      532.9 MB/s   (min 54.69, max 56.30, spread 2.9%)
+probebits          write      55.09 M msg/s     1366.0 MB/s   (min 52.89, max 55.17, spread 4.1%)
+probebits          read       51.75 M msg/s     1283.3 MB/s   (min 46.70, max 53.79, spread 13.7%)
+probearray         write      23.97 M msg/s     1074.6 MB/s   (min 23.90, max 24.00, spread 0.4%)
+probearray         read       29.15 M msg/s     1306.8 MB/s   (min 24.99, max 29.19, spread 14.4%)
+testdata           write      10.30 M msg/s      903.4 MB/s   (min 10.27, max 10.62, spread 3.4%)
+testdata           read        9.70 M msg/s      851.0 MB/s   (min 8.54, max 9.70, spread 12.0%)
+message_batch      write      59.36 M msg/s     1415.3 MB/s   (min 52.87, max 59.70, spread 11.5%)
+message_batch      read       33.59 M msg/s      800.9 MB/s   (min 33.33, max 34.50, spread 3.5%)
+OK
+results: /home/ubuntu/rowan-bench/v5-epyc/results/rust.csv
+=== leg rust OK 2026-08-07T15:57:09Z
+--- pscheck [before-cs] 2026-08-07T15:57:12Z load=8.21 6.44 5.79
+  clean: none of ours running
+  cpu0 pre : cpu0 51434759 121122 19749003 1838905304 40608 0 317797 0 0 0
+  cpu0 post: cpu0 51434845 121122 19749008 1838905713 40608 0 317797 0 0 0
+=== leg cs START 2026-08-07T15:57:17Z (--only cs)
+== cs: run ==
+schema bench (cs, workstation GC)
+rigidbody_moving   write      11.83 M msg/s     1185.0 MB/s   (min 2.41, max 11.99, spread 80.9%)
+rigidbody_moving   read       13.36 M msg/s     1337.8 MB/s   (min 13.00, max 27.06, spread 105.2%)
+alloc note: rigidbody_moving one pass (256 ops/path): write 0 bytes, read 0 bytes
+rigidbody_at_rest  write      35.03 M msg/s     1904.2 MB/s   (min 34.96, max 35.96, spread 2.8%)
+rigidbody_at_rest  read       39.89 M msg/s     2168.4 MB/s   (min 35.07, max 39.92, spread 12.2%)
+alloc note: rigidbody_at_rest one pass (256 ops/path): write 0 bytes, read 0 bytes
+chat               write      24.97 M msg/s      309.5 MB/s   (min 4.11, max 25.43, spread 85.4%)
+chat               read       54.66 M msg/s      677.7 MB/s   (min 52.61, max 54.87, spread 4.1%)
+alloc note: chat one pass (256 ops/path): write 0 bytes, read 0 bytes
+test               write      76.21 M msg/s      436.0 MB/s   (min 22.11, max 77.27, spread 72.4%)
+test               read      105.13 M msg/s      601.6 MB/s   (min 103.12, max 105.24, spread 2.0%)
+alloc note: test one pass (256 ops/path): write 0 bytes, read 0 bytes
+inputpacket        write       6.29 M msg/s      365.7 MB/s   (min 5.93, max 22.94, spread 270.6%)
+inputpacket        read       20.90 M msg/s     1215.8 MB/s   (min 20.84, max 21.57, spread 3.5%)
+alloc note: inputpacket one pass (256 ops/path): write 0 bytes, read 0 bytes
+shipcreate         write       9.88 M msg/s      263.7 MB/s   (min 9.23, max 34.43, spread 255.2%)
+shipcreate         read       39.15 M msg/s     1045.4 MB/s   (min 33.37, max 39.23, spread 15.0%)
+alloc note: shipcreate one pass (256 ops/path): write 0 bytes, read 0 bytes
+ship_shallow       write      11.27 M msg/s      301.0 MB/s   (min 10.86, max 36.41, spread 226.7%)
+ship_shallow       read       40.18 M msg/s     1073.0 MB/s   (min 37.14, max 40.24, spread 7.7%)
+alloc note: ship_shallow one pass (256 ops/path): write 0 bytes, read 0 bytes
+probe_header       write      70.15 M msg/s      669.0 MB/s   (min 23.75, max 71.29, spread 67.8%)
+probe_header       read       81.84 M msg/s      780.5 MB/s   (min 78.08, max 83.11, spread 6.1%)
+alloc note: probe_header one pass (256 ops/path): write 0 bytes, read 0 bytes
+probebits          write      21.01 M msg/s      520.9 MB/s   (min 18.70, max 21.14, spread 11.6%)
+probebits          read       68.62 M msg/s     1701.4 MB/s   (min 21.18, max 72.25, spread 74.4%)
+alloc note: probebits one pass (256 ops/path): write 0 bytes, read 0 bytes
+probearray         write       5.02 M msg/s      224.9 MB/s   (min 4.91, max 24.24, spread 385.3%)
+probearray         read       29.42 M msg/s     1318.9 MB/s   (min 25.31, max 29.47, spread 14.1%)
+alloc note: probearray one pass (256 ops/path): write 0 bytes, read 0 bytes
+testdata           write       3.01 M msg/s      264.1 MB/s   (min 2.86, max 9.98, spread 236.4%)
+testdata           read        8.76 M msg/s      768.3 MB/s   (min 7.83, max 9.01, spread 13.5%)
+alloc note: testdata one pass (256 ops/path): write 0 bytes, read 0 bytes
+message_batch      write      24.75 M msg/s      590.1 MB/s   (min 13.08, max 56.38, spread 175.0%)
+message_batch      read       20.67 M msg/s      492.7 MB/s   (min 19.35, max 21.10, spread 8.5%)
+alloc note: message_batch one pass (4096 msgs): write 0 bytes (0 gen0), read 0 bytes (0 gen0)
+OK
+results: /home/ubuntu/rowan-bench/v5-epyc/results/cs.csv
+=== leg cs OK 2026-08-07T15:58:02Z
+Shutting down MSBuild server...
+Shutting down VB/C# compiler server...
+MSBuild server shut down successfully.
+VB/C# compiler server shut down successfully.
+--- pscheck [before-cpp-clang] 2026-08-07T15:58:05Z load=4.71 5.75 5.59
+  clean: none of ours running
+  cpu0 pre : cpu0 51439296 121122 19749114 1838905964 40608 0 317798 0 0 0
+  cpu0 post: cpu0 51439377 121122 19749119 1838906373 40608 0 317798 0 0 0
+=== leg cpp-clang START 2026-08-07T15:58:10Z (--only cpp --compiler /usr/bin/clang++-18)
+== cpp: build (Release) ==
+== cpp: run (Release) ==
+schema bench (cpp, Release)
+rigidbody_moving   write      24.69 M msg/s     2472.5 MB/s   (min 24.65, max 25.57, spread 3.7%)
+rigidbody_moving   read       57.71 M msg/s     5779.2 MB/s   (min 57.43, max 58.28, spread 1.5%)
+rigidbody_at_rest  write      50.54 M msg/s     2747.3 MB/s   (min 50.34, max 52.47, spread 4.2%)
+rigidbody_at_rest  read       85.55 M msg/s     4650.5 MB/s   (min 68.88, max 91.06, spread 25.9%)
+chat               write      65.52 M msg/s      812.2 MB/s   (min 65.27, max 68.69, spread 5.2%)
+chat               read       87.70 M msg/s     1087.3 MB/s   (min 70.71, max 94.06, spread 26.6%)
+test               write     505.04 M msg/s     2889.8 MB/s   (min 498.82, max 554.97, spread 11.1%)
+test               read      377.32 M msg/s     2159.1 MB/s   (min 368.40, max 401.99, spread 8.9%)
+inputpacket        write      31.13 M msg/s     1810.8 MB/s   (min 30.75, max 32.58, spread 5.9%)
+inputpacket        read       42.38 M msg/s     2465.7 MB/s   (min 42.27, max 45.18, spread 6.9%)
+shipcreate         write      52.63 M msg/s     1405.3 MB/s   (min 47.34, max 54.68, spread 13.9%)
+shipcreate         read       77.02 M msg/s     2056.7 MB/s   (min 72.90, max 77.21, spread 5.6%)
+ship_shallow       write      61.35 M msg/s     1638.3 MB/s   (min 54.51, max 61.50, spread 11.4%)
+ship_shallow       read       80.34 M msg/s     2145.2 MB/s   (min 80.05, max 80.50, spread 0.6%)
+probe_header       write     501.82 M msg/s     4785.7 MB/s   (min 484.91, max 550.17, spread 13.0%)
+probe_header       read      302.33 M msg/s     2883.2 MB/s   (min 287.28, max 303.34, spread 5.3%)
+probebits          write      89.99 M msg/s     2231.4 MB/s   (min 88.97, max 96.16, spread 8.0%)
+probebits          read      268.90 M msg/s     6667.6 MB/s   (min 259.99, max 346.44, spread 32.1%)
+probearray         write      35.27 M msg/s     1580.9 MB/s   (min 31.91, max 36.77, spread 13.8%)
+probearray         read       54.98 M msg/s     2464.2 MB/s   (min 50.90, max 55.07, spread 7.6%)
+testdata           write      14.09 M msg/s     1236.1 MB/s   (min 12.34, max 14.17, spread 12.9%)
+testdata           read       21.24 M msg/s     1863.4 MB/s   (min 20.05, max 22.59, spread 12.0%)
+message_batch      write      60.37 M msg/s     1439.2 MB/s   (min 56.08, max 60.58, spread 7.5%)
+message_batch      read       51.64 M msg/s     1231.2 MB/s   (min 46.03, max 54.69, spread 16.8%)
+OK
+results: /home/ubuntu/rowan-bench/v5-epyc/results/cpp-clang.csv
+=== leg cpp-clang OK 2026-08-07T15:58:22Z
+--- pscheck [before-cpp-gcc-prerestrict] 2026-08-07T15:58:25Z load=7.00 6.20 5.74
+  clean: none of ours running
+  cpu0 pre : cpu0 51440579 121122 19749148 1838906619 40608 0 317798 0 0 0
+  cpu0 post: cpu0 51440663 121122 19749153 1838907030 40608 0 317798 0 0 0
+=== leg cpp-gcc-prerestrict START 2026-08-07T15:58:30Z (--only cpp --compiler g++)
+== cpp: build (Release) ==
+== cpp: run (Release) ==
+schema bench (cpp, Release)
+rigidbody_moving   write      24.24 M msg/s     2427.0 MB/s   (min 24.21, max 24.26, spread 0.2%)
+rigidbody_moving   read       30.23 M msg/s     3027.3 MB/s   (min 26.91, max 30.26, spread 11.1%)
+rigidbody_at_rest  write      40.96 M msg/s     2226.5 MB/s   (min 37.75, max 42.21, spread 10.9%)
+rigidbody_at_rest  read       59.80 M msg/s     3250.5 MB/s   (min 59.72, max 59.87, spread 0.3%)
+chat               write      35.69 M msg/s      442.5 MB/s   (min 35.63, max 36.65, spread 2.8%)
+chat               read       75.58 M msg/s      937.0 MB/s   (min 62.53, max 75.67, spread 17.4%)
+test               write     118.37 M msg/s      677.3 MB/s   (min 115.08, max 119.32, spread 3.6%)
+test               read      223.66 M msg/s     1279.8 MB/s   (min 215.29, max 224.02, spread 3.9%)
+inputpacket        write      31.79 M msg/s     1849.1 MB/s   (min 29.52, max 33.48, spread 12.5%)
+inputpacket        read       36.44 M msg/s     2119.8 MB/s   (min 34.63, max 36.50, spread 5.2%)
+shipcreate         write      31.63 M msg/s      844.7 MB/s   (min 30.55, max 33.09, spread 8.0%)
+shipcreate         read       74.44 M msg/s     1987.8 MB/s   (min 69.76, max 74.56, spread 6.4%)
+ship_shallow       write      55.68 M msg/s     1486.7 MB/s   (min 53.64, max 55.86, spread 4.0%)
+ship_shallow       read       77.74 M msg/s     2075.9 MB/s   (min 64.00, max 77.82, spread 17.8%)
+probe_header       write     122.34 M msg/s     1166.7 MB/s   (min 111.92, max 123.88, spread 9.8%)
+probe_header       read      179.92 M msg/s     1715.8 MB/s   (min 173.97, max 180.75, spread 3.8%)
+probebits          write      83.35 M msg/s     2066.7 MB/s   (min 79.96, max 88.64, spread 10.4%)
+probebits          read      140.52 M msg/s     3484.2 MB/s   (min 139.93, max 156.78, spread 12.0%)
+probearray         write      29.71 M msg/s     1331.7 MB/s   (min 28.50, max 29.82, spread 4.4%)
+probearray         read       58.39 M msg/s     2617.0 MB/s   (min 53.96, max 58.52, spread 7.8%)
+testdata           write       9.06 M msg/s      794.7 MB/s   (min 9.02, max 9.29, spread 2.9%)
+testdata           read       22.99 M msg/s     2017.2 MB/s   (min 22.81, max 24.63, spread 7.9%)
+message_batch      write      61.06 M msg/s     1455.8 MB/s   (min 58.03, max 61.29, spread 5.3%)
+message_batch      read       42.20 M msg/s     1006.1 MB/s   (min 41.88, max 43.78, spread 4.5%)
+OK
+results: /home/ubuntu/rowan-bench/v5-epyc/results/cpp-gcc-prerestrict.csv
+=== leg cpp-gcc-prerestrict OK 2026-08-07T15:58:46Z
+--- pscheck [before-cpp-clang-prerestrict] 2026-08-07T15:58:49Z load=6.52 6.15 5.74
+  clean: none of ours running
+  cpu0 pre : cpu0 51442312 121122 19749185 1838907276 40608 0 317798 0 0 0
+  cpu0 post: cpu0 51442401 121122 19749188 1838907683 40608 0 317798 0 0 0
+=== leg cpp-clang-prerestrict START 2026-08-07T15:58:54Z (--only cpp --compiler /usr/bin/clang++-18)
+== cpp: build (Release) ==
+== cpp: run (Release) ==
+schema bench (cpp, Release)
+rigidbody_moving   write      24.45 M msg/s     2448.6 MB/s   (min 23.29, max 24.50, spread 4.9%)
+rigidbody_moving   read       57.70 M msg/s     5778.2 MB/s   (min 53.10, max 58.13, spread 8.7%)
+rigidbody_at_rest  write      50.46 M msg/s     2743.0 MB/s   (min 50.39, max 52.48, spread 4.1%)
+rigidbody_at_rest  read       85.10 M msg/s     4625.9 MB/s   (min 69.95, max 92.17, spread 26.1%)
+chat               write      65.38 M msg/s      810.6 MB/s   (min 65.23, max 68.85, spread 5.5%)
+chat               read       88.02 M msg/s     1091.3 MB/s   (min 87.65, max 93.79, spread 7.0%)
+test               write     505.49 M msg/s     2892.5 MB/s   (min 500.76, max 559.06, spread 11.5%)
+test               read      383.20 M msg/s     2192.7 MB/s   (min 325.60, max 414.95, spread 23.3%)
+inputpacket        write      31.13 M msg/s     1811.2 MB/s   (min 25.81, max 32.58, spread 21.7%)
+inputpacket        read       42.17 M msg/s     2453.4 MB/s   (min 39.71, max 44.95, spread 12.4%)
+shipcreate         write      52.52 M msg/s     1402.5 MB/s   (min 52.37, max 54.69, spread 4.4%)
+shipcreate         read       76.90 M msg/s     2053.4 MB/s   (min 72.85, max 77.27, spread 5.7%)
+ship_shallow       write      61.36 M msg/s     1638.5 MB/s   (min 48.30, max 64.23, spread 26.0%)
+ship_shallow       read       80.45 M msg/s     2148.4 MB/s   (min 79.51, max 80.55, spread 1.3%)
+probe_header       write     496.36 M msg/s     4733.7 MB/s   (min 477.45, max 502.68, spread 5.1%)
+probe_header       read      302.34 M msg/s     2883.4 MB/s   (min 250.37, max 302.98, spread 17.4%)
+probebits          write      89.49 M msg/s     2219.1 MB/s   (min 89.00, max 95.95, spread 7.8%)
+probebits          read      263.52 M msg/s     6534.0 MB/s   (min 252.44, max 341.51, spread 33.8%)
+probearray         write      36.54 M msg/s     1637.9 MB/s   (min 34.76, max 36.67, spread 5.2%)
+probearray         read       54.91 M msg/s     2461.3 MB/s   (min 50.89, max 55.03, spread 7.5%)
+testdata           write      14.09 M msg/s     1236.1 MB/s   (min 12.24, max 14.16, spread 13.7%)
+testdata           read       21.23 M msg/s     1862.7 MB/s   (min 21.10, max 22.56, spread 6.9%)
+message_batch      write      60.58 M msg/s     1444.5 MB/s   (min 57.13, max 60.77, spread 6.0%)
+message_batch      read       53.42 M msg/s     1273.5 MB/s   (min 47.16, max 56.21, spread 17.0%)
+OK
+results: /home/ubuntu/rowan-bench/v5-epyc/results/cpp-clang-prerestrict.csv
+=== leg cpp-clang-prerestrict OK 2026-08-07T15:59:06Z
+--- pscheck [before-cpp-gcc-end] 2026-08-07T15:59:09Z load=5.24 5.88 5.66
+  clean: none of ours running
+  cpu0 pre : cpu0 51443601 121122 19749218 1838907930 40608 0 317798 0 0 0
+  cpu0 post: cpu0 51443682 121122 19749223 1838908338 40608 0 317798 0 0 0
+=== leg cpp-gcc-end START 2026-08-07T15:59:14Z (--only cpp --compiler g++)
+== cpp: build (Release) ==
+== cpp: run (Release) ==
+schema bench (cpp, Release)
+rigidbody_moving   write      24.55 M msg/s     2458.7 MB/s   (min 24.44, max 25.42, spread 4.0%)
+rigidbody_moving   read       30.39 M msg/s     3043.0 MB/s   (min 30.25, max 31.78, spread 5.0%)
+rigidbody_at_rest  write      40.85 M msg/s     2220.6 MB/s   (min 36.65, max 42.15, spread 13.4%)
+rigidbody_at_rest  read       59.76 M msg/s     3248.7 MB/s   (min 59.59, max 59.86, spread 0.4%)
+chat               write      35.62 M msg/s      441.6 MB/s   (min 33.18, max 36.61, spread 9.6%)
+chat               read       74.10 M msg/s      918.7 MB/s   (min 70.37, max 74.31, spread 5.3%)
+test               write     133.20 M msg/s      762.2 MB/s   (min 122.21, max 133.40, spread 8.4%)
+test               read      221.05 M msg/s     1264.8 MB/s   (min 193.26, max 221.91, spread 13.0%)
+inputpacket        write      31.90 M msg/s     1855.9 MB/s   (min 28.51, max 33.29, spread 15.0%)
+inputpacket        read       35.91 M msg/s     2089.0 MB/s   (min 34.63, max 36.48, spread 5.2%)
+shipcreate         write      34.20 M msg/s      913.3 MB/s   (min 34.13, max 34.25, spread 0.3%)
+shipcreate         read       74.19 M msg/s     1981.0 MB/s   (min 65.61, max 74.29, spread 11.7%)
+ship_shallow       write      55.52 M msg/s     1482.6 MB/s   (min 53.34, max 55.62, spread 4.1%)
+ship_shallow       read       77.43 M msg/s     2067.6 MB/s   (min 73.22, max 77.58, spread 5.6%)
+probe_header       write     124.17 M msg/s     1184.2 MB/s   (min 117.06, max 127.39, spread 8.3%)
+probe_header       read      180.15 M msg/s     1718.0 MB/s   (min 170.11, max 180.55, spread 5.8%)
+probebits          write      83.00 M msg/s     2058.0 MB/s   (min 76.44, max 83.20, spread 8.1%)
+probebits          read      140.94 M msg/s     3494.6 MB/s   (min 139.52, max 157.48, spread 12.7%)
+probearray         write      27.00 M msg/s     1210.1 MB/s   (min 25.40, max 28.04, spread 9.8%)
+probearray         read       57.60 M msg/s     2581.6 MB/s   (min 53.16, max 57.64, spread 7.8%)
+testdata           write       9.13 M msg/s      801.3 MB/s   (min 8.56, max 9.38, spread 9.0%)
+testdata           read       25.46 M msg/s     2233.8 MB/s   (min 23.80, max 25.60, spread 7.1%)
+message_batch      write      61.06 M msg/s     1455.8 MB/s   (min 57.90, max 61.27, spread 5.5%)
+message_batch      read       41.98 M msg/s     1001.0 MB/s   (min 36.78, max 43.70, spread 16.5%)
+OK
+results: /home/ubuntu/rowan-bench/v5-epyc/results/cpp-gcc-end.csv
+=== leg cpp-gcc-end OK 2026-08-07T15:59:30Z
+--- pscheck [after-all] 2026-08-07T15:59:33Z load=5.22 5.85 5.65
+  clean: none of ours running
+  cpu0 pre : cpu0 51445316 121122 19749259 1838908586 40608 0 317799 0 0 0
+  cpu0 post: cpu0 51445404 121122 19749263 1838908995 40608 0 317799 0 0 0
+===== v5 EPYC pass DONE 2026-08-07T15:59:38Z =====
