@@ -70,15 +70,15 @@ generated/cs/.stamp: bin/schema $(SCHEMAS)
 
 build/schema_test: generated/cpp/.stamp test/main.cpp test/second.cpp
 	@mkdir -p build
-	$(CXX) $(CXXFLAGS) -Igenerated/cpp test/main.cpp test/second.cpp -o $@
+	$(CXX) $(CXXFLAGS) -Igenerated/cpp -Itest test/main.cpp test/second.cpp -o $@
 
 build/schema_test_variant: build/generated-variant/.stamp test/variant_main.cpp
 	@mkdir -p build
-	$(CXX) $(CXXFLAGS) -Ibuild/generated-variant test/variant_main.cpp -o $@
+	$(CXX) $(CXXFLAGS) -Ibuild/generated-variant -Itest test/variant_main.cpp -o $@
 
 build/schema_test_random: generated/cpp/.stamp test/random_main.cpp
 	@mkdir -p build
-	$(CXX) $(CXXFLAGS) -Igenerated/cpp test/random_main.cpp -o $@
+	$(CXX) $(CXXFLAGS) -Igenerated/cpp -Itest test/random_main.cpp -o $@
 
 build/schema_test_ludicrous: generated/cpp/ludicrous/.stamp test/ludicrous_main.cpp
 	@mkdir -p build

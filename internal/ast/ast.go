@@ -204,6 +204,12 @@ type IdentExpr struct {
 	Name string
 }
 
+// StringLit is a "..." literal — legal only as an attribute value (SPEC §4.2).
+type StringLit struct {
+	Pos   Pos
+	Value string // without the quotes
+}
+
 // MaxExpr is an enum max reference: E.Max (SPEC §4.2).
 type MaxExpr struct {
 	Pos  Pos
@@ -229,6 +235,7 @@ type ParenExpr struct {
 }
 
 func (e *IntLit) ExprPos() Pos     { return e.Pos }
+func (e *StringLit) ExprPos() Pos  { return e.Pos }
 func (e *FloatLit) ExprPos() Pos   { return e.Pos }
 func (e *IdentExpr) ExprPos() Pos  { return e.Pos }
 func (e *MaxExpr) ExprPos() Pos    { return e.Pos }

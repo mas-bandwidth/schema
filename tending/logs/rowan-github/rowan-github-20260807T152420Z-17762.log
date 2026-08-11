@@ -1,0 +1,2 @@
+2026-08-07T15:24:20Z info  log: /Users/glenn/rowan-working/schema/tending/logs/rowan-github/rowan-github-20260807T152420Z-17762.log
+2026-08-07T15:24:20Z info  argv: api repos/mas-bandwidth/schema/git/commits/914f43b967ffd171d6e72296c86ae640cd2edb60 --jq .tree.sha

@@ -215,6 +215,18 @@ func TestDiagnostics(t *testing.T) {
 			src: "package t\nenum E { A }\ntype T { e E = Zzz }\n"},
 		{name: "bool default is not a bool", want: "true or false",
 			src: "package t\ntype T { b bool = 3 }\n"},
+
+		// ---- native type mapping (SPEC §4.2) ----
+		{name: "cpp_native without cpp_include", want: "cpp_native and cpp_include go together",
+			src: "package t\ntype V [cpp_native = VMath] { x float64 }\n"},
+		{name: "cpp_include without cpp_native", want: "cpp_native and cpp_include go together",
+			src: "package t\ntype V [cpp_include = \"v.h\"] { x float64 }\n"},
+		{name: "cpp_native takes an identifier", want: "cpp_native takes an identifier",
+			src: "package t\ntype V [cpp_native = \"VMath\", cpp_include = \"v.h\"] { x float64 }\n"},
+		{name: "cpp_include takes a string", want: "cpp_include takes a quoted header path",
+			src: "package t\ntype V [cpp_native = VMath, cpp_include = vh] { x float64 }\n"},
+		{name: "a valued type attr that is not a binding is still rejected", want: "bare identifier",
+			src: "package t\ntype V [vec3 = 4] { x float64 }\n"},
 	}
 
 	for _, tc := range cases {

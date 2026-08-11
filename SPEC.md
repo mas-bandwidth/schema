@@ -760,6 +760,50 @@ type Quat [quat4] {
   — under user-defined types, the fixed-point migration (§4.10, runtime-first) is a
   re-declaration in his schemas, not a language change.
 
+### Native type mapping — `cpp_native` / `cpp_include` (2026-08-12)
+
+The proven derivation pattern (space game, the Render migration): the compiler generates
+the **basis struct** — data members only, no behavior — and a hand math type **derives**
+from it, adding operators and methods without touching layout:
+
+```
+type Vector3 [vec3, cpp_native = Vector3, cpp_include = "core_vector.h"] { ... }
+```
+
+```cpp
+// core_vector.h, hand-written:
+struct Vector3 : public space::Vector3 { /* operators, length(), ... */ };
+```
+
+With the mapping declared, generated C++ **storage speaks the native type**: every field
+of a mapped type in every generated struct (states, data views, render types, tables)
+declares `::Vector3` instead of `space::Vector3`, and every generated header that
+references it emits `#include "core_vector.h"`. Simulation code then does math on
+generated state directly — no conversion layer, no per-site casts. This is what
+flatbuffers' `native_type` attribute gestured at, done soundly: derivation guarantees
+layout identity (the emitted `static_assert`s — trivially-copyable, standard-layout —
+still hold over native-typed storage), so relocatability and the parallel scatter/gather
+property survive untouched.
+
+The rules:
+
+- **`cpp_native` takes an identifier** — the global (`::`-qualified) C++ type name.
+  **`cpp_include` takes a quoted header path** — the header declaring it. They go
+  together: one without the other is an error. String literals (`"..."`, no escapes)
+  exist in the grammar for attribute values only.
+- **Inside the basis type's own generated header the mapping is off** — references there
+  keep the basis name. The native header includes that header to derive from the basis;
+  a mapped reference would be circular. Sibling types declared in the same schema file
+  therefore store the basis type, which is the correct default for pure wire compounds.
+- **Language bindings never move the protocol id.** `cpp_*` attrs rename what one target
+  CALLS the storage; they cannot change a wire bit. The canonical fingerprint skips
+  them. (The protocol id itself hashes source files (§3.1), so editing a schema file to
+  ADD a mapping still moves the id — the exclusion is about the semantic fingerprint,
+  and about never letting a binding masquerade as a wire change.)
+- **C++ only, by prefix.** Other targets ignore `cpp_*` keys. If C# or Go ever earn a
+  native mapping, they get their own prefixed keys and their own soundness argument;
+  nothing is shared but the spelling convention.
+
 ### Contexts — the idea is DECIDED (Glenn, 2026-08-05), the mechanism PROPOSED
 
 **The need, his words:** *"OK regarding client/server #ifdefs, they're important!

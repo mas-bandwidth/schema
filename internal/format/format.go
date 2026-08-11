@@ -614,6 +614,13 @@ func fpScalar(t ast.ScalarType) string {
 func fpAttrs(attrs []ast.Attr) string {
 	var valueless, valued []string
 	for _, a := range attrs {
+		// language-binding attrs (cpp_native/cpp_include) rename what one
+		// target CALLS the storage — they cannot change a single wire bit, so
+		// they stay out of the protocol id: two units differing only in
+		// bindings speak the same protocol.
+		if strings.HasPrefix(a.Key, "cpp_") {
+			continue
+		}
 		if a.Value == nil {
 			valueless = append(valueless, a.Key)
 		} else {
@@ -641,6 +648,8 @@ func fpExpr(e ast.Expr) string {
 		return fmt.Sprintf("%g", e.Value)
 	case *ast.IdentExpr:
 		return e.Name
+	case *ast.StringLit:
+		return `"` + e.Value + `"`
 	case *ast.MaxExpr:
 		return e.Enum + ".Max"
 	case *ast.UnaryExpr:

@@ -19,6 +19,7 @@ const (
 	Ident
 	Int
 	Float
+	String  // "..." — attribute values only (SPEC §4.2); Text keeps the quotes
 	Comment // raw-scan mode only (schemafmt) — Text carries the comment verbatim
 
 	LBrace // {
@@ -274,6 +275,19 @@ func (s *state) next() Token {
 
 		case isDigit(c):
 			return s.scanNumber(p)
+
+		case c == '"':
+			start := s.off
+			s.advance()
+			for s.off < len(s.src) && s.peek() != '"' && s.peek() != '\n' {
+				s.advance()
+			}
+			if s.off >= len(s.src) || s.peek() != '"' {
+				s.errf(p, "unterminated string literal")
+				return Token{String, string(s.src[start:s.off]) + `"`, p}
+			}
+			s.advance()
+			return Token{String, string(s.src[start:s.off]), p}
 
 		default:
 			s.advance()

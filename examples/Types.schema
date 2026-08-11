@@ -9,7 +9,11 @@
 package example
 
 // Continuous vector — float64 components, the deep wire.
-type Vec3 [vec3] {
+// cpp_native/cpp_include (SPEC §4.2, Native type mapping): generated C++
+// declares Vec3 storage as ::VecMath — a hand math type deriving from the
+// generated basis struct (same layout, plus operators) — and every header
+// referencing it includes the mapped header. Other targets ignore the pair.
+type Vec3 [vec3, cpp_native = VecMath, cpp_include = "vec_math.h"] {
     x float64
     y float64
     z float64

@@ -75,6 +75,15 @@ type Struct struct {
 	// The closure (this table plus everything it references, transitively)
 	// gets table codecs and field descriptors — see TableClosure.
 	Tags   []string // inert in v1 (SPEC §4.2)
+	// C++ native type mapping (SPEC §4.2, Native type mapping): when set,
+	// generated C++ declares fields of this type as ::CppNative (a hand type
+	// deriving from the generated basis struct — same layout, plus behavior)
+	// and emits #include "CppInclude" in every header that references it.
+	// The basis struct still emits in its own header; references inside that
+	// header keep the basis name (the native header includes it — a mapped
+	// reference there would be circular). C++-only; other targets ignore it.
+	CppNative  string
+	CppInclude string
 	Fields []*Field // flattened; branch fields carry Guard — storage emission
 	Items  []Item   // the wire tree: fields and branches in wire order — function emission
 }

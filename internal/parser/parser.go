@@ -543,6 +543,9 @@ func (p *parser) parsePrimary() ast.Expr {
 			p.errf(t.Pos, "malformed float literal %q", t.Text)
 		}
 		return &ast.FloatLit{Pos: t.Pos, Value: v, Text: t.Text}
+	case scanner.String:
+		p.advance()
+		return &ast.StringLit{Pos: t.Pos, Value: strings.Trim(t.Text, `"`)}
 	case scanner.Ident:
 		p.advance()
 		// E.Max — Max is contextual after '.' (SPEC §4.2)

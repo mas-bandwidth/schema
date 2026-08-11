@@ -576,11 +576,36 @@ func (c *checker) resolveBodies() {
 			case *ast.TypeDecl:
 				st := &ir.Struct{Name: d.Name, IsTable: d.IsTable}
 				for _, a := range d.Attrs {
-					if a.Value != nil {
-						c.errf(a.Pos, "a type tag is a bare identifier (SPEC §4.2 Type tags)")
-						continue
+					switch a.Key {
+					case "cpp_native":
+						// C++ native type mapping (SPEC §4.2): generated C++
+						// refers to this type by the mapped GLOBAL name, so a
+						// hand math type deriving from the generated basis can
+						// live in storage directly. The mapping is C++-only;
+						// every other target ignores it.
+						id, ok := a.Value.(*ast.IdentExpr)
+						if !ok {
+							c.errf(a.Pos, "cpp_native takes an identifier: the global C++ type name (SPEC §4.2 Native type mapping)")
+							continue
+						}
+						st.CppNative = id.Name
+					case "cpp_include":
+						lit, ok := a.Value.(*ast.StringLit)
+						if !ok {
+							c.errf(a.Pos, `cpp_include takes a quoted header path, e.g. cpp_include = "core_vector.h" (SPEC §4.2 Native type mapping)`)
+							continue
+						}
+						st.CppInclude = lit.Value
+					default:
+						if a.Value != nil {
+							c.errf(a.Pos, "a type tag is a bare identifier (SPEC §4.2 Type tags)")
+							continue
+						}
+						st.Tags = append(st.Tags, a.Key)
 					}
-					st.Tags = append(st.Tags, a.Key)
+				}
+				if (st.CppNative == "") != (st.CppInclude == "") {
+					c.errf(d.Pos, "cpp_native and cpp_include go together: the mapped name needs the header that declares it (SPEC §4.2 Native type mapping)")
 				}
 				c.structs[d.Name] = st
 			case *ast.MessageDecl:

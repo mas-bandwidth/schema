@@ -202,6 +202,7 @@ type gen struct {
 
 	body           strings.Builder
 	includes       map[string]bool
+	nativeIncludes map[string]bool // cpp_include headers of referenced native-mapped types
 	emitted        map[string]bool    // consts of this file emitted so far (symbolic-reference safety)
 	bulkBytes      map[*ir.Field]bool // fixed [N]uint8 arrays at statically byte-aligned positions (ir.AlignedFixedByteArrays)
 	needsSerialize bool               // the file emits wire functions -> include "serialize.h"
@@ -256,6 +257,17 @@ func (g *gen) assemble() []byte {
 			}
 		}
 	}
+	if len(g.nativeIncludes) > 0 {
+		names := make([]string, 0, len(g.nativeIncludes))
+		for n := range g.nativeIncludes {
+			names = append(names, n)
+		}
+		sort.Strings(names)
+		h.WriteString("\n// native type mapping (cpp_native, SPEC §4.2): the hand types storage speaks\n")
+		for _, n := range names {
+			fmt.Fprintf(&h, "#include \"%s\"\n", n)
+		}
+	}
 	fmt.Fprintf(&h, "\nnamespace %s {\n\n", g.unit.Package)
 	body := g.body.String()
 	h.WriteString(body)
@@ -268,6 +280,7 @@ func (g *gen) assemble() []byte {
 
 func (g *gen) emitDataFile(carriesProtocolId bool) {
 	g.includes = map[string]bool{}
+	g.nativeIncludes = map[string]bool{}
 	g.emitted = map[string]bool{}
 
 	if carriesProtocolId {
@@ -324,6 +337,7 @@ func (g *gen) emitDataFile(carriesProtocolId bool) {
 // renderable rather than folding to literals.
 func (g *gen) emitWireFile() {
 	g.includes = map[string]bool{}
+	g.nativeIncludes = map[string]bool{}
 	g.emitted = map[string]bool{}
 	for _, d := range g.file.Decls {
 		if c, ok := d.(*ir.Const); ok {
@@ -771,7 +785,16 @@ func (g *gen) cppFieldType(t ir.FieldType) (string, bool) {
 		return "double", false
 	case ir.TNamed:
 		g.noteRef(t.Name)
-		_, isStruct := t.Ref.(*ir.Struct)
+		st, isStruct := t.Ref.(*ir.Struct)
+		if isStruct && st.CppNative != "" && g.unit.DeclFile[t.Name] != g.file.Base {
+			// native type mapping (SPEC §4.2): storage speaks the hand math
+			// type deriving from the generated basis — same layout (the
+			// relocatability asserts still hold), plus its operations. Inside
+			// the basis's own header the mapping is off: the native header
+			// includes that header, so a mapped reference would be circular.
+			g.nativeIncludes[st.CppInclude] = true
+			return "::" + st.CppNative, true
+		}
 		return t.Name, isStruct
 	}
 	return "/* ? */", false
