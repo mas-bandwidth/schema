@@ -6,6 +6,7 @@
 #include "EnumsWire.h"
 #include "MessagesWire.h"
 #include "ObjectsWire.h"
+#include "RenderWire.h"
 #include "TypesWire.h"
 #include "WireWire.h"
 
@@ -15,6 +16,7 @@
 #include "EnumsTable.h"
 #include "MessagesTable.h"
 #include "ObjectsTable.h"
+#include "RenderTable.h"
 #include "TypesTable.h"
 #include "WireTable.h"
 

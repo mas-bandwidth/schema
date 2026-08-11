@@ -7,12 +7,14 @@
 #include <cstdlib>
 #include <cstring>
 #include <type_traits>
+#include <thread>
 
 #include "ConstantsWire.h"
 #include "ContextsWire.h"
 #include "EnumsWire.h"
 #include "MessagesWire.h"
 #include "ObjectsWire.h"
+#include "RenderWire.h"
 #include "TypesWire.h"
 #include "WireWire.h"
 
@@ -22,6 +24,7 @@
 #include "EnumsTable.h"
 #include "MessagesTable.h"
 #include "ObjectsTable.h"
+#include "RenderTable.h"
 #include "TypesTable.h"
 #include "WireTable.h"
 
@@ -964,6 +967,120 @@ int main()
         TableReport rep4;
         check( TableReadTestData( buffer, tw.offset, out4, rep4 ) );
         check( rep4.clamped == 1 && out4.a == 100 );
+    }
+
+    // ---- parallel scatter/gather (Render.schema): threads build table
+    // types independently and the result is byte-identical to serial — the
+    // relocatable-by-construction property doing real work. flatbuffers
+    // could not express this: one block, serial offsets.
+    {
+        const int NumWorkers = 4;
+        const int BlocksPerWorker = 8;
+        const int NumBlocks = NumWorkers * BlocksPerWorker;
+
+        auto fill_block = []( RenderBlock & block, int blockIndex )
+        {
+            new ( &block ) RenderBlock{};
+            block.worker_index = (uint32_t) ( blockIndex / BlocksPerWorker );
+            block.sprite_count_hint = (uint32_t) ( blockIndex * 3 );
+            block.sprites_count = 1 + ( blockIndex % 4 );
+            for ( int s = 0; s < block.sprites_count; s++ )
+            {
+                RenderSprite & sprite = block.sprites[s];
+                sprite.sort_key = 0x1000000000000000ull + (uint64_t) blockIndex * 256 + (uint64_t) s;
+                sprite.mesh_id = (uint32_t) ( 100 + blockIndex );
+                sprite.material_id = (uint32_t) ( 7 + s );
+                sprite.layer = (uint8_t) ( blockIndex % 3 );
+                sprite.team = ( s % 2 ) ? Team::Red : Team::Blue;
+            }
+        };
+
+        // 1) raw-struct scatter: workers write disjoint slices of ONE shared
+        // array in parallel (the render-blob pattern), vs the same serially
+        static RenderBlock parallel_blocks[NumBlocks];
+        static RenderBlock serial_blocks[NumBlocks];
+
+        {
+            std::thread workers[NumWorkers];
+            for ( int w = 0; w < NumWorkers; w++ )
+            {
+                workers[w] = std::thread( [w, &fill_block]()
+                {
+                    for ( int b = w * BlocksPerWorker; b < ( w + 1 ) * BlocksPerWorker; b++ )
+                    {
+                        fill_block( parallel_blocks[b], b );
+                    }
+                });
+            }
+            for ( int w = 0; w < NumWorkers; w++ )
+            {
+                workers[w].join();
+            }
+        }
+
+        for ( int b = 0; b < NumBlocks; b++ )
+        {
+            fill_block( serial_blocks[b], b );
+        }
+
+        check( memcmp( parallel_blocks, serial_blocks, sizeof( serial_blocks ) ) == 0 );
+
+        // 2) table-wire scatter: workers ENCODE into private buffers in
+        // parallel; the gather is concatenation, byte-identical to serial
+        static uint8_t worker_wire[NumWorkers][BlocksPerWorker * 2048];
+        static int64_t worker_wire_bytes[NumWorkers];
+
+        {
+            std::thread workers[NumWorkers];
+            for ( int w = 0; w < NumWorkers; w++ )
+            {
+                workers[w] = std::thread( [w]()
+                {
+                    TableWriter writer( worker_wire[w], sizeof( worker_wire[w] ) );
+                    for ( int b = w * BlocksPerWorker; b < ( w + 1 ) * BlocksPerWorker; b++ )
+                    {
+                        TableWriteRenderBlock( writer, parallel_blocks[b] );
+                    }
+                    worker_wire_bytes[w] = writer.offset;
+                });
+            }
+            for ( int w = 0; w < NumWorkers; w++ )
+            {
+                workers[w].join();
+            }
+        }
+
+        static uint8_t gathered[NumBlocks * 2048];
+        int64_t gathered_bytes = 0;
+        for ( int w = 0; w < NumWorkers; w++ )
+        {
+            memcpy( gathered + gathered_bytes, worker_wire[w], (size_t) worker_wire_bytes[w] );
+            gathered_bytes += worker_wire_bytes[w];
+        }
+
+        static uint8_t serial_wire[NumBlocks * 2048];
+        TableWriter serial_writer( serial_wire, sizeof( serial_wire ) );
+        for ( int b = 0; b < NumBlocks; b++ )
+        {
+            TableWriteRenderBlock( serial_writer, serial_blocks[b] );
+        }
+
+        check( gathered_bytes == serial_writer.offset );
+        check( memcmp( gathered, serial_wire, (size_t) gathered_bytes ) == 0 );
+
+        // and the gathered stream decodes back faithfully
+        {
+            TableReport report;
+            TableReader reader( gathered, gathered_bytes, &report );
+            static RenderBlock decoded;
+            check( TableReadRenderBlock( reader, decoded ) );
+            check( decoded.worker_index == 0 && decoded.sprites_count == 1 );
+            check( decoded.sprites[0].mesh_id == 100 && decoded.sprites[0].team == Team::Blue );
+            check( report.unknown == 0 && !report.malformed );
+        }
+
+        // the relocatability contract these tests ride on, stated directly
+        static_assert( std::is_trivially_copyable<RenderBlock>::value, "parallel scatter requires relocatable types" );
     }
 
     if ( touch_generated_types() != 0 )
