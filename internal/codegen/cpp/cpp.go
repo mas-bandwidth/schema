@@ -67,8 +67,10 @@ func Generate(u *ir.Unit, opts Options) (map[string][]byte, error) {
 		bases[f.Base] = true
 	}
 	for _, f := range u.Files {
-		if bases[f.Base+"Wire"] {
-			return nil, fmt.Errorf("schema files %s and %sWire collide — the C++ emitter writes %sWire.h as %s's wire header; rename one file (SPEC §6.1)", f.Base, f.Base, f.Base, f.Base)
+		for _, suffix := range []string{"Wire", "Table"} {
+			if bases[f.Base+suffix] {
+				return nil, fmt.Errorf("schema files %s and %s%s collide — the C++ emitter writes %s%s.h as %s's %s header; rename one file (SPEC §6.1)", f.Base, f.Base, suffix, f.Base, suffix, f.Base, strings.ToLower(suffix))
+			}
 		}
 	}
 	out := map[string][]byte{}
@@ -83,6 +85,13 @@ func Generate(u *ir.Unit, opts Options) (map[string][]byte, error) {
 		w := &gen{unit: u, file: f, opts: opts, msgOwner: msgOwner, objOwner: objOwner, wire: true}
 		w.emitWireFile()
 		out[f.Base+"Wire.h"] = w.assemble()
+	}
+	tables, err := GenerateTable(u)
+	if err != nil {
+		return nil, err
+	}
+	for name, data := range tables {
+		out[name] = data
 	}
 	return out, nil
 }
@@ -466,6 +475,14 @@ func (g *gen) emitEnum(d *ir.Enum) {
 		g.pf("    %s = %d,\n", v, i+1)
 	}
 	g.pf("};\n\n")
+	g.pf("// EnumName: debug/log name for any %s value, out-of-set included\n", d.Name)
+	g.pf("inline const char * EnumName( %s value )\n{\n", d.Name)
+	g.pf("    switch ( value )\n    {\n")
+	g.pf("        case %s::None: return \"None\";\n", d.Name)
+	for _, v := range d.Variants {
+		g.pf("        case %s::%s: return \"%s\";\n", d.Name, v, v)
+	}
+	g.pf("        default: return \"???\";\n    }\n}\n\n")
 }
 
 func (g *gen) emitFlags(d *ir.Flags) {

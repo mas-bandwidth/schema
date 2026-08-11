@@ -56,6 +56,16 @@ func newWriteStream() (*serialize.WriteStream, []byte) {
 	return serialize.NewWriteStream(buffer), buffer
 }
 
+// goldenTable byte-compares table-wire output against the C++-pinned golden.
+func goldenTable(name string, data []byte) {
+	golden, err := os.ReadFile("../../testdata/table/" + name + ".bin")
+	checkErr(err, "read table golden "+name)
+	if err != nil {
+		return
+	}
+	check(bytes.Equal(data, golden), "table golden "+name+" — Go bytes must equal the C++-pinned bytes")
+}
+
 func main() {
 	// ---- ShipCreate: the bool-gated flags branch, both ways ----
 	{
@@ -561,6 +571,229 @@ func main() {
 		check(tag == example.ObjectTypeTurret, "object tag round-trips")
 		checkErr(example.ReadObjectType(rs, &tag), "read object type sentinel")
 		check(tag == example.ObjectTypeNone, "the None sentinel round-trips")
+	}
+
+	// ================= THE TABLE WIRE (notes/table-wire.md) =================
+	// The same instances the C++ test pins in testdata/table/*.bin — the Go
+	// table writer must produce byte-identical output, and the Go reader must
+	// honor the same permissive contract.
+
+	// ---- RigidBody: pins, round-trip, branch-guard elision ----
+	{
+		in := example.RigidBody{}
+		in.Position = example.Vec3{X: 1.5, Y: -2.5, Z: 3.25}
+		in.Orientation = example.Quat{X: 0.1, Y: 0.2, Z: 0.3, W: 0.9}
+		in.AtRest = false
+		in.LinearVelocity = example.Vec3{X: 10.0, Y: 20.0, Z: -3.0}
+		in.AngularVelocity = example.Vec3{X: 0.25, Y: 0.5, Z: 0.75}
+
+		wire := example.TableWriteRigidBody(&in)
+		goldenTable("rigidbody_moving", wire)
+
+		out := example.RigidBody{}
+		rep := example.TableReport{}
+		check(example.TableReadRigidBody(wire, &out, &rep), "table read RigidBody")
+		check(rep == example.TableReport{}, "same-schema table decode is silent")
+		check(out == in, "RigidBody table round-trips")
+
+		in.AtRest = true
+		atRest := example.TableWriteRigidBody(&in)
+		goldenTable("rigidbody_at_rest", atRest)
+
+		out2 := example.RigidBody{}
+		out2.LinearVelocity = example.Vec3{X: 99, Y: 99, Z: 99} // dirty — prefill must reset
+		rep2 := example.TableReport{}
+		check(example.TableReadRigidBody(atRest, &out2, &rep2), "table read RigidBody at rest")
+		check(out2.AtRest, "at_rest reads true")
+		check(out2.LinearVelocity == example.Vec3{} && out2.AngularVelocity == example.Vec3{},
+			"the guard kept both velocities off the wire; prefill supplies the defaults")
+	}
+
+	// ---- the all-default instance is a bare terminator: 2 bytes ----
+	{
+		in := example.RigidBody{}
+		check(len(example.TableWriteRigidBody(&in)) == 2, "all-default RigidBody is 2 bytes")
+
+		config := example.NewProbeConfig()
+		check(len(example.TableWriteProbeConfig(&config)) == 2, "at-defaults ProbeConfig is 2 bytes")
+
+		out := example.ProbeConfig{}
+		out.Retries = 99
+		rep := example.TableReport{}
+		check(example.TableReadProbeConfig(example.TableWriteProbeConfig(&config), &out, &rep),
+			"table read at-defaults ProbeConfig")
+		check(out.Retries == -1 && out.Preferred == example.WeaponRailgun,
+			"prefill restores specified defaults on an empty table")
+	}
+
+	// ---- ProbeArray: fixed table array, nested defaults, its pin ----
+	{
+		in := example.NewProbeArray()
+		in.Samples[0].Orientation = 90.0
+		in.Samples[0].RawDelta = -5
+		in.Samples[0].BigDelta = -1234567890123
+		in.Samples[0].Weapon = example.WeaponLaser
+		in.Samples[0].HasTarget = true
+		in.Samples[0].TargetId = 777
+		in.Samples[0].SamplesCount = 1
+		in.Samples[0].Samples[0] = 42
+		in.Samples[1].Active = false
+		in.Samples[1].Orientation = -45.5
+		in.Samples[1].RawDelta = 7
+		in.Samples[1].BigDelta = 99
+		in.Samples[1].IdleTicks = 1000
+		in.Samples[1].SamplesCount = 2
+		in.Samples[1].Samples[0] = 7
+		in.Samples[1].Samples[1] = 8
+		in.Config.Retries = 3
+		in.Config.Preferred = example.WeaponMissile
+
+		wire := example.TableWriteProbeArray(&in)
+		goldenTable("probearray", wire)
+
+		out := example.ProbeArray{}
+		rep := example.TableReport{}
+		check(example.TableReadProbeArray(wire, &out, &rep), "table read ProbeArray")
+		check(rep.Unknown == 0 && rep.KindMismatch == 0 && !rep.Malformed, "probearray decode is clean")
+		check(out.Samples[0].Weapon == example.WeaponLaser && out.Samples[0].TargetId == 777,
+			"taken-branch fields round-trip")
+		check(!out.Samples[1].Active && out.Samples[1].IdleTicks == 1000, "else-branch fields round-trip")
+		check(out.Samples[1].Weapon == example.WeaponNone && !out.Samples[1].HasTarget,
+			"untaken-branch fields stayed off the wire and read as defaults")
+		check(out.Config.Retries == 3 && out.Config.Preferred == example.WeaponMissile,
+			"nested table round-trips")
+	}
+
+	// ---- TestData: strings, counted arrays, bits, fixed bytes, its pin ----
+	{
+		in := testDataInstance()
+		wire := example.TableWriteTestData(&in)
+		goldenTable("testdata", wire)
+
+		out := example.TestData{}
+		rep := example.TableReport{}
+		check(example.TableReadTestData(wire, &out, &rep), "table read TestData")
+		check(rep == example.TableReport{}, "testdata table decode is silent")
+		check(out == in, "TestData table round-trips")
+	}
+
+	// ---- reflection descriptors: walk, read and WRITE a table generically ----
+	{
+		info := example.TableTypeRigidBody()
+		check(info.Name == "RigidBody", "descriptor names its type")
+		check(len(info.Fields) == 5, "RigidBody descriptor carries 5 fields")
+
+		// find fields by name; check identity, nesting and guards
+		var atRest, position, linearVelocity *example.TableFieldInfo
+		for i := range info.Fields {
+			switch info.Fields[i].Name {
+			case "at_rest":
+				atRest = &info.Fields[i]
+			case "position":
+				position = &info.Fields[i]
+			case "linear_velocity":
+				linearVelocity = &info.Fields[i]
+			}
+		}
+		check(atRest != nil && position != nil && linearVelocity != nil, "fields found by name")
+		check(atRest.Kind == 1 && atRest.Guard == "", "at_rest is an unguarded bool")
+		check(position.Table == example.TableTypeVec3(), "nested descriptor link IS the Vec3 descriptor")
+		check(position.TypeName == "Vec3", "nested field carries its schema type name")
+		check(linearVelocity.Guard == "!at_rest", "the branch guard is machine-usable")
+
+		// generic WRITE by name (Go's stand-in for the C++ offset write), then
+		// prove the storage sees it — directly AND back through TableGet
+		body := example.RigidBody{}
+		check(example.TableSetRigidBody(&body, "at_rest", true), "TableSet writes a bool by name")
+		check(body.AtRest, "the storage sees the generic write")
+		got, ok := example.TableGetRigidBody(&body, "at_rest")
+		b, isBool := got.(bool)
+		check(ok && isBool && b, "TableGet reads the bool back")
+		check(!example.TableSetRigidBody(&body, "position", 1.0), "nested tables refuse the scalar write path")
+		check(!example.TableSetRigidBody(&body, "no_such_field", 1.0), "unknown fields refuse")
+
+		// generic READ of a nested double through two descriptor hops
+		body.Position.Y = -2.5
+		nested, ok := example.TableGetRigidBody(&body, "position")
+		vec, isVec := nested.(*example.Vec3)
+		check(ok && isVec, "nested tables read as a typed pointer")
+		y, ok := example.TableGetVec3(vec, "y")
+		yf, isFloat := y.(float64)
+		check(ok && isFloat && yf == -2.5, "nested double reads through two hops")
+
+		// enum metadata: ProbeSample.weapon names its values and knows its max
+		sample := example.TableTypeProbeSample()
+		var weapon, samples *example.TableFieldInfo
+		for i := range sample.Fields {
+			switch sample.Fields[i].Name {
+			case "weapon":
+				weapon = &sample.Fields[i]
+			case "samples":
+				samples = &sample.Fields[i]
+			}
+		}
+		// EnumMax is the declared WIRE max ([max = 15] widening), not the
+		// current variant count — future variants decode without clamping
+		check(weapon != nil && weapon.EnumName != nil && weapon.EnumMax == 15, "weapon carries enum metadata")
+		check(weapon.EnumName(0) == "None", "the None value names itself")
+		check(weapon.EnumName(1) == "Laser", "enum values name themselves")
+		check(weapon.EnumName(200) == "???", "out-of-set values name as ???")
+		check(weapon.Guard == "active", "weapon's branch guard")
+
+		// counted array metadata: element kind, bound, count companion
+		check(samples != nil && samples.IsArray && samples.Counted, "samples is a counted array")
+		check(samples.ArrayBound == 8 && samples.Kind == 7, "bound 8, element kind u16")
+
+		// declared ranges surface for editors (TestData.a is [-100, 100])
+		testdata := example.TableTypeTestData()
+		var aField *example.TableFieldInfo
+		for i := range testdata.Fields {
+			if testdata.Fields[i].Name == "a" {
+				aField = &testdata.Fields[i]
+			}
+		}
+		check(aField != nil && aField.HasRange, "TestData.a has a declared range")
+		check(aField.RangeMin == -100.0 && aField.RangeMax == 100.0, "the [-100, 100] editor range")
+
+		// TableSet clamps exactly like the read side: a = 500 -> 100
+		td := example.TestData{}
+		check(example.TableSetTestData(&td, "a", int64(500)), "TableSet accepts an editor numeric")
+		check(td.A == 100, "TableSet clamped to the declared max")
+	}
+
+	// ---- the permissive read contract, exercised with hand-built buffers ----
+	{
+		// unknown field id: skipped and counted, decode continues
+		unknownField := []byte{0xEF, 0xBE, 6, 42, 0x00, 0x00}
+		out := example.RigidBody{}
+		rep := example.TableReport{}
+		check(example.TableReadRigidBody(unknownField, &out, &rep), "table read with unknown field")
+		check(rep.Unknown == 1 && !rep.Malformed, "unknown field counted, not fatal")
+
+		// kind mismatch on a known id (at_rest as f32): skipped, default kept
+		changedKind := []byte{0xEB, 0xF9, 10, 0, 0, 0, 0, 0x00, 0x00}
+		out2 := example.RigidBody{}
+		rep2 := example.TableReport{}
+		check(example.TableReadRigidBody(changedKind, &out2, &rep2), "table read with changed kind")
+		check(rep2.KindMismatch == 1 && !rep2.Malformed && !out2.AtRest,
+			"changed kind skipped, default kept")
+
+		// truncation: malformed reported, decode stops without crashing
+		truncated := []byte{0xEB, 0xF9, 1}
+		out3 := example.RigidBody{}
+		rep3 := example.TableReport{}
+		check(!example.TableReadRigidBody(truncated, &out3, &rep3), "truncated table read fails")
+		check(rep3.Malformed, "truncation reported as malformed")
+
+		// out-of-range int clamps and counts (TestData.a is [-100, 100])
+		narrow := example.TestData{}
+		narrow.A = 50
+		wire := example.TableWriteTestData(&narrow)
+		wire[3] = 200 // low byte of a's i32 payload: 50 -> 200
+		out4 := example.TestData{}
+		rep4 := example.TableReport{}
+		check(example.TableReadTestData(wire, &out4, &rep4), "table read with out-of-range value")
+		check(rep4.Clamped == 1 && out4.A == 100, "out-of-range clamps to the declared max")
 	}
 
 	if failed {

@@ -75,7 +75,21 @@ design inputs — re-verify against each library's source at implementation time
 
 ## License
 
-AGPL-3.0. See [LICENSE](LICENSE).
+**The compiler is AGPL-3.0 — and will stay that way. The code it generates is
+yours.**
+
+- The schema compiler (everything in this repository) is licensed under the
+  GNU Affero General Public License v3.0. See [LICENSE](LICENSE). If you
+  modify the compiler and run it as a service or distribute it, the AGPL's
+  terms apply to those modifications.
+- **Generated code is explicitly NOT covered by the AGPL.** The output the
+  compiler produces from YOUR schema files belongs to YOU, under whatever
+  terms you choose — including in closed-source projects. Running the
+  compiler over schemas you own does not make your generated serializers,
+  table codecs, or reflection descriptors derivative works of the compiler,
+  and this grant is intentional and permanent: schema is meant to be useful
+  to people shipping proprietary software. Only the compiler itself is open
+  source.
 
 ## Author
 

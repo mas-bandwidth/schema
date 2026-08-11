@@ -28,6 +28,19 @@ enum class DriveMode : uint8_t {
     Ludicrous = 3,
 };
 
+// EnumName: debug/log name for any DriveMode value, out-of-set included
+inline const char * EnumName( DriveMode value )
+{
+    switch ( value )
+    {
+        case DriveMode::None: return "None";
+        case DriveMode::Cruise: return "Cruise";
+        case DriveMode::Warp: return "Warp";
+        case DriveMode::Ludicrous: return "Ludicrous";
+        default: return "???";
+    }
+}
+
 // type FixedProbe
 struct FixedProbe {
     int32_t angle = 0; // fixed(16, 16) — Q16.16, raw value scaled by 2^16; bounds in whole units; wire [-180, 180]

@@ -85,6 +85,7 @@ func Unit(files []SourceFile) (*ir.Unit, []error) {
 	c.checkClaimedNames()
 	c.checkTargetNames()
 	c.assemble()
+	c.checkTables()
 	c.unit.ProtocolId = protocolId(files)
 
 	if len(c.errs) > 0 {
@@ -573,7 +574,7 @@ func (c *checker) resolveBodies() {
 		for _, d := range f.AST.Decls {
 			switch d := d.(type) {
 			case *ast.TypeDecl:
-				st := &ir.Struct{Name: d.Name}
+				st := &ir.Struct{Name: d.Name, IsTable: d.IsTable}
 				for _, a := range d.Attrs {
 					if a.Value != nil {
 						c.errf(a.Pos, "a type tag is a bare identifier (SPEC §4.2 Type tags)")
@@ -1379,6 +1380,40 @@ var targetReserved = func() map[string]string {
 // coexist in one type (SPEC §4.6).
 func goExportName(name string) string {
 	return ir.GoExportName(name)
+}
+
+// checkTables enforces the table closure's wire capability: a `table` and
+// everything it references, transitively, must stay on table-wire kinds.
+// int128/uint128, fixed(I, F) and bits wider than 64 have no table-wire kind
+// (notes/table-wire.md), so they are refused HERE, loudly, instead of
+// surprising a pack run or a generated reader later.
+func (c *checker) checkTables() {
+	closure := ir.TableClosure(c.unit)
+	for name := range closure {
+		st := c.unit.Structs[name]
+		if st == nil {
+			continue
+		}
+		for _, f := range st.Fields {
+			var bad string
+			switch {
+			case f.Type.Kind == ir.TInt && f.Type.Width == 128:
+				bad = "int128/uint128"
+			case f.Type.Kind == ir.TFixed:
+				bad = "fixed(I, F)"
+			case f.Type.Kind == ir.TBits && f.Type.Width > 64:
+				bad = fmt.Sprintf("bits(%d)", f.Type.Width)
+			}
+			if bad != "" {
+				pos := ast.Pos{}
+				if d, ok := c.astDecls[name]; ok {
+					pos = d.DeclPos()
+				}
+				c.errf(pos, "%s.%s: %s has no table-wire kind, and %s is in a table's closure — a `table` and everything it references must stay on table-wire kinds (notes/table-wire.md)",
+					name, f.Name, bad, name)
+			}
+		}
+	}
 }
 
 func (c *checker) checkTargetNames() {

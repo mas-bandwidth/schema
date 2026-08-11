@@ -64,7 +64,7 @@ type QuantizedRotation {
 // zero-on-untaken-branch rule, the language's contract rather than a
 // convention the caller remembers. The branch costs no wire bits beyond the
 // bool already paid for (back-referencing, SPEC §4.5).
-type RigidBody {
+table RigidBody {
     position    Vec3
     orientation Quat
     at_rest     bool

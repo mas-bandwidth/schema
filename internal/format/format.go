@@ -523,7 +523,11 @@ func fpDecl(b *strings.Builder, d ast.Decl) {
 	case *ast.ContextsDecl:
 		fmt.Fprintf(b, "contexts {%s}\n", fpNames(d.Names))
 	case *ast.TypeDecl:
-		fmt.Fprintf(b, "type %s %s\n", d.Name, fpAttrs(d.Attrs))
+		kw := "type"
+		if d.IsTable {
+			kw = "table"
+		}
+		fmt.Fprintf(b, "%s %s %s\n", kw, d.Name, fpAttrs(d.Attrs))
 		fpBlock(b, d.Body)
 	case *ast.MessageDecl:
 		fmt.Fprintf(b, "message %s\n", d.Name)

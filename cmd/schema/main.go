@@ -6,6 +6,7 @@
 package main
 
 import (
+	"encoding/json"
 	"flag"
 	"fmt"
 	"os"
@@ -20,6 +21,7 @@ import (
 	"github.com/mas-bandwidth/schema/internal/codegen/rust"
 	"github.com/mas-bandwidth/schema/internal/format"
 	"github.com/mas-bandwidth/schema/internal/ir"
+	"github.com/mas-bandwidth/schema/internal/pack"
 	"github.com/mas-bandwidth/schema/internal/parser"
 )
 
@@ -80,6 +82,34 @@ func main() {
 			}
 			fmt.Printf("wrote %s\n", path)
 		}
+	case "pack":
+		if len(os.Args) != 3 {
+			fatalf("usage: schema pack <manifest.json>")
+		}
+		manifestPath := os.Args[2]
+		data, err := os.ReadFile(manifestPath)
+		if err != nil {
+			fatalf("%v", err)
+		}
+		var m pack.Manifest
+		if err := json.Unmarshal(data, &m); err != nil {
+			fatalf("%s: %v", manifestPath, err)
+		}
+		baseDir := filepath.Dir(manifestPath)
+		unit := loadUnit([]string{filepath.Join(baseDir, m.Unit)})
+		enc := &pack.Encoder{Unit: unit}
+		for _, out := range m.Outputs {
+			bin, err := pack.BuildOutput(unit, enc, out, baseDir)
+			if err != nil {
+				fatalf("%v", err)
+			}
+			path := filepath.Join(baseDir, out.File)
+			if err := os.WriteFile(path, bin, 0o644); err != nil {
+				fatalf("%v", err)
+			}
+			fmt.Printf("wrote %s (%d bytes, protocol id 0x%016x, content hash 0x%016x)\n",
+				path, len(bin), unit.ProtocolId, pack.Fnv64a(bin[20:]))
+		}
 	default:
 		usage()
 		os.Exit(2)
@@ -92,9 +122,12 @@ func usage() {
   schema generate [--lang cpp|cs|go|rust] [--cpp-message union|variant] [--out generated] [dir|files...]
   schema id       [dir|files...]
   schema fmt      [dir|files...]
+  schema pack     <manifest.json>
 
 Every command formats the unit's schema files in place before processing them
 (schemafmt — one style, no options); a file already in format is not touched.
+pack is the data compiler: JSON instance files -> a versioned, hashed .bin,
+per the manifest's ordered collections (the table layer's transition form).
 `)
 }
 

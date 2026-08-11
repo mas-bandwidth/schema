@@ -1,0 +1,31 @@
+// Render.schema — the parallel scatter/gather worked example. Table types
+// are trivially copyable and standard-layout by enforced construction, so
+// N workers can build instances INDEPENDENTLY — into their own memory, or
+// scattered directly into disjoint sections of one shared blob — and the
+// gather is concatenation or offset arithmetic, never a serial builder.
+// This is the RenderX pattern flatbuffers could not express: its one-block
+// builder computes offsets serially, so parallel producers cannot exist.
+//
+// Field order is largest-alignment-first: the natural C++ layout then has
+// zero interior padding, and packed sequential mirrors in other languages
+// match byte-for-byte. The corpus test scatters blocks across real threads
+// and proves the parallel result byte-identical to the serial one, on both
+// the raw-struct blob and the table wire.
+
+package example
+
+const RenderBlockMaxSprites = 64
+
+table RenderSprite {
+    sort_key    uint64
+    mesh_id     uint32
+    material_id uint32
+    layer       uint8
+    team        Team
+}
+
+table RenderBlock {
+    worker_index      uint32
+    sprite_count_hint uint32
+    sprites           [<= RenderBlockMaxSprites]RenderSprite
+}

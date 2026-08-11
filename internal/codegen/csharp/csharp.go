@@ -64,10 +64,26 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 	msgOwner := ir.MessageOwner(u)
 	objOwner := ir.ObjectOwner(u)
 	batched, needCore := batchPlan(u)
+	bases := map[string]bool{}
+	for _, f := range u.Files {
+		bases[f.Base] = true
+	}
+	for _, f := range u.Files {
+		if bases[f.Base+"Table"] {
+			return nil, fmt.Errorf("schema files %s and %sTable collide — the C# emitter writes %sTable.cs as %s's table codec; rename one file", f.Base, f.Base, f.Base, f.Base)
+		}
+	}
 	for _, f := range u.Files {
 		g := &gen{unit: u, file: f, msgOwner: msgOwner, objOwner: objOwner, batched: batched, needCore: needCore}
 		g.emitFile(f.Base == home)
 		out[f.Base+".cs"] = g.assemble()
+	}
+	tables, err := GenerateTable(u)
+	if err != nil {
+		return nil, err
+	}
+	for name, data := range tables {
+		out[name] = data
 	}
 	return out, nil
 }
@@ -165,16 +181,22 @@ func (g *gen) assemble() []byte {
 	if g.needsSystem || g.needsCompiler || g.needsSerialize {
 		h.WriteString("\n")
 	}
-	fmt.Fprintf(&h, "namespace %s;\n\n", capitalize(g.unit.Package))
-	h.WriteString(g.types.String())
+	// block namespace, not file-scoped: Unity's compiler is C# 9 and
+	// file-scoped namespaces are C# 10 — the generated code must compile
+	// everywhere the game does
+	fmt.Fprintf(&h, "namespace %s\n{\n\n", capitalize(g.unit.Package))
+	var body strings.Builder
+	body.WriteString(g.types.String())
 	if g.schema.Len() > 0 {
-		h.WriteString("// Schema carries every generated function and constant of the unit — C# has\n")
-		h.WriteString("// no namespace-level functions or constants, so the static class is their\n")
-		h.WriteString("// home (SPEC §6.1 naming); partial, one slice per generated file.\n")
-		h.WriteString("public static partial class Schema\n{\n")
-		h.WriteString(indent4(g.schema.String()))
-		h.WriteString("}\n")
+		body.WriteString("// Schema carries every generated function and constant of the unit — C# has\n")
+		body.WriteString("// no namespace-level functions or constants, so the static class is their\n")
+		body.WriteString("// home (SPEC §6.1 naming); partial, one slice per generated file.\n")
+		body.WriteString("public static partial class Schema\n{\n")
+		body.WriteString(indent4(g.schema.String()))
+		body.WriteString("}\n")
 	}
+	h.WriteString(indent4(body.String()))
+	h.WriteString("\n}\n")
 	return []byte(h.String())
 }
 
@@ -298,6 +320,18 @@ func (g *gen) emitEnum(d *ir.Enum) {
 		g.tf("    %s = %d,\n", v, i+1)
 	}
 	g.tf("}\n\n")
+	// the ulong parameter (not the enum type) keeps out-of-set values exact:
+	// a cast through a narrower backing would truncate 256 -> 0 -> "None"
+	// for an 8-bit enum
+	g.sf("// EnumName%s: debug/log/tooling name for any %s wire value —\n", d.Name, d.Name)
+	g.sf("// out-of-set values (wire-legal up to the declared max) name as \"???\"\n")
+	g.sf("public static string EnumName%s(ulong value)\n{\n", d.Name)
+	g.sf("    switch (value)\n    {\n")
+	g.sf("        case (ulong)%s.None:\n            return \"None\";\n", d.Name)
+	for _, v := range d.Variants {
+		g.sf("        case (ulong)%s.%s:\n            return %q;\n", d.Name, v, v)
+	}
+	g.sf("        default:\n            return \"???\";\n    }\n}\n\n")
 }
 
 func (g *gen) emitFlags(d *ir.Flags) {

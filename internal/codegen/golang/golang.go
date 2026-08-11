@@ -44,6 +44,15 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 	home := protocolIdHome(u)
 	msgOwner := ir.MessageOwner(u)
 	objOwner := ir.ObjectOwner(u)
+	bases := map[string]bool{}
+	for _, f := range u.Files {
+		bases[f.Base] = true
+	}
+	for _, f := range u.Files {
+		if bases[f.Base+"Table"] {
+			return nil, fmt.Errorf("schema files %s and %sTable collide — the Go emitter writes %sTable.go as %s's table codec; rename one file", f.Base, f.Base, f.Base, f.Base)
+		}
+	}
 	for _, f := range u.Files {
 		g := &gen{unit: u, file: f, msgOwner: msgOwner, objOwner: objOwner}
 		g.emitFile(f.Base == home)
@@ -52,6 +61,13 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 			return nil, fmt.Errorf("generated Go for %s does not parse — a compiler bug, not a schema error: %v", f.Path, err)
 		}
 		out[f.Base+".go"] = src
+	}
+	tables, err := GenerateTable(u)
+	if err != nil {
+		return nil, err
+	}
+	for name, data := range tables {
+		out[name] = data
 	}
 	return out, nil
 }
@@ -227,6 +243,17 @@ func (g *gen) emitEnum(d *ir.Enum) {
 		g.pf("\t%s%s %s = %d\n", d.Name, v, d.Name, i+1)
 	}
 	g.pf(")\n\n")
+	// the uint64 parameter (not the enum type) keeps out-of-set values exact:
+	// a narrower named type would truncate 256 -> 0 -> "None" for an 8-bit enum
+	g.pf("// EnumName%s: debug/log/tooling name for any %s wire value —\n", d.Name, d.Name)
+	g.pf("// out-of-set values (wire-legal up to the declared max) name as \"???\"\n")
+	g.pf("func EnumName%s(value uint64) string {\n", d.Name)
+	g.pf("\tswitch value {\n")
+	g.pf("\tcase uint64(%sNone):\n\t\treturn \"None\"\n", d.Name)
+	for _, v := range d.Variants {
+		g.pf("\tcase uint64(%s%s):\n\t\treturn \"%s\"\n", d.Name, v, v)
+	}
+	g.pf("\t}\n\treturn \"???\"\n}\n\n")
 }
 
 func (g *gen) emitFlags(d *ir.Flags) {

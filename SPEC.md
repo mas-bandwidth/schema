@@ -466,7 +466,9 @@ ConstType   = IntType | "float32" | "float64" .
 ConstExpr   = IntExpr | FloatExpr .
 Enum        = "enum" ident [ Attributes ] VariantList NL .
 VariantList = "{" [ ident { "," ident } [ "," ] ] "}" .            // commas; trailing comma OK
-TypeDecl    = "type" ident [ Attributes ] Block NL .        // attribute = the type TAG, §4.2
+TypeDecl    = ( "type" | "table" ) ident [ Attributes ] Block NL .  // attribute = the type TAG, §4.2;
+                                                            // "table" = a table-wire/reflection
+                                                            // ROOT (§4.11)
 Message     = "message" ident Block NL .
 
 Block       = "{" { Item } "}" .
@@ -1380,6 +1382,56 @@ sets arrived, exactly the boilerplate §4.8 exists to eat.)*
   sentinel-terminated, mid-stream-split packet streams — the constructs held at §9 q10 and
   the delta pass. `int_relative` is designed **with that pass**, never standalone; wide
   strings have zero usage anywhere in the tree.
+
+### 4.11 Tables — the second wire, and reflection — DECIDED (Glenn, 2026-08-12)
+
+`table X { ... }` declares a type that is also a **table-wire root**. The body grammar is
+identical to `type` — every field kind, guard, default, and bound works the same, and a
+table is usable anywhere a type is (message fields, arrays, other tables). What the
+keyword changes is what the compiler EMITS for it, per Glenn's rulings verbatim:
+*"reflection is NOT appropriate for types, but very appropriate for tables I think, and
+across all languages generated"* and the versioning requirement (notes/table-wire.md).
+
+**The closure.** The table closure is every `table` declaration plus every struct one
+references through fields, transitively. Closure members get, in every generated
+language:
+
+1. **Table-wire codecs** (`TableWriteX` / `TableReadX`) — the evolution-tolerant TLV
+   encoding specified in notes/table-wire.md: name-hash field ids, defaults elide,
+   unknown fields skip, changed kinds skip, out-of-range clamps, all counted in a
+   `TableReport`. This wire is for data that outlives builds (config, assets, settings,
+   events); the realtime message wire (§4) is untouched and exact-match as ever.
+2. **Reflection descriptors** (`TableTypeX()`) — static per-type field metadata: name,
+   wire id and kind, array bounds and count companions, nested descriptor links,
+   declared ranges, enum wire max and value→name functions, and branch guards. C++
+   additionally carries storage offsets (zero-cost direct access); Go and C# carry
+   generated get/set-by-name accessors instead, with set clamping to declared ranges
+   exactly as the wire read does. No RTTI, no `System.Reflection`, no schema files at
+   runtime — editors and tooling bind against the descriptors alone.
+
+   **Data-oriented, by ruling** (Glenn, 2026-08-12: *"Keeping table reflection data
+   separate from the table data itself enables fast iteration and walking"*): the
+   descriptors are SEPARATE STATIC DATA, one set per type, shared by every instance —
+   an instance is exactly its fields, carries zero reflection weight, and stays
+   trivially copyable. A type's field descriptors are one flat contiguous array
+   walked linearly; instance access is base + offset arithmetic (C++) or a generated
+   direct accessor (Go/C#); nested types cost one hop to another flat array. Emitters
+   in every language MUST keep this shape — no per-instance metadata, no fat objects,
+   no pointer-chased descriptor graphs beyond the nested-type link.
+
+Plain `type` declarations outside the closure get NONE of this — the realtime types pay
+nothing for the table layer's existence.
+
+**Capability rule.** A closure member must stay on table-wire kinds: `int128`/`uint128`,
+`fixed(I, F)` and `bits` wider than 64 have no table-wire kind, and the CHECKER refuses
+them inside the closure at compile time. Pack roots (`schema pack` manifest collection
+types) must be declared `table`, and `EncodeTable`/`DecodeTable` require closure
+membership — reflection and table codecs follow the declaration, never accident.
+
+**Protocol id.** The keyword participates in the canonical form (§3.1), so marking a
+table moves the unit's protocol id like any other declaration change. The table wire's
+own compatibility does not depend on it: a table bin from a different protocol id still
+reads under the permissive contract, which is the point.
 
 ## 5. Trust model — inherited
 

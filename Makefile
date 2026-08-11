@@ -98,7 +98,7 @@ test: build/schema_test build/schema_test_variant build/schema_test_random build
 # breaking under an unchanged schema is stop-the-line, never a quiet re-pin
 # (SPEC §3.1) — this target is for intentional emitter/schema changes only.
 update-goldens: build/schema_test build/schema_test_variant build/schema_test_ludicrous
-	@mkdir -p testdata/golden testdata/wire
+	@mkdir -p testdata/golden testdata/wire testdata/table
 	go test ./internal/goldens -update -run 'TestGolden'
 	SCHEMA_UPDATE_WIRE_GOLDENS=1 ./build/schema_test
 	SCHEMA_UPDATE_WIRE_GOLDENS=1 ./build/schema_test_ludicrous

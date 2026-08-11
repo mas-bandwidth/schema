@@ -1,0 +1,880 @@
+// Table-wire emission (notes/table-wire.md): <Base>Table.h — TableWrite/
+// TableRead per `type`, plain byte code with NO serialize dependency, so the
+// codec is includable from any TU (the config/asset managers live in the
+// game's normal precompiled world). Field identity is the name-hash id;
+// readers prefill declared defaults then overlay, skip unknown ids, skip
+// kind mismatches, clamp out-of-range values, and count every event.
+package cpp
+
+import (
+	"fmt"
+	"math/big"
+	"strings"
+
+	"github.com/mas-bandwidth/schema/internal/ir"
+	"github.com/mas-bandwidth/schema/internal/pack"
+)
+
+// table-wire kinds — mirror internal/pack/table.go (one spec, two emitters;
+// the cross-language goldens pin them against each other)
+const (
+	tkBool   = 1
+	tkI8     = 2
+	tkI16    = 3
+	tkI32    = 4
+	tkI64    = 5
+	tkU8     = 6
+	tkU16    = 7
+	tkU32    = 8
+	tkU64    = 9
+	tkF32    = 10
+	tkF64    = 11
+	tkString = 12
+	tkTable  = 13
+	tkArray  = 14
+)
+
+func tableScalarKind(f *ir.Field) int {
+	switch f.Type.Kind {
+	case ir.TBool:
+		return tkBool
+	case ir.TInt:
+		if f.Type.Signed {
+			switch f.Type.Width {
+			case 8:
+				return tkI8
+			case 16:
+				return tkI16
+			case 32:
+				return tkI32
+			default:
+				return tkI64
+			}
+		}
+		switch f.Type.Width {
+		case 8:
+			return tkU8
+		case 16:
+			return tkU16
+		case 32:
+			return tkU32
+		default:
+			return tkU64
+		}
+	case ir.TBits:
+		switch {
+		case f.Type.Width <= 8:
+			return tkU8
+		case f.Type.Width <= 16:
+			return tkU16
+		case f.Type.Width <= 32:
+			return tkU32
+		default:
+			return tkU64
+		}
+	case ir.TFloat32:
+		return tkF32
+	case ir.TFloat64:
+		return tkF64
+	case ir.TString:
+		return tkString
+	case ir.TBytes:
+		return tkArray
+	case ir.TNamed:
+		switch ref := f.Type.Ref.(type) {
+		case *ir.Enum:
+			switch ref.StorageBits {
+			case 8:
+				return tkU8
+			case 16:
+				return tkU16
+			case 32:
+				return tkU32
+			default:
+				return tkU64
+			}
+		case *ir.Flags:
+			return tkU64
+		case *ir.Struct:
+			return tkTable
+		}
+	}
+	return 0
+}
+
+func tableKindWidth(kind int) int {
+	switch kind {
+	case tkBool, tkI8, tkU8:
+		return 1
+	case tkI16, tkU16:
+		return 2
+	case tkI32, tkU32, tkF32:
+		return 4
+	case tkI64, tkU64, tkF64:
+		return 8
+	}
+	return 0
+}
+
+func tablePut(width int) string { return fmt.Sprintf("put%d", width*8) }
+func tableGet(width int) string { return fmt.Sprintf("get%d", width*8) }
+
+type tableGen struct {
+	unit     *ir.Unit
+	file     *ir.File
+	body     strings.Builder
+	includes map[string]bool
+	indent   string // extra per-line indent while emitting inside a branch guard
+}
+
+func (g *tableGen) pf(format string, args ...any) {
+	s := fmt.Sprintf(format, args...)
+	if g.indent != "" && s != "" {
+		trailing := strings.HasSuffix(s, "\n")
+		if trailing {
+			s = s[:len(s)-1]
+		}
+		s = g.indent + strings.ReplaceAll(s, "\n", "\n"+g.indent)
+		if trailing {
+			s += "\n"
+		}
+	}
+	g.body.WriteString(s)
+}
+
+func (g *tableGen) noteRef(name string) {
+	if base, ok := g.unit.DeclFile[name]; ok && base != g.file.Base {
+		g.includes[base] = true
+	}
+}
+
+// tablePrimitives is the shared runtime, emitted into every Table.h behind a
+// per-package guard — one definition per TU whatever the include order, and a
+// lone Table.h works standalone.
+func tablePrimitives(pkg string) string {
+	guard := strings.ToUpper(pkg) + "_SCHEMA_TABLE_PRIMITIVES"
+	return `#ifndef ` + guard + `
+#define ` + guard + `
+
+namespace ` + pkg + ` {
+
+// The table-wire read report — the permissive contract's ledger. Silence
+// (all zero) means the data matched this reader's schema exactly.
+struct TableReport
+{
+    int32_t unknown = 0;       // unknown field ids skipped (newer data)
+    int32_t kind_mismatch = 0; // known id, changed type — skipped, never misdecoded
+    int32_t clamped = 0;       // out-of-range values clamped to declared bounds
+    bool malformed = false;    // framing damage; decode stopped, partial result kept
+};
+
+// ---- reflection (tables only, notes/table-wire.md) ----
+//
+// Static field descriptors for every type in the table closure: name, wire
+// id/kind, storage offset, bounds, ranges, enum names and branch guards —
+// enough to walk, print, diff, edit or bind any table value at runtime with
+// no RTTI and no schema files. TableType<X>() returns X's descriptor.
+
+struct TableTypeInfo;
+
+struct TableFieldInfo
+{
+    const char * name;      // schema field name, e.g. "health"
+    const char * type_name; // schema type name, e.g. "float32", "ShipType"
+    uint16_t id;            // table-wire field id (name hash)
+    uint8_t kind;           // table-wire kind; for arrays/strings/bytes, the ELEMENT kind
+    bool is_array;          // fixed or counted array (bytes included)
+    bool counted;           // a _count/_length int32 companion exists (counted arrays, strings, bytes)
+    int32_t array_bound;    // array capacity / string max length; 0 for plain scalars
+    uint32_t offset;        // offsetof the storage member
+    uint32_t elem_size;     // sizeof the member (element size for arrays)
+    uint32_t count_offset;  // offsetof the _count/_length companion, or 0xffffffff
+    const TableTypeInfo * table; // nested table's descriptor, or NULL
+    bool has_range;         // a declared [min, max] (int or float)
+    double range_min;       // NOTE: int64 ranges beyond 2^53 lose precision here
+    double range_max;
+    int64_t enum_max;       // enums: highest valid value (None = 0 always valid); else -1
+    const char * (*enum_name)( uint64_t value ); // enums: value -> name; else NULL
+    const char * guard;     // branch guard, e.g. "at_rest" or "!at_rest"; "" if unguarded
+};
+
+struct TableTypeInfo
+{
+    const char * name;   // schema type name
+    uint32_t size;       // sizeof the storage struct
+    int32_t num_fields;
+    const TableFieldInfo * fields;
+};
+
+struct TableWriter
+{
+    uint8_t * buffer;
+    int64_t capacity;
+    int64_t offset = 0;
+    bool overflow = false;
+
+    TableWriter( uint8_t * buffer, int64_t capacity ) : buffer( buffer ), capacity( capacity ) {}
+
+    void raw( const void * data, int64_t bytes )
+    {
+        if ( offset + bytes > capacity ) { overflow = true; return; }
+        memcpy( buffer + offset, data, (size_t) bytes );
+        offset += bytes;
+    }
+    void put8( uint8_t v )   { raw( &v, 1 ); }
+    void put16( uint16_t v ) { uint8_t b[2] = { uint8_t( v ), uint8_t( v >> 8 ) }; raw( b, 2 ); }
+    void put32( uint32_t v ) { uint8_t b[4] = { uint8_t( v ), uint8_t( v >> 8 ), uint8_t( v >> 16 ), uint8_t( v >> 24 ) }; raw( b, 4 ); }
+    void put64( uint64_t v ) { put32( uint32_t( v ) ); put32( uint32_t( v >> 32 ) ); }
+    void patch32( int64_t at, uint32_t v )
+    {
+        if ( at + 4 > capacity ) { overflow = true; return; }
+        buffer[at] = uint8_t( v ); buffer[at+1] = uint8_t( v >> 8 );
+        buffer[at+2] = uint8_t( v >> 16 ); buffer[at+3] = uint8_t( v >> 24 );
+    }
+};
+
+struct TableReader
+{
+    const uint8_t * buffer;
+    int64_t size;
+    int64_t offset = 0;
+    TableReport * report;
+
+    TableReader( const uint8_t * buffer, int64_t size, TableReport * report )
+        : buffer( buffer ), size( size ), report( report ) {}
+
+    bool has( int64_t bytes ) const { return offset + bytes <= size; }
+    uint8_t get8()   { return buffer[offset++]; }
+    uint16_t get16() { uint16_t v = uint16_t( buffer[offset] ) | uint16_t( buffer[offset+1] ) << 8; offset += 2; return v; }
+    uint32_t get32() { uint32_t v = uint32_t( buffer[offset] ) | uint32_t( buffer[offset+1] ) << 8 | uint32_t( buffer[offset+2] ) << 16 | uint32_t( buffer[offset+3] ) << 24; offset += 4; return v; }
+    uint64_t get64() { uint64_t lo = get32(); uint64_t hi = get32(); return lo | ( hi << 32 ); }
+
+    // skip one payload by kind; false = framing damage
+    bool skip( uint8_t kind )
+    {
+        switch ( kind )
+        {
+            case 1: case 2: case 6: return has( 1 ) ? ( offset += 1, true ) : false;
+            case 3: case 7:         return has( 2 ) ? ( offset += 2, true ) : false;
+            case 4: case 8: case 10: return has( 4 ) ? ( offset += 4, true ) : false;
+            case 5: case 9: case 11: return has( 8 ) ? ( offset += 8, true ) : false;
+            case 12:
+            {
+                if ( !has( 2 ) ) return false;
+                uint16_t n = get16();
+                return has( n ) ? ( offset += n, true ) : false;
+            }
+            case 13: case 14:
+            {
+                if ( !has( 4 ) ) return false;
+                uint32_t n = get32();
+                return has( n ) ? ( offset += n, true ) : false;
+            }
+        }
+        return false;
+    }
+};
+
+inline float table_bits_to_float( uint32_t bits ) { float f; memcpy( &f, &bits, 4 ); return f; }
+inline uint32_t table_float_to_bits( float f ) { uint32_t b; memcpy( &b, &f, 4 ); return b; }
+inline double table_bits_to_double( uint64_t bits ) { double d; memcpy( &d, &bits, 8 ); return d; }
+inline uint64_t table_double_to_bits( double d ) { uint64_t b; memcpy( &b, &d, 8 ); return b; }
+
+} // namespace ` + pkg + `
+
+#endif // ` + guard + `
+`
+}
+
+// GenerateTable emits <Base>Table.h for every unit file: codecs for the
+// TABLE CLOSURE only — every `table` declaration plus everything one
+// references, transitively. Plain types outside the closure stay dense-wire
+// only (the checker has already refused closure members with types the
+// table wire cannot carry).
+func GenerateTable(u *ir.Unit) (map[string][]byte, error) {
+	if err := pack.CheckTableIds(u); err != nil {
+		return nil, err
+	}
+	closure := ir.TableClosure(u)
+	out := map[string][]byte{}
+	for _, f := range u.Files {
+		g := &tableGen{unit: u, file: f, includes: map[string]bool{}}
+		var members []*ir.Struct
+		for _, d := range f.Decls {
+			if st, ok := d.(*ir.Struct); ok && closure[st.Name] {
+				members = append(members, st)
+			}
+		}
+		for _, st := range members {
+			g.emitTableWrite(st)
+			g.emitTableRead(st)
+		}
+		if len(members) > 0 {
+			g.pf("// ---- relocatability, enforced (beyond flatbuffers: the wire is a pure\n")
+			g.pf("// length-prefixed stream AND the decoded storage is pointer-free) — every\n")
+			g.pf("// closure type must stay trivially copyable and standard-layout, so\n")
+			g.pf("// instances can be memcpy'd, mmap'd, shared across processes, and walked\n")
+			g.pf("// through descriptor offsets. A failure here means a pointer, virtual or\n")
+			g.pf("// non-trivial member crept into generated storage.\n")
+			for _, st := range members {
+				g.pf("static_assert( std::is_trivially_copyable<%s>::value, \"%s must stay relocatable\" );\n", st.Name, st.Name)
+				g.pf("static_assert( std::is_standard_layout<%s>::value, \"%s must stay standard-layout for offsetof\" );\n", st.Name, st.Name)
+			}
+			g.pf("\n")
+			g.pf("// ---- reflection descriptors (tables only, notes/table-wire.md) ----\n\n")
+			for _, st := range members {
+				g.pf("inline const TableTypeInfo * TableType%s();\n", st.Name)
+			}
+			g.pf("\n")
+			for _, st := range members {
+				g.emitTableDescriptor(st)
+			}
+		} else {
+			g.pf("// no tables declared or referenced in this file — codecs are emitted\n")
+			g.pf("// for the table closure only (`table` declarations and what they reach)\n")
+		}
+		var h strings.Builder
+		fmt.Fprintf(&h, "// Generated by the schema compiler from %s.schema. DO NOT EDIT.\n", f.Base)
+		fmt.Fprintf(&h, "// package %s — protocol id 0x%016x\n", u.Package, u.ProtocolId)
+		h.WriteString("// The TABLE wire (evolution-tolerant, notes/table-wire.md): no serialize\n")
+		h.WriteString("// dependency — includable from any TU.\n\n")
+		h.WriteString("#pragma once\n\n#include <cstdint>\n#include <cstring>\n#include <cstddef> // offsetof, for the reflection descriptors\n#include <new> // in-place prefill (placement new): no giant stack temporaries\n#include <type_traits> // the enforced relocatability asserts\n")
+		fmt.Fprintf(&h, "\n#include \"%s.h\"\n", f.Base)
+		names := make([]string, 0, len(g.includes))
+		for n := range g.includes {
+			names = append(names, n)
+		}
+		sortStrings(names)
+		for _, n := range names {
+			fmt.Fprintf(&h, "#include \"%sTable.h\"\n", n)
+		}
+		h.WriteString("\n")
+		h.WriteString(tablePrimitives(u.Package))
+		fmt.Fprintf(&h, "\nnamespace %s {\n\n", u.Package)
+		h.WriteString(g.body.String())
+		fmt.Fprintf(&h, "} // namespace %s\n", u.Package)
+		out[f.Base+"Table.h"] = []byte(h.String())
+	}
+	return out, nil
+}
+
+func sortStrings(s []string) {
+	for i := 1; i < len(s); i++ {
+		for j := i; j > 0 && s[j] < s[j-1]; j-- {
+			s[j], s[j-1] = s[j-1], s[j]
+		}
+	}
+}
+
+// fieldDefaultExpr renders the C++ expression a field's default compares
+// against on the write side (elision) — identical literals to the NSDMIs.
+func (g *tableGen) fieldDefaultExpr(f *ir.Field) string {
+	switch f.Type.Kind {
+	case ir.TBool:
+		if f.HasDefault && f.DefBool {
+			return "true"
+		}
+		return "false"
+	case ir.TFloat32:
+		if f.HasDefault {
+			return formatFloat(f.DefFloat, true)
+		}
+		return "0.0f"
+	case ir.TFloat64:
+		if f.HasDefault {
+			return formatFloat(f.DefFloat, false)
+		}
+		return "0.0"
+	case ir.TInt, ir.TBits:
+		if f.HasDefault && f.DefInt != nil {
+			signed := f.Type.Kind == ir.TInt && f.Type.Signed
+			width := 4
+			if f.Type.Width > 32 {
+				width = 8
+			}
+			return tableIntLit(f.DefInt, signed, width)
+		}
+		return "0"
+	case ir.TNamed:
+		switch f.Type.Ref.(type) {
+		case *ir.Enum:
+			if f.HasDefault && f.DefVariant != "" {
+				return f.Type.Name + "::" + f.DefVariant
+			}
+			return f.Type.Name + "::None"
+		case *ir.Flags:
+			return "0"
+		}
+	}
+	return "0"
+}
+
+// tableGuardExprs composes each guarded field's branch condition from the
+// wire tree ("value.a && !value.b" for nesting) so the writer can keep
+// untaken-branch fields off the wire — TLV's native optionality carries the
+// branch, and the reader's prefilled defaults stand in for the untaken side.
+func tableGuardExprs(st *ir.Struct) map[string]string {
+	guards := map[string]string{}
+	var walk func(items []ir.Item, cond string)
+	walk = func(items []ir.Item, cond string) {
+		for _, item := range items {
+			switch item := item.(type) {
+			case *ir.FieldItem:
+				if cond != "" {
+					guards[item.F.Name] = cond
+				}
+			case *ir.Branch:
+				pos, neg := "value."+item.Cond, "!value."+item.Cond
+				if item.Neg {
+					pos, neg = neg, pos
+				}
+				and := func(a, b string) string {
+					if a == "" {
+						return b
+					}
+					return a + " && " + b
+				}
+				walk(item.Then, and(cond, pos))
+				walk(item.Else, and(cond, neg))
+			}
+		}
+	}
+	walk(st.Items, "")
+	return guards
+}
+
+// tableIntLit renders an integer literal safely at 64-bit width: unsigned
+// values past INT64_MAX need ull, and INT64_MIN has no single-literal form.
+func tableIntLit(v *big.Int, signed bool, widthBytes int) string {
+	s := v.String()
+	if widthBytes < 8 {
+		return s
+	}
+	if !signed {
+		return s + "ull"
+	}
+	if s == "-9223372036854775808" {
+		return "( -9223372036854775807ll - 1 )"
+	}
+	return s + "ll"
+}
+
+func (g *tableGen) emitTableWrite(st *ir.Struct) {
+	g.pf("inline bool TableWrite%s( TableWriter & w, const %s & value )\n{\n", st.Name, st.Name)
+	if len(st.Fields) == 0 {
+		g.pf("    (void) value; // empty type: presence is the payload\n")
+	}
+	guards := tableGuardExprs(st)
+	for _, f := range st.Fields {
+		if cond, guarded := guards[f.Name]; guarded {
+			g.pf("    if ( %s )\n    {\n", cond)
+			g.indent = "    "
+			g.emitTableWriteField(f)
+			g.indent = ""
+			g.pf("    }\n")
+			continue
+		}
+		g.emitTableWriteField(f)
+	}
+	g.pf("    w.put16( 0 ); // terminator\n")
+	g.pf("    return !w.overflow;\n}\n\n")
+}
+
+func (g *tableGen) emitTableWriteField(f *ir.Field) {
+	{
+		id := pack.FieldId(f.Name)
+		kind := tableScalarKind(f)
+		if f.Type.Kind == ir.TNamed {
+			g.noteRef(f.Type.Name)
+		}
+		switch {
+		case f.Type.Kind == ir.TString:
+			g.pf("    if ( value.%s_length > 0 )\n    {\n", f.Name)
+			g.pf("        w.put16( 0x%04x ); w.put8( %d ); // %s\n", id, tkString, f.Name)
+			g.pf("        w.put16( uint16_t( value.%s_length ) );\n", f.Name)
+			g.pf("        w.raw( value.%s, value.%s_length );\n    }\n", f.Name, f.Name)
+		case f.Type.Kind == ir.TBytes:
+			g.pf("    if ( value.%s_length > 0 )\n    {\n", f.Name)
+			g.pf("        w.put16( 0x%04x ); w.put8( %d ); // %s\n", id, tkArray, f.Name)
+			g.pf("        w.put32( uint32_t( 3 + value.%s_length ) );\n", f.Name)
+			g.pf("        w.put8( %d ); w.put16( uint16_t( value.%s_length ) );\n", tkU8, f.Name)
+			g.pf("        w.raw( value.%s, value.%s_length );\n    }\n", f.Name, f.Name)
+		case f.Array == ir.ArrayCounted:
+			g.pf("    if ( value.%s_count > 0 )\n    {\n", f.Name)
+			g.pf("        w.put16( 0x%04x ); w.put8( %d ); // %s\n", id, tkArray, f.Name)
+			g.pf("        int64_t len_at_%s = w.offset; w.put32( 0 );\n", f.Name)
+			g.pf("        w.put8( %d ); w.put16( uint16_t( value.%s_count ) );\n", kind, f.Name)
+			g.pf("        for ( int32_t i = 0; i < value.%s_count; i++ )\n        {\n", f.Name)
+			g.emitTableWriteElement(f, kind, fmt.Sprintf("value.%s[i]", f.Name), "            ")
+			g.pf("        }\n")
+			g.pf("        w.patch32( len_at_%s, uint32_t( w.offset - len_at_%s - 4 ) );\n    }\n", f.Name, f.Name)
+		case f.Array == ir.ArrayFixed && kind == tkTable:
+			// fixed arrays of tables always ride — no cheap element-default
+			// compare in C++ (an all-default element costs 6 bytes)
+			g.pf("    {\n")
+			g.pf("        w.put16( 0x%04x ); w.put8( %d ); // %s (fixed [%d])\n", id, tkArray, f.Name, f.ArrayBound)
+			g.pf("        int64_t len_at_%s = w.offset; w.put32( 0 );\n", f.Name)
+			g.pf("        w.put8( %d ); w.put16( %d );\n", kind, f.ArrayBound)
+			g.pf("        for ( int32_t i = 0; i < %d; i++ )\n        {\n", f.ArrayBound)
+			g.emitTableWriteElement(f, kind, fmt.Sprintf("value.%s[i]", f.Name), "            ")
+			g.pf("        }\n")
+			g.pf("        w.patch32( len_at_%s, uint32_t( w.offset - len_at_%s - 4 ) );\n    }\n", f.Name, f.Name)
+		case f.Array == ir.ArrayFixed:
+			// fixed arrays are positional; an all-default array elides entirely
+			// (parity with the Go writer and the reader's prefill)
+			g.pf("    {\n")
+			g.pf("        bool all_default_%s = true;\n", f.Name)
+			g.pf("        for ( int32_t i = 0; i < %d; i++ ) { if ( value.%s[i] != %s ) { all_default_%s = false; break; } }\n",
+				f.ArrayBound, f.Name, g.fieldDefaultExpr(f), f.Name)
+			g.pf("        if ( !all_default_%s )\n        {\n", f.Name)
+			g.pf("            w.put16( 0x%04x ); w.put8( %d ); // %s (fixed [%d])\n", id, tkArray, f.Name, f.ArrayBound)
+			g.pf("            int64_t len_at_%s = w.offset; w.put32( 0 );\n", f.Name)
+			g.pf("            w.put8( %d ); w.put16( %d );\n", kind, f.ArrayBound)
+			g.pf("            for ( int32_t i = 0; i < %d; i++ )\n            {\n", f.ArrayBound)
+			g.emitTableWriteElement(f, kind, fmt.Sprintf("value.%s[i]", f.Name), "                ")
+			g.pf("            }\n")
+			g.pf("            w.patch32( len_at_%s, uint32_t( w.offset - len_at_%s - 4 ) );\n        }\n    }\n", f.Name, f.Name)
+		case kind == tkTable:
+			g.pf("    {\n")
+			g.pf("        int64_t field_at_%s = w.offset;\n", f.Name)
+			g.pf("        w.put16( 0x%04x ); w.put8( %d ); // %s\n", id, tkTable, f.Name)
+			g.pf("        int64_t len_at_%s = w.offset; w.put32( 0 );\n", f.Name)
+			g.pf("        if ( !TableWrite%s( w, value.%s ) ) return false;\n", f.Type.Name, f.Name)
+			g.pf("        int64_t body_%s = w.offset - len_at_%s - 4;\n", f.Name, f.Name)
+			g.pf("        if ( body_%s <= 2 ) { w.offset = field_at_%s; } // all-default nested elides\n", f.Name, f.Name)
+			g.pf("        else { w.patch32( len_at_%s, uint32_t( body_%s ) ); }\n    }\n", f.Name, f.Name)
+		default:
+			g.pf("    if ( value.%s != %s )\n    {\n", f.Name, g.fieldDefaultExpr(f))
+			g.pf("        w.put16( 0x%04x ); w.put8( %d ); // %s\n", id, kind, f.Name)
+			g.emitTableWriteElement(f, kind, "value."+f.Name, "        ")
+			g.pf("    }\n")
+		}
+	}
+}
+
+func (g *tableGen) emitTableWriteElement(f *ir.Field, kind int, expr, ind string) {
+	switch kind {
+	case tkBool:
+		g.pf("%sw.put8( %s ? 1 : 0 );\n", ind, expr)
+	case tkF32:
+		g.pf("%sw.put32( table_float_to_bits( %s ) );\n", ind, expr)
+	case tkF64:
+		g.pf("%sw.put64( table_double_to_bits( %s ) );\n", ind, expr)
+	case tkTable:
+		g.pf("%s{\n%s    int64_t elem_len_at = w.offset; w.put32( 0 );\n", ind, ind)
+		g.pf("%s    if ( !TableWrite%s( w, %s ) ) return false;\n", ind, f.Type.Name, expr)
+		g.pf("%s    w.patch32( elem_len_at, uint32_t( w.offset - elem_len_at - 4 ) );\n%s}\n", ind, ind)
+	default:
+		width := tableKindWidth(kind)
+		cast := fmt.Sprintf("uint%d_t", width*8)
+		g.pf("%sw.%s( %s( %s ) );\n", ind, tablePut(width), cast, expr)
+	}
+}
+
+// tableGuardStrings composes each guarded field's branch condition WITHOUT
+// the value. prefix — the reflection descriptor's machine-usable guard
+// ("at_rest", "!at_rest", "active && has_target").
+func tableGuardStrings(st *ir.Struct) map[string]string {
+	guards := map[string]string{}
+	var walk func(items []ir.Item, cond string)
+	walk = func(items []ir.Item, cond string) {
+		for _, item := range items {
+			switch item := item.(type) {
+			case *ir.FieldItem:
+				if cond != "" {
+					guards[item.F.Name] = cond
+				}
+			case *ir.Branch:
+				pos, neg := item.Cond, "!"+item.Cond
+				if item.Neg {
+					pos, neg = neg, pos
+				}
+				and := func(a, b string) string {
+					if a == "" {
+						return b
+					}
+					return a + " && " + b
+				}
+				walk(item.Then, and(cond, pos))
+				walk(item.Else, and(cond, neg))
+			}
+		}
+	}
+	walk(st.Items, "")
+	return guards
+}
+
+// tableFieldTypeName renders a field's schema-facing type name for the
+// descriptor ("float32", "bits(9)", "ShipType", "GunnerSettings").
+func tableFieldTypeName(f *ir.Field) string {
+	switch f.Type.Kind {
+	case ir.TBool:
+		return "bool"
+	case ir.TInt:
+		prefix := "int"
+		if !f.Type.Signed {
+			prefix = "uint"
+		}
+		return fmt.Sprintf("%s%d", prefix, f.Type.Width)
+	case ir.TBits:
+		return fmt.Sprintf("bits(%d)", f.Type.Width)
+	case ir.TFloat32:
+		return "float32"
+	case ir.TFloat64:
+		return "float64"
+	case ir.TString:
+		return "string"
+	case ir.TBytes:
+		return "bytes"
+	case ir.TNamed:
+		return f.Type.Name
+	}
+	return "?"
+}
+
+// bigToDouble renders a big.Int as a C++ double literal for the descriptor's
+// range fields (precision past 2^53 is documented as lost).
+func bigToDouble(v *big.Int) string {
+	f, _ := new(big.Float).SetInt(v).Float64()
+	return formatFloat(f, false)
+}
+
+// emitTableDescriptor emits TableType<X>() — the reflection descriptor: a
+// function-local static (one instance per process, ODR-safe in inline
+// functions), built once on first use.
+func (g *tableGen) emitTableDescriptor(st *ir.Struct) {
+	guards := tableGuardStrings(st)
+	g.pf("inline const TableTypeInfo * TableType%s()\n{\n", st.Name)
+	if len(st.Fields) > 0 {
+		g.pf("    static const TableFieldInfo fields[] = {\n")
+		for _, f := range st.Fields {
+			id := pack.FieldId(f.Name)
+			kind := tableScalarKind(f)
+			if f.Type.Kind == ir.TBytes {
+				kind = tkU8
+			}
+			isArray := f.Array != ir.ArrayNone || f.Type.Kind == ir.TBytes
+			counted := f.Array == ir.ArrayCounted || f.Type.Kind == ir.TBytes || f.Type.Kind == ir.TString
+
+			bound := int64(0)
+			switch {
+			case f.Array != ir.ArrayNone:
+				bound = f.ArrayBound
+			case f.Type.Kind == ir.TBytes, f.Type.Kind == ir.TString:
+				bound = f.Type.Size
+			}
+
+			elemSize := fmt.Sprintf("(uint32_t) sizeof( %s{}.%s )", st.Name, f.Name)
+			if isArray {
+				elemSize = fmt.Sprintf("(uint32_t) sizeof( %s{}.%s[0] )", st.Name, f.Name)
+			}
+
+			countOffset := "0xffffffffu"
+			if counted {
+				companion := f.Name + "_count"
+				if f.Type.Kind == ir.TBytes || f.Type.Kind == ir.TString {
+					companion = f.Name + "_length"
+				}
+				countOffset = fmt.Sprintf("(uint32_t) offsetof( %s, %s )", st.Name, companion)
+			}
+
+			table := "NULL"
+			if _, isStruct := f.Type.Ref.(*ir.Struct); f.Type.Kind == ir.TNamed && isStruct {
+				table = fmt.Sprintf("TableType%s()", f.Type.Name)
+				g.noteRef(f.Type.Name)
+			}
+
+			hasRange := "false"
+			rangeMin, rangeMax := "0.0", "0.0"
+			if f.HasIntRange {
+				hasRange = "true"
+				rangeMin, rangeMax = bigToDouble(f.IntMin), bigToDouble(f.IntMax)
+			} else if f.HasFloatRange {
+				hasRange = "true"
+				rangeMin, rangeMax = formatFloat(f.FMin, false), formatFloat(f.FMax, false)
+			}
+
+			enumMax := "-1"
+			enumName := "NULL"
+			if enum, isEnum := f.Type.Ref.(*ir.Enum); f.Type.Kind == ir.TNamed && isEnum {
+				enumMax = fmt.Sprintf("%d", enum.Max)
+				enumName = fmt.Sprintf("+[]( uint64_t v ) { return EnumName( %s( v ) ); }", f.Type.Name)
+			}
+
+			g.pf("        { \"%s\", \"%s\", 0x%04x, %d, %v, %v, %d, (uint32_t) offsetof( %s, %s ), %s, %s, %s, %s, %s, %s, %s, %s, \"%s\" },\n",
+				f.Name, tableFieldTypeName(f), id, kind, isArray, counted, bound,
+				st.Name, f.Name, elemSize, countOffset, table,
+				hasRange, rangeMin, rangeMax, enumMax, enumName, guards[f.Name])
+		}
+		g.pf("    };\n")
+		g.pf("    static const TableTypeInfo info = { \"%s\", (uint32_t) sizeof( %s ), %d, fields };\n",
+			st.Name, st.Name, len(st.Fields))
+	} else {
+		g.pf("    static const TableTypeInfo info = { \"%s\", (uint32_t) sizeof( %s ), 0, NULL };\n",
+			st.Name, st.Name)
+	}
+	g.pf("    return &info;\n}\n\n")
+}
+
+func (g *tableGen) emitTableRead(st *ir.Struct) {
+	g.pf("inline bool TableRead%s( TableReader & r, %s & value )\n{\n", st.Name, st.Name)
+	// placement new, NOT `value = T{}`: assignment materializes a temporary,
+	// and generated types can be hundreds of KB (a ShipAsset with hull
+	// colliders) — a stack bomb on worker threads. In-place value-init
+	// applies the same NSDMI defaults with no temporary.
+	g.pf("    new ( &value ) %s{}; // prefill declared defaults in place, then overlay\n", st.Name)
+	g.pf("    for ( ;; )\n    {\n")
+	g.pf("        if ( !r.has( 2 ) ) { r.report->malformed = true; return false; }\n")
+	g.pf("        uint16_t field_id = r.get16();\n")
+	g.pf("        if ( field_id == 0 ) return true;\n")
+	g.pf("        if ( !r.has( 1 ) ) { r.report->malformed = true; return false; }\n")
+	g.pf("        uint8_t kind = r.get8();\n")
+	g.pf("        switch ( field_id )\n        {\n")
+	for _, f := range st.Fields {
+		id := pack.FieldId(f.Name)
+		kind := tableScalarKind(f)
+		wireKind := kind
+		if f.Array != ir.ArrayNone || f.Type.Kind == ir.TBytes {
+			wireKind = tkArray
+		}
+		if f.Type.Kind == ir.TBytes {
+			kind = tkU8 // bytes travel as an array of u8 elements
+		}
+		g.pf("            case 0x%04x: // %s\n            {\n", id, f.Name)
+		g.pf("                if ( kind != %d )\n                {\n", wireKind)
+		g.pf("                    r.report->kind_mismatch++;\n")
+		g.pf("                    if ( !r.skip( kind ) ) { r.report->malformed = true; return false; }\n")
+		g.pf("                    break;\n                }\n")
+		g.emitTableReadField(f, kind)
+		g.pf("                break;\n            }\n")
+	}
+	g.pf("            default:\n            {\n")
+	g.pf("                r.report->unknown++;\n")
+	g.pf("                if ( !r.skip( kind ) ) { r.report->malformed = true; return false; }\n")
+	g.pf("                break;\n            }\n")
+	g.pf("        }\n    }\n}\n\n")
+
+	// buffer-level convenience entry
+	g.pf("inline bool TableRead%s( const uint8_t * buffer, int64_t bytes, %s & value, TableReport & report )\n{\n", st.Name, st.Name)
+	g.pf("    TableReader r( buffer, bytes, &report );\n")
+	g.pf("    return TableRead%s( r, value );\n}\n\n", st.Name)
+}
+
+func (g *tableGen) emitTableReadField(f *ir.Field, kind int) {
+	ind := "                "
+	switch {
+	case f.Type.Kind == ir.TString:
+		g.pf("%sif ( !r.has( 2 ) ) { r.report->malformed = true; return false; }\n", ind)
+		g.pf("%suint16_t len = r.get16();\n", ind)
+		g.pf("%sif ( !r.has( len ) ) { r.report->malformed = true; return false; }\n", ind)
+		g.pf("%suint16_t keep = len;\n", ind)
+		g.pf("%sif ( keep > %d ) { keep = %d; r.report->clamped++; }\n", ind, f.Type.Size, f.Type.Size)
+		g.pf("%smemcpy( value.%s, r.buffer + r.offset, keep );\n", ind, f.Name)
+		g.pf("%svalue.%s[keep] = 0;\n", ind, f.Name)
+		g.pf("%svalue.%s_length = keep;\n", ind, f.Name)
+		g.pf("%sr.offset += len;\n", ind)
+	case f.Array != ir.ArrayNone || f.Type.Kind == ir.TBytes:
+		bound := f.ArrayBound
+		if f.Type.Kind == ir.TBytes {
+			bound = f.Type.Size
+		}
+		g.pf("%sif ( !r.has( 4 ) ) { r.report->malformed = true; return false; }\n", ind)
+		g.pf("%suint32_t body_len = r.get32();\n", ind)
+		g.pf("%sif ( !r.has( body_len ) ) { r.report->malformed = true; return false; }\n", ind)
+		g.pf("%sint64_t body_end = r.offset + body_len;\n", ind)
+		g.pf("%sif ( body_len >= 3 )\n%s{\n", ind, ind)
+		g.pf("%s    uint8_t elem_kind = r.get8();\n", ind)
+		g.pf("%s    uint16_t count = r.get16();\n", ind)
+		g.pf("%s    if ( elem_kind != %d ) { r.report->kind_mismatch++; r.offset = body_end; break; }\n", ind, kind)
+		g.pf("%s    uint16_t keep = count;\n", ind)
+		g.pf("%s    if ( keep > %d ) { keep = %d; r.report->clamped++; }\n", ind, bound, bound)
+		g.pf("%s    for ( uint16_t i = 0; i < keep; i++ )\n%s    {\n", ind, ind)
+		g.emitTableReadElement(f, kind, ind+"        ")
+		g.pf("%s    }\n", ind)
+		if f.Type.Kind == ir.TBytes {
+			g.pf("%s    value.%s_length = keep;\n", ind, f.Name)
+		} else if f.Array == ir.ArrayCounted {
+			g.pf("%s    value.%s_count = keep;\n", ind, f.Name)
+		}
+		g.pf("%s}\n", ind)
+		g.pf("%sr.offset = body_end; // excess elements and slack skip via the length\n", ind)
+	case kind == tkTable:
+		g.pf("%sif ( !r.has( 4 ) ) { r.report->malformed = true; return false; }\n", ind)
+		g.pf("%suint32_t body_len = r.get32();\n", ind)
+		g.pf("%sif ( !r.has( body_len ) ) { r.report->malformed = true; return false; }\n", ind)
+		g.pf("%s{\n%s    TableReader sub( r.buffer + r.offset, body_len, r.report );\n", ind, ind)
+		g.pf("%s    TableRead%s( sub, value.%s );\n", ind, f.Type.Name, f.Name)
+		g.pf("%s}\n", ind)
+		g.pf("%sr.offset += body_len;\n", ind)
+	default:
+		g.emitTableReadScalarInto(f, kind, "value."+f.Name, ind)
+	}
+}
+
+func (g *tableGen) emitTableReadElement(f *ir.Field, kind int, ind string) {
+	switch kind {
+	case tkTable:
+		g.pf("%sif ( !r.has( 4 ) ) { r.report->malformed = true; return false; }\n", ind)
+		g.pf("%suint32_t elem_len = r.get32();\n", ind)
+		g.pf("%sif ( !r.has( elem_len ) ) { r.report->malformed = true; return false; }\n", ind)
+		g.pf("%s{\n%s    TableReader sub( r.buffer + r.offset, elem_len, r.report );\n", ind, ind)
+		g.pf("%s    TableRead%s( sub, value.%s[i] );\n", ind, f.Type.Name, f.Name)
+		g.pf("%s}\n", ind)
+		g.pf("%sr.offset += elem_len;\n", ind)
+	default:
+		g.emitTableReadScalarInto(f, kind, fmt.Sprintf("value.%s[i]", f.Name), ind)
+	}
+}
+
+// emitTableReadScalarInto decodes one fixed-width scalar into a storage
+// lvalue, with range clamps where the schema declares them.
+func (g *tableGen) emitTableReadScalarInto(f *ir.Field, kind int, lvalue, ind string) {
+	width := tableKindWidth(kind)
+	g.pf("%sif ( !r.has( %d ) ) { r.report->malformed = true; return false; }\n", ind, width)
+	switch kind {
+	case tkBool:
+		g.pf("%s%s = r.get8() != 0;\n", ind, lvalue)
+	case tkF32:
+		if f.HasFloatRange {
+			g.pf("%sfloat decoded = table_bits_to_float( r.get32() );\n", ind)
+			g.pf("%sif ( decoded < %s ) { decoded = %s; r.report->clamped++; }\n", ind, formatFloat(f.FMin, true), formatFloat(f.FMin, true))
+			g.pf("%selse if ( decoded > %s ) { decoded = %s; r.report->clamped++; }\n", ind, formatFloat(f.FMax, true), formatFloat(f.FMax, true))
+			g.pf("%s%s = decoded;\n", ind, lvalue)
+			return
+		}
+		g.pf("%s%s = table_bits_to_float( r.get32() );\n", ind, lvalue)
+	case tkF64:
+		if f.HasFloatRange {
+			g.pf("%sdouble decoded = table_bits_to_double( r.get64() );\n", ind)
+			g.pf("%sif ( decoded < %s ) { decoded = %s; r.report->clamped++; }\n", ind, formatFloat(f.FMin, false), formatFloat(f.FMin, false))
+			g.pf("%selse if ( decoded > %s ) { decoded = %s; r.report->clamped++; }\n", ind, formatFloat(f.FMax, false), formatFloat(f.FMax, false))
+			g.pf("%s%s = decoded;\n", ind, lvalue)
+			return
+		}
+		g.pf("%s%s = table_bits_to_double( r.get64() );\n", ind, lvalue)
+	default:
+		if enum, isEnum := f.Type.Ref.(*ir.Enum); f.Type.Kind == ir.TNamed && isEnum {
+			g.pf("%suint%d_t raw = r.%s( );\n", ind, width*8, tableGet(width))
+			g.pf("%sif ( raw > %d ) { raw = 0; r.report->clamped++; } // out-of-set -> None\n", ind, enum.Max)
+			g.pf("%s%s = %s( raw );\n", ind, lvalue, f.Type.Name)
+			return
+		}
+		signed := f.Type.Kind == ir.TInt && f.Type.Signed
+		storage := fmt.Sprintf("uint%d_t", width*8)
+		if signed {
+			storage = fmt.Sprintf("int%d_t", width*8)
+		}
+		g.pf("%s%s decoded = %s( r.%s( ) );\n", ind, storage, storage, tableGet(width))
+		if f.HasIntRange {
+			lo := tableIntLit(f.IntMin, signed, width)
+			hi := tableIntLit(f.IntMax, signed, width)
+			g.pf("%sif ( decoded < %s ) { decoded = %s; r.report->clamped++; }\n", ind, lo, lo)
+			g.pf("%selse if ( decoded > %s ) { decoded = %s; r.report->clamped++; }\n", ind, hi, hi)
+		}
+		if f.Type.Kind == ir.TBits && f.Type.Width < width*8 {
+			maxv := (uint64(1) << f.Type.Width) - 1
+			g.pf("%sif ( decoded > %dull ) { decoded = %dull; r.report->clamped++; } // bits(%d) width clamp\n", ind, maxv, maxv, f.Type.Width)
+		}
+		g.pf("%s%s = decoded;\n", ind, lvalue)
+	}
+}
