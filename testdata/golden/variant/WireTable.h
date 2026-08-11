@@ -326,25 +326,37 @@ inline bool TableWriteProbeSample( TableWriter & w, const ProbeSample & value )
         w.put16( 0x078b ); w.put8( 5 ); // big_delta
         w.put64( uint64_t( value.big_delta ) );
     }
-    if ( value.weapon != Weapon::None )
+    if ( value.active )
     {
-        w.put16( 0x4f72 ); w.put8( 6 ); // weapon
-        w.put8( uint8_t( value.weapon ) );
+        if ( value.weapon != Weapon::None )
+        {
+            w.put16( 0x4f72 ); w.put8( 6 ); // weapon
+            w.put8( uint8_t( value.weapon ) );
+        }
     }
-    if ( value.has_target != false )
+    if ( value.active )
     {
-        w.put16( 0xb0a7 ); w.put8( 1 ); // has_target
-        w.put8( value.has_target ? 1 : 0 );
+        if ( value.has_target != false )
+        {
+            w.put16( 0xb0a7 ); w.put8( 1 ); // has_target
+            w.put8( value.has_target ? 1 : 0 );
+        }
     }
-    if ( value.target_id != 0 )
+    if ( value.active && value.has_target )
     {
-        w.put16( 0xdf6a ); w.put8( 7 ); // target_id
-        w.put16( uint16_t( value.target_id ) );
+        if ( value.target_id != 0 )
+        {
+            w.put16( 0xdf6a ); w.put8( 7 ); // target_id
+            w.put16( uint16_t( value.target_id ) );
+        }
     }
-    if ( value.idle_ticks != 0 )
+    if ( !value.active )
     {
-        w.put16( 0x9555 ); w.put8( 8 ); // idle_ticks
-        w.put32( uint32_t( value.idle_ticks ) );
+        if ( value.idle_ticks != 0 )
+        {
+            w.put16( 0x9555 ); w.put8( 8 ); // idle_ticks
+            w.put32( uint32_t( value.idle_ticks ) );
+        }
     }
     if ( value.samples_count > 0 )
     {

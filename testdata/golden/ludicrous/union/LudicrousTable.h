@@ -431,10 +431,13 @@ inline bool TableWriteLudicrousState( TableWriter & w, const LudicrousState & va
         w.put16( 0xb0a7 ); w.put8( 1 ); // has_target
         w.put8( value.has_target ? 1 : 0 );
     }
-    if ( value.target_id != 0 )
+    if ( value.has_target )
     {
-        w.put16( 0xdf6a ); w.put8( 9 ); // target_id
-        w.put64( uint64_t( value.target_id ) );
+        if ( value.target_id != 0 )
+        {
+            w.put16( 0xdf6a ); w.put8( 9 ); // target_id
+            w.put64( uint64_t( value.target_id ) );
+        }
     }
     w.put16( 0 ); // terminator
     return !w.overflow;

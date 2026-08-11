@@ -692,23 +692,29 @@ inline bool TableWriteRigidBody( TableWriter & w, const RigidBody & value )
         w.put16( 0xf9eb ); w.put8( 1 ); // at_rest
         w.put8( value.at_rest ? 1 : 0 );
     }
+    if ( !value.at_rest )
     {
-        int64_t field_at_linear_velocity = w.offset;
-        w.put16( 0x0637 ); w.put8( 13 ); // linear_velocity
-        int64_t len_at_linear_velocity = w.offset; w.put32( 0 );
-        if ( !TableWriteVec3( w, value.linear_velocity ) ) return false;
-        int64_t body_linear_velocity = w.offset - len_at_linear_velocity - 4;
-        if ( body_linear_velocity <= 2 ) { w.offset = field_at_linear_velocity; } // all-default nested elides
-        else { w.patch32( len_at_linear_velocity, uint32_t( body_linear_velocity ) ); }
+        {
+            int64_t field_at_linear_velocity = w.offset;
+            w.put16( 0x0637 ); w.put8( 13 ); // linear_velocity
+            int64_t len_at_linear_velocity = w.offset; w.put32( 0 );
+            if ( !TableWriteVec3( w, value.linear_velocity ) ) return false;
+            int64_t body_linear_velocity = w.offset - len_at_linear_velocity - 4;
+            if ( body_linear_velocity <= 2 ) { w.offset = field_at_linear_velocity; } // all-default nested elides
+            else { w.patch32( len_at_linear_velocity, uint32_t( body_linear_velocity ) ); }
+        }
     }
+    if ( !value.at_rest )
     {
-        int64_t field_at_angular_velocity = w.offset;
-        w.put16( 0x01a7 ); w.put8( 13 ); // angular_velocity
-        int64_t len_at_angular_velocity = w.offset; w.put32( 0 );
-        if ( !TableWriteVec3( w, value.angular_velocity ) ) return false;
-        int64_t body_angular_velocity = w.offset - len_at_angular_velocity - 4;
-        if ( body_angular_velocity <= 2 ) { w.offset = field_at_angular_velocity; } // all-default nested elides
-        else { w.patch32( len_at_angular_velocity, uint32_t( body_angular_velocity ) ); }
+        {
+            int64_t field_at_angular_velocity = w.offset;
+            w.put16( 0x01a7 ); w.put8( 13 ); // angular_velocity
+            int64_t len_at_angular_velocity = w.offset; w.put32( 0 );
+            if ( !TableWriteVec3( w, value.angular_velocity ) ) return false;
+            int64_t body_angular_velocity = w.offset - len_at_angular_velocity - 4;
+            if ( body_angular_velocity <= 2 ) { w.offset = field_at_angular_velocity; } // all-default nested elides
+            else { w.patch32( len_at_angular_velocity, uint32_t( body_angular_velocity ) ); }
+        }
     }
     w.put16( 0 ); // terminator
     return !w.overflow;
@@ -1258,10 +1264,13 @@ inline bool TableWriteShipCreate( TableWriter & w, const ShipCreate & value )
         w.put16( 0xaa8d ); w.put8( 1 ); // has_flags
         w.put8( value.has_flags ? 1 : 0 );
     }
-    if ( value.flags != 0 )
+    if ( value.has_flags )
     {
-        w.put16( 0xe64b ); w.put8( 9 ); // flags
-        w.put64( uint64_t( value.flags ) );
+        if ( value.flags != 0 )
+        {
+            w.put16( 0xe64b ); w.put8( 9 ); // flags
+            w.put64( uint64_t( value.flags ) );
+        }
     }
     if ( value.team != Team::None )
     {

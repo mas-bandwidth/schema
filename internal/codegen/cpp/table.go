@@ -123,10 +123,22 @@ type tableGen struct {
 	file     *ir.File
 	body     strings.Builder
 	includes map[string]bool
+	indent   string // extra per-line indent while emitting inside a branch guard
 }
 
 func (g *tableGen) pf(format string, args ...any) {
-	fmt.Fprintf(&g.body, format, args...)
+	s := fmt.Sprintf(format, args...)
+	if g.indent != "" && s != "" {
+		trailing := strings.HasSuffix(s, "\n")
+		if trailing {
+			s = s[:len(s)-1]
+		}
+		s = g.indent + strings.ReplaceAll(s, "\n", "\n"+g.indent)
+		if trailing {
+			s += "\n"
+		}
+	}
+	g.body.WriteString(s)
 }
 
 func (g *tableGen) noteRef(name string) {
@@ -320,9 +332,60 @@ func (g *tableGen) fieldDefaultExpr(f *ir.Field) string {
 	return "0"
 }
 
+// tableGuardExprs composes each guarded field's branch condition from the
+// wire tree ("value.a && !value.b" for nesting) so the writer can keep
+// untaken-branch fields off the wire — TLV's native optionality carries the
+// branch, and the reader's prefilled defaults stand in for the untaken side.
+func tableGuardExprs(st *ir.Struct) map[string]string {
+	guards := map[string]string{}
+	var walk func(items []ir.Item, cond string)
+	walk = func(items []ir.Item, cond string) {
+		for _, item := range items {
+			switch item := item.(type) {
+			case *ir.FieldItem:
+				if cond != "" {
+					guards[item.F.Name] = cond
+				}
+			case *ir.Branch:
+				pos, neg := "value."+item.Cond, "!value."+item.Cond
+				if item.Neg {
+					pos, neg = neg, pos
+				}
+				and := func(a, b string) string {
+					if a == "" {
+						return b
+					}
+					return a + " && " + b
+				}
+				walk(item.Then, and(cond, pos))
+				walk(item.Else, and(cond, neg))
+			}
+		}
+	}
+	walk(st.Items, "")
+	return guards
+}
+
 func (g *tableGen) emitTableWrite(st *ir.Struct) {
 	g.pf("inline bool TableWrite%s( TableWriter & w, const %s & value )\n{\n", st.Name, st.Name)
+	guards := tableGuardExprs(st)
 	for _, f := range st.Fields {
+		if cond, guarded := guards[f.Name]; guarded {
+			g.pf("    if ( %s )\n    {\n", cond)
+			g.indent = "    "
+			g.emitTableWriteField(f)
+			g.indent = ""
+			g.pf("    }\n")
+			continue
+		}
+		g.emitTableWriteField(f)
+	}
+	g.pf("    w.put16( 0 ); // terminator\n")
+	g.pf("    return !w.overflow;\n}\n\n")
+}
+
+func (g *tableGen) emitTableWriteField(f *ir.Field) {
+	{
 		id := pack.FieldId(f.Name)
 		kind := tableScalarKind(f)
 		if f.Type.Kind == ir.TNamed {
@@ -375,8 +438,6 @@ func (g *tableGen) emitTableWrite(st *ir.Struct) {
 			g.pf("    }\n")
 		}
 	}
-	g.pf("    w.put16( 0 ); // terminator\n")
-	g.pf("    return !w.overflow;\n}\n\n")
 }
 
 func (g *tableGen) emitTableWriteElement(f *ir.Field, kind int, expr, ind string) {

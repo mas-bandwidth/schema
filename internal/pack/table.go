@@ -156,11 +156,11 @@ type tableWriter struct {
 	buf []byte
 }
 
-func (w *tableWriter) u8(v byte)      { w.buf = append(w.buf, v) }
-func (w *tableWriter) u16(v uint16)   { w.buf = binary.LittleEndian.AppendUint16(w.buf, v) }
-func (w *tableWriter) u32(v uint32)   { w.buf = binary.LittleEndian.AppendUint32(w.buf, v) }
-func (w *tableWriter) u64(v uint64)   { w.buf = binary.LittleEndian.AppendUint64(w.buf, v) }
-func (w *tableWriter) raw(b []byte)   { w.buf = append(w.buf, b...) }
+func (w *tableWriter) u8(v byte)    { w.buf = append(w.buf, v) }
+func (w *tableWriter) u16(v uint16) { w.buf = binary.LittleEndian.AppendUint16(w.buf, v) }
+func (w *tableWriter) u32(v uint32) { w.buf = binary.LittleEndian.AppendUint32(w.buf, v) }
+func (w *tableWriter) u64(v uint64) { w.buf = binary.LittleEndian.AppendUint64(w.buf, v) }
+func (w *tableWriter) raw(b []byte) { w.buf = append(w.buf, b...) }
 
 // EncodeTable encodes a JSON object as typeName on the TABLE wire.
 // Fields at their declared default (or zero) are elided — absent means
@@ -188,13 +188,42 @@ func (e *Encoder) encodeTableStruct(st *ir.Struct, obj map[string]any, path stri
 		}
 	}
 	w := &tableWriter{}
-	for _, f := range st.Fields {
-		if err := e.encodeTableField(w, f, obj, path); err != nil {
-			return nil, err
-		}
+	if err := e.encodeTableItems(w, st.Items, obj, path); err != nil {
+		return nil, err
 	}
 	w.u16(0) // terminator
 	return w.buf, nil
+}
+
+// encodeTableItems walks the wire tree so branch guards are honored: fields on
+// an untaken branch stay off the wire entirely — TLV's native optionality
+// carries the branch (notes/table-wire.md), and the reader's prefilled
+// defaults stand in for the untaken side. const/reserved/align are dense-wire
+// constructs; the table wire carries named fields only.
+func (e *Encoder) encodeTableItems(w *tableWriter, items []ir.Item, obj map[string]any, path string) error {
+	for _, item := range items {
+		switch item := item.(type) {
+		case *ir.FieldItem:
+			if err := e.encodeTableField(w, item.F, obj, path); err != nil {
+				return err
+			}
+		case *ir.Branch:
+			cond, err := boolField(obj, item.Cond, path)
+			if err != nil {
+				return err
+			}
+			taken := item.Then
+			if cond == item.Neg { // if !cond with cond true, or if cond with cond false
+				taken = item.Else
+			}
+			if taken != nil {
+				if err := e.encodeTableItems(w, taken, obj, path); err != nil {
+					return err
+				}
+			}
+		}
+	}
+	return nil
 }
 
 // encodeTableField writes one field, eliding defaults/absence.
@@ -450,10 +479,10 @@ func (e *Encoder) encodeTableScalar(w *tableWriter, f *ir.Field, kind byte, val 
 
 // TableReport counts the permissive contract's events.
 type TableReport struct {
-	Unknown       int // unknown field ids skipped
-	KindMismatch  int // known id, wrong kind — skipped
-	Clamped       int // out-of-range values clamped
-	Malformed     bool
+	Unknown      int // unknown field ids skipped
+	KindMismatch int // known id, wrong kind — skipped
+	Clamped      int // out-of-range values clamped
+	Malformed    bool
 }
 
 // DecodeTable decodes TABLE-wire bytes as typeName into a generic map

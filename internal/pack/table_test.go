@@ -229,6 +229,56 @@ func TestTableClamping(t *testing.T) {
 	}
 }
 
+// TestTableBranchGuards: fields on an untaken branch stay off the wire —
+// TLV's native optionality carries the branch, and the reader's prefilled
+// defaults stand in for the untaken side (notes/table-wire.md).
+func TestTableBranchGuards(t *testing.T) {
+	u := unitFromSource(t, `package evo
+
+type Body {
+    at_rest bool
+    if !at_rest {
+        vx float32
+        vy float32
+    }
+}
+`)
+	enc := &Encoder{Unit: u}
+
+	// guard says at rest: velocities must not encode even though the JSON
+	// carries one (dense-encoder precedent: untaken side silently ignored)
+	atRest, err := enc.EncodeTable("Body", obj(t, `{ "at_rest": true, "vx": 5.0 }`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(atRest) != 6 { // at_rest bool field (4) + terminator (2)
+		t.Fatalf("at-rest wire should be 6 bytes (guard only), got %d", len(atRest))
+	}
+	out, rep, err := DecodeTable(u, "Body", atRest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rep.Unknown != 0 || rep.Malformed {
+		t.Fatalf("decode not silent: %+v", rep)
+	}
+	if out["at_rest"].(bool) != true || out["vx"].(float64) != 0 {
+		t.Fatalf("untaken side should decode to defaults: %v", out)
+	}
+
+	// guard says moving: the velocity rides
+	moving, err := enc.EncodeTable("Body", obj(t, `{ "at_rest": false, "vx": 5.0 }`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	out2, _, err := DecodeTable(u, "Body", moving)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out2["at_rest"].(bool) != false || out2["vx"].(float64) != 5.0 {
+		t.Fatalf("taken side lost: %v", out2)
+	}
+}
+
 func TestFieldIdCollisionCheck(t *testing.T) {
 	u := unitFromSource(t, schemaV1)
 	if err := CheckTableIds(u); err != nil {
