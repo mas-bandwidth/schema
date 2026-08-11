@@ -7,6 +7,7 @@
 
 #include <cstdint>
 #include <cstring>
+#include <cstddef> // offsetof, for the reflection descriptors
 #include <new> // in-place prefill (placement new): no giant stack temporaries
 
 #include "Ludicrous.h"
@@ -24,6 +25,44 @@ struct TableReport
     int32_t kind_mismatch = 0; // known id, changed type — skipped, never misdecoded
     int32_t clamped = 0;       // out-of-range values clamped to declared bounds
     bool malformed = false;    // framing damage; decode stopped, partial result kept
+};
+
+// ---- reflection (tables only, notes/table-wire.md) ----
+//
+// Static field descriptors for every type in the table closure: name, wire
+// id/kind, storage offset, bounds, ranges, enum names and branch guards —
+// enough to walk, print, diff, edit or bind any table value at runtime with
+// no RTTI and no schema files. TableType<X>() returns X's descriptor.
+
+struct TableTypeInfo;
+
+struct TableFieldInfo
+{
+    const char * name;      // schema field name, e.g. "health"
+    const char * type_name; // schema type name, e.g. "float32", "ShipType"
+    uint16_t id;            // table-wire field id (name hash)
+    uint8_t kind;           // table-wire kind; for arrays/strings/bytes, the ELEMENT kind
+    bool is_array;          // fixed or counted array (bytes included)
+    bool counted;           // a _count/_length int32 companion exists (counted arrays, strings, bytes)
+    int32_t array_bound;    // array capacity / string max length; 0 for plain scalars
+    uint32_t offset;        // offsetof the storage member
+    uint32_t elem_size;     // sizeof the member (element size for arrays)
+    uint32_t count_offset;  // offsetof the _count/_length companion, or 0xffffffff
+    const TableTypeInfo * table; // nested table's descriptor, or NULL
+    bool has_range;         // a declared [min, max] (int or float)
+    double range_min;       // NOTE: int64 ranges beyond 2^53 lose precision here
+    double range_max;
+    int64_t enum_max;       // enums: highest valid value (None = 0 always valid); else -1
+    const char * (*enum_name)( uint64_t value ); // enums: value -> name; else NULL
+    const char * guard;     // branch guard, e.g. "at_rest" or "!at_rest"; "" if unguarded
+};
+
+struct TableTypeInfo
+{
+    const char * name;   // schema type name
+    uint32_t size;       // sizeof the storage struct
+    int32_t num_fields;
+    const TableFieldInfo * fields;
 };
 
 struct TableWriter

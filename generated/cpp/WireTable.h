@@ -7,6 +7,7 @@
 
 #include <cstdint>
 #include <cstring>
+#include <cstddef> // offsetof, for the reflection descriptors
 #include <new> // in-place prefill (placement new): no giant stack temporaries
 
 #include "Wire.h"
@@ -24,6 +25,44 @@ struct TableReport
     int32_t kind_mismatch = 0; // known id, changed type — skipped, never misdecoded
     int32_t clamped = 0;       // out-of-range values clamped to declared bounds
     bool malformed = false;    // framing damage; decode stopped, partial result kept
+};
+
+// ---- reflection (tables only, notes/table-wire.md) ----
+//
+// Static field descriptors for every type in the table closure: name, wire
+// id/kind, storage offset, bounds, ranges, enum names and branch guards —
+// enough to walk, print, diff, edit or bind any table value at runtime with
+// no RTTI and no schema files. TableType<X>() returns X's descriptor.
+
+struct TableTypeInfo;
+
+struct TableFieldInfo
+{
+    const char * name;      // schema field name, e.g. "health"
+    const char * type_name; // schema type name, e.g. "float32", "ShipType"
+    uint16_t id;            // table-wire field id (name hash)
+    uint8_t kind;           // table-wire kind; for arrays/strings/bytes, the ELEMENT kind
+    bool is_array;          // fixed or counted array (bytes included)
+    bool counted;           // a _count/_length int32 companion exists (counted arrays, strings, bytes)
+    int32_t array_bound;    // array capacity / string max length; 0 for plain scalars
+    uint32_t offset;        // offsetof the storage member
+    uint32_t elem_size;     // sizeof the member (element size for arrays)
+    uint32_t count_offset;  // offsetof the _count/_length companion, or 0xffffffff
+    const TableTypeInfo * table; // nested table's descriptor, or NULL
+    bool has_range;         // a declared [min, max] (int or float)
+    double range_min;       // NOTE: int64 ranges beyond 2^53 lose precision here
+    double range_max;
+    int64_t enum_max;       // enums: highest valid value (None = 0 always valid); else -1
+    const char * (*enum_name)( uint64_t value ); // enums: value -> name; else NULL
+    const char * guard;     // branch guard, e.g. "at_rest" or "!at_rest"; "" if unguarded
+};
+
+struct TableTypeInfo
+{
+    const char * name;   // schema type name
+    uint32_t size;       // sizeof the storage struct
+    int32_t num_fields;
+    const TableFieldInfo * fields;
 };
 
 struct TableWriter
@@ -993,6 +1032,79 @@ inline bool TableReadTestData( const uint8_t * buffer, int64_t bytes, TestData &
 {
     TableReader r( buffer, bytes, &report );
     return TableReadTestData( r, value );
+}
+
+// ---- reflection descriptors (tables only, notes/table-wire.md) ----
+
+inline const TableTypeInfo * TableTypeProbeSample();
+inline const TableTypeInfo * TableTypeProbeConfig();
+inline const TableTypeInfo * TableTypeProbeArray();
+inline const TableTypeInfo * TableTypeTestData();
+
+inline const TableTypeInfo * TableTypeProbeSample()
+{
+    static const TableFieldInfo fields[] = {
+        { "active", "bool", 0x405a, 1, false, false, 0, (uint32_t) offsetof( ProbeSample, active ), (uint32_t) sizeof( ProbeSample{}.active ), 0xffffffffu, NULL, false, 0.0, 0.0, -1, NULL, "" },
+        { "orientation", "float32", 0x7964, 10, false, false, 0, (uint32_t) offsetof( ProbeSample, orientation ), (uint32_t) sizeof( ProbeSample{}.orientation ), 0xffffffffu, NULL, true, -180.0, 180.0, -1, NULL, "" },
+        { "raw_delta", "int32", 0x933d, 4, false, false, 0, (uint32_t) offsetof( ProbeSample, raw_delta ), (uint32_t) sizeof( ProbeSample{}.raw_delta ), 0xffffffffu, NULL, false, 0.0, 0.0, -1, NULL, "" },
+        { "big_delta", "int64", 0x078b, 5, false, false, 0, (uint32_t) offsetof( ProbeSample, big_delta ), (uint32_t) sizeof( ProbeSample{}.big_delta ), 0xffffffffu, NULL, false, 0.0, 0.0, -1, NULL, "" },
+        { "weapon", "Weapon", 0x4f72, 6, false, false, 0, (uint32_t) offsetof( ProbeSample, weapon ), (uint32_t) sizeof( ProbeSample{}.weapon ), 0xffffffffu, NULL, false, 0.0, 0.0, 15, +[]( uint64_t v ) { return EnumName( Weapon( v ) ); }, "active" },
+        { "has_target", "bool", 0xb0a7, 1, false, false, 0, (uint32_t) offsetof( ProbeSample, has_target ), (uint32_t) sizeof( ProbeSample{}.has_target ), 0xffffffffu, NULL, false, 0.0, 0.0, -1, NULL, "active" },
+        { "target_id", "uint16", 0xdf6a, 7, false, false, 0, (uint32_t) offsetof( ProbeSample, target_id ), (uint32_t) sizeof( ProbeSample{}.target_id ), 0xffffffffu, NULL, false, 0.0, 0.0, -1, NULL, "active && has_target" },
+        { "idle_ticks", "uint32", 0x9555, 8, false, false, 0, (uint32_t) offsetof( ProbeSample, idle_ticks ), (uint32_t) sizeof( ProbeSample{}.idle_ticks ), 0xffffffffu, NULL, false, 0.0, 0.0, -1, NULL, "!active" },
+        { "samples", "uint16", 0xaf9a, 7, true, true, 8, (uint32_t) offsetof( ProbeSample, samples ), (uint32_t) sizeof( ProbeSample{}.samples[0] ), (uint32_t) offsetof( ProbeSample, samples_count ), NULL, false, 0.0, 0.0, -1, NULL, "" },
+    };
+    static const TableTypeInfo info = { "ProbeSample", (uint32_t) sizeof( ProbeSample ), 9, fields };
+    return &info;
+}
+
+inline const TableTypeInfo * TableTypeProbeConfig()
+{
+    static const TableFieldInfo fields[] = {
+        { "retries", "int32", 0x460c, 4, false, false, 0, (uint32_t) offsetof( ProbeConfig, retries ), (uint32_t) sizeof( ProbeConfig{}.retries ), 0xffffffffu, NULL, false, 0.0, 0.0, -1, NULL, "" },
+        { "preferred", "Weapon", 0x3982, 6, false, false, 0, (uint32_t) offsetof( ProbeConfig, preferred ), (uint32_t) sizeof( ProbeConfig{}.preferred ), 0xffffffffu, NULL, false, 0.0, 0.0, 15, +[]( uint64_t v ) { return EnumName( Weapon( v ) ); }, "" },
+    };
+    static const TableTypeInfo info = { "ProbeConfig", (uint32_t) sizeof( ProbeConfig ), 2, fields };
+    return &info;
+}
+
+inline const TableTypeInfo * TableTypeProbeArray()
+{
+    static const TableFieldInfo fields[] = {
+        { "samples", "ProbeSample", 0xaf9a, 13, true, false, 2, (uint32_t) offsetof( ProbeArray, samples ), (uint32_t) sizeof( ProbeArray{}.samples[0] ), 0xffffffffu, TableTypeProbeSample(), false, 0.0, 0.0, -1, NULL, "" },
+        { "config", "ProbeConfig", 0x4538, 13, false, false, 0, (uint32_t) offsetof( ProbeArray, config ), (uint32_t) sizeof( ProbeArray{}.config ), 0xffffffffu, TableTypeProbeConfig(), false, 0.0, 0.0, -1, NULL, "" },
+    };
+    static const TableTypeInfo info = { "ProbeArray", (uint32_t) sizeof( ProbeArray ), 2, fields };
+    return &info;
+}
+
+inline const TableTypeInfo * TableTypeTestData()
+{
+    static const TableFieldInfo fields[] = {
+        { "a", "int32", 0xcd20, 4, false, false, 0, (uint32_t) offsetof( TestData, a ), (uint32_t) sizeof( TestData{}.a ), 0xffffffffu, NULL, true, -100.0, 100.0, -1, NULL, "" },
+        { "b", "int32", 0xcae9, 4, false, false, 0, (uint32_t) offsetof( TestData, b ), (uint32_t) sizeof( TestData{}.b ), 0xffffffffu, NULL, true, -100.0, 100.0, -1, NULL, "" },
+        { "c", "int32", 0xca5e, 4, false, false, 0, (uint32_t) offsetof( TestData, c ), (uint32_t) sizeof( TestData{}.c ), 0xffffffffu, NULL, true, -100.0, 150.0, -1, NULL, "" },
+        { "d", "bits(8)", 0xc57f, 6, false, false, 0, (uint32_t) offsetof( TestData, d ), (uint32_t) sizeof( TestData{}.d ), 0xffffffffu, NULL, false, 0.0, 0.0, -1, NULL, "" },
+        { "e", "bits(8)", 0xc2ec, 6, false, false, 0, (uint32_t) offsetof( TestData, e ), (uint32_t) sizeof( TestData{}.e ), 0xffffffffu, NULL, false, 0.0, 0.0, -1, NULL, "" },
+        { "f", "bits(8)", 0xc495, 6, false, false, 0, (uint32_t) offsetof( TestData, f ), (uint32_t) sizeof( TestData{}.f ), 0xffffffffu, NULL, false, 0.0, 0.0, -1, NULL, "" },
+        { "g", "bool", 0xc40a, 1, false, false, 0, (uint32_t) offsetof( TestData, g ), (uint32_t) sizeof( TestData{}.g ), 0xffffffffu, NULL, false, 0.0, 0.0, -1, NULL, "" },
+        { "items", "int32", 0x09f6, 4, true, true, 16, (uint32_t) offsetof( TestData, items ), (uint32_t) sizeof( TestData{}.items[0] ), (uint32_t) offsetof( TestData, items_count ), NULL, true, 0.0, 255.0, -1, NULL, "" },
+        { "float_value", "float32", 0xbbaf, 10, false, false, 0, (uint32_t) offsetof( TestData, float_value ), (uint32_t) sizeof( TestData{}.float_value ), 0xffffffffu, NULL, false, 0.0, 0.0, -1, NULL, "" },
+        { "compressed_float_value", "float32", 0x8aa5, 10, false, false, 0, (uint32_t) offsetof( TestData, compressed_float_value ), (uint32_t) sizeof( TestData{}.compressed_float_value ), 0xffffffffu, NULL, true, 0.0, 10.0, -1, NULL, "" },
+        { "double_value", "float64", 0x6a50, 11, false, false, 0, (uint32_t) offsetof( TestData, double_value ), (uint32_t) sizeof( TestData{}.double_value ), 0xffffffffu, NULL, false, 0.0, 0.0, -1, NULL, "" },
+        { "int8_value", "int8", 0x6592, 2, false, false, 0, (uint32_t) offsetof( TestData, int8_value ), (uint32_t) sizeof( TestData{}.int8_value ), 0xffffffffu, NULL, false, 0.0, 0.0, -1, NULL, "" },
+        { "int16_value", "int16", 0x68f3, 3, false, false, 0, (uint32_t) offsetof( TestData, int16_value ), (uint32_t) sizeof( TestData{}.int16_value ), 0xffffffffu, NULL, false, 0.0, 0.0, -1, NULL, "" },
+        { "uint8_value", "uint8", 0x5645, 6, false, false, 0, (uint32_t) offsetof( TestData, uint8_value ), (uint32_t) sizeof( TestData{}.uint8_value ), 0xffffffffu, NULL, false, 0.0, 0.0, -1, NULL, "" },
+        { "uint16_value", "uint16", 0xd185, 7, false, false, 0, (uint32_t) offsetof( TestData, uint16_value ), (uint32_t) sizeof( TestData{}.uint16_value ), 0xffffffffu, NULL, false, 0.0, 0.0, -1, NULL, "" },
+        { "uint32_value", "uint32", 0x3ba7, 8, false, false, 0, (uint32_t) offsetof( TestData, uint32_value ), (uint32_t) sizeof( TestData{}.uint32_value ), 0xffffffffu, NULL, false, 0.0, 0.0, -1, NULL, "" },
+        { "uint64_value", "uint64", 0xc4d6, 9, false, false, 0, (uint32_t) offsetof( TestData, uint64_value ), (uint32_t) sizeof( TestData{}.uint64_value ), 0xffffffffu, NULL, false, 0.0, 0.0, -1, NULL, "" },
+        { "int64_full", "int64", 0xc2b7, 5, false, false, 0, (uint32_t) offsetof( TestData, int64_full ), (uint32_t) sizeof( TestData{}.int64_full ), 0xffffffffu, NULL, false, 0.0, 0.0, -1, NULL, "" },
+        { "int64_range", "int64", 0xab05, 5, false, false, 0, (uint32_t) offsetof( TestData, int64_range ), (uint32_t) sizeof( TestData{}.int64_range ), 0xffffffffu, NULL, true, -1e+12, 1e+12, -1, NULL, "" },
+        { "fixed_bytes", "uint8", 0x14fc, 6, true, false, 17, (uint32_t) offsetof( TestData, fixed_bytes ), (uint32_t) sizeof( TestData{}.fixed_bytes[0] ), 0xffffffffu, NULL, false, 0.0, 0.0, -1, NULL, "" },
+        { "text", "string", 0xf3d8, 12, false, true, 255, (uint32_t) offsetof( TestData, text ), (uint32_t) sizeof( TestData{}.text ), (uint32_t) offsetof( TestData, text_length ), NULL, false, 0.0, 0.0, -1, NULL, "" },
+    };
+    static const TableTypeInfo info = { "TestData", (uint32_t) sizeof( TestData ), 21, fields };
+    return &info;
 }
 
 } // namespace example

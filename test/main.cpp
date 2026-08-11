@@ -858,6 +858,76 @@ int main()
         check( out.text_length == 19 && std::memcmp( out.text, "the quick brown fox", 19 ) == 0 );
     }
 
+    // ---- reflection descriptors: walk, read and WRITE a table generically ----
+    {
+        const TableTypeInfo * info = TableTypeRigidBody();
+        check( strcmp( info->name, "RigidBody" ) == 0 );
+        check( info->size == sizeof( RigidBody ) );
+        check( info->num_fields == 5 );
+
+        // find fields by name; check identity, nesting and guards
+        const TableFieldInfo * at_rest = NULL;
+        const TableFieldInfo * position = NULL;
+        const TableFieldInfo * linear_velocity = NULL;
+        for ( int i = 0; i < info->num_fields; i++ )
+        {
+            if ( strcmp( info->fields[i].name, "at_rest" ) == 0 ) at_rest = &info->fields[i];
+            if ( strcmp( info->fields[i].name, "position" ) == 0 ) position = &info->fields[i];
+            if ( strcmp( info->fields[i].name, "linear_velocity" ) == 0 ) linear_velocity = &info->fields[i];
+        }
+        check( at_rest && position && linear_velocity );
+        check( at_rest->kind == 1 && strcmp( at_rest->guard, "" ) == 0 );
+        check( position->table == TableTypeVec3() );
+        check( strcmp( position->type_name, "Vec3" ) == 0 );
+        check( strcmp( linear_velocity->guard, "!at_rest" ) == 0 );
+
+        // generic WRITE through the descriptor: set a bool by offset, then
+        // prove the real codec sees it
+        RigidBody body;
+        *(bool*) ( (uint8_t*) &body + at_rest->offset ) = true;
+        check( body.at_rest );
+
+        // generic READ of a nested double through two descriptor hops
+        body.position.y = -2.5;
+        const TableFieldInfo * vec_y = &position->table->fields[1];
+        check( strcmp( vec_y->name, "y" ) == 0 );
+        double y = *(double*) ( (uint8_t*) &body + position->offset + vec_y->offset );
+        check( y == -2.5 );
+
+        // enum metadata: ProbeSample.weapon names its values and knows its max
+        const TableTypeInfo * sample = TableTypeProbeSample();
+        const TableFieldInfo * weapon = NULL;
+        const TableFieldInfo * samples = NULL;
+        for ( int i = 0; i < sample->num_fields; i++ )
+        {
+            if ( strcmp( sample->fields[i].name, "weapon" ) == 0 ) weapon = &sample->fields[i];
+            if ( strcmp( sample->fields[i].name, "samples" ) == 0 ) samples = &sample->fields[i];
+        }
+        // enum_max is the declared WIRE max ([max = 15] widening), not the
+        // current variant count — future variants decode without clamping
+        check( weapon && weapon->enum_name && weapon->enum_max == 15 );
+        check( strcmp( weapon->enum_name( 1 ), "Laser" ) == 0 );
+        check( strcmp( weapon->enum_name( 200 ), "???" ) == 0 );
+        check( strcmp( weapon->guard, "active" ) == 0 );
+
+        // counted array metadata: bound, element size, count companion
+        check( samples && samples->is_array && samples->counted );
+        check( samples->array_bound == 8 && samples->elem_size == sizeof( uint16_t ) );
+        ProbeSample ps;
+        *(int32_t*) ( (uint8_t*) &ps + samples->count_offset ) = 2;
+        check( ps.samples_count == 2 );
+
+        // declared ranges surface for editors (TestData.a is [-100, 100])
+        const TableTypeInfo * testdata = TableTypeTestData();
+        const TableFieldInfo * a_field = NULL;
+        for ( int i = 0; i < testdata->num_fields; i++ )
+        {
+            if ( strcmp( testdata->fields[i].name, "a" ) == 0 ) a_field = &testdata->fields[i];
+        }
+        check( a_field && a_field->has_range );
+        check( a_field->range_min == -100.0 && a_field->range_max == 100.0 );
+    }
+
     // ---- the permissive read contract, exercised with hand-built buffers ----
     {
         // unknown field id: skipped and counted, decode continues

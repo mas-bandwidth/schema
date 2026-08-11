@@ -168,6 +168,44 @@ struct TableReport
     bool malformed = false;    // framing damage; decode stopped, partial result kept
 };
 
+// ---- reflection (tables only, notes/table-wire.md) ----
+//
+// Static field descriptors for every type in the table closure: name, wire
+// id/kind, storage offset, bounds, ranges, enum names and branch guards —
+// enough to walk, print, diff, edit or bind any table value at runtime with
+// no RTTI and no schema files. TableType<X>() returns X's descriptor.
+
+struct TableTypeInfo;
+
+struct TableFieldInfo
+{
+    const char * name;      // schema field name, e.g. "health"
+    const char * type_name; // schema type name, e.g. "float32", "ShipType"
+    uint16_t id;            // table-wire field id (name hash)
+    uint8_t kind;           // table-wire kind; for arrays/strings/bytes, the ELEMENT kind
+    bool is_array;          // fixed or counted array (bytes included)
+    bool counted;           // a _count/_length int32 companion exists (counted arrays, strings, bytes)
+    int32_t array_bound;    // array capacity / string max length; 0 for plain scalars
+    uint32_t offset;        // offsetof the storage member
+    uint32_t elem_size;     // sizeof the member (element size for arrays)
+    uint32_t count_offset;  // offsetof the _count/_length companion, or 0xffffffff
+    const TableTypeInfo * table; // nested table's descriptor, or NULL
+    bool has_range;         // a declared [min, max] (int or float)
+    double range_min;       // NOTE: int64 ranges beyond 2^53 lose precision here
+    double range_max;
+    int64_t enum_max;       // enums: highest valid value (None = 0 always valid); else -1
+    const char * (*enum_name)( uint64_t value ); // enums: value -> name; else NULL
+    const char * guard;     // branch guard, e.g. "at_rest" or "!at_rest"; "" if unguarded
+};
+
+struct TableTypeInfo
+{
+    const char * name;   // schema type name
+    uint32_t size;       // sizeof the storage struct
+    int32_t num_fields;
+    const TableFieldInfo * fields;
+};
+
 struct TableWriter
 {
     uint8_t * buffer;
@@ -261,18 +299,26 @@ func GenerateTable(u *ir.Unit) (map[string][]byte, error) {
 	out := map[string][]byte{}
 	for _, f := range u.Files {
 		g := &tableGen{unit: u, file: f, includes: map[string]bool{}}
-		emitted := 0
+		var members []*ir.Struct
 		for _, d := range f.Decls {
-			if st, ok := d.(*ir.Struct); ok {
-				if !closure[st.Name] {
-					continue
-				}
-				g.emitTableWrite(st)
-				g.emitTableRead(st)
-				emitted++
+			if st, ok := d.(*ir.Struct); ok && closure[st.Name] {
+				members = append(members, st)
 			}
 		}
-		if emitted == 0 {
+		for _, st := range members {
+			g.emitTableWrite(st)
+			g.emitTableRead(st)
+		}
+		if len(members) > 0 {
+			g.pf("// ---- reflection descriptors (tables only, notes/table-wire.md) ----\n\n")
+			for _, st := range members {
+				g.pf("inline const TableTypeInfo * TableType%s();\n", st.Name)
+			}
+			g.pf("\n")
+			for _, st := range members {
+				g.emitTableDescriptor(st)
+			}
+		} else {
 			g.pf("// no tables declared or referenced in this file — codecs are emitted\n")
 			g.pf("// for the table closure only (`table` declarations and what they reach)\n")
 		}
@@ -281,7 +327,7 @@ func GenerateTable(u *ir.Unit) (map[string][]byte, error) {
 		fmt.Fprintf(&h, "// package %s — protocol id 0x%016x\n", u.Package, u.ProtocolId)
 		h.WriteString("// The TABLE wire (evolution-tolerant, notes/table-wire.md): no serialize\n")
 		h.WriteString("// dependency — includable from any TU.\n\n")
-		h.WriteString("#pragma once\n\n#include <cstdint>\n#include <cstring>\n#include <new> // in-place prefill (placement new): no giant stack temporaries\n")
+		h.WriteString("#pragma once\n\n#include <cstdint>\n#include <cstring>\n#include <cstddef> // offsetof, for the reflection descriptors\n#include <new> // in-place prefill (placement new): no giant stack temporaries\n")
 		fmt.Fprintf(&h, "\n#include \"%s.h\"\n", f.Base)
 		names := make([]string, 0, len(g.includes))
 		for n := range g.includes {
@@ -512,6 +558,151 @@ func (g *tableGen) emitTableWriteElement(f *ir.Field, kind int, expr, ind string
 		cast := fmt.Sprintf("uint%d_t", width*8)
 		g.pf("%sw.%s( %s( %s ) );\n", ind, tablePut(width), cast, expr)
 	}
+}
+
+// tableGuardStrings composes each guarded field's branch condition WITHOUT
+// the value. prefix — the reflection descriptor's machine-usable guard
+// ("at_rest", "!at_rest", "active && has_target").
+func tableGuardStrings(st *ir.Struct) map[string]string {
+	guards := map[string]string{}
+	var walk func(items []ir.Item, cond string)
+	walk = func(items []ir.Item, cond string) {
+		for _, item := range items {
+			switch item := item.(type) {
+			case *ir.FieldItem:
+				if cond != "" {
+					guards[item.F.Name] = cond
+				}
+			case *ir.Branch:
+				pos, neg := item.Cond, "!"+item.Cond
+				if item.Neg {
+					pos, neg = neg, pos
+				}
+				and := func(a, b string) string {
+					if a == "" {
+						return b
+					}
+					return a + " && " + b
+				}
+				walk(item.Then, and(cond, pos))
+				walk(item.Else, and(cond, neg))
+			}
+		}
+	}
+	walk(st.Items, "")
+	return guards
+}
+
+// tableFieldTypeName renders a field's schema-facing type name for the
+// descriptor ("float32", "bits(9)", "ShipType", "GunnerSettings").
+func tableFieldTypeName(f *ir.Field) string {
+	switch f.Type.Kind {
+	case ir.TBool:
+		return "bool"
+	case ir.TInt:
+		prefix := "int"
+		if !f.Type.Signed {
+			prefix = "uint"
+		}
+		return fmt.Sprintf("%s%d", prefix, f.Type.Width)
+	case ir.TBits:
+		return fmt.Sprintf("bits(%d)", f.Type.Width)
+	case ir.TFloat32:
+		return "float32"
+	case ir.TFloat64:
+		return "float64"
+	case ir.TString:
+		return "string"
+	case ir.TBytes:
+		return "bytes"
+	case ir.TNamed:
+		return f.Type.Name
+	}
+	return "?"
+}
+
+// bigToDouble renders a big.Int as a C++ double literal for the descriptor's
+// range fields (precision past 2^53 is documented as lost).
+func bigToDouble(v *big.Int) string {
+	f, _ := new(big.Float).SetInt(v).Float64()
+	return formatFloat(f, false)
+}
+
+// emitTableDescriptor emits TableType<X>() — the reflection descriptor: a
+// function-local static (one instance per process, ODR-safe in inline
+// functions), built once on first use.
+func (g *tableGen) emitTableDescriptor(st *ir.Struct) {
+	guards := tableGuardStrings(st)
+	g.pf("inline const TableTypeInfo * TableType%s()\n{\n", st.Name)
+	if len(st.Fields) > 0 {
+		g.pf("    static const TableFieldInfo fields[] = {\n")
+		for _, f := range st.Fields {
+			id := pack.FieldId(f.Name)
+			kind := tableScalarKind(f)
+			if f.Type.Kind == ir.TBytes {
+				kind = tkU8
+			}
+			isArray := f.Array != ir.ArrayNone || f.Type.Kind == ir.TBytes
+			counted := f.Array == ir.ArrayCounted || f.Type.Kind == ir.TBytes || f.Type.Kind == ir.TString
+
+			bound := int64(0)
+			switch {
+			case f.Array != ir.ArrayNone:
+				bound = f.ArrayBound
+			case f.Type.Kind == ir.TBytes, f.Type.Kind == ir.TString:
+				bound = f.Type.Size
+			}
+
+			elemSize := fmt.Sprintf("(uint32_t) sizeof( %s{}.%s )", st.Name, f.Name)
+			if isArray {
+				elemSize = fmt.Sprintf("(uint32_t) sizeof( %s{}.%s[0] )", st.Name, f.Name)
+			}
+
+			countOffset := "0xffffffffu"
+			if counted {
+				companion := f.Name + "_count"
+				if f.Type.Kind == ir.TBytes || f.Type.Kind == ir.TString {
+					companion = f.Name + "_length"
+				}
+				countOffset = fmt.Sprintf("(uint32_t) offsetof( %s, %s )", st.Name, companion)
+			}
+
+			table := "NULL"
+			if _, isStruct := f.Type.Ref.(*ir.Struct); f.Type.Kind == ir.TNamed && isStruct {
+				table = fmt.Sprintf("TableType%s()", f.Type.Name)
+				g.noteRef(f.Type.Name)
+			}
+
+			hasRange := "false"
+			rangeMin, rangeMax := "0.0", "0.0"
+			if f.HasIntRange {
+				hasRange = "true"
+				rangeMin, rangeMax = bigToDouble(f.IntMin), bigToDouble(f.IntMax)
+			} else if f.HasFloatRange {
+				hasRange = "true"
+				rangeMin, rangeMax = formatFloat(f.FMin, false), formatFloat(f.FMax, false)
+			}
+
+			enumMax := "-1"
+			enumName := "NULL"
+			if enum, isEnum := f.Type.Ref.(*ir.Enum); f.Type.Kind == ir.TNamed && isEnum {
+				enumMax = fmt.Sprintf("%d", enum.Max)
+				enumName = fmt.Sprintf("+[]( uint64_t v ) { return EnumName( %s( v ) ); }", f.Type.Name)
+			}
+
+			g.pf("        { \"%s\", \"%s\", 0x%04x, %d, %v, %v, %d, (uint32_t) offsetof( %s, %s ), %s, %s, %s, %s, %s, %s, %s, %s, \"%s\" },\n",
+				f.Name, tableFieldTypeName(f), id, kind, isArray, counted, bound,
+				st.Name, f.Name, elemSize, countOffset, table,
+				hasRange, rangeMin, rangeMax, enumMax, enumName, guards[f.Name])
+		}
+		g.pf("    };\n")
+		g.pf("    static const TableTypeInfo info = { \"%s\", (uint32_t) sizeof( %s ), %d, fields };\n",
+			st.Name, st.Name, len(st.Fields))
+	} else {
+		g.pf("    static const TableTypeInfo info = { \"%s\", (uint32_t) sizeof( %s ), 0, NULL };\n",
+			st.Name, st.Name)
+	}
+	g.pf("    return &info;\n}\n\n")
 }
 
 func (g *tableGen) emitTableRead(st *ir.Struct) {
