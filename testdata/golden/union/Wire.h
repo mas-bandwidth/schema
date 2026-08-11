@@ -20,6 +20,19 @@ enum class Weapon : uint8_t {
     Railgun = 3,
 };
 
+// EnumName: debug/log name for any Weapon value, out-of-set included
+inline const char * EnumName( Weapon value )
+{
+    switch ( value )
+    {
+        case Weapon::None: return "None";
+        case Weapon::Laser: return "Laser";
+        case Weapon::Missile: return "Missile";
+        case Weapon::Railgun: return "Railgun";
+        default: return "???";
+    }
+}
+
 // flags ProbeFlags — one bit per variant, consumed as masks; storage uint64 in every
 // target, wire 8 bits (SPEC §4.2)
 using ProbeFlags = uint64_t;

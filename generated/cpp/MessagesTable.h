@@ -7,6 +7,7 @@
 
 #include <cstdint>
 #include <cstring>
+#include <new> // in-place prefill (placement new): no giant stack temporaries
 
 #include "Messages.h"
 
@@ -114,7 +115,7 @@ inline bool TableWriteHeartbeat( TableWriter & w, const Heartbeat & value )
 
 inline bool TableReadHeartbeat( TableReader & r, Heartbeat & value )
 {
-    value = Heartbeat{}; // prefill declared defaults, then overlay
+    new ( &value ) Heartbeat{}; // prefill declared defaults in place, then overlay
     for ( ;; )
     {
         if ( !r.has( 2 ) ) { r.report->malformed = true; return false; }
@@ -168,7 +169,7 @@ inline bool TableWriteTest( TableWriter & w, const Test & value )
 
 inline bool TableReadTest( TableReader & r, Test & value )
 {
-    value = Test{}; // prefill declared defaults, then overlay
+    new ( &value ) Test{}; // prefill declared defaults in place, then overlay
     for ( ;; )
     {
         if ( !r.has( 2 ) ) { r.report->malformed = true; return false; }
@@ -267,7 +268,7 @@ inline bool TableWriteBlock( TableWriter & w, const Block & value )
 
 inline bool TableReadBlock( TableReader & r, Block & value )
 {
-    value = Block{}; // prefill declared defaults, then overlay
+    new ( &value ) Block{}; // prefill declared defaults in place, then overlay
     for ( ;; )
     {
         if ( !r.has( 2 ) ) { r.report->malformed = true; return false; }
@@ -337,7 +338,7 @@ inline bool TableWriteChat( TableWriter & w, const Chat & value )
 
 inline bool TableReadChat( TableReader & r, Chat & value )
 {
-    value = Chat{}; // prefill declared defaults, then overlay
+    new ( &value ) Chat{}; // prefill declared defaults in place, then overlay
     for ( ;; )
     {
         if ( !r.has( 2 ) ) { r.report->malformed = true; return false; }
@@ -400,7 +401,7 @@ inline bool TableWriteSynchronize( TableWriter & w, const Synchronize & value )
 
 inline bool TableReadSynchronize( TableReader & r, Synchronize & value )
 {
-    value = Synchronize{}; // prefill declared defaults, then overlay
+    new ( &value ) Synchronize{}; // prefill declared defaults in place, then overlay
     for ( ;; )
     {
         if ( !r.has( 2 ) ) { r.report->malformed = true; return false; }
@@ -475,7 +476,7 @@ inline bool TableWriteTimescale( TableWriter & w, const Timescale & value )
 
 inline bool TableReadTimescale( TableReader & r, Timescale & value )
 {
-    value = Timescale{}; // prefill declared defaults, then overlay
+    new ( &value ) Timescale{}; // prefill declared defaults in place, then overlay
     for ( ;; )
     {
         if ( !r.has( 2 ) ) { r.report->malformed = true; return false; }

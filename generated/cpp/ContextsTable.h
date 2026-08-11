@@ -7,6 +7,7 @@
 
 #include <cstdint>
 #include <cstring>
+#include <new> // in-place prefill (placement new): no giant stack temporaries
 
 #include "Contexts.h"
 

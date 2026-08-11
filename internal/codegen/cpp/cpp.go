@@ -475,6 +475,14 @@ func (g *gen) emitEnum(d *ir.Enum) {
 		g.pf("    %s = %d,\n", v, i+1)
 	}
 	g.pf("};\n\n")
+	g.pf("// EnumName: debug/log name for any %s value, out-of-set included\n", d.Name)
+	g.pf("inline const char * EnumName( %s value )\n{\n", d.Name)
+	g.pf("    switch ( value )\n    {\n")
+	g.pf("        case %s::None: return \"None\";\n", d.Name)
+	for _, v := range d.Variants {
+		g.pf("        case %s::%s: return \"%s\";\n", d.Name, v, v)
+	}
+	g.pf("        default: return \"???\";\n    }\n}\n\n")
 }
 
 func (g *gen) emitFlags(d *ir.Flags) {

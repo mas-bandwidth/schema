@@ -705,6 +705,14 @@ int main()
         check( out.config.retries == 3 && out.config.preferred == Weapon::Missile );
     }
 
+    // ---- EnumName: debug names for every enum value, out-of-set included ----
+    {
+        check( strcmp( EnumName( Weapon::Laser ), "Laser" ) == 0 );
+        check( strcmp( EnumName( Weapon::None ), "None" ) == 0 );
+        check( strcmp( EnumName( Weapon( 200 ) ), "???" ) == 0 );
+        check( strcmp( EnumName( Team::Blue ), "Blue" ) == 0 ); // overload resolution across enums
+    }
+
     // ================= THE TABLE WIRE (notes/table-wire.md) =================
     // Same pinned instances as the dense wire where they exist; the table
     // goldens in testdata/table/*.bin are written here and byte-checked by the

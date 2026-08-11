@@ -7,6 +7,7 @@
 
 #include <cstdint>
 #include <cstring>
+#include <new> // in-place prefill (placement new): no giant stack temporaries
 
 #include "Types.h"
 #include "EnumsTable.h"
@@ -129,7 +130,7 @@ inline bool TableWriteVec3( TableWriter & w, const Vec3 & value )
 
 inline bool TableReadVec3( TableReader & r, Vec3 & value )
 {
-    value = Vec3{}; // prefill declared defaults, then overlay
+    new ( &value ) Vec3{}; // prefill declared defaults in place, then overlay
     for ( ;; )
     {
         if ( !r.has( 2 ) ) { r.report->malformed = true; return false; }
@@ -219,7 +220,7 @@ inline bool TableWriteQuat( TableWriter & w, const Quat & value )
 
 inline bool TableReadQuat( TableReader & r, Quat & value )
 {
-    value = Quat{}; // prefill declared defaults, then overlay
+    new ( &value ) Quat{}; // prefill declared defaults in place, then overlay
     for ( ;; )
     {
         if ( !r.has( 2 ) ) { r.report->malformed = true; return false; }
@@ -311,7 +312,7 @@ inline bool TableWriteHandle( TableWriter & w, const Handle & value )
 
 inline bool TableReadHandle( TableReader & r, Handle & value )
 {
-    value = Handle{}; // prefill declared defaults, then overlay
+    new ( &value ) Handle{}; // prefill declared defaults in place, then overlay
     for ( ;; )
     {
         if ( !r.has( 2 ) ) { r.report->malformed = true; return false; }
@@ -388,7 +389,7 @@ inline bool TableWriteQuantizedPosition( TableWriter & w, const QuantizedPositio
 
 inline bool TableReadQuantizedPosition( TableReader & r, QuantizedPosition & value )
 {
-    value = QuantizedPosition{}; // prefill declared defaults, then overlay
+    new ( &value ) QuantizedPosition{}; // prefill declared defaults in place, then overlay
     for ( ;; )
     {
         if ( !r.has( 2 ) ) { r.report->malformed = true; return false; }
@@ -482,7 +483,7 @@ inline bool TableWriteQuantizedVelocity( TableWriter & w, const QuantizedVelocit
 
 inline bool TableReadQuantizedVelocity( TableReader & r, QuantizedVelocity & value )
 {
-    value = QuantizedVelocity{}; // prefill declared defaults, then overlay
+    new ( &value ) QuantizedVelocity{}; // prefill declared defaults in place, then overlay
     for ( ;; )
     {
         if ( !r.has( 2 ) ) { r.report->malformed = true; return false; }
@@ -581,7 +582,7 @@ inline bool TableWriteQuantizedRotation( TableWriter & w, const QuantizedRotatio
 
 inline bool TableReadQuantizedRotation( TableReader & r, QuantizedRotation & value )
 {
-    value = QuantizedRotation{}; // prefill declared defaults, then overlay
+    new ( &value ) QuantizedRotation{}; // prefill declared defaults in place, then overlay
     for ( ;; )
     {
         if ( !r.has( 2 ) ) { r.report->malformed = true; return false; }
@@ -722,7 +723,7 @@ inline bool TableWriteRigidBody( TableWriter & w, const RigidBody & value )
 
 inline bool TableReadRigidBody( TableReader & r, RigidBody & value )
 {
-    value = RigidBody{}; // prefill declared defaults, then overlay
+    new ( &value ) RigidBody{}; // prefill declared defaults in place, then overlay
     for ( ;; )
     {
         if ( !r.has( 2 ) ) { r.report->malformed = true; return false; }
@@ -905,7 +906,7 @@ inline bool TableWriteInput( TableWriter & w, const Input & value )
 
 inline bool TableReadInput( TableReader & r, Input & value )
 {
-    value = Input{}; // prefill declared defaults, then overlay
+    new ( &value ) Input{}; // prefill declared defaults in place, then overlay
     for ( ;; )
     {
         if ( !r.has( 2 ) ) { r.report->malformed = true; return false; }
@@ -1125,7 +1126,7 @@ inline bool TableWriteInputPacket( TableWriter & w, const InputPacket & value )
 
 inline bool TableReadInputPacket( TableReader & r, InputPacket & value )
 {
-    value = InputPacket{}; // prefill declared defaults, then overlay
+    new ( &value ) InputPacket{}; // prefill declared defaults in place, then overlay
     for ( ;; )
     {
         if ( !r.has( 2 ) ) { r.report->malformed = true; return false; }
@@ -1293,7 +1294,7 @@ inline bool TableWriteShipCreate( TableWriter & w, const ShipCreate & value )
 
 inline bool TableReadShipCreate( TableReader & r, ShipCreate & value )
 {
-    value = ShipCreate{}; // prefill declared defaults, then overlay
+    new ( &value ) ShipCreate{}; // prefill declared defaults in place, then overlay
     for ( ;; )
     {
         if ( !r.has( 2 ) ) { r.report->malformed = true; return false; }

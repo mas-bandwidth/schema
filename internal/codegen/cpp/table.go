@@ -306,7 +306,7 @@ func GenerateTable(u *ir.Unit) (map[string][]byte, error) {
 		fmt.Fprintf(&h, "// package %s — protocol id 0x%016x\n", u.Package, u.ProtocolId)
 		h.WriteString("// The TABLE wire (evolution-tolerant, notes/table-wire.md): no serialize\n")
 		h.WriteString("// dependency — includable from any TU.\n\n")
-		h.WriteString("#pragma once\n\n#include <cstdint>\n#include <cstring>\n")
+		h.WriteString("#pragma once\n\n#include <cstdint>\n#include <cstring>\n#include <new> // in-place prefill (placement new): no giant stack temporaries\n")
 		fmt.Fprintf(&h, "\n#include \"%s.h\"\n", f.Base)
 		names := make([]string, 0, len(g.includes))
 		for n := range g.includes {
@@ -541,7 +541,11 @@ func (g *tableGen) emitTableWriteElement(f *ir.Field, kind int, expr, ind string
 
 func (g *tableGen) emitTableRead(st *ir.Struct) {
 	g.pf("inline bool TableRead%s( TableReader & r, %s & value )\n{\n", st.Name, st.Name)
-	g.pf("    value = %s{}; // prefill declared defaults, then overlay\n", st.Name)
+	// placement new, NOT `value = T{}`: assignment materializes a temporary,
+	// and generated types can be hundreds of KB (a ShipAsset with hull
+	// colliders) — a stack bomb on worker threads. In-place value-init
+	// applies the same NSDMI defaults with no temporary.
+	g.pf("    new ( &value ) %s{}; // prefill declared defaults in place, then overlay\n", st.Name)
 	g.pf("    for ( ;; )\n    {\n")
 	g.pf("        if ( !r.has( 2 ) ) { r.report->malformed = true; return false; }\n")
 	g.pf("        uint16_t field_id = r.get16();\n")

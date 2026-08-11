@@ -7,6 +7,7 @@
 
 #include <cstdint>
 #include <cstring>
+#include <new> // in-place prefill (placement new): no giant stack temporaries
 
 #include "Wire.h"
 #include "MessagesTable.h"
@@ -124,7 +125,7 @@ inline bool TableWriteProbeHeader( TableWriter & w, const ProbeHeader & value )
 
 inline bool TableReadProbeHeader( TableReader & r, ProbeHeader & value )
 {
-    value = ProbeHeader{}; // prefill declared defaults, then overlay
+    new ( &value ) ProbeHeader{}; // prefill declared defaults in place, then overlay
     for ( ;; )
     {
         if ( !r.has( 2 ) ) { r.report->malformed = true; return false; }
@@ -210,7 +211,7 @@ inline bool TableWriteProbeBits( TableWriter & w, const ProbeBits & value )
 
 inline bool TableReadProbeBits( TableReader & r, ProbeBits & value )
 {
-    value = ProbeBits{}; // prefill declared defaults, then overlay
+    new ( &value ) ProbeBits{}; // prefill declared defaults in place, then overlay
     for ( ;; )
     {
         if ( !r.has( 2 ) ) { r.report->malformed = true; return false; }
@@ -378,7 +379,7 @@ inline bool TableWriteProbeSample( TableWriter & w, const ProbeSample & value )
 
 inline bool TableReadProbeSample( TableReader & r, ProbeSample & value )
 {
-    value = ProbeSample{}; // prefill declared defaults, then overlay
+    new ( &value ) ProbeSample{}; // prefill declared defaults in place, then overlay
     for ( ;; )
     {
         if ( !r.has( 2 ) ) { r.report->malformed = true; return false; }
@@ -557,7 +558,7 @@ inline bool TableWriteProbeConfig( TableWriter & w, const ProbeConfig & value )
 
 inline bool TableReadProbeConfig( TableReader & r, ProbeConfig & value )
 {
-    value = ProbeConfig{}; // prefill declared defaults, then overlay
+    new ( &value ) ProbeConfig{}; // prefill declared defaults in place, then overlay
     for ( ;; )
     {
         if ( !r.has( 2 ) ) { r.report->malformed = true; return false; }
@@ -641,7 +642,7 @@ inline bool TableWriteProbeArray( TableWriter & w, const ProbeArray & value )
 
 inline bool TableReadProbeArray( TableReader & r, ProbeArray & value )
 {
-    value = ProbeArray{}; // prefill declared defaults, then overlay
+    new ( &value ) ProbeArray{}; // prefill declared defaults in place, then overlay
     for ( ;; )
     {
         if ( !r.has( 2 ) ) { r.report->malformed = true; return false; }
@@ -750,7 +751,7 @@ inline bool TableWriteProbeReport( TableWriter & w, const ProbeReport & value )
 
 inline bool TableReadProbeReport( TableReader & r, ProbeReport & value )
 {
-    value = ProbeReport{}; // prefill declared defaults, then overlay
+    new ( &value ) ProbeReport{}; // prefill declared defaults in place, then overlay
     for ( ;; )
     {
         if ( !r.has( 2 ) ) { r.report->malformed = true; return false; }
@@ -955,7 +956,7 @@ inline bool TableWriteTestData( TableWriter & w, const TestData & value )
 
 inline bool TableReadTestData( TableReader & r, TestData & value )
 {
-    value = TestData{}; // prefill declared defaults, then overlay
+    new ( &value ) TestData{}; // prefill declared defaults in place, then overlay
     for ( ;; )
     {
         if ( !r.has( 2 ) ) { r.report->malformed = true; return false; }
