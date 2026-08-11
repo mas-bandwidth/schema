@@ -71,4 +71,10 @@
   accelerating, zero regressions). `message_batch` swings ±20% between byte-identical
   binaries (layout noise) — pair same-sitting, discard contaminated runs whole, file
   unattributed movements instead of claiming them. One bench at a time per machine:
-  check for sibling bench processes and wait for a quiet window.
+  check for sibling bench processes and wait for a quiet window. **A tiered-JIT runtime
+  benched on a single shared core measures tier-up contention, not codegen** (EPYC v5:
+  ten of twelve C# write medians sat at tier-0, spreads to 385%, and one row was
+  uniformly slow at 11.6% spread — so a low spread does not clear a row; proven by a
+  labelled `DOTNET_TieredCompilation=0` intervention, 1.98–4.90x). On a single core,
+  settle or disable the tier and LABEL the config divergence; medians-against-min is
+  the tell to check first.

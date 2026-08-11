@@ -1,0 +1,153 @@
+# schema bench results
+# date: 2026-08-07T15:55:37Z
+# host: spacegame  arch: x86_64  os: Linux 6.8.0-90-generic
+# cpu: AMD EPYC 9124 16-Core Processor
+# build: Release
+# cpp compiler: g++ (Ubuntu 13.3.0-6ubuntu2~24.04.1) 13.3.0
+# cpp flags: -O3 -DNDEBUG -DSERIALIZE_RELEASE -std=c++17 -Wall -Wextra -Werror -ffp-contract=off -fno-rtti -Igenerated/cpp -I../serialize-cs-port/serialize -Wno-class-memaccess -Wno-type-limits
+# go: go version go1.26.5 linux/amd64 (go run, default optimized build)
+# rust: cargo 1.97.1 (c980f4866 2026-06-30); rustc 1.97.1 (8bab26f4f 2026-07-14) (cargo run --release: opt-level 3, no LTO)
+# dotnet: 10.0.302 (dotnet run -c Release, workstation GC)
+# pinning: taskset -c 0
+# noise: RESERVED core 0: game server owns isolated cores 1-15 (one pinned thread each); core 0 does no game work - reserved for bench (Glenn, 2026-08-07) - but remains the sole general-purpose core (irqs, ssh, systemd)
+# schema commit: unknown
+# serialize commit: unknown
+lang,bench,path,iters,bytes_per_op,runs,median_msgs_per_sec,min_msgs_per_sec,max_msgs_per_sec,median_mb_per_sec,spread_pct
+cpp,rigidbody_moving,write,2000000,105,7,24585721,21621396,25497820,2461.91,15.77
+cpp,rigidbody_moving,read,2000000,105,7,30425128,30334471,31828653,3046.64,4.91
+cpp,rigidbody_at_rest,write,4000000,57,7,40920240,40869348,42178447,2224.40,3.20
+cpp,rigidbody_at_rest,read,4000000,57,7,59708811,51168884,59959546,3245.74,14.72
+cpp,chat,write,4000000,13,7,35713488,35603249,36554476,442.77,2.66
+cpp,chat,read,4000000,13,7,75210612,62214291,75336035,932.44,17.45
+cpp,test,write,16000000,6,7,118141804,114919301,118604967,676.01,3.12
+cpp,test,read,16000000,6,7,226011204,194848957,226741553,1293.25,14.11
+cpp,inputpacket,write,2000000,61,7,31883871,31756694,33359110,1854.82,5.03
+cpp,inputpacket,read,2000000,61,7,36475170,34677961,36544837,2121.91,5.12
+cpp,shipcreate,write,4000000,28,7,34323472,34296722,34346111,916.54,0.14
+cpp,shipcreate,read,4000000,28,7,74545764,70701531,74670550,1990.59,5.32
+cpp,ship_shallow,write,4000000,28,7,55864334,53728145,55981741,1491.74,4.03
+cpp,ship_shallow,read,4000000,28,7,77887072,77737663,78052991,2079.81,0.40
+cpp,probe_header,write,16000000,10,7,120978284,119716689,122162746,1153.74,2.02
+cpp,probe_header,read,16000000,10,7,180683606,160681601,181054052,1723.13,11.28
+cpp,probebits,write,4000000,26,7,83354558,83104077,88705205,2066.82,6.72
+cpp,probebits,read,4000000,26,7,142001017,140861126,158187155,3520.99,12.20
+cpp,probearray,write,2000000,47,7,25704491,24451964,28124744,1152.14,14.29
+cpp,probearray,read,2000000,47,7,57287282,52988078,57440980,2567.77,7.77
+cpp,testdata,write,1000000,92,7,9177811,9137440,9403016,805.24,2.89
+cpp,testdata,read,1000000,92,7,25421534,23694171,25475528,2230.44,7.01
+cpp,message_batch,write,3276800,25,7,61411825,50965962,61759040,1464.17,17.57
+cpp,message_batch,read,3276800,25,7,41964087,41609933,43579300,1000.50,4.69
+# schema bench results
+# date: 2026-08-07T15:56:02Z
+# host: spacegame  arch: x86_64  os: Linux 6.8.0-90-generic
+# cpu: AMD EPYC 9124 16-Core Processor
+# build: Release
+# cpp compiler: c++ (Ubuntu 13.3.0-6ubuntu2~24.04.1) 13.3.0
+# cpp flags: -O3 -DNDEBUG -DSERIALIZE_RELEASE -std=c++17 -Wall -Wextra -Werror -ffp-contract=off -fno-rtti -Igenerated/cpp -I../serialize-cs-port/serialize
+# go: go version go1.26.5 linux/amd64 (go run, default optimized build)
+# rust: cargo 1.97.1 (c980f4866 2026-06-30); rustc 1.97.1 (8bab26f4f 2026-07-14) (cargo run --release: opt-level 3, no LTO)
+# dotnet: 10.0.302 (dotnet run -c Release, workstation GC)
+# pinning: taskset -c 0
+# noise: RESERVED core 0: game server owns isolated cores 1-15 (one pinned thread each); core 0 does no game work - reserved for bench (Glenn, 2026-08-07) - but remains the sole general-purpose core (irqs, ssh, systemd)
+# schema commit: unknown
+# serialize commit: unknown
+go,rigidbody_moving,write,2000000,105,7,13855801,13110462,14145536,1387.46,7.47
+go,rigidbody_moving,read,2000000,105,7,15765153,14877126,16131158,1578.66,7.95
+go,rigidbody_at_rest,write,4000000,57,7,24891073,23647988,25340454,1353.06,6.80
+go,rigidbody_at_rest,read,4000000,57,7,27703621,26191629,28249836,1505.95,7.43
+go,chat,write,4000000,13,7,24441078,24404750,24885133,303.01,1.97
+go,chat,read,4000000,13,7,47791230,39445888,47894651,592.50,17.68
+go,test,write,16000000,6,7,69479113,68098651,70292297,397.56,3.16
+go,test,read,16000000,6,7,54983134,53393834,55570391,314.62,3.96
+go,inputpacket,write,2000000,61,7,11910167,11388918,11953970,692.86,4.74
+go,inputpacket,read,2000000,61,7,11779165,11589565,11791358,685.24,1.71
+go,shipcreate,write,4000000,28,7,19720998,18770329,19831700,526.61,5.38
+go,shipcreate,read,4000000,28,7,14695292,14148116,14894286,392.41,5.08
+go,ship_shallow,write,4000000,28,7,22322346,21833477,22947071,596.07,4.99
+go,ship_shallow,read,4000000,28,7,16827212,16293458,17048235,449.34,4.49
+go,probe_header,write,16000000,10,7,51923589,50580327,52526885,495.18,3.75
+go,probe_header,read,16000000,10,7,48829344,47686312,49199949,465.67,3.10
+go,probebits,write,4000000,26,7,38029440,37177889,38222462,942.96,2.75
+go,probebits,read,4000000,26,7,38692125,35100754,38765610,959.39,9.47
+go,probearray,write,2000000,47,7,12941959,11470237,13023618,580.09,12.00
+go,probearray,read,2000000,47,7,11008598,10535771,11022780,493.44,4.42
+go,testdata,write,1000000,92,7,6780947,6418354,6908948,594.95,7.23
+go,testdata,read,1000000,92,7,6262906,6122790,6379261,549.50,4.10
+go,message_batch,write,3276800,25,7,31311868,28375684,31385736,746.53,9.61
+go,message_batch,read,3276800,25,7,38681331,37385615,38854915,922.23,3.80
+# schema bench results
+# date: 2026-08-07T15:56:45Z
+# host: spacegame  arch: x86_64  os: Linux 6.8.0-90-generic
+# cpu: AMD EPYC 9124 16-Core Processor
+# build: Release
+# cpp compiler: c++ (Ubuntu 13.3.0-6ubuntu2~24.04.1) 13.3.0
+# cpp flags: -O3 -DNDEBUG -DSERIALIZE_RELEASE -std=c++17 -Wall -Wextra -Werror -ffp-contract=off -fno-rtti -Igenerated/cpp -I../serialize-cs-port/serialize
+# go: go version go1.26.5 linux/amd64 (go run, default optimized build)
+# rust: cargo 1.97.1 (c980f4866 2026-06-30); rustc 1.97.1 (8bab26f4f 2026-07-14) (cargo run --release: opt-level 3, no LTO)
+# dotnet: 10.0.302 (dotnet run -c Release, workstation GC)
+# pinning: taskset -c 0
+# noise: RESERVED core 0: game server owns isolated cores 1-15 (one pinned thread each); core 0 does no game work - reserved for bench (Glenn, 2026-08-07) - but remains the sole general-purpose core (irqs, ssh, systemd)
+# schema commit: unknown
+# serialize commit: unknown
+rust,rigidbody_moving,write,2000000,105,7,19988626,19850664,20160096,2001.58,1.55
+rust,rigidbody_moving,read,2000000,105,7,36180298,34552760,36574317,3622.94,5.59
+rust,rigidbody_at_rest,write,4000000,57,7,32019305,30914721,32780362,1740.55,5.83
+rust,rigidbody_at_rest,read,4000000,57,7,64666291,64389251,67917338,3515.22,5.46
+rust,chat,write,4000000,13,7,41914953,41762691,43254208,519.65,3.56
+rust,chat,read,4000000,13,7,41741388,41693954,43119677,517.50,3.42
+rust,test,write,16000000,6,7,132932974,121574819,133022461,760.65,8.61
+rust,test,read,16000000,6,7,64079408,61416440,64170373,366.67,4.30
+rust,inputpacket,write,2000000,61,7,28625547,24710648,28743421,1665.27,14.09
+rust,inputpacket,read,2000000,61,7,12285991,12270004,12509154,714.73,1.95
+rust,shipcreate,write,4000000,28,7,41001462,37824497,42294836,1094.86,10.90
+rust,shipcreate,read,4000000,28,7,26814038,25438673,26841307,716.01,5.23
+rust,ship_shallow,write,4000000,28,7,50642296,50456065,52561980,1352.30,4.16
+rust,ship_shallow,read,4000000,28,7,19792737,18523618,19830340,528.52,6.60
+rust,probe_header,write,16000000,10,7,112501532,111300481,115126384,1072.90,3.40
+rust,probe_header,read,16000000,10,7,55879768,54691997,56297678,532.91,2.87
+rust,probebits,write,4000000,26,7,55092491,52888120,55167053,1366.05,4.14
+rust,probebits,read,4000000,26,7,51754771,46701494,53788170,1283.29,13.69
+rust,probearray,write,2000000,47,7,23974597,23899213,23998405,1074.61,0.41
+rust,probearray,read,2000000,47,7,29154836,24986247,29191240,1306.80,14.42
+rust,testdata,write,1000000,92,7,10296582,10272462,10619351,903.40,3.37
+rust,testdata,read,1000000,92,7,9698826,8536841,9703658,850.96,12.03
+rust,message_batch,write,3276800,25,7,59361391,52871056,59698554,1415.29,11.50
+rust,message_batch,read,3276800,25,7,33594158,33327223,34499987,800.95,3.49
+# schema bench results
+# date: 2026-08-07T15:57:17Z
+# host: spacegame  arch: x86_64  os: Linux 6.8.0-90-generic
+# cpu: AMD EPYC 9124 16-Core Processor
+# build: Release
+# cpp compiler: c++ (Ubuntu 13.3.0-6ubuntu2~24.04.1) 13.3.0
+# cpp flags: -O3 -DNDEBUG -DSERIALIZE_RELEASE -std=c++17 -Wall -Wextra -Werror -ffp-contract=off -fno-rtti -Igenerated/cpp -I../serialize-cs-port/serialize
+# go: go version go1.26.5 linux/amd64 (go run, default optimized build)
+# rust: cargo 1.97.1 (c980f4866 2026-06-30); rustc 1.97.1 (8bab26f4f 2026-07-14) (cargo run --release: opt-level 3, no LTO)
+# dotnet: 10.0.302 (dotnet run -c Release, workstation GC)
+# pinning: taskset -c 0
+# noise: RESERVED core 0: game server owns isolated cores 1-15 (one pinned thread each); core 0 does no game work - reserved for bench (Glenn, 2026-08-07) - but remains the sole general-purpose core (irqs, ssh, systemd)
+# schema commit: unknown
+# serialize commit: unknown
+cs,rigidbody_moving,write,2000000,105,7,11834383,2406220,11985191,1185.05,80.94
+cs,rigidbody_moving,read,2000000,105,7,13359875,13004857,27057485,1337.80,105.19
+cs,rigidbody_at_rest,write,4000000,57,7,35030196,34961520,35955573,1904.22,2.84
+cs,rigidbody_at_rest,read,4000000,57,7,39889307,35066126,39917411,2168.36,12.16
+cs,chat,write,4000000,13,7,24965594,4110996,25426950,309.52,85.38
+cs,chat,read,4000000,13,7,54662731,52609012,54874502,677.70,4.14
+cs,test,write,16000000,6,7,76205209,22106641,77274639,436.05,72.39
+cs,test,read,16000000,6,7,105130154,103118297,105239202,601.56,2.02
+cs,inputpacket,write,2000000,61,7,6286772,5925452,22940305,365.73,270.65
+cs,inputpacket,read,2000000,61,7,20899035,20836068,21574228,1215.78,3.53
+cs,shipcreate,write,4000000,28,7,9876521,9231298,34431734,263.73,255.15
+cs,shipcreate,read,4000000,28,7,39149554,33372518,39234188,1045.41,14.97
+cs,ship_shallow,write,4000000,28,7,11271330,10856862,36407822,300.98,226.69
+cs,ship_shallow,read,4000000,28,7,40182469,37138170,40239222,1072.99,7.72
+cs,probe_header,write,16000000,10,7,70150363,23746320,71286666,669.01,67.77
+cs,probe_header,read,16000000,10,7,81842144,78084318,83112825,780.51,6.14
+cs,probebits,write,4000000,26,7,21008183,18702058,21141727,520.91,11.61
+cs,probebits,read,4000000,26,7,68616166,21182076,72249898,1701.37,74.43
+cs,probearray,write,2000000,47,7,5017702,4905261,24239134,224.91,385.31
+cs,probearray,read,2000000,47,7,29424270,25308126,29470185,1318.88,14.14
+cs,testdata,write,1000000,92,7,3010326,2861303,9976864,264.12,236.37
+cs,testdata,read,1000000,92,7,8756912,7826079,9006964,768.31,13.49
+cs,message_batch,write,3276800,25,7,24749974,13079654,56380874,590.09,174.95
+cs,message_batch,read,3276800,25,7,20667428,19346946,21100894,492.75,8.49

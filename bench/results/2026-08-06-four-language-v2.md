@@ -103,6 +103,15 @@ a process-inspection-verified quiet window, and the write-control (writes
 0.94-1.12x of v1, mostly within 1%) confirms clean conditions. Raw CSV:
 `2026-08-06-four-language-v2-x86_64-epyc.csv`.
 
+> **CORRECTION, 2026-08-11: the C# write cells in the table below — and any relative row
+> derived from this CSV — are RETRACTED as language verdicts.** The v5 EPYC harvest
+> proved by intervention (`DOTNET_TieredCompilation=0`, 1.98–4.90x median moves) that
+> .NET tiered-JIT promotion competing for the single shared core poisons the C# write
+> medians on this host; this CSV carries the same artifact (same rows, spreads 33–156%),
+> and a low spread does not clear a row (a uniformly-slow row measured 2.67x off at
+> 11.6% spread). The C# READ rows are mostly clean. Mechanism, evidence and the rule:
+> `2026-08-07-four-language-v5-epyc.md`.
+
 | bench | path | B/msg | C++ M msg/s | C++ MB/s | Rust M msg/s | Rust MB/s | Go M msg/s | Go MB/s | C# M msg/s | C# MB/s |
 |---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
 | rigidbody_moving | write | 105 | 23.36 | 2339 | 16.83 | 1685 | 10.32 | 1033 | 10.02 | 1003 |

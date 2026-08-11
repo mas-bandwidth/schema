@@ -10,6 +10,19 @@ measurement of an isolated effect — then the PR is cited and said so. Where
 v3 moved a number relative to an earlier doc, v3 is preferred and the move
 is stated.
 
+> **2026-08-11 — the EPYC leg landed** (`2026-08-07-four-language-v5-epyc.md`), and it
+> re-scopes several items below: **restrict (#30) is REFUTED on Zen 4 under both g++-13
+> and clang-18** (1.00x across the write rows — the ledger's restrict attributions are
+> arm64/apple-clang facts, not portable laws); **the tiny-message compiler gap persists
+> post-const-emit** (clang-18 up to 4.3x g++ on probe_header/test writes — the
+> whole-header-folding floor now has a second compiler on a second microarchitecture,
+> and "should x86 tables adopt clang-18 as reference?" is an open call); the
+> quiet-x86-profile items below can now use the box (serial, core 0, one profile at a
+> time, `bench/run.sh --only`); benching C# there surfaced the **tiered-JIT single-core
+> artifact** (v2 EPYC C# rows retracted as language verdicts). One new unattributed
+> item: **rust inputpacket read regressed 0.85x v2→v5 on EPYC**, beyond spreads — files
+> with the rust read column's never-had-a-read-pass items.
+
 **The v3 scoreboard** (M2, time relative to C++ = 100%, medians across the
 11 corpus benches; batch separately; EPYC deferred on Glenn's word):
 

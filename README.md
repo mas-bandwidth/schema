@@ -49,6 +49,27 @@ verification before it is believed. The remaining gaps are decomposed, cause by 
 [bench/results/2026-08-07-gap-ledger.md](bench/results/2026-08-07-gap-ledger.md) — treat the
 table as a dated snapshot, not a verdict.
 
+**And it is a snapshot of a (compiler, microarchitecture) pair, not of the languages.**
+The x86 leg (AMD EPYC 9124 / Zen 4, serial on a reserved core, measured 2026-08-07,
+harvested 2026-08-11) tells a different story: the C++ writer's restrict win — the
+biggest C++ lever on arm64/apple-clang — measured **1.00x under both g++-13 and
+clang-18** there, so against g++ the ports sit near write parity while reads sit further
+away; and clang-18 beats g++ by up to 4.3x on tiny-message writes, which moves every
+relative cell by double digits when the reference compiler changes. Same code, same wire,
+different target, different table:
+
+| backend (EPYC, vs g++ 13.3) | write | read | batch write | batch read |
+|---|---:|---:|---:|---:|
+| C++ | 100% | 100% | 100% | 100% |
+| Rust | 108% | 274% | 103% | 125% |
+| C# * | 137% | 198% | 120% | 150% |
+| Go | 177% | 370% | 196% | 108% |
+
+\* C# from a labelled steady-state diagnostic — the default-config run surfaced a benching
+law worth knowing: a tiered-JIT runtime benched on a single shared core measures tier-up
+contention, not generated code. Full tables, both compilers, the restrict A/B and the
+artifact record: [bench/results/2026-08-07-four-language-v5-epyc.md](bench/results/2026-08-07-four-language-v5-epyc.md).
+
 `notes/` holds extracted API references for the three target runtimes, gathered 2026-08-04 as
 design inputs — re-verify against each library's source at implementation time.
 

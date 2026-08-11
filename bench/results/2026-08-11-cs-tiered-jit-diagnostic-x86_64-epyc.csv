@@ -1,0 +1,38 @@
+# schema bench results
+# date: 2026-08-11T08:01:33Z
+# host: spacegame  arch: x86_64  os: Linux 6.8.0-90-generic
+# cpu: AMD EPYC 9124 16-Core Processor
+# build: Release
+# cpp compiler: c++ (Ubuntu 13.3.0-6ubuntu2~24.04.1) 13.3.0
+# cpp flags: -O3 -DNDEBUG -DSERIALIZE_RELEASE -std=c++17 -Wall -Wextra -Werror -ffp-contract=off -fno-rtti -Igenerated/cpp -I../serialize-cs-port/serialize
+# go: not present (go run, default optimized build)
+# rust: not present (cargo run --release: opt-level 3, no LTO)
+# dotnet: 10.0.302 (dotnet run -c Release, workstation GC)
+# pinning: taskset -c 0
+# noise: DIAGNOSTIC leg, NOT a table row: DOTNET_TieredCompilation=0 to test the tiered-JIT theory for the cs write spreads; core 0 reserved for bench, serial, alone
+# schema commit: unknown
+# serialize commit: unknown
+cs,rigidbody_moving,write,2000000,105,7,23482998,22785557,23522936,2351.49,3.14
+cs,rigidbody_moving,read,2000000,105,7,25390474,23138079,26293682,2542.50,12.43
+cs,rigidbody_at_rest,write,4000000,57,7,35620781,33242415,36534018,1936.33,9.24
+cs,rigidbody_at_rest,read,4000000,57,7,38662808,35289053,38781448,2101.69,9.03
+cs,chat,write,4000000,13,7,24578298,23175871,25101677,304.72,7.84
+cs,chat,read,4000000,13,7,46865956,45251121,47034476,581.03,3.81
+cs,test,write,16000000,6,7,79141904,75407104,79326400,452.85,4.95
+cs,test,read,16000000,6,7,96444280,90868252,97999403,551.86,7.39
+cs,inputpacket,write,2000000,61,7,23199380,22202807,23283890,1349.60,4.66
+cs,inputpacket,read,2000000,61,7,19384541,17952596,19435987,1127.68,7.65
+cs,shipcreate,write,4000000,28,7,33737196,30995282,33783213,900.88,8.26
+cs,shipcreate,read,4000000,28,7,34285264,33493628,34336650,915.52,2.46
+cs,ship_shallow,write,4000000,28,7,30846989,29147721,31553655,823.70,7.80
+cs,ship_shallow,read,4000000,28,7,37536833,36515674,38005401,1002.34,3.97
+cs,probe_header,write,16000000,10,7,71297244,68772687,72255184,679.94,4.88
+cs,probe_header,read,16000000,10,7,83966097,82881757,84136088,800.76,1.49
+cs,probebits,write,4000000,26,7,56152567,48796912,56323114,1392.33,13.40
+cs,probebits,read,4000000,26,7,71651202,68283856,71686386,1776.63,4.75
+cs,probearray,write,2000000,47,7,24604513,21786018,25604326,1102.84,15.52
+cs,probearray,read,2000000,47,7,26510291,26171228,27404468,1188.26,4.65
+cs,testdata,write,1000000,92,7,9987127,9921875,10015233,876.25,0.93
+cs,testdata,read,1000000,92,7,13969602,12249093,14033197,1225.67,12.77
+cs,message_batch,write,3276800,25,7,51265524,51046859,53684854,1222.27,5.15
+cs,message_batch,read,3276800,25,7,27896824,27454164,28035208,665.11,2.08
