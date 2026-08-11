@@ -1127,3 +1127,716 @@ func tableReadTestData(r *tableReader, value *TestData) bool {
 		}
 	}
 }
+
+// ---- reflection descriptors (tables only, notes/table-wire.md) ----
+//
+// Descriptor links are wired in init(), which completes before main: every
+// tableTypeX var exists before any init() runs (so cross-type links always
+// resolve, whatever the declaration order), and by the time any goroutine
+// can look the descriptors are immutable — concurrent first use needs no
+// locking and no lazy state.
+
+var tableTypeProbeSample = &TableTypeInfo{Name: "ProbeSample"}
+
+func init() {
+	tableTypeProbeSample.Fields = []TableFieldInfo{
+		{Name: "active", TypeName: "bool", Id: 0x405a, Kind: 1, EnumMax: -1},
+		{Name: "orientation", TypeName: "float32", Id: 0x7964, Kind: 10, HasRange: true, RangeMin: -180.0, RangeMax: 180.0, EnumMax: -1},
+		{Name: "raw_delta", TypeName: "int32", Id: 0x933d, Kind: 4, EnumMax: -1},
+		{Name: "big_delta", TypeName: "int64", Id: 0x078b, Kind: 5, EnumMax: -1},
+		{Name: "weapon", TypeName: "Weapon", Id: 0x4f72, Kind: 6, EnumMax: 15, EnumName: EnumNameWeapon, Guard: "active"},
+		{Name: "has_target", TypeName: "bool", Id: 0xb0a7, Kind: 1, EnumMax: -1, Guard: "active"},
+		{Name: "target_id", TypeName: "uint16", Id: 0xdf6a, Kind: 7, EnumMax: -1, Guard: "active && has_target"},
+		{Name: "idle_ticks", TypeName: "uint32", Id: 0x9555, Kind: 8, EnumMax: -1, Guard: "!active"},
+		{Name: "samples", TypeName: "uint16", Id: 0xaf9a, Kind: 7, IsArray: true, Counted: true, ArrayBound: 8, EnumMax: -1},
+	}
+}
+
+// TableTypeProbeSample returns ProbeSample's reflection descriptor — field names, wire
+// ids/kinds, bounds, ranges, enum names and branch guards. Pair it with
+// TableGetProbeSample/TableSetProbeSample to walk, print, diff or edit values generically.
+func TableTypeProbeSample() *TableTypeInfo { return tableTypeProbeSample }
+
+// TableGetProbeSample reads the named field from value: scalars normalize (signed ->
+// int64, unsigned/bits -> uint64, floats -> float64, bools as-is), enums and
+// flags -> uint64, strings -> the used string, nested tables -> a typed
+// pointer, fixed arrays -> a pointer to the backing array, counted arrays
+// and bytes -> the used slice. Unknown field names return (nil, false).
+func TableGetProbeSample(value *ProbeSample, field string) (any, bool) {
+	switch field {
+	case "active":
+		return value.Active, true
+	case "orientation":
+		return float64(value.Orientation), true
+	case "raw_delta":
+		return int64(value.RawDelta), true
+	case "big_delta":
+		return int64(value.BigDelta), true
+	case "weapon":
+		return uint64(value.Weapon), true
+	case "has_target":
+		return value.HasTarget, true
+	case "target_id":
+		return uint64(value.TargetId), true
+	case "idle_ticks":
+		return uint64(value.IdleTicks), true
+	case "samples":
+		return value.Samples[:value.SamplesCount], true
+	}
+	return nil, false
+}
+
+// TableSetProbeSample writes the named field — the editor write path: scalars,
+// enums, flags, bools and strings only. Numerics accept the field's own Go
+// type plus int64/uint64/float64; out-of-range values CLAMP exactly as the
+// table-wire read side does, and strings truncate to the declared max.
+// Unknown fields, nested tables and arrays return false.
+func TableSetProbeSample(value *ProbeSample, field string, v any) bool {
+	switch field {
+	case "active":
+		b, ok := v.(bool)
+		if !ok {
+			return false
+		}
+		value.Active = b
+		return true
+	case "orientation":
+		var n float64
+		switch t := v.(type) {
+		case float32:
+			n = float64(t)
+		case int64:
+			n = float64(t)
+		case uint64:
+			n = float64(t)
+		case float64:
+			n = t
+		default:
+			return false
+		}
+		if n < -180.0 {
+			n = -180.0
+		} else if n > 180.0 {
+			n = 180.0
+		}
+		value.Orientation = float32(n)
+		return true
+	case "raw_delta":
+		var n int64
+		switch t := v.(type) {
+		case int32:
+			n = int64(t)
+		case int64:
+			n = t
+		case uint64:
+			n = int64(t)
+		case float64:
+			n = int64(t)
+		default:
+			return false
+		}
+		value.RawDelta = int32(n)
+		return true
+	case "big_delta":
+		var n int64
+		switch t := v.(type) {
+		case int64:
+			n = t
+		case uint64:
+			n = int64(t)
+		case float64:
+			n = int64(t)
+		default:
+			return false
+		}
+		value.BigDelta = n
+		return true
+	case "weapon":
+		var n uint64
+		switch t := v.(type) {
+		case Weapon:
+			n = uint64(t)
+		case int64:
+			n = uint64(t)
+		case uint64:
+			n = t
+		case float64:
+			n = uint64(t)
+		default:
+			return false
+		}
+		if n > 15 {
+			n = 0 // out-of-set -> None, as the read side does
+		}
+		value.Weapon = Weapon(n)
+		return true
+	case "has_target":
+		b, ok := v.(bool)
+		if !ok {
+			return false
+		}
+		value.HasTarget = b
+		return true
+	case "target_id":
+		var n uint64
+		switch t := v.(type) {
+		case uint16:
+			n = uint64(t)
+		case int64:
+			n = uint64(t)
+		case uint64:
+			n = t
+		case float64:
+			n = uint64(t)
+		default:
+			return false
+		}
+		value.TargetId = uint16(n)
+		return true
+	case "idle_ticks":
+		var n uint64
+		switch t := v.(type) {
+		case uint32:
+			n = uint64(t)
+		case int64:
+			n = uint64(t)
+		case uint64:
+			n = t
+		case float64:
+			n = uint64(t)
+		default:
+			return false
+		}
+		value.IdleTicks = uint32(n)
+		return true
+	}
+	return false
+}
+
+var tableTypeProbeConfig = &TableTypeInfo{Name: "ProbeConfig"}
+
+func init() {
+	tableTypeProbeConfig.Fields = []TableFieldInfo{
+		{Name: "retries", TypeName: "int32", Id: 0x460c, Kind: 4, EnumMax: -1},
+		{Name: "preferred", TypeName: "Weapon", Id: 0x3982, Kind: 6, EnumMax: 15, EnumName: EnumNameWeapon},
+	}
+}
+
+// TableTypeProbeConfig returns ProbeConfig's reflection descriptor — field names, wire
+// ids/kinds, bounds, ranges, enum names and branch guards. Pair it with
+// TableGetProbeConfig/TableSetProbeConfig to walk, print, diff or edit values generically.
+func TableTypeProbeConfig() *TableTypeInfo { return tableTypeProbeConfig }
+
+// TableGetProbeConfig reads the named field from value: scalars normalize (signed ->
+// int64, unsigned/bits -> uint64, floats -> float64, bools as-is), enums and
+// flags -> uint64, strings -> the used string, nested tables -> a typed
+// pointer, fixed arrays -> a pointer to the backing array, counted arrays
+// and bytes -> the used slice. Unknown field names return (nil, false).
+func TableGetProbeConfig(value *ProbeConfig, field string) (any, bool) {
+	switch field {
+	case "retries":
+		return int64(value.Retries), true
+	case "preferred":
+		return uint64(value.Preferred), true
+	}
+	return nil, false
+}
+
+// TableSetProbeConfig writes the named field — the editor write path: scalars,
+// enums, flags, bools and strings only. Numerics accept the field's own Go
+// type plus int64/uint64/float64; out-of-range values CLAMP exactly as the
+// table-wire read side does, and strings truncate to the declared max.
+// Unknown fields, nested tables and arrays return false.
+func TableSetProbeConfig(value *ProbeConfig, field string, v any) bool {
+	switch field {
+	case "retries":
+		var n int64
+		switch t := v.(type) {
+		case int32:
+			n = int64(t)
+		case int64:
+			n = t
+		case uint64:
+			n = int64(t)
+		case float64:
+			n = int64(t)
+		default:
+			return false
+		}
+		value.Retries = int32(n)
+		return true
+	case "preferred":
+		var n uint64
+		switch t := v.(type) {
+		case Weapon:
+			n = uint64(t)
+		case int64:
+			n = uint64(t)
+		case uint64:
+			n = t
+		case float64:
+			n = uint64(t)
+		default:
+			return false
+		}
+		if n > 15 {
+			n = 0 // out-of-set -> None, as the read side does
+		}
+		value.Preferred = Weapon(n)
+		return true
+	}
+	return false
+}
+
+var tableTypeProbeArray = &TableTypeInfo{Name: "ProbeArray"}
+
+func init() {
+	tableTypeProbeArray.Fields = []TableFieldInfo{
+		{Name: "samples", TypeName: "ProbeSample", Id: 0xaf9a, Kind: 13, IsArray: true, ArrayBound: 2, Table: tableTypeProbeSample, EnumMax: -1},
+		{Name: "config", TypeName: "ProbeConfig", Id: 0x4538, Kind: 13, Table: tableTypeProbeConfig, EnumMax: -1},
+	}
+}
+
+// TableTypeProbeArray returns ProbeArray's reflection descriptor — field names, wire
+// ids/kinds, bounds, ranges, enum names and branch guards. Pair it with
+// TableGetProbeArray/TableSetProbeArray to walk, print, diff or edit values generically.
+func TableTypeProbeArray() *TableTypeInfo { return tableTypeProbeArray }
+
+// TableGetProbeArray reads the named field from value: scalars normalize (signed ->
+// int64, unsigned/bits -> uint64, floats -> float64, bools as-is), enums and
+// flags -> uint64, strings -> the used string, nested tables -> a typed
+// pointer, fixed arrays -> a pointer to the backing array, counted arrays
+// and bytes -> the used slice. Unknown field names return (nil, false).
+func TableGetProbeArray(value *ProbeArray, field string) (any, bool) {
+	switch field {
+	case "samples":
+		return &value.Samples, true
+	case "config":
+		return &value.Config, true
+	}
+	return nil, false
+}
+
+// TableSetProbeArray writes the named field — the editor write path: scalars,
+// enums, flags, bools and strings only. Numerics accept the field's own Go
+// type plus int64/uint64/float64; out-of-range values CLAMP exactly as the
+// table-wire read side does, and strings truncate to the declared max.
+// Unknown fields, nested tables and arrays return false.
+func TableSetProbeArray(value *ProbeArray, field string, v any) bool {
+	// no directly-settable fields: nested tables and arrays edit through
+	// their own descriptors and accessors
+	return false
+}
+
+var tableTypeTestData = &TableTypeInfo{Name: "TestData"}
+
+func init() {
+	tableTypeTestData.Fields = []TableFieldInfo{
+		{Name: "a", TypeName: "int32", Id: 0xcd20, Kind: 4, HasRange: true, RangeMin: -100.0, RangeMax: 100.0, EnumMax: -1},
+		{Name: "b", TypeName: "int32", Id: 0xcae9, Kind: 4, HasRange: true, RangeMin: -100.0, RangeMax: 100.0, EnumMax: -1},
+		{Name: "c", TypeName: "int32", Id: 0xca5e, Kind: 4, HasRange: true, RangeMin: -100.0, RangeMax: 150.0, EnumMax: -1},
+		{Name: "d", TypeName: "bits(8)", Id: 0xc57f, Kind: 6, EnumMax: -1},
+		{Name: "e", TypeName: "bits(8)", Id: 0xc2ec, Kind: 6, EnumMax: -1},
+		{Name: "f", TypeName: "bits(8)", Id: 0xc495, Kind: 6, EnumMax: -1},
+		{Name: "g", TypeName: "bool", Id: 0xc40a, Kind: 1, EnumMax: -1},
+		{Name: "items", TypeName: "int32", Id: 0x09f6, Kind: 4, IsArray: true, Counted: true, ArrayBound: 16, HasRange: true, RangeMin: 0.0, RangeMax: 255.0, EnumMax: -1},
+		{Name: "float_value", TypeName: "float32", Id: 0xbbaf, Kind: 10, EnumMax: -1},
+		{Name: "compressed_float_value", TypeName: "float32", Id: 0x8aa5, Kind: 10, HasRange: true, RangeMin: 0.0, RangeMax: 10.0, EnumMax: -1},
+		{Name: "double_value", TypeName: "float64", Id: 0x6a50, Kind: 11, EnumMax: -1},
+		{Name: "int8_value", TypeName: "int8", Id: 0x6592, Kind: 2, EnumMax: -1},
+		{Name: "int16_value", TypeName: "int16", Id: 0x68f3, Kind: 3, EnumMax: -1},
+		{Name: "uint8_value", TypeName: "uint8", Id: 0x5645, Kind: 6, EnumMax: -1},
+		{Name: "uint16_value", TypeName: "uint16", Id: 0xd185, Kind: 7, EnumMax: -1},
+		{Name: "uint32_value", TypeName: "uint32", Id: 0x3ba7, Kind: 8, EnumMax: -1},
+		{Name: "uint64_value", TypeName: "uint64", Id: 0xc4d6, Kind: 9, EnumMax: -1},
+		{Name: "int64_full", TypeName: "int64", Id: 0xc2b7, Kind: 5, EnumMax: -1},
+		{Name: "int64_range", TypeName: "int64", Id: 0xab05, Kind: 5, HasRange: true, RangeMin: -1e+12, RangeMax: 1e+12, EnumMax: -1},
+		{Name: "fixed_bytes", TypeName: "uint8", Id: 0x14fc, Kind: 6, IsArray: true, ArrayBound: 17, EnumMax: -1},
+		{Name: "text", TypeName: "string", Id: 0xf3d8, Kind: 12, Counted: true, ArrayBound: 255, EnumMax: -1},
+	}
+}
+
+// TableTypeTestData returns TestData's reflection descriptor — field names, wire
+// ids/kinds, bounds, ranges, enum names and branch guards. Pair it with
+// TableGetTestData/TableSetTestData to walk, print, diff or edit values generically.
+func TableTypeTestData() *TableTypeInfo { return tableTypeTestData }
+
+// TableGetTestData reads the named field from value: scalars normalize (signed ->
+// int64, unsigned/bits -> uint64, floats -> float64, bools as-is), enums and
+// flags -> uint64, strings -> the used string, nested tables -> a typed
+// pointer, fixed arrays -> a pointer to the backing array, counted arrays
+// and bytes -> the used slice. Unknown field names return (nil, false).
+func TableGetTestData(value *TestData, field string) (any, bool) {
+	switch field {
+	case "a":
+		return int64(value.A), true
+	case "b":
+		return int64(value.B), true
+	case "c":
+		return int64(value.C), true
+	case "d":
+		return uint64(value.D), true
+	case "e":
+		return uint64(value.E), true
+	case "f":
+		return uint64(value.F), true
+	case "g":
+		return value.G, true
+	case "items":
+		return value.Items[:value.ItemsCount], true
+	case "float_value":
+		return float64(value.FloatValue), true
+	case "compressed_float_value":
+		return float64(value.CompressedFloatValue), true
+	case "double_value":
+		return float64(value.DoubleValue), true
+	case "int8_value":
+		return int64(value.Int8Value), true
+	case "int16_value":
+		return int64(value.Int16Value), true
+	case "uint8_value":
+		return uint64(value.Uint8Value), true
+	case "uint16_value":
+		return uint64(value.Uint16Value), true
+	case "uint32_value":
+		return uint64(value.Uint32Value), true
+	case "uint64_value":
+		return uint64(value.Uint64Value), true
+	case "int64_full":
+		return int64(value.Int64Full), true
+	case "int64_range":
+		return int64(value.Int64Range), true
+	case "fixed_bytes":
+		return &value.FixedBytes, true
+	case "text":
+		return string(value.Text[:value.TextLength]), true
+	}
+	return nil, false
+}
+
+// TableSetTestData writes the named field — the editor write path: scalars,
+// enums, flags, bools and strings only. Numerics accept the field's own Go
+// type plus int64/uint64/float64; out-of-range values CLAMP exactly as the
+// table-wire read side does, and strings truncate to the declared max.
+// Unknown fields, nested tables and arrays return false.
+func TableSetTestData(value *TestData, field string, v any) bool {
+	switch field {
+	case "a":
+		var n int64
+		switch t := v.(type) {
+		case int32:
+			n = int64(t)
+		case int64:
+			n = t
+		case uint64:
+			n = int64(t)
+		case float64:
+			n = int64(t)
+		default:
+			return false
+		}
+		if n < -100 {
+			n = -100
+		} else if n > 100 {
+			n = 100
+		}
+		value.A = int32(n)
+		return true
+	case "b":
+		var n int64
+		switch t := v.(type) {
+		case int32:
+			n = int64(t)
+		case int64:
+			n = t
+		case uint64:
+			n = int64(t)
+		case float64:
+			n = int64(t)
+		default:
+			return false
+		}
+		if n < -100 {
+			n = -100
+		} else if n > 100 {
+			n = 100
+		}
+		value.B = int32(n)
+		return true
+	case "c":
+		var n int64
+		switch t := v.(type) {
+		case int32:
+			n = int64(t)
+		case int64:
+			n = t
+		case uint64:
+			n = int64(t)
+		case float64:
+			n = int64(t)
+		default:
+			return false
+		}
+		if n < -100 {
+			n = -100
+		} else if n > 150 {
+			n = 150
+		}
+		value.C = int32(n)
+		return true
+	case "d":
+		var n uint64
+		switch t := v.(type) {
+		case uint32:
+			n = uint64(t)
+		case int64:
+			n = uint64(t)
+		case uint64:
+			n = t
+		case float64:
+			n = uint64(t)
+		default:
+			return false
+		}
+		if n > 255 {
+			n = 255 // bits(8) width clamp
+		}
+		value.D = uint32(n)
+		return true
+	case "e":
+		var n uint64
+		switch t := v.(type) {
+		case uint32:
+			n = uint64(t)
+		case int64:
+			n = uint64(t)
+		case uint64:
+			n = t
+		case float64:
+			n = uint64(t)
+		default:
+			return false
+		}
+		if n > 255 {
+			n = 255 // bits(8) width clamp
+		}
+		value.E = uint32(n)
+		return true
+	case "f":
+		var n uint64
+		switch t := v.(type) {
+		case uint32:
+			n = uint64(t)
+		case int64:
+			n = uint64(t)
+		case uint64:
+			n = t
+		case float64:
+			n = uint64(t)
+		default:
+			return false
+		}
+		if n > 255 {
+			n = 255 // bits(8) width clamp
+		}
+		value.F = uint32(n)
+		return true
+	case "g":
+		b, ok := v.(bool)
+		if !ok {
+			return false
+		}
+		value.G = b
+		return true
+	case "float_value":
+		var n float64
+		switch t := v.(type) {
+		case float32:
+			n = float64(t)
+		case int64:
+			n = float64(t)
+		case uint64:
+			n = float64(t)
+		case float64:
+			n = t
+		default:
+			return false
+		}
+		value.FloatValue = float32(n)
+		return true
+	case "compressed_float_value":
+		var n float64
+		switch t := v.(type) {
+		case float32:
+			n = float64(t)
+		case int64:
+			n = float64(t)
+		case uint64:
+			n = float64(t)
+		case float64:
+			n = t
+		default:
+			return false
+		}
+		if n < 0.0 {
+			n = 0.0
+		} else if n > 10.0 {
+			n = 10.0
+		}
+		value.CompressedFloatValue = float32(n)
+		return true
+	case "double_value":
+		var n float64
+		switch t := v.(type) {
+		case float64:
+			n = t
+		case int64:
+			n = float64(t)
+		case uint64:
+			n = float64(t)
+		default:
+			return false
+		}
+		value.DoubleValue = n
+		return true
+	case "int8_value":
+		var n int64
+		switch t := v.(type) {
+		case int8:
+			n = int64(t)
+		case int64:
+			n = t
+		case uint64:
+			n = int64(t)
+		case float64:
+			n = int64(t)
+		default:
+			return false
+		}
+		value.Int8Value = int8(n)
+		return true
+	case "int16_value":
+		var n int64
+		switch t := v.(type) {
+		case int16:
+			n = int64(t)
+		case int64:
+			n = t
+		case uint64:
+			n = int64(t)
+		case float64:
+			n = int64(t)
+		default:
+			return false
+		}
+		value.Int16Value = int16(n)
+		return true
+	case "uint8_value":
+		var n uint64
+		switch t := v.(type) {
+		case uint8:
+			n = uint64(t)
+		case int64:
+			n = uint64(t)
+		case uint64:
+			n = t
+		case float64:
+			n = uint64(t)
+		default:
+			return false
+		}
+		value.Uint8Value = uint8(n)
+		return true
+	case "uint16_value":
+		var n uint64
+		switch t := v.(type) {
+		case uint16:
+			n = uint64(t)
+		case int64:
+			n = uint64(t)
+		case uint64:
+			n = t
+		case float64:
+			n = uint64(t)
+		default:
+			return false
+		}
+		value.Uint16Value = uint16(n)
+		return true
+	case "uint32_value":
+		var n uint64
+		switch t := v.(type) {
+		case uint32:
+			n = uint64(t)
+		case int64:
+			n = uint64(t)
+		case uint64:
+			n = t
+		case float64:
+			n = uint64(t)
+		default:
+			return false
+		}
+		value.Uint32Value = uint32(n)
+		return true
+	case "uint64_value":
+		var n uint64
+		switch t := v.(type) {
+		case uint64:
+			n = t
+		case int64:
+			n = uint64(t)
+		case float64:
+			n = uint64(t)
+		default:
+			return false
+		}
+		value.Uint64Value = n
+		return true
+	case "int64_full":
+		var n int64
+		switch t := v.(type) {
+		case int64:
+			n = t
+		case uint64:
+			n = int64(t)
+		case float64:
+			n = int64(t)
+		default:
+			return false
+		}
+		value.Int64Full = n
+		return true
+	case "int64_range":
+		var n int64
+		switch t := v.(type) {
+		case int64:
+			n = t
+		case uint64:
+			n = int64(t)
+		case float64:
+			n = int64(t)
+		default:
+			return false
+		}
+		if n < -1000000000000 {
+			n = -1000000000000
+		} else if n > 1000000000000 {
+			n = 1000000000000
+		}
+		value.Int64Range = n
+		return true
+	case "text":
+		s, ok := v.(string)
+		if !ok {
+			return false
+		}
+		if len(s) > 255 {
+			s = s[:255] // truncate to the declared max, as the read side does
+		}
+		copy(value.Text[:], s)
+		value.TextLength = int32(len(s))
+		return true
+	}
+	return false
+}

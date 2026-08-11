@@ -23,6 +23,22 @@ const (
 	WeaponRailgun Weapon = 3
 )
 
+// EnumNameWeapon: debug/log/tooling name for any Weapon wire value —
+// out-of-set values (wire-legal up to the declared max) name as "???"
+func EnumNameWeapon(value uint64) string {
+	switch value {
+	case uint64(WeaponNone):
+		return "None"
+	case uint64(WeaponLaser):
+		return "Laser"
+	case uint64(WeaponMissile):
+		return "Missile"
+	case uint64(WeaponRailgun):
+		return "Railgun"
+	}
+	return "???"
+}
+
 // ProbeFlags — one bit per variant, consumed as masks; storage uint64 in every
 // target, wire 8 bits (SPEC §4.2)
 type ProbeFlags uint64

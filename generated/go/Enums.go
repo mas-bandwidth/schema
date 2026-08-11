@@ -12,6 +12,20 @@ const (
 	TeamBlue Team = 2
 )
 
+// EnumNameTeam: debug/log/tooling name for any Team wire value —
+// out-of-set values (wire-legal up to the declared max) name as "???"
+func EnumNameTeam(value uint64) string {
+	switch value {
+	case uint64(TeamNone):
+		return "None"
+	case uint64(TeamRed):
+		return "Red"
+	case uint64(TeamBlue):
+		return "Blue"
+	}
+	return "???"
+}
+
 // ShipType — None = 0 implicit, variants dense from 1, wire range [0, 5] (SPEC §4.2)
 type ShipType uint8
 
@@ -24,6 +38,26 @@ const (
 	ShipTypeCarrier   ShipType = 5
 )
 
+// EnumNameShipType: debug/log/tooling name for any ShipType wire value —
+// out-of-set values (wire-legal up to the declared max) name as "???"
+func EnumNameShipType(value uint64) string {
+	switch value {
+	case uint64(ShipTypeNone):
+		return "None"
+	case uint64(ShipTypeFighter):
+		return "Fighter"
+	case uint64(ShipTypeCorvette):
+		return "Corvette"
+	case uint64(ShipTypeBomber):
+		return "Bomber"
+	case uint64(ShipTypeDestroyer):
+		return "Destroyer"
+	case uint64(ShipTypeCarrier):
+		return "Carrier"
+	}
+	return "???"
+}
+
 // MissileType — None = 0 implicit, variants dense from 1, wire range [0, 3] (SPEC §4.2)
 type MissileType uint8
 
@@ -33,6 +67,22 @@ const (
 	MissileTypeTorpedo    MissileType = 2
 	MissileTypeNuke       MissileType = 3
 )
+
+// EnumNameMissileType: debug/log/tooling name for any MissileType wire value —
+// out-of-set values (wire-legal up to the declared max) name as "???"
+func EnumNameMissileType(value uint64) string {
+	switch value {
+	case uint64(MissileTypeNone):
+		return "None"
+	case uint64(MissileTypeHeatseeker):
+		return "Heatseeker"
+	case uint64(MissileTypeTorpedo):
+		return "Torpedo"
+	case uint64(MissileTypeNuke):
+		return "Nuke"
+	}
+	return "???"
+}
 
 // PropType — None = 0 implicit, variants dense from 1, wire range [0, 6] (SPEC §4.2)
 type PropType uint8
@@ -46,6 +96,28 @@ const (
 	PropTypeBlackHole  PropType = 5
 	PropTypeDysonPanel PropType = 6
 )
+
+// EnumNamePropType: debug/log/tooling name for any PropType wire value —
+// out-of-set values (wire-legal up to the declared max) name as "???"
+func EnumNamePropType(value uint64) string {
+	switch value {
+	case uint64(PropTypeNone):
+		return "None"
+	case uint64(PropTypeAsteroid):
+		return "Asteroid"
+	case uint64(PropTypeChunk):
+		return "Chunk"
+	case uint64(PropTypeFragment):
+		return "Fragment"
+	case uint64(PropTypeSphere):
+		return "Sphere"
+	case uint64(PropTypeBlackHole):
+		return "BlackHole"
+	case uint64(PropTypeDysonPanel):
+		return "DysonPanel"
+	}
+	return "???"
+}
 
 // ShipFlags — one bit per variant, consumed as masks; storage uint64 in every
 // target, wire 4 bits (SPEC §4.2)

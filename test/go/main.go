@@ -677,6 +677,90 @@ func main() {
 		check(out == in, "TestData table round-trips")
 	}
 
+	// ---- reflection descriptors: walk, read and WRITE a table generically ----
+	{
+		info := example.TableTypeRigidBody()
+		check(info.Name == "RigidBody", "descriptor names its type")
+		check(len(info.Fields) == 5, "RigidBody descriptor carries 5 fields")
+
+		// find fields by name; check identity, nesting and guards
+		var atRest, position, linearVelocity *example.TableFieldInfo
+		for i := range info.Fields {
+			switch info.Fields[i].Name {
+			case "at_rest":
+				atRest = &info.Fields[i]
+			case "position":
+				position = &info.Fields[i]
+			case "linear_velocity":
+				linearVelocity = &info.Fields[i]
+			}
+		}
+		check(atRest != nil && position != nil && linearVelocity != nil, "fields found by name")
+		check(atRest.Kind == 1 && atRest.Guard == "", "at_rest is an unguarded bool")
+		check(position.Table == example.TableTypeVec3(), "nested descriptor link IS the Vec3 descriptor")
+		check(position.TypeName == "Vec3", "nested field carries its schema type name")
+		check(linearVelocity.Guard == "!at_rest", "the branch guard is machine-usable")
+
+		// generic WRITE by name (Go's stand-in for the C++ offset write), then
+		// prove the storage sees it — directly AND back through TableGet
+		body := example.RigidBody{}
+		check(example.TableSetRigidBody(&body, "at_rest", true), "TableSet writes a bool by name")
+		check(body.AtRest, "the storage sees the generic write")
+		got, ok := example.TableGetRigidBody(&body, "at_rest")
+		b, isBool := got.(bool)
+		check(ok && isBool && b, "TableGet reads the bool back")
+		check(!example.TableSetRigidBody(&body, "position", 1.0), "nested tables refuse the scalar write path")
+		check(!example.TableSetRigidBody(&body, "no_such_field", 1.0), "unknown fields refuse")
+
+		// generic READ of a nested double through two descriptor hops
+		body.Position.Y = -2.5
+		nested, ok := example.TableGetRigidBody(&body, "position")
+		vec, isVec := nested.(*example.Vec3)
+		check(ok && isVec, "nested tables read as a typed pointer")
+		y, ok := example.TableGetVec3(vec, "y")
+		yf, isFloat := y.(float64)
+		check(ok && isFloat && yf == -2.5, "nested double reads through two hops")
+
+		// enum metadata: ProbeSample.weapon names its values and knows its max
+		sample := example.TableTypeProbeSample()
+		var weapon, samples *example.TableFieldInfo
+		for i := range sample.Fields {
+			switch sample.Fields[i].Name {
+			case "weapon":
+				weapon = &sample.Fields[i]
+			case "samples":
+				samples = &sample.Fields[i]
+			}
+		}
+		// EnumMax is the declared WIRE max ([max = 15] widening), not the
+		// current variant count — future variants decode without clamping
+		check(weapon != nil && weapon.EnumName != nil && weapon.EnumMax == 15, "weapon carries enum metadata")
+		check(weapon.EnumName(0) == "None", "the None value names itself")
+		check(weapon.EnumName(1) == "Laser", "enum values name themselves")
+		check(weapon.EnumName(200) == "???", "out-of-set values name as ???")
+		check(weapon.Guard == "active", "weapon's branch guard")
+
+		// counted array metadata: element kind, bound, count companion
+		check(samples != nil && samples.IsArray && samples.Counted, "samples is a counted array")
+		check(samples.ArrayBound == 8 && samples.Kind == 7, "bound 8, element kind u16")
+
+		// declared ranges surface for editors (TestData.a is [-100, 100])
+		testdata := example.TableTypeTestData()
+		var aField *example.TableFieldInfo
+		for i := range testdata.Fields {
+			if testdata.Fields[i].Name == "a" {
+				aField = &testdata.Fields[i]
+			}
+		}
+		check(aField != nil && aField.HasRange, "TestData.a has a declared range")
+		check(aField.RangeMin == -100.0 && aField.RangeMax == 100.0, "the [-100, 100] editor range")
+
+		// TableSet clamps exactly like the read side: a = 500 -> 100
+		td := example.TestData{}
+		check(example.TableSetTestData(&td, "a", int64(500)), "TableSet accepts an editor numeric")
+		check(td.A == 100, "TableSet clamped to the declared max")
+	}
+
 	// ---- the permissive read contract, exercised with hand-built buffers ----
 	{
 		// unknown field id: skipped and counted, decode continues

@@ -442,3 +442,254 @@ func tableReadRigidBody(r *tableReader, value *RigidBody) bool {
 		}
 	}
 }
+
+// ---- reflection descriptors (tables only, notes/table-wire.md) ----
+//
+// Descriptor links are wired in init(), which completes before main: every
+// tableTypeX var exists before any init() runs (so cross-type links always
+// resolve, whatever the declaration order), and by the time any goroutine
+// can look the descriptors are immutable — concurrent first use needs no
+// locking and no lazy state.
+
+var tableTypeVec3 = &TableTypeInfo{Name: "Vec3"}
+
+func init() {
+	tableTypeVec3.Fields = []TableFieldInfo{
+		{Name: "x", TypeName: "float64", Id: 0xad8b, Kind: 11, EnumMax: -1},
+		{Name: "y", TypeName: "float64", Id: 0xb2f8, Kind: 11, EnumMax: -1},
+		{Name: "z", TypeName: "float64", Id: 0xaca1, Kind: 11, EnumMax: -1},
+	}
+}
+
+// TableTypeVec3 returns Vec3's reflection descriptor — field names, wire
+// ids/kinds, bounds, ranges, enum names and branch guards. Pair it with
+// TableGetVec3/TableSetVec3 to walk, print, diff or edit values generically.
+func TableTypeVec3() *TableTypeInfo { return tableTypeVec3 }
+
+// TableGetVec3 reads the named field from value: scalars normalize (signed ->
+// int64, unsigned/bits -> uint64, floats -> float64, bools as-is), enums and
+// flags -> uint64, strings -> the used string, nested tables -> a typed
+// pointer, fixed arrays -> a pointer to the backing array, counted arrays
+// and bytes -> the used slice. Unknown field names return (nil, false).
+func TableGetVec3(value *Vec3, field string) (any, bool) {
+	switch field {
+	case "x":
+		return float64(value.X), true
+	case "y":
+		return float64(value.Y), true
+	case "z":
+		return float64(value.Z), true
+	}
+	return nil, false
+}
+
+// TableSetVec3 writes the named field — the editor write path: scalars,
+// enums, flags, bools and strings only. Numerics accept the field's own Go
+// type plus int64/uint64/float64; out-of-range values CLAMP exactly as the
+// table-wire read side does, and strings truncate to the declared max.
+// Unknown fields, nested tables and arrays return false.
+func TableSetVec3(value *Vec3, field string, v any) bool {
+	switch field {
+	case "x":
+		var n float64
+		switch t := v.(type) {
+		case float64:
+			n = t
+		case int64:
+			n = float64(t)
+		case uint64:
+			n = float64(t)
+		default:
+			return false
+		}
+		value.X = n
+		return true
+	case "y":
+		var n float64
+		switch t := v.(type) {
+		case float64:
+			n = t
+		case int64:
+			n = float64(t)
+		case uint64:
+			n = float64(t)
+		default:
+			return false
+		}
+		value.Y = n
+		return true
+	case "z":
+		var n float64
+		switch t := v.(type) {
+		case float64:
+			n = t
+		case int64:
+			n = float64(t)
+		case uint64:
+			n = float64(t)
+		default:
+			return false
+		}
+		value.Z = n
+		return true
+	}
+	return false
+}
+
+var tableTypeQuat = &TableTypeInfo{Name: "Quat"}
+
+func init() {
+	tableTypeQuat.Fields = []TableFieldInfo{
+		{Name: "x", TypeName: "float64", Id: 0xad8b, Kind: 11, EnumMax: -1},
+		{Name: "y", TypeName: "float64", Id: 0xb2f8, Kind: 11, EnumMax: -1},
+		{Name: "z", TypeName: "float64", Id: 0xaca1, Kind: 11, EnumMax: -1},
+		{Name: "w", TypeName: "float64", Id: 0xcd3a, Kind: 11, EnumMax: -1},
+	}
+}
+
+// TableTypeQuat returns Quat's reflection descriptor — field names, wire
+// ids/kinds, bounds, ranges, enum names and branch guards. Pair it with
+// TableGetQuat/TableSetQuat to walk, print, diff or edit values generically.
+func TableTypeQuat() *TableTypeInfo { return tableTypeQuat }
+
+// TableGetQuat reads the named field from value: scalars normalize (signed ->
+// int64, unsigned/bits -> uint64, floats -> float64, bools as-is), enums and
+// flags -> uint64, strings -> the used string, nested tables -> a typed
+// pointer, fixed arrays -> a pointer to the backing array, counted arrays
+// and bytes -> the used slice. Unknown field names return (nil, false).
+func TableGetQuat(value *Quat, field string) (any, bool) {
+	switch field {
+	case "x":
+		return float64(value.X), true
+	case "y":
+		return float64(value.Y), true
+	case "z":
+		return float64(value.Z), true
+	case "w":
+		return float64(value.W), true
+	}
+	return nil, false
+}
+
+// TableSetQuat writes the named field — the editor write path: scalars,
+// enums, flags, bools and strings only. Numerics accept the field's own Go
+// type plus int64/uint64/float64; out-of-range values CLAMP exactly as the
+// table-wire read side does, and strings truncate to the declared max.
+// Unknown fields, nested tables and arrays return false.
+func TableSetQuat(value *Quat, field string, v any) bool {
+	switch field {
+	case "x":
+		var n float64
+		switch t := v.(type) {
+		case float64:
+			n = t
+		case int64:
+			n = float64(t)
+		case uint64:
+			n = float64(t)
+		default:
+			return false
+		}
+		value.X = n
+		return true
+	case "y":
+		var n float64
+		switch t := v.(type) {
+		case float64:
+			n = t
+		case int64:
+			n = float64(t)
+		case uint64:
+			n = float64(t)
+		default:
+			return false
+		}
+		value.Y = n
+		return true
+	case "z":
+		var n float64
+		switch t := v.(type) {
+		case float64:
+			n = t
+		case int64:
+			n = float64(t)
+		case uint64:
+			n = float64(t)
+		default:
+			return false
+		}
+		value.Z = n
+		return true
+	case "w":
+		var n float64
+		switch t := v.(type) {
+		case float64:
+			n = t
+		case int64:
+			n = float64(t)
+		case uint64:
+			n = float64(t)
+		default:
+			return false
+		}
+		value.W = n
+		return true
+	}
+	return false
+}
+
+var tableTypeRigidBody = &TableTypeInfo{Name: "RigidBody"}
+
+func init() {
+	tableTypeRigidBody.Fields = []TableFieldInfo{
+		{Name: "position", TypeName: "Vec3", Id: 0xdd45, Kind: 13, Table: tableTypeVec3, EnumMax: -1},
+		{Name: "orientation", TypeName: "Quat", Id: 0x7964, Kind: 13, Table: tableTypeQuat, EnumMax: -1},
+		{Name: "at_rest", TypeName: "bool", Id: 0xf9eb, Kind: 1, EnumMax: -1},
+		{Name: "linear_velocity", TypeName: "Vec3", Id: 0x0637, Kind: 13, Table: tableTypeVec3, EnumMax: -1, Guard: "!at_rest"},
+		{Name: "angular_velocity", TypeName: "Vec3", Id: 0x01a7, Kind: 13, Table: tableTypeVec3, EnumMax: -1, Guard: "!at_rest"},
+	}
+}
+
+// TableTypeRigidBody returns RigidBody's reflection descriptor — field names, wire
+// ids/kinds, bounds, ranges, enum names and branch guards. Pair it with
+// TableGetRigidBody/TableSetRigidBody to walk, print, diff or edit values generically.
+func TableTypeRigidBody() *TableTypeInfo { return tableTypeRigidBody }
+
+// TableGetRigidBody reads the named field from value: scalars normalize (signed ->
+// int64, unsigned/bits -> uint64, floats -> float64, bools as-is), enums and
+// flags -> uint64, strings -> the used string, nested tables -> a typed
+// pointer, fixed arrays -> a pointer to the backing array, counted arrays
+// and bytes -> the used slice. Unknown field names return (nil, false).
+func TableGetRigidBody(value *RigidBody, field string) (any, bool) {
+	switch field {
+	case "position":
+		return &value.Position, true
+	case "orientation":
+		return &value.Orientation, true
+	case "at_rest":
+		return value.AtRest, true
+	case "linear_velocity":
+		return &value.LinearVelocity, true
+	case "angular_velocity":
+		return &value.AngularVelocity, true
+	}
+	return nil, false
+}
+
+// TableSetRigidBody writes the named field — the editor write path: scalars,
+// enums, flags, bools and strings only. Numerics accept the field's own Go
+// type plus int64/uint64/float64; out-of-range values CLAMP exactly as the
+// table-wire read side does, and strings truncate to the declared max.
+// Unknown fields, nested tables and arrays return false.
+func TableSetRigidBody(value *RigidBody, field string, v any) bool {
+	switch field {
+	case "at_rest":
+		b, ok := v.(bool)
+		if !ok {
+			return false
+		}
+		value.AtRest = b
+		return true
+	}
+	return false
+}

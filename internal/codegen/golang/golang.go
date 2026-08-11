@@ -243,6 +243,17 @@ func (g *gen) emitEnum(d *ir.Enum) {
 		g.pf("\t%s%s %s = %d\n", d.Name, v, d.Name, i+1)
 	}
 	g.pf(")\n\n")
+	// the uint64 parameter (not the enum type) keeps out-of-set values exact:
+	// a narrower named type would truncate 256 -> 0 -> "None" for an 8-bit enum
+	g.pf("// EnumName%s: debug/log/tooling name for any %s wire value —\n", d.Name, d.Name)
+	g.pf("// out-of-set values (wire-legal up to the declared max) name as \"???\"\n")
+	g.pf("func EnumName%s(value uint64) string {\n", d.Name)
+	g.pf("\tswitch value {\n")
+	g.pf("\tcase uint64(%sNone):\n\t\treturn \"None\"\n", d.Name)
+	for _, v := range d.Variants {
+		g.pf("\tcase uint64(%s%s):\n\t\treturn \"%s\"\n", d.Name, v, v)
+	}
+	g.pf("\t}\n\treturn \"???\"\n}\n\n")
 }
 
 func (g *gen) emitFlags(d *ir.Flags) {

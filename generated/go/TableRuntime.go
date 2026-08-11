@@ -14,6 +14,39 @@ type TableReport struct {
 	Malformed    bool // structurally broken buffer; partial decode was kept
 }
 
+// ---- reflection (tables only, notes/table-wire.md) ----
+//
+// Static field descriptors for every type in the table closure: name, wire
+// id/kind, bounds, ranges, enum names and branch guards — enough to walk,
+// print, diff, edit or bind any table value at runtime with no schema files.
+// TableTypeX() returns X's descriptor. Where C++ exposes storage offsets,
+// Go emits typed accessors instead: TableGetX/TableSetX read and write
+// fields by name.
+
+// TableFieldInfo describes one field of a table-closure type.
+type TableFieldInfo struct {
+	Name       string         // schema field name, e.g. "health"
+	TypeName   string         // schema type name, e.g. "float32", "ShipType"
+	Id         uint16         // table-wire field id (name hash)
+	Kind       byte           // table-wire kind; for arrays/bytes, the ELEMENT kind
+	IsArray    bool           // fixed or counted array (bytes included)
+	Counted    bool           // a Count/Length int32 companion exists (counted arrays, strings, bytes)
+	ArrayBound int32          // array capacity / string max length; 0 for plain scalars
+	Table      *TableTypeInfo // nested table's descriptor, or nil
+	HasRange   bool           // a declared [min, max] (int or float)
+	RangeMin   float64        // NOTE: int64 ranges beyond 2^53 lose precision here
+	RangeMax   float64
+	EnumMax    int64               // enums: highest valid wire value (None = 0 always valid); else -1
+	EnumName   func(uint64) string // enums: value -> name; else nil
+	Guard      string              // branch guard, e.g. "at_rest" or "!at_rest"; "" if unguarded
+}
+
+// TableTypeInfo is one closure type's descriptor.
+type TableTypeInfo struct {
+	Name   string // schema type name
+	Fields []TableFieldInfo
+}
+
 type tableWriter struct{ buf []byte }
 
 func (w *tableWriter) u8(v byte)    { w.buf = append(w.buf, v) }

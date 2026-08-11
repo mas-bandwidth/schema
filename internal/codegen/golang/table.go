@@ -7,11 +7,19 @@
 //
 // This is what lets the Go backend open the same Config.bin/Assets.bin the
 // game server reads — one file, native typed readers in every language.
+//
+// Every closure type also carries reflection: TableTypeX() returns a static
+// field descriptor (name, wire id/kind, bounds, ranges, enum names, branch
+// guards — the C++ TableType<X>() surface), and where C++ exposes storage
+// offsets, Go emits typed accessors instead: TableGetX/TableSetX read and
+// write fields by name with the read side's exact clamping. This is what
+// runtime config editors and generic tooling bind against.
 package golang
 
 import (
 	"fmt"
 	"go/format"
+	"math/big"
 	"strings"
 
 	"github.com/mas-bandwidth/schema/internal/ir"
@@ -550,6 +558,363 @@ func (g *tableGen) emitTableReadScalarInto(f *ir.Field, kind int, lvalue, ind st
 	}
 }
 
+// tableGuardStrings composes each guarded field's branch condition WITHOUT
+// the value. prefix — the reflection descriptor's machine-usable guard
+// ("at_rest", "!at_rest", composed with " && " for nesting), matching the
+// C++ descriptors byte for byte.
+func tableGuardStrings(st *ir.Struct) map[string]string {
+	guards := map[string]string{}
+	var walk func(items []ir.Item, cond string)
+	walk = func(items []ir.Item, cond string) {
+		for _, item := range items {
+			switch item := item.(type) {
+			case *ir.FieldItem:
+				if cond != "" {
+					guards[item.F.Name] = cond
+				}
+			case *ir.Branch:
+				pos, neg := item.Cond, "!"+item.Cond
+				if item.Neg {
+					pos, neg = neg, pos
+				}
+				and := func(a, b string) string {
+					if a == "" {
+						return b
+					}
+					return a + " && " + b
+				}
+				walk(item.Then, and(cond, pos))
+				walk(item.Else, and(cond, neg))
+			}
+		}
+	}
+	walk(st.Items, "")
+	return guards
+}
+
+// tableFieldTypeName renders a field's schema-facing type name for the
+// descriptor ("float32", "bits(9)", "ShipType", "GunnerSettings").
+func tableFieldTypeName(f *ir.Field) string {
+	switch f.Type.Kind {
+	case ir.TBool:
+		return "bool"
+	case ir.TInt:
+		prefix := "int"
+		if !f.Type.Signed {
+			prefix = "uint"
+		}
+		return fmt.Sprintf("%s%d", prefix, f.Type.Width)
+	case ir.TBits:
+		return fmt.Sprintf("bits(%d)", f.Type.Width)
+	case ir.TFloat32:
+		return "float32"
+	case ir.TFloat64:
+		return "float64"
+	case ir.TString:
+		return "string"
+	case ir.TBytes:
+		return "bytes"
+	case ir.TNamed:
+		return f.Type.Name
+	}
+	return "?"
+}
+
+// bigToFloat64 narrows a declared integer bound to the descriptor's float64
+// range field (precision past 2^53 is documented as lost).
+func bigToFloat64(v *big.Int) float64 {
+	f, _ := new(big.Float).SetInt(v).Float64()
+	return f
+}
+
+// tableStorageType is the generated Go storage type of a settable scalar
+// field — the "matching type" TableSetX accepts beside int64/uint64/float64.
+func tableStorageType(f *ir.Field) string {
+	switch f.Type.Kind {
+	case ir.TInt:
+		return goInt2(f.Type.Signed, f.Type.Width)
+	case ir.TBits:
+		if f.Type.Width <= 32 {
+			return "uint32"
+		}
+		return "uint64"
+	case ir.TFloat32:
+		return "float32"
+	case ir.TFloat64:
+		return "float64"
+	case ir.TNamed:
+		return f.Type.Name
+	}
+	return ""
+}
+
+// emitTableDescriptor emits X's descriptor: a package-level var carrying the
+// name, an init() that fills in the fields, and the TableTypeX accessor.
+//
+// The var-plus-init split is the cycle-safety choice: every tableTypeX var
+// exists (with its identity pointer) before ANY init() runs, so descriptor
+// links between types — in either declaration order, even mutually — always
+// resolve, where a single composite var literal could create an
+// initialization cycle the compiler refuses. And because init() completes
+// before main, descriptors are immutable by the time any goroutine can look:
+// concurrent first use is safe with no sync.Once and no lazy state.
+func (g *tableGen) emitTableDescriptor(st *ir.Struct) {
+	varName := "tableType" + st.Name
+	g.pf("var %s = &TableTypeInfo{Name: %q}\n\n", varName, st.Name)
+	if len(st.Fields) > 0 {
+		guards := tableGuardStrings(st)
+		g.pf("func init() {\n")
+		g.pf("\t%s.Fields = []TableFieldInfo{\n", varName)
+		for _, f := range st.Fields {
+			g.pf("\t\t{%s},\n", strings.Join(g.tableDescriptorParts(f, guards[f.Name]), ", "))
+		}
+		g.pf("\t}\n}\n\n")
+	}
+	g.pf("// TableType%s returns %s's reflection descriptor — field names, wire\n", st.Name, st.Name)
+	g.pf("// ids/kinds, bounds, ranges, enum names and branch guards. Pair it with\n")
+	g.pf("// TableGet%s/TableSet%s to walk, print, diff or edit values generically.\n", st.Name, st.Name)
+	g.pf("func TableType%s() *TableTypeInfo { return %s }\n\n", st.Name, varName)
+}
+
+// tableDescriptorParts renders one field's keyed TableFieldInfo literal —
+// zero-valued members stay unwritten (Go's zero value carries them), except
+// EnumMax whose not-an-enum value is -1 and so always rides.
+func (g *tableGen) tableDescriptorParts(f *ir.Field, guard string) []string {
+	kind := tableScalarKind(f)
+	if f.Type.Kind == ir.TBytes {
+		kind = tkU8 // bytes surface as an array of u8 elements
+	}
+	parts := []string{
+		fmt.Sprintf("Name: %q", f.Name),
+		fmt.Sprintf("TypeName: %q", tableFieldTypeName(f)),
+		fmt.Sprintf("Id: 0x%04x", pack.FieldId(f.Name)),
+		fmt.Sprintf("Kind: %d", kind),
+	}
+	if f.Array != ir.ArrayNone || f.Type.Kind == ir.TBytes {
+		parts = append(parts, "IsArray: true")
+	}
+	if f.Array == ir.ArrayCounted || f.Type.Kind == ir.TBytes || f.Type.Kind == ir.TString {
+		parts = append(parts, "Counted: true")
+	}
+	switch {
+	case f.Array != ir.ArrayNone:
+		parts = append(parts, fmt.Sprintf("ArrayBound: %d", f.ArrayBound))
+	case f.Type.Kind == ir.TBytes, f.Type.Kind == ir.TString:
+		parts = append(parts, fmt.Sprintf("ArrayBound: %d", f.Type.Size))
+	}
+	if _, isStruct := f.Type.Ref.(*ir.Struct); f.Type.Kind == ir.TNamed && isStruct {
+		parts = append(parts, "Table: tableType"+f.Type.Name)
+	}
+	if f.HasIntRange {
+		parts = append(parts, "HasRange: true",
+			"RangeMin: "+formatFloat(bigToFloat64(f.IntMin)),
+			"RangeMax: "+formatFloat(bigToFloat64(f.IntMax)))
+	} else if f.HasFloatRange {
+		parts = append(parts, "HasRange: true",
+			"RangeMin: "+formatFloat(f.FMin),
+			"RangeMax: "+formatFloat(f.FMax))
+	}
+	if enum, isEnum := f.Type.Ref.(*ir.Enum); f.Type.Kind == ir.TNamed && isEnum {
+		parts = append(parts, fmt.Sprintf("EnumMax: %d", enum.Max),
+			"EnumName: EnumName"+f.Type.Name)
+	} else {
+		parts = append(parts, "EnumMax: -1")
+	}
+	if guard != "" {
+		parts = append(parts, fmt.Sprintf("Guard: %q", guard))
+	}
+	return parts
+}
+
+// emitTableGet emits TableGetX — the read half of the accessor pair that
+// stands in for C++'s storage offsets.
+func (g *tableGen) emitTableGet(st *ir.Struct) {
+	g.pf("// TableGet%s reads the named field from value: scalars normalize (signed ->\n", st.Name)
+	g.pf("// int64, unsigned/bits -> uint64, floats -> float64, bools as-is), enums and\n")
+	g.pf("// flags -> uint64, strings -> the used string, nested tables -> a typed\n")
+	g.pf("// pointer, fixed arrays -> a pointer to the backing array, counted arrays\n")
+	g.pf("// and bytes -> the used slice. Unknown field names return (nil, false).\n")
+	g.pf("func TableGet%s(value *%s, field string) (any, bool) {\n", st.Name, st.Name)
+	if len(st.Fields) > 0 {
+		g.pf("\tswitch field {\n")
+		for _, f := range st.Fields {
+			name := ir.GoExportName(f.Name)
+			g.pf("\tcase %q:\n", f.Name)
+			switch {
+			case f.Type.Kind == ir.TString:
+				g.pf("\t\treturn string(value.%s[:value.%sLength]), true\n", name, name)
+			case f.Type.Kind == ir.TBytes:
+				g.pf("\t\treturn value.%s[:value.%sLength], true\n", name, name)
+			case f.Array == ir.ArrayCounted:
+				g.pf("\t\treturn value.%s[:value.%sCount], true\n", name, name)
+			case f.Array == ir.ArrayFixed:
+				g.pf("\t\treturn &value.%s, true\n", name)
+			case f.Type.Kind == ir.TBool:
+				g.pf("\t\treturn value.%s, true\n", name)
+			case f.Type.Kind == ir.TFloat32, f.Type.Kind == ir.TFloat64:
+				g.pf("\t\treturn float64(value.%s), true\n", name)
+			case f.Type.Kind == ir.TInt && f.Type.Signed:
+				g.pf("\t\treturn int64(value.%s), true\n", name)
+			case f.Type.Kind == ir.TInt, f.Type.Kind == ir.TBits:
+				g.pf("\t\treturn uint64(value.%s), true\n", name)
+			default: // TNamed
+				switch f.Type.Ref.(type) {
+				case *ir.Enum, *ir.Flags:
+					g.pf("\t\treturn uint64(value.%s), true\n", name)
+				case *ir.Struct:
+					g.pf("\t\treturn &value.%s, true\n", name)
+				}
+			}
+		}
+		g.pf("\t}\n")
+	}
+	g.pf("\treturn nil, false\n}\n\n")
+}
+
+// tableSettable reports whether TableSetX carries a field: the editor write
+// path is scalars, enums, flags, bools and strings only.
+func tableSettable(f *ir.Field) bool {
+	if f.Array != ir.ArrayNone || f.Type.Kind == ir.TBytes {
+		return false
+	}
+	if _, isStruct := f.Type.Ref.(*ir.Struct); f.Type.Kind == ir.TNamed && isStruct {
+		return false
+	}
+	return true
+}
+
+// emitTableSet emits TableSetX — the write half of the accessor pair. Values
+// clamp exactly like the table-wire read side: declared int/float ranges,
+// bits width, enum out-of-set -> None, string truncation to the bound.
+func (g *tableGen) emitTableSet(st *ir.Struct) {
+	g.pf("// TableSet%s writes the named field — the editor write path: scalars,\n", st.Name)
+	g.pf("// enums, flags, bools and strings only. Numerics accept the field's own Go\n")
+	g.pf("// type plus int64/uint64/float64; out-of-range values CLAMP exactly as the\n")
+	g.pf("// table-wire read side does, and strings truncate to the declared max.\n")
+	g.pf("// Unknown fields, nested tables and arrays return false.\n")
+	g.pf("func TableSet%s(value *%s, field string, v any) bool {\n", st.Name, st.Name)
+	settable := 0
+	for _, f := range st.Fields {
+		if tableSettable(f) {
+			settable++
+		}
+	}
+	if settable == 0 {
+		g.pf("\t// no directly-settable fields: nested tables and arrays edit through\n")
+		g.pf("\t// their own descriptors and accessors\n")
+		g.pf("\treturn false\n}\n\n")
+		return
+	}
+	g.pf("\tswitch field {\n")
+	for _, f := range st.Fields {
+		if tableSettable(f) {
+			g.emitTableSetField(f)
+		}
+	}
+	g.pf("\t}\n\treturn false\n}\n\n")
+}
+
+func (g *tableGen) emitTableSetField(f *ir.Field) {
+	name := ir.GoExportName(f.Name)
+	g.pf("\tcase %q:\n", f.Name)
+	switch f.Type.Kind {
+	case ir.TBool:
+		g.pf("\t\tb, ok := v.(bool)\n\t\tif !ok {\n\t\t\treturn false\n\t\t}\n")
+		g.pf("\t\tvalue.%s = b\n\t\treturn true\n", name)
+	case ir.TString:
+		g.pf("\t\ts, ok := v.(string)\n\t\tif !ok {\n\t\t\treturn false\n\t\t}\n")
+		g.pf("\t\tif len(s) > %d {\n\t\t\ts = s[:%d] // truncate to the declared max, as the read side does\n\t\t}\n", f.Type.Size, f.Type.Size)
+		g.pf("\t\tcopy(value.%s[:], s)\n", name)
+		g.pf("\t\tvalue.%sLength = int32(len(s))\n\t\treturn true\n", name)
+	case ir.TFloat32, ir.TFloat64:
+		g.emitTableSetNumeric(tableStorageType(f), "float64")
+		if f.HasFloatRange {
+			g.emitTableSetClamp(formatFloat(f.FMin), formatFloat(f.FMax), "")
+		}
+		g.emitTableSetAssign(name, tableStorageType(f), "float64")
+	case ir.TInt:
+		if f.Type.Signed {
+			g.emitTableSetNumeric(tableStorageType(f), "int64")
+			if f.HasIntRange {
+				g.emitTableSetClamp(f.IntMin.String(), f.IntMax.String(), "")
+			}
+		} else {
+			g.emitTableSetNumeric(tableStorageType(f), "uint64")
+			if f.HasIntRange {
+				min := ""
+				if f.IntMin.Sign() > 0 {
+					min = f.IntMin.String()
+				}
+				g.emitTableSetClamp(min, f.IntMax.String(), "")
+			}
+		}
+		g.emitTableSetAssign(name, tableStorageType(f), signedNorm(f.Type.Signed))
+	case ir.TBits:
+		g.emitTableSetNumeric(tableStorageType(f), "uint64")
+		storageBits := 32
+		if f.Type.Width > 32 {
+			storageBits = 64
+		}
+		if f.Type.Width < storageBits {
+			maxv := (uint64(1) << f.Type.Width) - 1
+			g.emitTableSetClamp("", fmt.Sprintf("%d", maxv), fmt.Sprintf(" // bits(%d) width clamp", f.Type.Width))
+		}
+		g.emitTableSetAssign(name, tableStorageType(f), "uint64")
+	case ir.TNamed:
+		g.emitTableSetNumeric(f.Type.Name, "uint64")
+		if enum, isEnum := f.Type.Ref.(*ir.Enum); isEnum {
+			g.pf("\t\tif n > %d {\n\t\t\tn = 0 // out-of-set -> None, as the read side does\n\t\t}\n", enum.Max)
+		}
+		g.pf("\t\tvalue.%s = %s(n)\n\t\treturn true\n", name, f.Type.Name)
+	}
+}
+
+func signedNorm(signed bool) string {
+	if signed {
+		return "int64"
+	}
+	return "uint64"
+}
+
+// emitTableSetNumeric emits the accepted-type switch normalizing v into a
+// local n of normType — the field's own storage type first, then the three
+// editor numerics, deduplicated where they coincide.
+func (g *tableGen) emitTableSetNumeric(matchType, normType string) {
+	g.pf("\t\tvar n %s\n", normType)
+	g.pf("\t\tswitch t := v.(type) {\n")
+	seen := map[string]bool{}
+	for _, typ := range []string{matchType, "int64", "uint64", "float64"} {
+		if seen[typ] {
+			continue
+		}
+		seen[typ] = true
+		if typ == normType {
+			g.pf("\t\tcase %s:\n\t\t\tn = t\n", typ)
+		} else {
+			g.pf("\t\tcase %s:\n\t\t\tn = %s(t)\n", typ, normType)
+		}
+	}
+	g.pf("\t\tdefault:\n\t\t\treturn false\n\t\t}\n")
+}
+
+// emitTableSetClamp clamps n to [min, max]; an empty min means the low side
+// cannot underflow (unsigned with a non-positive declared min).
+func (g *tableGen) emitTableSetClamp(min, max, note string) {
+	if min != "" {
+		g.pf("\t\tif n < %s {\n\t\t\tn = %s\n\t\t} else if n > %s {\n\t\t\tn = %s%s\n\t\t}\n", min, min, max, max, note)
+		return
+	}
+	g.pf("\t\tif n > %s {\n\t\t\tn = %s%s\n\t\t}\n", max, max, note)
+}
+
+func (g *tableGen) emitTableSetAssign(name, storage, normType string) {
+	if storage == normType {
+		g.pf("\t\tvalue.%s = n\n\t\treturn true\n", name)
+		return
+	}
+	g.pf("\t\tvalue.%s = %s(n)\n\t\treturn true\n", name, storage)
+}
+
 // tableRuntime is TableRuntime.go: the report type plus the byte-level
 // writer/reader the generated table functions share.
 func tableRuntime(pkg string) string {
@@ -567,6 +932,39 @@ type TableReport struct {
 	KindMismatch int  // fields whose wire kind changed (skipped, defaults kept)
 	Clamped      int  // values pulled into declared ranges / sets / bounds
 	Malformed    bool // structurally broken buffer; partial decode was kept
+}
+
+// ---- reflection (tables only, notes/table-wire.md) ----
+//
+// Static field descriptors for every type in the table closure: name, wire
+// id/kind, bounds, ranges, enum names and branch guards — enough to walk,
+// print, diff, edit or bind any table value at runtime with no schema files.
+// TableTypeX() returns X's descriptor. Where C++ exposes storage offsets,
+// Go emits typed accessors instead: TableGetX/TableSetX read and write
+// fields by name.
+
+// TableFieldInfo describes one field of a table-closure type.
+type TableFieldInfo struct {
+	Name       string              // schema field name, e.g. "health"
+	TypeName   string              // schema type name, e.g. "float32", "ShipType"
+	Id         uint16              // table-wire field id (name hash)
+	Kind       byte                // table-wire kind; for arrays/bytes, the ELEMENT kind
+	IsArray    bool                // fixed or counted array (bytes included)
+	Counted    bool                // a Count/Length int32 companion exists (counted arrays, strings, bytes)
+	ArrayBound int32               // array capacity / string max length; 0 for plain scalars
+	Table      *TableTypeInfo      // nested table's descriptor, or nil
+	HasRange   bool                // a declared [min, max] (int or float)
+	RangeMin   float64             // NOTE: int64 ranges beyond 2^53 lose precision here
+	RangeMax   float64
+	EnumMax    int64               // enums: highest valid wire value (None = 0 always valid); else -1
+	EnumName   func(uint64) string // enums: value -> name; else nil
+	Guard      string              // branch guard, e.g. "at_rest" or "!at_rest"; "" if unguarded
+}
+
+// TableTypeInfo is one closure type's descriptor.
+type TableTypeInfo struct {
+	Name   string // schema type name
+	Fields []TableFieldInfo
 }
 
 type tableWriter struct{ buf []byte }
@@ -674,18 +1072,30 @@ func GenerateTable(u *ir.Unit) (map[string][]byte, error) {
 	out := map[string][]byte{}
 	for _, f := range u.Files {
 		g := &tableGen{unit: u, file: f}
-		emitted := 0
+		var members []*ir.Struct
 		for _, d := range f.Decls {
-			if st, ok := d.(*ir.Struct); ok {
-				if !closure[st.Name] {
-					continue
-				}
-				g.emitTableWrite(st)
-				g.emitTableRead(st)
-				emitted++
+			if st, ok := d.(*ir.Struct); ok && closure[st.Name] {
+				members = append(members, st)
 			}
 		}
-		if emitted == 0 {
+		for _, st := range members {
+			g.emitTableWrite(st)
+			g.emitTableRead(st)
+		}
+		if len(members) > 0 {
+			g.pf("// ---- reflection descriptors (tables only, notes/table-wire.md) ----\n")
+			g.pf("//\n")
+			g.pf("// Descriptor links are wired in init(), which completes before main: every\n")
+			g.pf("// tableTypeX var exists before any init() runs (so cross-type links always\n")
+			g.pf("// resolve, whatever the declaration order), and by the time any goroutine\n")
+			g.pf("// can look the descriptors are immutable — concurrent first use needs no\n")
+			g.pf("// locking and no lazy state.\n\n")
+			for _, st := range members {
+				g.emitTableDescriptor(st)
+				g.emitTableGet(st)
+				g.emitTableSet(st)
+			}
+		} else {
 			g.pf("// no tables declared or referenced in this file — codecs are emitted\n")
 			g.pf("// for the table closure only (`table` declarations and what they reach)\n")
 		}
