@@ -441,7 +441,15 @@ func (e *Encoder) encodeTableScalar(w *tableWriter, f *ir.Field, kind byte, val 
 				return err
 			}
 			if f.HasIntRange && (iv.Cmp(f.IntMin) < 0 || iv.Cmp(f.IntMax) > 0) {
-				return fmt.Errorf("%s: %s outside declared range [%s, %s]", fpath, iv, f.IntMin, f.IntMax)
+				if !e.ClampBounds {
+					return fmt.Errorf("%s: %s outside declared range [%s, %s]", fpath, iv, f.IntMin, f.IntMax)
+				}
+				clamped := f.IntMax
+				if iv.Cmp(f.IntMin) < 0 {
+					clamped = f.IntMin
+				}
+				e.warnf("%s: %s outside declared range [%s, %s] — CLAMPED to %s (the historical LevelInfo semantics; fix the data)", fpath, iv, f.IntMin, f.IntMax, clamped)
+				iv = clamped
 			}
 		}
 		width := kindSize(kind)

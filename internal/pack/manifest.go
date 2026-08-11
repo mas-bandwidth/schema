@@ -52,6 +52,11 @@ type Collection struct {
 	// out-of-range integers (the historical LevelInfo semantics; see
 	// Encoder.ClampBounds). Strict refusal is the default.
 	ClampBounds bool `json:"clamp_bounds,omitempty"`
+	// PresenceGuards derives top-level bool guard fields from JSON key
+	// presence: {"has_gunner_settings": "gunner_settings"} sets the guard
+	// true iff the named key is present and non-null in the instance —
+	// the flatbuffers null-table seam, made explicit at pack time.
+	PresenceGuards map[string]string `json:"presence_guards,omitempty"`
 }
 
 // UnionRule lowers one flatbuffers-JSON union field pair onto bool-guarded
@@ -157,8 +162,13 @@ func putU64(buf []byte, v uint64) []byte {
 		byte(v>>32), byte(v>>40), byte(v>>48), byte(v>>56))
 }
 
-// BuildOutput packs one Output's collections into container bytes.
+// BuildOutput packs one Output's collections into container bytes — each
+// instance on the TABLE wire (notes/table-wire.md), the evolution-tolerant
+// encoding config data outlives builds on.
 func BuildOutput(u *ir.Unit, enc *Encoder, out Output, baseDir string) ([]byte, error) {
+	if err := CheckTableIds(u); err != nil {
+		return nil, err
+	}
 	var payload []byte
 	for _, c := range out.Collections {
 		instances, err := collectInstances(u, c, baseDir)
@@ -174,7 +184,11 @@ func BuildOutput(u *ir.Unit, enc *Encoder, out Output, baseDir string) ([]byte, 
 			enc.Warn = func(format string, args ...any) {
 				fmt.Fprintf(os.Stderr, "pack warning: %s: %s\n", source, fmt.Sprintf(format, args...))
 			}
-			wire, err := enc.EncodeInstance(c.Type, inst.obj)
+			for guard, key := range c.PresenceGuards {
+				v, present := inst.obj[key]
+				inst.obj[guard] = present && v != nil
+			}
+			wire, err := enc.EncodeTable(c.Type, inst.obj)
 			if err != nil {
 				return nil, fmt.Errorf("%s: %w", inst.source, err)
 			}
