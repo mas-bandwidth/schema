@@ -33,6 +33,7 @@ static class Program
 {
     static bool failed;
     static string wireDir;
+    static string tableDir;
 
     static void Check(bool ok, string what)
     {
@@ -74,12 +75,29 @@ static class Program
         }
     }
 
-    static string FindWireDir()
+    // GoldenTable byte-compares table-wire output against the C++-pinned golden.
+    static void GoldenTable(string name, byte[] data)
+    {
+        byte[] golden;
+        try
+        {
+            golden = File.ReadAllBytes(Path.Combine(tableDir, name + ".bin"));
+        }
+        catch (Exception e)
+        {
+            Console.WriteLine("FAILED: read table golden " + name + ": " + e.Message);
+            failed = true;
+            return;
+        }
+        Check(data.AsSpan().SequenceEqual(golden), "table golden " + name + " — C# bytes must equal the C++-pinned bytes");
+    }
+
+    static string FindTestDataDir(string kind)
     {
         string[] candidates =
         {
-            Path.Combine("..", "..", "testdata", "wire"),
-            Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..", "testdata", "wire"),
+            Path.Combine("..", "..", "testdata", kind),
+            Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..", "testdata", kind),
         };
         foreach (string candidate in candidates)
         {
@@ -277,7 +295,8 @@ static class Program
 
     static int Main()
     {
-        wireDir = FindWireDir();
+        wireDir = FindTestDataDir("wire");
+        tableDir = FindTestDataDir("table");
 
         // ---- ShipCreate: the bool-gated flags branch, both ways ----
         {
@@ -821,6 +840,158 @@ static class Program
             Check(tag == ObjectType.Turret, "object tag round-trips");
             Check(ReadObjectType(rs, ref tag), "read object type sentinel");
             Check(tag == ObjectType.None, "the None sentinel round-trips");
+        }
+
+        // ================= THE TABLE WIRE (notes/table-wire.md) =================
+        // The same instances the C++ test pins in testdata/table/*.bin — the C#
+        // table writer must produce byte-identical output, and the C# reader must
+        // honor the same permissive contract.
+
+        // ---- RigidBody: pins, round-trip, branch-guard elision ----
+        {
+            RigidBody input = new RigidBody();
+            input.Position.X = 1.5;
+            input.Position.Y = -2.5;
+            input.Position.Z = 3.25;
+            input.Orientation.X = 0.1;
+            input.Orientation.Y = 0.2;
+            input.Orientation.Z = 0.3;
+            input.Orientation.W = 0.9;
+            input.AtRest = false;
+            input.LinearVelocity.X = 10.0;
+            input.LinearVelocity.Y = 20.0;
+            input.LinearVelocity.Z = -3.0;
+            input.AngularVelocity.X = 0.25;
+            input.AngularVelocity.Y = 0.5;
+            input.AngularVelocity.Z = 0.75;
+
+            byte[] wire = TableWriteRigidBody(input);
+            GoldenTable("rigidbody_moving", wire);
+
+            RigidBody output = new RigidBody();
+            TableReport report = new TableReport();
+            Check(TableReadRigidBody(wire, ref output, report), "table read RigidBody");
+            Check(report.Unknown == 0 && report.KindMismatch == 0 && report.Clamped == 0 && !report.Malformed,
+                "same-schema table decode is silent");
+            Check(EqRigidBody(output, input), "RigidBody table round-trips");
+
+            input.AtRest = true;
+            byte[] atRest = TableWriteRigidBody(input);
+            GoldenTable("rigidbody_at_rest", atRest);
+
+            RigidBody output2 = new RigidBody();
+            output2.LinearVelocity.X = 99; // dirty — prefill must reset
+            output2.LinearVelocity.Y = 99;
+            output2.LinearVelocity.Z = 99;
+            TableReport report2 = new TableReport();
+            Check(TableReadRigidBody(atRest, ref output2, report2), "table read RigidBody at rest");
+            Check(output2.AtRest, "at_rest reads true");
+            Check(EqVec3(output2.LinearVelocity, new Vec3()) && EqVec3(output2.AngularVelocity, new Vec3()),
+                "the guard kept both velocities off the wire; prefill supplies the defaults");
+        }
+
+        // ---- the all-default instance is a bare terminator: 2 bytes ----
+        {
+            RigidBody body = new RigidBody();
+            Check(TableWriteRigidBody(body).Length == 2, "all-default RigidBody is 2 bytes");
+
+            ProbeConfig config = new ProbeConfig();
+            Check(TableWriteProbeConfig(config).Length == 2, "at-defaults ProbeConfig is 2 bytes");
+
+            ProbeConfig output = new ProbeConfig();
+            output.Retries = 99;
+            TableReport report = new TableReport();
+            Check(TableReadProbeConfig(TableWriteProbeConfig(config), ref output, report),
+                "table read at-defaults ProbeConfig");
+            Check(output.Retries == -1 && output.Preferred == Weapon.Railgun,
+                "prefill restores specified defaults on an empty table");
+        }
+
+        // ---- ProbeArray: fixed table array, nested defaults, its pin ----
+        {
+            ProbeArray input = new ProbeArray();
+            input.Samples[0].Orientation = 90.0f;
+            input.Samples[0].RawDelta = -5;
+            input.Samples[0].BigDelta = -1234567890123;
+            input.Samples[0].Weapon = Weapon.Laser;
+            input.Samples[0].HasTarget = true;
+            input.Samples[0].TargetId = 777;
+            input.Samples[0].SamplesCount = 1;
+            input.Samples[0].Samples[0] = 42;
+            input.Samples[1].Active = false;
+            input.Samples[1].Orientation = -45.5f;
+            input.Samples[1].RawDelta = 7;
+            input.Samples[1].BigDelta = 99;
+            input.Samples[1].IdleTicks = 1000;
+            input.Samples[1].SamplesCount = 2;
+            input.Samples[1].Samples[0] = 7;
+            input.Samples[1].Samples[1] = 8;
+            input.Config.Retries = 3;
+            input.Config.Preferred = Weapon.Missile;
+
+            byte[] wire = TableWriteProbeArray(input);
+            GoldenTable("probearray", wire);
+
+            ProbeArray output = new ProbeArray();
+            TableReport report = new TableReport();
+            Check(TableReadProbeArray(wire, ref output, report), "table read ProbeArray");
+            Check(report.Unknown == 0 && report.KindMismatch == 0 && !report.Malformed, "probearray decode is clean");
+            Check(output.Samples[0].Weapon == Weapon.Laser && output.Samples[0].TargetId == 777,
+                "taken-branch fields round-trip");
+            Check(!output.Samples[1].Active && output.Samples[1].IdleTicks == 1000, "else-branch fields round-trip");
+            Check(output.Samples[1].Weapon == Weapon.None && !output.Samples[1].HasTarget,
+                "untaken-branch fields stayed off the wire and read as defaults");
+            Check(output.Config.Retries == 3 && output.Config.Preferred == Weapon.Missile,
+                "nested table round-trips");
+        }
+
+        // ---- TestData: strings, counted arrays, bits, fixed bytes, its pin ----
+        {
+            TestData input = TestDataInstance();
+            byte[] wire = TableWriteTestData(input);
+            GoldenTable("testdata", wire);
+
+            TestData output = new TestData();
+            TableReport report = new TableReport();
+            Check(TableReadTestData(wire, ref output, report), "table read TestData");
+            Check(report.Unknown == 0 && report.KindMismatch == 0 && report.Clamped == 0 && !report.Malformed,
+                "testdata table decode is silent");
+            Check(EqTestData(output, input), "TestData table round-trips");
+        }
+
+        // ---- the permissive read contract, exercised with hand-built buffers ----
+        {
+            // unknown field id: skipped and counted, decode continues
+            byte[] unknownField = { 0xEF, 0xBE, 6, 42, 0x00, 0x00 };
+            RigidBody output = new RigidBody();
+            TableReport report = new TableReport();
+            Check(TableReadRigidBody(unknownField, ref output, report), "table read with unknown field");
+            Check(report.Unknown == 1 && !report.Malformed, "unknown field counted, not fatal");
+
+            // kind mismatch on a known id (at_rest as f32): skipped, default kept
+            byte[] changedKind = { 0xEB, 0xF9, 10, 0, 0, 0, 0, 0x00, 0x00 };
+            RigidBody output2 = new RigidBody();
+            TableReport report2 = new TableReport();
+            Check(TableReadRigidBody(changedKind, ref output2, report2), "table read with changed kind");
+            Check(report2.KindMismatch == 1 && !report2.Malformed && !output2.AtRest,
+                "changed kind skipped, default kept");
+
+            // truncation: malformed reported, decode stops without crashing
+            byte[] truncated = { 0xEB, 0xF9, 1 };
+            RigidBody output3 = new RigidBody();
+            TableReport report3 = new TableReport();
+            Check(!TableReadRigidBody(truncated, ref output3, report3), "truncated table read fails");
+            Check(report3.Malformed, "truncation reported as malformed");
+
+            // out-of-range int clamps and counts (TestData.a is [-100, 100])
+            TestData narrow = new TestData();
+            narrow.A = 50;
+            byte[] wire = TableWriteTestData(narrow);
+            wire[3] = 200; // low byte of a's i32 payload: 50 -> 200
+            TestData output4 = new TestData();
+            TableReport report4 = new TableReport();
+            Check(TableReadTestData(wire, ref output4, report4), "table read with out-of-range value");
+            Check(report4.Clamped == 1 && output4.A == 100, "out-of-range clamps to the declared max");
         }
 
         if (failed)
