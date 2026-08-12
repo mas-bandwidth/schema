@@ -198,10 +198,12 @@ func TestGoldenLudicrousId(t *testing.T) {
 }
 
 // TestGoldenLudicrousSource pins the fixed-point + 128-bit unit's generated
-// source byte-for-byte for every backend whose serialize port carries the
-// phase-1 surface: C++ (both message representations), Go and C#. Rust pins
-// nothing here BY DESIGN — it still refuses the unit (see
-// TestLudicrous128Refusals).
+// source byte-for-byte for ALL FOUR targets: C++ (both message
+// representations), Go, Rust and C#. Every serialize port now carries the
+// phase-1 surface, so the old refusal pin (TestLudicrous128Refusals) is
+// retired — a backend erroring here is the loud failure that replaces it,
+// and the unit rides the same cross-language wire gates as the main corpus
+// (test/go-ludicrous, test/rust-ludicrous, test/cs-ludicrous).
 func TestGoldenLudicrousSource(t *testing.T) {
 	u := loadCorpusDir(t, corpus128Dir)
 	for _, mode := range []string{"union", "variant"} {
@@ -216,42 +218,16 @@ func TestGoldenLudicrousSource(t *testing.T) {
 		t.Fatal(err)
 	}
 	pinDir(t, filepath.Join(goldenDir, "ludicrous", "go"), goFiles)
+	rsFiles, err := rust.Generate(u)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pinDir(t, filepath.Join(goldenDir, "ludicrous", "rust"), rsFiles)
 	csFiles, err := csharp.Generate(u)
 	if err != nil {
 		t.Fatal(err)
 	}
 	pinDir(t, filepath.Join(goldenDir, "ludicrous", "cs"), csFiles)
-}
-
-// TestLudicrous128Refusals pins the OTHER half of the phase-1 contract: until
-// a serialize port carries the 128-bit/fixed surface, its backend must REFUSE
-// a unit using it — loudly, naming the fields — never emit code for it. Only
-// Rust remains: serialize.go and serialize.cs carry the surface and their
-// backends generate (pinned above). A backend starting to succeed here is the
-// signal to wire its port in and lift the refusal, not a bug.
-func TestLudicrous128Refusals(t *testing.T) {
-	u := loadCorpusDir(t, corpus128Dir)
-	if _, err := cpp.Generate(u, cpp.Options{}); err != nil {
-		t.Fatalf("the C++ backend is the reference for fixed/int128/uint128 and must generate this unit: %v", err)
-	}
-	refusals := []struct {
-		name string
-		gen  func() error
-	}{
-		{"rust", func() error { _, err := rust.Generate(u); return err }},
-	}
-	for _, r := range refusals {
-		err := r.gen()
-		if err == nil {
-			t.Errorf("the %s backend accepted the fixed/128 unit — it must refuse until its serialize port carries the surface (or this pin is lifted deliberately)", r.name)
-			continue
-		}
-		for _, want := range []string{"does not support fixed(I, F), int128 or uint128", "FixedProbe.angle: fixed(16, 16)", "WideProbe.entity_id: uint128", "WideProbe.energy: int128"} {
-			if !strings.Contains(err.Error(), want) {
-				t.Errorf("the %s backend's refusal must carry %q; got: %v", r.name, want, err)
-			}
-		}
-	}
 }
 
 // pinDir compares (or, under -update, rewrites) one directory of goldens.

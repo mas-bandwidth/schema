@@ -35,13 +35,10 @@ import (
 // re-export into the crate root, so schema references stay order-free across
 // files exactly as in Go.
 func Generate(u *ir.Unit) (map[string][]byte, error) {
-	// fixed(I, F), int128 and uint128 landed in the C++ serialize runtime
-	// first (runtime-first, SPEC §4.10); the serialize.rs port does not carry
-	// the 128-bit/fixed surface yet, so this backend REFUSES the unit by name
-	// rather than miscompiling it silently. Lift when the port lands.
-	if fields := ir.Fixed128Fields(u); len(fields) > 0 {
-		return nil, fmt.Errorf("the Rust backend does not support fixed(I, F), int128 or uint128 yet — serialize.rs has no 128-bit/fixed-point surface (the port is in flight; C++ is the reference target). Offending fields: %s", strings.Join(fields, "; "))
-	}
+	// fixed(I, F), int128 and uint128: serialize.rs carries the full surface
+	// (serialize_int128/serialize_u128 over native i128/u128, serialize_fixed
+	// over FixedPointStorage) — storage is native, wire calls mirror the C++
+	// macros.
 	out := map[string][]byte{}
 	home := protocolIdHome(u)
 	msgOwner := ir.MessageOwner(u)
@@ -689,10 +686,17 @@ func (g *gen) fieldComment(f *ir.Field) string {
 func (g *gen) rustFieldType(t ir.FieldType) string {
 	switch t.Kind {
 	case ir.TInt:
+		// the 128-bit family is native here (i128/u128) — the same arm as
+		// every narrower width
 		if t.Signed {
 			return fmt.Sprintf("i%d", t.Width)
 		}
 		return fmt.Sprintf("u%d", t.Width)
+	case ir.TFixed:
+		// raw scaled integer in signed storage of exactly I+F bits —
+		// serialize's own fixed storage convention (serialize_fixed asserts
+		// integer_bits + fraction_bits == T::BITS)
+		return rustInt(t.Width)
 	case ir.TBits:
 		if t.Width <= 32 {
 			return "u32"

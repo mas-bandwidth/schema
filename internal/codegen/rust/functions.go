@@ -350,6 +350,31 @@ func (g *gen) emitWriteRangeGuard(name string, f *ir.Field, ind string) {
 	}
 }
 
+// emitWriteFixedRawGuard is emitWriteRangeGuard for a fixed(I, F) field: the
+// storage holds the RAW (scaled) value, so the refusal compares against the
+// whole-unit bounds shifted into the raw domain — the exact range
+// serialize_fixed debug_asserts on write and rejects on read. Halves vacuous
+// against the I+F-bit signed storage domain are elided.
+func (g *gen) emitWriteFixedRawGuard(name string, f *ir.Field, ind string) {
+	rawMin := new(big.Int).Lsh(f.IntMin, uint(f.Type.FracBits))
+	rawMax := new(big.Int).Lsh(f.IntMax, uint(f.Type.FracBits))
+	smin := new(big.Int).Neg(new(big.Int).Lsh(big.NewInt(1), uint(f.Type.Width-1)))
+	smax := new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), uint(f.Type.Width-1)), big.NewInt(1))
+	loVacuous := rawMin.Cmp(smin) <= 0
+	hiVacuous := rawMax.Cmp(smax) >= 0
+	switch {
+	case !loVacuous && !hiVacuous:
+		g.pf("%sif %s < %s || %s > %s { // out-of-contract writes are refused, not wrapped (raw scaled domain)\n", ind, name, rawMin.String(), name, rawMax.String())
+		g.pf("%s    return Err(Error::Stream(serialize::Error::ValueOutOfRange));\n%s}\n", ind, ind)
+	case !loVacuous:
+		g.pf("%sif %s < %s { // out-of-contract writes are refused, not wrapped (raw scaled domain)\n", ind, name, rawMin.String())
+		g.pf("%s    return Err(Error::Stream(serialize::Error::ValueOutOfRange));\n%s}\n", ind, ind)
+	case !hiVacuous:
+		g.pf("%sif %s > %s { // out-of-contract writes are refused, not wrapped (raw scaled domain)\n", ind, name, rawMax.String())
+		g.pf("%s    return Err(Error::Stream(serialize::Error::ValueOutOfRange));\n%s}\n", ind, ind)
+	}
+}
+
 func (g *gen) emitWriteField(f *ir.Field, ind string) {
 	g.needsStreamTrait = true
 	name := "value." + f.Name
@@ -380,7 +405,36 @@ func (g *gen) emitWriteField(f *ir.Field, ind string) {
 
 func (g *gen) emitWriteScalar(f *ir.Field, name, ind string) {
 	switch f.Type.Kind {
+	case ir.TFixed:
+		// the Q format and the whole-unit bounds are compile-time constants
+		// of the call site — part of the wire format, exactly like a ranged
+		// integer's bounds (STANDARD.md, fixed). serialize.rs's write side
+		// only debug_asserts, so the raw-domain refusal is generated, like
+		// every bounded write path in this target; the call goes through a
+		// temp — the write functions borrow value immutably
+		g.emitWriteFixedRawGuard(name, f, ind)
+		lo, hi := g.rangeArgs(f, "i64")
+		g.pf("%s{\n%s    let mut fixed_value = %s;\n", ind, ind, name)
+		g.pf("%s    stream.serialize_fixed(&mut fixed_value, %d, %d, %s, %s)?;\n%s}\n",
+			ind, f.Type.IntBits, f.Type.FracBits, lo, hi, ind)
 	case ir.TInt:
+		if f.Type.Width == 128 {
+			if f.HasIntRange {
+				// int128 is ALWAYS ranged (SPEC §4.3): offset from min —
+				// identical bytes to serialize_int64 wherever the range fits.
+				// The runtime's write side only debug_asserts, so the range
+				// refusal is generated (the target's family rule)
+				g.emitWriteRangeGuard(name, f, ind)
+				lo, hi := g.rangeArgs(f, "i128")
+				g.pf("%s{\n%s    let mut range_value = %s;\n", ind, ind, name)
+				g.pf("%s    stream.serialize_int128(&mut range_value, %s, %s)?;\n%s}\n", ind, lo, hi, ind)
+			} else {
+				// uint128 is the raw field: 128 bits, low 64-bit half first
+				g.pf("%s{\n%s    let mut raw_value = %s;\n", ind, ind, name)
+				g.pf("%s    stream.serialize_u128(&mut raw_value)?;\n%s}\n", ind, ind)
+			}
+			return
+		}
 		if f.HasIntRange {
 			switch intRangePath(f.IntMin, f.IntMax) {
 			case "int32":
@@ -540,7 +594,23 @@ func (g *gen) emitReadField(f *ir.Field, ind string) {
 
 func (g *gen) emitReadScalar(f *ir.Field, name, ind string) {
 	switch f.Type.Kind {
+	case ir.TFixed:
+		// the runtime validates the raw offset against the raw bounds and
+		// rejects — never clamps — Error::ValueOutOfRange on a hostile stream
+		lo, hi := g.rangeArgs(f, "i64")
+		g.pf("%sstream.serialize_fixed(&mut %s, %d, %d, %s, %s)?;\n",
+			ind, name, f.Type.IntBits, f.Type.FracBits, lo, hi)
 	case ir.TInt:
+		if f.Type.Width == 128 {
+			if f.HasIntRange {
+				// rejects a decoded offset beyond max - min (reject, never clamp)
+				lo, hi := g.rangeArgs(f, "i128")
+				g.pf("%sstream.serialize_int128(&mut %s, %s, %s)?;\n", ind, name, lo, hi)
+			} else {
+				g.pf("%sstream.serialize_u128(&mut %s)?;\n", ind, name)
+			}
+			return
+		}
 		if f.HasIntRange {
 			switch intRangePath(f.IntMin, f.IntMax) {
 			case "int32":
