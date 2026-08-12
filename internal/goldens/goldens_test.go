@@ -30,9 +30,8 @@ var update = flag.Bool("update", false, "rewrite the golden files from current o
 
 const (
 	corpusDir = "../../examples"
-	// the fixed-point + 128-bit unit: C++-only until the go/rs/cs runtime
-	// ports carry the phase-1 surface (those backends refuse it by name —
-	// the refusal is itself pinned below)
+	// the fixed-point + 128-bit unit: all four targets, pinned like the main
+	// corpus (the serialize ports all carry the phase-1 surface)
 	corpus128Dir = "../../examples128"
 	goldenDir    = "../../testdata/golden"
 )

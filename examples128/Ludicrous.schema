@@ -1,10 +1,10 @@
 // Ludicrous.schema — the fixed-point + 128-bit corpus unit (SPEC §4.3), named
 // for the construct's named customer ("we will need int 128 for ludicrous
-// mode"). Its own unit beside examples/: the Go/Rust/C# backends REFUSE these
-// wire families by field name until their serialize ports carry the phase-1
-// surface, so the main corpus stays four-target green while this unit
-// exercises the new families in C++, the reference target. When the ports
-// land, this unit joins the cross-language wire gate like any other.
+// mode"). Its own unit beside examples/: it began C++-only while the
+// Go/Rust/C# serialize ports grew the phase-1 surface; the ports all carry it
+// now, every backend emits these wire families, and this unit rides the
+// cross-language wire gate like any other (test/go-ludicrous,
+// test/rust-ludicrous, test/cs-ludicrous byte-compare the C++-pinned wire).
 
 package ludicrous
 

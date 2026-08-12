@@ -5,9 +5,7 @@
 package ir
 
 import (
-	"fmt"
 	"math/big"
-	"sort"
 
 	"github.com/mas-bandwidth/schema/internal/ast"
 )
@@ -309,47 +307,6 @@ func RustConstName(name string) string {
 		out[i] = c
 	}
 	return string(out)
-}
-
-// Fixed128Fields collects every field of the unit using the serialize-phase-1
-// wire families the port runtimes do not speak yet — fixed(I, F), int128,
-// uint128 — as "declaration.field: type" descriptors in deterministic order.
-// The Go/Rust/C# backends refuse a unit containing any of these BY NAME (a
-// named refusal, never a silent miscompile) until their runtime ports land;
-// the C++ backend against serialize is the reference and emits them.
-func Fixed128Fields(u *Unit) []string {
-	var out []string
-	noteFields := func(owner string, fields []*Field) {
-		for _, f := range fields {
-			switch {
-			case f.Type.Kind == TFixed:
-				out = append(out, fmt.Sprintf("%s.%s: fixed(%d, %d)", owner, f.Name, f.Type.IntBits, f.Type.FracBits))
-			case f.Type.Kind == TInt && f.Type.Width == 128:
-				name := "uint128"
-				if f.Type.Signed {
-					name = "int128"
-				}
-				out = append(out, fmt.Sprintf("%s.%s: %s", owner, f.Name, name))
-			}
-		}
-	}
-	names := make([]string, 0, len(u.Structs)+len(u.Objects))
-	for n := range u.Structs {
-		names = append(names, n)
-	}
-	for n := range u.Objects {
-		names = append(names, n)
-	}
-	sort.Strings(names)
-	for _, n := range names {
-		if st, ok := u.Structs[n]; ok {
-			noteFields(n, st.Fields)
-		}
-		if ob, ok := u.Objects[n]; ok {
-			noteFields(n, ob.Fields)
-		}
-	}
-	return out
 }
 
 // StorageBitsFor returns the smallest unsigned storage width holding max.

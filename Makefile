@@ -7,8 +7,8 @@ CXXFLAGS ?= -std=c++17 -Wall -Wextra -Werror -ffp-contract=off
 # the classic serialize runtime the generated C++ targets (header-only), the
 # Go port the generated Go targets, the Rust port the generated Rust targets,
 # and the C# port the generated C# targets (sibling checkouts; test/go/go.mod,
-# test/rust/Cargo.toml and test/cs/schematest.csproj carry the same relative
-# paths)
+# test/rust/Cargo.toml, test/cs/schematest.csproj and their *-ludicrous twins
+# carry the same relative paths)
 SERIALIZE    ?= ../serialize-cs-port/serialize
 SERIALIZE_GO ?= ../serialize-cs-port/serialize.go
 SERIALIZE_RS ?= ../serialize-cs-port/serialize.rs

@@ -1384,11 +1384,13 @@ sets arrived, exactly the boilerplate §4.8 exists to eat.)*
   runtime's phase-1 surface (`serialize_uint128` raw, `serialize_int128` ranged, the
   `serialize::uint128_t`/`int128_t` pair — native `__int128` or the emulated two-lane
   struct, byte-identical wire) shipped first, and the keywords went live against it —
-  §4.3 rows, `examples128/` corpus, C++ emission. **The Go/Rust/C# backends REFUSE a
-  unit using the family, by field name, until their serialize ports carry the surface**
-  (the ports are in flight; a port landing lifts its refusal and joins the unit to the
-  cross-language wire gate). Storage per target when they do: native `i128`/`u128`
-  (Rust) and `Int128`/`UInt128` (C#), a two-qword struct in Go.
+  §4.3 rows, `examples128/` corpus, C++ emission. **All four backends emit the family
+  since 2026-08-12** — each serialize port grew the phase-1 surface and its backend's
+  refusal lifted in turn (C#, then Go, then Rust), joining the unit to the
+  cross-language wire gate (`test/{go,rust,cs}-ludicrous` byte-compare the C++-pinned
+  wire). Storage per target as landed: native `i128`/`u128` (Rust), the emulated
+  `Int128Value`/`UInt128Value` pair (C#, every TFM), serialize.go's two-qword
+  `Int128`/`Uint128` pair (Go).
 - **C++-style bitfields (`uint64 blah : 8`) — considered 2026-08-05, DECLINED across the
   targets, with Glenn's own expectation confirmed** (*"want to know if this is
   possible/advisable across our target generated languages. expect it will not be"* — it is
@@ -1413,8 +1415,9 @@ sets arrived, exactly the boilerplate §4.8 exists to eat.)*
   the spelling is positional `fixed(I, F)` because the Q format is the type's shape,
   the same line `bits(N)`/`string(N)` sit on. **The unsigned spelling is an OPEN
   question with Glenn (§9 q17)** — derive signedness from `min < 0` vs an explicit
-  `ufixed` — and no syntax is invented ahead of his call. The same port gap and refusal
-  discipline as the 128-bit family applies (the bullet above).
+  `ufixed` — and no syntax is invented ahead of his call. The same landing as the
+  128-bit family (the bullet above): all four backends emit `fixed(I, F)` since
+  2026-08-12, storage a signed integer of exactly I+F bits in every target.
 - **Wide strings** (`serialize_wstring`): no near-term need; when added, they match the
   classic wire exactly (length, then unaligned 32 bits per code point).
 - **Relative integers** (`serialize_int_relative`): the classic use is a strictly-increasing
@@ -1527,8 +1530,8 @@ Per `type`, per target:
    |---|---|---|---|---|
    | `int8/16/32/64` (bare or ranged) | `int8_t/16/32/64_t` | `sbyte/short/int/long` | `int8/16/32/64` | `i8/16/32/64` |
    | `uint8/16/32/64` (bare or ranged) | `uint8_t/16/32/64_t` | `byte/ushort/uint/ulong` | `uint8/16/32/64` | `u8/16/32/64` |
-   | `int128` (ranged) / `uint128` (raw) | `serialize::int128_t` / `serialize::uint128_t` (native `__int128` or the emulated pair) | `Int128` / `UInt128` *(port pending — backend refuses, §4.10)* | two-qword struct *(port pending — backend refuses)* | `i128` / `u128` *(port pending — backend refuses)* |
-   | `fixed(I, F)` (SIGNED, ranged) | signed integer of I+F bits: `int8_t`..`int64_t`, `serialize::int128_t` at 128 — holding the RAW scaled value | *(port pending — backend refuses, §4.10)* | *(port pending — backend refuses)* | *(port pending — backend refuses)* |
+   | `int128` (ranged) / `uint128` (raw) | `serialize::int128_t` / `serialize::uint128_t` (native `__int128` or the emulated pair) | `Int128Value` / `UInt128Value` (the emulated pair, every TFM) | `serialize.Int128` / `serialize.Uint128` (the two-qword pair) | `i128` / `u128` (native) |
+   | `fixed(I, F)` (SIGNED, ranged) | signed integer of I+F bits holding the RAW scaled value, in every target: `int8_t`..`int64_t`, `serialize::int128_t` at 128 | `sbyte`..`long`, `Int128Value` at 128 | `int8`..`int64`, `serialize.Int128` at 128 | `i8`..`i64`, `i128` at 128 |
    | `bits(N≤32)` / `bits(N>32)` | `uint32_t` / `uint64_t` | `uint` / `ulong` | `uint32` / `uint64` | `u32` / `u64` |
    | `bool` | `bool` | `bool` | `bool` | `bool` |
    | `float32` / `float64` (attributed or bare) | `float` / `double` | `float` / `double` | `float32` / `float64` | `f32` / `f64` |
@@ -1782,13 +1785,15 @@ representations produce identical bytes); a fmt-drift gate asserts the corpus st
 formatter-canonical; and each target's test asserts the readers agree on what they
 REJECT (interior nulls, nonzero reserved bits, corrupted constants, out-of-range
 counts — with truncation surfacing as the stream's own error, never a content verdict).
-`make test` runs all of it — seven binaries; `make update-goldens` re-pins DELIBERATELY.
+`make test` runs all of it — ten binaries; `make update-goldens` re-pins DELIBERATELY.
 **The fixed-point + 128-bit unit (`examples128/`, 2026-08-06) extends gates 1, 2 and 7
-to the new wire families in C++ only** — its two wire goldens were DERIVED from
-STANDARD.md's wire law independently of serialize and then asserted against the
-generated writer (`test/ludicrous_main.cpp` carries the derivation field by field), and
-the Go/Rust/C# backends' REFUSAL of the unit is itself a pinned test — so the port gap
-is a named, tested state, not an untested absence (§4.10).
+to the new wire families in all four targets** (four-target since 2026-08-12) — its two
+wire goldens were DERIVED from STANDARD.md's wire law independently of serialize and
+then asserted against the generated C++ writer (`test/ludicrous_main.cpp` carries the
+derivation field by field), and the Go, Rust and C# ludicrous legs
+(`test/{go,rust,cs}-ludicrous`) byte-compare the same pinned instance against those
+goldens, round-trip their readers, and re-run the hostile-read rejections. The refusal
+pin that named the port gap while it lasted (§4.10) retired with the last refusal.
 Gate 3 (the oracle) exists in seed form — the RigidBody and string classic twins in
 `test/main.cpp` — and grows with the corpus; gate 4's full random matrix and gate 5 are
 the remaining conformance work now that all four targets exist; gate 6 is live in
