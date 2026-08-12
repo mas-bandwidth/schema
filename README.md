@@ -22,7 +22,10 @@ builds — config, assets, settings. Fields are identified by name hash; default
 unknown fields skip; removed fields default; changed types skip instead of misdecoding;
 out-of-range values clamp — every event counted in a report, and reads validate everything,
 in every language, so table data is safe to accept on untrusted surfaces. Add or remove a
-property and older readers keep working.
+property and older readers keep working. Table writes are zero-allocation in every
+target: C++ writes into a caller-owned buffer by construction, Go and C# add append-form
+writers (`AppendTableX`) over a reused buffer, and the C#/Go accessor surfaces read
+scalars without boxing.
 
 ```
 enum ShipType { Fighter, Corvette, Bomber }
