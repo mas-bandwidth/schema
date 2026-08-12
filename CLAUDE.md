@@ -78,3 +78,39 @@
   labelled `DOTNET_TieredCompilation=0` intervention, 1.98–4.90x). On a single core,
   settle or disable the tier and LABEL the config divergence; medians-against-min is
   the tell to check first.
+
+## Future work: rANS entropy coding (researched 2026-08-13, NOT implemented)
+
+Glenn asked to look into rANS and record it for whenever we implement. **Nothing here is built.**
+The full decision record — including the patent analysis, which is the part that decides whether
+we may use it at all — lives in
+[serialize/CLAUDE.md](https://github.com/mas-bandwidth/serialize/blob/main/CLAUDE.md).
+**Read that before writing any coder.** The short version and the schema-specific angle:
+
+**rANS is mathematically equivalent to a range coder** (same ratio, to a rounding error) **and
+much faster on modern hardware** — one multiply and a table lookup per symbol, no division in
+the fast path, and critically it **interleaves**, so several independent coder states over one
+buffer break the serial renormalisation dependency and let SIMD actually help (~6 clocks/symbol,
+~540 MB/s for an 8-way SSE4.1 decoder, per Fabian Giesen).
+
+**WHY THIS IS A SCHEMA QUESTION AND NOT ONLY A SERIALIZE ONE.** An entropy coder is worthless
+without a probability model, and **the schema is where a model could come from for free.** We
+already know each field's type, range and semantics at compile time. Static per-field frequency
+tables — emitted by the compiler into the generated C++/C#/Go/Rust the same way the bitpacking
+ranges already are — are the cheapest first experiment, need no adaptive state, and keep the
+decoder branch-free. That is a far better fit than a general-purpose adaptive model, and it is a
+thing this project can do that a standalone serializer cannot.
+
+**Two constraints to design against before any of that:**
+
+- **rANS is LIFO** — the encoder emits in reverse decode order, so an entropy stage means
+  buffering a message or a bounded block rather than a single forward streaming pass.
+- **A schema-compiled table is a WIRE FORMAT COMMITMENT.** Change the frequencies and you change
+  the bytes. Versioning and cross-language byte-exactness (the property this project already
+  guards hardest) both have to survive it, across all four backends.
+
+**And the licensing constraint is real**: Microsoft's `US11234023B2` covers specific rANS
+refinements, and their public permission is scoped to open source that **does not charge a
+license fee** — which the declared MBSL direction would break. Any entropy stage must therefore
+be **optional and versioned**, never welded into the format. Details and the recommended shape
+are in the serialize note.
