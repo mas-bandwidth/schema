@@ -32,12 +32,25 @@ generated/cpp/.stamp: bin/schema $(SCHEMAS)
 	./bin/schema generate --lang cpp --out generated/cpp examples
 	@touch $@
 
-# the fixed-point + 128-bit unit (examples128/) generates C++ ONLY until the
-# go/rs/cs runtime ports carry the phase-1 surface — those backends refuse it
-# by field name. It compiles against serialize's fixed-point surface: until
-# that merges into the sibling checkout, build with SERIALIZE=../serialize
+# the fixed-point + 128-bit unit (examples128/) — all four targets since the
+# serialize ports carry the phase-1 surface; each generated unit gets the same
+# module/manifest wiring as its main-corpus twin
 generated/cpp/ludicrous/.stamp: bin/schema $(SCHEMAS128)
 	./bin/schema generate --lang cpp --out generated/cpp/ludicrous examples128
+	@touch $@
+
+generated/go-ludicrous/.stamp: bin/schema $(SCHEMAS128)
+	./bin/schema generate --lang go --out generated/go-ludicrous examples128
+	@printf 'module ludicrous\n\ngo 1.23\n\nrequire github.com/mas-bandwidth/serialize.go v0.0.0\n\nreplace github.com/mas-bandwidth/serialize.go => ../../$(SERIALIZE_GO)\n' > generated/go-ludicrous/go.mod
+	@touch $@
+
+generated/rust-ludicrous/.stamp: bin/schema $(SCHEMAS128)
+	./bin/schema generate --lang rust --out generated/rust-ludicrous/src examples128
+	@printf '[package]\nname = "ludicrous"\nversion = "0.0.0"\nedition = "2024"\n\n[dependencies]\nserialize = { path = "../../$(SERIALIZE_RS)" }\n' > generated/rust-ludicrous/Cargo.toml
+	@touch $@
+
+generated/cs-ludicrous/.stamp: bin/schema $(SCHEMAS128)
+	./bin/schema generate --lang cs --out generated/cs-ludicrous examples128
 	@touch $@
 
 # the opt-in variant dispatch surface, generated beside the default so both
@@ -84,7 +97,7 @@ build/schema_test_ludicrous: generated/cpp/ludicrous/.stamp test/ludicrous_main.
 	@mkdir -p build
 	$(CXX) $(CXXFLAGS) -Igenerated/cpp/ludicrous test/ludicrous_main.cpp -o $@
 
-test: build/schema_test build/schema_test_variant build/schema_test_random build/schema_test_ludicrous generated/go/.stamp generated/rust/.stamp generated/cs/.stamp
+test: build/schema_test build/schema_test_variant build/schema_test_random build/schema_test_ludicrous generated/go/.stamp generated/rust/.stamp generated/cs/.stamp generated/go-ludicrous/.stamp generated/rust-ludicrous/.stamp generated/cs-ludicrous/.stamp
 	./build/schema_test
 	./build/schema_test_variant
 	./build/schema_test_random
@@ -92,6 +105,9 @@ test: build/schema_test build/schema_test_variant build/schema_test_random build
 	cd test/go && go run .
 	cd test/rust && PATH="$(RUSTUP_BIN):$$PATH" cargo run --quiet
 	cd test/cs && dotnet run
+	cd test/go-ludicrous && go run .
+	cd test/rust-ludicrous && PATH="$(RUSTUP_BIN):$$PATH" cargo run --quiet
+	cd test/cs-ludicrous && dotnet run
 	go test ./...
 
 # Re-pin the goldens DELIBERATELY (SPEC §7.2 gates 1, 2, 7). A wire golden

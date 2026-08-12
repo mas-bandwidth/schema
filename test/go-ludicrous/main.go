@@ -1,0 +1,215 @@
+// The Go cross-language wire test for the fixed-point + 128-bit unit
+// (examples128/): the generated Go package writes the SAME pinned instance
+// test/ludicrous_main.cpp pins in testdata/wire/ludicrous_state*.bin and
+// byte-compares against those files — cross-language wire identity for the
+// serialize-phase-1 families (fixed(I, F), int128, uint128) is the §7.2 gate
+// this binary carries. Plus round-trips through the Go reader, the §5
+// branch-zeroing check over a 128-bit field, the specified-defaults checks
+// (one default no int64 literal can spell), and the hostile-read rejections
+// the C++ test carries (reject, never clamp — STANDARD.md).
+//
+// Prints OK and exits 0, exactly like its C++ twin. Run from
+// test/go-ludicrous (the Makefile does): the wire goldens are at
+// ../../testdata/wire.
+//
+// Mirrors test/ludicrous_main.cpp block for block.
+package main
+
+import (
+	"bytes"
+	"fmt"
+	"os"
+
+	"ludicrous"
+
+	"github.com/mas-bandwidth/serialize.go"
+)
+
+var failed bool
+
+func check(ok bool, what string) {
+	if !ok {
+		fmt.Printf("FAILED: %s\n", what)
+		failed = true
+	}
+}
+
+func checkErr(err error, what string) {
+	if err != nil {
+		fmt.Printf("FAILED: %s: %v\n", what, err)
+		failed = true
+	}
+}
+
+// goldenWire byte-compares written wire against the C++-pinned golden.
+func goldenWire(name string, data []byte) {
+	golden, err := os.ReadFile("../../testdata/wire/" + name + ".bin")
+	checkErr(err, "read wire golden "+name)
+	if err != nil {
+		return
+	}
+	check(bytes.Equal(data, golden), "wire golden "+name+" — Go bytes must equal the C++-pinned bytes")
+}
+
+func newWriteStream() (*serialize.WriteStream, []byte) {
+	buffer := make([]byte, 256)
+	return serialize.NewWriteStream(buffer), buffer
+}
+
+// setBits forces bits [pos, pos + n) of the stream image to 1 — the hostile
+// reader's tool: smuggling an offset into the range's bit headroom, which a
+// read must REJECT, never clamp (STANDARD.md).
+func setBits(data []byte, pos, n int) {
+	for i := pos; i < pos+n; i++ {
+		data[i/8] |= 1 << (i % 8)
+	}
+}
+
+// makeState is test/ludicrous_main.cpp's make_state — the values must stay
+// mirrored on both sides.
+func makeState() ludicrous.LudicrousState {
+	in := ludicrous.NewLudicrousState()
+	in.Mode = ludicrous.DriveModeLudicrous
+	in.Probe.Angle = 2981888                                                       // +45.5 * 2^16
+	in.Probe.Position = -809119744                                                 // -12345.25 * 2^16
+	in.Probe.Reach = serialize.Int128From64(65536000000 - 1)                       // raw_max - 1
+	in.Probe.Ticks = 777777
+	in.Probe.Samples[0] = -524288                                                  // raw_min
+	in.Probe.Samples[1] = 524288                                                   // raw_max
+	in.Wide.EntityId = serialize.Uint128{Lo: 0xFEDCBA9876543210, Hi: 0x0123456789ABCDEF}
+	in.Wide.Energy = serialize.Int128From64(4999999999)
+	in.Wide.Flux = serialize.Int128{Lo: 7, Hi: 0x800000000} // 2^99 + 7
+	// wide.bias and wide.seed stay at their SPECIFIED DEFAULTS (-250 and
+	// 2^65) — construction installs them, and they ride the wire as written
+	in.KeysCount = 2
+	in.Keys[0] = serialize.Uint128From64(1)
+	in.Keys[1] = serialize.Uint128{Lo: 0, Hi: 0x8000000000000000} // 1 << 127
+	in.HasTarget = true
+	in.TargetId = serialize.Uint128From64(42)
+	return in
+}
+
+func main() {
+	// worst-case bounds, hand-derived (SPEC §6.1 item 4) — the same numbers
+	// test/ludicrous_main.cpp static_asserts
+	check(ludicrous.FixedProbeMaxBits == 156, "FixedProbe worst case")
+	check(ludicrous.WideProbeMaxBits == 403, "WideProbe worst case")
+	check(ludicrous.LudicrousStateMaxBits == 1205, "LudicrousState worst case")
+	check(ludicrous.MessageMaxBits == 1206, "message-level bound")
+	check(ludicrous.ProtocolId != 0, "the unit has a protocol id")
+
+	// zero initialization with specified defaults (SPEC §4.2), sentinel-zero
+	// composition: New* starts at DriveMode None — the null rides in-band —
+	// and the two defaulted 128-bit fields construct to their declared
+	// values, one of which no int64 literal can spell
+	{
+		zero := ludicrous.NewLudicrousState()
+		check(zero.Mode == ludicrous.DriveModeNone, "a fresh state starts at DriveMode None")
+		check(zero.Probe.Reach == serialize.Int128{}, "reach starts zero")
+		check(zero.Wide.EntityId == serialize.Uint128{}, "entity_id starts zero")
+		check(zero.Wide.Bias == serialize.Int128From64(-250), "bias defaults -250")
+		check(zero.Wide.Seed == serialize.Uint128{Lo: 0, Hi: 2}, "seed defaults 2^65")
+		check(zero.KeysCount == 0, "keys start empty")
+		check(zero.TargetId == serialize.Uint128{}, "target_id starts zero")
+		// Go keeps the §5 zero form on the plain zero value; New* alone
+		// installs the defaults (SPEC §4.2, the Go column)
+		check(ludicrous.LudicrousState{}.Wide.Bias == serialize.Int128{}, "the plain zero value stays zero")
+	}
+
+	// ---- the taken-branch wire: generated bytes == the C++-pinned golden ----
+	var takenWire []byte
+	{
+		in := makeState()
+		ws, _ := newWriteStream()
+		checkErr(ludicrous.WriteLudicrousState(ws, &in), "write LudicrousState")
+		ws.Flush()
+		takenWire = append([]byte(nil), ws.Data()...)
+		goldenWire("ludicrous_state", takenWire)
+
+		out := ludicrous.LudicrousState{}
+		rs := serialize.NewReadStream(takenWire)
+		checkErr(ludicrous.ReadLudicrousState(rs, &out), "read LudicrousState")
+		check(out.Mode == ludicrous.DriveModeLudicrous, "mode round-trips")
+		check(out.Probe.Angle == in.Probe.Angle, "angle round-trips")
+		check(out.Probe.Position == in.Probe.Position, "position round-trips")
+		check(out.Probe.Reach == in.Probe.Reach, "reach round-trips")
+		check(out.Probe.Ticks == in.Probe.Ticks, "ticks round-trips")
+		check(out.Probe.Samples == in.Probe.Samples, "samples round-trip")
+		check(out.Wide.EntityId == in.Wide.EntityId, "entity_id round-trips")
+		check(out.Wide.Energy == in.Wide.Energy, "energy round-trips")
+		check(out.Wide.Flux == in.Wide.Flux, "flux round-trips")
+		check(out.Wide.Bias == serialize.Int128From64(-250), "the bias default rides the wire")
+		check(out.Wide.Seed == serialize.Uint128{Lo: 0, Hi: 2}, "the seed default rides the wire")
+		check(out.KeysCount == 2, "keys_count round-trips")
+		check(out.Keys[0] == in.Keys[0] && out.Keys[1] == in.Keys[1], "keys round-trip")
+		check(out.HasTarget && out.TargetId == serialize.Uint128From64(42), "the taken branch round-trips")
+	}
+
+	// ---- the untaken branch: identical prefix, and the 128-bit field under
+	// it reads back ZERO into a dirty object (SPEC §5) ----
+	{
+		in := makeState()
+		in.HasTarget = false
+		ws, _ := newWriteStream()
+		checkErr(ludicrous.WriteLudicrousState(ws, &in), "write LudicrousState untargeted")
+		ws.Flush()
+		goldenWire("ludicrous_state_untargeted", ws.Data())
+
+		out := ludicrous.LudicrousState{}
+		out.TargetId = serialize.Uint128From64(0xDEAD) // dirty — the read must zero it
+		rs := serialize.NewReadStream(ws.Data())
+		checkErr(ludicrous.ReadLudicrousState(rs, &out), "read LudicrousState untargeted")
+		check(!out.HasTarget, "has_target reads false")
+		check(out.TargetId == serialize.Uint128{}, "the untaken 128-bit field reads as zero (SPEC §5)")
+	}
+
+	// ---- hostile reads REJECT, never clamp (STANDARD.md, SPEC §5) ----
+	{
+		// fixed: angle's 25 offset bits start at bit 2; all-ones = 33554431,
+		// above the raw range 360 * 2^16 = 23592960
+		hostile := append([]byte(nil), takenWire...)
+		setBits(hostile, 2, 25)
+		out := ludicrous.LudicrousState{}
+		rs := serialize.NewReadStream(hostile)
+		check(ludicrous.ReadLudicrousState(rs, &out) != nil, "a smuggled fixed offset is REJECTED")
+	}
+	{
+		// int128: energy's 34 offset bits start at bit 286 (2+156+128);
+		// all-ones = 2^34 - 1 = 17179869183, above the range 10^10
+		hostile := append([]byte(nil), takenWire...)
+		setBits(hostile, 286, 34)
+		out := ludicrous.LudicrousState{}
+		rs := serialize.NewReadStream(hostile)
+		check(ludicrous.ReadLudicrousState(rs, &out) != nil, "a smuggled int128 offset is REJECTED")
+	}
+	{
+		// truncation: running out of input mid-read is a read failure (SPEC §5)
+		out := ludicrous.LudicrousState{}
+		rs := serialize.NewReadStream(takenWire[:4])
+		check(ludicrous.ReadLudicrousState(rs, &out) != nil, "a truncated stream is a read failure")
+	}
+
+	// ---- the message dispatch surface over the new unit ----
+	{
+		in := makeState()
+		ws, _ := newWriteStream()
+		checkErr(ludicrous.WriteMessage(ws, &in), "write Message LudicrousState")
+		ws.Flush()
+
+		storage := ludicrous.MessageStorage{}
+		rs := serialize.NewReadStream(ws.Data())
+		m, err := ludicrous.ReadMessage(rs, &storage)
+		checkErr(err, "read Message LudicrousState")
+		out, ok := m.(*ludicrous.LudicrousState)
+		check(ok, "the message is the LudicrousState")
+		if ok {
+			check(out.Wide.Flux == in.Wide.Flux, "flux rides the dispatch surface")
+			check(out.Probe.Angle == 2981888, "angle rides the dispatch surface")
+		}
+	}
+
+	if failed {
+		os.Exit(1)
+	}
+	fmt.Println("OK")
+}

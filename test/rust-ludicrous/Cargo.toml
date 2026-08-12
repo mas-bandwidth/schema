@@ -1,0 +1,8 @@
+[package]
+name = "ludicroustest"
+version = "0.0.0"
+edition = "2024"
+
+[dependencies]
+ludicrous = { path = "../../generated/rust-ludicrous" }
+serialize = { path = "../../../serialize-cs-port/serialize.rs" }
