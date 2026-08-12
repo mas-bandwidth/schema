@@ -41,6 +41,16 @@ type checker struct {
 	objects  map[string]*ir.Object
 	ctxDecl  *ast.ContextsDecl
 
+	// enums currently being resolved — the cycle guard for [max = E.Max]
+	// chains (resolveEnum memoizes only on completion, so recursion needs
+	// its own in-progress set, exactly as constants have one)
+	resolvingEnum map[string]bool
+
+	// enums whose [max = ...] failed to resolve — their Max fell back to the
+	// variant count, which is NOT what the author wrote, so .Max references
+	// to them must fail rather than propagate a fabricated bound
+	failedEnum map[string]bool
+
 	// composite-quantize checks deferred until every body is resolved: the
 	// rule 2 / rule 2b classification READS the referenced composite's
 	// component list, and that composite may be declared in a file that
@@ -470,6 +480,12 @@ func (c *checker) enumMax(e *ast.MaxExpr) (*big.Int, bool) {
 	if en == nil {
 		return nil, false
 	}
+	if c.failedEnum[e.Enum] {
+		// its own bound never resolved, so en.Max is the fallback variant
+		// count, not the declared max — propagating it would fabricate a
+		// bound and produce a cascade diagnostic about a value nobody wrote
+		return nil, false
+	}
 	return big.NewInt(en.Max), true
 }
 
@@ -492,6 +508,22 @@ func (c *checker) resolveEnum(d *ast.EnumDecl) *ir.Enum {
 	if en, ok := c.enums[d.Name]; ok {
 		return en
 	}
+	// In-progress guard, the twin of resolveConst's state machine. An
+	// enum's [max = Other.Max] resolves Other, which can lead back here —
+	// and the memo below is only written at the END, so without this the
+	// recursion never terminates. It reached the Go runtime as a raw
+	// "fatal error: stack overflow" with no diagnostic and no source
+	// position: the compiler dying rather than rejecting bad input.
+	if c.resolvingEnum[d.Name] {
+		c.errf(d.Pos, "enum %s is part of a reference cycle (SPEC §4.2: reference cycles are a compile error)", d.Name)
+		return nil
+	}
+	if c.resolvingEnum == nil {
+		c.resolvingEnum = map[string]bool{}
+	}
+	c.resolvingEnum[d.Name] = true
+	defer delete(c.resolvingEnum, d.Name)
+
 	seen := map[string]bool{}
 	var variants []string
 	for _, v := range d.Variants {
@@ -521,6 +553,14 @@ func (c *checker) resolveEnum(d *ast.EnumDecl) *ir.Enum {
 		}
 		v, ok := c.evalInt(a.Value)
 		if !ok {
+			// the bound never resolved (a cycle, an undefined name, a bad
+			// expression — all already reported). Mark the enum degraded so
+			// dependents do not inherit the fallback count and report a
+			// CASCADE error naming a max the author never wrote.
+			if c.failedEnum == nil {
+				c.failedEnum = map[string]bool{}
+			}
+			c.failedEnum[d.Name] = true
 			continue
 		}
 		if !v.IsInt64() || v.Int64() < max {

@@ -175,6 +175,23 @@ func TestDiagnostics(t *testing.T) {
 		},
 
 		// ---- namespace, names, claims ----
+		// cycle guards: every resolver that can re-enter itself must REJECT,
+		// not recurse. Before the enum guard these crashed the compiler with
+		// a raw "fatal error: stack overflow" — no diagnostic, no position.
+		{name: "enum [max = E.Max] self-cycle", want: "reference cycle",
+			src: "package t\nenum Alpha [max = Alpha.Max] { One }\n"},
+		{name: "enum [max = E.Max] mutual cycle across files", want: "reference cycle",
+			srcs: map[string]string{
+				"A_e.schema": "package t\nenum Alpha [max = Zed.Max] { One, Two }\n",
+				"Z_e.schema": "package t\nenum Zed [max = Alpha.Max] { Three }\n"},
+		},
+		{name: "enum [max = E.Max] three-enum cycle", want: "reference cycle",
+			src: "package t\nenum A [max = B.Max] { One }\nenum B [max = C.Max] { Two }\nenum C [max = A.Max] { Three }\n"},
+		{name: "constant self-cycle", want: "reference cycle",
+			src: "package t\nconst A = A + 1\n"},
+		{name: "constant mutual cycle", want: "reference cycle",
+			src: "package t\nconst A = B + 1\nconst B = A + 1\n"},
+
 		{name: "duplicate declaration", want: "duplicate declaration",
 			src: "package t\ntype A { x uint8 }\nenum A { B }\n"},
 		{name: "duplicate field across branches", want: "duplicate field",
