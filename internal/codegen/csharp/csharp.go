@@ -52,13 +52,9 @@ import (
 // C# compilations are order-free across files, so like Go there is no topo
 // sort and no cross-file include graph to refuse.
 func Generate(u *ir.Unit) (map[string][]byte, error) {
-	// fixed(I, F), int128 and uint128 landed in the C++ serialize runtime
-	// first (runtime-first, SPEC §4.10); the serialize.cs port does not carry
-	// the 128-bit/fixed surface yet, so this backend REFUSES the unit by name
-	// rather than miscompiling it silently. Lift when the port lands.
-	if fields := ir.Fixed128Fields(u); len(fields) > 0 {
-		return nil, fmt.Errorf("the C# backend does not support fixed(I, F), int128 or uint128 yet — serialize.cs has no 128-bit/fixed-point surface (the port is in flight; C++ is the reference target). Offending fields: %s", strings.Join(fields, "; "))
-	}
+	// fixed(I, F), int128 and uint128: serialize.cs carries the full surface
+	// on every TFM since the Int128Value/UInt128Value pair landed (2026-08-12,
+	// option b) — storage maps to the pair, wire calls mirror the C++ macros.
 	out := map[string][]byte{}
 	home := protocolIdHome(u)
 	msgOwner := ir.MessageOwner(u)
@@ -611,6 +607,13 @@ func (g *gen) defaultValue(f *ir.Field, qualified bool) string {
 		return formatFloat32(f.DefFloat)
 	case f.Type.Kind == ir.TFloat64:
 		return formatFloat(f.DefFloat)
+	case f.Type.Kind == ir.TInt && f.Type.Width == 128:
+		// 128-bit defaults compose through the pair — a bare decimal literal
+		// past 64 bits is not a legal C# constant
+		if f.Type.Signed {
+			return csRender128(f.DefInt)
+		}
+		return csRenderU128(f.DefInt)
 	default:
 		// the initializer target is the field's own storage type, so a
 		// symbolic long const must cast down to it
@@ -622,10 +625,25 @@ func (g *gen) defaultValue(f *ir.Field, qualified bool) string {
 func (g *gen) csFieldType(t ir.FieldType) string {
 	switch t.Kind {
 	case ir.TInt:
+		if t.Width == 128 {
+			// the emulated pair (serialize.cs Int128Pair.cs): full surface on
+			// every TFM, implicit System.Int128 conversions on .NET 7+
+			if t.Signed {
+				return "Int128Value"
+			}
+			return "UInt128Value"
+		}
 		if t.Signed {
 			return csInt(t.Width)
 		}
 		return csUint(t.Width)
+	case ir.TFixed:
+		// raw scaled integer in signed storage of exactly I+F bits —
+		// serialize's own fixed storage convention (STANDARD.md, fixed)
+		if t.Width == 128 {
+			return "Int128Value"
+		}
+		return csInt(t.Width)
 	case ir.TBits:
 		if t.Width <= 32 {
 			return "uint"
@@ -808,6 +826,43 @@ func containsIdent(e ast.Expr) bool {
 		return containsIdent(e.X)
 	}
 	return false
+}
+
+
+// csRender128 renders a 128-bit bound as C# source. Values inside long ride
+// the pair's implicit conversion; wider values compose the two's-complement
+// 64-bit lanes through the (hi, lo) constructor.
+func csRender128(v *big.Int) string {
+	i64lo := new(big.Int).Neg(new(big.Int).Lsh(big.NewInt(1), 63))
+	i64hi := new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), 63), big.NewInt(1))
+	if v.Cmp(i64lo) >= 0 && v.Cmp(i64hi) <= 0 {
+		if v.Cmp(big.NewInt(-2147483648)) >= 0 && v.Cmp(big.NewInt(2147483647)) <= 0 {
+			return v.String()
+		}
+		return v.String() + "L"
+	}
+	u := new(big.Int).Set(v)
+	if u.Sign() < 0 {
+		u.Add(u, new(big.Int).Lsh(big.NewInt(1), 128))
+	}
+	hi := new(big.Int).Rsh(u, 64)
+	lo := new(big.Int).And(u, maxUint64)
+	return fmt.Sprintf("new Int128Value(0x%xul, 0x%xul)", hi, lo)
+}
+
+
+// csRenderU128 is csRender128 for the unsigned domain: values inside ulong
+// ride the pair's implicit conversion; wider values compose the lanes.
+func csRenderU128(v *big.Int) string {
+	if v.Cmp(maxUint64) <= 0 {
+		if v.Cmp(big.NewInt(2147483647)) <= 0 {
+			return v.String()
+		}
+		return v.String() + "ul"
+	}
+	hi := new(big.Int).Rsh(v, 64)
+	lo := new(big.Int).And(v, maxUint64)
+	return fmt.Sprintf("new UInt128Value(0x%xul, 0x%xul)", hi, lo)
 }
 
 func csInt(width int) string {

@@ -451,7 +451,24 @@ func (g *gen) emitWriteField(f *ir.Field, ind string) {
 
 func (g *gen) emitWriteScalar(f *ir.Field, name, ind string) {
 	switch f.Type.Kind {
+	case ir.TFixed:
+		// the Q format and whole-unit bounds are compile-time constants of the
+		// call site, exactly like a ranged integer's bounds (STANDARD.md, fixed)
+		lo, hi := g.rangeArgs(f, "long")
+		g.call(ind, fmt.Sprintf("%s.SerializeFixed(ref %s, %d, %d, %s, %s)", g.rv(), name, f.Type.IntBits, f.Type.FracBits, lo, hi), "")
 	case ir.TInt:
+		if f.Type.Width == 128 {
+			if f.HasIntRange {
+				// int128 is ALWAYS ranged (SPEC §4.3): offset from min —
+				// identical bytes to SerializeInt64 wherever the range fits
+				g.call(ind, fmt.Sprintf("%s.SerializeInt128(ref %s, %s, %s)", g.rv(), name,
+					csRender128(f.IntMin), csRender128(f.IntMax)), "")
+			} else {
+				// uint128 is the raw field: 128 bits, low 64-bit half first
+				g.call(ind, fmt.Sprintf("%s.SerializeUInt128(ref %s)", g.rv(), name), "")
+			}
+			return
+		}
 		if f.HasIntRange {
 			switch intRangePath(f.IntMin, f.IntMax) {
 			case "int32", "int64":
@@ -623,7 +640,22 @@ func (g *gen) emitReadField(f *ir.Field, ind string) {
 
 func (g *gen) emitReadScalar(f *ir.Field, name, ind string) {
 	switch f.Type.Kind {
+	case ir.TFixed:
+		// validates the raw offset against the raw bounds and rejects — never
+		// clamps — returning false on a hostile stream
+		lo, hi := g.rangeArgs(f, "long")
+		g.call(ind, fmt.Sprintf("%s.SerializeFixed(ref %s, %d, %d, %s, %s)", g.rv(), name, f.Type.IntBits, f.Type.FracBits, lo, hi), "")
 	case ir.TInt:
+		if f.Type.Width == 128 {
+			if f.HasIntRange {
+				// rejects a decoded offset beyond max - min (reject, never clamp)
+				g.call(ind, fmt.Sprintf("%s.SerializeInt128(ref %s, %s, %s)", g.rv(), name,
+					csRender128(f.IntMin), csRender128(f.IntMax)), "")
+			} else {
+				g.call(ind, fmt.Sprintf("%s.SerializeUInt128(ref %s)", g.rv(), name), "")
+			}
+			return
+		}
 		if f.HasIntRange {
 			switch intRangePath(f.IntMin, f.IntMax) {
 			case "int32":
