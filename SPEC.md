@@ -1281,13 +1281,36 @@ bounds), plain integers, or int-composite types like a handle pair — the
 QuantizeX/UnquantizeX pair would be a pure member copy, and the backends do
 NOT emit it: Interpolate and Shallow are the same values. This is the landing
 Glenn described the day the format was set: "that quantization just naturally
-gets replaced with fixed point." [quantize = K] on a fixed-component composite
-remains an error (rule 2 requires float components — there is nothing left to
-scale).
+gets replaced with fixed point."
 
-3. **No special composite cases in v1 — tags are inert (§4.2, Type tags).** Rule 2 is
-   the whole of composite quantization: every composite quantizes per-component with an
-   explicit `max` — a rotation field states its bound like anything else
+2b. **Fixed-composite shallow narrowing (2026-08-12, the fixed-point path).**
+   `[interpolate, quantize = K]` on a composite whose components are ALL
+   `fixed(I, F)` scalars narrows the shallow wire instead of dissolving:
+   "we will want to quantize fixed point down to an acceptable amount,
+   especially when sending it for shallow (non-simulating) values. the deep
+   values should be sent at full precision." (Glenn). K is the kept
+   resolution — quantized units per whole unit — and must be a positive power
+   of two with log2(K) ≤ F (the shallow wire cannot be finer than the
+   storage; K = 2^F keeps everything and the pair degenerates to copies).
+   No `max` here: each component's shallow wire range is its own whole-unit
+   `[min, max]` scaled by K — bounds every fixed component already declares
+   (§4.3) — and its shallow storage is the smallest signed integer holding
+   that range. The Quantize/Unquantize pair RETURNS, as pure integer shifts
+   with no floating point anywhere: quantize is the round-to-nearest
+   arithmetic shift `( raw + (1 << (drop−1)) ) >> drop` with
+   `drop = F − log2(K)` — ties resolve toward +infinity, the same
+   `( raw + half ) >> drop` form the application's fixed bridge uses, chosen
+   so wire and simulation agree bit-for-bit in all four targets (signed `>>`
+   is arithmetic in every one) — and unquantize is the left shift back
+   (dropped bits return as zeros). Components wider than 64 bits are a
+   compile error (the shifts run in int64). The deep wire is untouched: full
+   precision, the component's own ranged fixed encoding. Un-narrowed fixed
+   composites keep dissolving per the note above; the two forms compose
+   field-by-field in one object.
+
+3. **No special composite cases in v1 — tags are inert (§4.2, Type tags).** Rules 2
+   and 2b are the whole of composite quantization: every composite quantizes
+   per-component — a float rotation field states its bound like anything else
    (`rotation Quat [interpolate, quantize = RotationUnits, max = 1]`; unit quaternions
    are always unit length — Glenn — so the bound is 1, written rather than implied).
    Rotation-specific actions (renormalize on unquantize, shortest-arc interpolation) are

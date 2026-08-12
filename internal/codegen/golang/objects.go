@@ -72,6 +72,23 @@ func (g *gen) emitObjectFunctions(d *ir.Object) {
 func (g *gen) emitViewWriteField(f *ir.Field, v ir.View, ind string) {
 	name := "value." + ir.GoExportName(f.Name)
 	switch {
+	case v == ir.ViewShallow && f.HasQuantize && f.FixedShallow:
+		st := f.Type.Ref.(*ir.Struct)
+		for _, comp := range st.Fields {
+			compName := name + ir.GoExportName(comp.Name)
+			lo, hi, bits, wide, _, width := fixedShallowComp(f, comp)
+			if wide {
+				g.pf("%s{\n%s\tcomponentValue := int64(%s)\n", ind, ind, compName)
+				g.emitWriteRangedFold64("componentValue", lo.String(), hi.String(), bits, false, ind+"\t")
+				g.pf("%s}\n", ind)
+			} else if width == 32 {
+				g.emitWriteRangedFold32(compName, lo.String(), hi.String(), bits, false, ind)
+			} else {
+				g.pf("%s{\n%s\tcomponentValue := int32(%s)\n", ind, ind, compName)
+				g.emitWriteRangedFold32("componentValue", lo.String(), hi.String(), bits, false, ind+"\t")
+				g.pf("%s}\n", ind)
+			}
+		}
 	case v == ir.ViewShallow && f.HasQuantize:
 		st := f.Type.Ref.(*ir.Struct)
 		wide := f.QuantBound > 2147483647 // the int32 family truncates past this
@@ -118,6 +135,23 @@ func (g *gen) emitViewWriteField(f *ir.Field, v ir.View, ind string) {
 func (g *gen) emitViewReadField(f *ir.Field, v ir.View, ind string) {
 	name := "value." + ir.GoExportName(f.Name)
 	switch {
+	case v == ir.ViewShallow && f.HasQuantize && f.FixedShallow:
+		st := f.Type.Ref.(*ir.Struct)
+		for _, comp := range st.Fields {
+			compName := name + ir.GoExportName(comp.Name)
+			lo, hi, _, wide, compT, width := fixedShallowComp(f, comp)
+			if wide {
+				g.pf("%s{\n%s\tcomponentValue := int64(0)\n", ind, ind)
+				g.pf("%s\tstream.SerializeInt64(&componentValue, %s, %s)\n", ind, lo, hi)
+				g.pf("%s\t%s = %s(componentValue)\n%s}\n", ind, compName, compT, ind)
+			} else if width == 32 {
+				g.pf("%sstream.SerializeInt(&%s, %s, %s)\n", ind, compName, lo, hi)
+			} else {
+				g.pf("%s{\n%s\tcomponentValue := int32(0)\n", ind, ind)
+				g.pf("%s\tstream.SerializeInt(&componentValue, %s, %s)\n", ind, lo, hi)
+				g.pf("%s\t%s = %s(componentValue)\n%s}\n", ind, compName, compT, ind)
+			}
+		}
 	case v == ir.ViewShallow && f.HasQuantize:
 		st := f.Type.Ref.(*ir.Struct)
 		compT := goInt(smallestSigned(f.QuantBound))
@@ -165,6 +199,22 @@ func (g *gen) emitViewReadField(f *ir.Field, v ir.View, ind string) {
 func (g *gen) emitQuantizeField(f *ir.Field, ind string) {
 	name := ir.GoExportName(f.Name)
 	switch {
+	case f.HasQuantize && f.FixedShallow:
+		st := f.Type.Ref.(*ir.Struct)
+		for _, comp := range st.Fields {
+			compName := ir.GoExportName(comp.Name)
+			drop := comp.Type.FracBits - f.QuantShift
+			_, _, _, _, compT, _ := fixedShallowComp(f, comp)
+			if drop == 0 {
+				g.pf("%soutput.%s%s = %s(input.%s.%s)\n", ind, name, compName, compT, name, compName)
+				continue
+			}
+			// round-to-nearest narrowing shift — arithmetic on int64, ties
+			// toward +infinity: the ( raw + half ) >> drop form the game's
+			// fixed bridge uses, so wire and simulation agree bit-for-bit
+			g.pf("%soutput.%s%s = %s((int64(input.%s.%s) + %d) >> %d)\n",
+				ind, name, compName, compT, name, compName, int64(1)<<(drop-1), drop)
+		}
 	case f.HasQuantize:
 		g.needsMath = true
 		st := f.Type.Ref.(*ir.Struct)
@@ -195,6 +245,19 @@ func (g *gen) emitQuantizeField(f *ir.Field, ind string) {
 func (g *gen) emitUnquantizeField(f *ir.Field, ind string) {
 	name := ir.GoExportName(f.Name)
 	switch {
+	case f.HasQuantize && f.FixedShallow:
+		st := f.Type.Ref.(*ir.Struct)
+		for _, comp := range st.Fields {
+			compName := ir.GoExportName(comp.Name)
+			drop := comp.Type.FracBits - f.QuantShift
+			storT := goInt(comp.Type.Width)
+			if drop == 0 {
+				g.pf("%soutput.%s.%s = %s(input.%s%s)\n", ind, name, compName, storT, name, compName)
+			} else {
+				g.pf("%soutput.%s.%s = %s(int64(input.%s%s) << %d)\n",
+					ind, name, compName, storT, name, compName, drop)
+			}
+		}
 	case f.HasQuantize:
 		st := f.Type.Ref.(*ir.Struct)
 		scale := g.renderInt(f.QuantScaleExpr, big.NewInt(f.QuantScale))

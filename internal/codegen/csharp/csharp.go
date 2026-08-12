@@ -500,6 +500,16 @@ func (g *gen) emitField(f *ir.Field, v view) {
 	name := g.fieldBase(f)
 	if v == storageShallow && f.HasQuantize {
 		st := f.Type.Ref.(*ir.Struct)
+		if f.FixedShallow {
+			g.tf("    // %s: %s narrowed to %d fractional bits (quantize = %s) — per-component\n",
+				f.Name, f.Type.Name, f.QuantShift, schemaExpr(f.QuantScaleExpr))
+			g.tf("    // quantized units; bounds are the component's whole-unit [min, max] scaled\n")
+			for _, comp := range st.Fields {
+				lo, hi, _, typ, _ := fixedShallowComp(f, comp)
+				g.tf("    public %s %s; // in [%s, %s]\n", typ, g.m(ir.GoExportName(f.Name)+ir.GoExportName(comp.Name)), lo, hi)
+			}
+			return
+		}
 		g.tf("    // %s: %s quantized by %s, max %s — per-component int in [-%d, %d]\n",
 			f.Name, f.Type.Name, schemaExpr(f.QuantScaleExpr), schemaExpr(f.QuantMaxExpr), f.QuantBound, f.QuantBound)
 		typ := csInt(smallestSigned(f.QuantBound))
@@ -887,6 +897,26 @@ func csUint(width int) string {
 		return "uint"
 	}
 	return "ulong"
+}
+
+// fixedShallowComp resolves one component of a narrowed fixed composite
+// (SPEC §4.8 rule 2b) to its C# shallow shape: wire bounds, the int/long
+// serialize switch, and the storage type. The bounds mirror
+// ir.FixedShallowBounds so all four backends agree on the wire.
+func fixedShallowComp(f, cf *ir.Field) (lo, hi *big.Int, wide bool, typ string, width int) {
+	lo, hi = ir.FixedShallowBounds(f, cf)
+	wide = hi.Cmp(big.NewInt(2147483647)) > 0 || lo.Cmp(big.NewInt(-2147483648)) < 0
+	abs := new(big.Int).Neg(lo)
+	if abs.Cmp(hi) < 0 {
+		abs = hi
+	}
+	bound := int64(9223372036854775807)
+	if abs.IsInt64() {
+		bound = abs.Int64()
+	}
+	width = smallestSigned(bound)
+	typ = csInt(width)
+	return
 }
 
 func smallestSigned(bound int64) int {

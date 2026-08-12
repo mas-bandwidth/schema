@@ -219,6 +219,16 @@ type Field struct {
 	QuantMax       float64
 	QuantMaxExpr   ast.Expr
 	QuantBound     int64 // round(QuantScale * QuantMax) — per-component wire range is [-QuantBound, +QuantBound]
+
+	// fixed-composite shallow narrowing (SPEC §4.8 rule 2b): the composite's
+	// components are all fixed(I, F); the shallow wire keeps QuantShift =
+	// log2(QuantScale) fractional bits. Quantize is a round-to-nearest (half
+	// away from zero) arithmetic shift by (F - QuantShift), Unquantize the
+	// left shift back; the per-component wire bound is the component's own
+	// whole-unit [IntMin, IntMax] times QuantScale. QuantMax/QuantBound are
+	// meaningless here — bounds live on the components, not the field.
+	FixedShallow bool
+	QuantShift   int
 }
 
 type FieldTypeKind int
@@ -321,6 +331,17 @@ func StorageBitsFor(max int64) int {
 	default:
 		return 64
 	}
+}
+
+// FixedShallowBounds is the per-component shallow wire range of a narrowed
+// fixed composite (SPEC §4.8 rule 2b): the component's own whole-unit
+// [IntMin, IntMax] scaled by QuantScale. Every backend derives storage and
+// wire bounds from this one function, or the four wires disagree.
+func FixedShallowBounds(f *Field, cf *Field) (lo, hi *big.Int) {
+	k := big.NewInt(f.QuantScale)
+	lo = new(big.Int).Mul(cf.IntMin, k)
+	hi = new(big.Int).Mul(cf.IntMax, k)
+	return lo, hi
 }
 
 // ObjectNeedsQuantize reports whether an object's Quantize/Unquantize pair

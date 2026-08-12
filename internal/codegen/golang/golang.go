@@ -490,6 +490,16 @@ func (g *gen) emitField(f *ir.Field, v view) {
 	name := ir.GoExportName(f.Name)
 	if v == storageShallow && f.HasQuantize {
 		st := f.Type.Ref.(*ir.Struct)
+		if f.FixedShallow {
+			g.pf("\t// %s: %s narrowed to %d fractional bits (quantize = %s) — per-component\n",
+				f.Name, f.Type.Name, f.QuantShift, schemaExpr(f.QuantScaleExpr))
+			g.pf("\t// quantized units; bounds are the component's whole-unit [min, max] scaled\n")
+			for _, comp := range st.Fields {
+				lo, hi, _, _, typ, _ := fixedShallowComp(f, comp)
+				g.pf("\t%s%s %s // in [%s, %s]\n", name, ir.GoExportName(comp.Name), typ, lo, hi)
+			}
+			return
+		}
 		g.pf("\t// %s: %s quantized by %s, max %s — per-component int in [-%d, %d]\n",
 			f.Name, f.Type.Name, schemaExpr(f.QuantScaleExpr), schemaExpr(f.QuantMaxExpr), f.QuantBound, f.QuantBound)
 		typ := goInt(smallestSigned(f.QuantBound))
@@ -702,6 +712,27 @@ func goInt2(signed bool, width int) string {
 
 func goInt(width int) string  { return fmt.Sprintf("int%d", width) }
 func goUint(width int) string { return fmt.Sprintf("uint%d", width) }
+
+// fixedShallowComp resolves one component of a narrowed fixed composite
+// (SPEC §4.8 rule 2b) to its Go shallow shape: wire bounds, wire bits, the
+// int32/int64 serialize switch, and the storage type. The bounds mirror
+// ir.FixedShallowBounds so all four backends agree on the wire.
+func fixedShallowComp(f, cf *ir.Field) (lo, hi *big.Int, bits int64, wide bool, typ string, width int) {
+	lo, hi = ir.FixedShallowBounds(f, cf)
+	bits = ir.BitsRequired(lo, hi)
+	wide = hi.Cmp(big.NewInt(2147483647)) > 0 || lo.Cmp(big.NewInt(-2147483648)) < 0
+	abs := new(big.Int).Neg(lo)
+	if abs.Cmp(hi) < 0 {
+		abs = hi
+	}
+	bound := int64(9223372036854775807)
+	if abs.IsInt64() {
+		bound = abs.Int64()
+	}
+	width = smallestSigned(bound)
+	typ = goInt(width)
+	return
+}
 
 func smallestSigned(bound int64) int {
 	switch {

@@ -149,6 +149,22 @@ func TestDiagnostics(t *testing.T) {
 			src: "package t\ntype V { x float64 }\nobject O { p V [quantize = 10, max = 1] \n b bool }\n"},
 		{name: "quantize on a non-composite", want: "component-wise",
 			src: "package t\nobject O { p uint32 [interpolate, quantize = 10, max = 1] \n b bool }\n"},
+		{name: "fixed-composite quantize scale must be a power of two", want: "positive power of two",
+			src: "package t\ntype V { x fixed(16, 16) [min = -8, max = 8] }\nobject O { p V [interpolate, quantize = 100] \n b bool }\n"},
+		{name: "fixed-composite quantize cannot exceed the storage's fraction", want: "cannot be finer than the storage",
+			src: "package t\ntype V { x fixed(8, 8) [min = -8, max = 8] }\nobject O { p V [interpolate, quantize = 512] \n b bool }\n"},
+		{name: "fixed-composite quantize takes no max", want: "the bound comes from the components",
+			src: "package t\ntype V { x fixed(16, 16) [min = -8, max = 8] }\nobject O { p V [interpolate, quantize = 256, max = 8] \n b bool }\n"},
+		// an unbounded fixed component is already illegal by §4.3 (bounds are
+		// part of the wire format) — the narrowing rule never sees one alone;
+		// this documents the error the author gets, and that the composite
+		// rule survives the multi-error pass beside it
+		{name: "fixed-composite quantize under an unbounded component", want: "requires [min = A, max = B]",
+			src: "package t\ntype V { x fixed(16, 16) }\nobject O { p V [interpolate, quantize = 256] \n b bool }\n"},
+		{name: "fixed-composite quantize is 64-bit at most", want: "wider than 64 bits",
+			src: "package t\ntype V { x fixed(112, 16) [min = -8, max = 8] }\nobject O { p V [interpolate, quantize = 256] \n b bool }\n"},
+		{name: "mixed float/fixed composite falls to the float rule", want: "every component of V to be a float scalar",
+			src: "package t\ntype V { x fixed(16, 16) [min = -8, max = 8]\n y float64 }\nobject O { p V [interpolate, quantize = 256, max = 8] \n b bool }\n"},
 
 		// ---- namespace, names, claims ----
 		{name: "duplicate declaration", want: "duplicate declaration",

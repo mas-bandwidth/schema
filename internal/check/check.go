@@ -1114,7 +1114,62 @@ func (c *checker) resolveAttrs(kind declKind, owner string, f *ast.Field, out *i
 		}
 		st, okT := out.Type.Ref.(*ir.Struct)
 		if out.Type.Kind != ir.TNamed || !okT {
-			c.errf(a.Pos, "quantize applies component-wise to a composite of float components (SPEC §4.8 rule 2)")
+			c.errf(a.Pos, "quantize applies component-wise to a composite of float or fixed components (SPEC §4.8 rule 2)")
+			return
+		}
+		allFixed := len(st.Fields) > 0
+		for _, cf := range st.Fields {
+			if cf.Type.Kind != ir.TFixed || cf.Array != ir.ArrayNone {
+				allFixed = false
+				break
+			}
+		}
+		if allFixed {
+			// fixed-composite shallow narrowing (SPEC §4.8 rule 2b):
+			// [interpolate, quantize = K] — the shallow wire keeps log2(K)
+			// fractional bits of the component format (K quantized units per
+			// whole unit, a power of two no finer than the storage's 2^F).
+			// Quantize is a round-to-nearest (half away from zero) arithmetic
+			// shift, Unquantize a left shift; no max here — the shallow bound
+			// derives from each component's own whole-unit [min, max], which
+			// every component must therefore declare.
+			if hasMax || hasMin || hasRes {
+				c.errf(a.Pos, "fixed-composite quantization is [interpolate, quantize = K] alone — the bound comes from the components' own [min, max], not the field (SPEC §4.8 rule 2b)")
+				return
+			}
+			k, ok := c.evalInt(a.Value)
+			if !ok {
+				return
+			}
+			if !k.IsInt64() || k.Int64() < 1 || k.Int64()&(k.Int64()-1) != 0 {
+				c.errf(a.Pos, "fixed-composite quantize scale %s must be a positive power of two — it is the kept fractional resolution, 2^bits (SPEC §4.8 rule 2b)", k)
+				return
+			}
+			log2k := 0
+			for v := k.Int64(); v > 1; v >>= 1 {
+				log2k++
+			}
+			for _, cf := range st.Fields {
+				if cf.Type.IntBits+cf.Type.FracBits > 64 {
+					c.errf(a.Pos, "fixed-composite quantization narrows through int64 shifts — %s.%s is fixed(%d, %d), wider than 64 bits (SPEC §4.8 rule 2b)",
+						st.Name, cf.Name, cf.Type.IntBits, cf.Type.FracBits)
+					return
+				}
+				if log2k > cf.Type.FracBits {
+					c.errf(a.Pos, "quantize = %s keeps %d fractional bits but %s.%s is fixed(%d, %d) — the shallow wire cannot be finer than the storage (SPEC §4.8 rule 2b)",
+						k, log2k, st.Name, cf.Name, cf.Type.IntBits, cf.Type.FracBits)
+					return
+				}
+				if !cf.HasIntRange {
+					c.errf(a.Pos, "fixed-composite quantization derives its wire bound from the components — %s.%s must declare whole-unit [min, max] (SPEC §4.8 rule 2b)", st.Name, cf.Name)
+					return
+				}
+			}
+			out.HasQuantize = true
+			out.FixedShallow = true
+			out.QuantScale = k.Int64()
+			out.QuantScaleExpr = a.Value
+			out.QuantShift = log2k
 			return
 		}
 		for _, cf := range st.Fields {

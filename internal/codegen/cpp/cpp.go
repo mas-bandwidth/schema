@@ -619,6 +619,16 @@ func (g *gen) emitFields(fields []*ir.Field, v view) {
 func (g *gen) emitField(f *ir.Field, v view) {
 	if v == storageShallow && f.HasQuantize {
 		st := f.Type.Ref.(*ir.Struct)
+		if f.FixedShallow {
+			g.pf("    // %s: %s narrowed to %d fractional bits (quantize = %s) — per-component\n",
+				f.Name, f.Type.Name, f.QuantShift, schemaExpr(f.QuantScaleExpr))
+			g.pf("    // quantized units; bounds are the component's whole-unit [min, max] scaled\n")
+			for _, comp := range st.Fields {
+				lo, hi, _, _, typ := fixedShallowComp(f, comp)
+				g.pf("    %s %s_%s = 0; // in [%s, %s]\n", typ, f.Name, comp.Name, lo, hi)
+			}
+			return
+		}
 		g.pf("    // %s: %s quantized by %s, max %s — per-component int in [-%d, %d]\n",
 			f.Name, f.Type.Name, schemaExpr(f.QuantScaleExpr), schemaExpr(f.QuantMaxExpr), f.QuantBound, f.QuantBound)
 		typ := cppInt(smallestSigned(f.QuantBound))
@@ -949,6 +959,34 @@ func cppInt2(signed bool, width int) string {
 
 func cppInt(width int) string  { return fmt.Sprintf("int%d_t", width) }
 func cppUint(width int) string { return fmt.Sprintf("uint%d_t", width) }
+
+// fixedShallowComp resolves one component of a narrowed fixed composite
+// (SPEC §4.8 rule 2b) to its C++ shallow shape: wire bounds, wire bits,
+// the int32/int64 read-write switch, and the storage type.
+func fixedShallowComp(f, cf *ir.Field) (lo, hi *big.Int, bits int64, wide bool, typ string) {
+	lo, hi = ir.FixedShallowBounds(f, cf)
+	bits = bitsRequired(lo, hi)
+	wide = hi.Cmp(big.NewInt(2147483647)) > 0 || lo.Cmp(big.NewInt(-2147483648)) < 0
+	abs := new(big.Int).Neg(lo)
+	if abs.Cmp(hi) < 0 {
+		abs = hi
+	}
+	bound := int64(9223372036854775807)
+	if abs.IsInt64() {
+		bound = abs.Int64()
+	}
+	typ = cppInt(smallestSigned(bound))
+	return
+}
+
+// cppInt64Lit renders a signed 64-bit literal; INT64_MIN has no direct
+// literal in C++ (the unary minus applies after the overflowing parse).
+func cppInt64Lit(v *big.Int) string {
+	if v.IsInt64() && v.Int64() == -9223372036854775808 {
+		return "( -9223372036854775807ll - 1 )"
+	}
+	return v.String() + "ll"
+}
 
 func smallestSigned(bound int64) int {
 	switch {

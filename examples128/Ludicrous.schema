@@ -80,3 +80,17 @@ object Body {
     velocity FixedVec  [interpolate]
     spin     float64   [local]
 }
+
+// The narrowed shallow — §4.8 rule 2b: [interpolate, quantize = K] on a
+// fixed composite keeps log2(K) fractional bits on the shallow wire (the
+// deep wire stays full precision), and the Quantize/Unquantize pair RETURNS
+// — round-to-nearest arithmetic shifts, no floating point anywhere. K = 256
+// keeps 8 of Q48.16's 16 fractional bits; K = 1024 keeps 10 of Q2.30's 30.
+// The per-component shallow bound is the component's own whole-unit
+// [min, max] scaled by K. velocity stays full precision beside them — the
+// two forms compose in one object.
+object NarrowBody {
+    position FixedVec  [interpolate, quantize = 256]
+    rotation FixedQuat [interpolate, quantize = 1024]
+    velocity FixedVec  [interpolate]
+}

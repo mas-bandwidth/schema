@@ -82,6 +82,31 @@ func (g *gen) emitViewWriteField(f *ir.Field, v ir.View, ind string) {
 	g.needsStreamTrait = true
 	name := "value." + f.Name
 	switch {
+	case v == ir.ViewShallow && f.HasQuantize && f.FixedShallow:
+		st := f.Type.Ref.(*ir.Struct)
+		for _, comp := range st.Fields {
+			compName := name + "_" + comp.Name
+			lo, hi, bits, wide, _, width := fixedShallowComp(f, comp)
+			// the runtime ranged form's write assert, kept (debug parity);
+			// a half vacuous against the storage domain is elided
+			sMin, sMax := signedStorageBounds(width)
+			loVac, hiVac := lo.Cmp(sMin) == 0, hi.Cmp(sMax) == 0
+			switch {
+			case !loVac && !hiVac:
+				g.pf("%sdebug_assert!(%s >= %s && %s <= %s);\n", ind, compName, rustIntLit(lo, width), compName, rustIntLit(hi, width))
+			case !loVac:
+				g.pf("%sdebug_assert!(%s >= %s);\n", ind, compName, rustIntLit(lo, width))
+			case !hiVac:
+				g.pf("%sdebug_assert!(%s <= %s);\n", ind, compName, rustIntLit(hi, width))
+			}
+			if wide {
+				g.emitWriteRangedFold64(compName, false, false,
+					rustIntLit(lo, 64), lo.Sign() == 0, bits, "", ind)
+			} else {
+				g.emitWriteRangedFold32(compName, false,
+					rustIntLit(lo, 32), lo.Sign() == 0, bits, "", ind)
+			}
+		}
 	case v == ir.ViewShallow && f.HasQuantize:
 		st := f.Type.Ref.(*ir.Struct)
 		wide := f.QuantBound > 2147483647 // the i32 family truncates past this
@@ -134,6 +159,23 @@ func (g *gen) emitViewReadField(f *ir.Field, v ir.View, ind string) {
 	g.needsStreamTrait = true
 	name := "value." + f.Name
 	switch {
+	case v == ir.ViewShallow && f.HasQuantize && f.FixedShallow:
+		st := f.Type.Ref.(*ir.Struct)
+		for _, comp := range st.Fields {
+			compName := name + "_" + comp.Name
+			lo, hi, _, wide, compT, width := fixedShallowComp(f, comp)
+			if wide {
+				g.pf("%s{\n%s    let mut component_value: i64 = 0;\n", ind, ind)
+				g.pf("%s    stream.serialize_int64(&mut component_value, %s, %s)?;\n", ind, rustIntLit(lo, 64), rustIntLit(hi, 64))
+				g.pf("%s    %s = component_value as %s;\n%s}\n", ind, compName, compT, ind)
+			} else if width == 32 {
+				g.pf("%sstream.serialize_int(&mut %s, %s, %s)?;\n", ind, compName, rustIntLit(lo, 32), rustIntLit(hi, 32))
+			} else {
+				g.pf("%s{\n%s    let mut component_value: i32 = 0;\n", ind, ind)
+				g.pf("%s    stream.serialize_int(&mut component_value, %s, %s)?;\n", ind, rustIntLit(lo, 32), rustIntLit(hi, 32))
+				g.pf("%s    %s = component_value as %s;\n%s}\n", ind, compName, compT, ind)
+			}
+		}
 	case v == ir.ViewShallow && f.HasQuantize:
 		st := f.Type.Ref.(*ir.Struct)
 		compT := rustInt(smallestSigned(f.QuantBound))
@@ -180,6 +222,21 @@ func (g *gen) emitViewReadField(f *ir.Field, v ir.View, ind string) {
 // (rule 5) and copy; discrete fields copy.
 func (g *gen) emitQuantizeField(f *ir.Field, ind string) {
 	switch {
+	case f.HasQuantize && f.FixedShallow:
+		st := f.Type.Ref.(*ir.Struct)
+		for _, comp := range st.Fields {
+			drop := comp.Type.FracBits - f.QuantShift
+			_, _, _, _, compT, _ := fixedShallowComp(f, comp)
+			if drop == 0 {
+				g.pf("%soutput.%s_%s = input.%s.%s as %s;\n", ind, f.Name, comp.Name, f.Name, comp.Name, compT)
+				continue
+			}
+			// round-to-nearest narrowing shift — arithmetic on i64, ties
+			// toward +infinity: the ( raw + half ) >> drop form the game's
+			// fixed bridge uses, so wire and simulation agree bit-for-bit
+			g.pf("%soutput.%s_%s = ((input.%s.%s as i64 + %d) >> %d) as %s;\n",
+				ind, f.Name, comp.Name, f.Name, comp.Name, int64(1)<<(drop-1), drop, compT)
+		}
 	case f.HasQuantize:
 		st := f.Type.Ref.(*ir.Struct)
 		compT := rustInt(smallestSigned(f.QuantBound))
@@ -211,6 +268,18 @@ func (g *gen) emitQuantizeField(f *ir.Field, ind string) {
 // composites divide by the scale; everything else copies.
 func (g *gen) emitUnquantizeField(f *ir.Field, ind string) {
 	switch {
+	case f.HasQuantize && f.FixedShallow:
+		st := f.Type.Ref.(*ir.Struct)
+		for _, comp := range st.Fields {
+			drop := comp.Type.FracBits - f.QuantShift
+			storT := rustInt(comp.Type.Width)
+			if drop == 0 {
+				g.pf("%soutput.%s.%s = input.%s_%s as %s;\n", ind, f.Name, comp.Name, f.Name, comp.Name, storT)
+			} else {
+				g.pf("%soutput.%s.%s = ((input.%s_%s as i64) << %d) as %s;\n",
+					ind, f.Name, comp.Name, f.Name, comp.Name, drop, storT)
+			}
+		}
 	case f.HasQuantize:
 		st := f.Type.Ref.(*ir.Struct)
 		for _, comp := range st.Fields {

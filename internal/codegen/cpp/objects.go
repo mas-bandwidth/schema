@@ -127,6 +127,18 @@ func (g *gen) maxBitsView(fields []*ir.Field, v objView) int64 { return ir.MaxBi
 func (g *gen) emitViewWriteField(f *ir.Field, v objView, ind string) {
 	name := "value." + f.Name
 	switch {
+	case v == viewShallow && f.HasQuantize && f.FixedShallow:
+		st := f.Type.Ref.(*ir.Struct)
+		for _, comp := range st.Fields {
+			lo, hi, bits, wide, _ := fixedShallowComp(f, comp)
+			if wide {
+				g.emitWriteRangedFold64(fmt.Sprintf("%s_%s", name, comp.Name),
+					cppInt64Lit(lo), cppInt64Lit(hi), bits, false, ind)
+			} else {
+				g.emitWriteRangedFold32(fmt.Sprintf("%s_%s", name, comp.Name),
+					lo.String(), hi.String(), bits, false, ind)
+			}
+		}
 	case v == viewShallow && f.HasQuantize:
 		st := f.Type.Ref.(*ir.Struct)
 		wide := f.QuantBound > 2147483647 // the int32 family truncates past this (same switch as intRangePath)
@@ -162,6 +174,19 @@ func (g *gen) emitViewWriteField(f *ir.Field, v objView, ind string) {
 func (g *gen) emitViewReadField(f *ir.Field, v objView, ind string) {
 	name := "value." + f.Name
 	switch {
+	case v == viewShallow && f.HasQuantize && f.FixedShallow:
+		st := f.Type.Ref.(*ir.Struct)
+		for _, comp := range st.Fields {
+			lo, hi, _, wide, compT := fixedShallowComp(f, comp)
+			if wide {
+				g.pf("%s{\n%s    int64_t component_value = 0;\n", ind, ind)
+				g.pf("%s    read_int64( stream, component_value, %s, %s );\n", ind, cppInt64Lit(lo), cppInt64Lit(hi))
+			} else {
+				g.pf("%s{\n%s    int32_t component_value = 0;\n", ind, ind)
+				g.pf("%s    read_int( stream, component_value, %s, %s );\n", ind, lo, hi)
+			}
+			g.pf("%s    %s_%s = %s( component_value );\n%s}\n", ind, name, comp.Name, compT, ind)
+		}
 	case v == viewShallow && f.HasQuantize:
 		st := f.Type.Ref.(*ir.Struct)
 		compT := cppInt(smallestSigned(f.QuantBound))
@@ -203,6 +228,23 @@ func (g *gen) emitViewReadField(f *ir.Field, v objView, ind string) {
 // (rule 5) and copy; discrete fields copy.
 func (g *gen) emitQuantizeField(f *ir.Field, ind string) {
 	switch {
+	case f.HasQuantize && f.FixedShallow:
+		st := f.Type.Ref.(*ir.Struct)
+		for _, comp := range st.Fields {
+			drop := comp.Type.FracBits - f.QuantShift
+			_, _, _, _, compT := fixedShallowComp(f, comp)
+			if drop == 0 {
+				g.pf("%soutput.%s_%s = %s( input.%s.%s );\n", ind, f.Name, comp.Name, compT, f.Name, comp.Name)
+				continue
+			}
+			// round-to-nearest narrowing shift — arithmetic on int64, ties
+			// toward +infinity: the ( raw + half ) >> drop form the game's
+			// fixed bridge uses, so wire and simulation agree bit-for-bit.
+			// In-bounds raws cannot overflow the add (checker-enforced bounds
+			// leave 2^(F-1) of headroom past any legal raw)
+			g.pf("%soutput.%s_%s = %s( ( int64_t( input.%s.%s ) + %dll ) >> %d );\n",
+				ind, f.Name, comp.Name, compT, f.Name, comp.Name, int64(1)<<(drop-1), drop)
+		}
 	case f.HasQuantize:
 		g.needsCmath = true
 		st := f.Type.Ref.(*ir.Struct)
@@ -233,6 +275,17 @@ func (g *gen) emitQuantizeField(f *ir.Field, ind string) {
 // composites divide by the scale; everything else copies.
 func (g *gen) emitUnquantizeField(f *ir.Field, ind string) {
 	switch {
+	case f.HasQuantize && f.FixedShallow:
+		st := f.Type.Ref.(*ir.Struct)
+		for _, comp := range st.Fields {
+			drop := comp.Type.FracBits - f.QuantShift
+			storT := cppInt(comp.Type.Width)
+			if drop == 0 {
+				g.pf("%soutput.%s.%s = %s( input.%s_%s );\n", ind, f.Name, comp.Name, storT, f.Name, comp.Name)
+			} else {
+				g.pf("%soutput.%s.%s = %s( int64_t( input.%s_%s ) << %d );\n", ind, f.Name, comp.Name, storT, f.Name, comp.Name, drop)
+			}
+		}
 	case f.HasQuantize:
 		st := f.Type.Ref.(*ir.Struct)
 		scale := g.renderInt(f.QuantScaleExpr, big.NewInt(f.QuantScale))

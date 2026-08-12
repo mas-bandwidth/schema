@@ -269,6 +269,14 @@ func MaxBitsView(fields []*Field, v View) int64 {
 	var total int64
 	for _, f := range fields {
 		switch {
+		case v == ViewShallow && f.HasQuantize && f.FixedShallow:
+			// narrowed fixed composite (SPEC §4.8 rule 2b): each component's
+			// wire range is its own whole-unit bounds scaled by QuantScale
+			st := f.Type.Ref.(*Struct)
+			for _, cf := range st.Fields {
+				lo, hi := FixedShallowBounds(f, cf)
+				total += BitsRequired(lo, hi)
+			}
 		case v == ViewShallow && f.HasQuantize:
 			st := f.Type.Ref.(*Struct)
 			per := BitsRequired(big.NewInt(-f.QuantBound), big.NewInt(f.QuantBound))

@@ -599,6 +599,16 @@ func (g *gen) emitFields(fields []*ir.Field, v view) {
 func (g *gen) emitField(f *ir.Field, v view) {
 	if v == storageShallow && f.HasQuantize {
 		st := f.Type.Ref.(*ir.Struct)
+		if f.FixedShallow {
+			g.pf("    // %s: %s narrowed to %d fractional bits (quantize = %s) — per-component\n",
+				f.Name, f.Type.Name, f.QuantShift, schemaExpr(f.QuantScaleExpr))
+			g.pf("    // quantized units; bounds are the component's whole-unit [min, max] scaled\n")
+			for _, comp := range st.Fields {
+				lo, hi, _, _, typ, _ := fixedShallowComp(f, comp)
+				g.pf("    pub %s_%s: %s, // in [%s, %s]\n", f.Name, comp.Name, typ, lo, hi)
+			}
+			return
+		}
 		g.pf("    // %s: %s quantized by %s, max %s — per-component int in [-%d, %d]\n",
 			f.Name, f.Type.Name, schemaExpr(f.QuantScaleExpr), schemaExpr(f.QuantMaxExpr), f.QuantBound, f.QuantBound)
 		typ := rustInt(smallestSigned(f.QuantBound))
@@ -860,6 +870,45 @@ func containsIdent(e ast.Expr) bool {
 
 func rustInt(width int) string  { return fmt.Sprintf("i%d", width) }
 func rustUint(width int) string { return fmt.Sprintf("u%d", width) }
+
+// fixedShallowComp resolves one component of a narrowed fixed composite
+// (SPEC §4.8 rule 2b) to its Rust shallow shape: wire bounds, wire bits, the
+// i32/i64 serialize switch, and the storage type. The bounds mirror
+// ir.FixedShallowBounds so all four backends agree on the wire.
+func fixedShallowComp(f, cf *ir.Field) (lo, hi *big.Int, bits int64, wide bool, typ string, width int) {
+	lo, hi = ir.FixedShallowBounds(f, cf)
+	bits = ir.BitsRequired(lo, hi)
+	wide = hi.Cmp(big.NewInt(2147483647)) > 0 || lo.Cmp(big.NewInt(-2147483648)) < 0
+	abs := new(big.Int).Neg(lo)
+	if abs.Cmp(hi) < 0 {
+		abs = hi
+	}
+	bound := int64(9223372036854775807)
+	if abs.IsInt64() {
+		bound = abs.Int64()
+	}
+	width = smallestSigned(bound)
+	typ = rustInt(width)
+	return
+}
+
+// signedStorageBounds is the [min, max] domain of an iN storage type.
+func signedStorageBounds(width int) (lo, hi *big.Int) {
+	lo = new(big.Int).Neg(new(big.Int).Lsh(big.NewInt(1), uint(width-1)))
+	hi = new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), uint(width-1)), big.NewInt(1))
+	return
+}
+
+// rustIntLit renders a signed literal with its width suffix; the two's
+// complement minimum has no direct literal form in Rust (the unary minus
+// applies after an overflowing parse), so it renders as the type's MIN.
+func rustIntLit(v *big.Int, width int) string {
+	min, _ := signedStorageBounds(width)
+	if v.Cmp(min) == 0 {
+		return fmt.Sprintf("i%d::MIN", width)
+	}
+	return fmt.Sprintf("%s_i%d", v, width)
+}
 
 func smallestSigned(bound int64) int {
 	switch {
