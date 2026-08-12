@@ -198,8 +198,10 @@ func TestGoldenLudicrousId(t *testing.T) {
 }
 
 // TestGoldenLudicrousSource pins the fixed-point + 128-bit unit's generated
-// C++ byte-for-byte, both message representations. The other targets pin
-// nothing here BY DESIGN — they refuse the unit (see TestLudicrous128Refusals).
+// source byte-for-byte for every backend whose serialize port carries the
+// phase-1 surface: C++ (both message representations), Go and C#. Rust pins
+// nothing here BY DESIGN — it still refuses the unit (see
+// TestLudicrous128Refusals).
 func TestGoldenLudicrousSource(t *testing.T) {
 	u := loadCorpusDir(t, corpus128Dir)
 	for _, mode := range []string{"union", "variant"} {
@@ -209,13 +211,24 @@ func TestGoldenLudicrousSource(t *testing.T) {
 		}
 		pinDir(t, filepath.Join(goldenDir, "ludicrous", mode), files)
 	}
+	goFiles, err := golang.Generate(u)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pinDir(t, filepath.Join(goldenDir, "ludicrous", "go"), goFiles)
+	csFiles, err := csharp.Generate(u)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pinDir(t, filepath.Join(goldenDir, "ludicrous", "cs"), csFiles)
 }
 
 // TestLudicrous128Refusals pins the OTHER half of the phase-1 contract: until
-// the serialize.go/.rs/.cs ports carry the 128-bit/fixed surface, their
-// backends must REFUSE a unit using it — loudly, naming the fields — never
-// emit code for it. A backend starting to succeed here is the signal to wire
-// its port in and lift the refusal, not a bug.
+// a serialize port carries the 128-bit/fixed surface, its backend must REFUSE
+// a unit using it — loudly, naming the fields — never emit code for it. Only
+// Rust remains: serialize.go and serialize.cs carry the surface and their
+// backends generate (pinned above). A backend starting to succeed here is the
+// signal to wire its port in and lift the refusal, not a bug.
 func TestLudicrous128Refusals(t *testing.T) {
 	u := loadCorpusDir(t, corpus128Dir)
 	if _, err := cpp.Generate(u, cpp.Options{}); err != nil {
@@ -225,9 +238,7 @@ func TestLudicrous128Refusals(t *testing.T) {
 		name string
 		gen  func() error
 	}{
-		{"go", func() error { _, err := golang.Generate(u); return err }},
 		{"rust", func() error { _, err := rust.Generate(u); return err }},
-		{"cs", func() error { _, err := csharp.Generate(u); return err }},
 	}
 	for _, r := range refusals {
 		err := r.gen()

@@ -21,6 +21,9 @@
   <ItemGroup>
     <Compile Include="../../generated/cs/*.cs" />
     <Compile Include="../../../serialize-cs-port/serialize.cs/src/Serialize.cs" />
+    <!-- the emulated 128-bit pair (Int128Value/UInt128Value) lives beside
+         Serialize.cs and Serialize.cs references it on every TFM -->
+    <Compile Include="../../../serialize-cs-port/serialize.cs/src/Int128Pair.cs" />
   </ItemGroup>
 
 </Project>

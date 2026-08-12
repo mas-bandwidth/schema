@@ -178,6 +178,14 @@ func (g *gen) emitZeroField(f *ir.Field, ind string) {
 		switch f.Type.Kind {
 		case ir.TBool:
 			g.pf("%s%s = false\n", ind, name)
+		case ir.TInt, ir.TFixed:
+			if f.Type.Width == 128 {
+				// the pair's zero value is zero, but it is a struct — the 0
+				// literal does not assign to it
+				g.pf("%s%s = %s{}\n", ind, name, g.goFieldType(f.Type))
+				return
+			}
+			g.pf("%s%s = 0\n", ind, name)
 		case ir.TNamed:
 			switch f.Type.Ref.(type) {
 			case *ir.Enum:
@@ -298,7 +306,36 @@ func (g *gen) emitWriteField(f *ir.Field, ind string) {
 
 func (g *gen) emitWriteScalar(f *ir.Field, name, ind string) {
 	switch f.Type.Kind {
+	case ir.TFixed:
+		// the Q format and the whole-unit bounds are compile-time constants of
+		// the call site — part of the wire format, exactly like a ranged
+		// integer's bounds (STANDARD.md, fixed). The runtime carries the
+		// write-side range refusal natively (ErrValueOutOfRange, sticky).
+		lo, hi := g.rangeArgs(f)
+		switch {
+		case f.Type.Width == 128:
+			g.pf("%sstream.SerializeFixed128(&%s, %d, %d, %s, %s)\n", ind, name, f.Type.IntBits, f.Type.FracBits, lo, hi)
+		case f.Type.Width == 64:
+			g.pf("%sstream.SerializeFixed64(&%s, %d, %d, %s, %s)\n", ind, name, f.Type.IntBits, f.Type.FracBits, lo, hi)
+		default:
+			// storage narrower than the library's int64 form: widen through a
+			// temp — lossless, the raw value fits I+F bits by construction
+			g.pf("%s{\n%s\tfixedValue := int64(%s)\n", ind, ind, name)
+			g.pf("%s\tstream.SerializeFixed64(&fixedValue, %d, %d, %s, %s)\n%s}\n", ind, f.Type.IntBits, f.Type.FracBits, lo, hi, ind)
+		}
 	case ir.TInt:
+		if f.Type.Width == 128 {
+			if f.HasIntRange {
+				// int128 is ALWAYS ranged (SPEC §4.3): offset from min —
+				// identical bytes to SerializeInt64 wherever the range fits
+				g.pf("%sstream.SerializeInt128(&%s, %s, %s)\n", ind, name,
+					g.render128(f.IntMinExpr, f.IntMin), g.render128(f.IntMaxExpr, f.IntMax))
+			} else {
+				// uint128 is the raw field: 128 bits, low 64-bit half first
+				g.pf("%sstream.SerializeUint128(&%s)\n", ind, name)
+			}
+			return
+		}
 		if f.HasIntRange {
 			lo, hi := g.rangeArgs(f)
 			switch intRangePath(f.IntMin, f.IntMax) {
@@ -445,7 +482,34 @@ func (g *gen) emitReadField(f *ir.Field, ind string) {
 
 func (g *gen) emitReadScalar(f *ir.Field, name, ind string) {
 	switch f.Type.Kind {
+	case ir.TFixed:
+		// the runtime validates the raw offset against the raw bounds and
+		// rejects — never clamps — surfacing ErrValueOutOfRange on a hostile
+		// stream
+		lo, hi := g.rangeArgs(f)
+		switch {
+		case f.Type.Width == 128:
+			g.pf("%sstream.SerializeFixed128(&%s, %d, %d, %s, %s)\n", ind, name, f.Type.IntBits, f.Type.FracBits, lo, hi)
+		case f.Type.Width == 64:
+			g.pf("%sstream.SerializeFixed64(&%s, %d, %d, %s, %s)\n", ind, name, f.Type.IntBits, f.Type.FracBits, lo, hi)
+		default:
+			// narrow back down on the member assignment — lossless, a decoded
+			// raw value is inside the raw bounds or the read already failed
+			g.pf("%s{\n%s\tfixedValue := int64(0)\n", ind, ind)
+			g.pf("%s\tstream.SerializeFixed64(&fixedValue, %d, %d, %s, %s)\n", ind, f.Type.IntBits, f.Type.FracBits, lo, hi)
+			g.pf("%s\t%s = %s(fixedValue)\n%s}\n", ind, name, goInt(f.Type.Width), ind)
+		}
 	case ir.TInt:
+		if f.Type.Width == 128 {
+			if f.HasIntRange {
+				// rejects a decoded offset beyond max - min (reject, never clamp)
+				g.pf("%sstream.SerializeInt128(&%s, %s, %s)\n", ind, name,
+					g.render128(f.IntMinExpr, f.IntMin), g.render128(f.IntMaxExpr, f.IntMax))
+			} else {
+				g.pf("%sstream.SerializeUint128(&%s)\n", ind, name)
+			}
+			return
+		}
 		if f.HasIntRange {
 			lo, hi := g.rangeArgs(f)
 			switch intRangePath(f.IntMin, f.IntMax) {

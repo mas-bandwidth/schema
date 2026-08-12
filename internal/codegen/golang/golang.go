@@ -33,13 +33,10 @@ import (
 // Go packages are order-free across files, so unlike C++ there is no topo
 // sort and no cross-file include graph to refuse.
 func Generate(u *ir.Unit) (map[string][]byte, error) {
-	// fixed(I, F), int128 and uint128 landed in the C++ serialize runtime
-	// first (runtime-first, SPEC §4.10); the serialize.go port does not carry
-	// the 128-bit/fixed surface yet, so this backend REFUSES the unit by name
-	// rather than miscompiling it silently. Lift when the port lands.
-	if fields := ir.Fixed128Fields(u); len(fields) > 0 {
-		return nil, fmt.Errorf("the Go backend does not support fixed(I, F), int128 or uint128 yet — serialize.go has no 128-bit/fixed-point surface (the port is in flight; C++ is the reference target). Offending fields: %s", strings.Join(fields, "; "))
-	}
+	// fixed(I, F), int128 and uint128: serialize.go carries the full surface
+	// (the two-qword Int128/Uint128 pair, SerializeInt128/SerializeUint128,
+	// SerializeFixed64/SerializeFixed128) — storage maps to the pair at 128
+	// bits, wire calls mirror the C++ macros.
 	out := map[string][]byte{}
 	home := protocolIdHome(u)
 	msgOwner := ir.MessageOwner(u)
@@ -353,9 +350,48 @@ func (g *gen) defaultValue(f *ir.Field) string {
 		return f.Type.Name + f.DefVariant
 	case f.Type.Kind == ir.TFloat32 || f.Type.Kind == ir.TFloat64:
 		return formatFloat(f.DefFloat)
+	case f.Type.Kind == ir.TInt && f.Type.Width == 128:
+		// 128-bit defaults compose through the pair — a bare decimal literal
+		// past 64 bits is not a legal Go constant of any integer type
+		if f.Type.Signed {
+			return g.render128(f.DefExpr, f.DefInt)
+		}
+		return g.renderU128(f.DefExpr, f.DefInt)
 	default:
 		return g.renderInt(f.DefExpr, f.DefInt)
 	}
+}
+
+// render128 renders a signed 128-bit constant (a bound or a default) as Go
+// source. A value inside int64 rides the sign-extending From64 constructor
+// (symbolically where the expression is renderable, like any other integer);
+// anything wider composes its two's-complement 64-bit lanes as a pair
+// literal — exact for every value, matching the C++ render128's composed
+// halves.
+func (g *gen) render128(e ast.Expr, folded *big.Int) string {
+	i64lo := new(big.Int).Neg(new(big.Int).Lsh(big.NewInt(1), 63))
+	i64hi := new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), 63), big.NewInt(1))
+	if folded.Cmp(i64lo) >= 0 && folded.Cmp(i64hi) <= 0 {
+		return "serialize.Int128From64(" + g.renderInt(e, folded) + ")"
+	}
+	u := new(big.Int).Set(folded)
+	if u.Sign() < 0 {
+		u.Add(u, new(big.Int).Lsh(big.NewInt(1), 128))
+	}
+	hi := new(big.Int).Rsh(u, 64)
+	lo := new(big.Int).And(u, maxUint64)
+	return fmt.Sprintf("serialize.Int128{Lo: 0x%x, Hi: 0x%x}", lo, hi)
+}
+
+// renderU128 is render128 for the unsigned domain: values inside uint64 ride
+// the zero-extending From64 constructor, wider values compose the lanes.
+func (g *gen) renderU128(e ast.Expr, folded *big.Int) string {
+	if folded.Cmp(maxUint64) <= 0 {
+		return "serialize.Uint128From64(" + g.renderInt(e, folded) + ")"
+	}
+	hi := new(big.Int).Rsh(folded, 64)
+	lo := new(big.Int).And(folded, maxUint64)
+	return fmt.Sprintf("serialize.Uint128{Lo: 0x%x, Hi: 0x%x}", lo, hi)
 }
 
 // view selects which storage a field emission derives (SPEC §4.8).
@@ -542,7 +578,25 @@ func (g *gen) fieldComment(f *ir.Field) string {
 func (g *gen) goFieldType(t ir.FieldType) string {
 	switch t.Kind {
 	case ir.TInt:
+		if t.Width == 128 {
+			// serialize.go's own two-qword pair (int128.go): Lo lane first,
+			// matching the little-endian layout and the wire order
+			g.needsSerialize = true
+			if t.Signed {
+				return "serialize.Int128"
+			}
+			return "serialize.Uint128"
+		}
 		return goInt2(t.Signed, t.Width)
+	case ir.TFixed:
+		// raw scaled integer in signed storage of exactly I+F bits —
+		// serialize's own fixed storage convention (STANDARD.md, fixed);
+		// the wide form stores the pair
+		if t.Width == 128 {
+			g.needsSerialize = true
+			return "serialize.Int128"
+		}
+		return goInt(t.Width)
 	case ir.TBits:
 		if t.Width <= 32 {
 			return "uint32"
