@@ -114,8 +114,9 @@ func TestDiagnostics(t *testing.T) {
 			src: "package t\ntype T { x fixed(8, 8) [min = -300, max = 300] }\n"},
 		{name: "fixed with resolution", want: "resolution applies to float",
 			src: "package t\ntype T { x fixed(16, 16) [min = 0, max = 1, resolution = 0.1] }\n"},
-		{name: "fixed with a specified default", want: "defaults in v1 cover",
-			src: "package t\ntype T { x fixed(16, 16) [min = 0, max = 1] = 1 }\n"},
+		// fixed defaults are LEGAL since 2026-08-12 (whole units, exact) — the
+		// old rejection case lives on as the good corner below; what stays
+		// illegal is inexactness and range violation (cases at the bottom).
 		{name: "bare int128", want: "int128 requires",
 			src: "package t\ntype T { x int128 }\n"},
 		{name: "uint128 with a range", want: "not valid on uint128",
@@ -259,6 +260,8 @@ func TestGoodCornersStillCompile(t *testing.T) {
 	}{
 		{name: "nested if with cond in the same branch",
 			src: "package t\ntype T {\n    a bool\n    if a {\n        b bool\n        if b { x uint8 }\n    }\n}\n"},
+		{name: "fixed default in whole units, exactly representable (the reopened door)",
+			src: "package t\ntype Q { w fixed(2, 30) [min = -1, max = 1] = 1.0 \n x fixed(16, 16) [min = 0, max = 100] = 0.5 \n y fixed(48, 16) [min = -10, max = 10] = 3 }\n"},
 		{name: "field named flags at block scope",
 			src: "package t\nflags F { A }\ntype T { flags F }\n"},
 		{name: "message as a field type",

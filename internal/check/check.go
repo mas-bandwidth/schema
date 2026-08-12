@@ -963,6 +963,35 @@ func (c *checker) resolveDefault(f *ast.Field, out *ir.Field) {
 		}
 		out.HasDefault = true
 		out.DefFloat = v
+	case ir.TFixed:
+		// the door reopened 2026-08-12: the quaternion identity (w = 1.0) is
+		// the real case. A fixed default is declared in WHOLE UNITS — the same
+		// domain as the [min, max] bounds — and must scale EXACTLY: v * 2^F an
+		// integer, so no rounding rule is ever involved in a default.
+		v, ok := c.evalFloat(f.Default)
+		if !ok {
+			return
+		}
+		scaled := new(big.Float).SetPrec(256).SetFloat64(v)
+		scaled.SetMantExp(scaled, out.Type.FracBits) // scaled = v * 2^F (SetMantExp uses its mant argument as-is)
+		raw, acc := scaled.Int(nil)
+		if acc != big.Exact {
+			c.errf(f.Default.ExprPos(), "field %s: default %g is not exactly representable in Q%d.%d — a fixed default must scale to an integer with no rounding (units × 2^%d)", f.Name, v, out.Type.IntBits, out.Type.FracBits, out.Type.FracBits)
+			return
+		}
+		if out.HasIntRange {
+			minUnits := new(big.Float).SetInt(out.IntMin)
+			maxUnits := new(big.Float).SetInt(out.IntMax)
+			vf := new(big.Float).SetFloat64(v)
+			if vf.Cmp(minUnits) < 0 || vf.Cmp(maxUnits) > 0 {
+				c.errf(f.Default.ExprPos(), "field %s: default %g is outside its range [%s, %s] (whole units)", f.Name, v, out.IntMin, out.IntMax)
+				return
+			}
+		}
+		out.HasDefault = true
+		out.DefInt = raw    // the RAW scaled integer — what storage initializes to
+		out.DefFloat = v    // the whole-unit value, for comments
+		out.DefExpr = nil   // never render the units expression as the raw initializer
 	case ir.TNamed:
 		if en, isEnum := out.Type.Ref.(*ir.Enum); isEnum {
 			id, ok := f.Default.(*ast.IdentExpr)

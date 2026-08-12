@@ -1028,9 +1028,13 @@ All compile errors with positions:
   int64 (where the runtime's compile-time bound parameters live); `int128` requires
   `[min = A, max = B]` (bare `int128` is a compile error — serialize has no raw signed
   128-bit operation); `uint128` refuses `min`/`max` (ranged 128-bit is `int128`);
-  specified defaults cover `int128`/`uint128` (fit-checked like any integer) but NOT
-  `fixed` — a raw-scaled default invites unit confusion, and the door reopens with a
-  real case.
+  specified defaults cover `int128`/`uint128` (fit-checked like any integer) and,
+  since 2026-08-12, `fixed` — the door reopened with its real case, the quaternion
+  identity (`w fixed(2, 30) [min = -1, max = 1] = 1.0`). A fixed default is declared
+  in WHOLE UNITS (the same domain as the bounds, so no raw/units confusion is
+  possible) and must be EXACTLY representable: value × 2^F an integer, no rounding
+  rule involved — `1.0` and `0.5` are legal in Q2.30, `0.1` is a compile error
+  naming the constraint. Storage initializes to the raw scaled integer.
 - **A range that does not fit its declared storage:** `int8 [min = 0, max = 1000]` is a
   compile error — the range determines the wire, the type name determines the storage, and a
   legal wire value the storage truncates would be silent corruption that passes read
