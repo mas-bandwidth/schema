@@ -313,6 +313,21 @@ func TestGoodCornersStillCompile(t *testing.T) {
 				"A.schema": "package t\nmessage Ping { x uint8 }\n",
 				"B.schema": "package t\nmessage Pong { y uint8 }\n",
 			}},
+		// consts are order-free across files (SPEC §4.2) — including the
+		// classification of a bare referrer against an explicitly
+		// float-typed referent. Both name orders must compile: resolution
+		// runs in NAME order, so these two cases put the referent on either
+		// side of the referrer.
+		{name: "bare const referencing a float-typed const that resolves later",
+			src: "package t\nconst Aaa = Mid + 1\nconst Mid float64 = 3\n"},
+		{name: "bare const referencing a float-typed const that resolves earlier",
+			src: "package t\nconst Zzz = Mid + 1\nconst Mid float64 = 3\n"},
+		{name: "the same, across files in both directions",
+			srcs: map[string]string{
+				"A_use.schema":   "package t\nconst Alpha = Zeta + 1\n",
+				"Z_decl.schema":  "package t\nconst Zeta float64 = 3\n",
+				"M_other.schema": "package t\nconst Mu = Zeta * 2\n",
+			}},
 		// the game's exact file order: Objects.schema sorts BEFORE
 		// Types.schema, so at the object's resolution the composite is a
 		// bare shell — rule 2b classification must wait for the full

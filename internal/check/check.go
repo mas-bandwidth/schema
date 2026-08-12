@@ -278,6 +278,18 @@ func (c *checker) exprKindV(e ast.Expr, visiting map[string]bool) int {
 	case *ast.IdentExpr:
 		if ce := c.constant[e.Name]; ce != nil && !visiting[e.Name] {
 			visiting[e.Name] = true
+			// An explicitly float-typed constant is float in EVERY resolution
+			// state — the declared type is right there in the AST. Reading it
+			// first is what keeps classification order-free (SPEC §4.2: a
+			// const "may reference any other const in the unit, order-free
+			// across files"). Without it the resolved path honoured the
+			// declared type while the shell path re-walked only the
+			// expression, so `const Mid float64 = 3` classified as float or
+			// int purely by which name sorted first — and a bare referrer
+			// then took the integer path and was spuriously REJECTED.
+			if ce.decl.Type == "float32" || ce.decl.Type == "float64" {
+				return kindFloat
+			}
 			if ce.state == 2 && ce.out.IsFloat {
 				return kindFloat
 			}
