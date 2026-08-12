@@ -66,18 +66,22 @@ func (g *gen) emitObjectFunctions(d *ir.Object) {
 	// (SPEC §4.8's artifact table — the hand-written Quantize(), generated).
 	// Top-level members of the view classes never need the CS0542 escape
 	// (view class names carry an underscore ir.GoExportName cannot produce).
-	inName := d.Name + "Data_Interpolate"
-	g.owner = ""
-	g.sf("public static void Quantize%s(%s input, %s output)\n{\n", d.Name, inName, shName)
-	for _, f := range interp {
-		g.emitQuantizeField(f, "    ")
+	// NOT emitted when every [interpolate] field is already wire-domain —
+	// fixed components are their own quantization (SPEC §4.8).
+	if ir.ObjectNeedsQuantize(d) {
+		inName := d.Name + "Data_Interpolate"
+		g.owner = ""
+		g.sf("public static void Quantize%s(%s input, %s output)\n{\n", d.Name, inName, shName)
+		for _, f := range interp {
+			g.emitQuantizeField(f, "    ")
+		}
+		g.sf("}\n\n")
+		g.sf("public static void Unquantize%s(%s input, %s output)\n{\n", d.Name, shName, inName)
+		for _, f := range interp {
+			g.emitUnquantizeField(f, "    ")
+		}
+		g.sf("}\n\n")
 	}
-	g.sf("}\n\n")
-	g.sf("public static void Unquantize%s(%s input, %s output)\n{\n", d.Name, shName, inName)
-	for _, f := range interp {
-		g.emitUnquantizeField(f, "    ")
-	}
-	g.sf("}\n\n")
 }
 
 // emitViewWriteField emits one field of a view wire function. Quantized

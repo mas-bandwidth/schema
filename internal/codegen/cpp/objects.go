@@ -85,6 +85,15 @@ func (g *gen) emitObjectWire(d *ir.Object) {
 // core_serialize world (the game's snapshot path) must be able to include it
 // without the wire header's serialize.h.
 func (g *gen) emitObjectQuantize(d *ir.Object) {
+	if !ir.ObjectNeedsQuantize(d) {
+		// every [interpolate] field rides the wire domain verbatim — fixed
+		// components are their own quantization (SPEC §4.8) — so the pair
+		// would be a pure member copy and is NOT emitted.
+		g.pf("// Quantize%s/Unquantize%s are not emitted: every [interpolate] field\n", d.Name, d.Name)
+		g.pf("// is already wire-domain (fixed components are their own quantization,\n")
+		g.pf("// SPEC §4.8) — Interpolate and Shallow are the same values.\n\n")
+		return
+	}
 	var interp []*ir.Field
 	for _, f := range d.Fields {
 		if f.Interpolate {

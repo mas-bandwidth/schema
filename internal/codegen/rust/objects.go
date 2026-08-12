@@ -58,19 +58,23 @@ func (g *gen) emitObjectFunctions(d *ir.Object) {
 	g.pf("    Ok(())\n}\n\n")
 
 	// ---- quantize / unquantize: the Interpolate <-> Shallow mapping pair
-	// (SPEC §4.8's artifact table — the hand-written Quantize(), generated)
-	inName := d.Name + "Data_Interpolate"
-	objSnake := ir.RustSnake(d.Name)
-	g.pf("pub fn quantize_%s(input: &%s, output: &mut %s) {\n", objSnake, inName, shName)
-	for _, f := range interp {
-		g.emitQuantizeField(f, "    ")
+	// (SPEC §4.8's artifact table — the hand-written Quantize(), generated).
+	// NOT emitted when every [interpolate] field is already wire-domain —
+	// fixed components are their own quantization (SPEC §4.8).
+	if ir.ObjectNeedsQuantize(d) {
+		inName := d.Name + "Data_Interpolate"
+		objSnake := ir.RustSnake(d.Name)
+		g.pf("pub fn quantize_%s(input: &%s, output: &mut %s) {\n", objSnake, inName, shName)
+		for _, f := range interp {
+			g.emitQuantizeField(f, "    ")
+		}
+		g.pf("}\n\n")
+		g.pf("pub fn unquantize_%s(input: &%s, output: &mut %s) {\n", objSnake, shName, inName)
+		for _, f := range interp {
+			g.emitUnquantizeField(f, "    ")
+		}
+		g.pf("}\n\n")
 	}
-	g.pf("}\n\n")
-	g.pf("pub fn unquantize_%s(input: &%s, output: &mut %s) {\n", objSnake, shName, inName)
-	for _, f := range interp {
-		g.emitUnquantizeField(f, "    ")
-	}
-	g.pf("}\n\n")
 }
 
 // emitViewWriteField emits one field of a view wire function.

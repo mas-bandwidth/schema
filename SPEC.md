@@ -1269,6 +1269,18 @@ bare storage type's encoding.
    the range; read rejects out-of-range; unquantize maps `q → q / K`. The quantized twin's
    storage derives from the range. All components are sent — no smallest-three; the delta
    pass owns cleverer encodings.
+**Fixed components dissolve quantization (2026-08-12, the fixed-point path).**
+When an object's [interpolate] fields are all already wire-domain — fixed-
+component composites (a `fixed(I, F)` component IS its own quantization:
+storage and wire share one integer domain, ranged by the component's declared
+bounds), plain integers, or int-composite types like a handle pair — the
+QuantizeX/UnquantizeX pair would be a pure member copy, and the backends do
+NOT emit it: Interpolate and Shallow are the same values. This is the landing
+Glenn described the day the format was set: "that quantization just naturally
+gets replaced with fixed point." [quantize = K] on a fixed-component composite
+remains an error (rule 2 requires float components — there is nothing left to
+scale).
+
 3. **No special composite cases in v1 — tags are inert (§4.2, Type tags).** Rule 2 is
    the whole of composite quantization: every composite quantizes per-component with an
    explicit `max` — a rotation field states its bound like anything else

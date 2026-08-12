@@ -53,3 +53,28 @@ message LudicrousState {
         target_id uint128
     }
 }
+
+// The fixed-point object family — the "quantization dissolves" case (SPEC
+// §4.8): every [interpolate] field is a fixed-component composite or plain
+// wire-domain scalar, so NO Quantize/Unquantize pair is emitted — the
+// Interpolate and Shallow views hold the same values, and the wire is the
+// ranged fixed encoding from the component bounds.
+type FixedVec [vec3] {
+    x fixed(48, 16) [min = -100000, max = 100000]
+    y fixed(48, 16) [min = -100000, max = 100000]
+    z fixed(48, 16) [min = -100000, max = 100000]
+}
+
+type FixedQuat [quat4] {
+    x fixed(2, 30) [min = -1, max = 1]
+    y fixed(2, 30) [min = -1, max = 1]
+    z fixed(2, 30) [min = -1, max = 1]
+    w fixed(2, 30) [min = -1, max = 1]
+}
+
+object Body {
+    position FixedVec  [interpolate]
+    rotation FixedQuat [interpolate]
+    velocity FixedVec  [interpolate]
+    spin     float64   [local]
+}

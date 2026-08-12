@@ -50,18 +50,22 @@ func (g *gen) emitObjectFunctions(d *ir.Object) {
 	g.pf("\treturn stream.Err()\n}\n\n")
 
 	// ---- Quantize / Unquantize: the Interpolate <-> Shallow mapping pair
-	// (SPEC §4.8's artifact table — the hand-written Quantize(), generated)
-	inName := d.Name + "Data_Interpolate"
-	g.pf("func Quantize%s(input *%s, output *%s) {\n", d.Name, inName, shName)
-	for _, f := range interp {
-		g.emitQuantizeField(f, "\t")
+	// (SPEC §4.8's artifact table — the hand-written Quantize(), generated).
+	// NOT emitted when every [interpolate] field is already wire-domain —
+	// fixed components are their own quantization (SPEC §4.8).
+	if ir.ObjectNeedsQuantize(d) {
+		inName := d.Name + "Data_Interpolate"
+		g.pf("func Quantize%s(input *%s, output *%s) {\n", d.Name, inName, shName)
+		for _, f := range interp {
+			g.emitQuantizeField(f, "\t")
+		}
+		g.pf("}\n\n")
+		g.pf("func Unquantize%s(input *%s, output *%s) {\n", d.Name, shName, inName)
+		for _, f := range interp {
+			g.emitUnquantizeField(f, "\t")
+		}
+		g.pf("}\n\n")
 	}
-	g.pf("}\n\n")
-	g.pf("func Unquantize%s(input *%s, output *%s) {\n", d.Name, shName, inName)
-	for _, f := range interp {
-		g.emitUnquantizeField(f, "\t")
-	}
-	g.pf("}\n\n")
 }
 
 // emitViewWriteField emits one field of a view wire function.

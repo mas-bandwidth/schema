@@ -322,3 +322,17 @@ func StorageBitsFor(max int64) int {
 		return 64
 	}
 }
+
+// ObjectNeedsQuantize reports whether an object's Quantize/Unquantize pair
+// does any work: true when some [interpolate] field quantizes a composite
+// (HasQuantize) or projects a float (HasFloatRange). When false the pair
+// would be a pure member copy — fixed-point components are their own
+// quantization (SPEC §4.8) — and the backends do not emit it at all.
+func ObjectNeedsQuantize(d *Object) bool {
+	for _, f := range d.Fields {
+		if f.Interpolate && (f.HasQuantize || f.HasFloatRange) {
+			return true
+		}
+	}
+	return false
+}
