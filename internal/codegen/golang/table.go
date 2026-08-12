@@ -264,10 +264,16 @@ func tableDefaultExpr(f *ir.Field) string {
 }
 
 func (g *tableGen) emitTableWrite(st *ir.Struct) {
-	g.pf("// TableWrite%s appends value's table-wire encoding and returns the buffer.\n", st.Name)
+	g.pf("// TableWrite%s returns value's table-wire encoding in a fresh buffer.\n", st.Name)
 	g.pf("func TableWrite%s(value *%s) []byte {\n", st.Name, st.Name)
-	g.pf("\tw := &tableWriter{}\n")
-	g.pf("\ttableWrite%s(w, value)\n", st.Name)
+	g.pf("\treturn AppendTable%s(nil, value)\n}\n\n", st.Name)
+
+	g.pf("// AppendTable%s appends value's table-wire encoding to dst and returns the\n", st.Name)
+	g.pf("// extended buffer — the zero-allocation write path: hand it a buffer you\n")
+	g.pf("// reuse (dst[:0]) and steady-state writes never touch the heap.\n")
+	g.pf("func AppendTable%s(dst []byte, value *%s) []byte {\n", st.Name, st.Name)
+	g.pf("\tw := tableWriter{buf: dst}\n")
+	g.pf("\ttableWrite%s(&w, value)\n", st.Name)
 	g.pf("\treturn w.buf\n}\n\n")
 
 	g.pf("func tableWrite%s(w *tableWriter, value *%s) {\n", st.Name, st.Name)
@@ -771,6 +777,62 @@ func (g *tableGen) emitTableGet(st *ir.Struct) {
 	g.pf("\treturn nil, false\n}\n\n")
 }
 
+// emitTableGetValue emits TableGetValueX — the UNBOXED twin of TableGetX.
+// Scalar fields come back in a TableValue (no interface, no allocation);
+// strings and byte blocks come back as their used bytes without copying.
+// Aggregates are not scalars and return (TableValue{}, false).
+func (g *tableGen) emitTableGetValue(st *ir.Struct) {
+	g.pf("// TableGetValue%s reads the named SCALAR field without boxing — the\n", st.Name)
+	g.pf("// zero-allocation twin of TableGet%s. Strings and byte blocks return\n", st.Name)
+	g.pf("// their used bytes (no copy). Arrays and nested tables are not scalars:\n")
+	g.pf("// (TableValue{}, false) — use TableGet%s for those.\n", st.Name)
+	g.pf("func TableGetValue%s(value *%s, field string) (TableValue, bool) {\n", st.Name, st.Name)
+	scalar := 0
+	for _, f := range st.Fields {
+		if f.Array != ir.ArrayNone {
+			continue
+		}
+		if _, isStruct := f.Type.Ref.(*ir.Struct); f.Type.Kind == ir.TNamed && isStruct {
+			continue
+		}
+		scalar++
+	}
+	if scalar > 0 {
+		g.pf("\tswitch field {\n")
+		for _, f := range st.Fields {
+			if f.Array != ir.ArrayNone {
+				continue
+			}
+			name := ir.GoExportName(f.Name)
+			switch {
+			case f.Type.Kind == ir.TString, f.Type.Kind == ir.TBytes:
+				g.pf("\tcase %q:\n", f.Name)
+				g.pf("\t\treturn tableValueBytes(value.%s[:value.%sLength]), true\n", name, name)
+			case f.Type.Kind == ir.TBool:
+				g.pf("\tcase %q:\n", f.Name)
+				g.pf("\t\treturn tableValueBool(value.%s), true\n", name)
+			case f.Type.Kind == ir.TFloat32, f.Type.Kind == ir.TFloat64:
+				g.pf("\tcase %q:\n", f.Name)
+				g.pf("\t\treturn tableValueFloat(float64(value.%s)), true\n", name)
+			case f.Type.Kind == ir.TInt && f.Type.Signed:
+				g.pf("\tcase %q:\n", f.Name)
+				g.pf("\t\treturn tableValueInt(int64(value.%s)), true\n", name)
+			case f.Type.Kind == ir.TInt, f.Type.Kind == ir.TBits:
+				g.pf("\tcase %q:\n", f.Name)
+				g.pf("\t\treturn tableValueUint(uint64(value.%s)), true\n", name)
+			default: // TNamed
+				switch f.Type.Ref.(type) {
+				case *ir.Enum, *ir.Flags:
+					g.pf("\tcase %q:\n", f.Name)
+					g.pf("\t\treturn tableValueUint(uint64(value.%s)), true\n", name)
+				}
+			}
+		}
+		g.pf("\t}\n")
+	}
+	g.pf("\treturn TableValue{}, false\n}\n\n")
+}
+
 // tableSettable reports whether TableSetX carries a field: the editor write
 // path is scalars, enums, flags, bools and strings only.
 func tableSettable(f *ir.Field) bool {
@@ -923,7 +985,10 @@ func tableRuntime(pkg string) string {
 
 package ` + pkg + `
 
-import "encoding/binary"
+import (
+	"encoding/binary"
+	"math"
+)
 
 // TableReport counts the permissive read contract's events: how far the data
 // diverged from this build's schema, without anything crashing or rejecting.
@@ -966,6 +1031,49 @@ type TableTypeInfo struct {
 	Name   string // schema type name
 	Fields []TableFieldInfo
 }
+
+// TableValue is the UNBOXED field-accessor result: one tagged struct carrying
+// every scalar shape the table wire has, so reading a field through the
+// reflection surface never allocates (TableGetX returns any, which boxes).
+// Aggregates — fixed/counted arrays and nested tables — are not scalars;
+// they stay on TableGetX, which returns pointers/slices without copying.
+type TableValueKind uint8
+
+const (
+	TableValueNone  TableValueKind = iota
+	TableValueBool                 // Bool()
+	TableValueInt                  // Int() — signed integers
+	TableValueUint                 // Uint() — unsigned, bits, enums, flags
+	TableValueFloat                // Float()
+	TableValueBytes                // Bytes() — strings and byte blocks: the USED bytes, no copy
+)
+
+type TableValue struct {
+	Kind  TableValueKind
+	bits  uint64
+	bytes []byte
+}
+
+func (v TableValue) Bool() bool     { return v.bits != 0 }
+func (v TableValue) Int() int64     { return int64(v.bits) }
+func (v TableValue) Uint() uint64   { return v.bits }
+func (v TableValue) Float() float64 { return math.Float64frombits(v.bits) }
+func (v TableValue) Bytes() []byte  { return v.bytes }
+
+// String copies the used bytes into a string — convenience, ALLOCATES.
+// Zero-allocation consumers read Bytes() instead.
+func (v TableValue) String() string { return string(v.bytes) }
+
+func tableValueBool(b bool) TableValue {
+	if b {
+		return TableValue{Kind: TableValueBool, bits: 1}
+	}
+	return TableValue{Kind: TableValueBool}
+}
+func tableValueInt(v int64) TableValue     { return TableValue{Kind: TableValueInt, bits: uint64(v)} }
+func tableValueUint(v uint64) TableValue   { return TableValue{Kind: TableValueUint, bits: v} }
+func tableValueFloat(v float64) TableValue { return TableValue{Kind: TableValueFloat, bits: math.Float64bits(v)} }
+func tableValueBytes(b []byte) TableValue  { return TableValue{Kind: TableValueBytes, bytes: b} }
 
 type tableWriter struct{ buf []byte }
 
@@ -1093,6 +1201,7 @@ func GenerateTable(u *ir.Unit) (map[string][]byte, error) {
 			for _, st := range members {
 				g.emitTableDescriptor(st)
 				g.emitTableGet(st)
+				g.emitTableGetValue(st)
 				g.emitTableSet(st)
 			}
 		} else {

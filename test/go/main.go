@@ -13,6 +13,7 @@ import (
 	"bytes"
 	"fmt"
 	"os"
+	"testing"
 
 	"example"
 
@@ -794,6 +795,61 @@ func main() {
 		rep4 := example.TableReport{}
 		check(example.TableReadTestData(wire, &out4, &rep4), "table read with out-of-range value")
 		check(rep4.Clamped == 1 && out4.A == 100, "out-of-range clamps to the declared max")
+	}
+
+	// ---- the zero-allocation surfaces: AppendTableX and TableGetValueX ----
+	{
+		in := example.RigidBody{}
+		in.Position = example.Vec3{X: 1.5, Y: -2.5, Z: 3.25}
+		in.Orientation = example.Quat{X: 0.1, Y: 0.2, Z: 0.3, W: 0.9}
+		in.LinearVelocity = example.Vec3{X: 10.0, Y: 20.0, Z: -3.0}
+
+		// AppendTableX(nil, v) IS TableWriteX(v), byte for byte
+		boxed := example.TableWriteRigidBody(&in)
+		check(bytes.Equal(example.AppendTableRigidBody(nil, &in), boxed),
+			"AppendTable(nil) equals TableWrite byte-for-byte")
+
+		// buffer reuse: two writes into one buffer, each region intact
+		buf := make([]byte, 0, 256)
+		buf = example.AppendTableRigidBody(buf, &in)
+		first := len(buf)
+		buf = example.AppendTableRigidBody(buf, &in)
+		check(len(buf) == 2*first, "two appends stack in one buffer")
+		check(bytes.Equal(buf[:first], boxed) && bytes.Equal(buf[first:], boxed),
+			"both appended regions carry the exact wire")
+
+		// steady state writes never touch the heap
+		allocs := testing.AllocsPerRun(100, func() {
+			buf = example.AppendTableRigidBody(buf[:0], &in)
+		})
+		check(allocs == 0, "AppendTable steady-state is zero-allocation")
+
+		// TableGetValueX agrees with TableGetX on every scalar shape
+		v, ok := example.TableGetValueRigidBody(&in, "at_rest")
+		check(ok && v.Kind == example.TableValueBool && !v.Bool(), "unboxed bool reads")
+		td := testDataInstance()
+		v, ok = example.TableGetValueTestData(&td, "double_value")
+		check(ok && v.Kind == example.TableValueFloat && v.Float() == 1.0/3.0, "unboxed float reads")
+		v, ok = example.TableGetValueTestData(&td, "int64_full")
+		check(ok && v.Kind == example.TableValueInt && v.Int() == -9223372036854775808, "unboxed int reads")
+		v, ok = example.TableGetValueTestData(&td, "uint64_value")
+		check(ok && v.Kind == example.TableValueUint && v.Uint() == 18446744073709551615, "unboxed uint reads")
+		v, ok = example.TableGetValueTestData(&td, "text")
+		check(ok && v.Kind == example.TableValueBytes && string(v.Bytes()) == "the quick brown fox",
+			"unboxed string reads its used bytes")
+
+		// aggregates are not scalars: refuse, like the doc says
+		_, ok = example.TableGetValueRigidBody(&in, "position")
+		check(!ok, "nested tables refuse the unboxed path")
+		_, ok = example.TableGetValueRigidBody(&in, "no_such_field")
+		check(!ok, "unknown fields refuse the unboxed path")
+
+		// and the reads never touch the heap either (the boxed path does)
+		allocs = testing.AllocsPerRun(100, func() {
+			v, _ = example.TableGetValueTestData(&td, "double_value")
+			v, _ = example.TableGetValueTestData(&td, "text")
+		})
+		check(allocs == 0, "TableGetValue is zero-allocation")
 	}
 
 	if failed {

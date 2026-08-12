@@ -3,7 +3,10 @@
 
 package example
 
-import "encoding/binary"
+import (
+	"encoding/binary"
+	"math"
+)
 
 // TableReport counts the permissive read contract's events: how far the data
 // diverged from this build's schema, without anything crashing or rejecting.
@@ -46,6 +49,51 @@ type TableTypeInfo struct {
 	Name   string // schema type name
 	Fields []TableFieldInfo
 }
+
+// TableValue is the UNBOXED field-accessor result: one tagged struct carrying
+// every scalar shape the table wire has, so reading a field through the
+// reflection surface never allocates (TableGetX returns any, which boxes).
+// Aggregates — fixed/counted arrays and nested tables — are not scalars;
+// they stay on TableGetX, which returns pointers/slices without copying.
+type TableValueKind uint8
+
+const (
+	TableValueNone  TableValueKind = iota
+	TableValueBool                 // Bool()
+	TableValueInt                  // Int() — signed integers
+	TableValueUint                 // Uint() — unsigned, bits, enums, flags
+	TableValueFloat                // Float()
+	TableValueBytes                // Bytes() — strings and byte blocks: the USED bytes, no copy
+)
+
+type TableValue struct {
+	Kind  TableValueKind
+	bits  uint64
+	bytes []byte
+}
+
+func (v TableValue) Bool() bool     { return v.bits != 0 }
+func (v TableValue) Int() int64     { return int64(v.bits) }
+func (v TableValue) Uint() uint64   { return v.bits }
+func (v TableValue) Float() float64 { return math.Float64frombits(v.bits) }
+func (v TableValue) Bytes() []byte  { return v.bytes }
+
+// String copies the used bytes into a string — convenience, ALLOCATES.
+// Zero-allocation consumers read Bytes() instead.
+func (v TableValue) String() string { return string(v.bytes) }
+
+func tableValueBool(b bool) TableValue {
+	if b {
+		return TableValue{Kind: TableValueBool, bits: 1}
+	}
+	return TableValue{Kind: TableValueBool}
+}
+func tableValueInt(v int64) TableValue   { return TableValue{Kind: TableValueInt, bits: uint64(v)} }
+func tableValueUint(v uint64) TableValue { return TableValue{Kind: TableValueUint, bits: v} }
+func tableValueFloat(v float64) TableValue {
+	return TableValue{Kind: TableValueFloat, bits: math.Float64bits(v)}
+}
+func tableValueBytes(b []byte) TableValue { return TableValue{Kind: TableValueBytes, bytes: b} }
 
 type tableWriter struct{ buf []byte }
 

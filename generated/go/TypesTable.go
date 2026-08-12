@@ -6,10 +6,17 @@ package example
 
 import "math"
 
-// TableWriteVec3 appends value's table-wire encoding and returns the buffer.
+// TableWriteVec3 returns value's table-wire encoding in a fresh buffer.
 func TableWriteVec3(value *Vec3) []byte {
-	w := &tableWriter{}
-	tableWriteVec3(w, value)
+	return AppendTableVec3(nil, value)
+}
+
+// AppendTableVec3 appends value's table-wire encoding to dst and returns the
+// extended buffer — the zero-allocation write path: hand it a buffer you
+// reuse (dst[:0]) and steady-state writes never touch the heap.
+func AppendTableVec3(dst []byte, value *Vec3) []byte {
+	w := tableWriter{buf: dst}
+	tableWriteVec3(&w, value)
 	return w.buf
 }
 
@@ -110,10 +117,17 @@ func tableReadVec3(r *tableReader, value *Vec3) bool {
 	}
 }
 
-// TableWriteQuat appends value's table-wire encoding and returns the buffer.
+// TableWriteQuat returns value's table-wire encoding in a fresh buffer.
 func TableWriteQuat(value *Quat) []byte {
-	w := &tableWriter{}
-	tableWriteQuat(w, value)
+	return AppendTableQuat(nil, value)
+}
+
+// AppendTableQuat appends value's table-wire encoding to dst and returns the
+// extended buffer — the zero-allocation write path: hand it a buffer you
+// reuse (dst[:0]) and steady-state writes never touch the heap.
+func AppendTableQuat(dst []byte, value *Quat) []byte {
+	w := tableWriter{buf: dst}
+	tableWriteQuat(&w, value)
 	return w.buf
 }
 
@@ -233,10 +247,17 @@ func tableReadQuat(r *tableReader, value *Quat) bool {
 	}
 }
 
-// TableWriteRigidBody appends value's table-wire encoding and returns the buffer.
+// TableWriteRigidBody returns value's table-wire encoding in a fresh buffer.
 func TableWriteRigidBody(value *RigidBody) []byte {
-	w := &tableWriter{}
-	tableWriteRigidBody(w, value)
+	return AppendTableRigidBody(nil, value)
+}
+
+// AppendTableRigidBody appends value's table-wire encoding to dst and returns the
+// extended buffer — the zero-allocation write path: hand it a buffer you
+// reuse (dst[:0]) and steady-state writes never touch the heap.
+func AppendTableRigidBody(dst []byte, value *RigidBody) []byte {
+	w := tableWriter{buf: dst}
+	tableWriteRigidBody(&w, value)
 	return w.buf
 }
 
@@ -483,6 +504,22 @@ func TableGetVec3(value *Vec3, field string) (any, bool) {
 	return nil, false
 }
 
+// TableGetValueVec3 reads the named SCALAR field without boxing — the
+// zero-allocation twin of TableGetVec3. Strings and byte blocks return
+// their used bytes (no copy). Arrays and nested tables are not scalars:
+// (TableValue{}, false) — use TableGetVec3 for those.
+func TableGetValueVec3(value *Vec3, field string) (TableValue, bool) {
+	switch field {
+	case "x":
+		return tableValueFloat(float64(value.X)), true
+	case "y":
+		return tableValueFloat(float64(value.Y)), true
+	case "z":
+		return tableValueFloat(float64(value.Z)), true
+	}
+	return TableValue{}, false
+}
+
 // TableSetVec3 writes the named field — the editor write path: scalars,
 // enums, flags, bools and strings only. Numerics accept the field's own Go
 // type plus int64/uint64/float64; out-of-range values CLAMP exactly as the
@@ -569,6 +606,24 @@ func TableGetQuat(value *Quat, field string) (any, bool) {
 		return float64(value.W), true
 	}
 	return nil, false
+}
+
+// TableGetValueQuat reads the named SCALAR field without boxing — the
+// zero-allocation twin of TableGetQuat. Strings and byte blocks return
+// their used bytes (no copy). Arrays and nested tables are not scalars:
+// (TableValue{}, false) — use TableGetQuat for those.
+func TableGetValueQuat(value *Quat, field string) (TableValue, bool) {
+	switch field {
+	case "x":
+		return tableValueFloat(float64(value.X)), true
+	case "y":
+		return tableValueFloat(float64(value.Y)), true
+	case "z":
+		return tableValueFloat(float64(value.Z)), true
+	case "w":
+		return tableValueFloat(float64(value.W)), true
+	}
+	return TableValue{}, false
 }
 
 // TableSetQuat writes the named field — the editor write path: scalars,
@@ -674,6 +729,18 @@ func TableGetRigidBody(value *RigidBody, field string) (any, bool) {
 		return &value.AngularVelocity, true
 	}
 	return nil, false
+}
+
+// TableGetValueRigidBody reads the named SCALAR field without boxing — the
+// zero-allocation twin of TableGetRigidBody. Strings and byte blocks return
+// their used bytes (no copy). Arrays and nested tables are not scalars:
+// (TableValue{}, false) — use TableGetRigidBody for those.
+func TableGetValueRigidBody(value *RigidBody, field string) (TableValue, bool) {
+	switch field {
+	case "at_rest":
+		return tableValueBool(value.AtRest), true
+	}
+	return TableValue{}, false
 }
 
 // TableSetRigidBody writes the named field — the editor write path: scalars,

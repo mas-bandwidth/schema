@@ -4,10 +4,17 @@
 
 package example
 
-// TableWriteRenderSprite appends value's table-wire encoding and returns the buffer.
+// TableWriteRenderSprite returns value's table-wire encoding in a fresh buffer.
 func TableWriteRenderSprite(value *RenderSprite) []byte {
-	w := &tableWriter{}
-	tableWriteRenderSprite(w, value)
+	return AppendTableRenderSprite(nil, value)
+}
+
+// AppendTableRenderSprite appends value's table-wire encoding to dst and returns the
+// extended buffer — the zero-allocation write path: hand it a buffer you
+// reuse (dst[:0]) and steady-state writes never touch the heap.
+func AppendTableRenderSprite(dst []byte, value *RenderSprite) []byte {
+	w := tableWriter{buf: dst}
+	tableWriteRenderSprite(&w, value)
 	return w.buf
 }
 
@@ -155,10 +162,17 @@ func tableReadRenderSprite(r *tableReader, value *RenderSprite) bool {
 	}
 }
 
-// TableWriteRenderBlock appends value's table-wire encoding and returns the buffer.
+// TableWriteRenderBlock returns value's table-wire encoding in a fresh buffer.
 func TableWriteRenderBlock(value *RenderBlock) []byte {
-	w := &tableWriter{}
-	tableWriteRenderBlock(w, value)
+	return AppendTableRenderBlock(nil, value)
+}
+
+// AppendTableRenderBlock appends value's table-wire encoding to dst and returns the
+// extended buffer — the zero-allocation write path: hand it a buffer you
+// reuse (dst[:0]) and steady-state writes never touch the heap.
+func AppendTableRenderBlock(dst []byte, value *RenderBlock) []byte {
+	w := tableWriter{buf: dst}
+	tableWriteRenderBlock(&w, value)
 	return w.buf
 }
 
@@ -352,6 +366,26 @@ func TableGetRenderSprite(value *RenderSprite, field string) (any, bool) {
 	return nil, false
 }
 
+// TableGetValueRenderSprite reads the named SCALAR field without boxing — the
+// zero-allocation twin of TableGetRenderSprite. Strings and byte blocks return
+// their used bytes (no copy). Arrays and nested tables are not scalars:
+// (TableValue{}, false) — use TableGetRenderSprite for those.
+func TableGetValueRenderSprite(value *RenderSprite, field string) (TableValue, bool) {
+	switch field {
+	case "sort_key":
+		return tableValueUint(uint64(value.SortKey)), true
+	case "mesh_id":
+		return tableValueUint(uint64(value.MeshId)), true
+	case "material_id":
+		return tableValueUint(uint64(value.MaterialId)), true
+	case "layer":
+		return tableValueUint(uint64(value.Layer)), true
+	case "team":
+		return tableValueUint(uint64(value.Team)), true
+	}
+	return TableValue{}, false
+}
+
 // TableSetRenderSprite writes the named field — the editor write path: scalars,
 // enums, flags, bools and strings only. Numerics accept the field's own Go
 // type plus int64/uint64/float64; out-of-range values CLAMP exactly as the
@@ -474,6 +508,20 @@ func TableGetRenderBlock(value *RenderBlock, field string) (any, bool) {
 		return value.Sprites[:value.SpritesCount], true
 	}
 	return nil, false
+}
+
+// TableGetValueRenderBlock reads the named SCALAR field without boxing — the
+// zero-allocation twin of TableGetRenderBlock. Strings and byte blocks return
+// their used bytes (no copy). Arrays and nested tables are not scalars:
+// (TableValue{}, false) — use TableGetRenderBlock for those.
+func TableGetValueRenderBlock(value *RenderBlock, field string) (TableValue, bool) {
+	switch field {
+	case "worker_index":
+		return tableValueUint(uint64(value.WorkerIndex)), true
+	case "sprite_count_hint":
+		return tableValueUint(uint64(value.SpriteCountHint)), true
+	}
+	return TableValue{}, false
 }
 
 // TableSetRenderBlock writes the named field — the editor write path: scalars,

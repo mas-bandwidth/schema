@@ -6,10 +6,17 @@ package example
 
 import "math"
 
-// TableWriteProbeSample appends value's table-wire encoding and returns the buffer.
+// TableWriteProbeSample returns value's table-wire encoding in a fresh buffer.
 func TableWriteProbeSample(value *ProbeSample) []byte {
-	w := &tableWriter{}
-	tableWriteProbeSample(w, value)
+	return AppendTableProbeSample(nil, value)
+}
+
+// AppendTableProbeSample appends value's table-wire encoding to dst and returns the
+// extended buffer — the zero-allocation write path: hand it a buffer you
+// reuse (dst[:0]) and steady-state writes never touch the heap.
+func AppendTableProbeSample(dst []byte, value *ProbeSample) []byte {
+	w := tableWriter{buf: dst}
+	tableWriteProbeSample(&w, value)
 	return w.buf
 }
 
@@ -293,10 +300,17 @@ func tableReadProbeSample(r *tableReader, value *ProbeSample) bool {
 	}
 }
 
-// TableWriteProbeConfig appends value's table-wire encoding and returns the buffer.
+// TableWriteProbeConfig returns value's table-wire encoding in a fresh buffer.
 func TableWriteProbeConfig(value *ProbeConfig) []byte {
-	w := &tableWriter{}
-	tableWriteProbeConfig(w, value)
+	return AppendTableProbeConfig(nil, value)
+}
+
+// AppendTableProbeConfig appends value's table-wire encoding to dst and returns the
+// extended buffer — the zero-allocation write path: hand it a buffer you
+// reuse (dst[:0]) and steady-state writes never touch the heap.
+func AppendTableProbeConfig(dst []byte, value *ProbeConfig) []byte {
+	w := tableWriter{buf: dst}
+	tableWriteProbeConfig(&w, value)
 	return w.buf
 }
 
@@ -384,10 +398,17 @@ func tableReadProbeConfig(r *tableReader, value *ProbeConfig) bool {
 	}
 }
 
-// TableWriteProbeArray appends value's table-wire encoding and returns the buffer.
+// TableWriteProbeArray returns value's table-wire encoding in a fresh buffer.
 func TableWriteProbeArray(value *ProbeArray) []byte {
-	w := &tableWriter{}
-	tableWriteProbeArray(w, value)
+	return AppendTableProbeArray(nil, value)
+}
+
+// AppendTableProbeArray appends value's table-wire encoding to dst and returns the
+// extended buffer — the zero-allocation write path: hand it a buffer you
+// reuse (dst[:0]) and steady-state writes never touch the heap.
+func AppendTableProbeArray(dst []byte, value *ProbeArray) []byte {
+	w := tableWriter{buf: dst}
+	tableWriteProbeArray(&w, value)
 	return w.buf
 }
 
@@ -528,10 +549,17 @@ func tableReadProbeArray(r *tableReader, value *ProbeArray) bool {
 	}
 }
 
-// TableWriteTestData appends value's table-wire encoding and returns the buffer.
+// TableWriteTestData returns value's table-wire encoding in a fresh buffer.
 func TableWriteTestData(value *TestData) []byte {
-	w := &tableWriter{}
-	tableWriteTestData(w, value)
+	return AppendTableTestData(nil, value)
+}
+
+// AppendTableTestData appends value's table-wire encoding to dst and returns the
+// extended buffer — the zero-allocation write path: hand it a buffer you
+// reuse (dst[:0]) and steady-state writes never touch the heap.
+func AppendTableTestData(dst []byte, value *TestData) []byte {
+	w := tableWriter{buf: dst}
+	tableWriteTestData(&w, value)
 	return w.buf
 }
 
@@ -1186,6 +1214,32 @@ func TableGetProbeSample(value *ProbeSample, field string) (any, bool) {
 	return nil, false
 }
 
+// TableGetValueProbeSample reads the named SCALAR field without boxing — the
+// zero-allocation twin of TableGetProbeSample. Strings and byte blocks return
+// their used bytes (no copy). Arrays and nested tables are not scalars:
+// (TableValue{}, false) — use TableGetProbeSample for those.
+func TableGetValueProbeSample(value *ProbeSample, field string) (TableValue, bool) {
+	switch field {
+	case "active":
+		return tableValueBool(value.Active), true
+	case "orientation":
+		return tableValueFloat(float64(value.Orientation)), true
+	case "raw_delta":
+		return tableValueInt(int64(value.RawDelta)), true
+	case "big_delta":
+		return tableValueInt(int64(value.BigDelta)), true
+	case "weapon":
+		return tableValueUint(uint64(value.Weapon)), true
+	case "has_target":
+		return tableValueBool(value.HasTarget), true
+	case "target_id":
+		return tableValueUint(uint64(value.TargetId)), true
+	case "idle_ticks":
+		return tableValueUint(uint64(value.IdleTicks)), true
+	}
+	return TableValue{}, false
+}
+
 // TableSetProbeSample writes the named field — the editor write path: scalars,
 // enums, flags, bools and strings only. Numerics accept the field's own Go
 // type plus int64/uint64/float64; out-of-range values CLAMP exactly as the
@@ -1342,6 +1396,20 @@ func TableGetProbeConfig(value *ProbeConfig, field string) (any, bool) {
 	return nil, false
 }
 
+// TableGetValueProbeConfig reads the named SCALAR field without boxing — the
+// zero-allocation twin of TableGetProbeConfig. Strings and byte blocks return
+// their used bytes (no copy). Arrays and nested tables are not scalars:
+// (TableValue{}, false) — use TableGetProbeConfig for those.
+func TableGetValueProbeConfig(value *ProbeConfig, field string) (TableValue, bool) {
+	switch field {
+	case "retries":
+		return tableValueInt(int64(value.Retries)), true
+	case "preferred":
+		return tableValueUint(uint64(value.Preferred)), true
+	}
+	return TableValue{}, false
+}
+
 // TableSetProbeConfig writes the named field — the editor write path: scalars,
 // enums, flags, bools and strings only. Numerics accept the field's own Go
 // type plus int64/uint64/float64; out-of-range values CLAMP exactly as the
@@ -1415,6 +1483,14 @@ func TableGetProbeArray(value *ProbeArray, field string) (any, bool) {
 		return &value.Config, true
 	}
 	return nil, false
+}
+
+// TableGetValueProbeArray reads the named SCALAR field without boxing — the
+// zero-allocation twin of TableGetProbeArray. Strings and byte blocks return
+// their used bytes (no copy). Arrays and nested tables are not scalars:
+// (TableValue{}, false) — use TableGetProbeArray for those.
+func TableGetValueProbeArray(value *ProbeArray, field string) (TableValue, bool) {
+	return TableValue{}, false
 }
 
 // TableSetProbeArray writes the named field — the editor write path: scalars,
@@ -1512,6 +1588,54 @@ func TableGetTestData(value *TestData, field string) (any, bool) {
 		return string(value.Text[:value.TextLength]), true
 	}
 	return nil, false
+}
+
+// TableGetValueTestData reads the named SCALAR field without boxing — the
+// zero-allocation twin of TableGetTestData. Strings and byte blocks return
+// their used bytes (no copy). Arrays and nested tables are not scalars:
+// (TableValue{}, false) — use TableGetTestData for those.
+func TableGetValueTestData(value *TestData, field string) (TableValue, bool) {
+	switch field {
+	case "a":
+		return tableValueInt(int64(value.A)), true
+	case "b":
+		return tableValueInt(int64(value.B)), true
+	case "c":
+		return tableValueInt(int64(value.C)), true
+	case "d":
+		return tableValueUint(uint64(value.D)), true
+	case "e":
+		return tableValueUint(uint64(value.E)), true
+	case "f":
+		return tableValueUint(uint64(value.F)), true
+	case "g":
+		return tableValueBool(value.G), true
+	case "float_value":
+		return tableValueFloat(float64(value.FloatValue)), true
+	case "compressed_float_value":
+		return tableValueFloat(float64(value.CompressedFloatValue)), true
+	case "double_value":
+		return tableValueFloat(float64(value.DoubleValue)), true
+	case "int8_value":
+		return tableValueInt(int64(value.Int8Value)), true
+	case "int16_value":
+		return tableValueInt(int64(value.Int16Value)), true
+	case "uint8_value":
+		return tableValueUint(uint64(value.Uint8Value)), true
+	case "uint16_value":
+		return tableValueUint(uint64(value.Uint16Value)), true
+	case "uint32_value":
+		return tableValueUint(uint64(value.Uint32Value)), true
+	case "uint64_value":
+		return tableValueUint(uint64(value.Uint64Value)), true
+	case "int64_full":
+		return tableValueInt(int64(value.Int64Full)), true
+	case "int64_range":
+		return tableValueInt(int64(value.Int64Range)), true
+	case "text":
+		return tableValueBytes(value.Text[:value.TextLength]), true
+	}
+	return TableValue{}, false
 }
 
 // TableSetTestData writes the named field — the editor write path: scalars,
