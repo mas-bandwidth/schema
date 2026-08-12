@@ -332,7 +332,25 @@ func FileDeps(u *Unit) map[string]map[string]bool {
 				if fld.Type.Kind == TNamed {
 					note(fld.Type.Name)
 				}
-				for _, e := range []ast.Expr{fld.ArrayExpr, fld.Type.SizeExpr, fld.DefExpr, fld.QuantScaleExpr, fld.QuantMaxExpr} {
+				// EVERY expression a backend can render symbolically is a
+				// dependency edge. IntMinExpr/IntMaxExpr were missing here
+				// while all four backends rendered them symbolically, so a
+				// range bound naming a constant in another file was an
+				// UNTRACKED edge: the topo order this graph feeds then chose
+				// a dispatch owner that could not include cleanly (mutual
+				// #include in C++, missing `use crate::*` in Rust), and the
+				// include-cycle guard — reading the same wrong graph — saw
+				// nothing. Adding a field with a symbolically-rendered
+				// expression means adding it to this list.
+				for _, e := range []ast.Expr{
+					fld.ArrayExpr,
+					fld.Type.SizeExpr,
+					fld.DefExpr,
+					fld.IntMinExpr,
+					fld.IntMaxExpr,
+					fld.QuantScaleExpr,
+					fld.QuantMaxExpr,
+				} {
 					if e != nil {
 						noteExpr(e)
 					}
