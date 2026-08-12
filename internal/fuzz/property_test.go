@@ -190,3 +190,57 @@ func FuzzFormatIdempotent(f *testing.F) {
 		}
 	})
 }
+
+// Diagnostics must come out in the SAME ORDER every run. Go randomizes map
+// iteration per process, so any check that walks a map to report errors will
+// shuffle its output — one input printing its errors three different ways.
+// The exit code and the error SET survive that, which is why it hid for so
+// long, but it defeats golden-diagnostic comparison and makes CI logs
+// irreproducible. checkTables was the one that did this.
+func TestDiagnosticOrderIsDeterministic(t *testing.T) {
+	// every component is a table-wire-illegal kind, so each names its own
+	// error and the ordering is observable
+	const src = `package t
+
+type Aaa { x fixed(16, 16) [min = -100, max = 100] }
+type Bbb { y int128 [min = -10, max = 10] }
+type Ccc { z bits(96) }
+
+table Root {
+    a Aaa
+    b Bbb
+    c Ccc
+}
+`
+	var want []string
+	for pass := 0; pass < 16; pass++ {
+		ast, perrs := parser.Parse("T.schema", []byte(src))
+		if len(perrs) > 0 {
+			t.Fatalf("corpus does not parse: %v", perrs[0])
+		}
+		_, cerrs := check.Unit([]check.SourceFile{{
+			Path: "T.schema", Name: "T.schema", Base: "T",
+			Bytes: []byte(src), AST: ast,
+		}})
+		if len(cerrs) == 0 {
+			t.Fatal("expected diagnostics from a table closure over illegal kinds")
+		}
+		got := make([]string, len(cerrs))
+		for i, e := range cerrs {
+			got[i] = e.Error()
+		}
+		if pass == 0 {
+			want = got
+			continue
+		}
+		if len(got) != len(want) {
+			t.Fatalf("pass %d: diagnostic COUNT changed %d -> %d", pass, len(want), len(got))
+		}
+		for i := range got {
+			if got[i] != want[i] {
+				t.Fatalf("pass %d: diagnostic ORDER is nondeterministic at index %d\n  first run: %s\n  this run:  %s",
+					pass, i, want[i], got[i])
+			}
+		}
+	}
+}

@@ -1612,7 +1612,18 @@ func goExportName(name string) string {
 // surprising a pack run or a generated reader later.
 func (c *checker) checkTables() {
 	closure := ir.TableClosure(c.unit)
+	// SORTED. Ranging a map here made the ORDER of these diagnostics vary
+	// run to run (Go randomizes map iteration), so one input could print its
+	// errors three different ways — which defeats golden-diagnostic
+	// comparison and makes CI logs irreproducible. The exit code and the
+	// error set were never affected, but a compiler whose wire is byte-pinned
+	// should not shuffle its own output either.
+	names := make([]string, 0, len(closure))
 	for name := range closure {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	for _, name := range names {
 		st := c.unit.Structs[name]
 		if st == nil {
 			continue
