@@ -292,6 +292,13 @@ func (g *tableGen) emitTableWrite(st *ir.Struct) {
 	g.pf("    TableWrite%s(w, value);\n", st.Name)
 	g.pf("    return w.ToArray();\n}\n\n")
 
+	g.pf("// AppendTable%s appends value's table-wire encoding to w — the\n", st.Name)
+	g.pf("// zero-allocation write path: hold one TableWriter, Clear() it between\n")
+	g.pf("// uses, and steady-state writes never allocate once the buffer has grown.\n")
+	g.pf("// The wire is w.Buf[0 .. w.Len), byte-identical to TableWrite%s.\n", st.Name)
+	g.pf("public static void AppendTable%s(TableWriter w, %s value)\n{\n", st.Name, st.Name)
+	g.pf("    TableWrite%s(w, value);\n}\n\n", st.Name)
+
 	g.pf("private static void TableWrite%s(TableWriter w, %s value)\n{\n", st.Name, st.Name)
 	guards := tableGuardExprs(st)
 	for _, f := range st.Fields {
@@ -1117,10 +1124,20 @@ public struct TableValue
 // TableWriter is the generated writers' growable little-endian buffer —
 // array doubling, floats via BitConverter's bit casts (byte-identical
 // little-endian on every platform the runtime targets).
-internal sealed class TableWriter
+// TableWriter is the reusable table-wire write buffer. AppendTableX writes
+// into it; the wire is Buf[0 .. Len). Hold one, Clear() between uses, and
+// steady-state writes never allocate once the buffer has grown — the Unity
+// per-frame path. TableWriteX is the allocating convenience on top.
+public sealed class TableWriter
 {
     public byte[] Buf = new byte[256];
     public int Len;
+
+    // Clear resets the length and keeps the grown capacity.
+    public void Clear()
+    {
+        Len = 0;
+    }
 
     private void Reserve(int bytes)
     {

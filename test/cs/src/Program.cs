@@ -1119,6 +1119,40 @@ static class Program
             Check(report4.Clamped == 1 && output4.A == 100, "out-of-range clamps to the declared max");
         }
 
+        // ---- AppendTableX: the reusable zero-allocation write path ----
+        {
+            RigidBody input = new RigidBody();
+            input.Position.X = 1.5; input.Position.Y = -2.5; input.Position.Z = 3.25;
+            input.Orientation.X = 0.1; input.Orientation.Y = 0.2; input.Orientation.Z = 0.3; input.Orientation.W = 0.9;
+            input.LinearVelocity.X = 10.0; input.LinearVelocity.Y = 20.0; input.LinearVelocity.Z = -3.0;
+
+            byte[] boxed = TableWriteRigidBody(input);
+
+            TableWriter w = new TableWriter();
+            AppendTableRigidBody(w, input);
+            Check(w.Len == boxed.Length && new System.ReadOnlySpan<byte>(w.Buf, 0, w.Len).SequenceEqual(boxed),
+                "AppendTable writes the exact TableWrite bytes");
+
+            // two appends stack in one buffer
+            AppendTableRigidBody(w, input);
+            Check(w.Len == 2 * boxed.Length, "two appends stack in one buffer");
+            Check(new System.ReadOnlySpan<byte>(w.Buf, boxed.Length, boxed.Length).SequenceEqual(boxed),
+                "the second appended region carries the exact wire");
+
+            // Clear keeps capacity; steady-state appends never allocate
+            w.Clear();
+            AppendTableRigidBody(w, input); // warm: capacity settled
+            w.Clear();
+            long before = System.GC.GetAllocatedBytesForCurrentThread();
+            for (int i = 0; i < 100; i++)
+            {
+                w.Clear();
+                AppendTableRigidBody(w, input);
+            }
+            long after = System.GC.GetAllocatedBytesForCurrentThread();
+            Check(after == before, "steady-state AppendTable allocates nothing");
+        }
+
         if (failed)
         {
             return 1;

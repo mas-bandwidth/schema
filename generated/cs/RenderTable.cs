@@ -18,6 +18,15 @@ namespace Example
             return w.ToArray();
         }
 
+        // AppendTableRenderSprite appends value's table-wire encoding to w — the
+        // zero-allocation write path: hold one TableWriter, Clear() it between
+        // uses, and steady-state writes never allocate once the buffer has grown.
+        // The wire is w.Buf[0 .. w.Len), byte-identical to TableWriteRenderSprite.
+        public static void AppendTableRenderSprite(TableWriter w, RenderSprite value)
+        {
+            TableWriteRenderSprite(w, value);
+        }
+
         private static void TableWriteRenderSprite(TableWriter w, RenderSprite value)
         {
             if (value.SortKey != 0)
@@ -216,6 +225,15 @@ namespace Example
             TableWriter w = new TableWriter();
             TableWriteRenderBlock(w, value);
             return w.ToArray();
+        }
+
+        // AppendTableRenderBlock appends value's table-wire encoding to w — the
+        // zero-allocation write path: hold one TableWriter, Clear() it between
+        // uses, and steady-state writes never allocate once the buffer has grown.
+        // The wire is w.Buf[0 .. w.Len), byte-identical to TableWriteRenderBlock.
+        public static void AppendTableRenderBlock(TableWriter w, RenderBlock value)
+        {
+            TableWriteRenderBlock(w, value);
         }
 
         private static void TableWriteRenderBlock(TableWriter w, RenderBlock value)

@@ -18,6 +18,15 @@ namespace Example
             return w.ToArray();
         }
 
+        // AppendTableVec3 appends value's table-wire encoding to w — the
+        // zero-allocation write path: hold one TableWriter, Clear() it between
+        // uses, and steady-state writes never allocate once the buffer has grown.
+        // The wire is w.Buf[0 .. w.Len), byte-identical to TableWriteVec3.
+        public static void AppendTableVec3(TableWriter w, Vec3 value)
+        {
+            TableWriteVec3(w, value);
+        }
+
         private static void TableWriteVec3(TableWriter w, Vec3 value)
         {
             if (value.X != 0.0)
@@ -154,6 +163,15 @@ namespace Example
             TableWriter w = new TableWriter();
             TableWriteQuat(w, value);
             return w.ToArray();
+        }
+
+        // AppendTableQuat appends value's table-wire encoding to w — the
+        // zero-allocation write path: hold one TableWriter, Clear() it between
+        // uses, and steady-state writes never allocate once the buffer has grown.
+        // The wire is w.Buf[0 .. w.Len), byte-identical to TableWriteQuat.
+        public static void AppendTableQuat(TableWriter w, Quat value)
+        {
+            TableWriteQuat(w, value);
         }
 
         private static void TableWriteQuat(TableWriter w, Quat value)
@@ -318,6 +336,15 @@ namespace Example
             TableWriter w = new TableWriter();
             TableWriteRigidBody(w, value);
             return w.ToArray();
+        }
+
+        // AppendTableRigidBody appends value's table-wire encoding to w — the
+        // zero-allocation write path: hold one TableWriter, Clear() it between
+        // uses, and steady-state writes never allocate once the buffer has grown.
+        // The wire is w.Buf[0 .. w.Len), byte-identical to TableWriteRigidBody.
+        public static void AppendTableRigidBody(TableWriter w, RigidBody value)
+        {
+            TableWriteRigidBody(w, value);
         }
 
         private static void TableWriteRigidBody(TableWriter w, RigidBody value)

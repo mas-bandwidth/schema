@@ -18,6 +18,15 @@ namespace Example
             return w.ToArray();
         }
 
+        // AppendTableProbeSample appends value's table-wire encoding to w — the
+        // zero-allocation write path: hold one TableWriter, Clear() it between
+        // uses, and steady-state writes never allocate once the buffer has grown.
+        // The wire is w.Buf[0 .. w.Len), byte-identical to TableWriteProbeSample.
+        public static void AppendTableProbeSample(TableWriter w, ProbeSample value)
+        {
+            TableWriteProbeSample(w, value);
+        }
+
         private static void TableWriteProbeSample(TableWriter w, ProbeSample value)
         {
             if (value.Active != true)
@@ -402,6 +411,15 @@ namespace Example
             return w.ToArray();
         }
 
+        // AppendTableProbeConfig appends value's table-wire encoding to w — the
+        // zero-allocation write path: hold one TableWriter, Clear() it between
+        // uses, and steady-state writes never allocate once the buffer has grown.
+        // The wire is w.Buf[0 .. w.Len), byte-identical to TableWriteProbeConfig.
+        public static void AppendTableProbeConfig(TableWriter w, ProbeConfig value)
+        {
+            TableWriteProbeConfig(w, value);
+        }
+
         private static void TableWriteProbeConfig(TableWriter w, ProbeConfig value)
         {
             if (value.Retries != -1)
@@ -519,6 +537,15 @@ namespace Example
             TableWriter w = new TableWriter();
             TableWriteProbeArray(w, value);
             return w.ToArray();
+        }
+
+        // AppendTableProbeArray appends value's table-wire encoding to w — the
+        // zero-allocation write path: hold one TableWriter, Clear() it between
+        // uses, and steady-state writes never allocate once the buffer has grown.
+        // The wire is w.Buf[0 .. w.Len), byte-identical to TableWriteProbeArray.
+        public static void AppendTableProbeArray(TableWriter w, ProbeArray value)
+        {
+            TableWriteProbeArray(w, value);
         }
 
         private static void TableWriteProbeArray(TableWriter w, ProbeArray value)
@@ -700,6 +727,15 @@ namespace Example
             TableWriter w = new TableWriter();
             TableWriteTestData(w, value);
             return w.ToArray();
+        }
+
+        // AppendTableTestData appends value's table-wire encoding to w — the
+        // zero-allocation write path: hold one TableWriter, Clear() it between
+        // uses, and steady-state writes never allocate once the buffer has grown.
+        // The wire is w.Buf[0 .. w.Len), byte-identical to TableWriteTestData.
+        public static void AppendTableTestData(TableWriter w, TestData value)
+        {
+            TableWriteTestData(w, value);
         }
 
         private static void TableWriteTestData(TableWriter w, TestData value)
