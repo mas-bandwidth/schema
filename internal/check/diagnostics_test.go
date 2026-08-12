@@ -165,6 +165,14 @@ func TestDiagnostics(t *testing.T) {
 			src: "package t\ntype V { x fixed(112, 16) [min = -8, max = 8] }\nobject O { p V [interpolate, quantize = 256] \n b bool }\n"},
 		{name: "mixed float/fixed composite falls to the float rule", want: "every component of V to be a float scalar",
 			src: "package t\ntype V { x fixed(16, 16) [min = -8, max = 8]\n y float64 }\nobject O { p V [interpolate, quantize = 256, max = 8] \n b bool }\n"},
+		// the deferred pass also CLOSES a latent hole: with the composite in
+		// a later-sorting file, the inline rule used to validate components
+		// against an empty shell — vacuously passing anything
+		{name: "non-float non-fixed component rejected across file order", want: "every component of V to be a float scalar",
+			srcs: map[string]string{
+				"A_Objects.schema": "package t\nobject O { p V [interpolate, quantize = 10, max = 1] \n b bool }\n",
+				"Z_Types.schema":   "package t\ntype V { x float64\n s string(8) }\n"},
+		},
 
 		// ---- namespace, names, claims ----
 		{name: "duplicate declaration", want: "duplicate declaration",
@@ -305,6 +313,20 @@ func TestGoodCornersStillCompile(t *testing.T) {
 				"A.schema": "package t\nmessage Ping { x uint8 }\n",
 				"B.schema": "package t\nmessage Pong { y uint8 }\n",
 			}},
+		// the game's exact file order: Objects.schema sorts BEFORE
+		// Types.schema, so at the object's resolution the composite is a
+		// bare shell — rule 2b classification must wait for the full
+		// component list (the deferred pass; found the day rule 2b landed)
+		{name: "fixed-composite quantize with the composite in a later-sorting file",
+			srcs: map[string]string{
+				"A_Objects.schema": "package t\nobject O { rotation Q [interpolate, quantize = 1024] \n b bool }\n",
+				"Z_Types.schema":   "package t\ntype Q { x fixed(2, 30) [min = -1, max = 1]\n y fixed(2, 30) [min = -1, max = 1]\n z fixed(2, 30) [min = -1, max = 1]\n w fixed(2, 30) [min = -1, max = 1] = 1.0 }\n"},
+		},
+		{name: "float-composite quantize with the composite in a later-sorting file",
+			srcs: map[string]string{
+				"A_Objects.schema": "package t\nobject O { p V [interpolate, quantize = 10, max = 1] \n b bool }\n",
+				"Z_Types.schema":   "package t\ntype V { x float64\n y float64 }\n"},
+		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

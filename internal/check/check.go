@@ -40,6 +40,15 @@ type checker struct {
 	structs  map[string]*ir.Struct
 	objects  map[string]*ir.Object
 	ctxDecl  *ast.ContextsDecl
+
+	// composite-quantize checks deferred until every body is resolved: the
+	// rule 2 / rule 2b classification READS the referenced composite's
+	// component list, and that composite may be declared in a file that
+	// sorts after the object's (§3.1 order) — at field-resolution time only
+	// its SHELL exists. Running the classification against a half-built
+	// shell mis-classifies by file order (found the day rule 2b landed: the
+	// game's Objects.schema sorts before Types.schema).
+	deferredQuantize []func()
 }
 
 type constEntry struct {
@@ -81,6 +90,11 @@ func Unit(files []SourceFile) (*ir.Unit, []error) {
 	c.resolveEnumsAndFlags()
 	c.resolveAllConsts()
 	c.resolveBodies()
+	// deferred composite-quantize checks: every body is resolved now, so
+	// rule 2/2b classification sees complete component lists in any file order
+	for _, check := range c.deferredQuantize {
+		check()
+	}
 	c.checkCycles()
 	c.checkClaimedNames()
 	c.checkTargetNames()
@@ -1105,113 +1119,21 @@ func (c *checker) resolveAttrs(kind declKind, owner string, f *ast.Field, out *i
 		return
 	}
 
-	// composite quantization (SPEC §4.8 rule 2): [interpolate, quantize = K, max = B]
+	// composite quantization (SPEC §4.8 rules 2/2b): [interpolate, quantize = K, ...]
 	if hasQuant {
 		a := byKey["quantize"]
 		if kind != objectD || !out.Interpolate {
 			c.errf(a.Pos, "quantize belongs to the [interpolate] view-encoding rules of an object body (SPEC §4.8)")
 			return
 		}
-		st, okT := out.Type.Ref.(*ir.Struct)
-		if out.Type.Kind != ir.TNamed || !okT {
-			c.errf(a.Pos, "quantize applies component-wise to a composite of float or fixed components (SPEC §4.8 rule 2)")
-			return
-		}
-		allFixed := len(st.Fields) > 0
-		for _, cf := range st.Fields {
-			if cf.Type.Kind != ir.TFixed || cf.Array != ir.ArrayNone {
-				allFixed = false
-				break
-			}
-		}
-		if allFixed {
-			// fixed-composite shallow narrowing (SPEC §4.8 rule 2b):
-			// [interpolate, quantize = K] — the shallow wire keeps log2(K)
-			// fractional bits of the component format (K quantized units per
-			// whole unit, a power of two no finer than the storage's 2^F).
-			// Quantize is a round-to-nearest (half away from zero) arithmetic
-			// shift, Unquantize a left shift; no max here — the shallow bound
-			// derives from each component's own whole-unit [min, max], which
-			// every component must therefore declare.
-			if hasMax || hasMin || hasRes {
-				c.errf(a.Pos, "fixed-composite quantization is [interpolate, quantize = K] alone — the bound comes from the components' own [min, max], not the field (SPEC §4.8 rule 2b)")
-				return
-			}
-			k, ok := c.evalInt(a.Value)
-			if !ok {
-				return
-			}
-			if !k.IsInt64() || k.Int64() < 1 || k.Int64()&(k.Int64()-1) != 0 {
-				c.errf(a.Pos, "fixed-composite quantize scale %s must be a positive power of two — it is the kept fractional resolution, 2^bits (SPEC §4.8 rule 2b)", k)
-				return
-			}
-			log2k := 0
-			for v := k.Int64(); v > 1; v >>= 1 {
-				log2k++
-			}
-			for _, cf := range st.Fields {
-				if cf.Type.IntBits+cf.Type.FracBits > 64 {
-					c.errf(a.Pos, "fixed-composite quantization narrows through int64 shifts — %s.%s is fixed(%d, %d), wider than 64 bits (SPEC §4.8 rule 2b)",
-						st.Name, cf.Name, cf.Type.IntBits, cf.Type.FracBits)
-					return
-				}
-				if log2k > cf.Type.FracBits {
-					c.errf(a.Pos, "quantize = %s keeps %d fractional bits but %s.%s is fixed(%d, %d) — the shallow wire cannot be finer than the storage (SPEC §4.8 rule 2b)",
-						k, log2k, st.Name, cf.Name, cf.Type.IntBits, cf.Type.FracBits)
-					return
-				}
-				if !cf.HasIntRange {
-					c.errf(a.Pos, "fixed-composite quantization derives its wire bound from the components — %s.%s must declare whole-unit [min, max] (SPEC §4.8 rule 2b)", st.Name, cf.Name)
-					return
-				}
-			}
-			out.HasQuantize = true
-			out.FixedShallow = true
-			out.QuantScale = k.Int64()
-			out.QuantScaleExpr = a.Value
-			out.QuantShift = log2k
-			return
-		}
-		for _, cf := range st.Fields {
-			if cf.Type.Kind != ir.TFloat32 && cf.Type.Kind != ir.TFloat64 || cf.Array != ir.ArrayNone {
-				c.errf(a.Pos, "quantize requires every component of %s to be a float scalar (%s.%s is not)", st.Name, st.Name, cf.Name)
-				return
-			}
-		}
-		if !hasMax || hasMin || hasRes {
-			c.errf(a.Pos, "composite quantization is [interpolate, quantize = K, max = B] — max required, min and resolution not valid here (SPEC §4.8 rule 2)")
-			return
-		}
-		k, ok := c.evalInt(a.Value)
-		if !ok {
-			return
-		}
-		if !k.IsInt64() || k.Int64() < 1 {
-			c.errf(a.Pos, "quantize scale %s must be a positive integer", k)
-			return
-		}
-		b, ok := c.evalFloat(byKey["max"].Value)
-		if !ok {
-			return
-		}
-		if b <= 0 {
-			c.errf(byKey["max"].Pos, "quantize bound max = %g must be positive", b)
-			return
-		}
-		bound := float64(k.Int64()) * b
-		if bound < 1 || bound > math.MaxInt64/2 {
-			c.errf(a.Pos, "quantized range [-%g, %g] is out of range", bound, bound)
-			return
-		}
-		out.HasQuantize = true
-		out.QuantScale = k.Int64()
-		out.QuantScaleExpr = a.Value
-		out.QuantMax = b
-		out.QuantMaxExpr = byKey["max"].Value
-		out.QuantBound = int64(math.Round(bound))
+		// classification and validation DEFER until every body is resolved —
+		// the referenced composite may live in a later-sorting file and have
+		// only its shell here (see the checker's deferredQuantize comment)
+		c.deferredQuantize = append(c.deferredQuantize, func() {
+			c.checkCompositeQuantize(f, out, byKey, hasMin, hasMax, hasRes)
+		})
 		return
 	}
-
 	if hasRound && !hasRes {
 		c.errf(byKey["round"].Pos, "round selects the write rounding of a ranged-int projection — it requires the min/max/resolution triple (SPEC §4.8 rule 4)")
 	}
@@ -1338,6 +1260,112 @@ func (c *checker) resolveAttrs(kind declKind, owner string, f *ast.Field, out *i
 		out.IntMin, out.IntMax = vmin, vmax
 		out.IntMinExpr, out.IntMaxExpr = byKey["min"].Value, byKey["max"].Value
 	}
+}
+
+// checkCompositeQuantize is the deferred half of the composite-quantize rule
+// (SPEC §4.8 rules 2 and 2b): it runs after EVERY body is resolved, so the
+// referenced composite's component list is complete regardless of which file
+// declared it (§3.1 file order). resolveAttrs verified [interpolate]-on-object
+// and scheduled this; everything that reads component fields lives here.
+func (c *checker) checkCompositeQuantize(f *ast.Field, out *ir.Field, byKey map[string]*ast.Attr, hasMin, hasMax, hasRes bool) {
+	a := byKey["quantize"]
+	st, okT := out.Type.Ref.(*ir.Struct)
+	if out.Type.Kind != ir.TNamed || !okT {
+		c.errf(a.Pos, "quantize applies component-wise to a composite of float or fixed components (SPEC §4.8 rule 2)")
+		return
+	}
+	allFixed := len(st.Fields) > 0
+	for _, cf := range st.Fields {
+		if cf.Type.Kind != ir.TFixed || cf.Array != ir.ArrayNone {
+			allFixed = false
+			break
+		}
+	}
+	if allFixed {
+		// fixed-composite shallow narrowing (SPEC §4.8 rule 2b):
+		// [interpolate, quantize = K] — the shallow wire keeps log2(K)
+		// fractional bits of the component format (K quantized units per
+		// whole unit, a power of two no finer than the storage's 2^F).
+		// Quantize is a round-to-nearest arithmetic shift, Unquantize a left
+		// shift; no max here — the shallow bound derives from each
+		// component's own whole-unit [min, max], which every component must
+		// therefore declare.
+		if hasMax || hasMin || hasRes {
+			c.errf(a.Pos, "fixed-composite quantization is [interpolate, quantize = K] alone — the bound comes from the components' own [min, max], not the field (SPEC §4.8 rule 2b)")
+			return
+		}
+		k, ok := c.evalInt(a.Value)
+		if !ok {
+			return
+		}
+		if !k.IsInt64() || k.Int64() < 1 || k.Int64()&(k.Int64()-1) != 0 {
+			c.errf(a.Pos, "fixed-composite quantize scale %s must be a positive power of two — it is the kept fractional resolution, 2^bits (SPEC §4.8 rule 2b)", k)
+			return
+		}
+		log2k := 0
+		for v := k.Int64(); v > 1; v >>= 1 {
+			log2k++
+		}
+		for _, cf := range st.Fields {
+			if cf.Type.IntBits+cf.Type.FracBits > 64 {
+				c.errf(a.Pos, "fixed-composite quantization narrows through int64 shifts — %s.%s is fixed(%d, %d), wider than 64 bits (SPEC §4.8 rule 2b)",
+					st.Name, cf.Name, cf.Type.IntBits, cf.Type.FracBits)
+				return
+			}
+			if log2k > cf.Type.FracBits {
+				c.errf(a.Pos, "quantize = %s keeps %d fractional bits but %s.%s is fixed(%d, %d) — the shallow wire cannot be finer than the storage (SPEC §4.8 rule 2b)",
+					k, log2k, st.Name, cf.Name, cf.Type.IntBits, cf.Type.FracBits)
+				return
+			}
+			if !cf.HasIntRange {
+				c.errf(a.Pos, "fixed-composite quantization derives its wire bound from the components — %s.%s must declare whole-unit [min, max] (SPEC §4.8 rule 2b)", st.Name, cf.Name)
+				return
+			}
+		}
+		out.HasQuantize = true
+		out.FixedShallow = true
+		out.QuantScale = k.Int64()
+		out.QuantScaleExpr = a.Value
+		out.QuantShift = log2k
+		return
+	}
+	for _, cf := range st.Fields {
+		if cf.Type.Kind != ir.TFloat32 && cf.Type.Kind != ir.TFloat64 || cf.Array != ir.ArrayNone {
+			c.errf(a.Pos, "quantize requires every component of %s to be a float scalar (%s.%s is not)", st.Name, st.Name, cf.Name)
+			return
+		}
+	}
+	if !hasMax || hasMin || hasRes {
+		c.errf(a.Pos, "composite quantization is [interpolate, quantize = K, max = B] — max required, min and resolution not valid here (SPEC §4.8 rule 2)")
+		return
+	}
+	k, ok := c.evalInt(a.Value)
+	if !ok {
+		return
+	}
+	if !k.IsInt64() || k.Int64() < 1 {
+		c.errf(a.Pos, "quantize scale %s must be a positive integer", k)
+		return
+	}
+	b, ok := c.evalFloat(byKey["max"].Value)
+	if !ok {
+		return
+	}
+	if b <= 0 {
+		c.errf(byKey["max"].Pos, "quantize bound max = %g must be positive", b)
+		return
+	}
+	bound := float64(k.Int64()) * b
+	if bound < 1 || bound > math.MaxInt64/2 {
+		c.errf(a.Pos, "quantized range [-%g, %g] is out of range", bound, bound)
+		return
+	}
+	out.HasQuantize = true
+	out.QuantScale = k.Int64()
+	out.QuantScaleExpr = a.Value
+	out.QuantMax = b
+	out.QuantMaxExpr = byKey["max"].Value
+	out.QuantBound = int64(math.Round(bound))
 }
 
 // fixedUnitBounds is the whole-unit domain of a signed Q I.F format —
