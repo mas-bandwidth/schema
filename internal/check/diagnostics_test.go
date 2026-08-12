@@ -175,6 +175,22 @@ func TestDiagnostics(t *testing.T) {
 		},
 
 		// ---- namespace, names, claims ----
+		// valued attributes written bare. FOUND BY THE FUZZER (internal/fuzz)
+		// in 3 seconds: `[min, max]` reached expression evaluation as a nil
+		// and panicked the compiler with a stack trace instead of pointing at
+		// the typo. One case per valued attribute — the guard is a table, and
+		// a table with an untested entry is a table that will lose one.
+		{name: "min written without a value", want: "requires a value",
+			src: "package t\ntype T { n int32 [min, max = 10] }\n"},
+		{name: "max written without a value", want: "requires a value",
+			src: "package t\ntype T { n int32 [min = 0, max] }\n"},
+		{name: "resolution written without a value", want: "requires a value",
+			src: "package t\ntype T { x float32 [min = 0, max = 1, resolution] }\n"},
+		{name: "quantize written without a value", want: "requires a value",
+			src: "package t\ntype V { x float64 }\nobject O { p V [interpolate, quantize, max = 1] \n b bool }\n"},
+		{name: "round written without a value", want: "requires a value",
+			src: "package t\nobject O { x float32 [interpolate, min = 0, max = 1, resolution = 0.1, round] \n b bool }\n"},
+
 		// cycle guards: every resolver that can re-enter itself must REJECT,
 		// not recurse. Before the enum guard these crashed the compiler with
 		// a raw "fatal error: stack overflow" — no diagnostic, no position.

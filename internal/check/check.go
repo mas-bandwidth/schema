@@ -280,6 +280,9 @@ func (c *checker) exprKind(e ast.Expr) int {
 }
 
 func (c *checker) exprKindV(e ast.Expr, visiting map[string]bool) int {
+	if e == nil {
+		return kindInt // see evalInt — the evaluators reject it with a position
+	}
 	switch e := e.(type) {
 	case *ast.FloatLit:
 		return kindFloat
@@ -324,6 +327,13 @@ func (c *checker) exprKindV(e ast.Expr, visiting map[string]bool) int {
 }
 
 func (c *checker) evalInt(e ast.Expr) (*big.Int, bool) {
+	// Defense in depth. Callers are expected to reject a missing expression
+	// with a positioned diagnostic before reaching here (see valuedAttr), but
+	// a nil that slips through must fail the evaluation, not dereference —
+	// the fallthrough below calls e.ExprPos(), which panics on a nil Expr.
+	if e == nil {
+		return nil, false
+	}
 	switch e := e.(type) {
 	case *ast.IntLit:
 		return new(big.Int).Set(e.Value), true
@@ -393,6 +403,9 @@ func (c *checker) evalInt(e ast.Expr) (*big.Int, bool) {
 }
 
 func (c *checker) evalFloat(e ast.Expr) (float64, bool) {
+	if e == nil {
+		return 0, false // see evalInt — a nil expression fails, never panics
+	}
 	switch e := e.(type) {
 	case *ast.FloatLit:
 		return e.Value, true
@@ -463,6 +476,18 @@ func (c *checker) evalFloat(e ast.Expr) (float64, bool) {
 	}
 	c.errf(e.ExprPos(), "invalid float expression")
 	return 0, false
+}
+
+// valuedAttr lists the field attributes that MUST carry `= value`. The bare
+// markers ([interpolate], [local], and the context words) are absent by
+// design. Adding a valued attribute means adding it here, or a bare spelling
+// of it reaches expression evaluation as a nil and panics.
+var valuedAttr = map[string]bool{
+	"min":        true,
+	"max":        true,
+	"resolution": true,
+	"quantize":   true,
+	"round":      true,
 }
 
 func (c *checker) enumMax(e *ast.MaxExpr) (*big.Int, bool) {
@@ -1093,6 +1118,15 @@ func (c *checker) resolveAttrs(kind declKind, owner string, f *ast.Field, out *i
 		a := &f.Attrs[i]
 		if _, dup := byKey[a.Key]; dup {
 			c.errf(a.Pos, "attribute %s repeated (SPEC §4.6)", a.Key)
+			continue
+		}
+		// A valued attribute written bare — `[min, max]` for
+		// `[min = 0, max = 10]` — used to reach evalInt with a nil
+		// expression and panic the compiler. Reject it here, once, for every
+		// valued attribute, rather than nil-checking at each use: a typo in a
+		// schema must produce a diagnostic, never a stack trace.
+		if a.Value == nil && valuedAttr[a.Key] {
+			c.errf(a.Pos, "attribute %s requires a value, as %s = ... (SPEC §4.6)", a.Key, a.Key)
 			continue
 		}
 		byKey[a.Key] = a
