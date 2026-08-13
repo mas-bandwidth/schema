@@ -260,7 +260,7 @@ cost with no buyer. See
 Rust from one IR, and checked against each other in CI on every push. Every
 target's output is held to the same pinned goldens.
 
-C was the last to arrive and reached parity in v1.6.0: fixed point, 128-bit
+C was the last to arrive and reached parity in v2.0.0: fixed point, 128-bit
 integers, objects and their quantize pair, message dispatch, and the table
 wire with its reflection descriptors.
 

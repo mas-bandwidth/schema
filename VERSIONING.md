@@ -26,9 +26,15 @@ to be argued for in review — it cannot happen by accident.
 
 ## What each number means
 
-**Major** — the wire may change, or a language feature may be removed. Expect
-to redeploy both sides of every connection, and expect the protocol id to move.
-We will not do this casually.
+**Major** — the wire may change, a language feature may be removed, **or the
+protocol id moves for schemas that did not change**. Expect to redeploy both
+sides of every connection. We will not do this casually.
+
+That last case is worth stating on its own, because it is the one that looks
+harmless and is not: if the id moves, deployed peers refuse newly built ones
+even when every byte they would exchange is identical. The operational cost is
+the same as a wire change, so it earns the same signal. v2.0.0 was exactly
+this — the id changed, the wire did not.
 
 **Minor** — new language features, new attributes, new backends, better
 diagnostics, generated code that is faster or cleaner. **The wire for schemas
