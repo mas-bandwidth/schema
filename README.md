@@ -54,8 +54,19 @@ format is decided at compile time, what comes out is the straight-line code you
 would have hand-written, not an interpreter walking a schema at runtime.
 
 The agreement is proven rather than promised: every build compiles the corpus
-in all four languages and byte-compares the results against pinned goldens. If
-two languages ever differ by one bit, CI says so before you do.
+in all four languages and compares the results against pinned goldens. If two
+languages ever differ by one bit, CI says so before you do.
+
+**And it is built by multiplayer game developers, for multiplayer games.** That
+focus is why the trades land where they do, and it is the thing the
+general-purpose formats cannot copy without becoming something else. Bounds
+determine wire width because a 60 Hz packet budget is real. Fixed point is a
+type in the language because lockstep and rollback cannot be built on floats.
+The message wire has no evolution machinery because a game client and its
+dedicated server ship together. Reads refuse hostile values in every language
+because a game server faces the open internet. None of that is a general answer
+to serialization — it is a specific answer to this problem, from people who
+have shipped it.
 
 ## Features
 
