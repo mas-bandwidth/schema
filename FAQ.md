@@ -168,9 +168,11 @@ Practically this means **client and server deploy together** for message-wire
 changes. If that is unacceptable for your deployment model, the message wire is
 the wrong tool and you want the table wire or Protobuf.
 
-Note one sharp edge, currently true: the protocol id hashes the schema *source
-text*, so a comment-only edit changes the id even though no bit of wire moved.
-Moving it to hash the wire shape instead is known work, not yet done.
+The id hashes a **wire shape projection**, not the source text, so an edit
+that moves no bytes does not move the id: a comment, a blank line, a renamed
+file, a renamed enum variant. Run `schema projection` to see exactly what it
+depends on — it is deliberately printable, because a wire-affecting fact
+missing from that text would be a fact the id ignores.
 
 ## Why AGPL? My lawyer will hate this.
 

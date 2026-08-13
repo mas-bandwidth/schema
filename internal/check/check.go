@@ -110,11 +110,16 @@ func Unit(files []SourceFile) (*ir.Unit, []error) {
 	c.checkTargetNames()
 	c.assemble()
 	c.checkTables()
-	c.unit.ProtocolId = protocolId(files)
-
 	if len(c.errs) > 0 {
 		return nil, c.errs
 	}
+
+	// The id comes LAST, from the assembled unit: the projection describes the
+	// resolved wire, so it cannot be computed until every bound, every default
+	// and every branch has been resolved. Computing it over a unit that failed
+	// checking would be meaningless, so it sits after the error gate.
+	c.unit.ProtocolId = protocolIdFromProjection(c.unit)
+
 	return c.unit, nil
 }
 
@@ -2012,16 +2017,22 @@ func (c *checker) assemble() {
 // protocolId hashes the unit's files: sorted by bytewise ascending basename;
 // per file, basename bytes, one 0x00, then raw content bytes; the id is the
 // final 8 bytes of the SHA-256 digest interpreted big-endian.
-func protocolId(files []SourceFile) uint64 {
-	sorted := make([]SourceFile, len(files))
-	copy(sorted, files)
-	sort.Slice(sorted, func(i, j int) bool { return sorted[i].Name < sorted[j].Name })
+// protocolIdFromProjection is the unit's identity: the low 64 bits of SHA-256
+// over the WIRE SHAPE PROJECTION (ir.WireProjection), not over the schema
+// source.
+//
+// The source hash it replaced was safe in the direction that matters — it
+// could produce a spurious mismatch but never a spurious match — and it moved
+// the id for a comment, a blank line, a renamed file, or a field that costs
+// zero wire bits. Each of those bought a coordinated redeploy for nothing.
+//
+// The projection is text, so what the id depends on can be printed and read
+// (`schema projection`). A wire-affecting fact missing from it would be the
+// dangerous kind of bug, which is why it is a reviewable artifact rather than
+// a walk over the IR structs.
+func protocolIdFromProjection(u *ir.Unit) uint64 {
 	h := sha256.New()
-	for _, f := range sorted {
-		h.Write([]byte(f.Name))
-		h.Write([]byte{0})
-		h.Write(f.Bytes)
-	}
+	h.Write([]byte(ir.WireProjection(u)))
 	sum := h.Sum(nil)
 	return binary.BigEndian.Uint64(sum[24:32])
 }

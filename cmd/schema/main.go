@@ -45,6 +45,12 @@ func main() {
 	case "id":
 		unit := loadUnit(os.Args[2:])
 		fmt.Printf("0x%016x\n", unit.ProtocolId)
+	case "projection":
+		// What the protocol id actually hashes. Printable on purpose: a
+		// wire-affecting fact missing from this text is a fact the id ignores,
+		// and that is a review question, not an implementation detail.
+		unit := loadUnit(os.Args[2:])
+		fmt.Print(ir.WireProjection(unit))
 	case "fmt":
 		// standalone formatting; check/generate/id already format before
 		// processing, so this exists for editors and pre-commit hooks
@@ -128,11 +134,12 @@ func main() {
 
 func usage() {
 	fmt.Fprintf(os.Stderr, `usage:
-  schema check    [dir|files...]
-  schema generate [--lang c|cpp|cs|go|rust] [--cpp-message union|variant] [--out generated] [dir|files...]
-  schema id       [dir|files...]
-  schema fmt      [dir|files...]
-  schema pack     <manifest.json>
+  schema check      [dir|files...]
+  schema generate   [--lang c|cpp|cs|go|rust] [--cpp-message union|variant] [--out generated] [dir|files...]
+  schema id         [dir|files...]
+  schema projection [dir|files...]
+  schema fmt        [dir|files...]
+  schema pack       <manifest.json>
   schema version
 
 Every command formats the unit's schema files in place before processing them

@@ -296,7 +296,51 @@ they exchange a byte, which radically simplifies everything downstream. (Glenn, 
 maintains it by hand; two sides with different wire formats cannot accidentally claim
 compatibility.
 
-### 3.1 The hash — DECIDED: hash the schema files
+### 3.1 The hash — DECIDED 2026-08-14: hash the WIRE SHAPE PROJECTION
+
+**The id is the low 64 bits of SHA-256 over the unit's wire shape projection**
+(`ir.WireProjection`, printable with `schema projection`) — a canonical text
+listing exactly the facts that determine the bytes, and nothing else.
+
+*This supersedes the source-text hash recorded below, on Glenn's direction:
+"Should we implement that thing in schema where the protocol id is from the
+uber IR, so it's more stable?"* The motivating case arrived the same day:
+adding an empty enum to the corpus moved the id and **not one wire byte**.
+
+**Why a projection and not the IR itself.** The source hash was safe in the
+only direction that matters — it can produce a spurious MISMATCH (peers refuse
+to talk when they could) but never a spurious MATCH (peers agree when their
+bytes differ). Hashing the IR structs would fix the churn and introduce the
+dangerous direction: any wire-affecting fact the walk forgot becomes two
+incompatible builds shaking hands, and an IR refactor could move the id with
+no wire change, giving the churn back. The projection is TEXT, so what the id
+depends on can be printed, read and diffed; a fact missing from it is a review
+question rather than an implementation detail.
+
+**Included, each because it moves the wire:** the package; message and object
+ordinals (the tag IS the index); every type's field order; field NAMES (the
+table wire's identity is `fold16(fnv1a32(name))`); type kind, width and
+signedness; declared bounds; array kind and bounds; string/bytes capacity;
+float range, resolution and step count; fixed `I` and `F`; quantize scale and
+bound; **specified defaults** (the table wire elides a field sitting at its
+default); branch structure; `const`/`reserved`/`align` items; enum max and
+storage bits; flags wire bits; contexts and `[local]`/`[interpolate]` markers.
+
+**Excluded, each because it does not:** comments and whitespace; file names,
+file layout and declaration order; **enum variant names** (the ordinal is the
+wire — renaming `Red` to `Crimson` leaves every byte identical); `const`
+declarations (their values are already resolved into the bounds above); type
+tags and native-type attributes.
+
+**The projection is versioned.** `ProjectionVersion` rides its first line, so
+a change to the rendering moves every id deliberately and visibly rather than
+silently.
+
+**The property, tested in both directions** (`internal/check/projection_test.go`):
+an edit that moves no bytes must not move the id, and an edit that moves bytes
+must. The second is the one that must never regress.
+
+### 3.1.1 Superseded: hash the schema files
 
 **The id is the low 64 bits of SHA-256 over the unit's `*.schema` files themselves** (Glenn,
 2026-08-04: *"just hash the schema files themselves, instead of generated. Seems cleaner,
