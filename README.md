@@ -12,9 +12,9 @@ message ShipCreate {
 }
 ```
 
-This declaration compiles to C++, C#, Go and Rust readers and writers that
-read and write the data type and agree on every bit. Now your Unity client 
-and your Go backend speak the same language.
+This declaration compiles to C++, C#, Go and Rust code that 
+reads and writes your data types and agree on every bit. Now your native plugin, your Unity client 
+and your Go backend all speak the same language.
 
 ## Why it exists
 
