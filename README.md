@@ -6,9 +6,15 @@
 Write down your data types once and generate code to read and write them in four languages automatically.
 
 ```
-table RigidBody {
+const MaxHealth = 1000
+
+enum ShipType { Fighter, Corvette, Bomber }
+
+message ShipState {
+    ship_type   ShipType
     position    Vec3
     orientation Quat
+    health      int32 [min = 0, max = MaxHealth]
     at_rest     bool
     if !at_rest {
         linear_velocity  Vec3
@@ -17,19 +23,33 @@ table RigidBody {
 }
 ```
 
-The `if` is the point. When a body is at rest its velocities are not zeroed on
-the wire — they are **not sent at all**, and the branch costs nothing beyond
-the bool that was already there. A read fills the untaken side with zeroes, so
-the receiver never inherits last packet's velocity.
+Three things are happening there beyond naming fields.
 
-That declaration compiles to this, and to its exact counterpart in C#, Go and
-Rust:
+**The bounds are part of the type.** `health` is declared `[min = 0, max = MaxHealth]`,
+so it costs **10 bits** on the wire rather than 32 — and `MaxHealth` is a
+constant exported into every generated language, so the bound your code
+compares against is the bound the wire enforces. There is no second copy to
+drift.
+
+**The enum knows its own size.** `ShipType` has three variants, so it costs
+**2 bits**. Every enum reserves an implicit `None = 0`, which means a
+zero-initialized field is already the null — no has-flag beside it.
+
+**The `if` removes fields from the wire.** When a body is at rest its
+velocities are not zeroed and sent, they are **not sent at all**, and the
+branch costs nothing beyond the bool that was already there. A read fills the
+untaken side with zeroes, so the receiver never inherits last packet's
+velocity.
+
+That compiles to this, and to its exact counterpart in C#, Go and Rust:
 
 ```cpp
-inline bool WriteRigidBody( serialize::WriteStream & stream, const RigidBody & value )
+inline bool WriteShipState( serialize::WriteStream & stream, const ShipState & value )
 {
+    write_bits( stream, uint32_t( value.ship_type ), 2 );
     if ( !WriteVec3( stream, value.position ) )     { return false; }
     if ( !WriteQuat( stream, value.orientation ) )  { return false; }
+    write_bits( stream, uint32_t( value.health ), 10 );
     write_bool( stream, value.at_rest );
     if ( !value.at_rest )
     {
