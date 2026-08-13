@@ -24,6 +24,309 @@
 extern "C" {
 #endif
 
+
+/* ---- object Ship — one definition, a generated family per target (SPEC §4.8) ---- */
+
+/* ClientShipState — the full simulation struct for the client context: every `all`
+   field plus the fields scoped [local, context = client] */
+typedef struct ClientShipState {
+    ShipType ship_type;
+    Vec3 position;
+    Quat rotation;
+    Vec3 linear_velocity;
+    ShipFlags flags;
+    Team team;
+    float health;
+    float thrust;
+    Vec3 angular_velocity;
+    float laser_cooldown;
+    float missile_cooldown;
+    float speed_current;
+    float speed_velocity;
+    Vec3 stick_current;
+    Vec3 stick_velocity;
+    float sensitivity_current;
+    float sensitivity_velocity;
+    float roll_current;
+    float roll_velocity;
+    float aim_current;
+    float aim_velocity;
+    int8_t laser_index;
+    int8_t missile_index;
+    Handle target;
+    double lock_start_time;
+    int invulnerable;
+    Vec3 previous_position;
+    int32_t num_colliders;
+    int32_t collider_armor[64];
+    int predicted_explode;
+} ClientShipState;
+
+/* ServerShipState — the full simulation struct for the server context: every `all`
+   field plus the fields scoped [local, context = server] */
+typedef struct ServerShipState {
+    ShipType ship_type;
+    Vec3 position;
+    Quat rotation;
+    Vec3 linear_velocity;
+    ShipFlags flags;
+    Team team;
+    float health;
+    float thrust;
+    Vec3 angular_velocity;
+    float laser_cooldown;
+    float missile_cooldown;
+    float speed_current;
+    float speed_velocity;
+    Vec3 stick_current;
+    Vec3 stick_velocity;
+    float sensitivity_current;
+    float sensitivity_velocity;
+    float roll_current;
+    float roll_velocity;
+    float aim_current;
+    float aim_velocity;
+    int8_t laser_index;
+    int8_t missile_index;
+    Handle target;
+    double lock_start_time;
+    int invulnerable;
+    Vec3 previous_position;
+    int32_t num_colliders;
+    int32_t collider_armor[64];
+} ServerShipState;
+
+/* ShipData_Deep — every non-[local] field, deep encodings: full state for
+   client-side prediction */
+typedef struct ShipData_Deep {
+    ShipType ship_type;
+    Vec3 position;
+    Quat rotation;
+    Vec3 linear_velocity;
+    ShipFlags flags;
+    Team team;
+    float health;
+    float thrust;
+    Vec3 angular_velocity;
+    float laser_cooldown;
+    float missile_cooldown;
+    float speed_current;
+    float speed_velocity;
+    Vec3 stick_current;
+    Vec3 stick_velocity;
+    float sensitivity_current;
+    float sensitivity_velocity;
+    float roll_current;
+    float roll_velocity;
+    float aim_current;
+    float aim_velocity;
+    int8_t laser_index;
+    int8_t missile_index;
+    Handle target;
+    double lock_start_time;
+} ShipData_Deep;
+
+/* ShipData_Shallow — the [interpolate] fields on the quantized wire */
+typedef struct ShipData_Shallow {
+    ShipType ship_type;
+    /* position: Vec3 quantized — per-component int in [-8388608, 8388608] */
+    int32_t position_x;
+    int32_t position_y;
+    int32_t position_z;
+    /* rotation: Quat quantized — per-component int in [-1024, 1024] */
+    int16_t rotation_x;
+    int16_t rotation_y;
+    int16_t rotation_z;
+    int16_t rotation_w;
+    /* linear_velocity: Vec3 quantized — per-component int in [-2097152, 2097152] */
+    int32_t linear_velocity_x;
+    int32_t linear_velocity_y;
+    int32_t linear_velocity_z;
+    ShipFlags flags;
+    Team team;
+    uint16_t health; /* float [0.0, 1000.0] @ 1.0 -> wire int [0, 1000] */
+    uint8_t thrust; /* float [0.0, 1.0] @ 0.01 -> wire int [0, 100] */
+} ShipData_Shallow;
+
+/* ShipData_Interpolate — the same fields in their interpolation domain */
+typedef struct ShipData_Interpolate {
+    ShipType ship_type;
+    Vec3 position;
+    Quat rotation;
+    Vec3 linear_velocity;
+    ShipFlags flags;
+    Team team;
+    uint16_t health; /* float [0.0, 1000.0] @ 1.0 -> wire int [0, 1000] */
+    uint8_t thrust; /* float [0.0, 1.0] @ 0.01 -> wire int [0, 100] */
+} ShipData_Interpolate;
+
+
+/* ---- object Missile — one definition, a generated family per target (SPEC §4.8) ---- */
+
+/* ClientMissileState — the full simulation struct for the client context: every `all`
+   field plus the fields scoped [local, context = client] */
+typedef struct ClientMissileState {
+    MissileType missile_type;
+    Vec3 position;
+    Quat rotation;
+    Vec3 linear_velocity;
+    Team team;
+    uint64_t flags;
+    Vec3 angular_velocity;
+    Handle target;
+} ClientMissileState;
+
+/* ServerMissileState — the full simulation struct for the server context: every `all`
+   field plus the fields scoped [local, context = server] */
+typedef struct ServerMissileState {
+    MissileType missile_type;
+    Vec3 position;
+    Quat rotation;
+    Vec3 linear_velocity;
+    Team team;
+    uint64_t flags;
+    Vec3 angular_velocity;
+    Handle target;
+    double timer;
+} ServerMissileState;
+
+/* MissileData_Deep — every non-[local] field, deep encodings: full state for
+   client-side prediction */
+typedef struct MissileData_Deep {
+    MissileType missile_type;
+    Vec3 position;
+    Quat rotation;
+    Vec3 linear_velocity;
+    Team team;
+    uint64_t flags;
+} MissileData_Deep;
+
+/* MissileData_Shallow — the [interpolate] fields on the quantized wire */
+typedef struct MissileData_Shallow {
+    MissileType missile_type;
+    /* position: Vec3 quantized — per-component int in [-8388608, 8388608] */
+    int32_t position_x;
+    int32_t position_y;
+    int32_t position_z;
+    /* rotation: Quat quantized — per-component int in [-1024, 1024] */
+    int16_t rotation_x;
+    int16_t rotation_y;
+    int16_t rotation_z;
+    int16_t rotation_w;
+    /* linear_velocity: Vec3 quantized — per-component int in [-2097152, 2097152] */
+    int32_t linear_velocity_x;
+    int32_t linear_velocity_y;
+    int32_t linear_velocity_z;
+    Team team;
+    uint64_t flags;
+} MissileData_Shallow;
+
+/* MissileData_Interpolate — the same fields in their interpolation domain */
+typedef struct MissileData_Interpolate {
+    MissileType missile_type;
+    Vec3 position;
+    Quat rotation;
+    Vec3 linear_velocity;
+    Team team;
+    uint64_t flags;
+} MissileData_Interpolate;
+
+
+/* ---- object DynamicProp — one definition, a generated family per target (SPEC §4.8) ---- */
+
+/* DynamicPropState — the full simulation struct: every field */
+typedef struct DynamicPropState {
+    PropType prop_type;
+    Vec3 position;
+    Quat rotation;
+    Vec3 linear_velocity;
+    uint64_t flags;
+    Team team;
+    Vec3 angular_velocity;
+} DynamicPropState;
+
+/* DynamicPropData_Deep — every non-[local] field, deep encodings: full state for
+   client-side prediction */
+typedef struct DynamicPropData_Deep {
+    PropType prop_type;
+    Vec3 position;
+    Quat rotation;
+    Vec3 linear_velocity;
+    uint64_t flags;
+    Team team;
+} DynamicPropData_Deep;
+
+/* DynamicPropData_Shallow — the [interpolate] fields on the quantized wire */
+typedef struct DynamicPropData_Shallow {
+    PropType prop_type;
+    /* position: Vec3 quantized — per-component int in [-8388608, 8388608] */
+    int32_t position_x;
+    int32_t position_y;
+    int32_t position_z;
+    /* rotation: Quat quantized — per-component int in [-1024, 1024] */
+    int16_t rotation_x;
+    int16_t rotation_y;
+    int16_t rotation_z;
+    int16_t rotation_w;
+    /* linear_velocity: Vec3 quantized — per-component int in [-2097152, 2097152] */
+    int32_t linear_velocity_x;
+    int32_t linear_velocity_y;
+    int32_t linear_velocity_z;
+    uint64_t flags;
+    Team team;
+} DynamicPropData_Shallow;
+
+/* DynamicPropData_Interpolate — the same fields in their interpolation domain */
+typedef struct DynamicPropData_Interpolate {
+    PropType prop_type;
+    Vec3 position;
+    Quat rotation;
+    Vec3 linear_velocity;
+    uint64_t flags;
+    Team team;
+} DynamicPropData_Interpolate;
+
+
+/* ---- object Turret — one definition, a generated family per target (SPEC §4.8) ---- */
+
+/* TurretState — the full simulation struct: every field */
+typedef struct TurretState {
+    Handle parent;
+    int32_t turret_index;
+    Quat rotation;
+    uint64_t flags;
+    Team team;
+} TurretState;
+
+/* TurretData_Deep — every non-[local] field, deep encodings: full state for
+   client-side prediction */
+typedef struct TurretData_Deep {
+    Handle parent;
+    int32_t turret_index;
+    Quat rotation;
+    uint64_t flags;
+} TurretData_Deep;
+
+/* TurretData_Shallow — the [interpolate] fields on the quantized wire */
+typedef struct TurretData_Shallow {
+    Handle parent;
+    int32_t turret_index;
+    /* rotation: Quat quantized — per-component int in [-1024, 1024] */
+    int16_t rotation_x;
+    int16_t rotation_y;
+    int16_t rotation_z;
+    int16_t rotation_w;
+    uint64_t flags;
+} TurretData_Shallow;
+
+/* TurretData_Interpolate — the same fields in their interpolation domain */
+typedef struct TurretData_Interpolate {
+    Handle parent;
+    int32_t turret_index;
+    Quat rotation;
+    uint64_t flags;
+} TurretData_Interpolate;
+
 #ifdef __cplusplus
 }
 #endif

@@ -60,14 +60,30 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 	objOwner := ir.ObjectOwner(u)
 	deps := ir.FileDeps(u)
 
+	var errs []error
 	for _, f := range u.Files {
 		g := &gen{unit: u, file: f, msgOwner: msgOwner, objOwner: objOwner, deps: sortedDeps(deps[f.Base])}
 		g.emitDataHeader(f.Base == home)
 		out[f.Base+".h"] = g.assembleHeader()
+		errs = append(errs, g.errs...)
 
 		w := &gen{unit: u, file: f, msgOwner: msgOwner, objOwner: objOwner, deps: sortedDeps(deps[f.Base]), wire: true}
 		w.emitWireHeader()
 		out[f.Base+"Wire.h"] = w.assembleWireHeader()
+		errs = append(errs, w.errs...)
+	}
+
+	// Refuse to emit a partial target. Returning the files alongside an error
+	// would invite a caller to use them.
+	if len(errs) > 0 {
+		var b strings.Builder
+		for i, e := range errs {
+			if i > 0 {
+				b.WriteString("\n")
+			}
+			b.WriteString(e.Error())
+		}
+		return nil, fmt.Errorf("%s", b.String())
 	}
 
 	return out, nil
@@ -87,6 +103,8 @@ func protocolIdHome(u *ir.Unit) string {
 
 type gen struct {
 	unit     *ir.Unit
+	errs     []error
+	needs128 bool // a 128-bit or Q112.16 storage member needs serialize.h in the DATA header
 	file     *ir.File
 	msgOwner string
 	objOwner string
@@ -97,6 +115,19 @@ type gen struct {
 
 func (g *gen) pf(format string, args ...any) {
 	fmt.Fprintf(&g.body, format, args...)
+}
+
+// unsupported records a construct this backend cannot emit, and is the whole
+// reason the C target now fails loudly.
+//
+// Three separate defects in this backend were an IR kind falling silently
+// through a switch: const/reserved/align items, then every fixed-point field,
+// then every object declaration. Each compiled clean, ran, and returned
+// success while producing wrong bytes or none. A generator that cannot emit a
+// construct must SAY SO -- a build error is recoverable, a silently truncated
+// wire is not.
+func (g *gen) unsupported(format string, args ...any) {
+	g.errs = append(g.errs, fmt.Errorf("C backend: "+format, args...))
 }
 
 // guardName is the include guard: SCHEMA_<PACKAGE>_<BASE>_H.
@@ -110,6 +141,11 @@ func (g *gen) assembleHeader() []byte {
 	guard := g.guardName("")
 	fmt.Fprintf(&h, "#ifndef %s\n#define %s\n\n", guard, guard)
 	h.WriteString("#include <stdint.h>\n")
+	if g.needs128 {
+		// serialize_int128_t / serialize_uint128_t are STORAGE here, so the
+		// runtime header has to reach the data header and not only the wire one
+		h.WriteString("#include \"serialize.h\"   /* serialize_int128_t: C has no 128-bit builtin */\n")
+	}
 	h.WriteString(unusedMacro)
 	for _, d := range g.deps {
 		fmt.Fprintf(&h, "#include \"%s.h\"\n", d)
@@ -180,6 +216,16 @@ func (g *gen) emitDataHeader(carriesProtocolId bool) {
 			g.emitFlags(decl)
 		case *ir.Struct:
 			g.emitStruct(decl)
+		case *ir.Object:
+			g.emitObject(decl)
+		case *ir.ContextsMarker:
+			g.pf("/* contexts declared for this unit: %s (SPEC §4.2).\n", strings.Join(decl.Names, ", "))
+			g.pf("   Contexts generate no standalone artifacts — where an object carries\n")
+			g.pf("   context-scoped [local] fields, its State struct is generated once per\n")
+			g.pf("   context (ClientShipState, ServerShipState, ...), each holding the `all`\n")
+			g.pf("   fields plus its own context's. No preprocessor in any target. */\n\n")
+		default:
+			g.unsupported("declaration kind %T in %s.schema has no C emission", decl, g.file.Base)
 		}
 	}
 }
@@ -290,6 +336,15 @@ func (g *gen) storageType(f *ir.Field) string {
 		// no <stdbool.h>: the floor is C89, where bool does not exist
 		return "int"
 	case ir.TInt:
+		if f.Type.Width == 128 {
+			// C has no int128_t. serialize.c models it as two 64-bit lanes,
+			// which is also what makes the wire representation-independent.
+			g.needs128 = true
+			if f.Type.Signed {
+				return "serialize_int128_t"
+			}
+			return "serialize_uint128_t"
+		}
 		return cInt(f.Type.Signed, f.Type.Width)
 	case ir.TBits:
 		if f.Type.Width <= 32 {
@@ -300,9 +355,18 @@ func (g *gen) storageType(f *ir.Field) string {
 		return "float"
 	case ir.TFloat64:
 		return "double"
+	case ir.TFixed:
+		// the raw scaled integer, in SIGNED storage of exactly I + F bits --
+		// serialize_fixed's own convention (STANDARD.md, fixed)
+		if f.Type.Width == 128 {
+			g.needs128 = true
+			return "serialize_int128_t"
+		}
+		return cInt(true, f.Type.Width)
 	case ir.TNamed:
 		return f.Type.Name
 	}
+	g.unsupported("field %s has type kind %v, which has no C storage mapping", f.Name, f.Type.Kind)
 	return "int32_t"
 }
 
@@ -357,12 +421,13 @@ var _ = big.NewInt
 
 func (g *gen) emitWireHeader() {
 	for _, d := range g.file.Decls {
-		st, ok := d.(*ir.Struct)
-		if !ok {
-			continue
+		switch decl := d.(type) {
+		case *ir.Struct:
+			g.emitWriteFunc(decl)
+			g.emitReadFunc(decl)
+		case *ir.Object:
+			g.emitObjectFunctions(decl)
 		}
-		g.emitWriteFunc(st)
-		g.emitReadFunc(st)
 	}
 }
 

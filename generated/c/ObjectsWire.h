@@ -26,6 +26,1478 @@
 extern "C" {
 #endif
 
+/* Writes Ship's DEEP view — the declared encodings. */
+static SCHEMA_UNUSED int write_ship_deep( serialize_write_stream_t * stream, const ShipData_Deep * value )
+{
+    if ( value->ship_type > 5 )
+    {
+        return 0; /* headroom above the wire range cannot ride */
+    }
+    if ( !serialize_write_bits( stream, (serialize_uint32_t) value->ship_type, 3 ) )
+    {
+        return 0;
+    }
+    if ( !write_vec3( stream, &value->position ) )
+    {
+        return 0;
+    }
+    if ( !write_quat( stream, &value->rotation ) )
+    {
+        return 0;
+    }
+    if ( !write_vec3( stream, &value->linear_velocity ) )
+    {
+        return 0;
+    }
+    if ( !serialize_write_bits( stream, (serialize_uint32_t) value->flags, 4 ) )
+    {
+        return 0;
+    }
+    if ( value->team > 2 )
+    {
+        return 0; /* headroom above the wire range cannot ride */
+    }
+    if ( !serialize_write_bits( stream, (serialize_uint32_t) value->team, 2 ) )
+    {
+        return 0;
+    }
+    if ( !serialize_write_float( stream, value->health ) )
+    {
+        return 0;
+    }
+    if ( !serialize_write_float( stream, value->thrust ) )
+    {
+        return 0;
+    }
+    if ( !write_vec3( stream, &value->angular_velocity ) )
+    {
+        return 0;
+    }
+    if ( !serialize_write_float( stream, value->laser_cooldown ) )
+    {
+        return 0;
+    }
+    if ( !serialize_write_float( stream, value->missile_cooldown ) )
+    {
+        return 0;
+    }
+    if ( !serialize_write_float( stream, value->speed_current ) )
+    {
+        return 0;
+    }
+    if ( !serialize_write_float( stream, value->speed_velocity ) )
+    {
+        return 0;
+    }
+    if ( !write_vec3( stream, &value->stick_current ) )
+    {
+        return 0;
+    }
+    if ( !write_vec3( stream, &value->stick_velocity ) )
+    {
+        return 0;
+    }
+    if ( !serialize_write_float( stream, value->sensitivity_current ) )
+    {
+        return 0;
+    }
+    if ( !serialize_write_float( stream, value->sensitivity_velocity ) )
+    {
+        return 0;
+    }
+    if ( !serialize_write_float( stream, value->roll_current ) )
+    {
+        return 0;
+    }
+    if ( !serialize_write_float( stream, value->roll_velocity ) )
+    {
+        return 0;
+    }
+    if ( !serialize_write_float( stream, value->aim_current ) )
+    {
+        return 0;
+    }
+    if ( !serialize_write_float( stream, value->aim_velocity ) )
+    {
+        return 0;
+    }
+    if ( (serialize_int64_t) value->laser_index < 0LL || (serialize_int64_t) value->laser_index > 15LL )
+    {
+        return 0; /* out-of-contract writes are refused, not wrapped */
+    }
+    if ( !serialize_write_bits( stream, (serialize_uint32_t) ( value->laser_index ), 4 ) )
+    {
+        return 0;
+    }
+    if ( (serialize_int64_t) value->missile_index < 0LL || (serialize_int64_t) value->missile_index > 15LL )
+    {
+        return 0; /* out-of-contract writes are refused, not wrapped */
+    }
+    if ( !serialize_write_bits( stream, (serialize_uint32_t) ( value->missile_index ), 4 ) )
+    {
+        return 0;
+    }
+    if ( !write_handle( stream, &value->target ) )
+    {
+        return 0;
+    }
+    if ( !serialize_write_double( stream, value->lock_start_time ) )
+    {
+        return 0;
+    }
+    return 1;
+}
+
+/* Reads Ship's DEEP view. */
+static SCHEMA_UNUSED int read_ship_deep( serialize_read_stream_t * stream, ShipData_Deep * value )
+{
+    {
+        serialize_uint32_t enum_value = 0;
+        if ( !serialize_read_bits( stream, &enum_value, 3 ) )
+        {
+            return 0;
+        }
+        if ( enum_value > 5 )
+        {
+            return 0; /* not a wire-legal value */
+        }
+        value->ship_type = (ShipType) enum_value;
+    }
+    if ( !read_vec3( stream, &value->position ) )
+    {
+        return 0;
+    }
+    if ( !read_quat( stream, &value->rotation ) )
+    {
+        return 0;
+    }
+    if ( !read_vec3( stream, &value->linear_velocity ) )
+    {
+        return 0;
+    }
+    {
+        serialize_uint32_t flags_value = 0;
+        if ( !serialize_read_bits( stream, &flags_value, 4 ) )
+        {
+            return 0;
+        }
+        value->flags = (ShipFlags) flags_value;
+    }
+    {
+        serialize_uint32_t enum_value = 0;
+        if ( !serialize_read_bits( stream, &enum_value, 2 ) )
+        {
+            return 0;
+        }
+        if ( enum_value > 2 )
+        {
+            return 0; /* not a wire-legal value */
+        }
+        value->team = (Team) enum_value;
+    }
+    if ( !serialize_read_float( stream, &value->health ) )
+    {
+        return 0;
+    }
+    if ( !serialize_read_float( stream, &value->thrust ) )
+    {
+        return 0;
+    }
+    if ( !read_vec3( stream, &value->angular_velocity ) )
+    {
+        return 0;
+    }
+    if ( !serialize_read_float( stream, &value->laser_cooldown ) )
+    {
+        return 0;
+    }
+    if ( !serialize_read_float( stream, &value->missile_cooldown ) )
+    {
+        return 0;
+    }
+    if ( !serialize_read_float( stream, &value->speed_current ) )
+    {
+        return 0;
+    }
+    if ( !serialize_read_float( stream, &value->speed_velocity ) )
+    {
+        return 0;
+    }
+    if ( !read_vec3( stream, &value->stick_current ) )
+    {
+        return 0;
+    }
+    if ( !read_vec3( stream, &value->stick_velocity ) )
+    {
+        return 0;
+    }
+    if ( !serialize_read_float( stream, &value->sensitivity_current ) )
+    {
+        return 0;
+    }
+    if ( !serialize_read_float( stream, &value->sensitivity_velocity ) )
+    {
+        return 0;
+    }
+    if ( !serialize_read_float( stream, &value->roll_current ) )
+    {
+        return 0;
+    }
+    if ( !serialize_read_float( stream, &value->roll_velocity ) )
+    {
+        return 0;
+    }
+    if ( !serialize_read_float( stream, &value->aim_current ) )
+    {
+        return 0;
+    }
+    if ( !serialize_read_float( stream, &value->aim_velocity ) )
+    {
+        return 0;
+    }
+    {
+        serialize_uint64_t offset_value = 0;
+        serialize_uint32_t raw = 0;
+        if ( !serialize_read_bits( stream, &raw, 4 ) )
+        {
+            return 0;
+        }
+        offset_value = raw;
+        if ( offset_value > 15ULL )
+        {
+            return 0;
+        }
+        value->laser_index = (int8_t) offset_value;
+    }
+    {
+        serialize_uint64_t offset_value = 0;
+        serialize_uint32_t raw = 0;
+        if ( !serialize_read_bits( stream, &raw, 4 ) )
+        {
+            return 0;
+        }
+        offset_value = raw;
+        if ( offset_value > 15ULL )
+        {
+            return 0;
+        }
+        value->missile_index = (int8_t) offset_value;
+    }
+    if ( !read_handle( stream, &value->target ) )
+    {
+        return 0;
+    }
+    if ( !serialize_read_double( stream, &value->lock_start_time ) )
+    {
+        return 0;
+    }
+    return 1;
+}
+
+/* Writes Ship's SHALLOW view — the quantized wire. */
+static SCHEMA_UNUSED int write_ship_shallow( serialize_write_stream_t * stream, const ShipData_Shallow * value )
+{
+    if ( value->ship_type > 5 )
+    {
+        return 0; /* headroom above the wire range cannot ride */
+    }
+    if ( !serialize_write_bits( stream, (serialize_uint32_t) value->ship_type, 3 ) )
+    {
+        return 0;
+    }
+    if ( (serialize_int64_t) value->position_x < -8388608LL || (serialize_int64_t) value->position_x > 8388608LL )
+    {
+        return 0;
+    }
+    if ( !serialize_write_bits( stream, (serialize_uint32_t) ( value->position_x - (-8388608) ), 25 ) )
+    {
+        return 0;
+    }
+    if ( (serialize_int64_t) value->position_y < -8388608LL || (serialize_int64_t) value->position_y > 8388608LL )
+    {
+        return 0;
+    }
+    if ( !serialize_write_bits( stream, (serialize_uint32_t) ( value->position_y - (-8388608) ), 25 ) )
+    {
+        return 0;
+    }
+    if ( (serialize_int64_t) value->position_z < -8388608LL || (serialize_int64_t) value->position_z > 8388608LL )
+    {
+        return 0;
+    }
+    if ( !serialize_write_bits( stream, (serialize_uint32_t) ( value->position_z - (-8388608) ), 25 ) )
+    {
+        return 0;
+    }
+    if ( (serialize_int64_t) value->rotation_x < -1024LL || (serialize_int64_t) value->rotation_x > 1024LL )
+    {
+        return 0;
+    }
+    if ( !serialize_write_bits( stream, (serialize_uint32_t) ( value->rotation_x - (-1024) ), 12 ) )
+    {
+        return 0;
+    }
+    if ( (serialize_int64_t) value->rotation_y < -1024LL || (serialize_int64_t) value->rotation_y > 1024LL )
+    {
+        return 0;
+    }
+    if ( !serialize_write_bits( stream, (serialize_uint32_t) ( value->rotation_y - (-1024) ), 12 ) )
+    {
+        return 0;
+    }
+    if ( (serialize_int64_t) value->rotation_z < -1024LL || (serialize_int64_t) value->rotation_z > 1024LL )
+    {
+        return 0;
+    }
+    if ( !serialize_write_bits( stream, (serialize_uint32_t) ( value->rotation_z - (-1024) ), 12 ) )
+    {
+        return 0;
+    }
+    if ( (serialize_int64_t) value->rotation_w < -1024LL || (serialize_int64_t) value->rotation_w > 1024LL )
+    {
+        return 0;
+    }
+    if ( !serialize_write_bits( stream, (serialize_uint32_t) ( value->rotation_w - (-1024) ), 12 ) )
+    {
+        return 0;
+    }
+    if ( (serialize_int64_t) value->linear_velocity_x < -2097152LL || (serialize_int64_t) value->linear_velocity_x > 2097152LL )
+    {
+        return 0;
+    }
+    if ( !serialize_write_bits( stream, (serialize_uint32_t) ( value->linear_velocity_x - (-2097152) ), 23 ) )
+    {
+        return 0;
+    }
+    if ( (serialize_int64_t) value->linear_velocity_y < -2097152LL || (serialize_int64_t) value->linear_velocity_y > 2097152LL )
+    {
+        return 0;
+    }
+    if ( !serialize_write_bits( stream, (serialize_uint32_t) ( value->linear_velocity_y - (-2097152) ), 23 ) )
+    {
+        return 0;
+    }
+    if ( (serialize_int64_t) value->linear_velocity_z < -2097152LL || (serialize_int64_t) value->linear_velocity_z > 2097152LL )
+    {
+        return 0;
+    }
+    if ( !serialize_write_bits( stream, (serialize_uint32_t) ( value->linear_velocity_z - (-2097152) ), 23 ) )
+    {
+        return 0;
+    }
+    if ( !serialize_write_bits( stream, (serialize_uint32_t) value->flags, 4 ) )
+    {
+        return 0;
+    }
+    if ( value->team > 2 )
+    {
+        return 0; /* headroom above the wire range cannot ride */
+    }
+    if ( !serialize_write_bits( stream, (serialize_uint32_t) value->team, 2 ) )
+    {
+        return 0;
+    }
+    if ( (serialize_int64_t) value->health > 1000LL )
+    {
+        return 0;
+    }
+    if ( !serialize_write_bits( stream, (serialize_uint32_t) value->health, 10 ) )
+    {
+        return 0;
+    }
+    if ( (serialize_int64_t) value->thrust > 100LL )
+    {
+        return 0;
+    }
+    if ( !serialize_write_bits( stream, (serialize_uint32_t) value->thrust, 7 ) )
+    {
+        return 0;
+    }
+    return 1;
+}
+
+/* Reads Ship's SHALLOW view. */
+static SCHEMA_UNUSED int read_ship_shallow( serialize_read_stream_t * stream, ShipData_Shallow * value )
+{
+    {
+        serialize_uint32_t enum_value = 0;
+        if ( !serialize_read_bits( stream, &enum_value, 3 ) )
+        {
+            return 0;
+        }
+        if ( enum_value > 5 )
+        {
+            return 0; /* not a wire-legal value */
+        }
+        value->ship_type = (ShipType) enum_value;
+    }
+    {
+        serialize_uint32_t raw = 0;
+        if ( !serialize_read_bits( stream, &raw, 25 ) )
+        {
+            return 0;
+        }
+        if ( raw > 16777216U )
+        {
+            return 0;
+        }
+        value->position_x = (int32_t) ( (serialize_int64_t) raw + (-8388608) );
+    }
+    {
+        serialize_uint32_t raw = 0;
+        if ( !serialize_read_bits( stream, &raw, 25 ) )
+        {
+            return 0;
+        }
+        if ( raw > 16777216U )
+        {
+            return 0;
+        }
+        value->position_y = (int32_t) ( (serialize_int64_t) raw + (-8388608) );
+    }
+    {
+        serialize_uint32_t raw = 0;
+        if ( !serialize_read_bits( stream, &raw, 25 ) )
+        {
+            return 0;
+        }
+        if ( raw > 16777216U )
+        {
+            return 0;
+        }
+        value->position_z = (int32_t) ( (serialize_int64_t) raw + (-8388608) );
+    }
+    {
+        serialize_uint32_t raw = 0;
+        if ( !serialize_read_bits( stream, &raw, 12 ) )
+        {
+            return 0;
+        }
+        if ( raw > 2048U )
+        {
+            return 0;
+        }
+        value->rotation_x = (int16_t) ( (serialize_int64_t) raw + (-1024) );
+    }
+    {
+        serialize_uint32_t raw = 0;
+        if ( !serialize_read_bits( stream, &raw, 12 ) )
+        {
+            return 0;
+        }
+        if ( raw > 2048U )
+        {
+            return 0;
+        }
+        value->rotation_y = (int16_t) ( (serialize_int64_t) raw + (-1024) );
+    }
+    {
+        serialize_uint32_t raw = 0;
+        if ( !serialize_read_bits( stream, &raw, 12 ) )
+        {
+            return 0;
+        }
+        if ( raw > 2048U )
+        {
+            return 0;
+        }
+        value->rotation_z = (int16_t) ( (serialize_int64_t) raw + (-1024) );
+    }
+    {
+        serialize_uint32_t raw = 0;
+        if ( !serialize_read_bits( stream, &raw, 12 ) )
+        {
+            return 0;
+        }
+        if ( raw > 2048U )
+        {
+            return 0;
+        }
+        value->rotation_w = (int16_t) ( (serialize_int64_t) raw + (-1024) );
+    }
+    {
+        serialize_uint32_t raw = 0;
+        if ( !serialize_read_bits( stream, &raw, 23 ) )
+        {
+            return 0;
+        }
+        if ( raw > 4194304U )
+        {
+            return 0;
+        }
+        value->linear_velocity_x = (int32_t) ( (serialize_int64_t) raw + (-2097152) );
+    }
+    {
+        serialize_uint32_t raw = 0;
+        if ( !serialize_read_bits( stream, &raw, 23 ) )
+        {
+            return 0;
+        }
+        if ( raw > 4194304U )
+        {
+            return 0;
+        }
+        value->linear_velocity_y = (int32_t) ( (serialize_int64_t) raw + (-2097152) );
+    }
+    {
+        serialize_uint32_t raw = 0;
+        if ( !serialize_read_bits( stream, &raw, 23 ) )
+        {
+            return 0;
+        }
+        if ( raw > 4194304U )
+        {
+            return 0;
+        }
+        value->linear_velocity_z = (int32_t) ( (serialize_int64_t) raw + (-2097152) );
+    }
+    {
+        serialize_uint32_t flags_value = 0;
+        if ( !serialize_read_bits( stream, &flags_value, 4 ) )
+        {
+            return 0;
+        }
+        value->flags = (ShipFlags) flags_value;
+    }
+    {
+        serialize_uint32_t enum_value = 0;
+        if ( !serialize_read_bits( stream, &enum_value, 2 ) )
+        {
+            return 0;
+        }
+        if ( enum_value > 2 )
+        {
+            return 0; /* not a wire-legal value */
+        }
+        value->team = (Team) enum_value;
+    }
+    {
+        serialize_uint32_t raw = 0;
+        if ( !serialize_read_bits( stream, &raw, 10 ) )
+        {
+            return 0;
+        }
+        if ( raw > 1000U )
+        {
+            return 0;
+        }
+        value->health = (uint16_t) raw;
+    }
+    {
+        serialize_uint32_t raw = 0;
+        if ( !serialize_read_bits( stream, &raw, 7 ) )
+        {
+            return 0;
+        }
+        if ( raw > 100U )
+        {
+            return 0;
+        }
+        value->thrust = (uint8_t) raw;
+    }
+    return 1;
+}
+
+/* Writes Missile's DEEP view — the declared encodings. */
+static SCHEMA_UNUSED int write_missile_deep( serialize_write_stream_t * stream, const MissileData_Deep * value )
+{
+    if ( value->missile_type > 3 )
+    {
+        return 0; /* headroom above the wire range cannot ride */
+    }
+    if ( !serialize_write_bits( stream, (serialize_uint32_t) value->missile_type, 2 ) )
+    {
+        return 0;
+    }
+    if ( !write_vec3( stream, &value->position ) )
+    {
+        return 0;
+    }
+    if ( !write_quat( stream, &value->rotation ) )
+    {
+        return 0;
+    }
+    if ( !write_vec3( stream, &value->linear_velocity ) )
+    {
+        return 0;
+    }
+    if ( value->team > 2 )
+    {
+        return 0; /* headroom above the wire range cannot ride */
+    }
+    if ( !serialize_write_bits( stream, (serialize_uint32_t) value->team, 2 ) )
+    {
+        return 0;
+    }
+    if ( !serialize_write_uint64( stream, (serialize_uint64_t) value->flags ) )
+    {
+        return 0;
+    }
+    return 1;
+}
+
+/* Reads Missile's DEEP view. */
+static SCHEMA_UNUSED int read_missile_deep( serialize_read_stream_t * stream, MissileData_Deep * value )
+{
+    {
+        serialize_uint32_t enum_value = 0;
+        if ( !serialize_read_bits( stream, &enum_value, 2 ) )
+        {
+            return 0;
+        }
+        if ( enum_value > 3 )
+        {
+            return 0; /* not a wire-legal value */
+        }
+        value->missile_type = (MissileType) enum_value;
+    }
+    if ( !read_vec3( stream, &value->position ) )
+    {
+        return 0;
+    }
+    if ( !read_quat( stream, &value->rotation ) )
+    {
+        return 0;
+    }
+    if ( !read_vec3( stream, &value->linear_velocity ) )
+    {
+        return 0;
+    }
+    {
+        serialize_uint32_t enum_value = 0;
+        if ( !serialize_read_bits( stream, &enum_value, 2 ) )
+        {
+            return 0;
+        }
+        if ( enum_value > 2 )
+        {
+            return 0; /* not a wire-legal value */
+        }
+        value->team = (Team) enum_value;
+    }
+    {
+        serialize_uint64_t raw = 0;
+        if ( !serialize_read_uint64( stream, &raw ) )
+        {
+            return 0;
+        }
+        value->flags = (uint64_t) raw;
+    }
+    return 1;
+}
+
+/* Writes Missile's SHALLOW view — the quantized wire. */
+static SCHEMA_UNUSED int write_missile_shallow( serialize_write_stream_t * stream, const MissileData_Shallow * value )
+{
+    if ( value->missile_type > 3 )
+    {
+        return 0; /* headroom above the wire range cannot ride */
+    }
+    if ( !serialize_write_bits( stream, (serialize_uint32_t) value->missile_type, 2 ) )
+    {
+        return 0;
+    }
+    if ( (serialize_int64_t) value->position_x < -8388608LL || (serialize_int64_t) value->position_x > 8388608LL )
+    {
+        return 0;
+    }
+    if ( !serialize_write_bits( stream, (serialize_uint32_t) ( value->position_x - (-8388608) ), 25 ) )
+    {
+        return 0;
+    }
+    if ( (serialize_int64_t) value->position_y < -8388608LL || (serialize_int64_t) value->position_y > 8388608LL )
+    {
+        return 0;
+    }
+    if ( !serialize_write_bits( stream, (serialize_uint32_t) ( value->position_y - (-8388608) ), 25 ) )
+    {
+        return 0;
+    }
+    if ( (serialize_int64_t) value->position_z < -8388608LL || (serialize_int64_t) value->position_z > 8388608LL )
+    {
+        return 0;
+    }
+    if ( !serialize_write_bits( stream, (serialize_uint32_t) ( value->position_z - (-8388608) ), 25 ) )
+    {
+        return 0;
+    }
+    if ( (serialize_int64_t) value->rotation_x < -1024LL || (serialize_int64_t) value->rotation_x > 1024LL )
+    {
+        return 0;
+    }
+    if ( !serialize_write_bits( stream, (serialize_uint32_t) ( value->rotation_x - (-1024) ), 12 ) )
+    {
+        return 0;
+    }
+    if ( (serialize_int64_t) value->rotation_y < -1024LL || (serialize_int64_t) value->rotation_y > 1024LL )
+    {
+        return 0;
+    }
+    if ( !serialize_write_bits( stream, (serialize_uint32_t) ( value->rotation_y - (-1024) ), 12 ) )
+    {
+        return 0;
+    }
+    if ( (serialize_int64_t) value->rotation_z < -1024LL || (serialize_int64_t) value->rotation_z > 1024LL )
+    {
+        return 0;
+    }
+    if ( !serialize_write_bits( stream, (serialize_uint32_t) ( value->rotation_z - (-1024) ), 12 ) )
+    {
+        return 0;
+    }
+    if ( (serialize_int64_t) value->rotation_w < -1024LL || (serialize_int64_t) value->rotation_w > 1024LL )
+    {
+        return 0;
+    }
+    if ( !serialize_write_bits( stream, (serialize_uint32_t) ( value->rotation_w - (-1024) ), 12 ) )
+    {
+        return 0;
+    }
+    if ( (serialize_int64_t) value->linear_velocity_x < -2097152LL || (serialize_int64_t) value->linear_velocity_x > 2097152LL )
+    {
+        return 0;
+    }
+    if ( !serialize_write_bits( stream, (serialize_uint32_t) ( value->linear_velocity_x - (-2097152) ), 23 ) )
+    {
+        return 0;
+    }
+    if ( (serialize_int64_t) value->linear_velocity_y < -2097152LL || (serialize_int64_t) value->linear_velocity_y > 2097152LL )
+    {
+        return 0;
+    }
+    if ( !serialize_write_bits( stream, (serialize_uint32_t) ( value->linear_velocity_y - (-2097152) ), 23 ) )
+    {
+        return 0;
+    }
+    if ( (serialize_int64_t) value->linear_velocity_z < -2097152LL || (serialize_int64_t) value->linear_velocity_z > 2097152LL )
+    {
+        return 0;
+    }
+    if ( !serialize_write_bits( stream, (serialize_uint32_t) ( value->linear_velocity_z - (-2097152) ), 23 ) )
+    {
+        return 0;
+    }
+    if ( value->team > 2 )
+    {
+        return 0; /* headroom above the wire range cannot ride */
+    }
+    if ( !serialize_write_bits( stream, (serialize_uint32_t) value->team, 2 ) )
+    {
+        return 0;
+    }
+    if ( !serialize_write_uint64( stream, (serialize_uint64_t) value->flags ) )
+    {
+        return 0;
+    }
+    return 1;
+}
+
+/* Reads Missile's SHALLOW view. */
+static SCHEMA_UNUSED int read_missile_shallow( serialize_read_stream_t * stream, MissileData_Shallow * value )
+{
+    {
+        serialize_uint32_t enum_value = 0;
+        if ( !serialize_read_bits( stream, &enum_value, 2 ) )
+        {
+            return 0;
+        }
+        if ( enum_value > 3 )
+        {
+            return 0; /* not a wire-legal value */
+        }
+        value->missile_type = (MissileType) enum_value;
+    }
+    {
+        serialize_uint32_t raw = 0;
+        if ( !serialize_read_bits( stream, &raw, 25 ) )
+        {
+            return 0;
+        }
+        if ( raw > 16777216U )
+        {
+            return 0;
+        }
+        value->position_x = (int32_t) ( (serialize_int64_t) raw + (-8388608) );
+    }
+    {
+        serialize_uint32_t raw = 0;
+        if ( !serialize_read_bits( stream, &raw, 25 ) )
+        {
+            return 0;
+        }
+        if ( raw > 16777216U )
+        {
+            return 0;
+        }
+        value->position_y = (int32_t) ( (serialize_int64_t) raw + (-8388608) );
+    }
+    {
+        serialize_uint32_t raw = 0;
+        if ( !serialize_read_bits( stream, &raw, 25 ) )
+        {
+            return 0;
+        }
+        if ( raw > 16777216U )
+        {
+            return 0;
+        }
+        value->position_z = (int32_t) ( (serialize_int64_t) raw + (-8388608) );
+    }
+    {
+        serialize_uint32_t raw = 0;
+        if ( !serialize_read_bits( stream, &raw, 12 ) )
+        {
+            return 0;
+        }
+        if ( raw > 2048U )
+        {
+            return 0;
+        }
+        value->rotation_x = (int16_t) ( (serialize_int64_t) raw + (-1024) );
+    }
+    {
+        serialize_uint32_t raw = 0;
+        if ( !serialize_read_bits( stream, &raw, 12 ) )
+        {
+            return 0;
+        }
+        if ( raw > 2048U )
+        {
+            return 0;
+        }
+        value->rotation_y = (int16_t) ( (serialize_int64_t) raw + (-1024) );
+    }
+    {
+        serialize_uint32_t raw = 0;
+        if ( !serialize_read_bits( stream, &raw, 12 ) )
+        {
+            return 0;
+        }
+        if ( raw > 2048U )
+        {
+            return 0;
+        }
+        value->rotation_z = (int16_t) ( (serialize_int64_t) raw + (-1024) );
+    }
+    {
+        serialize_uint32_t raw = 0;
+        if ( !serialize_read_bits( stream, &raw, 12 ) )
+        {
+            return 0;
+        }
+        if ( raw > 2048U )
+        {
+            return 0;
+        }
+        value->rotation_w = (int16_t) ( (serialize_int64_t) raw + (-1024) );
+    }
+    {
+        serialize_uint32_t raw = 0;
+        if ( !serialize_read_bits( stream, &raw, 23 ) )
+        {
+            return 0;
+        }
+        if ( raw > 4194304U )
+        {
+            return 0;
+        }
+        value->linear_velocity_x = (int32_t) ( (serialize_int64_t) raw + (-2097152) );
+    }
+    {
+        serialize_uint32_t raw = 0;
+        if ( !serialize_read_bits( stream, &raw, 23 ) )
+        {
+            return 0;
+        }
+        if ( raw > 4194304U )
+        {
+            return 0;
+        }
+        value->linear_velocity_y = (int32_t) ( (serialize_int64_t) raw + (-2097152) );
+    }
+    {
+        serialize_uint32_t raw = 0;
+        if ( !serialize_read_bits( stream, &raw, 23 ) )
+        {
+            return 0;
+        }
+        if ( raw > 4194304U )
+        {
+            return 0;
+        }
+        value->linear_velocity_z = (int32_t) ( (serialize_int64_t) raw + (-2097152) );
+    }
+    {
+        serialize_uint32_t enum_value = 0;
+        if ( !serialize_read_bits( stream, &enum_value, 2 ) )
+        {
+            return 0;
+        }
+        if ( enum_value > 2 )
+        {
+            return 0; /* not a wire-legal value */
+        }
+        value->team = (Team) enum_value;
+    }
+    {
+        serialize_uint64_t raw = 0;
+        if ( !serialize_read_uint64( stream, &raw ) )
+        {
+            return 0;
+        }
+        value->flags = (uint64_t) raw;
+    }
+    return 1;
+}
+
+/* Writes DynamicProp's DEEP view — the declared encodings. */
+static SCHEMA_UNUSED int write_dynamic_prop_deep( serialize_write_stream_t * stream, const DynamicPropData_Deep * value )
+{
+    if ( value->prop_type > 6 )
+    {
+        return 0; /* headroom above the wire range cannot ride */
+    }
+    if ( !serialize_write_bits( stream, (serialize_uint32_t) value->prop_type, 3 ) )
+    {
+        return 0;
+    }
+    if ( !write_vec3( stream, &value->position ) )
+    {
+        return 0;
+    }
+    if ( !write_quat( stream, &value->rotation ) )
+    {
+        return 0;
+    }
+    if ( !write_vec3( stream, &value->linear_velocity ) )
+    {
+        return 0;
+    }
+    if ( !serialize_write_uint64( stream, (serialize_uint64_t) value->flags ) )
+    {
+        return 0;
+    }
+    if ( value->team > 2 )
+    {
+        return 0; /* headroom above the wire range cannot ride */
+    }
+    if ( !serialize_write_bits( stream, (serialize_uint32_t) value->team, 2 ) )
+    {
+        return 0;
+    }
+    return 1;
+}
+
+/* Reads DynamicProp's DEEP view. */
+static SCHEMA_UNUSED int read_dynamic_prop_deep( serialize_read_stream_t * stream, DynamicPropData_Deep * value )
+{
+    {
+        serialize_uint32_t enum_value = 0;
+        if ( !serialize_read_bits( stream, &enum_value, 3 ) )
+        {
+            return 0;
+        }
+        if ( enum_value > 6 )
+        {
+            return 0; /* not a wire-legal value */
+        }
+        value->prop_type = (PropType) enum_value;
+    }
+    if ( !read_vec3( stream, &value->position ) )
+    {
+        return 0;
+    }
+    if ( !read_quat( stream, &value->rotation ) )
+    {
+        return 0;
+    }
+    if ( !read_vec3( stream, &value->linear_velocity ) )
+    {
+        return 0;
+    }
+    {
+        serialize_uint64_t raw = 0;
+        if ( !serialize_read_uint64( stream, &raw ) )
+        {
+            return 0;
+        }
+        value->flags = (uint64_t) raw;
+    }
+    {
+        serialize_uint32_t enum_value = 0;
+        if ( !serialize_read_bits( stream, &enum_value, 2 ) )
+        {
+            return 0;
+        }
+        if ( enum_value > 2 )
+        {
+            return 0; /* not a wire-legal value */
+        }
+        value->team = (Team) enum_value;
+    }
+    return 1;
+}
+
+/* Writes DynamicProp's SHALLOW view — the quantized wire. */
+static SCHEMA_UNUSED int write_dynamic_prop_shallow( serialize_write_stream_t * stream, const DynamicPropData_Shallow * value )
+{
+    if ( value->prop_type > 6 )
+    {
+        return 0; /* headroom above the wire range cannot ride */
+    }
+    if ( !serialize_write_bits( stream, (serialize_uint32_t) value->prop_type, 3 ) )
+    {
+        return 0;
+    }
+    if ( (serialize_int64_t) value->position_x < -8388608LL || (serialize_int64_t) value->position_x > 8388608LL )
+    {
+        return 0;
+    }
+    if ( !serialize_write_bits( stream, (serialize_uint32_t) ( value->position_x - (-8388608) ), 25 ) )
+    {
+        return 0;
+    }
+    if ( (serialize_int64_t) value->position_y < -8388608LL || (serialize_int64_t) value->position_y > 8388608LL )
+    {
+        return 0;
+    }
+    if ( !serialize_write_bits( stream, (serialize_uint32_t) ( value->position_y - (-8388608) ), 25 ) )
+    {
+        return 0;
+    }
+    if ( (serialize_int64_t) value->position_z < -8388608LL || (serialize_int64_t) value->position_z > 8388608LL )
+    {
+        return 0;
+    }
+    if ( !serialize_write_bits( stream, (serialize_uint32_t) ( value->position_z - (-8388608) ), 25 ) )
+    {
+        return 0;
+    }
+    if ( (serialize_int64_t) value->rotation_x < -1024LL || (serialize_int64_t) value->rotation_x > 1024LL )
+    {
+        return 0;
+    }
+    if ( !serialize_write_bits( stream, (serialize_uint32_t) ( value->rotation_x - (-1024) ), 12 ) )
+    {
+        return 0;
+    }
+    if ( (serialize_int64_t) value->rotation_y < -1024LL || (serialize_int64_t) value->rotation_y > 1024LL )
+    {
+        return 0;
+    }
+    if ( !serialize_write_bits( stream, (serialize_uint32_t) ( value->rotation_y - (-1024) ), 12 ) )
+    {
+        return 0;
+    }
+    if ( (serialize_int64_t) value->rotation_z < -1024LL || (serialize_int64_t) value->rotation_z > 1024LL )
+    {
+        return 0;
+    }
+    if ( !serialize_write_bits( stream, (serialize_uint32_t) ( value->rotation_z - (-1024) ), 12 ) )
+    {
+        return 0;
+    }
+    if ( (serialize_int64_t) value->rotation_w < -1024LL || (serialize_int64_t) value->rotation_w > 1024LL )
+    {
+        return 0;
+    }
+    if ( !serialize_write_bits( stream, (serialize_uint32_t) ( value->rotation_w - (-1024) ), 12 ) )
+    {
+        return 0;
+    }
+    if ( (serialize_int64_t) value->linear_velocity_x < -2097152LL || (serialize_int64_t) value->linear_velocity_x > 2097152LL )
+    {
+        return 0;
+    }
+    if ( !serialize_write_bits( stream, (serialize_uint32_t) ( value->linear_velocity_x - (-2097152) ), 23 ) )
+    {
+        return 0;
+    }
+    if ( (serialize_int64_t) value->linear_velocity_y < -2097152LL || (serialize_int64_t) value->linear_velocity_y > 2097152LL )
+    {
+        return 0;
+    }
+    if ( !serialize_write_bits( stream, (serialize_uint32_t) ( value->linear_velocity_y - (-2097152) ), 23 ) )
+    {
+        return 0;
+    }
+    if ( (serialize_int64_t) value->linear_velocity_z < -2097152LL || (serialize_int64_t) value->linear_velocity_z > 2097152LL )
+    {
+        return 0;
+    }
+    if ( !serialize_write_bits( stream, (serialize_uint32_t) ( value->linear_velocity_z - (-2097152) ), 23 ) )
+    {
+        return 0;
+    }
+    if ( !serialize_write_uint64( stream, (serialize_uint64_t) value->flags ) )
+    {
+        return 0;
+    }
+    if ( value->team > 2 )
+    {
+        return 0; /* headroom above the wire range cannot ride */
+    }
+    if ( !serialize_write_bits( stream, (serialize_uint32_t) value->team, 2 ) )
+    {
+        return 0;
+    }
+    return 1;
+}
+
+/* Reads DynamicProp's SHALLOW view. */
+static SCHEMA_UNUSED int read_dynamic_prop_shallow( serialize_read_stream_t * stream, DynamicPropData_Shallow * value )
+{
+    {
+        serialize_uint32_t enum_value = 0;
+        if ( !serialize_read_bits( stream, &enum_value, 3 ) )
+        {
+            return 0;
+        }
+        if ( enum_value > 6 )
+        {
+            return 0; /* not a wire-legal value */
+        }
+        value->prop_type = (PropType) enum_value;
+    }
+    {
+        serialize_uint32_t raw = 0;
+        if ( !serialize_read_bits( stream, &raw, 25 ) )
+        {
+            return 0;
+        }
+        if ( raw > 16777216U )
+        {
+            return 0;
+        }
+        value->position_x = (int32_t) ( (serialize_int64_t) raw + (-8388608) );
+    }
+    {
+        serialize_uint32_t raw = 0;
+        if ( !serialize_read_bits( stream, &raw, 25 ) )
+        {
+            return 0;
+        }
+        if ( raw > 16777216U )
+        {
+            return 0;
+        }
+        value->position_y = (int32_t) ( (serialize_int64_t) raw + (-8388608) );
+    }
+    {
+        serialize_uint32_t raw = 0;
+        if ( !serialize_read_bits( stream, &raw, 25 ) )
+        {
+            return 0;
+        }
+        if ( raw > 16777216U )
+        {
+            return 0;
+        }
+        value->position_z = (int32_t) ( (serialize_int64_t) raw + (-8388608) );
+    }
+    {
+        serialize_uint32_t raw = 0;
+        if ( !serialize_read_bits( stream, &raw, 12 ) )
+        {
+            return 0;
+        }
+        if ( raw > 2048U )
+        {
+            return 0;
+        }
+        value->rotation_x = (int16_t) ( (serialize_int64_t) raw + (-1024) );
+    }
+    {
+        serialize_uint32_t raw = 0;
+        if ( !serialize_read_bits( stream, &raw, 12 ) )
+        {
+            return 0;
+        }
+        if ( raw > 2048U )
+        {
+            return 0;
+        }
+        value->rotation_y = (int16_t) ( (serialize_int64_t) raw + (-1024) );
+    }
+    {
+        serialize_uint32_t raw = 0;
+        if ( !serialize_read_bits( stream, &raw, 12 ) )
+        {
+            return 0;
+        }
+        if ( raw > 2048U )
+        {
+            return 0;
+        }
+        value->rotation_z = (int16_t) ( (serialize_int64_t) raw + (-1024) );
+    }
+    {
+        serialize_uint32_t raw = 0;
+        if ( !serialize_read_bits( stream, &raw, 12 ) )
+        {
+            return 0;
+        }
+        if ( raw > 2048U )
+        {
+            return 0;
+        }
+        value->rotation_w = (int16_t) ( (serialize_int64_t) raw + (-1024) );
+    }
+    {
+        serialize_uint32_t raw = 0;
+        if ( !serialize_read_bits( stream, &raw, 23 ) )
+        {
+            return 0;
+        }
+        if ( raw > 4194304U )
+        {
+            return 0;
+        }
+        value->linear_velocity_x = (int32_t) ( (serialize_int64_t) raw + (-2097152) );
+    }
+    {
+        serialize_uint32_t raw = 0;
+        if ( !serialize_read_bits( stream, &raw, 23 ) )
+        {
+            return 0;
+        }
+        if ( raw > 4194304U )
+        {
+            return 0;
+        }
+        value->linear_velocity_y = (int32_t) ( (serialize_int64_t) raw + (-2097152) );
+    }
+    {
+        serialize_uint32_t raw = 0;
+        if ( !serialize_read_bits( stream, &raw, 23 ) )
+        {
+            return 0;
+        }
+        if ( raw > 4194304U )
+        {
+            return 0;
+        }
+        value->linear_velocity_z = (int32_t) ( (serialize_int64_t) raw + (-2097152) );
+    }
+    {
+        serialize_uint64_t raw = 0;
+        if ( !serialize_read_uint64( stream, &raw ) )
+        {
+            return 0;
+        }
+        value->flags = (uint64_t) raw;
+    }
+    {
+        serialize_uint32_t enum_value = 0;
+        if ( !serialize_read_bits( stream, &enum_value, 2 ) )
+        {
+            return 0;
+        }
+        if ( enum_value > 2 )
+        {
+            return 0; /* not a wire-legal value */
+        }
+        value->team = (Team) enum_value;
+    }
+    return 1;
+}
+
+/* Writes Turret's DEEP view — the declared encodings. */
+static SCHEMA_UNUSED int write_turret_deep( serialize_write_stream_t * stream, const TurretData_Deep * value )
+{
+    if ( !write_handle( stream, &value->parent ) )
+    {
+        return 0;
+    }
+    if ( (serialize_int64_t) value->turret_index < 0LL || (serialize_int64_t) value->turret_index > 255LL )
+    {
+        return 0; /* out-of-contract writes are refused, not wrapped */
+    }
+    if ( !serialize_write_bits( stream, (serialize_uint32_t) ( value->turret_index ), 8 ) )
+    {
+        return 0;
+    }
+    if ( !write_quat( stream, &value->rotation ) )
+    {
+        return 0;
+    }
+    if ( !serialize_write_uint64( stream, (serialize_uint64_t) value->flags ) )
+    {
+        return 0;
+    }
+    return 1;
+}
+
+/* Reads Turret's DEEP view. */
+static SCHEMA_UNUSED int read_turret_deep( serialize_read_stream_t * stream, TurretData_Deep * value )
+{
+    if ( !read_handle( stream, &value->parent ) )
+    {
+        return 0;
+    }
+    {
+        serialize_uint64_t offset_value = 0;
+        serialize_uint32_t raw = 0;
+        if ( !serialize_read_bits( stream, &raw, 8 ) )
+        {
+            return 0;
+        }
+        offset_value = raw;
+        if ( offset_value > 255ULL )
+        {
+            return 0;
+        }
+        value->turret_index = (int32_t) offset_value;
+    }
+    if ( !read_quat( stream, &value->rotation ) )
+    {
+        return 0;
+    }
+    {
+        serialize_uint64_t raw = 0;
+        if ( !serialize_read_uint64( stream, &raw ) )
+        {
+            return 0;
+        }
+        value->flags = (uint64_t) raw;
+    }
+    return 1;
+}
+
+/* Writes Turret's SHALLOW view — the quantized wire. */
+static SCHEMA_UNUSED int write_turret_shallow( serialize_write_stream_t * stream, const TurretData_Shallow * value )
+{
+    if ( !write_handle( stream, &value->parent ) )
+    {
+        return 0;
+    }
+    if ( (serialize_int64_t) value->turret_index < 0LL || (serialize_int64_t) value->turret_index > 255LL )
+    {
+        return 0; /* out-of-contract writes are refused, not wrapped */
+    }
+    if ( !serialize_write_bits( stream, (serialize_uint32_t) ( value->turret_index ), 8 ) )
+    {
+        return 0;
+    }
+    if ( (serialize_int64_t) value->rotation_x < -1024LL || (serialize_int64_t) value->rotation_x > 1024LL )
+    {
+        return 0;
+    }
+    if ( !serialize_write_bits( stream, (serialize_uint32_t) ( value->rotation_x - (-1024) ), 12 ) )
+    {
+        return 0;
+    }
+    if ( (serialize_int64_t) value->rotation_y < -1024LL || (serialize_int64_t) value->rotation_y > 1024LL )
+    {
+        return 0;
+    }
+    if ( !serialize_write_bits( stream, (serialize_uint32_t) ( value->rotation_y - (-1024) ), 12 ) )
+    {
+        return 0;
+    }
+    if ( (serialize_int64_t) value->rotation_z < -1024LL || (serialize_int64_t) value->rotation_z > 1024LL )
+    {
+        return 0;
+    }
+    if ( !serialize_write_bits( stream, (serialize_uint32_t) ( value->rotation_z - (-1024) ), 12 ) )
+    {
+        return 0;
+    }
+    if ( (serialize_int64_t) value->rotation_w < -1024LL || (serialize_int64_t) value->rotation_w > 1024LL )
+    {
+        return 0;
+    }
+    if ( !serialize_write_bits( stream, (serialize_uint32_t) ( value->rotation_w - (-1024) ), 12 ) )
+    {
+        return 0;
+    }
+    if ( !serialize_write_uint64( stream, (serialize_uint64_t) value->flags ) )
+    {
+        return 0;
+    }
+    return 1;
+}
+
+/* Reads Turret's SHALLOW view. */
+static SCHEMA_UNUSED int read_turret_shallow( serialize_read_stream_t * stream, TurretData_Shallow * value )
+{
+    if ( !read_handle( stream, &value->parent ) )
+    {
+        return 0;
+    }
+    {
+        serialize_uint64_t offset_value = 0;
+        serialize_uint32_t raw = 0;
+        if ( !serialize_read_bits( stream, &raw, 8 ) )
+        {
+            return 0;
+        }
+        offset_value = raw;
+        if ( offset_value > 255ULL )
+        {
+            return 0;
+        }
+        value->turret_index = (int32_t) offset_value;
+    }
+    {
+        serialize_uint32_t raw = 0;
+        if ( !serialize_read_bits( stream, &raw, 12 ) )
+        {
+            return 0;
+        }
+        if ( raw > 2048U )
+        {
+            return 0;
+        }
+        value->rotation_x = (int16_t) ( (serialize_int64_t) raw + (-1024) );
+    }
+    {
+        serialize_uint32_t raw = 0;
+        if ( !serialize_read_bits( stream, &raw, 12 ) )
+        {
+            return 0;
+        }
+        if ( raw > 2048U )
+        {
+            return 0;
+        }
+        value->rotation_y = (int16_t) ( (serialize_int64_t) raw + (-1024) );
+    }
+    {
+        serialize_uint32_t raw = 0;
+        if ( !serialize_read_bits( stream, &raw, 12 ) )
+        {
+            return 0;
+        }
+        if ( raw > 2048U )
+        {
+            return 0;
+        }
+        value->rotation_z = (int16_t) ( (serialize_int64_t) raw + (-1024) );
+    }
+    {
+        serialize_uint32_t raw = 0;
+        if ( !serialize_read_bits( stream, &raw, 12 ) )
+        {
+            return 0;
+        }
+        if ( raw > 2048U )
+        {
+            return 0;
+        }
+        value->rotation_w = (int16_t) ( (serialize_int64_t) raw + (-1024) );
+    }
+    {
+        serialize_uint64_t raw = 0;
+        if ( !serialize_read_uint64( stream, &raw ) )
+        {
+            return 0;
+        }
+        value->flags = (uint64_t) raw;
+    }
+    return 1;
+}
+
 #ifdef __cplusplus
 }
 #endif

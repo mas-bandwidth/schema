@@ -56,7 +56,13 @@ func (g *gen) emitWriteScalar(f *ir.Field, expr, ind string) {
 		g.call(ind, fmt.Sprintf("serialize_write_float( stream, %s )", expr))
 	case ir.TFloat64:
 		g.call(ind, fmt.Sprintf("serialize_write_double( stream, %s )", expr))
+	case ir.TFixed:
+		g.emitWriteFixed(f, expr, ind)
 	case ir.TInt:
+		if f.Type.Width == 128 {
+			g.emitWrite128(f, expr, ind)
+			return
+		}
 		g.emitWriteRangedInt(f, expr, ind)
 	case ir.TBits:
 		g.emitWriteBits(f, expr, ind)
@@ -74,7 +80,11 @@ func (g *gen) emitWriteScalar(f *ir.Field, expr, ind string) {
 			g.call(ind, fmt.Sprintf("serialize_write_bits( stream, (serialize_uint32_t) %s, %d )", expr, ref.WireBits))
 		case *ir.Struct:
 			g.call(ind, fmt.Sprintf("write_%s( stream, &%s )", snake(f.Type.Name), expr))
+		default:
+			g.unsupported("field %s references %s, whose kind has no C write emission", f.Name, f.Type.Name)
 		}
+	default:
+		g.unsupported("field %s has type kind %v, which has no C write emission", f.Name, f.Type.Kind)
 	}
 }
 
@@ -229,7 +239,13 @@ func (g *gen) emitReadScalar(f *ir.Field, expr, ind string) {
 		g.call(ind, fmt.Sprintf("serialize_read_float( stream, &%s )", expr))
 	case ir.TFloat64:
 		g.call(ind, fmt.Sprintf("serialize_read_double( stream, &%s )", expr))
+	case ir.TFixed:
+		g.emitReadFixed(f, expr, ind)
 	case ir.TInt:
+		if f.Type.Width == 128 {
+			g.emitRead128(f, expr, ind)
+			return
+		}
 		g.emitReadRangedInt(f, expr, ind)
 	case ir.TBits:
 		g.emitReadBits(f, expr, ind)
@@ -252,7 +268,11 @@ func (g *gen) emitReadScalar(f *ir.Field, expr, ind string) {
 			g.pf("%s    %s = (%s) flags_value;\n%s}\n", ind, expr, f.Type.Name, ind)
 		case *ir.Struct:
 			g.call(ind, fmt.Sprintf("read_%s( stream, &%s )", snake(f.Type.Name), expr))
+		default:
+			g.unsupported("field %s references %s, whose kind has no C read emission", f.Name, f.Type.Name)
 		}
+	default:
+		g.unsupported("field %s has type kind %v, which has no C read emission", f.Name, f.Type.Kind)
 	}
 }
 
@@ -314,4 +334,104 @@ func (g *gen) emitReadBits(f *ir.Field, expr, ind string) {
 	g.pf("%s{\n%s    serialize_uint32_t raw = 0;\n", ind, ind)
 	g.call(ind+"    ", fmt.Sprintf("serialize_read_bits( stream, &raw, %d )", f.Type.Width))
 	g.pf("%s    %s = (%s) raw;\n%s}\n", ind, expr, g.storageType(f), ind)
+}
+
+
+// ---- fixed point ----
+
+// fixedCall picks the runtime entry point for a Q format's storage width.
+// serialize.c offers 32/64/128 only, and the language admits I+F in
+// {8,16,32,64,128}. Widths 8 and 16 ride the 32-bit call: serialize.c ignores
+// integer_bits entirely and derives the span from (min << fraction_bits), so
+// the widened call produces IDENTICAL bytes. The narrowing is storage-side.
+func fixedCall(width int) (string, string) {
+	switch {
+	case width <= 32:
+		return "32", "serialize_int32_t"
+	case width <= 64:
+		return "64", "serialize_int64_t"
+	default:
+		return "128", "serialize_int128_t"
+	}
+}
+
+func (g *gen) emitWriteFixed(f *ir.Field, expr, ind string) {
+	suffix, temp := fixedCall(f.Type.Width)
+	lo, hi := f.IntMin, f.IntMax
+	if lo == nil || hi == nil {
+		g.unsupported("fixed field %s has no resolved whole-unit bounds", f.Name)
+		return
+	}
+	// through a temp so a narrower storage member widens to the call's type
+	g.pf("%s{\n%s    %s fixed_value = %s;\n", ind, ind, temp, expr)
+	g.call(ind+"    ", fmt.Sprintf("serialize_write_fixed%s( stream, fixed_value, %d, %d, %sLL, %sLL )",
+		suffix, f.Type.IntBits, f.Type.FracBits, lo.String(), hi.String()))
+	g.pf("%s}\n", ind)
+}
+
+func (g *gen) emitReadFixed(f *ir.Field, expr, ind string) {
+	suffix, temp := fixedCall(f.Type.Width)
+	lo, hi := f.IntMin, f.IntMax
+	if lo == nil || hi == nil {
+		g.unsupported("fixed field %s has no resolved whole-unit bounds", f.Name)
+		return
+	}
+	// The temp is REQUIRED on read even where the write could cast inline:
+	// &value->small is int16_t* and the call wants serialize_int32_t*.
+	g.pf("%s{\n%s    %s fixed_value;\n", ind, ind, temp)
+	if f.Type.Width == 128 {
+		g.pf("%s    fixed_value = serialize_int128_make( 0, 0 );\n", ind)
+	} else {
+		g.pf("%s    fixed_value = 0;\n", ind)
+	}
+	g.call(ind+"    ", fmt.Sprintf("serialize_read_fixed%s( stream, &fixed_value, %d, %d, %sLL, %sLL )",
+		suffix, f.Type.IntBits, f.Type.FracBits, lo.String(), hi.String()))
+	if f.Type.Width == 128 {
+		g.pf("%s    %s = fixed_value;\n%s}\n", ind, expr, ind)
+		return
+	}
+	g.pf("%s    %s = (%s) fixed_value;\n%s}\n", ind, expr, g.storageType(f), ind)
+}
+
+// ---- 128-bit integers ----
+
+func (g *gen) emitWrite128(f *ir.Field, expr, ind string) {
+	if !f.Type.Signed {
+		// uint128 is NOT ranged: always 128 bits, low half first
+		g.call(ind, fmt.Sprintf("serialize_write_uint128( stream, %s )", expr))
+		return
+	}
+	if f.IntMin == nil || f.IntMax == nil {
+		g.unsupported("int128 field %s has no resolved range — int128 is always ranged (SPEC §4.3)", f.Name)
+		return
+	}
+	g.call(ind, fmt.Sprintf("serialize_write_int128( stream, %s, %s, %s )",
+		expr, g.int128Literal(f.IntMin), g.int128Literal(f.IntMax)))
+}
+
+func (g *gen) emitRead128(f *ir.Field, expr, ind string) {
+	if !f.Type.Signed {
+		g.call(ind, fmt.Sprintf("serialize_read_uint128( stream, &%s )", expr))
+		return
+	}
+	if f.IntMin == nil || f.IntMax == nil {
+		g.unsupported("int128 field %s has no resolved range", f.Name)
+		return
+	}
+	g.call(ind, fmt.Sprintf("serialize_read_int128( stream, &%s, %s, %s )",
+		expr, g.int128Literal(f.IntMin), g.int128Literal(f.IntMax)))
+}
+
+// int128Literal renders a big.Int as a serialize_int128_t. C has no 128-bit
+// literal, so a bound wider than 64 bits is built from its two lanes.
+func (g *gen) int128Literal(v *big.Int) string {
+	if v.IsInt64() {
+		return fmt.Sprintf("serialize_int128_from_int64( %sLL )", v.String())
+	}
+	// two's complement lanes of the 128-bit value
+	mod := new(big.Int).Lsh(big.NewInt(1), 128)
+	u := new(big.Int).Mod(v, mod)
+	lo := new(big.Int).And(u, new(big.Int).SetUint64(^uint64(0)))
+	hi := new(big.Int).Rsh(u, 64)
+	return fmt.Sprintf("serialize_int128_make( %sULL, %sULL )", hi.String(), lo.String())
 }

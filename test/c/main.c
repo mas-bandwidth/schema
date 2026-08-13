@@ -13,6 +13,7 @@
 #include "MessagesWire.h"
 #include "EnumsWire.h"
 #include "WireWire.h"
+#include "ObjectsWire.h"
 
 static int failed = 0;
 
@@ -253,6 +254,41 @@ int main( void )
         check( write_input_packet( &w, &packet ), "write InputPacket" );
         serialize_write_flush( &w );
         golden_wire( "inputpacket", buffer, serialize_write_bytes_processed( &w ) );
+    }
+
+    /* ---- the object SHALLOW view: the quantized wire ----
+       The quantized values are the ones QuantizeShip produces for the Go and
+       C++ tests' interpolate input; populating the shallow view directly tests
+       the WIRE independently of the quantize pair. */
+    {
+        ShipData_Shallow q;
+        memset( &q, 0, sizeof( q ) );
+        q.ship_type = SHIP_TYPE_CORVETTE;
+        q.position_x = 1536;      /* 1.5 * 1024 */
+        q.position_y = -2304;     /* -2.25 * 1024 */
+        q.position_z = 102400;    /* 100.0 * 1024 */
+        q.rotation_x = 0; q.rotation_y = 0; q.rotation_z = 0; q.rotation_w = 1024;
+        q.linear_velocity_x = 3072; q.linear_velocity_y = 0; q.linear_velocity_z = -1024;
+        q.flags = SHIP_FLAGS_BOOSTING;
+        q.team = TEAM_RED;
+        q.health = 750;
+        q.thrust = 55;
+
+        serialize_write_stream_init( &w, buffer, sizeof( buffer ) );
+        check( write_ship_shallow( &w, &q ), "write ShipData_Shallow" );
+        serialize_write_flush( &w );
+        golden_wire( "ship_shallow", buffer, serialize_write_bytes_processed( &w ) );
+
+        {
+            ShipData_Shallow back;
+            memset( &back, 0, sizeof( back ) );
+            serialize_read_stream_init( &r, buffer, serialize_write_bytes_processed( &w ) );
+            check( read_ship_shallow( &r, &back ), "read ShipData_Shallow" );
+            check( back.position_x == 1536 && back.position_y == -2304 && back.position_z == 102400,
+                   "shallow position round-trips" );
+            check( back.rotation_w == 1024, "shallow rotation round-trips" );
+            check( back.health == 750 && back.thrust == 55, "shallow projected fields round-trip" );
+        }
     }
 
     if ( failed )
