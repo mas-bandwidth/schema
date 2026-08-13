@@ -115,7 +115,7 @@ repo — [serialize](https://github.com/mas-bandwidth/serialize),
 
 ## Documentation
 
-| | |
+| Document | What's in it |
 |---|---|
 | **[USAGE.md](USAGE.md)** | Every language feature, with the code it generates. Start here. |
 | **[WIRES.md](WIRES.md)** | The two wires, tables, reflection, relocatable storage. |
