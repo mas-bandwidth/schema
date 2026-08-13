@@ -24,17 +24,22 @@ jobs:
       - uses: actions/checkout@v4
 
       # The four runtimes the generated code targets. `make test` builds the
-      # corpus in all four languages and byte-compares their wire against the
+      # corpus in all four languages and compares their wire against the
       # C++-pinned goldens, so every one of them has to be present — that
-      # cross-language byte identity is the property this project exists to
+      # cross-language bit identity is the property this project exists to
       # provide, and CI is where it gets proven on hardware we do not own.
+      # Cloned as SIBLINGS of this repo, which is exactly what README.md tells a
+      # newcomer to do — so CI exercises the documented path rather than a
+      # special one. The Makefile's SERIALIZE* defaults already point here, and
+      # the generated go.mod / Cargo.toml embed relative paths that only
+      # resolve under this layout.
       - name: Check out the serialize runtimes
         run: |
-          mkdir -p runtimes
-          git clone --quiet --depth 1 https://github.com/mas-bandwidth/serialize.git    runtimes/serialize
-          git clone --quiet --depth 1 https://github.com/mas-bandwidth/serialize.go.git runtimes/serialize.go
-          git clone --quiet --depth 1 https://github.com/mas-bandwidth/serialize.rs.git runtimes/serialize.rs
-          git clone --quiet --depth 1 https://github.com/mas-bandwidth/serialize.cs.git runtimes/serialize.cs
+          cd ..
+          git clone --quiet --depth 1 https://github.com/mas-bandwidth/serialize.git    serialize
+          git clone --quiet --depth 1 https://github.com/mas-bandwidth/serialize.go.git serialize.go
+          git clone --quiet --depth 1 https://github.com/mas-bandwidth/serialize.rs.git serialize.rs
+          git clone --quiet --depth 1 https://github.com/mas-bandwidth/serialize.cs.git serialize.cs
 
       - uses: actions/setup-go@v5
         with:
@@ -47,17 +52,12 @@ jobs:
         with:
           dotnet-version: '8.0'
 
-      # The Makefile prepends RUSTUP_BIN to PATH for cargo, defaulting to the
-      # homebrew keg on the author's machine. On CI cargo is already on PATH,
-      # so point it somewhere harmless rather than special-casing the Makefile.
+      # No SERIALIZE* overrides: the Makefile defaults already point at the
+      # sibling layout cloned above. RUSTUP_BIN defaults to a homebrew keg on
+      # the author's machine; on CI cargo is on PATH, so point it somewhere
+      # harmless.
       - name: make test
-        run: |
-          make test \
-            SERIALIZE=$PWD/runtimes/serialize \
-            SERIALIZE_GO=$PWD/runtimes/serialize.go \
-            SERIALIZE_RS=$PWD/runtimes/serialize.rs \
-            SERIALIZE_CS=$PWD/runtimes/serialize.cs \
-            RUSTUP_BIN=/usr/bin
+        run: make test RUSTUP_BIN=/usr/bin
 
       # Seeded corpus only — a short, bounded run that re-executes every
       # crasher ever found and checks the compiler still refuses bad input
