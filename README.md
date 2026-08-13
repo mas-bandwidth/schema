@@ -63,6 +63,8 @@ inline bool WriteShipState( serialize::WriteStream & stream, const ShipState & v
 Straight-line code with no tags, no reflection and no allocation — the same
 function you would have written by hand, which is the standard it is held to.
 
+Now your Unity client and your Go backend speak the same language.
+
 ## Why it exists
 
 Multiplayer games serialize the same data in several languages at once — an
