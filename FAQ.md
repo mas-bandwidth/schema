@@ -82,6 +82,18 @@ four code generators, and nothing else.
 If you want the in-place model or the RPC system, use Cap'n Proto. schema is
 the narrower tool.
 
+## Do you have numbers against Protobuf or FlatBuffers?
+
+Yes — [COMPARISON.md](COMPARISON.md). The same gameplay message is **28 bytes
+in schema, 50 in Protobuf, 68 in FlatBuffers**, with the per-field working
+shown so you can check it rather than trust it. The FlatBuffers figure is
+measured with `flatc`; the Protobuf one is computed from the wire spec, term by
+term.
+
+It also says what those extra bytes buy, because they are not waste: Protobuf's
+overhead is field-number evolution, FlatBuffers' is zero-copy access. If you
+need either, that is a fair price and schema does not offer it.
+
 ## So what is actually novel here?
 
 Honestly: not the idea of generating serializers from a schema. That is old.

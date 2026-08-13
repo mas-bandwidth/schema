@@ -52,7 +52,10 @@ Every way of solving that costs something:
 - **Solving it with heavier template machinery costs compile time**, in headers
   every translation unit includes.
 - **General-purpose formats** fix the drift by paying for it on the wire, in
-  bytes and allocations you cannot afford at 60 Hz.
+  bytes and allocations you cannot afford at 60 Hz. On one representative
+  gameplay message that is **28 bytes against Protobuf's 50 and FlatBuffers'
+  68** — [the working is in COMPARISON.md](COMPARISON.md), including what those
+  extra bytes buy, because they are not waste.
 
 Generating the code takes the fourth path. One declaration produces the reader
 *and* the writer, in every language, so they cannot disagree — and because the
@@ -178,6 +181,7 @@ roadmap, not in the box.
 | **[WIRES.md](WIRES.md)** | The two wires, tables, reflection, relocatable storage. |
 | **[PERFORMANCE.md](PERFORMANCE.md)** | Generated-code benchmarks across the four languages. |
 | **[SPEC.md](SPEC.md)** | The normative reference — grammar, wire law, every edge case. |
+| **[COMPARISON.md](COMPARISON.md)** | The same message in schema, Protobuf and FlatBuffers — 28 vs 50 vs 68 bytes, with the working. |
 | **[FAQ.md](FAQ.md)** | Isn't this just FlatBuffers / Protobuf / Cap'n Proto? And other blunt questions. |
 
 ## License
