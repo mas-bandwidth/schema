@@ -59,8 +59,8 @@ two languages ever differ by one bit, CI says so before you do.
 
 ## Features
 
-- **One declaration, four languages** — C++, C#, Go and Rust, byte-identical
-  on the wire, reader and writer generated together so they cannot drift.
+- **One declaration, four languages** — C++, C#, Go and Rust, bit-identical on
+  the wire, reader and writer generated together so they cannot drift.
 - **Bit-packed, not byte-packed** — `[min = 0, max = 1000]` costs 10 bits, not
   4 bytes. Bounds are part of the type, and the wire cost follows from them.
 - **Branches that cost nothing** — `if !at_rest { … }` omits whole field groups

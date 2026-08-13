@@ -443,8 +443,9 @@ avoid allocation.
 
 **Rust** — no `unsafe` in generated code, `Result`-returning read and write.
 
-All four are generated from the same IR and byte-compared against each other
-in CI on every push. If they ever disagree by one bit, the build fails.
+All four are generated from the same IR and compared against each other in CI
+on every push. The wire is bit-packed, so the property being checked is
+bit-identity — if they ever disagree by one bit, the build fails.
 
 ---
 
