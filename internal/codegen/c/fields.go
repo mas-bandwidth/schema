@@ -118,16 +118,60 @@ func (g *gen) emitWriteRangedInt(f *ir.Field, expr, ind string) {
 
 // emitRangeAssertWrite refuses an out-of-contract write rather than wrapping
 // it -- the same guard the other backends fold in.
+//
+// Each half is emitted only when it CAN be false for the storage type. GCC's
+// -Wtype-limits rejects a vacuous comparison (an unsigned value < 0, or a
+// bound at the type's own maximum) and this family builds with -Werror, so a
+// guard that is merely redundant on clang is a build failure on gcc. The C++
+// backend elides the same way; it just gets there by casting to int64_t.
 func (g *gen) emitRangeAssertWrite(f *ir.Field, expr, ind string) {
-	lo, hi := f.IntMin.String(), f.IntMax.String()
+	loNeeded, hiNeeded := true, true
+	if lo, hi, ok := storageRange(f); ok {
+		if f.IntMin.Cmp(lo) <= 0 {
+			loNeeded = false
+		}
+		if f.IntMax.Cmp(hi) >= 0 {
+			hiNeeded = false
+		}
+	}
+	if !loNeeded && !hiNeeded {
+		return // the declared range is the storage range: nothing to check
+	}
+
 	cast := "serialize_int64_t"
 	suffix := "LL"
 	if !f.Type.Signed && f.Type.Width >= 64 {
 		cast = "serialize_uint64_t"
 		suffix = "ULL"
 	}
-	g.pf("%sif ( (%s) %s < %s%s || (%s) %s > %s%s )\n%s{\n%s    return 0; /* out-of-contract writes are refused, not wrapped */\n%s}\n",
-		ind, cast, expr, lo, suffix, cast, expr, hi, suffix, ind, ind, ind)
+
+	var cond string
+	switch {
+	case loNeeded && hiNeeded:
+		cond = fmt.Sprintf("(%s) %s < %s%s || (%s) %s > %s%s", cast, expr, f.IntMin.String(), suffix, cast, expr, f.IntMax.String(), suffix)
+	case loNeeded:
+		cond = fmt.Sprintf("(%s) %s < %s%s", cast, expr, f.IntMin.String(), suffix)
+	default:
+		cond = fmt.Sprintf("(%s) %s > %s%s", cast, expr, f.IntMax.String(), suffix)
+	}
+	g.pf("%sif ( %s )\n%s{\n%s    return 0; /* out-of-contract writes are refused, not wrapped */\n%s}\n",
+		ind, cond, ind, ind, ind)
+}
+
+// storageRange is the inclusive range the field's STORAGE type can hold. A
+// declared bound at or past it makes that half of the guard vacuous.
+func storageRange(f *ir.Field) (*big.Int, *big.Int, bool) {
+	if f.Type.Kind != ir.TInt {
+		return nil, nil, false
+	}
+	one := big.NewInt(1)
+	if f.Type.Signed {
+		hi := new(big.Int).Sub(new(big.Int).Lsh(one, uint(f.Type.Width-1)), one)
+		lo := new(big.Int).Neg(new(big.Int).Lsh(one, uint(f.Type.Width-1)))
+		return lo, hi, true
+	}
+	hi := new(big.Int).Sub(new(big.Int).Lsh(one, uint(f.Type.Width)), one)
+	return big.NewInt(0), hi, true
 }
 
 func (g *gen) emitWriteBits(f *ir.Field, expr, ind string) {
@@ -243,8 +287,14 @@ func (g *gen) emitReadRangedInt(f *ir.Field, expr, ind string) {
 		g.call(ind+"    ", fmt.Sprintf("serialize_read_bits( stream, &hi, %d )", bits-32))
 		g.pf("%s    offset_value = (serialize_uint64_t) lo | ( ( (serialize_uint64_t) hi ) << 32 );\n", ind)
 	}
-	// reject, never clamp -- a value smuggled into the range's bit headroom
-	g.pf("%s    if ( offset_value > %sULL )\n%s    {\n%s        return 0;\n%s    }\n", ind, span.String(), ind, ind, ind)
+	// Reject, never clamp -- a value smuggled into the range's bit headroom.
+	// Elided when the span fills the full 64-bit domain: there is no headroom
+	// to smuggle into, and the comparison would be vacuous (which -Wtype-limits
+	// rejects, and this family builds with -Werror).
+	maxU64 := new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), 64), big.NewInt(1))
+	if span.Cmp(maxU64) < 0 {
+		g.pf("%s    if ( offset_value > %sULL )\n%s    {\n%s        return 0;\n%s    }\n", ind, span.String(), ind, ind, ind)
+	}
 	if f.IntMin.Sign() == 0 {
 		g.pf("%s    %s = (%s) offset_value;\n%s}\n", ind, expr, g.storageType(f), ind)
 	} else {

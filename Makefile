@@ -114,7 +114,8 @@ generated/c/.stamp: bin/schema $(SCHEMAS)
 # tree, not ours.
 build/schema_test_c: generated/c/.stamp test/c/main.c
 	@mkdir -p build
-	$(CC) -std=c99 -Wall -Wextra -Werror -O2 -Igenerated/c -I$(SERIALIZE_C) \
+	$(CC) -std=c99 -Wall -Wextra -Werror -Wtype-limits -Wtautological-type-limit-compare \
+		-O2 -Igenerated/c -I$(SERIALIZE_C) \
 		test/c/main.c $(SERIALIZE_C)/serialize.c -o $@ -lm
 
 test: build/schema_test build/schema_test_variant build/schema_test_random build/schema_test_ludicrous build/schema_test_c generated/go/.stamp generated/rust/.stamp generated/cs/.stamp generated/go-ludicrous/.stamp generated/rust-ludicrous/.stamp generated/cs-ludicrous/.stamp

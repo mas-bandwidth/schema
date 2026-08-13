@@ -130,17 +130,9 @@ static SCHEMA_UNUSED int write_probe_bits( serialize_write_stream_t * stream, co
             return 0;
         }
     }
-    if ( (serialize_int64_t) value->sensor < 0LL || (serialize_int64_t) value->sensor > 4294967295LL )
-    {
-        return 0; /* out-of-contract writes are refused, not wrapped */
-    }
     if ( !serialize_write_bits( stream, (serialize_uint32_t) ( value->sensor ), 32 ) )
     {
         return 0;
-    }
-    if ( (serialize_uint64_t) value->nonce < 0ULL || (serialize_uint64_t) value->nonce > 18446744073709551615ULL )
-    {
-        return 0; /* out-of-contract writes are refused, not wrapped */
     }
     {
         serialize_uint64_t offset_value = (serialize_uint64_t) ( value->nonce );
@@ -221,10 +213,6 @@ static SCHEMA_UNUSED int read_probe_bits( serialize_read_stream_t * stream, Prob
             return 0;
         }
         offset_value = (serialize_uint64_t) lo | ( ( (serialize_uint64_t) hi ) << 32 );
-        if ( offset_value > 18446744073709551615ULL )
-        {
-            return 0;
-        }
         value->nonce = (uint64_t) offset_value;
     }
     return 1;
