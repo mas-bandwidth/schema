@@ -1,0 +1,66 @@
+name: CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ ubuntu-latest, macos-latest ]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # The four runtimes the generated code targets. `make test` builds the
+      # corpus in all four languages and byte-compares their wire against the
+      # C++-pinned goldens, so every one of them has to be present — that
+      # cross-language byte identity is the property this project exists to
+      # provide, and CI is where it gets proven on hardware we do not own.
+      - name: Check out the serialize runtimes
+        run: |
+          mkdir -p runtimes
+          git clone --quiet --depth 1 https://github.com/mas-bandwidth/serialize.git    runtimes/serialize
+          git clone --quiet --depth 1 https://github.com/mas-bandwidth/serialize.go.git runtimes/serialize.go
+          git clone --quiet --depth 1 https://github.com/mas-bandwidth/serialize.rs.git runtimes/serialize.rs
+          git clone --quiet --depth 1 https://github.com/mas-bandwidth/serialize.cs.git runtimes/serialize.cs
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.26'
+          cache: false
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0'
+
+      # The Makefile prepends RUSTUP_BIN to PATH for cargo, defaulting to the
+      # homebrew keg on the author's machine. On CI cargo is already on PATH,
+      # so point it somewhere harmless rather than special-casing the Makefile.
+      - name: make test
+        run: |
+          make test \
+            SERIALIZE=$PWD/runtimes/serialize \
+            SERIALIZE_GO=$PWD/runtimes/serialize.go \
+            SERIALIZE_RS=$PWD/runtimes/serialize.rs \
+            SERIALIZE_CS=$PWD/runtimes/serialize.cs \
+            RUSTUP_BIN=/usr/bin
+
+      # Seeded corpus only — a short, bounded run that re-executes every
+      # crasher ever found and checks the compiler still refuses bad input
+      # cleanly. The long fuzzing campaigns run by hand, not on every push.
+      - name: fuzz seeds
+        run: go test ./internal/fuzz/

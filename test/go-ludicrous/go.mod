@@ -9,4 +9,4 @@ require (
 
 replace ludicrous => ../../generated/go-ludicrous
 
-replace github.com/mas-bandwidth/serialize.go => ../../../serialize-cs-port/serialize.go
+replace github.com/mas-bandwidth/serialize.go => ../../../serialize.go

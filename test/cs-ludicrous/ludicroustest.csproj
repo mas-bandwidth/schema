@@ -21,11 +21,11 @@
 
   <ItemGroup>
     <Compile Include="../../generated/cs-ludicrous/*.cs" />
-    <Compile Include="../../../serialize-cs-port/serialize.cs/src/Serialize.cs" />
+    <Compile Include="../../../serialize.cs/src/Serialize.cs" />
     <!-- the emulated 128-bit pair (Int128Value/UInt128Value) lives beside
          Serialize.cs — the storage type of every int128/uint128/fixed(112+)
          field in the generated unit -->
-    <Compile Include="../../../serialize-cs-port/serialize.cs/src/Int128Pair.cs" />
+    <Compile Include="../../../serialize.cs/src/Int128Pair.cs" />
   </ItemGroup>
 
 </Project>

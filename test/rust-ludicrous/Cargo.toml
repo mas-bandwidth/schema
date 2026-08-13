@@ -5,4 +5,4 @@ edition = "2024"
 
 [dependencies]
 ludicrous = { path = "../../generated/rust-ludicrous" }
-serialize = { path = "../../../serialize-cs-port/serialize.rs" }
+serialize = { path = "../../../serialize.rs" }

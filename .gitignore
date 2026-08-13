@@ -27,3 +27,6 @@ generated/cs-ludicrous/.stamp
 
 # bench-local scratch/verification debris — never repo content
 tending/
+
+# CI clones the four serialize runtimes here (see .github/workflows/ci.yml)
+/runtimes/

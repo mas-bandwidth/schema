@@ -9,10 +9,10 @@ CXXFLAGS ?= -std=c++17 -Wall -Wextra -Werror -ffp-contract=off
 # and the C# port the generated C# targets (sibling checkouts; test/go/go.mod,
 # test/rust/Cargo.toml, test/cs/schematest.csproj and their *-ludicrous twins
 # carry the same relative paths)
-SERIALIZE    ?= ../serialize-cs-port/serialize
-SERIALIZE_GO ?= ../serialize-cs-port/serialize.go
-SERIALIZE_RS ?= ../serialize-cs-port/serialize.rs
-SERIALIZE_CS ?= ../serialize-cs-port/serialize.cs
+SERIALIZE    ?= ../serialize
+SERIALIZE_GO ?= ../serialize.go
+SERIALIZE_RS ?= ../serialize.rs
+SERIALIZE_CS ?= ../serialize.cs
 CXXFLAGS     += -I$(SERIALIZE)
 
 # cargo lives in the rustup keg, which is not on PATH by default

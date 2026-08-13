@@ -17,7 +17,7 @@
 
   <ItemGroup>
     <Compile Include="../../generated/cs/*.cs" />
-    <Compile Include="../../../serialize-cs-port/serialize.cs/src/Serialize.cs" />
+    <Compile Include="../../../serialize.cs/src/Serialize.cs" />
   </ItemGroup>
 
 </Project>
