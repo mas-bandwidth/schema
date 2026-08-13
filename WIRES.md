@@ -48,13 +48,18 @@ table ShipConfig {
 ## Tables: reflection, relocatability, parallelism
 
 Declaring `table` (instead of `type`) makes a type a table-wire root. It and everything it
-references get, in every generated language:
+references get, **in C++, C# and Go**:
 
 - **Codecs** — `TableWriteX` / `TableReadX`, plain byte code with no runtime dependency.
 - **Reflection** — `TableTypeX()` static field descriptors: names, wire ids, bounds,
   declared ranges, enum value names, branch guards. Flat arrays, separate from instance
   data, zero per-instance weight — enough to walk, print, diff, edit or bind any table
   value at runtime with no RTTI, no `System.Reflection`, and no schema files shipped.
+
+**Rust does not have a table backend yet.** `--lang rust` generates the message
+wire only; a unit whose types are all tables generates no codecs and no
+reflection there. The message wire is complete in all four languages — this gap
+is tables specifically.
 
 Generated storage is **relocatable by enforced construction** — trivially copyable,
 standard layout, no pointers — so instances can be memcpy'd, memory-mapped, shared across

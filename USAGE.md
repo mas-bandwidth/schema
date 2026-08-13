@@ -413,7 +413,8 @@ stray file that matches no variant — which catches both a forgotten config
 and a stale one.
 
 The result is one file with a schema hash stamped in it, read through the
-generated table codecs in any language.
+generated table codecs in C++, C# or Go. (Rust has no table backend yet — see
+[WIRES.md](WIRES.md).)
 
 ---
 
@@ -442,6 +443,7 @@ Reads scalars without boxing; `AppendTableX` writers reuse a buffer.
 avoid allocation.
 
 **Rust** — no `unsafe` in generated code, `Result`-returning read and write.
+Message wire only: the table wire has no Rust backend yet.
 
 All four are generated from the same IR and compared against each other in CI
 on every push. The wire is bit-packed, so the property being checked is

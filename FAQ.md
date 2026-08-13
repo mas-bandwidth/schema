@@ -204,6 +204,15 @@ generate across all four backends, and every crasher ever found is committed as
 a permanent regression input. Generated readers are exercised against
 hand-crafted hostile bytes in the cross-language test corpus.
 
+## Is everything supported in all four languages?
+
+The **message wire** is: C++, C#, Go and Rust, generated from one IR and
+checked against each other in CI on every push.
+
+The **table wire** is not — it is C++, C# and Go today. Rust has no table
+backend yet, so `--lang rust` emits the message wire only. If your Rust code
+needs to read a packed config container, that is the gap to know about.
+
 ## Do I need the serialize runtimes?
 
 Yes — generated code targets a small runtime per language
