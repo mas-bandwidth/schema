@@ -146,7 +146,7 @@ func (g *gen) emitZeroField(f *ir.Field, ind string) {
 	case f.Array != ir.ArrayNone:
 		// memset gives §5's ZERO values; T{} would restore specified defaults
 		g.needsCstring = true
-		g.pf("%smemset( %s, 0, sizeof( %s ) );\n", ind, name, name)
+		g.pf("%smemset( (void*) %s, 0, sizeof( %s ) );\n", ind, name, name)
 		if f.Array == ir.ArrayCounted {
 			g.pf("%s%s_count = 0;\n", ind, name)
 		}
@@ -166,9 +166,18 @@ func (g *gen) emitZeroField(f *ir.Field, ind string) {
 				g.pf("%s%s = 0;\n", ind, name)
 			case *ir.Struct:
 				// memset, not T{}: §5 wants ZERO values recursively, and
-				// aggregate init would restore specified defaults instead
+				// aggregate init would restore specified defaults instead.
+				// The (void*) cast is load-bearing: a generated struct carries
+				// default member initializers, which make its implicit default
+				// constructor non-trivial, and GCC's -Wclass-memaccess then
+				// refuses the memset outright under -Werror. Casting is the
+				// documented way to say the raw clear is deliberate. A T{} or a
+				// template helper would be the usual advice and both are wrong
+				// here — T{} restores defaults instead of zeroing, and a
+				// template costs compile time in a header every translation
+				// unit includes.
 				g.needsCstring = true
-				g.pf("%smemset( &%s, 0, sizeof( %s ) );\n", ind, name, name)
+				g.pf("%smemset( (void*) &%s, 0, sizeof( %s ) );\n", ind, name, name)
 			}
 		default:
 			g.pf("%s%s = 0;\n", ind, name)

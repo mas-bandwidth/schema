@@ -192,8 +192,8 @@ inline bool ReadRigidBody( serialize::ReadStream & stream, RigidBody & value )
     }
     else
     {
-        memset( &value.linear_velocity, 0, sizeof( value.linear_velocity ) );
-        memset( &value.angular_velocity, 0, sizeof( value.angular_velocity ) );
+        memset( (void*) &value.linear_velocity, 0, sizeof( value.linear_velocity ) );
+        memset( (void*) &value.angular_velocity, 0, sizeof( value.angular_velocity ) );
     }
     return true;
 }
