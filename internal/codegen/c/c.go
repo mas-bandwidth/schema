@@ -566,6 +566,10 @@ func (g *gen) emitZeroField(f *ir.Field, ind string) {
 			return
 		}
 		g.pf("%svalue->%s = 0;\n", ind, f.Name)
+	case f.Type.Width == 128:
+		// serialize_int128_t / serialize_uint128_t are STRUCTS in C, so the
+		// zero form is a memset rather than an assignment
+		g.pf("%smemset( &value->%s, 0, sizeof( value->%s ) );\n", ind, f.Name, f.Name)
 	default:
 		g.pf("%svalue->%s = 0;\n", ind, f.Name)
 	}

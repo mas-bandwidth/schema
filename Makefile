@@ -125,12 +125,26 @@ build/schema_test_c: generated/c/.stamp test/c/main.c
 		-O2 -Igenerated/c -I$(SERIALIZE_C) \
 		test/c/main.c $(SERIALIZE_C)/serialize.c -o $@ -lm
 
-test: build/schema_test build/schema_test_variant build/schema_test_random build/schema_test_ludicrous build/schema_test_c generated/go/.stamp generated/rust/.stamp generated/cs/.stamp generated/go-ludicrous/.stamp generated/rust-ludicrous/.stamp generated/cs-ludicrous/.stamp
+generated/c-ludicrous/.stamp: bin/schema $(SCHEMAS128)
+	./bin/schema generate --lang c --out generated/c-ludicrous examples128
+	@touch $@
+
+# The C half of the fixed-point and 128-bit corpus. Its ABSENCE is why a C
+# codec that wrote nothing for every fixed field passed every gate: the C
+# target was generated from examples/ only, and examples/ has no `fixed(`.
+build/schema_test_c_ludicrous: generated/c-ludicrous/.stamp test/c-ludicrous/main.c
+	@mkdir -p build
+	$(CC) -std=c99 -Wall -Wextra -Werror -Wtype-limits $(C_TAUTOLOGICAL) \
+		-O2 -Igenerated/c-ludicrous -I$(SERIALIZE_C) \
+		test/c-ludicrous/main.c $(SERIALIZE_C)/serialize.c -o $@ -lm
+
+test: build/schema_test build/schema_test_variant build/schema_test_random build/schema_test_ludicrous build/schema_test_c build/schema_test_c_ludicrous generated/go/.stamp generated/rust/.stamp generated/cs/.stamp generated/go-ludicrous/.stamp generated/rust-ludicrous/.stamp generated/cs-ludicrous/.stamp
 	./build/schema_test
 	./build/schema_test_variant
 	./build/schema_test_random
 	./build/schema_test_ludicrous
 	cd test/c && ../../build/schema_test_c
+	cd test/c-ludicrous && ../../build/schema_test_c_ludicrous
 	cd test/go && go run .
 	cd test/rust && PATH="$(RUSTUP_BIN):$$PATH" cargo run --quiet
 	cd test/cs && dotnet run

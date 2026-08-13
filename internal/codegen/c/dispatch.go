@@ -98,6 +98,15 @@ func (g *gen) emitDefaultInit(f *ir.Field) {
 	case f.Type.Kind == ir.TNamed && f.DefVariant != "":
 		g.pf("    value.%s = %s_%s;\n", f.Name, screaming(f.Type.Name), screaming(f.DefVariant))
 	case f.DefInt != nil:
+		// C has no 128-bit literal, so a 128-bit default is built from its lanes
+		if f.Type.Width == 128 {
+			if f.Type.Signed || f.Type.Kind == ir.TFixed {
+				g.pf("    value.%s = %s;\n", f.Name, g.int128Literal(f.DefInt))
+				return
+			}
+			g.pf("    value.%s = %s;\n", f.Name, uint128Literal(f.DefInt))
+			return
+		}
 		g.pf("    value.%s = %s;\n", f.Name, f.DefInt.String())
 	}
 }
@@ -183,3 +192,13 @@ func (g *gen) emitMessageDispatch() {
 
 func bigZero() *big.Int          { return big.NewInt(0) }
 func bigInt64(v int64) *big.Int  { return big.NewInt(v) }
+
+
+// uint128Literal renders an unsigned 128-bit default from its two lanes.
+func uint128Literal(v *big.Int) string {
+	mod := new(big.Int).Lsh(big.NewInt(1), 128)
+	u := new(big.Int).Mod(v, mod)
+	lo := new(big.Int).And(u, new(big.Int).SetUint64(^uint64(0)))
+	hi := new(big.Int).Rsh(u, 64)
+	return fmt.Sprintf("serialize_uint128_make( %sULL, %sULL )", hi.String(), lo.String())
+}
