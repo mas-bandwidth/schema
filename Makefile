@@ -24,8 +24,15 @@ SCHEMAS128 := $(wildcard examples128/*.schema)
 
 all: test
 
+# The version the built binary reports. `git describe` gives the exact tag on a
+# release build and tag-commits-hash elsewhere; when this is not a git checkout
+# (a source tarball, say) the stamp is left empty and internal/version falls
+# back to the toolchain's own build info.
+VERSION ?= $(shell git describe --tags --dirty 2>/dev/null)
+LDFLAGS := $(if $(VERSION),-X github.com/mas-bandwidth/schema/internal/version.version=$(VERSION),)
+
 bin/schema: $(GO_SOURCES)
-	go build -o $@ ./cmd/schema
+	go build -ldflags "$(LDFLAGS)" -o $@ ./cmd/schema
 
 # one generate run emits every header; the stamp carries the dependency
 generated/cpp/.stamp: bin/schema $(SCHEMAS)

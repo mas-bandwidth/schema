@@ -23,6 +23,7 @@ import (
 	"github.com/mas-bandwidth/schema/internal/ir"
 	"github.com/mas-bandwidth/schema/internal/pack"
 	"github.com/mas-bandwidth/schema/internal/parser"
+	"github.com/mas-bandwidth/schema/internal/version"
 )
 
 func main() {
@@ -31,6 +32,12 @@ func main() {
 		os.Exit(2)
 	}
 	switch os.Args[1] {
+	// Accept every spelling a newcomer will try. `--version` costs nothing to
+	// support and its absence reads as a broken tool.
+	case "version", "--version", "-version", "-v":
+		fmt.Println(version.UserAgent())
+	case "help", "--help", "-help", "-h":
+		usage()
 	case "check":
 		unit := loadUnit(os.Args[2:])
 		fmt.Printf("ok: package %s, protocol id 0x%016x\n", unit.Package, unit.ProtocolId)
@@ -123,6 +130,7 @@ func usage() {
   schema id       [dir|files...]
   schema fmt      [dir|files...]
   schema pack     <manifest.json>
+  schema version
 
 Every command formats the unit's schema files in place before processing them
 (schemafmt — one style, no options); a file already in format is not touched.

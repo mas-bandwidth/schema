@@ -182,8 +182,11 @@ roadmap, not in the box.
 | **[WIRES.md](WIRES.md)** | The two wires, tables, reflection, relocatable storage. |
 | **[PERFORMANCE.md](PERFORMANCE.md)** | Generated-code benchmarks across the four languages. |
 | **[SPEC.md](SPEC.md)** | The normative reference — grammar, wire law, every edge case. |
-| **[COMPARISON.md](COMPARISON.md)** | The same message in schema, Protobuf and FlatBuffers — 28 vs 50 vs 68 bytes, with the working. |
+| **[COMPARISON.md](COMPARISON.md)** | The same message in schema, Cap'n Proto, Protobuf and FlatBuffers — 28 vs 52 vs 56 vs 72 bytes, measured, with a script to re-run it. |
 | **[FAQ.md](FAQ.md)** | Isn't this just FlatBuffers / Protobuf / Cap'n Proto? And other blunt questions. |
+| **[VERSIONING.md](VERSIONING.md)** | What a version number promises — chiefly that a 1.x upgrade will not move your wire. |
+| **[CONTRIBUTING.md](CONTRIBUTING.md)** | How to build it, the gates a change has to pass, and what a golden change means. |
+| **[SECURITY.md](SECURITY.md)** | The threat model, and how to report a vulnerability privately. |
 
 ## License
 
