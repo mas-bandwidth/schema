@@ -241,6 +241,29 @@ The **table wire** is not — it is C++, C# and Go today. Rust has no table
 backend yet, so `--lang rust` emits the message wire only. If your Rust code
 needs to read a packed config container, that is the gap to know about.
 
+## What does the language NOT have?
+
+Worth knowing before you adopt rather than after:
+
+- **No `oneof` / discriminated union.** Branches are `if` on a bool already
+  written, so N mutually-exclusive payload shapes are N messages and your own
+  dispatch. Protobuf, FlatBuffers and Cap'n Proto all have unions.
+- **No maps.** Use a counted array of key/value pairs.
+- **No recursive types.** `type Node { children [<= 4]Node }` is rejected as a
+  composition cycle — generated storage is by value, with no pointers, which is
+  what makes it relocatable and memcpy-able.
+- **No optional / nullable**, except the honest version: a bool and a branch.
+- **No field-number pinning on the table wire** — identity is the field's name
+  hash, so renaming is wire-breaking. See
+  [WIRES.md](WIRES.md#renaming-a-table-field-changes-its-identity).
+- **No Rust table backend** — see above.
+- **No zero-copy access.** Reads decode into your struct.
+
+Some of these are scope (a game's packet does not need maps), some are
+consequences of relocatable storage (recursion), and some are just not built
+yet (Rust tables, `oneof`). The list is here so you can tell which of your
+requirements are unmet before you find out the hard way.
+
 ## Do I need the serialize runtimes?
 
 Yes — generated code targets a small runtime per language

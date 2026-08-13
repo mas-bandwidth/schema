@@ -73,6 +73,33 @@ per a manifest — one data file, native typed readers in every language.
 `schema` commands canonically reformat schema files in place. Generated C# is C# 9 /
 netstandard2.1-clean and runs on Unity-class runtimes.
 
+## Renaming a table field changes its identity
+
+A table field's wire identity is `fold16(fnv1a32(name))` — **the hash of its
+name**. That is what lets unknown fields skip and removed fields default
+without a hand-maintained field-number registry.
+
+The cost is the mirror image: **renaming a field is a wire-breaking change.**
+Rename `hp` to `health` and every already-written container still carries the
+old id, so the new reader does not recognise it and the field defaults. The
+data is not corrupted — it is silently forgotten, which is worse to diagnose.
+
+There is no `[id = N]` attribute to pin an identity independently of the name.
+If you need to rename a field whose data already exists in the wild, the
+migration is yours to write: read with the old schema, write with the new one.
+
+Two practical consequences:
+
+- **Name table fields as if renaming them is expensive**, because it is.
+- Ids are 16-bit, and the compiler refuses a collision at compile time rather
+  than letting two fields share an id. That check is the right one, but note
+  what resolving a collision costs: renaming *either* field changes *that*
+  field's identity, so a collision introduced by a new field can force a
+  data-breaking rename of an old one. Wide tables make this more likely — at
+  100 fields the birthday probability of some collision is a few percent.
+
+None of this applies to the message wire, which has no field identity at all.
+
 ---
 
 See [USAGE.md](USAGE.md) for how to declare each, and [SPEC.md](SPEC.md) for
