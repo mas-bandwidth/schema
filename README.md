@@ -3,8 +3,7 @@
 [![CI](https://github.com/mas-bandwidth/schema/actions/workflows/ci.yml/badge.svg)](https://github.com/mas-bandwidth/schema/actions/workflows/ci.yml)
 [![License: AGPL v3](https://img.shields.io/badge/license-AGPL--3.0-blue.svg)](LICENSE)
 
-**You write down your game's data once. You get the code to send it, in four
-languages, byte-for-byte identical on the wire.**
+Write down your data types once and generate code to read and write them in four languages automatically.
 
 ```
 message ShipCreate {
