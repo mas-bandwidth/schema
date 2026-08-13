@@ -182,9 +182,15 @@ yours under whatever terms you ship.
 The plain reading: use it in a closed-source game freely; modify the compiler
 itself and run it as a service, and the AGPL applies to those modifications.
 
-If your legal team wants that carve-out as something stronger than a README
-paragraph — an explicit licence exception in the LICENSE file, or a commercial
-licence — that is a reasonable thing to ask for and worth raising as an issue.
+**That carve-out is not a README paragraph — it is an ADDITIONAL PERMISSION at
+the top of [LICENSE](LICENSE) itself**, which is where it has legal force. Point
+your legal team at the file rather than at this answer. It is modelled on the
+long-standing practice for compiler-like tools whose output is not covered by
+the tool's own licence: the Bison parser exception and the GCC Runtime Library
+Exception.
+
+If you need something beyond that — a commercial licence, or a written
+assurance for a procurement process — open an issue.
 
 ## Who maintains this? What if you stop?
 
