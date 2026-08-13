@@ -359,6 +359,13 @@ A value outside its declared range is **refused, not clamped** — the read
 returns failure and you drop the packet:
 
 ```cpp
+// NOTE the buffer contract: in C++ the ALLOCATION must extend at least 8 bytes
+// past the packet data. The reader pulls a 64-bit word at a time, so a buffer
+// sized exactly to the packet is read past its end — on every packet, not just
+// malformed ones. Size the receive buffer with slack; pass the true length.
+uint8_t buffer[MaxPacketBytes + 8];
+int bytes = recv( ... );
+
 ShipCreate value;
 serialize::ReadStream stream( buffer, bytes );
 if ( !ReadShipCreate( stream, value ) )
@@ -367,10 +374,23 @@ if ( !ReadShipCreate( stream, value ) )
 }
 ```
 
+The slack requirement differs per language, and it is normative in
+[SPEC.md](SPEC.md) §6.3: **C++ ≥8 bytes, Go ≥7, Rust ≥8, C# none.** Write
+buffers are a multiple of 8 in every language.
+
 That covers ranges, counts past an array bound, string lengths past their
-maximum, enum values that are not variants, and reads that run past the end
-of the buffer. The same rules hold in all four languages, because the same
-compiler wrote all four.
+maximum, enum values outside the declared range, and reads that run past the
+end of the buffer.
+
+One precision worth having: an enum read is bounded by the enum's declared
+**max**, not by its variant count. For a plain `enum E { A, B, C }` those are
+the same thing and a non-variant cannot survive a read. But `enum E [max = 15]
+{ A, B }` deliberately reserves headroom so variants can be added later without
+moving the field width — and a read of that enum accepts anything in `[0, 15]`.
+That is the point of the headroom, but it means a value you have not defined
+yet can arrive, and your `switch` should have a default. The same VALIDATION rules hold in all four languages, because
+the same compiler wrote all four — the buffer-slack contract above is the one
+thing that differs per language.
 
 The one deliberate exception is the table wire, where out-of-range values
 *clamp* and are counted in the report — because table data is meant to
