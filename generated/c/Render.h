@@ -8,6 +8,7 @@
 #define SCHEMA_EXAMPLE_RENDER_H
 
 #include <stdint.h>
+#include <string.h>   /* memset — the zero form (SPEC §4.2) */
 
 #ifndef SCHEMA_UNUSED
 #if defined(__GNUC__) || defined(__clang__)
@@ -33,6 +34,9 @@ typedef struct RenderSprite {
     Team team;
 } RenderSprite;
 
+#define RENDER_SPRITE_MAX_BITS 138   /* longest wire path; align pads at worst case (SPEC §6.1) */
+#define RENDER_SPRITE_MAX_BYTES 24  /* rounded up to the 8-byte write-buffer granularity */
+
 
 /* type RenderBlock */
 typedef struct RenderBlock {
@@ -41,6 +45,9 @@ typedef struct RenderBlock {
     RenderSprite sprites[64];
     int32_t sprites_count;
 } RenderBlock;
+
+#define RENDER_BLOCK_MAX_BITS 8903   /* longest wire path; align pads at worst case (SPEC §6.1) */
+#define RENDER_BLOCK_MAX_BYTES 1120  /* rounded up to the 8-byte write-buffer granularity */
 
 #ifdef __cplusplus
 }

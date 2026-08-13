@@ -8,6 +8,7 @@
 #define SCHEMA_EXAMPLE_WIRE_H
 
 #include <stdint.h>
+#include <string.h>   /* memset — the zero form (SPEC §4.2) */
 
 #ifndef SCHEMA_UNUSED
 #if defined(__GNUC__) || defined(__clang__)
@@ -65,6 +66,9 @@ typedef struct ProbeHeader {
     uint64_t probe_id;
 } ProbeHeader;
 
+#define PROBE_HEADER_MAX_BITS 87   /* longest wire path; align pads at worst case (SPEC §6.1) */
+#define PROBE_HEADER_MAX_BYTES 16  /* rounded up to the 8-byte write-buffer granularity */
+
 
 /* type ProbeBits */
 typedef struct ProbeBits {
@@ -74,6 +78,9 @@ typedef struct ProbeBits {
     uint32_t sensor;
     uint64_t nonce;
 } ProbeBits;
+
+#define PROBE_BITS_MAX_BITS 202   /* longest wire path; align pads at worst case (SPEC §6.1) */
+#define PROBE_BITS_MAX_BYTES 32  /* rounded up to the 8-byte write-buffer granularity */
 
 
 /* type ProbeSample */
@@ -90,12 +97,41 @@ typedef struct ProbeSample {
     int32_t samples_count;
 } ProbeSample;
 
+#define PROBE_SAMPLE_MAX_BITS 276   /* longest wire path; align pads at worst case (SPEC §6.1) */
+#define PROBE_SAMPLE_MAX_BYTES 40  /* rounded up to the 8-byte write-buffer granularity */
+
+/* Returns a ProbeSample with its SPECIFIED defaults applied. A memset to zero is
+   the schema's own default (SPEC §4.2: zero initialization unless a
+   specified default overrides it), so only types carrying one get this. */
+static SCHEMA_UNUSED ProbeSample new_probe_sample( void )
+{
+    ProbeSample value;
+    memset( &value, 0, sizeof( value ) );
+    value.active = 1;
+    return value;
+}
+
 
 /* type ProbeConfig */
 typedef struct ProbeConfig {
     int32_t retries;
     Weapon preferred;
 } ProbeConfig;
+
+#define PROBE_CONFIG_MAX_BITS 36   /* longest wire path; align pads at worst case (SPEC §6.1) */
+#define PROBE_CONFIG_MAX_BYTES 8  /* rounded up to the 8-byte write-buffer granularity */
+
+/* Returns a ProbeConfig with its SPECIFIED defaults applied. A memset to zero is
+   the schema's own default (SPEC §4.2: zero initialization unless a
+   specified default overrides it), so only types carrying one get this. */
+static SCHEMA_UNUSED ProbeConfig new_probe_config( void )
+{
+    ProbeConfig value;
+    memset( &value, 0, sizeof( value ) );
+    value.retries = -1;
+    value.preferred = WEAPON_RAILGUN;
+    return value;
+}
 
 
 /* type ProbeArray */
@@ -104,6 +140,27 @@ typedef struct ProbeArray {
     ProbeConfig config;
 } ProbeArray;
 
+#define PROBE_ARRAY_MAX_BITS 588   /* longest wire path; align pads at worst case (SPEC §6.1) */
+#define PROBE_ARRAY_MAX_BYTES 80  /* rounded up to the 8-byte write-buffer granularity */
+
+/* Returns a ProbeArray with its SPECIFIED defaults applied. A memset to zero is
+   the schema's own default (SPEC §4.2: zero initialization unless a
+   specified default overrides it), so only types carrying one get this. */
+static SCHEMA_UNUSED ProbeArray new_probe_array( void )
+{
+    ProbeArray value;
+    memset( &value, 0, sizeof( value ) );
+    {
+        int32_t i;
+        for ( i = 0; i < 2; i++ )
+        {
+            value.samples[i] = new_probe_sample();
+        }
+    }
+    value.config = new_probe_config();
+    return value;
+}
+
 
 /* type ProbeReport */
 typedef struct ProbeReport {
@@ -111,6 +168,9 @@ typedef struct ProbeReport {
     ProbeFlags flags;
     Test echo;
 } ProbeReport;
+
+#define PROBE_REPORT_MAX_BITS 141   /* longest wire path; align pads at worst case (SPEC §6.1) */
+#define PROBE_REPORT_MAX_BYTES 24  /* rounded up to the 8-byte write-buffer granularity */
 
 
 /* type TestData */
@@ -139,6 +199,9 @@ typedef struct TestData {
     char text[256]; /* string(255): N + 1 for the terminator the wire does not carry */
     int32_t text_length;
 } TestData;
+
+#define TEST_DATA_MAX_BITS 2735   /* longest wire path; align pads at worst case (SPEC §6.1) */
+#define TEST_DATA_MAX_BYTES 344  /* rounded up to the 8-byte write-buffer granularity */
 
 #ifdef __cplusplus
 }

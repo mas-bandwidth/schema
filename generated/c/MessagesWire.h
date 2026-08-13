@@ -279,6 +279,119 @@ static SCHEMA_UNUSED int read_timescale( serialize_read_stream_t * stream, Times
     return 1;
 }
 
+/* The tag itself, over [0, MESSAGE_TYPE_MAX]. */
+static SCHEMA_UNUSED int write_message_type( serialize_write_stream_t * stream, MessageType value )
+{
+    if ( value > MESSAGE_TYPE_MAX )
+    {
+        return 0;
+    }
+    if ( !serialize_write_bits( stream, (serialize_uint32_t) value, 3 ) )
+    {
+        return 0;
+    }
+    return 1;
+}
+
+static SCHEMA_UNUSED int read_message_type( serialize_read_stream_t * stream, MessageType * value )
+{
+    serialize_uint32_t raw = 0;
+    if ( !serialize_read_bits( stream, &raw, 3 ) )
+    {
+        return 0;
+    }
+    if ( raw > MESSAGE_TYPE_MAX )
+    {
+        return 0;
+    }
+    *value = (MessageType) raw;
+    return 1;
+}
+
+/* Writes the tag and then the selected arm. */
+static SCHEMA_UNUSED int write_message( serialize_write_stream_t * stream, const Message * message )
+{
+    switch ( message->type )
+    {
+        case MESSAGE_TYPE_NONE:
+            return write_message_type( stream, MESSAGE_TYPE_NONE ); /* the stream terminator */
+        case MESSAGE_TYPE_BLOCK:
+            if ( !write_message_type( stream, MESSAGE_TYPE_BLOCK ) )
+            {
+                return 0;
+            }
+            return write_block( stream, &message->as.block );
+        case MESSAGE_TYPE_CHAT:
+            if ( !write_message_type( stream, MESSAGE_TYPE_CHAT ) )
+            {
+                return 0;
+            }
+            return write_chat( stream, &message->as.chat );
+        case MESSAGE_TYPE_HEARTBEAT:
+            if ( !write_message_type( stream, MESSAGE_TYPE_HEARTBEAT ) )
+            {
+                return 0;
+            }
+            return write_heartbeat( stream, &message->as.heartbeat );
+        case MESSAGE_TYPE_SYNCHRONIZE:
+            if ( !write_message_type( stream, MESSAGE_TYPE_SYNCHRONIZE ) )
+            {
+                return 0;
+            }
+            return write_synchronize( stream, &message->as.synchronize );
+        case MESSAGE_TYPE_TEST:
+            if ( !write_message_type( stream, MESSAGE_TYPE_TEST ) )
+            {
+                return 0;
+            }
+            return write_test( stream, &message->as.test );
+        case MESSAGE_TYPE_TIMESCALE:
+            if ( !write_message_type( stream, MESSAGE_TYPE_TIMESCALE ) )
+            {
+                return 0;
+            }
+            return write_timescale( stream, &message->as.timescale );
+        default:
+            return 0;
+    }
+}
+
+/* Reads the tag, ZEROES the selected arm, then decodes into it (SPEC §5). */
+static SCHEMA_UNUSED int read_message( serialize_read_stream_t * stream, Message * message )
+{
+    MessageType type = MESSAGE_TYPE_NONE;
+    if ( !read_message_type( stream, &type ) )
+    {
+        return 0;
+    }
+    message->type = type;
+    switch ( type )
+    {
+        case MESSAGE_TYPE_NONE:
+            return 1;
+        case MESSAGE_TYPE_BLOCK:
+            memset( &message->as.block, 0, sizeof( message->as.block ) );
+            return read_block( stream, &message->as.block );
+        case MESSAGE_TYPE_CHAT:
+            memset( &message->as.chat, 0, sizeof( message->as.chat ) );
+            return read_chat( stream, &message->as.chat );
+        case MESSAGE_TYPE_HEARTBEAT:
+            memset( &message->as.heartbeat, 0, sizeof( message->as.heartbeat ) );
+            return read_heartbeat( stream, &message->as.heartbeat );
+        case MESSAGE_TYPE_SYNCHRONIZE:
+            memset( &message->as.synchronize, 0, sizeof( message->as.synchronize ) );
+            return read_synchronize( stream, &message->as.synchronize );
+        case MESSAGE_TYPE_TEST:
+            memset( &message->as.test, 0, sizeof( message->as.test ) );
+            return read_test( stream, &message->as.test );
+        case MESSAGE_TYPE_TIMESCALE:
+            memset( &message->as.timescale, 0, sizeof( message->as.timescale ) );
+            return read_timescale( stream, &message->as.timescale );
+        default:
+            return 0;
+    }
+}
+
 #ifdef __cplusplus
 }
 #endif

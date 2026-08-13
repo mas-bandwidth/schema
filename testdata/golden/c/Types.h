@@ -8,6 +8,7 @@
 #define SCHEMA_EXAMPLE_TYPES_H
 
 #include <stdint.h>
+#include <string.h>   /* memset — the zero form (SPEC §4.2) */
 
 #ifndef SCHEMA_UNUSED
 #if defined(__GNUC__) || defined(__clang__)
@@ -31,6 +32,9 @@ typedef struct Vec3 {
     double z;
 } Vec3;
 
+#define VEC3_MAX_BITS 192   /* longest wire path; align pads at worst case (SPEC §6.1) */
+#define VEC3_MAX_BYTES 24  /* rounded up to the 8-byte write-buffer granularity */
+
 
 /* type Quat */
 typedef struct Quat {
@@ -40,12 +44,18 @@ typedef struct Quat {
     double w;
 } Quat;
 
+#define QUAT_MAX_BITS 256   /* longest wire path; align pads at worst case (SPEC §6.1) */
+#define QUAT_MAX_BYTES 32  /* rounded up to the 8-byte write-buffer granularity */
+
 
 /* type Handle */
 typedef struct Handle {
     int32_t object_id;
     uint8_t object_sequence;
 } Handle;
+
+#define HANDLE_MAX_BITS 22   /* longest wire path; align pads at worst case (SPEC §6.1) */
+#define HANDLE_MAX_BYTES 8  /* rounded up to the 8-byte write-buffer granularity */
 
 
 /* type QuantizedPosition */
@@ -55,6 +65,9 @@ typedef struct QuantizedPosition {
     int32_t z;
 } QuantizedPosition;
 
+#define QUANTIZED_POSITION_MAX_BITS 75   /* longest wire path; align pads at worst case (SPEC §6.1) */
+#define QUANTIZED_POSITION_MAX_BYTES 16  /* rounded up to the 8-byte write-buffer granularity */
+
 
 /* type QuantizedVelocity */
 typedef struct QuantizedVelocity {
@@ -62,6 +75,9 @@ typedef struct QuantizedVelocity {
     int32_t y;
     int32_t z;
 } QuantizedVelocity;
+
+#define QUANTIZED_VELOCITY_MAX_BITS 69   /* longest wire path; align pads at worst case (SPEC §6.1) */
+#define QUANTIZED_VELOCITY_MAX_BYTES 16  /* rounded up to the 8-byte write-buffer granularity */
 
 
 /* type QuantizedRotation */
@@ -72,6 +88,9 @@ typedef struct QuantizedRotation {
     int16_t w;
 } QuantizedRotation;
 
+#define QUANTIZED_ROTATION_MAX_BITS 48   /* longest wire path; align pads at worst case (SPEC §6.1) */
+#define QUANTIZED_ROTATION_MAX_BYTES 8  /* rounded up to the 8-byte write-buffer granularity */
+
 
 /* type RigidBody */
 typedef struct RigidBody {
@@ -81,6 +100,9 @@ typedef struct RigidBody {
     Vec3 linear_velocity;
     Vec3 angular_velocity;
 } RigidBody;
+
+#define RIGID_BODY_MAX_BITS 833   /* longest wire path; align pads at worst case (SPEC §6.1) */
+#define RIGID_BODY_MAX_BYTES 112  /* rounded up to the 8-byte write-buffer granularity */
 
 
 /* type Input */
@@ -100,6 +122,9 @@ typedef struct Input {
     int ping;
 } Input;
 
+#define INPUT_MAX_BITS 168   /* longest wire path; align pads at worst case (SPEC §6.1) */
+#define INPUT_MAX_BYTES 24  /* rounded up to the 8-byte write-buffer granularity */
+
 
 /* type InputPacket */
 typedef struct InputPacket {
@@ -109,6 +134,9 @@ typedef struct InputPacket {
     Input inputs[16];
     int32_t inputs_count;
 } InputPacket;
+
+#define INPUT_PACKET_MAX_BITS 2837   /* longest wire path; align pads at worst case (SPEC §6.1) */
+#define INPUT_PACKET_MAX_BYTES 360  /* rounded up to the 8-byte write-buffer granularity */
 
 
 /* type ShipCreate */
@@ -124,6 +152,9 @@ typedef struct ShipCreate {
     int8_t thrust;
     Pending pending;
 } ShipCreate;
+
+#define SHIP_CREATE_MAX_BITS 219   /* longest wire path; align pads at worst case (SPEC §6.1) */
+#define SHIP_CREATE_MAX_BYTES 32  /* rounded up to the 8-byte write-buffer granularity */
 
 #ifdef __cplusplus
 }

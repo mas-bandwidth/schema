@@ -105,6 +105,8 @@ type gen struct {
 	unit     *ir.Unit
 	errs     []error
 	needs128 bool // a 128-bit or Q112.16 storage member needs serialize.h in the DATA header
+
+	emitMessagesPending bool // this file owns the message dispatch surface
 	file     *ir.File
 	msgOwner string
 	objOwner string
@@ -140,7 +142,7 @@ func (g *gen) assembleHeader() []byte {
 	g.header(&h, g.file.Base)
 	guard := g.guardName("")
 	fmt.Fprintf(&h, "#ifndef %s\n#define %s\n\n", guard, guard)
-	h.WriteString("#include <stdint.h>\n")
+	h.WriteString("#include <stdint.h>\n#include <string.h>   /* memset — the zero form (SPEC §4.2) */\n")
 	if g.needs128 {
 		// serialize_int128_t / serialize_uint128_t are STORAGE here, so the
 		// runtime header has to reach the data header and not only the wire one
@@ -206,6 +208,10 @@ func (g *gen) emitDataHeader(carriesProtocolId bool) {
 		g.pf("#define %s_PROTOCOL_ID 0x%016xULL\n\n", screaming(g.unit.Package), g.unit.ProtocolId)
 	}
 
+	if g.file.Base == g.msgOwner && len(g.unit.Messages) > 0 {
+		g.emitMessagesPending = true
+	}
+
 	for _, d := range g.file.Decls {
 		switch decl := d.(type) {
 		case *ir.Const:
@@ -227,6 +233,11 @@ func (g *gen) emitDataHeader(carriesProtocolId bool) {
 		default:
 			g.unsupported("declaration kind %T in %s.schema has no C emission", decl, g.file.Base)
 		}
+	}
+
+	// the message tag and union come after the arms they name
+	if g.emitMessagesPending {
+		g.emitMessageTypes()
 	}
 }
 
@@ -305,6 +316,8 @@ func (g *gen) emitStruct(d *ir.Struct) {
 		g.emitField(f)
 	}
 	g.pf("} %s;\n\n", d.Name)
+	g.emitMaxBits(d)
+	g.emitConstructor(d)
 }
 
 func (g *gen) emitField(f *ir.Field) {
@@ -428,6 +441,10 @@ func (g *gen) emitWireHeader() {
 		case *ir.Object:
 			g.emitObjectFunctions(decl)
 		}
+	}
+
+	if g.file.Base == g.msgOwner && len(g.unit.Messages) > 0 {
+		g.emitMessageDispatch()
 	}
 }
 

@@ -291,6 +291,45 @@ int main( void )
         }
     }
 
+    /* ---- the Message dispatch surface: tag + union, and the terminator ---- */
+    {
+        Message m;
+        memset( &m, 0, sizeof( m ) );
+
+        serialize_write_stream_init( &w, buffer, sizeof( buffer ) );
+
+        m.type = MESSAGE_TYPE_CHAT;
+        memset( &m.as.chat, 0, sizeof( m.as.chat ) );
+        memcpy( m.as.chat.text, "dispatch", 8 );
+        m.as.chat.text_length = 8;
+        check( write_message( &w, &m ), "write Message chat" );
+
+        m.type = MESSAGE_TYPE_TEST;
+        memset( &m.as.test, 0, sizeof( m.as.test ) );
+        m.as.test.test_b = 42;
+        check( write_message( &w, &m ), "write Message test" );
+
+        m.type = MESSAGE_TYPE_NONE;
+        check( write_message( &w, &m ), "write Message terminator" );
+
+        serialize_write_flush( &w );
+        golden_wire( "message_stream", buffer, serialize_write_bytes_processed( &w ) );
+
+        {
+            Message back;
+            serialize_read_stream_init( &r, buffer, serialize_write_bytes_processed( &w ) );
+            memset( &back, 0, sizeof( back ) );
+            check( read_message( &r, &back ), "read Message 1" );
+            check( back.type == MESSAGE_TYPE_CHAT, "first message is Chat" );
+            check( back.as.chat.text_length == 8 && memcmp( back.as.chat.text, "dispatch", 8 ) == 0,
+                   "Chat arm decodes" );
+            check( read_message( &r, &back ), "read Message 2" );
+            check( back.type == MESSAGE_TYPE_TEST && back.as.test.test_b == 42, "Test arm decodes" );
+            check( read_message( &r, &back ), "read Message terminator" );
+            check( back.type == MESSAGE_TYPE_NONE, "terminator decodes as None" );
+        }
+    }
+
     if ( failed )
     {
         printf( "FAILED\n" );

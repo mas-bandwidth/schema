@@ -8,6 +8,7 @@
 #define SCHEMA_EXAMPLE_MESSAGES_H
 
 #include <stdint.h>
+#include <string.h>   /* memset — the zero form (SPEC §4.2) */
 
 #ifndef SCHEMA_UNUSED
 #if defined(__GNUC__) || defined(__clang__)
@@ -37,12 +38,18 @@ typedef struct Test {
     int16_t test_d;
 } Test;
 
+#define TEST_MAX_BITS 46   /* longest wire path; align pads at worst case (SPEC §6.1) */
+#define TEST_MAX_BYTES 8  /* rounded up to the 8-byte write-buffer granularity */
+
 
 /* message Block */
 typedef struct Block {
     uint8_t data[2000];
     int32_t data_length;
 } Block;
+
+#define BLOCK_MAX_BITS 16018   /* longest wire path; align pads at worst case (SPEC §6.1) */
+#define BLOCK_MAX_BYTES 2008  /* rounded up to the 8-byte write-buffer granularity */
 
 
 /* message Chat */
@@ -51,12 +58,18 @@ typedef struct Chat {
     int32_t text_length;
 } Chat;
 
+#define CHAT_MAX_BITS 2064   /* longest wire path; align pads at worst case (SPEC §6.1) */
+#define CHAT_MAX_BYTES 264  /* rounded up to the 8-byte write-buffer granularity */
+
 
 /* message Synchronize */
 typedef struct Synchronize {
     uint64_t sync_frame;
     uint16_t sync_sequence;
 } Synchronize;
+
+#define SYNCHRONIZE_MAX_BITS 80   /* longest wire path; align pads at worst case (SPEC §6.1) */
+#define SYNCHRONIZE_MAX_BYTES 16  /* rounded up to the 8-byte write-buffer granularity */
 
 
 /* message Timescale */
@@ -65,6 +78,54 @@ typedef struct Timescale {
     uint32_t frame_a;
     uint32_t frame_b;
 } Timescale;
+
+#define TIMESCALE_MAX_BITS 128   /* longest wire path; align pads at worst case (SPEC §6.1) */
+#define TIMESCALE_MAX_BYTES 16  /* rounded up to the 8-byte write-buffer granularity */
+
+
+/* The message tag: the discriminant for a heterogeneous stream. None = 0 is
+   the stream terminator (SPEC §4.8). */
+typedef uint8_t MessageType;
+#define MESSAGE_TYPE_NONE 0
+#define MESSAGE_TYPE_BLOCK 1
+#define MESSAGE_TYPE_CHAT 2
+#define MESSAGE_TYPE_HEARTBEAT 3
+#define MESSAGE_TYPE_SYNCHRONIZE 4
+#define MESSAGE_TYPE_TEST 5
+#define MESSAGE_TYPE_TIMESCALE 6
+#define MESSAGE_TYPE_MAX 6
+
+/* Debug/log name for any MessageType value, out-of-set included. */
+static SCHEMA_UNUSED const char * enum_name_message_type( MessageType value )
+{
+    switch ( value )
+    {
+        case MESSAGE_TYPE_NONE: return "None";
+        case 1: return "Block";
+        case 2: return "Chat";
+        case 3: return "Heartbeat";
+        case 4: return "Synchronize";
+        case 5: return "Test";
+        case 6: return "Timescale";
+        default: return "???";
+    }
+}
+
+/* The message union. C has no variant, so this is the tag plus a union of
+   the arms — the same shape the C++ target's default representation uses.
+   The selected arm is established ZEROED at selection (SPEC §5): read_message
+   zeroes before decoding. Bytes of unselected arms are indeterminate. */
+typedef struct Message {
+    MessageType type;
+    union {
+        Block block;
+        Chat chat;
+        Heartbeat heartbeat;
+        Synchronize synchronize;
+        Test test;
+        Timescale timescale;
+    } as;
+} Message;
 
 #ifdef __cplusplus
 }

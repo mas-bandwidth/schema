@@ -8,6 +8,7 @@
 #define SCHEMA_EXAMPLE_CONSTANTS_H
 
 #include <stdint.h>
+#include <string.h>   /* memset — the zero form (SPEC §4.2) */
 
 #ifndef SCHEMA_UNUSED
 #if defined(__GNUC__) || defined(__clang__)
