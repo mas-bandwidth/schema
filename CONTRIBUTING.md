@@ -41,7 +41,7 @@ git clone https://github.com/mas-bandwidth/schema.git
 cd schema && make test
 ```
 
-`make test` builds the compiler, generates the corpus in all four languages,
+`make test` builds the compiler, generates the corpus in all five languages,
 compiles each, and compares the emitted wire against pinned goldens. That
 cross-language bit-identity check is the property this project exists to
 provide, so a change that breaks it is wrong until proven otherwise.

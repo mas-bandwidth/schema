@@ -21,7 +21,11 @@ func (g *gen) call(ind, expr string) {
 func (g *gen) emitWriteField(f *ir.Field, ind string) {
 	switch {
 	case f.Type.Kind == ir.TString:
-		g.call(ind, fmt.Sprintf("serialize_write_string( stream, value->%s, %d )", f.Name, f.Type.Size))
+		// Composed from primitives, NOT serialize_write_string: schema frames
+		// the length over [0, N] where the runtime's string call frames it over
+		// [0, N-1]. One bit of difference, and every following field shifts.
+		g.call(ind, fmt.Sprintf("serialize_write_int( stream, value->%s_length, 0, %d )", f.Name, f.Type.Size))
+		g.call(ind, fmt.Sprintf("serialize_write_bytes( stream, (const serialize_uint8_t *) value->%s, (int) value->%s_length )", f.Name, f.Name))
 	case f.Type.Kind == ir.TBytes:
 		g.call(ind, fmt.Sprintf("serialize_write_int( stream, value->%s_length, 0, %d )", f.Name, f.Type.Size))
 		g.call(ind, fmt.Sprintf("serialize_write_bytes( stream, value->%s, (int) value->%s_length )", f.Name, f.Name))
@@ -128,7 +132,15 @@ func (g *gen) emitRangeAssertWrite(f *ir.Field, expr, ind string) {
 
 func (g *gen) emitWriteBits(f *ir.Field, expr, ind string) {
 	if f.Type.Width > 32 {
-		g.call(ind, fmt.Sprintf("serialize_write_uint64( stream, (serialize_uint64_t) %s )", expr))
+		// The >32 split from STANDARD.md: the low 32 bits as one group, then
+		// the remainder. NOT serialize_write_uint64 -- that always spends a
+		// full 64 bits, which is right only when the width IS 64. A bits(33)
+		// field would otherwise cost 31 bits too many and shift every field
+		// after it.
+		g.pf("%s{\n%s    serialize_uint64_t bits_value = (serialize_uint64_t) %s;\n", ind, ind, expr)
+		g.call(ind+"    ", "serialize_write_bits( stream, (serialize_uint32_t) ( bits_value & 0xFFFFFFFFu ), 32 )")
+		g.call(ind+"    ", fmt.Sprintf("serialize_write_bits( stream, (serialize_uint32_t) ( bits_value >> 32 ), %d )", f.Type.Width-32))
+		g.pf("%s}\n", ind)
 		return
 	}
 	g.call(ind, fmt.Sprintf("serialize_write_bits( stream, (serialize_uint32_t) %s, %d )", expr, f.Type.Width))
@@ -139,8 +151,10 @@ func (g *gen) emitWriteBits(f *ir.Field, expr, ind string) {
 func (g *gen) emitReadField(f *ir.Field, ind string) {
 	switch {
 	case f.Type.Kind == ir.TString:
-		g.call(ind, fmt.Sprintf("serialize_read_string( stream, value->%s, %d )", f.Name, f.Type.Size))
-		g.pf("%svalue->%s_length = (int32_t) strlen( value->%s );\n", ind, f.Name, f.Name)
+		g.call(ind, fmt.Sprintf("serialize_read_int( stream, &value->%s_length, 0, %d )", f.Name, f.Type.Size))
+		g.call(ind, fmt.Sprintf("serialize_read_bytes( stream, (serialize_uint8_t *) value->%s, (int) value->%s_length )", f.Name, f.Name))
+		// the terminator is not transmitted; the reader supplies it
+		g.pf("%svalue->%s[value->%s_length] = 0;\n", ind, f.Name, f.Name)
 	case f.Type.Kind == ir.TBytes:
 		g.call(ind, fmt.Sprintf("serialize_read_int( stream, &value->%s_length, 0, %d )", f.Name, f.Type.Size))
 		g.call(ind, fmt.Sprintf("serialize_read_bytes( stream, value->%s, (int) value->%s_length )", f.Name, f.Name))
@@ -240,9 +254,11 @@ func (g *gen) emitReadRangedInt(f *ir.Field, expr, ind string) {
 
 func (g *gen) emitReadBits(f *ir.Field, expr, ind string) {
 	if f.Type.Width > 32 {
-		g.pf("%s{\n%s    serialize_uint64_t raw = 0;\n", ind, ind)
-		g.call(ind+"    ", "serialize_read_uint64( stream, &raw )")
-		g.pf("%s    %s = (%s) raw;\n%s}\n", ind, expr, g.storageType(f), ind)
+		g.pf("%s{\n%s    serialize_uint32_t lo = 0;\n%s    serialize_uint32_t hi = 0;\n", ind, ind, ind)
+		g.call(ind+"    ", "serialize_read_bits( stream, &lo, 32 )")
+		g.call(ind+"    ", fmt.Sprintf("serialize_read_bits( stream, &hi, %d )", f.Type.Width-32))
+		g.pf("%s    %s = (%s) ( (serialize_uint64_t) lo | ( ( (serialize_uint64_t) hi ) << 32 ) );\n%s}\n",
+			ind, expr, g.storageType(f), ind)
 		return
 	}
 	g.pf("%s{\n%s    serialize_uint32_t raw = 0;\n", ind, ind)

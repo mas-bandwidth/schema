@@ -72,11 +72,12 @@ projects with their own version numbers:
 | runtime | |
 |---|---|
 | [serialize](https://github.com/mas-bandwidth/serialize) | C++ |
+| [serialize.c](https://github.com/mas-bandwidth/serialize.c) | C |
 | [serialize.cs](https://github.com/mas-bandwidth/serialize.cs) | C# |
 | [serialize.go](https://github.com/mas-bandwidth/serialize.go) | Go |
 | [serialize.rs](https://github.com/mas-bandwidth/serialize.rs) | Rust |
 
-They share a wire standard (`STANDARD.md`, kept identical across all four) and
+They share a wire standard (`STANDARD.md`, kept identical across all five) and
 are checked against each other. A given compiler release states the minimum
 runtime version it needs; newer runtimes keep working with older generated
 code.

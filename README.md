@@ -3,7 +3,7 @@
 [![CI](https://github.com/mas-bandwidth/schema/actions/workflows/ci.yml/badge.svg)](https://github.com/mas-bandwidth/schema/actions/workflows/ci.yml)
 [![License: AGPL v3](https://img.shields.io/badge/license-AGPL--3.0-blue.svg)](LICENSE)
 
-Write down your data types once and generate code to read and write them in four languages automatically.
+Write down your data types once and generate code to read and write them in five languages automatically.
 
 ```
 package example
@@ -29,7 +29,7 @@ message ShipState {
 }
 ```
 
-This declaration compiles to C++, C#, Go and Rust code that 
+This declaration compiles to C, C++, C#, Go and Rust code that 
 reads and writes your data types and agrees on every bit. Now your native plugin, your Unity client, your Go backend, and your tooling in Rust all speak the same language.
 
 ## Why it exists
@@ -63,7 +63,7 @@ format is decided at compile time, what comes out is the straight-line code you
 would have hand-written, not an interpreter walking a schema at runtime.
 
 The agreement is proven rather than promised: every build compiles the corpus
-in all four languages and compares the results against pinned goldens. If two
+in all five languages and compares the results against pinned goldens. If two
 languages ever differ by one bit, CI says so before you do.
 
 **And it is built by multiplayer game developers, for multiplayer games.** That
@@ -79,7 +79,7 @@ have shipped it.
 
 ## Features
 
-- **One declaration, four languages** — C++, C#, Go and Rust, bit-identical on
+- **One declaration, five languages** — C, C++, C#, Go and Rust, bit-identical on
   the wire, reader and writer generated together so they cannot drift.
 - **Bit-packed, not byte-packed** — `[min = 0, max = 1000]` costs 10 bits, not
   4 bytes. Bounds are part of the type, and the wire cost follows from them.
@@ -102,12 +102,12 @@ have shipped it.
 - **Reads validate, always — in every language.** Out-of-range values are
   refused, not clamped or trusted. Validation is not a separate verifier that
   each language port has to implement and might not have: the bound is part of
-  the type, so the check is inline in the generated reader, in all four
+  the type, so the check is inline in the generated reader, in all five
   languages, from one compiler. There is no port that can read but not
   validate — which means there is no language here in which you cannot safely
   accept a packet from the internet.
 - **A second, evolution-tolerant wire** for config, assets and settings, with
-  reflection and relocatable storage — in all four languages; see
+  reflection and relocatable storage — in all five languages; see
   [WIRES.md](WIRES.md).
 - **`schema pack`** compiles directories of JSON into one binary container,
   validating every value against the schema as it goes.
@@ -122,7 +122,7 @@ have shipped it.
 go build -o /usr/local/bin/schema ./cmd/schema
 
 schema check    <dir of .schema files>
-schema generate --lang cpp --out <outdir> <dir>
+schema generate --lang c|cpp|cs|go|rust --out <outdir> <dir>
 schema pack     <PackManifest.json>
 ```
 
@@ -132,8 +132,9 @@ examples and the code each one generates.
 [SPEC.md](SPEC.md) is the normative reference for when you need the exact
 rule.
 
-Building the tests needs the four serialize runtimes checked out beside this
+Building the tests needs the five serialize runtimes checked out beside this
 repo — [serialize](https://github.com/mas-bandwidth/serialize),
+[serialize.c](https://github.com/mas-bandwidth/serialize.c),
 [serialize.cs](https://github.com/mas-bandwidth/serialize.cs),
 [serialize.go](https://github.com/mas-bandwidth/serialize.go),
 [serialize.rs](https://github.com/mas-bandwidth/serialize.rs) — then
@@ -179,7 +180,7 @@ roadmap, not in the box.
 |---|---|
 | **[USAGE.md](USAGE.md)** | Every language feature, with the code it generates. Start here. |
 | **[WIRES.md](WIRES.md)** | The two wires, tables, reflection, relocatable storage. |
-| **[PERFORMANCE.md](PERFORMANCE.md)** | Generated-code benchmarks across the four languages. |
+| **[PERFORMANCE.md](PERFORMANCE.md)** | Generated-code benchmarks across the five languages. |
 | **[SPEC.md](SPEC.md)** | The normative reference — grammar, wire law, every edge case. |
 | **[COMPARISON.md](COMPARISON.md)** | The same message in schema, Cap'n Proto, Protobuf and FlatBuffers — 28 vs 52 vs 56 vs 72 bytes, measured, with a script to re-run it. |
 | **[FAQ.md](FAQ.md)** | Isn't this just FlatBuffers / Protobuf / Cap'n Proto? And other blunt questions. |

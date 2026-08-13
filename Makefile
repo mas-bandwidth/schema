@@ -10,6 +10,7 @@ CXXFLAGS ?= -std=c++17 -Wall -Wextra -Werror -ffp-contract=off
 # test/rust/Cargo.toml, test/cs/schematest.csproj and their *-ludicrous twins
 # carry the same relative paths)
 SERIALIZE    ?= ../serialize
+SERIALIZE_C  ?= ../serialize.c
 SERIALIZE_GO ?= ../serialize.go
 SERIALIZE_RS ?= ../serialize.rs
 SERIALIZE_CS ?= ../serialize.cs
@@ -104,11 +105,24 @@ build/schema_test_ludicrous: generated/cpp/ludicrous/.stamp test/ludicrous_main.
 	@mkdir -p build
 	$(CXX) $(CXXFLAGS) -Igenerated/cpp/ludicrous test/ludicrous_main.cpp -o $@
 
-test: build/schema_test build/schema_test_variant build/schema_test_random build/schema_test_ludicrous generated/go/.stamp generated/rust/.stamp generated/cs/.stamp generated/go-ludicrous/.stamp generated/rust-ludicrous/.stamp generated/cs-ludicrous/.stamp
+generated/c/.stamp: bin/schema $(SCHEMAS)
+	./bin/schema generate --lang c --out generated/c examples
+	@touch $@
+
+# The C corpus test. -Werror on purpose: generated headers are included by the
+# CONSUMER's translation units, so a warning here is a build failure in their
+# tree, not ours.
+build/schema_test_c: generated/c/.stamp test/c/main.c
+	@mkdir -p build
+	$(CC) -std=c99 -Wall -Wextra -Werror -O2 -Igenerated/c -I$(SERIALIZE_C) \
+		test/c/main.c $(SERIALIZE_C)/serialize.c -o $@ -lm
+
+test: build/schema_test build/schema_test_variant build/schema_test_random build/schema_test_ludicrous build/schema_test_c generated/go/.stamp generated/rust/.stamp generated/cs/.stamp generated/go-ludicrous/.stamp generated/rust-ludicrous/.stamp generated/cs-ludicrous/.stamp
 	./build/schema_test
 	./build/schema_test_variant
 	./build/schema_test_random
 	./build/schema_test_ludicrous
+	cd test/c && ../../build/schema_test_c
 	cd test/go && go run .
 	cd test/rust && PATH="$(RUSTUP_BIN):$$PATH" cargo run --quiet
 	cd test/cs && dotnet run

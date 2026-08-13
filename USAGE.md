@@ -388,8 +388,8 @@ the same thing and a non-variant cannot survive a read. But `enum E [max = 15]
 { A, B }` deliberately reserves headroom so variants can be added later without
 moving the field width — and a read of that enum accepts anything in `[0, 15]`.
 That is the point of the headroom, but it means a value you have not defined
-yet can arrive, and your `switch` should have a default. The same VALIDATION rules hold in all four languages, because
-the same compiler wrote all four — the buffer-slack contract above is the one
+yet can arrive, and your `switch` should have a default. The same VALIDATION rules hold in all five languages, because
+the same compiler wrote all five — the buffer-slack contract above is the one
 thing that differs per language.
 
 The one deliberate exception is the table wire, where out-of-range values
@@ -455,7 +455,7 @@ stray file that matches no variant — which catches both a forgotten config
 and a stale one.
 
 The result is one file with a schema hash stamped in it, read through the
-generated table codecs, in any of the four languages.
+generated table codecs, in any of the five languages.
 
 ---
 

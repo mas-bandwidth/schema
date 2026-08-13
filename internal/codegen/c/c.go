@@ -391,6 +391,12 @@ func (g *gen) emitWriteItems(items []ir.Item, ind string) {
 		switch n := item.(type) {
 		case *ir.FieldItem:
 			g.emitWriteField(n.F, ind)
+		case *ir.ConstItem:
+			g.call(ind, fmt.Sprintf("serialize_write_bits( stream, (serialize_uint32_t) %sULL, %d ) /* const(%s, %d) — SPEC §4.3 */", n.Value.String(), n.Bits, n.Value.String(), n.Bits))
+		case *ir.ReservedItem:
+			g.call(ind, fmt.Sprintf("serialize_write_bits( stream, 0, %d ) /* reserved(%d) — zeros on the wire */", n.Bits, n.Bits))
+		case *ir.AlignItem:
+			g.call(ind, "serialize_write_align( stream )")
 		case *ir.Branch:
 			cond := "value->" + n.Cond
 			if n.Neg {
@@ -413,6 +419,19 @@ func (g *gen) emitReadItems(items []ir.Item, ind string) {
 		switch n := item.(type) {
 		case *ir.FieldItem:
 			g.emitReadField(n.F, ind)
+		case *ir.ConstItem:
+			// the constant must be exactly what the writer sent; a mismatch is
+			// a desynchronized stream, refused rather than ignored
+			g.pf("%s{\n%s    serialize_uint32_t const_value = 0;\n", ind, ind)
+			g.call(ind+"    ", fmt.Sprintf("serialize_read_bits( stream, &const_value, %d )", n.Bits))
+			g.pf("%s    if ( const_value != (serialize_uint32_t) %sULL )\n%s    {\n%s        return 0;\n%s    }\n%s}\n",
+				ind, n.Value.String(), ind, ind, ind, ind)
+		case *ir.ReservedItem:
+			g.pf("%s{\n%s    serialize_uint32_t reserved_value = 0;\n", ind, ind)
+			g.call(ind+"    ", fmt.Sprintf("serialize_read_bits( stream, &reserved_value, %d )", n.Bits))
+			g.pf("%s    if ( reserved_value != 0 )\n%s    {\n%s        return 0;\n%s    }\n%s}\n", ind, ind, ind, ind, ind)
+		case *ir.AlignItem:
+			g.call(ind, "serialize_read_align( stream )")
 		case *ir.Branch:
 			cond := "value->" + n.Cond
 			if n.Neg {

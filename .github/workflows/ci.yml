@@ -23,8 +23,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # The four runtimes the generated code targets. `make test` builds the
-      # corpus in all four languages and compares their wire against the
+      # The five runtimes the generated code targets. `make test` builds the
+      # corpus in all five languages and compares their wire against the
       # C++-pinned goldens, so every one of them has to be present — that
       # cross-language bit identity is the property this project exists to
       # provide, and CI is where it gets proven on hardware we do not own.
@@ -37,6 +37,7 @@ jobs:
         run: |
           cd ..
           git clone --quiet --depth 1 https://github.com/mas-bandwidth/serialize.git    serialize
+          git clone --quiet --depth 1 https://github.com/mas-bandwidth/serialize.c.git  serialize.c
           git clone --quiet --depth 1 https://github.com/mas-bandwidth/serialize.go.git serialize.go
           git clone --quiet --depth 1 https://github.com/mas-bandwidth/serialize.rs.git serialize.rs
           git clone --quiet --depth 1 https://github.com/mas-bandwidth/serialize.cs.git serialize.cs

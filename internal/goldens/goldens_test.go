@@ -17,6 +17,7 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/internal/check"
+	cgen "github.com/mas-bandwidth/schema/internal/codegen/c"
 	"github.com/mas-bandwidth/schema/internal/codegen/cpp"
 	"github.com/mas-bandwidth/schema/internal/codegen/csharp"
 	"github.com/mas-bandwidth/schema/internal/codegen/golang"
@@ -160,6 +161,17 @@ func TestGoldenSourceRust(t *testing.T) {
 		t.Fatal(err)
 	}
 	pinDir(t, filepath.Join(goldenDir, "rust"), files)
+}
+
+// TestGoldenSourceC pins the generated C byte-for-byte (SPEC §7.2 gate 1,
+// fifth target).
+func TestGoldenSourceC(t *testing.T) {
+	u := loadCorpus(t)
+	files, err := cgen.Generate(u)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pinDir(t, filepath.Join(goldenDir, "c"), files)
 }
 
 // TestGoldenSourceCs pins the generated C# byte-for-byte (SPEC §7.2 gate 1,
