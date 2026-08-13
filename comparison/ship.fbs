@@ -1,0 +1,21 @@
+// FlatBuffers equivalent of the corpus ShipCreate. Vectors are inline structs
+// (not tables) - the efficient choice; a table per vector would be far larger.
+namespace comparison;
+
+enum ShipType : ubyte { None = 0, Fighter, Corvette, Bomber, Destroyer, Carrier }
+enum Team : ubyte { None = 0, Red, Blue }
+
+struct Vec3i { x:int; y:int; z:int; }
+struct Quat16 { x:short; y:short; z:short; w:short; }
+
+table ShipCreate {
+  ship_type:ShipType;
+  position:Vec3i;
+  rotation:Quat16;
+  linear_velocity:Vec3i;
+  flags:uint;
+  team:Team;
+  health:ushort;
+  thrust:ubyte;
+}
+root_type ShipCreate;

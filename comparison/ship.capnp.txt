@@ -1,0 +1,5 @@
+( shipType = destroyer,
+  position = (x = 1234567, y = -2345678, z = 3456789),
+  rotation = (x = 100, y = -200, z = 300, w = 400),
+  linearVelocity = (x = 12345, y = -23456, z = 34567),
+  flags = 10, team = blue, health = 750, thrust = 42 )

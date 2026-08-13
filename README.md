@@ -53,9 +53,10 @@ Every way of solving that costs something:
   every translation unit includes.
 - **General-purpose formats** fix the drift by paying for it on the wire, in
   bytes and allocations you cannot afford at 60 Hz. On one representative
-  gameplay message that is **28 bytes against Protobuf's 50 and FlatBuffers'
-  68** — [the working is in COMPARISON.md](COMPARISON.md), including what those
-  extra bytes buy, because they are not waste.
+  gameplay message that is **28 bytes against Cap'n Proto's 52, Protobuf's 56
+  and FlatBuffers' 72** — every number measured by running the real encoder,
+  [reproducible from COMPARISON.md](COMPARISON.md), including what those extra
+  bytes buy, because they are not waste.
 
 Generating the code takes the fourth path. One declaration produces the reader
 *and* the writer, in every language, so they cannot disagree — and because the

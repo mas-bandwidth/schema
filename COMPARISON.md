@@ -1,7 +1,12 @@
 # Size comparison
 
-The README claims general-purpose formats pay for their generality on the
-wire. This is that claim, measured, on one representative message.
+The README claims general-purpose formats pay for their generality on the wire.
+This is that claim, measured, on one representative message.
+
+**Every number here is produced by running the real encoder.** Nothing is
+computed by hand, and nothing is read out of a compiler constant. The schemas,
+the input values and the script are all in [`comparison/`](comparison/) — run
+`./comparison/measure.sh` and you should get this table.
 
 **One message is not a benchmark suite.** It is a worked example you can check
 line by line, which is worth more than a table of numbers you cannot.
@@ -10,114 +15,119 @@ line by line, which is worth more than a table of numbers you cannot.
 
 A ship-spawn packet: type, quantized position, quantized rotation, quantized
 velocity, some flags, a team, health and thrust. It is the corpus's
-`ShipCreate`, unchanged.
+`ShipCreate` from [`examples/Types.schema`](examples/Types.schema), unchanged.
 
 ```
-message ShipCreate {
-    ship_type       ShipType                        // 4 variants
-    position        QuantizedPosition               // 3 x int32, ±16.7M units
-    rotation        QuantizedRotation               // 4 x int32, ±2048 units
-    linear_velocity QuantizedVelocity               // 3 x int32, ±4.2M units
+type ShipCreate {
+    ship_type       ShipType                        // 6 wire values incl. None
+    position        QuantizedPosition               // 3 x int32, each ±8388608
+    rotation        QuantizedRotation               // 4 x int16, each ±1024
+    linear_velocity QuantizedVelocity               // 3 x int32, each ±2097152
     has_flags       bool
     if has_flags {
         flags       ShipFlags                       // 4 flag bits
     }
-    team            Team                            // 2 variants
-    health          int16 [min = 0, max = MaxHealth]
+    team            Team                            // 3 wire values incl. None
+    health          int16 [min = 0, max = MaxHealth]  // MaxHealth = 1000
     thrust          int8  [min = 0, max = 100]
 }
 ```
 
+The exact values encoded are in [`comparison/VALUES.md`](comparison/VALUES.md).
+Two choices there deliberately work *against* schema: the `has_flags` branch is
+taken (the longest wire path), and the values are large and non-zero (varints
+and Cap'n Proto packing both shrink on small or zero values, so encoding zeroes
+would have flattered schema considerably).
+
 ## Results
 
-| format | bytes | how it was obtained |
-|---|---:|---|
-| **schema** | **28** | measured — the emitted `write_bits` widths |
-| Protobuf (proto3) | 50 | computed from the wire spec, working shown below |
-| FlatBuffers | 68 | measured — `flatc --binary` on the equivalent schema |
+| format | bytes | vs schema |
+|---|---:|---:|
+| **schema** | **28** | — |
+| Cap'n Proto (packed) | 52 | 1.9× |
+| Protobuf (proto3) | 56 | 2.0× |
+| FlatBuffers | 72 | 2.6× |
+| Cap'n Proto (unpacked) | 96 | 3.4× |
 
-Cap'n Proto is absent because its toolchain was not available here. Its packed
-encoding would land nearer Protobuf than FlatBuffers; adding a measured number
-is welcome.
+Measured with `protoc` 35.1, `capnp` 1.5.0, `flatc` 25.12.19 and the schema
+compiler at this commit.
 
 ## Where schema's 28 bytes go
 
-Straight from the generated C++ — every one of these is a `write_bits` call you
-can read in `generated/cpp/TypesWire.h`:
+The measurement program encodes the message, round-trips it back, and reports
+the writer's own byte count — 219 bits, which is exactly the compiler's
+`ShipCreateMaxBits`. Those bits:
 
-| field | bits |
-|---|---:|
-| `ship_type` | 3 |
-| `position` (3 × 25) | 75 |
-| `rotation` (4 × 12) | 48 |
-| `linear_velocity` (3 × 23) | 69 |
-| `has_flags` | 1 |
-| `flags` | 4 |
-| `team` | 2 |
-| `health` | 10 |
-| `thrust` | 7 |
-| **total** | **219 bits = 28 bytes** |
+| field | bits | why |
+|---|---:|---|
+| `ship_type` | 3 | 6 wire values |
+| `position` (3 × 25) | 75 | 16777217 values per axis |
+| `rotation` (4 × 12) | 48 | 2049 values per component |
+| `linear_velocity` (3 × 23) | 69 | 4194305 values per axis |
+| `has_flags` | 1 | |
+| `flags` | 4 | one bit per declared flag |
+| `team` | 2 | 3 wire values |
+| `health` | 10 | `[0, 1000]` is 1001 values |
+| `thrust` | 7 | `[0, 100]` is 101 values |
+| **total** | **219 bits = 28 bytes** | |
 
 Nothing is spent identifying a field, because both sides were generated from
 the same schema. `health` is 10 bits because it was declared `[min = 0, max =
 1000]`, not because anyone hand-packed it.
 
-## Where Protobuf's 50 bytes go
+## What the others are buying
 
-Computed from the proto3 wire format — a tag byte per field (field numbers 1–15
-fit one byte), then a varint or a length-delimited submessage. Values are the
-same ones used for the FlatBuffers measurement:
+The gap is not waste. Each format is spending those bytes on something schema
+does not offer, and if you need that thing the price is fair.
 
-| field | bytes | |
-|---|---:|---|
-| `ship_type` | 2 | tag + varint |
-| `position` | 14 | tag + len + 3 × (tag + zigzag varint) |
-| `rotation` | 14 | tag + len + 4 × (tag + zigzag varint) |
-| `linear_velocity` | 11 | tag + len + 3 × (tag + zigzag varint) |
-| `flags` | 2 | tag + varint |
-| `team` | 2 | tag + varint |
-| `health` | 3 | tag + varint |
-| `thrust` | 2 | tag + varint |
-| **total** | **50** | |
+**Protobuf — 56 bytes — buys field-number evolution.** Every field carries a
+tag, so old readers skip unknown fields and missing fields take defaults. That
+is why Protobuf is right for service APIs that version independently over
+years. schema's message wire has no tags at all; it has a protocol id and the
+rule that both peers deploy together.
 
-That overhead is not waste — it is what buys field-number evolution, which is
-Protobuf's central feature and something schema's message wire deliberately
-does not have. If you need independent client and server versioning, you are
-buying something real with those bytes.
+**FlatBuffers — 72 bytes — buys zero-copy access.** The root offset, vtable and
+alignment padding are what make reading a field without parsing the buffer
+possible. If you `mmap` a large asset and touch three fields, FlatBuffers wins
+outright and this comparison is the wrong one to be reading.
 
-## Where FlatBuffers' 68 bytes go
+**Cap'n Proto — 52 packed, 96 unpacked — buys the same in-place model**, plus an
+RPC system schema has no answer to. Its packed encoding is a general-purpose
+zero-suppression pass over the unpacked layout; it does well here (52) and would
+do dramatically better on a mostly-zero message. Note that packing costs a
+compression pass, so the 52 is not free the way the 96 is.
 
-Measured with `flatc --binary` on the closest equivalent: `Vec3i`/`Quat16` as
-inline structs (the efficient choice — a table per vector would be far larger),
-everything else as table fields. The overhead is the root offset, the vtable,
-and alignment padding, which is what makes in-place access without parsing
-possible.
-
-Again: not waste. It buys zero-copy reads, which schema does not offer. If you
-`mmap` a large asset and touch three fields, FlatBuffers wins outright and this
-comparison is the wrong one to be reading.
+schema wins this table by knowing the bounds. `health` cannot exceed 1000, so
+it is 10 bits — no general-purpose format can make that inference, because you
+never told it. That is the whole trick, and it stops working the moment your
+values are unbounded.
 
 ## Reproducing this
 
-```
-# schema — read the widths out of the generated code
-schema generate --lang cpp --out /tmp/gen examples
-grep -A20 'inline bool WriteShipCreate' /tmp/gen/TypesWire.h
-
-# FlatBuffers
-flatc --binary ship.fbs ship.json && wc -c ship.bin
+```bash
+./comparison/measure.sh
 ```
 
-The `.fbs` and `.json` used are in this document's history; the Protobuf figure
-is arithmetic over the wire spec and every term is in the table above.
+Needs `protoc`, `capnp` and `flatc` on `PATH`, a C++ compiler, the
+[serialize](https://github.com/mas-bandwidth/serialize) runtime as a sibling
+checkout, and `make` run once at the repository root to emit the generated C++.
 
 ## What this does and does not show
 
 It shows the wire cost of one gameplay message, which is the case schema is
 built for: small, highly-constrained values sent at high frequency.
 
-It does not show throughput, and it does not generalise. A message of strings
-and unconstrained 64-bit integers would narrow the gap sharply — bit-packing
-wins where values are *bounded*, and bounds are what a game's data has and a
-general-purpose format cannot assume. Nor does it account for what the other
-two give you that schema does not: evolution, and zero-copy.
+It does not show throughput — see [PERFORMANCE.md](PERFORMANCE.md) for that —
+and it does not generalise. A message of strings and unconstrained 64-bit
+integers would narrow the gap sharply, and a mostly-zero message would favour
+Cap'n Proto's packing far more than it favours schema. Bit-packing wins where
+values are *bounded*, and bounds are what a game's data has and a
+general-purpose format cannot assume.
+
+## A note on an earlier version of this file
+
+An earlier revision listed Protobuf at 50 bytes and FlatBuffers at 68. The
+Protobuf figure was arithmetic over the wire spec rather than a measurement,
+and it was wrong — the real encoder produces 56. The FlatBuffers figure came
+from a slightly different schema shape. Both are now measured by the committed
+script, which is why the script is committed.

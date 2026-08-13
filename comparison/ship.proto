@@ -1,0 +1,21 @@
+// Protobuf equivalent of the corpus ShipCreate, as a Protobuf user would
+// naturally write it. Field numbers 1-15 so every tag is one byte.
+syntax = "proto3";
+package comparison;
+
+enum ShipType { SHIP_TYPE_NONE = 0; FIGHTER = 1; CORVETTE = 2; BOMBER = 3; DESTROYER = 4; CARRIER = 5; }
+enum Team { TEAM_NONE = 0; RED = 1; BLUE = 2; }
+
+message Vec3i { sint32 x = 1; sint32 y = 2; sint32 z = 3; }
+message Quat16 { sint32 x = 1; sint32 y = 2; sint32 z = 3; sint32 w = 4; }
+
+message ShipCreate {
+  ShipType ship_type = 1;
+  Vec3i    position = 2;
+  Quat16   rotation = 3;
+  Vec3i    linear_velocity = 4;
+  uint32   flags = 5;              // proto3 has no branch; absent when zero
+  Team     team = 6;
+  uint32   health = 7;
+  uint32   thrust = 8;
+}

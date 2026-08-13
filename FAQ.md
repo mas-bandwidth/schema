@@ -79,20 +79,34 @@ where schema packs to the bit. And Cap'n Proto brings a large surface: RPC,
 promise pipelining, capabilities, an ecosystem. schema brings a language and
 four code generators, and nothing else.
 
+On size: on the gameplay message in [COMPARISON.md](COMPARISON.md), Cap'n Proto
+is 96 bytes unpacked and **52 packed**, against schema's 28. Packed is the
+closest of the three general-purpose formats — its zero-suppression pass is
+genuinely good, and on a mostly-zero message it would beat schema's fixed
+bit-widths outright. It costs a compression pass that schema's writer does not
+run, and it cannot know that your `health` field stops at 1000.
+
 If you want the in-place model or the RPC system, use Cap'n Proto. schema is
 the narrower tool.
 
-## Do you have numbers against Protobuf or FlatBuffers?
+## Do you have numbers against Protobuf, FlatBuffers or Cap'n Proto?
 
-Yes — [COMPARISON.md](COMPARISON.md). The same gameplay message is **28 bytes
-in schema, 50 in Protobuf, 68 in FlatBuffers**, with the per-field working
-shown so you can check it rather than trust it. The FlatBuffers figure is
-measured with `flatc`; the Protobuf one is computed from the wire spec, term by
-term.
+Yes — [COMPARISON.md](COMPARISON.md). The same gameplay message:
+
+| schema | Cap'n Proto (packed) | Protobuf | FlatBuffers |
+|---:|---:|---:|---:|
+| **28** | 52 | 56 | 72 |
+
+Every number is produced by running the real encoder — `protoc`, `capnp`,
+`flatc` and schema's own writer — and the schemas, values and script are
+committed in [`comparison/`](comparison/) so you can re-run it rather than
+trust it.
 
 It also says what those extra bytes buy, because they are not waste: Protobuf's
-overhead is field-number evolution, FlatBuffers' is zero-copy access. If you
-need either, that is a fair price and schema does not offer it.
+overhead is field-number evolution, FlatBuffers' and Cap'n Proto's is zero-copy
+access. If you need either, that is a fair price and schema does not offer it.
+The values encoded are deliberately large and non-zero — a mostly-zero message
+would favour Cap'n Proto's packing far more than it favours schema.
 
 ## So what is actually novel here?
 
