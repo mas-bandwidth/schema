@@ -121,6 +121,7 @@ repo — [serialize](https://github.com/mas-bandwidth/serialize),
 | **[WIRES.md](WIRES.md)** | The two wires, tables, reflection, relocatable storage. |
 | **[PERFORMANCE.md](PERFORMANCE.md)** | Generated-code benchmarks across the four languages. |
 | **[SPEC.md](SPEC.md)** | The normative reference — grammar, wire law, every edge case. |
+| **[FAQ.md](FAQ.md)** | Isn't this just FlatBuffers / Protobuf / Cap'n Proto? And other blunt questions. |
 
 ## License
 

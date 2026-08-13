@@ -1,0 +1,213 @@
+# FAQ
+
+Blunt questions, honest answers. Where something is a real limitation, it says
+so, and says who should use something else.
+
+## Isn't this just FlatBuffers?
+
+No, and the difference is the one that matters most for gameplay traffic.
+
+**FlatBuffers is zero-copy; schema is not.** A FlatBuffers buffer is accessed
+in place through offsets and a vtable — you never parse it. schema *does*
+parse: a read decodes bits into your struct. That is a real cost FlatBuffers
+does not pay, and if random access into a large buffer without decoding is what
+you need, FlatBuffers is the better tool.
+
+What you get for that cost is **size**. FlatBuffers is byte-aligned and carries
+vtables and offsets, because that is what makes in-place access work. schema is
+**bit-packed with no framing at all**: a field declared `[min = 0, max = 1000]`
+occupies 10 bits, an enum with three variants occupies 2, and a branch that is
+not taken occupies nothing. There is no vtable, no offset table, no field
+identifier on the wire — both sides know the layout because the same compiler
+generated both.
+
+For a 60 Hz gameplay packet where you decode the whole thing anyway, that trade
+runs strongly one way. For a memory-mapped asset you want to touch three fields
+of, it runs the other. schema's answer to *that* case is its second wire (see
+[WIRES.md](WIRES.md)), where storage is relocatable, memcpy-able and
+memory-mappable — but that is a separate encoding, not the gameplay one.
+
+## Isn't this just Protobuf?
+
+No — and in one specific respect schema is deliberately *less* capable.
+
+**Protobuf's central design is field numbering and evolution.** Every field
+carries a tag, so old readers skip fields they do not know and missing fields
+fall back to defaults. That is why Protobuf is the right answer for service
+APIs that version independently over years.
+
+**The schema message wire has no field numbers, no tags and no evolution
+machinery at all.** Versioning is a **protocol id** — a hash of the schema
+itself, checked once at connect time. Two peers on the same id speak identical
+bits; two peers on different ids should not talk. That is an intentionally
+harsher contract, and it buys the thing Protobuf cannot give you: nothing on
+the wire identifies a field, so nothing on the wire is spent identifying one.
+
+If your client and server ship independently and must interoperate across
+versions, **use Protobuf** — schema's message wire will fight you. If they ship
+together, which is the normal case for a game client and its dedicated server,
+the tags were pure overhead and the protocol id is the honest statement of what
+was always true.
+
+schema does have an evolution-tolerant encoding for the data that genuinely
+outlives builds — config, assets, settings — where fields are identified by
+name hash, unknown fields skip and removed fields default. That is the table
+wire, and it is a different tool for a different job.
+
+## Isn't this just Cap'n Proto?
+
+No, and for much the same reason as FlatBuffers. Cap'n Proto's premise is that
+the in-memory layout *is* the wire layout, so there is no encode/decode step.
+schema encodes.
+
+Two further differences worth being precise about. Cap'n Proto is byte- and
+word-aligned by design — alignment is what makes the in-place trick sound —
+where schema packs to the bit. And Cap'n Proto brings a large surface: RPC,
+promise pipelining, capabilities, an ecosystem. schema brings a language and
+four code generators, and nothing else.
+
+If you want the in-place model or the RPC system, use Cap'n Proto. schema is
+the narrower tool.
+
+## So what is actually novel here?
+
+Honestly: not the idea of generating serializers from a schema. That is old.
+Three things in combination are unusual:
+
+1. **Bit-level bounds as part of the type.** `[min, max]` is not validation
+   bolted on — it determines the wire width. Most formats give you a `uint32`
+   and store 32 bits.
+2. **Fixed point as a first-class type.** `fixed(48, 16)` is declared like any
+   other field, and the compiler owns storage and wire. Floating point is not
+   bit-identical across compilers and architectures, so lockstep simulation,
+   rollback and deterministic replay cannot be built on floats. No mainstream
+   format offers a fixed-point type; you store an int and remember the scale
+   yourself, in every language, forever.
+3. **Four languages proven identical mechanically.** Every CI run generates the
+   corpus in C++, C#, Go and Rust and compares the emitted wire against pinned
+   goldens. Cross-language agreement is checked, not asserted.
+
+## Is bit-packing worth the CPU? Bandwidth is cheap.
+
+Sometimes it is not, and you should know which case you are in.
+
+Bit-packing costs shifts and masks and saves bytes. If your bottleneck is CPU
+and you have bandwidth to spare, that is the wrong trade — and if you are
+sending a few large messages rather than many small ones, the saving is small
+anyway.
+
+It pays when you are sending small, highly-constrained values at high frequency
+to many peers, which is what gameplay state is: a health that cannot exceed
+1000 is 10 bits, not 32, and at 60 Hz × N players that difference is the
+bandwidth bill. It also pays where bandwidth is genuinely scarce — mobile,
+console certification limits, egress pricing.
+
+The honest framing: schema makes the trade *available and cheap to express*.
+Declaring a bound is a few characters, and the compiler does the rest. Whether
+your workload wants it is your call.
+
+## Your own benchmarks say Go is 3× slower than C++. Why would I use this in Go?
+
+Because the alternative in Go is not C++ — it is hand-written Go, or reflection.
+
+The table in [PERFORMANCE.md](PERFORMANCE.md) is *relative to C++*, and C++ is
+the fastest thing in the comparison. Generated Go is straight-line code over a
+reused buffer with no reflection and no allocation, which is materially faster
+than `encoding/gob`, `encoding/json`, or reflect-based Protobuf paths — and
+crucially it is *identical on the wire* to the C++ your client runs.
+
+If raw serialization throughput is your server's bottleneck, the honest advice
+is that language choice matters more than serializer choice.
+
+## What happens when I change a schema?
+
+The protocol id changes, and peers on the old id will refuse the new one. That
+is the design: the id is a hash of the schema, so a changed format is a changed
+identity.
+
+Practically this means **client and server deploy together** for message-wire
+changes. If that is unacceptable for your deployment model, the message wire is
+the wrong tool and you want the table wire or Protobuf.
+
+Note one sharp edge, currently true: the protocol id hashes the schema *source
+text*, so a comment-only edit changes the id even though no bit of wire moved.
+Moving it to hash the wire shape instead is known work, not yet done.
+
+## Why AGPL? My lawyer will hate this.
+
+The **compiler** is AGPL-3.0. **The code it generates is explicitly not**, and
+that carve-out is intentional and permanent — running the compiler over schemas
+you own does not make your generated serializers derivative works, and they are
+yours under whatever terms you ship.
+
+The plain reading: use it in a closed-source game freely; modify the compiler
+itself and run it as a service, and the AGPL applies to those modifications.
+
+If your legal team wants that carve-out as something stronger than a README
+paragraph — an explicit licence exception in the LICENSE file, or a commercial
+licence — that is a reasonable thing to ask for and worth raising as an issue.
+
+## Who maintains this? What if you stop?
+
+It is a small team's library, used in a real game rather than written as a
+demo. That is worth exactly as much as you think it is.
+
+Two things that reduce the risk if it were abandoned: the output is **ordinary
+source code in your repo** with no runtime dependency on the compiler, and the
+generated C++/C#/Go/Rust reads like the code you would have written. If the
+project stopped tomorrow, you would still have working serializers and could
+maintain them by hand. That is a materially different exposure from depending
+on a runtime library.
+
+## Only four languages. What about Python, TypeScript, Java, Swift?
+
+Not supported today. The four exist because they are what the authors ship in:
+C++ engine, C# for Unity, Go for backend services, Rust for tooling.
+
+A new backend is a Go package that walks the same IR the existing four consume,
+and the cross-language test harness would tell you immediately whether it
+agrees with the others bit for bit. That is the mechanism, but it is real work
+and nobody should pretend otherwise.
+
+## Is it safe to put on an internet-facing packet path?
+
+That is what it is designed for, and the specific guarantee is: **a read
+refuses out-of-range input rather than clamping or trusting it.** Ranged
+values, array counts past their bound, string and bytes lengths past their
+maximum, enum values that are not variants, and reads that run past the end of
+the buffer all fail the read, and the same rules hold in all four languages
+because one compiler emitted all four.
+
+There is a deliberate exception: on the **table wire**, out-of-range values
+clamp and are counted in a report, because that data is meant to survive schema
+drift and refusing to load a config over one stale field would be worse.
+
+What it does *not* do: it is not a transport, so it does nothing about replay,
+amplification, rate limiting or authentication. Those belong to the layer
+below.
+
+The compiler is fuzzed — a native Go fuzz harness drives parse → check →
+generate across all four backends, and every crasher ever found is committed as
+a permanent regression input. Generated readers are exercised against
+hand-crafted hostile bytes in the cross-language test corpus.
+
+## Do I need the serialize runtimes?
+
+Yes — generated code targets a small runtime per language
+([serialize](https://github.com/mas-bandwidth/serialize),
+[serialize.cs](https://github.com/mas-bandwidth/serialize.cs),
+[serialize.go](https://github.com/mas-bandwidth/serialize.go),
+[serialize.rs](https://github.com/mas-bandwidth/serialize.rs)). They are small,
+open source, and doing the bit-level stream work the generated code calls into.
+
+## How do I get out if I regret it?
+
+Delete the compiler and keep the generated files. They are plain source in your
+repo with no dependency on the compiler at build time or run time; from that
+point they are ordinary hand-maintained serializers. The runtime dependency
+stays, or you inline the parts you use.
+
+---
+
+Something not answered here? Open an issue — questions that recur belong in
+this file.
