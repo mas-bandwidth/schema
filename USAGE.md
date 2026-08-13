@@ -404,17 +404,16 @@ would be worse than clamping it.
 **The validation guarantee is on reads.** That is where hostile input arrives,
 and it holds in every language.
 
-**Write-side checking is not a designed feature of the language**, and what
-exists differs by target — because the languages differ. C++ has
-`assert`/`NDEBUG`, a checking idiom that cleanly disappears in a release build,
-so that is what the C++ backend uses. Go has no assert idiom at all; returning
-an error is the natural thing there, and Rust and C# follow it.
+**Each language uses its own correctness idiom on the write side.** C++ has
+`assert`/`NDEBUG`, a check that disappears in a release build, so the C++
+backend uses `serialize_assert`. Go has no assert idiom, so it returns
+`ErrValueOutOfRange`. Rust and C# likewise return an error rather than invent
+one. The rule is that a language should verify correctness the way that
+language verifies correctness — not that every target behaves identically here.
 
 So writing `health = 2000` into a field declared `[min = 0, max = 1000]`
 asserts in a C++ debug build, silently writes the truncated low bits in a C++
-release build, and returns an error in the other three. That divergence follows
-from the host languages rather than from a decision about what the wire should
-guarantee.
+release build, and returns an error in the other three.
 
 Do not build on any of it. **Keep your values inside their declared bounds on
 the write side** — your simulation already knows they are, and that is the only
