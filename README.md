@@ -67,8 +67,15 @@ two languages ever differ by one bit, CI says so before you do.
   from the wire, back-referencing a bool already sent.
 - **Compressed floats** — `[min, max, resolution]` sends a step index, not a
   float. A 0–1 throttle at 0.01 costs 7 bits.
-- **Fixed point** — `fixed(48, 16)`, for values that must be bit-identical
-  across machines, where floating point is not.
+- **Fixed point is a type in the language** — `fixed(48, 16)` is declared like
+  any other field, and the compiler owns both the storage and the wire for it.
+  This is the one you cannot get by being careful with a format that lacks it:
+  floating point is *not* bit-identical across compilers and architectures, so
+  a simulation that must agree everywhere — lockstep, rollback, deterministic
+  replay, server/client prediction — cannot be built on floats. A fixed value
+  is an integer, and integers add the same on every machine. It is also its own
+  quantization: storage and wire share one integer domain, so there is no
+  separate quantize step to keep in sync.
 - **128-bit integers**, ranged like any other, in every target language.
 - **Zero allocation, no runtime reflection** — straight-line code reading and
   writing your own buffers.
