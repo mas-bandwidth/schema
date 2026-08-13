@@ -206,19 +206,16 @@ hand-crafted hostile bytes in the cross-language test corpus.
 
 ## Do writes validate like reads do?
 
-No, and the difference is deliberate.
+No. **The guarantee is on reads** — that is where untrusted input arrives, and
+it holds in all four languages.
 
-Reads validate in every language — that is the guarantee, because reads are
-where hostile input arrives. Writes are the caller's contract: in C++ an
-out-of-range write trips `serialize_assert`, which fires in debug and compiles
-out under `NDEBUG`, on the model that the writer already knows its own values
-and a shipping game should not re-check them on every field at 60 Hz. Go, Rust
-and C# return an error instead, because those runtimes have no build mode where
-a check vanishes.
-
-So the same bug surfaces differently: an assert in C++ debug, truncated low
-bits in C++ release, an error in the other three. See
-[USAGE.md](USAGE.md#the-write-contract-differs-by-language-deliberately).
+Write-side checking was never an intended feature, and what happens to differ
+by target: C++ trips `serialize_assert`, which compiles out under `NDEBUG`;
+Go, Rust and C# return an error. Do not rely on any of it. Keep values inside
+their declared bounds when you write them — your code already knows they are,
+and in a game shipping at 60 Hz re-checking every field on the write path is a
+cost with no buyer. See
+[USAGE.md](USAGE.md#writes-are-the-callers-responsibility).
 
 ## Is everything supported in all four languages?
 

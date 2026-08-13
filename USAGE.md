@@ -399,30 +399,24 @@ would be worse than clamping it.
 
 ---
 
-## The write contract differs by language, deliberately
+## Writes are the caller's responsibility
 
-Reads validate everywhere. **Writes do not, and that is a design decision
-rather than an oversight.**
+**The validation guarantee is on reads.** That is where hostile input arrives,
+and it holds in every language.
 
-In **C++**, an out-of-range write is caught by `serialize_assert`, which is
-`assert` — so it fires in a debug build and compiles out under `NDEBUG`. The
-contract is that **the writer is responsible for the value**: you already know
-your health is in `[0, MaxHealth]` because your simulation keeps it there, and
-in the release build of a game that ships at 60 Hz you should not pay to
-re-check it on every field of every packet. Development catches the mistake;
-release trusts you.
+**Write-side checking is not a designed feature of the language**, and what
+exists differs by target: C++ trips `serialize_assert`, which is `assert` — it
+fires in a debug build and compiles out under `NDEBUG` — while Go, Rust and C#
+return an error. So writing `health = 2000` into a field declared
+`[min = 0, max = 1000]` asserts in a C++ debug build, silently writes the
+truncated low bits in a C++ release build, and returns an error in the other
+three.
 
-In **Go, Rust and C#**, an out-of-range write returns an error
-(`ErrValueOutOfRange` or its equivalent) rather than asserting, because those
-runtimes do not have a build mode where the check disappears and because their
-callers are more often services where refusing is the better failure.
-
-The consequence, stated plainly so it is not a surprise: writing `health =
-2000` into a field declared `[min = 0, max = 1000]` will fire an assert in a
-C++ debug build, silently write the truncated low bits in a C++ release build,
-and return an error in the other three. **Keep your values in range on the
-write side.** The read side is where hostile input is refused, in every
-language, and that is the guarantee the library actually makes.
+Do not build on any of it. **Keep your values inside their declared bounds on
+the write side** — your simulation already knows they are, and that is the only
+assumption the wire makes. The C++ behaviour in particular is the right one for
+a game shipping at 60 Hz, where re-checking every field of every packet in
+release is a cost with no buyer.
 
 ## Packing JSON into binary
 
