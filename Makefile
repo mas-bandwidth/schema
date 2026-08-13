@@ -109,12 +109,19 @@ generated/c/.stamp: bin/schema $(SCHEMAS)
 	./bin/schema generate --lang c --out generated/c examples
 	@touch $@
 
+# -Wtype-limits is where gcc reports a vacuous comparison and clang stays quiet,
+# so it rides unconditionally. clang says the same thing under a flag gcc does
+# not recognise, so that one is FEATURE TESTED rather than assumed -- hardcoding
+# it broke the Linux leg once already, which is the argument for testing rather
+# than guessing which compiler is which.
+C_TAUTOLOGICAL := $(shell $(CC) -Wtautological-type-limit-compare -E - < /dev/null > /dev/null 2>&1 && echo -Wtautological-type-limit-compare)
+
 # The C corpus test. -Werror on purpose: generated headers are included by the
 # CONSUMER's translation units, so a warning here is a build failure in their
 # tree, not ours.
 build/schema_test_c: generated/c/.stamp test/c/main.c
 	@mkdir -p build
-	$(CC) -std=c99 -Wall -Wextra -Werror -Wtype-limits -Wtautological-type-limit-compare \
+	$(CC) -std=c99 -Wall -Wextra -Werror -Wtype-limits $(C_TAUTOLOGICAL) \
 		-O2 -Igenerated/c -I$(SERIALIZE_C) \
 		test/c/main.c $(SERIALIZE_C)/serialize.c -o $@ -lm
 
