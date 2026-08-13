@@ -204,6 +204,22 @@ generate across all four backends, and every crasher ever found is committed as
 a permanent regression input. Generated readers are exercised against
 hand-crafted hostile bytes in the cross-language test corpus.
 
+## Do writes validate like reads do?
+
+No, and the difference is deliberate.
+
+Reads validate in every language — that is the guarantee, because reads are
+where hostile input arrives. Writes are the caller's contract: in C++ an
+out-of-range write trips `serialize_assert`, which fires in debug and compiles
+out under `NDEBUG`, on the model that the writer already knows its own values
+and a shipping game should not re-check them on every field at 60 Hz. Go, Rust
+and C# return an error instead, because those runtimes have no build mode where
+a check vanishes.
+
+So the same bug surfaces differently: an assert in C++ debug, truncated low
+bits in C++ release, an error in the other three. See
+[USAGE.md](USAGE.md#the-write-contract-differs-by-language-deliberately).
+
 ## Is everything supported in all four languages?
 
 The **message wire** is: C++, C#, Go and Rust, generated from one IR and
