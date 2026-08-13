@@ -12,9 +12,9 @@ message ShipCreate {
 }
 ```
 
-That declaration compiles to C++, C#, Go and Rust readers and writers that
-agree on every bit. Your Unity client and your Go backend read the same
-packet the same way, because the same compiler wrote both.
+This declaration compiles to C++, C#, Go and Rust readers and writers that
+read and write the data type and agree on every bit. Now your Unity client 
+and your Go backend speak the same language.
 
 ## Why it exists
 
