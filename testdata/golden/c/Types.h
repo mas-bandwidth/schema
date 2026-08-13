@@ -9,6 +9,7 @@
 
 #include <stdint.h>
 #include <string.h>   /* memset — the zero form (SPEC §4.2) */
+#include <math.h>     /* floor — the quantize pair */
 
 #ifndef SCHEMA_UNUSED
 #if defined(__GNUC__) || defined(__clang__)

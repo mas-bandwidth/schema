@@ -274,6 +274,43 @@ int main( void )
         q.health = 750;
         q.thrust = 55;
 
+        /* the Quantize pair must produce exactly these values from the
+           interpolate domain — the same check the Go and C++ tests make */
+        {
+            ShipData_Interpolate interp;
+            ShipData_Shallow qq;
+            memset( &interp, 0, sizeof( interp ) );
+            interp.ship_type = SHIP_TYPE_CORVETTE;
+            interp.position.x = 1.5; interp.position.y = -2.25; interp.position.z = 100.0;
+            interp.rotation.x = 0.0; interp.rotation.y = 0.0; interp.rotation.z = 0.0; interp.rotation.w = 1.0;
+            interp.linear_velocity.x = 3.0; interp.linear_velocity.y = 0.0; interp.linear_velocity.z = -1.0;
+            interp.flags = SHIP_FLAGS_BOOSTING;
+            interp.team = TEAM_RED;
+            interp.health = 750;
+            interp.thrust = 55;
+
+            memset( &qq, 0, sizeof( qq ) );
+            quantize_ship( &interp, &qq );
+            check( qq.position_x == 1536, "1.5 * 1024 quantizes to 1536" );
+            check( qq.position_y == -2304, "-2.25 * 1024 quantizes to -2304" );
+            check( qq.position_z == 102400, "100.0 * 1024 quantizes to 102400" );
+            check( qq.rotation_w == 1024, "1.0 * 1024 quantizes to 1024" );
+            check( qq.linear_velocity_x == 3072 && qq.linear_velocity_z == -1024,
+                   "velocity quantizes" );
+            check( qq.health == 750 && qq.thrust == 55, "projected fields copy" );
+            check( qq.team == TEAM_RED && qq.flags == SHIP_FLAGS_BOOSTING, "discrete fields copy" );
+
+            /* and back: unquantize returns the representable quantum */
+            {
+                ShipData_Interpolate back;
+                memset( &back, 0, sizeof( back ) );
+                unquantize_ship( &qq, &back );
+                check( back.position.x == 1.5, "1536 / 1024 unquantizes to 1.5 exactly" );
+                check( back.position.y == -2.25, "-2304 / 1024 unquantizes to -2.25 exactly" );
+                check( back.rotation.w == 1.0, "1024 / 1024 unquantizes to 1.0 exactly" );
+            }
+        }
+
         serialize_write_stream_init( &w, buffer, sizeof( buffer ) );
         check( write_ship_shallow( &w, &q ), "write ShipData_Shallow" );
         serialize_write_flush( &w );

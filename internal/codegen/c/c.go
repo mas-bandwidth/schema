@@ -34,6 +34,7 @@ package c
 
 import (
 	"fmt"
+	"math"
 	"math/big"
 	"sort"
 	"strings"
@@ -142,7 +143,7 @@ func (g *gen) assembleHeader() []byte {
 	g.header(&h, g.file.Base)
 	guard := g.guardName("")
 	fmt.Fprintf(&h, "#ifndef %s\n#define %s\n\n", guard, guard)
-	h.WriteString("#include <stdint.h>\n#include <string.h>   /* memset — the zero form (SPEC §4.2) */\n")
+	h.WriteString("#include <stdint.h>\n#include <string.h>   /* memset — the zero form (SPEC §4.2) */\n#include <math.h>     /* floor — the quantize pair */\n")
 	if g.needs128 {
 		// serialize_int128_t / serialize_uint128_t are STORAGE here, so the
 		// runtime header has to reach the data header and not only the wire one
@@ -259,6 +260,11 @@ func constValue(d *ir.Const) string {
 }
 
 func formatFloat(v float64) string {
+	// %v gives 8.388608e+06 for a large integral value; the plain decimal is
+	// the same double and reads like the bound it is.
+	if v == math.Trunc(v) && math.Abs(v) < 1e15 {
+		return fmt.Sprintf("%.1f", v)
+	}
 	s := fmt.Sprintf("%v", v)
 	if !strings.ContainsAny(s, ".eE") {
 		s += ".0"

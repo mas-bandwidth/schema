@@ -9,6 +9,7 @@
 
 #include <stdint.h>
 #include <string.h>   /* memset — the zero form (SPEC §4.2) */
+#include <math.h>     /* floor — the quantize pair */
 
 #ifndef SCHEMA_UNUSED
 #if defined(__GNUC__) || defined(__clang__)
@@ -161,6 +162,166 @@ typedef struct ShipData_Interpolate {
     uint8_t thrust; /* float [0.0, 1.0] @ 0.01 -> wire int [0, 100] */
 } ShipData_Interpolate;
 
+/* QuantizeShip — the interpolate domain to the quantized wire domain. */
+static SCHEMA_UNUSED void quantize_ship( const ShipData_Interpolate * input, ShipData_Shallow * output )
+{
+    output->ship_type = input->ship_type;
+    {
+        double quantized_value = floor( (double) input->position.x * (double) 1024 + 0.5 );
+        serialize_int64_t component_value = -8388608LL;
+        if ( quantized_value > 8388608.0 )
+        {
+            component_value = 8388608LL;
+        }
+        else if ( quantized_value >= -8388608.0 )
+        {
+            component_value = (serialize_int64_t) quantized_value;
+        }
+        output->position_x = (int32_t) component_value;
+    }
+    {
+        double quantized_value = floor( (double) input->position.y * (double) 1024 + 0.5 );
+        serialize_int64_t component_value = -8388608LL;
+        if ( quantized_value > 8388608.0 )
+        {
+            component_value = 8388608LL;
+        }
+        else if ( quantized_value >= -8388608.0 )
+        {
+            component_value = (serialize_int64_t) quantized_value;
+        }
+        output->position_y = (int32_t) component_value;
+    }
+    {
+        double quantized_value = floor( (double) input->position.z * (double) 1024 + 0.5 );
+        serialize_int64_t component_value = -8388608LL;
+        if ( quantized_value > 8388608.0 )
+        {
+            component_value = 8388608LL;
+        }
+        else if ( quantized_value >= -8388608.0 )
+        {
+            component_value = (serialize_int64_t) quantized_value;
+        }
+        output->position_z = (int32_t) component_value;
+    }
+    {
+        double quantized_value = floor( (double) input->rotation.x * (double) 1024 + 0.5 );
+        serialize_int64_t component_value = -1024LL;
+        if ( quantized_value > 1024.0 )
+        {
+            component_value = 1024LL;
+        }
+        else if ( quantized_value >= -1024.0 )
+        {
+            component_value = (serialize_int64_t) quantized_value;
+        }
+        output->rotation_x = (int16_t) component_value;
+    }
+    {
+        double quantized_value = floor( (double) input->rotation.y * (double) 1024 + 0.5 );
+        serialize_int64_t component_value = -1024LL;
+        if ( quantized_value > 1024.0 )
+        {
+            component_value = 1024LL;
+        }
+        else if ( quantized_value >= -1024.0 )
+        {
+            component_value = (serialize_int64_t) quantized_value;
+        }
+        output->rotation_y = (int16_t) component_value;
+    }
+    {
+        double quantized_value = floor( (double) input->rotation.z * (double) 1024 + 0.5 );
+        serialize_int64_t component_value = -1024LL;
+        if ( quantized_value > 1024.0 )
+        {
+            component_value = 1024LL;
+        }
+        else if ( quantized_value >= -1024.0 )
+        {
+            component_value = (serialize_int64_t) quantized_value;
+        }
+        output->rotation_z = (int16_t) component_value;
+    }
+    {
+        double quantized_value = floor( (double) input->rotation.w * (double) 1024 + 0.5 );
+        serialize_int64_t component_value = -1024LL;
+        if ( quantized_value > 1024.0 )
+        {
+            component_value = 1024LL;
+        }
+        else if ( quantized_value >= -1024.0 )
+        {
+            component_value = (serialize_int64_t) quantized_value;
+        }
+        output->rotation_w = (int16_t) component_value;
+    }
+    {
+        double quantized_value = floor( (double) input->linear_velocity.x * (double) 1024 + 0.5 );
+        serialize_int64_t component_value = -2097152LL;
+        if ( quantized_value > 2097152.0 )
+        {
+            component_value = 2097152LL;
+        }
+        else if ( quantized_value >= -2097152.0 )
+        {
+            component_value = (serialize_int64_t) quantized_value;
+        }
+        output->linear_velocity_x = (int32_t) component_value;
+    }
+    {
+        double quantized_value = floor( (double) input->linear_velocity.y * (double) 1024 + 0.5 );
+        serialize_int64_t component_value = -2097152LL;
+        if ( quantized_value > 2097152.0 )
+        {
+            component_value = 2097152LL;
+        }
+        else if ( quantized_value >= -2097152.0 )
+        {
+            component_value = (serialize_int64_t) quantized_value;
+        }
+        output->linear_velocity_y = (int32_t) component_value;
+    }
+    {
+        double quantized_value = floor( (double) input->linear_velocity.z * (double) 1024 + 0.5 );
+        serialize_int64_t component_value = -2097152LL;
+        if ( quantized_value > 2097152.0 )
+        {
+            component_value = 2097152LL;
+        }
+        else if ( quantized_value >= -2097152.0 )
+        {
+            component_value = (serialize_int64_t) quantized_value;
+        }
+        output->linear_velocity_z = (int32_t) component_value;
+    }
+    output->flags = input->flags;
+    output->team = input->team;
+    output->health = input->health;
+    output->thrust = input->thrust;
+}
+
+/* UnquantizeShip — the quantized wire domain back to the interpolate domain. */
+static SCHEMA_UNUSED void unquantize_ship( const ShipData_Shallow * input, ShipData_Interpolate * output )
+{
+    output->ship_type = input->ship_type;
+    output->position.x = (double) input->position_x / (double) 1024;
+    output->position.y = (double) input->position_y / (double) 1024;
+    output->position.z = (double) input->position_z / (double) 1024;
+    output->rotation.x = (double) input->rotation_x / (double) 1024;
+    output->rotation.y = (double) input->rotation_y / (double) 1024;
+    output->rotation.z = (double) input->rotation_z / (double) 1024;
+    output->rotation.w = (double) input->rotation_w / (double) 1024;
+    output->linear_velocity.x = (double) input->linear_velocity_x / (double) 1024;
+    output->linear_velocity.y = (double) input->linear_velocity_y / (double) 1024;
+    output->linear_velocity.z = (double) input->linear_velocity_z / (double) 1024;
+    output->flags = input->flags;
+    output->team = input->team;
+    output->health = input->health;
+    output->thrust = input->thrust;
+}
+
 
 /* ---- object Missile — one definition, a generated family per target (SPEC §4.8) ---- */
 
@@ -232,6 +393,162 @@ typedef struct MissileData_Interpolate {
     uint64_t flags;
 } MissileData_Interpolate;
 
+/* QuantizeMissile — the interpolate domain to the quantized wire domain. */
+static SCHEMA_UNUSED void quantize_missile( const MissileData_Interpolate * input, MissileData_Shallow * output )
+{
+    output->missile_type = input->missile_type;
+    {
+        double quantized_value = floor( (double) input->position.x * (double) 1024 + 0.5 );
+        serialize_int64_t component_value = -8388608LL;
+        if ( quantized_value > 8388608.0 )
+        {
+            component_value = 8388608LL;
+        }
+        else if ( quantized_value >= -8388608.0 )
+        {
+            component_value = (serialize_int64_t) quantized_value;
+        }
+        output->position_x = (int32_t) component_value;
+    }
+    {
+        double quantized_value = floor( (double) input->position.y * (double) 1024 + 0.5 );
+        serialize_int64_t component_value = -8388608LL;
+        if ( quantized_value > 8388608.0 )
+        {
+            component_value = 8388608LL;
+        }
+        else if ( quantized_value >= -8388608.0 )
+        {
+            component_value = (serialize_int64_t) quantized_value;
+        }
+        output->position_y = (int32_t) component_value;
+    }
+    {
+        double quantized_value = floor( (double) input->position.z * (double) 1024 + 0.5 );
+        serialize_int64_t component_value = -8388608LL;
+        if ( quantized_value > 8388608.0 )
+        {
+            component_value = 8388608LL;
+        }
+        else if ( quantized_value >= -8388608.0 )
+        {
+            component_value = (serialize_int64_t) quantized_value;
+        }
+        output->position_z = (int32_t) component_value;
+    }
+    {
+        double quantized_value = floor( (double) input->rotation.x * (double) 1024 + 0.5 );
+        serialize_int64_t component_value = -1024LL;
+        if ( quantized_value > 1024.0 )
+        {
+            component_value = 1024LL;
+        }
+        else if ( quantized_value >= -1024.0 )
+        {
+            component_value = (serialize_int64_t) quantized_value;
+        }
+        output->rotation_x = (int16_t) component_value;
+    }
+    {
+        double quantized_value = floor( (double) input->rotation.y * (double) 1024 + 0.5 );
+        serialize_int64_t component_value = -1024LL;
+        if ( quantized_value > 1024.0 )
+        {
+            component_value = 1024LL;
+        }
+        else if ( quantized_value >= -1024.0 )
+        {
+            component_value = (serialize_int64_t) quantized_value;
+        }
+        output->rotation_y = (int16_t) component_value;
+    }
+    {
+        double quantized_value = floor( (double) input->rotation.z * (double) 1024 + 0.5 );
+        serialize_int64_t component_value = -1024LL;
+        if ( quantized_value > 1024.0 )
+        {
+            component_value = 1024LL;
+        }
+        else if ( quantized_value >= -1024.0 )
+        {
+            component_value = (serialize_int64_t) quantized_value;
+        }
+        output->rotation_z = (int16_t) component_value;
+    }
+    {
+        double quantized_value = floor( (double) input->rotation.w * (double) 1024 + 0.5 );
+        serialize_int64_t component_value = -1024LL;
+        if ( quantized_value > 1024.0 )
+        {
+            component_value = 1024LL;
+        }
+        else if ( quantized_value >= -1024.0 )
+        {
+            component_value = (serialize_int64_t) quantized_value;
+        }
+        output->rotation_w = (int16_t) component_value;
+    }
+    {
+        double quantized_value = floor( (double) input->linear_velocity.x * (double) 1024 + 0.5 );
+        serialize_int64_t component_value = -2097152LL;
+        if ( quantized_value > 2097152.0 )
+        {
+            component_value = 2097152LL;
+        }
+        else if ( quantized_value >= -2097152.0 )
+        {
+            component_value = (serialize_int64_t) quantized_value;
+        }
+        output->linear_velocity_x = (int32_t) component_value;
+    }
+    {
+        double quantized_value = floor( (double) input->linear_velocity.y * (double) 1024 + 0.5 );
+        serialize_int64_t component_value = -2097152LL;
+        if ( quantized_value > 2097152.0 )
+        {
+            component_value = 2097152LL;
+        }
+        else if ( quantized_value >= -2097152.0 )
+        {
+            component_value = (serialize_int64_t) quantized_value;
+        }
+        output->linear_velocity_y = (int32_t) component_value;
+    }
+    {
+        double quantized_value = floor( (double) input->linear_velocity.z * (double) 1024 + 0.5 );
+        serialize_int64_t component_value = -2097152LL;
+        if ( quantized_value > 2097152.0 )
+        {
+            component_value = 2097152LL;
+        }
+        else if ( quantized_value >= -2097152.0 )
+        {
+            component_value = (serialize_int64_t) quantized_value;
+        }
+        output->linear_velocity_z = (int32_t) component_value;
+    }
+    output->team = input->team;
+    output->flags = input->flags;
+}
+
+/* UnquantizeMissile — the quantized wire domain back to the interpolate domain. */
+static SCHEMA_UNUSED void unquantize_missile( const MissileData_Shallow * input, MissileData_Interpolate * output )
+{
+    output->missile_type = input->missile_type;
+    output->position.x = (double) input->position_x / (double) 1024;
+    output->position.y = (double) input->position_y / (double) 1024;
+    output->position.z = (double) input->position_z / (double) 1024;
+    output->rotation.x = (double) input->rotation_x / (double) 1024;
+    output->rotation.y = (double) input->rotation_y / (double) 1024;
+    output->rotation.z = (double) input->rotation_z / (double) 1024;
+    output->rotation.w = (double) input->rotation_w / (double) 1024;
+    output->linear_velocity.x = (double) input->linear_velocity_x / (double) 1024;
+    output->linear_velocity.y = (double) input->linear_velocity_y / (double) 1024;
+    output->linear_velocity.z = (double) input->linear_velocity_z / (double) 1024;
+    output->team = input->team;
+    output->flags = input->flags;
+}
+
 
 /* ---- object DynamicProp — one definition, a generated family per target (SPEC §4.8) ---- */
 
@@ -287,6 +604,162 @@ typedef struct DynamicPropData_Interpolate {
     Team team;
 } DynamicPropData_Interpolate;
 
+/* QuantizeDynamicProp — the interpolate domain to the quantized wire domain. */
+static SCHEMA_UNUSED void quantize_dynamic_prop( const DynamicPropData_Interpolate * input, DynamicPropData_Shallow * output )
+{
+    output->prop_type = input->prop_type;
+    {
+        double quantized_value = floor( (double) input->position.x * (double) 1024 + 0.5 );
+        serialize_int64_t component_value = -8388608LL;
+        if ( quantized_value > 8388608.0 )
+        {
+            component_value = 8388608LL;
+        }
+        else if ( quantized_value >= -8388608.0 )
+        {
+            component_value = (serialize_int64_t) quantized_value;
+        }
+        output->position_x = (int32_t) component_value;
+    }
+    {
+        double quantized_value = floor( (double) input->position.y * (double) 1024 + 0.5 );
+        serialize_int64_t component_value = -8388608LL;
+        if ( quantized_value > 8388608.0 )
+        {
+            component_value = 8388608LL;
+        }
+        else if ( quantized_value >= -8388608.0 )
+        {
+            component_value = (serialize_int64_t) quantized_value;
+        }
+        output->position_y = (int32_t) component_value;
+    }
+    {
+        double quantized_value = floor( (double) input->position.z * (double) 1024 + 0.5 );
+        serialize_int64_t component_value = -8388608LL;
+        if ( quantized_value > 8388608.0 )
+        {
+            component_value = 8388608LL;
+        }
+        else if ( quantized_value >= -8388608.0 )
+        {
+            component_value = (serialize_int64_t) quantized_value;
+        }
+        output->position_z = (int32_t) component_value;
+    }
+    {
+        double quantized_value = floor( (double) input->rotation.x * (double) 1024 + 0.5 );
+        serialize_int64_t component_value = -1024LL;
+        if ( quantized_value > 1024.0 )
+        {
+            component_value = 1024LL;
+        }
+        else if ( quantized_value >= -1024.0 )
+        {
+            component_value = (serialize_int64_t) quantized_value;
+        }
+        output->rotation_x = (int16_t) component_value;
+    }
+    {
+        double quantized_value = floor( (double) input->rotation.y * (double) 1024 + 0.5 );
+        serialize_int64_t component_value = -1024LL;
+        if ( quantized_value > 1024.0 )
+        {
+            component_value = 1024LL;
+        }
+        else if ( quantized_value >= -1024.0 )
+        {
+            component_value = (serialize_int64_t) quantized_value;
+        }
+        output->rotation_y = (int16_t) component_value;
+    }
+    {
+        double quantized_value = floor( (double) input->rotation.z * (double) 1024 + 0.5 );
+        serialize_int64_t component_value = -1024LL;
+        if ( quantized_value > 1024.0 )
+        {
+            component_value = 1024LL;
+        }
+        else if ( quantized_value >= -1024.0 )
+        {
+            component_value = (serialize_int64_t) quantized_value;
+        }
+        output->rotation_z = (int16_t) component_value;
+    }
+    {
+        double quantized_value = floor( (double) input->rotation.w * (double) 1024 + 0.5 );
+        serialize_int64_t component_value = -1024LL;
+        if ( quantized_value > 1024.0 )
+        {
+            component_value = 1024LL;
+        }
+        else if ( quantized_value >= -1024.0 )
+        {
+            component_value = (serialize_int64_t) quantized_value;
+        }
+        output->rotation_w = (int16_t) component_value;
+    }
+    {
+        double quantized_value = floor( (double) input->linear_velocity.x * (double) 1024 + 0.5 );
+        serialize_int64_t component_value = -2097152LL;
+        if ( quantized_value > 2097152.0 )
+        {
+            component_value = 2097152LL;
+        }
+        else if ( quantized_value >= -2097152.0 )
+        {
+            component_value = (serialize_int64_t) quantized_value;
+        }
+        output->linear_velocity_x = (int32_t) component_value;
+    }
+    {
+        double quantized_value = floor( (double) input->linear_velocity.y * (double) 1024 + 0.5 );
+        serialize_int64_t component_value = -2097152LL;
+        if ( quantized_value > 2097152.0 )
+        {
+            component_value = 2097152LL;
+        }
+        else if ( quantized_value >= -2097152.0 )
+        {
+            component_value = (serialize_int64_t) quantized_value;
+        }
+        output->linear_velocity_y = (int32_t) component_value;
+    }
+    {
+        double quantized_value = floor( (double) input->linear_velocity.z * (double) 1024 + 0.5 );
+        serialize_int64_t component_value = -2097152LL;
+        if ( quantized_value > 2097152.0 )
+        {
+            component_value = 2097152LL;
+        }
+        else if ( quantized_value >= -2097152.0 )
+        {
+            component_value = (serialize_int64_t) quantized_value;
+        }
+        output->linear_velocity_z = (int32_t) component_value;
+    }
+    output->flags = input->flags;
+    output->team = input->team;
+}
+
+/* UnquantizeDynamicProp — the quantized wire domain back to the interpolate domain. */
+static SCHEMA_UNUSED void unquantize_dynamic_prop( const DynamicPropData_Shallow * input, DynamicPropData_Interpolate * output )
+{
+    output->prop_type = input->prop_type;
+    output->position.x = (double) input->position_x / (double) 1024;
+    output->position.y = (double) input->position_y / (double) 1024;
+    output->position.z = (double) input->position_z / (double) 1024;
+    output->rotation.x = (double) input->rotation_x / (double) 1024;
+    output->rotation.y = (double) input->rotation_y / (double) 1024;
+    output->rotation.z = (double) input->rotation_z / (double) 1024;
+    output->rotation.w = (double) input->rotation_w / (double) 1024;
+    output->linear_velocity.x = (double) input->linear_velocity_x / (double) 1024;
+    output->linear_velocity.y = (double) input->linear_velocity_y / (double) 1024;
+    output->linear_velocity.z = (double) input->linear_velocity_z / (double) 1024;
+    output->flags = input->flags;
+    output->team = input->team;
+}
+
 
 /* ---- object Turret — one definition, a generated family per target (SPEC §4.8) ---- */
 
@@ -327,6 +800,78 @@ typedef struct TurretData_Interpolate {
     Quat rotation;
     uint64_t flags;
 } TurretData_Interpolate;
+
+/* QuantizeTurret — the interpolate domain to the quantized wire domain. */
+static SCHEMA_UNUSED void quantize_turret( const TurretData_Interpolate * input, TurretData_Shallow * output )
+{
+    output->parent = input->parent;
+    output->turret_index = input->turret_index;
+    {
+        double quantized_value = floor( (double) input->rotation.x * (double) 1024 + 0.5 );
+        serialize_int64_t component_value = -1024LL;
+        if ( quantized_value > 1024.0 )
+        {
+            component_value = 1024LL;
+        }
+        else if ( quantized_value >= -1024.0 )
+        {
+            component_value = (serialize_int64_t) quantized_value;
+        }
+        output->rotation_x = (int16_t) component_value;
+    }
+    {
+        double quantized_value = floor( (double) input->rotation.y * (double) 1024 + 0.5 );
+        serialize_int64_t component_value = -1024LL;
+        if ( quantized_value > 1024.0 )
+        {
+            component_value = 1024LL;
+        }
+        else if ( quantized_value >= -1024.0 )
+        {
+            component_value = (serialize_int64_t) quantized_value;
+        }
+        output->rotation_y = (int16_t) component_value;
+    }
+    {
+        double quantized_value = floor( (double) input->rotation.z * (double) 1024 + 0.5 );
+        serialize_int64_t component_value = -1024LL;
+        if ( quantized_value > 1024.0 )
+        {
+            component_value = 1024LL;
+        }
+        else if ( quantized_value >= -1024.0 )
+        {
+            component_value = (serialize_int64_t) quantized_value;
+        }
+        output->rotation_z = (int16_t) component_value;
+    }
+    {
+        double quantized_value = floor( (double) input->rotation.w * (double) 1024 + 0.5 );
+        serialize_int64_t component_value = -1024LL;
+        if ( quantized_value > 1024.0 )
+        {
+            component_value = 1024LL;
+        }
+        else if ( quantized_value >= -1024.0 )
+        {
+            component_value = (serialize_int64_t) quantized_value;
+        }
+        output->rotation_w = (int16_t) component_value;
+    }
+    output->flags = input->flags;
+}
+
+/* UnquantizeTurret — the quantized wire domain back to the interpolate domain. */
+static SCHEMA_UNUSED void unquantize_turret( const TurretData_Shallow * input, TurretData_Interpolate * output )
+{
+    output->parent = input->parent;
+    output->turret_index = input->turret_index;
+    output->rotation.x = (double) input->rotation_x / (double) 1024;
+    output->rotation.y = (double) input->rotation_y / (double) 1024;
+    output->rotation.z = (double) input->rotation_z / (double) 1024;
+    output->rotation.w = (double) input->rotation_w / (double) 1024;
+    output->flags = input->flags;
+}
 
 #ifdef __cplusplus
 }

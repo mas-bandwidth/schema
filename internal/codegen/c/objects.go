@@ -89,6 +89,8 @@ func (g *gen) emitObject(d *ir.Object) {
 
 	g.pf("/* %sData_Interpolate — the same fields in their interpolation domain */\n", d.Name)
 	g.emitViewStruct(d.Name+"Data_Interpolate", interp, storageInterp)
+
+	g.emitQuantizePair(d)
 }
 
 func (g *gen) emitViewStruct(name string, fields []*ir.Field, v view) {
@@ -290,4 +292,75 @@ func (g *gen) emitDeepReadField(f *ir.Field, ind string) {
 		return
 	}
 	g.emitReadField(f, ind)
+}
+
+// ---- Quantize / Unquantize ----
+//
+// The pair that moves between the interpolate view (the domain the simulation
+// works in) and the shallow view (the quantized wire). Both are pure struct
+// transforms: no stream, no failure mode.
+
+func (g *gen) emitQuantizePair(d *ir.Object) {
+	_, interp := splitObjectFields(d)
+
+	g.pf("/* Quantize%s — the interpolate domain to the quantized wire domain. */\n", d.Name)
+	g.pf("static SCHEMA_UNUSED void quantize_%s( const %sData_Interpolate * input, %sData_Shallow * output )\n{\n",
+		snake(d.Name), d.Name, d.Name)
+	for _, f := range interp {
+		g.emitQuantizeField(f)
+	}
+	g.pf("}\n\n")
+
+	g.pf("/* Unquantize%s — the quantized wire domain back to the interpolate domain. */\n", d.Name)
+	g.pf("static SCHEMA_UNUSED void unquantize_%s( const %sData_Shallow * input, %sData_Interpolate * output )\n{\n",
+		snake(d.Name), d.Name, d.Name)
+	for _, f := range interp {
+		g.emitUnquantizeField(f)
+	}
+	g.pf("}\n\n")
+}
+
+func (g *gen) emitQuantizeField(f *ir.Field) {
+	if !f.HasQuantize {
+		// projected floats and discrete fields copy across unchanged — the
+		// projection already happened in the interpolate view's storage
+		g.pf("    output->%s = input->%s;\n", f.Name, f.Name)
+		return
+	}
+	st, ok := f.Type.Ref.(*ir.Struct)
+	if !ok {
+		g.unsupported("field %s is [quantize]d but does not reference a composite type", f.Name)
+		return
+	}
+	bound := f.QuantBound
+	for _, comp := range st.Fields {
+		g.pf("    {\n")
+		g.pf("        double quantized_value = floor( (double) input->%s.%s * (double) %d + 0.5 );\n",
+			f.Name, comp.Name, f.QuantScale)
+		// clamp to the component range, in the same order C++ does so the
+		// boundary cases land identically
+		g.pf("        serialize_int64_t component_value = %dLL;\n", -bound)
+		g.pf("        if ( quantized_value > %s )\n        {\n", formatFloat(float64(bound)))
+		g.pf("            component_value = %dLL;\n        }\n", bound)
+		g.pf("        else if ( quantized_value >= %s )\n        {\n", formatFloat(float64(-bound)))
+		g.pf("            component_value = (serialize_int64_t) quantized_value;\n        }\n")
+		g.pf("        output->%s_%s = (%s) component_value;\n", f.Name, comp.Name, quantStorage(f))
+		g.pf("    }\n")
+	}
+}
+
+func (g *gen) emitUnquantizeField(f *ir.Field) {
+	if !f.HasQuantize {
+		g.pf("    output->%s = input->%s;\n", f.Name, f.Name)
+		return
+	}
+	st, ok := f.Type.Ref.(*ir.Struct)
+	if !ok {
+		g.unsupported("field %s is [quantize]d but does not reference a composite type", f.Name)
+		return
+	}
+	for _, comp := range st.Fields {
+		g.pf("    output->%s.%s = (double) input->%s_%s / (double) %d;\n",
+			f.Name, comp.Name, f.Name, comp.Name, f.QuantScale)
+	}
 }

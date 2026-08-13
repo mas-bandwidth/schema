@@ -9,6 +9,7 @@
 
 #include <stdint.h>
 #include <string.h>   /* memset — the zero form (SPEC §4.2) */
+#include <math.h>     /* floor — the quantize pair */
 #include "serialize.h"   /* serialize_int128_t: C has no 128-bit builtin */
 
 #ifndef SCHEMA_UNUSED
@@ -184,6 +185,22 @@ typedef struct BodyData_Interpolate {
     FixedVec velocity;
 } BodyData_Interpolate;
 
+/* QuantizeBody — the interpolate domain to the quantized wire domain. */
+static SCHEMA_UNUSED void quantize_body( const BodyData_Interpolate * input, BodyData_Shallow * output )
+{
+    output->position = input->position;
+    output->rotation = input->rotation;
+    output->velocity = input->velocity;
+}
+
+/* UnquantizeBody — the quantized wire domain back to the interpolate domain. */
+static SCHEMA_UNUSED void unquantize_body( const BodyData_Shallow * input, BodyData_Interpolate * output )
+{
+    output->position = input->position;
+    output->rotation = input->rotation;
+    output->velocity = input->velocity;
+}
+
 
 /* ---- object NarrowBody — one definition, a generated family per target (SPEC §4.8) ---- */
 
@@ -222,6 +239,116 @@ typedef struct NarrowBodyData_Interpolate {
     FixedQuat rotation;
     FixedVec velocity;
 } NarrowBodyData_Interpolate;
+
+/* QuantizeNarrowBody — the interpolate domain to the quantized wire domain. */
+static SCHEMA_UNUSED void quantize_narrow_body( const NarrowBodyData_Interpolate * input, NarrowBodyData_Shallow * output )
+{
+    {
+        double quantized_value = floor( (double) input->position.x * (double) 256 + 0.5 );
+        serialize_int64_t component_value = 0LL;
+        if ( quantized_value > 0.0 )
+        {
+            component_value = 0LL;
+        }
+        else if ( quantized_value >= 0.0 )
+        {
+            component_value = (serialize_int64_t) quantized_value;
+        }
+        output->position_x = (int8_t) component_value;
+    }
+    {
+        double quantized_value = floor( (double) input->position.y * (double) 256 + 0.5 );
+        serialize_int64_t component_value = 0LL;
+        if ( quantized_value > 0.0 )
+        {
+            component_value = 0LL;
+        }
+        else if ( quantized_value >= 0.0 )
+        {
+            component_value = (serialize_int64_t) quantized_value;
+        }
+        output->position_y = (int8_t) component_value;
+    }
+    {
+        double quantized_value = floor( (double) input->position.z * (double) 256 + 0.5 );
+        serialize_int64_t component_value = 0LL;
+        if ( quantized_value > 0.0 )
+        {
+            component_value = 0LL;
+        }
+        else if ( quantized_value >= 0.0 )
+        {
+            component_value = (serialize_int64_t) quantized_value;
+        }
+        output->position_z = (int8_t) component_value;
+    }
+    {
+        double quantized_value = floor( (double) input->rotation.x * (double) 1024 + 0.5 );
+        serialize_int64_t component_value = 0LL;
+        if ( quantized_value > 0.0 )
+        {
+            component_value = 0LL;
+        }
+        else if ( quantized_value >= 0.0 )
+        {
+            component_value = (serialize_int64_t) quantized_value;
+        }
+        output->rotation_x = (int8_t) component_value;
+    }
+    {
+        double quantized_value = floor( (double) input->rotation.y * (double) 1024 + 0.5 );
+        serialize_int64_t component_value = 0LL;
+        if ( quantized_value > 0.0 )
+        {
+            component_value = 0LL;
+        }
+        else if ( quantized_value >= 0.0 )
+        {
+            component_value = (serialize_int64_t) quantized_value;
+        }
+        output->rotation_y = (int8_t) component_value;
+    }
+    {
+        double quantized_value = floor( (double) input->rotation.z * (double) 1024 + 0.5 );
+        serialize_int64_t component_value = 0LL;
+        if ( quantized_value > 0.0 )
+        {
+            component_value = 0LL;
+        }
+        else if ( quantized_value >= 0.0 )
+        {
+            component_value = (serialize_int64_t) quantized_value;
+        }
+        output->rotation_z = (int8_t) component_value;
+    }
+    {
+        double quantized_value = floor( (double) input->rotation.w * (double) 1024 + 0.5 );
+        serialize_int64_t component_value = 0LL;
+        if ( quantized_value > 0.0 )
+        {
+            component_value = 0LL;
+        }
+        else if ( quantized_value >= 0.0 )
+        {
+            component_value = (serialize_int64_t) quantized_value;
+        }
+        output->rotation_w = (int8_t) component_value;
+    }
+    output->velocity = input->velocity;
+}
+
+/* UnquantizeNarrowBody — the quantized wire domain back to the interpolate domain. */
+static SCHEMA_UNUSED void unquantize_narrow_body( const NarrowBodyData_Shallow * input, NarrowBodyData_Interpolate * output )
+{
+    output->position.x = (double) input->position_x / (double) 256;
+    output->position.y = (double) input->position_y / (double) 256;
+    output->position.z = (double) input->position_z / (double) 256;
+    output->rotation.x = (double) input->rotation_x / (double) 1024;
+    output->rotation.y = (double) input->rotation_y / (double) 1024;
+    output->rotation.z = (double) input->rotation_z / (double) 1024;
+    output->rotation.w = (double) input->rotation_w / (double) 1024;
+    output->velocity = input->velocity;
+}
 
 
 /* The message tag: the discriminant for a heterogeneous stream. None = 0 is
