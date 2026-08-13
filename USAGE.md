@@ -405,12 +405,16 @@ would be worse than clamping it.
 and it holds in every language.
 
 **Write-side checking is not a designed feature of the language**, and what
-exists differs by target: C++ trips `serialize_assert`, which is `assert` — it
-fires in a debug build and compiles out under `NDEBUG` — while Go, Rust and C#
-return an error. So writing `health = 2000` into a field declared
-`[min = 0, max = 1000]` asserts in a C++ debug build, silently writes the
-truncated low bits in a C++ release build, and returns an error in the other
-three.
+exists differs by target — because the languages differ. C++ has
+`assert`/`NDEBUG`, a checking idiom that cleanly disappears in a release build,
+so that is what the C++ backend uses. Go has no assert idiom at all; returning
+an error is the natural thing there, and Rust and C# follow it.
+
+So writing `health = 2000` into a field declared `[min = 0, max = 1000]`
+asserts in a C++ debug build, silently writes the truncated low bits in a C++
+release build, and returns an error in the other three. That divergence follows
+from the host languages rather than from a decision about what the wire should
+guarantee.
 
 Do not build on any of it. **Keep your values inside their declared bounds on
 the write side** — your simulation already knows they are, and that is the only

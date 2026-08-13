@@ -209,9 +209,10 @@ hand-crafted hostile bytes in the cross-language test corpus.
 No. **The guarantee is on reads** — that is where untrusted input arrives, and
 it holds in all four languages.
 
-Write-side checking was never an intended feature, and what happens to differ
-by target: C++ trips `serialize_assert`, which compiles out under `NDEBUG`;
-Go, Rust and C# return an error. Do not rely on any of it. Keep values inside
+Write-side checking was never an intended feature, and it differs by target
+because the languages do: C++ has `assert`/`NDEBUG`, a check that disappears in
+release, so that is what it uses; Go has no assert idiom at all, so it returns
+an error, and Rust and C# follow. Do not rely on any of it. Keep values inside
 their declared bounds when you write them — your code already knows they are,
 and in a game shipping at 60 Hz re-checking every field on the write path is a
 cost with no buyer. See
