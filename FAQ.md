@@ -254,13 +254,13 @@ cost with no buyer. See
 
 ## Is everything supported in all five languages?
 
-**The message wire is**, in all five: C, C++, C#, Go and Rust, generated from
-one IR and checked against each other in CI on every push. The C target's
-output is held to the same pinned wire goldens as the other four.
+**Yes.** Both wires — message and table — are generated for C, C++, C#, Go and
+Rust from one IR, and checked against each other in CI on every push. Every
+target's output is held to the same pinned goldens.
 
-**The table wire is four of them** — C++, C#, Go and Rust. **C has the message
-wire only**, so a C program cannot read a packed config container yet. That is
-the one real gap, and it is the same gap Rust had until v1.5.0.
+C was the last to arrive and reached parity in v1.6.0: fixed point, 128-bit
+integers, objects and their quantize pair, message dispatch, and the table
+wire with its reflection descriptors.
 
 Rust reached table parity in v1.5.0 with the codecs, the reflection
 descriptors, and `#[repr(C)]` storage — which is what makes the relocatability

@@ -54,6 +54,20 @@ static SCHEMA_UNUSED const char * enum_name_drive_mode( DriveMode value )
     }
 }
 
+/* As enum_name_drive_mode, over a raw wire value — the form the table reflection
+   descriptors hold. */
+static SCHEMA_UNUSED const char * enum_name_drive_mode_dyn( uint64_t value )
+{
+    switch ( value )
+    {
+        case 0: return "None";
+        case 1: return "Cruise";
+        case 2: return "Warp";
+        case 3: return "Ludicrous";
+        default: return "???";
+    }
+}
+
 
 /* type FixedProbe */
 typedef struct FixedProbe {

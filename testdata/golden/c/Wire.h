@@ -52,6 +52,20 @@ static SCHEMA_UNUSED const char * enum_name_weapon( Weapon value )
     }
 }
 
+/* As enum_name_weapon, over a raw wire value — the form the table reflection
+   descriptors hold. */
+static SCHEMA_UNUSED const char * enum_name_weapon_dyn( uint64_t value )
+{
+    switch ( value )
+    {
+        case 0: return "None";
+        case 1: return "Laser";
+        case 2: return "Missile";
+        case 3: return "Railgun";
+        default: return "???";
+    }
+}
+
 
 /* flags ProbeFlags — one bit per variant, consumed as masks; storage uint64 in every
    target, wire 8 bits (SPEC §4.2) */

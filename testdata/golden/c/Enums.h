@@ -46,6 +46,19 @@ static SCHEMA_UNUSED const char * enum_name_team( Team value )
     }
 }
 
+/* As enum_name_team, over a raw wire value — the form the table reflection
+   descriptors hold. */
+static SCHEMA_UNUSED const char * enum_name_team_dyn( uint64_t value )
+{
+    switch ( value )
+    {
+        case 0: return "None";
+        case 1: return "Red";
+        case 2: return "Blue";
+        default: return "???";
+    }
+}
+
 
 /* enum ShipType — None = 0 implicit, variants dense from 1, wire range [0, 5]
    (SPEC §4.2). A fixed-width typedef rather than a C enum: an enum's underlying
@@ -75,6 +88,22 @@ static SCHEMA_UNUSED const char * enum_name_ship_type( ShipType value )
     }
 }
 
+/* As enum_name_ship_type, over a raw wire value — the form the table reflection
+   descriptors hold. */
+static SCHEMA_UNUSED const char * enum_name_ship_type_dyn( uint64_t value )
+{
+    switch ( value )
+    {
+        case 0: return "None";
+        case 1: return "Fighter";
+        case 2: return "Corvette";
+        case 3: return "Bomber";
+        case 4: return "Destroyer";
+        case 5: return "Carrier";
+        default: return "???";
+    }
+}
+
 
 /* enum MissileType — None = 0 implicit, variants dense from 1, wire range [0, 3]
    (SPEC §4.2). A fixed-width typedef rather than a C enum: an enum's underlying
@@ -93,6 +122,20 @@ static SCHEMA_UNUSED const char * enum_name_missile_type( MissileType value )
     switch ( value )
     {
         case MISSILE_TYPE_NONE: return "None";
+        case 1: return "Heatseeker";
+        case 2: return "Torpedo";
+        case 3: return "Nuke";
+        default: return "???";
+    }
+}
+
+/* As enum_name_missile_type, over a raw wire value — the form the table reflection
+   descriptors hold. */
+static SCHEMA_UNUSED const char * enum_name_missile_type_dyn( uint64_t value )
+{
+    switch ( value )
+    {
+        case 0: return "None";
         case 1: return "Heatseeker";
         case 2: return "Torpedo";
         case 3: return "Nuke";
@@ -131,6 +174,23 @@ static SCHEMA_UNUSED const char * enum_name_prop_type( PropType value )
     }
 }
 
+/* As enum_name_prop_type, over a raw wire value — the form the table reflection
+   descriptors hold. */
+static SCHEMA_UNUSED const char * enum_name_prop_type_dyn( uint64_t value )
+{
+    switch ( value )
+    {
+        case 0: return "None";
+        case 1: return "Asteroid";
+        case 2: return "Chunk";
+        case 3: return "Fragment";
+        case 4: return "Sphere";
+        case 5: return "BlackHole";
+        case 6: return "DysonPanel";
+        default: return "???";
+    }
+}
+
 
 /* enum Pending — None = 0 implicit, variants dense from 1, wire range [0, 0]
    (SPEC §4.2). A fixed-width typedef rather than a C enum: an enum's underlying
@@ -146,6 +206,17 @@ static SCHEMA_UNUSED const char * enum_name_pending( Pending value )
     switch ( value )
     {
         case PENDING_NONE: return "None";
+        default: return "???";
+    }
+}
+
+/* As enum_name_pending, over a raw wire value — the form the table reflection
+   descriptors hold. */
+static SCHEMA_UNUSED const char * enum_name_pending_dyn( uint64_t value )
+{
+    switch ( value )
+    {
+        case 0: return "None";
         default: return "???";
     }
 }

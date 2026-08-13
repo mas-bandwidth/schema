@@ -74,6 +74,14 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 		errs = append(errs, w.errs...)
 	}
 
+	tables, terr := GenerateTable(u)
+	if terr != nil {
+		errs = append(errs, terr)
+	}
+	for name, data := range tables {
+		out[name] = data
+	}
+
 	// Refuse to emit a partial target. Returning the files alongside an error
 	// would invite a caller to use them.
 	if len(errs) > 0 {
@@ -289,6 +297,20 @@ func (g *gen) emitEnum(d *ir.Enum) {
 	g.pf("static SCHEMA_UNUSED const char * enum_name_%s( %s value )\n{\n", snake(d.Name), d.Name)
 	g.pf("    switch ( value )\n    {\n")
 	g.pf("        case %s_NONE: return \"None\";\n", screaming(d.Name))
+	for i, v := range d.Variants {
+		g.pf("        case %d: return %q;\n", i+1, v)
+	}
+	g.pf("        default: return \"???\";\n    }\n}\n\n")
+
+	// The wire-value form the table reflection descriptors hold. They store a
+	// uint64_t-taking function pointer, so the typed one above cannot be used
+	// directly -- a function pointer conversion between differing parameter
+	// types is undefined behaviour, not merely a warning.
+	g.pf("/* As enum_name_%s, over a raw wire value — the form the table reflection\n", snake(d.Name))
+	g.pf("   descriptors hold. */\n")
+	g.pf("static SCHEMA_UNUSED const char * enum_name_%s_dyn( uint64_t value )\n{\n", snake(d.Name))
+	g.pf("    switch ( value )\n    {\n")
+	g.pf("        case 0: return \"None\";\n")
 	for i, v := range d.Variants {
 		g.pf("        case %d: return %q;\n", i+1, v)
 	}
