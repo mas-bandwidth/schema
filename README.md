@@ -6,44 +6,97 @@
 Write down your data types once and generate code to read and write them in four languages automatically.
 
 ```
-message ShipCreate {
-    ship_type ShipType
-    position  Vector3
+table RigidBody {
+    position    Vec3
+    orientation Quat
+    at_rest     bool
+    if !at_rest {
+        linear_velocity  Vec3
+        angular_velocity Vec3
+    }
 }
 ```
 
-That declaration compiles to C++, C#, Go and Rust readers and writers that
-agree on every bit. Your Unity client and your Go backend read the same
-packet the same way, because the same compiler wrote both.
+The `if` is the point. When a body is at rest its velocities are not zeroed on
+the wire — they are **not sent at all**, and the branch costs nothing beyond
+the bool that was already there. A read fills the untaken side with zeroes, so
+the receiver never inherits last packet's velocity.
+
+That declaration compiles to this, and to its exact counterpart in C#, Go and
+Rust:
+
+```cpp
+inline bool WriteRigidBody( serialize::WriteStream & stream, const RigidBody & value )
+{
+    if ( !WriteVec3( stream, value.position ) )     { return false; }
+    if ( !WriteQuat( stream, value.orientation ) )  { return false; }
+    write_bool( stream, value.at_rest );
+    if ( !value.at_rest )
+    {
+        if ( !WriteVec3( stream, value.linear_velocity ) )  { return false; }
+        if ( !WriteVec3( stream, value.angular_velocity ) ) { return false; }
+    }
+    return true;
+}
+```
+
+Straight-line code with no tags, no reflection and no allocation — the same
+function you would have written by hand, which is the standard it is held to.
 
 ## Why it exists
 
 Multiplayer games serialize the same data in several languages at once — an
 engine client here, a dedicated server there, tools and services around them.
-Hand-written serializers drift: someone widens a field on one side, the other
-side keeps reading the old width, and you lose an afternoon to a bug that is
-one bit wide. General-purpose formats solve the drift by paying for it on the
-wire, in bytes and allocations you cannot afford at 60 Hz.
+Every way of solving that costs something:
 
-schema takes the third path. The wire format is decided at compile time, so
-the generated code is straight-line — no tags, no reflection at runtime, no
-allocation — and the cross-language agreement is proven mechanically rather
-than promised. Every build compiles the corpus in all four languages and
-byte-compares the results against pinned goldens; if two languages ever
-disagree by one bit, CI says so before you do.
+- **Hand-written serializers drift.** Someone widens a field on one side; the
+  other side keeps reading the old width, and an afternoon goes to a bug that
+  is one bit wide. **Separate read and write paths drift too** — even within a
+  single language, the reader and the writer are two expressions of one format
+  that nothing forces to agree.
+- **A unified read/write function fixes the drift and costs you elsewhere.**
+  Templating one function over a read stream and a write stream is a good C++
+  answer, and it is still slower than the hand-written pair — and it is not
+  available at all in Go, or in most of the languages a game actually has to
+  ship in.
+- **Solving it with heavier template machinery costs compile time**, in headers
+  every translation unit includes.
+- **General-purpose formats** fix the drift by paying for it on the wire, in
+  bytes and allocations you cannot afford at 60 Hz.
 
-## What you get
+Generating the code takes the fourth path. One declaration produces the reader
+*and* the writer, in every language, so they cannot disagree — and because the
+format is decided at compile time, what comes out is the straight-line code you
+would have hand-written, not an interpreter walking a schema at runtime.
 
-- **One definition, four languages.** C++, C#, Go and Rust, byte-identical.
-- **Bit-packed, not byte-packed.** A field declared `[min = 0, max = 1000]`
-  costs 10 bits, not 4 bytes. Bounds are part of the type.
-- **No allocation, no runtime reflection.** Generated code reads and writes
-  straight into your own buffers.
-- **Reads validate, always.** Out-of-range values are refused, not clamped
-  or trusted — generated readers are meant to face hostile packets.
-- **Two wires for two jobs.** A bit-packed realtime wire for gameplay, and a
-  separate evolution-tolerant wire for data that outlives builds.
-- **Generated code is yours**, whatever licence you ship under. See
+The agreement is proven rather than promised: every build compiles the corpus
+in all four languages and byte-compares the results against pinned goldens. If
+two languages ever differ by one bit, CI says so before you do.
+
+## Features
+
+- **One declaration, four languages** — C++, C#, Go and Rust, byte-identical
+  on the wire, reader and writer generated together so they cannot drift.
+- **Bit-packed, not byte-packed** — `[min = 0, max = 1000]` costs 10 bits, not
+  4 bytes. Bounds are part of the type, and the wire cost follows from them.
+- **Branches that cost nothing** — `if !at_rest { … }` omits whole field groups
+  from the wire, back-referencing a bool already sent.
+- **Compressed floats** — `[min, max, resolution]` sends a step index, not a
+  float. A 0–1 throttle at 0.01 costs 7 bits.
+- **Fixed point** — `fixed(48, 16)`, for values that must be bit-identical
+  across machines, where floating point is not.
+- **128-bit integers**, ranged like any other, in every target language.
+- **Zero allocation, no runtime reflection** — straight-line code reading and
+  writing your own buffers.
+- **Reads validate, always** — out-of-range values are refused, not clamped or
+  trusted. Generated readers are built to face hostile packets.
+- **A second, evolution-tolerant wire** for config, assets and settings, with
+  reflection and relocatable storage — see [WIRES.md](WIRES.md).
+- **`schema pack`** compiles directories of JSON into one binary container,
+  validating every value against the schema as it goes.
+- **A canonical source format** — every command formats in place, so the
+  protocol id hashes one true form.
+- **Generated code is yours**, under whatever licence you ship. See
   [License](#license).
 
 ## How do I use it?
@@ -69,85 +122,14 @@ repo — [serialize](https://github.com/mas-bandwidth/serialize),
 [serialize.rs](https://github.com/mas-bandwidth/serialize.rs) — then
 `make test`. The Makefile's `SERIALIZE*` variables override the locations.
 
-## Two wires
+## Documentation
 
-**Messages** ride the bitpacked realtime wire, targeting
-[serialize](https://github.com/mas-bandwidth/serialize),
-[serialize.cs](https://github.com/mas-bandwidth/serialize.cs),
-[serialize.go](https://github.com/mas-bandwidth/serialize.go) and
-[serialize.rs](https://github.com/mas-bandwidth/serialize.rs). Versioning is by
-**protocol id** — a hash of the schema itself. Two sides at the same protocol id speak
-identical bits; there is no versioning overhead on the wire.
-
-**Tables** ride the table wire: an evolution-tolerant encoding for data that outlives
-builds — config, assets, settings. Fields are identified by name hash; defaults elide;
-unknown fields skip; removed fields default; changed types skip instead of misdecoding;
-out-of-range values clamp — every event counted in a report, and reads validate everything,
-in every language, so table data is safe to accept on untrusted surfaces. Add or remove a
-property and older readers keep working. Table writes are zero-allocation in every
-target: C++ writes into a caller-owned buffer by construction, Go and C# add append-form
-writers (`AppendTableX`) over a reused buffer, and the C#/Go accessor surfaces read
-scalars without boxing.
-
-```
-enum ShipType { Fighter, Corvette, Bomber }
-
-type Vector3 {
-    x float64
-    y float64
-    z float64
-}
-
-message ShipCreate {
-    ship_type ShipType
-    position  Vector3
-}
-
-table ShipConfig {
-    ship_type ShipType
-    health    float32 [min = 0, max = 1000] = 100.0
-    name      string(32)
-}
-```
-
-## Tables: reflection, relocatability, parallelism
-
-Declaring `table` (instead of `type`) makes a type a table-wire root. It and everything it
-references get, in every generated language:
-
-- **Codecs** — `TableWriteX` / `TableReadX`, plain byte code with no runtime dependency.
-- **Reflection** — `TableTypeX()` static field descriptors: names, wire ids, bounds,
-  declared ranges, enum value names, branch guards. Flat arrays, separate from instance
-  data, zero per-instance weight — enough to walk, print, diff, edit or bind any table
-  value at runtime with no RTTI, no `System.Reflection`, and no schema files shipped.
-
-Generated storage is **relocatable by enforced construction** — trivially copyable,
-standard layout, no pointers — so instances can be memcpy'd, memory-mapped, shared across
-processes, and **built in parallel across threads then gathered by concatenation**, a
-pattern offset-based formats cannot express. The corpus test proves parallel scatter/gather
-byte-identical to serial.
-
-`schema pack` compiles directories of JSON instances into single-file binary containers
-per a manifest — one data file, native typed readers in every language.
-
-`schema` commands canonically reformat schema files in place. Generated C# is C# 9 /
-netstandard2.1-clean and runs on Unity-class runtimes.
-
-## Performance
-
-Generated-code performance as time relative to C++ (100%; higher is slower), medians across
-the corpus on Apple M2:
-
-| backend | write | read | batch write | batch read |
-|---|---:|---:|---:|---:|
-| C++ | 100% | 100% | 100% | 100% |
-| Rust | 177% | 204% | 121% | 153% |
-| C# | 199% | 214% | 140% | 175% |
-| Go | 323% | 387% | 204% | 198% |
-
-Relative numbers move with compiler and microarchitecture — treat the table as a dated
-snapshot, not a verdict. Full tables, an x86 leg, and per-gap analysis:
-[bench/results/](bench/results/).
+| | |
+|---|---|
+| **[USAGE.md](USAGE.md)** | Every language feature, with the code it generates. Start here. |
+| **[WIRES.md](WIRES.md)** | The two wires, tables, reflection, relocatable storage. |
+| **[PERFORMANCE.md](PERFORMANCE.md)** | Generated-code benchmarks across the four languages. |
+| **[SPEC.md](SPEC.md)** | The normative reference — grammar, wire law, every edge case. |
 
 ## License
 
