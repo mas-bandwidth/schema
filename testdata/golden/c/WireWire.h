@@ -345,6 +345,7 @@ static SCHEMA_UNUSED int read_probe_sample( serialize_read_stream_t * stream, Pr
         {
             value->target_id = 0;
         }
+        value->idle_ticks = 0;
     }
     else
     {

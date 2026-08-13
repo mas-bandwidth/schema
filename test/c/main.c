@@ -367,6 +367,52 @@ int main( void )
         }
     }
 
+    /* ---- SPEC §5: BOTH untaken sides zero on read ----
+       The backend used to zero only the then-fields in the else arm, so taking
+       the then arm left the else-fields holding whatever the caller's memory
+       had. Nothing failed: the wire was correct and the storage was stale. */
+    {
+        ProbeSample in, out;
+
+        memset( &in, 0, sizeof( in ) );
+        in.active = 1;
+        in.orientation = 45.0f;
+        in.raw_delta = 7;
+        in.big_delta = 9;
+        in.weapon = WEAPON_RAILGUN;
+        in.has_target = 1;
+        in.target_id = 4242;
+        in.samples_count = 1;   /* [1..8]: the minimum is 1, not 0 */
+        in.samples[0] = 99;
+
+        serialize_write_stream_init( &w, buffer, sizeof( buffer ) );
+        check( write_probe_sample( &w, &in ), "write ProbeSample active" );
+        serialize_write_flush( &w );
+
+        /* dirty every member the ACTIVE arm does not write */
+        memset( &out, 0xEF, sizeof( out ) );
+        serialize_read_stream_init( &r, buffer, serialize_write_bytes_processed( &w ) );
+        check( read_probe_sample( &r, &out ), "read ProbeSample active" );
+        check( out.active, "active reads true" );
+        check( out.weapon == WEAPON_RAILGUN, "the taken arm decodes" );
+        check( out.idle_ticks == 0,
+               "the UNTAKEN else field is zeroed when the then arm is taken (SPEC §5)" );
+
+        /* and the mirror: taking the else arm zeroes the then fields */
+        in.active = 0;
+        in.idle_ticks = 1234;
+        serialize_write_stream_init( &w, buffer, sizeof( buffer ) );
+        check( write_probe_sample( &w, &in ), "write ProbeSample idle" );
+        serialize_write_flush( &w );
+
+        memset( &out, 0xEF, sizeof( out ) );
+        serialize_read_stream_init( &r, buffer, serialize_write_bytes_processed( &w ) );
+        check( read_probe_sample( &r, &out ), "read ProbeSample idle" );
+        check( !out.active && out.idle_ticks == 1234, "the else arm decodes" );
+        check( out.weapon == 0 && out.target_id == 0,
+               "the UNTAKEN then fields are zeroed when the else arm is taken (SPEC §5)" );
+    }
+
     if ( failed )
     {
         printf( "FAILED\n" );

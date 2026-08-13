@@ -529,15 +529,20 @@ func (g *gen) emitReadItems(items []ir.Item, ind string) {
 			if n.Neg {
 				cond = "!" + cond
 			}
+			// SPEC §5: a read zeroes the UNTAKEN side, so storage never
+			// carries a value the wire did not supply. Both sides need it --
+			// zeroing only the then-fields in the else arm leaves the
+			// else-fields holding whatever the caller's memory had when the
+			// then arm is taken, which is exactly the stale-data bug the rule
+			// exists to prevent.
 			g.pf("%sif ( %s )\n%s{\n", ind, cond, ind)
 			g.emitReadItems(n.Then, ind+"    ")
+			g.emitZeroItems(n.Else, ind+"    ")
 			g.pf("%s}\n", ind)
 			g.pf("%selse\n%s{\n", ind, ind)
 			if len(n.Else) > 0 {
 				g.emitReadItems(n.Else, ind+"    ")
 			}
-			// SPEC §5: a read zeroes the untaken side, so storage never carries
-			// a value the wire did not supply
 			g.emitZeroItems(n.Then, ind+"    ")
 			g.pf("%s}\n", ind)
 		}
