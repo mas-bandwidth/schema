@@ -1050,14 +1050,29 @@ All compile errors with positions:
   quantization form `[interpolate, quantize = K, max = B]` (§4.8 rule 2), `max` is the
   quantize bound and appears WITHOUT `min` by design — `min` is forbidden there, the
   domain being symmetric [-B, +B].
-- **Degenerate ranges:** any ranged integer with min ≥ max (the diagnostic suggests `const`
-  for a fixed value); `[Min..N]T` with Min ≥ N; `string(N)` with N < 2; `bytes(<= N)` with
-  N < 1; **`bytes(N)` with N < 1; `[N]T` with N < 1; `[<= N]T` with N < 1** *(three holes
-  closed 2026-08-05)*; an enum whose max is 0 (fewer than two wire values); `resolution` ≤ 0.
-  Every runtime treats `min == max` range serialization as API misuse, so the language
-  rejects what the runtimes would reject. An empty `type` or `message` body is legal — zero
-  wire bits, the Heartbeat precedent; an empty `object` body is an error (it generates a
-  meaningless view family); a unit with no `.schema` files is an error.
+- **Degenerate ranges:** any ranged integer field with min ≥ max (the diagnostic suggests
+  `const` for a fixed value); `[Min..N]T` with Min ≥ N; `string(N)` with N < 2;
+  `bytes(<= N)` with N < 1; **`bytes(N)` with N < 1; `[N]T` with N < 1; `[<= N]T` with
+  N < 1** *(three holes closed 2026-08-05)*; `resolution` ≤ 0. An empty `type` or `message`
+  body is legal — zero wire bits, the Heartbeat precedent; an empty `object` body is an
+  error (it generates a meaningless view family); a unit with no `.schema` files is an
+  error.
+
+  **An enum with no variants is LEGAL** *(2026-08-13, Glenn: "Let's support enum nothing in
+  schema")*. It holds only the implicit `None = 0`, so its wire range is the degenerate
+  `[0, 0]` and it costs **zero bits** — the value is recovered from the range alone. The
+  generators emit the range refusal and no wire call at all, because a bit packer requires
+  at least one bit.
+
+  This was previously rejected on the grounds that *"every runtime treats `min == max`
+  range serialization as API misuse, so the language rejects what the runtimes would
+  reject."* That premise was **false in the runtimes' own terms**: STANDARD.md has always
+  defined a degenerate range as costing zero bits, and the four ports had each
+  independently grown a stricter guard than the format — C++ asserted in debug while its
+  release path was already correct, Go panicked, C# threw, Rust panicked. All five ports
+  now implement what the standard says, and the corpus carries an empty enum so the
+  no-variant path is exercised in every language rather than only in a unit test. Adding
+  it moved the protocol id and **not one wire byte**, which is the property being claimed.
 - **One flat namespace, and the compiler's claimed names — DECIDED (corner-pins list, Glenn 2026-08-05):**
   all five declaration kinds share one unit-level namespace (`const Foo` and `type Foo`
   collide). A unit with `message` declarations may not declare `MessageType` (already

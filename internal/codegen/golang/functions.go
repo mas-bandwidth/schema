@@ -230,6 +230,12 @@ func (g *gen) rangeArgs(f *ir.Field) (string, string) {
 func (g *gen) emitWriteRangedFold32(expr, lo, hi string, bits int64, loZero bool, ind string) {
 	g.pf("%sif %s < %s || %s > %s { // the runtime range refusal, folded (SPEC §5)\n%s\treturn serialize.ErrValueOutOfRange\n%s}\n",
 		ind, expr, lo, expr, hi, ind, ind)
+	// A degenerate range costs ZERO BITS -- the value is known from the range
+	// alone, so nothing rides. The bit packer requires at least one bit, so
+	// this must not fall through to it.
+	if bits == 0 {
+		return
+	}
 	if loZero {
 		g.pf("%s{\n%s\toffsetValue := uint32(%s)\n", ind, ind, expr)
 	} else {

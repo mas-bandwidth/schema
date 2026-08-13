@@ -563,10 +563,17 @@ func (c *checker) resolveEnum(d *ast.EnumDecl) *ir.Enum {
 		seen[v.Text] = true
 		variants = append(variants, v.Text)
 	}
+	// An enum with no variants is LEGAL: it holds only the implicit None = 0,
+	// so its wire range is the degenerate [0, 0] and it costs zero bits. That
+	// is the same rule a [min = K, max = K] field follows, and every runtime
+	// supports it — a degenerate range is defined by STANDARD.md and the five
+	// serialize ports agree on it.
+	//
+	// It is useful rather than a curiosity: an enum declared before its
+	// variants are known keeps compiling and spends nothing on the wire, and a
+	// field typed by it round-trips as None without the schema having to
+	// invent a placeholder variant to satisfy the compiler.
 	max := int64(len(variants))
-	if max == 0 {
-		c.errf(d.Pos, "enum %s has no variants — its max is 0, fewer than two wire values (SPEC §4.6)", d.Name)
-	}
 	for _, a := range d.Attrs {
 		if a.Key != "max" {
 			c.errf(a.Pos, "unknown attribute %q on an enum — enums take [max = K] only (SPEC §4.6)", a.Key)

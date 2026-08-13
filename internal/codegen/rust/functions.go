@@ -267,6 +267,12 @@ func foldOffset32(expr string, exprIsU32 bool, lo string, loZero bool) string {
 // debug parity) is the CALLER's job — every fold site either follows a
 // generated guard or emits its own debug_assert first.
 func (g *gen) emitWriteRangedFold32(expr string, exprIsU32 bool, lo string, loZero bool, bits int64, comment, ind string) {
+	// A degenerate range costs ZERO BITS -- the value is known from the range
+	// alone, so nothing rides. The bit packer requires at least one bit, so
+	// this must not fall through to it.
+	if bits == 0 {
+		return
+	}
 	g.pf("%s{\n%s    let mut offset_value = %s;\n", ind, ind, foldOffset32(expr, exprIsU32, lo, loZero))
 	g.pf("%s    stream.serialize_bits(&mut offset_value, %d)?;%s\n%s}\n", ind, bits, comment, ind)
 }

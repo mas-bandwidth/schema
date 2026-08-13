@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package example — protocol id 0x311b2f6c84685619
+// package example — protocol id 0xb6a0276149f6577e
 
 #pragma once
 
@@ -302,6 +302,7 @@ inline bool WriteShipCreate( serialize::WriteStream & stream, const ShipCreate &
     write_bits( stream, uint32_t( value.health ), 10 );
     serialize_assert( int32_t( value.thrust ) >= int32_t( 0 ) && int32_t( value.thrust ) <= int32_t( 100 ) );
     write_bits( stream, uint32_t( value.thrust ), 7 );
+    serialize_assert( int32_t( value.pending ) >= int32_t( 0 ) && int32_t( value.pending ) <= int32_t( 0 ) );
     return true;
 }
 
@@ -347,6 +348,11 @@ inline bool ReadShipCreate( serialize::ReadStream & stream, ShipCreate & value )
         int32_t range_value = 0;
         read_int( stream, range_value, 0, 100 );
         value.thrust = int8_t( range_value );
+    }
+    {
+        int32_t enum_value = 0;
+        read_int( stream, enum_value, 0, 0 );
+        value.pending = Pending( enum_value );
     }
     return true;
 }

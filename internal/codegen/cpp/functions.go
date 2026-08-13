@@ -236,6 +236,12 @@ func intRangePath(min, max *big.Int) string {
 // generation-time bit count (the int32 family: SerializeInteger's encoding).
 func (g *gen) emitWriteRangedFold32(expr, lo, hi string, bits int64, loZero bool, ind string) {
 	g.pf("%sserialize_assert( int32_t( %s ) >= int32_t( %s ) && int32_t( %s ) <= int32_t( %s ) );\n", ind, expr, lo, expr, hi)
+	if bits == 0 {
+		// A degenerate range costs ZERO BITS -- the value is known from the
+		// range alone. Emit the range assert and nothing else: write_bits( .., 0 )
+		// would reach SerializeBits, whose bit count must be at least 1.
+		return
+	}
 	if loZero {
 		g.pf("%swrite_bits( stream, uint32_t( %s ), %d );\n", ind, expr, bits)
 	} else {
@@ -248,6 +254,12 @@ func (g *gen) emitWriteRangedFold32(expr, lo, hi string, bits int64, loZero bool
 // own >32 split, byte-identical).
 func (g *gen) emitWriteRangedFold64(expr, lo, hi string, bits int64, loZero bool, ind string) {
 	g.pf("%sserialize_assert( int64_t( %s ) >= int64_t( %s ) && int64_t( %s ) <= int64_t( %s ) );\n", ind, expr, lo, expr, hi)
+	if bits == 0 {
+		// A degenerate range costs ZERO BITS -- the value is known from the
+		// range alone. Emit the range assert and nothing else: write_bits( .., 0 )
+		// would reach SerializeBits, whose bit count must be at least 1.
+		return
+	}
 	if loZero {
 		g.pf("%swrite_bits( stream, uint64_t( %s ), %d );\n", ind, expr, bits)
 	} else {

@@ -570,7 +570,13 @@ func (g *gen) emitWriteFoldedEnum(ref *ir.Enum, name, ind string) {
 		g.sf("%s    if (enumValue > %d) // headroom above the wire range cannot ride\n", ind, ref.Max)
 		g.sf("%s    {\n%s        return false;\n%s    }\n", ind, ind, ind)
 	}
-	g.call(ind+"    ", fmt.Sprintf("%s.%s(ref enumValue, %d)", g.rv(), fn, bits), "")
+	// A degenerate range (an enum with only the implicit None) costs ZERO BITS
+	// -- the value is known from the range alone. The bit packer requires at
+	// least one bit, so the call is skipped entirely; the headroom guard above
+	// still rides, because a value above the range must still be refused.
+	if bits > 0 {
+		g.call(ind+"    ", fmt.Sprintf("%s.%s(ref enumValue, %d)", g.rv(), fn, bits), "")
+	}
 	g.sf("%s}\n", ind)
 }
 

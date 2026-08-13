@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package example — protocol id 0x311b2f6c84685619
+// package example — protocol id 0xb6a0276149f6577e
 
 #pragma once
 
@@ -98,6 +98,21 @@ inline const char * EnumName( PropType value )
         case PropType::Sphere: return "Sphere";
         case PropType::BlackHole: return "BlackHole";
         case PropType::DysonPanel: return "DysonPanel";
+        default: return "???";
+    }
+}
+
+// enum Pending — None = 0 implicit, variants dense from 1, wire range [0, 0] (SPEC §4.2)
+enum class Pending : uint8_t {
+    None = 0,
+};
+
+// EnumName: debug/log name for any Pending value, out-of-set included
+inline const char * EnumName( Pending value )
+{
+    switch ( value )
+    {
+        case Pending::None: return "None";
         default: return "???";
     }
 }
