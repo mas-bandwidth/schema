@@ -1,0 +1,2 @@
+go test fuzz v1
+string("package p\n\nmessage M {\n    a int32 [\n        min = 0,\n        max = 10\n    ]\n}\n")

@@ -206,6 +206,26 @@ func reorderAttrs(tokens []scanner.Token) []scanner.Token {
 			}
 			j++
 		}
+		if depth != 0 {
+			// The bracket group does not close on this line. reorderAttrs runs
+			// per LINE, and the scanner deliberately suppresses the newline
+			// after `[` and `,` so that attribute lists MAY wrap (SPEC §4.1) —
+			// so this is ordinary valid source, not malformed input:
+			//
+			//     a int32 [
+			//         min = 0,
+			//         max = 10
+			//     ]
+			//
+			// Reordering needs the whole group, and we do not have it. Emit the
+			// rest of the line untouched. Previously this fell through to
+			// tokens[i+1 : j-1] with j == i+1 and panicked the process — from
+			// `check`, `generate`, `id`, `fmt` and `pack` alike, since they all
+			// format before parsing.
+			out = append(out, tokens[i:]...)
+			return out
+		}
+
 		group := tokens[i+1 : j-1] // inside the brackets
 		entries := splitTop(group, scanner.Comma)
 		var valueless, valued [][]scanner.Token
