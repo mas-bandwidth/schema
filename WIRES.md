@@ -23,6 +23,8 @@ writers (`AppendTableX`) over a reused buffer, and the C#/Go accessor surfaces r
 scalars without boxing.
 
 ```
+package example
+
 enum ShipType { Fighter, Corvette, Bomber }
 
 type Vector3 {
@@ -38,7 +40,7 @@ message ShipCreate {
 
 table ShipConfig {
     ship_type ShipType
-    health    float32 [min = 0, max = 1000] = 100.0
+    health    int32 [min = 0, max = 1000] = 100
     name      string(32)
 }
 ```

@@ -6,19 +6,25 @@
 Write down your data types once and generate code to read and write them in four languages automatically.
 
 ```
+package example
+
 const MaxHealth = 1000
 
 enum ShipType { Fighter, Corvette, Bomber }
 
+type Vec3 {
+    x float64
+    y float64
+    z float64
+}
+
 message ShipState {
-    ship_type   ShipType
-    position    Vec3
-    orientation Quat
-    health      int32 [min = 0, max = MaxHealth]
-    at_rest     bool
+    ship_type ShipType
+    position  Vec3
+    health    int32 [min = 0, max = MaxHealth]
+    at_rest   bool
     if !at_rest {
-        linear_velocity  Vec3
-        angular_velocity Vec3
+        velocity Vec3
     }
 }
 ```
