@@ -1,3 +1,38 @@
+schema — a schema compiler for game network data
+Copyright (C) 2026 Mas Bandwidth LLC
+
+This program is free software: you can redistribute it and/or modify it under
+the terms of the GNU Affero General Public License as published by the Free
+Software Foundation, either version 3 of the License, or (at your option) any
+later version. The full text follows below.
+
+
+                    ADDITIONAL PERMISSION — GENERATED OUTPUT
+
+As a special exception, the copyright holders give you permission to use,
+modify, and distribute the OUTPUT of this program — the code it generates from
+schema files you provide — under terms of your choice, without those terms
+being affected in any way by the licence of this program.
+
+The output of this program is not a derivative work of this program. Running
+this compiler over schema files you own does not place the generated
+serializers, table codecs, or reflection descriptors under the GNU Affero
+General Public License, and you may include them in proprietary and
+closed-source software.
+
+This permission applies to the generated output only. It does not apply to
+this program itself: modifying the compiler, or conveying it (including making
+a modified version available to users over a network, per AGPL section 13),
+remains subject to the licence below.
+
+This exception is modelled on the long-standing practice for compiler-like
+tools whose output is not covered by the tool's own licence — for example the
+Bison parser exception and the GCC Runtime Library Exception.
+
+
+----------------------------------------------------------------------------
+
+
                     GNU AFFERO GENERAL PUBLIC LICENSE
                        Version 3, 19 November 2007
 

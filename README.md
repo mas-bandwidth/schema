@@ -186,7 +186,10 @@ roadmap, not in the box.
 yours.**
 
 - The schema compiler (everything in this repository) is licensed under the
-  GNU Affero General Public License v3.0. See [LICENSE](LICENSE). If you
+  GNU Affero General Public License v3.0, with an **explicit additional
+  permission for generated output** written into [LICENSE](LICENSE) itself —
+  not only described here. Every generated file also carries that statement in
+  its own header. If you
   modify the compiler and run it as a service or distribute it, the AGPL's
   terms apply to those modifications.
 - **Generated code is explicitly NOT covered by the AGPL.** The output the
