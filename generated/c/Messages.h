@@ -47,7 +47,7 @@ typedef struct Block {
 
 /* message Chat */
 typedef struct Chat {
-    char text[256];
+    char text[257]; /* string(256): N + 1 for the terminator the wire does not carry */
     int32_t text_length;
 } Chat;
 

@@ -265,7 +265,11 @@ func (g *gen) emitField(f *ir.Field) {
 	name := f.Name
 	switch {
 	case f.Type.Kind == ir.TString:
-		g.pf("    char %s[%d];\n", name, f.Type.Size)
+		// N + 1: string(N) admits a length of N on the wire, and the reader
+		// appends a terminator the wire does not carry. Sizing this at N is a
+		// one-byte out-of-bounds WRITE driven by wire data -- the read path is
+		// where hostile input arrives, so this is the array that must be right.
+		g.pf("    char %s[%d]; /* string(%d): N + 1 for the terminator the wire does not carry */\n", name, f.Type.Size+1, f.Type.Size)
 		g.pf("    int32_t %s_length;\n", name)
 	case f.Type.Kind == ir.TBytes:
 		g.pf("    uint8_t %s[%d];\n", name, f.Type.Size)

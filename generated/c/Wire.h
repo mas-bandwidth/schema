@@ -136,7 +136,7 @@ typedef struct TestData {
     int64_t int64_full;
     int64_t int64_range;
     uint8_t fixed_bytes[17];
-    char text[255];
+    char text[256]; /* string(255): N + 1 for the terminator the wire does not carry */
     int32_t text_length;
 } TestData;
 
