@@ -23,47 +23,9 @@ message ShipState {
 }
 ```
 
-Three things are happening there beyond naming fields.
-
-**The bounds are part of the type.** `health` is declared `[min = 0, max = MaxHealth]`,
-so it costs **10 bits** on the wire rather than 32 — and `MaxHealth` is a
-constant exported into every generated language, so the bound your code
-compares against is the bound the wire enforces. There is no second copy to
-drift.
-
-**The enum knows its own size.** `ShipType` has three variants, so it costs
-**2 bits**. Every enum reserves an implicit `None = 0`, which means a
-zero-initialized field is already the null — no has-flag beside it.
-
-**The `if` removes fields from the wire.** When a body is at rest its
-velocities are not zeroed and sent, they are **not sent at all**, and the
-branch costs nothing beyond the bool that was already there. A read fills the
-untaken side with zeroes, so the receiver never inherits last packet's
-velocity.
-
-That compiles to this, and to its exact counterpart in C#, Go and Rust:
-
-```cpp
-inline bool WriteShipState( serialize::WriteStream & stream, const ShipState & value )
-{
-    write_bits( stream, uint32_t( value.ship_type ), 2 );
-    if ( !WriteVec3( stream, value.position ) )     { return false; }
-    if ( !WriteQuat( stream, value.orientation ) )  { return false; }
-    write_bits( stream, uint32_t( value.health ), 10 );
-    write_bool( stream, value.at_rest );
-    if ( !value.at_rest )
-    {
-        if ( !WriteVec3( stream, value.linear_velocity ) )  { return false; }
-        if ( !WriteVec3( stream, value.angular_velocity ) ) { return false; }
-    }
-    return true;
-}
-```
-
-Straight-line code with no tags, no reflection and no allocation — the same
-function you would have written by hand, which is the standard it is held to.
-
-Now your Unity client and your Go backend speak the same language.
+This declaration compiles to C++, C#, Go and Rust code that 
+reads and writes your data types and agree on every bit. Now your native plugin, your Unity client 
+and your Go backend all speak the same language.
 
 ## Why it exists
 
