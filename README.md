@@ -1,11 +1,74 @@
 # schema
 
-**schema** is a language for describing game network data, and a compiler — written in Go —
-that translates `*.schema` files into generated C++, C#, Go and Rust code. Define your types
-and their wire encoding once; get minimal, straight-line, allocation-free code for every
-platform, byte-identical on the wire across all four languages.
+[![CI](https://github.com/mas-bandwidth/schema/actions/workflows/ci.yml/badge.svg)](https://github.com/mas-bandwidth/schema/actions/workflows/ci.yml)
+[![License: AGPL v3](https://img.shields.io/badge/license-AGPL--3.0-blue.svg)](LICENSE)
 
-Start with [SPEC.md](SPEC.md).
+**You write down your game's data once. You get the code to send it, in four
+languages, byte-for-byte identical on the wire.**
+
+```
+message ShipCreate {
+    ship_type ShipType
+    position  Vector3
+}
+```
+
+That declaration compiles to C++, C#, Go and Rust readers and writers that
+agree on every bit. Your Unity client and your Go backend read the same
+packet the same way, because the same compiler wrote both.
+
+## Why it exists
+
+Multiplayer games serialize the same data in several languages at once — an
+engine client here, a dedicated server there, tools and services around them.
+Hand-written serializers drift: someone widens a field on one side, the other
+side keeps reading the old width, and you lose an afternoon to a bug that is
+one bit wide. General-purpose formats solve the drift by paying for it on the
+wire, in bytes and allocations you cannot afford at 60 Hz.
+
+schema takes the third path. The wire format is decided at compile time, so
+the generated code is straight-line — no tags, no reflection at runtime, no
+allocation — and the cross-language agreement is proven mechanically rather
+than promised. Every build compiles the corpus in all four languages and
+byte-compares the results against pinned goldens; if two languages ever
+disagree by one bit, CI says so before you do.
+
+## What you get
+
+- **One definition, four languages.** C++, C#, Go and Rust, byte-identical.
+- **Bit-packed, not byte-packed.** A field declared `[min = 0, max = 1000]`
+  costs 10 bits, not 4 bytes. Bounds are part of the type.
+- **No allocation, no runtime reflection.** Generated code reads and writes
+  straight into your own buffers.
+- **Reads validate, always.** Out-of-range values are refused, not clamped
+  or trusted — generated readers are meant to face hostile packets.
+- **Two wires for two jobs.** A bit-packed realtime wire for gameplay, and a
+  separate evolution-tolerant wire for data that outlives builds.
+- **Generated code is yours**, whatever licence you ship under. See
+  [License](#license).
+
+## How do I use it?
+
+```
+go build -o /usr/local/bin/schema ./cmd/schema
+
+schema check    <dir of .schema files>
+schema generate --lang cpp --out <outdir> <dir>
+schema pack     <PackManifest.json>
+```
+
+**[USAGE.md](USAGE.md)** is the guide — every language feature, with real
+examples and the code each one generates.
+
+[SPEC.md](SPEC.md) is the normative reference for when you need the exact
+rule.
+
+Building the tests needs the four serialize runtimes checked out beside this
+repo — [serialize](https://github.com/mas-bandwidth/serialize),
+[serialize.cs](https://github.com/mas-bandwidth/serialize.cs),
+[serialize.go](https://github.com/mas-bandwidth/serialize.go),
+[serialize.rs](https://github.com/mas-bandwidth/serialize.rs) — then
+`make test`. The Makefile's `SERIALIZE*` variables override the locations.
 
 ## Two wires
 
@@ -68,18 +131,8 @@ byte-identical to serial.
 `schema pack` compiles directories of JSON instances into single-file binary containers
 per a manifest — one data file, native typed readers in every language.
 
-## Getting started
-
-```
-go build -o /usr/local/bin/schema ./cmd/schema
-schema check  <dir of .schema files>
-schema generate --lang cpp --out <outdir> <dir>
-schema pack   <PackManifest.json>
-```
-
-`schema` commands canonically reformat schema files in place; the protocol id is a hash of
-the canonical form. Generated C# is C# 9 / netstandard2.1-clean and runs on Unity-class
-runtimes.
+`schema` commands canonically reformat schema files in place. Generated C# is C# 9 /
+netstandard2.1-clean and runs on Unity-class runtimes.
 
 ## Performance
 
