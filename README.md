@@ -24,7 +24,7 @@ message ShipState {
 ```
 
 This declaration compiles to C++, C#, Go and Rust code that 
-reads and writes your data types and agree on every bit. Now your native plugin, your Unity client 
+reads and writes your data types and agrees on every bit. Now your native plugin, your Unity client 
 and your Go backend all speak the same language.
 
 ## Why it exists
