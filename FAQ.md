@@ -21,6 +21,19 @@ not taken occupies nothing. There is no vtable, no offset table, no field
 identifier on the wire — both sides know the layout because the same compiler
 generated both.
 
+**And validation is not a separate artifact that can lag.** This is the
+difference that matters most if the data is untrusted. In FlatBuffers,
+verifying a buffer is a *distinct* piece of generated or hand-written code per
+language — so verifier support varies by port, and a port without one cannot
+safely accept a packet from the network at all. You are then choosing between
+"trust the bytes" and "do not use this language".
+
+In schema there is nothing to omit. Refusing an out-of-range value is not a
+verification pass you run first, it is what the read does: the bound is part of
+the type, so the generated reader checks it inline in every language, because
+one compiler emitted all four. There is no such thing as a schema port that
+reads but cannot validate.
+
 For a 60 Hz gameplay packet where you decode the whole thing anyway, that trade
 runs strongly one way. For a memory-mapped asset you want to touch three fields
 of, it runs the other. schema's answer to *that* case is its second wire (see

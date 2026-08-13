@@ -79,8 +79,13 @@ two languages ever differ by one bit, CI says so before you do.
 - **128-bit integers**, ranged like any other, in every target language.
 - **Zero allocation, no runtime reflection** — straight-line code reading and
   writing your own buffers.
-- **Reads validate, always** — out-of-range values are refused, not clamped or
-  trusted. Generated readers are built to face hostile packets.
+- **Reads validate, always — in every language.** Out-of-range values are
+  refused, not clamped or trusted. Validation is not a separate verifier that
+  each language port has to implement and might not have: the bound is part of
+  the type, so the check is inline in the generated reader, in all four
+  languages, from one compiler. There is no port that can read but not
+  validate — which means there is no language here in which you cannot safely
+  accept a packet from the internet.
 - **A second, evolution-tolerant wire** for config, assets and settings, with
   reflection and relocatable storage — see [WIRES.md](WIRES.md).
 - **`schema pack`** compiles directories of JSON into one binary container,
