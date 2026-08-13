@@ -140,6 +140,12 @@ models can be compiled straight from the schema and shipped inside the
 generated code, in every language, with the same cross-language byte-identity
 guarantee the current wire has.
 
+It will be **optional and opt-in, per field** — bit-packing stays the default,
+and nothing you have today changes shape because a coder exists. The goal is
+narrow and specific: the next step in **CPU-efficient compression for wire
+types in multiplayer games**, where the budget is measured in microseconds per
+packet and a general-purpose compressor is not in the running.
+
 It is **researched and not implemented** — the design record, including the
 LIFO constraint rANS imposes on a single-pass serializer and an honest read of
 the patent situation, lives in
