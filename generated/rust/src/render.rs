@@ -7,6 +7,7 @@ use serialize::{ReadStream, Stream, WriteStream};
 pub const RENDER_BLOCK_MAX_SPRITES: i64 = 64;
 
 // type RenderSprite
+#[repr(C)]
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub struct RenderSprite {
     pub sort_key: u64,
@@ -81,6 +82,7 @@ pub fn read_render_sprite(stream: &mut ReadStream<'_>, value: &mut RenderSprite)
 }
 
 // type RenderBlock
+#[repr(C)]
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub struct RenderBlock {
     pub worker_index: u32,

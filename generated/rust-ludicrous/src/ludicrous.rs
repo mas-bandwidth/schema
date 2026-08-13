@@ -59,7 +59,25 @@ impl DriveMode {
     pub const LUDICROUS: DriveMode = DriveMode(3);
 }
 
+/// Debug/log name for any `DriveMode` value, out-of-set included.
+pub fn enum_name_drive_mode(value: DriveMode) -> &'static str {
+    enum_name_drive_mode_dyn(value.0 as u64)
+}
+
+/// As [`enum_name_drive_mode`], over a raw wire value — the form the table
+/// reflection descriptors hold.
+pub fn enum_name_drive_mode_dyn(value: u64) -> &'static str {
+    match value {
+        0 => "None",
+        1 => "Cruise",
+        2 => "Warp",
+        3 => "Ludicrous",
+        _ => "???",
+    }
+}
+
 // type FixedProbe
+#[repr(C)]
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub struct FixedProbe {
     pub angle: i32, // wire [-180, 180]
@@ -142,6 +160,7 @@ pub fn read_fixed_probe(stream: &mut ReadStream<'_>, value: &mut FixedProbe) -> 
 }
 
 // type WideProbe
+#[repr(C)]
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub struct WideProbe {
     pub entity_id: u128,
@@ -226,6 +245,7 @@ pub fn read_wide_probe(stream: &mut ReadStream<'_>, value: &mut WideProbe) -> Re
 }
 
 // message LudicrousState
+#[repr(C)]
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub struct LudicrousState {
     pub mode: DriveMode,
@@ -332,6 +352,7 @@ pub fn read_ludicrous_state(stream: &mut ReadStream<'_>, value: &mut LudicrousSt
 
 // type FixedVec [vec3] — the tag is user-chosen and inert in v1; the delta pass
 // claims tags and assigns actions (SPEC §4.2, Type tags)
+#[repr(C)]
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub struct FixedVec {
     pub x: i64, // wire [-100000, 100000]
@@ -391,6 +412,7 @@ pub fn read_fixed_vec(stream: &mut ReadStream<'_>, value: &mut FixedVec) -> Resu
 
 // type FixedQuat [quat4] — the tag is user-chosen and inert in v1; the delta pass
 // claims tags and assigns actions (SPEC §4.2, Type tags)
+#[repr(C)]
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub struct FixedQuat {
     pub x: i32, // wire [-1, 1]

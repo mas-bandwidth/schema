@@ -23,3 +23,13 @@ mod types;
 pub use types::*;
 mod wire;
 pub use wire::*;
+
+// The TABLE wire (evolution-tolerant) — see WIRES.md.
+mod render_table;
+pub use render_table::*;
+mod table_runtime;
+pub use table_runtime::*;
+mod types_table;
+pub use types_table::*;
+mod wire_table;
+pub use wire_table::*;

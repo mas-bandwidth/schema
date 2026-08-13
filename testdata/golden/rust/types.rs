@@ -6,6 +6,7 @@ use serialize::{ReadStream, Stream, WriteStream};
 
 // type Vec3 [vec3] — the tag is user-chosen and inert in v1; the delta pass
 // claims tags and assigns actions (SPEC §4.2, Type tags)
+#[repr(C)]
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub struct Vec3 {
     pub x: f64,
@@ -56,6 +57,7 @@ pub fn read_vec3(stream: &mut ReadStream<'_>, value: &mut Vec3) -> Result {
 
 // type Quat [quat4] — the tag is user-chosen and inert in v1; the delta pass
 // claims tags and assigns actions (SPEC §4.2, Type tags)
+#[repr(C)]
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub struct Quat {
     pub x: f64,
@@ -112,6 +114,7 @@ pub fn read_quat(stream: &mut ReadStream<'_>, value: &mut Quat) -> Result {
 }
 
 // type Handle
+#[repr(C)]
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub struct Handle {
     pub object_id: i32, // wire [0, 9999]
@@ -161,6 +164,7 @@ pub fn read_handle(stream: &mut ReadStream<'_>, value: &mut Handle) -> Result {
 }
 
 // type QuantizedPosition
+#[repr(C)]
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub struct QuantizedPosition {
     pub x: i32, // wire [-8388608, 8388608]
@@ -219,6 +223,7 @@ pub fn read_quantized_position(stream: &mut ReadStream<'_>, value: &mut Quantize
 }
 
 // type QuantizedVelocity
+#[repr(C)]
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub struct QuantizedVelocity {
     pub x: i32, // wire [-2097152, 2097152]
@@ -277,6 +282,7 @@ pub fn read_quantized_velocity(stream: &mut ReadStream<'_>, value: &mut Quantize
 }
 
 // type QuantizedRotation
+#[repr(C)]
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub struct QuantizedRotation {
     pub x: i16, // wire [-1024, 1024]
@@ -361,6 +367,7 @@ pub fn read_quantized_rotation(stream: &mut ReadStream<'_>, value: &mut Quantize
 }
 
 // type RigidBody
+#[repr(C)]
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub struct RigidBody {
     pub position: Vec3,
@@ -422,6 +429,7 @@ pub fn read_rigid_body(stream: &mut ReadStream<'_>, value: &mut RigidBody) -> Re
 }
 
 // type Input
+#[repr(C)]
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub struct Input {
     pub stick_x: f32,
@@ -541,6 +549,7 @@ pub fn read_input(stream: &mut ReadStream<'_>, value: &mut Input) -> Result {
 }
 
 // type InputPacket
+#[repr(C)]
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub struct InputPacket {
     pub synchronize_sequence: u16,
@@ -612,6 +621,7 @@ pub fn read_input_packet(stream: &mut ReadStream<'_>, value: &mut InputPacket) -
 }
 
 // type ShipCreate
+#[repr(C)]
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub struct ShipCreate {
     pub ship_type: ShipType,

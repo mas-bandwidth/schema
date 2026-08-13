@@ -69,7 +69,17 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 		out[strings.ToLower(f.Base)+".rs"] = g.assemble()
 	}
 
-	out["lib.rs"] = assembleLib(u, modules)
+	tables, err := GenerateTable(u)
+	if err != nil {
+		return nil, err
+	}
+	var tableMods []string
+	for name, data := range tables {
+		out[name] = data
+		tableMods = append(tableMods, strings.TrimSuffix(name, ".rs"))
+	}
+
+	out["lib.rs"] = assembleLib(u, modules, tableMods)
 	return out, nil
 }
 
@@ -88,7 +98,7 @@ func protocolIdHome(u *ir.Unit) string {
 	return ""
 }
 
-func assembleLib(u *ir.Unit, modules map[string]string) []byte {
+func assembleLib(u *ir.Unit, modules map[string]string, tableMods []string) []byte {
 	// a module re-exports into the crate root only if it declares anything: a
 	// glob over an item-less module (a contexts aspect file — comments only)
 	// is an unused import
@@ -128,6 +138,14 @@ func assembleLib(u *ir.Unit, modules map[string]string) []byte {
 			fmt.Fprintf(&b, "mod %s;\npub use %s::*;\n", mod, mod)
 		} else {
 			fmt.Fprintf(&b, "mod %s; // no items — documentation only\n", mod)
+		}
+	}
+	// the table wire's own modules, when the unit declares or reaches a table
+	if len(tableMods) > 0 {
+		sort.Strings(tableMods)
+		b.WriteString("\n// The TABLE wire (evolution-tolerant) — see WIRES.md.\n")
+		for _, mod := range tableMods {
+			fmt.Fprintf(&b, "mod %s;\npub use %s::*;\n", mod, mod)
 		}
 	}
 	return []byte(b.String())
@@ -305,6 +323,26 @@ func (g *gen) emitEnum(d *ir.Enum) {
 		g.pf("    pub const %s: %s = %s(%d);\n", ir.RustConstName(v), d.Name, d.Name, i+1)
 	}
 	g.pf("}\n\n")
+
+	// Debug/log name for any value, out-of-set included — the counterpart of
+	// C++'s and Go's EnumName. The wire-value form (u64) is what the table
+	// reflection descriptors carry, so both spellings exist and neither
+	// forces a cast at the call site.
+	snake := ir.RustSnake(d.Name)
+	g.pf("/// Debug/log name for any `%s` value, out-of-set included.\n", d.Name)
+	g.pf("pub fn enum_name_%s(value: %s) -> &'static str {\n", snake, d.Name)
+	g.pf("    enum_name_%s_dyn(value.0 as u64)\n}\n\n", snake)
+
+	g.pf("/// As [`enum_name_%s`], over a raw wire value — the form the table\n", snake)
+	g.pf("/// reflection descriptors hold.\n")
+	g.pf("pub fn enum_name_%s_dyn(value: u64) -> &'static str {\n", snake)
+	g.pf("    match value {\n")
+	g.pf("        0 => \"None\",\n")
+	for i, v := range d.Variants {
+		g.pf("        %d => %q,\n", i+1, v)
+	}
+	g.pf("        _ => \"???\",\n")
+	g.pf("    }\n}\n\n")
 }
 
 func (g *gen) emitFlags(d *ir.Flags) {
@@ -330,6 +368,15 @@ func (g *gen) emitStruct(d *ir.Struct) {
 		g.pf("// %s %s\n", kind, d.Name)
 	}
 	g.allowNonCamel(d.Name)
+	// #[repr(C)] is what makes the relocatable-storage promise true here.
+	// Copy alone only says the bytes can be duplicated within one build;
+	// Rust's default representation may reorder fields and is not stable
+	// across builds, so memcpy to a file, an mmap or another process — the
+	// things WIRES.md promises of table storage — would be honoured by
+	// accident until the day they were not. It also makes the layout match
+	// the C++ struct field for field, which is what "the same data type in
+	// four languages" ought to mean.
+	g.pf("#[repr(C)]\n")
 	g.pf("#[derive(Clone, Copy, PartialEq, Debug)]\n")
 	if len(d.Fields) == 0 {
 		g.pf("pub struct %s {}\n\n", d.Name)

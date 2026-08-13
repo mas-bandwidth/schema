@@ -455,8 +455,7 @@ stray file that matches no variant — which catches both a forgotten config
 and a stale one.
 
 The result is one file with a schema hash stamped in it, read through the
-generated table codecs in C++, C# or Go. (Rust has no table backend yet — see
-[WIRES.md](WIRES.md).)
+generated table codecs, in any of the four languages.
 
 ---
 

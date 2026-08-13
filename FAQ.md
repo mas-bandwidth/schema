@@ -254,12 +254,15 @@ cost with no buyer. See
 
 ## Is everything supported in all four languages?
 
-The **message wire** is: C++, C#, Go and Rust, generated from one IR and
-checked against each other in CI on every push.
+Yes, as of v1.5.0. Both wires — message and table — are generated for C++,
+C#, Go and Rust from one IR, and checked against each other in CI on every
+push.
 
-The **table wire** is not — it is C++, C# and Go today. Rust has no table
-backend yet, so `--lang rust` emits the message wire only. If your Rust code
-needs to read a packed config container, that is the gap to know about.
+Rust was the exception until v1.5.0: it had the message wire only, so a Rust
+service could not read a packed config container. It now has the codecs, the
+reflection descriptors, and `#[repr(C)]` storage, which is what makes the
+relocatability the table wire promises actually true in Rust rather than
+incidental.
 
 ## What does the language NOT have?
 
@@ -276,12 +279,11 @@ Worth knowing before you adopt rather than after:
 - **No field-number pinning on the table wire** — identity is the field's name
   hash, so renaming is wire-breaking. See
   [WIRES.md](WIRES.md#renaming-a-table-field-changes-its-identity).
-- **No Rust table backend** — see above.
 - **No zero-copy access.** Reads decode into your struct.
 
 Some of these are scope (a game's packet does not need maps), some are
 consequences of relocatable storage (recursion), and some are just not built
-yet (Rust tables, `oneof`). The list is here so you can tell which of your
+yet (`oneof`). The list is here so you can tell which of your
 requirements are unmet before you find out the hard way.
 
 ## Do I need the serialize runtimes?

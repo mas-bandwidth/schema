@@ -13,6 +13,22 @@ impl Team {
     pub const BLUE: Team = Team(2);
 }
 
+/// Debug/log name for any `Team` value, out-of-set included.
+pub fn enum_name_team(value: Team) -> &'static str {
+    enum_name_team_dyn(value.0 as u64)
+}
+
+/// As [`enum_name_team`], over a raw wire value — the form the table
+/// reflection descriptors hold.
+pub fn enum_name_team_dyn(value: u64) -> &'static str {
+    match value {
+        0 => "None",
+        1 => "Red",
+        2 => "Blue",
+        _ => "???",
+    }
+}
+
 // ShipType — None = 0 implicit, variants dense from 1, wire range [0, 5] (SPEC §4.2);
 // a newtype because [max = ...] headroom makes non-variant values wire-legal
 #[repr(transparent)]
@@ -28,6 +44,25 @@ impl ShipType {
     pub const CARRIER: ShipType = ShipType(5);
 }
 
+/// Debug/log name for any `ShipType` value, out-of-set included.
+pub fn enum_name_ship_type(value: ShipType) -> &'static str {
+    enum_name_ship_type_dyn(value.0 as u64)
+}
+
+/// As [`enum_name_ship_type`], over a raw wire value — the form the table
+/// reflection descriptors hold.
+pub fn enum_name_ship_type_dyn(value: u64) -> &'static str {
+    match value {
+        0 => "None",
+        1 => "Fighter",
+        2 => "Corvette",
+        3 => "Bomber",
+        4 => "Destroyer",
+        5 => "Carrier",
+        _ => "???",
+    }
+}
+
 // MissileType — None = 0 implicit, variants dense from 1, wire range [0, 3] (SPEC §4.2);
 // a newtype because [max = ...] headroom makes non-variant values wire-legal
 #[repr(transparent)]
@@ -39,6 +74,23 @@ impl MissileType {
     pub const HEATSEEKER: MissileType = MissileType(1);
     pub const TORPEDO: MissileType = MissileType(2);
     pub const NUKE: MissileType = MissileType(3);
+}
+
+/// Debug/log name for any `MissileType` value, out-of-set included.
+pub fn enum_name_missile_type(value: MissileType) -> &'static str {
+    enum_name_missile_type_dyn(value.0 as u64)
+}
+
+/// As [`enum_name_missile_type`], over a raw wire value — the form the table
+/// reflection descriptors hold.
+pub fn enum_name_missile_type_dyn(value: u64) -> &'static str {
+    match value {
+        0 => "None",
+        1 => "Heatseeker",
+        2 => "Torpedo",
+        3 => "Nuke",
+        _ => "???",
+    }
 }
 
 // PropType — None = 0 implicit, variants dense from 1, wire range [0, 6] (SPEC §4.2);
@@ -55,6 +107,26 @@ impl PropType {
     pub const SPHERE: PropType = PropType(4);
     pub const BLACK_HOLE: PropType = PropType(5);
     pub const DYSON_PANEL: PropType = PropType(6);
+}
+
+/// Debug/log name for any `PropType` value, out-of-set included.
+pub fn enum_name_prop_type(value: PropType) -> &'static str {
+    enum_name_prop_type_dyn(value.0 as u64)
+}
+
+/// As [`enum_name_prop_type`], over a raw wire value — the form the table
+/// reflection descriptors hold.
+pub fn enum_name_prop_type_dyn(value: u64) -> &'static str {
+    match value {
+        0 => "None",
+        1 => "Asteroid",
+        2 => "Chunk",
+        3 => "Fragment",
+        4 => "Sphere",
+        5 => "BlackHole",
+        6 => "DysonPanel",
+        _ => "???",
+    }
 }
 
 // ShipFlags — one bit per variant, consumed as masks; storage u64 in every

@@ -107,7 +107,7 @@ have shipped it.
   validate — which means there is no language here in which you cannot safely
   accept a packet from the internet.
 - **A second, evolution-tolerant wire** for config, assets and settings, with
-  reflection and relocatable storage — C++, C# and Go; see
+  reflection and relocatable storage — in all four languages; see
   [WIRES.md](WIRES.md).
 - **`schema pack`** compiles directories of JSON into one binary container,
   validating every value against the schema as it goes.

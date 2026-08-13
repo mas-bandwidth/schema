@@ -23,6 +23,23 @@ impl Weapon {
     pub const RAILGUN: Weapon = Weapon(3);
 }
 
+/// Debug/log name for any `Weapon` value, out-of-set included.
+pub fn enum_name_weapon(value: Weapon) -> &'static str {
+    enum_name_weapon_dyn(value.0 as u64)
+}
+
+/// As [`enum_name_weapon`], over a raw wire value — the form the table
+/// reflection descriptors hold.
+pub fn enum_name_weapon_dyn(value: u64) -> &'static str {
+    match value {
+        0 => "None",
+        1 => "Laser",
+        2 => "Missile",
+        3 => "Railgun",
+        _ => "???",
+    }
+}
+
 // ProbeFlags — one bit per variant, consumed as masks; storage u64 in every
 // target, wire 8 bits (SPEC §4.2)
 pub type ProbeFlags = u64;
@@ -32,6 +49,7 @@ pub const PROBE_FLAGS_CLOAKED: ProbeFlags = 1 << 1;
 pub const PROBE_FLAGS_DAMAGED: ProbeFlags = 1 << 2;
 
 // type ProbeHeader
+#[repr(C)]
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub struct ProbeHeader {
     pub version: u32,
@@ -103,6 +121,7 @@ pub fn read_probe_header(stream: &mut ReadStream<'_>, value: &mut ProbeHeader) -
 }
 
 // type ProbeBits
+#[repr(C)]
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub struct ProbeBits {
     pub small: u32,
@@ -180,6 +199,7 @@ pub fn read_probe_bits(stream: &mut ReadStream<'_>, value: &mut ProbeBits) -> Re
 }
 
 // type ProbeSample
+#[repr(C)]
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub struct ProbeSample {
     pub active: bool, // = true in new() (zero value otherwise)
@@ -345,6 +365,7 @@ pub fn read_probe_sample(stream: &mut ReadStream<'_>, value: &mut ProbeSample) -
 }
 
 // type ProbeConfig
+#[repr(C)]
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub struct ProbeConfig {
     pub retries: i32, // = -1 in new() (zero value otherwise)
@@ -410,6 +431,7 @@ pub fn read_probe_config(stream: &mut ReadStream<'_>, value: &mut ProbeConfig) -
 }
 
 // type ProbeArray
+#[repr(C)]
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub struct ProbeArray {
     pub samples: [ProbeSample; 2],
@@ -464,6 +486,7 @@ pub fn read_probe_array(stream: &mut ReadStream<'_>, value: &mut ProbeArray) -> 
 }
 
 // type ProbeReport
+#[repr(C)]
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub struct ProbeReport {
     pub header: ProbeHeader,
@@ -515,6 +538,7 @@ pub fn read_probe_report(stream: &mut ReadStream<'_>, value: &mut ProbeReport) -
 }
 
 // type TestData
+#[repr(C)]
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub struct TestData {
     pub a: i32, // wire [-100, 100]

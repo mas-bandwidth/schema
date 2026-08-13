@@ -857,10 +857,107 @@ fn main() {
         check(tag == ObjectType::NONE, "the None sentinel round-trips");
     }
 
+    // ---- the TABLE wire: pins against the same C++ goldens the other three
+    // ---- targets are held to, round-trip, and branch-guard elision
+    {
+        let mut input = RigidBody::default();
+        input.position = Vec3 { x: 1.5, y: -2.5, z: 3.25 };
+        input.orientation = Quat { x: 0.1, y: 0.2, z: 0.3, w: 0.9 };
+        input.at_rest = false;
+        input.linear_velocity = Vec3 { x: 10.0, y: 20.0, z: -3.0 };
+        input.angular_velocity = Vec3 { x: 0.25, y: 0.5, z: 0.75 };
+
+        let wire = table_write_rigid_body(&input);
+        golden_table("rigidbody_moving", &wire);
+
+        let mut output = RigidBody::default();
+        let mut report = TableReport::default();
+        check(
+            table_read_rigid_body(&wire, &mut output, &mut report),
+            "table read RigidBody",
+        );
+        check(
+            report == TableReport::default(),
+            "same-schema table decode is silent",
+        );
+        check(output == input, "RigidBody table round-trips");
+
+        input.at_rest = true;
+        let at_rest = table_write_rigid_body(&input);
+        golden_table("rigidbody_at_rest", &at_rest);
+
+        let mut output2 = RigidBody::default();
+        // dirty — prefill must reset it
+        output2.linear_velocity = Vec3 { x: 99.0, y: 99.0, z: 99.0 };
+        let mut report2 = TableReport::default();
+        check(
+            table_read_rigid_body(&at_rest, &mut output2, &mut report2),
+            "table read RigidBody at rest",
+        );
+        check(output2.at_rest, "at_rest reads true");
+        check(
+            output2.linear_velocity == Vec3::default()
+                && output2.angular_velocity == Vec3::default(),
+            "the guard kept both velocities off the wire; prefill supplies the defaults",
+        );
+
+        // reflection: the descriptor is static data and must describe the
+        // same fields the codec just wrote
+        let info = table_type_rigid_body();
+        check(info.name == "RigidBody", "descriptor names the type");
+        check(info.fields.len() == 5, "descriptor has every field");
+        let guarded: Vec<&str> = info
+            .fields
+            .iter()
+            .filter(|f| !f.guard.is_empty())
+            .map(|f| f.name)
+            .collect();
+        check(
+            guarded == vec!["linear_velocity", "angular_velocity"],
+            "the descriptor carries the branch guard for exactly the guarded fields",
+        );
+    }
+
     if FAILED.load(Ordering::Relaxed) {
         std::process::exit(1);
     }
     println!("OK");
+}
+
+/// golden_table byte-compares table-wire output against the C++-pinned golden.
+fn golden_table(name: &str, data: &[u8]) {
+    match std::fs::read(format!("../../testdata/table/{name}.bin")) {
+        Ok(golden) => {
+            if data != golden.as_slice() {
+                // A byte count and the first divergence localise the bug far
+                // faster than "they differ" does.
+                println!(
+                    "  table golden {name}: rust {} bytes, golden {} bytes",
+                    data.len(),
+                    golden.len()
+                );
+                if let Some(at) = (0..data.len().min(golden.len()))
+                    .find(|&i| data[i] != golden[i])
+                {
+                    let lo = at.saturating_sub(8);
+                    let hi = (at + 8).min(data.len().min(golden.len()));
+                    println!("  first difference at byte {at}:");
+                    println!("    rust   {:02x?}", &data[lo..hi]);
+                    println!("    golden {:02x?}", &golden[lo..hi]);
+                } else {
+                    println!("  common prefix matches — one is a prefix of the other");
+                }
+            }
+            check(
+                data == golden.as_slice(),
+                &format!("table golden {name} — Rust bytes must equal the C++-pinned bytes"),
+            )
+        }
+        Err(e) => {
+            println!("FAILED: read table golden {name}: {e}");
+            FAILED.store(true, Ordering::Relaxed);
+        }
+    }
 }
 
 // test_data_instance is the deterministic TestData the C++ test pins — the

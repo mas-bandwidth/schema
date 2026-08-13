@@ -20,6 +20,7 @@ impl MessageType {
 }
 
 // message Heartbeat
+#[repr(C)]
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub struct Heartbeat {}
 
@@ -48,6 +49,7 @@ pub fn read_heartbeat(stream: &mut ReadStream<'_>, value: &mut Heartbeat) -> Res
 }
 
 // message Test
+#[repr(C)]
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub struct Test {
     pub test_a: u16,
@@ -129,6 +131,7 @@ pub fn read_test(stream: &mut ReadStream<'_>, value: &mut Test) -> Result {
 }
 
 // message Block
+#[repr(C)]
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub struct Block {
     pub data: [u8; MAX_BLOCK_SIZE as usize], // bytes(MaxBlockSize): fixed buffer, used length beside it (SPEC §4.7)
@@ -171,6 +174,7 @@ pub fn read_block(stream: &mut ReadStream<'_>, value: &mut Block) -> Result {
 }
 
 // message Chat
+#[repr(C)]
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub struct Chat {
     pub text: [u8; MAX_CHAT_LENGTH as usize], // string(MaxChatLength): max length, used length beside it (SPEC §4.7)
@@ -218,6 +222,7 @@ pub fn read_chat(stream: &mut ReadStream<'_>, value: &mut Chat) -> Result {
 }
 
 // message Synchronize
+#[repr(C)]
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub struct Synchronize {
     pub sync_frame: u64,
@@ -264,6 +269,7 @@ pub fn read_synchronize(stream: &mut ReadStream<'_>, value: &mut Synchronize) ->
 }
 
 // message Timescale
+#[repr(C)]
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub struct Timescale {
     pub scale: f64,
