@@ -114,7 +114,7 @@ Hand-owned sets stay hand-declared (`Team`) — the SPEC's existing rule.
 `schema`'s data compiler replaces: `json2flat` (runtime flatbuffers parser), the 928-line
 `update_config` collation (slot-by-embedded-enum, count fatals, filename pairing), and
 `update_schemas`' hash generation — one tool, verification at compile, content hash
-computed not trusted (today the backend stores a client-supplied hash unverified), orphan
+computed rather than trusted, orphan
 detection, no git side effects (today `update_schemas` git-adds as a side effect). The
 `UPDATE_CONFIG` transport needs nothing: it already ships opaque bytes over a message the
 schema unit expresses.
