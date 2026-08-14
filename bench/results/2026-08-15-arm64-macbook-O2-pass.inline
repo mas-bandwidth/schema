@@ -1,0 +1,266 @@
+# 2026-08-15-arm64-macbook-O2-pass.inline — per-symbol inline ledger (BENCH-STANDARD.md §4)
+# generated: 2026-08-14T14:13:00Z on macbook (Darwin arm64)
+# ground truth: call instructions into the serialize runtime, counted in
+# the emitted code and propagated transitively through out-of-line
+# generated helpers. Compiler remarks are advisory; the disassembly is
+# the verdict. CSV verdicts: full = zero runtime calls per op,
+# partial:N = N remain PER OP (§4.2 — loop unrolling divided back
+# out), unknown = not attributable (stays un-ratioable).
+== cpp (otool -tv of build/bench/schema_bench_cpp; clang -Rpass=inline shadow compile)
+# symbol / direct-runtime-calls / transitive-per-op / indirect (nonzero only)
+symbol _main 4 109 1
+symbol __ZN7example12ReadTestDataERN9serialize10ReadStreamERNS_8TestDataE 6 6 0
+symbol __ZN12_GLOBAL__N_126rt_bench_packet_write_loopERNS_13RtBenchPacketElRy 0 6 0
+symbol __ZN12_GLOBAL__N_113RtBenchPacket9SerializeIN9serialize11WriteStreamEEEbRT_ 6 6 0
+symbol __ZN12_GLOBAL__N_125rt_bench_mixed_write_loopERNS_12RtBenchMixedElRy 0 5 0
+symbol __ZN12_GLOBAL__N_112RtBenchMixed9SerializeIN9serialize11WriteStreamEEEbRT_ 5 5 0
+symbol __ZN12_GLOBAL__N_124rt_bench_ints_write_loopERNS_11RtBenchIntsElRy 0 3 0
+symbol __ZN12_GLOBAL__N_111RtBenchInts9SerializeIN9serialize11WriteStreamEEEbRT_ 3 3 0
+symbol __ZN7example13WriteTestDataERN9serialize11WriteStreamERKNS_8TestDataE 2 2 0
+symbol __ZN12_GLOBAL__N_124rt_bench_bits_write_loopERNS_11RtBenchBitsElRy 0 2 0
+symbol __ZN12_GLOBAL__N_111RtBenchBits9SerializeIN9serialize11WriteStreamEEEbRT_ 2 2 0
+symbol __ZL11build_batchRxPhi 0 2 0
+symbol __ZN9serialize24serialize_bytes_internalINS_11WriteStreamEEEbRT_Phx 1 1 0
+symbol __ZN7example12WriteMessageERN9serialize11WriteStreamERKNS_7MessageE 1 1 0
+# missed-inline remarks naming serialize (callee, caller, cost where reported):
+remark 18 '_ZN7example9WriteVec3ERN9serialize11WriteStreamERKNS_4Vec3E' not inlined into 'main' because too costly to inline (cost=330, threshold=45)
+remark 8 '_ZN7example9WriteVec3ERN9serialize11WriteStreamERKNS_4Vec3E' not inlined into '_ZL13bench_messageIN7example9RigidBodyEPFbRN9serialize11WriteStreamERKS1_EPFbRNS2_10ReadStreamERS1_EZ4mainE3$_0EvPKcSG_lRKT_T0_T1_T2_' because too costly to inline (cost=330, threshold=325)
+remark 8 '_ZN7example9WriteVec3ERN9serialize11WriteStreamERKNS_4Vec3E' not inlined into '_ZL13bench_messageIN7example9RigidBodyEPFbRN9serialize11WriteStreamERKS1_EPFbRNS2_10ReadStreamERS1_EPFvSB_yEEvPKcSH_lRKT_T0_T1_T2_' because too costly to inline (cost=330, threshold=325)
+remark 8 '_ZN7example16WriteProbeSampleERN9serialize11WriteStreamERKNS_11ProbeSampleE' not inlined into '_ZL13bench_messageIN7example10ProbeArrayEPFbRN9serialize11WriteStreamERKS1_EPFbRNS2_10ReadStreamERS1_EPFvSB_yEEvPKcSH_lRKT_T0_T1_T2_' because too costly to inline (cost=785, threshold=325)
+remark 6 '_ZN7example9WriteVec3ERN9serialize11WriteStreamERKNS_4Vec3E' not inlined into 'main' because too costly to inline (cost=330, threshold=325)
+remark 6 '_ZN7example9WriteQuatERN9serialize11WriteStreamERKNS_4QuatE' not inlined into 'main' because too costly to inline (cost=455, threshold=45)
+remark 6 '_ZN7example16WriteProbeSampleERN9serialize11WriteStreamERKNS_11ProbeSampleE' not inlined into 'main' because too costly to inline (cost=785, threshold=45)
+remark 5 '_ZN9serialize11WriteStream13SerializeBitsEji' not inlined into '_ZN12_GLOBAL__N_112RtBenchMixed9SerializeIN9serialize11WriteStreamEEEbRT_' because too costly to inline (cost=65, threshold=45)
+remark 5 '_ZN7example12WriteMessageERN9serialize11WriteStreamERKNS_7MessageE' not inlined into 'main' because too costly to inline (cost=1555, threshold=325)
+remark 4 '_ZN9serialize9BitWriter10WriteBytesEPKhx' not inlined into '_ZL13bench_messageIN7example4ChatEPFbRN9serialize11WriteStreamERKS1_EPFbRNS2_10ReadStreamERS1_EPFvSB_yEEvPKcSH_lRKT_T0_T1_T2_' because too costly to inline (cost=235, threshold=225)
+remark 4 '_ZN7example9WriteVec3ERN9serialize11WriteStreamERKNS_4Vec3E' not inlined into '_ZL13bench_messageIN7example9RigidBodyEPFbRN9serialize11WriteStreamERKS1_EPFbRNS2_10ReadStreamERS1_EZ4mainE3$_0EvPKcSG_lRKT_T0_T1_T2_' because too costly to inline (cost=330, threshold=45)
+remark 4 '_ZN7example9WriteVec3ERN9serialize11WriteStreamERKNS_4Vec3E' not inlined into '_ZL13bench_messageIN7example9RigidBodyEPFbRN9serialize11WriteStreamERKS1_EPFbRNS2_10ReadStreamERS1_EPFvSB_yEEvPKcSH_lRKT_T0_T1_T2_' because too costly to inline (cost=330, threshold=45)
+remark 4 '_ZN7example9WriteQuatERN9serialize11WriteStreamERKNS_4QuatE' not inlined into '_ZL13bench_messageIN7example9RigidBodyEPFbRN9serialize11WriteStreamERKS1_EPFbRNS2_10ReadStreamERS1_EZ4mainE3$_0EvPKcSG_lRKT_T0_T1_T2_' because too costly to inline (cost=455, threshold=325)
+remark 4 '_ZN7example9WriteQuatERN9serialize11WriteStreamERKNS_4QuatE' not inlined into '_ZL13bench_messageIN7example9RigidBodyEPFbRN9serialize11WriteStreamERKS1_EPFbRNS2_10ReadStreamERS1_EPFvSB_yEEvPKcSH_lRKT_T0_T1_T2_' because too costly to inline (cost=455, threshold=325)
+remark 4 '_ZN7example21WriteShipData_ShallowERN9serialize11WriteStreamERKNS_16ShipData_ShallowE' not inlined into 'main' because too costly to inline (cost=885, threshold=325)
+remark 4 '_ZN7example21WriteShipData_ShallowERN9serialize11WriteStreamERKNS_16ShipData_ShallowE' not inlined into '_ZL13bench_messageIN7example16ShipData_ShallowEPFbRN9serialize11WriteStreamERKS1_EPFbRNS2_10ReadStreamERS1_EPFvSB_yEEvPKcSH_lRKT_T0_T1_T2_' because too costly to inline (cost=885, threshold=325)
+remark 4 '_ZN7example16WriteInputPacketERN9serialize11WriteStreamERKNS_11InputPacketE' not inlined into 'main' because too costly to inline (cost=565, threshold=325)
+remark 4 '_ZN7example16WriteInputPacketERN9serialize11WriteStreamERKNS_11InputPacketE' not inlined into '_ZL13bench_messageIN7example11InputPacketEPFbRN9serialize11WriteStreamERKS1_EPFbRNS2_10ReadStreamERS1_EPFvSB_yEEvPKcSH_lRKT_T0_T1_T2_' because too costly to inline (cost=565, threshold=325)
+remark 4 '_ZN7example15WriteShipCreateERN9serialize11WriteStreamERKNS_10ShipCreateE' not inlined into 'main' because too costly to inline (cost=1075, threshold=325)
+remark 4 '_ZN7example15WriteShipCreateERN9serialize11WriteStreamERKNS_10ShipCreateE' not inlined into '_ZL13bench_messageIN7example10ShipCreateEPFbRN9serialize11WriteStreamERKS1_EPFbRNS2_10ReadStreamERS1_EPFvSB_yEEvPKcSH_lRKT_T0_T1_T2_' because too costly to inline (cost=1075, threshold=325)
+remark 4 '_ZN7example15ReadProbeSampleERN9serialize10ReadStreamERNS_11ProbeSampleE' not inlined into '_ZL13bench_messageIN7example10ProbeArrayEPFbRN9serialize11WriteStreamERKS1_EPFbRNS2_10ReadStreamERS1_EPFvSB_yEEvPKcSH_lRKT_T0_T1_T2_' because too costly to inline (cost=505, threshold=325)
+remark 4 '_ZN7example14WriteProbeBitsERN9serialize11WriteStreamERKNS_9ProbeBitsE' not inlined into '_ZL13bench_messageIN7example9ProbeBitsEPFbRN9serialize11WriteStreamERKS1_EPFbRNS2_10ReadStreamERS1_EPFvSB_yEEvPKcSH_lRKT_T0_T1_T2_' because too costly to inline (cost=445, threshold=325)
+remark 4 '_ZN7example13WriteTestDataERN9serialize11WriteStreamERKNS_8TestDataE' not inlined into 'main' because too costly to inline (cost=2595, threshold=325)
+remark 4 '_ZN7example13WriteTestDataERN9serialize11WriteStreamERKNS_8TestDataE' not inlined into '_ZL13bench_messageIN7example8TestDataEPFbRN9serialize11WriteStreamERKS1_EPFbRNS2_10ReadStreamERS1_EPFvSB_yEEvPKcSH_lRKT_T0_T1_T2_' because too costly to inline (cost=2595, threshold=325)
+remark 3 '_ZN9serialize24serialize_float_internalINS_11WriteStreamEEEbRT_Rf' not inlined into '_ZN12_GLOBAL__N_113RtBenchPacket9SerializeIN9serialize11WriteStreamEEEbRT_' because too costly to inline (cost=75, threshold=45)
+remark 3 '_ZN9serialize11WriteStream13SerializeBitsEji' not inlined into '_ZN12_GLOBAL__N_113RtBenchPacket9SerializeIN9serialize11WriteStreamEEEbRT_' because too costly to inline (cost=65, threshold=45)
+remark 3 '_ZN9serialize11WriteStream13SerializeBitsEji' not inlined into '_ZN12_GLOBAL__N_111RtBenchBits9SerializeIN9serialize11WriteStreamEEEbRT_' because too costly to inline (cost=65, threshold=45)
+remark 3 '_ZN7example9WriteVec3ERN9serialize11WriteStreamERKNS_4Vec3E' not inlined into '_ZN7example14WriteRigidBodyERN9serialize11WriteStreamERKNS_9RigidBodyE' because too costly to inline (cost=485, threshold=325)
+remark 3 '_ZN7example14WriteProbeBitsERN9serialize11WriteStreamERKNS_9ProbeBitsE' not inlined into 'main' because too costly to inline (cost=445, threshold=45)
+remark 3 '_ZN12_GLOBAL__N_113RtBenchPacket9SerializeIN9serialize11WriteStreamEEEbRT_' not inlined into 'main' because too costly to inline (cost=825, threshold=225)
+remark 3 '_ZN12_GLOBAL__N_113RtBenchPacket9SerializeIN9serialize11WriteStreamEEEbRT_' not inlined into '_ZN12_GLOBAL__N_18bench_rtINS_13RtBenchPacketEPFbRS1_lRyEPFbS2_lxEPFvS2_yEEEvPKclRKT_T0_T1_T2_' because too costly to inline (cost=825, threshold=225)
+remark 3 '_ZN12_GLOBAL__N_112RtBenchMixed9SerializeIN9serialize11WriteStreamEEEbRT_' not inlined into 'main' because too costly to inline (cost=760, threshold=225)
+remark 3 '_ZN12_GLOBAL__N_112RtBenchMixed9SerializeIN9serialize11WriteStreamEEEbRT_' not inlined into '_ZN12_GLOBAL__N_18bench_rtINS_12RtBenchMixedEPFbRS1_lRyEPFbS2_lxEPFvS2_yEEEvPKclRKT_T0_T1_T2_' because too costly to inline (cost=760, threshold=225)
+remark 3 '_ZN12_GLOBAL__N_111RtBenchInts9SerializeIN9serialize11WriteStreamEEEbRT_' not inlined into 'main' because too costly to inline (cost=670, threshold=225)
+remark 3 '_ZN12_GLOBAL__N_111RtBenchInts9SerializeIN9serialize11WriteStreamEEEbRT_' not inlined into '_ZN12_GLOBAL__N_18bench_rtINS_11RtBenchIntsEPFbRS1_lRyEPFbS2_lxEPFvS2_yEEEvPKclRKT_T0_T1_T2_' because too costly to inline (cost=670, threshold=225)
+remark 3 '_ZN12_GLOBAL__N_111RtBenchBits9SerializeIN9serialize11WriteStreamEEEbRT_' not inlined into 'main' because too costly to inline (cost=590, threshold=225)
+remark 3 '_ZN12_GLOBAL__N_111RtBenchBits9SerializeIN9serialize11WriteStreamEEEbRT_' not inlined into '_ZN12_GLOBAL__N_18bench_rtINS_11RtBenchBitsEPFbRS1_lRyEPFbS2_lxEPFvS2_yEEEvPKclRKT_T0_T1_T2_' because too costly to inline (cost=590, threshold=225)
+remark 2 '_ZN9serialize9BitWriter10WriteBytesEPKhx' not inlined into 'main' because too costly to inline (cost=235, threshold=45)
+remark 2 '_ZN9serialize9BitWriter10WriteBytesEPKhx' not inlined into 'main' because too costly to inline (cost=235, threshold=225)
+remark 2 '_ZN9serialize9BitWriter10WriteBytesEPKhx' not inlined into '_ZN7example13WriteTestDataERN9serialize11WriteStreamERKNS_8TestDataE' because too costly to inline (cost=345, threshold=225)
+# cpp per-row attribution (atos inline stacks over the -g shadow;
+# untimed = call sites in setup/self-check/variant code, excluded):
+attr N rigidbody_moving read 1
+attr N shipcreate read 0
+attr N ship_shallow read 0
+attr N message_batch read 0
+attr N ship_shallow write 0
+attr N inputpacket write 1
+attr N probearray write 0
+attr N rigidbody_at_rest read 1
+attr N probearray read 0
+attr N chat write 1
+attr N probebits write 0
+attr N testdata write 2
+attr N inputpacket read 1
+attr N message_batch write 2
+attr N shipcreate write 1
+attr N rigidbody_moving write 0
+attr N rigidbody_at_rest write 0
+attr N testdata read 6
+attr STATS groups 164 untimed 136 unattributed 0
+== c (otool -tv of build/bench/schema_bench_c; clang -Rpass=inline shadow compile)
+# symbol / direct-runtime-calls / transitive-per-op / indirect (nonzero only)
+symbol _main 8 343 1
+symbol _write_test_data 36 36 0
+symbol _read_test_data 18 18 0
+symbol _write_ship_shallow 11 11 0
+symbol _read_ship_shallow 9 9 0
+symbol _serialize_read_int_relative 5 5 0
+symbol _write_ship_create 4 4 0
+symbol _write_input_packet 4 4 0
+symbol _read_input_packet 4 4 0
+symbol _serialize_write_int_relative 3 3 0
+symbol _rt_write_bench_packet 3 3 0
+symbol _rt_read_bench_packet 3 3 0
+symbol _rt_bench_packet_write_loop 0 3 0
+symbol _rt_bench_packet_read_loop 0 3 0
+symbol _rt_write_bench_mixed 2 2 0
+symbol _rt_read_bench_mixed 2 2 0
+symbol _rt_bench_mixed_write_loop 0 2 0
+symbol _rt_bench_mixed_read_loop 0 2 0
+symbol _build_batch 0 2 0
+symbol _write_probe_array 1 1 0
+symbol _write_message 1 1 0
+symbol _serialize_read_string 1 1 0
+symbol _serialize_read_fixed64 1 1 0
+symbol _serialize_read_fixed32 1 1 0
+symbol _serialize_read_fixed128 1 1 0
+symbol _read_ship_create 1 1 0
+symbol _read_probe_array 1 1 0
+# missed-inline remarks naming serialize (callee, caller, cost where reported):
+remark 12 'serialize_write_bits' not inlined into 'write_ship_shallow' because too costly to inline (cost=105, threshold=45)
+remark 9 'serialize_read_bits' not inlined into 'read_ship_shallow' because too costly to inline (cost=55, threshold=45)
+remark 8 'serialize_write_bits' not inlined into 'write_test_data' because too costly to inline (cost=105, threshold=45)
+remark 6 'serialize_read_bits' not inlined into 'read_test_data' because too costly to inline (cost=55, threshold=45)
+remark 4 'serialize_write_int' not inlined into 'serialize_write_int_relative' because too costly to inline (cost=105, threshold=45)
+remark 4 'serialize_write_bool' not inlined into 'write_input_packet' because too costly to inline (cost=110, threshold=45)
+remark 4 'serialize_write_bool' not inlined into 'write_input' because too costly to inline (cost=110, threshold=45)
+remark 4 'serialize_write_bits' not inlined into 'write_ship_create' because too costly to inline (cost=105, threshold=45)
+remark 4 'serialize_read_int' not inlined into 'serialize_read_int_relative' because too costly to inline (cost=75, threshold=45)
+remark 4 'serialize_read_bool' not inlined into 'read_input_packet' because too costly to inline (cost=65, threshold=45)
+remark 4 'serialize_read_bool' not inlined into 'read_input' because too costly to inline (cost=65, threshold=45)
+remark 3 'serialize_write_bool' not inlined into 'serialize_write_int_relative' because too costly to inline (cost=105, threshold=45)
+remark 3 'serialize_read_bool' not inlined into 'serialize_read_int_relative' because too costly to inline (cost=60, threshold=45)
+remark 2 'serialize_write_uint64' not inlined into 'write_test_data' because too costly to inline (cost=245, threshold=45)
+remark 2 'serialize_write_int' not inlined into 'write_test_data' because too costly to inline (cost=100, threshold=45)
+remark 2 'serialize_write_bits' not inlined into 'write_test_data' because too costly to inline (cost=100, threshold=45)
+remark 2 'serialize_read_uint64' not inlined into 'read_test_data' because too costly to inline (cost=150, threshold=45)
+remark 2 'serialize_read_int' not inlined into 'read_test_data' because too costly to inline (cost=75, threshold=45)
+remark 2 'serialize_read_bits' not inlined into 'read_test_data' because too costly to inline (cost=50, threshold=45)
+remark 1 'serialize_write_uint64' not inlined into 'rt_write_bench_packet' because too costly to inline (cost=245, threshold=45)
+remark 1 'serialize_write_int' not inlined into 'rt_write_bench_mixed' because too costly to inline (cost=100, threshold=45)
+remark 1 'serialize_write_int' not inlined into 'rt_write_bench_ints' because too costly to inline (cost=100, threshold=45)
+remark 1 'serialize_write_float' not inlined into 'write_test_data' because too costly to inline (cost=105, threshold=45)
+remark 1 'serialize_write_float' not inlined into 'rt_write_bench_packet' because too costly to inline (cost=105, threshold=45)
+remark 1 'serialize_write_fixed_core' not inlined into 'serialize_write_fixed64' because too costly to inline (cost=340, threshold=225)
+remark 1 'serialize_write_fixed_core' not inlined into 'serialize_write_fixed32' because too costly to inline (cost=340, threshold=225)
+remark 1 'serialize_write_fixed_core' not inlined into 'serialize_write_fixed128' because too costly to inline (cost=340, threshold=225)
+remark 1 'serialize_write_double' not inlined into 'write_test_data' because too costly to inline (cost=245, threshold=45)
+remark 1 'serialize_write_bytes' not inlined into 'serialize_write_string' because too costly to inline (cost=670, threshold=225)
+remark 1 'serialize_write_bool' not inlined into 'write_test_data' because too costly to inline (cost=110, threshold=45)
+remark 1 'serialize_write_bits' not inlined into 'write_quantized_rotation' because too costly to inline (cost=105, threshold=45)
+remark 1 'serialize_write_bits' not inlined into 'write_probe_sample' because too costly to inline (cost=105, threshold=45)
+remark 1 'serialize_write_bits' not inlined into 'serialize_write_int_relative' because too costly to inline (cost=100, threshold=45)
+remark 1 'serialize_write_bits' not inlined into 'rt_write_bench_mixed' because too costly to inline (cost=105, threshold=45)
+remark 1 'serialize_write_bits' not inlined into 'rt_write_bench_mixed' because too costly to inline (cost=100, threshold=45)
+remark 1 'serialize_write_align' not inlined into 'write_test_data' because too costly to inline (cost=120, threshold=45)
+remark 1 'serialize_read_uint64' not inlined into 'rt_read_bench_packet' because too costly to inline (cost=155, threshold=45)
+remark 1 'serialize_read_int' not inlined into 'rt_read_bench_mixed' because too costly to inline (cost=75, threshold=45)
+remark 1 'serialize_read_int' not inlined into 'rt_read_bench_ints' because too costly to inline (cost=75, threshold=45)
+remark 1 'serialize_read_float' not inlined into 'rt_read_bench_packet' because too costly to inline (cost=70, threshold=45)
+note: c chat write: entry symbol inlined away and runtime calls exist elsewhere — inline stays unknown
+note: c chat read: entry symbol inlined away and runtime calls exist elsewhere — inline stays unknown
+note: c message_batch read: entry symbol inlined away and runtime calls exist elsewhere — inline stays unknown
+# note: static counts include both arms of branchy messages (rigidbody at_rest
+# shares rigid_body's entry, so its N is the moving shape's upper bound)
+== rust (otool -tv of the measured bench/rust/target/release/benchrust, targets classified by defining crate; -Cremark=inline shadow rebuild)
+# symbol / direct-runtime-calls / transitive-per-op / indirect (nonzero only)
+symbol CRATE_benchrust___RNvCs3bKCB1WkK2S_9benchrust4main 11 1051 0
+symbol CRATE_benchrust___RNvNtCs3bKCB1WkK2S_9benchrust2rt12bench_rt_all 0 394 0
+symbol CRATE_example___RNvYNvNtCsgJIsqJxQ7Kh_7example4wire14read_test_dataINtNtNtCsgtPOCBgevO_4core3ops8function2FnTQNtNtCs5oNdyrmMqOK_9serialize11read_stream10ReadStreamQNtB4_8TestDataEE4callCs3bKCB1WkK2S_9benchrust 39 39 0
+symbol CRATE_example___RNvYNvNtCsgJIsqJxQ7Kh_7example5types15read_rigid_bodyINtNtNtCsgtPOCBgevO_4core3ops8function2FnTQNtNtCs5oNdyrmMqOK_9serialize11read_stream10ReadStreamQNtB4_9RigidBodyEE4callCs3bKCB1WkK2S_9benchrust 9 27 0
+symbol CRATE_example___RNvYNvNtCsgJIsqJxQ7Kh_7example4wire16read_probe_arrayINtNtNtCsgtPOCBgevO_4core3ops8function2FnTQNtNtCs5oNdyrmMqOK_9serialize11read_stream10ReadStreamQNtB4_10ProbeArrayEE4callCs3bKCB1WkK2S_9benchrust 20 20 0
+symbol CRATE_example___RNvYNvNtCsgJIsqJxQ7Kh_7example4wire15write_test_dataINtNtNtCsgtPOCBgevO_4core3ops8function2FnTQNtNtCs5oNdyrmMqOK_9serialize12write_stream11WriteStreamRNtB4_8TestDataEE4callCs3bKCB1WkK2S_9benchrust 20 20 0
+symbol CRATE_example___RNvYNvNtCsgJIsqJxQ7Kh_7example5types17read_input_packetINtNtNtCsgtPOCBgevO_4core3ops8function2FnTQNtNtCs5oNdyrmMqOK_9serialize11read_stream10ReadStreamQNtB4_11InputPacketEE4callCs3bKCB1WkK2S_9benchrust 19 19 0
+symbol CRATE_example___RNvYNvNtCsgJIsqJxQ7Kh_7example5types16read_ship_createINtNtNtCsgtPOCBgevO_4core3ops8function2FnTQNtNtCs5oNdyrmMqOK_9serialize11read_stream10ReadStreamQNtB4_10ShipCreateEE4callCs3bKCB1WkK2S_9benchrust 16 16 0
+symbol CRATE_example___RNvYNvNtCsgJIsqJxQ7Kh_7example7objects22read_ship_data_shallowINtNtNtCsgtPOCBgevO_4core3ops8function2FnTQNtNtCs5oNdyrmMqOK_9serialize11read_stream10ReadStreamQNtB4_16ShipData_ShallowEE4callCs3bKCB1WkK2S_9benchrust 15 15 0
+symbol CRATE_example___RNvYNvNtCsgJIsqJxQ7Kh_7example5types16write_rigid_bodyINtNtNtCsgtPOCBgevO_4core3ops8function2FnTQNtNtCs5oNdyrmMqOK_9serialize12write_stream11WriteStreamRNtB4_9RigidBodyEE4callCs3bKCB1WkK2S_9benchrust 12 12 0
+symbol CRATE_benchrust___RNvNtCs3bKCB1WkK2S_9benchrust2rt25rt_bench_packet_read_loop 0 11 0
+symbol CRATE_benchrust___RINvNtCs3bKCB1WkK2S_9benchrust2rt19serialize_rt_packetNtNtCs5oNdyrmMqOK_9serialize11read_stream10ReadStreamEB4_ 11 11 0
+symbol CRATE_benchrust___RNvNtCs3bKCB1WkK2S_9benchrust2rt24rt_bench_mixed_read_loop 0 10 0
+symbol CRATE_benchrust___RNvNtCs3bKCB1WkK2S_9benchrust2rt15bench_bitpacker 1 10 0
+symbol CRATE_benchrust___RINvNtCs3bKCB1WkK2S_9benchrust2rt18serialize_rt_mixedNtNtCs5oNdyrmMqOK_9serialize11read_stream10ReadStreamEB4_ 10 10 0
+symbol CRATE_benchrust___RNvNtCs3bKCB1WkK2S_9benchrust2rt23rt_bench_ints_read_loop 0 9 0
+symbol CRATE_benchrust___RINvNtCs3bKCB1WkK2S_9benchrust2rt17serialize_rt_intsNtNtCs5oNdyrmMqOK_9serialize11read_stream10ReadStreamEB4_ 9 9 0
+symbol CRATE_example___RNvYNvNtCsgJIsqJxQ7Kh_7example4wire15read_probe_bitsINtNtNtCsgtPOCBgevO_4core3ops8function2FnTQNtNtCs5oNdyrmMqOK_9serialize11read_stream10ReadStreamQNtB4_9ProbeBitsEE4callCs3bKCB1WkK2S_9benchrust 7 7 0
+symbol CRATE_benchrust___RNvNtCs3bKCB1WkK2S_9benchrust2rt23rt_bench_bits_read_loop 0 7 0
+symbol CRATE_benchrust___RINvNtCs3bKCB1WkK2S_9benchrust2rt17serialize_rt_bitsNtNtCs5oNdyrmMqOK_9serialize11read_stream10ReadStreamEB4_ 7 7 0
+symbol CRATE_example___RNvNtCsgJIsqJxQ7Kh_7example5types9read_vec3 6 6 0
+symbol CRATE_benchrust___RNvCs3bKCB1WkK2S_9benchrust11build_batch 0 6 0
+symbol CRATE_example___RNvYNvNtCsgJIsqJxQ7Kh_7example4wire17read_probe_headerINtNtNtCsgtPOCBgevO_4core3ops8function2FnTQNtNtCs5oNdyrmMqOK_9serialize11read_stream10ReadStreamQNtB4_11ProbeHeaderEE4callCs3bKCB1WkK2S_9benchrust 5 5 0
+symbol CRATE_serialize___RNvYNtNtCs5oNdyrmMqOK_9serialize11read_stream10ReadStreamNtNtB6_6stream6Stream16serialize_bits64Cs3bKCB1WkK2S_9benchrust 4 4 0
+symbol CRATE_example___RNvNtCsgJIsqJxQ7Kh_7example8messages9read_test 4 4 0
+symbol CRATE_example___RNvNtCsgJIsqJxQ7Kh_7example8messages17read_message_into 4 4 0
+symbol CRATE_example___RNvNtCsgJIsqJxQ7Kh_7example8messages14read_timescale 4 4 0
+symbol CRATE_example___RNvYNvNtCsgJIsqJxQ7Kh_7example5types17write_ship_createINtNtNtCsgtPOCBgevO_4core3ops8function2FnTQNtNtCs5oNdyrmMqOK_9serialize12write_stream11WriteStreamRNtB4_10ShipCreateEE4callCs3bKCB1WkK2S_9benchrust 3 3 0
+symbol CRATE_example___RNvYNvNtCsgJIsqJxQ7Kh_7example4wire16write_probe_bitsINtNtNtCsgtPOCBgevO_4core3ops8function2FnTQNtNtCs5oNdyrmMqOK_9serialize12write_stream11WriteStreamRNtB4_9ProbeBitsEE4callCs3bKCB1WkK2S_9benchrust 3 3 0
+symbol CRATE_example___RNvNtCsgJIsqJxQ7Kh_7example8messages13write_message 3 3 0
+symbol CRATE_serialize___RNvYNtNtCs5oNdyrmMqOK_9serialize11read_stream10ReadStreamNtNtB6_6stream6Stream15serialize_int64Cs3bKCB1WkK2S_9benchrust 2 2 0
+symbol CRATE_serialize___RNvYNtNtCs5oNdyrmMqOK_9serialize11read_stream10ReadStreamNtNtB6_6stream6Stream13serialize_u64Cs3bKCB1WkK2S_9benchrust 2 2 0
+symbol CRATE_serialize___RNvYNtNtCs5oNdyrmMqOK_9serialize11read_stream10ReadStreamNtNtB6_6stream6Stream13serialize_intCs3bKCB1WkK2S_9benchrust 2 2 0
+symbol CRATE_serialize___RNvXs0_NtCs5oNdyrmMqOK_9serialize11read_streamNtB5_10ReadStreamNtNtB7_6stream6Stream15serialize_bytes 2 2 0
+symbol CRATE_serialize___RNvXs0_NtCs5oNdyrmMqOK_9serialize11read_streamNtB5_10ReadStreamNtNtB7_6stream6Stream14serialize_bits 2 2 0
+symbol CRATE_example___RNvYNvNtCsgJIsqJxQ7Kh_7example5types18write_input_packetINtNtNtCsgtPOCBgevO_4core3ops8function2FnTQNtNtCs5oNdyrmMqOK_9serialize12write_stream11WriteStreamRNtB4_11InputPacketEE4callCs3bKCB1WkK2S_9benchrust 2 2 0
+symbol CRATE_example___RNvNtCsgJIsqJxQ7Kh_7example8messages9read_chat 2 2 0
+symbol CRATE_example___RNvNtCsgJIsqJxQ7Kh_7example8messages10read_block 2 2 0
+symbol CRATE_serialize___RNvYNtNtCs5oNdyrmMqOK_9serialize11read_stream10ReadStreamNtNtB6_6stream6Stream26serialize_compressed_floatCs3bKCB1WkK2S_9benchrust 1 1 0
+symbol CRATE_serialize___RNvYNtNtCs5oNdyrmMqOK_9serialize11read_stream10ReadStreamNtNtB6_6stream6Stream14serialize_boolCs3bKCB1WkK2S_9benchrust 1 1 0
+symbol CRATE_serialize___RNvYNtNtCs5oNdyrmMqOK_9serialize11read_stream10ReadStreamNtNtB6_6stream6Stream13serialize_f32Cs3bKCB1WkK2S_9benchrust 1 1 0
+symbol CRATE_serialize___RNvXs0_NtCs5oNdyrmMqOK_9serialize11read_streamNtB5_10ReadStreamNtNtB7_6stream6Stream15serialize_align 1 1 0
+symbol CRATE_example___RNvYNvNtCsgJIsqJxQ7Kh_7example4wire18write_probe_headerINtNtNtCsgtPOCBgevO_4core3ops8function2FnTQNtNtCs5oNdyrmMqOK_9serialize12write_stream11WriteStreamRNtB4_11ProbeHeaderEE4callCs3bKCB1WkK2S_9benchrust 1 1 0
+symbol CRATE_example___RNvYNvNtCsgJIsqJxQ7Kh_7example4wire17write_probe_arrayINtNtNtCsgtPOCBgevO_4core3ops8function2FnTQNtNtCs5oNdyrmMqOK_9serialize12write_stream11WriteStreamRNtB4_10ProbeArrayEE4callCs3bKCB1WkK2S_9benchrust 1 1 0
+symbol CRATE_example___RNvNtCsgJIsqJxQ7Kh_7example8messages10write_chat 1 1 0
+symbol CRATE_benchrust___RNvNtCs3bKCB1WkK2S_9benchrust2rt26rt_bench_packet_write_loop 0 1 0
+symbol CRATE_benchrust___RNvNtCs3bKCB1WkK2S_9benchrust2rt25rt_bench_mixed_write_loop 0 1 0
+symbol CRATE_benchrust___RNvNtCs3bKCB1WkK2S_9benchrust2rt20rt_once_write_packet 0 1 0
+symbol CRATE_benchrust___RNvNtCs3bKCB1WkK2S_9benchrust2rt19rt_once_write_mixed 0 1 0
+symbol CRATE_benchrust___RNvNtCs3bKCB1WkK2S_9benchrust2rt19bitpacker_read_loop 1 1 0
+symbol CRATE_benchrust___RINvNtCs3bKCB1WkK2S_9benchrust2rt19serialize_rt_packetNtNtCs5oNdyrmMqOK_9serialize12write_stream11WriteStreamEB4_ 1 1 0
+symbol CRATE_benchrust___RINvNtCs3bKCB1WkK2S_9benchrust2rt18serialize_rt_mixedNtNtCs5oNdyrmMqOK_9serialize12write_stream11WriteStreamEB4_ 1 1 0
+symbol CRATE_std___RNvXNvMNtNtCsa9BKTri5B3M_3std3sys9backtraceNtB5_13BacktraceLock5printNtB2_16DisplayBacktraceNtNtCsgtPOCBgevO_4core3fmt7Display3fmt 0 0 2
+symbol CRATE_std___RNvNvNtNtNtNtCsa9BKTri5B3M_3std3sys12thread_local5guard5apple6enable9run_dtors 0 0 3
+symbol CRATE_std___RNvNvNtNtNtCsa9BKTri5B3M_3std12backtrace_rs9backtrace9libunwind5trace8trace_fn 0 0 1
+symbol CRATE_std___RNvNtNtNtNtNtCsa9BKTri5B3M_3std3sys3pal4unix14stack_overflow11thread_info16set_current_info 0 0 3
+symbol CRATE_std___RNvNtNtNtNtCsa9BKTri5B3M_3std3sys4sync4once5queue4wait 0 0 2
+symbol CRATE_std___RNvNtNtNtNtCsa9BKTri5B3M_3std3sys12thread_local11destructors4list8register 0 0 2
+symbol CRATE_std___RNvNtNtNtCsa9BKTri5B3M_3std12backtrace_rs9symbolize5gimli7resolve 0 0 4
+symbol CRATE_std___RNvNtNtCsa9BKTri5B3M_3std9panicking11panic_count8increase 0 0 1
+# -Cremark=inline missed-inline lines naming serialize (count, remark):
+remark 1 /rustc/8bab26f4f68e0e26f0bb7960be334d5b520ea452/library/core/src/slice/mod.rs:5578:9 inline (missed): _RNvNvNtCsgtPOCBgevO_4core5slice20copy_from_slice_impl17len_mismatch_fail will not be inlined into _RINvNtCsgtPOCBgevO_4core5slice20copy_from_slice_implhECs5oNdyrmMqOK_9serialize because its definition is unavailable
+remark 1 /rustc/8bab26f4f68e0e26f0bb7960be334d5b520ea452/library/core/src/slice/mod.rs:4326:18 inline (missed): _RINvNtCsgtPOCBgevO_4core5slice20copy_from_slice_implhECs3bKCB1WkK2S_9benchrust will not be inlined into _RNvMs_NtCs5oNdyrmMqOK_9serialize9bitpackerNtB4_9BitWriter11write_bytes because its definition is unavailable
+remark 1 /rustc/8bab26f4f68e0e26f0bb7960be334d5b520ea452/library/core/src/slice/mod.rs:4326:18 inline (missed): _RINvNtCsgtPOCBgevO_4core5slice20copy_from_slice_implhECs3bKCB1WkK2S_9benchrust will not be inlined into _RNvMs_NtCs5oNdyrmMqOK_9serialize9bitpackerNtB4_9BitWriter10write_bits because its definition is unavailable
+remark 1 /rustc/8bab26f4f68e0e26f0bb7960be334d5b520ea452/library/core/src/slice/mod.rs:4326:18 inline (missed): _RINvNtCsgtPOCBgevO_4core5slice20copy_from_slice_implhECs3bKCB1WkK2S_9benchrust will not be inlined into _RNvMs_NtCs5oNdyrmMqOK_9serialize9bitpackerNtB4_9BitWriter10flush_bits because its definition is unavailable
+remark 1 /rustc/8bab26f4f68e0e26f0bb7960be334d5b520ea452/library/core/src/slice/mod.rs:4326:18 inline (missed): _RINvNtCsgtPOCBgevO_4core5slice20copy_from_slice_implhECs3bKCB1WkK2S_9benchrust will not be inlined into _RNvMs1_NtCs5oNdyrmMqOK_9serialize9bitpackerNtB5_9BitReader10read_bytes because its definition is unavailable
+remark 1 /rustc/8bab26f4f68e0e26f0bb7960be334d5b520ea452/library/core/src/slice/index.rs:569:13 inline (missed): _RNvNtNtCsgtPOCBgevO_4core5slice5index16slice_index_fail will not be inlined into _RNvMs_NtCs5oNdyrmMqOK_9serialize9bitpackerNtB4_9BitWriter11write_bytes because its definition is unavailable
+remark 1 /rustc/8bab26f4f68e0e26f0bb7960be334d5b520ea452/library/core/src/slice/index.rs:569:13 inline (missed): _RNvNtNtCsgtPOCBgevO_4core5slice5index16slice_index_fail will not be inlined into _RNvMs1_NtCs5oNdyrmMqOK_9serialize9bitpackerNtB5_9BitReader16load_window_slow because its definition is unavailable
+remark 1 /rustc/8bab26f4f68e0e26f0bb7960be334d5b520ea452/library/core/src/slice/index.rs:456:13 inline (missed): _RNvNtNtCsgtPOCBgevO_4core5slice5index16slice_index_fail will not be inlined into _RNvMs_NtCs5oNdyrmMqOK_9serialize9bitpackerNtB4_9BitWriter11write_bytes because its definition is unavailable
+remark 1 /rustc/8bab26f4f68e0e26f0bb7960be334d5b520ea452/library/core/src/slice/index.rs:456:13 inline (missed): _RNvNtNtCsgtPOCBgevO_4core5slice5index16slice_index_fail will not be inlined into _RNvMs_NtCs5oNdyrmMqOK_9serialize9bitpackerNtB4_9BitWriter10write_bits because its definition is unavailable
+remark 1 /rustc/8bab26f4f68e0e26f0bb7960be334d5b520ea452/library/core/src/slice/index.rs:456:13 inline (missed): _RNvNtNtCsgtPOCBgevO_4core5slice5index16slice_index_fail will not be inlined into _RNvMs_NtCs5oNdyrmMqOK_9serialize9bitpackerNtB4_9BitWriter10flush_bits because its definition is unavailable
+remark 1 /rustc/8bab26f4f68e0e26f0bb7960be334d5b520ea452/library/core/src/slice/index.rs:456:13 inline (missed): _RNvNtNtCsgtPOCBgevO_4core5slice5index16slice_index_fail will not be inlined into _RNvMs1_NtCs5oNdyrmMqOK_9serialize9bitpackerNtB5_9BitReader16load_window_slow because its definition is unavailable
+remark 1 /rustc/8bab26f4f68e0e26f0bb7960be334d5b520ea452/library/core/src/slice/index.rs:443:13 inline (missed): _RNvNtNtCsgtPOCBgevO_4core5slice5index16slice_index_fail will not be inlined into _RNvMs_NtCs5oNdyrmMqOK_9serialize9bitpackerNtB4_9BitWriter11write_bytes because its definition is unavailable
+remark 1 /rustc/8bab26f4f68e0e26f0bb7960be334d5b520ea452/library/core/src/slice/index.rs:443:13 inline (missed): _RNvNtNtCsgtPOCBgevO_4core5slice5index16slice_index_fail will not be inlined into _RNvMs1_NtCs5oNdyrmMqOK_9serialize9bitpackerNtB5_9BitReader16load_window_slow because its definition is unavailable
+remark 1 /rustc/8bab26f4f68e0e26f0bb7960be334d5b520ea452/library/core/src/slice/index.rs:443:13 inline (missed): _RNvNtNtCsgtPOCBgevO_4core5slice5index16slice_index_fail will not be inlined into _RNvMs1_NtCs5oNdyrmMqOK_9serialize9bitpackerNtB5_9BitReader10read_bytes because its definition is unavailable
+remark 1 /rustc/8bab26f4f68e0e26f0bb7960be334d5b520ea452/library/core/src/ops/function.rs:79:5 inline (missed): '_RNvNtCsgJIsqJxQ7Kh_7example8messages9read_test' not inlined into '_RNvYNvNtCsgJIsqJxQ7Kh_7example8messages9read_testINtNtNtCsgtPOCBgevO_4core3ops8function2FnTQNtNtCs5oNdyrmMqOK_9serialize11read_stream10ReadStreamQNtB4_4TestEE4callCs3bKCB1WkK2S_9benchrust' because too costly to inline (cost=435, threshold=325)
+remark 1 /rustc/8bab26f4f68e0e26f0bb7960be334d5b520ea452/library/core/src/ops/function.rs:79:5 inline (missed): '_RNvNtCsgJIsqJxQ7Kh_7example8messages9read_chat' not inlined into '_RNvYNvNtCsgJIsqJxQ7Kh_7example8messages9read_chatINtNtNtCsgtPOCBgevO_4core3ops8function2FnTQNtNtCs5oNdyrmMqOK_9serialize11read_stream10ReadStreamQNtB4_4ChatEE4callCs3bKCB1WkK2S_9benchrust' because too costly to inline (cost=515, threshold=325)
+remark 1 /rustc/8bab26f4f68e0e26f0bb7960be334d5b520ea452/library/core/src/ops/function.rs:79:5 inline (missed): '_RNvNtCsgJIsqJxQ7Kh_7example8messages10write_test' not inlined into '_RNvYNvNtCsgJIsqJxQ7Kh_7example8messages10write_testINtNtNtCsgtPOCBgevO_4core3ops8function2FnTQNtNtCs5oNdyrmMqOK_9serialize12write_stream11WriteStreamRNtB4_4TestEE4callCs3bKCB1WkK2S_9benchrust' because too costly to inline (cost=985, threshold=325)
+remark 1 /rustc/8bab26f4f68e0e26f0bb7960be334d5b520ea452/library/core/src/ops/function.rs:79:5 inline (missed): '_RNvNtCsgJIsqJxQ7Kh_7example8messages10write_chat' not inlined into '_RNvYNvNtCsgJIsqJxQ7Kh_7example8messages10write_chatINtNtNtCsgtPOCBgevO_4core3ops8function2FnTQNtNtCs5oNdyrmMqOK_9serialize12write_stream11WriteStreamRNtB4_4ChatEE4callCs3bKCB1WkK2S_9benchrust' because too costly to inline (cost=500, threshold=325)
+remark 1 /Users/glenn/rowan-working/serialize.rs/src/write_stream.rs:97:21 inline (missed): '_RNvMs_NtCs5oNdyrmMqOK_9serialize9bitpackerNtB4_9BitWriter10write_bits' not inlined into '_RNvYNvNtCsgJIsqJxQ7Kh_7example5types17write_ship_createINtNtNtCsgtPOCBgevO_4core3ops8function2FnTQNtNtCs5oNdyrmMqOK_9serialize12write_stream11WriteStreamRNtB4_10ShipCreateEE4callCs3bKCB1WkK2S_9benchrust' because too costly to inline (cost=225, threshold=45)
+remark 1 /Users/glenn/rowan-working/serialize.rs/src/write_stream.rs:97:21 inline (missed): '_RNvMs_NtCs5oNdyrmMqOK_9serialize9bitpackerNtB4_9BitWriter10write_bits' not inlined into '_RNvYNvNtCsgJIsqJxQ7Kh_7example4wire15write_test_dataINtNtNtCsgtPOCBgevO_4core3ops8function2FnTQNtNtCs5oNdyrmMqOK_9serialize12write_stream11WriteStreamRNtB4_8TestDataEE4callCs3bKCB1WkK2S_9benchrust' because too costly to inline (cost=225, threshold=45)
+remark 1 /Users/glenn/rowan-working/serialize.rs/src/write_stream.rs:97:21 inline (missed): '_RNvMs_NtCs5oNdyrmMqOK_9serialize9bitpackerNtB4_9BitWriter10write_bits' not inlined into '_RNvNtCsgJIsqJxQ7Kh_7example5types17write_ship_create' because too costly to inline (cost=225, threshold=45)
+remark 1 /Users/glenn/rowan-working/serialize.rs/src/write_stream.rs:97:21 inline (missed): '_RNvMs_NtCs5oNdyrmMqOK_9serialize9bitpackerNtB4_9BitWriter10write_bits' not inlined into '_RNvNtCsgJIsqJxQ7Kh_7example4wire15write_test_data' because too costly to inline (cost=225, threshold=45)
+remark 1 /Users/glenn/rowan-working/serialize.rs/src/write_stream.rs:86:21 inline (missed): '_RNvMs_NtCs5oNdyrmMqOK_9serialize9bitpackerNtB4_9BitWriter11write_bytes' not inlined into '_RNvYNvNtCsgJIsqJxQ7Kh_7example4wire15write_test_dataINtNtNtCsgtPOCBgevO_4core3ops8function2FnTQNtNtCs5oNdyrmMqOK_9serialize12write_stream11WriteStreamRNtB4_8TestDataEE4callCs3bKCB1WkK2S_9benchrust' because too costly to inline (cost=810, threshold=45)
+remark 1 /Users/glenn/rowan-working/serialize.rs/src/write_stream.rs:86:21 inline (missed): '_RNvMs_NtCs5oNdyrmMqOK_9serialize9bitpackerNtB4_9BitWriter11write_bytes' not inlined into '_RNvNtCsgJIsqJxQ7Kh_7example8messages13write_message' because too costly to inline (cost=810, threshold=325)
+remark 1 /Users/glenn/rowan-working/serialize.rs/src/write_stream.rs:86:21 inline (missed): '_RNvMs_NtCs5oNdyrmMqOK_9serialize9bitpackerNtB4_9BitWriter11write_bytes' not inlined into '_RNvNtCsgJIsqJxQ7Kh_7example8messages11write_block' because too costly to inline (cost=810, threshold=325)
+remark 1 /Users/glenn/rowan-working/serialize.rs/src/write_stream.rs:86:21 inline (missed): '_RNvMs_NtCs5oNdyrmMqOK_9serialize9bitpackerNtB4_9BitWriter11write_bytes' not inlined into '_RNvNtCsgJIsqJxQ7Kh_7example8messages10write_chat' because too costly to inline (cost=810, threshold=325)
+remark 1 /Users/glenn/rowan-working/serialize.rs/src/write_stream.rs:86:21 inline (missed): '_RNvMs_NtCs5oNdyrmMqOK_9serialize9bitpackerNtB4_9BitWriter11write_bytes' not inlined into '_RNvNtCsgJIsqJxQ7Kh_7example4wire15write_test_data' because too costly to inline (cost=810, threshold=45)
+remark 1 /Users/glenn/rowan-working/serialize.rs/src/write_stream.rs:59:21 inline (missed): '_RNvMs_NtCs5oNdyrmMqOK_9serialize9bitpackerNtB4_9BitWriter10flush_bits' not inlined into '_RNvCs3bKCB1WkK2S_9benchrust4main' because too costly to inline (cost=120, threshold=45)
+remark 1 /Users/glenn/rowan-working/serialize.rs/src/write_stream.rs:59:21 inline (missed): '_RNvMs_NtCs5oNdyrmMqOK_9serialize9bitpackerNtB4_9BitWriter10flush_bits' not inlined into '_RNvCs3bKCB1WkK2S_9benchrust27check_message_stream_golden' because too costly to inline (cost=120, threshold=45)
+remark 1 /Users/glenn/rowan-working/serialize.rs/src/write_stream.rs:26:14 inline (missed): _RNvMs1_NtNtCsgtPOCBgevO_4core3fmt8buildersNtB5_11DebugStruct6finish will not be inlined into _RNvXNtCs5oNdyrmMqOK_9serialize12write_streamNtB2_11WriteStreamNtNtCsgtPOCBgevO_4core3fmt5Debug3fmt because its definition is unavailable
+remark 1 /Users/glenn/rowan-working/serialize.rs/src/write_stream.rs:25:14 inline (missed): _RNvMs1_NtNtCsgtPOCBgevO_4core3fmt8buildersNtB5_11DebugStruct5field will not be inlined into _RNvXNtCs5oNdyrmMqOK_9serialize12write_streamNtB2_11WriteStreamNtNtCsgtPOCBgevO_4core3fmt5Debug3fmt because its definition is unavailable
+remark 1 /Users/glenn/rowan-working/serialize.rs/src/write_stream.rs:24:14 inline (missed): _RNvMs1_NtNtCsgtPOCBgevO_4core3fmt8buildersNtB5_11DebugStruct5field will not be inlined into _RNvXNtCs5oNdyrmMqOK_9serialize12write_streamNtB2_11WriteStreamNtNtCsgtPOCBgevO_4core3fmt5Debug3fmt because its definition is unavailable
+remark 1 /Users/glenn/rowan-working/serialize.rs/src/write_stream.rs:23:11 inline (missed): _RNvMsa_NtCsgtPOCBgevO_4core3fmtNtB5_9Formatter12debug_struct will not be inlined into _RNvXNtCs5oNdyrmMqOK_9serialize12write_streamNtB2_11WriteStreamNtNtCsgtPOCBgevO_4core3fmt5Debug3fmt because its definition is unavailable
+remark 1 /Users/glenn/rowan-working/serialize.rs/src/write_stream.rs:159:5 inline (missed): _RNvNtCsgtPOCBgevO_4core9panicking9panic_fmt will not be inlined into _RNvNtCs5oNdyrmMqOK_9serialize12write_stream13string_length because its definition is unavailable
+remark 1 /Users/glenn/rowan-working/serialize.rs/src/stream.rs:453:9 inline (missed): _RNvNtCsgtPOCBgevO_4core9panicking9panic_fmt will not be inlined into _RNvYNtNtCs5oNdyrmMqOK_9serialize12write_stream11WriteStreamNtNtB6_6stream6Stream26serialize_compressed_floatCs3bKCB1WkK2S_9benchrust because its definition is unavailable
+remark 1 /Users/glenn/rowan-working/serialize.rs/src/stream.rs:453:9 inline (missed): _RNvNtCsgtPOCBgevO_4core9panicking9panic_fmt will not be inlined into _RNvYNtNtCs5oNdyrmMqOK_9serialize11read_stream10ReadStreamNtNtB6_6stream6Stream26serialize_compressed_floatCs3bKCB1WkK2S_9benchrust because its definition is unavailable
+remark 1 /Users/glenn/rowan-working/serialize.rs/src/stream.rs:425:14 inline (missed): '_RNvYNtNtCs5oNdyrmMqOK_9serialize12write_stream11WriteStreamNtNtB6_6stream6Stream16serialize_bits64Cs3bKCB1WkK2S_9benchrust' not inlined into '_RNvYNvNtCsgJIsqJxQ7Kh_7example5types16write_rigid_bodyINtNtNtCsgtPOCBgevO_4core3ops8function2FnTQNtNtCs5oNdyrmMqOK_9serialize12write_stream11WriteStreamRNtB4_9RigidBodyEE4callCs3bKCB1WkK2S_9benchrust' because too costly to inline (cost=455, threshold=325)
+remark 1 /Users/glenn/rowan-working/serialize.rs/src/stream.rs:425:14 inline (missed): '_RNvYNtNtCs5oNdyrmMqOK_9serialize12write_stream11WriteStreamNtNtB6_6stream6Stream16serialize_bits64Cs3bKCB1WkK2S_9benchrust' not inlined into '_RNvYNvNtCsgJIsqJxQ7Kh_7example4wire15write_test_dataINtNtNtCsgtPOCBgevO_4core3ops8function2FnTQNtNtCs5oNdyrmMqOK_9serialize12write_stream11WriteStreamRNtB4_8TestDataEE4callCs3bKCB1WkK2S_9benchrust' because too costly to inline (cost=455, threshold=45)
+remark 1 /Users/glenn/rowan-working/serialize.rs/src/stream.rs:425:14 inline (missed): '_RNvYNtNtCs5oNdyrmMqOK_9serialize12write_stream11WriteStreamNtNtB6_6stream6Stream16serialize_bits64Cs3bKCB1WkK2S_9benchrust' not inlined into '_RNvNtCsgJIsqJxQ7Kh_7example8messages15write_timescale' because too costly to inline (cost=455, threshold=325)
+remark 1 /Users/glenn/rowan-working/serialize.rs/src/stream.rs:425:14 inline (missed): '_RNvYNtNtCs5oNdyrmMqOK_9serialize12write_stream11WriteStreamNtNtB6_6stream6Stream16serialize_bits64Cs3bKCB1WkK2S_9benchrust' not inlined into '_RNvNtCsgJIsqJxQ7Kh_7example8messages13write_message' because too costly to inline (cost=455, threshold=325)
+note: rust ship_shallow write: no write_ship_shallow symbol and runtime calls exist elsewhere — inline stays unknown
+note: rust ship_shallow read: no read_ship_shallow symbol and runtime calls exist elsewhere — inline stays unknown

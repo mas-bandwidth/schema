@@ -34,7 +34,10 @@ ports, wired per the contract below.
     bench/run.sh --inline        # + the §4 inline verdict pass: writes the
                                  # per-symbol ledger and backfills the inline
                                  # column (rows stay un-ratioable without it)
-    SERIALIZE=path/to/serialize bench/run.sh     # (SERIALIZE_C/_GO/_RS/_CS likewise)
+    SERIALIZE=path/to/serialize bench/run.sh     # (SERIALIZE_C/_GO/_RS/_CS likewise;
+                                 # every leg BUILDS against its var and the run
+                                 # refuses if a build would not — §3.5, verified
+                                 # per pass by bench/tools/verify-runtime-paths.sh)
     BENCH_OPT_LEVEL=O2 bench/run.sh              # the C/C++ O2 leg (§3.3)
     BENCH_NOISE="NOISY: ..." bench/run.sh        # free-text supplement — load capture is automatic
 
