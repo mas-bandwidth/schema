@@ -407,7 +407,7 @@ go)
     count_calls 'serialize%2ego\.|mas-bandwidth\/serialize' '^example\.' < "$VD/calls.txt" > "$VD/counts.txt"
 
     # remarks: go build -a -gcflags=-m=2 — -a is MANDATORY (see header)
-    ( cd bench/go && go build -a -gcflags=all=-m=2 . > /dev/null 2> "$OLDPWD/$VD/remarks.txt" ) || true
+    ( cd bench/go && go build -a -gcflags=all=-m=2 -o /dev/null . 2> "$OLDPWD/$VD/remarks.txt" ) || true
     grep -E "serialize\.go/" "$VD/remarks.txt" | grep -E ": can inline|: cannot inline" \
         | sed -E 's/^.*serialize\.go\///' | sed -E 's/ as:.*$//' | sort -u > "$VD/serialize-remarks.txt" || true
 
