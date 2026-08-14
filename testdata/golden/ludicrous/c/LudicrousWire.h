@@ -538,59 +538,59 @@ static SCHEMA_UNUSED int read_narrow_body_deep( serialize_read_stream_t * stream
 /* Writes NarrowBody's SHALLOW view — the quantized wire. */
 static SCHEMA_UNUSED int write_narrow_body_shallow( serialize_write_stream_t * stream, const NarrowBodyData_Shallow * value )
 {
-    if ( (serialize_int64_t) value->position_x < 0LL || (serialize_int64_t) value->position_x > 0LL )
+    if ( (serialize_int64_t) value->position_x < -25600000LL || (serialize_int64_t) value->position_x > 25600000LL )
     {
         return 0;
     }
-    if ( !serialize_write_bits( stream, (serialize_uint32_t) ( value->position_x - (0) ), 0 ) )
+    if ( !serialize_write_bits( stream, (serialize_uint32_t) ( (serialize_int64_t) value->position_x - (-25600000LL) ), 26 ) )
     {
         return 0;
     }
-    if ( (serialize_int64_t) value->position_y < 0LL || (serialize_int64_t) value->position_y > 0LL )
+    if ( (serialize_int64_t) value->position_y < -25600000LL || (serialize_int64_t) value->position_y > 25600000LL )
     {
         return 0;
     }
-    if ( !serialize_write_bits( stream, (serialize_uint32_t) ( value->position_y - (0) ), 0 ) )
+    if ( !serialize_write_bits( stream, (serialize_uint32_t) ( (serialize_int64_t) value->position_y - (-25600000LL) ), 26 ) )
     {
         return 0;
     }
-    if ( (serialize_int64_t) value->position_z < 0LL || (serialize_int64_t) value->position_z > 0LL )
+    if ( (serialize_int64_t) value->position_z < -25600000LL || (serialize_int64_t) value->position_z > 25600000LL )
     {
         return 0;
     }
-    if ( !serialize_write_bits( stream, (serialize_uint32_t) ( value->position_z - (0) ), 0 ) )
+    if ( !serialize_write_bits( stream, (serialize_uint32_t) ( (serialize_int64_t) value->position_z - (-25600000LL) ), 26 ) )
     {
         return 0;
     }
-    if ( (serialize_int64_t) value->rotation_x < 0LL || (serialize_int64_t) value->rotation_x > 0LL )
+    if ( (serialize_int64_t) value->rotation_x < -1024LL || (serialize_int64_t) value->rotation_x > 1024LL )
     {
         return 0;
     }
-    if ( !serialize_write_bits( stream, (serialize_uint32_t) ( value->rotation_x - (0) ), 0 ) )
+    if ( !serialize_write_bits( stream, (serialize_uint32_t) ( (serialize_int64_t) value->rotation_x - (-1024LL) ), 12 ) )
     {
         return 0;
     }
-    if ( (serialize_int64_t) value->rotation_y < 0LL || (serialize_int64_t) value->rotation_y > 0LL )
+    if ( (serialize_int64_t) value->rotation_y < -1024LL || (serialize_int64_t) value->rotation_y > 1024LL )
     {
         return 0;
     }
-    if ( !serialize_write_bits( stream, (serialize_uint32_t) ( value->rotation_y - (0) ), 0 ) )
+    if ( !serialize_write_bits( stream, (serialize_uint32_t) ( (serialize_int64_t) value->rotation_y - (-1024LL) ), 12 ) )
     {
         return 0;
     }
-    if ( (serialize_int64_t) value->rotation_z < 0LL || (serialize_int64_t) value->rotation_z > 0LL )
+    if ( (serialize_int64_t) value->rotation_z < -1024LL || (serialize_int64_t) value->rotation_z > 1024LL )
     {
         return 0;
     }
-    if ( !serialize_write_bits( stream, (serialize_uint32_t) ( value->rotation_z - (0) ), 0 ) )
+    if ( !serialize_write_bits( stream, (serialize_uint32_t) ( (serialize_int64_t) value->rotation_z - (-1024LL) ), 12 ) )
     {
         return 0;
     }
-    if ( (serialize_int64_t) value->rotation_w < 0LL || (serialize_int64_t) value->rotation_w > 0LL )
+    if ( (serialize_int64_t) value->rotation_w < -1024LL || (serialize_int64_t) value->rotation_w > 1024LL )
     {
         return 0;
     }
-    if ( !serialize_write_bits( stream, (serialize_uint32_t) ( value->rotation_w - (0) ), 0 ) )
+    if ( !serialize_write_bits( stream, (serialize_uint32_t) ( (serialize_int64_t) value->rotation_w - (-1024LL) ), 12 ) )
     {
         return 0;
     }
@@ -606,87 +606,87 @@ static SCHEMA_UNUSED int read_narrow_body_shallow( serialize_read_stream_t * str
 {
     {
         serialize_uint32_t raw = 0;
-        if ( !serialize_read_bits( stream, &raw, 0 ) )
+        if ( !serialize_read_bits( stream, &raw, 26 ) )
         {
             return 0;
         }
-        if ( raw > 0U )
+        if ( raw > 51200000U )
         {
             return 0;
         }
-        value->position_x = (int8_t) ( (serialize_int64_t) raw + (0) );
+        value->position_x = (int32_t) ( (serialize_int64_t) raw + (-25600000LL) );
     }
     {
         serialize_uint32_t raw = 0;
-        if ( !serialize_read_bits( stream, &raw, 0 ) )
+        if ( !serialize_read_bits( stream, &raw, 26 ) )
         {
             return 0;
         }
-        if ( raw > 0U )
+        if ( raw > 51200000U )
         {
             return 0;
         }
-        value->position_y = (int8_t) ( (serialize_int64_t) raw + (0) );
+        value->position_y = (int32_t) ( (serialize_int64_t) raw + (-25600000LL) );
     }
     {
         serialize_uint32_t raw = 0;
-        if ( !serialize_read_bits( stream, &raw, 0 ) )
+        if ( !serialize_read_bits( stream, &raw, 26 ) )
         {
             return 0;
         }
-        if ( raw > 0U )
+        if ( raw > 51200000U )
         {
             return 0;
         }
-        value->position_z = (int8_t) ( (serialize_int64_t) raw + (0) );
+        value->position_z = (int32_t) ( (serialize_int64_t) raw + (-25600000LL) );
     }
     {
         serialize_uint32_t raw = 0;
-        if ( !serialize_read_bits( stream, &raw, 0 ) )
+        if ( !serialize_read_bits( stream, &raw, 12 ) )
         {
             return 0;
         }
-        if ( raw > 0U )
+        if ( raw > 2048U )
         {
             return 0;
         }
-        value->rotation_x = (int8_t) ( (serialize_int64_t) raw + (0) );
+        value->rotation_x = (int16_t) ( (serialize_int64_t) raw + (-1024LL) );
     }
     {
         serialize_uint32_t raw = 0;
-        if ( !serialize_read_bits( stream, &raw, 0 ) )
+        if ( !serialize_read_bits( stream, &raw, 12 ) )
         {
             return 0;
         }
-        if ( raw > 0U )
+        if ( raw > 2048U )
         {
             return 0;
         }
-        value->rotation_y = (int8_t) ( (serialize_int64_t) raw + (0) );
+        value->rotation_y = (int16_t) ( (serialize_int64_t) raw + (-1024LL) );
     }
     {
         serialize_uint32_t raw = 0;
-        if ( !serialize_read_bits( stream, &raw, 0 ) )
+        if ( !serialize_read_bits( stream, &raw, 12 ) )
         {
             return 0;
         }
-        if ( raw > 0U )
+        if ( raw > 2048U )
         {
             return 0;
         }
-        value->rotation_z = (int8_t) ( (serialize_int64_t) raw + (0) );
+        value->rotation_z = (int16_t) ( (serialize_int64_t) raw + (-1024LL) );
     }
     {
         serialize_uint32_t raw = 0;
-        if ( !serialize_read_bits( stream, &raw, 0 ) )
+        if ( !serialize_read_bits( stream, &raw, 12 ) )
         {
             return 0;
         }
-        if ( raw > 0U )
+        if ( raw > 2048U )
         {
             return 0;
         }
-        value->rotation_w = (int8_t) ( (serialize_int64_t) raw + (0) );
+        value->rotation_w = (int16_t) ( (serialize_int64_t) raw + (-1024LL) );
     }
     if ( !read_fixed_vec( stream, &value->velocity ) )
     {

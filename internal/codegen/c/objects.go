@@ -107,6 +107,22 @@ func (g *gen) emitViewStruct(name string, fields []*ir.Field, v view) {
 
 // emitViewField emits one field under a view's storage rules.
 func (g *gen) emitViewField(f *ir.Field, v view) {
+	// A narrowed fixed composite (SPEC §4.8 rule 2b) becomes per-component
+	// signed integers keeping QuantShift fractional bits; each component's
+	// storage holds its own whole-unit bounds scaled by QuantScale.
+	if v == storageShallow && f.HasQuantize && f.FixedShallow {
+		st, ok := f.Type.Ref.(*ir.Struct)
+		if !ok {
+			g.unsupported("field %s is [quantize]d but does not reference a composite type", f.Name)
+			return
+		}
+		g.pf("    /* %s: %s narrowed — %d fractional bits kept (SPEC §4.8 rule 2b) */\n", f.Name, f.Type.Name, f.QuantShift)
+		for _, comp := range st.Fields {
+			lo, hi, _, typ := fixedShallowComp(f, comp)
+			g.pf("    %s %s_%s; /* [%s, %s] */\n", typ, f.Name, comp.Name, lo, hi)
+		}
+		return
+	}
 	// A composite quantized into the shallow view becomes per-component
 	// integers, one per member of the referenced type.
 	if v == storageShallow && f.HasQuantize {
@@ -167,6 +183,34 @@ func quantBounds(f *ir.Field) (string, string) {
 	return new(big.Int).Neg(b).String(), b.String()
 }
 
+// fixedShallowComp resolves one component of a narrowed fixed composite
+// (SPEC §4.8 rule 2b) to its C shallow shape: wire bounds, wire bits and
+// storage type. Bounds come from ir.FixedShallowBounds — the one derivation
+// all five backends share, or the five wires disagree.
+func fixedShallowComp(f, cf *ir.Field) (lo, hi *big.Int, bits int64, typ string) {
+	lo, hi = ir.FixedShallowBounds(f, cf)
+	bits = ir.BitsRequired(lo, hi)
+	abs := new(big.Int).Neg(lo)
+	if abs.Cmp(hi) < 0 {
+		abs = hi
+	}
+	bound := int64(9223372036854775807)
+	if abs.IsInt64() {
+		bound = abs.Int64()
+	}
+	switch {
+	case bound <= 0x7F:
+		typ = "int8_t"
+	case bound <= 0x7FFF:
+		typ = "int16_t"
+	case bound <= 0x7FFFFFFF:
+		typ = "int32_t"
+	default:
+		typ = "int64_t"
+	}
+	return
+}
+
 // ---- the wire header ----
 
 func (g *gen) emitObjectFunctions(d *ir.Object) {
@@ -207,6 +251,31 @@ func (g *gen) emitObjectFunctions(d *ir.Object) {
 
 // emitShallowWriteField writes one field of the shallow (quantized) view.
 func (g *gen) emitShallowWriteField(f *ir.Field, ind string) {
+	if f.HasQuantize && f.FixedShallow {
+		st, ok := f.Type.Ref.(*ir.Struct)
+		if !ok {
+			g.unsupported("field %s is [quantize]d but does not reference a composite type", f.Name)
+			return
+		}
+		for _, comp := range st.Fields {
+			member := fmt.Sprintf("value->%s_%s", f.Name, comp.Name)
+			lo, hi, bits, _ := fixedShallowComp(f, comp)
+			// refuse an out-of-range write, then the folded offset write —
+			// the same shape the ranged-int path uses (>32-bit widths split
+			// low 32 bits first, per the wire model)
+			g.pf("%sif ( (serialize_int64_t) %s < %sLL || (serialize_int64_t) %s > %sLL )\n%s{\n%s    return 0;\n%s}\n",
+				ind, member, lo, member, hi, ind, ind, ind)
+			if bits <= 32 {
+				g.call(ind, fmt.Sprintf("serialize_write_bits( stream, (serialize_uint32_t) ( (serialize_int64_t) %s - (%sLL) ), %d )", member, lo, bits))
+			} else {
+				g.pf("%s{\n%s    serialize_uint64_t offset_value = (serialize_uint64_t) ( (serialize_int64_t) %s - (%sLL) );\n", ind, ind, member, lo)
+				g.call(ind+"    ", "serialize_write_bits( stream, (serialize_uint32_t) ( offset_value & 0xFFFFFFFFu ), 32 )")
+				g.call(ind+"    ", fmt.Sprintf("serialize_write_bits( stream, (serialize_uint32_t) ( offset_value >> 32 ), %d )", bits-32))
+				g.pf("%s}\n", ind)
+			}
+		}
+		return
+	}
 	if f.HasQuantize {
 		st, ok := f.Type.Ref.(*ir.Struct)
 		if !ok {
@@ -236,6 +305,34 @@ func (g *gen) emitShallowWriteField(f *ir.Field, ind string) {
 }
 
 func (g *gen) emitShallowReadField(f *ir.Field, ind string) {
+	if f.HasQuantize && f.FixedShallow {
+		st, ok := f.Type.Ref.(*ir.Struct)
+		if !ok {
+			g.unsupported("field %s is [quantize]d but does not reference a composite type", f.Name)
+			return
+		}
+		for _, comp := range st.Fields {
+			member := fmt.Sprintf("value->%s_%s", f.Name, comp.Name)
+			lo, hi, bits, typ := fixedShallowComp(f, comp)
+			span := new(big.Int).Sub(hi, lo)
+			if bits <= 32 {
+				g.pf("%s{\n%s    serialize_uint32_t raw = 0;\n", ind, ind)
+				g.call(ind+"    ", fmt.Sprintf("serialize_read_bits( stream, &raw, %d )", bits))
+				g.pf("%s    if ( raw > %sU )\n%s    {\n%s        return 0;\n%s    }\n", ind, span.String(), ind, ind, ind)
+				g.pf("%s    %s = (%s) ( (serialize_int64_t) raw + (%sLL) );\n%s}\n", ind, member, typ, lo, ind)
+			} else {
+				// low 32 first, then the remainder — the same split the
+				// ranged 64-bit read uses; reject, never clamp
+				g.pf("%s{\n%s    serialize_uint32_t lo = 0;\n%s    serialize_uint32_t hi = 0;\n%s    serialize_uint64_t raw;\n", ind, ind, ind, ind)
+				g.call(ind+"    ", "serialize_read_bits( stream, &lo, 32 )")
+				g.call(ind+"    ", fmt.Sprintf("serialize_read_bits( stream, &hi, %d )", bits-32))
+				g.pf("%s    raw = (serialize_uint64_t) lo | ( ( (serialize_uint64_t) hi ) << 32 );\n", ind)
+				g.pf("%s    if ( raw > %sULL )\n%s    {\n%s        return 0;\n%s    }\n", ind, span.String(), ind, ind, ind)
+				g.pf("%s    %s = (%s) ( (serialize_int64_t) raw + (%sLL) );\n%s}\n", ind, member, typ, lo, ind)
+			}
+		}
+		return
+	}
 	if f.HasQuantize {
 		st, ok := f.Type.Ref.(*ir.Struct)
 		if !ok {
@@ -301,6 +398,16 @@ func (g *gen) emitDeepReadField(f *ir.Field, ind string) {
 // transforms: no stream, no failure mode.
 
 func (g *gen) emitQuantizePair(d *ir.Object) {
+	if !ir.ObjectNeedsQuantize(d) {
+		// every [interpolate] field rides the wire domain verbatim — fixed
+		// components are their own quantization (SPEC §4.8) — so the pair
+		// would be a pure member copy and is NOT emitted. The same rule,
+		// the same words, as the other four backends.
+		g.pf("/* Quantize%s/Unquantize%s are not emitted: every [interpolate] field\n", d.Name, d.Name)
+		g.pf("   is already wire-domain (fixed components are their own quantization,\n")
+		g.pf("   SPEC §4.8) — Interpolate and Shallow are the same values. */\n\n")
+		return
+	}
 	_, interp := splitObjectFields(d)
 
 	g.pf("/* Quantize%s — the interpolate domain to the quantized wire domain. */\n", d.Name)
@@ -325,6 +432,29 @@ func (g *gen) emitQuantizeField(f *ir.Field) {
 		// projected floats and discrete fields copy across unchanged — the
 		// projection already happened in the interpolate view's storage
 		g.pf("    output->%s = input->%s;\n", f.Name, f.Name)
+		return
+	}
+	if f.FixedShallow {
+		st, ok := f.Type.Ref.(*ir.Struct)
+		if !ok {
+			g.unsupported("field %s is [quantize]d but does not reference a composite type", f.Name)
+			return
+		}
+		for _, comp := range st.Fields {
+			drop := comp.Type.FracBits - f.QuantShift
+			_, _, _, typ := fixedShallowComp(f, comp)
+			if drop == 0 {
+				g.pf("    output->%s_%s = (%s) input->%s.%s;\n", f.Name, comp.Name, typ, f.Name, comp.Name)
+				continue
+			}
+			// round-to-nearest narrowing shift — arithmetic on int64, ties
+			// toward +infinity: the ( raw + half ) >> drop form the game's
+			// fixed bridge uses, so wire and simulation agree bit-for-bit.
+			// In-bounds raws cannot overflow the add (checker-enforced bounds
+			// leave 2^(F-1) of headroom past any legal raw)
+			g.pf("    output->%s_%s = (%s) ( ( (serialize_int64_t) input->%s.%s + %dLL ) >> %d );\n",
+				f.Name, comp.Name, typ, f.Name, comp.Name, int64(1)<<(drop-1), drop)
+		}
 		return
 	}
 	st, ok := f.Type.Ref.(*ir.Struct)
@@ -352,6 +482,24 @@ func (g *gen) emitQuantizeField(f *ir.Field) {
 func (g *gen) emitUnquantizeField(f *ir.Field) {
 	if !f.HasQuantize {
 		g.pf("    output->%s = input->%s;\n", f.Name, f.Name)
+		return
+	}
+	if f.FixedShallow {
+		st, ok := f.Type.Ref.(*ir.Struct)
+		if !ok {
+			g.unsupported("field %s is [quantize]d but does not reference a composite type", f.Name)
+			return
+		}
+		for _, comp := range st.Fields {
+			drop := comp.Type.FracBits - f.QuantShift
+			if drop == 0 {
+				g.pf("    output->%s.%s = (%s) input->%s_%s;\n", f.Name, comp.Name, g.storageType(comp), f.Name, comp.Name)
+				continue
+			}
+			// the left shift back — dropped bits return as zeros
+			g.pf("    output->%s.%s = (%s) ( (serialize_int64_t) input->%s_%s << %d );\n",
+				f.Name, comp.Name, g.storageType(comp), f.Name, comp.Name, drop)
+		}
 		return
 	}
 	st, ok := f.Type.Ref.(*ir.Struct)

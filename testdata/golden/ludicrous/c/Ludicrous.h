@@ -199,21 +199,9 @@ typedef struct BodyData_Interpolate {
     FixedVec velocity;
 } BodyData_Interpolate;
 
-/* QuantizeBody — the interpolate domain to the quantized wire domain. */
-static SCHEMA_UNUSED void quantize_body( const BodyData_Interpolate * input, BodyData_Shallow * output )
-{
-    output->position = input->position;
-    output->rotation = input->rotation;
-    output->velocity = input->velocity;
-}
-
-/* UnquantizeBody — the quantized wire domain back to the interpolate domain. */
-static SCHEMA_UNUSED void unquantize_body( const BodyData_Shallow * input, BodyData_Interpolate * output )
-{
-    output->position = input->position;
-    output->rotation = input->rotation;
-    output->velocity = input->velocity;
-}
+/* QuantizeBody/UnquantizeBody are not emitted: every [interpolate] field
+   is already wire-domain (fixed components are their own quantization,
+   SPEC §4.8) — Interpolate and Shallow are the same values. */
 
 
 /* ---- object NarrowBody — one definition, a generated family per target (SPEC §4.8) ---- */
@@ -235,15 +223,15 @@ typedef struct NarrowBodyData_Deep {
 
 /* NarrowBodyData_Shallow — the [interpolate] fields on the quantized wire */
 typedef struct NarrowBodyData_Shallow {
-    /* position: FixedVec quantized — per-component int in [0, 0] */
-    int8_t position_x;
-    int8_t position_y;
-    int8_t position_z;
-    /* rotation: FixedQuat quantized — per-component int in [0, 0] */
-    int8_t rotation_x;
-    int8_t rotation_y;
-    int8_t rotation_z;
-    int8_t rotation_w;
+    /* position: FixedVec narrowed — 8 fractional bits kept (SPEC §4.8 rule 2b) */
+    int32_t position_x; /* [-25600000, 25600000] */
+    int32_t position_y; /* [-25600000, 25600000] */
+    int32_t position_z; /* [-25600000, 25600000] */
+    /* rotation: FixedQuat narrowed — 10 fractional bits kept (SPEC §4.8 rule 2b) */
+    int16_t rotation_x; /* [-1024, 1024] */
+    int16_t rotation_y; /* [-1024, 1024] */
+    int16_t rotation_z; /* [-1024, 1024] */
+    int16_t rotation_w; /* [-1024, 1024] */
     FixedVec velocity;
 } NarrowBodyData_Shallow;
 
@@ -257,110 +245,26 @@ typedef struct NarrowBodyData_Interpolate {
 /* QuantizeNarrowBody — the interpolate domain to the quantized wire domain. */
 static SCHEMA_UNUSED void quantize_narrow_body( const NarrowBodyData_Interpolate * input, NarrowBodyData_Shallow * output )
 {
-    {
-        double quantized_value = floor( (double) input->position.x * (double) 256 + 0.5 );
-        serialize_int64_t component_value = 0LL;
-        if ( quantized_value > 0.0 )
-        {
-            component_value = 0LL;
-        }
-        else if ( quantized_value >= 0.0 )
-        {
-            component_value = (serialize_int64_t) quantized_value;
-        }
-        output->position_x = (int8_t) component_value;
-    }
-    {
-        double quantized_value = floor( (double) input->position.y * (double) 256 + 0.5 );
-        serialize_int64_t component_value = 0LL;
-        if ( quantized_value > 0.0 )
-        {
-            component_value = 0LL;
-        }
-        else if ( quantized_value >= 0.0 )
-        {
-            component_value = (serialize_int64_t) quantized_value;
-        }
-        output->position_y = (int8_t) component_value;
-    }
-    {
-        double quantized_value = floor( (double) input->position.z * (double) 256 + 0.5 );
-        serialize_int64_t component_value = 0LL;
-        if ( quantized_value > 0.0 )
-        {
-            component_value = 0LL;
-        }
-        else if ( quantized_value >= 0.0 )
-        {
-            component_value = (serialize_int64_t) quantized_value;
-        }
-        output->position_z = (int8_t) component_value;
-    }
-    {
-        double quantized_value = floor( (double) input->rotation.x * (double) 1024 + 0.5 );
-        serialize_int64_t component_value = 0LL;
-        if ( quantized_value > 0.0 )
-        {
-            component_value = 0LL;
-        }
-        else if ( quantized_value >= 0.0 )
-        {
-            component_value = (serialize_int64_t) quantized_value;
-        }
-        output->rotation_x = (int8_t) component_value;
-    }
-    {
-        double quantized_value = floor( (double) input->rotation.y * (double) 1024 + 0.5 );
-        serialize_int64_t component_value = 0LL;
-        if ( quantized_value > 0.0 )
-        {
-            component_value = 0LL;
-        }
-        else if ( quantized_value >= 0.0 )
-        {
-            component_value = (serialize_int64_t) quantized_value;
-        }
-        output->rotation_y = (int8_t) component_value;
-    }
-    {
-        double quantized_value = floor( (double) input->rotation.z * (double) 1024 + 0.5 );
-        serialize_int64_t component_value = 0LL;
-        if ( quantized_value > 0.0 )
-        {
-            component_value = 0LL;
-        }
-        else if ( quantized_value >= 0.0 )
-        {
-            component_value = (serialize_int64_t) quantized_value;
-        }
-        output->rotation_z = (int8_t) component_value;
-    }
-    {
-        double quantized_value = floor( (double) input->rotation.w * (double) 1024 + 0.5 );
-        serialize_int64_t component_value = 0LL;
-        if ( quantized_value > 0.0 )
-        {
-            component_value = 0LL;
-        }
-        else if ( quantized_value >= 0.0 )
-        {
-            component_value = (serialize_int64_t) quantized_value;
-        }
-        output->rotation_w = (int8_t) component_value;
-    }
+    output->position_x = (int32_t) ( ( (serialize_int64_t) input->position.x + 128LL ) >> 8 );
+    output->position_y = (int32_t) ( ( (serialize_int64_t) input->position.y + 128LL ) >> 8 );
+    output->position_z = (int32_t) ( ( (serialize_int64_t) input->position.z + 128LL ) >> 8 );
+    output->rotation_x = (int16_t) ( ( (serialize_int64_t) input->rotation.x + 524288LL ) >> 20 );
+    output->rotation_y = (int16_t) ( ( (serialize_int64_t) input->rotation.y + 524288LL ) >> 20 );
+    output->rotation_z = (int16_t) ( ( (serialize_int64_t) input->rotation.z + 524288LL ) >> 20 );
+    output->rotation_w = (int16_t) ( ( (serialize_int64_t) input->rotation.w + 524288LL ) >> 20 );
     output->velocity = input->velocity;
 }
 
 /* UnquantizeNarrowBody — the quantized wire domain back to the interpolate domain. */
 static SCHEMA_UNUSED void unquantize_narrow_body( const NarrowBodyData_Shallow * input, NarrowBodyData_Interpolate * output )
 {
-    output->position.x = (double) input->position_x / (double) 256;
-    output->position.y = (double) input->position_y / (double) 256;
-    output->position.z = (double) input->position_z / (double) 256;
-    output->rotation.x = (double) input->rotation_x / (double) 1024;
-    output->rotation.y = (double) input->rotation_y / (double) 1024;
-    output->rotation.z = (double) input->rotation_z / (double) 1024;
-    output->rotation.w = (double) input->rotation_w / (double) 1024;
+    output->position.x = (int64_t) ( (serialize_int64_t) input->position_x << 8 );
+    output->position.y = (int64_t) ( (serialize_int64_t) input->position_y << 8 );
+    output->position.z = (int64_t) ( (serialize_int64_t) input->position_z << 8 );
+    output->rotation.x = (int32_t) ( (serialize_int64_t) input->rotation_x << 20 );
+    output->rotation.y = (int32_t) ( (serialize_int64_t) input->rotation_y << 20 );
+    output->rotation.z = (int32_t) ( (serialize_int64_t) input->rotation_z << 20 );
+    output->rotation.w = (int32_t) ( (serialize_int64_t) input->rotation_w << 20 );
     output->velocity = input->velocity;
 }
 
