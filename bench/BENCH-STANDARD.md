@@ -507,7 +507,9 @@ every runner except where the gate is missing.
 > | Go | — (no level) | — |
 > | C# | — (no level) | — |
 >
-> Go and C# emit one row each, marked `opt=default`.
+> Go and C# emit one row each, marked `opt=default`. That one row rides in
+> **both** levels' tables — it is the language's only build, and §5.3 rule 4
+> ratios it against either level with an always-on caption naming the mix.
 >
 > **If the ranking of any two languages differs between level A and level B, the tool
 > MUST publish both tables and MUST NOT publish a single ranking.**
@@ -874,7 +876,15 @@ is in the file; nothing reads it.
 > 1. `corpus_id` — or either is empty
 > 2. `bytes_per_op`
 > 3. `family`
-> 4. `opt`
+> 4. `opt` — when both sides carry **explicit levels** that differ (`O2` vs
+>    `O3`, the §0 coin flip). `default` is not a level, it is §3.3's record
+>    that the language *has* no level (Go, C#): that row is the language's
+>    only truth and ratios against any single table's level, captioned,
+>    always, no flag. (Amended 2026-08-15: the first full five-language
+>    table refused on `O3` vs `default` — a literal reading made the
+>    cross-language table unprintable *by construction*, since Go and C#
+>    can never carry anything but `default`. A rule that can only ever
+>    refuse is not a check, it is a lock.)
 > 5. `checks` (unless `--label-checks`, which prints the ratio with the §3.4 caption)
 > 6. `linkage` (unless `--cross-linkage`, likewise captioned)
 > 7. `inline` is `unknown` on either side

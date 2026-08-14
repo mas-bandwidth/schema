@@ -335,9 +335,21 @@ func guardRatio(ds *dataset, ka, kb key, a, b row) []string {
 	if a.family != b.family {
 		d = append(d, fmt.Sprintf("family: A=%q B=%q", a.family, b.family))
 	}
-	// 4. opt
+	// 4. opt — two EXPLICIT levels must match: C at -O2 against C++ at -O3
+	// is the §0 coin flip and always refuses. `default` is different in
+	// kind: §3.3 records it for languages that HAVE no optimization level
+	// (Go, C#), so their one row is that language's only truth and rides
+	// in every level's table — refusing it would make the five-language
+	// table unprintable by construction, which the §5.3 amendment of
+	// 2026-08-15 names as the bug it was. The mix is captioned, always,
+	// no flag: it is a definition, not an escape.
 	if a.opt != b.opt {
-		d = append(d, fmt.Sprintf("opt: A=%q B=%q", a.opt, b.opt))
+		if a.opt == "default" || b.opt == "default" {
+			captions[fmt.Sprintf("%s opt=%s vs %s opt=%s — a language without an optimization-level knob rides in every level's table (§3.3).",
+				ka.lang, a.opt, kb.lang, b.opt)] = true
+		} else {
+			d = append(d, fmt.Sprintf("opt: A=%q B=%q", a.opt, b.opt))
+		}
 	}
 	// 5. checks (unless --label-checks, which prints the §3.4 caption).
 	// Three-value logic (§3.4): ANY two differing values refuse —
