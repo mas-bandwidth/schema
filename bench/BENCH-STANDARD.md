@@ -430,11 +430,22 @@ packaging it ships with — that is not the harness's choice to make.
 
 > **The library's packaging is a recorded property, not a matched one.** It goes in
 > the `linkage` column: `hdr` (header-only, same TU as caller), `tu` (separate
-> translation unit, no LTO), `tu-lto`, `crate` (single crate), `pkg` (same package),
+> translation unit, no LTO), `hdr+tu` (the hot spine lives in the header and
+> inlines into the caller's TU, while cold and bulk paths stay in a separate
+> compiled TU, no LTO), `tu-lto`, `crate` (single crate), `pkg` (same package),
 > `asm` (separate assembly).
+>
+> `hdr+tu` was added 2026-08-15, when serialize.c stopped being plain `tu`:
+> its bit-level hot spine moved into `serialize.h` as `static inline` (that
+> night's PRs), with the cold and bulk-bytes paths remaining in the compiled
+> `serialize.c` TU. Recording it as `tu` would claim a call boundary the hot
+> path no longer crosses; recording it as `hdr` would hide the boundary the
+> bulk paths still cross. As with every linkage value, this is a property of
+> the runtime's packaging, recorded, never matched.
 
 You cannot give C and C++ the same linkage — `serialize.h` is a header and
-`serialize.c` is a compiled TU. That difference is the largest single term in the C
+`serialize.c` is a compiled TU (since 2026-08-15: a header hot spine over a
+compiled TU, `hdr+tu`). That difference is the largest single term in the C
 row and it is a property of the runtimes, not the languages. So it is recorded, and
 §5.3 makes the tool refuse to divide across it without an explicit flag.
 
@@ -784,7 +795,7 @@ lang,bench,path,iters,bytes_per_op,runs,median_msgs_per_sec,min_msgs_per_sec,max
 | 1–11 | unchanged from v1 |
 | `corpus_id` | 16 hex digits, §1.6 |
 | `family` | `gen` \| `rt` \| `bits` \| `local` |
-| `linkage` | `hdr` \| `tu` \| `tu-lto` \| `crate` \| `pkg` \| `asm` |
+| `linkage` | `hdr` \| `tu` \| `hdr+tu` \| `tu-lto` \| `crate` \| `pkg` \| `asm` (§3.1) |
 | `checks` | `removed` \| `always` \| `contract` (§3.4) |
 | `opt` | `O2` \| `O3` \| `default` |
 | `inline` | `full` \| `partial:N` \| `none` \| `unknown` |

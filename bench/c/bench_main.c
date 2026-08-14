@@ -90,8 +90,12 @@ static const char * g_wire_dir = "testdata/wire";
    (§1.6): FNV-1a-64 over the goldens THIS RUN actually loaded — for each file
    in sorted basename order, the basename bytes, a 0x00 byte, the contents.
    The per-runner constants: family gen (these are the generated-code
-   benchmarks), linkage tu (serialize.c is a compiled translation unit, no
-   LTO — the packaging the C row has always carried), checks CONTRACT
+   benchmarks), linkage hdr+tu (§3.1's 2026-08-15 value: serialize.c's hot
+   spine lives in serialize.h as static inline and compiles into THIS TU,
+   while the cold and bulk-bytes paths stay in the compiled serialize.c
+   translation unit, no LTO — plain `tu` would claim a call boundary the
+   hot path no longer crosses, plain `hdr` would hide the one the bulk
+   paths still cross), checks CONTRACT
    (§3.4's third value, added 2026-08-15: -DNDEBUG compiles serialize.c's
    caller-error asserts away like `removed`, but the write-capacity check
    that doubles as the sticky-error flag is unconditional by contract in
@@ -105,7 +109,7 @@ static const char * g_wire_dir = "testdata/wire";
 #endif
 /* family is per ROW now (gen | rt | bits — §5.1); linkage/checks/opt/inline
    stay per-runner constants */
-#define CsvSuffix "tu,contract," BENCH_OPT ",unknown"
+#define CsvSuffix "hdr+tu,contract," BENCH_OPT ",unknown"
 #define MaxCsvRows 64
 #define MaxGoldens 24
 static char g_csv_rows[MaxCsvRows][256];
