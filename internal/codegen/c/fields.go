@@ -95,6 +95,13 @@ func (g *gen) emitWriteRangedInt(f *ir.Field, expr, ind string) {
 			g.call(ind, fmt.Sprintf("serialize_write_uint64( stream, (serialize_uint64_t) %s )", expr))
 			return
 		}
+		if f.Type.Signed && f.Type.Width < 32 {
+			// through the same-width unsigned first: the direct cast
+			// sign-extends a negative intN past its declared width, which
+			// write_bits asserts against. The C++ backend narrows the same way.
+			g.call(ind, fmt.Sprintf("serialize_write_bits( stream, (serialize_uint32_t) (serialize_uint%d_t) %s, %d )", f.Type.Width, expr, f.Type.Width))
+			return
+		}
 		g.call(ind, fmt.Sprintf("serialize_write_bits( stream, (serialize_uint32_t) %s, %d )", expr, f.Type.Width))
 		return
 	}

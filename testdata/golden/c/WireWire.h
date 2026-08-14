@@ -586,11 +586,11 @@ static SCHEMA_UNUSED int write_test_data( serialize_write_stream_t * stream, con
     {
         return 0;
     }
-    if ( !serialize_write_bits( stream, (serialize_uint32_t) value->int8_value, 8 ) )
+    if ( !serialize_write_bits( stream, (serialize_uint32_t) (serialize_uint8_t) value->int8_value, 8 ) )
     {
         return 0;
     }
-    if ( !serialize_write_bits( stream, (serialize_uint32_t) value->int16_value, 16 ) )
+    if ( !serialize_write_bits( stream, (serialize_uint32_t) (serialize_uint16_t) value->int16_value, 16 ) )
     {
         return 0;
     }
