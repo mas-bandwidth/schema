@@ -44,14 +44,17 @@ static partial class Program
     // for each file in sorted basename order, the basename bytes, a 0x00
     // byte, the contents. The per-runner constants: family gen (these are
     // the generated-code benchmarks), linkage asm (the serialize.cs runtime
-    // is a separate assembly the JIT inlines across), checks removed (the
-    // Release build compiles range and bounds checks away — the
-    // NDEBUG-equivalent semantics, §3.4), opt default (the JIT has no
-    // operator-visible optimization levels), inline unknown until the
-    // verdict pass (§4.2) backfills it.
+    // is a separate assembly the JIT inlines across), checks ALWAYS —
+    // serialize.cs has no Debug.Assert and no conditional compilation of
+    // its checks: bounds checks, range validation and the sticky error
+    // latch are unconditional in every build, §3.4's definition of
+    // `always` word for word (this row previously claimed `removed`, which
+    // was wrong — there is no NDEBUG-equivalent build of serialize.cs) —
+    // opt default (the JIT has no operator-visible optimization levels),
+    // inline unknown until the verdict pass (§4.2) backfills it.
     // family is per ROW now (gen | rt | bits — §5.1); linkage/checks/opt/
     // inline stay per-runner constants
-    const string CsvSuffix = "asm,removed,default,unknown";
+    const string CsvSuffix = "asm,always,default,unknown";
 
     static readonly List<(string Row, string Family)> gCsvRows = new List<(string, string)>();
     static readonly SortedDictionary<string, byte[]> gGoldensLoaded =

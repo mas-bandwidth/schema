@@ -26,3 +26,11 @@ stand-in for C++'s free stack temporary (§5 zeroing makes reuse equivalent
 on every field that rides). The driver passes write/read/vary as delegates:
 one indirect call per op that the C++ and Rust drivers don't pay; noted
 with the results.
+
+`checks=always`: serialize.cs keeps its bounds checks, range validation and
+the sticky error latch in **every** build — it has no `Debug.Assert` and no
+conditional compilation of any check, so there is no NDEBUG-equivalent
+Release semantics to record (§3.4). Consequence for ratios: cs rows compare
+freely against go rows (both `always`); a cs↔cpp or cs↔c ratio crosses a
+safety-contract difference and needs `--label-checks`, which prints it
+captioned.
