@@ -128,6 +128,52 @@ verdict_of() {
     if [ "$1" -eq 0 ]; then echo "full"; else echo "partial:$1"; fi
 }
 
+# ---- SELF-TEST: the join between symbol HEADERS and call TARGETS ----
+# The bug this exists to catch (and did not exist to catch, once): a branch
+# renames call targets into a namespace the symbol headers were never put in.
+# count_calls then looks up total[] for names that were never populated, every
+# helper edge contributes zero, and each loop whose runtime calls all flow
+# through an out-of-line helper publishes a false `full`. Two assertions:
+#   1. helper-typed call targets must resolve to symbol headers at all;
+#   2. at least one symbol whose immediate helper has nonzero direct runtime
+#      calls must itself report a nonzero transitive count.
+# Either failing means the fixpoint join is broken — exit 1, verdicts unusable.
+#   $1 = translated disasm (otool shape), $2 = counts.txt, $3 = HELPER regex
+selftest_join() {
+    awk -v HELPER="$3" -v countsf="$2" -v lang="$LANG_ARG" '
+        BEGIN {
+            while ((getline line < countsf) > 0) {
+                n = split(line, a, " ")
+                if (a[1] == "SYM" && n >= 5) { known[a[2]] = 1; direct[a[2]] = a[3]; trans[a[2]] = a[4] }
+            }
+        }
+        /^[^ \t].*:$/ { sym = substr($0, 1, length($0) - 1); next }
+        $2 == "bl" && sym != "" && $3 ~ HELPER { edge[sym SUBSEP $3] = 1; tgt[$3] = 1; nedge++ }
+        END {
+            if (nedge == 0) exit 0      # no helper edges anywhere: nothing to prove
+            resolved = 0
+            for (t in tgt) if (t in known) resolved++
+            if (resolved == 0) {
+                printf "inline-verdict SELF-TEST FAILED (%s): %d helper-call targets, and not one matches any symbol header — call targets and symbol headers are in different namespaces, so every helper edge joins to nothing and each loop would publish a false full\n", lang, nedge > "/dev/stderr"
+                exit 1
+            }
+            expected = 0; witness = 0
+            for (k in edge) {
+                split(k, a, SUBSEP)
+                if (direct[a[2]] + 0 > 0) {
+                    expected++
+                    if (trans[a[1]] + 0 > 0) witness++
+                    else { badcaller = a[1]; badhelper = a[2] }
+                }
+            }
+            if (expected > 0 && witness == 0) {
+                printf "inline-verdict SELF-TEST FAILED (%s): %s calls helper %s, whose own direct runtime calls are nonzero, yet reports transitive 0 — the helper-edge join dropped the contribution\n", lang, badcaller, badhelper > "/dev/stderr"
+                exit 1
+            }
+            exit 0
+        }' "$1"
+}
+
 # transitive count for the first symbol matching the regex; -1 if absent
 count_for() {
     awk -v pat="$1" '$1 == "SYM" && $2 ~ pat { print $4; found = 1; exit } END { if (!found) print -1 }' "$VD/counts.txt"
@@ -192,6 +238,7 @@ c|cpp)
     [ -x "$BIN" ] || { echo "$BIN missing — run the pass first" >&2; exit 1; }
     otool -tv "$BIN" > "$VD/disasm.txt"
     count_calls "$RT" "$HELPER" < "$VD/disasm.txt" > "$VD/counts.txt"
+    selftest_join "$VD/disasm.txt" "$VD/counts.txt" "$HELPER" || exit 1
 
     # clang remarks (§4.1: -Rpass=inline -Rpass-missed=inline; NOT
     # -fopt-info-inline, the GCC spelling Apple clang rejects). A shadow
@@ -267,6 +314,7 @@ c|cpp)
         [ -x "$VD/shadow" ] || { echo "shadow build failed — cannot attribute cpp verdicts (see $REMARKS)" >&2; exit 1; }
         otool -tv "$VD/shadow" > "$VD/shadow-disasm.txt"
         count_calls "$RT" "$HELPER" < "$VD/shadow-disasm.txt" > "$VD/shadow-counts.txt"
+        selftest_join "$VD/shadow-disasm.txt" "$VD/shadow-counts.txt" "$HELPER" || exit 1
 
         # every remaining runtime/helper call site in the shadow text
         awk -v RT="$RT" -v HELPER="$HELPER" '
@@ -441,6 +489,7 @@ go)
                 }
         }' "$VD/objdump.txt" > "$VD/calls.txt"
     count_calls 'serialize%2ego\.|mas-bandwidth\/serialize' '^example\.|^main\.' < "$VD/calls.txt" > "$VD/counts.txt"
+    selftest_join "$VD/calls.txt" "$VD/counts.txt" '^example\.|^main\.' || exit 1
 
     # remarks: go build -a -gcflags=-m=2 — -a is MANDATORY (see header)
     ( cd bench/go && go build -a -gcflags=all=-m=2 -o /dev/null . 2> "$OLDPWD/$VD/remarks.txt" ) || true
@@ -509,7 +558,12 @@ rust)
     # last, and serialize types appear inside example/benchrust generics —
     # so classify every call target by its EARLIEST crate token, and refuse
     # the naive substring match that would count an example shim mentioning
-    # WriteStream as a runtime call.
+    # WriteStream as a runtime call. Symbol HEADERS get the identical
+    # CRATE_ prefix, because count_calls joins helper-call targets against
+    # header names: leave the headers raw and every helper edge looks up a
+    # name that was never populated, contributes zero, and each loop whose
+    # runtime calls flow through an out-of-line helper publishes a false
+    # `full` (the selftest_join below is the assertion that catches this).
     otool -tv "$BIN" | awk '
         function firstcrate(t,    best, cls, i, n, names, m) {
             split("9serialize 7example 9benchrust 4core 3std 5alloc", names, " ")
@@ -520,11 +574,16 @@ rust)
             }
             return cls
         }
-        /^[^ \t].*:$/ { print; next }
+        /^[^ \t].*:$/ {
+            s = substr($0, 1, length($0) - 1)
+            print "CRATE_" firstcrate(s) "_" s ":"
+            next
+        }
         $2 == "bl"  { print $1 " bl CRATE_" firstcrate($3) "_" $3; next }
         $2 == "blr" { print $1 " blr indirect"; next }
     ' > "$VD/disasm.txt"
     count_calls '^CRATE_serialize_' '^CRATE_(example|benchrust)_' < "$VD/disasm.txt" > "$VD/counts.txt"
+    selftest_join "$VD/disasm.txt" "$VD/counts.txt" '^CRATE_(example|benchrust)_' || exit 1
 
     # remarks: RUSTFLAGS="-Cremark=inline -Cdebuginfo=1" rebuild (fingerprint
     # forces it); runs AFTER the measured binary was disassembled above.
@@ -604,7 +663,12 @@ cs)
     count_calls '.' '(Example\.Schema|Program):' < "$VD/calls.txt" > "$VD/counts.txt"
     # ('.' after the helper carve-out: every non-helper bl counts — Serialize.*
     # methods, JIT helpers, BCL — plus blr via the indirect column, folded in
-    # below, because §4.1 counts them all for C#.)
+    # below, because §4.1 counts them all for C#. selftest_join is not run
+    # here: JitDisasm surfaces managed-to-managed calls as blr or raw
+    # addresses, never as named bl targets, so cs has no helper edges for the
+    # join self-test to prove anything about — and with a catch-all RT plus
+    # folded indirect counts its helper-direct witness would mean something
+    # else anyway.)
 
     # fold indirect (blr) counts into the per-method transitive totals
     awk '$1 == "SYM" { $4 += $5; print }' "$VD/counts.txt" > "$VD/counts.folded" \
