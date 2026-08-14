@@ -7,6 +7,12 @@ batch builder, golden + round-trip self-checks before any number is produced
 median/min/max/spread, CSV rows with `lang=go`. Full contract:
 `bench/README.md`.
 
+`rt.go` adds families rt and bits (BENCH-STANDARD.md §1.3/§1.4): the
+four Bench.schema shapes hand-written over the Serialize* surface,
+§1.5 oracle-gated against `testdata/wire/bench_*.bin`, plus the 16-width
+bitpacker workload — timed loops in `//go:noinline` symbols for the §4.1
+verdict.
+
 Wiring: `go.mod` (module `benchgo`) replaces `example` →
 `../../generated/go` and `github.com/mas-bandwidth/serialize.go` → the
 sibling port checkout, exactly like `test/go`. `run.sh` runs it as

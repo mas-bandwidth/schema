@@ -7,6 +7,12 @@ round-trip self-checks before any number is produced (a corpus mismatch
 REFUSES to bench), warmup + 7 runs + median/min/max/spread, CSV rows with
 `lang=rust`. Full contract: `bench/README.md`.
 
+`src/rt.rs` adds families rt and bits (BENCH-STANDARD.md §1.3/§1.4): the
+four Bench.schema shapes hand-written over the Stream trait, §1.5
+oracle-gated against `testdata/wire/bench_*.bin`, plus the 16-width
+bitpacker workload — timed loops in `#[inline(never)]` symbols for the
+§4.1 verdict.
+
 Wiring: `Cargo.toml` path-depends on `../../generated/rust` and the sibling
 serialize.rs checkout, exactly like `test/rust`. `run.sh` runs it as
 `cargo run --release -- --csv` from this directory (default release
