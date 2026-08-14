@@ -258,6 +258,12 @@ func TestDiagnostics(t *testing.T) {
 			src: "package t\ntype ABTest { x uint8 }\ntype AbTest { y uint8 }\n"},
 		{name: "two consts whose Rust constant spellings collide", want: "both generate the symbol AB_MAX",
 			src: "package t\nconst ABMax = 1\nconst AbMax = 2\n"},
+		{name: "a type collides with an object view's flat wire function (Rust/C)", want: "both generate the symbol write_ship_data_shallow",
+			src: "package t\nobject Ship { x uint8 [interpolate, min = 0, max = 3] }\ntype ShipDataShallow { y uint8 }\n"},
+		{name: "a const collides with an enum's C variant #define", want: "variant constants (C form)",
+			src: "package t\nenum DriveMode { Ludicrous }\nconst DriveModeLudicrous = 1\ntype T { m DriveMode }\n"},
+		{name: "two enums whose C debug-name functions collide", want: "both generate the symbol enum_name_ab_mode",
+			src: "package t\nenum ABMode { X }\nenum AbMode { Y }\ntype T { x uint8 }\n"},
 		{name: "package mismatch across files", want: "does not match",
 			srcs: map[string]string{
 				"A.schema": "package a\ntype T { x uint8 }\n",

@@ -27,7 +27,7 @@ extern "C" {
 #endif
 
 /* Writes Ship's DEEP view — the declared encodings. */
-static SCHEMA_UNUSED int write_ship_deep( serialize_write_stream_t * stream, const ShipData_Deep * value )
+static SCHEMA_UNUSED int write_ship_data_deep( serialize_write_stream_t * stream, const ShipData_Deep * value )
 {
     if ( value->ship_type > 5 )
     {
@@ -149,7 +149,7 @@ static SCHEMA_UNUSED int write_ship_deep( serialize_write_stream_t * stream, con
 }
 
 /* Reads Ship's DEEP view. */
-static SCHEMA_UNUSED int read_ship_deep( serialize_read_stream_t * stream, ShipData_Deep * value )
+static SCHEMA_UNUSED int read_ship_data_deep( serialize_read_stream_t * stream, ShipData_Deep * value )
 {
     {
         serialize_uint32_t enum_value = 0;
@@ -295,7 +295,7 @@ static SCHEMA_UNUSED int read_ship_deep( serialize_read_stream_t * stream, ShipD
 }
 
 /* Writes Ship's SHALLOW view — the quantized wire. */
-static SCHEMA_UNUSED int write_ship_shallow( serialize_write_stream_t * stream, const ShipData_Shallow * value )
+static SCHEMA_UNUSED int write_ship_data_shallow( serialize_write_stream_t * stream, const ShipData_Shallow * value )
 {
     if ( value->ship_type > 5 )
     {
@@ -417,7 +417,7 @@ static SCHEMA_UNUSED int write_ship_shallow( serialize_write_stream_t * stream, 
 }
 
 /* Reads Ship's SHALLOW view. */
-static SCHEMA_UNUSED int read_ship_shallow( serialize_read_stream_t * stream, ShipData_Shallow * value )
+static SCHEMA_UNUSED int read_ship_data_shallow( serialize_read_stream_t * stream, ShipData_Shallow * value )
 {
     {
         serialize_uint32_t enum_value = 0;
@@ -599,7 +599,7 @@ static SCHEMA_UNUSED int read_ship_shallow( serialize_read_stream_t * stream, Sh
 }
 
 /* Writes Missile's DEEP view — the declared encodings. */
-static SCHEMA_UNUSED int write_missile_deep( serialize_write_stream_t * stream, const MissileData_Deep * value )
+static SCHEMA_UNUSED int write_missile_data_deep( serialize_write_stream_t * stream, const MissileData_Deep * value )
 {
     if ( value->missile_type > 3 )
     {
@@ -637,7 +637,7 @@ static SCHEMA_UNUSED int write_missile_deep( serialize_write_stream_t * stream, 
 }
 
 /* Reads Missile's DEEP view. */
-static SCHEMA_UNUSED int read_missile_deep( serialize_read_stream_t * stream, MissileData_Deep * value )
+static SCHEMA_UNUSED int read_missile_data_deep( serialize_read_stream_t * stream, MissileData_Deep * value )
 {
     {
         serialize_uint32_t enum_value = 0;
@@ -687,7 +687,7 @@ static SCHEMA_UNUSED int read_missile_deep( serialize_read_stream_t * stream, Mi
 }
 
 /* Writes Missile's SHALLOW view — the quantized wire. */
-static SCHEMA_UNUSED int write_missile_shallow( serialize_write_stream_t * stream, const MissileData_Shallow * value )
+static SCHEMA_UNUSED int write_missile_data_shallow( serialize_write_stream_t * stream, const MissileData_Shallow * value )
 {
     if ( value->missile_type > 3 )
     {
@@ -793,7 +793,7 @@ static SCHEMA_UNUSED int write_missile_shallow( serialize_write_stream_t * strea
 }
 
 /* Reads Missile's SHALLOW view. */
-static SCHEMA_UNUSED int read_missile_shallow( serialize_read_stream_t * stream, MissileData_Shallow * value )
+static SCHEMA_UNUSED int read_missile_data_shallow( serialize_read_stream_t * stream, MissileData_Shallow * value )
 {
     {
         serialize_uint32_t enum_value = 0;
@@ -951,7 +951,7 @@ static SCHEMA_UNUSED int read_missile_shallow( serialize_read_stream_t * stream,
 }
 
 /* Writes DynamicProp's DEEP view — the declared encodings. */
-static SCHEMA_UNUSED int write_dynamic_prop_deep( serialize_write_stream_t * stream, const DynamicPropData_Deep * value )
+static SCHEMA_UNUSED int write_dynamic_prop_data_deep( serialize_write_stream_t * stream, const DynamicPropData_Deep * value )
 {
     if ( value->prop_type > 6 )
     {
@@ -989,7 +989,7 @@ static SCHEMA_UNUSED int write_dynamic_prop_deep( serialize_write_stream_t * str
 }
 
 /* Reads DynamicProp's DEEP view. */
-static SCHEMA_UNUSED int read_dynamic_prop_deep( serialize_read_stream_t * stream, DynamicPropData_Deep * value )
+static SCHEMA_UNUSED int read_dynamic_prop_data_deep( serialize_read_stream_t * stream, DynamicPropData_Deep * value )
 {
     {
         serialize_uint32_t enum_value = 0;
@@ -1039,7 +1039,7 @@ static SCHEMA_UNUSED int read_dynamic_prop_deep( serialize_read_stream_t * strea
 }
 
 /* Writes DynamicProp's SHALLOW view — the quantized wire. */
-static SCHEMA_UNUSED int write_dynamic_prop_shallow( serialize_write_stream_t * stream, const DynamicPropData_Shallow * value )
+static SCHEMA_UNUSED int write_dynamic_prop_data_shallow( serialize_write_stream_t * stream, const DynamicPropData_Shallow * value )
 {
     if ( value->prop_type > 6 )
     {
@@ -1145,7 +1145,7 @@ static SCHEMA_UNUSED int write_dynamic_prop_shallow( serialize_write_stream_t * 
 }
 
 /* Reads DynamicProp's SHALLOW view. */
-static SCHEMA_UNUSED int read_dynamic_prop_shallow( serialize_read_stream_t * stream, DynamicPropData_Shallow * value )
+static SCHEMA_UNUSED int read_dynamic_prop_data_shallow( serialize_read_stream_t * stream, DynamicPropData_Shallow * value )
 {
     {
         serialize_uint32_t enum_value = 0;
@@ -1303,7 +1303,7 @@ static SCHEMA_UNUSED int read_dynamic_prop_shallow( serialize_read_stream_t * st
 }
 
 /* Writes Turret's DEEP view — the declared encodings. */
-static SCHEMA_UNUSED int write_turret_deep( serialize_write_stream_t * stream, const TurretData_Deep * value )
+static SCHEMA_UNUSED int write_turret_data_deep( serialize_write_stream_t * stream, const TurretData_Deep * value )
 {
     if ( !write_handle( stream, &value->parent ) )
     {
@@ -1329,7 +1329,7 @@ static SCHEMA_UNUSED int write_turret_deep( serialize_write_stream_t * stream, c
 }
 
 /* Reads Turret's DEEP view. */
-static SCHEMA_UNUSED int read_turret_deep( serialize_read_stream_t * stream, TurretData_Deep * value )
+static SCHEMA_UNUSED int read_turret_data_deep( serialize_read_stream_t * stream, TurretData_Deep * value )
 {
     if ( !read_handle( stream, &value->parent ) )
     {
@@ -1365,7 +1365,7 @@ static SCHEMA_UNUSED int read_turret_deep( serialize_read_stream_t * stream, Tur
 }
 
 /* Writes Turret's SHALLOW view — the quantized wire. */
-static SCHEMA_UNUSED int write_turret_shallow( serialize_write_stream_t * stream, const TurretData_Shallow * value )
+static SCHEMA_UNUSED int write_turret_data_shallow( serialize_write_stream_t * stream, const TurretData_Shallow * value )
 {
     if ( !write_handle( stream, &value->parent ) )
     {
@@ -1419,7 +1419,7 @@ static SCHEMA_UNUSED int write_turret_shallow( serialize_write_stream_t * stream
 }
 
 /* Reads Turret's SHALLOW view. */
-static SCHEMA_UNUSED int read_turret_shallow( serialize_read_stream_t * stream, TurretData_Shallow * value )
+static SCHEMA_UNUSED int read_turret_data_shallow( serialize_read_stream_t * stream, TurretData_Shallow * value )
 {
     if ( !read_handle( stream, &value->parent ) )
     {

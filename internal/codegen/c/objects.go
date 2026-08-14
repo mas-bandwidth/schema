@@ -217,32 +217,36 @@ func (g *gen) emitObjectFunctions(d *ir.Object) {
 	deep, interp := splitObjectFields(d)
 
 	g.pf("/* Writes %s's DEEP view — the declared encodings. */\n", d.Name)
-	g.pf("static SCHEMA_UNUSED int write_%s_deep( serialize_write_stream_t * stream, const %sData_Deep * value )\n{\n",
-		snake(d.Name), d.Name)
+	// the function name derives from the VIEW STRUCT name, exactly like the
+	// other four backends (WriteShipData_Deep -> write_ship_data_deep) — the
+	// object-name form this used to emit (write_ship_deep) lived outside the
+	// claimed-name registry and could collide with a user type (#23)
+	g.pf("static SCHEMA_UNUSED int write_%s( serialize_write_stream_t * stream, const %sData_Deep * value )\n{\n",
+		snake(d.Name+"Data_Deep"), d.Name)
 	for _, f := range deep {
 		g.emitDeepWriteField(f, "    ")
 	}
 	g.pf("    return 1;\n}\n\n")
 
 	g.pf("/* Reads %s's DEEP view. */\n", d.Name)
-	g.pf("static SCHEMA_UNUSED int read_%s_deep( serialize_read_stream_t * stream, %sData_Deep * value )\n{\n",
-		snake(d.Name), d.Name)
+	g.pf("static SCHEMA_UNUSED int read_%s( serialize_read_stream_t * stream, %sData_Deep * value )\n{\n",
+		snake(d.Name+"Data_Deep"), d.Name)
 	for _, f := range deep {
 		g.emitDeepReadField(f, "    ")
 	}
 	g.pf("    return 1;\n}\n\n")
 
 	g.pf("/* Writes %s's SHALLOW view — the quantized wire. */\n", d.Name)
-	g.pf("static SCHEMA_UNUSED int write_%s_shallow( serialize_write_stream_t * stream, const %sData_Shallow * value )\n{\n",
-		snake(d.Name), d.Name)
+	g.pf("static SCHEMA_UNUSED int write_%s( serialize_write_stream_t * stream, const %sData_Shallow * value )\n{\n",
+		snake(d.Name+"Data_Shallow"), d.Name)
 	for _, f := range interp {
 		g.emitShallowWriteField(f, "    ")
 	}
 	g.pf("    return 1;\n}\n\n")
 
 	g.pf("/* Reads %s's SHALLOW view. */\n", d.Name)
-	g.pf("static SCHEMA_UNUSED int read_%s_shallow( serialize_read_stream_t * stream, %sData_Shallow * value )\n{\n",
-		snake(d.Name), d.Name)
+	g.pf("static SCHEMA_UNUSED int read_%s( serialize_read_stream_t * stream, %sData_Shallow * value )\n{\n",
+		snake(d.Name+"Data_Shallow"), d.Name)
 	for _, f := range interp {
 		g.emitShallowReadField(f, "    ")
 	}

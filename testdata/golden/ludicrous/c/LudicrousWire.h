@@ -428,7 +428,7 @@ static SCHEMA_UNUSED int read_fixed_quat( serialize_read_stream_t * stream, Fixe
 }
 
 /* Writes Body's DEEP view — the declared encodings. */
-static SCHEMA_UNUSED int write_body_deep( serialize_write_stream_t * stream, const BodyData_Deep * value )
+static SCHEMA_UNUSED int write_body_data_deep( serialize_write_stream_t * stream, const BodyData_Deep * value )
 {
     if ( !write_fixed_vec( stream, &value->position ) )
     {
@@ -446,7 +446,7 @@ static SCHEMA_UNUSED int write_body_deep( serialize_write_stream_t * stream, con
 }
 
 /* Reads Body's DEEP view. */
-static SCHEMA_UNUSED int read_body_deep( serialize_read_stream_t * stream, BodyData_Deep * value )
+static SCHEMA_UNUSED int read_body_data_deep( serialize_read_stream_t * stream, BodyData_Deep * value )
 {
     if ( !read_fixed_vec( stream, &value->position ) )
     {
@@ -464,7 +464,7 @@ static SCHEMA_UNUSED int read_body_deep( serialize_read_stream_t * stream, BodyD
 }
 
 /* Writes Body's SHALLOW view — the quantized wire. */
-static SCHEMA_UNUSED int write_body_shallow( serialize_write_stream_t * stream, const BodyData_Shallow * value )
+static SCHEMA_UNUSED int write_body_data_shallow( serialize_write_stream_t * stream, const BodyData_Shallow * value )
 {
     if ( !write_fixed_vec( stream, &value->position ) )
     {
@@ -482,7 +482,7 @@ static SCHEMA_UNUSED int write_body_shallow( serialize_write_stream_t * stream, 
 }
 
 /* Reads Body's SHALLOW view. */
-static SCHEMA_UNUSED int read_body_shallow( serialize_read_stream_t * stream, BodyData_Shallow * value )
+static SCHEMA_UNUSED int read_body_data_shallow( serialize_read_stream_t * stream, BodyData_Shallow * value )
 {
     if ( !read_fixed_vec( stream, &value->position ) )
     {
@@ -500,7 +500,7 @@ static SCHEMA_UNUSED int read_body_shallow( serialize_read_stream_t * stream, Bo
 }
 
 /* Writes NarrowBody's DEEP view — the declared encodings. */
-static SCHEMA_UNUSED int write_narrow_body_deep( serialize_write_stream_t * stream, const NarrowBodyData_Deep * value )
+static SCHEMA_UNUSED int write_narrow_body_data_deep( serialize_write_stream_t * stream, const NarrowBodyData_Deep * value )
 {
     if ( !write_fixed_vec( stream, &value->position ) )
     {
@@ -518,7 +518,7 @@ static SCHEMA_UNUSED int write_narrow_body_deep( serialize_write_stream_t * stre
 }
 
 /* Reads NarrowBody's DEEP view. */
-static SCHEMA_UNUSED int read_narrow_body_deep( serialize_read_stream_t * stream, NarrowBodyData_Deep * value )
+static SCHEMA_UNUSED int read_narrow_body_data_deep( serialize_read_stream_t * stream, NarrowBodyData_Deep * value )
 {
     if ( !read_fixed_vec( stream, &value->position ) )
     {
@@ -536,7 +536,7 @@ static SCHEMA_UNUSED int read_narrow_body_deep( serialize_read_stream_t * stream
 }
 
 /* Writes NarrowBody's SHALLOW view — the quantized wire. */
-static SCHEMA_UNUSED int write_narrow_body_shallow( serialize_write_stream_t * stream, const NarrowBodyData_Shallow * value )
+static SCHEMA_UNUSED int write_narrow_body_data_shallow( serialize_write_stream_t * stream, const NarrowBodyData_Shallow * value )
 {
     if ( (serialize_int64_t) value->position_x < -25600000LL || (serialize_int64_t) value->position_x > 25600000LL )
     {
@@ -602,7 +602,7 @@ static SCHEMA_UNUSED int write_narrow_body_shallow( serialize_write_stream_t * s
 }
 
 /* Reads NarrowBody's SHALLOW view. */
-static SCHEMA_UNUSED int read_narrow_body_shallow( serialize_read_stream_t * stream, NarrowBodyData_Shallow * value )
+static SCHEMA_UNUSED int read_narrow_body_data_shallow( serialize_read_stream_t * stream, NarrowBodyData_Shallow * value )
 {
     {
         serialize_uint32_t raw = 0;

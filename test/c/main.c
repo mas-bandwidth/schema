@@ -351,7 +351,7 @@ int main( void )
         }
 
         serialize_write_stream_init( &w, buffer, sizeof( buffer ) );
-        check( write_ship_shallow( &w, &q ), "write ShipData_Shallow" );
+        check( write_ship_data_shallow( &w, &q ), "write ShipData_Shallow" );
         serialize_write_flush( &w );
         golden_wire( "ship_shallow", buffer, serialize_write_bytes_processed( &w ) );
 
@@ -359,7 +359,7 @@ int main( void )
             ShipData_Shallow back;
             memset( &back, 0, sizeof( back ) );
             serialize_read_stream_init( &r, buffer, serialize_write_bytes_processed( &w ) );
-            check( read_ship_shallow( &r, &back ), "read ShipData_Shallow" );
+            check( read_ship_data_shallow( &r, &back ), "read ShipData_Shallow" );
             check( back.position_x == 1536 && back.position_y == -2304 && back.position_z == 102400,
                    "shallow position round-trips" );
             check( back.rotation_w == 1024, "shallow rotation round-trips" );

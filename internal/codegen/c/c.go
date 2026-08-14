@@ -424,25 +424,20 @@ func cUint(bits int) string {
 
 // ---- naming ----
 
-// screaming converts a schema identifier to SCREAMING_SNAKE_CASE.
+// screaming converts a schema identifier to SCREAMING_SNAKE_CASE — the SAME
+// word split Rust uses (ir.RustConstName), because the checker's claimed-name
+// registry stores one flat spelling for both flat-snake targets. The local
+// split this used to be disagreed on consecutive capitals (MaxHP became
+// MAX_H_P here and MAX_HP in Rust) and only the Rust spelling was registered,
+// so the C emission could collide unchecked (#23).
 func screaming(name string) string {
-	return strings.ToUpper(snake(name))
+	return ir.RustConstName(name)
 }
 
-// snake converts PascalCase or snake_case to snake_case.
+// snake converts PascalCase or snake_case to snake_case — ir.RustSnake, the
+// registry's one flat spelling, for the same reason as screaming (#23).
 func snake(name string) string {
-	var b strings.Builder
-	for i, r := range name {
-		if r >= 'A' && r <= 'Z' {
-			if i > 0 && name[i-1] != '_' {
-				b.WriteByte('_')
-			}
-			b.WriteRune(r - 'A' + 'a')
-			continue
-		}
-		b.WriteRune(r)
-	}
-	return b.String()
+	return ir.RustSnake(name)
 }
 
 // sortedDeps makes the include list deterministic — generated output must be

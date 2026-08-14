@@ -1826,7 +1826,7 @@ func (c *checker) checkClaimedNames() {
 		}
 		for _, gen := range []string{"write_message", "read_message", "write_message_type",
 			"read_message_type", "MESSAGE_MAX_BITS", "MESSAGE_MAX_BYTES"} {
-			add(gen, "the generated message dispatch surface (Rust form)", unitPos)
+			add(gen, "the generated message dispatch surface (Rust/C form)", unitPos)
 		}
 	}
 	if len(c.objects) > 0 {
@@ -1834,7 +1834,7 @@ func (c *checker) checkClaimedNames() {
 			add(gen, "the generated object tag surface", unitPos)
 		}
 		for _, gen := range []string{"write_object_type", "read_object_type"} {
-			add(gen, "the generated object tag surface (Rust form)", unitPos)
+			add(gen, "the generated object tag surface (Rust/C form)", unitPos)
 		}
 	}
 
@@ -1862,7 +1862,7 @@ func (c *checker) checkClaimedNames() {
 		case *ast.ConstDecl:
 			// the Rust target spells constants SCREAMING_SNAKE in the flat
 			// crate namespace
-			addRust(ir.RustConstName(name), fmt.Sprintf("const %s's generated constant (Rust form)", name), d.DeclPos(), name)
+			addRust(ir.RustConstName(name), fmt.Sprintf("const %s's generated constant (Rust/C form)", name), d.DeclPos(), name)
 		case *ast.EnumDecl:
 			// the Go target flattens variants into the package namespace;
 			// the Rust target scopes them as associated consts, so their
@@ -1880,12 +1880,25 @@ func (c *checker) checkClaimedNames() {
 					assoc[rv] = "variant " + v.Text
 				}
 			}
+			// the C target flattens variants as #define ENUM_VARIANT into the
+			// one preprocessor namespace, plus _NONE, _MAX and the debug-name
+			// function — spellings no other claim covers (#23: they were
+			// emitted and never registered, so a const like DriveModeLudicrous
+			// beside enum DriveMode { Ludicrous } produced a silent duplicate
+			// #define in C while every other target compiled)
+			whyC := fmt.Sprintf("enum %s's generated variant constants (C form)", name)
+			addRust(ir.RustConstName(name)+"_NONE", whyC, d.Pos, name+"None")
+			addRust(ir.RustConstName(name)+"_MAX", whyC, d.Pos)
+			addRust("enum_name_"+ir.RustSnake(name), fmt.Sprintf("enum %s's generated debug-name function (C form)", name), d.Pos)
+			for _, v := range d.Variants {
+				addRust(ir.RustConstName(name)+"_"+ir.RustConstName(v.Text), whyC, v.Pos, name+v.Text)
+			}
 		case *ast.FlagsDecl:
 			for _, v := range d.Variants {
 				add(name+v.Text, fmt.Sprintf("flags %s's generated mask constant (Go form)", name), v.Pos)
 				add(name+"_"+v.Text, fmt.Sprintf("flags %s's generated mask constant (C++ form)", name), v.Pos)
 				addRust(ir.RustConstName(name)+"_"+ir.RustConstName(v.Text),
-					fmt.Sprintf("flags %s's generated mask constant (Rust form)", name), v.Pos,
+					fmt.Sprintf("flags %s's generated mask constant (Rust/C form)", name), v.Pos,
 					name+v.Text, name+"_"+v.Text)
 			}
 		case *ast.TypeDecl:
@@ -1909,7 +1922,7 @@ func (c *checker) checkClaimedNames() {
 				add(name+view+"MaxBits", why, pos)
 				add(name+view+"MaxBytes", why, pos)
 			}
-			whyRust := fmt.Sprintf("object %s's generated family (Rust form)", name)
+			whyRust := fmt.Sprintf("object %s's generated family (Rust/C form)", name)
 			addRust("quantize_"+ir.RustSnake(name), whyRust, pos, "Quantize"+name)
 			addRust("unquantize_"+ir.RustSnake(name), whyRust, pos, "Unquantize"+name)
 			for _, view := range []string{"Data_Deep", "Data_Shallow"} {
@@ -1937,7 +1950,7 @@ func (c *checker) addStructSymbols(add func(name, what string, pos ast.Pos), add
 	add("Zero"+name, why, pos) // the C# §5 zero-form helper (branch zeroing, storage reset)
 	add(name+"MaxBits", why, pos)
 	add(name+"MaxBytes", why, pos)
-	whyRust := fmt.Sprintf("type %s's generated functions and constants (Rust form)", name)
+	whyRust := fmt.Sprintf("type %s's generated functions and constants (Rust/C form)", name)
 	addRust("write_"+ir.RustSnake(name), whyRust, pos, "Write"+name)
 	addRust("read_"+ir.RustSnake(name), whyRust, pos, "Read"+name)
 	addRust(ir.RustConstName(name+"MaxBits"), whyRust, pos, name+"MaxBits")
