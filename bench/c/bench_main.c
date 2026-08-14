@@ -728,7 +728,7 @@ static TestData pin_testdata( void )
    ------------------------------------------------------------------------------------------ */
 
 #define NumBatchMessages 4096
-#define BatchPasses 800
+#define BatchPasses 6400
 
 /* the generated C dispatch surface carries no message-level MAX_BYTES (see the
    header comment); BLOCK is the largest arm and the tag adds 3 bits */
@@ -1590,17 +1590,17 @@ int main( int argc, char ** argv )
     probearray = pin_probearray();
     testdata = pin_testdata();
 
-    bench_message_rigidbody( "rigidbody_moving", "rigidbody_moving", 2000000L, &moving );
-    bench_message_rigidbody_at_rest( "rigidbody_at_rest", "rigidbody_at_rest", 4000000L, &at_rest );
-    bench_message_chat( "chat", "chat", 4000000L, &chat );
-    bench_message_test( "test", NULL, 16000000L, &test );
-    bench_message_inputpacket( "inputpacket", "inputpacket", 2000000L, &inputpacket );
-    bench_message_shipcreate( "shipcreate", "shipcreate_flags", 4000000L, &shipcreate );
-    bench_message_ship_shallow( "ship_shallow", "ship_shallow", 4000000L, &ship_shallow );
-    bench_message_probe_header( "probe_header", "probe_header", 16000000L, &probe_header );
-    bench_message_probebits( "probebits", "probebits", 4000000L, &probebits );
-    bench_message_probearray( "probearray", "probearray", 2000000L, &probearray );
-    bench_message_testdata( "testdata", "testdata", 1000000L, &testdata );
+    bench_message_rigidbody( "rigidbody_moving", "rigidbody_moving", 24000000L, &moving );
+    bench_message_rigidbody_at_rest( "rigidbody_at_rest", "rigidbody_at_rest", 32000000L, &at_rest );
+    bench_message_chat( "chat", "chat", 48000000L, &chat );
+    bench_message_test( "test", NULL, 192000000L, &test );
+    bench_message_inputpacket( "inputpacket", "inputpacket", 16000000L, &inputpacket );
+    bench_message_shipcreate( "shipcreate", "shipcreate_flags", 32000000L, &shipcreate );
+    bench_message_ship_shallow( "ship_shallow", "ship_shallow", 32000000L, &ship_shallow );
+    bench_message_probe_header( "probe_header", "probe_header", 256000000L, &probe_header );
+    bench_message_probebits( "probebits", "probebits", 128000000L, &probebits );
+    bench_message_probearray( "probearray", "probearray", 20000000L, &probearray );
+    bench_message_testdata( "testdata", "testdata", 8000000L, &testdata );
 
     bench_batch();
 

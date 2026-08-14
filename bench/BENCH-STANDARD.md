@@ -88,13 +88,44 @@ Three families. Every row in every CSV belongs to exactly one.
 | `rt` | the runtime API called by hand | `schema/bench/corpus/Bench.schema` | hand-written, **oracle-gated** |
 | `bits` | the raw bit packer | this document, §1.4 | hand-written, width table normative |
 
-### §1.2 Family `gen` — unchanged
+### §1.2 Family `gen` — shapes unchanged, iteration counts rescaled
 
 The 12 existing benchmarks: 11 pinned corpus messages plus the 4096-message dispatch
-batch. Shapes, iteration counts and pinned instances are already identical across the
-five runners and already gated against `testdata/wire/*.bin`. Nothing in §1 changes
-them. They keep their names and their `bytes_per_op`: 105, 57, 13, 6, 61, 28, 28, 10,
-26, 47, 92, 25.
+batch. Shapes and pinned instances are identical across the five runners and gated
+against `testdata/wire/*.bin`; iteration counts are identical across the five
+runners. They keep their names and their `bytes_per_op`: 105, 57, 13, 6, 61, 28, 28,
+10, 26, 47, 92, 25.
+
+This section originally froze the iteration counts too. Measured on the M2 on
+2026-08-14, those counts finished the fastest legs in 7.5–44 ms — every gen
+(bench, path) leg, in every language, sat under §2.1's 200 ms floor (cpp probebits
+read: ~8 ms), and the 80–165% spreads seen on a loaded machine are the direct
+consequence of timing legs the clock and scheduler dominate. **§2.1 wins over this
+section's freeze**: the floor is a methodology invariant, the counts are only its
+instrument. Rescaled so every gen leg exceeds 200 ms in every language on the M2
+(sized against the fastest measured leg per bench, with margin), identical across
+all five runners, carried in the `iters` column:
+
+| bench | old iters | new iters | × |
+|---|---:|---:|---:|
+| rigidbody_moving | 2,000,000 | 24,000,000 | 12 |
+| rigidbody_at_rest | 4,000,000 | 32,000,000 | 8 |
+| chat | 4,000,000 | 48,000,000 | 12 |
+| test | 16,000,000 | 192,000,000 | 12 |
+| inputpacket | 2,000,000 | 16,000,000 | 8 |
+| shipcreate | 4,000,000 | 32,000,000 | 8 |
+| ship_shallow | 4,000,000 | 32,000,000 | 8 |
+| probe_header | 16,000,000 | 256,000,000 | 16 |
+| probebits | 4,000,000 | 128,000,000 | 32 |
+| probearray | 2,000,000 | 20,000,000 | 10 |
+| testdata | 1,000,000 | 8,000,000 | 8 |
+| message_batch | 800 passes (3,276,800 msgs) | 6,400 passes (26,214,400 msgs) | 8 |
+
+Historical CSVs carry the old counts in their `iters` column and are readable as
+what they are: legs measured under §2.1's floor, whose spreads say so. This is
+the same correction §1.4 already records for the bitpacker, whose inherited
+4096 passes violated the same floor and were rescaled to 24576 for the same
+reason.
 
 ### §1.3 Family `rt` — new, and the reason the bespoke harnesses can be retired
 

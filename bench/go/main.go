@@ -579,7 +579,7 @@ func varyTestData(m *example.TestData, rng uint64) {
 // ------------------------------------------------------------------------------------------
 
 const NumBatchMessages = 4096
-const BatchPasses = 800
+const BatchPasses = 6400
 
 func buildBatch(batchBuffer []byte) ([]example.Message, int64) {
 	messages := make([]example.Message, NumBatchMessages)
@@ -815,17 +815,17 @@ func main() {
 	atRest := pinRigidBodyMoving()
 	atRest.AtRest = true
 
-	benchMessage("rigidbody_moving", "rigidbody_moving", 2000000, pinRigidBodyMoving(), example.WriteRigidBody, example.ReadRigidBody, varyRigidBody)
-	benchMessage("rigidbody_at_rest", "rigidbody_at_rest", 4000000, atRest, example.WriteRigidBody, example.ReadRigidBody, varyRigidBodyAtRest)
-	benchMessage("chat", "chat", 4000000, pinChat(), example.WriteChat, example.ReadChat, varyChat)
-	benchMessage("test", "", 16000000, example.Test{}, example.WriteTest, example.ReadTest, varyTest)
-	benchMessage("inputpacket", "inputpacket", 2000000, pinInputPacket(), example.WriteInputPacket, example.ReadInputPacket, varyInputPacket)
-	benchMessage("shipcreate", "shipcreate_flags", 4000000, pinShipCreate(), example.WriteShipCreate, example.ReadShipCreate, varyShipCreate)
-	benchMessage("ship_shallow", "ship_shallow", 4000000, pinShipShallow(), example.WriteShipData_Shallow, example.ReadShipData_Shallow, varyShipShallow)
-	benchMessage("probe_header", "probe_header", 16000000, pinProbeHeader(), example.WriteProbeHeader, example.ReadProbeHeader, varyProbeHeader)
-	benchMessage("probebits", "probebits", 4000000, pinProbeBits(), example.WriteProbeBits, example.ReadProbeBits, varyProbeBits)
-	benchMessage("probearray", "probearray", 2000000, pinProbeArray(), example.WriteProbeArray, example.ReadProbeArray, varyProbeArray)
-	benchMessage("testdata", "testdata", 1000000, pinTestData(), example.WriteTestData, example.ReadTestData, varyTestData)
+	benchMessage("rigidbody_moving", "rigidbody_moving", 24000000, pinRigidBodyMoving(), example.WriteRigidBody, example.ReadRigidBody, varyRigidBody)
+	benchMessage("rigidbody_at_rest", "rigidbody_at_rest", 32000000, atRest, example.WriteRigidBody, example.ReadRigidBody, varyRigidBodyAtRest)
+	benchMessage("chat", "chat", 48000000, pinChat(), example.WriteChat, example.ReadChat, varyChat)
+	benchMessage("test", "", 192000000, example.Test{}, example.WriteTest, example.ReadTest, varyTest)
+	benchMessage("inputpacket", "inputpacket", 16000000, pinInputPacket(), example.WriteInputPacket, example.ReadInputPacket, varyInputPacket)
+	benchMessage("shipcreate", "shipcreate_flags", 32000000, pinShipCreate(), example.WriteShipCreate, example.ReadShipCreate, varyShipCreate)
+	benchMessage("ship_shallow", "ship_shallow", 32000000, pinShipShallow(), example.WriteShipData_Shallow, example.ReadShipData_Shallow, varyShipShallow)
+	benchMessage("probe_header", "probe_header", 256000000, pinProbeHeader(), example.WriteProbeHeader, example.ReadProbeHeader, varyProbeHeader)
+	benchMessage("probebits", "probebits", 128000000, pinProbeBits(), example.WriteProbeBits, example.ReadProbeBits, varyProbeBits)
+	benchMessage("probearray", "probearray", 20000000, pinProbeArray(), example.WriteProbeArray, example.ReadProbeArray, varyProbeArray)
+	benchMessage("testdata", "testdata", 8000000, pinTestData(), example.WriteTestData, example.ReadTestData, varyTestData)
 
 	benchBatch()
 

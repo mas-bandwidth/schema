@@ -659,7 +659,7 @@ static partial class Program
     // ------------------------------------------------------------------------------------------
 
     const int NumBatchMessages = 4096;
-    const int BatchPasses = 800;
+    const int BatchPasses = 6400;
 
     static Message[] BuildBatch(byte[] batchBuffer, out long batchBytes)
     {
@@ -962,17 +962,17 @@ static partial class Program
         RigidBody atRest = PinRigidBodyMoving();
         atRest.AtRest = true;
 
-        BenchMessage("rigidbody_moving", "rigidbody_moving", 2000000, PinRigidBodyMoving(), WriteRigidBody, ReadRigidBody, VaryRigidBody);
-        BenchMessage("rigidbody_at_rest", "rigidbody_at_rest", 4000000, atRest, WriteRigidBody, ReadRigidBody, VaryRigidBodyAtRest);
-        BenchMessage("chat", "chat", 4000000, PinChat(), WriteChat, ReadChat, VaryChat);
-        BenchMessage("test", null, 16000000, new Test(), WriteTest, ReadTest, VaryTest);
-        BenchMessage("inputpacket", "inputpacket", 2000000, PinInputPacket(), WriteInputPacket, ReadInputPacket, VaryInputPacket);
-        BenchMessage("shipcreate", "shipcreate_flags", 4000000, PinShipCreate(), WriteShipCreate, ReadShipCreate, VaryShipCreate);
-        BenchMessage("ship_shallow", "ship_shallow", 4000000, PinShipShallow(), WriteShipData_Shallow, ReadShipData_Shallow, VaryShipShallow);
-        BenchMessage("probe_header", "probe_header", 16000000, PinProbeHeader(), WriteProbeHeader, ReadProbeHeader, VaryProbeHeader);
-        BenchMessage("probebits", "probebits", 4000000, PinProbeBits(), WriteProbeBits, ReadProbeBits, VaryProbeBits);
-        BenchMessage("probearray", "probearray", 2000000, PinProbeArray(), WriteProbeArray, ReadProbeArray, VaryProbeArray);
-        BenchMessage("testdata", "testdata", 1000000, PinTestData(), WriteTestData, ReadTestData, VaryTestData);
+        BenchMessage("rigidbody_moving", "rigidbody_moving", 24000000, PinRigidBodyMoving(), WriteRigidBody, ReadRigidBody, VaryRigidBody);
+        BenchMessage("rigidbody_at_rest", "rigidbody_at_rest", 32000000, atRest, WriteRigidBody, ReadRigidBody, VaryRigidBodyAtRest);
+        BenchMessage("chat", "chat", 48000000, PinChat(), WriteChat, ReadChat, VaryChat);
+        BenchMessage("test", null, 192000000, new Test(), WriteTest, ReadTest, VaryTest);
+        BenchMessage("inputpacket", "inputpacket", 16000000, PinInputPacket(), WriteInputPacket, ReadInputPacket, VaryInputPacket);
+        BenchMessage("shipcreate", "shipcreate_flags", 32000000, PinShipCreate(), WriteShipCreate, ReadShipCreate, VaryShipCreate);
+        BenchMessage("ship_shallow", "ship_shallow", 32000000, PinShipShallow(), WriteShipData_Shallow, ReadShipData_Shallow, VaryShipShallow);
+        BenchMessage("probe_header", "probe_header", 256000000, PinProbeHeader(), WriteProbeHeader, ReadProbeHeader, VaryProbeHeader);
+        BenchMessage("probebits", "probebits", 128000000, PinProbeBits(), WriteProbeBits, ReadProbeBits, VaryProbeBits);
+        BenchMessage("probearray", "probearray", 20000000, PinProbeArray(), WriteProbeArray, ReadProbeArray, VaryProbeArray);
+        BenchMessage("testdata", "testdata", 8000000, PinTestData(), WriteTestData, ReadTestData, VaryTestData);
 
         BenchBatch();
 

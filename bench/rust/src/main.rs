@@ -644,7 +644,7 @@ fn vary_testdata(m: &mut TestData, rng: u64) {
 // ------------------------------------------------------------------------------------------
 
 const NUM_BATCH_MESSAGES: usize = 4096;
-const BATCH_PASSES: usize = 800;
+const BATCH_PASSES: usize = 6400;
 
 fn build_batch(ctx: &Ctx, messages: &mut Vec<Message>, batch_buffer: &mut [u8]) -> Option<i64> {
     messages.clear();
@@ -981,17 +981,17 @@ fn main() {
     let mut at_rest = pin_rigidbody_moving();
     at_rest.at_rest = true;
 
-    bench_message(&ctx, "rigidbody_moving", Some("rigidbody_moving"), 2000000, pin_rigidbody_moving(), write_rigid_body, read_rigid_body, vary_rigidbody);
-    bench_message(&ctx, "rigidbody_at_rest", Some("rigidbody_at_rest"), 4000000, at_rest, write_rigid_body, read_rigid_body, vary_rigidbody_at_rest);
-    bench_message(&ctx, "chat", Some("chat"), 4000000, pin_chat(), write_chat, read_chat, vary_chat);
-    bench_message(&ctx, "test", None, 16000000, Test::default(), write_test, read_test, vary_test);
-    bench_message(&ctx, "inputpacket", Some("inputpacket"), 2000000, pin_inputpacket(), write_input_packet, read_input_packet, vary_inputpacket);
-    bench_message(&ctx, "shipcreate", Some("shipcreate_flags"), 4000000, pin_shipcreate(), write_ship_create, read_ship_create, vary_shipcreate);
-    bench_message(&ctx, "ship_shallow", Some("ship_shallow"), 4000000, pin_ship_shallow(), write_ship_data_shallow, read_ship_data_shallow, vary_ship_shallow);
-    bench_message(&ctx, "probe_header", Some("probe_header"), 16000000, pin_probe_header(), write_probe_header, read_probe_header, vary_probe_header);
-    bench_message(&ctx, "probebits", Some("probebits"), 4000000, pin_probebits(), write_probe_bits, read_probe_bits, vary_probebits);
-    bench_message(&ctx, "probearray", Some("probearray"), 2000000, pin_probearray(), write_probe_array, read_probe_array, vary_probearray);
-    bench_message(&ctx, "testdata", Some("testdata"), 1000000, pin_testdata(), write_test_data, read_test_data, vary_testdata);
+    bench_message(&ctx, "rigidbody_moving", Some("rigidbody_moving"), 24000000, pin_rigidbody_moving(), write_rigid_body, read_rigid_body, vary_rigidbody);
+    bench_message(&ctx, "rigidbody_at_rest", Some("rigidbody_at_rest"), 32000000, at_rest, write_rigid_body, read_rigid_body, vary_rigidbody_at_rest);
+    bench_message(&ctx, "chat", Some("chat"), 48000000, pin_chat(), write_chat, read_chat, vary_chat);
+    bench_message(&ctx, "test", None, 192000000, Test::default(), write_test, read_test, vary_test);
+    bench_message(&ctx, "inputpacket", Some("inputpacket"), 16000000, pin_inputpacket(), write_input_packet, read_input_packet, vary_inputpacket);
+    bench_message(&ctx, "shipcreate", Some("shipcreate_flags"), 32000000, pin_shipcreate(), write_ship_create, read_ship_create, vary_shipcreate);
+    bench_message(&ctx, "ship_shallow", Some("ship_shallow"), 32000000, pin_ship_shallow(), write_ship_data_shallow, read_ship_data_shallow, vary_ship_shallow);
+    bench_message(&ctx, "probe_header", Some("probe_header"), 256000000, pin_probe_header(), write_probe_header, read_probe_header, vary_probe_header);
+    bench_message(&ctx, "probebits", Some("probebits"), 128000000, pin_probebits(), write_probe_bits, read_probe_bits, vary_probebits);
+    bench_message(&ctx, "probearray", Some("probearray"), 20000000, pin_probearray(), write_probe_array, read_probe_array, vary_probearray);
+    bench_message(&ctx, "testdata", Some("testdata"), 8000000, pin_testdata(), write_test_data, read_test_data, vary_testdata);
 
     bench_batch(&ctx);
 

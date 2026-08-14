@@ -620,7 +620,7 @@ static void vary_testdata( TestData & m, uint64_t rng )
 // ------------------------------------------------------------------------------------------
 
 const int NumBatchMessages = 4096;
-const int BatchPasses = 800;
+const int BatchPasses = 6400;
 
 static Message * build_batch( int64_t & batch_bytes, uint8_t * batch_buffer, int batch_buffer_size )
 {
@@ -1385,23 +1385,23 @@ int main( int argc, char ** argv )
     RigidBody at_rest = pin_rigidbody_moving();
     at_rest.at_rest = true;
 
-    bench_message( "rigidbody_moving", "rigidbody_moving", 2000000L, pin_rigidbody_moving(), WriteRigidBody, ReadRigidBody, vary_rigidbody );
-    bench_message( "rigidbody_at_rest", "rigidbody_at_rest", 4000000L, at_rest,
+    bench_message( "rigidbody_moving", "rigidbody_moving", 24000000L, pin_rigidbody_moving(), WriteRigidBody, ReadRigidBody, vary_rigidbody );
+    bench_message( "rigidbody_at_rest", "rigidbody_at_rest", 32000000L, at_rest,
                    WriteRigidBody, ReadRigidBody,
                    []( RigidBody & m, uint64_t rng ) {
                        m.position.x = double( int64_t( rng >> 8 ) & 0xFFFF ) * 0.25;
                        m.position.y = double( int64_t( rng >> 16 ) & 0xFFFF ) * 0.5;
                        m.orientation.x = double( int64_t( rng ) & 0xFF ) * 0.001;
                    } );
-    bench_message( "chat", "chat", 4000000L, pin_chat(), WriteChat, ReadChat, vary_chat );
-    bench_message( "test", (const char *) NULL, 16000000L, Test{}, WriteTest, ReadTest, vary_test );
-    bench_message( "inputpacket", "inputpacket", 2000000L, pin_inputpacket(), WriteInputPacket, ReadInputPacket, vary_inputpacket );
-    bench_message( "shipcreate", "shipcreate_flags", 4000000L, pin_shipcreate(), WriteShipCreate, ReadShipCreate, vary_shipcreate );
-    bench_message( "ship_shallow", "ship_shallow", 4000000L, pin_ship_shallow(), WriteShipData_Shallow, ReadShipData_Shallow, vary_ship_shallow );
-    bench_message( "probe_header", "probe_header", 16000000L, pin_probe_header(), WriteProbeHeader, ReadProbeHeader, vary_probe_header );
-    bench_message( "probebits", "probebits", 4000000L, pin_probebits(), WriteProbeBits, ReadProbeBits, vary_probebits );
-    bench_message( "probearray", "probearray", 2000000L, pin_probearray(), WriteProbeArray, ReadProbeArray, vary_probearray );
-    bench_message( "testdata", "testdata", 1000000L, pin_testdata(), WriteTestData, ReadTestData, vary_testdata );
+    bench_message( "chat", "chat", 48000000L, pin_chat(), WriteChat, ReadChat, vary_chat );
+    bench_message( "test", (const char *) NULL, 192000000L, Test{}, WriteTest, ReadTest, vary_test );
+    bench_message( "inputpacket", "inputpacket", 16000000L, pin_inputpacket(), WriteInputPacket, ReadInputPacket, vary_inputpacket );
+    bench_message( "shipcreate", "shipcreate_flags", 32000000L, pin_shipcreate(), WriteShipCreate, ReadShipCreate, vary_shipcreate );
+    bench_message( "ship_shallow", "ship_shallow", 32000000L, pin_ship_shallow(), WriteShipData_Shallow, ReadShipData_Shallow, vary_ship_shallow );
+    bench_message( "probe_header", "probe_header", 256000000L, pin_probe_header(), WriteProbeHeader, ReadProbeHeader, vary_probe_header );
+    bench_message( "probebits", "probebits", 128000000L, pin_probebits(), WriteProbeBits, ReadProbeBits, vary_probebits );
+    bench_message( "probearray", "probearray", 20000000L, pin_probearray(), WriteProbeArray, ReadProbeArray, vary_probearray );
+    bench_message( "testdata", "testdata", 8000000L, pin_testdata(), WriteTestData, ReadTestData, vary_testdata );
 
     bench_batch();
 
