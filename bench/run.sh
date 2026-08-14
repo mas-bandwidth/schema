@@ -25,6 +25,11 @@
 #   --bare        rows only, no preamble — for the driver's per-round files
 #   --reuse-build reuse existing C/C++ bench binaries instead of recompiling
 #                 (the driver builds once at pass start and reuses per round)
+#   --inline      run the §4.1 inline verdict pass for each executed language
+#                 afterwards and backfill the CSV's inline column (rows stay
+#                 unknown — and un-ratioable — without it). Costs a full
+#                 go build -a and a cargo rebuild; the pass driver always
+#                 does this via its own --inline.
 #
 # environment:
 #   SERIALIZE     path to the classic serialize runtime checkout (default
@@ -53,6 +58,7 @@ ONLY=""
 ROUND=""
 BARE=0
 REUSE=0
+INLINE=0
 CXX_BIN="${CXX:-c++}"
 while [ $# -gt 0 ]; do
     case "$1" in
@@ -63,6 +69,7 @@ while [ $# -gt 0 ]; do
         --round) ROUND="$2"; shift ;;
         --bare) BARE=1 ;;
         --reuse-build) REUSE=1 ;;
+        --inline) INLINE=1 ;;
         *) echo "unknown argument: $1" >&2; exit 1 ;;
     esac
     shift
@@ -287,6 +294,16 @@ if [ -z "$ONLY" ] || [ "$ONLY" = cs ]; then
     else
         echo "SKIP cs: runner not landed yet (bench/cs/*.csproj — see bench/cs/README.md)" >&2
     fi
+fi
+
+# ---- inline verdict pass (§4.1/§4.2): backfill the inline column ----
+if [ "$INLINE" = 1 ]; then
+    for lang in cpp c go rust cs; do
+        if { [ -z "$ONLY" ] || [ "$ONLY" = "$lang" ]; } && grep -q "^$lang," "$OUT" 2>/dev/null; then
+            bench/tools/inline-verdict.sh "$lang" "$OUT" \
+                || echo "inline verdict failed for $lang — its rows stay unknown (un-ratioable)" >&2
+        fi
+    done
 fi
 
 echo "results: $OUT" >&2
