@@ -370,6 +370,9 @@ The EPYC driver already does this by hand (legs 1 `cpp-gcc-start` and 8
 `cpp-gcc-end`). This clause promotes it from convention to gate and applies it to the
 laptop, where it matters more.
 
+The corpus median here is taken over the control leg's family `gen` rows only — the
+rt and bits rows the same runner emits are not part of the window gate.
+
 Recorded as `# control_delta_pct: 2.3` and `# window: OK | INVALID`.
 
 ### §2.7 Escape barriers and variation — unchanged, now universal

@@ -19,8 +19,10 @@
 // the same `# round: K` may not both contribute rows to one key.
 //
 // controlmedian prints the corpus-median headline rate (max_msgs_per_sec
-// over all cpp rows) of a control-leg CSV, for the §2.6 window gate: a pass
-// is VALID only if its start and end control legs agree within 5%.
+// over the control leg's family gen cpp rows — §2.6 names the family-gen
+// corpus median, and the rt/bits rows the same runner also emits are not
+// part of the window gate) of a control-leg CSV: a pass is VALID only if
+// its start and end control legs agree within 5%.
 package main
 
 import (
@@ -170,12 +172,15 @@ func controlMedianCmd(paths []string) {
 	}
 	var rates []float64
 	for k, r := range rows {
-		if k.lang == "cpp" {
+		// §2.6 names the family-gen corpus median: the control leg is "the
+		// C++ family gen runner", and the rt/bits rows the same binary also
+		// emits are not part of the window gate.
+		if k.lang == "cpp" && r.family == "gen" {
 			rates = append(rates, r.mx)
 		}
 	}
 	if len(rates) == 0 {
-		fmt.Fprintf(os.Stderr, "controlmedian: no cpp rows in %s\n", paths[0])
+		fmt.Fprintf(os.Stderr, "controlmedian: no cpp family-gen rows in %s\n", paths[0])
 		os.Exit(2)
 	}
 	fmt.Printf("%.0f\n", median(rates))

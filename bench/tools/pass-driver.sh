@@ -11,9 +11,13 @@
 #   2. rounds 0..N-1 — every available language once per round, one warmup +
 #      one measured run per benchmark (--round K, §2.4), so every leg sees
 #      the same load window; a spike hits every language equally instead of
-#      masquerading as one language being slow
+#      masquerading as one language being slow. Every cpp round leg,
+#      INCLUDING round 0, passes --reuse-build: control leg A just built the
+#      binary, and the "literally the same executable" claim below is only
+#      true because no leg in between rebuilds it.
 #   3. control leg B — the same C++ binary again (--reuse-build: literally
-#      the same executable, same compiler, same flags)
+#      the same executable — same file, same inode — as control leg A ran,
+#      same compiler, same flags)
 #   4. the driver (not the runner) aggregates max/median/min/spread across
 #      rounds, captures load automatically (§2.5 — never operator-typed),
 #      computes control_delta_pct and stamps # window: OK|INVALID (§2.6).
@@ -180,6 +184,12 @@ for K in $(seq 0 $((ROUNDS - 1))); do
         fi
         REUSE_FLAG=""
         [ "$K" -gt 0 ] && REUSE_FLAG="--reuse-build"
+        # cpp reuses from ROUND 0 as well: control leg A just built this
+        # exact binary with the same compiler and flags, and control leg B's
+        # "literally the same executable" is only true if no leg in between
+        # rebuilds it. (Round 0 still builds every OTHER language — the
+        # control legs build only cpp.)
+        [ "$lang" = cpp ] && REUSE_FLAG="--reuse-build"
         leg "round-$K-$lang" --only "$lang" --compiler "$COMPILER" --bare \
             --round "$K" $REUSE_FLAG --out "$W/round-$K-$lang.csv"
         if [ "$K" -eq 0 ]; then
@@ -191,6 +201,13 @@ for K in $(seq 0 $((ROUNDS - 1))); do
                 rm -f "$W/round-0-$lang.csv" "$W/FAILED-round-0-$lang"
                 FAILED_LEGS="$(echo "$FAILED_LEGS" | sed "s/ round-0-$lang//")"
             fi
+        fi
+        # §2.4 provenance: stamp the round into the per-round CSV so
+        # duplicate-round detection is mechanical — aggregate refuses a row
+        # contributed twice for one round, and refuses the same file twice.
+        if [ -f "$W/round-$K-$lang.csv" ]; then
+            { echo "# round: $K"; cat "$W/round-$K-$lang.csv"; } > "$W/round-$K-$lang.csv.tmp" \
+                && mv "$W/round-$K-$lang.csv.tmp" "$W/round-$K-$lang.csv"
         fi
     done
     sample_boundary
