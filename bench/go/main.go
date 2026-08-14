@@ -63,9 +63,16 @@ var failed = false
 // runtime keeps bounds checks, range validation and the sticky error check
 // in every build by design), opt default (Go has no optimization levels),
 // inline unknown until the verdict pass (§4.2) backfills it.
-const csvSuffix = "gen,pkg,always,default,unknown"
+// family is per ROW now (gen | rt | bits — §5.1); linkage/checks/opt/inline
+// stay per-runner constants
+const csvSuffix = "pkg,always,default,unknown"
 
-var gCsvRows []string
+type csvRow struct {
+	row    string // the first 11 columns
+	family string
+}
+
+var gCsvRows []csvRow
 var gGoldensLoaded = map[string][]byte{}
 
 func fnv1a64(h uint64, data []byte) uint64 {
@@ -95,9 +102,16 @@ func flushCsv() {
 	if !gCsv {
 		return
 	}
+	if failed {
+		// §1.5: a failing run emits NO rows — the exit code and stderr are
+		// the whole output. Numbers from a run whose gate refused are not
+		// numbers.
+		fmt.Fprintf(os.Stderr, "refusing to emit CSV rows from a failing run\n")
+		return
+	}
 	id := corpusID()
-	for _, row := range gCsvRows {
-		fmt.Printf("%s,%s,%s\n", row, id, csvSuffix)
+	for _, r := range gCsvRows {
+		fmt.Printf("%s,%s,%s,%s\n", r.row, id, r.family, csvSuffix)
 	}
 }
 
@@ -145,13 +159,13 @@ func stats(rates []float64) runStats {
 	}
 }
 
-func report(bench, path string, iters int64, bytesPerOp int64, s runStats) {
+func report(bench, path string, iters int64, bytesPerOp int64, s runStats, family string) {
 	mbps := s.median * float64(bytesPerOp) / (1024.0 * 1024.0)
 	fmt.Fprintf(os.Stderr, "%-18s %-5s %10.2f M msg/s %10.1f MB/s   (min %.2f, max %.2f, spread %.1f%%)\n",
 		bench, path, s.median/1e6, mbps, s.min/1e6, s.max/1e6, s.spread)
 	if gCsv {
-		gCsvRows = append(gCsvRows, fmt.Sprintf("go,%s,%s,%d,%d,%d,%.0f,%.0f,%.0f,%.2f,%.2f",
-			bench, path, iters, bytesPerOp, gNumRuns, s.median, s.min, s.max, mbps, s.spread))
+		gCsvRows = append(gCsvRows, csvRow{fmt.Sprintf("go,%s,%s,%d,%d,%d,%.0f,%.0f,%.0f,%.2f,%.2f",
+			bench, path, iters, bytesPerOp, gNumRuns, s.median, s.min, s.max, mbps, s.spread), family})
 	}
 }
 
@@ -267,8 +281,8 @@ func benchMessage[T any](name, golden string, iters int64, pinned T,
 		}
 	}
 
-	report(name, "write", iters, bytesPerOp, stats(writeRates))
-	report(name, "read", iters, bytesPerOp, stats(readRates))
+	report(name, "write", iters, bytesPerOp, stats(writeRates), "gen")
+	report(name, "read", iters, bytesPerOp, stats(readRates), "gen")
 
 	// alloc note (proof of the reuse discipline, not a benchmark): allocs
 	// during one extra untimed pass of each path — must be 0
@@ -714,8 +728,8 @@ func benchBatch() {
 	}
 
 	bytesPerMsg := batchBytes / NumBatchMessages
-	report("message_batch", "write", totalMsgs, bytesPerMsg, stats(writeRates))
-	report("message_batch", "read", totalMsgs, bytesPerMsg, stats(readRates))
+	report("message_batch", "write", totalMsgs, bytesPerMsg, stats(writeRates), "gen")
+	report("message_batch", "read", totalMsgs, bytesPerMsg, stats(readRates), "gen")
 
 	// allocation note (optimization seed, not a benchmark): allocs during one
 	// extra untimed pass of each path
@@ -815,13 +829,24 @@ func main() {
 
 	benchBatch()
 
+	// family rt (§1.3/§1.5): the runtime API by hand, oracle-gated against
+	// the goldens the generated code pinned. Iteration counts are fixed and
+	// identical across all five runners (§2.1; sized in the C++ reference).
+	benchRt("bench_packet", 32000000, pinRtPacket(), rtOnceWritePacket, rtOnceReadPacket, rtBenchPacketWriteLoop, rtBenchPacketReadLoop, varyRtPacket)
+	benchRt("bench_ints", 40000000, pinRtInts(), rtOnceWriteInts, rtOnceReadInts, rtBenchIntsWriteLoop, rtBenchIntsReadLoop, varyRtInts)
+	benchRt("bench_bits", 48000000, pinRtBits(), rtOnceWriteBits, rtOnceReadBits, rtBenchBitsWriteLoop, rtBenchBitsReadLoop, varyRtBits)
+	benchRt("bench_mixed", 40000000, pinRtMixed(), rtOnceWriteMixed, rtOnceReadMixed, rtBenchMixedWriteLoop, rtBenchMixedReadLoop, varyRtMixed)
+
+	// family bits (§1.4): the one bitpacker workload in the estate
+	benchBitpacker(24576)
+
 	flushCsv() // rows carry the corpus_id of the goldens this run loaded
 
 	if failed {
-		fmt.Fprintf(os.Stderr, "BENCH FAILED\n")
+		fmt.Fprintf(os.Stderr, "BENCH FAILED (corpus_id %s)\n", corpusID())
 		os.Exit(1)
 	}
 
-	fmt.Fprintf(os.Stderr, "OK\n")
+	fmt.Fprintf(os.Stderr, "OK (corpus_id %s)\n", corpusID())
 	_ = gSink
 }

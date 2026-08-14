@@ -30,7 +30,7 @@ using Example;
 using Serialize;
 using static Example.Schema;
 
-static class Program
+static partial class Program
 {
     const int MaxNumRuns = 7;   // median of 7 (N >= 5), after 1 warmup run
     static int gNumRuns = MaxNumRuns; // --round K drops this to 1 (§2.4: one warmup +
@@ -49,9 +49,11 @@ static class Program
     // NDEBUG-equivalent semantics, §3.4), opt default (the JIT has no
     // operator-visible optimization levels), inline unknown until the
     // verdict pass (§4.2) backfills it.
-    const string CsvSuffix = "gen,asm,removed,default,unknown";
+    // family is per ROW now (gen | rt | bits — §5.1); linkage/checks/opt/
+    // inline stay per-runner constants
+    const string CsvSuffix = "asm,removed,default,unknown";
 
-    static readonly List<string> gCsvRows = new List<string>();
+    static readonly List<(string Row, string Family)> gCsvRows = new List<(string, string)>();
     static readonly SortedDictionary<string, byte[]> gGoldensLoaded =
         new SortedDictionary<string, byte[]>(StringComparer.Ordinal);
 
@@ -88,10 +90,18 @@ static class Program
         {
             return;
         }
-        string id = CorpusId();
-        foreach (string row in gCsvRows)
+        if (failed)
         {
-            Console.WriteLine(row + "," + id + "," + CsvSuffix);
+            // §1.5: a failing run emits NO rows — the exit code and stderr
+            // are the whole output. Numbers from a run whose gate refused
+            // are not numbers.
+            Console.Error.WriteLine("refusing to emit CSV rows from a failing run");
+            return;
+        }
+        string id = CorpusId();
+        foreach ((string row, string family) in gCsvRows)
+        {
+            Console.WriteLine(row + "," + id + "," + family + "," + CsvSuffix);
         }
     }
 
@@ -165,7 +175,7 @@ static class Program
         };
     }
 
-    static void Report(string bench, string path, long iters, long bytesPerOp, RunStats s)
+    static void Report(string bench, string path, long iters, long bytesPerOp, RunStats s, string family)
     {
         double mbps = s.Median * bytesPerOp / (1024.0 * 1024.0);
         Console.Error.WriteLine(string.Format(
@@ -173,9 +183,9 @@ static class Program
             bench, path, s.Median / 1e6, mbps, s.Min / 1e6, s.Max / 1e6, s.Spread));
         if (gCsv)
         {
-            gCsvRows.Add(string.Format(
+            gCsvRows.Add((string.Format(
                 "cs,{0},{1},{2},{3},{4},{5:F0},{6:F0},{7:F0},{8:F2},{9:F2}",
-                bench, path, iters, bytesPerOp, gNumRuns, s.Median, s.Min, s.Max, mbps, s.Spread));
+                bench, path, iters, bytesPerOp, gNumRuns, s.Median, s.Min, s.Max, mbps, s.Spread), family));
         }
     }
 
@@ -299,8 +309,8 @@ static class Program
         }
         GC.KeepAlive(outValue); // every decoded field is observed
 
-        Report(name, "write", iters, bytesPerOp, Stats(writeRates));
-        Report(name, "read", iters, bytesPerOp, Stats(readRates));
+        Report(name, "write", iters, bytesPerOp, Stats(writeRates), "gen");
+        Report(name, "read", iters, bytesPerOp, Stats(readRates), "gen");
 
         // alloc note (proof of the reuse discipline, not a benchmark): bytes
         // allocated during one extra untimed pass of each path — must be 0
@@ -835,8 +845,8 @@ static class Program
         GC.KeepAlive(storage);
 
         long bytesPerMsg = batchBytes / NumBatchMessages;
-        Report("message_batch", "write", totalMsgs, bytesPerMsg, Stats(writeRates));
-        Report("message_batch", "read", totalMsgs, bytesPerMsg, Stats(readRates));
+        Report("message_batch", "write", totalMsgs, bytesPerMsg, Stats(writeRates), "gen");
+        Report("message_batch", "read", totalMsgs, bytesPerMsg, Stats(readRates), "gen");
 
         // allocation note (optimization seed, not a benchmark): bytes
         // allocated and Gen0 collections during one extra untimed pass of
@@ -966,15 +976,24 @@ static class Program
 
         BenchBatch();
 
+        // family rt (§1.3/§1.5): the runtime API by hand, oracle-gated
+        // against the goldens the generated code pinned. Iteration counts
+        // are fixed and identical across all five runners (§2.1; sized in
+        // the C++ reference).
+        BenchRtAll();
+
+        // family bits (§1.4): the one bitpacker workload in the estate
+        BenchBitpacker(24576);
+
         FlushCsv(); // rows carry the corpus_id of the goldens this run loaded
 
         if (failed)
         {
-            Console.Error.WriteLine("BENCH FAILED");
+            Console.Error.WriteLine($"BENCH FAILED (corpus_id {CorpusId()})");
             return 1;
         }
 
-        Console.Error.WriteLine("OK");
+        Console.Error.WriteLine($"OK (corpus_id {CorpusId()})");
         GC.KeepAlive(gSink);
         return 0;
     }

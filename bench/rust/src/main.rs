@@ -27,6 +27,8 @@ use std::time::Instant;
 use example::*;
 use serialize::{ReadStream, Stream, WriteStream};
 
+mod rt;
+
 const MAX_NUM_RUNS: usize = 7; // median of 7 (N >= 5), after 1 warmup run
 const NUM_VARIANTS: usize = 64; // read-path variant buffers
 
@@ -41,7 +43,9 @@ const NUM_VARIANTS: usize = 64; // read-path variant buffers
 // range validation and the sticky error check by contract), opt O3 (the cargo
 // release profile, opt-level 3), inline unknown until the verdict pass (§4.2)
 // backfills it.
-const CSV_SUFFIX: &str = "gen,crate,always,O3,unknown";
+// family is per ROW now (gen | rt | bits — §5.1); linkage/checks/opt/inline
+// stay per-runner constants
+const CSV_SUFFIX: &str = "crate,always,O3,unknown";
 
 fn fnv1a64(mut h: u64, data: &[u8]) -> u64 {
     for &b in data {
@@ -69,7 +73,7 @@ struct Ctx {
     // one measured run per round; the driver aggregates across rounds)
     failed: Cell<bool>,
     sink: Cell<u64>,
-    csv_rows: RefCell<Vec<String>>,
+    csv_rows: RefCell<Vec<(String, &'static str)>>, // (first 11 columns, family)
     goldens_loaded: RefCell<BTreeMap<String, Vec<u8>>>,
 }
 
@@ -122,7 +126,7 @@ impl Ctx {
         }
     }
 
-    fn report(&self, bench: &str, path: &str, iters: i64, bytes_per_op: i64, s: &RunStats) {
+    fn report(&self, bench: &str, path: &str, iters: i64, bytes_per_op: i64, s: &RunStats, family: &'static str) {
         let mbps = s.median * bytes_per_op as f64 / (1024.0 * 1024.0);
         eprintln!(
             "{:<18} {:<5} {:>10.2} M msg/s {:>10.1} MB/s   (min {:.2}, max {:.2}, spread {:.1}%)",
@@ -135,37 +139,51 @@ impl Ctx {
             s.spread
         );
         if self.csv {
-            self.csv_rows.borrow_mut().push(format!(
-                "rust,{},{},{},{},{},{:.0},{:.0},{:.0},{:.2},{:.2}",
-                bench,
-                path,
-                iters,
-                bytes_per_op,
-                self.num_runs,
-                s.median,
-                s.min,
-                s.max,
-                mbps,
-                s.spread
+            self.csv_rows.borrow_mut().push((
+                format!(
+                    "rust,{},{},{},{},{},{:.0},{:.0},{:.0},{:.2},{:.2}",
+                    bench,
+                    path,
+                    iters,
+                    bytes_per_op,
+                    self.num_runs,
+                    s.median,
+                    s.min,
+                    s.max,
+                    mbps,
+                    s.spread
+                ),
+                family,
             ));
         }
     }
 
-    // corpus_id (§1.6) over the goldens this run actually loaded, then the
-    // buffered rows — the BTreeMap iterates in sorted basename order.
-    fn flush_csv(&self) {
-        if !self.csv {
-            return;
-        }
+    // corpus_id (§1.6) over the goldens this run actually loaded
+    fn corpus_id(&self) -> String {
         let mut h: u64 = 0xcbf29ce484222325;
         for (name, contents) in self.goldens_loaded.borrow().iter() {
             h = fnv1a64(h, name.as_bytes());
             h = fnv1a64(h, &[0u8]);
             h = fnv1a64(h, contents);
         }
-        let id = format!("{h:016x}");
-        for row in self.csv_rows.borrow().iter() {
-            println!("{row},{id},{CSV_SUFFIX}");
+        format!("{h:016x}")
+    }
+
+    // the buffered rows — the BTreeMap iterates in sorted basename order.
+    fn flush_csv(&self) {
+        if !self.csv {
+            return;
+        }
+        if self.failed.get() {
+            // §1.5: a failing run emits NO rows — the exit code and stderr
+            // are the whole output. Numbers from a run whose gate refused
+            // are not numbers.
+            eprintln!("refusing to emit CSV rows from a failing run");
+            return;
+        }
+        let id = self.corpus_id();
+        for (row, family) in self.csv_rows.borrow().iter() {
+            println!("{row},{id},{family},{CSV_SUFFIX}");
         }
     }
 }
@@ -317,6 +335,7 @@ fn bench_message<T, W, R, V>(
         iters,
         bytes_per_op as i64,
         &run_stats(&mut write_rates[..ctx.num_runs]),
+        "gen",
     );
     ctx.report(
         name,
@@ -324,6 +343,7 @@ fn bench_message<T, W, R, V>(
         iters,
         bytes_per_op as i64,
         &run_stats(&mut read_rates[..ctx.num_runs]),
+        "gen",
     );
 }
 
@@ -792,6 +812,7 @@ fn bench_batch(ctx: &Ctx) {
         total_msgs,
         bytes_per_msg,
         &run_stats(&mut write_rates[..ctx.num_runs]),
+        "gen",
     );
     ctx.report(
         "message_batch",
@@ -799,6 +820,7 @@ fn bench_batch(ctx: &Ctx) {
         total_msgs,
         bytes_per_msg,
         &run_stats(&mut read_rates[..ctx.num_runs]),
+        "gen",
     );
 }
 
@@ -973,13 +995,21 @@ fn main() {
 
     bench_batch(&ctx);
 
+    // family rt (§1.3/§1.5): the runtime API by hand, oracle-gated against
+    // the goldens the generated code pinned. Iteration counts are fixed and
+    // identical across all five runners (§2.1; sized in the C++ reference).
+    rt::bench_rt_all(&ctx);
+
+    // family bits (§1.4): the one bitpacker workload in the estate
+    rt::bench_bitpacker(&ctx, 24576);
+
     ctx.flush_csv(); // rows carry the corpus_id of the goldens this run loaded
 
     if ctx.failed.get() {
-        eprintln!("BENCH FAILED");
+        eprintln!("BENCH FAILED (corpus_id {})", ctx.corpus_id());
         std::process::exit(1);
     }
 
-    eprintln!("OK");
+    eprintln!("OK (corpus_id {})", ctx.corpus_id());
     black_box(ctx.sink.get());
 }
