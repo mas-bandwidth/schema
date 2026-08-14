@@ -71,7 +71,7 @@ func makeState() ludicrous.LudicrousState {
 	in := ludicrous.NewLudicrousState()
 	in.Mode = ludicrous.DriveModeLudicrous
 	in.Probe.Angle = 2981888                                                       // +45.5 * 2^16
-	in.Probe.Position = -809119744                                                 // -12345.25 * 2^16
+	in.Probe.Position = -809119744                                                 // -12346.1875 * 2^16
 	in.Probe.Reach = serialize.Int128From64(65536000000 - 1)                       // raw_max - 1
 	in.Probe.Ticks = 777777
 	in.Probe.Samples[0] = -524288                                                  // raw_min

@@ -68,7 +68,7 @@ static LudicrousState state_instance( void )
 
     in.mode = DRIVE_MODE_LUDICROUS;
     in.probe.angle = 2981888;                        /* +45.5 * 2^16 */
-    in.probe.position = -809119744LL;                /* -12345.25 * 2^16 */
+    in.probe.position = -809119744LL;                /* -12346.1875 * 2^16 */
     in.probe.reach = serialize_int128_from_int64( 65536000000LL - 1 );
     in.probe.ticks = 777777;
     in.probe.samples[0] = -524288;                   /* raw_min */

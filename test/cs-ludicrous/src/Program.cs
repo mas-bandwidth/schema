@@ -100,7 +100,7 @@ static class Program
         LudicrousState input = new LudicrousState();
         input.Mode = DriveMode.Ludicrous;
         input.Probe.Angle = 2981888;                                                 // +45.5 * 2^16
-        input.Probe.Position = -809119744L;                                          // -12345.25 * 2^16
+        input.Probe.Position = -809119744L;                                          // -12346.1875 * 2^16
         input.Probe.Reach = 65536000000L - 1;                                        // raw_max - 1
         input.Probe.Ticks = 777777;
         input.Probe.Samples[0] = -524288;                                            // raw_min

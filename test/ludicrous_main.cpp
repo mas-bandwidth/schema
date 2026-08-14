@@ -93,7 +93,7 @@ static void put_bits( uint8_t * data, int pos, int n, uint64_t value )
 // in wire order — offsets are value - min in the unsigned domain:
 //   mode      enum [0,3]                 = 3                    ->   3 in  2 bits
 //   angle     fixed(16,16)  [-180,180]   = raw +45.5 * 2^16     ->  14778368 in 25 bits   (bitlen(360)+16)
-//   position  fixed(48,16)  [-30000,30000] = raw -12345.25*2^16 ->  1156960256 in 32 bits (bitlen(60000)+16)
+//   position  fixed(48,16)  [-30000,30000] = raw -12346.1875*2^16 -> 1156960256 in 32 bits (bitlen(60000)+16)
 //   reach     fixed(112,16) [-1e6,1e6]   = raw_max - 1          ->  131071999999 in 37 bits (bitlen(2e6)+16)
 //   ticks     fixed(32,0)   [0,1e6]      = 777777               ->  777777 in 20 bits     (bitlen(1e6)+0)
 //   samples0  fixed(16,16)  [-8,8]       = raw_min              ->  0 in 21 bits          (bitlen(16)+16)
@@ -139,7 +139,7 @@ static ludicrous::LudicrousState make_state()
     LudicrousState in;
     in.mode = DriveMode::Ludicrous;
     in.probe.angle = 2981888;                                   // +45.5 * 2^16
-    in.probe.position = -809119744ll;                           // -12345.25 * 2^16
+    in.probe.position = -809119744ll;                           // -12346.1875 * 2^16
     in.probe.reach = serialize::int128_t( 65536000000ll - 1 );  // raw_max - 1
     in.probe.ticks = 777777;
     in.probe.samples[0] = -524288;                              // raw_min

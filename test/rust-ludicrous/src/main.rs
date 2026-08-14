@@ -70,7 +70,7 @@ fn make_state() -> LudicrousState {
     let mut input = LudicrousState::new();
     input.mode = DriveMode::LUDICROUS;
     input.probe.angle = 2981888; // +45.5 * 2^16
-    input.probe.position = -809119744; // -12345.25 * 2^16
+    input.probe.position = -809119744; // -12346.1875 * 2^16
     input.probe.reach = 65536000000 - 1; // raw_max - 1
     input.probe.ticks = 777777;
     input.probe.samples[0] = -524288; // raw_min
