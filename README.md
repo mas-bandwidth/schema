@@ -84,8 +84,7 @@ would have hand-written, not an interpreter walking a schema at runtime.
   [WIRES.md](WIRES.md).
 - **`schema pack`** compiles directories of JSON into one binary container,
   validating every value against the schema as it goes.
-- **A canonical source format** — every command formats in place, so the
-  protocol id hashes one true form.
+- **Canonical source format** — every command formats in place.
 - **Generated code is yours**, under whatever licence you ship. See
   [License](#license).
 
