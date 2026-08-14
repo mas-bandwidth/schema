@@ -1,10 +1,20 @@
 # bench — cross-language serialize profiling harness
 
-Measures the schema-GENERATED code per language against its serialize runtime:
-write path and read path, messages/sec and MB/sec, over the pinned corpus
-instances (the same instances `test/main.cpp` pins to `testdata/wire/*.bin`)
-plus one large synthetic message batch (4096 mixed messages through the
-Message dispatch surface) for steady-state throughput.
+Measures three families per language, every row labelled with its family
+(§1 of the standard):
+
+- **`gen`** — the schema-GENERATED code against its serialize runtime: write
+  and read over the pinned corpus instances (the same instances
+  `test/main.cpp` pins to `testdata/wire/*.bin`) plus one large synthetic
+  message batch (4096 mixed messages through the Message dispatch surface)
+  for steady-state throughput.
+- **`rt`** — the serialize runtime API called BY HAND: the four
+  `bench/corpus/Bench.schema` shapes as hand-written packets, §1.5
+  oracle-gated against the goldens the GENERATED code pinned
+  (`testdata/wire/bench_*.bin`, produced by `test/bench/main.cpp`). A
+  mismatch refuses the entire run: a failing runner emits NO rows.
+- **`bits`** — the raw bit packer: the §1.4 16-width table (227 bits/group)
+  over a 65536-byte buffer, the ONE bitpacker workload in the estate.
 
 **`bench/BENCH-STANDARD.md` is the normative measurement contract** — what a
 number means, when two numbers may be divided, and when the tools refuse.
@@ -107,7 +117,7 @@ corpus_id and the window verdict), then CSV v2 rows (§5.1):
 message (constant per benchmark by construction). The six v2 columns carry
 what the row measured: `corpus_id` (FNV-1a-64 of the goldens the runner
 actually loaded, §1.6 — corpus drift becomes a tool error, not a published
-ratio), `family` (`gen` here), `linkage`/`checks`/`opt` (the recorded
+ratio), `family` (`gen` | `rt` | `bits`, per row), `linkage`/`checks`/`opt` (the recorded
 conditions, §3), and `inline` (`full` | `partial:N` | `none` | `unknown`,
 §4.2 — filled by the verdict pass, and `unknown` refuses to ratio). The
 per-symbol inline ledger lives beside the CSV as `<name>.inline`. v1 CSVs
@@ -136,6 +146,23 @@ it. Human-readable tables live beside the CSVs in `bench/results/`.
 | probearray        | probearray            | nested samples, both branch arms, counted arrays  |
 | testdata          | testdata              | the everything message (floats, strings, arrays)  |
 | message_batch     | (message_stream golden checks the dispatch wire) | 4096 mixed messages + terminator through WriteMessage/ReadMessage, steady-state |
+
+Family `rt` (hand-written runtime API, oracle-gated per §1.5; iteration
+counts fixed and identical across all five languages) and family `bits`:
+
+| bench        | family | pinned to golden | shape                                              |
+|--------------|--------|------------------|----------------------------------------------------|
+| bench_packet | rt     | bench_packet     | the serialize/bench.cpp stream packet (49 B)       |
+| bench_ints   | rt     | bench_ints       | 10 ranged ints (14 B)                              |
+| bench_bits   | rt     | bench_bits       | 8 raw bit fields incl. one 48-bit (20 B)           |
+| bench_mixed  | rt     | bench_mixed      | a generated-looking packet, hand-written (21 B)    |
+| bitpacker    | bits   | — (read-back verified in setup) | 16-width table over a 64 KiB buffer, 24576 passes/run (§1.4) |
+
+The `rt` timed loops live in noinline symbols (`rt_bench_*_write_loop` /
+`..._read_loop`, and `bitpacker_*_loop`) so the §4.1 inline verdict counts
+the emitted body of the timed loop directly, and every benched op has
+exactly two call sites (§3.2): its untimed oracle/setup helper and its
+timed loop.
 
 ## Runner contract (how go/rust/cs plug in)
 

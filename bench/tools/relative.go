@@ -50,7 +50,16 @@ var corpus = []string{
 
 const batch = "message_batch"
 
-var order = append(append([]string{}, corpus...), batch)
+// family rt (BENCH-STANDARD.md §1.3) and family bits (§1.4) — presentation
+// order only; the family column, not this list, is what the §5.3 refusal
+// rules read. A bench absent from this list would silently vanish from every
+// table and from aggregate, so the list must know every bench the runners
+// emit.
+var rtCorpus = []string{"bench_packet", "bench_ints", "bench_bits", "bench_mixed"}
+
+const bitpacker = "bitpacker"
+
+var order = append(append(append(append([]string{}, corpus...), batch), rtCorpus...), bitpacker)
 
 // langs is the presentation order. cpp is the baseline the relative table is
 // expressed against — a baseline, NOT a reference implementation.
