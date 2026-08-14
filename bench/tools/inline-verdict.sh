@@ -11,14 +11,28 @@
 #      into an out-of-line helper contributes that helper's own runtime calls,
 #      because the helper body runs per op either way), plus the compiler's
 #      own inline remarks (cost/threshold or cost/budget) where the toolchain
-#      reports them.
+#      reports them. Counts are kept HOT and COLD separately (§4.2): a cold
+#      call — error constructor, guarded slow-path fallback, compiler-split
+#      cold chunk — is recorded per row beside the hot count, never inside it.
 #
 #   2. the inline column of <results.csv>, backfilled per row: full when the
-#      emitted code for that benchmark's operation contains zero calls into
-#      the serialize runtime, partial:N when N remain, unknown when the
-#      verdict could not be attributed. unknown stays un-ratioable — that is
-#      the §4.2 contract, not a shrug, so this script REFUSES rather than
-#      guesses whenever attribution would be a guess.
+#      emitted code for that benchmark's operation contains zero HOT calls
+#      into the serialize runtime, partial:N when N hot calls remain, unknown
+#      when the verdict could not be attributed. unknown stays un-ratioable —
+#      that is the §4.2 contract, not a shrug, so this script REFUSES rather
+#      than guesses whenever attribution would be a guess.
+#
+# Cold classification (§4.2) is by TARGET, per language, and only from signals
+# the toolchain actually emits — a call with no signal stays hot, because
+# misclassifying hot-as-cold is the direction that publishes a false full:
+#   c/cpp: the target is a compiler-split cold-path symbol (`foo.cold` /
+#          `foo.cold.N` — Mach-O's spelling of ELF's .text.unlikely section)
+#   rust:  the target is a fn carrying #[cold] in the runtime source this leg
+#          built against (matched by its <len><name> v0 mangling token,
+#          scanned from the crate the bench Cargo.toml points at), or a
+#          split-suffix symbol as above
+#   go/cs: no cold signal exists in the gc or JitDisasm surface — every call
+#          stays hot, and the ledger says so
 #
 # Ground truth is the §4.1 universal fallback: call instructions counted in
 # the emitted code (otool -tv on this arm64 Mac; go tool objdump for Go;
@@ -92,36 +106,48 @@ bitpacker bitpacker bitpacker Bitpacker'
 # ---- per-symbol transitive runtime-call counting ----
 # stdin: "sym:" header lines and "addr <bl|blr> target" instruction lines
 # (otool -tv shape; the go/cs branches translate into it). RT = runtime
-# target regex, HELPER = generated helper regex. Output, one line per symbol
-# (zero counts included, so an entry that fully inlined the runtime is a
-# recorded 0, not an absence), plus the raw helper edges (perop_for divides
-# unroll back out of the timed loops with them):
-#   SYM <symbol> <direct> <transitive> <indirect>
+# target regex, HELPER = generated helper regex, COLD = cold-target regex
+# ("" = no cold signal in this language; everything stays hot). Output, one
+# line per symbol (zero counts included, so an entry that fully inlined the
+# runtime is a recorded 0, not an absence), plus the raw helper edges
+# (perop_for divides unroll back out of the timed loops with them):
+#   SYM <symbol> <direct-hot> <transitive-hot> <indirect> <direct-cold> <transitive-cold>
 #   EDGE <symbol> <helper-target> <emitted-call-sites>
+# Cold rules (§4.2): a call whose target matches COLD (and is a runtime or
+# helper target — cold calls into libc/panic machinery are outside the
+# serialize chain, exactly as their hot twins are) counts cold, once — the
+# body of a cold target never runs per op, so its own calls are not
+# propagated. A hot helper propagates BOTH its hot and its cold counts to its
+# callers. A target matching no signal counts hot: never guess cold.
 count_calls() {
-    awk -v RT="$1" -v HELPER="$2" '
+    awk -v RT="$1" -v HELPER="$2" -v COLD="${3:-}" '
+        function iscold(t) { return COLD != "" && t ~ COLD }
         /^[^ \t].*:$/ { sym = substr($0, 1, length($0) - 1); syms[sym] = 1; next }
         $2 == "bl" && sym != "" {
             t = $3
-            # helper first: the cs branch passes a catch-all RT, and helper
+            # cold first: a compiler-split chunk of a helper matches both
+            # HELPER and COLD, and must count cold, never become a hot edge
+            if (iscold(t)) { if (t ~ RT || t ~ HELPER) coldn[sym]++ }
+            # helper next: the cs branch passes a catch-all RT, and helper
             # calls must become edges, never direct counts (the regexes are
             # disjoint for every other language)
-            if (t ~ HELPER) edge[sym SUBSEP t]++
+            else if (t ~ HELPER) edge[sym SUBSEP t]++
             else if (t ~ RT) direct[sym]++
         }
         $2 == "blr" && sym != "" { indirect[sym]++ }
         END {
-            for (s in syms) total[s] = direct[s]
+            for (s in syms) { total[s] = direct[s]; ctotal[s] = coldn[s] }
             for (i = 0; i < 8; i++) {            # fixpoint over the helper DAG
-                for (s in syms) fresh[s] = direct[s]
+                for (s in syms) { fresh[s] = direct[s]; cfresh[s] = coldn[s] }
                 for (k in edge) {
                     split(k, a, SUBSEP)
                     fresh[a[1]] += edge[k] * total[a[2]]
+                    cfresh[a[1]] += edge[k] * ctotal[a[2]]
                 }
-                for (s in syms) total[s] = fresh[s]
+                for (s in syms) { total[s] = fresh[s]; ctotal[s] = cfresh[s] }
             }
             for (s in syms)
-                printf "SYM %s %d %d %d\n", s, direct[s] + 0, total[s] + 0, indirect[s] + 0
+                printf "SYM %s %d %d %d %d %d\n", s, direct[s] + 0, total[s] + 0, indirect[s] + 0, coldn[s] + 0, ctotal[s] + 0
             for (k in edge) {
                 split(k, a, SUBSEP)
                 printf "EDGE %s %s %d\n", a[1], a[2], edge[k]
@@ -129,9 +155,41 @@ count_calls() {
         }'
 }
 
-# verdict from a transitive count: 0 -> full, N -> partial:N
+# verdict from a transitive HOT count: 0 -> full, N -> partial:N
 verdict_of() {
     if [ "$1" -eq 0 ]; then echo "full"; else echo "partial:$1"; fi
+}
+
+# the c/cpp/rust split-suffix cold signal (Mach-O's .text.unlikely): clang
+# names the outlined cold path of foo `foo.cold` or `foo.cold.N`
+COLD_SPLIT='\.cold(\.[0-9]+)?$'
+
+# rust: cold fns scanned from the runtime source the bench built against —
+# a `#[cold]` ATTRIBUTE LINE (anchored: a comment merely mentioning #[cold]
+# is not an attribute) followed within a few lines by an anchored fn item,
+# matched in v0 mangling as <len><name> with a non-digit boundary so a longer
+# identifier cannot alias the token. Prints a regex alternation, or just the
+# split-suffix signal when the crate marks nothing cold.
+rust_cold_regex() {
+    local crate_dir="$1" names
+    names="$(awk '
+        /^[ \t]*#\[cold\]/ { pending = 4; next }
+        pending > 0 {
+            if ($0 ~ /^[ \t]*(pub(\([a-z]+\))? +)?(default +)?(const +)?(async +)?(unsafe +)?(extern +"[^"]*" +)?fn +[A-Za-z0-9_]+/ \
+                && match($0, /fn +[A-Za-z0-9_]+/)) {
+                name = substr($0, RSTART + 2, RLENGTH - 2)
+                sub(/^ +/, "", name)
+                print length(name) name
+                pending = 0
+            } else if ($0 ~ /^[ \t]*#\[/) {
+                # another attribute between #[cold] and its fn: keep waiting
+            } else pending--
+        }' "$crate_dir"/src/*.rs 2>/dev/null | sort -u | paste -sd'|' -)"
+    if [ -n "$names" ]; then
+        echo "[^0-9]($names)|$COLD_SPLIT"
+    else
+        echo "$COLD_SPLIT"
+    fi
 }
 
 # ---- SELF-TEST: the join between symbol HEADERS and call TARGETS ----
@@ -150,7 +208,9 @@ selftest_join() {
         BEGIN {
             while ((getline line < countsf) > 0) {
                 n = split(line, a, " ")
-                if (a[1] == "SYM" && n >= 5) { known[a[2]] = 1; direct[a[2]] = a[3]; trans[a[2]] = a[4] }
+                # hot + cold together: the join proof cares that helper edges
+                # carry ANY runtime contribution, whichever temperature
+                if (a[1] == "SYM" && n >= 7) { known[a[2]] = 1; direct[a[2]] = a[3] + a[6]; trans[a[2]] = a[4] + a[7] }
             }
         }
         /^[^ \t].*:$/ { sym = substr($0, 1, length($0) - 1); next }
@@ -180,9 +240,15 @@ selftest_join() {
         }' "$1"
 }
 
-# transitive count for the first symbol matching the regex; -1 if absent
+# transitive HOT count for the first symbol matching the regex; -1 if absent
 count_for() {
     awk -v pat="$1" '$1 == "SYM" && $2 ~ pat { print $4; found = 1; exit } END { if (!found) print -1 }' "$VD/counts.txt"
+}
+
+# transitive COLD count for the first symbol matching the regex; 0 if absent
+# (the verdict never keys on cold — it is ledger content beside the hot count)
+cold_for() {
+    awk -v pat="$1" '$1 == "SYM" && $2 ~ pat { print $7 + 0; found = 1; exit } END { if (!found) print 0 }' "$VD/counts.txt"
 }
 
 # PER-OP transitive count for a timed-loop symbol (§4.2: partial:N means N
@@ -197,6 +263,7 @@ count_for() {
 # helper edges has no unroll witness and reports its body count unchanged.
 # Prints -1 if the loop symbol is absent; -2 if the count does not divide
 # by the unroll factor (not attributable — refusing beats guessing).
+# The hot count is the verdict; perop_cold_for below is its ledger twin.
 perop_for() {
     awk -v pat="$1" '
         $1 == "SYM" && !loopset && $2 ~ pat { loop = $2; loopset = 1; T = $4 }
@@ -212,7 +279,28 @@ perop_for() {
         }' "$VD/counts.txt"
 }
 
-# sum of transitive counts across every symbol (the whole-binary fallback)
+# PER-OP transitive COLD count for a timed-loop symbol, divided by the same
+# unroll witness perop_for uses. Prints 0 if the loop is absent (nothing to
+# record); "raw:N" when the cold count does not divide by the unroll factor —
+# the ledger records it raw and says so, because cold is bookkeeping beside
+# the verdict, never the verdict itself.
+perop_cold_for() {
+    awk -v pat="$1" '
+        $1 == "SYM" && !loopset && $2 ~ pat { loop = $2; loopset = 1; TC = $7 }
+        $1 == "EDGE" { e_sym[++ne] = $2; e_cnt[ne] = $4 }
+        END {
+            if (!loopset) { print 0; exit }
+            k = 0
+            for (i = 1; i <= ne; i++)
+                if (e_sym[i] == loop && (k == 0 || e_cnt[i] < k)) k = e_cnt[i]
+            if (k <= 1) { print TC + 0; exit }
+            if (TC % k != 0) { print "raw:" TC; exit }
+            print TC / k
+        }' "$VD/counts.txt"
+}
+
+# sum of transitive HOT counts across every symbol (the whole-binary fallback;
+# a binary whose only remaining serialize calls are cold is hot-clean)
 count_total() {
     awk '$1 == "SYM" { s += $4 } END { print s + 0 }' "$VD/counts.txt"
 }
@@ -224,12 +312,24 @@ ledger_header() {
             echo "# generated: $(date -u +%FT%TZ) on $(hostname -s) ($(uname -sm))"
             echo "# ground truth: call instructions into the serialize runtime, counted in"
             echo "# the emitted code and propagated transitively through out-of-line"
-            echo "# generated helpers. Compiler remarks are advisory; the disassembly is"
-            echo "# the verdict. CSV verdicts: full = zero runtime calls per op,"
-            echo "# partial:N = N remain PER OP (§4.2 — loop unrolling divided back"
-            echo "# out), unknown = not attributable (stays un-ratioable)."
+            echo "# generated helpers, classified HOT or COLD by target (§4.2: cold ="
+            echo "# split cold-path symbol, #[cold]-marked fn, or a documented per-"
+            echo "# language equivalent; no signal = hot, never guessed). Compiler"
+            echo "# remarks are advisory; the disassembly is the verdict. CSV verdicts"
+            echo "# count HOT calls only: full = zero hot runtime calls per op,"
+            echo "# partial:N = N hot calls remain PER OP (§4.2 — loop unrolling"
+            echo "# divided back out), unknown = not attributable (stays un-ratioable)."
+            echo "# The cold count rides beside every row here, never in the CSV shape."
         } > "$LEDGER"
     fi
+}
+
+# per-row ledger lines from verdicts.txt (<bench> <path> <verdict> <hot> <cold>)
+emit_rows() {
+    {
+        echo "# per-row verdicts (hot is the CSV verdict; cold is recorded debt off the hot path):"
+        awk -v lang="$LANG_ARG" '{ printf "row %s %s %s %s hot=%s cold=%s\n", lang, $1, $2, $3, $4, ($5 == "" ? 0 : $5) }' "$VD/verdicts.txt"
+    } >> "$LEDGER"
 }
 
 section() {
@@ -243,7 +343,7 @@ section() {
 }
 
 nonzero_symbols() {
-    awk '$1 == "SYM" && $3 + $4 + $5 > 0' "$VD/counts.txt" | sort -k4 -rn | sed 's/^SYM /symbol /'
+    awk '$1 == "SYM" && $3 + $4 + $5 + $6 + $7 > 0' "$VD/counts.txt" | sort -k4 -rn | sed 's/^SYM /symbol /'
 }
 
 # ---- backfill: rewrite this language's rows' inline column ----
@@ -271,7 +371,7 @@ c|cpp)
     fi
     [ -x "$BIN" ] || { echo "$BIN missing — run the pass first" >&2; exit 1; }
     otool -tv "$BIN" > "$VD/disasm.txt"
-    count_calls "$RT" "$HELPER" < "$VD/disasm.txt" > "$VD/counts.txt"
+    count_calls "$RT" "$HELPER" "$COLD_SPLIT" < "$VD/disasm.txt" > "$VD/counts.txt"
     selftest_join "$VD/disasm.txt" "$VD/counts.txt" "$HELPER" || exit 1
 
     # clang remarks (§4.1: -Rpass=inline -Rpass-missed=inline; NOT
@@ -294,9 +394,9 @@ c|cpp)
         echo "note: $CSV carries no '# $LANG_ARG flags:' line (bare file?) — remark shadow compile skipped" >> "$VD/remarks.note"
     fi
 
-    section "$LANG_ARG" "(otool -tv of $BIN; clang -Rpass=inline shadow compile)"
+    section "$LANG_ARG" "(otool -tv of $BIN; clang -Rpass=inline shadow compile; cold = split .cold/.cold.N symbols)"
     {
-        echo "# symbol / direct-runtime-calls / transitive-per-op / indirect (nonzero only)"
+        echo "# symbol / direct-hot / transitive-hot / indirect / direct-cold / transitive-cold (nonzero only)"
         nonzero_symbols
         echo "# missed-inline remarks naming serialize (callee, caller, cost where reported):"
         grep -E "not inlined into" "$REMARKS" 2>/dev/null | grep -i serialize \
@@ -315,10 +415,11 @@ c|cpp)
         echo "$BENCH_MAP" | while read -r bench snake camel; do
             for path in write read; do
                 n="$(count_for "^_?${path}_${snake}\$")"
+                cold="$(cold_for "^_?${path}_${snake}\$")"
                 if [ "$n" -ge 0 ]; then
-                    echo "$bench $path $(verdict_of "$n")" >> "$VD/verdicts.txt"
+                    echo "$bench $path $(verdict_of "$n") $n $cold" >> "$VD/verdicts.txt"
                 elif [ "$(count_total)" -eq 0 ]; then
-                    echo "$bench $path full" >> "$VD/verdicts.txt"
+                    echo "$bench $path full 0 0" >> "$VD/verdicts.txt"
                 else
                     echo "note: c $bench $path: entry symbol inlined away and runtime calls exist elsewhere — inline stays unknown" >> "$LEDGER"
                 fi
@@ -332,8 +433,9 @@ c|cpp)
         echo "$RT_MAP" | while read -r bench snake lower camel; do
             for path in write read; do
                 n="$(perop_for "^_?${snake}_${path}_loop\$")"
+                cold="$(perop_cold_for "^_?${snake}_${path}_loop\$")"
                 if [ "$n" -ge 0 ]; then
-                    echo "$bench $path $(verdict_of "$n")" >> "$VD/verdicts.txt"
+                    echo "$bench $path $(verdict_of "$n") $n $cold" >> "$VD/verdicts.txt"
                 elif [ "$n" -eq -2 ]; then
                     echo "note: c $bench $path: loop body count does not divide by its unroll factor — inline stays unknown" >> "$LEDGER"
                 else
@@ -350,7 +452,7 @@ c|cpp)
         # rather than miscounted.
         [ -x "$VD/shadow" ] || { echo "shadow build failed — cannot attribute cpp verdicts (see $REMARKS)" >&2; exit 1; }
         otool -tv "$VD/shadow" > "$VD/shadow-disasm.txt"
-        count_calls "$RT" "$HELPER" < "$VD/shadow-disasm.txt" > "$VD/shadow-counts.txt"
+        count_calls "$RT" "$HELPER" "$COLD_SPLIT" < "$VD/shadow-disasm.txt" > "$VD/shadow-counts.txt"
         selftest_join "$VD/shadow-disasm.txt" "$VD/shadow-counts.txt" "$HELPER" || exit 1
 
         # every remaining runtime/helper call site in the shadow text
@@ -361,10 +463,12 @@ c|cpp)
 
         # drift guard: the shadow must have the same call structure as the
         # measured binary, or the attribution below describes the wrong code
-        M_TOTAL="$(count_total)"
-        S_TOTAL="$(awk '$1 == "SYM" { s += $4 } END { print s + 0 }' "$VD/shadow-counts.txt")"
+        # (hot + cold compared together: a call that changed temperature
+        # between the builds is drift too)
+        M_TOTAL="$(awk '$1 == "SYM" { s += $4 + $7 } END { print s + 0 }' "$VD/counts.txt")"
+        S_TOTAL="$(awk '$1 == "SYM" { s += $4 + $7 } END { print s + 0 }' "$VD/shadow-counts.txt")"
         if [ "$M_TOTAL" != "$S_TOTAL" ]; then
-            echo "note: SHADOW DRIFT: measured binary has $M_TOTAL transitive runtime calls, -g shadow has $S_TOTAL — verdicts below describe the shadow" >> "$LEDGER"
+            echo "note: SHADOW DRIFT: measured binary has $M_TOTAL transitive runtime calls (hot+cold), -g shadow has $S_TOTAL — verdicts below describe the shadow" >> "$LEDGER"
         fi
 
         # source maps: which main line calls which bench, and the timed-loop
@@ -396,12 +500,12 @@ c|cpp)
             true
         }
 
-        awk -v RT="$RT" -v addrsf="$VD/addrs.txt" -v countsf="$VD/shadow-counts.txt" \
+        awk -v RT="$RT" -v COLD="$COLD_SPLIT" -v addrsf="$VD/addrs.txt" -v countsf="$VD/shadow-counts.txt" \
             -v benchf="$VD/benchlines.txt" \
             -v W1="$W1" -v W2="$W2" -v RE="$RE" -v B1="$B1" -v B2="$B2" -v B3="$B3" -v B4="$B4" '
             BEGIN {
                 while ((getline line < addrsf) > 0) { na++; split(line, a, " "); target[na] = a[2] }
-                while ((getline line < countsf) > 0) { split(line, a, " "); tot[a[2]] = a[4] }
+                while ((getline line < countsf) > 0) { split(line, a, " "); tot[a[2]] = a[4]; ctot[a[2]] = a[7] }
                 while ((getline line < benchf) > 0) { split(line, a, " "); benchof[a[1]] = a[2] }
                 tmap["RigidBody"] = "rigidbody_moving"; tmap["Chat"] = "chat"
                 tmap["Test"] = "test"; tmap["InputPacket"] = "inputpacket"
@@ -449,15 +553,25 @@ c|cpp)
                 }
                 if (bench == "" || path == "") { if (i <= nf) unattributed++; else untimed++; nf = 0; return }
                 t = target[g]
-                contrib = (t ~ RT) ? 1 : tot[t] + 0
-                n[bench "," path] += contrib
+                # §4.2 hot/cold: a split cold-path target counts cold, once;
+                # a hot runtime target counts hot; a hot helper contributes
+                # its own hot and cold transitive counts separately
+                if (t ~ COLD) {
+                    c[bench "," path] += 1
+                } else if (t ~ RT) {
+                    n[bench "," path] += 1
+                } else {
+                    n[bench "," path] += tot[t] + 0
+                    c[bench "," path] += ctot[t] + 0
+                }
+                seen[bench "," path] = 1
                 nf = 0
             }
             NF == 0 { flush_group(); next }
             { frames[++nf] = $0 }
             END {
                 flush_group()
-                for (k in n) { split(k, a, ","); printf "N %s %s %d\n", a[1], a[2], n[k] }
+                for (k in seen) { split(k, a, ","); printf "N %s %s %d %d\n", a[1], a[2], n[k] + 0, c[k] + 0 }
                 printf "STATS groups %d untimed %d unattributed %d\n", g, untimed, unattributed
             }' "$VD/stacks.txt" > "$VD/attribution.txt"
 
@@ -485,8 +599,8 @@ c|cpp)
 
         echo "$BENCH_MAP" | while read -r bench snake camel; do
             for path in write read; do
-                n="$(awk -v b="$bench" -v p="$path" '$1 == "N" && $2 == b && $3 == p { print $4; f = 1; exit } END { if (!f) print 0 }' "$VD/attribution.txt")"
-                echo "$bench $path $(verdict_of "$n")" >> "$VD/verdicts.txt"
+                set -- $(awk -v b="$bench" -v p="$path" '$1 == "N" && $2 == b && $3 == p { print $4, $5; f = 1; exit } END { if (!f) print 0, 0 }' "$VD/attribution.txt")
+                echo "$bench $path $(verdict_of "$1") $1 $2" >> "$VD/verdicts.txt"
             done
         done
         # families rt and bits: the noinline timed-loop symbols in the
@@ -496,8 +610,9 @@ c|cpp)
         echo "$RT_MAP" | while read -r bench snake lower camel; do
             for path in write read; do
                 n="$(perop_for "${snake}_${path}_loop")"
+                cold="$(perop_cold_for "${snake}_${path}_loop")"
                 if [ "$n" -ge 0 ]; then
-                    echo "$bench $path $(verdict_of "$n")" >> "$VD/verdicts.txt"
+                    echo "$bench $path $(verdict_of "$n") $n $cold" >> "$VD/verdicts.txt"
                 elif [ "$n" -eq -2 ]; then
                     echo "note: cpp $bench $path: loop body count does not divide by its unroll factor — inline stays unknown" >> "$LEDGER"
                 else
@@ -506,6 +621,7 @@ c|cpp)
             done
         done
     fi
+    emit_rows
     backfill
     ;;
 
@@ -528,7 +644,10 @@ go)
                     break
                 }
         }' "$VD/objdump.txt" > "$VD/calls.txt"
-    count_calls 'serialize%2ego\.|mas-bandwidth\/serialize' '^example\.|^main\.' < "$VD/calls.txt" > "$VD/counts.txt"
+    # COLD is empty: gc has no cold attribute, no section split, and no
+    # remark that marks a callee cold — §4.2's hot-default applies to every
+    # Go call, and the ledger note below says so out loud.
+    count_calls 'serialize%2ego\.|mas-bandwidth\/serialize' '^example\.|^main\.' '' < "$VD/calls.txt" > "$VD/counts.txt"
     selftest_join "$VD/calls.txt" "$VD/counts.txt" '^example\.|^main\.' || exit 1
 
     # remarks: go build -a -gcflags=-m=2 — -a is MANDATORY (see header)
@@ -551,15 +670,15 @@ go)
         fi
     done
 
-    section go "(go tool objdump of the measured build; go build -a -gcflags=all=-m=2)"
+    section go "(go tool objdump of the measured build; go build -a -gcflags=all=-m=2; no cold signal exists in gc — every call is hot by §4.2's hot-default)"
     {
         echo "# sanity cross-check (§4.1): the universal ground truth (objdump call"
         echo "# targets) checked against the compiler-remark verdict:"
         sed 's/^/crosscheck /' "$VD/crosscheck.txt"
         echo "# serialize.go remark ledger (file:line, symbol, cost, budget):"
         sed 's/^/remark /' "$VD/serialize-remarks.txt"
-        echo "# symbol / direct-runtime-calls / transitive-per-op / indirect (generated code, nonzero)"
-        grep "^SYM example\." "$VD/counts.txt" | awk '$3 + $4 + $5 > 0' | sort -k4 -rn | sed 's/^SYM /symbol /'
+        echo "# symbol / direct-hot / transitive-hot / indirect / direct-cold / transitive-cold (generated code, nonzero)"
+        grep "^SYM example\." "$VD/counts.txt" | awk '$3 + $4 + $5 + $6 + $7 > 0' | sort -k4 -rn | sed 's/^SYM /symbol /'
     } >> "$LEDGER"
 
     : > "$VD/verdicts.txt"
@@ -568,7 +687,7 @@ go)
             Cap="$(echo "$path" | awk '{print toupper(substr($0,1,1)) substr($0,2)}')"
             n="$(count_for "^example\\.${Cap}${camel}\$")"
             if [ "$n" -ge 0 ]; then
-                echo "$bench $path $(verdict_of "$n")" >> "$VD/verdicts.txt"
+                echo "$bench $path $(verdict_of "$n") $n 0" >> "$VD/verdicts.txt"
             else
                 echo "note: go $bench $path: example.${Cap}${camel} not found in objdump — inline stays unknown" >> "$LEDGER"
             fi
@@ -581,7 +700,7 @@ go)
             Cap="$(echo "$path" | awk '{print toupper(substr($0,1,1)) substr($0,2)}')"
             n="$(perop_for "^main\\.${lower}${Cap}Loop\$")"
             if [ "$n" -ge 0 ]; then
-                echo "$bench $path $(verdict_of "$n")" >> "$VD/verdicts.txt"
+                echo "$bench $path $(verdict_of "$n") $n 0" >> "$VD/verdicts.txt"
             elif [ "$n" -eq -2 ]; then
                 echo "note: go $bench $path: loop body count does not divide by its unroll factor — inline stays unknown" >> "$LEDGER"
             else
@@ -589,6 +708,7 @@ go)
             fi
         done
     done
+    emit_rows
     backfill
     ;;
 
@@ -596,6 +716,15 @@ go)
 rust)
     BIN=bench/rust/target/release/benchrust
     [ -x "$BIN" ] || { echo "$BIN missing — run the pass first" >&2; exit 1; }
+
+    # the §4.2 cold signal for rust: fns marked #[cold] in the runtime crate
+    # THIS bench built against (the path in bench/rust/Cargo.toml), plus any
+    # split .cold suffix. Scanned from source because neither Mach-O sections
+    # nor -Cremark reasons state the attribute; a fn not carrying #[cold]
+    # in that crate stays hot, whatever its name looks like.
+    RS_CRATE="$(sed -n 's/^serialize *= *{ *path *= *"\([^"]*\)".*/\1/p' bench/rust/Cargo.toml | head -1)"
+    RS_CRATE="bench/rust/$RS_CRATE"
+    COLD_RS="$(rust_cold_regex "$RS_CRATE")"
 
     # v0 mangling puts the DEFINING crate first and the instantiating crate
     # last, and serialize types appear inside example/benchrust generics —
@@ -625,7 +754,7 @@ rust)
         $2 == "bl"  { print $1 " bl CRATE_" firstcrate($3) "_" $3; next }
         $2 == "blr" { print $1 " blr indirect"; next }
     ' > "$VD/disasm.txt"
-    count_calls '^CRATE_serialize_' '^CRATE_(example|benchrust)_' < "$VD/disasm.txt" > "$VD/counts.txt"
+    count_calls '^CRATE_serialize_' '^CRATE_(example|benchrust)_' "$COLD_RS" < "$VD/disasm.txt" > "$VD/counts.txt"
     selftest_join "$VD/disasm.txt" "$VD/counts.txt" '^CRATE_(example|benchrust)_' || exit 1
 
     # remarks: RUSTFLAGS="-Cremark=inline -Cdebuginfo=1" rebuild (fingerprint
@@ -639,9 +768,10 @@ rust)
         | sed -E 's/^[^:]*:[0-9]+:[0-9]+: *//; s/note: //' \
         | sort | uniq -c | sort -rn | head -40 > "$VD/serialize-remarks.txt" || true
 
-    section rust "(otool -tv of the measured $BIN, targets classified by defining crate; -Cremark=inline shadow rebuild)"
+    section rust "(otool -tv of the measured $BIN, targets classified by defining crate; -Cremark=inline shadow rebuild; cold = #[cold] fns scanned from $RS_CRATE + split .cold symbols)"
     {
-        echo "# symbol / direct-runtime-calls / transitive-per-op / indirect (nonzero only)"
+        echo "# cold-classified targets (regex): $COLD_RS"
+        echo "# symbol / direct-hot / transitive-hot / indirect / direct-cold / transitive-cold (nonzero only)"
         nonzero_symbols | head -60
         echo "# -Cremark=inline missed-inline lines naming serialize (count, remark):"
         sed 's/^ */remark /' "$VD/serialize-remarks.txt"
@@ -655,10 +785,11 @@ rust)
                 name="read_message_into"   # the batch read rides the into-path
             fi
             n="$(count_for "${#name}${name}")"
+            cold="$(cold_for "${#name}${name}")"
             if [ "$n" -ge 0 ]; then
-                echo "$bench $path $(verdict_of "$n")" >> "$VD/verdicts.txt"
+                echo "$bench $path $(verdict_of "$n") $n $cold" >> "$VD/verdicts.txt"
             elif [ "$(count_total)" -eq 0 ]; then
-                echo "$bench $path full" >> "$VD/verdicts.txt"
+                echo "$bench $path full 0 0" >> "$VD/verdicts.txt"
             else
                 echo "note: rust $bench $path: no ${name} symbol and runtime calls exist elsewhere — inline stays unknown" >> "$LEDGER"
             fi
@@ -670,8 +801,9 @@ rust)
         for path in write read; do
             name="${snake}_${path}_loop"
             n="$(perop_for "${#name}${name}")"
+            cold="$(perop_cold_for "${#name}${name}")"
             if [ "$n" -ge 0 ]; then
-                echo "$bench $path $(verdict_of "$n")" >> "$VD/verdicts.txt"
+                echo "$bench $path $(verdict_of "$n") $n $cold" >> "$VD/verdicts.txt"
             elif [ "$n" -eq -2 ]; then
                 echo "note: rust $bench $path: loop body count does not divide by its unroll factor — inline stays unknown" >> "$LEDGER"
             else
@@ -679,6 +811,7 @@ rust)
             fi
         done
     done
+    emit_rows
     backfill
     ;;
 
@@ -706,7 +839,10 @@ cs)
         $1 == "bl"  { print "0 bl " $2 }
         $1 == "blr" { print "0 blr indirect" }
     ' "$JIT" > "$VD/calls.txt"
-    count_calls '.' '(Example\.Schema|Program):' < "$VD/calls.txt" > "$VD/counts.txt"
+    # COLD is empty: JitDisasm names no cold blocks or targets on this
+    # surface — §4.2's hot-default applies to every C# call, said out loud
+    # in the section header below.
+    count_calls '.' '(Example\.Schema|Program):' '' < "$VD/calls.txt" > "$VD/counts.txt"
     # ('.' after the helper carve-out: every non-helper bl counts — Serialize.*
     # methods, JIT helpers, BCL — plus blr via the indirect column, folded in
     # below, because §4.1 counts them all for C#. selftest_join is not run
@@ -721,9 +857,9 @@ cs)
     awk '$1 == "SYM" { $4 += $5 } { print }' "$VD/counts.txt" > "$VD/counts.folded" \
         && mv "$VD/counts.folded" "$VD/counts.txt"
 
-    section cs "(DOTNET_JitDisasm, DOTNET_TieredCompilation=0, FullOpts; bl+blr per §4.1)"
+    section cs "(DOTNET_JitDisasm, DOTNET_TieredCompilation=0, FullOpts; bl+blr per §4.1; no cold signal exists in JitDisasm — every call is hot by §4.2's hot-default)"
     {
-        echo "# method / direct-calls / per-op-total-with-indirect / indirect (nonzero only)"
+        echo "# method / direct-calls / per-op-total-with-indirect / indirect / direct-cold / transitive-cold (nonzero only)"
         nonzero_symbols
         echo "# JIT inlinee summaries per method:"
         awk '/^; Assembly listing for method /{m=$0; sub(/^; Assembly listing for method /,"",m); sub(/ .*/,"",m)} /inlinees/{print "jit " m "  " substr($0,3)}' "$JIT" | head -40
@@ -735,7 +871,7 @@ cs)
             Cap="$(echo "$path" | awk '{print toupper(substr($0,1,1)) substr($0,2)}')"
             n="$(count_for "^Example\\.Schema:${Cap}${camel}\$")"
             if [ "$n" -ge 0 ]; then
-                echo "$bench $path $(verdict_of "$n")" >> "$VD/verdicts.txt"
+                echo "$bench $path $(verdict_of "$n") $n 0" >> "$VD/verdicts.txt"
             else
                 echo "note: cs $bench $path: Example.Schema:${Cap}${camel} not in the JitDisasm output — inline stays unknown" >> "$LEDGER"
             fi
@@ -749,7 +885,7 @@ cs)
             Cap="$(echo "$path" | awk '{print toupper(substr($0,1,1)) substr($0,2)}')"
             n="$(perop_for "^Program:${camel}${Cap}Loop\$")"
             if [ "$n" -ge 0 ]; then
-                echo "$bench $path $(verdict_of "$n")" >> "$VD/verdicts.txt"
+                echo "$bench $path $(verdict_of "$n") $n 0" >> "$VD/verdicts.txt"
             elif [ "$n" -eq -2 ]; then
                 echo "note: cs $bench $path: loop body count does not divide by its unroll factor — inline stays unknown" >> "$LEDGER"
             else
@@ -757,6 +893,7 @@ cs)
             fi
         done
     done
+    emit_rows
     backfill
     ;;
 

@@ -607,10 +607,59 @@ Every row carries a verdict:
 
 | value | meaning |
 |---|---|
-| `full` | zero runtime calls in the timed loop body |
-| `partial:N` | N runtime calls remain **per op** |
+| `full` | zero **hot** runtime calls in the timed loop body |
+| `partial:N` | N **hot** runtime calls remain **per op** |
 | `none` | the chain is entirely out-of-line |
 | `unknown` | the verdict pass did not run — **the tool treats this as a refusal to ratio** |
+
+**`N` counts HOT calls only. Cold calls are recorded beside the verdict, never
+inside it.** Amended 2026-08-15 after the same misread happened four times in
+one night: a `#[cold]` error constructor, a guarded `load_window_slow`
+fallback, and a deliberate bulk-bytes boundary all counted into `partial:N`
+identically to a stranded hot call — debt indistinguishable from design. The
+measured proof: the serialize.rs read-path fix took the bench_packet read
+chain's hot path to **zero** remaining calls while the raw count went
+`partial:11 → partial:28`, because every newly inlined window load carries
+one `#[cold]` slow-path call site. A verdict that gets *worse* when the hot
+path gets *clean* is measuring the wrong thing.
+
+A call is **cold** when its **target** carries a signal the toolchain
+actually emits — one of:
+
+1. the target lives in a compiler-split cold section or symbol
+   (ELF `.text.unlikely`; Mach-O's spelling is a split `foo.cold` /
+   `foo.cold.N` symbol);
+2. the target is a function marked cold at source in the runtime the leg
+   built against (`#[cold]` in Rust — matched by its mangled-name token,
+   scanned from the crate the bench manifest points at), or the compiler's
+   remarks state the callee is cold;
+3. the call is reached only behind a guarded fallback edge the ledger can
+   itself identify and name.
+
+The signals in use per language, on this host:
+
+| language | live cold signals |
+|---|---|
+| C, C++ | split `.cold`/`.cold.N` symbols (signal 1) |
+| Rust | `#[cold]`-marked fns in the built-against crate source, plus split symbols (signals 1 + 2) |
+| Go | none — gc emits no cold attribute, section, or remark |
+| C# | none — JitDisasm names no cold blocks or targets |
+
+**Where a signal is unavailable the call stays hot. The classifier never
+guesses cold**, because the two failure directions are not symmetric:
+counting a cold call hot overstates debt and invites a pointless
+investigation; counting a hot call cold publishes a false `full` — the
+exact class of wrong number this standard exists to kill. Signal 3 is
+admissible under this definition but not implemented by the current pipeline;
+until a ledger mechanism can *prove* an edge is guard-only, such calls count
+hot. Consequence, stated honestly: serialize.c's deliberate bulk-bytes
+boundary carries no cold marking today, so it still counts hot — if it is
+truly cold by contract, the fix is a cold annotation in serialize.c, not a
+guess in the verdict pass.
+
+The per-symbol `.inline` ledger carries **both** counts — hot and cold — per
+symbol and per (bench, path) row, so the cold debt stays visible and
+diagnosable without contaminating the comparison column.
 
 **`N` is per op, not per emitted call site.** An unrolled timed loop repeats
 its per-op calls once per unrolled iteration — clang unrolled the C
@@ -631,8 +680,8 @@ thing in every row, or the column cannot be compared at all.
 verdict is not comparable to a number with one.
 
 Alongside the CSV, each pass writes `results/<name>.inline` — the full per-symbol
-ledger (symbol, cost, budget, verdict) for every language, so a regression can be
-diagnosed rather than merely detected.
+ledger (symbol, hot and cold call counts, cost, budget, verdict) for every
+language, so a regression can be diagnosed rather than merely detected.
 
 ### §4.3 The regression gate
 
