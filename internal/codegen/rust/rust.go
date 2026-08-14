@@ -375,7 +375,7 @@ func (g *gen) emitStruct(d *ir.Struct) {
 	// things WIRES.md promises of table storage — would be honoured by
 	// accident until the day they were not. It also makes the layout match
 	// the C++ struct field for field, which is what "the same data type in
-	// four languages" ought to mean.
+	// five languages" ought to mean.
 	g.pf("#[repr(C)]\n")
 	g.pf("#[derive(Clone, Copy, PartialEq, Debug)]\n")
 	if len(d.Fields) == 0 {
@@ -921,7 +921,7 @@ func rustUint(width int) string { return fmt.Sprintf("u%d", width) }
 // fixedShallowComp resolves one component of a narrowed fixed composite
 // (SPEC §4.8 rule 2b) to its Rust shallow shape: wire bounds, wire bits, the
 // i32/i64 serialize switch, and the storage type. The bounds mirror
-// ir.FixedShallowBounds so all four backends agree on the wire.
+// ir.FixedShallowBounds so all five backends agree on the wire.
 func fixedShallowComp(f, cf *ir.Field) (lo, hi *big.Int, bits int64, wide bool, typ string, width int) {
 	lo, hi = ir.FixedShallowBounds(f, cf)
 	bits = ir.BitsRequired(lo, hi)
@@ -982,7 +982,7 @@ func formatFloat(v float64) string {
 // explicit suffix, so the type never rests on inference — at FLOAT32
 // precision: the shortest literal that parses to exactly float32(v) in every
 // target language, the same narrowing ir.CompressedFloatBits computes widths
-// with, so all four targets and the advertised MaxBits agree even at f32
+// with, so all five targets and the advertised MaxBits agree even at f32
 // rounding ties.
 func formatFloat32(v float64) string {
 	s := strconv.FormatFloat(v, 'g', -1, 32)

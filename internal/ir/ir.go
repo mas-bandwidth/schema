@@ -336,7 +336,7 @@ func StorageBitsFor(max int64) int {
 // FixedShallowBounds is the per-component shallow wire range of a narrowed
 // fixed composite (SPEC §4.8 rule 2b): the component's own whole-unit
 // [IntMin, IntMax] scaled by QuantScale. Every backend derives storage and
-// wire bounds from this one function, or the four wires disagree.
+// wire bounds from this one function, or the five wires disagree.
 func FixedShallowBounds(f *Field, cf *Field) (lo, hi *big.Int) {
 	k := big.NewInt(f.QuantScale)
 	lo = new(big.Int).Mul(cf.IntMin, k)

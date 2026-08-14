@@ -26,14 +26,15 @@ the claim can be checked rather than believed.
 
 ## Building
 
-Needs Go 1.26+, a C++17 compiler, and — for the full cross-language test — the
-Rust, Go and .NET toolchains.
+Needs Go 1.26+, a C++17 compiler, a C99 compiler, and — for the full
+cross-language test — the Rust, Go and .NET toolchains.
 
-The four serialize runtimes must be checked out as **siblings** of this
+The five serialize runtimes must be checked out as **siblings** of this
 repository:
 
 ```bash
 git clone https://github.com/mas-bandwidth/serialize.git
+git clone https://github.com/mas-bandwidth/serialize.c.git
 git clone https://github.com/mas-bandwidth/serialize.go.git
 git clone https://github.com/mas-bandwidth/serialize.rs.git
 git clone https://github.com/mas-bandwidth/serialize.cs.git
@@ -73,9 +74,9 @@ to somebody, so it needs to be worth it.
 ## Adding a language backend
 
 A backend is a Go package under `internal/codegen/` that walks the same IR the
-existing four consume. The cross-language harness is what makes this tractable:
+existing five consume. The cross-language harness is what makes this tractable:
 generate the corpus in your language, encode the same values, and the goldens
-tell you immediately whether you agree with the other four bit for bit.
+tell you immediately whether you agree with the other five bit for bit.
 
 That mechanism is real, and so is the work. Before starting, open an issue —
 a backend that lands and then goes unmaintained is worse for users than no

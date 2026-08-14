@@ -2,7 +2,7 @@
 // that hold for EVERY input, not just the corpus. Crash-fuzzing (fuzz_test.go)
 // asks "does it survive?"; these ask "does it keep its word?", which is the
 // harder and more valuable question for a compiler whose entire value
-// proposition is that four languages agree on the byte.
+// proposition is that five languages agree on the byte.
 package fuzz_test
 
 import (
@@ -60,7 +60,7 @@ func corpusUnits(t *testing.T) map[string][]check.SourceFile {
 // Generated output must be byte-identical across repeated runs of the same
 // input. Go randomizes map iteration on every run, so ANY map walk that
 // reaches emission ordering shows up here — and for a compiler whose wire is
-// byte-pinned across four languages and whose goldens are diffed in CI,
+// byte-pinned across five languages and whose goldens are diffed in CI,
 // nondeterministic output is a correctness bug, not a cosmetic one. Repeats
 // are cheap; the randomization is per-process, so a real defect surfaces with
 // high probability across this many passes.

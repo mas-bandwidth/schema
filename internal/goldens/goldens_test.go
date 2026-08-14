@@ -31,7 +31,7 @@ var update = flag.Bool("update", false, "rewrite the golden files from current o
 
 const (
 	corpusDir = "../../examples"
-	// the fixed-point + 128-bit unit: all four targets, pinned like the main
+	// the fixed-point + 128-bit unit: all five targets, pinned like the main
 	// corpus (the serialize ports all carry the phase-1 surface)
 	corpus128Dir = "../../examples128"
 	goldenDir    = "../../testdata/golden"
@@ -209,12 +209,12 @@ func TestGoldenLudicrousId(t *testing.T) {
 }
 
 // TestGoldenLudicrousSource pins the fixed-point + 128-bit unit's generated
-// source byte-for-byte for ALL FOUR targets: C++ (both message
-// representations), Go, Rust and C#. Every serialize port now carries the
+// source byte-for-byte for ALL FIVE targets: C++ (both message
+// representations), Go, Rust, C# and C. Every serialize port now carries the
 // phase-1 surface, so the old refusal pin (TestLudicrous128Refusals) is
 // retired — a backend erroring here is the loud failure that replaces it,
 // and the unit rides the same cross-language wire gates as the main corpus
-// (test/go-ludicrous, test/rust-ludicrous, test/cs-ludicrous).
+// (test/{c,go,rust,cs}-ludicrous).
 func TestGoldenLudicrousSource(t *testing.T) {
 	u := loadCorpusDir(t, corpus128Dir)
 	for _, mode := range []string{"union", "variant"} {
@@ -239,6 +239,11 @@ func TestGoldenLudicrousSource(t *testing.T) {
 		t.Fatal(err)
 	}
 	pinDir(t, filepath.Join(goldenDir, "ludicrous", "cs"), csFiles)
+	cFiles, err := cgen.Generate(u)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pinDir(t, filepath.Join(goldenDir, "ludicrous", "c"), cFiles)
 }
 
 // pinDir compares (or, under -update, rewrites) one directory of goldens.

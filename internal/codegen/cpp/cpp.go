@@ -1006,7 +1006,7 @@ func smallestUnsigned(max int64) int { return ir.StorageBitsFor(max) }
 func formatFloat(v float64, single bool) string {
 	// single-precision literals format at FLOAT32 precision: the shortest
 	// string that parses to exactly float32(v) — the same narrowing
-	// ir.CompressedFloatBits computes widths with, so all four targets and
+	// ir.CompressedFloatBits computes widths with, so all five targets and
 	// the advertised MaxBits agree even at f32 rounding ties
 	bitSize := 64
 	if single {

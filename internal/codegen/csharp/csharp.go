@@ -902,7 +902,7 @@ func csUint(width int) string {
 // fixedShallowComp resolves one component of a narrowed fixed composite
 // (SPEC §4.8 rule 2b) to its C# shallow shape: wire bounds, the int/long
 // serialize switch, and the storage type. The bounds mirror
-// ir.FixedShallowBounds so all four backends agree on the wire.
+// ir.FixedShallowBounds so all five backends agree on the wire.
 func fixedShallowComp(f, cf *ir.Field) (lo, hi *big.Int, wide bool, typ string, width int) {
 	lo, hi = ir.FixedShallowBounds(f, cf)
 	wide = hi.Cmp(big.NewInt(2147483647)) > 0 || lo.Cmp(big.NewInt(-2147483648)) < 0

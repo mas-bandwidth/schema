@@ -1,5 +1,5 @@
 // Native fuzzing over the WHOLE pipeline: parse -> check -> generate in all
-// four languages. The contract under test is simple and absolute: for ANY
+// five languages. The contract under test is simple and absolute: for ANY
 // input bytes, the compiler either produces a unit or reports errors — it
 // never panics, and it never hangs. A crash on malformed input is a compiler
 // bug even when the input is nonsense, because "nonsense" is exactly what a
@@ -28,6 +28,7 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/internal/check"
+	cgen "github.com/mas-bandwidth/schema/internal/codegen/c"
 	"github.com/mas-bandwidth/schema/internal/codegen/cpp"
 	"github.com/mas-bandwidth/schema/internal/codegen/csharp"
 	"github.com/mas-bandwidth/schema/internal/codegen/golang"
@@ -74,6 +75,9 @@ func drive(t *testing.T, srcs map[string]string) {
 		return
 	}
 	if _, err := rust.Generate(unit); err != nil {
+		return
+	}
+	if _, err := cgen.Generate(unit); err != nil {
 		return
 	}
 }

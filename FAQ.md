@@ -201,7 +201,7 @@ demo. That is worth exactly as much as you think it is.
 
 Two things that reduce the risk if it were abandoned: the output is **ordinary
 source code in your repo** with no runtime dependency on the compiler, and the
-generated C++/C#/Go/Rust reads like the code you would have written. If the
+generated C, C++, C#, Go and Rust reads like the code you would have written. If the
 project stopped tomorrow, you would still have working serializers and could
 maintain them by hand. That is a materially different exposure from depending
 on a runtime library.
@@ -211,7 +211,7 @@ on a runtime library.
 Not supported today. The five exist because they are what the authors ship in:
 C++ engine, C# for Unity, Go for backend services, Rust for tooling.
 
-A new backend is a Go package that walks the same IR the existing four consume,
+A new backend is a Go package that walks the same IR the existing five consume,
 and the cross-language test harness would tell you immediately whether it
 agrees with the others bit for bit. That is the mechanism, but it is real work
 and nobody should pretend otherwise.

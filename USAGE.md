@@ -486,7 +486,7 @@ avoid allocation.
 **Rust** — no `unsafe` in generated code, `Result`-returning read and write.
 Message wire only: the table wire has no Rust backend yet.
 
-All four are generated from the same IR and compared against each other in CI
+All five are generated from the same IR and compared against each other in CI
 on every push. The wire is bit-packed, so the property being checked is
 bit-identity — if they ever disagree by one bit, the build fails.
 

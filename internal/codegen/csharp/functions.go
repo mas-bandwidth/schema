@@ -401,7 +401,7 @@ func (g *gen) emitWriteFoldedInt(f *ir.Field, name, ind string) {
 var maxUint64 = new(big.Int).SetUint64(math.MaxUint64)
 
 // intRangePath picks the runtime call family for a ranged integer — the same
-// switch as the other targets, so all four emit identical wire.
+// switch as the other targets, so all five emit identical wire.
 func intRangePath(min, max *big.Int) string {
 	i32 := big.NewInt(math.MaxInt32)
 	i32lo := big.NewInt(math.MinInt32)

@@ -40,7 +40,7 @@ generated/cpp/.stamp: bin/schema $(SCHEMAS)
 	./bin/schema generate --lang cpp --out generated/cpp examples
 	@touch $@
 
-# the fixed-point + 128-bit unit (examples128/) — all four targets since the
+# the fixed-point + 128-bit unit (examples128/) — all five targets since the
 # serialize ports carry the phase-1 surface; each generated unit gets the same
 # module/manifest wiring as its main-corpus twin
 generated/cpp/ludicrous/.stamp: bin/schema $(SCHEMAS128)

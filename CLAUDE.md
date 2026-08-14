@@ -14,21 +14,24 @@
   runs the compiler over the corpus, and `make` proves the generated C++ compiles, links
   and runs.
 - **What `make` proves, in full** (moved here from README 2026-08-06 — too dense for the
-  human front page, load-bearing for a working session): all four v1 backends live; `make`
-  builds the compiler, generates C++ headers (`generated/cpp/`), a Go package, a Rust
-  crate and C# sources from `examples/`, and runs ten binaries — the C++ tests (both
-  message representations plus a randomized round-trip suite) and the Go, Rust and C#
-  wire tests, each byte-comparing against the same eleven C++-pinned wire goldens
+  human front page, load-bearing for a working session): all five backends live; `make`
+  builds the compiler, generates C++ headers (`generated/cpp/`), C sources, a Go package,
+  a Rust crate and C# sources from `examples/`, and runs twelve binaries — the C++ tests
+  (both message representations plus a randomized round-trip suite) and the C, Go, Rust
+  and C# wire tests, each byte-comparing against the same C++-pinned wire goldens
   (cross-language wire identity is a standing gate) — plus the fixed-point + 128-bit
-  unit (`examples128/`, all four targets since 2026-08-12): its C++ test pins wire
-  goldens DERIVED from serialize's STANDARD.md independently, and the Go, Rust and C#
-  ludicrous legs (`test/{go,rust,cs}-ludicrous`) byte-compare the same pinned instance
+  unit (`examples128/`, all five targets: the C leg landed 2026-08-13, the other four
+  2026-08-12): its C++ test pins wire goldens DERIVED from serialize's STANDARD.md
+  independently, and the C, Go, Rust and C# ludicrous legs
+  (`test/{c,go,rust,cs}-ludicrous`) byte-compare the same pinned instance
   against them — fixed(I, F)/int128/uint128 wire identity is a standing gate too — then
   the break-the-language diagnostics suite (70+ refusal cases) and the
-  source/id/wire golden pins. Each backend
+  source/id/wire golden pins. The data compiler's own encoder (`internal/pack`) packs
+  those same pinned instances from JSON and byte-compares them too, so the Go-side wire
+  oracle cannot drift from the generated ones. Each backend
   emits what a careful expert would write against its serialize runtime: split
   `Write`/`Read` per type; per-target dispatch (C++ tagged union or opt-in
-  `std::variant`; Go interface + storage; Rust enum; C# abstract class + storage); object
+  `std::variant`; C tagged union; Go interface + storage; Rust enum; C# abstract class + storage); object
   view families with deterministic `Quantize`/`Unquantize`; zero initialization with
   specified defaults; `schemafmt` canonicalizing every input in place.
 - **Trajectory** (Glenn, 2026-08-05): once design settles and implementation starts, this
@@ -96,7 +99,7 @@ buffer break the serial renormalisation dependency and let SIMD actually help (~
 **WHY THIS IS A SCHEMA QUESTION AND NOT ONLY A SERIALIZE ONE.** An entropy coder is worthless
 without a probability model, and **the schema is where a model could come from for free.** We
 already know each field's type, range and semantics at compile time. Static per-field frequency
-tables — emitted by the compiler into the generated C++/C#/Go/Rust the same way the bitpacking
+tables — emitted by the compiler into the generated C/C++/C#/Go/Rust the same way the bitpacking
 ranges already are — are the cheapest first experiment, need no adaptive state, and keep the
 decoder branch-free. That is a far better fit than a general-purpose adaptive model, and it is a
 thing this project can do that a standalone serializer cannot.
@@ -107,7 +110,7 @@ thing this project can do that a standalone serializer cannot.
   buffering a message or a bounded block rather than a single forward streaming pass.
 - **A schema-compiled table is a WIRE FORMAT COMMITMENT.** Change the frequencies and you change
   the bytes. Versioning and cross-language byte-exactness (the property this project already
-  guards hardest) both have to survive it, across all four backends.
+  guards hardest) both have to survive it, across all five backends.
 
 **And the licensing constraint is real**: Microsoft's `US11234023B2` covers specific rANS
 refinements, and their public permission is scoped to open source that **does not charge a

@@ -716,7 +716,7 @@ func goUint(width int) string { return fmt.Sprintf("uint%d", width) }
 // fixedShallowComp resolves one component of a narrowed fixed composite
 // (SPEC §4.8 rule 2b) to its Go shallow shape: wire bounds, wire bits, the
 // int32/int64 serialize switch, and the storage type. The bounds mirror
-// ir.FixedShallowBounds so all four backends agree on the wire.
+// ir.FixedShallowBounds so all five backends agree on the wire.
 func fixedShallowComp(f, cf *ir.Field) (lo, hi *big.Int, bits int64, wide bool, typ string, width int) {
 	lo, hi = ir.FixedShallowBounds(f, cf)
 	bits = ir.BitsRequired(lo, hi)
@@ -758,7 +758,7 @@ func formatFloat(v float64) string {
 // formatFloat32 renders a compressed-float parameter at FLOAT32 precision:
 // the shortest literal that parses to exactly float32(v) in every target
 // language — the same narrowing ir.CompressedFloatBits computes widths with,
-// so all four targets and the advertised MaxBits agree even at f32 rounding
+// so all five targets and the advertised MaxBits agree even at f32 rounding
 // ties (a 64-bit literal re-rounded per-language can land on different f32s).
 func formatFloat32(v float64) string {
 	s := strconv.FormatFloat(v, 'g', -1, 32)
