@@ -78,6 +78,17 @@ probearray probe_array ProbeArray
 testdata test_data TestData
 message_batch message Message'
 
+# families rt and bits: bench -> the runner's noinline timed-loop symbol stems
+# (<snake>_write_loop/_read_loop for c/cpp/rust; main.<lowerCamel>WriteLoop for
+# go; Program:<Camel>WriteLoop for cs). The loop bodies ARE §4.1's "emitted
+# body of the timed loop", so the verdict is a direct transitive count — no
+# atos attribution needed for these rows in any language.
+RT_MAP='bench_packet rt_bench_packet rtBenchPacket RtBenchPacket
+bench_ints rt_bench_ints rtBenchInts RtBenchInts
+bench_bits rt_bench_bits rtBenchBits RtBenchBits
+bench_mixed rt_bench_mixed rtBenchMixed RtBenchMixed
+bitpacker bitpacker bitpacker Bitpacker'
+
 # ---- per-symbol transitive runtime-call counting ----
 # stdin: "sym:" header lines and "addr <bl|blr> target" instruction lines
 # (otool -tv shape; the go/cs branches translate into it). RT = runtime
@@ -172,11 +183,11 @@ c|cpp)
     if [ "$LANG_ARG" = c ]; then
         BIN=build/bench/schema_bench_c
         RT='^_?serialize_'                  # serialize.c entry points
-        HELPER='^_?(write|read|quantize)_'  # generated helpers (write_vec3 ...)
+        HELPER='^_?(write|read|quantize|rt_|vary_|bits_)'  # generated helpers (write_vec3 ...) and the hand-written rt/bits ops
     else
         BIN=build/bench/schema_bench_cpp
         RT='^__?ZNK?9serialize'             # namespace serialize (runtime proper)
-        HELPER='^__?ZNK?7example'           # namespace example (generated)
+        HELPER='^__?ZNK?7example|_GLOBAL__N_1'  # namespace example (generated) + the anon-namespace rt/bits code
     fi
     [ -x "$BIN" ] || { echo "$BIN missing — run the pass first" >&2; exit 1; }
     otool -tv "$BIN" > "$VD/disasm.txt"
@@ -234,6 +245,18 @@ c|cpp)
         done
         echo "# note: static counts include both arms of branchy messages (rigidbody at_rest" >> "$LEDGER"
         echo "# shares rigid_body's entry, so its N is the moving shape's upper bound)" >> "$LEDGER"
+        # families rt and bits: the noinline timed-loop symbols ARE the §4.1
+        # ground truth; a loop symbol that vanished stays unknown, honestly.
+        echo "$RT_MAP" | while read -r bench snake lower camel; do
+            for path in write read; do
+                n="$(count_for "^_?${snake}_${path}_loop\$")"
+                if [ "$n" -ge 0 ]; then
+                    echo "$bench $path $(verdict_of "$n")" >> "$VD/verdicts.txt"
+                else
+                    echo "note: c $bench $path: ${snake}_${path}_loop not found in otool — inline stays unknown" >> "$LEDGER"
+                fi
+            done
+        done
     else
         # C++ per-row verdicts by walking the -g shadow's inline stacks.
         # clang is deterministic: same compiler + flags + source means the
@@ -381,6 +404,19 @@ c|cpp)
                 echo "$bench $path $(verdict_of "$n")" >> "$VD/verdicts.txt"
             done
         done
+        # families rt and bits: the noinline timed-loop symbols in the
+        # MEASURED binary are the §4.1 ground truth — counted directly, no
+        # atos needed (their call sites show up as untimed in the atos walk).
+        echo "$RT_MAP" | while read -r bench snake lower camel; do
+            for path in write read; do
+                n="$(count_for "${snake}_${path}_loop")"
+                if [ "$n" -ge 0 ]; then
+                    echo "$bench $path $(verdict_of "$n")" >> "$VD/verdicts.txt"
+                else
+                    echo "note: cpp $bench $path: ${snake}_${path}_loop not found in otool — inline stays unknown" >> "$LEDGER"
+                fi
+            done
+        done
     fi
     backfill
     ;;
@@ -404,7 +440,7 @@ go)
                     break
                 }
         }' "$VD/objdump.txt" > "$VD/calls.txt"
-    count_calls 'serialize%2ego\.|mas-bandwidth\/serialize' '^example\.' < "$VD/calls.txt" > "$VD/counts.txt"
+    count_calls 'serialize%2ego\.|mas-bandwidth\/serialize' '^example\.|^main\.' < "$VD/calls.txt" > "$VD/counts.txt"
 
     # remarks: go build -a -gcflags=-m=2 — -a is MANDATORY (see header)
     ( cd bench/go && go build -a -gcflags=all=-m=2 -o /dev/null . 2> "$OLDPWD/$VD/remarks.txt" ) || true
@@ -446,6 +482,18 @@ go)
                 echo "$bench $path $(verdict_of "$n")" >> "$VD/verdicts.txt"
             else
                 echo "note: go $bench $path: example.${Cap}${camel} not found in objdump — inline stays unknown" >> "$LEDGER"
+            fi
+        done
+    done
+    # families rt and bits: the //go:noinline timed-loop symbols (§4.1)
+    echo "$RT_MAP" | while read -r bench snake lower camel; do
+        for path in write read; do
+            Cap="$(echo "$path" | awk '{print toupper(substr($0,1,1)) substr($0,2)}')"
+            n="$(count_for "^main\\.${lower}${Cap}Loop\$")"
+            if [ "$n" -ge 0 ]; then
+                echo "$bench $path $(verdict_of "$n")" >> "$VD/verdicts.txt"
+            else
+                echo "note: go $bench $path: main.${lower}${Cap}Loop not found in objdump — inline stays unknown" >> "$LEDGER"
             fi
         done
     done
@@ -514,6 +562,18 @@ rust)
             fi
         done
     done
+    # families rt and bits: the #[inline(never)] timed-loop symbols (§4.1)
+    echo "$RT_MAP" | while read -r bench snake lower camel; do
+        for path in write read; do
+            name="${snake}_${path}_loop"
+            n="$(count_for "${#name}${name}")"
+            if [ "$n" -ge 0 ]; then
+                echo "$bench $path $(verdict_of "$n")" >> "$VD/verdicts.txt"
+            else
+                echo "note: rust $bench $path: no ${name} symbol — inline stays unknown" >> "$LEDGER"
+            fi
+        done
+    done
     backfill
     ;;
 
@@ -525,7 +585,7 @@ cs)
     JIT="$VD/jit.txt"
     ( cd bench/cs && \
       DOTNET_TieredCompilation=0 \
-      DOTNET_JitDisasm='Example.Schema:*' \
+      DOTNET_JitDisasm='Example.Schema:* Program:*' \
       DOTNET_JitStdOutFile="$OLDPWD/$JIT" \
       dotnet run -c Release --no-build -- --round 0 > /dev/null 2>&1 ) || true
     [ -s "$JIT" ] || { echo "JitDisasm produced nothing — is the Release build present?" >&2; exit 1; }
@@ -541,7 +601,7 @@ cs)
         $1 == "bl"  { print "0 bl " $2 }
         $1 == "blr" { print "0 blr indirect" }
     ' "$JIT" > "$VD/calls.txt"
-    count_calls '.' 'Example\.Schema:' < "$VD/calls.txt" > "$VD/counts.txt"
+    count_calls '.' '(Example\.Schema|Program):' < "$VD/calls.txt" > "$VD/counts.txt"
     # ('.' after the helper carve-out: every non-helper bl counts — Serialize.*
     # methods, JIT helpers, BCL — plus blr via the indirect column, folded in
     # below, because §4.1 counts them all for C#.)
@@ -567,6 +627,19 @@ cs)
                 echo "$bench $path $(verdict_of "$n")" >> "$VD/verdicts.txt"
             else
                 echo "note: cs $bench $path: Example.Schema:${Cap}${camel} not in the JitDisasm output — inline stays unknown" >> "$LEDGER"
+            fi
+        done
+    done
+    # families rt and bits: the [MethodImpl(NoInlining)] timed-loop methods
+    # (§4.1; bl+blr counted, per the C# rule above)
+    echo "$RT_MAP" | while read -r bench snake lower camel; do
+        for path in write read; do
+            Cap="$(echo "$path" | awk '{print toupper(substr($0,1,1)) substr($0,2)}')"
+            n="$(count_for "^Program:${camel}${Cap}Loop\$")"
+            if [ "$n" -ge 0 ]; then
+                echo "$bench $path $(verdict_of "$n")" >> "$VD/verdicts.txt"
+            else
+                echo "note: cs $bench $path: Program:${camel}${Cap}Loop not in the JitDisasm output — inline stays unknown" >> "$LEDGER"
             fi
         done
     done
