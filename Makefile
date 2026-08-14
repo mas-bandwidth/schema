@@ -19,9 +19,10 @@ CXXFLAGS     += -I$(SERIALIZE)
 # cargo lives in the rustup keg, which is not on PATH by default
 RUSTUP_BIN ?= /opt/homebrew/opt/rustup/bin
 
-GO_SOURCES := $(shell find cmd internal -name '*.go') go.mod
-SCHEMAS    := $(wildcard examples/*.schema)
-SCHEMAS128 := $(wildcard examples128/*.schema)
+GO_SOURCES   := $(shell find cmd internal -name '*.go') go.mod
+SCHEMAS      := $(wildcard examples/*.schema)
+SCHEMAS128   := $(wildcard examples128/*.schema)
+SCHEMAS_BENCH := $(wildcard bench/corpus/*.schema)
 
 all: test
 
@@ -129,6 +130,44 @@ generated/c-ludicrous/.stamp: bin/schema $(SCHEMAS128)
 	./bin/schema generate --lang c --out generated/c-ludicrous examples128
 	@touch $@
 
+# the bench corpus (BENCH-STANDARD.md §1.3, family rt) — generated into all
+# five languages so the family `rt` shapes have ONE definition; the goldens
+# testdata/wire/bench_*.bin come from the generated C++ (test/bench/main.cpp)
+# and every bench runner's hand-written rt path is §1.5-gated against them
+generated/bench/cpp/.stamp: bin/schema $(SCHEMAS_BENCH)
+	./bin/schema generate --lang cpp --out generated/bench/cpp bench/corpus
+	@touch $@
+
+generated/bench/c/.stamp: bin/schema $(SCHEMAS_BENCH)
+	./bin/schema generate --lang c --out generated/bench/c bench/corpus
+	@touch $@
+
+generated/bench/go/.stamp: bin/schema $(SCHEMAS_BENCH)
+	./bin/schema generate --lang go --out generated/bench/go bench/corpus
+	@printf 'module bench\n\ngo 1.23\n\nrequire github.com/mas-bandwidth/serialize.go v0.0.0\n\nreplace github.com/mas-bandwidth/serialize.go => ../../../$(SERIALIZE_GO)\n' > generated/bench/go/go.mod
+	@touch $@
+
+generated/bench/rust/.stamp: bin/schema $(SCHEMAS_BENCH)
+	./bin/schema generate --lang rust --out generated/bench/rust/src bench/corpus
+	@printf '[package]\nname = "benchcorpus"\nversion = "0.0.0"\nedition = "2024"\n\n[dependencies]\nserialize = { path = "../../../$(SERIALIZE_RS)" }\n' > generated/bench/rust/Cargo.toml
+	@touch $@
+
+generated/bench/cs/.stamp: bin/schema $(SCHEMAS_BENCH)
+	./bin/schema generate --lang cs --out generated/bench/cs bench/corpus
+	@touch $@
+
+# the C++ producer/verifier of the bench-corpus goldens, and the C twin that
+# proves the C emitter compiles under the strict flags AND matches those bytes
+build/schema_test_bench: generated/bench/cpp/.stamp test/bench/main.cpp
+	@mkdir -p build
+	$(CXX) $(CXXFLAGS) -Igenerated/bench/cpp test/bench/main.cpp -o $@
+
+build/schema_test_bench_c: generated/bench/c/.stamp test/bench/c_main.c
+	@mkdir -p build
+	$(CC) -std=c99 -Wall -Wextra -Werror -Wtype-limits $(C_TAUTOLOGICAL) \
+		-O2 -Igenerated/bench/c -I$(SERIALIZE_C) \
+		test/bench/c_main.c $(SERIALIZE_C)/serialize.c -o $@ -lm
+
 # The C half of the fixed-point and 128-bit corpus. Its ABSENCE is why a C
 # codec that wrote nothing for every fixed field passed every gate: the C
 # target was generated from examples/ only, and examples/ has no `fixed(`.
@@ -138,13 +177,17 @@ build/schema_test_c_ludicrous: generated/c-ludicrous/.stamp test/c-ludicrous/mai
 		-O2 -Igenerated/c-ludicrous -I$(SERIALIZE_C) \
 		test/c-ludicrous/main.c $(SERIALIZE_C)/serialize.c -o $@ -lm
 
-test: build/schema_test build/schema_test_variant build/schema_test_random build/schema_test_ludicrous build/schema_test_c build/schema_test_c_ludicrous generated/go/.stamp generated/rust/.stamp generated/cs/.stamp generated/go-ludicrous/.stamp generated/rust-ludicrous/.stamp generated/cs-ludicrous/.stamp
+test: build/schema_test build/schema_test_variant build/schema_test_random build/schema_test_ludicrous build/schema_test_c build/schema_test_c_ludicrous build/schema_test_bench build/schema_test_bench_c generated/go/.stamp generated/rust/.stamp generated/cs/.stamp generated/go-ludicrous/.stamp generated/rust-ludicrous/.stamp generated/cs-ludicrous/.stamp generated/bench/go/.stamp generated/bench/rust/.stamp generated/bench/cs/.stamp
 	./build/schema_test
 	./build/schema_test_variant
 	./build/schema_test_random
 	./build/schema_test_ludicrous
 	cd test/c && ../../build/schema_test_c
 	cd test/c-ludicrous && ../../build/schema_test_c_ludicrous
+	./build/schema_test_bench
+	./build/schema_test_bench_c
+	cd generated/bench/go && go build ./...
+	cd generated/bench/rust && PATH="$(RUSTUP_BIN):$$PATH" cargo build --quiet
 	cd test/go && go run .
 	cd test/rust && PATH="$(RUSTUP_BIN):$$PATH" cargo run --quiet
 	cd test/cs && dotnet run
@@ -156,11 +199,12 @@ test: build/schema_test build/schema_test_variant build/schema_test_random build
 # Re-pin the goldens DELIBERATELY (SPEC §7.2 gates 1, 2, 7). A wire golden
 # breaking under an unchanged schema is stop-the-line, never a quiet re-pin
 # (SPEC §3.1) — this target is for intentional emitter/schema changes only.
-update-goldens: build/schema_test build/schema_test_variant build/schema_test_ludicrous
+update-goldens: build/schema_test build/schema_test_variant build/schema_test_ludicrous build/schema_test_bench
 	@mkdir -p testdata/golden testdata/wire testdata/table
 	go test ./internal/goldens -update -run 'TestGolden'
 	SCHEMA_UPDATE_WIRE_GOLDENS=1 ./build/schema_test
 	SCHEMA_UPDATE_WIRE_GOLDENS=1 ./build/schema_test_ludicrous
+	SCHEMA_UPDATE_WIRE_GOLDENS=1 ./build/schema_test_bench
 	./build/schema_test_variant
 	go test ./...
 
@@ -173,14 +217,17 @@ bench:
 check: bin/schema
 	./bin/schema check examples
 	./bin/schema check examples128
+	./bin/schema check bench/corpus
 
 id: bin/schema
 	./bin/schema id examples
 	./bin/schema id examples128
+	./bin/schema id bench/corpus
 
 fmt: bin/schema
 	./bin/schema fmt examples
 	./bin/schema fmt examples128
+	./bin/schema fmt bench/corpus
 
 clean:
 	rm -rf bin build generated

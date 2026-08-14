@@ -20,6 +20,10 @@
 
   <ItemGroup>
     <Compile Include="../../generated/cs/*.cs" />
+    <!-- the bench corpus (BENCH-STANDARD.md §1.3, namespace Bench) rides this
+         build as its C# compile proof — the bench runners' rt paths are
+         hand-written, so nothing else compiles the generated bench C# -->
+    <Compile Include="../../generated/bench/cs/*.cs" />
     <Compile Include="../../../serialize.cs/src/Serialize.cs" />
     <!-- the emulated 128-bit pair (Int128Value/UInt128Value) lives beside
          Serialize.cs and Serialize.cs references it on every TFM -->

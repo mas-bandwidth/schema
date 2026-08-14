@@ -4,6 +4,8 @@
 /generated/rust/Cargo.lock
 /generated/rust-ludicrous/target/
 /generated/rust-ludicrous/Cargo.lock
+/generated/bench/rust/target/
+/generated/bench/rust/Cargo.lock
 /test/rust/target/
 /test/rust/Cargo.lock
 /test/rust-ludicrous/target/

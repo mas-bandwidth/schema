@@ -108,60 +108,73 @@ package bench
 // The stream packet. Transcribed from serialize/bench.cpp:141-182 —
 // 12 operations in that exact order. 392 bits = 49 wire bytes.
 type BenchPacket {
-    a     int32 [min = -100,     max = 100]        //  8 bits
-    b     int32 [min = 0,        max = 65535]      // 16
-    c     int32 [min = -1000000, max = 1000000]    // 21
-    bits7  bits(7)                                 //  7
-    bits13 bits(13)                                // 13
-    bits23 bits(23)                                // 23
-    flag  bool                                     //  1
-    x     float32                                  // 32
-    y     float32                                  // 32
-    z     float32                                  // 32
-    big   uint64                                   // 64
-    align                                          //  7 pad -> 256
-    blob  [17]uint8                                // 136
-}                                                  // = 392 bits, 49 bytes
+    a      int32          [min = -100, max = 100] //  8 bits
+    b      int32          [min = 0, max = 65535] // 16
+    c      int32          [min = -1000000, max = 1000000] // 21
+    bits7  bits(7) //  7
+    bits13 bits(13) // 13
+    bits23 bits(23) // 23
+    flag   bool //  1
+    x      float32 // 32
+    y      float32 // 32
+    z      float32 // 32
+    big    uint64 // 64
+    align //  7 pad -> 256
+    blob [17]uint8 // 136
+} // = 392 bits, 49 bytes
 
 // serialize/bench.cpp:391-403. 110 bits = 14 wire bytes.
 type BenchInts {
-    f0 int32 [min = -100,     max = 100]      //  8
-    f1 int32 [min = 0,        max = 65535]    // 16
-    f2 int32 [min = -1000000, max = 1000000]  // 21
-    f3 int32 [min = 0,        max = 3]        //  2
-    f4 int32 [min = -15,      max = 15]       //  5
-    f5 int32 [min = 0,        max = 1000]     // 10
-    f6 int32 [min = -2048,    max = 2047]     // 12
-    f7 int32 [min = 0,        max = 255]      //  8
-    f8 int32 [min = -600000,  max = 600000]   // 21
-    f9 int32 [min = 0,        max = 100]      //  7
-}                                             // = 110 bits, 14 bytes
+    f0 int32 [min = -100, max = 100] //  8
+    f1 int32 [min = 0, max = 65535] // 16
+    f2 int32 [min = -1000000, max = 1000000] // 21
+    f3 int32 [min = 0, max = 3] //  2
+    f4 int32 [min = -15, max = 15] //  5
+    f5 int32 [min = 0, max = 1000] // 10
+    f6 int32 [min = -2048, max = 2047] // 12
+    f7 int32 [min = 0, max = 255] //  8
+    f8 int32 [min = -600000, max = 600000] // 21
+    f9 int32 [min = 0, max = 100] //  7
+} // = 110 bits, 14 bytes
 
 // serialize/bench.cpp:449-457. 156 bits = 20 wire bytes.
+// (One field per line: the grammar requires a newline after every field —
+// this section's original four-per-line shorthand did not parse.)
 type BenchBits {
-    b7  bits(7)   b13 bits(13)  b23 bits(23)  b3  bits(3)
-    b32 bits(32)  b11 bits(11)  b19 bits(19)  b48 bits(48)
-}                                             // = 156 bits, 20 bytes
+    b7  bits(7)
+    b13 bits(13)
+    b23 bits(23)
+    b3  bits(3)
+    b32 bits(32)
+    b11 bits(11)
+    b19 bits(19)
+    b48 bits(48)
+} // = 156 bits, 20 bytes
 
 // serialize/bench.cpp:517-528. 168 bits = 21 wire bytes.
 type BenchMixed {
-    sequence  int32 [min = 0,      max = 65535]  // 16
-    ack_bits  bits(32)                           // 32
-    entity_id bits(12)                           // 12
-    pos_x     int32 [min = -16384, max = 16383]  // 15
-    pos_y     int32 [min = -16384, max = 16383]  // 15
-    pos_z     int32 [min = -16384, max = 16383]  // 15
-    yaw       bits(9)                            //  9
-    moving    bool                               //  1
-    firing    bool                               //  1
-    timestamp bits(48)                           // 48
-    weapon    int32 [min = 0,      max = 15]     //  4
-}                                                // = 168 bits, 21 bytes
+    sequence  int32          [min = 0, max = 65535] // 16
+    ack_bits  bits(32) // 32
+    entity_id bits(12) // 12
+    pos_x     int32          [min = -16384, max = 16383] // 15
+    pos_y     int32          [min = -16384, max = 16383] // 15
+    pos_z     int32          [min = -16384, max = 16383] // 15
+    yaw       bits(9) //  9
+    moving    bool //  1
+    firing    bool //  1
+    timestamp bits(48) // 48
+    weapon    int32          [min = 0, max = 15] //  4
+} // = 168 bits, 21 bytes
 ```
 
 The byte sizes above are the standard's claim. **The goldens are the authority.**
 If generation disagrees with the arithmetic, the goldens win and this table is
-corrected — that is what §1.5 is for.
+corrected — that is what §1.5 is for. Measured 2026-08-14 against the goldens
+produced by the generated C++ (test/bench/main.cpp) and independently by the
+generated C (test/bench/c_main.c): **49, 14, 20, 21 bytes — the table above is
+confirmed.** The only correction §1.5 forced was syntactic: BenchBits is one
+field per line because the grammar admits nothing else. The block above is the
+canonical `schema fmt` form of the file as it compiles.
 
 `align` before `blob` is required: the C++ `serialize_bytes` aligns internally, so
 the schema must say so explicitly to reproduce the same 49 bytes. `TestData` in
@@ -199,6 +212,11 @@ This is the existing family `gen` gate (`bench/cpp/bench_main.cpp:165-203`) poin
 a second target. It gives the estate something it has never had: a mechanical proof
 that `serialize.c/bench.c` and `serialize.rs/throughput.rs` measure the same work,
 rather than a header comment asserting it.
+
+The pinned instances are defined in `test/bench/main.cpp` (the golden producer;
+BenchPacket's pin is `serialize/bench.cpp` `Init()` verbatim, the other three are
+pinned there) and transcribed into every runner. The goldens keep the
+transcriptions honest — a wrong transcription cannot pass the gate.
 
 ### §1.6 `corpus_id`
 
