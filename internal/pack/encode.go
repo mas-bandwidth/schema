@@ -237,7 +237,16 @@ func (e *Encoder) encodeScalar(w *bitWriter, f *ir.Field, val any, fpath string)
 				normalized = 1.0
 				e.warnf("%s: %v is above the declared float range [%v, %v] — CLAMPED (serialize_compressed_float's own write behaviour; fix the data)", fpath, fv, f.FMin, f.FMax)
 			}
-			quantized := uint64(math.Floor(float64(normalized*float32(maxIntegerValue) + 0.5)))
+			// The inner float32() conversion is LOAD BEARING, not decoration. Go
+			// permits fusing a multiply and an add into a single FMA unless an
+			// explicit conversion forces the intermediate rounding, and arm64
+			// takes that permission: without it this line compiles to one FMADDS
+			// and rounds ONCE where the runtimes round twice. That is not a
+			// rounding nicety — it changes the bytes. compressed_float_value
+			// 0.005 over [0, 10] resolution 0.01 quantizes to 0 fused and 1
+			// unfused, so the same source packed on arm64 and amd64 would emit
+			// different wire. Keep the conversion.
+			quantized := uint64(math.Floor(float64(float32(normalized*float32(maxIntegerValue)) + 0.5)))
 			w.writeBits(quantized, wireBits)
 			return nil
 		}
