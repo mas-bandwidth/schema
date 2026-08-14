@@ -382,10 +382,11 @@ rt and bits rows the same runner emits are not part of the window gate.
 
 Recorded as `# control_delta_pct: 2.3` and `# window: OK | INVALID`.
 
-### §2.7 Escape barriers and variation — unchanged, now universal
+### §2.7 Escape barriers and variation — universal, and the variant stride staggered
 
 Already correct in family `gen` and in H2/H3/H4; **violated by both harnesses behind
-the published Go-vs-C++ table**. Restated as normative:
+the published Go-vs-C++ table**. Restated as normative (the variant-buffer
+stride clause was added 2026-08-15, with the measurement that demanded it):
 
 - **Per-iteration variation.** Every write loop mutates fields through the serially
   dependent Knuth-MMIX LCG `rng * 6364136223846793005 + 1442695040888963407`.
@@ -396,6 +397,31 @@ the published Go-vs-C++ table**. Restated as normative:
   both do it anyway.
 - **64 rotating read buffers.** One buffer is memorised by the branch predictor and
   the caches. `bench_test.go:158` and `bench/cpp/bench.cpp:220` re-read one.
+- **Variant-buffer stride is staggered: each of the 64 read buffers occupies a
+  `BufferSize + 64` slot (4160 bytes), never packed at exact 4096.** Measured
+  on the M2, 2026-08-15: at exact stride 4096 the 64 buffer head lines all
+  map into **4 L1 set-groups** — the M2's L1D indexes on address bits
+  [13:6] (256 sets), stride 4096 steps the head-line set index by 64, and
+  64·k mod 256 cycles through {0, 64, 128, 192} — 16 head lines per 8-way
+  set-group. A fully-inlined, memory-bound read loop touches every head
+  line every 64 iterations and feels every background conflict miss in
+  those four sets: cpp read spreads ran 8–18% in the same window where the
+  out-of-line C reads sat near 0.1%, because the C rows' extra call
+  overhead hid the misses. At stride 4160 the step is 65 sets and
+  gcd(65, 256) = 1, so the 64 head lines occupy 64 distinct sets. The
+  stagger is IDENTICAL in all five runners; C# additionally carries CLR
+  object headers between its heap arrays, so its stride was never exactly
+  4096 — the same +64 pad applies there for uniformity of policy. The
+  `bits` family's 65536-byte buffers are unchanged: a bitpacker pass
+  streams the whole buffer, so head-line set conflicts are not its failure
+  mode. The buffer the streams see stays `BufferSize`; the pad is address
+  spacing only.
+
+  **Rates move with this change — memory behavior is the point.** Rows
+  measured across this amendment are NOT comparable even though
+  `corpus_id` is unchanged: the corpus hash pins the wire bytes, not the
+  harness's memory layout. Compare only within a pass, as §7 already
+  requires of absolutes.
 - **Escape barriers.** Empty-asm memory clobber (C/C++), `std::hint::black_box`
   (Rust), `runtime.KeepAlive` + package sink (Go), `GC.KeepAlive` + static sink (C#).
   Write barriers observe the **buffer**, not `buffer[0]`.

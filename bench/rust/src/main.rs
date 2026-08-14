@@ -60,6 +60,16 @@ fn fnv1a64(mut h: u64, data: &[u8]) -> u64 {
 // 4096 covers MESSAGE_MAX_BYTES (2008) with slack on both contracts.
 const BUFFER_SIZE: usize = 4096;
 
+// §2.7 variant-buffer stride: the 64 rotating read buffers are allocated at
+// BUFFER_SIZE + 64 per slot, NOT packed at exact 4096. At stride 4096 every
+// head line maps into one of 4 L1 set-groups on the M2 (set bits [13:6]:
+// 4096 >> 6 = 64 sets per step, 64k mod 256 cycles {0,64,128,192}), and a
+// fully-inlined memory-bound read feels every background conflict miss in
+// those sets. At 4160 the step is 65 and gcd(65,256) = 1: 64 head lines,
+// 64 distinct sets. Identical in all five runners. The slice handed to the
+// write streams stays [..BUFFER_SIZE]; the pad is address spacing only.
+pub(crate) const VARIANT_STRIDE: usize = BUFFER_SIZE + 64;
+
 // the LCG every runner must use (Knuth MMIX, as in serialize bench.cpp)
 fn bench_rng(rng: u64) -> u64 {
     rng.wrapping_mul(6364136223846793005)
@@ -209,7 +219,7 @@ fn bench_message<T, W, R, V>(
 {
     let mut buffer = vec![0u8; BUFFER_SIZE];
     let mut twin = vec![0u8; BUFFER_SIZE];
-    let mut variants = vec![[0u8; BUFFER_SIZE]; NUM_VARIANTS];
+    let mut variants = vec![[0u8; VARIANT_STRIDE]; NUM_VARIANTS];
 
     // self-check 1: the pinned instance matches its wire golden byte-for-byte
     let mut base = pinned;
@@ -259,7 +269,7 @@ fn bench_message<T, W, R, V>(
     for k in 0..NUM_VARIANTS {
         rng = bench_rng(rng);
         vary_fn(&mut base, rng);
-        let mut vs = WriteStream::new(&mut variants[k]);
+        let mut vs = WriteStream::new(&mut variants[k][..BUFFER_SIZE]);
         if write_fn(&mut vs, &base).is_err() {
             ctx.fail(name, "write of varied instance failed");
             return;

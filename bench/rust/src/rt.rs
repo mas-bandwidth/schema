@@ -21,7 +21,7 @@ use std::time::Instant;
 
 use serialize::{BitReader, BitWriter, ReadStream, Stream, WriteStream};
 
-use crate::{bench_rng, run_stats, Ctx, BUFFER_SIZE, MAX_NUM_RUNS, NUM_VARIANTS};
+use crate::{bench_rng, run_stats, Ctx, BUFFER_SIZE, MAX_NUM_RUNS, NUM_VARIANTS, VARIANT_STRIDE};
 
 // ---- the four shapes, hand-written (Bench.schema §1.3) ----
 
@@ -311,7 +311,7 @@ macro_rules! rt_family {
             out: &mut $shape,
             iters: i64,
             bytes_per_op: usize,
-            variants: &[[u8; BUFFER_SIZE]],
+            variants: &[[u8; VARIANT_STRIDE]],
         ) -> bool {
             for i in 0..iters {
                 let mut rs =
@@ -347,12 +347,12 @@ fn bench_rt<T: Copy + Default>(
     once_write: fn(&mut T, &mut [u8]) -> i64,
     once_read: fn(&mut T, &[u8], usize) -> bool,
     write_loop: fn(&Ctx, &mut T, i64, &mut u64, &mut [u8]) -> bool,
-    read_loop: fn(&Ctx, &mut T, i64, usize, &[[u8; BUFFER_SIZE]]) -> bool,
+    read_loop: fn(&Ctx, &mut T, i64, usize, &[[u8; VARIANT_STRIDE]]) -> bool,
     vary: fn(&mut T, u64),
 ) {
     let mut buffer = vec![0u8; BUFFER_SIZE];
     let mut twin = vec![0u8; BUFFER_SIZE];
-    let mut variants = vec![[0u8; BUFFER_SIZE]; NUM_VARIANTS];
+    let mut variants = vec![[0u8; VARIANT_STRIDE]; NUM_VARIANTS];
 
     // oracle 1: the hand-written wire must equal the generated-code golden
     let mut base = pinned;
@@ -385,7 +385,7 @@ fn bench_rt<T: Copy + Default>(
     for k in 0..NUM_VARIANTS {
         rng = bench_rng(rng);
         vary(&mut base, rng);
-        if once_write(&mut base, &mut variants[k]) != bytes_per_op as i64 {
+        if once_write(&mut base, &mut variants[k][..BUFFER_SIZE]) != bytes_per_op as i64 {
             ctx.fail(
                 name,
                 "variation changed bytes/op — vary must keep structure fields fixed",

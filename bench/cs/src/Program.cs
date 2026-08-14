@@ -113,6 +113,19 @@ static partial class Program
     // window loads. 4096 covers MessageMaxBytes (2008) with slack.
     const int BufferSize = 4096;
 
+    // §2.7 variant-buffer stride: the 64 rotating read buffers are allocated
+    // at BufferSize + 64 per slot, NOT packed at exact 4096. At stride 4096
+    // every head line maps into one of 4 L1 set-groups on the M2 (set bits
+    // [13:6]: 4096 >> 6 = 64 sets per step, 64k mod 256 cycles
+    // {0,64,128,192}); at 4160 the step is 65 and gcd(65,256) = 1: 64 head
+    // lines, 64 distinct sets. Identical policy in all five runners. The CLR
+    // already inserts object headers between sequentially allocated arrays,
+    // so this runner's stride was never exactly 4096 — the pad is applied
+    // for uniformity of the §2.7 policy, not because the arithmetic needs
+    // it here. Reads bound themselves with bytesPerOp; the pad is address
+    // spacing only.
+    const int VariantStride = BufferSize + 64;
+
     static readonly byte[] gBuffer = new byte[BufferSize];
     static readonly byte[] gTwin = new byte[BufferSize];
     static readonly byte[][] gVariants = new byte[NumVariants][];
@@ -953,7 +966,7 @@ static partial class Program
 
         for (int k = 0; k < NumVariants; k++)
         {
-            gVariants[k] = new byte[BufferSize];
+            gVariants[k] = new byte[VariantStride];   // §2.7 stride stagger
         }
 
         Console.Error.WriteLine(

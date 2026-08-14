@@ -476,7 +476,7 @@ func benchRt[T any](name string, baseIters int64, pinned T,
 	for k := 0; k < NumVariants; k++ {
 		rng = benchRng(rng)
 		vary(&base, rng)
-		if onceWrite(&base, gVariants[k][:]) != bytesPerOp {
+		if onceWrite(&base, gVariants[k][:BufferSize]) != bytesPerOp {
 			fail(name, "variation changed bytes/op — vary must keep structure fields fixed")
 			return
 		}

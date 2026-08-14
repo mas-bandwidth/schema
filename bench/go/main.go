@@ -44,9 +44,19 @@ const NumVariants = 64 // read-path variant buffers
 // reader's window loads. 4096 covers MessageMaxBytes (2008) with slack.
 const BufferSize = 4096
 
+// §2.7 variant-buffer stride: the 64 rotating read buffers are allocated at
+// BufferSize + 64 per slot, NOT packed at exact 4096. At stride 4096 every
+// head line maps into one of 4 L1 set-groups on the M2 (set bits [13:6]:
+// 4096 >> 6 = 64 sets per step, 64k mod 256 cycles {0,64,128,192}), and a
+// fully-inlined memory-bound read feels every background conflict miss in
+// those sets. At 4160 the step is 65 and gcd(65,256) = 1: 64 head lines,
+// 64 distinct sets. Identical in all five runners. The slice handed to the
+// streams stays [:BufferSize]; the pad is address spacing only.
+const VariantStride = BufferSize + 64
+
 var gBuffer [BufferSize]byte
 var gTwin [BufferSize]byte
-var gVariants [NumVariants][BufferSize]byte
+var gVariants [NumVariants][VariantStride]byte
 
 var gSink uint64 // defeats dead code elimination of computed values
 var gCsv = false
@@ -218,7 +228,7 @@ func benchMessage[T any](name, golden string, iters int64, pinned T,
 	for k := 0; k < NumVariants; k++ {
 		rng = benchRng(rng)
 		varyFn(&base, rng)
-		vs := serialize.NewWriteStream(gVariants[k][:])
+		vs := serialize.NewWriteStream(gVariants[k][:BufferSize])
 		if err := writeFn(vs, &base); err != nil {
 			fail(name, "write of varied instance failed")
 			return

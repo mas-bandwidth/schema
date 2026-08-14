@@ -199,9 +199,18 @@ static void flush_csv( void )
    uint64_t storage gives both, portably — C99 has no alignas. 4096 covers the
    largest message (BLOCK_MAX_BYTES 2008) with slack on both contracts. */
 #define BufferSize 4096
+/* §2.7 variant-buffer stride: the 64 rotating read buffers are allocated at
+   BufferSize + 64 per slot, NOT packed at exact 4096. At stride 4096 every
+   head line maps into one of 4 L1 set-groups on the M2 (set bits [13:6]:
+   4096 >> 6 = 64 sets per step, 64k mod 256 cycles {0,64,128,192}), and a
+   fully-inlined memory-bound read feels every background conflict miss in
+   those sets. At 4160 the step is 65 and gcd(65,256) = 1: 64 head lines,
+   64 distinct sets. Identical in all five runners. The buffer passed to
+   the streams stays BufferSize; the pad is address spacing only. */
+#define VariantStride ( BufferSize + 64 )
 static uint64_t g_buffer_storage[BufferSize / 8];
 static uint64_t g_twin_storage[BufferSize / 8];
-static uint64_t g_variant_storage[NumVariants][BufferSize / 8];
+static uint64_t g_variant_storage[NumVariants][VariantStride / 8];
 #define g_buffer ( (uint8_t *) g_buffer_storage )
 #define g_twin ( (uint8_t *) g_twin_storage )
 #define g_variant( k ) ( (uint8_t *) g_variant_storage[k] )

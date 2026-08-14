@@ -152,9 +152,19 @@ static void flush_csv()
 // read allocations extend >= 8 bytes past the packet (64-bit window contract).
 // 4096 covers MessageMaxBytes (2008) with slack on both contracts.
 const int BufferSize = 4096;
+// §2.7 variant-buffer stride: the 64 rotating read buffers are allocated at
+// BufferSize + 64 per slot, NOT packed at exact 4096. At stride 4096 every
+// head line maps into one of 4 L1 set-groups on the M2 (set bits [13:6]:
+// 4096 >> 6 = 64 sets per step, 64k mod 256 cycles {0,64,128,192}), and a
+// fully-inlined memory-bound read feels every background conflict miss in
+// those sets — measured 2026-08-15 as 8–18% cpp read spreads beside 0.1%
+// out-of-line C reads. At 4160 the step is 65 and gcd(65,256) = 1: 64 head
+// lines, 64 distinct sets. Identical in all five runners. The buffer passed
+// to the streams stays BufferSize; the pad is address spacing only.
+const int VariantStride = BufferSize + 64;
 alignas( 8 ) static uint8_t g_buffer[BufferSize];
 alignas( 8 ) static uint8_t g_twin[BufferSize];
-alignas( 8 ) static uint8_t g_variants[NumVariants][BufferSize];
+alignas( 8 ) static uint8_t g_variants[NumVariants][VariantStride];
 
 static void fail( const char * name, const char * what )
 {
