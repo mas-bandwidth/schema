@@ -215,8 +215,9 @@ fn main() {
     }
 
     // ---- NarrowBody: the narrowed fixed shallow (SPEC §4.8 rule 2b) ----
-    // The pinned tie semantics: quantize is ( raw + half ) >> drop on i64
-    // (ties toward +infinity), unquantize the left shift back. The wire
+    // The pinned tie semantics: quantize rounds to nearest, ties AWAY FROM
+    // ZERO — the one fixed-point rounding rule (SPEC §4.8, decided
+    // 2026-08-15) — and unquantize is the left shift back. The wire
     // bytes are the C++-pinned goldens; the values mirror
     // test/ludicrous_main.cpp block for block.
     {
@@ -224,8 +225,8 @@ fn main() {
         check(NARROW_BODY_DATA_DEEP_MAX_BITS == 332, "narrow deep worst case");
 
         let mut input = NarrowBodyData_Interpolate::default();
-        input.position.x = 384; // +1.5 eighths: tie, rounds UP to 2
-        input.position.y = -384; // -1.5 eighths: tie, rounds toward +inf to -1
+        input.position.x = 384; // +1.5 eighths: tie, rounds AWAY to 2
+        input.position.y = -384; // -1.5 eighths: tie, rounds AWAY to -2 — THE distinguishing value
         input.position.z = -6586368; // -100.5 * 2^16, exact in 8 kept bits
         input.rotation.w = 1 << 30; // identity, hits the +1024 bound exactly
         input.velocity.x = 1;
@@ -234,8 +235,8 @@ fn main() {
 
         let mut sh = NarrowBodyData_Shallow::default();
         quantize_narrow_body(&input, &mut sh);
-        check(sh.position_x == 2, "+1.5 eighths ties up to 2");
-        check(sh.position_y == -1, "-1.5 eighths ties toward +inf to -1 (half-away would say -2)");
+        check(sh.position_x == 2, "+1.5 eighths ties away to 2");
+        check(sh.position_y == -2, "-1.5 eighths ties away from zero to -2 (the bare shift would say -1)");
         check(sh.position_z == -25728, "-100.5 units exact in 8 kept bits");
         check(sh.rotation_x == 0 && sh.rotation_y == 0 && sh.rotation_z == 0, "identity xyz quantize to 0");
         check(sh.rotation_w == 1024, "identity w hits the +1024 bound exactly");
@@ -247,7 +248,7 @@ fn main() {
         let mut back = NarrowBodyData_Interpolate::default();
         unquantize_narrow_body(&sh, &mut back);
         check(back.position.x == 512, "narrowing loss, 384 -> 2 -> 512");
-        check(back.position.y == -256, "narrowing loss, -384 -> -1 -> -256");
+        check(back.position.y == -512, "narrowing loss, -384 -> -2 -> -512");
         check(back.position.z == -6586368, "exact multiple of 2^8 restores exactly");
         check(back.rotation.w == 1 << 30, "the identity survives the round trip");
 
@@ -264,7 +265,7 @@ fn main() {
         let mut rs = ReadStream::new(&sh_wire, sh_len);
         check_err(read_narrow_body_data_shallow(&mut rs, &mut sh_out), "read NarrowBodyData_Shallow");
         check(
-            sh_out.position_y == -1 && sh_out.rotation_w == 1024 && sh_out.velocity.z == 123456789,
+            sh_out.position_y == -2 && sh_out.rotation_w == 1024 && sh_out.velocity.z == 123456789,
             "shallow round trip",
         );
 

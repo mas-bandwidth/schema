@@ -245,13 +245,34 @@ typedef struct NarrowBodyData_Interpolate {
 /* QuantizeNarrowBody — the interpolate domain to the quantized wire domain. */
 static SCHEMA_UNUSED void quantize_narrow_body( const NarrowBodyData_Interpolate * input, NarrowBodyData_Shallow * output )
 {
-    output->position_x = (int32_t) ( ( (serialize_int64_t) input->position.x + 128LL ) >> 8 );
-    output->position_y = (int32_t) ( ( (serialize_int64_t) input->position.y + 128LL ) >> 8 );
-    output->position_z = (int32_t) ( ( (serialize_int64_t) input->position.z + 128LL ) >> 8 );
-    output->rotation_x = (int16_t) ( ( (serialize_int64_t) input->rotation.x + 524288LL ) >> 20 );
-    output->rotation_y = (int16_t) ( ( (serialize_int64_t) input->rotation.y + 524288LL ) >> 20 );
-    output->rotation_z = (int16_t) ( ( (serialize_int64_t) input->rotation.z + 524288LL ) >> 20 );
-    output->rotation_w = (int16_t) ( ( (serialize_int64_t) input->rotation.w + 524288LL ) >> 20 );
+    {
+        serialize_int64_t raw = (serialize_int64_t) input->position.x;
+        output->position_x = (int32_t) ( raw >= 0 ? ( raw + 128LL ) >> 8 : -( ( -raw + 128LL ) >> 8 ) );
+    }
+    {
+        serialize_int64_t raw = (serialize_int64_t) input->position.y;
+        output->position_y = (int32_t) ( raw >= 0 ? ( raw + 128LL ) >> 8 : -( ( -raw + 128LL ) >> 8 ) );
+    }
+    {
+        serialize_int64_t raw = (serialize_int64_t) input->position.z;
+        output->position_z = (int32_t) ( raw >= 0 ? ( raw + 128LL ) >> 8 : -( ( -raw + 128LL ) >> 8 ) );
+    }
+    {
+        serialize_int64_t raw = (serialize_int64_t) input->rotation.x;
+        output->rotation_x = (int16_t) ( raw >= 0 ? ( raw + 524288LL ) >> 20 : -( ( -raw + 524288LL ) >> 20 ) );
+    }
+    {
+        serialize_int64_t raw = (serialize_int64_t) input->rotation.y;
+        output->rotation_y = (int16_t) ( raw >= 0 ? ( raw + 524288LL ) >> 20 : -( ( -raw + 524288LL ) >> 20 ) );
+    }
+    {
+        serialize_int64_t raw = (serialize_int64_t) input->rotation.z;
+        output->rotation_z = (int16_t) ( raw >= 0 ? ( raw + 524288LL ) >> 20 : -( ( -raw + 524288LL ) >> 20 ) );
+    }
+    {
+        serialize_int64_t raw = (serialize_int64_t) input->rotation.w;
+        output->rotation_w = (int16_t) ( raw >= 0 ? ( raw + 524288LL ) >> 20 : -( ( -raw + 524288LL ) >> 20 ) );
+    }
     output->velocity = input->velocity;
 }
 

@@ -373,8 +373,11 @@ func (e *Encoder) boundInt(v, min, max *big.Int, fpath string) (*big.Int, error)
 // A JSON value is in WHOLE UNITS, the same domain as the field's [min, max]
 // and its specified default (SPEC §4.6: "declared in WHOLE UNITS ... so no
 // raw/units confusion is possible"). Units × 2^F is rounded to nearest, half
-// away from zero — the family's rounding convention, the one the generated
-// shallow-narrowing Quantize uses. A DEFAULT must scale exactly and the
+// away from zero — the ONE fixed-point rounding rule (SPEC §4.8, decided
+// 2026-08-15), which the generated shallow-narrowing Quantize implements as
+// the sign-mirrored shift since the same ruling (before it, the emitters
+// shipped ties-toward-+infinity and this sentence was wrong about them —
+// the 08-14 audit's fork 6). A DEFAULT must scale exactly and the
 // checker enforces that, because a default is source text whose author can
 // always pick a representable value; data is data, and a fixed field's Q
 // format IS its declared precision, exactly as float32 storage is a float

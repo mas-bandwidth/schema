@@ -1342,7 +1342,8 @@ NOT emit it: Interpolate and Shallow are the same values. This is the landing
 Glenn described the day the format was set: "that quantization just naturally
 gets replaced with fixed point."
 
-2b. **Fixed-composite shallow narrowing (2026-08-12, the fixed-point path).**
+2b. **Fixed-composite shallow narrowing (2026-08-12, the fixed-point path;
+   rounding unified 2026-08-15).**
    `[interpolate, quantize = K]` on a composite whose components are ALL
    `fixed(I, F)` scalars narrows the shallow wire instead of dissolving:
    "we will want to quantize fixed point down to an acceptable amount,
@@ -1354,18 +1355,42 @@ gets replaced with fixed point."
    No `max` here: each component's shallow wire range is its own whole-unit
    `[min, max]` scaled by K — bounds every fixed component already declares
    (§4.3) — and its shallow storage is the smallest signed integer holding
-   that range. The Quantize/Unquantize pair RETURNS, as pure integer shifts
-   with no floating point anywhere: quantize is the round-to-nearest
-   arithmetic shift `( raw + (1 << (drop−1)) ) >> drop` with
-   `drop = F − log2(K)` — ties resolve toward +infinity, the same
-   `( raw + half ) >> drop` form the application's fixed bridge uses, chosen
-   so wire and simulation agree bit-for-bit in all four targets (signed `>>`
-   is arithmetic in every one) — and unquantize is the left shift back
-   (dropped bits return as zeros). Components wider than 64 bits are a
-   compile error (the shifts run in int64). The deep wire is untouched: full
-   precision, the component's own ranged fixed encoding. Un-narrowed fixed
-   composites keep dissolving per the note above; the two forms compose
-   field-by-field in one object.
+   that range. The Quantize/Unquantize pair RETURNS, as pure integer
+   arithmetic with no floating point anywhere: quantize is round-to-nearest
+   with **ties away from zero** over `drop = F − log2(K)` dropped bits —
+   `( raw + half ) >> drop` for `raw ≥ 0`, `−( ( −raw + half ) >> drop )`
+   for `raw < 0`, with `half = 1 << (drop−1)`, arithmetic on int64
+   (in-bounds raws cannot overflow the add or the negation: checker-enforced
+   bounds leave 2^(F−1) of headroom past any legal raw) — and unquantize is
+   the left shift back (dropped bits return as zeros). Components wider than
+   64 bits are a compile error (the arithmetic runs in int64). The deep wire
+   is untouched: full precision, the component's own ranged fixed encoding.
+   Un-narrowed fixed composites keep dissolving per the note above; the two
+   forms compose field-by-field in one object.
+
+   **THE ONE ROUNDING RULE — DECIDED (Glenn, 2026-08-15): fixed point rounds
+   half AWAY FROM ZERO, everywhere it rounds.** This rule, rule 4's `nearest`
+   default, and the data compiler's `ratRoundHalfAway` are the SAME rule,
+   stated once, here. *(2026-08-12 → 2026-08-15 this paragraph pinned the
+   pure shift `( raw + half ) >> drop` — ties toward +infinity, the form the
+   game's fixed bridge computed — while rule 4 and the data compiler rounded
+   ties away from zero and the IR documentation described the shift as
+   half-away: the toolchain disagreed with itself and its own docs at
+   exactly .5. The 08-14 spec audit surfaced the fork; Glenn unified on
+   half-away.)* **Compat, said loudly:** this amendment moves shipped
+   narrowing bytes ONLY on exact ties of negative raws, and the protocol id
+   does NOT move — a rounding rule is not wire shape, so this is precisely
+   the divergence class the id cannot see. It is version-noted here and in
+   VERSIONING.md, and a negative tie value that DISTINGUISHES the two rules
+   is pinned in the conformance vectors, so a port that drifts back to the
+   shift fails gate 7 loudly. Deployment doctrine for this and every future
+   wire-affecting amendment, his words (2026-08-15): *"I will always deploy
+   client and server together on any breakage. so this is no concern."*
+   The per-language hazard, named the way STANDARD.md names the FMA: the
+   naive arithmetic shift FLOORS, so on negative ties every target language
+   agrees with every other and all of them are wrong against this rule —
+   cross-language identity cannot catch it; only the pinned tie vector can.
+   Implement the sign mirror, not the bare shift.
 
 3. **No special composite cases in v1 — tags are inert (§4.2, Type tags).** Rules 2
    and 2b are the whole of composite quantization: every composite quantizes
@@ -1382,7 +1407,8 @@ gets replaced with fixed point."
    `[interpolate, min = A, max = B, resolution = R]` reuses §4.3's compressed-float
    triple: min/max name the **CONTINUOUS domain**, the shallow wire is the int
    `[0, (B−A)/R]`, write maps `v → round((v−A)/R)` clamped, unproject maps `q → A + q·R`.
-   The optional `round = nearest|up|down` key (default `nearest`, half away from zero)
+   The optional `round = nearest|up|down` key (default `nearest`, half away from zero —
+   the one fixed-point rounding rule, rule 2b, decided 2026-08-15)
    selects the write rounding — `up` exists because the surveyed health quantization's
    ceil is load-bearing: any positive health must quantize alive. *(Corpus consequence on
    approval: `thrust [interpolate, min = 0, max = 1, resolution = 0.01]` — the current

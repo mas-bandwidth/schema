@@ -615,13 +615,62 @@ func ReadNarrowBodyData_Shallow(stream *serialize.ReadStream, value *NarrowBodyD
 }
 
 func QuantizeNarrowBody(input *NarrowBodyData_Interpolate, output *NarrowBodyData_Shallow) {
-	output.PositionX = int32((int64(input.Position.X) + 128) >> 8)
-	output.PositionY = int32((int64(input.Position.Y) + 128) >> 8)
-	output.PositionZ = int32((int64(input.Position.Z) + 128) >> 8)
-	output.RotationX = int16((int64(input.Rotation.X) + 524288) >> 20)
-	output.RotationY = int16((int64(input.Rotation.Y) + 524288) >> 20)
-	output.RotationZ = int16((int64(input.Rotation.Z) + 524288) >> 20)
-	output.RotationW = int16((int64(input.Rotation.W) + 524288) >> 20)
+	{
+		raw := int64(input.Position.X)
+		if raw >= 0 {
+			output.PositionX = int32((raw + 128) >> 8)
+		} else {
+			output.PositionX = int32(-((-raw + 128) >> 8))
+		}
+	}
+	{
+		raw := int64(input.Position.Y)
+		if raw >= 0 {
+			output.PositionY = int32((raw + 128) >> 8)
+		} else {
+			output.PositionY = int32(-((-raw + 128) >> 8))
+		}
+	}
+	{
+		raw := int64(input.Position.Z)
+		if raw >= 0 {
+			output.PositionZ = int32((raw + 128) >> 8)
+		} else {
+			output.PositionZ = int32(-((-raw + 128) >> 8))
+		}
+	}
+	{
+		raw := int64(input.Rotation.X)
+		if raw >= 0 {
+			output.RotationX = int16((raw + 524288) >> 20)
+		} else {
+			output.RotationX = int16(-((-raw + 524288) >> 20))
+		}
+	}
+	{
+		raw := int64(input.Rotation.Y)
+		if raw >= 0 {
+			output.RotationY = int16((raw + 524288) >> 20)
+		} else {
+			output.RotationY = int16(-((-raw + 524288) >> 20))
+		}
+	}
+	{
+		raw := int64(input.Rotation.Z)
+		if raw >= 0 {
+			output.RotationZ = int16((raw + 524288) >> 20)
+		} else {
+			output.RotationZ = int16(-((-raw + 524288) >> 20))
+		}
+	}
+	{
+		raw := int64(input.Rotation.W)
+		if raw >= 0 {
+			output.RotationW = int16((raw + 524288) >> 20)
+		} else {
+			output.RotationW = int16(-((-raw + 524288) >> 20))
+		}
+	}
 	output.Velocity = input.Velocity
 }
 

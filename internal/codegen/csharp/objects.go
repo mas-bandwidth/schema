@@ -213,10 +213,17 @@ func (g *gen) emitQuantizeField(f *ir.Field, ind string) {
 				continue
 			}
 			// round-to-nearest narrowing shift — arithmetic on long, ties
-			// toward +infinity: the ( raw + half ) >> drop form the game's
-			// fixed bridge uses, so wire and simulation agree bit-for-bit
-			g.sf("%soutput.%s%s = (%s)(((long)input.%s.%s + %d) >> %d);\n",
-				ind, name, compName, compT, name, compName, int64(1)<<(drop-1), drop)
+			// AWAY FROM ZERO: the one fixed-point rounding rule (SPEC §4.8,
+			// decided 2026-08-15; the data compiler's ratRoundHalfAway is the
+			// same rule). Negative raws mirror through negation so the tie
+			// leaves zero in both signs. In-bounds raws cannot overflow the
+			// add or the negation (checker-enforced bounds leave 2^(F-1) of
+			// headroom past any legal raw)
+			half := int64(1) << (drop - 1)
+			g.sf("%s{\n%s    long raw = (long)input.%s.%s;\n", ind, ind, name, compName)
+			g.sf("%s    output.%s%s = (%s)(raw >= 0 ? (raw + %d) >> %d : -((-raw + %d) >> %d));\n",
+				ind, name, compName, compT, half, drop, half, drop)
+			g.sf("%s}\n", ind)
 		}
 	case f.HasQuantize:
 		g.needsSystem = true

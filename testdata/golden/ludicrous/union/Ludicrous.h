@@ -205,13 +205,34 @@ struct NarrowBodyData_Interpolate {
 
 inline void QuantizeNarrowBody( const NarrowBodyData_Interpolate & input, NarrowBodyData_Shallow & output )
 {
-    output.position_x = int32_t( ( int64_t( input.position.x ) + 128ll ) >> 8 );
-    output.position_y = int32_t( ( int64_t( input.position.y ) + 128ll ) >> 8 );
-    output.position_z = int32_t( ( int64_t( input.position.z ) + 128ll ) >> 8 );
-    output.rotation_x = int16_t( ( int64_t( input.rotation.x ) + 524288ll ) >> 20 );
-    output.rotation_y = int16_t( ( int64_t( input.rotation.y ) + 524288ll ) >> 20 );
-    output.rotation_z = int16_t( ( int64_t( input.rotation.z ) + 524288ll ) >> 20 );
-    output.rotation_w = int16_t( ( int64_t( input.rotation.w ) + 524288ll ) >> 20 );
+    {
+        int64_t raw = int64_t( input.position.x );
+        output.position_x = int32_t( raw >= 0 ? ( raw + 128ll ) >> 8 : -( ( -raw + 128ll ) >> 8 ) );
+    }
+    {
+        int64_t raw = int64_t( input.position.y );
+        output.position_y = int32_t( raw >= 0 ? ( raw + 128ll ) >> 8 : -( ( -raw + 128ll ) >> 8 ) );
+    }
+    {
+        int64_t raw = int64_t( input.position.z );
+        output.position_z = int32_t( raw >= 0 ? ( raw + 128ll ) >> 8 : -( ( -raw + 128ll ) >> 8 ) );
+    }
+    {
+        int64_t raw = int64_t( input.rotation.x );
+        output.rotation_x = int16_t( raw >= 0 ? ( raw + 524288ll ) >> 20 : -( ( -raw + 524288ll ) >> 20 ) );
+    }
+    {
+        int64_t raw = int64_t( input.rotation.y );
+        output.rotation_y = int16_t( raw >= 0 ? ( raw + 524288ll ) >> 20 : -( ( -raw + 524288ll ) >> 20 ) );
+    }
+    {
+        int64_t raw = int64_t( input.rotation.z );
+        output.rotation_z = int16_t( raw >= 0 ? ( raw + 524288ll ) >> 20 : -( ( -raw + 524288ll ) >> 20 ) );
+    }
+    {
+        int64_t raw = int64_t( input.rotation.w );
+        output.rotation_w = int16_t( raw >= 0 ? ( raw + 524288ll ) >> 20 : -( ( -raw + 524288ll ) >> 20 ) );
+    }
     output.velocity = input.velocity;
 }
 

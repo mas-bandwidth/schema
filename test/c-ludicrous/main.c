@@ -205,8 +205,8 @@ int main( void )
         int shallow_bytes;
 
         memset( &in, 0, sizeof( in ) );
-        in.position.x = 384;                       /* +1.5 eighths: tie, rounds UP to 2 */
-        in.position.y = -384;                      /* -1.5 eighths: tie, rounds toward +inf to -1 */
+        in.position.x = 384;                       /* +1.5 eighths: tie, rounds AWAY to 2 */
+        in.position.y = -384;                      /* -1.5 eighths: tie, rounds AWAY to -2 — THE distinguishing value */
         in.position.z = -6586368LL;                /* -100.5 * 2^16, exact in 8 kept bits */
         in.rotation.x = 0;                         /* identity... */
         in.rotation.y = 0;
@@ -219,8 +219,8 @@ int main( void )
         /* the pair is pure integer shifts — pin the tie semantics in source */
         memset( &sh, 0, sizeof( sh ) );
         quantize_narrow_body( &in, &sh );
-        check( sh.position_x == 2, "+1.5 eighths ties up to 2" );
-        check( sh.position_y == -1, "-1.5 eighths ties toward +inf to -1 (half-away would say -2)" );
+        check( sh.position_x == 2, "+1.5 eighths ties away to 2" );
+        check( sh.position_y == -2, "-1.5 eighths ties away from zero to -2 (the bare shift would say -1)" );
         check( sh.position_z == -25728, "-100.5 narrows exactly" );
         check( sh.rotation_x == 0 && sh.rotation_y == 0 && sh.rotation_z == 0, "identity narrows to zero" );
         check( sh.rotation_w == 1024, "w = 1.0 narrows to the +1024 bound" );
@@ -230,7 +230,7 @@ int main( void )
         memset( &back, 0, sizeof( back ) );
         unquantize_narrow_body( &sh, &back );
         check( back.position.x == 512, "narrowing loss, 384 -> 2 -> 512" );
-        check( back.position.y == -256, "narrowing loss, -384 -> -1 -> -256" );
+        check( back.position.y == -512, "narrowing loss, -384 -> -2 -> -512" );
         check( back.position.z == -6586368LL, "exact multiple of 2^8 restores exactly" );
         check( back.rotation.w == ( 1 << 30 ), "the identity survives the round trip" );
         check( back.velocity.z == 123456789LL, "velocity survives the round trip" );
@@ -248,7 +248,7 @@ int main( void )
             memset( &sh_out, 0, sizeof( sh_out ) );
             serialize_read_stream_init( &r, buffer, shallow_bytes );
             check( read_narrow_body_shallow( &r, &sh_out ), "read NarrowBodyData_Shallow" );
-            check( sh_out.position_x == 2 && sh_out.position_y == -1 && sh_out.position_z == -25728,
+            check( sh_out.position_x == 2 && sh_out.position_y == -2 && sh_out.position_z == -25728,
                    "shallow positions round-trip" );
             check( sh_out.rotation_w == 1024 && sh_out.velocity.z == 123456789LL,
                    "shallow rotation and velocity round-trip" );

@@ -1099,13 +1099,34 @@ namespace Ludicrous
 
         public static void QuantizeNarrowBody(NarrowBodyData_Interpolate input, NarrowBodyData_Shallow output)
         {
-            output.PositionX = (int)(((long)input.Position.X + 128) >> 8);
-            output.PositionY = (int)(((long)input.Position.Y + 128) >> 8);
-            output.PositionZ = (int)(((long)input.Position.Z + 128) >> 8);
-            output.RotationX = (short)(((long)input.Rotation.X + 524288) >> 20);
-            output.RotationY = (short)(((long)input.Rotation.Y + 524288) >> 20);
-            output.RotationZ = (short)(((long)input.Rotation.Z + 524288) >> 20);
-            output.RotationW = (short)(((long)input.Rotation.W + 524288) >> 20);
+            {
+                long raw = (long)input.Position.X;
+                output.PositionX = (int)(raw >= 0 ? (raw + 128) >> 8 : -((-raw + 128) >> 8));
+            }
+            {
+                long raw = (long)input.Position.Y;
+                output.PositionY = (int)(raw >= 0 ? (raw + 128) >> 8 : -((-raw + 128) >> 8));
+            }
+            {
+                long raw = (long)input.Position.Z;
+                output.PositionZ = (int)(raw >= 0 ? (raw + 128) >> 8 : -((-raw + 128) >> 8));
+            }
+            {
+                long raw = (long)input.Rotation.X;
+                output.RotationX = (short)(raw >= 0 ? (raw + 524288) >> 20 : -((-raw + 524288) >> 20));
+            }
+            {
+                long raw = (long)input.Rotation.Y;
+                output.RotationY = (short)(raw >= 0 ? (raw + 524288) >> 20 : -((-raw + 524288) >> 20));
+            }
+            {
+                long raw = (long)input.Rotation.Z;
+                output.RotationZ = (short)(raw >= 0 ? (raw + 524288) >> 20 : -((-raw + 524288) >> 20));
+            }
+            {
+                long raw = (long)input.Rotation.W;
+                output.RotationW = (short)(raw >= 0 ? (raw + 524288) >> 20 : -((-raw + 524288) >> 20));
+            }
             output.Velocity.X = input.Velocity.X;
             output.Velocity.Y = input.Velocity.Y;
             output.Velocity.Z = input.Velocity.Z;

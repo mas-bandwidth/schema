@@ -190,8 +190,9 @@ func main() {
 	}
 
 	// ---- NarrowBody: the narrowed fixed shallow (SPEC §4.8 rule 2b) ----
-	// The pinned tie semantics: quantize is ( raw + half ) >> drop on int64
-	// (ties toward +infinity), unquantize the left shift back. The wire
+	// The pinned tie semantics: quantize rounds to nearest, ties AWAY FROM
+	// ZERO — the one fixed-point rounding rule (SPEC §4.8, decided
+	// 2026-08-15) — and unquantize is the left shift back. The wire
 	// bytes are the C++-pinned goldens; the values mirror
 	// test/ludicrous_main.cpp block for block.
 	{
@@ -199,8 +200,8 @@ func main() {
 		check(ludicrous.NarrowBodyData_DeepMaxBits == 332, "narrow deep worst case")
 
 		in := ludicrous.NarrowBodyData_Interpolate{}
-		in.Position.X = 384      // +1.5 eighths: tie, rounds UP to 2
-		in.Position.Y = -384     // -1.5 eighths: tie, rounds toward +inf to -1
+		in.Position.X = 384      // +1.5 eighths: tie, rounds AWAY to 2
+		in.Position.Y = -384     // -1.5 eighths: tie, rounds AWAY to -2 — THE distinguishing value
 		in.Position.Z = -6586368 // -100.5 * 2^16, exact in 8 kept bits
 		in.Rotation.W = 1 << 30  // identity, hits the +1024 bound exactly
 		in.Velocity.X = 1
@@ -209,8 +210,8 @@ func main() {
 
 		sh := ludicrous.NarrowBodyData_Shallow{}
 		ludicrous.QuantizeNarrowBody(&in, &sh)
-		check(sh.PositionX == 2, "+1.5 eighths ties up to 2")
-		check(sh.PositionY == -1, "-1.5 eighths ties toward +inf to -1 (half-away would say -2)")
+		check(sh.PositionX == 2, "+1.5 eighths ties away to 2")
+		check(sh.PositionY == -2, "-1.5 eighths ties away from zero to -2 (the bare shift would say -1)")
 		check(sh.PositionZ == -25728, "-100.5 units exact in 8 kept bits")
 		check(sh.RotationX == 0 && sh.RotationY == 0 && sh.RotationZ == 0, "identity xyz quantize to 0")
 		check(sh.RotationW == 1024, "identity w hits the +1024 bound exactly")
@@ -219,7 +220,7 @@ func main() {
 		back := ludicrous.NarrowBodyData_Interpolate{}
 		ludicrous.UnquantizeNarrowBody(&sh, &back)
 		check(back.Position.X == 512, "narrowing loss, 384 -> 2 -> 512")
-		check(back.Position.Y == -256, "narrowing loss, -384 -> -1 -> -256")
+		check(back.Position.Y == -512, "narrowing loss, -384 -> -2 -> -512")
 		check(back.Position.Z == -6586368, "exact multiple of 2^8 restores exactly")
 		check(back.Rotation.W == 1<<30, "the identity survives the round trip")
 
@@ -232,7 +233,7 @@ func main() {
 		shOut := ludicrous.NarrowBodyData_Shallow{}
 		rs := serialize.NewReadStream(shWire)
 		checkErr(ludicrous.ReadNarrowBodyData_Shallow(rs, &shOut), "read NarrowBodyData_Shallow")
-		check(shOut.PositionY == -1 && shOut.RotationW == 1024 && shOut.Velocity.Z == 123456789, "shallow round trip")
+		check(shOut.PositionY == -2 && shOut.RotationW == 1024 && shOut.Velocity.Z == 123456789, "shallow round trip")
 
 		deep := ludicrous.NarrowBodyData_Deep{Position: in.Position, Rotation: in.Rotation, Velocity: in.Velocity}
 		wsd, _ := newWriteStream()

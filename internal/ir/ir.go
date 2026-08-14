@@ -222,10 +222,14 @@ type Field struct {
 
 	// fixed-composite shallow narrowing (SPEC §4.8 rule 2b): the composite's
 	// components are all fixed(I, F); the shallow wire keeps QuantShift =
-	// log2(QuantScale) fractional bits. Quantize is a round-to-nearest (half
-	// away from zero) arithmetic shift by (F - QuantShift), Unquantize the
-	// left shift back; the per-component wire bound is the component's own
-	// whole-unit [IntMin, IntMax] times QuantScale. QuantMax/QuantBound are
+	// log2(QuantScale) fractional bits. Quantize rounds to nearest with ties
+	// HALF AWAY FROM ZERO over (F - QuantShift) dropped bits — the one
+	// fixed-point rounding rule (SPEC §4.8, decided 2026-08-15; before the
+	// unification the emitters shipped the bare shift, ties toward
+	// +infinity, and this comment already said half-away — the code moved to
+	// match the words, not the other way). Unquantize is the left shift
+	// back; the per-component wire bound is the component's own whole-unit
+	// [IntMin, IntMax] times QuantScale. QuantMax/QuantBound are
 	// meaningless here — bounds live on the components, not the field.
 	FixedShallow bool
 	QuantShift   int

@@ -209,10 +209,15 @@ func TestPackLudicrousAgainstWireGoldens(t *testing.T) {
 }
 
 // Fixed point data rides the field's declared Q grid: whole units in, the raw
-// scaled integer out, rounded to nearest with halves AWAY FROM ZERO (the
-// family's convention — the generated shallow-narrowing Quantize rounds the
-// same way). Pinned by self-comparison rather than a golden: a value one raw
-// step up must pack as that step, and the exact half must land on it too.
+// scaled integer out, rounded to nearest with halves AWAY FROM ZERO — the one
+// fixed-point rounding rule (SPEC §4.8, decided 2026-08-15; the generated
+// shallow-narrowing Quantize implements the same rule as the sign-mirrored
+// shift since that ruling — before it, the emitters shipped
+// ties-toward-+infinity and this comment's claim of agreement was false).
+// Pinned by self-comparison rather than a golden: a value one raw
+// step up must pack as that step, and the exact half must land on it too —
+// and a NEGATIVE exact half must land AWAY from zero, the direction that
+// distinguishes the unified rule from the shift the emitters used to ship.
 func TestPackFixedRounding(t *testing.T) {
 	u := loadUnit(t, "../../examples128")
 

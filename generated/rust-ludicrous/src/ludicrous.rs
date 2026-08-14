@@ -808,13 +808,34 @@ pub fn read_narrow_body_data_shallow(stream: &mut ReadStream<'_>, value: &mut Na
 }
 
 pub fn quantize_narrow_body(input: &NarrowBodyData_Interpolate, output: &mut NarrowBodyData_Shallow) {
-    output.position_x = ((input.position.x as i64 + 128) >> 8) as i32;
-    output.position_y = ((input.position.y as i64 + 128) >> 8) as i32;
-    output.position_z = ((input.position.z as i64 + 128) >> 8) as i32;
-    output.rotation_x = ((input.rotation.x as i64 + 524288) >> 20) as i16;
-    output.rotation_y = ((input.rotation.y as i64 + 524288) >> 20) as i16;
-    output.rotation_z = ((input.rotation.z as i64 + 524288) >> 20) as i16;
-    output.rotation_w = ((input.rotation.w as i64 + 524288) >> 20) as i16;
+    {
+        let raw = input.position.x as i64;
+        output.position_x = (if raw >= 0 { (raw + 128) >> 8 } else { -((-raw + 128) >> 8) }) as i32;
+    }
+    {
+        let raw = input.position.y as i64;
+        output.position_y = (if raw >= 0 { (raw + 128) >> 8 } else { -((-raw + 128) >> 8) }) as i32;
+    }
+    {
+        let raw = input.position.z as i64;
+        output.position_z = (if raw >= 0 { (raw + 128) >> 8 } else { -((-raw + 128) >> 8) }) as i32;
+    }
+    {
+        let raw = input.rotation.x as i64;
+        output.rotation_x = (if raw >= 0 { (raw + 524288) >> 20 } else { -((-raw + 524288) >> 20) }) as i16;
+    }
+    {
+        let raw = input.rotation.y as i64;
+        output.rotation_y = (if raw >= 0 { (raw + 524288) >> 20 } else { -((-raw + 524288) >> 20) }) as i16;
+    }
+    {
+        let raw = input.rotation.z as i64;
+        output.rotation_z = (if raw >= 0 { (raw + 524288) >> 20 } else { -((-raw + 524288) >> 20) }) as i16;
+    }
+    {
+        let raw = input.rotation.w as i64;
+        output.rotation_w = (if raw >= 0 { (raw + 524288) >> 20 } else { -((-raw + 524288) >> 20) }) as i16;
+    }
     output.velocity = input.velocity;
 }
 

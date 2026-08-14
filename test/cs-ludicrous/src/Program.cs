@@ -225,8 +225,9 @@ static class Program
         }
 
         // ---- NarrowBody: the narrowed fixed shallow (SPEC §4.8 rule 2b) ----
-        // The pinned tie semantics: quantize is ( raw + half ) >> drop on
-        // long (ties toward +infinity), unquantize the left shift back. The
+        // The pinned tie semantics: quantize rounds to nearest, ties AWAY
+        // FROM ZERO — the one fixed-point rounding rule (SPEC §4.8, decided
+        // 2026-08-15) — and unquantize is the left shift back. The
         // wire bytes are the C++-pinned goldens; the values mirror
         // test/ludicrous_main.cpp block for block.
         {
@@ -234,8 +235,8 @@ static class Program
             Check(NarrowBodyData_DeepMaxBits == 332, "narrow deep worst case");
 
             NarrowBodyData_Interpolate input = new NarrowBodyData_Interpolate();
-            input.Position.X = 384;      // +1.5 eighths: tie, rounds UP to 2
-            input.Position.Y = -384;     // -1.5 eighths: tie, rounds toward +inf to -1
+            input.Position.X = 384;      // +1.5 eighths: tie, rounds AWAY to 2
+            input.Position.Y = -384;     // -1.5 eighths: tie, rounds AWAY to -2 — THE distinguishing value
             input.Position.Z = -6586368; // -100.5 * 2^16, exact in 8 kept bits
             input.Rotation.W = 1 << 30;  // identity, hits the +1024 bound exactly
             input.Velocity.X = 1;
@@ -244,8 +245,8 @@ static class Program
 
             NarrowBodyData_Shallow sh = new NarrowBodyData_Shallow();
             QuantizeNarrowBody(input, sh);
-            Check(sh.PositionX == 2, "+1.5 eighths ties up to 2");
-            Check(sh.PositionY == -1, "-1.5 eighths ties toward +inf to -1 (half-away would say -2)");
+            Check(sh.PositionX == 2, "+1.5 eighths ties away to 2");
+            Check(sh.PositionY == -2, "-1.5 eighths ties away from zero to -2 (the bare shift would say -1)");
             Check(sh.PositionZ == -25728, "-100.5 units exact in 8 kept bits");
             Check(sh.RotationX == 0 && sh.RotationY == 0 && sh.RotationZ == 0, "identity xyz quantize to 0");
             Check(sh.RotationW == 1024, "identity w hits the +1024 bound exactly");
@@ -254,7 +255,7 @@ static class Program
             NarrowBodyData_Interpolate back = new NarrowBodyData_Interpolate();
             UnquantizeNarrowBody(sh, back);
             Check(back.Position.X == 512, "narrowing loss, 384 -> 2 -> 512");
-            Check(back.Position.Y == -256, "narrowing loss, -384 -> -1 -> -256");
+            Check(back.Position.Y == -512, "narrowing loss, -384 -> -2 -> -512");
             Check(back.Position.Z == -6586368, "exact multiple of 2^8 restores exactly");
             Check(back.Rotation.W == 1 << 30, "the identity survives the round trip");
 
@@ -266,7 +267,7 @@ static class Program
             NarrowBodyData_Shallow shOut = new NarrowBodyData_Shallow();
             ReadStream rs = new ReadStream(shWire);
             Check(ReadNarrowBodyData_Shallow(rs, shOut), "read NarrowBodyData_Shallow");
-            Check(shOut.PositionY == -1 && shOut.RotationW == 1024 && shOut.Velocity.Z == 123456789, "shallow round trip");
+            Check(shOut.PositionY == -2 && shOut.RotationW == 1024 && shOut.Velocity.Z == 123456789, "shallow round trip");
 
             NarrowBodyData_Deep deep = new NarrowBodyData_Deep();
             deep.Position.X = input.Position.X;

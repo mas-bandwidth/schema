@@ -270,10 +270,12 @@ int main()
     }
 
     // ---- NarrowBody: the narrowed fixed shallow (SPEC §4.8 rule 2b) ----
-    // The Quantize/Unquantize pair RETURNS as round-to-nearest arithmetic
-    // shifts (ties toward +infinity — the ( raw + half ) >> drop form), the
-    // shallow wire carries the narrowed per-component ints, and the deep
-    // wire stays full precision. Derivation, in wire order:
+    // The Quantize/Unquantize pair RETURNS as round-to-nearest integer
+    // arithmetic, ties AWAY FROM ZERO — the one fixed-point rounding rule
+    // (decided 2026-08-15; the bare shift's ties-toward-+infinity is the
+    // superseded behavior this block used to pin). The shallow wire carries
+    // the narrowed per-component ints, and the deep wire stays full
+    // precision. Derivation, in wire order:
     //   shallow: position 3 x 26 bits ([-100000, 100000] x 256), rotation
     //            4 x 12 bits ([-1, 1] x 1024), velocity 3 x 34 bits (full
     //            Q48.16 over [-100000, 100000]) = 228 bits = 29 bytes
@@ -283,8 +285,8 @@ int main()
         static_assert( NarrowBodyData_DeepMaxBits == 332, "narrow deep worst case" );
 
         NarrowBodyData_Interpolate in;
-        in.position.x = 384;                                    // +1.5 eighths: tie, rounds UP to 2
-        in.position.y = -384;                                   // -1.5 eighths: tie, rounds toward +inf to -1
+        in.position.x = 384;                                    // +1.5 eighths: tie, rounds AWAY to 2
+        in.position.y = -384;                                   // -1.5 eighths: tie, rounds AWAY to -2 — THE value that distinguishes the rules
         in.position.z = -6586368ll;                             // -100.5 * 2^16, exact in 8 kept bits
         in.rotation.x = 0;                                      // identity...
         in.rotation.y = 0;
@@ -294,11 +296,11 @@ int main()
         in.velocity.y = -1;
         in.velocity.z = 123456789ll;
 
-        // the pair is pure integer shifts — pin the tie semantics in source
+        // the pair is pure integer arithmetic — pin the tie semantics in source
         NarrowBodyData_Shallow sh;
         QuantizeNarrowBody( in, sh );
         check( sh.position_x == 2 );
-        check( sh.position_y == -1 );                           // half-away would say -2 — the shift form is pinned
+        check( sh.position_y == -2 );                           // the bare shift would say -1 — half-away is pinned (SPEC §4.8)
         check( sh.position_z == -25728 );
         check( sh.rotation_x == 0 && sh.rotation_y == 0 && sh.rotation_z == 0 );
         check( sh.rotation_w == 1024 );
@@ -307,7 +309,7 @@ int main()
         NarrowBodyData_Interpolate back;
         UnquantizeNarrowBody( sh, back );
         check( back.position.x == 512 );                        // narrowing loss, 384 -> 2 -> 512
-        check( back.position.y == -256 );
+        check( back.position.y == -512 );                       // narrowing loss, -384 -> -2 -> -512
         check( back.position.z == -6586368ll );                 // exact multiple of 2^8 restores exactly
         check( back.rotation.w == 1 << 30 );                    // the identity survives the round trip
         check( back.velocity.z == 123456789ll );
@@ -317,7 +319,7 @@ int main()
         {
             int pos = 0;
             put_bits( expected_shallow, pos, 26, uint64_t( 2 + 25600000 ) ); pos += 26;
-            put_bits( expected_shallow, pos, 26, uint64_t( -1 + 25600000 ) ); pos += 26;
+            put_bits( expected_shallow, pos, 26, uint64_t( -2 + 25600000 ) ); pos += 26;
             put_bits( expected_shallow, pos, 26, uint64_t( -25728 + 25600000 ) ); pos += 26;
             put_bits( expected_shallow, pos, 12, uint64_t( 0 + 1024 ) ); pos += 12;
             put_bits( expected_shallow, pos, 12, uint64_t( 0 + 1024 ) ); pos += 12;
@@ -337,7 +339,7 @@ int main()
         NarrowBodyData_Shallow shOut;
         serialize::ReadStream rs( buffer, ws.GetBytesProcessed() );
         check( ReadNarrowBodyData_Shallow( rs, shOut ) );
-        check( shOut.position_x == 2 && shOut.position_y == -1 && shOut.position_z == -25728 );
+        check( shOut.position_x == 2 && shOut.position_y == -2 && shOut.position_z == -25728 );
         check( shOut.rotation_w == 1024 );
         check( shOut.velocity.z == 123456789ll );
 
