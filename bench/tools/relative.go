@@ -101,13 +101,129 @@ func load(path string) (map[key]row, []string, error) {
 	return rows, meta, sc.Err()
 }
 
+// identity is the subset of a run's preamble that must match before two files
+// may be compared. Everything here can move a number by more than the effects
+// being measured: an anonymous namespace on one benchmark's packet types moved
+// a figure 2x with no library change, and the same source at -O2 and -O3 can
+// reverse which language wins a row.
+type identity struct {
+	host, arch, cpu, build string
+	cppFlags, cFlags       string
+	goVer, rustVer, netVer string
+}
+
+func (i identity) String() string {
+	return fmt.Sprintf("%s/%s %s build=%s", i.host, i.arch, i.cpu, i.build)
+}
+
+// differs returns the fields on which two runs disagree.
+func (i identity) differs(j identity) []string {
+	var d []string
+	cmp := func(name, a, b string) {
+		if a != b {
+			d = append(d, fmt.Sprintf("%s:\n      A: %s\n      B: %s", name, a, b))
+		}
+	}
+	cmp("host", i.host, j.host)
+	cmp("arch", i.arch, j.arch)
+	cmp("cpu", i.cpu, j.cpu)
+	cmp("build", i.build, j.build)
+	cmp("cpp flags", i.cppFlags, j.cppFlags)
+	cmp("c flags", i.cFlags, j.cFlags)
+	cmp("go", i.goVer, j.goVer)
+	cmp("rust", i.rustVer, j.rustVer)
+	cmp("dotnet", i.netVer, j.netVer)
+	return d
+}
+
+func parseIdentity(meta []string) identity {
+	var id identity
+	get := func(line, prefix string) (string, bool) {
+		if strings.HasPrefix(line, prefix) {
+			return strings.TrimSpace(strings.TrimPrefix(line, prefix)), true
+		}
+		return "", false
+	}
+	for _, m := range meta {
+		if v, ok := get(m, "# host:"); ok {
+			// "host: x  arch: y  os: z" arrives on one line
+			for _, part := range strings.Split(v, "  ") {
+				part = strings.TrimSpace(part)
+				switch {
+				case strings.HasPrefix(part, "arch:"):
+					id.arch = strings.TrimSpace(strings.TrimPrefix(part, "arch:"))
+				case part != "" && id.host == "":
+					id.host = part
+				}
+			}
+		}
+		if v, ok := get(m, "# cpu:"); ok {
+			id.cpu = v
+		}
+		if v, ok := get(m, "# build:"); ok {
+			id.build = v
+		}
+		if v, ok := get(m, "# cpp flags:"); ok {
+			id.cppFlags = v
+		}
+		if v, ok := get(m, "# c flags:"); ok {
+			id.cFlags = v
+		}
+		if v, ok := get(m, "# go:"); ok {
+			id.goVer = v
+		}
+		if v, ok := get(m, "# rust:"); ok {
+			id.rustVer = v
+		}
+		if v, ok := get(m, "# dotnet:"); ok {
+			id.netVer = v
+		}
+	}
+	return id
+}
+
+// allowMismatch is the deliberate escape hatch. It exists so that comparing
+// across machines is possible when that is the actual intent, and impossible
+// by accident, which is the only distinction that matters here.
+var allowMismatch = os.Getenv("RELATIVE_ALLOW_MISMATCH") != ""
+
+// refuse reports a build mismatch and exits, rather than dividing two numbers
+// that were produced under different conditions.
+//
+// This tool previously merged by (lang, bench, path) and DISCARDED the
+// preamble, so rows from different hosts, compilers or flags silently
+// overwrote each other and a ratio could be computed across mismatched builds
+// without complaint. Every wrong cross-language claim in this estate has come
+// from exactly that: two numbers put side by side that measured different work.
+// A tool that cannot refuse is not a check.
+func refuse(what string, a, b string, diffs []string) {
+	fmt.Fprintf(os.Stderr, "relative: REFUSING to %s across mismatched runs\n\n", what)
+	fmt.Fprintf(os.Stderr, "  A: %s\n  B: %s\n\n", a, b)
+	fmt.Fprintln(os.Stderr, "  they disagree on:")
+	for _, d := range diffs {
+		fmt.Fprintf(os.Stderr, "    %s\n", d)
+	}
+	fmt.Fprintln(os.Stderr, "\n  These numbers are not comparable. Re-run both legs on one machine")
+	fmt.Fprintln(os.Stderr, "  with matched flags, or set RELATIVE_ALLOW_MISMATCH=1 if you have")
+	fmt.Fprintln(os.Stderr, "  a specific reason and will state it wherever you quote the result.")
+	os.Exit(3)
+}
+
 func merge(paths []string) map[key]row {
 	all := map[key]row{}
+	var first identity
+	var firstPath string
 	for _, p := range paths {
-		r, _, err := load(p)
+		r, meta, err := load(p)
 		if err != nil {
 			fmt.Fprintln(os.Stderr, err)
 			os.Exit(2)
+		}
+		id := parseIdentity(meta)
+		if firstPath == "" {
+			first, firstPath = id, p
+		} else if d := first.differs(id); len(d) > 0 && !allowMismatch {
+			refuse("merge", firstPath+" ("+first.String()+")", p+" ("+id.String()+")", d)
 		}
 		for k, v := range r {
 			all[k] = v
@@ -265,15 +381,22 @@ func main() {
 		if len(os.Args) < 4 {
 			usage()
 		}
-		a, _, err := load(os.Args[2])
+		a, metaA, err := load(os.Args[2])
 		if err != nil {
 			fmt.Fprintln(os.Stderr, err)
 			os.Exit(2)
 		}
-		b, _, err := load(os.Args[3])
+		b, metaB, err := load(os.Args[3])
 		if err != nil {
 			fmt.Fprintln(os.Stderr, err)
 			os.Exit(2)
+		}
+		// ab divides one run by the other, so a mismatch here is the most
+		// misleading thing this tool can produce: a confident multiplier
+		// attributing a machine or a flag to a code change.
+		idA, idB := parseIdentity(metaA), parseIdentity(metaB)
+		if d := idA.differs(idB); len(d) > 0 && !allowMismatch {
+			refuse("compare", os.Args[2]+" ("+idA.String()+")", os.Args[3]+" ("+idB.String()+")", d)
 		}
 		lang, la, lb := "cpp", "A", "B"
 		if len(os.Args) > 4 {
