@@ -32,3 +32,4 @@ tending/
 
 # CI clones the five serialize runtimes here (see .github/workflows/ci.yml)
 /runtimes/
+/tools
