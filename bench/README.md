@@ -8,17 +8,18 @@ Message dispatch surface) for steady-state throughput.
 
 `bench/run.sh` builds and runs whichever language runners are available and
 collects everything into one CSV under `bench/results/`. The C++ runner
-(`bench/cpp/bench_main.cpp`) is the reference implementation; the go, rust,
-and cs runners (`bench/go`, `bench/rust`, `bench/cs`) are its ports, wired
-per the contract below.
+(`bench/cpp/bench_main.cpp`) is the reference implementation; the c, go, rust
+and cs runners (`bench/c`, `bench/go`, `bench/rust`, `bench/cs`) are its
+ports, wired per the contract below.
 
 ## Running
 
     bench/run.sh                 # Release, results in bench/results/<date>-<arch>-<host>.csv
     bench/run.sh --debug         # also the Debug pair (matched-pair methodology)
-    bench/run.sh --only cpp|go|rust|cs   # one language leg — serial one-profile-at-a-time
-                                         # passes on shared boxes (the EPYC discipline)
+    bench/run.sh --only c|cpp|go|rust|cs   # one language leg — serial one-profile-at-a-time
+                                           # passes on shared boxes (the EPYC discipline)
     SERIALIZE=path/to/serialize bench/run.sh
+    SERIALIZE_C=path/to/serialize.c bench/run.sh
     BENCH_NOISE="NOISY: ..." bench/run.sh    # label a noisy host in the preamble
 
 `make bench` runs the Release pass.
@@ -51,11 +52,27 @@ experiment there for the reasoning, learned the hard way):
 - **MB/s means MiB/s** (1024*1024), following serialize `bench.cpp`.
 
 C++ flags: the schema repo's own flags (`-std=c++17 -Wall -Wextra -Werror
--ffp-contract=off`) plus the serialize repo's Release bench configuration
+-ffp-contract=off -Itest`, the last for the corpus's native type mapping onto
+`test/vec_math.h`) plus the serialize repo's Release bench configuration
 (`-O3 -DNDEBUG -fno-rtti -DSERIALIZE_RELEASE`). Deliberate divergence from
 serialize's own bench: **no `-ffast-math`** — this repo pins wire determinism
 with `-ffp-contract=off` and the generated quantize paths do real float math.
 Every results file records the exact compiler and flags in its preamble.
+
+C flags: `-std=c99 -Wall -Wextra -Werror -O3 -DNDEBUG`, with
+`$SERIALIZE_C/serialize.c` compiled in and **no `-flto`** — every leg is
+measured in its language's ordinary release configuration (the Rust leg is
+`cargo run --release`, no LTO either). Read the C row knowing what it
+includes: **serialize.c is a compiled translation unit, not a header**, so
+every runtime call in the C leg crosses a TU boundary that the header-only C++
+runtime does not have. That is a property of the runtime's packaging, not of
+the generated code, and it is the largest single term in the C row. An
+`-flto` build recovers part of it — median 1.11x, up to 2.25x on the paths made
+of many small runtime calls and ~1.05x on the double-heavy ones, measured as a
+labelled leg in `bench/results/2026-08-14-c-lto-diagnostic-arm64-macbook.csv`.
+That is how a config divergence gets reported here: label the leg, record the
+flag, keep it beside the default pass — the way the `DOTNET_TieredCompilation=0`
+diagnostic did.
 
 ## Results format
 
@@ -106,6 +123,8 @@ A runner is a standalone program in `bench/<lang>/` that:
 
 `run.sh` detects each runner by its build file and runs it automatically:
 
+- **c**: `bench/c/bench_main.c` — compiled with the repo's C flags plus
+  `-O3 -DNDEBUG`, linking `$SERIALIZE_C/serialize.c`, run as `--csv`
 - **go**: `bench/go/main.go` (+ `go.mod` wiring like `test/go`) — run as
   `go run . --csv`
 - **rust**: `bench/rust/Cargo.toml` (+ manifest wiring like `test/rust`) —

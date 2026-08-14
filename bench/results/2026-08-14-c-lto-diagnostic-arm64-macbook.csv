@@ -1,0 +1,37 @@
+# schema bench results — LABELLED INTERVENTION: the C leg built with -flto
+# date: 2026-08-14T06:23:43Z
+# host: macbook  arch: arm64  os: Darwin 25.5.0
+# cpu: Apple M2
+# build: Release
+# c compiler: Apple clang version 21.0.0 (clang-2100.1.1.101)
+# c flags: -O3 -DNDEBUG -flto -std=c99 -Wall -Wextra -Werror -Igenerated/c -I../serialize.c (serialize.c compiled in, LINK-TIME OPTIMIZATION ON)
+# why: serialize.c is a compiled translation unit, not a header — this leg measures how much of the C row is the TU call boundary. Pair it with 2026-08-14-arm64-macbook.csv's c rows, same sitting, same binary source.
+# pinning: none
+# noise: NOISY: shared desktop — GUI compositor and an unrelated qemu VM active on other cores
+# schema commit: bfd977f
+# serialize.c commit: b85218a
+lang,bench,path,iters,bytes_per_op,runs,median_msgs_per_sec,min_msgs_per_sec,max_msgs_per_sec,median_mb_per_sec,spread_pct
+c,rigidbody_moving,write,2000000,105,7,17334177,16415779,17504704,1735.77,6.28
+c,rigidbody_moving,read,2000000,105,7,22695808,22161156,22994320,2272.66,3.67
+c,rigidbody_at_rest,write,4000000,57,7,30745344,29889781,31611058,1671.30,5.60
+c,rigidbody_at_rest,read,4000000,57,7,37993560,26988186,38179597,2065.31,29.46
+c,chat,write,4000000,13,7,56988987,56716672,57268849,706.54,0.97
+c,chat,read,4000000,13,7,25871715,25663399,25928399,320.75,1.02
+c,test,write,16000000,6,7,124200460,117931482,125175050,710.68,5.83
+c,test,read,16000000,6,7,57749016,57269874,58155173,330.44,1.53
+c,inputpacket,write,2000000,61,7,32645599,18931685,32850972,1899.13,42.64
+c,inputpacket,read,2000000,61,7,14123995,13805290,14133477,821.65,2.32
+c,shipcreate,write,4000000,28,7,33851258,33554513,34026336,903.93,1.39
+c,shipcreate,read,4000000,28,7,18948994,18549778,19007432,505.99,2.42
+c,ship_shallow,write,4000000,28,7,36608581,36064628,36721167,977.55,1.79
+c,ship_shallow,read,4000000,28,7,21149362,20929807,21285427,564.75,1.68
+c,probe_header,write,16000000,10,7,92306272,90921489,93012981,880.30,2.27
+c,probe_header,read,16000000,10,7,100267589,99451154,101646676,956.23,2.19
+c,probebits,write,4000000,26,7,89714260,84672213,91002161,2224.51,7.06
+c,probebits,read,4000000,26,7,95714388,94827177,96681411,2373.29,1.94
+c,probearray,write,2000000,47,7,24998438,24042507,25044454,1120.50,4.01
+c,probearray,read,2000000,47,7,21455314,21159319,21624427,961.68,2.17
+c,testdata,write,1000000,92,7,8602743,8521517,8625969,754.79,1.21
+c,testdata,read,1000000,92,7,6776307,5600547,6829808,594.54,18.14
+c,message_batch,write,3276800,25,7,34516248,33374753,34919383,822.93,4.48
+c,message_batch,read,3276800,25,7,17817120,17480275,17946710,424.79,2.62
