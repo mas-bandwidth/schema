@@ -79,6 +79,24 @@ var (
 	crossLinkage = false
 )
 
+// §3.4's three checks values, each with the semantics its caption must name.
+// The refusal logic never consults this map — ANY two differing values
+// refuse without --label-checks, a value this map has never heard of
+// included — it exists so a labelled ratio says what each side's number
+// actually paid for, not just which token it carried.
+var checksMeaning = map[string]string{
+	"removed":  "debug asserts and bounds/range checks compile out",
+	"always":   "bounds, range and sticky-error checks in every build by contract",
+	"contract": "debug asserts compile out; wire/API contract validation stays in every build",
+}
+
+func checksSemantics(v string) string {
+	if m, ok := checksMeaning[v]; ok {
+		return m
+	}
+	return "semantics unrecorded — not a §3.4 value"
+}
+
 type key struct{ lang, bench, path string }
 
 type row struct {
@@ -321,11 +339,14 @@ func guardRatio(ds *dataset, ka, kb key, a, b row) []string {
 	if a.opt != b.opt {
 		d = append(d, fmt.Sprintf("opt: A=%q B=%q", a.opt, b.opt))
 	}
-	// 5. checks (unless --label-checks, which prints the §3.4 caption)
+	// 5. checks (unless --label-checks, which prints the §3.4 caption).
+	// Three-value logic (§3.4): ANY two differing values refuse —
+	// removed/always, removed/contract, contract/always alike — and the
+	// caption names both sides' SEMANTICS, not just the tokens.
 	if a.checks != b.checks {
 		if labelChecks {
-			captions[fmt.Sprintf("%s checks=%s vs %s checks=%s — this ratio includes the cost of a different safety contract.",
-				ka.lang, a.checks, kb.lang, b.checks)] = true
+			captions[fmt.Sprintf("%s checks=%s (%s) vs %s checks=%s (%s) — this ratio includes the cost of a different safety contract.",
+				ka.lang, a.checks, checksSemantics(a.checks), kb.lang, b.checks, checksSemantics(b.checks))] = true
 		} else {
 			d = append(d, fmt.Sprintf("checks: A=%q B=%q (a contract difference, not a language difference — --label-checks prints it captioned)", a.checks, b.checks))
 		}

@@ -499,15 +499,29 @@ difference is recorded verbatim in the preamble (already done, `run.sh:125-144`)
 
 That is as far as matching goes, and the standard says so out loud:
 
-> **`checks` is a recorded column with two values.** `removed` — the build compiles
-> its bounds and range checks away (C, C++, C# with `NDEBUG`-equivalent semantics).
-> `always` — the library keeps bounds checks, range validation and the sticky error
-> check in **every** build by contract (Go by design; Rust because
-> `serialize.rs/Cargo.toml:22` is `unsafe_code = "forbid"`).
+> **`checks` is a recorded column with three values.**
 >
-> **The tool MUST refuse to present a ratio across differing `checks` values as a
-> language comparison.** It may print it, labelled: *"C++ `checks=removed` vs Go
-> `checks=always` — this ratio includes the cost of a different safety contract."*
+> | value | meaning |
+> |---|---|
+> | `removed` | the build compiles its debug asserts AND its bounds/range checks away (C++ with `NDEBUG`/`SERIALIZE_RELEASE`) |
+> | `always` | the library keeps bounds checks, range validation and the sticky error check in **every** build by contract (Go by design; Rust because `serialize.rs` is `unsafe_code = "forbid"`; C# by its runtime's nature) |
+> | `contract` | the library's debug asserts compile out like `removed`, **but** validation that is part of the wire/API contract stays in every build — serialize.c: caller-error asserts vanish under `NDEBUG`, while the write-capacity check that doubles as the sticky-error flag is unconditional (`serialize.h`, `serialize_write_bits`: "kept as a real check where the C++ BitWriter only asserts") |
+>
+> `contract` was added 2026-08-15 because the two-value column could not
+> express serialize.c at all, and the hybrid it could not express was the
+> entire C-vs-C++ write residual measured that night: calling the C write
+> path `removed` claimed work it does not skip, calling it `always` claimed
+> checks it does not keep, and either label laundered a per-op capacity
+> check into or out of a language claim.
+>
+> **The tool MUST refuse to present a ratio across ANY two differing `checks`
+> values as a language comparison** — `removed` vs `always`, `removed` vs
+> `contract`, `contract` vs `always`, all of them. It may print the ratio
+> under `--label-checks`, and the caption MUST name **both sides' semantics**,
+> not just the values: *"C `checks=contract` (asserts compile out; the write
+> capacity + sticky-error check stays in every build) vs C++ `checks=removed`
+> (asserts and checks compile out) — this ratio includes the cost of a
+> different safety contract."*
 
 Most of the published 6x Go read gap is this. It is a real difference and it should be
 measurable — but it is a *contract* difference, not a *language* difference, and the
@@ -771,7 +785,7 @@ lang,bench,path,iters,bytes_per_op,runs,median_msgs_per_sec,min_msgs_per_sec,max
 | `corpus_id` | 16 hex digits, §1.6 |
 | `family` | `gen` \| `rt` \| `bits` \| `local` |
 | `linkage` | `hdr` \| `tu` \| `tu-lto` \| `crate` \| `pkg` \| `asm` |
-| `checks` | `removed` \| `always` |
+| `checks` | `removed` \| `always` \| `contract` (§3.4) |
 | `opt` | `O2` \| `O3` \| `default` |
 | `inline` | `full` \| `partial:N` \| `none` \| `unknown` |
 

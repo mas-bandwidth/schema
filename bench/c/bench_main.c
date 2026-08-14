@@ -91,16 +91,21 @@ static const char * g_wire_dir = "testdata/wire";
    in sorted basename order, the basename bytes, a 0x00 byte, the contents.
    The per-runner constants: family gen (these are the generated-code
    benchmarks), linkage tu (serialize.c is a compiled translation unit, no
-   LTO — the packaging the C row has always carried), checks removed
-   (-DNDEBUG compiles range and bounds checks away), opt from the build
-   (run.sh sets BENCH_OPT beside the -O flag itself), inline unknown until
-   the verdict pass (§4.2) backfills it. */
+   LTO — the packaging the C row has always carried), checks CONTRACT
+   (§3.4's third value, added 2026-08-15: -DNDEBUG compiles serialize.c's
+   caller-error asserts away like `removed`, but the write-capacity check
+   that doubles as the sticky-error flag is unconditional by contract in
+   every build — serialize_write_bits keeps it as a real check where the
+   C++ BitWriter only asserts, and that hybrid was the entire C-vs-C++
+   write residual story; neither `removed` nor `always` could say it),
+   opt from the build (run.sh sets BENCH_OPT beside the -O flag itself),
+   inline unknown until the verdict pass (§4.2) backfills it. */
 #ifndef BENCH_OPT
 #define BENCH_OPT "O3"
 #endif
 /* family is per ROW now (gen | rt | bits — §5.1); linkage/checks/opt/inline
    stay per-runner constants */
-#define CsvSuffix "tu,removed," BENCH_OPT ",unknown"
+#define CsvSuffix "tu,contract," BENCH_OPT ",unknown"
 #define MaxCsvRows 64
 #define MaxGoldens 24
 static char g_csv_rows[MaxCsvRows][256];
