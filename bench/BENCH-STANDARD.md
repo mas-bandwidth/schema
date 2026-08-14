@@ -577,6 +577,22 @@ serialize repo is at **1.6.2**, and does not vendor the header, so the harness c
 be built without manually fetching a two-year-old file. The estate currently
 benchmarks two different versions of the same C++ library and publishes both.
 
+> **Recorded provenance must be MECHANICALLY tied to the build.** The preamble
+> line and the build input must come from one variable, or the line must be
+> checked against the toolchain's own resolution (`cargo pkgid`, `go list -m`,
+> `msbuild -getItem:Compile`) before it is printed — **and a leg that cannot
+> prove its runtime path REFUSES (no rows) rather than reporting.**
+
+This clause was earned on **2026-08-15**: `bench/rust/Cargo.toml`,
+`bench/go/go.mod` and `bench/cs/schemabench.csproj` hardcoded their runtime
+paths while `run.sh` recorded `$SERIALIZE_RS`/`GO`/`CS` in the preamble — so a
+candidate pass recorded a fix branch's sha (`ee5bd52`) while measuring the
+default checkout, a CSV lying about its own provenance. Recording the env var
+was not the fix; *feeding the env var to the build and verifying the build took
+it* was (`bench/tools/runtime-paths.sh`; every runtime preamble line now
+carries `[build-verified: <resolved path>]`, and `run.sh`/`pass-driver.sh`
+refuse on mismatch).
+
 ---
 
 ## §4 Inline reporting — the novel part

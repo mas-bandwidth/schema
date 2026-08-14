@@ -13,15 +13,23 @@
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
     <AssemblyName>schemabench</AssemblyName>
     <InvariantGlobalization>true</InvariantGlobalization>
+    <!-- §3.5: the serialize.cs runtime root this leg compiles against.
+         bench/run.sh overrides it (-property:SerializeCsRoot=<abs>) when
+         SERIALIZE_CS points away from the sibling default, and verifies the
+         evaluated Compile items land under the recorded path before any
+         preamble is emitted (bench/tools/runtime-paths.sh) — hardcoding the
+         path here while the preamble recorded the env var is exactly the
+         2026-08-15 provenance defect. -->
+    <SerializeCsRoot Condition="'$(SerializeCsRoot)' == ''">../../../serialize.cs</SerializeCsRoot>
   </PropertyGroup>
 
   <ItemGroup>
     <Compile Include="../../generated/cs/*.cs" />
-    <Compile Include="../../../serialize.cs/src/Serialize.cs" />
+    <Compile Include="$(SerializeCsRoot)/src/Serialize.cs" />
     <!-- the emulated 128-bit pair (Int128Value/UInt128Value) lives beside
          Serialize.cs and Serialize.cs references it on every TFM — the same
          include test/cs/schematest.csproj carries -->
-    <Compile Include="../../../serialize.cs/src/Int128Pair.cs" />
+    <Compile Include="$(SerializeCsRoot)/src/Int128Pair.cs" />
   </ItemGroup>
 
 </Project>

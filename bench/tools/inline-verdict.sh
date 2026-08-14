@@ -63,7 +63,12 @@ LEDGER="${CSV%.csv}.inline"
 VD="build/bench/inline-verdict-$LANG_ARG"
 rm -rf "$VD" && mkdir -p "$VD"
 
-SERIALIZE_C="${SERIALIZE_C:-../serialize.c}"
+# §3.5 provenance mechanics: the same SERIALIZE* resolution and override
+# build arguments (RS_CARGO_ARGS, GO_MODFILE_ARG) the measured pass used —
+# the shadow/remark rebuilds below must compile against the SAME runtime
+# checkout as the measured binary, or the remarks describe the wrong code.
+. bench/tools/runtime-paths.sh
+runtime_paths_init
 
 # The native-binary parsing below is otool/arm64-shaped (bl/blr). On a
 # machine without otool (the x86-64 EPYC box) the C/C++/Rust verdicts would
@@ -793,7 +798,9 @@ c|cpp)
 go)
     command -v go >/dev/null 2>&1 || { echo "no go toolchain" >&2; exit 1; }
     # the measured shape: an ordinary optimized build of the runner
-    ( cd bench/go && go build -o "$OLDPWD/$VD/benchgo" . ) || exit 1
+    # ($GO_MODFILE_ARG: the §3.5 override modfile when SERIALIZE_GO points
+    # away from the default — the same resolution the measured leg used)
+    ( cd bench/go && go build $GO_MODFILE_ARG -o "$OLDPWD/$VD/benchgo" . ) || exit 1
     go tool objdump "$VD/benchgo" > "$VD/objdump.txt" 2>/dev/null
 
     # translate objdump into the otool shape count_calls parses
@@ -815,7 +822,7 @@ go)
     selftest_join "$VD/calls.txt" "$VD/counts.txt" '^example\.|^main\.' || exit 1
 
     # remarks: go build -a -gcflags=-m=2 — -a is MANDATORY (see header)
-    ( cd bench/go && go build -a -gcflags=all=-m=2 -o /dev/null . 2> "$OLDPWD/$VD/remarks.txt" ) || true
+    ( cd bench/go && go build $GO_MODFILE_ARG -a -gcflags=all=-m=2 -o /dev/null . 2> "$OLDPWD/$VD/remarks.txt" ) || true
     grep -E "serialize\.go/" "$VD/remarks.txt" | grep -E ": can inline|: cannot inline" \
         | sed -E 's/^.*serialize\.go\///' | sed -E 's/ as:.*$//' | sort -u > "$VD/serialize-remarks.txt" || true
 
@@ -882,12 +889,13 @@ rust)
     [ -x "$BIN" ] || { echo "$BIN missing — run the pass first" >&2; exit 1; }
 
     # the §4.2 cold signal for rust: fns marked #[cold] in the runtime crate
-    # THIS bench built against (the path in bench/rust/Cargo.toml), plus any
+    # THIS bench built against (the §3.5-resolved SERIALIZE_RS checkout —
+    # the same resolution the measured leg was verified against), plus any
     # split .cold suffix. Scanned from source because neither Mach-O sections
     # nor -Cremark reasons state the attribute; a fn not carrying #[cold]
     # in that crate stays hot, whatever its name looks like.
-    RS_CRATE="$(sed -n 's/^serialize *= *{ *path *= *"\([^"]*\)".*/\1/p' bench/rust/Cargo.toml | head -1)"
-    RS_CRATE="bench/rust/$RS_CRATE"
+    RS_CRATE="$ABS_SERIALIZE_RS"
+    [ -n "$RS_CRATE" ] || { echo "SERIALIZE_RS=$SERIALIZE_RS does not exist — cannot scan #[cold]" >&2; exit 1; }
     COLD_RS="$(rust_cold_regex "$RS_CRATE")"
 
     # v0 mangling puts the DEFINING crate first and the instantiating crate
@@ -927,7 +935,7 @@ rust)
     CARGO="cargo"; command -v cargo >/dev/null 2>&1 || CARGO="$RUSTUP_BIN/cargo"
     ( cd bench/rust && \
       RUSTFLAGS="-Cremark=inline -Cdebuginfo=1" CARGO_INCREMENTAL=0 \
-      PATH="$RUSTUP_BIN:$PATH" "$CARGO" build --release --quiet 2> "$OLDPWD/$VD/remarks.txt" ) || true
+      PATH="$RUSTUP_BIN:$PATH" "$CARGO" build --release --quiet $RS_CARGO_ARGS 2> "$OLDPWD/$VD/remarks.txt" ) || true
     grep -E "inline \(missed\)" "$VD/remarks.txt" | grep -F serialize \
         | sed -E 's/^[^:]*:[0-9]+:[0-9]+: *//; s/note: //' \
         | sort | uniq -c | sort -rn | head -40 > "$VD/serialize-remarks.txt" || true

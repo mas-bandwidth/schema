@@ -40,7 +40,15 @@
 #                 the go/rust/cs runtime checkouts (defaults ../serialize.go,
 #                 ../serialize.rs, ../serialize.cs) — recorded in the preamble
 #                 (§3.5: every row records the runtime commit its leg was
-#                 built against); the runner manifests carry the same paths
+#                 built against) AND fed to the builds: an override
+#                 materializes generated manifests / a go -modfile / an
+#                 msbuild property (bench/tools/runtime-paths.sh) so the leg
+#                 really compiles against the recorded path, and every
+#                 preamble line is verified against the toolchain's own
+#                 resolution before it is printed — a mismatch REFUSES the
+#                 run with no rows (the 2026-08-15 defect: the manifests
+#                 hardcoded their paths and a pass recorded a fix branch's
+#                 sha while measuring the default checkout)
 #   BENCH_OPT_LEVEL  C/C++ optimization level for the standard leg (default
 #                 O3; §3.3 publishes O2 and O3). Recorded in the flags line
 #                 AND stamped into the runners' opt column via -DBENCH_OPT.
@@ -83,15 +91,15 @@ case "$ONLY" in
     *) echo "unknown --only language: $ONLY (c|cpp|go|rust|cs)" >&2; exit 1 ;;
 esac
 
-SERIALIZE="${SERIALIZE:-../serialize}"
+# §3.5 provenance mechanics: sets the SERIALIZE* defaults, materializes the
+# override build configs when an env var points away from a default, and
+# provides verify_runtime (the fail-closed check used below)
+. bench/tools/runtime-paths.sh
+runtime_paths_init
 if [ ! -f "$SERIALIZE/serialize.h" ]; then
     echo "serialize.h not found at $SERIALIZE — set SERIALIZE to the classic serialize checkout" >&2
     exit 1
 fi
-SERIALIZE_C="${SERIALIZE_C:-../serialize.c}"
-SERIALIZE_GO="${SERIALIZE_GO:-../serialize.go}"
-SERIALIZE_RS="${SERIALIZE_RS:-../serialize.rs}"
-SERIALIZE_CS="${SERIALIZE_CS:-../serialize.cs}"
 CC_BIN="${CC:-cc}"
 
 ARCH="$(uname -m)"
@@ -185,12 +193,16 @@ emit_preamble() {
         echo "# schema commit: $(git rev-parse --short HEAD 2>/dev/null || echo unknown)"
         # §3.5 / §5.2: the runtime commit for EVERY language, with its branch —
         # the serialize checkouts ride PR branches during review, and a number
-        # measured against a branch must say so.
-        echo "# serialize commit: $(commit_of "$SERIALIZE")"
-        echo "# serialize.c commit: $(commit_of "$SERIALIZE_C")"
-        echo "# serialize.go commit: $(commit_of "$SERIALIZE_GO")"
-        echo "# serialize.rs commit: $(commit_of "$SERIALIZE_RS")"
-        echo "# serialize.cs commit: $(commit_of "$SERIALIZE_CS")"
+        # measured against a branch must say so. Each line carries its
+        # verification verdict from the provenance guard below: the commit is
+        # only printed as a build fact when the toolchain itself resolved to
+        # that path ([build-verified: ...]); a leg that could not run this
+        # invocation says so instead of pretending.
+        echo "# serialize commit: $(commit_of "$SERIALIZE") ${PROV_CPP:-}"
+        echo "# serialize.c commit: $(commit_of "$SERIALIZE_C") ${PROV_C:-}"
+        echo "# serialize.go commit: $(commit_of "$SERIALIZE_GO") ${PROV_GO:-}"
+        echo "# serialize.rs commit: $(commit_of "$SERIALIZE_RS") ${PROV_RUST:-}"
+        echo "# serialize.cs commit: $(commit_of "$SERIALIZE_CS") ${PROV_CS:-}"
     } >> "$OUT"
 }
 
@@ -200,6 +212,36 @@ commit_of() {
     branch="$(git -C "$1" rev-parse --abbrev-ref HEAD 2>/dev/null || echo unknown)"
     echo "$sha ($branch)"
 }
+
+# ---- §3.5 provenance guard: verify BEFORE any row or preamble exists ----
+# Every "# serialize* commit:" line the preamble prints must be proven
+# against the toolchain's own resolution (bench/tools/runtime-paths.sh), and
+# a mismatch refuses the whole run — exit non-zero, no rows, $OUT untouched.
+# --bare emits rows with no preamble, so it verifies the leg it will run:
+# those rows land under a preamble that makes the same claim.
+prov_verify() {
+    local resolved rc=0
+    resolved="$(verify_runtime "$1")" || rc=$?
+    case $rc in
+        0) resolved="[build-verified: $resolved]" ;;
+        2) resolved="[UNVERIFIED — leg cannot run this invocation; path recorded from the environment, not proven against a build]" ;;
+        *)
+            echo "REFUSED (§3.5): the $1 leg's build does not resolve to the runtime path the preamble would record — no rows written" >&2
+            exit 1 ;;
+    esac
+    case "$1" in
+        cpp)  PROV_CPP="$resolved" ;;
+        c)    PROV_C="$resolved" ;;
+        go)   PROV_GO="$resolved" ;;
+        rust) PROV_RUST="$resolved" ;;
+        cs)   PROV_CS="$resolved" ;;
+    esac
+}
+if [ "$BARE" = 1 ] && [ -n "$ONLY" ]; then
+    prov_verify "$ONLY"
+else
+    for _lang in cpp c go rust cs; do prov_verify "$_lang"; done
+fi
 
 : > "$OUT"
 if [ "$BARE" = 0 ]; then
@@ -259,7 +301,9 @@ if [ -z "$ONLY" ] || [ "$ONLY" = go ]; then
     if [ -f bench/go/main.go ]; then
         if command -v go >/dev/null 2>&1; then
             echo "== go: run ==" >&2
-            ( cd bench/go && $PIN go run . $RUNNER_ARGS ) >> "$OUT"
+            # $GO_MODFILE_ARG: empty at the default path; the §3.5 override
+            # modfile when SERIALIZE_GO points elsewhere
+            ( cd bench/go && $PIN go run $GO_MODFILE_ARG . $RUNNER_ARGS ) >> "$OUT"
         else
             echo "SKIP go: runner present but no go toolchain" >&2
         fi
@@ -273,7 +317,10 @@ if [ -z "$ONLY" ] || [ "$ONLY" = rust ]; then
     if [ -f bench/rust/Cargo.toml ]; then
         if command -v cargo >/dev/null 2>&1 || [ -x /opt/homebrew/opt/rustup/bin/cargo ]; then
             echo "== rust: run ==" >&2
-            ( cd bench/rust && PATH="/opt/homebrew/opt/rustup/bin:$PATH" $PIN cargo run --release --quiet -- $RUNNER_ARGS ) >> "$OUT"
+            # $RS_CARGO_ARGS: empty at the default path; --manifest-path to
+            # the §3.5 override manifests (plus --target-dir target, so the
+            # binary stays at bench/rust/target/release/benchrust) otherwise
+            ( cd bench/rust && PATH="/opt/homebrew/opt/rustup/bin:$PATH" $PIN cargo run --release --quiet $RS_CARGO_ARGS -- $RUNNER_ARGS ) >> "$OUT"
         else
             echo "SKIP rust: runner present but no cargo" >&2
         fi
@@ -287,7 +334,9 @@ if [ -z "$ONLY" ] || [ "$ONLY" = cs ]; then
     if ls bench/cs/*.csproj >/dev/null 2>&1; then
         if command -v dotnet >/dev/null 2>&1; then
             echo "== cs: run ==" >&2
-            ( cd bench/cs && $PIN dotnet run -c Release -- $RUNNER_ARGS ) >> "$OUT"
+            # $CS_PROP_ARGS: empty at the default path; --property:
+            # SerializeCsRoot=<abs> (consumed by the csproj includes) otherwise
+            ( cd bench/cs && $PIN dotnet run -c Release $CS_PROP_ARGS -- $RUNNER_ARGS ) >> "$OUT"
         else
             echo "SKIP cs: runner present but no dotnet" >&2
         fi

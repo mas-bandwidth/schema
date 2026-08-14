@@ -36,6 +36,8 @@
 #
 # environment: SERIALIZE / SERIALIZE_C / SERIALIZE_GO / SERIALIZE_RS /
 # SERIALIZE_CS, BENCH_CPU, BENCH_NOISE, BENCH_OPT_LEVEL — all as bench/run.sh.
+# The SERIALIZE* paths are §3.5-verified against each toolchain's own
+# resolution before the first leg runs, and the pass refuses on mismatch.
 set -u
 
 cd "$(dirname "$0")/../.."      # repo root
@@ -58,6 +60,14 @@ while [ $# -gt 0 ]; do
 done
 
 command -v go >/dev/null 2>&1 || { echo "pass-driver needs the go toolchain (bench/tools)" >&2; exit 1; }
+
+# ---- §3.5 provenance gate, before ANY leg runs: every runtime path the
+# final preamble will record must match what the toolchains actually resolve
+# (run.sh re-checks per leg; this refusal is cheap and saves a night) ----
+if ! bench/tools/verify-runtime-paths.sh >&2; then
+    echo "REFUSED (§3.5): a leg's build would not use the runtime path the preamble records — no pass, no rows" >&2
+    exit 1
+fi
 
 # dotnet must not leave build servers running between legs: the Roslyn
 # compiler server (VBCSCompiler) and MSBuild nodes linger by default, look
