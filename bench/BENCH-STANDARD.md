@@ -567,9 +567,24 @@ Every row carries a verdict:
 | value | meaning |
 |---|---|
 | `full` | zero runtime calls in the timed loop body |
-| `partial:N` | N runtime calls remain |
+| `partial:N` | N runtime calls remain **per op** |
 | `none` | the chain is entirely out-of-line |
 | `unknown` | the verdict pass did not run — **the tool treats this as a refusal to ratio** |
+
+**`N` is per op, not per emitted call site.** An unrolled timed loop repeats
+its per-op calls once per unrolled iteration — clang unrolled the C
+`rt_bench_packet_read_loop` 4x, and counting raw sites published `partial:12`
+where each op performs 3 runtime calls. When the loop's per-op work flows
+through an out-of-line helper, the verdict counts the calls one op makes —
+the helper's own transitive count plus the loop's per-op direct calls — never
+the raw sites in the loop body. Mechanically: §3.2 makes every out-of-line
+helper called from a timed loop a once-per-op call in source, so the smallest
+per-helper emitted edge count out of the loop body is the unroll factor, and
+the loop's transitive count divides by it. A count that does not divide
+cleanly is not attributable and stays `unknown`; a loop with no helper edges
+has no unroll witness and reports its body count unchanged. This definition
+applies to every language's rows equally — `partial:N` must mean the same
+thing in every row, or the column cannot be compared at all.
 
 `unknown` being a refusal, not a shrug, is the point. A number without an inline
 verdict is not comparable to a number with one.

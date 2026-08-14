@@ -94,8 +94,10 @@ bitpacker bitpacker bitpacker Bitpacker'
 # (otool -tv shape; the go/cs branches translate into it). RT = runtime
 # target regex, HELPER = generated helper regex. Output, one line per symbol
 # (zero counts included, so an entry that fully inlined the runtime is a
-# recorded 0, not an absence):
+# recorded 0, not an absence), plus the raw helper edges (perop_for divides
+# unroll back out of the timed loops with them):
 #   SYM <symbol> <direct> <transitive> <indirect>
+#   EDGE <symbol> <helper-target> <emitted-call-sites>
 count_calls() {
     awk -v RT="$1" -v HELPER="$2" '
         /^[^ \t].*:$/ { sym = substr($0, 1, length($0) - 1); syms[sym] = 1; next }
@@ -120,6 +122,10 @@ count_calls() {
             }
             for (s in syms)
                 printf "SYM %s %d %d %d\n", s, direct[s] + 0, total[s] + 0, indirect[s] + 0
+            for (k in edge) {
+                split(k, a, SUBSEP)
+                printf "EDGE %s %s %d\n", a[1], a[2], edge[k]
+            }
         }'
 }
 
@@ -179,6 +185,33 @@ count_for() {
     awk -v pat="$1" '$1 == "SYM" && $2 ~ pat { print $4; found = 1; exit } END { if (!found) print -1 }' "$VD/counts.txt"
 }
 
+# PER-OP transitive count for a timed-loop symbol (§4.2: partial:N means N
+# runtime calls PER OP, never N call sites in the emitted loop body). An
+# unrolled loop repeats its per-op calls once per unrolled iteration — clang
+# unrolled the C rt_bench_packet_read_loop 4x and the raw body count
+# published partial:12 where the per-op truth is 3. §3.2 makes every
+# out-of-line helper called from a timed loop a once-per-op call in source,
+# so the smallest per-helper emitted edge count out of the loop body IS the
+# unroll factor (peeled prologue/epilogue iterations only raise every count
+# equally), and the loop's transitive count divides by it. A loop with no
+# helper edges has no unroll witness and reports its body count unchanged.
+# Prints -1 if the loop symbol is absent; -2 if the count does not divide
+# by the unroll factor (not attributable — refusing beats guessing).
+perop_for() {
+    awk -v pat="$1" '
+        $1 == "SYM" && !loopset && $2 ~ pat { loop = $2; loopset = 1; T = $4 }
+        $1 == "EDGE" { e_sym[++ne] = $2; e_cnt[ne] = $4 }
+        END {
+            if (!loopset) { print -1; exit }
+            k = 0
+            for (i = 1; i <= ne; i++)
+                if (e_sym[i] == loop && (k == 0 || e_cnt[i] < k)) k = e_cnt[i]
+            if (k <= 1) { print T + 0; exit }
+            if (T % k != 0) { print -2; exit }
+            print T / k
+        }' "$VD/counts.txt"
+}
+
 # sum of transitive counts across every symbol (the whole-binary fallback)
 count_total() {
     awk '$1 == "SYM" { s += $4 } END { print s + 0 }' "$VD/counts.txt"
@@ -193,7 +226,8 @@ ledger_header() {
             echo "# the emitted code and propagated transitively through out-of-line"
             echo "# generated helpers. Compiler remarks are advisory; the disassembly is"
             echo "# the verdict. CSV verdicts: full = zero runtime calls per op,"
-            echo "# partial:N = N remain, unknown = not attributable (stays un-ratioable)."
+            echo "# partial:N = N remain PER OP (§4.2 — loop unrolling divided back"
+            echo "# out), unknown = not attributable (stays un-ratioable)."
         } > "$LEDGER"
     fi
 }
@@ -293,12 +327,15 @@ c|cpp)
         echo "# note: static counts include both arms of branchy messages (rigidbody at_rest" >> "$LEDGER"
         echo "# shares rigid_body's entry, so its N is the moving shape's upper bound)" >> "$LEDGER"
         # families rt and bits: the noinline timed-loop symbols ARE the §4.1
-        # ground truth; a loop symbol that vanished stays unknown, honestly.
+        # ground truth, counted PER OP (perop_for divides loop unrolling back
+        # out); a loop symbol that vanished stays unknown, honestly.
         echo "$RT_MAP" | while read -r bench snake lower camel; do
             for path in write read; do
-                n="$(count_for "^_?${snake}_${path}_loop\$")"
+                n="$(perop_for "^_?${snake}_${path}_loop\$")"
                 if [ "$n" -ge 0 ]; then
                     echo "$bench $path $(verdict_of "$n")" >> "$VD/verdicts.txt"
+                elif [ "$n" -eq -2 ]; then
+                    echo "note: c $bench $path: loop body count does not divide by its unroll factor — inline stays unknown" >> "$LEDGER"
                 else
                     echo "note: c $bench $path: ${snake}_${path}_loop not found in otool — inline stays unknown" >> "$LEDGER"
                 fi
@@ -453,13 +490,16 @@ c|cpp)
             done
         done
         # families rt and bits: the noinline timed-loop symbols in the
-        # MEASURED binary are the §4.1 ground truth — counted directly, no
-        # atos needed (their call sites show up as untimed in the atos walk).
+        # MEASURED binary are the §4.1 ground truth — counted PER OP
+        # (perop_for divides loop unrolling back out), no atos needed
+        # (their call sites show up as untimed in the atos walk).
         echo "$RT_MAP" | while read -r bench snake lower camel; do
             for path in write read; do
-                n="$(count_for "${snake}_${path}_loop")"
+                n="$(perop_for "${snake}_${path}_loop")"
                 if [ "$n" -ge 0 ]; then
                     echo "$bench $path $(verdict_of "$n")" >> "$VD/verdicts.txt"
+                elif [ "$n" -eq -2 ]; then
+                    echo "note: cpp $bench $path: loop body count does not divide by its unroll factor — inline stays unknown" >> "$LEDGER"
                 else
                     echo "note: cpp $bench $path: ${snake}_${path}_loop not found in otool — inline stays unknown" >> "$LEDGER"
                 fi
@@ -534,13 +574,16 @@ go)
             fi
         done
     done
-    # families rt and bits: the //go:noinline timed-loop symbols (§4.1)
+    # families rt and bits: the //go:noinline timed-loop symbols (§4.1),
+    # counted PER OP (perop_for; gc does not unroll today, so k stays 1)
     echo "$RT_MAP" | while read -r bench snake lower camel; do
         for path in write read; do
             Cap="$(echo "$path" | awk '{print toupper(substr($0,1,1)) substr($0,2)}')"
-            n="$(count_for "^main\\.${lower}${Cap}Loop\$")"
+            n="$(perop_for "^main\\.${lower}${Cap}Loop\$")"
             if [ "$n" -ge 0 ]; then
                 echo "$bench $path $(verdict_of "$n")" >> "$VD/verdicts.txt"
+            elif [ "$n" -eq -2 ]; then
+                echo "note: go $bench $path: loop body count does not divide by its unroll factor — inline stays unknown" >> "$LEDGER"
             else
                 echo "note: go $bench $path: main.${lower}${Cap}Loop not found in objdump — inline stays unknown" >> "$LEDGER"
             fi
@@ -621,13 +664,16 @@ rust)
             fi
         done
     done
-    # families rt and bits: the #[inline(never)] timed-loop symbols (§4.1)
+    # families rt and bits: the #[inline(never)] timed-loop symbols (§4.1),
+    # counted PER OP (perop_for divides loop unrolling back out)
     echo "$RT_MAP" | while read -r bench snake lower camel; do
         for path in write read; do
             name="${snake}_${path}_loop"
-            n="$(count_for "${#name}${name}")"
+            n="$(perop_for "${#name}${name}")"
             if [ "$n" -ge 0 ]; then
                 echo "$bench $path $(verdict_of "$n")" >> "$VD/verdicts.txt"
+            elif [ "$n" -eq -2 ]; then
+                echo "note: rust $bench $path: loop body count does not divide by its unroll factor — inline stays unknown" >> "$LEDGER"
             else
                 echo "note: rust $bench $path: no ${name} symbol — inline stays unknown" >> "$LEDGER"
             fi
@@ -671,7 +717,8 @@ cs)
     # else anyway.)
 
     # fold indirect (blr) counts into the per-method transitive totals
-    awk '$1 == "SYM" { $4 += $5; print }' "$VD/counts.txt" > "$VD/counts.folded" \
+    # (EDGE lines pass through untouched — perop_for reads them)
+    awk '$1 == "SYM" { $4 += $5 } { print }' "$VD/counts.txt" > "$VD/counts.folded" \
         && mv "$VD/counts.folded" "$VD/counts.txt"
 
     section cs "(DOTNET_JitDisasm, DOTNET_TieredCompilation=0, FullOpts; bl+blr per §4.1)"
@@ -695,13 +742,16 @@ cs)
         done
     done
     # families rt and bits: the [MethodImpl(NoInlining)] timed-loop methods
-    # (§4.1; bl+blr counted, per the C# rule above)
+    # (§4.1; bl+blr counted, per the C# rule above; PER OP via perop_for —
+    # the JIT does not unroll these loops today, so k stays 1)
     echo "$RT_MAP" | while read -r bench snake lower camel; do
         for path in write read; do
             Cap="$(echo "$path" | awk '{print toupper(substr($0,1,1)) substr($0,2)}')"
-            n="$(count_for "^Program:${camel}${Cap}Loop\$")"
+            n="$(perop_for "^Program:${camel}${Cap}Loop\$")"
             if [ "$n" -ge 0 ]; then
                 echo "$bench $path $(verdict_of "$n")" >> "$VD/verdicts.txt"
+            elif [ "$n" -eq -2 ]; then
+                echo "note: cs $bench $path: loop body count does not divide by its unroll factor — inline stays unknown" >> "$LEDGER"
             else
                 echo "note: cs $bench $path: Program:${camel}${Cap}Loop not in the JitDisasm output — inline stays unknown" >> "$LEDGER"
             fi
