@@ -6,6 +6,10 @@ instances (the same instances `test/main.cpp` pins to `testdata/wire/*.bin`)
 plus one large synthetic message batch (4096 mixed messages through the
 Message dispatch surface) for steady-state throughput.
 
+**`bench/BENCH-STANDARD.md` is the normative measurement contract** — what a
+number means, when two numbers may be divided, and when the tools refuse.
+This README is the operating manual.
+
 `bench/run.sh` builds and runs whichever language runners are available and
 collects everything into one CSV under `bench/results/`. The C++ runner
 (`bench/cpp/bench_main.cpp`) is the reference implementation; the c, go, rust
@@ -16,13 +20,26 @@ ports, wired per the contract below.
 
     bench/run.sh                 # Release, results in bench/results/<date>-<arch>-<host>.csv
     bench/run.sh --debug         # also the Debug pair (matched-pair methodology)
-    bench/run.sh --only c|cpp|go|rust|cs   # one language leg — serial one-profile-at-a-time
-                                           # passes on shared boxes (the EPYC discipline)
-    SERIALIZE=path/to/serialize bench/run.sh
-    SERIALIZE_C=path/to/serialize.c bench/run.sh
-    BENCH_NOISE="NOISY: ..." bench/run.sh    # label a noisy host in the preamble
+    bench/run.sh --only c|cpp|go|rust|cs   # one language leg
+    bench/run.sh --inline        # + the §4 inline verdict pass: writes the
+                                 # per-symbol ledger and backfills the inline
+                                 # column (rows stay un-ratioable without it)
+    SERIALIZE=path/to/serialize bench/run.sh     # (SERIALIZE_C/_GO/_RS/_CS likewise)
+    BENCH_OPT_LEVEL=O2 bench/run.sh              # the C/C++ O2 leg (§3.3)
+    BENCH_NOISE="NOISY: ..." bench/run.sh        # free-text supplement — load capture is automatic
 
 `make bench` runs the Release pass.
+
+**A publishable pass is a driver pass**, not a bare run.sh invocation:
+
+    bench/tools/pass-driver.sh [--rounds 7] [--langs cpp,c,go,rust,cs] [--inline]
+
+The driver runs the §2 methodology: a C++ control leg, N interleaved rounds
+(every language once per round via `--round K`, so every leg sees the same
+load window), the same control leg again, automatic load capture into the
+preamble, and the window verdict — `# window: INVALID` when the control legs
+disagree by more than 5%, and the tools refuse ratios from an invalid pass.
+The driver, not the runner, computes max/median/min/spread across rounds.
 
 ## Methodology (why the numbers can be trusted)
 
@@ -43,10 +60,13 @@ experiment there for the reasoning, learned the hard way):
   against its wire golden and round-tripped (write → read → re-write →
   memcmp). A runner that does not produce corpus-identical bytes refuses to
   produce numbers.
-- **Fixed iteration counts, warmup, median-of-7** — one warmup run per path,
-  then 7 measured runs; the report is the median rate with min/max and
-  spread (`(max-min)/median`). Only Release numbers are meaningful; the
-  Debug pair exists so pathological debug regressions are visible.
+- **Fixed iteration counts, warmup, 7 measured runs** — one warmup run per
+  path, then 7 measured runs (or one per round under a driver pass). **The
+  headline statistic is the best (max) rate** — interference only ever slows
+  a run — with median/min/spread beside it, never optional (§2.2). Spread
+  over 15% is noisy and leaves corpus-median tables; over 40% the row never
+  publishes (§2.3). Only Release numbers are meaningful; the Debug pair
+  exists so pathological debug regressions are visible.
 - **Pinning** — `taskset -c $BENCH_CPU` where taskset exists (Linux); none on
   macOS. The preamble records pinning and the host noise label.
 - **MB/s means MiB/s** (1024*1024), following serialize `bench.cpp`.
@@ -77,14 +97,28 @@ diagnostic did.
 ## Results format
 
 One CSV per host+build, preamble lines starting `#` (date, host, arch, os,
-cpu, build, compiler, flags, pinning, noise label, schema + runtime commits),
-then rows:
+cpu, build, compilers, flags, pinning, noise, the schema commit and every
+runtime's commit + branch, and — from the driver — rounds, load capture,
+corpus_id and the window verdict), then CSV v2 rows (§5.1):
 
-    lang,bench,path,iters,bytes_per_op,runs,median_msgs_per_sec,min_msgs_per_sec,max_msgs_per_sec,median_mb_per_sec,spread_pct
+    lang,bench,path,iters,bytes_per_op,runs,median_msgs_per_sec,min_msgs_per_sec,max_msgs_per_sec,median_mb_per_sec,spread_pct,corpus_id,family,linkage,checks,opt,inline
 
 `path` is `write` or `read`. `bytes_per_op` is the actual wire bytes per
-message (constant per benchmark by construction). Human-readable tables live
-beside the CSVs in `bench/results/`.
+message (constant per benchmark by construction). The six v2 columns carry
+what the row measured: `corpus_id` (FNV-1a-64 of the goldens the runner
+actually loaded, §1.6 — corpus drift becomes a tool error, not a published
+ratio), `family` (`gen` here), `linkage`/`checks`/`opt` (the recorded
+conditions, §3), and `inline` (`full` | `partial:N` | `none` | `unknown`,
+§4.2 — filled by the verdict pass, and `unknown` refuses to ratio). The
+per-symbol inline ledger lives beside the CSV as `<name>.inline`. v1 CSVs
+(11 columns) still load and are un-ratioable, which is correct: legacy data
+cannot be trusted to be comparable.
+
+`bench/tools/relative.go` (`go run ./bench/tools ...`) renders the tables
+and REFUSES to divide rows that measured different things — §5.3's nine
+rules; there is no `--force`. `--label-checks` / `--cross-linkage` print a
+ratio across a contract/packaging difference with the caption that names
+it. Human-readable tables live beside the CSVs in `bench/results/`.
 
 ## The benchmark set
 
@@ -118,8 +152,11 @@ A runner is a standalone program in `bench/<lang>/` that:
 4. uses the same discipline: escape barriers (or the language's equivalent,
    e.g. `runtime.KeepAlive` / `std::hint::black_box` / `GC.KeepAlive`),
    warmup, 7 measured runs, median + min/max + spread;
-5. emits CSV rows on stdout (given `--csv`) in the format above with its own
-   `lang` value, human table on stderr.
+5. emits CSV v2 rows on stdout (given `--csv`) in the format above with its
+   own `lang` value and its recorded `linkage`/`checks`/`opt` constants,
+   computing `corpus_id` from the goldens it loaded; human table on stderr;
+6. supports `--round K` (§2.4): exactly one warmup plus one measured run of
+   every benchmark, then exit — the driver aggregates across rounds.
 
 `run.sh` detects each runner by its build file and runs it automatically:
 
