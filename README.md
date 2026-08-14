@@ -62,21 +62,6 @@ Generating the code takes the fourth path. One declaration produces the reader
 format is decided at compile time, what comes out is the straight-line code you
 would have hand-written, not an interpreter walking a schema at runtime.
 
-The agreement is proven rather than promised: every build compiles the corpus
-in all five languages and compares the results against pinned goldens. If two
-languages ever differ by one bit, CI says so before you do.
-
-**And it is built by multiplayer game developers, for multiplayer games.** That
-focus is why the trades land where they do, and it is the thing the
-general-purpose formats cannot copy without becoming something else. Bounds
-determine wire width because a 60 Hz packet budget is real. Fixed point is a
-type in the language because lockstep and rollback cannot be built on floats.
-The message wire has no evolution machinery because a game client and its
-dedicated server ship together. Reads refuse hostile values in every language
-because a game server faces the open internet. None of that is a general answer
-to serialization — it is a specific answer to this problem, from people who
-have shipped it.
-
 ## Features
 
 - **One declaration, five languages** — C, C++, C#, Go and Rust, bit-identical on
@@ -89,23 +74,11 @@ have shipped it.
   float. A 0–1 throttle at 0.01 costs 7 bits.
 - **Fixed point is a type in the language** — `fixed(48, 16)` is declared like
   any other field, and the compiler owns both the storage and the wire for it.
-  This is the one you cannot get by being careful with a format that lacks it:
-  floating point is *not* bit-identical across compilers and architectures, so
-  a simulation that must agree everywhere — lockstep, rollback, deterministic
-  replay, server/client prediction — cannot be built on floats. A fixed value
-  is an integer, and integers add the same on every machine. It is also its own
-  quantization: storage and wire share one integer domain, so there is no
-  separate quantize step to keep in sync.
 - **128-bit integers**, ranged like any other, in every target language.
 - **Zero allocation, no runtime reflection** — straight-line code reading and
   writing your own buffers.
 - **Reads validate, always — in every language.** Out-of-range values are
-  refused, not clamped or trusted. Validation is not a separate verifier that
-  each language port has to implement and might not have: the bound is part of
-  the type, so the check is inline in the generated reader, in all five
-  languages, from one compiler. There is no port that can read but not
-  validate — which means there is no language here in which you cannot safely
-  accept a packet from the internet.
+  refused, not clamped or trusted.
 - **A second, evolution-tolerant wire** for config, assets and settings, with
   reflection and relocatable storage — in all five languages; see
   [WIRES.md](WIRES.md).
