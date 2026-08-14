@@ -257,6 +257,13 @@ BenchPacket's pin is `serialize/bench.cpp` `Init()` verbatim, the other three ar
 pinned there) and transcribed into every runner. The goldens keep the
 transcriptions honest — a wrong transcription cannot pass the gate.
 
+The gate's residual, named: the 64 varied read buffers are length-checked
+(bytes_per_op must not move under variation) but not value-checked — safe while
+every rt shape is branch-free and fixed-width, because a wrong decode of such a
+shape cannot change which fields ride without changing the byte count. A future
+branchy or variable-width rt shape needs value checks on the variant decodes,
+not only on the pinned instance.
+
 ### §1.6 `corpus_id`
 
 Each runner computes, at runtime, from the goldens it actually loaded:

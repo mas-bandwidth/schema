@@ -18,6 +18,7 @@ package main
 
 import (
 	"bytes"
+	"runtime"
 	"time"
 
 	"github.com/mas-bandwidth/serialize.go"
@@ -339,6 +340,7 @@ func rtBenchPacketReadLoop(out *rtBenchPacket, iters int64, bytesPerOp int) bool
 		if readRtPacket(rs, out) != nil {
 			return false
 		}
+		runtime.KeepAlive(out) // every decoded field is observed (§2.7)
 		gSink = gSink + 1
 	}
 	return true
@@ -368,6 +370,7 @@ func rtBenchIntsReadLoop(out *rtBenchInts, iters int64, bytesPerOp int) bool {
 		if readRtInts(rs, out) != nil {
 			return false
 		}
+		runtime.KeepAlive(out) // every decoded field is observed (§2.7)
 		gSink = gSink + 1
 	}
 	return true
@@ -397,6 +400,7 @@ func rtBenchBitsReadLoop(out *rtBenchBits, iters int64, bytesPerOp int) bool {
 		if readRtBits(rs, out) != nil {
 			return false
 		}
+		runtime.KeepAlive(out) // every decoded field is observed (§2.7)
 		gSink = gSink + 1
 	}
 	return true
@@ -426,6 +430,7 @@ func rtBenchMixedReadLoop(out *rtBenchMixed, iters int64, bytesPerOp int) bool {
 		if readRtMixed(rs, out) != nil {
 			return false
 		}
+		runtime.KeepAlive(out) // every decoded field is observed (§2.7)
 		gSink = gSink + 1
 	}
 	return true
