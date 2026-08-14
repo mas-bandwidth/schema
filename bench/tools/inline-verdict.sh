@@ -407,26 +407,173 @@ c|cpp)
 
     : > "$VD/verdicts.txt"
     if [ "$LANG_ARG" = c ]; then
-        # C per-row verdicts through the generated per-op entry symbols. The
-        # serialize.c calls cross a TU boundary, so an entry's out-of-line
-        # body has the same per-op call structure as any inlined copy of it.
-        # An entry inlined away entirely stays unknown (with a ledger note)
-        # unless the whole binary is call-free — refusing beats guessing.
-        echo "$BENCH_MAP" | while read -r bench snake camel; do
-            for path in write read; do
-                n="$(count_for "^_?${path}_${snake}\$")"
-                cold="$(cold_for "^_?${path}_${snake}\$")"
-                if [ "$n" -ge 0 ]; then
-                    echo "$bench $path $(verdict_of "$n") $n $cold" >> "$VD/verdicts.txt"
-                elif [ "$(count_total)" -eq 0 ]; then
-                    echo "$bench $path full 0 0" >> "$VD/verdicts.txt"
-                else
-                    echo "note: c $bench $path: entry symbol inlined away and runtime calls exist elsewhere — inline stays unknown" >> "$LEDGER"
+        # C per-row verdicts by walking the -g shadow's inline stacks — the
+        # same technique as the cpp branch below, live for C since
+        # bench/c/bench_message.inc gave every expansion real line numbers
+        # (the old BENCH_MESSAGE macro put every statement of every expansion
+        # on one line, which is why chat/test/batch rows used to go unknown
+        # whenever their entry symbols inlined away). Each bench has its own
+        # bench_message_<suffix> function, so the frame NAME carries the
+        # bench and the .inc line carries timed-write / timed-read / untimed.
+        [ -x "$VD/shadow" ] || { echo "shadow build failed — cannot attribute c verdicts (see $REMARKS)" >&2; exit 1; }
+        otool -tv "$VD/shadow" > "$VD/shadow-disasm.txt"
+        count_calls "$RT" "$HELPER" "$COLD_SPLIT" < "$VD/shadow-disasm.txt" > "$VD/shadow-counts.txt"
+        selftest_join "$VD/shadow-disasm.txt" "$VD/shadow-counts.txt" "$HELPER" || exit 1
+
+        # every remaining runtime/helper call site in the shadow text
+        awk -v RT="$RT" -v HELPER="$HELPER" '
+            /^[^ \t].*:$/ { next }
+            $2 == "bl" && ($3 ~ RT || $3 ~ HELPER) { print $1, $3 }
+        ' "$VD/shadow-disasm.txt" > "$VD/addrs.txt"
+
+        # drift guard, as cpp: hot+cold totals must match the measured binary
+        M_TOTAL="$(awk '$1 == "SYM" { s += $4 + $7 } END { print s + 0 }' "$VD/counts.txt")"
+        S_TOTAL="$(awk '$1 == "SYM" { s += $4 + $7 } END { print s + 0 }' "$VD/shadow-counts.txt")"
+        if [ "$M_TOTAL" != "$S_TOTAL" ]; then
+            echo "note: SHADOW DRIFT: measured binary has $M_TOTAL transitive runtime calls (hot+cold), -g shadow has $S_TOTAL — verdicts below describe the shadow" >> "$LEDGER"
+        fi
+
+        # timed-loop line ranges: write/read loops inside the include
+        # template; batch loops inside bench_batch in bench_main.c
+        INC=bench/c/bench_message.inc
+        SRC=bench/c/bench_main.c
+        # tail -1: the markers are the ones in CODE — a doc line quoting them
+        # higher up must not win (it did once: every timed site went untimed
+        # and the gen rows published full; the range sanity check below is
+        # the guard that turns that bug into a refusal)
+        W1=$(grep -n 'write path: 1 warmup' "$INC" | cut -d: -f1 | tail -1)
+        W2=$(grep -n 'read path: 1 warmup' "$INC" | cut -d: -f1 | tail -1)
+        RE=$(grep -n 'report( name, "write"' "$INC" | cut -d: -f1 | tail -1)
+        B1=$(grep -n 'write path: whole batch' "$SRC" | cut -d: -f1 | head -1)
+        B2=$(grep -n 'the read buffer: rebuild' "$SRC" | cut -d: -f1 | head -1)
+        B3=$(grep -n 'read path: read messages' "$SRC" | cut -d: -f1 | head -1)
+        B4=$(grep -n 'report( "message_batch"' "$SRC" | cut -d: -f1 | head -1)
+        if [ -z "$W1" ] || [ -z "$W2" ] || [ -z "$RE" ] || [ "$W1" -ge "$W2" ] || [ "$W2" -ge "$RE" ] || \
+           [ -z "$B1" ] || [ -z "$B2" ] || [ -z "$B3" ] || [ -z "$B4" ] || [ "$B1" -ge "$B2" ] || [ "$B2" -ge "$B3" ] || [ "$B3" -ge "$B4" ]; then
+            echo "c attribution: timed-range markers missing or out of order (W1=$W1 W2=$W2 RE=$RE B=$B1/$B2/$B3/$B4) — inline stays unknown" >&2
+            echo "note: c attribution marker failure (W1=$W1 W2=$W2 RE=$RE B=$B1/$B2/$B3/$B4) — all c gen rows left unknown" >> "$LEDGER"
+            exit 1
+        fi
+
+        # inline stacks for every call site, batched through atos
+        : > "$VD/stacks.txt"
+        cut -d' ' -f1 "$VD/addrs.txt" | sed 's/^/0x/' | {
+            batch=()
+            while read -r a; do
+                batch+=("$a")
+                if [ "${#batch[@]}" -eq 200 ]; then
+                    atos -o "$VD/shadow" -i "${batch[@]}" >> "$VD/stacks.txt"; echo "" >> "$VD/stacks.txt"
+                    batch=()
                 fi
             done
+            [ "${#batch[@]}" -gt 0 ] && { atos -o "$VD/shadow" -i "${batch[@]}" >> "$VD/stacks.txt"; echo "" >> "$VD/stacks.txt"; }
+            true
+        }
+
+        awk -v RT="$RT" -v COLD="$COLD_SPLIT" -v addrsf="$VD/addrs.txt" -v countsf="$VD/shadow-counts.txt" \
+            -v W1="$W1" -v W2="$W2" -v RE="$RE" -v B1="$B1" -v B2="$B2" -v B3="$B3" -v B4="$B4" '
+            BEGIN {
+                while ((getline line < addrsf) > 0) { na++; split(line, a, " "); target[na] = a[2] }
+                while ((getline line < countsf) > 0) { split(line, a, " "); if (a[1] == "SYM") { tot[a[2]] = a[4]; ctot[a[2]] = a[7] } }
+                # bench_message_<suffix> -> CSV bench name
+                bmap["rigidbody"] = "rigidbody_moving"
+                bmap["rigidbody_at_rest"] = "rigidbody_at_rest"
+                bmap["chat"] = "chat"; bmap["test"] = "test"
+                bmap["inputpacket"] = "inputpacket"; bmap["shipcreate"] = "shipcreate"
+                bmap["ship_shallow"] = "ship_shallow"; bmap["probe_header"] = "probe_header"
+                bmap["probebits"] = "probebits"; bmap["probearray"] = "probearray"
+                bmap["testdata"] = "testdata"
+                g = 0
+            }
+            function flush_group(    i, f, bench, path, L, sfx, t) {
+                if (nf == 0) return
+                g++
+                bench = ""; path = ""
+                for (i = 1; i <= nf; i++) {
+                    f = frames[i]
+                    if (match(f, /bench_message_[a-z_]+/)) {
+                        sfx = substr(f, RSTART + 14, RLENGTH - 14)
+                        if (match(f, /bench_message\.inc:[0-9]+/)) {
+                            L = substr(f, RSTART + 18, RLENGTH - 18) + 0
+                            if (L >= W1 && L < W2) path = "write"
+                            else if (L >= W2 && L < RE) path = "read"
+                            else { untimed++; nf = 0; return }
+                            bench = bmap[sfx]
+                        }
+                        break
+                    }
+                    if (f ~ /bench_batch/ && match(f, /bench_main\.c:[0-9]+/)) {
+                        L = substr(f, RSTART + 13, RLENGTH - 13) + 0
+                        bench = "message_batch"
+                        if (L >= B1 && L < B2) path = "write"
+                        else if (L >= B3 && L < B4) path = "read"
+                        else { untimed++; nf = 0; return }
+                        break
+                    }
+                }
+                if (bench == "" || path == "") { if (i <= nf) unattributed++; else untimed++; nf = 0; return }
+                t = target[g]
+                seen[bench "," path] = 1
+                # §4.2 unroll analog for attribution: an unrolled timed loop
+                # repeats each source-level call site once per unrolled copy,
+                # and every copy carries the SAME inline stack and target —
+                # so distinct (stack, target) signatures are the per-op
+                # sites, and repeats are unroll copies, counted once. (The C
+                # read loops measure unrolled 4x; raw counting published
+                # partial:36 where the per-op truth is 9.)
+                sig = t
+                for (i = 1; i <= nf; i++) sig = sig SUBSEP frames[i]
+                if (sig in sigseen) { dedup++; nf = 0; return }
+                sigseen[sig] = 1
+                # §4.2 hot/cold, exactly as cpp: split cold chunks count
+                # cold once; hot runtime targets count hot; hot helpers
+                # contribute their own hot and cold transitive counts
+                if (t ~ COLD) {
+                    c[bench "," path] += 1
+                } else if (t ~ RT) {
+                    n[bench "," path] += 1
+                } else {
+                    n[bench "," path] += tot[t] + 0
+                    c[bench "," path] += ctot[t] + 0
+                }
+                nf = 0
+            }
+            NF == 0 { flush_group(); next }
+            { frames[++nf] = $0 }
+            END {
+                flush_group()
+                for (k in seen) { split(k, a, ","); printf "N %s %s %d %d\n", a[1], a[2], n[k] + 0, c[k] + 0 }
+                printf "STATS groups %d untimed %d unattributed %d unroll-dedup %d\n", g, untimed, unattributed, dedup
+            }' "$VD/stacks.txt" > "$VD/attribution.txt"
+
+        # the attribution must PROVE it ran — same gates as cpp: a missing
+        # STATS line or an incomplete walk would default rows to 0 and fake
+        # a full; refuse instead, rows stay unknown.
+        if ! grep -q '^STATS groups' "$VD/attribution.txt"; then
+            echo "c attribution failed (no STATS line in $VD/attribution.txt) — inline stays unknown" >&2
+            echo "note: c attribution FAILED — all c gen rows left unknown" >> "$LEDGER"
+            exit 1
+        fi
+        NADDR="$(wc -l < "$VD/addrs.txt" | tr -d ' ')"
+        NACC="$(awk '/^STATS/ { print $3 + 0 }' "$VD/attribution.txt")"
+        if [ "$NADDR" != "$NACC" ]; then
+            echo "c attribution incomplete: $NACC of $NADDR call sites walked — inline stays unknown" >&2
+            echo "note: c attribution INCOMPLETE ($NACC of $NADDR call sites) — all c gen rows left unknown" >> "$LEDGER"
+            exit 1
+        fi
+
+        {
+            echo "# c per-row attribution (atos inline stacks over the -g shadow;"
+            echo "# untimed = call sites in setup/self-check/variant code, excluded):"
+            sed 's/^/attr /' "$VD/attribution.txt"
+        } >> "$LEDGER"
+
+        echo "$BENCH_MAP" | while read -r bench snake camel; do
+            for path in write read; do
+                set -- $(awk -v b="$bench" -v p="$path" '$1 == "N" && $2 == b && $3 == p { print $4, $5; f = 1; exit } END { if (!f) print 0, 0 }' "$VD/attribution.txt")
+                echo "$bench $path $(verdict_of "$1") $1 $2" >> "$VD/verdicts.txt"
+            done
         done
-        echo "# note: static counts include both arms of branchy messages (rigidbody at_rest" >> "$LEDGER"
-        echo "# shares rigid_body's entry, so its N is the moving shape's upper bound)" >> "$LEDGER"
         # families rt and bits: the noinline timed-loop symbols ARE the §4.1
         # ground truth, counted PER OP (perop_for divides loop unrolling back
         # out); a loop symbol that vanished stays unknown, honestly.
@@ -483,6 +630,15 @@ c|cpp)
         B2=$(grep -n 'the read buffer: rebuild' "$SRC" | cut -d: -f1 | head -1)
         B3=$(grep -n 'read path: read messages' "$SRC" | cut -d: -f1 | head -1)
         B4=$(grep -n 'report( "message_batch"' "$SRC" | cut -d: -f1 | head -1)
+        # marker sanity (same guard as the c branch): a missing or reordered
+        # marker silently reclassifies timed sites as untimed and publishes
+        # false fulls — refuse instead
+        if [ -z "$W1" ] || [ -z "$W2" ] || [ -z "$RE" ] || [ "$W1" -ge "$W2" ] || [ "$W2" -ge "$RE" ] || \
+           [ -z "$B1" ] || [ -z "$B2" ] || [ -z "$B3" ] || [ -z "$B4" ] || [ "$B1" -ge "$B2" ] || [ "$B2" -ge "$B3" ] || [ "$B3" -ge "$B4" ]; then
+            echo "cpp attribution: timed-range markers missing or out of order in $SRC (W1=$W1 W2=$W2 RE=$RE B=$B1/$B2/$B3/$B4) — inline stays unknown" >&2
+            echo "note: cpp attribution marker failure — all cpp rows left unknown" >> "$LEDGER"
+            exit 1
+        fi
 
         # inline stacks for every call site, batched through atos (blank line
         # separates address groups; an explicit separator guards the batch seam)
@@ -505,7 +661,7 @@ c|cpp)
             -v W1="$W1" -v W2="$W2" -v RE="$RE" -v B1="$B1" -v B2="$B2" -v B3="$B3" -v B4="$B4" '
             BEGIN {
                 while ((getline line < addrsf) > 0) { na++; split(line, a, " "); target[na] = a[2] }
-                while ((getline line < countsf) > 0) { split(line, a, " "); tot[a[2]] = a[4]; ctot[a[2]] = a[7] }
+                while ((getline line < countsf) > 0) { split(line, a, " "); if (a[1] == "SYM") { tot[a[2]] = a[4]; ctot[a[2]] = a[7] } }
                 while ((getline line < benchf) > 0) { split(line, a, " "); benchof[a[1]] = a[2] }
                 tmap["RigidBody"] = "rigidbody_moving"; tmap["Chat"] = "chat"
                 tmap["Test"] = "test"; tmap["InputPacket"] = "inputpacket"
@@ -553,6 +709,15 @@ c|cpp)
                 }
                 if (bench == "" || path == "") { if (i <= nf) unattributed++; else untimed++; nf = 0; return }
                 t = target[g]
+                seen[bench "," path] = 1
+                # §4.2 unroll analog for attribution (same rule as the c
+                # branch): distinct (stack, target) signatures are the
+                # per-op sites; identical repeats are unrolled copies of one
+                # source-level site and count once
+                sig = t
+                for (i = 1; i <= nf; i++) sig = sig SUBSEP frames[i]
+                if (sig in sigseen) { dedup++; nf = 0; return }
+                sigseen[sig] = 1
                 # §4.2 hot/cold: a split cold-path target counts cold, once;
                 # a hot runtime target counts hot; a hot helper contributes
                 # its own hot and cold transitive counts separately
@@ -564,7 +729,6 @@ c|cpp)
                     n[bench "," path] += tot[t] + 0
                     c[bench "," path] += ctot[t] + 0
                 }
-                seen[bench "," path] = 1
                 nf = 0
             }
             NF == 0 { flush_group(); next }
@@ -572,7 +736,7 @@ c|cpp)
             END {
                 flush_group()
                 for (k in seen) { split(k, a, ","); printf "N %s %s %d %d\n", a[1], a[2], n[k] + 0, c[k] + 0 }
-                printf "STATS groups %d untimed %d unattributed %d\n", g, untimed, unattributed
+                printf "STATS groups %d untimed %d unattributed %d unroll-dedup %d\n", g, untimed, unattributed, dedup
             }' "$VD/stacks.txt" > "$VD/attribution.txt"
 
         # the attribution must PROVE it ran: without the STATS line (or with
@@ -783,6 +947,13 @@ rust)
             name="${path}_${snake}"
             if [ "$bench" = message_batch ] && [ "$path" = read ]; then
                 name="read_message_into"   # the batch read rides the into-path
+            fi
+            if [ "$bench" = ship_shallow ]; then
+                # the generators disagree on this one name: C emits
+                # write_ship_shallow, Rust emits write_ship_data_shallow —
+                # the map's snake is the C spelling, and matching it against
+                # the Rust binary is what kept both ship_shallow rows unknown
+                name="${path}_ship_data_shallow"
             fi
             n="$(count_for "${#name}${name}")"
             cold="$(cold_for "${#name}${name}")"

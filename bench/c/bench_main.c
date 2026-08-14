@@ -285,140 +285,14 @@ static void report( const char * bench, const char * path, long iters, int bytes
 }
 
 /* ------------------------------------------------------------------------------------------
-   the per-message benchmark driver — one expansion per message type (C's
-   answer to the reference's function template). TYPE is the generated struct,
-   WRITE/READ the generated functions, VARY the per-iteration mutation.
+   the per-message benchmark driver — one expansion per message type, via
+   bench_message.inc (#define BM_* + #include). The include template expands
+   to the exact tokens the old BENCH_MESSAGE macro produced — the measured
+   code is unchanged — but every expansion carries real line numbers, which
+   is what lets bench/tools/inline-verdict.sh attribute a remaining runtime
+   call to a bench's timed write loop, timed read loop, or untimed setup
+   (see the header of bench_message.inc).
    ------------------------------------------------------------------------------------------ */
-
-#define BENCH_MESSAGE( SUFFIX, TYPE, WRITE, READ, VARY )                                        \
-static void bench_message_##SUFFIX( const char * name, const char * golden, long base_iters,    \
-                                    const TYPE * pinned )                                       \
-{                                                                                               \
-    const long iters = base_iters / IterScale;                                                  \
-    TYPE base = *pinned;                                                                        \
-    TYPE out;                                                                                   \
-    serialize_write_stream_t ws;                                                                \
-    int bytes_per_op;                                                                           \
-    uint64_t rng;                                                                               \
-    double write_rates[MaxNumRuns];                                                                \
-    double read_rates[MaxNumRuns];                                                                 \
-    int run, k;                                                                                 \
-    long i;                                                                                     \
-                                                                                                \
-    /* self-check 1: the pinned instance matches its wire golden byte-for-byte */               \
-    serialize_write_stream_init( &ws, g_buffer, BufferSize );                                   \
-    if ( !WRITE( &ws, &base ) )                                                                 \
-    {                                                                                           \
-        fail( name, "write of pinned instance failed" );                                        \
-        return;                                                                                 \
-    }                                                                                           \
-    serialize_write_flush( &ws );                                                               \
-    bytes_per_op = serialize_write_bytes_processed( &ws );                                      \
-    if ( golden && !check_golden( golden, g_buffer, bytes_per_op ) )                            \
-    {                                                                                           \
-        failed = 1;                                                                             \
-        return;                                                                                 \
-    }                                                                                           \
-                                                                                                \
-    /* self-check 2: round-trip write -> read -> re-write -> identical bytes */                 \
-    {                                                                                           \
-        serialize_read_stream_t rs;                                                             \
-        serialize_write_stream_t tws;                                                           \
-        memset( &out, 0, sizeof( out ) );                                                       \
-        serialize_read_stream_init( &rs, g_buffer, bytes_per_op );                              \
-        if ( !READ( &rs, &out ) )                                                               \
-        {                                                                                       \
-            fail( name, "read of pinned instance failed" );                                     \
-            return;                                                                             \
-        }                                                                                       \
-        serialize_write_stream_init( &tws, g_twin, BufferSize );                                \
-        if ( !WRITE( &tws, &out ) )                                                             \
-        {                                                                                       \
-            fail( name, "re-write of decoded instance failed" );                                \
-            return;                                                                             \
-        }                                                                                       \
-        serialize_write_flush( &tws );                                                          \
-        if ( serialize_write_bytes_processed( &tws ) != bytes_per_op ||                         \
-             memcmp( g_buffer, g_twin, (size_t) bytes_per_op ) != 0 )                           \
-        {                                                                                       \
-            fail( name, "round-trip bytes differ" );                                            \
-            return;                                                                             \
-        }                                                                                       \
-    }                                                                                           \
-                                                                                                \
-    /* variant buffers for the read path (and proof that variation keeps bytes/op constant) */  \
-    rng = 1;                                                                                    \
-    for ( k = 0; k < NumVariants; k++ )                                                         \
-    {                                                                                           \
-        serialize_write_stream_t vs;                                                            \
-        rng = bench_rng( rng );                                                                 \
-        VARY( &base, rng );                                                                     \
-        serialize_write_stream_init( &vs, g_variant( k ), BufferSize );                         \
-        if ( !WRITE( &vs, &base ) )                                                             \
-        {                                                                                       \
-            fail( name, "write of varied instance failed" );                                    \
-            return;                                                                             \
-        }                                                                                       \
-        serialize_write_flush( &vs );                                                           \
-        if ( serialize_write_bytes_processed( &vs ) != bytes_per_op )                           \
-        {                                                                                       \
-            fail( name, "variation changed bytes/op — vary must keep structure fields fixed" ); \
-            return;                                                                             \
-        }                                                                                       \
-    }                                                                                           \
-                                                                                                \
-    /* write path: 1 warmup + NumRuns measured */                                               \
-    for ( run = -1; run < g_num_runs; run++ )                                                      \
-    {                                                                                           \
-        double start = time_now();                                                              \
-        double elapsed;                                                                         \
-        for ( i = 0; i < iters; i++ )                                                           \
-        {                                                                                       \
-            serialize_write_stream_t stream;                                                    \
-            rng = bench_rng( rng );                                                             \
-            VARY( &base, rng );                                                                 \
-            serialize_write_stream_init( &stream, g_buffer, BufferSize );                       \
-            if ( !WRITE( &stream, &base ) )                                                     \
-            {                                                                                   \
-                fail( name, "write failed in loop" );                                           \
-                return;                                                                         \
-            }                                                                                   \
-            serialize_write_flush( &stream );                                                   \
-            bench_escape( g_buffer );                                                           \
-            g_sink = g_sink + (uint64_t) serialize_write_bytes_processed( &stream );            \
-        }                                                                                       \
-        elapsed = time_now() - start;                                                           \
-        if ( run >= 0 )                                                                         \
-            write_rates[run] = (double) iters / elapsed;                                        \
-    }                                                                                           \
-                                                                                                \
-    /* read path: 1 warmup + NumRuns measured; ONE decode instance hoisted out                  \
-       of the loop and reused, matching the reference (a fresh instance per                     \
-       iteration is constructed+zeroed harness overhead, not serialize work) */                 \
-    for ( run = -1; run < g_num_runs; run++ )                                                      \
-    {                                                                                           \
-        double start = time_now();                                                              \
-        double elapsed;                                                                         \
-        for ( i = 0; i < iters; i++ )                                                           \
-        {                                                                                       \
-            serialize_read_stream_t stream;                                                     \
-            serialize_read_stream_init( &stream, g_variant( i & ( NumVariants - 1 ) ), bytes_per_op ); \
-            if ( !READ( &stream, &out ) )                                                       \
-            {                                                                                   \
-                fail( name, "read failed in loop" );                                            \
-                return;                                                                         \
-            }                                                                                   \
-            bench_escape( &out );   /* every decoded field is observed */                       \
-            g_sink = g_sink + 1;                                                                \
-        }                                                                                       \
-        elapsed = time_now() - start;                                                           \
-        if ( run >= 0 )                                                                         \
-            read_rates[run] = (double) iters / elapsed;                                         \
-    }                                                                                           \
-                                                                                                \
-    report( name, "write", iters, bytes_per_op, run_stats( write_rates, g_num_runs ), "gen" );     \
-    report( name, "read", iters, bytes_per_op, run_stats( read_rates, g_num_runs ), "gen" );       \
-}
 
 /* ------------------------------------------------------------------------------------------
    vary functions — mutate VALUE fields within wire ranges through the LCG;
@@ -553,17 +427,72 @@ static void vary_testdata( TestData * m, uint64_t rng )
         m->text[i] = (char) ( 'a' + ( ( rng >> ( i & 7 ) ) & 15 ) );    /* never zero */
 }
 
-BENCH_MESSAGE( rigidbody, RigidBody, write_rigid_body, read_rigid_body, vary_rigidbody )
-BENCH_MESSAGE( rigidbody_at_rest, RigidBody, write_rigid_body, read_rigid_body, vary_rigidbody_at_rest )
-BENCH_MESSAGE( chat, Chat, write_chat, read_chat, vary_chat )
-BENCH_MESSAGE( test, Test, write_test, read_test, vary_test )
-BENCH_MESSAGE( inputpacket, InputPacket, write_input_packet, read_input_packet, vary_inputpacket )
-BENCH_MESSAGE( shipcreate, ShipCreate, write_ship_create, read_ship_create, vary_shipcreate )
-BENCH_MESSAGE( ship_shallow, ShipData_Shallow, write_ship_shallow, read_ship_shallow, vary_ship_shallow )
-BENCH_MESSAGE( probe_header, ProbeHeader, write_probe_header, read_probe_header, vary_probe_header )
-BENCH_MESSAGE( probebits, ProbeBits, write_probe_bits, read_probe_bits, vary_probebits )
-BENCH_MESSAGE( probearray, ProbeArray, write_probe_array, read_probe_array, vary_probearray )
-BENCH_MESSAGE( testdata, TestData, write_test_data, read_test_data, vary_testdata )
+#define BM_SUFFIX rigidbody
+#define BM_TYPE RigidBody
+#define BM_WRITE write_rigid_body
+#define BM_READ read_rigid_body
+#define BM_VARY vary_rigidbody
+#include "bench_message.inc"
+#define BM_SUFFIX rigidbody_at_rest
+#define BM_TYPE RigidBody
+#define BM_WRITE write_rigid_body
+#define BM_READ read_rigid_body
+#define BM_VARY vary_rigidbody_at_rest
+#include "bench_message.inc"
+#define BM_SUFFIX chat
+#define BM_TYPE Chat
+#define BM_WRITE write_chat
+#define BM_READ read_chat
+#define BM_VARY vary_chat
+#include "bench_message.inc"
+#define BM_SUFFIX test
+#define BM_TYPE Test
+#define BM_WRITE write_test
+#define BM_READ read_test
+#define BM_VARY vary_test
+#include "bench_message.inc"
+#define BM_SUFFIX inputpacket
+#define BM_TYPE InputPacket
+#define BM_WRITE write_input_packet
+#define BM_READ read_input_packet
+#define BM_VARY vary_inputpacket
+#include "bench_message.inc"
+#define BM_SUFFIX shipcreate
+#define BM_TYPE ShipCreate
+#define BM_WRITE write_ship_create
+#define BM_READ read_ship_create
+#define BM_VARY vary_shipcreate
+#include "bench_message.inc"
+#define BM_SUFFIX ship_shallow
+#define BM_TYPE ShipData_Shallow
+#define BM_WRITE write_ship_shallow
+#define BM_READ read_ship_shallow
+#define BM_VARY vary_ship_shallow
+#include "bench_message.inc"
+#define BM_SUFFIX probe_header
+#define BM_TYPE ProbeHeader
+#define BM_WRITE write_probe_header
+#define BM_READ read_probe_header
+#define BM_VARY vary_probe_header
+#include "bench_message.inc"
+#define BM_SUFFIX probebits
+#define BM_TYPE ProbeBits
+#define BM_WRITE write_probe_bits
+#define BM_READ read_probe_bits
+#define BM_VARY vary_probebits
+#include "bench_message.inc"
+#define BM_SUFFIX probearray
+#define BM_TYPE ProbeArray
+#define BM_WRITE write_probe_array
+#define BM_READ read_probe_array
+#define BM_VARY vary_probearray
+#include "bench_message.inc"
+#define BM_SUFFIX testdata
+#define BM_TYPE TestData
+#define BM_WRITE write_test_data
+#define BM_READ read_test_data
+#define BM_VARY vary_testdata
+#include "bench_message.inc"
 
 /* ------------------------------------------------------------------------------------------
    pinned corpus instances — the same values test/main.cpp pins to the goldens

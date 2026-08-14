@@ -676,6 +676,24 @@ has no unroll witness and reports its body count unchanged. This definition
 applies to every language's rows equally — `partial:N` must mean the same
 thing in every row, or the column cannot be compared at all.
 
+**Per-row attribution, where the entry symbol is gone.** A gen row whose
+generated entry inlined away entirely cannot be counted through its symbol.
+The verdict pass then attributes every remaining runtime call site by walking
+`atos -i` inline stacks over a deterministic `-g` shadow build (same compiler,
+same flags — clang's inlining is deterministic, `-g` adds only metadata, and a
+drift guard compares the shadow's total call structure against the measured
+binary). A call site attributes to (bench, path) when its inline stack passes
+through a bench's timed write or read loop; setup, self-check and variant
+code is excluded as untimed. This is live for C++ and — since 2026-08-15 —
+for C, whose per-bench driver became an `#include` template
+(`bench/c/bench_message.inc`, token-identical to the old macro, verified by
+preprocessor token comparison) precisely so its expansions carry real line
+numbers. The unroll rule above has an attribution analog: an unrolled loop's
+copies of one source-level call site carry identical inline stacks and
+target, so attribution counts **distinct (stack, target) signatures** — the C
+read loops measure unrolled 4x, and raw site counting published `partial:36`
+where the per-op truth is `partial:9`.
+
 `unknown` being a refusal, not a shrug, is the point. A number without an inline
 verdict is not comparable to a number with one.
 
