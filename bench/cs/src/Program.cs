@@ -21,6 +21,7 @@
 //   - the warmup run per path doubles as the JIT warmup
 
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.Globalization;
 using System.IO;
@@ -31,8 +32,68 @@ using static Example.Schema;
 
 static class Program
 {
-    const int NumRuns = 7;      // median of 7 (N >= 5), after 1 warmup run
+    const int MaxNumRuns = 7;   // median of 7 (N >= 5), after 1 warmup run
+    static int gNumRuns = MaxNumRuns; // --round K drops this to 1 (§2.4: one warmup +
+                                      // one measured run per round; the driver
+                                      // aggregates across rounds)
     const int NumVariants = 64; // read-path variant buffers
+
+    // ---- CSV v2 (BENCH-STANDARD.md §5.1) ----
+    // Rows are buffered and emitted at exit so every row carries the
+    // corpus_id (§1.6): FNV-1a-64 over the goldens THIS RUN actually loaded —
+    // for each file in sorted basename order, the basename bytes, a 0x00
+    // byte, the contents. The per-runner constants: family gen (these are
+    // the generated-code benchmarks), linkage asm (the serialize.cs runtime
+    // is a separate assembly the JIT inlines across), checks removed (the
+    // Release build compiles range and bounds checks away — the
+    // NDEBUG-equivalent semantics, §3.4), opt default (the JIT has no
+    // operator-visible optimization levels), inline unknown until the
+    // verdict pass (§4.2) backfills it.
+    const string CsvSuffix = "gen,asm,removed,default,unknown";
+
+    static readonly List<string> gCsvRows = new List<string>();
+    static readonly SortedDictionary<string, byte[]> gGoldensLoaded =
+        new SortedDictionary<string, byte[]>(StringComparer.Ordinal);
+
+    static ulong Fnv1a64(ulong h, ReadOnlySpan<byte> data)
+    {
+        foreach (byte b in data)
+        {
+            h ^= b;
+            h *= 0x100000001b3ul;
+        }
+        return h;
+    }
+
+    static string CorpusId()
+    {
+        ulong h = 0xcbf29ce484222325ul;
+        Span<byte> zero = stackalloc byte[1];
+        foreach (var golden in gGoldensLoaded) // sorted basename order
+        {
+            foreach (char c in golden.Key)
+            {
+                h ^= (byte)c; // golden basenames are ASCII
+                h *= 0x100000001b3ul;
+            }
+            h = Fnv1a64(h, zero);
+            h = Fnv1a64(h, golden.Value);
+        }
+        return h.ToString("x16");
+    }
+
+    static void FlushCsv()
+    {
+        if (!gCsv)
+        {
+            return;
+        }
+        string id = CorpusId();
+        foreach (string row in gCsvRows)
+        {
+            Console.WriteLine(row + "," + id + "," + CsvSuffix);
+        }
+    }
 
     // buffers: write buffers must be a multiple of 8 bytes (qword-flush
     // contract); variant buffers keep slack past the packet for the reader's
@@ -73,6 +134,7 @@ static class Program
             Console.Error.WriteLine("missing wire golden " + path + " — run from bench/cs (or pass --wire-dir)");
             return false;
         }
+        gGoldensLoaded[name + ".bin"] = expected;
         if (!data.SequenceEqual(expected))
         {
             Console.Error.WriteLine(
@@ -111,9 +173,9 @@ static class Program
             bench, path, s.Median / 1e6, mbps, s.Min / 1e6, s.Max / 1e6, s.Spread));
         if (gCsv)
         {
-            Console.WriteLine(string.Format(
+            gCsvRows.Add(string.Format(
                 "cs,{0},{1},{2},{3},{4},{5:F0},{6:F0},{7:F0},{8:F2},{9:F2}",
-                bench, path, iters, bytesPerOp, NumRuns, s.Median, s.Min, s.Max, mbps, s.Spread));
+                bench, path, iters, bytesPerOp, gNumRuns, s.Median, s.Min, s.Max, mbps, s.Spread));
         }
     }
 
@@ -185,11 +247,11 @@ static class Program
             }
         }
 
-        double[] writeRates = new double[NumRuns];
-        double[] readRates = new double[NumRuns];
+        double[] writeRates = new double[gNumRuns];
+        double[] readRates = new double[gNumRuns];
 
         // write path: 1 warmup (also the JIT warmup) + NumRuns measured
-        for (int run = -1; run < NumRuns; run++)
+        for (int run = -1; run < gNumRuns; run++)
         {
             Stopwatch sw = Stopwatch.StartNew();
             for (long i = 0; i < iters; i++)
@@ -216,7 +278,7 @@ static class Program
         // (the MessageStorage discipline — see the file header)
         T outValue = new T();
         ReadStream rs = new ReadStream(gVariants[0], (int)bytesPerOp);
-        for (int run = -1; run < NumRuns; run++)
+        for (int run = -1; run < gNumRuns; run++)
         {
             Stopwatch sw = Stopwatch.StartNew();
             for (long i = 0; i < iters; i++)
@@ -685,14 +747,14 @@ static class Program
         const long passes = BatchPasses;
         const long totalMsgs = passes * NumBatchMessages;
 
-        double[] writeRates = new double[NumRuns];
-        double[] readRates = new double[NumRuns];
+        double[] writeRates = new double[gNumRuns];
+        double[] readRates = new double[gNumRuns];
         ulong rng = 999;
 
         // write path: whole batch per pass; one message mutates per pass so
         // the batch is never loop-invariant
         WriteStream ws = new WriteStream(batchBuffer);
-        for (int run = -1; run < NumRuns; run++)
+        for (int run = -1; run < gNumRuns; run++)
         {
             Stopwatch sw = Stopwatch.StartNew();
             for (long pass = 0; pass < passes; pass++)
@@ -737,7 +799,7 @@ static class Program
         // pass; reads land in pre-allocated storage — no heap per message
         MessageStorage storage = new MessageStorage();
         ReadStream rs = new ReadStream(batchBuffer, (int)batchBytes);
-        for (int run = -1; run < NumRuns; run++)
+        for (int run = -1; run < gNumRuns; run++)
         {
             Stopwatch sw = Stopwatch.StartNew();
             for (long pass = 0; pass < passes; pass++)
@@ -845,9 +907,21 @@ static class Program
             {
                 gWireDir = args[++i];
             }
+            else if (args[i] == "--round" && i + 1 < args.Length)
+            {
+                // §2.4: one warmup + one measured run of every benchmark,
+                // then exit. K only identifies the round to the interleaved
+                // driver, which aggregates across rounds itself.
+                if (!int.TryParse(args[++i], out int k) || k < 0)
+                {
+                    Console.Error.WriteLine($"--round takes a non-negative integer, got '{args[i]}'");
+                    return 1;
+                }
+                gNumRuns = 1;
+            }
             else
             {
-                Console.Error.WriteLine("usage: schemabench [--csv] [--wire-dir <dir>]");
+                Console.Error.WriteLine("usage: schemabench [--csv] [--round K] [--wire-dir <dir>]");
                 return 1;
             }
         }
@@ -891,6 +965,8 @@ static class Program
         BenchMessage("testdata", "testdata", 1000000, PinTestData(), WriteTestData, ReadTestData, VaryTestData);
 
         BenchBatch();
+
+        FlushCsv(); // rows carry the corpus_id of the goldens this run loaded
 
         if (failed)
         {

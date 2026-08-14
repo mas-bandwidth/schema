@@ -19,15 +19,37 @@
 #![allow(clippy::field_reassign_with_default)]
 #![allow(clippy::too_many_arguments)]
 
-use std::cell::Cell;
+use std::cell::{Cell, RefCell};
+use std::collections::BTreeMap;
 use std::hint::black_box;
 use std::time::Instant;
 
 use example::*;
 use serialize::{ReadStream, Stream, WriteStream};
 
-const NUM_RUNS: usize = 7; // median of 7 (N >= 5), after 1 warmup run
+const MAX_NUM_RUNS: usize = 7; // median of 7 (N >= 5), after 1 warmup run
 const NUM_VARIANTS: usize = 64; // read-path variant buffers
+
+// ---- CSV v2 (BENCH-STANDARD.md §5.1) ----
+// Rows are buffered and emitted at exit so every row carries the corpus_id
+// (§1.6): FNV-1a-64 over the goldens THIS RUN actually loaded — for each file
+// in sorted basename order, the basename bytes, a 0x00 byte, the contents.
+// The per-runner constants: family gen (these are the generated-code
+// benchmarks), linkage crate (the serialize.rs runtime compiles into the one
+// crate graph the bench monomorphizes over), checks always (the runtime is
+// unsafe_code = "forbid" — every load is bounds-checked in every build, plus
+// range validation and the sticky error check by contract), opt O3 (the cargo
+// release profile, opt-level 3), inline unknown until the verdict pass (§4.2)
+// backfills it.
+const CSV_SUFFIX: &str = "gen,crate,always,O3,unknown";
+
+fn fnv1a64(mut h: u64, data: &[u8]) -> u64 {
+    for &b in data {
+        h ^= b as u64;
+        h = h.wrapping_mul(0x100000001b3);
+    }
+    h
+}
 
 // buffers: write buffers must be a multiple of 8 bytes (qword-flush contract);
 // variant buffers keep slack past the packet for the reader's window loads.
@@ -43,8 +65,12 @@ fn bench_rng(rng: u64) -> u64 {
 struct Ctx {
     csv: bool,
     wire_dir: String,
+    num_runs: usize, // MAX_NUM_RUNS, or 1 under --round K (§2.4: one warmup +
+    // one measured run per round; the driver aggregates across rounds)
     failed: Cell<bool>,
     sink: Cell<u64>,
+    csv_rows: RefCell<Vec<String>>,
+    goldens_loaded: RefCell<BTreeMap<String, Vec<u8>>>,
 }
 
 struct RunStats {
@@ -75,6 +101,9 @@ impl Ctx {
         let path = format!("{}/{}.bin", self.wire_dir, name);
         match std::fs::read(&path) {
             Ok(expected) => {
+                self.goldens_loaded
+                    .borrow_mut()
+                    .insert(format!("{name}.bin"), expected.clone());
                 if expected != data {
                     eprintln!(
                         "WIRE GOLDEN MISMATCH: {} ({} golden vs {} actual bytes) — refusing to bench code that does not match the corpus",
@@ -106,10 +135,37 @@ impl Ctx {
             s.spread
         );
         if self.csv {
-            println!(
+            self.csv_rows.borrow_mut().push(format!(
                 "rust,{},{},{},{},{},{:.0},{:.0},{:.0},{:.2},{:.2}",
-                bench, path, iters, bytes_per_op, NUM_RUNS, s.median, s.min, s.max, mbps, s.spread
-            );
+                bench,
+                path,
+                iters,
+                bytes_per_op,
+                self.num_runs,
+                s.median,
+                s.min,
+                s.max,
+                mbps,
+                s.spread
+            ));
+        }
+    }
+
+    // corpus_id (§1.6) over the goldens this run actually loaded, then the
+    // buffered rows — the BTreeMap iterates in sorted basename order.
+    fn flush_csv(&self) {
+        if !self.csv {
+            return;
+        }
+        let mut h: u64 = 0xcbf29ce484222325;
+        for (name, contents) in self.goldens_loaded.borrow().iter() {
+            h = fnv1a64(h, name.as_bytes());
+            h = fnv1a64(h, &[0u8]);
+            h = fnv1a64(h, contents);
+        }
+        let id = format!("{h:016x}");
+        for row in self.csv_rows.borrow().iter() {
+            println!("{row},{id},{CSV_SUFFIX}");
         }
     }
 }
@@ -200,11 +256,11 @@ fn bench_message<T, W, R, V>(
         }
     }
 
-    let mut write_rates = [0.0f64; NUM_RUNS];
-    let mut read_rates = [0.0f64; NUM_RUNS];
+    let mut write_rates = [0.0f64; MAX_NUM_RUNS];
+    let mut read_rates = [0.0f64; MAX_NUM_RUNS];
 
     // write path: 1 warmup + NUM_RUNS measured
-    for run in 0..(NUM_RUNS + 1) {
+    for run in 0..(ctx.num_runs + 1) {
         let start = Instant::now();
         for _ in 0..iters {
             rng = bench_rng(rng);
@@ -235,7 +291,7 @@ fn bench_message<T, W, R, V>(
     // overwritten every iteration, structure fields fixed across variants).
     // No per-iteration clone: read_fn takes &mut out, black_box takes &out.
     let mut out = T::default();
-    for run in 0..(NUM_RUNS + 1) {
+    for run in 0..(ctx.num_runs + 1) {
         let start = Instant::now();
         for i in 0..iters {
             let mut rs = ReadStream::new(
@@ -260,14 +316,14 @@ fn bench_message<T, W, R, V>(
         "write",
         iters,
         bytes_per_op as i64,
-        &run_stats(&mut write_rates),
+        &run_stats(&mut write_rates[..ctx.num_runs]),
     );
     ctx.report(
         name,
         "read",
         iters,
         bytes_per_op as i64,
-        &run_stats(&mut read_rates),
+        &run_stats(&mut read_rates[..ctx.num_runs]),
     );
 }
 
@@ -650,13 +706,13 @@ fn bench_batch(ctx: &Ctx) {
     let passes = BATCH_PASSES;
     let total_msgs = (passes * NUM_BATCH_MESSAGES) as i64;
 
-    let mut write_rates = [0.0f64; NUM_RUNS];
-    let mut read_rates = [0.0f64; NUM_RUNS];
+    let mut write_rates = [0.0f64; MAX_NUM_RUNS];
+    let mut read_rates = [0.0f64; MAX_NUM_RUNS];
     let mut rng: u64 = 999;
 
     // write path: whole batch per pass; one message mutates per pass so the
     // batch is never loop-invariant
-    for run in 0..(NUM_RUNS + 1) {
+    for run in 0..(ctx.num_runs + 1) {
         let start = Instant::now();
         for _ in 0..passes {
             rng = bench_rng(rng);
@@ -701,7 +757,7 @@ fn bench_batch(ctx: &Ctx) {
     // byte-verified against the corpus golden in check_message_stream_golden
     // before any number is produced.
     let mut storage = Message::None;
-    for run in 0..(NUM_RUNS + 1) {
+    for run in 0..(ctx.num_runs + 1) {
         let start = Instant::now();
         for _ in 0..passes {
             let mut rs = ReadStream::new(&batch_buffer, batch_bytes as usize);
@@ -735,14 +791,14 @@ fn bench_batch(ctx: &Ctx) {
         "write",
         total_msgs,
         bytes_per_msg,
-        &run_stats(&mut write_rates),
+        &run_stats(&mut write_rates[..ctx.num_runs]),
     );
     ctx.report(
         "message_batch",
         "read",
         total_msgs,
         bytes_per_msg,
-        &run_stats(&mut read_rates),
+        &run_stats(&mut read_rates[..ctx.num_runs]),
     );
 }
 
@@ -856,6 +912,7 @@ fn check_message_stream_golden(ctx: &Ctx) {
 fn main() {
     let mut csv = false;
     let mut wire_dir = String::from("../../testdata/wire");
+    let mut num_runs = MAX_NUM_RUNS;
     let args: Vec<String> = std::env::args().collect();
     let mut i = 1;
     while i < args.len() {
@@ -865,8 +922,19 @@ fn main() {
                 i += 1;
                 wire_dir = args[i].clone();
             }
+            "--round" if i + 1 < args.len() => {
+                // §2.4: one warmup + one measured run of every benchmark,
+                // then exit. K only identifies the round to the interleaved
+                // driver, which aggregates across rounds itself.
+                i += 1;
+                if args[i].parse::<u32>().is_err() {
+                    eprintln!("--round takes a non-negative integer, got '{}'", args[i]);
+                    std::process::exit(1);
+                }
+                num_runs = 1;
+            }
             _ => {
-                eprintln!("usage: {} [--csv] [--wire-dir <dir>]", args[0]);
+                eprintln!("usage: {} [--csv] [--round K] [--wire-dir <dir>]", args[0]);
                 std::process::exit(1);
             }
         }
@@ -876,8 +944,11 @@ fn main() {
     let ctx = Ctx {
         csv,
         wire_dir,
+        num_runs,
         failed: Cell::new(false),
         sink: Cell::new(0),
+        csv_rows: RefCell::new(Vec::new()),
+        goldens_loaded: RefCell::new(BTreeMap::new()),
     };
 
     eprintln!("schema bench (rust)");
@@ -901,6 +972,8 @@ fn main() {
     bench_message(&ctx, "testdata", Some("testdata"), 1000000, pin_testdata(), write_test_data, read_test_data, vary_testdata);
 
     bench_batch(&ctx);
+
+    ctx.flush_csv(); // rows carry the corpus_id of the goldens this run loaded
 
     if ctx.failed.get() {
         eprintln!("BENCH FAILED");

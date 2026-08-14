@@ -70,7 +70,10 @@ static uint64_t bench_rng( uint64_t rng )
     return rng * 6364136223846793005ULL + 1442695040888963407ULL;
 }
 
-#define NumRuns 7           /* median of 7 (N >= 5), after 1 warmup run */
+#define MaxNumRuns 7        /* median of 7 (N >= 5), after 1 warmup run */
+static int g_num_runs = MaxNumRuns; /* --round K drops this to 1 (§2.4: one warmup +
+                                       one measured run per round; the driver
+                                       aggregates across rounds) */
 #define NumVariants 64      /* read-path variant buffers */
 
 #if defined(NDEBUG)
@@ -81,6 +84,87 @@ static uint64_t bench_rng( uint64_t rng )
 
 static int g_csv = 0;
 static const char * g_wire_dir = "testdata/wire";
+
+/* ---- CSV v2 (BENCH-STANDARD.md §5.1) ----
+   Rows are buffered and emitted at exit so every row carries the corpus_id
+   (§1.6): FNV-1a-64 over the goldens THIS RUN actually loaded — for each file
+   in sorted basename order, the basename bytes, a 0x00 byte, the contents.
+   The per-runner constants: family gen (these are the generated-code
+   benchmarks), linkage tu (serialize.c is a compiled translation unit, no
+   LTO — the packaging the C row has always carried), checks removed
+   (-DNDEBUG compiles range and bounds checks away), opt from the build
+   (run.sh sets BENCH_OPT beside the -O flag itself), inline unknown until
+   the verdict pass (§4.2) backfills it. */
+#ifndef BENCH_OPT
+#define BENCH_OPT "O3"
+#endif
+#define CsvSuffix "gen,tu,removed," BENCH_OPT ",unknown"
+#define MaxCsvRows 64
+#define MaxGoldens 24
+static char g_csv_rows[MaxCsvRows][256];
+static int g_csv_row_count = 0;
+static struct
+{
+    char name[64];
+    uint8_t data[4096];
+    int len;
+} g_goldens_loaded[MaxGoldens];
+static int g_golden_count = 0;
+
+static void record_golden( const char * basename, const uint8_t * data, int len )
+{
+    int i;
+    for ( i = 0; i < g_golden_count; i++ )
+    {
+        if ( strcmp( g_goldens_loaded[i].name, basename ) == 0 )
+            return;     /* already recorded (loaded once per run anyway) */
+    }
+    if ( g_golden_count == MaxGoldens || len > (int) sizeof( g_goldens_loaded[0].data ) )
+    {
+        fprintf( stderr, "corpus_id: golden table overflow — raise MaxGoldens\n" );
+        exit( 1 );
+    }
+    strncpy( g_goldens_loaded[g_golden_count].name, basename, sizeof( g_goldens_loaded[0].name ) - 1 );
+    memcpy( g_goldens_loaded[g_golden_count].data, data, (size_t) len );
+    g_goldens_loaded[g_golden_count].len = len;
+    g_golden_count++;
+}
+
+static uint64_t fnv1a64( uint64_t h, const uint8_t * data, size_t n )
+{
+    size_t i;
+    for ( i = 0; i < n; i++ )
+    {
+        h ^= data[i];
+        h *= 0x100000001b3ULL;
+    }
+    return h;
+}
+
+static int compare_golden_name( const void * a, const void * b )
+{
+    return strcmp( (const char *) a, (const char *) b );    /* name is the first member */
+}
+
+static void flush_csv( void )
+{
+    char id[17];
+    uint64_t h = 0xcbf29ce484222325ULL;
+    uint8_t zero = 0;
+    int i;
+    if ( !g_csv )
+        return;
+    qsort( g_goldens_loaded, (size_t) g_golden_count, sizeof( g_goldens_loaded[0] ), compare_golden_name );
+    for ( i = 0; i < g_golden_count; i++ )
+    {
+        h = fnv1a64( h, (const uint8_t *) g_goldens_loaded[i].name, strlen( g_goldens_loaded[i].name ) );
+        h = fnv1a64( h, &zero, 1 );
+        h = fnv1a64( h, g_goldens_loaded[i].data, (size_t) g_goldens_loaded[i].len );
+    }
+    sprintf( id, "%016llx", (unsigned long long) h );
+    for ( i = 0; i < g_csv_row_count; i++ )
+        printf( "%s,%s,%s\n", g_csv_rows[i], id, CsvSuffix );
+}
 
 /* buffers: write buffers must be a multiple of 4 bytes and 4-byte aligned;
    read allocations extend >= 8 bytes past the packet (64-bit window contract).
@@ -118,6 +202,11 @@ static int check_golden( const char * name, const uint8_t * data, int bytes )
     }
     n = fread( expected, 1, sizeof( expected ), f );
     fclose( f );
+    {
+        char basename[64];
+        sprintf( basename, "%s.bin", name );
+        record_golden( basename, expected, (int) n );
+    }
     if ( (int) n != bytes || memcmp( expected, data, (size_t) bytes ) != 0 )
     {
         fprintf( stderr, "WIRE GOLDEN MISMATCH: %s (%d golden vs %d actual bytes) — refusing to bench code that does not match the corpus\n",
@@ -162,9 +251,18 @@ static void report( const char * bench, const char * path, long iters, int bytes
              bench, path, s.median_rate / 1e6, mbps, s.min_rate / 1e6, s.max_rate / 1e6, s.spread_pct );
     if ( g_csv )
     {
-        printf( "c,%s,%s,%ld,%d,%d,%.0f,%.0f,%.0f,%.2f,%.2f\n",
-                bench, path, iters, bytes_per_op, NumRuns,
-                s.median_rate, s.min_rate, s.max_rate, mbps, s.spread_pct );
+        if ( g_csv_row_count == MaxCsvRows )
+        {
+            fprintf( stderr, "csv row buffer overflow — raise MaxCsvRows\n" );
+            exit( 1 );
+        }
+        /* sprintf, not snprintf: _POSIX_C_SOURCE 199309L predates C99's
+           snprintf. Bounded by construction: 11 fields, none over 20 chars. */
+        sprintf( g_csv_rows[g_csv_row_count],
+                 "c,%s,%s,%ld,%d,%d,%.0f,%.0f,%.0f,%.2f,%.2f",
+                 bench, path, iters, bytes_per_op, g_num_runs,
+                 s.median_rate, s.min_rate, s.max_rate, mbps, s.spread_pct );
+        g_csv_row_count++;
     }
 }
 
@@ -184,8 +282,8 @@ static void bench_message_##SUFFIX( const char * name, const char * golden, long
     serialize_write_stream_t ws;                                                                \
     int bytes_per_op;                                                                           \
     uint64_t rng;                                                                               \
-    double write_rates[NumRuns];                                                                \
-    double read_rates[NumRuns];                                                                 \
+    double write_rates[MaxNumRuns];                                                                \
+    double read_rates[MaxNumRuns];                                                                 \
     int run, k;                                                                                 \
     long i;                                                                                     \
                                                                                                 \
@@ -252,7 +350,7 @@ static void bench_message_##SUFFIX( const char * name, const char * golden, long
     }                                                                                           \
                                                                                                 \
     /* write path: 1 warmup + NumRuns measured */                                               \
-    for ( run = -1; run < NumRuns; run++ )                                                      \
+    for ( run = -1; run < g_num_runs; run++ )                                                      \
     {                                                                                           \
         double start = time_now();                                                              \
         double elapsed;                                                                         \
@@ -279,7 +377,7 @@ static void bench_message_##SUFFIX( const char * name, const char * golden, long
     /* read path: 1 warmup + NumRuns measured; ONE decode instance hoisted out                  \
        of the loop and reused, matching the reference (a fresh instance per                     \
        iteration is constructed+zeroed harness overhead, not serialize work) */                 \
-    for ( run = -1; run < NumRuns; run++ )                                                      \
+    for ( run = -1; run < g_num_runs; run++ )                                                      \
     {                                                                                           \
         double start = time_now();                                                              \
         double elapsed;                                                                         \
@@ -300,8 +398,8 @@ static void bench_message_##SUFFIX( const char * name, const char * golden, long
             read_rates[run] = (double) iters / elapsed;                                         \
     }                                                                                           \
                                                                                                 \
-    report( name, "write", iters, bytes_per_op, run_stats( write_rates, NumRuns ) );            \
-    report( name, "read", iters, bytes_per_op, run_stats( read_rates, NumRuns ) );              \
+    report( name, "write", iters, bytes_per_op, run_stats( write_rates, g_num_runs ) );            \
+    report( name, "read", iters, bytes_per_op, run_stats( read_rates, g_num_runs ) );              \
 }
 
 /* ------------------------------------------------------------------------------------------
@@ -703,8 +801,8 @@ static void bench_batch( void )
     uint8_t * batch_buffer = (uint8_t *) malloc( (size_t) batch_buffer_size );
     int batch_bytes = 0;
     long passes, total_msgs, pass;
-    double write_rates[NumRuns];
-    double read_rates[NumRuns];
+    double write_rates[MaxNumRuns];
+    double read_rates[MaxNumRuns];
     uint64_t rng = 999;
     Message m;
     int run, k;
@@ -727,7 +825,7 @@ static void bench_batch( void )
 
     /* write path: whole batch per pass; one message mutates per pass so the
        batch is never loop-invariant */
-    for ( run = -1; run < NumRuns; run++ )
+    for ( run = -1; run < g_num_runs; run++ )
     {
         double start = time_now();
         double elapsed;
@@ -775,7 +873,7 @@ static void bench_batch( void )
        re-establishes the selected arm itself (it zeroes before decoding), so
        reuse is exact and a fresh Message per read is pure setup overhead */
     memset( &m, 0, sizeof( m ) );
-    for ( run = -1; run < NumRuns; run++ )
+    for ( run = -1; run < g_num_runs; run++ )
     {
         double start = time_now();
         double elapsed;
@@ -810,8 +908,8 @@ static void bench_batch( void )
             read_rates[run] = (double) total_msgs / elapsed;
     }
 
-    report( "message_batch", "write", total_msgs, batch_bytes / NumBatchMessages, run_stats( write_rates, NumRuns ) );
-    report( "message_batch", "read", total_msgs, batch_bytes / NumBatchMessages, run_stats( read_rates, NumRuns ) );
+    report( "message_batch", "write", total_msgs, batch_bytes / NumBatchMessages, run_stats( write_rates, g_num_runs ) );
+    report( "message_batch", "read", total_msgs, batch_bytes / NumBatchMessages, run_stats( read_rates, g_num_runs ) );
 
     free( batch_buffer );
 }
@@ -876,9 +974,23 @@ int main( int argc, char ** argv )
             g_csv = 1;
         else if ( strcmp( argv[i], "--wire-dir" ) == 0 && i + 1 < argc )
             g_wire_dir = argv[++i];
+        else if ( strcmp( argv[i], "--round" ) == 0 && i + 1 < argc )
+        {
+            /* §2.4: one warmup + one measured run of every benchmark, then
+               exit. K only identifies the round to the interleaved driver,
+               which aggregates max/median/min/spread across rounds itself. */
+            char * end = NULL;
+            long k = strtol( argv[++i], &end, 10 );
+            if ( end == argv[i] || *end != '\0' || k < 0 )
+            {
+                fprintf( stderr, "--round takes a non-negative integer, got '%s'\n", argv[i] );
+                return 1;
+            }
+            g_num_runs = 1;
+        }
         else
         {
-            fprintf( stderr, "usage: %s [--csv] [--wire-dir <dir>]\n", argv[0] );
+            fprintf( stderr, "usage: %s [--csv] [--round K] [--wire-dir <dir>]\n", argv[0] );
             return 1;
         }
     }
@@ -890,7 +1002,7 @@ int main( int argc, char ** argv )
 #endif
 
     if ( g_csv )
-        printf( "lang,bench,path,iters,bytes_per_op,runs,median_msgs_per_sec,min_msgs_per_sec,max_msgs_per_sec,median_mb_per_sec,spread_pct\n" );
+        printf( "lang,bench,path,iters,bytes_per_op,runs,median_msgs_per_sec,min_msgs_per_sec,max_msgs_per_sec,median_mb_per_sec,spread_pct,corpus_id,family,linkage,checks,opt,inline\n" );
 
     check_message_stream_golden();
 
@@ -920,6 +1032,8 @@ int main( int argc, char ** argv )
     bench_message_testdata( "testdata", "testdata", 1000000L, &testdata );
 
     bench_batch();
+
+    flush_csv();    /* rows carry the corpus_id of the goldens this run loaded */
 
     if ( failed )
     {

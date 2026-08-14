@@ -26,6 +26,7 @@ import (
 	"os"
 	"runtime"
 	"sort"
+	"strconv"
 	"time"
 
 	"example"
@@ -33,7 +34,9 @@ import (
 	"github.com/mas-bandwidth/serialize.go"
 )
 
-const NumRuns = 7      // median of 7 (N >= 5), after 1 warmup run
+const MaxNumRuns = 7      // median of 7 (N >= 5), after 1 warmup run
+var gNumRuns = MaxNumRuns // --round K drops this to 1 (§2.4: one warmup + one
+// measured run per round; the driver aggregates across rounds)
 const NumVariants = 64 // read-path variant buffers
 
 // buffers: write buffers must be a multiple of 8 bytes (qword-flush contract);
@@ -49,6 +52,54 @@ var gSink uint64 // defeats dead code elimination of computed values
 var gCsv = false
 var gWireDir = "../../testdata/wire"
 var failed = false
+
+// ---- CSV v2 (BENCH-STANDARD.md §5.1) ----
+// Rows are buffered and emitted at exit so every row carries the corpus_id
+// (§1.6): FNV-1a-64 over the goldens THIS RUN actually loaded — for each file
+// in sorted basename order, the basename bytes, a 0x00 byte, the contents.
+// The per-runner constants: family gen (these are the generated-code
+// benchmarks), linkage pkg (the harness lives in its own package against the
+// serialize.go module — same-process Go packages), checks always (the
+// runtime keeps bounds checks, range validation and the sticky error check
+// in every build by design), opt default (Go has no optimization levels),
+// inline unknown until the verdict pass (§4.2) backfills it.
+const csvSuffix = "gen,pkg,always,default,unknown"
+
+var gCsvRows []string
+var gGoldensLoaded = map[string][]byte{}
+
+func fnv1a64(h uint64, data []byte) uint64 {
+	for _, b := range data {
+		h ^= uint64(b)
+		h *= 0x100000001b3
+	}
+	return h
+}
+
+func corpusID() string {
+	names := make([]string, 0, len(gGoldensLoaded))
+	for name := range gGoldensLoaded {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	h := uint64(0xcbf29ce484222325)
+	for _, name := range names {
+		h = fnv1a64(h, []byte(name))
+		h = fnv1a64(h, []byte{0})
+		h = fnv1a64(h, gGoldensLoaded[name])
+	}
+	return fmt.Sprintf("%016x", h)
+}
+
+func flushCsv() {
+	if !gCsv {
+		return
+	}
+	id := corpusID()
+	for _, row := range gCsvRows {
+		fmt.Printf("%s,%s,%s\n", row, id, csvSuffix)
+	}
+}
 
 // benchRng is the LCG every runner must use (Knuth MMIX, as in serialize bench.cpp).
 func benchRng(rng uint64) uint64 {
@@ -67,6 +118,7 @@ func checkGolden(name string, data []byte) bool {
 		fmt.Fprintf(os.Stderr, "missing wire golden %s — run from bench/go (or pass --wire-dir)\n", path)
 		return false
 	}
+	gGoldensLoaded[name+".bin"] = expected
 	if !bytes.Equal(expected, data) {
 		fmt.Fprintf(os.Stderr, "WIRE GOLDEN MISMATCH: %s (%d golden vs %d actual bytes) — refusing to bench code that does not match the corpus\n",
 			name, len(expected), len(data))
@@ -98,8 +150,8 @@ func report(bench, path string, iters int64, bytesPerOp int64, s runStats) {
 	fmt.Fprintf(os.Stderr, "%-18s %-5s %10.2f M msg/s %10.1f MB/s   (min %.2f, max %.2f, spread %.1f%%)\n",
 		bench, path, s.median/1e6, mbps, s.min/1e6, s.max/1e6, s.spread)
 	if gCsv {
-		fmt.Printf("go,%s,%s,%d,%d,%d,%.0f,%.0f,%.0f,%.2f,%.2f\n",
-			bench, path, iters, bytesPerOp, NumRuns, s.median, s.min, s.max, mbps, s.spread)
+		gCsvRows = append(gCsvRows, fmt.Sprintf("go,%s,%s,%d,%d,%d,%.0f,%.0f,%.0f,%.2f,%.2f",
+			bench, path, iters, bytesPerOp, gNumRuns, s.median, s.min, s.max, mbps, s.spread))
 	}
 }
 
@@ -164,12 +216,12 @@ func benchMessage[T any](name, golden string, iters int64, pinned T,
 		}
 	}
 
-	writeRates := make([]float64, NumRuns)
-	readRates := make([]float64, NumRuns)
+	writeRates := make([]float64, gNumRuns)
+	readRates := make([]float64, gNumRuns)
 
 	// write path: 1 warmup + NumRuns measured (stream reused via Reset — the
 	// runtime's documented no-allocation path)
-	for run := -1; run < NumRuns; run++ {
+	for run := -1; run < gNumRuns; run++ {
 		start := time.Now()
 		for i := int64(0); i < iters; i++ {
 			rng = benchRng(rng)
@@ -198,7 +250,7 @@ func benchMessage[T any](name, golden string, iters int64, pinned T,
 	// fields are fixed across variants, so reuse decodes identically.
 	var out T
 	rs := serialize.NewReadStream(gVariants[0][:bytesPerOp])
-	for run := -1; run < NumRuns; run++ {
+	for run := -1; run < gNumRuns; run++ {
 		start := time.Now()
 		for i := int64(0); i < iters; i++ {
 			rs.Reset(gVariants[i&(NumVariants-1)][:bytesPerOp])
@@ -589,14 +641,14 @@ func benchBatch() {
 	const passes = int64(BatchPasses)
 	totalMsgs := passes * NumBatchMessages
 
-	writeRates := make([]float64, NumRuns)
-	readRates := make([]float64, NumRuns)
+	writeRates := make([]float64, gNumRuns)
+	readRates := make([]float64, gNumRuns)
 	rng := uint64(999)
 
 	// write path: whole batch per pass; one message mutates per pass so the
 	// batch is never loop-invariant
 	ws := serialize.NewWriteStream(batchBuffer)
-	for run := -1; run < NumRuns; run++ {
+	for run := -1; run < gNumRuns; run++ {
 		start := time.Now()
 		for pass := int64(0); pass < passes; pass++ {
 			rng = benchRng(rng)
@@ -632,7 +684,7 @@ func benchBatch() {
 	// reads land in pre-allocated storage — no heap per message
 	var storage example.MessageStorage
 	rs := serialize.NewReadStream(batchBuffer[:batchBytes])
-	for run := -1; run < NumRuns; run++ {
+	for run := -1; run < gNumRuns; run++ {
 		start := time.Now()
 		for pass := int64(0); pass < passes; pass++ {
 			rs.Reset(batchBuffer[:batchBytes])
@@ -725,8 +777,18 @@ func main() {
 		case args[i] == "--wire-dir" && i+1 < len(args):
 			i++
 			gWireDir = args[i]
+		case args[i] == "--round" && i+1 < len(args):
+			// §2.4: one warmup + one measured run of every benchmark, then
+			// exit. K only identifies the round to the interleaved driver,
+			// which aggregates max/median/min/spread across rounds itself.
+			i++
+			if k, err := strconv.Atoi(args[i]); err != nil || k < 0 {
+				fmt.Fprintf(os.Stderr, "--round takes a non-negative integer, got %q\n", args[i])
+				os.Exit(1)
+			}
+			gNumRuns = 1
 		default:
-			fmt.Fprintf(os.Stderr, "usage: %s [--csv] [--wire-dir <dir>]\n", os.Args[0])
+			fmt.Fprintf(os.Stderr, "usage: %s [--csv] [--round K] [--wire-dir <dir>]\n", os.Args[0])
 			os.Exit(1)
 		}
 	}
@@ -752,6 +814,8 @@ func main() {
 	benchMessage("testdata", "testdata", 1000000, pinTestData(), example.WriteTestData, example.ReadTestData, varyTestData)
 
 	benchBatch()
+
+	flushCsv() // rows carry the corpus_id of the goldens this run loaded
 
 	if failed {
 		fmt.Fprintf(os.Stderr, "BENCH FAILED\n")
