@@ -28,9 +28,12 @@ func MaxBytes(bits int64) int64 {
 	return (bytes + 7) / 8 * 8
 }
 
-// CompressedFloatBits replicates serialize_compressed_float's width
-// derivation exactly (float32 arithmetic, the clamp, the ceil).
-func CompressedFloatBits(fmin, fmax, res float64) int64 {
+// CompressedFloatParams replicates serialize_compressed_float's parameter
+// derivation exactly (float32 arithmetic, the clamp, the ceil): the step count
+// the writer quantizes onto, and the wire width that carries it. One
+// implementation, so the widths the backends advertise and the bytes the data
+// compiler packs cannot drift apart.
+func CompressedFloatParams(fmin, fmax, res float64) (maxIntegerValue uint64, wireBits int64) {
 	delta := float32(fmax) - float32(fmin)
 	values := delta / float32(res)
 	if !(values >= 1.0) { // the runtime's own form — it also catches NaN
@@ -39,8 +42,14 @@ func CompressedFloatBits(fmin, fmax, res float64) int64 {
 	if values > 4294967040.0 {
 		values = 4294967040.0
 	}
-	maxIntegerValue := uint64(math.Ceil(float64(values)))
-	return int64(bits.Len64(maxIntegerValue))
+	maxIntegerValue = uint64(math.Ceil(float64(values)))
+	return maxIntegerValue, int64(bits.Len64(maxIntegerValue))
+}
+
+// CompressedFloatBits is the wire width alone.
+func CompressedFloatBits(fmin, fmax, res float64) int64 {
+	_, wireBits := CompressedFloatParams(fmin, fmax, res)
+	return wireBits
 }
 
 // MaxBitsField is one field's worst-case wire bits, alignment points counted
@@ -334,7 +343,7 @@ func FileDeps(u *Unit) map[string]map[string]bool {
 				}
 				// EVERY expression a backend can render symbolically is a
 				// dependency edge. IntMinExpr/IntMaxExpr were missing here
-				// while all four backends rendered them symbolically, so a
+				// while every backend rendered them symbolically, so a
 				// range bound naming a constant in another file was an
 				// UNTRACKED edge: the topo order this graph feeds then chose
 				// a dispatch owner that could not include cleanly (mutual

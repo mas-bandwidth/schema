@@ -171,26 +171,31 @@ func (e *Encoder) encodeScalar(w *bitWriter, f *ir.Field, val any, fpath string)
 		return nil
 
 	case ir.TInt:
-		if f.Type.Width == 128 {
-			return fmt.Errorf("%s: int128/uint128 packing is not implemented (nothing in the config corpus uses it)", fpath)
-		}
 		iv, err := intValue(val, f, fpath)
 		if err != nil {
 			return err
 		}
 		if f.HasIntRange {
-			if iv.Cmp(f.IntMin) < 0 || iv.Cmp(f.IntMax) > 0 {
-				if !e.ClampBounds {
-					return fmt.Errorf("%s: %s outside wire range [%s, %s]", fpath, iv, f.IntMin, f.IntMax)
-				}
-				clamped := f.IntMax
-				if iv.Cmp(f.IntMin) < 0 {
-					clamped = f.IntMin
-				}
-				e.warnf("%s: %s outside wire range [%s, %s] — CLAMPED to %s (the historical LevelInfo semantics; fix the data)", fpath, iv, f.IntMin, f.IntMax, clamped)
-				iv = clamped
+			iv, err = e.boundInt(iv, f.IntMin, f.IntMax, fpath)
+			if err != nil {
+				return err
 			}
-			w.writeBits(new(big.Int).Sub(iv, f.IntMin).Uint64(), ir.BitsRequired(f.IntMin, f.IntMax))
+			// value - min, unsigned, in bits_required(min, max) bits — one law
+			// at every width. A 128-bit range is the same encoding needing more
+			// than one 32-bit group, and where it fits 64 bits the bytes ARE
+			// serialize_int64's over the same bounds (SPEC §4.3, STANDARD.md).
+			w.writeBigBits(new(big.Int).Sub(iv, f.IntMin), ir.BitsRequired(f.IntMin, f.IntMax))
+			return nil
+		}
+		if f.Type.Width == 128 {
+			// uint128 is the raw field: 128 bits, the low 64-bit half first —
+			// which is what LSB-first bit order writes (SPEC §4.3). Bare
+			// int128 does not exist; the checker refuses it, and a ranged
+			// uint128 took the branch above.
+			if iv.Sign() < 0 || iv.BitLen() > 128 {
+				return fmt.Errorf("%s: %s does not fit uint128", fpath, iv)
+			}
+			w.writeBigBits(iv, 128)
 			return nil
 		}
 		w.writeBits(twosComplement(iv, f.Type.Width), int64(f.Type.Width))
@@ -208,12 +213,33 @@ func (e *Encoder) encodeScalar(w *bitWriter, f *ir.Field, val any, fpath string)
 		return nil
 
 	case ir.TFloat32:
-		if f.HasFloatRange {
-			return fmt.Errorf("%s: compressed-float packing is not implemented (nothing in the config corpus uses it)", fpath)
-		}
 		fv, err := floatValue(val, f, fpath)
 		if err != nil {
 			return err
+		}
+		if f.HasFloatRange {
+			// serialize_compressed_float's writer, arithmetic for arithmetic:
+			// every step is float32 because every runtime narrows the triple to
+			// float32 at the call, and the quantized integer must match theirs
+			// bit for bit (SPEC §4.3). Out-of-range values CLAMP here rather
+			// than refuse — the runtimes clamp, and the wire this encoder
+			// speaks for is theirs — but the clamp is a data problem, so it
+			// warns.
+			maxIntegerValue, wireBits := ir.CompressedFloatParams(f.FMin, f.FMax, f.Resolution)
+			fmin, fmax := float32(f.FMin), float32(f.FMax)
+			normalized := (float32(fv) - fmin) / (fmax - fmin)
+			// the !>= / !<= form is the runtime's own: it forces NaN into range
+			// instead of letting it reach the integer conversion
+			if !(normalized >= 0.0) {
+				normalized = 0.0
+				e.warnf("%s: %v is below the declared float range [%v, %v] — CLAMPED (serialize_compressed_float's own write behaviour; fix the data)", fpath, fv, f.FMin, f.FMax)
+			} else if !(normalized <= 1.0) {
+				normalized = 1.0
+				e.warnf("%s: %v is above the declared float range [%v, %v] — CLAMPED (serialize_compressed_float's own write behaviour; fix the data)", fpath, fv, f.FMin, f.FMax)
+			}
+			quantized := uint64(math.Floor(float64(normalized*float32(maxIntegerValue) + 0.5)))
+			w.writeBits(quantized, wireBits)
+			return nil
 		}
 		w.writeBits(uint64(math.Float32bits(float32(fv))), 32)
 		return nil
@@ -265,7 +291,24 @@ func (e *Encoder) encodeScalar(w *bitWriter, f *ir.Field, val any, fpath string)
 		return nil
 
 	case ir.TFixed:
-		return fmt.Errorf("%s: fixed-point packing is not implemented (nothing in the config corpus uses it)", fpath)
+		if !f.HasIntRange {
+			// only a [local] field reaches no wire, and no [local] field is
+			// ever encoded — so this is a compiler bug, not a data error
+			return fmt.Errorf("%s: fixed(%d, %d) carries no [min, max] — the whole-unit bounds are part of the wire format (SPEC §4.3)",
+				fpath, f.Type.IntBits, f.Type.FracBits)
+		}
+		raw, err := e.fixedRaw(f, val, fpath)
+		if err != nil {
+			return err
+		}
+		// the raw (scaled) bounds are the whole-unit bounds shifted by F, and
+		// the wire is the raw offset in bitlen(rawMax - rawMin) bits — which is
+		// bitlen(max - min) + F, the width the backends advertise (SPEC §4.3,
+		// STANDARD.md fixed). F = 0 makes this literally a ranged integer.
+		rawMin := new(big.Int).Lsh(f.IntMin, uint(f.Type.FracBits))
+		rawMax := new(big.Int).Lsh(f.IntMax, uint(f.Type.FracBits))
+		w.writeBigBits(new(big.Int).Sub(raw, rawMin), ir.BitsRequired(rawMin, rawMax))
+		return nil
 
 	case ir.TNamed:
 		switch ref := f.Type.Ref.(type) {
@@ -295,6 +338,110 @@ func (e *Encoder) encodeScalar(w *bitWriter, f *ir.Field, val any, fpath string)
 		}
 	}
 	return fmt.Errorf("%s: unhandled field kind", fpath)
+}
+
+// boundInt enforces a declared wire range, honouring ClampBounds: strict
+// refusal by default, clamp-with-a-warning for a collection that opts into the
+// historical LevelInfo semantics.
+func (e *Encoder) boundInt(v, min, max *big.Int, fpath string) (*big.Int, error) {
+	if v.Cmp(min) >= 0 && v.Cmp(max) <= 0 {
+		return v, nil
+	}
+	if !e.ClampBounds {
+		return nil, fmt.Errorf("%s: %s outside wire range [%s, %s]", fpath, v, min, max)
+	}
+	clamped := max
+	if v.Cmp(min) < 0 {
+		clamped = min
+	}
+	e.warnf("%s: %s outside wire range [%s, %s] — CLAMPED to %s (the historical LevelInfo semantics; fix the data)", fpath, v, min, max, clamped)
+	return clamped, nil
+}
+
+// fixedRaw resolves a fixed(I, F) field's JSON value to its RAW scaled
+// integer — the value the wire carries an offset of.
+//
+// A JSON value is in WHOLE UNITS, the same domain as the field's [min, max]
+// and its specified default (SPEC §4.6: "declared in WHOLE UNITS ... so no
+// raw/units confusion is possible"). Units × 2^F is rounded to nearest, half
+// away from zero — the family's rounding convention, the one the generated
+// shallow-narrowing Quantize uses. A DEFAULT must scale exactly and the
+// checker enforces that, because a default is source text whose author can
+// always pick a representable value; data is data, and a fixed field's Q
+// format IS its declared precision, exactly as float32 storage is a float
+// field's.
+func (e *Encoder) fixedRaw(f *ir.Field, val any, fpath string) (*big.Int, error) {
+	if val == nil && f.HasDefault && f.DefInt != nil {
+		return f.DefInt, nil // already the raw scaled integer, already in range
+	}
+	units, err := ratValue(val, fpath)
+	if err != nil {
+		return nil, err
+	}
+	units, err = e.boundFixedUnits(units, f, fpath)
+	if err != nil {
+		return nil, err
+	}
+	scaled := new(big.Rat).Mul(units, new(big.Rat).SetInt(new(big.Int).Lsh(big.NewInt(1), uint(f.Type.FracBits))))
+	return ratRoundHalfAway(scaled), nil
+}
+
+// boundFixedUnits range-checks a fixed value in the whole-unit domain, where
+// the bounds are written and where an error message means something. Checking
+// before the scaling is sound: min and max scale to the raw bounds exactly, so
+// a value inside the unit range cannot round outside the raw range.
+func (e *Encoder) boundFixedUnits(v *big.Rat, f *ir.Field, fpath string) (*big.Rat, error) {
+	min := new(big.Rat).SetInt(f.IntMin)
+	max := new(big.Rat).SetInt(f.IntMax)
+	if v.Cmp(min) >= 0 && v.Cmp(max) <= 0 {
+		return v, nil
+	}
+	if !e.ClampBounds {
+		return nil, fmt.Errorf("%s: %s outside wire range [%s, %s] (whole units)", fpath, v.FloatString(6), f.IntMin, f.IntMax)
+	}
+	clamped := max
+	if v.Cmp(min) < 0 {
+		clamped = min
+	}
+	e.warnf("%s: %s outside wire range [%s, %s] (whole units) — CLAMPED to %s (the historical LevelInfo semantics; fix the data)", fpath, v.FloatString(6), f.IntMin, f.IntMax, clamped.FloatString(6))
+	return clamped, nil
+}
+
+// ratRoundHalfAway rounds a rational to the nearest integer, halves away from
+// zero: floor((2|n| + d) / 2d), sign restored.
+func ratRoundHalfAway(r *big.Rat) *big.Int {
+	num := new(big.Int).Abs(r.Num())
+	den := r.Denom()
+	q := new(big.Int).Lsh(num, 1)
+	q.Add(q, den)
+	q.Div(q, new(big.Int).Lsh(den, 1))
+	if r.Sign() < 0 {
+		q.Neg(q)
+	}
+	return q
+}
+
+// ratValue reads a JSON number EXACTLY: json.Number carries the literal text,
+// so a decimal that a float64 could only approximate still scales exactly onto
+// the fixed-point grid. float64 is accepted for programmatic callers.
+func ratValue(val any, fpath string) (*big.Rat, error) {
+	switch v := val.(type) {
+	case nil:
+		return new(big.Rat), nil
+	case json.Number:
+		r, ok := new(big.Rat).SetString(v.String())
+		if !ok {
+			return nil, fmt.Errorf("%s: %s is not a number", fpath, v)
+		}
+		return r, nil
+	case float64:
+		r := new(big.Rat).SetFloat64(v)
+		if r == nil {
+			return nil, fmt.Errorf("%s: %v is not a finite number", fpath, v)
+		}
+		return r, nil
+	}
+	return nil, fmt.Errorf("%s: expected JSON number, got %T", fpath, val)
 }
 
 // twosComplement maps a big.Int onto width bits, negative values in two's
