@@ -1,0 +1,201 @@
+# schema bench results
+# date: 2026-08-14T18:59:38Z
+# host: macbook  arch: arm64  os: Darwin 25.5.0
+# cpu: Apple M2
+# build: Release
+# cpp compiler: Apple clang version 21.0.0 (clang-2100.1.1.101)
+# cpp flags: -O3 -DNDEBUG -DSERIALIZE_RELEASE -DBENCH_OPT="O3" -std=c++17 -Wall -Wextra -Werror -ffp-contract=off -fno-rtti -Igenerated/cpp -Itest -I../serialize
+# c compiler: Apple clang version 21.0.0 (clang-2100.1.1.101)
+# c flags: -O3 -DNDEBUG -DBENCH_OPT="O3" -std=c99 -Wall -Wextra -Werror -Igenerated/c -I../serialize.c (serialize.c compiled in, no LTO)
+# go: go version go1.26.5 darwin/arm64 (go run, default optimized build)
+# rust: cargo 1.97.1 (c980f4866 2026-06-30); rustc 1.97.1 (8bab26f4f 2026-07-14) (cargo run --release: opt-level 3, no LTO)
+# dotnet: 10.0.302 (dotnet run -c Release, workstation GC)
+# pinning: none
+# noise: stride-before baseline; machine idle; items 1-4 landed
+# schema commit: 4493a48
+# serialize commit: f8eb71f (degenerate-range-int64-fixed)
+# serialize.c commit: de823b8 (main)
+# serialize.go commit: 99ddc82 (degenerate-range-compat-and-docs)
+# serialize.rs commit: 9fce5bc (docs-state-anchors)
+# serialize.cs commit: d3d34c9 (main)
+# rounds: 3   interleaved: yes
+# langs: cpp c go rust cs
+# load_start: 1.32 1.27 1.34
+# load_end: 1.74 1.81 1.70
+# load_max: 2.02
+# core_busy_pct: n/a
+# foreign_procs: 2
+# control_start_median: 103606016   control_end_median: 103539176
+# control_delta_pct: 0.1   window: OK
+# corpus_id: 6b118770d85af4f6
+lang,bench,path,iters,bytes_per_op,runs,median_msgs_per_sec,min_msgs_per_sec,max_msgs_per_sec,median_mb_per_sec,spread_pct,corpus_id,family,linkage,checks,opt,inline
+cpp,rigidbody_moving,write,24000000,105,3,58966719,58966610,59001564,5904.68,0.06,6b118770d85af4f6,gen,hdr,removed,O3,full
+cpp,rigidbody_moving,read,24000000,105,3,91187128,83867699,91575543,9131.10,8.45,6b118770d85af4f6,gen,hdr,removed,O3,full
+cpp,rigidbody_at_rest,write,32000000,57,3,105420233,104331652,105680099,5730.58,1.28,6b118770d85af4f6,gen,hdr,removed,O3,full
+cpp,rigidbody_at_rest,read,32000000,57,3,127394283,127368760,133667270,6925.08,4.94,6b118770d85af4f6,gen,hdr,removed,O3,full
+cpp,chat,write,48000000,13,3,96108226,96078697,96154344,1191.53,0.08,6b118770d85af4f6,gen,hdr,removed,O3,full
+cpp,chat,read,48000000,13,3,135703831,134687850,137748277,1682.42,2.26,6b118770d85af4f6,gen,hdr,removed,O3,full
+cpp,test,write,192000000,6,3,765195558,764429098,765297227,4378.48,0.11,6b118770d85af4f6,gen,hdr,removed,O3,full
+cpp,test,read,192000000,6,3,740029476,739748749,752274823,4234.48,1.69,6b118770d85af4f6,gen,hdr,removed,O3,full
+cpp,inputpacket,write,16000000,61,3,66027211,65971798,66039293,3841.08,0.10,6b118770d85af4f6,gen,hdr,removed,O3,full
+cpp,inputpacket,read,16000000,61,3,47514726,47329676,47533465,2764.13,0.43,6b118770d85af4f6,gen,hdr,removed,O3,full
+cpp,shipcreate,write,32000000,28,3,99867468,98176123,99931804,2666.75,1.76,6b118770d85af4f6,gen,hdr,removed,O3,full
+cpp,shipcreate,read,32000000,28,3,112617402,112511053,114807662,3007.21,2.04,6b118770d85af4f6,gen,hdr,removed,O3,full
+cpp,ship_shallow,write,32000000,28,3,121384389,121356155,121678016,3241.31,0.27,6b118770d85af4f6,gen,hdr,removed,O3,full
+cpp,ship_shallow,read,32000000,28,3,122976788,120016502,124091911,3283.83,3.31,6b118770d85af4f6,gen,hdr,removed,O3,full
+cpp,probe_header,write,256000000,10,3,1066208344,1054188987,1067048470,10168.16,1.21,6b118770d85af4f6,gen,hdr,removed,O3,full
+cpp,probe_header,read,256000000,10,3,920420068,917599724,920461985,8777.81,0.31,6b118770d85af4f6,gen,hdr,removed,O3,full
+cpp,probebits,write,128000000,26,3,188191913,188107883,188370939,4666.32,0.14,6b118770d85af4f6,gen,hdr,removed,O3,full
+cpp,probebits,read,128000000,26,3,535007926,534335118,552231143,13265.81,3.35,6b118770d85af4f6,gen,hdr,removed,O3,full
+cpp,probearray,write,20000000,47,3,73902399,73883175,73909056,3312.50,0.04,6b118770d85af4f6,gen,hdr,removed,O3,full
+cpp,probearray,read,20000000,47,3,69847025,69277205,70931796,3130.73,2.37,6b118770d85af4f6,gen,hdr,removed,O3,full
+cpp,testdata,write,8000000,92,3,27933018,27911951,27933558,2450.79,0.08,6b118770d85af4f6,gen,hdr,removed,O3,partial:2
+cpp,testdata,read,8000000,92,3,26335642,26114476,26340007,2310.64,0.86,6b118770d85af4f6,gen,hdr,removed,O3,partial:6
+cpp,message_batch,write,26214400,25,3,86506976,69864910,91161418,2062.49,24.62,6b118770d85af4f6,gen,hdr,removed,O3,partial:2
+cpp,message_batch,read,26214400,25,3,77672910,77327549,78770602,1851.87,1.86,6b118770d85af4f6,gen,hdr,removed,O3,full
+cpp,bench_packet,write,32000000,49,3,51940533,51916619,51971362,2427.18,0.11,6b118770d85af4f6,rt,hdr,removed,O3,partial:6
+cpp,bench_packet,read,32000000,49,3,112280012,111314882,112469450,5246.85,1.03,6b118770d85af4f6,rt,hdr,removed,O3,full
+cpp,bench_ints,write,40000000,14,3,115570459,115489236,115620080,1543.03,0.11,6b118770d85af4f6,rt,hdr,removed,O3,partial:3
+cpp,bench_ints,read,40000000,14,3,180652834,176953437,182033830,2411.98,2.81,6b118770d85af4f6,rt,hdr,removed,O3,full
+cpp,bench_bits,write,48000000,20,3,122212297,122201161,122554130,2331.01,0.29,6b118770d85af4f6,rt,hdr,removed,O3,partial:2
+cpp,bench_bits,read,48000000,20,3,174021518,173894299,183604442,3319.20,5.58,6b118770d85af4f6,rt,hdr,removed,O3,full
+cpp,bench_mixed,write,40000000,21,3,77864470,77859178,77911296,1559.40,0.07,6b118770d85af4f6,rt,hdr,removed,O3,partial:5
+cpp,bench_mixed,read,40000000,21,3,160735068,148475344,169386585,3219.07,13.01,6b118770d85af4f6,rt,hdr,removed,O3,full
+cpp,bitpacker,write,24576,65518,3,61867,60643,62104,3865.63,2.36,6b118770d85af4f6,bits,hdr,removed,O3,full
+cpp,bitpacker,read,24576,65518,3,93425,93410,96059,5837.46,2.84,6b118770d85af4f6,bits,hdr,removed,O3,full
+c,rigidbody_moving,write,24000000,105,3,39960838,39604026,40110571,4001.51,1.27,6b118770d85af4f6,gen,hdr+tu,contract,O3,full
+c,rigidbody_moving,read,24000000,105,3,48099084,44343850,48213780,4816.44,8.05,6b118770d85af4f6,gen,hdr+tu,contract,O3,full
+c,rigidbody_at_rest,write,32000000,57,3,69251328,69248781,69274265,3764.46,0.04,6b118770d85af4f6,gen,hdr+tu,contract,O3,full
+c,rigidbody_at_rest,read,32000000,57,3,97136300,95002568,97151341,5280.27,2.21,6b118770d85af4f6,gen,hdr+tu,contract,O3,full
+c,chat,write,48000000,13,3,62340982,62292601,62383843,772.89,0.15,6b118770d85af4f6,gen,hdr+tu,contract,O3,partial:1
+c,chat,read,48000000,13,3,189833619,189729320,190217284,2353.51,0.26,6b118770d85af4f6,gen,hdr+tu,contract,O3,partial:1
+c,test,write,192000000,6,3,238633525,238467252,238703245,1365.47,0.10,6b118770d85af4f6,gen,hdr+tu,contract,O3,full
+c,test,read,192000000,6,3,589457914,585647964,601403902,3372.91,2.67,6b118770d85af4f6,gen,hdr+tu,contract,O3,full
+c,inputpacket,write,16000000,61,3,34085196,34033936,34128819,1982.88,0.28,6b118770d85af4f6,gen,hdr+tu,contract,O3,partial:4
+c,inputpacket,read,16000000,61,3,33685416,31776926,33865587,1959.62,6.20,6b118770d85af4f6,gen,hdr+tu,contract,O3,partial:4
+c,shipcreate,write,32000000,28,3,55638337,55508720,55678512,1485.70,0.31,6b118770d85af4f6,gen,hdr+tu,contract,O3,partial:4
+c,shipcreate,read,32000000,28,3,73624826,73385070,73655669,1965.99,0.37,6b118770d85af4f6,gen,hdr+tu,contract,O3,partial:1
+c,ship_shallow,write,32000000,28,3,46677850,46486425,46702920,1246.43,0.46,6b118770d85af4f6,gen,hdr+tu,contract,O3,partial:11
+c,ship_shallow,read,32000000,28,3,50492619,50059602,50517967,1348.30,0.91,6b118770d85af4f6,gen,hdr+tu,contract,O3,partial:9
+c,probe_header,write,256000000,10,3,216363504,216188827,216681606,2063.40,0.23,6b118770d85af4f6,gen,hdr+tu,contract,O3,full
+c,probe_header,read,256000000,10,3,230628761,222372208,233931809,2199.45,5.01,6b118770d85af4f6,gen,hdr+tu,contract,O3,full
+c,probebits,write,128000000,26,3,128521411,128485805,128552131,3186.76,0.05,6b118770d85af4f6,gen,hdr+tu,contract,O3,full
+c,probebits,read,128000000,26,3,182577799,181278210,184100346,4527.11,1.55,6b118770d85af4f6,gen,hdr+tu,contract,O3,full
+c,probearray,write,20000000,47,3,33744339,33352511,33763480,1512.51,1.22,6b118770d85af4f6,gen,hdr+tu,contract,O3,partial:1
+c,probearray,read,20000000,47,3,41425107,41392870,41530999,1856.78,0.33,6b118770d85af4f6,gen,hdr+tu,contract,O3,partial:1
+c,testdata,write,8000000,92,3,9519594,9514929,9546585,835.23,0.33,6b118770d85af4f6,gen,hdr+tu,contract,O3,partial:36
+c,testdata,read,8000000,92,3,11739879,11724893,12350882,1030.03,5.33,6b118770d85af4f6,gen,hdr+tu,contract,O3,partial:34
+c,message_batch,write,26214400,25,3,73203315,68855525,73868558,1745.30,6.85,6b118770d85af4f6,gen,hdr+tu,contract,O3,partial:2
+c,message_batch,read,26214400,25,3,88012678,87821612,92272710,2098.39,5.06,6b118770d85af4f6,gen,hdr+tu,contract,O3,partial:2
+c,bench_packet,write,32000000,49,3,59163065,58969001,59200497,2764.69,0.39,6b118770d85af4f6,rt,hdr+tu,contract,O3,partial:3
+c,bench_packet,read,32000000,49,3,78485427,78452909,78544184,3667.63,0.12,6b118770d85af4f6,rt,hdr+tu,contract,O3,partial:3
+c,bench_ints,write,40000000,14,3,119557160,119533937,119854856,1596.26,0.27,6b118770d85af4f6,rt,hdr+tu,contract,O3,full
+c,bench_ints,read,40000000,14,3,122752479,122706538,122787145,1638.92,0.07,6b118770d85af4f6,rt,hdr+tu,contract,O3,full
+c,bench_bits,write,48000000,20,3,117428894,117286288,117674747,2239.78,0.33,6b118770d85af4f6,rt,hdr+tu,contract,O3,full
+c,bench_bits,read,48000000,20,3,158698146,158532517,158794223,3026.93,0.16,6b118770d85af4f6,rt,hdr+tu,contract,O3,full
+c,bench_mixed,write,40000000,21,3,90669846,90162179,90738544,1815.86,0.64,6b118770d85af4f6,rt,hdr+tu,contract,O3,partial:2
+c,bench_mixed,read,40000000,21,3,99960765,99957268,99964513,2001.93,0.01,6b118770d85af4f6,rt,hdr+tu,contract,O3,partial:2
+c,bitpacker,write,24576,65518,3,33271,33259,34112,2078.87,2.56,6b118770d85af4f6,bits,hdr+tu,contract,O3,full
+c,bitpacker,read,24576,65518,3,37787,37783,38813,2361.04,2.73,6b118770d85af4f6,bits,hdr+tu,contract,O3,full
+rust,rigidbody_moving,write,24000000,105,3,26792037,26762169,26803597,2682.84,0.15,6b118770d85af4f6,gen,crate,always,O3,partial:12
+rust,rigidbody_moving,read,24000000,105,3,48195674,48192807,48314860,4826.11,0.25,6b118770d85af4f6,gen,crate,always,O3,full
+rust,rigidbody_at_rest,write,32000000,57,3,52689504,52653958,52692519,2864.17,0.07,6b118770d85af4f6,gen,crate,always,O3,partial:12
+rust,rigidbody_at_rest,read,32000000,57,3,91223677,90045747,91325493,4958.87,1.40,6b118770d85af4f6,gen,crate,always,O3,full
+rust,chat,write,48000000,13,3,67991534,67981062,67993536,842.94,0.02,6b118770d85af4f6,gen,crate,always,O3,partial:1
+rust,chat,read,48000000,13,3,97028461,96673046,97287996,1202.94,0.63,6b118770d85af4f6,gen,crate,always,O3,full
+rust,test,write,192000000,6,3,234912912,234538896,235606118,1344.18,0.45,6b118770d85af4f6,gen,crate,always,O3,full
+rust,test,read,192000000,6,3,217146558,215791225,217582930,1242.52,0.83,6b118770d85af4f6,gen,crate,always,O3,full
+rust,inputpacket,write,16000000,61,3,40814058,40798195,40822258,2374.32,0.06,6b118770d85af4f6,gen,crate,always,O3,partial:2
+rust,inputpacket,read,16000000,61,3,19846766,19827399,19934479,1154.57,0.54,6b118770d85af4f6,gen,crate,always,O3,partial:9
+rust,shipcreate,write,32000000,28,3,66547246,66536147,66559720,1777.00,0.04,6b118770d85af4f6,gen,crate,always,O3,partial:3
+rust,shipcreate,read,32000000,28,3,48717274,47873682,53580881,1300.89,11.71,6b118770d85af4f6,gen,crate,always,O3,partial:4
+rust,ship_shallow,write,32000000,28,3,82447284,82083493,82558701,2201.58,0.58,6b118770d85af4f6,gen,crate,always,O3,full
+rust,ship_shallow,read,32000000,28,3,39910206,39796897,39994195,1065.72,0.49,6b118770d85af4f6,gen,crate,always,O3,partial:11
+rust,probe_header,write,256000000,10,3,188733280,187961495,188751742,1799.90,0.42,6b118770d85af4f6,gen,crate,always,O3,partial:1
+rust,probe_header,read,256000000,10,3,162239527,161949701,164575913,1547.24,1.62,6b118770d85af4f6,gen,crate,always,O3,partial:1
+rust,probebits,write,128000000,26,3,100979206,100938813,100980925,2503.83,0.04,6b118770d85af4f6,gen,crate,always,O3,partial:3
+rust,probebits,read,128000000,26,3,132565066,132214736,133614614,3287.02,1.06,6b118770d85af4f6,gen,crate,always,O3,partial:1
+rust,probearray,write,20000000,47,3,35681074,35669924,35713943,1599.32,0.12,6b118770d85af4f6,gen,crate,always,O3,partial:1
+rust,probearray,read,20000000,47,3,71077142,70843376,71377534,3185.87,0.75,6b118770d85af4f6,gen,crate,always,O3,full
+rust,testdata,write,8000000,92,3,16531341,16528348,16532926,1450.43,0.03,6b118770d85af4f6,gen,crate,always,O3,partial:20
+rust,testdata,read,8000000,92,3,16105915,16051225,16109595,1413.10,0.36,6b118770d85af4f6,gen,crate,always,O3,partial:35
+rust,message_batch,write,26214400,25,3,68047756,65931410,68972369,1622.38,4.47,6b118770d85af4f6,gen,crate,always,O3,partial:3
+rust,message_batch,read,26214400,25,3,48897454,48299232,49415105,1165.81,2.28,6b118770d85af4f6,gen,crate,always,O3,full
+rust,bench_packet,write,32000000,49,3,63974645,63923590,63976846,2989.54,0.08,6b118770d85af4f6,rt,crate,always,O3,partial:1
+rust,bench_packet,read,32000000,49,3,42684008,42613587,45142818,1994.63,5.93,6b118770d85af4f6,rt,crate,always,O3,partial:7
+rust,bench_ints,write,40000000,14,3,122531783,122440780,122715918,1635.98,0.22,6b118770d85af4f6,rt,crate,always,O3,full
+rust,bench_ints,read,40000000,14,3,58931129,57544170,59712458,786.82,3.68,6b118770d85af4f6,rt,crate,always,O3,partial:5
+rust,bench_bits,write,48000000,20,3,119138295,119124128,119278057,2272.38,0.13,6b118770d85af4f6,rt,crate,always,O3,full
+rust,bench_bits,read,48000000,20,3,100130274,100129717,100626689,1909.83,0.50,6b118770d85af4f6,rt,crate,always,O3,partial:1
+rust,bench_mixed,write,40000000,21,3,87491599,87491559,87495993,1752.21,0.01,6b118770d85af4f6,rt,crate,always,O3,partial:1
+rust,bench_mixed,read,40000000,21,3,60975881,60581717,61111737,1221.17,0.87,6b118770d85af4f6,rt,crate,always,O3,partial:4
+rust,bitpacker,write,24576,65518,3,32926,32631,33807,2057.31,3.57,6b118770d85af4f6,bits,crate,always,O3,full
+rust,bitpacker,read,24576,65518,3,32639,32587,32673,2039.38,0.26,6b118770d85af4f6,bits,crate,always,O3,full
+cs,rigidbody_moving,write,24000000,105,3,34550445,34407665,34583956,3459.74,0.51,6b118770d85af4f6,gen,asm,always,default,partial:2
+cs,rigidbody_moving,read,24000000,105,3,36697023,36691632,36771246,3674.69,0.22,6b118770d85af4f6,gen,asm,always,default,partial:5
+cs,rigidbody_at_rest,write,32000000,57,3,55094351,55034117,55256518,2994.90,0.40,6b118770d85af4f6,gen,asm,always,default,partial:2
+cs,rigidbody_at_rest,read,32000000,57,3,58099296,58083847,58115514,3158.24,0.05,6b118770d85af4f6,gen,asm,always,default,partial:5
+cs,chat,write,48000000,13,3,39957119,39416676,40679390,495.38,3.16,6b118770d85af4f6,gen,asm,always,default,partial:3
+cs,chat,read,48000000,13,3,79129366,79001760,79144527,981.03,0.18,6b118770d85af4f6,gen,asm,always,default,partial:4
+cs,test,write,192000000,6,3,128739549,127912227,128902844,736.65,0.77,6b118770d85af4f6,gen,asm,always,default,partial:2
+cs,test,read,192000000,6,3,151484178,151373358,151659031,866.80,0.19,6b118770d85af4f6,gen,asm,always,default,partial:3
+cs,inputpacket,write,16000000,61,3,33684586,33637203,33782336,1959.57,0.43,6b118770d85af4f6,gen,asm,always,default,partial:3
+cs,inputpacket,read,16000000,61,3,29487087,29401544,29516951,1715.39,0.39,6b118770d85af4f6,gen,asm,always,default,partial:3
+cs,shipcreate,write,32000000,28,3,53698880,53669897,53714464,1433.91,0.08,6b118770d85af4f6,gen,asm,always,default,partial:2
+cs,shipcreate,read,32000000,28,3,51135136,51033516,51144993,1365.46,0.22,6b118770d85af4f6,gen,asm,always,default,partial:3
+cs,ship_shallow,write,32000000,28,3,55980933,55962439,56008142,1494.85,0.08,6b118770d85af4f6,gen,asm,always,default,partial:2
+cs,ship_shallow,read,32000000,28,3,55706175,55670947,55905772,1487.52,0.42,6b118770d85af4f6,gen,asm,always,default,partial:3
+cs,probe_header,write,256000000,10,3,117031311,116944991,117194792,1116.10,0.21,6b118770d85af4f6,gen,asm,always,default,partial:2
+cs,probe_header,read,256000000,10,3,122354473,122170529,122442342,1166.86,0.22,6b118770d85af4f6,gen,asm,always,default,partial:3
+cs,probebits,write,128000000,26,3,90420946,90003564,90665318,2242.04,0.73,6b118770d85af4f6,gen,asm,always,default,partial:2
+cs,probebits,read,128000000,26,3,94993515,94849698,95044597,2355.41,0.21,6b118770d85af4f6,gen,asm,always,default,partial:3
+cs,probearray,write,20000000,47,3,40807307,40248057,40847087,1829.09,1.47,6b118770d85af4f6,gen,asm,always,default,partial:3
+cs,probearray,read,20000000,47,3,41864029,41849742,42174847,1876.46,0.78,6b118770d85af4f6,gen,asm,always,default,partial:3
+cs,testdata,write,8000000,92,3,14240633,14208592,14251272,1249.45,0.30,6b118770d85af4f6,gen,asm,always,default,partial:5
+cs,testdata,read,8000000,92,3,10185686,10172274,10192116,893.67,0.19,6b118770d85af4f6,gen,asm,always,default,partial:5
+cs,message_batch,write,26214400,25,3,64746497,60702418,69447049,1543.68,13.51,6b118770d85af4f6,gen,asm,always,default,partial:2
+cs,message_batch,read,26214400,25,3,44198821,42719440,45412379,1053.78,6.09,6b118770d85af4f6,gen,asm,always,default,partial:14
+cs,bench_packet,write,32000000,49,3,30266882,30076206,30311125,1414.37,0.78,6b118770d85af4f6,rt,asm,always,default,partial:9
+cs,bench_packet,read,32000000,49,3,33584613,33561460,33648957,1569.41,0.26,6b118770d85af4f6,rt,asm,always,default,partial:17
+cs,bench_ints,write,40000000,14,3,54857893,54015914,55728841,732.43,3.12,6b118770d85af4f6,rt,asm,always,default,partial:9
+cs,bench_ints,read,40000000,14,3,50233233,50059702,51232271,670.69,2.33,6b118770d85af4f6,rt,asm,always,default,partial:17
+cs,bench_bits,write,48000000,20,3,62082230,62069939,62128644,1184.12,0.09,6b118770d85af4f6,rt,asm,always,default,partial:9
+cs,bench_bits,read,48000000,20,3,59108634,58927259,59203615,1127.41,0.47,6b118770d85af4f6,rt,asm,always,default,partial:17
+cs,bench_mixed,write,40000000,21,3,40338582,40302848,40404853,807.87,0.25,6b118770d85af4f6,rt,asm,always,default,partial:9
+cs,bench_mixed,read,40000000,21,3,41754564,41081027,42191009,836.23,2.66,6b118770d85af4f6,rt,asm,always,default,partial:17
+cs,bitpacker,write,24576,65518,3,15643,15640,15644,977.42,0.03,6b118770d85af4f6,bits,asm,always,default,partial:13
+cs,bitpacker,read,24576,65518,3,15837,15832,15841,989.54,0.06,6b118770d85af4f6,bits,asm,always,default,partial:22
+go,rigidbody_moving,write,24000000,105,3,18788525,18392452,18839189,1881.40,2.38,6b118770d85af4f6,gen,pkg,always,default,partial:14
+go,rigidbody_moving,read,24000000,105,3,24686422,24547094,24709216,2471.99,0.66,6b118770d85af4f6,gen,pkg,always,default,partial:14
+go,rigidbody_at_rest,write,32000000,57,3,33085936,31572676,34088959,1798.53,7.61,6b118770d85af4f6,gen,pkg,always,default,partial:14
+go,rigidbody_at_rest,read,32000000,57,3,41936464,41935015,41983901,2279.64,0.12,6b118770d85af4f6,gen,pkg,always,default,partial:14
+go,chat,write,48000000,13,3,34699521,34675172,34755693,430.20,0.23,6b118770d85af4f6,gen,pkg,always,default,partial:2
+go,chat,read,48000000,13,3,73081413,72963261,73600061,906.05,0.87,6b118770d85af4f6,gen,pkg,always,default,partial:2
+go,test,write,192000000,6,3,109044679,109017895,109048836,623.96,0.03,6b118770d85af4f6,gen,pkg,always,default,partial:4
+go,test,read,192000000,6,3,86143650,86104767,86171533,492.92,0.08,6b118770d85af4f6,gen,pkg,always,default,partial:4
+go,inputpacket,write,16000000,61,3,16888066,16787558,16935559,982.45,0.88,6b118770d85af4f6,gen,pkg,always,default,partial:17
+go,inputpacket,read,16000000,61,3,16667839,16557367,16669843,969.64,0.67,6b118770d85af4f6,gen,pkg,always,default,partial:17
+go,shipcreate,write,32000000,28,3,32053476,32052331,32075412,855.92,0.07,6b118770d85af4f6,gen,pkg,always,default,partial:16
+go,shipcreate,read,32000000,28,3,22582764,22555409,22587693,603.02,0.14,6b118770d85af4f6,gen,pkg,always,default,partial:17
+go,ship_shallow,write,32000000,28,3,35751613,35388941,35763992,954.67,1.05,6b118770d85af4f6,gen,pkg,always,default,partial:15
+go,ship_shallow,read,32000000,28,3,26343273,26194873,26386706,703.44,0.73,6b118770d85af4f6,gen,pkg,always,default,partial:15
+go,probe_header,write,256000000,10,3,86748884,86715914,86758507,827.30,0.05,6b118770d85af4f6,gen,pkg,always,default,partial:5
+go,probe_header,read,256000000,10,3,79198907,79166353,79346139,755.30,0.23,6b118770d85af4f6,gen,pkg,always,default,partial:5
+go,probebits,write,128000000,26,3,63167658,62998292,63187111,1566.28,0.30,6b118770d85af4f6,gen,pkg,always,default,partial:5
+go,probebits,read,128000000,26,3,64143089,63955174,64176507,1590.46,0.35,6b118770d85af4f6,gen,pkg,always,default,partial:5
+go,probearray,write,20000000,47,3,20640350,20485347,20654256,925.16,0.82,6b118770d85af4f6,gen,pkg,always,default,partial:12
+go,probearray,read,20000000,47,3,17607892,17334668,17623166,789.23,1.64,6b118770d85af4f6,gen,pkg,always,default,partial:12
+go,testdata,write,8000000,92,3,9368380,9361856,9389371,821.96,0.29,6b118770d85af4f6,gen,pkg,always,default,partial:24
+go,testdata,read,8000000,92,3,10823275,10815044,10924010,949.61,1.01,6b118770d85af4f6,gen,pkg,always,default,partial:24
+go,message_batch,write,26214400,25,3,39828255,39548786,40295525,949.58,1.87,6b118770d85af4f6,gen,pkg,always,default,partial:20
+go,message_batch,read,26214400,25,3,36964201,36878233,37796175,881.30,2.48,6b118770d85af4f6,gen,pkg,always,default,partial:14
+go,bench_packet,write,32000000,49,3,27465239,27450590,27481882,1283.45,0.11,6b118770d85af4f6,rt,pkg,always,default,partial:12
+go,bench_packet,read,32000000,49,3,34232150,34215493,34370340,1599.67,0.45,6b118770d85af4f6,rt,pkg,always,default,partial:12
+go,bench_ints,write,40000000,14,3,44667368,44665306,44675319,596.37,0.02,6b118770d85af4f6,rt,pkg,always,default,partial:10
+go,bench_ints,read,40000000,14,3,39804286,39794415,39814070,531.44,0.05,6b118770d85af4f6,rt,pkg,always,default,partial:10
+go,bench_bits,write,48000000,20,3,61253424,60903008,61308382,1168.32,0.66,6b118770d85af4f6,rt,pkg,always,default,partial:8
+go,bench_bits,read,48000000,20,3,53890630,53868127,53919190,1027.88,0.09,6b118770d85af4f6,rt,pkg,always,default,partial:8
+go,bench_mixed,write,40000000,21,3,43707143,43695985,43724504,875.33,0.07,6b118770d85af4f6,rt,pkg,always,default,partial:11
+go,bench_mixed,read,40000000,21,3,38464459,38451222,38470968,770.33,0.05,6b118770d85af4f6,rt,pkg,always,default,partial:11
+go,bitpacker,write,24576,65518,3,9658,9641,9682,603.46,0.42,6b118770d85af4f6,bits,pkg,always,default,partial:1
+go,bitpacker,read,24576,65518,3,11535,11531,11537,720.74,0.05,6b118770d85af4f6,bits,pkg,always,default,partial:1
