@@ -343,8 +343,12 @@ func guardRatio(ds *dataset, ka, kb key, a, b row) []string {
 	if a.inline == "unknown" || b.inline == "unknown" {
 		d = append(d, fmt.Sprintf("inline: A=%q B=%q (a number without an inline verdict is not comparable to one with it)", a.inline, b.inline))
 	}
-	// 8. the source CSVs' cpu lines, or the flag lines for the languages involved
-	if ida.cpu != idb.cpu {
+	// 8. the source CSVs' cpu lines, or the flag lines for the languages
+	// involved. A MISSING # cpu line refuses too: two absent preambles
+	// compare "" == "" and would certify any two machines as the same one.
+	if ida.cpu == "" || idb.cpu == "" {
+		d = append(d, fmt.Sprintf("# cpu: A=%q B=%q — a CSV without a # cpu line carries no machine identity, so nothing certifies these rows as comparable", ida.cpu, idb.cpu))
+	} else if ida.cpu != idb.cpu {
 		d = append(d, fmt.Sprintf("# cpu: A=%q B=%q", ida.cpu, idb.cpu))
 	}
 	for _, lang := range []string{ka.lang, kb.lang} {
@@ -378,11 +382,15 @@ func guardRatio(ds *dataset, ka, kb key, a, b row) []string {
 	if b.spread > spreadInvalid {
 		d = append(d, fmt.Sprintf("spread_pct: B=%.1f%% > %.0f%% — row B is INVALID", b.spread, spreadInvalid))
 	}
-	if ida.window == "INVALID" {
-		d = append(d, fmt.Sprintf("window: %s is marked # window: INVALID — its control legs disagree", ida.path))
+	// A stated window verdict must be exactly OK (case-folded): "invalid",
+	// "Invalid" or any other value refuses. The old == "INVALID" comparison
+	// let a lowercase "# window: invalid" publish ratios.
+	windowBad := func(w string) bool { return w != "" && !strings.EqualFold(w, "OK") }
+	if windowBad(ida.window) {
+		d = append(d, fmt.Sprintf("window: %s is marked # window: %s — only OK publishes (its control legs disagree, or the verdict is not one this tool knows)", ida.path, ida.window))
 	}
-	if idb.window == "INVALID" && idb.path != ida.path {
-		d = append(d, fmt.Sprintf("window: %s is marked # window: INVALID — its control legs disagree", idb.path))
+	if windowBad(idb.window) && idb.path != ida.path {
+		d = append(d, fmt.Sprintf("window: %s is marked # window: %s — only OK publishes (its control legs disagree, or the verdict is not one this tool knows)", idb.path, idb.window))
 	}
 	return d
 }
@@ -430,6 +438,20 @@ func merge(paths []string) *dataset {
 						fmt.Sprintf("%s:%d: %s", ds.ids[old.file].path, old.line, old.raw),
 						fmt.Sprintf("%s:%d: %s", p, v.line, v.raw),
 						[]string{"corpus_id / bytes_per_op / family / linkage / checks / opt do not all match"})
+				}
+				// Identical identity is not license to replace either: two
+				// rows for one key whose NUMBERS differ are two measurements,
+				// and a merge that keeps the later one silently launders a
+				// re-run into the table. A re-run belongs in a new file or an
+				// aggregate, never a silent replace. (A byte-identical row —
+				// the same file loaded twice — is harmless and passes.)
+				if old.iters != v.iters || old.runs != v.runs ||
+					old.med != v.med || old.mn != v.mn || old.mx != v.mx ||
+					old.mb != v.mb || old.spread != v.spread {
+					refuse(fmt.Sprintf("overwrite row %s/%s/%s during merge", k.lang, k.bench, k.path),
+						fmt.Sprintf("%s:%d: %s", ds.ids[old.file].path, old.line, old.raw),
+						fmt.Sprintf("%s:%d: %s", p, v.line, v.raw),
+						[]string{"identical measurement identity but different numbers — a re-run belongs in a new file or an aggregate, never a silent replace"})
 				}
 			}
 			ds.rows[k] = v

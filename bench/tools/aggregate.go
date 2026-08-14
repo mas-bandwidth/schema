@@ -12,7 +12,11 @@
 // Rows must agree across rounds on everything that identifies the
 // measurement (iters, bytes_per_op, corpus_id, family, linkage, checks, opt,
 // inline); a disagreement aborts the aggregation — it means the pass was not
-// one pass.
+// one pass. Provenance is enforced the same way: every input file's preamble
+// identity must match the first file's (rounds from two machines are not one
+// pass), the same input path may not be given twice (the same round twice
+// yields runs=N+1 spread=0.00 — fake stability), and two files stamped with
+// the same `# round: K` may not both contribute rows to one key.
 //
 // controlmedian prints the corpus-median headline rate (max_msgs_per_sec
 // over all cpp rows) of a control-leg CSV, for the §2.6 window gate: a pass
@@ -22,13 +26,27 @@ package main
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"sort"
+	"strings"
 )
 
 // aggRow is one (lang,bench,path)'s accumulation across rounds.
 type aggRow struct {
-	first row       // the identifying columns, from the first round seen
-	rates []float64 // one headline rate per round (mx == med == mn at runs=1)
+	first  row             // the identifying columns, from the first round seen
+	rates  []float64       // one headline rate per round (mx == med == mn at runs=1)
+	rounds map[string]string // `# round: K` value -> the file that contributed it
+}
+
+// parseRound extracts the driver's `# round: K` stamp from a preamble, or ""
+// when the file carries none (a control leg, or a pre-stamp CSV).
+func parseRound(meta []string) string {
+	for _, m := range meta {
+		if strings.HasPrefix(m, "# round:") {
+			return strings.TrimSpace(strings.TrimPrefix(m, "# round:"))
+		}
+	}
+	return ""
 }
 
 func aggregateCmd(paths []string) {
@@ -38,30 +56,68 @@ func aggregateCmd(paths []string) {
 	acc := map[key]*aggRow{}
 	var keys []key
 	passCorpus := ""
+	seenPath := map[string]string{}
+	var passID identity
+	passIDSet := false
 	for _, p := range paths {
-		rows, _, err := load(p)
+		// the same round file twice yields runs=N+1 spread=0.00 — fake
+		// stability manufactured from one measurement. Refuse by path.
+		clean := filepath.Clean(p)
+		if prev, dup := seenPath[clean]; dup {
+			fmt.Fprintf(os.Stderr, "aggregate: REFUSING: input %s given twice (as %s and %s)\n", clean, prev, p)
+			fmt.Fprintln(os.Stderr, "  aggregating one round twice manufactures runs and a 0.00 spread from a single measurement")
+			os.Exit(2)
+		}
+		seenPath[clean] = p
+		rows, meta, err := load(p)
 		if err != nil {
 			fmt.Fprintln(os.Stderr, err)
 			os.Exit(2)
 		}
+		// provenance travels with every file: rounds from two machines (or
+		// two compilers, or two flag sets) are not one pass. Bare per-round
+		// files carry an empty identity and match each other; a file with a
+		// different stated identity refuses.
+		id := parseIdentity(p, meta)
+		if !passIDSet {
+			passID, passIDSet = id, true
+		} else if d := passID.differs(id); len(d) > 0 {
+			fmt.Fprintf(os.Stderr, "aggregate: REFUSING: %s was measured under a different identity than %s\n", p, passID.path)
+			for _, one := range d {
+				fmt.Fprintf(os.Stderr, "    %s\n", one)
+			}
+			fmt.Fprintln(os.Stderr, "  rounds from different machines/compilers/flags are not one pass")
+			os.Exit(2)
+		}
+		round := parseRound(meta)
 		for k, r := range rows {
 			a, ok := acc[k]
 			if !ok {
-				acc[k] = &aggRow{first: r, rates: []float64{r.mx}}
+				a = &aggRow{first: r, rounds: map[string]string{}}
+				acc[k] = a
 				keys = append(keys, k)
 				if passCorpus == "" {
 					passCorpus = r.corpusID
 				}
-				continue
+			} else {
+				f := a.first
+				if f.iters != r.iters || f.bytes != r.bytes || f.corpusID != r.corpusID ||
+					f.family != r.family || f.linkage != r.linkage || f.checks != r.checks ||
+					f.opt != r.opt || f.inline != r.inline {
+					fmt.Fprintf(os.Stderr, "aggregate: REFUSING: %s/%s/%s changed identity between rounds\n  first: %s\n  %s: %s\n",
+						k.lang, k.bench, k.path, f.raw, p, r.raw)
+					fmt.Fprintln(os.Stderr, "  a pass whose rounds measured different things is not one pass")
+					os.Exit(2)
+				}
 			}
-			f := a.first
-			if f.iters != r.iters || f.bytes != r.bytes || f.corpusID != r.corpusID ||
-				f.family != r.family || f.linkage != r.linkage || f.checks != r.checks ||
-				f.opt != r.opt || f.inline != r.inline {
-				fmt.Fprintf(os.Stderr, "aggregate: REFUSING: %s/%s/%s changed identity between rounds\n  first: %s\n  %s: %s\n",
-					k.lang, k.bench, k.path, f.raw, p, r.raw)
-				fmt.Fprintln(os.Stderr, "  a pass whose rounds measured different things is not one pass")
-				os.Exit(2)
+			if round != "" {
+				if prev, dup := a.rounds[round]; dup {
+					fmt.Fprintf(os.Stderr, "aggregate: REFUSING: %s/%s/%s appears twice for round %s (from %s and %s)\n",
+						k.lang, k.bench, k.path, round, prev, p)
+					fmt.Fprintln(os.Stderr, "  one round contributes one rate per row; a duplicate is a re-run or a copy, not a round")
+					os.Exit(2)
+				}
+				a.rounds[round] = p
 			}
 			a.rates = append(a.rates, r.mx)
 		}
