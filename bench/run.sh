@@ -8,6 +8,7 @@
 # with the serialize ports (see bench/README.md for the runner contract).
 #
 # usage: bench/run.sh [--debug] [--out FILE] [--compiler CXX] [--only LANG]
+#                     [--round K] [--bare] [--reuse-build]
 #   --debug       also build and run the Debug pair (matched-pair methodology;
 #                 only Release numbers are meaningful, Debug is recorded so
 #                 pathological debug regressions are visible)
@@ -18,12 +19,26 @@
 #                 legs serially with quiet-window checks between them. Each
 #                 leg's CSV carries the full preamble; measurement code and
 #                 flags are identical to the all-language invocation.
+#   --round K     forward --round K to every runner (BENCH-STANDARD.md §2.4:
+#                 one warmup + one measured run per benchmark, per-round rates;
+#                 the interleaved driver aggregates across rounds)
+#   --bare        rows only, no preamble — for the driver's per-round files
+#   --reuse-build reuse existing C/C++ bench binaries instead of recompiling
+#                 (the driver builds once at pass start and reuses per round)
 #
 # environment:
 #   SERIALIZE     path to the classic serialize runtime checkout (default
 #                 ../serialize, same as the Makefile)
 #   SERIALIZE_C   path to the serialize.c runtime checkout (default
 #                 ../serialize.c, same as the Makefile)
+#   SERIALIZE_GO / SERIALIZE_RS / SERIALIZE_CS
+#                 the go/rust/cs runtime checkouts (defaults ../serialize.go,
+#                 ../serialize.rs, ../serialize.cs) — recorded in the preamble
+#                 (§3.5: every row records the runtime commit its leg was
+#                 built against); the runner manifests carry the same paths
+#   BENCH_OPT_LEVEL  C/C++ optimization level for the standard leg (default
+#                 O3; §3.3 publishes O2 and O3). Recorded in the flags line
+#                 AND stamped into the runners' opt column via -DBENCH_OPT.
 #   BENCH_CPU     core to pin to where taskset exists (default 0)
 #   BENCH_NOISE   noise label recorded in the results preamble, e.g.
 #                 "NOISY: game server owns isolated cores, bench on shared core 0"
@@ -35,6 +50,9 @@ cd "$(dirname "$0")/.."     # repo root
 DEBUG=0
 OUT=""
 ONLY=""
+ROUND=""
+BARE=0
+REUSE=0
 CXX_BIN="${CXX:-c++}"
 while [ $# -gt 0 ]; do
     case "$1" in
@@ -42,10 +60,17 @@ while [ $# -gt 0 ]; do
         --out) OUT="$2"; shift ;;
         --compiler) CXX_BIN="$2"; shift ;;
         --only) ONLY="$2"; shift ;;
+        --round) ROUND="$2"; shift ;;
+        --bare) BARE=1 ;;
+        --reuse-build) REUSE=1 ;;
         *) echo "unknown argument: $1" >&2; exit 1 ;;
     esac
     shift
 done
+RUNNER_ARGS="--csv"
+if [ -n "$ROUND" ]; then
+    RUNNER_ARGS="--csv --round $ROUND"
+fi
 case "$ONLY" in
     ""|c|cpp|go|rust|cs) ;;
     *) echo "unknown --only language: $ONLY (c|cpp|go|rust|cs)" >&2; exit 1 ;;
@@ -57,6 +82,9 @@ if [ ! -f "$SERIALIZE/serialize.h" ]; then
     exit 1
 fi
 SERIALIZE_C="${SERIALIZE_C:-../serialize.c}"
+SERIALIZE_GO="${SERIALIZE_GO:-../serialize.go}"
+SERIALIZE_RS="${SERIALIZE_RS:-../serialize.rs}"
+SERIALIZE_CS="${SERIALIZE_CS:-../serialize.cs}"
 CC_BIN="${CC:-cc}"
 
 ARCH="$(uname -m)"
@@ -108,7 +136,15 @@ COMMON_FLAGS="-std=c++17 -Wall -Wextra -Werror -ffp-contract=off -fno-rtti -Igen
 if $CXX_BIN --version 2>/dev/null | head -1 | grep -qi 'g++\|gcc'; then
     COMMON_FLAGS="$COMMON_FLAGS -Wno-class-memaccess -Wno-type-limits"
 fi
-RELEASE_FLAGS="-O3 -DNDEBUG -DSERIALIZE_RELEASE $COMMON_FLAGS"
+# The optimization level and the runners' opt column come from ONE variable,
+# so the recorded flags and the recorded opt cannot disagree (§3.3 publishes
+# two levels; -DBENCH_OPT stamps the level into every CSV row).
+OPT_LEVEL="${BENCH_OPT_LEVEL:-O3}"
+case "$OPT_LEVEL" in
+    O2|O3) ;;
+    *) echo "BENCH_OPT_LEVEL must be O2 or O3, got $OPT_LEVEL" >&2; exit 1 ;;
+esac
+RELEASE_FLAGS="-$OPT_LEVEL -DNDEBUG -DSERIALIZE_RELEASE -DBENCH_OPT=\"$OPT_LEVEL\" $COMMON_FLAGS"
 DEBUG_FLAGS="-O0 -g -DSERIALIZE_DEBUG $COMMON_FLAGS"
 
 # C: the repo's own C flags (the Makefile's C test leg) at the same Release
@@ -119,7 +155,7 @@ DEBUG_FLAGS="-O0 -g -DSERIALIZE_DEBUG $COMMON_FLAGS"
 # not have. That is a property of the runtime's packaging, not of the
 # generated code; bench/README.md says so where the numbers live.
 C_COMMON_FLAGS="-std=c99 -Wall -Wextra -Werror -Igenerated/c -I$SERIALIZE_C"
-C_RELEASE_FLAGS="-O3 -DNDEBUG $C_COMMON_FLAGS"
+C_RELEASE_FLAGS="-$OPT_LEVEL -DNDEBUG -DBENCH_OPT=\"$OPT_LEVEL\" $C_COMMON_FLAGS"
 C_DEBUG_FLAGS="-O0 -g $C_COMMON_FLAGS"
 
 emit_preamble() {
@@ -140,20 +176,40 @@ emit_preamble() {
         echo "# pinning: $PIN_DESC"
         echo "# noise: ${BENCH_NOISE:-unlabelled}"
         echo "# schema commit: $(git rev-parse --short HEAD 2>/dev/null || echo unknown)"
-        echo "# serialize commit: $(git -C "$SERIALIZE" rev-parse --short HEAD 2>/dev/null || echo unknown)"
+        # §3.5 / §5.2: the runtime commit for EVERY language, with its branch —
+        # the serialize checkouts ride PR branches during review, and a number
+        # measured against a branch must say so.
+        echo "# serialize commit: $(commit_of "$SERIALIZE")"
+        echo "# serialize.c commit: $(commit_of "$SERIALIZE_C")"
+        echo "# serialize.go commit: $(commit_of "$SERIALIZE_GO")"
+        echo "# serialize.rs commit: $(commit_of "$SERIALIZE_RS")"
+        echo "# serialize.cs commit: $(commit_of "$SERIALIZE_CS")"
     } >> "$OUT"
 }
 
+commit_of() {
+    local sha branch
+    sha="$(git -C "$1" rev-parse --short HEAD 2>/dev/null || echo unknown)"
+    branch="$(git -C "$1" rev-parse --abbrev-ref HEAD 2>/dev/null || echo unknown)"
+    echo "$sha ($branch)"
+}
+
 : > "$OUT"
-emit_preamble Release
+if [ "$BARE" = 0 ]; then
+    emit_preamble Release
+fi
 
 # ---- C++ (the reference runner) ----
 if [ -z "$ONLY" ] || [ "$ONLY" = cpp ]; then
-    echo "== cpp: build (Release) ==" >&2
-    $CXX_BIN $RELEASE_FLAGS bench/cpp/bench_main.cpp -o build/bench/schema_bench_cpp
+    if [ "$REUSE" = 1 ] && [ -x build/bench/schema_bench_cpp ]; then
+        echo "== cpp: reusing build/bench/schema_bench_cpp ==" >&2
+    else
+        echo "== cpp: build (Release) ==" >&2
+        $CXX_BIN $RELEASE_FLAGS bench/cpp/bench_main.cpp -o build/bench/schema_bench_cpp
+    fi
 
     echo "== cpp: run (Release) ==" >&2
-    $PIN ./build/bench/schema_bench_cpp --csv >> "$OUT"
+    $PIN ./build/bench/schema_bench_cpp $RUNNER_ARGS >> "$OUT"
 
     if [ "$DEBUG" = 1 ]; then
         echo "== cpp: build (Debug) ==" >&2
@@ -172,11 +228,15 @@ if [ -z "$ONLY" ] || [ "$ONLY" = c ]; then
     elif [ ! -f "$SERIALIZE_C/serialize.c" ]; then
         echo "SKIP c: serialize.c not found at $SERIALIZE_C (set SERIALIZE_C)" >&2
     else
-        echo "== c: build (Release) ==" >&2
-        $CC_BIN $C_RELEASE_FLAGS bench/c/bench_main.c "$SERIALIZE_C/serialize.c" -o build/bench/schema_bench_c -lm
+        if [ "$REUSE" = 1 ] && [ -x build/bench/schema_bench_c ]; then
+            echo "== c: reusing build/bench/schema_bench_c ==" >&2
+        else
+            echo "== c: build (Release) ==" >&2
+            $CC_BIN $C_RELEASE_FLAGS bench/c/bench_main.c "$SERIALIZE_C/serialize.c" -o build/bench/schema_bench_c -lm
+        fi
 
         echo "== c: run (Release) ==" >&2
-        $PIN ./build/bench/schema_bench_c --csv >> "$OUT"
+        $PIN ./build/bench/schema_bench_c $RUNNER_ARGS >> "$OUT"
 
         if [ "$DEBUG" = 1 ]; then
             echo "== c: build (Debug) ==" >&2
@@ -192,7 +252,7 @@ if [ -z "$ONLY" ] || [ "$ONLY" = go ]; then
     if [ -f bench/go/main.go ]; then
         if command -v go >/dev/null 2>&1; then
             echo "== go: run ==" >&2
-            ( cd bench/go && $PIN go run . --csv ) >> "$OUT"
+            ( cd bench/go && $PIN go run . $RUNNER_ARGS ) >> "$OUT"
         else
             echo "SKIP go: runner present but no go toolchain" >&2
         fi
@@ -206,7 +266,7 @@ if [ -z "$ONLY" ] || [ "$ONLY" = rust ]; then
     if [ -f bench/rust/Cargo.toml ]; then
         if command -v cargo >/dev/null 2>&1 || [ -x /opt/homebrew/opt/rustup/bin/cargo ]; then
             echo "== rust: run ==" >&2
-            ( cd bench/rust && PATH="/opt/homebrew/opt/rustup/bin:$PATH" $PIN cargo run --release --quiet -- --csv ) >> "$OUT"
+            ( cd bench/rust && PATH="/opt/homebrew/opt/rustup/bin:$PATH" $PIN cargo run --release --quiet -- $RUNNER_ARGS ) >> "$OUT"
         else
             echo "SKIP rust: runner present but no cargo" >&2
         fi
@@ -220,7 +280,7 @@ if [ -z "$ONLY" ] || [ "$ONLY" = cs ]; then
     if ls bench/cs/*.csproj >/dev/null 2>&1; then
         if command -v dotnet >/dev/null 2>&1; then
             echo "== cs: run ==" >&2
-            ( cd bench/cs && $PIN dotnet run -c Release -- --csv ) >> "$OUT"
+            ( cd bench/cs && $PIN dotnet run -c Release -- $RUNNER_ARGS ) >> "$OUT"
         else
             echo "SKIP cs: runner present but no dotnet" >&2
         fi

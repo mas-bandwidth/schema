@@ -588,6 +588,8 @@ func usage() {
   relative [flags] abs      results.csv [more.csv...]   absolute rates per language (best + median/min/spread)
   relative [flags] ab       a.csv b.csv [lang [A B]]    B/A deltas on best rates, with spreads
   relative spreads  <pct> results.csv [...]             rows noisier than pct
+  relative aggregate     round0.csv round1.csv [...]    merge per-round rows (§2.4; driver computes stats)
+  relative controlmedian control.csv                    corpus-median headline of a control leg (§2.6)
 
 flags (the only escapes; each prints its §3.4/§3.1 caption with the ratio):
   --label-checks    allow ratios across differing checks columns, captioned
@@ -652,6 +654,10 @@ func main() {
 		}
 		fmt.Println(abTable(dsa, dsb, lang, la, lb))
 		printCaptions()
+	case "aggregate":
+		aggregateCmd(args[1:])
+	case "controlmedian":
+		controlMedianCmd(args[1:])
 	case "spreads":
 		if len(args) < 3 {
 			usage()
