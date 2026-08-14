@@ -98,8 +98,10 @@ static const char * g_wire_dir = "testdata/wire";
 #ifndef BENCH_OPT
 #define BENCH_OPT "O3"
 #endif
-static const char * g_csv_suffix = "gen,hdr,removed," BENCH_OPT ",unknown";
-static std::vector<std::string> g_csv_rows;
+// family is per ROW now (gen | rt | bits — §5.1); linkage/checks/opt/inline
+// stay per-runner constants
+static const char * g_csv_suffix = "hdr,removed," BENCH_OPT ",unknown";
+static std::vector<std::pair<std::string, std::string>> g_csv_rows;   // (first 11 columns, family)
 static std::map<std::string, std::vector<uint8_t>> g_goldens_loaded;
 
 static uint64_t fnv1a64( uint64_t h, const uint8_t * data, size_t n )
@@ -127,13 +129,23 @@ static std::string corpus_id()
     return std::string( buf );
 }
 
+static bool failed = false;
+
 static void flush_csv()
 {
     if ( !g_csv )
         return;
+    if ( failed )
+    {
+        // §1.5: a failing run emits NO rows — the exit code and stderr are
+        // the whole output. Numbers from a run whose gate refused are not
+        // numbers.
+        fprintf( stderr, "refusing to emit CSV rows from a failing run\n" );
+        return;
+    }
     const std::string id = corpus_id();
     for ( const auto & row : g_csv_rows )
-        printf( "%s,%s,%s\n", row.c_str(), id.c_str(), g_csv_suffix );
+        printf( "%s,%s,%s,%s\n", row.first.c_str(), id.c_str(), row.second.c_str(), g_csv_suffix );
 }
 
 // buffers: write buffers must be a multiple of 8 bytes (qword-flush contract);
@@ -143,8 +155,6 @@ const int BufferSize = 4096;
 alignas( 8 ) static uint8_t g_buffer[BufferSize];
 alignas( 8 ) static uint8_t g_twin[BufferSize];
 alignas( 8 ) static uint8_t g_variants[NumVariants][BufferSize];
-
-static bool failed = false;
 
 static void fail( const char * name, const char * what )
 {
@@ -194,7 +204,7 @@ static RunStats run_stats( double * rates, int n )
     return s;
 }
 
-static void report( const char * bench, const char * path, long iters, int64_t bytes_per_op, const RunStats & s )
+static void report( const char * bench, const char * path, long iters, int64_t bytes_per_op, const RunStats & s, const char * family = "gen" )
 {
     const double mbps = s.median_rate * double( bytes_per_op ) / ( 1024.0 * 1024.0 );
     fprintf( stderr, "%-18s %-5s %10.2f M msg/s %10.1f MB/s   (min %.2f, max %.2f, spread %.1f%%)\n",
@@ -205,7 +215,7 @@ static void report( const char * bench, const char * path, long iters, int64_t b
         snprintf( row, sizeof( row ), "cpp,%s,%s,%ld,%lld,%d,%.0f,%.0f,%.0f,%.2f,%.2f",
                   bench, path, iters, (long long) bytes_per_op, g_num_runs,
                   s.median_rate, s.min_rate, s.max_rate, mbps, s.spread_pct );
-        g_csv_rows.push_back( row );
+        g_csv_rows.push_back( { row, family } );
     }
 }
 
@@ -795,6 +805,513 @@ static void bench_batch()
 }
 
 // ------------------------------------------------------------------------------------------
+// family rt (BENCH-STANDARD.md §1.3, §1.5): the serialize runtime API called
+// BY HAND — the four Bench.schema shapes as hand-written packets over the
+// serialize_* macro surface, the way serialize/bench.cpp writes them. The
+// §1.5 oracle gate byte-compares the hand-written wire against the goldens
+// the GENERATED code pinned (testdata/wire/bench_*.bin) and round-trips
+// before any number is produced. Internal linkage per §3.1 (anonymous
+// namespace). Per §3.2 every benched Serialize instantiation has EXACTLY two
+// call sites: the untimed oracle/setup helper and its timed loop.
+// ------------------------------------------------------------------------------------------
+
+#if defined(_MSC_VER)
+#define BENCH_NOINLINE __declspec( noinline )
+#else
+#define BENCH_NOINLINE __attribute__(( noinline ))
+#endif
+
+namespace {
+
+struct RtBenchPacket
+{
+    int32_t a = 0, b = 0, c = 0;
+    uint32_t bits7 = 0, bits13 = 0, bits23 = 0;
+    bool flag = false;
+    float x = 0, y = 0, z = 0;
+    uint64_t big = 0;
+    uint8_t blob[17] = {};
+
+    template <typename Stream> bool Serialize( Stream & stream )
+    {
+        serialize_int( stream, a, -100, +100 );
+        serialize_int( stream, b, 0, 65535 );
+        serialize_int( stream, c, -1000000, +1000000 );
+        serialize_bits( stream, bits7, 7 );
+        serialize_bits( stream, bits13, 13 );
+        serialize_bits( stream, bits23, 23 );
+        serialize_bool( stream, flag );
+        serialize_float( stream, x );
+        serialize_float( stream, y );
+        serialize_float( stream, z );
+        serialize_uint64( stream, big );
+        serialize_bytes( stream, blob, (int) sizeof( blob ) );  // aligns internally — the schema says `align` out loud
+        return true;
+    }
+};
+
+struct RtBenchInts
+{
+    int32_t f0 = 0, f1 = 0, f2 = 0, f3 = 0, f4 = 0, f5 = 0, f6 = 0, f7 = 0, f8 = 0, f9 = 0;
+
+    template <typename Stream> bool Serialize( Stream & stream )
+    {
+        serialize_int( stream, f0, -100, +100 );
+        serialize_int( stream, f1, 0, 65535 );
+        serialize_int( stream, f2, -1000000, +1000000 );
+        serialize_int( stream, f3, 0, 3 );
+        serialize_int( stream, f4, -15, +15 );
+        serialize_int( stream, f5, 0, 1000 );
+        serialize_int( stream, f6, -2048, +2047 );
+        serialize_int( stream, f7, 0, 255 );
+        serialize_int( stream, f8, -600000, +600000 );
+        serialize_int( stream, f9, 0, 100 );
+        return true;
+    }
+};
+
+struct RtBenchBits
+{
+    uint32_t b7 = 0, b13 = 0, b23 = 0, b3 = 0, b32 = 0, b11 = 0, b19 = 0;
+    uint64_t b48 = 0;
+
+    template <typename Stream> bool Serialize( Stream & stream )
+    {
+        serialize_bits( stream, b7, 7 );
+        serialize_bits( stream, b13, 13 );
+        serialize_bits( stream, b23, 23 );
+        serialize_bits( stream, b3, 3 );
+        serialize_bits( stream, b32, 32 );
+        serialize_bits( stream, b11, 11 );
+        serialize_bits( stream, b19, 19 );
+        serialize_bits( stream, b48, 48 );
+        return true;
+    }
+};
+
+struct RtBenchMixed
+{
+    int32_t sequence = 0;
+    uint32_t ack_bits = 0, entity_id = 0;
+    int32_t pos_x = 0, pos_y = 0, pos_z = 0;
+    uint32_t yaw = 0;
+    bool moving = false, firing = false;
+    uint64_t timestamp = 0;
+    int32_t weapon = 0;
+
+    template <typename Stream> bool Serialize( Stream & stream )
+    {
+        serialize_int( stream, sequence, 0, 65535 );
+        serialize_bits( stream, ack_bits, 32 );
+        serialize_bits( stream, entity_id, 12 );
+        serialize_int( stream, pos_x, -16384, +16383 );
+        serialize_int( stream, pos_y, -16384, +16383 );
+        serialize_int( stream, pos_z, -16384, +16383 );
+        serialize_bits( stream, yaw, 9 );
+        serialize_bool( stream, moving );
+        serialize_bool( stream, firing );
+        serialize_bits( stream, timestamp, 48 );
+        serialize_int( stream, weapon, 0, 15 );
+        return true;
+    }
+};
+
+// ---- pinned instances: test/bench/main.cpp (the golden producer), verbatim ----
+
+RtBenchPacket pin_rt_packet()
+{
+    RtBenchPacket in;
+    in.a = -37; in.b = 12345; in.c = 987654;
+    in.bits7 = 97; in.bits13 = 5000; in.bits23 = 1234567;
+    in.flag = true;
+    in.x = 1.5f; in.y = -3.25f; in.z = 100.125f;
+    in.big = 0x123456789ABCDEF0ull;
+    for ( int i = 0; i < 17; i++ )
+        in.blob[i] = (uint8_t) ( i * 31 );
+    return in;
+}
+
+RtBenchInts pin_rt_ints()
+{
+    RtBenchInts in;
+    in.f0 = -37; in.f1 = 12345; in.f2 = 987654; in.f3 = 2; in.f4 = -15;
+    in.f5 = 777; in.f6 = -2048; in.f7 = 200; in.f8 = -543210; in.f9 = 99;
+    return in;
+}
+
+RtBenchBits pin_rt_bits()
+{
+    RtBenchBits in;
+    in.b7 = 97; in.b13 = 5000; in.b23 = 1234567; in.b3 = 5;
+    in.b32 = 0xDEADBEEFu; in.b11 = 1024; in.b19 = 333333;
+    in.b48 = 0xFEDCBA987654ull;
+    return in;
+}
+
+RtBenchMixed pin_rt_mixed()
+{
+    RtBenchMixed in;
+    in.sequence = 52428; in.ack_bits = 0xA5A5A5A5u; in.entity_id = 2049;
+    in.pos_x = -16384; in.pos_y = 16383; in.pos_z = -1;
+    in.yaw = 511; in.moving = true; in.firing = false;
+    in.timestamp = 0x123456789ABCull; in.weapon = 15;
+    return in;
+}
+
+// ---- vary functions: serialize/bench.cpp's field mappings, rng advanced by
+// the caller (the schema-bench convention); every runner reproduces these ----
+
+void vary_rt_packet( RtBenchPacket & p, uint64_t rng )
+{
+    p.a = int32_t( ( rng >> 8 ) & 63 ) - 32;
+    p.b = int32_t( uint32_t( rng >> 16 ) & 65535 );
+    p.c = int32_t( ( rng >> 24 ) & 0xFFFFF ) - 500000;
+    p.bits7 = uint32_t( rng ) & 127;
+    p.bits13 = uint32_t( rng >> 3 ) & 8191;
+    p.bits23 = uint32_t( rng >> 5 ) & 8388607;
+    p.flag = ( rng & 1 ) != 0;
+    p.x = float( uint32_t( rng ) & 0xFFFF );
+    p.big = rng;
+    p.blob[0] = uint8_t( rng >> 32 );
+}
+
+void vary_rt_ints( RtBenchInts & f, uint64_t rng )
+{
+    f.f0 = int32_t( ( rng >> 8 ) & 63 ) - 32;
+    f.f1 = int32_t( uint32_t( rng >> 16 ) & 65535 );
+    f.f2 = int32_t( ( rng >> 24 ) & 0xFFFFF ) - 500000;
+    f.f3 = int32_t( uint32_t( rng >> 2 ) & 3 );
+    f.f4 = int32_t( ( rng >> 11 ) & 15 ) - 8;
+    f.f5 = int32_t( uint32_t( rng >> 22 ) & 511 );
+    f.f6 = int32_t( ( rng >> 33 ) & 2047 ) - 1024;
+    f.f7 = int32_t( uint32_t( rng >> 40 ) & 255 );
+    f.f8 = int32_t( ( rng >> 30 ) & 0xFFFFF ) - 500000;
+    f.f9 = int32_t( uint32_t( rng >> 57 ) & 63 );
+}
+
+void vary_rt_bits( RtBenchBits & f, uint64_t rng )
+{
+    f.b7 = uint32_t( rng ) & 127;
+    f.b13 = uint32_t( rng >> 3 ) & 8191;
+    f.b23 = uint32_t( rng >> 5 ) & 8388607;
+    f.b3 = uint32_t( rng >> 29 ) & 7;
+    f.b32 = uint32_t( rng >> 16 );
+    f.b11 = uint32_t( rng >> 37 ) & 2047;
+    f.b19 = uint32_t( rng >> 44 ) & 524287;
+    f.b48 = rng & 0xFFFFFFFFFFFFull;
+}
+
+void vary_rt_mixed( RtBenchMixed & f, uint64_t rng )
+{
+    f.sequence = int32_t( uint32_t( rng >> 8 ) & 65535 );
+    f.ack_bits = uint32_t( rng >> 16 );
+    f.entity_id = uint32_t( rng ) & 4095;
+    f.pos_x = int32_t( ( rng >> 20 ) & 32767 ) - 16384;
+    f.pos_y = int32_t( ( rng >> 25 ) & 32767 ) - 16384;
+    f.pos_z = int32_t( ( rng >> 30 ) & 32767 ) - 16384;
+    f.yaw = uint32_t( rng >> 3 ) & 511;
+    f.moving = ( rng & 1 ) != 0;
+    f.firing = ( rng & 2 ) != 0;
+    f.timestamp = rng & 0xFFFFFFFFFFFFull;
+    f.weapon = int32_t( uint32_t( rng >> 60 ) & 15 );
+}
+
+// ---- the single untimed call sites (§3.2): every write outside the timed
+// loop goes through rt_write_once, every read through rt_read_once ----
+
+template <typename T> int64_t rt_write_once( T & msg, uint8_t * buffer )
+{
+    serialize::WriteStream stream( buffer, BufferSize );
+    if ( !msg.Serialize( stream ) )
+        return -1;
+    stream.Flush();
+    return stream.GetBytesProcessed();
+}
+
+template <typename T> bool rt_read_once( T & out, const uint8_t * buffer, int64_t bytes )
+{
+    serialize::ReadStream stream( buffer, (int) bytes );
+    return out.Serialize( stream );
+}
+
+// ---- the timed loops, one symbol per (shape, path) so the §4.1 verdict is
+// a direct transitive call count over the loop body ----
+
+#define RT_LOOPS( SHAPE, TYPE, VARY )                                                       \
+BENCH_NOINLINE bool rt_##SHAPE##_write_loop( TYPE & base, long iters, uint64_t & rng )      \
+{                                                                                           \
+    for ( long i = 0; i < iters; i++ )                                                      \
+    {                                                                                       \
+        rng = bench_rng( rng );                                                             \
+        VARY( base, rng );                                                                  \
+        serialize::WriteStream stream( g_buffer, BufferSize );                              \
+        if ( !base.Serialize( stream ) )                                                    \
+            return false;                                                                   \
+        stream.Flush();                                                                     \
+        bench_escape( g_buffer );                                                           \
+        g_sink = g_sink + (uint64_t) stream.GetBytesProcessed();                            \
+    }                                                                                       \
+    return true;                                                                            \
+}                                                                                           \
+BENCH_NOINLINE bool rt_##SHAPE##_read_loop( TYPE & out, long iters, int64_t bytes_per_op )  \
+{                                                                                           \
+    for ( long i = 0; i < iters; i++ )                                                      \
+    {                                                                                       \
+        serialize::ReadStream stream( g_variants[i & ( NumVariants - 1 )], (int) bytes_per_op ); \
+        if ( !out.Serialize( stream ) )                                                     \
+            return false;                                                                   \
+        bench_escape( &out );                                                               \
+        g_sink = g_sink + 1;                                                                \
+    }                                                                                       \
+    return true;                                                                            \
+}
+
+RT_LOOPS( bench_packet, RtBenchPacket, vary_rt_packet )
+RT_LOOPS( bench_ints, RtBenchInts, vary_rt_ints )
+RT_LOOPS( bench_bits, RtBenchBits, vary_rt_bits )
+RT_LOOPS( bench_mixed, RtBenchMixed, vary_rt_mixed )
+
+// ---- the family rt driver: §1.5 oracle gate, then the timed loops ----
+
+template <typename T, typename WriteLoop, typename ReadLoop, typename VaryFn>
+void bench_rt( const char * name, long base_iters, const T & pinned,
+               WriteLoop write_loop, ReadLoop read_loop, VaryFn vary_fn )
+{
+    const long iters = base_iters / IterScale;
+
+    // oracle 1: the pinned instance through the HAND-WRITTEN path must match
+    // the golden the GENERATED code pinned, byte for byte
+    T base = pinned;
+    const int64_t bytes_per_op = rt_write_once( base, g_buffer );
+    if ( bytes_per_op < 0 )
+    {
+        fail( name, "write of pinned instance failed" );
+        return;
+    }
+    if ( !check_golden( name, g_buffer, bytes_per_op ) )
+    {
+        failed = true;
+        return;
+    }
+
+    // oracle 2: round-trip write -> read -> re-write -> identical bytes
+    T out;
+    if ( !rt_read_once( out, g_buffer, bytes_per_op ) )
+    {
+        fail( name, "read of pinned instance failed" );
+        return;
+    }
+    if ( rt_write_once( out, g_twin ) != bytes_per_op ||
+         memcmp( g_buffer, g_twin, (size_t) bytes_per_op ) != 0 )
+    {
+        fail( name, "round-trip bytes differ" );
+        return;
+    }
+
+    // variant buffers for the read path (and proof that variation keeps bytes/op constant)
+    uint64_t rng = 1;
+    for ( int k = 0; k < NumVariants; k++ )
+    {
+        rng = bench_rng( rng );
+        vary_fn( base, rng );
+        if ( rt_write_once( base, g_variants[k] ) != bytes_per_op )
+        {
+            fail( name, "variation changed bytes/op — vary must keep structure fields fixed" );
+            return;
+        }
+    }
+
+    double write_rates[MaxNumRuns];
+    double read_rates[MaxNumRuns];
+
+    for ( int run = -1; run < g_num_runs; run++ )
+    {
+        double start = time_now();
+        if ( !write_loop( base, iters, rng ) )
+        {
+            fail( name, "write failed in loop" );
+            return;
+        }
+        double time = time_now() - start;
+        if ( run >= 0 )
+            write_rates[run] = double( iters ) / time;
+    }
+
+    for ( int run = -1; run < g_num_runs; run++ )
+    {
+        double start = time_now();
+        if ( !read_loop( out, iters, bytes_per_op ) )
+        {
+            fail( name, "read failed in loop" );
+            return;
+        }
+        double time = time_now() - start;
+        if ( run >= 0 )
+            read_rates[run] = double( iters ) / time;
+    }
+
+    report( name, "write", iters, bytes_per_op, run_stats( write_rates, g_num_runs ), "rt" );
+    report( name, "read", iters, bytes_per_op, run_stats( read_rates, g_num_runs ), "rt" );
+}
+
+// ------------------------------------------------------------------------------------------
+// family bits (BENCH-STANDARD.md §1.4): the raw bit packer, the ONE bitpacker
+// workload in the estate — the 16-width table (227 bits/group) over a
+// 65536-byte buffer. Values vary per pass through the LCG (widths are the
+// structure and stay fixed; bytes/pass is asserted constant), reads rotate 64
+// pre-written variant buffers, and setup verifies every variant reads back
+// exactly the values written before any number is produced.
+// ------------------------------------------------------------------------------------------
+
+const int BitsNumWidths = 16;
+const int bits_widths[BitsNumWidths] = { 1, 32, 7, 13, 3, 25, 8, 19, 4, 28, 11, 16, 2, 30, 6, 22 };   // 227 bits/group
+const int BitsBufferSize = 65536;
+
+alignas( 8 ) uint8_t g_bits_buffer[BitsBufferSize + 8];
+alignas( 8 ) uint8_t g_bits_variants[NumVariants][BitsBufferSize + 8];
+
+uint32_t bits_mask( int width )
+{
+    return ( width == 32 ) ? 0xFFFFFFFFu : ( ( 1u << width ) - 1 );
+}
+
+// the per-pass value variation: one LCG step per pass, values from its bits
+void vary_bits_values( uint32_t * values, uint64_t rng )
+{
+    for ( int i = 0; i < BitsNumWidths; i++ )
+        values[i] = uint32_t( rng >> i ) & bits_mask( bits_widths[i] );
+}
+
+// the single untimed WriteBits call site (§3.2): fills one buffer with groups
+int64_t bits_write_pass( uint8_t * buffer, const uint32_t * values )
+{
+    serialize::BitWriter writer( buffer, BitsBufferSize );
+    while ( writer.GetBitsAvailable() >= 256 )
+    {
+        for ( int i = 0; i < BitsNumWidths; i++ )
+            writer.WriteBits( values[i], bits_widths[i] );
+    }
+    writer.FlushBits();
+    return writer.GetBytesWritten();
+}
+
+// the single untimed ReadBits call site (§3.2): verifies a buffer reads back
+// exactly the values written into it — the bits family's refuse-to-bench gate
+bool bits_read_verify( const uint8_t * buffer, const uint32_t * values )
+{
+    serialize::BitReader reader( buffer, BitsBufferSize );
+    while ( reader.GetBitsRemaining() >= 256 )
+    {
+        for ( int i = 0; i < BitsNumWidths; i++ )
+        {
+            if ( reader.ReadBits( bits_widths[i] ) != values[i] )
+                return false;
+        }
+    }
+    return true;
+}
+
+BENCH_NOINLINE bool bitpacker_write_loop( long passes, int64_t bytes_per_pass, uint64_t & rng, uint32_t * values )
+{
+    for ( long pass = 0; pass < passes; pass++ )
+    {
+        rng = bench_rng( rng );
+        vary_bits_values( values, rng );
+        serialize::BitWriter writer( g_bits_buffer, BitsBufferSize );
+        while ( writer.GetBitsAvailable() >= 256 )
+        {
+            for ( int i = 0; i < BitsNumWidths; i++ )
+                writer.WriteBits( values[i], bits_widths[i] );
+        }
+        writer.FlushBits();
+        if ( writer.GetBytesWritten() != bytes_per_pass )
+            return false;       // the bytes_per_op assertion (§2.7)
+        bench_escape( g_bits_buffer );
+        g_sink = g_sink + (uint64_t) writer.GetBytesWritten();
+    }
+    return true;
+}
+
+BENCH_NOINLINE bool bitpacker_read_loop( long passes )
+{
+    for ( long pass = 0; pass < passes; pass++ )
+    {
+        serialize::BitReader reader( g_bits_variants[pass & ( NumVariants - 1 )], BitsBufferSize );
+        uint64_t sum = 0;
+        while ( reader.GetBitsRemaining() >= 256 )
+        {
+            for ( int i = 0; i < BitsNumWidths; i++ )
+                sum += reader.ReadBits( bits_widths[i] );
+        }
+        g_sink = g_sink + sum;
+    }
+    return true;
+}
+
+void bench_bitpacker( long base_passes )
+{
+    const long passes = base_passes / IterScale;
+    uint32_t values[BitsNumWidths];
+
+    // setup: fill the 64 read variants (each its own LCG pass values), assert
+    // bytes/pass constant, and verify every variant reads back exactly
+    uint64_t rng = 1;
+    int64_t bytes_per_pass = -1;
+    for ( int k = 0; k < NumVariants; k++ )
+    {
+        rng = bench_rng( rng );
+        vary_bits_values( values, rng );
+        const int64_t wrote = bits_write_pass( g_bits_variants[k], values );
+        if ( bytes_per_pass < 0 )
+            bytes_per_pass = wrote;
+        if ( wrote != bytes_per_pass )
+        {
+            fail( "bitpacker", "variation changed bytes/pass — widths are the structure and must stay fixed" );
+            return;
+        }
+        if ( !bits_read_verify( g_bits_variants[k], values ) )
+        {
+            fail( "bitpacker", "read-back disagrees with written values — refusing to bench" );
+            return;
+        }
+    }
+
+    double write_rates[MaxNumRuns];
+    double read_rates[MaxNumRuns];
+
+    for ( int run = -1; run < g_num_runs; run++ )
+    {
+        double start = time_now();
+        if ( !bitpacker_write_loop( passes, bytes_per_pass, rng, values ) )
+        {
+            fail( "bitpacker", "bytes/pass changed in the timed loop (§2.7 assertion)" );
+            return;
+        }
+        double time = time_now() - start;
+        if ( run >= 0 )
+            write_rates[run] = double( passes ) / time;
+    }
+
+    for ( int run = -1; run < g_num_runs; run++ )
+    {
+        double start = time_now();
+        if ( !bitpacker_read_loop( passes ) )
+        {
+            fail( "bitpacker", "read loop failed" );
+            return;
+        }
+        double time = time_now() - start;
+        if ( run >= 0 )
+            read_rates[run] = double( passes ) / time;
+    }
+
+    report( "bitpacker", "write", passes, bytes_per_pass, run_stats( write_rates, g_num_runs ), "bits" );
+    report( "bitpacker", "read", passes, bytes_per_pass, run_stats( read_rates, g_num_runs ), "bits" );
+}
+
+} // anonymous namespace
+
+// ------------------------------------------------------------------------------------------
 
 // the message_stream golden: dispatch wire self-check (not a benchmark)
 static void check_message_stream_golden()
@@ -888,15 +1405,30 @@ int main( int argc, char ** argv )
 
     bench_batch();
 
+    // family rt (§1.3/§1.5): the runtime API by hand, oracle-gated against
+    // the goldens the generated code pinned. Iteration counts are fixed and
+    // identical across all five runners, sized so the FASTEST language's
+    // fastest path exceeds §2.1's 200 ms floor on the M2 (measured
+    // 2026-08-14; the C++ reads at ~110-180 M msg/s are the binding paths).
+    bench_rt( "bench_packet", 32000000L, pin_rt_packet(), rt_bench_packet_write_loop, rt_bench_packet_read_loop, vary_rt_packet );
+    bench_rt( "bench_ints", 40000000L, pin_rt_ints(), rt_bench_ints_write_loop, rt_bench_ints_read_loop, vary_rt_ints );
+    bench_rt( "bench_bits", 48000000L, pin_rt_bits(), rt_bench_bits_write_loop, rt_bench_bits_read_loop, vary_rt_bits );
+    bench_rt( "bench_mixed", 40000000L, pin_rt_mixed(), rt_bench_mixed_write_loop, rt_bench_mixed_read_loop, vary_rt_mixed );
+
+    // family bits (§1.4): the one bitpacker workload in the estate. 24576
+    // passes, not the historical 4096 — at 4096 the C++ read leg finishes in
+    // ~170 ms, under §2.1's 200 ms floor (measured; §1.4 records this).
+    bench_bitpacker( 24576L );
+
     flush_csv();    // rows carry the corpus_id of the goldens this run loaded
 
     if ( failed )
     {
-        fprintf( stderr, "BENCH FAILED\n" );
+        fprintf( stderr, "BENCH FAILED (corpus_id %s)\n", corpus_id().c_str() );
         return 1;
     }
 
-    fprintf( stderr, "OK\n" );
+    fprintf( stderr, "OK (corpus_id %s)\n", corpus_id().c_str() );
     ( void ) g_sink;
     return 0;
 }

@@ -190,8 +190,16 @@ crossings that `i % 32 + 1` does not.
 ```
 widths  = { 1, 32, 7, 13, 3, 25, 8, 19, 4, 28, 11, 16, 2, 30, 6, 22 }   // 227 bits/group
 buffer  = 65536 bytes
-passes  = 4096
+passes  = 24576 per measured run
 ```
+
+`passes` was originally written here as 4096 — the constant the three bespoke
+harnesses inherited from `serialize/bench.cpp`. Measured on the M2 on
+2026-08-14, 4096 passes finish the C++ read leg in ~170 ms, under §2.1's
+200 ms floor, so this document contradicted itself. §2.1 wins: one measured
+run is 24576 passes (6 × the historical constant), identical in every
+language, recorded in the `iters` column. The workload itself — the width
+table and the 65536-byte buffer — is unchanged.
 
 `serialize.go/bench_test.go`'s `i % 32 + 1` workload and `serialize.rs`'s extra
 `read_bits_group` row are **removed** from cross-language reporting. They may survive
