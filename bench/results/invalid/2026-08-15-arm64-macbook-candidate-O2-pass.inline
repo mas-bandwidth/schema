@@ -1,3 +1,6 @@
+# INVALID — QUARANTINED (issue #20, 2026-08-15). Evidence, never data.
+# Sibling of the quarantined candidate-O2 pass CSV: provenance unverified (zero
+# [build-verified] tags), rust rows statistically invalid. See the CSV's banner.
 # 2026-08-15-arm64-macbook-candidate-O2-pass.inline — per-symbol inline ledger (BENCH-STANDARD.md §4)
 # generated: 2026-08-14T20:36:06Z on macbook (Darwin arm64)
 # ground truth: call instructions into the serialize runtime, counted in

@@ -1,4 +1,12 @@
 # schema bench results
+# era: harness schema 20c11f1 — PRE-7db74ef verdicts, PRE-ab2165a stride (stamped 2026-08-15, issue #20)
+# era: the five cpp `partial:1` verdicts below are unroll-inflated and genuinely full —
+# era:   7db74ef (attribution stops overcounting unrolled loops) closed this in the
+# era:   harness, not in this artifact; quoting them understates C++ inlining.
+# era: six verdicts remain `unknown` — closed in the harness by 7db74ef, still
+# era:   un-ratioable here under BENCH-STANDARD.md §5.3 rule 7.
+# era: rates predate ab2165a (read buffers to 4096+64 stride) — comparable only within
+# era:   the pre-ab2165a era; the two eras never share a table.
 # date: 2026-08-14T13:21:41Z
 # host: macbook  arch: arm64  os: Darwin 25.5.0
 # cpu: Apple M2
