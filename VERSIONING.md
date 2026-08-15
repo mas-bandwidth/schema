@@ -5,54 +5,63 @@ schema version
 ```
 
 The compiler follows [semantic versioning](https://semver.org/), but the thing
-being versioned needs saying precisely, because for a code generator the
-interesting compatibility question is not the CLI.
+being versioned needs saying precisely, because for a code generator two
+different things can "change": the compiler the user runs, and the wire their
+schemas produce. Each has its own version, and they are not the same number.
 
-## The question that matters
+## Two versions, two jobs
 
-**Does upgrading the compiler change the bits my existing schemas produce?**
+**The compiler's semver answers: does upgrading break the user?** Major, minor
+and patch are defined below entirely in terms of the user's world — their
+`.schema` files, the API of the code generated from them, and the release
+notes they have to read.
 
-For a patch or minor release: **no**, and that is the promise. Take the same
-schema files, run a newer 1.x compiler, and the generated code encodes the same
-values to the same bits. Your deployed clients keep talking to your deployed
-servers.
-
-For a major release: **possibly**, and it will be in the release notes with a
-migration note, because we know what we are asking of you.
-
-This promise is what the pinned goldens in CI exist to enforce. A change that
-moves the wire moves a golden, and moving a golden is a deliberate act that has
-to be argued for in review — it cannot happen by accident.
+**The protocol id is the wire's own version, decoupled from semver entirely.**
+It is a hash of the schema's wire shape: it changes when the wire changes and
+only then, independently of what the compiler's version number does. Two peers
+whose builds carry the same protocol id interoperate; two whose ids differ
+refuse each other instead of misreading each other. No compiler release number
+participates in that decision.
 
 ## What each number means
 
-**Major** — the wire may change, a language feature may be removed, **or the
-protocol id moves for schemas that did not change**. Expect to redeploy both
-sides of every connection. We will not do this casually.
+**Major** — the user's world breaks: existing `.schema` files stop compiling
+or change meaning, or the generated API breaks (code written against the
+generated types and functions stops building or changes behavior). Expect a
+migration note. Nothing less than this earns a major.
 
-That last case is worth stating on its own, because it is the one that looks
-harmless and is not: if the id moves, deployed peers refuse newly built ones
-even when every byte they would exchange is identical. The operational cost is
-the same as a wire change, so it earns the same signal. v2.0.0 was exactly
-this — the id changed, the wire did not.
+**Minor** — additive features: new language features, new attributes, new
+backends, better diagnostics, generated code that is faster or cleaner. New
+syntax you have not used cannot affect you. A minor release may also carry a
+wire change, WITH its protocol id bump: the bytes and the id move together, so
+deployed peers refuse newly built ones rather than misread them — and the
+release notes state the protocol id bump first and loudly, before anything
+else in the entry.
 
-**Minor** — new language features, new attributes, new backends, better
-diagnostics, generated code that is faster or cleaner. **The wire for schemas
-that already compiled does not change.** New syntax you have not used cannot
-affect you.
+**Patch** — bug fixes and documentation, and one promise, kept verbatim:
+**"no PATCH release will break protocol id."** Take any schema, rebuild it
+with a newer patch release of the same minor, and its protocol id is the same
+id. Patch releases are always safe to take.
 
-**Patch** — bug fixes and documentation. If a fix corrects generated code that
-was *wrong*, the wire for the affected construct changes by necessity; that is
-a bug fix, it will be called out prominently in the release notes, and it is
-the one case where a patch release can move bits. The alternative — leaving
-known-wrong output in place to protect a version-number promise — would be
-worse.
+This is what the pinned goldens in CI exist to enforce. A change that moves
+the wire moves a golden, and moving a golden is a deliberate act that has to
+be argued for in review — it cannot happen by accident, and the release that
+carries it wears the number these rules assign.
+
+## History: the v2 line
+
+v2.0.0 and v2.1.0 were published under an older reading of these rules — one
+where a protocol id move for unchanged schemas was itself a major event. Under
+the policy above that class of release is a minor with its id bump stated
+loudly, and the two releases have been re-versioned into the 1.x line as
+v1.6.0. Additionally, schema's `go.mod` carries no `/v2` module suffix, so the
+v2 tags were never resolvable to Go tooling in the first place — the 1.x line
+is the line that exists.
 
 ## Recorded wire-affecting amendments
 
-The cases above are policy; this section records the concrete instances, so
-the history of "a release moved bits" lives where the compatibility promise
-does.
+The rules above are policy; this section records the concrete instances, so
+the history of "a release moved bits" lives where the compatibility rules do.
 
 **2026-08-15 — fixed-point rounding unified: half away from zero.** SPEC §4.8
 rule 2b's generated shallow narrowing changed from the bare arithmetic shift
@@ -74,11 +83,11 @@ the change.
 
 ## What is not covered
 
-**The protocol id is not a version number.** It is a hash of your schema, and
-it changes when *your* schema changes, independently of the compiler's version.
-Two peers built from the same schema by different 1.x compilers have the same
-protocol id and interoperate. That is the intended behaviour, and it follows
-from the promise above.
+**The protocol id is not a version number.** It is a hash of your schema's
+wire shape, and it changes when *your* schema's wire changes, independently of
+the compiler's version. Two peers built from the same schema by compilers that
+generate the same wire have the same protocol id and interoperate. That is the
+decoupling stated above, doing its job.
 
 **Generated files do not record the compiler version.** This is deliberate.
 Stamping it would mean every release produces a diff in every generated file in
