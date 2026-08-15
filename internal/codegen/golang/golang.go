@@ -667,7 +667,13 @@ func renderExpr(e ast.Expr) string {
 	case *ast.IdentExpr:
 		return e.Name
 	case *ast.UnaryExpr:
-		return "-" + renderExpr(e.X)
+		inner := renderExpr(e.X)
+		if strings.HasPrefix(inner, "-") {
+			// "--x" fails to parse in Go, and the emitter's own parse gate
+			// refused the whole unit; double negation needs parens (issue #22)
+			return "-(" + inner + ")"
+		}
+		return "-" + inner
 	case *ast.BinaryExpr:
 		return fmt.Sprintf("%s %s %s", renderExpr(e.X), e.Op, renderExpr(e.Y))
 	case *ast.ParenExpr:

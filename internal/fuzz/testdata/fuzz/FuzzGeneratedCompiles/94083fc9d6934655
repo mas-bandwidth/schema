@@ -1,0 +1,2 @@
+go test fuzz v1
+string("package A\nconst A=0\ntable B{}")

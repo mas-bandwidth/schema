@@ -40,10 +40,27 @@ func (g *gen) emitStructWire(st *ir.Struct) {
 	// ~2x on byte-array-heavy types
 	g.bulkBytes = ir.AlignedFixedByteArrays(st)
 
+	// A zero-wire-bit struct (every range degenerate — min == max costs zero
+	// bits) emits no stream operation, and its write body's only value uses
+	// are serialize_asserts that compile away under NDEBUG. The (void) casts
+	// keep -Wall -Wextra -Werror consumers building in every configuration
+	// (found by FuzzGeneratedCompiles, issue #22); they are harmless when a
+	// nested call does use the parameters.
+	zeroWire := len(st.Items) > 0 && ir.MaxBitsStruct(st) == 0
+	// items but no fields: reserved/const/align carry wire bits with no
+	// storage, so the body uses the stream and never the value (found by
+	// FuzzGeneratedCompiles, issue #22)
+	noStorage := len(st.Items) > 0 && len(st.Fields) == 0
+
 	g.pf("inline bool Write%s( serialize::WriteStream & stream, const %s & value )\n{\n", st.Name, st.Name)
 	if len(st.Items) == 0 {
 		g.pf("    (void) stream;\n    (void) value; // empty body — presence is the payload (SPEC §4.6)\n")
 	} else {
+		if zeroWire {
+			g.pf("    (void) stream;\n    (void) value; // zero wire bits — asserts compile away under NDEBUG\n")
+		} else if noStorage {
+			g.pf("    (void) value; // items only — reserved/const/align carry no storage\n")
+		}
 		g.emitWriteItems(st.Items, "    ")
 	}
 	g.pf("    return true;\n}\n\n")
@@ -52,6 +69,12 @@ func (g *gen) emitStructWire(st *ir.Struct) {
 	if len(st.Items) == 0 {
 		g.pf("    (void) stream;\n    (void) value;\n")
 	} else {
+		if zeroWire {
+			g.pf("    (void) stream; // zero wire bits — nothing to read, defaults prefill below\n")
+		}
+		if noStorage {
+			g.pf("    (void) value; // items only — reserved/const/align carry no storage\n")
+		}
 		g.emitReadItems(st.Items, "    ")
 	}
 	g.pf("    return true;\n}\n\n")

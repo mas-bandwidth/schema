@@ -68,6 +68,12 @@ func TestDiagnostics(t *testing.T) {
 		// ---- ranges and storage ----
 		{name: "range does not fit storage", want: "does not fit its declared storage",
 			src: "package t\ntype T { h int8 [min = 0, max = 1000] }\n"},
+		{name: "implicit const past int64 (FuzzGeneratedCompiles 0c59b1fd)", want: "does not fit int64, the default constant storage",
+			src: "package t\nconst A = 20000000000000000000\n"},
+		{name: "implicit const past int64, uint64 range (constexpr narrowing repro)", want: "does not fit int64, the default constant storage",
+			src: "package t\nconst A = 18446744073709551615\n"},
+		{name: "implicit const below int64 min", want: "does not fit int64, the default constant storage",
+			src: "package t\nconst A = -9223372036854775809\n"},
 		{name: "min without max", want: "min without max",
 			src: "package t\ntype T { h int16 [min = 0] }\n"},
 		{name: "inverted range", want: "inverted range",

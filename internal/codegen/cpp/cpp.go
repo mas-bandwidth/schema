@@ -302,7 +302,7 @@ func (g *gen) emitDataFile(carriesProtocolId bool) {
 			"the object set, extracted by the compiler — None = 0, then each object sorted by name (SPEC §4.8)")
 	}
 
-	for _, d := range g.emissionOrder() {
+	for _, d := range ir.EmissionOrder(g.file) {
 		switch d := d.(type) {
 		case *ir.Const:
 			g.emitConst(d)
@@ -349,7 +349,7 @@ func (g *gen) emitWireFile() {
 		g.emitUtf8Validator()
 	}
 
-	for _, d := range g.emissionOrder() {
+	for _, d := range ir.EmissionOrder(g.file) {
 		var fields []*ir.Field
 		switch d := d.(type) {
 		case *ir.Struct:
@@ -378,74 +378,6 @@ func (g *gen) emitWireFile() {
 	if g.file.Base == g.objOwner && len(g.unit.ObjNames) > 0 {
 		g.emitObjectTagWire()
 	}
-}
-
-// emissionOrder returns the file's declarations in an order where every
-// same-file named type precedes its by-value users — schema references are
-// order-free (SPEC §4.2), C++ is not. A stable topological sort: declaration
-// order is preserved wherever no dependency forces otherwise.
-func (g *gen) emissionOrder() []ir.Decl {
-	decls := g.file.Decls
-	n := len(decls)
-	byName := map[string]int{}
-	for i, d := range decls {
-		switch d := d.(type) {
-		case *ir.Struct:
-			byName[d.Name] = i
-		case *ir.Enum:
-			byName[d.Name] = i
-		case *ir.Flags:
-			byName[d.Name] = i
-		case *ir.Object:
-			byName[d.Name] = i
-		}
-	}
-	adj := make([][]int, n)
-	indeg := make([]int, n)
-	for i, d := range decls {
-		var fields []*ir.Field
-		switch d := d.(type) {
-		case *ir.Struct:
-			fields = d.Fields
-		case *ir.Object:
-			fields = d.Fields
-		}
-		for _, f := range fields {
-			if f.Type.Kind == ir.TNamed {
-				if j, ok := byName[f.Type.Name]; ok && j != i {
-					adj[j] = append(adj[j], i)
-					indeg[i]++
-				}
-			}
-		}
-	}
-	order := make([]ir.Decl, 0, n)
-	done := make([]bool, n)
-	for len(order) < n {
-		pick := -1
-		for i := 0; i < n; i++ {
-			if !done[i] && indeg[i] == 0 {
-				pick = i
-				break
-			}
-		}
-		if pick == -1 {
-			// an intra-file type cycle — the checker already rejected the unit;
-			// defensively emit the rest in declaration order
-			for i := 0; i < n; i++ {
-				if !done[i] {
-					pick = i
-					break
-				}
-			}
-		}
-		done[pick] = true
-		order = append(order, decls[pick])
-		for _, t := range adj[pick] {
-			indeg[t]--
-		}
-	}
-	return order
 }
 
 func (g *gen) emitTagEnum(name string, members []string, comment string) {
@@ -843,10 +775,94 @@ func (g *gen) renderInt(e ast.Expr, folded *big.Int) string {
 	if folded != nil && folded.IsInt64() && folded.Int64() == math.MinInt64 {
 		return "( -9223372036854775807ll - 1 )" // INT64_MIN has no literal spelling in C++
 	}
-	if e == nil || containsMax(e) || !g.renderable(e) {
+	if e == nil || containsMax(e) || !g.renderable(e) || !g.overflowSafe(e) {
 		return folded.String()
 	}
 	return g.renderExpr(e)
+}
+
+// overflowSafe reports whether e can render symbolically without the TARGET's
+// arithmetic overflowing on the way to the folded value. Schema folding is
+// arbitrary-precision; C++ is not: a literal-only subtree evaluates in int
+// (small decimal literals deduce int), and `7 * 700000000` is a
+// -Werror=-Winteger-overflow build break even though the product fits the
+// int64 bound it feeds (found by FuzzGeneratedCompiles, issue #22). A subtree
+// referencing a constant evaluates in int64 (constants emit as typed
+// constexpr int64_t). Anything unprovable folds — folding is always correct,
+// symbolic rendering is the luxury.
+func (g *gen) overflowSafe(e ast.Expr) bool {
+	_, _, ok := g.carrierEval(e)
+	return ok
+}
+
+// carrierEval returns e's folded value, whether the subtree references a
+// constant (and so carries 64-bit arithmetic), and whether every
+// subexpression's value fits the arithmetic type it evaluates in.
+func (g *gen) carrierEval(e ast.Expr) (*big.Int, bool, bool) {
+	switch e := e.(type) {
+	case *ast.IntLit:
+		// a literal past INT64_MAX has no signed spelling in the target —
+		// it deduces unsigned, a -Werror warning — so it cannot ride
+		// symbolically even where the folded result is small
+		return e.Value, false, e.Value.IsInt64()
+	case *ast.IdentExpr:
+		c, ok := g.unit.Consts[e.Name]
+		if !ok || c.IsFloat || c.Int == nil {
+			return nil, true, false
+		}
+		return c.Int, true, true
+	case *ast.ParenExpr:
+		return g.carrierEval(e.X)
+	case *ast.UnaryExpr:
+		v, wide, ok := g.carrierEval(e.X)
+		if !ok {
+			return nil, wide, false
+		}
+		nv := new(big.Int).Neg(v)
+		return nv, wide, fitsCarrier(nv, wide)
+	case *ast.BinaryExpr:
+		x, xw, ok := g.carrierEval(e.X)
+		if !ok {
+			return nil, xw, false
+		}
+		y, yw, ok := g.carrierEval(e.Y)
+		if !ok {
+			return nil, yw, false
+		}
+		wide := xw || yw
+		v := new(big.Int)
+		switch e.Op {
+		case "+":
+			v.Add(x, y)
+		case "-":
+			v.Sub(x, y)
+		case "*":
+			v.Mul(x, y)
+		case "/":
+			if y.Sign() == 0 {
+				return nil, wide, false
+			}
+			v.Quo(x, y) // truncation toward zero, as C++ divides
+		case "%":
+			if y.Sign() == 0 {
+				return nil, wide, false
+			}
+			v.Rem(x, y)
+		default:
+			return nil, wide, false
+		}
+		return v, wide, fitsCarrier(v, wide)
+	}
+	return nil, false, false
+}
+
+// fitsCarrier: a subtree with a constant reference evaluates in int64; a
+// literal-only subtree evaluates in int, conservatively taken as 32-bit.
+func fitsCarrier(v *big.Int, wide bool) bool {
+	if wide {
+		return v.IsInt64()
+	}
+	return v.IsInt64() && v.Int64() >= math.MinInt32 && v.Int64() <= math.MaxInt32
 }
 
 // render128 renders a 128-bit integer constant (a bound or a default). C++
@@ -910,7 +926,13 @@ func (g *gen) renderExpr(e ast.Expr) string {
 		g.noteRef(e.Name)
 		return e.Name
 	case *ast.UnaryExpr:
-		return "-" + g.renderExpr(e.X)
+		inner := g.renderExpr(e.X)
+		if strings.HasPrefix(inner, "-") {
+			// "--x" is decrement in C++, not double negation (found by
+			// FuzzGeneratedCompiles, issue #22)
+			return "-(" + inner + ")"
+		}
+		return "-" + inner
 	case *ast.BinaryExpr:
 		return fmt.Sprintf("%s %s %s", g.renderExpr(e.X), e.Op, g.renderExpr(e.Y))
 	case *ast.ParenExpr:

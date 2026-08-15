@@ -14,14 +14,10 @@
 /test/cs/obj/
 /test/cs-ludicrous/bin/
 /test/cs-ludicrous/obj/
-generated/cpp/.stamp
-generated/cpp/ludicrous/.stamp
-generated/go/.stamp
-generated/rust/.stamp
-generated/cs/.stamp
-generated/go-ludicrous/.stamp
-generated/rust-ludicrous/.stamp
-generated/cs-ludicrous/.stamp
+# every build stamp under generated/ — stamps order the build and are not
+# generator output; the old explicit list missed the C and bench stamps and
+# seven of them got committed (found while adding the goldens-current gate)
+generated/**/.stamp
 /bench/rust/target/
 /bench/rust/Cargo.lock
 /bench/cs/bin/
