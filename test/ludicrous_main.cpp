@@ -409,8 +409,7 @@ int main()
         check( std::memcmp( buffer, expected_probe, 1 ) == 0 );
         check( golden_wire( "degenerate_probe", buffer, ws.GetBytesProcessed() ) );
 
-        DegenerateProbe out;
-        std::memset( &out, 0, sizeof( out ) );
+        DegenerateProbe out; // members default to zero; memset is ill-formed on a non-trivial type (int128_t)
         serialize::ReadStream rs( buffer, ws.GetBytesProcessed() );
         check( ReadDegenerateProbe( rs, out ) );
         check( out.locked_fixed == -196608 );   // materialized from the range alone
