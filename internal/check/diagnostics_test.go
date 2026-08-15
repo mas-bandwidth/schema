@@ -6,9 +6,11 @@
 package check
 
 import (
+	"math"
 	"strings"
 	"testing"
 
+	"github.com/mas-bandwidth/schema/internal/ast"
 	"github.com/mas-bandwidth/schema/internal/parser"
 )
 
@@ -123,6 +125,30 @@ func TestDiagnostics(t *testing.T) {
 		// fixed defaults are LEGAL since 2026-08-12 (whole units, exact) — the
 		// old rejection case lives on as the good corner below; what stays
 		// illegal is inexactness and range violation (cases at the bottom).
+		// ---- ufixed(I, F): the unsigned sibling (Glenn, 2026-08-15: "ufixed
+		// is fine" — §9 q17 closed). Same shape rules, unsigned domain, and
+		// the diagnostics name the ufixed spelling. ----
+		{name: "ufixed bounds below zero", want: "do not fit ufixed(16, 16)",
+			src: "package t\ntype T { x ufixed(16, 16) [min = -1, max = 5] }\n"},
+		{name: "ufixed with zero integer bits", want: "at least one integer bit",
+			src: "package t\ntype T { x ufixed(0, 32) [min = 0, max = 1] }\n"},
+		{name: "ufixed I+F is not a storage width", want: "must equal a storage width",
+			src: "package t\ntype T { x ufixed(16, 15) [min = 0, max = 1] }\n"},
+		{name: "ufixed without bounds", want: "ufixed(48, 16) requires [min = A, max = B]",
+			src: "package t\ntype T { x ufixed(48, 16) }\n"},
+		{name: "ufixed bounds above the unsigned domain", want: "do not fit ufixed(8, 8)",
+			src: "package t\ntype T { x ufixed(8, 8) [min = 0, max = 300] }\n"},
+		{name: "ufixed(64, 0) bounds clamp at int64's ceiling", want: "do not fit ufixed(64, 0)",
+			src: "package t\ntype T { x ufixed(64, 0) [min = 0, max = 18446744073709551615] }\n"},
+		{name: "ufixed default below its unsigned range", want: "outside its range",
+			src: "package t\ntype T { x ufixed(16, 16) [min = 0, max = 5] = -1.0 }\n"},
+		{name: "ufixed in a table closure", want: "ufixed(I, F) has no table-wire kind",
+			src: "package t\ntable T { x ufixed(16, 16) [min = 0, max = 5] }\n"},
+		{name: "ufixed components do not narrow (rule 2b is signed-only)", want: "signed fixed(I, F) only",
+			src: "package t\ntype V { x ufixed(16, 16) [min = 0, max = 5]\n y ufixed(16, 16) [min = 0, max = 5] }\nobject O { p V [interpolate, quantize = 256] \n b bool }\n"},
+		{name: "ufixed with resolution", want: "resolution applies to float",
+			src: "package t\ntype T { x ufixed(16, 16) [min = 0, max = 1, resolution = 0.1] }\n"},
+
 		{name: "bare int128", want: "int128 requires",
 			src: "package t\ntype T { x int128 }\n"},
 		{name: "uint128 with a range", want: "not valid on uint128",
@@ -250,6 +276,45 @@ func TestDiagnostics(t *testing.T) {
 			src: "package t\ntype T { x float32 [min = 1.0, max = 1.00000001, resolution = 0.000000001] }\n"},
 		{name: "resolution collapses to zero at float32", want: "collapses to zero at float32",
 			src: "package t\ntype T { x float32 [min = 0.0, max = 1.0, resolution = 1e-46] }\n"},
+
+		// ---- non-finite compressed-float parameters (Glenn, 2026-08-15:
+		// "attempting to send NaN or INF or anything else through compressed
+		// float is non-conforming and should assert out on write too" — the
+		// compiler's half of the ruling; the runtimes carry the write
+		// asserts). Two levels per parameter: finite at float64, and finite
+		// at FLOAT32, where every runtime evaluates the triple. Before the
+		// rule, the float32-overflow shapes below CHECKED CLEAN and the C++
+		// emitter printed -Inf.0f — a token no C++ compiler accepts. The
+		// float64-level infinities ride integer literals, the one spelling
+		// that reached +/-Inf silently (a float literal beyond the double's
+		// range is a parse error; constant arithmetic is overflow-guarded).
+		// NaN has no spelling at all — its arm is TestNonFiniteTripleNaN. ----
+		{name: "compressed float min -Inf at float32", want: "min = -1e+39 overflows float32",
+			src: "package t\ntype T { x float32 [min = -1e39, max = 1e39, resolution = 1e30] }\n"},
+		{name: "compressed float min +Inf at float32", want: "min = 1e+39 overflows float32",
+			src: "package t\ntype T { x float32 [min = 1e39, max = 2e39, resolution = 1e30] }\n"},
+		{name: "compressed float max +Inf at float32", want: "max = 1e+39 overflows float32",
+			src: "package t\ntype T { x float32 [min = 0.0, max = 1e39, resolution = 1e30] }\n"},
+		// (a -Inf max cannot be its own diagnostic: min < max puts min below
+		// it, so the min arm always fires first — the parameter is still
+		// covered, by ordering rather than by a separate message)
+		{name: "compressed float resolution +Inf at float32", want: "resolution = 1e+39 overflows float32",
+			src: "package t\ntype T { x float32 [min = 0.0, max = 1.0, resolution = 1e39] }\n"},
+		{name: "compressed float min +Inf at float64, integer literal", want: "does not fit float64",
+			src: "package t\ntype T { x float32 [min = 1" + strings.Repeat("0", 400) + ", max = 1.0, resolution = 0.1] }\n"},
+		{name: "compressed float min -Inf at float64, negated integer literal", want: "does not fit float64",
+			src: "package t\ntype T { x float32 [min = -1" + strings.Repeat("0", 400) + ", max = 1.0, resolution = 0.1] }\n"},
+		// The through-a-const vehicle is refused EARLIER since the #22 guard
+		// landed: an implicitly-typed const past int64 fails at its own
+		// declaration, so the float64-finiteness arm can no longer be reached
+		// through a const — the schema is refused either way, and the float64
+		// arm keeps its coverage via the integer-literal cases beside this one.
+		{name: "compressed float max +Inf at float64, through a const", want: "does not fit int64, the default constant storage",
+			src: "package t\nconst Big = 1" + strings.Repeat("0", 400) + "\ntype T { x float32 [min = 0.0, max = Big, resolution = 0.1] }\n"},
+		{name: "compressed float resolution +Inf at float64, integer literal", want: "does not fit float64",
+			src: "package t\ntype T { x float32 [min = 0.0, max = 1.0, resolution = 1" + strings.Repeat("0", 400) + "] }\n"},
+		{name: "interpolate float64 triple infinite at float32 — rule 4 shares the path", want: "overflows float32, where every runtime evaluates the triple",
+			src: "package t\nobject O { x float64 [interpolate, min = -1e39, max = 1e39, resolution = 1e30]\n b bool }\n"},
 		{name: "enum max above the 32-bit tag wire", want: "32-bit tag wire",
 			src: "package t\nenum E [max = 2147483648] { A }\ntype T { e E }\n"},
 		{name: "message field would shadow the C# Type dispatch property", want: "Type dispatch property",
@@ -343,6 +408,12 @@ func TestGoodCornersStillCompile(t *testing.T) {
 			src: "package t\ntype T { n uint64 [min = 0, max = 18446744073709551615] }\n"},
 		{name: "fixed at every storage width, F = 0, and the sign-bit-only corner",
 			src: "package t\ntype T {\n    a fixed(8, 8) [min = -100, max = 100]\n    b fixed(16, 16) [min = -180, max = 180]\n    c fixed(32, 0) [min = 0, max = 1000000]\n    d fixed(48, 16) [min = -30000, max = 30000]\n    e fixed(112, 16) [min = -1000000, max = 1000000]\n    f fixed(1, 63) [min = -1, max = 0]\n}\n"},
+		{name: "ufixed at every storage width, the full unsigned domains, and the one-bit corner",
+			src: "package t\ntype T {\n    a ufixed(8, 8) [min = 0, max = 255]\n    b ufixed(16, 16) [min = 0, max = 360]\n    c ufixed(32, 0) [min = 0, max = 4294967295]\n    d ufixed(48, 16) [min = 0, max = 281474976710655]\n    e ufixed(112, 16) [min = 0, max = 2000000]\n    f ufixed(1, 63) [min = 0, max = 1]\n    g ufixed(16, 16) [min = 3, max = 3]\n}\n"},
+		{name: "ufixed default in whole units, exactly representable",
+			src: "package t\ntype T { x ufixed(2, 30) [min = 0, max = 1] = 1.0 \n y ufixed(16, 16) [min = 0, max = 100] = 0.5 }\n"},
+		{name: "un-narrowed ufixed composite dissolves (rule 2, sign-agnostic delegation)",
+			src: "package t\ntype V { x ufixed(48, 16) [min = 0, max = 100]\n y ufixed(48, 16) [min = 0, max = 100] }\nobject O { p V [interpolate] \n b bool }\n"},
 		{name: "int128 with a range only 128 bits can hold, and raw uint128",
 			src: "package t\ntype T {\n    flux int128 [min = -1267650600228229401496703205376, max = 1267650600228229401496703205376]\n    id   uint128\n}\n"},
 		{name: "128-bit defaults inside their range",
@@ -401,4 +472,47 @@ func TestGoodCornersStillCompile(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestNonFiniteTripleNaN exercises the NaN arm of the non-finite rule (SPEC
+// §4.6; Glenn, 2026-08-15). The grammar cannot spell NaN — a float literal
+// beyond the double's range is a parse error, every constant arithmetic
+// result is overflow-guarded, and division by zero is refused — so the arm is
+// exercised the only way a NaN can exist in the checker's input: planted
+// directly in the AST. Defense in depth, proven rather than assumed.
+func TestNonFiniteTripleNaN(t *testing.T) {
+	src := "package t\ntype T { x float32 [min = 0.5, max = 1.0, resolution = 0.25] }\n"
+	f, perrs := parser.Parse("T.schema", []byte(src))
+	if len(perrs) > 0 {
+		t.Fatal(perrs[0])
+	}
+	planted := false
+	for _, d := range f.Decls {
+		td, ok := d.(*ast.TypeDecl)
+		if !ok {
+			continue
+		}
+		for _, item := range td.Body.Items {
+			fld, ok := item.(*ast.Field)
+			if !ok {
+				continue
+			}
+			for i := range fld.Attrs {
+				if fld.Attrs[i].Key == "min" {
+					fld.Attrs[i].Value = &ast.FloatLit{Pos: fld.Attrs[i].Pos, Value: math.NaN(), Text: "NaN"}
+					planted = true
+				}
+			}
+		}
+	}
+	if !planted {
+		t.Fatal("no min attribute found to plant the NaN in")
+	}
+	_, errs := Unit([]SourceFile{{Path: "T.schema", Name: "T.schema", Base: "T", Bytes: []byte(src), AST: f}})
+	for _, err := range errs {
+		if strings.Contains(err.Error(), "is not finite") {
+			return
+		}
+	}
+	t.Fatalf("a NaN compressed-float bound must be rejected as non-finite; got %v", errs)
 }

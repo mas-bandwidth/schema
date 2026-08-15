@@ -2,7 +2,7 @@
    SPDX-License-Identifier: NONE — this generated output is yours, under terms of
    your choice. See the LICENSE exception in the schema compiler; the compiler is
    AGPL-3.0, its output is not.
-   package ludicrous — protocol id 0xd5109966210b5b4b */
+   package ludicrous — protocol id 0xa925c86b46058512 */
 
 #ifndef SCHEMA_LUDICROUS_LUDICROUS_H
 #define SCHEMA_LUDICROUS_LUDICROUS_H
@@ -26,7 +26,7 @@ extern "C" {
 
 /* The unit's protocol id — the hash of its schema files (SPEC §3.1). Two
    sides at the same id speak identical bits; there is no other versioning. */
-#define LUDICROUS_PROTOCOL_ID 0xd5109966210b5b4bULL
+#define LUDICROUS_PROTOCOL_ID 0xa925c86b46058512ULL
 
 #define MAX_WORLD_UNITS (30000)
 
@@ -80,6 +80,21 @@ typedef struct FixedProbe {
 
 #define FIXED_PROBE_MAX_BITS 156   /* longest wire path; align pads at worst case (SPEC §6.1) */
 #define FIXED_PROBE_MAX_BYTES 24  /* rounded up to the 8-byte write-buffer granularity */
+
+
+/* type UnsignedProbe */
+typedef struct UnsignedProbe {
+    uint32_t angle;
+    uint64_t span;
+    serialize_uint128_t reach;
+    uint32_t ticks;
+    uint32_t samples[2];
+    uint32_t locked;
+    uint8_t tail;
+} UnsignedProbe;
+
+#define UNSIGNED_PROBE_MAX_BITS 196   /* longest wire path; align pads at worst case (SPEC §6.1) */
+#define UNSIGNED_PROBE_MAX_BYTES 32  /* rounded up to the 8-byte write-buffer granularity */
 
 
 /* type WideProbe */

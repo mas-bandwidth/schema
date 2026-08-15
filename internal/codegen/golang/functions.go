@@ -316,12 +316,19 @@ func (g *gen) emitWriteScalar(f *ir.Field, name, ind string) {
 		if f.IntMin.Cmp(f.IntMax) == 0 {
 			// degenerate range: ZERO bits — the folded range refusal and no
 			// wire call at all, so no runtime degenerate support is needed
-			// (SPEC §4.6, decided 2026-08-15). The one legal raw is min << F.
+			// (SPEC §4.6, decided 2026-08-15). The one legal raw is min << F,
+			// compared in the storage's own signedness (a wide ufixed raw can
+			// live above int64).
 			rawMin := new(big.Int).Lsh(f.IntMin, uint(f.Type.FracBits))
-			if f.Type.Width == 128 {
+			switch {
+			case f.Type.Width == 128 && f.Type.Signed:
 				g.pf("%sif %s != %s { // the runtime range refusal, folded (SPEC §5)\n", ind, name, g.render128(nil, rawMin))
-			} else {
+			case f.Type.Width == 128:
+				g.pf("%sif %s != %s { // the runtime range refusal, folded (SPEC §5)\n", ind, name, g.renderU128(nil, rawMin))
+			case f.Type.Signed:
 				g.pf("%sif int64(%s) != %s { // the runtime range refusal, folded (SPEC §5)\n", ind, name, rawMin.String())
+			default:
+				g.pf("%sif uint64(%s) != %s { // the runtime range refusal, folded (SPEC §5)\n", ind, name, rawMin.String())
 			}
 			g.pf("%s\treturn serialize.ErrValueOutOfRange\n%s}\n", ind, ind)
 			return
@@ -329,16 +336,23 @@ func (g *gen) emitWriteScalar(f *ir.Field, name, ind string) {
 		// the Q format and the whole-unit bounds are compile-time constants of
 		// the call site — part of the wire format, exactly like a ranged
 		// integer's bounds (STANDARD.md, fixed). The runtime carries the
-		// write-side range refusal natively (ErrValueOutOfRange, sticky).
+		// write-side range refusal natively (ErrValueOutOfRange, sticky) and
+		// derives the unit capacity from min < 0, so unsigned storage rides
+		// the same int64/Int128-shaped calls through bit-exact casts.
 		lo, hi := g.rangeArgs(f)
-		switch f.Type.Width {
-		case 128:
+		switch {
+		case f.Type.Width == 128 && f.Type.Signed:
 			g.pf("%sstream.SerializeFixed128(&%s, %d, %d, %s, %s)\n", ind, name, f.Type.IntBits, f.Type.FracBits, lo, hi)
-		case 64:
+		case f.Type.Width == 128:
+			g.pf("%s{\n%s\tfixedValue := %s.Int128()\n", ind, ind, name)
+			g.pf("%s\tstream.SerializeFixed128(&fixedValue, %d, %d, %s, %s)\n%s}\n", ind, f.Type.IntBits, f.Type.FracBits, lo, hi, ind)
+		case f.Type.Width == 64 && f.Type.Signed:
 			g.pf("%sstream.SerializeFixed64(&%s, %d, %d, %s, %s)\n", ind, name, f.Type.IntBits, f.Type.FracBits, lo, hi)
 		default:
-			// storage narrower than the library's int64 form: widen through a
-			// temp — lossless, the raw value fits I+F bits by construction
+			// storage narrower than the library's int64 form, or unsigned:
+			// widen through a temp — lossless, the raw value fits I+F bits by
+			// construction, and uint64 -> int64 is a bit-exact cast the
+			// runtime's unsigned-domain offset math recovers
 			g.pf("%s{\n%s\tfixedValue := int64(%s)\n", ind, ind, name)
 			g.pf("%s\tstream.SerializeFixed64(&fixedValue, %d, %d, %s, %s)\n%s}\n", ind, f.Type.IntBits, f.Type.FracBits, lo, hi, ind)
 		}
@@ -515,30 +529,41 @@ func (g *gen) emitReadScalar(f *ir.Field, name, ind string) {
 	case ir.TFixed:
 		if f.IntMin.Cmp(f.IntMax) == 0 {
 			// degenerate range: zero bits — the value is the range, raw
-			// min << F, materialized with no wire call (SPEC §4.6)
+			// min << F, materialized with no wire call (SPEC §4.6), in the
+			// storage's own signedness
 			rawMin := new(big.Int).Lsh(f.IntMin, uint(f.Type.FracBits))
-			if f.Type.Width == 128 {
+			switch {
+			case f.Type.Width == 128 && f.Type.Signed:
 				g.pf("%s%s = %s\n", ind, name, g.render128(nil, rawMin))
-			} else {
+			case f.Type.Width == 128:
+				g.pf("%s%s = %s\n", ind, name, g.renderU128(nil, rawMin))
+			case f.Type.Signed:
 				g.pf("%s%s = %s(%s)\n", ind, name, goInt(f.Type.Width), rawMin.String())
+			default:
+				g.pf("%s%s = %s(%s)\n", ind, name, goUint(f.Type.Width), rawMin.String())
 			}
 			return
 		}
 		// the runtime validates the raw offset against the raw bounds and
 		// rejects — never clamps — surfacing ErrValueOutOfRange on a hostile
-		// stream
+		// stream; unsigned storage narrows back through a bit-exact cast
 		lo, hi := g.rangeArgs(f)
-		switch f.Type.Width {
-		case 128:
+		switch {
+		case f.Type.Width == 128 && f.Type.Signed:
 			g.pf("%sstream.SerializeFixed128(&%s, %d, %d, %s, %s)\n", ind, name, f.Type.IntBits, f.Type.FracBits, lo, hi)
-		case 64:
+		case f.Type.Width == 128:
+			g.pf("%s{\n%s\tfixedValue := serialize.Int128{}\n", ind, ind)
+			g.pf("%s\tstream.SerializeFixed128(&fixedValue, %d, %d, %s, %s)\n", ind, f.Type.IntBits, f.Type.FracBits, lo, hi)
+			g.pf("%s\t%s = fixedValue.Uint128()\n%s}\n", ind, name, ind)
+		case f.Type.Width == 64 && f.Type.Signed:
 			g.pf("%sstream.SerializeFixed64(&%s, %d, %d, %s, %s)\n", ind, name, f.Type.IntBits, f.Type.FracBits, lo, hi)
 		default:
-			// narrow back down on the member assignment — lossless, a decoded
-			// raw value is inside the raw bounds or the read already failed
+			// narrow (or re-sign) on the member assignment — lossless, a
+			// decoded raw value is inside the raw bounds or the read already
+			// failed
 			g.pf("%s{\n%s\tfixedValue := int64(0)\n", ind, ind)
 			g.pf("%s\tstream.SerializeFixed64(&fixedValue, %d, %d, %s, %s)\n", ind, f.Type.IntBits, f.Type.FracBits, lo, hi)
-			g.pf("%s\t%s = %s(fixedValue)\n%s}\n", ind, name, goInt(f.Type.Width), ind)
+			g.pf("%s\t%s = %s(fixedValue)\n%s}\n", ind, name, goInt2(f.Type.Signed, f.Type.Width), ind)
 		}
 	case ir.TInt:
 		if f.Type.Width == 128 {

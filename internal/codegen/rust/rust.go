@@ -754,10 +754,14 @@ func (g *gen) rustFieldType(t ir.FieldType) string {
 		}
 		return fmt.Sprintf("u%d", t.Width)
 	case ir.TFixed:
-		// raw scaled integer in signed storage of exactly I+F bits —
-		// serialize's own fixed storage convention (serialize_fixed asserts
-		// integer_bits + fraction_bits == T::BITS)
-		return rustInt(t.Width)
+		// raw scaled integer in storage of exactly I+F bits, the type's own
+		// signedness — serialize's fixed storage convention (serialize_fixed
+		// asserts integer_bits + fraction_bits == T::BITS, and
+		// FixedPointStorage is implemented for the unsigned primitives too)
+		if t.Signed {
+			return rustInt(t.Width)
+		}
+		return rustUint(t.Width)
 	case ir.TBits:
 		if t.Width <= 32 {
 			return "u32"

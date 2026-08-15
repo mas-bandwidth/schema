@@ -132,13 +132,13 @@ const (
 	ScalarFloat64
 	ScalarString
 	ScalarBytes
-	ScalarFixed // fixed(I, F) — signed fixed point (SPEC §4.3)
+	ScalarFixed // fixed(I, F) / ufixed(I, F) — fixed point, Signed flag (SPEC §4.3)
 	ScalarNamed
 )
 
 type ScalarType struct {
 	Kind   ScalarKind
-	Signed bool   // ScalarInt
+	Signed bool   // ScalarInt; ScalarFixed (fixed = true, ufixed = false)
 	Width  int    // ScalarInt: 8/16/32/64/128
 	Arg    Expr   // ScalarBits/ScalarString/ScalarBytes: the (N); ScalarFixed: I
 	Arg2   Expr   // ScalarFixed: F

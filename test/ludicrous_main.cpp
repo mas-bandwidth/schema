@@ -418,6 +418,89 @@ int main()
         check( out.tail == 0xA5 );
     }
 
+    // ---- UnsignedProbe: ufixed(I, F), the unsigned sibling (SPEC §4.3;
+    // Glenn 2026-08-15: "ufixed is fine", closing §9 q17) ----
+    // The width ladder mirrors FixedProbe's and adds the unsigned-only
+    // hazard: span's raw values fill uint64's HIGH HALF (above 2^63) — any
+    // sign-extending route corrupts them, and this byte-compare is the gate.
+    // Derivation, in wire order (offset = raw − (min << F) in
+    // bitlen(max − min) + F bits):
+    //   angle    ufixed(16,16)  [0,360]    = 45.5 units  ->  2981888 in 25 bits
+    //   span     ufixed(48,16)  [0,2^48-1] = raw_max     ->  0xFFFFFFFFFFFF0000 in 64 bits
+    //   reach    ufixed(112,16) [0,2e6]    = raw_max - 1 ->  131071999999 in 37 bits
+    //   ticks    ufixed(32,0)   [0,1e6]    = 777777      ->  777777 in 20 bits
+    //   samples0 ufixed(16,16)  [0,16]     = raw_min     ->  0 in 21 bits
+    //   samples1 ufixed(16,16)  [0,16]     = raw_max     ->  1048576 in 21 bits
+    //   locked   ufixed(16,16)  [3,3]      = 3 * 2^16    ->  ZERO bits (degenerate)
+    //   tail     uint8                     = 0xA5        ->  8 bits
+    // Totals: 196 bits = 25 bytes.
+    {
+        static_assert( UnsignedProbeMaxBits == 196, "UnsignedProbe worst case" );
+
+        UnsignedProbe in;
+        in.angle = 2981888;                                 // +45.5 * 2^16
+        in.span = 0xFFFFFFFFFFFF0000ull;                    // raw_max — the uint64 HIGH HALF
+        in.reach = serialize::uint128_t( 131071999999ull ); // raw_max - 1
+        in.ticks = 777777;
+        in.samples[0] = 0;                                  // raw_min
+        in.samples[1] = 1048576;                            // raw_max
+        in.locked = 196608;                                 // 3 * 2^16, the ONE legal raw
+        in.tail = 0xA5;
+
+        uint8_t expected_unsigned[25] = { 0 };
+        {
+            int pos = 0;
+            put_bits( expected_unsigned, pos, 25, 2981888ull ); pos += 25;
+            put_bits( expected_unsigned, pos, 64, 0xFFFFFFFFFFFF0000ull ); pos += 64;
+            put_bits( expected_unsigned, pos, 37, 131071999999ull ); pos += 37;
+            put_bits( expected_unsigned, pos, 20, 777777ull ); pos += 20;
+            put_bits( expected_unsigned, pos, 21, 0ull ); pos += 21;
+            put_bits( expected_unsigned, pos, 21, 1048576ull ); pos += 21;
+            // locked: a degenerate range reaches no wire (SPEC §4.6)
+            put_bits( expected_unsigned, pos, 8, 0xA5ull ); pos += 8;
+        }
+        serialize::WriteStream ws( buffer, sizeof( buffer ) );
+        check( WriteUnsignedProbe( ws, in ) );
+        ws.Flush();
+        check( ws.GetBytesProcessed() == (int) sizeof( expected_unsigned ) );
+        check( std::memcmp( buffer, expected_unsigned, sizeof( expected_unsigned ) ) == 0 );
+        check( golden_wire( "unsigned_probe", buffer, ws.GetBytesProcessed() ) );
+
+        UnsignedProbe out;
+        serialize::ReadStream rs( buffer, ws.GetBytesProcessed() );
+        check( ReadUnsignedProbe( rs, out ) );
+        check( out.angle == 2981888 );
+        check( out.span == 0xFFFFFFFFFFFF0000ull );         // the high half round-trips bit-exact
+        check( out.reach == serialize::uint128_t( 131071999999ull ) );
+        check( out.ticks == 777777 );
+        check( out.samples[0] == 0 && out.samples[1] == 1048576 );
+        check( out.locked == 196608 );                      // materialized from the range alone
+        check( out.tail == 0xA5 );
+
+        // hostile: angle's 25 offset bits all-ones = 33554431, above the raw
+        // range 360 * 2^16 = 23592960 — reject, never clamp
+        {
+            uint8_t hostile[sizeof( expected_unsigned )];
+            std::memcpy( hostile, expected_unsigned, sizeof( hostile ) );
+            set_bits( hostile, 0, 25 );
+            UnsignedProbe hOut;
+            serialize::ReadStream hrs( hostile, sizeof( hostile ) );
+            check( !ReadUnsignedProbe( hrs, hOut ) );
+        }
+        // hostile: span's 64 offset bits all-ones = 2^64 - 1, above the raw
+        // range 0xFFFFFFFFFFFF0000 — the headroom is exactly the low 16
+        // bits, and the reject must fire in the UNSIGNED domain (a signed
+        // compare would call the smuggled value negative and wave it through)
+        {
+            uint8_t hostile[sizeof( expected_unsigned )];
+            std::memcpy( hostile, expected_unsigned, sizeof( hostile ) );
+            set_bits( hostile, 25, 64 );
+            UnsignedProbe hOut;
+            serialize::ReadStream hrs( hostile, sizeof( hostile ) );
+            check( !ReadUnsignedProbe( hrs, hOut ) );
+        }
+    }
+
     // ---- the message dispatch surface over the new unit ----
     {
         Message m;

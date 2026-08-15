@@ -598,14 +598,22 @@ func (g *gen) goFieldType(t ir.FieldType) string {
 		}
 		return goInt2(t.Signed, t.Width)
 	case ir.TFixed:
-		// raw scaled integer in signed storage of exactly I+F bits —
-		// serialize's own fixed storage convention (STANDARD.md, fixed);
-		// the wide form stores the pair
+		// raw scaled integer in storage of exactly I+F bits, the type's own
+		// signedness — serialize's fixed storage convention (STANDARD.md,
+		// fixed); the wide form stores the pair. The runtime API is
+		// int64/Int128-shaped and derives capacity from min < 0, so unsigned
+		// storage rides the same calls through bit-exact casts.
 		if t.Width == 128 {
 			g.needsSerialize = true
-			return "serialize.Int128"
+			if t.Signed {
+				return "serialize.Int128"
+			}
+			return "serialize.Uint128"
 		}
-		return goInt(t.Width)
+		if t.Signed {
+			return goInt(t.Width)
+		}
+		return goUint(t.Width)
 	case ir.TBits:
 		if t.Width <= 32 {
 			return "uint32"

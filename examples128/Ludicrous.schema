@@ -27,6 +27,25 @@ type FixedProbe {
     samples  [2]fixed(16, 16) [min = -8, max = 8]
 }
 
+// The unsigned sibling — ufixed(I, F), DECIDED (Glenn, 2026-08-15: "ufixed
+// is fine"; SPEC §4.3, §9 q17 closed as the explicit-spelling option): no
+// sign bit, whole-unit domain [0, 2^I), same F semantics, storage an
+// unsigned integer of exactly I+F bits. The shapes mirror FixedProbe's
+// width ladder and add the unsigned-only hazard: span's raw values fill
+// uint64's HIGH HALF (above 2^63), where any sign-extending route corrupts
+// them — the C entry routing and the Go bit-casts are proven by the
+// byte-compare. locked is the degenerate ufixed shape (zero bits, F = 16
+// would show), riding in front of the tail byte like DegenerateProbe's.
+type UnsignedProbe {
+    angle   ufixed(16, 16)    [min = 0, max = 360]
+    span    ufixed(48, 16)    [min = 0, max = 281474976710655]
+    reach   ufixed(112, 16)   [min = 0, max = 2000000]
+    ticks   ufixed(32, 0)     [min = 0, max = 1000000]
+    samples [2]ufixed(16, 16) [min = 0, max = 16]
+    locked  ufixed(16, 16)    [min = 3, max = 3]
+    tail    uint8
+}
+
 // the 128-bit integers: the raw field (always 128 bits, low qword first), a
 // ranged field whose range fits 64 bits (bytes identical to serialize_int64
 // over the same bounds — STANDARD.md), a ranged field only 128 bits can hold

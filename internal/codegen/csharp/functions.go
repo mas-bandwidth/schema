@@ -461,13 +461,22 @@ func (g *gen) emitWriteScalar(f *ir.Field, name, ind string) {
 		if f.IntMin.Cmp(f.IntMax) == 0 {
 			// degenerate range: ZERO bits — the folded range refusal and no
 			// wire call at all, so no runtime degenerate support is needed
-			// (SPEC §4.6, decided 2026-08-15). The one legal raw is min << F.
+			// (SPEC §4.6, decided 2026-08-15). The one legal raw is min << F,
+			// compared in the storage's own signedness (a wide ufixed raw can
+			// live above long.MaxValue).
 			rawMin := new(big.Int).Lsh(f.IntMin, uint(f.Type.FracBits))
-			if f.Type.Width == 128 {
+			switch {
+			case f.Type.Width == 128 && f.Type.Signed:
 				g.sf("%sif (%s != (Int128Value)(%s)) // out-of-contract writes are refused, not wrapped\n%s{\n%s    return false;\n%s}\n",
 					ind, name, csRender128(rawMin), ind, ind, ind)
-			} else {
+			case f.Type.Width == 128:
+				g.sf("%sif (%s != (UInt128Value)(%s)) // out-of-contract writes are refused, not wrapped\n%s{\n%s    return false;\n%s}\n",
+					ind, name, csRenderU128(rawMin), ind, ind, ind)
+			case f.Type.Signed:
 				g.sf("%sif ((long)%s != %sL) // out-of-contract writes are refused, not wrapped\n%s{\n%s    return false;\n%s}\n",
+					ind, name, rawMin.String(), ind, ind, ind)
+			default:
+				g.sf("%sif ((ulong)%s != %sUL) // out-of-contract writes are refused, not wrapped\n%s{\n%s    return false;\n%s}\n",
 					ind, name, rawMin.String(), ind, ind, ind)
 			}
 			return
@@ -675,12 +684,18 @@ func (g *gen) emitReadScalar(f *ir.Field, name, ind string) {
 	case ir.TFixed:
 		if f.IntMin.Cmp(f.IntMax) == 0 {
 			// degenerate range: zero bits — the value is the range, raw
-			// min << F, materialized with no wire call (SPEC §4.6)
+			// min << F, materialized with no wire call (SPEC §4.6), in the
+			// storage's own signedness
 			rawMin := new(big.Int).Lsh(f.IntMin, uint(f.Type.FracBits))
-			if f.Type.Width == 128 {
+			switch {
+			case f.Type.Width == 128 && f.Type.Signed:
 				g.sf("%s%s = %s;\n", ind, name, csRender128(rawMin))
-			} else {
+			case f.Type.Width == 128:
+				g.sf("%s%s = %s;\n", ind, name, csRenderU128(rawMin))
+			case f.Type.Signed:
 				g.sf("%s%s = unchecked((%s)(%sL));\n", ind, name, g.csFieldType(f.Type), rawMin.String())
+			default:
+				g.sf("%s%s = unchecked((%s)(%sUL));\n", ind, name, g.csFieldType(f.Type), rawMin.String())
 			}
 			return
 		}
