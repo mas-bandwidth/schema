@@ -483,8 +483,8 @@ static void vary_testdata( TestData * m, uint64_t rng )
 #include "bench_message.inc"
 #define BM_SUFFIX ship_shallow
 #define BM_TYPE ShipData_Shallow
-#define BM_WRITE write_ship_shallow
-#define BM_READ read_ship_shallow
+#define BM_WRITE write_ship_data_shallow
+#define BM_READ read_ship_data_shallow
 #define BM_VARY vary_ship_shallow
 #include "bench_message.inc"
 #define BM_SUFFIX probe_header
