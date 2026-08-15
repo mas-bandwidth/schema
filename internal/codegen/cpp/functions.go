@@ -17,7 +17,6 @@ import (
 
 func bitsRequired(min, max *big.Int) int64 { return ir.BitsRequired(min, max) }
 
-func (g *gen) maxBitsField(f *ir.Field) int64    { return ir.MaxBitsField(f) }
 func (g *gen) maxBitsStruct(st *ir.Struct) int64 { return ir.MaxBitsStruct(st) }
 
 // ---- function emission ----

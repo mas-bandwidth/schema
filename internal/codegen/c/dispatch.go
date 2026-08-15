@@ -190,9 +190,8 @@ func (g *gen) emitMessageDispatch() {
 	g.pf("        default:\n            return 0;\n    }\n}\n\n")
 }
 
-func bigZero() *big.Int          { return big.NewInt(0) }
-func bigInt64(v int64) *big.Int  { return big.NewInt(v) }
-
+func bigZero() *big.Int         { return big.NewInt(0) }
+func bigInt64(v int64) *big.Int { return big.NewInt(v) }
 
 // uint128Literal renders an unsigned 128-bit default from its two lanes.
 func uint128Literal(v *big.Int) string {

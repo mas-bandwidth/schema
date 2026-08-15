@@ -168,7 +168,7 @@ func load(path string) (map[key]row, []string, error) {
 	if err != nil {
 		return nil, nil, err
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }() // read-only: a close error carries nothing
 
 	rows := map[key]row{}
 	var meta []string
@@ -228,15 +228,15 @@ func load(path string) (map[key]row, []string, error) {
 func parseIdentity(path string, meta []string) identity {
 	id := identity{path: path}
 	get := func(line, prefix string) (string, bool) {
-		if strings.HasPrefix(line, prefix) {
-			return strings.TrimSpace(strings.TrimPrefix(line, prefix)), true
+		if after, ok := strings.CutPrefix(line, prefix); ok {
+			return strings.TrimSpace(after), true
 		}
 		return "", false
 	}
 	for _, m := range meta {
 		if v, ok := get(m, "# host:"); ok {
 			// "host: x  arch: y  os: z" arrives on one line
-			for _, part := range strings.Split(v, "  ") {
+			for part := range strings.SplitSeq(v, "  ") {
 				part = strings.TrimSpace(part)
 				switch {
 				case strings.HasPrefix(part, "arch:"):

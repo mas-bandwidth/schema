@@ -72,7 +72,7 @@ type Struct struct {
 	IsTable   bool // declared with `table`: a table-wire/reflection ROOT.
 	// The closure (this table plus everything it references, transitively)
 	// gets table codecs and field descriptors — see TableClosure.
-	Tags   []string // inert in v1 (SPEC §4.2)
+	Tags []string // inert in v1 (SPEC §4.2)
 	// C++ native type mapping (SPEC §4.2, Native type mapping): when set,
 	// generated C++ declares fields of this type as ::CppNative (a hand type
 	// deriving from the generated basis struct — same layout, plus behavior)
@@ -82,8 +82,8 @@ type Struct struct {
 	// reference there would be circular). C++-only; other targets ignore it.
 	CppNative  string
 	CppInclude string
-	Fields []*Field // flattened; branch fields carry Guard — storage emission
-	Items  []Item   // the wire tree: fields and branches in wire order — function emission
+	Fields     []*Field // flattened; branch fields carry Guard — storage emission
+	Items      []Item   // the wire tree: fields and branches in wire order — function emission
 }
 
 // TableClosure is the set of structs that carry table codecs and reflection

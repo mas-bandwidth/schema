@@ -29,7 +29,7 @@ func FieldId(name string) uint16 {
 	return id
 }
 
-// wire kinds (notes/table-wire.md)
+// wire kinds (notes/table-wire.md).
 const (
 	kEnd    = 0
 	kBool   = 1
@@ -237,7 +237,7 @@ func (e *Encoder) encodeTableField(w *tableWriter, f *ir.Field, obj map[string]a
 	fpath := path + "." + f.Name
 	kind, err := scalarKind(f)
 	if err != nil {
-		return fmt.Errorf("%s: %v", fpath, err)
+		return fmt.Errorf("%s: %w", fpath, err)
 	}
 
 	if f.Array == ir.ArrayFixed || f.Array == ir.ArrayCounted || f.Type.Kind == ir.TBytes {
@@ -373,12 +373,11 @@ func (e *Encoder) isDefault(f *ir.Field, val any, fpath string) (bool, error) {
 		s, _ := val.(string)
 		return val == nil || s == "", nil
 	case ir.TNamed:
-		switch f.Type.Ref.(type) {
+		switch ref := f.Type.Ref.(type) {
 		case *ir.Enum:
 			if val == nil {
 				return true, nil // absent -> reader defaults it to the same value
 			}
-			ref := f.Type.Ref.(*ir.Enum)
 			idx, err := enumValue(ref, f, val, fpath)
 			if err != nil {
 				return false, err
@@ -396,7 +395,7 @@ func (e *Encoder) isDefault(f *ir.Field, val any, fpath string) (bool, error) {
 			if val == nil {
 				return true, nil
 			}
-			mask, err := flagsValue(f.Type.Ref.(*ir.Flags), val, fpath)
+			mask, err := flagsValue(ref, val, fpath)
 			return mask == 0, err
 		case *ir.Struct:
 			return val == nil, nil // nested: encode when present; body may still collapse

@@ -123,7 +123,7 @@ func TestProtocolIdIsStable(t *testing.T) {
 			t.Fatalf("%s does not check: %v", dir, cerrs[0])
 		}
 		want := unit.ProtocolId
-		for i := 0; i < 8; i++ {
+		for i := range 8 {
 			again, cerrs := check.Unit(files)
 			if len(cerrs) > 0 {
 				t.Fatalf("%s pass %d does not check: %v", dir, i, cerrs[0])
@@ -233,7 +233,7 @@ table Root {
 }
 `
 	var want []string
-	for pass := 0; pass < 16; pass++ {
+	for pass := range 16 {
 		ast, perrs := parser.Parse("T.schema", []byte(src))
 		if len(perrs) > 0 {
 			t.Fatalf("corpus does not parse: %v", perrs[0])

@@ -334,11 +334,12 @@ func StripTrailingCommas(s string) string {
 		c := s[i]
 		if inString {
 			b.WriteByte(c)
-			if escaped {
+			switch {
+			case escaped:
 				escaped = false
-			} else if c == '\\' {
+			case c == '\\':
 				escaped = true
-			} else if c == '"' {
+			case c == '"':
 				inString = false
 			}
 			continue

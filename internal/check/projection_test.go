@@ -116,7 +116,7 @@ func TestIdMovesUnderWireEdits(t *testing.T) {
 // same unit, same text, every time and in any map iteration order.
 func TestProjectionIsDeterministic(t *testing.T) {
 	first := ir.WireProjection(build(t, baseSchema))
-	for i := 0; i < 20; i++ {
+	for i := range 20 {
 		if got := ir.WireProjection(build(t, baseSchema)); got != first {
 			t.Fatalf("projection is not deterministic on run %d", i)
 		}

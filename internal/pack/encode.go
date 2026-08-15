@@ -518,7 +518,7 @@ func floatValue(val any, f *ir.Field, fpath string) (float64, error) {
 	case json.Number:
 		n, err := v.Float64()
 		if err != nil {
-			return 0, fmt.Errorf("%s: %s is not a number: %v", fpath, v, err)
+			return 0, fmt.Errorf("%s: %s is not a number: %w", fpath, v, err)
 		}
 		return n, nil
 	case float64:
@@ -535,7 +535,7 @@ func bytesValue(val any, fpath string) ([]byte, error) {
 	case string:
 		data, err := base64.StdEncoding.DecodeString(v)
 		if err != nil {
-			return nil, fmt.Errorf("%s: not valid base64: %v", fpath, err)
+			return nil, fmt.Errorf("%s: not valid base64: %w", fpath, err)
 		}
 		return data, nil
 	case []any:

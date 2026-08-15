@@ -19,7 +19,7 @@ type bitWriter struct {
 }
 
 func (w *bitWriter) writeBits(value uint64, n int64) {
-	for i := int64(0); i < n; i++ {
+	for i := range n {
 		p := w.bits + i
 		for int64(len(w.buf)) <= p/8 {
 			w.buf = append(w.buf, 0)
@@ -39,7 +39,7 @@ func (w *bitWriter) writeBits(value uint64, n int64) {
 // stream is exactly the value's bits in LSB-first order and the split needs no
 // separate expression here (SPEC §4.3's bit-order rule states the same thing).
 func (w *bitWriter) writeBigBits(value *big.Int, n int64) {
-	for i := int64(0); i < n; i++ {
+	for i := range n {
 		p := w.bits + i
 		for int64(len(w.buf)) <= p/8 {
 			w.buf = append(w.buf, 0)

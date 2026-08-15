@@ -62,7 +62,7 @@ func main() {
 		lang := fs.String("lang", "cpp", "target language (c, cpp, cs, go, rust)")
 		out := fs.String("out", "generated", "output directory")
 		cppMessage := fs.String("cpp-message", "union", "C++ message representation: union (default) or variant")
-		fs.Parse(os.Args[2:])
+		_ = fs.Parse(os.Args[2:]) // ExitOnError: Parse never returns an error
 		unit := loadUnit(fs.Args())
 		var files map[string][]byte
 		var err error
