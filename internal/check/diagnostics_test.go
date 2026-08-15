@@ -6,9 +6,11 @@
 package check
 
 import (
+	"math"
 	"strings"
 	"testing"
 
+	"github.com/mas-bandwidth/schema/internal/ast"
 	"github.com/mas-bandwidth/schema/internal/parser"
 )
 
@@ -244,6 +246,40 @@ func TestDiagnostics(t *testing.T) {
 			src: "package t\ntype T { x float32 [min = 1.0, max = 1.00000001, resolution = 0.000000001] }\n"},
 		{name: "resolution collapses to zero at float32", want: "collapses to zero at float32",
 			src: "package t\ntype T { x float32 [min = 0.0, max = 1.0, resolution = 1e-46] }\n"},
+
+		// ---- non-finite compressed-float parameters (Glenn, 2026-08-15:
+		// "attempting to send NaN or INF or anything else through compressed
+		// float is non-conforming and should assert out on write too" — the
+		// compiler's half of the ruling; the runtimes carry the write
+		// asserts). Two levels per parameter: finite at float64, and finite
+		// at FLOAT32, where every runtime evaluates the triple. Before the
+		// rule, the float32-overflow shapes below CHECKED CLEAN and the C++
+		// emitter printed -Inf.0f — a token no C++ compiler accepts. The
+		// float64-level infinities ride integer literals, the one spelling
+		// that reached +/-Inf silently (a float literal beyond the double's
+		// range is a parse error; constant arithmetic is overflow-guarded).
+		// NaN has no spelling at all — its arm is TestNonFiniteTripleNaN. ----
+		{name: "compressed float min -Inf at float32", want: "min = -1e+39 overflows float32",
+			src: "package t\ntype T { x float32 [min = -1e39, max = 1e39, resolution = 1e30] }\n"},
+		{name: "compressed float min +Inf at float32", want: "min = 1e+39 overflows float32",
+			src: "package t\ntype T { x float32 [min = 1e39, max = 2e39, resolution = 1e30] }\n"},
+		{name: "compressed float max +Inf at float32", want: "max = 1e+39 overflows float32",
+			src: "package t\ntype T { x float32 [min = 0.0, max = 1e39, resolution = 1e30] }\n"},
+		// (a -Inf max cannot be its own diagnostic: min < max puts min below
+		// it, so the min arm always fires first — the parameter is still
+		// covered, by ordering rather than by a separate message)
+		{name: "compressed float resolution +Inf at float32", want: "resolution = 1e+39 overflows float32",
+			src: "package t\ntype T { x float32 [min = 0.0, max = 1.0, resolution = 1e39] }\n"},
+		{name: "compressed float min +Inf at float64, integer literal", want: "does not fit float64",
+			src: "package t\ntype T { x float32 [min = 1" + strings.Repeat("0", 400) + ", max = 1.0, resolution = 0.1] }\n"},
+		{name: "compressed float min -Inf at float64, negated integer literal", want: "does not fit float64",
+			src: "package t\ntype T { x float32 [min = -1" + strings.Repeat("0", 400) + ", max = 1.0, resolution = 0.1] }\n"},
+		{name: "compressed float max +Inf at float64, through a const", want: "does not fit float64",
+			src: "package t\nconst Big = 1" + strings.Repeat("0", 400) + "\ntype T { x float32 [min = 0.0, max = Big, resolution = 0.1] }\n"},
+		{name: "compressed float resolution +Inf at float64, integer literal", want: "does not fit float64",
+			src: "package t\ntype T { x float32 [min = 0.0, max = 1.0, resolution = 1" + strings.Repeat("0", 400) + "] }\n"},
+		{name: "interpolate float64 triple infinite at float32 — rule 4 shares the path", want: "overflows float32, where every runtime evaluates the triple",
+			src: "package t\nobject O { x float64 [interpolate, min = -1e39, max = 1e39, resolution = 1e30]\n b bool }\n"},
 		{name: "enum max above the 32-bit tag wire", want: "32-bit tag wire",
 			src: "package t\nenum E [max = 2147483648] { A }\ntype T { e E }\n"},
 		{name: "message field would shadow the C# Type dispatch property", want: "Type dispatch property",
@@ -395,4 +431,47 @@ func TestGoodCornersStillCompile(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestNonFiniteTripleNaN exercises the NaN arm of the non-finite rule (SPEC
+// §4.6; Glenn, 2026-08-15). The grammar cannot spell NaN — a float literal
+// beyond the double's range is a parse error, every constant arithmetic
+// result is overflow-guarded, and division by zero is refused — so the arm is
+// exercised the only way a NaN can exist in the checker's input: planted
+// directly in the AST. Defense in depth, proven rather than assumed.
+func TestNonFiniteTripleNaN(t *testing.T) {
+	src := "package t\ntype T { x float32 [min = 0.5, max = 1.0, resolution = 0.25] }\n"
+	f, perrs := parser.Parse("T.schema", []byte(src))
+	if len(perrs) > 0 {
+		t.Fatal(perrs[0])
+	}
+	planted := false
+	for _, d := range f.Decls {
+		td, ok := d.(*ast.TypeDecl)
+		if !ok {
+			continue
+		}
+		for _, item := range td.Body.Items {
+			fld, ok := item.(*ast.Field)
+			if !ok {
+				continue
+			}
+			for i := range fld.Attrs {
+				if fld.Attrs[i].Key == "min" {
+					fld.Attrs[i].Value = &ast.FloatLit{Pos: fld.Attrs[i].Pos, Value: math.NaN(), Text: "NaN"}
+					planted = true
+				}
+			}
+		}
+	}
+	if !planted {
+		t.Fatal("no min attribute found to plant the NaN in")
+	}
+	_, errs := Unit([]SourceFile{{Path: "T.schema", Name: "T.schema", Base: "T", Bytes: []byte(src), AST: f}})
+	for _, err := range errs {
+		if strings.Contains(err.Error(), "is not finite") {
+			return
+		}
+	}
+	t.Fatalf("a NaN compressed-float bound must be rejected as non-finite; got %v", errs)
 }

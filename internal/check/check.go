@@ -415,8 +415,7 @@ func (c *checker) evalFloat(e ast.Expr) (float64, bool) {
 	case *ast.FloatLit:
 		return e.Value, true
 	case *ast.IntLit:
-		f, _ := new(big.Float).SetInt(e.Value).Float64()
-		return f, true
+		return c.bigIntFloat(e.Value, e.Pos)
 	case *ast.IdentExpr:
 		if _, isConst := c.constant[e.Name]; !isConst {
 			c.errf(e.Pos, "undefined constant %s", e.Name)
@@ -429,8 +428,7 @@ func (c *checker) evalFloat(e ast.Expr) (float64, bool) {
 		if out.IsFloat {
 			return out.Float, true
 		}
-		f, _ := new(big.Float).SetInt(out.Int).Float64()
-		return f, true // integer constants convert in float positions (SPEC §4.2)
+		return c.bigIntFloat(out.Int, e.Pos) // integer constants convert in float positions (SPEC §4.2)
 	case *ast.MaxExpr:
 		v, ok := c.enumMax(e)
 		if !ok {
@@ -481,6 +479,20 @@ func (c *checker) evalFloat(e ast.Expr) (float64, bool) {
 	}
 	c.errf(e.ExprPos(), "invalid float expression")
 	return 0, false
+}
+
+// bigIntFloat converts an integer constant appearing in a float position
+// (SPEC §4.2). The conversion must stay finite: big.Float.Float64 silently
+// returns ±Inf for magnitudes beyond the double's range, and a non-finite
+// value must never impersonate a constant — the compressed-float triple is
+// where one would reach the wire (SPEC §4.6, the non-finite rule).
+func (c *checker) bigIntFloat(v *big.Int, pos ast.Pos) (float64, bool) {
+	f, _ := new(big.Float).SetInt(v).Float64()
+	if math.IsInf(f, 0) {
+		c.errf(pos, "integer constant %s does not fit float64", v.String())
+		return 0, false
+	}
+	return f, true
 }
 
 // valuedAttr lists the field attributes that MUST carry `= value`. The bare
@@ -1263,6 +1275,29 @@ func (c *checker) resolveAttrs(kind declKind, owner string, f *ast.Field, out *i
 		res, ok3 := c.evalFloat(byKey["resolution"].Value)
 		if !ok1 || !ok2 || !ok3 {
 			return
+		}
+		// Non-finite triple parameters are rejected HERE, by name, before any
+		// derived check can trip over them (Glenn, 2026-08-15: "attempting to
+		// send NaN or INF or anything else through compressed float is
+		// non-conforming and should assert out on write too" — the runtimes
+		// carry the write asserts; the compiler's half is refusing the
+		// declaration). Both levels matter: non-finite at float64, and finite
+		// at float64 but infinite at FLOAT32, where every runtime evaluates
+		// the triple — before this check [min = -1e39, max = 1e39,
+		// resolution = 1e30] compiled, and the C++ emitter printed -Inf.0f,
+		// a token no C++ compiler accepts (SPEC §4.6, the non-finite rule).
+		for _, p := range [3]struct {
+			key string
+			v   float64
+		}{{"min", fmin}, {"max", fmax}, {"resolution", res}} {
+			if math.IsInf(p.v, 0) || math.IsNaN(p.v) {
+				c.errf(byKey[p.key].Pos, "field %s: %s = %g is not finite — NaN and infinity are non-conforming through a compressed float (SPEC §4.6)", f.Name, p.key, p.v)
+				return
+			}
+			if math.IsInf(float64(float32(p.v)), 0) {
+				c.errf(byKey[p.key].Pos, "field %s: %s = %g overflows float32, where every runtime evaluates the triple — a non-finite compressed-float parameter is non-conforming (SPEC §4.6)", f.Name, p.key, p.v)
+				return
+			}
 		}
 		if res <= 0 {
 			c.errf(byKey["resolution"].Pos, "resolution %g must be positive (SPEC §4.6)", res)

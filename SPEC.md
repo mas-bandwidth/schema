@@ -1095,6 +1095,19 @@ All compile errors with positions:
   quantization form `[interpolate, quantize = K, max = B]` (§4.8 rule 2), `max` is the
   quantize bound and appears WITHOUT `min` by design — `min` is forbidden there, the
   domain being symmetric [-B, +B].
+- **Non-finite compressed-float parameters — REJECTED, DECIDED (Glenn, 2026-08-15:
+  "attempting to send NaN or INF or anything else through compressed float is
+  non-conforming and should assert out on write too"; the serialize runtimes carry the
+  write-side asserts, this rule is the compiler's half):** each of `min`/`max`/
+  `resolution` (§4.3's triple, and §4.8 rule 4's reuse of it) must be finite at float64
+  AND at float32, where every runtime evaluates the triple — the diagnostic names the
+  parameter. *(Before the rule, `[min = -1e39, max = 1e39, resolution = 1e30]` checked
+  clean and the C++ emitter printed `-Inf.0f`, a token no C++ compiler accepts.)* The
+  grammar cannot spell NaN at all — a float literal beyond the double's range is a
+  parse error, constant arithmetic is overflow-guarded, division by zero is refused —
+  and an integer constant too large for float64 is an error in ANY float position
+  rather than a silent infinity; the checker still carries the NaN arm as proven
+  defense in depth.
 - **Degenerate and inverted ranges — min == max is LEGAL, DECIDED (Glenn, 2026-08-15:
   "min==max is legal").** A ranged integer, `int128` or `fixed` field with equal bounds
   costs **zero bits**: the wire carries nothing and the reader recovers the value from
