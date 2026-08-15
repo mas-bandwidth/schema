@@ -1,4 +1,8 @@
 # 2026-08-15-arm64-macbook-O2-pass.inline — per-symbol inline ledger (BENCH-STANDARD.md §4)
+# era: harness schema 20c11f1 — PRE-7db74ef attribution (stamped 2026-08-15, issue #20):
+# era:   per-op transitive counts in this ledger overcount unrolled loops, and six gen
+# era:   verdicts were still unattributable — 7db74ef fixed the harness, not this artifact;
+# era:   the paired CSV's era header governs any use of these numbers.
 # generated: 2026-08-14T14:13:00Z on macbook (Darwin arm64)
 # ground truth: call instructions into the serialize runtime, counted in
 # the emitted code and propagated transitively through out-of-line
