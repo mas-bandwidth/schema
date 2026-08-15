@@ -237,11 +237,54 @@ static bool equal( const Block & a, const Block & b )
            std::memcmp( a.data, b.data, (size_t) a.data_length ) == 0;
 }
 
+// fill_utf8 fills buffer with random well-formed UTF-8 — string(N) payloads
+// are well-formed UTF-8 by contract and the write path debug-asserts it
+// (SPEC §4.7, 2026-08-15). Random code points over all four encoded lengths,
+// skipping 0 and the surrogate block, truncated to fit. Returns bytes used.
+static int32_t fill_utf8( Rng & r, char * buffer, int32_t budget )
+{
+    int32_t used = 0;
+    while ( used < budget )
+    {
+        uint32_t cp = (uint32_t) r.range( 1, 0x10FFFF );
+        if ( cp >= 0xD800 && cp <= 0xDFFF )
+        {
+            continue; // surrogates never appear in well-formed UTF-8
+        }
+        int32_t bytes = cp < 0x80 ? 1 : cp < 0x800 ? 2 : cp < 0x10000 ? 3 : 4;
+        if ( used + bytes > budget )
+        {
+            break; // never truncate mid-sequence
+        }
+        if ( bytes == 1 )
+        {
+            buffer[used++] = (char) cp;
+        }
+        else if ( bytes == 2 )
+        {
+            buffer[used++] = (char) ( 0xC0 | ( cp >> 6 ) );
+            buffer[used++] = (char) ( 0x80 | ( cp & 0x3F ) );
+        }
+        else if ( bytes == 3 )
+        {
+            buffer[used++] = (char) ( 0xE0 | ( cp >> 12 ) );
+            buffer[used++] = (char) ( 0x80 | ( ( cp >> 6 ) & 0x3F ) );
+            buffer[used++] = (char) ( 0x80 | ( cp & 0x3F ) );
+        }
+        else
+        {
+            buffer[used++] = (char) ( 0xF0 | ( cp >> 18 ) );
+            buffer[used++] = (char) ( 0x80 | ( ( cp >> 12 ) & 0x3F ) );
+            buffer[used++] = (char) ( 0x80 | ( ( cp >> 6 ) & 0x3F ) );
+            buffer[used++] = (char) ( 0x80 | ( cp & 0x3F ) );
+        }
+    }
+    return used;
+}
+
 static void fill( Rng & r, Chat & c )
 {
-    c.text_length = (int32_t) r.range( 0, MaxChatLength );
-    for ( int32_t i = 0; i < c.text_length; i++ )
-        c.text[i] = (char) r.range( 1, 255 ); // never an interior null (SPEC §4.7)
+    c.text_length = fill_utf8( r, c.text, (int32_t) r.range( 0, MaxChatLength ) );
     c.text[c.text_length] = 0;
 }
 static bool equal( const Chat & a, const Chat & b )
@@ -485,9 +528,7 @@ static void fill( Rng & r, TestData & t )
     t.int64_range = r.range( -1000000000000ll, 1000000000000ll );
     for ( int i = 0; i < 17; i++ )
         t.fixed_bytes[i] = (uint8_t) r.range( 0, 255 );
-    t.text_length = (int32_t) r.range( 0, 255 );
-    for ( int32_t i = 0; i < t.text_length; i++ )
-        t.text[i] = (char) r.range( 1, 255 );
+    t.text_length = fill_utf8( r, t.text, (int32_t) r.range( 0, 255 ) ); // well-formed UTF-8 by contract (SPEC §4.7)
     t.text[t.text_length] = 0;
 }
 static bool equal( const TestData & a, const TestData & b )

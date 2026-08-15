@@ -456,6 +456,9 @@ var _ = big.NewInt
 // ---- wire header ----
 
 func (g *gen) emitWireHeader() {
+	if fileHasStrings(g.file) {
+		g.emitUtf8Validator()
+	}
 	for _, d := range g.file.Decls {
 		switch decl := d.(type) {
 		case *ir.Struct:

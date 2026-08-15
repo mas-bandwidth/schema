@@ -404,6 +404,9 @@ func (g *gen) emitWriteScalar(f *ir.Field, name, ind string) {
 			// side rejects them as validation — §4.7)
 			g.pf("%sfor ( int32_t i = 0; i < %s_length; i++ )\n%s{\n", ind, name, ind)
 			g.pf("%s    serialize_assert( %s[i] != 0 );\n%s}\n", ind, name, ind)
+			// well-formed UTF-8 by contract, writer-trusted: debug-only
+			// assert, no read-path validation (SPEC §4.7, decided 2026-08-15)
+			g.pf("%sserialize_assert( schema_utf8_valid( reinterpret_cast<const uint8_t *>( %s ), %s_length ) );\n", ind, name, name)
 		}
 		g.emitWriteRangedFold32(name+"_length", "0", g.renderInt(f.Type.SizeExpr, big.NewInt(f.Type.Size)),
 			bitsRequired(big.NewInt(0), big.NewInt(f.Type.Size)), true, ind)

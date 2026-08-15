@@ -32,8 +32,9 @@ message Block {
 
 message Chat {
     // wire: length in [0, MaxChatLength], align, then the used bytes —
-    // byte strings, no UTF-8 rule, interior 0x00 rejected; N is the max
-    // length, and the bound exists to size the length prefix's bits (SPEC §4.7)
+    // well-formed UTF-8 by contract (writer-trusted, debug-asserted; decided
+    // 2026-08-15), interior 0x00 rejected on read; N is the max length, and
+    // the bound exists to size the length prefix's bits (SPEC §4.7)
     text string(MaxChatLength)
 }
 

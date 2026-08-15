@@ -24,6 +24,9 @@ func (g *gen) emitWriteField(f *ir.Field, ind string) {
 		// Composed from primitives, NOT serialize_write_string: schema frames
 		// the length over [0, N] where the runtime's string call frames it over
 		// [0, N-1]. One bit of difference, and every following field shifts.
+		// Well-formed UTF-8 by contract, writer-trusted: debug-only assert,
+		// no read-path validation (SPEC §4.7, decided 2026-08-15).
+		g.pf("%sserialize_assert( schema_utf8_valid_( (const serialize_uint8_t *) value->%s, value->%s_length ) );\n", ind, f.Name, f.Name)
 		g.call(ind, fmt.Sprintf("serialize_write_int( stream, value->%s_length, 0, %d )", f.Name, f.Type.Size))
 		g.call(ind, fmt.Sprintf("serialize_write_bytes( stream, (const serialize_uint8_t *) value->%s, (int) value->%s_length )", f.Name, f.Name))
 	case f.Type.Kind == ir.TBytes:

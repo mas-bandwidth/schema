@@ -15,6 +15,74 @@
 
 namespace example {
 
+#ifndef SCHEMA_UTF8_VALID_DEFINED
+#define SCHEMA_UTF8_VALID_DEFINED
+// string(N) payloads are well-formed UTF-8 BY CONTRACT (SPEC §4.7): the
+// write path debug-asserts with this validator and the release path costs
+// nothing. Rejects truncated sequences, bare continuations, overlongs,
+// surrogates and code points past U+10FFFF.
+inline bool schema_utf8_valid( const uint8_t * bytes, int32_t length )
+{
+    int32_t i = 0;
+    while ( i < length )
+    {
+        uint8_t lead = bytes[i];
+        int32_t continuations;
+        uint32_t code_point;
+        if ( lead < 0x80 )
+        {
+            i++;
+            continue;
+        }
+        else if ( ( lead & 0xE0 ) == 0xC0 )
+        {
+            continuations = 1;
+            code_point = lead & 0x1F;
+        }
+        else if ( ( lead & 0xF0 ) == 0xE0 )
+        {
+            continuations = 2;
+            code_point = lead & 0x0F;
+        }
+        else if ( ( lead & 0xF8 ) == 0xF0 )
+        {
+            continuations = 3;
+            code_point = lead & 0x07;
+        }
+        else
+        {
+            return false;
+        }
+        if ( i + continuations >= length )
+        {
+            return false;
+        }
+        for ( int32_t k = 1; k <= continuations; k++ )
+        {
+            if ( ( bytes[i + k] & 0xC0 ) != 0x80 )
+            {
+                return false;
+            }
+            code_point = ( code_point << 6 ) | uint32_t( bytes[i + k] & 0x3F );
+        }
+        if ( continuations == 1 && code_point < 0x80 )
+        {
+            return false;
+        }
+        if ( continuations == 2 && ( code_point < 0x800 || ( code_point >= 0xD800 && code_point <= 0xDFFF ) ) )
+        {
+            return false;
+        }
+        if ( continuations == 3 && ( code_point < 0x10000 || code_point > 0x10FFFF ) )
+        {
+            return false;
+        }
+        i += 1 + continuations;
+    }
+    return true;
+}
+#endif // SCHEMA_UTF8_VALID_DEFINED
+
 inline bool WriteProbeHeader( serialize::WriteStream & stream, const ProbeHeader & value )
 {
     write_bits( stream, 171ull, 8 ); // const(171, 8) — SPEC §4.3
@@ -285,6 +353,7 @@ inline bool WriteTestData( serialize::WriteStream & stream, const TestData & val
     {
         serialize_assert( value.text[i] != 0 );
     }
+    serialize_assert( schema_utf8_valid( reinterpret_cast<const uint8_t *>( value.text ), value.text_length ) );
     serialize_assert( int32_t( value.text_length ) >= int32_t( 0 ) && int32_t( value.text_length ) <= int32_t( 255 ) );
     write_bits( stream, uint32_t( value.text_length ), 8 );
     write_bytes( stream, value.text, value.text_length );

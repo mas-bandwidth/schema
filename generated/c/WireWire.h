@@ -24,6 +24,75 @@
 extern "C" {
 #endif
 
+#ifndef SCHEMA_UTF8_VALID_DEFINED
+#define SCHEMA_UTF8_VALID_DEFINED
+/* string(N) payloads are well-formed UTF-8 BY CONTRACT (SPEC §4.7): the
+   write path debug-asserts with this validator and the release path costs
+   nothing. Rejects truncated sequences, bare continuations, overlongs,
+   surrogates and code points past U+10FFFF. */
+static SCHEMA_UNUSED int schema_utf8_valid_( const serialize_uint8_t * bytes, int32_t length )
+{
+    int32_t i = 0;
+    while ( i < length )
+    {
+        serialize_uint8_t lead = bytes[i];
+        int32_t continuations;
+        serialize_uint32_t code_point;
+        int32_t k;
+        if ( lead < 0x80 )
+        {
+            i++;
+            continue;
+        }
+        else if ( ( lead & 0xE0 ) == 0xC0 )
+        {
+            continuations = 1;
+            code_point = lead & 0x1F;
+        }
+        else if ( ( lead & 0xF0 ) == 0xE0 )
+        {
+            continuations = 2;
+            code_point = lead & 0x0F;
+        }
+        else if ( ( lead & 0xF8 ) == 0xF0 )
+        {
+            continuations = 3;
+            code_point = lead & 0x07;
+        }
+        else
+        {
+            return 0;
+        }
+        if ( i + continuations >= length )
+        {
+            return 0;
+        }
+        for ( k = 1; k <= continuations; k++ )
+        {
+            if ( ( bytes[i + k] & 0xC0 ) != 0x80 )
+            {
+                return 0;
+            }
+            code_point = ( code_point << 6 ) | (serialize_uint32_t) ( bytes[i + k] & 0x3F );
+        }
+        if ( continuations == 1 && code_point < 0x80 )
+        {
+            return 0;
+        }
+        if ( continuations == 2 && ( code_point < 0x800 || ( code_point >= 0xD800 && code_point <= 0xDFFF ) ) )
+        {
+            return 0;
+        }
+        if ( continuations == 3 && ( code_point < 0x10000 || code_point > 0x10FFFF ) )
+        {
+            return 0;
+        }
+        i += 1 + continuations;
+    }
+    return 1;
+}
+#endif /* SCHEMA_UTF8_VALID_DEFINED */
+
 /* Writes ProbeHeader. Returns 1 on success, 0 on failure — the stream latches the
    error, so a caller may check once at the end of a message. */
 static SCHEMA_UNUSED int write_probe_header( serialize_write_stream_t * stream, const ProbeHeader * value )
@@ -643,6 +712,7 @@ static SCHEMA_UNUSED int write_test_data( serialize_write_stream_t * stream, con
             }
         }
     }
+    serialize_assert( schema_utf8_valid_( (const serialize_uint8_t *) value->text, value->text_length ) );
     if ( !serialize_write_int( stream, value->text_length, 0, 255 ) )
     {
         return 0;

@@ -1168,18 +1168,40 @@ this unification `string(N)`'s N was the classic BUFFER size, making the max len
 N − 1 — an implementation detail leaking into the language, found when Glenn read the
 corpus and asked why the two spellings differed.)*
 
-`string(N)` carries **arbitrary bytes excluding 0x00** — all four generated readers
-reject interior nulls; writes assert per §5. `bytes(N)` is the same wire with no
-interior-null rule. The byte-string tightening is what lets the targets agree:
+**`string(N)` payloads are WELL-FORMED UTF-8 BY CONTRACT — DECIDED (Glenn,
+2026-08-15, the 08-14 audit's fork 1, writer-trusted per the §5 doctrine).**
+The wire shape is unchanged and identical to `bytes(N)`; what the `string`
+spelling adds is a CONTRACT: the payload is well-formed UTF-8, the writer's
+obligation, never the reader's check. Writing malformed UTF-8 is a writer
+contract violation — debug-only asserts where the language supports them
+(C and C++ assert through a generated validator, Rust `debug_assert!`; Go
+has no debug-only mechanism and asserts nothing; the C# `Debug.Assert` is
+a recorded follow-up) — there is NO mandatory read-path validation and no
+release-path cost anywhere, and the conformance vectors carry only valid
+UTF-8. An application with genuinely arbitrary payloads uses `bytes(N)`,
+which remains exactly that. *(2026-08-05 → 2026-08-15 this section said
+"text encoding is the application's concern" and reserved enforced-validity
+UTF-8 as "a new wire type"; the ruling supersedes the first half and makes
+the second moot — a writer-trusted contract changes no wire and needs no
+new type. The audit's finding: STANDARD.md never said what a string's bytes
+ARE, so cross-language text compatibility was a convention, not a
+guarantee.)*
+
+Beneath the contract, `string(N)` carries **bytes excluding 0x00** — all generated readers
+reject interior nulls; writes assert per §5 (NUL is valid UTF-8, so the
+interior-null rule stays its own, stricter check). `bytes(N)` is the same wire with no
+interior-null rule and no encoding contract. The byte-string tightening is what lets the targets agree:
 
 - Classic C++ `serialize_string` is strlen-based — it cannot represent interior nulls; a
   Go writer must not be able to produce a payload the C++ reader silently truncates.
-- Rust `String` storage would impose UTF-8 validation the other targets lack, so Rust
-  storage is a fixed byte buffer (§6.1) and text encoding is the application's concern.
+- Rust `String` storage would impose UTF-8 validation ON READ that no target performs
+  (the contract is writer-trusted — a reader must accept what a non-conforming writer
+  produced rather than fail on text), so Rust storage stays a fixed byte buffer (§6.1).
 
 For every legal write the wire bits are identical to `serialize_string` over a buffer of
-N + 1. If UTF-8 text with enforced validity is wanted later, it is a new wire type, not a
-redefinition of this one.
+N + 1. *(The pre-ruling sentence here — "if UTF-8 text with enforced validity is wanted
+later, it is a new wire type" — is moot under the 2026-08-15 contract: writer-trusted
+validity changes no wire and needs no new type.)*
 
 **Generated-code consequence, stated so no backend discovers it late** *(added 2026-08-05
 from the contract audit)*: the runtimes' `serialize_string` is the **wire oracle** for

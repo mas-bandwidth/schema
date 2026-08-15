@@ -681,6 +681,26 @@ int main()
             check( (uint32_t) std::floor( (double) offset_n * 10000.0 + 0.5 ) == 141 );             // a double build diverges
         }
     }
+
+    // ---- the string UTF-8 contract's validator can FAIL (SPEC §4.7) ----
+    // string(N) payloads are well-formed UTF-8 by contract, writer-trusted,
+    // debug-asserted through schema_utf8_valid. The enforcement predicate is
+    // proven able to reject each malformation class — an assert whose
+    // predicate cannot fail is no assert at all.
+    {
+        check( schema_utf8_valid( (const uint8_t *) "plain ascii", 11 ) );
+        check( schema_utf8_valid( (const uint8_t *) "h\xC3\xA9llo", 6 ) );            // 2-byte é
+        check( schema_utf8_valid( (const uint8_t *) "\xE2\x82\xAC", 3 ) );            // 3-byte €
+        check( schema_utf8_valid( (const uint8_t *) "\xF0\x9F\x9A\x80", 4 ) );        // 4-byte astral
+        check( schema_utf8_valid( (const uint8_t *) "", 0 ) );                        // empty is well-formed
+        check( !schema_utf8_valid( (const uint8_t *) "\xFF", 1 ) );                   // no such lead byte
+        check( !schema_utf8_valid( (const uint8_t *) "\x80", 1 ) );                   // bare continuation
+        check( !schema_utf8_valid( (const uint8_t *) "ok\xC3", 3 ) );                 // truncated sequence
+        check( !schema_utf8_valid( (const uint8_t *) "\xC0\xAF", 2 ) );               // overlong slash
+        check( !schema_utf8_valid( (const uint8_t *) "\xED\xA0\x80", 3 ) );           // encoded surrogate
+        check( !schema_utf8_valid( (const uint8_t *) "\xF4\x90\x80\x80", 4 ) );       // above U+10FFFF
+        check( !schema_utf8_valid( (const uint8_t *) "\xE0\x80\xA0", 3 ) );           // overlong 3-byte
+    }
     {
         InputPacket in;
         in.synchronize_sequence = 7;

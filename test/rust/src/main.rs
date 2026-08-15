@@ -942,6 +942,32 @@ fn main() {
         );
     }
 
+    // ---- the string UTF-8 contract's debug assert can FAIL (SPEC §4.7) ----
+    // string(N) payloads are well-formed UTF-8 by contract, writer-trusted,
+    // debug_assert!ed on write. cargo run is a debug build, so a malformed
+    // payload must PANIC here — proving the assert is live, not decorative.
+    // (A release build writes the bytes silently; that is the contract's
+    // whole design: no release-path cost.)
+    #[cfg(debug_assertions)]
+    {
+        let hook = std::panic::take_hook();
+        std::panic::set_hook(Box::new(|_| {})); // silence the expected panic's message
+        let panicked = std::panic::catch_unwind(|| {
+            let mut chat = Chat::default();
+            chat.text[..2].copy_from_slice(&[0xC3, 0x28]); // a truncated lead — malformed UTF-8
+            chat.text_length = 2;
+            let mut buffer = [0u8; 64];
+            let mut ws = WriteStream::new(&mut buffer);
+            let _ = write_chat(&mut ws, &chat);
+        })
+        .is_err();
+        std::panic::set_hook(hook);
+        check(
+            panicked,
+            "writing malformed UTF-8 through a string(N) field panics the debug assert (SPEC §4.7)",
+        );
+    }
+
     if FAILED.load(Ordering::Relaxed) {
         std::process::exit(1);
     }

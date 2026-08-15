@@ -532,6 +532,12 @@ func (g *gen) emitWriteScalar(f *ir.Field, name, ind string) {
 		// Interior nulls are writer misuse; the read side rejects them (§4.7).
 		g.pf("%sif %s_length < 0 || %s_length > %d { // refused, not wrapped or panicked: guards the slice too\n", ind, name, name, f.Type.Size)
 		g.pf("%s    return Err(Error::Stream(serialize::Error::ValueOutOfRange));\n%s}\n", ind, ind)
+		if f.Type.Kind == ir.TString {
+			// well-formed UTF-8 by contract, writer-trusted: debug-only
+			// assert, no read-path validation (SPEC §4.7, decided 2026-08-15)
+			g.pf("%sdebug_assert!(\n%s    std::str::from_utf8(&%s[..%s_length as usize]).is_ok(),\n", ind, ind, name, name)
+			g.pf("%s    \"string(N) payloads are well-formed UTF-8 by contract (SPEC 4.7)\"\n%s);\n", ind, ind)
+		}
 		g.emitWriteRangedFold32(name+"_length", false, "0", true,
 			ir.BitsRequired(big.NewInt(0), big.NewInt(f.Type.Size)), " // the length guards the slice (§6.3)", ind)
 		// the write side borrows the used bytes in place: WriteStream::write_bytes

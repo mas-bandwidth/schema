@@ -345,6 +345,10 @@ func (g *gen) emitWireFile() {
 		}
 	}
 
+	if fileHasStrings(g.file) {
+		g.emitUtf8Validator()
+	}
+
 	for _, d := range g.emissionOrder() {
 		var fields []*ir.Field
 		switch d := d.(type) {

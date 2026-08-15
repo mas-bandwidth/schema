@@ -320,6 +320,22 @@ int main( void )
         }
     }
 
+    /* ---- the string UTF-8 contract's validator can FAIL (SPEC §4.7) ----
+       string(N) payloads are well-formed UTF-8 by contract, writer-trusted,
+       debug-asserted through schema_utf8_valid_. The enforcement predicate
+       is proven able to reject each malformation class. */
+    {
+        check( schema_utf8_valid_( (const serialize_uint8_t *) "plain ascii", 11 ), "ascii is well-formed" );
+        check( schema_utf8_valid_( (const serialize_uint8_t *) "h\xC3\xA9llo", 6 ), "2-byte sequence" );
+        check( schema_utf8_valid_( (const serialize_uint8_t *) "\xF0\x9F\x9A\x80", 4 ), "4-byte astral sequence" );
+        check( !schema_utf8_valid_( (const serialize_uint8_t *) "\xFF", 1 ), "no such lead byte" );
+        check( !schema_utf8_valid_( (const serialize_uint8_t *) "\x80", 1 ), "bare continuation" );
+        check( !schema_utf8_valid_( (const serialize_uint8_t *) "ok\xC3", 3 ), "truncated sequence" );
+        check( !schema_utf8_valid_( (const serialize_uint8_t *) "\xC0\xAF", 2 ), "overlong slash" );
+        check( !schema_utf8_valid_( (const serialize_uint8_t *) "\xED\xA0\x80", 3 ), "encoded surrogate" );
+        check( !schema_utf8_valid_( (const serialize_uint8_t *) "\xF4\x90\x80\x80", 4 ), "above U+10FFFF" );
+    }
+
     /* ---- InputPacket: the counted array ---- */
     {
         InputPacket packet;

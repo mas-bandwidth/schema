@@ -201,6 +201,10 @@ pub fn write_chat(stream: &mut WriteStream<'_>, value: &Chat) -> Result {
     if value.text_length < 0 || value.text_length > 256 { // refused, not wrapped or panicked: guards the slice too
         return Err(Error::Stream(serialize::Error::ValueOutOfRange));
     }
+    debug_assert!(
+        std::str::from_utf8(&value.text[..value.text_length as usize]).is_ok(),
+        "string(N) payloads are well-formed UTF-8 by contract (SPEC 4.7)"
+    );
     {
         let mut offset_value = value.text_length as u32;
         stream.serialize_bits(&mut offset_value, 9)?; // the length guards the slice (§6.3)
