@@ -3,6 +3,7 @@
 // the same headers into a second translation unit, so a successful link also
 // proves the headers are multiple-inclusion safe.
 
+#include <cmath> // the gate-7 discrimination tripwires (std::fma, std::floor)
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -640,6 +641,45 @@ int main()
         check( out.int8_value == -128 && out.int16_value == -32768 );
         check( out.int64_full == ( -9223372036854775807ll - 1 ) );
         check( out.uint64_value == 18446744073709551615ull );
+    }
+
+    // ---- CompressedProbe: the FMA-boundary vectors (SPEC §7.2 gate 7) ----
+    // 0.005 over [0,10]@0.01 quantizes to 1 under the float32 two-rounding
+    // law; a fused build says 0 and a double build says 0. -4.8585 over
+    // [-5,5]@0.001 quantizes to 142; a double build says 141. Values found
+    // by sweeping the ranges — the on-quantum 2.5 in TestData above cannot
+    // see any of this, which is why these exist.
+    {
+        CompressedProbe in;
+        in.boundary = 0.005f;
+        in.offset = -4.8585f;
+
+        serialize::WriteStream ws( buffer, sizeof( buffer ) );
+        check( WriteCompressedProbe( ws, in ) );
+        ws.Flush();
+        check( golden_wire( "compressed_probe", buffer, ws.GetBytesProcessed() ) );
+
+        CompressedProbe out;
+        serialize::ReadStream rs( buffer, ws.GetBytesProcessed() );
+        check( ReadCompressedProbe( rs, out ) );
+        check( out.boundary == 1.0f / 1000.0f * 10.0f );          // integer 1 reconstructed
+        check( out.offset == 142.0f / 10000.0f * 10.0f - 5.0f );  // integer 142 reconstructed
+
+        // the discrimination property itself is asserted, so the vectors
+        // cannot quietly stop discriminating: the fused and double forms
+        // must disagree with the pinned law on these exact values
+        {
+            volatile float boundary_n = ( 0.005f - 0.0f ) / 10.0f;
+            volatile float boundary_scaled = boundary_n * 1000.0f;
+            check( (uint32_t) std::floor( boundary_scaled + 0.5f ) == 1 );                          // the law: float32, two roundings
+            check( (uint32_t) std::floor( std::fma( (float) boundary_n, 1000.0f, 0.5f ) ) == 0 );   // a fused build diverges
+            check( (uint32_t) std::floor( (double) boundary_n * 1000.0 + 0.5 ) == 0 );              // a double build diverges
+
+            volatile float offset_n = ( -4.8585f - -5.0f ) / 10.0f;
+            volatile float offset_scaled = offset_n * 10000.0f;
+            check( (uint32_t) std::floor( offset_scaled + 0.5f ) == 142 );                          // the law
+            check( (uint32_t) std::floor( (double) offset_n * 10000.0 + 0.5 ) == 141 );             // a double build diverges
+        }
     }
     {
         InputPacket in;

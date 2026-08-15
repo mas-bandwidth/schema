@@ -1954,10 +1954,22 @@ length/count names, the Go dispatch method, and the per-declaration generated sy
    stop-the-line event §3.1 describes — never a quiet re-pin.
 
 **Floating-point discipline, inherited from the serialize.cs port finding (§1):** all C++
-conformance builds compile with `-ffp-contract=off`, and the golden-wire corpus includes an
-FMA-boundary compressed-float value, so a contracted build fails gate 7 loudly rather than
-diverging by one quantization step in production. *(§1 promised §7.2 inherits this rule;
-until 2026-08-05 this section did not state it.)*
+**and C** conformance builds compile with `-ffp-contract=off`, and the golden-wire corpus
+includes an FMA-boundary compressed-float value, so a contracted build fails gate 7 loudly
+rather than diverging by one quantization step in production. *(§1 promised §7.2 inherits
+this rule; until 2026-08-05 this section did not state it. Until 2026-08-15 the promised
+FMA-boundary value did not exist — the only pinned value, 2.5 over [0, 10] at 0.01, sits
+exactly on a quantum where float32, double and a fused multiply-add all agree, which is
+precisely the blindness STANDARD.md now warns about — and the C legs built without the
+flag. The corpus now pins `CompressedProbe`: 0.005 over [0, 10] @ 0.01 — integer 1 under
+the float32 two-rounding law where a fused build says 0 and a double build says 0 — and
+-4.8585 over [-5, 5] @ 0.001 — integer 142 where a double build says 141, the non-zero
+min exercising the v − min subtraction both directions. Values found by sweeping the
+ranges, and the discrimination property itself is asserted in the C and C++ legs, so the
+vector cannot quietly stop discriminating. The generated quantize arithmetic is emitted
+contraction-proof besides — product into a named local in C/C++, an explicit float64
+conversion in Go — and a quantize scale the double domain cannot hold exactly is a §4.6
+compile error.)*
 
 CI needs all four toolchains for gates 3–5 and 7; that cost is accepted — it is the
 product's central claim.

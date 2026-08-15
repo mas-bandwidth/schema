@@ -262,8 +262,13 @@ func (g *gen) emitQuantizeField(f *ir.Field, ind string) {
 			// float->int of out-of-range or NaN input is target- and
 			// arch-dependent, so this shape quantizes even garbage input
 			// identically in every target (NaN clamps low)
-			g.pf("%s{\n%s    double quantized_value = floor( double( input.%s.%s ) * double( %s ) + 0.5 );\n",
+			// the product lands in a named local BEFORE the + 0.5, so
+			// FP_CONTRACT cannot fuse the multiply into the add — the
+			// compressed_float FMA hazard one level up, defended the way
+			// serialize.c defends its writer (#26)
+			g.pf("%s{\n%s    double scaled_value = double( input.%s.%s ) * double( %s );\n",
 				ind, ind, f.Name, comp.Name, scale)
+			g.pf("%s    double quantized_value = floor( scaled_value + 0.5 );\n", ind)
 			g.pf("%s    int64_t component_value = -%dll;\n", ind, f.QuantBound)
 			g.pf("%s    if ( quantized_value > %d.0 )\n%s    {\n%s        component_value = %dll;\n%s    }\n",
 				ind, f.QuantBound, ind, ind, f.QuantBound, ind)

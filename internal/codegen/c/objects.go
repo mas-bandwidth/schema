@@ -474,8 +474,13 @@ func (g *gen) emitQuantizeField(f *ir.Field) {
 	bound := f.QuantBound
 	for _, comp := range st.Fields {
 		g.pf("    {\n")
-		g.pf("        double quantized_value = floor( (double) input->%s.%s * (double) %d + 0.5 );\n",
+		// the product lands in a named local BEFORE the + 0.5, so FP_CONTRACT
+		// cannot fuse the multiply into the add — the compressed_float FMA
+		// hazard one level up, defended the way serialize.c defends its
+		// writer (#26)
+		g.pf("        double scaled_value = (double) input->%s.%s * (double) %d;\n",
 			f.Name, comp.Name, f.QuantScale)
+		g.pf("        double quantized_value = floor( scaled_value + 0.5 );\n")
 		// clamp to the component range, in the same order C++ does so the
 		// boundary cases land identically
 		g.pf("        serialize_int64_t component_value = %dLL;\n", -bound)

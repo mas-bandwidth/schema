@@ -303,6 +303,33 @@ func main() {
 		check(out == in, "TestData round-trips — signed narrows, full-range ints, align, fixed bytes, string")
 	}
 
+	// ---- CompressedProbe: the FMA-boundary vectors (SPEC §7.2 gate 7) ----
+	// 0.005 quantizes to 1 under the float32 two-rounding law (a fused or
+	// double build says 0); -4.8585 over the non-zero-min range quantizes to
+	// 142 (a double build says 141). Same pinned instance as the C++ leg,
+	// against the same golden.
+	{
+		in := example.CompressedProbe{}
+		in.Boundary = 0.005
+		in.Offset = -4.8585
+
+		ws, _ := newWriteStream()
+		checkErr(example.WriteCompressedProbe(ws, &in), "write CompressedProbe")
+		ws.Flush()
+		goldenWire("compressed_probe", ws.Data())
+
+		out := example.CompressedProbe{}
+		rs := serialize.NewReadStream(ws.Data())
+		checkErr(example.ReadCompressedProbe(rs, &out), "read CompressedProbe")
+		// through variables, not constants: Go folds constant float
+		// expressions in arbitrary precision, which is NOT the float32
+		// per-op arithmetic the reader performs
+		maxIntBoundary := float32(1000)
+		maxIntOffset := float32(10000)
+		check(out.Boundary == float32(1)/maxIntBoundary*float32(10), "boundary reconstructs integer 1")
+		check(out.Offset == float32(142)/maxIntOffset*float32(10)-float32(5), "offset reconstructs integer 142")
+	}
+
 	// ---- specified defaults: New* carries them; the zero value stays zero ----
 	{
 		sample := example.NewProbeSample()

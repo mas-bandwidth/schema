@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package example — protocol id 0xf14b209d992acb57
+// package example — protocol id 0x01125e6515d05ec4
 
 #pragma once
 
@@ -169,7 +169,8 @@ inline void QuantizeShip( const ShipData_Interpolate & input, ShipData_Shallow &
 {
     output.ship_type = input.ship_type;
     {
-        double quantized_value = floor( double( input.position.x ) * double( PositionUnits ) + 0.5 );
+        double scaled_value = double( input.position.x ) * double( PositionUnits );
+        double quantized_value = floor( scaled_value + 0.5 );
         int64_t component_value = -8388608ll;
         if ( quantized_value > 8388608.0 )
         {
@@ -182,7 +183,8 @@ inline void QuantizeShip( const ShipData_Interpolate & input, ShipData_Shallow &
         output.position_x = int32_t( component_value );
     }
     {
-        double quantized_value = floor( double( input.position.y ) * double( PositionUnits ) + 0.5 );
+        double scaled_value = double( input.position.y ) * double( PositionUnits );
+        double quantized_value = floor( scaled_value + 0.5 );
         int64_t component_value = -8388608ll;
         if ( quantized_value > 8388608.0 )
         {
@@ -195,7 +197,8 @@ inline void QuantizeShip( const ShipData_Interpolate & input, ShipData_Shallow &
         output.position_y = int32_t( component_value );
     }
     {
-        double quantized_value = floor( double( input.position.z ) * double( PositionUnits ) + 0.5 );
+        double scaled_value = double( input.position.z ) * double( PositionUnits );
+        double quantized_value = floor( scaled_value + 0.5 );
         int64_t component_value = -8388608ll;
         if ( quantized_value > 8388608.0 )
         {
@@ -208,7 +211,8 @@ inline void QuantizeShip( const ShipData_Interpolate & input, ShipData_Shallow &
         output.position_z = int32_t( component_value );
     }
     {
-        double quantized_value = floor( double( input.rotation.x ) * double( RotationUnits ) + 0.5 );
+        double scaled_value = double( input.rotation.x ) * double( RotationUnits );
+        double quantized_value = floor( scaled_value + 0.5 );
         int64_t component_value = -1024ll;
         if ( quantized_value > 1024.0 )
         {
@@ -221,7 +225,8 @@ inline void QuantizeShip( const ShipData_Interpolate & input, ShipData_Shallow &
         output.rotation_x = int16_t( component_value );
     }
     {
-        double quantized_value = floor( double( input.rotation.y ) * double( RotationUnits ) + 0.5 );
+        double scaled_value = double( input.rotation.y ) * double( RotationUnits );
+        double quantized_value = floor( scaled_value + 0.5 );
         int64_t component_value = -1024ll;
         if ( quantized_value > 1024.0 )
         {
@@ -234,7 +239,8 @@ inline void QuantizeShip( const ShipData_Interpolate & input, ShipData_Shallow &
         output.rotation_y = int16_t( component_value );
     }
     {
-        double quantized_value = floor( double( input.rotation.z ) * double( RotationUnits ) + 0.5 );
+        double scaled_value = double( input.rotation.z ) * double( RotationUnits );
+        double quantized_value = floor( scaled_value + 0.5 );
         int64_t component_value = -1024ll;
         if ( quantized_value > 1024.0 )
         {
@@ -247,7 +253,8 @@ inline void QuantizeShip( const ShipData_Interpolate & input, ShipData_Shallow &
         output.rotation_z = int16_t( component_value );
     }
     {
-        double quantized_value = floor( double( input.rotation.w ) * double( RotationUnits ) + 0.5 );
+        double scaled_value = double( input.rotation.w ) * double( RotationUnits );
+        double quantized_value = floor( scaled_value + 0.5 );
         int64_t component_value = -1024ll;
         if ( quantized_value > 1024.0 )
         {
@@ -260,7 +267,8 @@ inline void QuantizeShip( const ShipData_Interpolate & input, ShipData_Shallow &
         output.rotation_w = int16_t( component_value );
     }
     {
-        double quantized_value = floor( double( input.linear_velocity.x ) * double( VelocityUnits ) + 0.5 );
+        double scaled_value = double( input.linear_velocity.x ) * double( VelocityUnits );
+        double quantized_value = floor( scaled_value + 0.5 );
         int64_t component_value = -2097152ll;
         if ( quantized_value > 2097152.0 )
         {
@@ -273,7 +281,8 @@ inline void QuantizeShip( const ShipData_Interpolate & input, ShipData_Shallow &
         output.linear_velocity_x = int32_t( component_value );
     }
     {
-        double quantized_value = floor( double( input.linear_velocity.y ) * double( VelocityUnits ) + 0.5 );
+        double scaled_value = double( input.linear_velocity.y ) * double( VelocityUnits );
+        double quantized_value = floor( scaled_value + 0.5 );
         int64_t component_value = -2097152ll;
         if ( quantized_value > 2097152.0 )
         {
@@ -286,7 +295,8 @@ inline void QuantizeShip( const ShipData_Interpolate & input, ShipData_Shallow &
         output.linear_velocity_y = int32_t( component_value );
     }
     {
-        double quantized_value = floor( double( input.linear_velocity.z ) * double( VelocityUnits ) + 0.5 );
+        double scaled_value = double( input.linear_velocity.z ) * double( VelocityUnits );
+        double quantized_value = floor( scaled_value + 0.5 );
         int64_t component_value = -2097152ll;
         if ( quantized_value > 2097152.0 )
         {
@@ -406,7 +416,8 @@ inline void QuantizeMissile( const MissileData_Interpolate & input, MissileData_
 {
     output.missile_type = input.missile_type;
     {
-        double quantized_value = floor( double( input.position.x ) * double( PositionUnits ) + 0.5 );
+        double scaled_value = double( input.position.x ) * double( PositionUnits );
+        double quantized_value = floor( scaled_value + 0.5 );
         int64_t component_value = -8388608ll;
         if ( quantized_value > 8388608.0 )
         {
@@ -419,7 +430,8 @@ inline void QuantizeMissile( const MissileData_Interpolate & input, MissileData_
         output.position_x = int32_t( component_value );
     }
     {
-        double quantized_value = floor( double( input.position.y ) * double( PositionUnits ) + 0.5 );
+        double scaled_value = double( input.position.y ) * double( PositionUnits );
+        double quantized_value = floor( scaled_value + 0.5 );
         int64_t component_value = -8388608ll;
         if ( quantized_value > 8388608.0 )
         {
@@ -432,7 +444,8 @@ inline void QuantizeMissile( const MissileData_Interpolate & input, MissileData_
         output.position_y = int32_t( component_value );
     }
     {
-        double quantized_value = floor( double( input.position.z ) * double( PositionUnits ) + 0.5 );
+        double scaled_value = double( input.position.z ) * double( PositionUnits );
+        double quantized_value = floor( scaled_value + 0.5 );
         int64_t component_value = -8388608ll;
         if ( quantized_value > 8388608.0 )
         {
@@ -445,7 +458,8 @@ inline void QuantizeMissile( const MissileData_Interpolate & input, MissileData_
         output.position_z = int32_t( component_value );
     }
     {
-        double quantized_value = floor( double( input.rotation.x ) * double( RotationUnits ) + 0.5 );
+        double scaled_value = double( input.rotation.x ) * double( RotationUnits );
+        double quantized_value = floor( scaled_value + 0.5 );
         int64_t component_value = -1024ll;
         if ( quantized_value > 1024.0 )
         {
@@ -458,7 +472,8 @@ inline void QuantizeMissile( const MissileData_Interpolate & input, MissileData_
         output.rotation_x = int16_t( component_value );
     }
     {
-        double quantized_value = floor( double( input.rotation.y ) * double( RotationUnits ) + 0.5 );
+        double scaled_value = double( input.rotation.y ) * double( RotationUnits );
+        double quantized_value = floor( scaled_value + 0.5 );
         int64_t component_value = -1024ll;
         if ( quantized_value > 1024.0 )
         {
@@ -471,7 +486,8 @@ inline void QuantizeMissile( const MissileData_Interpolate & input, MissileData_
         output.rotation_y = int16_t( component_value );
     }
     {
-        double quantized_value = floor( double( input.rotation.z ) * double( RotationUnits ) + 0.5 );
+        double scaled_value = double( input.rotation.z ) * double( RotationUnits );
+        double quantized_value = floor( scaled_value + 0.5 );
         int64_t component_value = -1024ll;
         if ( quantized_value > 1024.0 )
         {
@@ -484,7 +500,8 @@ inline void QuantizeMissile( const MissileData_Interpolate & input, MissileData_
         output.rotation_z = int16_t( component_value );
     }
     {
-        double quantized_value = floor( double( input.rotation.w ) * double( RotationUnits ) + 0.5 );
+        double scaled_value = double( input.rotation.w ) * double( RotationUnits );
+        double quantized_value = floor( scaled_value + 0.5 );
         int64_t component_value = -1024ll;
         if ( quantized_value > 1024.0 )
         {
@@ -497,7 +514,8 @@ inline void QuantizeMissile( const MissileData_Interpolate & input, MissileData_
         output.rotation_w = int16_t( component_value );
     }
     {
-        double quantized_value = floor( double( input.linear_velocity.x ) * double( VelocityUnits ) + 0.5 );
+        double scaled_value = double( input.linear_velocity.x ) * double( VelocityUnits );
+        double quantized_value = floor( scaled_value + 0.5 );
         int64_t component_value = -2097152ll;
         if ( quantized_value > 2097152.0 )
         {
@@ -510,7 +528,8 @@ inline void QuantizeMissile( const MissileData_Interpolate & input, MissileData_
         output.linear_velocity_x = int32_t( component_value );
     }
     {
-        double quantized_value = floor( double( input.linear_velocity.y ) * double( VelocityUnits ) + 0.5 );
+        double scaled_value = double( input.linear_velocity.y ) * double( VelocityUnits );
+        double quantized_value = floor( scaled_value + 0.5 );
         int64_t component_value = -2097152ll;
         if ( quantized_value > 2097152.0 )
         {
@@ -523,7 +542,8 @@ inline void QuantizeMissile( const MissileData_Interpolate & input, MissileData_
         output.linear_velocity_y = int32_t( component_value );
     }
     {
-        double quantized_value = floor( double( input.linear_velocity.z ) * double( VelocityUnits ) + 0.5 );
+        double scaled_value = double( input.linear_velocity.z ) * double( VelocityUnits );
+        double quantized_value = floor( scaled_value + 0.5 );
         int64_t component_value = -2097152ll;
         if ( quantized_value > 2097152.0 )
         {
@@ -623,7 +643,8 @@ inline void QuantizeDynamicProp( const DynamicPropData_Interpolate & input, Dyna
 {
     output.prop_type = input.prop_type;
     {
-        double quantized_value = floor( double( input.position.x ) * double( PositionUnits ) + 0.5 );
+        double scaled_value = double( input.position.x ) * double( PositionUnits );
+        double quantized_value = floor( scaled_value + 0.5 );
         int64_t component_value = -8388608ll;
         if ( quantized_value > 8388608.0 )
         {
@@ -636,7 +657,8 @@ inline void QuantizeDynamicProp( const DynamicPropData_Interpolate & input, Dyna
         output.position_x = int32_t( component_value );
     }
     {
-        double quantized_value = floor( double( input.position.y ) * double( PositionUnits ) + 0.5 );
+        double scaled_value = double( input.position.y ) * double( PositionUnits );
+        double quantized_value = floor( scaled_value + 0.5 );
         int64_t component_value = -8388608ll;
         if ( quantized_value > 8388608.0 )
         {
@@ -649,7 +671,8 @@ inline void QuantizeDynamicProp( const DynamicPropData_Interpolate & input, Dyna
         output.position_y = int32_t( component_value );
     }
     {
-        double quantized_value = floor( double( input.position.z ) * double( PositionUnits ) + 0.5 );
+        double scaled_value = double( input.position.z ) * double( PositionUnits );
+        double quantized_value = floor( scaled_value + 0.5 );
         int64_t component_value = -8388608ll;
         if ( quantized_value > 8388608.0 )
         {
@@ -662,7 +685,8 @@ inline void QuantizeDynamicProp( const DynamicPropData_Interpolate & input, Dyna
         output.position_z = int32_t( component_value );
     }
     {
-        double quantized_value = floor( double( input.rotation.x ) * double( RotationUnits ) + 0.5 );
+        double scaled_value = double( input.rotation.x ) * double( RotationUnits );
+        double quantized_value = floor( scaled_value + 0.5 );
         int64_t component_value = -1024ll;
         if ( quantized_value > 1024.0 )
         {
@@ -675,7 +699,8 @@ inline void QuantizeDynamicProp( const DynamicPropData_Interpolate & input, Dyna
         output.rotation_x = int16_t( component_value );
     }
     {
-        double quantized_value = floor( double( input.rotation.y ) * double( RotationUnits ) + 0.5 );
+        double scaled_value = double( input.rotation.y ) * double( RotationUnits );
+        double quantized_value = floor( scaled_value + 0.5 );
         int64_t component_value = -1024ll;
         if ( quantized_value > 1024.0 )
         {
@@ -688,7 +713,8 @@ inline void QuantizeDynamicProp( const DynamicPropData_Interpolate & input, Dyna
         output.rotation_y = int16_t( component_value );
     }
     {
-        double quantized_value = floor( double( input.rotation.z ) * double( RotationUnits ) + 0.5 );
+        double scaled_value = double( input.rotation.z ) * double( RotationUnits );
+        double quantized_value = floor( scaled_value + 0.5 );
         int64_t component_value = -1024ll;
         if ( quantized_value > 1024.0 )
         {
@@ -701,7 +727,8 @@ inline void QuantizeDynamicProp( const DynamicPropData_Interpolate & input, Dyna
         output.rotation_z = int16_t( component_value );
     }
     {
-        double quantized_value = floor( double( input.rotation.w ) * double( RotationUnits ) + 0.5 );
+        double scaled_value = double( input.rotation.w ) * double( RotationUnits );
+        double quantized_value = floor( scaled_value + 0.5 );
         int64_t component_value = -1024ll;
         if ( quantized_value > 1024.0 )
         {
@@ -714,7 +741,8 @@ inline void QuantizeDynamicProp( const DynamicPropData_Interpolate & input, Dyna
         output.rotation_w = int16_t( component_value );
     }
     {
-        double quantized_value = floor( double( input.linear_velocity.x ) * double( VelocityUnits ) + 0.5 );
+        double scaled_value = double( input.linear_velocity.x ) * double( VelocityUnits );
+        double quantized_value = floor( scaled_value + 0.5 );
         int64_t component_value = -2097152ll;
         if ( quantized_value > 2097152.0 )
         {
@@ -727,7 +755,8 @@ inline void QuantizeDynamicProp( const DynamicPropData_Interpolate & input, Dyna
         output.linear_velocity_x = int32_t( component_value );
     }
     {
-        double quantized_value = floor( double( input.linear_velocity.y ) * double( VelocityUnits ) + 0.5 );
+        double scaled_value = double( input.linear_velocity.y ) * double( VelocityUnits );
+        double quantized_value = floor( scaled_value + 0.5 );
         int64_t component_value = -2097152ll;
         if ( quantized_value > 2097152.0 )
         {
@@ -740,7 +769,8 @@ inline void QuantizeDynamicProp( const DynamicPropData_Interpolate & input, Dyna
         output.linear_velocity_y = int32_t( component_value );
     }
     {
-        double quantized_value = floor( double( input.linear_velocity.z ) * double( VelocityUnits ) + 0.5 );
+        double scaled_value = double( input.linear_velocity.z ) * double( VelocityUnits );
+        double quantized_value = floor( scaled_value + 0.5 );
         int64_t component_value = -2097152ll;
         if ( quantized_value > 2097152.0 )
         {
@@ -827,7 +857,8 @@ inline void QuantizeTurret( const TurretData_Interpolate & input, TurretData_Sha
     output.parent = input.parent;
     output.turret_index = input.turret_index;
     {
-        double quantized_value = floor( double( input.rotation.x ) * double( RotationUnits ) + 0.5 );
+        double scaled_value = double( input.rotation.x ) * double( RotationUnits );
+        double quantized_value = floor( scaled_value + 0.5 );
         int64_t component_value = -1024ll;
         if ( quantized_value > 1024.0 )
         {
@@ -840,7 +871,8 @@ inline void QuantizeTurret( const TurretData_Interpolate & input, TurretData_Sha
         output.rotation_x = int16_t( component_value );
     }
     {
-        double quantized_value = floor( double( input.rotation.y ) * double( RotationUnits ) + 0.5 );
+        double scaled_value = double( input.rotation.y ) * double( RotationUnits );
+        double quantized_value = floor( scaled_value + 0.5 );
         int64_t component_value = -1024ll;
         if ( quantized_value > 1024.0 )
         {
@@ -853,7 +885,8 @@ inline void QuantizeTurret( const TurretData_Interpolate & input, TurretData_Sha
         output.rotation_y = int16_t( component_value );
     }
     {
-        double quantized_value = floor( double( input.rotation.z ) * double( RotationUnits ) + 0.5 );
+        double scaled_value = double( input.rotation.z ) * double( RotationUnits );
+        double quantized_value = floor( scaled_value + 0.5 );
         int64_t component_value = -1024ll;
         if ( quantized_value > 1024.0 )
         {
@@ -866,7 +899,8 @@ inline void QuantizeTurret( const TurretData_Interpolate & input, TurretData_Sha
         output.rotation_z = int16_t( component_value );
     }
     {
-        double quantized_value = floor( double( input.rotation.w ) * double( RotationUnits ) + 0.5 );
+        double scaled_value = double( input.rotation.w ) * double( RotationUnits );
+        double quantized_value = floor( scaled_value + 0.5 );
         int64_t component_value = -1024ll;
         if ( quantized_value > 1024.0 )
         {

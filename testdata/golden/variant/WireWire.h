@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package example — protocol id 0xf14b209d992acb57
+// package example — protocol id 0x01125e6515d05ec4
 
 #pragma once
 
@@ -348,6 +348,26 @@ inline bool ReadTestData( serialize::ReadStream & stream, TestData & value )
         }
     }
     value.text[value.text_length] = 0;
+    return true;
+}
+
+inline bool WriteCompressedProbe( serialize::WriteStream & stream, const CompressedProbe & value )
+{
+    {
+        float compressed_value = value.boundary;
+        serialize_compressed_float( stream, compressed_value, 0.0f, 10.0f, 0.01f );
+    }
+    {
+        float compressed_value = value.offset;
+        serialize_compressed_float( stream, compressed_value, -5.0f, 5.0f, 0.001f );
+    }
+    return true;
+}
+
+inline bool ReadCompressedProbe( serialize::ReadStream & stream, CompressedProbe & value )
+{
+    serialize_compressed_float( stream, value.boundary, 0.0f, 10.0f, 0.01f );
+    serialize_compressed_float( stream, value.offset, -5.0f, 5.0f, 0.001f );
     return true;
 }
 

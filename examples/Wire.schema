@@ -124,3 +124,20 @@ table TestData {
 
     text string(255)
 }
+
+// The FMA-boundary compressed-float vectors SPEC §7.2 gate 7 promises. The
+// pinned values were chosen by SWEEPING each range for divergence, never
+// guessed (the audit's lesson: an on-quantum value like TestData's 2.5
+// agrees under float32, double and a fused multiply-add alike, so a corpus
+// built only from on-quantum values cannot detect the arithmetic):
+//   boundary = 0.005  -> integer 1 under the float32 two-rounding law;
+//                        a fused build says 0, a double build says 0
+//   offset   = -4.8585 -> integer 142 under the law; a double build says 141
+//                        (the non-zero min exercises the v - min subtraction
+//                        on write and the + min reconstruction on read; a
+//                        full-range float32 sweep found no fused divergence
+//                        on this shape — measured, not assumed)
+type CompressedProbe {
+    boundary float32 [min = 0, max = 10, resolution = 0.01]
+    offset   float32 [min = -5, max = 5, resolution = 0.001]
+}

@@ -165,6 +165,17 @@ func TestPackAgainstWireGoldens(t *testing.T) {
 		"fixed_bytes": [0, 3, 6, 9, 12, 15, 18, 21, 24, 27, 30, 33, 36, 39, 42, 45, 48],
 		"text": "the quick brown fox"
 	}`), golden(t, "testdata.bin"))
+
+	// the FMA-boundary vectors (SPEC §7.2 gate 7): the packer's float32
+	// two-rounding arithmetic must land on the same integers the generated
+	// writers pin — 0.005 -> 1 where a double shortcut says 0, and -4.8585
+	// over the non-zero-min range -> 142 where a double shortcut says 141.
+	// The on-quantum 2.5 above cannot see either divergence, which is the
+	// audit's whole point.
+	checkWire(t, "compressed_probe", packJSON(t, u, "CompressedProbe", `{
+		"boundary": 0.005,
+		"offset":   -4.8585
+	}`), golden(t, "compressed_probe.bin"))
 }
 
 // The fixed-point + 128-bit unit (examples128/) — the wire families the data

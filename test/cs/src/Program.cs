@@ -540,6 +540,33 @@ static class Program
             Check(EqTestData(output, input), "TestData round-trips — signed narrows, full-range ints, align, fixed bytes, string");
         }
 
+        // ---- CompressedProbe: the FMA-boundary vectors (SPEC §7.2 gate 7) ----
+        // 0.005 quantizes to 1 under the float32 two-rounding law (a fused or
+        // double build says 0); -4.8585 over the non-zero-min range quantizes
+        // to 142 (a double build says 141). Same pinned instance as the C++
+        // leg, against the same golden.
+        {
+            CompressedProbe input = new CompressedProbe();
+            input.Boundary = 0.005f;
+            input.Offset = -4.8585f;
+
+            WriteStream ws = NewWriteStream();
+            Check(WriteCompressedProbe(ws, input), "write CompressedProbe");
+            byte[] wire = Data(ws);
+            GoldenWire("compressed_probe", wire);
+
+            CompressedProbe output = new CompressedProbe();
+            ReadStream rs = new ReadStream(wire);
+            Check(ReadCompressedProbe(rs, output), "read CompressedProbe");
+            // through locals, not constants: the C# compiler may fold
+            // constant float expressions in higher precision than the
+            // float32 per-op arithmetic the reader performs
+            float maxIntBoundary = 1000.0f;
+            float maxIntOffset = 10000.0f;
+            Check(output.Boundary == 1.0f / maxIntBoundary * 10.0f, "boundary reconstructs integer 1");
+            Check(output.Offset == 142.0f / maxIntOffset * 10.0f - 5.0f, "offset reconstructs integer 142");
+        }
+
         // ---- specified defaults: construction carries them; Zero* is the zero form ----
         {
             ProbeSample sample = new ProbeSample();

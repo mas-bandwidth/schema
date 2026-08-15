@@ -395,6 +395,30 @@ fn main() {
         );
     }
 
+    // ---- CompressedProbe: the FMA-boundary vectors (SPEC §7.2 gate 7) ----
+    // 0.005 quantizes to 1 under the float32 two-rounding law (a fused or
+    // double build says 0); -4.8585 over the non-zero-min range quantizes to
+    // 142 (a double build says 141). Same pinned instance as the C++ leg,
+    // against the same golden.
+    {
+        let mut input = CompressedProbe::default();
+        input.boundary = 0.005;
+        input.offset = -4.8585;
+
+        let mut buffer = [0u8; 64];
+        let mut ws = WriteStream::new(&mut buffer);
+        check_err(write_compressed_probe(&mut ws, &input), "write CompressedProbe");
+        ws.flush();
+        let n = ws.bytes_processed() as usize;
+        golden_wire("compressed_probe", &buffer[..n]);
+
+        let mut out = CompressedProbe::default();
+        let mut rs = ReadStream::new(&buffer, n);
+        check_err(read_compressed_probe(&mut rs, &mut out), "read CompressedProbe");
+        check(out.boundary == 1.0f32 / 1000.0f32 * 10.0f32, "boundary reconstructs integer 1");
+        check(out.offset == 142.0f32 / 10000.0f32 * 10.0f32 - 5.0f32, "offset reconstructs integer 142");
+    }
+
     // ---- specified defaults: new() carries them; the zero value stays zero ----
     {
         let sample = ProbeSample::new();

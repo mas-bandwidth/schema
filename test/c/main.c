@@ -6,6 +6,7 @@
     nothing about the property this project exists to provide.
 */
 
+#include <math.h> /* the gate-7 discrimination tripwires (fmaf, floor) */
 #include <stdio.h>
 #include <string.h>
 
@@ -274,6 +275,49 @@ int main( void )
                "TestData string" );
         check( memcmp( out.fixed_bytes, in.fixed_bytes, sizeof( in.fixed_bytes ) ) == 0,
                "TestData fixed bytes" );
+    }
+
+    /* ---- CompressedProbe: the FMA-boundary vectors (SPEC §7.2 gate 7) ----
+       0.005 quantizes to 1 under the float32 two-rounding law (fused: 0,
+       double: 0); -4.8585 over the non-zero-min range quantizes to 142
+       (double: 141). The same pinned instance as the C++ leg, against the
+       same golden. */
+    {
+        CompressedProbe in, out;
+        memset( &in, 0, sizeof( in ) );
+        in.boundary = 0.005f;
+        in.offset = -4.8585f;
+
+        serialize_write_stream_init( &w, buffer, sizeof( buffer ) );
+        check( write_compressed_probe( &w, &in ), "write CompressedProbe" );
+        serialize_write_flush( &w );
+        golden_wire( "compressed_probe", buffer, serialize_write_bytes_processed( &w ) );
+
+        memset( &out, 0, sizeof( out ) );
+        serialize_read_stream_init( &r, buffer, serialize_write_bytes_processed( &w ) );
+        check( read_compressed_probe( &r, &out ), "read CompressedProbe" );
+        check( out.boundary == 1.0f / 1000.0f * 10.0f, "boundary reconstructs integer 1" );
+        check( out.offset == 142.0f / 10000.0f * 10.0f - 5.0f, "offset reconstructs integer 142" );
+
+        /* the discrimination property itself is asserted, so the vectors
+           cannot quietly stop discriminating (fma() is exact by definition
+           on every platform) */
+        {
+            volatile float boundary_n = ( 0.005f - 0.0f ) / 10.0f;
+            volatile float boundary_scaled = boundary_n * 1000.0f;
+            volatile float offset_n = ( -4.8585f - -5.0f ) / 10.0f;
+            volatile float offset_scaled = offset_n * 10000.0f;
+            check( (unsigned) floor( boundary_scaled + 0.5f ) == 1,
+                   "the law: float32, two roundings" );
+            check( (unsigned) floor( fmaf( boundary_n, 1000.0f, 0.5f ) ) == 0,
+                   "a fused build diverges on the boundary vector" );
+            check( (unsigned) floor( (double) boundary_n * 1000.0 + 0.5 ) == 0,
+                   "a double build diverges on the boundary vector" );
+            check( (unsigned) floor( offset_scaled + 0.5f ) == 142,
+                   "the law on the non-zero-min vector" );
+            check( (unsigned) floor( (double) offset_n * 10000.0 + 0.5 ) == 141,
+                   "a double build diverges on the non-zero-min vector" );
+        }
     }
 
     /* ---- InputPacket: the counted array ---- */

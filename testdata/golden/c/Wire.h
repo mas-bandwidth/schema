@@ -2,7 +2,7 @@
    SPDX-License-Identifier: NONE — this generated output is yours, under terms of
    your choice. See the LICENSE exception in the schema compiler; the compiler is
    AGPL-3.0, its output is not.
-   package example — protocol id 0xf14b209d992acb57 */
+   package example — protocol id 0x01125e6515d05ec4 */
 
 #ifndef SCHEMA_EXAMPLE_WIRE_H
 #define SCHEMA_EXAMPLE_WIRE_H
@@ -217,6 +217,16 @@ typedef struct TestData {
 
 #define TEST_DATA_MAX_BITS 2735   /* longest wire path; align pads at worst case (SPEC §6.1) */
 #define TEST_DATA_MAX_BYTES 344  /* rounded up to the 8-byte write-buffer granularity */
+
+
+/* type CompressedProbe */
+typedef struct CompressedProbe {
+    float boundary;
+    float offset;
+} CompressedProbe;
+
+#define COMPRESSED_PROBE_MAX_BITS 24   /* longest wire path; align pads at worst case (SPEC §6.1) */
+#define COMPRESSED_PROBE_MAX_BYTES 8  /* rounded up to the 8-byte write-buffer granularity */
 
 #ifdef __cplusplus
 }

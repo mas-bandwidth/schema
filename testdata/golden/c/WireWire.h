@@ -2,7 +2,7 @@
    SPDX-License-Identifier: NONE — this generated output is yours, under terms of
    your choice. See the LICENSE exception in the schema compiler; the compiler is
    AGPL-3.0, its output is not.
-   package example — protocol id 0xf14b209d992acb57 */
+   package example — protocol id 0x01125e6515d05ec4 */
 
 #ifndef SCHEMA_EXAMPLE_WIREWIRE_H
 #define SCHEMA_EXAMPLE_WIREWIRE_H
@@ -866,6 +866,36 @@ static SCHEMA_UNUSED int read_test_data( serialize_read_stream_t * stream, TestD
         return 0;
     }
     value->text[value->text_length] = 0;
+    return 1;
+}
+
+/* Writes CompressedProbe. Returns 1 on success, 0 on failure — the stream latches the
+   error, so a caller may check once at the end of a message. */
+static SCHEMA_UNUSED int write_compressed_probe( serialize_write_stream_t * stream, const CompressedProbe * value )
+{
+    if ( !serialize_write_compressed_float( stream, value->boundary, 0.0, 10.0, 0.01 ) )
+    {
+        return 0;
+    }
+    if ( !serialize_write_compressed_float( stream, value->offset, -5.0, 5.0, 0.001 ) )
+    {
+        return 0;
+    }
+    return 1;
+}
+
+/* Reads CompressedProbe. Returns 1 on success, 0 on failure. Out-of-range values are
+   REFUSED, never clamped. */
+static SCHEMA_UNUSED int read_compressed_probe( serialize_read_stream_t * stream, CompressedProbe * value )
+{
+    if ( !serialize_read_compressed_float( stream, &value->boundary, 0.0, 10.0, 0.01 ) )
+    {
+        return 0;
+    }
+    if ( !serialize_read_compressed_float( stream, &value->offset, -5.0, 5.0, 0.001 ) )
+    {
+        return 0;
+    }
     return 1;
 }
 

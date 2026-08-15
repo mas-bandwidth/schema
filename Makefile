@@ -123,7 +123,7 @@ C_TAUTOLOGICAL := $(shell $(CC) -Wtautological-type-limit-compare -E - < /dev/nu
 build/schema_test_c: generated/c/.stamp test/c/main.c
 	@mkdir -p build
 	$(CC) -std=c99 -Wall -Wextra -Werror -Wtype-limits $(C_TAUTOLOGICAL) \
-		-O2 -Igenerated/c -I$(SERIALIZE_C) \
+		-O2 -ffp-contract=off -Igenerated/c -I$(SERIALIZE_C) \
 		test/c/main.c $(SERIALIZE_C)/serialize.c -o $@ -lm
 
 generated/c-ludicrous/.stamp: bin/schema $(SCHEMAS128)
@@ -165,7 +165,7 @@ build/schema_test_bench: generated/bench/cpp/.stamp test/bench/main.cpp
 build/schema_test_bench_c: generated/bench/c/.stamp test/bench/c_main.c
 	@mkdir -p build
 	$(CC) -std=c99 -Wall -Wextra -Werror -Wtype-limits $(C_TAUTOLOGICAL) \
-		-O2 -Igenerated/bench/c -I$(SERIALIZE_C) \
+		-O2 -ffp-contract=off -Igenerated/bench/c -I$(SERIALIZE_C) \
 		test/bench/c_main.c $(SERIALIZE_C)/serialize.c -o $@ -lm
 
 # The C half of the fixed-point and 128-bit corpus. Its ABSENCE is why a C
@@ -174,7 +174,7 @@ build/schema_test_bench_c: generated/bench/c/.stamp test/bench/c_main.c
 build/schema_test_c_ludicrous: generated/c-ludicrous/.stamp test/c-ludicrous/main.c
 	@mkdir -p build
 	$(CC) -std=c99 -Wall -Wextra -Werror -Wtype-limits $(C_TAUTOLOGICAL) \
-		-O2 -Igenerated/c-ludicrous -I$(SERIALIZE_C) \
+		-O2 -ffp-contract=off -Igenerated/c-ludicrous -I$(SERIALIZE_C) \
 		test/c-ludicrous/main.c $(SERIALIZE_C)/serialize.c -o $@ -lm
 
 test: build/schema_test build/schema_test_variant build/schema_test_random build/schema_test_ludicrous build/schema_test_c build/schema_test_c_ludicrous build/schema_test_bench build/schema_test_bench_c generated/go/.stamp generated/rust/.stamp generated/cs/.stamp generated/go-ludicrous/.stamp generated/rust-ludicrous/.stamp generated/cs-ludicrous/.stamp generated/bench/go/.stamp generated/bench/rust/.stamp generated/bench/cs/.stamp

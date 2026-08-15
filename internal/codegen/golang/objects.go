@@ -235,8 +235,14 @@ func (g *gen) emitQuantizeField(f *ir.Field, ind string) {
 			// float->int of out-of-range or NaN input is target- and
 			// arch-dependent, so this shape quantizes even garbage input
 			// identically in every target (NaN clamps low)
-			g.pf("%s{\n%s\tquantizedValue := math.Floor(float64(input.%s.%s)*float64(%s) + 0.5)\n",
+			// the product lands in a local and re-enters through an EXPLICIT
+			// float64 conversion — the Go spec permits fusing ACROSS
+			// statements, and only an explicit conversion forces the rounding
+			// that bars the FMA (the compressed_float hazard one level up,
+			// the same remedy serialize.go's writer uses) (#26)
+			g.pf("%s{\n%s\tscaledValue := float64(input.%s.%s) * float64(%s)\n",
 				ind, ind, name, compName, scale)
+			g.pf("%s\tquantizedValue := math.Floor(float64(scaledValue) + 0.5)\n", ind)
 			g.pf("%s\tcomponentValue := int64(-%d)\n", ind, f.QuantBound)
 			g.pf("%s\tif quantizedValue > %d.0 {\n%s\t\tcomponentValue = %d\n", ind, f.QuantBound, ind, f.QuantBound)
 			g.pf("%s\t} else if quantizedValue >= -%d.0 {\n%s\t\tcomponentValue = int64(quantizedValue)\n%s\t}\n", ind, f.QuantBound, ind, ind)

@@ -1445,6 +1445,15 @@ func (c *checker) checkCompositeQuantize(f *ast.Field, out *ir.Field, byKey map[
 		c.errf(a.Pos, "quantize scale %s must be a positive integer", k)
 		return
 	}
+	// every backend computes the quantize product in float64, so a scale the
+	// double cannot hold exactly would round before the arithmetic even
+	// starts — the compressed_float precision hazard one level up (#26)
+	if f := new(big.Float).SetPrec(53).SetInt64(k.Int64()); true {
+		if i, acc := f.Int64(); acc != big.Exact || i != k.Int64() {
+			c.errf(a.Pos, "quantize scale %s is not exactly representable in float64 — the quantize arithmetic runs in double in every backend (SPEC §4.8 rule 2)", k)
+			return
+		}
+	}
 	b, ok := c.evalFloat(byKey["max"].Value)
 	if !ok {
 		return
