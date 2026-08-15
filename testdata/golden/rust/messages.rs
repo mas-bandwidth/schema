@@ -162,7 +162,7 @@ pub fn write_block(stream: &mut WriteStream<'_>, value: &Block) -> Result {
         let mut offset_value = value.data_length as u32;
         stream.serialize_bits(&mut offset_value, 11)?; // the length guards the slice (§6.3)
     }
-    stream.write_bytes(&value.data[..value.data_length as usize])?; // borrowed in place: the write side never mutates
+    stream.write_bytes(&value.data[..value.data_length as usize]); // borrowed in place: the write side never mutates (infallible: returns () in serialize.rs 2.0.0)
     Ok(())
 }
 
@@ -209,7 +209,7 @@ pub fn write_chat(stream: &mut WriteStream<'_>, value: &Chat) -> Result {
         let mut offset_value = value.text_length as u32;
         stream.serialize_bits(&mut offset_value, 9)?; // the length guards the slice (§6.3)
     }
-    stream.write_bytes(&value.text[..value.text_length as usize])?; // borrowed in place: the write side never mutates
+    stream.write_bytes(&value.text[..value.text_length as usize]); // borrowed in place: the write side never mutates (infallible: returns () in serialize.rs 2.0.0)
     Ok(())
 }
 
