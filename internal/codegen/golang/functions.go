@@ -331,10 +331,10 @@ func (g *gen) emitWriteScalar(f *ir.Field, name, ind string) {
 		// integer's bounds (STANDARD.md, fixed). The runtime carries the
 		// write-side range refusal natively (ErrValueOutOfRange, sticky).
 		lo, hi := g.rangeArgs(f)
-		switch {
-		case f.Type.Width == 128:
+		switch f.Type.Width {
+		case 128:
 			g.pf("%sstream.SerializeFixed128(&%s, %d, %d, %s, %s)\n", ind, name, f.Type.IntBits, f.Type.FracBits, lo, hi)
-		case f.Type.Width == 64:
+		case 64:
 			g.pf("%sstream.SerializeFixed64(&%s, %d, %d, %s, %s)\n", ind, name, f.Type.IntBits, f.Type.FracBits, lo, hi)
 		default:
 			// storage narrower than the library's int64 form: widen through a
@@ -528,10 +528,10 @@ func (g *gen) emitReadScalar(f *ir.Field, name, ind string) {
 		// rejects — never clamps — surfacing ErrValueOutOfRange on a hostile
 		// stream
 		lo, hi := g.rangeArgs(f)
-		switch {
-		case f.Type.Width == 128:
+		switch f.Type.Width {
+		case 128:
 			g.pf("%sstream.SerializeFixed128(&%s, %d, %d, %s, %s)\n", ind, name, f.Type.IntBits, f.Type.FracBits, lo, hi)
-		case f.Type.Width == 64:
+		case 64:
 			g.pf("%sstream.SerializeFixed64(&%s, %d, %d, %s, %s)\n", ind, name, f.Type.IntBits, f.Type.FracBits, lo, hi)
 		default:
 			// narrow back down on the member assignment — lossless, a decoded

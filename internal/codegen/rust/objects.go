@@ -170,13 +170,14 @@ func (g *gen) emitViewReadField(f *ir.Field, v ir.View, ind string) {
 				g.pf("%s%s = %s;\n", ind, compName, rustIntLit(lo, width))
 				continue
 			}
-			if wide {
+			switch {
+			case wide:
 				g.pf("%s{\n%s    let mut component_value: i64 = 0;\n", ind, ind)
 				g.pf("%s    stream.serialize_int64(&mut component_value, %s, %s)?;\n", ind, rustIntLit(lo, 64), rustIntLit(hi, 64))
 				g.pf("%s    %s = component_value as %s;\n%s}\n", ind, compName, compT, ind)
-			} else if width == 32 {
+			case width == 32:
 				g.pf("%sstream.serialize_int(&mut %s, %s, %s)?;\n", ind, compName, rustIntLit(lo, 32), rustIntLit(hi, 32))
-			} else {
+			default:
 				g.pf("%s{\n%s    let mut component_value: i32 = 0;\n", ind, ind)
 				g.pf("%s    stream.serialize_int(&mut component_value, %s, %s)?;\n", ind, rustIntLit(lo, 32), rustIntLit(hi, 32))
 				g.pf("%s    %s = component_value as %s;\n%s}\n", ind, compName, compT, ind)
@@ -188,13 +189,14 @@ func (g *gen) emitViewReadField(f *ir.Field, v ir.View, ind string) {
 		wide := f.QuantBound > 2147483647
 		for _, comp := range st.Fields {
 			compName := name + "_" + comp.Name
-			if wide {
+			switch {
+			case wide:
 				g.pf("%s{\n%s    let mut component_value: i64 = 0;\n", ind, ind)
 				g.pf("%s    stream.serialize_int64(&mut component_value, -%d, %d)?;\n", ind, f.QuantBound, f.QuantBound)
 				g.pf("%s    %s = component_value as %s;\n%s}\n", ind, compName, compT, ind)
-			} else if smallestSigned(f.QuantBound) == 32 {
+			case smallestSigned(f.QuantBound) == 32:
 				g.pf("%sstream.serialize_int(&mut %s, -%d, %d)?;\n", ind, compName, f.QuantBound, f.QuantBound)
-			} else {
+			default:
 				g.pf("%s{\n%s    let mut component_value: i32 = 0;\n", ind, ind)
 				g.pf("%s    stream.serialize_int(&mut component_value, -%d, %d)?;\n", ind, f.QuantBound, f.QuantBound)
 				g.pf("%s    %s = component_value as %s;\n%s}\n", ind, compName, compT, ind)
@@ -259,7 +261,7 @@ func (g *gen) emitQuantizeField(f *ir.Field, ind string) {
 			// arithmetic, and an f32 product would pre-round before the + 0.5
 			compIn := "input." + f.Name + "." + comp.Name
 			if comp.Type.Kind == ir.TFloat32 {
-				compIn = compIn + " as f64"
+				compIn += " as f64"
 			}
 			// the clamp happens in the F64 domain before the int conversion:
 			// float->int of out-of-range or NaN input is target- and

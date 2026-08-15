@@ -35,8 +35,8 @@ import (
 
 // aggRow is one (lang,bench,path)'s accumulation across rounds.
 type aggRow struct {
-	first  row             // the identifying columns, from the first round seen
-	rates  []float64       // one headline rate per round (mx == med == mn at runs=1)
+	first  row               // the identifying columns, from the first round seen
+	rates  []float64         // one headline rate per round (mx == med == mn at runs=1)
 	rounds map[string]string // `# round: K` value -> the file that contributed it
 }
 
@@ -44,8 +44,8 @@ type aggRow struct {
 // when the file carries none (a control leg, or a pre-stamp CSV).
 func parseRound(meta []string) string {
 	for _, m := range meta {
-		if strings.HasPrefix(m, "# round:") {
-			return strings.TrimSpace(strings.TrimPrefix(m, "# round:"))
+		if after, ok := strings.CutPrefix(m, "# round:"); ok {
+			return strings.TrimSpace(after)
 		}
 	}
 	return ""

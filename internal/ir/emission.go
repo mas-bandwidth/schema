@@ -49,7 +49,7 @@ func EmissionOrder(file *File) []Decl {
 	done := make([]bool, n)
 	for len(order) < n {
 		pick := -1
-		for i := 0; i < n; i++ {
+		for i := range n {
 			if !done[i] && indeg[i] == 0 {
 				pick = i
 				break
@@ -58,7 +58,7 @@ func EmissionOrder(file *File) []Decl {
 		if pick == -1 {
 			// an intra-file type cycle — the checker already rejected the unit;
 			// defensively emit the rest in declaration order
-			for i := 0; i < n; i++ {
+			for i := range n {
 				if !done[i] {
 					pick = i
 					break

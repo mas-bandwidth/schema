@@ -70,12 +70,12 @@ func setBits(data []byte, pos, n int) {
 func makeState() ludicrous.LudicrousState {
 	in := ludicrous.NewLudicrousState()
 	in.Mode = ludicrous.DriveModeLudicrous
-	in.Probe.Angle = 2981888                                                       // +45.5 * 2^16
-	in.Probe.Position = -809119744                                                 // -12346.1875 * 2^16
-	in.Probe.Reach = serialize.Int128From64(65536000000 - 1)                       // raw_max - 1
+	in.Probe.Angle = 2981888                                 // +45.5 * 2^16
+	in.Probe.Position = -809119744                           // -12346.1875 * 2^16
+	in.Probe.Reach = serialize.Int128From64(65536000000 - 1) // raw_max - 1
 	in.Probe.Ticks = 777777
-	in.Probe.Samples[0] = -524288                                                  // raw_min
-	in.Probe.Samples[1] = 524288                                                   // raw_max
+	in.Probe.Samples[0] = -524288 // raw_min
+	in.Probe.Samples[1] = 524288  // raw_max
 	in.Wide.EntityId = serialize.Uint128{Lo: 0xFEDCBA9876543210, Hi: 0x0123456789ABCDEF}
 	in.Wide.Energy = serialize.Int128From64(4999999999)
 	in.Wide.Flux = serialize.Int128{Lo: 7, Hi: 0x800000000} // 2^99 + 7

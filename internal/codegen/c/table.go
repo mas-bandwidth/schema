@@ -21,7 +21,7 @@ import (
 	"github.com/mas-bandwidth/schema/internal/pack"
 )
 
-// table-wire kinds — mirror internal/pack/table.go
+// table-wire kinds — mirror internal/pack/table.go.
 const (
 	tkBool   = 1
 	tkI8     = 2
@@ -142,10 +142,6 @@ func (g *tableGen) pf(format string, args ...any) {
 		}
 	}
 	g.body.WriteString(s)
-}
-
-func (g *tableGen) unsupported(format string, args ...any) {
-	g.errs = append(g.errs, fmt.Errorf("C table backend: "+format, args...))
 }
 
 // tableGuardExprs composes each guarded field's branch condition, so the

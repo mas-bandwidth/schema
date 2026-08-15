@@ -17,6 +17,7 @@ package cpp
 
 import (
 	"fmt"
+	"maps"
 	"math"
 	"math/big"
 	"sort"
@@ -90,9 +91,7 @@ func Generate(u *ir.Unit, opts Options) (map[string][]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	for name, data := range tables {
-		out[name] = data
-	}
+	maps.Copy(out, tables)
 	return out, nil
 }
 
@@ -202,7 +201,7 @@ type gen struct {
 
 	body           strings.Builder
 	includes       map[string]bool
-	nativeIncludes map[string]bool // cpp_include headers of referenced native-mapped types
+	nativeIncludes map[string]bool    // cpp_include headers of referenced native-mapped types
 	emitted        map[string]bool    // consts of this file emitted so far (symbolic-reference safety)
 	bulkBytes      map[*ir.Field]bool // fixed [N]uint8 arrays at statically byte-aligned positions (ir.AlignedFixedByteArrays)
 	needsSerialize bool               // the file emits wire functions -> include "serialize.h"
@@ -971,7 +970,7 @@ func cppConstType(storage string) string {
 	default:
 		signed := strings.HasPrefix(storage, "int")
 		width := 64
-		fmt.Sscanf(strings.TrimPrefix(strings.TrimPrefix(storage, "uint"), "int"), "%d", &width)
+		_, _ = fmt.Sscanf(strings.TrimPrefix(strings.TrimPrefix(storage, "uint"), "int"), "%d", &width) // no digits: width stays 64
 		return cppInt2(signed, width)
 	}
 }

@@ -346,7 +346,6 @@ func (g *gen) emitReadBits(f *ir.Field, expr, ind string) {
 	g.pf("%s    %s = (%s) raw;\n%s}\n", ind, expr, g.storageType(f), ind)
 }
 
-
 // ---- fixed point ----
 
 // fixedCall picks the runtime entry point for a Q format's storage width.

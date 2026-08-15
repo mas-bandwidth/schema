@@ -534,8 +534,8 @@ func varyProbeHeader(m *example.ProbeHeader, rng uint64) {
 }
 
 func varyProbeBits(m *example.ProbeBits, rng uint64) {
-	m.Small = uint32(rng) & 511          // 9 bits
-	m.Boundary = rng & ((1 << 33) - 1)   // 33 bits
+	m.Small = uint32(rng) & 511        // 9 bits
+	m.Boundary = rng & ((1 << 33) - 1) // 33 bits
 	m.Wide = rng * 3
 	m.Sensor = uint32(rng >> 16)
 	m.Nonce = rng ^ 0x5555555555555555

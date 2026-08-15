@@ -450,9 +450,10 @@ func (p *parser) parseScalar() ast.ScalarType {
 		arg := p.parseExpr()
 		p.expect(scanner.RParen, ")")
 		kind := ast.ScalarBits
-		if t.Kind == scanner.KwString {
+		switch t.Kind {
+		case scanner.KwString:
 			kind = ast.ScalarString
-		} else if t.Kind == scanner.KwBytes {
+		case scanner.KwBytes:
 			kind = ast.ScalarBytes
 		}
 		return ast.ScalarType{Kind: kind, Arg: arg, Pos: t.Pos}

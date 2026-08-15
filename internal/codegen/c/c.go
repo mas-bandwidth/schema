@@ -1,7 +1,7 @@
 // Package c emits the C target: one header/source pair per schema file —
 // Types.schema -> Types.h and Types.c — targeting the serialize.c runtime.
 //
-// WHAT IS DIFFERENT ABOUT THIS TARGET
+// # WHAT IS DIFFERENT ABOUT THIS TARGET
 //
 // C++ expresses reading and writing once, as a function templated over a write
 // stream, a read stream or a measure stream. C has no templates, so this target
@@ -34,6 +34,7 @@ package c
 
 import (
 	"fmt"
+	"maps"
 	"math"
 	"math/big"
 	"sort"
@@ -78,9 +79,7 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 	if terr != nil {
 		errs = append(errs, terr)
 	}
-	for name, data := range tables {
-		out[name] = data
-	}
+	maps.Copy(out, tables)
 
 	// Refuse to emit a partial target. Returning the files alongside an error
 	// would invite a caller to use them.
@@ -116,12 +115,12 @@ type gen struct {
 	needs128 bool // a 128-bit or Q112.16 storage member needs serialize.h in the DATA header
 
 	emitMessagesPending bool // this file owns the message dispatch surface
-	file     *ir.File
-	msgOwner string
-	objOwner string
-	deps     []string
-	wire     bool
-	body     strings.Builder
+	file                *ir.File
+	msgOwner            string
+	objOwner            string
+	deps                []string
+	wire                bool
+	body                strings.Builder
 }
 
 func (g *gen) pf(format string, args ...any) {
