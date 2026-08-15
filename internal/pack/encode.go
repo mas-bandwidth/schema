@@ -303,8 +303,12 @@ func (e *Encoder) encodeScalar(w *bitWriter, f *ir.Field, val any, fpath string)
 		if !f.HasIntRange {
 			// only a [local] field reaches no wire, and no [local] field is
 			// ever encoded — so this is a compiler bug, not a data error
-			return fmt.Errorf("%s: fixed(%d, %d) carries no [min, max] — the whole-unit bounds are part of the wire format (SPEC §4.3)",
-				fpath, f.Type.IntBits, f.Type.FracBits)
+			spelling := "fixed"
+			if !f.Type.Signed {
+				spelling = "ufixed"
+			}
+			return fmt.Errorf("%s: %s(%d, %d) carries no [min, max] — the whole-unit bounds are part of the wire format (SPEC §4.3)",
+				fpath, spelling, f.Type.IntBits, f.Type.FracBits)
 		}
 		raw, err := e.fixedRaw(f, val, fpath)
 		if err != nil {
@@ -518,7 +522,7 @@ func floatValue(val any, f *ir.Field, fpath string) (float64, error) {
 	case json.Number:
 		n, err := v.Float64()
 		if err != nil {
-			return 0, fmt.Errorf("%s: %s is not a number: %v", fpath, v, err)
+			return 0, fmt.Errorf("%s: %s is not a number: %w", fpath, v, err)
 		}
 		return n, nil
 	case float64:
@@ -535,7 +539,7 @@ func bytesValue(val any, fpath string) ([]byte, error) {
 	case string:
 		data, err := base64.StdEncoding.DecodeString(v)
 		if err != nil {
-			return nil, fmt.Errorf("%s: not valid base64: %v", fpath, err)
+			return nil, fmt.Errorf("%s: not valid base64: %w", fpath, err)
 		}
 		return data, nil
 	case []any:

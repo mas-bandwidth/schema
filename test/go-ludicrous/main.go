@@ -70,12 +70,12 @@ func setBits(data []byte, pos, n int) {
 func makeState() ludicrous.LudicrousState {
 	in := ludicrous.NewLudicrousState()
 	in.Mode = ludicrous.DriveModeLudicrous
-	in.Probe.Angle = 2981888                                                       // +45.5 * 2^16
-	in.Probe.Position = -809119744                                                 // -12346.1875 * 2^16
-	in.Probe.Reach = serialize.Int128From64(65536000000 - 1)                       // raw_max - 1
+	in.Probe.Angle = 2981888                                 // +45.5 * 2^16
+	in.Probe.Position = -809119744                           // -12346.1875 * 2^16
+	in.Probe.Reach = serialize.Int128From64(65536000000 - 1) // raw_max - 1
 	in.Probe.Ticks = 777777
-	in.Probe.Samples[0] = -524288                                                  // raw_min
-	in.Probe.Samples[1] = 524288                                                   // raw_max
+	in.Probe.Samples[0] = -524288 // raw_min
+	in.Probe.Samples[1] = 524288  // raw_max
 	in.Wide.EntityId = serialize.Uint128{Lo: 0xFEDCBA9876543210, Hi: 0x0123456789ABCDEF}
 	in.Wide.Energy = serialize.Int128From64(4999999999)
 	in.Wide.Flux = serialize.Int128{Lo: 7, Hi: 0x800000000} // 2^99 + 7
@@ -277,6 +277,53 @@ func main() {
 		hOut := ludicrous.NarrowBodyData_Shallow{}
 		hrs := serialize.NewReadStream(hostile)
 		check(ludicrous.ReadNarrowBodyData_Shallow(hrs, &hOut) != nil, "a smuggled narrowed offset is REJECTED")
+	}
+
+	// ---- UnsignedProbe: ufixed(I, F), the unsigned sibling (SPEC §4.3;
+	// Glenn 2026-08-15: "ufixed is fine", closing §9 q17) ----
+	// span's raw value fills uint64's HIGH HALF (above 2^63) — the int64
+	// bit-cast route through the runtime must recover it exactly, and the
+	// C++-pinned golden is the gate. Values mirror test/ludicrous_main.cpp.
+	{
+		check(ludicrous.UnsignedProbeMaxBits == 196, "UnsignedProbe worst case")
+
+		in := ludicrous.UnsignedProbe{}
+		in.Angle = 2981888                               // +45.5 * 2^16
+		in.Span = 0xFFFFFFFFFFFF0000                     // raw_max — the uint64 HIGH HALF
+		in.Reach = serialize.Uint128From64(131071999999) // raw_max - 1
+		in.Ticks = 777777
+		in.Samples[0] = 0       // raw_min
+		in.Samples[1] = 1048576 // raw_max
+		in.Locked = 196608      // 3 * 2^16, the ONE legal raw
+		in.Tail = 0xA5
+
+		ws, _ := newWriteStream()
+		checkErr(ludicrous.WriteUnsignedProbe(ws, &in), "write UnsignedProbe")
+		ws.Flush()
+		uWire := append([]byte(nil), ws.Data()...)
+		goldenWire("unsigned_probe", uWire)
+
+		out := ludicrous.UnsignedProbe{}
+		rs := serialize.NewReadStream(uWire)
+		checkErr(ludicrous.ReadUnsignedProbe(rs, &out), "read UnsignedProbe")
+		check(out == in, "UnsignedProbe round-trips — the uint64 high half bit-exact")
+
+		// the write-side degenerate refusal: any raw but 3 * 2^16 is refused
+		// before a single bit is written
+		bad := in
+		bad.Locked = 196609
+		wsb, _ := newWriteStream()
+		check(ludicrous.WriteUnsignedProbe(wsb, &bad) != nil, "a wrong degenerate ufixed raw is REFUSED on write")
+
+		// hostile: span's 64 offset bits (starting at bit 25) all-ones =
+		// 2^64 - 1, above the raw range 0xFFFFFFFFFFFF0000 — the headroom is
+		// exactly the low 16 bits, and the reject must fire in the UNSIGNED
+		// domain (a signed compare would call the smuggled value negative)
+		hostile := append([]byte(nil), uWire...)
+		setBits(hostile, 25, 64)
+		hOut := ludicrous.UnsignedProbe{}
+		hrs := serialize.NewReadStream(hostile)
+		check(ludicrous.ReadUnsignedProbe(hrs, &hOut) != nil, "a smuggled ufixed high-half offset is REJECTED")
 	}
 
 	// ---- the message dispatch surface over the new unit ----

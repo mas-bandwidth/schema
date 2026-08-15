@@ -70,8 +70,9 @@ would have hand-written, not an interpreter walking a schema at runtime.
   from the wire, back-referencing a bool already sent.
 - **Compressed floats** — `[min, max, resolution]` sends a step index, not a
   float. A 0–1 throttle at 0.01 costs 7 bits.
-- **Fixed point is a type in the language** — `fixed(48, 16)` is declared like
-  any other field, and the compiler owns both the storage and the wire for it.
+- **Fixed point is a type in the language** — `fixed(48, 16)` and its unsigned
+  sibling `ufixed(48, 16)` are declared like any other field, and the compiler
+  owns both the storage and the wire for them.
 - **128-bit integers**, ranged like any other, in every target language.
 - **Zero allocation, no runtime reflection** — straight-line code reading and
   writing your own buffers.

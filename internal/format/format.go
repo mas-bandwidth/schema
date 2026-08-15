@@ -24,7 +24,7 @@ import (
 func Format(path string, src []byte) ([]byte, error) {
 	before, errs := parser.Parse(path, src)
 	if len(errs) > 0 {
-		return nil, fmt.Errorf("%s does not parse; not formatting it: %v", path, errs[0])
+		return nil, fmt.Errorf("%s does not parse; not formatting it: %w", path, errs[0])
 	}
 
 	out, err := render(path, src)
@@ -34,7 +34,7 @@ func Format(path string, src []byte) ([]byte, error) {
 
 	after, errs := parser.Parse(path, out)
 	if len(errs) > 0 {
-		return nil, fmt.Errorf("formatter defect (output does not parse — refusing): %v", errs[0])
+		return nil, fmt.Errorf("formatter defect (output does not parse — refusing): %w", errs[0])
 	}
 	if fingerprint(before) != fingerprint(after) {
 		return nil, fmt.Errorf("formatter defect (output parses differently from input — refusing to change meaning) in %s", path)
@@ -42,7 +42,7 @@ func Format(path string, src []byte) ([]byte, error) {
 
 	again, err := render(path, out)
 	if err != nil {
-		return nil, fmt.Errorf("formatter defect (second pass failed): %v", err)
+		return nil, fmt.Errorf("formatter defect (second pass failed): %w", err)
 	}
 	if string(again) != string(out) {
 		return nil, fmt.Errorf("formatter defect (not idempotent — refusing) in %s", path)
@@ -321,7 +321,7 @@ func needSpace(prev, cur scanner.Token, tokens []scanner.Token, i int) bool {
 		// unary minus; spaced after operators and separators
 		switch prev.Kind {
 		case scanner.Ident, scanner.KwBits, scanner.KwString, scanner.KwBytes,
-			scanner.KwFixed, scanner.KwConst, scanner.KwReserved:
+			scanner.KwFixed, scanner.KwUfixed, scanner.KwConst, scanner.KwReserved:
 			return false
 		case scanner.Minus:
 			return isUnary(tokens, i-1)
@@ -342,7 +342,7 @@ func needSpace(prev, cur scanner.Token, tokens []scanner.Token, i int) bool {
 		return true
 	case scanner.RBrack:
 		// ]Type is the array-bound junction; anything else gets a space
-		return !(cur.Kind == scanner.Ident || cur.Kind.IsKeyword())
+		return cur.Kind != scanner.Ident && !cur.Kind.IsKeyword()
 	case scanner.LBrace:
 		return true // one-line lists open with `{ `
 	}
@@ -510,11 +510,11 @@ func splitConst(s string) (head, rest string, ok bool) {
 	if !strings.HasPrefix(s, "const ") {
 		return "", "", false
 	}
-	k := strings.Index(s, " = ")
-	if k < 0 {
+	before, after, ok := strings.Cut(s, " = ")
+	if !ok {
 		return "", "", false
 	}
-	return strings.TrimRight(s[:k], " "), s[k+3:], true
+	return strings.TrimRight(before, " "), after, true
 }
 
 // ---- the structural fingerprint ----
@@ -622,7 +622,10 @@ func fpScalar(t ast.ScalarType) string {
 	case ast.ScalarBytes:
 		return fmt.Sprintf("bytes(%s)", fpExpr(t.Arg))
 	case ast.ScalarFixed:
-		return fmt.Sprintf("fixed(%s,%s)", fpExpr(t.Arg), fpExpr(t.Arg2))
+		if t.Signed {
+			return fmt.Sprintf("fixed(%s,%s)", fpExpr(t.Arg), fpExpr(t.Arg2))
+		}
+		return fmt.Sprintf("ufixed(%s,%s)", fpExpr(t.Arg), fpExpr(t.Arg2))
 	default:
 		return t.Name
 	}

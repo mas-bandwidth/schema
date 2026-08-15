@@ -169,6 +169,72 @@ int main( void )
         check( out.tail == 0xA5, "the tail rides at bit 0" );
     }
 
+    /* ---- UnsignedProbe: ufixed(I, F), the unsigned sibling (SPEC §4.3;
+       Glenn 2026-08-15: "ufixed is fine", closing §9 q17) ----
+       span's raw value fills uint64's HIGH HALF (above 2^63). The C entries
+       take SIGNED values, so the generated routing must zero-extend — 16/32
+       bit storage through the fixed64 entry, 64-bit storage into the
+       fixed128 entry's low lane — and this byte-compare against the
+       C++-pinned golden is the gate. Values mirror test/ludicrous_main.cpp. */
+    {
+        UnsignedProbe in, out, bad;
+        int i;
+        memset( &in, 0, sizeof( in ) );
+        in.angle = 2981888;                                          /* +45.5 * 2^16 */
+        in.span = 0xFFFFFFFFFFFF0000ULL;                             /* raw_max — the uint64 HIGH HALF */
+        in.reach = serialize_uint128_make( 0, 131071999999ULL );     /* raw_max - 1 */
+        in.ticks = 777777;
+        in.samples[0] = 0;                                           /* raw_min */
+        in.samples[1] = 1048576;                                     /* raw_max */
+        in.locked = 196608;                                          /* 3 * 2^16, the ONE legal raw */
+        in.tail = 0xA5;
+
+        serialize_write_stream_init( &w, buffer, sizeof( buffer ) );
+        check( write_unsigned_probe( &w, &in ), "write UnsignedProbe" );
+        serialize_write_flush( &w );
+        check( serialize_write_bytes_processed( &w ) == 25, "UnsignedProbe wire is 196 bits = 25 bytes" );
+        golden_wire( "unsigned_probe", buffer, serialize_write_bytes_processed( &w ) );
+
+        memset( &out, 0, sizeof( out ) );
+        serialize_read_stream_init( &r, buffer, serialize_write_bytes_processed( &w ) );
+        check( read_unsigned_probe( &r, &out ), "read UnsignedProbe" );
+        check( out.angle == 2981888, "ufixed(16,16) round-trips exactly" );
+        check( out.span == 0xFFFFFFFFFFFF0000ULL, "ufixed(48,16) round-trips the uint64 high half bit-exact" );
+        check( serialize_uint128_equal( out.reach, serialize_uint128_make( 0, 131071999999ULL ) ),
+               "ufixed(112,16) round-trips exactly" );
+        check( out.ticks == 777777, "ufixed(32,0) round-trips exactly" );
+        check( out.samples[0] == 0 && out.samples[1] == 1048576,
+               "the ufixed array round-trips at both raw bounds" );
+        check( out.locked == 196608, "the degenerate ufixed materializes from the range alone" );
+        check( out.tail == 0xA5, "the tail rides after zero degenerate bits" );
+
+        /* the write-side degenerate refusal: any raw but 3 * 2^16 is
+           refused before a single bit is written */
+        bad = in;
+        bad.locked = 196609;
+        serialize_write_stream_init( &w, buffer, sizeof( buffer ) );
+        check( !write_unsigned_probe( &w, &bad ), "a wrong degenerate ufixed raw is REFUSED on write" );
+
+        /* hostile: span's 64 offset bits (bits 25..88) all-ones = 2^64 - 1,
+           above the raw range 0xFFFFFFFFFFFF0000 — the headroom is exactly
+           the low 16 bits, and the reject must fire in the UNSIGNED domain
+           (a signed compare would call the smuggled value negative) */
+        {
+            unsigned char hostile[25];
+            serialize_write_stream_init( &w, buffer, sizeof( buffer ) );
+            check( write_unsigned_probe( &w, &in ), "write UnsignedProbe for the hostile image" );
+            serialize_write_flush( &w );
+            memcpy( hostile, buffer, sizeof( hostile ) );
+            for ( i = 25; i < 89; i++ )
+            {
+                hostile[i / 8] = (unsigned char) ( hostile[i / 8] | ( 1 << ( i % 8 ) ) );
+            }
+            memset( &out, 0, sizeof( out ) );
+            serialize_read_stream_init( &r, hostile, sizeof( hostile ) );
+            check( !read_unsigned_probe( &r, &out ), "a smuggled ufixed high-half offset is REJECTED" );
+        }
+    }
+
     /* ---- Body: the "quantization dissolves" object (SPEC §4.8) ----
        Every [interpolate] field is fixed-component, so no Quantize pair is
        emitted and the shallow wire IS the deep encoding: the same values

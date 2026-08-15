@@ -364,8 +364,17 @@ func (g *gen) emitWriteRangeGuard(name string, f *ir.Field, ind string) {
 func (g *gen) emitWriteFixedRawGuard(name string, f *ir.Field, ind string) {
 	rawMin := new(big.Int).Lsh(f.IntMin, uint(f.Type.FracBits))
 	rawMax := new(big.Int).Lsh(f.IntMax, uint(f.Type.FracBits))
-	smin := new(big.Int).Neg(new(big.Int).Lsh(big.NewInt(1), uint(f.Type.Width-1)))
-	smax := new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), uint(f.Type.Width-1)), big.NewInt(1))
+	var smin, smax *big.Int
+	if f.Type.Signed {
+		smin = new(big.Int).Neg(new(big.Int).Lsh(big.NewInt(1), uint(f.Type.Width-1)))
+		smax = new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), uint(f.Type.Width-1)), big.NewInt(1))
+	} else {
+		// unsigned storage: the raw domain is [0, 2^W), so a zero lower
+		// bound is vacuous (uN cannot be negative) and the compare literals
+		// stay plain decimals the storage type infers
+		smin = big.NewInt(0)
+		smax = new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), uint(f.Type.Width)), big.NewInt(1))
+	}
 	loVacuous := rawMin.Cmp(smin) <= 0
 	hiVacuous := rawMax.Cmp(smax) >= 0
 	switch {
@@ -390,7 +399,7 @@ func (g *gen) emitWriteField(f *ir.Field, ind string) {
 			// to the per-byte loop (its internal align is zero bits here) and
 			// block-copies instead of 8-bit packing; borrowed in place via
 			// WriteStream::write_bytes, as the length-prefixed fields already are
-			g.pf("%sstream.write_bytes(&%s)?; // byte-aligned [N]u8 — bulk copy, wire-identical to the per-byte loop\n", ind, name)
+			g.pf("%sstream.write_bytes(&%s); // byte-aligned [N]u8 — bulk copy, wire-identical to the per-byte loop (infallible: returns () in serialize.rs 2.0.0)\n", ind, name)
 			return
 		}
 		if f.Array == ir.ArrayCounted {
@@ -544,7 +553,7 @@ func (g *gen) emitWriteScalar(f *ir.Field, name, ind string) {
 		// takes &[u8] (same wire as serialize_bytes — align, then the block copy),
 		// where the unified &mut signature forced a whole-array copy into a mutable
 		// local first — 256 B per chat, 2 KB per block, visible in perf (2026-08-06)
-		g.pf("%sstream.write_bytes(&%s[..%s_length as usize])?; // borrowed in place: the write side never mutates\n", ind, name, name)
+		g.pf("%sstream.write_bytes(&%s[..%s_length as usize]); // borrowed in place: the write side never mutates (infallible: returns () in serialize.rs 2.0.0)\n", ind, name, name)
 	case ir.TNamed:
 		switch ref := f.Type.Ref.(type) {
 		case *ir.Enum:
@@ -621,9 +630,10 @@ func (g *gen) emitReadScalar(f *ir.Field, name, ind string) {
 	case ir.TFixed:
 		if f.IntMin.Cmp(f.IntMax) == 0 {
 			// degenerate range: zero bits — the value is the range, raw
-			// min << F, materialized with no wire call (SPEC §4.6)
+			// min << F, materialized with no wire call (SPEC §4.6), in the
+			// storage's own signedness
 			rawMin := new(big.Int).Lsh(f.IntMin, uint(f.Type.FracBits))
-			g.pf("%s%s = %s;\n", ind, name, rustIntLit(rawMin, f.Type.Width))
+			g.pf("%s%s = %s;\n", ind, name, rustIntLitStorage(rawMin, f.Type.Signed, f.Type.Width))
 			return
 		}
 		// the runtime validates the raw offset against the raw bounds and

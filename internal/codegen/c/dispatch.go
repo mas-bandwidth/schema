@@ -98,9 +98,11 @@ func (g *gen) emitDefaultInit(f *ir.Field) {
 	case f.Type.Kind == ir.TNamed && f.DefVariant != "":
 		g.pf("    value.%s = %s_%s;\n", f.Name, screaming(f.Type.Name), screaming(f.DefVariant))
 	case f.DefInt != nil:
-		// C has no 128-bit literal, so a 128-bit default is built from its lanes
+		// C has no 128-bit literal, so a 128-bit default is built from its
+		// lanes; TFixed carries its own Signed since ufixed landed, so the
+		// storage's signedness alone picks the literal family
 		if f.Type.Width == 128 {
-			if f.Type.Signed || f.Type.Kind == ir.TFixed {
+			if f.Type.Signed {
 				g.pf("    value.%s = %s;\n", f.Name, g.int128Literal(f.DefInt))
 				return
 			}
@@ -190,9 +192,8 @@ func (g *gen) emitMessageDispatch() {
 	g.pf("        default:\n            return 0;\n    }\n}\n\n")
 }
 
-func bigZero() *big.Int          { return big.NewInt(0) }
-func bigInt64(v int64) *big.Int  { return big.NewInt(v) }
-
+func bigZero() *big.Int         { return big.NewInt(0) }
+func bigInt64(v int64) *big.Int { return big.NewInt(v) }
 
 // uint128Literal renders an unsigned 128-bit default from its two lanes.
 func uint128Literal(v *big.Int) string {

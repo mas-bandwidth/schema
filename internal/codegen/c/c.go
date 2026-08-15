@@ -1,7 +1,7 @@
 // Package c emits the C target: one header/source pair per schema file —
 // Types.schema -> Types.h and Types.c — targeting the serialize.c runtime.
 //
-// WHAT IS DIFFERENT ABOUT THIS TARGET
+// # WHAT IS DIFFERENT ABOUT THIS TARGET
 //
 // C++ expresses reading and writing once, as a function templated over a write
 // stream, a read stream or a measure stream. C has no templates, so this target
@@ -34,6 +34,7 @@ package c
 
 import (
 	"fmt"
+	"maps"
 	"math"
 	"math/big"
 	"sort"
@@ -78,9 +79,7 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 	if terr != nil {
 		errs = append(errs, terr)
 	}
-	for name, data := range tables {
-		out[name] = data
-	}
+	maps.Copy(out, tables)
 
 	// Refuse to emit a partial target. Returning the files alongside an error
 	// would invite a caller to use them.
@@ -116,12 +115,12 @@ type gen struct {
 	needs128 bool // a 128-bit or Q112.16 storage member needs serialize.h in the DATA header
 
 	emitMessagesPending bool // this file owns the message dispatch surface
-	file     *ir.File
-	msgOwner string
-	objOwner string
-	deps     []string
-	wire     bool
-	body     strings.Builder
+	file                *ir.File
+	msgOwner            string
+	objOwner            string
+	deps                []string
+	wire                bool
+	body                strings.Builder
 }
 
 func (g *gen) pf(format string, args ...any) {
@@ -221,7 +220,11 @@ func (g *gen) emitDataHeader(carriesProtocolId bool) {
 		g.emitMessagesPending = true
 	}
 
-	for _, d := range g.file.Decls {
+	// emission order, not declaration order: C needs every same-file named
+	// type defined before its by-value users, same as C++ (found by
+	// FuzzGeneratedCompiles — `type A { B B }  type B {}` emitted A first
+	// and every consumer got `unknown type name 'B'`)
+	for _, d := range ir.EmissionOrder(g.file) {
 		switch decl := d.(type) {
 		case *ir.Const:
 			g.emitConst(decl)
@@ -397,13 +400,17 @@ func (g *gen) storageType(f *ir.Field) string {
 	case ir.TFloat64:
 		return "double"
 	case ir.TFixed:
-		// the raw scaled integer, in SIGNED storage of exactly I + F bits --
-		// serialize_fixed's own convention (STANDARD.md, fixed)
+		// the raw scaled integer, in storage of exactly I + F bits with the
+		// type's own signedness -- serialize_fixed's convention (STANDARD.md,
+		// fixed; ufixed landed 2026-08-15)
 		if f.Type.Width == 128 {
 			g.needs128 = true
-			return "serialize_int128_t"
+			if f.Type.Signed {
+				return "serialize_int128_t"
+			}
+			return "serialize_uint128_t"
 		}
-		return cInt(true, f.Type.Width)
+		return cInt(f.Type.Signed, f.Type.Width)
 	case ir.TNamed:
 		return f.Type.Name
 	}
@@ -459,7 +466,9 @@ func (g *gen) emitWireHeader() {
 	if fileHasStrings(g.file) {
 		g.emitUtf8Validator()
 	}
-	for _, d := range g.file.Decls {
+	// emission order for the same reason as the data header: write_a calls
+	// write_b, and C99 has no implicit declarations
+	for _, d := range ir.EmissionOrder(g.file) {
 		switch decl := d.(type) {
 		case *ir.Struct:
 			g.emitWriteFunc(decl)
@@ -478,9 +487,23 @@ func (g *gen) emitWriteFunc(st *ir.Struct) {
 	g.pf("/* Writes %s. Returns 1 on success, 0 on failure — the stream latches the\n", st.Name)
 	g.pf("   error, so a caller may check once at the end of a message. */\n")
 	g.pf("static SCHEMA_UNUSED int write_%s( serialize_write_stream_t * stream, const %s * value )\n{\n", snake(st.Name), st.Name)
-	if len(st.Fields) == 0 {
+	// The early-out is keyed on ITEMS, not fields: a struct whose only items
+	// are reserved/const/align has no storage but DOES have wire bits, and
+	// keying on fields made C write nothing where C++ wrote the reserved
+	// bits — a silent cross-language wire divergence (found by
+	// FuzzGeneratedCompiles, issue #22).
+	if len(st.Items) == 0 {
 		g.pf("    (void) stream;\n    (void) value;\n    return 1; /* no fields: no wire bits */\n}\n\n")
 		return
+	}
+	if len(st.Fields) == 0 {
+		g.pf("    (void) value; /* items only — reserved/const/align carry no storage */\n")
+	}
+	if ir.MaxBitsStruct(st) == 0 {
+		// every range degenerate: the body refuses out-of-contract values but
+		// never touches the stream (zero wire bits — found by
+		// FuzzGeneratedCompiles, issue #22)
+		g.pf("    (void) stream; /* zero wire bits */\n")
 	}
 	g.emitWriteItems(st.Items, "    ")
 	g.pf("    return 1;\n}\n\n")
@@ -490,9 +513,15 @@ func (g *gen) emitReadFunc(st *ir.Struct) {
 	g.pf("/* Reads %s. Returns 1 on success, 0 on failure. Out-of-range values are\n", st.Name)
 	g.pf("   REFUSED, never clamped. */\n")
 	g.pf("static SCHEMA_UNUSED int read_%s( serialize_read_stream_t * stream, %s * value )\n{\n", snake(st.Name), st.Name)
-	if len(st.Fields) == 0 {
+	if len(st.Items) == 0 {
 		g.pf("    (void) stream;\n    (void) value;\n    return 1;\n}\n\n")
 		return
+	}
+	if len(st.Fields) == 0 {
+		g.pf("    (void) value; /* items only — reserved/const/align carry no storage */\n")
+	}
+	if ir.MaxBitsStruct(st) == 0 {
+		g.pf("    (void) stream; /* zero wire bits — defaults prefill below */\n")
 	}
 	g.emitReadItems(st.Items, "    ")
 	g.pf("    return 1;\n}\n\n")

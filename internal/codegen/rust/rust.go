@@ -206,6 +206,10 @@ func (g *gen) emitFile(carriesProtocolId bool) {
 		g.pf("pub enum Error {\n    Stream(serialize::Error),\n    Validation,\n}\n\n")
 		g.pf("impl From<serialize::Error> for Error {\n")
 		g.pf("    fn from(e: serialize::Error) -> Error {\n        Error::Stream(e)\n    }\n}\n\n")
+		g.pf("// serialize.rs 2.0.0 writes are infallible: their Result carries an\n")
+		g.pf("// uninhabited error, and `?` on one needs this vacuous conversion.\n")
+		g.pf("impl From<core::convert::Infallible> for Error {\n")
+		g.pf("    fn from(e: core::convert::Infallible) -> Error {\n        match e {}\n    }\n}\n\n")
 		g.pf("pub type Result<T = ()> = core::result::Result<T, Error>;\n\n")
 	}
 
@@ -750,10 +754,14 @@ func (g *gen) rustFieldType(t ir.FieldType) string {
 		}
 		return fmt.Sprintf("u%d", t.Width)
 	case ir.TFixed:
-		// raw scaled integer in signed storage of exactly I+F bits —
-		// serialize's own fixed storage convention (serialize_fixed asserts
-		// integer_bits + fraction_bits == T::BITS)
-		return rustInt(t.Width)
+		// raw scaled integer in storage of exactly I+F bits, the type's own
+		// signedness — serialize's fixed storage convention (serialize_fixed
+		// asserts integer_bits + fraction_bits == T::BITS, and
+		// FixedPointStorage is implemented for the unsigned primitives too)
+		if t.Signed {
+			return rustInt(t.Width)
+		}
+		return rustUint(t.Width)
 	case ir.TBits:
 		if t.Width <= 32 {
 			return "u32"
@@ -857,7 +865,13 @@ func renderExpr(e ast.Expr) string {
 	case *ast.IdentExpr:
 		return ir.RustConstName(e.Name)
 	case *ast.UnaryExpr:
-		return "-" + renderExpr(e.X)
+		inner := renderExpr(e.X)
+		if strings.HasPrefix(inner, "-") {
+			// "--x" is rejected by rustc (no prefix decrement); double
+			// negation needs parens (issue #22)
+			return "-(" + inner + ")"
+		}
+		return "-" + inner
 	case *ast.BinaryExpr:
 		return fmt.Sprintf("%s %s %s", renderExpr(e.X), e.Op, renderExpr(e.Y))
 	case *ast.ParenExpr:

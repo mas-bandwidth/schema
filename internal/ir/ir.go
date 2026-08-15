@@ -72,7 +72,7 @@ type Struct struct {
 	IsTable   bool // declared with `table`: a table-wire/reflection ROOT.
 	// The closure (this table plus everything it references, transitively)
 	// gets table codecs and field descriptors — see TableClosure.
-	Tags   []string // inert in v1 (SPEC §4.2)
+	Tags []string // inert in v1 (SPEC §4.2)
 	// C++ native type mapping (SPEC §4.2, Native type mapping): when set,
 	// generated C++ declares fields of this type as ::CppNative (a hand type
 	// deriving from the generated basis struct — same layout, plus behavior)
@@ -82,8 +82,8 @@ type Struct struct {
 	// reference there would be circular). C++-only; other targets ignore it.
 	CppNative  string
 	CppInclude string
-	Fields []*Field // flattened; branch fields carry Guard — storage emission
-	Items  []Item   // the wire tree: fields and branches in wire order — function emission
+	Fields     []*Field // flattened; branch fields carry Guard — storage emission
+	Items      []Item   // the wire tree: fields and branches in wire order — function emission
 }
 
 // TableClosure is the set of structs that carry table codecs and reflection
@@ -245,15 +245,15 @@ const (
 	TFloat64
 	TString
 	TBytes
-	TFixed // fixed(I, F) — signed fixed point, storage I+F bits (SPEC §4.3)
+	TFixed // fixed(I, F) / ufixed(I, F) — fixed point per Signed, storage I+F bits (SPEC §4.3)
 	TNamed
 )
 
 type FieldType struct {
 	Kind     FieldTypeKind
-	Signed   bool     // TInt (TFixed is always signed — Glenn, 2026-08-06)
+	Signed   bool     // TInt; TFixed (fixed = true; ufixed = false — Glenn 2026-08-15, §9 q17 closed)
 	Width    int      // TInt: 8/16/32/64/128; TBits: N; TFixed: I+F (the storage width)
-	IntBits  int      // TFixed: I — integer bits, the sign bit counts (SPEC §4.3)
+	IntBits  int      // TFixed: I — integer bits; the sign bit counts when Signed (SPEC §4.3)
 	FracBits int      // TFixed: F — fractional bits
 	Size     int64    // TString/TBytes: N (max length)
 	SizeExpr ast.Expr // TString/TBytes: the declared N expression

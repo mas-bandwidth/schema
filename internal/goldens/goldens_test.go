@@ -32,7 +32,7 @@ var update = flag.Bool("update", false, "rewrite the golden files from current o
 const (
 	corpusDir = "../../examples"
 	// the fixed-point + 128-bit unit: all five targets, pinned like the main
-	// corpus (the serialize ports all carry the phase-1 surface)
+	// corpus (the serialize ports all carry the phase-1 surface).
 	corpus128Dir = "../../examples128"
 	goldenDir    = "../../testdata/golden"
 )

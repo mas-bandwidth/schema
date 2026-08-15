@@ -40,6 +40,8 @@ package csharp
 
 import (
 	"fmt"
+	"maps"
+	"math"
 	"math/big"
 	"strconv"
 	"strings"
@@ -78,9 +80,7 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	for name, data := range tables {
-		out[name] = data
-	}
+	maps.Copy(out, tables)
 	return out, nil
 }
 
@@ -200,7 +200,7 @@ func (g *gen) assemble() []byte {
 func indent4(s string) string {
 	s = strings.TrimRight(s, "\n")
 	var b strings.Builder
-	for _, line := range strings.Split(s, "\n") {
+	for line := range strings.SplitSeq(s, "\n") {
 		if line == "" {
 			b.WriteString("\n")
 			continue
@@ -648,12 +648,20 @@ func (g *gen) csFieldType(t ir.FieldType) string {
 		}
 		return csUint(t.Width)
 	case ir.TFixed:
-		// raw scaled integer in signed storage of exactly I+F bits —
-		// serialize's own fixed storage convention (STANDARD.md, fixed)
+		// raw scaled integer in storage of exactly I+F bits, the type's own
+		// signedness — serialize's fixed storage convention (STANDARD.md,
+		// fixed); SerializeFixed overload resolution picks the unsigned
+		// codec from the unsigned storage type
 		if t.Width == 128 {
-			return "Int128Value"
+			if t.Signed {
+				return "Int128Value"
+			}
+			return "UInt128Value"
 		}
-		return csInt(t.Width)
+		if t.Signed {
+			return csInt(t.Width)
+		}
+		return csUint(t.Width)
 	case ir.TBits:
 		if t.Width <= 32 {
 			return "uint"
@@ -709,7 +717,7 @@ func csStorage(s string) string {
 // constants casts to the required type — the same renderability rule as the
 // Go and Rust targets, so all three fold identically.
 func (g *gen) renderArg(e ast.Expr, folded *big.Int, typ string, qualified bool) string {
-	if e == nil || containsMax(e) || !g.renderable(e) {
+	if e == nil || containsMax(e) || !g.renderable(e) || !g.overflowSafe(e) {
 		return folded.String()
 	}
 	if !containsIdent(e) {
@@ -750,6 +758,85 @@ func (g *gen) renderScaleF32(e ast.Expr, folded int64) string {
 	return "(float)(" + s + ")"
 }
 
+// overflowSafe reports whether e can render symbolically without C#'s
+// CHECKED constant arithmetic rejecting it. Schema folding is
+// arbitrary-precision; C# literal subtrees evaluate in int, so
+// `7 * 700000000` is a CS0220 compile error even though the product fits the
+// long bound it feeds (found by FuzzGeneratedCompiles, issue #22 — the C++
+// twin of this gate). A subtree referencing a constant evaluates in long.
+// Anything unprovable folds — folding is always correct.
+func (g *gen) overflowSafe(e ast.Expr) bool {
+	_, _, ok := g.carrierEval(e)
+	return ok
+}
+
+func (g *gen) carrierEval(e ast.Expr) (*big.Int, bool, bool) {
+	switch e := e.(type) {
+	case *ast.IntLit:
+		// a literal past INT64_MAX has no signed spelling in the target —
+		// it deduces unsigned, a -Werror warning — so it cannot ride
+		// symbolically even where the folded result is small
+		return e.Value, false, e.Value.IsInt64()
+	case *ast.IdentExpr:
+		c, ok := g.unit.Consts[e.Name]
+		if !ok || c.IsFloat || c.Int == nil {
+			return nil, true, false
+		}
+		return c.Int, true, true
+	case *ast.ParenExpr:
+		return g.carrierEval(e.X)
+	case *ast.UnaryExpr:
+		v, wide, ok := g.carrierEval(e.X)
+		if !ok {
+			return nil, wide, false
+		}
+		nv := new(big.Int).Neg(v)
+		return nv, wide, fitsCarrier(nv, wide)
+	case *ast.BinaryExpr:
+		x, xw, ok := g.carrierEval(e.X)
+		if !ok {
+			return nil, xw, false
+		}
+		y, yw, ok := g.carrierEval(e.Y)
+		if !ok {
+			return nil, yw, false
+		}
+		wide := xw || yw
+		v := new(big.Int)
+		switch e.Op {
+		case "+":
+			v.Add(x, y)
+		case "-":
+			v.Sub(x, y)
+		case "*":
+			v.Mul(x, y)
+		case "/":
+			if y.Sign() == 0 {
+				return nil, wide, false
+			}
+			v.Quo(x, y) // truncation toward zero, as C# divides
+		case "%":
+			if y.Sign() == 0 {
+				return nil, wide, false
+			}
+			v.Rem(x, y)
+		default:
+			return nil, wide, false
+		}
+		return v, wide, fitsCarrier(v, wide)
+	}
+	return nil, false, false
+}
+
+// fitsCarrier: a subtree with a constant reference evaluates in long; a
+// literal-only subtree evaluates in int, conservatively taken as 32-bit.
+func fitsCarrier(v *big.Int, wide bool) bool {
+	if wide {
+		return v.IsInt64()
+	}
+	return v.IsInt64() && v.Int64() >= math.MinInt32 && v.Int64() <= math.MaxInt32
+}
+
 func (g *gen) renderable(e ast.Expr) bool {
 	switch e := e.(type) {
 	case *ast.IdentExpr:
@@ -780,7 +867,12 @@ func renderExpr(e ast.Expr, qualified bool) string {
 		}
 		return e.Name
 	case *ast.UnaryExpr:
-		return "-" + renderExpr(e.X, qualified)
+		inner := renderExpr(e.X, qualified)
+		if strings.HasPrefix(inner, "-") {
+			// "--x" is decrement in C#, not double negation (issue #22)
+			return "-(" + inner + ")"
+		}
+		return "-" + inner
 	case *ast.BinaryExpr:
 		return fmt.Sprintf("%s %s %s", renderExpr(e.X, qualified), e.Op, renderExpr(e.Y, qualified))
 	case *ast.ParenExpr:
@@ -838,7 +930,6 @@ func containsIdent(e ast.Expr) bool {
 	return false
 }
 
-
 // csRender128 renders a 128-bit bound as C# source. Values inside long ride
 // the pair's implicit conversion; wider values compose the two's-complement
 // 64-bit lanes through the (hi, lo) constructor.
@@ -859,7 +950,6 @@ func csRender128(v *big.Int) string {
 	lo := new(big.Int).And(u, maxUint64)
 	return fmt.Sprintf("new Int128Value(0x%xul, 0x%xul)", hi, lo)
 }
-
 
 // csRenderU128 is csRender128 for the unsigned domain: values inside ulong
 // ride the pair's implicit conversion; wider values compose the lanes.

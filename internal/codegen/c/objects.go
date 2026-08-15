@@ -213,6 +213,19 @@ func fixedShallowComp(f, cf *ir.Field) (lo, hi *big.Int, bits int64, typ string)
 
 // ---- the wire header ----
 
+// voidIfEmpty emits (void) casts for params when no statement has been
+// emitted since mark — a view function over zero wire components must not
+// strand its parameters, or every -Wall -Wextra -Werror consumer breaks
+// (found by FuzzGeneratedCompiles, issue #22).
+func (g *gen) voidIfEmpty(mark int, params ...string) {
+	if g.body.Len() != mark {
+		return
+	}
+	for _, p := range params {
+		g.pf("    (void) %s;\n", p)
+	}
+}
+
 func (g *gen) emitObjectFunctions(d *ir.Object) {
 	deep, interp := splitObjectFields(d)
 
@@ -223,33 +236,41 @@ func (g *gen) emitObjectFunctions(d *ir.Object) {
 	// claimed-name registry and could collide with a user type (#23)
 	g.pf("static SCHEMA_UNUSED int write_%s( serialize_write_stream_t * stream, const %sData_Deep * value )\n{\n",
 		snake(d.Name+"Data_Deep"), d.Name)
+	mark := g.body.Len()
 	for _, f := range deep {
 		g.emitDeepWriteField(f, "    ")
 	}
+	g.voidIfEmpty(mark, "stream", "value")
 	g.pf("    return 1;\n}\n\n")
 
 	g.pf("/* Reads %s's DEEP view. */\n", d.Name)
 	g.pf("static SCHEMA_UNUSED int read_%s( serialize_read_stream_t * stream, %sData_Deep * value )\n{\n",
 		snake(d.Name+"Data_Deep"), d.Name)
+	mark = g.body.Len()
 	for _, f := range deep {
 		g.emitDeepReadField(f, "    ")
 	}
+	g.voidIfEmpty(mark, "stream", "value")
 	g.pf("    return 1;\n}\n\n")
 
 	g.pf("/* Writes %s's SHALLOW view — the quantized wire. */\n", d.Name)
 	g.pf("static SCHEMA_UNUSED int write_%s( serialize_write_stream_t * stream, const %sData_Shallow * value )\n{\n",
 		snake(d.Name+"Data_Shallow"), d.Name)
+	mark = g.body.Len()
 	for _, f := range interp {
 		g.emitShallowWriteField(f, "    ")
 	}
+	g.voidIfEmpty(mark, "stream", "value")
 	g.pf("    return 1;\n}\n\n")
 
 	g.pf("/* Reads %s's SHALLOW view. */\n", d.Name)
 	g.pf("static SCHEMA_UNUSED int read_%s( serialize_read_stream_t * stream, %sData_Shallow * value )\n{\n",
 		snake(d.Name+"Data_Shallow"), d.Name)
+	mark = g.body.Len()
 	for _, f := range interp {
 		g.emitShallowReadField(f, "    ")
 	}
+	g.voidIfEmpty(mark, "stream", "value")
 	g.pf("    return 1;\n}\n\n")
 }
 
@@ -385,7 +406,6 @@ func mustBig(s string) *big.Int {
 	return v
 }
 
-
 // emitDeepWriteField writes one field of the DEEP view. A ranged float rides at
 // FULL precision here: the deep view is full state for client-side prediction,
 // so the compression that the shallow wire applies would be a lossy step with
@@ -428,16 +448,27 @@ func (g *gen) emitQuantizePair(d *ir.Object) {
 	g.pf("/* Quantize%s — the interpolate domain to the quantized wire domain. */\n", d.Name)
 	g.pf("static SCHEMA_UNUSED void quantize_%s( const %sData_Interpolate * input, %sData_Shallow * output )\n{\n",
 		snake(d.Name), d.Name, d.Name)
+	mark := g.body.Len()
 	for _, f := range interp {
 		g.emitQuantizeField(f)
+	}
+	if g.body.Len() == mark {
+		// a quantized property over a type with no numeric components emits
+		// no statements; keep -Werror consumers building (found by
+		// FuzzGeneratedCompiles, issue #22)
+		g.pf("    (void) input; /* no numeric components to quantize */\n    (void) output;\n")
 	}
 	g.pf("}\n\n")
 
 	g.pf("/* Unquantize%s — the quantized wire domain back to the interpolate domain. */\n", d.Name)
 	g.pf("static SCHEMA_UNUSED void unquantize_%s( const %sData_Shallow * input, %sData_Interpolate * output )\n{\n",
 		snake(d.Name), d.Name, d.Name)
+	mark = g.body.Len()
 	for _, f := range interp {
 		g.emitUnquantizeField(f)
+	}
+	if g.body.Len() == mark {
+		g.pf("    (void) input; /* no numeric components to unquantize */\n    (void) output;\n")
 	}
 	g.pf("}\n\n")
 }

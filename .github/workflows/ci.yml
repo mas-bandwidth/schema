@@ -53,12 +53,38 @@ jobs:
         with:
           dotnet-version: '8.0'
 
+      # vet rides in the test job on both OSes: an emitter codebase built
+      # almost entirely out of format strings is exactly where printf-verb
+      # mismatches live (issue #31).
+      - name: go vet
+        run: go vet ./...
+
       # No SERIALIZE* overrides: the Makefile defaults already point at the
       # sibling layout cloned above. RUSTUP_BIN defaults to a homebrew keg on
       # the author's machine; on CI cargo is on PATH, so point it somewhere
       # harmless.
       - name: make test
         run: make test RUSTUP_BIN=/usr/bin
+
+      # The committed generated/ tree is what this repo treats as ground
+      # truth — findings are receipted against its line numbers — and until
+      # now nothing ever proved it matches what the current generator emits.
+      # `make test` above regenerated every tracked file IN PLACE, so
+      # staleness is precisely a dirty tree here: a tracked file that
+      # changed, or a newly emitted file nobody committed (which a diff-only
+      # check would miss). Locally: `make generated-current`.
+      - name: generated tree is current
+        run: |
+          git diff --exit-code generated/ || {
+            echo "::error::committed generated/ tree is stale — the current compiler emits different text. Run 'make test' (or ./bin/schema generate --lang <lang> --out generated/<dir> <corpus>) and commit the regenerated files."
+            exit 1
+          }
+          untracked=$(git status --porcelain generated/)
+          if [ -n "$untracked" ]; then
+            echo "$untracked"
+            echo "::error::the generator emitted files that are not committed under generated/ — add them."
+            exit 1
+          fi
 
       # Seeded corpus only — a short, bounded run that re-executes every
       # crasher ever found and checks the compiler still refuses bad input
@@ -104,3 +130,62 @@ jobs:
       - name: inline gate — cs leg
         if: runner.os == 'macOS'
         run: bench/tools/inline-gate.sh leg cs
+
+  # Lifted from serialize.go's ci.yml (issue #31): the estate's largest Go
+  # codebase had no Go linting at all while serialize.go ran six gates. The
+  # job is self-contained; .golangci.yml carries the (ported) config.
+  lint:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version: stable
+          cache: false
+      - name: gofmt
+        run: |
+          out=$(gofmt -l .)
+          if [ -n "$out" ]; then
+            echo "$out"
+            echo "::error::gofmt differs — run gofmt -w on the files above"
+            exit 1
+          fi
+      - name: go mod tidy
+        run: go mod tidy -diff
+      - name: golangci-lint
+        uses: golangci/golangci-lint-action@v9
+        with:
+          # pinned so releases with new checks break CI deliberately, not
+          # randomly; bump by hand
+          version: v2.12.2
+      - name: modernize
+        run: go run golang.org/x/tools/gopls/internal/analysis/modernize/cmd/modernize@latest ./...
+
+  vuln:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version: stable
+          cache: false
+      - name: govulncheck
+        run: go run golang.org/x/vuln/cmd/govulncheck@latest ./...
+
+  # The compiler that generates C++ for a Windows-targeting game engine was
+  # never itself run on Windows. `make test` needs the five sibling runtime
+  # clones and a POSIX toolchain, so vet + build is the cheap first step the
+  # issue prescribes; growing this into a real test leg is a follow-up.
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version: stable
+          cache: false
+      - run: go vet ./...
+      - run: go build ./...

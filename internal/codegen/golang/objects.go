@@ -77,13 +77,14 @@ func (g *gen) emitViewWriteField(f *ir.Field, v ir.View, ind string) {
 		for _, comp := range st.Fields {
 			compName := name + ir.GoExportName(comp.Name)
 			lo, hi, bits, wide, _, width := fixedShallowComp(f, comp)
-			if wide {
+			switch {
+			case wide:
 				g.pf("%s{\n%s\tcomponentValue := int64(%s)\n", ind, ind, compName)
 				g.emitWriteRangedFold64("componentValue", lo.String(), hi.String(), bits, false, ind+"\t")
 				g.pf("%s}\n", ind)
-			} else if width == 32 {
+			case width == 32:
 				g.emitWriteRangedFold32(compName, lo.String(), hi.String(), bits, false, ind)
-			} else {
+			default:
 				g.pf("%s{\n%s\tcomponentValue := int32(%s)\n", ind, ind, compName)
 				g.emitWriteRangedFold32("componentValue", lo.String(), hi.String(), bits, false, ind+"\t")
 				g.pf("%s}\n", ind)
@@ -97,13 +98,14 @@ func (g *gen) emitViewWriteField(f *ir.Field, v ir.View, ind string) {
 		hi := big.NewInt(f.QuantBound).String()
 		for _, comp := range st.Fields {
 			compName := name + ir.GoExportName(comp.Name)
-			if wide {
+			switch {
+			case wide:
 				g.pf("%s{\n%s\tcomponentValue := int64(%s)\n", ind, ind, compName)
 				g.emitWriteRangedFold64("componentValue", lo, hi, quantBits, false, ind+"\t")
 				g.pf("%s}\n", ind)
-			} else if smallestSigned(f.QuantBound) == 32 {
+			case smallestSigned(f.QuantBound) == 32:
 				g.emitWriteRangedFold32(compName, lo, hi, quantBits, false, ind)
-			} else {
+			default:
 				g.pf("%s{\n%s\tcomponentValue := int32(%s)\n", ind, ind, compName)
 				g.emitWriteRangedFold32("componentValue", lo, hi, quantBits, false, ind+"\t")
 				g.pf("%s}\n", ind)
@@ -146,13 +148,14 @@ func (g *gen) emitViewReadField(f *ir.Field, v ir.View, ind string) {
 				g.pf("%s%s = %s(%s)\n", ind, compName, compT, lo.String())
 				continue
 			}
-			if wide {
+			switch {
+			case wide:
 				g.pf("%s{\n%s\tcomponentValue := int64(0)\n", ind, ind)
 				g.pf("%s\tstream.SerializeInt64(&componentValue, %s, %s)\n", ind, lo, hi)
 				g.pf("%s\t%s = %s(componentValue)\n%s}\n", ind, compName, compT, ind)
-			} else if width == 32 {
+			case width == 32:
 				g.pf("%sstream.SerializeInt(&%s, %s, %s)\n", ind, compName, lo, hi)
-			} else {
+			default:
 				g.pf("%s{\n%s\tcomponentValue := int32(0)\n", ind, ind)
 				g.pf("%s\tstream.SerializeInt(&componentValue, %s, %s)\n", ind, lo, hi)
 				g.pf("%s\t%s = %s(componentValue)\n%s}\n", ind, compName, compT, ind)
@@ -164,13 +167,14 @@ func (g *gen) emitViewReadField(f *ir.Field, v ir.View, ind string) {
 		wide := f.QuantBound > 2147483647
 		for _, comp := range st.Fields {
 			compName := name + ir.GoExportName(comp.Name)
-			if wide {
+			switch {
+			case wide:
 				g.pf("%s{\n%s\tcomponentValue := int64(0)\n", ind, ind)
 				g.pf("%s\tstream.SerializeInt64(&componentValue, -%d, %d)\n", ind, f.QuantBound, f.QuantBound)
 				g.pf("%s\t%s = %s(componentValue)\n%s}\n", ind, compName, compT, ind)
-			} else if smallestSigned(f.QuantBound) == 32 {
+			case smallestSigned(f.QuantBound) == 32:
 				g.pf("%sstream.SerializeInt(&%s, -%d, %d)\n", ind, compName, f.QuantBound, f.QuantBound)
-			} else {
+			default:
 				g.pf("%s{\n%s\tcomponentValue := int32(0)\n", ind, ind)
 				g.pf("%s\tstream.SerializeInt(&componentValue, -%d, %d)\n", ind, f.QuantBound, f.QuantBound)
 				g.pf("%s\t%s = %s(componentValue)\n%s}\n", ind, compName, compT, ind)

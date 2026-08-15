@@ -21,7 +21,7 @@ import (
 	"github.com/mas-bandwidth/schema/internal/pack"
 )
 
-// table-wire kinds — mirror internal/pack/table.go
+// table-wire kinds — mirror internal/pack/table.go.
 const (
 	tkBool   = 1
 	tkI8     = 2
@@ -144,10 +144,6 @@ func (g *tableGen) pf(format string, args ...any) {
 	g.body.WriteString(s)
 }
 
-func (g *tableGen) unsupported(format string, args ...any) {
-	g.errs = append(g.errs, fmt.Errorf("C table backend: "+format, args...))
-}
-
 // tableGuardExprs composes each guarded field's branch condition, so the
 // writer keeps untaken-branch fields off the wire.
 func tableGuardExprs(st *ir.Struct) map[string]string {
@@ -217,6 +213,12 @@ func (g *tableGen) emitTableWrite(st *ir.Struct) {
 	lower := snake(st.Name)
 	g.pf("/* Appends %s's table-wire encoding to the writer. */\n", st.Name)
 	g.pf("static SCHEMA_UNUSED void table_write_%s_into( table_writer_t * w, const %s * value )\n{\n", lower, st.Name)
+	if len(st.Fields) == 0 {
+		// A fieldless table writes only its terminator; without this the
+		// value parameter is unused and every -Werror consumer breaks
+		// (found by FuzzGeneratedCompiles, the clang -fsyntax-only leg).
+		g.pf("    (void) value; /* no fields: nothing but the terminator */\n")
+	}
 	guards := tableGuardExprs(st)
 	for _, f := range st.Fields {
 		if cond, guarded := guards[f.Name]; guarded {
@@ -758,7 +760,9 @@ func GenerateTable(u *ir.Unit) (map[string][]byte, error) {
 
 	for _, f := range u.Files {
 		var members []*ir.Struct
-		for _, d := range f.Decls {
+		// emission order, not declaration order: table_write_a_into calls
+		// table_write_b_into, and C99 has no implicit declarations
+		for _, d := range ir.EmissionOrder(f) {
 			if st, ok := d.(*ir.Struct); ok && closure[st.Name] {
 				members = append(members, st)
 			}

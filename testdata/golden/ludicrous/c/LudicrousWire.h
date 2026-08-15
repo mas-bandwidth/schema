@@ -2,7 +2,7 @@
    SPDX-License-Identifier: NONE — this generated output is yours, under terms of
    your choice. See the LICENSE exception in the schema compiler; the compiler is
    AGPL-3.0, its output is not.
-   package ludicrous — protocol id 0xd5109966210b5b4b */
+   package ludicrous — protocol id 0xa925c86b46058512 */
 
 #ifndef SCHEMA_LUDICROUS_LUDICROUSWIRE_H
 #define SCHEMA_LUDICROUS_LUDICROUSWIRE_H
@@ -125,6 +125,124 @@ static SCHEMA_UNUSED int read_fixed_probe( serialize_read_stream_t * stream, Fix
                 value->samples[i] = (int32_t) fixed_value;
             }
         }
+    }
+    return 1;
+}
+
+/* Writes UnsignedProbe. Returns 1 on success, 0 on failure — the stream latches the
+   error, so a caller may check once at the end of a message. */
+static SCHEMA_UNUSED int write_unsigned_probe( serialize_write_stream_t * stream, const UnsignedProbe * value )
+{
+    {
+        serialize_int64_t fixed_value = (serialize_int64_t) value->angle;
+        if ( !serialize_write_fixed64( stream, fixed_value, 16, 16, 0LL, 360LL ) )
+        {
+            return 0;
+        }
+    }
+    {
+        serialize_int128_t fixed_value = serialize_int128_make( 0, value->span );
+        if ( !serialize_write_fixed128( stream, fixed_value, 48, 16, 0LL, 281474976710655LL ) )
+        {
+            return 0;
+        }
+    }
+    {
+        serialize_int128_t fixed_value = serialize_int128_make( value->reach.hi, value->reach.lo );
+        if ( !serialize_write_fixed128( stream, fixed_value, 112, 16, 0LL, 2000000LL ) )
+        {
+            return 0;
+        }
+    }
+    {
+        serialize_int64_t fixed_value = (serialize_int64_t) value->ticks;
+        if ( !serialize_write_fixed64( stream, fixed_value, 32, 0, 0LL, 1000000LL ) )
+        {
+            return 0;
+        }
+    }
+    {
+        int32_t i;
+        for ( i = 0; i < 2; i++ )
+        {
+            {
+                serialize_int64_t fixed_value = (serialize_int64_t) value->samples[i];
+                if ( !serialize_write_fixed64( stream, fixed_value, 16, 16, 0LL, 16LL ) )
+                {
+                    return 0;
+                }
+            }
+        }
+    }
+    if ( (serialize_uint64_t) value->locked != 196608ULL )
+    {
+        return 0;
+    }
+    if ( !serialize_write_bits( stream, (serialize_uint32_t) value->tail, 8 ) )
+    {
+        return 0;
+    }
+    return 1;
+}
+
+/* Reads UnsignedProbe. Returns 1 on success, 0 on failure. Out-of-range values are
+   REFUSED, never clamped. */
+static SCHEMA_UNUSED int read_unsigned_probe( serialize_read_stream_t * stream, UnsignedProbe * value )
+{
+    {
+        serialize_int64_t fixed_value = 0;
+        if ( !serialize_read_fixed64( stream, &fixed_value, 16, 16, 0LL, 360LL ) )
+        {
+            return 0;
+        }
+        value->angle = (uint32_t) fixed_value;
+    }
+    {
+        serialize_int128_t fixed_value = serialize_int128_make( 0, 0 );
+        if ( !serialize_read_fixed128( stream, &fixed_value, 48, 16, 0LL, 281474976710655LL ) )
+        {
+            return 0;
+        }
+        value->span = fixed_value.lo;
+    }
+    {
+        serialize_int128_t fixed_value = serialize_int128_make( 0, 0 );
+        if ( !serialize_read_fixed128( stream, &fixed_value, 112, 16, 0LL, 2000000LL ) )
+        {
+            return 0;
+        }
+        value->reach = serialize_uint128_make( fixed_value.hi, fixed_value.lo );
+    }
+    {
+        serialize_int64_t fixed_value = 0;
+        if ( !serialize_read_fixed64( stream, &fixed_value, 32, 0, 0LL, 1000000LL ) )
+        {
+            return 0;
+        }
+        value->ticks = (uint32_t) fixed_value;
+    }
+    {
+        int32_t i;
+        for ( i = 0; i < 2; i++ )
+        {
+            {
+                serialize_int64_t fixed_value = 0;
+                if ( !serialize_read_fixed64( stream, &fixed_value, 16, 16, 0LL, 16LL ) )
+                {
+                    return 0;
+                }
+                value->samples[i] = (uint32_t) fixed_value;
+            }
+        }
+    }
+    value->locked = (uint32_t) 196608ULL;
+    {
+        serialize_uint32_t raw = 0;
+        if ( !serialize_read_bits( stream, &raw, 8 ) )
+        {
+            return 0;
+        }
+        value->tail = (uint8_t) raw;
     }
     return 1;
 }

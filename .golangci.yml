@@ -1,0 +1,24 @@
+version: "2"
+
+# Ported from serialize.go's config (the lint job itself is lifted verbatim
+# per issue #31); the exclusions are this repo's own.
+linters:
+  default: standard
+  enable:
+    - errorlint
+    - gocritic
+    - godot
+    - misspell
+    - nolintlint
+    - unconvert
+  exclusions:
+    rules:
+      # straight-line test code intentionally leaves error results unchecked
+      # where the assertion just below fails on the same condition
+      - path: _test\.go
+        linters:
+          - errcheck
+
+formatters:
+  enable:
+    - gofmt

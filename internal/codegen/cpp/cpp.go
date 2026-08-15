@@ -17,6 +17,7 @@ package cpp
 
 import (
 	"fmt"
+	"maps"
 	"math"
 	"math/big"
 	"sort"
@@ -90,9 +91,7 @@ func Generate(u *ir.Unit, opts Options) (map[string][]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	for name, data := range tables {
-		out[name] = data
-	}
+	maps.Copy(out, tables)
 	return out, nil
 }
 
@@ -202,7 +201,7 @@ type gen struct {
 
 	body           strings.Builder
 	includes       map[string]bool
-	nativeIncludes map[string]bool // cpp_include headers of referenced native-mapped types
+	nativeIncludes map[string]bool    // cpp_include headers of referenced native-mapped types
 	emitted        map[string]bool    // consts of this file emitted so far (symbolic-reference safety)
 	bulkBytes      map[*ir.Field]bool // fixed [N]uint8 arrays at statically byte-aligned positions (ir.AlignedFixedByteArrays)
 	needsSerialize bool               // the file emits wire functions -> include "serialize.h"
@@ -302,7 +301,7 @@ func (g *gen) emitDataFile(carriesProtocolId bool) {
 			"the object set, extracted by the compiler — None = 0, then each object sorted by name (SPEC §4.8)")
 	}
 
-	for _, d := range g.emissionOrder() {
+	for _, d := range ir.EmissionOrder(g.file) {
 		switch d := d.(type) {
 		case *ir.Const:
 			g.emitConst(d)
@@ -349,7 +348,7 @@ func (g *gen) emitWireFile() {
 		g.emitUtf8Validator()
 	}
 
-	for _, d := range g.emissionOrder() {
+	for _, d := range ir.EmissionOrder(g.file) {
 		var fields []*ir.Field
 		switch d := d.(type) {
 		case *ir.Struct:
@@ -378,74 +377,6 @@ func (g *gen) emitWireFile() {
 	if g.file.Base == g.objOwner && len(g.unit.ObjNames) > 0 {
 		g.emitObjectTagWire()
 	}
-}
-
-// emissionOrder returns the file's declarations in an order where every
-// same-file named type precedes its by-value users — schema references are
-// order-free (SPEC §4.2), C++ is not. A stable topological sort: declaration
-// order is preserved wherever no dependency forces otherwise.
-func (g *gen) emissionOrder() []ir.Decl {
-	decls := g.file.Decls
-	n := len(decls)
-	byName := map[string]int{}
-	for i, d := range decls {
-		switch d := d.(type) {
-		case *ir.Struct:
-			byName[d.Name] = i
-		case *ir.Enum:
-			byName[d.Name] = i
-		case *ir.Flags:
-			byName[d.Name] = i
-		case *ir.Object:
-			byName[d.Name] = i
-		}
-	}
-	adj := make([][]int, n)
-	indeg := make([]int, n)
-	for i, d := range decls {
-		var fields []*ir.Field
-		switch d := d.(type) {
-		case *ir.Struct:
-			fields = d.Fields
-		case *ir.Object:
-			fields = d.Fields
-		}
-		for _, f := range fields {
-			if f.Type.Kind == ir.TNamed {
-				if j, ok := byName[f.Type.Name]; ok && j != i {
-					adj[j] = append(adj[j], i)
-					indeg[i]++
-				}
-			}
-		}
-	}
-	order := make([]ir.Decl, 0, n)
-	done := make([]bool, n)
-	for len(order) < n {
-		pick := -1
-		for i := 0; i < n; i++ {
-			if !done[i] && indeg[i] == 0 {
-				pick = i
-				break
-			}
-		}
-		if pick == -1 {
-			// an intra-file type cycle — the checker already rejected the unit;
-			// defensively emit the rest in declaration order
-			for i := 0; i < n; i++ {
-				if !done[i] {
-					pick = i
-					break
-				}
-			}
-		}
-		done[pick] = true
-		order = append(order, decls[pick])
-		for _, t := range adj[pick] {
-			indeg[t]--
-		}
-	}
-	return order
 }
 
 func (g *gen) emitTagEnum(name string, members []string, comment string) {
@@ -702,6 +633,11 @@ func (g *gen) initializer(f *ir.Field, typ string, isStructType bool) string {
 			if f.Type.Kind == ir.TInt && f.Type.Width == 128 {
 				return " = " + g.render128(f.DefExpr, f.DefInt, f.Type.Signed)
 			}
+			if f.Type.Kind == ir.TFixed && f.Type.Width == 128 && !f.Type.Signed {
+				// the default expression is in WHOLE UNITS; DefInt is the raw
+				// scaled integer, which for wide ufixed can exceed int64
+				return " = " + g.render128(nil, f.DefInt, false)
+			}
 			return " = " + g.renderInt(f.DefExpr, f.DefInt)
 		}
 	}
@@ -728,8 +664,12 @@ func (g *gen) initializer(f *ir.Field, typ string, isStructType bool) string {
 func (g *gen) fieldComment(f *ir.Field) string {
 	var parts []string
 	if f.Type.Kind == ir.TFixed {
-		parts = append(parts, fmt.Sprintf("fixed(%d, %d) — Q%d.%d, raw value scaled by 2^%d; bounds in whole units",
-			f.Type.IntBits, f.Type.FracBits, f.Type.IntBits, f.Type.FracBits, f.Type.FracBits))
+		spelling, q := "fixed", "Q"
+		if !f.Type.Signed {
+			spelling, q = "ufixed", "UQ"
+		}
+		parts = append(parts, fmt.Sprintf("%s(%d, %d) — %s%d.%d, raw value scaled by 2^%d; bounds in whole units",
+			spelling, f.Type.IntBits, f.Type.FracBits, q, f.Type.IntBits, f.Type.FracBits, f.Type.FracBits))
 	}
 	if f.HasIntRange {
 		parts = append(parts, fmt.Sprintf("wire [%s, %s]", f.IntMin, f.IntMax))
@@ -779,13 +719,18 @@ func (g *gen) cppFieldType(t ir.FieldType) (string, bool) {
 		}
 		return cppInt2(t.Signed, t.Width), false
 	case ir.TFixed:
-		// the raw scaled integer, in signed storage of exactly I+F bits —
-		// serialize_fixed's own storage convention (STANDARD.md, fixed)
+		// the raw scaled integer, in storage of exactly I+F bits whose
+		// signedness is the type's own — serialize_fixed's storage
+		// convention (STANDARD.md, fixed; the runtime's codec is storage
+		// generic, so ufixed rides the same macro with unsigned storage)
 		if t.Width == 128 {
 			g.needsSerialize = true
-			return "serialize::int128_t", false
+			if t.Signed {
+				return "serialize::int128_t", false
+			}
+			return "serialize::uint128_t", false
 		}
-		return cppInt2(true, t.Width), false
+		return cppInt2(t.Signed, t.Width), false
 	case ir.TBits:
 		if t.Width <= 32 {
 			return "uint32_t", false
@@ -829,10 +774,94 @@ func (g *gen) renderInt(e ast.Expr, folded *big.Int) string {
 	if folded != nil && folded.IsInt64() && folded.Int64() == math.MinInt64 {
 		return "( -9223372036854775807ll - 1 )" // INT64_MIN has no literal spelling in C++
 	}
-	if e == nil || containsMax(e) || !g.renderable(e) {
+	if e == nil || containsMax(e) || !g.renderable(e) || !g.overflowSafe(e) {
 		return folded.String()
 	}
 	return g.renderExpr(e)
+}
+
+// overflowSafe reports whether e can render symbolically without the TARGET's
+// arithmetic overflowing on the way to the folded value. Schema folding is
+// arbitrary-precision; C++ is not: a literal-only subtree evaluates in int
+// (small decimal literals deduce int), and `7 * 700000000` is a
+// -Werror=-Winteger-overflow build break even though the product fits the
+// int64 bound it feeds (found by FuzzGeneratedCompiles, issue #22). A subtree
+// referencing a constant evaluates in int64 (constants emit as typed
+// constexpr int64_t). Anything unprovable folds — folding is always correct,
+// symbolic rendering is the luxury.
+func (g *gen) overflowSafe(e ast.Expr) bool {
+	_, _, ok := g.carrierEval(e)
+	return ok
+}
+
+// carrierEval returns e's folded value, whether the subtree references a
+// constant (and so carries 64-bit arithmetic), and whether every
+// subexpression's value fits the arithmetic type it evaluates in.
+func (g *gen) carrierEval(e ast.Expr) (*big.Int, bool, bool) {
+	switch e := e.(type) {
+	case *ast.IntLit:
+		// a literal past INT64_MAX has no signed spelling in the target —
+		// it deduces unsigned, a -Werror warning — so it cannot ride
+		// symbolically even where the folded result is small
+		return e.Value, false, e.Value.IsInt64()
+	case *ast.IdentExpr:
+		c, ok := g.unit.Consts[e.Name]
+		if !ok || c.IsFloat || c.Int == nil {
+			return nil, true, false
+		}
+		return c.Int, true, true
+	case *ast.ParenExpr:
+		return g.carrierEval(e.X)
+	case *ast.UnaryExpr:
+		v, wide, ok := g.carrierEval(e.X)
+		if !ok {
+			return nil, wide, false
+		}
+		nv := new(big.Int).Neg(v)
+		return nv, wide, fitsCarrier(nv, wide)
+	case *ast.BinaryExpr:
+		x, xw, ok := g.carrierEval(e.X)
+		if !ok {
+			return nil, xw, false
+		}
+		y, yw, ok := g.carrierEval(e.Y)
+		if !ok {
+			return nil, yw, false
+		}
+		wide := xw || yw
+		v := new(big.Int)
+		switch e.Op {
+		case "+":
+			v.Add(x, y)
+		case "-":
+			v.Sub(x, y)
+		case "*":
+			v.Mul(x, y)
+		case "/":
+			if y.Sign() == 0 {
+				return nil, wide, false
+			}
+			v.Quo(x, y) // truncation toward zero, as C++ divides
+		case "%":
+			if y.Sign() == 0 {
+				return nil, wide, false
+			}
+			v.Rem(x, y)
+		default:
+			return nil, wide, false
+		}
+		return v, wide, fitsCarrier(v, wide)
+	}
+	return nil, false, false
+}
+
+// fitsCarrier: a subtree with a constant reference evaluates in int64; a
+// literal-only subtree evaluates in int, conservatively taken as 32-bit.
+func fitsCarrier(v *big.Int, wide bool) bool {
+	if wide {
+		return v.IsInt64()
+	}
+	return v.IsInt64() && v.Int64() >= math.MinInt32 && v.Int64() <= math.MaxInt32
 }
 
 // render128 renders a 128-bit integer constant (a bound or a default). C++
@@ -896,7 +925,13 @@ func (g *gen) renderExpr(e ast.Expr) string {
 		g.noteRef(e.Name)
 		return e.Name
 	case *ast.UnaryExpr:
-		return "-" + g.renderExpr(e.X)
+		inner := g.renderExpr(e.X)
+		if strings.HasPrefix(inner, "-") {
+			// "--x" is decrement in C++, not double negation (found by
+			// FuzzGeneratedCompiles, issue #22)
+			return "-(" + inner + ")"
+		}
+		return "-" + inner
 	case *ast.BinaryExpr:
 		return fmt.Sprintf("%s %s %s", g.renderExpr(e.X), e.Op, g.renderExpr(e.Y))
 	case *ast.ParenExpr:
@@ -949,7 +984,7 @@ func cppConstType(storage string) string {
 	default:
 		signed := strings.HasPrefix(storage, "int")
 		width := 64
-		fmt.Sscanf(strings.TrimPrefix(strings.TrimPrefix(storage, "uint"), "int"), "%d", &width)
+		_, _ = fmt.Sscanf(strings.TrimPrefix(strings.TrimPrefix(storage, "uint"), "int"), "%d", &width) // no digits: width stays 64
 		return cppInt2(signed, width)
 	}
 }

@@ -21,6 +21,14 @@ impl From<serialize::Error> for Error {
     }
 }
 
+// serialize.rs 2.0.0 writes are infallible: their Result carries an
+// uninhabited error, and `?` on one needs this vacuous conversion.
+impl From<core::convert::Infallible> for Error {
+    fn from(e: core::convert::Infallible) -> Error {
+        match e {}
+    }
+}
+
 pub type Result<T = ()> = core::result::Result<T, Error>;
 
 // type BenchPacket
@@ -131,7 +139,7 @@ pub fn write_bench_packet(stream: &mut WriteStream<'_>, value: &BenchPacket) -> 
         stream.serialize_bits64(&mut raw_value, 64)?;
     }
     stream.serialize_align()?;
-    stream.write_bytes(&value.blob)?; // byte-aligned [N]u8 — bulk copy, wire-identical to the per-byte loop
+    stream.write_bytes(&value.blob); // byte-aligned [N]u8 — bulk copy, wire-identical to the per-byte loop (infallible: returns () in serialize.rs 2.0.0)
     Ok(())
 }
 

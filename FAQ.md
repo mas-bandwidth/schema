@@ -116,7 +116,8 @@ Three things in combination are unusual:
 1. **Bit-level bounds as part of the type.** `[min, max]` is not validation
    bolted on — it determines the wire width. Most formats give you a `uint32`
    and store 32 bits.
-2. **Fixed point as a first-class type.** `fixed(48, 16)` is declared like any
+2. **Fixed point as a first-class type.** `fixed(48, 16)` — and its unsigned
+   sibling `ufixed(48, 16)` — is declared like any
    other field, and the compiler owns storage and wire. Floating point is not
    bit-identical across compilers and architectures, so lockstep simulation,
    rollback and deterministic replay cannot be built on floats. No mainstream
@@ -260,7 +261,7 @@ cost with no buyer. See
 Rust from one IR, and checked against each other in CI on every push. Every
 target's output is held to the same pinned goldens.
 
-C was the last to arrive and reached parity in v2.0.0: fixed point, 128-bit
+C was the last to arrive and reached parity in v1.6.0: fixed point, 128-bit
 integers, objects and their quantize pair, message dispatch, and the table
 wire with its reflection descriptors.
 

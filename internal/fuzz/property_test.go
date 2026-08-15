@@ -13,10 +13,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/internal/check"
-	"github.com/mas-bandwidth/schema/internal/codegen/cpp"
-	"github.com/mas-bandwidth/schema/internal/codegen/csharp"
-	"github.com/mas-bandwidth/schema/internal/codegen/golang"
-	"github.com/mas-bandwidth/schema/internal/codegen/rust"
 	"github.com/mas-bandwidth/schema/internal/format"
 	"github.com/mas-bandwidth/schema/internal/parser"
 )
@@ -75,11 +71,16 @@ func TestGeneratedOutputIsDeterministic(t *testing.T) {
 			name string
 			run  func() (map[string][]byte, error)
 		}
-		gens := []gen{
-			{"cpp", func() (map[string][]byte, error) { return cpp.Generate(unit, cpp.Options{}) }},
-			{"csharp", func() (map[string][]byte, error) { return csharp.Generate(unit) }},
-			{"golang", func() (map[string][]byte, error) { return golang.Generate(unit) }},
-			{"rust", func() (map[string][]byte, error) { return rust.Generate(unit) }},
+		// ALL FIVE backends, from the shared backends table (fuzz_test.go):
+		// this list said four while the file's own comment said five — the
+		// ea88362 sweep renumbered the prose and missed the slice, and the C
+		// backend (whose sortedDeps exists precisely because C output must be
+		// byte-identical) shipped unheld to the invariant it was built for.
+		// Deriving from the table instead of restating it means backend six
+		// cannot repeat the miss.
+		gens := make([]gen, 0, len(backends))
+		for _, b := range backends {
+			gens = append(gens, gen{b.name, func() (map[string][]byte, error) { return b.generate(unit) }})
 		}
 		for _, g := range gens {
 			first, err := g.run()
@@ -122,7 +123,7 @@ func TestProtocolIdIsStable(t *testing.T) {
 			t.Fatalf("%s does not check: %v", dir, cerrs[0])
 		}
 		want := unit.ProtocolId
-		for i := 0; i < 8; i++ {
+		for i := range 8 {
 			again, cerrs := check.Unit(files)
 			if len(cerrs) > 0 {
 				t.Fatalf("%s pass %d does not check: %v", dir, i, cerrs[0])
@@ -170,7 +171,13 @@ func TestFormatIsIdempotent(t *testing.T) {
 }
 
 // FuzzFormatIdempotent pushes the same property over arbitrary input: any
-// source the formatter accepts must be a fixed point after one pass.
+// source the formatter accepts must be a fixed point after one pass — and it
+// must mean the same thing. Idempotence alone is a trap: a formatter that
+// silently DROPPED an attribute (the exact class of the 9468155 crash, a
+// `[min = 0]` on a wrapped attribute list) is perfectly idempotent while
+// changing the wire of every field it touched. The protocol id is the low 64
+// bits of SHA-256 over the wire-shape projection, so "same id" is precisely
+// "same wire": for any source that checks, format() must preserve it.
 func FuzzFormatIdempotent(f *testing.F) {
 	seedFromCorpus(f, func(s string) { f.Add(s) })
 	for _, s := range handSeeds {
@@ -187,6 +194,19 @@ func FuzzFormatIdempotent(f *testing.F) {
 		}
 		if !bytes.Equal(once, twice) {
 			t.Fatalf("formatting not idempotent:\n--- once ---\n%s\n--- twice ---\n%s", once, twice)
+		}
+		before := unitOf(map[string]string{"A.schema": src})
+		if before == nil {
+			return // formats but does not check: idempotence was all there was to hold
+		}
+		after := unitOf(map[string]string{"A.schema": string(once)})
+		if after == nil {
+			t.Fatalf("source checks but its FORMATTED form does not — the formatter broke the program:\n--- source ---\n%s\n--- formatted ---\n%s",
+				src, once)
+		}
+		if after.ProtocolId != before.ProtocolId {
+			t.Fatalf("format() changed the protocol id %#x -> %#x — the formatter changed the WIRE:\n--- source ---\n%s\n--- formatted ---\n%s",
+				before.ProtocolId, after.ProtocolId, src, once)
 		}
 	})
 }
@@ -213,7 +233,7 @@ table Root {
 }
 `
 	var want []string
-	for pass := 0; pass < 16; pass++ {
+	for pass := range 16 {
 		ast, perrs := parser.Parse("T.schema", []byte(src))
 		if len(perrs) > 0 {
 			t.Fatalf("corpus does not parse: %v", perrs[0])

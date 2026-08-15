@@ -21,6 +21,7 @@ package golang
 import (
 	"fmt"
 	"go/format"
+	"maps"
 	"math/big"
 	"strconv"
 	"strings"
@@ -55,7 +56,7 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 		g.emitFile(f.Base == home)
 		src, err := format.Source(g.assemble())
 		if err != nil {
-			return nil, fmt.Errorf("generated Go for %s does not parse — a compiler bug, not a schema error: %v", f.Path, err)
+			return nil, fmt.Errorf("generated Go for %s does not parse — a compiler bug, not a schema error: %w", f.Path, err)
 		}
 		out[f.Base+".go"] = src
 	}
@@ -63,9 +64,7 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	for name, data := range tables {
-		out[name] = data
-	}
+	maps.Copy(out, tables)
 	return out, nil
 }
 
@@ -599,14 +598,22 @@ func (g *gen) goFieldType(t ir.FieldType) string {
 		}
 		return goInt2(t.Signed, t.Width)
 	case ir.TFixed:
-		// raw scaled integer in signed storage of exactly I+F bits —
-		// serialize's own fixed storage convention (STANDARD.md, fixed);
-		// the wide form stores the pair
+		// raw scaled integer in storage of exactly I+F bits, the type's own
+		// signedness — serialize's fixed storage convention (STANDARD.md,
+		// fixed); the wide form stores the pair. The runtime API is
+		// int64/Int128-shaped and derives capacity from min < 0, so unsigned
+		// storage rides the same calls through bit-exact casts.
 		if t.Width == 128 {
 			g.needsSerialize = true
-			return "serialize.Int128"
+			if t.Signed {
+				return "serialize.Int128"
+			}
+			return "serialize.Uint128"
 		}
-		return goInt(t.Width)
+		if t.Signed {
+			return goInt(t.Width)
+		}
+		return goUint(t.Width)
 	case ir.TBits:
 		if t.Width <= 32 {
 			return "uint32"
@@ -659,7 +666,13 @@ func renderExpr(e ast.Expr) string {
 	case *ast.IdentExpr:
 		return e.Name
 	case *ast.UnaryExpr:
-		return "-" + renderExpr(e.X)
+		inner := renderExpr(e.X)
+		if strings.HasPrefix(inner, "-") {
+			// "--x" fails to parse in Go, and the emitter's own parse gate
+			// refused the whole unit; double negation needs parens (issue #22)
+			return "-(" + inner + ")"
+		}
+		return "-" + inner
 	case *ast.BinaryExpr:
 		return fmt.Sprintf("%s %s %s", renderExpr(e.X), e.Op, renderExpr(e.Y))
 	case *ast.ParenExpr:

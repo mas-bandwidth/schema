@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package ludicrous — protocol id 0xd5109966210b5b4b
+// package ludicrous — protocol id 0xa925c86b46058512
 
 #pragma once
 
@@ -51,6 +51,55 @@ inline bool ReadFixedProbe( serialize::ReadStream & stream, FixedProbe & value )
     for ( int32_t i = 0; i < 2; i++ )
     {
         read_fixed( stream, value.samples[i], 16, 16, -8, 8 );
+    }
+    return true;
+}
+
+inline bool WriteUnsignedProbe( serialize::WriteStream & stream, const UnsignedProbe & value )
+{
+    {
+        uint32_t fixed_value = value.angle;
+        write_fixed( stream, fixed_value, 16, 16, 0, 360 );
+    }
+    {
+        uint64_t fixed_value = value.span;
+        write_fixed( stream, fixed_value, 48, 16, 0, 281474976710655 );
+    }
+    {
+        serialize::uint128_t fixed_value = value.reach;
+        write_fixed( stream, fixed_value, 112, 16, 0, 2000000 );
+    }
+    {
+        uint32_t fixed_value = value.ticks;
+        write_fixed( stream, fixed_value, 32, 0, 0, 1000000 );
+    }
+    for ( int32_t i = 0; i < 2; i++ )
+    {
+        {
+            uint32_t fixed_value = value.samples[i];
+            write_fixed( stream, fixed_value, 16, 16, 0, 16 );
+        }
+    }
+    serialize_assert( uint64_t( value.locked ) == 196608ull );
+    write_bits( stream, value.tail, 8 );
+    return true;
+}
+
+inline bool ReadUnsignedProbe( serialize::ReadStream & stream, UnsignedProbe & value )
+{
+    read_fixed( stream, value.angle, 16, 16, 0, 360 );
+    read_fixed( stream, value.span, 48, 16, 0, 281474976710655 );
+    read_fixed( stream, value.reach, 112, 16, 0, 2000000 );
+    read_fixed( stream, value.ticks, 32, 0, 0, 1000000 );
+    for ( int32_t i = 0; i < 2; i++ )
+    {
+        read_fixed( stream, value.samples[i], 16, 16, 0, 16 );
+    }
+    value.locked = uint32_t( 196608ull );
+    {
+        uint32_t raw_value = 0;
+        read_bits( stream, raw_value, 8 );
+        value.tail = uint8_t( raw_value );
     }
     return true;
 }

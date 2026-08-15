@@ -13,7 +13,7 @@ compiler does.
 - [Field types](#field-types)
   - [Integers](#integers) · [Ranged integers](#ranged-integers) ·
     [bits(N)](#bitsn) · [bool](#bool) · [Floats](#floats) ·
-    [Compressed floats](#compressed-floats) · [fixed(I, F)](#fixedi-f) ·
+    [Compressed floats](#compressed-floats) · [fixed(I, F)](#fixedi-f) · [ufixed(I, F)](#ufixedi-f) ·
     [Strings and bytes](#strings-and-bytes) · [Arrays](#arrays) ·
     [Composition](#composition)
 - [Branches: if / else](#branches-if--else)
@@ -229,6 +229,19 @@ exactly, everywhere.
 
 A fixed component is also **its own quantization**: storage and wire share
 one integer domain, so there is no separate quantize step to keep in sync.
+
+### ufixed(I, F)
+
+```
+distance ufixed(48, 16) [min = 0, max = 60000]
+```
+
+The unsigned sibling: no sign bit, whole-unit domain `[0, 2^I)`, same `F`
+semantics, stored as an **unsigned** integer of exactly `I + F` bits. Use it
+when the value cannot be negative and you want the storage type to say so —
+unsigned Q8.8 reaches 255 whole units where signed Q8.8 tops out at 127.
+Everything else — required whole-unit bounds, exact round trips, defaults,
+degenerate ranges — works exactly as for `fixed`.
 
 ### Strings and bytes
 
