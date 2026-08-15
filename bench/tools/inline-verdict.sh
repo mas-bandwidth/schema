@@ -52,36 +52,43 @@ set -u
 
 cd "$(dirname "$0")/../.."      # repo root
 
-if [ $# -ne 2 ]; then
-    echo "usage: bench/tools/inline-verdict.sh <c|cpp|go|rust|cs> <results.csv>" >&2
-    exit 1
-fi
-LANG_ARG="$1"
-CSV="$2"
-[ -f "$CSV" ] || { echo "no such csv: $CSV" >&2; exit 1; }
-LEDGER="${CSV%.csv}.inline"
-VD="build/bench/inline-verdict-$LANG_ARG"
-rm -rf "$VD" && mkdir -p "$VD"
-
-# §3.5 provenance mechanics: the same SERIALIZE* resolution and override
-# build arguments (RS_CARGO_ARGS, GO_MODFILE_ARG) the measured pass used —
-# the shadow/remark rebuilds below must compile against the SAME runtime
-# checkout as the measured binary, or the remarks describe the wrong code.
-. bench/tools/runtime-paths.sh
-runtime_paths_init
-
-# The native-binary parsing below is otool/arm64-shaped (bl/blr). On a
-# machine without otool (the x86-64 EPYC box) the C/C++/Rust verdicts would
-# silently count zero and fake a full — refuse instead; inline stays unknown
-# there until the objdump/x86 adapter is written.
-case "$LANG_ARG" in
-c|cpp|rust)
-    command -v otool >/dev/null 2>&1 || {
-        echo "inline-verdict: no otool — the arm64/otool parser would fake 'full' on this host; refusing (inline stays unknown)" >&2
+# Library mode (INLINE_VERDICT_LIB=1): a sourcing script — the inline-gate's
+# adversarial fixtures (issue #25) — gets the counting/verdict machinery
+# DEFINED but nothing executed: no arguments, no CSV, no toolchain probing,
+# and a `return` before the per-language pass below. The fixtures must attack
+# THIS code, not a copy of it — a copy would drift and prove nothing.
+if [ -z "${INLINE_VERDICT_LIB:-}" ]; then
+    if [ $# -ne 2 ]; then
+        echo "usage: bench/tools/inline-verdict.sh <c|cpp|go|rust|cs> <results.csv>" >&2
         exit 1
-    }
-    ;;
-esac
+    fi
+    LANG_ARG="$1"
+    CSV="$2"
+    [ -f "$CSV" ] || { echo "no such csv: $CSV" >&2; exit 1; }
+    LEDGER="${CSV%.csv}.inline"
+    VD="build/bench/inline-verdict-$LANG_ARG"
+    rm -rf "$VD" && mkdir -p "$VD"
+
+    # §3.5 provenance mechanics: the same SERIALIZE* resolution and override
+    # build arguments (RS_CARGO_ARGS, GO_MODFILE_ARG) the measured pass used —
+    # the shadow/remark rebuilds below must compile against the SAME runtime
+    # checkout as the measured binary, or the remarks describe the wrong code.
+    . bench/tools/runtime-paths.sh
+    runtime_paths_init
+
+    # The native-binary parsing below is otool/arm64-shaped (bl/blr). On a
+    # machine without otool (the x86-64 EPYC box) the C/C++/Rust verdicts would
+    # silently count zero and fake a full — refuse instead; inline stays unknown
+    # there until the objdump/x86 adapter is written.
+    case "$LANG_ARG" in
+    c|cpp|rust)
+        command -v otool >/dev/null 2>&1 || {
+            echo "inline-verdict: no otool — the arm64/otool parser would fake 'full' on this host; refusing (inline stays unknown)" >&2
+            exit 1
+        }
+        ;;
+    esac
+fi
 
 # bench -> generated per-op entry stems: <snake for c/rust> <Camel for cpp/go/cs>
 BENCH_MAP='rigidbody_moving rigid_body RigidBody
@@ -360,6 +367,11 @@ backfill() {
         { print }' "$CSV" > "$CSV.tmp" && mv "$CSV.tmp" "$CSV"
     echo "backfilled $LANG_ARG rows in $CSV" >&2
 }
+
+# Library mode ends here: every function above is defined, nothing below runs.
+if [ -n "${INLINE_VERDICT_LIB:-}" ]; then
+    return 0 2>/dev/null || exit 0
+fi
 
 case "$LANG_ARG" in
 
