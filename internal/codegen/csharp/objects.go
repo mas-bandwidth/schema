@@ -149,13 +149,14 @@ func (g *gen) emitViewReadField(f *ir.Field, v ir.View, ind string) {
 				g.sf("%s%s = unchecked((%s)(%sL));\n", ind, compName, compT, lo.String())
 				continue
 			}
-			if wide {
+			switch {
+			case wide:
 				g.sf("%s{\n%s    long componentValue = 0;\n", ind, ind)
 				g.call(ind+"    ", fmt.Sprintf("%s.SerializeInt64(ref componentValue, %s, %s)", g.rv(), lo, hi), "")
 				g.sf("%s    %s = (%s)componentValue;\n%s}\n", ind, compName, compT, ind)
-			} else if width == 32 {
+			case width == 32:
 				g.call(ind, fmt.Sprintf("%s.SerializeInt(ref %s, %s, %s)", g.rv(), compName, lo, hi), "")
-			} else {
+			default:
 				g.sf("%s{\n%s    int componentValue = 0;\n", ind, ind)
 				g.call(ind+"    ", fmt.Sprintf("%s.SerializeInt(ref componentValue, %s, %s)", g.rv(), lo, hi), "")
 				g.sf("%s    %s = (%s)componentValue;\n%s}\n", ind, compName, compT, ind)
@@ -167,13 +168,14 @@ func (g *gen) emitViewReadField(f *ir.Field, v ir.View, ind string) {
 		wide := f.QuantBound > 2147483647
 		for _, comp := range st.Fields {
 			compName := name + ir.GoExportName(comp.Name)
-			if wide {
+			switch {
+			case wide:
 				g.sf("%s{\n%s    long componentValue = 0;\n", ind, ind)
 				g.call(ind+"    ", fmt.Sprintf("%s.SerializeInt64(ref componentValue, -%d, %d)", g.rv(), f.QuantBound, f.QuantBound), "")
 				g.sf("%s    %s = (%s)componentValue;\n%s}\n", ind, compName, compT, ind)
-			} else if smallestSigned(f.QuantBound) == 32 {
+			case smallestSigned(f.QuantBound) == 32:
 				g.call(ind, fmt.Sprintf("%s.SerializeInt(ref %s, -%d, %d)", g.rv(), compName, f.QuantBound, f.QuantBound), "")
-			} else {
+			default:
 				g.sf("%s{\n%s    int componentValue = 0;\n", ind, ind)
 				g.call(ind+"    ", fmt.Sprintf("%s.SerializeInt(ref componentValue, -%d, %d)", g.rv(), f.QuantBound, f.QuantBound), "")
 				g.sf("%s    %s = (%s)componentValue;\n%s}\n", ind, compName, compT, ind)

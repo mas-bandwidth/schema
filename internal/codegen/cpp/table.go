@@ -16,7 +16,7 @@ import (
 )
 
 // table-wire kinds — mirror internal/pack/table.go (one spec, two emitters;
-// the cross-language goldens pin them against each other)
+// the cross-language goldens pin them against each other).
 const (
 	tkBool   = 1
 	tkI8     = 2

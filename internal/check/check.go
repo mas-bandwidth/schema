@@ -9,8 +9,10 @@ import (
 	"crypto/sha256"
 	"encoding/binary"
 	"fmt"
+	"maps"
 	"math"
 	"math/big"
+	"slices"
 	"sort"
 	"strings"
 
@@ -251,19 +253,20 @@ func (c *checker) resolveConst(name string, usePos ast.Pos) *ir.Const {
 		if out.Storage == "" {
 			out.Storage = "int64"
 		}
-		if isFloatType {
+		switch {
+		case isFloatType:
 			// float-typed constant with an integer expression: converts
 			f, _ := new(big.Float).SetInt(v).Float64()
 			out.IsFloat = true
 			out.Float = f
 			out.Int = nil
-		} else if e.decl.Type != "" {
+		case e.decl.Type != "":
 			if !fitsStorage(v, e.decl.Type) {
 				c.errf(e.decl.Pos, "constant %s value %s does not fit its declared type %s", name, v, e.decl.Type)
 				e.state = 3
 				return nil
 			}
-		} else if !fitsStorage(v, out.Storage) {
+		case !fitsStorage(v, out.Storage):
 			// an implicitly-typed constant defaults to int64 storage and was
 			// never held to it: a value past the int64 range reached every
 			// backend as an int64 constant it cannot represent — an
@@ -851,8 +854,8 @@ func (c *checker) resolveBody(kind declKind, owner string, body *ast.Block) ([]*
 }
 
 func (c *checker) lookupScope(scopes []*scopeFrame, name string) *ir.Field {
-	for i := len(scopes) - 1; i >= 0; i-- {
-		if f, ok := scopes[i].fields[name]; ok {
+	for _, scope := range slices.Backward(scopes) {
+		if f, ok := scope.fields[name]; ok {
 			return f
 		}
 	}
@@ -1124,9 +1127,9 @@ func (c *checker) resolveDefault(f *ast.Field, out *ir.Field) {
 			}
 		}
 		out.HasDefault = true
-		out.DefInt = raw    // the RAW scaled integer — what storage initializes to
-		out.DefFloat = v    // the whole-unit value, for comments
-		out.DefExpr = nil   // never render the units expression as the raw initializer
+		out.DefInt = raw  // the RAW scaled integer — what storage initializes to
+		out.DefFloat = v  // the whole-unit value, for comments
+		out.DefExpr = nil // never render the units expression as the raw initializer
 	case ir.TNamed:
 		if en, isEnum := out.Type.Ref.(*ir.Enum); isEnum {
 			id, ok := f.Default.(*ast.IdentExpr)
@@ -1199,20 +1202,22 @@ func (c *checker) resolveAttrs(kind declKind, owner string, f *ast.Field, out *i
 
 	// markers first
 	if a, ok := byKey["interpolate"]; ok {
-		if kind != objectD {
+		switch {
+		case kind != objectD:
 			c.errf(a.Pos, "interpolate is an object view marker (SPEC §4.8) — not valid in a %s", kindName(kind))
-		} else if a.Value != nil {
+		case a.Value != nil:
 			c.errf(a.Pos, "interpolate is valueless")
-		} else {
+		default:
 			out.Interpolate = true
 		}
 	}
 	if a, ok := byKey["local"]; ok {
-		if kind != objectD {
+		switch {
+		case kind != objectD:
 			c.errf(a.Pos, "local is an object view marker (SPEC §4.8) — not valid in a %s", kindName(kind))
-		} else if a.Value != nil {
+		case a.Value != nil:
 			c.errf(a.Pos, "local is valueless")
-		} else {
+		default:
 			out.Local = true
 		}
 	}
@@ -1222,16 +1227,17 @@ func (c *checker) resolveAttrs(kind declKind, owner string, f *ast.Field, out *i
 		} else if !out.Local {
 			c.errf(a.Pos, "context is legal only beside [local] — a wire field must be identical on every side (SPEC §4.2)")
 		} else if w, ok := wordValue(a); ok {
-			if w == "all" {
+			switch {
+			case w == "all":
 				c.errf(a.Pos, "context = all is the default — omit the attribute")
-			} else if !contains(c.unit.Contexts, w) {
+			case !contains(c.unit.Contexts, w):
 				declared := "no contexts are declared in this unit"
 				if len(c.unit.Contexts) > 0 {
 					declared = "declared: " + strings.Join(c.unit.Contexts, ", ")
 				}
 				c.errf(a.Pos, "context %q is not declared — the unit's contexts declaration closes the legal values (SPEC §4.2); %s",
 					w, declared)
-			} else {
+			default:
 				out.Context = w
 			}
 		}
@@ -1278,11 +1284,11 @@ func (c *checker) resolveAttrs(kind declKind, owner string, f *ast.Field, out *i
 			c.errf(byKey["resolution"].Pos, "resolution applies to float fields (SPEC §4.6)")
 			return
 		}
-		if out.Type.Kind == ir.TFloat64 && !(kind == objectD && out.Interpolate) {
+		if out.Type.Kind == ir.TFloat64 && (kind != objectD || !out.Interpolate) {
 			c.errf(f.Pos, "field %s: the compressed float is float32 (SPEC §4.3) — float64 takes the triple only as an [interpolate] object-view projection (SPEC §4.8 rule 4)", f.Name)
 			return
 		}
-		if !(hasMin && hasMax && hasRes) {
+		if !hasMin || !hasMax || !hasRes {
 			c.errf(f.Pos, "field %s: a float range is min, max and resolution, all three together (SPEC §4.6)", f.Name)
 			return
 		}
@@ -1615,18 +1621,13 @@ func storageBounds(signed bool, width int) (*big.Int, *big.Int) {
 func fitsStorage(v *big.Int, storage string) bool {
 	signed := strings.HasPrefix(storage, "int")
 	width := 64
-	fmt.Sscanf(strings.TrimPrefix(strings.TrimPrefix(storage, "uint"), "int"), "%d", &width)
+	_, _ = fmt.Sscanf(strings.TrimPrefix(strings.TrimPrefix(storage, "uint"), "int"), "%d", &width) // no digits: width stays 64
 	lo, hi := storageBounds(signed, width)
 	return v.Cmp(lo) >= 0 && v.Cmp(hi) <= 0
 }
 
 func contains(list []string, s string) bool {
-	for _, x := range list {
-		if x == s {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(list, s)
 }
 
 // ---- composition cycles (SPEC §4.6) ----
@@ -1685,7 +1686,7 @@ func (c *checker) checkCycles() {
 var targetReserved = func() map[string]string {
 	m := map[string]string{}
 	add := func(lang, words string) {
-		for _, w := range strings.Fields(words) {
+		for w := range strings.FieldsSeq(words) {
 			if _, ok := m[w]; !ok {
 				m[w] = lang
 			}
@@ -1894,8 +1895,7 @@ func (c *checker) checkClaimedNames() {
 		pos  ast.Pos
 	}
 	registry := map[string]origin{}
-	var add func(name, what string, pos ast.Pos)
-	add = func(name, what string, pos ast.Pos) {
+	add := func(name, what string, pos ast.Pos) {
 		if prev, ok := registry[name]; ok {
 			c.errf(pos, "%s collides with %s — both generate the symbol %s; rename at the source (SPEC §4.6)",
 				what, prev.what, name)
@@ -1950,10 +1950,8 @@ func (c *checker) checkClaimedNames() {
 	// skipping a spelling that coincides with one already registered for the
 	// same declaration (identical names would self-collide, not collide).
 	addRust := func(name, what string, pos ast.Pos, siblings ...string) {
-		for _, s := range siblings {
-			if s == name {
-				return
-			}
+		if slices.Contains(siblings, name) {
+			return
 		}
 		add(name, what, pos)
 	}
@@ -2120,9 +2118,7 @@ func (c *checker) assemble() {
 		}
 		u.Files = append(u.Files, irf)
 	}
-	for name, base := range c.declFile {
-		u.DeclFile[name] = base
-	}
+	maps.Copy(u.DeclFile, c.declFile)
 	// the deterministic tag order: SORTED BY NAME, bytewise (SPEC §4.8)
 	sort.Strings(u.Messages)
 	sort.Strings(u.ObjNames)

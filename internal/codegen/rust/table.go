@@ -32,7 +32,7 @@ import (
 	"github.com/mas-bandwidth/schema/internal/pack"
 )
 
-// table-wire kinds — mirror internal/pack/table.go
+// table-wire kinds — mirror internal/pack/table.go.
 const (
 	tkBool   = 1
 	tkI8     = 2

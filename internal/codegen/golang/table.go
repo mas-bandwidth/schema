@@ -26,7 +26,7 @@ import (
 	"github.com/mas-bandwidth/schema/internal/pack"
 )
 
-// table-wire kinds — mirror internal/pack/table.go
+// table-wire kinds — mirror internal/pack/table.go.
 const (
 	tkBool   = 1
 	tkI8     = 2
@@ -1222,13 +1222,13 @@ func GenerateTable(u *ir.Unit) (map[string][]byte, error) {
 		h.WriteString(g.body.String())
 		src, err := format.Source([]byte(h.String()))
 		if err != nil {
-			return nil, fmt.Errorf("generated Go table code for %s does not parse — a compiler bug, not a schema error: %v", f.Path, err)
+			return nil, fmt.Errorf("generated Go table code for %s does not parse — a compiler bug, not a schema error: %w", f.Path, err)
 		}
 		out[f.Base+"Table.go"] = src
 	}
 	runtime, err := format.Source([]byte(tableRuntime(u.Package)))
 	if err != nil {
-		return nil, fmt.Errorf("Go table runtime does not parse — a compiler bug: %v", err)
+		return nil, fmt.Errorf("the Go table runtime does not parse — a compiler bug: %w", err)
 	}
 	out["TableRuntime.go"] = runtime
 	return out, nil

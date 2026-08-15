@@ -21,6 +21,7 @@ package golang
 import (
 	"fmt"
 	"go/format"
+	"maps"
 	"math/big"
 	"strconv"
 	"strings"
@@ -55,7 +56,7 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 		g.emitFile(f.Base == home)
 		src, err := format.Source(g.assemble())
 		if err != nil {
-			return nil, fmt.Errorf("generated Go for %s does not parse — a compiler bug, not a schema error: %v", f.Path, err)
+			return nil, fmt.Errorf("generated Go for %s does not parse — a compiler bug, not a schema error: %w", f.Path, err)
 		}
 		out[f.Base+".go"] = src
 	}
@@ -63,9 +64,7 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	for name, data := range tables {
-		out[name] = data
-	}
+	maps.Copy(out, tables)
 	return out, nil
 }
 

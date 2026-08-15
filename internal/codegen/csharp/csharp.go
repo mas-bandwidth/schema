@@ -40,6 +40,7 @@ package csharp
 
 import (
 	"fmt"
+	"maps"
 	"math"
 	"math/big"
 	"strconv"
@@ -79,9 +80,7 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	for name, data := range tables {
-		out[name] = data
-	}
+	maps.Copy(out, tables)
 	return out, nil
 }
 
@@ -201,7 +200,7 @@ func (g *gen) assemble() []byte {
 func indent4(s string) string {
 	s = strings.TrimRight(s, "\n")
 	var b strings.Builder
-	for _, line := range strings.Split(s, "\n") {
+	for line := range strings.SplitSeq(s, "\n") {
 		if line == "" {
 			b.WriteString("\n")
 			continue
