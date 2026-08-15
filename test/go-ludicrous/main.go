@@ -288,8 +288,8 @@ func main() {
 		check(ludicrous.UnsignedProbeMaxBits == 196, "UnsignedProbe worst case")
 
 		in := ludicrous.UnsignedProbe{}
-		in.Angle = 2981888                             // +45.5 * 2^16
-		in.Span = 0xFFFFFFFFFFFF0000                   // raw_max — the uint64 HIGH HALF
+		in.Angle = 2981888                               // +45.5 * 2^16
+		in.Span = 0xFFFFFFFFFFFF0000                     // raw_max — the uint64 HIGH HALF
 		in.Reach = serialize.Uint128From64(131071999999) // raw_max - 1
 		in.Ticks = 777777
 		in.Samples[0] = 0       // raw_min
