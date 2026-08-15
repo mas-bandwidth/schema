@@ -383,13 +383,21 @@ func (g *gen) emitWireFile() {
 // emissionOrder returns the file's declarations in an order where every
 // same-file named type precedes its by-value users — schema references are
 // order-free (SPEC §4.2), C++ is not. A stable topological sort: declaration
-// order is preserved wherever no dependency forces otherwise.
+// order is preserved wherever no dependency forces otherwise. Constants are
+// nodes too: a const named in an expression the data header renders
+// symbolically (a const initializer, an array bound, a range bound, a
+// default) must precede its user, or renderInt finds it un-emitted and folds
+// to the literal — silently, and only under some declaration orders (the
+// defect behind issue #29). The expression list mirrors ir.FileDeps: EVERY
+// expression a backend renders symbolically is an ordering edge.
 func (g *gen) emissionOrder() []ir.Decl {
 	decls := g.file.Decls
 	n := len(decls)
 	byName := map[string]int{}
 	for i, d := range decls {
 		switch d := d.(type) {
+		case *ir.Const:
+			byName[d.Name] = i
 		case *ir.Struct:
 			byName[d.Name] = i
 		case *ir.Enum:
@@ -402,9 +410,32 @@ func (g *gen) emissionOrder() []ir.Decl {
 	}
 	adj := make([][]int, n)
 	indeg := make([]int, n)
+	var noteExpr func(i int, e ast.Expr)
+	noteExpr = func(i int, e ast.Expr) {
+		switch e := e.(type) {
+		case *ast.IdentExpr:
+			if j, ok := byName[e.Name]; ok && j != i {
+				adj[j] = append(adj[j], i)
+				indeg[i]++
+			}
+		case *ast.MaxExpr:
+			// E.Max always folds to a literal (no C++ twin) — no edge
+		case *ast.UnaryExpr:
+			noteExpr(i, e.X)
+		case *ast.BinaryExpr:
+			noteExpr(i, e.X)
+			noteExpr(i, e.Y)
+		case *ast.ParenExpr:
+			noteExpr(i, e.X)
+		}
+	}
 	for i, d := range decls {
 		var fields []*ir.Field
 		switch d := d.(type) {
+		case *ir.Const:
+			if d.Expr != nil {
+				noteExpr(i, d.Expr)
+			}
 		case *ir.Struct:
 			fields = d.Fields
 		case *ir.Object:
@@ -415,6 +446,19 @@ func (g *gen) emissionOrder() []ir.Decl {
 				if j, ok := byName[f.Type.Name]; ok && j != i {
 					adj[j] = append(adj[j], i)
 					indeg[i]++
+				}
+			}
+			for _, e := range []ast.Expr{
+				f.ArrayExpr,
+				f.Type.SizeExpr,
+				f.DefExpr,
+				f.IntMinExpr,
+				f.IntMaxExpr,
+				f.QuantScaleExpr,
+				f.QuantMaxExpr,
+			} {
+				if e != nil {
+					noteExpr(i, e)
 				}
 			}
 		}
