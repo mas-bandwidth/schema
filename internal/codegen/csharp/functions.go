@@ -354,6 +354,12 @@ func (g *gen) emitWriteFoldedRange(expr, lo, hi string, min, max *big.Int, wide,
 		g.sf("%sif (%s > %s)%s\n%s{\n%s    return false;\n%s}\n", ind, expr, hi, comment, ind, ind, ind)
 	}
 	bits := ir.BitsRequired(min, max)
+	if bits == 0 {
+		// A degenerate range costs ZERO BITS — the value is known from the
+		// range alone; the refusal above is the whole write (SPEC §4.6,
+		// decided 2026-08-15)
+		return
+	}
 	typ, fn := "uint", "SerializeBits"
 	if wide {
 		typ, fn = "ulong", "SerializeBits64"
@@ -452,6 +458,20 @@ func (g *gen) emitWriteField(f *ir.Field, ind string) {
 func (g *gen) emitWriteScalar(f *ir.Field, name, ind string) {
 	switch f.Type.Kind {
 	case ir.TFixed:
+		if f.IntMin.Cmp(f.IntMax) == 0 {
+			// degenerate range: ZERO bits — the folded range refusal and no
+			// wire call at all, so no runtime degenerate support is needed
+			// (SPEC §4.6, decided 2026-08-15). The one legal raw is min << F.
+			rawMin := new(big.Int).Lsh(f.IntMin, uint(f.Type.FracBits))
+			if f.Type.Width == 128 {
+				g.sf("%sif (%s != (Int128Value)(%s)) // out-of-contract writes are refused, not wrapped\n%s{\n%s    return false;\n%s}\n",
+					ind, name, csRender128(rawMin), ind, ind, ind)
+			} else {
+				g.sf("%sif ((long)%s != %sL) // out-of-contract writes are refused, not wrapped\n%s{\n%s    return false;\n%s}\n",
+					ind, name, rawMin.String(), ind, ind, ind)
+			}
+			return
+		}
 		// the Q format and whole-unit bounds are compile-time constants of the
 		// call site, exactly like a ranged integer's bounds (STANDARD.md, fixed)
 		lo, hi := g.rangeArgs(f, "long")
@@ -459,6 +479,12 @@ func (g *gen) emitWriteScalar(f *ir.Field, name, ind string) {
 	case ir.TInt:
 		if f.Type.Width == 128 {
 			if f.HasIntRange {
+				if f.IntMin.Cmp(f.IntMax) == 0 {
+					// degenerate range: ZERO bits — refusal only (SPEC §4.6)
+					g.sf("%sif (%s != (Int128Value)(%s)) // out-of-contract writes are refused, not wrapped\n%s{\n%s    return false;\n%s}\n",
+						ind, name, csRender128(f.IntMin), ind, ind, ind)
+					return
+				}
 				// int128 is ALWAYS ranged (SPEC §4.3): offset from min —
 				// identical bytes to SerializeInt64 wherever the range fits
 				g.call(ind, fmt.Sprintf("%s.SerializeInt128(ref %s, %s, %s)", g.rv(), name,
@@ -647,6 +673,17 @@ func (g *gen) emitReadField(f *ir.Field, ind string) {
 func (g *gen) emitReadScalar(f *ir.Field, name, ind string) {
 	switch f.Type.Kind {
 	case ir.TFixed:
+		if f.IntMin.Cmp(f.IntMax) == 0 {
+			// degenerate range: zero bits — the value is the range, raw
+			// min << F, materialized with no wire call (SPEC §4.6)
+			rawMin := new(big.Int).Lsh(f.IntMin, uint(f.Type.FracBits))
+			if f.Type.Width == 128 {
+				g.sf("%s%s = %s;\n", ind, name, csRender128(rawMin))
+			} else {
+				g.sf("%s%s = unchecked((%s)(%sL));\n", ind, name, g.csFieldType(f.Type), rawMin.String())
+			}
+			return
+		}
 		// validates the raw offset against the raw bounds and rejects — never
 		// clamps — returning false on a hostile stream
 		lo, hi := g.rangeArgs(f, "long")
@@ -654,6 +691,11 @@ func (g *gen) emitReadScalar(f *ir.Field, name, ind string) {
 	case ir.TInt:
 		if f.Type.Width == 128 {
 			if f.HasIntRange {
+				if f.IntMin.Cmp(f.IntMax) == 0 {
+					// degenerate range: zero bits — materialize (SPEC §4.6)
+					g.sf("%s%s = %s;\n", ind, name, csRender128(f.IntMin))
+					return
+				}
 				// rejects a decoded offset beyond max - min (reject, never clamp)
 				g.call(ind, fmt.Sprintf("%s.SerializeInt128(ref %s, %s, %s)", g.rv(), name,
 					csRender128(f.IntMin), csRender128(f.IntMax)), "")
@@ -663,6 +705,16 @@ func (g *gen) emitReadScalar(f *ir.Field, name, ind string) {
 			return
 		}
 		if f.HasIntRange {
+			if f.IntMin.Cmp(f.IntMax) == 0 {
+				// degenerate range: zero bits — the value is the range,
+				// materialized with no wire call (SPEC §4.6)
+				lit := f.IntMin.String() + "L"
+				if !f.Type.Signed && !f.IntMin.IsInt64() {
+					lit = f.IntMin.String() + "UL" // above the signed-literal domain
+				}
+				g.sf("%s%s = unchecked((%s)(%s));\n", ind, name, g.csFieldType(f.Type), lit)
+				return
+			}
 			switch intRangePath(f.IntMin, f.IntMax) {
 			case "int32":
 				lo, hi := g.rangeArgs(f, "int")

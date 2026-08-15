@@ -224,6 +224,31 @@ static class Program
             Check(!ReadLudicrousState(rs, output), "a truncated stream is a read failure");
         }
 
+        // ---- DegenerateProbe: min == max costs ZERO bits (SPEC §4.6, 2026-08-15) ----
+        // The whole wire is the tail byte; a port that emits ANY bits for a
+        // degenerate range shifts it and fails the golden compare.
+        {
+            Check(DegenerateProbeMaxBits == 8, "three degenerate fields cost zero bits");
+
+            DegenerateProbe input = new DegenerateProbe();
+            input.LockedFixed = -196608; // -3 * 2^16, the ONE legal raw
+            input.LockedInt = 7;
+            input.LockedWide = -12345678901234L;
+            input.Tail = 0xA5;
+
+            WriteStream ws = NewWriteStream();
+            Check(WriteDegenerateProbe(ws, input), "write DegenerateProbe");
+            byte[] wire = Data(ws);
+            GoldenWire("degenerate_probe", wire);
+
+            DegenerateProbe output = new DegenerateProbe();
+            ReadStream rs = new ReadStream(wire);
+            Check(ReadDegenerateProbe(rs, output), "read DegenerateProbe");
+            Check(output.LockedFixed == -196608 && output.LockedInt == 7, "degenerate values materialize from the range alone");
+            Check(output.LockedWide == (Int128Value)(-12345678901234L), "degenerate int128 materializes");
+            Check(output.Tail == 0xA5, "the tail rides at bit 0");
+        }
+
         // ---- NarrowBody: the narrowed fixed shallow (SPEC §4.8 rule 2b) ----
         // The pinned tie semantics: quantize rounds to nearest, ties AWAY
         // FROM ZERO — the one fixed-point rounding rule (SPEC §4.8, decided

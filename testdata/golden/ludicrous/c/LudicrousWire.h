@@ -2,7 +2,7 @@
    SPDX-License-Identifier: NONE — this generated output is yours, under terms of
    your choice. See the LICENSE exception in the schema compiler; the compiler is
    AGPL-3.0, its output is not.
-   package ludicrous — protocol id 0x28d607a0ebc5d71c */
+   package ludicrous — protocol id 0xd5109966210b5b4b */
 
 #ifndef SCHEMA_LUDICROUS_LUDICROUSWIRE_H
 #define SCHEMA_LUDICROUS_LUDICROUSWIRE_H
@@ -283,6 +283,47 @@ static SCHEMA_UNUSED int read_ludicrous_state( serialize_read_stream_t * stream,
     else
     {
         memset( &value->target_id, 0, sizeof( value->target_id ) );
+    }
+    return 1;
+}
+
+/* Writes DegenerateProbe. Returns 1 on success, 0 on failure — the stream latches the
+   error, so a caller may check once at the end of a message. */
+static SCHEMA_UNUSED int write_degenerate_probe( serialize_write_stream_t * stream, const DegenerateProbe * value )
+{
+    if ( (serialize_int64_t) value->locked_fixed != -196608LL )
+    {
+        return 0;
+    }
+    if ( (serialize_int64_t) value->locked_int < 7LL || (serialize_int64_t) value->locked_int > 7LL )
+    {
+        return 0; /* out-of-contract writes are refused, not wrapped */
+    }
+    if ( !serialize_int128_equal( value->locked_wide, serialize_int128_from_int64( -12345678901234LL ) ) )
+    {
+        return 0;
+    }
+    if ( !serialize_write_bits( stream, (serialize_uint32_t) value->tail, 8 ) )
+    {
+        return 0;
+    }
+    return 1;
+}
+
+/* Reads DegenerateProbe. Returns 1 on success, 0 on failure. Out-of-range values are
+   REFUSED, never clamped. */
+static SCHEMA_UNUSED int read_degenerate_probe( serialize_read_stream_t * stream, DegenerateProbe * value )
+{
+    value->locked_fixed = (int32_t) -196608LL;
+    value->locked_int = (int32_t) (7);
+    value->locked_wide = serialize_int128_from_int64( -12345678901234LL );
+    {
+        serialize_uint32_t raw = 0;
+        if ( !serialize_read_bits( stream, &raw, 8 ) )
+        {
+            return 0;
+        }
+        value->tail = (uint8_t) raw;
     }
     return 1;
 }

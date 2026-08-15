@@ -971,7 +971,7 @@ siblings — design inputs, re-verified against library source at implementation
 | `f intN [min = A, max = B]` / `f uintN [min = A, max = B]` | minimal bits for the range, value − A; read rejects out-of-range; **the range must fit the declared storage** | `serialize_int` (≤32-bit int ranges) / `serialize_int64` / width-computed `serialize_bits` for full-unsigned ranges |
 | `f uint128` (bare ONLY) | 128 raw bits — the low 64-bit half first, then the high half; representation-independent (native `__int128` and the emulated two-lane pair produce identical bytes) | `serialize_uint128` |
 | `f int128 [min = A, max = B]` (range REQUIRED) | value − A in `bits_required128(A, B)` bits, 32-bit groups from the bottom; read rejects an offset above B − A — reject, never clamp; **where the range fits 64 bits or fewer the bytes are identical to `serialize_int64` over the same bounds.** Bare `int128` and ranged `uint128` are compile errors — serialize's own surface, mirrored exactly (uint→raw, int→ranged) | `serialize_int128` |
-| `f fixed(I, F) [min = A, max = B]` (range REQUIRED; **SIGNED** — Glenn 2026-08-06, the unsigned spelling is OPEN, §9 q17) | Q I.F, the sign bit counting toward I; storage is a signed integer of exactly I+F bits (I+F ∈ 8/16/32/64/128, I ≥ 1, F ≥ 0); bounds are compile-time WHOLE UNITS fitting the Q format and int64; wire = raw − (A << F) in bitlen(B − A) + F bits, 32-bit groups from the bottom; read rejects above the raw range; round trip is EXACT (no quantization step), and with F = 0 the operation IS a ranged integer | `serialize_fixed` |
+| `f fixed(I, F) [min = A, max = B]` (range REQUIRED; **SIGNED** — Glenn 2026-08-06, the unsigned spelling is OPEN, §9 q17) | Q I.F, the sign bit counting toward I; storage is a signed integer of exactly I+F bits (I+F ∈ 8/16/32/64/128, I ≥ 1, F ≥ 0); bounds are compile-time WHOLE UNITS fitting the Q format and int64; wire = raw − (A << F) in bitlen(B − A) + F bits, 32-bit groups from the bottom — **except A == B, which costs ZERO bits (not F): the reader materializes raw = A << F from the range alone (DECIDED 2026-08-15, §4.6)**; read rejects above the raw range; round trip is EXACT (no quantization step), and with F = 0 the operation IS a ranged integer | `serialize_fixed` |
 | `f bool` | 1 bit | `serialize_bool` |
 | `f float32` | 32 raw IEEE-754 bits | `serialize_float` |
 | `f float64` | 64 raw bits (low dword first) | `serialize_double` |
@@ -1068,7 +1068,8 @@ All compile errors with positions:
   as language rules so generated code cannot fail to compile):** `fixed(I, F)` requires
   I ≥ 1 (the sign bit counts toward I), F ≥ 0, and I + F equal to a storage width —
   8, 16, 32, 64 or 128; a `fixed` field requires `[min = A, max = B]` in whole units,
-  A < B, both fitting the Q format's whole-unit domain [−2^(I−1), 2^(I−1) − 1] AND
+  A ≤ B *(A = B legal since the 2026-08-15 ruling — see the degenerate-ranges bullet)*,
+  both fitting the Q format's whole-unit domain [−2^(I−1), 2^(I−1) − 1] AND
   int64 (where the runtime's compile-time bound parameters live); `int128` requires
   `[min = A, max = B]` (bare `int128` is a compile error — serialize has no raw signed
   128-bit operation); `uint128` refuses `min`/`max` (ranged 128-bit is `int128`);
@@ -1094,8 +1095,20 @@ All compile errors with positions:
   quantization form `[interpolate, quantize = K, max = B]` (§4.8 rule 2), `max` is the
   quantize bound and appears WITHOUT `min` by design — `min` is forbidden there, the
   domain being symmetric [-B, +B].
-- **Degenerate ranges:** any ranged integer field with min ≥ max (the diagnostic suggests
-  `const` for a fixed value); `[Min..N]T` with Min ≥ N; `string(N)` with N < 2;
+- **Degenerate and inverted ranges — min == max is LEGAL, DECIDED (Glenn, 2026-08-15:
+  "min==max is legal").** A ranged integer, `int128` or `fixed` field with equal bounds
+  costs **zero bits**: the wire carries nothing and the reader recovers the value from
+  the range alone (`min` — for fixed, the raw `min << F`), exactly the rule STANDARD.md
+  has always stated for degenerate ranged integers and the rule the empty enum below
+  already rides. The generators emit the write-side range refusal and no wire call at
+  all, because a bit packer requires at least one bit — which also means generated code
+  needs NO degenerate support from any runtime. *(Until 2026-08-15 the checker rejected
+  min ≥ max wholesale, suggesting `const` — a stricter guard than the format, the same
+  false premise the empty-enum paragraph below records. The 08-14 audit found four
+  runtime behaviors behind the rejection: zero bits, F bits on the wide path only,
+  an abort and a panic — the divergence the ruling closes.)* What stays an error:
+  an INVERTED range (min > max) anywhere; `[Min..N]T` with Min ≥ N ([N]T is the
+  degenerate spelling); `string(N)` with N < 2;
   `bytes(<= N)` with N < 1; **`bytes(N)` with N < 1; `[N]T` with N < 1; `[<= N]T` with
   N < 1** *(three holes closed 2026-08-05)*; `resolution` ≤ 0. An empty `type` or `message`
   body is legal — zero wire bits, the Heartbeat precedent; an empty `object` body is an

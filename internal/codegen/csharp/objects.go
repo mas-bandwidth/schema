@@ -143,6 +143,12 @@ func (g *gen) emitViewReadField(f *ir.Field, v ir.View, ind string) {
 		for _, comp := range st.Fields {
 			compName := name + ir.GoExportName(comp.Name)
 			lo, hi, wide, compT, width := fixedShallowComp(f, comp)
+			if lo.Cmp(hi) == 0 {
+				// a degenerate component narrows to zero bits — the value is
+				// the range (SPEC §4.6, decided 2026-08-15)
+				g.sf("%s%s = unchecked((%s)(%sL));\n", ind, compName, compT, lo.String())
+				continue
+			}
 			if wide {
 				g.sf("%s{\n%s    long componentValue = 0;\n", ind, ind)
 				g.call(ind+"    ", fmt.Sprintf("%s.SerializeInt64(ref componentValue, %s, %s)", g.rv(), lo, hi), "")

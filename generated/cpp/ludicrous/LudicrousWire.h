@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package ludicrous — protocol id 0x28d607a0ebc5d71c
+// package ludicrous — protocol id 0xd5109966210b5b4b
 
 #pragma once
 
@@ -129,6 +129,28 @@ inline bool ReadLudicrousState( serialize::ReadStream & stream, LudicrousState &
     else
     {
         value.target_id = 0;
+    }
+    return true;
+}
+
+inline bool WriteDegenerateProbe( serialize::WriteStream & stream, const DegenerateProbe & value )
+{
+    serialize_assert( int64_t( value.locked_fixed ) == -196608ll );
+    serialize_assert( int32_t( value.locked_int ) >= int32_t( 7 ) && int32_t( value.locked_int ) <= int32_t( 7 ) );
+    serialize_assert( value.locked_wide == -12345678901234 );
+    write_bits( stream, value.tail, 8 );
+    return true;
+}
+
+inline bool ReadDegenerateProbe( serialize::ReadStream & stream, DegenerateProbe & value )
+{
+    value.locked_fixed = int32_t( -196608ll );
+    value.locked_int = int32_t( 7 );
+    value.locked_wide = -12345678901234;
+    {
+        uint32_t raw_value = 0;
+        read_bits( stream, raw_value, 8 );
+        value.tail = uint8_t( raw_value );
     }
     return true;
 }

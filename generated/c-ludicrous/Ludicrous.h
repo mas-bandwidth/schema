@@ -2,7 +2,7 @@
    SPDX-License-Identifier: NONE — this generated output is yours, under terms of
    your choice. See the LICENSE exception in the schema compiler; the compiler is
    AGPL-3.0, its output is not.
-   package ludicrous — protocol id 0x28d607a0ebc5d71c */
+   package ludicrous — protocol id 0xd5109966210b5b4b */
 
 #ifndef SCHEMA_LUDICROUS_LUDICROUS_H
 #define SCHEMA_LUDICROUS_LUDICROUS_H
@@ -26,7 +26,7 @@ extern "C" {
 
 /* The unit's protocol id — the hash of its schema files (SPEC §3.1). Two
    sides at the same id speak identical bits; there is no other versioning. */
-#define LUDICROUS_PROTOCOL_ID 0x28d607a0ebc5d71cULL
+#define LUDICROUS_PROTOCOL_ID 0xd5109966210b5b4bULL
 
 #define MAX_WORLD_UNITS (30000)
 
@@ -131,6 +131,18 @@ static SCHEMA_UNUSED LudicrousState new_ludicrous_state( void )
     value.wide = new_wide_probe();
     return value;
 }
+
+
+/* type DegenerateProbe */
+typedef struct DegenerateProbe {
+    int32_t locked_fixed;
+    int32_t locked_int;
+    serialize_int128_t locked_wide;
+    uint8_t tail;
+} DegenerateProbe;
+
+#define DEGENERATE_PROBE_MAX_BITS 8   /* longest wire path; align pads at worst case (SPEC §6.1) */
+#define DEGENERATE_PROBE_MAX_BYTES 8  /* rounded up to the 8-byte write-buffer granularity */
 
 
 /* type FixedVec */

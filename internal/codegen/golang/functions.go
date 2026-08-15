@@ -313,6 +313,19 @@ func (g *gen) emitWriteField(f *ir.Field, ind string) {
 func (g *gen) emitWriteScalar(f *ir.Field, name, ind string) {
 	switch f.Type.Kind {
 	case ir.TFixed:
+		if f.IntMin.Cmp(f.IntMax) == 0 {
+			// degenerate range: ZERO bits — the folded range refusal and no
+			// wire call at all, so no runtime degenerate support is needed
+			// (SPEC §4.6, decided 2026-08-15). The one legal raw is min << F.
+			rawMin := new(big.Int).Lsh(f.IntMin, uint(f.Type.FracBits))
+			if f.Type.Width == 128 {
+				g.pf("%sif %s != %s { // the runtime range refusal, folded (SPEC §5)\n", ind, name, g.render128(nil, rawMin))
+			} else {
+				g.pf("%sif int64(%s) != %s { // the runtime range refusal, folded (SPEC §5)\n", ind, name, rawMin.String())
+			}
+			g.pf("%s\treturn serialize.ErrValueOutOfRange\n%s}\n", ind, ind)
+			return
+		}
 		// the Q format and the whole-unit bounds are compile-time constants of
 		// the call site — part of the wire format, exactly like a ranged
 		// integer's bounds (STANDARD.md, fixed). The runtime carries the
@@ -332,6 +345,12 @@ func (g *gen) emitWriteScalar(f *ir.Field, name, ind string) {
 	case ir.TInt:
 		if f.Type.Width == 128 {
 			if f.HasIntRange {
+				if f.IntMin.Cmp(f.IntMax) == 0 {
+					// degenerate range: ZERO bits — refusal only (SPEC §4.6)
+					g.pf("%sif %s != %s { // the runtime range refusal, folded (SPEC §5)\n", ind, name, g.render128(f.IntMinExpr, f.IntMin))
+					g.pf("%s\treturn serialize.ErrValueOutOfRange\n%s}\n", ind, ind)
+					return
+				}
 				// int128 is ALWAYS ranged (SPEC §4.3): offset from min —
 				// identical bytes to SerializeInt64 wherever the range fits
 				g.pf("%sstream.SerializeInt128(&%s, %s, %s)\n", ind, name,
@@ -376,6 +395,11 @@ func (g *gen) emitWriteScalar(f *ir.Field, name, ind string) {
 					g.pf("%sif %s < %s {\n%s\treturn serialize.ErrValueOutOfRange\n%s}\n", ind, name, lo, ind, ind)
 				case !hiVacuous:
 					g.pf("%sif %s > %s {\n%s\treturn serialize.ErrValueOutOfRange\n%s}\n", ind, name, f.IntMax.String(), ind, ind)
+				}
+				if ir.BitsRequired(f.IntMin, f.IntMax) == 0 {
+					// degenerate range: zero bits — the refusal above is the
+					// whole write (SPEC §4.6, decided 2026-08-15)
+					return
 				}
 				if loVacuous {
 					g.pf("%s{\n%s\toffsetValue := %s\n", ind, ind, name)
@@ -489,6 +513,17 @@ func (g *gen) emitReadField(f *ir.Field, ind string) {
 func (g *gen) emitReadScalar(f *ir.Field, name, ind string) {
 	switch f.Type.Kind {
 	case ir.TFixed:
+		if f.IntMin.Cmp(f.IntMax) == 0 {
+			// degenerate range: zero bits — the value is the range, raw
+			// min << F, materialized with no wire call (SPEC §4.6)
+			rawMin := new(big.Int).Lsh(f.IntMin, uint(f.Type.FracBits))
+			if f.Type.Width == 128 {
+				g.pf("%s%s = %s\n", ind, name, g.render128(nil, rawMin))
+			} else {
+				g.pf("%s%s = %s(%s)\n", ind, name, goInt(f.Type.Width), rawMin.String())
+			}
+			return
+		}
 		// the runtime validates the raw offset against the raw bounds and
 		// rejects — never clamps — surfacing ErrValueOutOfRange on a hostile
 		// stream
@@ -508,6 +543,11 @@ func (g *gen) emitReadScalar(f *ir.Field, name, ind string) {
 	case ir.TInt:
 		if f.Type.Width == 128 {
 			if f.HasIntRange {
+				if f.IntMin.Cmp(f.IntMax) == 0 {
+					// degenerate range: zero bits — materialize (SPEC §4.6)
+					g.pf("%s%s = %s\n", ind, name, g.render128(f.IntMinExpr, f.IntMin))
+					return
+				}
 				// rejects a decoded offset beyond max - min (reject, never clamp)
 				g.pf("%sstream.SerializeInt128(&%s, %s, %s)\n", ind, name,
 					g.render128(f.IntMinExpr, f.IntMin), g.render128(f.IntMaxExpr, f.IntMax))
@@ -517,6 +557,12 @@ func (g *gen) emitReadScalar(f *ir.Field, name, ind string) {
 			return
 		}
 		if f.HasIntRange {
+			if f.IntMin.Cmp(f.IntMax) == 0 {
+				// degenerate range: zero bits — the value is the range,
+				// materialized with no wire call (SPEC §4.6)
+				g.pf("%s%s = %s(%s)\n", ind, name, goInt2(f.Type.Signed, f.Type.Width), g.renderInt(f.IntMinExpr, f.IntMin))
+				return
+			}
 			lo, hi := g.rangeArgs(f)
 			switch intRangePath(f.IntMin, f.IntMax) {
 			case "int32":

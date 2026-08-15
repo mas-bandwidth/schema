@@ -177,7 +177,13 @@ func (g *gen) emitViewReadField(f *ir.Field, v objView, ind string) {
 	case v == viewShallow && f.HasQuantize && f.FixedShallow:
 		st := f.Type.Ref.(*ir.Struct)
 		for _, comp := range st.Fields {
-			lo, hi, _, wide, compT := fixedShallowComp(f, comp)
+			lo, hi, bits, wide, compT := fixedShallowComp(f, comp)
+			if bits == 0 {
+				// a degenerate component narrows to zero bits — the value is
+				// the range (SPEC §4.6, decided 2026-08-15)
+				g.pf("%s%s_%s = %s( %s );\n", ind, name, comp.Name, compT, cppInt64Lit(lo))
+				continue
+			}
 			if wide {
 				g.pf("%s{\n%s    int64_t component_value = 0;\n", ind, ind)
 				g.pf("%s    read_int64( stream, component_value, %s, %s );\n", ind, cppInt64Lit(lo), cppInt64Lit(hi))

@@ -54,6 +54,21 @@ message LudicrousState {
     }
 }
 
+// Degenerate ranges cost ZERO bits — DECIDED (Glenn, 2026-08-15: "min==max
+// is legal"; SPEC §4.6). The reader recovers each value from the range
+// alone. The audit found four behaviors behind the old rejection: zero
+// bits (C), fraction_bits on the wide path only (Go/C#), an abort (C++)
+// and a panic (Rust) — so every degenerate shape rides in front of a tail
+// byte: a port that emits ANY bits for one of them shifts the tail and
+// fails the byte-compare. locked_fixed is the fraction_bits shape
+// (F = 16 would appear); locked_wide is the 64/128 boundary shape.
+type DegenerateProbe {
+    locked_fixed fixed(16, 16) [min = -3, max = -3]
+    locked_int   int32         [min = 7, max = 7]
+    locked_wide  int128        [min = -12345678901234, max = -12345678901234]
+    tail         uint8
+}
+
 // The fixed-point object family — the "quantization dissolves" case (SPEC
 // §4.8): every [interpolate] field is a fixed-component composite or plain
 // wire-domain scalar, so NO Quantize/Unquantize pair is emitted — the

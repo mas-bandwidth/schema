@@ -189,6 +189,29 @@ func main() {
 		check(ludicrous.ReadLudicrousState(rs, &out) != nil, "a truncated stream is a read failure")
 	}
 
+	// ---- DegenerateProbe: min == max costs ZERO bits (SPEC §4.6, 2026-08-15) ----
+	// The whole wire is the tail byte; a port that emits ANY bits for a
+	// degenerate range shifts it and fails the golden compare.
+	{
+		check(ludicrous.DegenerateProbeMaxBits == 8, "three degenerate fields cost zero bits")
+
+		in := ludicrous.DegenerateProbe{}
+		in.LockedFixed = -196608 // -3 * 2^16, the ONE legal raw
+		in.LockedInt = 7
+		in.LockedWide = serialize.Int128From64(-12345678901234)
+		in.Tail = 0xA5
+
+		ws, _ := newWriteStream()
+		checkErr(ludicrous.WriteDegenerateProbe(ws, &in), "write DegenerateProbe")
+		ws.Flush()
+		goldenWire("degenerate_probe", ws.Data())
+
+		out := ludicrous.DegenerateProbe{}
+		rs := serialize.NewReadStream(ws.Data())
+		checkErr(ludicrous.ReadDegenerateProbe(rs, &out), "read DegenerateProbe")
+		check(out == in, "DegenerateProbe round-trips — every value materialized from its range")
+	}
+
 	// ---- NarrowBody: the narrowed fixed shallow (SPEC §4.8 rule 2b) ----
 	// The pinned tie semantics: quantize rounds to nearest, ties AWAY FROM
 	// ZERO — the one fixed-point rounding rule (SPEC §4.8, decided

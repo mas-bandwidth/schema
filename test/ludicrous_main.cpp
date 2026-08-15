@@ -386,6 +386,39 @@ int main()
         check( !ReadNarrowBodyData_Shallow( hrs, hOut ) );
     }
 
+    // ---- DegenerateProbe: min == max costs ZERO bits (SPEC §4.6, 2026-08-15) ----
+    // Three degenerate shapes ride in front of a tail byte: the whole wire
+    // is that one byte, derived from the wire law by hand below. A port that
+    // emits ANY bits for a degenerate range — the audit found F bits on the
+    // wide path, an abort and a panic behind the old rejection — shifts the
+    // tail and fails this compare and the golden.
+    {
+        static_assert( DegenerateProbeMaxBits == 8, "three degenerate fields cost zero bits" );
+
+        DegenerateProbe in;
+        in.locked_fixed = -196608;              // -3 * 2^16, the ONE legal raw
+        in.locked_int = 7;
+        in.locked_wide = -12345678901234ll;
+        in.tail = 0xA5;
+
+        uint8_t expected_probe[1] = { 0xA5 };   // the tail alone — nothing else reaches the wire
+        serialize::WriteStream ws( buffer, sizeof( buffer ) );
+        check( WriteDegenerateProbe( ws, in ) );
+        ws.Flush();
+        check( ws.GetBytesProcessed() == 1 );
+        check( std::memcmp( buffer, expected_probe, 1 ) == 0 );
+        check( golden_wire( "degenerate_probe", buffer, ws.GetBytesProcessed() ) );
+
+        DegenerateProbe out;
+        std::memset( &out, 0, sizeof( out ) );
+        serialize::ReadStream rs( buffer, ws.GetBytesProcessed() );
+        check( ReadDegenerateProbe( rs, out ) );
+        check( out.locked_fixed == -196608 );   // materialized from the range alone
+        check( out.locked_int == 7 );
+        check( out.locked_wide == -12345678901234ll );
+        check( out.tail == 0xA5 );
+    }
+
     // ---- the message dispatch surface over the new unit ----
     {
         Message m;

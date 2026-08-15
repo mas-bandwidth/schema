@@ -412,6 +412,13 @@ func (g *gen) emitWriteField(f *ir.Field, ind string) {
 func (g *gen) emitWriteScalar(f *ir.Field, name, ind string) {
 	switch f.Type.Kind {
 	case ir.TFixed:
+		if f.IntMin.Cmp(f.IntMax) == 0 {
+			// degenerate range: ZERO bits — the generated raw-domain refusal
+			// and no wire call at all, so no runtime degenerate support is
+			// needed (SPEC §4.6, decided 2026-08-15)
+			g.emitWriteFixedRawGuard(name, f, ind)
+			return
+		}
 		// the Q format and the whole-unit bounds are compile-time constants
 		// of the call site — part of the wire format, exactly like a ranged
 		// integer's bounds (STANDARD.md, fixed). serialize.rs's write side
@@ -426,6 +433,11 @@ func (g *gen) emitWriteScalar(f *ir.Field, name, ind string) {
 	case ir.TInt:
 		if f.Type.Width == 128 {
 			if f.HasIntRange {
+				if f.IntMin.Cmp(f.IntMax) == 0 {
+					// degenerate range: ZERO bits — refusal only (SPEC §4.6)
+					g.emitWriteRangeGuard(name, f, ind)
+					return
+				}
 				// int128 is ALWAYS ranged (SPEC §4.3): offset from min —
 				// identical bytes to serialize_int64 wherever the range fits.
 				// The runtime's write side only debug_asserts, so the range
@@ -601,6 +613,13 @@ func (g *gen) emitReadField(f *ir.Field, ind string) {
 func (g *gen) emitReadScalar(f *ir.Field, name, ind string) {
 	switch f.Type.Kind {
 	case ir.TFixed:
+		if f.IntMin.Cmp(f.IntMax) == 0 {
+			// degenerate range: zero bits — the value is the range, raw
+			// min << F, materialized with no wire call (SPEC §4.6)
+			rawMin := new(big.Int).Lsh(f.IntMin, uint(f.Type.FracBits))
+			g.pf("%s%s = %s;\n", ind, name, rustIntLit(rawMin, f.Type.Width))
+			return
+		}
 		// the runtime validates the raw offset against the raw bounds and
 		// rejects — never clamps — Error::ValueOutOfRange on a hostile stream
 		lo, hi := g.rangeArgs(f, "i64")
@@ -609,6 +628,11 @@ func (g *gen) emitReadScalar(f *ir.Field, name, ind string) {
 	case ir.TInt:
 		if f.Type.Width == 128 {
 			if f.HasIntRange {
+				if f.IntMin.Cmp(f.IntMax) == 0 {
+					// degenerate range: zero bits — materialize (SPEC §4.6)
+					g.pf("%s%s = %s;\n", ind, name, rustIntLit(f.IntMin, 128))
+					return
+				}
 				// rejects a decoded offset beyond max - min (reject, never clamp)
 				lo, hi := g.rangeArgs(f, "i128")
 				g.pf("%sstream.serialize_int128(&mut %s, %s, %s)?;\n", ind, name, lo, hi)
@@ -618,6 +642,12 @@ func (g *gen) emitReadScalar(f *ir.Field, name, ind string) {
 			return
 		}
 		if f.HasIntRange {
+			if f.IntMin.Cmp(f.IntMax) == 0 {
+				// degenerate range: zero bits — the value is the range,
+				// materialized with no wire call (SPEC §4.6)
+				g.pf("%s%s = %s;\n", ind, name, rustIntLitStorage(f.IntMin, f.Type.Signed, f.Type.Width))
+				return
+			}
 			switch intRangePath(f.IntMin, f.IntMax) {
 			case "int32":
 				lo, hi := g.rangeArgs(f, "i32")
@@ -891,4 +921,14 @@ func (g *gen) emitMessageTagFunctions() {
 	g.pf("        // still needs the arm because tag constants are never exhaustive\n")
 	g.pf("        _ => Err(Error::Validation),\n")
 	g.pf("    }\n}\n\n")
+}
+
+// rustIntLitStorage renders a degenerate-range materialization literal in the
+// field's own storage type — signed through rustIntLit (which handles the
+// two's-complement minimum), unsigned with the u-width suffix.
+func rustIntLitStorage(v *big.Int, signed bool, width int) string {
+	if signed {
+		return rustIntLit(v, width)
+	}
+	return fmt.Sprintf("%s_u%d", v, width)
 }

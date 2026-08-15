@@ -1331,8 +1331,13 @@ func (c *checker) resolveAttrs(kind declKind, owner string, f *ast.Field, out *i
 		if !ok1 || !ok2 {
 			return
 		}
-		if vmin.Cmp(vmax) >= 0 {
-			c.errf(byKey["min"].Pos, "degenerate range [%s, %s] — for a fixed value use const (SPEC §4.6)", vmin, vmax)
+		// min == max is LEGAL — DECIDED (Glenn, 2026-08-15): a degenerate
+		// range costs zero bits and the reader recovers the value from the
+		// range alone, the same rule STANDARD.md has always stated for
+		// ranged integers and the empty enum already exercises. Only an
+		// INVERTED range is an error.
+		if vmin.Cmp(vmax) > 0 {
+			c.errf(byKey["min"].Pos, "inverted range [%s, %s] — min must not exceed max (SPEC §4.6)", vmin, vmax)
 			return
 		}
 		if isFixed {

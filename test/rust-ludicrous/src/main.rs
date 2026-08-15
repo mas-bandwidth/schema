@@ -214,6 +214,31 @@ fn main() {
         );
     }
 
+    // ---- DegenerateProbe: min == max costs ZERO bits (SPEC §4.6, 2026-08-15) ----
+    // The whole wire is the tail byte; a port that emits ANY bits for a
+    // degenerate range shifts it and fails the golden compare.
+    {
+        check(DEGENERATE_PROBE_MAX_BITS == 8, "three degenerate fields cost zero bits");
+
+        let mut input = DegenerateProbe::default();
+        input.locked_fixed = -196608; // -3 * 2^16, the ONE legal raw
+        input.locked_int = 7;
+        input.locked_wide = -12345678901234;
+        input.tail = 0xA5;
+
+        let mut buffer = [0u8; 64];
+        let mut ws = WriteStream::new(&mut buffer);
+        check_err(write_degenerate_probe(&mut ws, &input), "write DegenerateProbe");
+        ws.flush();
+        let n = ws.bytes_processed() as usize;
+        golden_wire("degenerate_probe", &buffer[..n]);
+
+        let mut out = DegenerateProbe::default();
+        let mut rs = ReadStream::new(&buffer, n);
+        check_err(read_degenerate_probe(&mut rs, &mut out), "read DegenerateProbe");
+        check(out == input, "DegenerateProbe round-trips — every value materialized from its range");
+    }
+
     // ---- NarrowBody: the narrowed fixed shallow (SPEC §4.8 rule 2b) ----
     // The pinned tie semantics: quantize rounds to nearest, ties AWAY FROM
     // ZERO — the one fixed-point rounding rule (SPEC §4.8, decided

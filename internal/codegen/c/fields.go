@@ -369,6 +369,20 @@ func (g *gen) emitWriteFixed(f *ir.Field, expr, ind string) {
 		g.unsupported("fixed field %s has no resolved whole-unit bounds", f.Name)
 		return
 	}
+	if lo.Cmp(hi) == 0 {
+		// degenerate range: ZERO bits — the range refusal and no wire call
+		// at all, so no runtime degenerate support is needed (SPEC §4.6,
+		// decided 2026-08-15). The one legal raw is min << F.
+		rawMin := new(big.Int).Lsh(lo, uint(f.Type.FracBits))
+		if f.Type.Width == 128 {
+			g.pf("%sif ( !serialize_int128_equal( %s, %s ) )\n%s{\n%s    return 0;\n%s}\n",
+				ind, expr, g.int128Literal(rawMin), ind, ind, ind)
+		} else {
+			g.pf("%sif ( (serialize_int64_t) %s != %sLL )\n%s{\n%s    return 0;\n%s}\n",
+				ind, expr, rawMin.String(), ind, ind, ind)
+		}
+		return
+	}
 	// through a temp so a narrower storage member widens to the call's type
 	g.pf("%s{\n%s    %s fixed_value = %s;\n", ind, ind, temp, expr)
 	g.call(ind+"    ", fmt.Sprintf("serialize_write_fixed%s( stream, fixed_value, %d, %d, %sLL, %sLL )",
@@ -381,6 +395,17 @@ func (g *gen) emitReadFixed(f *ir.Field, expr, ind string) {
 	lo, hi := f.IntMin, f.IntMax
 	if lo == nil || hi == nil {
 		g.unsupported("fixed field %s has no resolved whole-unit bounds", f.Name)
+		return
+	}
+	if lo.Cmp(hi) == 0 {
+		// degenerate range: zero bits — the value is the range, raw
+		// min << F, materialized with no wire call (SPEC §4.6)
+		rawMin := new(big.Int).Lsh(lo, uint(f.Type.FracBits))
+		if f.Type.Width == 128 {
+			g.pf("%s%s = %s;\n", ind, expr, g.int128Literal(rawMin))
+		} else {
+			g.pf("%s%s = (%s) %sLL;\n", ind, expr, g.storageType(f), rawMin.String())
+		}
 		return
 	}
 	// The temp is REQUIRED on read even where the write could cast inline:
@@ -412,6 +437,12 @@ func (g *gen) emitWrite128(f *ir.Field, expr, ind string) {
 		g.unsupported("int128 field %s has no resolved range — int128 is always ranged (SPEC §4.3)", f.Name)
 		return
 	}
+	if f.IntMin.Cmp(f.IntMax) == 0 {
+		// degenerate range: ZERO bits — refusal only (SPEC §4.6, 2026-08-15)
+		g.pf("%sif ( !serialize_int128_equal( %s, %s ) )\n%s{\n%s    return 0;\n%s}\n",
+			ind, expr, g.int128Literal(f.IntMin), ind, ind, ind)
+		return
+	}
 	g.call(ind, fmt.Sprintf("serialize_write_int128( stream, %s, %s, %s )",
 		expr, g.int128Literal(f.IntMin), g.int128Literal(f.IntMax)))
 }
@@ -423,6 +454,11 @@ func (g *gen) emitRead128(f *ir.Field, expr, ind string) {
 	}
 	if f.IntMin == nil || f.IntMax == nil {
 		g.unsupported("int128 field %s has no resolved range", f.Name)
+		return
+	}
+	if f.IntMin.Cmp(f.IntMax) == 0 {
+		// degenerate range: zero bits — materialize (SPEC §4.6, 2026-08-15)
+		g.pf("%s%s = %s;\n", ind, expr, g.int128Literal(f.IntMin))
 		return
 	}
 	g.call(ind, fmt.Sprintf("serialize_read_int128( stream, &%s, %s, %s )",

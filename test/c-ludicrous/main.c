@@ -142,6 +142,33 @@ int main( void )
                "the untaken branch zeroes the 128-bit member (SPEC §5)" );
     }
 
+    /* ---- DegenerateProbe: min == max costs ZERO bits (SPEC §4.6, 2026-08-15) ----
+       The whole wire is the tail byte; a port that emits ANY bits for a
+       degenerate range shifts it and fails the golden compare. */
+    {
+        DegenerateProbe in, out;
+        memset( &in, 0, sizeof( in ) );
+        in.locked_fixed = -196608;                 /* -3 * 2^16, the ONE legal raw */
+        in.locked_int = 7;
+        in.locked_wide = serialize_int128_from_int64( -12345678901234LL );
+        in.tail = 0xA5;
+
+        serialize_write_stream_init( &w, buffer, sizeof( buffer ) );
+        check( write_degenerate_probe( &w, &in ), "write DegenerateProbe" );
+        serialize_write_flush( &w );
+        check( serialize_write_bytes_processed( &w ) == 1, "three degenerate fields cost zero bits" );
+        golden_wire( "degenerate_probe", buffer, serialize_write_bytes_processed( &w ) );
+
+        memset( &out, 0, sizeof( out ) );
+        serialize_read_stream_init( &r, buffer, serialize_write_bytes_processed( &w ) );
+        check( read_degenerate_probe( &r, &out ), "read DegenerateProbe" );
+        check( out.locked_fixed == -196608, "degenerate fixed materializes from the range alone" );
+        check( out.locked_int == 7, "degenerate int materializes" );
+        check( serialize_int128_equal( out.locked_wide, serialize_int128_from_int64( -12345678901234LL ) ),
+               "degenerate int128 materializes" );
+        check( out.tail == 0xA5, "the tail rides at bit 0" );
+    }
+
     /* ---- Body: the "quantization dissolves" object (SPEC §4.8) ----
        Every [interpolate] field is fixed-component, so no Quantize pair is
        emitted and the shallow wire IS the deep encoding: the same values

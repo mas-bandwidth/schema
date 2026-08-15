@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package ludicrous — protocol id 0x28d607a0ebc5d71c
+// package ludicrous — protocol id 0xd5109966210b5b4b
 
 #pragma once
 
@@ -15,7 +15,7 @@ namespace ludicrous {
 
 // The unit's protocol id — the hash of its schema files (SPEC §3.1). Two
 // sides at the same id speak identical bits; there is no other versioning.
-inline constexpr uint64_t ProtocolId = 0x28d607a0ebc5d71cull;
+inline constexpr uint64_t ProtocolId = 0xd5109966210b5b4bull;
 
 // MessageType: the message set, extracted by the compiler — None = 0, then each message sorted by name (SPEC §4.8)
 enum class MessageType : uint8_t {
@@ -92,6 +92,17 @@ struct LudicrousState {
 
 inline constexpr int64_t LudicrousStateMaxBits = 1205; // longest wire path; align pads at worst case (SPEC §6.1)
 inline constexpr int64_t LudicrousStateMaxBytes = 152; // rounded up to the 8-byte write-buffer granularity
+
+// type DegenerateProbe
+struct DegenerateProbe {
+    int32_t locked_fixed = 0; // fixed(16, 16) — Q16.16, raw value scaled by 2^16; bounds in whole units; wire [-3, -3]
+    int32_t locked_int = 0; // wire [7, 7]
+    serialize::int128_t locked_wide = 0; // wire [-12345678901234, -12345678901234]
+    uint8_t tail = 0;
+};
+
+inline constexpr int64_t DegenerateProbeMaxBits = 8; // longest wire path; align pads at worst case (SPEC §6.1)
+inline constexpr int64_t DegenerateProbeMaxBytes = 8; // rounded up to the 8-byte write-buffer granularity
 
 // type FixedVec [vec3] — the tag is user-chosen and inert in v1; the delta pass
 // claims tags and assigns actions (SPEC §4.2, Type tags)

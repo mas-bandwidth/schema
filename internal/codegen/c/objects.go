@@ -269,6 +269,11 @@ func (g *gen) emitShallowWriteField(f *ir.Field, ind string) {
 			// low 32 bits first, per the wire model)
 			g.pf("%sif ( (serialize_int64_t) %s < %sLL || (serialize_int64_t) %s > %sLL )\n%s{\n%s    return 0;\n%s}\n",
 				ind, member, lo, member, hi, ind, ind, ind)
+			if bits == 0 {
+				// a degenerate component narrows to zero bits — the refusal
+				// above is the whole write (SPEC §4.6, decided 2026-08-15)
+				continue
+			}
 			if bits <= 32 {
 				g.call(ind, fmt.Sprintf("serialize_write_bits( stream, (serialize_uint32_t) ( (serialize_int64_t) %s - (%sLL) ), %d )", member, lo, bits))
 			} else {
@@ -319,6 +324,12 @@ func (g *gen) emitShallowReadField(f *ir.Field, ind string) {
 			member := fmt.Sprintf("value->%s_%s", f.Name, comp.Name)
 			lo, hi, bits, typ := fixedShallowComp(f, comp)
 			span := new(big.Int).Sub(hi, lo)
+			if bits == 0 {
+				// a degenerate component narrows to zero bits — the value is
+				// the range (SPEC §4.6, decided 2026-08-15)
+				g.pf("%s%s = (%s) %sLL;\n", ind, member, typ, lo.String())
+				continue
+			}
 			if bits <= 32 {
 				g.pf("%s{\n%s    serialize_uint32_t raw = 0;\n", ind, ind)
 				g.call(ind+"    ", fmt.Sprintf("serialize_read_bits( stream, &raw, %d )", bits))

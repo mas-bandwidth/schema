@@ -163,7 +163,13 @@ func (g *gen) emitViewReadField(f *ir.Field, v ir.View, ind string) {
 		st := f.Type.Ref.(*ir.Struct)
 		for _, comp := range st.Fields {
 			compName := name + "_" + comp.Name
-			lo, hi, _, wide, compT, width := fixedShallowComp(f, comp)
+			lo, hi, bits, wide, compT, width := fixedShallowComp(f, comp)
+			if bits == 0 {
+				// a degenerate component narrows to zero bits — the value is
+				// the range (SPEC §4.6, decided 2026-08-15)
+				g.pf("%s%s = %s;\n", ind, compName, rustIntLit(lo, width))
+				continue
+			}
 			if wide {
 				g.pf("%s{\n%s    let mut component_value: i64 = 0;\n", ind, ind)
 				g.pf("%s    stream.serialize_int64(&mut component_value, %s, %s)?;\n", ind, rustIntLit(lo, 64), rustIntLit(hi, 64))
