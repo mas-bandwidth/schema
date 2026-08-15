@@ -390,7 +390,7 @@ func (g *gen) emitWriteField(f *ir.Field, ind string) {
 			// to the per-byte loop (its internal align is zero bits here) and
 			// block-copies instead of 8-bit packing; borrowed in place via
 			// WriteStream::write_bytes, as the length-prefixed fields already are
-			g.pf("%sstream.write_bytes(&%s)?; // byte-aligned [N]u8 — bulk copy, wire-identical to the per-byte loop\n", ind, name)
+			g.pf("%sstream.write_bytes(&%s); // byte-aligned [N]u8 — bulk copy, wire-identical to the per-byte loop (infallible: returns () in serialize.rs 2.0.0)\n", ind, name)
 			return
 		}
 		if f.Array == ir.ArrayCounted {
@@ -544,7 +544,7 @@ func (g *gen) emitWriteScalar(f *ir.Field, name, ind string) {
 		// takes &[u8] (same wire as serialize_bytes — align, then the block copy),
 		// where the unified &mut signature forced a whole-array copy into a mutable
 		// local first — 256 B per chat, 2 KB per block, visible in perf (2026-08-06)
-		g.pf("%sstream.write_bytes(&%s[..%s_length as usize])?; // borrowed in place: the write side never mutates\n", ind, name, name)
+		g.pf("%sstream.write_bytes(&%s[..%s_length as usize]); // borrowed in place: the write side never mutates (infallible: returns () in serialize.rs 2.0.0)\n", ind, name, name)
 	case ir.TNamed:
 		switch ref := f.Type.Ref.(type) {
 		case *ir.Enum:

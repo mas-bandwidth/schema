@@ -66,6 +66,26 @@ jobs:
       - name: make test
         run: make test RUSTUP_BIN=/usr/bin
 
+      # The committed generated/ tree is what this repo treats as ground
+      # truth — findings are receipted against its line numbers — and until
+      # now nothing ever proved it matches what the current generator emits.
+      # `make test` above regenerated every tracked file IN PLACE, so
+      # staleness is precisely a dirty tree here: a tracked file that
+      # changed, or a newly emitted file nobody committed (which a diff-only
+      # check would miss). Locally: `make generated-current`.
+      - name: generated tree is current
+        run: |
+          git diff --exit-code generated/ || {
+            echo "::error::committed generated/ tree is stale — the current compiler emits different text. Run 'make test' (or ./bin/schema generate --lang <lang> --out generated/<dir> <corpus>) and commit the regenerated files."
+            exit 1
+          }
+          untracked=$(git status --porcelain generated/)
+          if [ -n "$untracked" ]; then
+            echo "$untracked"
+            echo "::error::the generator emitted files that are not committed under generated/ — add them."
+            exit 1
+          fi
+
       # Seeded corpus only — a short, bounded run that re-executes every
       # crasher ever found and checks the compiler still refuses bad input
       # cleanly. The long fuzzing campaigns run by hand, not on every push.

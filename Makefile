@@ -214,6 +214,25 @@ update-goldens: build/schema_test build/schema_test_variant build/schema_test_lu
 bench:
 	bench/run.sh
 
+# Prove the COMMITTED generated/ tree matches what the current compiler
+# emits (issue #30). `make test` regenerates every tracked generated file in
+# place, so staleness is precisely a dirty tree afterwards — a tracked file
+# that changed, or a newly emitted file nobody committed. CI runs the same
+# two checks after its make test step.
+generated-current: test
+	@git diff --exit-code generated/ || { \
+		echo "committed generated/ tree is STALE — the current compiler emits different text."; \
+		echo "review the diff above, then commit the regenerated files."; \
+		exit 1; \
+	}
+	@untracked=$$(git status --porcelain generated/); \
+	if [ -n "$$untracked" ]; then \
+		echo "$$untracked"; \
+		echo "the generator emitted files that are not committed under generated/ — add them."; \
+		exit 1; \
+	fi
+	@echo "generated/ tree is current"
+
 check: bin/schema
 	./bin/schema check examples
 	./bin/schema check examples128
@@ -232,4 +251,4 @@ fmt: bin/schema
 clean:
 	rm -rf bin build generated
 
-.PHONY: all test check id fmt clean update-goldens bench
+.PHONY: all test check id fmt clean update-goldens bench generated-current
