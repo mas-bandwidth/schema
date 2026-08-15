@@ -304,7 +304,12 @@ func TestDiagnostics(t *testing.T) {
 			src: "package t\ntype T { x float32 [min = 1" + strings.Repeat("0", 400) + ", max = 1.0, resolution = 0.1] }\n"},
 		{name: "compressed float min -Inf at float64, negated integer literal", want: "does not fit float64",
 			src: "package t\ntype T { x float32 [min = -1" + strings.Repeat("0", 400) + ", max = 1.0, resolution = 0.1] }\n"},
-		{name: "compressed float max +Inf at float64, through a const", want: "does not fit float64",
+		// The through-a-const vehicle is refused EARLIER since the #22 guard
+		// landed: an implicitly-typed const past int64 fails at its own
+		// declaration, so the float64-finiteness arm can no longer be reached
+		// through a const — the schema is refused either way, and the float64
+		// arm keeps its coverage via the integer-literal cases beside this one.
+		{name: "compressed float max +Inf at float64, through a const", want: "does not fit int64, the default constant storage",
 			src: "package t\nconst Big = 1" + strings.Repeat("0", 400) + "\ntype T { x float32 [min = 0.0, max = Big, resolution = 0.1] }\n"},
 		{name: "compressed float resolution +Inf at float64, integer literal", want: "does not fit float64",
 			src: "package t\ntype T { x float32 [min = 0.0, max = 1.0, resolution = 1" + strings.Repeat("0", 400) + "] }\n"},
