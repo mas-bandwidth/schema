@@ -714,7 +714,7 @@ pub fn write_test_data(stream: &mut WriteStream<'_>, value: &TestData) -> Result
         stream.serialize_bits64(&mut offset_value, 41)?;
     }
     stream.serialize_align()?;
-    stream.write_bytes(&value.fixed_bytes)?; // byte-aligned [N]u8 — bulk copy, wire-identical to the per-byte loop
+    stream.write_bytes(&value.fixed_bytes); // byte-aligned [N]u8 — bulk copy, wire-identical to the per-byte loop (infallible: returns () in serialize.rs 2.0.0)
     if value.text_length < 0 || value.text_length > 255 { // refused, not wrapped or panicked: guards the slice too
         return Err(Error::Stream(serialize::Error::ValueOutOfRange));
     }
@@ -726,7 +726,7 @@ pub fn write_test_data(stream: &mut WriteStream<'_>, value: &TestData) -> Result
         let mut offset_value = value.text_length as u32;
         stream.serialize_bits(&mut offset_value, 8)?; // the length guards the slice (§6.3)
     }
-    stream.write_bytes(&value.text[..value.text_length as usize])?; // borrowed in place: the write side never mutates
+    stream.write_bytes(&value.text[..value.text_length as usize]); // borrowed in place: the write side never mutates (infallible: returns () in serialize.rs 2.0.0)
     Ok(())
 }
 
