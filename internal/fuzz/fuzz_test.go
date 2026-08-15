@@ -33,21 +33,32 @@ import (
 	"github.com/mas-bandwidth/schema/internal/codegen/csharp"
 	"github.com/mas-bandwidth/schema/internal/codegen/golang"
 	"github.com/mas-bandwidth/schema/internal/codegen/rust"
+	"github.com/mas-bandwidth/schema/internal/ir"
 	"github.com/mas-bandwidth/schema/internal/parser"
 )
 
-// drive runs the full pipeline over the named sources. It returns nothing:
-// the assertion is that it does not panic. A parse or check failure is a
-// NORMAL outcome (most fuzz inputs are not valid schemas) and stops the run
-// early, exactly as the real compiler does.
-func drive(t *testing.T, srcs map[string]string) {
-	t.Helper()
+// backends is the full emitter set, shared by drive and the compile fuzz
+// (compile_test.go) so a sixth backend added here is fuzzed automatically.
+var backends = []struct {
+	name     string
+	generate func(*ir.Unit) (map[string][]byte, error)
+}{
+	{"cpp", func(u *ir.Unit) (map[string][]byte, error) { return cpp.Generate(u, cpp.Options{}) }},
+	{"csharp", csharp.Generate},
+	{"golang", golang.Generate},
+	{"rust", rust.Generate},
+	{"c", cgen.Generate},
+}
+
+// unitOf runs parse+check over the named sources. A parse or check failure is
+// a NORMAL outcome (most fuzz inputs are not valid schemas) and returns nil,
+// exactly as the real compiler stops; a PANIC is the bug we are hunting.
+func unitOf(srcs map[string]string) *ir.Unit {
 	var files []check.SourceFile
 	for name, src := range srcs {
-		// A parse error is fine; a parser PANIC is the bug we are hunting.
 		ast, perrs := parser.Parse(name, []byte(src))
 		if len(perrs) > 0 || ast == nil {
-			return
+			return nil
 		}
 		base := strings.TrimSuffix(name, ".schema")
 		files = append(files, check.SourceFile{
@@ -55,30 +66,42 @@ func drive(t *testing.T, srcs map[string]string) {
 		})
 	}
 	if len(files) == 0 {
-		return
+		return nil
 	}
 	unit, cerrs := check.Unit(files)
-	if len(cerrs) > 0 || unit == nil {
+	if len(cerrs) > 0 {
+		return nil
+	}
+	return unit
+}
+
+// drive runs the full pipeline over the named sources. A unit that CHECKS
+// must generate in every target — and every target is driven even when
+// another errors, because "cpp refused this input" says nothing about whether
+// rust survives it (the old early-return left four backends unfuzzed on any
+// input the first backend rejected). Reaching generation with input that then
+// panics a backend means the checker accepted something it should have
+// rejected — the most valuable class this harness finds, because in
+// production it is an accepted schema that breaks a build.
+//
+// Absence-of-panic is no longer the only oracle: every byte map a backend
+// returns goes through checkGenerated (oracle_test.go), so an emitter that
+// "succeeds" by producing a duplicate definition or unparseable Go now fails
+// here instead of in a consumer's build.
+func drive(t *testing.T, srcs map[string]string) {
+	t.Helper()
+	unit := unitOf(srcs)
+	if unit == nil {
 		return
 	}
-	// A unit that CHECKS must generate in every target. Reaching here with
-	// input that then panics a backend means the checker accepted something
-	// it should have rejected — the most valuable class this harness finds,
-	// because in production it is an accepted schema that breaks a build.
-	if _, err := cpp.Generate(unit, cpp.Options{}); err != nil {
-		return
-	}
-	if _, err := csharp.Generate(unit); err != nil {
-		return
-	}
-	if _, err := golang.Generate(unit); err != nil {
-		return
-	}
-	if _, err := rust.Generate(unit); err != nil {
-		return
-	}
-	if _, err := cgen.Generate(unit); err != nil {
-		return
+	for _, b := range backends {
+		out, err := b.generate(unit)
+		if err != nil {
+			// A reported error on a checked unit is tolerated (targets may
+			// refuse target-specific shapes); the panic is the bug.
+			continue
+		}
+		checkGenerated(t, b.name, out)
 	}
 }
 

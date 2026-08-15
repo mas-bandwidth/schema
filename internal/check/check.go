@@ -263,6 +263,15 @@ func (c *checker) resolveConst(name string, usePos ast.Pos) *ir.Const {
 				e.state = 3
 				return nil
 			}
+		} else if !fitsStorage(v, out.Storage) {
+			// an implicitly-typed constant defaults to int64 storage and was
+			// never held to it: a value past the int64 range reached every
+			// backend as an int64 constant it cannot represent — an
+			// unrepresentable (or constexpr-narrowing) literal in C, C++ and
+			// C# (found by FuzzGeneratedCompiles, issue #22)
+			c.errf(e.decl.Pos, "constant %s value %s does not fit int64, the default constant storage — declare an explicit type (const %s uint64 = ...) if a wider range is intended", name, v, name)
+			e.state = 3
+			return nil
 		}
 	}
 	e.state = 2
