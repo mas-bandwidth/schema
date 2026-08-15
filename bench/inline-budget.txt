@@ -126,7 +126,13 @@ cs rigidbody_moving write default 2
 cs rigidbody_moving read default 5
 cs rigidbody_at_rest write default 2
 cs rigidbody_at_rest read default 5
-cs chat write default 3
+# cs chat write raised 3 -> 4 on 2026-08-16: serialize.cs 1.3.0 (the wstring
+# UTF-16 code-unit rework + reader refusals, its PR #12) landed between two
+# CI runs with byte-identical generated cs bench code — the pre-1.3.0 run
+# measured 3, the 1.3.0 run measured 4 on the CI runner and locally alike.
+# A runtime-version firing, told apart manually per issue #25, accepted as
+# the new pinned cost; not a schema-side regression.
+cs chat write default 4
 cs chat read default 4
 cs test write default 2
 cs test read default 3
