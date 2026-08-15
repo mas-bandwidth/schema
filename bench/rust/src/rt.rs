@@ -41,7 +41,10 @@ struct RtBenchPacket {
     blob: [u8; 17],
 }
 
-fn serialize_rt_packet<S: Stream>(s: &mut S, p: &mut RtBenchPacket) -> serialize::Result {
+// serialize.rs 2.0.0: the canonical generic signature returns Result<(), S::Error>,
+// so the write/measure instantiations are statically infallible and every `?`
+// in them compiles to nothing (the read instantiation stays fully checked).
+fn serialize_rt_packet<S: Stream>(s: &mut S, p: &mut RtBenchPacket) -> serialize::Result<(), S::Error> {
     s.serialize_int(&mut p.a, -100, 100)?;
     s.serialize_int(&mut p.b, 0, 65535)?;
     s.serialize_int(&mut p.c, -1000000, 1000000)?;
@@ -71,7 +74,7 @@ struct RtBenchInts {
     f9: i32,
 }
 
-fn serialize_rt_ints<S: Stream>(s: &mut S, f: &mut RtBenchInts) -> serialize::Result {
+fn serialize_rt_ints<S: Stream>(s: &mut S, f: &mut RtBenchInts) -> serialize::Result<(), S::Error> {
     s.serialize_int(&mut f.f0, -100, 100)?;
     s.serialize_int(&mut f.f1, 0, 65535)?;
     s.serialize_int(&mut f.f2, -1000000, 1000000)?;
@@ -97,7 +100,7 @@ struct RtBenchBits {
     b48: u64,
 }
 
-fn serialize_rt_bits<S: Stream>(s: &mut S, f: &mut RtBenchBits) -> serialize::Result {
+fn serialize_rt_bits<S: Stream>(s: &mut S, f: &mut RtBenchBits) -> serialize::Result<(), S::Error> {
     s.serialize_bits(&mut f.b7, 7)?;
     s.serialize_bits(&mut f.b13, 13)?;
     s.serialize_bits(&mut f.b23, 23)?;
@@ -124,7 +127,7 @@ struct RtBenchMixed {
     weapon: i32,
 }
 
-fn serialize_rt_mixed<S: Stream>(s: &mut S, f: &mut RtBenchMixed) -> serialize::Result {
+fn serialize_rt_mixed<S: Stream>(s: &mut S, f: &mut RtBenchMixed) -> serialize::Result<(), S::Error> {
     s.serialize_int(&mut f.sequence, 0, 65535)?;
     s.serialize_bits(&mut f.ack_bits, 32)?;
     s.serialize_bits(&mut f.entity_id, 12)?;
