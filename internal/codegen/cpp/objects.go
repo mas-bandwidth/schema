@@ -35,6 +35,19 @@ func (g *gen) emitObjectMaxBits(d *ir.Object) {
 	g.pf("inline constexpr int64_t %sMaxBytes = %d; // rounded up to the 8-byte write-buffer granularity\n\n", shName, ir.MaxBytes(shBits))
 }
 
+// voidIfEmpty emits (void) casts for params when no statement has been
+// emitted since mark — a view function over zero wire components must not
+// strand its parameters, or every -Wall -Wextra -Werror consumer breaks
+// (found by FuzzGeneratedCompiles, issue #22).
+func (g *gen) voidIfEmpty(mark int, params ...string) {
+	if g.body.Len() != mark {
+		return
+	}
+	for _, p := range params {
+		g.pf("    (void) %s;\n", p)
+	}
+}
+
 func (g *gen) emitObjectWire(d *ir.Object) {
 	g.needsSerialize = true
 
@@ -53,27 +66,35 @@ func (g *gen) emitObjectWire(d *ir.Object) {
 	// triple serializes as a bare float here (SPEC §4.8)
 	deepName := d.Name + "Data_Deep"
 	g.pf("inline bool Write%s( serialize::WriteStream & stream, const %s & value )\n{\n", deepName, deepName)
+	mark := g.body.Len()
 	for _, f := range deep {
 		g.emitViewWriteField(f, viewDeep, "    ")
 	}
+	g.voidIfEmpty(mark, "stream", "value")
 	g.pf("    return true;\n}\n\n")
 	g.pf("inline bool Read%s( serialize::ReadStream & stream, %s & value )\n{\n", deepName, deepName)
+	mark = g.body.Len()
 	for _, f := range deep {
 		g.emitViewReadField(f, viewDeep, "    ")
 	}
+	g.voidIfEmpty(mark, "stream", "value")
 	g.pf("    return true;\n}\n\n")
 
 	// ---- Shallow: the [interpolate] fields on the quantized wire
 	shName := d.Name + "Data_Shallow"
 	g.pf("inline bool Write%s( serialize::WriteStream & stream, const %s & value )\n{\n", shName, shName)
+	mark = g.body.Len()
 	for _, f := range interp {
 		g.emitViewWriteField(f, viewShallow, "    ")
 	}
+	g.voidIfEmpty(mark, "stream", "value")
 	g.pf("    return true;\n}\n\n")
 	g.pf("inline bool Read%s( serialize::ReadStream & stream, %s & value )\n{\n", shName, shName)
+	mark = g.body.Len()
 	for _, f := range interp {
 		g.emitViewReadField(f, viewShallow, "    ")
 	}
+	g.voidIfEmpty(mark, "stream", "value")
 	g.pf("    return true;\n}\n\n")
 
 }
@@ -103,13 +124,24 @@ func (g *gen) emitObjectQuantize(d *ir.Object) {
 	shName := d.Name + "Data_Shallow"
 	inName := d.Name + "Data_Interpolate"
 	g.pf("inline void Quantize%s( const %s & input, %s & output )\n{\n", d.Name, inName, shName)
+	mark := g.body.Len()
 	for _, f := range interp {
 		g.emitQuantizeField(f, "    ")
 	}
+	if g.body.Len() == mark {
+		// a quantized property over a type with no numeric components emits
+		// no statements; keep -Werror consumers building (found by
+		// FuzzGeneratedCompiles, issue #22)
+		g.pf("    (void) input;\n    (void) output; // no numeric components to quantize\n")
+	}
 	g.pf("}\n\n")
 	g.pf("inline void Unquantize%s( const %s & input, %s & output )\n{\n", d.Name, shName, inName)
+	mark = g.body.Len()
 	for _, f := range interp {
 		g.emitUnquantizeField(f, "    ")
+	}
+	if g.body.Len() == mark {
+		g.pf("    (void) input;\n    (void) output; // no numeric components to unquantize\n")
 	}
 	g.pf("}\n\n")
 }

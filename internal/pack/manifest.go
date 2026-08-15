@@ -310,7 +310,7 @@ func loadJSON(path string) (map[string]any, error) {
 		return nil, err
 	}
 	var obj map[string]any
-	dec := json.NewDecoder(strings.NewReader(stripTrailingCommas(string(data))))
+	dec := json.NewDecoder(strings.NewReader(StripTrailingCommas(string(data))))
 	dec.UseNumber() // full-range uint64 values must survive exactly (json.Number)
 	if err := dec.Decode(&obj); err != nil {
 		return nil, fmt.Errorf("%s: %w", path, err)
@@ -318,12 +318,14 @@ func loadJSON(path string) (map[string]any, error) {
 	return obj, nil
 }
 
-// stripTrailingCommas makes the game's flatbuffers-JSON dialect strict:
+// StripTrailingCommas makes the game's flatbuffers-JSON dialect strict:
 // flatc's parser tolerates a comma before a closing } or ] (the shipped
 // config files use it liberally) and strict JSON does not. String-aware —
 // a comma inside a quoted string is never touched. This is the dialect
 // adapter's whole extent: the files carry no comments (checked 2026-08-11).
-func stripTrailingCommas(s string) string {
+// Exported so the fuzzer (internal/fuzz) drives the exact dialect the data
+// compiler reads rather than an approximation of it.
+func StripTrailingCommas(s string) string {
 	var b strings.Builder
 	b.Grow(len(s))
 	inString := false
