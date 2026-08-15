@@ -425,16 +425,19 @@ func (p *parser) parseScalar() ast.ScalarType {
 		signed := t.Text[0] == 'i'
 		width, _ := strconv.Atoi(strings.TrimPrefix(strings.TrimPrefix(t.Text, "uint"), "int"))
 		return ast.ScalarType{Kind: ast.ScalarInt, Signed: signed, Width: width, Pos: t.Pos}
-	case scanner.KwFixed:
-		// fixed(I, F) — the Q format is the type's shape, so it is positional
-		// like bits(N)/string(N) (SPEC §4.2, the positional/attribute line)
+	case scanner.KwFixed, scanner.KwUfixed:
+		// fixed(I, F) / ufixed(I, F) — the Q format is the type's shape, so it
+		// is positional like bits(N)/string(N) (SPEC §4.2, the
+		// positional/attribute line); the u prefix names the storage's
+		// signedness, the integer family's own int/uint precedent (§9 q17,
+		// closed 2026-08-15)
 		p.advance()
 		p.expect(scanner.LParen, "(")
 		i := p.parseExpr()
 		p.expect(scanner.Comma, ",")
 		f := p.parseExpr()
 		p.expect(scanner.RParen, ")")
-		return ast.ScalarType{Kind: ast.ScalarFixed, Arg: i, Arg2: f, Pos: t.Pos}
+		return ast.ScalarType{Kind: ast.ScalarFixed, Signed: t.Kind == scanner.KwFixed, Arg: i, Arg2: f, Pos: t.Pos}
 	case scanner.KwBool:
 		p.advance()
 		return ast.ScalarType{Kind: ast.ScalarBool, Pos: t.Pos}

@@ -324,6 +324,62 @@ static class Program
             Check(!ReadNarrowBodyData_Shallow(hRs, hOut), "a smuggled narrowed offset is REJECTED");
         }
 
+        // ---- UnsignedProbe: ufixed(I, F), the unsigned sibling (SPEC §4.3;
+        // Glenn 2026-08-15: "ufixed is fine", closing §9 q17) ----
+        // Span's raw value fills ulong's HIGH HALF (above 2^63) — the
+        // unsigned SerializeFixed overloads carry it natively, and the
+        // C++-pinned golden is the gate. Values mirror
+        // test/ludicrous_main.cpp block for block.
+        {
+            Check(UnsignedProbeMaxBits == 196, "UnsignedProbe worst case");
+
+            UnsignedProbe input = new UnsignedProbe();
+            input.Angle = 2981888;                             // +45.5 * 2^16
+            input.Span = 0xFFFFFFFFFFFF0000UL;                 // raw_max — the ulong HIGH HALF
+            input.Reach = new UInt128Value(0UL, 131071999999UL); // raw_max - 1
+            input.Ticks = 777777;
+            input.Samples[0] = 0;                              // raw_min
+            input.Samples[1] = 1048576;                        // raw_max
+            input.Locked = 196608;                             // 3 * 2^16, the ONE legal raw
+            input.Tail = 0xA5;
+
+            WriteStream ws = NewWriteStream();
+            Check(WriteUnsignedProbe(ws, input), "write UnsignedProbe");
+            byte[] uWire = Data(ws);
+            GoldenWire("unsigned_probe", uWire);
+
+            UnsignedProbe output = new UnsignedProbe();
+            ReadStream rs = new ReadStream(uWire);
+            Check(ReadUnsignedProbe(rs, output), "read UnsignedProbe");
+            Check(output.Angle == 2981888, "angle round-trips");
+            Check(output.Span == 0xFFFFFFFFFFFF0000UL, "the ulong high half round-trips bit-exact");
+            Check(output.Reach == new UInt128Value(0UL, 131071999999UL), "reach round-trips");
+            Check(output.Ticks == 777777, "ticks round-trips");
+            Check(output.Samples[0] == 0 && output.Samples[1] == 1048576, "samples round-trip");
+            Check(output.Locked == 196608, "the degenerate ufixed materializes from the range alone");
+            Check(output.Tail == 0xA5, "the tail rides after zero degenerate bits");
+
+            // the write-side degenerate refusal: any raw but 3 * 2^16 is
+            // refused before a single bit is written
+            UnsignedProbe bad = new UnsignedProbe();
+            bad.Angle = input.Angle; bad.Span = input.Span; bad.Reach = input.Reach;
+            bad.Ticks = input.Ticks; bad.Samples[0] = input.Samples[0]; bad.Samples[1] = input.Samples[1];
+            bad.Locked = 196609; bad.Tail = input.Tail;
+            WriteStream badWs = NewWriteStream();
+            Check(!WriteUnsignedProbe(badWs, bad), "a wrong degenerate ufixed raw is REFUSED on write");
+
+            // hostile: span's 64 offset bits (starting at bit 25) all-ones =
+            // 2^64 - 1, above the raw range 0xFFFFFFFFFFFF0000 — the
+            // headroom is exactly the low 16 bits, and the reject must fire
+            // in the UNSIGNED domain (a signed compare would call the
+            // smuggled value negative)
+            byte[] hostile = (byte[])uWire.Clone();
+            SetBits(hostile, 25, 64);
+            UnsignedProbe hOut = new UnsignedProbe();
+            ReadStream hRs = new ReadStream(hostile);
+            Check(!ReadUnsignedProbe(hRs, hOut), "a smuggled ufixed high-half offset is REJECTED");
+        }
+
         // ---- the message dispatch surface over the new unit ----
         {
             LudicrousState input = MakeState();

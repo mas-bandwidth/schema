@@ -303,8 +303,12 @@ func (e *Encoder) encodeScalar(w *bitWriter, f *ir.Field, val any, fpath string)
 		if !f.HasIntRange {
 			// only a [local] field reaches no wire, and no [local] field is
 			// ever encoded — so this is a compiler bug, not a data error
-			return fmt.Errorf("%s: fixed(%d, %d) carries no [min, max] — the whole-unit bounds are part of the wire format (SPEC §4.3)",
-				fpath, f.Type.IntBits, f.Type.FracBits)
+			spelling := "fixed"
+			if !f.Type.Signed {
+				spelling = "ufixed"
+			}
+			return fmt.Errorf("%s: %s(%d, %d) carries no [min, max] — the whole-unit bounds are part of the wire format (SPEC §4.3)",
+				fpath, spelling, f.Type.IntBits, f.Type.FracBits)
 		}
 		raw, err := e.fixedRaw(f, val, fpath)
 		if err != nil {

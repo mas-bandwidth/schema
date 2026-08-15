@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package ludicrous — protocol id 0xd5109966210b5b4b
+// package ludicrous — protocol id 0xa925c86b46058512
 
 #pragma once
 
@@ -14,7 +14,7 @@ namespace ludicrous {
 
 // The unit's protocol id — the hash of its schema files (SPEC §3.1). Two
 // sides at the same id speak identical bits; there is no other versioning.
-inline constexpr uint64_t ProtocolId = 0xd5109966210b5b4bull;
+inline constexpr uint64_t ProtocolId = 0xa925c86b46058512ull;
 
 // MessageType: the message set, extracted by the compiler — None = 0, then each message sorted by name (SPEC §4.8)
 enum class MessageType : uint8_t {
@@ -62,6 +62,20 @@ struct FixedProbe {
 
 inline constexpr int64_t FixedProbeMaxBits = 156; // longest wire path; align pads at worst case (SPEC §6.1)
 inline constexpr int64_t FixedProbeMaxBytes = 24; // rounded up to the 8-byte write-buffer granularity
+
+// type UnsignedProbe
+struct UnsignedProbe {
+    uint32_t angle = 0; // ufixed(16, 16) — UQ16.16, raw value scaled by 2^16; bounds in whole units; wire [0, 360]
+    uint64_t span = 0; // ufixed(48, 16) — UQ48.16, raw value scaled by 2^16; bounds in whole units; wire [0, 281474976710655]
+    serialize::uint128_t reach = 0; // ufixed(112, 16) — UQ112.16, raw value scaled by 2^16; bounds in whole units; wire [0, 2000000]
+    uint32_t ticks = 0; // ufixed(32, 0) — UQ32.0, raw value scaled by 2^0; bounds in whole units; wire [0, 1000000]
+    uint32_t samples[2] = {}; // ufixed(16, 16) — UQ16.16, raw value scaled by 2^16; bounds in whole units; wire [0, 16]
+    uint32_t locked = 0; // ufixed(16, 16) — UQ16.16, raw value scaled by 2^16; bounds in whole units; wire [3, 3]
+    uint8_t tail = 0;
+};
+
+inline constexpr int64_t UnsignedProbeMaxBits = 196; // longest wire path; align pads at worst case (SPEC §6.1)
+inline constexpr int64_t UnsignedProbeMaxBytes = 32; // rounded up to the 8-byte write-buffer granularity
 
 // type WideProbe
 struct WideProbe {

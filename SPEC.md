@@ -471,12 +471,13 @@ application's choice — netcode-style stacks already carry one.
   `..` wins over `.`).
 - **Reserved words:** `package const enum type message object if
   else switch case align reserved`
-  and the wire-type keywords `bits bool float32 float64 string bytes fixed` plus the
-  integer family `int8 int16 int32 int64 uint8 uint16 uint32 uint64 int128 uint128`
+  and the wire-type keywords `bits bool float32 float64 string bytes fixed ufixed` plus
+  the integer family `int8 int16 int32 int64 uint8 uint16 uint32 uint64 int128 uint128`
   (and `int uint`, reserved so `int` gets a "did you mean int32?" diagnostic instead of
   a parse error). *(`int128`, `uint128` and `fixed` were reserved-for-later until
   2026-08-06, when the serialize runtime's phase-1 surface landed and they went live —
-  §4.3, §4.10.)*
+  §4.3, §4.10. `ufixed` went straight to live 2026-08-15 with q17's ruling; a schema
+  that used the word as a name renames, the standard cost of any keyword landing.)*
   Reserved words cannot be used as names. Attribute keys (`min`, `max`, `resolution`, ...)
   are contextual — they live only inside `[ ]` and are not reserved.
 - **Newlines terminate declarations and fields — there are no semicolons, like Go.** The
@@ -971,7 +972,8 @@ siblings — design inputs, re-verified against library source at implementation
 | `f intN [min = A, max = B]` / `f uintN [min = A, max = B]` | minimal bits for the range, value − A; read rejects out-of-range; **the range must fit the declared storage** | `serialize_int` (≤32-bit int ranges) / `serialize_int64` / width-computed `serialize_bits` for full-unsigned ranges |
 | `f uint128` (bare ONLY) | 128 raw bits — the low 64-bit half first, then the high half; representation-independent (native `__int128` and the emulated two-lane pair produce identical bytes) | `serialize_uint128` |
 | `f int128 [min = A, max = B]` (range REQUIRED) | value − A in `bits_required128(A, B)` bits, 32-bit groups from the bottom; read rejects an offset above B − A — reject, never clamp; **where the range fits 64 bits or fewer the bytes are identical to `serialize_int64` over the same bounds.** Bare `int128` and ranged `uint128` are compile errors — serialize's own surface, mirrored exactly (uint→raw, int→ranged) | `serialize_int128` |
-| `f fixed(I, F) [min = A, max = B]` (range REQUIRED; **SIGNED** — Glenn 2026-08-06, the unsigned spelling is OPEN, §9 q17) | Q I.F, the sign bit counting toward I; storage is a signed integer of exactly I+F bits (I+F ∈ 8/16/32/64/128, I ≥ 1, F ≥ 0); bounds are compile-time WHOLE UNITS fitting the Q format and int64; wire = raw − (A << F) in bitlen(B − A) + F bits, 32-bit groups from the bottom — **except A == B, which costs ZERO bits (not F): the reader materializes raw = A << F from the range alone (DECIDED 2026-08-15, §4.6)**; read rejects above the raw range; round trip is EXACT (no quantization step), and with F = 0 the operation IS a ranged integer | `serialize_fixed` |
+| `f fixed(I, F) [min = A, max = B]` (range REQUIRED; **SIGNED** — Glenn 2026-08-06; the unsigned sibling is the `ufixed` row below, §9 q17 closed 2026-08-15) | Q I.F, the sign bit counting toward I; storage is a signed integer of exactly I+F bits (I+F ∈ 8/16/32/64/128, I ≥ 1, F ≥ 0); bounds are compile-time WHOLE UNITS fitting the Q format and int64; wire = raw − (A << F) in bitlen(B − A) + F bits, 32-bit groups from the bottom — **except A == B, which costs ZERO bits (not F): the reader materializes raw = A << F from the range alone (DECIDED 2026-08-15, §4.6)**; read rejects above the raw range; round trip is EXACT (no quantization step), and with F = 0 the operation IS a ranged integer | `serialize_fixed` |
+| `f ufixed(I, F) [min = A, max = B]` (range REQUIRED; **UNSIGNED** — DECIDED, Glenn 2026-08-15: "ufixed is fine", closing §9 q17 as the explicit-spelling option, the integer family's own int/uint precedent) | UQ I.F: no sign bit, whole-unit domain [0, 2^I); storage is an UNSIGNED integer of exactly I+F bits (I+F ∈ 8/16/32/64/128, I ≥ 1 — the runtime's own unconditional floor — F ≥ 0); bounds are compile-time WHOLE UNITS fitting the unsigned domain and int64 (so I ≥ 63 clamps to int64's ceiling); the wire law is fixed's own — raw − (A << F) in bitlen(B − A) + F bits, A == B costs ZERO bits, read rejects above the raw range, round trip EXACT. The raw values of wide formats legitimately fill uint64's HIGH HALF (above 2^63): every route through a signed-typed runtime API is a bit-exact cast or zero-extension, never sign extension, and the corpus pins that byte-for-byte | `serialize_fixed` (unsigned storage — the codec was storage-generic from its landing) |
 | `f bool` | 1 bit | `serialize_bool` |
 | `f float32` | 32 raw IEEE-754 bits | `serialize_float` |
 | `f float64` | 64 raw bits (low dword first) | `serialize_double` |
@@ -1070,7 +1072,10 @@ All compile errors with positions:
   8, 16, 32, 64 or 128; a `fixed` field requires `[min = A, max = B]` in whole units,
   A ≤ B *(A = B legal since the 2026-08-15 ruling — see the degenerate-ranges bullet)*,
   both fitting the Q format's whole-unit domain [−2^(I−1), 2^(I−1) − 1] AND
-  int64 (where the runtime's compile-time bound parameters live); `int128` requires
+  int64 (where the runtime's compile-time bound parameters live); `ufixed(I, F)`
+  (2026-08-15) carries the same shape rules with the unsigned domain — I ≥ 1 still
+  (the runtime's unconditional floor, unsigned included), bounds in [0, 2^I − 1]
+  clamped to int64's ceiling — and its diagnostics name the `ufixed` spelling; `int128` requires
   `[min = A, max = B]` (bare `int128` is a compile error — serialize has no raw signed
   128-bit operation); `uint128` refuses `min`/`max` (ranged 128-bit is `int128`);
   specified defaults cover `int128`/`uint128` (fit-checked like any integer) and,
@@ -1411,7 +1416,13 @@ gets replaced with fixed point."
    (in-bounds raws cannot overflow the add or the negation: checker-enforced
    bounds leave 2^(F−1) of headroom past any legal raw) — and unquantize is
    the left shift back (dropped bits return as zeros). Components wider than
-   64 bits are a compile error (the arithmetic runs in int64). The deep wire
+   64 bits are a compile error (the arithmetic runs in int64), and so are
+   `ufixed` components (2026-08-15, the landing's stated scope fence): a wide
+   ufixed raw legitimately fills uint64's high half, where these int64 shifts
+   are wrong — the unsigned door needs its own arithmetic before it opens,
+   and the diagnostic says so. Un-narrowed `[interpolate]` composites of
+   ufixed components dissolve fine, because dissolving just delegates to the
+   component encodings. The deep wire
    is untouched: full precision, the component's own ranged fixed encoding.
    Un-narrowed fixed composites keep dissolving per the note above; the two
    forms compose field-by-field in one object.
@@ -1595,11 +1606,15 @@ sets arrived, exactly the boilerplate §4.8 exists to eat.)*
   own goldens), and only then surfaced as this wire type — §4.3 row, §4.6 rules,
   `examples128/` corpus. **SIGNED only** (Glenn, 2026-08-06: fixed point is signed);
   the spelling is positional `fixed(I, F)` because the Q format is the type's shape,
-  the same line `bits(N)`/`string(N)` sit on. **The unsigned spelling is an OPEN
-  question with Glenn (§9 q17)** — derive signedness from `min < 0` vs an explicit
-  `ufixed` — and no syntax is invented ahead of his call. The same landing as the
-  128-bit family (the bullet above): all four backends emit `fixed(I, F)` since
-  2026-08-12, storage a signed integer of exactly I+F bits in every target.
+  the same line `bits(N)`/`string(N)` sit on. **The unsigned spelling LANDED
+  2026-08-15 as `ufixed(I, F)`** (Glenn: "ufixed is fine" — §9 q17 closed as the
+  explicit-spelling option, the integer family's own int/uint precedent; the
+  bounds-derived alternative died of its own record there). The same landing as the
+  128-bit family (the bullet above): all five backends emit both spellings, storage
+  an integer of exactly I+F bits in the type's own signedness in every target, and
+  the `UnsignedProbe` corpus type pins the unsigned wire — including the uint64
+  high-half raws only an unsigned format can produce — byte-for-byte across the
+  five languages.
 - **Wide strings** (`serialize_wstring`): still deferred — no near-term need — but the
   WIRE is now DECIDED so the deferral cannot foreclose it (Glenn, 2026-08-15, the 08-14
   audit's fork 5, accepted as recommended): length, then one unaligned 32-bit group per
@@ -2229,18 +2244,20 @@ measure, §6.1. Both DECIDED.)*
     the same ruling, 2026-08-05.** Externally-derived interop and adoption material is
     out of this repo; the exchange record lives outside it. If a cross-engine
     collaboration ever becomes real work, it starts fresh from what schema IS then.
-17. **The unsigned fixed-point spelling — OPEN with Glenn (2026-08-06).** v1 ships
-    `fixed(I, F)` SIGNED only, his confirmed baseline ("fixed point is signed" — the
-    runtime's `serialize_fixed` accepts unsigned storage, so the wire construct already
-    exists). The open choice is how the language would spell unsigned if it ever wants
-    it: **(a) derive signedness from the bounds** — `min >= 0` means unsigned storage,
-    no new syntax, but a field's storage type then changes when a bound crosses zero —
-    versus **(b) an explicit `ufixed(I, F)`** — one more keyword, storage always
-    manifest in the type name, the integer family's own int/uint precedent. No syntax
-    is invented ahead of his call. The interim costs nothing on the wire — the wire is
-    range-derived either way — signedness only decides which storage widths can host a
-    given non-negative whole-unit domain (signed Q8.8 tops out at 127 units where
-    unsigned reaches 255).
+17. ~~**The unsigned fixed-point spelling**~~ — **DECIDED (Glenn, 2026-08-15: "ufixed
+    is fine")**: option (b), the explicit `ufixed(I, F)` keyword — storage always
+    manifest in the type name, the integer family's own int/uint precedent; §4.3 row,
+    §4.6 rules, all five backends, the `UnsignedProbe` corpus type. Option (a) — derive
+    signedness from `min >= 0` — died of the flaw recorded here since 2026-08-06: a
+    field's storage type silently changing when a bound crosses zero. *(The original
+    question, for the record: v1 shipped `fixed(I, F)` SIGNED only, his confirmed
+    baseline, with the runtime's `serialize_fixed` accepting unsigned storage from its
+    landing — the wire construct existed before the spelling did. Signedness only
+    decides which storage widths host a given non-negative whole-unit domain: signed
+    Q8.8 tops out at 127 units where unsigned reaches 255.)* One scope fence in this
+    landing, recorded at §4.8 rule 2b: shallow narrowing stays signed-only until the
+    unsigned shift arithmetic is designed — un-narrowed `[interpolate]` ufixed
+    composites dissolve fine.
 
 ---
 

@@ -397,13 +397,17 @@ func (g *gen) storageType(f *ir.Field) string {
 	case ir.TFloat64:
 		return "double"
 	case ir.TFixed:
-		// the raw scaled integer, in SIGNED storage of exactly I + F bits --
-		// serialize_fixed's own convention (STANDARD.md, fixed)
+		// the raw scaled integer, in storage of exactly I + F bits with the
+		// type's own signedness -- serialize_fixed's convention (STANDARD.md,
+		// fixed; ufixed landed 2026-08-15)
 		if f.Type.Width == 128 {
 			g.needs128 = true
-			return "serialize_int128_t"
+			if f.Type.Signed {
+				return "serialize_int128_t"
+			}
+			return "serialize_uint128_t"
 		}
-		return cInt(true, f.Type.Width)
+		return cInt(f.Type.Signed, f.Type.Width)
 	case ir.TNamed:
 		return f.Type.Name
 	}

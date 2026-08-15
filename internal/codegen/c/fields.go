@@ -375,15 +375,28 @@ func (g *gen) emitWriteFixed(f *ir.Field, expr, ind string) {
 	if lo.Cmp(hi) == 0 {
 		// degenerate range: ZERO bits — the range refusal and no wire call
 		// at all, so no runtime degenerate support is needed (SPEC §4.6,
-		// decided 2026-08-15). The one legal raw is min << F.
+		// decided 2026-08-15). The one legal raw is min << F, compared in
+		// the storage's own signedness (a wide ufixed raw can live above
+		// INT64_MAX).
 		rawMin := new(big.Int).Lsh(lo, uint(f.Type.FracBits))
-		if f.Type.Width == 128 {
+		switch {
+		case f.Type.Width == 128 && f.Type.Signed:
 			g.pf("%sif ( !serialize_int128_equal( %s, %s ) )\n%s{\n%s    return 0;\n%s}\n",
 				ind, expr, g.int128Literal(rawMin), ind, ind, ind)
-		} else {
+		case f.Type.Width == 128:
+			g.pf("%sif ( !serialize_uint128_equal( %s, %s ) )\n%s{\n%s    return 0;\n%s}\n",
+				ind, expr, uint128Literal(rawMin), ind, ind, ind)
+		case f.Type.Signed:
 			g.pf("%sif ( (serialize_int64_t) %s != %sLL )\n%s{\n%s    return 0;\n%s}\n",
 				ind, expr, rawMin.String(), ind, ind, ind)
+		default:
+			g.pf("%sif ( (serialize_uint64_t) %s != %sULL )\n%s{\n%s    return 0;\n%s}\n",
+				ind, expr, rawMin.String(), ind, ind, ind)
 		}
+		return
+	}
+	if !f.Type.Signed {
+		g.emitWriteUfixed(f, expr, ind)
 		return
 	}
 	// through a temp so a narrower storage member widens to the call's type
@@ -391,6 +404,36 @@ func (g *gen) emitWriteFixed(f *ir.Field, expr, ind string) {
 	g.call(ind+"    ", fmt.Sprintf("serialize_write_fixed%s( stream, fixed_value, %d, %d, %sLL, %sLL )",
 		suffix, f.Type.IntBits, f.Type.FracBits, lo.String(), hi.String()))
 	g.pf("%s}\n", ind)
+}
+
+// emitWriteUfixed routes an unsigned fixed write. The C runtime's fixed
+// entries take SIGNED values and sign-extend them into the shared unsigned
+// 128-bit core, so an unsigned raw must arrive zero-extended: storage of 32
+// bits or fewer zero-extends through the fixed64 entry's int64 value, 64-bit
+// storage zero-extends into the fixed128 entry's low lane, and 128-bit
+// storage bit-casts lane for lane. The wire sees only the raw span — the
+// bounds and F — so the entry width never moves a byte (the core derives the
+// bit count from the span alone, and the signed narrow path already leans on
+// the same property).
+func (g *gen) emitWriteUfixed(f *ir.Field, expr, ind string) {
+	lo, hi := f.IntMin, f.IntMax
+	switch {
+	case f.Type.Width <= 32:
+		g.pf("%s{\n%s    serialize_int64_t fixed_value = (serialize_int64_t) %s;\n", ind, ind, expr)
+		g.call(ind+"    ", fmt.Sprintf("serialize_write_fixed64( stream, fixed_value, %d, %d, %sLL, %sLL )",
+			f.Type.IntBits, f.Type.FracBits, lo.String(), hi.String()))
+		g.pf("%s}\n", ind)
+	case f.Type.Width == 64:
+		g.pf("%s{\n%s    serialize_int128_t fixed_value = serialize_int128_make( 0, %s );\n", ind, ind, expr)
+		g.call(ind+"    ", fmt.Sprintf("serialize_write_fixed128( stream, fixed_value, %d, %d, %sLL, %sLL )",
+			f.Type.IntBits, f.Type.FracBits, lo.String(), hi.String()))
+		g.pf("%s}\n", ind)
+	default:
+		g.pf("%s{\n%s    serialize_int128_t fixed_value = serialize_int128_make( %s.hi, %s.lo );\n", ind, ind, expr, expr)
+		g.call(ind+"    ", fmt.Sprintf("serialize_write_fixed128( stream, fixed_value, %d, %d, %sLL, %sLL )",
+			f.Type.IntBits, f.Type.FracBits, lo.String(), hi.String()))
+		g.pf("%s}\n", ind)
+	}
 }
 
 func (g *gen) emitReadFixed(f *ir.Field, expr, ind string) {
@@ -402,13 +445,23 @@ func (g *gen) emitReadFixed(f *ir.Field, expr, ind string) {
 	}
 	if lo.Cmp(hi) == 0 {
 		// degenerate range: zero bits — the value is the range, raw
-		// min << F, materialized with no wire call (SPEC §4.6)
+		// min << F, materialized with no wire call (SPEC §4.6), in the
+		// storage's own signedness
 		rawMin := new(big.Int).Lsh(lo, uint(f.Type.FracBits))
-		if f.Type.Width == 128 {
+		switch {
+		case f.Type.Width == 128 && f.Type.Signed:
 			g.pf("%s%s = %s;\n", ind, expr, g.int128Literal(rawMin))
-		} else {
+		case f.Type.Width == 128:
+			g.pf("%s%s = %s;\n", ind, expr, uint128Literal(rawMin))
+		case f.Type.Signed:
 			g.pf("%s%s = (%s) %sLL;\n", ind, expr, g.storageType(f), rawMin.String())
+		default:
+			g.pf("%s%s = (%s) %sULL;\n", ind, expr, g.storageType(f), rawMin.String())
 		}
+		return
+	}
+	if !f.Type.Signed {
+		g.emitReadUfixed(f, expr, ind)
 		return
 	}
 	// The temp is REQUIRED on read even where the write could cast inline:
@@ -426,6 +479,31 @@ func (g *gen) emitReadFixed(f *ir.Field, expr, ind string) {
 		return
 	}
 	g.pf("%s    %s = (%s) fixed_value;\n%s}\n", ind, expr, g.storageType(f), ind)
+}
+
+// emitReadUfixed is emitWriteUfixed's read twin: the same per-width entry
+// routing, with the raw recovered from the entry's signed carrier by the
+// inverse bit-exact conversion. A decoded raw is inside the raw bounds or
+// the read already failed, so every narrowing below is lossless.
+func (g *gen) emitReadUfixed(f *ir.Field, expr, ind string) {
+	lo, hi := f.IntMin, f.IntMax
+	switch {
+	case f.Type.Width <= 32:
+		g.pf("%s{\n%s    serialize_int64_t fixed_value = 0;\n", ind, ind)
+		g.call(ind+"    ", fmt.Sprintf("serialize_read_fixed64( stream, &fixed_value, %d, %d, %sLL, %sLL )",
+			f.Type.IntBits, f.Type.FracBits, lo.String(), hi.String()))
+		g.pf("%s    %s = (%s) fixed_value;\n%s}\n", ind, expr, g.storageType(f), ind)
+	case f.Type.Width == 64:
+		g.pf("%s{\n%s    serialize_int128_t fixed_value = serialize_int128_make( 0, 0 );\n", ind, ind)
+		g.call(ind+"    ", fmt.Sprintf("serialize_read_fixed128( stream, &fixed_value, %d, %d, %sLL, %sLL )",
+			f.Type.IntBits, f.Type.FracBits, lo.String(), hi.String()))
+		g.pf("%s    %s = fixed_value.lo;\n%s}\n", ind, expr, ind)
+	default:
+		g.pf("%s{\n%s    serialize_int128_t fixed_value = serialize_int128_make( 0, 0 );\n", ind, ind)
+		g.call(ind+"    ", fmt.Sprintf("serialize_read_fixed128( stream, &fixed_value, %d, %d, %sLL, %sLL )",
+			f.Type.IntBits, f.Type.FracBits, lo.String(), hi.String()))
+		g.pf("%s    %s = serialize_uint128_make( fixed_value.hi, fixed_value.lo );\n%s}\n", ind, expr, ind)
+	}
 }
 
 // ---- 128-bit integers ----

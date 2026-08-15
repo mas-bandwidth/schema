@@ -882,31 +882,42 @@ func (c *checker) resolveField(kind declKind, owner string, f *ast.Field) *ir.Fi
 		}
 		out.Type = ir.FieldType{Kind: ir.TBits, Width: int(w)}
 	case ast.ScalarFixed:
-		// fixed(I, F) — SIGNED (Glenn, 2026-08-06: "fixed point is signed");
-		// the storage is an integer of exactly I+F bits and the sign bit
-		// counts toward I, mirroring serialize_fixed's static_asserts
-		// (SPEC §4.3, §4.6). The unsigned spelling is an OPEN question (§9).
+		// fixed(I, F) — SIGNED (Glenn, 2026-08-06: "fixed point is signed") —
+		// and its unsigned sibling ufixed(I, F) (Glenn, 2026-08-15: "ufixed is
+		// fine", closing §9 q17): the storage is an integer of exactly I+F
+		// bits; for fixed the sign bit counts toward I, for ufixed there is no
+		// sign bit and the whole-unit domain is [0, 2^I). Both mirror
+		// serialize_fixed's static_asserts (SPEC §4.3, §4.6) — I >= 1 is the
+		// runtime's own unconditional requirement, unsigned included.
+		spelling := "fixed"
+		if !f.Type.Signed {
+			spelling = "ufixed"
+		}
 		iv, ok1 := c.evalInt(f.Type.Arg)
 		fv, ok2 := c.evalInt(f.Type.Arg2)
 		if !ok1 || !ok2 {
 			return nil
 		}
 		if !iv.IsInt64() || iv.Int64() < 1 {
-			c.errf(f.Type.Pos, "fixed(%s, %s): at least one integer bit is required — the sign bit counts toward I (SPEC §4.6)", iv, fv)
+			if f.Type.Signed {
+				c.errf(f.Type.Pos, "fixed(%s, %s): at least one integer bit is required — the sign bit counts toward I (SPEC §4.6)", iv, fv)
+			} else {
+				c.errf(f.Type.Pos, "ufixed(%s, %s): at least one integer bit is required — the runtime's own floor, unsigned included (SPEC §4.6)", iv, fv)
+			}
 			return nil
 		}
 		if fv.Sign() < 0 || !fv.IsInt64() {
-			c.errf(f.Type.Pos, "fixed(%s, %s): fractional bits cannot be negative (SPEC §4.6)", iv, fv)
+			c.errf(f.Type.Pos, "%s(%s, %s): fractional bits cannot be negative (SPEC §4.6)", spelling, iv, fv)
 			return nil
 		}
 		total := iv.Int64() + fv.Int64()
 		switch total {
 		case 8, 16, 32, 64, 128:
 		default:
-			c.errf(f.Type.Pos, "fixed(%s, %s): I + F = %d must equal a storage width — 8, 16, 32, 64 or 128 (SPEC §4.6)", iv, fv, total)
+			c.errf(f.Type.Pos, "%s(%s, %s): I + F = %d must equal a storage width — 8, 16, 32, 64 or 128 (SPEC §4.6)", spelling, iv, fv, total)
 			return nil
 		}
-		out.Type = ir.FieldType{Kind: ir.TFixed, Signed: true, Width: int(total),
+		out.Type = ir.FieldType{Kind: ir.TFixed, Signed: f.Type.Signed, Width: int(total),
 			IntBits: int(iv.Int64()), FracBits: int(fv.Int64())}
 	case ast.ScalarString, ast.ScalarBytes:
 		n, ok := c.evalInt(f.Type.Arg)
@@ -1008,8 +1019,8 @@ func (c *checker) resolveField(kind declKind, owner string, f *ast.Field) *ir.Fi
 		}
 	}
 	if !out.Local && !attempted && out.Type.Kind == ir.TFixed && !out.HasIntRange {
-		c.errf(f.Pos, "field %s: fixed(%d, %d) requires [min = A, max = B] — the whole-unit bounds are part of the wire format, exactly like a ranged integer's (SPEC §4.3)",
-			f.Name, out.Type.IntBits, out.Type.FracBits)
+		c.errf(f.Pos, "field %s: %s(%d, %d) requires [min = A, max = B] — the whole-unit bounds are part of the wire format, exactly like a ranged integer's (SPEC §4.3)",
+			f.Name, fixedSpelling(out.Type.Signed), out.Type.IntBits, out.Type.FracBits)
 		return nil
 	}
 	if !out.Local && !attempted && out.Type.Kind == ir.TInt && out.Type.Width == 128 && out.Type.Signed && !out.HasIntRange {
@@ -1091,7 +1102,7 @@ func (c *checker) resolveDefault(f *ast.Field, out *ir.Field) {
 		scaled.SetMantExp(scaled, out.Type.FracBits) // scaled = v * 2^F (SetMantExp uses its mant argument as-is)
 		raw, acc := scaled.Int(nil)
 		if acc != big.Exact {
-			c.errf(f.Default.ExprPos(), "field %s: default %g is not exactly representable in Q%d.%d — a fixed default must scale to an integer with no rounding (units × 2^%d)", f.Name, v, out.Type.IntBits, out.Type.FracBits, out.Type.FracBits)
+			c.errf(f.Default.ExprPos(), "field %s: default %g is not exactly representable in %s — a fixed default must scale to an integer with no rounding (units × 2^%d)", f.Name, v, qFormatName(out.Type), out.Type.FracBits)
 			return
 		}
 		if out.HasIntRange {
@@ -1377,13 +1388,14 @@ func (c *checker) resolveAttrs(kind declKind, owner string, f *ast.Field, out *i
 		}
 		if isFixed {
 			// the bounds are WHOLE UNITS and must be representable in the Q
-			// format — Q I.F with the sign bit in I — and in int64, where the
-			// runtime's compile-time bound parameters live (serialize_fixed's
-			// static_asserts, restated as language rules — SPEC §4.6)
-			lo, hi := fixedUnitBounds(out.Type.IntBits)
+			// format — Q I.F with the sign bit in I for fixed, [0, 2^I) for
+			// ufixed — and in int64, where the runtime's compile-time bound
+			// parameters live (serialize_fixed's static_asserts, restated as
+			// language rules — SPEC §4.6)
+			lo, hi := fixedUnitBounds(out.Type.Signed, out.Type.IntBits)
 			if vmin.Cmp(lo) < 0 || vmax.Cmp(hi) > 0 {
-				c.errf(f.Pos, "field %s: bounds [%s, %s] whole units do not fit fixed(%d, %d) — Q%d.%d holds [%s, %s] (SPEC §4.6)",
-					f.Name, vmin, vmax, out.Type.IntBits, out.Type.FracBits, out.Type.IntBits, out.Type.FracBits, lo, hi)
+				c.errf(f.Pos, "field %s: bounds [%s, %s] whole units do not fit %s(%d, %d) — %s holds [%s, %s] (SPEC §4.6)",
+					f.Name, vmin, vmax, fixedSpelling(out.Type.Signed), out.Type.IntBits, out.Type.FracBits, qFormatName(out.Type), lo, hi)
 				return
 			}
 		} else {
@@ -1428,6 +1440,20 @@ func (c *checker) checkCompositeQuantize(f *ast.Field, out *ir.Field, byKey map[
 		// shift; no max here — the shallow bound derives from each
 		// component's own whole-unit [min, max], which every component must
 		// therefore declare.
+		//
+		// SIGNED components only in this landing: rule 2b's generated
+		// narrowing runs through int64 shifts, and a ufixed raw may occupy
+		// the u64 high half where those shifts are wrong — the unsigned door
+		// needs its own arithmetic before it opens (SPEC §4.8 rule 2b;
+		// plain [interpolate] ufixed composites dissolve fine, because
+		// dissolving just delegates to the component encodings).
+		for _, cf := range st.Fields {
+			if !cf.Type.Signed {
+				c.errf(a.Pos, "fixed-composite shallow narrowing is signed fixed(I, F) only — %s.%s is ufixed(%d, %d); an un-narrowed [interpolate] composite of ufixed components is fine (SPEC §4.8 rule 2b)",
+					st.Name, cf.Name, cf.Type.IntBits, cf.Type.FracBits)
+				return
+			}
+		}
 		if hasMax || hasMin || hasRes {
 			c.errf(a.Pos, "fixed-composite quantization is [interpolate, quantize = K] alone — the bound comes from the components' own [min, max], not the field (SPEC §4.8 rule 2b)")
 			return
@@ -1515,11 +1541,30 @@ func (c *checker) checkCompositeQuantize(f *ast.Field, out *ir.Field, byKey map[
 	out.QuantBound = int64(math.Round(bound))
 }
 
-// fixedUnitBounds is the whole-unit domain of a signed Q I.F format —
-// [-2^(I-1), 2^(I-1) - 1] — clamped to int64, where serialize_fixed's
-// compile-time MinUnits/MaxUnits parameters live (SPEC §4.6).
-func fixedUnitBounds(intBits int) (*big.Int, *big.Int) {
-	lo, hi := storageBounds(true, intBits)
+// fixedSpelling names the source spelling of a fixed-point type: the sign is
+// part of the name, the integer family's own int/uint precedent (SPEC §4.3).
+func fixedSpelling(signed bool) string {
+	if signed {
+		return "fixed"
+	}
+	return "ufixed"
+}
+
+// qFormatName is the Q-notation twin of fixedSpelling: Q I.F signed,
+// UQ I.F unsigned.
+func qFormatName(t ir.FieldType) string {
+	if t.Signed {
+		return fmt.Sprintf("Q%d.%d", t.IntBits, t.FracBits)
+	}
+	return fmt.Sprintf("UQ%d.%d", t.IntBits, t.FracBits)
+}
+
+// fixedUnitBounds is the whole-unit domain of a Q I.F format — signed
+// [-2^(I-1), 2^(I-1) - 1] (the sign bit counts toward I), unsigned
+// [0, 2^I - 1] — clamped to int64, where serialize_fixed's compile-time
+// MinUnits/MaxUnits parameters live in every runtime (SPEC §4.6).
+func fixedUnitBounds(signed bool, intBits int) (*big.Int, *big.Int) {
+	lo, hi := storageBounds(signed, intBits)
 	i64lo, i64hi := storageBounds(true, 64)
 	if lo.Cmp(i64lo) < 0 {
 		lo = i64lo
@@ -1695,7 +1740,7 @@ func (c *checker) checkTables() {
 			case f.Type.Kind == ir.TInt && f.Type.Width == 128:
 				bad = "int128/uint128"
 			case f.Type.Kind == ir.TFixed:
-				bad = "fixed(I, F)"
+				bad = fixedSpelling(f.Type.Signed) + "(I, F)"
 			case f.Type.Kind == ir.TBits && f.Type.Width > 64:
 				bad = fmt.Sprintf("bits(%d)", f.Type.Width)
 			}

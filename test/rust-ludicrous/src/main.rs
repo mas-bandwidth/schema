@@ -327,6 +327,62 @@ fn main() {
         );
     }
 
+    // ---- UnsignedProbe: ufixed(I, F), the unsigned sibling (SPEC §4.3;
+    // Glenn 2026-08-15: "ufixed is fine", closing §9 q17) ----
+    // span's raw value fills u64's HIGH HALF (above 2^63) — native unsigned
+    // storage here, and the C++-pinned golden is the gate. Values mirror
+    // test/ludicrous_main.cpp block for block.
+    {
+        check(UNSIGNED_PROBE_MAX_BITS == 196, "UnsignedProbe worst case");
+
+        let mut input = UnsignedProbe::default();
+        input.angle = 2981888; // +45.5 * 2^16
+        input.span = 0xFFFF_FFFF_FFFF_0000; // raw_max — the u64 HIGH HALF
+        input.reach = 131071999999; // raw_max - 1
+        input.ticks = 777777;
+        input.samples[0] = 0; // raw_min
+        input.samples[1] = 1048576; // raw_max
+        input.locked = 196608; // 3 * 2^16, the ONE legal raw
+        input.tail = 0xA5;
+
+        let mut buffer = [0u8; 64];
+        let mut ws = WriteStream::new(&mut buffer);
+        check_err(write_unsigned_probe(&mut ws, &input), "write UnsignedProbe");
+        ws.flush();
+        let n = ws.bytes_processed() as usize;
+        golden_wire("unsigned_probe", &buffer[..n]);
+
+        let mut out = UnsignedProbe::default();
+        let mut rs = ReadStream::new(&buffer, n);
+        check_err(read_unsigned_probe(&mut rs, &mut out), "read UnsignedProbe");
+        check(out == input, "UnsignedProbe round-trips — the u64 high half bit-exact");
+
+        // the write-side degenerate refusal: any raw but 3 * 2^16 is refused
+        // before a single bit is written
+        let mut bad = input;
+        bad.locked = 196609;
+        let mut bad_buffer = [0u8; 64];
+        let mut bad_ws = WriteStream::new(&mut bad_buffer);
+        check(
+            write_unsigned_probe(&mut bad_ws, &bad).is_err(),
+            "a wrong degenerate ufixed raw is REFUSED on write",
+        );
+
+        // hostile: span's 64 offset bits (starting at bit 25) all-ones =
+        // 2^64 - 1, above the raw range 0xFFFFFFFFFFFF0000 — the headroom is
+        // exactly the low 16 bits, and the reject must fire in the UNSIGNED
+        // domain (a signed compare would call the smuggled value negative)
+        let mut hostile = [0u8; 25];
+        hostile.copy_from_slice(&buffer[..n]);
+        set_bits(&mut hostile, 25, 64);
+        let mut h_out = UnsignedProbe::default();
+        let mut h_rs = ReadStream::new(&hostile, n);
+        check(
+            read_unsigned_probe(&mut h_rs, &mut h_out).is_err(),
+            "a smuggled ufixed high-half offset is REJECTED",
+        );
+    }
+
     // ---- the message dispatch surface over the new unit ----
     {
         let input = make_state();

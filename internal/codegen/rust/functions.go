@@ -364,8 +364,17 @@ func (g *gen) emitWriteRangeGuard(name string, f *ir.Field, ind string) {
 func (g *gen) emitWriteFixedRawGuard(name string, f *ir.Field, ind string) {
 	rawMin := new(big.Int).Lsh(f.IntMin, uint(f.Type.FracBits))
 	rawMax := new(big.Int).Lsh(f.IntMax, uint(f.Type.FracBits))
-	smin := new(big.Int).Neg(new(big.Int).Lsh(big.NewInt(1), uint(f.Type.Width-1)))
-	smax := new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), uint(f.Type.Width-1)), big.NewInt(1))
+	var smin, smax *big.Int
+	if f.Type.Signed {
+		smin = new(big.Int).Neg(new(big.Int).Lsh(big.NewInt(1), uint(f.Type.Width-1)))
+		smax = new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), uint(f.Type.Width-1)), big.NewInt(1))
+	} else {
+		// unsigned storage: the raw domain is [0, 2^W), so a zero lower
+		// bound is vacuous (uN cannot be negative) and the compare literals
+		// stay plain decimals the storage type infers
+		smin = big.NewInt(0)
+		smax = new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), uint(f.Type.Width)), big.NewInt(1))
+	}
 	loVacuous := rawMin.Cmp(smin) <= 0
 	hiVacuous := rawMax.Cmp(smax) >= 0
 	switch {
@@ -621,9 +630,10 @@ func (g *gen) emitReadScalar(f *ir.Field, name, ind string) {
 	case ir.TFixed:
 		if f.IntMin.Cmp(f.IntMax) == 0 {
 			// degenerate range: zero bits — the value is the range, raw
-			// min << F, materialized with no wire call (SPEC §4.6)
+			// min << F, materialized with no wire call (SPEC §4.6), in the
+			// storage's own signedness
 			rawMin := new(big.Int).Lsh(f.IntMin, uint(f.Type.FracBits))
-			g.pf("%s%s = %s;\n", ind, name, rustIntLit(rawMin, f.Type.Width))
+			g.pf("%s%s = %s;\n", ind, name, rustIntLitStorage(rawMin, f.Type.Signed, f.Type.Width))
 			return
 		}
 		// the runtime validates the raw offset against the raw bounds and

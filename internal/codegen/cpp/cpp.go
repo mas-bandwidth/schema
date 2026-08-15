@@ -702,6 +702,11 @@ func (g *gen) initializer(f *ir.Field, typ string, isStructType bool) string {
 			if f.Type.Kind == ir.TInt && f.Type.Width == 128 {
 				return " = " + g.render128(f.DefExpr, f.DefInt, f.Type.Signed)
 			}
+			if f.Type.Kind == ir.TFixed && f.Type.Width == 128 && !f.Type.Signed {
+				// the default expression is in WHOLE UNITS; DefInt is the raw
+				// scaled integer, which for wide ufixed can exceed int64
+				return " = " + g.render128(nil, f.DefInt, false)
+			}
 			return " = " + g.renderInt(f.DefExpr, f.DefInt)
 		}
 	}
@@ -728,8 +733,12 @@ func (g *gen) initializer(f *ir.Field, typ string, isStructType bool) string {
 func (g *gen) fieldComment(f *ir.Field) string {
 	var parts []string
 	if f.Type.Kind == ir.TFixed {
-		parts = append(parts, fmt.Sprintf("fixed(%d, %d) — Q%d.%d, raw value scaled by 2^%d; bounds in whole units",
-			f.Type.IntBits, f.Type.FracBits, f.Type.IntBits, f.Type.FracBits, f.Type.FracBits))
+		spelling, q := "fixed", "Q"
+		if !f.Type.Signed {
+			spelling, q = "ufixed", "UQ"
+		}
+		parts = append(parts, fmt.Sprintf("%s(%d, %d) — %s%d.%d, raw value scaled by 2^%d; bounds in whole units",
+			spelling, f.Type.IntBits, f.Type.FracBits, q, f.Type.IntBits, f.Type.FracBits, f.Type.FracBits))
 	}
 	if f.HasIntRange {
 		parts = append(parts, fmt.Sprintf("wire [%s, %s]", f.IntMin, f.IntMax))
@@ -779,13 +788,18 @@ func (g *gen) cppFieldType(t ir.FieldType) (string, bool) {
 		}
 		return cppInt2(t.Signed, t.Width), false
 	case ir.TFixed:
-		// the raw scaled integer, in signed storage of exactly I+F bits —
-		// serialize_fixed's own storage convention (STANDARD.md, fixed)
+		// the raw scaled integer, in storage of exactly I+F bits whose
+		// signedness is the type's own — serialize_fixed's storage
+		// convention (STANDARD.md, fixed; the runtime's codec is storage
+		// generic, so ufixed rides the same macro with unsigned storage)
 		if t.Width == 128 {
 			g.needsSerialize = true
-			return "serialize::int128_t", false
+			if t.Signed {
+				return "serialize::int128_t", false
+			}
+			return "serialize::uint128_t", false
 		}
-		return cppInt2(true, t.Width), false
+		return cppInt2(t.Signed, t.Width), false
 	case ir.TBits:
 		if t.Width <= 32 {
 			return "uint32_t", false

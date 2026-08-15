@@ -648,12 +648,20 @@ func (g *gen) csFieldType(t ir.FieldType) string {
 		}
 		return csUint(t.Width)
 	case ir.TFixed:
-		// raw scaled integer in signed storage of exactly I+F bits —
-		// serialize's own fixed storage convention (STANDARD.md, fixed)
+		// raw scaled integer in storage of exactly I+F bits, the type's own
+		// signedness — serialize's fixed storage convention (STANDARD.md,
+		// fixed); SerializeFixed overload resolution picks the unsigned
+		// codec from the unsigned storage type
 		if t.Width == 128 {
-			return "Int128Value"
+			if t.Signed {
+				return "Int128Value"
+			}
+			return "UInt128Value"
 		}
-		return csInt(t.Width)
+		if t.Signed {
+			return csInt(t.Width)
+		}
+		return csUint(t.Width)
 	case ir.TBits:
 		if t.Width <= 32 {
 			return "uint"

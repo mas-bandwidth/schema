@@ -119,6 +119,30 @@ func TestDiagnostics(t *testing.T) {
 		// fixed defaults are LEGAL since 2026-08-12 (whole units, exact) — the
 		// old rejection case lives on as the good corner below; what stays
 		// illegal is inexactness and range violation (cases at the bottom).
+		// ---- ufixed(I, F): the unsigned sibling (Glenn, 2026-08-15: "ufixed
+		// is fine" — §9 q17 closed). Same shape rules, unsigned domain, and
+		// the diagnostics name the ufixed spelling. ----
+		{name: "ufixed bounds below zero", want: "do not fit ufixed(16, 16)",
+			src: "package t\ntype T { x ufixed(16, 16) [min = -1, max = 5] }\n"},
+		{name: "ufixed with zero integer bits", want: "at least one integer bit",
+			src: "package t\ntype T { x ufixed(0, 32) [min = 0, max = 1] }\n"},
+		{name: "ufixed I+F is not a storage width", want: "must equal a storage width",
+			src: "package t\ntype T { x ufixed(16, 15) [min = 0, max = 1] }\n"},
+		{name: "ufixed without bounds", want: "ufixed(48, 16) requires [min = A, max = B]",
+			src: "package t\ntype T { x ufixed(48, 16) }\n"},
+		{name: "ufixed bounds above the unsigned domain", want: "do not fit ufixed(8, 8)",
+			src: "package t\ntype T { x ufixed(8, 8) [min = 0, max = 300] }\n"},
+		{name: "ufixed(64, 0) bounds clamp at int64's ceiling", want: "do not fit ufixed(64, 0)",
+			src: "package t\ntype T { x ufixed(64, 0) [min = 0, max = 18446744073709551615] }\n"},
+		{name: "ufixed default below its unsigned range", want: "outside its range",
+			src: "package t\ntype T { x ufixed(16, 16) [min = 0, max = 5] = -1.0 }\n"},
+		{name: "ufixed in a table closure", want: "ufixed(I, F) has no table-wire kind",
+			src: "package t\ntable T { x ufixed(16, 16) [min = 0, max = 5] }\n"},
+		{name: "ufixed components do not narrow (rule 2b is signed-only)", want: "signed fixed(I, F) only",
+			src: "package t\ntype V { x ufixed(16, 16) [min = 0, max = 5]\n y ufixed(16, 16) [min = 0, max = 5] }\nobject O { p V [interpolate, quantize = 256] \n b bool }\n"},
+		{name: "ufixed with resolution", want: "resolution applies to float",
+			src: "package t\ntype T { x ufixed(16, 16) [min = 0, max = 1, resolution = 0.1] }\n"},
+
 		{name: "bare int128", want: "int128 requires",
 			src: "package t\ntype T { x int128 }\n"},
 		{name: "uint128 with a range", want: "not valid on uint128",
@@ -373,6 +397,12 @@ func TestGoodCornersStillCompile(t *testing.T) {
 			src: "package t\ntype T { n uint64 [min = 0, max = 18446744073709551615] }\n"},
 		{name: "fixed at every storage width, F = 0, and the sign-bit-only corner",
 			src: "package t\ntype T {\n    a fixed(8, 8) [min = -100, max = 100]\n    b fixed(16, 16) [min = -180, max = 180]\n    c fixed(32, 0) [min = 0, max = 1000000]\n    d fixed(48, 16) [min = -30000, max = 30000]\n    e fixed(112, 16) [min = -1000000, max = 1000000]\n    f fixed(1, 63) [min = -1, max = 0]\n}\n"},
+		{name: "ufixed at every storage width, the full unsigned domains, and the one-bit corner",
+			src: "package t\ntype T {\n    a ufixed(8, 8) [min = 0, max = 255]\n    b ufixed(16, 16) [min = 0, max = 360]\n    c ufixed(32, 0) [min = 0, max = 4294967295]\n    d ufixed(48, 16) [min = 0, max = 281474976710655]\n    e ufixed(112, 16) [min = 0, max = 2000000]\n    f ufixed(1, 63) [min = 0, max = 1]\n    g ufixed(16, 16) [min = 3, max = 3]\n}\n"},
+		{name: "ufixed default in whole units, exactly representable",
+			src: "package t\ntype T { x ufixed(2, 30) [min = 0, max = 1] = 1.0 \n y ufixed(16, 16) [min = 0, max = 100] = 0.5 }\n"},
+		{name: "un-narrowed ufixed composite dissolves (rule 2, sign-agnostic delegation)",
+			src: "package t\ntype V { x ufixed(48, 16) [min = 0, max = 100]\n y ufixed(48, 16) [min = 0, max = 100] }\nobject O { p V [interpolate] \n b bool }\n"},
 		{name: "int128 with a range only 128 bits can hold, and raw uint128",
 			src: "package t\ntype T {\n    flux int128 [min = -1267650600228229401496703205376, max = 1267650600228229401496703205376]\n    id   uint128\n}\n"},
 		{name: "128-bit defaults inside their range",

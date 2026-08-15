@@ -299,11 +299,16 @@ func (g *gen) emitWriteScalar(f *ir.Field, name, ind string) {
 			// degenerate range: ZERO bits — the §5 misuse assert and no wire
 			// call at all, so no runtime degenerate support is needed
 			// (SPEC §4.6, decided 2026-08-15). The one legal raw is min << F.
+			// The compare runs in the storage's own signedness: a wide ufixed
+			// raw can live above int64, where the signed cast would mangle it.
 			rawMin := new(big.Int).Lsh(f.IntMin, uint(f.Type.FracBits))
-			if f.Type.Width == 128 {
-				g.pf("%sserialize_assert( %s == %s );\n", ind, name, g.render128(nil, rawMin, true))
-			} else {
+			switch {
+			case f.Type.Width == 128:
+				g.pf("%sserialize_assert( %s == %s );\n", ind, name, g.render128(nil, rawMin, f.Type.Signed))
+			case f.Type.Signed:
 				g.pf("%sserialize_assert( int64_t( %s ) == %s );\n", ind, name, cppInt64Lit(rawMin))
+			default:
+				g.pf("%sserialize_assert( uint64_t( %s ) == %sull );\n", ind, name, rawMin.String())
 			}
 			return
 		}
@@ -455,13 +460,18 @@ func (g *gen) emitReadScalar(f *ir.Field, name, ind string) {
 	case ir.TFixed:
 		if f.IntMin.Cmp(f.IntMax) == 0 {
 			// degenerate range: zero bits — the value is the range, raw
-			// min << F, materialized with no wire call (SPEC §4.6)
+			// min << F, materialized with no wire call (SPEC §4.6); the
+			// literal rides the storage's own signedness
 			rawMin := new(big.Int).Lsh(f.IntMin, uint(f.Type.FracBits))
-			if f.Type.Width == 128 {
-				g.pf("%s%s = %s;\n", ind, name, g.render128(nil, rawMin, true))
-			} else {
+			switch {
+			case f.Type.Width == 128:
+				g.pf("%s%s = %s;\n", ind, name, g.render128(nil, rawMin, f.Type.Signed))
+			case f.Type.Signed:
 				typ, _ := g.cppFieldType(f.Type)
 				g.pf("%s%s = %s( %s );\n", ind, name, typ, cppInt64Lit(rawMin))
+			default:
+				typ, _ := g.cppFieldType(f.Type)
+				g.pf("%s%s = %s( %sull );\n", ind, name, typ, rawMin.String())
 			}
 			return
 		}
