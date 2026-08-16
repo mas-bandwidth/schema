@@ -171,7 +171,9 @@ DEBUG_FLAGS="-O0 -g -DSERIALIZE_DEBUG $COMMON_FLAGS"
 # header, so this row carries a call boundary the header-only C++ runtime does
 # not have. That is a property of the runtime's packaging, not of the
 # generated code; bench/README.md says so where the numbers live.
-C_COMMON_FLAGS="-std=c99 -Wall -Wextra -Werror -Igenerated/c -I$SERIALIZE_C"
+# -Igenerated/bench/c: the bench-corpus generated code (RealWorldWire.h —
+# the §1.7 realistic snapshot the real_packet rows measure).
+C_COMMON_FLAGS="-std=c99 -Wall -Wextra -Werror -Igenerated/c -Igenerated/bench/c -I$SERIALIZE_C"
 C_RELEASE_FLAGS="-$OPT_LEVEL -DNDEBUG -DBENCH_OPT=\"$OPT_LEVEL\" $C_COMMON_FLAGS"
 C_DEBUG_FLAGS="-O0 -g $C_COMMON_FLAGS"
 
