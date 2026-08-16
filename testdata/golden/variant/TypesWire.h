@@ -17,6 +17,30 @@
 
 namespace example {
 
+#ifndef SCHEMA_READ_INLINE_DEFINED
+#define SCHEMA_READ_INLINE_DEFINED
+// SCHEMA_READ_INLINE — how every generated Read function is spelled.
+// Default: plain `inline`, exactly what this emitter always produced.
+// Define SCHEMA_READ_SPINE_DEMAND to make the generated read path DEMAND
+// inlining (always_inline / __forceinline), the serialize family's remedy
+// for LLVM's fallible-chain frequency decay: each Ok/Err split is priced
+// at ~even odds, block frequency decays geometrically down a read chain,
+// and later call sites are held to the cold-callsite inline threshold.
+// Branch-weight hints are NOT the fix here — measured in this family to
+// invite the machine outliner into the hot bodies. Do not add them.
+#if defined( SCHEMA_READ_SPINE_DEMAND )
+#if defined( _MSC_VER )
+#define SCHEMA_READ_INLINE __forceinline
+#elif defined( __GNUC__ ) || defined( __clang__ )
+#define SCHEMA_READ_INLINE inline __attribute__(( always_inline ))
+#else
+#define SCHEMA_READ_INLINE inline
+#endif
+#else
+#define SCHEMA_READ_INLINE inline
+#endif
+#endif // SCHEMA_READ_INLINE_DEFINED
+
 inline bool WriteVec3( serialize::WriteStream & stream, const Vec3 & value )
 {
     write_double( stream, value.x );
@@ -25,7 +49,7 @@ inline bool WriteVec3( serialize::WriteStream & stream, const Vec3 & value )
     return true;
 }
 
-inline bool ReadVec3( serialize::ReadStream & stream, Vec3 & value )
+SCHEMA_READ_INLINE bool ReadVec3( serialize::ReadStream & stream, Vec3 & value )
 {
     read_double( stream, value.x );
     read_double( stream, value.y );
@@ -42,7 +66,7 @@ inline bool WriteQuat( serialize::WriteStream & stream, const Quat & value )
     return true;
 }
 
-inline bool ReadQuat( serialize::ReadStream & stream, Quat & value )
+SCHEMA_READ_INLINE bool ReadQuat( serialize::ReadStream & stream, Quat & value )
 {
     read_double( stream, value.x );
     read_double( stream, value.y );
@@ -59,7 +83,7 @@ inline bool WriteHandle( serialize::WriteStream & stream, const Handle & value )
     return true;
 }
 
-inline bool ReadHandle( serialize::ReadStream & stream, Handle & value )
+SCHEMA_READ_INLINE bool ReadHandle( serialize::ReadStream & stream, Handle & value )
 {
     read_int( stream, value.object_id, 0, MaxObjects - 1 );
     {
@@ -81,7 +105,7 @@ inline bool WriteQuantizedPosition( serialize::WriteStream & stream, const Quant
     return true;
 }
 
-inline bool ReadQuantizedPosition( serialize::ReadStream & stream, QuantizedPosition & value )
+SCHEMA_READ_INLINE bool ReadQuantizedPosition( serialize::ReadStream & stream, QuantizedPosition & value )
 {
     read_int( stream, value.x, -MaxPositionUnits, MaxPositionUnits );
     read_int( stream, value.y, -MaxPositionUnits, MaxPositionUnits );
@@ -100,7 +124,7 @@ inline bool WriteQuantizedVelocity( serialize::WriteStream & stream, const Quant
     return true;
 }
 
-inline bool ReadQuantizedVelocity( serialize::ReadStream & stream, QuantizedVelocity & value )
+SCHEMA_READ_INLINE bool ReadQuantizedVelocity( serialize::ReadStream & stream, QuantizedVelocity & value )
 {
     read_int( stream, value.x, -MaxVelocityUnits, MaxVelocityUnits );
     read_int( stream, value.y, -MaxVelocityUnits, MaxVelocityUnits );
@@ -121,7 +145,7 @@ inline bool WriteQuantizedRotation( serialize::WriteStream & stream, const Quant
     return true;
 }
 
-inline bool ReadQuantizedRotation( serialize::ReadStream & stream, QuantizedRotation & value )
+SCHEMA_READ_INLINE bool ReadQuantizedRotation( serialize::ReadStream & stream, QuantizedRotation & value )
 {
     {
         int32_t range_value = 0;
@@ -171,7 +195,7 @@ inline bool WriteRigidBody( serialize::WriteStream & stream, const RigidBody & v
     return true;
 }
 
-inline bool ReadRigidBody( serialize::ReadStream & stream, RigidBody & value )
+SCHEMA_READ_INLINE bool ReadRigidBody( serialize::ReadStream & stream, RigidBody & value )
 {
     if ( !ReadVec3( stream, value.position ) )
     {
@@ -219,7 +243,7 @@ inline bool WriteInput( serialize::WriteStream & stream, const Input & value )
     return true;
 }
 
-inline bool ReadInput( serialize::ReadStream & stream, Input & value )
+SCHEMA_READ_INLINE bool ReadInput( serialize::ReadStream & stream, Input & value )
 {
     read_float( stream, value.stick_x );
     read_float( stream, value.stick_y );
@@ -254,7 +278,7 @@ inline bool WriteInputPacket( serialize::WriteStream & stream, const InputPacket
     return true;
 }
 
-inline bool ReadInputPacket( serialize::ReadStream & stream, InputPacket & value )
+SCHEMA_READ_INLINE bool ReadInputPacket( serialize::ReadStream & stream, InputPacket & value )
 {
     {
         uint32_t raw_value = 0;
@@ -306,7 +330,7 @@ inline bool WriteShipCreate( serialize::WriteStream & stream, const ShipCreate &
     return true;
 }
 
-inline bool ReadShipCreate( serialize::ReadStream & stream, ShipCreate & value )
+SCHEMA_READ_INLINE bool ReadShipCreate( serialize::ReadStream & stream, ShipCreate & value )
 {
     {
         int32_t enum_value = 0;

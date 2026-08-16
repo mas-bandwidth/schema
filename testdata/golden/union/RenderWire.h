@@ -15,6 +15,30 @@
 
 namespace example {
 
+#ifndef SCHEMA_READ_INLINE_DEFINED
+#define SCHEMA_READ_INLINE_DEFINED
+// SCHEMA_READ_INLINE — how every generated Read function is spelled.
+// Default: plain `inline`, exactly what this emitter always produced.
+// Define SCHEMA_READ_SPINE_DEMAND to make the generated read path DEMAND
+// inlining (always_inline / __forceinline), the serialize family's remedy
+// for LLVM's fallible-chain frequency decay: each Ok/Err split is priced
+// at ~even odds, block frequency decays geometrically down a read chain,
+// and later call sites are held to the cold-callsite inline threshold.
+// Branch-weight hints are NOT the fix here — measured in this family to
+// invite the machine outliner into the hot bodies. Do not add them.
+#if defined( SCHEMA_READ_SPINE_DEMAND )
+#if defined( _MSC_VER )
+#define SCHEMA_READ_INLINE __forceinline
+#elif defined( __GNUC__ ) || defined( __clang__ )
+#define SCHEMA_READ_INLINE inline __attribute__(( always_inline ))
+#else
+#define SCHEMA_READ_INLINE inline
+#endif
+#else
+#define SCHEMA_READ_INLINE inline
+#endif
+#endif // SCHEMA_READ_INLINE_DEFINED
+
 inline bool WriteRenderSprite( serialize::WriteStream & stream, const RenderSprite & value )
 {
     write_bits( stream, value.sort_key, 64 );
@@ -26,7 +50,7 @@ inline bool WriteRenderSprite( serialize::WriteStream & stream, const RenderSpri
     return true;
 }
 
-inline bool ReadRenderSprite( serialize::ReadStream & stream, RenderSprite & value )
+SCHEMA_READ_INLINE bool ReadRenderSprite( serialize::ReadStream & stream, RenderSprite & value )
 {
     read_bits( stream, value.sort_key, 64 );
     read_bits( stream, value.mesh_id, 32 );
@@ -60,7 +84,7 @@ inline bool WriteRenderBlock( serialize::WriteStream & stream, const RenderBlock
     return true;
 }
 
-inline bool ReadRenderBlock( serialize::ReadStream & stream, RenderBlock & value )
+SCHEMA_READ_INLINE bool ReadRenderBlock( serialize::ReadStream & stream, RenderBlock & value )
 {
     read_bits( stream, value.worker_index, 32 );
     read_bits( stream, value.sprite_count_hint, 32 );

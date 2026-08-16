@@ -344,6 +344,10 @@ func (g *gen) emitWireFile() {
 		}
 	}
 
+	if g.fileEmitsReads() {
+		g.emitReadInlineMacro()
+	}
+
 	if fileHasStrings(g.file) {
 		g.emitUtf8Validator()
 	}
