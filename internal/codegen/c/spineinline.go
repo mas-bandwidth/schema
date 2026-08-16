@@ -16,15 +16,14 @@ func (g *gen) fileEmitsWire() bool {
 	return g.file.Base == g.msgOwner && len(g.unit.Messages) > 0
 }
 
-// emitSpineInlineMacros emits the wire-spine inlining switches every generated
+// emitSpineInlineMacros emits the wire-spine inlining demand every generated
 // read/write function is spelled with (SCHEMA_C_READ_INLINE /
-// SCHEMA_C_WRITE_INLINE, beside `static SCHEMA_UNUSED`). Default OFF: both
-// expand to nothing, token-identical to what this emitter always produced, so
-// an undefined switch changes nothing. Armed (-DSCHEMA_C_READ_SPINE_DEMAND /
-// -DSCHEMA_C_WRITE_SPINE_DEMAND), the generated read / write spine demands
-// inlining the way the serialize family's per-field spines do (serialize.c
-// SERIALIZE_ALWAYS_INLINE — both halves; the C++ generated read spine's
-// SCHEMA_READ_SPINE_DEMAND, schema 99120c2).
+// SCHEMA_C_WRITE_INLINE, beside `static SCHEMA_UNUSED`): always_inline /
+// __forceinline, unconditionally, the way the serialize family's per-field
+// spines demand it (serialize.c SERIALIZE_ALWAYS_INLINE — both halves; the
+// C++ generated read spine's SCHEMA_READ_INLINE). Compilers with neither
+// spelling get nothing — plain `static`, exactly what this emitter emitted
+// before the demand existed (C89 has no inline keyword to fall back on).
 //
 // Why the demand exists (remark evidence, Apple clang 21, -O3, schema bench):
 // the generated per-message entries are header-static functions in the
@@ -37,8 +36,12 @@ func (g *gen) fileEmitsWire() bool {
 // the measured C small-message call-boundary class: C rows 3-4.5x slower on
 // probe_header-sized messages. Unlike the C++ read-spine case this is not
 // the fallible-chain frequency decay — it is a plain cost-over-threshold
-// refusal, the same in both directions, hence a write twin the C++ switch
-// does not need. The demand is a DEMAND, not a branch-weight hint:
+// refusal, the same in both directions, hence the demand covers both. Both
+// halves shipped first as default-off switches, then swept their tournament
+// A/Bs with zero regressions across 34 rows (tournament-air; the write half's
+// rigidbody_moving write +1016%; reconfirmed confirmation-air r2), so per the
+// feature lifecycle the winners became unconditional code and the switches
+// were deleted. The demand is a DEMAND, not a branch-weight hint:
 // __builtin_expect-style cold hints were measured in this family to activate
 // the machine outliner and shred hot bodies (bits write -25%) — do not swap
 // this for hints. Guarded against redefinition because several wire headers
@@ -46,35 +49,21 @@ func (g *gen) fileEmitsWire() bool {
 func (g *gen) emitSpineInlineMacros() {
 	g.pf("#ifndef SCHEMA_C_SPINE_INLINE_DEFINED\n#define SCHEMA_C_SPINE_INLINE_DEFINED\n")
 	g.pf("/* SCHEMA_C_READ_INLINE / SCHEMA_C_WRITE_INLINE — how every generated wire\n")
-	g.pf("   function is spelled, beside `static SCHEMA_UNUSED`. Default: both expand\n")
-	g.pf("   to nothing — token-identical to what this emitter always produced.\n")
-	g.pf("   Define SCHEMA_C_READ_SPINE_DEMAND / SCHEMA_C_WRITE_SPINE_DEMAND to make\n")
-	g.pf("   the generated read / write spine DEMAND inlining (always_inline /\n")
-	g.pf("   __forceinline), the serialize family's remedy for LLVM refusing the\n")
-	g.pf("   header-static per-message entries into small-message call sites at\n")
-	g.pf("   marginal cost over the hot-callsite inline threshold. Branch-weight\n")
-	g.pf("   hints are NOT the fix here — measured in this family to invite the\n")
-	g.pf("   machine outliner into the hot bodies. Do not add them. */\n")
-	g.pf("#if defined( SCHEMA_C_READ_SPINE_DEMAND )\n")
+	g.pf("   function is spelled, beside `static SCHEMA_UNUSED`: an inlining DEMAND\n")
+	g.pf("   (always_inline / __forceinline), the serialize family's remedy for LLVM\n")
+	g.pf("   refusing the header-static per-message entries into small-message call\n")
+	g.pf("   sites at marginal cost over the hot-callsite inline threshold. Measured\n")
+	g.pf("   and shipped; compilers with neither spelling get plain `static`.\n")
+	g.pf("   Branch-weight hints are NOT the fix here — measured in this family to\n")
+	g.pf("   invite the machine outliner into the hot bodies. Do not add them. */\n")
 	g.pf("#if defined( _MSC_VER )\n")
 	g.pf("#define SCHEMA_C_READ_INLINE __forceinline\n")
-	g.pf("#elif defined( __GNUC__ ) || defined( __clang__ )\n")
-	g.pf("#define SCHEMA_C_READ_INLINE inline __attribute__(( always_inline ))\n")
-	g.pf("#else\n")
-	g.pf("#define SCHEMA_C_READ_INLINE\n")
-	g.pf("#endif\n")
-	g.pf("#else\n")
-	g.pf("#define SCHEMA_C_READ_INLINE\n")
-	g.pf("#endif\n")
-	g.pf("#if defined( SCHEMA_C_WRITE_SPINE_DEMAND )\n")
-	g.pf("#if defined( _MSC_VER )\n")
 	g.pf("#define SCHEMA_C_WRITE_INLINE __forceinline\n")
 	g.pf("#elif defined( __GNUC__ ) || defined( __clang__ )\n")
+	g.pf("#define SCHEMA_C_READ_INLINE inline __attribute__(( always_inline ))\n")
 	g.pf("#define SCHEMA_C_WRITE_INLINE inline __attribute__(( always_inline ))\n")
 	g.pf("#else\n")
-	g.pf("#define SCHEMA_C_WRITE_INLINE\n")
-	g.pf("#endif\n")
-	g.pf("#else\n")
+	g.pf("#define SCHEMA_C_READ_INLINE\n")
 	g.pf("#define SCHEMA_C_WRITE_INLINE\n")
 	g.pf("#endif\n")
 	g.pf("#endif /* SCHEMA_C_SPINE_INLINE_DEFINED */\n\n")
