@@ -65,7 +65,7 @@ func (g *gen) emitObjectWire(d *ir.Object) {
 	// attributes describe the SHALLOW wire only, so an [interpolate] float
 	// triple serializes as a bare float here (SPEC §4.8)
 	deepName := d.Name + "Data_Deep"
-	g.pf("inline bool Write%s( serialize::WriteStream & stream, const %s & value )\n{\n", deepName, deepName)
+	g.pf("SCHEMA_WRITE_INLINE bool Write%s( serialize::WriteStream & stream, const %s & value )\n{\n", deepName, deepName)
 	mark := g.body.Len()
 	for _, f := range deep {
 		g.emitViewWriteField(f, viewDeep, "    ")
@@ -82,7 +82,7 @@ func (g *gen) emitObjectWire(d *ir.Object) {
 
 	// ---- Shallow: the [interpolate] fields on the quantized wire
 	shName := d.Name + "Data_Shallow"
-	g.pf("inline bool Write%s( serialize::WriteStream & stream, const %s & value )\n{\n", shName, shName)
+	g.pf("SCHEMA_WRITE_INLINE bool Write%s( serialize::WriteStream & stream, const %s & value )\n{\n", shName, shName)
 	mark = g.body.Len()
 	for _, f := range interp {
 		g.emitViewWriteField(f, viewShallow, "    ")
@@ -358,7 +358,7 @@ func (g *gen) emitObjectTagWire() {
 	count := int64(len(g.unit.ObjNames))
 	g.pf("// The object tag wire: ObjectType in [0, %d], minimal bits; None = 0 is the\n", count)
 	g.pf("// null — the sentinel the surveyed baseline streams terminate with (SPEC §4.8).\n")
-	g.pf("inline bool WriteObjectType( serialize::WriteStream & stream, ObjectType value )\n{\n")
+	g.pf("SCHEMA_WRITE_INLINE bool WriteObjectType( serialize::WriteStream & stream, ObjectType value )\n{\n")
 	g.emitWriteRangedFold32("value", "0", fmt.Sprintf("%d", count),
 		bitsRequired(big.NewInt(0), big.NewInt(count)), true, "    ")
 	g.pf("    return true;\n}\n\n")

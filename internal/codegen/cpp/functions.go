@@ -56,7 +56,7 @@ func (g *gen) emitStructWire(st *ir.Struct) {
 	// FuzzGeneratedCompiles, issue #22)
 	noStorage := len(st.Items) > 0 && len(st.Fields) == 0
 
-	g.pf("inline bool Write%s( serialize::WriteStream & stream, const %s & value )\n{\n", st.Name, st.Name)
+	g.pf("SCHEMA_WRITE_INLINE bool Write%s( serialize::WriteStream & stream, const %s & value )\n{\n", st.Name, st.Name)
 	if len(st.Items) == 0 {
 		g.pf("    (void) stream;\n    (void) value; // empty body — presence is the payload (SPEC §4.6)\n")
 	} else {
@@ -652,7 +652,7 @@ func (g *gen) emitMessageWire() {
 	count := int64(len(g.unit.Messages))
 	g.pf("// The message tag wire: MessageType in [0, %d], minimal bits; None = 0 is a\n", count)
 	g.pf("// valid wire value meaning *no message* — the stream terminator (SPEC §4.8).\n")
-	g.pf("inline bool WriteMessageType( serialize::WriteStream & stream, MessageType value )\n{\n")
+	g.pf("SCHEMA_WRITE_INLINE bool WriteMessageType( serialize::WriteStream & stream, MessageType value )\n{\n")
 	g.emitWriteRangedFold32("value", "0", fmt.Sprintf("%d", count),
 		bitsRequired(big.NewInt(0), big.NewInt(count)), true, "    ")
 	g.pf("    return true;\n}\n\n")
@@ -712,7 +712,7 @@ func (g *gen) emitMessageWireUnion() {
 	// dispatch validates BEFORE the tag rides the wire: an out-of-set type
 	// value writes nothing (a tag with no payload would desynchronize the
 	// stream), and the tag framing is the tag pair's — one source
-	g.pf("inline bool WriteMessage( serialize::WriteStream & stream, const Message & message )\n{\n")
+	g.pf("SCHEMA_WRITE_INLINE bool WriteMessage( serialize::WriteStream & stream, const Message & message )\n{\n")
 	g.pf("    switch ( message.type )\n    {\n")
 	g.pf("        case MessageType::None:\n            return WriteMessageType( stream, MessageType::None ); // the stream terminator (SPEC §4.8)\n")
 	for _, m := range msgs {
@@ -768,7 +768,7 @@ func (g *gen) emitMessageWireVariant() {
 
 	// the variant's index is always in-set, so no pre-validation is needed;
 	// the tag framing is the tag pair's — one source
-	g.pf("inline bool WriteMessage( serialize::WriteStream & stream, const Message & message )\n{\n")
+	g.pf("SCHEMA_WRITE_INLINE bool WriteMessage( serialize::WriteStream & stream, const Message & message )\n{\n")
 	g.pf("    if ( !WriteMessageType( stream, MessageType( message.index() ) ) )\n    {\n        return false;\n    }\n")
 	g.pf("    switch ( message.index() )\n    {\n")
 	g.pf("        case 0:\n            return true; // None — the stream terminator (SPEC §4.8)\n")

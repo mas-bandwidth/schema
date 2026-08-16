@@ -15,6 +15,30 @@
 
 namespace example {
 
+#ifndef SCHEMA_WRITE_INLINE_DEFINED
+#define SCHEMA_WRITE_INLINE_DEFINED
+// SCHEMA_WRITE_INLINE — how every generated Write function is spelled.
+// Default: plain `inline`, exactly what this emitter always produced.
+// Define SCHEMA_WRITE_SPINE_DEMAND to make the generated write path DEMAND
+// inlining (always_inline / __forceinline), the serialize family's remedy
+// for LLVM refusing the linkonce_odr Write entries into their call sites
+// at cost over threshold — no last-call-to-static bonus exists for a
+// header function, so unlike C's static entries these never flatten on
+// their own. Branch-weight hints are NOT the fix here — measured in this
+// family to invite the machine outliner into the hot bodies. Do not add them.
+#if defined( SCHEMA_WRITE_SPINE_DEMAND )
+#if defined( _MSC_VER )
+#define SCHEMA_WRITE_INLINE __forceinline
+#elif defined( __GNUC__ ) || defined( __clang__ )
+#define SCHEMA_WRITE_INLINE inline __attribute__(( always_inline ))
+#else
+#define SCHEMA_WRITE_INLINE inline
+#endif
+#else
+#define SCHEMA_WRITE_INLINE inline
+#endif
+#endif // SCHEMA_WRITE_INLINE_DEFINED
+
 #ifndef SCHEMA_READ_INLINE_DEFINED
 #define SCHEMA_READ_INLINE_DEFINED
 // SCHEMA_READ_INLINE — how every generated Read function is spelled.
@@ -150,7 +174,7 @@ SCHEMA_READ_INLINE bool schema_interior_null( const uint8_t * bytes, int32_t len
 }
 #endif // SCHEMA_INTERIOR_NULL_DEFINED
 
-inline bool WriteProbeHeader( serialize::WriteStream & stream, const ProbeHeader & value )
+SCHEMA_WRITE_INLINE bool WriteProbeHeader( serialize::WriteStream & stream, const ProbeHeader & value )
 {
     write_bits( stream, 171ull, 8 ); // const(171, 8) — SPEC §4.3
     write_bits( stream, value.version, 3 );
@@ -184,7 +208,7 @@ SCHEMA_READ_INLINE bool ReadProbeHeader( serialize::ReadStream & stream, ProbeHe
     return true;
 }
 
-inline bool WriteProbeBits( serialize::WriteStream & stream, const ProbeBits & value )
+SCHEMA_WRITE_INLINE bool WriteProbeBits( serialize::WriteStream & stream, const ProbeBits & value )
 {
     write_bits( stream, value.small, 9 );
     write_bits( stream, value.boundary, 33 );
@@ -209,7 +233,7 @@ SCHEMA_READ_INLINE bool ReadProbeBits( serialize::ReadStream & stream, ProbeBits
     return true;
 }
 
-inline bool WriteProbeSample( serialize::WriteStream & stream, const ProbeSample & value )
+SCHEMA_WRITE_INLINE bool WriteProbeSample( serialize::WriteStream & stream, const ProbeSample & value )
 {
     write_bool( stream, value.active );
     {
@@ -296,7 +320,7 @@ SCHEMA_READ_INLINE bool ReadProbeSample( serialize::ReadStream & stream, ProbeSa
     return true;
 }
 
-inline bool WriteProbeConfig( serialize::WriteStream & stream, const ProbeConfig & value )
+SCHEMA_WRITE_INLINE bool WriteProbeConfig( serialize::WriteStream & stream, const ProbeConfig & value )
 {
     write_bits( stream, uint32_t( value.retries ), 32 );
     serialize_assert( int32_t( value.preferred ) >= int32_t( 0 ) && int32_t( value.preferred ) <= int32_t( 15 ) );
@@ -319,7 +343,7 @@ SCHEMA_READ_INLINE bool ReadProbeConfig( serialize::ReadStream & stream, ProbeCo
     return true;
 }
 
-inline bool WriteProbeArray( serialize::WriteStream & stream, const ProbeArray & value )
+SCHEMA_WRITE_INLINE bool WriteProbeArray( serialize::WriteStream & stream, const ProbeArray & value )
 {
     for ( int32_t i = 0; i < 2; i++ )
     {
@@ -351,7 +375,7 @@ SCHEMA_READ_INLINE bool ReadProbeArray( serialize::ReadStream & stream, ProbeArr
     return true;
 }
 
-inline bool WriteProbeReport( serialize::WriteStream & stream, const ProbeReport & value )
+SCHEMA_WRITE_INLINE bool WriteProbeReport( serialize::WriteStream & stream, const ProbeReport & value )
 {
     if ( !WriteProbeHeader( stream, value.header ) )
     {
@@ -380,7 +404,7 @@ SCHEMA_READ_INLINE bool ReadProbeReport( serialize::ReadStream & stream, ProbeRe
     return true;
 }
 
-inline bool WriteTestData( serialize::WriteStream & stream, const TestData & value )
+SCHEMA_WRITE_INLINE bool WriteTestData( serialize::WriteStream & stream, const TestData & value )
 {
     serialize_assert( int32_t( value.a ) >= int32_t( -100 ) && int32_t( value.a ) <= int32_t( 100 ) );
     write_bits( stream, uint32_t( value.a ) - uint32_t( -100 ), 8 );
@@ -484,7 +508,7 @@ SCHEMA_READ_INLINE bool ReadTestData( serialize::ReadStream & stream, TestData &
     return true;
 }
 
-inline bool WriteCompressedProbe( serialize::WriteStream & stream, const CompressedProbe & value )
+SCHEMA_WRITE_INLINE bool WriteCompressedProbe( serialize::WriteStream & stream, const CompressedProbe & value )
 {
     {
         float compressed_value = value.boundary;

@@ -17,6 +17,30 @@
 
 namespace example {
 
+#ifndef SCHEMA_WRITE_INLINE_DEFINED
+#define SCHEMA_WRITE_INLINE_DEFINED
+// SCHEMA_WRITE_INLINE — how every generated Write function is spelled.
+// Default: plain `inline`, exactly what this emitter always produced.
+// Define SCHEMA_WRITE_SPINE_DEMAND to make the generated write path DEMAND
+// inlining (always_inline / __forceinline), the serialize family's remedy
+// for LLVM refusing the linkonce_odr Write entries into their call sites
+// at cost over threshold — no last-call-to-static bonus exists for a
+// header function, so unlike C's static entries these never flatten on
+// their own. Branch-weight hints are NOT the fix here — measured in this
+// family to invite the machine outliner into the hot bodies. Do not add them.
+#if defined( SCHEMA_WRITE_SPINE_DEMAND )
+#if defined( _MSC_VER )
+#define SCHEMA_WRITE_INLINE __forceinline
+#elif defined( __GNUC__ ) || defined( __clang__ )
+#define SCHEMA_WRITE_INLINE inline __attribute__(( always_inline ))
+#else
+#define SCHEMA_WRITE_INLINE inline
+#endif
+#else
+#define SCHEMA_WRITE_INLINE inline
+#endif
+#endif // SCHEMA_WRITE_INLINE_DEFINED
+
 #ifndef SCHEMA_READ_INLINE_DEFINED
 #define SCHEMA_READ_INLINE_DEFINED
 // SCHEMA_READ_INLINE — how every generated Read function is spelled.
@@ -41,7 +65,7 @@ namespace example {
 #endif
 #endif // SCHEMA_READ_INLINE_DEFINED
 
-inline bool WriteVec3( serialize::WriteStream & stream, const Vec3 & value )
+SCHEMA_WRITE_INLINE bool WriteVec3( serialize::WriteStream & stream, const Vec3 & value )
 {
     write_double( stream, value.x );
     write_double( stream, value.y );
@@ -57,7 +81,7 @@ SCHEMA_READ_INLINE bool ReadVec3( serialize::ReadStream & stream, Vec3 & value )
     return true;
 }
 
-inline bool WriteQuat( serialize::WriteStream & stream, const Quat & value )
+SCHEMA_WRITE_INLINE bool WriteQuat( serialize::WriteStream & stream, const Quat & value )
 {
     write_double( stream, value.x );
     write_double( stream, value.y );
@@ -75,7 +99,7 @@ SCHEMA_READ_INLINE bool ReadQuat( serialize::ReadStream & stream, Quat & value )
     return true;
 }
 
-inline bool WriteHandle( serialize::WriteStream & stream, const Handle & value )
+SCHEMA_WRITE_INLINE bool WriteHandle( serialize::WriteStream & stream, const Handle & value )
 {
     serialize_assert( int32_t( value.object_id ) >= int32_t( 0 ) && int32_t( value.object_id ) <= int32_t( MaxObjects - 1 ) );
     write_bits( stream, uint32_t( value.object_id ), 14 );
@@ -94,7 +118,7 @@ SCHEMA_READ_INLINE bool ReadHandle( serialize::ReadStream & stream, Handle & val
     return true;
 }
 
-inline bool WriteQuantizedPosition( serialize::WriteStream & stream, const QuantizedPosition & value )
+SCHEMA_WRITE_INLINE bool WriteQuantizedPosition( serialize::WriteStream & stream, const QuantizedPosition & value )
 {
     serialize_assert( int32_t( value.x ) >= int32_t( -MaxPositionUnits ) && int32_t( value.x ) <= int32_t( MaxPositionUnits ) );
     write_bits( stream, uint32_t( value.x ) - uint32_t( -MaxPositionUnits ), 25 );
@@ -113,7 +137,7 @@ SCHEMA_READ_INLINE bool ReadQuantizedPosition( serialize::ReadStream & stream, Q
     return true;
 }
 
-inline bool WriteQuantizedVelocity( serialize::WriteStream & stream, const QuantizedVelocity & value )
+SCHEMA_WRITE_INLINE bool WriteQuantizedVelocity( serialize::WriteStream & stream, const QuantizedVelocity & value )
 {
     serialize_assert( int32_t( value.x ) >= int32_t( -MaxVelocityUnits ) && int32_t( value.x ) <= int32_t( MaxVelocityUnits ) );
     write_bits( stream, uint32_t( value.x ) - uint32_t( -MaxVelocityUnits ), 23 );
@@ -132,7 +156,7 @@ SCHEMA_READ_INLINE bool ReadQuantizedVelocity( serialize::ReadStream & stream, Q
     return true;
 }
 
-inline bool WriteQuantizedRotation( serialize::WriteStream & stream, const QuantizedRotation & value )
+SCHEMA_WRITE_INLINE bool WriteQuantizedRotation( serialize::WriteStream & stream, const QuantizedRotation & value )
 {
     serialize_assert( int32_t( value.x ) >= int32_t( -RotationUnits ) && int32_t( value.x ) <= int32_t( RotationUnits ) );
     write_bits( stream, uint32_t( value.x ) - uint32_t( -RotationUnits ), 12 );
@@ -170,7 +194,7 @@ SCHEMA_READ_INLINE bool ReadQuantizedRotation( serialize::ReadStream & stream, Q
     return true;
 }
 
-inline bool WriteRigidBody( serialize::WriteStream & stream, const RigidBody & value )
+SCHEMA_WRITE_INLINE bool WriteRigidBody( serialize::WriteStream & stream, const RigidBody & value )
 {
     if ( !WriteVec3( stream, value.position ) )
     {
@@ -225,7 +249,7 @@ SCHEMA_READ_INLINE bool ReadRigidBody( serialize::ReadStream & stream, RigidBody
     return true;
 }
 
-inline bool WriteInput( serialize::WriteStream & stream, const Input & value )
+SCHEMA_WRITE_INLINE bool WriteInput( serialize::WriteStream & stream, const Input & value )
 {
     write_float( stream, value.stick_x );
     write_float( stream, value.stick_y );
@@ -261,7 +285,7 @@ SCHEMA_READ_INLINE bool ReadInput( serialize::ReadStream & stream, Input & value
     return true;
 }
 
-inline bool WriteInputPacket( serialize::WriteStream & stream, const InputPacket & value )
+SCHEMA_WRITE_INLINE bool WriteInputPacket( serialize::WriteStream & stream, const InputPacket & value )
 {
     write_bits( stream, value.synchronize_sequence, 16 );
     write_bits( stream, value.current_frame, 64 );
@@ -298,7 +322,7 @@ SCHEMA_READ_INLINE bool ReadInputPacket( serialize::ReadStream & stream, InputPa
     return true;
 }
 
-inline bool WriteShipCreate( serialize::WriteStream & stream, const ShipCreate & value )
+SCHEMA_WRITE_INLINE bool WriteShipCreate( serialize::WriteStream & stream, const ShipCreate & value )
 {
     serialize_assert( int32_t( value.ship_type ) >= int32_t( 0 ) && int32_t( value.ship_type ) <= int32_t( 5 ) );
     write_bits( stream, uint32_t( value.ship_type ), 3 );

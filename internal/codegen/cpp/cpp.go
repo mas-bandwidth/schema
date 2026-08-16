@@ -344,7 +344,8 @@ func (g *gen) emitWireFile() {
 		}
 	}
 
-	if g.fileEmitsReads() {
+	if g.fileEmitsWire() {
+		g.emitWriteInlineMacro()
 		g.emitReadInlineMacro()
 	}
 

@@ -2,11 +2,13 @@ package cpp
 
 import "github.com/mas-bandwidth/schema/internal/ir"
 
-// fileEmitsReads reports whether this wire file will emit any Read function —
-// struct/object wire pairs, or the owner files' message/object dispatch
-// surfaces. Files that only carry consts/enums/flags emit no reads and no
-// macro block.
-func (g *gen) fileEmitsReads() bool {
+// fileEmitsWire reports whether this wire file will emit any Write/Read wire
+// function — struct/object wire pairs, or the owner files' message/object
+// dispatch surfaces. Files that only carry consts/enums/flags emit no wire
+// functions and no macro blocks. (Named after the C backend's twin: every
+// file that emits one half of a wire pair emits the other, so one predicate
+// guards both macro blocks.)
+func (g *gen) fileEmitsWire() bool {
 	for _, d := range g.file.Decls {
 		switch d.(type) {
 		case *ir.Struct, *ir.Object:

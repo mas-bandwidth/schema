@@ -15,6 +15,30 @@
 
 namespace example {
 
+#ifndef SCHEMA_WRITE_INLINE_DEFINED
+#define SCHEMA_WRITE_INLINE_DEFINED
+// SCHEMA_WRITE_INLINE — how every generated Write function is spelled.
+// Default: plain `inline`, exactly what this emitter always produced.
+// Define SCHEMA_WRITE_SPINE_DEMAND to make the generated write path DEMAND
+// inlining (always_inline / __forceinline), the serialize family's remedy
+// for LLVM refusing the linkonce_odr Write entries into their call sites
+// at cost over threshold — no last-call-to-static bonus exists for a
+// header function, so unlike C's static entries these never flatten on
+// their own. Branch-weight hints are NOT the fix here — measured in this
+// family to invite the machine outliner into the hot bodies. Do not add them.
+#if defined( SCHEMA_WRITE_SPINE_DEMAND )
+#if defined( _MSC_VER )
+#define SCHEMA_WRITE_INLINE __forceinline
+#elif defined( __GNUC__ ) || defined( __clang__ )
+#define SCHEMA_WRITE_INLINE inline __attribute__(( always_inline ))
+#else
+#define SCHEMA_WRITE_INLINE inline
+#endif
+#else
+#define SCHEMA_WRITE_INLINE inline
+#endif
+#endif // SCHEMA_WRITE_INLINE_DEFINED
+
 #ifndef SCHEMA_READ_INLINE_DEFINED
 #define SCHEMA_READ_INLINE_DEFINED
 // SCHEMA_READ_INLINE — how every generated Read function is spelled.
@@ -150,7 +174,7 @@ SCHEMA_READ_INLINE bool schema_interior_null( const uint8_t * bytes, int32_t len
 }
 #endif // SCHEMA_INTERIOR_NULL_DEFINED
 
-inline bool WriteHeartbeat( serialize::WriteStream & stream, const Heartbeat & value )
+SCHEMA_WRITE_INLINE bool WriteHeartbeat( serialize::WriteStream & stream, const Heartbeat & value )
 {
     (void) stream;
     (void) value; // empty body — presence is the payload (SPEC §4.6)
@@ -164,7 +188,7 @@ SCHEMA_READ_INLINE bool ReadHeartbeat( serialize::ReadStream & stream, Heartbeat
     return true;
 }
 
-inline bool WriteTest( serialize::WriteStream & stream, const Test & value )
+SCHEMA_WRITE_INLINE bool WriteTest( serialize::WriteStream & stream, const Test & value )
 {
     write_bits( stream, value.test_a, 16 );
     serialize_assert( int32_t( value.test_b ) >= int32_t( 0 ) && int32_t( value.test_b ) <= int32_t( 1000 ) );
@@ -201,7 +225,7 @@ SCHEMA_READ_INLINE bool ReadTest( serialize::ReadStream & stream, Test & value )
     return true;
 }
 
-inline bool WriteBlock( serialize::WriteStream & stream, const Block & value )
+SCHEMA_WRITE_INLINE bool WriteBlock( serialize::WriteStream & stream, const Block & value )
 {
     serialize_assert( int32_t( value.data_length ) >= int32_t( 0 ) && int32_t( value.data_length ) <= int32_t( MaxBlockSize ) );
     write_bits( stream, uint32_t( value.data_length ), 11 );
@@ -216,7 +240,7 @@ SCHEMA_READ_INLINE bool ReadBlock( serialize::ReadStream & stream, Block & value
     return true;
 }
 
-inline bool WriteChat( serialize::WriteStream & stream, const Chat & value )
+SCHEMA_WRITE_INLINE bool WriteChat( serialize::WriteStream & stream, const Chat & value )
 {
     for ( int32_t i = 0; i < value.text_length; i++ )
     {
@@ -241,7 +265,7 @@ SCHEMA_READ_INLINE bool ReadChat( serialize::ReadStream & stream, Chat & value )
     return true;
 }
 
-inline bool WriteSynchronize( serialize::WriteStream & stream, const Synchronize & value )
+SCHEMA_WRITE_INLINE bool WriteSynchronize( serialize::WriteStream & stream, const Synchronize & value )
 {
     write_bits( stream, value.sync_frame, 64 );
     write_bits( stream, value.sync_sequence, 16 );
@@ -259,7 +283,7 @@ SCHEMA_READ_INLINE bool ReadSynchronize( serialize::ReadStream & stream, Synchro
     return true;
 }
 
-inline bool WriteTimescale( serialize::WriteStream & stream, const Timescale & value )
+SCHEMA_WRITE_INLINE bool WriteTimescale( serialize::WriteStream & stream, const Timescale & value )
 {
     write_double( stream, value.scale );
     write_bits( stream, value.frame_a, 32 );
@@ -277,7 +301,7 @@ SCHEMA_READ_INLINE bool ReadTimescale( serialize::ReadStream & stream, Timescale
 
 // The message tag wire: MessageType in [0, 6], minimal bits; None = 0 is a
 // valid wire value meaning *no message* — the stream terminator (SPEC §4.8).
-inline bool WriteMessageType( serialize::WriteStream & stream, MessageType value )
+SCHEMA_WRITE_INLINE bool WriteMessageType( serialize::WriteStream & stream, MessageType value )
 {
     serialize_assert( int32_t( value ) >= int32_t( 0 ) && int32_t( value ) <= int32_t( 6 ) );
     write_bits( stream, uint32_t( value ), 3 );
@@ -292,7 +316,7 @@ SCHEMA_READ_INLINE bool ReadMessageType( serialize::ReadStream & stream, Message
     return true;
 }
 
-inline bool WriteMessage( serialize::WriteStream & stream, const Message & message )
+SCHEMA_WRITE_INLINE bool WriteMessage( serialize::WriteStream & stream, const Message & message )
 {
     switch ( message.type )
     {
