@@ -1,0 +1,73 @@
+# schema bench results
+# date: 2026-08-16T13:20:24Z
+# host: macbook  arch: arm64  os: Darwin 25.5.0
+# cpu: Apple M2
+# build: Release
+# cpp compiler: Apple clang version 21.0.0 (clang-2100.1.1.101)
+# cpp flags: -DSCHEMA_READ_SPINE_DEMAND -DSERIALIZE_READ_SPINE_DEMAND -DSCHEMA_WRITE_SPINE_DEMAND -O3 -DNDEBUG -DSERIALIZE_RELEASE -DBENCH_OPT="O3" -std=c++17 -Wall -Wextra -Werror -ffp-contract=off -fno-rtti -Igenerated/cpp -Itest -I/private/tmp/claude-501/-Users-glenn-rowan-working-rowan-new/2a3ae0b6-7621-44cd-a9b7-ab68b69bf06c/scratchpad/serialize
+# c compiler: Apple clang version 21.0.0 (clang-2100.1.1.101)
+# c flags: -O3 -DNDEBUG -DBENCH_OPT="O3" -std=c99 -Wall -Wextra -Werror -Igenerated/c -I/private/tmp/claude-501/-Users-glenn-rowan-working-rowan-new/2a3ae0b6-7621-44cd-a9b7-ab68b69bf06c/scratchpad/serialize.c (serialize.c compiled in, no LTO)
+# go: go version go1.26.5 darwin/arm64 (go run, default optimized build)
+# rust: cargo 1.97.1 (c980f4866 2026-06-30); rustc 1.97.1 (8bab26f4f 2026-07-14) (cargo run --release: opt-level 3, no LTO)
+# dotnet: 10.0.302 (dotnet run -c Release, workstation GC)
+# pinning: none
+# noise: [leg cpp-armed] confirmation pass — the shipping decision; machine quiet except one compile-only attribution worker (low CPU, remark reproductions)
+# schema commit: 6b51a2b
+# serialize commit: b6f4c2c (main) [build-verified: /private/tmp/claude-501/-Users-glenn-rowan-working-rowan-new/2a3ae0b6-7621-44cd-a9b7-ab68b69bf06c/scratchpad/serialize]
+# serialize.c commit: 80e5457 (main) [build-verified: /private/tmp/claude-501/-Users-glenn-rowan-working-rowan-new/2a3ae0b6-7621-44cd-a9b7-ab68b69bf06c/scratchpad/serialize.c]
+# serialize.go commit: a094849 (main) [build-verified: /Users/glenn/rowan-working/serialize.go]
+# serialize.rs commit: eac4d71 (debug-assert-check-model) [build-verified: /Users/glenn/rowan-working/serialize.rs]
+# serialize.cs commit: 2faa767 (main) [build-verified: /Users/glenn/rowan-working/serialize.cs]
+# rounds: 7   interleaved: yes (four tournament legs per round)
+# load_start: 1.94 1.44 1.51
+# load_end: 1.68 1.81 1.70
+# load_max: 2.24
+# control_start_median: 103852728   control_end_median: 103521556
+# control_delta_pct: 0.3   window: OK
+# era: CONFIRMATION — the shipping-decision pass: all five switches on mains, winners become defaults and
+# era:   the #ifdefs get deleted per the lifecycle ruling. Air-on-external-power hotel window, 2026-08-16,
+# era:   machine quiet except one compile-only attribution worker (low CPU, named in noise).
+# era: mains: serialize.c 80e5457 (#22 fixed/compressed-float join the demand set; #23 SERIALIZE_WORD_COPY,
+# era:   all five bitpacker groups unroll), serialize b6f4c2c, schema 6b51a2b
+# era:   (#52 C twins; #53 interior-null; #55 SCHEMA_WRITE_SPINE_DEMAND — the C++ write twin,
+# era:   13 generated Write symbols vanish armed).
+# era: legs: cpp-off | cpp-armed (SCHEMA_READ_SPINE_DEMAND + SERIALIZE_READ_SPINE_DEMAND + SCHEMA_WRITE_SPINE_DEMAND) |
+# era:   c-off | c-armed (SCHEMA_C_READ_SPINE_DEMAND + SCHEMA_C_WRITE_SPINE_DEMAND); same-language legs
+# era:   differ ONLY by those defines. NOT comparable to phase4-air, postlaw-air, or any other era/host
+# era:   (§5.3 rule 8). checks=removed both languages (post-#20); linkage hdr vs hdr+tu caption applies.
+# corpus_id: 6b118770d85af4f6
+lang,bench,path,iters,bytes_per_op,runs,median_msgs_per_sec,min_msgs_per_sec,max_msgs_per_sec,median_mb_per_sec,spread_pct,corpus_id,family,linkage,checks,opt,inline
+cpp,rigidbody_moving,write,24000000,105,7,608382368,582299308,611311168,60920.86,4.77,6b118770d85af4f6,gen,hdr,removed,O3,full
+cpp,rigidbody_moving,read,24000000,105,7,462067173,460856411,462372430,46269.47,0.33,6b118770d85af4f6,gen,hdr,removed,O3,full
+cpp,rigidbody_at_rest,write,32000000,57,7,820954874,791842380,828566548,44626.64,4.47,6b118770d85af4f6,gen,hdr,removed,O3,full
+cpp,rigidbody_at_rest,read,32000000,57,7,484787269,483812445,489091913,26352.76,1.09,6b118770d85af4f6,gen,hdr,removed,O3,full
+cpp,chat,write,48000000,13,7,107400691,107172970,110270005,1331.53,2.88,6b118770d85af4f6,gen,hdr,removed,O3,full
+cpp,chat,read,48000000,13,7,213792631,175835394,216135206,2650.55,18.85,6b118770d85af4f6,gen,hdr,removed,O3,full
+cpp,test,write,192000000,6,7,767584095,761806637,769200337,4392.15,0.96,6b118770d85af4f6,gen,hdr,removed,O3,full
+cpp,test,read,192000000,6,7,1038898266,1028795333,1043805392,5944.62,1.44,6b118770d85af4f6,gen,hdr,removed,O3,full
+cpp,inputpacket,write,16000000,61,7,111785902,110789482,111823728,6503.05,0.93,6b118770d85af4f6,gen,hdr,removed,O3,full
+cpp,inputpacket,read,16000000,61,7,291692683,279904195,292372725,16968.97,4.27,6b118770d85af4f6,gen,hdr,removed,O3,full
+cpp,shipcreate,write,32000000,28,7,469988944,463481235,474122069,12550.06,2.26,6b118770d85af4f6,gen,hdr,removed,O3,full
+cpp,shipcreate,read,32000000,28,7,250535241,249185281,251320167,6690.01,0.85,6b118770d85af4f6,gen,hdr,removed,O3,full
+cpp,ship_shallow,write,32000000,28,7,423896970,413766348,424719561,11319.27,2.58,6b118770d85af4f6,gen,hdr,removed,O3,full
+cpp,ship_shallow,read,32000000,28,7,287250027,278860013,288252257,7670.40,3.27,6b118770d85af4f6,gen,hdr,removed,O3,full
+cpp,probe_header,write,256000000,10,7,1069362351,1055045233,1082515176,10198.23,2.57,6b118770d85af4f6,gen,hdr,removed,O3,full
+cpp,probe_header,read,256000000,10,7,1429657097,1421655866,1431427421,13634.27,0.68,6b118770d85af4f6,gen,hdr,removed,O3,full
+cpp,probebits,write,128000000,26,7,596945781,591149501,599696638,14801.59,1.43,6b118770d85af4f6,gen,hdr,removed,O3,full
+cpp,probebits,read,128000000,26,7,94028070,93762705,94252769,2331.48,0.52,6b118770d85af4f6,gen,hdr,removed,O3,full
+cpp,probearray,write,20000000,47,7,85164881,82905034,85218406,3817.32,2.72,6b118770d85af4f6,gen,hdr,removed,O3,full
+cpp,probearray,read,20000000,47,7,143835825,143576994,144818180,6447.11,0.86,6b118770d85af4f6,gen,hdr,removed,O3,full
+cpp,testdata,write,8000000,92,7,36562702,36446967,37539248,3207.94,2.99,6b118770d85af4f6,gen,hdr,removed,O3,full
+cpp,testdata,read,8000000,92,7,73869451,72780563,75753600,6481.16,4.02,6b118770d85af4f6,gen,hdr,removed,O3,full
+cpp,message_batch,write,26214400,25,7,137744849,94386050,155835803,3284.09,44.61,6b118770d85af4f6,gen,hdr,removed,O3,full
+cpp,message_batch,read,26214400,25,7,124387814,120369612,129988841,2965.64,7.73,6b118770d85af4f6,gen,hdr,removed,O3,full
+cpp,bench_packet,write,32000000,49,7,83796030,79106028,83910216,3915.79,5.73,6b118770d85af4f6,rt,hdr,removed,O3,partial:1
+cpp,bench_packet,read,32000000,49,7,136318786,119356278,136744029,6370.18,12.76,6b118770d85af4f6,rt,hdr,removed,O3,full
+cpp,bench_ints,write,40000000,14,7,183449948,180471651,187585770,2449.32,3.88,6b118770d85af4f6,rt,hdr,removed,O3,full
+cpp,bench_ints,read,40000000,14,7,191441565,187075609,191996544,2556.02,2.57,6b118770d85af4f6,rt,hdr,removed,O3,full
+cpp,bench_bits,write,48000000,20,7,37560764,36048860,37986895,716.41,5.16,6b118770d85af4f6,rt,hdr,removed,O3,full
+cpp,bench_bits,read,48000000,20,7,213962660,204231673,239004348,4081.01,16.25,6b118770d85af4f6,rt,hdr,removed,O3,full
+cpp,bench_mixed,write,40000000,21,7,41467898,41410234,41589010,830.48,0.43,6b118770d85af4f6,rt,hdr,removed,O3,full
+cpp,bench_mixed,read,40000000,21,7,169183328,159647419,184428722,3388.26,14.65,6b118770d85af4f6,rt,hdr,removed,O3,full
+cpp,bitpacker,write,24576,65518,7,62187,60569,62247,3885.62,2.70,6b118770d85af4f6,bits,hdr,removed,O3,full
+cpp,bitpacker,read,24576,65518,7,94426,93449,96113,5900.00,2.82,6b118770d85af4f6,bits,hdr,removed,O3,full
