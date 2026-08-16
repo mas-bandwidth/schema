@@ -21,7 +21,7 @@ jobs:
         os: [ ubuntu-latest, macos-latest ]
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       # The five runtimes the generated code targets. `make test` builds the
       # corpus in all five languages and compares their wire against the
