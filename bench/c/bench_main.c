@@ -90,12 +90,14 @@ static const char * g_wire_dir = "testdata/wire";
    (§1.6): FNV-1a-64 over the goldens THIS RUN actually loaded — for each file
    in sorted basename order, the basename bytes, a 0x00 byte, the contents.
    The per-runner constants: family gen (these are the generated-code
-   benchmarks), linkage hdr+tu (§3.1's 2026-08-15 value: serialize.c's hot
-   spine lives in serialize.h as static inline and compiles into THIS TU,
-   while the cold and bulk-bytes paths stay in the compiled serialize.c
-   translation unit, no LTO — plain `tu` would claim a call boundary the
-   hot path no longer crosses, plain `hdr` would hide the one the bulk
-   paths still cross), checks REMOVED
+   benchmarks), linkage HDR (serialize.c ruling of 2026-08-17, "everything
+   in C should be inlined!!!" — serialize.c #25 moved the entire library
+   into serialize.h; the old serialize.c TU is an empty compatibility stub,
+   nothing links it here, and no call in any path crosses a library TU
+   boundary. This runner said `hdr+tu` from 2026-08-15 to 2026-08-17, while
+   the bulk and branchy bodies still lived in the compiled TU; with both
+   runners at `hdr` the rel tool ratios C vs C++ without the linkage
+   caption — the last caption, retired), checks REMOVED
    (§3.4: -DNDEBUG compiles serialize.c's asserts and checks away exactly
    as the C++ build does. This runner said `contract` from 2026-08-15 to
    2026-08-16, while serialize_write_bits kept an unconditional capacity
@@ -104,7 +106,7 @@ static const char * g_wire_dir = "testdata/wire";
    checking in release for C and C++", so the hybrid `contract` described
    died and the two runners' check models are now the same word. With
    both sides `removed`, the rel tool ratios C vs C++ without the checks
-   caption; the hdr+tu linkage caption still applies),
+   caption; with linkage also matched, no caption remains),
    opt from the build (run.sh sets BENCH_OPT beside the -O flag itself),
    inline unknown until the verdict pass (§4.2) backfills it. */
 #ifndef BENCH_OPT
@@ -112,7 +114,7 @@ static const char * g_wire_dir = "testdata/wire";
 #endif
 /* family is per ROW now (gen | rt | bits — §5.1); linkage/checks/opt/inline
    stay per-runner constants */
-#define CsvSuffix "hdr+tu,removed," BENCH_OPT ",unknown"
+#define CsvSuffix "hdr,removed," BENCH_OPT ",unknown"
 #define MaxCsvRows 64
 #define MaxGoldens 24
 static char g_csv_rows[MaxCsvRows][256];
