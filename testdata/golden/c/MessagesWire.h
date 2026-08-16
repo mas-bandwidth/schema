@@ -129,6 +129,49 @@ static SCHEMA_UNUSED int schema_utf8_valid_( const serialize_uint8_t * bytes, in
 }
 #endif /* SCHEMA_UTF8_VALID_DEFINED */
 
+#ifndef SCHEMA_INTERIOR_NULL_DEFINED
+#define SCHEMA_INTERIOR_NULL_DEFINED
+/* string(N) carries bytes excluding 0x00: an interior null is content every
+   generated reader refuses (SPEC §4.7) — generated-code validation; no
+   serialize primitive performs it. The scan is word-wise: eight bytes per
+   step under the zero-byte idiom, and a payload of eight bytes or more
+   re-tests its final eight bytes as one whole (overlapping) word, so every
+   load stays inside the payload the stream already delivered. */
+static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int schema_interior_null_( const serialize_uint8_t * bytes, int32_t length )
+{
+    serialize_uint64_t word;
+    int32_t i = 0;
+    if ( length >= 8 )
+    {
+        for ( ; i + 8 <= length; i += 8 )
+        {
+            memcpy( &word, bytes + i, 8 );
+            if ( ( ( word - 0x0101010101010101ULL ) & ~word & 0x8080808080808080ULL ) != 0 )
+            {
+                return 1;
+            }
+        }
+        if ( i < length )
+        {
+            memcpy( &word, bytes + length - 8, 8 );
+            if ( ( ( word - 0x0101010101010101ULL ) & ~word & 0x8080808080808080ULL ) != 0 )
+            {
+                return 1;
+            }
+        }
+        return 0;
+    }
+    for ( ; i < length; i++ )
+    {
+        if ( bytes[i] == 0 )
+        {
+            return 1;
+        }
+    }
+    return 0;
+}
+#endif /* SCHEMA_INTERIOR_NULL_DEFINED */
+
 /* Writes Heartbeat. Returns 1 on success, 0 on failure — the stream latches the
    error, so a caller may check once at the end of a message. */
 static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_heartbeat( serialize_write_stream_t * stream, const Heartbeat * value )
@@ -296,6 +339,10 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_chat( serialize_read_stream_t
     if ( !serialize_read_bytes( stream, (serialize_uint8_t *) value->text, (int) value->text_length ) )
     {
         return 0;
+    }
+    if ( schema_interior_null_( (const serialize_uint8_t *) value->text, value->text_length ) )
+    {
+        return 0; /* an interior null is content the read refuses (SPEC §4.7) */
     }
     value->text[value->text_length] = 0;
     return 1;

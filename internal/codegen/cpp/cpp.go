@@ -350,6 +350,7 @@ func (g *gen) emitWireFile() {
 
 	if fileHasStrings(g.file) {
 		g.emitUtf8Validator()
+		g.emitInteriorNullScan()
 	}
 
 	for _, d := range ir.EmissionOrder(g.file) {
