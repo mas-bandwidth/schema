@@ -1,6 +1,7 @@
 // Command relative turns benchmark CSVs into the tables PERFORMANCE.md carries:
 // absolute per-language rates, THE RELATIVE TABLE (everything as a percentage
-// of C++), and A/B deltas between two runs.
+// of C — the reference, ruled by Glenn 2026-08-17: "make C the reference. It
+// is the 100%. C++ is measured against C."), and A/B deltas between two runs.
 //
 //	go run ./bench/tools rel      results.csv [more.csv...]
 //	go run ./bench/tools abs      results.csv [more.csv...]
@@ -61,11 +62,16 @@ const bitpacker = "bitpacker"
 
 var order = append(append(append(append([]string{}, corpus...), batch), rtCorpus...), bitpacker)
 
-// langs is the presentation order. cpp is the baseline the relative table is
-// expressed against — a baseline, NOT a reference implementation.
+// langs is the presentation order. c is the reference the relative table is
+// expressed against (Glenn, 2026-08-17: "make C the reference. It is the
+// 100%. C++ is measured against C." — flipped from cpp, which had been the
+// baseline since the table existed).
 var langs = []struct{ key, name string }{
-	{"cpp", "C++"}, {"c", "C"}, {"rust", "Rust"}, {"cs", "C#"}, {"go", "Go"},
+	{"c", "C"}, {"cpp", "C++"}, {"rust", "Rust"}, {"cs", "C#"}, {"go", "Go"},
 }
+
+// reference is the table's 100% language.
+const reference = "c"
 
 // §2.3 spread policy thresholds.
 const (
@@ -129,6 +135,9 @@ type identity struct {
 	cCompiler, cFlags      string
 	goVer, rustVer, netVer string
 	window                 string // "" (unstated), else the # window: verdict
+	// §2.6.1: rows the pass's own twin gate marked state-suspect, from the
+	// `# twin_suspect:` preamble line. Such a row never enters a ratio.
+	twinSuspect map[key]bool
 }
 
 func (i identity) String() string {
@@ -274,8 +283,23 @@ func parseIdentity(path string, meta []string) identity {
 			id.netVer = v
 		}
 		// "# window: OK" alone, or "# control_delta_pct: 2.3   window: OK"
-		if idx := strings.LastIndex(m, "window:"); idx >= 0 {
+		// (never the twin_gate line, which carries its own verdict)
+		if idx := strings.LastIndex(m, "window:"); idx >= 0 && !strings.HasPrefix(m, "# twin") {
 			id.window = strings.TrimSpace(m[idx+len("window:"):])
+		}
+		// §2.6.1: "# twin_suspect: lang/bench/path reason;lang/bench/path reason"
+		if v, ok := get(m, "# twin_suspect:"); ok {
+			if id.twinSuspect == nil {
+				id.twinSuspect = map[key]bool{}
+			}
+			for entry := range strings.SplitSeq(v, ";") {
+				entry = strings.TrimSpace(entry)
+				name, _, _ := strings.Cut(entry, " ")
+				parts := strings.Split(name, "/")
+				if len(parts) == 3 {
+					id.twinSuspect[key{parts[0], parts[1], parts[2]}] = true
+				}
+			}
 		}
 	}
 	return id
@@ -425,6 +449,14 @@ func guardRatio(ds *dataset, ka, kb key, a, b row) []string {
 	if windowBad(idb.window) && idb.path != ida.path {
 		d = append(d, fmt.Sprintf("window: %s is marked # window: %s — only OK publishes (its control legs disagree, or the verdict is not one this tool knows)", idb.path, idb.window))
 	}
+	// §2.6.1: a row the pass's own twin gate marked state-suspect never
+	// enters a ratio — twin disagreement is state-selective interference.
+	if ida.twinSuspect[ka] {
+		d = append(d, fmt.Sprintf("twin gate: %s/%s/%s is marked state-suspect in %s — twin disagreement, state-selective interference (§2.6.1); re-measure the window", ka.lang, ka.bench, ka.path, ida.path))
+	}
+	if idb.twinSuspect[kb] {
+		d = append(d, fmt.Sprintf("twin gate: %s/%s/%s is marked state-suspect in %s — twin disagreement, state-selective interference (§2.6.1); re-measure the window", kb.lang, kb.bench, kb.path, idb.path))
+	}
 	return d
 }
 
@@ -506,13 +538,14 @@ func median(xs []float64) float64 {
 	return (s[n/2-1] + s[n/2]) / 2
 }
 
-// rel is the median across the corpus of cpp_rate/lang_rate as a percentage,
-// computed on the §2.2 headline (max_msgs_per_sec).
+// rel is the median across the corpus of c_rate/lang_rate as a percentage,
+// computed on the §2.2 headline (max_msgs_per_sec). C is the reference
+// (Glenn, 2026-08-17).
 //
 // HIGHER IS SLOWER, and this is the one thing to get right about this table.
-// The headline column is a RATE — so dividing C++'s rate by the language's
+// The headline column is a RATE — so dividing C's rate by the language's
 // rate gives the factor by which that language is slower. A language at 200%
-// takes twice as long as C++; one at 50% is twice as fast.
+// takes twice as long as C; one at 50% is twice as fast.
 //
 // §2.3: benches where either side's spread exceeds 15% are noisy and are
 // EXCLUDED from this corpus median (noted on stderr); spreads over 40% never
@@ -520,7 +553,7 @@ func median(xs []float64) float64 {
 func rel(ds *dataset, lang, path string) (float64, bool) {
 	var ratios []float64
 	for _, b := range corpus {
-		kc, kl := key{"cpp", b, path}, key{lang, b, path}
+		kc, kl := key{reference, b, path}, key{lang, b, path}
 		c, okc := ds.rows[kc]
 		l, okl := ds.rows[kl]
 		if !okc || !okl || l.mx == 0 {
@@ -530,8 +563,8 @@ func rel(ds *dataset, lang, path string) (float64, bool) {
 			refuseRatio(ds, kc, kl, c, l, d)
 		}
 		if c.spread > spreadNoisy || l.spread > spreadNoisy {
-			fmt.Fprintf(os.Stderr, "note: excluding %s %s from the %s corpus median: spread cpp %.1f%% / %s %.1f%% exceeds %.0f%% (§2.3 noisy)\n",
-				b, path, lang, c.spread, lang, l.spread, spreadNoisy)
+			fmt.Fprintf(os.Stderr, "note: excluding %s %s from the %s corpus median: spread %s %.1f%% / %s %.1f%% exceeds %.0f%% (§2.3 noisy)\n",
+				b, path, lang, reference, c.spread, lang, l.spread, spreadNoisy)
 			continue
 		}
 		ratios = append(ratios, c.mx/l.mx*100.0)
@@ -558,20 +591,21 @@ func printCaptions() {
 
 func relativeTable(ds *dataset) string {
 	out := []string{
-		"<!-- HIGHER IS SLOWER: each cell is C++'s best rate divided by this",
-		"     language's best rate, so 200% means it takes twice as long. -->",
+		"<!-- HIGHER IS SLOWER: each cell is C's best rate divided by this",
+		"     language's best rate, so 200% means it takes twice as long.",
+		"     C is the reference (Glenn, 2026-08-17). -->",
 		"| backend | write | read | batch write | batch read |",
 		"|---|---:|---:|---:|---:|",
-		"| C++ | 100% | 100% | 100% | 100% |",
+		"| C | 100% | 100% | 100% | 100% |",
 	}
 	for _, l := range langs {
-		if l.key == "cpp" {
+		if l.key == reference {
 			continue
 		}
 		w, okw := rel(ds, l.key, "write")
 		r, okr := rel(ds, l.key, "read")
-		bw, okbw := mustRatio(ds, key{"cpp", batch, "write"}, key{l.key, batch, "write"})
-		br, okbr := mustRatio(ds, key{"cpp", batch, "read"}, key{l.key, batch, "read"})
+		bw, okbw := mustRatio(ds, key{reference, batch, "write"}, key{l.key, batch, "write"})
+		br, okbr := mustRatio(ds, key{reference, batch, "read"}, key{l.key, batch, "read"})
 		if !okw || !okr || !okbw || !okbr {
 			out = append(out, fmt.Sprintf("| %s | — | — | — | — |", l.name))
 			continue
@@ -648,12 +682,14 @@ func abTable(dsa, dsb *dataset, lang, labelA, labelB string) string {
 
 func usage() {
 	fmt.Fprint(os.Stderr, `usage:
-  relative [flags] rel      results.csv [more.csv...]   the relative table (% of C++, best rate)
+  relative [flags] rel      results.csv [more.csv...]   the relative table (% of C, the reference; best rate)
   relative [flags] abs      results.csv [more.csv...]   absolute rates per language (best + median/min/spread)
   relative [flags] ab       a.csv b.csv [lang [A B]]    B/A deltas on best rates, with spreads
   relative spreads  <pct> results.csv [...]             rows noisier than pct
   relative aggregate     round0.csv round1.csv [...]    merge per-round rows (§2.4; driver computes stats)
   relative controlmedian control.csv                    corpus-median headline of a control leg (§2.6)
+  relative twingate      twin-a.csv twin-b.csv          §2.6.1 A/A twin-leg gate (state-suspect rows exit 4)
+  relative bands         current.csv prior.csv [...]    §2.6.1 per-row historical bands (band-break rows exit 5)
 
 flags (the only escapes; each prints its §3.4/§3.1 caption with the ratio):
   --label-checks    allow ratios across differing checks columns, captioned
@@ -722,6 +758,10 @@ func main() {
 		aggregateCmd(args[1:])
 	case "controlmedian":
 		controlMedianCmd(args[1:])
+	case "twingate":
+		twingateCmd(args[1:])
+	case "bands":
+		bandsCmd(args[1:])
 	case "spreads":
 		if len(args) < 3 {
 			usage()

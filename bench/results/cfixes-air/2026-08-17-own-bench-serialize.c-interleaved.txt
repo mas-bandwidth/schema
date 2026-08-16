@@ -1,0 +1,177 @@
+# serialize.c own bench — interleaved C/-O2 vs C++/-O2 rounds, era cfixes-air 2026-08-17, MacBook Air M2, AC power
+# serialize.c b6d6af5 (main), serialize 119f98f (main); its own Makefile flags; best-of-5-in-binary x 5 interleaved invocations each side
+=== round 1 C ===
+
+[serialize.c benchmark]
+
+bitpacker write:    2093.2 MB/s
+bitpacker read:     1781.3 MB/s
+stream write:       5259.4 MB/s  (112.5 M packets/s)
+stream read:       15468.4 MB/s  (331.0 M packets/s)
+stream measure:                 849.6 M packets/s
+
+int packet   (runtime):       write:  176.4 M packets/s   read:  367.1 M packets/s
+bits packet  (runtime):       write:  187.4 M packets/s   read:  529.7 M packets/s
+mixed packet (runtime):       write:  147.2 M packets/s   read:  425.4 M packets/s
+
+(the C++ bench also prints a compile time row per shape. that surface is
+ C++ template machinery with no counterpart here, and is the only thing
+ this benchmark does not mirror.)
+
+=== round 1 C++ ===
+
+[serialize benchmark]
+
+bitpacker write:    2092.4 MB/s
+bitpacker read:     2633.5 MB/s
+stream write:       3806.9 MB/s  (81.5 M packets/s)
+stream read:        6374.2 MB/s  (136.4 M packets/s)
+stream measure:                 836.6 M packets/s
+
+int packet   (runtime):       write:  169.3 M packets/s   read:  187.0 M packets/s
+int packet   (compile time):  write:   90.0 M packets/s   read:  171.6 M packets/s
+bits packet  (runtime):       write:  182.7 M packets/s   read:  234.8 M packets/s
+bits packet  (compile time):  write:  133.9 M packets/s   read:  183.9 M packets/s
+mixed packet (runtime):       write:  143.2 M packets/s   read:  178.3 M packets/s
+mixed packet (compile time):  write:   82.8 M packets/s   read:  158.5 M packets/s
+
+=== round 2 C ===
+
+[serialize.c benchmark]
+
+bitpacker write:    2064.0 MB/s
+bitpacker read:     1751.5 MB/s
+stream write:       5300.6 MB/s  (113.4 M packets/s)
+stream read:       15691.8 MB/s  (335.8 M packets/s)
+stream measure:                 841.8 M packets/s
+
+int packet   (runtime):       write:  176.3 M packets/s   read:  367.2 M packets/s
+bits packet  (runtime):       write:  187.4 M packets/s   read:  533.6 M packets/s
+mixed packet (runtime):       write:  146.6 M packets/s   read:  423.9 M packets/s
+
+(the C++ bench also prints a compile time row per shape. that surface is
+ C++ template machinery with no counterpart here, and is the only thing
+ this benchmark does not mirror.)
+
+=== round 2 C++ ===
+
+[serialize benchmark]
+
+bitpacker write:    2050.2 MB/s
+bitpacker read:     2581.3 MB/s
+stream write:       3785.4 MB/s  (81.0 M packets/s)
+stream read:        6305.9 MB/s  (134.9 M packets/s)
+stream measure:                 832.0 M packets/s
+
+int packet   (runtime):       write:  168.5 M packets/s   read:  185.3 M packets/s
+int packet   (compile time):  write:   94.7 M packets/s   read:  186.3 M packets/s
+bits packet  (runtime):       write:  183.4 M packets/s   read:  236.0 M packets/s
+bits packet  (compile time):  write:  131.6 M packets/s   read:  173.0 M packets/s
+mixed packet (runtime):       write:  145.7 M packets/s   read:  182.8 M packets/s
+mixed packet (compile time):  write:   84.2 M packets/s   read:  159.1 M packets/s
+
+=== round 3 C ===
+
+[serialize.c benchmark]
+
+bitpacker write:    2015.8 MB/s
+bitpacker read:     1697.3 MB/s
+stream write:       5195.7 MB/s  (111.2 M packets/s)
+stream read:       15478.6 MB/s  (331.2 M packets/s)
+stream measure:                 841.8 M packets/s
+
+int packet   (runtime):       write:  177.7 M packets/s   read:  363.2 M packets/s
+bits packet  (runtime):       write:  184.8 M packets/s   read:  514.4 M packets/s
+mixed packet (runtime):       write:  142.5 M packets/s   read:  422.3 M packets/s
+
+(the C++ bench also prints a compile time row per shape. that surface is
+ C++ template machinery with no counterpart here, and is the only thing
+ this benchmark does not mirror.)
+
+=== round 3 C++ ===
+
+[serialize benchmark]
+
+bitpacker write:    1968.9 MB/s
+bitpacker read:     2487.1 MB/s
+stream write:       3843.1 MB/s  (82.2 M packets/s)
+stream read:        6408.8 MB/s  (137.1 M packets/s)
+stream measure:                 841.2 M packets/s
+
+int packet   (runtime):       write:  169.3 M packets/s   read:  186.6 M packets/s
+int packet   (compile time):  write:   98.1 M packets/s   read:  187.7 M packets/s
+bits packet  (runtime):       write:  183.7 M packets/s   read:  232.0 M packets/s
+bits packet  (compile time):  write:  131.9 M packets/s   read:  184.8 M packets/s
+mixed packet (runtime):       write:  147.3 M packets/s   read:  187.9 M packets/s
+mixed packet (compile time):  write:   83.9 M packets/s   read:  160.2 M packets/s
+
+=== round 4 C ===
+
+[serialize.c benchmark]
+
+bitpacker write:    2049.5 MB/s
+bitpacker read:     1733.8 MB/s
+stream write:       5266.0 MB/s  (112.7 M packets/s)
+stream read:       15728.7 MB/s  (336.6 M packets/s)
+stream measure:                 841.8 M packets/s
+
+int packet   (runtime):       write:  178.0 M packets/s   read:  364.8 M packets/s
+bits packet  (runtime):       write:  188.3 M packets/s   read:  533.6 M packets/s
+mixed packet (runtime):       write:  147.4 M packets/s   read:  425.7 M packets/s
+
+(the C++ bench also prints a compile time row per shape. that surface is
+ C++ template machinery with no counterpart here, and is the only thing
+ this benchmark does not mirror.)
+
+=== round 4 C++ ===
+
+[serialize benchmark]
+
+bitpacker write:    2040.9 MB/s
+bitpacker read:     2582.8 MB/s
+stream write:       3862.1 MB/s  (82.6 M packets/s)
+stream read:        6346.9 MB/s  (135.8 M packets/s)
+stream measure:                 841.7 M packets/s
+
+int packet   (runtime):       write:  169.0 M packets/s   read:  186.1 M packets/s
+int packet   (compile time):  write:   95.7 M packets/s   read:  188.0 M packets/s
+bits packet  (runtime):       write:  179.8 M packets/s   read:  237.6 M packets/s
+bits packet  (compile time):  write:  134.1 M packets/s   read:  181.2 M packets/s
+mixed packet (runtime):       write:  144.7 M packets/s   read:  187.9 M packets/s
+mixed packet (compile time):  write:   83.5 M packets/s   read:  152.3 M packets/s
+
+=== round 5 C ===
+
+[serialize.c benchmark]
+
+bitpacker write:    2071.6 MB/s
+bitpacker read:     1754.3 MB/s
+stream write:       5293.4 MB/s  (113.3 M packets/s)
+stream read:       15728.7 MB/s  (336.6 M packets/s)
+stream measure:                 842.5 M packets/s
+
+int packet   (runtime):       write:  177.9 M packets/s   read:  367.4 M packets/s
+bits packet  (runtime):       write:  188.6 M packets/s   read:  531.6 M packets/s
+mixed packet (runtime):       write:  147.2 M packets/s   read:  425.9 M packets/s
+
+(the C++ bench also prints a compile time row per shape. that surface is
+ C++ template machinery with no counterpart here, and is the only thing
+ this benchmark does not mirror.)
+
+=== round 5 C++ ===
+
+[serialize benchmark]
+
+bitpacker write:    2049.5 MB/s
+bitpacker read:     2602.5 MB/s
+stream write:       3872.1 MB/s  (82.9 M packets/s)
+stream read:        6431.6 MB/s  (137.6 M packets/s)
+stream measure:                 842.8 M packets/s
+
+int packet   (runtime):       write:  170.2 M packets/s   read:  187.4 M packets/s
+int packet   (compile time):  write:   96.1 M packets/s   read:  187.1 M packets/s
+bits packet  (runtime):       write:  185.3 M packets/s   read:  239.6 M packets/s
+bits packet  (compile time):  write:  134.7 M packets/s   read:  186.6 M packets/s
+mixed packet (runtime):       write:  146.8 M packets/s   read:  188.7 M packets/s
+mixed packet (compile time):  write:   84.5 M packets/s   read:  152.8 M packets/s
+

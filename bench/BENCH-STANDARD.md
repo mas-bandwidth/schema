@@ -898,6 +898,18 @@ record that the improvement happened.
 
 ## §5 Reporting format
 
+**The reference language is C. C is the 100%; every other language, C++
+included, is measured against C.** (Glenn, 2026-08-17, verbatim: *"make C the
+reference. It is the 100%. C++ is measured against C."* — flipped from C++,
+which had been the table baseline since the table existed.) A relative table
+presents each language's **time** as a percentage of C's, computed on the §2.2
+headline rate as `c_rate / lang_rate × 100` — higher is slower, 200% takes
+twice as long as C. Two things this ruling does NOT move: the §2.6 control leg
+stays the C++ family `gen` runner (the window instrument is not the table
+reference), and historical CSVs and published tables that predate the ruling
+stay in their recorded convention — a band or delta against them converts at
+read time rather than rewriting history.
+
 ### §5.1 CSV v2 — append-only
 
 New columns are **appended**, so `relative.go`'s existing positional parse

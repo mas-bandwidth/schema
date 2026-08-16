@@ -1,5 +1,11 @@
 # Performance
 
+> **Convention note (2026-08-17):** C is the reference from here on — C is the 100% and every
+> other language, C++ included, is measured against it
+> ([BENCH-STANDARD §5](bench/BENCH-STANDARD.md#5-reporting-format)). The tables below predate
+> the flip and are kept exactly as published, in their recorded convention (C++ = 100%); the
+> next published pass prints C = 100%.
+
 Generated-code performance as time relative to C++ (100%; higher is slower), medians across
 the corpus on an **Apple M3 Ultra**, the 2026-08-15 five-language pass **at `-O3`**
 ([raw CSV](bench/results/2026-08-15-arm64-studio-postlane-O3-pass.csv),
