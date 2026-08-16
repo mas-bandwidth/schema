@@ -14,6 +14,30 @@
 
 namespace bench {
 
+#ifndef SCHEMA_WRITE_INLINE_DEFINED
+#define SCHEMA_WRITE_INLINE_DEFINED
+// SCHEMA_WRITE_INLINE — how every generated Write function is spelled.
+// Default: plain `inline`, exactly what this emitter always produced.
+// Define SCHEMA_WRITE_SPINE_DEMAND to make the generated write path DEMAND
+// inlining (always_inline / __forceinline), the serialize family's remedy
+// for LLVM refusing the linkonce_odr Write entries into their call sites
+// at cost over threshold — no last-call-to-static bonus exists for a
+// header function, so unlike C's static entries these never flatten on
+// their own. Branch-weight hints are NOT the fix here — measured in this
+// family to invite the machine outliner into the hot bodies. Do not add them.
+#if defined( SCHEMA_WRITE_SPINE_DEMAND )
+#if defined( _MSC_VER )
+#define SCHEMA_WRITE_INLINE __forceinline
+#elif defined( __GNUC__ ) || defined( __clang__ )
+#define SCHEMA_WRITE_INLINE inline __attribute__(( always_inline ))
+#else
+#define SCHEMA_WRITE_INLINE inline
+#endif
+#else
+#define SCHEMA_WRITE_INLINE inline
+#endif
+#endif // SCHEMA_WRITE_INLINE_DEFINED
+
 #ifndef SCHEMA_READ_INLINE_DEFINED
 #define SCHEMA_READ_INLINE_DEFINED
 // SCHEMA_READ_INLINE — how every generated Read function is spelled.
@@ -38,7 +62,7 @@ namespace bench {
 #endif
 #endif // SCHEMA_READ_INLINE_DEFINED
 
-inline bool WriteBenchPacket( serialize::WriteStream & stream, const BenchPacket & value )
+SCHEMA_WRITE_INLINE bool WriteBenchPacket( serialize::WriteStream & stream, const BenchPacket & value )
 {
     serialize_assert( int32_t( value.a ) >= int32_t( -100 ) && int32_t( value.a ) <= int32_t( 100 ) );
     write_bits( stream, uint32_t( value.a ) - uint32_t( -100 ), 8 );
@@ -77,7 +101,7 @@ SCHEMA_READ_INLINE bool ReadBenchPacket( serialize::ReadStream & stream, BenchPa
     return true;
 }
 
-inline bool WriteBenchInts( serialize::WriteStream & stream, const BenchInts & value )
+SCHEMA_WRITE_INLINE bool WriteBenchInts( serialize::WriteStream & stream, const BenchInts & value )
 {
     serialize_assert( int32_t( value.f0 ) >= int32_t( -100 ) && int32_t( value.f0 ) <= int32_t( 100 ) );
     write_bits( stream, uint32_t( value.f0 ) - uint32_t( -100 ), 8 );
@@ -117,7 +141,7 @@ SCHEMA_READ_INLINE bool ReadBenchInts( serialize::ReadStream & stream, BenchInts
     return true;
 }
 
-inline bool WriteBenchBits( serialize::WriteStream & stream, const BenchBits & value )
+SCHEMA_WRITE_INLINE bool WriteBenchBits( serialize::WriteStream & stream, const BenchBits & value )
 {
     write_bits( stream, value.b7, 7 );
     write_bits( stream, value.b13, 13 );
@@ -143,7 +167,7 @@ SCHEMA_READ_INLINE bool ReadBenchBits( serialize::ReadStream & stream, BenchBits
     return true;
 }
 
-inline bool WriteBenchMixed( serialize::WriteStream & stream, const BenchMixed & value )
+SCHEMA_WRITE_INLINE bool WriteBenchMixed( serialize::WriteStream & stream, const BenchMixed & value )
 {
     serialize_assert( int32_t( value.sequence ) >= int32_t( 0 ) && int32_t( value.sequence ) <= int32_t( 65535 ) );
     write_bits( stream, uint32_t( value.sequence ), 16 );

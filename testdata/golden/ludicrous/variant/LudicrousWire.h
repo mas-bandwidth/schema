@@ -14,6 +14,30 @@
 
 namespace ludicrous {
 
+#ifndef SCHEMA_WRITE_INLINE_DEFINED
+#define SCHEMA_WRITE_INLINE_DEFINED
+// SCHEMA_WRITE_INLINE — how every generated Write function is spelled.
+// Default: plain `inline`, exactly what this emitter always produced.
+// Define SCHEMA_WRITE_SPINE_DEMAND to make the generated write path DEMAND
+// inlining (always_inline / __forceinline), the serialize family's remedy
+// for LLVM refusing the linkonce_odr Write entries into their call sites
+// at cost over threshold — no last-call-to-static bonus exists for a
+// header function, so unlike C's static entries these never flatten on
+// their own. Branch-weight hints are NOT the fix here — measured in this
+// family to invite the machine outliner into the hot bodies. Do not add them.
+#if defined( SCHEMA_WRITE_SPINE_DEMAND )
+#if defined( _MSC_VER )
+#define SCHEMA_WRITE_INLINE __forceinline
+#elif defined( __GNUC__ ) || defined( __clang__ )
+#define SCHEMA_WRITE_INLINE inline __attribute__(( always_inline ))
+#else
+#define SCHEMA_WRITE_INLINE inline
+#endif
+#else
+#define SCHEMA_WRITE_INLINE inline
+#endif
+#endif // SCHEMA_WRITE_INLINE_DEFINED
+
 #ifndef SCHEMA_READ_INLINE_DEFINED
 #define SCHEMA_READ_INLINE_DEFINED
 // SCHEMA_READ_INLINE — how every generated Read function is spelled.
@@ -38,7 +62,7 @@ namespace ludicrous {
 #endif
 #endif // SCHEMA_READ_INLINE_DEFINED
 
-inline bool WriteFixedProbe( serialize::WriteStream & stream, const FixedProbe & value )
+SCHEMA_WRITE_INLINE bool WriteFixedProbe( serialize::WriteStream & stream, const FixedProbe & value )
 {
     {
         int32_t fixed_value = value.angle;
@@ -79,7 +103,7 @@ SCHEMA_READ_INLINE bool ReadFixedProbe( serialize::ReadStream & stream, FixedPro
     return true;
 }
 
-inline bool WriteUnsignedProbe( serialize::WriteStream & stream, const UnsignedProbe & value )
+SCHEMA_WRITE_INLINE bool WriteUnsignedProbe( serialize::WriteStream & stream, const UnsignedProbe & value )
 {
     {
         uint32_t fixed_value = value.angle;
@@ -128,7 +152,7 @@ SCHEMA_READ_INLINE bool ReadUnsignedProbe( serialize::ReadStream & stream, Unsig
     return true;
 }
 
-inline bool WriteWideProbe( serialize::WriteStream & stream, const WideProbe & value )
+SCHEMA_WRITE_INLINE bool WriteWideProbe( serialize::WriteStream & stream, const WideProbe & value )
 {
     write_uint128( stream, value.entity_id );
     write_int128( stream, value.energy, -5000000000, 5000000000 );
@@ -148,7 +172,7 @@ SCHEMA_READ_INLINE bool ReadWideProbe( serialize::ReadStream & stream, WideProbe
     return true;
 }
 
-inline bool WriteLudicrousState( serialize::WriteStream & stream, const LudicrousState & value )
+SCHEMA_WRITE_INLINE bool WriteLudicrousState( serialize::WriteStream & stream, const LudicrousState & value )
 {
     serialize_assert( int32_t( value.mode ) >= int32_t( 0 ) && int32_t( value.mode ) <= int32_t( 3 ) );
     write_bits( stream, uint32_t( value.mode ), 2 );
@@ -206,7 +230,7 @@ SCHEMA_READ_INLINE bool ReadLudicrousState( serialize::ReadStream & stream, Ludi
     return true;
 }
 
-inline bool WriteDegenerateProbe( serialize::WriteStream & stream, const DegenerateProbe & value )
+SCHEMA_WRITE_INLINE bool WriteDegenerateProbe( serialize::WriteStream & stream, const DegenerateProbe & value )
 {
     serialize_assert( int64_t( value.locked_fixed ) == -196608ll );
     serialize_assert( int32_t( value.locked_int ) >= int32_t( 7 ) && int32_t( value.locked_int ) <= int32_t( 7 ) );
@@ -228,7 +252,7 @@ SCHEMA_READ_INLINE bool ReadDegenerateProbe( serialize::ReadStream & stream, Deg
     return true;
 }
 
-inline bool WriteFixedVec( serialize::WriteStream & stream, const FixedVec & value )
+SCHEMA_WRITE_INLINE bool WriteFixedVec( serialize::WriteStream & stream, const FixedVec & value )
 {
     {
         int64_t fixed_value = value.x;
@@ -253,7 +277,7 @@ SCHEMA_READ_INLINE bool ReadFixedVec( serialize::ReadStream & stream, FixedVec &
     return true;
 }
 
-inline bool WriteFixedQuat( serialize::WriteStream & stream, const FixedQuat & value )
+SCHEMA_WRITE_INLINE bool WriteFixedQuat( serialize::WriteStream & stream, const FixedQuat & value )
 {
     {
         int32_t fixed_value = value.x;
@@ -283,7 +307,7 @@ SCHEMA_READ_INLINE bool ReadFixedQuat( serialize::ReadStream & stream, FixedQuat
     return true;
 }
 
-inline bool WriteBodyData_Deep( serialize::WriteStream & stream, const BodyData_Deep & value )
+SCHEMA_WRITE_INLINE bool WriteBodyData_Deep( serialize::WriteStream & stream, const BodyData_Deep & value )
 {
     if ( !WriteFixedVec( stream, value.position ) )
     {
@@ -317,7 +341,7 @@ SCHEMA_READ_INLINE bool ReadBodyData_Deep( serialize::ReadStream & stream, BodyD
     return true;
 }
 
-inline bool WriteBodyData_Shallow( serialize::WriteStream & stream, const BodyData_Shallow & value )
+SCHEMA_WRITE_INLINE bool WriteBodyData_Shallow( serialize::WriteStream & stream, const BodyData_Shallow & value )
 {
     if ( !WriteFixedVec( stream, value.position ) )
     {
@@ -351,7 +375,7 @@ SCHEMA_READ_INLINE bool ReadBodyData_Shallow( serialize::ReadStream & stream, Bo
     return true;
 }
 
-inline bool WriteNarrowBodyData_Deep( serialize::WriteStream & stream, const NarrowBodyData_Deep & value )
+SCHEMA_WRITE_INLINE bool WriteNarrowBodyData_Deep( serialize::WriteStream & stream, const NarrowBodyData_Deep & value )
 {
     if ( !WriteFixedVec( stream, value.position ) )
     {
@@ -385,7 +409,7 @@ SCHEMA_READ_INLINE bool ReadNarrowBodyData_Deep( serialize::ReadStream & stream,
     return true;
 }
 
-inline bool WriteNarrowBodyData_Shallow( serialize::WriteStream & stream, const NarrowBodyData_Shallow & value )
+SCHEMA_WRITE_INLINE bool WriteNarrowBodyData_Shallow( serialize::WriteStream & stream, const NarrowBodyData_Shallow & value )
 {
     serialize_assert( int32_t( value.position_x ) >= int32_t( -25600000 ) && int32_t( value.position_x ) <= int32_t( 25600000 ) );
     write_bits( stream, uint32_t( value.position_x ) - uint32_t( -25600000 ), 26 );
@@ -454,7 +478,7 @@ SCHEMA_READ_INLINE bool ReadNarrowBodyData_Shallow( serialize::ReadStream & stre
 
 // The message tag wire: MessageType in [0, 1], minimal bits; None = 0 is a
 // valid wire value meaning *no message* — the stream terminator (SPEC §4.8).
-inline bool WriteMessageType( serialize::WriteStream & stream, MessageType value )
+SCHEMA_WRITE_INLINE bool WriteMessageType( serialize::WriteStream & stream, MessageType value )
 {
     serialize_assert( int32_t( value ) >= int32_t( 0 ) && int32_t( value ) <= int32_t( 1 ) );
     write_bits( stream, uint32_t( value ), 1 );
@@ -469,7 +493,7 @@ SCHEMA_READ_INLINE bool ReadMessageType( serialize::ReadStream & stream, Message
     return true;
 }
 
-inline bool WriteMessage( serialize::WriteStream & stream, const Message & message )
+SCHEMA_WRITE_INLINE bool WriteMessage( serialize::WriteStream & stream, const Message & message )
 {
     if ( !WriteMessageType( stream, MessageType( message.index() ) ) )
     {
@@ -505,7 +529,7 @@ SCHEMA_READ_INLINE bool ReadMessage( serialize::ReadStream & stream, Message & m
 
 // The object tag wire: ObjectType in [0, 2], minimal bits; None = 0 is the
 // null — the sentinel the surveyed baseline streams terminate with (SPEC §4.8).
-inline bool WriteObjectType( serialize::WriteStream & stream, ObjectType value )
+SCHEMA_WRITE_INLINE bool WriteObjectType( serialize::WriteStream & stream, ObjectType value )
 {
     serialize_assert( int32_t( value ) >= int32_t( 0 ) && int32_t( value ) <= int32_t( 2 ) );
     write_bits( stream, uint32_t( value ), 2 );
