@@ -463,6 +463,9 @@ var _ = big.NewInt
 // ---- wire header ----
 
 func (g *gen) emitWireHeader() {
+	if g.fileEmitsWire() {
+		g.emitSpineInlineMacros()
+	}
 	if fileHasStrings(g.file) {
 		g.emitUtf8Validator()
 	}
@@ -486,7 +489,7 @@ func (g *gen) emitWireHeader() {
 func (g *gen) emitWriteFunc(st *ir.Struct) {
 	g.pf("/* Writes %s. Returns 1 on success, 0 on failure — the stream latches the\n", st.Name)
 	g.pf("   error, so a caller may check once at the end of a message. */\n")
-	g.pf("static SCHEMA_UNUSED int write_%s( serialize_write_stream_t * stream, const %s * value )\n{\n", snake(st.Name), st.Name)
+	g.pf("static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_%s( serialize_write_stream_t * stream, const %s * value )\n{\n", snake(st.Name), st.Name)
 	// The early-out is keyed on ITEMS, not fields: a struct whose only items
 	// are reserved/const/align has no storage but DOES have wire bits, and
 	// keying on fields made C write nothing where C++ wrote the reserved
@@ -512,7 +515,7 @@ func (g *gen) emitWriteFunc(st *ir.Struct) {
 func (g *gen) emitReadFunc(st *ir.Struct) {
 	g.pf("/* Reads %s. Returns 1 on success, 0 on failure. Out-of-range values are\n", st.Name)
 	g.pf("   REFUSED, never clamped. */\n")
-	g.pf("static SCHEMA_UNUSED int read_%s( serialize_read_stream_t * stream, %s * value )\n{\n", snake(st.Name), st.Name)
+	g.pf("static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_%s( serialize_read_stream_t * stream, %s * value )\n{\n", snake(st.Name), st.Name)
 	if len(st.Items) == 0 {
 		g.pf("    (void) stream;\n    (void) value;\n    return 1;\n}\n\n")
 		return

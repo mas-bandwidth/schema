@@ -158,20 +158,20 @@ func (g *gen) emitMessageTypes() {
 
 func (g *gen) emitMessageDispatch() {
 	g.pf("/* The tag itself, over [0, MESSAGE_TYPE_MAX]. */\n")
-	g.pf("static SCHEMA_UNUSED int write_message_type( serialize_write_stream_t * stream, MessageType value )\n{\n")
+	g.pf("static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_message_type( serialize_write_stream_t * stream, MessageType value )\n{\n")
 	bits := ir.BitsRequired(bigZero(), bigInt64(int64(len(g.unit.Messages))))
 	g.pf("    if ( value > MESSAGE_TYPE_MAX )\n    {\n        return 0;\n    }\n")
 	g.call("    ", fmt.Sprintf("serialize_write_bits( stream, (serialize_uint32_t) value, %d )", bits))
 	g.pf("    return 1;\n}\n\n")
 
-	g.pf("static SCHEMA_UNUSED int read_message_type( serialize_read_stream_t * stream, MessageType * value )\n{\n")
+	g.pf("static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_message_type( serialize_read_stream_t * stream, MessageType * value )\n{\n")
 	g.pf("    serialize_uint32_t raw = 0;\n")
 	g.call("    ", fmt.Sprintf("serialize_read_bits( stream, &raw, %d )", bits))
 	g.pf("    if ( raw > MESSAGE_TYPE_MAX )\n    {\n        return 0;\n    }\n")
 	g.pf("    *value = (MessageType) raw;\n    return 1;\n}\n\n")
 
 	g.pf("/* Writes the tag and then the selected arm. */\n")
-	g.pf("static SCHEMA_UNUSED int write_message( serialize_write_stream_t * stream, const Message * message )\n{\n")
+	g.pf("static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_message( serialize_write_stream_t * stream, const Message * message )\n{\n")
 	g.pf("    switch ( message->type )\n    {\n")
 	g.pf("        case MESSAGE_TYPE_NONE:\n")
 	g.pf("            return write_message_type( stream, MESSAGE_TYPE_NONE ); /* the stream terminator */\n")
@@ -183,7 +183,7 @@ func (g *gen) emitMessageDispatch() {
 	g.pf("        default:\n            return 0;\n    }\n}\n\n")
 
 	g.pf("/* Reads the tag, ZEROES the selected arm, then decodes into it (SPEC §5). */\n")
-	g.pf("static SCHEMA_UNUSED int read_message( serialize_read_stream_t * stream, Message * message )\n{\n")
+	g.pf("static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_message( serialize_read_stream_t * stream, Message * message )\n{\n")
 	g.pf("    MessageType type = MESSAGE_TYPE_NONE;\n")
 	g.call("    ", "read_message_type( stream, &type )")
 	g.pf("    message->type = type;\n")

@@ -25,9 +25,45 @@
 extern "C" {
 #endif
 
+#ifndef SCHEMA_C_SPINE_INLINE_DEFINED
+#define SCHEMA_C_SPINE_INLINE_DEFINED
+/* SCHEMA_C_READ_INLINE / SCHEMA_C_WRITE_INLINE — how every generated wire
+   function is spelled, beside `static SCHEMA_UNUSED`. Default: both expand
+   to nothing — token-identical to what this emitter always produced.
+   Define SCHEMA_C_READ_SPINE_DEMAND / SCHEMA_C_WRITE_SPINE_DEMAND to make
+   the generated read / write spine DEMAND inlining (always_inline /
+   __forceinline), the serialize family's remedy for LLVM refusing the
+   header-static per-message entries into small-message call sites at
+   marginal cost over the hot-callsite inline threshold. Branch-weight
+   hints are NOT the fix here — measured in this family to invite the
+   machine outliner into the hot bodies. Do not add them. */
+#if defined( SCHEMA_C_READ_SPINE_DEMAND )
+#if defined( _MSC_VER )
+#define SCHEMA_C_READ_INLINE __forceinline
+#elif defined( __GNUC__ ) || defined( __clang__ )
+#define SCHEMA_C_READ_INLINE inline __attribute__(( always_inline ))
+#else
+#define SCHEMA_C_READ_INLINE
+#endif
+#else
+#define SCHEMA_C_READ_INLINE
+#endif
+#if defined( SCHEMA_C_WRITE_SPINE_DEMAND )
+#if defined( _MSC_VER )
+#define SCHEMA_C_WRITE_INLINE __forceinline
+#elif defined( __GNUC__ ) || defined( __clang__ )
+#define SCHEMA_C_WRITE_INLINE inline __attribute__(( always_inline ))
+#else
+#define SCHEMA_C_WRITE_INLINE
+#endif
+#else
+#define SCHEMA_C_WRITE_INLINE
+#endif
+#endif /* SCHEMA_C_SPINE_INLINE_DEFINED */
+
 /* Writes Vec3. Returns 1 on success, 0 on failure — the stream latches the
    error, so a caller may check once at the end of a message. */
-static SCHEMA_UNUSED int write_vec3( serialize_write_stream_t * stream, const Vec3 * value )
+static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_vec3( serialize_write_stream_t * stream, const Vec3 * value )
 {
     if ( !serialize_write_double( stream, value->x ) )
     {
@@ -46,7 +82,7 @@ static SCHEMA_UNUSED int write_vec3( serialize_write_stream_t * stream, const Ve
 
 /* Reads Vec3. Returns 1 on success, 0 on failure. Out-of-range values are
    REFUSED, never clamped. */
-static SCHEMA_UNUSED int read_vec3( serialize_read_stream_t * stream, Vec3 * value )
+static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_vec3( serialize_read_stream_t * stream, Vec3 * value )
 {
     if ( !serialize_read_double( stream, &value->x ) )
     {
@@ -65,7 +101,7 @@ static SCHEMA_UNUSED int read_vec3( serialize_read_stream_t * stream, Vec3 * val
 
 /* Writes Quat. Returns 1 on success, 0 on failure — the stream latches the
    error, so a caller may check once at the end of a message. */
-static SCHEMA_UNUSED int write_quat( serialize_write_stream_t * stream, const Quat * value )
+static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_quat( serialize_write_stream_t * stream, const Quat * value )
 {
     if ( !serialize_write_double( stream, value->x ) )
     {
@@ -88,7 +124,7 @@ static SCHEMA_UNUSED int write_quat( serialize_write_stream_t * stream, const Qu
 
 /* Reads Quat. Returns 1 on success, 0 on failure. Out-of-range values are
    REFUSED, never clamped. */
-static SCHEMA_UNUSED int read_quat( serialize_read_stream_t * stream, Quat * value )
+static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_quat( serialize_read_stream_t * stream, Quat * value )
 {
     if ( !serialize_read_double( stream, &value->x ) )
     {
@@ -111,7 +147,7 @@ static SCHEMA_UNUSED int read_quat( serialize_read_stream_t * stream, Quat * val
 
 /* Writes Handle. Returns 1 on success, 0 on failure — the stream latches the
    error, so a caller may check once at the end of a message. */
-static SCHEMA_UNUSED int write_handle( serialize_write_stream_t * stream, const Handle * value )
+static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_handle( serialize_write_stream_t * stream, const Handle * value )
 {
     if ( (serialize_int64_t) value->object_id < 0LL || (serialize_int64_t) value->object_id > 9999LL )
     {
@@ -130,7 +166,7 @@ static SCHEMA_UNUSED int write_handle( serialize_write_stream_t * stream, const 
 
 /* Reads Handle. Returns 1 on success, 0 on failure. Out-of-range values are
    REFUSED, never clamped. */
-static SCHEMA_UNUSED int read_handle( serialize_read_stream_t * stream, Handle * value )
+static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_handle( serialize_read_stream_t * stream, Handle * value )
 {
     {
         serialize_uint64_t offset_value = 0;
@@ -159,7 +195,7 @@ static SCHEMA_UNUSED int read_handle( serialize_read_stream_t * stream, Handle *
 
 /* Writes QuantizedPosition. Returns 1 on success, 0 on failure — the stream latches the
    error, so a caller may check once at the end of a message. */
-static SCHEMA_UNUSED int write_quantized_position( serialize_write_stream_t * stream, const QuantizedPosition * value )
+static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_quantized_position( serialize_write_stream_t * stream, const QuantizedPosition * value )
 {
     if ( (serialize_int64_t) value->x < -8388608LL || (serialize_int64_t) value->x > 8388608LL )
     {
@@ -190,7 +226,7 @@ static SCHEMA_UNUSED int write_quantized_position( serialize_write_stream_t * st
 
 /* Reads QuantizedPosition. Returns 1 on success, 0 on failure. Out-of-range values are
    REFUSED, never clamped. */
-static SCHEMA_UNUSED int read_quantized_position( serialize_read_stream_t * stream, QuantizedPosition * value )
+static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_quantized_position( serialize_read_stream_t * stream, QuantizedPosition * value )
 {
     {
         serialize_uint64_t offset_value = 0;
@@ -239,7 +275,7 @@ static SCHEMA_UNUSED int read_quantized_position( serialize_read_stream_t * stre
 
 /* Writes QuantizedVelocity. Returns 1 on success, 0 on failure — the stream latches the
    error, so a caller may check once at the end of a message. */
-static SCHEMA_UNUSED int write_quantized_velocity( serialize_write_stream_t * stream, const QuantizedVelocity * value )
+static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_quantized_velocity( serialize_write_stream_t * stream, const QuantizedVelocity * value )
 {
     if ( (serialize_int64_t) value->x < -2097152LL || (serialize_int64_t) value->x > 2097152LL )
     {
@@ -270,7 +306,7 @@ static SCHEMA_UNUSED int write_quantized_velocity( serialize_write_stream_t * st
 
 /* Reads QuantizedVelocity. Returns 1 on success, 0 on failure. Out-of-range values are
    REFUSED, never clamped. */
-static SCHEMA_UNUSED int read_quantized_velocity( serialize_read_stream_t * stream, QuantizedVelocity * value )
+static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_quantized_velocity( serialize_read_stream_t * stream, QuantizedVelocity * value )
 {
     {
         serialize_uint64_t offset_value = 0;
@@ -319,7 +355,7 @@ static SCHEMA_UNUSED int read_quantized_velocity( serialize_read_stream_t * stre
 
 /* Writes QuantizedRotation. Returns 1 on success, 0 on failure — the stream latches the
    error, so a caller may check once at the end of a message. */
-static SCHEMA_UNUSED int write_quantized_rotation( serialize_write_stream_t * stream, const QuantizedRotation * value )
+static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_quantized_rotation( serialize_write_stream_t * stream, const QuantizedRotation * value )
 {
     if ( (serialize_int64_t) value->x < -1024LL || (serialize_int64_t) value->x > 1024LL )
     {
@@ -358,7 +394,7 @@ static SCHEMA_UNUSED int write_quantized_rotation( serialize_write_stream_t * st
 
 /* Reads QuantizedRotation. Returns 1 on success, 0 on failure. Out-of-range values are
    REFUSED, never clamped. */
-static SCHEMA_UNUSED int read_quantized_rotation( serialize_read_stream_t * stream, QuantizedRotation * value )
+static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_quantized_rotation( serialize_read_stream_t * stream, QuantizedRotation * value )
 {
     {
         serialize_uint64_t offset_value = 0;
@@ -421,7 +457,7 @@ static SCHEMA_UNUSED int read_quantized_rotation( serialize_read_stream_t * stre
 
 /* Writes RigidBody. Returns 1 on success, 0 on failure — the stream latches the
    error, so a caller may check once at the end of a message. */
-static SCHEMA_UNUSED int write_rigid_body( serialize_write_stream_t * stream, const RigidBody * value )
+static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_rigid_body( serialize_write_stream_t * stream, const RigidBody * value )
 {
     if ( !write_vec3( stream, &value->position ) )
     {
@@ -451,7 +487,7 @@ static SCHEMA_UNUSED int write_rigid_body( serialize_write_stream_t * stream, co
 
 /* Reads RigidBody. Returns 1 on success, 0 on failure. Out-of-range values are
    REFUSED, never clamped. */
-static SCHEMA_UNUSED int read_rigid_body( serialize_read_stream_t * stream, RigidBody * value )
+static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_rigid_body( serialize_read_stream_t * stream, RigidBody * value )
 {
     if ( !read_vec3( stream, &value->position ) )
     {
@@ -486,7 +522,7 @@ static SCHEMA_UNUSED int read_rigid_body( serialize_read_stream_t * stream, Rigi
 
 /* Writes Input. Returns 1 on success, 0 on failure — the stream latches the
    error, so a caller may check once at the end of a message. */
-static SCHEMA_UNUSED int write_input( serialize_write_stream_t * stream, const Input * value )
+static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_input( serialize_write_stream_t * stream, const Input * value )
 {
     if ( !serialize_write_float( stream, value->stick_x ) )
     {
@@ -545,7 +581,7 @@ static SCHEMA_UNUSED int write_input( serialize_write_stream_t * stream, const I
 
 /* Reads Input. Returns 1 on success, 0 on failure. Out-of-range values are
    REFUSED, never clamped. */
-static SCHEMA_UNUSED int read_input( serialize_read_stream_t * stream, Input * value )
+static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_input( serialize_read_stream_t * stream, Input * value )
 {
     if ( !serialize_read_float( stream, &value->stick_x ) )
     {
@@ -604,7 +640,7 @@ static SCHEMA_UNUSED int read_input( serialize_read_stream_t * stream, Input * v
 
 /* Writes InputPacket. Returns 1 on success, 0 on failure — the stream latches the
    error, so a caller may check once at the end of a message. */
-static SCHEMA_UNUSED int write_input_packet( serialize_write_stream_t * stream, const InputPacket * value )
+static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_input_packet( serialize_write_stream_t * stream, const InputPacket * value )
 {
     if ( !serialize_write_bits( stream, (serialize_uint32_t) value->synchronize_sequence, 16 ) )
     {
@@ -637,7 +673,7 @@ static SCHEMA_UNUSED int write_input_packet( serialize_write_stream_t * stream, 
 
 /* Reads InputPacket. Returns 1 on success, 0 on failure. Out-of-range values are
    REFUSED, never clamped. */
-static SCHEMA_UNUSED int read_input_packet( serialize_read_stream_t * stream, InputPacket * value )
+static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_input_packet( serialize_read_stream_t * stream, InputPacket * value )
 {
     {
         serialize_uint32_t raw = 0;
@@ -682,7 +718,7 @@ static SCHEMA_UNUSED int read_input_packet( serialize_read_stream_t * stream, In
 
 /* Writes ShipCreate. Returns 1 on success, 0 on failure — the stream latches the
    error, so a caller may check once at the end of a message. */
-static SCHEMA_UNUSED int write_ship_create( serialize_write_stream_t * stream, const ShipCreate * value )
+static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_ship_create( serialize_write_stream_t * stream, const ShipCreate * value )
 {
     if ( value->ship_type > 5 )
     {
@@ -748,7 +784,7 @@ static SCHEMA_UNUSED int write_ship_create( serialize_write_stream_t * stream, c
 
 /* Reads ShipCreate. Returns 1 on success, 0 on failure. Out-of-range values are
    REFUSED, never clamped. */
-static SCHEMA_UNUSED int read_ship_create( serialize_read_stream_t * stream, ShipCreate * value )
+static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_ship_create( serialize_read_stream_t * stream, ShipCreate * value )
 {
     {
         serialize_uint32_t enum_value = 0;

@@ -234,7 +234,7 @@ func (g *gen) emitObjectFunctions(d *ir.Object) {
 	// other four backends (WriteShipData_Deep -> write_ship_data_deep) — the
 	// object-name form this used to emit (write_ship_deep) lived outside the
 	// claimed-name registry and could collide with a user type (#23)
-	g.pf("static SCHEMA_UNUSED int write_%s( serialize_write_stream_t * stream, const %sData_Deep * value )\n{\n",
+	g.pf("static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_%s( serialize_write_stream_t * stream, const %sData_Deep * value )\n{\n",
 		snake(d.Name+"Data_Deep"), d.Name)
 	mark := g.body.Len()
 	for _, f := range deep {
@@ -244,7 +244,7 @@ func (g *gen) emitObjectFunctions(d *ir.Object) {
 	g.pf("    return 1;\n}\n\n")
 
 	g.pf("/* Reads %s's DEEP view. */\n", d.Name)
-	g.pf("static SCHEMA_UNUSED int read_%s( serialize_read_stream_t * stream, %sData_Deep * value )\n{\n",
+	g.pf("static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_%s( serialize_read_stream_t * stream, %sData_Deep * value )\n{\n",
 		snake(d.Name+"Data_Deep"), d.Name)
 	mark = g.body.Len()
 	for _, f := range deep {
@@ -254,7 +254,7 @@ func (g *gen) emitObjectFunctions(d *ir.Object) {
 	g.pf("    return 1;\n}\n\n")
 
 	g.pf("/* Writes %s's SHALLOW view — the quantized wire. */\n", d.Name)
-	g.pf("static SCHEMA_UNUSED int write_%s( serialize_write_stream_t * stream, const %sData_Shallow * value )\n{\n",
+	g.pf("static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_%s( serialize_write_stream_t * stream, const %sData_Shallow * value )\n{\n",
 		snake(d.Name+"Data_Shallow"), d.Name)
 	mark = g.body.Len()
 	for _, f := range interp {
@@ -264,7 +264,7 @@ func (g *gen) emitObjectFunctions(d *ir.Object) {
 	g.pf("    return 1;\n}\n\n")
 
 	g.pf("/* Reads %s's SHALLOW view. */\n", d.Name)
-	g.pf("static SCHEMA_UNUSED int read_%s( serialize_read_stream_t * stream, %sData_Shallow * value )\n{\n",
+	g.pf("static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_%s( serialize_read_stream_t * stream, %sData_Shallow * value )\n{\n",
 		snake(d.Name+"Data_Shallow"), d.Name)
 	mark = g.body.Len()
 	for _, f := range interp {

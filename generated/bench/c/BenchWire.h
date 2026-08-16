@@ -23,9 +23,45 @@
 extern "C" {
 #endif
 
+#ifndef SCHEMA_C_SPINE_INLINE_DEFINED
+#define SCHEMA_C_SPINE_INLINE_DEFINED
+/* SCHEMA_C_READ_INLINE / SCHEMA_C_WRITE_INLINE — how every generated wire
+   function is spelled, beside `static SCHEMA_UNUSED`. Default: both expand
+   to nothing — token-identical to what this emitter always produced.
+   Define SCHEMA_C_READ_SPINE_DEMAND / SCHEMA_C_WRITE_SPINE_DEMAND to make
+   the generated read / write spine DEMAND inlining (always_inline /
+   __forceinline), the serialize family's remedy for LLVM refusing the
+   header-static per-message entries into small-message call sites at
+   marginal cost over the hot-callsite inline threshold. Branch-weight
+   hints are NOT the fix here — measured in this family to invite the
+   machine outliner into the hot bodies. Do not add them. */
+#if defined( SCHEMA_C_READ_SPINE_DEMAND )
+#if defined( _MSC_VER )
+#define SCHEMA_C_READ_INLINE __forceinline
+#elif defined( __GNUC__ ) || defined( __clang__ )
+#define SCHEMA_C_READ_INLINE inline __attribute__(( always_inline ))
+#else
+#define SCHEMA_C_READ_INLINE
+#endif
+#else
+#define SCHEMA_C_READ_INLINE
+#endif
+#if defined( SCHEMA_C_WRITE_SPINE_DEMAND )
+#if defined( _MSC_VER )
+#define SCHEMA_C_WRITE_INLINE __forceinline
+#elif defined( __GNUC__ ) || defined( __clang__ )
+#define SCHEMA_C_WRITE_INLINE inline __attribute__(( always_inline ))
+#else
+#define SCHEMA_C_WRITE_INLINE
+#endif
+#else
+#define SCHEMA_C_WRITE_INLINE
+#endif
+#endif /* SCHEMA_C_SPINE_INLINE_DEFINED */
+
 /* Writes BenchPacket. Returns 1 on success, 0 on failure — the stream latches the
    error, so a caller may check once at the end of a message. */
-static SCHEMA_UNUSED int write_bench_packet( serialize_write_stream_t * stream, const BenchPacket * value )
+static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_bench_packet( serialize_write_stream_t * stream, const BenchPacket * value )
 {
     if ( (serialize_int64_t) value->a < -100LL || (serialize_int64_t) value->a > 100LL )
     {
@@ -102,7 +138,7 @@ static SCHEMA_UNUSED int write_bench_packet( serialize_write_stream_t * stream, 
 
 /* Reads BenchPacket. Returns 1 on success, 0 on failure. Out-of-range values are
    REFUSED, never clamped. */
-static SCHEMA_UNUSED int read_bench_packet( serialize_read_stream_t * stream, BenchPacket * value )
+static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_bench_packet( serialize_read_stream_t * stream, BenchPacket * value )
 {
     {
         serialize_uint64_t offset_value = 0;
@@ -217,7 +253,7 @@ static SCHEMA_UNUSED int read_bench_packet( serialize_read_stream_t * stream, Be
 
 /* Writes BenchInts. Returns 1 on success, 0 on failure — the stream latches the
    error, so a caller may check once at the end of a message. */
-static SCHEMA_UNUSED int write_bench_ints( serialize_write_stream_t * stream, const BenchInts * value )
+static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_bench_ints( serialize_write_stream_t * stream, const BenchInts * value )
 {
     if ( (serialize_int64_t) value->f0 < -100LL || (serialize_int64_t) value->f0 > 100LL )
     {
@@ -304,7 +340,7 @@ static SCHEMA_UNUSED int write_bench_ints( serialize_write_stream_t * stream, co
 
 /* Reads BenchInts. Returns 1 on success, 0 on failure. Out-of-range values are
    REFUSED, never clamped. */
-static SCHEMA_UNUSED int read_bench_ints( serialize_read_stream_t * stream, BenchInts * value )
+static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_bench_ints( serialize_read_stream_t * stream, BenchInts * value )
 {
     {
         serialize_uint64_t offset_value = 0;
@@ -451,7 +487,7 @@ static SCHEMA_UNUSED int read_bench_ints( serialize_read_stream_t * stream, Benc
 
 /* Writes BenchBits. Returns 1 on success, 0 on failure — the stream latches the
    error, so a caller may check once at the end of a message. */
-static SCHEMA_UNUSED int write_bench_bits( serialize_write_stream_t * stream, const BenchBits * value )
+static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_bench_bits( serialize_write_stream_t * stream, const BenchBits * value )
 {
     if ( !serialize_write_bits( stream, (serialize_uint32_t) value->b7, 7 ) )
     {
@@ -497,7 +533,7 @@ static SCHEMA_UNUSED int write_bench_bits( serialize_write_stream_t * stream, co
 
 /* Reads BenchBits. Returns 1 on success, 0 on failure. Out-of-range values are
    REFUSED, never clamped. */
-static SCHEMA_UNUSED int read_bench_bits( serialize_read_stream_t * stream, BenchBits * value )
+static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_bench_bits( serialize_read_stream_t * stream, BenchBits * value )
 {
     {
         serialize_uint32_t raw = 0;
@@ -573,7 +609,7 @@ static SCHEMA_UNUSED int read_bench_bits( serialize_read_stream_t * stream, Benc
 
 /* Writes BenchMixed. Returns 1 on success, 0 on failure — the stream latches the
    error, so a caller may check once at the end of a message. */
-static SCHEMA_UNUSED int write_bench_mixed( serialize_write_stream_t * stream, const BenchMixed * value )
+static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_bench_mixed( serialize_write_stream_t * stream, const BenchMixed * value )
 {
     if ( (serialize_int64_t) value->sequence < 0LL || (serialize_int64_t) value->sequence > 65535LL )
     {
@@ -651,7 +687,7 @@ static SCHEMA_UNUSED int write_bench_mixed( serialize_write_stream_t * stream, c
 
 /* Reads BenchMixed. Returns 1 on success, 0 on failure. Out-of-range values are
    REFUSED, never clamped. */
-static SCHEMA_UNUSED int read_bench_mixed( serialize_read_stream_t * stream, BenchMixed * value )
+static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_bench_mixed( serialize_read_stream_t * stream, BenchMixed * value )
 {
     {
         serialize_uint64_t offset_value = 0;
