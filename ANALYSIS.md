@@ -391,3 +391,54 @@ everywhere. Default-ON is a separate decision with a real code-size trade —
 free — and belongs to the family with this data in hand, plus the undiluted
 RealPacket row.
 
+
+## The full-corpus C-vs-C++ view (tool-produced, stamped verdicts, §5.3-clean)
+
+Produced by `go run ./bench/tools --label-checks --cross-linkage rel <pair.csv>` over the
+pair files (cpp rows + c-main rows of the same pass; all verdict columns stamped by
+inline-verdict.sh, zero unknowns). Noisy rows (§2.3 >15%) are excluded from corpus
+medians by the tool and named in its notes — the exclusion sets differ between the two
+tables, so the two read medians are not composed of identical row sets.
+
+### As shipped (cpp-off vs c-main)
+```
+note: excluding rigidbody_at_rest write from the c corpus median: spread cpp 13.4% / c 20.2% exceeds 15% (§2.3 noisy)
+note: excluding chat write from the c corpus median: spread cpp 24.6% / c 6.6% exceeds 15% (§2.3 noisy)
+note: excluding rigidbody_at_rest read from the c corpus median: spread cpp 17.2% / c 14.5% exceeds 15% (§2.3 noisy)
+note: excluding test read from the c corpus median: spread cpp 16.2% / c 4.8% exceeds 15% (§2.3 noisy)
+note: excluding inputpacket read from the c corpus median: spread cpp 4.7% / c 18.3% exceeds 15% (§2.3 noisy)
+note: excluding shipcreate read from the c corpus median: spread cpp 4.0% / c 20.2% exceeds 15% (§2.3 noisy)
+note: excluding probebits read from the c corpus median: spread cpp 39.1% / c 4.0% exceeds 15% (§2.3 noisy)
+note: excluding probearray read from the c corpus median: spread cpp 22.4% / c 6.2% exceeds 15% (§2.3 noisy)
+<!-- HIGHER IS SLOWER: each cell is C++'s best rate divided by this
+     language's best rate, so 200% means it takes twice as long. -->
+| backend | write | read | batch write | batch read |
+|---|---:|---:|---:|---:|
+| C++ | 100% | 100% | 100% | 100% |
+| C | **128%** | **135%** | **110%** | **67%** |
+| Rust | — | — | — | — |
+| C# | — | — | — | — |
+| Go | — | — | — | — |
+<!-- CAPTION: cpp checks=removed (debug asserts and bounds/range checks compile out) vs c checks=contract (debug asserts compile out; wire/API contract validation stays in every build) — this ratio includes the cost of a different safety contract. -->
+<!-- CAPTION: cpp linkage=hdr vs c linkage=hdr+tu — this ratio includes the runtimes' packaging difference. -->
+```
+
+### Armed (cpp-AB vs c-main)
+```
+note: excluding rigidbody_at_rest write from the c corpus median: spread cpp 9.5% / c 20.2% exceeds 15% (§2.3 noisy)
+note: excluding rigidbody_moving read from the c corpus median: spread cpp 29.8% / c 5.5% exceeds 15% (§2.3 noisy)
+note: excluding chat read from the c corpus median: spread cpp 16.3% / c 11.7% exceeds 15% (§2.3 noisy)
+note: excluding inputpacket read from the c corpus median: spread cpp 17.0% / c 18.3% exceeds 15% (§2.3 noisy)
+note: excluding shipcreate read from the c corpus median: spread cpp 7.7% / c 20.2% exceeds 15% (§2.3 noisy)
+<!-- HIGHER IS SLOWER: each cell is C++'s best rate divided by this
+     language's best rate, so 200% means it takes twice as long. -->
+| backend | write | read | batch write | batch read |
+|---|---:|---:|---:|---:|
+| C++ | 100% | 100% | 100% | 100% |
+| C | **133%** | **317%** | **106%** | **92%** |
+| Rust | — | — | — | — |
+| C# | — | — | — | — |
+| Go | — | — | — | — |
+<!-- CAPTION: cpp checks=removed (debug asserts and bounds/range checks compile out) vs c checks=contract (debug asserts compile out; wire/API contract validation stays in every build) — this ratio includes the cost of a different safety contract. -->
+<!-- CAPTION: cpp linkage=hdr vs c linkage=hdr+tu — this ratio includes the runtimes' packaging difference. -->
+```
