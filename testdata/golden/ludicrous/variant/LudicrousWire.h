@@ -14,6 +14,30 @@
 
 namespace ludicrous {
 
+#ifndef SCHEMA_READ_INLINE_DEFINED
+#define SCHEMA_READ_INLINE_DEFINED
+// SCHEMA_READ_INLINE — how every generated Read function is spelled.
+// Default: plain `inline`, exactly what this emitter always produced.
+// Define SCHEMA_READ_SPINE_DEMAND to make the generated read path DEMAND
+// inlining (always_inline / __forceinline), the serialize family's remedy
+// for LLVM's fallible-chain frequency decay: each Ok/Err split is priced
+// at ~even odds, block frequency decays geometrically down a read chain,
+// and later call sites are held to the cold-callsite inline threshold.
+// Branch-weight hints are NOT the fix here — measured in this family to
+// invite the machine outliner into the hot bodies. Do not add them.
+#if defined( SCHEMA_READ_SPINE_DEMAND )
+#if defined( _MSC_VER )
+#define SCHEMA_READ_INLINE __forceinline
+#elif defined( __GNUC__ ) || defined( __clang__ )
+#define SCHEMA_READ_INLINE inline __attribute__(( always_inline ))
+#else
+#define SCHEMA_READ_INLINE inline
+#endif
+#else
+#define SCHEMA_READ_INLINE inline
+#endif
+#endif // SCHEMA_READ_INLINE_DEFINED
+
 inline bool WriteFixedProbe( serialize::WriteStream & stream, const FixedProbe & value )
 {
     {
@@ -42,7 +66,7 @@ inline bool WriteFixedProbe( serialize::WriteStream & stream, const FixedProbe &
     return true;
 }
 
-inline bool ReadFixedProbe( serialize::ReadStream & stream, FixedProbe & value )
+SCHEMA_READ_INLINE bool ReadFixedProbe( serialize::ReadStream & stream, FixedProbe & value )
 {
     read_fixed( stream, value.angle, 16, 16, -180, 180 );
     read_fixed( stream, value.position, 48, 16, -MaxWorldUnits, MaxWorldUnits );
@@ -85,7 +109,7 @@ inline bool WriteUnsignedProbe( serialize::WriteStream & stream, const UnsignedP
     return true;
 }
 
-inline bool ReadUnsignedProbe( serialize::ReadStream & stream, UnsignedProbe & value )
+SCHEMA_READ_INLINE bool ReadUnsignedProbe( serialize::ReadStream & stream, UnsignedProbe & value )
 {
     read_fixed( stream, value.angle, 16, 16, 0, 360 );
     read_fixed( stream, value.span, 48, 16, 0, 281474976710655 );
@@ -114,7 +138,7 @@ inline bool WriteWideProbe( serialize::WriteStream & stream, const WideProbe & v
     return true;
 }
 
-inline bool ReadWideProbe( serialize::ReadStream & stream, WideProbe & value )
+SCHEMA_READ_INLINE bool ReadWideProbe( serialize::ReadStream & stream, WideProbe & value )
 {
     read_uint128( stream, value.entity_id );
     read_int128( stream, value.energy, -5000000000, 5000000000 );
@@ -150,7 +174,7 @@ inline bool WriteLudicrousState( serialize::WriteStream & stream, const Ludicrou
     return true;
 }
 
-inline bool ReadLudicrousState( serialize::ReadStream & stream, LudicrousState & value )
+SCHEMA_READ_INLINE bool ReadLudicrousState( serialize::ReadStream & stream, LudicrousState & value )
 {
     {
         int32_t enum_value = 0;
@@ -191,7 +215,7 @@ inline bool WriteDegenerateProbe( serialize::WriteStream & stream, const Degener
     return true;
 }
 
-inline bool ReadDegenerateProbe( serialize::ReadStream & stream, DegenerateProbe & value )
+SCHEMA_READ_INLINE bool ReadDegenerateProbe( serialize::ReadStream & stream, DegenerateProbe & value )
 {
     value.locked_fixed = int32_t( -196608ll );
     value.locked_int = int32_t( 7 );
@@ -221,7 +245,7 @@ inline bool WriteFixedVec( serialize::WriteStream & stream, const FixedVec & val
     return true;
 }
 
-inline bool ReadFixedVec( serialize::ReadStream & stream, FixedVec & value )
+SCHEMA_READ_INLINE bool ReadFixedVec( serialize::ReadStream & stream, FixedVec & value )
 {
     read_fixed( stream, value.x, 48, 16, -100000, 100000 );
     read_fixed( stream, value.y, 48, 16, -100000, 100000 );
@@ -250,7 +274,7 @@ inline bool WriteFixedQuat( serialize::WriteStream & stream, const FixedQuat & v
     return true;
 }
 
-inline bool ReadFixedQuat( serialize::ReadStream & stream, FixedQuat & value )
+SCHEMA_READ_INLINE bool ReadFixedQuat( serialize::ReadStream & stream, FixedQuat & value )
 {
     read_fixed( stream, value.x, 2, 30, -1, 1 );
     read_fixed( stream, value.y, 2, 30, -1, 1 );
@@ -276,7 +300,7 @@ inline bool WriteBodyData_Deep( serialize::WriteStream & stream, const BodyData_
     return true;
 }
 
-inline bool ReadBodyData_Deep( serialize::ReadStream & stream, BodyData_Deep & value )
+SCHEMA_READ_INLINE bool ReadBodyData_Deep( serialize::ReadStream & stream, BodyData_Deep & value )
 {
     if ( !ReadFixedVec( stream, value.position ) )
     {
@@ -310,7 +334,7 @@ inline bool WriteBodyData_Shallow( serialize::WriteStream & stream, const BodyDa
     return true;
 }
 
-inline bool ReadBodyData_Shallow( serialize::ReadStream & stream, BodyData_Shallow & value )
+SCHEMA_READ_INLINE bool ReadBodyData_Shallow( serialize::ReadStream & stream, BodyData_Shallow & value )
 {
     if ( !ReadFixedVec( stream, value.position ) )
     {
@@ -344,7 +368,7 @@ inline bool WriteNarrowBodyData_Deep( serialize::WriteStream & stream, const Nar
     return true;
 }
 
-inline bool ReadNarrowBodyData_Deep( serialize::ReadStream & stream, NarrowBodyData_Deep & value )
+SCHEMA_READ_INLINE bool ReadNarrowBodyData_Deep( serialize::ReadStream & stream, NarrowBodyData_Deep & value )
 {
     if ( !ReadFixedVec( stream, value.position ) )
     {
@@ -384,7 +408,7 @@ inline bool WriteNarrowBodyData_Shallow( serialize::WriteStream & stream, const 
     return true;
 }
 
-inline bool ReadNarrowBodyData_Shallow( serialize::ReadStream & stream, NarrowBodyData_Shallow & value )
+SCHEMA_READ_INLINE bool ReadNarrowBodyData_Shallow( serialize::ReadStream & stream, NarrowBodyData_Shallow & value )
 {
     {
         int32_t component_value = 0;
@@ -437,7 +461,7 @@ inline bool WriteMessageType( serialize::WriteStream & stream, MessageType value
     return true;
 }
 
-inline bool ReadMessageType( serialize::ReadStream & stream, MessageType & value )
+SCHEMA_READ_INLINE bool ReadMessageType( serialize::ReadStream & stream, MessageType & value )
 {
     int32_t tag_value = 0;
     read_int( stream, tag_value, 0, 1 );
@@ -461,7 +485,7 @@ inline bool WriteMessage( serialize::WriteStream & stream, const Message & messa
     return false;
 }
 
-inline bool ReadMessage( serialize::ReadStream & stream, Message & message )
+SCHEMA_READ_INLINE bool ReadMessage( serialize::ReadStream & stream, Message & message )
 {
     MessageType tag_value = MessageType::None;
     if ( !ReadMessageType( stream, tag_value ) )
@@ -488,7 +512,7 @@ inline bool WriteObjectType( serialize::WriteStream & stream, ObjectType value )
     return true;
 }
 
-inline bool ReadObjectType( serialize::ReadStream & stream, ObjectType & value )
+SCHEMA_READ_INLINE bool ReadObjectType( serialize::ReadStream & stream, ObjectType & value )
 {
     int32_t tag_value = 0;
     read_int( stream, tag_value, 0, 2 );

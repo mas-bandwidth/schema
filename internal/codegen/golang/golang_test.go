@@ -110,8 +110,8 @@ func TestDispatchSurfaceEmittedOnce(t *testing.T) {
 			t.Fatal(err)
 		}
 		for _, needle := range []string{
-			"enum class MessageType", "inline bool WriteMessage(", "inline bool ReadMessage(",
-			"enum class ObjectType", "inline bool WriteObjectType(",
+			"enum class MessageType", "inline bool WriteMessage(", "SCHEMA_READ_INLINE bool ReadMessage(",
+			"enum class ObjectType", "inline bool WriteObjectType(", "SCHEMA_READ_INLINE bool ReadObjectType(",
 		} {
 			if got := countAcross(cppFiles, needle); got != 1 {
 				t.Errorf("C++ (%s): %q emitted %d times across the unit — a TU including both headers cannot compile unless it is exactly once", mode, needle, got)

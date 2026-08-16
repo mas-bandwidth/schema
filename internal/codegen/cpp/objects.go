@@ -72,7 +72,7 @@ func (g *gen) emitObjectWire(d *ir.Object) {
 	}
 	g.voidIfEmpty(mark, "stream", "value")
 	g.pf("    return true;\n}\n\n")
-	g.pf("inline bool Read%s( serialize::ReadStream & stream, %s & value )\n{\n", deepName, deepName)
+	g.pf("SCHEMA_READ_INLINE bool Read%s( serialize::ReadStream & stream, %s & value )\n{\n", deepName, deepName)
 	mark = g.body.Len()
 	for _, f := range deep {
 		g.emitViewReadField(f, viewDeep, "    ")
@@ -89,7 +89,7 @@ func (g *gen) emitObjectWire(d *ir.Object) {
 	}
 	g.voidIfEmpty(mark, "stream", "value")
 	g.pf("    return true;\n}\n\n")
-	g.pf("inline bool Read%s( serialize::ReadStream & stream, %s & value )\n{\n", shName, shName)
+	g.pf("SCHEMA_READ_INLINE bool Read%s( serialize::ReadStream & stream, %s & value )\n{\n", shName, shName)
 	mark = g.body.Len()
 	for _, f := range interp {
 		g.emitViewReadField(f, viewShallow, "    ")
@@ -362,7 +362,7 @@ func (g *gen) emitObjectTagWire() {
 	g.emitWriteRangedFold32("value", "0", fmt.Sprintf("%d", count),
 		bitsRequired(big.NewInt(0), big.NewInt(count)), true, "    ")
 	g.pf("    return true;\n}\n\n")
-	g.pf("inline bool ReadObjectType( serialize::ReadStream & stream, ObjectType & value )\n{\n")
+	g.pf("SCHEMA_READ_INLINE bool ReadObjectType( serialize::ReadStream & stream, ObjectType & value )\n{\n")
 	g.pf("    int32_t tag_value = 0;\n")
 	g.pf("    read_int( stream, tag_value, 0, %d );\n", count)
 	g.pf("    value = ObjectType( tag_value );\n    return true;\n}\n\n")

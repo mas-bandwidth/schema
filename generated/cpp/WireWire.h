@@ -15,6 +15,30 @@
 
 namespace example {
 
+#ifndef SCHEMA_READ_INLINE_DEFINED
+#define SCHEMA_READ_INLINE_DEFINED
+// SCHEMA_READ_INLINE — how every generated Read function is spelled.
+// Default: plain `inline`, exactly what this emitter always produced.
+// Define SCHEMA_READ_SPINE_DEMAND to make the generated read path DEMAND
+// inlining (always_inline / __forceinline), the serialize family's remedy
+// for LLVM's fallible-chain frequency decay: each Ok/Err split is priced
+// at ~even odds, block frequency decays geometrically down a read chain,
+// and later call sites are held to the cold-callsite inline threshold.
+// Branch-weight hints are NOT the fix here — measured in this family to
+// invite the machine outliner into the hot bodies. Do not add them.
+#if defined( SCHEMA_READ_SPINE_DEMAND )
+#if defined( _MSC_VER )
+#define SCHEMA_READ_INLINE __forceinline
+#elif defined( __GNUC__ ) || defined( __clang__ )
+#define SCHEMA_READ_INLINE inline __attribute__(( always_inline ))
+#else
+#define SCHEMA_READ_INLINE inline
+#endif
+#else
+#define SCHEMA_READ_INLINE inline
+#endif
+#endif // SCHEMA_READ_INLINE_DEFINED
+
 #ifndef SCHEMA_UTF8_VALID_DEFINED
 #define SCHEMA_UTF8_VALID_DEFINED
 // string(N) payloads are well-formed UTF-8 BY CONTRACT (SPEC §4.7): the
@@ -93,7 +117,7 @@ inline bool WriteProbeHeader( serialize::WriteStream & stream, const ProbeHeader
     return true;
 }
 
-inline bool ReadProbeHeader( serialize::ReadStream & stream, ProbeHeader & value )
+SCHEMA_READ_INLINE bool ReadProbeHeader( serialize::ReadStream & stream, ProbeHeader & value )
 {
     {
         uint64_t const_value = 0;
@@ -128,7 +152,7 @@ inline bool WriteProbeBits( serialize::WriteStream & stream, const ProbeBits & v
     return true;
 }
 
-inline bool ReadProbeBits( serialize::ReadStream & stream, ProbeBits & value )
+SCHEMA_READ_INLINE bool ReadProbeBits( serialize::ReadStream & stream, ProbeBits & value )
 {
     read_bits( stream, value.small, 9 );
     read_bits( stream, value.boundary, 33 );
@@ -174,7 +198,7 @@ inline bool WriteProbeSample( serialize::WriteStream & stream, const ProbeSample
     return true;
 }
 
-inline bool ReadProbeSample( serialize::ReadStream & stream, ProbeSample & value )
+SCHEMA_READ_INLINE bool ReadProbeSample( serialize::ReadStream & stream, ProbeSample & value )
 {
     read_bool( stream, value.active );
     serialize_compressed_float( stream, value.orientation, -180.0f, 180.0f, 0.01f );
@@ -237,7 +261,7 @@ inline bool WriteProbeConfig( serialize::WriteStream & stream, const ProbeConfig
     return true;
 }
 
-inline bool ReadProbeConfig( serialize::ReadStream & stream, ProbeConfig & value )
+SCHEMA_READ_INLINE bool ReadProbeConfig( serialize::ReadStream & stream, ProbeConfig & value )
 {
     {
         uint32_t raw_value = 0;
@@ -268,7 +292,7 @@ inline bool WriteProbeArray( serialize::WriteStream & stream, const ProbeArray &
     return true;
 }
 
-inline bool ReadProbeArray( serialize::ReadStream & stream, ProbeArray & value )
+SCHEMA_READ_INLINE bool ReadProbeArray( serialize::ReadStream & stream, ProbeArray & value )
 {
     for ( int32_t i = 0; i < 2; i++ )
     {
@@ -299,7 +323,7 @@ inline bool WriteProbeReport( serialize::WriteStream & stream, const ProbeReport
     return true;
 }
 
-inline bool ReadProbeReport( serialize::ReadStream & stream, ProbeReport & value )
+SCHEMA_READ_INLINE bool ReadProbeReport( serialize::ReadStream & stream, ProbeReport & value )
 {
     if ( !ReadProbeHeader( stream, value.header ) )
     {
@@ -360,7 +384,7 @@ inline bool WriteTestData( serialize::WriteStream & stream, const TestData & val
     return true;
 }
 
-inline bool ReadTestData( serialize::ReadStream & stream, TestData & value )
+SCHEMA_READ_INLINE bool ReadTestData( serialize::ReadStream & stream, TestData & value )
 {
     read_int( stream, value.a, -100, 100 );
     read_int( stream, value.b, -100, 100 );
@@ -433,7 +457,7 @@ inline bool WriteCompressedProbe( serialize::WriteStream & stream, const Compres
     return true;
 }
 
-inline bool ReadCompressedProbe( serialize::ReadStream & stream, CompressedProbe & value )
+SCHEMA_READ_INLINE bool ReadCompressedProbe( serialize::ReadStream & stream, CompressedProbe & value )
 {
     serialize_compressed_float( stream, value.boundary, 0.0f, 10.0f, 0.01f );
     serialize_compressed_float( stream, value.offset, -5.0f, 5.0f, 0.001f );

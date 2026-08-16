@@ -64,7 +64,7 @@ func (g *gen) emitStructWire(st *ir.Struct) {
 	}
 	g.pf("    return true;\n}\n\n")
 
-	g.pf("inline bool Read%s( serialize::ReadStream & stream, %s & value )\n{\n", st.Name, st.Name)
+	g.pf("SCHEMA_READ_INLINE bool Read%s( serialize::ReadStream & stream, %s & value )\n{\n", st.Name, st.Name)
 	if len(st.Items) == 0 {
 		g.pf("    (void) stream;\n    (void) value;\n")
 	} else {
@@ -650,7 +650,7 @@ func (g *gen) emitMessageWire() {
 	g.emitWriteRangedFold32("value", "0", fmt.Sprintf("%d", count),
 		bitsRequired(big.NewInt(0), big.NewInt(count)), true, "    ")
 	g.pf("    return true;\n}\n\n")
-	g.pf("inline bool ReadMessageType( serialize::ReadStream & stream, MessageType & value )\n{\n")
+	g.pf("SCHEMA_READ_INLINE bool ReadMessageType( serialize::ReadStream & stream, MessageType & value )\n{\n")
 	g.pf("    int32_t tag_value = 0;\n")
 	g.pf("    read_int( stream, tag_value, 0, %d );\n", count)
 	g.pf("    value = MessageType( tag_value );\n    return true;\n}\n\n")
@@ -716,7 +716,7 @@ func (g *gen) emitMessageWireUnion() {
 	}
 	g.pf("    }\n    return false; // not a message type; nothing was written\n}\n\n")
 
-	g.pf("inline bool ReadMessage( serialize::ReadStream & stream, Message & message )\n{\n")
+	g.pf("SCHEMA_READ_INLINE bool ReadMessage( serialize::ReadStream & stream, Message & message )\n{\n")
 	g.pf("    MessageType tag_value = MessageType::None;\n")
 	g.pf("    if ( !ReadMessageType( stream, tag_value ) )\n    {\n        return false;\n    }\n")
 	g.pf("    message.type = tag_value;\n")
@@ -771,7 +771,7 @@ func (g *gen) emitMessageWireVariant() {
 	}
 	g.pf("    }\n    return false;\n}\n\n")
 
-	g.pf("inline bool ReadMessage( serialize::ReadStream & stream, Message & message )\n{\n")
+	g.pf("SCHEMA_READ_INLINE bool ReadMessage( serialize::ReadStream & stream, Message & message )\n{\n")
 	g.pf("    MessageType tag_value = MessageType::None;\n")
 	g.pf("    if ( !ReadMessageType( stream, tag_value ) )\n    {\n        return false;\n    }\n")
 	g.pf("    switch ( int32_t( tag_value ) )\n    {\n")

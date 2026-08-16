@@ -14,6 +14,30 @@
 
 namespace bench {
 
+#ifndef SCHEMA_READ_INLINE_DEFINED
+#define SCHEMA_READ_INLINE_DEFINED
+// SCHEMA_READ_INLINE — how every generated Read function is spelled.
+// Default: plain `inline`, exactly what this emitter always produced.
+// Define SCHEMA_READ_SPINE_DEMAND to make the generated read path DEMAND
+// inlining (always_inline / __forceinline), the serialize family's remedy
+// for LLVM's fallible-chain frequency decay: each Ok/Err split is priced
+// at ~even odds, block frequency decays geometrically down a read chain,
+// and later call sites are held to the cold-callsite inline threshold.
+// Branch-weight hints are NOT the fix here — measured in this family to
+// invite the machine outliner into the hot bodies. Do not add them.
+#if defined( SCHEMA_READ_SPINE_DEMAND )
+#if defined( _MSC_VER )
+#define SCHEMA_READ_INLINE __forceinline
+#elif defined( __GNUC__ ) || defined( __clang__ )
+#define SCHEMA_READ_INLINE inline __attribute__(( always_inline ))
+#else
+#define SCHEMA_READ_INLINE inline
+#endif
+#else
+#define SCHEMA_READ_INLINE inline
+#endif
+#endif // SCHEMA_READ_INLINE_DEFINED
+
 inline bool WriteBenchPacket( serialize::WriteStream & stream, const BenchPacket & value )
 {
     serialize_assert( int32_t( value.a ) >= int32_t( -100 ) && int32_t( value.a ) <= int32_t( 100 ) );
@@ -35,7 +59,7 @@ inline bool WriteBenchPacket( serialize::WriteStream & stream, const BenchPacket
     return true;
 }
 
-inline bool ReadBenchPacket( serialize::ReadStream & stream, BenchPacket & value )
+SCHEMA_READ_INLINE bool ReadBenchPacket( serialize::ReadStream & stream, BenchPacket & value )
 {
     read_int( stream, value.a, -100, 100 );
     read_int( stream, value.b, 0, 65535 );
@@ -78,7 +102,7 @@ inline bool WriteBenchInts( serialize::WriteStream & stream, const BenchInts & v
     return true;
 }
 
-inline bool ReadBenchInts( serialize::ReadStream & stream, BenchInts & value )
+SCHEMA_READ_INLINE bool ReadBenchInts( serialize::ReadStream & stream, BenchInts & value )
 {
     read_int( stream, value.f0, -100, 100 );
     read_int( stream, value.f1, 0, 65535 );
@@ -106,7 +130,7 @@ inline bool WriteBenchBits( serialize::WriteStream & stream, const BenchBits & v
     return true;
 }
 
-inline bool ReadBenchBits( serialize::ReadStream & stream, BenchBits & value )
+SCHEMA_READ_INLINE bool ReadBenchBits( serialize::ReadStream & stream, BenchBits & value )
 {
     read_bits( stream, value.b7, 7 );
     read_bits( stream, value.b13, 13 );
@@ -140,7 +164,7 @@ inline bool WriteBenchMixed( serialize::WriteStream & stream, const BenchMixed &
     return true;
 }
 
-inline bool ReadBenchMixed( serialize::ReadStream & stream, BenchMixed & value )
+SCHEMA_READ_INLINE bool ReadBenchMixed( serialize::ReadStream & stream, BenchMixed & value )
 {
     read_int( stream, value.sequence, 0, 65535 );
     read_bits( stream, value.ack_bits, 32 );

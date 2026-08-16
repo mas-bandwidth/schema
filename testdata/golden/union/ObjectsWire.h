@@ -17,6 +17,30 @@
 
 namespace example {
 
+#ifndef SCHEMA_READ_INLINE_DEFINED
+#define SCHEMA_READ_INLINE_DEFINED
+// SCHEMA_READ_INLINE — how every generated Read function is spelled.
+// Default: plain `inline`, exactly what this emitter always produced.
+// Define SCHEMA_READ_SPINE_DEMAND to make the generated read path DEMAND
+// inlining (always_inline / __forceinline), the serialize family's remedy
+// for LLVM's fallible-chain frequency decay: each Ok/Err split is priced
+// at ~even odds, block frequency decays geometrically down a read chain,
+// and later call sites are held to the cold-callsite inline threshold.
+// Branch-weight hints are NOT the fix here — measured in this family to
+// invite the machine outliner into the hot bodies. Do not add them.
+#if defined( SCHEMA_READ_SPINE_DEMAND )
+#if defined( _MSC_VER )
+#define SCHEMA_READ_INLINE __forceinline
+#elif defined( __GNUC__ ) || defined( __clang__ )
+#define SCHEMA_READ_INLINE inline __attribute__(( always_inline ))
+#else
+#define SCHEMA_READ_INLINE inline
+#endif
+#else
+#define SCHEMA_READ_INLINE inline
+#endif
+#endif // SCHEMA_READ_INLINE_DEFINED
+
 inline bool WriteShipData_Deep( serialize::WriteStream & stream, const ShipData_Deep & value )
 {
     serialize_assert( int32_t( value.ship_type ) >= int32_t( 0 ) && int32_t( value.ship_type ) <= int32_t( 5 ) );
@@ -73,7 +97,7 @@ inline bool WriteShipData_Deep( serialize::WriteStream & stream, const ShipData_
     return true;
 }
 
-inline bool ReadShipData_Deep( serialize::ReadStream & stream, ShipData_Deep & value )
+SCHEMA_READ_INLINE bool ReadShipData_Deep( serialize::ReadStream & stream, ShipData_Deep & value )
 {
     {
         int32_t enum_value = 0;
@@ -175,7 +199,7 @@ inline bool WriteShipData_Shallow( serialize::WriteStream & stream, const ShipDa
     return true;
 }
 
-inline bool ReadShipData_Shallow( serialize::ReadStream & stream, ShipData_Shallow & value )
+SCHEMA_READ_INLINE bool ReadShipData_Shallow( serialize::ReadStream & stream, ShipData_Shallow & value )
 {
     {
         int32_t enum_value = 0;
@@ -273,7 +297,7 @@ inline bool WriteMissileData_Deep( serialize::WriteStream & stream, const Missil
     return true;
 }
 
-inline bool ReadMissileData_Deep( serialize::ReadStream & stream, MissileData_Deep & value )
+SCHEMA_READ_INLINE bool ReadMissileData_Deep( serialize::ReadStream & stream, MissileData_Deep & value )
 {
     {
         int32_t enum_value = 0;
@@ -331,7 +355,7 @@ inline bool WriteMissileData_Shallow( serialize::WriteStream & stream, const Mis
     return true;
 }
 
-inline bool ReadMissileData_Shallow( serialize::ReadStream & stream, MissileData_Shallow & value )
+SCHEMA_READ_INLINE bool ReadMissileData_Shallow( serialize::ReadStream & stream, MissileData_Shallow & value )
 {
     {
         int32_t enum_value = 0;
@@ -419,7 +443,7 @@ inline bool WriteDynamicPropData_Deep( serialize::WriteStream & stream, const Dy
     return true;
 }
 
-inline bool ReadDynamicPropData_Deep( serialize::ReadStream & stream, DynamicPropData_Deep & value )
+SCHEMA_READ_INLINE bool ReadDynamicPropData_Deep( serialize::ReadStream & stream, DynamicPropData_Deep & value )
 {
     {
         int32_t enum_value = 0;
@@ -477,7 +501,7 @@ inline bool WriteDynamicPropData_Shallow( serialize::WriteStream & stream, const
     return true;
 }
 
-inline bool ReadDynamicPropData_Shallow( serialize::ReadStream & stream, DynamicPropData_Shallow & value )
+SCHEMA_READ_INLINE bool ReadDynamicPropData_Shallow( serialize::ReadStream & stream, DynamicPropData_Shallow & value )
 {
     {
         int32_t enum_value = 0;
@@ -559,7 +583,7 @@ inline bool WriteTurretData_Deep( serialize::WriteStream & stream, const TurretD
     return true;
 }
 
-inline bool ReadTurretData_Deep( serialize::ReadStream & stream, TurretData_Deep & value )
+SCHEMA_READ_INLINE bool ReadTurretData_Deep( serialize::ReadStream & stream, TurretData_Deep & value )
 {
     if ( !ReadHandle( stream, value.parent ) )
     {
@@ -594,7 +618,7 @@ inline bool WriteTurretData_Shallow( serialize::WriteStream & stream, const Turr
     return true;
 }
 
-inline bool ReadTurretData_Shallow( serialize::ReadStream & stream, TurretData_Shallow & value )
+SCHEMA_READ_INLINE bool ReadTurretData_Shallow( serialize::ReadStream & stream, TurretData_Shallow & value )
 {
     if ( !ReadHandle( stream, value.parent ) )
     {
@@ -634,7 +658,7 @@ inline bool WriteObjectType( serialize::WriteStream & stream, ObjectType value )
     return true;
 }
 
-inline bool ReadObjectType( serialize::ReadStream & stream, ObjectType & value )
+SCHEMA_READ_INLINE bool ReadObjectType( serialize::ReadStream & stream, ObjectType & value )
 {
     int32_t tag_value = 0;
     read_int( stream, tag_value, 0, 4 );
