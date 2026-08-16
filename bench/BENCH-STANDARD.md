@@ -432,6 +432,30 @@ rt and bits rows the same runner emits are not part of the window gate.
 
 Recorded as `# control_delta_pct: 2.3` and `# window: OK | INVALID`.
 
+**§2.6.1 — the window gate's second instrument (adopted 2026-08-17, from the
+write-demand-collapse investigation).** A control leg certifies a window only for
+its own binary's shape. State that is row- and binary-selective walks through the
+gate undetected — measured this campaign: three rows sat collapsed 4–8x at exact,
+reproducible plateaus across two windows whose control deltas read 0.0–0.3%, on a
+machine state that later proved bistable on identical bytes and immune to
+environment-size, code-shift, alignment, and compile-pressure perturbations.
+Therefore, two additions, both refusals-with-names:
+
+1. **A/A twin legs.** Any pass introducing a NEW binary configuration MUST run that
+   binary as two interleaved legs — same file, same inode, alternating positions in
+   the round order. A row whose twin ratio departs 1.0 beyond its spread band is
+   marked `state-suspect`, and the tool refuses to ratio it against other
+   configurations, with the caption "twin disagreement — state-selective
+   interference".
+2. **Per-row historical bands.** Each host-era carries a rolling per-row band (the
+   min/max of prior VALID same-configuration rows in that era). A row landing
+   outside its band by more than §2.3's noisy threshold is marked `band-break` and
+   publishes only with the mark.
+
+Twin legs catch state within a pass; bands catch state between passes. Neither
+requires hardware access beyond what the harness has, and either instrument would
+have caught the measured phenomenon every time it fired.
+
 ### §2.7 Escape barriers and variation — universal, and the variant stride staggered
 
 Already correct in family `gen` and in H2/H3/H4; **violated by both harnesses behind
