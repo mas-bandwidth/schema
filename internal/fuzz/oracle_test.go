@@ -141,8 +141,9 @@ func checkRustDups(t *testing.T, backend, name string, data []byte) {
 // C++ emitters' output shapes (both emit at column 0 inside the namespace /
 // extern block). Kept deliberately narrow: a miss costs coverage, a false
 // match costs a bogus crash report. The SCHEMA_*_INLINE spellings are the
-// C++ wire spine's demand macros (default `inline`) — without them here the
-// entire generated wire surface would be invisible to this check.
+// C++ wire spine's inlining macros (the read demand, and the write switch
+// defaulting to `inline`) — without them here the entire generated wire
+// surface would be invisible to this check.
 var cFamilyDefLine = regexp.MustCompile(`^(static |inline |constexpr |struct |class |enum |typedef |union |SCHEMA_WRITE_INLINE |SCHEMA_READ_INLINE )`)
 
 // csTypeDefLine matches C# type declarations (indented inside the namespace).

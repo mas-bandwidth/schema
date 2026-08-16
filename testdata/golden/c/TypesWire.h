@@ -28,35 +28,21 @@ extern "C" {
 #ifndef SCHEMA_C_SPINE_INLINE_DEFINED
 #define SCHEMA_C_SPINE_INLINE_DEFINED
 /* SCHEMA_C_READ_INLINE / SCHEMA_C_WRITE_INLINE — how every generated wire
-   function is spelled, beside `static SCHEMA_UNUSED`. Default: both expand
-   to nothing — token-identical to what this emitter always produced.
-   Define SCHEMA_C_READ_SPINE_DEMAND / SCHEMA_C_WRITE_SPINE_DEMAND to make
-   the generated read / write spine DEMAND inlining (always_inline /
-   __forceinline), the serialize family's remedy for LLVM refusing the
-   header-static per-message entries into small-message call sites at
-   marginal cost over the hot-callsite inline threshold. Branch-weight
-   hints are NOT the fix here — measured in this family to invite the
-   machine outliner into the hot bodies. Do not add them. */
-#if defined( SCHEMA_C_READ_SPINE_DEMAND )
+   function is spelled, beside `static SCHEMA_UNUSED`: an inlining DEMAND
+   (always_inline / __forceinline), the serialize family's remedy for LLVM
+   refusing the header-static per-message entries into small-message call
+   sites at marginal cost over the hot-callsite inline threshold. Measured
+   and shipped; compilers with neither spelling get plain `static`.
+   Branch-weight hints are NOT the fix here — measured in this family to
+   invite the machine outliner into the hot bodies. Do not add them. */
 #if defined( _MSC_VER )
 #define SCHEMA_C_READ_INLINE __forceinline
-#elif defined( __GNUC__ ) || defined( __clang__ )
-#define SCHEMA_C_READ_INLINE inline __attribute__(( always_inline ))
-#else
-#define SCHEMA_C_READ_INLINE
-#endif
-#else
-#define SCHEMA_C_READ_INLINE
-#endif
-#if defined( SCHEMA_C_WRITE_SPINE_DEMAND )
-#if defined( _MSC_VER )
 #define SCHEMA_C_WRITE_INLINE __forceinline
 #elif defined( __GNUC__ ) || defined( __clang__ )
+#define SCHEMA_C_READ_INLINE inline __attribute__(( always_inline ))
 #define SCHEMA_C_WRITE_INLINE inline __attribute__(( always_inline ))
 #else
-#define SCHEMA_C_WRITE_INLINE
-#endif
-#else
+#define SCHEMA_C_READ_INLINE
 #define SCHEMA_C_WRITE_INLINE
 #endif
 #endif /* SCHEMA_C_SPINE_INLINE_DEFINED */

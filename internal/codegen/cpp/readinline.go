@@ -24,13 +24,12 @@ func (g *gen) fileEmitsWire() bool {
 	return false
 }
 
-// emitReadInlineMacro emits the read-spine inlining switch every generated
-// Read function is spelled with (SCHEMA_READ_INLINE). Default OFF:
-// SCHEMA_READ_INLINE expands to plain `inline`, token-identical to what this
-// emitter always produced, so an undefined switch changes nothing. Armed
-// (-DSCHEMA_READ_SPINE_DEMAND), the generated read path demands inlining the
-// way the serialize family's per-field spines do (serialize.c
-// SERIALIZE_ALWAYS_INLINE; serialize.h's write spine).
+// emitReadInlineMacro emits the read-spine inlining demand every generated
+// Read function is spelled with (SCHEMA_READ_INLINE): always_inline /
+// __forceinline, unconditionally, the way the serialize family's per-field
+// spines demand it (serialize.c SERIALIZE_ALWAYS_INLINE; serialize.h — both
+// spines). Compilers with neither spelling fall back to plain `inline` and
+// lose only the optimization.
 //
 // Why the demand exists (remark evidence, Apple clang 21, -O3, schema bench):
 // a read chain is fallible, LLVM prices each Ok/Err split at ~even odds, so
@@ -40,30 +39,29 @@ func (g *gen) fileEmitsWire() bool {
 // timed loop at cost=1055 against threshold=45, while the C backend's
 // read_message — static in one TU — inlines into its identical loop
 // (last-call-to-static, cost=-13285) and carries no per-message call at all.
-// The demand is a DEMAND, not a branch-weight hint: __builtin_expect-style
-// cold hints were measured in this family to activate the machine outliner
-// and shred hot bodies (bits write -25%) — do not swap this for hints.
-// Guarded against redefinition because several wire headers can land in one
-// translation unit.
+// The demand shipped first as a default-off switch, then won its tournament
+// (tournament-air off→armed with the serialize read demand: batch read +68%,
+// rigidbody_at_rest read +244%, testdata read +109%, zero regressions;
+// reconfirmed confirmation-air r2), so per the feature lifecycle the winner
+// became unconditional code and the switch was deleted. The demand is a
+// DEMAND, not a branch-weight hint: __builtin_expect-style cold hints were
+// measured in this family to activate the machine outliner and shred hot
+// bodies (bits write -25%) — do not swap this for hints. Guarded against
+// redefinition because several wire headers can land in one translation unit.
 func (g *gen) emitReadInlineMacro() {
 	g.pf("#ifndef SCHEMA_READ_INLINE_DEFINED\n#define SCHEMA_READ_INLINE_DEFINED\n")
-	g.pf("// SCHEMA_READ_INLINE — how every generated Read function is spelled.\n")
-	g.pf("// Default: plain `inline`, exactly what this emitter always produced.\n")
-	g.pf("// Define SCHEMA_READ_SPINE_DEMAND to make the generated read path DEMAND\n")
-	g.pf("// inlining (always_inline / __forceinline), the serialize family's remedy\n")
-	g.pf("// for LLVM's fallible-chain frequency decay: each Ok/Err split is priced\n")
-	g.pf("// at ~even odds, block frequency decays geometrically down a read chain,\n")
-	g.pf("// and later call sites are held to the cold-callsite inline threshold.\n")
-	g.pf("// Branch-weight hints are NOT the fix here — measured in this family to\n")
-	g.pf("// invite the machine outliner into the hot bodies. Do not add them.\n")
-	g.pf("#if defined( SCHEMA_READ_SPINE_DEMAND )\n")
+	g.pf("// SCHEMA_READ_INLINE — how every generated Read function is spelled: an\n")
+	g.pf("// inlining DEMAND (always_inline / __forceinline), the serialize family's\n")
+	g.pf("// remedy for LLVM's fallible-chain frequency decay: each Ok/Err split is\n")
+	g.pf("// priced at ~even odds, block frequency decays geometrically down a read\n")
+	g.pf("// chain, and later call sites are held to the cold-callsite inline\n")
+	g.pf("// threshold. Measured and shipped; branch-weight hints are NOT the fix\n")
+	g.pf("// here — measured in this family to invite the machine outliner into the\n")
+	g.pf("// hot bodies. Do not add them.\n")
 	g.pf("#if defined( _MSC_VER )\n")
 	g.pf("#define SCHEMA_READ_INLINE __forceinline\n")
 	g.pf("#elif defined( __GNUC__ ) || defined( __clang__ )\n")
 	g.pf("#define SCHEMA_READ_INLINE inline __attribute__(( always_inline ))\n")
-	g.pf("#else\n")
-	g.pf("#define SCHEMA_READ_INLINE inline\n")
-	g.pf("#endif\n")
 	g.pf("#else\n")
 	g.pf("#define SCHEMA_READ_INLINE inline\n")
 	g.pf("#endif\n")

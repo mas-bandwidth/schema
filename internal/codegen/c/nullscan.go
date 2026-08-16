@@ -13,7 +13,7 @@ package c
 // buffer-slack dependence, no masking, and no endianness dependence (the
 // idiom reports a zero byte wherever it sits in the word). A shorter payload
 // takes a per-byte tail bounded at seven. SCHEMA_C_READ_INLINE: the read
-// spine's demand switch covers the scan too. Guarded against redefinition
+// spine's inlining demand covers the scan too. Guarded against redefinition
 // because several wire headers can land in one translation unit; the
 // trailing underscore keeps the name out of the claimed-name registry's way
 // (no schema declaration can generate it).

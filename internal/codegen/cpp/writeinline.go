@@ -7,8 +7,15 @@ package cpp
 // (-DSCHEMA_WRITE_SPINE_DEMAND), the generated write path demands inlining
 // the way the serialize family's per-field spines do (serialize.h's write
 // spine; serialize.c SERIALIZE_ALWAYS_INLINE — both halves; the C generated
-// spine's SCHEMA_C_WRITE_SPINE_DEMAND, schema ab268b5; the read twin here,
-// SCHEMA_READ_SPINE_DEMAND, schema 99120c2).
+// spine's SCHEMA_C_WRITE_INLINE; the read twin here, SCHEMA_READ_INLINE —
+// all of those now unconditional, their switches retired by the tournament).
+//
+// This switch alone stays a switch: the confirmation pass (confirmation-air
+// r2) showed it sweeping the write rows (+33..+929%, batch write +71%, batch
+// read +74% more) while collapsing three bits-heavy rows 73-88% armed —
+// bench_bits write, bench_mixed write, probebits read — reproducible in both
+// passes. A switch that loses any row 8x hasn't won yet: it stays default-OFF
+// until that regression is attributed and resolved.
 //
 // Why the demand exists (remark evidence, Apple clang 21, -O3, schema bench,
 // tournament pass bench/results/tournament-air): the generated Write
