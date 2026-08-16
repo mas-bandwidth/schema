@@ -230,6 +230,87 @@ int main( void )
         check( out.text_length == 11 && memcmp( out.text, "wire parity", 11 ) == 0, "Chat round-trips" );
     }
 
+    /* ---- Chat: an interior null is content the read REFUSES (SPEC §4.7) ----
+       The compliance half: the C reader owes the same refusal the C++, C#, Go
+       and Rust readers have always emitted. A conforming writer cannot produce
+       the vector (the write side asserts), so the hostile stream is doctored
+       after the write: the wire is 9 length bits riding bytes 0-1, align
+       padding to byte 2, then the text bytes — buffer[2 + k] is text[k]. The
+       vectors pin every branch of the word-wise scan: a null inside a full
+       word, a null in the final byte of an eight-multiple payload, a null the
+       overlapping tail word judges, and a null on the short-string per-byte
+       path. */
+    {
+        Chat in, out;
+
+        memset( &in, 0, sizeof( in ) );
+        memcpy( in.text, "interior null defense s", 23 ); /* 2 words + 7-byte tail */
+        in.text_length = 23;
+        serialize_write_stream_init( &w, buffer, sizeof( buffer ) );
+        check( write_chat( &w, &in ), "write Chat for doctoring" );
+        serialize_write_flush( &w );
+
+        buffer[2 + 11] = 0; /* inside the second full scan word */
+        memset( &out, 0, sizeof( out ) );
+        serialize_read_stream_init( &r, buffer, serialize_write_bytes_processed( &w ) );
+        check( !read_chat( &r, &out ), "an interior null is refused (SPEC §4.7)" );
+
+        buffer[2 + 11] = 'x';
+        buffer[2 + 22] = 0; /* the FINAL payload byte — the overlapping tail word judges it */
+        memset( &out, 0, sizeof( out ) );
+        serialize_read_stream_init( &r, buffer, serialize_write_bytes_processed( &w ) );
+        check( !read_chat( &r, &out ), "a null in the overlap-tail word is refused" );
+
+        memcpy( in.text, "sixteen bytes ok", 16 ); /* two exact words, no tail */
+        in.text_length = 16;
+        serialize_write_stream_init( &w, buffer, sizeof( buffer ) );
+        check( write_chat( &w, &in ), "write Chat eight-multiple" );
+        serialize_write_flush( &w );
+        buffer[2 + 15] = 0; /* last byte of an eight-multiple payload */
+        memset( &out, 0, sizeof( out ) );
+        serialize_read_stream_init( &r, buffer, serialize_write_bytes_processed( &w ) );
+        check( !read_chat( &r, &out ), "a null in the last full-word byte is refused" );
+
+        memcpy( in.text, "hello", 5 ); /* below one word: the per-byte path */
+        in.text_length = 5;
+        serialize_write_stream_init( &w, buffer, sizeof( buffer ) );
+        check( write_chat( &w, &in ), "write short Chat" );
+        serialize_write_flush( &w );
+        buffer[2 + 2] = 0;
+        memset( &out, 0, sizeof( out ) );
+        serialize_read_stream_init( &r, buffer, serialize_write_bytes_processed( &w ) );
+        check( !read_chat( &r, &out ), "a short string's interior null is refused" );
+    }
+
+    /* ---- Chat: the accept neighbors — 0x00 nowhere in [0, length) passes at
+       every word-scan boundary: empty, one byte, one exact word, a word plus
+       a one-byte tail, two exact words (SPEC §4.7) ---- */
+    {
+        static const int32_t boundary_lengths[] = { 0, 1, 8, 9, 16 };
+        Chat in, out;
+        int li, i;
+        for ( li = 0; li < (int) ( sizeof( boundary_lengths ) / sizeof( boundary_lengths[0] ) ); li++ )
+        {
+            int32_t length = boundary_lengths[li];
+            memset( &in, 0, sizeof( in ) );
+            for ( i = 0; i < length; i++ )
+            {
+                in.text[i] = (char) ( 'a' + ( i % 26 ) );
+            }
+            in.text_length = length;
+            serialize_write_stream_init( &w, buffer, sizeof( buffer ) );
+            check( write_chat( &w, &in ), "write Chat boundary length" );
+            serialize_write_flush( &w );
+
+            memset( &out, 0xEF, sizeof( out ) ); /* dirty — the reader must supply the terminator */
+            serialize_read_stream_init( &r, buffer, serialize_write_bytes_processed( &w ) );
+            check( read_chat( &r, &out ), "read Chat boundary length" );
+            check( out.text_length == length && memcmp( out.text, in.text, (size_t) length ) == 0,
+                   "Chat boundary length round-trips" );
+            check( out.text[length] == 0, "the reader supplies the terminator" );
+        }
+    }
+
     /* ---- ProbeBits: the full-range uint32/uint64 paths ---- */
     {
         ProbeBits in, out;

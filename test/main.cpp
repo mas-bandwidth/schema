@@ -274,6 +274,86 @@ int main()
         check( std::strcmp( out.text, "hello" ) == 0 );
     }
 
+    // ---- Chat: an interior null is content the read REFUSES (SPEC §4.7) ----
+    // A conforming writer cannot produce one (the write side asserts), so the
+    // hostile stream is doctored after the write: the wire is 9 length bits
+    // riding bytes 0-1, align padding to byte 2, then the text bytes —
+    // buffer[2 + k] is text[k]. The vectors pin every branch of the word-wise
+    // scan: a null inside a full word, a null in the final byte of an
+    // eight-multiple payload, a null the overlapping tail word judges, and a
+    // null on the short-string per-byte path.
+    {
+        Chat in;
+        std::memcpy( in.text, "interior null defense s", 23 ); // 2 words + 7-byte tail
+        in.text_length = 23;
+        serialize::WriteStream ws( buffer, sizeof( buffer ) );
+        check( WriteChat( ws, in ) );
+        ws.Flush();
+
+        buffer[2 + 11] = 0; // inside the second full scan word
+        {
+            Chat out;
+            serialize::ReadStream rs( buffer, ws.GetBytesProcessed() );
+            check( !ReadChat( rs, out ) );
+        }
+        buffer[2 + 11] = 'x';
+        buffer[2 + 22] = 0; // the FINAL payload byte — the overlapping tail word judges it
+        {
+            Chat out;
+            serialize::ReadStream rs( buffer, ws.GetBytesProcessed() );
+            check( !ReadChat( rs, out ) );
+        }
+
+        std::memcpy( in.text, "sixteen bytes ok", 16 ); // two exact words, no tail
+        in.text_length = 16;
+        serialize::WriteStream ws2( buffer, sizeof( buffer ) );
+        check( WriteChat( ws2, in ) );
+        ws2.Flush();
+        buffer[2 + 15] = 0; // last byte of an eight-multiple payload
+        {
+            Chat out;
+            serialize::ReadStream rs( buffer, ws2.GetBytesProcessed() );
+            check( !ReadChat( rs, out ) );
+        }
+
+        std::memcpy( in.text, "hello", 5 ); // below one word: the per-byte path
+        in.text_length = 5;
+        serialize::WriteStream ws3( buffer, sizeof( buffer ) );
+        check( WriteChat( ws3, in ) );
+        ws3.Flush();
+        buffer[2 + 2] = 0;
+        {
+            Chat out;
+            serialize::ReadStream rs( buffer, ws3.GetBytesProcessed() );
+            check( !ReadChat( rs, out ) );
+        }
+    }
+
+    // ---- Chat: the accept neighbors — 0x00 nowhere in [0, length) passes at
+    // every word-scan boundary: empty, one byte, one exact word, a word plus
+    // a one-byte tail, two exact words (SPEC §4.7) ----
+    {
+        const int32_t boundary_lengths[] = { 0, 1, 8, 9, 16 };
+        for ( int32_t length : boundary_lengths )
+        {
+            Chat in;
+            for ( int32_t i = 0; i < length; i++ )
+                in.text[i] = char( 'a' + ( i % 26 ) );
+            in.text_length = length;
+            serialize::WriteStream ws( buffer, sizeof( buffer ) );
+            check( WriteChat( ws, in ) );
+            ws.Flush();
+
+            Chat out;
+            out.text[length] = 'Z'; // dirty — the reader must supply the terminator
+            serialize::ReadStream rs( buffer, ws.GetBytesProcessed() );
+            check( ReadChat( rs, out ) );
+            check( out.text_length == length );
+            check( std::memcmp( out.text, in.text, size_t( length ) ) == 0 );
+            check( out.text[length] == 0 );
+        }
+    }
+
     // ---- InputPacket: counted array of a nested type ----
     {
         InputPacket in;

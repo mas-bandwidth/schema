@@ -107,6 +107,49 @@ inline bool schema_utf8_valid( const uint8_t * bytes, int32_t length )
 }
 #endif // SCHEMA_UTF8_VALID_DEFINED
 
+#ifndef SCHEMA_INTERIOR_NULL_DEFINED
+#define SCHEMA_INTERIOR_NULL_DEFINED
+// string(N) carries bytes excluding 0x00: an interior null is content every
+// generated reader refuses (SPEC §4.7) — generated-code validation; no
+// serialize primitive performs it. The scan is word-wise: eight bytes per
+// step under the zero-byte idiom, and a payload of eight bytes or more
+// re-tests its final eight bytes as one whole (overlapping) word, so every
+// load stays inside the payload the stream already delivered.
+SCHEMA_READ_INLINE bool schema_interior_null( const uint8_t * bytes, int32_t length )
+{
+    uint64_t word;
+    int32_t i = 0;
+    if ( length >= 8 )
+    {
+        for ( ; i + 8 <= length; i += 8 )
+        {
+            memcpy( &word, bytes + i, 8 );
+            if ( ( ( word - 0x0101010101010101ull ) & ~word & 0x8080808080808080ull ) != 0 )
+            {
+                return true;
+            }
+        }
+        if ( i < length )
+        {
+            memcpy( &word, bytes + length - 8, 8 );
+            if ( ( ( word - 0x0101010101010101ull ) & ~word & 0x8080808080808080ull ) != 0 )
+            {
+                return true;
+            }
+        }
+        return false;
+    }
+    for ( ; i < length; i++ )
+    {
+        if ( bytes[i] == 0 )
+        {
+            return true;
+        }
+    }
+    return false;
+}
+#endif // SCHEMA_INTERIOR_NULL_DEFINED
+
 inline bool WriteHeartbeat( serialize::WriteStream & stream, const Heartbeat & value )
 {
     (void) stream;
@@ -190,12 +233,9 @@ SCHEMA_READ_INLINE bool ReadChat( serialize::ReadStream & stream, Chat & value )
 {
     read_int( stream, value.text_length, 0, MaxChatLength );
     read_bytes( stream, value.text, value.text_length );
-    for ( int32_t i = 0; i < value.text_length; i++ )
+    if ( schema_interior_null( reinterpret_cast<const uint8_t *>( value.text ), value.text_length ) )
     {
-        if ( value.text[i] == 0 )
-        {
-            return false;
-        }
+        return false; // an interior null is content the read refuses (SPEC §4.7)
     }
     value.text[value.text_length] = 0;
     return true;

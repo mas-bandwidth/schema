@@ -591,9 +591,10 @@ func (g *gen) emitReadScalar(f *ir.Field, name, ind string) {
 		g.pf("%sread_int( stream, %s_length, 0, %s );\n", ind, name, g.renderInt(f.Type.SizeExpr, big.NewInt(f.Type.Size)))
 		g.pf("%sread_bytes( stream, %s, %s_length );\n", ind, name, name)
 		if f.Type.Kind == ir.TString {
-			// the interior-null rule is generated-code validation (SPEC §4.7)
-			g.pf("%sfor ( int32_t i = 0; i < %s_length; i++ )\n%s{\n", ind, name, ind)
-			g.pf("%s    if ( %s[i] == 0 )\n%s    {\n%s        return false;\n%s    }\n%s}\n", ind, name, ind, ind, ind, ind)
+			// the interior-null rule is generated-code validation (SPEC §4.7);
+			// the word-wise scan lives in schema_interior_null (nullscan.go)
+			g.pf("%sif ( schema_interior_null( reinterpret_cast<const uint8_t *>( %s ), %s_length ) )\n%s{\n", ind, name, name, ind)
+			g.pf("%s    return false; // an interior null is content the read refuses (SPEC §4.7)\n%s}\n", ind, ind)
 			g.pf("%s%s[%s_length] = 0;\n", ind, name, name)
 		}
 	case ir.TNamed:

@@ -468,6 +468,7 @@ func (g *gen) emitWireHeader() {
 	}
 	if fileHasStrings(g.file) {
 		g.emitUtf8Validator()
+		g.emitInteriorNullScan()
 	}
 	// emission order for the same reason as the data header: write_a calls
 	// write_b, and C99 has no implicit declarations
