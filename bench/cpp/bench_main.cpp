@@ -43,6 +43,7 @@
 #include "ObjectsWire.h"
 #include "TypesWire.h"
 #include "WireWire.h"
+#include "RealWorldWire.h"      // generated/bench/cpp — the §1.7 realistic snapshot (real_packet)
 
 static volatile uint64_t g_sink = 0;    // defeats dead code elimination of computed values
 
@@ -620,6 +621,84 @@ static void vary_testdata( TestData & m, uint64_t rng )
     m.fixed_bytes[16] = uint8_t( rng >> 8 );
     for ( int i = 0; i < m.text_length; i++ )
         m.text[i] = char( 'a' + ( ( rng >> ( i & 7 ) ) & 15 ) );    // never zero
+}
+
+// real_packet — BENCH-STANDARD.md §1.7's realistic snapshot, measured through
+// the GENERATED code (bench/corpus/RealWorld.schema -> generated/bench/cpp).
+// The pinned instance is the ALL-DEFAULTS instance: realworld::RealPacket{}
+// serialized unmodified, 1629 bits = 204 wire bytes, pinned to
+// testdata/wire/real_packet.bin by test/bench/main.cpp. The four branch gates
+// (f012 true, f043 false, f050 true, f074 false) are STRUCTURE (§2.7): they
+// keep their schema defaults here, so the same branch bodies ride every
+// iteration and bytes/op is constant. Variation covers every field kind the
+// packet carries — ranged ints of assorted widths, bits(N) narrow and wide,
+// bool, float32/float64, compressed float, fixed/ufixed, enum, flags, and the
+// full-width 64s — spread across the packet's whole span including the two
+// TAKEN branch bodies; fields under the false gates do not ride and are not
+// varied. Every mapping keeps its field inside its declared wire range
+// (comments give the bound it stays within). Ports reproduce these mappings
+// exactly.
+static void vary_real_packet( realworld::RealPacket & m, uint64_t rng )
+{
+    // ranged ints, assorted widths, signed and unsigned
+    m.f001_int  = int32_t( ( rng >> 8 ) & 0xFFFFF ) - 0x80000;              // +/-2^19 within +/-805495
+    m.f003_int  = int32_t( ( rng >> 12 ) & 0xFFFFF ) - 0x80000;             // within +/-835897
+    m.f005_uint = uint16_t( ( rng >> 20 ) & 0xFFF );                        // <=4095 within [0, 7316]
+    m.f006_int  = int16_t( int32_t( ( rng >> 26 ) & 0x7FF ) - 1024 );       // +/-1024 within +/-1513
+    m.f009_int  = int8_t( int32_t( ( rng >> 33 ) & 31 ) - 16 );             // +/-16 within +/-22
+    m.f033_uint = uint32_t( ( rng >> 37 ) & 0x1FFFF );                      // <=131071 within [0, 142780]
+    m.f041_int  = int8_t( int32_t( ( rng >> 42 ) & 63 ) - 32 );             // +/-32 within +/-55
+    m.f062_uint = uint16_t( ( rng >> 47 ) & 255 );                          // <=255 within [0, 503]
+    m.f088_int  = int16_t( int32_t( ( rng >> 52 ) & 0x3FF ) - 512 );        // +/-512 within +/-694
+    m.f090_uint = uint8_t( ( rng >> 57 ) & 127 );                           // <=127 within [0, 214]
+    // bits(N), narrow and wide
+    m.f011_bits = uint32_t( rng ) & 0x3FF;                                  // 10 bits
+    m.f023_bits = uint32_t( rng >> 5 ) & 0x1FFFFFF;                         // 25 bits
+    m.f042_bits = uint32_t( rng >> 3 ) & 0x3FFFFFFF;                        // 30 bits
+    m.f081_bits = uint32_t( rng >> 7 ) & 0x1FFFFFFF;                        // 29 bits
+    m.f089_bits = rng & 0xFFFFFFFFFFFFull;                                  // 48 bits
+    m.f093_bits = rng ^ 0x5555555555555555ull;                              // 64 bits
+    m.f097_bits = uint32_t( rng >> 11 ) & 0xFFF;                            // 12 bits
+    // bools (NEVER the four branch gates — those are structure, §2.7)
+    m.f037_bool = ( rng & 1 ) != 0;
+    m.f055_bool = ( rng & 2 ) != 0;
+    m.f092_bool = ( rng & 4 ) != 0;
+    // float32 / float64
+    m.f007_f32 = float( uint32_t( rng ) & 0xFFFF );
+    m.f020_f32 = float( uint32_t( rng >> 16 ) & 0xFFFF ) * 0.5f;
+    m.f058_f32 = float( uint32_t( rng >> 24 ) & 0xFFFF ) * 0.25f;
+    m.f002_f64 = double( int64_t( rng >> 8 ) & 0xFFFFFF ) * 0.5;
+    m.f059_f64 = double( int64_t( rng >> 16 ) & 0xFFFFFF ) * 0.25;
+    m.f087_f64 = double( int64_t( rng >> 24 ) & 0xFFFFFF ) * 0.125;
+    // compressed floats (in range by construction)
+    m.f004_cf32 = float( uint32_t( rng ) & 0x3FFF ) * 0.1f;                 // <=1638.3 within [0, 2000]
+    m.f061_cf32 = -90.0f + float( uint32_t( rng >> 9 ) & 255 ) * 0.5f;      // within [-90, 90] (max 37.5)
+    m.f067_cf32 = -100.0f + float( uint32_t( rng >> 18 ) & 511 ) * 0.25f;   // within [-100, 100] (max 27.75)
+    m.f072_cf32 = float( uint32_t( rng >> 27 ) & 8191 ) * 0.01f;            // <=81.91 within [0, 100]
+    // fixed / ufixed (raw storage scaled by 2^F; bounds are whole units)
+    m.f016_fixed  = int32_t( ( rng >> 10 ) & 0x3FFFFFF ) - 0x2000000;       // +/-2^25 within +/-36*2^20
+    m.f025_fixed  = int16_t( int32_t( ( rng >> 18 ) & 0x7FFF ) - 0x4000 );  // +/-2^14 within +/-119*2^8
+    m.f095_fixed  = int32_t( ( rng >> 22 ) & 0x7FFFFFF ) - 0x4000000;       // +/-2^26 within +/-1577*2^16
+    m.f021_ufixed = uint32_t( rng >> 30 ) & 0x3FFFFFF;                      // <=2^26-1 within 25141*2^12
+    m.f049_ufixed = uint16_t( ( rng >> 36 ) & 0x7FFF );                     // <=32767 within 3*2^14
+    m.f084_ufixed = uint8_t( ( rng >> 44 ) & 0x7F );                        // <=127 within 1*2^7
+    // enum / flags (wire-valid by construction)
+    m.f036_enum  = realworld::PacketMode( uint32_t( rng >> 30 ) & 3 );      // within wire range [0, 5]
+    m.f083_enum  = realworld::PacketMode( uint32_t( rng >> 34 ) & 3 );
+    m.f091_flags = rng & 31;                                                // 5 wire bits
+    // full-width 64-bit
+    m.f008_u64 = rng;
+    m.f029_i64 = int64_t( rng * 3 );
+    m.f063_i64 = int64_t( rng * 5 );
+    // fields riding inside the TAKEN branches (f012 true, f050 true)
+    m.f013_f32  = float( uint32_t( rng >> 4 ) & 0xFFFF );
+    m.f014_uint = uint16_t( ( rng >> 21 ) & 511 );                          // <=511 within [0, 775]
+    m.f015_int  = int8_t( int32_t( ( rng >> 40 ) & 31 ) - 16 );             // +/-16 within +/-21
+    m.f017_uint = uint16_t( ( rng >> 29 ) & 0xFFF );                        // <=4095 within [0, 4606]
+    m.f051_bool = ( rng & 8 ) != 0;
+    m.f052_int  = int8_t( int32_t( ( rng >> 38 ) & 63 ) - 32 );             // +/-32 within +/-57
+    m.f053_f32  = float( uint32_t( rng >> 40 ) & 0xFFFF ) * 0.125f;
+    m.f054_int  = int8_t( int32_t( ( rng >> 45 ) & 63 ) - 32 );             // +/-32 within +/-35
 }
 
 // ------------------------------------------------------------------------------------------
@@ -1412,6 +1491,16 @@ int main( int argc, char ** argv )
     bench_message( "probebits", "probebits", 128000000L, pin_probebits(), WriteProbeBits, ReadProbeBits, vary_probebits );
     bench_message( "probearray", "probearray", 20000000L, pin_probearray(), WriteProbeArray, ReadProbeArray, vary_probearray );
     bench_message( "testdata", "testdata", 8000000L, pin_testdata(), WriteTestData, ReadTestData, vary_testdata );
+
+    // real_packet (§1.7): the realistic snapshot — ~93 riding individually
+    // serialized small fields, 204 wire bytes, 0% bulk share by bits. The pin
+    // is the ALL-DEFAULTS instance (RealPacket{} — test/bench/main.cpp).
+    // Sized by the same §2.1 logic as the counts above: 8M iters puts the
+    // 200 ms floor at 40 M msg/s, margin over any plausible fastest language
+    // leg — the cpp legs smoke-checked at ~14 M msg/s both paths on the M2
+    // (~0.55 s per measured run), and no other language's leg is plausibly
+    // near 3x the fully-inlined header-only C++.
+    bench_message( "real_packet", "real_packet", 8000000L, realworld::RealPacket{}, realworld::WriteRealPacket, realworld::ReadRealPacket, vary_real_packet );
 
     bench_batch();
 

@@ -140,7 +140,9 @@ DOTNET_VERSION="$(dotnet --version 2>/dev/null | head -1 || true)"
 # -Itest: the corpus maps Vec3/Quat onto the hand-written C++ types in
 # test/vec_math.h (SPEC §4.2 native type mapping), so the generated C++ headers
 # include it. C++ only — the C target ignores the mapping.
-COMMON_FLAGS="-std=c++17 -Wall -Wextra -Werror -ffp-contract=off -fno-rtti -Igenerated/cpp -Itest -I$SERIALIZE"
+# -Igenerated/bench/cpp: the bench-corpus generated code (RealWorldWire.h —
+# the §1.7 realistic snapshot the real_packet rows measure).
+COMMON_FLAGS="-std=c++17 -Wall -Wextra -Werror -ffp-contract=off -fno-rtti -Igenerated/cpp -Igenerated/bench/cpp -Itest -I$SERIALIZE"
 
 # g++ (13.3 checked) rejects two things in the GENERATED code that clang never
 # flags: -Wclass-memaccess (branch zeroing memsets non-trivial generated
