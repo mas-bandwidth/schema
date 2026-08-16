@@ -24,7 +24,7 @@
 #      The tool refuses to publish ratios from an INVALID window.
 #
 # usage: bench/tools/pass-driver.sh [--out FILE] [--rounds N] [--langs a,b,c]
-#                                   [--compiler CXX] [--inline]
+#                                   [--compiler CXX] [--inline] [--twins]
 #   --out FILE      final pass CSV (default bench/results/<date>-<arch>-<host>-pass.csv)
 #   --rounds N      measured rounds (default 7, §2.1/§2.4)
 #   --langs a,b,c   subset of cpp,c,go,rust,cs (default: all; unavailable
@@ -33,6 +33,17 @@
 #   --compiler CXX  C++ compiler for the cpp legs and control legs
 #   --inline        run the §4.1 inline verdict pass per language afterwards
 #                   and backfill the inline column (bench/tools/inline-verdict.sh)
+#   --twins         §2.6.1 A/A twin legs: every language leg runs TWICE per
+#                   round — the same binary, same file, same inode (--reuse-build
+#                   guarantees no rebuild between twins), at alternating
+#                   positions in the round order (even rounds a-then-b, odd
+#                   rounds b-then-a). Twin-b legs are stamped as rounds
+#                   N..2N-1 so aggregation stays mechanical; the twin gate
+#                   (bench/tools twingate) compares the two aggregates per
+#                   row and marks any row whose twin ratio departs 1.0 beyond
+#                   its spread band as state-suspect — the rel tool refuses
+#                   to ratio such a row, with the §2.6.1 caption. A pass
+#                   introducing a NEW binary configuration MUST run --twins.
 #
 # environment: SERIALIZE / SERIALIZE_C / SERIALIZE_GO / SERIALIZE_RS /
 # SERIALIZE_CS, BENCH_CPU, BENCH_NOISE, BENCH_OPT_LEVEL — all as bench/run.sh.
@@ -47,6 +58,7 @@ ROUNDS=7
 LANGS="cpp,c,go,rust,cs"
 COMPILER="${CXX:-c++}"
 INLINE=0
+TWINS=0
 while [ $# -gt 0 ]; do
     case "$1" in
         --out) OUT="$2"; shift ;;
@@ -54,6 +66,7 @@ while [ $# -gt 0 ]; do
         --langs) LANGS="$2"; shift ;;
         --compiler) COMPILER="$2"; shift ;;
         --inline) INLINE=1 ;;
+        --twins) TWINS=1 ;;
         *) echo "unknown argument: $1" >&2; exit 1 ;;
     esac
     shift
@@ -187,12 +200,17 @@ sample_boundary
 
 AVAILABLE=""
 SKIPPED=""
-for K in $(seq 0 $((ROUNDS - 1))); do
-    for lang in $(echo "$LANGS" | tr ',' ' '); do
-        if [ "$K" -gt 0 ] && ! echo " $AVAILABLE " | grep -q " $lang "; then
-            continue        # went missing in round 0; recorded below
-        fi
-        REUSE_FLAG=""
+# one_leg <K> <lang> <twin a|b>: run one round leg. Twin b legs are the SAME
+# binary (--reuse-build always; twin a of round 0 — or control leg A for
+# cpp — built it) stamped as round K+ROUNDS so §2.4 duplicate detection
+# stays mechanical while the twin aggregates stay separable.
+one_leg() {
+    local K="$1" lang="$2" twin="$3" SUF="" STAMP="$K" REUSE_FLAG=""
+    if [ "$twin" = b ]; then
+        SUF="-b"; STAMP=$((K + ROUNDS)); REUSE_FLAG="--reuse-build"
+        # twin b never runs before twin a has built (round 0 is a-first)
+        echo " $AVAILABLE " | grep -q " $lang " || return 0
+    else
         [ "$K" -gt 0 ] && REUSE_FLAG="--reuse-build"
         # cpp reuses from ROUND 0 as well: control leg A just built this
         # exact binary with the same compiler and flags, and control leg B's
@@ -200,25 +218,43 @@ for K in $(seq 0 $((ROUNDS - 1))); do
         # rebuilds it. (Round 0 still builds every OTHER language — the
         # control legs build only cpp.)
         [ "$lang" = cpp ] && REUSE_FLAG="--reuse-build"
-        leg "round-$K-$lang" --only "$lang" --compiler "$COMPILER" --bare \
-            --round "$K" $REUSE_FLAG --out "$W/round-$K-$lang.csv"
-        if [ "$K" -eq 0 ]; then
-            if grep -q "^$lang," "$W/round-0-$lang.csv" 2>/dev/null; then
-                AVAILABLE="$AVAILABLE $lang"
-            else
-                SKIPPED="$SKIPPED $lang"
-                log "SKIP $lang: round 0 produced no rows (toolchain or runner missing — see above)"
-                rm -f "$W/round-0-$lang.csv" "$W/FAILED-round-0-$lang"
-                FAILED_LEGS="$(echo "$FAILED_LEGS" | sed "s/ round-0-$lang//")"
-            fi
+        if [ "$K" -gt 0 ] && ! echo " $AVAILABLE " | grep -q " $lang "; then
+            return 0        # went missing in round 0; recorded below
         fi
-        # §2.4 provenance: stamp the round into the per-round CSV so
-        # duplicate-round detection is mechanical — aggregate refuses a row
-        # contributed twice for one round, and refuses the same file twice.
-        if [ -f "$W/round-$K-$lang.csv" ]; then
-            { echo "# round: $K"; cat "$W/round-$K-$lang.csv"; } > "$W/round-$K-$lang.csv.tmp" \
-                && mv "$W/round-$K-$lang.csv.tmp" "$W/round-$K-$lang.csv"
+    fi
+    leg "round-$K-$lang$SUF" --only "$lang" --compiler "$COMPILER" --bare \
+        --round "$K" $REUSE_FLAG --out "$W/round-$K-$lang$SUF.csv"
+    if [ "$K" -eq 0 ] && [ "$twin" = a ]; then
+        if grep -q "^$lang," "$W/round-0-$lang.csv" 2>/dev/null; then
+            AVAILABLE="$AVAILABLE $lang"
+        else
+            SKIPPED="$SKIPPED $lang"
+            log "SKIP $lang: round 0 produced no rows (toolchain or runner missing — see above)"
+            rm -f "$W/round-0-$lang.csv" "$W/FAILED-round-0-$lang"
+            FAILED_LEGS="$(echo "$FAILED_LEGS" | sed "s/ round-0-$lang//")"
         fi
+    fi
+    # §2.4 provenance: stamp the round into the per-round CSV so
+    # duplicate-round detection is mechanical — aggregate refuses a row
+    # contributed twice for one round, and refuses the same file twice.
+    if [ -f "$W/round-$K-$lang$SUF.csv" ]; then
+        { echo "# round: $STAMP"; cat "$W/round-$K-$lang$SUF.csv"; } > "$W/round-$K-$lang$SUF.csv.tmp" \
+            && mv "$W/round-$K-$lang$SUF.csv.tmp" "$W/round-$K-$lang$SUF.csv"
+    fi
+}
+for K in $(seq 0 $((ROUNDS - 1))); do
+    # §2.6.1: twins alternate positions in the round order — even rounds run
+    # a-legs first, odd rounds b-legs first (round 0 is always a-first so
+    # every binary exists before its twin reuses it).
+    TWIN_ORDER="a"
+    if [ "$TWINS" = 1 ]; then
+        TWIN_ORDER="a b"
+        [ $((K % 2)) -eq 1 ] && TWIN_ORDER="b a"
+    fi
+    for twin in $TWIN_ORDER; do
+        for lang in $(echo "$LANGS" | tr ',' ' '); do
+            one_leg "$K" "$lang" "$twin"
+        done
     done
     sample_boundary
 done
@@ -262,6 +298,32 @@ if ! go run ./bench/tools aggregate "$W"/round-*.csv > "$W/aggregated.csv"; then
     exit 1
 fi
 
+# ---- twin gate (§2.6.1): aggregate each twin separately and compare ----
+
+TWIN_VERDICT=""
+TWIN_SUSPECTS=""
+if [ "$TWINS" = 1 ]; then
+    A_FILES="$(ls "$W"/round-*.csv | grep -v -- '-b\.csv$')"
+    B_FILES="$(ls "$W"/round-*-b.csv 2>/dev/null || true)"
+    if [ -z "$B_FILES" ]; then
+        echo "twin gate: no twin-b legs produced rows — gate cannot run" >&2
+        TWIN_VERDICT="UNKNOWN (no twin-b rows)"
+    else
+        # shellcheck disable=SC2086
+        go run ./bench/tools aggregate $A_FILES > "$W/twin-a.csv" || exit 1
+        # shellcheck disable=SC2086
+        go run ./bench/tools aggregate $B_FILES > "$W/twin-b.csv" || exit 1
+        if go run ./bench/tools twingate "$W/twin-a.csv" "$W/twin-b.csv" > "$W/twingate.txt" 2>&1; then
+            TWIN_VERDICT="OK"
+        else
+            TWIN_VERDICT="SUSPECT"
+            TWIN_SUSPECTS="$(grep '^state-suspect:' "$W/twingate.txt" | sed 's/^state-suspect: //' | tr '\n' ';' | sed 's/;$//')"
+        fi
+        cat "$W/twingate.txt" >> "$LOG"
+        log "twin gate: $TWIN_VERDICT ${TWIN_SUSPECTS:+suspects: $TWIN_SUSPECTS}"
+    fi
+fi
+
 # ---- assemble the final CSV: run.sh preamble + §5.2 driver lines + rows ----
 
 {
@@ -276,6 +338,10 @@ fi
     echo "# foreign_procs: $FOREIGN_MAX"
     echo "# control_start_median: $CTRL_A   control_end_median: $CTRL_B"
     echo "# control_delta_pct: $CTRL_DELTA   window: $WINDOW"
+    if [ "$TWINS" = 1 ]; then
+        echo "# twin_gate: ${TWIN_VERDICT:-UNKNOWN} (§2.6.1 A/A twin legs, alternating positions, same inode)"
+        [ -n "$TWIN_SUSPECTS" ] && echo "# twin_suspect: $TWIN_SUSPECTS"
+    fi
     cat "$W/aggregated.csv"
 } > "$OUT"
 
@@ -292,9 +358,12 @@ if [ "$INLINE" = 1 ]; then
     done
 fi
 
-echo "pass: $OUT (window: $WINDOW; work: $W)" >&2
+echo "pass: $OUT (window: $WINDOW${TWIN_VERDICT:+; twin gate: $TWIN_VERDICT}; work: $W)" >&2
 if [ "$WINDOW" != OK ]; then
     echo "WINDOW INVALID: control legs disagree by ${CTRL_DELTA}% (> 5%) — the tool will refuse ratios from this pass" >&2
+fi
+if [ "$TWIN_VERDICT" = SUSPECT ]; then
+    echo "TWIN GATE SUSPECT (§2.6.1): $TWIN_SUSPECTS — state-selective interference; the rel tool refuses to ratio these rows. Re-run the window." >&2
 fi
 if [ -n "$(echo "$FAILED_LEGS" | tr -d ' ')" ]; then
     echo "failed legs:$FAILED_LEGS — see $LOG" >&2
