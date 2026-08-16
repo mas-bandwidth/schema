@@ -34,7 +34,7 @@ typedef struct Vec3 {
 } Vec3;
 
 #define VEC3_MAX_BITS 192   /* longest wire path; align pads at worst case (SPEC §6.1) */
-#define VEC3_MAX_BYTES 24  /* rounded up to the 8-byte write-buffer granularity */
+#define VEC3_MAX_BYTES 24  /* rounded up to the 8-byte write-buffer granularity; a READ buffer's allocation must extend at least 8 bytes past the data — serialize.c loads 64-bit windows */
 
 
 /* type Quat */
@@ -46,7 +46,7 @@ typedef struct Quat {
 } Quat;
 
 #define QUAT_MAX_BITS 256   /* longest wire path; align pads at worst case (SPEC §6.1) */
-#define QUAT_MAX_BYTES 32  /* rounded up to the 8-byte write-buffer granularity */
+#define QUAT_MAX_BYTES 32  /* rounded up to the 8-byte write-buffer granularity; a READ buffer's allocation must extend at least 8 bytes past the data — serialize.c loads 64-bit windows */
 
 
 /* type Handle */
@@ -56,7 +56,7 @@ typedef struct Handle {
 } Handle;
 
 #define HANDLE_MAX_BITS 22   /* longest wire path; align pads at worst case (SPEC §6.1) */
-#define HANDLE_MAX_BYTES 8  /* rounded up to the 8-byte write-buffer granularity */
+#define HANDLE_MAX_BYTES 8  /* rounded up to the 8-byte write-buffer granularity; a READ buffer's allocation must extend at least 8 bytes past the data — serialize.c loads 64-bit windows */
 
 
 /* type QuantizedPosition */
@@ -67,7 +67,7 @@ typedef struct QuantizedPosition {
 } QuantizedPosition;
 
 #define QUANTIZED_POSITION_MAX_BITS 75   /* longest wire path; align pads at worst case (SPEC §6.1) */
-#define QUANTIZED_POSITION_MAX_BYTES 16  /* rounded up to the 8-byte write-buffer granularity */
+#define QUANTIZED_POSITION_MAX_BYTES 16  /* rounded up to the 8-byte write-buffer granularity; a READ buffer's allocation must extend at least 8 bytes past the data — serialize.c loads 64-bit windows */
 
 
 /* type QuantizedVelocity */
@@ -78,7 +78,7 @@ typedef struct QuantizedVelocity {
 } QuantizedVelocity;
 
 #define QUANTIZED_VELOCITY_MAX_BITS 69   /* longest wire path; align pads at worst case (SPEC §6.1) */
-#define QUANTIZED_VELOCITY_MAX_BYTES 16  /* rounded up to the 8-byte write-buffer granularity */
+#define QUANTIZED_VELOCITY_MAX_BYTES 16  /* rounded up to the 8-byte write-buffer granularity; a READ buffer's allocation must extend at least 8 bytes past the data — serialize.c loads 64-bit windows */
 
 
 /* type QuantizedRotation */
@@ -90,7 +90,7 @@ typedef struct QuantizedRotation {
 } QuantizedRotation;
 
 #define QUANTIZED_ROTATION_MAX_BITS 48   /* longest wire path; align pads at worst case (SPEC §6.1) */
-#define QUANTIZED_ROTATION_MAX_BYTES 8  /* rounded up to the 8-byte write-buffer granularity */
+#define QUANTIZED_ROTATION_MAX_BYTES 8  /* rounded up to the 8-byte write-buffer granularity; a READ buffer's allocation must extend at least 8 bytes past the data — serialize.c loads 64-bit windows */
 
 
 /* type RigidBody */
@@ -103,7 +103,7 @@ typedef struct RigidBody {
 } RigidBody;
 
 #define RIGID_BODY_MAX_BITS 833   /* longest wire path; align pads at worst case (SPEC §6.1) */
-#define RIGID_BODY_MAX_BYTES 112  /* rounded up to the 8-byte write-buffer granularity */
+#define RIGID_BODY_MAX_BYTES 112  /* rounded up to the 8-byte write-buffer granularity; a READ buffer's allocation must extend at least 8 bytes past the data — serialize.c loads 64-bit windows */
 
 
 /* type Input */
@@ -124,7 +124,7 @@ typedef struct Input {
 } Input;
 
 #define INPUT_MAX_BITS 168   /* longest wire path; align pads at worst case (SPEC §6.1) */
-#define INPUT_MAX_BYTES 24  /* rounded up to the 8-byte write-buffer granularity */
+#define INPUT_MAX_BYTES 24  /* rounded up to the 8-byte write-buffer granularity; a READ buffer's allocation must extend at least 8 bytes past the data — serialize.c loads 64-bit windows */
 
 
 /* type InputPacket */
@@ -137,7 +137,7 @@ typedef struct InputPacket {
 } InputPacket;
 
 #define INPUT_PACKET_MAX_BITS 2837   /* longest wire path; align pads at worst case (SPEC §6.1) */
-#define INPUT_PACKET_MAX_BYTES 360  /* rounded up to the 8-byte write-buffer granularity */
+#define INPUT_PACKET_MAX_BYTES 360  /* rounded up to the 8-byte write-buffer granularity; a READ buffer's allocation must extend at least 8 bytes past the data — serialize.c loads 64-bit windows */
 
 
 /* type ShipCreate */
@@ -155,7 +155,7 @@ typedef struct ShipCreate {
 } ShipCreate;
 
 #define SHIP_CREATE_MAX_BITS 219   /* longest wire path; align pads at worst case (SPEC §6.1) */
-#define SHIP_CREATE_MAX_BYTES 32  /* rounded up to the 8-byte write-buffer granularity */
+#define SHIP_CREATE_MAX_BYTES 32  /* rounded up to the 8-byte write-buffer granularity; a READ buffer's allocation must extend at least 8 bytes past the data — serialize.c loads 64-bit windows */
 
 #ifdef __cplusplus
 }

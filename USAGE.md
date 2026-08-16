@@ -372,10 +372,11 @@ A value outside its declared range is **refused, not clamped** — the read
 returns failure and you drop the packet:
 
 ```cpp
-// NOTE the buffer contract: in C++ the ALLOCATION must extend at least 8 bytes
-// past the packet data. The reader pulls a 64-bit word at a time, so a buffer
-// sized exactly to the packet is read past its end — on every packet, not just
-// malformed ones. Size the receive buffer with slack; pass the true length.
+// NOTE the buffer contract: in C++ and C the ALLOCATION must extend at least
+// 8 bytes past the packet data. The reader pulls a 64-bit word at a time, so a
+// buffer sized exactly to the packet is read past its end — on every packet,
+// not just malformed ones. Size the receive buffer with slack; pass the true
+// length.
 uint8_t buffer[MaxPacketBytes + 8];
 int bytes = recv( ... );
 
@@ -387,8 +388,10 @@ if ( !ReadShipCreate( stream, value ) )
 }
 ```
 
-The slack requirement differs per language, and it is normative in
-[SPEC.md](SPEC.md) §6.3: **C++ ≥8 bytes, Go ≥7, Rust ≥8, C# none.** Write
+The slack requirement differs per language: **C++ ≥8 bytes, C ≥8 bytes
+(serialize.c adopted C++'s align-up contract — its PR #21), Go ≥7, Rust ≥8,
+C# none.** The C++/Go/Rust/C# columns are normative in [SPEC.md](SPEC.md)
+§6.3; §6.3 predates the C target, so C's contract is serialize.c's own. Write
 buffers are a multiple of 8 in every language.
 
 That covers ranges, counts past an array bound, string lengths past their

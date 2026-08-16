@@ -61,7 +61,7 @@ struct FixedProbe {
 };
 
 inline constexpr int64_t FixedProbeMaxBits = 156; // longest wire path; align pads at worst case (SPEC §6.1)
-inline constexpr int64_t FixedProbeMaxBytes = 24; // rounded up to the 8-byte write-buffer granularity
+inline constexpr int64_t FixedProbeMaxBytes = 24; // rounded up to the 8-byte write-buffer granularity; a read buffer's allocation must extend at least 8 bytes past the data — the reader loads 64-bit windows
 
 // type UnsignedProbe
 struct UnsignedProbe {
@@ -75,7 +75,7 @@ struct UnsignedProbe {
 };
 
 inline constexpr int64_t UnsignedProbeMaxBits = 196; // longest wire path; align pads at worst case (SPEC §6.1)
-inline constexpr int64_t UnsignedProbeMaxBytes = 32; // rounded up to the 8-byte write-buffer granularity
+inline constexpr int64_t UnsignedProbeMaxBytes = 32; // rounded up to the 8-byte write-buffer granularity; a read buffer's allocation must extend at least 8 bytes past the data — the reader loads 64-bit windows
 
 // type WideProbe
 struct WideProbe {
@@ -87,7 +87,7 @@ struct WideProbe {
 };
 
 inline constexpr int64_t WideProbeMaxBits = 403; // longest wire path; align pads at worst case (SPEC §6.1)
-inline constexpr int64_t WideProbeMaxBytes = 56; // rounded up to the 8-byte write-buffer granularity
+inline constexpr int64_t WideProbeMaxBytes = 56; // rounded up to the 8-byte write-buffer granularity; a read buffer's allocation must extend at least 8 bytes past the data — the reader loads 64-bit windows
 
 // message LudicrousState
 struct LudicrousState {
@@ -104,7 +104,7 @@ struct LudicrousState {
 };
 
 inline constexpr int64_t LudicrousStateMaxBits = 1205; // longest wire path; align pads at worst case (SPEC §6.1)
-inline constexpr int64_t LudicrousStateMaxBytes = 152; // rounded up to the 8-byte write-buffer granularity
+inline constexpr int64_t LudicrousStateMaxBytes = 152; // rounded up to the 8-byte write-buffer granularity; a read buffer's allocation must extend at least 8 bytes past the data — the reader loads 64-bit windows
 
 // type DegenerateProbe
 struct DegenerateProbe {
@@ -115,7 +115,7 @@ struct DegenerateProbe {
 };
 
 inline constexpr int64_t DegenerateProbeMaxBits = 8; // longest wire path; align pads at worst case (SPEC §6.1)
-inline constexpr int64_t DegenerateProbeMaxBytes = 8; // rounded up to the 8-byte write-buffer granularity
+inline constexpr int64_t DegenerateProbeMaxBytes = 8; // rounded up to the 8-byte write-buffer granularity; a read buffer's allocation must extend at least 8 bytes past the data — the reader loads 64-bit windows
 
 // type FixedVec [vec3] — the tag is user-chosen and inert in v1; the delta pass
 // claims tags and assigns actions (SPEC §4.2, Type tags)
@@ -126,7 +126,7 @@ struct FixedVec {
 };
 
 inline constexpr int64_t FixedVecMaxBits = 102; // longest wire path; align pads at worst case (SPEC §6.1)
-inline constexpr int64_t FixedVecMaxBytes = 16; // rounded up to the 8-byte write-buffer granularity
+inline constexpr int64_t FixedVecMaxBytes = 16; // rounded up to the 8-byte write-buffer granularity; a read buffer's allocation must extend at least 8 bytes past the data — the reader loads 64-bit windows
 
 // type FixedQuat [quat4] — the tag is user-chosen and inert in v1; the delta pass
 // claims tags and assigns actions (SPEC §4.2, Type tags)
@@ -138,7 +138,7 @@ struct FixedQuat {
 };
 
 inline constexpr int64_t FixedQuatMaxBits = 128; // longest wire path; align pads at worst case (SPEC §6.1)
-inline constexpr int64_t FixedQuatMaxBytes = 16; // rounded up to the 8-byte write-buffer granularity
+inline constexpr int64_t FixedQuatMaxBytes = 16; // rounded up to the 8-byte write-buffer granularity; a read buffer's allocation must extend at least 8 bytes past the data — the reader loads 64-bit windows
 
 // ---- object Body — one definition, a generated family per target (SPEC §4.8) ----
 
@@ -180,10 +180,10 @@ struct BodyData_Interpolate {
 // SPEC §4.8) — Interpolate and Shallow are the same values.
 
 inline constexpr int64_t BodyData_DeepMaxBits = 332;
-inline constexpr int64_t BodyData_DeepMaxBytes = 48; // rounded up to the 8-byte write-buffer granularity
+inline constexpr int64_t BodyData_DeepMaxBytes = 48; // rounded up to the 8-byte write-buffer granularity; a read buffer's allocation must extend at least 8 bytes past the data — the reader loads 64-bit windows
 
 inline constexpr int64_t BodyData_ShallowMaxBits = 332;
-inline constexpr int64_t BodyData_ShallowMaxBytes = 48; // rounded up to the 8-byte write-buffer granularity
+inline constexpr int64_t BodyData_ShallowMaxBytes = 48; // rounded up to the 8-byte write-buffer granularity; a read buffer's allocation must extend at least 8 bytes past the data — the reader loads 64-bit windows
 
 // ---- object NarrowBody — one definition, a generated family per target (SPEC §4.8) ----
 
@@ -274,14 +274,14 @@ inline void UnquantizeNarrowBody( const NarrowBodyData_Shallow & input, NarrowBo
 }
 
 inline constexpr int64_t NarrowBodyData_DeepMaxBits = 332;
-inline constexpr int64_t NarrowBodyData_DeepMaxBytes = 48; // rounded up to the 8-byte write-buffer granularity
+inline constexpr int64_t NarrowBodyData_DeepMaxBytes = 48; // rounded up to the 8-byte write-buffer granularity; a read buffer's allocation must extend at least 8 bytes past the data — the reader loads 64-bit windows
 
 inline constexpr int64_t NarrowBodyData_ShallowMaxBits = 228;
-inline constexpr int64_t NarrowBodyData_ShallowMaxBytes = 32; // rounded up to the 8-byte write-buffer granularity
+inline constexpr int64_t NarrowBodyData_ShallowMaxBytes = 32; // rounded up to the 8-byte write-buffer granularity; a read buffer's allocation must extend at least 8 bytes past the data — the reader loads 64-bit windows
 
 // The message-level bound: the tag plus the largest message (SPEC §6.1)
 inline constexpr int64_t MessageMaxBits = 1206;
-inline constexpr int64_t MessageMaxBytes = 152; // rounded up to the 8-byte write-buffer granularity
+inline constexpr int64_t MessageMaxBytes = 152; // rounded up to the 8-byte write-buffer granularity; a read buffer's allocation must extend at least 8 bytes past the data — the reader loads 64-bit windows
 
 // The message value: a tagged union — the payload member matching `type` is
 // the active one. Construction is the None message: the tag alone is

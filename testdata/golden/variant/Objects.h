@@ -334,10 +334,10 @@ inline void UnquantizeShip( const ShipData_Shallow & input, ShipData_Interpolate
 }
 
 inline constexpr int64_t ShipData_DeepMaxBits = 1703;
-inline constexpr int64_t ShipData_DeepMaxBytes = 216; // rounded up to the 8-byte write-buffer granularity
+inline constexpr int64_t ShipData_DeepMaxBytes = 216; // rounded up to the 8-byte write-buffer granularity; a read buffer's allocation must extend at least 8 bytes past the data — the reader loads 64-bit windows
 
 inline constexpr int64_t ShipData_ShallowMaxBits = 218;
-inline constexpr int64_t ShipData_ShallowMaxBytes = 32; // rounded up to the 8-byte write-buffer granularity
+inline constexpr int64_t ShipData_ShallowMaxBytes = 32; // rounded up to the 8-byte write-buffer granularity; a read buffer's allocation must extend at least 8 bytes past the data — the reader loads 64-bit windows
 
 // ---- object Missile — one definition, a generated family per target (SPEC §4.8) ----
 
@@ -577,10 +577,10 @@ inline void UnquantizeMissile( const MissileData_Shallow & input, MissileData_In
 }
 
 inline constexpr int64_t MissileData_DeepMaxBits = 708;
-inline constexpr int64_t MissileData_DeepMaxBytes = 96; // rounded up to the 8-byte write-buffer granularity
+inline constexpr int64_t MissileData_DeepMaxBytes = 96; // rounded up to the 8-byte write-buffer granularity; a read buffer's allocation must extend at least 8 bytes past the data — the reader loads 64-bit windows
 
 inline constexpr int64_t MissileData_ShallowMaxBits = 260;
-inline constexpr int64_t MissileData_ShallowMaxBytes = 40; // rounded up to the 8-byte write-buffer granularity
+inline constexpr int64_t MissileData_ShallowMaxBytes = 40; // rounded up to the 8-byte write-buffer granularity; a read buffer's allocation must extend at least 8 bytes past the data — the reader loads 64-bit windows
 
 // ---- object DynamicProp — one definition, a generated family per target (SPEC §4.8) ----
 
@@ -804,10 +804,10 @@ inline void UnquantizeDynamicProp( const DynamicPropData_Shallow & input, Dynami
 }
 
 inline constexpr int64_t DynamicPropData_DeepMaxBits = 709;
-inline constexpr int64_t DynamicPropData_DeepMaxBytes = 96; // rounded up to the 8-byte write-buffer granularity
+inline constexpr int64_t DynamicPropData_DeepMaxBytes = 96; // rounded up to the 8-byte write-buffer granularity; a read buffer's allocation must extend at least 8 bytes past the data — the reader loads 64-bit windows
 
 inline constexpr int64_t DynamicPropData_ShallowMaxBits = 261;
-inline constexpr int64_t DynamicPropData_ShallowMaxBytes = 40; // rounded up to the 8-byte write-buffer granularity
+inline constexpr int64_t DynamicPropData_ShallowMaxBytes = 40; // rounded up to the 8-byte write-buffer granularity; a read buffer's allocation must extend at least 8 bytes past the data — the reader loads 64-bit windows
 
 // ---- object Turret — one definition, a generated family per target (SPEC §4.8) ----
 
@@ -927,9 +927,9 @@ inline void UnquantizeTurret( const TurretData_Shallow & input, TurretData_Inter
 }
 
 inline constexpr int64_t TurretData_DeepMaxBits = 350;
-inline constexpr int64_t TurretData_DeepMaxBytes = 48; // rounded up to the 8-byte write-buffer granularity
+inline constexpr int64_t TurretData_DeepMaxBytes = 48; // rounded up to the 8-byte write-buffer granularity; a read buffer's allocation must extend at least 8 bytes past the data — the reader loads 64-bit windows
 
 inline constexpr int64_t TurretData_ShallowMaxBits = 142;
-inline constexpr int64_t TurretData_ShallowMaxBytes = 24; // rounded up to the 8-byte write-buffer granularity
+inline constexpr int64_t TurretData_ShallowMaxBytes = 24; // rounded up to the 8-byte write-buffer granularity; a read buffer's allocation must extend at least 8 bytes past the data — the reader loads 64-bit windows
 
 } // namespace example

@@ -40,7 +40,7 @@ typedef struct Test {
 } Test;
 
 #define TEST_MAX_BITS 46   /* longest wire path; align pads at worst case (SPEC §6.1) */
-#define TEST_MAX_BYTES 8  /* rounded up to the 8-byte write-buffer granularity */
+#define TEST_MAX_BYTES 8  /* rounded up to the 8-byte write-buffer granularity; a READ buffer's allocation must extend at least 8 bytes past the data — serialize.c loads 64-bit windows */
 
 
 /* message Block */
@@ -50,7 +50,7 @@ typedef struct Block {
 } Block;
 
 #define BLOCK_MAX_BITS 16018   /* longest wire path; align pads at worst case (SPEC §6.1) */
-#define BLOCK_MAX_BYTES 2008  /* rounded up to the 8-byte write-buffer granularity */
+#define BLOCK_MAX_BYTES 2008  /* rounded up to the 8-byte write-buffer granularity; a READ buffer's allocation must extend at least 8 bytes past the data — serialize.c loads 64-bit windows */
 
 
 /* message Chat */
@@ -60,7 +60,7 @@ typedef struct Chat {
 } Chat;
 
 #define CHAT_MAX_BITS 2064   /* longest wire path; align pads at worst case (SPEC §6.1) */
-#define CHAT_MAX_BYTES 264  /* rounded up to the 8-byte write-buffer granularity */
+#define CHAT_MAX_BYTES 264  /* rounded up to the 8-byte write-buffer granularity; a READ buffer's allocation must extend at least 8 bytes past the data — serialize.c loads 64-bit windows */
 
 
 /* message Synchronize */
@@ -70,7 +70,7 @@ typedef struct Synchronize {
 } Synchronize;
 
 #define SYNCHRONIZE_MAX_BITS 80   /* longest wire path; align pads at worst case (SPEC §6.1) */
-#define SYNCHRONIZE_MAX_BYTES 16  /* rounded up to the 8-byte write-buffer granularity */
+#define SYNCHRONIZE_MAX_BYTES 16  /* rounded up to the 8-byte write-buffer granularity; a READ buffer's allocation must extend at least 8 bytes past the data — serialize.c loads 64-bit windows */
 
 
 /* message Timescale */
@@ -81,7 +81,7 @@ typedef struct Timescale {
 } Timescale;
 
 #define TIMESCALE_MAX_BITS 128   /* longest wire path; align pads at worst case (SPEC §6.1) */
-#define TIMESCALE_MAX_BYTES 16  /* rounded up to the 8-byte write-buffer granularity */
+#define TIMESCALE_MAX_BYTES 16  /* rounded up to the 8-byte write-buffer granularity; a READ buffer's allocation must extend at least 8 bytes past the data — serialize.c loads 64-bit windows */
 
 
 /* The message tag: the discriminant for a heterogeneous stream. None = 0 is

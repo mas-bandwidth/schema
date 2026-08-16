@@ -140,7 +140,7 @@ static void golden_table( const char * name, const unsigned char * data, int byt
 
 int main( void )
 {
-    static unsigned char buffer[8192];
+    static unsigned char buffer[8192 + 8];      /* + 8: read buffer allocations extend 8 bytes past the data (serialize.c loads 64-bit windows) */
     serialize_write_stream_t w;
     serialize_read_stream_t r;
 

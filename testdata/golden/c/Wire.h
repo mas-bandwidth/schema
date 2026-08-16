@@ -82,7 +82,7 @@ typedef struct ProbeHeader {
 } ProbeHeader;
 
 #define PROBE_HEADER_MAX_BITS 87   /* longest wire path; align pads at worst case (SPEC §6.1) */
-#define PROBE_HEADER_MAX_BYTES 16  /* rounded up to the 8-byte write-buffer granularity */
+#define PROBE_HEADER_MAX_BYTES 16  /* rounded up to the 8-byte write-buffer granularity; a READ buffer's allocation must extend at least 8 bytes past the data — serialize.c loads 64-bit windows */
 
 
 /* type ProbeBits */
@@ -95,7 +95,7 @@ typedef struct ProbeBits {
 } ProbeBits;
 
 #define PROBE_BITS_MAX_BITS 202   /* longest wire path; align pads at worst case (SPEC §6.1) */
-#define PROBE_BITS_MAX_BYTES 32  /* rounded up to the 8-byte write-buffer granularity */
+#define PROBE_BITS_MAX_BYTES 32  /* rounded up to the 8-byte write-buffer granularity; a READ buffer's allocation must extend at least 8 bytes past the data — serialize.c loads 64-bit windows */
 
 
 /* type ProbeSample */
@@ -113,7 +113,7 @@ typedef struct ProbeSample {
 } ProbeSample;
 
 #define PROBE_SAMPLE_MAX_BITS 276   /* longest wire path; align pads at worst case (SPEC §6.1) */
-#define PROBE_SAMPLE_MAX_BYTES 40  /* rounded up to the 8-byte write-buffer granularity */
+#define PROBE_SAMPLE_MAX_BYTES 40  /* rounded up to the 8-byte write-buffer granularity; a READ buffer's allocation must extend at least 8 bytes past the data — serialize.c loads 64-bit windows */
 
 /* Returns a ProbeSample with its SPECIFIED defaults applied. A memset to zero is
    the schema's own default (SPEC §4.2: zero initialization unless a
@@ -134,7 +134,7 @@ typedef struct ProbeConfig {
 } ProbeConfig;
 
 #define PROBE_CONFIG_MAX_BITS 36   /* longest wire path; align pads at worst case (SPEC §6.1) */
-#define PROBE_CONFIG_MAX_BYTES 8  /* rounded up to the 8-byte write-buffer granularity */
+#define PROBE_CONFIG_MAX_BYTES 8  /* rounded up to the 8-byte write-buffer granularity; a READ buffer's allocation must extend at least 8 bytes past the data — serialize.c loads 64-bit windows */
 
 /* Returns a ProbeConfig with its SPECIFIED defaults applied. A memset to zero is
    the schema's own default (SPEC §4.2: zero initialization unless a
@@ -156,7 +156,7 @@ typedef struct ProbeArray {
 } ProbeArray;
 
 #define PROBE_ARRAY_MAX_BITS 588   /* longest wire path; align pads at worst case (SPEC §6.1) */
-#define PROBE_ARRAY_MAX_BYTES 80  /* rounded up to the 8-byte write-buffer granularity */
+#define PROBE_ARRAY_MAX_BYTES 80  /* rounded up to the 8-byte write-buffer granularity; a READ buffer's allocation must extend at least 8 bytes past the data — serialize.c loads 64-bit windows */
 
 /* Returns a ProbeArray with its SPECIFIED defaults applied. A memset to zero is
    the schema's own default (SPEC §4.2: zero initialization unless a
@@ -185,7 +185,7 @@ typedef struct ProbeReport {
 } ProbeReport;
 
 #define PROBE_REPORT_MAX_BITS 141   /* longest wire path; align pads at worst case (SPEC §6.1) */
-#define PROBE_REPORT_MAX_BYTES 24  /* rounded up to the 8-byte write-buffer granularity */
+#define PROBE_REPORT_MAX_BYTES 24  /* rounded up to the 8-byte write-buffer granularity; a READ buffer's allocation must extend at least 8 bytes past the data — serialize.c loads 64-bit windows */
 
 
 /* type TestData */
@@ -216,7 +216,7 @@ typedef struct TestData {
 } TestData;
 
 #define TEST_DATA_MAX_BITS 2735   /* longest wire path; align pads at worst case (SPEC §6.1) */
-#define TEST_DATA_MAX_BYTES 344  /* rounded up to the 8-byte write-buffer granularity */
+#define TEST_DATA_MAX_BYTES 344  /* rounded up to the 8-byte write-buffer granularity; a READ buffer's allocation must extend at least 8 bytes past the data — serialize.c loads 64-bit windows */
 
 
 /* type CompressedProbe */
@@ -226,7 +226,7 @@ typedef struct CompressedProbe {
 } CompressedProbe;
 
 #define COMPRESSED_PROBE_MAX_BITS 24   /* longest wire path; align pads at worst case (SPEC §6.1) */
-#define COMPRESSED_PROBE_MAX_BYTES 8  /* rounded up to the 8-byte write-buffer granularity */
+#define COMPRESSED_PROBE_MAX_BYTES 8  /* rounded up to the 8-byte write-buffer granularity; a READ buffer's allocation must extend at least 8 bytes past the data — serialize.c loads 64-bit windows */
 
 #ifdef __cplusplus
 }

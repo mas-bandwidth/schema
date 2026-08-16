@@ -22,7 +22,7 @@ int main()
     ship.health = 750;
     ship.thrust = 42;
 
-    uint8_t buffer[256];
+    uint8_t buffer[256 + 8];  // + 8: read buffer allocations extend 8 bytes past the data
     serialize::WriteStream ws( buffer, sizeof( buffer ) );
     if ( !WriteShipCreate( ws, ship ) ) { printf( "write failed\n" ); return 1; }
     ws.Flush();
