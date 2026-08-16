@@ -281,6 +281,56 @@ Two rows may be divided only if their `corpus_id` matches (§5.3). A runner that
 a stale golden reports a different id, and the tool refuses. Corpus drift becomes a
 tool error rather than a published ratio.
 
+### §1.7 Corpus composition — the real use case, by bits sent
+
+**DECIDED (Glenn, 2026-08-16, Auckland, verbatim):** *"we are profiling the REAL use
+case, which is, lots and lots of individual serialize statements"* / *"maybe a real
+packet is like 1000-2000 individually serialized bits"* / *"and very rarely is it
+wstring, string or byte array"* / *"I want to make sure that our profiling is not
+biased towards most data going through byte arrays, by number of bits sent."*
+
+The metric this section governs is **bulk share by bits sent**: for a bench row, the
+fraction of wire bits that flow through bulk byte copies — `string(N)`, `bytes(N)`,
+and `[N]uint8` payloads, whose per-byte cost is memcpy — versus bits produced by
+individual serialize statements, whose per-field cost is the bitpacking dispatch this
+estate exists to measure. Bulk-heavy rows converge on memory bandwidth and flatten
+every language toward parity; a headline column dominated by them measures memcpy,
+not the serializer.
+
+**The audit that seeded the rule (2026-08-16, receipts in the row definitions and
+`bench_main` variation code):**
+
+| row(s) | bulk share by bits | mechanism |
+|---|---:|---|
+| batch write / batch read | **≈74%** | the 4096-message mix draws 25% Chat (avg ~24-byte string) and 10% Block (avg ~128-byte blob): ~149 bulk bits/message vs ~51 individually serialized |
+| chat | ≈85% | 11-byte pinned string in a 13-byte message |
+| bench_packet | ≈35% | the 17-byte blob in a 49-byte packet |
+| ints / bits / mixed / probes / rigidbodies / bitpacker | 0% | all individual statements |
+
+So the write/read medians are mostly honest, and the batch columns — the rows the
+C-vs-C++ read campaign was fought over — are three-quarters memcpy by bits. (The
+dispatch-per-message differences those columns exposed were real; but their MB/s is
+inflated by bulk traffic, and by bits they do not resemble a real packet.)
+
+**The law going forward:**
+
+1. **The corpus owes a realistic snapshot shape**: 1000–2000 wire bits from
+   **hundreds of individually serialized small fields of all scalar types** — ranged
+   ints of assorted widths, `bits(N)`, bool, float32/float64, compressed float,
+   fixed/ufixed, enums — in a **seeded-random mixed order, generated once and then
+   PINNED** like every other golden (never regenerated; the seed and generator are
+   recorded beside the shape). Bulk fields appear rarely or not at all, matching
+   real packets.
+2. **Headline rows must be dominated by individual serialize statements.**
+   Bulk-heavy rows stay — memcpy throughput is worth tracking — but a table that
+   leads with a bulk-dominated row must caption the bulk share, the same way §3's
+   captions disclose checks and linkage asymmetries.
+3. **Additive only.** Existing rows and mixes are never rebalanced in place — that
+   would silently re-price every cross-era comparison. New realistic rows join
+   under new names with a new `corpus_id`, era-marked like any corpus change.
+4. **Any future corpus addition states its bulk share by bits** in its definition
+   comment, so this audit never has to be re-derived from variation code.
+
 ---
 
 ## §2 Methodology
