@@ -95,13 +95,16 @@ static const char * g_wire_dir = "testdata/wire";
    while the cold and bulk-bytes paths stay in the compiled serialize.c
    translation unit, no LTO — plain `tu` would claim a call boundary the
    hot path no longer crosses, plain `hdr` would hide the one the bulk
-   paths still cross), checks CONTRACT
-   (§3.4's third value, added 2026-08-15: -DNDEBUG compiles serialize.c's
-   caller-error asserts away like `removed`, but the write-capacity check
-   that doubles as the sticky-error flag is unconditional by contract in
-   every build — serialize_write_bits keeps it as a real check where the
-   C++ BitWriter only asserts, and that hybrid was the entire C-vs-C++
-   write residual story; neither `removed` nor `always` could say it),
+   paths still cross), checks REMOVED
+   (§3.4: -DNDEBUG compiles serialize.c's asserts and checks away exactly
+   as the C++ build does. This runner said `contract` from 2026-08-15 to
+   2026-08-16, while serialize_write_bits kept an unconditional capacity
+   check the C++ BitWriter only asserts — serialize.c ruling #20 removed
+   it: "MINIMAL runtime checking in release, compiling to ZERO runtime
+   checking in release for C and C++", so the hybrid `contract` described
+   died and the two runners' check models are now the same word. With
+   both sides `removed`, the rel tool ratios C vs C++ without the checks
+   caption; the hdr+tu linkage caption still applies),
    opt from the build (run.sh sets BENCH_OPT beside the -O flag itself),
    inline unknown until the verdict pass (§4.2) backfills it. */
 #ifndef BENCH_OPT
@@ -109,7 +112,7 @@ static const char * g_wire_dir = "testdata/wire";
 #endif
 /* family is per ROW now (gen | rt | bits — §5.1); linkage/checks/opt/inline
    stay per-runner constants */
-#define CsvSuffix "hdr+tu,contract," BENCH_OPT ",unknown"
+#define CsvSuffix "hdr+tu,removed," BENCH_OPT ",unknown"
 #define MaxCsvRows 64
 #define MaxGoldens 24
 static char g_csv_rows[MaxCsvRows][256];
