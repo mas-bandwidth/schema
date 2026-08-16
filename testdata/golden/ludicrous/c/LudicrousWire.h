@@ -23,9 +23,45 @@
 extern "C" {
 #endif
 
+#ifndef SCHEMA_C_SPINE_INLINE_DEFINED
+#define SCHEMA_C_SPINE_INLINE_DEFINED
+/* SCHEMA_C_READ_INLINE / SCHEMA_C_WRITE_INLINE — how every generated wire
+   function is spelled, beside `static SCHEMA_UNUSED`. Default: both expand
+   to nothing — token-identical to what this emitter always produced.
+   Define SCHEMA_C_READ_SPINE_DEMAND / SCHEMA_C_WRITE_SPINE_DEMAND to make
+   the generated read / write spine DEMAND inlining (always_inline /
+   __forceinline), the serialize family's remedy for LLVM refusing the
+   header-static per-message entries into small-message call sites at
+   marginal cost over the hot-callsite inline threshold. Branch-weight
+   hints are NOT the fix here — measured in this family to invite the
+   machine outliner into the hot bodies. Do not add them. */
+#if defined( SCHEMA_C_READ_SPINE_DEMAND )
+#if defined( _MSC_VER )
+#define SCHEMA_C_READ_INLINE __forceinline
+#elif defined( __GNUC__ ) || defined( __clang__ )
+#define SCHEMA_C_READ_INLINE inline __attribute__(( always_inline ))
+#else
+#define SCHEMA_C_READ_INLINE
+#endif
+#else
+#define SCHEMA_C_READ_INLINE
+#endif
+#if defined( SCHEMA_C_WRITE_SPINE_DEMAND )
+#if defined( _MSC_VER )
+#define SCHEMA_C_WRITE_INLINE __forceinline
+#elif defined( __GNUC__ ) || defined( __clang__ )
+#define SCHEMA_C_WRITE_INLINE inline __attribute__(( always_inline ))
+#else
+#define SCHEMA_C_WRITE_INLINE
+#endif
+#else
+#define SCHEMA_C_WRITE_INLINE
+#endif
+#endif /* SCHEMA_C_SPINE_INLINE_DEFINED */
+
 /* Writes FixedProbe. Returns 1 on success, 0 on failure — the stream latches the
    error, so a caller may check once at the end of a message. */
-static SCHEMA_UNUSED int write_fixed_probe( serialize_write_stream_t * stream, const FixedProbe * value )
+static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_fixed_probe( serialize_write_stream_t * stream, const FixedProbe * value )
 {
     {
         serialize_int32_t fixed_value = value->angle;
@@ -73,7 +109,7 @@ static SCHEMA_UNUSED int write_fixed_probe( serialize_write_stream_t * stream, c
 
 /* Reads FixedProbe. Returns 1 on success, 0 on failure. Out-of-range values are
    REFUSED, never clamped. */
-static SCHEMA_UNUSED int read_fixed_probe( serialize_read_stream_t * stream, FixedProbe * value )
+static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_fixed_probe( serialize_read_stream_t * stream, FixedProbe * value )
 {
     {
         serialize_int32_t fixed_value;
@@ -131,7 +167,7 @@ static SCHEMA_UNUSED int read_fixed_probe( serialize_read_stream_t * stream, Fix
 
 /* Writes UnsignedProbe. Returns 1 on success, 0 on failure — the stream latches the
    error, so a caller may check once at the end of a message. */
-static SCHEMA_UNUSED int write_unsigned_probe( serialize_write_stream_t * stream, const UnsignedProbe * value )
+static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_unsigned_probe( serialize_write_stream_t * stream, const UnsignedProbe * value )
 {
     {
         serialize_int64_t fixed_value = (serialize_int64_t) value->angle;
@@ -187,7 +223,7 @@ static SCHEMA_UNUSED int write_unsigned_probe( serialize_write_stream_t * stream
 
 /* Reads UnsignedProbe. Returns 1 on success, 0 on failure. Out-of-range values are
    REFUSED, never clamped. */
-static SCHEMA_UNUSED int read_unsigned_probe( serialize_read_stream_t * stream, UnsignedProbe * value )
+static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_unsigned_probe( serialize_read_stream_t * stream, UnsignedProbe * value )
 {
     {
         serialize_int64_t fixed_value = 0;
@@ -249,7 +285,7 @@ static SCHEMA_UNUSED int read_unsigned_probe( serialize_read_stream_t * stream, 
 
 /* Writes WideProbe. Returns 1 on success, 0 on failure — the stream latches the
    error, so a caller may check once at the end of a message. */
-static SCHEMA_UNUSED int write_wide_probe( serialize_write_stream_t * stream, const WideProbe * value )
+static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_wide_probe( serialize_write_stream_t * stream, const WideProbe * value )
 {
     if ( !serialize_write_uint128( stream, value->entity_id ) )
     {
@@ -276,7 +312,7 @@ static SCHEMA_UNUSED int write_wide_probe( serialize_write_stream_t * stream, co
 
 /* Reads WideProbe. Returns 1 on success, 0 on failure. Out-of-range values are
    REFUSED, never clamped. */
-static SCHEMA_UNUSED int read_wide_probe( serialize_read_stream_t * stream, WideProbe * value )
+static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_wide_probe( serialize_read_stream_t * stream, WideProbe * value )
 {
     if ( !serialize_read_uint128( stream, &value->entity_id ) )
     {
@@ -303,7 +339,7 @@ static SCHEMA_UNUSED int read_wide_probe( serialize_read_stream_t * stream, Wide
 
 /* Writes LudicrousState. Returns 1 on success, 0 on failure — the stream latches the
    error, so a caller may check once at the end of a message. */
-static SCHEMA_UNUSED int write_ludicrous_state( serialize_write_stream_t * stream, const LudicrousState * value )
+static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_ludicrous_state( serialize_write_stream_t * stream, const LudicrousState * value )
 {
     if ( value->mode > 3 )
     {
@@ -351,7 +387,7 @@ static SCHEMA_UNUSED int write_ludicrous_state( serialize_write_stream_t * strea
 
 /* Reads LudicrousState. Returns 1 on success, 0 on failure. Out-of-range values are
    REFUSED, never clamped. */
-static SCHEMA_UNUSED int read_ludicrous_state( serialize_read_stream_t * stream, LudicrousState * value )
+static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_ludicrous_state( serialize_read_stream_t * stream, LudicrousState * value )
 {
     {
         serialize_uint32_t enum_value = 0;
@@ -407,7 +443,7 @@ static SCHEMA_UNUSED int read_ludicrous_state( serialize_read_stream_t * stream,
 
 /* Writes DegenerateProbe. Returns 1 on success, 0 on failure — the stream latches the
    error, so a caller may check once at the end of a message. */
-static SCHEMA_UNUSED int write_degenerate_probe( serialize_write_stream_t * stream, const DegenerateProbe * value )
+static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_degenerate_probe( serialize_write_stream_t * stream, const DegenerateProbe * value )
 {
     if ( (serialize_int64_t) value->locked_fixed != -196608LL )
     {
@@ -430,7 +466,7 @@ static SCHEMA_UNUSED int write_degenerate_probe( serialize_write_stream_t * stre
 
 /* Reads DegenerateProbe. Returns 1 on success, 0 on failure. Out-of-range values are
    REFUSED, never clamped. */
-static SCHEMA_UNUSED int read_degenerate_probe( serialize_read_stream_t * stream, DegenerateProbe * value )
+static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_degenerate_probe( serialize_read_stream_t * stream, DegenerateProbe * value )
 {
     value->locked_fixed = (int32_t) -196608LL;
     value->locked_int = (int32_t) (7);
@@ -448,7 +484,7 @@ static SCHEMA_UNUSED int read_degenerate_probe( serialize_read_stream_t * stream
 
 /* Writes FixedVec. Returns 1 on success, 0 on failure — the stream latches the
    error, so a caller may check once at the end of a message. */
-static SCHEMA_UNUSED int write_fixed_vec( serialize_write_stream_t * stream, const FixedVec * value )
+static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_fixed_vec( serialize_write_stream_t * stream, const FixedVec * value )
 {
     {
         serialize_int64_t fixed_value = value->x;
@@ -476,7 +512,7 @@ static SCHEMA_UNUSED int write_fixed_vec( serialize_write_stream_t * stream, con
 
 /* Reads FixedVec. Returns 1 on success, 0 on failure. Out-of-range values are
    REFUSED, never clamped. */
-static SCHEMA_UNUSED int read_fixed_vec( serialize_read_stream_t * stream, FixedVec * value )
+static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_fixed_vec( serialize_read_stream_t * stream, FixedVec * value )
 {
     {
         serialize_int64_t fixed_value;
@@ -510,7 +546,7 @@ static SCHEMA_UNUSED int read_fixed_vec( serialize_read_stream_t * stream, Fixed
 
 /* Writes FixedQuat. Returns 1 on success, 0 on failure — the stream latches the
    error, so a caller may check once at the end of a message. */
-static SCHEMA_UNUSED int write_fixed_quat( serialize_write_stream_t * stream, const FixedQuat * value )
+static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_fixed_quat( serialize_write_stream_t * stream, const FixedQuat * value )
 {
     {
         serialize_int32_t fixed_value = value->x;
@@ -545,7 +581,7 @@ static SCHEMA_UNUSED int write_fixed_quat( serialize_write_stream_t * stream, co
 
 /* Reads FixedQuat. Returns 1 on success, 0 on failure. Out-of-range values are
    REFUSED, never clamped. */
-static SCHEMA_UNUSED int read_fixed_quat( serialize_read_stream_t * stream, FixedQuat * value )
+static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_fixed_quat( serialize_read_stream_t * stream, FixedQuat * value )
 {
     {
         serialize_int32_t fixed_value;
@@ -587,7 +623,7 @@ static SCHEMA_UNUSED int read_fixed_quat( serialize_read_stream_t * stream, Fixe
 }
 
 /* Writes Body's DEEP view — the declared encodings. */
-static SCHEMA_UNUSED int write_body_data_deep( serialize_write_stream_t * stream, const BodyData_Deep * value )
+static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_body_data_deep( serialize_write_stream_t * stream, const BodyData_Deep * value )
 {
     if ( !write_fixed_vec( stream, &value->position ) )
     {
@@ -605,7 +641,7 @@ static SCHEMA_UNUSED int write_body_data_deep( serialize_write_stream_t * stream
 }
 
 /* Reads Body's DEEP view. */
-static SCHEMA_UNUSED int read_body_data_deep( serialize_read_stream_t * stream, BodyData_Deep * value )
+static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_body_data_deep( serialize_read_stream_t * stream, BodyData_Deep * value )
 {
     if ( !read_fixed_vec( stream, &value->position ) )
     {
@@ -623,7 +659,7 @@ static SCHEMA_UNUSED int read_body_data_deep( serialize_read_stream_t * stream, 
 }
 
 /* Writes Body's SHALLOW view — the quantized wire. */
-static SCHEMA_UNUSED int write_body_data_shallow( serialize_write_stream_t * stream, const BodyData_Shallow * value )
+static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_body_data_shallow( serialize_write_stream_t * stream, const BodyData_Shallow * value )
 {
     if ( !write_fixed_vec( stream, &value->position ) )
     {
@@ -641,7 +677,7 @@ static SCHEMA_UNUSED int write_body_data_shallow( serialize_write_stream_t * str
 }
 
 /* Reads Body's SHALLOW view. */
-static SCHEMA_UNUSED int read_body_data_shallow( serialize_read_stream_t * stream, BodyData_Shallow * value )
+static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_body_data_shallow( serialize_read_stream_t * stream, BodyData_Shallow * value )
 {
     if ( !read_fixed_vec( stream, &value->position ) )
     {
@@ -659,7 +695,7 @@ static SCHEMA_UNUSED int read_body_data_shallow( serialize_read_stream_t * strea
 }
 
 /* Writes NarrowBody's DEEP view — the declared encodings. */
-static SCHEMA_UNUSED int write_narrow_body_data_deep( serialize_write_stream_t * stream, const NarrowBodyData_Deep * value )
+static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_narrow_body_data_deep( serialize_write_stream_t * stream, const NarrowBodyData_Deep * value )
 {
     if ( !write_fixed_vec( stream, &value->position ) )
     {
@@ -677,7 +713,7 @@ static SCHEMA_UNUSED int write_narrow_body_data_deep( serialize_write_stream_t *
 }
 
 /* Reads NarrowBody's DEEP view. */
-static SCHEMA_UNUSED int read_narrow_body_data_deep( serialize_read_stream_t * stream, NarrowBodyData_Deep * value )
+static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_narrow_body_data_deep( serialize_read_stream_t * stream, NarrowBodyData_Deep * value )
 {
     if ( !read_fixed_vec( stream, &value->position ) )
     {
@@ -695,7 +731,7 @@ static SCHEMA_UNUSED int read_narrow_body_data_deep( serialize_read_stream_t * s
 }
 
 /* Writes NarrowBody's SHALLOW view — the quantized wire. */
-static SCHEMA_UNUSED int write_narrow_body_data_shallow( serialize_write_stream_t * stream, const NarrowBodyData_Shallow * value )
+static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_narrow_body_data_shallow( serialize_write_stream_t * stream, const NarrowBodyData_Shallow * value )
 {
     if ( (serialize_int64_t) value->position_x < -25600000LL || (serialize_int64_t) value->position_x > 25600000LL )
     {
@@ -761,7 +797,7 @@ static SCHEMA_UNUSED int write_narrow_body_data_shallow( serialize_write_stream_
 }
 
 /* Reads NarrowBody's SHALLOW view. */
-static SCHEMA_UNUSED int read_narrow_body_data_shallow( serialize_read_stream_t * stream, NarrowBodyData_Shallow * value )
+static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_narrow_body_data_shallow( serialize_read_stream_t * stream, NarrowBodyData_Shallow * value )
 {
     {
         serialize_uint32_t raw = 0;
@@ -855,7 +891,7 @@ static SCHEMA_UNUSED int read_narrow_body_data_shallow( serialize_read_stream_t 
 }
 
 /* The tag itself, over [0, MESSAGE_TYPE_MAX]. */
-static SCHEMA_UNUSED int write_message_type( serialize_write_stream_t * stream, MessageType value )
+static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_message_type( serialize_write_stream_t * stream, MessageType value )
 {
     if ( value > MESSAGE_TYPE_MAX )
     {
@@ -868,7 +904,7 @@ static SCHEMA_UNUSED int write_message_type( serialize_write_stream_t * stream, 
     return 1;
 }
 
-static SCHEMA_UNUSED int read_message_type( serialize_read_stream_t * stream, MessageType * value )
+static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_message_type( serialize_read_stream_t * stream, MessageType * value )
 {
     serialize_uint32_t raw = 0;
     if ( !serialize_read_bits( stream, &raw, 1 ) )
@@ -884,7 +920,7 @@ static SCHEMA_UNUSED int read_message_type( serialize_read_stream_t * stream, Me
 }
 
 /* Writes the tag and then the selected arm. */
-static SCHEMA_UNUSED int write_message( serialize_write_stream_t * stream, const Message * message )
+static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_message( serialize_write_stream_t * stream, const Message * message )
 {
     switch ( message->type )
     {
@@ -902,7 +938,7 @@ static SCHEMA_UNUSED int write_message( serialize_write_stream_t * stream, const
 }
 
 /* Reads the tag, ZEROES the selected arm, then decodes into it (SPEC §5). */
-static SCHEMA_UNUSED int read_message( serialize_read_stream_t * stream, Message * message )
+static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_message( serialize_read_stream_t * stream, Message * message )
 {
     MessageType type = MESSAGE_TYPE_NONE;
     if ( !read_message_type( stream, &type ) )

@@ -24,6 +24,42 @@
 extern "C" {
 #endif
 
+#ifndef SCHEMA_C_SPINE_INLINE_DEFINED
+#define SCHEMA_C_SPINE_INLINE_DEFINED
+/* SCHEMA_C_READ_INLINE / SCHEMA_C_WRITE_INLINE — how every generated wire
+   function is spelled, beside `static SCHEMA_UNUSED`. Default: both expand
+   to nothing — token-identical to what this emitter always produced.
+   Define SCHEMA_C_READ_SPINE_DEMAND / SCHEMA_C_WRITE_SPINE_DEMAND to make
+   the generated read / write spine DEMAND inlining (always_inline /
+   __forceinline), the serialize family's remedy for LLVM refusing the
+   header-static per-message entries into small-message call sites at
+   marginal cost over the hot-callsite inline threshold. Branch-weight
+   hints are NOT the fix here — measured in this family to invite the
+   machine outliner into the hot bodies. Do not add them. */
+#if defined( SCHEMA_C_READ_SPINE_DEMAND )
+#if defined( _MSC_VER )
+#define SCHEMA_C_READ_INLINE __forceinline
+#elif defined( __GNUC__ ) || defined( __clang__ )
+#define SCHEMA_C_READ_INLINE inline __attribute__(( always_inline ))
+#else
+#define SCHEMA_C_READ_INLINE
+#endif
+#else
+#define SCHEMA_C_READ_INLINE
+#endif
+#if defined( SCHEMA_C_WRITE_SPINE_DEMAND )
+#if defined( _MSC_VER )
+#define SCHEMA_C_WRITE_INLINE __forceinline
+#elif defined( __GNUC__ ) || defined( __clang__ )
+#define SCHEMA_C_WRITE_INLINE inline __attribute__(( always_inline ))
+#else
+#define SCHEMA_C_WRITE_INLINE
+#endif
+#else
+#define SCHEMA_C_WRITE_INLINE
+#endif
+#endif /* SCHEMA_C_SPINE_INLINE_DEFINED */
+
 #ifndef SCHEMA_UTF8_VALID_DEFINED
 #define SCHEMA_UTF8_VALID_DEFINED
 /* string(N) payloads are well-formed UTF-8 BY CONTRACT (SPEC §4.7): the
@@ -95,7 +131,7 @@ static SCHEMA_UNUSED int schema_utf8_valid_( const serialize_uint8_t * bytes, in
 
 /* Writes ProbeHeader. Returns 1 on success, 0 on failure — the stream latches the
    error, so a caller may check once at the end of a message. */
-static SCHEMA_UNUSED int write_probe_header( serialize_write_stream_t * stream, const ProbeHeader * value )
+static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_probe_header( serialize_write_stream_t * stream, const ProbeHeader * value )
 {
     if ( !serialize_write_bits( stream, (serialize_uint32_t) 171ULL, 8 ) /* const(171, 8) — SPEC §4.3 */ )
     {
@@ -122,7 +158,7 @@ static SCHEMA_UNUSED int write_probe_header( serialize_write_stream_t * stream, 
 
 /* Reads ProbeHeader. Returns 1 on success, 0 on failure. Out-of-range values are
    REFUSED, never clamped. */
-static SCHEMA_UNUSED int read_probe_header( serialize_read_stream_t * stream, ProbeHeader * value )
+static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_probe_header( serialize_read_stream_t * stream, ProbeHeader * value )
 {
     {
         serialize_uint32_t const_value = 0;
@@ -171,7 +207,7 @@ static SCHEMA_UNUSED int read_probe_header( serialize_read_stream_t * stream, Pr
 
 /* Writes ProbeBits. Returns 1 on success, 0 on failure — the stream latches the
    error, so a caller may check once at the end of a message. */
-static SCHEMA_UNUSED int write_probe_bits( serialize_write_stream_t * stream, const ProbeBits * value )
+static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_probe_bits( serialize_write_stream_t * stream, const ProbeBits * value )
 {
     if ( !serialize_write_bits( stream, (serialize_uint32_t) value->small, 9 ) )
     {
@@ -219,7 +255,7 @@ static SCHEMA_UNUSED int write_probe_bits( serialize_write_stream_t * stream, co
 
 /* Reads ProbeBits. Returns 1 on success, 0 on failure. Out-of-range values are
    REFUSED, never clamped. */
-static SCHEMA_UNUSED int read_probe_bits( serialize_read_stream_t * stream, ProbeBits * value )
+static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_probe_bits( serialize_read_stream_t * stream, ProbeBits * value )
 {
     {
         serialize_uint32_t raw = 0;
@@ -289,7 +325,7 @@ static SCHEMA_UNUSED int read_probe_bits( serialize_read_stream_t * stream, Prob
 
 /* Writes ProbeSample. Returns 1 on success, 0 on failure — the stream latches the
    error, so a caller may check once at the end of a message. */
-static SCHEMA_UNUSED int write_probe_sample( serialize_write_stream_t * stream, const ProbeSample * value )
+static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_probe_sample( serialize_write_stream_t * stream, const ProbeSample * value )
 {
     if ( !serialize_write_bool( stream, value->active ) )
     {
@@ -355,7 +391,7 @@ static SCHEMA_UNUSED int write_probe_sample( serialize_write_stream_t * stream, 
 
 /* Reads ProbeSample. Returns 1 on success, 0 on failure. Out-of-range values are
    REFUSED, never clamped. */
-static SCHEMA_UNUSED int read_probe_sample( serialize_read_stream_t * stream, ProbeSample * value )
+static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_probe_sample( serialize_read_stream_t * stream, ProbeSample * value )
 {
     if ( !serialize_read_bool( stream, &value->active ) )
     {
@@ -453,7 +489,7 @@ static SCHEMA_UNUSED int read_probe_sample( serialize_read_stream_t * stream, Pr
 
 /* Writes ProbeConfig. Returns 1 on success, 0 on failure — the stream latches the
    error, so a caller may check once at the end of a message. */
-static SCHEMA_UNUSED int write_probe_config( serialize_write_stream_t * stream, const ProbeConfig * value )
+static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_probe_config( serialize_write_stream_t * stream, const ProbeConfig * value )
 {
     if ( !serialize_write_bits( stream, (serialize_uint32_t) value->retries, 32 ) )
     {
@@ -472,7 +508,7 @@ static SCHEMA_UNUSED int write_probe_config( serialize_write_stream_t * stream, 
 
 /* Reads ProbeConfig. Returns 1 on success, 0 on failure. Out-of-range values are
    REFUSED, never clamped. */
-static SCHEMA_UNUSED int read_probe_config( serialize_read_stream_t * stream, ProbeConfig * value )
+static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_probe_config( serialize_read_stream_t * stream, ProbeConfig * value )
 {
     {
         serialize_uint32_t raw = 0;
@@ -499,7 +535,7 @@ static SCHEMA_UNUSED int read_probe_config( serialize_read_stream_t * stream, Pr
 
 /* Writes ProbeArray. Returns 1 on success, 0 on failure — the stream latches the
    error, so a caller may check once at the end of a message. */
-static SCHEMA_UNUSED int write_probe_array( serialize_write_stream_t * stream, const ProbeArray * value )
+static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_probe_array( serialize_write_stream_t * stream, const ProbeArray * value )
 {
     {
         int32_t i;
@@ -520,7 +556,7 @@ static SCHEMA_UNUSED int write_probe_array( serialize_write_stream_t * stream, c
 
 /* Reads ProbeArray. Returns 1 on success, 0 on failure. Out-of-range values are
    REFUSED, never clamped. */
-static SCHEMA_UNUSED int read_probe_array( serialize_read_stream_t * stream, ProbeArray * value )
+static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_probe_array( serialize_read_stream_t * stream, ProbeArray * value )
 {
     {
         int32_t i;
@@ -541,7 +577,7 @@ static SCHEMA_UNUSED int read_probe_array( serialize_read_stream_t * stream, Pro
 
 /* Writes ProbeReport. Returns 1 on success, 0 on failure — the stream latches the
    error, so a caller may check once at the end of a message. */
-static SCHEMA_UNUSED int write_probe_report( serialize_write_stream_t * stream, const ProbeReport * value )
+static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_probe_report( serialize_write_stream_t * stream, const ProbeReport * value )
 {
     if ( !write_probe_header( stream, &value->header ) )
     {
@@ -560,7 +596,7 @@ static SCHEMA_UNUSED int write_probe_report( serialize_write_stream_t * stream, 
 
 /* Reads ProbeReport. Returns 1 on success, 0 on failure. Out-of-range values are
    REFUSED, never clamped. */
-static SCHEMA_UNUSED int read_probe_report( serialize_read_stream_t * stream, ProbeReport * value )
+static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_probe_report( serialize_read_stream_t * stream, ProbeReport * value )
 {
     if ( !read_probe_header( stream, &value->header ) )
     {
@@ -583,7 +619,7 @@ static SCHEMA_UNUSED int read_probe_report( serialize_read_stream_t * stream, Pr
 
 /* Writes TestData. Returns 1 on success, 0 on failure — the stream latches the
    error, so a caller may check once at the end of a message. */
-static SCHEMA_UNUSED int write_test_data( serialize_write_stream_t * stream, const TestData * value )
+static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_test_data( serialize_write_stream_t * stream, const TestData * value )
 {
     if ( (serialize_int64_t) value->a < -100LL || (serialize_int64_t) value->a > 100LL )
     {
@@ -726,7 +762,7 @@ static SCHEMA_UNUSED int write_test_data( serialize_write_stream_t * stream, con
 
 /* Reads TestData. Returns 1 on success, 0 on failure. Out-of-range values are
    REFUSED, never clamped. */
-static SCHEMA_UNUSED int read_test_data( serialize_read_stream_t * stream, TestData * value )
+static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_test_data( serialize_read_stream_t * stream, TestData * value )
 {
     {
         serialize_uint64_t offset_value = 0;
@@ -941,7 +977,7 @@ static SCHEMA_UNUSED int read_test_data( serialize_read_stream_t * stream, TestD
 
 /* Writes CompressedProbe. Returns 1 on success, 0 on failure — the stream latches the
    error, so a caller may check once at the end of a message. */
-static SCHEMA_UNUSED int write_compressed_probe( serialize_write_stream_t * stream, const CompressedProbe * value )
+static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_compressed_probe( serialize_write_stream_t * stream, const CompressedProbe * value )
 {
     if ( !serialize_write_compressed_float( stream, value->boundary, 0.0, 10.0, 0.01 ) )
     {
@@ -956,7 +992,7 @@ static SCHEMA_UNUSED int write_compressed_probe( serialize_write_stream_t * stre
 
 /* Reads CompressedProbe. Returns 1 on success, 0 on failure. Out-of-range values are
    REFUSED, never clamped. */
-static SCHEMA_UNUSED int read_compressed_probe( serialize_read_stream_t * stream, CompressedProbe * value )
+static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_compressed_probe( serialize_read_stream_t * stream, CompressedProbe * value )
 {
     if ( !serialize_read_compressed_float( stream, &value->boundary, 0.0, 10.0, 0.01 ) )
     {
