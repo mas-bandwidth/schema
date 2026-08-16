@@ -1170,6 +1170,21 @@ All compile errors with positions:
   language (`type`, `match`, `impl`, `func`, `class`, ...) or that collides with another name
   after Go export-casing (`atRest` → `AtRest`) is rejected, with a diagnostic naming the
   target and the collision. No escaping machinery; rename at the source.
+- **Package-name safety — DECIDED (Glenn, 2026-08-16, on the compile fuzzer's `package exit`
+  specimen: "Refuse the colliding names with a clear diagnostic"):** the package ident maps
+  to every target's namespace/module/package concept verbatim (§6.1), which exposes it to
+  three collision classes no declaration or field name can hit, each refused with a
+  diagnostic naming the mechanism and the fix (rename the package). (1) A target reserved
+  word: `package for` would generate `namespace for` and `package for`. (2) A C standard
+  library identifier visible at C++ namespace scope — functions, types, and object-like
+  macros of the C11 headers, which implementations also declare in the global namespace:
+  `package exit` generated `namespace exit`, and clang refused it against `<cstdlib>` with
+  "redefinition of 'exit' as different kind of symbol". The refused set is a curated,
+  per-header list in the checker; exact case-sensitive match (C++ namespaces are
+  case-sensitive), so `exits`, `exit2` and `Exit` stay legal. (3) The name `main`, which
+  makes the generated Go a program package that cannot be imported ("function main is
+  undeclared in the main package"). All three were proven on the pre-change compiler
+  before the rule landed.
 
 ### 4.7 Strings and byte blocks — byte strings, one shape — DECIDED (Glenn, 2026-08-05: "fine"; unified the same evening)
 

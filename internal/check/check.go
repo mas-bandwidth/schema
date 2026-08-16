@@ -132,10 +132,32 @@ func (c *checker) collectPackage() {
 		}
 		if c.unit.Package == "" {
 			c.unit.Package = f.AST.Package
+			c.checkPackageName(f.AST.Package, f.AST.PkgPos)
 		} else if f.AST.Package != c.unit.Package {
 			c.errf(f.AST.PkgPos, "package %q does not match the unit's package %q (exactly one package per unit — SPEC §3.2)",
 				f.AST.Package, c.unit.Package)
 		}
+	}
+}
+
+// checkPackageName refuses package names that generate uncompilable code (the
+// 2026-08-16 ruling on the compile fuzzer's `package exit` specimen: "Refuse
+// the colliding names with a clear diagnostic"). The package ident maps to the
+// target's namespace/module/package concept verbatim (SPEC §6.1), which exposes
+// it to three collision classes no declaration or field name can hit.
+func (c *checker) checkPackageName(name string, pos ast.Pos) {
+	if lang, ok := targetReserved[name]; ok {
+		c.errf(pos, "package name %q is a reserved word in %s (the package ident becomes the target's namespace/module/package name verbatim) — rename the package; no escaping machinery (SPEC §4.6)",
+			name, lang)
+		return
+	}
+	if libcNamespaceScope[name] {
+		c.errf(pos, "package name %q collides with a C standard library identifier visible at C++ namespace scope (the generated `namespace %s` cannot be declared beside libc's %s) — rename the package (SPEC §4.6)",
+			name, name, name)
+		return
+	}
+	if name == "main" {
+		c.errf(pos, "package name \"main\" makes the generated Go a program package that cannot be imported (\"function main is undeclared in the main package\") — rename the package (SPEC §4.6)")
 	}
 }
 
@@ -1711,6 +1733,101 @@ var targetReserved = func() map[string]string {
 	add("Rust", `as async await break const continue crate dyn else enum extern false fn for
 		if impl in let loop match mod move mut pub ref return self Self static struct super
 		trait true type unsafe use where while`)
+	return m
+}()
+
+// libcNamespaceScope is the C standard library's identifier set as a generated
+// C++ translation unit sees it at namespace scope: the functions, types and
+// object-like macros of the C11 library headers, which implementations also
+// declare in the global namespace via the .h headers the runtime's own
+// includes eventually pull in. A package named after one generates
+// `namespace <name>` beside libc's declaration of the same name — proven with
+// the compile fuzzer's specimen: clang rejects the generated `namespace exit`
+// with "redefinition of 'exit' as different kind of symbol" (issue #22's run;
+// ruling 2026-08-16). Curated by walking the C11 header list, one block per
+// header; additions are cheap — one word here. Omitted on purpose: function-like
+// macros (assert, offsetof, va_arg, ...), which expand only before a '(' and
+// cannot bite a namespace declaration; names that are target reserved words,
+// refused by the check above this one; and the uppercase macro constants,
+// which no schema ident collides with in practice — add any of them the day a
+// specimen proves otherwise. Exact, case-sensitive match is correct: C++
+// namespaces are case-sensitive.
+var libcNamespaceScope = func() map[string]bool {
+	m := map[string]bool{}
+	for _, words := range []string{
+		// <ctype.h>
+		`isalnum isalpha isblank iscntrl isdigit isgraph islower isprint ispunct
+		 isspace isupper isxdigit tolower toupper`,
+		// <errno.h> — errno is an object-like macro, expands anywhere
+		`errno`,
+		// <fenv.h>
+		`feclearexcept fegetexceptflag feraiseexcept fesetexceptflag fetestexcept
+		 fegetround fesetround fegetenv feholdexcept fesetenv feupdateenv fenv_t
+		 fexcept_t`,
+		// <inttypes.h>
+		`imaxabs imaxdiv strtoimax strtoumax wcstoimax wcstoumax imaxdiv_t`,
+		// <locale.h>
+		`localeconv setlocale lconv`,
+		// <math.h> — base names; the f/l-suffixed variants join when a specimen asks
+		`acos acosh asin asinh atan atan2 atanh cbrt ceil copysign cos cosh erf
+		 erfc exp exp2 expm1 fabs fdim floor fma fmax fmin fmod frexp hypot ilogb
+		 ldexp lgamma log log10 log1p log2 logb lrint llrint lround llround modf
+		 nan nearbyint nextafter nexttoward pow remainder remquo rint round
+		 scalbln scalbn sin sinh sqrt tan tanh tgamma trunc float_t double_t`,
+		// <setjmp.h> — setjmp itself is a function-like macro
+		`longjmp jmp_buf`,
+		// <signal.h>
+		`signal raise sig_atomic_t`,
+		// <stdarg.h>
+		`va_list`,
+		// <stddef.h>
+		`ptrdiff_t size_t max_align_t nullptr_t`,
+		// <stdint.h>
+		`intmax_t uintmax_t intptr_t uintptr_t
+		 int8_t int16_t int32_t int64_t uint8_t uint16_t uint32_t uint64_t
+		 int_least8_t int_least16_t int_least32_t int_least64_t
+		 uint_least8_t uint_least16_t uint_least32_t uint_least64_t
+		 int_fast8_t int_fast16_t int_fast32_t int_fast64_t
+		 uint_fast8_t uint_fast16_t uint_fast32_t uint_fast64_t`,
+		// <stdio.h> — stdin/stdout/stderr are object-like macros; FILE is the one
+		// uppercase name a package could realistically reach for
+		`clearerr fclose feof ferror fflush fgetc fgetpos fgets fopen fprintf
+		 fputc fputs fread freopen fscanf fseek fsetpos ftell fwrite getc getchar
+		 gets perror printf putc putchar puts remove rename rewind scanf setbuf
+		 setvbuf snprintf sprintf sscanf tmpfile tmpnam ungetc vfprintf vfscanf
+		 vprintf vscanf vsnprintf vsprintf vsscanf fpos_t stdin stdout stderr FILE`,
+		// <stdlib.h> — the specimen's home
+		`abort abs aligned_alloc atexit atof atoi atol atoll at_quick_exit
+		 bsearch calloc div exit free getenv labs ldiv llabs lldiv malloc mblen
+		 mbstowcs mbtowc qsort quick_exit rand realloc srand strtod strtof strtol
+		 strtold strtoll strtoul strtoull system wcstombs wctomb div_t ldiv_t
+		 lldiv_t`,
+		// <string.h>
+		`memchr memcmp memcpy memmove memset strcat strchr strcmp strcoll strcpy
+		 strcspn strerror strlen strncat strncmp strncpy strpbrk strrchr strspn
+		 strstr strtok strxfrm`,
+		// <time.h>
+		`asctime clock ctime difftime gmtime localtime mktime strftime time
+		 timespec_get clock_t time_t timespec tm`,
+		// <uchar.h> — char16_t/char32_t are C++ keywords, refused above
+		`c16rtomb c32rtomb mbrtoc16 mbrtoc32`,
+		// <wchar.h> — wchar_t is a C++ keyword, refused above
+		`btowc fgetwc fgetws fputwc fputws fwide fwprintf fwscanf getwc getwchar
+		 mbrlen mbrtowc mbsinit mbsrtowcs mbstate_t putwc putwchar swprintf
+		 swscanf ungetwc vfwprintf vfwscanf vswprintf vswscanf vwprintf vwscanf
+		 wcrtomb wcscat wcschr wcscmp wcscoll wcscpy wcscspn wcsftime wcslen
+		 wcsncat wcsncmp wcsncpy wcspbrk wcsrchr wcsrtombs wcsspn wcsstr wcstod
+		 wcstof wcstok wcstol wcstold wcstoll wcstombs wcstoul wcstoull wcsxfrm
+		 wctob wint_t wmemchr wmemcmp wmemcpy wmemmove wmemset wprintf wscanf`,
+		// <wctype.h>
+		`iswalnum iswalpha iswblank iswcntrl iswdigit iswgraph iswlower iswprint
+		 iswpunct iswspace iswupper iswxdigit iswctype towctrans towlower towupper
+		 wctrans wctrans_t wctype wctype_t`,
+	} {
+		for w := range strings.FieldsSeq(words) {
+			m[w] = true
+		}
+	}
 	return m
 }()
 
