@@ -76,9 +76,9 @@ c probearray write O3 0
 c probearray read O3 0
 c testdata write O3 1
 c testdata read O3 0
-c message_batch write O3 1
+c message_batch write O3 0
 c message_batch read O3 0
-c bench_packet write O3 1
+c bench_packet write O3 0
 c bench_packet read O3 0
 c bench_ints write O3 0
 c bench_ints read O3 0
