@@ -277,6 +277,30 @@ func TestDiagnostics(t *testing.T) {
 		{name: "resolution collapses to zero at float32", want: "collapses to zero at float32",
 			src: "package t\ntype T { x float32 [min = 0.0, max = 1.0, resolution = 1e-46] }\n"},
 
+		// ---- package names that cannot compile (the 2026-08-16 ruling on the
+		// compile fuzzer's `package exit` specimen — Glenn, verbatim: "Refuse
+		// the colliding names with a clear diagnostic"). Before the rule, the
+		// checker said `ok: package exit` and clang rejected the generated
+		// `namespace exit` against <cstdlib> with "redefinition of 'exit' as
+		// different kind of symbol"; `package for` checked clean and generated
+		// keyword namespaces; `package main` generated Go that fails with
+		// "function main is undeclared in the main package". All three proven
+		// on the pre-change compiler, 2026-08-16. ----
+		{name: "package exit collides with libc at C++ namespace scope", want: "C standard library identifier",
+			src: "package exit\ntype A { x uint8 }\n"},
+		{name: "package free collides with libc", want: "C standard library identifier",
+			src: "package free\ntype A { x uint8 }\n"},
+		{name: "package time collides with libc", want: "C standard library identifier",
+			src: "package time\ntype A { x uint8 }\n"},
+		{name: "package memcpy collides with libc", want: "C standard library identifier",
+			src: "package memcpy\ntype A { x uint8 }\n"},
+		{name: "package errno collides with libc's object-like macro", want: "C standard library identifier",
+			src: "package errno\ntype A { x uint8 }\n"},
+		{name: "package name is a target reserved word", want: "reserved word",
+			src: "package for\ntype A { x uint8 }\n"},
+		{name: "package main is not importable Go", want: "cannot be imported",
+			src: "package main\ntype A { x uint8 }\n"},
+
 		// ---- non-finite compressed-float parameters (Glenn, 2026-08-15:
 		// "attempting to send NaN or INF or anything else through compressed
 		// float is non-conforming and should assert out on write too" — the
@@ -515,4 +539,16 @@ func TestNonFiniteTripleNaN(t *testing.T) {
 		}
 	}
 	t.Fatalf("a NaN compressed-float bound must be rejected as non-finite; got %v", errs)
+}
+
+// The package-name refusal is exact, case-sensitive match (C++ namespaces are
+// case-sensitive): neighbors of a refused name stay legal, and so does a name
+// that merely contains one.
+func TestPackageNameNeighborsAccepted(t *testing.T) {
+	for _, pkg := range []string{"exits", "exit2", "myexit", "mallocs", "timer", "Exit"} {
+		errs := runUnit(t, map[string]string{"a.schema": "package " + pkg + "\ntype A { x uint8 }\n"})
+		if len(errs) > 0 {
+			t.Fatalf("package %s must stay legal, got %v", pkg, errs)
+		}
+	}
 }
