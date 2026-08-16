@@ -16,23 +16,19 @@ namespace ludicrous {
 
 #ifndef SCHEMA_WRITE_INLINE_DEFINED
 #define SCHEMA_WRITE_INLINE_DEFINED
-// SCHEMA_WRITE_INLINE — how every generated Write function is spelled.
-// Default: plain `inline`, exactly what this emitter always produced.
-// Define SCHEMA_WRITE_SPINE_DEMAND to make the generated write path DEMAND
-// inlining (always_inline / __forceinline), the serialize family's remedy
-// for LLVM refusing the linkonce_odr Write entries into their call sites
-// at cost over threshold — no last-call-to-static bonus exists for a
+// SCHEMA_WRITE_INLINE — how every generated Write function is spelled,
+// EXCEPT the WriteMessage dispatch surface (see the comment on it): an
+// inlining DEMAND (always_inline / __forceinline), the serialize family's
+// remedy for LLVM refusing the linkonce_odr Write entries into their call
+// sites at cost over threshold — no last-call-to-static bonus exists for a
 // header function, so unlike C's static entries these never flatten on
-// their own. Branch-weight hints are NOT the fix here — measured in this
-// family to invite the machine outliner into the hot bodies. Do not add them.
-#if defined( SCHEMA_WRITE_SPINE_DEMAND )
+// their own. Measured and shipped; branch-weight hints are NOT the fix
+// here — measured in this family to invite the machine outliner into the
+// hot bodies. Do not add them.
 #if defined( _MSC_VER )
 #define SCHEMA_WRITE_INLINE __forceinline
 #elif defined( __GNUC__ ) || defined( __clang__ )
 #define SCHEMA_WRITE_INLINE inline __attribute__(( always_inline ))
-#else
-#define SCHEMA_WRITE_INLINE inline
-#endif
 #else
 #define SCHEMA_WRITE_INLINE inline
 #endif
@@ -488,7 +484,13 @@ SCHEMA_READ_INLINE bool ReadMessageType( serialize::ReadStream & stream, Message
     return true;
 }
 
-SCHEMA_WRITE_INLINE bool WriteMessage( serialize::WriteStream & stream, const Message & message )
+// WriteMessage is deliberately OUTSIDE the write-spine demand: plain `inline`,
+// not SCHEMA_WRITE_INLINE. Its callees (every per-message Write) flatten into
+// its body, but the dispatch switch itself stays a call boundary — demanding
+// it into a batch build loop was measured to slow that loop ~21% while every
+// per-message row kept its win with the boundary in place. The compiler
+// remains free to inline it where that pays.
+inline bool WriteMessage( serialize::WriteStream & stream, const Message & message )
 {
     if ( !WriteMessageType( stream, MessageType( message.index() ) ) )
     {
