@@ -110,7 +110,9 @@ func TestDispatchSurfaceEmittedOnce(t *testing.T) {
 			t.Fatal(err)
 		}
 		for _, needle := range []string{
-			"enum class MessageType", "SCHEMA_WRITE_INLINE bool WriteMessage(", "SCHEMA_READ_INLINE bool ReadMessage(",
+			// WriteMessage is the dispatch surface — deliberately plain `inline`,
+			// outside the write-spine demand (see cpp emitWriteDispatchComment)
+			"enum class MessageType", "inline bool WriteMessage(", "SCHEMA_READ_INLINE bool ReadMessage(",
 			"enum class ObjectType", "SCHEMA_WRITE_INLINE bool WriteObjectType(", "SCHEMA_READ_INLINE bool ReadObjectType(",
 		} {
 			if got := countAcross(cppFiles, needle); got != 1 {
