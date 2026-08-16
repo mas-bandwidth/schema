@@ -16,7 +16,8 @@ namespace bench {
 
 #ifndef SCHEMA_WRITE_INLINE_DEFINED
 #define SCHEMA_WRITE_INLINE_DEFINED
-// SCHEMA_WRITE_INLINE — how every generated Write function is spelled.
+// SCHEMA_WRITE_INLINE — how every generated Write function is spelled,
+// EXCEPT the WriteMessage dispatch surface (see the comment on it).
 // Default: plain `inline`, exactly what this emitter always produced.
 // Define SCHEMA_WRITE_SPINE_DEMAND to make the generated write path DEMAND
 // inlining (always_inline / __forceinline), the serialize family's remedy

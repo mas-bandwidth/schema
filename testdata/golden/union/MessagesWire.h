@@ -17,7 +17,8 @@ namespace example {
 
 #ifndef SCHEMA_WRITE_INLINE_DEFINED
 #define SCHEMA_WRITE_INLINE_DEFINED
-// SCHEMA_WRITE_INLINE — how every generated Write function is spelled.
+// SCHEMA_WRITE_INLINE — how every generated Write function is spelled,
+// EXCEPT the WriteMessage dispatch surface (see the comment on it).
 // Default: plain `inline`, exactly what this emitter always produced.
 // Define SCHEMA_WRITE_SPINE_DEMAND to make the generated write path DEMAND
 // inlining (always_inline / __forceinline), the serialize family's remedy
@@ -311,7 +312,13 @@ SCHEMA_READ_INLINE bool ReadMessageType( serialize::ReadStream & stream, Message
     return true;
 }
 
-SCHEMA_WRITE_INLINE bool WriteMessage( serialize::WriteStream & stream, const Message & message )
+// WriteMessage is deliberately OUTSIDE the write-spine demand: plain `inline`
+// even under SCHEMA_WRITE_SPINE_DEMAND. Armed, its callees (every per-message
+// Write) still flatten into its body, but the dispatch switch itself stays a
+// call boundary — demanding it into a batch build loop was measured to slow
+// that loop ~21% while every per-message row kept its win with the boundary
+// in place. The compiler remains free to inline it where that pays.
+inline bool WriteMessage( serialize::WriteStream & stream, const Message & message )
 {
     switch ( message.type )
     {

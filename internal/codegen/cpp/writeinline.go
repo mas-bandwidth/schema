@@ -1,7 +1,9 @@
 package cpp
 
 // emitWriteInlineMacro emits the write-spine inlining switch every generated
-// Write function is spelled with (SCHEMA_WRITE_INLINE). Default OFF:
+// Write function is spelled with (SCHEMA_WRITE_INLINE) — every one except
+// WriteMessage, the dispatch surface, which emitWriteDispatchComment below
+// documents and which is spelled plain `inline` in functions.go. Default OFF:
 // SCHEMA_WRITE_INLINE expands to plain `inline`, token-identical to what this
 // emitter always produced, so an undefined switch changes nothing. Armed
 // (-DSCHEMA_WRITE_SPINE_DEMAND), the generated write path demands inlining
@@ -37,7 +39,8 @@ package cpp
 // because several wire headers can land in one translation unit.
 func (g *gen) emitWriteInlineMacro() {
 	g.pf("#ifndef SCHEMA_WRITE_INLINE_DEFINED\n#define SCHEMA_WRITE_INLINE_DEFINED\n")
-	g.pf("// SCHEMA_WRITE_INLINE — how every generated Write function is spelled.\n")
+	g.pf("// SCHEMA_WRITE_INLINE — how every generated Write function is spelled,\n")
+	g.pf("// EXCEPT the WriteMessage dispatch surface (see the comment on it).\n")
 	g.pf("// Default: plain `inline`, exactly what this emitter always produced.\n")
 	g.pf("// Define SCHEMA_WRITE_SPINE_DEMAND to make the generated write path DEMAND\n")
 	g.pf("// inlining (always_inline / __forceinline), the serialize family's remedy\n")
@@ -58,4 +61,21 @@ func (g *gen) emitWriteInlineMacro() {
 	g.pf("#define SCHEMA_WRITE_INLINE inline\n")
 	g.pf("#endif\n")
 	g.pf("#endif // SCHEMA_WRITE_INLINE_DEFINED\n\n")
+}
+
+// emitWriteDispatchComment is the emitted rationale for why WriteMessage — the
+// dispatch surface — is spelled plain `inline` and NOT SCHEMA_WRITE_INLINE.
+// The scoping (write-spine-scoped, 2026-08-17): armed, the blanket demand
+// closed every per-message write row but regressed the batch dispatch loop
+// (message_batch write +21%, Zen 4 gcc -O3) — WriteMessage at inline cost
+// ~1555 forced whole into the loop body. Exempting the dispatcher keeps the
+// per-message spines flattening INTO WriteMessage's outlined body (its
+// callees still carry the demand) while the loop keeps a call boundary.
+func (g *gen) emitWriteDispatchComment() {
+	g.pf("// WriteMessage is deliberately OUTSIDE the write-spine demand: plain `inline`\n")
+	g.pf("// even under SCHEMA_WRITE_SPINE_DEMAND. Armed, its callees (every per-message\n")
+	g.pf("// Write) still flatten into its body, but the dispatch switch itself stays a\n")
+	g.pf("// call boundary — demanding it into a batch build loop was measured to slow\n")
+	g.pf("// that loop ~21%% while every per-message row kept its win with the boundary\n")
+	g.pf("// in place. The compiler remains free to inline it where that pays.\n")
 }
