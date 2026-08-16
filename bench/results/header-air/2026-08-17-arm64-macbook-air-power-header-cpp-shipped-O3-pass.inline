@@ -1,0 +1,108 @@
+# 2026-08-17-arm64-macbook-air-power-header-cpp-shipped-O3-pass.inline — per-symbol inline ledger (BENCH-STANDARD.md §4)
+# generated: 2026-08-16T19:34:32Z on macbook (Darwin arm64)
+# ground truth: call instructions into the serialize runtime, counted in
+# the emitted code and propagated transitively through out-of-line
+# generated helpers, classified HOT or COLD by target (§4.2: cold =
+# split cold-path symbol, #[cold]-marked fn, or a documented per-
+# language equivalent; no signal = hot, never guessed). Compiler
+# remarks are advisory; the disassembly is the verdict. CSV verdicts
+# count HOT calls only: full = zero hot runtime calls per op,
+# partial:N = N hot calls remain PER OP (§4.2 — loop unrolling
+# divided back out), unknown = not attributable (stays un-ratioable).
+# The cold count rides beside every row here, never in the CSV shape.
+== cpp (otool -tv of build/bench/schema_bench_cpp; clang -Rpass=inline shadow compile; cold = split .cold/.cold.N symbols)
+# symbol / direct-hot / transitive-hot / indirect / direct-cold / transitive-cold (nonzero only)
+symbol _main 0 24 1 0 0
+symbol __ZN7example13WriteTestDataERN9serialize11WriteStreamERKNS_8TestDataE 2 2 0 0 0
+symbol __ZL11build_batchRxPhi 0 2 0 0 0
+symbol __ZN7example12WriteMessageERN9serialize11WriteStreamERKNS_7MessageE 1 1 0 0 0
+symbol __ZN12_GLOBAL__N_126rt_bench_packet_write_loopERNS_13RtBenchPacketElRy 0 1 0 0 0
+symbol __ZN12_GLOBAL__N_113RtBenchPacket9SerializeIN9serialize11WriteStreamEEEbRT_ 1 1 0 0 0
+# missed-inline remarks naming serialize (callee, caller, cost where reported):
+remark 18 '_ZN7example9WriteVec3ERN9serialize11WriteStreamERKNS_4Vec3E' not inlined into 'main' because too costly to inline (cost=330, threshold=45)
+remark 8 '_ZN7example9WriteVec3ERN9serialize11WriteStreamERKNS_4Vec3E' not inlined into '_ZL13bench_messageIN7example9RigidBodyEPFbRN9serialize11WriteStreamERKS1_EPFbRNS2_10ReadStreamERS1_EZ4mainE3$_0EvPKcSG_lRKT_T0_T1_T2_' because too costly to inline (cost=330, threshold=325)
+remark 8 '_ZN7example9WriteVec3ERN9serialize11WriteStreamERKNS_4Vec3E' not inlined into '_ZL13bench_messageIN7example9RigidBodyEPFbRN9serialize11WriteStreamERKS1_EPFbRNS2_10ReadStreamERS1_EPFvSB_yEEvPKcSH_lRKT_T0_T1_T2_' because too costly to inline (cost=330, threshold=325)
+remark 8 '_ZN7example16WriteProbeSampleERN9serialize11WriteStreamERKNS_11ProbeSampleE' not inlined into '_ZL13bench_messageIN7example10ProbeArrayEPFbRN9serialize11WriteStreamERKS1_EPFbRNS2_10ReadStreamERS1_EPFvSB_yEEvPKcSH_lRKT_T0_T1_T2_' because too costly to inline (cost=785, threshold=325)
+remark 6 '_ZN7example9WriteVec3ERN9serialize11WriteStreamERKNS_4Vec3E' not inlined into 'main' because too costly to inline (cost=330, threshold=325)
+remark 6 '_ZN7example9WriteQuatERN9serialize11WriteStreamERKNS_4QuatE' not inlined into 'main' because too costly to inline (cost=455, threshold=45)
+remark 6 '_ZN7example16WriteProbeSampleERN9serialize11WriteStreamERKNS_11ProbeSampleE' not inlined into 'main' because too costly to inline (cost=785, threshold=45)
+remark 5 '_ZN7example12WriteMessageERN9serialize11WriteStreamERKNS_7MessageE' not inlined into 'main' because too costly to inline (cost=1555, threshold=325)
+remark 4 '_ZN7example9WriteVec3ERN9serialize11WriteStreamERKNS_4Vec3E' not inlined into '_ZL13bench_messageIN7example9RigidBodyEPFbRN9serialize11WriteStreamERKS1_EPFbRNS2_10ReadStreamERS1_EZ4mainE3$_0EvPKcSG_lRKT_T0_T1_T2_' because too costly to inline (cost=330, threshold=45)
+remark 4 '_ZN7example9WriteVec3ERN9serialize11WriteStreamERKNS_4Vec3E' not inlined into '_ZL13bench_messageIN7example9RigidBodyEPFbRN9serialize11WriteStreamERKS1_EPFbRNS2_10ReadStreamERS1_EPFvSB_yEEvPKcSH_lRKT_T0_T1_T2_' because too costly to inline (cost=330, threshold=45)
+remark 4 '_ZN7example9WriteQuatERN9serialize11WriteStreamERKNS_4QuatE' not inlined into '_ZL13bench_messageIN7example9RigidBodyEPFbRN9serialize11WriteStreamERKS1_EPFbRNS2_10ReadStreamERS1_EZ4mainE3$_0EvPKcSG_lRKT_T0_T1_T2_' because too costly to inline (cost=455, threshold=325)
+remark 4 '_ZN7example9WriteQuatERN9serialize11WriteStreamERKNS_4QuatE' not inlined into '_ZL13bench_messageIN7example9RigidBodyEPFbRN9serialize11WriteStreamERKS1_EPFbRNS2_10ReadStreamERS1_EPFvSB_yEEvPKcSH_lRKT_T0_T1_T2_' because too costly to inline (cost=455, threshold=325)
+remark 4 '_ZN7example21WriteShipData_ShallowERN9serialize11WriteStreamERKNS_16ShipData_ShallowE' not inlined into '_ZL13bench_messageIN7example16ShipData_ShallowEPFbRN9serialize11WriteStreamERKS1_EPFbRNS2_10ReadStreamERS1_EPFvSB_yEEvPKcSH_lRKT_T0_T1_T2_' because too costly to inline (cost=885, threshold=325)
+remark 4 '_ZN7example16WriteInputPacketERN9serialize11WriteStreamERKNS_11InputPacketE' not inlined into '_ZL13bench_messageIN7example11InputPacketEPFbRN9serialize11WriteStreamERKS1_EPFbRNS2_10ReadStreamERS1_EPFvSB_yEEvPKcSH_lRKT_T0_T1_T2_' because too costly to inline (cost=565, threshold=325)
+remark 4 '_ZN7example15WriteShipCreateERN9serialize11WriteStreamERKNS_10ShipCreateE' not inlined into '_ZL13bench_messageIN7example10ShipCreateEPFbRN9serialize11WriteStreamERKS1_EPFbRNS2_10ReadStreamERS1_EPFvSB_yEEvPKcSH_lRKT_T0_T1_T2_' because too costly to inline (cost=1075, threshold=325)
+remark 4 '_ZN7example14WriteProbeBitsERN9serialize11WriteStreamERKNS_9ProbeBitsE' not inlined into '_ZL13bench_messageIN7example9ProbeBitsEPFbRN9serialize11WriteStreamERKS1_EPFbRNS2_10ReadStreamERS1_EPFvSB_yEEvPKcSH_lRKT_T0_T1_T2_' because too costly to inline (cost=445, threshold=325)
+remark 4 '_ZN7example13WriteTestDataERN9serialize11WriteStreamERKNS_8TestDataE' not inlined into '_ZL13bench_messageIN7example8TestDataEPFbRN9serialize11WriteStreamERKS1_EPFbRNS2_10ReadStreamERS1_EPFvSB_yEEvPKcSH_lRKT_T0_T1_T2_' because too costly to inline (cost=2595, threshold=325)
+remark 3 '_ZN7example9WriteVec3ERN9serialize11WriteStreamERKNS_4Vec3E' not inlined into '_ZN7example14WriteRigidBodyERN9serialize11WriteStreamERKNS_9RigidBodyE' because too costly to inline (cost=485, threshold=325)
+remark 3 '_ZN7example21WriteShipData_ShallowERN9serialize11WriteStreamERKNS_16ShipData_ShallowE' not inlined into 'main' because too costly to inline (cost=885, threshold=45)
+remark 3 '_ZN7example16WriteInputPacketERN9serialize11WriteStreamERKNS_11InputPacketE' not inlined into 'main' because too costly to inline (cost=565, threshold=45)
+remark 3 '_ZN7example15WriteShipCreateERN9serialize11WriteStreamERKNS_10ShipCreateE' not inlined into 'main' because too costly to inline (cost=1075, threshold=45)
+remark 3 '_ZN7example14WriteProbeBitsERN9serialize11WriteStreamERKNS_9ProbeBitsE' not inlined into 'main' because too costly to inline (cost=445, threshold=45)
+remark 3 '_ZN7example13WriteTestDataERN9serialize11WriteStreamERKNS_8TestDataE' not inlined into 'main' because too costly to inline (cost=2595, threshold=45)
+remark 3 '_ZN12_GLOBAL__N_113RtBenchPacket9SerializeIN9serialize11WriteStreamEEEbRT_' not inlined into 'main' because too costly to inline (cost=1155, threshold=250)
+remark 3 '_ZN12_GLOBAL__N_113RtBenchPacket9SerializeIN9serialize11WriteStreamEEEbRT_' not inlined into '_ZN12_GLOBAL__N_18bench_rtINS_13RtBenchPacketEPFbRS1_lRyEPFbS2_lxEPFvS2_yEEEvPKclRKT_T0_T1_T2_' because too costly to inline (cost=1155, threshold=250)
+remark 3 '_ZN12_GLOBAL__N_112RtBenchMixed9SerializeIN9serialize11WriteStreamEEEbRT_' not inlined into 'main' because too costly to inline (cost=665, threshold=250)
+remark 3 '_ZN12_GLOBAL__N_112RtBenchMixed9SerializeIN9serialize11WriteStreamEEEbRT_' not inlined into '_ZN12_GLOBAL__N_18bench_rtINS_12RtBenchMixedEPFbRS1_lRyEPFbS2_lxEPFvS2_yEEEvPKclRKT_T0_T1_T2_' because too costly to inline (cost=665, threshold=250)
+remark 3 '_ZN12_GLOBAL__N_111RtBenchInts9SerializeIN9serialize11WriteStreamEEEbRT_' not inlined into 'main' because too costly to inline (cost=550, threshold=250)
+remark 3 '_ZN12_GLOBAL__N_111RtBenchInts9SerializeIN9serialize11WriteStreamEEEbRT_' not inlined into '_ZN12_GLOBAL__N_18bench_rtINS_11RtBenchIntsEPFbRS1_lRyEPFbS2_lxEPFvS2_yEEEvPKclRKT_T0_T1_T2_' because too costly to inline (cost=550, threshold=250)
+remark 3 '_ZN12_GLOBAL__N_111RtBenchBits9SerializeIN9serialize11WriteStreamEEEbRT_' not inlined into 'main' because too costly to inline (cost=480, threshold=250)
+remark 3 '_ZN12_GLOBAL__N_111RtBenchBits9SerializeIN9serialize11WriteStreamEEEbRT_' not inlined into '_ZN12_GLOBAL__N_18bench_rtINS_11RtBenchBitsEPFbRS1_lRyEPFbS2_lxEPFvS2_yEEEvPKclRKT_T0_T1_T2_' because too costly to inline (cost=480, threshold=250)
+remark 2 '_ZN9serialize9BitWriter10WriteBytesEPKhx' not inlined into '_ZN7example13WriteTestDataERN9serialize11WriteStreamERKNS_8TestDataE' because too costly to inline (cost=345, threshold=250)
+remark 2 '_ZN9serialize9BitWriter10WriteBytesEPKhx' not inlined into '_ZN7example12WriteMessageERN9serialize11WriteStreamERKNS_7MessageE' because too costly to inline (cost=345, threshold=250)
+remark 2 '_ZN7example9WriteQuatERN9serialize11WriteStreamERKNS_4QuatE' not inlined into 'main' because too costly to inline (cost=455, threshold=325)
+remark 2 '_ZN7example16WriteProbeSampleERN9serialize11WriteStreamERKNS_11ProbeSampleE' not inlined into 'main' because too costly to inline (cost=785, threshold=325)
+remark 2 '_ZN7example12WriteMessageERN9serialize11WriteStreamERKNS_7MessageE' not inlined into '_ZL11build_batchRxPhi' because too costly to inline (cost=1555, threshold=325)
+remark 2 '_ZL9run_statsPdi' not inlined into '_ZL13bench_messageIN7example9RigidBodyEPFbRN9serialize11WriteStreamERKS1_EPFbRNS2_10ReadStreamERS1_EZ4mainE3$_0EvPKcSG_lRKT_T0_T1_T2_' because too costly to inline (cost=65, threshold=45)
+remark 2 '_ZL9run_statsPdi' not inlined into '_ZL13bench_messageIN7example9RigidBodyEPFbRN9serialize11WriteStreamERKS1_EPFbRNS2_10ReadStreamERS1_EPFvSB_yEEvPKcSH_lRKT_T0_T1_T2_' because too costly to inline (cost=65, threshold=45)
+remark 2 '_ZL9run_statsPdi' not inlined into '_ZL13bench_messageIN7example9ProbeBitsEPFbRN9serialize11WriteStreamERKS1_EPFbRNS2_10ReadStreamERS1_EPFvSB_yEEvPKcSH_lRKT_T0_T1_T2_' because too costly to inline (cost=65, threshold=45)
+remark 2 '_ZL9run_statsPdi' not inlined into '_ZL13bench_messageIN7example8TestDataEPFbRN9serialize11WriteStreamERKS1_EPFbRNS2_10ReadStreamERS1_EPFvSB_yEEvPKcSH_lRKT_T0_T1_T2_' because too costly to inline (cost=65, threshold=45)
+# cpp per-row attribution (atos inline stacks over the -g shadow;
+# untimed = call sites in setup/self-check/variant code, excluded):
+attr N ship_shallow write 0 0
+attr N inputpacket write 0 0
+attr N probearray write 0 0
+attr N probebits write 0 0
+attr N testdata write 2 0
+attr N message_batch write 2 0
+attr N shipcreate write 0 0
+attr N rigidbody_moving write 0 0
+attr N rigidbody_at_rest write 0 0
+attr STATS groups 178 untimed 161 unattributed 0 unroll-dedup 1
+# per-row verdicts (hot is the CSV verdict; cold is recorded debt off the hot path):
+row cpp rigidbody_moving write full hot=0 cold=0
+row cpp rigidbody_moving read full hot=0 cold=0
+row cpp rigidbody_at_rest write full hot=0 cold=0
+row cpp rigidbody_at_rest read full hot=0 cold=0
+row cpp chat write full hot=0 cold=0
+row cpp chat read full hot=0 cold=0
+row cpp test write full hot=0 cold=0
+row cpp test read full hot=0 cold=0
+row cpp inputpacket write full hot=0 cold=0
+row cpp inputpacket read full hot=0 cold=0
+row cpp shipcreate write full hot=0 cold=0
+row cpp shipcreate read full hot=0 cold=0
+row cpp ship_shallow write full hot=0 cold=0
+row cpp ship_shallow read full hot=0 cold=0
+row cpp probe_header write full hot=0 cold=0
+row cpp probe_header read full hot=0 cold=0
+row cpp probebits write full hot=0 cold=0
+row cpp probebits read full hot=0 cold=0
+row cpp probearray write full hot=0 cold=0
+row cpp probearray read full hot=0 cold=0
+row cpp testdata write partial:2 hot=2 cold=0
+row cpp testdata read full hot=0 cold=0
+row cpp message_batch write partial:2 hot=2 cold=0
+row cpp message_batch read full hot=0 cold=0
+row cpp bench_packet write partial:1 hot=1 cold=0
+row cpp bench_packet read full hot=0 cold=0
+row cpp bench_ints write full hot=0 cold=0
+row cpp bench_ints read full hot=0 cold=0
+row cpp bench_bits write full hot=0 cold=0
+row cpp bench_bits read full hot=0 cold=0
+row cpp bench_mixed write full hot=0 cold=0
+row cpp bench_mixed read full hot=0 cold=0
+row cpp bitpacker write full hot=0 cold=0
+row cpp bitpacker read full hot=0 cold=0
