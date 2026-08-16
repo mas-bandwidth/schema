@@ -50,7 +50,7 @@ struct ProbeHeader {
 };
 
 inline constexpr int64_t ProbeHeaderMaxBits = 87; // longest wire path; align pads at worst case (SPEC §6.1)
-inline constexpr int64_t ProbeHeaderMaxBytes = 16; // rounded up to the 8-byte write-buffer granularity
+inline constexpr int64_t ProbeHeaderMaxBytes = 16; // rounded up to the 8-byte write-buffer granularity; a read buffer's allocation must extend at least 8 bytes past the data — the reader loads 64-bit windows
 
 // type ProbeBits
 struct ProbeBits {
@@ -62,7 +62,7 @@ struct ProbeBits {
 };
 
 inline constexpr int64_t ProbeBitsMaxBits = 202; // longest wire path; align pads at worst case (SPEC §6.1)
-inline constexpr int64_t ProbeBitsMaxBytes = 32; // rounded up to the 8-byte write-buffer granularity
+inline constexpr int64_t ProbeBitsMaxBytes = 32; // rounded up to the 8-byte write-buffer granularity; a read buffer's allocation must extend at least 8 bytes past the data — the reader loads 64-bit windows
 
 // type ProbeSample
 struct ProbeSample {
@@ -89,7 +89,7 @@ struct ProbeSample {
 };
 
 inline constexpr int64_t ProbeSampleMaxBits = 276; // longest wire path; align pads at worst case (SPEC §6.1)
-inline constexpr int64_t ProbeSampleMaxBytes = 40; // rounded up to the 8-byte write-buffer granularity
+inline constexpr int64_t ProbeSampleMaxBytes = 40; // rounded up to the 8-byte write-buffer granularity; a read buffer's allocation must extend at least 8 bytes past the data — the reader loads 64-bit windows
 
 // type ProbeConfig
 struct ProbeConfig {
@@ -98,7 +98,7 @@ struct ProbeConfig {
 };
 
 inline constexpr int64_t ProbeConfigMaxBits = 36; // longest wire path; align pads at worst case (SPEC §6.1)
-inline constexpr int64_t ProbeConfigMaxBytes = 8; // rounded up to the 8-byte write-buffer granularity
+inline constexpr int64_t ProbeConfigMaxBytes = 8; // rounded up to the 8-byte write-buffer granularity; a read buffer's allocation must extend at least 8 bytes past the data — the reader loads 64-bit windows
 
 // type ProbeArray
 struct ProbeArray {
@@ -107,7 +107,7 @@ struct ProbeArray {
 };
 
 inline constexpr int64_t ProbeArrayMaxBits = 588; // longest wire path; align pads at worst case (SPEC §6.1)
-inline constexpr int64_t ProbeArrayMaxBytes = 80; // rounded up to the 8-byte write-buffer granularity
+inline constexpr int64_t ProbeArrayMaxBytes = 80; // rounded up to the 8-byte write-buffer granularity; a read buffer's allocation must extend at least 8 bytes past the data — the reader loads 64-bit windows
 
 // type ProbeReport
 struct ProbeReport {
@@ -117,7 +117,7 @@ struct ProbeReport {
 };
 
 inline constexpr int64_t ProbeReportMaxBits = 141; // longest wire path; align pads at worst case (SPEC §6.1)
-inline constexpr int64_t ProbeReportMaxBytes = 24; // rounded up to the 8-byte write-buffer granularity
+inline constexpr int64_t ProbeReportMaxBytes = 24; // rounded up to the 8-byte write-buffer granularity; a read buffer's allocation must extend at least 8 bytes past the data — the reader loads 64-bit windows
 
 // type TestData
 struct TestData {
@@ -147,7 +147,7 @@ struct TestData {
 };
 
 inline constexpr int64_t TestDataMaxBits = 2735; // longest wire path; align pads at worst case (SPEC §6.1)
-inline constexpr int64_t TestDataMaxBytes = 344; // rounded up to the 8-byte write-buffer granularity
+inline constexpr int64_t TestDataMaxBytes = 344; // rounded up to the 8-byte write-buffer granularity; a read buffer's allocation must extend at least 8 bytes past the data — the reader loads 64-bit windows
 
 // type CompressedProbe
 struct CompressedProbe {
@@ -156,6 +156,6 @@ struct CompressedProbe {
 };
 
 inline constexpr int64_t CompressedProbeMaxBits = 24; // longest wire path; align pads at worst case (SPEC §6.1)
-inline constexpr int64_t CompressedProbeMaxBytes = 8; // rounded up to the 8-byte write-buffer granularity
+inline constexpr int64_t CompressedProbeMaxBytes = 8; // rounded up to the 8-byte write-buffer granularity; a read buffer's allocation must extend at least 8 bytes past the data — the reader loads 64-bit windows
 
 } // namespace example

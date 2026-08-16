@@ -79,7 +79,7 @@ typedef struct FixedProbe {
 } FixedProbe;
 
 #define FIXED_PROBE_MAX_BITS 156   /* longest wire path; align pads at worst case (SPEC §6.1) */
-#define FIXED_PROBE_MAX_BYTES 24  /* rounded up to the 8-byte write-buffer granularity */
+#define FIXED_PROBE_MAX_BYTES 24  /* rounded up to the 8-byte write-buffer granularity; a READ buffer's allocation must extend at least 8 bytes past the data — serialize.c loads 64-bit windows */
 
 
 /* type UnsignedProbe */
@@ -94,7 +94,7 @@ typedef struct UnsignedProbe {
 } UnsignedProbe;
 
 #define UNSIGNED_PROBE_MAX_BITS 196   /* longest wire path; align pads at worst case (SPEC §6.1) */
-#define UNSIGNED_PROBE_MAX_BYTES 32  /* rounded up to the 8-byte write-buffer granularity */
+#define UNSIGNED_PROBE_MAX_BYTES 32  /* rounded up to the 8-byte write-buffer granularity; a READ buffer's allocation must extend at least 8 bytes past the data — serialize.c loads 64-bit windows */
 
 
 /* type WideProbe */
@@ -107,7 +107,7 @@ typedef struct WideProbe {
 } WideProbe;
 
 #define WIDE_PROBE_MAX_BITS 403   /* longest wire path; align pads at worst case (SPEC §6.1) */
-#define WIDE_PROBE_MAX_BYTES 56  /* rounded up to the 8-byte write-buffer granularity */
+#define WIDE_PROBE_MAX_BYTES 56  /* rounded up to the 8-byte write-buffer granularity; a READ buffer's allocation must extend at least 8 bytes past the data — serialize.c loads 64-bit windows */
 
 /* Returns a WideProbe with its SPECIFIED defaults applied. A memset to zero is
    the schema's own default (SPEC §4.2: zero initialization unless a
@@ -134,7 +134,7 @@ typedef struct LudicrousState {
 } LudicrousState;
 
 #define LUDICROUS_STATE_MAX_BITS 1205   /* longest wire path; align pads at worst case (SPEC §6.1) */
-#define LUDICROUS_STATE_MAX_BYTES 152  /* rounded up to the 8-byte write-buffer granularity */
+#define LUDICROUS_STATE_MAX_BYTES 152  /* rounded up to the 8-byte write-buffer granularity; a READ buffer's allocation must extend at least 8 bytes past the data — serialize.c loads 64-bit windows */
 
 /* Returns a LudicrousState with its SPECIFIED defaults applied. A memset to zero is
    the schema's own default (SPEC §4.2: zero initialization unless a
@@ -157,7 +157,7 @@ typedef struct DegenerateProbe {
 } DegenerateProbe;
 
 #define DEGENERATE_PROBE_MAX_BITS 8   /* longest wire path; align pads at worst case (SPEC §6.1) */
-#define DEGENERATE_PROBE_MAX_BYTES 8  /* rounded up to the 8-byte write-buffer granularity */
+#define DEGENERATE_PROBE_MAX_BYTES 8  /* rounded up to the 8-byte write-buffer granularity; a READ buffer's allocation must extend at least 8 bytes past the data — serialize.c loads 64-bit windows */
 
 
 /* type FixedVec */
@@ -168,7 +168,7 @@ typedef struct FixedVec {
 } FixedVec;
 
 #define FIXED_VEC_MAX_BITS 102   /* longest wire path; align pads at worst case (SPEC §6.1) */
-#define FIXED_VEC_MAX_BYTES 16  /* rounded up to the 8-byte write-buffer granularity */
+#define FIXED_VEC_MAX_BYTES 16  /* rounded up to the 8-byte write-buffer granularity; a READ buffer's allocation must extend at least 8 bytes past the data — serialize.c loads 64-bit windows */
 
 
 /* type FixedQuat */
@@ -180,7 +180,7 @@ typedef struct FixedQuat {
 } FixedQuat;
 
 #define FIXED_QUAT_MAX_BITS 128   /* longest wire path; align pads at worst case (SPEC §6.1) */
-#define FIXED_QUAT_MAX_BYTES 16  /* rounded up to the 8-byte write-buffer granularity */
+#define FIXED_QUAT_MAX_BYTES 16  /* rounded up to the 8-byte write-buffer granularity; a READ buffer's allocation must extend at least 8 bytes past the data — serialize.c loads 64-bit windows */
 
 /* Returns a FixedQuat with its SPECIFIED defaults applied. A memset to zero is
    the schema's own default (SPEC §4.2: zero initialization unless a

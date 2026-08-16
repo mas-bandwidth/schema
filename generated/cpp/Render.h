@@ -23,7 +23,7 @@ struct RenderSprite {
 };
 
 inline constexpr int64_t RenderSpriteMaxBits = 138; // longest wire path; align pads at worst case (SPEC §6.1)
-inline constexpr int64_t RenderSpriteMaxBytes = 24; // rounded up to the 8-byte write-buffer granularity
+inline constexpr int64_t RenderSpriteMaxBytes = 24; // rounded up to the 8-byte write-buffer granularity; a read buffer's allocation must extend at least 8 bytes past the data — the reader loads 64-bit windows
 
 // type RenderBlock
 struct RenderBlock {
@@ -34,6 +34,6 @@ struct RenderBlock {
 };
 
 inline constexpr int64_t RenderBlockMaxBits = 8903; // longest wire path; align pads at worst case (SPEC §6.1)
-inline constexpr int64_t RenderBlockMaxBytes = 1120; // rounded up to the 8-byte write-buffer granularity
+inline constexpr int64_t RenderBlockMaxBytes = 1120; // rounded up to the 8-byte write-buffer granularity; a read buffer's allocation must extend at least 8 bytes past the data — the reader loads 64-bit windows
 
 } // namespace example

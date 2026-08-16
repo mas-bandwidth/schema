@@ -22,11 +22,16 @@ func (g *gen) maxBitsStruct(st *ir.Struct) int64 { return ir.MaxBitsStruct(st) }
 // ---- function emission ----
 
 // emitStructMaxBits emits the MaxBits/MaxBytes bounds beside the struct —
-// data-side, because buffer sizing needs no serialize dependency.
+// data-side, because buffer sizing needs no serialize dependency. The
+// MaxBytes comment carries the read half of the serialize buffer contract:
+// the allocation backing a read buffer must extend at least 8 bytes past
+// the data (serialize::BitReader loads unconditional 64-bit windows), so a
+// caller sizing a receive allocation at exactly MaxBytes would be handing
+// the reader undefined behavior.
 func (g *gen) emitStructMaxBits(st *ir.Struct) {
 	maxBits := g.maxBitsStruct(st)
 	g.pf("inline constexpr int64_t %sMaxBits = %d; // longest wire path; align pads at worst case (SPEC §6.1)\n", st.Name, maxBits)
-	g.pf("inline constexpr int64_t %sMaxBytes = %d; // rounded up to the 8-byte write-buffer granularity\n\n", st.Name, ir.MaxBytes(maxBits))
+	g.pf("inline constexpr int64_t %sMaxBytes = %d; // rounded up to the 8-byte write-buffer granularity; a read buffer's allocation must extend at least 8 bytes past the data — the reader loads 64-bit windows\n\n", st.Name, ir.MaxBytes(maxBits))
 }
 
 // emitStructWire emits the split Write/Read pair for a type or message, in
@@ -624,7 +629,7 @@ func (g *gen) emitMessageData() {
 	}
 	g.pf("// The message-level bound: the tag plus the largest message (SPEC §6.1)\n")
 	g.pf("inline constexpr int64_t MessageMaxBits = %d;\n", tagBits+largest)
-	g.pf("inline constexpr int64_t MessageMaxBytes = %d; // rounded up to the 8-byte write-buffer granularity\n\n", ir.MaxBytes(tagBits+largest))
+	g.pf("inline constexpr int64_t MessageMaxBytes = %d; // rounded up to the 8-byte write-buffer granularity; a read buffer's allocation must extend at least 8 bytes past the data — the reader loads 64-bit windows\n\n", ir.MaxBytes(tagBits+largest))
 
 	if g.opts.MessageRepr == "variant" {
 		g.emitMessageStorageVariant()

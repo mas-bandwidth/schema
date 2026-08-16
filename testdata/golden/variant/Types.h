@@ -22,7 +22,7 @@ struct Vec3 {
 };
 
 inline constexpr int64_t Vec3MaxBits = 192; // longest wire path; align pads at worst case (SPEC §6.1)
-inline constexpr int64_t Vec3MaxBytes = 24; // rounded up to the 8-byte write-buffer granularity
+inline constexpr int64_t Vec3MaxBytes = 24; // rounded up to the 8-byte write-buffer granularity; a read buffer's allocation must extend at least 8 bytes past the data — the reader loads 64-bit windows
 
 // type Quat [quat4] — the tag is user-chosen and inert in v1; the delta pass
 // claims tags and assigns actions (SPEC §4.2, Type tags)
@@ -34,7 +34,7 @@ struct Quat {
 };
 
 inline constexpr int64_t QuatMaxBits = 256; // longest wire path; align pads at worst case (SPEC §6.1)
-inline constexpr int64_t QuatMaxBytes = 32; // rounded up to the 8-byte write-buffer granularity
+inline constexpr int64_t QuatMaxBytes = 32; // rounded up to the 8-byte write-buffer granularity; a read buffer's allocation must extend at least 8 bytes past the data — the reader loads 64-bit windows
 
 // type Handle
 struct Handle {
@@ -43,7 +43,7 @@ struct Handle {
 };
 
 inline constexpr int64_t HandleMaxBits = 22; // longest wire path; align pads at worst case (SPEC §6.1)
-inline constexpr int64_t HandleMaxBytes = 8; // rounded up to the 8-byte write-buffer granularity
+inline constexpr int64_t HandleMaxBytes = 8; // rounded up to the 8-byte write-buffer granularity; a read buffer's allocation must extend at least 8 bytes past the data — the reader loads 64-bit windows
 
 // type QuantizedPosition
 struct QuantizedPosition {
@@ -53,7 +53,7 @@ struct QuantizedPosition {
 };
 
 inline constexpr int64_t QuantizedPositionMaxBits = 75; // longest wire path; align pads at worst case (SPEC §6.1)
-inline constexpr int64_t QuantizedPositionMaxBytes = 16; // rounded up to the 8-byte write-buffer granularity
+inline constexpr int64_t QuantizedPositionMaxBytes = 16; // rounded up to the 8-byte write-buffer granularity; a read buffer's allocation must extend at least 8 bytes past the data — the reader loads 64-bit windows
 
 // type QuantizedVelocity
 struct QuantizedVelocity {
@@ -63,7 +63,7 @@ struct QuantizedVelocity {
 };
 
 inline constexpr int64_t QuantizedVelocityMaxBits = 69; // longest wire path; align pads at worst case (SPEC §6.1)
-inline constexpr int64_t QuantizedVelocityMaxBytes = 16; // rounded up to the 8-byte write-buffer granularity
+inline constexpr int64_t QuantizedVelocityMaxBytes = 16; // rounded up to the 8-byte write-buffer granularity; a read buffer's allocation must extend at least 8 bytes past the data — the reader loads 64-bit windows
 
 // type QuantizedRotation
 struct QuantizedRotation {
@@ -74,7 +74,7 @@ struct QuantizedRotation {
 };
 
 inline constexpr int64_t QuantizedRotationMaxBits = 48; // longest wire path; align pads at worst case (SPEC §6.1)
-inline constexpr int64_t QuantizedRotationMaxBytes = 8; // rounded up to the 8-byte write-buffer granularity
+inline constexpr int64_t QuantizedRotationMaxBytes = 8; // rounded up to the 8-byte write-buffer granularity; a read buffer's allocation must extend at least 8 bytes past the data — the reader loads 64-bit windows
 
 // type RigidBody
 struct RigidBody {
@@ -89,7 +89,7 @@ struct RigidBody {
 };
 
 inline constexpr int64_t RigidBodyMaxBits = 833; // longest wire path; align pads at worst case (SPEC §6.1)
-inline constexpr int64_t RigidBodyMaxBytes = 112; // rounded up to the 8-byte write-buffer granularity
+inline constexpr int64_t RigidBodyMaxBytes = 112; // rounded up to the 8-byte write-buffer granularity; a read buffer's allocation must extend at least 8 bytes past the data — the reader loads 64-bit windows
 
 // type Input
 struct Input {
@@ -109,7 +109,7 @@ struct Input {
 };
 
 inline constexpr int64_t InputMaxBits = 168; // longest wire path; align pads at worst case (SPEC §6.1)
-inline constexpr int64_t InputMaxBytes = 24; // rounded up to the 8-byte write-buffer granularity
+inline constexpr int64_t InputMaxBytes = 24; // rounded up to the 8-byte write-buffer granularity; a read buffer's allocation must extend at least 8 bytes past the data — the reader loads 64-bit windows
 
 // type InputPacket
 struct InputPacket {
@@ -121,7 +121,7 @@ struct InputPacket {
 };
 
 inline constexpr int64_t InputPacketMaxBits = 2837; // longest wire path; align pads at worst case (SPEC §6.1)
-inline constexpr int64_t InputPacketMaxBytes = 360; // rounded up to the 8-byte write-buffer granularity
+inline constexpr int64_t InputPacketMaxBytes = 360; // rounded up to the 8-byte write-buffer granularity; a read buffer's allocation must extend at least 8 bytes past the data — the reader loads 64-bit windows
 
 // type ShipCreate
 struct ShipCreate {
@@ -142,6 +142,6 @@ struct ShipCreate {
 };
 
 inline constexpr int64_t ShipCreateMaxBits = 219; // longest wire path; align pads at worst case (SPEC §6.1)
-inline constexpr int64_t ShipCreateMaxBytes = 32; // rounded up to the 8-byte write-buffer granularity
+inline constexpr int64_t ShipCreateMaxBytes = 32; // rounded up to the 8-byte write-buffer granularity; a read buffer's allocation must extend at least 8 bytes past the data — the reader loads 64-bit windows
 
 } // namespace example

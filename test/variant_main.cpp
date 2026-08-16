@@ -27,7 +27,7 @@ int main()
                   "every message is trivially copyable, so the variant is too — no heap anywhere");
     static_assert(std::variant_size_v<Message> == 7, "one alternative per message plus None");
 
-    alignas( 8 ) uint8_t buffer[4096];
+    alignas( 8 ) uint8_t buffer[4096 + 8];  // + 8: read buffer allocations extend 8 bytes past the data (the reader loads 64-bit windows)
 
     Message stream_out[3];
     Chat chat;

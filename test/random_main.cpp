@@ -567,7 +567,7 @@ static bool roundtrip( Rng & r,
                        bool ( *readFn )( serialize::ReadStream &, T & ),
                        int64_t maxBytes )
 {
-    alignas( 8 ) static uint8_t buffer[4096];
+    alignas( 8 ) static uint8_t buffer[4096 + 8];  // + 8: read buffer allocations extend 8 bytes past the data (the reader loads 64-bit windows)
     T in;
     fillFn( r, in );
     serialize::WriteStream ws( buffer, sizeof( buffer ) );
@@ -670,7 +670,7 @@ static bool quantize_consistency( Rng & r, int iterations )
         ShipData_Shallow q;
         QuantizeShip( interp, q );
 
-        alignas( 8 ) static uint8_t buffer[4096];
+        alignas( 8 ) static uint8_t buffer[4096 + 8];  // + 8: read buffer allocations extend 8 bytes past the data
         serialize::WriteStream ws( buffer, sizeof( buffer ) );
         check( WriteShipData_Shallow( ws, q ) );
         ws.Flush();

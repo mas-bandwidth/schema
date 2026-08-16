@@ -141,8 +141,8 @@ static BenchMixed pin_bench_mixed()
 template <typename T, typename WriteFn, typename ReadFn>
 static int pin_shape( const char * name, int expected_bytes, const T & pinned, WriteFn write_fn, ReadFn read_fn )
 {
-    alignas( 8 ) static uint8_t buffer[256];
-    alignas( 8 ) static uint8_t twin[256];
+    alignas( 8 ) static uint8_t buffer[256 + 8];  // + 8: read buffer allocations extend 8 bytes past the data
+    alignas( 8 ) static uint8_t twin[256];       // write-only twin: no read slack needed
     memset( buffer, 0, sizeof( buffer ) );
     memset( twin, 0, sizeof( twin ) );
 

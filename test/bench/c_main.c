@@ -54,8 +54,8 @@ static int golden_wire( const char * name, const serialize_uint8_t * data, int b
 #define PIN_SHAPE( NAME, TYPE, WRITE, READ, EXPECTED_BYTES )                   \
     static int pin_##NAME( const TYPE * pinned )                               \
     {                                                                          \
-        static serialize_uint64_t buffer_storage[32];                          \
-        static serialize_uint64_t twin_storage[32];                            \
+        static serialize_uint64_t buffer_storage[32 + 1];  /* + 1 word = 8 bytes: read buffer allocations extend 8 bytes past the data */ \
+        static serialize_uint64_t twin_storage[32];        /* write-only twin: no read slack needed */ \
         serialize_uint8_t * buffer = (serialize_uint8_t *) buffer_storage;     \
         serialize_uint8_t * twin = (serialize_uint8_t *) twin_storage;         \
         serialize_write_stream_t ws, tws;                                      \

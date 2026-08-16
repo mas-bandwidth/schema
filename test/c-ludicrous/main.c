@@ -90,7 +90,7 @@ static LudicrousState state_instance( void )
 
 int main( void )
 {
-    static unsigned char buffer[4096];
+    static unsigned char buffer[4096 + 8];      /* + 8: read buffer allocations extend 8 bytes past the data (serialize.c loads 64-bit windows) */
     serialize_write_stream_t w;
     serialize_read_stream_t r;
 
@@ -220,17 +220,17 @@ int main( void )
            the low 16 bits, and the reject must fire in the UNSIGNED domain
            (a signed compare would call the smuggled value negative) */
         {
-            unsigned char hostile[25];
+            unsigned char hostile[25 + 8];      /* + 8: read buffer allocations extend 8 bytes past the data */
             serialize_write_stream_init( &w, buffer, sizeof( buffer ) );
             check( write_unsigned_probe( &w, &in ), "write UnsignedProbe for the hostile image" );
             serialize_write_flush( &w );
-            memcpy( hostile, buffer, sizeof( hostile ) );
+            memcpy( hostile, buffer, 25 );
             for ( i = 25; i < 89; i++ )
             {
                 hostile[i / 8] = (unsigned char) ( hostile[i / 8] | ( 1 << ( i % 8 ) ) );
             }
             memset( &out, 0, sizeof( out ) );
-            serialize_read_stream_init( &r, hostile, sizeof( hostile ) );
+            serialize_read_stream_init( &r, hostile, 25 );
             check( !read_unsigned_probe( &r, &out ), "a smuggled ufixed high-half offset is REJECTED" );
         }
     }
@@ -350,15 +350,15 @@ int main( void )
         /* hostile shallow read: position_x's 26 offset bits all-ones =
            67108863, above the range size 51200000 — reject, never clamp */
         {
-            unsigned char hostile[29];
+            unsigned char hostile[29 + 8];      /* + 8: read buffer allocations extend 8 bytes past the data */
             NarrowBodyData_Shallow h_out;
-            memcpy( hostile, buffer, sizeof( hostile ) );
+            memcpy( hostile, buffer, 29 );
             hostile[0] = 0xFF;
             hostile[1] = 0xFF;
             hostile[2] = 0xFF;
             hostile[3] |= 0x03;                    /* bits 24 and 25 */
             memset( &h_out, 0, sizeof( h_out ) );
-            serialize_read_stream_init( &r, hostile, sizeof( hostile ) );
+            serialize_read_stream_init( &r, hostile, 29 );
             check( !read_narrow_body_data_shallow( &r, &h_out ),
                    "an offset above the narrowed range is rejected, never clamped" );
         }

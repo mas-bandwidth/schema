@@ -203,7 +203,7 @@ int main()
     ServerMissileState missile;
     check( missile.timer == 0.0 );
 
-    alignas( 8 ) uint8_t buffer[2048];
+    alignas( 8 ) uint8_t buffer[2048 + 8];  // + 8: read buffer allocations extend 8 bytes past the data (the reader loads 64-bit windows)
 
     // ---- RigidBody, moving: the serialize README example, generated ----
     {

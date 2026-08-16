@@ -12,12 +12,17 @@ import (
 
 // emitMaxBits emits a type's worst-case wire size. Callers size their buffers
 // from these, so their absence is not cosmetic — it is the difference between
-// a caller sizing a buffer correctly and guessing.
+// a caller sizing a buffer correctly and guessing. The MAX_BYTES comment
+// carries the read half of serialize.c's buffer contract (its PR #21, the
+// align-up ruling): the allocation backing a read buffer must extend at
+// least 8 bytes past the data, because the reader loads unconditional
+// 64-bit windows — a caller sizing a receive allocation at exactly
+// MAX_BYTES would be handing the reader undefined behavior.
 func (g *gen) emitMaxBits(st *ir.Struct) {
 	bits := ir.MaxBitsStruct(st)
 	g.pf("#define %s_MAX_BITS %d   /* longest wire path; align pads at worst case (SPEC §6.1) */\n",
 		screaming(st.Name), bits)
-	g.pf("#define %s_MAX_BYTES %d  /* rounded up to the 8-byte write-buffer granularity */\n\n",
+	g.pf("#define %s_MAX_BYTES %d  /* rounded up to the 8-byte write-buffer granularity; a READ buffer's allocation must extend at least 8 bytes past the data — serialize.c loads 64-bit windows */\n\n",
 		screaming(st.Name), ir.MaxBytes(bits))
 }
 
