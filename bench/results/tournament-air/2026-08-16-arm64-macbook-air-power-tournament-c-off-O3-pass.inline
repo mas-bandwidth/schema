@@ -1,0 +1,83 @@
+# 2026-08-16-arm64-macbook-air-power-tournament-c-off-O3-pass.inline — per-symbol inline ledger (BENCH-STANDARD.md §4)
+# generated: 2026-08-16T12:40:10Z on macbook (Darwin arm64)
+# ground truth: call instructions into the serialize runtime, counted in
+# the emitted code and propagated transitively through out-of-line
+# generated helpers, classified HOT or COLD by target (§4.2: cold =
+# split cold-path symbol, #[cold]-marked fn, or a documented per-
+# language equivalent; no signal = hot, never guessed). Compiler
+# remarks are advisory; the disassembly is the verdict. CSV verdicts
+# count HOT calls only: full = zero hot runtime calls per op,
+# partial:N = N hot calls remain PER OP (§4.2 — loop unrolling
+# divided back out), unknown = not attributable (stays un-ratioable).
+# The cold count rides beside every row here, never in the CSV shape.
+== c (otool -tv of build/bench/schema_bench_c; clang -Rpass=inline shadow compile; cold = split .cold/.cold.N symbols)
+# symbol / direct-hot / transitive-hot / indirect / direct-cold / transitive-cold (nonzero only)
+symbol _main 4 24 1 0 0
+symbol _build_batch 0 2 0 0 0
+symbol _write_test_data 1 1 0 0 0
+symbol _write_message 1 1 0 0 0
+symbol _serialize_write_string 1 1 0 0 0
+symbol _rt_write_bench_packet 1 1 0 0 0
+symbol _rt_bench_packet_write_loop 0 1 0 0 0
+# missed-inline remarks naming serialize (callee, caller, cost where reported):
+remark 1 'serialize_write_bytes' not inlined into 'serialize_write_string' because too costly to inline (cost=515, threshold=250)
+# c per-row attribution (atos inline stacks over the -g shadow;
+# untimed = call sites in setup/self-check/variant code, excluded):
+attr N probebits read 0 0
+attr N probe_header write 0 0
+attr N rigidbody_moving read 0 0
+attr N shipcreate read 0 0
+attr N probe_header read 0 0
+attr N ship_shallow read 0 0
+attr N message_batch read 0 0
+attr N ship_shallow write 0 0
+attr N inputpacket write 0 0
+attr N probearray write 0 0
+attr N rigidbody_at_rest read 0 0
+attr N probearray read 0 0
+attr N chat write 1 0
+attr N chat read 0 0
+attr N probebits write 0 0
+attr N testdata write 1 0
+attr N inputpacket read 0 0
+attr N message_batch write 2 0
+attr N shipcreate write 0 0
+attr N rigidbody_moving write 0 0
+attr N rigidbody_at_rest write 0 0
+attr N testdata read 0 0
+attr STATS groups 167 untimed 143 unattributed 0 unroll-dedup 0
+# per-row verdicts (hot is the CSV verdict; cold is recorded debt off the hot path):
+row c rigidbody_moving write full hot=0 cold=0
+row c rigidbody_moving read full hot=0 cold=0
+row c rigidbody_at_rest write full hot=0 cold=0
+row c rigidbody_at_rest read full hot=0 cold=0
+row c chat write partial:1 hot=1 cold=0
+row c chat read full hot=0 cold=0
+row c test write full hot=0 cold=0
+row c test read full hot=0 cold=0
+row c inputpacket write full hot=0 cold=0
+row c inputpacket read full hot=0 cold=0
+row c shipcreate write full hot=0 cold=0
+row c shipcreate read full hot=0 cold=0
+row c ship_shallow write full hot=0 cold=0
+row c ship_shallow read full hot=0 cold=0
+row c probe_header write full hot=0 cold=0
+row c probe_header read full hot=0 cold=0
+row c probebits write full hot=0 cold=0
+row c probebits read full hot=0 cold=0
+row c probearray write full hot=0 cold=0
+row c probearray read full hot=0 cold=0
+row c testdata write partial:1 hot=1 cold=0
+row c testdata read full hot=0 cold=0
+row c message_batch write partial:2 hot=2 cold=0
+row c message_batch read full hot=0 cold=0
+row c bench_packet write partial:1 hot=1 cold=0
+row c bench_packet read full hot=0 cold=0
+row c bench_ints write full hot=0 cold=0
+row c bench_ints read full hot=0 cold=0
+row c bench_bits write full hot=0 cold=0
+row c bench_bits read full hot=0 cold=0
+row c bench_mixed write full hot=0 cold=0
+row c bench_mixed read full hot=0 cold=0
+row c bitpacker write full hot=0 cold=0
+row c bitpacker read full hot=0 cold=0
