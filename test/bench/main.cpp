@@ -1,26 +1,32 @@
-// The bench-corpus golden pinner (BENCH-STANDARD.md §1.5, §6 step 6).
+// The bench-corpus golden pinner (BENCH-STANDARD.md §1.5, §6 step 6, §1.7).
 //
-// Writes the four pinned family `rt` instances through the schema-GENERATED
+// Writes the pinned bench-corpus instances through the schema-GENERATED
 // C++ code (generated/bench/cpp) and byte-checks them against the wire
-// goldens testdata/wire/bench_*.bin, then round-trips write -> read ->
-// re-write -> memcmp. THE GOLDENS PRODUCED HERE ARE THE AUTHORITY for the
-// family `rt` oracle gate in all five bench runners: hand-written runtime
-// code must reproduce these bytes exactly or refuse to bench.
+// goldens testdata/wire/{bench_*,real_packet}.bin, then round-trips
+// write -> read -> re-write -> memcmp. THE GOLDENS PRODUCED HERE ARE THE
+// AUTHORITY for the oracle gate in all five bench runners: a runner must
+// reproduce these bytes exactly or refuse to bench.
 //
 // SCHEMA_UPDATE_WIRE_GOLDENS=1 re-pins deliberately (make update-goldens);
 // a break under an unchanged schema is stop-the-line (SPEC §3.1), never a
 // quiet re-pin.
 //
 // The pinned values are transcribed from serialize/bench.cpp BenchPacket::
-// Init() for BenchPacket; the other three shapes pin nonzero, in-range,
-// boundary-flavored values chosen here. Every bench runner carries the same
-// pins — the goldens are what keep the transcriptions honest.
+// Init() for BenchPacket; the other three rt shapes pin nonzero, in-range,
+// boundary-flavored values chosen here. RealPacket (bench/corpus/
+// RealWorld.schema, the §1.7 realistic snapshot) pins the ALL-DEFAULTS
+// instance: a RealPacket constructed and serialized unmodified, every field
+// at its declared default — the four branch gates carry theirs in the schema
+// (f012 true, f043 false, f050 true, f074 false), so 1629 bits = 204 bytes
+// ride. Every bench runner carries the same pins — the goldens are what keep
+// the transcriptions honest.
 
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
 
 #include "BenchWire.h"
+#include "RealWorldWire.h"
 
 #define check( condition )                                                    \
     do                                                                        \
@@ -137,9 +143,10 @@ static BenchMixed pin_bench_mixed()
 }
 
 // write pinned -> golden check -> read -> re-write -> memcmp, and report the
-// measured wire size so §1.3's byte table is checked against reality
+// measured wire size so the documented byte claim (`where` names the document
+// making it) is checked against reality
 template <typename T, typename WriteFn, typename ReadFn>
-static int pin_shape( const char * name, int expected_bytes, const T & pinned, WriteFn write_fn, ReadFn read_fn )
+static int pin_shape( const char * name, int expected_bytes, const char * where, const T & pinned, WriteFn write_fn, ReadFn read_fn )
 {
     alignas( 8 ) static uint8_t buffer[256 + 8];  // + 8: read buffer allocations extend 8 bytes past the data
     alignas( 8 ) static uint8_t twin[256];       // write-only twin: no read slack needed
@@ -151,9 +158,9 @@ static int pin_shape( const char * name, int expected_bytes, const T & pinned, W
     check( write_fn( ws, in ) );
     ws.Flush();
     const int64_t bytes = ws.GetBytesProcessed();
-    printf( "%-14s %3lld bytes on the wire (BENCH-STANDARD.md §1.3 says %d)\n",
-            name, (long long) bytes, expected_bytes );
-    check( bytes == expected_bytes );   // §1.3's table vs the generated code — the goldens win
+    printf( "%-14s %3lld bytes on the wire (%s says %d)\n",
+            name, (long long) bytes, where, expected_bytes );
+    check( bytes == expected_bytes );   // the documented claim vs the generated code — the goldens win
     check( golden_wire( name, buffer, bytes ) );
 
     T out;
@@ -173,11 +180,17 @@ int main()
     static_assert( BenchIntsMaxBits == 110, "§1.3: BenchInts is 110 bits" );
     static_assert( BenchBitsMaxBits == 156, "§1.3: BenchBits is 156 bits" );
     static_assert( BenchMixedMaxBits == 168, "§1.3: BenchMixed is 168 bits" );
+    // worst case includes the 181 bits of untaken branch bodies; the pinned
+    // all-defaults wire is 1629 bits = 204 bytes (RealWorld.schema header)
+    static_assert( realworld::RealPacketMaxBits == 1810, "RealWorld.schema: RealPacket worst case is 1810 bits" );
 
-    if ( pin_shape( "bench_packet", 49, pin_bench_packet(), WriteBenchPacket, ReadBenchPacket ) ) return 1;
-    if ( pin_shape( "bench_ints", 14, pin_bench_ints(), WriteBenchInts, ReadBenchInts ) ) return 1;
-    if ( pin_shape( "bench_bits", 20, pin_bench_bits(), WriteBenchBits, ReadBenchBits ) ) return 1;
-    if ( pin_shape( "bench_mixed", 21, pin_bench_mixed(), WriteBenchMixed, ReadBenchMixed ) ) return 1;
+    if ( pin_shape( "bench_packet", 49, "BENCH-STANDARD.md §1.3", pin_bench_packet(), WriteBenchPacket, ReadBenchPacket ) ) return 1;
+    if ( pin_shape( "bench_ints", 14, "BENCH-STANDARD.md §1.3", pin_bench_ints(), WriteBenchInts, ReadBenchInts ) ) return 1;
+    if ( pin_shape( "bench_bits", 20, "BENCH-STANDARD.md §1.3", pin_bench_bits(), WriteBenchBits, ReadBenchBits ) ) return 1;
+    if ( pin_shape( "bench_mixed", 21, "BENCH-STANDARD.md §1.3", pin_bench_mixed(), WriteBenchMixed, ReadBenchMixed ) ) return 1;
+
+    // §1.7: the realistic snapshot — the all-defaults instance IS the pin
+    if ( pin_shape( "real_packet", 204, "RealWorld.schema", realworld::RealPacket{}, realworld::WriteRealPacket, realworld::ReadRealPacket ) ) return 1;
 
     printf( "OK\n" );
     return 0;

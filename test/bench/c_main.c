@@ -1,20 +1,25 @@
 /*
-    The bench-corpus C verifier (BENCH-STANDARD.md §6 step 6).
+    The bench-corpus C verifier (BENCH-STANDARD.md §6 step 6, §1.7).
 
-    Writes the four pinned family `rt` instances through the schema-GENERATED
+    Writes the pinned bench-corpus instances through the schema-GENERATED
     C code (generated/bench/c) and byte-checks them against the wire goldens
-    testdata/wire/bench_*.bin that test/bench/main.cpp (the C++ producer)
-    pinned, then round-trips write -> read -> re-write -> memcmp. This proves
-    the generated C compiles under the repo's strict C99 flags AND that the C
-    emitter produces the same bytes as the C++ emitter for the bench corpus.
+    testdata/wire/{bench_*,real_packet}.bin that test/bench/main.cpp (the C++
+    producer) pinned, then round-trips write -> read -> re-write -> memcmp.
+    This proves the generated C compiles under the repo's strict C99 flags
+    AND that the C emitter produces the same bytes as the C++ emitter for the
+    bench corpus.
 
-    Pinned values: test/bench/main.cpp, transcribed exactly.
+    Pinned values: test/bench/main.cpp, transcribed exactly. RealPacket's pin
+    is the ALL-DEFAULTS instance — new_real_packet() serialized unmodified
+    (the four branch gates carry their declared defaults; 1629 bits = 204
+    bytes ride).
 */
 
 #include <stdio.h>
 #include <string.h>
 
 #include "BenchWire.h"
+#include "RealWorldWire.h"
 
 #define check( condition )                                                    \
     do                                                                        \
@@ -50,8 +55,9 @@ static int golden_wire( const char * name, const serialize_uint8_t * data, int b
     return 1;
 }
 
-/* one expansion per shape: write pinned -> golden -> read -> re-write -> memcmp */
-#define PIN_SHAPE( NAME, TYPE, WRITE, READ, EXPECTED_BYTES )                   \
+/* one expansion per shape: write pinned -> golden -> read -> re-write ->
+   memcmp; WHERE names the document claiming EXPECTED_BYTES */
+#define PIN_SHAPE( NAME, TYPE, WRITE, READ, EXPECTED_BYTES, WHERE )            \
     static int pin_##NAME( const TYPE * pinned )                               \
     {                                                                          \
         static serialize_uint64_t buffer_storage[32 + 1];  /* + 1 word = 8 bytes: read buffer allocations extend 8 bytes past the data */ \
@@ -69,8 +75,8 @@ static int golden_wire( const char * name, const serialize_uint8_t * data, int b
         check( WRITE( &ws, pinned ) );                                         \
         serialize_write_flush( &ws );                                          \
         bytes = serialize_write_bytes_processed( &ws );                        \
-        printf( "%-14s %3d bytes on the wire (BENCH-STANDARD.md §1.3 says %d)\n", \
-                #NAME, bytes, EXPECTED_BYTES );                                \
+        printf( "%-14s %3d bytes on the wire (%s says %d)\n",                  \
+                #NAME, bytes, WHERE, EXPECTED_BYTES );                         \
         check( bytes == EXPECTED_BYTES );                                      \
         check( golden_wire( #NAME, buffer, bytes ) );                          \
         serialize_read_stream_init( &rs, buffer, bytes );                      \
@@ -83,10 +89,11 @@ static int golden_wire( const char * name, const serialize_uint8_t * data, int b
         return 0;                                                              \
     }
 
-PIN_SHAPE( bench_packet, BenchPacket, write_bench_packet, read_bench_packet, 49 )
-PIN_SHAPE( bench_ints, BenchInts, write_bench_ints, read_bench_ints, 14 )
-PIN_SHAPE( bench_bits, BenchBits, write_bench_bits, read_bench_bits, 20 )
-PIN_SHAPE( bench_mixed, BenchMixed, write_bench_mixed, read_bench_mixed, 21 )
+PIN_SHAPE( bench_packet, BenchPacket, write_bench_packet, read_bench_packet, 49, "BENCH-STANDARD.md §1.3" )
+PIN_SHAPE( bench_ints, BenchInts, write_bench_ints, read_bench_ints, 14, "BENCH-STANDARD.md §1.3" )
+PIN_SHAPE( bench_bits, BenchBits, write_bench_bits, read_bench_bits, 20, "BENCH-STANDARD.md §1.3" )
+PIN_SHAPE( bench_mixed, BenchMixed, write_bench_mixed, read_bench_mixed, 21, "BENCH-STANDARD.md §1.3" )
+PIN_SHAPE( real_packet, RealPacket, write_real_packet, read_real_packet, 204, "RealWorld.schema" )
 
 int main( void )
 {
@@ -96,6 +103,7 @@ int main( void )
     BenchInts ints;
     BenchBits bits;
     BenchMixed mixed;
+    RealPacket real;
 
     memset( &packet, 0, sizeof( packet ) );
     packet.a = -37;
@@ -149,10 +157,14 @@ int main( void )
     mixed.timestamp = 0x123456789ABCULL;
     mixed.weapon = 15;
 
+    /* §1.7: the all-defaults instance IS the pin (gate defaults included) */
+    real = new_real_packet();
+
     if ( pin_bench_packet( &packet ) ) return 1;
     if ( pin_bench_ints( &ints ) ) return 1;
     if ( pin_bench_bits( &bits ) ) return 1;
     if ( pin_bench_mixed( &mixed ) ) return 1;
+    if ( pin_real_packet( &real ) ) return 1;
 
     printf( "OK\n" );
     return 0;
