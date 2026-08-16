@@ -1,0 +1,55 @@
+# schema bench results
+# date: 2026-08-16T06:21:24Z
+# host: macbook  arch: arm64  os: Darwin 25.5.0
+# cpu: Apple M2
+# build: Release
+# cpp compiler: Apple clang version 21.0.0 (clang-2100.1.1.101)
+# cpp flags: -O3 -DNDEBUG -DSERIALIZE_RELEASE -DBENCH_OPT="O3" -std=c++17 -Wall -Wextra -Werror -ffp-contract=off -fno-rtti -Igenerated/cpp -Itest -I/private/tmp/claude-501/-Users-glenn-rowan-working-rowan-new/2a3ae0b6-7621-44cd-a9b7-ab68b69bf06c/scratchpad/serialize
+# c compiler: Apple clang version 21.0.0 (clang-2100.1.1.101)
+# c flags: -O3 -DNDEBUG -DBENCH_OPT="O3" -std=c99 -Wall -Wextra -Werror -Igenerated/c -I/private/tmp/claude-501/-Users-glenn-rowan-working-rowan-new/2a3ae0b6-7621-44cd-a9b7-ab68b69bf06c/scratchpad/serialize.c (serialize.c compiled in, no LTO)
+# go: go version go1.26.5 darwin/arm64 (go run, default optimized build)
+# rust: cargo 1.97.1 (c980f4866 2026-06-30); rustc 1.97.1 (8bab26f4f 2026-07-14) (cargo run --release: opt-level 3, no LTO)
+# dotnet: 10.0.302 (dotnet run -c Release, workstation GC)
+# pinning: none
+# noise: phase4 Air-on-power airport window; qemu x2 ~11% foreign at start; serialize.js port campaign stopped for the window
+# schema commit: 99120c2
+# serialize commit: b6f4c2c (main) [build-verified: /private/tmp/claude-501/-Users-glenn-rowan-working-rowan-new/2a3ae0b6-7621-44cd-a9b7-ab68b69bf06c/scratchpad/serialize]
+# serialize.c commit: b80b838 (main) [build-verified: /private/tmp/claude-501/-Users-glenn-rowan-working-rowan-new/2a3ae0b6-7621-44cd-a9b7-ab68b69bf06c/scratchpad/serialize.c]
+# serialize.go commit: 6b28072 (main) [build-verified: /Users/glenn/rowan-working/serialize.go]
+# serialize.rs commit: eac4d71 (main) [build-verified: /Users/glenn/rowan-working/serialize.rs]
+# serialize.cs commit: d8393ad (main) [build-verified: /Users/glenn/rowan-working/serialize.cs]
+lang,bench,path,iters,bytes_per_op,runs,median_msgs_per_sec,min_msgs_per_sec,max_msgs_per_sec,median_mb_per_sec,spread_pct,corpus_id,family,linkage,checks,opt,inline
+cpp,rigidbody_moving,write,24000000,105,7,57685218,56557176,57935330,5776.36,2.39,6b118770d85af4f6,gen,hdr,removed,O3,unknown
+cpp,rigidbody_moving,read,24000000,105,7,87418199,85626137,89210294,8753.69,4.10,6b118770d85af4f6,gen,hdr,removed,O3,unknown
+cpp,rigidbody_at_rest,write,32000000,57,7,101552940,100119348,103466547,5520.36,3.30,6b118770d85af4f6,gen,hdr,removed,O3,unknown
+cpp,rigidbody_at_rest,read,32000000,57,7,132617384,130119737,135215172,7209.01,3.84,6b118770d85af4f6,gen,hdr,removed,O3,unknown
+cpp,chat,write,48000000,13,7,94994804,93510471,95269545,1177.72,1.85,6b118770d85af4f6,gen,hdr,removed,O3,unknown
+cpp,chat,read,48000000,13,7,134503357,132967473,134715366,1667.54,1.30,6b118770d85af4f6,gen,hdr,removed,O3,unknown
+cpp,test,write,192000000,6,7,755042712,751562207,758702481,4320.39,0.95,6b118770d85af4f6,gen,hdr,removed,O3,unknown
+cpp,test,read,192000000,6,7,1027241976,1018154884,1033520560,5877.93,1.50,6b118770d85af4f6,gen,hdr,removed,O3,unknown
+cpp,inputpacket,write,16000000,61,7,65189623,64972553,65581375,3792.35,0.93,6b118770d85af4f6,gen,hdr,removed,O3,unknown
+cpp,inputpacket,read,16000000,61,7,45761796,45629594,46382929,2662.15,1.65,6b118770d85af4f6,gen,hdr,removed,O3,unknown
+cpp,shipcreate,write,32000000,28,7,96173087,92759393,97786560,2568.10,5.23,6b118770d85af4f6,gen,hdr,removed,O3,unknown
+cpp,shipcreate,read,32000000,28,7,111131032,107706060,114271312,2967.52,5.91,6b118770d85af4f6,gen,hdr,removed,O3,unknown
+cpp,ship_shallow,write,32000000,28,7,116230658,114898902,117871770,3103.69,2.56,6b118770d85af4f6,gen,hdr,removed,O3,unknown
+cpp,ship_shallow,read,32000000,28,7,121260177,120870894,123861598,3238.00,2.47,6b118770d85af4f6,gen,hdr,removed,O3,unknown
+cpp,probe_header,write,256000000,10,7,1006500973,846354436,1027010682,9598.74,17.95,6b118770d85af4f6,gen,hdr,removed,O3,unknown
+cpp,probe_header,read,256000000,10,7,1355870866,1327948627,1365582175,12930.59,2.78,6b118770d85af4f6,gen,hdr,removed,O3,unknown
+cpp,probebits,write,128000000,26,7,183826543,180394045,186626271,4558.08,3.39,6b118770d85af4f6,gen,hdr,removed,O3,unknown
+cpp,probebits,read,128000000,26,7,737141418,729136649,764152493,18277.81,4.75,6b118770d85af4f6,gen,hdr,removed,O3,unknown
+cpp,probearray,write,20000000,47,7,71167486,69672048,72643689,3189.92,4.18,6b118770d85af4f6,gen,hdr,removed,O3,unknown
+cpp,probearray,read,20000000,47,7,76907153,75336152,78552860,3447.19,4.18,6b118770d85af4f6,gen,hdr,removed,O3,unknown
+cpp,testdata,write,8000000,92,7,27415886,26927180,27595009,2405.42,2.44,6b118770d85af4f6,gen,hdr,removed,O3,unknown
+cpp,testdata,read,8000000,92,7,27273157,23524269,27343529,2392.89,14.00,6b118770d85af4f6,gen,hdr,removed,O3,unknown
+cpp,message_batch,write,26214400,25,7,90504024,84707255,96325858,2157.78,12.84,6b118770d85af4f6,gen,hdr,removed,O3,unknown
+cpp,message_batch,read,26214400,25,7,77416049,76381719,78280867,1845.74,2.45,6b118770d85af4f6,gen,hdr,removed,O3,unknown
+cpp,bench_packet,write,32000000,49,7,82765051,82418131,82895989,3867.61,0.58,6b118770d85af4f6,rt,hdr,removed,O3,unknown
+cpp,bench_packet,read,32000000,49,7,111308074,111049899,111667883,5201.43,0.56,6b118770d85af4f6,rt,hdr,removed,O3,unknown
+cpp,bench_ints,write,40000000,14,7,183630982,182633425,184241021,2451.74,0.88,6b118770d85af4f6,rt,hdr,removed,O3,unknown
+cpp,bench_ints,read,40000000,14,7,188488348,187172229,189288294,2516.59,1.12,6b118770d85af4f6,rt,hdr,removed,O3,unknown
+cpp,bench_bits,write,48000000,20,7,185241197,183573985,185684678,3533.20,1.14,6b118770d85af4f6,rt,hdr,removed,O3,unknown
+cpp,bench_bits,read,48000000,20,7,228143298,219690149,234107657,4351.49,6.32,6b118770d85af4f6,rt,hdr,removed,O3,unknown
+cpp,bench_mixed,write,40000000,21,7,150759380,150006492,151381904,3019.28,0.91,6b118770d85af4f6,rt,hdr,removed,O3,unknown
+cpp,bench_mixed,read,40000000,21,7,184452392,182500346,184715522,3694.06,1.20,6b118770d85af4f6,rt,hdr,removed,O3,unknown
+cpp,bitpacker,write,24576,65518,7,59942,59733,60012,3745.32,0.47,6b118770d85af4f6,bits,hdr,removed,O3,unknown
+cpp,bitpacker,read,24576,65518,7,92240,92151,92376,5763.42,0.24,6b118770d85af4f6,bits,hdr,removed,O3,unknown
