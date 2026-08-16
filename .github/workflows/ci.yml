@@ -92,6 +92,45 @@ jobs:
       - name: fuzz seeds
         run: go test ./internal/fuzz/
 
+      # The per-port inline-budget gate (issue #25; BENCH-STANDARD.md §4.3).
+      # Every runtime's throughput depends on the serialize chain inlining
+      # end to end, and until this gate nothing warned when it stopped. The
+      # adversarial selftest runs FIRST and everywhere: the verdict machinery
+      # must prove it CAN fail (out-of-line -> partial, cold never counted
+      # hot, the 4dc9b62 namespace-join false-full caught) before any leg's
+      # green is trusted. Then each language leg rebuilds, re-derives the
+      # §4.2 verdict from the current tree, and fails the job if any hot-path
+      # partial:N exceeds bench/inline-budget.txt. The go leg's remark scan
+      # runs under `go build -a` and REFUSES if it prints nothing — without
+      # -a the build cache reads as a false clean bill of health (§4.1).
+      # Accepted deliberately: the gate also fires on compiler-version
+      # changes, and telling those apart from regressions is manual.
+      - name: inline gate — adversarial selftest
+        run: bench/tools/inline-gate.sh selftest
+
+      - name: inline gate — go leg
+        run: bench/tools/inline-gate.sh leg go
+
+      # The c/cpp/rust verdict passes are otool/arm64-shaped (§4.1); on
+      # linux inline-verdict.sh refuses honestly rather than faking a full,
+      # so these legs — and the JitDisasm-shaped cs leg — gate on the macOS
+      # runner only.
+      - name: inline gate — cpp leg
+        if: runner.os == 'macOS'
+        run: bench/tools/inline-gate.sh leg cpp
+
+      - name: inline gate — c leg
+        if: runner.os == 'macOS'
+        run: bench/tools/inline-gate.sh leg c
+
+      - name: inline gate — rust leg
+        if: runner.os == 'macOS'
+        run: bench/tools/inline-gate.sh leg rust
+
+      - name: inline gate — cs leg
+        if: runner.os == 'macOS'
+        run: bench/tools/inline-gate.sh leg cs
+
   # Lifted from serialize.go's ci.yml (issue #31): the estate's largest Go
   # codebase had no Go linting at all while serialize.go ran six gates. The
   # job is self-contained; .golangci.yml carries the (ported) config.

@@ -52,36 +52,43 @@ set -u
 
 cd "$(dirname "$0")/../.."      # repo root
 
-if [ $# -ne 2 ]; then
-    echo "usage: bench/tools/inline-verdict.sh <c|cpp|go|rust|cs> <results.csv>" >&2
-    exit 1
-fi
-LANG_ARG="$1"
-CSV="$2"
-[ -f "$CSV" ] || { echo "no such csv: $CSV" >&2; exit 1; }
-LEDGER="${CSV%.csv}.inline"
-VD="build/bench/inline-verdict-$LANG_ARG"
-rm -rf "$VD" && mkdir -p "$VD"
-
-# §3.5 provenance mechanics: the same SERIALIZE* resolution and override
-# build arguments (RS_CARGO_ARGS, GO_MODFILE_ARG) the measured pass used —
-# the shadow/remark rebuilds below must compile against the SAME runtime
-# checkout as the measured binary, or the remarks describe the wrong code.
-. bench/tools/runtime-paths.sh
-runtime_paths_init
-
-# The native-binary parsing below is otool/arm64-shaped (bl/blr). On a
-# machine without otool (the x86-64 EPYC box) the C/C++/Rust verdicts would
-# silently count zero and fake a full — refuse instead; inline stays unknown
-# there until the objdump/x86 adapter is written.
-case "$LANG_ARG" in
-c|cpp|rust)
-    command -v otool >/dev/null 2>&1 || {
-        echo "inline-verdict: no otool — the arm64/otool parser would fake 'full' on this host; refusing (inline stays unknown)" >&2
+# Library mode (INLINE_VERDICT_LIB=1): a sourcing script — the inline-gate's
+# adversarial fixtures (issue #25) — gets the counting/verdict machinery
+# DEFINED but nothing executed: no arguments, no CSV, no toolchain probing,
+# and a `return` before the per-language pass below. The fixtures must attack
+# THIS code, not a copy of it — a copy would drift and prove nothing.
+if [ -z "${INLINE_VERDICT_LIB:-}" ]; then
+    if [ $# -ne 2 ]; then
+        echo "usage: bench/tools/inline-verdict.sh <c|cpp|go|rust|cs> <results.csv>" >&2
         exit 1
-    }
-    ;;
-esac
+    fi
+    LANG_ARG="$1"
+    CSV="$2"
+    [ -f "$CSV" ] || { echo "no such csv: $CSV" >&2; exit 1; }
+    LEDGER="${CSV%.csv}.inline"
+    VD="build/bench/inline-verdict-$LANG_ARG"
+    rm -rf "$VD" && mkdir -p "$VD"
+
+    # §3.5 provenance mechanics: the same SERIALIZE* resolution and override
+    # build arguments (RS_CARGO_ARGS, GO_MODFILE_ARG) the measured pass used —
+    # the shadow/remark rebuilds below must compile against the SAME runtime
+    # checkout as the measured binary, or the remarks describe the wrong code.
+    . bench/tools/runtime-paths.sh
+    runtime_paths_init
+
+    # The native-binary parsing below is otool/arm64-shaped (bl/blr). On a
+    # machine without otool (the x86-64 EPYC box) the C/C++/Rust verdicts would
+    # silently count zero and fake a full — refuse instead; inline stays unknown
+    # there until the objdump/x86 adapter is written.
+    case "$LANG_ARG" in
+    c|cpp|rust)
+        command -v otool >/dev/null 2>&1 || {
+            echo "inline-verdict: no otool — the arm64/otool parser would fake 'full' on this host; refusing (inline stays unknown)" >&2
+            exit 1
+        }
+        ;;
+    esac
+fi
 
 # bench -> generated per-op entry stems: <snake for c/rust> <Camel for cpp/go/cs>
 BENCH_MAP='rigidbody_moving rigid_body RigidBody
@@ -110,9 +117,14 @@ bitpacker bitpacker bitpacker Bitpacker'
 
 # ---- per-symbol transitive runtime-call counting ----
 # stdin: "sym:" header lines and "addr <bl|blr> target" instruction lines
-# (otool -tv shape; the go/cs branches translate into it). RT = runtime
+# (otool -tv shape; the go/cs branches translate into it). RTPAT = runtime
 # target regex, HELPER = generated helper regex, COLD = cold-target regex
-# ("" = no cold signal in this language; everything stays hot). Output, one
+# ("" = no cold signal in this language; everything stays hot). The awk-side
+# name is RTPAT, never RT: RT is a BUILT-IN in gawk (the record terminator,
+# overwritten on every record read), so an awk variable named RT is silently
+# clobbered to "\n" after the first line and every runtime call counts zero —
+# exactly the false-full direction this machinery exists to refuse. Ubuntu CI
+# runs gawk as awk; the selftest caught this live. Output, one
 # line per symbol (zero counts included, so an entry that fully inlined the
 # runtime is a recorded 0, not an absence), plus the raw helper edges
 # (perop_for divides unroll back out of the timed loops with them):
@@ -125,19 +137,19 @@ bitpacker bitpacker bitpacker Bitpacker'
 # propagated. A hot helper propagates BOTH its hot and its cold counts to its
 # callers. A target matching no signal counts hot: never guess cold.
 count_calls() {
-    awk -v RT="$1" -v HELPER="$2" -v COLD="${3:-}" '
+    awk -v RTPAT="$1" -v HELPER="$2" -v COLD="${3:-}" '
         function iscold(t) { return COLD != "" && t ~ COLD }
         /^[^ \t].*:$/ { sym = substr($0, 1, length($0) - 1); syms[sym] = 1; next }
         $2 == "bl" && sym != "" {
             t = $3
             # cold first: a compiler-split chunk of a helper matches both
             # HELPER and COLD, and must count cold, never become a hot edge
-            if (iscold(t)) { if (t ~ RT || t ~ HELPER) coldn[sym]++ }
-            # helper next: the cs branch passes a catch-all RT, and helper
+            if (iscold(t)) { if (t ~ RTPAT || t ~ HELPER) coldn[sym]++ }
+            # helper next: the cs branch passes a catch-all RTPAT, and helper
             # calls must become edges, never direct counts (the regexes are
             # disjoint for every other language)
             else if (t ~ HELPER) edge[sym SUBSEP t]++
-            else if (t ~ RT) direct[sym]++
+            else if (t ~ RTPAT) direct[sym]++
         }
         $2 == "blr" && sym != "" { indirect[sym]++ }
         END {
@@ -166,8 +178,12 @@ verdict_of() {
 }
 
 # the c/cpp/rust split-suffix cold signal (Mach-O's .text.unlikely): clang
-# names the outlined cold path of foo `foo.cold` or `foo.cold.N`
-COLD_SPLIT='\.cold(\.[0-9]+)?$'
+# names the outlined cold path of foo `foo.cold` or `foo.cold.N`. The dot is
+# a bracket expression, not \.: this value crosses awk -v, where POSIX leaves
+# backslash escapes undefined — gawk strips the backslash to a bare `.` (any
+# char) with a warning, while mawk/BSD keep `\.` — [.] means the same literal
+# dot in every dialect.
+COLD_SPLIT='[.]cold([.][0-9]+)?$'
 
 # rust: cold fns scanned from the runtime source the bench built against —
 # a `#[cold]` ATTRIBUTE LINE (anchored: a comment merely mentioning #[cold]
@@ -361,6 +377,11 @@ backfill() {
     echo "backfilled $LANG_ARG rows in $CSV" >&2
 }
 
+# Library mode ends here: every function above is defined, nothing below runs.
+if [ -n "${INLINE_VERDICT_LIB:-}" ]; then
+    return 0 2>/dev/null || exit 0
+fi
+
 case "$LANG_ARG" in
 
 # --------------------------------------------------------------- C and C++
@@ -426,9 +447,9 @@ c|cpp)
         selftest_join "$VD/shadow-disasm.txt" "$VD/shadow-counts.txt" "$HELPER" || exit 1
 
         # every remaining runtime/helper call site in the shadow text
-        awk -v RT="$RT" -v HELPER="$HELPER" '
+        awk -v RTPAT="$RT" -v HELPER="$HELPER" '
             /^[^ \t].*:$/ { next }
-            $2 == "bl" && ($3 ~ RT || $3 ~ HELPER) { print $1, $3 }
+            $2 == "bl" && ($3 ~ RTPAT || $3 ~ HELPER) { print $1, $3 }
         ' "$VD/shadow-disasm.txt" > "$VD/addrs.txt"
 
         # drift guard, as cpp: hot+cold totals must match the measured binary
@@ -475,7 +496,7 @@ c|cpp)
             true
         }
 
-        awk -v RT="$RT" -v COLD="$COLD_SPLIT" -v addrsf="$VD/addrs.txt" -v countsf="$VD/shadow-counts.txt" \
+        awk -v RTPAT="$RT" -v COLD="$COLD_SPLIT" -v addrsf="$VD/addrs.txt" -v countsf="$VD/shadow-counts.txt" \
             -v W1="$W1" -v W2="$W2" -v RE="$RE" -v B1="$B1" -v B2="$B2" -v B3="$B3" -v B4="$B4" '
             BEGIN {
                 while ((getline line < addrsf) > 0) { na++; split(line, a, " "); target[na] = a[2] }
@@ -535,7 +556,7 @@ c|cpp)
                 # contribute their own hot and cold transitive counts
                 if (t ~ COLD) {
                     c[bench "," path] += 1
-                } else if (t ~ RT) {
+                } else if (t ~ RTPAT) {
                     n[bench "," path] += 1
                 } else {
                     n[bench "," path] += tot[t] + 0
@@ -608,9 +629,9 @@ c|cpp)
         selftest_join "$VD/shadow-disasm.txt" "$VD/shadow-counts.txt" "$HELPER" || exit 1
 
         # every remaining runtime/helper call site in the shadow text
-        awk -v RT="$RT" -v HELPER="$HELPER" '
+        awk -v RTPAT="$RT" -v HELPER="$HELPER" '
             /^[^ \t].*:$/ { next }
-            $2 == "bl" && ($3 ~ RT || $3 ~ HELPER) { print $1, $3 }
+            $2 == "bl" && ($3 ~ RTPAT || $3 ~ HELPER) { print $1, $3 }
         ' "$VD/shadow-disasm.txt" > "$VD/addrs.txt"
 
         # drift guard: the shadow must have the same call structure as the
@@ -661,7 +682,7 @@ c|cpp)
             true
         }
 
-        awk -v RT="$RT" -v COLD="$COLD_SPLIT" -v addrsf="$VD/addrs.txt" -v countsf="$VD/shadow-counts.txt" \
+        awk -v RTPAT="$RT" -v COLD="$COLD_SPLIT" -v addrsf="$VD/addrs.txt" -v countsf="$VD/shadow-counts.txt" \
             -v benchf="$VD/benchlines.txt" \
             -v W1="$W1" -v W2="$W2" -v RE="$RE" -v B1="$B1" -v B2="$B2" -v B3="$B3" -v B4="$B4" '
             BEGIN {
@@ -728,7 +749,7 @@ c|cpp)
                 # its own hot and cold transitive counts separately
                 if (t ~ COLD) {
                     c[bench "," path] += 1
-                } else if (t ~ RT) {
+                } else if (t ~ RTPAT) {
                     n[bench "," path] += 1
                 } else {
                     n[bench "," path] += tot[t] + 0
@@ -818,8 +839,8 @@ go)
     # COLD is empty: gc has no cold attribute, no section split, and no
     # remark that marks a callee cold — §4.2's hot-default applies to every
     # Go call, and the ledger note below says so out loud.
-    count_calls 'serialize%2ego\.|mas-bandwidth\/serialize' '^example\.|^main\.' '' < "$VD/calls.txt" > "$VD/counts.txt"
-    selftest_join "$VD/calls.txt" "$VD/counts.txt" '^example\.|^main\.' || exit 1
+    count_calls 'serialize%2ego[.]|mas-bandwidth/serialize' '^example[.]|^main[.]' '' < "$VD/calls.txt" > "$VD/counts.txt"
+    selftest_join "$VD/calls.txt" "$VD/counts.txt" '^example[.]|^main[.]' || exit 1
 
     # remarks: go build -a -gcflags=-m=2 — -a is MANDATORY (see header)
     ( cd bench/go && go build $GO_MODFILE_ARG -a -gcflags=all=-m=2 -o /dev/null . 2> "$OLDPWD/$VD/remarks.txt" ) || true
@@ -856,7 +877,7 @@ go)
     echo "$BENCH_MAP" | while read -r bench snake camel; do
         for path in write read; do
             Cap="$(echo "$path" | awk '{print toupper(substr($0,1,1)) substr($0,2)}')"
-            n="$(count_for "^example\\.${Cap}${camel}\$")"
+            n="$(count_for "^example[.]${Cap}${camel}\$")"
             if [ "$n" -ge 0 ]; then
                 echo "$bench $path $(verdict_of "$n") $n 0" >> "$VD/verdicts.txt"
             else
@@ -869,7 +890,7 @@ go)
     echo "$RT_MAP" | while read -r bench snake lower camel; do
         for path in write read; do
             Cap="$(echo "$path" | awk '{print toupper(substr($0,1,1)) substr($0,2)}')"
-            n="$(perop_for "^main\\.${lower}${Cap}Loop\$")"
+            n="$(perop_for "^main[.]${lower}${Cap}Loop\$")"
             if [ "$n" -ge 0 ]; then
                 echo "$bench $path $(verdict_of "$n") $n 0" >> "$VD/verdicts.txt"
             elif [ "$n" -eq -2 ]; then
@@ -1021,7 +1042,7 @@ cs)
     # COLD is empty: JitDisasm names no cold blocks or targets on this
     # surface — §4.2's hot-default applies to every C# call, said out loud
     # in the section header below.
-    count_calls '.' '(Example\.Schema|Program):' '' < "$VD/calls.txt" > "$VD/counts.txt"
+    count_calls '.' '(Example[.]Schema|Program):' '' < "$VD/calls.txt" > "$VD/counts.txt"
     # ('.' after the helper carve-out: every non-helper bl counts — Serialize.*
     # methods, JIT helpers, BCL — plus blr via the indirect column, folded in
     # below, because §4.1 counts them all for C#. selftest_join is not run
@@ -1048,7 +1069,7 @@ cs)
     echo "$BENCH_MAP" | while read -r bench snake camel; do
         for path in write read; do
             Cap="$(echo "$path" | awk '{print toupper(substr($0,1,1)) substr($0,2)}')"
-            n="$(count_for "^Example\\.Schema:${Cap}${camel}\$")"
+            n="$(count_for "^Example[.]Schema:${Cap}${camel}\$")"
             if [ "$n" -ge 0 ]; then
                 echo "$bench $path $(verdict_of "$n") $n 0" >> "$VD/verdicts.txt"
             else
