@@ -1,0 +1,50 @@
+# serialize (C++) own bench — shipped CMake Release (-O3, strict fp), era cfixes-air 2026-08-17, MacBook Air M2, AC power
+# serialize 119f98f (main); 3 invocations, best-of-5 within each
+
+[serialize benchmark]
+
+bitpacker write:    3846.6 MB/s
+bitpacker read:     5956.9 MB/s
+stream write:       3850.8 MB/s  (82.4 M packets/s)
+stream read:        6515.0 MB/s  (139.4 M packets/s)
+stream measure:                 846.6 M packets/s
+
+int packet   (runtime):       write:  174.7 M packets/s   read:  546.7 M packets/s
+int packet   (compile time):  write:  113.9 M packets/s   read:  541.7 M packets/s
+bits packet  (runtime):       write:  522.0 M packets/s   read:  776.7 M packets/s
+bits packet  (compile time):  write:  136.1 M packets/s   read:  756.9 M packets/s
+mixed packet (runtime):       write:  145.9 M packets/s   read:  570.2 M packets/s
+mixed packet (compile time):  write:   86.4 M packets/s   read:  572.5 M packets/s
+
+
+[serialize benchmark]
+
+bitpacker write:    3858.9 MB/s
+bitpacker read:     5969.0 MB/s
+stream write:       3875.8 MB/s  (82.9 M packets/s)
+stream read:        6344.7 MB/s  (135.8 M packets/s)
+stream measure:                 874.9 M packets/s
+
+int packet   (runtime):       write:  172.6 M packets/s   read:  532.0 M packets/s
+int packet   (compile time):  write:  114.9 M packets/s   read:  538.0 M packets/s
+bits packet  (runtime):       write:  502.2 M packets/s   read:  758.9 M packets/s
+bits packet  (compile time):  write:  132.4 M packets/s   read:  736.2 M packets/s
+mixed packet (runtime):       write:  148.0 M packets/s   read:  585.8 M packets/s
+mixed packet (compile time):  write:   86.6 M packets/s   read:  573.6 M packets/s
+
+
+[serialize benchmark]
+
+bitpacker write:    3842.7 MB/s
+bitpacker read:     5944.6 MB/s
+stream write:       3852.2 MB/s  (82.4 M packets/s)
+stream read:        6375.4 MB/s  (136.4 M packets/s)
+stream measure:                 834.9 M packets/s
+
+int packet   (runtime):       write:  171.3 M packets/s   read:  531.6 M packets/s
+int packet   (compile time):  write:  114.3 M packets/s   read:  532.4 M packets/s
+bits packet  (runtime):       write:  525.2 M packets/s   read:  777.0 M packets/s
+bits packet  (compile time):  write:  134.2 M packets/s   read:  756.8 M packets/s
+mixed packet (runtime):       write:  146.6 M packets/s   read:  573.5 M packets/s
+mixed packet (compile time):  write:   86.2 M packets/s   read:  568.6 M packets/s
+
