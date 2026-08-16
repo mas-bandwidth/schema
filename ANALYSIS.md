@@ -271,3 +271,123 @@ branches are the artifact; the PRs are the review surface.
 - serialize branch `read-spine-demand` @ `86f9690` — pushed; PR mas-bandwidth/serialize#74 (DRAFT, default-off).
 - serialize.c — untouched; rows 3/4/5 ride on already-released v1.3.0.
 - This file is the Phase-4 deliverable and stays out of every repo's main.
+
+---
+
+# TIMED RESULTS — 2026-08-16, the Air-on-power airport window
+
+Glenn opened the window in person (external power, serialize.js port campaign
+stopped). New era for this host: **these rows never ratio against the M3 Ultra
+tables or battery-era Air rows** (§5.3 rule 8, verified refusing). All six legs
+are flag-flip builds of the MERGED mains: schema `99120c2` (#47), serialize
+`b6f4c2c` (#74), serialize.c `b80b838` (v1.3.0 line). CSVs:
+`bench/results/phase4-air/2026-08-16-arm64-macbook-air-power-<leg>-O3-pass.csv`.
+
+**Pass integrity**: 7 interleaved rounds × 6 legs, §2.4 order fixed, all 42
+leg-runs green, golden gate OK every invocation (`corpus_id 6b118770d85af4f6`).
+Control legs (same cpp binary, same inode): **delta 0.3%, window OK**. Load
+1-min 2.3→3.0, max 5.2, two qemu VMs (~11% each) present throughout — recorded,
+not excused. Spread policy: **zero rows over 40%** (nothing invalid, no reruns);
+noisy (>15%) rows are named where quoted. Build sanity re-proven on merged
+mains: `ReadMessage` symbol present OFF / absent ARMED; zero
+`OUTLINED_FUNCTION_*` in every leg including `-flto`.
+
+## The batch-read A/B (the Phase-4 question)
+
+`message_batch read`, M msgs/s across 7 rounds (median / max, spread):
+
+| leg | median | max | spread |
+|---|---:|---:|---:|
+| cpp-off | 78.4 | 80.8 | 12.2% |
+| cpp-A (generated demand) | 96.5 | 98.7 | 4.5% |
+| cpp-B (runtime spine demand) | 67.7 | 69.0 | **18.3% (noisy)** |
+| cpp-AB | **107.0** | **110.9** | 14.5% |
+| c-main | **116.0** | **120.6** | 7.9% |
+| c-lto (diagnostic) | 83.5 | 88.9 | 17.4% (noisy) |
+
+- Within this pass, C at cpp-off is **67% of C++'s time** — the Studio
+  phenomenon (70%) reproduces on the Air, same direction, same order.
+- **cand-A: +23% median.** Flattening the generated dispatcher into the timed
+  loop — C's shape — recovers most of the deficit alone.
+- **cand-AB: +36% median.** C's lead shrinks from ~33 points (max-based:
+  1 − 80.8/120.6) to **~8 points** (1 − 110.9/120.6; medians agree at 8.4%).
+- **cand-B ALONE regresses batch read −14%** (noisy row, but median 67.7 sits
+  below cpp-off's min 71.3 — the direction is real). Yet B on top of A adds
+  +11%. The demands are NOT additive: force-inlining the runtime read spine
+  into a still-out-of-line `ReadMessage` bloats the dispatcher body and pays
+  I-cache/register pressure without removing the boundary; once A flattens the
+  boundary, the same demand pays. The switches staying separate is vindicated.
+- **§1.7 dilution, named**: message_batch is ≈74% bulk-copy bits (Chat 25% +
+  Block 10% mix), so every percentage above is DILUTED by memcpy traffic that
+  no dispatch change can move. The undiluted dispatch-bound effect is larger
+  than these numbers; the planned RealPacket row (~1600 bits, ~220 small
+  fields, 0% bulk) measures it undiluted.
+
+## The c-lto surprise — the packaging attribution, confirmed from the other side
+
+`c-lto` batch read collapses to 83.5/88.9 — **C loses nearly its whole lead
+under LTO and lands at cpp-off's level** (78.4/80.8). Removing the TU boundary
+gives C the C++-like whole-program inlining economics — decayed frequencies
+propagate, the outlined-entry reset disappears — and the lead disappears with
+it. This is the strongest single piece of evidence that C's batch-read lead
+was packaging economics (last-call-to-static flattening + fresh-entry
+frequencies), not superior generated code: same source, same contract, LTO
+flag flips the packaging, the lead evaporates. (Mechanism not remark-attributed
+tonight — LTO remark plumbing isn't wired; this is a measured claim with a
+named hypothesis, and a follow-up if anyone needs the remark-level proof.)
+
+## The per-row candidate mechanics, confirmed exactly as the remarks predicted
+
+`testdata read` (row 8 — the five stranded runtime sites): off 27.0 → A 38.6
+(+43%) → AB **53.0 (+96%)**, spread 3.8% armed. `bench_packet read` (row 7):
+off 110.7 → A 110.6 (unmoved — A does not touch the rt path, exactly as
+predicted) → AB 130.2 (+18%, B is the active ingredient). The compile-only
+attribution called which switch moves which row, and the clock agreed on every
+one.
+
+**Read-purity check**: across all 17 write rows, AB-vs-off mean |Δ| = 0.9%,
+max 4.1% (on the 39%-spread noisy batch-write row) — the read switches leave
+writes alone.
+
+## Rows 3/4/5 — the v1.3.0 re-measure (within this pass, c-main vs cpp-off)
+
+- **bitpacker write: exact parity** (medians 59507 vs 59340 passes/s, 100%).
+  PERFORMANCE.md's O3 2.6x flip is GONE — v1.3.0's checkless writes released
+  the unroll the remarks showed. **Row 5 CLOSED (RESOLVED-UPSTREAM,
+  timing-confirmed).**
+- **gen write corpus median: ~126% of C++** (Studio v1.2.0 era: 163%);
+  batch write 110% (cpp row noisy at 39% spread). **Rows 3/4 substantially
+  closed by v1.3.0**; the residual is concentrated in small-message rows
+  (`test write` 318%, `probe_header write` 405%) where C's out-of-line per-op
+  entries (`write_test` cost=270 vs threshold 250 — the marginal refusal) pay
+  call overhead per tiny message. That is a NEW ledger row: a generated-C
+  small-writer demand candidate, not staged tonight.
+- **bitpacker read: C 306%** — row 6's named contract attribution stands
+  (rolled loop, checked reads).
+- gen read corpus median: ~140% (Studio: 142%) — row 2's named attribution
+  (read-validation contract + packaging) reproduces on this host.
+
+## VERDICT (per the staged decision rule)
+
+**Partial (b), dominant share (b).** The batch-read gap was three named terms:
+
+1. **The dispatcher boundary** (C's last-call-to-static flattening vs C++'s
+   cold-held `linkonce_odr` call) — the largest term, recovered by cand-A and
+   confirmed from the C side by the c-lto collapse.
+2. **The runtime read-spine strands** — real, large on strand-heavy rows
+   (testdata +96%), composing on batch only after A removes the boundary.
+3. **A residual ~8 points** (110.9 vs 120.6 max; 8.4% median-based) with C
+   still ahead while carrying contract checks — unattributed tonight, now a
+   named open row. Candidate causes for the next remarks pass: the diluting
+   74% bulk mix interacting with C's `memcpy`-shape, `read_chat`'s different
+   inline state inside the two flattened loops, and layout luck (±20%
+   historical on this bench). The RealPacket row will separate dispatch from
+   bulk before anyone chases this further.
+
+**The switches are validated as candidates**: AB never regresses any read row
+in this pass, leaves writes untouched, and the outliner stayed silent
+everywhere. Default-ON is a separate decision with a real code-size trade —
+`always_inline` on a 1000-cost dispatcher into every consumer call site is not
+free — and belongs to the family with this data in hand, plus the undiluted
+RealPacket row.
+
