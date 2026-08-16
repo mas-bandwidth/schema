@@ -42,7 +42,7 @@ jobs:
           git clone --quiet --depth 1 https://github.com/mas-bandwidth/serialize.rs.git serialize.rs
           git clone --quiet --depth 1 https://github.com/mas-bandwidth/serialize.cs.git serialize.cs
 
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v7
         with:
           go-version: '1.26'
           cache: false
