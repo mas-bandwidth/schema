@@ -68,9 +68,14 @@ import * as realworld from "../../generated/bench/js/realworld/RealWorld.js";
 // guarantees unit-wide name uniqueness, so the merge cannot collide
 const ex = { ...enums, ...types, ...messages, ...wire, ...objects };
 
-// ---- §3.5 runtime resolution: the sibling checkout, overridable ----
+// ---- §3.5 runtime resolution: the sibling checkout, overridable. A
+// relative SERIALIZE_JS resolves against the REPO ROOT, not this process's
+// cwd — the same semantics the Makefile and run.sh give every SERIALIZE_*
+// path — so `SERIALIZE_JS=../serialize.js` means the same checkout from any
+// invocation directory. ----
+const repoRoot = fileURLToPath(new URL("../../", import.meta.url));
 const runtimeRoot = process.env.SERIALIZE_JS
-  ? new URL(pathToFileURL(path.resolve(process.env.SERIALIZE_JS)).href + "/")
+  ? new URL(pathToFileURL(path.resolve(repoRoot, process.env.SERIALIZE_JS)).href + "/")
   : new URL("../../../serialize.js/", import.meta.url);
 
 if (process.argv.includes("--print-runtime")) {

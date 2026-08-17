@@ -44,6 +44,7 @@ runtime_paths_init() {
     SERIALIZE_GO="${SERIALIZE_GO:-../serialize.go}"
     SERIALIZE_RS="${SERIALIZE_RS:-../serialize.rs}"
     SERIALIZE_CS="${SERIALIZE_CS:-../serialize.cs}"
+    SERIALIZE_JS="${SERIALIZE_JS:-../serialize.js}"
 
     RT_OVR="build/bench/runtime-override"
     ABS_ROOT="$(pwd -P)"
@@ -52,6 +53,7 @@ runtime_paths_init() {
     ABS_SERIALIZE_GO="$(rp_dir "$SERIALIZE_GO" || true)"
     ABS_SERIALIZE_RS="$(rp_dir "$SERIALIZE_RS" || true)"
     ABS_SERIALIZE_CS="$(rp_dir "$SERIALIZE_CS" || true)"
+    ABS_SERIALIZE_JS="$(rp_dir "$SERIALIZE_JS" || true)"
 
     # effective build arguments — empty means "the checked-in default,
     # byte-identical to a run with no env vars set"
@@ -133,6 +135,17 @@ EOF
     if [ -n "$ABS_SERIALIZE_CS" ] && [ "$ABS_SERIALIZE_CS" != "$def" ]; then
         CS_PROP_ARGS="--property:SerializeCsRoot=$ABS_SERIALIZE_CS"
         CS_MSBUILD_ARGS="-p:SerializeCsRoot=$ABS_SERIALIZE_CS"
+    fi
+
+    # ---- js override: the runner consumes SERIALIZE_JS itself (its runtime
+    # import is parameterized; generated JS never imports the runtime). The
+    # ABSOLUTE path rides so the leg's cwd (bench/js) cannot reinterpret a
+    # root-relative setting; empty at the default path, so a default run's
+    # environment is byte-identical to a run with no env vars set ----
+    JS_ENV=""
+    def="$(rp_dir ../serialize.js || true)"
+    if [ -n "$ABS_SERIALIZE_JS" ] && [ "$ABS_SERIALIZE_JS" != "$def" ]; then
+        JS_ENV="SERIALIZE_JS=$ABS_SERIALIZE_JS"
     fi
 }
 
@@ -239,6 +252,25 @@ verify_runtime() {
         done <<EOF
 $items
 EOF
+        echo "$got"
+        ;;
+
+    js)
+        [ -f bench/js/main.mjs ] || { echo "js: runner not landed" >&2; return 2; }
+        command -v node >/dev/null 2>&1 || { echo "js: no node" >&2; return 2; }
+        want="$ABS_SERIALIZE_JS"
+        [ -n "$want" ] || {
+            echo "js: SERIALIZE_JS=$SERIALIZE_JS does not exist — cannot prove the recorded path" >&2
+            return 1; }
+        # --print-runtime is the runner realpathing the runtime module node
+        # will actually import for it — the toolchain's own resolution, never
+        # this script's intent — under the exact environment the leg runs with
+        got="$(cd bench/js && env $JS_ENV node main.mjs --print-runtime 2>/dev/null)"
+        got="$(rp_dir "$got" || true)"
+        if [ -z "$got" ] || [ "$got" != "$want" ]; then
+            echo "js: the runner resolves serialize.js to '${got:-<unresolvable>}' but the preamble would record SERIALIZE_JS=$SERIALIZE_JS ($want)" >&2
+            return 1
+        fi
         echo "$got"
         ;;
 

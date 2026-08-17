@@ -14,7 +14,7 @@
 #                 pathological debug regressions are visible)
 #   --out FILE    results CSV (default bench/results/<date>-<arch>-<host>.csv)
 #   --compiler    C++ compiler (default: $CXX, else c++)
-#   --only LANG   run a single language leg (c|cpp|go|rust|cs). For shared boxes
+#   --only LANG   run a single language leg (c|cpp|go|rust|cs|js). For shared boxes
 #                 under one-profile-at-a-time discipline: a driver runs the
 #                 legs serially with quiet-window checks between them. Each
 #                 leg's CSV carries the full preamble; measurement code and
@@ -36,9 +36,10 @@
 #                 ../serialize, same as the Makefile)
 #   SERIALIZE_C   path to the serialize.c runtime checkout (default
 #                 ../serialize.c, same as the Makefile)
-#   SERIALIZE_GO / SERIALIZE_RS / SERIALIZE_CS
-#                 the go/rust/cs runtime checkouts (defaults ../serialize.go,
-#                 ../serialize.rs, ../serialize.cs) — recorded in the preamble
+#   SERIALIZE_GO / SERIALIZE_RS / SERIALIZE_CS / SERIALIZE_JS
+#                 the go/rust/cs/js runtime checkouts (defaults ../serialize.go,
+#                 ../serialize.rs, ../serialize.cs, ../serialize.js) — recorded
+#                 in the preamble
 #                 (§3.5: every row records the runtime commit its leg was
 #                 built against) AND fed to the builds: an override
 #                 materializes generated manifests / a go -modfile / an
@@ -87,8 +88,8 @@ if [ -n "$ROUND" ]; then
     RUNNER_ARGS="--csv --round $ROUND"
 fi
 case "$ONLY" in
-    ""|c|cpp|go|rust|cs) ;;
-    *) echo "unknown --only language: $ONLY (c|cpp|go|rust|cs)" >&2; exit 1 ;;
+    ""|c|cpp|go|rust|cs|js) ;;
+    *) echo "unknown --only language: $ONLY (c|cpp|go|rust|cs|js)" >&2; exit 1 ;;
 esac
 
 # §3.5 provenance mechanics: sets the SERIALIZE* defaults, materializes the
@@ -130,6 +131,7 @@ elif [ -x /opt/homebrew/opt/rustup/bin/cargo ]; then
     RUST_VERSION="$(/opt/homebrew/opt/rustup/bin/cargo --version | head -1); $(/opt/homebrew/opt/rustup/bin/rustc --version | head -1)"
 fi
 DOTNET_VERSION="$(dotnet --version 2>/dev/null | head -1 || true)"
+NODE_VERSION="$(node --version 2>/dev/null | head -1 || true)"
 
 # Release flags: the schema repo's own flags (-std=c++17 -Wall -Wextra -Werror
 # -ffp-contract=off) plus the serialize repo's Release bench configuration
@@ -202,6 +204,7 @@ emit_preamble() {
         echo "# go: ${GO_VERSION:-not present} (go run, default optimized build)"
         echo "# rust: ${RUST_VERSION:-not present} (cargo run --release: opt-level 3, no LTO)"
         echo "# dotnet: ${DOTNET_VERSION:-not present} (dotnet run -c Release, workstation GC)"
+        echo "# node: ${NODE_VERSION:-not present} (NODE_ENV=production — serialize.js's caller-trust release mode; the runner records the mode that ran in its checks column)"
         echo "# pinning: $PIN_DESC"
         echo "# noise: ${BENCH_NOISE:-unlabelled}"
         echo "# schema commit: $(git rev-parse --short HEAD 2>/dev/null || echo unknown)"
@@ -217,6 +220,7 @@ emit_preamble() {
         echo "# serialize.go commit: $(commit_of "$SERIALIZE_GO") ${PROV_GO:-}"
         echo "# serialize.rs commit: $(commit_of "$SERIALIZE_RS") ${PROV_RUST:-}"
         echo "# serialize.cs commit: $(commit_of "$SERIALIZE_CS") ${PROV_CS:-}"
+        echo "# serialize.js commit: $(commit_of "$SERIALIZE_JS") ${PROV_JS:-}"
     } >> "$OUT"
 }
 
@@ -249,6 +253,7 @@ prov_verify() {
         go)   PROV_GO="$resolved" ;;
         rust) PROV_RUST="$resolved" ;;
         cs)   PROV_CS="$resolved" ;;
+        js)   PROV_JS="$resolved" ;;
     esac
 }
 # A language whose leg does NOT run in this invocation cannot misrecord what
@@ -278,7 +283,7 @@ if [ -n "$ONLY" ]; then
         [ "$_lang" != "$ONLY" ] && prov_note "$_lang"
     done
 else
-    for _lang in cpp c go rust cs; do prov_verify "$_lang"; done
+    for _lang in cpp c go rust cs js; do prov_verify "$_lang"; done
 fi
 
 : > "$OUT"
@@ -383,7 +388,29 @@ if [ -z "$ONLY" ] || [ "$ONLY" = cs ]; then
     fi
 fi
 
+# ---- JavaScript (lands with the serialize.js port) ----
+if [ -z "$ONLY" ] || [ "$ONLY" = js ]; then
+    if [ -f bench/js/main.mjs ]; then
+        if command -v node >/dev/null 2>&1; then
+            echo "== js: run ==" >&2
+            # NODE_ENV=production: the release leg — serialize.js forks its
+            # checked/production modes at module load, and the runner records
+            # the mode that ran in its checks column (production = contract).
+            # $JS_ENV: empty at the default path; the §3.5 SERIALIZE_JS
+            # override otherwise (already verified by the provenance guard).
+            ( cd bench/js && $PIN env NODE_ENV=production $JS_ENV node main.mjs $RUNNER_ARGS ) >> "$OUT"
+        else
+            echo "SKIP js: runner present but no node" >&2
+        fi
+    else
+        echo "SKIP js: runner not landed yet (bench/js/main.mjs — see bench/README.md)" >&2
+    fi
+fi
+
 # ---- inline verdict pass (§4.1/§4.2): backfill the inline column ----
+# js is absent from this list DELIBERATELY: the verdict is a per-compiled-
+# language disassembly pass and a JIT leg has no AOT artifact to walk —
+# js rows keep inline=unknown, which correctly refuses their ratios.
 if [ "$INLINE" = 1 ]; then
     for lang in cpp c go rust cs; do
         if { [ -z "$ONLY" ] || [ "$ONLY" = "$lang" ]; } && grep -q "^$lang," "$OUT" 2>/dev/null; then

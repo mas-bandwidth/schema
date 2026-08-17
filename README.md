@@ -152,7 +152,7 @@ roadmap, not in the box.
 |---|---|
 | **[USAGE.md](USAGE.md)** | Every language feature, with the code it generates. Start here. |
 | **[WIRES.md](WIRES.md)** | The two wires, tables, reflection, relocatable storage. |
-| **[PERFORMANCE.md](PERFORMANCE.md)** | Generated-code benchmarks across the five languages. |
+| **[PERFORMANCE.md](PERFORMANCE.md)** | Generated-code benchmarks — published passes cover five languages; the JavaScript leg is wired and rides the next driver pass. |
 | **[SPEC.md](SPEC.md)** | The normative reference — grammar, wire law, every edge case. |
 | **[COMPARISON.md](COMPARISON.md)** | The same message in schema, Cap'n Proto, Protobuf and FlatBuffers — 28 vs 52 vs 56 vs 72 bytes, measured, with a script to re-run it. |
 | **[FAQ.md](FAQ.md)** | Isn't this just FlatBuffers / Protobuf / Cap'n Proto? And other blunt questions. |
