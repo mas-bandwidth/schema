@@ -214,7 +214,14 @@ A runner is a standalone program in `bench/<lang>/` that:
   full C/C++ row set including `real_packet` (`generated/bench/js/realworld`
   already rides `make test`). No alloc note: Node exposes no per-thread
   allocation counter, so the reuse discipline is structural (persistent
-  holders, stream `reset()`, pre-bounded variant views).
+  holders, stream `reset()`, pre-bounded variant views). The gen-family rows
+  measure the FLAT tier (`codec=flat`, §5.1) — THE js path, per-call,
+  golden-gated and cross-validated against the runtime tier (bytes, fields,
+  verdicts, 64 variants) before any timing; the runtime-call generated rows
+  ride as labeled supplementary rows (`codec=runtime`), and `ship_shallow` /
+  `message_batch` are runtime-only in v1 (object views; a continuous
+  multi-message bitstream). The `rt` and `bits` families measure the
+  serialize.js library itself and carry no codec column.
 
 If a runner or its toolchain is missing, `run.sh` prints `SKIP <lang>`
 with the reason.

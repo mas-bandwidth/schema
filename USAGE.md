@@ -505,13 +505,46 @@ avoid allocation.
 Table-wire parity since v1.5.0: codecs are `table_write_x` / `table_read_x`,
 following Rust naming.
 
-**JavaScript** — ES modules, zero dependencies, targeting
-[serialize.js](https://github.com/mas-bandwidth/serialize.js). Number storage
-for widths of 32 bits or fewer, BigInt for 64 and 128. Generated code never
-imports the runtime — every wire call is a method on the stream you pass in —
-and inherits the runtime's checked/production modes for free (the fork is
-load-time, in the runtime). Message wire only: the table wire has no
-JavaScript backend yet.
+**JavaScript** — ES modules, zero dependencies, Number storage for widths of
+32 bits or fewer, BigInt for 64 and 128. Two codecs are generated over the
+same classes, selected per call site by import path:
+
+The **flat tier** (`WireFlat.js`, emitted beside every `Wire.js`) is the
+production packet path — the fastest correct implementation, which is the one
+we use. The serialize.js bitpacker is inlined at every field with constant
+widths and masks, zero function calls; it imports nothing, runs on caller-owned
+buffers, and measures 8–10x the runtime tier (within a few x of native C):
+
+```js
+import { ShipCreate } from "./Wire.js";
+import { WriteShipCreateFlat, ReadShipCreateFlat, FLAT_READ_SLACK } from "./WireFlat.js";
+import { ShipCreateMaxBytes } from "./Wire.js";
+
+const buf = new Uint8Array(ShipCreateMaxBytes);        // write: MaxBytes suffices
+const view = new DataView(buf.buffer);
+const bytes = WriteShipCreateFlat(ship, view);          // bytes written, or -1 (checked refusal)
+
+const rbuf = new Uint8Array(bytes + FLAT_READ_SLACK);   // read: 8 bytes of slack past the payload
+rbuf.set(buf.subarray(0, bytes));                       // (copy exactly-sized receive buffers in)
+const ok = ReadShipCreateFlat(out, new DataView(rbuf.buffer), bytes * 8);
+```
+
+Reads validate in every mode; writes fork checked/production once at module
+load on `NODE_ENV` (bundlers tree-shake the checked writer out of production
+bundles). Messages also get batch entries (`Write<Name>FlatArray` /
+`Read<Name>FlatArray` — back-to-back packets, the whole loop in one call) and
+the flat dispatch pair `WriteMessageFlat` / `ReadMessageFlat`.
+
+The **runtime tier** (`Wire.js` + [serialize.js](https://github.com/mas-bandwidth/serialize.js)
+streams) is the diagnostic and reference surface: sticky latched errors that
+say which operation failed and why, `MeasureStream`, per-op checked
+granularity, and the only tier for object views. Both tiers emit identical
+bytes for identical values — a standing CI gate — so the debugging story is
+one import away: re-read a failing buffer through the runtime tier and read
+`stream.error`. Message wire only: the table wire has no JavaScript backend
+yet. Everything measured so far is node/V8; the flat modules are pure spec'd
+ECMAScript with no node APIs, but browser-engine gates and numbers are still
+owed before browser claims.
 
 All six are generated from the same IR and compared against each other in CI
 on every push. The wire is bit-packed, so the property being checked is
