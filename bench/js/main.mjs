@@ -11,6 +11,20 @@
 // rt family into a second module would force them through an export surface
 // the other runners do not have.
 //
+// TWO GENERATED CODECS ride this runner (BENCH-STANDARD.md §5.1 codec
+// column, 2026-08-18): the gen-family rows measure the FLAT tier
+// (codec=flat) — THE js path under the ruling ("whichever correct
+// implementation is fastest is the one we use for JavaScript") — per-call,
+// §3.2's cross-language-comparable shape, each leg golden-gated AND
+// cross-validated against the runtime tier (bytes, fields, verdicts, 64
+// variants) before any timing. The runtime-call generated rows ride beside
+// them as labeled supplementary rows (codec=runtime); two surfaces stay
+// runtime-only in v1 and are marked so: ship_shallow (object views) and
+// message_batch (a continuous multi-message bitstream — flat packets are
+// byte-aligned per packet by construction). Flat rows carry no runtime
+// version: the flat modules import nothing, and the preamble's schema
+// commit is their whole provenance (§3.5).
+//
 // Language-specific discipline:
 //   - the LCG is the C bench's uint64 LCG carried in two 32-bit lanes, the
 //     exact generator serialize.js's own bench/bench.js authored: BigInt
@@ -64,9 +78,22 @@ import * as wire from "../../generated/js/Wire.js";
 import * as objects from "../../generated/js/Objects.js";
 import * as realworld from "../../generated/bench/js/realworld/RealWorld.js";
 
+// THE js path: the flat tier (the 2026-08-18 ruling — whichever correct
+// implementation is fastest is the one we use for JavaScript). The flat
+// modules import no runtime; their rows carry codec=flat and the schema
+// commit in the preamble is their whole provenance (§3.5). The runtime-call
+// generated rows ride beside them as labeled supplementary rows
+// (codec=runtime) so the compat tier stays observable; they never stand as
+// the js number.
+import * as typesFlat from "../../generated/js/TypesFlat.js";
+import * as messagesFlat from "../../generated/js/MessagesFlat.js";
+import * as wireFlat from "../../generated/js/WireFlat.js";
+import * as realworldFlat from "../../generated/bench/js/realworld/RealWorldFlat.js";
+
 // one namespace over the unit, the way Go sees package example — the checker
 // guarantees unit-wide name uniqueness, so the merge cannot collide
 const ex = { ...enums, ...types, ...messages, ...wire, ...objects };
+const exFlat = { ...typesFlat, ...messagesFlat, ...wireFlat };
 
 // ---- §3.5 runtime resolution: the sibling checkout, overridable. A
 // relative SERIALIZE_JS resolves against the REPO ROOT, not this process's
@@ -144,7 +171,10 @@ function flushCsv() {
   }
   const id = corpusId();
   for (const r of gCsvRows) {
-    process.stdout.write(`${r.row},${id},${r.family},${CsvSuffix}\n`);
+    // the §5.1 codec column is appended only on rows that carry one (the
+    // generated-tier rows: flat is THE js path, runtime is supplementary)
+    const codec = r.codec ? `,${r.codec}` : "";
+    process.stdout.write(`${r.row},${id},${r.family},${CsvSuffix}${codec}\n`);
   }
 }
 
@@ -278,10 +308,11 @@ function stats(rates) {
   };
 }
 
-function report(bench, path_, iters, bytesPerOp, s, family) {
+function report(bench, path_, iters, bytesPerOp, s, family, codec = "") {
   const mbps = (s.median * bytesPerOp) / (1024.0 * 1024.0);
+  const tag = codec ? ` [${codec}]` : "";
   process.stderr.write(
-    `${bench.padEnd(18)} ${path_.padEnd(5)} ${(s.median / 1e6).toFixed(2).padStart(10)} M msg/s ` +
+    `${(bench + tag).padEnd(18)} ${path_.padEnd(5)} ${(s.median / 1e6).toFixed(2).padStart(10)} M msg/s ` +
       `${mbps.toFixed(1).padStart(10)} MB/s   (min ${(s.min / 1e6).toFixed(2)}, max ${(s.max / 1e6).toFixed(2)}, ` +
       `spread ${s.spread.toFixed(1)}%)\n`
   );
@@ -291,15 +322,181 @@ function report(bench, path_, iters, bytesPerOp, s, family) {
         `js,${bench},${path_},${iters},${bytesPerOp},${gNumRuns},` +
         `${s.median.toFixed(0)},${s.min.toFixed(0)},${s.max.toFixed(0)},${mbps.toFixed(2)},${s.spread.toFixed(2)}`,
       family,
+      codec,
     });
   }
 }
 
+// deepEqual is the cross-tier field comparison (the test legs' helper): the
+// flat oracle holds reads FIELD-identical to the runtime tier, not just
+// byte-identical on re-write.
+function deepEqual(a, b) {
+  if (a === b) {
+    return true;
+  }
+  if (a instanceof Uint8Array && b instanceof Uint8Array) {
+    return bytesEqual(a, b);
+  }
+  if (Array.isArray(a) && Array.isArray(b)) {
+    return a.length === b.length && a.every((v, i) => deepEqual(v, b[i]));
+  }
+  if (a !== null && b !== null && typeof a === "object" && typeof b === "object") {
+    const keys = Object.keys(a);
+    return keys.length === Object.keys(b).length && keys.every((k) => deepEqual(a[k], b[k]));
+  }
+  return false;
+}
+
 // --------------------------------------------------------------------------
-// the per-message benchmark driver
+// the per-message benchmark drivers. benchMessageFlat measures THE js path
+// (the flat tier, codec=flat); benchMessage measures the runtime-call
+// generated tier, riding as labeled supplementary rows (codec=runtime) —
+// and alone for the surfaces flat does not cover in v1 (the object views'
+// ship_shallow, and message_batch, whose continuous multi-message bitstream
+// is a runtime-tier stream shape: flat packets are byte-aligned per packet
+// by construction).
 // --------------------------------------------------------------------------
 
-function benchMessage(name, golden, iters, pinned, writeFn, readFn, varyFn) {
+// benchMessageFlat: the §1.5 oracle gate binds the flat leg to the corpus
+// pins AND to the runtime tier (the probe's cross-validation, standing:
+// bytes, fields and verdicts, pinned instance plus all 64 variants) before
+// any timing. Timed loops are per-call flat functions — §3.2's comparable
+// call shape — over caller-owned DataViews, no stream object at all.
+function benchMessageFlat(name, golden, iters, pinned, writeFn, readFn, flatWriteFn, flatReadFn, varyFn) {
+  const base = pinned;
+  const gView = new DataView(gBuffer.buffer);
+
+  // oracle 1: the pinned instance through the FLAT writer matches its golden
+  const bytesPerOp = flatWriteFn(base, gView);
+  if (bytesPerOp < 0) {
+    fail(name, "flat write of pinned instance refused");
+    return;
+  }
+  if (golden !== null && !checkGolden(golden, gBuffer.subarray(0, bytesPerOp))) {
+    failed = true;
+    return;
+  }
+
+  // oracle 2: cross-tier — the runtime tier writes identical bytes
+  {
+    const ws = new WriteStream(gTwin);
+    if (!writeFn(ws, base)) {
+      fail(name, "runtime write of pinned instance failed");
+      return;
+    }
+    ws.flush();
+    if (ws.bytesProcessed() !== bytesPerOp || !bytesEqual(gTwin.subarray(0, bytesPerOp), gBuffer.subarray(0, bytesPerOp))) {
+      fail(name, "flat and runtime tiers disagree on pinned bytes");
+      return;
+    }
+  }
+
+  // oracle 3: flat read is field-identical to the runtime read, and the
+  // flat re-write reproduces the bytes
+  {
+    const flOut = new pinned.constructor();
+    if (!flatReadFn(flOut, gView, bytesPerOp * 8)) {
+      fail(name, "flat read of pinned instance failed");
+      return;
+    }
+    const rtOut = new pinned.constructor();
+    if (!readFn(new ReadStream(gBuffer.subarray(0, bytesPerOp)), rtOut)) {
+      fail(name, "runtime read of pinned instance failed");
+      return;
+    }
+    if (!deepEqual(flOut, rtOut)) {
+      fail(name, "flat and runtime reads disagree on fields");
+      return;
+    }
+    if (flatWriteFn(flOut, new DataView(gTwin.buffer)) !== bytesPerOp ||
+      !bytesEqual(gTwin.subarray(0, bytesPerOp), gBuffer.subarray(0, bytesPerOp))) {
+      fail(name, "flat round-trip bytes differ");
+      return;
+    }
+  }
+
+  // 64 variants: cross-tier equivalence on every one — write bytes, read
+  // fields, read verdicts — and bytes/op constant under variation
+  lcgSeed(1);
+  const variantViews = [];
+  for (let k = 0; k < NumVariants; k++) {
+    lcgStep();
+    varyFn(base);
+    const vview = new DataView(gVariants[k].buffer);
+    if (flatWriteFn(base, vview) !== bytesPerOp) {
+      fail(name, "variation changed bytes/op — vary must keep structure fields fixed");
+      return;
+    }
+    const ws = new WriteStream(gTwin);
+    if (!writeFn(ws, base)) {
+      fail(name, "runtime write of varied instance failed");
+      return;
+    }
+    ws.flush();
+    if (!bytesEqual(gTwin.subarray(0, bytesPerOp), gVariants[k].subarray(0, bytesPerOp))) {
+      fail(name, "flat and runtime tiers disagree on varied bytes");
+      return;
+    }
+    const flOut = new pinned.constructor();
+    const rtOut = new pinned.constructor();
+    const flOk = flatReadFn(flOut, vview, bytesPerOp * 8);
+    const rtOk = readFn(new ReadStream(gVariants[k].subarray(0, bytesPerOp)), rtOut);
+    if (flOk !== rtOk) {
+      fail(name, "flat and runtime read verdicts disagree on a variant");
+      return;
+    }
+    if (!flOk || !deepEqual(flOut, rtOut)) {
+      fail(name, "flat and runtime reads disagree on a variant's fields");
+      return;
+    }
+    variantViews.push(vview);
+  }
+
+  const writeRates = new Array(gNumRuns);
+  const readRates = new Array(gNumRuns);
+
+  // write path: 1 warmup (also the JIT warmup) + NumRuns measured
+  for (let run = -1; run < gNumRuns; run++) {
+    const start = performance.now();
+    for (let i = 0; i < iters; i++) {
+      lcgStep();
+      varyFn(base);
+      const n = flatWriteFn(base, gView);
+      if (n < 0) {
+        fail(name, "flat write refused in loop");
+        return;
+      }
+      gSink = (gSink + n) >>> 0;
+    }
+    const elapsed = (performance.now() - start) / 1000.0;
+    if (run >= 0) {
+      writeRates[run] = iters / elapsed;
+    }
+  }
+
+  // read path: pre-cut DataViews rotate; ONE reused decode instance
+  const outValue = new pinned.constructor();
+  const numBits = bytesPerOp * 8;
+  for (let run = -1; run < gNumRuns; run++) {
+    const start = performance.now();
+    for (let i = 0; i < iters; i++) {
+      if (!flatReadFn(outValue, variantViews[i & (NumVariants - 1)], numBits)) {
+        fail(name, "flat read failed in loop");
+        return;
+      }
+      gSink = (gSink + 1) >>> 0;
+    }
+    const elapsed = (performance.now() - start) / 1000.0;
+    if (run >= 0) {
+      readRates[run] = iters / elapsed;
+    }
+  }
+
+  report(name, "write", iters, bytesPerOp, stats(writeRates), "gen", "flat");
+  report(name, "read", iters, bytesPerOp, stats(readRates), "gen", "flat");
+}
+
+function benchMessage(name, golden, iters, pinned, writeFn, readFn, varyFn, codec = "runtime") {
   // self-check 1: the pinned instance matches its wire golden byte-for-byte
   const base = pinned;
   const ws = new WriteStream(gBuffer);
@@ -398,8 +595,8 @@ function benchMessage(name, golden, iters, pinned, writeFn, readFn, varyFn) {
     }
   }
 
-  report(name, "write", iters, bytesPerOp, stats(writeRates), "gen");
-  report(name, "read", iters, bytesPerOp, stats(readRates), "gen");
+  report(name, "write", iters, bytesPerOp, stats(writeRates), "gen", codec);
+  report(name, "read", iters, bytesPerOp, stats(readRates), "gen", codec);
 }
 
 // --------------------------------------------------------------------------
@@ -924,8 +1121,13 @@ function benchBatch() {
   }
 
   const bytesPerMsg = Math.floor(batchBytes / NumBatchMessages);
-  report("message_batch", "write", totalMsgs, bytesPerMsg, stats(writeRates), "gen");
-  report("message_batch", "read", totalMsgs, bytesPerMsg, stats(readRates), "gen");
+  // codec=runtime: the batch is a CONTINUOUS multi-message bitstream (no
+  // byte alignment between messages) — a runtime-tier stream shape by
+  // construction. Flat packets are byte-aligned per packet; the flat batch
+  // entries measure a different wire and ride only when the §8.2 lever
+  // opens a comparable shape.
+  report("message_batch", "write", totalMsgs, bytesPerMsg, stats(writeRates), "gen", "runtime");
+  report("message_batch", "read", totalMsgs, bytesPerMsg, stats(readRates), "gen", "runtime");
 }
 
 // --------------------------------------------------------------------------
@@ -1682,17 +1884,19 @@ function main() {
   const atRest = pinRigidBodyMoving();
   atRest.AtRest = true;
 
-  benchMessage("rigidbody_moving", "rigidbody_moving", 24000000, pinRigidBodyMoving(), ex.WriteRigidBody, ex.ReadRigidBody, varyRigidBody);
-  benchMessage("rigidbody_at_rest", "rigidbody_at_rest", 32000000, atRest, ex.WriteRigidBody, ex.ReadRigidBody, varyRigidBodyAtRest);
-  benchMessage("chat", "chat", 48000000, pinChat(), ex.WriteChat, ex.ReadChat, varyChat);
-  benchMessage("test", null, 192000000, new ex.Test(), ex.WriteTest, ex.ReadTest, varyTest);
-  benchMessage("inputpacket", "inputpacket", 16000000, pinInputPacket(), ex.WriteInputPacket, ex.ReadInputPacket, varyInputPacket);
-  benchMessage("shipcreate", "shipcreate_flags", 32000000, pinShipCreate(), ex.WriteShipCreate, ex.ReadShipCreate, varyShipCreate);
-  benchMessage("ship_shallow", "ship_shallow", 32000000, pinShipShallow(), ex.WriteShipData_Shallow, ex.ReadShipData_Shallow, varyShipShallow);
-  benchMessage("probe_header", "probe_header", 256000000, pinProbeHeader(), ex.WriteProbeHeader, ex.ReadProbeHeader, varyProbeHeader);
-  benchMessage("probebits", "probebits", 128000000, pinProbeBits(), ex.WriteProbeBits, ex.ReadProbeBits, varyProbeBits);
-  benchMessage("probearray", "probearray", 20000000, pinProbeArray(), ex.WriteProbeArray, ex.ReadProbeArray, varyProbeArray);
-  benchMessage("testdata", "testdata", 8000000, pinTestData(), ex.WriteTestData, ex.ReadTestData, varyTestData);
+  // THE js rows: the flat tier, per-call (§3.2's comparable shape), each
+  // leg bound to the corpus pins AND cross-validated against the runtime
+  // tier (bytes/fields/verdicts, 64 variants) before any timing
+  benchMessageFlat("rigidbody_moving", "rigidbody_moving", 24000000, pinRigidBodyMoving(), ex.WriteRigidBody, ex.ReadRigidBody, exFlat.WriteRigidBodyFlat, exFlat.ReadRigidBodyFlat, varyRigidBody);
+  benchMessageFlat("rigidbody_at_rest", "rigidbody_at_rest", 32000000, atRest, ex.WriteRigidBody, ex.ReadRigidBody, exFlat.WriteRigidBodyFlat, exFlat.ReadRigidBodyFlat, varyRigidBodyAtRest);
+  benchMessageFlat("chat", "chat", 48000000, pinChat(), ex.WriteChat, ex.ReadChat, exFlat.WriteChatFlat, exFlat.ReadChatFlat, varyChat);
+  benchMessageFlat("test", null, 192000000, new ex.Test(), ex.WriteTest, ex.ReadTest, exFlat.WriteTestFlat, exFlat.ReadTestFlat, varyTest);
+  benchMessageFlat("inputpacket", "inputpacket", 16000000, pinInputPacket(), ex.WriteInputPacket, ex.ReadInputPacket, exFlat.WriteInputPacketFlat, exFlat.ReadInputPacketFlat, varyInputPacket);
+  benchMessageFlat("shipcreate", "shipcreate_flags", 32000000, pinShipCreate(), ex.WriteShipCreate, ex.ReadShipCreate, exFlat.WriteShipCreateFlat, exFlat.ReadShipCreateFlat, varyShipCreate);
+  benchMessageFlat("probe_header", "probe_header", 256000000, pinProbeHeader(), ex.WriteProbeHeader, ex.ReadProbeHeader, exFlat.WriteProbeHeaderFlat, exFlat.ReadProbeHeaderFlat, varyProbeHeader);
+  benchMessageFlat("probebits", "probebits", 128000000, pinProbeBits(), ex.WriteProbeBits, ex.ReadProbeBits, exFlat.WriteProbeBitsFlat, exFlat.ReadProbeBitsFlat, varyProbeBits);
+  benchMessageFlat("probearray", "probearray", 20000000, pinProbeArray(), ex.WriteProbeArray, ex.ReadProbeArray, exFlat.WriteProbeArrayFlat, exFlat.ReadProbeArrayFlat, varyProbeArray);
+  benchMessageFlat("testdata", "testdata", 8000000, pinTestData(), ex.WriteTestData, ex.ReadTestData, exFlat.WriteTestDataFlat, exFlat.ReadTestDataFlat, varyTestData);
 
   // real_packet (§1.7): the realistic snapshot — ~93 riding individually
   // serialized small fields, 204 wire bytes, 0% bulk share by bits. The
@@ -1700,7 +1904,29 @@ function main() {
   // defaults (the four branch gates: f012 true, f043 false, f050 true,
   // f074 false) exactly as C++ RealPacket{} does. base_iters sized in the
   // C++ reference (§2.1).
+  benchMessageFlat("real_packet", "real_packet", 8000000, new realworld.RealPacket(), realworld.WriteRealPacket, realworld.ReadRealPacket, realworldFlat.WriteRealPacketFlat, realworldFlat.ReadRealPacketFlat, varyRealPacket);
+
+  // the runtime-call generated tier: labeled supplementary rows
+  // (codec=runtime) so the compat tier's regressions stay visible — never
+  // the js number
+  const atRestRt = pinRigidBodyMoving(); // fresh pin — the flat leg's vary mutated atRest
+  atRestRt.AtRest = true;
+  benchMessage("rigidbody_moving", "rigidbody_moving", 24000000, pinRigidBodyMoving(), ex.WriteRigidBody, ex.ReadRigidBody, varyRigidBody);
+  benchMessage("rigidbody_at_rest", "rigidbody_at_rest", 32000000, atRestRt, ex.WriteRigidBody, ex.ReadRigidBody, varyRigidBodyAtRest);
+  benchMessage("chat", "chat", 48000000, pinChat(), ex.WriteChat, ex.ReadChat, varyChat);
+  benchMessage("test", null, 192000000, new ex.Test(), ex.WriteTest, ex.ReadTest, varyTest);
+  benchMessage("inputpacket", "inputpacket", 16000000, pinInputPacket(), ex.WriteInputPacket, ex.ReadInputPacket, varyInputPacket);
+  benchMessage("shipcreate", "shipcreate_flags", 32000000, pinShipCreate(), ex.WriteShipCreate, ex.ReadShipCreate, varyShipCreate);
+  benchMessage("probe_header", "probe_header", 256000000, pinProbeHeader(), ex.WriteProbeHeader, ex.ReadProbeHeader, varyProbeHeader);
+  benchMessage("probebits", "probebits", 128000000, pinProbeBits(), ex.WriteProbeBits, ex.ReadProbeBits, varyProbeBits);
+  benchMessage("probearray", "probearray", 20000000, pinProbeArray(), ex.WriteProbeArray, ex.ReadProbeArray, varyProbeArray);
+  benchMessage("testdata", "testdata", 8000000, pinTestData(), ex.WriteTestData, ex.ReadTestData, varyTestData);
   benchMessage("real_packet", "real_packet", 8000000, new realworld.RealPacket(), realworld.WriteRealPacket, realworld.ReadRealPacket, varyRealPacket);
+
+  // ship_shallow: an OBJECT-family view — the runtime tier is its only
+  // codec in v1 (flat covers types, messages and dispatch; §8.1 names the
+  // object lever)
+  benchMessage("ship_shallow", "ship_shallow", 32000000, pinShipShallow(), ex.WriteShipData_Shallow, ex.ReadShipData_Shallow, varyShipShallow);
 
   benchBatch();
 

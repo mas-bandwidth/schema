@@ -146,24 +146,32 @@ func aggregateCmd(paths []string) {
 	for _, l := range langs {
 		for _, b := range order {
 			for _, p := range []string{"write", "read"} {
-				k := key{l.key, b, p}
-				a, ok := acc[k]
-				if !ok {
-					continue
+				for _, c := range codecs {
+					k := key{l.key, b, p, c}
+					a, ok := acc[k]
+					if !ok {
+						continue
+					}
+					printed++
+					rates := append([]float64{}, a.rates...)
+					sort.Float64s(rates)
+					n := len(rates)
+					med := median(rates)
+					mn, mx := rates[0], rates[n-1]
+					spread := (mx - mn) / med * 100.0
+					mb := med * float64(a.first.bytes) / (1024.0 * 1024.0)
+					// the codec column is appended only on rows that carry
+					// one (§5.1 append-only: untiered rows stay 17 fields)
+					codecCol := ""
+					if k.codec != "" {
+						codecCol = "," + k.codec
+					}
+					fmt.Printf("%s,%s,%s,%d,%d,%d,%.0f,%.0f,%.0f,%.2f,%.2f,%s,%s,%s,%s,%s,%s%s\n",
+						k.lang, k.bench, k.path, a.first.iters, a.first.bytes, n,
+						med, mn, mx, mb, spread,
+						a.first.corpusID, a.first.family, a.first.linkage,
+						a.first.checks, a.first.opt, a.first.inline, codecCol)
 				}
-				printed++
-				rates := append([]float64{}, a.rates...)
-				sort.Float64s(rates)
-				n := len(rates)
-				med := median(rates)
-				mn, mx := rates[0], rates[n-1]
-				spread := (mx - mn) / med * 100.0
-				mb := med * float64(a.first.bytes) / (1024.0 * 1024.0)
-				fmt.Printf("%s,%s,%s,%d,%d,%d,%.0f,%.0f,%.0f,%.2f,%.2f,%s,%s,%s,%s,%s,%s\n",
-					k.lang, k.bench, k.path, a.first.iters, a.first.bytes, n,
-					med, mn, mx, mb, spread,
-					a.first.corpusID, a.first.family, a.first.linkage,
-					a.first.checks, a.first.opt, a.first.inline)
 			}
 		}
 	}

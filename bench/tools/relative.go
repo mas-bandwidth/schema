@@ -111,13 +111,22 @@ func checksSemantics(v string) string {
 	return "semantics unrecorded — not a §3.4 value"
 }
 
-type key struct{ lang, bench, path string }
+type key struct{ lang, bench, path, codec string }
+
+// codecs is the presentation dimension of the §5.1 codec column: "" for
+// every row whose language ships one codec (all five AOT languages, and the
+// js rt/bits families, which measure the runtime library itself), then the
+// two js generated tiers — flat is THE js path (the 2026-08-18 ruling),
+// runtime rides as labeled supplementary rows.
+var codecs = []string{"", "flat", "runtime"}
 
 type row struct {
 	iters, bytes, runs      int
 	med, mn, mx, mb, spread float64
 	// CSV v2 columns (§5.1). v1 rows carry corpusID "" and inline "unknown".
 	corpusID, family, linkage, checks, opt, inline string
+	// the appended codec column (§5.1, 2026-08-18): "" | "flat" | "runtime"
+	codec string
 
 	file int    // index into the dataset's identities
 	raw  string // the CSV line as loaded, printed verbatim in refusals
@@ -212,8 +221,8 @@ func load(path string) (map[key]row, []string, error) {
 			continue
 		}
 		fs := strings.Split(line, ",")
-		if len(fs) != 11 && len(fs) != 17 {
-			return nil, nil, fmt.Errorf("%s:%d: expected 11 (v1) or 17 (v2) fields, got %d", path, lineNo, len(fs))
+		if len(fs) != 11 && len(fs) != 17 && len(fs) != 18 {
+			return nil, nil, fmt.Errorf("%s:%d: expected 11 (v1), 17 (v2) or 18 (v2 + codec) fields, got %d", path, lineNo, len(fs))
 		}
 		num := func(i int) float64 {
 			v, err := strconv.ParseFloat(strings.TrimSpace(fs[i]), 64)
@@ -229,7 +238,7 @@ func load(path string) (map[key]row, []string, error) {
 			corpusID: "", inline: "unknown", // v1: un-ratioable by §5.3
 			raw: line, line: lineNo,
 		}
-		if len(fs) == 17 {
+		if len(fs) >= 17 {
 			r.corpusID = strings.TrimSpace(fs[11])
 			r.family = strings.TrimSpace(fs[12])
 			r.linkage = strings.TrimSpace(fs[13])
@@ -237,7 +246,10 @@ func load(path string) (map[key]row, []string, error) {
 			r.opt = strings.TrimSpace(fs[15])
 			r.inline = strings.TrimSpace(fs[16])
 		}
-		rows[key{fs[0], fs[1], fs[2]}] = r
+		if len(fs) == 18 {
+			r.codec = strings.TrimSpace(fs[17])
+		}
+		rows[key{fs[0], fs[1], fs[2], r.codec}] = r
 	}
 	return rows, meta, sc.Err()
 }
@@ -304,8 +316,11 @@ func parseIdentity(path string, meta []string) identity {
 				entry = strings.TrimSpace(entry)
 				name, _, _ := strings.Cut(entry, " ")
 				parts := strings.Split(name, "/")
-				if len(parts) == 3 {
-					id.twinSuspect[key{parts[0], parts[1], parts[2]}] = true
+				// lang/bench/path, or lang/bench/path/codec for tiered rows
+				if len(parts) == 4 {
+					id.twinSuspect[key{parts[0], parts[1], parts[2], parts[3]}] = true
+				} else if len(parts) == 3 {
+					id.twinSuspect[key{parts[0], parts[1], parts[2], ""}] = true
 				}
 			}
 		}
@@ -407,6 +422,14 @@ func guardRatio(ds *dataset, ka, kb key, a, b row) []string {
 	// 7. inline unknown on either side
 	if a.inline == "unknown" || b.inline == "unknown" {
 		d = append(d, fmt.Sprintf("inline: A=%q B=%q (a number without an inline verdict is not comparable to one with it)", a.inline, b.inline))
+	}
+	// 10. codec (appended 2026-08-18 with the js flat tier): a runtime-call
+	// generated number and a flat number measure different shipped code —
+	// a ratio across them is a code-change delta wearing a language-delta
+	// costume. "" (a language with one codec, or a pre-codec CSV) never
+	// matches a labeled tier either: the old js rows were runtime-call.
+	if a.codec != b.codec {
+		d = append(d, fmt.Sprintf("codec: A=%q B=%q (different shipped codecs are different measurements)", a.codec, b.codec))
 	}
 	// 8. the source CSVs' cpu lines, or the flag lines for the languages
 	// involved. A MISSING # cpu line refuses too: two absent preambles
@@ -561,7 +584,7 @@ func median(xs []float64) float64 {
 func rel(ds *dataset, lang, path string) (float64, bool) {
 	var ratios []float64
 	for _, b := range corpus {
-		kc, kl := key{reference, b, path}, key{lang, b, path}
+		kc, kl := key{reference, b, path, ""}, key{lang, b, path, ""}
 		c, okc := ds.rows[kc]
 		l, okl := ds.rows[kl]
 		if !okc || !okl || l.mx == 0 {
@@ -619,8 +642,8 @@ func relativeTable(ds *dataset) string {
 		}
 		w, okw := rel(ds, l.key, "write")
 		r, okr := rel(ds, l.key, "read")
-		bw, okbw := mustRatio(ds, key{reference, batch, "write"}, key{l.key, batch, "write"})
-		br, okbr := mustRatio(ds, key{reference, batch, "read"}, key{l.key, batch, "read"})
+		bw, okbw := mustRatio(ds, key{reference, batch, "write", ""}, key{l.key, batch, "write", ""})
+		br, okbr := mustRatio(ds, key{reference, batch, "read", ""}, key{l.key, batch, "read", ""})
 		if !okw || !okr || !okbw || !okbr {
 			out = append(out, fmt.Sprintf("| %s | — | — | — | — |", l.name))
 			continue
@@ -642,23 +665,37 @@ func absoluteTable(ds *dataset) string {
 	for _, b := range order {
 		for _, p := range []string{"write", "read"} {
 			for _, l := range langs {
-				x, ok := ds.rows[key{l.key, b, p}]
-				if !ok {
-					continue
+				for _, c := range codecs {
+					x, ok := ds.rows[key{l.key, b, p, c}]
+					if !ok {
+						continue
+					}
+					langLabel := l.key
+					codecMark := ""
+					if c != "" {
+						langLabel = l.key + " (" + c + ")"
+						if c == "runtime" {
+							codecMark = "supplementary (codec=runtime)"
+						}
+					}
+					if x.spread > spreadInvalid {
+						fmt.Fprintf(os.Stderr, "INVALID: %s %s %s spread %.1f%% > %.0f%% — row does not publish (§2.3)\n",
+							langLabel, b, p, x.spread, spreadInvalid)
+						out = append(out, fmt.Sprintf("| %s | %s | %s | %d | — | — | — | %.1f | INVALID (spread > %.0f%%) |",
+							b, p, langLabel, x.bytes, x.spread, spreadInvalid))
+						continue
+					}
+					mark := codecMark
+					if x.spread > spreadNoisy {
+						if mark != "" {
+							mark += ", noisy"
+						} else {
+							mark = "noisy"
+						}
+					}
+					out = append(out, fmt.Sprintf("| %s | %s | %s | %d | %.2f | %.2f | %.2f | %.1f | %s |",
+						b, p, langLabel, x.bytes, x.mx/1e6, x.med/1e6, x.mn/1e6, x.spread, mark))
 				}
-				if x.spread > spreadInvalid {
-					fmt.Fprintf(os.Stderr, "INVALID: %s %s %s spread %.1f%% > %.0f%% — row does not publish (§2.3)\n",
-						l.key, b, p, x.spread, spreadInvalid)
-					out = append(out, fmt.Sprintf("| %s | %s | %s | %d | — | — | — | %.1f | INVALID (spread > %.0f%%) |",
-						b, p, l.key, x.bytes, x.spread, spreadInvalid))
-					continue
-				}
-				mark := ""
-				if x.spread > spreadNoisy {
-					mark = "noisy"
-				}
-				out = append(out, fmt.Sprintf("| %s | %s | %s | %d | %.2f | %.2f | %.2f | %.1f | %s |",
-					b, p, l.key, x.bytes, x.mx/1e6, x.med/1e6, x.mn/1e6, x.spread, mark))
 			}
 		}
 	}
@@ -678,18 +715,24 @@ func abTable(dsa, dsb *dataset, lang, labelA, labelB string) string {
 	comb := &dataset{rows: map[key]row{}, ids: append(append([]identity{}, dsa.ids...), dsb.ids...)}
 	for _, bench := range order {
 		for _, p := range []string{"write", "read"} {
-			k := key{lang, bench, p}
-			ra, oka := dsa.rows[k]
-			rb, okb := dsb.rows[k]
-			if !oka || !okb || ra.mx == 0 {
-				continue
+			for _, c := range codecs {
+				k := key{lang, bench, p, c}
+				ra, oka := dsa.rows[k]
+				rb, okb := dsb.rows[k]
+				if !oka || !okb || ra.mx == 0 {
+					continue
+				}
+				rb.file += len(dsa.ids)
+				if d := guardRatio(comb, k, k, ra, rb); len(d) > 0 {
+					refuseRatio(comb, k, k, ra, rb, d)
+				}
+				label := bench
+				if c != "" {
+					label = bench + " (" + c + ")"
+				}
+				out = append(out, fmt.Sprintf("| %s | %s | %.2f | %.2f | **%.2fx** | %.1f | %.1f |",
+					label, p, ra.mx/1e6, rb.mx/1e6, rb.mx/ra.mx, ra.spread, rb.spread))
 			}
-			rb.file += len(dsa.ids)
-			if d := guardRatio(comb, k, k, ra, rb); len(d) > 0 {
-				refuseRatio(comb, k, k, ra, rb, d)
-			}
-			out = append(out, fmt.Sprintf("| %s | %s | %.2f | %.2f | **%.2fx** | %.1f | %.1f |",
-				bench, p, ra.mx/1e6, rb.mx/1e6, rb.mx/ra.mx, ra.spread, rb.spread))
 		}
 	}
 	return strings.Join(out, "\n")
