@@ -75,6 +75,9 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 		if bases[f.Base+"Table"] {
 			return nil, fmt.Errorf("schema files %s and %sTable collide — the JS emitter writes %sTable.js as %s's table codec; rename one file", f.Base, f.Base, f.Base, f.Base)
 		}
+		if bases[f.Base+"Flat"] {
+			return nil, fmt.Errorf("schema files %s and %sFlat collide — the JS emitter writes %sFlat.js as %s's flat-tier codec; rename one file", f.Base, f.Base, f.Base, f.Base)
+		}
 		if f.Base == "serialize" {
 			// the build wiring drops a serialize.js runtime re-export shim
 			// beside the generated modules (the Makefile's twin of the go.mod
@@ -86,6 +89,13 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 		g := &gen{unit: u, file: f, msgOwner: msgOwner, objOwner: objOwner, imports: map[string]map[string]bool{}}
 		g.emitFile(f.Base == home)
 		out[f.Base+".js"] = g.assemble()
+	}
+	// the flat tier: BaseFlat.js beside Base.js wherever the file carries a
+	// wire surface (flat.go) — always emitted, never flag-gated: the ruling
+	// makes flat THE JavaScript path, and the runtime tier above is emitted
+	// regardless because it is the flat tier's CI oracle
+	for name, content := range generateFlat(u, msgOwner) {
+		out[name] = content
 	}
 	return out, nil
 }
