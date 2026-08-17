@@ -23,16 +23,16 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      # The five runtimes the generated code targets. `make test` builds the
-      # corpus in all five languages and compares their wire against the
+      # The six runtimes the generated code targets. `make test` builds the
+      # corpus in all six languages and compares their wire against the
       # C++-pinned goldens, so every one of them has to be present — that
       # cross-language bit identity is the property this project exists to
       # provide, and CI is where it gets proven on hardware we do not own.
       # Cloned as SIBLINGS of this repo, which is exactly what README.md tells a
       # newcomer to do — so CI exercises the documented path rather than a
       # special one. The Makefile's SERIALIZE* defaults already point here, and
-      # the generated go.mod / Cargo.toml embed relative paths that only
-      # resolve under this layout.
+      # the generated go.mod / Cargo.toml and the test/js* module-relative
+      # imports embed relative paths that only resolve under this layout.
       #
       # PINNED to each sibling's latest RELEASED tag, never main: a sibling
       # merging to main mid-day must not change what a schema commit's CI
@@ -49,6 +49,7 @@ jobs:
           SERIALIZE_GO_TAG: v1.10.1
           SERIALIZE_RS_TAG: v2.1.1
           SERIALIZE_CS_TAG: v1.3.1
+          SERIALIZE_JS_TAG: v1.1.0
         run: |
           cd ..
           git clone --quiet --depth 1 --branch "$SERIALIZE_TAG"    https://github.com/mas-bandwidth/serialize.git    serialize
@@ -56,6 +57,7 @@ jobs:
           git clone --quiet --depth 1 --branch "$SERIALIZE_GO_TAG" https://github.com/mas-bandwidth/serialize.go.git serialize.go
           git clone --quiet --depth 1 --branch "$SERIALIZE_RS_TAG" https://github.com/mas-bandwidth/serialize.rs.git serialize.rs
           git clone --quiet --depth 1 --branch "$SERIALIZE_CS_TAG" https://github.com/mas-bandwidth/serialize.cs.git serialize.cs
+          git clone --quiet --depth 1 --branch "$SERIALIZE_JS_TAG" https://github.com/mas-bandwidth/serialize.js.git serialize.js
 
       - uses: actions/setup-go@v7
         with:
@@ -67,6 +69,13 @@ jobs:
       - uses: actions/setup-dotnet@v6
         with:
           dotnet-version: '8.0'
+
+      # One node version, the runtime's floor (serialize.js engines >= 20):
+      # the runtime's own CI carries the version matrix; this repo proves
+      # wire identity, which does not vary by node version.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
 
       # vet rides in the test job on both OSes: an emitter codebase built
       # almost entirely out of format strings is exactly where printf-verb
@@ -119,7 +128,10 @@ jobs:
       # runs under `go build -a` and REFUSES if it prints nothing — without
       # -a the build cache reads as a false clean bill of health (§4.1).
       # Accepted deliberately: the gate also fires on compiler-version
-      # changes, and telling those apart from regressions is manual.
+      # changes, and telling those apart from regressions is manual. There
+      # is no js leg on purpose: every verdict pass is ahead-of-time
+      # disassembly, and a JIT has no build-time artifact to gate — faking
+      # one would be a green light that proves nothing.
       - name: inline gate — adversarial selftest
         run: bench/tools/inline-gate.sh selftest
 
@@ -190,7 +202,7 @@ jobs:
         run: go run golang.org/x/vuln/cmd/govulncheck@latest ./...
 
   # The compiler that generates C++ for a Windows-targeting game engine was
-  # never itself run on Windows. `make test` needs the five sibling runtime
+  # never itself run on Windows. `make test` needs the six sibling runtime
   # clones and a POSIX toolchain, so vet + build is the cheap first step the
   # issue prescribes; growing this into a real test leg is a follow-up.
   windows:

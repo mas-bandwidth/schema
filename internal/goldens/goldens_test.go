@@ -21,6 +21,7 @@ import (
 	"github.com/mas-bandwidth/schema/internal/codegen/cpp"
 	"github.com/mas-bandwidth/schema/internal/codegen/csharp"
 	"github.com/mas-bandwidth/schema/internal/codegen/golang"
+	"github.com/mas-bandwidth/schema/internal/codegen/js"
 	"github.com/mas-bandwidth/schema/internal/codegen/rust"
 	"github.com/mas-bandwidth/schema/internal/format"
 	"github.com/mas-bandwidth/schema/internal/ir"
@@ -185,6 +186,17 @@ func TestGoldenSourceCs(t *testing.T) {
 	pinDir(t, filepath.Join(goldenDir, "cs"), files)
 }
 
+// TestGoldenSourceJs pins the generated JavaScript byte-for-byte (SPEC §7.2
+// gate 1, sixth target).
+func TestGoldenSourceJs(t *testing.T) {
+	u := loadCorpus(t)
+	files, err := js.Generate(u)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pinDir(t, filepath.Join(goldenDir, "js"), files)
+}
+
 // TestGoldenLudicrousId pins the fixed-point + 128-bit unit's protocol id.
 func TestGoldenLudicrousId(t *testing.T) {
 	u := loadCorpusDir(t, corpus128Dir)
@@ -209,12 +221,12 @@ func TestGoldenLudicrousId(t *testing.T) {
 }
 
 // TestGoldenLudicrousSource pins the fixed-point + 128-bit unit's generated
-// source byte-for-byte for ALL FIVE targets: C++ (both message
-// representations), Go, Rust, C# and C. Every serialize port now carries the
-// phase-1 surface, so the old refusal pin (TestLudicrous128Refusals) is
-// retired — a backend erroring here is the loud failure that replaces it,
-// and the unit rides the same cross-language wire gates as the main corpus
-// (test/{c,go,rust,cs}-ludicrous).
+// source byte-for-byte for ALL SIX targets: C++ (both message
+// representations), Go, Rust, C#, C and JavaScript. Every serialize port now
+// carries the phase-1 surface, so the old refusal pin
+// (TestLudicrous128Refusals) is retired — a backend erroring here is the
+// loud failure that replaces it, and the unit rides the same cross-language
+// wire gates as the main corpus (test/{c,go,rust,cs}-ludicrous).
 func TestGoldenLudicrousSource(t *testing.T) {
 	u := loadCorpusDir(t, corpus128Dir)
 	for _, mode := range []string{"union", "variant"} {
@@ -244,6 +256,11 @@ func TestGoldenLudicrousSource(t *testing.T) {
 		t.Fatal(err)
 	}
 	pinDir(t, filepath.Join(goldenDir, "ludicrous", "c"), cFiles)
+	jsFiles, err := js.Generate(u)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pinDir(t, filepath.Join(goldenDir, "ludicrous", "js"), jsFiles)
 }
 
 // pinDir compares (or, under -update, rewrites) one directory of goldens.

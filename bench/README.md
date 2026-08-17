@@ -23,19 +23,19 @@ This README is the operating manual.
 
 `bench/run.sh` builds and runs whichever language runners are available and
 collects everything into one CSV under `bench/results/`. The C++ runner
-(`bench/cpp/bench_main.cpp`) is the reference implementation; the c, go, rust
-and cs runners (`bench/c`, `bench/go`, `bench/rust`, `bench/cs`) are its
-ports, wired per the contract below.
+(`bench/cpp/bench_main.cpp`) is the reference implementation; the c, go,
+rust, cs and js runners (`bench/c`, `bench/go`, `bench/rust`, `bench/cs`,
+`bench/js`) are its ports, wired per the contract below.
 
 ## Running
 
     bench/run.sh                 # Release, results in bench/results/<date>-<arch>-<host>.csv
     bench/run.sh --debug         # also the Debug pair (matched-pair methodology)
-    bench/run.sh --only c|cpp|go|rust|cs   # one language leg
+    bench/run.sh --only c|cpp|go|rust|cs|js   # one language leg
     bench/run.sh --inline        # + the §4 inline verdict pass: writes the
                                  # per-symbol ledger and backfills the inline
                                  # column (rows stay un-ratioable without it)
-    SERIALIZE=path/to/serialize bench/run.sh     # (SERIALIZE_C/_GO/_RS/_CS likewise;
+    SERIALIZE=path/to/serialize bench/run.sh     # (SERIALIZE_C/_GO/_RS/_CS/_JS likewise;
                                  # every leg BUILDS against its var and the run
                                  # refuses if a build would not — §3.5, verified
                                  # per pass by bench/tools/verify-runtime-paths.sh)
@@ -46,7 +46,7 @@ ports, wired per the contract below.
 
 **A publishable pass is a driver pass**, not a bare run.sh invocation:
 
-    bench/tools/pass-driver.sh [--rounds 7] [--langs cpp,c,go,rust,cs] [--inline]
+    bench/tools/pass-driver.sh [--rounds 7] [--langs cpp,c,go,rust,cs,js] [--inline]
 
 The driver runs the §2 methodology: a C++ control leg, N interleaved rounds
 (every language once per round via `--round K`, so every leg sees the same
@@ -153,7 +153,7 @@ it. Human-readable tables live beside the CSVs in `bench/results/`.
 | message_batch     | (message_stream golden checks the dispatch wire) | 4096 mixed messages + terminator through WriteMessage/ReadMessage, steady-state |
 
 Family `rt` (hand-written runtime API, oracle-gated per §1.5; iteration
-counts fixed and identical across all five languages) and family `bits`:
+counts fixed and identical across all six languages) and family `bits`:
 
 | bench        | family | pinned to golden | shape                                              |
 |--------------|--------|------------------|----------------------------------------------------|
@@ -200,6 +200,21 @@ A runner is a standalone program in `bench/<lang>/` that:
   run as `cargo run --release -- --csv`
 - **cs**: `bench/cs/*.csproj` (wiring like `test/cs`) — run as
   `dotnet run -c Release -- --csv`
+- **js**: `bench/js/main.mjs` (no wiring file: the runner imports the
+  serialize.js sibling by module-relative path, `SERIALIZE_JS` overrides it,
+  and `--print-runtime` prints node's own resolution for the §3.5 guard) —
+  run as `env NODE_ENV=production node main.mjs --csv`. NODE_ENV=production
+  is the release leg: serialize.js forks checked/production at module load,
+  and the runner records the mode that ran in its `checks` column
+  (production = `contract` — caller validation gone, wire-contract checks
+  stay; checked = `always`). `linkage=esm` (ES modules in one isolate, the
+  runtime's packaging), `opt=default`, and `inline` stays `unknown` — the
+  §4 verdict pass has no js branch because a JIT leg has no AOT artifact to
+  attribute, so js rows never ratio against inline-filled rows. Carries the
+  full C/C++ row set including `real_packet` (`generated/bench/js/realworld`
+  already rides `make test`). No alloc note: Node exposes no per-thread
+  allocation counter, so the reuse discipline is structural (persistent
+  holders, stream `reset()`, pre-bounded variant views).
 
 If a runner or its toolchain is missing, `run.sh` prints `SKIP <lang>`
 with the reason.

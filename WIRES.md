@@ -48,7 +48,8 @@ table ShipConfig {
 ## Tables: reflection, relocatability, parallelism
 
 Declaring `table` (instead of `type`) makes a type a table-wire root. It and everything it
-references get, **in all five languages**:
+references get, **in five of the six languages** (C, C++, C#, Go and Rust —
+JavaScript's message wire landed first; its table wire does not exist yet):
 
 - **Codecs** — `TableWriteX` / `TableReadX`, plain byte code with no runtime dependency.
 - **Reflection** — `TableTypeX()` static field descriptors: names, wire ids, bounds,

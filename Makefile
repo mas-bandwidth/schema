@@ -8,7 +8,9 @@ CXXFLAGS ?= -std=c++17 -Wall -Wextra -Werror -ffp-contract=off
 # Go port the generated Go targets, the Rust port the generated Rust targets,
 # and the C# port the generated C# targets (sibling checkouts; test/go/go.mod,
 # test/rust/Cargo.toml, test/cs/schematest.csproj and their *-ludicrous twins
-# carry the same relative paths)
+# carry the same relative paths). The JS runtime is a sibling checkout too
+# (../serialize.js), but needs no variable: generated JS never imports the
+# runtime, and the test legs import it by module-relative path directly.
 SERIALIZE    ?= ../serialize
 SERIALIZE_C  ?= ../serialize.c
 SERIALIZE_GO ?= ../serialize.go
@@ -88,6 +90,18 @@ generated/rust/.stamp: bin/schema $(SCHEMAS)
 # them beside the serialize.cs runtime via <Compile Include> items
 generated/cs/.stamp: bin/schema $(SCHEMAS)
 	./bin/schema generate --lang cs --out generated/cs examples
+	@touch $@
+
+# the JavaScript target: generated ES modules only, no wiring file at all —
+# generated code never imports the runtime (every wire call is a method on
+# the stream parameter), so the serialize.js sibling checkout is a test-leg
+# concern, not a generation one
+generated/js/.stamp: bin/schema $(SCHEMAS)
+	./bin/schema generate --lang js --out generated/js examples
+	@touch $@
+
+generated/js-ludicrous/.stamp: bin/schema $(SCHEMAS128)
+	./bin/schema generate --lang js --out generated/js-ludicrous examples128
 	@touch $@
 
 build/schema_test: generated/cpp/.stamp test/main.cpp test/second.cpp
@@ -171,6 +185,14 @@ generated/bench/cs/.stamp: bin/schema $(SCHEMAS_BENCH)
 	./bin/schema generate --lang cs --out generated/bench/cs/realworld bench/corpus/RealWorld.schema
 	@touch $@
 
+# the realworld unit sits in its own subdirectory like go/cs: the units'
+# basenames never collide today, but the table chunk adds a per-unit
+# TableRuntime.js that would
+generated/bench/js/.stamp: bin/schema $(SCHEMAS_BENCH)
+	./bin/schema generate --lang js --out generated/bench/js bench/corpus/Bench.schema
+	./bin/schema generate --lang js --out generated/bench/js/realworld bench/corpus/RealWorld.schema
+	@touch $@
+
 # the C++ producer/verifier of the bench-corpus goldens, and the C twin that
 # proves the C emitter compiles under the strict flags AND matches those bytes
 build/schema_test_bench: generated/bench/cpp/.stamp test/bench/main.cpp
@@ -192,7 +214,7 @@ build/schema_test_c_ludicrous: generated/c-ludicrous/.stamp test/c-ludicrous/mai
 		-O2 -ffp-contract=off -Igenerated/c-ludicrous -I$(SERIALIZE_C) \
 		test/c-ludicrous/main.c $(SERIALIZE_C)/serialize.c -o $@ -lm
 
-test: build/schema_test build/schema_test_variant build/schema_test_random build/schema_test_ludicrous build/schema_test_c build/schema_test_c_ludicrous build/schema_test_bench build/schema_test_bench_c generated/go/.stamp generated/rust/.stamp generated/cs/.stamp generated/go-ludicrous/.stamp generated/rust-ludicrous/.stamp generated/cs-ludicrous/.stamp generated/bench/go/.stamp generated/bench/rust/.stamp generated/bench/cs/.stamp
+test: build/schema_test build/schema_test_variant build/schema_test_random build/schema_test_ludicrous build/schema_test_c build/schema_test_c_ludicrous build/schema_test_bench build/schema_test_bench_c generated/go/.stamp generated/rust/.stamp generated/cs/.stamp generated/js/.stamp generated/go-ludicrous/.stamp generated/rust-ludicrous/.stamp generated/cs-ludicrous/.stamp generated/js-ludicrous/.stamp generated/bench/go/.stamp generated/bench/rust/.stamp generated/bench/cs/.stamp generated/bench/js/.stamp
 	./build/schema_test
 	./build/schema_test_variant
 	./build/schema_test_random
@@ -207,9 +229,11 @@ test: build/schema_test build/schema_test_variant build/schema_test_random build
 	cd test/go && go run .
 	cd test/rust && PATH="$(RUSTUP_BIN):$$PATH" cargo run --quiet
 	cd test/cs && dotnet run
+	cd test/js && node main.mjs && NODE_ENV=production node main.mjs
 	cd test/go-ludicrous && go run .
 	cd test/rust-ludicrous && PATH="$(RUSTUP_BIN):$$PATH" cargo run --quiet
 	cd test/cs-ludicrous && dotnet run
+	cd test/js-ludicrous && node main.mjs && NODE_ENV=production node main.mjs
 	go test ./...
 
 # Re-pin the goldens DELIBERATELY (SPEC §7.2 gates 1, 2, 7). A wire golden

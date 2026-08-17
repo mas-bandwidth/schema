@@ -1097,6 +1097,16 @@ cs)
     backfill
     ;;
 
+js)
+    # No verdict pass exists for js, DELIBERATELY: §4.1 attributes a verdict
+    # by walking a compiled artifact's symbols, and a JIT leg has no AOT
+    # artifact to walk — what V8 inlines is decided per tier at runtime and
+    # is not a stable property of the build. js rows keep inline=unknown,
+    # which is exactly what §4.2 does with them: refuses their ratios.
+    echo "inline-verdict: js has no verdict pass (JIT — no AOT artifact to attribute); js rows stay inline=unknown" >&2
+    exit 1
+    ;;
+
 *)
     echo "unknown language: $LANG_ARG (c|cpp|go|rust|cs)" >&2
     exit 1

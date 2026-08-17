@@ -66,8 +66,16 @@ var order = append(append(append(append([]string{}, corpus...), batch), rtCorpus
 // expressed against (Glenn, 2026-08-17: "make C the reference. It is the
 // 100%. C++ is measured against C." — flipped from cpp, which had been the
 // baseline since the table existed).
+// js rides in this list so aggregate PRINTS its rows (the output loop walks
+// langs, and a language missing from it would trip the straggler refusal —
+// exactly the silent-vanish class the refusal exists to catch). It never
+// enters the relative table: js rows carry inline=unknown by design (a JIT
+// has no AOT artifact for the §4.1 verdict), and §5.3 refuses any ratio
+// touching an unknown — relativeTable skips js explicitly rather than
+// letting one un-ratioable-by-construction language refuse the whole table.
 var langs = []struct{ key, name string }{
 	{"c", "C"}, {"cpp", "C++"}, {"rust", "Rust"}, {"cs", "C#"}, {"go", "Go"},
+	{"js", "JavaScript"},
 }
 
 // reference is the table's 100% language.
@@ -600,6 +608,13 @@ func relativeTable(ds *dataset) string {
 	}
 	for _, l := range langs {
 		if l.key == reference {
+			continue
+		}
+		if l.key == "js" {
+			// DELIBERATE: js rows are inline=unknown by construction (no
+			// AOT artifact to verdict, §4.1) and §5.3 refuses ratios on
+			// unknown — attempting the ratio would refuse the whole table.
+			// js publishes in the absolute table only.
 			continue
 		}
 		w, okw := rel(ds, l.key, "write")

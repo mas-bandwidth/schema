@@ -27,7 +27,7 @@
 #                                   [--compiler CXX] [--inline] [--twins]
 #   --out FILE      final pass CSV (default bench/results/<date>-<arch>-<host>-pass.csv)
 #   --rounds N      measured rounds (default 7, §2.1/§2.4)
-#   --langs a,b,c   subset of cpp,c,go,rust,cs (default: all; unavailable
+#   --langs a,b,c   subset of cpp,c,go,rust,cs,js (default: all; unavailable
 #                   toolchains are skipped and recorded, a skipped leg is a
 #                   fact not a failure)
 #   --compiler CXX  C++ compiler for the cpp legs and control legs
@@ -46,7 +46,8 @@
 #                   introducing a NEW binary configuration MUST run --twins.
 #
 # environment: SERIALIZE / SERIALIZE_C / SERIALIZE_GO / SERIALIZE_RS /
-# SERIALIZE_CS, BENCH_CPU, BENCH_NOISE, BENCH_OPT_LEVEL — all as bench/run.sh.
+# SERIALIZE_CS / SERIALIZE_JS, BENCH_CPU, BENCH_NOISE, BENCH_OPT_LEVEL — all
+# as bench/run.sh.
 # The SERIALIZE* paths are §3.5-verified against each toolchain's own
 # resolution before the first leg runs, and the pass refuses on mismatch.
 set -u
@@ -55,7 +56,7 @@ cd "$(dirname "$0")/../.."      # repo root
 
 OUT=""
 ROUNDS=7
-LANGS="cpp,c,go,rust,cs"
+LANGS="cpp,c,go,rust,cs,js"
 COMPILER="${CXX:-c++}"
 INLINE=0
 TWINS=0
