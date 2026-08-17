@@ -275,11 +275,12 @@ prov_note() {
         go)   PROV_GO="$resolved" ;;
         rust) PROV_RUST="$resolved" ;;
         cs)   PROV_CS="$resolved" ;;
+        js)   PROV_JS="$resolved" ;;
     esac
 }
 if [ -n "$ONLY" ]; then
     prov_verify "$ONLY"
-    for _lang in cpp c go rust cs; do
+    for _lang in cpp c go rust cs js; do
         [ "$_lang" != "$ONLY" ] && prov_note "$_lang"
     done
 else

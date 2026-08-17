@@ -149,7 +149,7 @@ EOF
     fi
 }
 
-# verify_runtime <cpp|c|go|rust|cs> — the §3.5 fail-closed check.
+# verify_runtime <cpp|c|go|rust|cs|js> — the §3.5 fail-closed check.
 #   stdout: the toolchain-resolved absolute runtime path (verified)
 #   return: 0 verified; 2 leg cannot run this invocation (reason on stderr);
 #           1 MISMATCH or unprovable — the caller must refuse to emit rows.
