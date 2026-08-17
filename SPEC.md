@@ -182,63 +182,51 @@ band) is the application's choice — netcode-style stacks already carry one.
 
 ### 4.1 Lexical structure
 
-- UTF-8 source; no BOM — DECIDED (corner-pins list, Glenn 2026-08-05): a BOM is
-  rejected at parse, because it would silently move the protocol id (§3.1). `//` line
-  comments and `/* */` block comments (non-nesting).
-- **Doc comments — DEFERRED, not v1 (Glenn, 2026-08-05: "don't care. leave for later."). The design below is kept for the day it lands:** a `//` comment
-  block whose last line immediately precedes a declaration, field, or enum variant — no
-  blank line between — is that item's doc comment, carried through the IR and emitted in
-  each target's idiom (`///` Rust, `/// <summary>` C#, preceding-line `//` Go, `//` C++),
-  so the schema's documentation is the generated headers' documentation. All other comments
-  are preserved by `schemafmt` and invisible to codegen. Comments already participate in
-  the protocol id (§3.1 hashes file bytes), so doc comments add no new id sensitivity —
-  and the comment-carrying scanner they need is machinery `schemafmt` requires anyway.
-- **Identifiers:** `[A-Za-z_][A-Za-z0-9_]*`. Conventions, matching the flatbuffers layer the
-  language will eventually absorb: type and enum names `UpperCamelCase`, enum variants
-  `UpperCamelCase`, **fields `lower_snake_case`**, constants `UpperCamelCase`. The compiler
-  does not enforce case, but the corpus and all documentation follow it.
-- **The register is Go-inspired — "C-like but not too C"** — DECIDED (Glenn, 2026-08-05):
-  types are declared with `type`, not `struct`; declarations put the **name first, then the
-  type**, Go's order (*"we can do golang order of setup vars and types"*); scalar names are
-  Go's — **`float32` and `float64`, never `float`/`double`** (*"we can use type names from
-  golang instead of C++"*); `if` and `switch` take no parentheses; the canonical formatter
-  is **`schemafmt`**, gofmt's philosophy included — one style, no options; array bounds are
-  a **prefix**, Go's order (`[<= MaxObjects]ObjectState`); fields read flatbuffers-plain. His reasons: *"we don't want to ape C/C++ but write something a bit
-  cleaner. Nobody working in C# or Rust will feel like they want to be coding in C++ to
-  specify types."* The principle outlives the individual decisions: when a syntax choice
-  arises, Go is the model to consult first, the neutral form beats the C-family reflex, and
-  between two workable forms the shorter wins — *"I always like, shorter, simpler"* (his
-  tiebreak, choosing `[local]` over `[unsynchronized]`). Authorship is not a criterion:
-  *"it doesn't matter where the good ideas come from. let the best idea win."*
-- **Integer literals:** decimal, hex (`0x`), binary (`0b`). **Float literals** (decimal, with
-  optional fraction and exponent) appear in float constants and as float attribute values
-  (`min`/`max`/`resolution` on `float32`).
-- **Punctuation and operators:** `{ } ( ) [ ] , : = ! . .. <= + - * / %` (maximal munch:
-  `..` wins over `.`).
-- **Reserved words:** `package const enum type message object if
-  else switch case align reserved`
-  and the wire-type keywords `bits bool float32 float64 string bytes fixed ufixed` plus
-  the integer family `int8 int16 int32 int64 uint8 uint16 uint32 uint64 int128 uint128`
-  (and `int uint`, reserved so `int` gets a "did you mean int32?" diagnostic instead of
-  a parse error). *(`int128`, `uint128` and `fixed` were reserved-for-later until
-  2026-08-06, when the serialize runtime's phase-1 surface landed and they went live —
-  §4.3, §4.10. `ufixed` went straight to live 2026-08-15 with q17's ruling; a schema
-  that used the word as a name renames, the standard cost of any keyword landing.)*
-  Reserved words cannot be used as names. Attribute keys (`min`, `max`, `resolution`, ...)
-  are contextual — they live only inside `[ ]` and are not reserved.
-- **Newlines terminate declarations and fields — there are no semicolons, like Go.** The
-  newline is a terminator token,
-  suppressed: immediately after `{`, `(`, `[`, `,`, `:`, `=`, `else`, and an infix operator;
-  and immediately before `)`, `]`, `}`. Blank lines are insignificant. `{` sits on the same
-  line as its construct; `} else {` is written on one line — and a newline between `}` and
-  `else` is tolerated by the parser (the formatter rewrites it to one line).
-  **Two consequences, stated so the grammar is implementable as written** *(repaired
-  2026-08-05 — the suppression rule as first stated made every NL-terminated production
-  unable to complete before `}`)*: **a closing `}` also terminates the item before it** — in
-  every production below, a trailing `NL` is satisfied by an actual newline OR by the
-  immediately following `}`; and **end-of-file synthesizes a terminator**, so a file without
-  a trailing newline still parses. Within an enum or flags body, newlines around commas are
-  ordinary whitespace (suppression after `,`) — variants are not items and need no terminator.
+- **Encoding:** UTF-8 source; a UTF-8 BOM is rejected at parse. `//` line
+  comments and `/* */` block comments (non-nesting). Comments are invisible to
+  code generation and preserved by `schemafmt`.
+- **Doc comments are deferred**, with the design pinned for when they land: a
+  `//` comment block whose last line immediately precedes a declaration,
+  field, or enum variant — no blank line between — becomes that item's doc
+  comment, carried through the IR and emitted in each target's own idiom
+  (`///` Rust, `/// <summary>` C#, preceding-line `//` Go, `//` C++).
+- **Identifiers:** `[A-Za-z_][A-Za-z0-9_]*`. Conventions: type and enum names
+  `UpperCamelCase`, enum variants `UpperCamelCase`, fields
+  `lower_snake_case`, constants `UpperCamelCase`. The compiler does not
+  enforce case; the corpus and all documentation follow it.
+- **The register is Go-inspired.** Types are declared with `type`, not
+  `struct`; declarations put the name first, then the type; scalar names are
+  Go's (`float32` and `float64`, never `float`/`double`); `if` and `switch`
+  take no parentheses; array bounds are a prefix (`[<= MaxObjects]ObjectState`);
+  there are no semicolons; the canonical formatter is `schemafmt` — one
+  style, no options.
+- **Integer literals:** decimal, hex (`0x`), binary (`0b`). **Float
+  literals** (decimal, with optional fraction and exponent) appear in float
+  constants and as float attribute values (`min`/`max`/`resolution` on
+  `float32`).
+- **Punctuation and operators:** `{ } ( ) [ ] , : = ! . .. <= + - * / %`
+  (maximal munch: `..` wins over `.`).
+- **Reserved words:** `package const enum type table message object if else
+  switch case align reserved`, the wire-type keywords `bits bool float32
+  float64 string bytes fixed ufixed`, and the integer family `int8 int16
+  int32 int64 uint8 uint16 uint32 uint64 int128 uint128` — plus `int` and
+  `uint`, reserved so `int` gets a "did you mean int32?" diagnostic instead
+  of a parse error. Reserved words cannot be used as names. Attribute keys
+  (`min`, `max`, `resolution`, ...) are contextual — they live only inside
+  `[ ]` and are not reserved.
+- **Newlines terminate declarations and fields — there are no semicolons,
+  like Go.** The newline is a terminator token, suppressed: immediately after
+  `{`, `(`, `[`, `,`, `:`, `=`, `else`, and an infix operator; and
+  immediately before `)`, `]`, `}`. Blank lines are insignificant. `{` sits
+  on the same line as its construct; `} else {` is written on one line — a
+  newline between `}` and `else` is tolerated by the parser and rewritten by
+  the formatter. Two consequences make the grammar implementable as written:
+  **a closing `}` also terminates the item before it** — in every production
+  below, a trailing `NL` is satisfied by an actual newline or by the
+  immediately following `}` — and **end-of-file synthesizes a terminator**,
+  so a file without a trailing newline still parses. Within an enum or flags
+  body, newlines around commas are ordinary whitespace (suppression after
+  `,`) — variants are not items and need no terminator.
 
 ### 4.2 Grammar
 
@@ -282,21 +270,22 @@ Scalar      = IntType
             | "fixed" "(" IntExpr "," IntExpr ")"                // fixed(I, F) — signed Q I.F (§4.3);
                                                                  // the Q format is the type's SHAPE,
                                                                  // so it is positional like bits(N)
+            | "ufixed" "(" IntExpr "," IntExpr ")"               // the unsigned sibling (§4.3)
             | ident .                                            // a declared type or enum
 IntType     = "int8" | "int16" | "int32" | "int64"
             | "uint8" | "uint16" | "uint32" | "uint64" .
 Bound       = IntExpr | "<=" IntExpr | IntExpr ".." IntExpr .
 
 Attributes  = "[" Attr { "," Attr } "]" .                        // trailing, optional, per field
-Attr        = ident "=" ( ConstExpr | ident )                    // valued:    min = 0, round = up
+Attr        = ident "=" ( ConstExpr | ident | string )           // valued:    min = 0, round = up,
+                                                                 //            cpp_include = "a.h"
             | ident .                                            // valueless: interpolate, local
                                                                  // (ident values are keyword-like:
                                                                  // each valued key declares whether
-                                                                 // it takes an expression or a word)
+                                                                 // it takes an expression, a word,
+                                                                 // or a quoted string)
 
 If          = "if" [ "!" ] ident Block [ "else" Block ] NL .
-
-
 
                                                                  // (an ident that is a const
                                                                  // name resolves as IntExpr;
@@ -310,146 +299,96 @@ FloatExpr   = float expression over float literals, int literals and const names
               "+" "-" "*" "/", unary "-", parentheses — float64 arithmetic, no "%".
 ```
 
-- **Integer expressions** evaluate at compile time in arbitrary precision, Go's
-  untyped-constant style, with a fit-check at each use site — so `0xFFFFFFFFFFFFFFFF` is
-  writable for a full-range `uint64` bound while overflow at a use site stays a compile
-  error *(was "checked signed 64-bit", which made every uint64 value ≥ 2^63 unwritable —
-  repaired 2026-08-05)*. Division by zero, and a negative result where a width, bound or
-  count is required, are compile errors. Integer division truncates toward zero, Go's rule.
-  **Float attribute values (`min`/`max`/`resolution` on `float32`) are float expressions** —
-  literals, const names, and arithmetic, per `FloatExpr`; integer constants convert in float
-  positions *(this bullet said "float literals only" while the typed-constants bullet below
-  said constants convert there — the DECIDED typed-constants rule wins; repaired 2026-08-05)*.
-- **Zero initialization is the rule, in every generated language — DECIDED (Glenn,
-  2026-08-05: *"can we use golang's rule of zero initialization for all types in all
-  generated langs"*), with an optional SPECIFIED DEFAULT overriding it (his same message:
-  *"unless we allow some specified default, eg. ... = true"*).** Every generated type
-  fully initializes to zero values on construction — 0, 0.0, false, `None` for an enum, 0
-  for a flags mask, zeroed buffers and counts, recursively for nested types — in all four
-  targets (C++ emits default member initializers; Go/C#/Rust get it from their languages'
-  own rules, stated so the C++ target cannot silently be the odd one out). A field may
-  override its zero with `= value` after the attributes: `invulnerable bool [local] = true`.
-  v1 defaults cover bool (`true`/`false`), integer and float fields (constant
-  expressions, fit-checked like any use site) and enum fields (a variant name); arrays,
-  strings, bytes and composite fields zero-initialize with no override. **The default is
-  STORAGE initialization — what a freshly constructed object holds. It does not touch the
-  wire, and §5's read rule is deliberately unchanged: fields in untaken branches read as
-  ZERO values, not as defaults** — the wire contract stays a pure function of the schema's
-  encodings, and whether untaken branches should instead restore defaults is a question
-  for Glenn if a real case ever wants it.
-- **Constants compose** — DECIDED (Glenn, 2026-08-05: *"constants can refer to other
-  constants, so we can build up things, const C = A * 2 + B"*). A `const` may reference any
-  other `const` in the unit, order-free across files like type references; reference cycles
-  are a compile error naming the cycle. The corpus exercises it:
+- **Integer expressions** evaluate at compile time in arbitrary precision,
+  Go's untyped-constant style, with a fit-check at each use site — so
+  `0xFFFFFFFFFFFFFFFF` is writable for a full-range `uint64` bound while
+  overflow at a use site stays a compile error. Division by zero, and a
+  negative result where a width, bound or count is required, are compile
+  errors. Integer division truncates toward zero, Go's rule. **Float
+  attribute values (`min`/`max`/`resolution` on `float32`) are float
+  expressions** — literals, const names, and arithmetic, per `FloatExpr`;
+  integer constants convert in float positions.
+- **Zero initialization is the rule, in every generated language, with an
+  optional specified default overriding it.** Every generated type fully
+  initializes to zero values on construction — 0, 0.0, false, `None` for an
+  enum, 0 for a flags mask, zeroed buffers and counts, recursively for nested
+  types — in every target (C++ emits default member initializers; the other
+  languages get it from their own rules, stated so no target can silently be
+  the odd one out). A field may override its zero with `= value` after the
+  attributes: `invulnerable bool [local] = true`. Defaults cover bool
+  (`true`/`false`), integer and float fields (constant expressions,
+  fit-checked like any use site), enum fields (a variant name), the 128-bit
+  integers, and `fixed` (§4.6); arrays, strings, bytes and composite fields
+  zero-initialize with no override. **The default is STORAGE initialization —
+  what a freshly constructed object holds. It does not touch the wire**: per
+  §5's read rule, fields in untaken branches read as ZERO values, not as
+  defaults — the wire contract stays a pure function of the schema's
+  encodings. (On the table wire, a field sitting at its specified default is
+  elided — §4.11.)
+- **Constants compose.** A `const` may reference any other `const` in the
+  unit, order-free across files like type references; reference cycles are a
+  compile error naming the cycle. Example:
   `const MaxPositionUnits = MaxWorldMeters * PositionUnits`.
-- **Constants are typed, and not just integers** — DECIDED (Glenn, 2026-08-05: *"They won't
-  just be integer"*), on Go's untyped-constant model: a bare `const` takes its **kind** from
-  its expression — integer (arbitrary-precision arithmetic, fit-checked at each use —
-  the expression rule above) or float (float64 arithmetic;
-  `+ - * /` and parentheses, no `%`) — and converts wherever that kind fits: integer
-  constants in any range, bound, width, case label or float position; float constants in
-  float attribute values (`resolution`, quantize scales) and float contexts. An **explicit
-  type makes a typed constant** — `const MaxBounds uint64 = 12000` — which pins the exported
-  type in every target. The worked migration case is `definitions.fbs`: its thirteen
-  constants-hacked-as-single-value-enums (`MaxPlayers`, `MaxObjects`, `MaxShips`, ...,
-  `MaxBounds : uint64`) become thirteen `const` lines in `Constants.schema`, generated into
-  C++ exactly as game code consumes them today — *"the same set of constants (non-enum
-  hacked this time)."* **The second migration source is `game/Source/Constants.h`** (194
-  lines, surveyed 2026-08-05), sorting into four piles: **straight migrations** (the numeric
-  limits and tuning — including six-plus float/double constants, the existence proof for
-  float `const`); **absorbed by generated sets** (`OBJECT_TYPE_*`/`NUM_OBJECT_TYPES` die
-  into the generated `ObjectType`; packet-type ids into the message/packet tag story;
-  `DELTA_ACTION_*` into the delta pass); **already-covered bridges** (`MAX_PLAYERS` etc.
-  alias the fake-enum constants above); and **two new language needs, filed as open
-  questions** — const expressions over enum counts (`NUM_TEAMS = Team_MAX + 1`, `MAX_PROPS`
-  as a sum) and platform-conditional constants (`FRAME_SAFETY` differs under `__linux__`).
-- **Enum max references — DECIDED (Glenn, 2026-08-05: *"yes, but prefer Team.Max"*):**
-  **`E.Max`** in any integer expression names enum `E`'s max — the derived count, or the
-  widened `[max = K]` — the same number the enum's wire range and storage already derive.
-  The count of wire values is `E.Max + 1` by ordinary constant arithmetic, and sizing
-  enum-indexed tables with it stays correct under headroom, where non-variant values are
-  wire-legal (§6.1). The worked migration is `Constants.h`'s `NUM_TEAMS = ( Team_MAX + 1 )`
-  becoming `const NumTeams = Team.Max + 1`, exported to all four targets like any const; it
-  works on generated sets too (`MessageType.Max`). `Max` after `.` is contextual, like
-  attribute keys, and capitalized to match the UpperCamelCase constants convention — his
-  spelling; the lexer keeps maximal munch so `..` still wins over `.`. *(`len(Team)` was
-  considered and declined: three plausible meanings, and every one of them sizes
-  enum-indexed tables wrong under headroom — the max is the true primitive. The other half
-  of q7 as originally filed — `MAX_PROPS` as a sum — needed nothing: constant composition
-  already expresses it.)*
-- **Constants are platform-uniform — DECIDED (Glenn, 2026-08-05: *"yes, because server and
-  clients will be on different platforms, but must always be able to communicate."*), a rule
-  with a reason rather than an economy:** a schema has no platform conditionals. The protocol
-  id hashes the schema files (§3.1), so one schema is one id on every platform — a
-  platform-conditional constant reaching any range, bound or width would let two builds carry
-  the same id with different wires, the exact bug class the id exists to make impossible. The
-  survey's one platform-conditional (`FRAME_SAFETY`, two call sites, zero wire contact) stays
-  hand-written in game code; if it ever wants central ownership it is tweakable timing
-  tuning — config-layer material, not a schema constant.
-- Inside a type body one token of lookahead disambiguates every item: `const` + `(` is a
-  constant field (versus the top-level `const name =` declaration); `if` / `switch` /
-  `align` / `reserved` are keywords; any other identifier begins a field. The grammar is
-  LL(2) and hand-written recursive descent is the intended implementation.
-- **Enum variants** are comma-separated identifiers, trailing comma allowed — DECIDED
-  (Glenn, 2026-08-05: *"i prefer commas between enum definitions, flag definitions, lists
-  in general."* / *"more flexible than space separated."*). **Every enum
-  has `None = 0` implicitly — universal, never declared** (Glenn, 2026-08-05: *"all enums
-  should have 0 = none, and then the max value above all tightly packed values"*); declared
-  variants pack tightly from 1, max derives as the count (the `[max = K]` headroom attribute
-  can still widen the wire). **Enum storage derives from the enum's own max** — the smallest
-  unsigned integer that fits (his ask: *"it works out the underlying integer type based on
-  the size of the enum values"*).
-- **CANONICAL FORM ONLY — DECIDED (Glenn, 2026-08-05):** *"canonical enums are in the form
-  0 = none, [1,max], dense non-sparse values."* / *"only enums i care about are in the
-  canonical form."* **Explicit variant values are DECLINED, permanently** — no `= value`,
-  no sparse enums, ever. Variants are comma-separated on his later preference the same
-  day (the foreclosure argument that once tied the separator to `= value` is moot — the
-  values are declined regardless). A drafted pinned-values proposal died here on his
-  word; the record of it is in git.
-- **THE ENUM FAMILY IS TWO DECLARATION FORMS** *(it was three for part of 2026-08-05 —
-  `enum_index` was designed at the type level on Glenn's direction* ("suspect it's better
-  done as a type... vs. doing it at serialize level")*, then CUT the same evening:
-  "Let's cut enum_index for now." Its design — wire = value − 1 in [0, max − 1], storage
-  keeping 0 as an unset sentinel — is recorded at §9 q11 for the day it returns, likely
-  beside the claiming/index pass. The v1 cost of the cut, stated plainly: the surveyed
-  create path's `[1, max]` wire is not expressible — a kind field is a plain `enum` and
-  spends the unused None wire value, examples/README.md finding 1's original state.)*:
-  - **`enum`** — the canonical with-None form above. Wire: raw value, **[0, max]**; `None`
-    is a legal wire value (the null — the generated `MessageType`/`ObjectType` shape).
-  - **`flags Name { ... }` — DECIDED (Glenn, 2026-08-05:** *"yes, we can and should
-    support flags too. flags are uint64_t, one field per-bit, up to 64."* — and the
-    keyword is his: *"dislike enum_flags, just flags."***) Mechanism:** each variant names
-    one bit, assigned densely from bit 0 in declaration order, **up to 64**; **storage is
-    `uint64` in every target** (his word); no implicit `None` — the empty mask is 0 and
-    needs no name. Wire: **W raw bits, W = variant count** (`[max = K]` widens to K bits);
-    every W-bit pattern is legal — a mask field's domain is all subsets. Each target
-    exports one mask constant per variant (`1 << bit`), because mask tests are how flag
-    state is consumed. **`flags` is a CONTEXTUAL keyword, not reserved** — it introduces a
-    declaration at file scope only, so a *field* named `flags` (the real corpus's
-    `Ship.flags`) stays fully legal; declarations at file scope otherwise begin with
-    reserved words, so one token of lookahead disambiguates. *(Evidence: one named flags
-    enum plus three anonymous `uint64` flags fields fly in the surveyed game with
-    hand-kept masks.)*
-  - **The derived-range rule, normative:** a field that indexes a declared set derives its
-    range from the set, never restates it — both wires derive from the declaration;
-    `min`/`max` are not valid on enum-family fields. *(The wider pattern — integer indexes
-    over declared sets and collections — is the horizon's everything-is-an-index feature;
-    `index` stays informally reserved, and its ranges will derive under this same rule.)*
-  - Grammar: `Declaration` gains `Flags = "flags" ident [ Attributes ] VariantList NL` —
-    `flags` contextual per the note above; `VariantList` is the comma form shared with
-    `enum`.
-- **Type references are order-free** — a type or enum may be used before its declaration,
-  in any file of the unit. (Field *back-references* are not order-free; §4.5.)
-- `if` nests freely inside blocks (`switch` is cut for now, §4.4).
+- **Constants are typed, on Go's untyped-constant model.** A bare `const`
+  takes its **kind** from its expression — integer (arbitrary-precision
+  arithmetic, fit-checked at each use) or float (float64 arithmetic; `+ - *
+  /` and parentheses, no `%`) — and converts wherever that kind fits: integer
+  constants in any range, bound, width, case label or float position; float
+  constants in float attribute values and float contexts. An **explicit type
+  makes a typed constant** — `const MaxBounds uint64 = 12000` — which pins
+  the exported type in every target.
+- **Enum max references:** **`E.Max`** in any integer expression names enum
+  `E`'s max — the derived count, or the widened `[max = K]` — the same number
+  the enum's wire range and storage derive from. The count of wire values is
+  `E.Max + 1` by ordinary constant arithmetic; the count of real (non-`None`)
+  variants is `E.Max` (see the sentinel-zero convention below). Sizing
+  enum-indexed tables with `E.Max + 1` stays correct under `[max]` headroom,
+  where non-variant values are wire-legal. It works on generated sets too
+  (`MessageType.Max`). `Max` after `.` is contextual, like attribute keys;
+  the lexer keeps maximal munch, so `..` still wins over `.`.
+- **Constants are platform-uniform.** A schema has no platform conditionals.
+  One schema is one protocol id on every platform; a platform-conditional
+  constant reaching any range, bound or width would let two builds carry the
+  same id with different wires — the exact bug class the id exists to make
+  impossible.
+- **Parsing:** inside a type body one token of lookahead disambiguates every
+  item: `const` + `(` is a constant field (versus the top-level
+  `const name =` declaration); `if` / `switch` / `align` / `reserved` are
+  keywords; any other identifier begins a field. The grammar is LL(2), and
+  hand-written recursive descent is the intended implementation.
+- **Enum variants** are comma-separated identifiers, trailing comma allowed.
+  **Every enum has `None = 0` implicitly — universal, never declared.**
+  Declared variants pack tightly from 1; max derives as the count; the
+  `[max = K]` headroom attribute can widen the wire. **Enum storage derives
+  from the enum's own max** — the smallest unsigned integer that fits.
+- **Canonical form only.** Enums are always `0 = None`, then `[1, max]`,
+  dense. There are no explicit variant values and no sparse enums.
+- **The enum family is two declaration forms:**
+  - **`enum`** — the canonical with-`None` form above. Wire: the raw value,
+    in **[0, max]**; `None` is a legal wire value (the null — the shape of
+    the generated `MessageType`/`ObjectType`).
+  - **`flags Name { ... }`** — each variant names one bit, assigned densely
+    from bit 0 in declaration order, **up to 64**; **storage is `uint64` in
+    every target**; no implicit `None` — the empty mask is 0 and needs no
+    name. Wire: **W raw bits, W = variant count** (`[max = K]` widens to K
+    bits); every W-bit pattern is legal — a mask field's domain is all
+    subsets. Each target exports one mask constant per variant (`1 << bit`),
+    because mask tests are how flag state is consumed. **`flags` is a
+    contextual keyword, not reserved** — it introduces a declaration at file
+    scope only, so a *field* named `flags` stays fully legal; declarations at
+    file scope otherwise begin with reserved words, so one token of lookahead
+    disambiguates.
+  - **The derived-range rule:** a field that indexes a declared set derives
+    its range from the set, never restates it — both wires derive from the
+    declaration; `min`/`max` are not valid on enum-family fields.
+- **Type references are order-free** — a type or enum may be used before its
+  declaration, in any file of the unit. (Field *back-references* are not
+  order-free; §4.5.)
+- `if` nests freely inside blocks (`switch` is not in v1; §4.4).
 
-### Attributes — per-field, optional, keyed — DECIDED
+### Attributes — per-field, optional, keyed
 
-**Ranges and refinements are trailing per-field attributes in `[ ]`, not call syntax**
-(Glenn, 2026-08-05: *"a more go like thing, where per-variable there are attributes
-per-variable (optional) instead of the (min,max)"* — *"this way we can express multiple
-things per-variable as needed"*; brackets his call the same day, **with his hedge kept
-attached: "just a personal preference, could be wrong but let's see in time"** — held
-loosely, cheap to revisit while nothing is implemented):
+Ranges and refinements are trailing per-field attributes in `[ ]`:
 
 ```
 health      int16   [min = 0, max = MaxHealth]
@@ -458,46 +397,35 @@ orientation float32 [min = -180.0, max = 180.0, resolution = 0.01]
 sequence    uint16
 ```
 
-- **Brackets never collide with array bounds, structurally** (Glenn, 2026-08-05: *"We can do
-  the golang array thing, eg. prefix [] before the type... helps"*): an array bound is a
-  **prefix** — `[<= MaxObjects]ObjectState`, Go's order — and attributes **trail** the
-  complete type. Position alone disambiguates; no lookahead. Scalar constraints like
-  `min`/`max` apply per element.
-- **Valueless attributes are in** — deferred in the first draft of this section, restored
-  the same day when the real need arrived: **object view markers** (§4.8) need
-  `[interpolate]` and `[local]`, and the prefix-array decision had already removed the
-  collision that motivated the deferral. **Attribute lists stay flat** (Glenn:
-  `[interpolate, min = x, max = y]`) — a marker and its encoding parameters sit side by
-  side; no nested argument syntax.
+- **Brackets never collide with array bounds, structurally:** an array bound
+  is a **prefix** — `[<= MaxObjects]ObjectState`, Go's order — and attributes
+  **trail** the complete type. Position alone disambiguates; no lookahead.
+  Scalar constraints like `min`/`max` apply per element.
+- **Valueless attributes** (the object view markers `[interpolate]` and
+  `[local]`, §4.8) and valued keys sit side by side in one flat list —
+  `[interpolate, min = x, max = y]` — valueless markers first, then valued
+  keys; there is no nested argument syntax.
+- **The line between positional and attribute:** a *size* that defines the
+  type's shape stays positional — `bits(64)`, `string(64)`, `bytes(N)`,
+  `fixed(I, F)`, array bounds. A *constraint or refinement* of a named type
+  is an attribute. The enum's `[max = 15]` is the same syntax; it is one
+  general mechanism.
+- **The vocabulary is typed and closed per compiler version — an unknown
+  attribute is a compile error**, never a silently ignored string. The
+  vocabulary: integers take `min`/`max` (both together or neither); `float32`
+  takes `min`/`max`/`resolution` (all three together — §4.3: this IS the
+  compressed float); `fixed`/`ufixed`/`int128` take `min`/`max` (required —
+  §4.3); enum declarations take `max`; type declarations take a tag and the
+  `cpp_native`/`cpp_include` pair (below); `object` bodies additionally admit
+  the view markers `interpolate` and `local`, `context = <name>` (legal only
+  beside `[local]` — Contexts, below), and the view-encoding keys `quantize`
+  and `round` (§4.8).
 
-- **The line between positional and attribute:** a *size* that defines the type's shape stays
-  positional — `bits(64)`, `string(64)`, `bytes(N)`, array bounds. A *constraint or
-  refinement* of a named type is an attribute. The enum's `[max = 15]` was already this
-  syntax; it is now the one general mechanism.
-- **The vocabulary is typed and closed per compiler version — an unknown attribute is a
-  compile error**, never a silently ignored string (the anti-Go-struct-tag decision: keyed
-  like Go, checked like Go is not). v1: integers take `min`/`max` (both together or
-  neither); `float32` takes `min`/`max`/`resolution` (all three together — see §4.3: this IS
-  the compressed float); `enum` declarations take `max`; **the valueless view markers
-  `interpolate` and `local` are in the vocabulary for `object` bodies** (§4.8 — this
-  enumeration lagged the valueless-markers decision above until 2026-08-05, which made the
-  spec's own §4.8 examples compile errors), **and so is `context = <name>`, legal only
-  beside `[local]`** (§4.2 Contexts — the same lag, caught by a cold audit the same day
-  the corpus started using it). Still PROPOSED, riding the corpus review:
-  `quantize`/`round` inside the §4.8 view-encoding rules. *(The former `[no_none]` and
-  `[unit]` markers are dead — their jobs moved to the type-tag mechanism and
-  the type-tag mechanism below; a built-in `quat` and a class vocabulary each lived for
-  under an hour on the way to it.)*
-- **Attributes are the horizon's attachment point.** Per-field delta tiers, interpolation
-  modes, struct-mapping targets — *"what properties and attributes per-property"* — land
-  here as new keys with new generator passes, without touching the grammar again.
+### Type tags — types are the user's; meaning is claimed later
 
-### Type tags — DECIDED (Glenn, 2026-08-05): types are the user's; meaning is claimed later
-
-**The language pre-defines NO composite types** — no built-in vec3, no built-in quat, no
-privileged class list (Glenn: *"we don't have a pre-defined set of types"* / *"it's meant
-to be something bigger than space game, and somebody should be able to define their own
-types in there"*). A user declares a type and may **tag** it:
+**The language pre-defines no composite types** — no built-in vec3, no
+built-in quat, no privileged class list. A user declares a type and may
+**tag** it:
 
 ```
 type Vec3 [vec3] {
@@ -514,48 +442,30 @@ type Quat [quat4] {
 }
 ```
 
-- **The type is entirely the user's** — name, body, component precision. The body alone
-  defines storage and wire, like any type; a declared type composes anywhere in the unit,
-  order-free — *"as if a keyword from that point forward"* (his phrase; it is the
-  language's existing composition rule).
-- **The tag is one user-chosen identifier, in its own namespace** — any identifier is
-  legal there, unlike field-attribute keys, which stay closed and checked. **In v1 a tag
-  is inert**: parsed, carried through the IR, emitted as an annotation on the generated
-  type, and it changes zero generated code.
-- **Meaning arrives by CLAIMING** (his call, over both a built-in type set and a
-  compiler-known class vocabulary: *"I like the idea of claiming these tags and assigning
-  meaning and 'how to' interpolate and do stuff with these types."*): a future pass — the
-  delta pass first — claims a tag and assigns its semantics and generated actions
-  (interpolation, prediction, normalization, render mapping). Claiming is an ordinary
-  compiler-version event; the protocol id never moves for it (the id hashes the schema
-  files, and the files already carried the tag). The claiming pass defines its own shape
-  validation for claimed tags (e.g. `[quat4]` requiring four float components) and its
-  own policy toward unclaimed strangers.
-- **The architecture in his words:** *"so it's more like there is a series of types, and
-  then there is something that defines needed actions for those types."* Types on one
-  side; a layer that defines the needed actions for those types on the other. v1 ships
-  the types; the actions layer opens with the delta pass — *"but now the set of types is
-  entirely settable in schema language for deltas later on."* And the provenance, which
-  is the best argument for it: *"this is really what i was doing btw. with the manually
-  coded boiler plate for interpolate and quantize/unquantize"* — *"it's per-type but
-  these types are for my game, they may not be general."* His hand-written code is
-  already plain type structs plus separate per-type action functions, and those types
-  are one game's, not the world's — which is precisely why the language pre-defines
-  none: each schema declares its own types, and each game's actions bind to them by
-  claiming. The tag mechanism is that practice made declarative, not an invention. The
-  closing argument is his: *"it also lets my types be minimal for what my game needs,
-  vs. trying to implement a set of first class types that are sufficient for any game
-  (which is impossible)."* And the clincher from his own roadmap: *"all the types will
-  change soon, we'll go fully fixed point in space game, and all scalars, quats and
-  vectors will become fixed point, so these hard coded types are immediately obsolete."*
-  — under user-defined types, the fixed-point migration (§4.10, runtime-first) is a
-  re-declaration in his schemas, not a language change.
+- **The type is entirely the user's** — name, body, component precision. The
+  body alone defines storage and wire, like any type; a declared type
+  composes anywhere in the unit, order-free.
+- **The tag is one user-chosen identifier, in its own namespace** — any
+  identifier is legal there, unlike field-attribute keys, which stay closed
+  and checked. **In v1 a tag is inert**: parsed, carried through the IR,
+  emitted as an annotation on the generated type, and it changes zero
+  generated code.
+- **Meaning arrives by claiming.** A future pass — the delta pass first —
+  claims a tag and assigns its semantics and generated actions
+  (interpolation, prediction, normalization, render mapping). Claiming is an
+  ordinary compiler-version event, and the protocol id never moves for it:
+  tags are excluded from the wire shape projection (§3.1). The claiming pass
+  defines its own shape validation for claimed tags (e.g. `[quat4]` requiring
+  four float components) and its own policy toward unclaimed strangers.
+- The architecture: types on one side; a layer that defines the needed
+  actions for those types on the other. v1 ships the types; each schema
+  declares its own, and each application's actions bind to them by claiming.
 
-### Native type mapping — `cpp_native` / `cpp_include` (2026-08-12)
+### Native type mapping — `cpp_native` / `cpp_include`
 
-The proven derivation pattern (space game, the Render migration): the compiler generates
-the **basis struct** — data members only, no behavior — and a hand math type **derives**
-from it, adding operators and methods without touching layout:
+The compiler generates the **basis struct** — data members only, no
+behavior — and a hand-written math type **derives** from it, adding operators
+and methods without touching layout:
 
 ```
 type Vector3 [vec3, cpp_native = Vector3, cpp_include = "core_vector.h"] { ... }
@@ -566,47 +476,40 @@ type Vector3 [vec3, cpp_native = Vector3, cpp_include = "core_vector.h"] { ... }
 struct Vector3 : public space::Vector3 { /* operators, length(), ... */ };
 ```
 
-With the mapping declared, generated C++ **storage speaks the native type**: every field
-of a mapped type in every generated struct (states, data views, render types, tables)
-declares `::Vector3` instead of `space::Vector3`, and every generated header that
-references it emits `#include "core_vector.h"`. Simulation code then does math on
-generated state directly — no conversion layer, no per-site casts. This is what
-flatbuffers' `native_type` attribute gestured at, done soundly: derivation guarantees
-layout identity (the emitted `static_assert`s — trivially-copyable, standard-layout —
-still hold over native-typed storage), so relocatability and the parallel scatter/gather
-property survive untouched.
+With the mapping declared, generated C++ **storage speaks the native type**:
+every field of a mapped type in every generated struct (states, data views,
+render types, tables) declares `::Vector3` instead of `space::Vector3`, and
+every generated header that references it emits `#include "core_vector.h"`.
+Simulation code then does math on generated state directly — no conversion
+layer, no per-site casts. Derivation guarantees layout identity — the emitted
+`static_assert`s (trivially-copyable, standard-layout) still hold over
+native-typed storage — so relocatability and the parallel scatter/gather
+property (§4.11) survive untouched.
 
 The rules:
 
-- **`cpp_native` takes an identifier** — the global (`::`-qualified) C++ type name.
-  **`cpp_include` takes a quoted header path** — the header declaring it. They go
-  together: one without the other is an error. String literals (`"..."`, no escapes)
-  exist in the grammar for attribute values only.
-- **Inside the basis type's own generated header the mapping is off** — references there
-  keep the basis name. The native header includes that header to derive from the basis;
-  a mapped reference would be circular. Sibling types declared in the same schema file
-  therefore store the basis type, which is the correct default for pure wire compounds.
-- **Language bindings never move the protocol id.** `cpp_*` attrs rename what one target
-  CALLS the storage; they cannot change a wire bit. The canonical fingerprint skips
-  them. (The protocol id itself hashes source files (§3.1), so editing a schema file to
-  ADD a mapping still moves the id — the exclusion is about the semantic fingerprint,
-  and about never letting a binding masquerade as a wire change.)
-- **C++ only, by prefix.** Other targets ignore `cpp_*` keys. If C# or Go ever earn a
-  native mapping, they get their own prefixed keys and their own soundness argument;
-  nothing is shared but the spelling convention.
+- **`cpp_native` takes an identifier** — the global (`::`-qualified) C++ type
+  name. **`cpp_include` takes a quoted header path** — the header declaring
+  it. They go together: one without the other is an error. String literals
+  (`"..."`, no escapes) exist in the grammar for attribute values only.
+- **Inside the basis type's own generated header the mapping is off** —
+  references there keep the basis name. The native header includes that
+  header to derive from the basis; a mapped reference would be circular.
+  Sibling types declared in the same schema file therefore store the basis
+  type, which is the correct default for pure wire compounds.
+- **Language bindings never move the protocol id.** `cpp_*` attributes rename
+  what one target CALLS the storage; they cannot change a wire bit, and the
+  projection (§3.1) excludes them.
+- **C++ only, by prefix.** Other targets ignore `cpp_*` keys. If another
+  target ever earns a native mapping, it gets its own prefixed keys and its
+  own soundness argument; nothing is shared but the spelling convention.
 
-### Contexts — the idea is DECIDED (Glenn, 2026-08-05), the mechanism PROPOSED
+### Contexts
 
-**The need, his words:** *"OK regarding client/server #ifdefs, they're important!
-Basically, i was using #if GAME_CLIENT and #if GAME_SERVER to specify differences in
-types (always local...), on client and server, because they had to do slightly different
-work."* And the constraint that shapes the answer: preprocessor emission is out —
-*"this isn't good in a generated code, and languages that we are outputting to don't all
-have preprocessor, so we can't do that."* **His design:** *"Idea. Contexts.schema where
-we list contexts (in this case 'client' and 'server')"* — contexts are declared in the
-schema, not baked into the language, exactly like the types.
-
-**The PROPOSED mechanism (Rowan, 2026-08-05):**
+Types sometimes need per-side local state — client-only or server-only
+simulation fields — without preprocessor conditionals, which not all target
+languages have. Contexts are declared in the schema, not baked into the
+language:
 
 ```
 // Contexts.schema
@@ -615,117 +518,92 @@ package example
 contexts { client, server }
 ```
 
-- **`contexts { ... }`** — one comma-separated list per unit (the same `VariantList` form
-  as enums; `contexts` is contextual at file scope, like `flags`). Context names are
-  user-chosen; lowercase by his usage.
-- **Per-local field, an optional `context = <name>` attribute** — his exact form: *"and
-  then per-local field, we can optionally say context = client, default attribute =
-  context all."* So: `predicted_explode bool [local, context = client]`; an unscoped
-  field defaults to `context = all` (every context); `all` is reserved and cannot be
-  declared. **`context` is legal only beside `[local]`** — a wire field with a context is
-  a compile error, because the wire must be identical on every side. The `context` key's
-  legal values are closed *by the unit's own `contexts` declaration* rather than by the
-  compiler.
-- **Generation resolves the variance — no preprocessor anywhere, one output, a TYPE per
-  context.** His form: *"Then when we have multiple contexts per-type, we can generate a
-  type per-context, called, for example ClientShip, ServerShip (where it is the snake ->
-  capital case for the context name)."* When a type or object carries context-scoped
-  fields, the generator emits one variant per context, named by capitalizing the context
-  onto the type — `ClientShipState`, `ServerShipState` — each holding the `all` fields
-  plus its own context's; a type with no context-scoped fields generates once, unprefixed.
-  Each side's code uses its own type, which is what the `#if` was approximating by hand.
-  His ratification, with the escape hatch noted: *"this will work across all languages,
-  and if i want to do funny stuff in C++ with #ifdefs, I can just #define Ship ClientShip
-  if i really care to"* — the language stays preprocessor-free and the application keeps
-  its freedom.
-- **Wire and protocol id are context-invariant by construction:** context fields are
-  local-only, so every context generates byte-identical wire code, and the id (which
-  hashes the schema files, `Contexts.schema` included) is one id for all contexts.
+- **`contexts { ... }`** — one comma-separated list per unit (the same
+  `VariantList` form as enums; `contexts` is contextual at file scope, like
+  `flags`). Context names are user-chosen; lowercase by convention.
+- **Per-`[local]` field, an optional `context = <name>` attribute:**
+  `predicted_explode bool [local, context = client]`. An unscoped field
+  defaults to `context = all` (every context); `all` is reserved and cannot
+  be declared. **`context` is legal only beside `[local]`** — a wire field
+  with a context is a compile error, because the wire must be identical on
+  every side. The `context` key's legal values are closed *by the unit's own
+  `contexts` declaration*, not by the compiler.
+- **Generation resolves the variance — no preprocessor anywhere, one output,
+  a type per context.** When a type or object carries context-scoped fields,
+  the generator emits one variant per context, named by capitalizing the
+  context onto the type — `ClientShipState`, `ServerShipState` — each holding
+  the `all` fields plus its own context's. A type with no context-scoped
+  fields generates once, unprefixed. Each side's code uses its own type.
+- **Wire and protocol id are context-invariant by construction:** context
+  fields are local-only, so every context generates byte-identical wire code,
+  and the unit has one id for all contexts.
 
-### Constants and enums are exported — DECIDED
+### Constants and enums are exported
 
-Glenn, 2026-08-04: *"We'll need support for constants too, because those are referred to from
-the serialize functions"* — *"and enums."* Both are first-class in both directions:
+Both are first-class in both directions:
 
-- **Into the wire:** a `const` is usable in any range, bound, width or case label, folded at
-  compile time; an enum is a wire type.
-- **Out to the code:** every `const` and every `enum` is **exported in the generated output
-  of all four targets** — `inline constexpr int64_t MaxPlayers = ...;` /
-  `public const long MaxPlayers = ...;` / `const MaxPlayers int64 = ...` /
-  `pub const MAX_PLAYERS: i64 = ...;` and the integer-backed enum types of
-  §6.1 — because the values that shape the wire are the same values game code sizes its
-  arrays and loops with. One declaration, everywhere, and the game references the schema's
-  constant instead of a hand-copied twin.
+- **Into the wire:** a `const` is usable in any range, bound, width or case
+  label, folded at compile time; an enum is a wire type.
+- **Out to the code:** every `const` and every `enum` is exported in the
+  generated output of every target — `inline constexpr int64_t MaxPlayers =
+  ...;` / `public const long MaxPlayers = ...;` / `const MaxPlayers int64 =
+  ...` / `pub const MAX_PLAYERS: i64 = ...;` and the integer-backed enum
+  types of §6.1 — because the values that shape the wire are the same values
+  application code sizes its arrays and loops with. One declaration,
+  everywhere; the application references the schema's constant instead of a
+  hand-copied twin.
 
-The evidence this is load-bearing sits in Space Game's current flatbuffers layer:
-**flatbuffers has no constants, so today's `definitions.fbs` encodes them as single-value
-enums** — a real constant declaration is one of the concrete things schema improves on day
-one. *(v1 constants are integers; if the corpus shows serialize functions referring to named
-float constants — e.g. ranges for compressed floats — `const` widens to floats in that design
-pass.)*
-
-**The sentinel-zero counting convention — DECIDED (Glenn, 2026-08-06).** Entry 0 of every
-enum is the none/sentinel value, so **the count of real things is always `Enum.Max`, never
-`Enum.Max + 1`**. His words: *"0 is the 'none' or sentinel... This is the case for all enums,
-so if you are to count the number of things, it is always going to be `<EnumName>.Max`"* —
-with his two worked examples: `Team { None, Red, Blue }` → two real teams, `NumTeams =
-Team.Max = 2`; `ShipType_None, ShipType_A, ShipType_B, ShipType_C` → three real ship types,
-`ShipType.Max = 3`. A convention over the corpus and generated-code usage, not a language
-rule — the language does not enforce entry 0's meaning — and the corpus follows it
-everywhere (the 2026-08-06 `NumTeams` correction is the worked instance). **The why, his
-words:** *"this lets us pass in the 'null', eg. 'no team' in the same variable that
-specifies the team"* — optionality rides in-band, no separate has-flag. The
-counterfactual, also his: *"without this, we have to do lots of annoying serialize
-everywhere like, `bool hasTeam, enum team`, and check the `if hasTeam` every time.
-Stupid."* And it composes with §4.2's zero-initialization: a zero-initialized enum field
-**is** `None` by construction, so a fresh struct starts in the null state without any
-code saying so.
+**The sentinel-zero counting convention.** Entry 0 of every enum is the
+none/sentinel value, so **the count of real things is always `Enum.Max`,
+never `Enum.Max + 1`**: `Team { None, Red, Blue }` has two real teams,
+`NumTeams = Team.Max = 2`. Optionality rides in-band — "no team" travels in
+the same variable as the team, with no separate has-flag — and it composes
+with zero initialization: a zero-initialized enum field IS `None` by
+construction, so a fresh struct starts in the null state without any code
+saying so. This is a convention over the corpus and generated-code usage, not
+a language rule — the language does not enforce entry 0's meaning.
 
 ### 4.3 Field types and their wire encodings
 
-**The wire model — normative** *(added 2026-08-05: the table below defined every construct
-only by pointing at its classic twin, whose contract lives outside this document; an
-implementer working from the spec alone could not produce one correct byte. These are the
-family's measured invariants, restated here as the spec's own)*:
+**The wire model — normative:**
 
-- **Bit order is LSB-first**: successive values OR into the stream at increasing bit
-  offsets, no per-value reversal — **bit i of the stream lives in byte i/8 at bit position
-  i%8.**
-- The writer accumulates into a 64-bit scratch flushed as **little-endian words**; the final
-  flush zero-fills — the stream's logical length is **ceil(bits/8) bytes**, and `Write`
-  returns exactly that.
-- **All >32-bit quantities go low 32 bits first**, then the high remainder (`bits(N>32)`,
-  `uint64`, `float64`, ranged encodings wider than 32 bits). **The 128-bit family and
-  fixed point generalize the same rule: the value splits into full 32-bit groups from
-  the least significant upward, the final group carrying the remainder, up to four
-  groups** (STANDARD.md's own statement of the split).
-- **Ranged integers encode `value − min`, unsigned, in exactly `bits_required(min, max)`
-  bits** — the bit width of (max − min), computed in the range's own width (clz over 32 or
-  64 bits as the range demands); no zigzag on the wire, ever.
-- **`align` emits zero bits up to the next byte boundary — zero bits when already
-  aligned**; readers verify the padding is zero.
-- **Length prefixes** (`string(N)`, `bytes(N)`, `[<= N]T`, `[Min..N]T`) are ranged
-  integers over their declared count range, per the row below.
+- **Bit order is LSB-first**: successive values OR into the stream at
+  increasing bit offsets, no per-value reversal — **bit i of the stream lives
+  in byte i/8 at bit position i%8.**
+- The writer accumulates into a 64-bit scratch flushed as **little-endian
+  words**; the final flush zero-fills — the stream's logical length is
+  **ceil(bits/8) bytes**, and `Write` returns exactly that.
+- **All >32-bit quantities go low 32 bits first**, then the high remainder
+  (`bits(N>32)`, `uint64`, `float64`, ranged encodings wider than 32 bits).
+  **The 128-bit family and fixed point generalize the same rule: the value
+  splits into full 32-bit groups from the least significant upward, the final
+  group carrying the remainder, up to four groups.**
+- **Ranged integers encode `value − min`, unsigned, in exactly
+  `bits_required(min, max)` bits** — the bit width of (max − min), computed
+  in the range's own width (clz over 32 or 64 bits as the range demands); no
+  zigzag on the wire, ever.
+- **`align` emits zero bits up to the next byte boundary — zero bits when
+  already aligned**; readers verify the padding is zero.
+- **Length prefixes** (`string(N)`, `bytes(N)`, `[<= N]T`, `[Min..N]T`) are
+  ranged integers over their declared count range, per the rows below.
 
-The wire encodings are exactly classic serialize's — each row names its classic twin, which is
-the wire oracle for the stated model. (Extracted contracts: `notes/serialize-cpp-api.md` and
-siblings — design inputs, re-verified against library source at implementation time.)
+The wire encodings are exactly classic serialize's — each row names its
+classic twin, which is the wire oracle for the stated model.
 
 | schema | wire | classic twin |
 |---|---|---|
 | `f bits(N)` | N raw bits, N in [1,64] | `serialize_bits` ([1,64]; >32 = low 32 bits first, then the high remainder) |
 | `f intN` / `f uintN` (bare, N ∈ 8/16/32/64) | N raw bits (two's complement for signed) | `serialize_uint8/16/32/64`; signed raw is the same bits, cast |
 | `f intN [min = A, max = B]` / `f uintN [min = A, max = B]` | minimal bits for the range, value − A; read rejects out-of-range; **the range must fit the declared storage** | `serialize_int` (≤32-bit int ranges) / `serialize_int64` / width-computed `serialize_bits` for full-unsigned ranges |
-| `f uint128` (bare ONLY) | 128 raw bits — the low 64-bit half first, then the high half; representation-independent (native `__int128` and the emulated two-lane pair produce identical bytes) | `serialize_uint128` |
-| `f int128 [min = A, max = B]` (range REQUIRED) | value − A in `bits_required128(A, B)` bits, 32-bit groups from the bottom; read rejects an offset above B − A — reject, never clamp; **where the range fits 64 bits or fewer the bytes are identical to `serialize_int64` over the same bounds.** Bare `int128` and ranged `uint128` are compile errors — serialize's own surface, mirrored exactly (uint→raw, int→ranged) | `serialize_int128` |
-| `f fixed(I, F) [min = A, max = B]` (range REQUIRED; **SIGNED** — Glenn 2026-08-06; the unsigned sibling is the `ufixed` row below, §9 q17 closed 2026-08-15) | Q I.F, the sign bit counting toward I; storage is a signed integer of exactly I+F bits (I+F ∈ 8/16/32/64/128, I ≥ 1, F ≥ 0); bounds are compile-time WHOLE UNITS fitting the Q format and int64; wire = raw − (A << F) in bitlen(B − A) + F bits, 32-bit groups from the bottom — **except A == B, which costs ZERO bits (not F): the reader materializes raw = A << F from the range alone (DECIDED 2026-08-15, §4.6)**; read rejects above the raw range; round trip is EXACT (no quantization step), and with F = 0 the operation IS a ranged integer | `serialize_fixed` |
-| `f ufixed(I, F) [min = A, max = B]` (range REQUIRED; **UNSIGNED** — DECIDED, Glenn 2026-08-15: "ufixed is fine", closing §9 q17 as the explicit-spelling option, the integer family's own int/uint precedent) | UQ I.F: no sign bit, whole-unit domain [0, 2^I); storage is an UNSIGNED integer of exactly I+F bits (I+F ∈ 8/16/32/64/128, I ≥ 1 — the runtime's own unconditional floor — F ≥ 0); bounds are compile-time WHOLE UNITS fitting the unsigned domain and int64 (so I ≥ 63 clamps to int64's ceiling); the wire law is fixed's own — raw − (A << F) in bitlen(B − A) + F bits, A == B costs ZERO bits, read rejects above the raw range, round trip EXACT. The raw values of wide formats legitimately fill uint64's HIGH HALF (above 2^63): every route through a signed-typed runtime API is a bit-exact cast or zero-extension, never sign extension, and the corpus pins that byte-for-byte | `serialize_fixed` (unsigned storage — the codec was storage-generic from its landing) |
+| `f uint128` (bare only) | 128 raw bits — the low 64-bit half first, then the high half; representation-independent (native `__int128` and the emulated two-lane pair produce identical bytes) | `serialize_uint128` |
+| `f int128 [min = A, max = B]` (range required) | value − A in `bits_required128(A, B)` bits, 32-bit groups from the bottom; read rejects an offset above B − A — reject, never clamp; **where the range fits 64 bits or fewer the bytes are identical to `serialize_int64` over the same bounds.** Bare `int128` and ranged `uint128` are compile errors — serialize's own surface, mirrored exactly (uint→raw, int→ranged) | `serialize_int128` |
+| `f fixed(I, F) [min = A, max = B]` (range required; **signed**) | Q I.F, the sign bit counting toward I; storage is a signed integer of exactly I+F bits (I+F ∈ 8/16/32/64/128, I ≥ 1, F ≥ 0); bounds are compile-time WHOLE UNITS fitting the Q format and int64; wire = raw − (A << F) in bitlen(B − A) + F bits, 32-bit groups from the bottom — **except A == B, which costs ZERO bits (not F): the reader materializes raw = A << F from the range alone (§4.6)**; read rejects above the raw range; round trip is EXACT (no quantization step), and with F = 0 the operation IS a ranged integer | `serialize_fixed` |
+| `f ufixed(I, F) [min = A, max = B]` (range required; **unsigned**) | UQ I.F: no sign bit, whole-unit domain [0, 2^I); storage is an UNSIGNED integer of exactly I+F bits (I+F ∈ 8/16/32/64/128, I ≥ 1, F ≥ 0); bounds are compile-time WHOLE UNITS fitting the unsigned domain and int64 (so I ≥ 63 clamps to int64's ceiling); the wire law is fixed's own — raw − (A << F) in bitlen(B − A) + F bits, A == B costs ZERO bits, read rejects above the raw range, round trip EXACT. The raw values of wide formats legitimately fill uint64's HIGH HALF (above 2^63): every route through a signed-typed runtime API is a bit-exact cast or zero-extension, never sign extension, and the corpus pins that byte-for-byte | `serialize_fixed` (unsigned storage — the codec is storage-generic) |
 | `f bool` | 1 bit | `serialize_bool` |
 | `f float32` | 32 raw IEEE-754 bits | `serialize_float` |
 | `f float64` | 64 raw bits (low dword first) | `serialize_double` |
-| `f float32 [min = A, max = B, resolution = R]` | quantized to ceil((B−A)/R) steps — the actual step is (B−A)/ceil((B−A)/R), ≤ R *(the row said "R-sized steps", exact only when (B−A)/R is integral — corrected 2026-08-05)*; read rejects values above the step count | `serialize_compressed_float` (exact formulas incl. the ceil, +0.5f rounding and clamp) — **the former `compressed_float` keyword, dissolved into attributes: storage stays `float32`, the attributes describe the wire** |
+| `f float32 [min = A, max = B, resolution = R]` | quantized to ceil((B−A)/R) steps — the actual step is (B−A)/ceil((B−A)/R), ≤ R; read rejects values above the step count | `serialize_compressed_float` (exact formulas incl. the ceil, +0.5f rounding and clamp); storage stays `float32` — the attributes describe the wire |
 | `f Weapon` (an enum) | minimal bits for [0, max]; read rejects above max | `serialize_int` over [0, max] |
-| ~~`f Kind` (an `enum_index`)~~ — CUT for now (Glenn, 2026-08-05); the design is recorded at §9 q11 | — | — |
 | `f Damage` (a `flags` declaration, §4.2) | W raw bits, W = variant count (or [max]); every pattern legal; storage `uint64` in every target | `serialize_bits` |
 | `f Inner` (a type) | Inner's fields, in place | `serialize_object` |
 | `const(Value, Bits)` | the constant; read **rejects** any other value | `serialize_bits` + compare |
@@ -736,29 +614,29 @@ siblings — design inputs, re-verified against library source at implementation
 | `f [N]T` | N elements, back to back | element per element |
 | `f [<= N]T` / `f [Min..N]T` | count in [Min, N] encoded relative to Min, then that many elements | `serialize_int` + the element loop |
 
-Arrays: the element may be any scalar or named type; arrays of arrays are not in v1 (wrap the
-inner array in a type). Runtime-count arrays carry their own count on the wire — there is no
-separately-declared count field in v1 (draft 1 sketched a back-referenced `: count(field)`
-form; it was cut after a reader showed the draft's own example violated the draft's own
-back-reference rule with it).
+Arrays: the element may be any scalar or named type; arrays of arrays are not
+in v1 (wrap the inner array in a type). Runtime-count arrays carry their own
+count on the wire — there is no separately-declared count field in v1.
 
-**Wire fidelity.** For every legal write, the bits are identical to the named classic twins —
-serialize.modern's one documented deviation (`wstring_` alignment) does not arise because
-schema emits sequential stream operations, and wide strings are deferred anyway. On the
-*read* side, schema's generated readers enforce the language's validation rules uniformly
-(e.g. the interior-null rule of §4.7), which can be stricter than a hand-written classic
-reader; acceptance is uniform across the four targets, which is what the conformance gates
-check.
+**Wire fidelity.** For every legal write, the bits are identical to the named
+classic twins — serialize.modern's one documented deviation (`wstring_`
+alignment) does not arise because schema emits sequential stream operations,
+and wide strings are deferred anyway. On the *read* side, schema's generated
+readers enforce the language's validation rules uniformly (e.g. the
+interior-null rule of §4.7), which can be stricter than a hand-written
+classic reader; acceptance is uniform across the targets, which is what the
+conformance gates check.
 
-**The count-range cap is lifted.** serialize.modern caps `array_n`'s count range at 16 because
-each possible count is a separately spliced compile-time path. schema's generated code uses an
-honest loop (§6.2), so `[<= N]T` is bounded only by what the count's integer range can
-express.
+**The count-range cap is lifted.** serialize.modern caps `array_n`'s count
+range at 16 because each possible count is a separately spliced compile-time
+path. schema's generated code uses an honest loop (§6.2), so `[<= N]T` is
+bounded only by what the count's integer range can express.
 
-### 4.4 Decisions: `if` — and `switch` is CUT for now
+### 4.4 Decisions: `if` — and `switch` is not in v1
 
-Conditional serialization branches on a previously serialized field — a back-reference. The
-branch itself costs no wire bits; the referenced field was already paid for.
+Conditional serialization branches on a previously serialized field — a
+back-reference. The branch itself costs no wire bits; the referenced field
+was already paid for.
 
 ```
 type Body {
@@ -771,235 +649,189 @@ type Body {
 }
 ```
 
-- `if cond { ... } else { ... }` — `cond` is a previously serialized `bool` field, optionally
-  negated. Wire = the taken side only. A `bool` field followed by an `if` on it produces the
-  identical wire to serialize.modern's fused `branch`.
-- **`switch` / `case` — CUT from v1 (Glenn, 2026-08-05: *"cut for now."* / *"simple as
-  possible first pass."*).** The trigger: the corpus's only `switch` example was removed as
-  not useful, and §7.3's own doctrine says a construct no example needs is a construct v1
-  may not need; the generated message/object dispatch never used it (that surface is
-  compiler-emitted, §4.8). The keywords stay reserved, and the design is preserved here for
-  its return: `switch field { case ... }` over a previously serialized integer or enum
-  field; wire = the matching case's fields, a value matching no case serializing nothing,
-  identically both directions; case labels are bare variant names for an enum subject and
-  constant integer expressions for an integer subject; duplicate case values a compile
-  error; `bits(N)` a legal subject; `case None:` legal. *(The corner rule that survives
-  the cut because it binds enums generally: a user-declared variant literally named `None`
-  is a compile error — the name is claimed by the implicit rule.)*
+- `if cond { ... } else { ... }` — `cond` is a previously serialized `bool`
+  field, optionally negated. Wire = the taken side only. A `bool` field
+  followed by an `if` on it produces the identical wire to serialize.modern's
+  fused `branch`.
+- **`switch` / `case` are reserved but not in v1.** The design is preserved
+  here for its return: `switch field { case ... }` over a previously
+  serialized integer or enum field; wire = the matching case's fields, a
+  value matching no case serializing nothing, identically both directions;
+  case labels are bare variant names for an enum subject and constant integer
+  expressions for an integer subject; duplicate case values a compile error;
+  `bits(N)` a legal subject; `case None:` legal. One corner rule survives the
+  deferral because it binds enums generally: **a user-declared variant
+  literally named `None` is a compile error** — the name is claimed by the
+  implicit-`None` rule.
 
 ### 4.5 Back-references: the dominance rule
 
-The referenced field must be declared **earlier in the same block or in an enclosing block** —
-never in a sibling branch side, or inside an array element. Equivalently: the
-referent is serialized on every path that reaches the reference. This is a lexical-scope
-check in the resolver.
+The referenced field must be declared **earlier in the same block or in an
+enclosing block** — never in a sibling branch side, or inside an array
+element. Equivalently: the referent is serialized on every path that reaches
+the reference. This is a lexical-scope check in the resolver.
 
 ```
     has_delta bool
     if has_delta { ... }      // legal: same block, earlier — dominated
 ```
 
-Forward references, references into a sibling branch side, and references to array
-element fields are compile errors naming the offending reference and the rule. *(Draft 1
-required the referent be unconditionally serialized at type top level, which outlawed the
-example above and contradicted the fused-branch subsumption claim; the dominance rule is
-strictly more expressive and equally static. The rule is stated over `if` sides; it
-extends unchanged to `case` bodies when `switch` returns.)*
+Forward references, references into a sibling branch side, and references to
+array element fields are compile errors naming the offending reference and
+the rule. The rule is stated over `if` sides; it extends unchanged to `case`
+bodies when `switch` lands.
 
 ### 4.6 Shape checks
 
 All compile errors with positions:
 
-- `bits`, `const`, `reserved` widths outside [1,64]; a `const` value that does not fit its
-  width.
-- **The fixed and 128-bit family rules (2026-08-06, serialize's static_asserts restated
-  as language rules so generated code cannot fail to compile):** `fixed(I, F)` requires
-  I ≥ 1 (the sign bit counts toward I), F ≥ 0, and I + F equal to a storage width —
-  8, 16, 32, 64 or 128; a `fixed` field requires `[min = A, max = B]` in whole units,
-  A ≤ B *(A = B legal since the 2026-08-15 ruling — see the degenerate-ranges bullet)*,
-  both fitting the Q format's whole-unit domain [−2^(I−1), 2^(I−1) − 1] AND
-  int64 (where the runtime's compile-time bound parameters live); `ufixed(I, F)`
-  (2026-08-15) carries the same shape rules with the unsigned domain — I ≥ 1 still
-  (the runtime's unconditional floor, unsigned included), bounds in [0, 2^I − 1]
-  clamped to int64's ceiling — and its diagnostics name the `ufixed` spelling; `int128` requires
-  `[min = A, max = B]` (bare `int128` is a compile error — serialize has no raw signed
-  128-bit operation); `uint128` refuses `min`/`max` (ranged 128-bit is `int128`);
-  specified defaults cover `int128`/`uint128` (fit-checked like any integer) and,
-  since 2026-08-12, `fixed` — the door reopened with its real case, the quaternion
-  identity (`w fixed(2, 30) [min = -1, max = 1] = 1.0`). A fixed default is declared
-  in WHOLE UNITS (the same domain as the bounds, so no raw/units confusion is
-  possible) and must be EXACTLY representable: value × 2^F an integer, no rounding
-  rule involved — `1.0` and `0.5` are legal in Q2.30, `0.1` is a compile error
-  naming the constraint. Storage initializes to the raw scaled integer.
-- **A range that does not fit its declared storage:** `int8 [min = 0, max = 1000]` is a
-  compile error — the range determines the wire, the type name determines the storage, and a
-  legal wire value the storage truncates would be silent corruption that passes read
-  validation. (This check left the spec in draft 2 as vestigial — storage was derived then;
-  with the integer family naming storage explicitly, it returns with a real job. *The worked
-  example here carried the dead call syntax `int8(0, 1000)` until 2026-08-05 — unparseable
-  under the grammar since attributes landed.*)
-- **Attribute discipline:** an unknown attribute key, a key repeated, an attribute on a type
-  that does not take it, `min` without `max` (or vice versa), and `resolution` without both
-  bounds are compile errors, each naming the field and the legal vocabulary for its type.
-  **One scoped exception, stated rather than implied** *(the corpus sat on this conflict
-  for a day — six fields — before a cold audit caught it, 2026-08-05)*: in the composite
-  quantization form `[interpolate, quantize = K, max = B]` (§4.8 rule 2), `max` is the
-  quantize bound and appears WITHOUT `min` by design — `min` is forbidden there, the
+- `bits`, `const`, `reserved` widths outside [1,64]; a `const` value that
+  does not fit its width.
+- **The fixed and 128-bit family rules** (serialize's static_asserts restated
+  as language rules, so generated code cannot fail to compile):
+  `fixed(I, F)` requires I ≥ 1 (the sign bit counts toward I), F ≥ 0, and
+  I + F equal to a storage width — 8, 16, 32, 64 or 128; a `fixed` field
+  requires `[min = A, max = B]` in whole units, A ≤ B, both fitting the Q
+  format's whole-unit domain [−2^(I−1), 2^(I−1) − 1] AND int64 (where the
+  runtime's compile-time bound parameters live). `ufixed(I, F)` carries the
+  same shape rules with the unsigned domain — I ≥ 1 still, bounds in
+  [0, 2^I − 1] clamped to int64's ceiling — and its diagnostics name the
+  `ufixed` spelling. `int128` requires `[min = A, max = B]` (bare `int128` is
+  a compile error — serialize has no raw signed 128-bit operation); `uint128`
+  refuses `min`/`max` (ranged 128-bit is `int128`). Specified defaults cover
+  `int128`/`uint128` (fit-checked like any integer) and `fixed`: a fixed
+  default is declared in WHOLE UNITS (the same domain as the bounds, so no
+  raw/units confusion is possible) and must be EXACTLY representable —
+  value × 2^F an integer, no rounding rule involved — `1.0` and `0.5` are
+  legal in Q2.30, `0.1` is a compile error naming the constraint. Storage
+  initializes to the raw scaled integer.
+- **A range that does not fit its declared storage:**
+  `int8 [min = 0, max = 1000]` is a compile error — the range determines the
+  wire, the type name determines the storage, and a legal wire value the
+  storage truncates would be silent corruption that passes read validation.
+- **Attribute discipline:** an unknown attribute key, a key repeated, an
+  attribute on a type that does not take it, `min` without `max` (or vice
+  versa), and `resolution` without both bounds are compile errors, each
+  naming the field and the legal vocabulary for its type. One scoped
+  exception: in the composite quantization form
+  `[interpolate, quantize = K, max = B]` (§4.8 rule 2), `max` is the quantize
+  bound and appears WITHOUT `min` by design — `min` is forbidden there, the
   domain being symmetric [-B, +B].
-- **Non-finite compressed-float parameters — REJECTED, DECIDED (Glenn, 2026-08-15:
-  "attempting to send NaN or INF or anything else through compressed float is
-  non-conforming and should assert out on write too"; the serialize runtimes carry the
-  write-side asserts, this rule is the compiler's half):** each of `min`/`max`/
-  `resolution` (§4.3's triple, and §4.8 rule 4's reuse of it) must be finite at float64
-  AND at float32, where every runtime evaluates the triple — the diagnostic names the
-  parameter. *(Before the rule, `[min = -1e39, max = 1e39, resolution = 1e30]` checked
-  clean and the C++ emitter printed `-Inf.0f`, a token no C++ compiler accepts.)* The
-  grammar cannot spell NaN at all — a float literal beyond the double's range is a
-  parse error, constant arithmetic is overflow-guarded, division by zero is refused —
-  and an integer constant too large for float64 is an error in ANY float position
-  rather than a silent infinity; the checker still carries the NaN arm as proven
+- **Non-finite compressed-float parameters are rejected:** each of
+  `min`/`max`/`resolution` (§4.3's triple, and §4.8 rule 4's reuse of it)
+  must be finite at float64 AND at float32, where every runtime evaluates the
+  triple — the diagnostic names the parameter. The grammar cannot spell NaN
+  at all — a float literal beyond the double's range is a parse error,
+  constant arithmetic is overflow-guarded, division by zero is refused — and
+  an integer constant too large for float64 is an error in ANY float position
+  rather than a silent infinity; the checker still carries the NaN arm as
   defense in depth.
-- **Degenerate and inverted ranges — min == max is LEGAL, DECIDED (Glenn, 2026-08-15:
-  "min==max is legal").** A ranged integer, `int128` or `fixed` field with equal bounds
-  costs **zero bits**: the wire carries nothing and the reader recovers the value from
-  the range alone (`min` — for fixed, the raw `min << F`), exactly the rule STANDARD.md
-  has always stated for degenerate ranged integers and the rule the empty enum below
-  already rides. The generators emit the write-side range refusal and no wire call at
-  all, because a bit packer requires at least one bit — which also means generated code
-  needs NO degenerate support from any runtime. *(Until 2026-08-15 the checker rejected
-  min ≥ max wholesale, suggesting `const` — a stricter guard than the format, the same
-  false premise the empty-enum paragraph below records. The 08-14 audit found four
-  runtime behaviors behind the rejection: zero bits, F bits on the wide path only,
-  an abort and a panic — the divergence the ruling closes.)* What stays an error:
-  an INVERTED range (min > max) anywhere; `[Min..N]T` with Min ≥ N ([N]T is the
-  degenerate spelling); `string(N)` with N < 2;
-  `bytes(<= N)` with N < 1; **`bytes(N)` with N < 1; `[N]T` with N < 1; `[<= N]T` with
-  N < 1** *(three holes closed 2026-08-05)*; `resolution` ≤ 0. An empty `type` or `message`
-  body is legal — zero wire bits, the Heartbeat precedent; an empty `object` body is an
-  error (it generates a meaningless view family); a unit with no `.schema` files is an
-  error.
+- **Degenerate ranges: min == max is legal and costs zero bits.** A ranged
+  integer, `int128`, `fixed` or `ufixed` field with equal bounds carries
+  nothing on the wire; the reader recovers the value from the range alone
+  (`min` — for fixed point, the raw `min << F`). The generators emit the
+  write-side range refusal and no wire call at all, because a bit packer
+  requires at least one bit — which also means generated code needs no
+  degenerate support from any runtime. What stays an error: an INVERTED range
+  (min > max) anywhere; `[Min..N]T` with Min ≥ N (`[N]T` is the degenerate
+  spelling); `string(N)` with N < 2; `bytes(N)` with N < 1; `[N]T` with
+  N < 1; `[<= N]T` with N < 1; `resolution` ≤ 0. An empty `type` or `message`
+  body is legal — zero wire bits, presence as the payload; an empty `object`
+  body is an error (it would generate a meaningless view family); a unit with
+  no `.schema` files is an error.
 
-  **An enum with no variants is LEGAL** *(2026-08-13, Glenn: "Let's support enum nothing in
-  schema")*. It holds only the implicit `None = 0`, so its wire range is the degenerate
-  `[0, 0]` and it costs **zero bits** — the value is recovered from the range alone. The
-  generators emit the range refusal and no wire call at all, because a bit packer requires
-  at least one bit.
+  **An enum with no variants is legal.** It holds only the implicit
+  `None = 0`, so its wire range is the degenerate `[0, 0]` and it costs zero
+  bits — the value is recovered from the range alone, under the same rule as
+  any degenerate range.
+- **One flat namespace, and the compiler's claimed names:** all declaration
+  kinds share one unit-level namespace (`const Foo` and `type Foo` collide).
+  A unit with `message` declarations may not declare `MessageType`;
+  symmetrically, a unit with `object` declarations may not declare
+  `ObjectType`, nor — per object `X` — the generated family names (`XState`,
+  `XData_Deep`, `XData_Shallow`, `XData_Interpolate`); and no unit declares
+  `ProtocolId`. The checker likewise refuses user names that collide with
+  per-declaration generated symbols (`Write*`/`Read*`/`New*`,
+  `*MaxBits`/`*MaxBytes`, companion length/count names, the dispatch
+  surface). Diagnostics name the generated artifact that claims the name.
+- Enum `[max = K]` below the variant count.
+- **Duplicate field names anywhere in one type — including across branch
+  sides.** One name, one field, declared once. (schema owns the type, and
+  unique names keep the flattened generated output unambiguous.)
+- Back-reference violations (§4.5); `if` conditions that are not `bool`
+  fields.
+- Cycles in type composition, undefined types, duplicate declarations,
+  `package` mismatch.
+- **Target-name safety:** a declaration or field name that is a reserved word
+  in any target language (`type`, `match`, `impl`, `func`, `class`, ...) or
+  that collides with another name after Go export-casing (`atRest` →
+  `AtRest`) is rejected, with a diagnostic naming the target and the
+  collision. No escaping machinery; rename at the source.
+- **Package-name safety:** the package ident maps to every target's
+  namespace/module/package concept verbatim (§6.1), which exposes it to three
+  collision classes no declaration or field name can hit, each refused with a
+  diagnostic naming the mechanism and the fix (rename the package). (1) A
+  target reserved word: `package for` would generate `namespace for` and
+  `package for`. (2) A C standard library identifier visible at C++ namespace
+  scope — functions, types, and object-like macros of the C11 headers, which
+  implementations also declare in the global namespace: `package exit` would
+  generate `namespace exit`, which clang refuses against `<cstdlib>`. The
+  refused set is a curated, per-header list in the checker; exact
+  case-sensitive match (C++ namespaces are case-sensitive), so `exits`,
+  `exit2` and `Exit` stay legal. (3) The name `main`, which makes the
+  generated Go a program package that cannot be imported.
 
-  This was previously rejected on the grounds that *"every runtime treats `min == max`
-  range serialization as API misuse, so the language rejects what the runtimes would
-  reject."* That premise was **false in the runtimes' own terms**: STANDARD.md has always
-  defined a degenerate range as costing zero bits, and the four ports had each
-  independently grown a stricter guard than the format — C++ asserted in debug while its
-  release path was already correct, Go panicked, C# threw, Rust panicked. All five ports
-  now implement what the standard says, and the corpus carries an empty enum so the
-  no-variant path is exercised in every language rather than only in a unit test. Adding
-  it moved the protocol id and **not one wire byte**, which is the property being claimed.
-- **One flat namespace, and the compiler's claimed names — DECIDED (corner-pins list, Glenn 2026-08-05):**
-  all five declaration kinds share one unit-level namespace (`const Foo` and `type Foo`
-  collide). A unit with `message` declarations may not declare `MessageType` (already
-  stated in §4.8); symmetrically, a unit with `object` declarations may not declare
-  `ObjectType`, nor — per object `X` — the generated family names (`XState`, `XData_Deep`,
-  `XData_Shallow`, `XData_Interpolate`); and no unit declares `ProtocolId`. Diagnostics name
-  the generated artifact that claims the name.
-- Enum `max` below variant count; enum values above `max` unreachable by construction.
-  *(Said "count − 1" until 2026-08-05 — a leftover from a pack-from-0 model. Under implicit
-  `None = 0` with variants packing from 1, the top variant's value IS the count, so
-  `[max = count − 1]` would make it unencodable while passing the check.)*
-- **Duplicate field names anywhere in one type — including across branch sides and cases.**
-  One name, one field, declared once. (serialize.modern permits exclusive-side member reuse
-  because members pre-exist there; schema owns the type, and unique names keep the
-  flattened generated output unambiguous.)
-- Back-reference violations (§4.5); `if` conditions that are not `bool` fields. *(The
-  `switch` subject and case-value checks are shelved with the construct, §4.4.)*
-- Cycles in type composition, undefined types, duplicate declarations, `package` mismatch.
-- **Target-name safety:** a declaration or field name that is a reserved word in any target
-  language (`type`, `match`, `impl`, `func`, `class`, ...) or that collides with another name
-  after Go export-casing (`atRest` → `AtRest`) is rejected, with a diagnostic naming the
-  target and the collision. No escaping machinery; rename at the source.
-- **Package-name safety — DECIDED (Glenn, 2026-08-16, on the compile fuzzer's `package exit`
-  specimen: "Refuse the colliding names with a clear diagnostic"):** the package ident maps
-  to every target's namespace/module/package concept verbatim (§6.1), which exposes it to
-  three collision classes no declaration or field name can hit, each refused with a
-  diagnostic naming the mechanism and the fix (rename the package). (1) A target reserved
-  word: `package for` would generate `namespace for` and `package for`. (2) A C standard
-  library identifier visible at C++ namespace scope — functions, types, and object-like
-  macros of the C11 headers, which implementations also declare in the global namespace:
-  `package exit` generated `namespace exit`, and clang refused it against `<cstdlib>` with
-  "redefinition of 'exit' as different kind of symbol". The refused set is a curated,
-  per-header list in the checker; exact case-sensitive match (C++ namespaces are
-  case-sensitive), so `exits`, `exit2` and `Exit` stay legal. (3) The name `main`, which
-  makes the generated Go a program package that cannot be imported ("function main is
-  undeclared in the main package"). All three were proven on the pre-change compiler
-  before the rule landed.
+### 4.7 Strings and byte blocks — byte strings, one shape
 
-### 4.7 Strings and byte blocks — byte strings, one shape — DECIDED (Glenn, 2026-08-05: "fine"; unified the same evening)
+**`string(N)` and `bytes(N)` are the same construct with two names**: N is
+the max length; the wire is length in [0, N], align, then the used bytes;
+storage is a pre-allocated fixed buffer plus a used count. The declared bound
+exists for exactly one reason — it sizes the length prefix's bits.
 
-**`string(N)` and `bytes(N)` are the same construct with two names**, unified on Glenn's
-reading of the corpus (*"they're all fixed size buffers (both string and block data), and
-they can all be 0 - max length entries serialized too"* / *"so this distinction is
-incorrect."*): **N is the max length; the wire is length in [0, N], align, then the used
-bytes; storage is a pre-allocated fixed buffer plus a used count.** The declared bound
-exists for exactly one reason — *"the bounds are just to make sure we can serialize fewer
-bits when we have a shorter string or smaller buffer value"* — it sizes the length
-prefix's bits. The `<=` marker and a fixed-exact-length `bytes` form both died in the
-unification (nothing used them; an exact-N form can return if a need appears). *(Until
-this unification `string(N)`'s N was the classic BUFFER size, making the max length
-N − 1 — an implementation detail leaking into the language, found when Glenn read the
-corpus and asked why the two spellings differed.)*
-
-**`string(N)` payloads are WELL-FORMED UTF-8 BY CONTRACT — DECIDED (Glenn,
-2026-08-15, the 08-14 audit's fork 1, writer-trusted per the §5 doctrine).**
-The wire shape is unchanged and identical to `bytes(N)`; what the `string`
-spelling adds is a CONTRACT: the payload is well-formed UTF-8, the writer's
-obligation, never the reader's check. Writing malformed UTF-8 is a writer
-contract violation — debug-only asserts where the language supports them
-(C and C++ assert through a generated validator, Rust `debug_assert!`; Go
-has no debug-only mechanism and asserts nothing; the C# `Debug.Assert` is
-a recorded follow-up) — there is NO mandatory read-path validation and no
+**`string(N)` payloads are well-formed UTF-8 by contract.** The wire shape is
+unchanged and identical to `bytes(N)`; what the `string` spelling adds is a
+CONTRACT: the payload is well-formed UTF-8 — the writer's obligation, never
+the reader's check. Writing malformed UTF-8 is a writer contract violation,
+surfaced by debug-only asserts where the language supports them (C and C++
+assert through a generated validator, Rust through `debug_assert!`; Go and C#
+assert nothing). There is no mandatory read-path validation and no
 release-path cost anywhere, and the conformance vectors carry only valid
 UTF-8. An application with genuinely arbitrary payloads uses `bytes(N)`,
-which remains exactly that. *(2026-08-05 → 2026-08-15 this section said
-"text encoding is the application's concern" and reserved enforced-validity
-UTF-8 as "a new wire type"; the ruling supersedes the first half and makes
-the second moot — a writer-trusted contract changes no wire and needs no
-new type. The audit's finding: STANDARD.md never said what a string's bytes
-ARE, so cross-language text compatibility was a convention, not a
-guarantee.)*
+which remains exactly that.
 
-Beneath the contract, `string(N)` carries **bytes excluding 0x00** — all generated readers
-reject interior nulls; writes assert per §5 (NUL is valid UTF-8, so the
-interior-null rule stays its own, stricter check). `bytes(N)` is the same wire with no
-interior-null rule and no encoding contract. The byte-string tightening is what lets the targets agree:
+Beneath the contract, `string(N)` carries **bytes excluding 0x00** — all
+generated readers reject interior nulls; writes assert per §5 (NUL is valid
+UTF-8, so the interior-null rule is its own, stricter check). `bytes(N)` is
+the same wire with no interior-null rule and no encoding contract. The
+byte-string tightening is what lets the targets agree:
 
-- Classic C++ `serialize_string` is strlen-based — it cannot represent interior nulls; a
-  Go writer must not be able to produce a payload the C++ reader silently truncates.
-- Rust `String` storage would impose UTF-8 validation ON READ that no target performs
-  (the contract is writer-trusted — a reader must accept what a non-conforming writer
-  produced rather than fail on text), so Rust storage stays a fixed byte buffer (§6.1).
+- Classic C++ `serialize_string` is strlen-based — it cannot represent
+  interior nulls; a writer in another language must not be able to produce a
+  payload the C++ reader silently truncates.
+- Rust `String` storage would impose UTF-8 validation ON READ that no target
+  performs (the contract is writer-trusted — a reader must accept what a
+  non-conforming writer produced rather than fail on text), so Rust storage
+  stays a fixed byte buffer (§6.1).
 
-For every legal write the wire bits are identical to `serialize_string` over a buffer of
-N + 1. *(The pre-ruling sentence here — "if UTF-8 text with enforced validity is wanted
-later, it is a new wire type" — is moot under the 2026-08-15 contract: writer-trusted
-validity changes no wire and needs no new type.)*
+For every legal write the wire bits are identical to `serialize_string` over
+a buffer of N + 1.
 
-**Generated-code consequence, stated so no backend discovers it late** *(added 2026-08-05
-from the contract audit)*: the runtimes' `serialize_string` is the **wire oracle** for
-`string(N)`, not necessarily the emitted call. The §6.1 storage rules make the runtime
-string methods unusable in two targets — C# stores a byte buffer but `SerializeString`
-takes `ref string`; Rust stores a byte buffer but `serialize_string` takes `&mut String`
-**and rejects non-UTF-8 bytes, which are legal here** — so the C# and Rust backends
-compose the wire from primitives: length over [0, N], then align, then raw bytes. C++ and
-Go may use their runtime string call for the framing. **The interior-null check is
-generated-code validation in all four targets** — no runtime primitive performs it
-(classic C++ read appends `'\0'` and would silently truncate).
+**Generated-code consequence, stated so no backend discovers it late:** the
+runtimes' `serialize_string` is the **wire oracle** for `string(N)`, not
+necessarily the emitted call. The §6.1 storage rules make the runtime string
+methods unusable in two targets — C# stores a byte buffer but
+`SerializeString` takes `ref string`; Rust stores a byte buffer but
+`serialize_string` takes `&mut String` and rejects non-UTF-8 bytes, which are
+legal here — so the C# and Rust backends compose the wire from primitives:
+length over [0, N], then align, then raw bytes. C++ and Go may use their
+runtime string call for the framing. **The interior-null check is
+generated-code validation in every target** — no runtime primitive performs
+it (classic C++ read appends `'\0'` and would silently truncate).
 
 ### 4.8 Declaration sets — `message` and `object`, their types implicit
 
-**DECIDED (Glenn, 2026-08-05):** each message is its own declaration; the discriminant enum,
-the wire tag and the dispatch are the compiler's job, not the author's — *"I'd like
-MessageType to be implicit in the generation, and for the messages definition in the schema
-language to just be each message"* / *"This way we specify the minimal things, this means you
-have to extract the message types yourself in a symbol table."*
+Each message is its own declaration; the discriminant enum, the wire tag and
+the dispatch are the compiler's job, not the author's.
 
 ```
 message Ping {
@@ -1015,270 +847,193 @@ message Heartbeat {
 }
 ```
 
-From the unit's `message` declarations the resolver extracts the message set and the compiler
-generates, per target:
+From the unit's `message` declarations the resolver extracts the message set
+and the compiler generates, per target:
 
-- **The `MessageType` enum, with `None = 0`** — *"Message types (and all other types...)
-  should have 0 = no type, so we can express null"* — **then each message in a deterministic
-  order. The order is SORTED BY NAME — DECIDED (Glenn, 2026-08-05: *"alphabetical order is
-  better, because it's independent of formatting and cut & paste stuff."*).** The sort is
-  bytewise ascending over the declared names (the same collation §3.1 pins for basenames —
-  one rule, stated so two compiler builds agree). Tags are a
-  pure function of the declared name set — independent of file layout, declaration order,
-  and any cut-and-paste reshuffling. Renumbering on growth is wire-safe by construction:
-  adding a message edits a schema file, the id moves, both sides regenerate together.
-  *(Declaration order was proposed and overruled — its case was off-wire tag stability in
-  logs and dashboards; his tiebreak is that sorted-by-name depends on nothing but the
-  names. An explicit stable-tag attribute remains the q16-era escape if cross-unit
-  composition ever needs one.)* `MessageType` is a claimed name: a unit with messages may
-  not declare its own.
-- **The wire framing**: the tag in minimal bits for `[0, count]` (the enum wire rule; read
-  rejects tags above count), then the message body. **Tag 0 = None is a valid wire value
-  meaning *no message*** — the null that gives message streams a natural terminator, the
-  same shape as the surveyed protocol's `OBJECT_TYPE_NONE` sentinel.
-- **`WriteMessage` / `ReadMessage`** plus a dispatch surface in each language's idiom: a real
-  `enum Message { None, Chat(Chat), Ping(Ping), ... }` in Rust, an interface + type switch in
-  Go, a base type + pattern match in C#, and in C++ whatever fits — union, variant, factory.
-  **Representation is per-language and explicitly NOT part of the contract** (Glenn,
-  2026-08-05: *"I do messages as unions in C++ but that doesn't mean they have to be or
-  should be that way in other languages. That's just a C++ implementation detail."*) What
-  binds every target is behavioral only: identical bytes, **reading `None` is a valid
+- **The `MessageType` enum, with `None = 0`, then each message SORTED BY
+  NAME** — bytewise ascending over the declared names. Tags are a pure
+  function of the declared name set — independent of file layout, declaration
+  order, and any cut-and-paste reshuffling. Renumbering on growth is
+  wire-safe by construction: adding a message edits the unit, the id moves,
+  both sides regenerate together. `MessageType` is a claimed name: a unit
+  with messages may not declare its own.
+- **The wire framing**: the tag in minimal bits for `[0, count]` (the enum
+  wire rule; read rejects tags above count), then the message body. **Tag 0 =
+  None is a valid wire value meaning *no message*** — the null that gives
+  message streams a natural terminator.
+- **`WriteMessage` / `ReadMessage`** plus a dispatch surface in each
+  language's idiom: a real `enum Message { None, Chat(Chat), Ping(Ping), ...
+  }` in Rust, an interface + type switch in Go, a base type + pattern match
+  in C#, a tagged union (or opt-in `std::variant`) in C++. **Representation
+  is per-language and explicitly NOT part of the contract.** What binds every
+  target is behavioral only: identical bytes, **reading `None` is a valid
   none-result, reading an out-of-range tag is a validation failure.**
 
-  **The C++ representation — the CALLER'S CHOICE, DECIDED (Glenn, 2026-08-05:
-  *"let's leave this up to the caller. I'd like for there to be an option to generate a
-  regular union, and an option to use variant"*): `schema generate --cpp-message
-  union|variant`, and the DEFAULT IS UNION** — a tagged struct over an anonymous union,
-  the classic game idiom, constructed as the None message (the tag initializes to
-  `None`; an arm's storage is established ZEROED when the arm is selected — by
-  `ReadMessage` before it decodes, per §5's zero-baseline read rule, or by a writer
-  assigning the arm) *(was "zero-initialized on construction": the constructor's
-  whole-union memset zeroed the Block-sized union — ~2 KB per ~25 B message, measured
-  at 60.6% of batch-read self-cycles on Zen 4 by the 2026-08-06 bench pass — while
-  this same section pins representation as non-contract and the variant surface's
-  monostate never zeroed payload storage; zeroing moved to arm selection, the exact
-  work §5 requires and no more; repaired 2026-08-06)*, plain-switch dispatch,
-  `GetMessageType` reads the tag field. The default was going to be variant until the
-  measurement: isolating pure header cost (one identical representation-agnostic TU
-  against each mode, arm64 clang), **union 0.09 s vs variant 0.13 s — the variant
-  surface alone costs +44% header compile time**, and his ruling on the first, cruder
-  number stands as the principle: *"0.17 -> 0.27 is not trivial for me. it's almost
-  2X"* / *"I'm very negative on modern C++ for this reason... you almost always pay
-  through the nose for it at compile time."*
+  **The C++ representation is the caller's choice:** `schema generate
+  --cpp-message union|variant`, and the **default is union** — a tagged
+  struct over an anonymous union, constructed as the None message (the tag
+  initializes to `None`; an arm's storage is established ZEROED when the arm
+  is selected — by `ReadMessage` before it decodes, per §5's zero-baseline
+  read rule, or by a writer assigning the arm), plain-switch dispatch,
+  `GetMessageType` reads the tag field.
 
   **The opt-in variant surface** (`--cpp-message variant`):
-  `using Message = std::variant<std::monostate, <messages in tag order>>` — the variant
-  INDEX equals the wire tag, `std::monostate` is `None = 0`. No heap ever
-  (`std::variant` stores inline at the largest alternative — the union's exact
-  footprint), trivially copyable (asserted in the test), dispatch via `switch` on
-  `index()` + `get_if` (**no `std::visit` in generated code** — it remains a caller's
-  option for compile-time exhaustiveness). Both representations are compiled and run in
-  the test chain so neither rots; both speak the identical wire (the tag + the same
-  per-message functions).
+  `using Message = std::variant<std::monostate, <messages in tag order>>` —
+  the variant INDEX equals the wire tag, `std::monostate` is `None = 0`. No
+  heap ever (`std::variant` stores inline at the largest alternative — the
+  union's exact footprint), trivially copyable (asserted in the test),
+  dispatch via `switch` on `index()` + `get_if` (no `std::visit` in generated
+  code — it remains a caller's option for compile-time exhaustiveness). Both
+  representations are compiled and run in the test chain so neither rots;
+  both speak the identical wire (the tag + the same per-message functions).
 
-  **And the standing generation principle his ruling sets, wider than this choice:
-  generated C++ defaults to the C-flavored idiom; modern constructs enter only behind
-  opt-in flags, and any proposal to use one arrives with a measured compile-time cost,
-  never an asserted one.**
-- Every message is also an ordinary type: its own `Write`/`Read`/`MaxBits`/`MaxBytes`, usable
-  standalone and composable as a field (the grammar's `ident // a declared type or enum`
-  includes message names — a message IS an ordinary type). **An `object` name is NOT a field
-  type in v1** *(DECIDED — corner-pins list, Glenn 2026-08-05: "Yes, sounds good.")*: an object has no single wire form (Deep vs Shallow),
-  so `ship Ship` inside a message is a compile error naming this rule; view-qualified
-  references are a later pass if ever needed. **And an `object` body admits plain fields
-  only in v1** — no `if`/`switch`/`const()`/`reserved`/`align` — because the view-splitting
-  rules assign *fields* to views and say nothing about what a branch means for
-  Shallow/Interpolate/Quantize; the restriction lifts when the delta pass defines it.
+  **The standing generation principle, wider than this choice: generated C++
+  defaults to the C-flavored idiom; modern constructs enter only behind
+  opt-in flags, and any proposal to use one arrives with a measured
+  compile-time cost, never an asserted one.**
+- Every message is also an ordinary type: its own
+  `Write`/`Read`/`MaxBits`/`MaxBytes`, usable standalone and composable as a
+  field (the grammar's `ident // a declared type or enum` includes message
+  names). **An `object` name is NOT a field type in v1**: an object has no
+  single wire form (Deep vs Shallow), so `ship Ship` inside a message is a
+  compile error naming this rule; view-qualified references are a later pass
+  if ever needed. **And an `object` body admits plain fields only in v1** —
+  no `if`/`switch`/`const()`/`reserved`/`align` — because the view-splitting
+  rules assign *fields* to views and say nothing about what a branch means
+  for Shallow/Interpolate/Quantize; the restriction lifts when the delta pass
+  defines it.
 
 #### Object sets — `object`, `ObjectType`, and the generated views
 
-**DECIDED (Glenn, 2026-08-05) — the horizon's object layer arrived the same day.** `object`
-declarations are tracked exactly like messages — *"you track all object types like messages,
-and generate ObjectType per-type of object. Same as messages"* — so the resolver extracts
-the object set and generates **`ObjectType` with `None = 0`** and each object in the same
-deterministic order. The 0-reserved principle is now uniform across every generated
-discriminant — and `ObjectType_None` is precisely the sentinel the surveyed baseline packets
-already terminate with.
+`object` declarations are tracked exactly like messages: the resolver
+extracts the object set and generates **`ObjectType` with `None = 0`** and
+each object in the same deterministic sorted order. The 0-reserved principle
+is uniform across every generated discriminant.
 
-**The goal, his words:** *"generate ShipState, ShipData_Deep, ShipData_Shallow,
-ShipData_Interpolate from one ship definition"* — *"there should be a single definition of
-object Ship {} in the schema language that drives this generated code."* The view structs
-exist **in generated code only**; the schema holds one definition per object.
+The view structs exist **in generated code only**; the schema holds one
+definition per object. The markers:
 
-**The views, his semantics verbatim — and the marker is named for the purpose, not the
-plumbing:**
+- **`[interpolate]`** — visual state, sent to the client for interpolation.
+- **deep** — the default: an unmarked field is full-state only, sent for
+  client-side prediction.
+- **`[local]`** — simulation-only state that reaches no wire: lives in
+  `ShipState`, absent from every network struct.
 
-- **`[interpolate]`** — *"this is sent to the client for interpolation, it's visual
-  state."* The marker was `shallow` for an hour; renamed on his call because *"shallow is an
-  implementation detail on the way to interpolation on the client"* — the quantized shallow
-  wire struct still exists, in generated code, as that implementation detail.
-- **deep** — *"this is only sent to the client for client side prediction, eg. full state"*
-  — and **deep is the default**: *"interpolated = off by default. deep by default"* — an
-  unmarked field is full-state only.
-- **`[local]`** — DECIDED (Glenn, 2026-08-05): simulation-only state that reaches no wire —
-  lives in `ShipState`, absent from every network struct. *(He first spelled it
-  `[unsynchronized]`, then took `[local]` on sight: "shorter. much shorter." — the register
-  principle applied to a keyword.)*
-
-**What one definition generates per object, per target** (shapes per language, behavior
-identical — the message-set rule):
+What one definition generates per object, per target (shapes per language,
+behavior identical — the message-set rule):
 
 | artifact | contents |
 |---|---|
 | `ShipState` | every field — the simulation struct |
 | `ShipData_Deep` + serialize | every non-`[local]` field, deep encodings |
-| `ShipData_Shallow` + serialize | the `[interpolate]` fields, **quantized wire encodings** from the field's attributes — the wire-side implementation detail of interpolation |
-| `ShipData_Interpolate` | the same `[interpolate]` fields in **continuous storage** (the un-quantized twin) |
-| `Quantize` / `Unquantize` | the mapping pair between Interpolate and Shallow — the hand-written `Quantize()` in today's `Ship.h`, generated |
+| `ShipData_Shallow` + serialize | the `[interpolate]` fields, **quantized wire encodings** from the field's attributes |
+| `ShipData_Interpolate` | the same `[interpolate]` fields in continuous storage (see rule 5 for the projected-field exception) |
+| `Quantize` / `Unquantize` | the mapping pair between Interpolate and Shallow |
 
-**PROPOSED view-encoding semantics (Rowan, 2026-08-05 — expanded from the three-sentence
-draft-4 form; each rule is a transcription of the measured hand-written referent in
-`Ship.h` / `core_quantize.h` / `core_delta.h`, so the risk of inventing wrong semantics is
-minimal).** Inside an `object` body the attribute vocabulary widens: `interpolate` and
-`local` (valueless, DECIDED) and `quantize` / `round` (valued, PROPOSED) join the set.
-View-encoding attributes describe the SHALLOW wire only; the deep wire always uses the
-bare storage type's encoding.
+**View-encoding semantics.** Inside an `object` body the attribute vocabulary
+widens: `interpolate` and `local` (valueless) and `quantize` / `round`
+(valued) join the set. View-encoding attributes describe the SHALLOW wire
+only; the deep wire always uses the bare storage type's encoding.
 
-1. **`[interpolate]` alone** — the shallow wire is the deep encoding, unchanged.
-2. **Composite quantization** — `[interpolate, quantize = K, max = B]` on a field whose
-   type is a composite of float components applies component-wise: shallow wire per
-   component is a ranged int `[−B·K, +B·K]`; write maps `c → floor(c·K + 0.5)`, clamped to
-   the range; read rejects out-of-range; unquantize maps `q → q / K`. The quantized twin's
-   storage derives from the range. All components are sent — no smallest-three; the delta
-   pass owns cleverer encodings.
-**Fixed components dissolve quantization (2026-08-12, the fixed-point path).**
-When an object's [interpolate] fields are all already wire-domain — fixed-
-component composites (a `fixed(I, F)` component IS its own quantization:
-storage and wire share one integer domain, ranged by the component's declared
-bounds), plain integers, or int-composite types like a handle pair — the
-QuantizeX/UnquantizeX pair would be a pure member copy, and the backends do
-NOT emit it: Interpolate and Shallow are the same values. This is the landing
-Glenn described the day the format was set: "that quantization just naturally
-gets replaced with fixed point."
+1. **`[interpolate]` alone** — the shallow wire is the deep encoding,
+   unchanged.
+2. **Composite quantization** — `[interpolate, quantize = K, max = B]` on a
+   field whose type is a composite of float components applies
+   component-wise: the shallow wire per component is a ranged int
+   `[−B·K, +B·K]`; write maps `c → floor(c·K + 0.5)`, clamped to the range;
+   read rejects out-of-range; unquantize maps `q → q / K`. The quantized
+   twin's storage derives from the range. All components are sent — no
+   smallest-three; the delta pass owns cleverer encodings.
 
-2b. **Fixed-composite shallow narrowing (2026-08-12, the fixed-point path;
-   rounding unified 2026-08-15).**
-   `[interpolate, quantize = K]` on a composite whose components are ALL
-   `fixed(I, F)` scalars narrows the shallow wire instead of dissolving:
-   "we will want to quantize fixed point down to an acceptable amount,
-   especially when sending it for shallow (non-simulating) values. the deep
-   values should be sent at full precision." (Glenn). K is the kept
-   resolution — quantized units per whole unit — and must be a positive power
+   **Fixed components dissolve quantization.** When an object's
+   `[interpolate]` fields are all already wire-domain — fixed-component
+   composites (a `fixed(I, F)` component IS its own quantization: storage and
+   wire share one integer domain, ranged by the component's declared bounds),
+   plain integers, or int-composite types — the `QuantizeX`/`UnquantizeX`
+   pair would be a pure member copy, and the backends do NOT emit it:
+   Interpolate and Shallow are the same values.
+
+2b. **Fixed-composite shallow narrowing.** `[interpolate, quantize = K]` on a
+   composite whose components are ALL `fixed(I, F)` scalars narrows the
+   shallow wire instead of dissolving: deep values keep full precision;
+   shallow (non-simulating) values are quantized down to K, the kept
+   resolution in quantized units per whole unit. K must be a positive power
    of two with log2(K) ≤ F (the shallow wire cannot be finer than the
-   storage; K = 2^F keeps everything and the pair degenerates to copies).
-   No `max` here: each component's shallow wire range is its own whole-unit
+   storage; K = 2^F keeps everything and the pair degenerates to copies). No
+   `max` here: each component's shallow wire range is its own whole-unit
    `[min, max]` scaled by K — bounds every fixed component already declares
    (§4.3) — and its shallow storage is the smallest signed integer holding
-   that range. The Quantize/Unquantize pair RETURNS, as pure integer
+   that range. The `Quantize`/`Unquantize` pair returns, as pure integer
    arithmetic with no floating point anywhere: quantize is round-to-nearest
    with **ties away from zero** over `drop = F − log2(K)` dropped bits —
-   `( raw + half ) >> drop` for `raw ≥ 0`, `−( ( −raw + half ) >> drop )`
-   for `raw < 0`, with `half = 1 << (drop−1)`, arithmetic on int64
-   (in-bounds raws cannot overflow the add or the negation: checker-enforced
-   bounds leave 2^(F−1) of headroom past any legal raw) — and unquantize is
-   the left shift back (dropped bits return as zeros). Components wider than
-   64 bits are a compile error (the arithmetic runs in int64), and so are
-   `ufixed` components (2026-08-15, the landing's stated scope fence): a wide
-   ufixed raw legitimately fills uint64's high half, where these int64 shifts
-   are wrong — the unsigned door needs its own arithmetic before it opens,
-   and the diagnostic says so. Un-narrowed `[interpolate]` composites of
-   ufixed components dissolve fine, because dissolving just delegates to the
-   component encodings. The deep wire
-   is untouched: full precision, the component's own ranged fixed encoding.
-   Un-narrowed fixed composites keep dissolving per the note above; the two
-   forms compose field-by-field in one object.
+   `( raw + half ) >> drop` for `raw ≥ 0`,
+   `−( ( −raw + half ) >> drop )` for `raw < 0`, with
+   `half = 1 << (drop−1)`, arithmetic on int64 (in-bounds raws cannot
+   overflow the add or the negation: checker-enforced bounds leave 2^(F−1)
+   of headroom past any legal raw) — and unquantize is the left shift back
+   (dropped bits return as zeros). Components wider than 64 bits are a
+   compile error (the arithmetic runs in int64), and so are `ufixed`
+   components: a wide ufixed raw legitimately fills uint64's high half,
+   where these int64 shifts are wrong — the unsigned door needs its own
+   arithmetic before it opens, and the diagnostic says so. Un-narrowed
+   `[interpolate]` composites of ufixed components dissolve fine, because
+   dissolving just delegates to the component encodings. The deep wire is
+   untouched: full precision, the component's own ranged fixed encoding. The
+   two forms compose field-by-field in one object.
 
-   **THE ONE ROUNDING RULE — DECIDED (Glenn, 2026-08-15): fixed point rounds
-   half AWAY FROM ZERO, everywhere it rounds.** This rule, rule 4's `nearest`
-   default, and the data compiler's `ratRoundHalfAway` are the SAME rule,
-   stated once, here. *(2026-08-12 → 2026-08-15 this paragraph pinned the
-   pure shift `( raw + half ) >> drop` — ties toward +infinity, the form the
-   game's fixed bridge computed — while rule 4 and the data compiler rounded
-   ties away from zero and the IR documentation described the shift as
-   half-away: the toolchain disagreed with itself and its own docs at
-   exactly .5. The 08-14 spec audit surfaced the fork; Glenn unified on
-   half-away.)* **Compat, said loudly:** this amendment moves shipped
-   narrowing bytes ONLY on exact ties of negative raws, and the protocol id
-   does NOT move — a rounding rule is not wire shape, so this is precisely
-   the divergence class the id cannot see. It is version-noted here and in
-   VERSIONING.md, and a negative tie value that DISTINGUISHES the two rules
-   is pinned in the conformance vectors, so a port that drifts back to the
-   shift fails gate 7 loudly. Deployment doctrine for this and every future
-   wire-affecting amendment, his words (2026-08-15): *"I will always deploy
-   client and server together on any breakage. so this is no concern."*
-   The per-language hazard, named the way STANDARD.md names the FMA: the
-   naive arithmetic shift FLOORS, so on negative ties every target language
-   agrees with every other and all of them are wrong against this rule —
-   cross-language identity cannot catch it; only the pinned tie vector can.
+   **The one rounding rule: fixed point rounds half AWAY FROM ZERO,
+   everywhere it rounds.** This rule, rule 4's `nearest` default, and the
+   data compiler's rational rounding are the SAME rule, stated once, here.
+   The per-language hazard, named: the naive arithmetic shift FLOORS, so on
+   negative ties every target language would agree with every other and all
+   of them would be wrong against this rule — cross-language identity cannot
+   catch it; only the pinned negative-tie conformance vector can (§7.2).
    Implement the sign mirror, not the bare shift.
 
-3. **No special composite cases in v1 — tags are inert (§4.2, Type tags).** Rules 2
-   and 2b are the whole of composite quantization: every composite quantizes
-   per-component — a float rotation field states its bound like anything else
-   (`rotation Quat [interpolate, quantize = RotationUnits, max = 1]`; unit quaternions
-   are always unit length — Glenn — so the bound is 1, written rather than implied).
-   Rotation-specific actions (renormalize on unquantize, shortest-arc interpolation) are
-   the delta pass claiming `[quat4]` — v1 generates the structural mapping only, and the
-   application keeps its hand-written rotation actions meanwhile, exactly as it does
-   today. *(Two earlier drafts — a built-in `quat` keyword, then a compiler-known class
-   vocabulary — died the same day on his direction that the language pre-define no
-   types.)*
+3. **No special composite cases in v1 — tags are inert (§4.2, Type tags).**
+   Rules 2 and 2b are the whole of composite quantization: every composite
+   quantizes per-component — a float rotation field states its bound like
+   anything else (`rotation Quat [interpolate, quantize = RotationUnits,
+   max = 1]`; unit quaternions are always unit length, so the bound is 1,
+   written rather than implied). Rotation-specific actions (renormalize on
+   unquantize, shortest-arc interpolation) belong to the future pass that
+   claims `[quat4]` — v1 generates the structural mapping only, and the
+   application keeps its hand-written rotation actions meanwhile.
 4. **Ranged-int projection** — on `float32`/`float64`,
-   `[interpolate, min = A, max = B, resolution = R]` reuses §4.3's compressed-float
-   triple: min/max name the **CONTINUOUS domain**, the shallow wire is the int
-   `[0, (B−A)/R]`, write maps `v → round((v−A)/R)` clamped, unproject maps `q → A + q·R`.
-   The optional `round = nearest|up|down` key (default `nearest`, half away from zero —
-   the one fixed-point rounding rule, rule 2b, decided 2026-08-15)
-   names the write rounding. **`round` is ADVISORY METADATA in v1, stated plainly
-   (2026-08-15, closing the audit-register finding that it was parsed, validated and
-   never affected a byte):** under rule 5 a projected field is STORED in the wire-integer
-   domain in both the Shallow and Interpolate views, so the float-to-step conversion is
-   the application's, not generated code's — no generated byte depends on `round`, and
-   nothing in v1 enforces it. Every backend carries the declared rounding into the
-   generated storage comment for the application to honour; an application that ignores
-   `round = up` on the health-style field gets the exact bug the attribute exists to
-   name. If a generated projection helper ever lands, `round` is its law and this
-   paragraph tightens from advisory to normative.
-   It selects the write rounding — `up` exists because the surveyed health quantization's
-   ceil is load-bearing: any positive health must quantize alive. *(Corpus consequence on
-   approval: `thrust [interpolate, min = 0, max = 1, resolution = 0.01]` — the current
-   `max = 100` conflates the wire-int range with the float domain, whose true bound is
-   1.0 — and `health [..., resolution = 1, round = up]`.)*
-5. **Interpolate storage** — projected fields (rule 4) are stored in the Interpolate
-   struct in the WIRE integer domain and snap-interpolate, matching the shipped game;
-   quantized composites (rules 2–3) are stored continuous (the un-quantized twin). *(The
-   artifact table's blanket "continuous storage" phrasing is corrected by this rule — the
-   real `ShipData_Interpolate` stores health/thrust as ints.)*
+   `[interpolate, min = A, max = B, resolution = R]` reuses §4.3's
+   compressed-float triple: min/max name the **CONTINUOUS domain**, the
+   shallow wire is the int `[0, (B−A)/R]`, write maps `v → round((v−A)/R)`
+   clamped, unproject maps `q → A + q·R`. The optional
+   `round = nearest|up|down` key (default `nearest`, half away from zero —
+   the one fixed-point rounding rule above) names the write rounding.
+   **`round` is ADVISORY METADATA in v1:** under rule 5 a projected field is
+   STORED in the wire-integer domain in both the Shallow and Interpolate
+   views, so the float-to-step conversion is the application's, not generated
+   code's — no generated byte depends on `round`, and nothing in v1 enforces
+   it. Every backend carries the declared rounding into the generated storage
+   comment for the application to honour (`up` exists because a
+   health-style quantization's ceil is load-bearing: any positive health must
+   quantize alive). If a generated projection helper ever lands, `round` is
+   its law and this rule tightens from advisory to normative.
+5. **Interpolate storage** — projected fields (rule 4) are stored in the
+   Interpolate struct in the WIRE integer domain and snap-interpolate;
+   quantized composites (rules 2–3) are stored continuous (the un-quantized
+   twin).
 
-**§9 q13, RESOLVED for v1 — no interpolation generation in v1 at all.** v1 generates the
-STRUCTS (State, Deep, Shallow, Interpolate) and the `Quantize`/`Unquantize` mapping pair —
-his scope sentence exactly: *"just build the structs from the definition in schema lang to
-start. (shallow, deep, interpolated, quantize)."* The `Interpolate(t, a, b, out)` FUNCTION
-stays hand-written until the delta pass claims type tags and assigns actions (§4.2, Type
-tags) — the measured fact that policy is 100% type-derived in all four real objects is
-recorded there as that pass's design input; `lerp`, `slerp`, `snap`, `angle`, `smooth`
-stay informally reserved as attribute values for it.
+**No interpolation generation in v1.** v1 generates the STRUCTS (State, Deep,
+Shallow, Interpolate) and the `Quantize`/`Unquantize` mapping pair. The
+`Interpolate(t, a, b, out)` FUNCTION stays hand-written until a later pass
+claims type tags and assigns actions (§4.2, Type tags); `lerp`, `slerp`,
+`snap`, `angle`, `smooth` stay informally reserved as attribute values for
+it.
 
-The worked example is [`examples/Objects.schema`](examples/Objects.schema) — verified
-field-for-field against the real `Ship.h` on 2026-08-05: zero misclassifications, zero
-invented fields. *(The one measured omission of that survey — the client-only
-`predictedExplode` — is an omission no longer: it is declared as
-`predicted_explode bool [local, context = client]` under the Contexts mechanism, and on
-Glenn's ask the same evening the wrapper class's sim-local state — previous position,
-collider count and armor table — was folded in too, so the generated per-context state
-structs carry the FULL working ship state.)* **Missile, DynamicProp and Turret are
-written beside it — all four objects are in the corpus.**
+The worked example is
+[`examples/Objects.schema`](examples/Objects.schema); Missile, DynamicProp
+and Turret are written beside it — all four objects are in the corpus.
 
-**Generated layout is the generator's — PROPOSED principle (Rowan, 2026-08-05).**
-Hand-written code keeps struct-layout rules alive by comment, and prose-enforced layout is
-a standing drift hazard. Generated structs invert that: field order inside every generated
-view derives from need (wire order for wire structs, contiguous spans where machinery
-wants them), never a convention a human maintains. Per-field interpolation POLICY is
-resolved by q13's type-derived table (§9).
-
-**And the payoff he named:** *"Once we have proper definitions of all object types, and
-structs per-object type, we will be able to generate all the baseline and delta compression
-code."* The object set is the prerequisite the delta pass was waiting for.
+**Generated layout is the generator's.** Field order inside every generated
+view derives from need (wire order for wire structs, contiguous spans where
+machinery wants them), never a convention a human maintains.
 
 ### 4.9 A complete example
 
@@ -1322,139 +1077,100 @@ message Snapshot {
 }
 ```
 
-No `MessageType` enum is declared and no dispatch is written — the compiler extracts the
-message set and generates both (§4.8): `MessageType { None = 0, Chat, Ping, Pong, Snapshot }`
-and the per-language `WriteMessage`/`ReadMessage`. *(Ping and Pong may both name a field
-`sequence` because they are separate types; §4.6's unique-names rule is per type. The
-standing check is that every example in this spec and in `examples/` must compile under the
-spec as written — the enum `MessageType` at the top of this example was deleted when message
-sets arrived, exactly the boilerplate §4.8 exists to eat.)*
+No `MessageType` enum is declared and no dispatch is written — the compiler
+extracts the message set and generates both (§4.8):
+`MessageType { None = 0, Chat, Ping, Pong, Snapshot }` and the per-language
+`WriteMessage`/`ReadMessage`. (Ping and Pong may both name a field `sequence`
+because they are separate types; §4.6's unique-names rule is per type.)
 
 ### 4.10 Deferred constructs
 
-- **`int128` / `uint128` — LANDED 2026-08-06** (DECIDED as part of the integer family,
-  Glenn 2026-08-05, with a named customer: **ludicrous mode** — *"we will need int 128
-  for ludicrous mode :)"*). The named prerequisite resolved in order: the serialize C++
-  runtime's phase-1 surface (`serialize_uint128` raw, `serialize_int128` ranged, the
-  `serialize::uint128_t`/`int128_t` pair — native `__int128` or the emulated two-lane
-  struct, byte-identical wire) shipped first, and the keywords went live against it —
-  §4.3 rows, `examples128/` corpus, C++ emission. **All four backends emit the family
-  since 2026-08-12** — each serialize port grew the phase-1 surface and its backend's
-  refusal lifted in turn (C#, then Go, then Rust), joining the unit to the
-  cross-language wire gate (`test/{go,rust,cs}-ludicrous` byte-compare the C++-pinned
-  wire). Storage per target as landed: native `i128`/`u128` (Rust), the emulated
-  `Int128Value`/`UInt128Value` pair (C#, every TFM), serialize.go's two-qword
-  `Int128`/`Uint128` pair (Go).
-- **C++-style bitfields (`uint64 blah : 8`) — considered 2026-08-05, DECLINED across the
-  targets, with Glenn's own expectation confirmed** (*"want to know if this is
-  possible/advisable across our target generated languages. expect it will not be"* — it is
-  not, for three reasons with a family receipt). (1) **The wire half already exists**:
-  `bits(N)` is exactly the bitfield's wire — N bits, named, packed back to back — with
-  honest per-field storage. (2) **As storage, only C++ has the syntax at all**, its layout
-  is implementation-defined (order and padding vary by compiler — the reason serialize
-  itself never uses bitfields), and C#/Go/Rust would need generated shift/mask accessors
-  over a backing word — unnatural in all three. (3) **The killer is addressability**:
-  generated serialize methods take `ref`/`&mut`/pointers, and bitfield members cannot be
-  addressed — serialize.modern's own SCHEMA.md hit this exact wall: *"bit-field members
-  cannot be used (widen them, or keep those packets on the streams)."* If memory packing of
-  hot object arrays ever demands it, the door is an opt-in `[packed]` attribute on a type
-  generating accessor-based storage — a generator-kind decision for the horizon, not a v1
-  wire construct.
-- **Fixed point — LANDED 2026-08-06 as `fixed(I, F)`**, in exactly the runtime-first
-  order Glenn set (2026-08-05: *"we will also be doing fixed point in serialize there
-  first, and then bringing that to this language"*): the wire construct was designed and
-  proven in the serialize C++ library (`serialize_fixed`, its STANDARD.md section, its
-  own goldens), and only then surfaced as this wire type — §4.3 row, §4.6 rules,
-  `examples128/` corpus. **SIGNED only** (Glenn, 2026-08-06: fixed point is signed);
-  the spelling is positional `fixed(I, F)` because the Q format is the type's shape,
-  the same line `bits(N)`/`string(N)` sit on. **The unsigned spelling LANDED
-  2026-08-15 as `ufixed(I, F)`** (Glenn: "ufixed is fine" — §9 q17 closed as the
-  explicit-spelling option, the integer family's own int/uint precedent; the
-  bounds-derived alternative died of its own record there). The same landing as the
-  128-bit family (the bullet above): all five backends emit both spellings, storage
-  an integer of exactly I+F bits in the type's own signedness in every target, and
-  the `UnsignedProbe` corpus type pins the unsigned wire — including the uint64
-  high-half raws only an unsigned format can produce — byte-for-byte across the
-  five languages.
-- **Wide strings** (`serialize_wstring`): still deferred — no near-term need — but the
-  WIRE is now DECIDED so the deferral cannot foreclose it (Glenn, 2026-08-15, the 08-14
-  audit's fork 5, accepted as recommended): length, then one unaligned 32-bit group per
-  **UTF-16 CODE UNIT** — not per code point, the pre-ruling text here — and the payload
-  is **well-formed UTF-16 by contract**, writer-trusted per §5's doctrine. Surrogate
-  PAIRS are valid (full Unicode: an astral character is two groups); an UNPAIRED
-  surrogate is a writer contract violation, debug-asserted where the language supports
-  it. 2-byte and 4-byte `wchar_t` platforms must produce IDENTICAL bytes: the 4-byte
-  platform converts at the boundary — splits astral code points into surrogate pairs on
-  write, recombines on read — because the audit showed the platform-compatibility claim
-  was false for astral text when each platform transmitted its own `wchar_t` units.
-  Basic-plane text is unaffected on every platform.
-- **Relative integers** (`serialize_int_relative`): the classic use is a strictly-increasing
-  sequence across *array elements* (previous element's field feeding the next), which the
-  back-reference rule cannot express; a scalar-to-scalar form inside one type earns too
-  little to carry the construct. Deferred until a cross-element form is designed.
-  **The semantics are PINNED ahead of it (Glenn, 2026-08-15, the 08-14 audit's fork 4,
-  verbatim): "no wrapping sequence numbers. meant for positive only and up to maximum
-  only."** `int_relative` stays strictly increasing — `current > previous`, the reader
-  fails otherwise; no wrap semantics exist, and a caller with a wrapping counter unwraps
-  before serializing. *(Context, not a term of the ruling: he expects the construct may
-  retire when rANS lands — "it's a hack probability based thing for next object id, next
-  property id.")*
-  **Confirmed against the game tree 2026-08-05:** every live use site (ten calls,
-  `PacketReader.h`/`PacketWriter.h`) is the ascending-object-id chain inside
-  sentinel-terminated, mid-stream-split packet streams — the constructs held at §9 q10 and
-  the delta pass. `int_relative` is designed **with that pass**, never standalone; wide
-  strings have zero usage anywhere in the tree.
+- **C++-style bitfields (`uint64 blah : 8`) — declined across the targets**,
+  for three reasons. (1) The wire half already exists: `bits(N)` is exactly
+  the bitfield's wire — N bits, named, packed back to back — with honest
+  per-field storage. (2) As storage, only C++ has the syntax at all, its
+  layout is implementation-defined (order and padding vary by compiler — the
+  reason serialize itself never uses bitfields), and the other targets would
+  need generated shift/mask accessors over a backing word — unnatural in all
+  of them. (3) The decisive reason is addressability: generated serialize
+  methods take `ref`/`&mut`/pointers, and bitfield members cannot be
+  addressed. If memory packing of hot object arrays ever demands it, the door
+  is an opt-in `[packed]` attribute on a type generating accessor-based
+  storage — a generator-kind decision for a later pass, not a v1 wire
+  construct.
+- **Wide strings** (`serialize_wstring`): deferred — no near-term need — but
+  the WIRE is decided so the deferral cannot foreclose it: length, then one
+  unaligned 32-bit group per **UTF-16 CODE UNIT** — not per code point — and
+  the payload is **well-formed UTF-16 by contract**, writer-trusted per §5's
+  doctrine. Surrogate PAIRS are valid (full Unicode: an astral character is
+  two groups); an UNPAIRED surrogate is a writer contract violation,
+  debug-asserted where the language supports it. 2-byte and 4-byte `wchar_t`
+  platforms must produce IDENTICAL bytes: the 4-byte platform converts at the
+  boundary — splits astral code points into surrogate pairs on write,
+  recombines on read. Basic-plane text is unaffected on every platform.
+- **Relative integers** (`serialize_int_relative`): deferred. The classic use
+  is a strictly-increasing sequence across *array elements* (the previous
+  element's field feeding the next), which the back-reference rule cannot
+  express; a scalar-to-scalar form inside one type earns too little to carry
+  the construct. It is designed with the delta pass, never standalone. **The
+  semantics are pinned ahead of it:** strictly increasing, positive only —
+  `current > previous`, the reader fails otherwise; no wrap semantics exist,
+  and a caller with a wrapping counter unwraps before serializing.
 
-### 4.11 Tables — the second wire, and reflection — DECIDED (Glenn, 2026-08-12)
+### 4.11 Tables — the second wire, and reflection
 
-`table X { ... }` declares a type that is also a **table-wire root**. The body grammar is
-identical to `type` — every field kind, guard, default, and bound works the same, and a
-table is usable anywhere a type is (message fields, arrays, other tables). What the
-keyword changes is what the compiler EMITS for it, per Glenn's rulings verbatim:
-*"reflection is NOT appropriate for types, but very appropriate for tables I think, and
-across all languages generated"* and the versioning requirement (notes/table-wire.md).
+`table X { ... }` declares a type that is also a **table-wire root**. The
+body grammar is identical to `type` — every field kind, guard, default, and
+bound works the same, and a table is usable anywhere a type is (message
+fields, arrays, other tables). What the keyword changes is what the compiler
+EMITS for it.
 
-**The closure.** The table closure is every `table` declaration plus every struct one
-references through fields, transitively. Closure members get, in every generated
-language:
+**The closure.** The table closure is every `table` declaration plus every
+struct one references through fields, transitively. Closure members get, in
+every generated language except JavaScript (whose table wire does not exist
+yet):
 
-1. **Table-wire codecs** (`TableWriteX` / `TableReadX`) — the evolution-tolerant TLV
-   encoding specified in notes/table-wire.md: name-hash field ids, defaults elide,
-   unknown fields skip, changed kinds skip, out-of-range clamps, all counted in a
-   `TableReport`. This wire is for data that outlives builds (config, assets, settings,
-   events); the realtime message wire (§4) is untouched and exact-match as ever.
-2. **Reflection descriptors** (`TableTypeX()`) — static per-type field metadata: name,
-   wire id and kind, array bounds and count companions, nested descriptor links,
-   declared ranges, enum wire max and value→name functions, and branch guards. C++
-   additionally carries storage offsets (zero-cost direct access); Go and C# carry
-   generated get/set-by-name accessors instead, with set clamping to declared ranges
-   exactly as the wire read does. No RTTI, no `System.Reflection`, no schema files at
+1. **Table-wire codecs** (`TableWriteX` / `TableReadX`; `table_write_x` /
+   `table_read_x` in Rust's own naming — the bytes are identical) — the
+   evolution-tolerant TLV encoding specified in notes/table-wire.md:
+   name-hash field ids, defaults elide, unknown fields skip, changed kinds
+   skip, out-of-range clamps, all counted in a `TableReport`. This wire is
+   for data that outlives builds (config, assets, settings, events); the
+   realtime message wire (§4) is untouched and exact-match as ever.
+2. **Reflection descriptors** (`TableTypeX()`) — static per-type field
+   metadata: name, wire id and kind, array bounds and count companions,
+   nested descriptor links, declared ranges, enum wire max and value→name
+   functions, and branch guards. C++ additionally carries storage offsets
+   (zero-cost direct access); Go and C# carry generated get/set-by-name
+   accessors instead, with set clamping to declared ranges exactly as the
+   wire read does. No RTTI, no `System.Reflection`, no schema files at
    runtime — editors and tooling bind against the descriptors alone.
 
-   **Data-oriented, by ruling** (Glenn, 2026-08-12: *"Keeping table reflection data
-   separate from the table data itself enables fast iteration and walking"*): the
-   descriptors are SEPARATE STATIC DATA, one set per type, shared by every instance —
-   an instance is exactly its fields, carries zero reflection weight, and stays
-   trivially copyable. A type's field descriptors are one flat contiguous array
-   walked linearly; instance access is base + offset arithmetic (C++) or a generated
-   direct accessor (Go/C#); nested types cost one hop to another flat array. Emitters
-   in every language MUST keep this shape — no per-instance metadata, no fat objects,
-   no pointer-chased descriptor graphs beyond the nested-type link.
+   **The descriptors are data-oriented, and emitters must keep this shape:**
+   SEPARATE STATIC DATA, one set per type, shared by every instance — an
+   instance is exactly its fields, carries zero reflection weight, and stays
+   trivially copyable. A type's field descriptors are one flat contiguous
+   array walked linearly; instance access is base + offset arithmetic (C++)
+   or a generated direct accessor (Go/C#); nested types cost one hop to
+   another flat array. No per-instance metadata, no fat objects, no
+   pointer-chased descriptor graphs beyond the nested-type link.
 
-Plain `type` declarations outside the closure get NONE of this — the realtime types pay
-nothing for the table layer's existence.
+Plain `type` declarations outside the closure get NONE of this — the realtime
+types pay nothing for the table layer's existence.
 
-**Capability rule.** A closure member must stay on table-wire kinds: `int128`/`uint128`,
-`fixed(I, F)` and `bits` wider than 64 have no table-wire kind, and the CHECKER refuses
-them inside the closure at compile time. Pack roots (`schema pack` manifest collection
-types) must be declared `table`, and `EncodeTable`/`DecodeTable` require closure
-membership — reflection and table codecs follow the declaration, never accident.
+**Capability rule.** A closure member must stay on table-wire kinds:
+`int128`/`uint128`, `fixed(I, F)`/`ufixed(I, F)` and `bits` wider than 64
+have no table-wire kind, and the checker refuses them inside the closure at
+compile time. Pack roots (`schema pack` manifest collection types) must be
+declared `table`, and `EncodeTable`/`DecodeTable` require closure
+membership — reflection and table codecs follow the declaration, never
+accident.
 
-**Protocol id.** The keyword participates in the canonical form (§3.1), so marking a
-table moves the unit's protocol id like any other declaration change. The table wire's
-own compatibility does not depend on it: a table bin from a different protocol id still
-reads under the permissive contract, which is the point.
-
+**Protocol id.** The `table` keyword participates in the wire shape
+projection (§3.1), so marking a table moves the unit's protocol id like any
+other declaration change. The table wire's own compatibility does not depend
+on it: a table bin from a different protocol id still reads under the
+permissive contract, which is the point.
 ## 5. Trust model — inherited
 
 Reads validate everything — integer ranges, enum bounds, alignment padding, constants,
