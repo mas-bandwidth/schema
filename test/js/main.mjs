@@ -29,9 +29,19 @@ import * as objects from "../../generated/js/Objects.js";
 import * as bench from "../../generated/bench/js/Bench.js";
 import * as realworld from "../../generated/bench/js/realworld/RealWorld.js";
 
+// the flat tier — the shipped JS wire path, held byte-identical to the
+// runtime tier and to the same C++-pinned goldens in the section at the
+// bottom of this file
+import * as typesFlat from "../../generated/js/TypesFlat.js";
+import * as messagesFlat from "../../generated/js/MessagesFlat.js";
+import * as wireFlat from "../../generated/js/WireFlat.js";
+import * as benchFlat from "../../generated/bench/js/BenchFlat.js";
+import * as realworldFlat from "../../generated/bench/js/realworld/RealWorldFlat.js";
+
 // one namespace over the unit, the way Go sees package example — the checker
 // guarantees unit-wide name uniqueness, so the merge cannot collide
 const ex = { ...enums, ...types, ...messages, ...wire, ...objects };
+const exFlat = { ...typesFlat, ...messagesFlat, ...wireFlat };
 
 let failed = false;
 
@@ -773,6 +783,386 @@ function pinShape(name, expectedBytes, mod, shape, inp) {
   // RealPacket pins the ALL-DEFAULTS instance: constructed and serialized
   // unmodified, every field at its declared default — 1629 bits = 204 bytes
   pinShape("real_packet", 204, realworld, "RealPacket", new realworld.RealPacket());
+}
+
+// ======================= THE FLAT TIER (§7.2 + design §5) =======================
+// The shipped JS wire path: every pinned instance above rides again through
+// the FLAT writer and reader — byte-compared against the same C++-pinned
+// goldens AND against the runtime tier (the cross-tier equivalence gate:
+// bytes, fields and verdicts), both directions. The leg runs in BOTH runtime
+// modes (the Makefile's NODE_ENV pair), and both modes compare to the same
+// goldens — so the checked and production flat writers are held
+// byte-identical transitively, every run.
+
+const CHECKED_MODE = process.env.NODE_ENV !== "production";
+
+// flatCross: runtime write -> flat write byte-compare (+ golden), flat read
+// vs runtime read field-compare, flat re-write byte-compare.
+function flatCross(name, mod, flatMod, shape, inp, golden) {
+  const ws = new WriteStream(new Uint8Array(4096));
+  if (!mod[`Write${shape}`](ws, inp)) {
+    check(false, `${name}: runtime write failed`);
+    return;
+  }
+  ws.flush();
+  const rtBytes = Uint8Array.from(ws.data());
+
+  const fbuf = new Uint8Array(4096);
+  const fview = new DataView(fbuf.buffer);
+  const n = flatMod[`Write${shape}Flat`](inp, fview);
+  check(n === rtBytes.length, `${name}: flat write length ${n} vs runtime ${rtBytes.length}`);
+  check(bytesEqual(fbuf.subarray(0, rtBytes.length), rtBytes), `${name}: flat bytes === runtime bytes`);
+  if (golden) {
+    goldenWire(golden, fbuf.subarray(0, rtBytes.length));
+  }
+
+  const rtOut = new mod[shape]();
+  check(mod[`Read${shape}`](new ReadStream(rtBytes), rtOut), `${name}: runtime read`);
+  const flOut = new mod[shape]();
+  const rbuf = new Uint8Array(rtBytes.length + 8); // FLAT_READ_SLACK
+  rbuf.set(rtBytes);
+  check(flatMod[`Read${shape}Flat`](flOut, new DataView(rbuf.buffer), rtBytes.length * 8), `${name}: flat read verdict`);
+  check(deepEqual(flOut, rtOut), `${name}: flat read fields === runtime read fields`);
+
+  const n2 = flatMod[`Write${shape}Flat`](flOut, fview);
+  check(n2 === rtBytes.length && bytesEqual(fbuf.subarray(0, rtBytes.length), rtBytes),
+    `${name}: flat round-trips to identical bytes`);
+}
+
+{
+  const inp = new ex.ShipCreate();
+  inp.ShipType = ex.ShipType.Bomber;
+  inp.Position.X = 1000;
+  inp.Position.Y = -2000;
+  inp.Position.Z = 3000;
+  inp.HasFlags = true;
+  inp.Flags = ex.ShipFlagsBoosting | ex.ShipFlagsAiming;
+  inp.Team = ex.Team.Blue;
+  inp.Health = 750;
+  inp.Thrust = 55;
+  flatCross("flat shipcreate", ex, exFlat, "ShipCreate", inp, "shipcreate_flags");
+  inp.HasFlags = false;
+  flatCross("flat shipcreate-noflags", ex, exFlat, "ShipCreate", inp, null);
+
+  // §5 branch zeroing through the flat reader, into a dirty instance
+  const fbuf = new Uint8Array(4096);
+  const n = exFlat.WriteShipCreateFlat(inp, new DataView(fbuf.buffer));
+  const dirty = new ex.ShipCreate();
+  dirty.Flags = 0xfn;
+  check(exFlat.ReadShipCreateFlat(dirty, new DataView(fbuf.buffer), n * 8), "flat read no-flags");
+  check(!dirty.HasFlags && dirty.Flags === 0n, "flat untaken branch reads as zero (SPEC §5)");
+}
+{
+  const inp = new ex.RigidBody();
+  inp.Position.X = 1.5;
+  inp.Position.Y = -2.5;
+  inp.Position.Z = 3.25;
+  inp.Orientation.X = 0.1;
+  inp.Orientation.Y = 0.2;
+  inp.Orientation.Z = 0.3;
+  inp.Orientation.W = 0.9;
+  inp.AtRest = false;
+  inp.LinearVelocity.X = 10.0;
+  inp.LinearVelocity.Y = 20.0;
+  inp.LinearVelocity.Z = -3.0;
+  inp.AngularVelocity.X = 0.25;
+  inp.AngularVelocity.Y = 0.5;
+  inp.AngularVelocity.Z = 0.75;
+  flatCross("flat rigidbody_moving", ex, exFlat, "RigidBody", inp, "rigidbody_moving");
+  inp.AtRest = true;
+  flatCross("flat rigidbody_at_rest", ex, exFlat, "RigidBody", inp, "rigidbody_at_rest");
+}
+{
+  const inp = new ex.Chat();
+  inp.Text.set(textBytes("wire parity"));
+  inp.TextLength = 11;
+  flatCross("flat chat", ex, exFlat, "Chat", inp, "chat");
+}
+{
+  const inp = new ex.ProbeHeader();
+  inp.Version = 5;
+  inp.ProbeId = 0x1122334455667788n;
+  flatCross("flat probe_header", ex, exFlat, "ProbeHeader", inp, "probe_header");
+}
+flatCross("flat inputpacket", ex, exFlat, "InputPacket", makeInputPacket(), "inputpacket");
+flatCross("flat testdata", ex, exFlat, "TestData", testDataInstance(), "testdata");
+{
+  const inp = new ex.CompressedProbe();
+  inp.Boundary = 0.005;
+  inp.Offset = -4.8585;
+  flatCross("flat compressed_probe", ex, exFlat, "CompressedProbe", inp, "compressed_probe");
+}
+{
+  const inp = new ex.ProbeBits();
+  inp.Small = 0x1ff;
+  inp.Boundary = 0x1ffffffffn;
+  inp.Wide = 0xfedcba9876543210n;
+  inp.Sensor = 4294967295;
+  inp.Nonce = 18446744073709551615n;
+  flatCross("flat probebits", ex, exFlat, "ProbeBits", inp, "probebits");
+}
+{
+  const inp = new ex.ProbeSample();
+  inp.Orientation = 90.0;
+  inp.RawDelta = -5;
+  inp.BigDelta = -1234567890123n;
+  inp.Weapon = ex.Weapon.Laser;
+  inp.HasTarget = true;
+  inp.TargetId = 777;
+  inp.IdleTicks = 12345;
+  inp.SamplesCount = 1;
+  inp.Samples[0] = 42;
+  flatCross("flat probesample-active", ex, exFlat, "ProbeSample", inp, null);
+  inp.Active = false;
+  inp.HasTarget = false;
+  flatCross("flat probesample-idle", ex, exFlat, "ProbeSample", inp, null);
+}
+{
+  const inp = new ex.ProbeArray();
+  inp.Samples[0].Orientation = 90.0;
+  inp.Samples[0].RawDelta = -5;
+  inp.Samples[0].BigDelta = -1234567890123n;
+  inp.Samples[0].Weapon = ex.Weapon.Laser;
+  inp.Samples[0].HasTarget = true;
+  inp.Samples[0].TargetId = 777;
+  inp.Samples[0].SamplesCount = 1;
+  inp.Samples[0].Samples[0] = 42;
+  inp.Samples[1].Active = false;
+  inp.Samples[1].Orientation = -45.5;
+  inp.Samples[1].RawDelta = 7;
+  inp.Samples[1].BigDelta = 99n;
+  inp.Samples[1].IdleTicks = 1000;
+  inp.Samples[1].SamplesCount = 2;
+  inp.Samples[1].Samples[0] = 7;
+  inp.Samples[1].Samples[1] = 8;
+  inp.Config.Retries = 3;
+  inp.Config.Preferred = ex.Weapon.Missile;
+  flatCross("flat probearray", ex, exFlat, "ProbeArray", inp, "probearray");
+}
+{
+  const inp = new ex.ProbeReport();
+  inp.Header.Version = 3;
+  inp.Header.ProbeId = 0xcafebaben;
+  inp.Flags = ex.ProbeFlagsArmed | ex.ProbeFlagsDamaged;
+  inp.Echo.TestA = 555;
+  inp.Echo.TestB = 1000;
+  flatCross("flat probereport", ex, exFlat, "ProbeReport", inp, null);
+}
+{
+  const inp = new ex.Block();
+  for (let i = 0; i < 100; i++) {
+    inp.Data[i] = i + 1;
+  }
+  inp.DataLength = 100;
+  flatCross("flat block", ex, exFlat, "Block", inp, null);
+}
+
+// ---- the bench-corpus pins through flat (the §1.5 oracle instances) ----
+{
+  const packet = new bench.BenchPacket();
+  packet.A = -37;
+  packet.B = 12345;
+  packet.C = 987654;
+  packet.Bits7 = 97;
+  packet.Bits13 = 5000;
+  packet.Bits23 = 1234567;
+  packet.Flag = true;
+  packet.X = 1.5;
+  packet.Y = -3.25;
+  packet.Z = 100.125;
+  packet.Big = 0x123456789abcdef0n;
+  for (let i = 0; i < 17; i++) {
+    packet.Blob[i] = (i * 31) & 0xff;
+  }
+  flatCross("flat bench_packet", bench, benchFlat, "BenchPacket", packet, "bench_packet");
+
+  const ints = new bench.BenchInts();
+  ints.F0 = -37;
+  ints.F1 = 12345;
+  ints.F2 = 987654;
+  ints.F3 = 2;
+  ints.F4 = -15;
+  ints.F5 = 777;
+  ints.F6 = -2048;
+  ints.F7 = 200;
+  ints.F8 = -543210;
+  ints.F9 = 99;
+  flatCross("flat bench_ints", bench, benchFlat, "BenchInts", ints, "bench_ints");
+
+  const bits = new bench.BenchBits();
+  bits.B7 = 97;
+  bits.B13 = 5000;
+  bits.B23 = 1234567;
+  bits.B3 = 5;
+  bits.B32 = 0xdeadbeef;
+  bits.B11 = 1024;
+  bits.B19 = 333333;
+  bits.B48 = 0xfedcba987654n;
+  flatCross("flat bench_bits", bench, benchFlat, "BenchBits", bits, "bench_bits");
+
+  const mixed = new bench.BenchMixed();
+  mixed.Sequence = 52428;
+  mixed.AckBits = 0xa5a5a5a5;
+  mixed.EntityId = 2049;
+  mixed.PosX = -16384;
+  mixed.PosY = 16383;
+  mixed.PosZ = -1;
+  mixed.Yaw = 511;
+  mixed.Moving = true;
+  mixed.Firing = false;
+  mixed.Timestamp = 0x123456789abcn;
+  mixed.Weapon = 15;
+  flatCross("flat bench_mixed", bench, benchFlat, "BenchMixed", mixed, "bench_mixed");
+
+  flatCross("flat real_packet", realworld, realworldFlat, "RealPacket", new realworld.RealPacket(), "real_packet");
+}
+
+// ---- the flat dispatch pair: tag framing identical to the runtime tier ----
+{
+  const chat = new ex.Chat();
+  chat.Text.set(textBytes("dispatch"));
+  chat.TextLength = 8;
+
+  const ws = newWriteStream();
+  check(ex.WriteMessage(ws, chat), "dispatch runtime write");
+  ws.flush();
+  const rtBytes = Uint8Array.from(ws.data());
+
+  const fbuf = new Uint8Array(4096);
+  const fview = new DataView(fbuf.buffer);
+  const n = exFlat.WriteMessageFlat(chat, fview);
+  check(n === rtBytes.length && bytesEqual(fbuf.subarray(0, n), rtBytes),
+    "flat dispatch bytes === runtime dispatch bytes (one message per packet)");
+
+  const storage = new ex.MessageStorage();
+  const holder = { value: null };
+  const rbuf = new Uint8Array(n + 8);
+  rbuf.set(fbuf.subarray(0, n));
+  check(exFlat.ReadMessageFlat(storage, holder, new DataView(rbuf.buffer), n * 8), "flat dispatch read verdict");
+  check(holder.value instanceof ex.Chat && holder.value === storage.Chat &&
+    new TextDecoder().decode(holder.value.Text.subarray(0, 8)) === "dispatch",
+    "flat dispatch lands in the caller's storage");
+
+  check(exFlat.WriteMessageFlat(null, fview) === 1, "the None terminator writes the tag alone");
+  const rt = new Uint8Array(9);
+  check(exFlat.ReadMessageFlat(storage, holder, new DataView(rt.buffer), 8) && holder.value === null,
+    "a None tag reads as the terminator — message stays null");
+  check(exFlat.WriteMessageFlat({ Type: ex.MessageType.Chat }, fview) === -1,
+    "a foreign message implementation is refused with -1 in every mode");
+  check(exFlat.WriteMessageFlat(undefined, fview) === -1, "undefined is refused — only null terminates");
+}
+
+// ---- the batch entries: back-to-back byte-aligned packets, one call ----
+{
+  const mkChat = (s) => {
+    const m = new ex.Chat();
+    m.Text.set(textBytes(s));
+    m.TextLength = s.length;
+    return m;
+  };
+  const vals = [mkChat("alpha"), mkChat("bravo!"), mkChat("charlie7")];
+  const fbuf = new Uint8Array(4096);
+  const fview = new DataView(fbuf.buffer);
+  const total = exFlat.WriteChatFlatArray(vals, 3, fview);
+
+  // the batch bytes are exactly the per-call packets concatenated at their
+  // byte-rounded lengths
+  const one = new Uint8Array(4096);
+  const oneView = new DataView(one.buffer);
+  let off = 0;
+  const expected = new Uint8Array(4096);
+  for (const m of vals) {
+    const n = exFlat.WriteChatFlat(m, oneView);
+    expected.set(one.subarray(0, n), off);
+    off += n;
+  }
+  check(total === off, `batch total ${total} === concatenated singles ${off}`);
+  check(bytesEqual(fbuf.subarray(0, total), expected.subarray(0, off)), "batch bytes === per-call packets");
+
+  const outs = [new ex.Chat(), new ex.Chat(), new ex.Chat()];
+  const rbuf = new Uint8Array(total + 8);
+  rbuf.set(fbuf.subarray(0, total));
+  check(exFlat.ReadChatFlatArray(outs, 3, new DataView(rbuf.buffer), total * 8), "batch read verdict");
+  check(outs.every((o, i) => deepEqual(o, vals[i])), "batch read fields");
+}
+
+// ---- refusal vectors THROUGH the flat reader (refusal rules are format) ----
+{
+  const withSlack = (bytes) => {
+    const b = new Uint8Array(bytes.length + 8);
+    b.set(bytes);
+    return b;
+  };
+
+  // an interior null in a string is content the read refuses
+  const chatGolden = readFileSync("../../testdata/wire/chat.bin");
+  const corrupt = withSlack(chatGolden);
+  corrupt[4] = 0;
+  const out = new ex.Chat();
+  check(!exFlat.ReadChatFlat(out, new DataView(corrupt.buffer), chatGolden.length * 8),
+    "flat: an interior null is rejected");
+
+  // a truncated stream is refused by the fused bounds checks
+  check(!exFlat.ReadChatFlat(out, new DataView(withSlack(chatGolden.subarray(0, 3)).buffer), 3 * 8),
+    "flat: truncation is refused");
+
+  // a corrupted wire constant and a nonzero reserved bit are rejected
+  const probeGolden = readFileSync("../../testdata/wire/probe_header.bin");
+  const c2 = withSlack(probeGolden);
+  c2[0] = 0xac;
+  const out3 = new ex.ProbeHeader();
+  check(!exFlat.ReadProbeHeaderFlat(out3, new DataView(c2.buffer), probeGolden.length * 8),
+    "flat: a corrupted wire constant is REJECTED (SPEC §4.3)");
+  c2[0] = 0xab;
+  c2[1] |= 0x08;
+  check(!exFlat.ReadProbeHeaderFlat(out3, new DataView(c2.buffer), probeGolden.length * 8),
+    "flat: a nonzero reserved bit is rejected");
+
+  // an out-of-range array count is refused before any element rides
+  const packetGolden = readFileSync("../../testdata/wire/inputpacket.bin");
+  const c3 = withSlack(packetGolden);
+  c3[18] = (c3[18] & ~0x1f) | 17;
+  const out4 = new ex.InputPacket();
+  check(!exFlat.ReadInputPacketFlat(out4, new DataView(c3.buffer), packetGolden.length * 8),
+    "flat: an out-of-range count is refused before the loop");
+}
+
+// ---- checked-mode write refusals: verdict-identical across tiers ----
+// (production mode: the flat writer is the trusted-writer release shape and
+// these vectors are caller misuse by contract — asserted in checked runs
+// only, which the Makefile's mode pair guarantees happen)
+if (CHECKED_MODE) {
+  const fview = new DataView(new Uint8Array(4096).buffer);
+
+  const bad = new ex.ShipCreate();
+  bad.Health = 5000; // above [0, MaxHealth]
+  const ws = newWriteStream();
+  check(!ex.WriteShipCreate(ws, bad) && exFlat.WriteShipCreateFlat(bad, fview) === -1,
+    "both tiers refuse an out-of-range ranged write");
+
+  const bad2 = new ex.ProbeReport();
+  bad2.Flags = 1n << 9n;
+  const ws2 = newWriteStream();
+  check(!ex.WriteProbeReport(ws2, bad2) && exFlat.WriteProbeReportFlat(bad2, fview) === -1,
+    "both tiers refuse a mask bit above the flags wire width");
+
+  const bad3 = new ex.Chat();
+  bad3.TextLength = 999; // above string(MaxChatLength)
+  const ws3 = newWriteStream();
+  check(!ex.WriteChat(ws3, bad3) && exFlat.WriteChatFlat(bad3, fview) === -1,
+    "both tiers refuse an out-of-range string length");
+
+  const bad4 = new ex.InputPacket();
+  bad4.InputsCount = 17; // above [0, MaxInputsPerPacket]
+  const ws4 = newWriteStream();
+  check(!ex.WriteInputPacket(ws4, bad4) && exFlat.WriteInputPacketFlat(bad4, fview) === -1,
+    "both tiers refuse an out-of-range array count");
+
+  const bad5 = new ex.ShipCreate();
+  bad5.ShipType = 99; // enum headroom above the wire range
+  const ws5 = newWriteStream();
+  check(!ex.WriteShipCreate(ws5, bad5) && exFlat.WriteShipCreateFlat(bad5, fview) === -1,
+    "both tiers refuse enum headroom above the wire range");
 }
 
 if (failed) {

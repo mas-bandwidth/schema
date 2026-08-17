@@ -42,11 +42,13 @@ func sortedKeys(ms ...map[key]row) []key {
 	for _, l := range langs {
 		for _, b := range order {
 			for _, p := range []string{"write", "read"} {
-				k := key{l.key, b, p}
-				for _, m := range ms {
-					if _, ok := m[k]; ok && !seen[k] {
-						seen[k] = true
-						out = append(out, k)
+				for _, c := range codecs {
+					k := key{l.key, b, p, c}
+					for _, m := range ms {
+						if _, ok := m[k]; ok && !seen[k] {
+							seen[k] = true
+							out = append(out, k)
+						}
 					}
 				}
 			}
@@ -74,6 +76,16 @@ func sortedKeys(ms ...map[key]row) []key {
 	return append(out, rest...)
 }
 
+// keyName renders a key for suspect/band lines: lang/bench/path, with the
+// codec as a fourth segment on tiered rows — the same format the preamble
+// parser reads back.
+func keyName(k key) string {
+	if k.codec == "" {
+		return fmt.Sprintf("%s/%s/%s", k.lang, k.bench, k.path)
+	}
+	return fmt.Sprintf("%s/%s/%s/%s", k.lang, k.bench, k.path, k.codec)
+}
+
 func twingateCmd(paths []string) {
 	if len(paths) != 2 {
 		usage()
@@ -93,13 +105,13 @@ func twingateCmd(paths []string) {
 		ra, oka := a[k]
 		rb, okb := b[k]
 		if !oka || !okb {
-			fmt.Printf("state-suspect: %s/%s/%s (row present in only one twin — the twins did not measure the same suite)\n",
-				k.lang, k.bench, k.path)
+			fmt.Printf("state-suspect: %s (row present in only one twin — the twins did not measure the same suite)\n",
+				keyName(k))
 			suspects++
 			continue
 		}
 		if rb.mx == 0 {
-			fmt.Printf("state-suspect: %s/%s/%s (twin B rate is zero)\n", k.lang, k.bench, k.path)
+			fmt.Printf("state-suspect: %s (twin B rate is zero)\n", keyName(k))
 			suspects++
 			continue
 		}
@@ -125,11 +137,11 @@ func twingateCmd(paths []string) {
 			band = s
 		}
 		if dev > band {
-			fmt.Printf("state-suspect: %s/%s/%s twin ratio departs 1.0 by %.1f%% > spread band %.1f%% (twin disagreement — state-selective interference)\n",
-				k.lang, k.bench, k.path, dev, band)
+			fmt.Printf("state-suspect: %s twin ratio departs 1.0 by %.1f%% > spread band %.1f%% (twin disagreement — state-selective interference)\n",
+				keyName(k), dev, band)
 			suspects++
 		} else {
-			fmt.Printf("twin-ok: %s/%s/%s dev %.1f%% within band %.1f%%\n", k.lang, k.bench, k.path, dev, band)
+			fmt.Printf("twin-ok: %s dev %.1f%% within band %.1f%%\n", keyName(k), dev, band)
 		}
 	}
 	if suspects > 0 {
@@ -201,22 +213,22 @@ func bandsCmd(paths []string) {
 		r := cur[k]
 		bd := bands[k]
 		if bd == nil {
-			fmt.Printf("no-band: %s/%s/%s (no prior VALID same-configuration row — first outing for this configuration)\n",
-				k.lang, k.bench, k.path)
+			fmt.Printf("no-band: %s (no prior VALID same-configuration row — first outing for this configuration)\n",
+				keyName(k))
 			continue
 		}
 		switch {
 		case r.mx > bd.hi*(1.0+spreadNoisy/100.0):
-			fmt.Printf("band-break: %s/%s/%s best %.0f ABOVE band [%.0f, %.0f] by %.1f%% (> %.0f%% §2.3 noisy threshold; %d prior rows) — publishes only with this mark\n",
-				k.lang, k.bench, k.path, r.mx, bd.lo, bd.hi, (r.mx/bd.hi-1.0)*100.0, spreadNoisy, bd.n)
+			fmt.Printf("band-break: %s best %.0f ABOVE band [%.0f, %.0f] by %.1f%% (> %.0f%% §2.3 noisy threshold; %d prior rows) — publishes only with this mark\n",
+				keyName(k), r.mx, bd.lo, bd.hi, (r.mx/bd.hi-1.0)*100.0, spreadNoisy, bd.n)
 			breaks++
 		case r.mx < bd.lo*(1.0-spreadNoisy/100.0):
-			fmt.Printf("band-break: %s/%s/%s best %.0f BELOW band [%.0f, %.0f] by %.1f%% (> %.0f%% §2.3 noisy threshold; %d prior rows) — publishes only with this mark\n",
-				k.lang, k.bench, k.path, r.mx, bd.lo, bd.hi, (1.0-r.mx/bd.lo)*100.0, spreadNoisy, bd.n)
+			fmt.Printf("band-break: %s best %.0f BELOW band [%.0f, %.0f] by %.1f%% (> %.0f%% §2.3 noisy threshold; %d prior rows) — publishes only with this mark\n",
+				keyName(k), r.mx, bd.lo, bd.hi, (1.0-r.mx/bd.lo)*100.0, spreadNoisy, bd.n)
 			breaks++
 		default:
-			fmt.Printf("band-ok: %s/%s/%s best %.0f within band [%.0f, %.0f] (±%.0f%%; %d prior rows)\n",
-				k.lang, k.bench, k.path, r.mx, bd.lo, bd.hi, spreadNoisy, bd.n)
+			fmt.Printf("band-ok: %s best %.0f within band [%.0f, %.0f] (±%.0f%%; %d prior rows)\n",
+				keyName(k), r.mx, bd.lo, bd.hi, spreadNoisy, bd.n)
 		}
 	}
 	if breaks > 0 {

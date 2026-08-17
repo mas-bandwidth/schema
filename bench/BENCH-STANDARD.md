@@ -917,7 +917,7 @@ New columns are **appended**, so `relative.go`'s existing positional parse
 CSVs still load.
 
 ```
-lang,bench,path,iters,bytes_per_op,runs,median_msgs_per_sec,min_msgs_per_sec,max_msgs_per_sec,median_mb_per_sec,spread_pct,corpus_id,family,linkage,checks,opt,inline
+lang,bench,path,iters,bytes_per_op,runs,median_msgs_per_sec,min_msgs_per_sec,max_msgs_per_sec,median_mb_per_sec,spread_pct,corpus_id,family,linkage,checks,opt,inline[,codec]
 ```
 
 | column | values |
@@ -929,6 +929,7 @@ lang,bench,path,iters,bytes_per_op,runs,median_msgs_per_sec,min_msgs_per_sec,max
 | `checks` | `removed` \| `always` \| `contract` (§3.4) |
 | `opt` | `O2` \| `O3` \| `default` |
 | `inline` | `full` \| `partial:N` \| `none` \| `unknown` |
+| `codec` | `flat` \| `runtime` — appended (2026-08-18) only on rows of a language that ships more than one generated codec. Today that is JavaScript: `flat` marks the flat tier, THE js path under the ruling ("whichever correct implementation is fastest is the one we use for JavaScript"), and `runtime` marks the runtime-call generated tier riding as labeled supplementary rows. Rows without the column (the five AOT languages, and the js `rt`/`bits` families, which measure the runtime library itself) stay 17 fields — append-only holds. |
 
 The **headline rate is `max_msgs_per_sec`** (§2.2). `median_mb_per_sec` keeps its name
 and its MiB/s meaning; a `max_mb_per_sec` is not added because it is
@@ -992,6 +993,11 @@ is in the file; nothing reads it.
 > 7. `inline` is `unknown` on either side
 > 8. the source CSVs' `# cpu` lines, or the flag lines for the languages involved
 > 9. either row's `spread_pct` > 40, or `# window: INVALID`
+> 10. `codec` — a runtime-call generated number and a flat number measure
+>     different shipped code, so a ratio across them is a code-change delta
+>     wearing a language-delta costume. An empty codec (a one-codec language,
+>     or a pre-codec CSV — the old js rows were runtime-call) never matches a
+>     labeled tier either. (Appended 2026-08-18 with the js flat tier.)
 >
 > A refusal prints both rows and the differing field, and exits non-zero. It never
 > prints a number.

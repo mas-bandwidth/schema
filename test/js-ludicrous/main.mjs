@@ -21,6 +21,7 @@ import { readFileSync } from "node:fs";
 import { WriteStream, ReadStream } from "../../../serialize.js/src/index.js";
 
 import * as lud from "../../generated/js-ludicrous/Ludicrous.js";
+import * as ludFlat from "../../generated/js-ludicrous/LudicrousFlat.js";
 
 let failed = false;
 
@@ -377,6 +378,147 @@ let takenWire;
     check(out.Wide.Flux === inp.Wide.Flux, "flux rides the dispatch surface");
     check(out.Probe.Angle === 2981888, "angle rides the dispatch surface");
   }
+}
+
+// ==================== THE FLAT TIER over the 128-bit unit ====================
+// The same pins, through the flat codec: byte-identical to the runtime tier
+// and to the C++-pinned goldens, hostile vectors rejected identically —
+// the serialize-phase-1 families (fixed/ufixed wide lanes, int128 groups,
+// uint128, degenerate zero-bit ranges) proven on the shipped JS path.
+
+// flatCross: runtime write -> flat write byte-compare (+ golden), flat read
+// vs runtime read field-compare, flat re-write byte-compare.
+function flatCross(name, shape, inp, golden) {
+  const ws = newWriteStream();
+  if (!lud[`Write${shape}`](ws, inp)) {
+    check(false, `${name}: runtime write failed`);
+    return;
+  }
+  ws.flush();
+  const rtBytes = Uint8Array.from(ws.data());
+
+  const fbuf = new Uint8Array(256);
+  const fview = new DataView(fbuf.buffer);
+  const n = ludFlat[`Write${shape}Flat`](inp, fview);
+  check(n === rtBytes.length, `${name}: flat write length ${n} vs runtime ${rtBytes.length}`);
+  check(bytesEqual(fbuf.subarray(0, rtBytes.length), rtBytes), `${name}: flat bytes === runtime bytes`);
+  if (golden) {
+    goldenWire(golden, fbuf.subarray(0, rtBytes.length));
+  }
+
+  const rtOut = new lud[shape]();
+  check(lud[`Read${shape}`](new ReadStream(rtBytes), rtOut), `${name}: runtime read`);
+  const flOut = new lud[shape]();
+  const rbuf = new Uint8Array(rtBytes.length + 8); // FLAT_READ_SLACK
+  rbuf.set(rtBytes);
+  check(ludFlat[`Read${shape}Flat`](flOut, new DataView(rbuf.buffer), rtBytes.length * 8), `${name}: flat read verdict`);
+  check(deepEqual(flOut, rtOut), `${name}: flat read fields === runtime read fields`);
+
+  const n2 = ludFlat[`Write${shape}Flat`](flOut, fview);
+  check(n2 === rtBytes.length && bytesEqual(fbuf.subarray(0, rtBytes.length), rtBytes),
+    `${name}: flat round-trips to identical bytes`);
+}
+
+const withSlack = (bytes) => {
+  const b = new Uint8Array(bytes.length + 8);
+  b.set(bytes);
+  return b;
+};
+
+{
+  const inp = makeState();
+  flatCross("flat ludicrous_state", "LudicrousState", inp, "ludicrous_state");
+  inp.HasTarget = false;
+  flatCross("flat ludicrous_untargeted", "LudicrousState", inp, "ludicrous_state_untargeted");
+
+  // the untaken 128-bit branch side zeroes into a dirty instance
+  const fbuf = new Uint8Array(256);
+  const n = ludFlat.WriteLudicrousStateFlat(inp, new DataView(fbuf.buffer));
+  const dirty = new lud.LudicrousState();
+  dirty.TargetId = 0xdeadn;
+  const rb = withSlack(fbuf.subarray(0, n));
+  check(ludFlat.ReadLudicrousStateFlat(dirty, new DataView(rb.buffer), n * 8), "flat read untargeted");
+  check(!dirty.HasTarget && dirty.TargetId === 0n, "flat: the untaken 128-bit field reads as zero (SPEC §5)");
+}
+{
+  const inp = new lud.UnsignedProbe();
+  inp.Angle = 2981888;
+  inp.Span = 0xffffffffffff0000n;
+  inp.Reach = 131071999999n;
+  inp.Ticks = 777777;
+  inp.Samples[0] = 0;
+  inp.Samples[1] = 1048576;
+  inp.Locked = 196608;
+  inp.Tail = 0xa5;
+  flatCross("flat unsigned_probe", "UnsignedProbe", inp, "unsigned_probe");
+}
+{
+  const inp = new lud.DegenerateProbe();
+  inp.LockedFixed = -196608;
+  inp.LockedInt = 7;
+  inp.LockedWide = -12345678901234n;
+  inp.Tail = 0xa5;
+  flatCross("flat degenerate_probe", "DegenerateProbe", inp, "degenerate_probe");
+}
+
+// hostile reads REJECT through the flat reader too (reject, never clamp)
+{
+  const hostile = withSlack(takenWire);
+  setBits(hostile, 2, 25); // smuggled fixed offset above the raw range
+  const out = new lud.LudicrousState();
+  check(!ludFlat.ReadLudicrousStateFlat(out, new DataView(hostile.buffer), takenWire.length * 8),
+    "flat: a smuggled fixed offset is REJECTED");
+}
+{
+  const hostile = withSlack(takenWire);
+  setBits(hostile, 286, 34); // smuggled int128 offset above the range
+  const out = new lud.LudicrousState();
+  check(!ludFlat.ReadLudicrousStateFlat(out, new DataView(hostile.buffer), takenWire.length * 8),
+    "flat: a smuggled int128 offset is REJECTED");
+}
+{
+  const out = new lud.LudicrousState();
+  check(!ludFlat.ReadLudicrousStateFlat(out, new DataView(withSlack(takenWire.subarray(0, 4)).buffer), 4 * 8),
+    "flat: a truncated stream is a read failure");
+}
+
+// the checked flat writer refuses what the runtime tier refuses (checked
+// runs only — production is the trusted-writer release shape)
+if (process.env.NODE_ENV !== "production") {
+  const bad = new lud.UnsignedProbe();
+  bad.Angle = 2981888;
+  bad.Span = 0xffffffffffff0000n;
+  bad.Reach = 131071999999n;
+  bad.Ticks = 777777;
+  bad.Samples[0] = 0;
+  bad.Samples[1] = 1048576;
+  bad.Locked = 196609; // any raw but 3 * 2^16 is refused
+  bad.Tail = 0xa5;
+  const fview = new DataView(new Uint8Array(256).buffer);
+  const wsb = newWriteStream();
+  check(!lud.WriteUnsignedProbe(wsb, bad) && ludFlat.WriteUnsignedProbeFlat(bad, fview) === -1,
+    "both tiers refuse a wrong degenerate ufixed raw on write");
+}
+
+// the flat dispatch surface over the 128-bit unit
+{
+  const inp = makeState();
+  const ws = newWriteStream();
+  check(lud.WriteMessage(ws, inp), "dispatch runtime write");
+  ws.flush();
+  const rtBytes = Uint8Array.from(ws.data());
+
+  const fbuf = new Uint8Array(256);
+  const n = ludFlat.WriteMessageFlat(inp, new DataView(fbuf.buffer));
+  check(n === rtBytes.length && bytesEqual(fbuf.subarray(0, n), rtBytes),
+    "flat dispatch bytes === runtime dispatch bytes");
+
+  const storage = new lud.MessageStorage();
+  const holder = { value: null };
+  const rb = withSlack(fbuf.subarray(0, n));
+  check(ludFlat.ReadMessageFlat(storage, holder, new DataView(rb.buffer), n * 8), "flat dispatch read verdict");
+  check(holder.value instanceof lud.LudicrousState && holder.value.Wide.Flux === inp.Wide.Flux,
+    "flux rides the flat dispatch surface");
 }
 
 if (failed) {
