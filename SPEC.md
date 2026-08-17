@@ -178,6 +178,7 @@ grows into space already paid for.
 
 Whether the id travels on the wire (a connect token, a `const` field, out of
 band) is the application's choice — netcode-style stacks already carry one.
+
 ## 4. The language
 
 ### 4.1 Lexical structure
@@ -1171,6 +1172,7 @@ projection (§3.1), so marking a table moves the unit's protocol id like any
 other declaration change. The table wire's own compatibility does not depend
 on it: a table bin from a different protocol id still reads under the
 permissive contract, which is the point.
+
 ## 5. Trust model — inherited
 
 **Reads validate everything** — integer ranges, enum bounds, alignment
@@ -1424,6 +1426,7 @@ This table predates the C and JavaScript targets: C's contract is
 serialize.c's own (it adopts C++'s align-up rules — write buffers a multiple
 of 8, read allocations extending ≥8 bytes past packet data), and
 JavaScript's is serialize.js's.
+
 ## 7. The compiler
 
 Go, zero third-party dependencies, one static binary: `schema`.
