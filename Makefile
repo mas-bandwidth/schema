@@ -8,7 +8,9 @@ CXXFLAGS ?= -std=c++17 -Wall -Wextra -Werror -ffp-contract=off
 # Go port the generated Go targets, the Rust port the generated Rust targets,
 # and the C# port the generated C# targets (sibling checkouts; test/go/go.mod,
 # test/rust/Cargo.toml, test/cs/schematest.csproj and their *-ludicrous twins
-# carry the same relative paths)
+# carry the same relative paths). The JS runtime is a sibling checkout too
+# (../serialize.js), but needs no variable: generated JS never imports the
+# runtime, and the test legs import it by module-relative path directly.
 SERIALIZE    ?= ../serialize
 SERIALIZE_C  ?= ../serialize.c
 SERIALIZE_GO ?= ../serialize.go
@@ -227,9 +229,11 @@ test: build/schema_test build/schema_test_variant build/schema_test_random build
 	cd test/go && go run .
 	cd test/rust && PATH="$(RUSTUP_BIN):$$PATH" cargo run --quiet
 	cd test/cs && dotnet run
+	cd test/js && node main.mjs && NODE_ENV=production node main.mjs
 	cd test/go-ludicrous && go run .
 	cd test/rust-ludicrous && PATH="$(RUSTUP_BIN):$$PATH" cargo run --quiet
 	cd test/cs-ludicrous && dotnet run
+	cd test/js-ludicrous && node main.mjs && NODE_ENV=production node main.mjs
 	go test ./...
 
 # Re-pin the goldens DELIBERATELY (SPEC §7.2 gates 1, 2, 7). A wire golden
