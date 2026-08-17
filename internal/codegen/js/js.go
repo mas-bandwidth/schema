@@ -48,6 +48,7 @@ package js
 
 import (
 	"fmt"
+	"maps"
 	"math/big"
 	"sort"
 	"strconv"
@@ -94,9 +95,7 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 	// wire surface (flat.go) — always emitted, never flag-gated: the ruling
 	// makes flat THE JavaScript path, and the runtime tier above is emitted
 	// regardless because it is the flat tier's CI oracle
-	for name, content := range generateFlat(u, msgOwner) {
-		out[name] = content
-	}
+	maps.Copy(out, generateFlat(u, msgOwner))
 	return out, nil
 }
 

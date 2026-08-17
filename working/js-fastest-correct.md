@@ -1,9 +1,11 @@
 # The JavaScript throughput path — productization design
 
 **STATUS: PROPOSAL — DO NOT MERGE AS LAW. The decision is Glenn's.** This document
-designs how schema ships the measured winner of the JavaScript race. No code rides
-this branch; the design stands on the race's evidence and names every decision with
-its reason. The governing ruling, verbatim:
+designs how schema ships the measured winner of the JavaScript race; the
+implementation now rides this same branch (the build phase followed the design —
+deviations, where reality pushed back, are named in the PR body). The design
+stands on the race's evidence and names every decision with its reason. The
+governing ruling, verbatim:
 
 > Whichever correct implementation is fastest is the one we use for JavaScript.
 

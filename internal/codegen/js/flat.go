@@ -90,12 +90,10 @@ type fgen struct {
 	needN     bool // compressed-float / narrowing temp
 	needT     bool // float32 NaN lane temps
 	needBg    bool // BigInt lane temp
-	needS     bool // write-side align temp (s outside merges) — s is always declared; kept for symmetry
-	needSC    bool
 	loopDepth int
 }
 
-// flatFiles reports which files of the unit get a Flat module: any file
+// flatFileHasSurface reports whether a file gets a Flat module: any file
 // declaring structs (types, messages, tables' dense wire), or the message
 // owner file (the dispatch surface).
 func flatFileHasSurface(u *ir.Unit, f *ir.File, msgOwner string) bool {
@@ -378,7 +376,7 @@ func (g *fgen) emitStructFlat(st *ir.Struct) {
 }
 
 func (g *fgen) resetNeeds() {
-	g.needX, g.needN, g.needT, g.needBg, g.needSC = false, false, false, false, false
+	g.needX, g.needN, g.needT, g.needBg = false, false, false, false
 	g.loopDepth = 0
 }
 
@@ -806,11 +804,12 @@ func (g *fgen) emitWriteFixed(f *ir.Field, name, ind string) {
 		g.guard(fmt.Sprintf("!Number.isInteger(%s) || %s < %s || %s > %s", name, name, rawMin.String(), name, rawMax.String()),
 			refuseComment, ind)
 		var off string
-		if rawMin.Sign() == 0 {
+		switch {
+		case rawMin.Sign() == 0:
 			off = name
-		} else if rawMin.Cmp(big.NewInt(math.MinInt32)) >= 0 && rawMax.Cmp(big.NewInt(math.MaxInt32)) <= 0 {
+		case rawMin.Cmp(big.NewInt(math.MinInt32)) >= 0 && rawMax.Cmp(big.NewInt(math.MaxInt32)) <= 0:
 			off = fmt.Sprintf("((%s >>> 0) - %d) >>> 0", name, uint32(int32(rawMin.Int64())))
-		} else {
+		default:
 			off = fmt.Sprintf("%s - %s", name, rawMin.String())
 		}
 		if bits == 32 {
