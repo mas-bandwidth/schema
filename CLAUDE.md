@@ -148,8 +148,18 @@ numbers §1–§9 and the §9 q-rows are frozen — code, corpus and docs cite t
   §4.7 UTF-8 writer contract is a recorded follow-up (C#, like Go, asserts nothing
   today); the scanner's BOM diagnostic still says "it would silently move the protocol
   id" — the source-hash rationale, stale since the §3.1 projection ruling — a cleanup
-  that must re-pin its exact-message diagnostics test; WIRES.md's message-wire
-  paragraph lists four runtimes where six exist.
+  that must re-pin its exact-message diagnostics test. The same stale class is wider
+  than the scanner: all six codegen backends emit "the hash of its schema files
+  (SPEC §3.1)" into every generated file's header (38 occurrences across `generated/`
+  and the goldens today), and `internal/check/check.go` still cites §3.1 for
+  sorted-basename *hashing* — pre-projection language throughout; fixing it is one
+  deliberate pass with a golden re-pin. WIRES.md's message-wire paragraph lists four
+  runtimes where six exist.
+- **§6.1 gaps equal in the old text** (surfaced by the rewrite's verification pass,
+  not introduced by it): the symbol-naming paragraph gives five targets' conventions
+  but not C's (lower_snake free functions — `write_ship_data_deep(stream, value)` —
+  with `schema_`-prefixed internal helpers), and neither output-layout bullet names
+  the third per-file header (`<Base>Table.h`) that C and C++ closure files emit.
 - **Removed as dead grammar residue** (not relocated — it described nothing the
   grammar can express): §4.6's `bytes(<= N)` error row; the `<=` marker on
   string/bytes died in the §4.7 unification. The EBNF gained the `ufixed(I, F)`
