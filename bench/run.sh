@@ -174,6 +174,16 @@ DEBUG_FLAGS="-O0 -g -DSERIALIZE_DEBUG $COMMON_FLAGS"
 # -Igenerated/bench/c: the bench-corpus generated code (RealWorldWire.h —
 # the §1.7 realistic snapshot the real_packet rows measure).
 C_COMMON_FLAGS="-std=c99 -Wall -Wextra -Werror -Igenerated/c -Igenerated/bench/c -I$SERIALIZE_C"
+# gcc (13.3 checked) additionally rejects the C runner's bounded strncpy of a
+# golden basename under -Werror (-Wstringop-truncation): the truncation is
+# deliberate (fixed-width name slot, terminator guaranteed by the zeroed
+# struct), and clang has no such warning. Same pattern as the C++
+# accommodations above; every space-box era to date carried this flag by hand
+# in its build script (realworld-build.sh) — this lets bench/run.sh build the
+# C leg on gcc directly. Warning suppression only: codegen flags unchanged.
+if $CC_BIN --version 2>/dev/null | head -1 | grep -qi 'gcc'; then
+    C_COMMON_FLAGS="$C_COMMON_FLAGS -Wno-stringop-truncation"
+fi
 C_RELEASE_FLAGS="-$OPT_LEVEL -DNDEBUG -DBENCH_OPT=\"$OPT_LEVEL\" $C_COMMON_FLAGS"
 C_DEBUG_FLAGS="-O0 -g $C_COMMON_FLAGS"
 
@@ -241,8 +251,32 @@ prov_verify() {
         cs)   PROV_CS="$resolved" ;;
     esac
 }
-if [ "$BARE" = 1 ] && [ -n "$ONLY" ]; then
+# A language whose leg does NOT run in this invocation cannot misrecord what
+# it measured — none of its code runs here. Its preamble line still prints,
+# so it is MARKED rather than proven; refusing the whole run over a bystander
+# language inverted --only's own contract (measured on the EPYC box: go
+# toolchain present, serialize.go checkout absent, the cpp control leg
+# refused before a single row existed).
+prov_note() {
+    local resolved
+    if resolved="$(verify_runtime "$1" 2>/dev/null)"; then
+        resolved="[build-verified: $resolved]"
+    else
+        resolved="[UNVERIFIED — leg not run this invocation; path recorded from the environment, not proven against a build]"
+    fi
+    case "$1" in
+        cpp)  PROV_CPP="$resolved" ;;
+        c)    PROV_C="$resolved" ;;
+        go)   PROV_GO="$resolved" ;;
+        rust) PROV_RUST="$resolved" ;;
+        cs)   PROV_CS="$resolved" ;;
+    esac
+}
+if [ -n "$ONLY" ]; then
     prov_verify "$ONLY"
+    for _lang in cpp c go rust cs; do
+        [ "$_lang" != "$ONLY" ] && prov_note "$_lang"
+    done
 else
     for _lang in cpp c go rust cs; do prov_verify "$_lang"; done
 fi

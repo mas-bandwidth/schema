@@ -107,9 +107,22 @@ func twingateCmd(paths []string) {
 		if dev < 0 {
 			dev = -dev
 		}
-		band := ra.spread
-		if rb.spread > band {
-			band = rb.spread
+		// The band is §2.3's own spread formula recomputed at FULL PRECISION
+		// from the rate columns, not the CSV's two-decimal spread_pct print.
+		// Measured (certified-space-1, EPYC core 15): twins agreeing to
+		// 0.9 ppm were refused because a true spread of 0.0008% printed as
+		// 0.00, collapsing the band to zero — the gate refused the QUIETEST
+		// rows of the pass, on the quietest machine in the estate, by
+		// construction. Same quantity, full precision; not a policy change.
+		spreadOf := func(r row) float64 {
+			if r.med == 0 {
+				return 0
+			}
+			return (r.mx - r.mn) / r.med * 100.0
+		}
+		band := spreadOf(ra)
+		if s := spreadOf(rb); s > band {
+			band = s
 		}
 		if dev > band {
 			fmt.Printf("state-suspect: %s/%s/%s twin ratio departs 1.0 by %.1f%% > spread band %.1f%% (twin disagreement — state-selective interference)\n",

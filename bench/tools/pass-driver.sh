@@ -72,12 +72,26 @@ while [ $# -gt 0 ]; do
     shift
 done
 
-command -v go >/dev/null 2>&1 || { echo "pass-driver needs the go toolchain (bench/tools)" >&2; exit 1; }
+# The driver's own instruments (controlmedian, aggregate, twingate) are the
+# bench/tools Go program. Where the host go toolchain cannot build them —
+# the EPYC box carries go 1.22.2 against go.mod's 1.26 — BENCH_TOOLS names a
+# prebuilt bench/tools binary (cross-compiled from the SAME schema commit;
+# the pass preamble records that commit) and the driver uses it verbatim.
+TOOLS="${BENCH_TOOLS:-go run ./bench/tools}"
+if [ -n "${BENCH_TOOLS:-}" ]; then
+    [ -x "$BENCH_TOOLS" ] || { echo "BENCH_TOOLS=$BENCH_TOOLS is not an executable" >&2; exit 1; }
+else
+    command -v go >/dev/null 2>&1 || { echo "pass-driver needs the go toolchain (bench/tools), or BENCH_TOOLS=/path/to/prebuilt-bench-tools" >&2; exit 1; }
+fi
 
 # ---- §3.5 provenance gate, before ANY leg runs: every runtime path the
 # final preamble will record must match what the toolchains actually resolve
-# (run.sh re-checks per leg; this refusal is cheap and saves a night) ----
-if ! bench/tools/verify-runtime-paths.sh >&2; then
+# (run.sh re-checks per leg; this refusal is cheap and saves a night).
+# Verify only the languages this pass will RUN (--langs): the gate refusing a
+# pass over a language it was told to skip inverted its own contract — a
+# skipped leg is a fact, not a failure (measured on the EPYC box: go 1.22.2
+# present, serialize.go absent, cpp/c pass refused). ----
+if ! bench/tools/verify-runtime-paths.sh $(echo "$LANGS" | tr ',' ' ') >&2; then
     echo "REFUSED (§3.5): a leg's build would not use the runtime path the preamble records — no pass, no rows" >&2
     exit 1
 fi
@@ -285,15 +299,15 @@ fi
 
 # ---- window verdict (§2.6): corpus-median headline of the two control legs ----
 
-CTRL_A="$(go run ./bench/tools controlmedian "$W/control-start.csv")"
-CTRL_B="$(go run ./bench/tools controlmedian "$W/control-end.csv")"
+CTRL_A="$($TOOLS controlmedian "$W/control-start.csv")"
+CTRL_B="$($TOOLS controlmedian "$W/control-end.csv")"
 CTRL_DELTA="$(awk -v a="$CTRL_A" -v b="$CTRL_B" 'BEGIN { d = (b - a) / a * 100; if (d < 0) d = -d; printf "%.1f", d }')"
 WINDOW="$(awk -v d="$CTRL_DELTA" 'BEGIN { print (d <= 5.0) ? "OK" : "INVALID" }')"
 log "control: start=$CTRL_A end=$CTRL_B delta=${CTRL_DELTA}% window=$WINDOW"
 
 # ---- aggregate (§2.4: the driver computes the statistics, not the runner) ----
 
-if ! go run ./bench/tools aggregate "$W"/round-*.csv > "$W/aggregated.csv"; then
+if ! $TOOLS aggregate "$W"/round-*.csv > "$W/aggregated.csv"; then
     echo "aggregation refused — the rounds did not measure one pass; see $W" >&2
     exit 1
 fi
@@ -310,10 +324,10 @@ if [ "$TWINS" = 1 ]; then
         TWIN_VERDICT="UNKNOWN (no twin-b rows)"
     else
         # shellcheck disable=SC2086
-        go run ./bench/tools aggregate $A_FILES > "$W/twin-a.csv" || exit 1
+        $TOOLS aggregate $A_FILES > "$W/twin-a.csv" || exit 1
         # shellcheck disable=SC2086
-        go run ./bench/tools aggregate $B_FILES > "$W/twin-b.csv" || exit 1
-        if go run ./bench/tools twingate "$W/twin-a.csv" "$W/twin-b.csv" > "$W/twingate.txt" 2>&1; then
+        $TOOLS aggregate $B_FILES > "$W/twin-b.csv" || exit 1
+        if $TOOLS twingate "$W/twin-a.csv" "$W/twin-b.csv" > "$W/twingate.txt" 2>&1; then
             TWIN_VERDICT="OK"
         else
             TWIN_VERDICT="SUSPECT"
