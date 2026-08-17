@@ -174,6 +174,16 @@ DEBUG_FLAGS="-O0 -g -DSERIALIZE_DEBUG $COMMON_FLAGS"
 # -Igenerated/bench/c: the bench-corpus generated code (RealWorldWire.h —
 # the §1.7 realistic snapshot the real_packet rows measure).
 C_COMMON_FLAGS="-std=c99 -Wall -Wextra -Werror -Igenerated/c -Igenerated/bench/c -I$SERIALIZE_C"
+# gcc (13.3 checked) additionally rejects the C runner's bounded strncpy of a
+# golden basename under -Werror (-Wstringop-truncation): the truncation is
+# deliberate (fixed-width name slot, terminator guaranteed by the zeroed
+# struct), and clang has no such warning. Same pattern as the C++
+# accommodations above; every space-box era to date carried this flag by hand
+# in its build script (realworld-build.sh) — this lets bench/run.sh build the
+# C leg on gcc directly. Warning suppression only: codegen flags unchanged.
+if $CC_BIN --version 2>/dev/null | head -1 | grep -qi 'gcc'; then
+    C_COMMON_FLAGS="$C_COMMON_FLAGS -Wno-stringop-truncation"
+fi
 C_RELEASE_FLAGS="-$OPT_LEVEL -DNDEBUG -DBENCH_OPT=\"$OPT_LEVEL\" $C_COMMON_FLAGS"
 C_DEBUG_FLAGS="-O0 -g $C_COMMON_FLAGS"
 
