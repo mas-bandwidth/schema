@@ -161,10 +161,7 @@ func genFixed(r *lcg, unsigned bool) field {
 		}
 		if unsigned {
 			dom := int64(1)<<uint(I) - 1
-			capv := int64(1)<<uint(wireCap) - 1
-			if capv > dom {
-				capv = dom
-			}
+			capv := min(int64(1)<<uint(wireCap)-1, dom)
 			if capv < 1 {
 				continue
 			}
@@ -176,10 +173,9 @@ func genFixed(r *lcg, unsigned bool) field {
 			continue // signed whole-unit domain needs I >= 2 for a symmetric range
 		}
 		dom := int64(1)<<uint(I-1) - 1
-		capv := int64(1)<<uint(wireCap-1) - 1 // bitlen(2h) <= wireCap
-		if capv > dom {
-			capv = dom
-		}
+		capv := min(
+			// bitlen(2h) <= wireCap
+			int64(1)<<uint(wireCap-1)-1, dom)
 		if capv < 1 {
 			continue
 		}
@@ -218,17 +214,16 @@ func generate(seed uint64, nFields int) ([]byte, stats, error) {
 	nFx := round(0.08 * n) // alternating fixed/ufixed
 	nF64 := round(0.05 * n)
 	nW64 := round(0.04 * n) // alternating uint64/int64
-	nEf := round(0.03 * n)
-	if nEf < 3 {
-		nEf = 3 // at least two enum refs and one flags ref
-	}
+	nEf := max(round(0.03*n),
+		// at least two enum refs and one flags ref
+		3)
 	if nBool < 5 || nBits < 3 {
 		return nil, stats{}, fmt.Errorf("field count too small: need at least 5 bools (4 gates) and 3 bits fields")
 	}
 
 	// build the value-field list (the four gate bools are placed separately)
 	var list []field
-	for i := 0; i < nRint; i++ {
+	for range nRint {
 		list = append(list, genRangedInt(r))
 	}
 	for i := 0; i < nBits-2; i++ {
@@ -239,19 +234,19 @@ func generate(seed uint64, nFields int) ([]byte, stats, error) {
 	for i := 0; i < nBool-4; i++ {
 		list = append(list, field{"bool", "bool", 1})
 	}
-	for i := 0; i < nF32; i++ {
+	for range nF32 {
 		list = append(list, field{"f32", "float32", 32})
 	}
-	for i := 0; i < nCf; i++ {
+	for range nCf {
 		list = append(list, genCompressed(r))
 	}
-	for i := 0; i < nFx; i++ {
+	for i := range nFx {
 		list = append(list, genFixed(r, i%2 == 1))
 	}
-	for i := 0; i < nF64; i++ {
+	for range nF64 {
 		list = append(list, field{"f64", "float64", 64})
 	}
-	for i := 0; i < nW64; i++ {
+	for i := range nW64 {
 		if i%2 == 0 {
 			list = append(list, field{"u64", "uint64", 64})
 		} else {
@@ -260,7 +255,7 @@ func generate(seed uint64, nFields int) ([]byte, stats, error) {
 	}
 	enumBits := ir.BitsRequired(big.NewInt(0), big.NewInt(int64(len(enumVariants))))
 	flagsBits := int64(len(flagsVariants))
-	for i := 0; i < nEf; i++ {
+	for i := range nEf {
 		if i%2 == 0 {
 			list = append(list, field{"enum", "PacketMode", enumBits})
 		} else {
@@ -288,7 +283,7 @@ func generate(seed uint64, nFields int) ([]byte, stats, error) {
 		taken     bool
 	}
 	var branches [4]branch
-	for q := 0; q < 4; q++ {
+	for q := range 4 {
 		s := r.between(2, 5)
 		maxOff := Q - s - 1
 		if maxOff < 1 {
@@ -324,7 +319,7 @@ func generate(seed uint64, nFields int) ([]byte, stats, error) {
 		fmt.Fprintf(&body, "%s%s %s // %s%s\n", strings.Repeat("    ", depth), name, f.decl, bitsWord(f.bits), note)
 	}
 	i := 0
-	for q := 0; q < 4; q++ {
+	for q := range 4 {
 		br := branches[q]
 		for ; i < br.pos; i++ {
 			emit(list[i], 1, true)
@@ -407,7 +402,7 @@ type RealPacket {
 	// canonicalize: the pinned file must be byte-stable under schema fmt
 	formatted, err := format.Format("RealWorld.schema", []byte(f.String()))
 	if err != nil {
-		return nil, stats{}, fmt.Errorf("generated schema does not format: %v\n---- raw ----\n%s", err, f.String())
+		return nil, stats{}, fmt.Errorf("generated schema does not format: %w\n---- raw ----\n%s", err, f.String())
 	}
 
 	return formatted, stats{
@@ -433,7 +428,9 @@ func main() {
 	}
 
 	if *out == "-" {
-		os.Stdout.Write(formatted)
+		if _, err := os.Stdout.Write(formatted); err != nil {
+			fatal(err.Error())
+		}
 	} else {
 		if err := os.WriteFile(*out, formatted, 0644); err != nil {
 			fatal(err.Error())
