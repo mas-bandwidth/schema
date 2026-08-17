@@ -143,7 +143,17 @@ func (g *gen) errf(format string, args ...any) {
 // the exported symbols listed), importing it when it lives in another file.
 func (g *gen) addRef(decl string, symbols ...string) {
 	base, ok := g.unit.DeclFile[decl]
-	if !ok || base == g.file.Base {
+	if !ok {
+		return
+	}
+	g.addRefBase(base, symbols...)
+}
+
+// addRefBase imports symbols from a known file base — for the synthesized
+// unit-level surfaces (MessageType/ObjectType live in their owner file, not
+// in DeclFile).
+func (g *gen) addRefBase(base string, symbols ...string) {
+	if base == g.file.Base {
 		return
 	}
 	set := g.imports[base]
@@ -361,7 +371,7 @@ func (g *gen) emitClass(d *ir.Struct) {
 	}
 	g.pf("export class %s {\n", d.Name)
 	if d.IsMessage {
-		g.addRef("MessageType", "MessageType")
+		g.addRefBase(g.msgOwner, "MessageType")
 		g.pf("  // the message's tag — dispatch pins it per class, as the C# target's\n")
 		g.pf("  // Type property does\n")
 		g.pf("  get Type() {\n    return MessageType.%s;\n  }\n\n", d.Name)
