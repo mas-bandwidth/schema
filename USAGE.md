@@ -69,8 +69,9 @@ inline bool WriteShipCreate( serialize::WriteStream & stream, const ShipCreate &
 inline bool ReadShipCreate( serialize::ReadStream & stream, ShipCreate & value );
 ```
 
-Run the same command with `--lang cs`, `--lang go` or `--lang rust` and you
-get the equivalent in that language — writing the **same bits**.
+Run the same command with `--lang cs`, `--lang go`, `--lang js` or
+`--lang rust` and you get the equivalent in that language — writing the
+**same bits**.
 
 ---
 
@@ -404,8 +405,8 @@ the same thing and a non-variant cannot survive a read. But `enum E [max = 15]
 { A, B }` deliberately reserves headroom so variants can be added later without
 moving the field width — and a read of that enum accepts anything in `[0, 15]`.
 That is the point of the headroom, but it means a value you have not defined
-yet can arrive, and your `switch` should have a default. The same VALIDATION rules hold in all five languages, because
-the same compiler wrote all five — the buffer-slack contract above is the one
+yet can arrive, and your `switch` should have a default. The same VALIDATION rules hold in all six languages, because
+the same compiler wrote all six — the buffer-slack contract above is the one
 thing that differs per language.
 
 The one deliberate exception is the table wire, where out-of-range values
@@ -471,7 +472,8 @@ stray file that matches no variant — which catches both a forgotten config
 and a stale one.
 
 The result is one file with a schema hash stamped in it, read through the
-generated table codecs, in any of the five languages.
+generated table codecs, in any of the five table-wire languages (C, C++, C#,
+Go and Rust — JavaScript has no table backend yet).
 
 ---
 
@@ -500,9 +502,18 @@ Reads scalars without boxing; `AppendTableX` writers reuse a buffer.
 avoid allocation.
 
 **Rust** — no `unsafe` in generated code, `Result`-returning read and write.
-Message wire only: the table wire has no Rust backend yet.
+Table-wire parity since v1.5.0: codecs are `table_write_x` / `table_read_x`,
+following Rust naming.
 
-All five are generated from the same IR and compared against each other in CI
+**JavaScript** — ES modules, zero dependencies, targeting
+[serialize.js](https://github.com/mas-bandwidth/serialize.js). Number storage
+for widths of 32 bits or fewer, BigInt for 64 and 128. Generated code never
+imports the runtime — every wire call is a method on the stream you pass in —
+and inherits the runtime's checked/production modes for free (the fork is
+load-time, in the runtime). Message wire only: the table wire has no
+JavaScript backend yet.
+
+All six are generated from the same IR and compared against each other in CI
 on every push. The wire is bit-packed, so the property being checked is
 bit-identity — if they ever disagree by one bit, the build fails.
 

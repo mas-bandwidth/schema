@@ -3,7 +3,7 @@
 [![CI](https://github.com/mas-bandwidth/schema/actions/workflows/ci.yml/badge.svg)](https://github.com/mas-bandwidth/schema/actions/workflows/ci.yml)
 [![License: AGPL v3](https://img.shields.io/badge/license-AGPL--3.0-blue.svg)](LICENSE)
 
-Write your data types once and generate code to read and write them in five languages.
+Write your data types once and generate code to read and write them in six languages.
 
 ```
 package example
@@ -29,8 +29,8 @@ message ShipState {
 }
 ```
 
-This declaration compiles to C, C++, C#, Go and Rust code that 
-reads and writes your data types and agrees on every bit. Now your native plugin, your Unity client, your Go backend, and your tooling all speak the same language.
+This declaration compiles to C, C++, C#, Go, Rust and JavaScript code that 
+reads and writes your data types and agrees on every bit. Now your native plugin, your Unity client, your Go backend, your web tooling, and everything around them all speak the same language.
 
 ## Why it exists
 
@@ -62,8 +62,9 @@ would have hand-written, not an interpreter walking a schema at runtime.
 
 ## Features
 
-- **One declaration, five languages** — C, C++, C#, Go and Rust, bit-identical on
-  the wire, reader and writer generated together so they cannot drift.
+- **One declaration, six languages** — C, C++, C#, Go, Rust and JavaScript,
+  bit-identical on the wire, reader and writer generated together so they
+  cannot drift.
 - **Bit-packed, not byte-packed** — `[min = 0, max = 1000]` costs 10 bits, not
   4 bytes. Bounds are part of the type, and the wire cost follows from them.
 - **Branches that cost nothing** — `if !at_rest { … }` omits whole field groups
@@ -79,7 +80,7 @@ would have hand-written, not an interpreter walking a schema at runtime.
 - **Reads validate, always — in every language.** Out-of-range values are
   refused, not clamped or trusted.
 - **A second, evolution-tolerant wire** for config, assets and settings, with
-  reflection and relocatable storage — in all five languages; see
+  reflection and relocatable storage — in C, C++, C#, Go and Rust; see
   [WIRES.md](WIRES.md).
 - **`schema pack`** compiles directories of JSON into one binary container,
   validating every value against the schema as it goes.
@@ -93,20 +94,23 @@ would have hand-written, not an interpreter walking a schema at runtime.
 go build -o /usr/local/bin/schema ./cmd/schema
 
 schema check    <dir of .schema files>
-schema generate --lang c|cpp|cs|go|rust --out <outdir> <dir>
+schema generate --lang c|cpp|cs|go|js|rust --out <outdir> <dir>
 schema pack     <PackManifest.json>
 ```
 
 **[USAGE.md](USAGE.md)** is the guide — every language feature, with real
 examples and the code each one generates.
 
-Building the tests needs the five serialize runtimes checked out beside this
+Building the tests needs the six serialize runtimes checked out beside this
 repo — [serialize](https://github.com/mas-bandwidth/serialize),
 [serialize.c](https://github.com/mas-bandwidth/serialize.c),
 [serialize.cs](https://github.com/mas-bandwidth/serialize.cs),
 [serialize.go](https://github.com/mas-bandwidth/serialize.go),
+[serialize.js](https://github.com/mas-bandwidth/serialize.js),
 [serialize.rs](https://github.com/mas-bandwidth/serialize.rs) — then
-`make test`. The Makefile's `SERIALIZE*` variables override the locations.
+`make test`. The Makefile's `SERIALIZE*` variables override the locations
+(serialize.js needs no variable: the JS test legs import it by relative
+path, and generated JS never imports the runtime at all).
 
 ## Future work: entropy coding
 

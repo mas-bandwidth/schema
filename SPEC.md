@@ -1801,7 +1801,9 @@ Per `type`, per target:
 2. **`Write(buffer, object) -> bytesWritten`** — straight-line write code in wire order.
 3. **`Read(buffer, object) -> ok/error`** — straight-line read code with full validation, in
    each runtime's native error idiom (`bool` in C++, `bool` + latched `Error` in C#, `error`
-   in Go, `Result` in Rust). The consumed size (§5) surfaces per target idiom — a success
+   in Go, `Result` in Rust, `bool` + the stream's latched `error` in JS — generated
+   validation refusals return `false` latching nothing, so callers tell the two
+   channels apart exactly as in C#). The consumed size (§5) surfaces per target idiom — a success
    value that carries bits consumed where the idiom allows, an out-parameter where it does
    not (C++'s `bool`); pinned per backend at implementation.
 4. **`MaxBits` / `MaxBytes`** — constants: the longest path through the schema, with
@@ -1837,8 +1839,13 @@ Per `type`, per target:
 idiom — C++: free functions `WriteShip(...)` in `namespace <package>`; C#:
 `static class Schema` members in `namespace <Package>`; Go: free functions
 `WriteShip(stream, &ship)` in package `<package>` (no overloading — the type name is in the
-function name in every target for uniformity); Rust: module functions in `mod <package>`.
+function name in every target for uniformity); Rust: module functions in `mod <package>`;
+JS: exported free functions `WriteShip(stream, value)`, one ES module per schema file.
 The `package` ident maps to the target's namespace/module/package concept verbatim.
+**JS storage members are PascalCase via the same mapping as the Go target** — not
+camelCase — so the checker's collision registry covers JS with zero new rules; the
+generated function names are the family's own `WriteX`/`ReadX`/`ZeroX`/`QuantizeX`
+(the runtime's methods stay camelCase — the seam is the stream parameter).
 
 **There is no generated measure function** — DECIDED (Glenn, 2026-08-04: measure *"was
 always a bit of a hack"*). `Write` returns the actual size, `MaxBytes` sizes buffers, and
@@ -1898,7 +1905,15 @@ across files, so there is no topo sort and no include graph to refuse. The Rust 
 (BUILT 2026-08-06): one module per schema file (lowercased basename) plus a generated
 `lib.rs` declaring and glob re-exporting them; the C# target (BUILT 2026-08-06): one
 `.cs` file per schema file, types at namespace level and every function and constant on
-`public static partial class Schema`, in `namespace <Package>`. The unit-level dispatch
+`public static partial class Schema`, in `namespace <Package>`. The JS target (BUILT
+2026-08-16): one ES module per schema file, cross-file `import`s derived from actual
+references like the C headers; storage is Number for wire widths of 32 bits or fewer
+and BigInt for 64 and 128 — the serialize.js value-domain seam — with classes whose
+constructors initialize every member in declaration order (specified defaults live in
+construction; `ZeroX` is the §5 zero form); **generated JS never imports the serialize
+runtime** — every wire call is a method on the stream parameter, so no wiring file
+exists and the checked/production fork stays where it lives, in the runtime's own
+load-time mode selection (generated code never reads NODE_ENV). The unit-level dispatch
 surface (the tag enums, tag pairs, dispatch value and functions) is emitted exactly ONCE
 per unit in every target, in the topologically last carrying file, so declarations
 spread across files never redeclare it.** Each generated
