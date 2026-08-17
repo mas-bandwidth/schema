@@ -1,437 +1,183 @@
-# schema — specification (draft 5)
+# schema — specification
 
-> **Status: IMPLEMENTATION STARTED 2026-08-05, on Glenn's word, mid-corpus-review.** The
-> first slice is in the tree: scanner, parser, resolver/checker and the C++ storage
-> emission (structs, constants, enums, flags, the object view families) — `make` builds the
-> compiler, generates `generated/cpp/*.h` from `examples/`, and compiles+links+runs a test that
-> prints OK. Write/Read generation, Quantize/Unquantize, and the other three targets are
-> next; nothing is wire-tested yet. Sections are marked **DECIDED** (Glenn) or **PROPOSED**
-> (Rowan's recommendation, awaiting review). **§4 — the language — remains the chapter to
-> review hardest.**
->
-> *Draft 2, 2026-08-04: draft 1 taken apart by two independent cold readers — one attacking
-> every wire claim against the extracted runtime contracts, one attacking the language design
-> and the Go pipeline. The material changes: back-references got a dominance rule, `string`
-> became a byte string so all three generated readers agree, untaken branch fields are
-> zeroed, the IR preservation invariant replaced draft 1's lossy "ranges reduced to bit
-> widths", and the grammar chapter now exists.*
->
-> *Draft 3, same evening, on Glenn's word: the protocol id hashes the **generated code**
-> (superseding both draft 1's name-stripped IR hash and draft 2's named-IR hash), and
-> generated measure functions are dropped.*
->
-> *Draft 4, 2026-08-05, on Glenn's word: the protocol id reversed once more to **hash the
-> schema files themselves** (§3.1 keeps all three designs with why each fell); C# joined as
-> the fourth target and serialize.cs was ported the same night; and the register went
-> **Go-inspired** — `type` not `struct`, `float32`/`float64`, snake_case fields, no
-> semicolons, `schemafmt` (§4.1).*
->
-> *Draft 5, 2026-08-05 afternoon — the road-to-1.0 audit: three independent audits
-> (corpus-on-paper, self-consistency, wire fidelity vs all four runtime contracts), eight
-> decision dossiers, and an adversarial verification pass over all of it (17 of 19 findings
-> confirmed at their cited lines). What changed: stale draft-1/2 residue repaired wherever it
-> contradicted DECIDED text (the §3.2 layout-independence sentence, the IR-as-id-input
-> sentences, the three-targets leftovers, the enum-max off-by-one, dead call-syntax ranges,
-> the float-attribute literals-only clash); the grammar's newline-suppression and
-> float-expression holes closed; a normative wire model added (§4.3.0); read termination
-> defined (§5); §6.1/§7.1 completed with the DECIDED object artifacts; §7.2 gains the
-> golden-wire-bytes and fp-contract gates its own promises relied on; and every §9 open
-> question now carries a worked recommendation with its evidence, his calls landed the same evening, item by item —
-> the decision list is `notes/road-to-v1.md`.*
+This document is the normative reference for the schema language, its wire
+encodings, and the code its compiler generates. Where the compiler and this
+document disagree, one of them is a bug (see VERSIONING.md).
 
 ## 1. What schema is
 
-**schema** is a small language for describing bitpacked network data, and a compiler — written
-in Go — that translates `*.schema` files into generated C++, C#, Go and Rust source code
-targeting the serialize family of libraries:
+**schema** is a small language for describing bitpacked network data, and a
+compiler — written in Go — that translates `*.schema` files into generated C,
+C++, C#, Go, JavaScript and Rust source code targeting the serialize family of
+runtime libraries:
 
 | target | runtime library |
 |---|---|
+| C | [serialize.c](https://github.com/mas-bandwidth/serialize.c) |
 | C++ | [serialize](https://github.com/mas-bandwidth/serialize) |
-| C# | [serialize.cs](https://github.com/mas-bandwidth/serialize.cs) — ported 2026-08-05 (PUBLIC since 2026-08-05, AGPL-3.0; 32/32 tests, wire-verified vs C++ both directions; CI landing) |
+| C# | [serialize.cs](https://github.com/mas-bandwidth/serialize.cs) |
 | Go | [serialize.go](https://github.com/mas-bandwidth/serialize.go) |
+| JavaScript | [serialize.js](https://github.com/mas-bandwidth/serialize.js) |
 | Rust | [serialize.rs](https://github.com/mas-bandwidth/serialize.rs) |
 
-All four runtimes are bit-for-bit wire compatible — the original three pin it in CI with
-golden bytes; serialize.cs pins the same 72 golden bytes and byte-identical clang++ interop,
-with CI to follow. schema inherits that foundation: **a type serialized by generated code
+The runtimes are bit-for-bit wire compatible, pinned in CI with shared golden
+bytes. schema inherits that foundation: **a type serialized by generated code
 in any target language decodes identically in the others.**
 
-**C# — DECIDED (Glenn, 2026-08-04), prerequisite MET overnight.** serialize.cs was ported the
-same night by the red/blue method — golden bytes verbatim from the family's shared 72-byte
-pin, byte-identical head-to-head against real `serialize.h` under clang++, cross-reads both
-directions, Go-style sticky errors. Private pending Glenn's license call and CI. One wire
-finding worth knowing came out of the port: **default-flags C++ on ARM64 FMA-contracts the
-compressed-float write** and diverges from strict IEEE by one quantization step at boundary
-values — strict IEEE is declared the normative wire, and the compat harness mandates
-`-ffp-contract=off` with an FMA-boundary value in the sequence so a contracted build fails
-the gate loudly. The schema compiler's conformance suite (§7.2) inherits that rule. The compiler architecture does not
-change: a new target is a new dumb printer over the same IR — and since the protocol id
-hashes the schema files (§3.1), adding a target moves no deployed id, ever.
-
 The idea is extracted from
-[serialize.modern](https://github.com/mas-bandwidth/serialize.modern)'s compile-time schema
-language, which proved two things: a schema that sees the packet as a type can generate
-radically faster serialization than a runtime stream (schema writes ~520 M packets/s against
-classic's 44.3 M stream writes — "~12x classic's stream writes", serialize.modern README,
-reproduced by its shipped bench.cpp), and it can hold wire compatibility to the byte while
-doing so. What the template-metaprogramming host cannot escape is that the metaprogram re-runs
-inside every consumer's C++ compiler, requires C++23, and can only ever emit C++. schema moves
-the same computation into an external compiler: **run once, at code-generation time, emitting
-for every platform, with zero compile-time tax on the consumer.**
+[serialize.modern](https://github.com/mas-bandwidth/serialize.modern)'s
+compile-time schema language, which proved that a schema that sees the packet
+as a type can generate radically faster serialization than a runtime stream
+while holding wire compatibility to the byte. What a template-metaprogramming
+host cannot escape is that the metaprogram re-runs inside every consumer's
+C++ compiler, requires C++23, and can only ever emit C++. schema moves the
+same computation into an external compiler: run once, at code-generation
+time, emitting for every platform, with zero compile-time tax on the
+consumer.
 
 ### Goals
 
-1. **One source of truth for a protocol.** Types and their wire encoding defined once, in
-   `*.schema` files; read/write code generated for C++, C#, Go and Rust.
-2. **Minimal generated code.** Separate, straight-line read and write functions per type — the
-   code a careful expert would hand-write against each serialize library — with no runtime
-   schema interpretation, no reflection, and no `IsWriting` branching.
-3. **Byte-identical wire output across all four targets**, enforced by a conformance matrix
-   in CI, with classic serialize as the oracle. The four generated readers also **agree on
-   what they reject** — acceptance is part of the wire contract here.
-4. **Compile-time cost near zero for consumers.** Generated code is plain source; the C++
-   target requires only what classic serialize requires.
-5. **Errors a person can act on.** Every diagnostic carries file:line:column and names the
-   fix, holding the bar serialize.modern set with its named `static_assert`s — and exceeding
-   it, because a real compiler can point at the exact token.
+1. **One source of truth for a protocol.** Types and their wire encoding are
+   defined once, in `*.schema` files; read and write code is generated for
+   every target language.
+2. **Minimal generated code.** Separate, straight-line read and write
+   functions per type — the code a careful expert would hand-write against
+   each serialize library — with no runtime schema interpretation, no
+   reflection, and no `IsWriting` branching.
+3. **Byte-identical wire output across all targets**, enforced by a
+   conformance matrix in CI, with classic serialize as the oracle. The
+   generated readers also agree on what they **reject** — acceptance is part
+   of the wire contract.
+4. **Compile-time cost near zero for consumers.** Generated code is plain
+   source; the C++ target requires only what classic serialize requires.
+5. **Errors a person can act on.** Every diagnostic carries file:line:column
+   and names the fix.
 
-**The v1 scope, DECIDED (Glenn, 2026-08-05, verbatim):** *"goal for v1 is schema fully
-defines generated code for the constants, enums, types, messages, object definitions. the
-delta serialization is out of scope of v1."* — *"we will hit that once we lay the
-foundation of types/objects."* And the object layer's v1 deliverable, his words: *"just
-build the structs from the definition in schema lang to start. (shallow, deep,
-interpolated, quantize)."*
+**Scope (v1).** schema fully defines the generated code for constants, enums,
+flags, types, messages, tables and object definitions. Delta serialization is
+out of scope for v1.
 
 ### Non-goals (v1)
 
-- **No wire-format versioning.** See §3: versioning is by protocol id, deliberately.
-- **No unbounded collections.** Everything on the wire has a declared bound, as everywhere in
-  the serialize family.
-- **No annotation of existing hand-written types.** schema owns the types it serializes and
-  generates them (§6). Mapping onto pre-existing hand-written types may come later.
-- **No imports across compilation units.** One unit, one package, all files compiled together
-  (§3.2). Cross-unit composition is a later problem.
-- **The config/asset table layer is not in v1** — but it is a **committed direction, and it
-  is schema-native, not flatbuffers-style**: flatbuffers is being replaced outright (Glenn,
-  2026-08-05). See "The horizon" below.
-- **No self-describing wire data.** The wire stays an unattributed bit stream; all knowledge
-  lives in the generated code on both ends.
-- **Deferred constructs:** wide strings (`serialize_wstring`) and relative integers
-  (`serialize_int_relative`) are not in v1 — see §4.10.
+- **No wire-format versioning on the realtime wire.** Versioning is by
+  protocol id, deliberately (§3). Data that must outlive builds uses the
+  table wire (§4.11), which is evolution-tolerant by design.
+- **No unbounded collections.** Everything on the wire has a declared bound,
+  as everywhere in the serialize family.
+- **No annotation of existing hand-written types.** schema owns the types it
+  serializes and generates them (§6); the `cpp_native` mapping (§4.2) lets
+  hand-written types derive *from* generated ones, never the reverse.
+- **No imports across compilation units.** One unit, one package, all files
+  compiled together (§3.2).
+- **No self-describing wire data.** The wire stays an unattributed bit
+  stream; all knowledge lives in the generated code on both ends.
+- **Deferred constructs:** wide strings (`serialize_wstring`) and relative
+  integers (`serialize_int_relative`) are not in v1 — see §4.10.
 
-### The horizon — recorded so v1 does not foreclose it
+The grammar must not claim syntax reserved for planned language passes:
+`packet`, `delta`, `baseline` and `index` are usable as ordinary names today
+but are earmarked for future constructs and must not be given other meanings.
 
-Glenn, 2026-08-04, on the eventual scope for Space Game: *"all the object types and event
-types and all the flatbuffer stuff, eventually i hope to have all that in the schema
-language"* — *"and all the delta stuff, and object type definitions, and the baseline, all
-generated from schema level definitions in this custom language. NOT right now, but
-eventually :)"*
+## 2. The name and the files
 
-So the long arc is: schema as the single data-definition language for the game — bitpacked
-realtime messages (v1, this spec), object and event type definitions, flatbuffers-style
-versioned config/asset data, and **delta encoding against a baseline** all generated from one
-source. Two v1 implications, noted and then set aside:
+The language is called **schema**. Schema files use the `.schema` extension,
+named in UpperCamelCase after their contents.
 
-- Delta-against-baseline changes the generated function *signature* (it takes the current
-  object and a baseline), not the wire model or the compiler architecture — it fits the
-  pipeline when its design pass comes. Glenn's concrete shape for it (2026-08-04): *"define
-  ship properties and types and attributes in the schema language, and then combined with the
-  existing C++ code in space game, it would spit out the full delta code for that object
-  hardcoded."* The 2026-08-04 survey of `core_delta.h` shows the hand-written delta code
-  already follows one uniform grammar — **per-field encoding tiers tried cheapest-first, one
-  bit selecting the tier** (small-window delta vs absolute; or error-vs-*prediction*, where
-  the prediction is arithmetic over other fields plus an external parameter like
-  `deltaFrames`). So the delta pass needs three language surfaces: per-field tier lists,
-  prediction expressions over sibling fields, and declared external parameters — and the
-  generated output is the full hardcoded WriteDelta/ReadDelta per object type.
-  And the scope is wider than the serialize functions — Glenn: *"It would WRITE the delta
-  functions, and the different struct definitions for the ship, and everywhere that ship
-  object type is hooked in to the code etc etc"* / *"it's a huge amount of hard coding in
-  space game that I've done so far, the intent was always, this will move out to code
-  generation."* **schema eventually owns the object TYPE, not just its wire format**: the
-  deep/shallow struct definitions, the capacity constants, the per-type dispatch cases, the
-  integration points into the game's managers — generated from one declaration, woven into
-  the existing C++ codebase. And the generator family is open-ended — Glenn: *"it could also
-  generate functions to interpolate the ship structs, generate render data for them, lots of
-  codegen could be done."* The architectural consequence lands on v1's IR design: the IR is
-  not merely wire semantics, it is a **typed object model**, and backends generalize from
-  language targets to *generator kinds* (serialize × four languages today; delta,
-  interpolation, render data, struct-to-struct mapping × C++ tomorrow — his example: *"take
-  the interpolated ship and then copy it to the ship render struct and so on"*) — per-field
-  metadata beyond the wire (how a field interpolates, its delta tiers, which mapped struct a
-  field lands in) attaches through the per-field attribute mechanism of §4.2 — the
-  attachment point exists in v1's grammar already.
-- Nothing in v1's grammar may squat on syntax the horizon will want (`packet`, `table`,
-  `delta`, `baseline`, `index` are informally reserved for future use — `index` for the
-  everything-is-an-index feature, §9 q11).
+The conventional file layout is aspect-oriented — `Constants.schema`,
+`Enums.schema`, `Types.schema`, `Messages.schema`, `Objects.schema` — one
+aspect per file. This is a convention the corpus and documentation follow and
+`schemafmt` respects, never compiler-enforced; cross-file resolution is
+order-free (§3.2), so the layout carries no semantic weight.
 
-**THE FLATBUFFERS REPLACEMENT — DECIDED IN DIRECTION, 2026-08-05.** Glenn: *"I don't want to
-use flatbuffers. What I want to do is to bring across definitions for config and assets into
-Config.schema and Assets.schema respectively, and have all the boilerplate code to generate
-and load them created by the schema compiler. The golang tool, the code in C++
-ConfigManager / AssetsManager and so on."* — *"Everything should be in schema."*
+## 3. Versioning: the protocol id
 
-The scope rule that governs the pass: **not a flatbuffers equivalent** — *"It should be able
-to effectively act as flatbuffers (at least, the subset of flatbuffers that we're using here
-in space game)... flatbuffers was just a means to an end there."* And the governing
-principle, which is really the whole language's thesis: ***"as always the goal is the
-minimal representation of the true thing in the schema language, with the boilerplate and
-all that code just tracked and generated"* — versus 1:1 porting of the flatbuffers stuff.**
+**Only two sides holding the same protocol id can talk. There is no
+versioning overhead on the wire, no optional-field tags, no evolution
+machinery.** This is the serialize-family model: for realtime network data,
+client and server ensure they are at the same protocol version before they
+exchange a byte, which radically simplifies everything downstream.
 
-What gets absorbed (surveyed 2026-08-05): `game/config/` (Explosions, Global, Lasers,
-Missiles, Props, Ships, Teams — JSON + .flat pairs) and `game/assets/` (Levels, Missiles,
-Props, Ships, Turrets); the Go pipeline (`cmd/update_schemas` 132 lines,
-`cmd/update_config` 928 lines) that compiles and collates JSON definitions into
-`Config.bin`/`Assets.bin`; and the C++ `ConfigManager`/`AssetsManager` loading code — all
-becoming schema compiler outputs driven by `Config.schema` and `Assets.schema`.
+**The protocol id is a hash of the schema's wire shape.** The compiler
+computes it; nobody maintains it by hand; two sides with different wire
+formats cannot accidentally claim compatibility.
 
-**And the enum convergence, his catch:** some enums are hand-declared today only as
-flatbuffers residue — *"some enums should actually be generated parts of config/assets —
-manually specifying them here is just an artifact of working with flatbuffers."* `ShipType`
-is really a derived set (each ship config/asset defines a type), so the table pass generates
-it from the definitions — **the set-extraction move a third time**: messages → `MessageType`,
-objects → `ObjectType`, config/asset definitions → their type enums. Hand-declared enums
-remain for genuinely hand-owned sets (`Team`).
+### 3.1 The hash
 
-**And the shape of the table layer itself — ASPIRATIONAL, his preference stated with its
-fallback (Glenn, 2026-08-05):** *"If we do this correctly, Config.bin and Assets.bin are
-just expressions of this pattern, not hard coded things. This is aspirational, if not
-possible, then we can fall back on config and assets being first class concepts in the
-language, but I think it will be more flexible if they weren't."* The evidence for the
-general pattern is in his own `Constants.h`: **four** data blobs already exist —
-`MAX_CONFIG_DATA_BYTES`, `MAX_OPTIONS_DATA_BYTES`, `MAX_ASSETS_DATA_BYTES`,
-`MAX_USER_SETTINGS_DATA_BYTES` — so first-class `config`/`assets` keywords would undercount
-the game's own usage on day one. The general mechanism to design: **a declared collection of
-typed instances, living as data files, collated by the compiler into a versioned, hashed
-binary with generated loaders, accessors and derived enums** — of which config, assets,
-options and user settings are four expressions. His closing formulation of the shape, the
-collection triple: *"the pattern for Config.bin and Assets.bin is a source directory of
-json files working against some schema pattern, eg. set of config types, set of asset
-types, compiling and linking into *.bin"* — **one source directory, against one declared
-set of types, into one binary.**
+**The id is the low 64 bits of SHA-256 — the final 8 bytes of the digest,
+interpreted big-endian — over the unit's wire shape projection**
+(`ir.WireProjection`, printable with `schema projection`): a canonical text
+listing exactly the facts that determine the bytes on the wire, and nothing
+else.
 
-**The frame that completes it (Glenn, 2026-08-05): the schema compiler is a
-compiler-linker for data.** *"the json files are sort of 'compiled' and 'linked' into the
-*.bin file"* — *"and the contents are verified... as they are processed."* The JSON
-instances are **source files with human authors**: designers editing config; artists
-authoring assets out of tools inside Maya or Blender (collider sets and the like).
-Verification becomes a compile step — which closes the survey's trust-boundary hole at
-exactly the place his own `update_config.go:794` comment asked for. *"you can see all this
-is implemented in space game right now, just with flatbuffers and the golang tools doing
-the compile+link step with a lot of boilerplate gross code."*
+**Why a projection, and not the source text or the IR.** A source-text hash
+is safe in the only direction that matters — it can produce a spurious
+MISMATCH (peers refuse to talk when they could) but never a spurious MATCH
+(peers agree when their bytes differ) — but it moves the id for a comment, a
+renamed file, or an edit that costs zero wire bits, and each of those buys a
+coordinated redeploy for nothing. Hashing the IR structs directly would fix
+the churn and introduce the dangerous direction: any wire-affecting fact the
+walk forgot becomes two incompatible builds shaking hands. The projection is
+TEXT: what the id depends on can be printed, read and diffed, and a fact
+missing from it is a review question rather than an implementation detail.
 
-**Collections are the same mechanism differentiated by declared PROPERTIES, not different
-kinds** — *"point is they are really just the same thing"* — and the two properties already
-visible:
+**Included — each fact moves the wire:** the package; message and object
+ordinals (the tag IS the index); contexts; every type's field order; field
+NAMES (the table wire's field identity is `fold16(fnv1a32(name))`); type
+kind, width and signedness; declared bounds; array kind and bounds;
+string/bytes capacity; float range, resolution and step count; fixed `I` and
+`F`; quantize scale and bound; specified defaults (the table wire elides a
+field sitting at its default); branch structure; `const`/`reserved`/`align`
+items; enum max and storage bits; flags wire bits; `[local]` and
+`[interpolate]` markers.
 
-- **Reload semantics.** Assets: *"loaded once and can't be reloaded unless you reload the
-  whole level."* Config: *"expected to be tweakable and can be tweaked (atomically, whole
-  config.bin at once) while the game is playing, and it can handle it. this is very
-  powerful!!!"* — a per-collection property driving which generated loader the collection
-  gets (hot-swap path vs load-once).
-- **Cross-collection references, one direction.** *"config can back refer to assets...
-  assets don't know about config, but config can refer to and expect things in the asset"*
-  — possibly a new language concept (a declared, directional expectation between
-  collections — a DAG, verified at data-compile time), TBD.
-
-From the 2026-08-04 `.fbs` survey, the structural shapes the table layer still owes beyond
-v1: enums with explicit values and bit-flag enums, unions at the type level, **field
-defaults**, and vectors of tables — each now scoped to *the subset space game actually
-uses*, per the rule above.
-
-**The nearest edge of the horizon is the event set** — Glenn: *"the set of events could also
-be defined fully in the schema language, along with how to serialize each event type."* Its
-wire half is already expressible in v1: an enum-dispatched union with per-case fields
-(`examples/Messages.schema` is exactly that shape, and the current `events.fbs` union maps
-onto it directly). Only its table-layer half waits.
-
-**The whole horizon in his one sentence:** *"so much boilerplate would just go away, replaced
-with a definition of what object types there are, and what properties and attributes
-per-property."*
-
-**ORDERING AND MIGRATION STRATEGY — DECIDED (Glenn, 2026-08-11, live, during the space
-integration):**
-
-- **The table layer comes BEFORE the delta pass.** His words: *"we also want to replace the
-  flatbuffers stuff and the config/asset stuff and express that in schema language. We'll
-  need a new language feature to express this, it won't fit into bitpacked types, and it
-  needs proper versioning like flatbuffers. Maybe after you do messages, this is the next
-  thing to do?"* then *"This would actually be better before the delta stuff, and will be
-  less complicated."* Sequence: messages (landed 2026-08-11, byte-identical to the
-  hand-written wire) → table layer → delta.
-- **Constants migrate through a temporary duplicate set.** *"we need to work at getting
-  constants into schema language, and we can only do that by having a duplicate set of
-  constants in schema and flatbuffers temporarily (eventually, it should all be in
-  schema)"* — because the .fbs constant-wrapper enums are consumed by other .fbs files
-  until flatbuffers is fully removed. Enacted in space the same day: `Constants.schema` is
-  the one home, the C++ game reads generated `space::` values through name-preserving
-  aliases, and a static_assert guard block makes schema↔flatbuffers drift a compile error.
-- **Generated files are checked into a consumer repo exactly when consumers exist that
-  cannot run the generator** (Unity, a Go module on fresh clone) — his principle verbatim:
-  *"If it were just C++ only, I would not."* C++-only consumers generate at build (the
-  space CMake `schema_generate` target is the worked example).
-
-## 2. The name and the files — DECIDED
-
-The language is called **schema**. Schema files use the `.schema` extension, named in
-UpperCamelCase after their contents.
-
-**The file layout convention is aspect-oriented** (Glenn, 2026-08-05: *"I like aspect
-oriented programming, eg. all constants here, all messages there, all objects there and so
-on"* — with his hedge kept: *"This is not a hard requirement, just a personal preference"*):
-`Constants.schema`, `Enums.schema`, `Types.schema`, `Messages.schema`, `Objects.schema`,
-and — when their passes land — `Config.schema` and `Assets.schema`. A convention the corpus
-and docs follow and `schemafmt` respects, never compiler-enforced; order-free cross-file
-resolution (§4.2) is what makes it free.
-
-## 3. Versioning: the protocol id — DECIDED, mechanism DECIDED
-
-**Only two sides holding the same protocol id can talk. There is no versioning overhead on the
-wire, no optional-field tags, no evolution machinery.** This is the serialize-family model:
-for realtime network data you ensure client and server are at the same protocol version before
-they exchange a byte, which radically simplifies everything downstream. (Glenn, 2026-08-04.)
-
-**The protocol id is a hash of the schema itself** — DECIDED. The compiler computes it; nobody
-maintains it by hand; two sides with different wire formats cannot accidentally claim
-compatibility.
-
-### 3.1 The hash — DECIDED 2026-08-14: hash the WIRE SHAPE PROJECTION
-
-**The id is the low 64 bits of SHA-256 over the unit's wire shape projection**
-(`ir.WireProjection`, printable with `schema projection`) — a canonical text
-listing exactly the facts that determine the bytes, and nothing else.
-
-*This supersedes the source-text hash recorded below, on Glenn's direction:
-"Should we implement that thing in schema where the protocol id is from the
-uber IR, so it's more stable?"* The motivating case arrived the same day:
-adding an empty enum to the corpus moved the id and **not one wire byte**.
-
-**Why a projection and not the IR itself.** The source hash was safe in the
-only direction that matters — it can produce a spurious MISMATCH (peers refuse
-to talk when they could) but never a spurious MATCH (peers agree when their
-bytes differ). Hashing the IR structs would fix the churn and introduce the
-dangerous direction: any wire-affecting fact the walk forgot becomes two
-incompatible builds shaking hands, and an IR refactor could move the id with
-no wire change, giving the churn back. The projection is TEXT, so what the id
-depends on can be printed, read and diffed; a fact missing from it is a review
-question rather than an implementation detail.
-
-**Included, each because it moves the wire:** the package; message and object
-ordinals (the tag IS the index); every type's field order; field NAMES (the
-table wire's identity is `fold16(fnv1a32(name))`); type kind, width and
-signedness; declared bounds; array kind and bounds; string/bytes capacity;
-float range, resolution and step count; fixed `I` and `F`; quantize scale and
-bound; **specified defaults** (the table wire elides a field sitting at its
-default); branch structure; `const`/`reserved`/`align` items; enum max and
-storage bits; flags wire bits; contexts and `[local]`/`[interpolate]` markers.
-
-**Excluded, each because it does not:** comments and whitespace; file names,
-file layout and declaration order; **enum variant names** (the ordinal is the
-wire — renaming `Red` to `Crimson` leaves every byte identical); `const`
+**Excluded — each has no effect on the bytes:** comments and whitespace; file
+names, file layout and declaration order; enum variant names (the ordinal is
+the wire — renaming `Red` to `Crimson` leaves every byte identical); `const`
 declarations (their values are already resolved into the bounds above); type
 tags and native-type attributes.
 
 **The projection is versioned.** `ProjectionVersion` rides its first line, so
-a change to the rendering moves every id deliberately and visibly rather than
-silently.
+a change to the rendering itself moves every id deliberately and visibly
+rather than silently.
 
-**The property, tested in both directions** (`internal/check/projection_test.go`):
-an edit that moves no bytes must not move the id, and an edit that moves bytes
-must. The second is the one that must never regress.
-
-### 3.1.1 Superseded: hash the schema files
-
-**The id is the low 64 bits of SHA-256 over the unit's `*.schema` files themselves** (Glenn,
-2026-08-04: *"just hash the schema files themselves, instead of generated. Seems cleaner,
-because the schemas generates the files, it would be faster, and now the protocol id does not
-change when we add a new language"*). The context that sets the bar (Glenn, same
-conversation): *"we would manually bump version id in games when we changed the serialize
-functions, and that's super unsafe"* — the id exists so that forgetting to bump is
-structurally impossible.
-
-**This is the production-proven pattern**: Space Game already ships `schema_hash.h` — *"hash
-of all game/Schemas/*.fbs files. generated. do not edit!"* — folded with `PROTOCOL_VERSION`
-into the protocol id that gates every encrypted packet. schema does for the bitpacked layer
-exactly what that mechanism already does for the flatbuffers layer.
-
-~~Definition, precise so two compiler builds agree: the unit's `*.schema` files ordered by
-sorted basename, each file's raw bytes hashed in sequence; low 64 bits of the SHA-256.~~
-*(Superseded 2026-08-05 by the pinned procedure below — which is NOT only edge-case
-pinning: it changes the hash input. Bare concatenation lets two textually different units
-hash identically — "AB"+"C" equals "A"+"BC" — so the procedure below delimits each file
-with its basename, which also means every file RENAME moves the id, not only
-order-changing ones. A semantic change to the PROPOSED mechanism, surfaced on the
-road-to-v1 decision list rather than slipped through as tidying — a first version of this
-edit did exactly that and a cold reader blocked it.)*
-
-Properties, stated honestly in both directions:
-
-- **Any schema file edit moves the id** — including comments and whitespace. Accepted: under
-  the ship-together model a spurious id change costs a redeploy that was probably happening
-  anyway, and it fails safe (sides refuse to talk when they actually could).
-- **The id does not move when a target language is added or the compiler upgrades.** The
-  corollary is a real obligation on the compiler, named rather than hidden: **the same schema
-  must produce the same wire across compiler versions** — a wire-affecting emitter change
-  under an unchanged schema would be a silent false-negative, so the conformance corpus's
-  golden wire bytes pin every construct's encoding permanently, and a compiler change that
-  breaks a wire golden is a stop-the-line event, never a quiet fix.
-
-*(Two designs preceded this one tonight. Draft 1 hashed a canonical IR and prized
-rename-invariance; a cold reader killed that — name-stripped hashes let two builds swap
-`health`/`armor` and silently read each other's slots crosswise. Draft 3 hashed the generated
-code of every target; deciding C# an hour later exposed the cost — the target set was part of
-the id, so adding a language moved every deployed id. File hashing keeps names in the id,
-needs no frozen IR encoding, and decouples the id from both the emitters and the target set.)*
-
-*(Challenged externally 2026-08-05: the evaluation argued for a canonical layout hash —
-whitespace-insensitive, names kept. Declined, with the trade named: any canonicalized hash
-converts the second property above — the id not moving on a compiler upgrade — from a
-structural fact into a maintained promise, because every parser/canonicalization change then
-risks moving deployed ids. File bytes keep that property structural, and the whitespace cost
-fails safe. Revisit only if `schemafmt` (§9 q4) lands, which would make "hash the canonical
-form" cheap to define. The full argument is the paragraph above plus
-`notes/external-feedback-learnings.md`; the exchange record lives outside this repo.)*
-
-**The hash procedure, pinned so two compiler builds agree — DECIDED (Glenn, 2026-08-05: "yes."; drafted Rowan, 2026-08-05 —
-the file-hash decision is Glenn's, this procedure is the mechanism half, and it CHANGES
-the input relative to the superseded sentence above — decision list, road-to-v1):** the
-unit's `*.schema` files (non-recursive; only the `.schema` extension; a duplicate basename
-in an explicit file list is a compile error) ordered by **bytewise ascending basename**;
-for each file, hash its basename bytes, then a single `0x00`, then its raw content bytes
-(the delimiter prevents two textually different units from concatenating identically, and
-puts renames in the hash by construction); the id is the **final 8 bytes of the SHA-256
-digest interpreted big-endian** as a uint64. A UTF-8 BOM is rejected at parse (it would
-silently move the id). File bytes are the contract — a CRLF checkout moves the id;
-repositories should pin LF for `*.schema`.
+**The property, tested in both directions**
+(`internal/check/projection_test.go`): an edit that moves no bytes must not
+move the id, and an edit that moves bytes must. The second is the one that
+must never regress.
 
 ### 3.2 The unit
 
-A compilation unit is a set of `*.schema` files compiled together (one directory by default).
-**Exactly one `package` per unit** — a mismatch is an error; `package` appears once per file,
-as its first declaration. Names resolve across all files in the unit — a declaration may sit
-in any file, in any order, with no *semantic* effect. **The id is §3.1's file hash: it depends
-on the unit's bytes — file layout, declaration order, comments and whitespace included.**
-*(This paragraph said "the id depends only on the set of declarations, never on their file
-layout" until 2026-08-05 — a true sentence about drafts 1–2's IR hash that survived two hash
-reversals; under DECIDED §3.1 it was false, and it is corrected rather than left to disagree.)*
-One id per unit, exposed as a constant (`ProtocolId` / `PROTOCOL_ID`) and printed by `schema id`.
+A compilation unit is a set of `*.schema` files compiled together (one
+directory by default). **Exactly one `package` per unit** — a mismatch is an
+error; `package` appears once per file, as its first declaration. Names
+resolve across all files in the unit — a declaration may sit in any file, in
+any order, with no semantic effect. One id per unit, exposed as a constant
+(`ProtocolId` / `PROTOCOL_ID`) and printed by `schema id`.
 
-**Known consequence, documented rather than hidden:** every byte of the unit contributes to
-the id — an unused helper type moves it, exactly as a comment does (§3.1), accepted under the
-same rationale: fails safe, and under the ship-together model the redeploy was happening
-anyway. Scoping the id to reachable declarations is **not** an available fix while §3.1
-stands: reachability is a front-end computation, so excluding unreachable declarations means
-hashing something other than raw file bytes — the parser enters the id path, the exact trade
-§3.1 declined (§9, open question 6).
+The id depends on the projection's facts (§3.1) and nothing else.
+Consequences, in both directions:
 
-`reserved(bits)` fields remain useful *within* a protocol id — not to dodge redeploys (any
-claim of reserved bits moves the id like any other change), but to keep packet sizes and
-layout budgets stable while a protocol grows into space already paid for.
+- **Every declaration contributes.** The projection lists all of the unit's
+  declarations, not a reachable subset, so an unused helper type moves the id
+  like a used one. Accepted: it fails safe (sides refuse to talk when they
+  actually could), and under the ship-together model the redeploy was
+  happening anyway.
+- **File layout, declaration order, comments, whitespace, and enum variant
+  renames move nothing.**
+- **Adding a target language never moves the id**, and a compiler upgrade
+  moves it only through a deliberate `ProjectionVersion` bump. The corollary
+  is a real obligation on the compiler: the same schema must produce the same
+  wire across compiler versions. The conformance corpus's golden wire bytes
+  pin every construct's encoding permanently, and a compiler change that
+  breaks a wire golden is a stop-the-line event, never a quiet fix (§7.2).
 
-Whether the id travels on the wire (a connect token, a `const` field, out of band) is the
-application's choice — netcode-style stacks already carry one.
+`reserved(bits)` fields remain useful *within* a protocol id — not to dodge
+redeploys (claiming reserved bits moves the id like any other wire-shape
+change), but to keep packet sizes and layout budgets stable while a protocol
+grows into space already paid for.
 
+Whether the id travels on the wire (a connect token, a `const` field, out of
+band) is the application's choice — netcode-style stacks already carry one.
 ## 4. The language
 
 ### 4.1 Lexical structure

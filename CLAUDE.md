@@ -1,8 +1,12 @@
 # schema — working conventions for sessions in this repo
 
-- **SPEC.md is the one source of truth.** Decisions carry **DECIDED** with a date and the
-  authorizing words; proposals carry **PROPOSED**; open questions live in §9 and get a
-  numbered row, never an inline aside.
+- **SPEC.md is the one source of truth, written as a clean reference.** It states the
+  most recent specification only — present tense, reference register, no history, no
+  decision narration (Glenn's directive, 2026-08-18: SPEC must read for a human
+  implementer, not like a CLAUDE.md). Decision provenance — who ruled what, when, in
+  which words — lives in git history and `notes/road-to-v1.md`; maintainer context
+  lives here. Open questions still get a numbered row in SPEC §9, never an inline
+  aside; §9 rows keep their numbers forever because code and corpus cite them.
 - **This repo describes our own work.** External collaborators, their people, and their
   codebases are not named in the tree; external feedback is folded in as learnings
   (`notes/external-feedback-learnings.md`) and as evidence attached to spec sections and
@@ -37,6 +41,80 @@
 - **Trajectory** (Glenn, 2026-08-05): once design settles and implementation starts, this
   repo represents the most recent state only, not the total history of everything —
   prune toward that; git history is the archive.
+
+## The horizon — campaign context (relocated from SPEC §1, 2026-08-18)
+
+The long arc (Glenn, 2026-08-04): schema as the single data-definition language for
+Space Game — bitpacked realtime messages (v1, shipped), object and event type
+definitions, flatbuffers-style versioned config/asset data, and delta encoding against
+a baseline, all generated from one source. His one-sentence version: *"so much
+boilerplate would just go away, replaced with a definition of what object types there
+are, and what properties and attributes per-property."*
+
+- **Ordering (Glenn, 2026-08-11): messages (landed) → table layer → delta pass.** The
+  table layer's wire/reflection half landed as SPEC §4.11 and `schema pack`; the
+  space-side `Config.schema`/`Assets.schema` migration is the open half.
+- **The delta pass** changes the generated function signature (current object plus a
+  baseline), not the wire model or compiler architecture. The surveyed hand-written
+  delta code (`core_delta.h`, 2026-08-04) follows one grammar — per-field encoding
+  tiers tried cheapest-first, one bit selecting the tier (small-window delta vs
+  absolute; or error-vs-prediction, the prediction arithmetic over sibling fields plus
+  an external parameter like `deltaFrames`) — so the pass needs three language
+  surfaces: per-field tier lists, prediction expressions over sibling fields, and
+  declared external parameters. Scope is wider than serialize functions — schema
+  eventually owns the object TYPE: deep/shallow struct definitions, capacity
+  constants, per-type dispatch cases, manager integration points, and further
+  generator kinds (interpolation, render data, struct-to-struct mapping). The IR is a
+  typed object model; backends generalize from language targets to generator kinds;
+  per-field metadata attaches through SPEC §4.2's attribute mechanism — the
+  attachment point already exists in v1's grammar.
+- **The flatbuffers replacement (DECIDED in direction, Glenn, 2026-08-05):** config
+  and assets move to `Config.schema`/`Assets.schema`; the Go pipeline
+  (`cmd/update_schemas`, `cmd/update_config`) and the C++
+  `ConfigManager`/`AssetsManager` boilerplate become schema compiler outputs. Not a
+  flatbuffers equivalent — *"the minimal representation of the true thing in the
+  schema language"*, scoped to the subset space game actually uses. Collections are
+  one mechanism differentiated by declared PROPERTIES, not different kinds: reload
+  semantics (config hot-swaps atomically mid-game; assets load once per level) and
+  directional cross-collection references (config → assets, a DAG verified at
+  data-compile time). Aspirationally `Config.bin`/`Assets.bin` are expressions of a
+  general collection pattern — his `Constants.h` already carries FOUR data blobs
+  (config, options, assets, user settings), so first-class `config`/`assets` keywords
+  would undercount day one; the fallback is first-class concepts if the general form
+  fails. The frame: **the schema compiler is a compiler-linker for data** — JSON
+  instances are source files with human authors (designers, artists exporting from
+  Maya/Blender), one source directory against one declared set of types into one
+  versioned, hashed binary with generated loaders, accessors and derived enums;
+  verification is a compile step. `schema pack` is the transition form. Structural
+  shapes still owed from the .fbs survey: enums with explicit values at the table
+  layer, unions at the type level, vectors of tables.
+- **Enum convergence (his catch):** some hand-declared enums are flatbuffers residue;
+  the table pass derives them from the definitions (`ShipType` from ship
+  configs/assets) — the set-extraction move a third time (messages → `MessageType`,
+  objects → `ObjectType`, definitions → their type enums). Genuinely hand-owned sets
+  (`Team`) stay declared.
+- **Constants migrate through a temporary duplicate set** (schema + flatbuffers) while
+  .fbs consumers remain; `Constants.schema` is the one home, C++ reads generated
+  `space::` values through name-preserving aliases, and a static_assert guard block
+  makes drift a compile error. Enacted in space 2026-08-11.
+- **Generated files are checked into a consumer repo exactly when consumers exist that
+  cannot run the generator** (Unity, a Go module on fresh clone) — *"If it were just
+  C++ only, I would not."* C++-only consumers generate at build (the space CMake
+  `schema_generate` target).
+- **The event set is the nearest edge:** its wire half is already expressible in v1
+  (an enum-dispatched union with per-case fields — the `Messages.schema` shape; the
+  current `events.fbs` union maps onto it directly); only its table-layer half waits.
+- **Reserved surface for these passes:** `packet`, `delta`, `baseline`, `index`
+  (SPEC §1); `lerp`/`slerp`/`snap`/`angle`/`smooth` informally reserved as attribute
+  values for the interpolation pass; SPEC §9 q11 banks the cut `enum_index` design;
+  §9 q13's design input — measured interpolation policy is 100% type-derived across
+  all four real objects (lerp floats, shortest-arc nlerp rotations, snap discrete),
+  no field overrides its type's policy.
+- **The v1 scope sentences (Glenn, 2026-08-05, verbatim):** *"goal for v1 is schema
+  fully defines generated code for the constants, enums, types, messages, object
+  definitions. the delta serialization is out of scope of v1."* Object layer v1
+  deliverable: *"just build the structs from the definition in schema lang to start.
+  (shallow, deep, interpolated, quantize)."*
 
 ## The performance program — learnings that bind future optimization work here
 *(2026-08-06/07: the four-language profile-and-optimize program; full evidence in
