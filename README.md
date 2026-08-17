@@ -100,9 +100,6 @@ schema pack     <PackManifest.json>
 **[USAGE.md](USAGE.md)** is the guide — every language feature, with real
 examples and the code each one generates.
 
-[SPEC.md](SPEC.md) is the normative reference for when you need the exact
-rule.
-
 Building the tests needs the five serialize runtimes checked out beside this
 repo — [serialize](https://github.com/mas-bandwidth/serialize),
 [serialize.c](https://github.com/mas-bandwidth/serialize.c),
