@@ -185,7 +185,7 @@ typedef struct RealPacket {
 } RealPacket;
 
 #define REAL_PACKET_MAX_BITS 1810   /* longest wire path; align pads at worst case (SPEC §6.1) */
-#define REAL_PACKET_MAX_BYTES 232  /* rounded up to the 8-byte write-buffer granularity */
+#define REAL_PACKET_MAX_BYTES 232  /* rounded up to the 8-byte write-buffer granularity; a READ buffer's allocation must extend at least 8 bytes past the data — serialize.c loads 64-bit windows */
 
 /* Returns a RealPacket with its SPECIFIED defaults applied. A memset to zero is
    the schema's own default (SPEC §4.2: zero initialization unless a

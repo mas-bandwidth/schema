@@ -23,9 +23,31 @@
 extern "C" {
 #endif
 
+#ifndef SCHEMA_C_SPINE_INLINE_DEFINED
+#define SCHEMA_C_SPINE_INLINE_DEFINED
+/* SCHEMA_C_READ_INLINE / SCHEMA_C_WRITE_INLINE — how every generated wire
+   function is spelled, beside `static SCHEMA_UNUSED`: an inlining DEMAND
+   (always_inline / __forceinline), the serialize family's remedy for LLVM
+   refusing the header-static per-message entries into small-message call
+   sites at marginal cost over the hot-callsite inline threshold. Measured
+   and shipped; compilers with neither spelling get plain `static`.
+   Branch-weight hints are NOT the fix here — measured in this family to
+   invite the machine outliner into the hot bodies. Do not add them. */
+#if defined( _MSC_VER )
+#define SCHEMA_C_READ_INLINE __forceinline
+#define SCHEMA_C_WRITE_INLINE __forceinline
+#elif defined( __GNUC__ ) || defined( __clang__ )
+#define SCHEMA_C_READ_INLINE inline __attribute__(( always_inline ))
+#define SCHEMA_C_WRITE_INLINE inline __attribute__(( always_inline ))
+#else
+#define SCHEMA_C_READ_INLINE
+#define SCHEMA_C_WRITE_INLINE
+#endif
+#endif /* SCHEMA_C_SPINE_INLINE_DEFINED */
+
 /* Writes RealPacket. Returns 1 on success, 0 on failure — the stream latches the
    error, so a caller may check once at the end of a message. */
-static SCHEMA_UNUSED int write_real_packet( serialize_write_stream_t * stream, const RealPacket * value )
+static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_real_packet( serialize_write_stream_t * stream, const RealPacket * value )
 {
     if ( (serialize_int64_t) value->f001_int < -805495LL || (serialize_int64_t) value->f001_int > 805495LL )
     {
@@ -594,7 +616,7 @@ static SCHEMA_UNUSED int write_real_packet( serialize_write_stream_t * stream, c
 
 /* Reads RealPacket. Returns 1 on success, 0 on failure. Out-of-range values are
    REFUSED, never clamped. */
-static SCHEMA_UNUSED int read_real_packet( serialize_read_stream_t * stream, RealPacket * value )
+static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_real_packet( serialize_read_stream_t * stream, RealPacket * value )
 {
     {
         serialize_uint64_t offset_value = 0;

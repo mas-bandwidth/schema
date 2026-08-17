@@ -166,6 +166,6 @@ struct RealPacket {
 };
 
 inline constexpr int64_t RealPacketMaxBits = 1810; // longest wire path; align pads at worst case (SPEC §6.1)
-inline constexpr int64_t RealPacketMaxBytes = 232; // rounded up to the 8-byte write-buffer granularity
+inline constexpr int64_t RealPacketMaxBytes = 232; // rounded up to the 8-byte write-buffer granularity; a read buffer's allocation must extend at least 8 bytes past the data — the reader loads 64-bit windows
 
 } // namespace realworld
