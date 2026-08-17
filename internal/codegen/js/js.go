@@ -270,6 +270,16 @@ func (g *gen) emitFile(carriesProtocolId bool) {
 			g.errf("the JS backend does not emit object view families yet — %s is out of this backend's current surface", d.Name)
 		}
 	}
+
+	// the dispatch surfaces close their owner files, after every class they
+	// reference — the C# target's layout exactly
+	if g.file.Base == g.msgOwner && len(g.unit.Messages) > 0 {
+		g.emitMessageStorage()
+		g.emitMessageTagFunctions()
+	}
+	if g.file.Base == g.objOwner && len(g.unit.ObjNames) > 0 {
+		g.emitObjectTagFunctions()
+	}
 }
 
 // emitTagEnum emits a tag enum as a frozen plain object — the JS translation
