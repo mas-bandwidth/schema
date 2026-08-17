@@ -267,7 +267,8 @@ func (g *gen) emitFile(carriesProtocolId bool) {
 			g.emitClass(d)
 			g.emitStructFunctions(d)
 		case *ir.Object:
-			g.errf("the JS backend does not emit object view families yet — %s is out of this backend's current surface", d.Name)
+			g.emitObject(d)
+			g.emitObjectFunctions(d)
 		}
 	}
 
