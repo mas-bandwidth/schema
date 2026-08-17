@@ -29,6 +29,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 )
@@ -169,14 +170,7 @@ func aggregateCmd(paths []string) {
 	if printed != len(acc) {
 		fmt.Fprintf(os.Stderr, "aggregate: REFUSING: %d row key(s) accumulated but not printed — the order list does not know every bench the rounds measured:\n", len(acc)-printed)
 		for _, k := range keys {
-			found := false
-			for _, b := range order {
-				if b == k.bench {
-					found = true
-					break
-				}
-			}
-			if !found {
+			if !slices.Contains(order, k.bench) {
 				fmt.Fprintf(os.Stderr, "    %s/%s/%s\n", k.lang, k.bench, k.path)
 			}
 		}
