@@ -85,9 +85,6 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 	for _, f := range u.Files {
 		g := &gen{unit: u, file: f, msgOwner: msgOwner, objOwner: objOwner, imports: map[string]map[string]bool{}}
 		g.emitFile(f.Base == home)
-		if g.err != nil {
-			return nil, g.err
-		}
 		out[f.Base+".js"] = g.assemble()
 	}
 	return out, nil
@@ -113,7 +110,6 @@ type gen struct {
 	file     *ir.File
 	msgOwner string // the one file that carries the message dispatch surface
 	objOwner string // the one file that carries the object tag surface
-	err      error  // first unsupported-construct refusal — generation fails loudly
 
 	body strings.Builder
 
@@ -136,13 +132,6 @@ type gen struct {
 
 func (g *gen) pf(format string, args ...any) {
 	fmt.Fprintf(&g.body, format, args...)
-}
-
-// errf records the first refusal; emission continues but Generate fails.
-func (g *gen) errf(format string, args ...any) {
-	if g.err == nil {
-		g.err = fmt.Errorf(format, args...)
-	}
 }
 
 // addRef records that the current file references the declaration decl (by
