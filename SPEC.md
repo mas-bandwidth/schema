@@ -1350,6 +1350,8 @@ tree mirrors the schema tree a person navigates.
   the emitter refuses the collision. Everything sits in
   `namespace <package>`, under `#pragma once`, with cross-file `#include`s
   derived from actual references.
+- **C:** the same data/wire header pair per schema file (`<Base>.h` /
+  `<Base>Wire.h`), mirroring the C++ split in C's own types.
 - **Go:** one `.go` file per schema file, all in `package <package>` — Go
   packages are order-free across files, so there is no topo sort and no
   include graph to refuse.
