@@ -18,7 +18,8 @@
   runs the compiler over the corpus, and `make` proves the generated C++ compiles, links
   and runs.
 - **What `make` proves, in full** (moved here from README 2026-08-06 — too dense for the
-  human front page, load-bearing for a working session): all five backends live; `make`
+  human front page, load-bearing for a working session): all six backends live (the JS
+  legs — `test/js`, `test/js-ludicrous` — joined 2026-08-16 with the sixth backend); `make`
   builds the compiler, generates C++ headers (`generated/cpp/`), C sources, a Go package,
   a Rust crate and C# sources from `examples/`, and runs twelve binaries — the C++ tests
   (both message representations plus a randomized round-trip suite) and the C, Go, Rust
@@ -115,6 +116,61 @@ are, and what properties and attributes per-property."*
   definitions. the delta serialization is out of scope of v1."* Object layer v1
   deliverable: *"just build the structs from the definition in schema lang to start.
   (shallow, deep, interpolated, quantize)."*
+
+## SPEC maintenance ledger (from the 2026-08-18 human-readability rewrite)
+
+SPEC.md was rewritten 2026-08-18 into plain reference register on Glenn's directive —
+most recent state only, no history, no decision narration. Nothing normative changed.
+The material that left the spec lives in three places: **git** (the last pre-rewrite
+revision carries every DECIDED date, verbatim ruling and repair note inline),
+**notes/road-to-v1.md** (the road-to-v1 decision list), and **this file**. Section
+numbers §1–§9 and the §9 q-rows are frozen — code, corpus and docs cite them.
+
+- **Testing status at the rewrite** (was SPEC §7.2's status paragraph): gates 1, 2 and 7
+  live across the matrix (`testdata/golden/`, `testdata/wire/` — C++ writes the pins,
+  every other leg byte-compares them; both C++ message representations proven
+  byte-identical); gate 4 live in pinned-instance form plus the randomized C++
+  round-trip suite; gate 3 in seed form (RigidBody and string classic twins in
+  `test/main.cpp`), growing with the corpus; gate 6 live as the break-the-language
+  diagnostics suite (70+ cases) plus `internal/fuzz` (compile, oracle, property and
+  pack fuzzers); gate 5 and gate 4's full random matrix are the remaining conformance
+  work. A fmt-drift gate asserts the corpus stays formatter-canonical.
+- **Held-loosely tells** (the spec states these as law; the confidence metadata lives
+  here): the bracket attribute syntax carries Glenn's hedge ("just a personal
+  preference, could be wrong but let's see in time"); the Contexts mechanism and the
+  §4.8 view-encoding rules are Rowan-drafted transcriptions of the measured
+  hand-written referents (`Ship.h`/`core_quantize.h`/`core_delta.h`) ratified in use;
+  the §5 reused-output tail rule is priced-later (tail-clearing on read would be a
+  generated-code change); whether untaken branches should restore specified defaults
+  instead of zeros is Glenn's call if a real case ever wants it; an exact-length
+  `bytes` form and a validated-UTF-8 read mode can return if a need appears.
+- **Open follow-ups carried out of the spec text:** the C# `Debug.Assert` half of the
+  §4.7 UTF-8 writer contract is a recorded follow-up (C#, like Go, asserts nothing
+  today); the scanner's BOM diagnostic still says "it would silently move the protocol
+  id" — the source-hash rationale, stale since the §3.1 projection ruling — a cleanup
+  that must re-pin its exact-message diagnostics test; WIRES.md's message-wire
+  paragraph lists four runtimes where six exist.
+- **Removed as dead grammar residue** (not relocated — it described nothing the
+  grammar can express): §4.6's `bytes(<= N)` error row; the `<=` marker on
+  string/bytes died in the §4.7 unification. The EBNF gained the `ufixed(I, F)`
+  production and string-valued attributes (`cpp_include`) — both were already live
+  language, stale in the grammar block only.
+- **Deployment doctrine** (Glenn, 2026-08-15): *"I will always deploy client and
+  server together on any breakage. so this is no concern."* The 2b rounding
+  unification (half away from zero, superseding the pure-shift form) moved shipped
+  narrowing bytes only on exact negative ties; the version note lives in
+  VERSIONING.md, and the discriminating tie vector is pinned in the conformance
+  corpus.
+- **Union vs variant, the measured basis for the §4.8 C-flavored-default principle:**
+  isolating pure header cost (one representation-agnostic TU, arm64 clang), union
+  0.09 s vs variant 0.13 s — the variant surface alone costs +44% header compile
+  time; Glenn's ruling on the earlier, cruder number stands as the principle ("0.17
+  -> 0.27 is not trivial for me... you almost always pay through the nose for it at
+  compile time"). The union arm-zeroing shape (zero at arm selection, not
+  whole-union memset at construction — the memset measured 60.6% of batch-read
+  self-cycles) is pinned by the stale-leak test.
+- **Build system**: plain Makefile for now, graduating to CMake as needed (Glenn,
+  2026-08-05).
 
 ## The performance program — learnings that bind future optimization work here
 *(2026-08-06/07: the four-language profile-and-optimize program; full evidence in

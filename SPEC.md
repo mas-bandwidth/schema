@@ -1429,185 +1429,155 @@ JavaScript's is serialize.js's.
 Go, zero third-party dependencies, one static binary: `schema`.
 
 ```
-schema check  [dir|files...]          // parse + typecheck; exit code for CI
-schema generate --lang cpp,cs,go,rust [--cpp-message union|variant] --out <dir> [dir|files...]
-schema id     [dir|files...]          // print the protocol id
-schema fmt    [dir|files...]          // the canonical formatter, standalone (editors, hooks)
+schema check      [dir|files...]          // parse + typecheck; exit code for CI
+schema generate   [--lang c|cpp|cs|go|js|rust] [--cpp-message union|variant]
+                  [--out <dir>] [dir|files...]
+schema id         [dir|files...]          // print the protocol id
+schema projection [dir|files...]          // print the wire shape projection (§3.1)
+schema fmt        [dir|files...]          // the canonical formatter, standalone (editors, hooks)
+schema pack       <manifest.json>         // the data compiler: JSON instance files -> a
+                                          // versioned, hashed .bin per the manifest's
+                                          // ordered collections (§4.11)
+schema version
 ```
 
-**Every command formats the unit's schema files IN PLACE before processing them —
-DECIDED (Glenn, 2026-08-05: *"Can we do schemafmt just as like, a flag passed in to
-schema tool"* / *"or even, just schema format every file before we process it."* /
-*"we can be super opinionated here, it's fine :)"*).** One style, no options, no
-separate binary; a file already in format is never touched (*"Obviously, if it is
-already in format, we don't write to the file, capiche?"*). The consequence lands on
-§3.1: the id is only ever computed over canonical bytes, so **the raw-byte hash IS a
-canonical-form hash, structurally** — the §3.1 revisit clause is closed. The formatter
-carries two built-in refusers: it re-parses its own output and structurally compares
-the AST against the input's (refusing to write on any difference — a formatter must
-never change meaning), and it verifies its own idempotence on every run.
+**Every command formats the unit's schema files in place before processing
+them.** One style, no options, no separate binary; a file already in format
+is never touched. The formatter carries two built-in refusers: it re-parses
+its own output and structurally compares the AST against the input's,
+refusing to write on any difference — a formatter must never change
+meaning — and it verifies its own idempotence on every run.
 
 ### 7.1 Pipeline
 
 ```
-*.schema → scanner → parser → AST → resolver/checker → IR → {cpp, csharp, go, rust} backends
+*.schema → scanner → parser → AST → resolver/checker → IR → {c, cpp, csharp, golang, js, rust} backends
 ```
 
-- **Scanner/parser: hand-written, recursive descent**, in the style of the Go toolchain's own
-  `go/scanner`/`go/parser`. No parser generators. The language is LL(2); hand-rolled parsing
-  is what makes precise diagnostics cheap. The parser recovers at declaration boundaries so
-  one error does not hide the rest.
-- **Resolver/checker**: name resolution across the unit's files, constant folding
-  (arbitrary-precision with per-use fit checks, §4.2), the shape checks of §4.6, the
-  dominance rule of §4.5, and **the message-set AND object-set extractions** — the symbol
-  tables over `message` and `object` declarations from which `MessageType`/`ObjectType`,
-  the dispatch, and the per-object view families are generated (§4.8). *(The object half
-  was DECIDED in §4.8 and missing here until 2026-08-05.)*
-- **IR — the load-bearing design decision.** The checker lowers to a small, fully-resolved
-  intermediate representation, and backends consume only the IR — a C++/Go/Rust divergence
-  must be written into a printer to exist at all. **The IR preservation invariant: the IR
-  keeps every parameter that affects (a) the bits written, (b) the value decoded from given
-  bits, or (c) the set of inputs a read rejects.** Concretely: ranges stay exact `(min, max)`
-  pairs with derived widths (width alone loses the reject set — `int(0,5)` and `int(0,7)`
-  share a width and differ in what they reject); compressed floats keep `(min, max,
-  resolution)` with derived step count (min and resolution determine decoded values);
-  enums keep `(variant count, max)`; strings, bytes and arrays keep exact bounds; `const`
-  keeps `(value, bits)`; back-references resolve to field indices; branches and counts are
-  explicit; names of structs, fields and variants are carried — the backends print them.
-  *(Until 2026-08-05 this bullet ended "the canonical encoding of this IR is the protocol-id
-  input and a frozen public contract" — the dead draft-1/2 design; DECIDED §3.1 hashes the
-  schema files and the IR is not in the id path at all. The IR's stability obligation is
-  real but different: it is what the golden-wire gate (§7.2) holds still across compiler
-  versions.)*
-- **Backends: dumb printers.** Hand-written emitters (a small indent-aware writer helper),
-  not `text/template` — codegen wants precision. Each backend is a single file a reviewer can
-  hold.
+- **Scanner/parser: hand-written, recursive descent**, in the style of the Go
+  toolchain's own `go/scanner`/`go/parser`. No parser generators. The
+  language is LL(2); hand-rolled parsing is what makes precise diagnostics
+  cheap. The parser recovers at declaration boundaries so one error does not
+  hide the rest.
+- **Resolver/checker**: name resolution across the unit's files, constant
+  folding (arbitrary-precision with per-use fit checks, §4.2), the shape
+  checks of §4.6, the dominance rule of §4.5, and the message-set and
+  object-set extractions — the symbol tables over `message` and `object`
+  declarations from which `MessageType`/`ObjectType`, the dispatch, and the
+  per-object view families are generated (§4.8).
+- **IR — the load-bearing design decision.** The checker lowers to a small,
+  fully-resolved intermediate representation, and backends consume only the
+  IR — a per-target divergence must be written into a printer to exist at
+  all. **The IR preservation invariant: the IR keeps every parameter that
+  affects (a) the bits written, (b) the value decoded from given bits, or (c)
+  the set of inputs a read rejects.** Concretely: ranges stay exact
+  `(min, max)` pairs with derived widths (width alone loses the reject set —
+  a [0,5] and a [0,7] range share a width and differ in what they reject);
+  compressed floats keep `(min, max, resolution)` with derived step count
+  (min and resolution determine decoded values); enums keep
+  `(variant count, max)`; strings, bytes and arrays keep exact bounds;
+  `const` keeps `(value, bits)`; back-references resolve to field indices;
+  branches and counts are explicit; names of structs, fields and variants are
+  carried — the backends print them. The IR's stability obligation is what
+  the golden-wire gate (§7.2) holds still across compiler versions.
+- **Backends: dumb printers.** Hand-written emitters (a small indent-aware
+  writer helper), not `text/template` — codegen wants precision. Each backend
+  is a single file a reviewer can hold.
 
 ### 7.2 Testing
 
-**Status 2026-08-06: gates 1, 2 and 7 are LIVE for ALL FOUR TARGETS, and gate 4 is live
-in pinned-instance form across the whole matrix** — `testdata/golden/` pins the
-generated source of both C++ message representations, the Go package, the Rust crate and
-the C# sources byte-for-byte plus the protocol id; `testdata/wire/` pins eleven
-instances' wire bytes, written by the C++ test and **byte-compared by the Go, Rust and
-C# tests (`test/go`, `test/rust`, `test/cs`), so cross-language wire identity is a
-standing gate, not an assumption** (the C++ test also proves the two message
-representations produce identical bytes); a fmt-drift gate asserts the corpus stays
-formatter-canonical; and each target's test asserts the readers agree on what they
-REJECT (interior nulls, nonzero reserved bits, corrupted constants, out-of-range
-counts — with truncation surfacing as the stream's own error, never a content verdict).
-`make test` runs all of it — ten binaries; `make update-goldens` re-pins DELIBERATELY.
-**The fixed-point + 128-bit unit (`examples128/`, 2026-08-06) extends gates 1, 2 and 7
-to the new wire families in all four targets** (four-target since 2026-08-12) — its two
-wire goldens were DERIVED from STANDARD.md's wire law independently of serialize and
-then asserted against the generated C++ writer (`test/ludicrous_main.cpp` carries the
-derivation field by field), and the Go, Rust and C# ludicrous legs
-(`test/{go,rust,cs}-ludicrous`) byte-compare the same pinned instance against those
-goldens, round-trip their readers, and re-run the hostile-read rejections. The refusal
-pin that named the port gap while it lasted (§4.10) retired with the last refusal.
-Gate 3 (the oracle) exists in seed form — the RigidBody and string classic twins in
-`test/main.cpp` — and grows with the corpus; gate 4's full random matrix and gate 5 are
-the remaining conformance work now that all four targets exist; gate 6 is live in
-diagnostics-suite form (the break-the-language suite, 60+ cases), with fuzzing owed. Gate 6's diagnostics now also cover generated-name collisions: companion
-length/count names, the Go dispatch method, and the per-declaration generated symbols
-(Write*/Read*/New*/\*MaxBits/\*MaxBytes) are claimed names the checker refuses.
+The conformance program is seven gates. `make test` runs all of it;
+`make update-goldens` re-pins deliberately.
 
-1. **Golden source tests**: schema in, generated source compared byte-for-byte against
-   checked-in goldens, all four backends. Deterministic output makes this exact.
-2. **Golden ids**: `schema id` over the conformance corpus pinned as exact values — the
-   tripwire on §3.1's hash procedure (sort order, delimiting, truncation): any change to
-   how the id is computed breaks every pinned value loudly. *(Re-pointed 2026-08-05 — this
-   said "the frozen-encoding contract's tripwire," the dead IR-hash design's rationale;
-   the gate itself was always right.)*
-3. **The wire oracle**: for each conformance schema, a hand-written classic-serialize stream
-   twin in C++. Generated C++ must produce byte-identical output to the twin and each must
-   decode the other — the same gate serialize.modern runs, against the same oracle.
-4. **The cross-language matrix — the whole point**: every writer × every reader (16 pairs),
-   property-driven random instances, identical bytes, identical decoded values under §5's
-   whole-object rule. **This needs per-target generated test scaffolding** — instance
-   generators respecting every range/branch/count, and a canonical dump format for
-   cross-language value comparison — budgeted as part of the conformance harness, not
+1. **Golden source tests**: schema in, generated source compared
+   byte-for-byte against checked-in goldens, every backend. Deterministic
+   output makes this exact.
+2. **Golden ids**: `schema id` over the conformance corpus pinned as exact
+   values — the tripwire on §3.1's hash: any change to how the id is computed
+   breaks every pinned value loudly.
+3. **The wire oracle**: for each conformance schema, a hand-written
+   classic-serialize stream twin in C++. Generated C++ must produce
+   byte-identical output to the twin and each must decode the other — the
+   same gate serialize.modern runs, against the same oracle.
+4. **The cross-language matrix — the whole point**: every writer × every
+   reader, property-driven random instances, identical bytes, identical
+   decoded values under §5's whole-object rule. This needs per-target
+   generated test scaffolding — instance generators respecting every
+   range/branch/count, and a canonical dump format for cross-language value
+   comparison — budgeted as part of the conformance harness, not
    hand-written per schema.
-5. **Malformed-input agreement**: bit-flip sweeps over valid packets; all four generated
-   readers must agree on accept/reject — and, for accepted inputs, on the decoded value
-   (§5 leaves rejected outputs unspecified) — serialize.modern's brute-force
-   read-validation gate, extended across languages.
-6. **Compiler robustness**: Go-native fuzzing on scanner, parser and checker; every
-   diagnostic in the suite asserted by exact message and position.
-7. **Golden wire bytes** *(added 2026-08-05 — §3.1 and §6.1 both leaned on this gate by
-   name and the list did not contain it)*: per conformance schema, fixed instances with
-   **checked-in expected wire bytes**, all four targets. This is the one artifact that
-   survives a coordinated emitter-plus-oracle change, and a golden-wire break is the
-   stop-the-line event §3.1 describes — never a quiet re-pin.
+5. **Malformed-input agreement**: bit-flip sweeps over valid packets; all
+   generated readers must agree on accept/reject — and, for accepted inputs,
+   on the decoded value (§5 leaves rejected outputs unspecified).
+6. **Compiler robustness**: Go-native fuzzing on scanner, parser and checker;
+   every diagnostic in the suite asserted by exact message and position. The
+   diagnostics suite covers generated-name collisions: companion length/count
+   names, the dispatch surface, and the per-declaration generated symbols are
+   claimed names the checker refuses (§4.6).
+7. **Golden wire bytes**: per conformance schema, fixed instances with
+   checked-in expected wire bytes, every target. This is the one artifact
+   that survives a coordinated emitter-plus-oracle change, and a golden-wire
+   break is the stop-the-line event §3.2 describes — never a quiet re-pin.
 
-**Floating-point discipline, inherited from the serialize.cs port finding (§1):** all C++
-**and C** conformance builds compile with `-ffp-contract=off`, and the golden-wire corpus
-includes an FMA-boundary compressed-float value, so a contracted build fails gate 7 loudly
-rather than diverging by one quantization step in production. *(§1 promised §7.2 inherits
-this rule; until 2026-08-05 this section did not state it. Until 2026-08-15 the promised
-FMA-boundary value did not exist — the only pinned value, 2.5 over [0, 10] at 0.01, sits
-exactly on a quantum where float32, double and a fused multiply-add all agree, which is
-precisely the blindness STANDARD.md now warns about — and the C legs built without the
-flag. The corpus now pins `CompressedProbe`: 0.005 over [0, 10] @ 0.01 — integer 1 under
-the float32 two-rounding law where a fused build says 0 and a double build says 0 — and
--4.8585 over [-5, 5] @ 0.001 — integer 142 where a double build says 141, the non-zero
-min exercising the v − min subtraction both directions. Values found by sweeping the
-ranges, and the discrimination property itself is asserted in the C and C++ legs, so the
-vector cannot quietly stop discriminating. The generated quantize arithmetic is emitted
-contraction-proof besides — product into a named local in C/C++, an explicit float64
-conversion in Go — and a quantize scale the double domain cannot hold exactly is a §4.6
-compile error.)*
+**Floating-point discipline.** Strict IEEE-754 arithmetic is the normative
+wire for compressed floats: a fused multiply-add diverges by one quantization
+step at boundary values, so all C and C++ conformance builds compile with
+`-ffp-contract=off`, and the golden-wire corpus pins compressed-float values
+chosen to DISCRIMINATE — values where a fused or double-precision build
+produces a different step index — with the discrimination property itself
+asserted in the C and C++ legs, so a vector cannot quietly stop
+discriminating. The corpus likewise pins a negative fixed-point tie value
+that distinguishes half-away-from-zero rounding from the naive arithmetic
+shift (§4.8 rule 2b). The generated quantize arithmetic is emitted
+contraction-proof besides — the product lands in a named local in C/C++, an
+explicit float64 conversion in Go — and a quantize scale the double domain
+cannot hold exactly is a §4.6 compile error.
 
-CI needs all four toolchains for gates 3–5 and 7; that cost is accepted — it is the
-product's central claim.
+CI needs every target toolchain for gates 3–5 and 7; that cost is accepted —
+it is the product's central claim.
 
-### 7.3 The path — DECIDED order of work (Glenn, 2026-08-04)
+### 7.3 The path — the order of work
 
-1. **The spec and the language design.** This document. The language is the volatile part;
-   everything downstream (compiler, three codegens) amplifies its changes, so it settles
-   first.
-2. **The examples corpus** (`examples/`): realistic `*.schema` files written against the spec
-   — message sets, snapshots, the serialize.modern examples translated — **testing that the
-   language can actually express those things**, on paper, before a line of compiler exists.
-   The language iterates against the corpus; a construct no example needs is a construct v1
-   may not need.
-3. **Only then, implementation** — and the corpus graduates into `testdata/` and
-   `conformance/` as the compiler's first test suite.
+1. **The spec and the language design.** This document. The language is the
+   volatile part; everything downstream (compiler, backends) amplifies its
+   changes, so it settles first.
+2. **The examples corpus** (`examples/`): realistic `*.schema` files written
+   against the spec — testing that the language can actually express those
+   things, on paper, before a line of compiler exists. The language iterates
+   against the corpus; a construct no example needs is a construct the
+   language may not need.
+3. **Only then, implementation** — and the corpus graduates into `testdata/`
+   as the compiler's first test suite.
 
-### 7.4 schemafmt — the one style — BUILT 2026-08-05, as the compiler's own front step (Glenn: "yes, schemafmt is important, same reason as per-go. there is a canonical syntax form from which we generate the hash"; his design the same evening — every command formats before processing, §7's CLI block carries the words)
+### 7.4 schemafmt — the one style
 
-gofmt's philosophy (§4.1): one style, no options. Codified from the corpus's own formatting
-while it was five files; built as **the parser's first consumer** and run by every
-`schema` command over the unit before processing — under §3.1's file-byte hash, a
-later reformat of a deployed schema **moves its protocol id**, so canonicalization
-had to land before any schema existed outside this repo, and it did: **the corpus was
-canonicalized 2026-08-05 (whitespace-only, meaning-preservation enforced by the
-formatter's AST-equivalence refuser) and the id settled at its canonical value —
-the one §7.2's golden pins.** With the compiler formatting before hashing, §3.1's
-raw-byte hash is a canonical-form hash structurally, with no parser in the id path —
-the §3.1 revisit clause is closed. Rules:
+gofmt's philosophy: one style, no options. Built as the parser's first
+consumer and run by every `schema` command over the unit before processing.
+Rules:
 
-1. **Indent: 4 spaces** per block level, never tabs (the corpus's unanimous vote). `{` on
-   the construct's line; `} else {` on one line. One field or declaration per line.
-2. **Alignment groups**: within a contiguous run of fields — broken by blank lines and by
-   comment lines — pad names to align the type column and types to align the `[` attribute
-   column. The same rule aligns `=` in const runs. Single space minimum between columns.
-   *(The corpus already drifted on exactly this in ~330 lines: one unaligned const pair,
-   and two enum braces treating a comment break differently — the argument for the tool.)*
-3. **Attributes**: `[min = 0, max = MaxHealth]` — spaces around `=`, comma-space between
-   entries, no padding inside the brackets. Valueless markers first, then valued keys.
+1. **Indent: 4 spaces** per block level, never tabs. `{` on the construct's
+   line; `} else {` on one line. One field or declaration per line.
+2. **Alignment groups**: within a contiguous run of fields — broken by blank
+   lines and by comment lines — pad names to align the type column and types
+   to align the `[` attribute column. The same rule aligns `=` in const runs.
+   Single space minimum between columns.
+3. **Attributes**: `[min = 0, max = MaxHealth]` — spaces around `=`,
+   comma-space between entries, no padding inside the brackets. Valueless
+   markers first, then valued keys.
 4. **Expressions**: single spaces around binary operators.
-5. **Enums**: one line while they fit; the wrap trigger is decided at the first multi-line
-   instance (no line-length limit exists yet). *(q9 settled canonical whitespace variants,
-   so one-line enum bodies are the standing form.)*
-6. **switch/case**: `case` at the same indent as its `switch`; a single-item case body
-   inline after the label, bodies column-aligned across the cases of one switch; multi-item
-   bodies on following lines, one level in.
+5. **Enums**: one line while they fit; the wrap trigger is decided at the
+   first multi-line instance (no line-length limit exists yet).
+6. **switch/case** (reserved for `switch`'s return): `case` at the same
+   indent as its `switch`; a single-item case body inline after the label,
+   bodies column-aligned across the cases of one switch; multi-item bodies on
+   following lines, one level in.
 7. **Blank lines**: collapsed to one; preserved as group separators.
-8. **Comments preserved, never reflowed** — file-header block, section dividers
-   (`// ---- name ----`), and doc comments stay attached to what they precede.
-9. **schemafmt never reorders declarations** — a formatter formats; it does not move code. (Tags are sorted-by-name (§4.8), so ordering carries no meaning —
-   the aspect layout (§2) stays a convention.)
+8. **Comments preserved, never reflowed** — file-header block, section
+   dividers (`// ---- name ----`), and doc comments stay attached to what
+   they precede.
+9. **schemafmt never reorders declarations** — a formatter formats; it does
+   not move code. (Tags are sorted by name (§4.8), so ordering carries no
+   meaning — the aspect layout (§2) stays a convention.)
 
 ## 8. Repository layout
 
@@ -1616,138 +1586,88 @@ cmd/schema/            the CLI
 internal/scanner/      tokens, positions
 internal/parser/       AST construction, error recovery
 internal/ast/
-internal/check/        resolver, constant folding, shape checks, dominance rule
-internal/ir/           the lowered form (wire-frozen; the id is §3.1's file hash)
-internal/codegen/
-    cpp/  csharp/  golang/  rust/
-testdata/              golden schemas, golden generated source, golden ids, diagnostics
-conformance/           oracle twins + the cross-language matrix harness
-notes/                 extracted runtime API contracts (design inputs)
+internal/check/        resolver, constant folding, shape checks, dominance rule,
+                       the protocol id
+internal/ir/           the lowered form; the wire shape projection (§3.1)
+internal/format/       schemafmt
+internal/pack/         the data compiler (schema pack)
+internal/codegen/      c/  cpp/  csharp/  golang/  js/  rust/
+internal/fuzz/         compiler fuzzing (gate 6)
+examples/              the corpus — always compiles under this spec as written
+examples128/           the fixed-point + 128-bit corpus
+testdata/              golden generated source, golden ids, golden wire bytes,
+                       table goldens
+test/                  the per-language wire test legs
+bench/                 the benchmarking program (see bench/BENCH-STANDARD.md)
+notes/                 extracted runtime API contracts (design inputs, non-normative)
 SPEC.md                this document
 ```
 
-License: AGPL-3.0 (DECIDED, 2026-08-04). Repo private until Glenn opens it.
+License: AGPL-3.0, with an explicit additional permission for generated
+output — see LICENSE.
 
 ## 9. Open questions, gathered
 
-*(Settled 2026-08-04/05: the protocol id — schema-file hash, §3.1 — and no generated
-measure, §6.1. Both DECIDED.)*
+Rows keep their numbers permanently — code and corpus cite them as `§9 qN`.
+Every row to date is settled, deferred with its design banked, or discarded.
 
-1. ~~Strings as byte strings~~ — **DECIDED (Glenn, 2026-08-05: "fine")**: §4.7, with the
-   generated-code consequence stated there (C#/Rust compose the wire from primitives; the
-   interior-null check is generated-code validation in all four targets). The
-   validated-UTF-8 door stays open as a future new type.
-2. ~~**Storage-type overrides**~~ — **RESOLVED 2026-08-05 by the integer family**: storage
-   is declared by the type name (`thrust int8 [min = 0, max = 100]`), no override mechanism
-   needed. *(This row carried the dead call syntax until 2026-08-05.)*
-3. ~~Wide strings and relative integers~~ — **DECIDED deferred (Glenn, 2026-08-05: "OK" /
-   "yes, int_relative is used when doing delta encoding, which is later")**: wide strings
-   appear nowhere in the game tree; all ten `int_relative` sites live inside the packet
-   shapes the delta pass owns (§4.10's note).
-4. ~~`schemafmt` timing~~ — **DECIDED v1 (Glenn, 2026-08-05: "yes, schemafmt is
-   important, same reason as per-go. there is a canonical syntax form from which we
-   generate the hash")**: built early, as the parser's first consumer; style rules §7.4,
-   reviewed with the corpus.
-5. ~~Doc comments~~ — **DECIDED deferred (Glenn, 2026-08-05: "don't care. leave for
-   later.")**: the design is kept at §4.1 for the day it lands.
-6. ~~A root/packet marker~~ — **DISCARDED (Glenn, 2026-08-05: "don't know what root
-   packet marker is. did not ask for it.")** — a Rowan-invented v2 idea, not his ask;
-   binned. *(Its one factual by-product stands independently in §3.2: id-scoping by
-   reachability is incompatible with file hashing — recorded there, not here.)*
-7. ~~Const expressions over enum counts~~ — **DECIDED (Glenn, 2026-08-05: "yes, but
-   prefer Team.Max")**: `E.Max` (§4.2); `const NumTeams = Team.Max + 1`; `len(Team)`
-   declined; the `MAX_PROPS` sum was already covered by constant composition.
-8. ~~Platform-conditional constants~~ — **DECIDED (Glenn, 2026-08-05: "yes, because
-   server and clients will be on different platforms, but must always be able to
-   communicate.")**: constants are platform-uniform (§4.2); `FRAME_SAFETY` stays in game
+1. ~~Strings as byte strings~~ — settled: §4.7. One shape for
+   `string`/`bytes`; C# and Rust compose the wire from primitives; the
+   interior-null check is generated-code validation in every target.
+2. ~~Storage-type overrides~~ — settled by the integer family: storage is
+   declared by the type name (`thrust int8 [min = 0, max = 100]`); no
+   override mechanism exists.
+3. ~~Wide strings and relative integers~~ — deferred: §4.10. Wide strings
+   have no usage anywhere in the surveyed tree; every `int_relative` use site
+   lives inside the packet shapes the delta pass owns.
+4. ~~`schemafmt` timing~~ — settled: built early, as the parser's first
+   consumer; rules in §7.4.
+5. ~~Doc comments~~ — deferred; the design is kept at §4.1.
+6. ~~A root/packet marker~~ — discarded.
+7. ~~Const expressions over enum counts~~ — settled: `E.Max` (§4.2);
+   `const NumTeams = Team.Max + 1`. `len(Team)` was declined: it has three
+   plausible meanings, and every one sizes enum-indexed tables wrong under
+   `[max]` headroom — the max is the true primitive.
+8. ~~Platform-conditional constants~~ — settled: constants are
+   platform-uniform (§4.2); platform-varying tuning stays in application
    code.
-9. ~~Explicit enum variant values, flag enums, the separator~~ — **DECIDED (Glenn,
-   2026-08-05)**: canonical enums only — *"canonical enums are in the form 0 = none,
-   [1,max], dense non-sparse values."* — explicit/sparse values declined permanently, so
-   the whitespace separator stays; and flags supported — *"yes, we can and should support
-   flags too. flags are uint64_t, one field per-bit, up to 64."* — as the `flags`
-   form (§4.2, mechanism PROPOSED, rides the corpus review).
-10. ~~Sentinel-terminated collections~~ — **DECIDED deferred (Glenn, 2026-08-05: "sure,
-   that's out of scope")**: designed inside the object/delta pass, all three measured
-   terminator idioms at once (bool-continuation, sentinel value, stop action); readers
-   are structurally oblivious to packet splits, so the language owes readers only a
-   terminated-stream loop.
-11. **Enum subranges, and the enum-as-index pattern** — widened 2026-08-05 with Glenn's
-   design thoughts for the future, banked verbatim. The surveyed create path writes an
-   object kind as `[1, max]`, excluding `None` from the wire. With universal implicit
-   `None = 0`, two related wants emerged: **(a) index enums without None** — *"for these
-   index values, that index is not there... it's like, shifted left, 0 is no longer valid"*
-   (laser_index/missile_index going *"off the enum directly and we don't have to repeat
-   min/max"*); **(b) enum-as-index as an explicit language feature** — *"this enum -> an
-   index to the values the enum represents, is a common pattern... tying it explicitly to
-   the enum as a language feature/pattern helps avoid manual mistakes being made here in
-   future"* — his working name: **`enum_index`**, and the pattern is wider than enums:
-   *"in space game i turn everything into an index, it's a pattern. object ids, enums
-   etc."* A field that indexes a declared set derives its range from the set, never
-   restates it. **The requirement in his final form: both kinds exist** — *"sometimes you
-   need to represent null, eg. an enum type that can have null (nothing), and other times
-   it is an index of valid values in that enum (like laser index, missile index). we need
-   to support both types of indexes driven by enums."* Design pass owed; evidence:
-   `examples/README.md` finding 1 and `Ship.h`'s hand-repeated `[0, SHIP_MAX_LASERS-1]`
-   bounds.
-   **The design ran its full arc on 2026-08-05 and ended CUT — for now.** A per-field
-   `[no_none]` attribute was the first draft and died on his call for type-level (*"suspect
-   it's better done as a type... vs. doing it at serialize level."* / *"#4 agreed."*); the
-   type-level `enum_index` form was then specified in full — wire = value − 1 in
-   `[0, max − 1]` (his notation: *"enum_index serialization [0,Max-1] biased -1 on the
-   wire"*), storage keeping 0 as an unset sentinel, never wire-legal — and confirmed
-   (*"#3 is confirmed."*), then **cut the same evening: *"Let's cut enum_index for
-   now."*** The full specification above is the record for the day it returns — likely
-   with the claiming/index pass, where *"in space game i turn everything into an index"*
-   points anyway. **v1 consequence, stated plainly:** a kind field is a plain `enum` and
-   the `[1, max]` create wire is not expressible — one unused wire value spent per kind
-   field, finding 1's original state. The derived-range rule stays normative; the general
-   `index(Set)` feature stays deferred with `index` reserved. The manual-mistake class the
-   requirement predicts was measured in the tree the same day (a wrong-enum `MAX` guard, a
-   bound restated divergently on two paths of one field) — and fixed at his word.
-12. ~~**`int` → `int32`?**~~ — **RESOLVED 2026-08-05 by the integer family**: bare `int` is
-    gone; every integer names its width, Go-style, and `int`/`uint` are reserved purely to
-    give a helpful diagnostic.
-13. ~~Interpolation policy~~ — **RESOLVED 2026-08-05: no interpolation generation in v1
-    at all** (§4.8). v1 builds the structs and the Quantize/Unquantize pair;
-    `Interpolate()` stays hand-written until the delta pass claims type tags and
-    assigns actions — **tag → specifying behavior, his architecture** (Glenn: *"this
-    alone points to the tag -> specifying behavior being the correct way to go."*).
-    Design input recorded for that pass: measured across all four real objects, policy
-    is 100% type-derived today (lerp floats, shortest-arc nlerp rotations, snap
-    discrete), and no field anywhere overrides its type's policy.
-14. ~~The replication-policy boundary~~ — **DISCARDED (Glenn, 2026-08-05):** *"there are
-    no send scheduling knobs in my game engine. i don't do priority/TTL/coherence."* /
-    *"those concepts are from [the external engine]. Discard. we don't use them. our
-    networking techniques are stronger than [theirs]"* — *"built around deltas and snapshots, not
-    around priority accumulators and packing n most important objects into a small
-    packet."* / *"discard and throw in bin."* No policy attributes, ever; the question
-    came from an external evaluation of a different architecture and does not apply to
-    this house. Schema fully owns serialization; nothing else was ever in scope.
-15. ~~The engine interop surface~~ / 16. ~~The engine adoption asks~~ — **DISCARDED with
-    the same ruling, 2026-08-05.** Externally-derived interop and adoption material is
-    out of this repo; the exchange record lives outside it. If a cross-engine
-    collaboration ever becomes real work, it starts fresh from what schema IS then.
-17. ~~**The unsigned fixed-point spelling**~~ — **DECIDED (Glenn, 2026-08-15: "ufixed
-    is fine")**: option (b), the explicit `ufixed(I, F)` keyword — storage always
-    manifest in the type name, the integer family's own int/uint precedent; §4.3 row,
-    §4.6 rules, all five backends, the `UnsignedProbe` corpus type. Option (a) — derive
-    signedness from `min >= 0` — died of the flaw recorded here since 2026-08-06: a
-    field's storage type silently changing when a bound crosses zero. *(The original
-    question, for the record: v1 shipped `fixed(I, F)` SIGNED only, his confirmed
-    baseline, with the runtime's `serialize_fixed` accepting unsigned storage from its
-    landing — the wire construct existed before the spelling did. Signedness only
-    decides which storage widths host a given non-negative whole-unit domain: signed
-    Q8.8 tops out at 127 units where unsigned reaches 255.)* One scope fence in this
-    landing, recorded at §4.8 rule 2b: shallow narrowing stays signed-only until the
-    unsigned shift arithmetic is designed — un-narrowed `[interpolate]` ufixed
-    composites dissolve fine.
-
----
-
-*Draft 2, Rowan, 2026-08-04 — from serialize.modern's SCHEMA.md and README (read whole), the
-extracted serialize / serialize.go / serialize.rs contracts in `notes/`, Glenn's decisions of
-tonight, and two independent cold reads of draft 1 (wire claims; language design and pipeline
-feasibility) whose findings are folded in above with their reversals named. Wire claims name
-their classic twins but are not yet pinned by tests; the conformance suite in §7.2 is what
-converts this document from intent to property.*
+9. ~~Explicit enum variant values, flag enums, the separator~~ — settled:
+   canonical enums only (§4.2) — explicit and sparse values are declined
+   permanently; `flags` is supported (§4.2); variants are comma-separated.
+10. ~~Sentinel-terminated collections~~ — deferred to the object/delta pass,
+    which designs all three measured terminator idioms at once
+    (bool-continuation, sentinel value, stop action). Readers are
+    structurally oblivious to packet splits, so the language owes readers
+    only a terminated-stream loop.
+11. **Enum subranges, and the enum-as-index pattern** — deferred; the design
+    is banked here for its return, likely with the claiming/index pass. Two
+    kinds of enum-driven value are both required: an enum that can carry null
+    (`None` — the plain `enum`), and an index over an enum's valid values
+    that excludes it (laser index, missile index). The banked `enum_index`
+    design: a type-level declaration; wire = value − 1 in [0, max − 1];
+    storage keeps 0 as an unset sentinel that is never wire-legal. The v1
+    consequence, stated plainly: a kind field is a plain `enum`, so a
+    `[1, max]` create wire is not expressible — one unused wire value is
+    spent per kind field. The derived-range rule stays normative (§4.2); the
+    general `index(Set)` feature stays deferred with `index` informally
+    reserved (§1).
+12. ~~`int` → `int32`?~~ — settled by the integer family: bare `int` is
+    gone; every integer names its width, and `int`/`uint` are reserved purely
+    to give a helpful diagnostic.
+13. ~~Interpolation policy~~ — settled: no interpolation generation in v1
+    (§4.8). `Interpolate()` stays hand-written until a claiming pass assigns
+    per-tag actions (§4.2, Type tags).
+14. ~~The replication-policy boundary~~ — discarded: no send-scheduling
+    knobs (priority/TTL/coherence) exist in this architecture, and no policy
+    attributes ever will. schema fully owns serialization; nothing else was
+    ever in scope.
+15. ~~The engine interop surface~~ / 16. ~~The engine adoption asks~~ —
+    discarded; externally-derived interop and adoption material is out of
+    this repo.
+17. ~~The unsigned fixed-point spelling~~ — settled: the explicit
+    `ufixed(I, F)` keyword (§4.3, §4.6), storage always manifest in the type
+    name — the integer family's own int/uint precedent. Deriving signedness
+    from `min >= 0` was declined because a field's storage type would
+    silently change when a bound crossed zero. One scope fence, recorded at
+    §4.8 rule 2b: shallow narrowing stays signed-only until the unsigned
+    shift arithmetic is designed.
