@@ -1,8 +1,12 @@
 # schema — working conventions for sessions in this repo
 
-- **SPEC.md is the one source of truth.** Decisions carry **DECIDED** with a date and the
-  authorizing words; proposals carry **PROPOSED**; open questions live in §9 and get a
-  numbered row, never an inline aside.
+- **SPEC.md is the one source of truth, written as a clean reference.** It states the
+  most recent specification only — present tense, reference register, no history, no
+  decision narration (Glenn's directive, 2026-08-18: SPEC must read for a human
+  implementer, not like a CLAUDE.md). Decision provenance — who ruled what, when, in
+  which words — lives in git history and `notes/road-to-v1.md`; maintainer context
+  lives here. Open questions still get a numbered row in SPEC §9, never an inline
+  aside; §9 rows keep their numbers forever because code and corpus cite them.
 - **This repo describes our own work.** External collaborators, their people, and their
   codebases are not named in the tree; external feedback is folded in as learnings
   (`notes/external-feedback-learnings.md`) and as evidence attached to spec sections and
@@ -14,7 +18,8 @@
   runs the compiler over the corpus, and `make` proves the generated C++ compiles, links
   and runs.
 - **What `make` proves, in full** (moved here from README 2026-08-06 — too dense for the
-  human front page, load-bearing for a working session): all five backends live; `make`
+  human front page, load-bearing for a working session): all six backends live (the JS
+  legs — `test/js`, `test/js-ludicrous` — joined 2026-08-16 with the sixth backend); `make`
   builds the compiler, generates C++ headers (`generated/cpp/`), C sources, a Go package,
   a Rust crate and C# sources from `examples/`, and runs twelve binaries — the C++ tests
   (both message representations plus a randomized round-trip suite) and the C, Go, Rust
@@ -37,6 +42,145 @@
 - **Trajectory** (Glenn, 2026-08-05): once design settles and implementation starts, this
   repo represents the most recent state only, not the total history of everything —
   prune toward that; git history is the archive.
+
+## The horizon — campaign context (relocated from SPEC §1, 2026-08-18)
+
+The long arc (Glenn, 2026-08-04): schema as the single data-definition language for
+Space Game — bitpacked realtime messages (v1, shipped), object and event type
+definitions, flatbuffers-style versioned config/asset data, and delta encoding against
+a baseline, all generated from one source. His one-sentence version: *"so much
+boilerplate would just go away, replaced with a definition of what object types there
+are, and what properties and attributes per-property."*
+
+- **Ordering (Glenn, 2026-08-11): messages (landed) → table layer → delta pass.** The
+  table layer's wire/reflection half landed as SPEC §4.11 and `schema pack`; the
+  space-side `Config.schema`/`Assets.schema` migration is the open half.
+- **The delta pass** changes the generated function signature (current object plus a
+  baseline), not the wire model or compiler architecture. The surveyed hand-written
+  delta code (`core_delta.h`, 2026-08-04) follows one grammar — per-field encoding
+  tiers tried cheapest-first, one bit selecting the tier (small-window delta vs
+  absolute; or error-vs-prediction, the prediction arithmetic over sibling fields plus
+  an external parameter like `deltaFrames`) — so the pass needs three language
+  surfaces: per-field tier lists, prediction expressions over sibling fields, and
+  declared external parameters. Scope is wider than serialize functions — schema
+  eventually owns the object TYPE: deep/shallow struct definitions, capacity
+  constants, per-type dispatch cases, manager integration points, and further
+  generator kinds (interpolation, render data, struct-to-struct mapping). The IR is a
+  typed object model; backends generalize from language targets to generator kinds;
+  per-field metadata attaches through SPEC §4.2's attribute mechanism — the
+  attachment point already exists in v1's grammar.
+- **The flatbuffers replacement (DECIDED in direction, Glenn, 2026-08-05):** config
+  and assets move to `Config.schema`/`Assets.schema`; the Go pipeline
+  (`cmd/update_schemas`, `cmd/update_config`) and the C++
+  `ConfigManager`/`AssetsManager` boilerplate become schema compiler outputs. Not a
+  flatbuffers equivalent — *"the minimal representation of the true thing in the
+  schema language"*, scoped to the subset space game actually uses. Collections are
+  one mechanism differentiated by declared PROPERTIES, not different kinds: reload
+  semantics (config hot-swaps atomically mid-game; assets load once per level) and
+  directional cross-collection references (config → assets, a DAG verified at
+  data-compile time). Aspirationally `Config.bin`/`Assets.bin` are expressions of a
+  general collection pattern — his `Constants.h` already carries FOUR data blobs
+  (config, options, assets, user settings), so first-class `config`/`assets` keywords
+  would undercount day one; the fallback is first-class concepts if the general form
+  fails. The frame: **the schema compiler is a compiler-linker for data** — JSON
+  instances are source files with human authors (designers, artists exporting from
+  Maya/Blender), one source directory against one declared set of types into one
+  versioned, hashed binary with generated loaders, accessors and derived enums;
+  verification is a compile step. `schema pack` is the transition form. Structural
+  shapes still owed from the .fbs survey: enums with explicit values at the table
+  layer, unions at the type level, vectors of tables.
+- **Enum convergence (his catch):** some hand-declared enums are flatbuffers residue;
+  the table pass derives them from the definitions (`ShipType` from ship
+  configs/assets) — the set-extraction move a third time (messages → `MessageType`,
+  objects → `ObjectType`, definitions → their type enums). Genuinely hand-owned sets
+  (`Team`) stay declared.
+- **Constants migrate through a temporary duplicate set** (schema + flatbuffers) while
+  .fbs consumers remain; `Constants.schema` is the one home, C++ reads generated
+  `space::` values through name-preserving aliases, and a static_assert guard block
+  makes drift a compile error. Enacted in space 2026-08-11.
+- **Generated files are checked into a consumer repo exactly when consumers exist that
+  cannot run the generator** (Unity, a Go module on fresh clone) — *"If it were just
+  C++ only, I would not."* C++-only consumers generate at build (the space CMake
+  `schema_generate` target).
+- **The event set is the nearest edge:** its wire half is already expressible in v1
+  (an enum-dispatched union with per-case fields — the `Messages.schema` shape; the
+  current `events.fbs` union maps onto it directly); only its table-layer half waits.
+- **Reserved surface for these passes:** `packet`, `delta`, `baseline`, `index`
+  (SPEC §1); `lerp`/`slerp`/`snap`/`angle`/`smooth` informally reserved as attribute
+  values for the interpolation pass; SPEC §9 q11 banks the cut `enum_index` design;
+  §9 q13's design input — measured interpolation policy is 100% type-derived across
+  all four real objects (lerp floats, shortest-arc nlerp rotations, snap discrete),
+  no field overrides its type's policy.
+- **The v1 scope sentences (Glenn, 2026-08-05, verbatim):** *"goal for v1 is schema
+  fully defines generated code for the constants, enums, types, messages, object
+  definitions. the delta serialization is out of scope of v1."* Object layer v1
+  deliverable: *"just build the structs from the definition in schema lang to start.
+  (shallow, deep, interpolated, quantize)."*
+
+## SPEC maintenance ledger (from the 2026-08-18 human-readability rewrite)
+
+SPEC.md was rewritten 2026-08-18 into plain reference register on Glenn's directive —
+most recent state only, no history, no decision narration. Nothing normative changed.
+The material that left the spec lives in three places: **git** (the last pre-rewrite
+revision carries every DECIDED date, verbatim ruling and repair note inline),
+**notes/road-to-v1.md** (the road-to-v1 decision list), and **this file**. Section
+numbers §1–§9 and the §9 q-rows are frozen — code, corpus and docs cite them.
+
+- **Testing status at the rewrite** (was SPEC §7.2's status paragraph): gates 1, 2 and 7
+  live across the matrix (`testdata/golden/`, `testdata/wire/` — C++ writes the pins,
+  every other leg byte-compares them; both C++ message representations proven
+  byte-identical); gate 4 live in pinned-instance form plus the randomized C++
+  round-trip suite; gate 3 in seed form (RigidBody and string classic twins in
+  `test/main.cpp`), growing with the corpus; gate 6 live as the break-the-language
+  diagnostics suite (70+ cases) plus `internal/fuzz` (compile, oracle, property and
+  pack fuzzers); gate 5 and gate 4's full random matrix are the remaining conformance
+  work. A fmt-drift gate asserts the corpus stays formatter-canonical.
+- **Held-loosely tells** (the spec states these as law; the confidence metadata lives
+  here): the bracket attribute syntax carries Glenn's hedge ("just a personal
+  preference, could be wrong but let's see in time"); the Contexts mechanism and the
+  §4.8 view-encoding rules are Rowan-drafted transcriptions of the measured
+  hand-written referents (`Ship.h`/`core_quantize.h`/`core_delta.h`) ratified in use;
+  the §5 reused-output tail rule is priced-later (tail-clearing on read would be a
+  generated-code change); whether untaken branches should restore specified defaults
+  instead of zeros is Glenn's call if a real case ever wants it; an exact-length
+  `bytes` form and a validated-UTF-8 read mode can return if a need appears.
+- **Open follow-ups carried out of the spec text:** the C# `Debug.Assert` half of the
+  §4.7 UTF-8 writer contract is a recorded follow-up (C#, like Go, asserts nothing
+  today); the scanner's BOM diagnostic still says "it would silently move the protocol
+  id" — the source-hash rationale, stale since the §3.1 projection ruling — a cleanup
+  that must re-pin its exact-message diagnostics test. The same stale class is wider
+  than the scanner: all six codegen backends emit "the hash of its schema files
+  (SPEC §3.1)" into every generated file's header (38 occurrences across `generated/`
+  and the goldens today), and `internal/check/check.go` still cites §3.1 for
+  sorted-basename *hashing* — pre-projection language throughout; fixing it is one
+  deliberate pass with a golden re-pin. WIRES.md's message-wire paragraph lists four
+  runtimes where six exist.
+- **§6.1 gaps equal in the old text** (surfaced by the rewrite's verification pass,
+  not introduced by it): the symbol-naming paragraph gives five targets' conventions
+  but not C's (lower_snake free functions — `write_ship_data_deep(stream, value)` —
+  with `schema_`-prefixed internal helpers), and neither output-layout bullet names
+  the third per-file header (`<Base>Table.h`) that C and C++ closure files emit.
+- **Removed as dead grammar residue** (not relocated — it described nothing the
+  grammar can express): §4.6's `bytes(<= N)` error row; the `<=` marker on
+  string/bytes died in the §4.7 unification. The EBNF gained the `ufixed(I, F)`
+  production and string-valued attributes (`cpp_include`) — both were already live
+  language, stale in the grammar block only.
+- **Deployment doctrine** (Glenn, 2026-08-15): *"I will always deploy client and
+  server together on any breakage. so this is no concern."* The 2b rounding
+  unification (half away from zero, superseding the pure-shift form) moved shipped
+  narrowing bytes only on exact negative ties; the version note lives in
+  VERSIONING.md, and the discriminating tie vector is pinned in the conformance
+  corpus.
+- **Union vs variant, the measured basis for the §4.8 C-flavored-default principle:**
+  isolating pure header cost (one representation-agnostic TU, arm64 clang), union
+  0.09 s vs variant 0.13 s — the variant surface alone costs +44% header compile
+  time; Glenn's ruling on the earlier, cruder number stands as the principle ("0.17
+  -> 0.27 is not trivial for me... you almost always pay through the nose for it at
+  compile time"). The union arm-zeroing shape (zero at arm selection, not
+  whole-union memset at construction — the memset measured 60.6% of batch-read
+  self-cycles) is pinned by the stale-leak test.
+- **Build system**: plain Makefile for now, graduating to CMake as needed (Glenn,
+  2026-08-05).
 
 ## The performance program — learnings that bind future optimization work here
 *(2026-08-06/07: the four-language profile-and-optimize program; full evidence in
