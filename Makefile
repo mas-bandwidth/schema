@@ -130,30 +130,45 @@ generated/c-ludicrous/.stamp: bin/schema $(SCHEMAS128)
 	./bin/schema generate --lang c --out generated/c-ludicrous examples128
 	@touch $@
 
-# the bench corpus (BENCH-STANDARD.md §1.3, family rt) — generated into all
-# five languages so the family `rt` shapes have ONE definition; the goldens
-# testdata/wire/bench_*.bin come from the generated C++ (test/bench/main.cpp)
-# and every bench runner's hand-written rt path is §1.5-gated against them
+# the bench corpus — TWO units sharing one directory (SPEC §3.2: one package
+# per unit, so every corpus command below names its unit's file, never the
+# directory):
+#   bench/corpus/Bench.schema      package bench      — the family `rt` shapes
+#     (BENCH-STANDARD.md §1.3); goldens testdata/wire/bench_*.bin
+#   bench/corpus/RealWorld.schema  package realworld  — the §1.7 realistic
+#     snapshot (RealPacket); golden testdata/wire/real_packet.bin
+# Both are generated into all five languages so the bench shapes have ONE
+# definition; the goldens come from the generated C++ (test/bench/main.cpp)
+# and every bench runner is §1.5-gated against them. Languages whose module
+# layout cannot hold two packages in one directory put the realworld unit in
+# its own subdirectory (go, cs — per-package TableRuntime) or sibling crate
+# (rust — one crate root per unit).
 generated/bench/cpp/.stamp: bin/schema $(SCHEMAS_BENCH)
-	./bin/schema generate --lang cpp --out generated/bench/cpp bench/corpus
+	./bin/schema generate --lang cpp --out generated/bench/cpp bench/corpus/Bench.schema
+	./bin/schema generate --lang cpp --out generated/bench/cpp bench/corpus/RealWorld.schema
 	@touch $@
 
 generated/bench/c/.stamp: bin/schema $(SCHEMAS_BENCH)
-	./bin/schema generate --lang c --out generated/bench/c bench/corpus
+	./bin/schema generate --lang c --out generated/bench/c bench/corpus/Bench.schema
+	./bin/schema generate --lang c --out generated/bench/c bench/corpus/RealWorld.schema
 	@touch $@
 
 generated/bench/go/.stamp: bin/schema $(SCHEMAS_BENCH)
-	./bin/schema generate --lang go --out generated/bench/go bench/corpus
+	./bin/schema generate --lang go --out generated/bench/go bench/corpus/Bench.schema
+	./bin/schema generate --lang go --out generated/bench/go/realworld bench/corpus/RealWorld.schema
 	@printf 'module bench\n\ngo 1.23\n\nrequire github.com/mas-bandwidth/serialize.go v0.0.0\n\nreplace github.com/mas-bandwidth/serialize.go => ../../../$(SERIALIZE_GO)\n' > generated/bench/go/go.mod
 	@touch $@
 
 generated/bench/rust/.stamp: bin/schema $(SCHEMAS_BENCH)
-	./bin/schema generate --lang rust --out generated/bench/rust/src bench/corpus
+	./bin/schema generate --lang rust --out generated/bench/rust/src bench/corpus/Bench.schema
+	./bin/schema generate --lang rust --out generated/bench/rust-realworld/src bench/corpus/RealWorld.schema
 	@printf '[package]\nname = "benchcorpus"\nversion = "0.0.0"\nedition = "2024"\n\n[dependencies]\nserialize = { path = "../../../$(SERIALIZE_RS)" }\n' > generated/bench/rust/Cargo.toml
+	@printf '[package]\nname = "realworldcorpus"\nversion = "0.0.0"\nedition = "2024"\n\n[dependencies]\nserialize = { path = "../../../$(SERIALIZE_RS)" }\n' > generated/bench/rust-realworld/Cargo.toml
 	@touch $@
 
 generated/bench/cs/.stamp: bin/schema $(SCHEMAS_BENCH)
-	./bin/schema generate --lang cs --out generated/bench/cs bench/corpus
+	./bin/schema generate --lang cs --out generated/bench/cs bench/corpus/Bench.schema
+	./bin/schema generate --lang cs --out generated/bench/cs/realworld bench/corpus/RealWorld.schema
 	@touch $@
 
 # the C++ producer/verifier of the bench-corpus goldens, and the C twin that
@@ -188,6 +203,7 @@ test: build/schema_test build/schema_test_variant build/schema_test_random build
 	./build/schema_test_bench_c
 	cd generated/bench/go && go build ./...
 	cd generated/bench/rust && PATH="$(RUSTUP_BIN):$$PATH" cargo build --quiet
+	cd generated/bench/rust-realworld && PATH="$(RUSTUP_BIN):$$PATH" cargo build --quiet
 	cd test/go && go run .
 	cd test/rust && PATH="$(RUSTUP_BIN):$$PATH" cargo run --quiet
 	cd test/cs && dotnet run
@@ -233,20 +249,25 @@ generated-current: test
 	fi
 	@echo "generated/ tree is current"
 
+# bench/corpus holds two units (one package per unit, SPEC §3.2), so the
+# corpus commands name each unit's file rather than the directory
 check: bin/schema
 	./bin/schema check examples
 	./bin/schema check examples128
-	./bin/schema check bench/corpus
+	./bin/schema check bench/corpus/Bench.schema
+	./bin/schema check bench/corpus/RealWorld.schema
 
 id: bin/schema
 	./bin/schema id examples
 	./bin/schema id examples128
-	./bin/schema id bench/corpus
+	./bin/schema id bench/corpus/Bench.schema
+	./bin/schema id bench/corpus/RealWorld.schema
 
 fmt: bin/schema
 	./bin/schema fmt examples
 	./bin/schema fmt examples128
-	./bin/schema fmt bench/corpus
+	./bin/schema fmt bench/corpus/Bench.schema
+	./bin/schema fmt bench/corpus/RealWorld.schema
 
 clean:
 	rm -rf bin build generated

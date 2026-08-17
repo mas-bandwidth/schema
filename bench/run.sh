@@ -140,7 +140,9 @@ DOTNET_VERSION="$(dotnet --version 2>/dev/null | head -1 || true)"
 # -Itest: the corpus maps Vec3/Quat onto the hand-written C++ types in
 # test/vec_math.h (SPEC §4.2 native type mapping), so the generated C++ headers
 # include it. C++ only — the C target ignores the mapping.
-COMMON_FLAGS="-std=c++17 -Wall -Wextra -Werror -ffp-contract=off -fno-rtti -Igenerated/cpp -Itest -I$SERIALIZE"
+# -Igenerated/bench/cpp: the bench-corpus generated code (RealWorldWire.h —
+# the §1.7 realistic snapshot the real_packet rows measure).
+COMMON_FLAGS="-std=c++17 -Wall -Wextra -Werror -ffp-contract=off -fno-rtti -Igenerated/cpp -Igenerated/bench/cpp -Itest -I$SERIALIZE"
 
 # g++ (13.3 checked) rejects two things in the GENERATED code that clang never
 # flags: -Wclass-memaccess (branch zeroing memsets non-trivial generated
@@ -169,7 +171,9 @@ DEBUG_FLAGS="-O0 -g -DSERIALIZE_DEBUG $COMMON_FLAGS"
 # header, so this row carries a call boundary the header-only C++ runtime does
 # not have. That is a property of the runtime's packaging, not of the
 # generated code; bench/README.md says so where the numbers live.
-C_COMMON_FLAGS="-std=c99 -Wall -Wextra -Werror -Igenerated/c -I$SERIALIZE_C"
+# -Igenerated/bench/c: the bench-corpus generated code (RealWorldWire.h —
+# the §1.7 realistic snapshot the real_packet rows measure).
+C_COMMON_FLAGS="-std=c99 -Wall -Wextra -Werror -Igenerated/c -Igenerated/bench/c -I$SERIALIZE_C"
 C_RELEASE_FLAGS="-$OPT_LEVEL -DNDEBUG -DBENCH_OPT=\"$OPT_LEVEL\" $C_COMMON_FLAGS"
 C_DEBUG_FLAGS="-O0 -g $C_COMMON_FLAGS"
 

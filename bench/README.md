@@ -5,7 +5,8 @@ Measures three families per language, every row labelled with its family
 
 - **`gen`** — the schema-GENERATED code against its serialize runtime: write
   and read over the pinned corpus instances (the same instances
-  `test/main.cpp` pins to `testdata/wire/*.bin`) plus one large synthetic
+  `test/main.cpp` pins to `testdata/wire/*.bin`, plus `real_packet` — the
+  §1.7 realistic snapshot `test/bench/main.cpp` pins) and one large synthetic
   message batch (4096 mixed messages through the Message dispatch surface)
   for steady-state throughput.
 - **`rt`** — the serialize runtime API called BY HAND: the four
@@ -148,6 +149,7 @@ it. Human-readable tables live beside the CSVs in `bench/results/`.
 | probebits         | probebits             | odd bit widths (9/33/64) + full-range ints        |
 | probearray        | probearray            | nested samples, both branch arms, counted arrays  |
 | testdata          | testdata              | the everything message (floats, strings, arrays)  |
+| real_packet       | real_packet           | the §1.7 realistic snapshot (`bench/corpus/RealWorld.schema`): ~93 riding individually serialized small fields of every scalar kind, 204 B, 0% bulk share by bits; pin = the all-defaults instance |
 | message_batch     | (message_stream golden checks the dispatch wire) | 4096 mixed messages + terminator through WriteMessage/ReadMessage, steady-state |
 
 Family `rt` (hand-written runtime API, oracle-gated per §1.5; iteration
