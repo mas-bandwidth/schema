@@ -29,6 +29,9 @@ import (
 // emitStructFunctions emits MaxBits/MaxBytes, the Zero helper, and the split
 // Write/Read pair for a type or message.
 func (g *gen) emitStructFunctions(st *ir.Struct) {
+	// the statically byte-aligned [N]uint8 fields of THIS struct take the
+	// serializeBytes bulk path (a per-struct alignment proof)
+	g.bulkBytes = ir.AlignedFixedByteArrays(st)
 	maxBits := ir.MaxBitsStruct(st)
 	g.pf("// %sMaxBits is the longest wire path; align pads at worst case (SPEC §6.1).\n", st.Name)
 	g.pf("// %sMaxBytes is rounded up to the 8-byte write-buffer granularity.\n", st.Name)
@@ -354,7 +357,30 @@ func (g *gen) emitWriteFoldedBig(expr, lo, hi string, min, max *big.Int, guardLo
 func (g *gen) emitWriteField(f *ir.Field, ind string) {
 	name := "value." + ir.GoExportName(f.Name)
 	if f.Array != ir.ArrayNone {
-		g.errf("the JS backend does not serialize arrays yet — field %s is out of this backend's current surface", f.Name)
+		bound := g.renderNum(f.ArrayExpr, big.NewInt(f.ArrayBound))
+		if g.bulkBytes[f] {
+			// statically byte-aligned [N]uint8 (ir.AlignedFixedByteArrays):
+			// serializeBytes aligns zero bits here and bulk-copies —
+			// byte-identical to the per-byte loop. subarray over the SCHEMA
+			// bound is the C# AsSpan(0, N) slice; the short-lived view is the
+			// one storage slice JavaScript cannot take without allocating.
+			g.call(ind, fmt.Sprintf("stream.serializeBytes(%s.subarray(0, %s))", name, bound),
+				" // byte-aligned [N]uint8 — bulk copy, wire-identical to the per-byte loop")
+			return
+		}
+		if f.Array == ir.ArrayCounted {
+			count := name + "Count"
+			g.emitWriteFoldedNum(count, fmt.Sprintf("%d", f.ArrayMin), bound,
+				big.NewInt(f.ArrayMin), big.NewInt(f.ArrayBound), true,
+				" // the count guards the loop (§6.3); out-of-contract writes are refused", ind)
+			g.pf("%sfor (let i = 0; i < %s; i++) {\n", ind, count)
+		} else {
+			// the SCHEMA bound, never the storage's length: reassigned-short
+			// storage must fail loudly, not silently write fewer elements
+			g.pf("%sfor (let i = 0; i < %s; i++) {\n", ind, bound)
+		}
+		g.emitWriteScalar(f, name+"[i]", ind+"  ")
+		g.pf("%s}\n", ind)
 		return
 	}
 	g.emitWriteScalar(f, name, ind)
@@ -479,7 +505,19 @@ func (g *gen) emitWriteScalar(f *ir.Field, name, ind string) {
 		g.pf("%s%s.value = %s;\n", ind, scratch, name)
 		g.call(ind, fmt.Sprintf("stream.serializeDouble(%s)", scratch), "")
 	case ir.TString, ir.TBytes:
-		g.errf("the JS backend does not serialize string/bytes fields yet — this field is out of the backend's current surface")
+		// length in [0, N], align, then the used bytes — the classic
+		// serialize_string framing over a pre-allocated buffer (SPEC §4.7),
+		// COMPOSED FROM PRIMITIVES, not the runtime's serializeString: the
+		// schema contract is writer-trusted UTF-8 with no read-path decode
+		// (SPEC §4.7), and serializeString's read side is UTF-8-strict — it
+		// would refuse wire every other target accepts. The length guard runs
+		// BEFORE the slice, so a stale length never reaches subarray (§6.3).
+		// Interior nulls are writer misuse; the read side rejects them (§4.7).
+		length := name + "Length"
+		g.emitWriteFoldedNum(length, "0", g.renderNum(f.Type.SizeExpr, big.NewInt(f.Type.Size)),
+			big.NewInt(0), big.NewInt(f.Type.Size), true,
+			" // the length guards the slice (§6.3); out-of-contract writes are refused", ind)
+		g.call(ind, fmt.Sprintf("stream.serializeBytes(%s.subarray(0, %s))", name, length), "")
 	case ir.TNamed:
 		switch ref := f.Type.Ref.(type) {
 		case *ir.Enum:
@@ -569,7 +607,27 @@ func fmtNumCast(f *ir.Field, name string) string {
 func (g *gen) emitReadField(f *ir.Field, ind string) {
 	name := "value." + ir.GoExportName(f.Name)
 	if f.Array != ir.ArrayNone {
-		g.errf("the JS backend does not serialize arrays yet — field %s is out of this backend's current surface", f.Name)
+		bound := g.renderNum(f.ArrayExpr, big.NewInt(f.ArrayBound))
+		if g.bulkBytes[f] {
+			// the write twin's bulk path exactly: zero align bits consumed
+			// here, then a bulk copy into the N bytes (see emitWriteField)
+			g.call(ind, fmt.Sprintf("stream.serializeBytes(%s.subarray(0, %s))", name, bound),
+				" // byte-aligned [N]uint8 — bulk copy, wire-identical to the per-byte loop")
+			return
+		}
+		if f.Array == ir.ArrayCounted {
+			count := name + "Count"
+			scratch := g.numScratch()
+			g.call(ind, fmt.Sprintf("stream.serializeInt(%s, %d, %s)", scratch, f.ArrayMin, bound),
+				" // the count guards the loop (§6.3)")
+			g.pf("%s%s = %s.value;\n", ind, count, scratch)
+			g.pf("%sfor (let i = 0; i < %s; i++) {\n", ind, count)
+		} else {
+			// the SCHEMA bound, never the storage's length (see the write twin)
+			g.pf("%sfor (let i = 0; i < %s; i++) {\n", ind, bound)
+		}
+		g.emitReadScalar(f, name+"[i]", ind+"  ")
+		g.pf("%s}\n", ind)
 		return
 	}
 	g.emitReadScalar(f, name, ind)
@@ -694,7 +752,24 @@ func (g *gen) emitReadScalar(f *ir.Field, name, ind string) {
 		g.call(ind, fmt.Sprintf("stream.serializeDouble(%s)", scratch), "")
 		g.pf("%s%s = %s.value;\n", ind, name, scratch)
 	case ir.TString, ir.TBytes:
-		g.errf("the JS backend does not serialize string/bytes fields yet — this field is out of the backend's current surface")
+		// the bool is checked BEFORE the slice: a hostile length never
+		// reaches subarray (a successful ranged read guarantees [0, N])
+		length := name + "Length"
+		scratch := g.numScratch()
+		g.call(ind, fmt.Sprintf("stream.serializeInt(%s, 0, %s)",
+			scratch, g.renderNum(f.Type.SizeExpr, big.NewInt(f.Type.Size))),
+			" // the length guards the slice (§6.3)")
+		g.pf("%s%s = %s.value;\n", ind, length, scratch)
+		g.call(ind, fmt.Sprintf("stream.serializeBytes(%s.subarray(0, %s))", name, length), "")
+		if f.Type.Kind == ir.TString {
+			// the interior-null rule is generated-code validation (SPEC §4.7);
+			// the serializeBytes bool above already surfaced a truncated
+			// stream as the stream's own latched error, so this verdict only
+			// ever judges bytes that arrived — false, nothing latched
+			g.pf("%sfor (let i = 0; i < %s; i++) {\n", ind, length)
+			g.pf("%s  if (%s[i] === 0) { // an interior null is content the read refuses (SPEC §4.7)\n", ind, name)
+			g.pf("%s    return false;\n%s  }\n%s}\n", ind, ind, ind)
+		}
 	case ir.TNamed:
 		switch ref := f.Type.Ref.(type) {
 		case *ir.Enum:

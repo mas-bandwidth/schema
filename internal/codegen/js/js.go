@@ -123,6 +123,12 @@ type gen struct {
 	// ir.FileDeps tracks).
 	imports map[string]map[string]bool
 
+	// bulkBytes marks the statically byte-aligned [N]uint8 fields of the
+	// struct whose functions are being emitted (ir.AlignedFixedByteArrays) —
+	// the serializeBytes bulk path; nil inside view functions, whose field
+	// lists embed at unknown alignment (a per-struct proof never transfers).
+	bulkBytes map[*ir.Field]bool
+
 	needNumScratch  bool
 	needBigScratch  bool
 	needBoolScratch bool
@@ -422,6 +428,12 @@ func (g *gen) emitStorageField(f *ir.Field) {
 			// (SPEC §6.1): every buffer exists at construction
 			g.addRef(st.Name, st.Name)
 			g.pf("    this.%s = Array.from({ length: %s }, () => new %s());%s\n", name, bound, st.Name, g.fieldComment(f))
+		} else if isByteElem(f.Type) {
+			// uint8 arrays store as Uint8Array — the runtime's own byte-buffer
+			// type (serializeBytes' contract), so the aligned bulk path can
+			// hand the buffer over whole; element access is Number as in any
+			// array, and the wire is identical either way
+			g.pf("    this.%s = new Uint8Array(%s);%s\n", name, bound, g.fieldComment(f))
 		} else {
 			g.pf("    this.%s = new Array(%s).fill(%s);%s\n", name, bound, g.zeroValue(f.Type), g.fieldComment(f))
 		}
@@ -462,6 +474,12 @@ func (g *gen) zeroValue(t ir.FieldType) string {
 		return "0n"
 	}
 	return "0"
+}
+
+// isByteElem reports a uint8 element type — the arrays that store as
+// Uint8Array (the runtime's byte-buffer type).
+func isByteElem(t ir.FieldType) bool {
+	return t.Kind == ir.TInt && !t.Signed && t.Width == 8
 }
 
 // isBigStorage reports whether a field type stores as BigInt (the seam:
