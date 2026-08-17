@@ -1,0 +1,11 @@
+boundary pre-control-A 2026-08-17T22:39:59Z load= 1.16 2.13 2.85 
+boundary r0-cpp 2026-08-17T22:41:24Z load= 1.32 1.97 2.72 
+boundary r0-c 2026-08-17T22:41:41Z load= 1.70 2.02 2.73 
+boundary r0-js 2026-08-17T23:00:46Z load= 3.62 3.41 3.04 
+boundary r1-cpp 2026-08-17T23:01:16Z load= 5.45 3.93 3.24 
+boundary r1-c 2026-08-17T23:01:31Z load= 4.61 3.82 3.22 
+boundary r1-js 2026-08-17T23:19:05Z load= 2.06 2.15 2.42 
+boundary r2-cpp 2026-08-17T23:19:30Z load= 1.79 2.07 2.38 
+boundary r2-c 2026-08-17T23:19:45Z load= 1.89 2.08 2.38 
+boundary r2-js 2026-08-17T23:49:43Z load= 2.90 3.29 2.86 
+boundary control-B 2026-08-17T23:50:52Z load= 2.72 3.19 2.86 
