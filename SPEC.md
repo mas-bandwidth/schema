@@ -1173,52 +1173,46 @@ on it: a table bin from a different protocol id still reads under the
 permissive contract, which is the point.
 ## 5. Trust model — inherited
 
-Reads validate everything — integer ranges, enum bounds, alignment padding, constants,
-reserved bits, count bounds, string lengths, the interior-null rule, **and buffer
-exhaustion: running out of input mid-read is a read failure like any other** *(added
-2026-08-05 — it was the one malformed-input class the list omitted)* — and fail on any
-violation, because network input is the trust boundary. Generated read code never lets a
-value that controls iteration go unchecked before use (serialize.go documents this exact DoS
-vector). **Read termination** *(DECIDED — corner-pins list, Glenn 2026-08-05: "Yes, sounds good.")*: `Read` consumes exactly the encoded
-bits and reports bits consumed (so callers can frame several objects in one buffer); bytes
-remaining after the last field are the caller's concern, not a validation failure —
-`ReadMessage` streams end on the `None` tag by design.
+**Reads validate everything** — integer ranges, enum bounds, alignment
+padding, constants, reserved bits, count bounds, string lengths, the
+interior-null rule, and buffer exhaustion (running out of input mid-read is a
+read failure like any other) — and fail on any violation, because network
+input is the trust boundary. Generated read code never lets a value that
+controls iteration go unchecked before use.
 
-**Writes assume trusted data — DOCTRINE, RATIFIED (Glenn, 2026-08-15, the 08-14 audit's
-fork 3, verbatim): *"this is an intentional design choice of serialize. the write path is
-trusted, and it's your responsibility as the user of serialize library to write correctly.
-asserts in languages that support them in debug only."*** The audit had found the
-write-side philosophy split across ports — one philosophy, many sites (an over-wide value
-masked in three ports, packed raw in two, the stray bits corrupting the following field) —
-and put the reversal on the table; Glenn kept the doctrine. Writer inputs are stated as
-OBLIGATIONS, not defined behaviors: the spec owes a conforming writer exact bytes and owes
-a misbehaving writer nothing. The read side is untouched by the doctrine — readers face
-untrusted data and keep every mandated check above.
+**Read termination:** `Read` consumes exactly the encoded bits and reports
+bits consumed, so callers can frame several objects in one buffer; bytes
+remaining after the last field are the caller's concern, not a validation
+failure — `ReadMessage` streams end on the `None` tag by design.
 
-Within that doctrine, misuse surfaces by each runtime's own convention: C++ debug asserts
-(unchecked in release), **Go and Rust panic and C# throws on misuse in all build modes** —
-the generated write code's job is to make misuse impossible by construction (bounds come from
-the schema). Costlier contracts assert in DEBUG ONLY everywhere (the §4.7 UTF-8
-well-formedness contract is the type case: an O(n) check no release path should carry).
-Ranges are trusted inputs everywhere: generated code never feeds
-attacker-influenced values as min/max.
+**Writes assume trusted data.** The write path is trusted; writing correctly
+is the caller's responsibility. Writer inputs are stated as OBLIGATIONS, not
+defined behaviors: the spec owes a conforming writer exact bytes and owes a
+misbehaving writer nothing. The read side is untouched by this doctrine —
+readers face untrusted data and keep every mandated check above.
 
-**Read failure leaves the output object in an unspecified state**; callers use it only on
-success. **Read success fully initializes it**: fields in untaken branches are set to their
-zero values — 0, 0.0, false, empty bytes, zero count, **`None` for an enum, recursively
-zeroed for a nested type, element-wise zeroed for a fixed array** *(the three cases DECIDED — corner-pins list, Glenn
-2026-08-05; whole-object comparison needs them defined)*. **ZERO values, not specified
-defaults** — the defaults of §4.2 are storage initialization at construction; the wire
-contract stays a pure function of the encodings *(stated 2026-08-05 when defaults landed;
-whether untaken branches should instead restore defaults is Glenn's call if a real case
-ever wants it)*. **Scope, PROPOSED (found by the 2026-08-05 emission audit):** *fully
-initializes* is relative to a zero-initialized output object — elements past a used count
-and bytes past a used length are not rewritten by a successful read, so a REUSED output
-object keeps stale tail data there (the classic runtime's own prefix convention).
-Whole-object comparison in the conformance matrix is defined over a fresh output or the
-used prefix; if tail-clearing on read is ever wanted instead, it is a generated-code
-change, priced then. Write reads only taken fields.
-This is what makes whole-object comparison in the conformance matrix well-defined.
+Within that doctrine, misuse surfaces by each runtime's own convention: C and
+C++ debug-assert (unchecked in release); Go and Rust panic and C# throws on
+misuse in all build modes. The generated write code's job is to make misuse
+impossible by construction — bounds come from the schema. Costlier contracts
+assert in DEBUG ONLY everywhere (§4.7's UTF-8 well-formedness contract is the
+type case: an O(n) check no release path should carry). Ranges are trusted
+inputs everywhere: generated code never feeds attacker-influenced values as
+min/max.
+
+**Read failure leaves the output object in an unspecified state**; callers
+use it only on success. **Read success fully initializes it**: fields in
+untaken branches are set to their zero values — 0, 0.0, false, empty bytes,
+zero count, `None` for an enum, recursively zeroed for a nested type,
+element-wise zeroed for a fixed array. **Zero values, not specified
+defaults** — the defaults of §4.2 are storage initialization at construction;
+the wire contract stays a pure function of the encodings. *Fully initializes*
+is relative to a zero-initialized output object: elements past a used count
+and bytes past a used length are not rewritten by a successful read, so a
+REUSED output object keeps stale tail data there (the classic runtime's own
+prefix convention). Whole-object comparison in the conformance matrix is
+defined over a fresh output or the used prefix. Write reads only taken
+fields.
 
 ## 6. Generated code
 
@@ -1226,16 +1220,17 @@ This is what makes whole-object comparison in the conformance matrix well-define
 
 Per `type`, per target:
 
-1. **The type itself.** Storage, complete — **the integer family names its storage directly**
-   (Glenn, 2026-08-05: the type name fixes the storage, the optional range refines the wire);
-   everything else derives by fixed rule:
+1. **The type itself.** Storage, complete — the integer family names its
+   storage directly (the type name fixes the storage; the optional range
+   refines the wire); everything else derives by fixed rule:
 
    | schema | C++ | C# | Go | Rust |
    |---|---|---|---|---|
    | `int8/16/32/64` (bare or ranged) | `int8_t/16/32/64_t` | `sbyte/short/int/long` | `int8/16/32/64` | `i8/16/32/64` |
    | `uint8/16/32/64` (bare or ranged) | `uint8_t/16/32/64_t` | `byte/ushort/uint/ulong` | `uint8/16/32/64` | `u8/16/32/64` |
    | `int128` (ranged) / `uint128` (raw) | `serialize::int128_t` / `serialize::uint128_t` (native `__int128` or the emulated pair) | `Int128Value` / `UInt128Value` (the emulated pair, every TFM) | `serialize.Int128` / `serialize.Uint128` (the two-qword pair) | `i128` / `u128` (native) |
-   | `fixed(I, F)` (SIGNED, ranged) | signed integer of I+F bits holding the RAW scaled value, in every target: `int8_t`..`int64_t`, `serialize::int128_t` at 128 | `sbyte`..`long`, `Int128Value` at 128 | `int8`..`int64`, `serialize.Int128` at 128 | `i8`..`i64`, `i128` at 128 |
+   | `fixed(I, F)` (signed, ranged) | signed integer of I+F bits holding the RAW scaled value, in every target: `int8_t`..`int64_t`, `serialize::int128_t` at 128 | `sbyte`..`long`, `Int128Value` at 128 | `int8`..`int64`, `serialize.Int128` at 128 | `i8`..`i64`, `i128` at 128 |
+   | `ufixed(I, F)` (unsigned, ranged) | unsigned integer of I+F bits holding the RAW scaled value: `uint8_t`..`uint64_t`, `serialize::uint128_t` at 128 | `byte`..`ulong`, `UInt128Value` at 128 | `uint8`..`uint64`, `serialize.Uint128` at 128 | `u8`..`u64`, `u128` at 128 |
    | `bits(N≤32)` / `bits(N>32)` | `uint32_t` / `uint64_t` | `uint` / `ulong` | `uint32` / `uint64` | `u32` / `u64` |
    | `bool` | `bool` | `bool` | `bool` | `bool` |
    | `float32` / `float64` (attributed or bare) | `float` / `double` | `float` / `double` | `float32` / `float64` | `f32` / `f64` |
@@ -1248,181 +1243,174 @@ Per `type`, per target:
    | `[Min..N]T` | as `[<=N]T` (count validated to [Min, N]) | as `[<=N]T` | as `[<=N]T` | as `[<=N]T` |
    | `f Inner` (a named type) | `Inner` | `Inner` | `Inner` | `Inner` |
 
-   **The storage principle behind every row — DECIDED (Glenn, 2026-08-05):** *"we don't do
-   anything dynamically sized by design in the schema"* — *"it's always pre-allocated fixed
-   sized buffers on sender and receiver."* Generated storage never heap-allocates per
-   message in any target: every buffer is fixed at its declared capacity with a used
-   length/count beside it — no Go slices as storage, no Rust `Vec`, no growing containers.
-   *(The table's C#/Go/Rust rows used dynamic containers until the principle was stated;
-   corrected the same day.)*
+   The C target mirrors the C++ storage rules in C's own types; JavaScript
+   storage is `Number` for wire widths of 32 bits or fewer and `BigInt` for
+   64 and 128 (the serialize.js value-domain seam).
 
-   Enums are integer-backed named types in every target because `[max = ...]` headroom makes
-   non-variant values wire-legal; a native Rust `enum` cannot hold them — C#'s `enum E : uint`
-   can, natively, which is why it needs no newtype.
+   **The storage principle behind every row: nothing is dynamically sized.**
+   Generated storage never heap-allocates per message in any target: every
+   buffer is fixed at its declared capacity with a used length/count beside
+   it — no Go slices as storage, no Rust `Vec`, no growing containers.
 
-2. **`Write(buffer, object) -> bytesWritten`** — straight-line write code in wire order.
-3. **`Read(buffer, object) -> ok/error`** — straight-line read code with full validation, in
-   each runtime's native error idiom (`bool` in C++, `bool` + latched `Error` in C#, `error`
-   in Go, `Result` in Rust, `bool` + the stream's latched `error` in JS — generated
-   validation refusals return `false` latching nothing, so callers tell the two
-   channels apart exactly as in C#). The consumed size (§5) surfaces per target idiom — a success
-   value that carries bits consumed where the idiom allows, an out-parameter where it does
-   not (C++'s `bool`); pinned per backend at implementation.
-4. **`MaxBits` / `MaxBytes`** — constants: the longest path through the schema, with
-   worst-case (7-bit) padding assumed at each alignment point. Size write buffers from
-   `MaxBytes`. Conservative is correct for a buffer bound. **`MaxBytes` is rounded up to
-   the 8-byte write-buffer granularity every serialize runtime requires** *(2026-08-05,
-   found by the backend audit: every runtime asserts/panics on write buffers that are not
-   a multiple of 8, so an exact-bytes constant advertised for buffer sizing was a
-   guaranteed trap — the constant's one documented use)*.
+   Enums are integer-backed named types in every target because `[max = ...]`
+   headroom makes non-variant values wire-legal; a native Rust `enum` cannot
+   hold them — C#'s `enum E : uint` can, natively, which is why it needs no
+   newtype.
+
+2. **`Write(buffer, object) -> bytesWritten`** — straight-line write code in
+   wire order.
+3. **`Read(buffer, object) -> ok/error`** — straight-line read code with full
+   validation, in each runtime's native error idiom (`bool` in C and C++,
+   `bool` + latched `Error` in C#, `error` in Go, `Result` in Rust, `bool` +
+   the stream's latched `error` in JS — generated validation refusals return
+   `false` latching nothing, so callers tell the two channels apart exactly
+   as in C#). The consumed size (§5) surfaces per target idiom — a success
+   value that carries bits consumed where the idiom allows, an out-parameter
+   where it does not.
+4. **`MaxBits` / `MaxBytes`** — constants: the longest path through the
+   schema, with worst-case (7-bit) padding assumed at each alignment point.
+   Size write buffers from `MaxBytes`; conservative is correct for a buffer
+   bound. **`MaxBytes` is rounded up to the 8-byte write-buffer granularity
+   every serialize runtime requires.**
 5. **`ProtocolId`** — one constant per unit (§3).
-6. **For a unit with `message` declarations (§4.8):** the `MessageType` enum (`None = 0`,
-   then the messages sorted by name — DECIDED, §4.8),
+6. **For a unit with `message` declarations (§4.8):** the `MessageType` enum
+   (`None = 0`, then the messages sorted by name),
    `WriteMessage`/`ReadMessage` with the tag framing, a message-level
-   `MaxBytes` (tag plus the largest message), and the dispatch surface in each language's
-   own idiom — representation per target, behavior identical. **The Go dispatch (BUILT
-   2026-08-05): a `Message` interface the message structs satisfy, `nil` as the None
-   terminator, a type switch — and reads land in a caller-supplied `MessageStorage`
-   struct holding one field per message, the Go stand-in for the C++ tagged union, so
-   the receive path never heap-allocates per message (the storage principle above,
-   honored by the dispatch surface too).** In every target, `WriteMessage` validates the
-   message BEFORE the tag rides the wire — an out-of-set value writes nothing, because a
-   tag with no payload would desynchronize the stream — and both dispatch functions
-   frame the tag through the `WriteMessageType`/`ReadMessageType` pair (one source).
-7. **For a unit with `object` declarations (§4.8):** the `ObjectType` enum (`None = 0`,
-   same deterministic order) and, per object, the DECIDED generated family — the full
-   simulation struct, the Deep and Shallow wire structs with their split read/write pairs,
-   the Interpolate struct, and the `Quantize`/`Unquantize` mapping pair (§4.8's artifact
-   table). *(This list ended at item 6 while §4.8's object artifacts were DECIDED — an
-   entire generated family missing from the generated-output contract; completed
-   2026-08-05.)*
+   `MaxBytes` (tag plus the largest message), and the dispatch surface in
+   each language's own idiom — representation per target, behavior identical.
+   The Go dispatch: a `Message` interface the message structs satisfy, `nil`
+   as the None terminator, a type switch — and reads land in a
+   caller-supplied `MessageStorage` struct holding one field per message, the
+   Go stand-in for the C++ tagged union, so the receive path never
+   heap-allocates per message. In every target, `WriteMessage` validates the
+   message BEFORE the tag rides the wire — an out-of-set value writes
+   nothing, because a tag with no payload would desynchronize the stream —
+   and both dispatch functions frame the tag through the
+   `WriteMessageType`/`ReadMessageType` pair (one source).
+7. **For a unit with `object` declarations (§4.8):** the `ObjectType` enum
+   (`None = 0`, same deterministic order) and, per object, the generated view
+   family — the full simulation struct, the Deep and Shallow wire structs
+   with their split read/write pairs, the Interpolate struct, and the
+   `Quantize`/`Unquantize` mapping pair (§4.8's artifact table).
 
-**Generated symbol naming — DECIDED (corner-pins list, Glenn 2026-08-05):** functions attach per target
-idiom — C++: free functions `WriteShip(...)` in `namespace <package>`; C#:
-`static class Schema` members in `namespace <Package>`; Go: free functions
-`WriteShip(stream, &ship)` in package `<package>` (no overloading — the type name is in the
-function name in every target for uniformity); Rust: module functions in `mod <package>`;
-JS: exported free functions `WriteShip(stream, value)`, one ES module per schema file.
-The `package` ident maps to the target's namespace/module/package concept verbatim.
-**JS storage members are PascalCase via the same mapping as the Go target** — not
-camelCase — so the checker's collision registry covers JS with zero new rules; the
-generated function names are the family's own `WriteX`/`ReadX`/`ZeroX`/`QuantizeX`
-(the runtime's methods stay camelCase — the seam is the stream parameter).
+**Generated symbol naming:** functions attach per target idiom — C++: free
+functions `WriteShip(...)` in `namespace <package>`; C#: `static class
+Schema` members in `namespace <Package>`; Go: free functions
+`WriteShip(stream, &ship)` in package `<package>` (no overloading — the type
+name is in the function name in every target, for uniformity); Rust: module
+functions in `mod <package>`; JS: exported free functions
+`WriteShip(stream, value)`, one ES module per schema file. The `package`
+ident maps to the target's namespace/module/package concept verbatim. JS
+storage members are PascalCase via the same mapping as the Go target — not
+camelCase — so the checker's collision registry covers JS with zero new
+rules; the generated function names are the family's own
+`WriteX`/`ReadX`/`ZeroX`/`QuantizeX` (the runtime's methods stay camelCase —
+the seam is the stream parameter).
 
-**There is no generated measure function** — DECIDED (Glenn, 2026-08-04: measure *"was
-always a bit of a hack"*). `Write` returns the actual size, `MaxBytes` sizes buffers, and
-that covers the real uses. Anyone who genuinely needs per-object sizing can hand-write
-stream code beside the generated code — the runtimes are unchanged and the two mix freely on
-the same wire. If a real need appears, an opt-in exact measure (a generated running bit
-count — the runtimes' `MeasureStream` is deliberately conservative and would not be used) is
-a clean later addition.
+**There is no generated measure function.** `Write` returns the actual size,
+`MaxBytes` sizes buffers, and that covers the real uses. Anyone who genuinely
+needs per-object sizing can hand-write stream code beside the generated
+code — the runtimes are unchanged and the two mix freely on the same wire. If
+a real need appears, an opt-in exact measure (a generated running bit count)
+is a clean later addition.
 
-The generated API mirrors serialize.modern's `schema<...>` members — `Write`, `Read`,
-`MaxBits`, `MaxBytes` — so the two feel like one family.
+The generated API mirrors serialize.modern's `schema<...>` members — `Write`,
+`Read`, `MaxBits`, `MaxBytes` — so the two feel like one family.
 
 **Canonical encoding is a CONTRACT:** for a given schema and target, equal
-post-quantization values produce identical bytes — deterministically, forever, across
-compiler versions; the golden-wire gate is what pins it (§3.1, §7.2). Consumers may
-byte-compare encoded forms as a dirty/equality check; a canonicalization slip under that
-use is a correctness bug, not a size regression. This was always true by construction; it
-is stated so it cannot be quietly traded away.
+post-quantization values produce identical bytes — deterministically,
+forever, across compiler versions; the golden-wire gate is what pins it
+(§3.1, §7.2). Consumers may byte-compare encoded forms as a dirty/equality
+check; a canonicalization slip under that use is a correctness bug, not a
+size regression.
 
-*(A "derives" block — three generated helper functions, `Equal`/`Checksum`/`Print`, from
-the external evaluation round — stood here for part of 2026-08-05 and was **DISCARDED on
-Glenn's word the same day:** *"those concepts are from [the external engine]. Discard. we
-don't use them."* / *"discard and throw in bin."* Git holds the design if a delta-pass need ever
-resurrects any of it under our own name.)*
+**Alignment is stream-relative**: a type containing `align`, `string` or
+`bytes` has layout dependent on its entry bit offset. Generated functions are
+correct at any entry offset; the same type works standalone and nested.
+`MaxBits` covers the worst case.
 
-**Alignment is stream-relative**: a type containing `align`, `string` or `bytes` has
-layout dependent on its entry bit offset. Generated functions are correct at any entry
-offset; the same type works standalone and nested. `MaxBits` covers the worst case.
+**Output layout.** Each target emits one generated file per schema file —
+`examples/Constants.schema` → `generated/cpp/Constants.h` — so the generated
+tree mirrors the schema tree a person navigates.
 
-**Output layout — REVISED for C++ at implementation, DECIDED (Glenn, 2026-08-05):** the
-C++ target emits **one header per schema file** — `examples/Constants.schema` →
-`generated/cpp/Constants.h` — everything inside `namespace <package>`, **`#pragma once`**
-(his call; *"if beneficial, you can use both sentinels and pragma once"* — pragma alone
-until portability demands both), with cross-file `#include`s derived from actual
-references, so the generated tree mirrors the schema tree a person navigates.
+- **C++: the header splits into a data/wire pair.** `<Base>.h` is the DATA
+  header (constants, enums, flags, structs, object view families,
+  MaxBits/MaxBytes bounds, the Message storage surface and `GetMessageType`)
+  and includes `serialize.h` only when a storage type demands it
+  (int128/fixed); `<Base>Wire.h` is the WIRE header (`Write*`/`Read*`,
+  `Quantize`/`Unquantize`, the tag pairs and `WriteMessage`/`ReadMessage`)
+  and includes `<Base>.h` plus `serialize.h`, with cross-file wire deps
+  riding the deps' wire headers. The split exists so a consumer can base its
+  math types on generated structs without inheriting the serialize runtime at
+  all (a codebase may vendor an older serialize generation whose macro names
+  collide): data consumers include `<Base>.h`; wire consumers include
+  `<Base>Wire.h`. A unit may not contain files named both `X` and `XWire` —
+  the emitter refuses the collision. Everything sits in
+  `namespace <package>`, under `#pragma once`, with cross-file `#include`s
+  derived from actual references.
+- **Go:** one `.go` file per schema file, all in `package <package>` — Go
+  packages are order-free across files, so there is no topo sort and no
+  include graph to refuse.
+- **Rust:** one module per schema file (lowercased basename) plus a generated
+  `lib.rs` declaring and glob re-exporting them.
+- **C#:** one `.cs` file per schema file, types at namespace level and every
+  function and constant on `public static partial class Schema`, in
+  `namespace <Package>`.
+- **JavaScript:** one ES module per schema file, cross-file `import`s derived
+  from actual references; classes whose constructors initialize every member
+  in declaration order (specified defaults live in construction; `ZeroX` is
+  the §5 zero form). **Generated JS never imports the serialize runtime** —
+  every wire call is a method on the stream parameter, so no wiring file
+  exists and the checked/production fork stays where it lives, in the
+  runtime's own load-time mode selection (generated code never reads
+  `NODE_ENV`).
 
-**REVISED AGAIN 2026-08-11 — the C++ header SPLITS into a data/wire pair,** decided
-during the space game integration and announced in channel before landing: `<Base>.h`
-is the DATA header (constants, enums, flags, structs, object view families,
-MaxBits/MaxBytes bounds, the Message storage surface and `GetMessageType`) and includes
-`serialize.h` only when a storage type demands it (int128/fixed); `<Base>Wire.h` is the
-WIRE header (`Write*`/`Read*`, `Quantize`/`Unquantize`, the tag pairs and
-`WriteMessage`/`ReadMessage`) and includes `<Base>.h` plus `serialize.h`, with
-cross-file wire deps riding the deps' wire headers. **The finding that forced it:** the
-space game vendors an older serialize as `core_serialize.h`, and both serialize
-generations claim the same macro namespace (`write_int`, `serialize_int`, …14+ names) —
-so a game basing its MATH TYPES on generated structs must be able to consume the data
-half without inheriting the serialize runtime at all. Data consumers include `<Base>.h`;
-wire consumers include `<Base>Wire.h`. A unit may not contain files named both `X` and
-`XWire` (the emitter refuses the collision). Wire bytes are untouched by the split —
-the full four-language suite and every wire golden held across the change. *(This
-paragraph previously said one file per target per unit — `<package>.schema.h` — which
-stands as the sketch for the single-file targets until each is implemented; per-file
-output is the decided C++ shape.)* **The Go target (BUILT 2026-08-05) mirrors it: one
-`.go` file per schema file, all in `package <package>` — Go packages are order-free
-across files, so there is no topo sort and no include graph to refuse. The Rust target
-(BUILT 2026-08-06): one module per schema file (lowercased basename) plus a generated
-`lib.rs` declaring and glob re-exporting them; the C# target (BUILT 2026-08-06): one
-`.cs` file per schema file, types at namespace level and every function and constant on
-`public static partial class Schema`, in `namespace <Package>`. The JS target (BUILT
-2026-08-16): one ES module per schema file, cross-file `import`s derived from actual
-references like the C headers; storage is Number for wire widths of 32 bits or fewer
-and BigInt for 64 and 128 — the serialize.js value-domain seam — with classes whose
-constructors initialize every member in declaration order (specified defaults live in
-construction; `ZeroX` is the §5 zero form); **generated JS never imports the serialize
-runtime** — every wire call is a method on the stream parameter, so no wiring file
-exists and the checked/production fork stays where it lives, in the runtime's own
-load-time mode selection (generated code never reads NODE_ENV). The unit-level dispatch
-surface (the tag enums, tag pairs, dispatch value and functions) is emitted exactly ONCE
-per unit in every target, in the topologically last carrying file, so declarations
-spread across files never redeclare it.** Each generated
-file is headed by the source file's BASENAME (never an invocation-relative path — the
-same input must produce the same bytes wherever the compiler runs), the protocol id, and
-a do-not-edit line. Output is **deterministic to the byte** for identical input; no
-external formatter runs in the build or test path (goldens pin the emitters' own
-output — clang-format/rustfmt version drift must not be able to break a golden). The
-emitters are written to produce formatter-clean code instead — **except the Go emitter,
-which routes its output through the stdlib `go/format` in-process (not an external
-tool; versioned with the compiler's own toolchain): gofmt-clean by construction, and a
-free refuser — generated code that does not parse fails generation loudly.** Build: **plain Makefile for
-now, graduating to CMake as needed** (Glenn, 2026-08-05: *"use Makefile directly, for
-now... probably preferable to keep it simple."* / *"We can graduate to CMake as
-needed."*).
+The unit-level dispatch surface (the tag enums, tag pairs, dispatch value and
+functions) is emitted exactly ONCE per unit in every target, in the
+topologically last carrying file, so declarations spread across files never
+redeclare it. Each generated file is headed by the source file's BASENAME
+(never an invocation-relative path — the same input must produce the same
+bytes wherever the compiler runs), the protocol id, and a do-not-edit line.
+Output is **deterministic to the byte** for identical input; no external
+formatter runs in the build or test path (goldens pin the emitters' own
+output — formatter version drift must not be able to break a golden). The
+emitters are written to produce formatter-clean code instead — except the Go
+emitter, which routes its output through the stdlib `go/format` in-process
+(not an external tool; versioned with the compiler's own toolchain):
+gofmt-clean by construction, and a free refuser — generated code that does
+not parse fails generation loudly.
 
 ### 6.2 Code shape — a stated divergence from serialize.modern
 
-serialize.modern's zero-overhead contract is enforced by disassembly: no calls, no loops, one
-spliced constant path per branch outcome and per possible array count. That is the right
-contract when fighting the template abstraction penalty from inside the consumer's compiler.
-schema emits **source**, and its contract is different on purpose:
+serialize.modern's zero-overhead contract is enforced by disassembly: no
+calls, no loops, one spliced constant path per branch outcome and per
+possible array count. That is the right contract when fighting the template
+abstraction penalty from inside the consumer's compiler. schema emits
+**source**, and its contract is different on purpose:
 
-> **Generated code is the code a careful expert would hand-write against the runtime's
-> serialize API: separate read and write functions, sequential field operations, honest loops
-> for arrays, honest branches for `if`/`switch`.** Register allocation, unrolling and
-> constant-folding are the target compiler's job — it sees straight-line calls into an
-> inline-friendly library with every width and range a literal constant, which is precisely
+> **Generated code is the code a careful expert would hand-write against the
+> runtime's serialize API: separate read and write functions, sequential
+> field operations, honest loops for arrays, honest branches for `if`.**
+> Register allocation, unrolling and constant-folding are the target
+> compiler's job — it sees straight-line calls into an inline-friendly
+> library with every width and range a literal constant, which is precisely
 > the input optimizers are built for.
 
-**Ratified by the owner against his own objects, 2026-08-05:** *"for ship I don't want to
-generate 'Serialize' functions anymore from schema. we should generate read/write functions,
-completely custom and tailored... because now that the serialize is defined in schema, we
-don't need a unified write anymore."* The unified `template <Stream> Serialize` was always
-C++'s trick for keeping read and write from drifting apart — **the schema is that
-single source of truth now, so the trick retires from generated code** and every target gets
-split, tailored `Read`/`Write` per type and per view: *"this way we get all the benefits of
-hard-coded read/writes in the gen code."* The runtimes' unified paths are untouched — *"that's
-for people coding the serialize manually in their language and not using schema."*
+Read and write are generated as separate, tailored functions per type and per
+view — no unified `Serialize` template. A unified function was always C++'s
+trick for keeping read and write from drifting apart; the schema is that
+single source of truth now, so the trick retires from generated code. The
+runtimes' own unified paths are untouched — they serve people hand-writing
+serialization beside the generated code.
 
-What this buys: generated source stays small and reviewable, count ranges need no cap, and
-four backends stay simple enough to verify against each other. What it forgoes: the
-last-mile instruction-level guarantees of the TMP splicer. The v1 performance thesis is that
-eliminating unified-serialize-function branching and runtime range computation captures most
-of the win; if measurement against serialize.modern's schema mode on the C++ target shows a
-gap worth closing, a bitpacker-level emission mode for fixed-layout structs is the planned v2
-lever, behind the same byte-identity tests.
+What this buys: generated source stays small and reviewable, count ranges
+need no cap, and the backends stay simple enough to verify against each
+other. What it forgoes: the last-mile instruction-level guarantees of the TMP
+splicer. The v1 performance thesis is that eliminating unified-function
+branching and runtime range computation captures most of the win; if
+measurement against serialize.modern's schema mode on the C++ target shows a
+gap worth closing, a bitpacker-level emission mode for fixed-layout structs
+is the planned v2 lever, behind the same byte-identity tests.
 
 ### 6.3 Per-target notes
 
@@ -1432,6 +1420,10 @@ lever, behind the same byte-identity tests.
 | error idiom | `return false` early-out | `bool` early-out; counts checked before loops; latched `Error` for callers | sticky stream errors; counts checked before loops; `return stream.Err()` | `?` propagation of `serialize::Error` |
 | buffer contract | write buffers multiple of 8 (asserted); read allocations extend ≥8 bytes past packet data (required) | write buffers multiple of 8 (throws); reader takes (buffer, bytes), no slack required | write buffers multiple of 8; ≥7 bytes read slack for the fast path | write buffers multiple of 8; ≥8 bytes read slack for the fast path |
 
+This table predates the C and JavaScript targets: C's contract is
+serialize.c's own (it adopts C++'s align-up rules — write buffers a multiple
+of 8, read allocations extending ≥8 bytes past packet data), and
+JavaScript's is serialize.js's.
 ## 7. The compiler
 
 Go, zero third-party dependencies, one static binary: `schema`.
