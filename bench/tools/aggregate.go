@@ -135,7 +135,13 @@ func aggregateCmd(paths []string) {
 
 	fmt.Printf("# corpus_id: %s\n", passCorpus)
 	fmt.Println("lang,bench,path,iters,bytes_per_op,runs,median_msgs_per_sec,min_msgs_per_sec,max_msgs_per_sec,median_mb_per_sec,spread_pct,corpus_id,family,linkage,checks,opt,inline")
-	// presentation order: language blocks (as run.sh emits), corpus order within
+	// presentation order: language blocks (as run.sh emits), corpus order within.
+	// The order list is presentation, but this loop is also the OUTPUT loop —
+	// a bench missing from the list would silently vanish from the pass, which
+	// is exactly what happened to real_packet on certified-space-1's first
+	// window (added to the runners by #61, never to the list). Printed keys
+	// are counted and any straggler REFUSES the aggregation after the fact.
+	printed := 0
 	for _, l := range langs {
 		for _, b := range order {
 			for _, p := range []string{"write", "read"} {
@@ -144,6 +150,7 @@ func aggregateCmd(paths []string) {
 				if !ok {
 					continue
 				}
+				printed++
 				rates := append([]float64{}, a.rates...)
 				sort.Float64s(rates)
 				n := len(rates)
@@ -158,6 +165,22 @@ func aggregateCmd(paths []string) {
 					a.first.checks, a.first.opt, a.first.inline)
 			}
 		}
+	}
+	if printed != len(acc) {
+		fmt.Fprintf(os.Stderr, "aggregate: REFUSING: %d row key(s) accumulated but not printed — the order list does not know every bench the rounds measured:\n", len(acc)-printed)
+		for _, k := range keys {
+			found := false
+			for _, b := range order {
+				if b == k.bench {
+					found = true
+					break
+				}
+			}
+			if !found {
+				fmt.Fprintf(os.Stderr, "    %s/%s/%s\n", k.lang, k.bench, k.path)
+			}
+		}
+		os.Exit(2)
 	}
 }
 

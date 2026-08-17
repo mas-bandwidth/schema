@@ -46,7 +46,7 @@ import (
 var corpus = []string{
 	"rigidbody_moving", "rigidbody_at_rest", "chat", "test", "inputpacket",
 	"shipcreate", "ship_shallow", "probe_header", "probebits", "probearray",
-	"testdata",
+	"testdata", "real_packet",
 }
 
 const batch = "message_batch"
