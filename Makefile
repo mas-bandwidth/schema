@@ -90,6 +90,18 @@ generated/cs/.stamp: bin/schema $(SCHEMAS)
 	./bin/schema generate --lang cs --out generated/cs examples
 	@touch $@
 
+# the JavaScript target: generated ES modules only, no wiring file at all —
+# generated code never imports the runtime (every wire call is a method on
+# the stream parameter), so the serialize.js sibling checkout is a test-leg
+# concern, not a generation one
+generated/js/.stamp: bin/schema $(SCHEMAS)
+	./bin/schema generate --lang js --out generated/js examples
+	@touch $@
+
+generated/js-ludicrous/.stamp: bin/schema $(SCHEMAS128)
+	./bin/schema generate --lang js --out generated/js-ludicrous examples128
+	@touch $@
+
 build/schema_test: generated/cpp/.stamp test/main.cpp test/second.cpp
 	@mkdir -p build
 	$(CXX) $(CXXFLAGS) -Igenerated/cpp -Itest test/main.cpp test/second.cpp -o $@
@@ -192,7 +204,7 @@ build/schema_test_c_ludicrous: generated/c-ludicrous/.stamp test/c-ludicrous/mai
 		-O2 -ffp-contract=off -Igenerated/c-ludicrous -I$(SERIALIZE_C) \
 		test/c-ludicrous/main.c $(SERIALIZE_C)/serialize.c -o $@ -lm
 
-test: build/schema_test build/schema_test_variant build/schema_test_random build/schema_test_ludicrous build/schema_test_c build/schema_test_c_ludicrous build/schema_test_bench build/schema_test_bench_c generated/go/.stamp generated/rust/.stamp generated/cs/.stamp generated/go-ludicrous/.stamp generated/rust-ludicrous/.stamp generated/cs-ludicrous/.stamp generated/bench/go/.stamp generated/bench/rust/.stamp generated/bench/cs/.stamp
+test: build/schema_test build/schema_test_variant build/schema_test_random build/schema_test_ludicrous build/schema_test_c build/schema_test_c_ludicrous build/schema_test_bench build/schema_test_bench_c generated/go/.stamp generated/rust/.stamp generated/cs/.stamp generated/js/.stamp generated/go-ludicrous/.stamp generated/rust-ludicrous/.stamp generated/cs-ludicrous/.stamp generated/js-ludicrous/.stamp generated/bench/go/.stamp generated/bench/rust/.stamp generated/bench/cs/.stamp
 	./build/schema_test
 	./build/schema_test_variant
 	./build/schema_test_random
