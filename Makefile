@@ -183,6 +183,14 @@ generated/bench/cs/.stamp: bin/schema $(SCHEMAS_BENCH)
 	./bin/schema generate --lang cs --out generated/bench/cs/realworld bench/corpus/RealWorld.schema
 	@touch $@
 
+# the realworld unit sits in its own subdirectory like go/cs: the units'
+# basenames never collide today, but the table chunk adds a per-unit
+# TableRuntime.js that would
+generated/bench/js/.stamp: bin/schema $(SCHEMAS_BENCH)
+	./bin/schema generate --lang js --out generated/bench/js bench/corpus/Bench.schema
+	./bin/schema generate --lang js --out generated/bench/js/realworld bench/corpus/RealWorld.schema
+	@touch $@
+
 # the C++ producer/verifier of the bench-corpus goldens, and the C twin that
 # proves the C emitter compiles under the strict flags AND matches those bytes
 build/schema_test_bench: generated/bench/cpp/.stamp test/bench/main.cpp
@@ -204,7 +212,7 @@ build/schema_test_c_ludicrous: generated/c-ludicrous/.stamp test/c-ludicrous/mai
 		-O2 -ffp-contract=off -Igenerated/c-ludicrous -I$(SERIALIZE_C) \
 		test/c-ludicrous/main.c $(SERIALIZE_C)/serialize.c -o $@ -lm
 
-test: build/schema_test build/schema_test_variant build/schema_test_random build/schema_test_ludicrous build/schema_test_c build/schema_test_c_ludicrous build/schema_test_bench build/schema_test_bench_c generated/go/.stamp generated/rust/.stamp generated/cs/.stamp generated/js/.stamp generated/go-ludicrous/.stamp generated/rust-ludicrous/.stamp generated/cs-ludicrous/.stamp generated/js-ludicrous/.stamp generated/bench/go/.stamp generated/bench/rust/.stamp generated/bench/cs/.stamp
+test: build/schema_test build/schema_test_variant build/schema_test_random build/schema_test_ludicrous build/schema_test_c build/schema_test_c_ludicrous build/schema_test_bench build/schema_test_bench_c generated/go/.stamp generated/rust/.stamp generated/cs/.stamp generated/js/.stamp generated/go-ludicrous/.stamp generated/rust-ludicrous/.stamp generated/cs-ludicrous/.stamp generated/js-ludicrous/.stamp generated/bench/go/.stamp generated/bench/rust/.stamp generated/bench/cs/.stamp generated/bench/js/.stamp
 	./build/schema_test
 	./build/schema_test_variant
 	./build/schema_test_random
