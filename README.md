@@ -30,7 +30,7 @@ message ShipState {
 ```
 
 This declaration compiles to C, C++, C#, Go, Rust and JavaScript code that 
-reads and writes your data types and agrees on every bit. Now your native plugin, your Unity client, your Go backend, your web tooling, and everything around them all speak the same language.
+reads and writes your data types and agrees on every bit. Now your native plugin, your Unity client, your Go backend, your browser client, and your tooling all speak the same language.
 
 ## Why it exists
 
