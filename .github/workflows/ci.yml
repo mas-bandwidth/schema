@@ -46,9 +46,9 @@ jobs:
         env:
           SERIALIZE_TAG: v1.10.0
           SERIALIZE_C_TAG: v1.4.0
-          SERIALIZE_GO_TAG: v1.10.1
-          SERIALIZE_RS_TAG: v2.1.1
-          SERIALIZE_CS_TAG: v1.3.1
+          SERIALIZE_GO_TAG: v1.11.0
+          SERIALIZE_RS_TAG: v2.1.2
+          SERIALIZE_CS_TAG: v1.4.0
           SERIALIZE_JS_TAG: v1.1.0
         run: |
           cd ..
