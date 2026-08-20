@@ -2,7 +2,7 @@
    SPDX-License-Identifier: NONE — this generated output is yours, under terms of
    your choice. See the LICENSE exception in the schema compiler; the compiler is
    AGPL-3.0, its output is not.
-   package example — protocol id 0x70a0c2d004c0907a */
+   package example — protocol id 0x40230069cc791fab */
 
 #ifndef SCHEMA_EXAMPLE_TYPES_H
 #define SCHEMA_EXAMPLE_TYPES_H
@@ -176,10 +176,11 @@ typedef struct ExtremeProbe {
     int64_t doubled_floor;
     uint64_t ceiling_range;
     int64_t floor_default;
+    uint64_t ceiling_default;
 } ExtremeProbe;
 
-#define EXTREME_PROBE_MAX_BITS 256   /* longest wire path; align pads at worst case (SPEC §6.1) */
-#define EXTREME_PROBE_MAX_BYTES 32  /* rounded up to the 8-byte write-buffer granularity; a READ buffer's allocation must extend at least 8 bytes past the data — serialize.c loads 64-bit windows */
+#define EXTREME_PROBE_MAX_BITS 320   /* longest wire path; align pads at worst case (SPEC §6.1) */
+#define EXTREME_PROBE_MAX_BYTES 40  /* rounded up to the 8-byte write-buffer granularity; a READ buffer's allocation must extend at least 8 bytes past the data — serialize.c loads 64-bit windows */
 
 /* Returns a ExtremeProbe with its SPECIFIED defaults applied. A memset to zero is
    the schema's own default (SPEC §4.2: zero initialization unless a
@@ -189,6 +190,7 @@ static SCHEMA_UNUSED ExtremeProbe new_extreme_probe( void )
     ExtremeProbe value;
     memset( &value, 0, sizeof( value ) );
     value.floor_default = ( -9223372036854775807LL - 1 );
+    value.ceiling_default = 18446744073709551615ULL;
     return value;
 }
 
@@ -198,10 +200,11 @@ typedef struct ExtremeRow {
     int64_t clamped_floor;
     uint64_t clamped_ceiling;
     int64_t floor_def;
+    uint64_t ceiling_def;
 } ExtremeRow;
 
-#define EXTREME_ROW_MAX_BITS 192   /* longest wire path; align pads at worst case (SPEC §6.1) */
-#define EXTREME_ROW_MAX_BYTES 24  /* rounded up to the 8-byte write-buffer granularity; a READ buffer's allocation must extend at least 8 bytes past the data — serialize.c loads 64-bit windows */
+#define EXTREME_ROW_MAX_BITS 256   /* longest wire path; align pads at worst case (SPEC §6.1) */
+#define EXTREME_ROW_MAX_BYTES 32  /* rounded up to the 8-byte write-buffer granularity; a READ buffer's allocation must extend at least 8 bytes past the data — serialize.c loads 64-bit windows */
 
 /* Returns a ExtremeRow with its SPECIFIED defaults applied. A memset to zero is
    the schema's own default (SPEC §4.2: zero initialization unless a
@@ -211,6 +214,7 @@ static SCHEMA_UNUSED ExtremeRow new_extreme_row( void )
     ExtremeRow value;
     memset( &value, 0, sizeof( value ) );
     value.floor_def = ( -9223372036854775807LL - 1 );
+    value.ceiling_def = 18446744073709551615ULL;
     return value;
 }
 

@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package example — protocol id 0x70a0c2d004c0907a
+// package example — protocol id 0x40230069cc791fab
 // The TABLE wire (evolution-tolerant, notes/table-wire.md): no serialize
 // dependency — includable from any TU.
 
@@ -518,6 +518,11 @@ inline bool TableWriteExtremeRow( TableWriter & w, const ExtremeRow & value )
         w.put16( 0x1590 ); w.put8( 5 ); // floor_def
         w.put64( uint64_t( value.floor_def ) );
     }
+    if ( value.ceiling_def != 18446744073709551615ull )
+    {
+        w.put16( 0xb936 ); w.put8( 9 ); // ceiling_def
+        w.put64( uint64_t( value.ceiling_def ) );
+    }
     w.put16( 0 ); // terminator
     return !w.overflow;
 }
@@ -575,6 +580,19 @@ inline bool TableReadExtremeRow( TableReader & r, ExtremeRow & value )
                 if ( !r.has( 8 ) ) { r.report->malformed = true; return false; }
                 int64_t decoded = int64_t( r.get64( ) );
                 value.floor_def = decoded;
+                break;
+            }
+            case 0xb936: // ceiling_def
+            {
+                if ( kind != 9 )
+                {
+                    r.report->kind_mismatch++;
+                    if ( !r.skip( kind ) ) { r.report->malformed = true; return false; }
+                    break;
+                }
+                if ( !r.has( 8 ) ) { r.report->malformed = true; return false; }
+                uint64_t decoded = uint64_t( r.get64( ) );
+                value.ceiling_def = decoded;
                 break;
             }
             default:
@@ -657,8 +675,9 @@ inline const TableTypeInfo * TableTypeExtremeRow()
         { "clamped_floor", "int64", 0xba76, 5, false, false, 0, (uint32_t) offsetof( ExtremeRow, clamped_floor ), (uint32_t) sizeof( ExtremeRow{}.clamped_floor ), 0xffffffffu, NULL, true, -9.223372036854776e+18, 100.0, -1, NULL, "" },
         { "clamped_ceiling", "uint64", 0x7a83, 9, false, false, 0, (uint32_t) offsetof( ExtremeRow, clamped_ceiling ), (uint32_t) sizeof( ExtremeRow{}.clamped_ceiling ), 0xffffffffu, NULL, true, 1.0, 1.8446744073709552e+19, -1, NULL, "" },
         { "floor_def", "int64", 0x1590, 5, false, false, 0, (uint32_t) offsetof( ExtremeRow, floor_def ), (uint32_t) sizeof( ExtremeRow{}.floor_def ), 0xffffffffu, NULL, false, 0.0, 0.0, -1, NULL, "" },
+        { "ceiling_def", "uint64", 0xb936, 9, false, false, 0, (uint32_t) offsetof( ExtremeRow, ceiling_def ), (uint32_t) sizeof( ExtremeRow{}.ceiling_def ), 0xffffffffu, NULL, false, 0.0, 0.0, -1, NULL, "" },
     };
-    static const TableTypeInfo info = { "ExtremeRow", (uint32_t) sizeof( ExtremeRow ), 3, fields };
+    static const TableTypeInfo info = { "ExtremeRow", (uint32_t) sizeof( ExtremeRow ), 4, fields };
     return &info;
 }
 

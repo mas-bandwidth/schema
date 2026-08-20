@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package example — protocol id 0x70a0c2d004c0907a
+// package example — protocol id 0x40230069cc791fab
 
 #pragma once
 
@@ -161,19 +161,21 @@ struct ExtremeProbe {
     int64_t doubled_floor = 0; // wire [-9223372036854775808, 100]
     uint64_t ceiling_range = 0; // wire [1, 18446744073709551615]
     int64_t floor_default = ( -9223372036854775807ll - 1 );
+    uint64_t ceiling_default = 18446744073709551615ull;
 };
 
-inline constexpr int64_t ExtremeProbeMaxBits = 256; // longest wire path; align pads at worst case (SPEC §6.1)
-inline constexpr int64_t ExtremeProbeMaxBytes = 32; // rounded up to the 8-byte write-buffer granularity; a read buffer's allocation must extend at least 8 bytes past the data — the reader loads 64-bit windows
+inline constexpr int64_t ExtremeProbeMaxBits = 320; // longest wire path; align pads at worst case (SPEC §6.1)
+inline constexpr int64_t ExtremeProbeMaxBytes = 40; // rounded up to the 8-byte write-buffer granularity; a read buffer's allocation must extend at least 8 bytes past the data — the reader loads 64-bit windows
 
 // type ExtremeRow
 struct ExtremeRow {
     int64_t clamped_floor = 0; // wire [-9223372036854775808, 100]
     uint64_t clamped_ceiling = 0; // wire [1, 18446744073709551614]
     int64_t floor_def = ( -9223372036854775807ll - 1 );
+    uint64_t ceiling_def = 18446744073709551615ull;
 };
 
-inline constexpr int64_t ExtremeRowMaxBits = 192; // longest wire path; align pads at worst case (SPEC §6.1)
-inline constexpr int64_t ExtremeRowMaxBytes = 24; // rounded up to the 8-byte write-buffer granularity; a read buffer's allocation must extend at least 8 bytes past the data — the reader loads 64-bit windows
+inline constexpr int64_t ExtremeRowMaxBits = 256; // longest wire path; align pads at worst case (SPEC §6.1)
+inline constexpr int64_t ExtremeRowMaxBytes = 32; // rounded up to the 8-byte write-buffer granularity; a read buffer's allocation must extend at least 8 bytes past the data — the reader loads 64-bit windows
 
 } // namespace example

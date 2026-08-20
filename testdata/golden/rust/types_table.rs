@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package example — protocol id 0x70a0c2d004c0907a
+// package example — protocol id 0x40230069cc791fab
 // The TABLE wire (evolution-tolerant, notes/table-wire.md).
 
 #![allow(clippy::needless_range_loop)]
@@ -410,6 +410,11 @@ fn table_write_extreme_row_into(w: &mut TableWriter, value: &ExtremeRow) {
         w.u8(5);
         w.u64(value.floor_def as u64);
     }
+    if value.ceiling_def != 18446744073709551615 {
+        w.u16(0xb936); // ceiling_def
+        w.u8(9);
+        w.u64(value.ceiling_def as u64);
+    }
     w.u16(0); // terminator
 }
 
@@ -465,6 +470,16 @@ fn table_read_extreme_row_from(r: &mut TableReader, value: &mut ExtremeRow, repo
                     if !r.has(8) { report.malformed = true; return false; }
                     let raw = r.get64() as i64;
                     value.floor_def = raw as i64;
+                }
+            }
+            0xb936 => { // ceiling_def
+                if kind != 9 {
+                    report.kind_mismatch += 1;
+                    if !r.skip(kind) { report.malformed = true; return false; }
+                } else {
+                    if !r.has(8) { report.malformed = true; return false; }
+                    let raw = r.get64();
+                    value.ceiling_def = raw as u64;
                 }
             }
             _ => {
@@ -751,6 +766,22 @@ static TABLE_TYPE_EXTREME_ROW_FIELDS: &[TableFieldInfo] = &[
         type_name: "int64",
         id: 0x1590,
         kind: 5,
+        is_array: false,
+        counted: false,
+        array_bound: 0,
+        table: None,
+        has_range: false,
+        range_min: 0.0,
+        range_max: 0.0,
+        enum_max: -1,
+        enum_name: None,
+        guard: "",
+    },
+    TableFieldInfo {
+        name: "ceiling_def",
+        type_name: "uint64",
+        id: 0xb936,
+        kind: 9,
         is_array: false,
         counted: false,
         array_bound: 0,

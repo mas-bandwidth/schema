@@ -2,7 +2,7 @@
    SPDX-License-Identifier: NONE — this generated output is yours, under terms of
    your choice. See the LICENSE exception in the schema compiler; the compiler is
    AGPL-3.0, its output is not.
-   package example — protocol id 0x70a0c2d004c0907a
+   package example — protocol id 0x40230069cc791fab
    The TABLE wire (evolution-tolerant). */
 
 #ifndef SCHEMA_EXAMPLE_TYPESTABLE_H
@@ -603,6 +603,12 @@ static SCHEMA_UNUSED void table_write_extreme_row_into( table_writer_t * w, cons
         table_w_u8( w, 5 );
         table_w_u64( w, (serialize_uint64_t) value->floor_def );
     }
+    if ( value->ceiling_def != 18446744073709551615ULL )
+    {
+        table_w_u16( w, 0xb936 ); /* ceiling_def */
+        table_w_u8( w, 9 );
+        table_w_u64( w, (serialize_uint64_t) value->ceiling_def );
+    }
     table_w_u16( w, 0 ); /* terminator */
 }
 
@@ -698,6 +704,23 @@ static SCHEMA_UNUSED int table_read_extreme_row_from( table_reader_t * r, Extrem
                 }
                 break;
             }
+            case 0xb936: /* ceiling_def */
+            {
+                if ( kind != 9 )
+                {
+                    report->kind_mismatch++;
+                    if ( !table_r_skip( r, kind ) ) { report->malformed = 1; return 0; }
+                }
+                else
+                {
+                    if ( !table_r_has( r, 8 ) ) { report->malformed = 1; return 0; }
+                    {
+                        serialize_uint64_t raw = table_r_u64( r );
+                        value->ceiling_def = (uint64_t) raw;
+                    }
+                }
+                break;
+            }
             default:
             {
                 report->unknown++;
@@ -778,12 +801,13 @@ static const table_field_info_t TABLE_TYPE_EXTREME_ROW_FIELDS[] = {
     { "clamped_floor", "int64", 0xba76, 5, 0, 0, 0, NULL, 1, -9.223372036854776e+18, 100.0, -1, NULL, "" },
     { "clamped_ceiling", "uint64", 0x7a83, 9, 0, 0, 0, NULL, 1, 1.0, 1.8446744073709552e+19, -1, NULL, "" },
     { "floor_def", "int64", 0x1590, 5, 0, 0, 0, NULL, 0, 0.0, 0.0, -1, NULL, "" },
+    { "ceiling_def", "uint64", 0xb936, 9, 0, 0, 0, NULL, 0, 0.0, 0.0, -1, NULL, "" },
 };
 
 static const table_type_info_t TABLE_TYPE_EXTREME_ROW = {
     "ExtremeRow",
     TABLE_TYPE_EXTREME_ROW_FIELDS,
-    3
+    4
 };
 
 /* Returns ExtremeRow's reflection descriptor — field names, wire ids/kinds,
