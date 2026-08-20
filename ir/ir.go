@@ -15,10 +15,12 @@ import (
 // — beside the resolved value in the fields next to it. The concrete node
 // types are the parser's, and stay unexported from this module: an expression
 // is produced by parsing schema text and is never constructed by a caller, and
-// freezing the parse tree under semver buys nothing the numbers beside it do
+// freezing the parse tree under semver buys nothing the functions beside it do
 // not already give. A generator outside this module reads the resolved
-// numeric fields and treats a non-nil Expr as the fact that the author wrote
-// something symbolic here.
+// numeric fields, renders the author's spelling with [RenderExpr] or
+// [RenderExprIdent], and asks [ExprConsts] and [ExprHasEnumMax] the two
+// questions a fold-or-render decision turns on — the same doors the built-in
+// backends go through.
 type Expr = ast.Expr
 
 type Unit struct {

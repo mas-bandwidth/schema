@@ -332,8 +332,8 @@ func fitsSafeInteger(v *big.Int) bool {
 // foldComment returns a trailing comment carrying the schema expression when
 // the rendered JS had to fold it (an E.Max reference has no JS twin).
 func (g *gen) foldComment(e ast.Expr) string {
-	if e != nil && containsMax(e) {
-		return fmt.Sprintf(" // = %s", schemaExpr(e))
+	if e != nil && ir.ExprHasEnumMax(e) {
+		return fmt.Sprintf(" // = %s", ir.RenderExpr(e))
 	}
 	return ""
 }
@@ -424,11 +424,11 @@ func (g *gen) emitStorageField(f *ir.Field) {
 	switch {
 	case f.Type.Kind == ir.TString:
 		g.pf("    this.%s = new Uint8Array(%s); // string(%s): max length, used length beside it (SPEC §4.7)\n",
-			name, g.renderNum(f.Type.SizeExpr, big.NewInt(f.Type.Size)), schemaExpr(f.Type.SizeExpr))
+			name, g.renderNum(f.Type.SizeExpr, big.NewInt(f.Type.Size)), ir.RenderExpr(f.Type.SizeExpr))
 		g.pf("    this.%sLength = 0;\n", name)
 	case f.Type.Kind == ir.TBytes:
 		g.pf("    this.%s = new Uint8Array(%s); // bytes(%s): fixed buffer, used length beside it (SPEC §4.7)\n",
-			name, g.renderNum(f.Type.SizeExpr, big.NewInt(f.Type.Size)), schemaExpr(f.Type.SizeExpr))
+			name, g.renderNum(f.Type.SizeExpr, big.NewInt(f.Type.Size)), ir.RenderExpr(f.Type.SizeExpr))
 		g.pf("    this.%sLength = 0;\n", name)
 	case f.Array != ir.ArrayNone:
 		bound := g.renderNum(f.ArrayExpr, big.NewInt(f.ArrayBound))
@@ -576,7 +576,7 @@ func bigLit(v *big.Int) string {
 // non-exact division subtree must fold); the computed literal otherwise.
 // Folding is always correct.
 func (g *gen) renderNum(e ast.Expr, folded *big.Int) string {
-	if e == nil || containsMax(e) || !g.renderable(e) || !g.numExact(e) {
+	if e == nil || ir.ExprHasEnumMax(e) || !g.renderable(e) || !g.numExact(e) {
 		return folded.String()
 	}
 	return g.renderExpr(e)
@@ -648,80 +648,26 @@ func (g *gen) numEval(e ast.Expr) (*big.Int, bool) {
 	return nil, false
 }
 
+// renderable: every referenced constant must be a BARE (untyped) integer
+// schema const — an explicitly 64-bit const stores as BigInt here
+// (constIsBig), which cannot mix with Number arithmetic.
 func (g *gen) renderable(e ast.Expr) bool {
-	switch e := e.(type) {
-	case *ast.IdentExpr:
-		c, ok := g.unit.Consts[e.Name]
-		return ok && !c.IsFloat && !c.Explicit
-	case *ast.UnaryExpr:
-		return g.renderable(e.X)
-	case *ast.BinaryExpr:
-		return g.renderable(e.X) && g.renderable(e.Y)
-	case *ast.ParenExpr:
-		return g.renderable(e.X)
+	for _, name := range ir.ExprConsts(e) {
+		c, ok := g.unit.Consts[name]
+		if !ok || c.IsFloat || c.Explicit {
+			return false
+		}
 	}
 	return true
 }
 
-// renderExpr renders an expression in JS form, importing referenced
-// constants where they live in another file.
+// renderExpr renders an expression in JS form: constants keep the schema
+// spelling, imported where they live in another file.
 func (g *gen) renderExpr(e ast.Expr) string {
-	switch e := e.(type) {
-	case *ast.IntLit:
-		return e.Text
-	case *ast.FloatLit:
-		return e.Text
-	case *ast.IdentExpr:
-		g.addRef(e.Name, e.Name)
-		return e.Name
-	case *ast.UnaryExpr:
-		inner := g.renderExpr(e.X)
-		if strings.HasPrefix(inner, "-") {
-			// "--x" is decrement in JS, not double negation (issue #22's twin)
-			return "-(" + inner + ")"
-		}
-		return "-" + inner
-	case *ast.BinaryExpr:
-		return fmt.Sprintf("%s %s %s", g.renderExpr(e.X), e.Op, g.renderExpr(e.Y))
-	case *ast.ParenExpr:
-		return "(" + g.renderExpr(e.X) + ")"
-	}
-	return "?"
-}
-
-// schemaExpr renders an expression in schema source form, for comments.
-func schemaExpr(e ast.Expr) string {
-	switch e := e.(type) {
-	case *ast.IntLit:
-		return e.Text
-	case *ast.FloatLit:
-		return e.Text
-	case *ast.IdentExpr:
-		return e.Name
-	case *ast.MaxExpr:
-		return e.Enum + ".Max"
-	case *ast.UnaryExpr:
-		return "-" + schemaExpr(e.X)
-	case *ast.BinaryExpr:
-		return fmt.Sprintf("%s %s %s", schemaExpr(e.X), e.Op, schemaExpr(e.Y))
-	case *ast.ParenExpr:
-		return "(" + schemaExpr(e.X) + ")"
-	}
-	return "?"
-}
-
-func containsMax(e ast.Expr) bool {
-	switch e := e.(type) {
-	case *ast.MaxExpr:
-		return true
-	case *ast.UnaryExpr:
-		return containsMax(e.X)
-	case *ast.BinaryExpr:
-		return containsMax(e.X) || containsMax(e.Y)
-	case *ast.ParenExpr:
-		return containsMax(e.X)
-	}
-	return false
+	return ir.RenderExprIdent(e, func(name string) string {
+		g.addRef(name, name)
+		return name
+	})
 }
 
 func formatFloat(v float64) string {

@@ -224,8 +224,8 @@ func (g *gen) emitConst(d *ir.Const) {
 // foldComment returns a trailing comment carrying the schema expression when
 // the rendered Go had to fold it (an E.Max reference has no Go twin).
 func (g *gen) foldComment(e ast.Expr) string {
-	if e != nil && containsMax(e) {
-		return fmt.Sprintf(" // = %s", schemaExpr(e))
+	if e != nil && ir.ExprHasEnumMax(e) {
+		return fmt.Sprintf(" // = %s", ir.RenderExpr(e))
 	}
 	return ""
 }
@@ -491,7 +491,7 @@ func (g *gen) emitField(f *ir.Field, v view) {
 		st := f.Type.Ref.(*ir.Struct)
 		if f.FixedShallow {
 			g.pf("\t// %s: %s narrowed to %d fractional bits (quantize = %s) — per-component\n",
-				f.Name, f.Type.Name, f.QuantShift, schemaExpr(f.QuantScaleExpr))
+				f.Name, f.Type.Name, f.QuantShift, ir.RenderExpr(f.QuantScaleExpr))
 			g.pf("\t// quantized units; bounds are the component's whole-unit [min, max] scaled\n")
 			for _, comp := range st.Fields {
 				lo, hi, _, _, typ, _ := fixedShallowComp(f, comp)
@@ -500,7 +500,7 @@ func (g *gen) emitField(f *ir.Field, v view) {
 			return
 		}
 		g.pf("\t// %s: %s quantized by %s, max %s — per-component int in [-%d, %d]\n",
-			f.Name, f.Type.Name, schemaExpr(f.QuantScaleExpr), schemaExpr(f.QuantMaxExpr), f.QuantBound, f.QuantBound)
+			f.Name, f.Type.Name, ir.RenderExpr(f.QuantScaleExpr), ir.RenderExpr(f.QuantMaxExpr), f.QuantBound, f.QuantBound)
 		typ := goInt(smallestSigned(f.QuantBound))
 		for _, comp := range st.Fields {
 			g.pf("\t%s%s %s\n", name, ir.GoExportName(comp.Name), typ)
@@ -532,11 +532,11 @@ func (g *gen) emitStorageField(f *ir.Field) {
 	switch {
 	case f.Type.Kind == ir.TString:
 		g.pf("\t%s [%s]byte // string(%s): max length, used length beside it (SPEC §4.7)\n",
-			name, g.renderInt(f.Type.SizeExpr, big.NewInt(f.Type.Size)), schemaExpr(f.Type.SizeExpr))
+			name, g.renderInt(f.Type.SizeExpr, big.NewInt(f.Type.Size)), ir.RenderExpr(f.Type.SizeExpr))
 		g.pf("\t%sLength int32\n", name)
 	case f.Type.Kind == ir.TBytes:
 		g.pf("\t%s [%s]byte // bytes(%s): fixed buffer, used length beside it (SPEC §4.7)\n",
-			name, g.renderInt(f.Type.SizeExpr, big.NewInt(f.Type.Size)), schemaExpr(f.Type.SizeExpr))
+			name, g.renderInt(f.Type.SizeExpr, big.NewInt(f.Type.Size)), ir.RenderExpr(f.Type.SizeExpr))
 		g.pf("\t%sLength int32\n", name)
 	case f.Array == ir.ArrayFixed:
 		g.pf("\t%s [%s]%s%s\n", name, g.renderInt(f.ArrayExpr, big.NewInt(f.ArrayBound)), typ, g.fieldComment(f))
@@ -636,84 +636,29 @@ func (g *gen) goFieldType(t ir.FieldType) string {
 // folds to the computed value otherwise (typed consts would force conversions;
 // an E.Max reference always folds; the schema source rides in a comment).
 func (g *gen) renderInt(e ast.Expr, folded *big.Int) string {
-	if e == nil || containsMax(e) || !g.renderable(e) {
+	if e == nil || ir.ExprHasEnumMax(e) || !g.renderable(e) {
 		return folded.String()
 	}
 	return renderExpr(e)
 }
 
+// renderable: every referenced constant must be a BARE (untyped) integer
+// schema const — a typed const is a typed Go const, which forces conversions
+// at use sites of other types.
 func (g *gen) renderable(e ast.Expr) bool {
-	switch e := e.(type) {
-	case *ast.IdentExpr:
-		c, ok := g.unit.Consts[e.Name]
-		return ok && !c.IsFloat && !c.Explicit
-	case *ast.UnaryExpr:
-		return g.renderable(e.X)
-	case *ast.BinaryExpr:
-		return g.renderable(e.X) && g.renderable(e.Y)
-	case *ast.ParenExpr:
-		return g.renderable(e.X)
+	for _, name := range ir.ExprConsts(e) {
+		c, ok := g.unit.Consts[name]
+		if !ok || c.IsFloat || c.Explicit {
+			return false
+		}
 	}
 	return true
 }
 
+// renderExpr renders an expression in Go form: constants keep the schema
+// spelling, since the Go target emits them under their declared names.
 func renderExpr(e ast.Expr) string {
-	switch e := e.(type) {
-	case *ast.IntLit:
-		return e.Text
-	case *ast.FloatLit:
-		return e.Text
-	case *ast.IdentExpr:
-		return e.Name
-	case *ast.UnaryExpr:
-		inner := renderExpr(e.X)
-		if strings.HasPrefix(inner, "-") {
-			// "--x" fails to parse in Go, and the emitter's own parse gate
-			// refused the whole unit; double negation needs parens (issue #22)
-			return "-(" + inner + ")"
-		}
-		return "-" + inner
-	case *ast.BinaryExpr:
-		return fmt.Sprintf("%s %s %s", renderExpr(e.X), e.Op, renderExpr(e.Y))
-	case *ast.ParenExpr:
-		return "(" + renderExpr(e.X) + ")"
-	}
-	return "?"
-}
-
-// schemaExpr renders an expression in schema source form, for comments.
-func schemaExpr(e ast.Expr) string {
-	switch e := e.(type) {
-	case *ast.IntLit:
-		return e.Text
-	case *ast.FloatLit:
-		return e.Text
-	case *ast.IdentExpr:
-		return e.Name
-	case *ast.MaxExpr:
-		return e.Enum + ".Max"
-	case *ast.UnaryExpr:
-		return "-" + schemaExpr(e.X)
-	case *ast.BinaryExpr:
-		return fmt.Sprintf("%s %s %s", schemaExpr(e.X), e.Op, schemaExpr(e.Y))
-	case *ast.ParenExpr:
-		return "(" + schemaExpr(e.X) + ")"
-	}
-	return "?"
-}
-
-func containsMax(e ast.Expr) bool {
-	switch e := e.(type) {
-	case *ast.MaxExpr:
-		return true
-	case *ast.UnaryExpr:
-		return containsMax(e.X)
-	case *ast.BinaryExpr:
-		return containsMax(e.X) || containsMax(e.Y)
-	case *ast.ParenExpr:
-		return containsMax(e.X)
-	}
-	return false
+	return ir.RenderExprIdent(e, nil)
 }
 
 func goInt2(signed bool, width int) string {

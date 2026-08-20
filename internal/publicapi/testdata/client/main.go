@@ -12,6 +12,7 @@ package main
 import (
 	"fmt"
 	"os"
+	"sort"
 	"strings"
 
 	"github.com/mas-bandwidth/schema/compiler"
@@ -20,9 +21,11 @@ import (
 
 // widths is a generator that emits nothing a language would compile — it
 // reports each message's worst-case wire width, the bound the emitters
-// advertise (SPEC §6.1 item 4). The point is the shape: a type outside this
-// module satisfying compiler.Generator, reading the IR through the public
-// derived-parameter helpers.
+// advertise (SPEC §6.1 item 4), then every symbolically-declared range bound
+// in the author's own spelling and a target spelling (issue #89). The point
+// is the shape: a type outside this module satisfying compiler.Generator,
+// reading the IR through the public derived-parameter helpers and rendering
+// declared expressions through the public expression surface.
 type widths struct{}
 
 // Names registers this generator as `--lang widths`.
@@ -39,6 +42,26 @@ func (widths) Generate(u *ir.Unit, _ compiler.Options) (map[string][]byte, error
 		}
 		bits := ir.MaxBitsStruct(st)
 		fmt.Fprintf(&b, "%s %d bits %d bytes %d fields\n", name, bits, ir.MaxBytes(bits), len(st.Fields))
+	}
+	// Every range bound the author declared through named constants, rendered
+	// as the source expression the resolved IntMax alone cannot give back —
+	// once in the schema spelling, once the way a SCREAMING_SNAKE target
+	// would emit it. An E.Max bound has no target twin, so it folds, exactly
+	// as the built-in backends fold it.
+	structs := make([]string, 0, len(u.Structs))
+	for name := range u.Structs {
+		structs = append(structs, name)
+	}
+	sort.Strings(structs)
+	for _, name := range structs {
+		for _, f := range u.Structs[name].Fields {
+			if len(ir.ExprConsts(f.IntMaxExpr)) == 0 || ir.ExprHasEnumMax(f.IntMaxExpr) {
+				continue
+			}
+			fmt.Fprintf(&b, "bound %s.%s max = %s | %s = %s\n", name, f.Name,
+				ir.RenderExpr(f.IntMaxExpr),
+				ir.RenderExprIdent(f.IntMaxExpr, ir.RustConstName), f.IntMax)
+		}
 	}
 	return map[string][]byte{"widths.txt": []byte(b.String())}, nil
 }

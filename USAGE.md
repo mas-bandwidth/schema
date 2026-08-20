@@ -583,6 +583,29 @@ share are functions there rather than per-backend arithmetic — `ir.BitsRequire
 `ir.AlignedFixedByteArrays`, `ir.FieldId` — so a new target computes the same
 widths as the old ones by construction, not by care.
 
+Constants fold, but the author's spelling survives: every declared bound,
+size, and default keeps its source expression on the IR (`Const.Expr`,
+`Field.IntMinExpr`/`IntMaxExpr`, `ArrayExpr`, `DefExpr`,
+`FieldType.SizeExpr`), and the expression surface renders it, so generated
+output can say `MaxObjects - 1` where the resolved field alone could only
+say `9999`:
+
+```go
+// object_id int32 [min = 0, max = MaxObjects - 1]
+f := handle.Fields[0]
+ir.RenderExpr(f.IntMaxExpr)                        // "MaxObjects - 1" — schema spelling, for comments
+ir.RenderExprIdent(f.IntMaxExpr, nil)              // "MaxObjects - 1" — a target that keeps the name
+ir.RenderExprIdent(f.IntMaxExpr, ir.RustConstName) // "MAX_OBJECTS - 1" — a SCREAMING_SNAKE target
+```
+
+Whether a bound should render symbolically at all is your target's call, made
+on two facts: `ir.ExprConsts` lists the constants an expression references
+(check each against `unit.Consts` by your target's own rules — the built-in
+backends disagree with each other here), and `ir.ExprHasEnumMax` reports an
+`E.Max` reference, which has no twin in any generated target — fold those to
+the resolved value and keep the schema form in a comment, as the built-in
+backends do.
+
 ### The data compiler
 
 `schema pack` is a driver call too, and like `Generate` it hands back bytes:
