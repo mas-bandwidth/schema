@@ -13,6 +13,20 @@
 # Accepted deliberately (issue #25): the gate also fires on compiler-version
 # changes, and telling a regression from a new compiler apart is manual.
 #
+# The real_packet rows were added 2026-08-21 by issue #104, which taught
+# inline-verdict.sh's map to name a row's generated UNIT: real_packet is the
+# only row of the RealWorld corpus unit, so until that fix it had no map entry
+# in ANY language and carried inline=unknown everywhere — §5.3 rule 7 refused
+# every ratio it appeared in, which is why the Studio pass on PR #84 had to
+# drop four of its rows as un-ratioable. The numbers below are the FIRST
+# honest measurement of these ten legs, not a target: pinned where the
+# instrument found them, on an M-series MacBook Air against the CI-pinned
+# runtime tags. They are the densest per-op numbers in the ledger (~93
+# individually serialized fields per message) and several of them are
+# genuinely large — go's 97 hot calls per op on both paths, C#'s 80 on read.
+# Whether any of them SHOULD be smaller is a separate question from whether
+# the gate can see them, and this ledger only answers the second.
+#
 # Seeded 2026-08-15 from the current-era, zero-unknown studio passes:
 #   O3 + default rows: results/2026-08-15-arm64-studio-postlane-O3-pass.csv (schema 695fde3)
 #   O2 rows:           results/2026-08-15-arm64-studio-O2-pass.csv          (schema c19cdb3)
@@ -42,6 +56,8 @@ cpp probearray write O3 0
 cpp probearray read O3 0
 cpp testdata write O3 2
 cpp testdata read O3 0
+cpp real_packet write O3 2
+cpp real_packet read O3 0
 cpp message_batch write O3 2
 cpp message_batch read O3 0
 cpp bench_packet write O3 1
@@ -76,6 +92,8 @@ c probearray write O3 0
 c probearray read O3 0
 c testdata write O3 1
 c testdata read O3 0
+c real_packet write O3 0
+c real_packet read O3 0
 c message_batch write O3 0
 c message_batch read O3 0
 c bench_packet write O3 0
@@ -110,6 +128,8 @@ rust probearray write O3 0
 rust probearray read O3 0
 rust testdata write O3 3
 rust testdata read O3 2
+rust real_packet write O3 15
+rust real_packet read O3 14
 # The two rows below moved 1 -> 2 and 1 -> 3 in the same commit that taught
 # count_calls to see tail branches (#86): the extra hot calls were ALWAYS in
 # the binary as tail-called serialize-chain helpers and the old 1 was pinned
@@ -156,6 +176,8 @@ cs probearray write default 3
 cs probearray read default 3
 cs testdata write default 5
 cs testdata read default 5
+cs real_packet write default 1
+cs real_packet read default 80
 cs message_batch write default 2
 cs message_batch read default 14
 cs bench_packet write default 9
@@ -190,6 +212,8 @@ go probearray write default 12
 go probearray read default 12
 go testdata write default 24
 go testdata read default 24
+go real_packet write default 97
+go real_packet read default 97
 go message_batch write default 20
 go message_batch read default 14
 go bench_packet write default 12
@@ -224,6 +248,8 @@ cpp probearray write O2 0
 cpp probearray read O2 0
 cpp testdata write O2 2
 cpp testdata read O2 0
+cpp real_packet write O2 2
+cpp real_packet read O2 0
 cpp message_batch write O2 2
 cpp message_batch read O2 0
 cpp bench_packet write O2 1
@@ -258,6 +284,8 @@ c probearray write O2 0
 c probearray read O2 0
 c testdata write O2 1
 c testdata read O2 0
+c real_packet write O2 0
+c real_packet read O2 0
 c message_batch write O2 1
 c message_batch read O2 0
 c bench_packet write O2 1
