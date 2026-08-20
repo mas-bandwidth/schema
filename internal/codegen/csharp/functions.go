@@ -484,6 +484,16 @@ func (g *gen) emitWriteScalar(f *ir.Field, name, ind string) {
 		// the Q format and whole-unit bounds are compile-time constants of the
 		// call site, exactly like a ranged integer's bounds (STANDARD.md, fixed)
 		lo, hi := g.rangeArgs(f, "long")
+		if f.Type.Width == 8 {
+			// 8-bit storage sits below serialize.cs's narrowest SerializeFixed
+			// overload (short/ushort): widen through a temp — lossless, the
+			// raw value fits I+F = 8 bits by construction (the golang
+			// emitter's narrower-than-the-library pattern, mirrored)
+			g.sf("%s{\n%s    %s fixedValue = %s;\n", ind, ind, csFixed8Temp(f), name)
+			g.call(ind+"    ", fmt.Sprintf("%s.SerializeFixed(ref fixedValue, %d, %d, %s, %s)", g.rv(), f.Type.IntBits, f.Type.FracBits, lo, hi), "")
+			g.sf("%s}\n", ind)
+			return
+		}
 		g.call(ind, fmt.Sprintf("%s.SerializeFixed(ref %s, %d, %d, %s, %s)", g.rv(), name, f.Type.IntBits, f.Type.FracBits, lo, hi), "")
 	case ir.TInt:
 		if f.Type.Width == 128 {
@@ -650,6 +660,17 @@ func fmt32Cast(f *ir.Field, name string) string {
 	return name // byte/ushort widen implicitly
 }
 
+// csFixed8Temp is the temp type an 8-bit fixed field widens through:
+// serialize.cs's narrowest SerializeFixed overload pair is short/ushort
+// (sbyte/byte have none), so the emitter carries the raw value across the
+// call in the matching 16-bit type. sbyte/byte widen into it implicitly.
+func csFixed8Temp(f *ir.Field) string {
+	if f.Type.Signed {
+		return "short"
+	}
+	return "ushort"
+}
+
 func (g *gen) emitReadField(f *ir.Field, ind string) {
 	base := g.fieldBase(f)
 	name := "value." + base
@@ -702,6 +723,16 @@ func (g *gen) emitReadScalar(f *ir.Field, name, ind string) {
 		// validates the raw offset against the raw bounds and rejects — never
 		// clamps — returning false on a hostile stream
 		lo, hi := g.rangeArgs(f, "long")
+		if f.Type.Width == 8 {
+			// 8-bit storage sits below serialize.cs's narrowest SerializeFixed
+			// overload (short/ushort): read through a temp and narrow on the
+			// member assignment — lossless, a decoded raw value is inside the
+			// raw bounds or the read already failed
+			g.sf("%s{\n%s    %s fixedValue = 0;\n", ind, ind, csFixed8Temp(f))
+			g.call(ind+"    ", fmt.Sprintf("%s.SerializeFixed(ref fixedValue, %d, %d, %s, %s)", g.rv(), f.Type.IntBits, f.Type.FracBits, lo, hi), "")
+			g.sf("%s    %s = (%s)fixedValue;\n%s}\n", ind, name, g.csFieldType(f.Type), ind)
+			return
+		}
 		g.call(ind, fmt.Sprintf("%s.SerializeFixed(ref %s, %d, %d, %s, %s)", g.rv(), name, f.Type.IntBits, f.Type.FracBits, lo, hi), "")
 	case ir.TInt:
 		if f.Type.Width == 128 {
