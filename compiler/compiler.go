@@ -31,6 +31,11 @@ import (
 // A Compiler is one driver instance: the generator registry plus the load
 // policy the CLI and an embedder differ on. Use [New] — it returns a Compiler
 // with the six built-in generators registered.
+//
+// Register and the two policy fields configure a Compiler; do that before use
+// and from one goroutine. Once configured it is read-only, and Load, Generate
+// and Pack may run concurrently — with the caveat that FormatInPlace writes to
+// the input tree, so concurrent loads must not name the same files.
 type Compiler struct {
 	// FormatInPlace canonicalizes every schema file on disk before parsing it
 	// (schemafmt, SPEC §7.4), which is what every CLI command does: the
