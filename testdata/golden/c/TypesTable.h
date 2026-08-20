@@ -2,7 +2,7 @@
    SPDX-License-Identifier: NONE — this generated output is yours, under terms of
    your choice. See the LICENSE exception in the schema compiler; the compiler is
    AGPL-3.0, its output is not.
-   package example — protocol id 0x39e4aa9c08faf8f8
+   package example — protocol id 0x14cc156665b9f146
    The TABLE wire (evolution-tolerant). */
 
 #ifndef SCHEMA_EXAMPLE_TYPESTABLE_H
@@ -582,6 +582,142 @@ static SCHEMA_UNUSED int table_read_rigid_body( const void * buffer, int bytes, 
     return table_read_rigid_body_from( &r, value, report );
 }
 
+/* Appends ExtremeRow's table-wire encoding to the writer. */
+static SCHEMA_UNUSED void table_write_extreme_row_into( table_writer_t * w, const ExtremeRow * value )
+{
+    if ( value->clamped_floor != 0 )
+    {
+        table_w_u16( w, 0xba76 ); /* clamped_floor */
+        table_w_u8( w, 5 );
+        table_w_u64( w, (serialize_uint64_t) value->clamped_floor );
+    }
+    if ( value->clamped_ceiling != 0 )
+    {
+        table_w_u16( w, 0x7a83 ); /* clamped_ceiling */
+        table_w_u8( w, 9 );
+        table_w_u64( w, (serialize_uint64_t) value->clamped_ceiling );
+    }
+    if ( value->floor_def != ( -9223372036854775807LL - 1 ) )
+    {
+        table_w_u16( w, 0x1590 ); /* floor_def */
+        table_w_u8( w, 5 );
+        table_w_u64( w, (serialize_uint64_t) value->floor_def );
+    }
+    table_w_u16( w, 0 ); /* terminator */
+}
+
+/* Writes ExtremeRow's table-wire encoding into buffer, returning the byte count,
+   or -1 if the buffer was too small. Ask EXTREME_ROW_TABLE_MAX_BYTES for a size
+   that always fits. */
+static SCHEMA_UNUSED int table_write_extreme_row( void * buffer, int bytes, const ExtremeRow * value )
+{
+    table_writer_t w;
+    w.data = (serialize_uint8_t *) buffer;
+    w.capacity = bytes;
+    w.length = 0;
+    w.overflow = 0;
+    table_write_extreme_row_into( &w, value );
+    return w.overflow ? -1 : w.length;
+}
+
+/* Decodes a table-wire buffer under the permissive contract: declared
+   defaults prefill, known fields overlay, unknown ids and kind mismatches
+   skip and count, out-of-range values clamp and count. 0 means malformed —
+   the partial decode up to that point is kept. */
+static SCHEMA_UNUSED int table_read_extreme_row_from( table_reader_t * r, ExtremeRow * value, table_report_t * report )
+{
+    *value = new_extreme_row(); /* prefill declared defaults, then overlay */
+    for ( ;; )
+    {
+        serialize_uint16_t field_id;
+        serialize_uint8_t kind;
+        if ( !table_r_has( r, 2 ) ) { report->malformed = 1; return 0; }
+        field_id = table_r_u16( r );
+        if ( field_id == 0 ) { return 1; }
+        if ( !table_r_has( r, 1 ) ) { report->malformed = 1; return 0; }
+        kind = table_r_u8( r );
+        switch ( field_id )
+        {
+            case 0xba76: /* clamped_floor */
+            {
+                if ( kind != 5 )
+                {
+                    report->kind_mismatch++;
+                    if ( !table_r_skip( r, kind ) ) { report->malformed = 1; return 0; }
+                }
+                else
+                {
+                    if ( !table_r_has( r, 8 ) ) { report->malformed = 1; return 0; }
+                    {
+                        serialize_int64_t raw = (serialize_int64_t) table_r_u64( r );
+                        {
+                            serialize_int64_t v = (serialize_int64_t) raw;
+                            if ( v > 100LL ) { v = 100LL; report->clamped++; }
+                            value->clamped_floor = (int64_t) v;
+                        }
+                    }
+                }
+                break;
+            }
+            case 0x7a83: /* clamped_ceiling */
+            {
+                if ( kind != 9 )
+                {
+                    report->kind_mismatch++;
+                    if ( !table_r_skip( r, kind ) ) { report->malformed = 1; return 0; }
+                }
+                else
+                {
+                    if ( !table_r_has( r, 8 ) ) { report->malformed = 1; return 0; }
+                    {
+                        serialize_uint64_t raw = table_r_u64( r );
+                        {
+                            serialize_uint64_t v = (serialize_uint64_t) raw;
+                            if ( v < 1ULL ) { v = 1ULL; report->clamped++; }
+                            if ( v > 18446744073709551614ULL ) { v = 18446744073709551614ULL; report->clamped++; }
+                            value->clamped_ceiling = (uint64_t) v;
+                        }
+                    }
+                }
+                break;
+            }
+            case 0x1590: /* floor_def */
+            {
+                if ( kind != 5 )
+                {
+                    report->kind_mismatch++;
+                    if ( !table_r_skip( r, kind ) ) { report->malformed = 1; return 0; }
+                }
+                else
+                {
+                    if ( !table_r_has( r, 8 ) ) { report->malformed = 1; return 0; }
+                    {
+                        serialize_int64_t raw = (serialize_int64_t) table_r_u64( r );
+                        value->floor_def = (int64_t) raw;
+                    }
+                }
+                break;
+            }
+            default:
+            {
+                report->unknown++;
+                if ( !table_r_skip( r, kind ) ) { report->malformed = 1; return 0; }
+                break;
+            }
+        }
+    }
+}
+
+/* Decodes a table-wire buffer into value. */
+static SCHEMA_UNUSED int table_read_extreme_row( const void * buffer, int bytes, ExtremeRow * value, table_report_t * report )
+{
+    table_reader_t r;
+    r.data = (const serialize_uint8_t *) buffer;
+    r.length = bytes;
+    r.off = 0;
+    return table_read_extreme_row_from( &r, value, report );
+}
+
 /* ---- reflection descriptors (tables only) ---- */
 
 static const table_field_info_t TABLE_TYPE_VEC3_FIELDS[] = {
@@ -637,6 +773,23 @@ static const table_type_info_t TABLE_TYPE_RIGID_BODY = {
    bounds, ranges, enum names and branch guards. Static data: no
    per-instance cost and no lazy initialization. */
 static SCHEMA_UNUSED const table_type_info_t * table_type_rigid_body( void ) { return &TABLE_TYPE_RIGID_BODY; }
+
+static const table_field_info_t TABLE_TYPE_EXTREME_ROW_FIELDS[] = {
+    { "clamped_floor", "int64", 0xba76, 5, 0, 0, 0, NULL, 1, -9.223372036854776e+18, 100.0, -1, NULL, "" },
+    { "clamped_ceiling", "uint64", 0x7a83, 9, 0, 0, 0, NULL, 1, 1.0, 1.8446744073709552e+19, -1, NULL, "" },
+    { "floor_def", "int64", 0x1590, 5, 0, 0, 0, NULL, 0, 0.0, 0.0, -1, NULL, "" },
+};
+
+static const table_type_info_t TABLE_TYPE_EXTREME_ROW = {
+    "ExtremeRow",
+    TABLE_TYPE_EXTREME_ROW_FIELDS,
+    3
+};
+
+/* Returns ExtremeRow's reflection descriptor — field names, wire ids/kinds,
+   bounds, ranges, enum names and branch guards. Static data: no
+   per-instance cost and no lazy initialization. */
+static SCHEMA_UNUSED const table_type_info_t * table_type_extreme_row( void ) { return &TABLE_TYPE_EXTREME_ROW; }
 
 #ifdef __cplusplus
 }

@@ -143,6 +143,28 @@ func TestExprHostileDirect(t *testing.T) {
 	if got := g.renderInt(c.Expr, c.Int); got != "MAX_OBJECTS * MAX_UNITS" {
 		t.Errorf("renderInt after the referenced #defines = %q, want %q", got, "MAX_OBJECTS * MAX_UNITS")
 	}
+
+	// the extreme folds (issue #95): INT64_MIN has no literal spelling in C
+	// — the literal half overflows long long before the unary minus applies
+	// — and a value past INT64_MAX has no signed rung to land on, so the
+	// suffix the site asked for gives way to ULL
+	min64 := new(big.Int).Neg(new(big.Int).Lsh(big.NewInt(1), 63))
+	if got := intLit(min64, "LL"); got != "( -9223372036854775807LL - 1 )" {
+		t.Errorf("intLit(INT64_MIN, LL) = %q, want the guarded spelling", got)
+	}
+	if got := intLit(min64, ""); got != "( -9223372036854775807LL - 1 )" {
+		t.Errorf("intLit(INT64_MIN, unsuffixed) = %q, want the guarded spelling", got)
+	}
+	huge := new(big.Int).SetUint64(18446744073709551615)
+	if got := intLit(huge, ""); got != "18446744073709551615ULL" {
+		t.Errorf("intLit(UINT64_MAX, unsuffixed) = %q, want the ULL spelling", got)
+	}
+	if got := intLit(huge, "ULL"); got != "18446744073709551615ULL" {
+		t.Errorf("intLit(UINT64_MAX, ULL) = %q, want a single suffix", got)
+	}
+	if got := intLit(big.NewInt(-30000), "LL"); got != "-30000LL" {
+		t.Errorf("intLit(-30000, LL) = %q — an unexceptional fold must not move", got)
+	}
 }
 
 // ---- issue #95: the integer extremes ----

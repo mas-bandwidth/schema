@@ -294,17 +294,17 @@ func (g *gen) emitShallowWriteField(f *ir.Field, ind string) {
 			// refuse an out-of-range write, then the folded offset write —
 			// the same shape the ranged-int path uses (>32-bit widths split
 			// low 32 bits first, per the wire model)
-			g.pf("%sif ( (serialize_int64_t) %s < %sLL || (serialize_int64_t) %s > %sLL )\n%s{\n%s    return 0;\n%s}\n",
-				ind, member, lo, member, hi, ind, ind, ind)
+			g.pf("%sif ( (serialize_int64_t) %s < %s || (serialize_int64_t) %s > %s )\n%s{\n%s    return 0;\n%s}\n",
+				ind, member, intLit(lo, "LL"), member, intLit(hi, "LL"), ind, ind, ind)
 			if bits == 0 {
 				// a degenerate component narrows to zero bits — the refusal
 				// above is the whole write (SPEC §4.6, decided 2026-08-15)
 				continue
 			}
 			if bits <= 32 {
-				g.call(ind, fmt.Sprintf("serialize_write_bits( stream, (serialize_uint32_t) ( (serialize_int64_t) %s - (%sLL) ), %d )", member, lo, bits))
+				g.call(ind, fmt.Sprintf("serialize_write_bits( stream, (serialize_uint32_t) ( (serialize_int64_t) %s - (%s) ), %d )", member, intLit(lo, "LL"), bits))
 			} else {
-				g.pf("%s{\n%s    serialize_uint64_t offset_value = (serialize_uint64_t) ( (serialize_int64_t) %s - (%sLL) );\n", ind, ind, member, lo)
+				g.pf("%s{\n%s    serialize_uint64_t offset_value = (serialize_uint64_t) ( (serialize_int64_t) %s - (%s) );\n", ind, ind, member, intLit(lo, "LL"))
 				g.call(ind+"    ", "serialize_write_bits( stream, (serialize_uint32_t) ( offset_value & 0xFFFFFFFFu ), 32 )")
 				g.call(ind+"    ", fmt.Sprintf("serialize_write_bits( stream, (serialize_uint32_t) ( offset_value >> 32 ), %d )", bits-32))
 				g.pf("%s}\n", ind)
@@ -354,14 +354,14 @@ func (g *gen) emitShallowReadField(f *ir.Field, ind string) {
 			if bits == 0 {
 				// a degenerate component narrows to zero bits — the value is
 				// the range (SPEC §4.6, decided 2026-08-15)
-				g.pf("%s%s = (%s) %sLL;\n", ind, member, typ, lo.String())
+				g.pf("%s%s = (%s) %s;\n", ind, member, typ, intLit(lo, "LL"))
 				continue
 			}
 			if bits <= 32 {
 				g.pf("%s{\n%s    serialize_uint32_t raw = 0;\n", ind, ind)
 				g.call(ind+"    ", fmt.Sprintf("serialize_read_bits( stream, &raw, %d )", bits))
 				g.pf("%s    if ( raw > %sU )\n%s    {\n%s        return 0;\n%s    }\n", ind, span.String(), ind, ind, ind)
-				g.pf("%s    %s = (%s) ( (serialize_int64_t) raw + (%sLL) );\n%s}\n", ind, member, typ, lo, ind)
+				g.pf("%s    %s = (%s) ( (serialize_int64_t) raw + (%s) );\n%s}\n", ind, member, typ, intLit(lo, "LL"), ind)
 			} else {
 				// low 32 first, then the remainder — the same split the
 				// ranged 64-bit read uses; reject, never clamp
@@ -370,7 +370,7 @@ func (g *gen) emitShallowReadField(f *ir.Field, ind string) {
 				g.call(ind+"    ", fmt.Sprintf("serialize_read_bits( stream, &hi, %d )", bits-32))
 				g.pf("%s    raw = (serialize_uint64_t) lo | ( ( (serialize_uint64_t) hi ) << 32 );\n", ind)
 				g.pf("%s    if ( raw > %sULL )\n%s    {\n%s        return 0;\n%s    }\n", ind, span.String(), ind, ind, ind)
-				g.pf("%s    %s = (%s) ( (serialize_int64_t) raw + (%sLL) );\n%s}\n", ind, member, typ, lo, ind)
+				g.pf("%s    %s = (%s) ( (serialize_int64_t) raw + (%s) );\n%s}\n", ind, member, typ, intLit(lo, "LL"), ind)
 			}
 		}
 		return

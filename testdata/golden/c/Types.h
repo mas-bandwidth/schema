@@ -2,7 +2,7 @@
    SPDX-License-Identifier: NONE — this generated output is yours, under terms of
    your choice. See the LICENSE exception in the schema compiler; the compiler is
    AGPL-3.0, its output is not.
-   package example — protocol id 0x39e4aa9c08faf8f8 */
+   package example — protocol id 0x14cc156665b9f146 */
 
 #ifndef SCHEMA_EXAMPLE_TYPES_H
 #define SCHEMA_EXAMPLE_TYPES_H
@@ -166,6 +166,52 @@ typedef struct ExpressionProbe {
 
 #define EXPRESSION_PROBE_MAX_BITS 16   /* longest wire path; align pads at worst case (SPEC §6.1) */
 #define EXPRESSION_PROBE_MAX_BYTES 8  /* rounded up to the 8-byte write-buffer granularity; a READ buffer's allocation must extend at least 8 bytes past the data — serialize.c loads 64-bit windows */
+
+#define FLOOR_LIMIT (( -9223372036854775807LL - 1 ))
+#define CEILING_COUNT (18446744073709551615ULL)
+
+/* type ExtremeProbe */
+typedef struct ExtremeProbe {
+    int64_t floor_bound;
+    uint64_t ceiling_range;
+    int64_t floor_default;
+} ExtremeProbe;
+
+#define EXTREME_PROBE_MAX_BITS 192   /* longest wire path; align pads at worst case (SPEC §6.1) */
+#define EXTREME_PROBE_MAX_BYTES 24  /* rounded up to the 8-byte write-buffer granularity; a READ buffer's allocation must extend at least 8 bytes past the data — serialize.c loads 64-bit windows */
+
+/* Returns a ExtremeProbe with its SPECIFIED defaults applied. A memset to zero is
+   the schema's own default (SPEC §4.2: zero initialization unless a
+   specified default overrides it), so only types carrying one get this. */
+static SCHEMA_UNUSED ExtremeProbe new_extreme_probe( void )
+{
+    ExtremeProbe value;
+    memset( &value, 0, sizeof( value ) );
+    value.floor_default = ( -9223372036854775807LL - 1 );
+    return value;
+}
+
+
+/* type ExtremeRow */
+typedef struct ExtremeRow {
+    int64_t clamped_floor;
+    uint64_t clamped_ceiling;
+    int64_t floor_def;
+} ExtremeRow;
+
+#define EXTREME_ROW_MAX_BITS 192   /* longest wire path; align pads at worst case (SPEC §6.1) */
+#define EXTREME_ROW_MAX_BYTES 24  /* rounded up to the 8-byte write-buffer granularity; a READ buffer's allocation must extend at least 8 bytes past the data — serialize.c loads 64-bit windows */
+
+/* Returns a ExtremeRow with its SPECIFIED defaults applied. A memset to zero is
+   the schema's own default (SPEC §4.2: zero initialization unless a
+   specified default overrides it), so only types carrying one get this. */
+static SCHEMA_UNUSED ExtremeRow new_extreme_row( void )
+{
+    ExtremeRow value;
+    memset( &value, 0, sizeof( value ) );
+    value.floor_def = ( -9223372036854775807LL - 1 );
+    return value;
+}
 
 #ifdef __cplusplus
 }

@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package example — protocol id 0x39e4aa9c08faf8f8
+// package example — protocol id 0x14cc156665b9f146
 // The TABLE wire (evolution-tolerant, notes/table-wire.md): no serialize
 // dependency — includable from any TU.
 
@@ -501,6 +501,98 @@ inline bool TableReadRigidBody( const uint8_t * buffer, int64_t bytes, RigidBody
     return TableReadRigidBody( r, value );
 }
 
+inline bool TableWriteExtremeRow( TableWriter & w, const ExtremeRow & value )
+{
+    if ( value.clamped_floor != 0 )
+    {
+        w.put16( 0xba76 ); w.put8( 5 ); // clamped_floor
+        w.put64( uint64_t( value.clamped_floor ) );
+    }
+    if ( value.clamped_ceiling != 0 )
+    {
+        w.put16( 0x7a83 ); w.put8( 9 ); // clamped_ceiling
+        w.put64( uint64_t( value.clamped_ceiling ) );
+    }
+    if ( value.floor_def != ( -9223372036854775807ll - 1 ) )
+    {
+        w.put16( 0x1590 ); w.put8( 5 ); // floor_def
+        w.put64( uint64_t( value.floor_def ) );
+    }
+    w.put16( 0 ); // terminator
+    return !w.overflow;
+}
+
+inline bool TableReadExtremeRow( TableReader & r, ExtremeRow & value )
+{
+    new ( &value ) ExtremeRow{}; // prefill declared defaults in place, then overlay
+    for ( ;; )
+    {
+        if ( !r.has( 2 ) ) { r.report->malformed = true; return false; }
+        uint16_t field_id = r.get16();
+        if ( field_id == 0 ) return true;
+        if ( !r.has( 1 ) ) { r.report->malformed = true; return false; }
+        uint8_t kind = r.get8();
+        switch ( field_id )
+        {
+            case 0xba76: // clamped_floor
+            {
+                if ( kind != 5 )
+                {
+                    r.report->kind_mismatch++;
+                    if ( !r.skip( kind ) ) { r.report->malformed = true; return false; }
+                    break;
+                }
+                if ( !r.has( 8 ) ) { r.report->malformed = true; return false; }
+                int64_t decoded = int64_t( r.get64( ) );
+                if ( decoded < ( -9223372036854775807ll - 1 ) ) { decoded = ( -9223372036854775807ll - 1 ); r.report->clamped++; }
+                else if ( decoded > 100ll ) { decoded = 100ll; r.report->clamped++; }
+                value.clamped_floor = decoded;
+                break;
+            }
+            case 0x7a83: // clamped_ceiling
+            {
+                if ( kind != 9 )
+                {
+                    r.report->kind_mismatch++;
+                    if ( !r.skip( kind ) ) { r.report->malformed = true; return false; }
+                    break;
+                }
+                if ( !r.has( 8 ) ) { r.report->malformed = true; return false; }
+                uint64_t decoded = uint64_t( r.get64( ) );
+                if ( decoded < 1ull ) { decoded = 1ull; r.report->clamped++; }
+                else if ( decoded > 18446744073709551614ull ) { decoded = 18446744073709551614ull; r.report->clamped++; }
+                value.clamped_ceiling = decoded;
+                break;
+            }
+            case 0x1590: // floor_def
+            {
+                if ( kind != 5 )
+                {
+                    r.report->kind_mismatch++;
+                    if ( !r.skip( kind ) ) { r.report->malformed = true; return false; }
+                    break;
+                }
+                if ( !r.has( 8 ) ) { r.report->malformed = true; return false; }
+                int64_t decoded = int64_t( r.get64( ) );
+                value.floor_def = decoded;
+                break;
+            }
+            default:
+            {
+                r.report->unknown++;
+                if ( !r.skip( kind ) ) { r.report->malformed = true; return false; }
+                break;
+            }
+        }
+    }
+}
+
+inline bool TableReadExtremeRow( const uint8_t * buffer, int64_t bytes, ExtremeRow & value, TableReport & report )
+{
+    TableReader r( buffer, bytes, &report );
+    return TableReadExtremeRow( r, value );
+}
+
 // ---- relocatability, enforced (beyond flatbuffers: the wire is a pure
 // length-prefixed stream AND the decoded storage is pointer-free) — every
 // closure type must stay trivially copyable and standard-layout, so
@@ -513,12 +605,15 @@ static_assert( std::is_trivially_copyable<Quat>::value, "Quat must stay relocata
 static_assert( std::is_standard_layout<Quat>::value, "Quat must stay standard-layout for offsetof" );
 static_assert( std::is_trivially_copyable<RigidBody>::value, "RigidBody must stay relocatable" );
 static_assert( std::is_standard_layout<RigidBody>::value, "RigidBody must stay standard-layout for offsetof" );
+static_assert( std::is_trivially_copyable<ExtremeRow>::value, "ExtremeRow must stay relocatable" );
+static_assert( std::is_standard_layout<ExtremeRow>::value, "ExtremeRow must stay standard-layout for offsetof" );
 
 // ---- reflection descriptors (tables only, notes/table-wire.md) ----
 
 inline const TableTypeInfo * TableTypeVec3();
 inline const TableTypeInfo * TableTypeQuat();
 inline const TableTypeInfo * TableTypeRigidBody();
+inline const TableTypeInfo * TableTypeExtremeRow();
 
 inline const TableTypeInfo * TableTypeVec3()
 {
@@ -553,6 +648,17 @@ inline const TableTypeInfo * TableTypeRigidBody()
         { "angular_velocity", "Vec3", 0x01a7, 13, false, false, 0, (uint32_t) offsetof( RigidBody, angular_velocity ), (uint32_t) sizeof( RigidBody{}.angular_velocity ), 0xffffffffu, TableTypeVec3(), false, 0.0, 0.0, -1, NULL, "!at_rest" },
     };
     static const TableTypeInfo info = { "RigidBody", (uint32_t) sizeof( RigidBody ), 5, fields };
+    return &info;
+}
+
+inline const TableTypeInfo * TableTypeExtremeRow()
+{
+    static const TableFieldInfo fields[] = {
+        { "clamped_floor", "int64", 0xba76, 5, false, false, 0, (uint32_t) offsetof( ExtremeRow, clamped_floor ), (uint32_t) sizeof( ExtremeRow{}.clamped_floor ), 0xffffffffu, NULL, true, -9.223372036854776e+18, 100.0, -1, NULL, "" },
+        { "clamped_ceiling", "uint64", 0x7a83, 9, false, false, 0, (uint32_t) offsetof( ExtremeRow, clamped_ceiling ), (uint32_t) sizeof( ExtremeRow{}.clamped_ceiling ), 0xffffffffu, NULL, true, 1.0, 1.8446744073709552e+19, -1, NULL, "" },
+        { "floor_def", "int64", 0x1590, 5, false, false, 0, (uint32_t) offsetof( ExtremeRow, floor_def ), (uint32_t) sizeof( ExtremeRow{}.floor_def ), 0xffffffffu, NULL, false, 0.0, 0.0, -1, NULL, "" },
+    };
+    static const TableTypeInfo info = { "ExtremeRow", (uint32_t) sizeof( ExtremeRow ), 3, fields };
     return &info;
 }
 

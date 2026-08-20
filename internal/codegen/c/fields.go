@@ -399,11 +399,11 @@ func (g *gen) emitWriteFixed(f *ir.Field, expr, ind string) {
 			g.pf("%sif ( !serialize_uint128_equal( %s, %s ) )\n%s{\n%s    return 0;\n%s}\n",
 				ind, expr, uint128Literal(rawMin), ind, ind, ind)
 		case f.Type.Signed:
-			g.pf("%sif ( (serialize_int64_t) %s != %sLL )\n%s{\n%s    return 0;\n%s}\n",
-				ind, expr, rawMin.String(), ind, ind, ind)
+			g.pf("%sif ( (serialize_int64_t) %s != %s )\n%s{\n%s    return 0;\n%s}\n",
+				ind, expr, intLit(rawMin, "LL"), ind, ind, ind)
 		default:
-			g.pf("%sif ( (serialize_uint64_t) %s != %sULL )\n%s{\n%s    return 0;\n%s}\n",
-				ind, expr, rawMin.String(), ind, ind, ind)
+			g.pf("%sif ( (serialize_uint64_t) %s != %s )\n%s{\n%s    return 0;\n%s}\n",
+				ind, expr, intLit(rawMin, "ULL"), ind, ind, ind)
 		}
 		return
 	}
@@ -467,9 +467,9 @@ func (g *gen) emitReadFixed(f *ir.Field, expr, ind string) {
 		case f.Type.Width == 128:
 			g.pf("%s%s = %s;\n", ind, expr, uint128Literal(rawMin))
 		case f.Type.Signed:
-			g.pf("%s%s = (%s) %sLL;\n", ind, expr, g.storageType(f), rawMin.String())
+			g.pf("%s%s = (%s) %s;\n", ind, expr, g.storageType(f), intLit(rawMin, "LL"))
 		default:
-			g.pf("%s%s = (%s) %sULL;\n", ind, expr, g.storageType(f), rawMin.String())
+			g.pf("%s%s = (%s) %s;\n", ind, expr, g.storageType(f), intLit(rawMin, "ULL"))
 		}
 		return
 	}

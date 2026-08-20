@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package example — protocol id 0x39e4aa9c08faf8f8
+// package example — protocol id 0x14cc156665b9f146
 // The TABLE wire (evolution-tolerant, notes/table-wire.md): plain byte
 // code, no serialize dependency — Unity/IL2CPP-safe.
 
@@ -617,6 +617,176 @@ namespace Example
             }
         }
 
+        // TableWriteExtremeRow returns value's table-wire encoding as a fresh buffer.
+        public static byte[] TableWriteExtremeRow(ExtremeRow value)
+        {
+            TableWriter w = new TableWriter();
+            TableWriteExtremeRow(w, value);
+            return w.ToArray();
+        }
+
+        // AppendTableExtremeRow appends value's table-wire encoding to w — the
+        // zero-allocation write path: hold one TableWriter, Clear() it between
+        // uses, and steady-state writes never allocate once the buffer has grown.
+        // The wire is w.Buf[0 .. w.Len), byte-identical to TableWriteExtremeRow.
+        public static void AppendTableExtremeRow(TableWriter w, ExtremeRow value)
+        {
+            TableWriteExtremeRow(w, value);
+        }
+
+        private static void TableWriteExtremeRow(TableWriter w, ExtremeRow value)
+        {
+            if (value.ClampedFloor != 0)
+            {
+                w.U16(0xba76); // clamped_floor
+                w.U8(5);
+                w.U64((ulong)value.ClampedFloor);
+            }
+            if (value.ClampedCeiling != 0)
+            {
+                w.U16(0x7a83); // clamped_ceiling
+                w.U8(9);
+                w.U64((ulong)value.ClampedCeiling);
+            }
+            if (value.FloorDef != -9223372036854775808)
+            {
+                w.U16(0x1590); // floor_def
+                w.U8(5);
+                w.U64((ulong)value.FloorDef);
+            }
+            w.U16(0); // terminator
+        }
+
+        // TableReadExtremeRow decodes a table-wire buffer under the permissive contract:
+        // declared defaults prefill, known fields overlay, unknown ids and kind
+        // mismatches skip and count, out-of-range values clamp and count. false
+        // means malformed — the partial decode up to that point is kept.
+        public static bool TableReadExtremeRow(byte[] data, ref ExtremeRow value, TableReport report)
+        {
+            TableReader r = new TableReader(data, 0, data.Length, report);
+            return TableReadExtremeRow(r, ref value);
+        }
+
+        private static bool TableReadExtremeRow(TableReader r, ref ExtremeRow value)
+        {
+            value = new ExtremeRow(); // prefill declared defaults, then overlay
+            while (true)
+            {
+                if (!r.Has(2))
+                {
+                    r.Report.Malformed = true;
+                    return false;
+                }
+                ushort fieldId = r.Get16();
+                if (fieldId == 0)
+                {
+                    return true;
+                }
+                if (!r.Has(1))
+                {
+                    r.Report.Malformed = true;
+                    return false;
+                }
+                byte kind = r.Get8();
+                switch (fieldId)
+                {
+                    case 0xba76: // clamped_floor
+                    {
+                        if (kind != 5)
+                        {
+                            r.Report.KindMismatch++;
+                            if (!r.Skip(kind))
+                            {
+                                r.Report.Malformed = true;
+                                return false;
+                            }
+                            break;
+                        }
+                        if (!r.Has(8))
+                        {
+                            r.Report.Malformed = true;
+                            return false;
+                        }
+                        long decoded = (long)r.Get64();
+                        if (decoded < -9223372036854775808)
+                        {
+                            decoded = -9223372036854775808;
+                            r.Report.Clamped++;
+                        }
+                        else if (decoded > 100L)
+                        {
+                            decoded = 100L;
+                            r.Report.Clamped++;
+                        }
+                        value.ClampedFloor = (long)decoded;
+                        break;
+                    }
+                    case 0x7a83: // clamped_ceiling
+                    {
+                        if (kind != 9)
+                        {
+                            r.Report.KindMismatch++;
+                            if (!r.Skip(kind))
+                            {
+                                r.Report.Malformed = true;
+                                return false;
+                            }
+                            break;
+                        }
+                        if (!r.Has(8))
+                        {
+                            r.Report.Malformed = true;
+                            return false;
+                        }
+                        ulong decoded = r.Get64();
+                        if (decoded < 1UL)
+                        {
+                            decoded = 1UL;
+                            r.Report.Clamped++;
+                        }
+                        else if (decoded > 18446744073709551614UL)
+                        {
+                            decoded = 18446744073709551614UL;
+                            r.Report.Clamped++;
+                        }
+                        value.ClampedCeiling = (ulong)decoded;
+                        break;
+                    }
+                    case 0x1590: // floor_def
+                    {
+                        if (kind != 5)
+                        {
+                            r.Report.KindMismatch++;
+                            if (!r.Skip(kind))
+                            {
+                                r.Report.Malformed = true;
+                                return false;
+                            }
+                            break;
+                        }
+                        if (!r.Has(8))
+                        {
+                            r.Report.Malformed = true;
+                            return false;
+                        }
+                        long decoded = (long)r.Get64();
+                        value.FloorDef = (long)decoded;
+                        break;
+                    }
+                    default:
+                    {
+                        r.Report.Unknown++;
+                        if (!r.Skip(kind))
+                        {
+                            r.Report.Malformed = true;
+                            return false;
+                        }
+                        break;
+                    }
+                }
+            }
+        }
+
         // ---- reflection descriptors (tables only, notes/table-wire.md) ----
         //
         // One flat TableFieldInfo[] per closure type (SPEC §4.11: contiguous
@@ -919,6 +1089,119 @@ namespace Example
                         return false;
                     }
                     value.AtRest = v.B;
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        private static TableTypeInfo _tableTypeExtremeRow;
+
+        // TableTypeExtremeRow returns ExtremeRow's reflection descriptor — field names, wire
+        // ids/kinds, bounds, ranges, enum names and branch guards. Pair it with
+        // TableGetExtremeRow/TableSetExtremeRow to walk, print, diff or edit values generically
+        // (walk the flat Fields array with `ref readonly var f = ref fields[i];`).
+        public static TableTypeInfo TableTypeExtremeRow()
+        {
+            if (_tableTypeExtremeRow != null)
+            {
+                return _tableTypeExtremeRow;
+            }
+            TableFieldInfo[] fields = new TableFieldInfo[3];
+            fields[0] = new TableFieldInfo { Name = "clamped_floor", TypeName = "int64", Id = 0xba76, Kind = 5, HasRange = true, RangeMin = -9.223372036854776e+18, RangeMax = 100.0, EnumMax = -1, Guard = "" };
+            fields[1] = new TableFieldInfo { Name = "clamped_ceiling", TypeName = "uint64", Id = 0x7a83, Kind = 9, HasRange = true, RangeMin = 1.0, RangeMax = 1.8446744073709552e+19, EnumMax = -1, Guard = "" };
+            fields[2] = new TableFieldInfo { Name = "floor_def", TypeName = "int64", Id = 0x1590, Kind = 5, EnumMax = -1, Guard = "" };
+            TableTypeInfo info = new TableTypeInfo();
+            info.Name = "ExtremeRow";
+            info.Fields = fields;
+            _tableTypeExtremeRow = info;
+            return info;
+        }
+
+        // TableGetExtremeRow reads the named field from value into a TableValue — no
+        // boxing (SPEC §4.11): scalars normalize (signed -> I, unsigned/bits -> U,
+        // floats -> F, bools -> B), enums and flags -> U, strings decode into S
+        // (the one allocating path), nested tables put the member reference in
+        // Obj, arrays put the member array in Obj and the used element count in
+        // Count (fixed arrays: the full bound). Unknown field names return false.
+        public static bool TableGetExtremeRow(ExtremeRow value, string field, out TableValue result)
+        {
+            switch (field)
+            {
+                case "clamped_floor":
+                {
+                    result = new TableValue { Kind = TableValueKind.Int, I = value.ClampedFloor };
+                    return true;
+                }
+                case "clamped_ceiling":
+                {
+                    result = new TableValue { Kind = TableValueKind.Uint, U = value.ClampedCeiling };
+                    return true;
+                }
+                case "floor_def":
+                {
+                    result = new TableValue { Kind = TableValueKind.Int, I = value.FloorDef };
+                    return true;
+                }
+            }
+            result = new TableValue();
+            return false;
+        }
+
+        // TableSetExtremeRow writes the named field — the editor write path: scalars,
+        // enums, flags, bools and strings only. Numerics accept the Int, Uint and
+        // Float kinds; out-of-range values CLAMP exactly as the table-wire read
+        // side does (declared ranges, bits width, enum out-of-set -> None), and
+        // strings truncate to the declared max. Unknown fields, nested tables and
+        // arrays return false.
+        public static bool TableSetExtremeRow(ExtremeRow value, string field, in TableValue v)
+        {
+            switch (field)
+            {
+                case "clamped_floor":
+                {
+                    long n;
+                    if (!v.AsLong(out n))
+                    {
+                        return false;
+                    }
+                    if (n < -9223372036854775808)
+                    {
+                        n = -9223372036854775808;
+                    }
+                    else if (n > 100L)
+                    {
+                        n = 100L;
+                    }
+                    value.ClampedFloor = n;
+                    return true;
+                }
+                case "clamped_ceiling":
+                {
+                    ulong n;
+                    if (!v.AsUlong(out n))
+                    {
+                        return false;
+                    }
+                    if (n < 1UL)
+                    {
+                        n = 1UL;
+                    }
+                    else if (n > 18446744073709551614UL)
+                    {
+                        n = 18446744073709551614UL;
+                    }
+                    value.ClampedCeiling = n;
+                    return true;
+                }
+                case "floor_def":
+                {
+                    long n;
+                    if (!v.AsLong(out n))
+                    {
+                        return false;
+                    }
+                    value.FloorDef = n;
                     return true;
                 }
             }
