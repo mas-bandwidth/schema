@@ -134,3 +134,18 @@ type ShipCreate {
     // than only in a unit test.
     pending Pending
 }
+
+// ---- the #22 parenthesization class, pinned end-to-end (issue #91) ----
+
+// The two source spellings whose rendering regressions no golden caught
+// before this type existed: an author-parenthesized bound, and a doubled
+// unary minus (issue #22's class — "--" is a decrement in the C family and a
+// parse error in Go and Rust, so the target form must parenthesize). Every
+// symbolic backend renders these bounds as source text, so the golden trees
+// themselves refuse a paren regression: dropping the author's parens or the
+// doubled-minus parenthesization changes no wire bit and no folded value —
+// only these goldens go red.
+type ExpressionProbe {
+    hardpoint_index int32 [min = 0, max = (ShipMaxLasers + ShipMaxMissiles) - 1]
+    spin_rate       int32 [min = --RotationUnits, max = RotationUnits * 2]
+}
