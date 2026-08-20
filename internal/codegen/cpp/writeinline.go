@@ -36,11 +36,10 @@ package cpp
 // surface: exempting WriteMessage alone still let the demand propagate
 // through it into its own body, and the arm forwarders
 // (emitWriteArmComment) close that. The demand is a DEMAND, not a
-// branch-weight hint:
-// __builtin_expect-style cold hints were measured in this family to
-// activate the machine outliner and shred hot bodies (bits write -25%) — do
-// not swap this for hints. Guarded against redefinition because several
-// wire headers can land in one translation unit.
+// branch-weight hint: __builtin_expect-style cold hints were measured in
+// this family to activate the machine outliner and shred hot bodies (bits
+// write -25%) — do not swap this for hints. Guarded against redefinition
+// because several wire headers can land in one translation unit.
 func (g *gen) emitWriteInlineMacro() {
 	g.pf("#ifndef SCHEMA_WRITE_INLINE_DEFINED\n#define SCHEMA_WRITE_INLINE_DEFINED\n")
 	g.pf("// SCHEMA_WRITE_INLINE — how every generated Write function is spelled,\n")
