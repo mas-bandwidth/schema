@@ -264,6 +264,75 @@ func (g *gen) emitWriteRangedFold64(expr, lo, hi string, bits int64, loZero bool
 	g.pf("%s\tstream.SerializeBits64(&offsetValue, %d)\n%s}\n", ind, bits, ind)
 }
 
+// emitWriteCompressedFold quantizes a ranged float onto its step count in a
+// generation-time bit count — serialize_compressed_float's own arithmetic with
+// the declaration folded, the way the ranged-integer folds carry their bounds.
+// The step count, wire width and delta depend only on (min, max, resolution),
+// which are compile-time constants of the call site, so the runtime's per-field
+// derivation (a float32 divide, a clamp, a Ceil and a BitsRequired) is paid once
+// here instead of on every field of every message.
+//
+// The float32() around the product is LOAD BEARING, exactly as it is in the
+// runtime and in internal/pack: STANDARD.md pins this arithmetic to float32 with
+// TWO roundings, and Go permits fusing a multiply into an add unless a
+// conversion forces the intermediate rounding. arm64 takes that permission, so a
+// fused line writes different bytes for 0.005 over [0, 10] at resolution 0.01.
+// Do not "simplify" it.
+//
+// uint32() truncates toward zero, which is the runtime's Floor: the clamp leaves
+// normalizedValue in [0, 1] (its !>= form sends NaN to 0), so the product plus
+// 0.5 is always positive, where truncation and floor agree.
+func (g *gen) emitWriteCompressedFold(f *ir.Field, name, ind string) {
+	steps, bits := ir.CompressedFloatParams(f.FMin, f.FMax, f.Resolution)
+	min32 := float32(f.FMin)
+	delta := float32(f.FMax) - min32
+	g.pf("%s{\n", ind)
+	if min32 == 0 {
+		g.pf("%s\tnormalizedValue := %s / %s\n", ind, name, f32lit(delta))
+	} else {
+		g.pf("%s\tnormalizedValue := (%s - (%s)) / %s\n", ind, name, f32lit(min32), f32lit(delta))
+	}
+	g.pf("%s\tif !(normalizedValue >= 0) { // the runtime's clamp form — it forces NaN into range too\n", ind)
+	g.pf("%s\t\tnormalizedValue = 0\n%s\t} else if !(normalizedValue <= 1) {\n%s\t\tnormalizedValue = 1\n%s\t}\n", ind, ind, ind, ind)
+	g.pf("%s\tintegerValue := uint32(float32(normalizedValue*%s) + 0.5)\n", ind, f32lit(float32(steps)))
+	g.pf("%s\tstream.SerializeBits(&integerValue, %d)\n%s}\n", ind, bits, ind)
+}
+
+// emitReadCompressedFold is the read twin: the quantized value at its
+// generation-time width, the runtime's headroom refusal folded, then the
+// dequantization. The refusal is elided where the step count fills its bit width
+// exactly — there is no headroom to smuggle a value into.
+//
+// The float32() around the product is LOAD BEARING for the reader's own reason:
+// fused, integer 384 over [-100, 100] at resolution 0.01 decodes to -96.159996
+// where two roundings give -96.160004, so an arm64 reader would disagree with
+// every other runtime about what it just read.
+func (g *gen) emitReadCompressedFold(f *ir.Field, name, ind string) {
+	steps, bits := ir.CompressedFloatParams(f.FMin, f.FMax, f.Resolution)
+	min32 := float32(f.FMin)
+	delta := float32(f.FMax) - min32
+	g.pf("%s{\n%s\tintegerValue := uint32(0)\n", ind, ind)
+	g.pf("%s\tstream.SerializeBits(&integerValue, %d)\n", ind, bits)
+	if steps != uint64(1)<<uint(bits)-1 {
+		g.pf("%s\tif stream.Err() != nil {\n%s\t\treturn stream.Err()\n%s\t}\n", ind, ind, ind)
+		g.pf("%s\tif integerValue > %d { // a value smuggled into the bit headroom is refused (SPEC §4.3)\n", ind, steps)
+		g.pf("%s\t\treturn ErrValidation\n%s\t}\n", ind, ind)
+	}
+	g.pf("%s\tnormalizedValue := float32(integerValue) / %s\n", ind, f32lit(float32(steps)))
+	if min32 == 0 {
+		g.pf("%s\t%s = float32(normalizedValue * %s)\n%s}\n", ind, name, f32lit(delta), ind)
+	} else {
+		g.pf("%s\t%s = float32(normalizedValue*%s) + (%s)\n%s}\n", ind, name, f32lit(delta), f32lit(min32), ind)
+	}
+}
+
+// f32lit prints a float32 as a Go literal that converts back to exactly that
+// value — the folded constants are float32 quantities, and the wire depends on
+// their exact bits.
+func f32lit(v float32) string {
+	return formatFloat32(float64(v))
+}
+
 // maxUint64 is 2^64 - 1, the top of unsigned-64 storage — the bound against
 // which a range guard becomes vacuous.
 var maxUint64 = new(big.Int).SetUint64(math.MaxUint64)
@@ -435,10 +504,7 @@ func (g *gen) emitWriteScalar(f *ir.Field, name, ind string) {
 		g.pf("%sstream.SerializeBool(&%s)\n", ind, name)
 	case ir.TFloat32:
 		if f.HasFloatRange {
-			// a temp so the wire quantization cannot write back into the input
-			g.pf("%s{\n%s\tcompressedValue := %s\n", ind, ind, name)
-			g.pf("%s\tstream.SerializeCompressedFloat32(&compressedValue, %s, %s, %s)\n%s}\n",
-				ind, formatFloat32(f.FMin), formatFloat32(f.FMax), formatFloat32(f.Resolution), ind)
+			g.emitWriteCompressedFold(f, name, ind)
 			return
 		}
 		g.pf("%sstream.SerializeFloat32(&%s)\n", ind, name)
@@ -635,8 +701,7 @@ func (g *gen) emitReadScalar(f *ir.Field, name, ind string) {
 		g.pf("%sstream.SerializeBool(&%s)\n", ind, name)
 	case ir.TFloat32:
 		if f.HasFloatRange {
-			g.pf("%sstream.SerializeCompressedFloat32(&%s, %s, %s, %s)\n",
-				ind, name, formatFloat32(f.FMin), formatFloat32(f.FMax), formatFloat32(f.Resolution))
+			g.emitReadCompressedFold(f, name, ind)
 			return
 		}
 		g.pf("%sstream.SerializeFloat32(&%s)\n", ind, name)

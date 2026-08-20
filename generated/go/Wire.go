@@ -195,8 +195,14 @@ const ProbeSampleMaxBytes = 40
 func WriteProbeSample(stream *serialize.WriteStream, value *ProbeSample) error {
 	stream.SerializeBool(&value.Active)
 	{
-		compressedValue := value.Orientation
-		stream.SerializeCompressedFloat32(&compressedValue, -180.0, 180.0, 0.01)
+		normalizedValue := (value.Orientation - (-180.0)) / 360.0
+		if !(normalizedValue >= 0) { // the runtime's clamp form — it forces NaN into range too
+			normalizedValue = 0
+		} else if !(normalizedValue <= 1) {
+			normalizedValue = 1
+		}
+		integerValue := uint32(float32(normalizedValue*36000.0) + 0.5)
+		stream.SerializeBits(&integerValue, 16)
 	}
 	{
 		rawValue := uint32(value.RawDelta)
@@ -248,7 +254,18 @@ func WriteProbeSample(stream *serialize.WriteStream, value *ProbeSample) error {
 
 func ReadProbeSample(stream *serialize.ReadStream, value *ProbeSample) error {
 	stream.SerializeBool(&value.Active)
-	stream.SerializeCompressedFloat32(&value.Orientation, -180.0, 180.0, 0.01)
+	{
+		integerValue := uint32(0)
+		stream.SerializeBits(&integerValue, 16)
+		if stream.Err() != nil {
+			return stream.Err()
+		}
+		if integerValue > 36000 { // a value smuggled into the bit headroom is refused (SPEC §4.3)
+			return ErrValidation
+		}
+		normalizedValue := float32(integerValue) / 36000.0
+		value.Orientation = float32(normalizedValue*360.0) + (-180.0)
+	}
 	{
 		rawValue := uint32(0)
 		stream.SerializeBits(&rawValue, 32)
@@ -519,8 +536,14 @@ func WriteTestData(stream *serialize.WriteStream, value *TestData) error {
 	}
 	stream.SerializeFloat32(&value.FloatValue)
 	{
-		compressedValue := value.CompressedFloatValue
-		stream.SerializeCompressedFloat32(&compressedValue, 0.0, 10.0, 0.01)
+		normalizedValue := value.CompressedFloatValue / 10.0
+		if !(normalizedValue >= 0) { // the runtime's clamp form — it forces NaN into range too
+			normalizedValue = 0
+		} else if !(normalizedValue <= 1) {
+			normalizedValue = 1
+		}
+		integerValue := uint32(float32(normalizedValue*1000.0) + 0.5)
+		stream.SerializeBits(&integerValue, 10)
 	}
 	stream.SerializeFloat64(&value.DoubleValue)
 	{
@@ -584,7 +607,18 @@ func ReadTestData(stream *serialize.ReadStream, value *TestData) error {
 		stream.SerializeInt(&value.Items[i], 0, 255)
 	}
 	stream.SerializeFloat32(&value.FloatValue)
-	stream.SerializeCompressedFloat32(&value.CompressedFloatValue, 0.0, 10.0, 0.01)
+	{
+		integerValue := uint32(0)
+		stream.SerializeBits(&integerValue, 10)
+		if stream.Err() != nil {
+			return stream.Err()
+		}
+		if integerValue > 1000 { // a value smuggled into the bit headroom is refused (SPEC §4.3)
+			return ErrValidation
+		}
+		normalizedValue := float32(integerValue) / 1000.0
+		value.CompressedFloatValue = float32(normalizedValue * 10.0)
+	}
 	stream.SerializeFloat64(&value.DoubleValue)
 	{
 		rawValue := uint32(0)
@@ -645,18 +679,52 @@ const CompressedProbeMaxBytes = 8
 
 func WriteCompressedProbe(stream *serialize.WriteStream, value *CompressedProbe) error {
 	{
-		compressedValue := value.Boundary
-		stream.SerializeCompressedFloat32(&compressedValue, 0.0, 10.0, 0.01)
+		normalizedValue := value.Boundary / 10.0
+		if !(normalizedValue >= 0) { // the runtime's clamp form — it forces NaN into range too
+			normalizedValue = 0
+		} else if !(normalizedValue <= 1) {
+			normalizedValue = 1
+		}
+		integerValue := uint32(float32(normalizedValue*1000.0) + 0.5)
+		stream.SerializeBits(&integerValue, 10)
 	}
 	{
-		compressedValue := value.Offset
-		stream.SerializeCompressedFloat32(&compressedValue, -5.0, 5.0, 0.001)
+		normalizedValue := (value.Offset - (-5.0)) / 10.0
+		if !(normalizedValue >= 0) { // the runtime's clamp form — it forces NaN into range too
+			normalizedValue = 0
+		} else if !(normalizedValue <= 1) {
+			normalizedValue = 1
+		}
+		integerValue := uint32(float32(normalizedValue*10000.0) + 0.5)
+		stream.SerializeBits(&integerValue, 14)
 	}
 	return stream.Err()
 }
 
 func ReadCompressedProbe(stream *serialize.ReadStream, value *CompressedProbe) error {
-	stream.SerializeCompressedFloat32(&value.Boundary, 0.0, 10.0, 0.01)
-	stream.SerializeCompressedFloat32(&value.Offset, -5.0, 5.0, 0.001)
+	{
+		integerValue := uint32(0)
+		stream.SerializeBits(&integerValue, 10)
+		if stream.Err() != nil {
+			return stream.Err()
+		}
+		if integerValue > 1000 { // a value smuggled into the bit headroom is refused (SPEC §4.3)
+			return ErrValidation
+		}
+		normalizedValue := float32(integerValue) / 1000.0
+		value.Boundary = float32(normalizedValue * 10.0)
+	}
+	{
+		integerValue := uint32(0)
+		stream.SerializeBits(&integerValue, 14)
+		if stream.Err() != nil {
+			return stream.Err()
+		}
+		if integerValue > 10000 { // a value smuggled into the bit headroom is refused (SPEC §4.3)
+			return ErrValidation
+		}
+		normalizedValue := float32(integerValue) / 10000.0
+		value.Offset = float32(normalizedValue*10.0) + (-5.0)
+	}
 	return stream.Err()
 }
