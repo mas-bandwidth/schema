@@ -318,7 +318,7 @@ impl RealPacket {
 pub const REAL_PACKET_MAX_BITS: u64 = 1810;
 pub const REAL_PACKET_MAX_BYTES: usize = 232;
 
-#[inline]
+#[inline(always)]
 pub fn write_real_packet(stream: &mut WriteStream<'_>, value: &RealPacket) -> Result {
     if value.f001_int < -805495 || value.f001_int > 805495 { // out-of-contract writes are refused, not wrapped
         return Err(Error::Stream(serialize::Error::ValueOutOfRange));

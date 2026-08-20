@@ -30,7 +30,7 @@ impl Default for Vec3 {
 pub const VEC3_MAX_BITS: u64 = 192;
 pub const VEC3_MAX_BYTES: usize = 24;
 
-#[inline]
+#[inline(always)]
 pub fn write_vec3(stream: &mut WriteStream<'_>, value: &Vec3) -> Result {
     {
         let mut float_value = value.x;
@@ -83,7 +83,7 @@ impl Default for Quat {
 pub const QUAT_MAX_BITS: u64 = 256;
 pub const QUAT_MAX_BYTES: usize = 32;
 
-#[inline]
+#[inline(always)]
 pub fn write_quat(stream: &mut WriteStream<'_>, value: &Quat) -> Result {
     {
         let mut float_value = value.x;
@@ -136,7 +136,7 @@ impl Default for Handle {
 pub const HANDLE_MAX_BITS: u64 = 22;
 pub const HANDLE_MAX_BYTES: usize = 8;
 
-#[inline]
+#[inline(always)]
 pub fn write_handle(stream: &mut WriteStream<'_>, value: &Handle) -> Result {
     if value.object_id < 0 || value.object_id > 9999 { // out-of-contract writes are refused, not wrapped
         return Err(Error::Stream(serialize::Error::ValueOutOfRange));
@@ -188,7 +188,7 @@ impl Default for QuantizedPosition {
 pub const QUANTIZED_POSITION_MAX_BITS: u64 = 75;
 pub const QUANTIZED_POSITION_MAX_BYTES: usize = 16;
 
-#[inline]
+#[inline(always)]
 pub fn write_quantized_position(stream: &mut WriteStream<'_>, value: &QuantizedPosition) -> Result {
     if value.x < -8388608 || value.x > 8388608 { // out-of-contract writes are refused, not wrapped
         return Err(Error::Stream(serialize::Error::ValueOutOfRange));
@@ -247,7 +247,7 @@ impl Default for QuantizedVelocity {
 pub const QUANTIZED_VELOCITY_MAX_BITS: u64 = 69;
 pub const QUANTIZED_VELOCITY_MAX_BYTES: usize = 16;
 
-#[inline]
+#[inline(always)]
 pub fn write_quantized_velocity(stream: &mut WriteStream<'_>, value: &QuantizedVelocity) -> Result {
     if value.x < -2097152 || value.x > 2097152 { // out-of-contract writes are refused, not wrapped
         return Err(Error::Stream(serialize::Error::ValueOutOfRange));
@@ -308,7 +308,7 @@ impl Default for QuantizedRotation {
 pub const QUANTIZED_ROTATION_MAX_BITS: u64 = 48;
 pub const QUANTIZED_ROTATION_MAX_BYTES: usize = 8;
 
-#[inline]
+#[inline(always)]
 pub fn write_quantized_rotation(stream: &mut WriteStream<'_>, value: &QuantizedRotation) -> Result {
     if value.x < -1024 || value.x > 1024 { // out-of-contract writes are refused, not wrapped
         return Err(Error::Stream(serialize::Error::ValueOutOfRange));
@@ -398,7 +398,7 @@ impl Default for RigidBody {
 pub const RIGID_BODY_MAX_BITS: u64 = 833;
 pub const RIGID_BODY_MAX_BYTES: usize = 112;
 
-#[inline]
+#[inline(always)]
 pub fn write_rigid_body(stream: &mut WriteStream<'_>, value: &RigidBody) -> Result {
     write_vec3(stream, &value.position)?;
     write_quat(stream, &value.orientation)?;
@@ -473,7 +473,7 @@ impl Default for Input {
 pub const INPUT_MAX_BITS: u64 = 168;
 pub const INPUT_MAX_BYTES: usize = 24;
 
-#[inline]
+#[inline(always)]
 pub fn write_input(stream: &mut WriteStream<'_>, value: &Input) -> Result {
     {
         let mut float_value = value.stick_x;
@@ -577,7 +577,7 @@ impl Default for InputPacket {
 pub const INPUT_PACKET_MAX_BITS: u64 = 2837;
 pub const INPUT_PACKET_MAX_BYTES: usize = 360;
 
-#[inline]
+#[inline(always)]
 pub fn write_input_packet(stream: &mut WriteStream<'_>, value: &InputPacket) -> Result {
     {
         let mut raw_value = value.synchronize_sequence as u32;
@@ -663,7 +663,7 @@ impl Default for ShipCreate {
 pub const SHIP_CREATE_MAX_BITS: u64 = 219;
 pub const SHIP_CREATE_MAX_BYTES: usize = 32;
 
-#[inline]
+#[inline(always)]
 pub fn write_ship_create(stream: &mut WriteStream<'_>, value: &ShipCreate) -> Result {
     if value.ship_type.0 > 5 {
         return Err(Error::Stream(serialize::Error::ValueOutOfRange));

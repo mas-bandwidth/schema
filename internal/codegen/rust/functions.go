@@ -33,11 +33,17 @@ func (g *gen) emitStructFunctions(st *ir.Struct) {
 	g.pf("pub const %s: u64 = %d;\n", ir.RustConstName(st.Name+"MaxBits"), maxBits)
 	g.pf("pub const %s: usize = %d;\n\n", ir.RustConstName(st.Name+"MaxBytes"), ir.MaxBytes(maxBits))
 
-	// #[inline] on every wire function: the generated crate is a separate
-	// compilation unit from the caller, and without the hint a 6-10 byte
-	// message pays a full call (and loses constant folding of its bit widths)
-	// per serialize — measured 2-6x on tiny messages (bench 2026-08-06)
-	g.pf("#[inline]\n")
+	// Both spines carry an attribute because the generated crate is a separate
+	// compilation unit from the caller, and without one a 6-10 byte message
+	// pays a full call (and loses constant folding of its bit widths) per
+	// serialize — measured 2-6x on tiny messages (bench 2026-08-06).
+	//
+	// The WRITE spine demands (see inline.go): the plain hint only raises
+	// LLVM's threshold, and these spines price far over it and were refused
+	// anyway (issue #77). The READ spine keeps the hint: the C++ backend's
+	// blanket read demand was ported here, measured, and refused — it
+	// collapsed probearray read to 0.53x and shipcreate read to 0.71x.
+	g.pf(writeSpineInline)
 	g.pf("pub fn write_%s(stream: &mut WriteStream<'_>, value: &%s) -> Result {\n", snake, st.Name)
 	if len(st.Items) == 0 {
 		g.pf("    let _ = (stream, value); // empty body — presence is the payload (SPEC §4.6)\n")
@@ -46,7 +52,7 @@ func (g *gen) emitStructFunctions(st *ir.Struct) {
 	}
 	g.pf("    Ok(())\n}\n\n")
 
-	g.pf("#[inline]\n")
+	g.pf(readSpineInline)
 	g.pf("pub fn read_%s(stream: &mut ReadStream<'_>, value: &mut %s) -> Result {\n", snake, st.Name)
 	if len(st.Items) == 0 {
 		g.pf("    let _ = (stream, value);\n")
@@ -812,13 +818,13 @@ func (g *gen) emitMessageTagFunctions() {
 	count := int64(len(g.unit.Messages))
 	g.pf("// The message tag wire: MessageType in [0, %d], minimal bits; None = 0 is a\n", count)
 	g.pf("// valid wire value meaning *no message* — the stream terminator (SPEC §4.8).\n")
-	g.pf("#[inline]\n")
+	g.pf(writeSpineInline)
 	g.pf("pub fn write_message_type(stream: &mut WriteStream<'_>, value: MessageType) -> Result {\n")
 	g.pf("    debug_assert!(value.0 as u32 <= %d); // the runtime ranged form's write assert, kept (debug parity)\n", count)
 	g.emitWriteRangedFold32("value.0", ir.StorageBitsFor(count) == 32, "0", true,
 		ir.BitsRequired(big.NewInt(0), big.NewInt(count)), "", "    ")
 	g.pf("    Ok(())\n}\n\n")
-	g.pf("#[inline]\n")
+	g.pf(readSpineInline)
 	g.pf("pub fn read_message_type(stream: &mut ReadStream<'_>, value: &mut MessageType) -> Result {\n")
 	g.pf("    let mut tag_value: i32 = 0;\n")
 	g.pf("    stream.serialize_int(&mut tag_value, 0, %d)?;\n", count)
@@ -857,7 +863,8 @@ func (g *gen) emitMessageTagFunctions() {
 	// the tag rides through the tag pair (one source), inside each arm BEFORE
 	// its payload; the out-of-set refusal the other targets carry has no Rust
 	// twin — the enum is closed, so no such value exists to refuse
-	g.pf("#[inline]\n")
+	g.emitWriteDispatchComment()
+	g.pf(dispatchInline)
 	g.pf("pub fn write_message(stream: &mut WriteStream<'_>, message: &Message) -> Result {\n")
 	g.pf("    match message {\n")
 	g.pf("        Message::None => write_message_type(stream, MessageType::NONE), // the stream terminator (SPEC §4.8)\n")
@@ -887,7 +894,7 @@ func (g *gen) emitMessageTagFunctions() {
 	g.pf("// per-message copy-out of the union and measured 2.6x on the steady-state\n")
 	g.pf("// batch read (M2, 2026-08-06). The two surfaces stay separate on purpose —\n")
 	g.pf("// see the note on read_message.\n")
-	g.pf("#[inline]\n")
+	g.pf(readSpineInline)
 	g.pf("pub fn read_message_into(stream: &mut ReadStream<'_>, message: &mut Message) -> Result {\n")
 	g.pf("    let mut tag_value = MessageType::NONE;\n")
 	g.pf("    read_message_type(stream, &mut tag_value)?;\n")
@@ -920,7 +927,7 @@ func (g *gen) emitMessageTagFunctions() {
 	g.pf("// return through a &mut out-param defeated LLVM's in-place construction\n")
 	g.pf("// of the returned union and cost the batch read 23%% (measured M2,\n")
 	g.pf("// 2026-08-06). Both surfaces stay; reuse loops call read_message_into.\n")
-	g.pf("#[inline]\n")
+	g.pf(readSpineInline)
 	g.pf("pub fn read_message(stream: &mut ReadStream<'_>) -> Result<Message> {\n")
 	g.pf("    let mut tag_value = MessageType::NONE;\n")
 	g.pf("    read_message_type(stream, &mut tag_value)?;\n")
