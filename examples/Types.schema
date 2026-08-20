@@ -170,14 +170,16 @@ const FloorLimit          = -9223372036854775808
 const CeilingCount uint64 = 18446744073709551615
 
 type ExtremeProbe {
-    floor_bound   int64  [min = -9223372036854775808, max = 100]
-    doubled_floor int64  [min = --FloorLimit, max = 100]
-    ceiling_range uint64 [min = 1, max = 18446744073709551615]
-    floor_default int64  = -9223372036854775808
+    floor_bound     int64  [min = -9223372036854775808, max = 100]
+    doubled_floor   int64  [min = --FloorLimit, max = 100]
+    ceiling_range   uint64 [min = 1, max = 18446744073709551615]
+    floor_default   int64  = -9223372036854775808
+    ceiling_default uint64 = 18446744073709551615
 }
 
 table ExtremeRow {
     clamped_floor   int64  [min = -9223372036854775808, max = 100]
     clamped_ceiling uint64 [min = 1, max = 18446744073709551614]
     floor_def       int64  = -9223372036854775808
+    ceiling_def     uint64 = 18446744073709551615
 }

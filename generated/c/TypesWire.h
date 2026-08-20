@@ -2,7 +2,7 @@
    SPDX-License-Identifier: NONE — this generated output is yours, under terms of
    your choice. See the LICENSE exception in the schema compiler; the compiler is
    AGPL-3.0, its output is not.
-   package example — protocol id 0x70a0c2d004c0907a */
+   package example — protocol id 0x40230069cc791fab */
 
 #ifndef SCHEMA_EXAMPLE_TYPESWIRE_H
 #define SCHEMA_EXAMPLE_TYPESWIRE_H
@@ -970,6 +970,10 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_extreme_probe( serialize_wr
     {
         return 0;
     }
+    if ( !serialize_write_uint64( stream, (serialize_uint64_t) value->ceiling_default ) )
+    {
+        return 0;
+    }
     return 1;
 }
 
@@ -1042,6 +1046,14 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_extreme_probe( serialize_read
         }
         value->floor_default = (int64_t) raw;
     }
+    {
+        serialize_uint64_t raw = 0;
+        if ( !serialize_read_uint64( stream, &raw ) )
+        {
+            return 0;
+        }
+        value->ceiling_default = (uint64_t) raw;
+    }
     return 1;
 }
 
@@ -1080,6 +1092,10 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_extreme_row( serialize_writ
         }
     }
     if ( !serialize_write_uint64( stream, (serialize_uint64_t) value->floor_def ) )
+    {
+        return 0;
+    }
+    if ( !serialize_write_uint64( stream, (serialize_uint64_t) value->ceiling_def ) )
     {
         return 0;
     }
@@ -1135,6 +1151,14 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_extreme_row( serialize_read_s
             return 0;
         }
         value->floor_def = (int64_t) raw;
+    }
+    {
+        serialize_uint64_t raw = 0;
+        if ( !serialize_read_uint64( stream, &raw ) )
+        {
+            return 0;
+        }
+        value->ceiling_def = (uint64_t) raw;
     }
     return 1;
 }

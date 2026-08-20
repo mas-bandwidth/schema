@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package example — protocol id 0x70a0c2d004c0907a
+// package example — protocol id 0x40230069cc791fab
 // The TABLE wire (evolution-tolerant, notes/table-wire.md).
 
 package example
@@ -497,6 +497,11 @@ func tableWriteExtremeRow(w *tableWriter, value *ExtremeRow) {
 		w.u8(5)
 		w.u64(uint64(value.FloorDef))
 	}
+	if value.CeilingDef != 18446744073709551615 {
+		w.u16(0xb936) // ceiling_def
+		w.u8(9)
+		w.u64(uint64(value.CeilingDef))
+	}
 	w.u16(0) // terminator
 }
 
@@ -585,6 +590,21 @@ func tableReadExtremeRow(r *tableReader, value *ExtremeRow) bool {
 			}
 			decoded := int64(r.get64())
 			value.FloorDef = int64(decoded)
+		case 0xb936: // ceiling_def
+			if kind != 9 {
+				r.rep.KindMismatch++
+				if !r.skip(kind) {
+					r.rep.Malformed = true
+					return false
+				}
+				break
+			}
+			if !r.has(8) {
+				r.rep.Malformed = true
+				return false
+			}
+			decoded := r.get64()
+			value.CeilingDef = uint64(decoded)
 		default:
 			r.rep.Unknown++
 			if !r.skip(kind) {
@@ -899,6 +919,7 @@ func init() {
 		{Name: "clamped_floor", TypeName: "int64", Id: 0xba76, Kind: 5, HasRange: true, RangeMin: -9.223372036854776e+18, RangeMax: 100.0, EnumMax: -1},
 		{Name: "clamped_ceiling", TypeName: "uint64", Id: 0x7a83, Kind: 9, HasRange: true, RangeMin: 1.0, RangeMax: 1.8446744073709552e+19, EnumMax: -1},
 		{Name: "floor_def", TypeName: "int64", Id: 0x1590, Kind: 5, EnumMax: -1},
+		{Name: "ceiling_def", TypeName: "uint64", Id: 0xb936, Kind: 9, EnumMax: -1},
 	}
 }
 
@@ -920,6 +941,8 @@ func TableGetExtremeRow(value *ExtremeRow, field string) (any, bool) {
 		return uint64(value.ClampedCeiling), true
 	case "floor_def":
 		return int64(value.FloorDef), true
+	case "ceiling_def":
+		return uint64(value.CeilingDef), true
 	}
 	return nil, false
 }
@@ -936,6 +959,8 @@ func TableGetValueExtremeRow(value *ExtremeRow, field string) (TableValue, bool)
 		return tableValueUint(uint64(value.ClampedCeiling)), true
 	case "floor_def":
 		return tableValueInt(int64(value.FloorDef)), true
+	case "ceiling_def":
+		return tableValueUint(uint64(value.CeilingDef)), true
 	}
 	return TableValue{}, false
 }
@@ -998,6 +1023,20 @@ func TableSetExtremeRow(value *ExtremeRow, field string, v any) bool {
 			return false
 		}
 		value.FloorDef = n
+		return true
+	case "ceiling_def":
+		var n uint64
+		switch t := v.(type) {
+		case uint64:
+			n = t
+		case int64:
+			n = uint64(t)
+		case float64:
+			n = uint64(t)
+		default:
+			return false
+		}
+		value.CeilingDef = n
 		return true
 	}
 	return false

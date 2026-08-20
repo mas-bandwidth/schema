@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package example — protocol id 0x70a0c2d004c0907a
+// package example — protocol id 0x40230069cc791fab
 
 #pragma once
 
@@ -421,6 +421,7 @@ SCHEMA_WRITE_INLINE bool WriteExtremeProbe( serialize::WriteStream & stream, con
     serialize_assert( value.ceiling_range >= 1 );
     write_bits( stream, uint64_t( value.ceiling_range ) - 1, 64 );
     write_bits( stream, value.floor_default, 64 );
+    write_bits( stream, value.ceiling_default, 64 );
     return true;
 }
 
@@ -442,6 +443,7 @@ SCHEMA_READ_INLINE bool ReadExtremeProbe( serialize::ReadStream & stream, Extrem
         read_bits( stream, raw_value, 64 );
         value.floor_default = int64_t( raw_value );
     }
+    read_bits( stream, value.ceiling_default, 64 );
     return true;
 }
 
@@ -452,6 +454,7 @@ SCHEMA_WRITE_INLINE bool WriteExtremeRow( serialize::WriteStream & stream, const
     serialize_assert( value.clamped_ceiling >= 1 && value.clamped_ceiling <= 18446744073709551614ull );
     write_bits( stream, uint64_t( value.clamped_ceiling ) - 1, 64 );
     write_bits( stream, value.floor_def, 64 );
+    write_bits( stream, value.ceiling_def, 64 );
     return true;
 }
 
@@ -472,6 +475,7 @@ SCHEMA_READ_INLINE bool ReadExtremeRow( serialize::ReadStream & stream, ExtremeR
         read_bits( stream, raw_value, 64 );
         value.floor_def = int64_t( raw_value );
     }
+    read_bits( stream, value.ceiling_def, 64 );
     return true;
 }
 

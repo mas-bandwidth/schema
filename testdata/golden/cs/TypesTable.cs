@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package example — protocol id 0x70a0c2d004c0907a
+// package example — protocol id 0x40230069cc791fab
 // The TABLE wire (evolution-tolerant, notes/table-wire.md): plain byte
 // code, no serialize dependency — Unity/IL2CPP-safe.
 
@@ -654,6 +654,12 @@ namespace Example
                 w.U8(5);
                 w.U64((ulong)value.FloorDef);
             }
+            if (value.CeilingDef != 18446744073709551615UL)
+            {
+                w.U16(0xb936); // ceiling_def
+                w.U8(9);
+                w.U64((ulong)value.CeilingDef);
+            }
             w.U16(0); // terminator
         }
 
@@ -771,6 +777,27 @@ namespace Example
                         }
                         long decoded = (long)r.Get64();
                         value.FloorDef = (long)decoded;
+                        break;
+                    }
+                    case 0xb936: // ceiling_def
+                    {
+                        if (kind != 9)
+                        {
+                            r.Report.KindMismatch++;
+                            if (!r.Skip(kind))
+                            {
+                                r.Report.Malformed = true;
+                                return false;
+                            }
+                            break;
+                        }
+                        if (!r.Has(8))
+                        {
+                            r.Report.Malformed = true;
+                            return false;
+                        }
+                        ulong decoded = r.Get64();
+                        value.CeilingDef = (ulong)decoded;
                         break;
                     }
                     default:
@@ -1107,10 +1134,11 @@ namespace Example
             {
                 return _tableTypeExtremeRow;
             }
-            TableFieldInfo[] fields = new TableFieldInfo[3];
+            TableFieldInfo[] fields = new TableFieldInfo[4];
             fields[0] = new TableFieldInfo { Name = "clamped_floor", TypeName = "int64", Id = 0xba76, Kind = 5, HasRange = true, RangeMin = -9.223372036854776e+18, RangeMax = 100.0, EnumMax = -1, Guard = "" };
             fields[1] = new TableFieldInfo { Name = "clamped_ceiling", TypeName = "uint64", Id = 0x7a83, Kind = 9, HasRange = true, RangeMin = 1.0, RangeMax = 1.8446744073709552e+19, EnumMax = -1, Guard = "" };
             fields[2] = new TableFieldInfo { Name = "floor_def", TypeName = "int64", Id = 0x1590, Kind = 5, EnumMax = -1, Guard = "" };
+            fields[3] = new TableFieldInfo { Name = "ceiling_def", TypeName = "uint64", Id = 0xb936, Kind = 9, EnumMax = -1, Guard = "" };
             TableTypeInfo info = new TableTypeInfo();
             info.Name = "ExtremeRow";
             info.Fields = fields;
@@ -1141,6 +1169,11 @@ namespace Example
                 case "floor_def":
                 {
                     result = new TableValue { Kind = TableValueKind.Int, I = value.FloorDef };
+                    return true;
+                }
+                case "ceiling_def":
+                {
+                    result = new TableValue { Kind = TableValueKind.Uint, U = value.CeilingDef };
                     return true;
                 }
             }
@@ -1202,6 +1235,16 @@ namespace Example
                         return false;
                     }
                     value.FloorDef = n;
+                    return true;
+                }
+                case "ceiling_def":
+                {
+                    ulong n;
+                    if (!v.AsUlong(out n))
+                    {
+                        return false;
+                    }
+                    value.CeilingDef = n;
                     return true;
                 }
             }
