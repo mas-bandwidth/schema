@@ -1,6 +1,6 @@
 package c
 
-import "github.com/mas-bandwidth/schema/internal/ir"
+import "github.com/mas-bandwidth/schema/ir"
 
 // fileEmitsWire reports whether this wire file will emit any read/write wire
 // function — struct wire pairs, object deep/shallow view pairs, or the owner

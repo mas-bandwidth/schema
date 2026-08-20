@@ -21,7 +21,7 @@ import (
 	"fmt"
 	"math/big"
 
-	"github.com/mas-bandwidth/schema/internal/ir"
+	"github.com/mas-bandwidth/schema/ir"
 )
 
 // view selects which storage a field emission derives (SPEC §4.8).

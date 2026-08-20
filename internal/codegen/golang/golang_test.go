@@ -12,8 +12,8 @@ import (
 	"github.com/mas-bandwidth/schema/internal/codegen/cpp"
 	"github.com/mas-bandwidth/schema/internal/codegen/csharp"
 	"github.com/mas-bandwidth/schema/internal/codegen/rust"
-	"github.com/mas-bandwidth/schema/internal/ir"
 	"github.com/mas-bandwidth/schema/internal/parser"
+	"github.com/mas-bandwidth/schema/ir"
 )
 
 func multiFileUnit(t *testing.T) *ir.Unit {

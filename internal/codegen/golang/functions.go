@@ -9,7 +9,7 @@ import (
 	"math"
 	"math/big"
 
-	"github.com/mas-bandwidth/schema/internal/ir"
+	"github.com/mas-bandwidth/schema/ir"
 )
 
 // emitStructFunctions emits MaxBits/MaxBytes and the split Write/Read pair

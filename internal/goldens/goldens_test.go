@@ -16,16 +16,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/internal/check"
-	cgen "github.com/mas-bandwidth/schema/internal/codegen/c"
-	"github.com/mas-bandwidth/schema/internal/codegen/cpp"
-	"github.com/mas-bandwidth/schema/internal/codegen/csharp"
-	"github.com/mas-bandwidth/schema/internal/codegen/golang"
-	"github.com/mas-bandwidth/schema/internal/codegen/js"
-	"github.com/mas-bandwidth/schema/internal/codegen/rust"
-	"github.com/mas-bandwidth/schema/internal/format"
-	"github.com/mas-bandwidth/schema/internal/ir"
-	"github.com/mas-bandwidth/schema/internal/parser"
+	"github.com/mas-bandwidth/schema/compiler"
+	"github.com/mas-bandwidth/schema/ir"
 )
 
 var update = flag.Bool("update", false, "rewrite the golden files from current output")
@@ -38,41 +30,36 @@ const (
 	goldenDir    = "../../testdata/golden"
 )
 
+// schema is the driver every test here runs on — the public API, with the
+// library's load policy: this harness measures the corpus, so it must never
+// repair it (TestCorpusIsCanonical is the gate that would be repairing
+// itself).
+var schema = compiler.New()
+
 func loadCorpus(t *testing.T) *ir.Unit { return loadCorpusDir(t, corpusDir) }
 
 func loadCorpusDir(t *testing.T, dir string) *ir.Unit {
 	t.Helper()
-	entries, err := os.ReadDir(dir)
+	paths, err := compiler.GatherPaths([]string{dir})
 	if err != nil {
 		t.Fatal(err)
 	}
-	var files []check.SourceFile
-	for _, e := range entries {
-		if e.IsDir() || !strings.HasSuffix(e.Name(), ".schema") {
-			continue
-		}
-		p := filepath.Join(dir, e.Name())
-		data, err := os.ReadFile(p)
-		if err != nil {
-			t.Fatal(err)
-		}
-		f, perrs := parser.Parse(p, data)
-		if len(perrs) > 0 {
-			t.Fatalf("corpus does not parse: %v", perrs[0])
-		}
-		files = append(files, check.SourceFile{
-			Path:  p,
-			Name:  e.Name(),
-			Base:  strings.TrimSuffix(e.Name(), ".schema"),
-			Bytes: data,
-			AST:   f,
-		})
-	}
-	u, cerrs := check.Unit(files)
-	if len(cerrs) > 0 {
-		t.Fatalf("corpus does not check: %v", cerrs[0])
+	u, err := schema.Load(paths)
+	if err != nil {
+		t.Fatalf("corpus does not compile: %v", err)
 	}
 	return u
+}
+
+// generate emits one target through the same registration door an external
+// generator would come through.
+func generate(t *testing.T, u *ir.Unit, target string, opts compiler.Options) map[string][]byte {
+	t.Helper()
+	files, err := schema.Generate(u, target, opts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return files
 }
 
 // TestCorpusIsCanonical is the fmt-drift gate: every corpus file must already
@@ -93,7 +80,7 @@ func TestCorpusIsCanonical(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			out, err := format.Format(p, data)
+			out, err := compiler.Format(p, data)
 			if err != nil {
 				t.Fatalf("%s: %v", p, err)
 			}
@@ -134,10 +121,7 @@ func TestGoldenId(t *testing.T) {
 func TestGoldenSource(t *testing.T) {
 	u := loadCorpus(t)
 	for _, mode := range []string{"union", "variant"} {
-		files, err := cpp.Generate(u, cpp.Options{MessageRepr: mode})
-		if err != nil {
-			t.Fatal(err)
-		}
+		files := generate(t, u, "cpp", compiler.Options{"cpp-message": mode})
 		pinDir(t, filepath.Join(goldenDir, mode), files)
 	}
 }
@@ -146,10 +130,7 @@ func TestGoldenSource(t *testing.T) {
 // second target).
 func TestGoldenSourceGo(t *testing.T) {
 	u := loadCorpus(t)
-	files, err := golang.Generate(u)
-	if err != nil {
-		t.Fatal(err)
-	}
+	files := generate(t, u, "go", nil)
 	pinDir(t, filepath.Join(goldenDir, "go"), files)
 }
 
@@ -157,10 +138,7 @@ func TestGoldenSourceGo(t *testing.T) {
 // gate 1, third target).
 func TestGoldenSourceRust(t *testing.T) {
 	u := loadCorpus(t)
-	files, err := rust.Generate(u)
-	if err != nil {
-		t.Fatal(err)
-	}
+	files := generate(t, u, "rust", nil)
 	pinDir(t, filepath.Join(goldenDir, "rust"), files)
 }
 
@@ -168,10 +146,7 @@ func TestGoldenSourceRust(t *testing.T) {
 // fifth target).
 func TestGoldenSourceC(t *testing.T) {
 	u := loadCorpus(t)
-	files, err := cgen.Generate(u)
-	if err != nil {
-		t.Fatal(err)
-	}
+	files := generate(t, u, "c", nil)
 	pinDir(t, filepath.Join(goldenDir, "c"), files)
 }
 
@@ -179,10 +154,7 @@ func TestGoldenSourceC(t *testing.T) {
 // fourth target).
 func TestGoldenSourceCs(t *testing.T) {
 	u := loadCorpus(t)
-	files, err := csharp.Generate(u)
-	if err != nil {
-		t.Fatal(err)
-	}
+	files := generate(t, u, "cs", nil)
 	pinDir(t, filepath.Join(goldenDir, "cs"), files)
 }
 
@@ -190,10 +162,7 @@ func TestGoldenSourceCs(t *testing.T) {
 // gate 1, sixth target).
 func TestGoldenSourceJs(t *testing.T) {
 	u := loadCorpus(t)
-	files, err := js.Generate(u)
-	if err != nil {
-		t.Fatal(err)
-	}
+	files := generate(t, u, "js", nil)
 	pinDir(t, filepath.Join(goldenDir, "js"), files)
 }
 
@@ -230,37 +199,12 @@ func TestGoldenLudicrousId(t *testing.T) {
 func TestGoldenLudicrousSource(t *testing.T) {
 	u := loadCorpusDir(t, corpus128Dir)
 	for _, mode := range []string{"union", "variant"} {
-		files, err := cpp.Generate(u, cpp.Options{MessageRepr: mode})
-		if err != nil {
-			t.Fatal(err)
-		}
+		files := generate(t, u, "cpp", compiler.Options{"cpp-message": mode})
 		pinDir(t, filepath.Join(goldenDir, "ludicrous", mode), files)
 	}
-	goFiles, err := golang.Generate(u)
-	if err != nil {
-		t.Fatal(err)
+	for _, target := range []string{"go", "rust", "cs", "c", "js"} {
+		pinDir(t, filepath.Join(goldenDir, "ludicrous", target), generate(t, u, target, nil))
 	}
-	pinDir(t, filepath.Join(goldenDir, "ludicrous", "go"), goFiles)
-	rsFiles, err := rust.Generate(u)
-	if err != nil {
-		t.Fatal(err)
-	}
-	pinDir(t, filepath.Join(goldenDir, "ludicrous", "rust"), rsFiles)
-	csFiles, err := csharp.Generate(u)
-	if err != nil {
-		t.Fatal(err)
-	}
-	pinDir(t, filepath.Join(goldenDir, "ludicrous", "cs"), csFiles)
-	cFiles, err := cgen.Generate(u)
-	if err != nil {
-		t.Fatal(err)
-	}
-	pinDir(t, filepath.Join(goldenDir, "ludicrous", "c"), cFiles)
-	jsFiles, err := js.Generate(u)
-	if err != nil {
-		t.Fatal(err)
-	}
-	pinDir(t, filepath.Join(goldenDir, "ludicrous", "js"), jsFiles)
 }
 
 // pinDir compares (or, under -update, rewrites) one directory of goldens.

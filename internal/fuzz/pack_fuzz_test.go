@@ -15,8 +15,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/internal/ir"
 	"github.com/mas-bandwidth/schema/internal/pack"
+	"github.com/mas-bandwidth/schema/ir"
 )
 
 // packSchema exercises every scalar family the table wire carries: bounded

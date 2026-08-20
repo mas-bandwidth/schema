@@ -22,8 +22,7 @@ import (
 	"math/big"
 	"strings"
 
-	"github.com/mas-bandwidth/schema/internal/ir"
-	"github.com/mas-bandwidth/schema/internal/pack"
+	"github.com/mas-bandwidth/schema/ir"
 )
 
 // table-wire kinds — mirror internal/pack/table.go.
@@ -294,7 +293,7 @@ func (g *tableGen) emitTableWrite(st *ir.Struct) {
 }
 
 func (g *tableGen) emitTableWriteField(f *ir.Field) {
-	id := pack.FieldId(f.Name)
+	id := ir.FieldId(f.Name)
 	kind := tableScalarKind(f)
 	name := ir.GoExportName(f.Name)
 	switch {
@@ -419,7 +418,7 @@ func (g *tableGen) emitTableRead(st *ir.Struct) {
 	g.pf("\t\tkind := r.get8()\n")
 	g.pf("\t\tswitch fieldId {\n")
 	for _, f := range st.Fields {
-		id := pack.FieldId(f.Name)
+		id := ir.FieldId(f.Name)
 		kind := tableScalarKind(f)
 		wireKind := kind
 		if f.Array != ir.ArrayNone || f.Type.Kind == ir.TBytes {
@@ -693,7 +692,7 @@ func (g *tableGen) tableDescriptorParts(f *ir.Field, guard string) []string {
 	parts := []string{
 		fmt.Sprintf("Name: %q", f.Name),
 		fmt.Sprintf("TypeName: %q", tableFieldTypeName(f)),
-		fmt.Sprintf("Id: 0x%04x", pack.FieldId(f.Name)),
+		fmt.Sprintf("Id: 0x%04x", ir.FieldId(f.Name)),
 		fmt.Sprintf("Kind: %d", kind),
 	}
 	if f.Array != ir.ArrayNone || f.Type.Kind == ir.TBytes {
@@ -1171,7 +1170,7 @@ func (r *tableReader) skip(kind byte) bool {
 // TableRuntime.go. The caller (Generate) has already refused units the Go
 // backend cannot carry (int128/uint128, fixed).
 func GenerateTable(u *ir.Unit) (map[string][]byte, error) {
-	if err := pack.CheckTableIds(u); err != nil {
+	if err := ir.CheckTableIds(u); err != nil {
 		return nil, err
 	}
 	for _, f := range u.Files {

@@ -22,8 +22,8 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/internal/check"
-	"github.com/mas-bandwidth/schema/internal/ir"
 	"github.com/mas-bandwidth/schema/internal/parser"
+	"github.com/mas-bandwidth/schema/ir"
 )
 
 const (

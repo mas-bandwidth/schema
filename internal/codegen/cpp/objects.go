@@ -10,7 +10,7 @@ import (
 	"fmt"
 	"math/big"
 
-	"github.com/mas-bandwidth/schema/internal/ir"
+	"github.com/mas-bandwidth/schema/ir"
 )
 
 // emitObjectMaxBits emits the Deep and Shallow view bounds — data-side,

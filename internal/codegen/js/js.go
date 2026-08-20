@@ -55,7 +55,7 @@ import (
 	"strings"
 
 	"github.com/mas-bandwidth/schema/internal/ast"
-	"github.com/mas-bandwidth/schema/internal/ir"
+	"github.com/mas-bandwidth/schema/ir"
 )
 
 // Generate returns basename.js -> file contents for every file of the unit.

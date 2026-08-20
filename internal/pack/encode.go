@@ -7,7 +7,7 @@ import (
 	"math"
 	"math/big"
 
-	"github.com/mas-bandwidth/schema/internal/ir"
+	"github.com/mas-bandwidth/schema/ir"
 )
 
 // Encoder packs JSON instance values (decoded via encoding/json: map[string]any,

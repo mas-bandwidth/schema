@@ -17,8 +17,7 @@ import (
 	"math/big"
 	"strings"
 
-	"github.com/mas-bandwidth/schema/internal/ir"
-	"github.com/mas-bandwidth/schema/internal/pack"
+	"github.com/mas-bandwidth/schema/ir"
 )
 
 // table-wire kinds — mirror internal/pack/table.go.
@@ -245,7 +244,7 @@ func (g *tableGen) emitTableWrite(st *ir.Struct) {
 }
 
 func (g *tableGen) emitTableWriteField(f *ir.Field) {
-	id := pack.FieldId(f.Name)
+	id := ir.FieldId(f.Name)
 	kind := tableScalarKind(f)
 	name := f.Name
 	switch {
@@ -411,7 +410,7 @@ func (g *tableGen) emitTableRead(st *ir.Struct) {
 	g.pf("        kind = table_r_u8( r );\n")
 	g.pf("        switch ( field_id )\n        {\n")
 	for _, f := range st.Fields {
-		id := pack.FieldId(f.Name)
+		id := ir.FieldId(f.Name)
 		kind := tableScalarKind(f)
 		wireKind := kind
 		if f.Array != ir.ArrayNone || f.Type.Kind == ir.TBytes {
@@ -675,7 +674,7 @@ func (g *tableGen) tableDescriptorParts(f *ir.Field, guard string) []string {
 	return []string{
 		fmt.Sprintf("%q", f.Name),
 		fmt.Sprintf("%q", tableFieldTypeName(f)),
-		fmt.Sprintf("0x%04x", pack.FieldId(f.Name)),
+		fmt.Sprintf("0x%04x", ir.FieldId(f.Name)),
 		fmt.Sprintf("%d", kind),
 		boolLit(isArray),
 		boolLit(counted),
@@ -732,7 +731,7 @@ func tableFieldTypeName(f *ir.Field) string {
 // GenerateTable emits <Base>Table.h per file that declares or reaches a table,
 // plus the shared TableRuntime.h.
 func GenerateTable(u *ir.Unit) (map[string][]byte, error) {
-	if err := pack.CheckTableIds(u); err != nil {
+	if err := ir.CheckTableIds(u); err != nil {
 		return nil, err
 	}
 	for _, f := range u.Files {

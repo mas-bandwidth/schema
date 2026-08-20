@@ -7,8 +7,8 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/internal/check"
-	"github.com/mas-bandwidth/schema/internal/ir"
 	"github.com/mas-bandwidth/schema/internal/parser"
+	"github.com/mas-bandwidth/schema/ir"
 )
 
 // unitFromSource builds a unit from inline schema text — the evolution
@@ -313,7 +313,7 @@ table Body {
 
 func TestFieldIdCollisionCheck(t *testing.T) {
 	u := unitFromSource(t, schemaV1)
-	if err := CheckTableIds(u); err != nil {
+	if err := ir.CheckTableIds(u); err != nil {
 		t.Fatalf("corpus should have no collisions: %v", err)
 	}
 }

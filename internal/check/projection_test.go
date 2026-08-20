@@ -7,8 +7,8 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/internal/check"
-	"github.com/mas-bandwidth/schema/internal/ir"
 	"github.com/mas-bandwidth/schema/internal/parser"
+	"github.com/mas-bandwidth/schema/ir"
 )
 
 // build compiles a one-file unit and returns it, failing the test on any error.

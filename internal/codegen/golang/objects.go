@@ -9,7 +9,7 @@ package golang
 import (
 	"math/big"
 
-	"github.com/mas-bandwidth/schema/internal/ir"
+	"github.com/mas-bandwidth/schema/ir"
 )
 
 func (g *gen) emitObjectFunctions(d *ir.Object) {
