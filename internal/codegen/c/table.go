@@ -14,6 +14,7 @@ package c
 
 import (
 	"fmt"
+	"math"
 	"math/big"
 	"strings"
 
@@ -368,7 +369,9 @@ func (g *tableGen) tableDefaultExpr(f *ir.Field) string {
 		return "0"
 	case ir.TInt, ir.TBits:
 		if f.HasDefault && f.DefInt != nil {
-			return f.DefInt.String()
+			// through the extreme guards: INT64_MIN and above-INT64_MAX
+			// defaults have no bare decimal spelling (issue #95)
+			return intLit(f.DefInt, "")
 		}
 		return "0"
 	case ir.TNamed:
@@ -563,9 +566,37 @@ func (g *tableGen) emitClampInt(f *ir.Field, kind int, src, lvalue, ind string) 
 		g.pf("%s%s = (%s) %s;\n", ind, lvalue, storage, src)
 		return
 	}
-	g.pf("%s{\n%s    serialize_int64_t v = (serialize_int64_t) %s;\n", ind, ind, src)
-	g.pf("%s    if ( v < %sLL ) { v = %sLL; report->clamped++; }\n", ind, f.IntMin.String(), f.IntMin.String())
-	g.pf("%s    if ( v > %sLL ) { v = %sLL; report->clamped++; }\n", ind, f.IntMax.String(), f.IntMax.String())
+	// The clamp carrier is int64 — except for an unsigned 64-bit field, which
+	// clamps in ITS OWN domain: its bounds can live above INT64_MAX (no LL
+	// spelling holds them, issue #95), and the int64 detour would fold large
+	// decoded values negative — the C++ reader clamps unsigned 64-bit values
+	// as uint64_t, and the two readers must agree. Each half is emitted only
+	// when it CAN be false for the carrier: a bound at the carrier's own
+	// extreme makes the compare tautological, which -Wtype-limits rejects and
+	// the C legs build with -Werror (the same elision the wire-side range
+	// assert applies).
+	carrier, suffix := "serialize_int64_t", "LL"
+	loNeeded := !f.IntMin.IsInt64() || f.IntMin.Int64() > math.MinInt64
+	hiNeeded := !f.IntMax.IsInt64() || f.IntMax.Int64() < math.MaxInt64
+	if kind == tkU64 {
+		carrier, suffix = "serialize_uint64_t", "ULL"
+		maxU64 := new(big.Int).SetUint64(^uint64(0))
+		loNeeded = f.IntMin.Sign() > 0
+		hiNeeded = f.IntMax.Cmp(maxU64) < 0
+	}
+	if !loNeeded && !hiNeeded {
+		g.pf("%s%s = (%s) %s;\n", ind, lvalue, storage, src)
+		return
+	}
+	g.pf("%s{\n%s    %s v = (%s) %s;\n", ind, ind, carrier, carrier, src)
+	if loNeeded {
+		lo := intLit(f.IntMin, suffix)
+		g.pf("%s    if ( v < %s ) { v = %s; report->clamped++; }\n", ind, lo, lo)
+	}
+	if hiNeeded {
+		hi := intLit(f.IntMax, suffix)
+		g.pf("%s    if ( v > %s ) { v = %s; report->clamped++; }\n", ind, hi, hi)
+	}
 	g.pf("%s    %s = (%s) v;\n%s}\n", ind, lvalue, storage, ind)
 }
 

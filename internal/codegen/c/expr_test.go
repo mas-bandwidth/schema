@@ -143,4 +143,160 @@ func TestExprHostileDirect(t *testing.T) {
 	if got := g.renderInt(c.Expr, c.Int); got != "MAX_OBJECTS * MAX_UNITS" {
 		t.Errorf("renderInt after the referenced #defines = %q, want %q", got, "MAX_OBJECTS * MAX_UNITS")
 	}
+
+	// the extreme folds (issue #95): INT64_MIN has no literal spelling in C
+	// — the literal half overflows long long before the unary minus applies
+	// — and a value past INT64_MAX has no signed rung to land on, so the
+	// suffix the site asked for gives way to ULL
+	min64 := new(big.Int).Neg(new(big.Int).Lsh(big.NewInt(1), 63))
+	if got := intLit(min64, "LL"); got != "( -9223372036854775807LL - 1 )" {
+		t.Errorf("intLit(INT64_MIN, LL) = %q, want the guarded spelling", got)
+	}
+	if got := intLit(min64, ""); got != "( -9223372036854775807LL - 1 )" {
+		t.Errorf("intLit(INT64_MIN, unsuffixed) = %q, want the guarded spelling", got)
+	}
+	huge := new(big.Int).SetUint64(18446744073709551615)
+	if got := intLit(huge, ""); got != "18446744073709551615ULL" {
+		t.Errorf("intLit(UINT64_MAX, unsuffixed) = %q, want the ULL spelling", got)
+	}
+	if got := intLit(huge, "ULL"); got != "18446744073709551615ULL" {
+		t.Errorf("intLit(UINT64_MAX, ULL) = %q, want a single suffix", got)
+	}
+	if got := intLit(big.NewInt(-30000), "LL"); got != "-30000LL" {
+		t.Errorf("intLit(-30000, LL) = %q — an unexceptional fold must not move", got)
+	}
+}
+
+// ---- issue #95: the integer extremes ----
+//
+// Two folded values have no direct decimal spelling in C. INT64_MIN's literal
+// half (9223372036854775808) overflows long long before the unary minus
+// applies, and a value past INT64_MAX exceeds every signed rung of the
+// decimal ladder, so only the ULL spelling can hold it. The C++ backend
+// guards both (( -9223372036854775807ll - 1 ), the ull suffix); the C fold
+// paths must agree in shape.
+const extremesCorpus = `package extremetest
+
+const FloorLimit = -9223372036854775808
+const CeilingCount uint64 = 18446744073709551615
+
+type ExtremeProbe {
+    floor_bound int64 [min = -9223372036854775808, max = 100]
+    ceiling_range uint64 [min = 1, max = 18446744073709551615]
+    floor_default int64 = -9223372036854775808
+    ceiling_default uint64 = 18446744073709551615
+    doubled_floor int64 [min = --FloorLimit, max = 100]
+    deep_floor fixed(128, 0) [min = -9223372036854775808, max = 0]
+}
+
+table ExtremeRow {
+    clamped_floor int64 [min = -9223372036854775808, max = 100]
+    clamped_ceiling uint64 [min = 1, max = 18446744073709551614]
+    floor_def int64 = -9223372036854775808
+    ceiling_def uint64 = 18446744073709551615
+}
+`
+
+func generateExtremesCorpus(t *testing.T) (data, wire, table string) {
+	t.Helper()
+	u := unitFromSource(t, "Extreme.schema", extremesCorpus)
+	files, err := Generate(u)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tables, err := GenerateTable(u)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(files["Extreme.h"]), string(files["ExtremeWire.h"]), string(tables["ExtremeTable.h"])
+}
+
+// TestExtremeLiterals pins every C spelling of the two extremes: the guarded
+// INT64_MIN form and the ULL form above INT64_MAX, at every site that folds
+// one — #define bodies, defaults, wire offsets, fixed bounds, table default
+// comparisons and clamps.
+func TestExtremeLiterals(t *testing.T) {
+	data, wire, table := generateExtremesCorpus(t)
+	for _, want := range []string{
+		// #define bodies: the C twin of C++'s emitConst guards
+		"#define FLOOR_LIMIT (( -9223372036854775807LL - 1 ))",
+		"#define CEILING_COUNT (18446744073709551615ULL)",
+		// defaults fold through the same guard
+		"value.floor_default = ( -9223372036854775807LL - 1 );",
+		"value.ceiling_default = 18446744073709551615ULL;",
+		"value.floor_def = ( -9223372036854775807LL - 1 );",
+		"value.ceiling_def = 18446744073709551615ULL;",
+	} {
+		if !strings.Contains(data, want) {
+			t.Errorf("generated data header must contain %q", want)
+		}
+	}
+	for _, want := range []string{
+		// the wire offset arithmetic folds the INT64_MIN bound guarded
+		"(value->floor_bound) - (( -9223372036854775807LL - 1 ))",
+		"offset_value + (( -9223372036854775807LL - 1 ))",
+		// the doubled minus AT the extreme folds too: the intermediate
+		// -(-9223372036854775808) overflows the long long carrier even
+		// though the final value fits (issue #22's class meets #95's)
+		"(value->doubled_floor) - (( -9223372036854775807LL - 1 ))",
+		// a 128-bit fixed bound that fits int64 rides from_int64, guarded
+		"serialize_write_fixed128( stream, fixed_value, 128, 0, ( -9223372036854775807LL - 1 ), 0 )",
+	} {
+		if !strings.Contains(wire, want) {
+			t.Errorf("generated wire header must contain %q", want)
+		}
+	}
+	for _, header := range []string{wire, data} {
+		if strings.Contains(header, "--FLOOR_LIMIT") || strings.Contains(header, "-(-FLOOR_LIMIT)") {
+			t.Errorf("the doubled-minus-at-the-extreme bound must fold, not render symbolically")
+		}
+	}
+	for _, want := range []string{
+		// table write compares against the declared default, guarded
+		"if ( value->floor_def != ( -9223372036854775807LL - 1 ) )",
+		"if ( value->ceiling_def != 18446744073709551615ULL )",
+		// the int64 clamp keeps its hi half; the lo half at INT64_MIN is
+		// vacuous for the int64 carrier and must be ELIDED — gcc's
+		// -Wtype-limits makes a tautological compare a -Werror build break
+		"if ( v > 100LL ) { v = 100LL; report->clamped++; }",
+		// an unsigned 64-bit range clamps in ITS OWN domain: the bound can
+		// live above INT64_MAX (no LL spelling holds it), and the int64
+		// detour would fold large decoded values negative — the C++ reader
+		// clamps unsigned, and the two must agree
+		"serialize_uint64_t v = (serialize_uint64_t) raw;",
+		"if ( v < 1ULL ) { v = 1ULL; report->clamped++; }",
+		"if ( v > 18446744073709551614ULL ) { v = 18446744073709551614ULL; report->clamped++; }",
+	} {
+		if !strings.Contains(table, want) {
+			t.Errorf("generated table header must contain %q", want)
+		}
+	}
+	if strings.Contains(table, "if ( v < ( -9223372036854775807LL - 1 ) )") {
+		t.Errorf("the INT64_MIN clamp half is vacuous and must be elided (-Wtype-limits is -Werror in the C legs)")
+	}
+}
+
+// TestExtremeSpellingsAbsent proves the broken spellings appear NOWHERE in
+// any generated file: the raw INT64_MIN decimal (whose literal half is out
+// of long long range no matter the suffix), and any above-INT64_MAX decimal
+// not immediately suffixed ULL.
+func TestExtremeSpellingsAbsent(t *testing.T) {
+	data, wire, table := generateExtremesCorpus(t)
+	for name, text := range map[string]string{"data": data, "wire": wire, "table": table} {
+		if strings.Contains(text, "-9223372036854775808") {
+			t.Errorf("%s header spells the unspellable INT64_MIN literal", name)
+		}
+		for _, huge := range []string{"18446744073709551615", "18446744073709551614", "9223372036854775808"} {
+			for at := 0; ; {
+				i := strings.Index(text[at:], huge)
+				if i < 0 {
+					break
+				}
+				at += i + len(huge)
+				if at >= len(text) || text[at] != 'U' {
+					t.Errorf("%s header carries the above-INT64_MAX decimal %s without the ULL suffix", name, huge)
+				}
+			}
+		}
+	}
 }

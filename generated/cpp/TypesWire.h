@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package example — protocol id 0x39e4aa9c08faf8f8
+// package example — protocol id 0x14cc156665b9f146
 
 #pragma once
 
@@ -409,6 +409,66 @@ SCHEMA_READ_INLINE bool ReadExpressionProbe( serialize::ReadStream & stream, Exp
 {
     read_int( stream, value.hardpoint_index, 0, (ShipMaxLasers + ShipMaxMissiles) - 1 );
     read_int( stream, value.spin_rate, -(-RotationUnits), RotationUnits * 2 );
+    return true;
+}
+
+SCHEMA_WRITE_INLINE bool WriteExtremeProbe( serialize::WriteStream & stream, const ExtremeProbe & value )
+{
+    serialize_assert( int64_t( value.floor_bound ) >= int64_t( ( -9223372036854775807ll - 1 ) ) && int64_t( value.floor_bound ) <= int64_t( 100 ) );
+    write_bits( stream, uint64_t( value.floor_bound ) - uint64_t( ( -9223372036854775807ll - 1 ) ), 64 );
+    serialize_assert( value.ceiling_range >= 1 );
+    write_bits( stream, uint64_t( value.ceiling_range ) - 1, 64 );
+    write_bits( stream, value.floor_default, 64 );
+    return true;
+}
+
+SCHEMA_READ_INLINE bool ReadExtremeProbe( serialize::ReadStream & stream, ExtremeProbe & value )
+{
+    read_int64( stream, value.floor_bound, ( -9223372036854775807ll - 1 ), 100 );
+    {
+        uint64_t offset_value = 0;
+        read_bits( stream, offset_value, 64 );
+        if ( offset_value > 18446744073709551614ull )
+        {
+            return false;
+        }
+        value.ceiling_range = offset_value + 1;
+    }
+    {
+        uint64_t raw_value = 0;
+        read_bits( stream, raw_value, 64 );
+        value.floor_default = int64_t( raw_value );
+    }
+    return true;
+}
+
+SCHEMA_WRITE_INLINE bool WriteExtremeRow( serialize::WriteStream & stream, const ExtremeRow & value )
+{
+    serialize_assert( int64_t( value.clamped_floor ) >= int64_t( ( -9223372036854775807ll - 1 ) ) && int64_t( value.clamped_floor ) <= int64_t( 100 ) );
+    write_bits( stream, uint64_t( value.clamped_floor ) - uint64_t( ( -9223372036854775807ll - 1 ) ), 64 );
+    serialize_assert( value.clamped_ceiling >= 1 && value.clamped_ceiling <= 18446744073709551614ull );
+    write_bits( stream, uint64_t( value.clamped_ceiling ) - 1, 64 );
+    write_bits( stream, value.floor_def, 64 );
+    return true;
+}
+
+SCHEMA_READ_INLINE bool ReadExtremeRow( serialize::ReadStream & stream, ExtremeRow & value )
+{
+    read_int64( stream, value.clamped_floor, ( -9223372036854775807ll - 1 ), 100 );
+    {
+        uint64_t offset_value = 0;
+        read_bits( stream, offset_value, 64 );
+        if ( offset_value > 18446744073709551613ull )
+        {
+            return false;
+        }
+        value.clamped_ceiling = offset_value + 1;
+    }
+    {
+        uint64_t raw_value = 0;
+        read_bits( stream, raw_value, 64 );
+        value.floor_def = int64_t( raw_value );
+    }
     return true;
 }
 

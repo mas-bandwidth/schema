@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package example — protocol id 0x39e4aa9c08faf8f8
+// package example — protocol id 0x14cc156665b9f146
 // The TABLE wire (evolution-tolerant, notes/table-wire.md).
 
 package example
@@ -467,6 +467,134 @@ func tableReadRigidBody(r *tableReader, value *RigidBody) bool {
 	}
 }
 
+// TableWriteExtremeRow returns value's table-wire encoding in a fresh buffer.
+func TableWriteExtremeRow(value *ExtremeRow) []byte {
+	return AppendTableExtremeRow(nil, value)
+}
+
+// AppendTableExtremeRow appends value's table-wire encoding to dst and returns the
+// extended buffer — the zero-allocation write path: hand it a buffer you
+// reuse (dst[:0]) and steady-state writes never touch the heap.
+func AppendTableExtremeRow(dst []byte, value *ExtremeRow) []byte {
+	w := tableWriter{buf: dst}
+	tableWriteExtremeRow(&w, value)
+	return w.buf
+}
+
+func tableWriteExtremeRow(w *tableWriter, value *ExtremeRow) {
+	if value.ClampedFloor != 0 {
+		w.u16(0xba76) // clamped_floor
+		w.u8(5)
+		w.u64(uint64(value.ClampedFloor))
+	}
+	if value.ClampedCeiling != 0 {
+		w.u16(0x7a83) // clamped_ceiling
+		w.u8(9)
+		w.u64(uint64(value.ClampedCeiling))
+	}
+	if value.FloorDef != -9223372036854775808 {
+		w.u16(0x1590) // floor_def
+		w.u8(5)
+		w.u64(uint64(value.FloorDef))
+	}
+	w.u16(0) // terminator
+}
+
+// TableReadExtremeRow decodes a table-wire buffer under the permissive contract:
+// declared defaults prefill, known fields overlay, unknown ids and kind
+// mismatches skip and count, out-of-range values clamp and count. false
+// means malformed — the partial decode up to that point is kept.
+func TableReadExtremeRow(data []byte, value *ExtremeRow, report *TableReport) bool {
+	r := &tableReader{buf: data, rep: report}
+	return tableReadExtremeRow(r, value)
+}
+
+func tableReadExtremeRow(r *tableReader, value *ExtremeRow) bool {
+	*value = NewExtremeRow() // prefill declared defaults, then overlay
+	for {
+		if !r.has(2) {
+			r.rep.Malformed = true
+			return false
+		}
+		fieldId := r.get16()
+		if fieldId == 0 {
+			return true
+		}
+		if !r.has(1) {
+			r.rep.Malformed = true
+			return false
+		}
+		kind := r.get8()
+		switch fieldId {
+		case 0xba76: // clamped_floor
+			if kind != 5 {
+				r.rep.KindMismatch++
+				if !r.skip(kind) {
+					r.rep.Malformed = true
+					return false
+				}
+				break
+			}
+			if !r.has(8) {
+				r.rep.Malformed = true
+				return false
+			}
+			decoded := int64(r.get64())
+			if decoded < -9223372036854775808 {
+				decoded = -9223372036854775808
+				r.rep.Clamped++
+			} else if decoded > 100 {
+				decoded = 100
+				r.rep.Clamped++
+			}
+			value.ClampedFloor = int64(decoded)
+		case 0x7a83: // clamped_ceiling
+			if kind != 9 {
+				r.rep.KindMismatch++
+				if !r.skip(kind) {
+					r.rep.Malformed = true
+					return false
+				}
+				break
+			}
+			if !r.has(8) {
+				r.rep.Malformed = true
+				return false
+			}
+			decoded := r.get64()
+			if decoded < 1 {
+				decoded = 1
+				r.rep.Clamped++
+			} else if decoded > 18446744073709551614 {
+				decoded = 18446744073709551614
+				r.rep.Clamped++
+			}
+			value.ClampedCeiling = uint64(decoded)
+		case 0x1590: // floor_def
+			if kind != 5 {
+				r.rep.KindMismatch++
+				if !r.skip(kind) {
+					r.rep.Malformed = true
+					return false
+				}
+				break
+			}
+			if !r.has(8) {
+				r.rep.Malformed = true
+				return false
+			}
+			decoded := int64(r.get64())
+			value.FloorDef = int64(decoded)
+		default:
+			r.rep.Unknown++
+			if !r.skip(kind) {
+				r.rep.Malformed = true
+				return false
+			}
+		}
+	}
+}
+
 // ---- reflection descriptors (tables only, notes/table-wire.md) ----
 //
 // Descriptor links are wired in init(), which completes before main: every
@@ -759,6 +887,117 @@ func TableSetRigidBody(value *RigidBody, field string, v any) bool {
 			return false
 		}
 		value.AtRest = b
+		return true
+	}
+	return false
+}
+
+var tableTypeExtremeRow = &TableTypeInfo{Name: "ExtremeRow"}
+
+func init() {
+	tableTypeExtremeRow.Fields = []TableFieldInfo{
+		{Name: "clamped_floor", TypeName: "int64", Id: 0xba76, Kind: 5, HasRange: true, RangeMin: -9.223372036854776e+18, RangeMax: 100.0, EnumMax: -1},
+		{Name: "clamped_ceiling", TypeName: "uint64", Id: 0x7a83, Kind: 9, HasRange: true, RangeMin: 1.0, RangeMax: 1.8446744073709552e+19, EnumMax: -1},
+		{Name: "floor_def", TypeName: "int64", Id: 0x1590, Kind: 5, EnumMax: -1},
+	}
+}
+
+// TableTypeExtremeRow returns ExtremeRow's reflection descriptor — field names, wire
+// ids/kinds, bounds, ranges, enum names and branch guards. Pair it with
+// TableGetExtremeRow/TableSetExtremeRow to walk, print, diff or edit values generically.
+func TableTypeExtremeRow() *TableTypeInfo { return tableTypeExtremeRow }
+
+// TableGetExtremeRow reads the named field from value: scalars normalize (signed ->
+// int64, unsigned/bits -> uint64, floats -> float64, bools as-is), enums and
+// flags -> uint64, strings -> the used string, nested tables -> a typed
+// pointer, fixed arrays -> a pointer to the backing array, counted arrays
+// and bytes -> the used slice. Unknown field names return (nil, false).
+func TableGetExtremeRow(value *ExtremeRow, field string) (any, bool) {
+	switch field {
+	case "clamped_floor":
+		return int64(value.ClampedFloor), true
+	case "clamped_ceiling":
+		return uint64(value.ClampedCeiling), true
+	case "floor_def":
+		return int64(value.FloorDef), true
+	}
+	return nil, false
+}
+
+// TableGetValueExtremeRow reads the named SCALAR field without boxing — the
+// zero-allocation twin of TableGetExtremeRow. Strings and byte blocks return
+// their used bytes (no copy). Arrays and nested tables are not scalars:
+// (TableValue{}, false) — use TableGetExtremeRow for those.
+func TableGetValueExtremeRow(value *ExtremeRow, field string) (TableValue, bool) {
+	switch field {
+	case "clamped_floor":
+		return tableValueInt(int64(value.ClampedFloor)), true
+	case "clamped_ceiling":
+		return tableValueUint(uint64(value.ClampedCeiling)), true
+	case "floor_def":
+		return tableValueInt(int64(value.FloorDef)), true
+	}
+	return TableValue{}, false
+}
+
+// TableSetExtremeRow writes the named field — the editor write path: scalars,
+// enums, flags, bools and strings only. Numerics accept the field's own Go
+// type plus int64/uint64/float64; out-of-range values CLAMP exactly as the
+// table-wire read side does, and strings truncate to the declared max.
+// Unknown fields, nested tables and arrays return false.
+func TableSetExtremeRow(value *ExtremeRow, field string, v any) bool {
+	switch field {
+	case "clamped_floor":
+		var n int64
+		switch t := v.(type) {
+		case int64:
+			n = t
+		case uint64:
+			n = int64(t)
+		case float64:
+			n = int64(t)
+		default:
+			return false
+		}
+		if n < -9223372036854775808 {
+			n = -9223372036854775808
+		} else if n > 100 {
+			n = 100
+		}
+		value.ClampedFloor = n
+		return true
+	case "clamped_ceiling":
+		var n uint64
+		switch t := v.(type) {
+		case uint64:
+			n = t
+		case int64:
+			n = uint64(t)
+		case float64:
+			n = uint64(t)
+		default:
+			return false
+		}
+		if n < 1 {
+			n = 1
+		} else if n > 18446744073709551614 {
+			n = 18446744073709551614
+		}
+		value.ClampedCeiling = n
+		return true
+	case "floor_def":
+		var n int64
+		switch t := v.(type) {
+		case int64:
+			n = t
+		case uint64:
+			n = int64(t)
+		case float64:
+			n = int64(t)
+		default:
+			return false
+		}
+		value.FloorDef = n
 		return true
 	}
 	return false

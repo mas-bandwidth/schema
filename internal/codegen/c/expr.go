@@ -23,7 +23,7 @@ import (
 // carried).
 func (g *gen) renderInt(e ast.Expr, folded *big.Int) string {
 	if !g.symbolic(e) {
-		return folded.String()
+		return intLit(folded, "")
 	}
 	return renderExpr(e)
 }
@@ -35,9 +35,27 @@ func (g *gen) renderInt(e ast.Expr, folded *big.Int) string {
 // spelling those sites always had.
 func (g *gen) renderIntSuffixed(e ast.Expr, folded *big.Int, suffix string) string {
 	if !g.symbolic(e) {
-		return folded.String() + suffix
+		return intLit(folded, suffix)
 	}
 	return renderExpr(e)
+}
+
+// intLit renders a folded integer as a valid C literal, with the suffix the
+// site always spelled ("" where unsuffixed, "LL"/"ULL" elsewhere). Two
+// extremes have no direct decimal spelling and are guarded the way the C++
+// backend guards them (issue #95): INT64_MIN's literal half overflows long
+// long before the unary minus applies, so it renders as the C++ twin's
+// ( -9223372036854775807LL - 1 ); a value past INT64_MAX exceeds every
+// signed rung of C's decimal ladder (which ends at long long), so only the
+// ULL spelling can hold it, whatever suffix the site asked for.
+func intLit(v *big.Int, suffix string) string {
+	if v.IsInt64() && v.Int64() == math.MinInt64 {
+		return "( -9223372036854775807LL - 1 )"
+	}
+	if v.Sign() > 0 && !v.IsInt64() {
+		return v.String() + "ULL"
+	}
+	return v.String() + suffix
 }
 
 // symbolic gates every symbolic rendering: the expression must exist, contain

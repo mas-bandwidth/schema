@@ -149,3 +149,33 @@ type ExpressionProbe {
     hardpoint_index int32 [min = 0, max = (ShipMaxLasers + ShipMaxMissiles) - 1]
     spin_rate       int32 [min = --RotationUnits, max = RotationUnits * 2]
 }
+
+// ---- issue #95: the integer extremes, pinned end-to-end ----
+
+// The two values with no direct decimal spelling in the C family:
+// INT64_MIN's literal half overflows long long before the unary minus
+// applies, and a value past INT64_MAX has no signed rung of the decimal
+// ladder to land on. Every fold of these must reach the compiler in a
+// guarded spelling — ( -9223372036854775807LL - 1 ), the ULL suffix — so
+// this type keeps them in every -Werror leg, bounds and constants and
+// defaults and table clamps alike. (The doubled-minus-AT-the-extreme
+// interaction — an intermediate -(-9223372036854775808) that overflows the
+// 64-bit carrier though the final value fits — is pinned in the C emitter's
+// unit tests and the compile-fuzz hand seeds rather than here: the Rust
+// emitter still renders it symbolically as -(-FLOOR_LIMIT), which rustc
+// denies, so it cannot ride the shared corpus until that gap is closed.)
+
+const FloorLimit          = -9223372036854775808
+const CeilingCount uint64 = 18446744073709551615
+
+type ExtremeProbe {
+    floor_bound   int64  [min = -9223372036854775808, max = 100]
+    ceiling_range uint64 [min = 1, max = 18446744073709551615]
+    floor_default int64  = -9223372036854775808
+}
+
+table ExtremeRow {
+    clamped_floor   int64  [min = -9223372036854775808, max = 100]
+    clamped_ceiling uint64 [min = 1, max = 18446744073709551614]
+    floor_def       int64  = -9223372036854775808
+}

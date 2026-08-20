@@ -150,6 +150,14 @@ var handSeeds = []string{
 	"package t\nenum E [max = 2147483648] { A }\n",
 	"package t\ntype T { x bits(0) }\n",
 	"package t\ntype T { x bits(65) }\n",
+	// issue #95: the integer extremes. INT64_MIN has no direct literal in C
+	// or C++ (the literal half overflows long long before the unary minus
+	// applies) and an above-INT64_MAX value has no signed rung to land on —
+	// both must reach the compiler in their guarded spellings, the doubled
+	// minus AT the extreme folding rather than rendering symbolically.
+	"package t\nconst F = -9223372036854775808\ntype T { x int64 [min = --F, max = 100] = -9223372036854775808 }\n",
+	"package t\nconst H uint64 = 18446744073709551615\ntype T { x uint64 [min = 1, max = 18446744073709551615] }\n",
+	"package t\ntable R {\n    x int64 [min = -9223372036854775808, max = 100] = -9223372036854775808\n    y uint64 [min = 1, max = 18446744073709551614]\n}\n",
 }
 
 // FuzzPipeline drives a single file through the whole compiler.

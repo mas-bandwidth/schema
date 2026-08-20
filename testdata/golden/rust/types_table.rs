@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package example — protocol id 0x39e4aa9c08faf8f8
+// package example — protocol id 0x14cc156665b9f146
 // The TABLE wire (evolution-tolerant, notes/table-wire.md).
 
 #![allow(clippy::needless_range_loop)]
@@ -380,6 +380,101 @@ fn table_read_rigid_body_from(r: &mut TableReader, value: &mut RigidBody, report
     }
 }
 
+/// Returns `value`'s table-wire encoding in a fresh buffer.
+pub fn table_write_extreme_row(value: &ExtremeRow) -> Vec<u8> {
+    append_table_extreme_row(Vec::new(), value)
+}
+
+/// Appends `value`'s table-wire encoding to `dst` and returns the extended
+/// buffer — the zero-allocation write path: hand it a buffer you reuse
+/// (`v.clear()` then pass `v`) and steady-state writes never touch the heap.
+pub fn append_table_extreme_row(dst: Vec<u8>, value: &ExtremeRow) -> Vec<u8> {
+    let mut w = TableWriter { buf: dst };
+    table_write_extreme_row_into(&mut w, value);
+    w.buf
+}
+
+fn table_write_extreme_row_into(w: &mut TableWriter, value: &ExtremeRow) {
+    if value.clamped_floor != 0 {
+        w.u16(0xba76); // clamped_floor
+        w.u8(5);
+        w.u64(value.clamped_floor as u64);
+    }
+    if value.clamped_ceiling != 0 {
+        w.u16(0x7a83); // clamped_ceiling
+        w.u8(9);
+        w.u64(value.clamped_ceiling as u64);
+    }
+    if value.floor_def != -9223372036854775808 {
+        w.u16(0x1590); // floor_def
+        w.u8(5);
+        w.u64(value.floor_def as u64);
+    }
+    w.u16(0); // terminator
+}
+
+/// Decodes a table-wire buffer under the permissive contract: declared
+/// defaults prefill, known fields overlay, unknown ids and kind mismatches
+/// skip and count, out-of-range values clamp and count. `false` means
+/// malformed — the partial decode up to that point is kept.
+pub fn table_read_extreme_row(data: &[u8], value: &mut ExtremeRow, report: &mut TableReport) -> bool {
+    let mut r = TableReader { buf: data, off: 0 };
+    table_read_extreme_row_from(&mut r, value, report)
+}
+
+fn table_read_extreme_row_from(r: &mut TableReader, value: &mut ExtremeRow, report: &mut TableReport) -> bool {
+    *value = ExtremeRow::new(); // prefill declared defaults, then overlay
+    loop {
+        if !r.has(2) { report.malformed = true; return false; }
+        let field_id = r.get16();
+        if field_id == 0 { return true; }
+        if !r.has(1) { report.malformed = true; return false; }
+        let kind = r.get8();
+        match field_id {
+            0xba76 => { // clamped_floor
+                if kind != 5 {
+                    report.kind_mismatch += 1;
+                    if !r.skip(kind) { report.malformed = true; return false; }
+                } else {
+                    if !r.has(8) { report.malformed = true; return false; }
+                    let raw = r.get64() as i64;
+                    let mut v = raw;
+                    if (v as i128) < -9223372036854775808i128 { v = -9223372036854775808i128 as _; report.clamped += 1; }
+                    if (v as i128) > 100i128 { v = 100i128 as _; report.clamped += 1; }
+                    value.clamped_floor = v as i64;
+                }
+            }
+            0x7a83 => { // clamped_ceiling
+                if kind != 9 {
+                    report.kind_mismatch += 1;
+                    if !r.skip(kind) { report.malformed = true; return false; }
+                } else {
+                    if !r.has(8) { report.malformed = true; return false; }
+                    let raw = r.get64();
+                    let mut v = raw;
+                    if (v as i128) < 1i128 { v = 1i128 as _; report.clamped += 1; }
+                    if (v as i128) > 18446744073709551614i128 { v = 18446744073709551614i128 as _; report.clamped += 1; }
+                    value.clamped_ceiling = v as u64;
+                }
+            }
+            0x1590 => { // floor_def
+                if kind != 5 {
+                    report.kind_mismatch += 1;
+                    if !r.skip(kind) { report.malformed = true; return false; }
+                } else {
+                    if !r.has(8) { report.malformed = true; return false; }
+                    let raw = r.get64() as i64;
+                    value.floor_def = raw as i64;
+                }
+            }
+            _ => {
+                report.unknown += 1;
+                if !r.skip(kind) { report.malformed = true; return false; }
+            }
+        }
+    }
+}
+
 // ---- reflection descriptors (tables only, notes/table-wire.md) ----
 //
 // Descriptors are 'static data, so table_type_* costs nothing per instance
@@ -617,4 +712,65 @@ static TABLE_TYPE_RIGID_BODY: TableTypeInfo = TableTypeInfo {
 /// bounds, ranges, enum names and branch guards. Static data: no
 /// per-instance cost and no lazy initialization.
 pub fn table_type_rigid_body() -> &'static TableTypeInfo { &TABLE_TYPE_RIGID_BODY }
+
+static TABLE_TYPE_EXTREME_ROW_FIELDS: &[TableFieldInfo] = &[
+    TableFieldInfo {
+        name: "clamped_floor",
+        type_name: "int64",
+        id: 0xba76,
+        kind: 5,
+        is_array: false,
+        counted: false,
+        array_bound: 0,
+        table: None,
+        has_range: true,
+        range_min: -9.223372036854776e+18,
+        range_max: 100.0,
+        enum_max: -1,
+        enum_name: None,
+        guard: "",
+    },
+    TableFieldInfo {
+        name: "clamped_ceiling",
+        type_name: "uint64",
+        id: 0x7a83,
+        kind: 9,
+        is_array: false,
+        counted: false,
+        array_bound: 0,
+        table: None,
+        has_range: true,
+        range_min: 1.0,
+        range_max: 1.8446744073709552e+19,
+        enum_max: -1,
+        enum_name: None,
+        guard: "",
+    },
+    TableFieldInfo {
+        name: "floor_def",
+        type_name: "int64",
+        id: 0x1590,
+        kind: 5,
+        is_array: false,
+        counted: false,
+        array_bound: 0,
+        table: None,
+        has_range: false,
+        range_min: 0.0,
+        range_max: 0.0,
+        enum_max: -1,
+        enum_name: None,
+        guard: "",
+    },
+];
+
+static TABLE_TYPE_EXTREME_ROW: TableTypeInfo = TableTypeInfo {
+    name: "ExtremeRow",
+    fields: TABLE_TYPE_EXTREME_ROW_FIELDS,
+};
+
+/// Returns `ExtremeRow`'s reflection descriptor — field names, wire ids/kinds,
+/// bounds, ranges, enum names and branch guards. Static data: no
+/// per-instance cost and no lazy initialization.
+pub fn table_type_extreme_row() -> &'static TableTypeInfo { &TABLE_TYPE_EXTREME_ROW }
 
