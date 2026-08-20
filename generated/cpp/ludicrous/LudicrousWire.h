@@ -519,7 +519,7 @@ inline bool WriteMessage( serialize::WriteStream & stream, const Message & messa
             {
                 return false;
             }
-            return WriteMessageArmLudicrousState( stream, message.ludicrous_state );
+            return WriteLudicrousState( stream, message.ludicrous_state );
     }
     return false; // not a message type; nothing was written
 }

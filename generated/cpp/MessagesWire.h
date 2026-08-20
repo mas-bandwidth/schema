@@ -367,37 +367,37 @@ inline bool WriteMessage( serialize::WriteStream & stream, const Message & messa
             {
                 return false;
             }
-            return WriteMessageArmBlock( stream, message.block );
+            return WriteBlock( stream, message.block );
         case MessageType::Chat:
             if ( !WriteMessageType( stream, MessageType::Chat ) )
             {
                 return false;
             }
-            return WriteMessageArmChat( stream, message.chat );
+            return WriteChat( stream, message.chat );
         case MessageType::Heartbeat:
             if ( !WriteMessageType( stream, MessageType::Heartbeat ) )
             {
                 return false;
             }
-            return WriteMessageArmHeartbeat( stream, message.heartbeat );
+            return WriteHeartbeat( stream, message.heartbeat );
         case MessageType::Synchronize:
             if ( !WriteMessageType( stream, MessageType::Synchronize ) )
             {
                 return false;
             }
-            return WriteMessageArmSynchronize( stream, message.synchronize );
+            return WriteSynchronize( stream, message.synchronize );
         case MessageType::Test:
             if ( !WriteMessageType( stream, MessageType::Test ) )
             {
                 return false;
             }
-            return WriteMessageArmTest( stream, message.test );
+            return WriteTest( stream, message.test );
         case MessageType::Timescale:
             if ( !WriteMessageType( stream, MessageType::Timescale ) )
             {
                 return false;
             }
-            return WriteMessageArmTimescale( stream, message.timescale );
+            return WriteTimescale( stream, message.timescale );
     }
     return false; // not a message type; nothing was written
 }
