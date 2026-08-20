@@ -212,8 +212,14 @@ func WriteRealPacket(stream *serialize.WriteStream, value *RealPacket) error {
 		stream.SerializeBits(&offsetValue, 21)
 	}
 	{
-		compressedValue := value.F004Cf32
-		stream.SerializeCompressedFloat32(&compressedValue, 0.0, 2000.0, 0.1)
+		normalizedValue := value.F004Cf32 / 2000.0
+		if !(normalizedValue >= 0) { // the runtime's clamp form — it forces NaN into range too
+			normalizedValue = 0
+		} else if !(normalizedValue <= 1) {
+			normalizedValue = 1
+		}
+		integerValue := uint32(float32(normalizedValue*20000.0) + 0.5)
+		stream.SerializeBits(&integerValue, 15)
 	}
 	{
 		rangeValue := int32(value.F005Uint)
@@ -312,8 +318,14 @@ func WriteRealPacket(stream *serialize.WriteStream, value *RealPacket) error {
 	}
 	stream.SerializeBits(&value.F026Bits, 9)
 	{
-		compressedValue := value.F027Cf32
-		stream.SerializeCompressedFloat32(&compressedValue, -2.0, 2.0, 0.25)
+		normalizedValue := (value.F027Cf32 - (-2.0)) / 4.0
+		if !(normalizedValue >= 0) { // the runtime's clamp form — it forces NaN into range too
+			normalizedValue = 0
+		} else if !(normalizedValue <= 1) {
+			normalizedValue = 1
+		}
+		integerValue := uint32(float32(normalizedValue*16.0) + 0.5)
+		stream.SerializeBits(&integerValue, 5)
 	}
 	stream.SerializeBits(&value.F028Bits, 4)
 	{
@@ -458,8 +470,14 @@ func WriteRealPacket(stream *serialize.WriteStream, value *RealPacket) error {
 	stream.SerializeFloat64(&value.F059F64)
 	stream.SerializeBits(&value.F060Bits, 8)
 	{
-		compressedValue := value.F061Cf32
-		stream.SerializeCompressedFloat32(&compressedValue, -90.0, 90.0, 0.5)
+		normalizedValue := (value.F061Cf32 - (-90.0)) / 180.0
+		if !(normalizedValue >= 0) { // the runtime's clamp form — it forces NaN into range too
+			normalizedValue = 0
+		} else if !(normalizedValue <= 1) {
+			normalizedValue = 1
+		}
+		integerValue := uint32(float32(normalizedValue*360.0) + 0.5)
+		stream.SerializeBits(&integerValue, 9)
 	}
 	{
 		rangeValue := int32(value.F062Uint)
@@ -486,20 +504,38 @@ func WriteRealPacket(stream *serialize.WriteStream, value *RealPacket) error {
 		}
 	}
 	{
-		compressedValue := value.F065Cf32
-		stream.SerializeCompressedFloat32(&compressedValue, 0.0, 30.0, 0.5)
+		normalizedValue := value.F065Cf32 / 30.0
+		if !(normalizedValue >= 0) { // the runtime's clamp form — it forces NaN into range too
+			normalizedValue = 0
+		} else if !(normalizedValue <= 1) {
+			normalizedValue = 1
+		}
+		integerValue := uint32(float32(normalizedValue*60.0) + 0.5)
+		stream.SerializeBits(&integerValue, 6)
 	}
 	{
 		fixedValue := int64(value.F066Ufixed)
 		stream.SerializeFixed64(&fixedValue, 2, 14, 0, 2)
 	}
 	{
-		compressedValue := value.F067Cf32
-		stream.SerializeCompressedFloat32(&compressedValue, -100.0, 100.0, 0.25)
+		normalizedValue := (value.F067Cf32 - (-100.0)) / 200.0
+		if !(normalizedValue >= 0) { // the runtime's clamp form — it forces NaN into range too
+			normalizedValue = 0
+		} else if !(normalizedValue <= 1) {
+			normalizedValue = 1
+		}
+		integerValue := uint32(float32(normalizedValue*800.0) + 0.5)
+		stream.SerializeBits(&integerValue, 10)
 	}
 	{
-		compressedValue := value.F068Cf32
-		stream.SerializeCompressedFloat32(&compressedValue, 0.0, 2000.0, 1.0)
+		normalizedValue := value.F068Cf32 / 2000.0
+		if !(normalizedValue >= 0) { // the runtime's clamp form — it forces NaN into range too
+			normalizedValue = 0
+		} else if !(normalizedValue <= 1) {
+			normalizedValue = 1
+		}
+		integerValue := uint32(float32(normalizedValue*2000.0) + 0.5)
+		stream.SerializeBits(&integerValue, 11)
 	}
 	stream.SerializeBits(&value.F069Bits, 11)
 	{
@@ -513,12 +549,24 @@ func WriteRealPacket(stream *serialize.WriteStream, value *RealPacket) error {
 		}
 	}
 	{
-		compressedValue := value.F071Cf32
-		stream.SerializeCompressedFloat32(&compressedValue, 0.0, 10.0, 0.02)
+		normalizedValue := value.F071Cf32 / 10.0
+		if !(normalizedValue >= 0) { // the runtime's clamp form — it forces NaN into range too
+			normalizedValue = 0
+		} else if !(normalizedValue <= 1) {
+			normalizedValue = 1
+		}
+		integerValue := uint32(float32(normalizedValue*500.0) + 0.5)
+		stream.SerializeBits(&integerValue, 9)
 	}
 	{
-		compressedValue := value.F072Cf32
-		stream.SerializeCompressedFloat32(&compressedValue, 0.0, 100.0, 0.01)
+		normalizedValue := value.F072Cf32 / 100.0
+		if !(normalizedValue >= 0) { // the runtime's clamp form — it forces NaN into range too
+			normalizedValue = 0
+		} else if !(normalizedValue <= 1) {
+			normalizedValue = 1
+		}
+		integerValue := uint32(float32(normalizedValue*10000.0) + 0.5)
+		stream.SerializeBits(&integerValue, 14)
 	}
 	{
 		rangeValue := int32(value.F073Int)
@@ -638,7 +686,18 @@ func ReadRealPacket(stream *serialize.ReadStream, value *RealPacket) error {
 	stream.SerializeInt(&value.F001Int, -805495, 805495)
 	stream.SerializeFloat64(&value.F002F64)
 	stream.SerializeInt(&value.F003Int, -835897, 835897)
-	stream.SerializeCompressedFloat32(&value.F004Cf32, 0.0, 2000.0, 0.1)
+	{
+		integerValue := uint32(0)
+		stream.SerializeBits(&integerValue, 15)
+		if stream.Err() != nil {
+			return stream.Err()
+		}
+		if integerValue > 20000 { // a value smuggled into the bit headroom is refused (SPEC §4.3)
+			return ErrValidation
+		}
+		normalizedValue := float32(integerValue) / 20000.0
+		value.F004Cf32 = float32(normalizedValue * 2000.0)
+	}
 	{
 		rangeValue := int32(0)
 		stream.SerializeInt(&rangeValue, 0, 7316)
@@ -709,7 +768,18 @@ func ReadRealPacket(stream *serialize.ReadStream, value *RealPacket) error {
 		value.F025Fixed = int16(fixedValue)
 	}
 	stream.SerializeBits(&value.F026Bits, 9)
-	stream.SerializeCompressedFloat32(&value.F027Cf32, -2.0, 2.0, 0.25)
+	{
+		integerValue := uint32(0)
+		stream.SerializeBits(&integerValue, 5)
+		if stream.Err() != nil {
+			return stream.Err()
+		}
+		if integerValue > 16 { // a value smuggled into the bit headroom is refused (SPEC §4.3)
+			return ErrValidation
+		}
+		normalizedValue := float32(integerValue) / 16.0
+		value.F027Cf32 = float32(normalizedValue*4.0) + (-2.0)
+	}
 	stream.SerializeBits(&value.F028Bits, 4)
 	{
 		rawValue := uint64(0)
@@ -809,7 +879,18 @@ func ReadRealPacket(stream *serialize.ReadStream, value *RealPacket) error {
 	stream.SerializeFloat32(&value.F058F32)
 	stream.SerializeFloat64(&value.F059F64)
 	stream.SerializeBits(&value.F060Bits, 8)
-	stream.SerializeCompressedFloat32(&value.F061Cf32, -90.0, 90.0, 0.5)
+	{
+		integerValue := uint32(0)
+		stream.SerializeBits(&integerValue, 9)
+		if stream.Err() != nil {
+			return stream.Err()
+		}
+		if integerValue > 360 { // a value smuggled into the bit headroom is refused (SPEC §4.3)
+			return ErrValidation
+		}
+		normalizedValue := float32(integerValue) / 360.0
+		value.F061Cf32 = float32(normalizedValue*180.0) + (-90.0)
+	}
 	{
 		rangeValue := int32(0)
 		stream.SerializeInt(&rangeValue, 0, 503)
@@ -825,22 +906,77 @@ func ReadRealPacket(stream *serialize.ReadStream, value *RealPacket) error {
 		stream.SerializeInt(&rangeValue, 0, 299)
 		value.F064Uint = uint16(rangeValue)
 	}
-	stream.SerializeCompressedFloat32(&value.F065Cf32, 0.0, 30.0, 0.5)
+	{
+		integerValue := uint32(0)
+		stream.SerializeBits(&integerValue, 6)
+		if stream.Err() != nil {
+			return stream.Err()
+		}
+		if integerValue > 60 { // a value smuggled into the bit headroom is refused (SPEC §4.3)
+			return ErrValidation
+		}
+		normalizedValue := float32(integerValue) / 60.0
+		value.F065Cf32 = float32(normalizedValue * 30.0)
+	}
 	{
 		fixedValue := int64(0)
 		stream.SerializeFixed64(&fixedValue, 2, 14, 0, 2)
 		value.F066Ufixed = uint16(fixedValue)
 	}
-	stream.SerializeCompressedFloat32(&value.F067Cf32, -100.0, 100.0, 0.25)
-	stream.SerializeCompressedFloat32(&value.F068Cf32, 0.0, 2000.0, 1.0)
+	{
+		integerValue := uint32(0)
+		stream.SerializeBits(&integerValue, 10)
+		if stream.Err() != nil {
+			return stream.Err()
+		}
+		if integerValue > 800 { // a value smuggled into the bit headroom is refused (SPEC §4.3)
+			return ErrValidation
+		}
+		normalizedValue := float32(integerValue) / 800.0
+		value.F067Cf32 = float32(normalizedValue*200.0) + (-100.0)
+	}
+	{
+		integerValue := uint32(0)
+		stream.SerializeBits(&integerValue, 11)
+		if stream.Err() != nil {
+			return stream.Err()
+		}
+		if integerValue > 2000 { // a value smuggled into the bit headroom is refused (SPEC §4.3)
+			return ErrValidation
+		}
+		normalizedValue := float32(integerValue) / 2000.0
+		value.F068Cf32 = float32(normalizedValue * 2000.0)
+	}
 	stream.SerializeBits(&value.F069Bits, 11)
 	{
 		rangeValue := int32(0)
 		stream.SerializeInt(&rangeValue, 0, 2)
 		value.F070Uint = uint8(rangeValue)
 	}
-	stream.SerializeCompressedFloat32(&value.F071Cf32, 0.0, 10.0, 0.02)
-	stream.SerializeCompressedFloat32(&value.F072Cf32, 0.0, 100.0, 0.01)
+	{
+		integerValue := uint32(0)
+		stream.SerializeBits(&integerValue, 9)
+		if stream.Err() != nil {
+			return stream.Err()
+		}
+		if integerValue > 500 { // a value smuggled into the bit headroom is refused (SPEC §4.3)
+			return ErrValidation
+		}
+		normalizedValue := float32(integerValue) / 500.0
+		value.F071Cf32 = float32(normalizedValue * 10.0)
+	}
+	{
+		integerValue := uint32(0)
+		stream.SerializeBits(&integerValue, 14)
+		if stream.Err() != nil {
+			return stream.Err()
+		}
+		if integerValue > 10000 { // a value smuggled into the bit headroom is refused (SPEC §4.3)
+			return ErrValidation
+		}
+		normalizedValue := float32(integerValue) / 10000.0
+		value.F072Cf32 = float32(normalizedValue * 100.0)
+	}
 	{
 		rangeValue := int32(0)
 		stream.SerializeInt(&rangeValue, -4, 4)
