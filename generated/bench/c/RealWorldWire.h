@@ -49,7 +49,7 @@ extern "C" {
    error, so a caller may check once at the end of a message. */
 static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_real_packet( serialize_write_stream_t * stream, const RealPacket * value )
 {
-    if ( (serialize_int64_t) value->f001_int < -805495LL || (serialize_int64_t) value->f001_int > 805495LL )
+    if ( (serialize_int64_t) value->f001_int < -805495 || (serialize_int64_t) value->f001_int > 805495 )
     {
         return 0; /* out-of-contract writes are refused, not wrapped */
     }
@@ -61,7 +61,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_real_packet( serialize_writ
     {
         return 0;
     }
-    if ( (serialize_int64_t) value->f003_int < -835897LL || (serialize_int64_t) value->f003_int > 835897LL )
+    if ( (serialize_int64_t) value->f003_int < -835897 || (serialize_int64_t) value->f003_int > 835897 )
     {
         return 0; /* out-of-contract writes are refused, not wrapped */
     }
@@ -73,7 +73,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_real_packet( serialize_writ
     {
         return 0;
     }
-    if ( (serialize_int64_t) value->f005_uint > 7316LL )
+    if ( (serialize_int64_t) value->f005_uint > 7316 )
     {
         return 0; /* out-of-contract writes are refused, not wrapped */
     }
@@ -81,7 +81,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_real_packet( serialize_writ
     {
         return 0;
     }
-    if ( (serialize_int64_t) value->f006_int < -1513LL || (serialize_int64_t) value->f006_int > 1513LL )
+    if ( (serialize_int64_t) value->f006_int < -1513 || (serialize_int64_t) value->f006_int > 1513 )
     {
         return 0; /* out-of-contract writes are refused, not wrapped */
     }
@@ -97,7 +97,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_real_packet( serialize_writ
     {
         return 0;
     }
-    if ( (serialize_int64_t) value->f009_int < -22LL || (serialize_int64_t) value->f009_int > 22LL )
+    if ( (serialize_int64_t) value->f009_int < -22 || (serialize_int64_t) value->f009_int > 22 )
     {
         return 0; /* out-of-contract writes are refused, not wrapped */
     }
@@ -123,7 +123,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_real_packet( serialize_writ
         {
             return 0;
         }
-        if ( (serialize_int64_t) value->f014_uint > 775LL )
+        if ( (serialize_int64_t) value->f014_uint > 775 )
         {
             return 0; /* out-of-contract writes are refused, not wrapped */
         }
@@ -131,7 +131,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_real_packet( serialize_writ
         {
             return 0;
         }
-        if ( (serialize_int64_t) value->f015_int < -21LL || (serialize_int64_t) value->f015_int > 21LL )
+        if ( (serialize_int64_t) value->f015_int < -21 || (serialize_int64_t) value->f015_int > 21 )
         {
             return 0; /* out-of-contract writes are refused, not wrapped */
         }
@@ -141,12 +141,12 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_real_packet( serialize_writ
         }
         {
             serialize_int32_t fixed_value = value->f016_fixed;
-            if ( !serialize_write_fixed32( stream, fixed_value, 12, 20, -36LL, 36LL ) )
+            if ( !serialize_write_fixed32( stream, fixed_value, 12, 20, -36, 36 ) )
             {
                 return 0;
             }
         }
-        if ( (serialize_int64_t) value->f017_uint > 4606LL )
+        if ( (serialize_int64_t) value->f017_uint > 4606 )
         {
             return 0; /* out-of-contract writes are refused, not wrapped */
         }
@@ -155,7 +155,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_real_packet( serialize_writ
             return 0;
         }
     }
-    if ( (serialize_int64_t) value->f018_int < -834LL || (serialize_int64_t) value->f018_int > 834LL )
+    if ( (serialize_int64_t) value->f018_int < -834 || (serialize_int64_t) value->f018_int > 834 )
     {
         return 0; /* out-of-contract writes are refused, not wrapped */
     }
@@ -173,7 +173,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_real_packet( serialize_writ
     }
     {
         serialize_int64_t fixed_value = (serialize_int64_t) value->f021_ufixed;
-        if ( !serialize_write_fixed64( stream, fixed_value, 20, 12, 0LL, 25141LL ) )
+        if ( !serialize_write_fixed64( stream, fixed_value, 20, 12, 0, 25141 ) )
         {
             return 0;
         }
@@ -192,7 +192,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_real_packet( serialize_writ
     }
     {
         serialize_int32_t fixed_value = value->f025_fixed;
-        if ( !serialize_write_fixed32( stream, fixed_value, 8, 8, -119LL, 119LL ) )
+        if ( !serialize_write_fixed32( stream, fixed_value, 8, 8, -119, 119 ) )
         {
             return 0;
         }
@@ -221,7 +221,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_real_packet( serialize_writ
     {
         return 0;
     }
-    if ( (serialize_int64_t) value->f032_int < -3LL || (serialize_int64_t) value->f032_int > 3LL )
+    if ( (serialize_int64_t) value->f032_int < -3 || (serialize_int64_t) value->f032_int > 3 )
     {
         return 0; /* out-of-contract writes are refused, not wrapped */
     }
@@ -229,7 +229,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_real_packet( serialize_writ
     {
         return 0;
     }
-    if ( (serialize_int64_t) value->f033_uint > 142780LL )
+    if ( (serialize_int64_t) value->f033_uint > 142780 )
     {
         return 0; /* out-of-contract writes are refused, not wrapped */
     }
@@ -237,7 +237,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_real_packet( serialize_writ
     {
         return 0;
     }
-    if ( (serialize_int64_t) value->f034_uint > 14149LL )
+    if ( (serialize_int64_t) value->f034_uint > 14149 )
     {
         return 0; /* out-of-contract writes are refused, not wrapped */
     }
@@ -271,12 +271,12 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_real_packet( serialize_writ
     }
     {
         serialize_int32_t fixed_value = value->f040_fixed;
-        if ( !serialize_write_fixed32( stream, fixed_value, 4, 12, -5LL, 5LL ) )
+        if ( !serialize_write_fixed32( stream, fixed_value, 4, 12, -5, 5 ) )
         {
             return 0;
         }
     }
-    if ( (serialize_int64_t) value->f041_int < -55LL || (serialize_int64_t) value->f041_int > 55LL )
+    if ( (serialize_int64_t) value->f041_int < -55 || (serialize_int64_t) value->f041_int > 55 )
     {
         return 0; /* out-of-contract writes are refused, not wrapped */
     }
@@ -302,7 +302,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_real_packet( serialize_writ
         {
             return 0;
         }
-        if ( (serialize_int64_t) value->f046_uint > 76063LL )
+        if ( (serialize_int64_t) value->f046_uint > 76063 )
         {
             return 0; /* out-of-contract writes are refused, not wrapped */
         }
@@ -310,7 +310,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_real_packet( serialize_writ
         {
             return 0;
         }
-        if ( (serialize_int64_t) value->f047_int < -430976LL || (serialize_int64_t) value->f047_int > 430976LL )
+        if ( (serialize_int64_t) value->f047_int < -430976 || (serialize_int64_t) value->f047_int > 430976 )
         {
             return 0; /* out-of-contract writes are refused, not wrapped */
         }
@@ -325,7 +325,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_real_packet( serialize_writ
     }
     {
         serialize_int64_t fixed_value = (serialize_int64_t) value->f049_ufixed;
-        if ( !serialize_write_fixed64( stream, fixed_value, 2, 14, 0LL, 3LL ) )
+        if ( !serialize_write_fixed64( stream, fixed_value, 2, 14, 0, 3 ) )
         {
             return 0;
         }
@@ -340,7 +340,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_real_packet( serialize_writ
         {
             return 0;
         }
-        if ( (serialize_int64_t) value->f052_int < -57LL || (serialize_int64_t) value->f052_int > 57LL )
+        if ( (serialize_int64_t) value->f052_int < -57 || (serialize_int64_t) value->f052_int > 57 )
         {
             return 0; /* out-of-contract writes are refused, not wrapped */
         }
@@ -352,7 +352,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_real_packet( serialize_writ
         {
             return 0;
         }
-        if ( (serialize_int64_t) value->f054_int < -35LL || (serialize_int64_t) value->f054_int > 35LL )
+        if ( (serialize_int64_t) value->f054_int < -35 || (serialize_int64_t) value->f054_int > 35 )
         {
             return 0; /* out-of-contract writes are refused, not wrapped */
         }
@@ -365,7 +365,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_real_packet( serialize_writ
     {
         return 0;
     }
-    if ( (serialize_int64_t) value->f056_int < -13LL || (serialize_int64_t) value->f056_int > 13LL )
+    if ( (serialize_int64_t) value->f056_int < -13 || (serialize_int64_t) value->f056_int > 13 )
     {
         return 0; /* out-of-contract writes are refused, not wrapped */
     }
@@ -373,7 +373,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_real_packet( serialize_writ
     {
         return 0;
     }
-    if ( (serialize_int64_t) value->f057_int < -15LL || (serialize_int64_t) value->f057_int > 15LL )
+    if ( (serialize_int64_t) value->f057_int < -15 || (serialize_int64_t) value->f057_int > 15 )
     {
         return 0; /* out-of-contract writes are refused, not wrapped */
     }
@@ -397,7 +397,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_real_packet( serialize_writ
     {
         return 0;
     }
-    if ( (serialize_int64_t) value->f062_uint > 503LL )
+    if ( (serialize_int64_t) value->f062_uint > 503 )
     {
         return 0; /* out-of-contract writes are refused, not wrapped */
     }
@@ -409,7 +409,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_real_packet( serialize_writ
     {
         return 0;
     }
-    if ( (serialize_int64_t) value->f064_uint > 299LL )
+    if ( (serialize_int64_t) value->f064_uint > 299 )
     {
         return 0; /* out-of-contract writes are refused, not wrapped */
     }
@@ -423,7 +423,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_real_packet( serialize_writ
     }
     {
         serialize_int64_t fixed_value = (serialize_int64_t) value->f066_ufixed;
-        if ( !serialize_write_fixed64( stream, fixed_value, 2, 14, 0LL, 2LL ) )
+        if ( !serialize_write_fixed64( stream, fixed_value, 2, 14, 0, 2 ) )
         {
             return 0;
         }
@@ -440,7 +440,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_real_packet( serialize_writ
     {
         return 0;
     }
-    if ( (serialize_int64_t) value->f070_uint > 2LL )
+    if ( (serialize_int64_t) value->f070_uint > 2 )
     {
         return 0; /* out-of-contract writes are refused, not wrapped */
     }
@@ -456,7 +456,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_real_packet( serialize_writ
     {
         return 0;
     }
-    if ( (serialize_int64_t) value->f073_int < -4LL || (serialize_int64_t) value->f073_int > 4LL )
+    if ( (serialize_int64_t) value->f073_int < -4 || (serialize_int64_t) value->f073_int > 4 )
     {
         return 0; /* out-of-contract writes are refused, not wrapped */
     }
@@ -474,7 +474,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_real_packet( serialize_writ
         {
             return 0;
         }
-        if ( (serialize_int64_t) value->f076_int < -26218LL || (serialize_int64_t) value->f076_int > 26218LL )
+        if ( (serialize_int64_t) value->f076_int < -26218 || (serialize_int64_t) value->f076_int > 26218 )
         {
             return 0; /* out-of-contract writes are refused, not wrapped */
         }
@@ -482,7 +482,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_real_packet( serialize_writ
         {
             return 0;
         }
-        if ( (serialize_int64_t) value->f077_int < -17LL || (serialize_int64_t) value->f077_int > 17LL )
+        if ( (serialize_int64_t) value->f077_int < -17 || (serialize_int64_t) value->f077_int > 17 )
         {
             return 0; /* out-of-contract writes are refused, not wrapped */
         }
@@ -494,7 +494,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_real_packet( serialize_writ
         {
             return 0;
         }
-        if ( (serialize_int64_t) value->f079_uint > 17LL )
+        if ( (serialize_int64_t) value->f079_uint > 17 )
         {
             return 0; /* out-of-contract writes are refused, not wrapped */
         }
@@ -525,7 +525,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_real_packet( serialize_writ
     }
     {
         serialize_int64_t fixed_value = (serialize_int64_t) value->f084_ufixed;
-        if ( !serialize_write_fixed64( stream, fixed_value, 1, 7, 0LL, 1LL ) )
+        if ( !serialize_write_fixed64( stream, fixed_value, 1, 7, 0, 1 ) )
         {
             return 0;
         }
@@ -534,7 +534,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_real_packet( serialize_writ
     {
         return 0;
     }
-    if ( (serialize_int64_t) value->f086_uint > 399LL )
+    if ( (serialize_int64_t) value->f086_uint > 399 )
     {
         return 0; /* out-of-contract writes are refused, not wrapped */
     }
@@ -546,7 +546,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_real_packet( serialize_writ
     {
         return 0;
     }
-    if ( (serialize_int64_t) value->f088_int < -694LL || (serialize_int64_t) value->f088_int > 694LL )
+    if ( (serialize_int64_t) value->f088_int < -694 || (serialize_int64_t) value->f088_int > 694 )
     {
         return 0; /* out-of-contract writes are refused, not wrapped */
     }
@@ -565,7 +565,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_real_packet( serialize_writ
             return 0;
         }
     }
-    if ( (serialize_int64_t) value->f090_uint > 214LL )
+    if ( (serialize_int64_t) value->f090_uint > 214 )
     {
         return 0; /* out-of-contract writes are refused, not wrapped */
     }
@@ -598,7 +598,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_real_packet( serialize_writ
     }
     {
         serialize_int32_t fixed_value = value->f095_fixed;
-        if ( !serialize_write_fixed32( stream, fixed_value, 16, 16, -1577LL, 1577LL ) )
+        if ( !serialize_write_fixed32( stream, fixed_value, 16, 16, -1577, 1577 ) )
         {
             return 0;
         }
@@ -761,7 +761,7 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_real_packet( serialize_read_s
         {
             serialize_int32_t fixed_value;
             fixed_value = 0;
-            if ( !serialize_read_fixed32( stream, &fixed_value, 12, 20, -36LL, 36LL ) )
+            if ( !serialize_read_fixed32( stream, &fixed_value, 12, 20, -36, 36 ) )
             {
                 return 0;
             }
@@ -814,7 +814,7 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_real_packet( serialize_read_s
     }
     {
         serialize_int64_t fixed_value = 0;
-        if ( !serialize_read_fixed64( stream, &fixed_value, 20, 12, 0LL, 25141LL ) )
+        if ( !serialize_read_fixed64( stream, &fixed_value, 20, 12, 0, 25141 ) )
         {
             return 0;
         }
@@ -839,7 +839,7 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_real_packet( serialize_read_s
     {
         serialize_int32_t fixed_value;
         fixed_value = 0;
-        if ( !serialize_read_fixed32( stream, &fixed_value, 8, 8, -119LL, 119LL ) )
+        if ( !serialize_read_fixed32( stream, &fixed_value, 8, 8, -119, 119 ) )
         {
             return 0;
         }
@@ -966,7 +966,7 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_real_packet( serialize_read_s
     {
         serialize_int32_t fixed_value;
         fixed_value = 0;
-        if ( !serialize_read_fixed32( stream, &fixed_value, 4, 12, -5LL, 5LL ) )
+        if ( !serialize_read_fixed32( stream, &fixed_value, 4, 12, -5, 5 ) )
         {
             return 0;
         }
@@ -1054,7 +1054,7 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_real_packet( serialize_read_s
     }
     {
         serialize_int64_t fixed_value = 0;
-        if ( !serialize_read_fixed64( stream, &fixed_value, 2, 14, 0LL, 3LL ) )
+        if ( !serialize_read_fixed64( stream, &fixed_value, 2, 14, 0, 3 ) )
         {
             return 0;
         }
@@ -1204,7 +1204,7 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_real_packet( serialize_read_s
     }
     {
         serialize_int64_t fixed_value = 0;
-        if ( !serialize_read_fixed64( stream, &fixed_value, 2, 14, 0LL, 2LL ) )
+        if ( !serialize_read_fixed64( stream, &fixed_value, 2, 14, 0, 2 ) )
         {
             return 0;
         }
@@ -1369,7 +1369,7 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_real_packet( serialize_read_s
     }
     {
         serialize_int64_t fixed_value = 0;
-        if ( !serialize_read_fixed64( stream, &fixed_value, 1, 7, 0LL, 1LL ) )
+        if ( !serialize_read_fixed64( stream, &fixed_value, 1, 7, 0, 1 ) )
         {
             return 0;
         }
@@ -1474,7 +1474,7 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_real_packet( serialize_read_s
     {
         serialize_int32_t fixed_value;
         fixed_value = 0;
-        if ( !serialize_read_fixed32( stream, &fixed_value, 16, 16, -1577LL, 1577LL ) )
+        if ( !serialize_read_fixed32( stream, &fixed_value, 16, 16, -1577, 1577 ) )
         {
             return 0;
         }

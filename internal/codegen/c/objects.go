@@ -526,8 +526,8 @@ func (g *gen) emitQuantizeField(f *ir.Field) {
 		// cannot fuse the multiply into the add — the compressed_float FMA
 		// hazard one level up, defended the way serialize.c defends its
 		// writer (#26)
-		g.pf("        double scaled_value = (double) input->%s.%s * (double) %d;\n",
-			f.Name, comp.Name, f.QuantScale)
+		g.pf("        double scaled_value = (double) input->%s.%s * (double) ( %s );\n",
+			f.Name, comp.Name, g.renderInt(f.QuantScaleExpr, big.NewInt(f.QuantScale)))
 		g.pf("        double quantized_value = floor( scaled_value + 0.5 );\n")
 		// clamp to the component range, in the same order C++ does so the
 		// boundary cases land identically
@@ -570,7 +570,7 @@ func (g *gen) emitUnquantizeField(f *ir.Field) {
 		return
 	}
 	for _, comp := range st.Fields {
-		g.pf("    output->%s.%s = (double) input->%s_%s / (double) %d;\n",
-			f.Name, comp.Name, f.Name, comp.Name, f.QuantScale)
+		g.pf("    output->%s.%s = (double) input->%s_%s / (double) ( %s );\n",
+			f.Name, comp.Name, f.Name, comp.Name, g.renderInt(f.QuantScaleExpr, big.NewInt(f.QuantScale)))
 	}
 }

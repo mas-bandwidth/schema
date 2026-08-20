@@ -78,7 +78,7 @@ func (g *gen) emitDefaultInit(f *ir.Field) {
 			if f.Array != ir.ArrayNone {
 				// an array of a defaulted type: every element carries them, and
 				// C cannot assign to an array
-				g.pf("    {\n        int32_t i;\n        for ( i = 0; i < %d; i++ )\n        {\n", f.ArrayBound)
+				g.pf("    {\n        int32_t i;\n        for ( i = 0; i < %s; i++ )\n        {\n", g.renderInt(f.ArrayExpr, big.NewInt(f.ArrayBound)))
 				g.pf("            value.%s[i] = new_%s();\n        }\n    }\n", f.Name, snake(f.Type.Name))
 				return
 			}
@@ -108,13 +108,15 @@ func (g *gen) emitDefaultInit(f *ir.Field) {
 		// storage's signedness alone picks the literal family
 		if f.Type.Width == 128 {
 			if f.Type.Signed {
-				g.pf("    value.%s = %s;\n", f.Name, g.int128Literal(f.DefInt))
+				g.pf("    value.%s = %s;\n", f.Name, g.int128Literal(f.DefExpr, f.DefInt))
 				return
 			}
 			g.pf("    value.%s = %s;\n", f.Name, uint128Literal(f.DefInt))
 			return
 		}
-		g.pf("    value.%s = %s;\n", f.Name, f.DefInt.String())
+		// f.DefExpr is nil for a fixed field — the checker never hands the
+		// whole-units expression out as the raw initializer
+		g.pf("    value.%s = %s;\n", f.Name, g.renderInt(f.DefExpr, f.DefInt))
 	}
 }
 

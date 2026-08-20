@@ -27,13 +27,13 @@ func (g *gen) emitWriteField(f *ir.Field, ind string) {
 		// Well-formed UTF-8 by contract, writer-trusted: debug-only assert,
 		// no read-path validation (SPEC §4.7, decided 2026-08-15).
 		g.pf("%sserialize_assert( schema_utf8_valid_( (const serialize_uint8_t *) value->%s, value->%s_length ) );\n", ind, f.Name, f.Name)
-		g.call(ind, fmt.Sprintf("serialize_write_int( stream, value->%s_length, 0, %d )", f.Name, f.Type.Size))
+		g.call(ind, fmt.Sprintf("serialize_write_int( stream, value->%s_length, 0, %s )", f.Name, g.renderInt(f.Type.SizeExpr, big.NewInt(f.Type.Size))))
 		g.call(ind, fmt.Sprintf("serialize_write_bytes( stream, (const serialize_uint8_t *) value->%s, (int) value->%s_length )", f.Name, f.Name))
 	case f.Type.Kind == ir.TBytes:
-		g.call(ind, fmt.Sprintf("serialize_write_int( stream, value->%s_length, 0, %d )", f.Name, f.Type.Size))
+		g.call(ind, fmt.Sprintf("serialize_write_int( stream, value->%s_length, 0, %s )", f.Name, g.renderInt(f.Type.SizeExpr, big.NewInt(f.Type.Size))))
 		g.call(ind, fmt.Sprintf("serialize_write_bytes( stream, value->%s, (int) value->%s_length )", f.Name, f.Name))
 	case f.Array == ir.ArrayCounted:
-		g.call(ind, fmt.Sprintf("serialize_write_int( stream, value->%s_count, %d, %d )", f.Name, f.ArrayMin, f.ArrayBound))
+		g.call(ind, fmt.Sprintf("serialize_write_int( stream, value->%s_count, %d, %s )", f.Name, f.ArrayMin, g.renderInt(f.ArrayExpr, big.NewInt(f.ArrayBound))))
 		g.pf("%s{\n%s    int32_t i;\n%s    for ( i = 0; i < value->%s_count; i++ )\n%s    {\n", ind, ind, ind, f.Name, ind)
 		g.emitWriteScalar(f, fmt.Sprintf("value->%s[i]", f.Name), ind+"        ")
 		g.pf("%s    }\n%s}\n", ind, ind)
@@ -41,9 +41,9 @@ func (g *gen) emitWriteField(f *ir.Field, ind string) {
 		// statically byte-aligned [N]uint8: the bulk path is byte-identical
 		// to the per-byte loop (its internal align is zero bits here) and
 		// memcpys instead of 8-bit packing
-		g.call(ind, fmt.Sprintf("serialize_write_bytes( stream, value->%s, %d ) /* byte-aligned [N]uint8 — bulk copy, wire-identical to the per-byte loop */", f.Name, f.ArrayBound))
+		g.call(ind, fmt.Sprintf("serialize_write_bytes( stream, value->%s, %s ) /* byte-aligned [N]uint8 — bulk copy, wire-identical to the per-byte loop */", f.Name, g.renderInt(f.ArrayExpr, big.NewInt(f.ArrayBound))))
 	case f.Array == ir.ArrayFixed:
-		g.pf("%s{\n%s    int32_t i;\n%s    for ( i = 0; i < %d; i++ )\n%s    {\n", ind, ind, ind, f.ArrayBound, ind)
+		g.pf("%s{\n%s    int32_t i;\n%s    for ( i = 0; i < %s; i++ )\n%s    {\n", ind, ind, ind, g.renderInt(f.ArrayExpr, big.NewInt(f.ArrayBound)), ind)
 		g.emitWriteScalar(f, fmt.Sprintf("value->%s[i]", f.Name), ind+"        ")
 		g.pf("%s    }\n%s}\n", ind, ind)
 	default:
@@ -128,7 +128,7 @@ func (g *gen) emitWriteRangedInt(f *ir.Field, expr, ind string) {
 	}
 	offset := expr
 	if f.IntMin.Sign() != 0 {
-		offset = fmt.Sprintf("(%s) - (%s)", expr, f.IntMin.String())
+		offset = fmt.Sprintf("(%s) - (%s)", expr, g.renderInt(f.IntMinExpr, f.IntMin))
 	}
 	if bits <= 32 {
 		g.call(ind, fmt.Sprintf("serialize_write_bits( stream, (serialize_uint32_t) ( %s ), %d )", offset, bits))
@@ -170,14 +170,16 @@ func (g *gen) emitRangeAssertWrite(f *ir.Field, expr, ind string) {
 		suffix = "ULL"
 	}
 
+	lo := g.renderIntSuffixed(f.IntMinExpr, f.IntMin, suffix)
+	hi := g.renderIntSuffixed(f.IntMaxExpr, f.IntMax, suffix)
 	var cond string
 	switch {
 	case loNeeded && hiNeeded:
-		cond = fmt.Sprintf("(%s) %s < %s%s || (%s) %s > %s%s", cast, expr, f.IntMin.String(), suffix, cast, expr, f.IntMax.String(), suffix)
+		cond = fmt.Sprintf("(%s) %s < %s || (%s) %s > %s", cast, expr, lo, cast, expr, hi)
 	case loNeeded:
-		cond = fmt.Sprintf("(%s) %s < %s%s", cast, expr, f.IntMin.String(), suffix)
+		cond = fmt.Sprintf("(%s) %s < %s", cast, expr, lo)
 	default:
-		cond = fmt.Sprintf("(%s) %s > %s%s", cast, expr, f.IntMax.String(), suffix)
+		cond = fmt.Sprintf("(%s) %s > %s", cast, expr, hi)
 	}
 	g.pf("%sif ( %s )\n%s{\n%s    return 0; /* out-of-contract writes are refused, not wrapped */\n%s}\n",
 		ind, cond, ind, ind, ind)
@@ -220,7 +222,7 @@ func (g *gen) emitWriteBits(f *ir.Field, expr, ind string) {
 func (g *gen) emitReadField(f *ir.Field, ind string) {
 	switch {
 	case f.Type.Kind == ir.TString:
-		g.call(ind, fmt.Sprintf("serialize_read_int( stream, &value->%s_length, 0, %d )", f.Name, f.Type.Size))
+		g.call(ind, fmt.Sprintf("serialize_read_int( stream, &value->%s_length, 0, %s )", f.Name, g.renderInt(f.Type.SizeExpr, big.NewInt(f.Type.Size))))
 		g.call(ind, fmt.Sprintf("serialize_read_bytes( stream, (serialize_uint8_t *) value->%s, (int) value->%s_length )", f.Name, f.Name))
 		// the interior-null rule is generated-code validation (SPEC §4.7);
 		// the word-wise scan lives in schema_interior_null_ (nullscan.go)
@@ -229,17 +231,17 @@ func (g *gen) emitReadField(f *ir.Field, ind string) {
 		// the terminator is not transmitted; the reader supplies it
 		g.pf("%svalue->%s[value->%s_length] = 0;\n", ind, f.Name, f.Name)
 	case f.Type.Kind == ir.TBytes:
-		g.call(ind, fmt.Sprintf("serialize_read_int( stream, &value->%s_length, 0, %d )", f.Name, f.Type.Size))
+		g.call(ind, fmt.Sprintf("serialize_read_int( stream, &value->%s_length, 0, %s )", f.Name, g.renderInt(f.Type.SizeExpr, big.NewInt(f.Type.Size))))
 		g.call(ind, fmt.Sprintf("serialize_read_bytes( stream, value->%s, (int) value->%s_length )", f.Name, f.Name))
 	case f.Array == ir.ArrayCounted:
-		g.call(ind, fmt.Sprintf("serialize_read_int( stream, &value->%s_count, %d, %d )", f.Name, f.ArrayMin, f.ArrayBound))
+		g.call(ind, fmt.Sprintf("serialize_read_int( stream, &value->%s_count, %d, %s )", f.Name, f.ArrayMin, g.renderInt(f.ArrayExpr, big.NewInt(f.ArrayBound))))
 		g.pf("%s{\n%s    int32_t i;\n%s    for ( i = 0; i < value->%s_count; i++ )\n%s    {\n", ind, ind, ind, f.Name, ind)
 		g.emitReadScalar(f, fmt.Sprintf("value->%s[i]", f.Name), ind+"        ")
 		g.pf("%s    }\n%s}\n", ind, ind)
 	case f.Array == ir.ArrayFixed && g.bulkBytes[f]:
-		g.call(ind, fmt.Sprintf("serialize_read_bytes( stream, value->%s, %d ) /* byte-aligned [N]uint8 — bulk copy, wire-identical to the per-byte loop */", f.Name, f.ArrayBound))
+		g.call(ind, fmt.Sprintf("serialize_read_bytes( stream, value->%s, %s ) /* byte-aligned [N]uint8 — bulk copy, wire-identical to the per-byte loop */", f.Name, g.renderInt(f.ArrayExpr, big.NewInt(f.ArrayBound))))
 	case f.Array == ir.ArrayFixed:
-		g.pf("%s{\n%s    int32_t i;\n%s    for ( i = 0; i < %d; i++ )\n%s    {\n", ind, ind, ind, f.ArrayBound, ind)
+		g.pf("%s{\n%s    int32_t i;\n%s    for ( i = 0; i < %s; i++ )\n%s    {\n", ind, ind, ind, g.renderInt(f.ArrayExpr, big.NewInt(f.ArrayBound)), ind)
 		g.emitReadScalar(f, fmt.Sprintf("value->%s[i]", f.Name), ind+"        ")
 		g.pf("%s    }\n%s}\n", ind, ind)
 	default:
@@ -313,7 +315,7 @@ func (g *gen) emitReadRangedInt(f *ir.Field, expr, ind string) {
 
 	bits := ir.BitsRequired(f.IntMin, f.IntMax)
 	if bits == 0 {
-		g.pf("%s%s = (%s) (%s);\n", ind, expr, g.storageType(f), f.IntMin.String())
+		g.pf("%s%s = (%s) (%s);\n", ind, expr, g.storageType(f), g.renderInt(f.IntMinExpr, f.IntMin))
 		return
 	}
 	span := new(big.Int).Sub(f.IntMax, f.IntMin)
@@ -339,7 +341,7 @@ func (g *gen) emitReadRangedInt(f *ir.Field, expr, ind string) {
 	if f.IntMin.Sign() == 0 {
 		g.pf("%s    %s = (%s) offset_value;\n%s}\n", ind, expr, g.storageType(f), ind)
 	} else {
-		g.pf("%s    %s = (%s) ( offset_value + (%s) );\n%s}\n", ind, expr, g.storageType(f), f.IntMin.String(), ind)
+		g.pf("%s    %s = (%s) ( offset_value + (%s) );\n%s}\n", ind, expr, g.storageType(f), g.renderInt(f.IntMinExpr, f.IntMin), ind)
 	}
 }
 
@@ -392,7 +394,7 @@ func (g *gen) emitWriteFixed(f *ir.Field, expr, ind string) {
 		switch {
 		case f.Type.Width == 128 && f.Type.Signed:
 			g.pf("%sif ( !serialize_int128_equal( %s, %s ) )\n%s{\n%s    return 0;\n%s}\n",
-				ind, expr, g.int128Literal(rawMin), ind, ind, ind)
+				ind, expr, g.int128Literal(nil, rawMin), ind, ind, ind)
 		case f.Type.Width == 128:
 			g.pf("%sif ( !serialize_uint128_equal( %s, %s ) )\n%s{\n%s    return 0;\n%s}\n",
 				ind, expr, uint128Literal(rawMin), ind, ind, ind)
@@ -411,8 +413,8 @@ func (g *gen) emitWriteFixed(f *ir.Field, expr, ind string) {
 	}
 	// through a temp so a narrower storage member widens to the call's type
 	g.pf("%s{\n%s    %s fixed_value = %s;\n", ind, ind, temp, expr)
-	g.call(ind+"    ", fmt.Sprintf("serialize_write_fixed%s( stream, fixed_value, %d, %d, %sLL, %sLL )",
-		suffix, f.Type.IntBits, f.Type.FracBits, lo.String(), hi.String()))
+	g.call(ind+"    ", fmt.Sprintf("serialize_write_fixed%s( stream, fixed_value, %d, %d, %s, %s )",
+		suffix, f.Type.IntBits, f.Type.FracBits, g.renderIntSuffixed(f.IntMinExpr, lo, "LL"), g.renderIntSuffixed(f.IntMaxExpr, hi, "LL")))
 	g.pf("%s}\n", ind)
 }
 
@@ -426,22 +428,23 @@ func (g *gen) emitWriteFixed(f *ir.Field, expr, ind string) {
 // bit count from the span alone, and the signed narrow path already leans on
 // the same property).
 func (g *gen) emitWriteUfixed(f *ir.Field, expr, ind string) {
-	lo, hi := f.IntMin, f.IntMax
+	lo := g.renderIntSuffixed(f.IntMinExpr, f.IntMin, "LL")
+	hi := g.renderIntSuffixed(f.IntMaxExpr, f.IntMax, "LL")
 	switch {
 	case f.Type.Width <= 32:
 		g.pf("%s{\n%s    serialize_int64_t fixed_value = (serialize_int64_t) %s;\n", ind, ind, expr)
-		g.call(ind+"    ", fmt.Sprintf("serialize_write_fixed64( stream, fixed_value, %d, %d, %sLL, %sLL )",
-			f.Type.IntBits, f.Type.FracBits, lo.String(), hi.String()))
+		g.call(ind+"    ", fmt.Sprintf("serialize_write_fixed64( stream, fixed_value, %d, %d, %s, %s )",
+			f.Type.IntBits, f.Type.FracBits, lo, hi))
 		g.pf("%s}\n", ind)
 	case f.Type.Width == 64:
 		g.pf("%s{\n%s    serialize_int128_t fixed_value = serialize_int128_make( 0, %s );\n", ind, ind, expr)
-		g.call(ind+"    ", fmt.Sprintf("serialize_write_fixed128( stream, fixed_value, %d, %d, %sLL, %sLL )",
-			f.Type.IntBits, f.Type.FracBits, lo.String(), hi.String()))
+		g.call(ind+"    ", fmt.Sprintf("serialize_write_fixed128( stream, fixed_value, %d, %d, %s, %s )",
+			f.Type.IntBits, f.Type.FracBits, lo, hi))
 		g.pf("%s}\n", ind)
 	default:
 		g.pf("%s{\n%s    serialize_int128_t fixed_value = serialize_int128_make( %s.hi, %s.lo );\n", ind, ind, expr, expr)
-		g.call(ind+"    ", fmt.Sprintf("serialize_write_fixed128( stream, fixed_value, %d, %d, %sLL, %sLL )",
-			f.Type.IntBits, f.Type.FracBits, lo.String(), hi.String()))
+		g.call(ind+"    ", fmt.Sprintf("serialize_write_fixed128( stream, fixed_value, %d, %d, %s, %s )",
+			f.Type.IntBits, f.Type.FracBits, lo, hi))
 		g.pf("%s}\n", ind)
 	}
 }
@@ -460,7 +463,7 @@ func (g *gen) emitReadFixed(f *ir.Field, expr, ind string) {
 		rawMin := new(big.Int).Lsh(lo, uint(f.Type.FracBits))
 		switch {
 		case f.Type.Width == 128 && f.Type.Signed:
-			g.pf("%s%s = %s;\n", ind, expr, g.int128Literal(rawMin))
+			g.pf("%s%s = %s;\n", ind, expr, g.int128Literal(nil, rawMin))
 		case f.Type.Width == 128:
 			g.pf("%s%s = %s;\n", ind, expr, uint128Literal(rawMin))
 		case f.Type.Signed:
@@ -482,8 +485,8 @@ func (g *gen) emitReadFixed(f *ir.Field, expr, ind string) {
 	} else {
 		g.pf("%s    fixed_value = 0;\n", ind)
 	}
-	g.call(ind+"    ", fmt.Sprintf("serialize_read_fixed%s( stream, &fixed_value, %d, %d, %sLL, %sLL )",
-		suffix, f.Type.IntBits, f.Type.FracBits, lo.String(), hi.String()))
+	g.call(ind+"    ", fmt.Sprintf("serialize_read_fixed%s( stream, &fixed_value, %d, %d, %s, %s )",
+		suffix, f.Type.IntBits, f.Type.FracBits, g.renderIntSuffixed(f.IntMinExpr, lo, "LL"), g.renderIntSuffixed(f.IntMaxExpr, hi, "LL")))
 	if f.Type.Width == 128 {
 		g.pf("%s    %s = fixed_value;\n%s}\n", ind, expr, ind)
 		return
@@ -496,22 +499,23 @@ func (g *gen) emitReadFixed(f *ir.Field, expr, ind string) {
 // inverse bit-exact conversion. A decoded raw is inside the raw bounds or
 // the read already failed, so every narrowing below is lossless.
 func (g *gen) emitReadUfixed(f *ir.Field, expr, ind string) {
-	lo, hi := f.IntMin, f.IntMax
+	lo := g.renderIntSuffixed(f.IntMinExpr, f.IntMin, "LL")
+	hi := g.renderIntSuffixed(f.IntMaxExpr, f.IntMax, "LL")
 	switch {
 	case f.Type.Width <= 32:
 		g.pf("%s{\n%s    serialize_int64_t fixed_value = 0;\n", ind, ind)
-		g.call(ind+"    ", fmt.Sprintf("serialize_read_fixed64( stream, &fixed_value, %d, %d, %sLL, %sLL )",
-			f.Type.IntBits, f.Type.FracBits, lo.String(), hi.String()))
+		g.call(ind+"    ", fmt.Sprintf("serialize_read_fixed64( stream, &fixed_value, %d, %d, %s, %s )",
+			f.Type.IntBits, f.Type.FracBits, lo, hi))
 		g.pf("%s    %s = (%s) fixed_value;\n%s}\n", ind, expr, g.storageType(f), ind)
 	case f.Type.Width == 64:
 		g.pf("%s{\n%s    serialize_int128_t fixed_value = serialize_int128_make( 0, 0 );\n", ind, ind)
-		g.call(ind+"    ", fmt.Sprintf("serialize_read_fixed128( stream, &fixed_value, %d, %d, %sLL, %sLL )",
-			f.Type.IntBits, f.Type.FracBits, lo.String(), hi.String()))
+		g.call(ind+"    ", fmt.Sprintf("serialize_read_fixed128( stream, &fixed_value, %d, %d, %s, %s )",
+			f.Type.IntBits, f.Type.FracBits, lo, hi))
 		g.pf("%s    %s = fixed_value.lo;\n%s}\n", ind, expr, ind)
 	default:
 		g.pf("%s{\n%s    serialize_int128_t fixed_value = serialize_int128_make( 0, 0 );\n", ind, ind)
-		g.call(ind+"    ", fmt.Sprintf("serialize_read_fixed128( stream, &fixed_value, %d, %d, %sLL, %sLL )",
-			f.Type.IntBits, f.Type.FracBits, lo.String(), hi.String()))
+		g.call(ind+"    ", fmt.Sprintf("serialize_read_fixed128( stream, &fixed_value, %d, %d, %s, %s )",
+			f.Type.IntBits, f.Type.FracBits, lo, hi))
 		g.pf("%s    %s = serialize_uint128_make( fixed_value.hi, fixed_value.lo );\n%s}\n", ind, expr, ind)
 	}
 }
@@ -531,11 +535,11 @@ func (g *gen) emitWrite128(f *ir.Field, expr, ind string) {
 	if f.IntMin.Cmp(f.IntMax) == 0 {
 		// degenerate range: ZERO bits — refusal only (SPEC §4.6, 2026-08-15)
 		g.pf("%sif ( !serialize_int128_equal( %s, %s ) )\n%s{\n%s    return 0;\n%s}\n",
-			ind, expr, g.int128Literal(f.IntMin), ind, ind, ind)
+			ind, expr, g.int128Literal(f.IntMinExpr, f.IntMin), ind, ind, ind)
 		return
 	}
 	g.call(ind, fmt.Sprintf("serialize_write_int128( stream, %s, %s, %s )",
-		expr, g.int128Literal(f.IntMin), g.int128Literal(f.IntMax)))
+		expr, g.int128Literal(f.IntMinExpr, f.IntMin), g.int128Literal(f.IntMaxExpr, f.IntMax)))
 }
 
 func (g *gen) emitRead128(f *ir.Field, expr, ind string) {
@@ -549,18 +553,20 @@ func (g *gen) emitRead128(f *ir.Field, expr, ind string) {
 	}
 	if f.IntMin.Cmp(f.IntMax) == 0 {
 		// degenerate range: zero bits — materialize (SPEC §4.6, 2026-08-15)
-		g.pf("%s%s = %s;\n", ind, expr, g.int128Literal(f.IntMin))
+		g.pf("%s%s = %s;\n", ind, expr, g.int128Literal(f.IntMinExpr, f.IntMin))
 		return
 	}
 	g.call(ind, fmt.Sprintf("serialize_read_int128( stream, &%s, %s, %s )",
-		expr, g.int128Literal(f.IntMin), g.int128Literal(f.IntMax)))
+		expr, g.int128Literal(f.IntMinExpr, f.IntMin), g.int128Literal(f.IntMaxExpr, f.IntMax)))
 }
 
 // int128Literal renders a big.Int as a serialize_int128_t. C has no 128-bit
-// literal, so a bound wider than 64 bits is built from its two lanes.
-func (g *gen) int128Literal(v *big.Int) string {
+// literal, so a bound wider than 64 bits is built from its two lanes; a
+// value that fits int64 rides from_int64, symbolically where safe (nil e:
+// the value is derived, never symbolic).
+func (g *gen) int128Literal(e ir.Expr, v *big.Int) string {
 	if v.IsInt64() {
-		return fmt.Sprintf("serialize_int128_from_int64( %sLL )", v.String())
+		return fmt.Sprintf("serialize_int128_from_int64( %s )", g.renderIntSuffixed(e, v, "LL"))
 	}
 	// two's complement lanes of the 128-bit value
 	mod := new(big.Int).Lsh(big.NewInt(1), 128)

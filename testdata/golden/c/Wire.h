@@ -24,7 +24,7 @@
 extern "C" {
 #endif
 
-#define PROBE_ID (244837814094590)
+#define PROBE_ID (0xDEADBEEFCAFE)
 #define HALF_TURN 180.0
 #define TICK_RATE 60.0
 
@@ -211,7 +211,7 @@ typedef struct TestData {
     int64_t int64_full;
     int64_t int64_range;
     uint8_t fixed_bytes[17];
-    char text[256]; /* string(255): N + 1 for the terminator the wire does not carry */
+    char text[255 + 1]; /* string(255): N + 1 for the terminator the wire does not carry */
     int32_t text_length;
 } TestData;
 
