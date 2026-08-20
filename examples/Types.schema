@@ -158,18 +158,20 @@ type ExpressionProbe {
 // ladder to land on. Every fold of these must reach the compiler in a
 // guarded spelling — ( -9223372036854775807LL - 1 ), the ULL suffix — so
 // this type keeps them in every -Werror leg, bounds and constants and
-// defaults and table clamps alike. (The doubled-minus-AT-the-extreme
+// defaults and table clamps alike. The doubled-minus-AT-the-extreme
 // interaction — an intermediate -(-9223372036854775808) that overflows the
-// 64-bit carrier though the final value fits — is pinned in the C emitter's
-// unit tests and the compile-fuzz hand seeds rather than here: the Rust
-// emitter still renders it symbolically as -(-FLOOR_LIMIT), which rustc
-// denies, so it cannot ride the shared corpus until that gap is closed.)
+// 64-bit carrier though the final value fits — rides here as doubled_floor:
+// every symbolic backend must fold it (C and C# through carrierEval, Rust
+// through renderArg's i64 gate) or evaluate it in arbitrary precision (Go's
+// untyped constants, JS's BigInt), because a symbolic -(-FLOOR_LIMIT) is a
+// compile error wherever the carrier is 64-bit.
 
 const FloorLimit          = -9223372036854775808
 const CeilingCount uint64 = 18446744073709551615
 
 type ExtremeProbe {
     floor_bound   int64  [min = -9223372036854775808, max = 100]
+    doubled_floor int64  [min = --FloorLimit, max = 100]
     ceiling_range uint64 [min = 1, max = 18446744073709551615]
     floor_default int64  = -9223372036854775808
 }

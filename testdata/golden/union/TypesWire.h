@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package example — protocol id 0x14cc156665b9f146
+// package example — protocol id 0x70a0c2d004c0907a
 
 #pragma once
 
@@ -416,6 +416,8 @@ SCHEMA_WRITE_INLINE bool WriteExtremeProbe( serialize::WriteStream & stream, con
 {
     serialize_assert( int64_t( value.floor_bound ) >= int64_t( ( -9223372036854775807ll - 1 ) ) && int64_t( value.floor_bound ) <= int64_t( 100 ) );
     write_bits( stream, uint64_t( value.floor_bound ) - uint64_t( ( -9223372036854775807ll - 1 ) ), 64 );
+    serialize_assert( int64_t( value.doubled_floor ) >= int64_t( ( -9223372036854775807ll - 1 ) ) && int64_t( value.doubled_floor ) <= int64_t( 100 ) );
+    write_bits( stream, uint64_t( value.doubled_floor ) - uint64_t( ( -9223372036854775807ll - 1 ) ), 64 );
     serialize_assert( value.ceiling_range >= 1 );
     write_bits( stream, uint64_t( value.ceiling_range ) - 1, 64 );
     write_bits( stream, value.floor_default, 64 );
@@ -425,6 +427,7 @@ SCHEMA_WRITE_INLINE bool WriteExtremeProbe( serialize::WriteStream & stream, con
 SCHEMA_READ_INLINE bool ReadExtremeProbe( serialize::ReadStream & stream, ExtremeProbe & value )
 {
     read_int64( stream, value.floor_bound, ( -9223372036854775807ll - 1 ), 100 );
+    read_int64( stream, value.doubled_floor, ( -9223372036854775807ll - 1 ), 100 );
     {
         uint64_t offset_value = 0;
         read_bits( stream, offset_value, 64 );

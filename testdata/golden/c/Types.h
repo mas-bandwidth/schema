@@ -2,7 +2,7 @@
    SPDX-License-Identifier: NONE — this generated output is yours, under terms of
    your choice. See the LICENSE exception in the schema compiler; the compiler is
    AGPL-3.0, its output is not.
-   package example — protocol id 0x14cc156665b9f146 */
+   package example — protocol id 0x70a0c2d004c0907a */
 
 #ifndef SCHEMA_EXAMPLE_TYPES_H
 #define SCHEMA_EXAMPLE_TYPES_H
@@ -173,12 +173,13 @@ typedef struct ExpressionProbe {
 /* type ExtremeProbe */
 typedef struct ExtremeProbe {
     int64_t floor_bound;
+    int64_t doubled_floor;
     uint64_t ceiling_range;
     int64_t floor_default;
 } ExtremeProbe;
 
-#define EXTREME_PROBE_MAX_BITS 192   /* longest wire path; align pads at worst case (SPEC §6.1) */
-#define EXTREME_PROBE_MAX_BYTES 24  /* rounded up to the 8-byte write-buffer granularity; a READ buffer's allocation must extend at least 8 bytes past the data — serialize.c loads 64-bit windows */
+#define EXTREME_PROBE_MAX_BITS 256   /* longest wire path; align pads at worst case (SPEC §6.1) */
+#define EXTREME_PROBE_MAX_BYTES 32  /* rounded up to the 8-byte write-buffer granularity; a READ buffer's allocation must extend at least 8 bytes past the data — serialize.c loads 64-bit windows */
 
 /* Returns a ExtremeProbe with its SPECIFIED defaults applied. A memset to zero is
    the schema's own default (SPEC §4.2: zero initialization unless a

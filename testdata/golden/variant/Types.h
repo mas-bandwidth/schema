@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package example — protocol id 0x14cc156665b9f146
+// package example — protocol id 0x70a0c2d004c0907a
 
 #pragma once
 
@@ -158,12 +158,13 @@ inline constexpr uint64_t CeilingCount = 18446744073709551615ull; // = 184467440
 // type ExtremeProbe
 struct ExtremeProbe {
     int64_t floor_bound = 0; // wire [-9223372036854775808, 100]
+    int64_t doubled_floor = 0; // wire [-9223372036854775808, 100]
     uint64_t ceiling_range = 0; // wire [1, 18446744073709551615]
     int64_t floor_default = ( -9223372036854775807ll - 1 );
 };
 
-inline constexpr int64_t ExtremeProbeMaxBits = 192; // longest wire path; align pads at worst case (SPEC §6.1)
-inline constexpr int64_t ExtremeProbeMaxBytes = 24; // rounded up to the 8-byte write-buffer granularity; a read buffer's allocation must extend at least 8 bytes past the data — the reader loads 64-bit windows
+inline constexpr int64_t ExtremeProbeMaxBits = 256; // longest wire path; align pads at worst case (SPEC §6.1)
+inline constexpr int64_t ExtremeProbeMaxBytes = 32; // rounded up to the 8-byte write-buffer granularity; a read buffer's allocation must extend at least 8 bytes past the data — the reader loads 64-bit windows
 
 // type ExtremeRow
 struct ExtremeRow {

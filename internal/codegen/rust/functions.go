@@ -309,16 +309,18 @@ func (g *gen) emitWriteRangedFold64(expr string, exprIsU64, exprIsU32 bool, lo s
 // foldArg32 and foldArg64 render a bound for a cast context: a bare literal
 // gains an explicit type suffix — `expr as uN` propagates the UNSIGNED target
 // into an unconstrained literal, so `(-100) as u32` refuses to compile — while
-// a symbolic render keeps its own typing through the referenced consts.
+// a symbolic render keeps its own typing through the referenced consts. The
+// overflow gate rides here too (issue #99): a fold FORCED by an i64-escaping
+// intermediate must take the suffixed spelling, not renderArg's bare one.
 func (g *gen) foldArg32(e ast.Expr, folded *big.Int) string {
-	if e == nil || ir.ExprHasEnumMax(e) || !g.renderable(e) || !containsIdent(e) {
+	if e == nil || ir.ExprHasEnumMax(e) || !g.renderable(e) || !containsIdent(e) || !g.overflowSafe(e) {
 		return folded.String() + "_i32"
 	}
 	return g.renderArg(e, folded, "i32")
 }
 
 func (g *gen) foldArg64(e ast.Expr, folded *big.Int) string {
-	if e == nil || ir.ExprHasEnumMax(e) || !g.renderable(e) || !containsIdent(e) {
+	if e == nil || ir.ExprHasEnumMax(e) || !g.renderable(e) || !containsIdent(e) || !g.overflowSafe(e) {
 		return folded.String() + "_i64"
 	}
 	return g.renderArg(e, folded, "i64")
