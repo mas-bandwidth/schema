@@ -25,6 +25,7 @@ use std::hint::black_box;
 use std::time::Instant;
 
 use example::*;
+use realworldcorpus as realworld;
 use serialize::{ReadStream, Stream, WriteStream};
 
 mod rt;
@@ -202,7 +203,10 @@ impl Ctx {
 // the per-message benchmark driver
 // ------------------------------------------------------------------------------------------
 
-fn bench_message<T, W, R, V>(
+// EW/ER: each generated unit carries its own Error type (example and
+// realworldcorpus alike expose Result<T = ()> over their own enum); the
+// driver only ever asks is_err(), so it is generic over both.
+fn bench_message<T, W, R, V, EW, ER>(
     ctx: &Ctx,
     name: &str,
     golden: Option<&str>,
@@ -213,8 +217,8 @@ fn bench_message<T, W, R, V>(
     mut vary_fn: V,
 ) where
     T: Copy + Default,
-    W: Fn(&mut WriteStream<'_>, &T) -> example::Result,
-    R: Fn(&mut ReadStream<'_>, &mut T) -> example::Result,
+    W: Fn(&mut WriteStream<'_>, &T) -> core::result::Result<(), EW>,
+    R: Fn(&mut ReadStream<'_>, &mut T) -> core::result::Result<(), ER>,
     V: FnMut(&mut T, u64),
 {
     let mut buffer = vec![0u8; BUFFER_SIZE];
@@ -647,6 +651,80 @@ fn vary_testdata(m: &mut TestData, rng: u64) {
     }
 }
 
+// real_packet — BENCH-STANDARD.md §1.7's realistic snapshot, measured through
+// the GENERATED code (bench/corpus/RealWorld.schema ->
+// generated/bench/rust-realworld). The pinned instance is the ALL-DEFAULTS
+// instance: realworld::RealPacket::new() serialized unmodified, 1629 bits =
+// 204 wire bytes, pinned to testdata/wire/real_packet.bin by
+// test/bench/main.cpp. The four branch gates (f012 true, f043 false, f050
+// true, f074 false) are STRUCTURE (§2.7): they keep their schema defaults
+// here, so the same branch bodies ride every iteration and bytes/op is
+// constant. The field mappings are bench/cpp/bench_main.cpp's
+// vary_real_packet exactly — fields under the false gates do not ride and
+// are not varied; every mapping keeps its field inside its declared wire
+// range (comments give the bound it stays within).
+fn vary_real_packet(m: &mut realworld::RealPacket, rng: u64) {
+    // ranged ints, assorted widths, signed and unsigned
+    m.f001_int = (((rng >> 8) & 0xFFFFF) as i32) - 0x80000; // +/-2^19 within +/-805495
+    m.f003_int = (((rng >> 12) & 0xFFFFF) as i32) - 0x80000; // within +/-835897
+    m.f005_uint = ((rng >> 20) & 0xFFF) as u16; // <=4095 within [0, 7316]
+    m.f006_int = ((((rng >> 26) & 0x7FF) as i32) - 1024) as i16; // +/-1024 within +/-1513
+    m.f009_int = ((((rng >> 33) & 31) as i32) - 16) as i8; // +/-16 within +/-22
+    m.f033_uint = ((rng >> 37) & 0x1FFFF) as u32; // <=131071 within [0, 142780]
+    m.f041_int = ((((rng >> 42) & 63) as i32) - 32) as i8; // +/-32 within +/-55
+    m.f062_uint = ((rng >> 47) & 255) as u16; // <=255 within [0, 503]
+    m.f088_int = ((((rng >> 52) & 0x3FF) as i32) - 512) as i16; // +/-512 within +/-694
+    m.f090_uint = ((rng >> 57) & 127) as u8; // <=127 within [0, 214]
+    // bits(N), narrow and wide
+    m.f011_bits = (rng as u32) & 0x3FF; // 10 bits
+    m.f023_bits = ((rng >> 5) as u32) & 0x1FFFFFF; // 25 bits
+    m.f042_bits = ((rng >> 3) as u32) & 0x3FFFFFFF; // 30 bits
+    m.f081_bits = ((rng >> 7) as u32) & 0x1FFFFFFF; // 29 bits
+    m.f089_bits = rng & 0xFFFF_FFFF_FFFF; // 48 bits
+    m.f093_bits = rng ^ 0x5555555555555555; // 64 bits
+    m.f097_bits = ((rng >> 11) as u32) & 0xFFF; // 12 bits
+    // bools (NEVER the four branch gates — those are structure, §2.7)
+    m.f037_bool = (rng & 1) != 0;
+    m.f055_bool = (rng & 2) != 0;
+    m.f092_bool = (rng & 4) != 0;
+    // float32 / float64
+    m.f007_f32 = ((rng as u32) & 0xFFFF) as f32;
+    m.f020_f32 = (((rng >> 16) as u32) & 0xFFFF) as f32 * 0.5;
+    m.f058_f32 = (((rng >> 24) as u32) & 0xFFFF) as f32 * 0.25;
+    m.f002_f64 = (((rng >> 8) as i64) & 0xFFFFFF) as f64 * 0.5;
+    m.f059_f64 = (((rng >> 16) as i64) & 0xFFFFFF) as f64 * 0.25;
+    m.f087_f64 = (((rng >> 24) as i64) & 0xFFFFFF) as f64 * 0.125;
+    // compressed floats (in range by construction)
+    m.f004_cf32 = ((rng as u32) & 0x3FFF) as f32 * 0.1; // <=1638.3 within [0, 2000]
+    m.f061_cf32 = -90.0 + (((rng >> 9) as u32) & 255) as f32 * 0.5; // within [-90, 90] (max 37.5)
+    m.f067_cf32 = -100.0 + (((rng >> 18) as u32) & 511) as f32 * 0.25; // within [-100, 100] (max 27.75)
+    m.f072_cf32 = (((rng >> 27) as u32) & 8191) as f32 * 0.01; // <=81.91 within [0, 100]
+    // fixed / ufixed (raw storage scaled by 2^F; bounds are whole units)
+    m.f016_fixed = (((rng >> 10) & 0x3FFFFFF) as i32) - 0x2000000; // +/-2^25 within +/-36*2^20
+    m.f025_fixed = ((((rng >> 18) & 0x7FFF) as i32) - 0x4000) as i16; // +/-2^14 within +/-119*2^8
+    m.f095_fixed = (((rng >> 22) & 0x7FFFFFF) as i32) - 0x4000000; // +/-2^26 within +/-1577*2^16
+    m.f021_ufixed = ((rng >> 30) as u32) & 0x3FFFFFF; // <=2^26-1 within 25141*2^12
+    m.f049_ufixed = ((rng >> 36) & 0x7FFF) as u16; // <=32767 within 3*2^14
+    m.f084_ufixed = ((rng >> 44) & 0x7F) as u8; // <=127 within 1*2^7
+    // enum / flags (wire-valid by construction)
+    m.f036_enum = realworld::PacketMode((((rng >> 30) as u32) & 3) as u8); // within wire range [0, 5]
+    m.f083_enum = realworld::PacketMode((((rng >> 34) as u32) & 3) as u8);
+    m.f091_flags = rng & 31; // 5 wire bits
+    // full-width 64-bit
+    m.f008_u64 = rng;
+    m.f029_i64 = rng.wrapping_mul(3) as i64;
+    m.f063_i64 = rng.wrapping_mul(5) as i64;
+    // fields riding inside the TAKEN branches (f012 true, f050 true)
+    m.f013_f32 = (((rng >> 4) as u32) & 0xFFFF) as f32;
+    m.f014_uint = ((rng >> 21) & 511) as u16; // <=511 within [0, 775]
+    m.f015_int = ((((rng >> 40) & 31) as i32) - 16) as i8; // +/-16 within +/-21
+    m.f017_uint = ((rng >> 29) & 0xFFF) as u16; // <=4095 within [0, 4606]
+    m.f051_bool = (rng & 8) != 0;
+    m.f052_int = ((((rng >> 38) & 63) as i32) - 32) as i8; // +/-32 within +/-57
+    m.f053_f32 = (((rng >> 40) as u32) & 0xFFFF) as f32 * 0.125;
+    m.f054_int = ((((rng >> 45) & 63) as i32) - 32) as i8; // +/-32 within +/-35
+}
+
 // ------------------------------------------------------------------------------------------
 // the synthetic steady-state batch: NUM_BATCH_MESSAGES messages through the
 // Message dispatch surface (write_message/read_message) plus the None
@@ -1002,6 +1080,13 @@ fn main() {
     bench_message(&ctx, "probebits", Some("probebits"), 128000000, pin_probebits(), write_probe_bits, read_probe_bits, vary_probebits);
     bench_message(&ctx, "probearray", Some("probearray"), 20000000, pin_probearray(), write_probe_array, read_probe_array, vary_probearray);
     bench_message(&ctx, "testdata", Some("testdata"), 8000000, pin_testdata(), write_test_data, read_test_data, vary_testdata);
+
+    // real_packet (§1.7): the realistic snapshot — ~93 riding individually
+    // serialized small fields, 204 wire bytes, 0% bulk share by bits. The pin
+    // is the ALL-DEFAULTS instance (RealPacket::new() — the C++ RealPacket{}),
+    // golden-gated like every row above. Iteration count sized in the C++
+    // reference (§2.1).
+    bench_message(&ctx, "real_packet", Some("real_packet"), 8000000, realworld::RealPacket::new(), realworld::write_real_packet, realworld::read_real_packet, vary_real_packet);
 
     bench_batch(&ctx);
 

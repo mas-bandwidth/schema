@@ -5,4 +5,5 @@ edition = "2024"
 
 [dependencies]
 example = { path = "../../generated/rust" }
+realworldcorpus = { path = "../../generated/bench/rust-realworld" }
 serialize = { path = "../../../serialize.rs" }

@@ -13,10 +13,15 @@ surface, §1.5 oracle-gated against `testdata/wire/bench_*.bin`, plus the
 16-width bitpacker workload — timed loops in `[MethodImpl(NoInlining)]`
 methods for the §4.1 JitDisasm verdict.
 
-Wiring: `schemabench.csproj` compiles `../../generated/cs` beside the
-sibling serialize.cs runtime sources, exactly like `test/cs`. `run.sh` runs
-it as `dotnet run -c Release -- --csv` from this directory; the per-path
-warmup run doubles as the JIT warmup.
+Wiring: `schemabench.csproj` compiles `../../generated/cs` and
+`../../generated/bench/cs/realworld` (namespace `Realworld` — the unit the
+`real_packet` row measures, referenced qualified so the two units'
+same-named table types never collide) beside the sibling serialize.cs
+runtime sources, exactly like `test/cs`. `run.sh` runs it as
+`dotnet run -c Release -- --csv` from this directory; the per-path warmup
+run doubles as the JIT warmup. This project is also the realworld unit's
+compile gate in `make test` — its one consumer (the Makefile's bench-corpus
+comment says why).
 
 Escape barriers: a static sink field accumulates observed bytes/counts and
 `GC.KeepAlive` holds decoded objects. Streams are reused via `Reset` (the
