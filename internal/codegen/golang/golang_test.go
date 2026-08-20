@@ -114,9 +114,26 @@ func TestDispatchSurfaceEmittedOnce(t *testing.T) {
 			// outside the write-spine demand (see cpp emitWriteDispatchComment)
 			"enum class MessageType", "inline bool WriteMessage(", "SCHEMA_READ_INLINE bool ReadMessage(",
 			"enum class ObjectType", "SCHEMA_WRITE_INLINE bool WriteObjectType(", "SCHEMA_READ_INLINE bool ReadObjectType(",
+			// the dispatch arms, one per message, likewise plain `inline`: the
+			// demand must stop at the arm instead of propagating into the
+			// dispatch body (see cpp emitWriteArmComment)
+			"inline bool WriteMessageArmPing(", "inline bool WriteMessageArmPong(",
 		} {
 			if got := countAcross(cppFiles, needle); got != 1 {
 				t.Errorf("C++ (%s): %q emitted %d times across the unit — a TU including both headers cannot compile unless it is exactly once", mode, needle, got)
+			}
+		}
+		// the arms must be what the dispatch actually calls, and must NOT
+		// carry the demand — either mistake puts the message bodies back
+		// inside WriteMessage, which is the shape the arms exist to avoid
+		for _, banned := range []string{"SCHEMA_WRITE_INLINE bool WriteMessageArm"} {
+			if got := countAcross(cppFiles, banned); got != 0 {
+				t.Errorf("C++ (%s): %q emitted %d times — a demanded arm flattens the message body back into WriteMessage", mode, banned, got)
+			}
+		}
+		for _, msg := range []string{"Ping", "Pong"} {
+			if got := countAcross(cppFiles, "return WriteMessageArm"+msg+"( stream,"); got != 1 {
+				t.Errorf("C++ (%s): the %s dispatch case does not call WriteMessageArm%s — the demand propagates into the dispatch body", mode, msg, msg)
 			}
 		}
 		// the owner file must include the other message file: the dispatch

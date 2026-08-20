@@ -18,7 +18,8 @@ namespace example {
 #ifndef SCHEMA_WRITE_INLINE_DEFINED
 #define SCHEMA_WRITE_INLINE_DEFINED
 // SCHEMA_WRITE_INLINE — how every generated Write function is spelled,
-// EXCEPT the WriteMessage dispatch surface (see the comment on it): an
+// EXCEPT the message dispatch surface: WriteMessage and its per-message arm
+// forwarders (see the comments on them). It is an
 // inlining DEMAND (always_inline / __forceinline), the serialize family's
 // remedy for LLVM refusing the linkonce_odr Write entries into their call
 // sites at cost over threshold — no last-call-to-static bonus exists for a
@@ -307,12 +308,54 @@ SCHEMA_READ_INLINE bool ReadMessageType( serialize::ReadStream & stream, Message
     return true;
 }
 
+// The dispatch arms: one forwarder per message, standing between WriteMessage
+// and that message's Write spine. Spelled plain `inline`, NOT
+// SCHEMA_WRITE_INLINE, and that is the whole point — an inlining demand is
+// transitive across a call, so a dispatch calling the spines directly would
+// drag every message body into its own body whatever the cost, which is what
+// made the batch build loop pay for the demand. Behind a plain-inline
+// forwarder the demand still flattens the spine into the arm, and the
+// compiler then decides per arm — on cost, the way it decided before the
+// demand existed — whether that arm lands inside the dispatch body or stays
+// a call. Do not spell these SCHEMA_WRITE_INLINE; that is the shape this
+// exists to avoid.
+inline bool WriteMessageArmBlock( serialize::WriteStream & stream, const Block & value )
+{
+    return WriteBlock( stream, value );
+}
+
+inline bool WriteMessageArmChat( serialize::WriteStream & stream, const Chat & value )
+{
+    return WriteChat( stream, value );
+}
+
+inline bool WriteMessageArmHeartbeat( serialize::WriteStream & stream, const Heartbeat & value )
+{
+    return WriteHeartbeat( stream, value );
+}
+
+inline bool WriteMessageArmSynchronize( serialize::WriteStream & stream, const Synchronize & value )
+{
+    return WriteSynchronize( stream, value );
+}
+
+inline bool WriteMessageArmTest( serialize::WriteStream & stream, const Test & value )
+{
+    return WriteTest( stream, value );
+}
+
+inline bool WriteMessageArmTimescale( serialize::WriteStream & stream, const Timescale & value )
+{
+    return WriteTimescale( stream, value );
+}
+
 // WriteMessage is deliberately OUTSIDE the write-spine demand: plain `inline`,
-// not SCHEMA_WRITE_INLINE. Its callees (every per-message Write) flatten into
-// its body, but the dispatch switch itself stays a call boundary — demanding
-// it into a batch build loop was measured to slow that loop ~21% while every
-// per-message row kept its win with the boundary in place. The compiler
-// remains free to inline it where that pays.
+// not SCHEMA_WRITE_INLINE — demanding it into a batch build loop was measured
+// to slow that loop ~21% while every per-message row kept its win with the
+// boundary in place. It reaches each message through the WriteMessageArm*
+// forwarders above rather than calling the demanded spines directly, so no
+// spine body is forced into this one. The compiler remains free to inline
+// this — and any arm — where that pays.
 inline bool WriteMessage( serialize::WriteStream & stream, const Message & message )
 {
     switch ( message.type )
@@ -324,37 +367,37 @@ inline bool WriteMessage( serialize::WriteStream & stream, const Message & messa
             {
                 return false;
             }
-            return WriteBlock( stream, message.block );
+            return WriteMessageArmBlock( stream, message.block );
         case MessageType::Chat:
             if ( !WriteMessageType( stream, MessageType::Chat ) )
             {
                 return false;
             }
-            return WriteChat( stream, message.chat );
+            return WriteMessageArmChat( stream, message.chat );
         case MessageType::Heartbeat:
             if ( !WriteMessageType( stream, MessageType::Heartbeat ) )
             {
                 return false;
             }
-            return WriteHeartbeat( stream, message.heartbeat );
+            return WriteMessageArmHeartbeat( stream, message.heartbeat );
         case MessageType::Synchronize:
             if ( !WriteMessageType( stream, MessageType::Synchronize ) )
             {
                 return false;
             }
-            return WriteSynchronize( stream, message.synchronize );
+            return WriteMessageArmSynchronize( stream, message.synchronize );
         case MessageType::Test:
             if ( !WriteMessageType( stream, MessageType::Test ) )
             {
                 return false;
             }
-            return WriteTest( stream, message.test );
+            return WriteMessageArmTest( stream, message.test );
         case MessageType::Timescale:
             if ( !WriteMessageType( stream, MessageType::Timescale ) )
             {
                 return false;
             }
-            return WriteTimescale( stream, message.timescale );
+            return WriteMessageArmTimescale( stream, message.timescale );
     }
     return false; // not a message type; nothing was written
 }
