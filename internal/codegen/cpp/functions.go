@@ -661,10 +661,26 @@ func (g *gen) emitMessageWire() {
 	g.pf("    read_int( stream, tag_value, 0, %d );\n", count)
 	g.pf("    value = MessageType( tag_value );\n    return true;\n}\n\n")
 
+	g.emitMessageArmForwarders()
+
 	if g.opts.MessageRepr == "variant" {
 		g.emitMessageWireVariant()
 	} else {
 		g.emitMessageWireUnion()
+	}
+}
+
+// emitMessageArmForwarders emits the dispatch arms — one forwarder per
+// message, shared by both dispatch surfaces (union and variant call the same
+// arms, since both hand the arm a const reference to the message value).
+// They exist for their SPELLING: plain `inline`, so the write-spine demand
+// stops here instead of propagating into the dispatch body. See
+// emitWriteArmComment for the mechanism and the measurement.
+func (g *gen) emitMessageArmForwarders() {
+	g.emitWriteArmComment()
+	for _, m := range g.unit.Messages {
+		g.pf("inline bool WriteMessageArm%s( serialize::WriteStream & stream, const %s & value )\n{\n", m, m)
+		g.pf("    return Write%s( stream, value );\n}\n\n", m)
 	}
 }
 
@@ -719,7 +735,7 @@ func (g *gen) emitMessageWireUnion() {
 	for _, m := range msgs {
 		g.pf("        case MessageType::%s:\n", m)
 		g.pf("            if ( !WriteMessageType( stream, MessageType::%s ) )\n            {\n                return false;\n            }\n", m)
-		g.pf("            return Write%s( stream, message.%s );\n", m, camelToSnake(m))
+		g.pf("            return WriteMessageArm%s( stream, message.%s );\n", m, camelToSnake(m))
 	}
 	g.pf("    }\n    return false; // not a message type; nothing was written\n}\n\n")
 
@@ -775,7 +791,7 @@ func (g *gen) emitMessageWireVariant() {
 	g.pf("    switch ( message.index() )\n    {\n")
 	g.pf("        case 0:\n            return true; // None — the stream terminator (SPEC §4.8)\n")
 	for i, m := range msgs {
-		g.pf("        case %d:\n            return Write%s( stream, *std::get_if<%s>( &message ) );\n", i+1, m, m)
+		g.pf("        case %d:\n            return WriteMessageArm%s( stream, *std::get_if<%s>( &message ) );\n", i+1, m, m)
 	}
 	g.pf("    }\n    return false;\n}\n\n")
 

@@ -2125,6 +2125,9 @@ func (c *checker) checkClaimedNames() {
 			c.addStructSymbols(add, addRust, name, d.DeclPos())
 			// the Rust tag constant is associated (MessageType::NAME) — no flat claim
 			add("MessageType"+name, fmt.Sprintf("message %s's generated tag constant", name), d.DeclPos())
+			// the C++ dispatch reaches each message through a per-message arm
+			// forwarder, so the arm name is a claimed unit-level symbol too
+			add("WriteMessageArm"+name, fmt.Sprintf("message %s's generated C++ dispatch arm", name), d.DeclPos())
 		case *ast.ObjectDecl:
 			pos := d.DeclPos()
 			why := fmt.Sprintf("object %s's generated family", name)
