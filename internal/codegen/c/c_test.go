@@ -16,8 +16,8 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/internal/check"
-	"github.com/mas-bandwidth/schema/internal/ir"
 	"github.com/mas-bandwidth/schema/internal/parser"
+	"github.com/mas-bandwidth/schema/ir"
 )
 
 func unitFromSource(t *testing.T, name, src string) *ir.Unit {
@@ -36,7 +36,7 @@ func unitFromSource(t *testing.T, name, src string) *ir.Unit {
 	return u
 }
 
-// The same shapes internal/ir/align_test.go pins the ANALYSIS on, carried up
+// The same shapes ir/align_test.go pins the ANALYSIS on, carried up
 // to the EMISSION: each type holds one fixed [N]uint8 named data, and the
 // name says whether the C wire functions may bulk-copy it.
 const bulkCorpus = `package bulktest
