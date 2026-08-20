@@ -2,7 +2,7 @@
    SPDX-License-Identifier: NONE — this generated output is yours, under terms of
    your choice. See the LICENSE exception in the schema compiler; the compiler is
    AGPL-3.0, its output is not.
-   package example — protocol id 0x01125e6515d05ec4 */
+   package example — protocol id 0x39e4aa9c08faf8f8 */
 
 #ifndef SCHEMA_EXAMPLE_TYPESWIRE_H
 #define SCHEMA_EXAMPLE_TYPESWIRE_H
@@ -856,6 +856,64 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_ship_create( serialize_read_s
         value->thrust = (int8_t) offset_value;
     }
     value->pending = 0;
+    return 1;
+}
+
+/* Writes ExpressionProbe. Returns 1 on success, 0 on failure — the stream latches the
+   error, so a caller may check once at the end of a message. */
+static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_expression_probe( serialize_write_stream_t * stream, const ExpressionProbe * value )
+{
+    if ( (serialize_int64_t) value->hardpoint_index < 0 || (serialize_int64_t) value->hardpoint_index > (SHIP_MAX_LASERS + SHIP_MAX_MISSILES) - 1 )
+    {
+        return 0; /* out-of-contract writes are refused, not wrapped */
+    }
+    if ( !serialize_write_bits( stream, (serialize_uint32_t) ( value->hardpoint_index ), 5 ) )
+    {
+        return 0;
+    }
+    if ( (serialize_int64_t) value->spin_rate < -(-ROTATION_UNITS) || (serialize_int64_t) value->spin_rate > ROTATION_UNITS * 2 )
+    {
+        return 0; /* out-of-contract writes are refused, not wrapped */
+    }
+    if ( !serialize_write_bits( stream, (serialize_uint32_t) ( (value->spin_rate) - (-(-ROTATION_UNITS)) ), 11 ) )
+    {
+        return 0;
+    }
+    return 1;
+}
+
+/* Reads ExpressionProbe. Returns 1 on success, 0 on failure. Out-of-range values are
+   REFUSED, never clamped. */
+static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_expression_probe( serialize_read_stream_t * stream, ExpressionProbe * value )
+{
+    {
+        serialize_uint64_t offset_value = 0;
+        serialize_uint32_t raw = 0;
+        if ( !serialize_read_bits( stream, &raw, 5 ) )
+        {
+            return 0;
+        }
+        offset_value = raw;
+        if ( offset_value > 31ULL )
+        {
+            return 0;
+        }
+        value->hardpoint_index = (int32_t) offset_value;
+    }
+    {
+        serialize_uint64_t offset_value = 0;
+        serialize_uint32_t raw = 0;
+        if ( !serialize_read_bits( stream, &raw, 11 ) )
+        {
+            return 0;
+        }
+        offset_value = raw;
+        if ( offset_value > 1024ULL )
+        {
+            return 0;
+        }
+        value->spin_rate = (int32_t) ( offset_value + (-(-ROTATION_UNITS)) );
+    }
     return 1;
 }
 

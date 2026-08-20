@@ -2,7 +2,7 @@
    SPDX-License-Identifier: NONE — this generated output is yours, under terms of
    your choice. See the LICENSE exception in the schema compiler; the compiler is
    AGPL-3.0, its output is not.
-   package example — protocol id 0x01125e6515d05ec4 */
+   package example — protocol id 0x39e4aa9c08faf8f8 */
 
 #ifndef SCHEMA_EXAMPLE_TYPES_H
 #define SCHEMA_EXAMPLE_TYPES_H
@@ -156,6 +156,16 @@ typedef struct ShipCreate {
 
 #define SHIP_CREATE_MAX_BITS 219   /* longest wire path; align pads at worst case (SPEC §6.1) */
 #define SHIP_CREATE_MAX_BYTES 32  /* rounded up to the 8-byte write-buffer granularity; a READ buffer's allocation must extend at least 8 bytes past the data — serialize.c loads 64-bit windows */
+
+
+/* type ExpressionProbe */
+typedef struct ExpressionProbe {
+    int32_t hardpoint_index;
+    int32_t spin_rate;
+} ExpressionProbe;
+
+#define EXPRESSION_PROBE_MAX_BITS 16   /* longest wire path; align pads at worst case (SPEC §6.1) */
+#define EXPRESSION_PROBE_MAX_BYTES 8  /* rounded up to the 8-byte write-buffer granularity; a READ buffer's allocation must extend at least 8 bytes past the data — serialize.c loads 64-bit windows */
 
 #ifdef __cplusplus
 }

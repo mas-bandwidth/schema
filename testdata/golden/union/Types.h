@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package example — protocol id 0x01125e6515d05ec4
+// package example — protocol id 0x39e4aa9c08faf8f8
 
 #pragma once
 
@@ -143,5 +143,14 @@ struct ShipCreate {
 
 inline constexpr int64_t ShipCreateMaxBits = 219; // longest wire path; align pads at worst case (SPEC §6.1)
 inline constexpr int64_t ShipCreateMaxBytes = 32; // rounded up to the 8-byte write-buffer granularity; a read buffer's allocation must extend at least 8 bytes past the data — the reader loads 64-bit windows
+
+// type ExpressionProbe
+struct ExpressionProbe {
+    int32_t hardpoint_index = 0; // wire [0, 31]
+    int32_t spin_rate = 0; // wire [1024, 2048]
+};
+
+inline constexpr int64_t ExpressionProbeMaxBits = 16; // longest wire path; align pads at worst case (SPEC §6.1)
+inline constexpr int64_t ExpressionProbeMaxBytes = 8; // rounded up to the 8-byte write-buffer granularity; a read buffer's allocation must extend at least 8 bytes past the data — the reader loads 64-bit windows
 
 } // namespace example
