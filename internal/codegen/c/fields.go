@@ -37,6 +37,11 @@ func (g *gen) emitWriteField(f *ir.Field, ind string) {
 		g.pf("%s{\n%s    int32_t i;\n%s    for ( i = 0; i < value->%s_count; i++ )\n%s    {\n", ind, ind, ind, f.Name, ind)
 		g.emitWriteScalar(f, fmt.Sprintf("value->%s[i]", f.Name), ind+"        ")
 		g.pf("%s    }\n%s}\n", ind, ind)
+	case f.Array == ir.ArrayFixed && g.bulkBytes[f]:
+		// statically byte-aligned [N]uint8: the bulk path is byte-identical
+		// to the per-byte loop (its internal align is zero bits here) and
+		// memcpys instead of 8-bit packing
+		g.call(ind, fmt.Sprintf("serialize_write_bytes( stream, value->%s, %d ) /* byte-aligned [N]uint8 — bulk copy, wire-identical to the per-byte loop */", f.Name, f.ArrayBound))
 	case f.Array == ir.ArrayFixed:
 		g.pf("%s{\n%s    int32_t i;\n%s    for ( i = 0; i < %d; i++ )\n%s    {\n", ind, ind, ind, f.ArrayBound, ind)
 		g.emitWriteScalar(f, fmt.Sprintf("value->%s[i]", f.Name), ind+"        ")
@@ -231,6 +236,8 @@ func (g *gen) emitReadField(f *ir.Field, ind string) {
 		g.pf("%s{\n%s    int32_t i;\n%s    for ( i = 0; i < value->%s_count; i++ )\n%s    {\n", ind, ind, ind, f.Name, ind)
 		g.emitReadScalar(f, fmt.Sprintf("value->%s[i]", f.Name), ind+"        ")
 		g.pf("%s    }\n%s}\n", ind, ind)
+	case f.Array == ir.ArrayFixed && g.bulkBytes[f]:
+		g.call(ind, fmt.Sprintf("serialize_read_bytes( stream, value->%s, %d ) /* byte-aligned [N]uint8 — bulk copy, wire-identical to the per-byte loop */", f.Name, f.ArrayBound))
 	case f.Array == ir.ArrayFixed:
 		g.pf("%s{\n%s    int32_t i;\n%s    for ( i = 0; i < %d; i++ )\n%s    {\n", ind, ind, ind, f.ArrayBound, ind)
 		g.emitReadScalar(f, fmt.Sprintf("value->%s[i]", f.Name), ind+"        ")

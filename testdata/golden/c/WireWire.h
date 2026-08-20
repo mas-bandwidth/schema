@@ -767,15 +767,9 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_test_data( serialize_write_
     {
         return 0;
     }
+    if ( !serialize_write_bytes( stream, value->fixed_bytes, 17 ) /* byte-aligned [N]uint8 — bulk copy, wire-identical to the per-byte loop */ )
     {
-        int32_t i;
-        for ( i = 0; i < 17; i++ )
-        {
-            if ( !serialize_write_bits( stream, (serialize_uint32_t) value->fixed_bytes[i], 8 ) )
-            {
-                return 0;
-            }
-        }
+        return 0;
     }
     serialize_assert( schema_utf8_valid_( (const serialize_uint8_t *) value->text, value->text_length ) );
     if ( !serialize_write_int( stream, value->text_length, 0, 255 ) )
@@ -978,19 +972,9 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_test_data( serialize_read_str
     {
         return 0;
     }
+    if ( !serialize_read_bytes( stream, value->fixed_bytes, 17 ) /* byte-aligned [N]uint8 — bulk copy, wire-identical to the per-byte loop */ )
     {
-        int32_t i;
-        for ( i = 0; i < 17; i++ )
-        {
-            {
-                serialize_uint32_t raw = 0;
-                if ( !serialize_read_bits( stream, &raw, 8 ) )
-                {
-                    return 0;
-                }
-                value->fixed_bytes[i] = (uint8_t) raw;
-            }
-        }
+        return 0;
     }
     if ( !serialize_read_int( stream, &value->text_length, 0, 255 ) )
     {
