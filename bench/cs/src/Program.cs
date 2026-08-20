@@ -667,6 +667,83 @@ static partial class Program
         }
     }
 
+    // real_packet — BENCH-STANDARD.md §1.7's realistic snapshot, measured
+    // through the GENERATED code (bench/corpus/RealWorld.schema ->
+    // generated/bench/cs/realworld, namespace Realworld — referenced
+    // qualified so the two units' same-named table types never collide).
+    // The pinned instance is the ALL-DEFAULTS instance: new RealPacket()
+    // serialized unmodified (field initializers carry the schema defaults),
+    // 1629 bits = 204 wire bytes, pinned to testdata/wire/real_packet.bin by
+    // test/bench/main.cpp. The four branch gates (f012 true, f043 false,
+    // f050 true, f074 false) are STRUCTURE (§2.7): they keep their schema
+    // defaults here, so the same branch bodies ride every iteration and
+    // bytes/op is constant. The field mappings are bench/cpp/bench_main.cpp's
+    // vary_real_packet exactly — fields under the false gates do not ride
+    // and are not varied; every mapping keeps its field inside its declared
+    // wire range (comments give the bound it stays within).
+    static void VaryRealPacket(Realworld.RealPacket m, ulong rng)
+    {
+        // ranged ints, assorted widths, signed and unsigned
+        m.F001Int = (int)((rng >> 8) & 0xFFFFF) - 0x80000; // +/-2^19 within +/-805495
+        m.F003Int = (int)((rng >> 12) & 0xFFFFF) - 0x80000; // within +/-835897
+        m.F005Uint = (ushort)((rng >> 20) & 0xFFF); // <=4095 within [0, 7316]
+        m.F006Int = (short)((int)((rng >> 26) & 0x7FF) - 1024); // +/-1024 within +/-1513
+        m.F009Int = (sbyte)((int)((rng >> 33) & 31) - 16); // +/-16 within +/-22
+        m.F033Uint = (uint)((rng >> 37) & 0x1FFFF); // <=131071 within [0, 142780]
+        m.F041Int = (sbyte)((int)((rng >> 42) & 63) - 32); // +/-32 within +/-55
+        m.F062Uint = (ushort)((rng >> 47) & 255); // <=255 within [0, 503]
+        m.F088Int = (short)((int)((rng >> 52) & 0x3FF) - 512); // +/-512 within +/-694
+        m.F090Uint = (byte)((rng >> 57) & 127); // <=127 within [0, 214]
+        // bits(N), narrow and wide
+        m.F011Bits = (uint)rng & 0x3FF; // 10 bits
+        m.F023Bits = (uint)(rng >> 5) & 0x1FFFFFF; // 25 bits
+        m.F042Bits = (uint)(rng >> 3) & 0x3FFFFFFF; // 30 bits
+        m.F081Bits = (uint)(rng >> 7) & 0x1FFFFFFF; // 29 bits
+        m.F089Bits = rng & 0xFFFFFFFFFFFFul; // 48 bits
+        m.F093Bits = rng ^ 0x5555555555555555ul; // 64 bits
+        m.F097Bits = (uint)(rng >> 11) & 0xFFF; // 12 bits
+        // bools (NEVER the four branch gates — those are structure, §2.7)
+        m.F037Bool = (rng & 1) != 0;
+        m.F055Bool = (rng & 2) != 0;
+        m.F092Bool = (rng & 4) != 0;
+        // float32 / float64
+        m.F007F32 = (uint)rng & 0xFFFF;
+        m.F020F32 = ((uint)(rng >> 16) & 0xFFFF) * 0.5f;
+        m.F058F32 = ((uint)(rng >> 24) & 0xFFFF) * 0.25f;
+        m.F002F64 = (double)((long)(rng >> 8) & 0xFFFFFF) * 0.5;
+        m.F059F64 = (double)((long)(rng >> 16) & 0xFFFFFF) * 0.25;
+        m.F087F64 = (double)((long)(rng >> 24) & 0xFFFFFF) * 0.125;
+        // compressed floats (in range by construction)
+        m.F004Cf32 = ((uint)rng & 0x3FFF) * 0.1f; // <=1638.3 within [0, 2000]
+        m.F061Cf32 = -90.0f + ((uint)(rng >> 9) & 255) * 0.5f; // within [-90, 90] (max 37.5)
+        m.F067Cf32 = -100.0f + ((uint)(rng >> 18) & 511) * 0.25f; // within [-100, 100] (max 27.75)
+        m.F072Cf32 = ((uint)(rng >> 27) & 8191) * 0.01f; // <=81.91 within [0, 100]
+        // fixed / ufixed (raw storage scaled by 2^F; bounds are whole units)
+        m.F016Fixed = (int)((rng >> 10) & 0x3FFFFFF) - 0x2000000; // +/-2^25 within +/-36*2^20
+        m.F025Fixed = (short)((int)((rng >> 18) & 0x7FFF) - 0x4000); // +/-2^14 within +/-119*2^8
+        m.F095Fixed = (int)((rng >> 22) & 0x7FFFFFF) - 0x4000000; // +/-2^26 within +/-1577*2^16
+        m.F021Ufixed = (uint)(rng >> 30) & 0x3FFFFFF; // <=2^26-1 within 25141*2^12
+        m.F049Ufixed = (ushort)((rng >> 36) & 0x7FFF); // <=32767 within 3*2^14
+        m.F084Ufixed = (byte)((rng >> 44) & 0x7F); // <=127 within 1*2^7
+        // enum / flags (wire-valid by construction)
+        m.F036Enum = (Realworld.PacketMode)((uint)(rng >> 30) & 3); // within wire range [0, 5]
+        m.F083Enum = (Realworld.PacketMode)((uint)(rng >> 34) & 3);
+        m.F091Flags = rng & 31; // 5 wire bits
+        // full-width 64-bit
+        m.F008U64 = rng;
+        m.F029I64 = (long)(rng * 3);
+        m.F063I64 = (long)(rng * 5);
+        // fields riding inside the TAKEN branches (f012 true, f050 true)
+        m.F013F32 = (uint)(rng >> 4) & 0xFFFF;
+        m.F014Uint = (ushort)((rng >> 21) & 511); // <=511 within [0, 775]
+        m.F015Int = (sbyte)((int)((rng >> 40) & 31) - 16); // +/-16 within +/-21
+        m.F017Uint = (ushort)((rng >> 29) & 0xFFF); // <=4095 within [0, 4606]
+        m.F051Bool = (rng & 8) != 0;
+        m.F052Int = (sbyte)((int)((rng >> 38) & 63) - 32); // +/-32 within +/-57
+        m.F053F32 = ((uint)(rng >> 40) & 0xFFFF) * 0.125f;
+        m.F054Int = (sbyte)((int)((rng >> 45) & 63) - 32); // +/-32 within +/-35
+    }
+
     // ------------------------------------------------------------------------------------------
     // the synthetic steady-state batch: NumBatchMessages messages through the
     // Message dispatch surface (WriteMessage/ReadMessage) plus the None
@@ -989,6 +1066,13 @@ static partial class Program
         BenchMessage("probebits", "probebits", 128000000, PinProbeBits(), WriteProbeBits, ReadProbeBits, VaryProbeBits);
         BenchMessage("probearray", "probearray", 20000000, PinProbeArray(), WriteProbeArray, ReadProbeArray, VaryProbeArray);
         BenchMessage("testdata", "testdata", 8000000, PinTestData(), WriteTestData, ReadTestData, VaryTestData);
+
+        // real_packet (§1.7): the realistic snapshot — ~93 riding individually
+        // serialized small fields, 204 wire bytes, 0% bulk share by bits. The
+        // pin is the ALL-DEFAULTS instance (new RealPacket() — the C++
+        // RealPacket{}), golden-gated like every row above. Iteration count
+        // sized in the C++ reference (§2.1).
+        BenchMessage("real_packet", "real_packet", 8000000, new Realworld.RealPacket(), Realworld.Schema.WriteRealPacket, Realworld.Schema.ReadRealPacket, VaryRealPacket);
 
         BenchBatch();
 

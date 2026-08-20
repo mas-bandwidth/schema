@@ -13,10 +13,11 @@ oracle-gated against `testdata/wire/bench_*.bin`, plus the 16-width
 bitpacker workload — timed loops in `#[inline(never)]` symbols for the
 §4.1 verdict.
 
-Wiring: `Cargo.toml` path-depends on `../../generated/rust` and the sibling
-serialize.rs checkout, exactly like `test/rust`. `run.sh` runs it as
-`cargo run --release -- --csv` from this directory (default release
-profile: opt-level 3, no LTO).
+Wiring: `Cargo.toml` path-depends on `../../generated/rust`,
+`../../generated/bench/rust-realworld` (the realworld crate the
+`real_packet` row measures), and the sibling serialize.rs checkout, exactly
+like `test/rust`. `run.sh` runs it as `cargo run --release -- --csv` from
+this directory (default release profile: opt-level 3, no LTO).
 
 The default profile is a measured choice, not an omission: six
 `[profile.release]` variants (thin/fat LTO x codegen-units, paired

@@ -14,10 +14,11 @@ bitpacker workload — timed loops in `//go:noinline` symbols for the §4.1
 verdict.
 
 Wiring: `go.mod` (module `benchgo`) replaces `example` →
-`../../generated/go` and `github.com/mas-bandwidth/serialize.go` → the
-sibling port checkout, exactly like `test/go`. `run.sh` runs it as
-`go run . --csv` from this directory (optimized by default — Go has no
-debug/release split).
+`../../generated/go`, `bench` → `../../generated/bench/go` (the realworld
+unit the `real_packet` row measures), and
+`github.com/mas-bandwidth/serialize.go` → the sibling port checkout,
+exactly like `test/go`. `run.sh` runs it as `go run . --csv` from this
+directory (optimized by default — Go has no debug/release split).
 
 Escape barriers: a package-level sink accumulator plus `runtime.KeepAlive`
 on decoded values. Streams are reused via `Reset` (the runtime's documented

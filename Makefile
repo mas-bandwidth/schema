@@ -157,6 +157,14 @@ generated/c-ludicrous/.stamp: bin/schema $(SCHEMAS128)
 # layout cannot hold two packages in one directory put the realworld unit in
 # its own subdirectory (go, cs — per-package TableRuntime) or sibling crate
 # (rust — one crate root per unit).
+#
+# COMPILE gates: generating a unit proves nothing about it compiling — the cs
+# realworld unit shipped uncompilable (SerializeFixed had no 8-bit overload,
+# issue #80's C# leg was its first consumer) while every gate stayed green.
+# The test target builds generated/bench/go and both rust crates directly;
+# C# has no unit-local build file, so `cd bench/cs && dotnet build` is the
+# compile gate for the realworld unit (the runner is its one consumer). The
+# cs Bench unit still has NO compile gate — nothing consumes it.
 generated/bench/cpp/.stamp: bin/schema $(SCHEMAS_BENCH)
 	./bin/schema generate --lang cpp --out generated/bench/cpp bench/corpus/Bench.schema
 	./bin/schema generate --lang cpp --out generated/bench/cpp bench/corpus/RealWorld.schema
@@ -226,6 +234,7 @@ test: build/schema_test build/schema_test_variant build/schema_test_random build
 	cd generated/bench/go && go build ./...
 	cd generated/bench/rust && PATH="$(RUSTUP_BIN):$$PATH" cargo build --quiet
 	cd generated/bench/rust-realworld && PATH="$(RUSTUP_BIN):$$PATH" cargo build --quiet
+	cd bench/cs && dotnet build -c Release --nologo -v quiet
 	cd test/go && go run .
 	cd test/rust && PATH="$(RUSTUP_BIN):$$PATH" cargo run --quiet
 	cd test/cs && dotnet run

@@ -882,9 +882,12 @@ namespace Realworld
                     return false;
                 }
             }
-            if (!batch.SerializeFixed(ref value.F084Ufixed, 1, 7, 0, 1))
             {
-                return false;
+                ushort fixedValue = value.F084Ufixed;
+                if (!batch.SerializeFixed(ref fixedValue, 1, 7, 0, 1))
+                {
+                    return false;
+                }
             }
             if (!batch.SerializeBits(ref value.F085Bits, 21))
             {
@@ -1465,9 +1468,13 @@ namespace Realworld
                 }
                 value.F083Enum = (PacketMode)enumValue;
             }
-            if (!batch.SerializeFixed(ref value.F084Ufixed, 1, 7, 0, 1))
             {
-                return false;
+                ushort fixedValue = 0;
+                if (!batch.SerializeFixed(ref fixedValue, 1, 7, 0, 1))
+                {
+                    return false;
+                }
+                value.F084Ufixed = (byte)fixedValue;
             }
             if (!batch.SerializeBits(ref value.F085Bits, 21))
             {
