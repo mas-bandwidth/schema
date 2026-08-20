@@ -74,7 +74,7 @@ impl Default for BenchPacket {
 pub const BENCH_PACKET_MAX_BITS: u64 = 392;
 pub const BENCH_PACKET_MAX_BYTES: usize = 56;
 
-#[inline]
+#[inline(always)]
 pub fn write_bench_packet(stream: &mut WriteStream<'_>, value: &BenchPacket) -> Result {
     if value.a < -100 || value.a > 100 { // out-of-contract writes are refused, not wrapped
         return Err(Error::Stream(serialize::Error::ValueOutOfRange));
@@ -200,7 +200,7 @@ impl Default for BenchInts {
 pub const BENCH_INTS_MAX_BITS: u64 = 110;
 pub const BENCH_INTS_MAX_BYTES: usize = 16;
 
-#[inline]
+#[inline(always)]
 pub fn write_bench_ints(stream: &mut WriteStream<'_>, value: &BenchInts) -> Result {
     if value.f0 < -100 || value.f0 > 100 { // out-of-contract writes are refused, not wrapped
         return Err(Error::Stream(serialize::Error::ValueOutOfRange));
@@ -325,7 +325,7 @@ impl Default for BenchBits {
 pub const BENCH_BITS_MAX_BITS: u64 = 156;
 pub const BENCH_BITS_MAX_BYTES: usize = 24;
 
-#[inline]
+#[inline(always)]
 pub fn write_bench_bits(stream: &mut WriteStream<'_>, value: &BenchBits) -> Result {
     if value.b7 >= 1 << 7 {
         return Err(Error::Stream(serialize::Error::ValueOutOfRange));
@@ -437,7 +437,7 @@ impl Default for BenchMixed {
 pub const BENCH_MIXED_MAX_BITS: u64 = 168;
 pub const BENCH_MIXED_MAX_BYTES: usize = 24;
 
-#[inline]
+#[inline(always)]
 pub fn write_bench_mixed(stream: &mut WriteStream<'_>, value: &BenchMixed) -> Result {
     if value.sequence < 0 || value.sequence > 65535 { // out-of-contract writes are refused, not wrapped
         return Err(Error::Stream(serialize::Error::ValueOutOfRange));

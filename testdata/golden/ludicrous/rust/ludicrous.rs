@@ -113,7 +113,7 @@ impl Default for FixedProbe {
 pub const FIXED_PROBE_MAX_BITS: u64 = 156;
 pub const FIXED_PROBE_MAX_BYTES: usize = 24;
 
-#[inline]
+#[inline(always)]
 pub fn write_fixed_probe(stream: &mut WriteStream<'_>, value: &FixedProbe) -> Result {
     if value.angle < -11796480 || value.angle > 11796480 { // out-of-contract writes are refused, not wrapped (raw scaled domain)
         return Err(Error::Stream(serialize::Error::ValueOutOfRange));
@@ -200,7 +200,7 @@ impl Default for UnsignedProbe {
 pub const UNSIGNED_PROBE_MAX_BITS: u64 = 196;
 pub const UNSIGNED_PROBE_MAX_BYTES: usize = 32;
 
-#[inline]
+#[inline(always)]
 pub fn write_unsigned_probe(stream: &mut WriteStream<'_>, value: &UnsignedProbe) -> Result {
     if value.angle > 23592960 { // out-of-contract writes are refused, not wrapped (raw scaled domain)
         return Err(Error::Stream(serialize::Error::ValueOutOfRange));
@@ -308,7 +308,7 @@ impl WideProbe {
 pub const WIDE_PROBE_MAX_BITS: u64 = 403;
 pub const WIDE_PROBE_MAX_BYTES: usize = 56;
 
-#[inline]
+#[inline(always)]
 pub fn write_wide_probe(stream: &mut WriteStream<'_>, value: &WideProbe) -> Result {
     {
         let mut raw_value = value.entity_id;
@@ -399,7 +399,7 @@ impl LudicrousState {
 pub const LUDICROUS_STATE_MAX_BITS: u64 = 1205;
 pub const LUDICROUS_STATE_MAX_BYTES: usize = 152;
 
-#[inline]
+#[inline(always)]
 pub fn write_ludicrous_state(stream: &mut WriteStream<'_>, value: &LudicrousState) -> Result {
     if value.mode.0 > 3 {
         return Err(Error::Stream(serialize::Error::ValueOutOfRange));
@@ -485,7 +485,7 @@ impl Default for DegenerateProbe {
 pub const DEGENERATE_PROBE_MAX_BITS: u64 = 8;
 pub const DEGENERATE_PROBE_MAX_BYTES: usize = 8;
 
-#[inline]
+#[inline(always)]
 pub fn write_degenerate_probe(stream: &mut WriteStream<'_>, value: &DegenerateProbe) -> Result {
     if value.locked_fixed < -196608 || value.locked_fixed > -196608 { // out-of-contract writes are refused, not wrapped (raw scaled domain)
         return Err(Error::Stream(serialize::Error::ValueOutOfRange));
@@ -542,7 +542,7 @@ impl Default for FixedVec {
 pub const FIXED_VEC_MAX_BITS: u64 = 102;
 pub const FIXED_VEC_MAX_BYTES: usize = 16;
 
-#[inline]
+#[inline(always)]
 pub fn write_fixed_vec(stream: &mut WriteStream<'_>, value: &FixedVec) -> Result {
     if value.x < -6553600000 || value.x > 6553600000 { // out-of-contract writes are refused, not wrapped (raw scaled domain)
         return Err(Error::Stream(serialize::Error::ValueOutOfRange));
@@ -615,7 +615,7 @@ impl FixedQuat {
 pub const FIXED_QUAT_MAX_BITS: u64 = 128;
 pub const FIXED_QUAT_MAX_BYTES: usize = 16;
 
-#[inline]
+#[inline(always)]
 pub fn write_fixed_quat(stream: &mut WriteStream<'_>, value: &FixedQuat) -> Result {
     if value.x < -1073741824 || value.x > 1073741824 { // out-of-contract writes are refused, not wrapped (raw scaled domain)
         return Err(Error::Stream(serialize::Error::ValueOutOfRange));
@@ -747,7 +747,7 @@ impl Default for BodyData_Interpolate {
 pub const BODY_DATA_DEEP_MAX_BITS: u64 = 332;
 pub const BODY_DATA_DEEP_MAX_BYTES: usize = 48; // rounded up to the 8-byte write-buffer granularity
 
-#[inline]
+#[inline(always)]
 pub fn write_body_data_deep(stream: &mut WriteStream<'_>, value: &BodyData_Deep) -> Result {
     write_fixed_vec(stream, &value.position)?;
     write_fixed_quat(stream, &value.rotation)?;
@@ -766,7 +766,7 @@ pub fn read_body_data_deep(stream: &mut ReadStream<'_>, value: &mut BodyData_Dee
 pub const BODY_DATA_SHALLOW_MAX_BITS: u64 = 332;
 pub const BODY_DATA_SHALLOW_MAX_BYTES: usize = 48; // rounded up to the 8-byte write-buffer granularity
 
-#[inline]
+#[inline(always)]
 pub fn write_body_data_shallow(stream: &mut WriteStream<'_>, value: &BodyData_Shallow) -> Result {
     write_fixed_vec(stream, &value.position)?;
     write_fixed_quat(stream, &value.rotation)?;
@@ -884,7 +884,7 @@ impl Default for NarrowBodyData_Interpolate {
 pub const NARROW_BODY_DATA_DEEP_MAX_BITS: u64 = 332;
 pub const NARROW_BODY_DATA_DEEP_MAX_BYTES: usize = 48; // rounded up to the 8-byte write-buffer granularity
 
-#[inline]
+#[inline(always)]
 pub fn write_narrow_body_data_deep(stream: &mut WriteStream<'_>, value: &NarrowBodyData_Deep) -> Result {
     write_fixed_vec(stream, &value.position)?;
     write_fixed_quat(stream, &value.rotation)?;
@@ -903,7 +903,7 @@ pub fn read_narrow_body_data_deep(stream: &mut ReadStream<'_>, value: &mut Narro
 pub const NARROW_BODY_DATA_SHALLOW_MAX_BITS: u64 = 228;
 pub const NARROW_BODY_DATA_SHALLOW_MAX_BYTES: usize = 32; // rounded up to the 8-byte write-buffer granularity
 
-#[inline]
+#[inline(always)]
 pub fn write_narrow_body_data_shallow(stream: &mut WriteStream<'_>, value: &NarrowBodyData_Shallow) -> Result {
     debug_assert!(value.position_x >= -25600000_i32 && value.position_x <= 25600000_i32);
     {
@@ -1018,7 +1018,7 @@ pub fn unquantize_narrow_body(input: &NarrowBodyData_Shallow, output: &mut Narro
 
 // The message tag wire: MessageType in [0, 1], minimal bits; None = 0 is a
 // valid wire value meaning *no message* — the stream terminator (SPEC §4.8).
-#[inline]
+#[inline(always)]
 pub fn write_message_type(stream: &mut WriteStream<'_>, value: MessageType) -> Result {
     debug_assert!(value.0 as u32 <= 1); // the runtime ranged form's write assert, kept (debug parity)
     {
@@ -1052,6 +1052,13 @@ pub enum Message {
     LudicrousState(LudicrousState),
 }
 
+// write_message is deliberately OUTSIDE the write-spine inlining demand:
+// plain #[inline], not #[inline(always)]. Its callees (every per-message
+// write_*) flatten into its body, but the dispatch match itself stays a
+// call boundary — demanding the C++ twin into a batch build loop was
+// measured to slow that loop ~21% while every per-message row kept its
+// win with the boundary in place (schema #60). The compiler remains free
+// to inline it where that pays.
 #[inline]
 pub fn write_message(stream: &mut WriteStream<'_>, message: &Message) -> Result {
     match message {
@@ -1120,7 +1127,7 @@ pub fn read_message(stream: &mut ReadStream<'_>) -> Result<Message> {
 
 // The object tag wire: ObjectType in [0, 2], minimal bits; None = 0 is the
 // null — the sentinel the surveyed baseline streams terminate with (SPEC §4.8).
-#[inline]
+#[inline(always)]
 pub fn write_object_type(stream: &mut WriteStream<'_>, value: ObjectType) -> Result {
     debug_assert!(value.0 as u32 <= 2); // the runtime ranged form's write assert, kept (debug parity)
     {
