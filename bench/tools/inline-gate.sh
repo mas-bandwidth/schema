@@ -14,7 +14,10 @@
 #       machinery from inline-verdict.sh (INLINE_VERDICT_LIB=1) and attack
 #       it: a known out-of-line call MUST produce partial:N, a cold-classified
 #       call MUST NOT count hot, a call with no cold signal MUST NOT be
-#       guessed cold, the helper-namespace join failure (the 4dc9b62 false
+#       guessed cold, a tail-branch b into the runtime or a helper MUST count
+#       as a call while local control flow MUST NOT (issue #86), the
+#       objdump/JitDisasm translators MUST carry tail transfers through, the
+#       helper-namespace join failure (the 4dc9b62 false
 #       full) MUST be caught, unroll division MUST divide or refuse, and the
 #       budget check itself MUST fail on over-budget, unknown, and absent
 #       legs. Exit non-zero if the machinery cannot fail where it must.
@@ -330,7 +333,111 @@ EOF
         fail "join self-test rejected a well-formed helper join"
     fi
 
-    # ---- 6. the namespace-join failure MUST be caught (the 4dc9b62 false
+    # ---- 6. tail-branch calls MUST count (issue #86): a b whose target is
+    # another function's symbol is a call the verdict must count — the callee
+    # was NOT inlined, the transfer just reused the caller's frame. And
+    # intra-function control flow must NOT count: a b to a raw address (otool
+    # prints local targets as hex), a b.cond, a b back to the function's own
+    # entry (its loop backedge), a b between a function and its own split
+    # .cold chunk (one logical function), and a b to a symbol outside the
+    # runtime/helper sets (the bl policy, mirrored). ----
+    cat > "$ST/tail.disasm" <<'EOF'
+_rt_fix_write_loop:
+0000000100000100	bl	_serialize_write_bits
+0000000100000104	b	_rt_fix_tailee
+_rt_fix_tailee:
+0000000100000200	bl	_serialize_write_bits
+0000000100000204	b	_serialize_flush
+EOF
+    count_calls "$RT" "$HELPER" "$COLD_SPLIT" < "$ST/tail.disasm" > "$VD/counts.txt"
+    n="$(perop_for '^_rt_fix_write_loop$')"
+    m="$(count_for '^_rt_fix_tailee$')"
+    if [ "${m:-0}" = 2 ] && [ "${n:-0}" = 3 ]; then
+        ok "tail-branch fixture: b into the runtime counts direct, b into a helper is an edge (tailee 2, loop 3)"
+    else
+        fail "tail-branch fixture: the tailee must count 2 (bl + tail b into the runtime) and the loop 3 (bl + tail edge through the tailee), got tailee=$m loop=$n — a helper reached by tail call is invisible and its green is a partial wearing a full's face (issue #86)"
+    fi
+    if selftest_join "$ST/tail.disasm" "$VD/counts.txt" "$HELPER"; then
+        ok "join self-test accepts the tail-branch helper join"
+    else
+        fail "join self-test rejected a well-formed tail-branch helper join"
+    fi
+    cat > "$ST/tail-local.disasm" <<'EOF'
+_rt_fix_write_loop:
+0000000100000100	bl	_serialize_write_bits
+0000000100000104	b.ne	0x100000100
+0000000100000108	b	0x100000100
+000000010000010c	b	_rt_fix_write_loop
+0000000100000110	b	_memcpy
+EOF
+    count_calls "$RT" "$HELPER" "$COLD_SPLIT" < "$ST/tail-local.disasm" > "$VD/counts.txt"
+    n="$(perop_for '^_rt_fix_write_loop$')"
+    if [ "${n:-0}" = 1 ]; then
+        ok "tail-branch fixture: local/conditional/self/foreign b forms stay control flow (partial:1 from the bl alone)"
+    else
+        fail "tail-branch fixture: only the bl may count — a hex-target b, a b.cond, a self-branch, and a b outside the runtime/helper sets are not calls (got hot=$n) — counting control flow as calls is the false-partial direction"
+    fi
+    cat > "$ST/tail-cold.disasm" <<'EOF'
+_rt_fix_write_loop:
+0000000100000100	bl	_serialize_write_bits
+0000000100000104	b	_rt_fix_write_loop.cold
+_rt_fix_write_loop.cold:
+0000000100000200	bl	_serialize_write_bits
+_rt_fix_read_loop:
+0000000100000300	b	_serialize_check_overflow.cold
+EOF
+    count_calls "$RT" "$HELPER" "$COLD_SPLIT" < "$ST/tail-cold.disasm" > "$VD/counts.txt"
+    n="$(perop_for '^_rt_fix_write_loop$')"
+    h="$(perop_for '^_rt_fix_read_loop$')"
+    c="$(perop_cold_for '^_rt_fix_read_loop$')"
+    if [ "${n:-0}" = 1 ] && [ "${h:-1}" = 0 ] && [ "${c:-0}" = 1 ]; then
+        ok "tail-branch fixture: own split chunk is control flow (hot 1); a tail b into another function's cold chunk counts cold (hot 0, cold 1)"
+    else
+        fail "tail-branch fixture: a b into the function's own .cold chunk must not count (want hot 1, got hot=$n) and a tail b into another function's cold chunk must count cold, never hot (want hot 0 cold 1, got hot=$h cold=$c)"
+    fi
+
+    # ---- 7. the translated surfaces carry tail transfers too (issue #86):
+    # go tool objdump spells a tail call JMP name(SB) — the n(PC) and (Rn)
+    # forms are intra-function control flow and trampolines, never calls;
+    # JitDisasm spells one b to a method or a raw address — G_M insGroup
+    # labels are intra-method control flow, and an address target is as
+    # opaque as blr, so it counts the same way blr does (§4.1's C# rule:
+    # silently dropping an opaque target would fake a full). ----
+    cat > "$ST/go-tail.objdump" <<'EOF'
+TEXT main.rtFixWriteLoop(SB) /x/main.go
+  main.go:5	0x100	97ffffe0	CALL main.fixHelper(SB)
+  main.go:6	0x104	14000000	JMP main.fixTail(SB)
+  main.go:7	0x108	17fffffe	JMP 2(PC)
+  main.go:8	0x10c	d61f0360	JMP (R27)
+TEXT main.fixTail(SB) /x/main.go
+  main.go:9	0x200	97ffffe0	CALL serialize%2ego.WriteBits(SB)
+EOF
+    go_translate < "$ST/go-tail.objdump" > "$ST/go-tail.calls"
+    count_calls 'serialize%2ego[.]' '^example[.]|^main[.]' '' < "$ST/go-tail.calls" > "$VD/counts.txt"
+    n="$(count_for '^main[.]rtFixWriteLoop$')"
+    if [ "${n:-0}" = 1 ]; then
+        ok "go translation: JMP name(SB) becomes a tail edge carrying the callee's runtime call; n(PC)/(Rn) forms do not"
+    else
+        fail "go translation: a JMP into a generated helper must carry that helper's 1 runtime call to the caller, and n(PC)/(Rn) jumps must not count (got transitive=$n) — the objdump translator drops tail calls (issue #86)"
+    fi
+    cat > "$ST/cs-tail.jit" <<'EOF'
+; Assembly listing for method Program:RtFixWriteLoop() (FullOpts)
+        bl      CORINFO_HELP_ASSIGN_REF
+        b       G_M12345_IG04
+        b       0x16E5B7A0
+EOF
+    cs_translate < "$ST/cs-tail.jit" > "$ST/cs-tail.calls"
+    count_calls '.' '(Example[.]Schema|Program):' '' < "$ST/cs-tail.calls" > "$VD/counts.txt"
+    awk '$1 == "SYM" { $4 += $5 } { print }' "$VD/counts.txt" > "$VD/counts.folded" \
+        && mv "$VD/counts.folded" "$VD/counts.txt"
+    n="$(count_for '^Program:RtFixWriteLoop$')"
+    if [ "${n:-0}" = 2 ]; then
+        ok "cs translation: a tail b past the insGroup labels counts like blr (bl + opaque tail = 2); G_M labels do not"
+    else
+        fail "cs translation: one bl plus one opaque tail b must count 2 with indirect folded, and the G_M label must not count (got $n) — JitDisasm tail transfers are invisible (issue #86)"
+    fi
+
+    # ---- 8. the namespace-join failure MUST be caught (the 4dc9b62 false
     # full: call targets in a namespace the symbol headers never joined) ----
     cat > "$ST/badjoin.disasm" <<'EOF'
 _rt_fix_write_loop:
@@ -345,7 +452,7 @@ EOF
         ok "namespace-join fixture: selftest_join fires on the 4dc9b62 failure class"
     fi
 
-    # ---- 7. unroll division: an unrolled loop divides back to per-op, and a
+    # ---- 9. unroll division: an unrolled loop divides back to per-op, and a
     # count that does not divide REFUSES (unknown) rather than guessing ----
     cat > "$ST/unroll.disasm" <<'EOF'
 _rt_fix_write_loop:
@@ -391,7 +498,7 @@ EOF
         fail "unroll fixture: 7 calls against unroll witness 4 must refuse (-2), got '$n'"
     fi
 
-    # ---- 8. the rust #[cold] source scan: a #[cold] fn is matched by its
+    # ---- 10. the rust #[cold] source scan: a #[cold] fn is matched by its
     # mangled token, a hot fn is not ----
     mkdir -p "$ST/crate/src"
     cat > "$ST/crate/src/lib.rs" <<'EOF'
@@ -407,7 +514,7 @@ EOF
         fail "rust cold scan: regex '$RE' must match the #[cold] fn's mangled token and not the hot fn"
     fi
 
-    # ---- 9. the budget assertion itself must be able to fail ----
+    # ---- 11. the budget assertion itself must be able to fail ----
     cat > "$ST/budget.txt" <<'EOF'
 # lang bench path opt max-hot
 fixture chat write O3 1
@@ -438,7 +545,7 @@ EOF
         fail "budget check: within-budget verdicts must pass"
     fi
 
-    # ---- 10. end-to-end on this host where the toolchain allows: a compiled
+    # ---- 12. end-to-end on this host where the toolchain allows: a compiled
     # binary with a known noinline callee must count as out of line ----
     if command -v otool > /dev/null 2>&1 && command -v cc > /dev/null 2>&1; then
         cat > "$ST/e2e.c" <<'EOF'
