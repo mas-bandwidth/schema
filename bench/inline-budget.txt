@@ -110,8 +110,14 @@ rust probearray write O3 0
 rust probearray read O3 0
 rust testdata write O3 3
 rust testdata read O3 2
-rust message_batch write O3 1
-rust message_batch read O3 1
+# The two rows below moved 1 -> 2 and 1 -> 3 in the same commit that taught
+# count_calls to see tail branches (#86): the extra hot calls were ALWAYS in
+# the binary as tail-called serialize-chain helpers and the old 1 was pinned
+# on the instrument's blind spot, not on a faster tree. Nothing regressed;
+# the measurement got honest. Whether these tails should inline is #77's
+# territory (the rust spine inline demand, measured on PR #88).
+rust message_batch write O3 2
+rust message_batch read O3 3
 rust bench_packet write O3 0
 rust bench_packet read O3 0
 rust bench_ints write O3 0

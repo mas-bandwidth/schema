@@ -36,7 +36,10 @@
 #
 # Ground truth is the §4.1 universal fallback: call instructions counted in
 # the emitted code (otool -tv on this arm64 Mac; go tool objdump for Go;
-# DOTNET_JitDisasm for C#). Compiler remarks are advisory ledger content;
+# DOTNET_JitDisasm for C#) — bl/blr, AND a tail-branch b into another
+# function (issue #86: the callee was not inlined, the transfer just reused
+# the caller's frame; a b to a local label is control flow, never a call).
+# Compiler remarks are advisory ledger content;
 # the disassembly is the verdict. For C# the count follows §4.1 literally —
 # every bl/blr in the method body — because indirect targets are opaque to
 # static counting and silently dropping them would fake a full.
@@ -76,7 +79,7 @@ if [ -z "${INLINE_VERDICT_LIB:-}" ]; then
     . bench/tools/runtime-paths.sh
     runtime_paths_init
 
-    # The native-binary parsing below is otool/arm64-shaped (bl/blr). On a
+    # The native-binary parsing below is otool/arm64-shaped (bl/blr/b). On a
     # machine without otool (the x86-64 EPYC box) the C/C++/Rust verdicts would
     # silently count zero and fake a full — refuse instead; inline stays unknown
     # there until the objdump/x86 adapter is written.
@@ -116,8 +119,12 @@ bench_mixed rt_bench_mixed rtBenchMixed RtBenchMixed
 bitpacker bitpacker bitpacker Bitpacker'
 
 # ---- per-symbol transitive runtime-call counting ----
-# stdin: "sym:" header lines and "addr <bl|blr> target" instruction lines
-# (otool -tv shape; the go/cs branches translate into it). RTPAT = runtime
+# stdin: "sym:" header lines and "addr <bl|blr|b> target" instruction lines
+# (otool -tv shape; the go/cs branches translate into it). A bare b whose
+# target is another function's symbol is a TAIL CALL and counts exactly as
+# bl (issue #86); a b to a raw hex address, to the function's own entry, or
+# between a function and its own split .cold chunk is intra-function control
+# flow and never counts. RTPAT = runtime
 # target regex, HELPER = generated helper regex, COLD = cold-target regex
 # ("" = no cold signal in this language; everything stays hot). The awk-side
 # name is RTPAT, never RT: RT is a BUILT-IN in gawk (the record terminator,
@@ -139,17 +146,32 @@ bitpacker bitpacker bitpacker Bitpacker'
 count_calls() {
     awk -v RTPAT="$1" -v HELPER="$2" -v COLD="${3:-}" '
         function iscold(t) { return COLD != "" && t ~ COLD }
-        /^[^ \t].*:$/ { sym = substr($0, 1, length($0) - 1); syms[sym] = 1; next }
-        $2 == "bl" && sym != "" {
-            t = $3
-            # cold first: a compiler-split chunk of a helper matches both
-            # HELPER and COLD, and must count cold, never become a hot edge
+        # one call-target policy for bl and tail-branch b (issue #86).
+        # cold first: a compiler-split chunk of a helper matches both
+        # HELPER and COLD, and must count cold, never become a hot edge.
+        # helper next: the cs branch passes a catch-all RTPAT, and helper
+        # calls must become edges, never direct counts (the regexes are
+        # disjoint for every other language)
+        function count_target(t) {
             if (iscold(t)) { if (t ~ RTPAT || t ~ HELPER) coldn[sym]++ }
-            # helper next: the cs branch passes a catch-all RTPAT, and helper
-            # calls must become edges, never direct counts (the regexes are
-            # disjoint for every other language)
             else if (t ~ HELPER) edge[sym SUBSEP t]++
             else if (t ~ RTPAT) direct[sym]++
+        }
+        /^[^ \t].*:$/ { sym = substr($0, 1, length($0) - 1); syms[sym] = 1; next }
+        $2 == "bl" && sym != "" { count_target($3) }
+        # a tail branch into another function is a call the verdict must
+        # count (issue #86): the callee was NOT inlined — the transfer just
+        # reused the caller frame. Only a b whose target is ANOTHER function
+        # symbol is a call: a b to a raw address (otool prints intra-function
+        # targets as hex), a b back to the function own entry (its loop
+        # backedge), and a b between a function and its own split chunk
+        # (foo <-> foo.cold/.cold.N — one logical function) are control
+        # flow; b.cond forms never match $2 == "b" at all.
+        $2 == "b" && sym != "" {
+            t = $3
+            if (t ~ /^0x/ || t == sym) next
+            if (index(t, sym ".") == 1 || index(sym, t ".") == 1) next
+            count_target(t)
         }
         $2 == "blr" && sym != "" { indirect[sym]++ }
         END {
@@ -169,6 +191,59 @@ count_calls() {
                 split(k, a, SUBSEP)
                 printf "EDGE %s %s %d\n", a[1], a[2], edge[k]
             }
+        }'
+}
+
+# ---- objdump/JitDisasm -> otool-shape translation ----
+# Library functions (the gate's selftest fixtures attack these, not copies):
+# each turns one toolchain's disassembly into the "sym:" / "addr op target"
+# shape count_calls parses.
+
+# go tool objdump: TEXT headers become symbol headers; CALL name(SB) is a
+# direct call, CALL Rn an indirect one; JMP name(SB) is a tail transfer
+# into another function and counts as a call (issue #86) — the n(PC) and
+# (Rn) JMP forms are intra-function control flow and trampolines, dropped.
+go_translate() {
+    awk '
+        /^TEXT / { name = $2; sub(/\(SB\)$/, "", name); print name ":"; next }
+        {
+            for (i = 1; i <= NF; i++) {
+                if ($i == "CALL") {
+                    t = $(i + 1); sub(/\(SB\)$/, "", t)
+                    if (t ~ /^[A-Z]+[0-9]*$/) print "0 blr " t   # CALL R26: indirect
+                    else print "0 bl " t
+                    break
+                }
+                if ($i == "JMP") {
+                    t = $(i + 1)
+                    if (t ~ /\(SB\)$/) { sub(/\(SB\)$/, "", t); print "0 b " t }
+                    break
+                }
+            }
+        }'
+}
+
+# DOTNET_JitDisasm: method-listing headers become symbol headers; bl and blr
+# lines pass through (per §4.1 the C# count is bl AND blr in the method body;
+# blr targets are opaque, so they are counted rather than silently dropped).
+# A b past the G_M insGroup labels is a tail transfer out of the method
+# (issue #86): every intra-method branch in JitDisasm goes to a G_M label,
+# so a named target counts as a call and a raw-address target is as opaque
+# as blr and counts the same way — dropping either would fake a full.
+cs_translate() {
+    awk '
+        /^; Assembly listing for method / {
+            m = $0; sub(/^; Assembly listing for method /, "", m); sub(/\(.*/, "", m)
+            print m ":"; next
+        }
+        $1 == "bl"  { print "0 bl " $2 }
+        $1 == "blr" { print "0 blr indirect" }
+        $1 == "b" {
+            t = $2
+            if (t ~ /^G_M/) next            # insGroup label: control flow
+            gsub(/[][]/, "", t)
+            if (t ~ /^0x/ || t ~ /^[0-9]/) print "0 blr indirect"
+            else print "0 b " t
         }'
 }
 
@@ -236,6 +311,11 @@ selftest_join() {
         }
         /^[^ \t].*:$/ { sym = substr($0, 1, length($0) - 1); next }
         $2 == "bl" && sym != "" && $3 ~ HELPER { edge[sym SUBSEP $3] = 1; tgt[$3] = 1; nedge++ }
+        # tail-branch helper edges (issue #86), under the same guards
+        # count_calls applies — the join proof must see the same edge set
+        $2 == "b" && sym != "" && $3 !~ /^0x/ && $3 != sym && \
+            index($3, sym ".") != 1 && index(sym, $3 ".") != 1 && \
+            $3 ~ HELPER { edge[sym SUBSEP $3] = 1; tgt[$3] = 1; nedge++ }
         END {
             if (nedge == 0) exit 0      # no helper edges anywhere: nothing to prove
             resolved = 0
@@ -446,10 +526,16 @@ c|cpp)
         count_calls "$RT" "$HELPER" "$COLD_SPLIT" < "$VD/shadow-disasm.txt" > "$VD/shadow-counts.txt"
         selftest_join "$VD/shadow-disasm.txt" "$VD/shadow-counts.txt" "$HELPER" || exit 1
 
-        # every remaining runtime/helper call site in the shadow text
+        # every remaining runtime/helper call site in the shadow text —
+        # tail-branch b sites included (issue #86), under the same guards
+        # count_calls applies: raw-address, own-entry, and own-split-chunk
+        # b forms are control flow, not call sites
         awk -v RTPAT="$RT" -v HELPER="$HELPER" '
-            /^[^ \t].*:$/ { next }
+            /^[^ \t].*:$/ { sym = substr($0, 1, length($0) - 1); next }
             $2 == "bl" && ($3 ~ RTPAT || $3 ~ HELPER) { print $1, $3 }
+            $2 == "b" && $3 !~ /^0x/ && $3 != sym && \
+                index($3, sym ".") != 1 && index(sym, $3 ".") != 1 && \
+                ($3 ~ RTPAT || $3 ~ HELPER) { print $1, $3 }
         ' "$VD/shadow-disasm.txt" > "$VD/addrs.txt"
 
         # drift guard, as cpp: hot+cold totals must match the measured binary
@@ -628,10 +714,16 @@ c|cpp)
         count_calls "$RT" "$HELPER" "$COLD_SPLIT" < "$VD/shadow-disasm.txt" > "$VD/shadow-counts.txt"
         selftest_join "$VD/shadow-disasm.txt" "$VD/shadow-counts.txt" "$HELPER" || exit 1
 
-        # every remaining runtime/helper call site in the shadow text
+        # every remaining runtime/helper call site in the shadow text —
+        # tail-branch b sites included (issue #86), under the same guards
+        # count_calls applies: raw-address, own-entry, and own-split-chunk
+        # b forms are control flow, not call sites
         awk -v RTPAT="$RT" -v HELPER="$HELPER" '
-            /^[^ \t].*:$/ { next }
+            /^[^ \t].*:$/ { sym = substr($0, 1, length($0) - 1); next }
             $2 == "bl" && ($3 ~ RTPAT || $3 ~ HELPER) { print $1, $3 }
+            $2 == "b" && $3 !~ /^0x/ && $3 != sym && \
+                index($3, sym ".") != 1 && index(sym, $3 ".") != 1 && \
+                ($3 ~ RTPAT || $3 ~ HELPER) { print $1, $3 }
         ' "$VD/shadow-disasm.txt" > "$VD/addrs.txt"
 
         # drift guard: the shadow must have the same call structure as the
@@ -825,17 +917,7 @@ go)
     go tool objdump "$VD/benchgo" > "$VD/objdump.txt" 2>/dev/null
 
     # translate objdump into the otool shape count_calls parses
-    awk '
-        /^TEXT / { name = $2; sub(/\(SB\)$/, "", name); print name ":"; next }
-        {
-            for (i = 1; i <= NF; i++)
-                if ($i == "CALL") {
-                    t = $(i + 1); sub(/\(SB\)$/, "", t)
-                    if (t ~ /^[A-Z]+[0-9]*$/) print "0 blr " t   # CALL R26: indirect
-                    else print "0 bl " t
-                    break
-                }
-        }' "$VD/objdump.txt" > "$VD/calls.txt"
+    go_translate < "$VD/objdump.txt" > "$VD/calls.txt"
     # COLD is empty: gc has no cold attribute, no section split, and no
     # remark that marks a callee cold — §4.2's hot-default applies to every
     # Go call, and the ledger note below says so out loud.
@@ -851,7 +933,7 @@ go)
     # as a call target should be one -m=2 could not inline, or one whose
     # callers ran out of budget — and the ledger says which.
     : > "$VD/crosscheck.txt"
-    awk '$2 == "bl" && $3 ~ /serialize%2ego\./ { print $3 }' "$VD/calls.txt" | sort -u | while read -r target; do
+    awk '($2 == "bl" || $2 == "b") && $3 ~ /serialize%2ego\./ { print $3 }' "$VD/calls.txt" | sort -u | while read -r target; do
         short="${target##*serialize%2ego.}"
         if grep -qF "cannot inline $short" "$VD/serialize-remarks.txt"; then
             echo "AGREE: $short is a call target and -m=2 says cannot inline" >> "$VD/crosscheck.txt"
@@ -946,6 +1028,11 @@ rust)
         }
         $2 == "bl"  { print $1 " bl CRATE_" firstcrate($3) "_" $3; next }
         $2 == "blr" { print $1 " blr indirect"; next }
+        # tail branches (issue #86): a b to a raw address is intra-function
+        # control flow, dropped here; a b to a symbol gets the same crate
+        # rename as bl targets so count_calls sees one namespace (its own
+        # self/own-chunk guards then apply on the renamed names)
+        $2 == "b" && $3 !~ /^0x/ { print $1 " b CRATE_" firstcrate($3) "_" $3; next }
     ' > "$VD/disasm.txt"
     count_calls '^CRATE_serialize_' '^CRATE_(example|benchrust)_' "$COLD_RS" < "$VD/disasm.txt" > "$VD/counts.txt"
     selftest_join "$VD/disasm.txt" "$VD/counts.txt" '^CRATE_(example|benchrust)_' || exit 1
@@ -1028,17 +1115,10 @@ cs)
       dotnet run -c Release --no-build -- --round 0 > /dev/null 2>&1 ) || true
     [ -s "$JIT" ] || { echo "JitDisasm produced nothing — is the Release build present?" >&2; exit 1; }
 
-    # translate JitDisasm blocks into the otool shape. Per §4.1 the C# count
-    # is bl AND blr in the method body; blr targets are opaque, so they are
-    # counted as runtime calls rather than silently dropped.
-    awk '
-        /^; Assembly listing for method / {
-            m = $0; sub(/^; Assembly listing for method /, "", m); sub(/\(.*/, "", m)
-            print m ":"; next
-        }
-        $1 == "bl"  { print "0 bl " $2 }
-        $1 == "blr" { print "0 blr indirect" }
-    ' "$JIT" > "$VD/calls.txt"
+    # translate JitDisasm blocks into the otool shape (cs_translate above:
+    # per §4.1 the C# count is bl AND blr in the method body; blr targets
+    # are opaque, so they are counted rather than silently dropped)
+    cs_translate < "$JIT" > "$VD/calls.txt"
     # COLD is empty: JitDisasm names no cold blocks or targets on this
     # surface — §4.2's hot-default applies to every C# call, said out loud
     # in the section header below.

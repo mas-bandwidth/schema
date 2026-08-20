@@ -74,8 +74,16 @@ func TestDispatchSurfaceEmittedOnce(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, needle := range []string{
-		"pub struct MessageType(", "pub enum Message {", "pub fn write_message(", "pub fn read_message(",
-		"pub fn write_message_type(", "pub struct ObjectType(", "pub fn write_object_type(",
+		"pub struct MessageType(", "pub enum Message {", "pub struct ObjectType(",
+		// the inline taxonomy rides on the dispatch-once gate, as the C++
+		// twin's does below. Rust's line is NOT C++'s: the WRITE spines and
+		// tag writers demand, and every READ surface plus write_message keeps
+		// the plain hint — the C++ blanket read demand was ported, measured,
+		// and refused (see rust/inline.go's read-half note).
+		"#[inline(always)]\npub fn write_message_type(", "#[inline(always)]\npub fn write_object_type(",
+		"#[inline]\npub fn write_message(", "#[inline]\npub fn read_message(",
+		"#[inline]\npub fn read_message_into(", "#[inline]\npub fn read_message_type(",
+		"#[inline]\npub fn read_object_type(",
 	} {
 		if got := countAcross(rustFiles, needle); got != 1 {
 			t.Errorf("Rust: %q emitted %d times across the unit — the crate cannot compile unless it is exactly once", needle, got)

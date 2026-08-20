@@ -35,7 +35,7 @@ impl Default for RenderSprite {
 pub const RENDER_SPRITE_MAX_BITS: u64 = 138;
 pub const RENDER_SPRITE_MAX_BYTES: usize = 24;
 
-#[inline]
+#[inline(always)]
 pub fn write_render_sprite(stream: &mut WriteStream<'_>, value: &RenderSprite) -> Result {
     {
         let mut raw_value = value.sort_key;
@@ -108,7 +108,7 @@ impl Default for RenderBlock {
 pub const RENDER_BLOCK_MAX_BITS: u64 = 8903;
 pub const RENDER_BLOCK_MAX_BYTES: usize = 1120;
 
-#[inline]
+#[inline(always)]
 pub fn write_render_block(stream: &mut WriteStream<'_>, value: &RenderBlock) -> Result {
     {
         let mut raw_value = value.worker_index;

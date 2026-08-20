@@ -36,7 +36,7 @@ impl Default for Heartbeat {
 pub const HEARTBEAT_MAX_BITS: u64 = 0;
 pub const HEARTBEAT_MAX_BYTES: usize = 0;
 
-#[inline]
+#[inline(always)]
 pub fn write_heartbeat(stream: &mut WriteStream<'_>, value: &Heartbeat) -> Result {
     let _ = (stream, value); // empty body — presence is the payload (SPEC §4.6)
     Ok(())
@@ -75,7 +75,7 @@ impl Default for Test {
 pub const TEST_MAX_BITS: u64 = 46;
 pub const TEST_MAX_BYTES: usize = 8;
 
-#[inline]
+#[inline(always)]
 pub fn write_test(stream: &mut WriteStream<'_>, value: &Test) -> Result {
     {
         let mut raw_value = value.test_a as u32;
@@ -153,7 +153,7 @@ impl Default for Block {
 pub const BLOCK_MAX_BITS: u64 = 16018;
 pub const BLOCK_MAX_BYTES: usize = 2008;
 
-#[inline]
+#[inline(always)]
 pub fn write_block(stream: &mut WriteStream<'_>, value: &Block) -> Result {
     if value.data_length < 0 || value.data_length > 2000 { // refused, not wrapped or panicked: guards the slice too
         return Err(Error::Stream(serialize::Error::ValueOutOfRange));
@@ -196,7 +196,7 @@ impl Default for Chat {
 pub const CHAT_MAX_BITS: u64 = 2064;
 pub const CHAT_MAX_BYTES: usize = 264;
 
-#[inline]
+#[inline(always)]
 pub fn write_chat(stream: &mut WriteStream<'_>, value: &Chat) -> Result {
     if value.text_length < 0 || value.text_length > 256 { // refused, not wrapped or panicked: guards the slice too
         return Err(Error::Stream(serialize::Error::ValueOutOfRange));
@@ -248,7 +248,7 @@ impl Default for Synchronize {
 pub const SYNCHRONIZE_MAX_BITS: u64 = 80;
 pub const SYNCHRONIZE_MAX_BYTES: usize = 16;
 
-#[inline]
+#[inline(always)]
 pub fn write_synchronize(stream: &mut WriteStream<'_>, value: &Synchronize) -> Result {
     {
         let mut raw_value = value.sync_frame;
@@ -297,7 +297,7 @@ impl Default for Timescale {
 pub const TIMESCALE_MAX_BITS: u64 = 128;
 pub const TIMESCALE_MAX_BYTES: usize = 16;
 
-#[inline]
+#[inline(always)]
 pub fn write_timescale(stream: &mut WriteStream<'_>, value: &Timescale) -> Result {
     {
         let mut float_value = value.scale;
@@ -324,7 +324,7 @@ pub fn read_timescale(stream: &mut ReadStream<'_>, value: &mut Timescale) -> Res
 
 // The message tag wire: MessageType in [0, 6], minimal bits; None = 0 is a
 // valid wire value meaning *no message* — the stream terminator (SPEC §4.8).
-#[inline]
+#[inline(always)]
 pub fn write_message_type(stream: &mut WriteStream<'_>, value: MessageType) -> Result {
     debug_assert!(value.0 as u32 <= 6); // the runtime ranged form's write assert, kept (debug parity)
     {
@@ -363,6 +363,13 @@ pub enum Message {
     Timescale(Timescale),
 }
 
+// write_message is deliberately OUTSIDE the write-spine inlining demand:
+// plain #[inline], not #[inline(always)]. Its callees (every per-message
+// write_*) flatten into its body, but the dispatch match itself stays a
+// call boundary — demanding the C++ twin into a batch build loop was
+// measured to slow that loop ~21% while every per-message row kept its
+// win with the boundary in place (schema #60). The compiler remains free
+// to inline it where that pays.
 #[inline]
 pub fn write_message(stream: &mut WriteStream<'_>, message: &Message) -> Result {
     match message {

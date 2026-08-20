@@ -71,7 +71,7 @@ impl Default for ProbeHeader {
 pub const PROBE_HEADER_MAX_BITS: u64 = 87;
 pub const PROBE_HEADER_MAX_BYTES: usize = 16;
 
-#[inline]
+#[inline(always)]
 pub fn write_probe_header(stream: &mut WriteStream<'_>, value: &ProbeHeader) -> Result {
     {
         let mut const_value: u32 = 171;
@@ -149,7 +149,7 @@ impl Default for ProbeBits {
 pub const PROBE_BITS_MAX_BITS: u64 = 202;
 pub const PROBE_BITS_MAX_BYTES: usize = 32;
 
-#[inline]
+#[inline(always)]
 pub fn write_probe_bits(stream: &mut WriteStream<'_>, value: &ProbeBits) -> Result {
     if value.small >= 1 << 9 {
         return Err(Error::Stream(serialize::Error::ValueOutOfRange));
@@ -258,7 +258,7 @@ impl ProbeSample {
 pub const PROBE_SAMPLE_MAX_BITS: u64 = 276;
 pub const PROBE_SAMPLE_MAX_BYTES: usize = 40;
 
-#[inline]
+#[inline(always)]
 pub fn write_probe_sample(stream: &mut WriteStream<'_>, value: &ProbeSample) -> Result {
     {
         let mut bool_value = value.active;
@@ -399,7 +399,7 @@ impl ProbeConfig {
 pub const PROBE_CONFIG_MAX_BITS: u64 = 36;
 pub const PROBE_CONFIG_MAX_BYTES: usize = 8;
 
-#[inline]
+#[inline(always)]
 pub fn write_probe_config(stream: &mut WriteStream<'_>, value: &ProbeConfig) -> Result {
     {
         let mut raw_value = value.retries as u32;
@@ -467,7 +467,7 @@ impl ProbeArray {
 pub const PROBE_ARRAY_MAX_BITS: u64 = 588;
 pub const PROBE_ARRAY_MAX_BYTES: usize = 80;
 
-#[inline]
+#[inline(always)]
 pub fn write_probe_array(stream: &mut WriteStream<'_>, value: &ProbeArray) -> Result {
     for i in 0..2 {
         write_probe_sample(stream, &value.samples[i])?;
@@ -510,7 +510,7 @@ impl Default for ProbeReport {
 pub const PROBE_REPORT_MAX_BITS: u64 = 141;
 pub const PROBE_REPORT_MAX_BYTES: usize = 24;
 
-#[inline]
+#[inline(always)]
 pub fn write_probe_report(stream: &mut WriteStream<'_>, value: &ProbeReport) -> Result {
     write_probe_header(stream, &value.header)?;
     if value.flags >= 1 << 8 {
@@ -602,7 +602,7 @@ impl Default for TestData {
 pub const TEST_DATA_MAX_BITS: u64 = 2735;
 pub const TEST_DATA_MAX_BYTES: usize = 344;
 
-#[inline]
+#[inline(always)]
 pub fn write_test_data(stream: &mut WriteStream<'_>, value: &TestData) -> Result {
     if value.a < -100 || value.a > 100 { // out-of-contract writes are refused, not wrapped
         return Err(Error::Stream(serialize::Error::ValueOutOfRange));
@@ -809,7 +809,7 @@ impl Default for CompressedProbe {
 pub const COMPRESSED_PROBE_MAX_BITS: u64 = 24;
 pub const COMPRESSED_PROBE_MAX_BYTES: usize = 8;
 
-#[inline]
+#[inline(always)]
 pub fn write_compressed_probe(stream: &mut WriteStream<'_>, value: &CompressedProbe) -> Result {
     {
         let mut compressed_value = value.boundary;
