@@ -406,7 +406,7 @@ func (g *gen) emitConst(d *ir.Const) {
 	if !d.Int.IsInt64() {
 		// above INT64_MAX a bare decimal literal is ill-formed C++ — only a
 		// uint64-typed constant can hold such a value, so the suffix is right
-		g.pf("inline constexpr %s %s = %sull; // = %s\n", typ, d.Name, d.Int.String(), schemaExpr(d.Expr))
+		g.pf("inline constexpr %s %s = %sull; // = %s\n", typ, d.Name, d.Int.String(), ir.RenderExpr(d.Expr))
 		g.emitted[d.Name] = true
 		return
 	}
@@ -417,8 +417,8 @@ func (g *gen) emitConst(d *ir.Const) {
 // foldComment returns a trailing comment carrying the schema expression when
 // the rendered C++ had to fold it (an E.Max reference has no C++ twin).
 func (g *gen) foldComment(e ast.Expr) string {
-	if containsMax(e) {
-		return fmt.Sprintf(" // = %s", schemaExpr(e))
+	if ir.ExprHasEnumMax(e) {
+		return fmt.Sprintf(" // = %s", ir.RenderExpr(e))
 	}
 	return ""
 }
@@ -562,7 +562,7 @@ func (g *gen) emitField(f *ir.Field, v view) {
 		st := f.Type.Ref.(*ir.Struct)
 		if f.FixedShallow {
 			g.pf("    // %s: %s narrowed to %d fractional bits (quantize = %s) — per-component\n",
-				f.Name, f.Type.Name, f.QuantShift, schemaExpr(f.QuantScaleExpr))
+				f.Name, f.Type.Name, f.QuantShift, ir.RenderExpr(f.QuantScaleExpr))
 			g.pf("    // quantized units; bounds are the component's whole-unit [min, max] scaled\n")
 			for _, comp := range st.Fields {
 				lo, hi, _, _, typ := fixedShallowComp(f, comp)
@@ -571,7 +571,7 @@ func (g *gen) emitField(f *ir.Field, v view) {
 			return
 		}
 		g.pf("    // %s: %s quantized by %s, max %s — per-component int in [-%d, %d]\n",
-			f.Name, f.Type.Name, schemaExpr(f.QuantScaleExpr), schemaExpr(f.QuantMaxExpr), f.QuantBound, f.QuantBound)
+			f.Name, f.Type.Name, ir.RenderExpr(f.QuantScaleExpr), ir.RenderExpr(f.QuantMaxExpr), f.QuantBound, f.QuantBound)
 		typ := cppInt(smallestSigned(f.QuantBound))
 		for _, comp := range st.Fields {
 			g.pf("    %s %s_%s = 0;\n", typ, f.Name, comp.Name)
@@ -605,11 +605,11 @@ func (g *gen) emitStorageField(f *ir.Field) {
 	switch {
 	case f.Type.Kind == ir.TString:
 		g.pf("    char %s[%s + 1] = {}; // string(%s): max length, used length beside it (SPEC §4.7)\n",
-			f.Name, g.renderInt(f.Type.SizeExpr, big.NewInt(f.Type.Size)), schemaExpr(f.Type.SizeExpr))
+			f.Name, g.renderInt(f.Type.SizeExpr, big.NewInt(f.Type.Size)), ir.RenderExpr(f.Type.SizeExpr))
 		g.pf("    int32_t %s_length = 0;\n", f.Name)
 	case f.Type.Kind == ir.TBytes:
 		g.pf("    uint8_t %s[%s] = {}; // bytes(%s): fixed buffer, used length beside it (SPEC §4.7)\n",
-			f.Name, g.renderInt(f.Type.SizeExpr, big.NewInt(f.Type.Size)), schemaExpr(f.Type.SizeExpr))
+			f.Name, g.renderInt(f.Type.SizeExpr, big.NewInt(f.Type.Size)), ir.RenderExpr(f.Type.SizeExpr))
 		g.pf("    int32_t %s_length = 0;\n", f.Name)
 	case f.Array == ir.ArrayFixed:
 		g.pf("    %s %s[%s] = {};%s\n", typ, f.Name, g.renderInt(f.ArrayExpr, big.NewInt(f.ArrayBound)), g.fieldComment(f))
@@ -780,7 +780,7 @@ func (g *gen) renderInt(e ast.Expr, folded *big.Int) string {
 	if folded != nil && folded.IsInt64() && folded.Int64() == math.MinInt64 {
 		return "( -9223372036854775807ll - 1 )" // INT64_MIN has no literal spelling in C++
 	}
-	if e == nil || containsMax(e) || !g.renderable(e) || !g.overflowSafe(e) {
+	if e == nil || ir.ExprHasEnumMax(e) || !g.renderable(e) || !g.overflowSafe(e) {
 		return folded.String()
 	}
 	return g.renderExpr(e)
@@ -900,85 +900,29 @@ func (g *gen) render128(e ast.Expr, folded *big.Int, signed bool) string {
 	return composed
 }
 
+// renderable: C++ needs every referenced constant declared before use in the
+// translation unit — same-file references render only after their declaration
+// is emitted; a cross-file reference is carried by the include graph.
 func (g *gen) renderable(e ast.Expr) bool {
-	switch e := e.(type) {
-	case *ast.IdentExpr:
-		base, ok := g.unit.DeclFile[e.Name]
+	for _, name := range ir.ExprConsts(e) {
+		base, ok := g.unit.DeclFile[name]
 		if !ok {
 			return false
 		}
-		if base == g.file.Base {
-			return g.emitted[e.Name] // same file: only if already emitted above
+		if base == g.file.Base && !g.emitted[name] {
+			return false
 		}
-		return true // cross-file: the include carries it
-	case *ast.UnaryExpr:
-		return g.renderable(e.X)
-	case *ast.BinaryExpr:
-		return g.renderable(e.X) && g.renderable(e.Y)
-	case *ast.ParenExpr:
-		return g.renderable(e.X)
 	}
 	return true
 }
 
+// renderExpr renders an expression in C++ form: constants keep the schema
+// spelling, and every reference is noted for the include graph.
 func (g *gen) renderExpr(e ast.Expr) string {
-	switch e := e.(type) {
-	case *ast.IntLit:
-		return e.Text
-	case *ast.FloatLit:
-		return e.Text
-	case *ast.IdentExpr:
-		g.noteRef(e.Name)
-		return e.Name
-	case *ast.UnaryExpr:
-		inner := g.renderExpr(e.X)
-		if strings.HasPrefix(inner, "-") {
-			// "--x" is decrement in C++, not double negation (found by
-			// FuzzGeneratedCompiles, issue #22)
-			return "-(" + inner + ")"
-		}
-		return "-" + inner
-	case *ast.BinaryExpr:
-		return fmt.Sprintf("%s %s %s", g.renderExpr(e.X), e.Op, g.renderExpr(e.Y))
-	case *ast.ParenExpr:
-		return "(" + g.renderExpr(e.X) + ")"
-	}
-	return "?"
-}
-
-// schemaExpr renders an expression in schema source form, for comments.
-func schemaExpr(e ast.Expr) string {
-	switch e := e.(type) {
-	case *ast.IntLit:
-		return e.Text
-	case *ast.FloatLit:
-		return e.Text
-	case *ast.IdentExpr:
-		return e.Name
-	case *ast.MaxExpr:
-		return e.Enum + ".Max"
-	case *ast.UnaryExpr:
-		return "-" + schemaExpr(e.X)
-	case *ast.BinaryExpr:
-		return fmt.Sprintf("%s %s %s", schemaExpr(e.X), e.Op, schemaExpr(e.Y))
-	case *ast.ParenExpr:
-		return "(" + schemaExpr(e.X) + ")"
-	}
-	return "?"
-}
-
-func containsMax(e ast.Expr) bool {
-	switch e := e.(type) {
-	case *ast.MaxExpr:
-		return true
-	case *ast.UnaryExpr:
-		return containsMax(e.X)
-	case *ast.BinaryExpr:
-		return containsMax(e.X) || containsMax(e.Y)
-	case *ast.ParenExpr:
-		return containsMax(e.X)
-	}
-	return false
+	return ir.RenderExprIdent(e, func(name string) string {
+		g.noteRef(name)
+		return name
+	})
 }
 
 func cppConstType(storage string) string {

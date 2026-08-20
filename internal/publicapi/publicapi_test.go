@@ -328,5 +328,22 @@ func wantClientOutput(t *testing.T) string {
 		fmt.Fprintf(&b, "%s %d bits %d bytes %d fields\n",
 			name, ir.MaxBitsStruct(st), ir.MaxBytes(ir.MaxBitsStruct(st)), len(st.Fields))
 	}
+	// the issue #89 surface: declared bounds rendered as source expressions,
+	// mirrored line for line in the external module's widths generator
+	structs := make([]string, 0, len(u.Structs))
+	for name := range u.Structs {
+		structs = append(structs, name)
+	}
+	sort.Strings(structs)
+	for _, name := range structs {
+		for _, f := range u.Structs[name].Fields {
+			if len(ir.ExprConsts(f.IntMaxExpr)) == 0 || ir.ExprHasEnumMax(f.IntMaxExpr) {
+				continue
+			}
+			fmt.Fprintf(&b, "bound %s.%s max = %s | %s = %s\n", name, f.Name,
+				ir.RenderExpr(f.IntMaxExpr),
+				ir.RenderExprIdent(f.IntMaxExpr, ir.RustConstName), f.IntMax)
+		}
+	}
 	return b.String()
 }

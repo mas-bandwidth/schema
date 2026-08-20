@@ -122,7 +122,7 @@ func (g *gen) emitViewStorageField(f *ir.Field, v view) {
 		st := f.Type.Ref.(*ir.Struct)
 		if f.FixedShallow {
 			g.pf("    // %s: %s narrowed to %d fractional bits (quantize = %s) — per-component\n",
-				f.Name, f.Type.Name, f.QuantShift, schemaExpr(f.QuantScaleExpr))
+				f.Name, f.Type.Name, f.QuantShift, ir.RenderExpr(f.QuantScaleExpr))
 			g.pf("    // quantized units; bounds are the component's whole-unit [min, max] scaled\n")
 			for _, comp := range st.Fields {
 				lo, hi, width := fixedShallowComp(f, comp)
@@ -132,7 +132,7 @@ func (g *gen) emitViewStorageField(f *ir.Field, v view) {
 			return
 		}
 		g.pf("    // %s: %s quantized by %s, max %s — per-component int in [-%d, %d]\n",
-			f.Name, f.Type.Name, schemaExpr(f.QuantScaleExpr), schemaExpr(f.QuantMaxExpr), f.QuantBound, f.QuantBound)
+			f.Name, f.Type.Name, ir.RenderExpr(f.QuantScaleExpr), ir.RenderExpr(f.QuantMaxExpr), f.QuantBound, f.QuantBound)
 		for _, comp := range st.Fields {
 			g.pf("    this.%s%s = %s;\n", name, ir.GoExportName(comp.Name), zeroForWidth(smallestSigned(f.QuantBound)))
 		}
