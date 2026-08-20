@@ -172,6 +172,40 @@ count_calls() {
         }'
 }
 
+# ---- objdump/JitDisasm -> otool-shape translation ----
+# Library functions (the gate's selftest fixtures attack these, not copies):
+# each turns one toolchain's disassembly into the "sym:" / "addr op target"
+# shape count_calls parses.
+
+# go tool objdump: TEXT headers become symbol headers; CALL name(SB) is a
+# direct call, CALL Rn an indirect one.
+go_translate() {
+    awk '
+        /^TEXT / { name = $2; sub(/\(SB\)$/, "", name); print name ":"; next }
+        {
+            for (i = 1; i <= NF; i++)
+                if ($i == "CALL") {
+                    t = $(i + 1); sub(/\(SB\)$/, "", t)
+                    if (t ~ /^[A-Z]+[0-9]*$/) print "0 blr " t   # CALL R26: indirect
+                    else print "0 bl " t
+                    break
+                }
+        }'
+}
+
+# DOTNET_JitDisasm: method-listing headers become symbol headers; bl and blr
+# lines pass through (per §4.1 the C# count is bl AND blr in the method body;
+# blr targets are opaque, so they are counted rather than silently dropped).
+cs_translate() {
+    awk '
+        /^; Assembly listing for method / {
+            m = $0; sub(/^; Assembly listing for method /, "", m); sub(/\(.*/, "", m)
+            print m ":"; next
+        }
+        $1 == "bl"  { print "0 bl " $2 }
+        $1 == "blr" { print "0 blr indirect" }'
+}
+
 # verdict from a transitive HOT count: 0 -> full, N -> partial:N
 verdict_of() {
     if [ "$1" -eq 0 ]; then echo "full"; else echo "partial:$1"; fi
@@ -825,17 +859,7 @@ go)
     go tool objdump "$VD/benchgo" > "$VD/objdump.txt" 2>/dev/null
 
     # translate objdump into the otool shape count_calls parses
-    awk '
-        /^TEXT / { name = $2; sub(/\(SB\)$/, "", name); print name ":"; next }
-        {
-            for (i = 1; i <= NF; i++)
-                if ($i == "CALL") {
-                    t = $(i + 1); sub(/\(SB\)$/, "", t)
-                    if (t ~ /^[A-Z]+[0-9]*$/) print "0 blr " t   # CALL R26: indirect
-                    else print "0 bl " t
-                    break
-                }
-        }' "$VD/objdump.txt" > "$VD/calls.txt"
+    go_translate < "$VD/objdump.txt" > "$VD/calls.txt"
     # COLD is empty: gc has no cold attribute, no section split, and no
     # remark that marks a callee cold — §4.2's hot-default applies to every
     # Go call, and the ledger note below says so out loud.
@@ -1028,17 +1052,10 @@ cs)
       dotnet run -c Release --no-build -- --round 0 > /dev/null 2>&1 ) || true
     [ -s "$JIT" ] || { echo "JitDisasm produced nothing — is the Release build present?" >&2; exit 1; }
 
-    # translate JitDisasm blocks into the otool shape. Per §4.1 the C# count
-    # is bl AND blr in the method body; blr targets are opaque, so they are
-    # counted as runtime calls rather than silently dropped.
-    awk '
-        /^; Assembly listing for method / {
-            m = $0; sub(/^; Assembly listing for method /, "", m); sub(/\(.*/, "", m)
-            print m ":"; next
-        }
-        $1 == "bl"  { print "0 bl " $2 }
-        $1 == "blr" { print "0 blr indirect" }
-    ' "$JIT" > "$VD/calls.txt"
+    # translate JitDisasm blocks into the otool shape (cs_translate above:
+    # per §4.1 the C# count is bl AND blr in the method body; blr targets
+    # are opaque, so they are counted rather than silently dropped)
+    cs_translate < "$JIT" > "$VD/calls.txt"
     # COLD is empty: JitDisasm names no cold blocks or targets on this
     # surface — §4.2's hot-default applies to every C# call, said out loud
     # in the section header below.
