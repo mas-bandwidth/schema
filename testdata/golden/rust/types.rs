@@ -782,7 +782,7 @@ impl Default for ExpressionProbe {
 pub const EXPRESSION_PROBE_MAX_BITS: u64 = 16;
 pub const EXPRESSION_PROBE_MAX_BYTES: usize = 8;
 
-#[inline]
+#[inline(always)]
 pub fn write_expression_probe(stream: &mut WriteStream<'_>, value: &ExpressionProbe) -> Result {
     if value.hardpoint_index < 0 || value.hardpoint_index > 31 { // out-of-contract writes are refused, not wrapped
         return Err(Error::Stream(serialize::Error::ValueOutOfRange));
