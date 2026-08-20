@@ -800,7 +800,7 @@ func rustStorage(s string) string {
 // (untyped-in-schema, i64-in-Rust) constants casts to the required type — the
 // same renderability rule as the Go target, so both fold identically.
 func (g *gen) renderArg(e ast.Expr, folded *big.Int, typ string) string {
-	if e == nil || ir.ExprHasEnumMax(e) || !g.renderable(e) {
+	if e == nil || ir.ExprHasEnumMax(e) || !g.renderable(e) || !g.overflowSafe(e) {
 		return folded.String()
 	}
 	if !containsIdent(e) {
@@ -839,6 +839,84 @@ func (g *gen) renderScaleF32(e ast.Expr, folded int64) string {
 		return s + " as f32"
 	}
 	return "(" + s + ") as f32"
+}
+
+// overflowSafe reports whether e can render symbolically without the
+// TARGET's arithmetic overflowing on the way to the folded value. Schema
+// folding is arbitrary-precision; Rust is not, and rustc DENIES the overflow
+// (`arithmetic_overflow` is deny by default), so a doubled unary minus over
+// an INT64_MIN constant renders symbolically as -(-FLOOR_LIMIT) — an
+// intermediate one past i64::MAX that is a build break even though the outer
+// minus brings the value home (issue #99; the C and C# backends' carrierEval
+// already folds this shape). A symbolic rendering evaluates in i64: every
+// renderable constant is a bare schema const — i64 in Rust — and the
+// literals beside one infer i64 through the operations, so the carrier is
+// uniform where C's is split. Anything unprovable folds — folding is always
+// correct, symbolic rendering is the luxury; for the shapes this gate
+// newly folds, the folded text is the spelling generated Rust already
+// compiles for the same values.
+func (g *gen) overflowSafe(e ast.Expr) bool {
+	_, ok := g.i64Eval(e)
+	return ok
+}
+
+// i64Eval returns e's folded value and whether every subexpression's value
+// fits the i64 arithmetic a symbolic Rust rendering evaluates in. A bare
+// IntLit past i64::MAX also reports unsafe: it renders no better than its
+// fold (the text is identical), and admitting it would let an enclosing
+// operation evaluate a too-wide operand.
+func (g *gen) i64Eval(e ast.Expr) (*big.Int, bool) {
+	switch e := e.(type) {
+	case *ast.IntLit:
+		return e.Value, e.Value.IsInt64()
+	case *ast.IdentExpr:
+		c, ok := g.unit.Consts[e.Name]
+		if !ok || c.IsFloat || c.Int == nil || !c.Int.IsInt64() {
+			return nil, false
+		}
+		return c.Int, true
+	case *ast.ParenExpr:
+		return g.i64Eval(e.X)
+	case *ast.UnaryExpr:
+		v, ok := g.i64Eval(e.X)
+		if !ok {
+			return nil, false
+		}
+		nv := new(big.Int).Neg(v)
+		return nv, nv.IsInt64()
+	case *ast.BinaryExpr:
+		x, ok := g.i64Eval(e.X)
+		if !ok {
+			return nil, false
+		}
+		y, ok := g.i64Eval(e.Y)
+		if !ok {
+			return nil, false
+		}
+		v := new(big.Int)
+		switch e.Op {
+		case "+":
+			v.Add(x, y)
+		case "-":
+			v.Sub(x, y)
+		case "*":
+			v.Mul(x, y)
+		case "/":
+			if y.Sign() == 0 {
+				return nil, false
+			}
+			v.Quo(x, y) // truncation toward zero, as Rust divides
+		case "%":
+			if y.Sign() == 0 {
+				return nil, false
+			}
+			v.Rem(x, y)
+		default:
+			return nil, false
+		}
+		return v, v.IsInt64()
+	}
+	return nil, false
 }
 
 // renderable: every referenced constant must be a BARE (untyped) integer
