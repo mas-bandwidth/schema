@@ -848,7 +848,7 @@ impl ExtremeProbe {
 pub const EXTREME_PROBE_MAX_BITS: u64 = 192;
 pub const EXTREME_PROBE_MAX_BYTES: usize = 24;
 
-#[inline]
+#[inline(always)]
 pub fn write_extreme_probe(stream: &mut WriteStream<'_>, value: &ExtremeProbe) -> Result {
     if value.floor_bound > 100 { // out-of-contract writes are refused, not wrapped
         return Err(Error::Stream(serialize::Error::ValueOutOfRange));
@@ -927,7 +927,7 @@ impl ExtremeRow {
 pub const EXTREME_ROW_MAX_BITS: u64 = 192;
 pub const EXTREME_ROW_MAX_BYTES: usize = 24;
 
-#[inline]
+#[inline(always)]
 pub fn write_extreme_row(stream: &mut WriteStream<'_>, value: &ExtremeRow) -> Result {
     if value.clamped_floor > 100 { // out-of-contract writes are refused, not wrapped
         return Err(Error::Stream(serialize::Error::ValueOutOfRange));
