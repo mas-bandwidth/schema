@@ -311,14 +311,14 @@ func (g *gen) emitWriteRangedFold64(expr string, exprIsU64, exprIsU32 bool, lo s
 // into an unconstrained literal, so `(-100) as u32` refuses to compile — while
 // a symbolic render keeps its own typing through the referenced consts.
 func (g *gen) foldArg32(e ast.Expr, folded *big.Int) string {
-	if e == nil || containsMax(e) || !g.renderable(e) || !containsIdent(e) {
+	if e == nil || ir.ExprHasEnumMax(e) || !g.renderable(e) || !containsIdent(e) {
 		return folded.String() + "_i32"
 	}
 	return g.renderArg(e, folded, "i32")
 }
 
 func (g *gen) foldArg64(e ast.Expr, folded *big.Int) string {
-	if e == nil || containsMax(e) || !g.renderable(e) || !containsIdent(e) {
+	if e == nil || ir.ExprHasEnumMax(e) || !g.renderable(e) || !containsIdent(e) {
 		return folded.String() + "_i64"
 	}
 	return g.renderArg(e, folded, "i64")

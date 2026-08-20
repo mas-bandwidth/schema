@@ -2,7 +2,7 @@
    SPDX-License-Identifier: NONE — this generated output is yours, under terms of
    your choice. See the LICENSE exception in the schema compiler; the compiler is
    AGPL-3.0, its output is not.
-   package example — protocol id 0x01125e6515d05ec4 */
+   package example — protocol id 0x39e4aa9c08faf8f8 */
 
 #ifndef SCHEMA_EXAMPLE_MESSAGESWIRE_H
 #define SCHEMA_EXAMPLE_MESSAGESWIRE_H
@@ -184,7 +184,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_test( serialize_write_strea
     {
         return 0;
     }
-    if ( (serialize_int64_t) value->test_b < 0LL || (serialize_int64_t) value->test_b > 1000LL )
+    if ( (serialize_int64_t) value->test_b < 0 || (serialize_int64_t) value->test_b > 1000 )
     {
         return 0; /* out-of-contract writes are refused, not wrapped */
     }
@@ -192,7 +192,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_test( serialize_write_strea
     {
         return 0;
     }
-    if ( (serialize_int64_t) value->test_c < 0LL || (serialize_int64_t) value->test_c > 1000LL )
+    if ( (serialize_int64_t) value->test_c < 0 || (serialize_int64_t) value->test_c > 1000 )
     {
         return 0; /* out-of-contract writes are refused, not wrapped */
     }
@@ -200,7 +200,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_test( serialize_write_strea
     {
         return 0;
     }
-    if ( (serialize_int64_t) value->test_d < 0LL || (serialize_int64_t) value->test_d > 1000LL )
+    if ( (serialize_int64_t) value->test_d < 0 || (serialize_int64_t) value->test_d > 1000 )
     {
         return 0; /* out-of-contract writes are refused, not wrapped */
     }
@@ -272,7 +272,7 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_test( serialize_read_stream_t
    error, so a caller may check once at the end of a message. */
 static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_block( serialize_write_stream_t * stream, const Block * value )
 {
-    if ( !serialize_write_int( stream, value->data_length, 0, 2000 ) )
+    if ( !serialize_write_int( stream, value->data_length, 0, MAX_BLOCK_SIZE ) )
     {
         return 0;
     }
@@ -287,7 +287,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_block( serialize_write_stre
    REFUSED, never clamped. */
 static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_block( serialize_read_stream_t * stream, Block * value )
 {
-    if ( !serialize_read_int( stream, &value->data_length, 0, 2000 ) )
+    if ( !serialize_read_int( stream, &value->data_length, 0, MAX_BLOCK_SIZE ) )
     {
         return 0;
     }
@@ -303,7 +303,7 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_block( serialize_read_stream_
 static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_chat( serialize_write_stream_t * stream, const Chat * value )
 {
     serialize_assert( schema_utf8_valid_( (const serialize_uint8_t *) value->text, value->text_length ) );
-    if ( !serialize_write_int( stream, value->text_length, 0, 256 ) )
+    if ( !serialize_write_int( stream, value->text_length, 0, MAX_CHAT_LENGTH ) )
     {
         return 0;
     }
@@ -318,7 +318,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_chat( serialize_write_strea
    REFUSED, never clamped. */
 static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_chat( serialize_read_stream_t * stream, Chat * value )
 {
-    if ( !serialize_read_int( stream, &value->text_length, 0, 256 ) )
+    if ( !serialize_read_int( stream, &value->text_length, 0, MAX_CHAT_LENGTH ) )
     {
         return 0;
     }

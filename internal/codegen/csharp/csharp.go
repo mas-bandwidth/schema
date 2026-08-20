@@ -300,8 +300,8 @@ func (g *gen) emitConst(d *ir.Const) {
 // foldComment returns a trailing comment carrying the schema expression when
 // the rendered C# had to fold it (an E.Max reference has no C# twin).
 func (g *gen) foldComment(e ast.Expr) string {
-	if e != nil && containsMax(e) {
-		return fmt.Sprintf(" // = %s", schemaExpr(e))
+	if e != nil && ir.ExprHasEnumMax(e) {
+		return fmt.Sprintf(" // = %s", ir.RenderExpr(e))
 	}
 	return ""
 }
@@ -502,7 +502,7 @@ func (g *gen) emitField(f *ir.Field, v view) {
 		st := f.Type.Ref.(*ir.Struct)
 		if f.FixedShallow {
 			g.tf("    // %s: %s narrowed to %d fractional bits (quantize = %s) — per-component\n",
-				f.Name, f.Type.Name, f.QuantShift, schemaExpr(f.QuantScaleExpr))
+				f.Name, f.Type.Name, f.QuantShift, ir.RenderExpr(f.QuantScaleExpr))
 			g.tf("    // quantized units; bounds are the component's whole-unit [min, max] scaled\n")
 			for _, comp := range st.Fields {
 				lo, hi, _, typ, _ := fixedShallowComp(f, comp)
@@ -511,7 +511,7 @@ func (g *gen) emitField(f *ir.Field, v view) {
 			return
 		}
 		g.tf("    // %s: %s quantized by %s, max %s — per-component int in [-%d, %d]\n",
-			f.Name, f.Type.Name, schemaExpr(f.QuantScaleExpr), schemaExpr(f.QuantMaxExpr), f.QuantBound, f.QuantBound)
+			f.Name, f.Type.Name, ir.RenderExpr(f.QuantScaleExpr), ir.RenderExpr(f.QuantMaxExpr), f.QuantBound, f.QuantBound)
 		typ := csInt(smallestSigned(f.QuantBound))
 		for _, comp := range st.Fields {
 			g.tf("    public %s %s;\n", typ, g.m(ir.GoExportName(f.Name)+ir.GoExportName(comp.Name)))
@@ -543,18 +543,18 @@ func (g *gen) emitStorageField(f *ir.Field) {
 	switch {
 	case f.Type.Kind == ir.TString:
 		g.tf("    public byte[] %s = new byte[%s]; // string(%s): max length, used length beside it (SPEC §4.7)\n",
-			name, g.renderArg(f.Type.SizeExpr, big.NewInt(f.Type.Size), "", true), schemaExpr(f.Type.SizeExpr))
+			name, g.renderArg(f.Type.SizeExpr, big.NewInt(f.Type.Size), "", true), ir.RenderExpr(f.Type.SizeExpr))
 		g.tf("    public int %s;\n", g.m(name+"Length"))
 	case f.Type.Kind == ir.TBytes:
 		g.tf("    public byte[] %s = new byte[%s]; // bytes(%s): fixed buffer, used length beside it (SPEC §4.7)\n",
-			name, g.renderArg(f.Type.SizeExpr, big.NewInt(f.Type.Size), "", true), schemaExpr(f.Type.SizeExpr))
+			name, g.renderArg(f.Type.SizeExpr, big.NewInt(f.Type.Size), "", true), ir.RenderExpr(f.Type.SizeExpr))
 		g.tf("    public int %s;\n", g.m(name+"Length"))
 	case f.Array == ir.ArrayFixed:
 		g.tf("    public %s[] %s = new %s[%s];%s\n",
 			typ, name, typ, g.renderArg(f.ArrayExpr, big.NewInt(f.ArrayBound), "", true), g.fieldComment(f))
 	case f.Array == ir.ArrayCounted:
 		g.tf("    public %s[] %s = new %s[%s]; // used count beside it; wire count in [%d, %s]\n",
-			typ, name, typ, g.renderArg(f.ArrayExpr, big.NewInt(f.ArrayBound), "", true), f.ArrayMin, schemaExpr(f.ArrayExpr))
+			typ, name, typ, g.renderArg(f.ArrayExpr, big.NewInt(f.ArrayBound), "", true), f.ArrayMin, ir.RenderExpr(f.ArrayExpr))
 		g.tf("    public int %s;\n", g.m(name+"Count"))
 	default:
 		init := ""
@@ -717,7 +717,7 @@ func csStorage(s string) string {
 // constants casts to the required type — the same renderability rule as the
 // Go and Rust targets, so all three fold identically.
 func (g *gen) renderArg(e ast.Expr, folded *big.Int, typ string, qualified bool) string {
-	if e == nil || containsMax(e) || !g.renderable(e) || !g.overflowSafe(e) {
+	if e == nil || ir.ExprHasEnumMax(e) || !g.renderable(e) || !g.overflowSafe(e) {
 		return folded.String()
 	}
 	if !containsIdent(e) {
@@ -736,7 +736,7 @@ func (g *gen) renderArg(e ast.Expr, folded *big.Int, typ string, qualified bool)
 // renderScaleF64 renders a quantization scale in double arithmetic: symbolic
 // consts cast ((double)PositionUnits), folded values become double literals.
 func (g *gen) renderScaleF64(e ast.Expr, folded int64) string {
-	if e == nil || containsMax(e) || !g.renderable(e) || !containsIdent(e) {
+	if e == nil || ir.ExprHasEnumMax(e) || !g.renderable(e) || !containsIdent(e) {
 		return strconv.FormatInt(folded, 10) + ".0"
 	}
 	s := renderExpr(e, false)
@@ -748,7 +748,7 @@ func (g *gen) renderScaleF64(e ast.Expr, folded int64) string {
 
 // renderScaleF32 is renderScaleF64's float twin, for float component division.
 func (g *gen) renderScaleF32(e ast.Expr, folded int64) string {
-	if e == nil || containsMax(e) || !g.renderable(e) || !containsIdent(e) {
+	if e == nil || ir.ExprHasEnumMax(e) || !g.renderable(e) || !containsIdent(e) {
 		return strconv.FormatInt(folded, 10) + ".0f"
 	}
 	s := renderExpr(e, false)
@@ -837,17 +837,15 @@ func fitsCarrier(v *big.Int, wide bool) bool {
 	return v.IsInt64() && v.Int64() >= math.MinInt32 && v.Int64() <= math.MaxInt32
 }
 
+// renderable: every referenced constant must be a BARE (untyped) integer
+// schema const — a typed const is a typed C# const, which forces casts at
+// use sites of other types.
 func (g *gen) renderable(e ast.Expr) bool {
-	switch e := e.(type) {
-	case *ast.IdentExpr:
-		c, ok := g.unit.Consts[e.Name]
-		return ok && !c.IsFloat && !c.Explicit
-	case *ast.UnaryExpr:
-		return g.renderable(e.X)
-	case *ast.BinaryExpr:
-		return g.renderable(e.X) && g.renderable(e.Y)
-	case *ast.ParenExpr:
-		return g.renderable(e.X)
+	for _, name := range ir.ExprConsts(e) {
+		c, ok := g.unit.Consts[name]
+		if !ok || c.IsFloat || c.Explicit {
+			return false
+		}
 	}
 	return true
 }
@@ -856,78 +854,16 @@ func (g *gen) renderable(e ast.Expr) bool {
 // references with "Schema." for render sites outside the Schema class (class
 // field initializers) — inside Schema the bare name resolves.
 func renderExpr(e ast.Expr, qualified bool) string {
-	switch e := e.(type) {
-	case *ast.IntLit:
-		return e.Text
-	case *ast.FloatLit:
-		return e.Text
-	case *ast.IdentExpr:
-		if qualified {
-			return "Schema." + e.Name
-		}
-		return e.Name
-	case *ast.UnaryExpr:
-		inner := renderExpr(e.X, qualified)
-		if strings.HasPrefix(inner, "-") {
-			// "--x" is decrement in C#, not double negation (issue #22)
-			return "-(" + inner + ")"
-		}
-		return "-" + inner
-	case *ast.BinaryExpr:
-		return fmt.Sprintf("%s %s %s", renderExpr(e.X, qualified), e.Op, renderExpr(e.Y, qualified))
-	case *ast.ParenExpr:
-		return "(" + renderExpr(e.X, qualified) + ")"
+	if qualified {
+		return ir.RenderExprIdent(e, func(name string) string { return "Schema." + name })
 	}
-	return "?"
+	return ir.RenderExprIdent(e, nil)
 }
 
-// schemaExpr renders an expression in schema source form, for comments.
-func schemaExpr(e ast.Expr) string {
-	switch e := e.(type) {
-	case *ast.IntLit:
-		return e.Text
-	case *ast.FloatLit:
-		return e.Text
-	case *ast.IdentExpr:
-		return e.Name
-	case *ast.MaxExpr:
-		return e.Enum + ".Max"
-	case *ast.UnaryExpr:
-		return "-" + schemaExpr(e.X)
-	case *ast.BinaryExpr:
-		return fmt.Sprintf("%s %s %s", schemaExpr(e.X), e.Op, schemaExpr(e.Y))
-	case *ast.ParenExpr:
-		return "(" + schemaExpr(e.X) + ")"
-	}
-	return "?"
-}
-
-func containsMax(e ast.Expr) bool {
-	switch e := e.(type) {
-	case *ast.MaxExpr:
-		return true
-	case *ast.UnaryExpr:
-		return containsMax(e.X)
-	case *ast.BinaryExpr:
-		return containsMax(e.X) || containsMax(e.Y)
-	case *ast.ParenExpr:
-		return containsMax(e.X)
-	}
-	return false
-}
-
+// containsIdent reports whether e references any named constant — a literal
+// expression renders no better than its folded value.
 func containsIdent(e ast.Expr) bool {
-	switch e := e.(type) {
-	case *ast.IdentExpr:
-		return true
-	case *ast.UnaryExpr:
-		return containsIdent(e.X)
-	case *ast.BinaryExpr:
-		return containsIdent(e.X) || containsIdent(e.Y)
-	case *ast.ParenExpr:
-		return containsIdent(e.X)
-	}
-	return false
+	return len(ir.ExprConsts(e)) > 0
 }
 
 // csRender128 renders a 128-bit bound as C# source. Values inside long ride

@@ -2,7 +2,7 @@
    SPDX-License-Identifier: NONE — this generated output is yours, under terms of
    your choice. See the LICENSE exception in the schema compiler; the compiler is
    AGPL-3.0, its output is not.
-   package example — protocol id 0x01125e6515d05ec4 */
+   package example — protocol id 0x39e4aa9c08faf8f8 */
 
 #ifndef SCHEMA_EXAMPLE_RENDERWIRE_H
 #define SCHEMA_EXAMPLE_RENDERWIRE_H
@@ -140,7 +140,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_render_block( serialize_wri
     {
         return 0;
     }
-    if ( !serialize_write_int( stream, value->sprites_count, 0, 64 ) )
+    if ( !serialize_write_int( stream, value->sprites_count, 0, RENDER_BLOCK_MAX_SPRITES ) )
     {
         return 0;
     }
@@ -177,7 +177,7 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_render_block( serialize_read_
         }
         value->sprite_count_hint = (uint32_t) raw;
     }
-    if ( !serialize_read_int( stream, &value->sprites_count, 0, 64 ) )
+    if ( !serialize_read_int( stream, &value->sprites_count, 0, RENDER_BLOCK_MAX_SPRITES ) )
     {
         return 0;
     }

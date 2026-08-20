@@ -299,8 +299,8 @@ func (g *gen) emitConst(d *ir.Const) {
 // foldComment returns a trailing comment carrying the schema expression when
 // the rendered Rust had to fold it (an E.Max reference has no Rust twin).
 func (g *gen) foldComment(e ast.Expr) string {
-	if e != nil && containsMax(e) {
-		return fmt.Sprintf(" // = %s", schemaExpr(e))
+	if e != nil && ir.ExprHasEnumMax(e) {
+		return fmt.Sprintf(" // = %s", ir.RenderExpr(e))
 	}
 	return ""
 }
@@ -652,7 +652,7 @@ func (g *gen) emitField(f *ir.Field, v view) {
 		st := f.Type.Ref.(*ir.Struct)
 		if f.FixedShallow {
 			g.pf("    // %s: %s narrowed to %d fractional bits (quantize = %s) — per-component\n",
-				f.Name, f.Type.Name, f.QuantShift, schemaExpr(f.QuantScaleExpr))
+				f.Name, f.Type.Name, f.QuantShift, ir.RenderExpr(f.QuantScaleExpr))
 			g.pf("    // quantized units; bounds are the component's whole-unit [min, max] scaled\n")
 			for _, comp := range st.Fields {
 				lo, hi, _, _, typ, _ := fixedShallowComp(f, comp)
@@ -661,7 +661,7 @@ func (g *gen) emitField(f *ir.Field, v view) {
 			return
 		}
 		g.pf("    // %s: %s quantized by %s, max %s — per-component int in [-%d, %d]\n",
-			f.Name, f.Type.Name, schemaExpr(f.QuantScaleExpr), schemaExpr(f.QuantMaxExpr), f.QuantBound, f.QuantBound)
+			f.Name, f.Type.Name, ir.RenderExpr(f.QuantScaleExpr), ir.RenderExpr(f.QuantMaxExpr), f.QuantBound, f.QuantBound)
 		typ := rustInt(smallestSigned(f.QuantBound))
 		for _, comp := range st.Fields {
 			g.pf("    pub %s_%s: %s,\n", f.Name, comp.Name, typ)
@@ -692,17 +692,17 @@ func (g *gen) emitStorageField(f *ir.Field) {
 	switch {
 	case f.Type.Kind == ir.TString:
 		g.pf("    pub %s: [u8; %s], // string(%s): max length, used length beside it (SPEC §4.7)\n",
-			f.Name, g.renderArg(f.Type.SizeExpr, big.NewInt(f.Type.Size), "usize"), schemaExpr(f.Type.SizeExpr))
+			f.Name, g.renderArg(f.Type.SizeExpr, big.NewInt(f.Type.Size), "usize"), ir.RenderExpr(f.Type.SizeExpr))
 		g.pf("    pub %s_length: i32,\n", f.Name)
 	case f.Type.Kind == ir.TBytes:
 		g.pf("    pub %s: [u8; %s], // bytes(%s): fixed buffer, used length beside it (SPEC §4.7)\n",
-			f.Name, g.renderArg(f.Type.SizeExpr, big.NewInt(f.Type.Size), "usize"), schemaExpr(f.Type.SizeExpr))
+			f.Name, g.renderArg(f.Type.SizeExpr, big.NewInt(f.Type.Size), "usize"), ir.RenderExpr(f.Type.SizeExpr))
 		g.pf("    pub %s_length: i32,\n", f.Name)
 	case f.Array == ir.ArrayFixed:
 		g.pf("    pub %s: [%s; %s],%s\n", f.Name, typ, g.renderArg(f.ArrayExpr, big.NewInt(f.ArrayBound), "usize"), g.fieldComment(f))
 	case f.Array == ir.ArrayCounted:
 		g.pf("    pub %s: [%s; %s], // used count beside it; wire count in [%d, %s]\n",
-			f.Name, typ, g.renderArg(f.ArrayExpr, big.NewInt(f.ArrayBound), "usize"), f.ArrayMin, schemaExpr(f.ArrayExpr))
+			f.Name, typ, g.renderArg(f.ArrayExpr, big.NewInt(f.ArrayBound), "usize"), f.ArrayMin, ir.RenderExpr(f.ArrayExpr))
 		g.pf("    pub %s_count: i32,\n", f.Name)
 	default:
 		g.pf("    pub %s: %s,%s\n", f.Name, typ, g.fieldComment(f))
@@ -800,7 +800,7 @@ func rustStorage(s string) string {
 // (untyped-in-schema, i64-in-Rust) constants casts to the required type — the
 // same renderability rule as the Go target, so both fold identically.
 func (g *gen) renderArg(e ast.Expr, folded *big.Int, typ string) string {
-	if e == nil || containsMax(e) || !g.renderable(e) {
+	if e == nil || ir.ExprHasEnumMax(e) || !g.renderable(e) {
 		return folded.String()
 	}
 	if !containsIdent(e) {
@@ -819,7 +819,7 @@ func (g *gen) renderArg(e ast.Expr, folded *big.Int, typ string) string {
 // renderScaleF64 renders a quantization scale in f64 arithmetic: symbolic
 // consts cast (`POSITION_UNITS as f64`), folded values become float literals.
 func (g *gen) renderScaleF64(e ast.Expr, folded int64) string {
-	if e == nil || containsMax(e) || !g.renderable(e) || !containsIdent(e) {
+	if e == nil || ir.ExprHasEnumMax(e) || !g.renderable(e) || !containsIdent(e) {
 		return strconv.FormatInt(folded, 10) + ".0"
 	}
 	s := renderExpr(e)
@@ -831,7 +831,7 @@ func (g *gen) renderScaleF64(e ast.Expr, folded int64) string {
 
 // renderScaleF32 is renderScaleF64's f32 twin, for f32 component division.
 func (g *gen) renderScaleF32(e ast.Expr, folded int64) string {
-	if e == nil || containsMax(e) || !g.renderable(e) || !containsIdent(e) {
+	if e == nil || ir.ExprHasEnumMax(e) || !g.renderable(e) || !containsIdent(e) {
 		return strconv.FormatInt(folded, 10) + ".0"
 	}
 	s := renderExpr(e)
@@ -841,92 +841,29 @@ func (g *gen) renderScaleF32(e ast.Expr, folded int64) string {
 	return "(" + s + ") as f32"
 }
 
+// renderable: every referenced constant must be a BARE (untyped) integer
+// schema const — a typed const is a typed Rust const, which forces `as`
+// casts at use sites of other types.
 func (g *gen) renderable(e ast.Expr) bool {
-	switch e := e.(type) {
-	case *ast.IdentExpr:
-		c, ok := g.unit.Consts[e.Name]
-		return ok && !c.IsFloat && !c.Explicit
-	case *ast.UnaryExpr:
-		return g.renderable(e.X)
-	case *ast.BinaryExpr:
-		return g.renderable(e.X) && g.renderable(e.Y)
-	case *ast.ParenExpr:
-		return g.renderable(e.X)
+	for _, name := range ir.ExprConsts(e) {
+		c, ok := g.unit.Consts[name]
+		if !ok || c.IsFloat || c.Explicit {
+			return false
+		}
 	}
 	return true
 }
 
+// renderExpr renders an expression in Rust form: constants are spelled
+// SCREAMING_SNAKE, the way the Rust target declares them.
 func renderExpr(e ast.Expr) string {
-	switch e := e.(type) {
-	case *ast.IntLit:
-		return e.Text
-	case *ast.FloatLit:
-		return e.Text
-	case *ast.IdentExpr:
-		return ir.RustConstName(e.Name)
-	case *ast.UnaryExpr:
-		inner := renderExpr(e.X)
-		if strings.HasPrefix(inner, "-") {
-			// "--x" is rejected by rustc (no prefix decrement); double
-			// negation needs parens (issue #22)
-			return "-(" + inner + ")"
-		}
-		return "-" + inner
-	case *ast.BinaryExpr:
-		return fmt.Sprintf("%s %s %s", renderExpr(e.X), e.Op, renderExpr(e.Y))
-	case *ast.ParenExpr:
-		return "(" + renderExpr(e.X) + ")"
-	}
-	return "?"
+	return ir.RenderExprIdent(e, ir.RustConstName)
 }
 
-// schemaExpr renders an expression in schema source form, for comments.
-func schemaExpr(e ast.Expr) string {
-	switch e := e.(type) {
-	case *ast.IntLit:
-		return e.Text
-	case *ast.FloatLit:
-		return e.Text
-	case *ast.IdentExpr:
-		return e.Name
-	case *ast.MaxExpr:
-		return e.Enum + ".Max"
-	case *ast.UnaryExpr:
-		return "-" + schemaExpr(e.X)
-	case *ast.BinaryExpr:
-		return fmt.Sprintf("%s %s %s", schemaExpr(e.X), e.Op, schemaExpr(e.Y))
-	case *ast.ParenExpr:
-		return "(" + schemaExpr(e.X) + ")"
-	}
-	return "?"
-}
-
-func containsMax(e ast.Expr) bool {
-	switch e := e.(type) {
-	case *ast.MaxExpr:
-		return true
-	case *ast.UnaryExpr:
-		return containsMax(e.X)
-	case *ast.BinaryExpr:
-		return containsMax(e.X) || containsMax(e.Y)
-	case *ast.ParenExpr:
-		return containsMax(e.X)
-	}
-	return false
-}
-
+// containsIdent reports whether e references any named constant — a literal
+// expression renders no better than its folded value.
 func containsIdent(e ast.Expr) bool {
-	switch e := e.(type) {
-	case *ast.IdentExpr:
-		return true
-	case *ast.UnaryExpr:
-		return containsIdent(e.X)
-	case *ast.BinaryExpr:
-		return containsIdent(e.X) || containsIdent(e.Y)
-	case *ast.ParenExpr:
-		return containsIdent(e.X)
-	}
-	return false
+	return len(ir.ExprConsts(e)) > 0
 }
 
 func rustInt(width int) string  { return fmt.Sprintf("i%d", width) }

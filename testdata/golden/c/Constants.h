@@ -2,7 +2,7 @@
    SPDX-License-Identifier: NONE — this generated output is yours, under terms of
    your choice. See the LICENSE exception in the schema compiler; the compiler is
    AGPL-3.0, its output is not.
-   package example — protocol id 0x01125e6515d05ec4 */
+   package example — protocol id 0x39e4aa9c08faf8f8 */
 
 #ifndef SCHEMA_EXAMPLE_CONSTANTS_H
 #define SCHEMA_EXAMPLE_CONSTANTS_H
@@ -25,22 +25,22 @@ extern "C" {
 
 /* The unit's protocol id — the hash of its schema files (SPEC §3.1). Two
    sides at the same id speak identical bits; there is no other versioning. */
-#define EXAMPLE_PROTOCOL_ID 0x01125e6515d05ec4ULL
+#define EXAMPLE_PROTOCOL_ID 0x39e4aa9c08faf8f8ULL
 
 #define POSITION_UNITS (1024)
 #define VELOCITY_UNITS (1024)
 #define ROTATION_UNITS (1024)
 #define MAX_WORLD_METERS (8192)
-#define MAX_POSITION_UNITS (8388608)
+#define MAX_POSITION_UNITS (MAX_WORLD_METERS * POSITION_UNITS)
 #define MAX_SPEED_METERS (2048)
-#define MAX_VELOCITY_UNITS (2097152)
+#define MAX_VELOCITY_UNITS (MAX_SPEED_METERS * VELOCITY_UNITS)
 #define MAX_HEALTH (1000)
 #define MAX_OBJECTS (10000)
 #define SHIP_MAX_LASERS (16)
 #define SHIP_MAX_MISSILES (16)
 #define MAX_TURRETS_PER_SHIP (256)
 #define MAX_COLLIDERS_PER_SHIP (64)
-#define NUM_TEAMS (2)
+#define NUM_TEAMS (2) /* = Team.Max */
 #define MAX_INPUTS_PER_PACKET (16)
 #define MAX_BLOCK_SIZE (2000)
 #define MAX_CHAT_LENGTH (256)

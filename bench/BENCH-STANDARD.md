@@ -740,6 +740,12 @@ with its tier — a method inlined into all its callers does not appear.
 > on arm64 and `call` on x86-64. Go: `go tool objdump -s <symbol>`. C#: count `bl`/`blr`
 > in the `DOTNET_JitDisasm` output.
 >
+> A tail branch counts as a call (issue #86): a `b` on arm64 (`jmp` on x86-64,
+> `JMP name(SB)` in Go objdump) whose target is **another function's symbol** is a
+> transfer into a callee that was *not* inlined — it just reused the caller's frame.
+> A branch to a local label or raw address inside the same function is control flow,
+> not a call, and never counts.
+>
 > A fully inlined chain has **zero** calls into the serialize runtime inside the loop
 > body. This is language-independent and compiler-version-independent, and it is the
 > number the standard actually cares about.

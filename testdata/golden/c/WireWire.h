@@ -2,7 +2,7 @@
    SPDX-License-Identifier: NONE — this generated output is yours, under terms of
    your choice. See the LICENSE exception in the schema compiler; the compiler is
    AGPL-3.0, its output is not.
-   package example — protocol id 0x01125e6515d05ec4 */
+   package example — protocol id 0x39e4aa9c08faf8f8 */
 
 #ifndef SCHEMA_EXAMPLE_WIREWIRE_H
 #define SCHEMA_EXAMPLE_WIREWIRE_H
@@ -650,7 +650,7 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_probe_report( serialize_read_
    error, so a caller may check once at the end of a message. */
 static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_test_data( serialize_write_stream_t * stream, const TestData * value )
 {
-    if ( (serialize_int64_t) value->a < -100LL || (serialize_int64_t) value->a > 100LL )
+    if ( (serialize_int64_t) value->a < -100 || (serialize_int64_t) value->a > 100 )
     {
         return 0; /* out-of-contract writes are refused, not wrapped */
     }
@@ -658,7 +658,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_test_data( serialize_write_
     {
         return 0;
     }
-    if ( (serialize_int64_t) value->b < -100LL || (serialize_int64_t) value->b > 100LL )
+    if ( (serialize_int64_t) value->b < -100 || (serialize_int64_t) value->b > 100 )
     {
         return 0; /* out-of-contract writes are refused, not wrapped */
     }
@@ -666,7 +666,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_test_data( serialize_write_
     {
         return 0;
     }
-    if ( (serialize_int64_t) value->c < -100LL || (serialize_int64_t) value->c > 150LL )
+    if ( (serialize_int64_t) value->c < -100 || (serialize_int64_t) value->c > 150 )
     {
         return 0; /* out-of-contract writes are refused, not wrapped */
     }
@@ -698,7 +698,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_test_data( serialize_write_
         int32_t i;
         for ( i = 0; i < value->items_count; i++ )
         {
-            if ( (serialize_int64_t) value->items[i] < 0LL || (serialize_int64_t) value->items[i] > 255LL )
+            if ( (serialize_int64_t) value->items[i] < 0 || (serialize_int64_t) value->items[i] > 255 )
             {
                 return 0; /* out-of-contract writes are refused, not wrapped */
             }
@@ -748,7 +748,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_test_data( serialize_write_
     {
         return 0;
     }
-    if ( (serialize_int64_t) value->int64_range < -1000000000000LL || (serialize_int64_t) value->int64_range > 1000000000000LL )
+    if ( (serialize_int64_t) value->int64_range < -1000000000000 || (serialize_int64_t) value->int64_range > 1000000000000 )
     {
         return 0; /* out-of-contract writes are refused, not wrapped */
     }

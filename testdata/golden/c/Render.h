@@ -2,7 +2,7 @@
    SPDX-License-Identifier: NONE — this generated output is yours, under terms of
    your choice. See the LICENSE exception in the schema compiler; the compiler is
    AGPL-3.0, its output is not.
-   package example — protocol id 0x01125e6515d05ec4 */
+   package example — protocol id 0x39e4aa9c08faf8f8 */
 
 #ifndef SCHEMA_EXAMPLE_RENDER_H
 #define SCHEMA_EXAMPLE_RENDER_H
@@ -43,7 +43,7 @@ typedef struct RenderSprite {
 typedef struct RenderBlock {
     uint32_t worker_index;
     uint32_t sprite_count_hint;
-    RenderSprite sprites[64];
+    RenderSprite sprites[RENDER_BLOCK_MAX_SPRITES];
     int32_t sprites_count;
 } RenderBlock;
 

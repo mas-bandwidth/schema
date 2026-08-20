@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package example — protocol id 0x01125e6515d05ec4
+// package example — protocol id 0x39e4aa9c08faf8f8
 
 #pragma once
 
@@ -393,6 +393,22 @@ SCHEMA_READ_INLINE bool ReadShipCreate( serialize::ReadStream & stream, ShipCrea
         read_int( stream, enum_value, 0, 0 );
         value.pending = Pending( enum_value );
     }
+    return true;
+}
+
+SCHEMA_WRITE_INLINE bool WriteExpressionProbe( serialize::WriteStream & stream, const ExpressionProbe & value )
+{
+    serialize_assert( int32_t( value.hardpoint_index ) >= int32_t( 0 ) && int32_t( value.hardpoint_index ) <= int32_t( (ShipMaxLasers + ShipMaxMissiles) - 1 ) );
+    write_bits( stream, uint32_t( value.hardpoint_index ), 5 );
+    serialize_assert( int32_t( value.spin_rate ) >= int32_t( -(-RotationUnits) ) && int32_t( value.spin_rate ) <= int32_t( RotationUnits * 2 ) );
+    write_bits( stream, uint32_t( value.spin_rate ) - uint32_t( -(-RotationUnits) ), 11 );
+    return true;
+}
+
+SCHEMA_READ_INLINE bool ReadExpressionProbe( serialize::ReadStream & stream, ExpressionProbe & value )
+{
+    read_int( stream, value.hardpoint_index, 0, (ShipMaxLasers + ShipMaxMissiles) - 1 );
+    read_int( stream, value.spin_rate, -(-RotationUnits), RotationUnits * 2 );
     return true;
 }
 

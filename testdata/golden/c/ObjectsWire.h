@@ -2,7 +2,7 @@
    SPDX-License-Identifier: NONE — this generated output is yours, under terms of
    your choice. See the LICENSE exception in the schema compiler; the compiler is
    AGPL-3.0, its output is not.
-   package example — protocol id 0x01125e6515d05ec4 */
+   package example — protocol id 0x39e4aa9c08faf8f8 */
 
 #ifndef SCHEMA_EXAMPLE_OBJECTSWIRE_H
 #define SCHEMA_EXAMPLE_OBJECTSWIRE_H
@@ -143,7 +143,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_ship_data_deep( serialize_w
     {
         return 0;
     }
-    if ( (serialize_int64_t) value->laser_index < 0LL || (serialize_int64_t) value->laser_index > 15LL )
+    if ( (serialize_int64_t) value->laser_index < 0 || (serialize_int64_t) value->laser_index > SHIP_MAX_LASERS - 1 )
     {
         return 0; /* out-of-contract writes are refused, not wrapped */
     }
@@ -151,7 +151,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_ship_data_deep( serialize_w
     {
         return 0;
     }
-    if ( (serialize_int64_t) value->missile_index < 0LL || (serialize_int64_t) value->missile_index > 15LL )
+    if ( (serialize_int64_t) value->missile_index < 0 || (serialize_int64_t) value->missile_index > SHIP_MAX_MISSILES - 1 )
     {
         return 0; /* out-of-contract writes are refused, not wrapped */
     }
@@ -1331,7 +1331,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_turret_data_deep( serialize
     {
         return 0;
     }
-    if ( (serialize_int64_t) value->turret_index < 0LL || (serialize_int64_t) value->turret_index > 255LL )
+    if ( (serialize_int64_t) value->turret_index < 0 || (serialize_int64_t) value->turret_index > MAX_TURRETS_PER_SHIP - 1 )
     {
         return 0; /* out-of-contract writes are refused, not wrapped */
     }
@@ -1393,7 +1393,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_turret_data_shallow( serial
     {
         return 0;
     }
-    if ( (serialize_int64_t) value->turret_index < 0LL || (serialize_int64_t) value->turret_index > 255LL )
+    if ( (serialize_int64_t) value->turret_index < 0 || (serialize_int64_t) value->turret_index > MAX_TURRETS_PER_SHIP - 1 )
     {
         return 0; /* out-of-contract writes are refused, not wrapped */
     }
