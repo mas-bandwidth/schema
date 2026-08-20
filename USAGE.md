@@ -22,6 +22,7 @@ compiler does.
 - [Reading untrusted data](#reading-untrusted-data)
 - [Packing JSON into binary](#packing-json-into-binary)
 - [The protocol id](#the-protocol-id)
+- [Embedding the compiler](#embedding-the-compiler)
 - [Per-language notes](#per-language-notes)
 
 ---
@@ -485,6 +486,121 @@ not talk to each other at all. Check it during your handshake.
 
 There is no version tag on the wire — that is the point. The id is how you
 find out, once, at connect time, instead of paying for it on every packet.
+
+---
+
+## Embedding the compiler
+
+The compiler is a Go library as well as a binary. `cmd/schema` is a client of
+that library and holds nothing else — the flags, the printing, the exit codes —
+so anything the CLI does, your program can do.
+
+```go
+import (
+	"github.com/mas-bandwidth/schema/compiler"
+	"github.com/mas-bandwidth/schema/ir"
+)
+
+c := compiler.New() // the six built-in targets, registered
+
+paths, err := compiler.GatherPaths([]string{"schemas"}) // one directory is one unit
+unit, err := c.Load(paths)                              // format-free: nothing is written
+
+fmt.Printf("package %s, protocol id 0x%016x\n", unit.Package, unit.ProtocolId)
+
+files, err := c.Generate(unit, "cpp", compiler.Options{"cpp-message": "variant"})
+for name, data := range files {
+	os.WriteFile(filepath.Join(outDir, name), data, 0o644)
+}
+```
+
+`Generate` writes nothing: it returns the emitted files keyed by name, so the
+bytes can go to a build directory, an archive, or straight into a comparison.
+`Options` carries the per-target settings the CLI spells as flags —
+`"cpp-message"` is the only one the built-in targets read today.
+
+A unit that does not compile comes back as `compiler.Diagnostics`, the whole
+error list rather than the first one:
+
+```go
+unit, err := c.Load(paths)
+if diags, ok := errors.AsType[compiler.Diagnostics](err); ok {
+	for _, e := range diags {
+		fmt.Fprintln(os.Stderr, e)
+	}
+}
+```
+
+The CLI formats every file in place before reading it (schemafmt, one style, no
+options). That is a policy, not a law, and it is two fields:
+
+```go
+c.FormatInPlace = true
+c.OnFormat = func(path string) { fmt.Printf("formatted %s\n", path) }
+```
+
+For formatting on its own there is `compiler.FormatFile(path)` — canonicalize
+in place, reporting whether the file actually changed — and `compiler.Format(path,
+src)`, which formats bytes and touches nothing, for a drift check that must not
+repair what it is measuring.
+
+### Your own generator
+
+A generator is an interface, and the built-in backends have no private path in:
+they are registered exactly the way yours is.
+
+```go
+// Markdown docs for every message in the unit.
+type docs struct{}
+
+func (docs) Names() []string { return []string{"docs"} } // `--lang docs`
+
+func (docs) Generate(u *ir.Unit, _ compiler.Options) (map[string][]byte, error) {
+	var b strings.Builder
+	for _, name := range u.Messages {
+		st := u.Structs[name]
+		fmt.Fprintf(&b, "## %s — %d bits max\n", name, ir.MaxBitsStruct(st))
+		for _, f := range st.Fields {
+			fmt.Fprintf(&b, "- `%s` (%d bits)\n", f.Name, ir.MaxBitsField(f))
+		}
+	}
+	return map[string][]byte{"messages.md": []byte(b.String())}, nil
+}
+
+c := compiler.New()
+if err := c.Register(docs{}); err != nil { // refuses a name a target already holds
+	return err
+}
+fmt.Println(c.Targets()) // [c cpp cs docs go js rust]
+files, err := c.Generate(unit, "docs", nil)
+```
+
+The unit your generator receives is the same fully-resolved [`ir`](https://pkg.go.dev/github.com/mas-bandwidth/schema/ir)
+the built-in backends read: types resolved, constants folded, ranges and bit
+widths derived, wire order fixed. The derived parameters the six emitters
+share are functions there rather than per-backend arithmetic — `ir.BitsRequired`,
+`ir.MaxBitsStruct`, `ir.MaxBytes`, `ir.CompressedFloatParams`,
+`ir.AlignedFixedByteArrays`, `ir.FieldId` — so a new target computes the same
+widths as the old ones by construction, not by care.
+
+### The data compiler
+
+`schema pack` is a driver call too, and like `Generate` it hands back bytes:
+
+```go
+unit, outputs, err := c.Pack("PackManifest.json")
+for _, o := range outputs {
+	fmt.Printf("%s: %d bytes, content hash 0x%016x\n", o.File, len(o.Bytes), o.ContentHash)
+	os.WriteFile(o.File, o.Bytes, 0o644)
+}
+```
+
+`compiler.Version()` and `compiler.UserAgent()` report which build of the
+compiler is running, for a tool that stamps its own output.
+
+The exported surface of `compiler` and `ir` is under semver from the release
+that first carries it; everything under `internal/` is not
+([VERSIONING.md](VERSIONING.md)).
 
 ---
 

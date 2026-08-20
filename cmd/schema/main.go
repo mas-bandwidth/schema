@@ -143,8 +143,7 @@ func fatalf(format string, args ...any) {
 // line with a count — there is no first error worth privileging when a file
 // has twenty — and anything else as the single line it is.
 func fail(err error) {
-	var diags compiler.Diagnostics
-	if errors.As(err, &diags) {
+	if diags, ok := errors.AsType[compiler.Diagnostics](err); ok {
 		for _, e := range diags {
 			fmt.Fprintln(os.Stderr, e)
 		}

@@ -69,7 +69,7 @@ func New() *Compiler {
 // Diagnostics is a compilation's error list — every parse and check error the
 // unit produced, in report order, rather than the first one. Load returns it
 // as the error when the unit does not compile; a caller that wants to print
-// them all uses errors.As.
+// them all reaches it with errors.AsType.
 type Diagnostics []error
 
 // Error joins the diagnostics one per line.

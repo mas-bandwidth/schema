@@ -96,9 +96,16 @@ actually changed. Generated code carries the protocol id instead, which is the
 thing that governs compatibility. If you want to know which compiler produced a
 tree, that belongs in your build system, not in every file.
 
-**`internal/` packages have no compatibility promise.** The compiler is
-consumed as a binary. There is no supported Go API for embedding it, and the IR
-is free to change in any release.
+**The Go API under `compiler/` and `ir/` IS covered; `internal/` is not.** The
+compiler is also a library — `github.com/mas-bandwidth/schema/compiler` loads
+and checks units, generates through registered generators, and packs data;
+`github.com/mas-bandwidth/schema/ir` is the checked unit those generators read.
+From the first release that carries them, their exported surface follows the
+rules above: breaking it is a major, adding to it is a minor. Everything under
+`internal/` — the scanner, parser, AST, checker, the six per-language emitters
+and the data compiler's encoder — carries no promise and may change in any
+release. Building on the compiler means `compiler.Generator` and `ir`, which is
+the same door the built-in backends come through.
 
 **The SPEC is versioned with the compiler.** [SPEC.md](SPEC.md) is normative;
 where the compiler and the SPEC disagree, one of them is a bug.
