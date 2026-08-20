@@ -105,7 +105,7 @@ func TestExtremeSpellingsAbsentCpp(t *testing.T) {
 // headers carry the folded bounds in prose comments, which are not code.
 func stripLineComments(text string) string {
 	var b strings.Builder
-	for _, line := range strings.Split(text, "\n") {
+	for line := range strings.SplitSeq(text, "\n") {
 		if i := strings.Index(line, "//"); i >= 0 {
 			line = line[:i]
 		}
