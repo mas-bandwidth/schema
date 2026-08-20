@@ -88,12 +88,11 @@ func wireBodies(t *testing.T, header string) map[string]string {
 			if i < 0 {
 				t.Fatalf("generated C has no %s%s function:\n%s", prefix, name, header)
 			}
-			rest := header[i:]
-			end := strings.Index(rest, "\n}\n")
-			if end < 0 {
+			body, _, ok := strings.Cut(header[i:], "\n}\n")
+			if !ok {
 				t.Fatalf("%s%s function body is unterminated", prefix, name)
 			}
-			out[prefix+name] = rest[:end]
+			out[prefix+name] = body
 		}
 	}
 	return out
