@@ -26,7 +26,7 @@
 // The tool computes the exact wire bits of the pinned all-defaults instance
 // (every field at its declared default; branch bodies count only under gates
 // whose default is true) using the compiler's own width formulas
-// (internal/ir: BitsRequired, CompressedFloatBits) — one implementation, so
+// (ir: BitsRequired, CompressedFloatBits) — one implementation, so
 // the number printed here cannot drift from what the compiler advertises. It
 // REFUSES to emit outside the hard bounds [1000, 2000] bits.
 //
@@ -44,7 +44,7 @@ import (
 	"strings"
 
 	"github.com/mas-bandwidth/schema/internal/format"
-	"github.com/mas-bandwidth/schema/internal/ir"
+	"github.com/mas-bandwidth/schema/ir"
 )
 
 const (

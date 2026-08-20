@@ -1,6 +1,6 @@
 package cpp
 
-import "github.com/mas-bandwidth/schema/internal/ir"
+import "github.com/mas-bandwidth/schema/ir"
 
 // fileEmitsWire reports whether this wire file will emit any Write/Read wire
 // function — struct/object wire pairs, or the owner files' message/object

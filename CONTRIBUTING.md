@@ -74,9 +74,17 @@ to somebody, so it needs to be worth it.
 ## Adding a language backend
 
 A backend is a Go package under `internal/codegen/` that walks the same IR the
-existing five consume. The cross-language harness is what makes this tractable:
-generate the corpus in your language, encode the same values, and the goldens
-tell you immediately whether you agree with the other five bit for bit.
+existing six consume, plus one entry in `compiler/builtin.go` implementing
+`compiler.Generator` — the public registration interface, which is the only way
+any target reaches the driver. The cross-language harness is what makes this
+tractable: generate the corpus in your language, encode the same values, and the
+goldens tell you immediately whether you agree with the other six bit for bit.
+
+You do not have to be in this repository to try one. `compiler.Generator` is
+public, so a generator can live in your own module, register on a
+`compiler.Compiler`, and read the same `ir` the built-in backends read — see
+[Embedding the compiler](USAGE.md#embedding-the-compiler). That is the cheap way
+to prototype a target before proposing it here.
 
 That mechanism is real, and so is the work. Before starting, open an issue —
 a backend that lands and then goes unmaintained is worse for users than no

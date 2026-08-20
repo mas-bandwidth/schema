@@ -1,6 +1,6 @@
 package c
 
-import "github.com/mas-bandwidth/schema/internal/ir"
+import "github.com/mas-bandwidth/schema/ir"
 
 // fileHasStrings reports whether any declaration in the file carries a
 // string(N) field — the trigger for emitting the UTF-8 validator the

@@ -84,6 +84,10 @@ would have hand-written, not an interpreter walking a schema at runtime.
   [WIRES.md](WIRES.md).
 - **`schema pack`** compiles directories of JSON into one binary container,
   validating every value against the schema as it goes.
+- **The compiler is a library too** — load, check, generate and pack from Go,
+  and register generators of your own; the six built-in backends come through
+  the same interface yours does. See
+  [Embedding the compiler](USAGE.md#embedding-the-compiler).
 - **Canonical source format** — every command formats in place.
 - **Generated code is yours**, under whatever licence you ship. See
   [License](#license).
@@ -99,7 +103,8 @@ schema pack     <PackManifest.json>
 ```
 
 **[USAGE.md](USAGE.md)** is the guide — every language feature, with real
-examples and the code each one generates.
+examples and the code each one generates, and how to drive the compiler from
+Go instead of the command line.
 
 Building the tests needs the six serialize runtimes checked out beside this
 repo — [serialize](https://github.com/mas-bandwidth/serialize),

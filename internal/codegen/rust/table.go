@@ -28,8 +28,7 @@ import (
 	"math/big"
 	"strings"
 
-	"github.com/mas-bandwidth/schema/internal/ir"
-	"github.com/mas-bandwidth/schema/internal/pack"
+	"github.com/mas-bandwidth/schema/ir"
 )
 
 // table-wire kinds — mirror internal/pack/table.go.
@@ -283,7 +282,7 @@ func (g *tableGen) emitTableWrite(st *ir.Struct) {
 }
 
 func (g *tableGen) emitTableWriteField(f *ir.Field) {
-	id := pack.FieldId(f.Name)
+	id := ir.FieldId(f.Name)
 	kind := tableScalarKind(f)
 	name := f.Name
 	switch {
@@ -436,7 +435,7 @@ func (g *tableGen) emitTableRead(st *ir.Struct) {
 	g.pf("        let kind = r.get8();\n")
 	g.pf("        match field_id {\n")
 	for _, f := range st.Fields {
-		id := pack.FieldId(f.Name)
+		id := ir.FieldId(f.Name)
 		kind := tableScalarKind(f)
 		wireKind := kind
 		if f.Array != ir.ArrayNone || f.Type.Kind == ir.TBytes {
@@ -846,7 +845,7 @@ impl<'a> TableReader<'a> {
 // table module for Types.schema is types_table.rs — a suffix rather than a
 // separate case, which keeps the module index in lib.rs mechanical.
 func GenerateTable(u *ir.Unit) (map[string][]byte, error) {
-	if err := pack.CheckTableIds(u); err != nil {
+	if err := ir.CheckTableIds(u); err != nil {
 		return nil, err
 	}
 	for _, f := range u.Files {
@@ -980,7 +979,7 @@ func (g *tableGen) tableDescriptorParts(f *ir.Field, guard string) []string {
 	return []string{
 		fmt.Sprintf("name: %q", f.Name),
 		fmt.Sprintf("type_name: %q", tableFieldTypeName(f)),
-		fmt.Sprintf("id: 0x%04x", pack.FieldId(f.Name)),
+		fmt.Sprintf("id: 0x%04x", ir.FieldId(f.Name)),
 		fmt.Sprintf("kind: %d", kind),
 		fmt.Sprintf("is_array: %t", isArray),
 		fmt.Sprintf("counted: %t", counted),

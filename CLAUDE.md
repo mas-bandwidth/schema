@@ -17,6 +17,16 @@
   caught a real gap every time it ran by hand, and it is now mechanical: `make check`
   runs the compiler over the corpus, and `make` proves the generated C++ compiles, links
   and runs.
+- **The public Go API is `compiler/` and `ir/`; everything else stays `internal/`**
+  (issue #85, 2026-08-20). The compiler is a library as well as a binary: `compiler` is the
+  driver (load, generate, pack, format) plus the `Generator` interface every backend
+  registers through, and `ir` is the checked unit with the derived parameters the backends
+  share. `cmd/schema` is a client of that API and must stay one — `internal/publicapi`
+  rebuilds the CLI inside an external module, so the day it reaches past the public surface
+  the build fails and names the package. Adding an export is a semver commitment
+  (VERSIONING.md); the rule the issue set is that an export justifies itself on schema's own
+  needs or it stays internal. The per-language emitters are implementations, not API.
+
 - **What `make` proves, in full** (moved here from README 2026-08-06 — too dense for the
   human front page, load-bearing for a working session): all six backends live (the JS
   legs — `test/js`, `test/js-ludicrous` — joined 2026-08-16 with the sixth backend); `make`

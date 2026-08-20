@@ -40,7 +40,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/mas-bandwidth/schema/internal/ir"
+	"github.com/mas-bandwidth/schema/ir"
 )
 
 // Generate returns filename -> contents for the unit: a header and a source

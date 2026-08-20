@@ -8,7 +8,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/mas-bandwidth/schema/internal/ir"
+	"github.com/mas-bandwidth/schema/ir"
 )
 
 // The manifest is the TEMPORARY grammar of the table layer: it declares the
@@ -166,7 +166,7 @@ func putU64(buf []byte, v uint64) []byte {
 // instance on the TABLE wire (notes/table-wire.md), the evolution-tolerant
 // encoding config data outlives builds on.
 func BuildOutput(u *ir.Unit, enc *Encoder, out Output, baseDir string) ([]byte, error) {
-	if err := CheckTableIds(u); err != nil {
+	if err := ir.CheckTableIds(u); err != nil {
 		return nil, err
 	}
 	for _, c := range out.Collections {

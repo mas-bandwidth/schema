@@ -11,8 +11,7 @@ import (
 	"math/big"
 	"strings"
 
-	"github.com/mas-bandwidth/schema/internal/ir"
-	"github.com/mas-bandwidth/schema/internal/pack"
+	"github.com/mas-bandwidth/schema/ir"
 )
 
 // table-wire kinds — mirror internal/pack/table.go (one spec, two emitters;
@@ -292,7 +291,7 @@ inline uint64_t table_double_to_bits( double d ) { uint64_t b; memcpy( &b, &d, 8
 // only (the checker has already refused closure members with types the
 // table wire cannot carry).
 func GenerateTable(u *ir.Unit) (map[string][]byte, error) {
-	if err := pack.CheckTableIds(u); err != nil {
+	if err := ir.CheckTableIds(u); err != nil {
 		return nil, err
 	}
 	closure := ir.TableClosure(u)
@@ -482,7 +481,7 @@ func (g *tableGen) emitTableWrite(st *ir.Struct) {
 
 func (g *tableGen) emitTableWriteField(f *ir.Field) {
 	{
-		id := pack.FieldId(f.Name)
+		id := ir.FieldId(f.Name)
 		kind := tableScalarKind(f)
 		if f.Type.Kind == ir.TNamed {
 			g.noteRef(f.Type.Name)
@@ -648,7 +647,7 @@ func (g *tableGen) emitTableDescriptor(st *ir.Struct) {
 	if len(st.Fields) > 0 {
 		g.pf("    static const TableFieldInfo fields[] = {\n")
 		for _, f := range st.Fields {
-			id := pack.FieldId(f.Name)
+			id := ir.FieldId(f.Name)
 			kind := tableScalarKind(f)
 			if f.Type.Kind == ir.TBytes {
 				kind = tkU8
@@ -731,7 +730,7 @@ func (g *tableGen) emitTableRead(st *ir.Struct) {
 	g.pf("        uint8_t kind = r.get8();\n")
 	g.pf("        switch ( field_id )\n        {\n")
 	for _, f := range st.Fields {
-		id := pack.FieldId(f.Name)
+		id := ir.FieldId(f.Name)
 		kind := tableScalarKind(f)
 		wireKind := kind
 		if f.Array != ir.ArrayNone || f.Type.Kind == ir.TBytes {

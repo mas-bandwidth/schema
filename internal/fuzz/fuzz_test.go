@@ -33,8 +33,8 @@ import (
 	"github.com/mas-bandwidth/schema/internal/codegen/csharp"
 	"github.com/mas-bandwidth/schema/internal/codegen/golang"
 	"github.com/mas-bandwidth/schema/internal/codegen/rust"
-	"github.com/mas-bandwidth/schema/internal/ir"
 	"github.com/mas-bandwidth/schema/internal/parser"
+	"github.com/mas-bandwidth/schema/ir"
 )
 
 // backends is the full emitter set, shared by drive and the compile fuzz

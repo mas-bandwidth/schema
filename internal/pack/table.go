@@ -11,23 +11,8 @@ import (
 	"math"
 	"math/big"
 
-	"github.com/mas-bandwidth/schema/internal/ir"
+	"github.com/mas-bandwidth/schema/ir"
 )
-
-// FieldId is the stable wire identity of a field: fold16(fnv1a32(name)),
-// rebounding 0 (the terminator) to 1.
-func FieldId(name string) uint16 {
-	h := uint32(0x811C9DC5)
-	for i := 0; i < len(name); i++ {
-		h ^= uint32(name[i])
-		h *= 0x01000193
-	}
-	id := uint16((h ^ (h >> 16)) & 0xFFFF)
-	if id == 0 {
-		id = 1
-	}
-	return id
-}
 
 // wire kinds (notes/table-wire.md).
 const (
@@ -134,21 +119,6 @@ func kindSize(kind byte) int {
 		return 8
 	}
 	return -1 // variable
-}
-
-// CheckTableIds refuses field-id collisions per type — loud, at compile time.
-func CheckTableIds(u *ir.Unit) error {
-	for name, st := range u.Structs {
-		seen := map[uint16]string{}
-		for _, f := range st.Fields {
-			id := FieldId(f.Name)
-			if prev, dup := seen[id]; dup {
-				return fmt.Errorf("type %s: fields %s and %s collide on table-wire id 0x%04x — rename one (notes/table-wire.md)", name, prev, f.Name, id)
-			}
-			seen[id] = f.Name
-		}
-	}
-	return nil
 }
 
 // ---- writer ----
@@ -300,7 +270,7 @@ func (e *Encoder) encodeTableField(w *tableWriter, f *ir.Field, obj map[string]a
 				return err
 			}
 		}
-		w.u16(FieldId(f.Name))
+		w.u16(ir.FieldId(f.Name))
 		w.u8(kArray)
 		w.u32(uint32(len(body.buf)))
 		w.raw(body.buf)
@@ -322,7 +292,7 @@ func (e *Encoder) encodeTableField(w *tableWriter, f *ir.Field, obj map[string]a
 	if kind == kTable && len(body.buf) <= 6 { // len prefix + bare terminator: all-default nested
 		return nil
 	}
-	w.u16(FieldId(f.Name))
+	w.u16(ir.FieldId(f.Name))
 	w.u8(kind)
 	w.raw(body.buf)
 	return nil
@@ -548,7 +518,7 @@ func DecodeTable(u *ir.Unit, typeName string, data []byte) (map[string]any, *Tab
 func decodeTableStruct(u *ir.Unit, st *ir.Struct, data []byte, rep *TableReport) (map[string]any, []byte) {
 	byId := map[uint16]*ir.Field{}
 	for _, f := range st.Fields {
-		byId[FieldId(f.Name)] = f
+		byId[ir.FieldId(f.Name)] = f
 	}
 	out := map[string]any{}
 	for _, f := range st.Fields {

@@ -10,6 +10,17 @@ import (
 	"github.com/mas-bandwidth/schema/internal/ast"
 )
 
+// Expr is a schema expression the checker resolved but kept, so a backend can
+// render the author's own spelling — `MaxHealth` rather than the folded `100`
+// — beside the resolved value in the fields next to it. The concrete node
+// types are the parser's, and stay unexported from this module: an expression
+// is produced by parsing schema text and is never constructed by a caller, and
+// freezing the parse tree under semver buys nothing the numbers beside it do
+// not already give. A generator outside this module reads the resolved
+// numeric fields and treats a non-nil Expr as the fact that the author wrote
+// something symbolic here.
+type Expr = ast.Expr
+
 type Unit struct {
 	Package    string
 	ProtocolId uint64
@@ -43,7 +54,7 @@ type Const struct {
 	Explicit bool   // the declaration named its storage — typed in every target (SPEC §4.2)
 	Int      *big.Int
 	Float    float64
-	Expr     ast.Expr // for symbolic rendering in generated code
+	Expr     Expr // for symbolic rendering in generated code
 }
 
 type Enum struct {
@@ -187,8 +198,8 @@ type Field struct {
 
 	Array      ArrayKind
 	ArrayBound int64
-	ArrayExpr  ast.Expr // the declared bound expression, for rendering
-	ArrayMin   int64    // ArrayCounted range form; 0 otherwise
+	ArrayExpr  Expr  // the declared bound expression, for rendering
+	ArrayMin   int64 // ArrayCounted range form; 0 otherwise
 
 	Type FieldType
 
@@ -198,15 +209,15 @@ type Field struct {
 	DefBool    bool
 	DefInt     *big.Int
 	DefFloat   float64
-	DefVariant string   // enum-typed field: the defaulted variant name
-	DefExpr    ast.Expr // for symbolic rendering
+	DefVariant string // enum-typed field: the defaulted variant name
+	DefExpr    Expr   // for symbolic rendering
 
 	// resolved wire refinements
 	HasIntRange    bool
 	IntMin         *big.Int
 	IntMax         *big.Int
-	IntMinExpr     ast.Expr // for symbolic rendering in generated code
-	IntMaxExpr     ast.Expr
+	IntMinExpr     Expr // for symbolic rendering in generated code
+	IntMaxExpr     Expr
 	HasFloatRange  bool // the compressed-float triple (SPEC §4.3) / projection (§4.8 rule 4)
 	FMin           float64
 	FMax           float64
@@ -215,9 +226,9 @@ type Field struct {
 	Steps          int64  // ceil((FMax-FMin)/Resolution)
 	HasQuantize    bool   // composite quantization (SPEC §4.8 rule 2)
 	QuantScale     int64
-	QuantScaleExpr ast.Expr
+	QuantScaleExpr Expr
 	QuantMax       float64
-	QuantMaxExpr   ast.Expr
+	QuantMaxExpr   Expr
 	QuantBound     int64 // round(QuantScale * QuantMax) — per-component wire range is [-QuantBound, +QuantBound]
 
 	// fixed-composite shallow narrowing (SPEC §4.8 rule 2b): the composite's
@@ -251,14 +262,14 @@ const (
 
 type FieldType struct {
 	Kind     FieldTypeKind
-	Signed   bool     // TInt; TFixed (fixed = true; ufixed = false — Glenn 2026-08-15, §9 q17 closed)
-	Width    int      // TInt: 8/16/32/64/128; TBits: N; TFixed: I+F (the storage width)
-	IntBits  int      // TFixed: I — integer bits; the sign bit counts when Signed (SPEC §4.3)
-	FracBits int      // TFixed: F — fractional bits
-	Size     int64    // TString/TBytes: N (max length)
-	SizeExpr ast.Expr // TString/TBytes: the declared N expression
-	Name     string   // TNamed
-	Ref      Decl     // TNamed: *Struct, *Enum or *Flags
+	Signed   bool   // TInt; TFixed (fixed = true; ufixed = false — Glenn 2026-08-15, §9 q17 closed)
+	Width    int    // TInt: 8/16/32/64/128; TBits: N; TFixed: I+F (the storage width)
+	IntBits  int    // TFixed: I — integer bits; the sign bit counts when Signed (SPEC §4.3)
+	FracBits int    // TFixed: F — fractional bits
+	Size     int64  // TString/TBytes: N (max length)
+	SizeExpr Expr   // TString/TBytes: the declared N expression
+	Name     string // TNamed
+	Ref      Decl   // TNamed: *Struct, *Enum or *Flags
 }
 
 // GoExportName is the one true mapping from a schema field name to its

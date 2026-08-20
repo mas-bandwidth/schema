@@ -25,7 +25,7 @@ import (
 	"strings"
 
 	"github.com/mas-bandwidth/schema/internal/ast"
-	"github.com/mas-bandwidth/schema/internal/ir"
+	"github.com/mas-bandwidth/schema/ir"
 )
 
 // Options selects caller-facing generation choices (SPEC §4.8).

@@ -1586,18 +1586,26 @@ Rules:
 
 ## 8. Repository layout
 
+The public Go API is `compiler/` and `ir/`; everything under `internal/` is
+implementation, with no compatibility promise (VERSIONING.md).
+
 ```
-cmd/schema/            the CLI
+cmd/schema/            the CLI — a client of the public API, and nothing more
+compiler/              PUBLIC: the driver — load, generate, pack, format, and
+                       the generator registration interface
+ir/                    PUBLIC: the lowered form; the wire shape projection
+                       (§3.1); the derived parameters the backends share
 internal/scanner/      tokens, positions
 internal/parser/       AST construction, error recovery
 internal/ast/
 internal/check/        resolver, constant folding, shape checks, dominance rule,
                        the protocol id
-internal/ir/           the lowered form; the wire shape projection (§3.1)
 internal/format/       schemafmt
 internal/pack/         the data compiler (schema pack)
-internal/codegen/      c/  cpp/  csharp/  golang/  js/  rust/
+internal/codegen/      c/  cpp/  csharp/  golang/  js/  rust/ — registered on
+                       the driver through the public generator interface
 internal/fuzz/         compiler fuzzing (gate 6)
+internal/publicapi/    the acceptance gate: an external module, public API only
 examples/              the corpus — always compiles under this spec as written
 examples128/           the fixed-point + 128-bit corpus
 testdata/              golden generated source, golden ids, golden wire bytes,

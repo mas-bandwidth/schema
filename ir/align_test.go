@@ -10,8 +10,8 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/internal/check"
-	"github.com/mas-bandwidth/schema/internal/ir"
 	"github.com/mas-bandwidth/schema/internal/parser"
+	"github.com/mas-bandwidth/schema/ir"
 )
 
 // Each type carries one fixed byte array named data; the table below says
