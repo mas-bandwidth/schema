@@ -194,6 +194,50 @@ count_calls() {
         }'
 }
 
+# ---- generated-unit spelling: HELPER regexes and entry-point patterns ----
+# Library functions (the gate's selftest fixtures attack these, not copies).
+#
+# unit_helper_re <lang>: the HELPER regex count_calls uses to tell GENERATED
+# code from the serialize runtime. Getting it wrong is not a wrong number, it
+# is a DROPPED one — a call target matching neither RTPAT nor HELPER counts as
+# nothing at all, so a row whose runtime calls flow through such a target
+# publishes a false `full`.
+#
+# unit_go_sym / unit_cs_sym / unit_rust_sym: the pattern that finds ONE bench
+# row's generated entry point in that language's symbol table.
+unit_helper_re() {
+    case "$1" in
+    c)    echo '^_?(write|read|quantize|rt_|vary_|bits_)' ;;   # generated helpers (write_vec3 ...) and the hand-written rt/bits ops
+    cpp)  echo '^__?ZNK?7example|_GLOBAL__N_1' ;;              # namespace example (generated) + the anon-namespace rt/bits code
+    go)   echo '^example[.]|^main[.]' ;;
+    rust) echo '^CRATE_(example|benchrust)_' ;;
+    cs)   echo '(Example[.]Schema|Program):' ;;
+    *)    return 1 ;;
+    esac
+}
+
+# go: the objdump symbol for <unit>'s <Cap><camel> generated entry point.
+# cs: the JitDisasm method for the same.
+# rust: the v0 mangling token (<len><name>) for <unit>'s <fn-name>.
+#
+# PRE-#104: every one of these knows exactly ONE generated unit and hardcodes
+# its prefix — the <unit> argument is accepted and IGNORED. That is precisely
+# the defect issue #104 names: the estate benches a second generated unit (the
+# RealWorld corpus the real_packet row measures) whose symbols carry different
+# package/namespace/crate prefixes, and a map that cannot spell them leaves
+# the densest compressed-float workload on inline=unknown. Extracted verbatim
+# from the per-language branches so the gate's fixtures attack the real
+# spelling rather than a copy of it.
+unit_go_sym() {     # <unit> <Cap> <camel>
+    echo "^example[.]${2}${3}\$"
+}
+unit_cs_sym() {     # <unit> <Cap> <camel>
+    echo "^Example[.]Schema:${2}${3}\$"
+}
+unit_rust_sym() {   # <unit> <fn-name>
+    echo "${#2}$2"
+}
+
 # ---- objdump/JitDisasm -> otool-shape translation ----
 # Library functions (the gate's selftest fixtures attack these, not copies):
 # each turns one toolchain's disassembly into the "sym:" / "addr op target"
@@ -245,6 +289,47 @@ cs_translate() {
             if (t ~ /^0x/ || t ~ /^[0-9]/) print "0 blr indirect"
             else print "0 b " t
         }'
+}
+
+# otool -tv of a rust binary -> the otool shape, with every symbol header AND
+# every call target renamed CRATE_<class>_<sym> by its DEFINING crate.
+#
+# v0 mangling puts the defining crate first and the instantiating crate last,
+# and serialize types appear inside the generated units' generics — so
+# classify every name by its EARLIEST crate token, and refuse the naive
+# substring match that would count an example shim mentioning WriteStream as a
+# runtime call. Symbol HEADERS get the identical prefix, because count_calls
+# joins helper-call targets against header names: leave the headers raw and
+# every helper edge looks up a name that was never populated, contributes
+# zero, and each loop whose runtime calls flow through an out-of-line helper
+# publishes a false `full` (selftest_join is the assertion that catches that).
+# A name matching no known crate classifies `other` — and `other` is neither
+# runtime nor helper, so its calls are DROPPED: a generated unit missing from
+# the token list below is a silent false full, not a wrong number.
+rust_translate() {
+    awk '
+        function firstcrate(t,    best, cls, i, n, names, m, ncls) {
+            ncls = split("9serialize 7example 9benchrust 4core 3std 5alloc", names, " ")
+            best = 1000000; cls = "other"
+            for (i = 1; i <= ncls; i++) {
+                n = index(t, names[i])
+                if (n > 0 && n < best) { best = n; m = names[i]; cls = substr(m, 2) }
+            }
+            return cls
+        }
+        /^[^ \t].*:$/ {
+            s = substr($0, 1, length($0) - 1)
+            print "CRATE_" firstcrate(s) "_" s ":"
+            next
+        }
+        $2 == "bl"  { print $1 " bl CRATE_" firstcrate($3) "_" $3; next }
+        $2 == "blr" { print $1 " blr indirect"; next }
+        # tail branches (issue #86): a b to a raw address is intra-function
+        # control flow, dropped here; a b to a symbol gets the same crate
+        # rename as bl targets so count_calls sees one namespace (its own
+        # self/own-chunk guards then apply on the renamed names)
+        $2 == "b" && $3 !~ /^0x/ { print $1 " b CRATE_" firstcrate($3) "_" $3; next }
+    '
 }
 
 # verdict from a transitive HOT count: 0 -> full, N -> partial:N
@@ -469,12 +554,11 @@ c|cpp)
     if [ "$LANG_ARG" = c ]; then
         BIN=build/bench/schema_bench_c
         RT='^_?serialize_'                  # serialize.c entry points
-        HELPER='^_?(write|read|quantize|rt_|vary_|bits_)'  # generated helpers (write_vec3 ...) and the hand-written rt/bits ops
     else
         BIN=build/bench/schema_bench_cpp
         RT='^__?ZNK?9serialize'             # namespace serialize (runtime proper)
-        HELPER='^__?ZNK?7example|_GLOBAL__N_1'  # namespace example (generated) + the anon-namespace rt/bits code
     fi
+    HELPER="$(unit_helper_re "$LANG_ARG")" || exit 1
     [ -x "$BIN" ] || { echo "$BIN missing — run the pass first" >&2; exit 1; }
     otool -tv "$BIN" > "$VD/disasm.txt"
     count_calls "$RT" "$HELPER" "$COLD_SPLIT" < "$VD/disasm.txt" > "$VD/counts.txt"
@@ -918,11 +1002,12 @@ go)
 
     # translate objdump into the otool shape count_calls parses
     go_translate < "$VD/objdump.txt" > "$VD/calls.txt"
+    GO_HELPER="$(unit_helper_re go)" || exit 1
     # COLD is empty: gc has no cold attribute, no section split, and no
     # remark that marks a callee cold — §4.2's hot-default applies to every
     # Go call, and the ledger note below says so out loud.
-    count_calls 'serialize%2ego[.]|mas-bandwidth/serialize' '^example[.]|^main[.]' '' < "$VD/calls.txt" > "$VD/counts.txt"
-    selftest_join "$VD/calls.txt" "$VD/counts.txt" '^example[.]|^main[.]' || exit 1
+    count_calls 'serialize%2ego[.]|mas-bandwidth/serialize' "$GO_HELPER" '' < "$VD/calls.txt" > "$VD/counts.txt"
+    selftest_join "$VD/calls.txt" "$VD/counts.txt" "$GO_HELPER" || exit 1
 
     # remarks: go build -a -gcflags=-m=2 — -a is MANDATORY (see header)
     ( cd bench/go && go build $GO_MODFILE_ARG -a -gcflags=all=-m=2 -o /dev/null . 2> "$OLDPWD/$VD/remarks.txt" ) || true
@@ -959,11 +1044,12 @@ go)
     echo "$BENCH_MAP" | while read -r bench snake camel; do
         for path in write read; do
             Cap="$(echo "$path" | awk '{print toupper(substr($0,1,1)) substr($0,2)}')"
-            n="$(count_for "^example[.]${Cap}${camel}\$")"
+            pat="$(unit_go_sym example "$Cap" "$camel")" || exit 1
+            n="$(count_for "$pat")"
             if [ "$n" -ge 0 ]; then
                 echo "$bench $path $(verdict_of "$n") $n 0" >> "$VD/verdicts.txt"
             else
-                echo "note: go $bench $path: example.${Cap}${camel} not found in objdump — inline stays unknown" >> "$LEDGER"
+                echo "note: go $bench $path: no objdump symbol matching $pat — inline stays unknown" >> "$LEDGER"
             fi
         done
     done
@@ -1001,41 +1087,12 @@ rust)
     [ -n "$RS_CRATE" ] || { echo "SERIALIZE_RS=$SERIALIZE_RS does not exist — cannot scan #[cold]" >&2; exit 1; }
     COLD_RS="$(rust_cold_regex "$RS_CRATE")"
 
-    # v0 mangling puts the DEFINING crate first and the instantiating crate
-    # last, and serialize types appear inside example/benchrust generics —
-    # so classify every call target by its EARLIEST crate token, and refuse
-    # the naive substring match that would count an example shim mentioning
-    # WriteStream as a runtime call. Symbol HEADERS get the identical
-    # CRATE_ prefix, because count_calls joins helper-call targets against
-    # header names: leave the headers raw and every helper edge looks up a
-    # name that was never populated, contributes zero, and each loop whose
-    # runtime calls flow through an out-of-line helper publishes a false
-    # `full` (the selftest_join below is the assertion that catches this).
-    otool -tv "$BIN" | awk '
-        function firstcrate(t,    best, cls, i, n, names, m) {
-            split("9serialize 7example 9benchrust 4core 3std 5alloc", names, " ")
-            best = 1000000; cls = "other"
-            for (i = 1; i <= 6; i++) {
-                n = index(t, names[i])
-                if (n > 0 && n < best) { best = n; m = names[i]; cls = substr(m, 2) }
-            }
-            return cls
-        }
-        /^[^ \t].*:$/ {
-            s = substr($0, 1, length($0) - 1)
-            print "CRATE_" firstcrate(s) "_" s ":"
-            next
-        }
-        $2 == "bl"  { print $1 " bl CRATE_" firstcrate($3) "_" $3; next }
-        $2 == "blr" { print $1 " blr indirect"; next }
-        # tail branches (issue #86): a b to a raw address is intra-function
-        # control flow, dropped here; a b to a symbol gets the same crate
-        # rename as bl targets so count_calls sees one namespace (its own
-        # self/own-chunk guards then apply on the renamed names)
-        $2 == "b" && $3 !~ /^0x/ { print $1 " b CRATE_" firstcrate($3) "_" $3; next }
-    ' > "$VD/disasm.txt"
-    count_calls '^CRATE_serialize_' '^CRATE_(example|benchrust)_' "$COLD_RS" < "$VD/disasm.txt" > "$VD/counts.txt"
-    selftest_join "$VD/disasm.txt" "$VD/counts.txt" '^CRATE_(example|benchrust)_' || exit 1
+    # rust_translate (library, above) renames every symbol header AND call
+    # target by its DEFINING crate, so count_calls sees one namespace.
+    otool -tv "$BIN" | rust_translate > "$VD/disasm.txt"
+    RS_HELPER="$(unit_helper_re rust)" || exit 1
+    count_calls '^CRATE_serialize_' "$RS_HELPER" "$COLD_RS" < "$VD/disasm.txt" > "$VD/counts.txt"
+    selftest_join "$VD/disasm.txt" "$VD/counts.txt" "$RS_HELPER" || exit 1
 
     # remarks: RUSTFLAGS="-Cremark=inline -Cdebuginfo=1" rebuild (fingerprint
     # forces it); runs AFTER the measured binary was disassembled above.
@@ -1071,14 +1128,15 @@ rust)
                 # the Rust binary is what kept both ship_shallow rows unknown
                 name="${path}_ship_data_shallow"
             fi
-            n="$(count_for "${#name}${name}")"
-            cold="$(cold_for "${#name}${name}")"
+            pat="$(unit_rust_sym example "$name")" || exit 1
+            n="$(count_for "$pat")"
+            cold="$(cold_for "$pat")"
             if [ "$n" -ge 0 ]; then
                 echo "$bench $path $(verdict_of "$n") $n $cold" >> "$VD/verdicts.txt"
             elif [ "$(count_total)" -eq 0 ]; then
                 echo "$bench $path full 0 0" >> "$VD/verdicts.txt"
             else
-                echo "note: rust $bench $path: no ${name} symbol and runtime calls exist elsewhere — inline stays unknown" >> "$LEDGER"
+                echo "note: rust $bench $path: no symbol matching $pat and runtime calls exist elsewhere — inline stays unknown" >> "$LEDGER"
             fi
         done
     done
@@ -1119,10 +1177,11 @@ cs)
     # per §4.1 the C# count is bl AND blr in the method body; blr targets
     # are opaque, so they are counted rather than silently dropped)
     cs_translate < "$JIT" > "$VD/calls.txt"
+    CS_HELPER="$(unit_helper_re cs)" || exit 1
     # COLD is empty: JitDisasm names no cold blocks or targets on this
     # surface — §4.2's hot-default applies to every C# call, said out loud
     # in the section header below.
-    count_calls '.' '(Example[.]Schema|Program):' '' < "$VD/calls.txt" > "$VD/counts.txt"
+    count_calls '.' "$CS_HELPER" '' < "$VD/calls.txt" > "$VD/counts.txt"
     # ('.' after the helper carve-out: every non-helper bl counts — Serialize.*
     # methods, JIT helpers, BCL — plus blr via the indirect column, folded in
     # below, because §4.1 counts them all for C#. selftest_join is not run
@@ -1149,11 +1208,12 @@ cs)
     echo "$BENCH_MAP" | while read -r bench snake camel; do
         for path in write read; do
             Cap="$(echo "$path" | awk '{print toupper(substr($0,1,1)) substr($0,2)}')"
-            n="$(count_for "^Example[.]Schema:${Cap}${camel}\$")"
+            pat="$(unit_cs_sym example "$Cap" "$camel")" || exit 1
+            n="$(count_for "$pat")"
             if [ "$n" -ge 0 ]; then
                 echo "$bench $path $(verdict_of "$n") $n 0" >> "$VD/verdicts.txt"
             else
-                echo "note: cs $bench $path: Example.Schema:${Cap}${camel} not in the JitDisasm output — inline stays unknown" >> "$LEDGER"
+                echo "note: cs $bench $path: no JitDisasm method matching $pat — inline stays unknown" >> "$LEDGER"
             fi
         done
     done

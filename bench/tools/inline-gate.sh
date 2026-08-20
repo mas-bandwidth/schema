@@ -545,7 +545,131 @@ EOF
         fail "budget check: within-budget verdicts must pass"
     fi
 
-    # ---- 12. end-to-end on this host where the toolchain allows: a compiled
+    # ---- 12. the GENERATED UNIT the map resolves against (issue #104) ----
+    # The estate benches two generated units: `example` (examples/*.schema ->
+    # generated/<lang>) and `realworld` (bench/corpus/RealWorld.schema ->
+    # generated/bench/<lang>/..., the unit the real_packet row measures). The
+    # two units' entry points are spelled IDENTICALLY apart from the package /
+    # namespace / crate prefix each port's layout puts in front — so a map that
+    # cannot name a row's unit has two ways to be wrong, and each fixture below
+    # attacks one of them:
+    #
+    #   RESOLUTION — the lookup lands on the OTHER unit's same-named entry
+    #   point and publishes its count as this row's verdict. Every fixture
+    #   plants a decoy of the same name in the other unit, with a different
+    #   count, so a collision cannot pass by accident.
+    #
+    #   COMPLETENESS — the unit is missing from the language's HELPER regex, so
+    #   a call from the row's entry point into that unit's own out-of-line
+    #   helper matches neither the runtime nor the helper set and counts as
+    #   NOTHING. That is not a wrong number, it is a false `full` — the
+    #   direction this machinery exists to refuse. Each fixture routes the
+    #   realworld unit's runtime calls through such a helper.
+    cat > "$ST/unit-go.calls" <<'EOF'
+example.WriteRealPacket:
+0 bl github.com/mas-bandwidth/serialize%2ego.(*WriteStream).writeBits
+0 bl github.com/mas-bandwidth/serialize%2ego.(*WriteStream).writeBits
+0 bl github.com/mas-bandwidth/serialize%2ego.(*WriteStream).writeBits
+0 bl github.com/mas-bandwidth/serialize%2ego.(*WriteStream).writeBits
+0 bl github.com/mas-bandwidth/serialize%2ego.(*WriteStream).writeBits
+bench/realworld.WriteRealPacket:
+0 bl bench/realworld.writeVec3
+bench/realworld.writeVec3:
+0 bl github.com/mas-bandwidth/serialize%2ego.(*WriteStream).writeBits
+0 bl github.com/mas-bandwidth/serialize%2ego.(*WriteStream).writeBits
+EOF
+    GOH="$(unit_helper_re go)"
+    count_calls 'serialize%2ego[.]' "$GOH" '' < "$ST/unit-go.calls" > "$VD/counts.txt"
+    rw="$(count_for "$(unit_go_sym realworld Write RealPacket)")"
+    ex="$(count_for "$(unit_go_sym example Write RealPacket)")"
+    if [ "${rw:-0}" = 2 ] && [ "${ex:-0}" = 5 ]; then
+        ok "go unit fixture: the realworld row resolves to bench/realworld (2, through its own helper) and the example decoy stays 5"
+    else
+        fail "go unit fixture: the realworld row must resolve to bench/realworld.WriteRealPacket and carry its helper's 2 runtime calls, and must NOT pick up the example unit's same-named 5 (got realworld=$rw example=$ex) — a row resolved against the wrong unit publishes another workload's verdict, and a unit missing from the HELPER set publishes a false full"
+    fi
+
+    cat > "$ST/unit-cs.jit" <<'EOF'
+; Assembly listing for method Example.Schema:WriteRealPacket(WriteStream,RealPacket) (FullOpts)
+        bl      CORINFO_HELP_ASSIGN_REF
+        bl      CORINFO_HELP_ASSIGN_REF
+        bl      CORINFO_HELP_ASSIGN_REF
+        bl      CORINFO_HELP_ASSIGN_REF
+        bl      CORINFO_HELP_ASSIGN_REF
+; Assembly listing for method Realworld.Schema:WriteRealPacket(WriteStream,RealPacket) (FullOpts)
+        bl      Realworld.Schema:WriteRealPacketBatch
+; Assembly listing for method Realworld.Schema:WriteRealPacketBatch(WriteBatch,RealPacket) (FullOpts)
+        bl      CORINFO_HELP_ASSIGN_REF
+        bl      CORINFO_HELP_ASSIGN_REF
+EOF
+    cs_translate < "$ST/unit-cs.jit" > "$ST/unit-cs.calls"
+    count_calls '.' "$(unit_helper_re cs)" '' < "$ST/unit-cs.calls" > "$VD/counts.txt"
+    rw="$(count_for "$(unit_cs_sym realworld Write RealPacket)")"
+    ex="$(count_for "$(unit_cs_sym example Write RealPacket)")"
+    if [ "${rw:-0}" = 2 ] && [ "${ex:-0}" = 5 ]; then
+        ok "cs unit fixture: the realworld row resolves to Realworld.Schema (2, through its own Batch helper) and the example decoy stays 5"
+    else
+        fail "cs unit fixture: the realworld row must resolve to Realworld.Schema:WriteRealPacket and count its Batch helper's 2, not the example unit's same-named 5 and not the helper call itself as 1 (got realworld=$rw example=$ex) — with the catch-all C# RTPAT a unit missing from the HELPER set turns a whole helper body into a single counted call"
+    fi
+
+    cat > "$ST/unit-rust.disasm" <<'EOF'
+__ZN7example17write_real_packet17h1111111111111111E:
+0000000100000100	bl	__ZN9serialize11WriteStream10write_bits17h2222222222222222E
+0000000100000104	bl	__ZN9serialize11WriteStream10write_bits17h2222222222222222E
+0000000100000108	bl	__ZN9serialize11WriteStream10write_bits17h2222222222222222E
+000000010000010c	bl	__ZN9serialize11WriteStream10write_bits17h2222222222222222E
+0000000100000110	bl	__ZN9serialize11WriteStream10write_bits17h2222222222222222E
+__ZN15realworldcorpus9realworld17write_real_packet17h3333333333333333E:
+0000000100000200	bl	__ZN15realworldcorpus9realworld10write_vec317h4444444444444444E
+__ZN15realworldcorpus9realworld10write_vec317h4444444444444444E:
+0000000100000300	bl	__ZN9serialize11WriteStream10write_bits17h2222222222222222E
+0000000100000304	bl	__ZN9serialize11WriteStream10write_bits17h2222222222222222E
+EOF
+    rust_translate < "$ST/unit-rust.disasm" > "$ST/unit-rust.calls"
+    RSH="$(unit_helper_re rust)"
+    count_calls '^CRATE_serialize_' "$RSH" '' < "$ST/unit-rust.calls" > "$VD/counts.txt"
+    rw="$(count_for "$(unit_rust_sym realworld write_real_packet)")"
+    ex="$(count_for "$(unit_rust_sym example write_real_packet)")"
+    if [ "${rw:-0}" = 2 ] && [ "${ex:-0}" = 5 ]; then
+        ok "rust unit fixture: the realworldcorpus crate classifies as its own CRATE_ class, resolves to 2 through its helper, and does not alias the example crate's same-named fn (5)"
+    else
+        fail "rust unit fixture: write_real_packet exists in BOTH crates; the realworld row must resolve to the realworldcorpus one and carry its helper's 2, the example row to the example one at 5 (got realworld=$rw example=$ex) — an unclassified crate is 'other', which is neither runtime nor helper, so its calls are dropped and the row reads full"
+    fi
+    if selftest_join "$ST/unit-rust.calls" "$VD/counts.txt" "$RSH"; then
+        ok "join self-test accepts the two-unit rust join"
+    else
+        fail "join self-test rejected the two-unit rust join"
+    fi
+
+    cat > "$ST/unit-cpp.disasm" <<'EOF'
+__ZN9realworld15WriteRealPacketERN9serialize11WriteStreamERKNS_10RealPacketE:
+0000000100000100	bl	__ZN9realworld10write_vec3ERN9serialize11WriteStreamE
+__ZN9realworld10write_vec3ERN9serialize11WriteStreamE:
+0000000100000200	bl	__ZN9serialize11WriteStream10write_bitsEjj
+0000000100000204	bl	__ZN9serialize11WriteStream10write_bitsEjj
+EOF
+    count_calls '^__?ZNK?9serialize' "$(unit_helper_re cpp)" "$COLD_SPLIT" < "$ST/unit-cpp.disasm" > "$VD/counts.txt"
+    n="$(count_for '^__ZN9realworld15WriteRealPacket')"
+    if [ "${n:-0}" = 2 ]; then
+        ok "cpp unit fixture: namespace realworld is generated code, so its helper's 2 runtime calls reach the entry point"
+    else
+        fail "cpp unit fixture: the realworld entry point's 2 runtime calls flow through a realworld helper and must reach it (got $n) — a generated namespace missing from the cpp HELPER regex makes those call sites invisible to the atos attribution and the row publishes a false full"
+    fi
+
+    # a unit the map does not know must REFUSE, not silently answer with some
+    # other unit's spelling: a typo'd unit column is exactly how a row starts
+    # measuring the wrong code, and it must be loud at the first call.
+    bogus=0
+    unit_go_sym   bogusunit Write RealPacket > /dev/null 2>&1 && bogus=$((bogus + 1))
+    unit_cs_sym   bogusunit Write RealPacket > /dev/null 2>&1 && bogus=$((bogus + 1))
+    unit_rust_sym bogusunit write_real_packet > /dev/null 2>&1 && bogus=$((bogus + 1))
+    unit_helper_re bogusfortran > /dev/null 2>&1 && bogus=$((bogus + 1))
+    if [ "$bogus" = 0 ]; then
+        ok "unknown unit/lang fixture: every spelling function refuses rather than answering with another unit's prefix"
+    else
+        fail "unknown unit/lang fixture: $bogus of 4 spelling functions ANSWERED for a unit/language they do not know — a row pointed at an unknown unit would silently be measured against whatever prefix was hardcoded"
+    fi
+
+    # ---- 13. end-to-end on this host where the toolchain allows: a compiled
     # binary with a known noinline callee must count as out of line ----
     if command -v otool > /dev/null 2>&1 && command -v cc > /dev/null 2>&1; then
         cat > "$ST/e2e.c" <<'EOF'
