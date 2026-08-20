@@ -2,7 +2,7 @@
    SPDX-License-Identifier: NONE — this generated output is yours, under terms of
    your choice. See the LICENSE exception in the schema compiler; the compiler is
    AGPL-3.0, its output is not.
-   package example — protocol id 0x14cc156665b9f146 */
+   package example — protocol id 0x70a0c2d004c0907a */
 
 #ifndef SCHEMA_EXAMPLE_TYPESWIRE_H
 #define SCHEMA_EXAMPLE_TYPESWIRE_H
@@ -936,6 +936,21 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_extreme_probe( serialize_wr
             return 0;
         }
     }
+    if ( (serialize_int64_t) value->doubled_floor > 100 )
+    {
+        return 0; /* out-of-contract writes are refused, not wrapped */
+    }
+    {
+        serialize_uint64_t offset_value = (serialize_uint64_t) ( (value->doubled_floor) - (( -9223372036854775807LL - 1 )) );
+        if ( !serialize_write_bits( stream, (serialize_uint32_t) ( offset_value & 0xFFFFFFFFu ), 32 ) )
+        {
+            return 0;
+        }
+        if ( !serialize_write_bits( stream, (serialize_uint32_t) ( offset_value >> 32 ), 32 ) )
+        {
+            return 0;
+        }
+    }
     if ( (serialize_uint64_t) value->ceiling_range < 1 )
     {
         return 0; /* out-of-contract writes are refused, not wrapped */
@@ -980,6 +995,25 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_extreme_probe( serialize_read
             return 0;
         }
         value->floor_bound = (int64_t) ( offset_value + (( -9223372036854775807LL - 1 )) );
+    }
+    {
+        serialize_uint64_t offset_value = 0;
+        serialize_uint32_t lo = 0;
+        serialize_uint32_t hi = 0;
+        if ( !serialize_read_bits( stream, &lo, 32 ) )
+        {
+            return 0;
+        }
+        if ( !serialize_read_bits( stream, &hi, 32 ) )
+        {
+            return 0;
+        }
+        offset_value = (serialize_uint64_t) lo | ( ( (serialize_uint64_t) hi ) << 32 );
+        if ( offset_value > 9223372036854775908ULL )
+        {
+            return 0;
+        }
+        value->doubled_floor = (int64_t) ( offset_value + (( -9223372036854775807LL - 1 )) );
     }
     {
         serialize_uint64_t offset_value = 0;
