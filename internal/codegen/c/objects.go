@@ -227,6 +227,12 @@ func (g *gen) voidIfEmpty(mark int, params ...string) {
 }
 
 func (g *gen) emitObjectFunctions(d *ir.Object) {
+	// no bulk-bytes marks for a view: the analysis walks a struct's ITEMS,
+	// and a view's field set is assembled from the object declaration, so no
+	// view field's position is statically proven. The per-byte loop is the
+	// correct emission for every one of them — same as the C++ backend.
+	g.bulkBytes = nil
+
 	deep, interp := splitObjectFields(d)
 
 	g.pf("/* Writes %s's DEEP view — the declared encodings. */\n", d.Name)

@@ -121,6 +121,12 @@ type gen struct {
 	deps                []string
 	wire                bool
 	body                strings.Builder
+
+	// fixed [N]uint8 arrays of the struct being emitted whose element bytes
+	// are statically byte-aligned (ir.AlignedFixedByteArrays) — the same map
+	// the C++ backend consults, reloaded per function so it never outlives
+	// its struct
+	bulkBytes map[*ir.Field]bool
 }
 
 func (g *gen) pf(format string, args ...any) {
@@ -488,6 +494,12 @@ func (g *gen) emitWireHeader() {
 }
 
 func (g *gen) emitWriteFunc(st *ir.Struct) {
+	// fixed [N]uint8 arrays at statically byte-aligned positions take
+	// serialize.c's bulk-bytes path instead of a per-byte loop — the bulk
+	// call's internal align contributes zero bits at a boundary, so the wire
+	// is byte-identical (the same switch, off the same analysis, as the C++
+	// backend)
+	g.bulkBytes = ir.AlignedFixedByteArrays(st)
 	g.pf("/* Writes %s. Returns 1 on success, 0 on failure — the stream latches the\n", st.Name)
 	g.pf("   error, so a caller may check once at the end of a message. */\n")
 	g.pf("static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_%s( serialize_write_stream_t * stream, const %s * value )\n{\n", snake(st.Name), st.Name)
@@ -514,6 +526,7 @@ func (g *gen) emitWriteFunc(st *ir.Struct) {
 }
 
 func (g *gen) emitReadFunc(st *ir.Struct) {
+	g.bulkBytes = ir.AlignedFixedByteArrays(st) // see emitWriteFunc
 	g.pf("/* Reads %s. Returns 1 on success, 0 on failure. Out-of-range values are\n", st.Name)
 	g.pf("   REFUSED, never clamped. */\n")
 	g.pf("static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_%s( serialize_read_stream_t * stream, %s * value )\n{\n", snake(st.Name), st.Name)
