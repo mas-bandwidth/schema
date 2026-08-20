@@ -93,19 +93,33 @@ if [ -z "${INLINE_VERDICT_LIB:-}" ]; then
     esac
 fi
 
-# bench -> generated per-op entry stems: <snake for c/rust> <Camel for cpp/go/cs>
-BENCH_MAP='rigidbody_moving rigid_body RigidBody
-rigidbody_at_rest rigid_body RigidBody
-chat chat Chat
-test test Test
-inputpacket input_packet InputPacket
-shipcreate ship_create ShipCreate
-ship_shallow ship_shallow ShipData_Shallow
-probe_header probe_header ProbeHeader
-probebits probe_bits ProbeBits
-probearray probe_array ProbeArray
-testdata test_data TestData
-message_batch message Message'
+# bench -> generated per-op entry stems, and the generated UNIT they live in:
+#   <bench> <snake for c/rust> <Camel for cpp/go/cs> <unit>
+#
+# The unit column is issue #104. This estate benches TWO generated units and
+# the map used to assume one: `example` (examples/*.schema -> generated/<lang>)
+# carries every row below but the last, and `realworld`
+# (bench/corpus/RealWorld.schema -> generated/bench/<lang>/...) carries
+# real_packet, §1.7's realistic snapshot and the densest compressed-float
+# workload in the suite. The two units' entry points are spelled identically
+# apart from the package / namespace / crate prefix each port's layout puts in
+# front, so a row that cannot name its unit is resolved against whichever
+# unit's spelling was hardcoded — which for real_packet meant no verdict at
+# all, inline=unknown, and §5.3 rule 7 refusing every ratio it appears in.
+# UNIT_MAP below is where each unit's per-language spelling lives.
+BENCH_MAP='rigidbody_moving rigid_body RigidBody example
+rigidbody_at_rest rigid_body RigidBody example
+chat chat Chat example
+test test Test example
+inputpacket input_packet InputPacket example
+shipcreate ship_create ShipCreate example
+ship_shallow ship_shallow ShipData_Shallow example
+probe_header probe_header ProbeHeader example
+probebits probe_bits ProbeBits example
+probearray probe_array ProbeArray example
+testdata test_data TestData example
+message_batch message Message example
+real_packet real_packet RealPacket realworld'
 
 # families rt and bits: bench -> the runner's noinline timed-loop symbol stems
 # (<snake>_write_loop/_read_loop for c/cpp/rust; main.<lowerCamel>WriteLoop for
@@ -197,45 +211,82 @@ count_calls() {
 # ---- generated-unit spelling: HELPER regexes and entry-point patterns ----
 # Library functions (the gate's selftest fixtures attack these, not copies).
 #
-# unit_helper_re <lang>: the HELPER regex count_calls uses to tell GENERATED
-# code from the serialize runtime. Getting it wrong is not a wrong number, it
-# is a DROPPED one — a call target matching neither RTPAT nor HELPER counts as
-# nothing at all, so a row whose runtime calls flow through such a target
-# publishes a false `full`.
+# UNIT_MAP: one line per generated unit BENCH_MAP rows can name, giving that
+# unit's per-language symbol spelling:
 #
-# unit_go_sym / unit_cs_sym / unit_rust_sym: the pattern that finds ONE bench
-# row's generated entry point in that language's symbol table.
+#   <unit> <go objdump prefix> <cs JitDisasm prefix> <rust crate> <cpp token>
+#
+# go's prefix is the Go IMPORT PATH, not the package name — objdump spells the
+# realworld unit `bench/realworld.WriteRealPacket` (module `bench`, package
+# `realworld`), which is why a `^realworld[.]` guess would find nothing. The
+# rust column is the crate whose name rust_translate stamps onto every symbol
+# header and call target; the cpp column is the namespace's Itanium mangling
+# token (<len><name>). C is absent by construction: both units' generated
+# entry points land in one flat C namespace in one translation unit, so a
+# collision there would be a compile error rather than a mis-resolution, and
+# the c branch attributes rows by atos inline stack anyway.
+UNIT_MAP='example example Example.Schema example 7example
+realworld bench/realworld Realworld.Schema realworldcorpus 9realworld'
+
+# one field of one unit's row; REFUSES (nonzero, no output) on a unit the map
+# does not know — a typo'd unit column must be loud at the first call, never
+# answered with whatever prefix happened to be hardcoded
+unit_field() {      # <unit> <column>
+    echo "$UNIT_MAP" | awk -v u="$1" -v n="$2" '$1 == u { print $n; found = 1; exit } END { exit !found }'
+}
+
+# dots are literal in these prefixes; [.] means the same thing in every awk
+# dialect, unlike \. (the COLD_SPLIT comment below has the long version)
+re_quote_dots() { echo "$1" | sed 's/[.]/[.]/g'; }
+
+# one regex alternation over EVERY unit's <column>, each wrapped
+# <prefix>...<suffix>, dots quoted. Built from UNIT_MAP rather than written
+# out, so adding a unit cannot leave a language's helper set behind.
+unit_alt() {        # <column> <prefix> <suffix>
+    echo "$UNIT_MAP" | awk -v n="$1" -v pre="$2" -v suf="$3" '
+        { v = $n; gsub(/\./, "[.]", v); printf "%s%s%s%s", (NR > 1 ? "|" : ""), pre, v, suf }
+        END { print "" }'
+}
+
+# unit_helper_re <lang>: the HELPER regex count_calls uses to tell GENERATED
+# code from the serialize runtime. EVERY generated unit must appear. A unit
+# left out is not a wrong number, it is a DROPPED one — a call target matching
+# neither RTPAT nor HELPER counts as nothing at all, so a row whose runtime
+# calls flow through that unit's own out-of-line helper publishes a false
+# `full`. (For cs, where RTPAT is the catch-all `.` per §4.1, the failure is
+# milder but still wrong: the helper call counts 1 instead of the helper body's
+# own per-op total.) The trailing literals are the code that is NOT a
+# generated unit but is still not the runtime: the runner's own noinline timed
+# loops and the anon-namespace rt/bits ops.
 unit_helper_re() {
     case "$1" in
-    c)    echo '^_?(write|read|quantize|rt_|vary_|bits_)' ;;   # generated helpers (write_vec3 ...) and the hand-written rt/bits ops
-    cpp)  echo '^__?ZNK?7example|_GLOBAL__N_1' ;;              # namespace example (generated) + the anon-namespace rt/bits code
-    go)   echo '^example[.]|^main[.]' ;;
-    rust) echo '^CRATE_(example|benchrust)_' ;;
-    cs)   echo '(Example[.]Schema|Program):' ;;
+    c)    echo '^_?(write|read|quantize|rt_|vary_|bits_)' ;;   # generated helpers (write_vec3 ...) and the hand-written rt/bits ops — one flat C namespace for both units
+    cpp)  echo "$(unit_alt 5 '^__?ZNK?' '')|_GLOBAL__N_1" ;;
+    go)   echo "$(unit_alt 2 '^' '[.]')|^main[.]" ;;
+    rust) echo "^CRATE_($(unit_alt 4 '' '')|benchrust)_" ;;
+    cs)   echo "($(unit_alt 3 '' '')|Program):" ;;
     *)    return 1 ;;
     esac
 }
 
 # go: the objdump symbol for <unit>'s <Cap><camel> generated entry point.
 # cs: the JitDisasm method for the same.
-# rust: the v0 mangling token (<len><name>) for <unit>'s <fn-name>.
-#
-# PRE-#104: every one of these knows exactly ONE generated unit and hardcodes
-# its prefix — the <unit> argument is accepted and IGNORED. That is precisely
-# the defect issue #104 names: the estate benches a second generated unit (the
-# RealWorld corpus the real_packet row measures) whose symbols carry different
-# package/namespace/crate prefixes, and a map that cannot spell them leaves
-# the densest compressed-float workload on inline=unknown. Extracted verbatim
-# from the per-language branches so the gate's fixtures attack the real
-# spelling rather than a copy of it.
+# rust: <unit>'s <fn-name>, ANCHORED to the crate rust_translate classified it
+#   into. The anchor is load-bearing twice over: the two units are separate
+#   crates carrying identically named entry points, and the bare v0 token
+#   would also alias a core::ops::FnOnce shim that embeds the same name.
+# Each refuses on a unit UNIT_MAP does not carry.
 unit_go_sym() {     # <unit> <Cap> <camel>
-    echo "^example[.]${2}${3}\$"
+    local p; p="$(unit_field "$1" 2)" || return 1
+    echo "^$(re_quote_dots "$p")[.]${2}${3}\$"
 }
 unit_cs_sym() {     # <unit> <Cap> <camel>
-    echo "^Example[.]Schema:${2}${3}\$"
+    local p; p="$(unit_field "$1" 3)" || return 1
+    echo "^$(re_quote_dots "$p"):${2}${3}\$"
 }
 unit_rust_sym() {   # <unit> <fn-name>
-    echo "${#2}$2"
+    local c; c="$(unit_field "$1" 4)" || return 1
+    echo "^CRATE_${c}_.*${#2}$2"
 }
 
 # ---- objdump/JitDisasm -> otool-shape translation ----
@@ -307,13 +358,21 @@ cs_translate() {
 # runtime nor helper, so its calls are DROPPED: a generated unit missing from
 # the token list below is a silent false full, not a wrong number.
 rust_translate() {
-    awk '
+    # the generated units' crate tokens come from UNIT_MAP (<len><name>, v0's
+    # spelling) so a new unit cannot be left classified `other` — issue #104:
+    # realworldcorpus was, and every call from write_real_packet into its own
+    # helpers would have been dropped on the floor.
+    awk -v UNITS="$(echo "$UNIT_MAP" | awk '{ printf "%s%d%s", (NR > 1 ? " " : ""), length($4), $4 }')" '
         function firstcrate(t,    best, cls, i, n, names, m, ncls) {
-            ncls = split("9serialize 7example 9benchrust 4core 3std 5alloc", names, " ")
+            ncls = split("9serialize " UNITS " 9benchrust 4core 3std 5alloc", names, " ")
             best = 1000000; cls = "other"
             for (i = 1; i <= ncls; i++) {
                 n = index(t, names[i])
-                if (n > 0 && n < best) { best = n; m = names[i]; cls = substr(m, 2) }
+                # strip the WHOLE <len> prefix, not one character:
+                # realworldcorpus mangles 15realworldcorpus and a substr(m, 2)
+                # would classify it `5realworldcorpus`, a class no HELPER
+                # regex names — so every call into the unit would be dropped
+                if (n > 0 && n < best) { best = n; m = names[i]; cls = m; sub(/^[0-9]+/, "", cls) }
             }
             return cls
         }
@@ -679,6 +738,10 @@ c|cpp)
                 bmap["ship_shallow"] = "ship_shallow"; bmap["probe_header"] = "probe_header"
                 bmap["probebits"] = "probebits"; bmap["probearray"] = "probearray"
                 bmap["testdata"] = "testdata"
+                # the realworld unit (issue #104): BM_SUFFIX real_packet, so
+                # the frame name is bench_message_real_packet like every row
+                # above — C puts both generated units in one flat namespace
+                bmap["real_packet"] = "real_packet"
                 g = 0
             }
             function flush_group(    i, f, bench, path, L, sfx, t) {
@@ -764,7 +827,7 @@ c|cpp)
             sed 's/^/attr /' "$VD/attribution.txt"
         } >> "$LEDGER"
 
-        echo "$BENCH_MAP" | while read -r bench snake camel; do
+        echo "$BENCH_MAP" | while read -r bench snake camel unit; do
             for path in write read; do
                 set -- $(awk -v b="$bench" -v p="$path" '$1 == "N" && $2 == b && $3 == p { print $4, $5; f = 1; exit } END { if (!f) print 0, 0 }' "$VD/attribution.txt")
                 echo "$bench $path $(verdict_of "$1") $1 $2" >> "$VD/verdicts.txt"
@@ -870,6 +933,7 @@ c|cpp)
                 tmap["ShipCreate"] = "shipcreate"; tmap["ShipData_Shallow"] = "ship_shallow"
                 tmap["ProbeHeader"] = "probe_header"; tmap["ProbeBits"] = "probebits"
                 tmap["ProbeArray"] = "probearray"; tmap["TestData"] = "testdata"
+                tmap["RealPacket"] = "real_packet"      # the realworld unit (issue #104)
                 g = 0
             }
             function flush_group(    i, f, bench, path, L, contrib, t, tn) {
@@ -899,9 +963,14 @@ c|cpp)
                             }
                         }
                         if (bench == "") {
-                            # "bench_message<" is 14 chars, "example::" is 9
-                            if (match(f, /bench_message<example::[A-Za-z_]+/)) {
-                                tn = substr(f, RSTART + 23, RLENGTH - 23)
+                            # the template argument names the type, whichever
+                            # generated NAMESPACE it lives in (issue #104:
+                            # example:: and realworld:: both appear here, and
+                            # a fixed character offset past "example::" would
+                            # simply miss the second one)
+                            if (match(f, /bench_message<[A-Za-z_]+::[A-Za-z_]+/)) {
+                                tn = substr(f, RSTART, RLENGTH)
+                                sub(/^bench_message<[A-Za-z_]+::/, "", tn)
                                 if (tn in tmap) bench = tmap[tn]
                                 if (bench == "rigidbody_moving" && f ~ /\$_/) bench = "rigidbody_at_rest"
                             }
@@ -963,7 +1032,7 @@ c|cpp)
             sed 's/^/attr /' "$VD/attribution.txt"
         } >> "$LEDGER"
 
-        echo "$BENCH_MAP" | while read -r bench snake camel; do
+        echo "$BENCH_MAP" | while read -r bench snake camel unit; do
             for path in write read; do
                 set -- $(awk -v b="$bench" -v p="$path" '$1 == "N" && $2 == b && $3 == p { print $4, $5; f = 1; exit } END { if (!f) print 0, 0 }' "$VD/attribution.txt")
                 echo "$bench $path $(verdict_of "$1") $1 $2" >> "$VD/verdicts.txt"
@@ -1041,10 +1110,10 @@ go)
     } >> "$LEDGER"
 
     : > "$VD/verdicts.txt"
-    echo "$BENCH_MAP" | while read -r bench snake camel; do
+    echo "$BENCH_MAP" | while read -r bench snake camel unit; do
         for path in write read; do
             Cap="$(echo "$path" | awk '{print toupper(substr($0,1,1)) substr($0,2)}')"
-            pat="$(unit_go_sym example "$Cap" "$camel")" || exit 1
+            pat="$(unit_go_sym "$unit" "$Cap" "$camel")" || { echo "inline-verdict: $LANG_ARG $bench $path: BENCH_MAP names generated unit '$unit', which UNIT_MAP does not carry — refusing rather than guessing a prefix" >&2; exit 1; }
             n="$(count_for "$pat")"
             if [ "$n" -ge 0 ]; then
                 echo "$bench $path $(verdict_of "$n") $n 0" >> "$VD/verdicts.txt"
@@ -1115,7 +1184,7 @@ rust)
     } >> "$LEDGER"
 
     : > "$VD/verdicts.txt"
-    echo "$BENCH_MAP" | while read -r bench snake camel; do
+    echo "$BENCH_MAP" | while read -r bench snake camel unit; do
         for path in write read; do
             name="${path}_${snake}"
             if [ "$bench" = message_batch ] && [ "$path" = read ]; then
@@ -1128,7 +1197,7 @@ rust)
                 # the Rust binary is what kept both ship_shallow rows unknown
                 name="${path}_ship_data_shallow"
             fi
-            pat="$(unit_rust_sym example "$name")" || exit 1
+            pat="$(unit_rust_sym "$unit" "$name")" || { echo "inline-verdict: $LANG_ARG $bench $path: BENCH_MAP names generated unit '$unit', which UNIT_MAP does not carry — refusing rather than guessing a prefix" >&2; exit 1; }
             n="$(count_for "$pat")"
             cold="$(cold_for "$pat")"
             if [ "$n" -ge 0 ]; then
@@ -1166,9 +1235,14 @@ cs)
     # §4.1: release runtime, tiering off, disasm of the generated dispatch
     # surface to a file. One quick --round pass JITs every method at FullOpts.
     JIT="$VD/jit.txt"
+    # the disasm filter names EVERY generated unit (built from UNIT_MAP) plus
+    # the runner: a unit missing here has no methods in the listing at all, so
+    # its rows find nothing and go unknown — the safe direction, but still a
+    # hole, and issue #104's real_packet row fell straight through it.
+    CS_JIT_FILTER="$(echo "$UNIT_MAP" | awk '{ printf "%s:* ", $3 }')Program:*"
     ( cd bench/cs && \
       DOTNET_TieredCompilation=0 \
-      DOTNET_JitDisasm='Example.Schema:* Program:*' \
+      DOTNET_JitDisasm="$CS_JIT_FILTER" \
       DOTNET_JitStdOutFile="$OLDPWD/$JIT" \
       dotnet run -c Release --no-build -- --round 0 > /dev/null 2>&1 ) || true
     [ -s "$JIT" ] || { echo "JitDisasm produced nothing — is the Release build present?" >&2; exit 1; }
@@ -1205,10 +1279,10 @@ cs)
     } >> "$LEDGER"
 
     : > "$VD/verdicts.txt"
-    echo "$BENCH_MAP" | while read -r bench snake camel; do
+    echo "$BENCH_MAP" | while read -r bench snake camel unit; do
         for path in write read; do
             Cap="$(echo "$path" | awk '{print toupper(substr($0,1,1)) substr($0,2)}')"
-            pat="$(unit_cs_sym example "$Cap" "$camel")" || exit 1
+            pat="$(unit_cs_sym "$unit" "$Cap" "$camel")" || { echo "inline-verdict: $LANG_ARG $bench $path: BENCH_MAP names generated unit '$unit', which UNIT_MAP does not carry — refusing rather than guessing a prefix" >&2; exit 1; }
             n="$(count_for "$pat")"
             if [ "$n" -ge 0 ]; then
                 echo "$bench $path $(verdict_of "$n") $n 0" >> "$VD/verdicts.txt"
