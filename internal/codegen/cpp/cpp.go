@@ -775,12 +775,22 @@ func (g *gen) noteRef(name string) {
 // renderInt renders an integer expression symbolically where its constant
 // references are safe to name in C++ — declared earlier in this file or in an
 // included file — and folds to the computed value otherwise (an E.Max
-// reference always folds; the schema source rides in a comment).
+// reference always folds; the schema source rides in a comment). The two
+// extremes with no direct decimal spelling fold guarded, the same guards
+// emitConst applies to constants of the same values: INT64_MIN's literal
+// half overflows long long before the unary minus applies, and a value past
+// INT64_MAX deduces unsigned as a bare decimal — -Wimplicitly-unsigned-
+// literal, a -Werror build break in the consumer's tree — so only the ull
+// spelling can hold it (issue #100; the member initializers were the one
+// fold site reaching here unguarded).
 func (g *gen) renderInt(e ast.Expr, folded *big.Int) string {
 	if folded != nil && folded.IsInt64() && folded.Int64() == math.MinInt64 {
 		return "( -9223372036854775807ll - 1 )" // INT64_MIN has no literal spelling in C++
 	}
 	if e == nil || ir.ExprHasEnumMax(e) || !g.renderable(e) || !g.overflowSafe(e) {
+		if !folded.IsInt64() && folded.Sign() > 0 {
+			return folded.String() + "ull"
+		}
 		return folded.String()
 	}
 	return g.renderExpr(e)
