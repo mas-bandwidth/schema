@@ -140,7 +140,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_render_block( serialize_wri
     {
         return 0;
     }
-    if ( !serialize_write_int( stream, value->sprites_count, 0, 64 ) )
+    if ( !serialize_write_int( stream, value->sprites_count, 0, RENDER_BLOCK_MAX_SPRITES ) )
     {
         return 0;
     }
@@ -177,7 +177,7 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_render_block( serialize_read_
         }
         value->sprite_count_hint = (uint32_t) raw;
     }
-    if ( !serialize_read_int( stream, &value->sprites_count, 0, 64 ) )
+    if ( !serialize_read_int( stream, &value->sprites_count, 0, RENDER_BLOCK_MAX_SPRITES ) )
     {
         return 0;
     }

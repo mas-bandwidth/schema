@@ -51,28 +51,28 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_fixed_probe( serialize_writ
 {
     {
         serialize_int32_t fixed_value = value->angle;
-        if ( !serialize_write_fixed32( stream, fixed_value, 16, 16, -180LL, 180LL ) )
+        if ( !serialize_write_fixed32( stream, fixed_value, 16, 16, -180, 180 ) )
         {
             return 0;
         }
     }
     {
         serialize_int64_t fixed_value = value->position;
-        if ( !serialize_write_fixed64( stream, fixed_value, 48, 16, -30000LL, 30000LL ) )
+        if ( !serialize_write_fixed64( stream, fixed_value, 48, 16, -MAX_WORLD_UNITS, MAX_WORLD_UNITS ) )
         {
             return 0;
         }
     }
     {
         serialize_int128_t fixed_value = value->reach;
-        if ( !serialize_write_fixed128( stream, fixed_value, 112, 16, -1000000LL, 1000000LL ) )
+        if ( !serialize_write_fixed128( stream, fixed_value, 112, 16, -1000000, 1000000 ) )
         {
             return 0;
         }
     }
     {
         serialize_int32_t fixed_value = value->ticks;
-        if ( !serialize_write_fixed32( stream, fixed_value, 32, 0, 0LL, 1000000LL ) )
+        if ( !serialize_write_fixed32( stream, fixed_value, 32, 0, 0, 1000000 ) )
         {
             return 0;
         }
@@ -83,7 +83,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_fixed_probe( serialize_writ
         {
             {
                 serialize_int32_t fixed_value = value->samples[i];
-                if ( !serialize_write_fixed32( stream, fixed_value, 16, 16, -8LL, 8LL ) )
+                if ( !serialize_write_fixed32( stream, fixed_value, 16, 16, -8, 8 ) )
                 {
                     return 0;
                 }
@@ -100,7 +100,7 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_fixed_probe( serialize_read_s
     {
         serialize_int32_t fixed_value;
         fixed_value = 0;
-        if ( !serialize_read_fixed32( stream, &fixed_value, 16, 16, -180LL, 180LL ) )
+        if ( !serialize_read_fixed32( stream, &fixed_value, 16, 16, -180, 180 ) )
         {
             return 0;
         }
@@ -109,7 +109,7 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_fixed_probe( serialize_read_s
     {
         serialize_int64_t fixed_value;
         fixed_value = 0;
-        if ( !serialize_read_fixed64( stream, &fixed_value, 48, 16, -30000LL, 30000LL ) )
+        if ( !serialize_read_fixed64( stream, &fixed_value, 48, 16, -MAX_WORLD_UNITS, MAX_WORLD_UNITS ) )
         {
             return 0;
         }
@@ -118,7 +118,7 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_fixed_probe( serialize_read_s
     {
         serialize_int128_t fixed_value;
         fixed_value = serialize_int128_make( 0, 0 );
-        if ( !serialize_read_fixed128( stream, &fixed_value, 112, 16, -1000000LL, 1000000LL ) )
+        if ( !serialize_read_fixed128( stream, &fixed_value, 112, 16, -1000000, 1000000 ) )
         {
             return 0;
         }
@@ -127,7 +127,7 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_fixed_probe( serialize_read_s
     {
         serialize_int32_t fixed_value;
         fixed_value = 0;
-        if ( !serialize_read_fixed32( stream, &fixed_value, 32, 0, 0LL, 1000000LL ) )
+        if ( !serialize_read_fixed32( stream, &fixed_value, 32, 0, 0, 1000000 ) )
         {
             return 0;
         }
@@ -140,7 +140,7 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_fixed_probe( serialize_read_s
             {
                 serialize_int32_t fixed_value;
                 fixed_value = 0;
-                if ( !serialize_read_fixed32( stream, &fixed_value, 16, 16, -8LL, 8LL ) )
+                if ( !serialize_read_fixed32( stream, &fixed_value, 16, 16, -8, 8 ) )
                 {
                     return 0;
                 }
@@ -157,28 +157,28 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_unsigned_probe( serialize_w
 {
     {
         serialize_int64_t fixed_value = (serialize_int64_t) value->angle;
-        if ( !serialize_write_fixed64( stream, fixed_value, 16, 16, 0LL, 360LL ) )
+        if ( !serialize_write_fixed64( stream, fixed_value, 16, 16, 0, 360 ) )
         {
             return 0;
         }
     }
     {
         serialize_int128_t fixed_value = serialize_int128_make( 0, value->span );
-        if ( !serialize_write_fixed128( stream, fixed_value, 48, 16, 0LL, 281474976710655LL ) )
+        if ( !serialize_write_fixed128( stream, fixed_value, 48, 16, 0, 281474976710655 ) )
         {
             return 0;
         }
     }
     {
         serialize_int128_t fixed_value = serialize_int128_make( value->reach.hi, value->reach.lo );
-        if ( !serialize_write_fixed128( stream, fixed_value, 112, 16, 0LL, 2000000LL ) )
+        if ( !serialize_write_fixed128( stream, fixed_value, 112, 16, 0, 2000000 ) )
         {
             return 0;
         }
     }
     {
         serialize_int64_t fixed_value = (serialize_int64_t) value->ticks;
-        if ( !serialize_write_fixed64( stream, fixed_value, 32, 0, 0LL, 1000000LL ) )
+        if ( !serialize_write_fixed64( stream, fixed_value, 32, 0, 0, 1000000 ) )
         {
             return 0;
         }
@@ -189,7 +189,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_unsigned_probe( serialize_w
         {
             {
                 serialize_int64_t fixed_value = (serialize_int64_t) value->samples[i];
-                if ( !serialize_write_fixed64( stream, fixed_value, 16, 16, 0LL, 16LL ) )
+                if ( !serialize_write_fixed64( stream, fixed_value, 16, 16, 0, 16 ) )
                 {
                     return 0;
                 }
@@ -213,7 +213,7 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_unsigned_probe( serialize_rea
 {
     {
         serialize_int64_t fixed_value = 0;
-        if ( !serialize_read_fixed64( stream, &fixed_value, 16, 16, 0LL, 360LL ) )
+        if ( !serialize_read_fixed64( stream, &fixed_value, 16, 16, 0, 360 ) )
         {
             return 0;
         }
@@ -221,7 +221,7 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_unsigned_probe( serialize_rea
     }
     {
         serialize_int128_t fixed_value = serialize_int128_make( 0, 0 );
-        if ( !serialize_read_fixed128( stream, &fixed_value, 48, 16, 0LL, 281474976710655LL ) )
+        if ( !serialize_read_fixed128( stream, &fixed_value, 48, 16, 0, 281474976710655 ) )
         {
             return 0;
         }
@@ -229,7 +229,7 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_unsigned_probe( serialize_rea
     }
     {
         serialize_int128_t fixed_value = serialize_int128_make( 0, 0 );
-        if ( !serialize_read_fixed128( stream, &fixed_value, 112, 16, 0LL, 2000000LL ) )
+        if ( !serialize_read_fixed128( stream, &fixed_value, 112, 16, 0, 2000000 ) )
         {
             return 0;
         }
@@ -237,7 +237,7 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_unsigned_probe( serialize_rea
     }
     {
         serialize_int64_t fixed_value = 0;
-        if ( !serialize_read_fixed64( stream, &fixed_value, 32, 0, 0LL, 1000000LL ) )
+        if ( !serialize_read_fixed64( stream, &fixed_value, 32, 0, 0, 1000000 ) )
         {
             return 0;
         }
@@ -249,7 +249,7 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_unsigned_probe( serialize_rea
         {
             {
                 serialize_int64_t fixed_value = 0;
-                if ( !serialize_read_fixed64( stream, &fixed_value, 16, 16, 0LL, 16LL ) )
+                if ( !serialize_read_fixed64( stream, &fixed_value, 16, 16, 0, 16 ) )
                 {
                     return 0;
                 }
@@ -277,7 +277,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_wide_probe( serialize_write
     {
         return 0;
     }
-    if ( !serialize_write_int128( stream, value->energy, serialize_int128_from_int64( -5000000000LL ), serialize_int128_from_int64( 5000000000LL ) ) )
+    if ( !serialize_write_int128( stream, value->energy, serialize_int128_from_int64( -5000000000 ), serialize_int128_from_int64( 5000000000 ) ) )
     {
         return 0;
     }
@@ -285,7 +285,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_wide_probe( serialize_write
     {
         return 0;
     }
-    if ( !serialize_write_int128( stream, value->bias, serialize_int128_from_int64( -1000LL ), serialize_int128_from_int64( 1000LL ) ) )
+    if ( !serialize_write_int128( stream, value->bias, serialize_int128_from_int64( -1000 ), serialize_int128_from_int64( 1000 ) ) )
     {
         return 0;
     }
@@ -304,7 +304,7 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_wide_probe( serialize_read_st
     {
         return 0;
     }
-    if ( !serialize_read_int128( stream, &value->energy, serialize_int128_from_int64( -5000000000LL ), serialize_int128_from_int64( 5000000000LL ) ) )
+    if ( !serialize_read_int128( stream, &value->energy, serialize_int128_from_int64( -5000000000 ), serialize_int128_from_int64( 5000000000 ) ) )
     {
         return 0;
     }
@@ -312,7 +312,7 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_wide_probe( serialize_read_st
     {
         return 0;
     }
-    if ( !serialize_read_int128( stream, &value->bias, serialize_int128_from_int64( -1000LL ), serialize_int128_from_int64( 1000LL ) ) )
+    if ( !serialize_read_int128( stream, &value->bias, serialize_int128_from_int64( -1000 ), serialize_int128_from_int64( 1000 ) ) )
     {
         return 0;
     }
@@ -435,11 +435,11 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_degenerate_probe( serialize
     {
         return 0;
     }
-    if ( (serialize_int64_t) value->locked_int < 7LL || (serialize_int64_t) value->locked_int > 7LL )
+    if ( (serialize_int64_t) value->locked_int < 7 || (serialize_int64_t) value->locked_int > 7 )
     {
         return 0; /* out-of-contract writes are refused, not wrapped */
     }
-    if ( !serialize_int128_equal( value->locked_wide, serialize_int128_from_int64( -12345678901234LL ) ) )
+    if ( !serialize_int128_equal( value->locked_wide, serialize_int128_from_int64( -12345678901234 ) ) )
     {
         return 0;
     }
@@ -456,7 +456,7 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_degenerate_probe( serialize_r
 {
     value->locked_fixed = (int32_t) -196608LL;
     value->locked_int = (int32_t) (7);
-    value->locked_wide = serialize_int128_from_int64( -12345678901234LL );
+    value->locked_wide = serialize_int128_from_int64( -12345678901234 );
     {
         serialize_uint32_t raw = 0;
         if ( !serialize_read_bits( stream, &raw, 8 ) )
@@ -474,21 +474,21 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_fixed_vec( serialize_write_
 {
     {
         serialize_int64_t fixed_value = value->x;
-        if ( !serialize_write_fixed64( stream, fixed_value, 48, 16, -100000LL, 100000LL ) )
+        if ( !serialize_write_fixed64( stream, fixed_value, 48, 16, -100000, 100000 ) )
         {
             return 0;
         }
     }
     {
         serialize_int64_t fixed_value = value->y;
-        if ( !serialize_write_fixed64( stream, fixed_value, 48, 16, -100000LL, 100000LL ) )
+        if ( !serialize_write_fixed64( stream, fixed_value, 48, 16, -100000, 100000 ) )
         {
             return 0;
         }
     }
     {
         serialize_int64_t fixed_value = value->z;
-        if ( !serialize_write_fixed64( stream, fixed_value, 48, 16, -100000LL, 100000LL ) )
+        if ( !serialize_write_fixed64( stream, fixed_value, 48, 16, -100000, 100000 ) )
         {
             return 0;
         }
@@ -503,7 +503,7 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_fixed_vec( serialize_read_str
     {
         serialize_int64_t fixed_value;
         fixed_value = 0;
-        if ( !serialize_read_fixed64( stream, &fixed_value, 48, 16, -100000LL, 100000LL ) )
+        if ( !serialize_read_fixed64( stream, &fixed_value, 48, 16, -100000, 100000 ) )
         {
             return 0;
         }
@@ -512,7 +512,7 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_fixed_vec( serialize_read_str
     {
         serialize_int64_t fixed_value;
         fixed_value = 0;
-        if ( !serialize_read_fixed64( stream, &fixed_value, 48, 16, -100000LL, 100000LL ) )
+        if ( !serialize_read_fixed64( stream, &fixed_value, 48, 16, -100000, 100000 ) )
         {
             return 0;
         }
@@ -521,7 +521,7 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_fixed_vec( serialize_read_str
     {
         serialize_int64_t fixed_value;
         fixed_value = 0;
-        if ( !serialize_read_fixed64( stream, &fixed_value, 48, 16, -100000LL, 100000LL ) )
+        if ( !serialize_read_fixed64( stream, &fixed_value, 48, 16, -100000, 100000 ) )
         {
             return 0;
         }
@@ -536,28 +536,28 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_fixed_quat( serialize_write
 {
     {
         serialize_int32_t fixed_value = value->x;
-        if ( !serialize_write_fixed32( stream, fixed_value, 2, 30, -1LL, 1LL ) )
+        if ( !serialize_write_fixed32( stream, fixed_value, 2, 30, -1, 1 ) )
         {
             return 0;
         }
     }
     {
         serialize_int32_t fixed_value = value->y;
-        if ( !serialize_write_fixed32( stream, fixed_value, 2, 30, -1LL, 1LL ) )
+        if ( !serialize_write_fixed32( stream, fixed_value, 2, 30, -1, 1 ) )
         {
             return 0;
         }
     }
     {
         serialize_int32_t fixed_value = value->z;
-        if ( !serialize_write_fixed32( stream, fixed_value, 2, 30, -1LL, 1LL ) )
+        if ( !serialize_write_fixed32( stream, fixed_value, 2, 30, -1, 1 ) )
         {
             return 0;
         }
     }
     {
         serialize_int32_t fixed_value = value->w;
-        if ( !serialize_write_fixed32( stream, fixed_value, 2, 30, -1LL, 1LL ) )
+        if ( !serialize_write_fixed32( stream, fixed_value, 2, 30, -1, 1 ) )
         {
             return 0;
         }
@@ -572,7 +572,7 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_fixed_quat( serialize_read_st
     {
         serialize_int32_t fixed_value;
         fixed_value = 0;
-        if ( !serialize_read_fixed32( stream, &fixed_value, 2, 30, -1LL, 1LL ) )
+        if ( !serialize_read_fixed32( stream, &fixed_value, 2, 30, -1, 1 ) )
         {
             return 0;
         }
@@ -581,7 +581,7 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_fixed_quat( serialize_read_st
     {
         serialize_int32_t fixed_value;
         fixed_value = 0;
-        if ( !serialize_read_fixed32( stream, &fixed_value, 2, 30, -1LL, 1LL ) )
+        if ( !serialize_read_fixed32( stream, &fixed_value, 2, 30, -1, 1 ) )
         {
             return 0;
         }
@@ -590,7 +590,7 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_fixed_quat( serialize_read_st
     {
         serialize_int32_t fixed_value;
         fixed_value = 0;
-        if ( !serialize_read_fixed32( stream, &fixed_value, 2, 30, -1LL, 1LL ) )
+        if ( !serialize_read_fixed32( stream, &fixed_value, 2, 30, -1, 1 ) )
         {
             return 0;
         }
@@ -599,7 +599,7 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_fixed_quat( serialize_read_st
     {
         serialize_int32_t fixed_value;
         fixed_value = 0;
-        if ( !serialize_read_fixed32( stream, &fixed_value, 2, 30, -1LL, 1LL ) )
+        if ( !serialize_read_fixed32( stream, &fixed_value, 2, 30, -1, 1 ) )
         {
             return 0;
         }

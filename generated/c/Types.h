@@ -132,7 +132,7 @@ typedef struct InputPacket {
     uint16_t synchronize_sequence;
     uint64_t current_frame;
     uint64_t start_frame;
-    Input inputs[16];
+    Input inputs[MAX_INPUTS_PER_PACKET];
     int32_t inputs_count;
 } InputPacket;
 

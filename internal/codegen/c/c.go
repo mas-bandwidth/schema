@@ -127,6 +127,11 @@ type gen struct {
 	// the C++ backend consults, reloaded per function so it never outlives
 	// its struct
 	bulkBytes map[*ir.Field]bool
+
+	// consts of this file #defined so far (symbolic-reference safety): the
+	// preprocessor expands a reference at use, so a use may only render
+	// symbolically once the definition stands above it
+	emitted map[string]bool
 }
 
 func (g *gen) pf(format string, args ...any) {
@@ -216,6 +221,7 @@ func (g *gen) header(h *strings.Builder, base string) {
 // ---- data header ----
 
 func (g *gen) emitDataHeader(carriesProtocolId bool) {
+	g.emitted = map[string]bool{}
 	if carriesProtocolId {
 		g.pf("/* The unit's protocol id — the hash of its schema files (SPEC §3.1). Two\n")
 		g.pf("   sides at the same id speak identical bits; there is no other versioning. */\n")
@@ -262,10 +268,11 @@ func (g *gen) emitDataHeader(carriesProtocolId bool) {
 func (g *gen) emitConst(d *ir.Const) {
 	// #define rather than a const: it carries no storage, and it works where a
 	// const int does not — array bounds, case labels, other #defines.
-	g.pf("#define %s %s\n", screaming(d.Name), constValue(d))
+	g.pf("#define %s %s%s\n", screaming(d.Name), g.constValue(d), g.foldComment(d.Expr))
+	g.emitted[d.Name] = true
 }
 
-func constValue(d *ir.Const) string {
+func (g *gen) constValue(d *ir.Const) string {
 	if d.IsFloat {
 		return formatFloat(d.Float)
 	}
@@ -273,7 +280,7 @@ func constValue(d *ir.Const) string {
 		return "0"
 	}
 	// parenthesised so a #define used inside an expression cannot reassociate
-	return "(" + d.Int.String() + ")"
+	return "(" + g.renderInt(d.Expr, d.Int) + ")"
 }
 
 func formatFloat(v float64) string {
@@ -365,15 +372,16 @@ func (g *gen) emitField(f *ir.Field) {
 		// appends a terminator the wire does not carry. Sizing this at N is a
 		// one-byte out-of-bounds WRITE driven by wire data -- the read path is
 		// where hostile input arrives, so this is the array that must be right.
-		g.pf("    char %s[%d]; /* string(%d): N + 1 for the terminator the wire does not carry */\n", name, f.Type.Size+1, f.Type.Size)
+		g.pf("    char %s[%s + 1]; /* string(%s): N + 1 for the terminator the wire does not carry */\n",
+			name, g.renderInt(f.Type.SizeExpr, big.NewInt(f.Type.Size)), ir.RenderExpr(f.Type.SizeExpr))
 		g.pf("    int32_t %s_length;\n", name)
 	case f.Type.Kind == ir.TBytes:
-		g.pf("    uint8_t %s[%d];\n", name, f.Type.Size)
+		g.pf("    uint8_t %s[%s];\n", name, g.renderInt(f.Type.SizeExpr, big.NewInt(f.Type.Size)))
 		g.pf("    int32_t %s_length;\n", name)
 	case f.Array == ir.ArrayFixed:
-		g.pf("    %s %s[%d];\n", g.storageType(f), name, f.ArrayBound)
+		g.pf("    %s %s[%s];\n", g.storageType(f), name, g.renderInt(f.ArrayExpr, big.NewInt(f.ArrayBound)))
 	case f.Array == ir.ArrayCounted:
-		g.pf("    %s %s[%d];\n", g.storageType(f), name, f.ArrayBound)
+		g.pf("    %s %s[%s];\n", g.storageType(f), name, g.renderInt(f.ArrayExpr, big.NewInt(f.ArrayBound)))
 		g.pf("    int32_t %s_count;\n", name)
 	default:
 		g.pf("    %s %s;\n", g.storageType(f), name)
@@ -464,11 +472,20 @@ func sortedDeps(set map[string]bool) []string {
 	return out
 }
 
-var _ = big.NewInt
-
 // ---- wire header ----
 
 func (g *gen) emitWireHeader() {
+	// same-file constants are pre-marked emitted — they live in the data
+	// header this wire header includes, so symbolic references stay
+	// renderable rather than folding to literals (the C++ backend's
+	// emitWireFile does the same)
+	g.emitted = map[string]bool{}
+	for _, d := range g.file.Decls {
+		if c, ok := d.(*ir.Const); ok {
+			g.emitted[c.Name] = true
+		}
+	}
+
 	if g.fileEmitsWire() {
 		g.emitSpineInlineMacros()
 	}

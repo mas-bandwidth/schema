@@ -116,7 +116,7 @@ static SCHEMA_UNUSED WideProbe new_wide_probe( void )
 {
     WideProbe value;
     memset( &value, 0, sizeof( value ) );
-    value.bias = serialize_int128_from_int64( -250LL );
+    value.bias = serialize_int128_from_int64( -250 );
     value.seed = serialize_uint128_make( 2ULL, 0ULL );
     return value;
 }

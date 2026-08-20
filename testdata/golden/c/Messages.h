@@ -45,7 +45,7 @@ typedef struct Test {
 
 /* message Block */
 typedef struct Block {
-    uint8_t data[2000];
+    uint8_t data[MAX_BLOCK_SIZE];
     int32_t data_length;
 } Block;
 
@@ -55,7 +55,7 @@ typedef struct Block {
 
 /* message Chat */
 typedef struct Chat {
-    char text[257]; /* string(256): N + 1 for the terminator the wire does not carry */
+    char text[MAX_CHAT_LENGTH + 1]; /* string(MaxChatLength): N + 1 for the terminator the wire does not carry */
     int32_t text_length;
 } Chat;
 

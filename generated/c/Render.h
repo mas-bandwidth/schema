@@ -43,7 +43,7 @@ typedef struct RenderSprite {
 typedef struct RenderBlock {
     uint32_t worker_index;
     uint32_t sprite_count_hint;
-    RenderSprite sprites[64];
+    RenderSprite sprites[RENDER_BLOCK_MAX_SPRITES];
     int32_t sprites_count;
 } RenderBlock;
 
