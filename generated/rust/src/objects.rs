@@ -29,7 +29,7 @@ pub struct ClientShipState {
     pub linear_velocity: Vec3,
     pub flags: ShipFlags,
     pub team: Team,
-    pub health: f32, // shallow wire: [0.0, 1000.0] @ 1.0 -> int [0, 1000], round up
+    pub health: f32, // shallow wire: [0.0, 1000.0] @ 1.0 -> int [0, 1000], round up (advisory: SPEC §4.8 rule 4 — projection, not this wire conversion)
     pub thrust: f32, // shallow wire: [0.0, 1.0] @ 0.01 -> int [0, 100]
     pub angular_velocity: Vec3,
     pub laser_cooldown: f32,
@@ -103,7 +103,7 @@ pub struct ServerShipState {
     pub linear_velocity: Vec3,
     pub flags: ShipFlags,
     pub team: Team,
-    pub health: f32, // shallow wire: [0.0, 1000.0] @ 1.0 -> int [0, 1000], round up
+    pub health: f32, // shallow wire: [0.0, 1000.0] @ 1.0 -> int [0, 1000], round up (advisory: SPEC §4.8 rule 4 — projection, not this wire conversion)
     pub thrust: f32, // shallow wire: [0.0, 1.0] @ 0.01 -> int [0, 100]
     pub angular_velocity: Vec3,
     pub laser_cooldown: f32,
@@ -176,7 +176,7 @@ pub struct ShipData_Deep {
     pub linear_velocity: Vec3,
     pub flags: ShipFlags,
     pub team: Team,
-    pub health: f32, // shallow wire: [0.0, 1000.0] @ 1.0 -> int [0, 1000], round up
+    pub health: f32, // shallow wire: [0.0, 1000.0] @ 1.0 -> int [0, 1000], round up (advisory: SPEC §4.8 rule 4 — projection, not this wire conversion)
     pub thrust: f32, // shallow wire: [0.0, 1.0] @ 0.01 -> int [0, 100]
     pub angular_velocity: Vec3,
     pub laser_cooldown: f32,
@@ -251,7 +251,7 @@ pub struct ShipData_Shallow {
     pub linear_velocity_z: i32,
     pub flags: ShipFlags,
     pub team: Team,
-    pub health: u16, // float [0.0, 1000.0] @ resolution 1.0 -> wire int [0, 1000], round up
+    pub health: u16, // float [0.0, 1000.0] @ resolution 1.0 -> wire int [0, 1000], round up (advisory: SPEC §4.8 rule 4 — projection, not this wire conversion)
     pub thrust: u8, // float [0.0, 1.0] @ resolution 0.01 -> wire int [0, 100]
 }
 
@@ -290,7 +290,7 @@ pub struct ShipData_Interpolate {
     pub linear_velocity: Vec3,
     pub flags: ShipFlags,
     pub team: Team,
-    pub health: u16, // float [0.0, 1000.0] @ resolution 1.0 -> wire int [0, 1000], round up — wire-int domain, snap-interpolated (SPEC §4.8 rule 5)
+    pub health: u16, // float [0.0, 1000.0] @ resolution 1.0 -> wire int [0, 1000], round up (advisory: SPEC §4.8 rule 4 — projection, not this wire conversion) — wire-int domain, snap-interpolated (SPEC §4.8 rule 5)
     pub thrust: u8, // float [0.0, 1.0] @ resolution 0.01 -> wire int [0, 100] — wire-int domain, snap-interpolated (SPEC §4.8 rule 5)
 }
 

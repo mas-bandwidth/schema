@@ -45,7 +45,7 @@ export class ClientShipState {
     this.LinearVelocity = new Vec3();
     this.Flags = 0n; // ShipFlags — consumed as masks, BigInt (uint64) storage (SPEC §4.2)
     this.Team = Team.None;
-    this.Health = 0; // shallow wire: [0.0, 1000.0] @ 1.0 -> int [0, 1000], round up
+    this.Health = 0; // shallow wire: [0.0, 1000.0] @ 1.0 -> int [0, 1000], round up (advisory: SPEC §4.8 rule 4 — projection, not this wire conversion)
     this.Thrust = 0; // shallow wire: [0.0, 1.0] @ 0.01 -> int [0, 100]
     this.AngularVelocity = new Vec3();
     this.LaserCooldown = 0;
@@ -82,7 +82,7 @@ export class ServerShipState {
     this.LinearVelocity = new Vec3();
     this.Flags = 0n; // ShipFlags — consumed as masks, BigInt (uint64) storage (SPEC §4.2)
     this.Team = Team.None;
-    this.Health = 0; // shallow wire: [0.0, 1000.0] @ 1.0 -> int [0, 1000], round up
+    this.Health = 0; // shallow wire: [0.0, 1000.0] @ 1.0 -> int [0, 1000], round up (advisory: SPEC §4.8 rule 4 — projection, not this wire conversion)
     this.Thrust = 0; // shallow wire: [0.0, 1.0] @ 0.01 -> int [0, 100]
     this.AngularVelocity = new Vec3();
     this.LaserCooldown = 0;
@@ -118,7 +118,7 @@ export class ShipData_Deep {
     this.LinearVelocity = new Vec3();
     this.Flags = 0n; // ShipFlags — consumed as masks, BigInt (uint64) storage (SPEC §4.2)
     this.Team = Team.None;
-    this.Health = 0; // shallow wire: [0.0, 1000.0] @ 1.0 -> int [0, 1000], round up
+    this.Health = 0; // shallow wire: [0.0, 1000.0] @ 1.0 -> int [0, 1000], round up (advisory: SPEC §4.8 rule 4 — projection, not this wire conversion)
     this.Thrust = 0; // shallow wire: [0.0, 1.0] @ 0.01 -> int [0, 100]
     this.AngularVelocity = new Vec3();
     this.LaserCooldown = 0;
@@ -160,7 +160,7 @@ export class ShipData_Shallow {
     this.LinearVelocityZ = 0;
     this.Flags = 0n; // ShipFlags — consumed as masks, BigInt (uint64) storage (SPEC §4.2)
     this.Team = Team.None;
-    this.Health = 0; // float [0.0, 1000.0] @ resolution 1.0 -> wire int [0, 1000], round up
+    this.Health = 0; // float [0.0, 1000.0] @ resolution 1.0 -> wire int [0, 1000], round up (advisory: SPEC §4.8 rule 4 — projection, not this wire conversion)
     this.Thrust = 0; // float [0.0, 1.0] @ resolution 0.01 -> wire int [0, 100]
   }
 }
@@ -176,7 +176,7 @@ export class ShipData_Interpolate {
     this.LinearVelocity = new Vec3();
     this.Flags = 0n; // ShipFlags — consumed as masks, BigInt (uint64) storage (SPEC §4.2)
     this.Team = Team.None;
-    this.Health = 0; // float [0.0, 1000.0] @ resolution 1.0 -> wire int [0, 1000], round up — wire-int domain, snap-interpolated (SPEC §4.8 rule 5)
+    this.Health = 0; // float [0.0, 1000.0] @ resolution 1.0 -> wire int [0, 1000], round up (advisory: SPEC §4.8 rule 4 — projection, not this wire conversion) — wire-int domain, snap-interpolated (SPEC §4.8 rule 5)
     this.Thrust = 0; // float [0.0, 1.0] @ resolution 0.01 -> wire int [0, 100] — wire-int domain, snap-interpolated (SPEC §4.8 rule 5)
   }
 }
