@@ -31,7 +31,7 @@ type ClientShipState struct {
 	LinearVelocity      Vec3
 	Flags               ShipFlags
 	Team                Team
-	Health              float32 // shallow wire: [0.0, 1000.0] @ 1.0 -> int [0, 1000], round up
+	Health              float32 // shallow wire: [0.0, 1000.0] @ 1.0 -> int [0, 1000], round up (advisory: SPEC §4.8 rule 4 — projection, not this wire conversion)
 	Thrust              float32 // shallow wire: [0.0, 1.0] @ 0.01 -> int [0, 100]
 	AngularVelocity     Vec3
 	LaserCooldown       float32
@@ -66,7 +66,7 @@ type ServerShipState struct {
 	LinearVelocity      Vec3
 	Flags               ShipFlags
 	Team                Team
-	Health              float32 // shallow wire: [0.0, 1000.0] @ 1.0 -> int [0, 1000], round up
+	Health              float32 // shallow wire: [0.0, 1000.0] @ 1.0 -> int [0, 1000], round up (advisory: SPEC §4.8 rule 4 — projection, not this wire conversion)
 	Thrust              float32 // shallow wire: [0.0, 1.0] @ 0.01 -> int [0, 100]
 	AngularVelocity     Vec3
 	LaserCooldown       float32
@@ -100,7 +100,7 @@ type ShipData_Deep struct {
 	LinearVelocity      Vec3
 	Flags               ShipFlags
 	Team                Team
-	Health              float32 // shallow wire: [0.0, 1000.0] @ 1.0 -> int [0, 1000], round up
+	Health              float32 // shallow wire: [0.0, 1000.0] @ 1.0 -> int [0, 1000], round up (advisory: SPEC §4.8 rule 4 — projection, not this wire conversion)
 	Thrust              float32 // shallow wire: [0.0, 1.0] @ 0.01 -> int [0, 100]
 	AngularVelocity     Vec3
 	LaserCooldown       float32
@@ -140,7 +140,7 @@ type ShipData_Shallow struct {
 	LinearVelocityZ int32
 	Flags           ShipFlags
 	Team            Team
-	Health          uint16 // float [0.0, 1000.0] @ resolution 1.0 -> wire int [0, 1000], round up
+	Health          uint16 // float [0.0, 1000.0] @ resolution 1.0 -> wire int [0, 1000], round up (advisory: SPEC §4.8 rule 4 — projection, not this wire conversion)
 	Thrust          uint8  // float [0.0, 1.0] @ resolution 0.01 -> wire int [0, 100]
 }
 
@@ -154,7 +154,7 @@ type ShipData_Interpolate struct {
 	LinearVelocity Vec3
 	Flags          ShipFlags
 	Team           Team
-	Health         uint16 // float [0.0, 1000.0] @ resolution 1.0 -> wire int [0, 1000], round up — wire-int domain, snap-interpolated (SPEC §4.8 rule 5)
+	Health         uint16 // float [0.0, 1000.0] @ resolution 1.0 -> wire int [0, 1000], round up (advisory: SPEC §4.8 rule 4 — projection, not this wire conversion) — wire-int domain, snap-interpolated (SPEC §4.8 rule 5)
 	Thrust         uint8  // float [0.0, 1.0] @ resolution 0.01 -> wire int [0, 100] — wire-int domain, snap-interpolated (SPEC §4.8 rule 5)
 }
 

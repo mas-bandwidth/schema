@@ -582,7 +582,7 @@ func (g *gen) emitField(f *ir.Field, v view) {
 		typ := cppUint(smallestUnsigned(f.Steps))
 		note := ""
 		if f.Round != "nearest" {
-			note = ", round " + f.Round
+			note = ", round " + f.Round + " (advisory: SPEC §4.8 rule 4 — projection, not this wire conversion)"
 		}
 		tail := ""
 		if v == storageInterp {
@@ -683,7 +683,7 @@ func (g *gen) fieldComment(f *ir.Field) string {
 	if f.HasFloatRange {
 		note := ""
 		if f.Round != "nearest" {
-			note = ", round " + f.Round
+			note = ", round " + f.Round + " (advisory: SPEC §4.8 rule 4 — projection, not this wire conversion)"
 		}
 		if f.Interpolate {
 			// the triple describes the SHALLOW wire only; the deep wire is the

@@ -141,7 +141,7 @@ func (g *gen) emitViewStorageField(f *ir.Field, v view) {
 	if (v == storageShallow || v == storageInterp) && f.HasFloatRange {
 		note := ""
 		if f.Round != "nearest" {
-			note = ", round " + f.Round
+			note = ", round " + f.Round + " (advisory: SPEC §4.8 rule 4 — projection, not this wire conversion)"
 		}
 		tail := ""
 		if v == storageInterp {

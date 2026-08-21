@@ -511,7 +511,7 @@ func (g *gen) emitField(f *ir.Field, v view) {
 		typ := goUint(ir.StorageBitsFor(f.Steps))
 		note := ""
 		if f.Round != "nearest" {
-			note = ", round " + f.Round
+			note = ", round " + f.Round + " (advisory: SPEC §4.8 rule 4 — projection, not this wire conversion)"
 		}
 		tail := ""
 		if v == storageInterp {
@@ -560,7 +560,7 @@ func (g *gen) fieldComment(f *ir.Field) string {
 	if f.HasFloatRange {
 		note := ""
 		if f.Round != "nearest" {
-			note = ", round " + f.Round
+			note = ", round " + f.Round + " (advisory: SPEC §4.8 rule 4 — projection, not this wire conversion)"
 		}
 		if f.Interpolate {
 			parts = append(parts, fmt.Sprintf("shallow wire: [%s, %s] @ %s -> int [0, %d]%s",

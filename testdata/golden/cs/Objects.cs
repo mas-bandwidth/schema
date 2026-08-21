@@ -37,7 +37,7 @@ namespace Example
         public Vec3 LinearVelocity = new Vec3();
         public ulong Flags; // ShipFlags — consumed as masks, ulong storage (SPEC §4.2)
         public Team Team;
-        public float Health; // shallow wire: [0.0, 1000.0] @ 1.0 -> int [0, 1000], round up
+        public float Health; // shallow wire: [0.0, 1000.0] @ 1.0 -> int [0, 1000], round up (advisory: SPEC §4.8 rule 4 — projection, not this wire conversion)
         public float Thrust; // shallow wire: [0.0, 1.0] @ 0.01 -> int [0, 100]
         public Vec3 AngularVelocity = new Vec3();
         public float LaserCooldown;
@@ -73,7 +73,7 @@ namespace Example
         public Vec3 LinearVelocity = new Vec3();
         public ulong Flags; // ShipFlags — consumed as masks, ulong storage (SPEC §4.2)
         public Team Team;
-        public float Health; // shallow wire: [0.0, 1000.0] @ 1.0 -> int [0, 1000], round up
+        public float Health; // shallow wire: [0.0, 1000.0] @ 1.0 -> int [0, 1000], round up (advisory: SPEC §4.8 rule 4 — projection, not this wire conversion)
         public float Thrust; // shallow wire: [0.0, 1.0] @ 0.01 -> int [0, 100]
         public Vec3 AngularVelocity = new Vec3();
         public float LaserCooldown;
@@ -108,7 +108,7 @@ namespace Example
         public Vec3 LinearVelocity = new Vec3();
         public ulong Flags; // ShipFlags — consumed as masks, ulong storage (SPEC §4.2)
         public Team Team;
-        public float Health; // shallow wire: [0.0, 1000.0] @ 1.0 -> int [0, 1000], round up
+        public float Health; // shallow wire: [0.0, 1000.0] @ 1.0 -> int [0, 1000], round up (advisory: SPEC §4.8 rule 4 — projection, not this wire conversion)
         public float Thrust; // shallow wire: [0.0, 1.0] @ 0.01 -> int [0, 100]
         public Vec3 AngularVelocity = new Vec3();
         public float LaserCooldown;
@@ -149,7 +149,7 @@ namespace Example
         public int LinearVelocityZ;
         public ulong Flags; // ShipFlags — consumed as masks, ulong storage (SPEC §4.2)
         public Team Team;
-        public ushort Health; // float [0.0, 1000.0] @ resolution 1.0 -> wire int [0, 1000], round up
+        public ushort Health; // float [0.0, 1000.0] @ resolution 1.0 -> wire int [0, 1000], round up (advisory: SPEC §4.8 rule 4 — projection, not this wire conversion)
         public byte Thrust; // float [0.0, 1.0] @ resolution 0.01 -> wire int [0, 100]
     }
 
@@ -164,7 +164,7 @@ namespace Example
         public Vec3 LinearVelocity = new Vec3();
         public ulong Flags; // ShipFlags — consumed as masks, ulong storage (SPEC §4.2)
         public Team Team;
-        public ushort Health; // float [0.0, 1000.0] @ resolution 1.0 -> wire int [0, 1000], round up — wire-int domain, snap-interpolated (SPEC §4.8 rule 5)
+        public ushort Health; // float [0.0, 1000.0] @ resolution 1.0 -> wire int [0, 1000], round up (advisory: SPEC §4.8 rule 4 — projection, not this wire conversion) — wire-int domain, snap-interpolated (SPEC §4.8 rule 5)
         public byte Thrust; // float [0.0, 1.0] @ resolution 0.01 -> wire int [0, 100] — wire-int domain, snap-interpolated (SPEC §4.8 rule 5)
     }
 

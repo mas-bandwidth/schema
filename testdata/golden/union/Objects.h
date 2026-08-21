@@ -38,7 +38,7 @@ struct ClientShipState {
     ::VecMath linear_velocity;
     ShipFlags flags = 0;
     Team team = Team::None;
-    float health = 0.0f; // shallow wire: [0, 1000] @ 1 -> int [0, 1000], round up
+    float health = 0.0f; // shallow wire: [0, 1000] @ 1 -> int [0, 1000], round up (advisory: SPEC §4.8 rule 4 — projection, not this wire conversion)
     float thrust = 0.0f; // shallow wire: [0, 1] @ 0.01 -> int [0, 100]
     ::VecMath angular_velocity;
     float laser_cooldown = 0.0f;
@@ -73,7 +73,7 @@ struct ServerShipState {
     ::VecMath linear_velocity;
     ShipFlags flags = 0;
     Team team = Team::None;
-    float health = 0.0f; // shallow wire: [0, 1000] @ 1 -> int [0, 1000], round up
+    float health = 0.0f; // shallow wire: [0, 1000] @ 1 -> int [0, 1000], round up (advisory: SPEC §4.8 rule 4 — projection, not this wire conversion)
     float thrust = 0.0f; // shallow wire: [0, 1] @ 0.01 -> int [0, 100]
     ::VecMath angular_velocity;
     float laser_cooldown = 0.0f;
@@ -107,7 +107,7 @@ struct ShipData_Deep {
     ::VecMath linear_velocity;
     ShipFlags flags = 0;
     Team team = Team::None;
-    float health = 0.0f; // shallow wire: [0, 1000] @ 1 -> int [0, 1000], round up
+    float health = 0.0f; // shallow wire: [0, 1000] @ 1 -> int [0, 1000], round up (advisory: SPEC §4.8 rule 4 — projection, not this wire conversion)
     float thrust = 0.0f; // shallow wire: [0, 1] @ 0.01 -> int [0, 100]
     ::VecMath angular_velocity;
     float laser_cooldown = 0.0f;
@@ -147,7 +147,7 @@ struct ShipData_Shallow {
     int32_t linear_velocity_z = 0;
     ShipFlags flags = 0;
     Team team = Team::None;
-    uint16_t health = 0; // float [0, 1000] @ resolution 1 -> wire int [0, 1000], round up
+    uint16_t health = 0; // float [0, 1000] @ resolution 1 -> wire int [0, 1000], round up (advisory: SPEC §4.8 rule 4 — projection, not this wire conversion)
     uint8_t thrust = 0; // float [0, 1] @ resolution 0.01 -> wire int [0, 100]
 };
 
@@ -161,7 +161,7 @@ struct ShipData_Interpolate {
     ::VecMath linear_velocity;
     ShipFlags flags = 0;
     Team team = Team::None;
-    uint16_t health = 0; // float [0, 1000] @ resolution 1 -> wire int [0, 1000], round up — wire-int domain, snap-interpolated (SPEC §4.8 rule 5)
+    uint16_t health = 0; // float [0, 1000] @ resolution 1 -> wire int [0, 1000], round up (advisory: SPEC §4.8 rule 4 — projection, not this wire conversion) — wire-int domain, snap-interpolated (SPEC §4.8 rule 5)
     uint8_t thrust = 0; // float [0, 1] @ resolution 0.01 -> wire int [0, 100] — wire-int domain, snap-interpolated (SPEC §4.8 rule 5)
 };
 
