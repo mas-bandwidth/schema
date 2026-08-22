@@ -73,7 +73,7 @@ jobs:
       # One node version, the runtime's floor (serialize.js engines >= 20):
       # the runtime's own CI carries the version matrix; this repo proves
       # wire identity, which does not vary by node version.
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: '20'
 
