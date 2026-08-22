@@ -74,9 +74,13 @@ each measured. C now leads C++ on batch read.
 Two honest caveats on the comparison. The machine changed (M2 → M3 Ultra), so the two tables
 are not a controlled before/after — the C read movement is far outside machine variance and
 the mechanism is confirmed by inline verdicts, but the exact figures are not subtraction. And
-the C row's remaining gap is packaging: `serialize.c` is a compiled translation unit, not a
-header, so every runtime call crosses a boundary the header-only C++ runtime does not have,
-and no leg here is built with LTO because none of the other four are.
+the C row's remaining gap was packaging *in this table's era*: `serialize.c` was then a
+compiled translation unit, so every runtime call crossed a boundary the header-only C++
+runtime does not have, and no leg here is built with LTO because none of the other four are.
+(That era ended 2026-08-17: serialize.c #25 made the C runtime header-only too, and every
+pass since records `linkage=hdr` for both legs — see BENCH-STANDARD §3.1's amendment and
+issue #66. The figures in this table predate the change and are correct for what they
+measured.)
 
 ## Reading the table honestly
 

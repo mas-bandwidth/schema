@@ -548,6 +548,12 @@ You cannot give C and C++ the same linkage — `serialize.h` is a header and
 compiled TU, `hdr+tu`). That difference is the largest single term in the C
 row and it is a property of the runtimes, not the languages. So it is recorded, and
 §5.3 makes the tool refuse to divide across it without an explicit flag.
+(Amended 2026-08-22, issue #66: serialize.c #25 ended this on 2026-08-17 —
+the C runtime is header-only and both legs now record `linkage=hdr`, which
+§5.3 compares freely. The paragraph above is kept as the rule's reason and
+governs any port whose packaging still differs; for C-vs-C++ specifically it
+is history, and present-tense TU attributions in any doc dated after
+2026-08-17 are wrong.)
 
 > **Every pass MUST additionally emit a labelled external-linkage diagnostic leg for
 > C++ and C**, so the size of the linkage term is a published number rather than a
