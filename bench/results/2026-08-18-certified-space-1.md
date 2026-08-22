@@ -109,7 +109,10 @@ driver, never the runner. Window: controls 114.16 → 113.98 M msg/s, **delta
 3. **No certified row contradicts the quick tier beyond noise.** Window 2's
    72 rows sit 72/72 inside the quick-era band envelope (realworld-space,
    realworld2-space, pr29 quick-check). The rt-family C++ ~2x leads
-   (bench_packet/ints/mixed — the attributed TU-call-boundary-era class) and
+   (bench_packet/ints/mixed — the attributed TU-call-boundary-era class
+   [label era-scoped 2026-08-22, issue #66: both legs linkage=hdr since
+   serialize.c #25, so the literal TU boundary is gone; the leads reproduce
+   and their attribution is the timing era's, pending re-attribution]) and
    the C ~2x leads on probearray/testdata reads (the #29 lane-inline wins,
    C++ mirror candidate still on the board) all reproduce.
 

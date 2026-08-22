@@ -96,14 +96,15 @@ Every results file records the exact compiler and flags in its preamble.
 C flags: `-std=c99 -Wall -Wextra -Werror -O3 -DNDEBUG`, with
 `$SERIALIZE_C/serialize.c` compiled in and **no `-flto`** — every leg is
 measured in its language's ordinary release configuration (the Rust leg is
-`cargo run --release`, no LTO either). Read the C row knowing what it
-includes: **serialize.c is a compiled translation unit, not a header**, so
-every runtime call in the C leg crosses a TU boundary that the header-only C++
-runtime does not have. That is a property of the runtime's packaging, not of
-the generated code, and it is the largest single term in the C row. An
-`-flto` build recovers part of it — median 1.11x, up to 2.25x on the paths made
-of many small runtime calls and ~1.05x on the double-heavy ones, measured as a
-labelled leg in `bench/results/2026-08-14-c-lto-diagnostic-arm64-macbook.csv`.
+`cargo run --release`, no LTO either). Read the C row knowing its
+history: **both legs are header-only (`linkage=hdr`) since serialize.c #25, 2026-08-17** —
+the runners and the certified space CSV record it per row. Before that date serialize.c was
+a compiled translation unit, every runtime call crossed a TU boundary the C++ runtime did
+not have, and that boundary was the largest single term in the C row; results from that era
+carry the old attribution and stay correct for what they measured. The `-flto` diagnostic
+from the TU era — median 1.11x, up to 2.25x on the many-small-call paths, recorded in
+`bench/results/2026-08-14-c-lto-diagnostic-arm64-macbook.csv` — is likewise historical: with
+both legs header-only there is no TU boundary for LTO to recover (issue #66).
 That is how a config divergence gets reported here: label the leg, record the
 flag, keep it beside the default pass — the way the `DOTNET_TieredCompilation=0`
 diagnostic did.
