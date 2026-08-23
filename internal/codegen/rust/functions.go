@@ -534,8 +534,8 @@ func (g *gen) emitWriteScalar(f *ir.Field, name, ind string) {
 		if f.HasFloatRange {
 			// a temp so the wire quantization cannot write back into the input
 			g.pf("%s{\n%s    let mut compressed_value = %s;\n", ind, ind, name)
-			g.pf("%s    stream.serialize_compressed_float(&mut compressed_value, %s, %s, %s)?;\n%s}\n",
-				ind, formatFloat32(f.FMin), formatFloat32(f.FMax), formatFloat32(f.Resolution), ind)
+			g.pf("%s    stream.serialize_compressed_float_precomputed(&mut compressed_value, %s)?;%s\n%s}\n",
+				ind, compressedFloatArgs(f), compressedFloatNote(f), ind)
 			return
 		}
 		g.pf("%s{\n%s    let mut float_value = %s;\n", ind, ind, name)
@@ -579,6 +579,35 @@ func (g *gen) emitWriteScalar(f *ir.Field, name, ind string) {
 			g.pf("%swrite_%s(stream, &%s)?;\n", ind, ir.RustSnake(f.Type.Name), name)
 		}
 	}
+}
+
+// compressedFloatArgs renders the constant arguments of the runtime's
+// precomputed compressed-float entry point (issue #82): the family contract's
+// four scalars in the family order — max_integer_value, bits, delta, min, with
+// min last. The values are ir.CompressedFloatParams' generation-time fold, the
+// same derivation internal/pack, the JS flat backend, the Go fold (#79) and
+// the cpp backend (#114) already consume, and the same arithmetic
+// serialize.rs's serialize_compressed_float_params performs per call — so the
+// entry points are wire-identical by construction, and the runtime's debug
+// misuse checks (bits == bits_required(0, max_integer_value), delta finite
+// and positive) hold every generated site to it in the debug test legs. delta
+// and min are float32 quantities the wire depends on bit-for-bit;
+// formatFloat32 prints literals that convert back to exactly those values.
+func compressedFloatArgs(f *ir.Field) string {
+	steps, bits := ir.CompressedFloatParams(f.FMin, f.FMax, f.Resolution)
+	min32 := float32(f.FMin)
+	delta := float32(f.FMax) - min32
+	return fmt.Sprintf("%d, %d, %s, %s", steps, bits,
+		formatFloat32(float64(delta)), formatFloat32(float64(min32)))
+}
+
+// compressedFloatNote echoes the declaration beside the folded constants:
+// four bare scalars do not identify (min, max, resolution) — resolution is
+// consumed by the step count — and a reader auditing a call site should not
+// have to run the derivation backwards.
+func compressedFloatNote(f *ir.Field) string {
+	return fmt.Sprintf(" // compressed float [%s, %s] @ %s, constants folded at generation (issue #82)",
+		formatFloat(f.FMin), formatFloat(f.FMax), formatFloat(f.Resolution))
 }
 
 // emitWriteBareInt writes a bare integer at its storage width. Signed values
@@ -721,8 +750,8 @@ func (g *gen) emitReadScalar(f *ir.Field, name, ind string) {
 		g.pf("%sstream.serialize_bool(&mut %s)?;\n", ind, name)
 	case ir.TFloat32:
 		if f.HasFloatRange {
-			g.pf("%sstream.serialize_compressed_float(&mut %s, %s, %s, %s)?;\n",
-				ind, name, formatFloat32(f.FMin), formatFloat32(f.FMax), formatFloat32(f.Resolution))
+			g.pf("%sstream.serialize_compressed_float_precomputed(&mut %s, %s)?;%s\n",
+				ind, name, compressedFloatArgs(f), compressedFloatNote(f))
 			return
 		}
 		g.pf("%sstream.serialize_f32(&mut %s)?;\n", ind, name)
