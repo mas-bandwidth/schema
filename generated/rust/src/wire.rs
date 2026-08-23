@@ -266,7 +266,7 @@ pub fn write_probe_sample(stream: &mut WriteStream<'_>, value: &ProbeSample) -> 
     }
     {
         let mut compressed_value = value.orientation;
-        stream.serialize_compressed_float(&mut compressed_value, -180.0_f32, 180.0_f32, 0.01_f32)?;
+        stream.serialize_compressed_float_precomputed(&mut compressed_value, 36000, 16, 360.0_f32, -180.0_f32)?; // compressed float [-180.0, 180.0] @ 0.01, constants folded at generation (issue #82)
     }
     {
         let mut raw_value = value.raw_delta as u32;
@@ -319,7 +319,7 @@ pub fn write_probe_sample(stream: &mut WriteStream<'_>, value: &ProbeSample) -> 
 #[inline]
 pub fn read_probe_sample(stream: &mut ReadStream<'_>, value: &mut ProbeSample) -> Result {
     stream.serialize_bool(&mut value.active)?;
-    stream.serialize_compressed_float(&mut value.orientation, -180.0_f32, 180.0_f32, 0.01_f32)?;
+    stream.serialize_compressed_float_precomputed(&mut value.orientation, 36000, 16, 360.0_f32, -180.0_f32)?; // compressed float [-180.0, 180.0] @ 0.01, constants folded at generation (issue #82)
     {
         let mut raw_value: u32 = 0;
         stream.serialize_bits(&mut raw_value, 32)?;
@@ -672,7 +672,7 @@ pub fn write_test_data(stream: &mut WriteStream<'_>, value: &TestData) -> Result
     }
     {
         let mut compressed_value = value.compressed_float_value;
-        stream.serialize_compressed_float(&mut compressed_value, 0.0_f32, 10.0_f32, 0.01_f32)?;
+        stream.serialize_compressed_float_precomputed(&mut compressed_value, 1000, 10, 10.0_f32, 0.0_f32)?; // compressed float [0.0, 10.0] @ 0.01, constants folded at generation (issue #82)
     }
     {
         let mut float_value = value.double_value;
@@ -744,7 +744,7 @@ pub fn read_test_data(stream: &mut ReadStream<'_>, value: &mut TestData) -> Resu
         stream.serialize_int(&mut value.items[i], 0, 255)?;
     }
     stream.serialize_f32(&mut value.float_value)?;
-    stream.serialize_compressed_float(&mut value.compressed_float_value, 0.0_f32, 10.0_f32, 0.01_f32)?;
+    stream.serialize_compressed_float_precomputed(&mut value.compressed_float_value, 1000, 10, 10.0_f32, 0.0_f32)?; // compressed float [0.0, 10.0] @ 0.01, constants folded at generation (issue #82)
     stream.serialize_f64(&mut value.double_value)?;
     {
         let mut raw_value: u32 = 0;
@@ -813,19 +813,19 @@ pub const COMPRESSED_PROBE_MAX_BYTES: usize = 8;
 pub fn write_compressed_probe(stream: &mut WriteStream<'_>, value: &CompressedProbe) -> Result {
     {
         let mut compressed_value = value.boundary;
-        stream.serialize_compressed_float(&mut compressed_value, 0.0_f32, 10.0_f32, 0.01_f32)?;
+        stream.serialize_compressed_float_precomputed(&mut compressed_value, 1000, 10, 10.0_f32, 0.0_f32)?; // compressed float [0.0, 10.0] @ 0.01, constants folded at generation (issue #82)
     }
     {
         let mut compressed_value = value.offset;
-        stream.serialize_compressed_float(&mut compressed_value, -5.0_f32, 5.0_f32, 0.001_f32)?;
+        stream.serialize_compressed_float_precomputed(&mut compressed_value, 10000, 14, 10.0_f32, -5.0_f32)?; // compressed float [-5.0, 5.0] @ 0.001, constants folded at generation (issue #82)
     }
     Ok(())
 }
 
 #[inline]
 pub fn read_compressed_probe(stream: &mut ReadStream<'_>, value: &mut CompressedProbe) -> Result {
-    stream.serialize_compressed_float(&mut value.boundary, 0.0_f32, 10.0_f32, 0.01_f32)?;
-    stream.serialize_compressed_float(&mut value.offset, -5.0_f32, 5.0_f32, 0.001_f32)?;
+    stream.serialize_compressed_float_precomputed(&mut value.boundary, 1000, 10, 10.0_f32, 0.0_f32)?; // compressed float [0.0, 10.0] @ 0.01, constants folded at generation (issue #82)
+    stream.serialize_compressed_float_precomputed(&mut value.offset, 10000, 14, 10.0_f32, -5.0_f32)?; // compressed float [-5.0, 5.0] @ 0.001, constants folded at generation (issue #82)
     Ok(())
 }
 
