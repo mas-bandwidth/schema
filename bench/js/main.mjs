@@ -961,7 +961,7 @@ function varyRealPacket(m) {
 // --------------------------------------------------------------------------
 
 const NumBatchMessages = 4096;
-const BatchPasses = 6400;
+const BatchPasses = 25600; // rescaled 2026-08-23 with the mix rebalance: §2.1's floor wins (§1.2)
 
 function buildBatch(batchBuffer) {
   const batch = new Array(NumBatchMessages);
@@ -970,42 +970,42 @@ function buildBatch(batchBuffer) {
   for (let k = 0; k < NumBatchMessages; k++) {
     lcgStep();
     const pick = shr64(32) % 20;
-    if (pick < 5) {
-      // 25% Chat
+    if (pick < 1) {
+      // 5% Chat
       const m = new ex.Chat();
-      m.TextLength = 16 + (rng.lo & 15);
+      m.TextLength = 8 + (rng.lo & 7);
       for (let i = 0; i < m.TextLength; i++) {
         m.Text[i] = 97 + ((rng.lo >>> (i & 7)) & 15);
       }
       batch[k] = m;
-    } else if (pick < 10) {
-      // 25% Test
+    } else if (pick < 7) {
+      // 30% Test
       const m = new ex.Test();
       m.TestA = rng.lo & 0xffff;
       m.TestB = shr64(16) & 511;
       m.TestC = shr64(25) & 511;
       m.TestD = shr64(34) & 511;
       batch[k] = m;
-    } else if (pick < 13) {
-      // 15% Synchronize
+    } else if (pick < 12) {
+      // 25% Synchronize
       const m = new ex.Synchronize();
       m.SyncFrame = rngBig();
       m.SyncSequence = shr64(8) & 0xffff;
       batch[k] = m;
-    } else if (pick < 16) {
-      // 15% Timescale
+    } else if (pick < 17) {
+      // 25% Timescale
       const m = new ex.Timescale();
       m.Scale = (rng.lo & 0xffff) / 65536.0;
       m.FrameA = shr64(16);
       m.FrameB = shr64(24);
       batch[k] = m;
-    } else if (pick < 18) {
+    } else if (pick < 19) {
       // 10% Heartbeat
       batch[k] = new ex.Heartbeat();
     } else {
-      // 10% Block
+      // 5% Block
       const m = new ex.Block();
-      m.DataLength = 64 + (rng.lo & 127);
+      m.DataLength = 8 + (rng.lo & 15);
       for (let i = 0; i < m.DataLength; i++) {
         m.Data[i] = shr64(i & 31) & 0xff;
       }

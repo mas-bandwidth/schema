@@ -761,7 +761,7 @@ static TestData pin_testdata( void )
    ------------------------------------------------------------------------------------------ */
 
 #define NumBatchMessages 4096
-#define BatchPasses 6400
+#define BatchPasses 25600 /* rescaled 2026-08-23 with the mix rebalance: §2.1's floor wins (§1.2) */
 
 /* the generated C dispatch surface carries no message-level MAX_BYTES (see the
    header comment); BLOCK is the largest arm and the tag adds 3 bits */
@@ -783,14 +783,14 @@ static int build_batch( int * batch_bytes, uint8_t * batch_buffer, int batch_buf
         rng = bench_rng( rng );
         pick = (int) ( ( rng >> 32 ) % 20 );
         memset( m, 0, sizeof( *m ) );
-        if ( pick < 5 )                     /* 25% Chat */
+        if ( pick < 1 )                     /* 5% Chat */
         {
             m->type = MESSAGE_TYPE_CHAT;
-            m->as.chat.text_length = 16 + (int) ( rng & 15 );
+            m->as.chat.text_length = 8 + (int) ( rng & 7 );
             for ( i = 0; i < m->as.chat.text_length; i++ )
                 m->as.chat.text[i] = (char) ( 'a' + ( ( rng >> ( i & 7 ) ) & 15 ) );
         }
-        else if ( pick < 10 )               /* 25% Test */
+        else if ( pick < 7 )                /* 30% Test */
         {
             m->type = MESSAGE_TYPE_TEST;
             m->as.test.test_a = (uint16_t) rng;
@@ -798,27 +798,27 @@ static int build_batch( int * batch_bytes, uint8_t * batch_buffer, int batch_buf
             m->as.test.test_c = (int16_t) ( ( rng >> 25 ) & 511 );
             m->as.test.test_d = (int16_t) ( ( rng >> 34 ) & 511 );
         }
-        else if ( pick < 13 )               /* 15% Synchronize */
+        else if ( pick < 12 )               /* 25% Synchronize */
         {
             m->type = MESSAGE_TYPE_SYNCHRONIZE;
             m->as.synchronize.sync_frame = rng;
             m->as.synchronize.sync_sequence = (uint16_t) ( rng >> 8 );
         }
-        else if ( pick < 16 )               /* 15% Timescale */
+        else if ( pick < 17 )               /* 25% Timescale */
         {
             m->type = MESSAGE_TYPE_TIMESCALE;
             m->as.timescale.scale = (double) ( (uint32_t) rng & 0xFFFF ) / 65536.0;
             m->as.timescale.frame_a = (uint32_t) ( rng >> 16 );
             m->as.timescale.frame_b = (uint32_t) ( rng >> 24 );
         }
-        else if ( pick < 18 )               /* 10% Heartbeat */
+        else if ( pick < 19 )               /* 10% Heartbeat */
         {
             m->type = MESSAGE_TYPE_HEARTBEAT;
         }
-        else                                /* 10% Block */
+        else                                /* 5% Block */
         {
             m->type = MESSAGE_TYPE_BLOCK;
-            m->as.block.data_length = 64 + (int) ( rng & 127 );
+            m->as.block.data_length = 8 + (int) ( rng & 15 );
             for ( i = 0; i < m->as.block.data_length; i++ )
                 m->as.block.data[i] = (uint8_t) ( rng >> ( i & 31 ) );
         }
