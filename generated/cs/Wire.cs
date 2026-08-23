@@ -434,7 +434,7 @@ namespace Example
             }
             {
                 float compressedValue = value.Orientation;
-                if (!batch.SerializeCompressedFloat(ref compressedValue, -180.0f, 180.0f, 0.01f))
+                if (!batch.SerializeCompressedFloatPrecomputed(ref compressedValue, 36000u, 16, 360.0f, -180.0f))
                 {
                     return false;
                 }
@@ -530,7 +530,7 @@ namespace Example
             {
                 return false;
             }
-            if (!batch.SerializeCompressedFloat(ref value.Orientation, -180.0f, 180.0f, 0.01f))
+            if (!batch.SerializeCompressedFloatPrecomputed(ref value.Orientation, 36000u, 16, 360.0f, -180.0f))
             {
                 return false;
             }
@@ -989,7 +989,7 @@ namespace Example
             }
             {
                 float compressedValue = value.CompressedFloatValue;
-                if (!batch.SerializeCompressedFloat(ref compressedValue, 0.0f, 10.0f, 0.01f))
+                if (!batch.SerializeCompressedFloatPrecomputed(ref compressedValue, 1000u, 10, 10.0f, 0.0f))
                 {
                     return false;
                 }
@@ -1135,7 +1135,7 @@ namespace Example
             {
                 return false;
             }
-            if (!batch.SerializeCompressedFloat(ref value.CompressedFloatValue, 0.0f, 10.0f, 0.01f))
+            if (!batch.SerializeCompressedFloatPrecomputed(ref value.CompressedFloatValue, 1000u, 10, 10.0f, 0.0f))
             {
                 return false;
             }
@@ -1254,14 +1254,14 @@ namespace Example
         {
             {
                 float compressedValue = value.Boundary;
-                if (!batch.SerializeCompressedFloat(ref compressedValue, 0.0f, 10.0f, 0.01f))
+                if (!batch.SerializeCompressedFloatPrecomputed(ref compressedValue, 1000u, 10, 10.0f, 0.0f))
                 {
                     return false;
                 }
             }
             {
                 float compressedValue = value.Offset;
-                if (!batch.SerializeCompressedFloat(ref compressedValue, -5.0f, 5.0f, 0.001f))
+                if (!batch.SerializeCompressedFloatPrecomputed(ref compressedValue, 10000u, 14, 10.0f, -5.0f))
                 {
                     return false;
                 }
@@ -1283,11 +1283,11 @@ namespace Example
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static bool ReadCompressedProbeBatch(ref ReadBatch batch, CompressedProbe value)
         {
-            if (!batch.SerializeCompressedFloat(ref value.Boundary, 0.0f, 10.0f, 0.01f))
+            if (!batch.SerializeCompressedFloatPrecomputed(ref value.Boundary, 1000u, 10, 10.0f, 0.0f))
             {
                 return false;
             }
-            if (!batch.SerializeCompressedFloat(ref value.Offset, -5.0f, 5.0f, 0.001f))
+            if (!batch.SerializeCompressedFloatPrecomputed(ref value.Offset, 10000u, 14, 10.0f, -5.0f))
             {
                 return false;
             }

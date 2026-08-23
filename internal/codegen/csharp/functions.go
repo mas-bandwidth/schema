@@ -560,10 +560,13 @@ func (g *gen) emitWriteScalar(f *ir.Field, name, ind string) {
 		g.call(ind, fmt.Sprintf("%s.SerializeBool(ref %s)", g.rv(), name), "")
 	case ir.TFloat32:
 		if f.HasFloatRange {
+			steps, wireBits := ir.CompressedFloatParams(f.FMin, f.FMax, f.Resolution)
+			min32 := float32(f.FMin)
+			delta := float32(f.FMax) - min32
 			// a temp so the wire quantization cannot write back into the input
 			g.sf("%s{\n%s    float compressedValue = %s;\n", ind, ind, name)
-			g.call(ind+"    ", fmt.Sprintf("%s.SerializeCompressedFloat(ref compressedValue, %s, %s, %s)",
-				g.rv(), formatFloat32(f.FMin), formatFloat32(f.FMax), formatFloat32(f.Resolution)), "")
+			g.call(ind+"    ", fmt.Sprintf("%s.SerializeCompressedFloatPrecomputed(ref compressedValue, %du, %d, %s, %s)",
+				g.rv(), steps, wireBits, formatFloat32(float64(delta)), formatFloat32(float64(min32))), "")
 			g.sf("%s}\n", ind)
 			return
 		}
@@ -809,8 +812,11 @@ func (g *gen) emitReadScalar(f *ir.Field, name, ind string) {
 		g.call(ind, fmt.Sprintf("%s.SerializeBool(ref %s)", g.rv(), name), "")
 	case ir.TFloat32:
 		if f.HasFloatRange {
-			g.call(ind, fmt.Sprintf("%s.SerializeCompressedFloat(ref %s, %s, %s, %s)",
-				g.rv(), name, formatFloat32(f.FMin), formatFloat32(f.FMax), formatFloat32(f.Resolution)), "")
+			steps, wireBits := ir.CompressedFloatParams(f.FMin, f.FMax, f.Resolution)
+			min32 := float32(f.FMin)
+			delta := float32(f.FMax) - min32
+			g.call(ind, fmt.Sprintf("%s.SerializeCompressedFloatPrecomputed(ref %s, %du, %d, %s, %s)",
+				g.rv(), name, steps, wireBits, formatFloat32(float64(delta)), formatFloat32(float64(min32))), "")
 			return
 		}
 		g.call(ind, fmt.Sprintf("%s.SerializeFloat(ref %s)", g.rv(), name), "")
