@@ -57,6 +57,11 @@ Generate:
 schema generate --lang cpp --out generated/cpp .
 ```
 
+Success is silent — the files land in the output directory and nothing is
+printed, so a build wrapping this command stays clean. Add `--verbose` to
+list every file written (`check`, `fmt` and `pack` take the same flag).
+Errors always print, whatever the verbosity.
+
 You get a struct and a pair of wire functions:
 
 ```cpp
