@@ -69,7 +69,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_real_packet( serialize_writ
     {
         return 0;
     }
-    if ( !serialize_write_compressed_float( stream, value->f004_cf32, 0.0, 2000.0, 0.1 ) )
+    if ( !serialize_write_compressed_float_precomputed( stream, value->f004_cf32, 20000u, 15, 2000.0f, 0.0f ) )
     {
         return 0;
     }
@@ -201,7 +201,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_real_packet( serialize_writ
     {
         return 0;
     }
-    if ( !serialize_write_compressed_float( stream, value->f027_cf32, -2.0, 2.0, 0.25 ) )
+    if ( !serialize_write_compressed_float_precomputed( stream, value->f027_cf32, 16u, 5, 4.0f, -2.0f ) )
     {
         return 0;
     }
@@ -393,7 +393,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_real_packet( serialize_writ
     {
         return 0;
     }
-    if ( !serialize_write_compressed_float( stream, value->f061_cf32, -90.0, 90.0, 0.5 ) )
+    if ( !serialize_write_compressed_float_precomputed( stream, value->f061_cf32, 360u, 9, 180.0f, -90.0f ) )
     {
         return 0;
     }
@@ -417,7 +417,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_real_packet( serialize_writ
     {
         return 0;
     }
-    if ( !serialize_write_compressed_float( stream, value->f065_cf32, 0.0, 30.0, 0.5 ) )
+    if ( !serialize_write_compressed_float_precomputed( stream, value->f065_cf32, 60u, 6, 30.0f, 0.0f ) )
     {
         return 0;
     }
@@ -428,11 +428,11 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_real_packet( serialize_writ
             return 0;
         }
     }
-    if ( !serialize_write_compressed_float( stream, value->f067_cf32, -100.0, 100.0, 0.25 ) )
+    if ( !serialize_write_compressed_float_precomputed( stream, value->f067_cf32, 800u, 10, 200.0f, -100.0f ) )
     {
         return 0;
     }
-    if ( !serialize_write_compressed_float( stream, value->f068_cf32, 0.0, 2000.0, 1.0 ) )
+    if ( !serialize_write_compressed_float_precomputed( stream, value->f068_cf32, 2000u, 11, 2000.0f, 0.0f ) )
     {
         return 0;
     }
@@ -448,11 +448,11 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_real_packet( serialize_writ
     {
         return 0;
     }
-    if ( !serialize_write_compressed_float( stream, value->f071_cf32, 0.0, 10.0, 0.02 ) )
+    if ( !serialize_write_compressed_float_precomputed( stream, value->f071_cf32, 500u, 9, 10.0f, 0.0f ) )
     {
         return 0;
     }
-    if ( !serialize_write_compressed_float( stream, value->f072_cf32, 0.0, 100.0, 0.01 ) )
+    if ( !serialize_write_compressed_float_precomputed( stream, value->f072_cf32, 10000u, 14, 100.0f, 0.0f ) )
     {
         return 0;
     }
@@ -650,7 +650,7 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_real_packet( serialize_read_s
         }
         value->f003_int = (int32_t) ( offset_value + (-835897) );
     }
-    if ( !serialize_read_compressed_float( stream, &value->f004_cf32, 0.0, 2000.0, 0.1 ) )
+    if ( !serialize_read_compressed_float_precomputed( stream, &value->f004_cf32, 20000u, 15, 2000.0f, 0.0f ) )
     {
         return 0;
     }
@@ -853,7 +853,7 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_real_packet( serialize_read_s
         }
         value->f026_bits = (uint32_t) raw;
     }
-    if ( !serialize_read_compressed_float( stream, &value->f027_cf32, -2.0, 2.0, 0.25 ) )
+    if ( !serialize_read_compressed_float_precomputed( stream, &value->f027_cf32, 16u, 5, 4.0f, -2.0f ) )
     {
         return 0;
     }
@@ -1158,7 +1158,7 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_real_packet( serialize_read_s
         }
         value->f060_bits = (uint32_t) raw;
     }
-    if ( !serialize_read_compressed_float( stream, &value->f061_cf32, -90.0, 90.0, 0.5 ) )
+    if ( !serialize_read_compressed_float_precomputed( stream, &value->f061_cf32, 360u, 9, 180.0f, -90.0f ) )
     {
         return 0;
     }
@@ -1198,7 +1198,7 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_real_packet( serialize_read_s
         }
         value->f064_uint = (uint16_t) offset_value;
     }
-    if ( !serialize_read_compressed_float( stream, &value->f065_cf32, 0.0, 30.0, 0.5 ) )
+    if ( !serialize_read_compressed_float_precomputed( stream, &value->f065_cf32, 60u, 6, 30.0f, 0.0f ) )
     {
         return 0;
     }
@@ -1210,11 +1210,11 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_real_packet( serialize_read_s
         }
         value->f066_ufixed = (uint16_t) fixed_value;
     }
-    if ( !serialize_read_compressed_float( stream, &value->f067_cf32, -100.0, 100.0, 0.25 ) )
+    if ( !serialize_read_compressed_float_precomputed( stream, &value->f067_cf32, 800u, 10, 200.0f, -100.0f ) )
     {
         return 0;
     }
-    if ( !serialize_read_compressed_float( stream, &value->f068_cf32, 0.0, 2000.0, 1.0 ) )
+    if ( !serialize_read_compressed_float_precomputed( stream, &value->f068_cf32, 2000u, 11, 2000.0f, 0.0f ) )
     {
         return 0;
     }
@@ -1240,11 +1240,11 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_real_packet( serialize_read_s
         }
         value->f070_uint = (uint8_t) offset_value;
     }
-    if ( !serialize_read_compressed_float( stream, &value->f071_cf32, 0.0, 10.0, 0.02 ) )
+    if ( !serialize_read_compressed_float_precomputed( stream, &value->f071_cf32, 500u, 9, 10.0f, 0.0f ) )
     {
         return 0;
     }
-    if ( !serialize_read_compressed_float( stream, &value->f072_cf32, 0.0, 100.0, 0.01 ) )
+    if ( !serialize_read_compressed_float_precomputed( stream, &value->f072_cf32, 10000u, 14, 100.0f, 0.0f ) )
     {
         return 0;
     }

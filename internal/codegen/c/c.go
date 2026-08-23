@@ -38,6 +38,7 @@ import (
 	"math"
 	"math/big"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/mas-bandwidth/schema/ir"
@@ -294,6 +295,20 @@ func formatFloat(v float64) string {
 		s += ".0"
 	}
 	return s
+}
+
+// formatFloat32 prints a float32 quantity as a C float literal: the shortest
+// decimal that parses back to exactly this float32, f-suffixed because the
+// value IS a float32 — the precomputed compressed-float constants (delta, min)
+// are outputs of float32 arithmetic and the wire depends on their exact bits,
+// so the literal must reproduce them, not the real-number declaration. Same
+// discipline as the C++ backend's single-precision formatFloat.
+func formatFloat32(v float32) string {
+	s := strconv.FormatFloat(float64(v), 'g', -1, 32)
+	if !strings.ContainsAny(s, ".eE") {
+		s += ".0"
+	}
+	return s + "f"
 }
 
 func (g *gen) emitEnum(d *ir.Enum) {
