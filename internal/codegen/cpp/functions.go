@@ -419,9 +419,12 @@ func (g *gen) emitWriteScalar(f *ir.Field, name, ind string) {
 		g.pf("%swrite_bool( stream, %s );\n", ind, name)
 	case ir.TFloat32:
 		if f.HasFloatRange {
+			steps, wireBits := ir.CompressedFloatParams(f.FMin, f.FMax, f.Resolution)
+			min32 := float32(f.FMin)
+			delta := float32(f.FMax) - min32
 			g.pf("%s{\n%s    float compressed_value = %s;\n", ind, ind, name)
-			g.pf("%s    serialize_compressed_float( stream, compressed_value, %s, %s, %s );\n",
-				ind, formatFloat(f.FMin, true), formatFloat(f.FMax, true), formatFloat(f.Resolution, true))
+			g.pf("%s    serialize_compressed_float_precomputed( stream, compressed_value, %du, %d, %s, %s );\n",
+				ind, steps, wireBits, formatFloat(float64(delta), true), formatFloat(float64(min32), true))
 			g.pf("%s}\n", ind)
 			return
 		}
@@ -580,8 +583,11 @@ func (g *gen) emitReadScalar(f *ir.Field, name, ind string) {
 		g.pf("%sread_bool( stream, %s );\n", ind, name)
 	case ir.TFloat32:
 		if f.HasFloatRange {
-			g.pf("%sserialize_compressed_float( stream, %s, %s, %s, %s );\n",
-				ind, name, formatFloat(f.FMin, true), formatFloat(f.FMax, true), formatFloat(f.Resolution, true))
+			steps, wireBits := ir.CompressedFloatParams(f.FMin, f.FMax, f.Resolution)
+			min32 := float32(f.FMin)
+			delta := float32(f.FMax) - min32
+			g.pf("%sserialize_compressed_float_precomputed( stream, %s, %du, %d, %s, %s );\n",
+				ind, name, steps, wireBits, formatFloat(float64(delta), true), formatFloat(float64(min32), true))
 			return
 		}
 		g.pf("%sread_float( stream, %s );\n", ind, name)

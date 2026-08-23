@@ -229,7 +229,7 @@ SCHEMA_WRITE_INLINE bool WriteProbeSample( serialize::WriteStream & stream, cons
     write_bool( stream, value.active );
     {
         float compressed_value = value.orientation;
-        serialize_compressed_float( stream, compressed_value, -180.0f, 180.0f, 0.01f );
+        serialize_compressed_float_precomputed( stream, compressed_value, 36000u, 16, 360.0f, -180.0f );
     }
     write_bits( stream, uint32_t( value.raw_delta ), 32 );
     write_bits( stream, value.big_delta, 64 );
@@ -259,7 +259,7 @@ SCHEMA_WRITE_INLINE bool WriteProbeSample( serialize::WriteStream & stream, cons
 SCHEMA_READ_INLINE bool ReadProbeSample( serialize::ReadStream & stream, ProbeSample & value )
 {
     read_bool( stream, value.active );
-    serialize_compressed_float( stream, value.orientation, -180.0f, 180.0f, 0.01f );
+    serialize_compressed_float_precomputed( stream, value.orientation, 36000u, 16, 360.0f, -180.0f );
     {
         uint32_t raw_value = 0;
         read_bits( stream, raw_value, 32 );
@@ -417,7 +417,7 @@ SCHEMA_WRITE_INLINE bool WriteTestData( serialize::WriteStream & stream, const T
     write_float( stream, value.float_value );
     {
         float compressed_value = value.compressed_float_value;
-        serialize_compressed_float( stream, compressed_value, 0.0f, 10.0f, 0.01f );
+        serialize_compressed_float_precomputed( stream, compressed_value, 1000u, 10, 10.0f, 0.0f );
     }
     write_double( stream, value.double_value );
     write_bits( stream, uint8_t( value.int8_value ), 8 );
@@ -457,7 +457,7 @@ SCHEMA_READ_INLINE bool ReadTestData( serialize::ReadStream & stream, TestData &
         read_int( stream, value.items[i], 0, 255 );
     }
     read_float( stream, value.float_value );
-    serialize_compressed_float( stream, value.compressed_float_value, 0.0f, 10.0f, 0.01f );
+    serialize_compressed_float_precomputed( stream, value.compressed_float_value, 1000u, 10, 10.0f, 0.0f );
     read_double( stream, value.double_value );
     {
         uint32_t raw_value = 0;
@@ -503,19 +503,19 @@ SCHEMA_WRITE_INLINE bool WriteCompressedProbe( serialize::WriteStream & stream, 
 {
     {
         float compressed_value = value.boundary;
-        serialize_compressed_float( stream, compressed_value, 0.0f, 10.0f, 0.01f );
+        serialize_compressed_float_precomputed( stream, compressed_value, 1000u, 10, 10.0f, 0.0f );
     }
     {
         float compressed_value = value.offset;
-        serialize_compressed_float( stream, compressed_value, -5.0f, 5.0f, 0.001f );
+        serialize_compressed_float_precomputed( stream, compressed_value, 10000u, 14, 10.0f, -5.0f );
     }
     return true;
 }
 
 SCHEMA_READ_INLINE bool ReadCompressedProbe( serialize::ReadStream & stream, CompressedProbe & value )
 {
-    serialize_compressed_float( stream, value.boundary, 0.0f, 10.0f, 0.01f );
-    serialize_compressed_float( stream, value.offset, -5.0f, 5.0f, 0.001f );
+    serialize_compressed_float_precomputed( stream, value.boundary, 1000u, 10, 10.0f, 0.0f );
+    serialize_compressed_float_precomputed( stream, value.offset, 10000u, 14, 10.0f, -5.0f );
     return true;
 }
 
