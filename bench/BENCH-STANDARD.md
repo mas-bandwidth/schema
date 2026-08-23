@@ -127,6 +127,15 @@ the same correction §1.4 already records for the bitpacker, whose inherited
 4096 passes violated the same floor and were rescaled to 24576 for the same
 reason.
 
+The same correction fired a third time on 2026-08-23: the §1.7 batch
+rebalance (issue #64) cut the batch's wire bytes 2.6x, and the smaller
+messages raised its msgs/s enough that all four C/C++ batch legs measured
+80–121 ms at 6,400 passes on the Studio (M3 Ultra, quiet) — under the floor
+again. Passes rescale **6,400 → 25,600** (26,214,400 → 104,857,600 msgs),
+sized against the fastest measured leg (cpp read, 328.5 M msgs/s → 319 ms)
+with margin, identical in all six runners, recorded in the `iters` column
+like both corrections before it.
+
 ### §1.3 Family `rt` — new, and the reason the bespoke harnesses can be retired
 
 The four shapes the bespoke harnesses already measure, transcribed from
@@ -310,7 +319,10 @@ not the serializer.
 So the write/read medians are mostly honest, and the batch columns — the rows the
 C-vs-C++ read campaign was fought over — are three-quarters memcpy by bits. (The
 dispatch-per-message differences those columns exposed were real; but their MB/s is
-inflated by bulk traffic, and by bits they do not resemble a real packet.)
+inflated by bulk traffic, and by bits they do not resemble a real packet.) The
+table above is the audit's record and stays as written; the batch rows were
+rebalanced 2026-08-23 under rule 3's latitude — the enactment block below the
+law carries the before/after.
 
 **The law going forward:**
 
@@ -325,11 +337,141 @@ inflated by bulk traffic, and by bits they do not resemble a real packet.)
    Bulk-heavy rows stay — memcpy throughput is worth tracking — but a table that
    leads with a bulk-dominated row must caption the bulk share, the same way §3's
    captions disclose checks and linkage asymmetries.
-3. **Additive only.** Existing rows and mixes are never rebalanced in place — that
-   would silently re-price every cross-era comparison. New realistic rows join
-   under new names with a new `corpus_id`, era-marked like any corpus change.
+3. **Additive only — with Glenn's own latitude for bulk-dominated rows.**
+   Existing rows and mixes are never rebalanced in place — that would silently
+   re-price every cross-era comparison. New realistic rows join under new
+   names with a new `corpus_id`, era-marked like any corpus change.
+   **Amended 2026-08-23 (issue #64), quoting the latitude Glenn granted in
+   the same 2026-08-16 ruling, verbatim:** *"of course, if any of the current
+   test cases are being dominated too much by IO for the string, wstring or
+   bytes types, feel free to update them if you want too."* A row or mix this
+   section's audit names as bulk-dominated MAY therefore be rebalanced in
+   place, under three conditions that keep the re-pricing loud instead of
+   silent: (a) identical constants land in every runner in the same change;
+   (b) the change is era-marked and moves the row's `bytes_per_op`, so §5.3
+   rule 2 already refuses every cross-era ratio mechanically; (c) the
+   rebalance states its bulk share before and after — measured over the
+   actual draws, not estimated from the design weights. Additive stays the
+   default; the latitude reaches exactly the rows the audit names, not every
+   row someone would like to retune.
 4. **Any future corpus addition states its bulk share by bits** in its definition
    comment, so this audit never has to be re-derived from variation code.
+
+**The batch rebalance — enacted 2026-08-23 (issue #64; the RealPacket
+campaign's chunk 7, under rule 3's latitude).** The audit's worst offender
+was the pair of rows the C-vs-C++ read campaign was fought over: the
+4096-message batch at ≈74% bulk by bits. The mix is rebalanced in every
+runner (six today — chunk 7 predates the js runner and said "identical
+constants x5"; the constants are identical x6), one change:
+
+| arm | weight before | weight after | payload draw before | payload draw after |
+|---|---:|---:|---|---|
+| Chat | 25% | 5% | 16–31 chars (avg 23.5) | 8–15 chars (avg 11.5) |
+| Test | 25% | 30% | — | — |
+| Synchronize | 15% | 25% | — | — |
+| Timescale | 15% | 25% | — | — |
+| Heartbeat | 10% | 10% | — | — |
+| Block | 10% | 5% | 64–191 bytes (avg 127.5) | 8–23 bytes (avg 15.5) |
+
+Measured over the actual 4096 LCG draws (seed 12345 — the batch every runner
+builds, so these are the mix's numbers, not the design's): bulk share by
+bits **75.95% → 14.20%**, wire bits per message 206.7 → 80.6, `bytes_per_op`
+25 → 10. The batch now resembles this section's real packet — dominated by
+individual serialize statements, with the bulk paths still present and
+deliberately rare (≈5% short chat strings, ≈5% small blocks) — while staying
+the estate's only steady-state dispatch-surface row. The moved `bytes_per_op`
+is the era mark: the tool refuses every ratio across the rebalance (§5.3
+rule 2), which is exactly the loud re-pricing rule 3 demands. The smaller
+messages raised the row's msgs/s enough to put every measured batch leg
+under §2.1's 200 ms floor at the old pass count, so `BatchPasses` rescaled
+6,400 → 25,600 in the same change — measured first, then rescaled, per
+§1.2's own precedent (the receipt is in §1.2).
+
+### §1.8 The string and wstring rows — defined measure-first (added 2026-08-23, issue #64)
+
+**DECIDED (Glenn, 2026-08-17, verbatim): "You can't improve what you don't
+measure."** Said the morning the estate's first string-body fix (serialize.c
+#26) landed and there was no string row anywhere in the family's benches to
+see it move. Enacted as an ORDERING rule, not a sentiment: a measurement row
+lands BEFORE or WITH the optimization it would measure, never after — and a
+row-landing change carries NO runtime, emitter, or generated-code serialize
+changes, because a row that arrives fused to a fix has measured nothing. The
+rows this section defines are pure instruments; the remaining string and
+wstring work (the wstring/bytes sweep, the C++ WriteBytes candidate, every
+port's equivalents) lands against them, never ahead of them.
+
+**The string row — `bench_string`, family `rt`.** Transcribed from the
+reference implementation's own string row (`serialize/bench.cpp`, landed
+under this issue) the same way §1.3 transcribed the four original shapes:
+
+```
+// joins schema/bench/corpus/Bench.schema when the rows land
+type BenchString {
+    text string(63)   // 6-bit length prefix, align to byte, then the bytes
+} // pinned instance: 24-byte payload -> 6 + 2 pad + 192 = 200 bits = 25 wire bytes
+```
+
+What a conforming row measures: the runtime's string path end to end —
+length dispatch, byte alignment, the bulk body copy, and the read side's
+contract validation (interior-NUL rejection, and UTF-8 well-formedness where
+the runtime checks it). The byte sizes above are the standard's claim; the
+goldens are the authority (§1.3's rule).
+
+- **Bulk share by bits: ≈96% (192 of 200), stated per rule 4 — and that is
+  the point.** This row is a DELIBERATE bulk-path instrument under rule 2:
+  it exists so the string body's copy loop has a number of its own, it never
+  leads a table, it never joins headline corpus medians, and any table that
+  shows it captions the bulk share.
+- The pinned payload is 24 bytes — the §1.7 audit's average chat string —
+  printable ASCII, no interior NUL. **Length is STRUCTURE (§2.7)**: variation
+  mutates payload bytes through the standard LCG at pinned length, every
+  variant buffer is the same wire size, and the runner asserts
+  `bytes_per_op` did not move.
+- Golden: `BenchString` compiles in schema (`string(N)` exists), so the §1.5
+  gate binds unchanged — `testdata/wire/bench_string.bin` produced by the
+  generated C++, independently confirmed by the generated C, every runner
+  byte-compares and round-trips before emitting rows.
+
+**The wstring row — `bench_wstring`, family `rt`, corpus source: this
+document.** schema defers wide strings (SPEC §4.10), so no schema type and
+no generated golden can exist; like §1.4's bitpacker, the shape is specified
+here directly:
+
+```
+buffer   = 64 UTF-16 code units  -> 6-bit length field
+payload  = 24 code units, pinned, BMP only (each code point one unit,
+           so the wire size is deterministic), no surrogates, no NUL
+wire     = 6-bit length, then one unaligned 32-bit group per code unit
+         = 6 + 24 x 32 = 774 bits = 97 bytes
+```
+
+What a conforming row measures: the per-unit group dispatch plus the read
+side's contract validation (group range, surrogate pairing, interior NUL).
+
+- **Bulk share by bits: 0%, stated per rule 4 — the opposite pole from the
+  string row.** The wstring wire is one individual 32-bit dispatch per code
+  unit, not a bulk byte copy, so this row is NOT a bulk instrument and may
+  ride headline tables like any 0%-bulk row.
+- Content varies per iteration through the standard LCG at pinned length,
+  values pinned inside one BMP block so validation cost is uniform across
+  variants. Astral and unpaired-surrogate handling is correctness territory
+  owned by the conformance suites, never exercised by this row.
+- Golden: produced by the C++ reference runtime and byte-confirmed by the
+  serialize.c twin before first check-in — §1.3's two-independent-producers
+  confirmation pattern with the runtimes standing in for the generated code —
+  then every runner byte-compares and round-trips per §1.5's mechanics.
+- **A runtime with no wstring path emits NO row.** An honest null, never an
+  emulation; the row's absence is itself the record that the port lacks the
+  path.
+
+Mechanics both rows share when they land in the schema runners: additive
+under rule 3 (new names, new `corpus_id`, era-marked), iteration counts
+sized at landing per §2.1 (every leg over 200 ms, identical across
+languages, recorded in `iters`), timed loops in noinline symbols with §3.2's
+two call sites, like every other `rt` row. This section is the definition
+only — the schema/bench implementation (corpus type, goldens, six runner
+rows) lands as its own additive change, and the runtime repos' in-repo
+benches carry their own local rows under the same measure-first rule.
 
 ---
 

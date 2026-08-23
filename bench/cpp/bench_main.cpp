@@ -706,10 +706,13 @@ static void vary_real_packet( realworld::RealPacket & m, uint64_t rng )
 // Message dispatch surface (WriteMessage/ReadMessage) plus the None
 // terminator, mixed types driven by the LCG. Larger than L1/L2 working sets
 // on both bench hosts.
+// Mix rebalanced 2026-08-23 (BENCH-STANDARD §1.7 rule 3's latitude, issue
+// #64): bulk share by bits 75.95% -> 14.20%, bytes/op 25 -> 10, identical
+// constants in every runner; the moved bytes_per_op is the era mark.
 // ------------------------------------------------------------------------------------------
 
 const int NumBatchMessages = 4096;
-const int BatchPasses = 6400;
+const int BatchPasses = 25600;   // rescaled 2026-08-23 with the mix rebalance: §2.1's floor wins (§1.2)
 
 static Message * build_batch( int64_t & batch_bytes, uint8_t * batch_buffer, int batch_buffer_size )
 {
@@ -721,14 +724,14 @@ static Message * build_batch( int64_t & batch_bytes, uint8_t * batch_buffer, int
         rng = bench_rng( rng );
         Message & m = messages[k];
         const int pick = int( ( rng >> 32 ) % 20 );
-        if ( pick < 5 )                     // 25% Chat
+        if ( pick < 1 )                     // 5% Chat
         {
             m.type = MessageType::Chat;
-            m.chat.text_length = 16 + int( rng & 15 );
+            m.chat.text_length = 8 + int( rng & 7 );
             for ( int i = 0; i < m.chat.text_length; i++ )
                 m.chat.text[i] = char( 'a' + ( ( rng >> ( i & 7 ) ) & 15 ) );
         }
-        else if ( pick < 10 )               // 25% Test
+        else if ( pick < 7 )                // 30% Test
         {
             m.type = MessageType::Test;
             m.test.test_a = uint16_t( rng );
@@ -736,27 +739,27 @@ static Message * build_batch( int64_t & batch_bytes, uint8_t * batch_buffer, int
             m.test.test_c = int16_t( ( rng >> 25 ) & 511 );
             m.test.test_d = int16_t( ( rng >> 34 ) & 511 );
         }
-        else if ( pick < 13 )               // 15% Synchronize
+        else if ( pick < 12 )               // 25% Synchronize
         {
             m.type = MessageType::Synchronize;
             m.synchronize.sync_frame = rng;
             m.synchronize.sync_sequence = uint16_t( rng >> 8 );
         }
-        else if ( pick < 16 )               // 15% Timescale
+        else if ( pick < 17 )               // 25% Timescale
         {
             m.type = MessageType::Timescale;
             m.timescale.scale = double( uint32_t( rng ) & 0xFFFF ) / 65536.0;
             m.timescale.frame_a = uint32_t( rng >> 16 );
             m.timescale.frame_b = uint32_t( rng >> 24 );
         }
-        else if ( pick < 18 )               // 10% Heartbeat
+        else if ( pick < 19 )               // 10% Heartbeat
         {
             m.type = MessageType::Heartbeat;
         }
-        else                                // 10% Block
+        else                                // 5% Block
         {
             m.type = MessageType::Block;
-            m.block.data_length = 64 + int( rng & 127 );
+            m.block.data_length = 8 + int( rng & 15 );
             for ( int i = 0; i < m.block.data_length; i++ )
                 m.block.data[i] = uint8_t( rng >> ( i & 31 ) );
         }

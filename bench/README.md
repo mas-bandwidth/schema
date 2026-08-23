@@ -151,7 +151,7 @@ it. Human-readable tables live beside the CSVs in `bench/results/`.
 | probearray        | probearray            | nested samples, both branch arms, counted arrays  |
 | testdata          | testdata              | the everything message (floats, strings, arrays)  |
 | real_packet       | real_packet           | the §1.7 realistic snapshot (`bench/corpus/RealWorld.schema`): ~93 riding individually serialized small fields of every scalar kind, 204 B, 0% bulk share by bits; pin = the all-defaults instance |
-| message_batch     | (message_stream golden checks the dispatch wire) | 4096 mixed messages + terminator through WriteMessage/ReadMessage, steady-state |
+| message_batch     | (message_stream golden checks the dispatch wire) | 4096 mixed messages + terminator through WriteMessage/ReadMessage, steady-state; mix rebalanced 2026-08-23 to ≤15% bulk by bits (§1.7 rule 3's latitude, issue #64: bulk share 75.95% → 14.20%, bytes/op 25 → 10 — cross-era batch ratios refuse on the moved bytes_per_op, which is the era mark working) |
 
 Family `rt` (hand-written runtime API, oracle-gated per §1.5; iteration
 counts fixed and identical across all six languages) and family `bits`:
@@ -169,6 +169,12 @@ The `rt` timed loops live in noinline symbols (`rt_bench_*_write_loop` /
 the emitted body of the timed loop directly, and every benched op has
 exactly two call sites (§3.2): its untimed oracle/setup helper and its
 timed loop.
+
+Two further `rt` rows — `bench_string` and `bench_wstring` — are DEFINED in
+BENCH-STANDARD §1.8 (measure-first, issue #64) and not yet implemented in
+these runners; the definitions land ahead of any further string/wstring
+optimization, and the rows themselves land as their own additive change
+(corpus type, goldens, runner rows, new corpus_id).
 
 ## Runner contract (how go/rust/cs plug in)
 

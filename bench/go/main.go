@@ -663,7 +663,7 @@ func varyRealPacket(m *realworld.RealPacket, rng uint64) {
 // ------------------------------------------------------------------------------------------
 
 const NumBatchMessages = 4096
-const BatchPasses = 6400
+const BatchPasses = 25600 // rescaled 2026-08-23 with the mix rebalance: §2.1's floor wins (§1.2)
 
 func buildBatch(batchBuffer []byte) ([]example.Message, int64) {
 	messages := make([]example.Message, NumBatchMessages)
@@ -673,36 +673,36 @@ func buildBatch(batchBuffer []byte) ([]example.Message, int64) {
 		rng = benchRng(rng)
 		pick := int((rng >> 32) % 20)
 		switch {
-		case pick < 5: // 25% Chat
+		case pick < 1: // 5% Chat
 			m := &example.Chat{}
-			m.TextLength = 16 + int32(rng&15)
+			m.TextLength = 8 + int32(rng&7)
 			for i := int32(0); i < m.TextLength; i++ {
 				m.Text[i] = byte('a' + ((rng >> (i & 7)) & 15))
 			}
 			messages[k] = m
-		case pick < 10: // 25% Test
+		case pick < 7: // 30% Test
 			m := &example.Test{}
 			m.TestA = uint16(rng)
 			m.TestB = int16((rng >> 16) & 511)
 			m.TestC = int16((rng >> 25) & 511)
 			m.TestD = int16((rng >> 34) & 511)
 			messages[k] = m
-		case pick < 13: // 15% Synchronize
+		case pick < 12: // 25% Synchronize
 			m := &example.Synchronize{}
 			m.SyncFrame = rng
 			m.SyncSequence = uint16(rng >> 8)
 			messages[k] = m
-		case pick < 16: // 15% Timescale
+		case pick < 17: // 25% Timescale
 			m := &example.Timescale{}
 			m.Scale = float64(uint32(rng)&0xFFFF) / 65536.0
 			m.FrameA = uint32(rng >> 16)
 			m.FrameB = uint32(rng >> 24)
 			messages[k] = m
-		case pick < 18: // 10% Heartbeat
+		case pick < 19: // 10% Heartbeat
 			messages[k] = &example.Heartbeat{}
-		default: // 10% Block
+		default: // 5% Block
 			m := &example.Block{}
-			m.DataLength = 64 + int32(rng&127)
+			m.DataLength = 8 + int32(rng&15)
 			for i := int32(0); i < m.DataLength; i++ {
 				m.Data[i] = uint8(rng >> (uint(i) & 31))
 			}

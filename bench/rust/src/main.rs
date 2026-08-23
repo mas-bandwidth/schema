@@ -732,7 +732,7 @@ fn vary_real_packet(m: &mut realworld::RealPacket, rng: u64) {
 // ------------------------------------------------------------------------------------------
 
 const NUM_BATCH_MESSAGES: usize = 4096;
-const BATCH_PASSES: usize = 6400;
+const BATCH_PASSES: usize = 25600; // rescaled 2026-08-23 with the mix rebalance: §2.1's floor wins (§1.2)
 
 fn build_batch(ctx: &Ctx, messages: &mut Vec<Message>, batch_buffer: &mut [u8]) -> Option<i64> {
     messages.clear();
@@ -741,42 +741,42 @@ fn build_batch(ctx: &Ctx, messages: &mut Vec<Message>, batch_buffer: &mut [u8]) 
     for _ in 0..NUM_BATCH_MESSAGES {
         rng = bench_rng(rng);
         let pick = ((rng >> 32) % 20) as i32;
-        let m = if pick < 5 {
-            // 25% Chat
+        let m = if pick < 1 {
+            // 5% Chat
             let mut c = Chat::default();
-            c.text_length = 16 + (rng & 15) as i32;
+            c.text_length = 8 + (rng & 7) as i32;
             for i in 0..c.text_length as usize {
                 c.text[i] = b'a' + ((rng >> (i & 7)) & 15) as u8;
             }
             Message::Chat(c)
-        } else if pick < 10 {
-            // 25% Test
+        } else if pick < 7 {
+            // 30% Test
             let mut t = Test::default();
             t.test_a = rng as u16;
             t.test_b = ((rng >> 16) & 511) as i16;
             t.test_c = ((rng >> 25) & 511) as i16;
             t.test_d = ((rng >> 34) & 511) as i16;
             Message::Test(t)
-        } else if pick < 13 {
-            // 15% Synchronize
+        } else if pick < 12 {
+            // 25% Synchronize
             let mut s = Synchronize::default();
             s.sync_frame = rng;
             s.sync_sequence = (rng >> 8) as u16;
             Message::Synchronize(s)
-        } else if pick < 16 {
-            // 15% Timescale
+        } else if pick < 17 {
+            // 25% Timescale
             let mut t = Timescale::default();
             t.scale = ((rng as u32) & 0xFFFF) as f64 / 65536.0;
             t.frame_a = (rng >> 16) as u32;
             t.frame_b = (rng >> 24) as u32;
             Message::Timescale(t)
-        } else if pick < 18 {
+        } else if pick < 19 {
             // 10% Heartbeat
             Message::Heartbeat(Heartbeat::default())
         } else {
-            // 10% Block
+            // 5% Block
             let mut b = Block::default();
-            b.data_length = 64 + (rng & 127) as i32;
+            b.data_length = 8 + (rng & 15) as i32;
             for i in 0..b.data_length as usize {
                 b.data[i] = (rng >> (i & 31)) as u8;
             }

@@ -752,7 +752,7 @@ static partial class Program
     // ------------------------------------------------------------------------------------------
 
     const int NumBatchMessages = 4096;
-    const int BatchPasses = 6400;
+    const int BatchPasses = 25600; // rescaled 2026-08-23 with the mix rebalance: §2.1's floor wins (§1.2)
 
     static Message[] BuildBatch(byte[] batchBuffer, out long batchBytes)
     {
@@ -764,17 +764,17 @@ static partial class Program
         {
             rng = BenchRng(rng);
             int pick = (int)((rng >> 32) % 20);
-            if (pick < 5) // 25% Chat
+            if (pick < 1) // 5% Chat
             {
                 Chat m = new Chat();
-                m.TextLength = 16 + (int)(rng & 15);
+                m.TextLength = 8 + (int)(rng & 7);
                 for (int i = 0; i < m.TextLength; i++)
                 {
                     m.Text[i] = (byte)('a' + (int)((rng >> (i & 7)) & 15));
                 }
                 messages[k] = m;
             }
-            else if (pick < 10) // 25% Test
+            else if (pick < 7) // 30% Test
             {
                 Test m = new Test();
                 m.TestA = (ushort)rng;
@@ -783,14 +783,14 @@ static partial class Program
                 m.TestD = (short)((rng >> 34) & 511);
                 messages[k] = m;
             }
-            else if (pick < 13) // 15% Synchronize
+            else if (pick < 12) // 25% Synchronize
             {
                 Synchronize m = new Synchronize();
                 m.SyncFrame = rng;
                 m.SyncSequence = (ushort)(rng >> 8);
                 messages[k] = m;
             }
-            else if (pick < 16) // 15% Timescale
+            else if (pick < 17) // 25% Timescale
             {
                 Timescale m = new Timescale();
                 m.Scale = ((uint)rng & 0xFFFF) / 65536.0;
@@ -798,14 +798,14 @@ static partial class Program
                 m.FrameB = (uint)(rng >> 24);
                 messages[k] = m;
             }
-            else if (pick < 18) // 10% Heartbeat
+            else if (pick < 19) // 10% Heartbeat
             {
                 messages[k] = new Heartbeat();
             }
-            else // 10% Block
+            else // 5% Block
             {
                 Block m = new Block();
-                m.DataLength = 64 + (int)(rng & 127);
+                m.DataLength = 8 + (int)(rng & 15);
                 for (int i = 0; i < m.DataLength; i++)
                 {
                     m.Data[i] = (byte)(rng >> (i & 31));
