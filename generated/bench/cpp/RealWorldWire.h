@@ -62,7 +62,7 @@ SCHEMA_WRITE_INLINE bool WriteRealPacket( serialize::WriteStream & stream, const
     write_bits( stream, uint32_t( value.f003_int ) - uint32_t( -835897 ), 21 );
     {
         float compressed_value = value.f004_cf32;
-        serialize_compressed_float( stream, compressed_value, 0.0f, 2000.0f, 0.1f );
+        serialize_compressed_float_precomputed( stream, compressed_value, 20000u, 15, 2000.0f, 0.0f );
     }
     serialize_assert( int32_t( value.f005_uint ) >= int32_t( 0 ) && int32_t( value.f005_uint ) <= int32_t( 7316 ) );
     write_bits( stream, uint32_t( value.f005_uint ), 13 );
@@ -107,7 +107,7 @@ SCHEMA_WRITE_INLINE bool WriteRealPacket( serialize::WriteStream & stream, const
     write_bits( stream, value.f026_bits, 9 );
     {
         float compressed_value = value.f027_cf32;
-        serialize_compressed_float( stream, compressed_value, -2.0f, 2.0f, 0.25f );
+        serialize_compressed_float_precomputed( stream, compressed_value, 16u, 5, 4.0f, -2.0f );
     }
     write_bits( stream, value.f028_bits, 4 );
     write_bits( stream, value.f029_i64, 64 );
@@ -167,7 +167,7 @@ SCHEMA_WRITE_INLINE bool WriteRealPacket( serialize::WriteStream & stream, const
     write_bits( stream, value.f060_bits, 8 );
     {
         float compressed_value = value.f061_cf32;
-        serialize_compressed_float( stream, compressed_value, -90.0f, 90.0f, 0.5f );
+        serialize_compressed_float_precomputed( stream, compressed_value, 360u, 9, 180.0f, -90.0f );
     }
     serialize_assert( int32_t( value.f062_uint ) >= int32_t( 0 ) && int32_t( value.f062_uint ) <= int32_t( 503 ) );
     write_bits( stream, uint32_t( value.f062_uint ), 9 );
@@ -176,7 +176,7 @@ SCHEMA_WRITE_INLINE bool WriteRealPacket( serialize::WriteStream & stream, const
     write_bits( stream, uint32_t( value.f064_uint ), 9 );
     {
         float compressed_value = value.f065_cf32;
-        serialize_compressed_float( stream, compressed_value, 0.0f, 30.0f, 0.5f );
+        serialize_compressed_float_precomputed( stream, compressed_value, 60u, 6, 30.0f, 0.0f );
     }
     {
         uint16_t fixed_value = value.f066_ufixed;
@@ -184,22 +184,22 @@ SCHEMA_WRITE_INLINE bool WriteRealPacket( serialize::WriteStream & stream, const
     }
     {
         float compressed_value = value.f067_cf32;
-        serialize_compressed_float( stream, compressed_value, -100.0f, 100.0f, 0.25f );
+        serialize_compressed_float_precomputed( stream, compressed_value, 800u, 10, 200.0f, -100.0f );
     }
     {
         float compressed_value = value.f068_cf32;
-        serialize_compressed_float( stream, compressed_value, 0.0f, 2000.0f, 1.0f );
+        serialize_compressed_float_precomputed( stream, compressed_value, 2000u, 11, 2000.0f, 0.0f );
     }
     write_bits( stream, value.f069_bits, 11 );
     serialize_assert( int32_t( value.f070_uint ) >= int32_t( 0 ) && int32_t( value.f070_uint ) <= int32_t( 2 ) );
     write_bits( stream, uint32_t( value.f070_uint ), 2 );
     {
         float compressed_value = value.f071_cf32;
-        serialize_compressed_float( stream, compressed_value, 0.0f, 10.0f, 0.02f );
+        serialize_compressed_float_precomputed( stream, compressed_value, 500u, 9, 10.0f, 0.0f );
     }
     {
         float compressed_value = value.f072_cf32;
-        serialize_compressed_float( stream, compressed_value, 0.0f, 100.0f, 0.01f );
+        serialize_compressed_float_precomputed( stream, compressed_value, 10000u, 14, 100.0f, 0.0f );
     }
     serialize_assert( int32_t( value.f073_int ) >= int32_t( -4 ) && int32_t( value.f073_int ) <= int32_t( 4 ) );
     write_bits( stream, uint32_t( value.f073_int ) - uint32_t( -4 ), 4 );
@@ -252,7 +252,7 @@ SCHEMA_READ_INLINE bool ReadRealPacket( serialize::ReadStream & stream, RealPack
     read_int( stream, value.f001_int, -805495, 805495 );
     read_double( stream, value.f002_f64 );
     read_int( stream, value.f003_int, -835897, 835897 );
-    serialize_compressed_float( stream, value.f004_cf32, 0.0f, 2000.0f, 0.1f );
+    serialize_compressed_float_precomputed( stream, value.f004_cf32, 20000u, 15, 2000.0f, 0.0f );
     {
         int32_t range_value = 0;
         read_int( stream, range_value, 0, 7316 );
@@ -314,7 +314,7 @@ SCHEMA_READ_INLINE bool ReadRealPacket( serialize::ReadStream & stream, RealPack
     read_float( stream, value.f024_f32 );
     read_fixed( stream, value.f025_fixed, 8, 8, -119, 119 );
     read_bits( stream, value.f026_bits, 9 );
-    serialize_compressed_float( stream, value.f027_cf32, -2.0f, 2.0f, 0.25f );
+    serialize_compressed_float_precomputed( stream, value.f027_cf32, 16u, 5, 4.0f, -2.0f );
     read_bits( stream, value.f028_bits, 4 );
     {
         uint64_t raw_value = 0;
@@ -404,7 +404,7 @@ SCHEMA_READ_INLINE bool ReadRealPacket( serialize::ReadStream & stream, RealPack
     read_float( stream, value.f058_f32 );
     read_double( stream, value.f059_f64 );
     read_bits( stream, value.f060_bits, 8 );
-    serialize_compressed_float( stream, value.f061_cf32, -90.0f, 90.0f, 0.5f );
+    serialize_compressed_float_precomputed( stream, value.f061_cf32, 360u, 9, 180.0f, -90.0f );
     {
         int32_t range_value = 0;
         read_int( stream, range_value, 0, 503 );
@@ -420,18 +420,18 @@ SCHEMA_READ_INLINE bool ReadRealPacket( serialize::ReadStream & stream, RealPack
         read_int( stream, range_value, 0, 299 );
         value.f064_uint = uint16_t( range_value );
     }
-    serialize_compressed_float( stream, value.f065_cf32, 0.0f, 30.0f, 0.5f );
+    serialize_compressed_float_precomputed( stream, value.f065_cf32, 60u, 6, 30.0f, 0.0f );
     read_fixed( stream, value.f066_ufixed, 2, 14, 0, 2 );
-    serialize_compressed_float( stream, value.f067_cf32, -100.0f, 100.0f, 0.25f );
-    serialize_compressed_float( stream, value.f068_cf32, 0.0f, 2000.0f, 1.0f );
+    serialize_compressed_float_precomputed( stream, value.f067_cf32, 800u, 10, 200.0f, -100.0f );
+    serialize_compressed_float_precomputed( stream, value.f068_cf32, 2000u, 11, 2000.0f, 0.0f );
     read_bits( stream, value.f069_bits, 11 );
     {
         int32_t range_value = 0;
         read_int( stream, range_value, 0, 2 );
         value.f070_uint = uint8_t( range_value );
     }
-    serialize_compressed_float( stream, value.f071_cf32, 0.0f, 10.0f, 0.02f );
-    serialize_compressed_float( stream, value.f072_cf32, 0.0f, 100.0f, 0.01f );
+    serialize_compressed_float_precomputed( stream, value.f071_cf32, 500u, 9, 10.0f, 0.0f );
+    serialize_compressed_float_precomputed( stream, value.f072_cf32, 10000u, 14, 100.0f, 0.0f );
     {
         int32_t range_value = 0;
         read_int( stream, range_value, -4, 4 );
