@@ -340,7 +340,7 @@ namespace Realworld
             }
             {
                 float compressedValue = value.F004Cf32;
-                if (!batch.SerializeCompressedFloat(ref compressedValue, 0.0f, 2000.0f, 0.1f))
+                if (!batch.SerializeCompressedFloatPrecomputed(ref compressedValue, 20000u, 15, 2000.0f, 0.0f))
                 {
                     return false;
                 }
@@ -487,7 +487,7 @@ namespace Realworld
             }
             {
                 float compressedValue = value.F027Cf32;
-                if (!batch.SerializeCompressedFloat(ref compressedValue, -2.0f, 2.0f, 0.25f))
+                if (!batch.SerializeCompressedFloatPrecomputed(ref compressedValue, 16u, 5, 4.0f, -2.0f))
                 {
                     return false;
                 }
@@ -712,7 +712,7 @@ namespace Realworld
             }
             {
                 float compressedValue = value.F061Cf32;
-                if (!batch.SerializeCompressedFloat(ref compressedValue, -90.0f, 90.0f, 0.5f))
+                if (!batch.SerializeCompressedFloatPrecomputed(ref compressedValue, 360u, 9, 180.0f, -90.0f))
                 {
                     return false;
                 }
@@ -748,7 +748,7 @@ namespace Realworld
             }
             {
                 float compressedValue = value.F065Cf32;
-                if (!batch.SerializeCompressedFloat(ref compressedValue, 0.0f, 30.0f, 0.5f))
+                if (!batch.SerializeCompressedFloatPrecomputed(ref compressedValue, 60u, 6, 30.0f, 0.0f))
                 {
                     return false;
                 }
@@ -759,14 +759,14 @@ namespace Realworld
             }
             {
                 float compressedValue = value.F067Cf32;
-                if (!batch.SerializeCompressedFloat(ref compressedValue, -100.0f, 100.0f, 0.25f))
+                if (!batch.SerializeCompressedFloatPrecomputed(ref compressedValue, 800u, 10, 200.0f, -100.0f))
                 {
                     return false;
                 }
             }
             {
                 float compressedValue = value.F068Cf32;
-                if (!batch.SerializeCompressedFloat(ref compressedValue, 0.0f, 2000.0f, 1.0f))
+                if (!batch.SerializeCompressedFloatPrecomputed(ref compressedValue, 2000u, 11, 2000.0f, 0.0f))
                 {
                     return false;
                 }
@@ -788,14 +788,14 @@ namespace Realworld
             }
             {
                 float compressedValue = value.F071Cf32;
-                if (!batch.SerializeCompressedFloat(ref compressedValue, 0.0f, 10.0f, 0.02f))
+                if (!batch.SerializeCompressedFloatPrecomputed(ref compressedValue, 500u, 9, 10.0f, 0.0f))
                 {
                     return false;
                 }
             }
             {
                 float compressedValue = value.F072Cf32;
-                if (!batch.SerializeCompressedFloat(ref compressedValue, 0.0f, 100.0f, 0.01f))
+                if (!batch.SerializeCompressedFloatPrecomputed(ref compressedValue, 10000u, 14, 100.0f, 0.0f))
                 {
                     return false;
                 }
@@ -998,7 +998,7 @@ namespace Realworld
             {
                 return false;
             }
-            if (!batch.SerializeCompressedFloat(ref value.F004Cf32, 0.0f, 2000.0f, 0.1f))
+            if (!batch.SerializeCompressedFloatPrecomputed(ref value.F004Cf32, 20000u, 15, 2000.0f, 0.0f))
             {
                 return false;
             }
@@ -1129,7 +1129,7 @@ namespace Realworld
             {
                 return false;
             }
-            if (!batch.SerializeCompressedFloat(ref value.F027Cf32, -2.0f, 2.0f, 0.25f))
+            if (!batch.SerializeCompressedFloatPrecomputed(ref value.F027Cf32, 16u, 5, 4.0f, -2.0f))
             {
                 return false;
             }
@@ -1329,7 +1329,7 @@ namespace Realworld
             {
                 return false;
             }
-            if (!batch.SerializeCompressedFloat(ref value.F061Cf32, -90.0f, 90.0f, 0.5f))
+            if (!batch.SerializeCompressedFloatPrecomputed(ref value.F061Cf32, 360u, 9, 180.0f, -90.0f))
             {
                 return false;
             }
@@ -1357,7 +1357,7 @@ namespace Realworld
                 }
                 value.F064Uint = (ushort)rangeValue;
             }
-            if (!batch.SerializeCompressedFloat(ref value.F065Cf32, 0.0f, 30.0f, 0.5f))
+            if (!batch.SerializeCompressedFloatPrecomputed(ref value.F065Cf32, 60u, 6, 30.0f, 0.0f))
             {
                 return false;
             }
@@ -1365,11 +1365,11 @@ namespace Realworld
             {
                 return false;
             }
-            if (!batch.SerializeCompressedFloat(ref value.F067Cf32, -100.0f, 100.0f, 0.25f))
+            if (!batch.SerializeCompressedFloatPrecomputed(ref value.F067Cf32, 800u, 10, 200.0f, -100.0f))
             {
                 return false;
             }
-            if (!batch.SerializeCompressedFloat(ref value.F068Cf32, 0.0f, 2000.0f, 1.0f))
+            if (!batch.SerializeCompressedFloatPrecomputed(ref value.F068Cf32, 2000u, 11, 2000.0f, 0.0f))
             {
                 return false;
             }
@@ -1385,11 +1385,11 @@ namespace Realworld
                 }
                 value.F070Uint = (byte)rangeValue;
             }
-            if (!batch.SerializeCompressedFloat(ref value.F071Cf32, 0.0f, 10.0f, 0.02f))
+            if (!batch.SerializeCompressedFloatPrecomputed(ref value.F071Cf32, 500u, 9, 10.0f, 0.0f))
             {
                 return false;
             }
-            if (!batch.SerializeCompressedFloat(ref value.F072Cf32, 0.0f, 100.0f, 0.01f))
+            if (!batch.SerializeCompressedFloatPrecomputed(ref value.F072Cf32, 10000u, 14, 100.0f, 0.0f))
             {
                 return false;
             }
