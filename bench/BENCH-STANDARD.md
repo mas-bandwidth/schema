@@ -847,6 +847,35 @@ remark: 'big' inlined into 'use' with (cost=280, threshold=375) at callsite use:
 > **Do not use `-fopt-info-inline` with clang.** It is a GCC spelling; Apple clang 21
 > errors with `unknown argument`.
 
+> **Only the LAST `-Rpass=` on a command line has any effect, and the ones before it fail
+> silently.** `-Rpass=` takes a regex and each occurrence REPLACES the previous one rather
+> than adding to it, so a command meaning to ask two questions answers only the last —
+> with no warning, no error, and a perfectly plausible empty section in the report.
+> Measured on Apple clang 21.0.0 against a two-call inline case:
+>
+> ```
+> clang -O2 -c t.c -Rpass=loop-vectorize -Rpass=inline   # 2 inline remarks
+> clang -O2 -c t.c -Rpass=inline -Rpass=loop-vectorize   # SILENT: no remarks at all
+> ```
+>
+> The second line is the trap: it reads as "no inlining happened" when it means "you did
+> not ask". **Run one `-Rpass=` per invocation, or spell the alternation into one regex** —
+> `-Rpass='inline|loop-vectorize'` is measured to report the inline remarks, so the regex
+> route works.
+>
+> **`-Rpass-missed=` behaves the same way and is a separate slot.** Measured on the same
+> compiler with a `noinline` case: `-Rpass-missed=inline` alone reports 2 remarks, and
+> `-Rpass-missed=inline -Rpass-missed=loop-vectorize` reports 0 — self-overriding, exactly
+> like `-Rpass=`. The two families do not clobber each other: `-Rpass=inline
+> -Rpass-missed=inline` still reports the `-Rpass=inline` remarks. *(`-Rpass-analysis=`
+> was NOT measured and no claim is made about it; assume the same and verify before
+> relying on it.)*
+>
+> **The general rule this is an instance of: an absent remark is evidence only when the
+> flag that would have produced it was the last one of its kind on the line.** Silence
+> from a diagnostic that was never asked the question is indistinguishable from silence
+> from a clean result ([[instrument-with-no-failure-state]]).
+
 **GCC** (the EPYC box, 13.3) — `-fopt-info-inline-optimized=FILE -fopt-info-inline-missed=FILE`
 
 **Rust** — `RUSTFLAGS="-Cremark=inline -Cdebuginfo=1" cargo build --release`
