@@ -202,7 +202,7 @@ emit_preamble() {
         echo "# c compiler: $($CC_BIN --version 2>/dev/null | head -1)"
         echo "# c flags: $([ "$build" = Release ] && echo "$C_RELEASE_FLAGS" || echo "$C_DEBUG_FLAGS") (serialize.c compiled in, no LTO)"
         echo "# go: ${GO_VERSION:-not present} (go run, default optimized build)"
-        echo "# rust: ${RUST_VERSION:-not present} (cargo run --release: opt-level 3, no LTO)"
+        echo "# rust: ${RUST_VERSION:-not present} (cargo run --release at opt-level ${OPT_LEVEL#O}, no LTO)"
         echo "# dotnet: ${DOTNET_VERSION:-not present} (dotnet run -c Release, workstation GC)"
         echo "# node: ${NODE_VERSION:-not present} (NODE_ENV=production — serialize.js's caller-trust release mode; the runner records the mode that ran in its checks column)"
         echo "# pinning: $PIN_DESC"
@@ -364,7 +364,16 @@ if [ -z "$ONLY" ] || [ "$ONLY" = rust ]; then
             # $RS_CARGO_ARGS: empty at the default path; --manifest-path to
             # the §3.5 override manifests (plus --target-dir target, so the
             # binary stays at bench/rust/target/release/benchrust) otherwise
-            ( cd bench/rust && PATH="/opt/homebrew/opt/rustup/bin:$PATH" $PIN cargo run --release --quiet $RS_CARGO_ARGS -- $RUNNER_ARGS ) >> "$OUT"
+            # BENCH_OPT stamps the level into the runner's CSV opt column (the
+            # cargo analogue of the C/C++ -DBENCH_OPT), and
+            # CARGO_PROFILE_RELEASE_OPT_LEVEL is what actually BUILDS at that
+            # level. Both, or the pair lies in one direction or the other: the
+            # stamp without the profile names a level that was not built, and
+            # the profile without the stamp builds a level nothing records.
+            ( cd bench/rust && PATH="/opt/homebrew/opt/rustup/bin:$PATH" \
+              BENCH_OPT="$OPT_LEVEL" \
+              CARGO_PROFILE_RELEASE_OPT_LEVEL="${OPT_LEVEL#O}" \
+              $PIN cargo run --release --quiet $RS_CARGO_ARGS -- $RUNNER_ARGS ) >> "$OUT"
         else
             echo "SKIP rust: runner present but no cargo" >&2
         fi

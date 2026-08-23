@@ -44,9 +44,32 @@ const NUM_VARIANTS: usize = 64; // read-path variant buffers
 // range validation and the sticky error check by contract), opt O3 (the cargo
 // release profile, opt-level 3), inline unknown until the verdict pass (§4.2)
 // backfills it.
-// family is per ROW now (gen | rt | bits — §5.1); linkage/checks/opt/inline
-// stay per-runner constants
-const CSV_SUFFIX: &str = "crate,always,O3,unknown";
+// family is per ROW now (gen | rt | bits — §5.1); linkage/checks/inline stay
+// per-runner constants, and OPT IS READ FROM THE BUILD rather than asserted.
+//
+// THE OPT COLUMN USED TO BE THE LITERAL "O3" AND WAS THEREFORE A CLAIM THIS
+// BINARY COULD NOT KEEP. `cargo` will happily build at opt-level 2 when the
+// pass driver asks it to (CARGO_PROFILE_RELEASE_OPT_LEVEL=2), and every row
+// still said O3 — so an O2 pass produced a CSV that named the wrong level,
+// silently, in the one column a cross-level comparison is keyed on. That is
+// the named harness gap keeping Rust out of the O2 ranking.
+//
+// The C and C++ runners already do this correctly: run.sh passes
+// -DBENCH_OPT="$OPT_LEVEL" and the runner stamps what it was told. This is the
+// same seam for cargo, through option_env! (compile time, like -D).
+//
+// AND THE DEFAULT IS "unknown", NEVER "O3": a build nobody told is a build
+// whose level this binary does not know, and a guess that happens to be right
+// most of the time is exactly how the old constant survived. An honest
+// "unknown" fails a verdict pass loudly; a confident "O3" fails it silently.
+const BENCH_OPT: &str = match option_env!("BENCH_OPT") {
+    Some(level) => level,
+    None => "unknown",
+};
+
+fn csv_suffix() -> String {
+    format!("crate,always,{BENCH_OPT},unknown")
+}
 
 fn fnv1a64(mut h: u64, data: &[u8]) -> u64 {
     for &b in data {
@@ -193,8 +216,9 @@ impl Ctx {
             return;
         }
         let id = self.corpus_id();
+        let suffix = csv_suffix();
         for (row, family) in self.csv_rows.borrow().iter() {
-            println!("{row},{id},{family},{CSV_SUFFIX}");
+            println!("{row},{id},{family},{suffix}");
         }
     }
 }
