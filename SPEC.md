@@ -1434,17 +1434,23 @@ JavaScript's is serialize.js's.
 Go, zero third-party dependencies, one static binary: `schema`.
 
 ```
-schema check      [dir|files...]          // parse + typecheck; exit code for CI
+schema check      [--verbose] [dir|files...]   // parse + typecheck; exit code for CI
 schema generate   [--lang c|cpp|cs|go|js|rust] [--cpp-message union|variant]
-                  [--out <dir>] [dir|files...]
+                  [--out <dir>] [--verbose] [dir|files...]
 schema id         [dir|files...]          // print the protocol id
 schema projection [dir|files...]          // print the wire shape projection (§3.1)
-schema fmt        [dir|files...]          // the canonical formatter, standalone (editors, hooks)
-schema pack       <manifest.json>         // the data compiler: JSON instance files -> a
+schema fmt        [--verbose] [dir|files...]   // the canonical formatter, standalone (editors, hooks)
+schema pack       [--verbose] <manifest.json>  // the data compiler: JSON instance files -> a
                                           // versioned, hashed .bin per the manifest's
                                           // ordered collections (§4.11)
 schema version
 ```
+
+Success is silent. Commands whose printed output is their answer (`id`,
+`projection`, `version`) print it; everything else prints nothing unless
+`--verbose` asks for the per-file report — the files `generate` and `pack`
+wrote, the files the formatter rewrote, `check`'s ok line. Errors and
+diagnostics always reach stderr, and exit codes do not depend on verbosity.
 
 **Every command formats the unit's schema files in place before processing
 them.** One style, no options, no separate binary; a file already in format

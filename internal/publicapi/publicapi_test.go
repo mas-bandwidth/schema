@@ -120,14 +120,19 @@ func TestExternalModuleBuildsTheCLI(t *testing.T) {
 	goBuild(t, clientDir, external)
 
 	// the reporting commands: identical text, including the protocol id and
-	// the projection the id hashes.
+	// the projection the id hashes. check is silent on success (its answer is
+	// the exit code); --verbose restores its ok line, so both shapes run.
 	for _, corpus := range []string{corpusDir, corpus128Dir} {
-		for _, verb := range []string{"check", "id", "projection"} {
-			want := run(t, inRepo, verb, corpus)
-			got := run(t, external, verb, corpus)
+		for _, verb := range [][]string{{"check"}, {"check", "--verbose"}, {"id"}, {"projection"}} {
+			args := append(append([]string{}, verb...), corpus)
+			want := run(t, inRepo, args...)
+			got := run(t, external, args...)
 			if got != want {
-				t.Errorf("%s %s diverged\n in-repo: %q\nexternal: %q", verb, corpus, want, got)
+				t.Errorf("%s %s diverged\n in-repo: %q\nexternal: %q", strings.Join(verb, " "), corpus, want, got)
 			}
+		}
+		if out := run(t, inRepo, "check", corpus); out != "" {
+			t.Errorf("check %s: success is silent by default, printed %q", corpus, out)
 		}
 	}
 
@@ -165,13 +170,31 @@ func TestExternalModuleBuildsTheCLI(t *testing.T) {
 	for _, c := range cases {
 		wantDir := filepath.Join(work, "want", c.name)
 		gotDir := filepath.Join(work, "got", c.name)
-		run(t, inRepo, generateArgs(c, wantDir)...)
-		run(t, external, generateArgs(c, gotDir)...)
+		if out := run(t, inRepo, generateArgs(c, wantDir)...); out != "" {
+			t.Errorf("%s: generate is silent on success by default, printed %q", c.name, out)
+		}
+		if out := run(t, external, generateArgs(c, gotDir)...); out != "" {
+			t.Errorf("%s: generate is silent on success by default (external build), printed %q", c.name, out)
+		}
 		compareTrees(t, c.name, wantDir, gotDir)
 	}
 
+	// --verbose restores the per-file report, identically on both sides (the
+	// output directories differ per run, so they are normalized out).
+	wantVDir := filepath.Join(work, "want-verbose")
+	gotVDir := filepath.Join(work, "got-verbose")
+	wantV := strings.ReplaceAll(run(t, inRepo, "generate", "--lang", "cpp", "--out", wantVDir, "--verbose", corpusDir), wantVDir, "<out>")
+	gotV := strings.ReplaceAll(run(t, external, "generate", "--lang", "cpp", "--out", gotVDir, "--verbose", corpusDir), gotVDir, "<out>")
+	if gotV != wantV {
+		t.Errorf("generate --verbose diverged\n in-repo: %q\nexternal: %q", wantV, gotV)
+	}
+	if !strings.Contains(wantV, "wrote ") {
+		t.Errorf("generate --verbose did not list the emitted files: %q", wantV)
+	}
+
 	// the data compiler: same manifest, same instance, same container bytes —
-	// down to the content hash the two builds print.
+	// down to the content hash the two builds print under --verbose (the
+	// default is silent, checked below).
 	wantBin, wantLine := runPack(t, inRepo, filepath.Join(work, "pack-want"), root)
 	gotBin, gotLine := runPack(t, external, filepath.Join(work, "pack-got"), root)
 	if !bytes.Equal(wantBin, gotBin) {
@@ -221,7 +244,10 @@ func runPack(t *testing.T, bin, dir, root string) ([]byte, string) {
 	if err := os.WriteFile(filepath.Join(dir, "probe.json"), []byte(packInstance), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	report := strings.ReplaceAll(run(t, bin, "pack", manifest), dir, "<dir>")
+	if out := run(t, bin, "pack", manifest); out != "" {
+		t.Errorf("pack: success is silent by default, printed %q", out)
+	}
+	report := strings.ReplaceAll(run(t, bin, "pack", "--verbose", manifest), dir, "<dir>")
 	data, err := os.ReadFile(filepath.Join(dir, "probes.bin"))
 	if err != nil {
 		t.Fatal(err)
