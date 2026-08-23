@@ -57,8 +57,17 @@ func (g *gen) emitWriteScalar(f *ir.Field, expr, ind string) {
 		g.call(ind, fmt.Sprintf("serialize_write_bool( stream, %s )", expr))
 	case ir.TFloat32:
 		if f.HasFloatRange {
-			g.call(ind, fmt.Sprintf("serialize_write_compressed_float( stream, %s, %s, %s, %s )",
-				expr, formatFloat(f.FMin), formatFloat(f.FMax), formatFloat(f.Resolution)))
+			// The runtime's precomputed entry point (issue #82): the step
+			// count, wire width and float32 range width depend only on the
+			// declaration, so ir.CompressedFloatParams derives them ONCE at
+			// generation time — the same derivation internal/pack and the
+			// Go fold (#79) emit from — and the quantization arithmetic
+			// keeps its one audited home in serialize.h.
+			steps, wireBits := ir.CompressedFloatParams(f.FMin, f.FMax, f.Resolution)
+			min32 := float32(f.FMin)
+			delta := float32(f.FMax) - min32
+			g.call(ind, fmt.Sprintf("serialize_write_compressed_float_precomputed( stream, %s, %du, %d, %s, %s )",
+				expr, steps, wireBits, formatFloat32(delta), formatFloat32(min32)))
 			return
 		}
 		g.call(ind, fmt.Sprintf("serialize_write_float( stream, %s )", expr))
@@ -255,8 +264,14 @@ func (g *gen) emitReadScalar(f *ir.Field, expr, ind string) {
 		g.call(ind, fmt.Sprintf("serialize_read_bool( stream, &%s )", expr))
 	case ir.TFloat32:
 		if f.HasFloatRange {
-			g.call(ind, fmt.Sprintf("serialize_read_compressed_float( stream, &%s, %s, %s, %s )",
-				expr, formatFloat(f.FMin), formatFloat(f.FMax), formatFloat(f.Resolution)))
+			// read twin of the write-side fold: same generation-time
+			// constants, and the headroom refusal stays inside the runtime
+			// entry point where it always lived
+			steps, wireBits := ir.CompressedFloatParams(f.FMin, f.FMax, f.Resolution)
+			min32 := float32(f.FMin)
+			delta := float32(f.FMax) - min32
+			g.call(ind, fmt.Sprintf("serialize_read_compressed_float_precomputed( stream, &%s, %du, %d, %s, %s )",
+				expr, steps, wireBits, formatFloat32(delta), formatFloat32(min32)))
 			return
 		}
 		g.call(ind, fmt.Sprintf("serialize_read_float( stream, &%s )", expr))

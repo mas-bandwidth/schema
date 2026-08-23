@@ -360,7 +360,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_probe_sample( serialize_wri
     {
         return 0;
     }
-    if ( !serialize_write_compressed_float( stream, value->orientation, -180.0, 180.0, 0.01 ) )
+    if ( !serialize_write_compressed_float_precomputed( stream, value->orientation, 36000u, 16, 360.0f, -180.0f ) )
     {
         return 0;
     }
@@ -426,7 +426,7 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_probe_sample( serialize_read_
     {
         return 0;
     }
-    if ( !serialize_read_compressed_float( stream, &value->orientation, -180.0, 180.0, 0.01 ) )
+    if ( !serialize_read_compressed_float_precomputed( stream, &value->orientation, 36000u, 16, 360.0f, -180.0f ) )
     {
         return 0;
     }
@@ -712,7 +712,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_test_data( serialize_write_
     {
         return 0;
     }
-    if ( !serialize_write_compressed_float( stream, value->compressed_float_value, 0.0, 10.0, 0.01 ) )
+    if ( !serialize_write_compressed_float_precomputed( stream, value->compressed_float_value, 1000u, 10, 10.0f, 0.0f ) )
     {
         return 0;
     }
@@ -885,7 +885,7 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_test_data( serialize_read_str
     {
         return 0;
     }
-    if ( !serialize_read_compressed_float( stream, &value->compressed_float_value, 0.0, 10.0, 0.01 ) )
+    if ( !serialize_read_compressed_float_precomputed( stream, &value->compressed_float_value, 1000u, 10, 10.0f, 0.0f ) )
     {
         return 0;
     }
@@ -996,11 +996,11 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_test_data( serialize_read_str
    error, so a caller may check once at the end of a message. */
 static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_compressed_probe( serialize_write_stream_t * stream, const CompressedProbe * value )
 {
-    if ( !serialize_write_compressed_float( stream, value->boundary, 0.0, 10.0, 0.01 ) )
+    if ( !serialize_write_compressed_float_precomputed( stream, value->boundary, 1000u, 10, 10.0f, 0.0f ) )
     {
         return 0;
     }
-    if ( !serialize_write_compressed_float( stream, value->offset, -5.0, 5.0, 0.001 ) )
+    if ( !serialize_write_compressed_float_precomputed( stream, value->offset, 10000u, 14, 10.0f, -5.0f ) )
     {
         return 0;
     }
@@ -1011,11 +1011,11 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_compressed_probe( serialize
    REFUSED, never clamped. */
 static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_compressed_probe( serialize_read_stream_t * stream, CompressedProbe * value )
 {
-    if ( !serialize_read_compressed_float( stream, &value->boundary, 0.0, 10.0, 0.01 ) )
+    if ( !serialize_read_compressed_float_precomputed( stream, &value->boundary, 1000u, 10, 10.0f, 0.0f ) )
     {
         return 0;
     }
-    if ( !serialize_read_compressed_float( stream, &value->offset, -5.0, 5.0, 0.001 ) )
+    if ( !serialize_read_compressed_float_precomputed( stream, &value->offset, 10000u, 14, 10.0f, -5.0f ) )
     {
         return 0;
     }
