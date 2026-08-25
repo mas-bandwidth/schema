@@ -48,12 +48,12 @@ type Inner {
 }
 
 table Cfg {
-    a     int32   [min = 0, max = 1000] = 5
+    a     int32   = 5 | min = 0, max = 1000
     b     float32                       = 1.5
     mode  Mode                          = Beta
     name  string(32)
     inner Inner
-    items [..8]int32 [min = 0, max = 255]
+    items [..8]int32 | min = 0, max = 255
 }
 `
 
@@ -73,7 +73,7 @@ table Cfg {
     mode  Mode    = Beta
     name  string(32)
     inner Inner
-    items [..8]int32 [min = 0, max = 255]
+    items [..8]int32 | min = 0, max = 255
 }
 `
 

@@ -32,7 +32,7 @@ extern "C" {
 
 /* enum DriveMode — None = 0 implicit, variants dense from 1, wire range [0, 3]
    (SPEC §4.2). A fixed-width typedef rather than a C enum: an enum's underlying
-   type is implementation-defined, and [max = K] headroom makes non-variant
+   type is implementation-defined, and | max = K headroom makes non-variant
    values wire-legal, which a C enum cannot hold honestly. */
 typedef uint8_t DriveMode;
 #define DRIVE_MODE_NONE 0
@@ -204,7 +204,7 @@ typedef struct BodyState {
     double spin;
 } BodyState;
 
-/* BodyData_Deep — every non-[local] field, deep encodings: full state for
+/* BodyData_Deep — every non- | local field, deep encodings: full state for
    client-side prediction */
 typedef struct BodyData_Deep {
     FixedVec position;
@@ -212,7 +212,7 @@ typedef struct BodyData_Deep {
     FixedVec velocity;
 } BodyData_Deep;
 
-/* BodyData_Shallow — the [interpolate] fields on the quantized wire */
+/* BodyData_Shallow — the | interpolate fields on the quantized wire */
 typedef struct BodyData_Shallow {
     FixedVec position;
     FixedQuat rotation;
@@ -226,7 +226,7 @@ typedef struct BodyData_Interpolate {
     FixedVec velocity;
 } BodyData_Interpolate;
 
-/* QuantizeBody/UnquantizeBody are not emitted: every [interpolate] field
+/* QuantizeBody/UnquantizeBody are not emitted: every | interpolate field
    is already wire-domain (fixed components are their own quantization,
    SPEC §4.8) — Interpolate and Shallow are the same values. */
 
@@ -240,7 +240,7 @@ typedef struct NarrowBodyState {
     FixedVec velocity;
 } NarrowBodyState;
 
-/* NarrowBodyData_Deep — every non-[local] field, deep encodings: full state for
+/* NarrowBodyData_Deep — every non- | local field, deep encodings: full state for
    client-side prediction */
 typedef struct NarrowBodyData_Deep {
     FixedVec position;
@@ -248,7 +248,7 @@ typedef struct NarrowBodyData_Deep {
     FixedVec velocity;
 } NarrowBodyData_Deep;
 
-/* NarrowBodyData_Shallow — the [interpolate] fields on the quantized wire */
+/* NarrowBodyData_Shallow — the | interpolate fields on the quantized wire */
 typedef struct NarrowBodyData_Shallow {
     /* position: FixedVec narrowed — 8 fractional bits kept (SPEC §4.8 rule 2b) */
     int32_t position_x; /* [-25600000, 25600000] */

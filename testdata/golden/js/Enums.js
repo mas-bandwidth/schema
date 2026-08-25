@@ -14,7 +14,7 @@
 
 // Team — None = 0 implicit, variants dense from 1, wire range [0, 2] (SPEC §4.2);
 // a frozen object of Number values — the JS translation of the family's
-// integer-backed enums; [max = ...] headroom values are plain Numbers
+// integer-backed enums; | max = ... headroom values are plain Numbers
 export const Team = Object.freeze({
   None: 0,
   Red: 1,
@@ -39,7 +39,7 @@ export function EnumNameTeam(value) {
 
 // ShipType — None = 0 implicit, variants dense from 1, wire range [0, 5] (SPEC §4.2);
 // a frozen object of Number values — the JS translation of the family's
-// integer-backed enums; [max = ...] headroom values are plain Numbers
+// integer-backed enums; | max = ... headroom values are plain Numbers
 export const ShipType = Object.freeze({
   None: 0,
   Fighter: 1,
@@ -73,7 +73,7 @@ export function EnumNameShipType(value) {
 
 // MissileType — None = 0 implicit, variants dense from 1, wire range [0, 3] (SPEC §4.2);
 // a frozen object of Number values — the JS translation of the family's
-// integer-backed enums; [max = ...] headroom values are plain Numbers
+// integer-backed enums; | max = ... headroom values are plain Numbers
 export const MissileType = Object.freeze({
   None: 0,
   Heatseeker: 1,
@@ -101,7 +101,7 @@ export function EnumNameMissileType(value) {
 
 // PropType — None = 0 implicit, variants dense from 1, wire range [0, 6] (SPEC §4.2);
 // a frozen object of Number values — the JS translation of the family's
-// integer-backed enums; [max = ...] headroom values are plain Numbers
+// integer-backed enums; | max = ... headroom values are plain Numbers
 export const PropType = Object.freeze({
   None: 0,
   Asteroid: 1,
@@ -138,7 +138,7 @@ export function EnumNamePropType(value) {
 
 // Pending — None = 0 implicit, variants dense from 1, wire range [0, 0] (SPEC §4.2);
 // a frozen object of Number values — the JS translation of the family's
-// integer-backed enums; [max = ...] headroom values are plain Numbers
+// integer-backed enums; | max = ... headroom values are plain Numbers
 export const Pending = Object.freeze({
   None: 0,
   Max: 0, // the exported extent (SPEC §4.2)

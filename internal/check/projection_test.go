@@ -47,7 +47,7 @@ type Vec3 {
 message State {
     team     Team
     position Vec3
-    health   int32 [min = 0, max = MaxHealth]
+    health   int32 | min = 0, max = MaxHealth
     at_rest  bool
     if !at_rest {
         velocity Vec3
@@ -90,7 +90,7 @@ func TestIdIsStableUnderFloatConstAnnotation(t *testing.T) {
 const Half float64 = 180.0
 
 type Sample {
-    orientation float32 [min = -Half, max = Half, resolution = 0.01]
+    orientation float32 | min = -Half, max = Half, resolution = 0.01
 }
 `
 	bare := strings.Replace(annotated, "const Half float64 = 180.0", "const Half = 180.0", 1)
@@ -118,7 +118,7 @@ func TestIdMovesUnderWireEdits(t *testing.T) {
 			"    team     Team\n    position Vec3", "    position Vec3\n    team     Team", 1)},
 		{"a new enum variant (the tag range widens)",
 			strings.Replace(baseSchema, "{ Red, Blue }", "{ Red, Blue, Green }", 1)},
-		{"a field added", strings.Replace(baseSchema, "    at_rest  bool", "    shield   int32 [min = 0, max = 100]\n    at_rest  bool", 1)},
+		{"a field added", strings.Replace(baseSchema, "    at_rest  bool", "    shield   int32 | min = 0, max = 100\n    at_rest  bool", 1)},
 		{"a branch inverted", strings.Replace(baseSchema, "if !at_rest {", "if at_rest {", 1)},
 		{"a type widened", strings.Replace(baseSchema, "    x float64", "    x float32", 1)},
 		{"the package renamed", strings.Replace(baseSchema, "package probe", "package other", 1)},
@@ -202,7 +202,7 @@ message Pong {
 }
 
 object Rock {
-    size uint8 [interpolate, min = 0, max = 100]
+    size uint8 | interpolate, min = 0, max = 100
 }
 
 type Arm {
@@ -229,7 +229,7 @@ const Arms     = HeldType.Max
 	}
 }
 
-// F.Count is the DECLARED variant count (SPEC §4.2) — under [max = K]
+// F.Count is the DECLARED variant count (SPEC §4.2) — under | max = K
 // headroom it diverges from the wire width, and Count stays the count.
 func TestFlagsCountValue(t *testing.T) {
 	u := build(t, `package probe
@@ -240,7 +240,8 @@ flags Plain {
     C,
 }
 
-flags Wide [max = 8] {
+flags Wide | max = 8
+{
     A,
     B,
     C,
@@ -259,7 +260,7 @@ const WideN  = Wide.Count
 		}
 	}
 	if u.Flags["Wide"].WireBits != 8 {
-		t.Errorf("Wide.WireBits = %d, want 8 — the [max = 8] widening is the WIRE width, distinct from Count", u.Flags["Wide"].WireBits)
+		t.Errorf("Wide.WireBits = %d, want 8 — the | max = 8 widening is the WIRE width, distinct from Count", u.Flags["Wide"].WireBits)
 	}
 }
 

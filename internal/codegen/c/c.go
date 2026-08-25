@@ -27,7 +27,7 @@
 //
 //   - Enums are a fixed-width typedef plus #define constants, NOT a C enum. A C
 //     enum's underlying type is implementation-defined, which would break the
-//     storage-width contract in §6.1 — and headroom from [max = K] makes
+//     storage-width contract in §6.1 — and headroom from | max = K makes
 //     non-variant values wire-legal, which a C enum cannot represent honestly
 //     anyway. Same reasoning as the Rust newtype.
 package c
@@ -254,7 +254,7 @@ func (g *gen) emitDataHeader(carriesProtocolId bool) {
 		case *ir.ContextsMarker:
 			g.pf("/* contexts declared for this unit: %s (SPEC §4.2).\n", strings.Join(decl.Names, ", "))
 			g.pf("   Contexts generate no standalone artifacts — where an object carries\n")
-			g.pf("   context-scoped [local] fields, its State struct is generated once per\n")
+			g.pf("   context-scoped | local fields, its State struct is generated once per\n")
 			g.pf("   context (ClientShipState, ServerShipState, ...), each holding the `all`\n")
 			g.pf("   fields plus its own context's. No preprocessor in any target. */\n\n")
 		default:
@@ -316,7 +316,7 @@ func formatFloat32(v float32) string {
 func (g *gen) emitEnum(d *ir.Enum) {
 	g.pf("\n/* enum %s — None = 0 implicit, variants dense from 1, wire range [0, %d]\n", d.Name, d.Max)
 	g.pf("   (SPEC §4.2). A fixed-width typedef rather than a C enum: an enum's underlying\n")
-	g.pf("   type is implementation-defined, and [max = K] headroom makes non-variant\n")
+	g.pf("   type is implementation-defined, and | max = K headroom makes non-variant\n")
 	g.pf("   values wire-legal, which a C enum cannot hold honestly. */\n")
 	g.pf("typedef %s %s;\n", cUint(d.StorageBits), d.Name)
 	g.pf("#define %s_NONE 0\n", screaming(d.Name))

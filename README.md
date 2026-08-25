@@ -21,7 +21,7 @@ type Vec3 {
 message ShipState {
     ship_type ShipType
     position  Vec3
-    health    int32 [min = 0, max = MaxHealth]
+    health    int32 | min = 0, max = MaxHealth
     at_rest   bool
     if !at_rest {
         velocity Vec3
@@ -65,11 +65,11 @@ would have hand-written, not an interpreter walking a schema at runtime.
 - **One declaration, six languages** — C, C++, C#, Go, Rust and JavaScript,
   bit-identical on the wire, reader and writer generated together so they
   cannot drift.
-- **Bit-packed, not byte-packed** — `[min = 0, max = 1000]` costs 10 bits, not
+- **Bit-packed, not byte-packed** — `| min = 0, max = 1000` costs 10 bits, not
   4 bytes. Bounds are part of the type, and the wire cost follows from them.
 - **Branches that cost nothing** — `if !at_rest { … }` omits whole field groups
   from the wire, back-referencing a bool already sent.
-- **Compressed floats** — `[min, max, resolution]` sends a step index, not a
+- **Compressed floats** — `| min, max, resolution` sends a step index, not a
   float. A 0–1 throttle at 0.01 costs 7 bits.
 - **Fixed point is a type in the language** — `fixed(48, 16)` and its unsigned
   sibling `ufixed(48, 16)` are declared like any other field, and the compiler

@@ -15,10 +15,12 @@ const SpinRate         = 1.5
 
 // enum headroom: the wire range is [0, 15] whatever the variant count, and
 // non-variant values are wire-legal (SPEC §4.2, §6.1)
-enum Weapon [max = 15] { Laser, Missile, Railgun }
+enum Weapon | max = 15
+{ Laser, Missile, Railgun }
 
 // flags widening: 8 wire bits with three named so far (SPEC §4.2)
-flags ProbeFlags [max = 8] { Armed, Cloaked, Damaged }
+flags ProbeFlags | max = 8
+{ Armed, Cloaked, Damaged }
 
 // the storage-less wire constructs (SPEC §4.3): a magic byte the read
 // REJECTS if wrong, reserved bits held at zero, and an alignment point
@@ -37,8 +39,8 @@ type ProbeBits {
     small    bits(9)
     boundary bits(33)
     wide     bits(64)
-    sensor   uint32   [min = 0, max = 4294967295]
-    nonce    uint64   [min = 0, max = 18446744073709551615]
+    sensor   uint32   | min = 0, max = 4294967295
+    nonce    uint64   | min = 0, max = 18446744073709551615
 }
 
 // a compressed float on a plain type's wire (SPEC §4.3 — the object-view
@@ -46,8 +48,8 @@ type ProbeBits {
 // nested branch, bare int32/int64, and a range-counted array whose count
 // can never be zero
 type ProbeSample {
-    active      bool    = true
-    orientation float32 [min = -HalfTurn, max = HalfTurn, resolution = 0.01]
+    active      bool = true
+    orientation float32     | min = -HalfTurn, max = HalfTurn, resolution = 0.01
     raw_delta   int32
     big_delta   int64
     if active {
@@ -70,7 +72,7 @@ type ProbeRing {
 }
 
 type ProbeSlab {
-    width  uint8 [min = 0, max = 100]
+    width  uint8 | min = 0, max = 100
     height uint8
 }
 
@@ -91,7 +93,7 @@ type ProbeCollider {
 // specified defaults past bool (SPEC §4.2): a negative integer and an enum
 // variant — zero init everywhere else
 type ProbeConfig {
-    retries   int32  = -1
+    retries   int32 = -1
     preferred Weapon = Railgun
 }
 
@@ -120,9 +122,9 @@ type ProbeReport {
 // two constructs are v1-deferred by decision and absent — int_relative
 // (§4.10, the delta pass) and wstring.
 table TestData {
-    a int32 [min = -100, max = 100]
-    b int32 [min = -100, max = 100]
-    c int32 [min = -100, max = 150]
+    a int32 | min = -100, max = 100
+    b int32 | min = -100, max = 100
+    c int32 | min = -100, max = 150
 
     d bits(8)
     e bits(8)
@@ -130,10 +132,10 @@ table TestData {
 
     g bool
 
-    items [..16]int32 [min = 0, max = 255]
+    items [..16]int32 | min = 0, max = 255
 
     float_value            float32
-    compressed_float_value float32 [min = 0, max = 10, resolution = 0.01]
+    compressed_float_value float32 | min = 0, max = 10, resolution = 0.01
     double_value           float64
 
     int8_value  int8
@@ -145,7 +147,7 @@ table TestData {
     uint64_value uint64
 
     int64_full  int64
-    int64_range int64 [min = -1000000000000, max = 1000000000000]
+    int64_range int64 | min = -1000000000000, max = 1000000000000
 
     align
     fixed_bytes [17]uint8
@@ -166,6 +168,6 @@ table TestData {
 //                        full-range float32 sweep found no fused divergence
 //                        on this shape — measured, not assumed)
 type CompressedProbe {
-    boundary float32 [min = 0, max = 10, resolution = 0.01]
-    offset   float32 [min = -5, max = 5, resolution = 0.001]
+    boundary float32 | min = 0, max = 10, resolution = 0.01
+    offset   float32 | min = -5, max = 5, resolution = 0.001
 }

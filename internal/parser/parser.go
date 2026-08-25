@@ -165,6 +165,10 @@ func (p *parser) parseDecl() {
 		}
 		p.expect(scanner.Assign, "=")
 		d.Expr = p.parseExpr()
+		if p.kind() == scanner.Pipe {
+			p.errf(p.tok().Pos, "a constant takes no qualification, and | is never an operator — the language has no bitwise-or (SPEC §4.2)")
+			p.skipToTerminator()
+		}
 		p.expectTerminator("constant declaration")
 		p.file.Decls = append(p.file.Decls, d)
 
@@ -172,9 +176,7 @@ func (p *parser) parseDecl() {
 		p.advance()
 		name := p.expect(scanner.Ident, "enum name")
 		d := &ast.EnumDecl{Name: name.Text, Pos: t.Pos}
-		if p.kind() == scanner.LBrack {
-			d.Attrs = p.parseAttrs()
-		}
+		d.Attrs = p.declQualifiers("enum")
 		d.Variants = p.parseVariantList("enum")
 		p.expectTerminator("enum declaration")
 		p.file.Decls = append(p.file.Decls, d)
@@ -183,9 +185,7 @@ func (p *parser) parseDecl() {
 		p.advance()
 		name := p.expect(scanner.Ident, "type name")
 		d := &ast.TypeDecl{Name: name.Text, Pos: t.Pos}
-		if p.kind() == scanner.LBrack {
-			d.Attrs = p.parseAttrs()
-		}
+		d.Attrs = p.declQualifiers("type")
 		d.Body = p.parseBlock()
 		p.expectTerminator("type declaration")
 		p.file.Decls = append(p.file.Decls, d)
@@ -196,9 +196,7 @@ func (p *parser) parseDecl() {
 		p.advance()
 		name := p.expect(scanner.Ident, "table name")
 		d := &ast.TypeDecl{Name: name.Text, Pos: t.Pos, IsTable: true}
-		if p.kind() == scanner.LBrack {
-			d.Attrs = p.parseAttrs()
-		}
+		d.Attrs = p.declQualifiers("table")
 		d.Body = p.parseBlock()
 		p.expectTerminator("table declaration")
 		p.file.Decls = append(p.file.Decls, d)
@@ -207,6 +205,10 @@ func (p *parser) parseDecl() {
 		p.advance()
 		name := p.expect(scanner.Ident, "message name")
 		d := &ast.MessageDecl{Name: name.Text, Pos: t.Pos}
+		if p.kind() == scanner.Pipe {
+			p.errf(p.tok().Pos, "a message declaration takes no qualification (SPEC §4.2)")
+			p.skipToTerminator()
+		}
 		d.Body = p.parseBlock()
 		p.expectTerminator("message declaration")
 		p.file.Decls = append(p.file.Decls, d)
@@ -215,6 +217,10 @@ func (p *parser) parseDecl() {
 		p.advance()
 		name := p.expect(scanner.Ident, "object name")
 		d := &ast.ObjectDecl{Name: name.Text, Pos: t.Pos}
+		if p.kind() == scanner.Pipe {
+			p.errf(p.tok().Pos, "an object declaration takes no qualification (SPEC §4.2)")
+			p.skipToTerminator()
+		}
 		d.Body = p.parseBlock()
 		p.expectTerminator("object declaration")
 		p.file.Decls = append(p.file.Decls, d)
@@ -234,9 +240,7 @@ func (p *parser) parseDecl() {
 			p.advance()
 			name := p.expect(scanner.Ident, "flags name")
 			d := &ast.FlagsDecl{Name: name.Text, Pos: t.Pos}
-			if p.kind() == scanner.LBrack {
-				d.Attrs = p.parseAttrs()
-			}
+			d.Attrs = p.declQualifiers("flags")
 			d.Variants = p.parseVariantList("flags")
 			p.expectTerminator("flags declaration")
 			p.file.Decls = append(p.file.Decls, d)
@@ -250,6 +254,10 @@ func (p *parser) parseDecl() {
 			p.advance()
 			name := p.expect(scanner.Ident, "union name")
 			d := &ast.UnionDecl{Name: name.Text, Pos: t.Pos}
+			if p.kind() == scanner.Pipe {
+				p.errf(p.tok().Pos, "a union declaration takes no qualification (SPEC §4.2)")
+				p.skipToTerminator()
+			}
 			d.Variants = p.parseUnionBody()
 			p.expectTerminator("union declaration")
 			p.file.Decls = append(p.file.Decls, d)
@@ -437,15 +445,26 @@ func (p *parser) parseItem() ast.Item {
 			f.Array = p.parseArrayBound()
 		}
 		f.Type = p.parseScalar()
-		if p.kind() == scanner.LBrack {
-			f.Attrs = p.parseAttrs()
-		}
 		if p.kind() == scanner.Assign {
-			// optional specified default: `invulnerable bool [local] = true`
-			// (Glenn, 2026-08-05: zero initialization everywhere, "unless we
-			// allow some specified default, eg. ... = true")
+			// optional specified default: `invulnerable bool = true | local`
+			// — the default DEFINES the fresh value, so it precedes the
+			// qualification (SPEC §4.2)
 			p.advance()
 			f.Default = p.parseExpr()
+		}
+		if p.kind() == scanner.LBrack {
+			// the RETIRED trailing attribute block (SPEC §4.2) — refuse with
+			// the replacement named, then parse the group so the rest of the
+			// file's diagnostics still land
+			p.errf(p.tok().Pos, "the [ ... ] attribute block is retired — qualifiers follow | to the end of the line (SPEC §4.2)")
+			f.Attrs = p.parseBracketAttrs()
+			if p.kind() == scanner.Assign { // the old default-after-attrs order
+				p.advance()
+				f.Default = p.parseExpr()
+			}
+		}
+		if p.kind() == scanner.Pipe {
+			f.Attrs = p.parsePipeAttrs()
 		}
 		p.expectTerminator("field")
 		return f
@@ -549,7 +568,55 @@ func (p *parser) parseScalar() ast.ScalarType {
 	}
 }
 
-func (p *parser) parseAttrs() []ast.Attr {
+// declQualifiers parses a declaration line's optional qualification: the |
+// section (which runs to end of line, so the caller's body opens on the NEXT
+// line — the newline is consumed here), or the RETIRED [ ... ] block,
+// refused by name but parsed so diagnosis continues (SPEC §4.2).
+func (p *parser) declQualifiers(what string) []ast.Attr {
+	switch p.kind() {
+	case scanner.LBrack:
+		p.errf(p.tok().Pos, "the [ ... ] attribute block is retired — a %s's qualifiers follow | to the end of the line, and the body opens on the next line (SPEC §4.2)", what)
+		return p.parseBracketAttrs()
+	case scanner.Pipe:
+		attrs := p.parsePipeAttrs()
+		if p.kind() == scanner.Newline {
+			p.advance() // the section claimed the line; the body opens below
+		}
+		return attrs
+	}
+	return nil
+}
+
+// parsePipeAttrs parses a | qualification section: comma-separated
+// attributes running to the end of the line (SPEC §4.2). The terminator is
+// left for the caller. An empty section is a parse error.
+func (p *parser) parsePipeAttrs() []ast.Attr {
+	var attrs []ast.Attr
+	pipe := p.expect(scanner.Pipe, "|")
+	for p.kind() == scanner.Ident {
+		key := p.advance()
+		a := ast.Attr{Key: key.Text, Pos: key.Pos}
+		if p.kind() == scanner.Assign {
+			p.advance()
+			a.Value = p.parseExpr() // a bare word value (round = up) parses as an IdentExpr
+		}
+		attrs = append(attrs, a)
+		if p.kind() == scanner.Comma {
+			p.advance()
+			continue
+		}
+		break
+	}
+	if len(attrs) == 0 {
+		p.errf(pipe.Pos, "empty qualification section — write the qualifiers after | or drop it (SPEC §4.2)")
+	}
+	return attrs
+}
+
+// parseBracketAttrs parses the RETIRED [ ... ] attribute block — kept so the
+// named refusal can recover and keep diagnosing the rest of the file, and so
+// `schema fmt -migrate` can rewrite old sources (SPEC §7.4).
+func (p *parser) parseBracketAttrs() []ast.Attr {
 	var attrs []ast.Attr
 	p.expect(scanner.LBrack, "[")
 	for p.kind() != scanner.RBrack && p.kind() != scanner.EOF {

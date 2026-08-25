@@ -66,7 +66,7 @@ func (g *gen) emitObjectFunctions(d *ir.Object) {
 	// (SPEC §4.8's artifact table — the hand-written Quantize(), generated).
 	// Top-level members of the view classes never need the CS0542 escape
 	// (view class names carry an underscore ir.GoExportName cannot produce).
-	// NOT emitted when every [interpolate] field is already wire-domain —
+	// NOT emitted when every | interpolate field is already wire-domain —
 	// fixed components are their own quantization (SPEC §4.8).
 	if ir.ObjectNeedsQuantize(d) {
 		inName := d.Name + "Data_Interpolate"

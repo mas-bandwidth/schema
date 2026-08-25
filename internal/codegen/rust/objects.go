@@ -59,7 +59,7 @@ func (g *gen) emitObjectFunctions(d *ir.Object) {
 
 	// ---- quantize / unquantize: the Interpolate <-> Shallow mapping pair
 	// (SPEC §4.8's artifact table — the hand-written Quantize(), generated).
-	// NOT emitted when every [interpolate] field is already wire-domain —
+	// NOT emitted when every | interpolate field is already wire-domain —
 	// fixed components are their own quantization (SPEC §4.8).
 	if ir.ObjectNeedsQuantize(d) {
 		inName := d.Name + "Data_Interpolate"

@@ -32,109 +32,109 @@ enum PacketMode { Idle, Active, Combat, Docked, Warping }
 flags PacketFlags { Shielded, Cloaked, Overheated, LowPower, Jamming }
 
 type RealPacket {
-    f001_int  int32               [min = -805495, max = 805495] // 21 bits
+    f001_int  int32                                                                                | min = -805495, max = 805495 // 21 bits
     f002_f64  float64 // 64 bits
-    f003_int  int32               [min = -835897, max = 835897] // 21 bits
-    f004_cf32 float32             [min = 0.0, max = 2000.0, resolution = 0.1] // 15 bits
-    f005_uint uint16              [min = 0, max = 7316] // 13 bits
-    f006_int  int16               [min = -1513, max = 1513] // 12 bits
+    f003_int  int32                                                                                | min = -835897, max = 835897 // 21 bits
+    f004_cf32 float32                                                                              | min = 0.0, max = 2000.0, resolution = 0.1 // 15 bits
+    f005_uint uint16                                                                               | min = 0, max = 7316 // 13 bits
+    f006_int  int16                                                                                | min = -1513, max = 1513 // 12 bits
     f007_f32  float32 // 32 bits
     f008_u64  uint64 // 64 bits
-    f009_int  int8                [min = -22, max = 22] // 6 bits
+    f009_int  int8                                                                                 | min = -22, max = 22 // 6 bits
     f010_f32  float32 // 32 bits
     f011_bits bits(10) // 10 bits
-    f012_bool bool                = true // 1 bit — branch gate: STRUCTURE (§2.7), held fixed during variation
+    f012_bool bool = true // 1 bit — branch gate: STRUCTURE (§2.7), held fixed during variation
     if f012_bool {
         f013_f32   float32 // 32 bits
-        f014_uint  uint16             [min = 0, max = 775] // 10 bits
-        f015_int   int8               [min = -21, max = 21] // 6 bits
-        f016_fixed fixed(12, 20)      [min = -36, max = 36] // 27 bits
-        f017_uint  uint16             [min = 0, max = 4606] // 13 bits
+        f014_uint  uint16             | min = 0, max = 775 // 10 bits
+        f015_int   int8               | min = -21, max = 21 // 6 bits
+        f016_fixed fixed(12, 20)      | min = -36, max = 36 // 27 bits
+        f017_uint  uint16             | min = 0, max = 4606 // 13 bits
     }
-    f018_int    int16                [min = -834, max = 834] // 11 bits
+    f018_int    int16                                                                                 | min = -834, max = 834 // 11 bits
     f019_f64    float64 // 64 bits
     f020_f32    float32 // 32 bits
-    f021_ufixed ufixed(20, 12)       [min = 0, max = 25141] // 27 bits
+    f021_ufixed ufixed(20, 12)                                                                        | min = 0, max = 25141 // 27 bits
     f022_f32    float32 // 32 bits
     f023_bits   bits(25) // 25 bits
     f024_f32    float32 // 32 bits
-    f025_fixed  fixed(8, 8)          [min = -119, max = 119] // 16 bits
+    f025_fixed  fixed(8, 8)                                                                           | min = -119, max = 119 // 16 bits
     f026_bits   bits(9) // 9 bits
-    f027_cf32   float32              [min = -2.0, max = 2.0, resolution = 0.25] // 5 bits
+    f027_cf32   float32                                                                               | min = -2.0, max = 2.0, resolution = 0.25 // 5 bits
     f028_bits   bits(4) // 4 bits
     f029_i64    int64 // 64 bits
     f030_f32    float32 // 32 bits
     f031_bits   bits(1) // 1 bit
-    f032_int    int8                 [min = -3, max = 3] // 3 bits
-    f033_uint   uint32               [min = 0, max = 142780] // 18 bits
-    f034_uint   uint16               [min = 0, max = 14149] // 14 bits
+    f032_int    int8                                                                                  | min = -3, max = 3 // 3 bits
+    f033_uint   uint32                                                                                | min = 0, max = 142780 // 18 bits
+    f034_uint   uint16                                                                                | min = 0, max = 14149 // 14 bits
     f035_bits   bits(9) // 9 bits
     f036_enum   PacketMode // 3 bits
     f037_bool   bool // 1 bit
     f038_bool   bool // 1 bit
     f039_bits   bits(19) // 19 bits
-    f040_fixed  fixed(4, 12)         [min = -5, max = 5] // 16 bits
-    f041_int    int8                 [min = -55, max = 55] // 7 bits
+    f040_fixed  fixed(4, 12)                                                                          | min = -5, max = 5 // 16 bits
+    f041_int    int8                                                                                  | min = -55, max = 55 // 7 bits
     f042_bits   bits(30) // 30 bits
-    f043_bool   bool                 = false // 1 bit — branch gate: STRUCTURE (§2.7), held fixed during variation
+    f043_bool   bool = false // 1 bit — branch gate: STRUCTURE (§2.7), held fixed during variation
     if f043_bool {
         f044_f32  float32 // 32 bits (does not ride: gate false)
         f045_bits bits(12) // 12 bits (does not ride: gate false)
-        f046_uint uint32                                          [min = 0, max = 76063] // 17 bits (does not ride: gate false)
-        f047_int  int32                                           [min = -430976, max = 430976] // 20 bits (does not ride: gate false)
+        f046_uint uint32                                          | min = 0, max = 76063 // 17 bits (does not ride: gate false)
+        f047_int  int32                                           | min = -430976, max = 430976 // 20 bits (does not ride: gate false)
     }
     f048_f64    float64 // 64 bits
-    f049_ufixed ufixed(2, 14)      [min = 0, max = 3] // 16 bits
-    f050_bool   bool               = true // 1 bit — branch gate: STRUCTURE (§2.7), held fixed during variation
+    f049_ufixed ufixed(2, 14)                                                                        | min = 0, max = 3 // 16 bits
+    f050_bool   bool = true // 1 bit — branch gate: STRUCTURE (§2.7), held fixed during variation
     if f050_bool {
         f051_bool bool // 1 bit
-        f052_int  int8               [min = -57, max = 57] // 7 bits
+        f052_int  int8               | min = -57, max = 57 // 7 bits
         f053_f32  float32 // 32 bits
-        f054_int  int8               [min = -35, max = 35] // 7 bits
+        f054_int  int8               | min = -35, max = 35 // 7 bits
     }
     f055_bool   bool // 1 bit
-    f056_int    int8                [min = -13, max = 13] // 5 bits
-    f057_int    int8                [min = -15, max = 15] // 5 bits
+    f056_int    int8                                                                                  | min = -13, max = 13 // 5 bits
+    f057_int    int8                                                                                  | min = -15, max = 15 // 5 bits
     f058_f32    float32 // 32 bits
     f059_f64    float64 // 64 bits
     f060_bits   bits(8) // 8 bits
-    f061_cf32   float32             [min = -90.0, max = 90.0, resolution = 0.5] // 9 bits
-    f062_uint   uint16              [min = 0, max = 503] // 9 bits
+    f061_cf32   float32                                                                               | min = -90.0, max = 90.0, resolution = 0.5 // 9 bits
+    f062_uint   uint16                                                                                | min = 0, max = 503 // 9 bits
     f063_i64    int64 // 64 bits
-    f064_uint   uint16              [min = 0, max = 299] // 9 bits
-    f065_cf32   float32             [min = 0.0, max = 30.0, resolution = 0.5] // 6 bits
-    f066_ufixed ufixed(2, 14)       [min = 0, max = 2] // 16 bits
-    f067_cf32   float32             [min = -100.0, max = 100.0, resolution = 0.25] // 10 bits
-    f068_cf32   float32             [min = 0.0, max = 2000.0, resolution = 1.0] // 11 bits
+    f064_uint   uint16                                                                                | min = 0, max = 299 // 9 bits
+    f065_cf32   float32                                                                               | min = 0.0, max = 30.0, resolution = 0.5 // 6 bits
+    f066_ufixed ufixed(2, 14)                                                                         | min = 0, max = 2 // 16 bits
+    f067_cf32   float32                                                                               | min = -100.0, max = 100.0, resolution = 0.25 // 10 bits
+    f068_cf32   float32                                                                               | min = 0.0, max = 2000.0, resolution = 1.0 // 11 bits
     f069_bits   bits(11) // 11 bits
-    f070_uint   uint8               [min = 0, max = 2] // 2 bits
-    f071_cf32   float32             [min = 0.0, max = 10.0, resolution = 0.02] // 9 bits
-    f072_cf32   float32             [min = 0.0, max = 100.0, resolution = 0.01] // 14 bits
-    f073_int    int8                [min = -4, max = 4] // 4 bits
-    f074_bool   bool                = false // 1 bit — branch gate: STRUCTURE (§2.7), held fixed during variation
+    f070_uint   uint8                                                                                 | min = 0, max = 2 // 2 bits
+    f071_cf32   float32                                                                               | min = 0.0, max = 10.0, resolution = 0.02 // 9 bits
+    f072_cf32   float32                                                                               | min = 0.0, max = 100.0, resolution = 0.01 // 14 bits
+    f073_int    int8                                                                                  | min = -4, max = 4 // 4 bits
+    f074_bool   bool = false // 1 bit — branch gate: STRUCTURE (§2.7), held fixed during variation
     if f074_bool {
         f075_u64  uint64 // 64 bits (does not ride: gate false)
-        f076_int  int16                                         [min = -26218, max = 26218] // 16 bits (does not ride: gate false)
-        f077_int  int8                                          [min = -17, max = 17] // 6 bits (does not ride: gate false)
+        f076_int  int16                                         | min = -26218, max = 26218 // 16 bits (does not ride: gate false)
+        f077_int  int8                                          | min = -17, max = 17 // 6 bits (does not ride: gate false)
         f078_bits bits(9) // 9 bits (does not ride: gate false)
-        f079_uint uint8                                         [min = 0, max = 17] // 5 bits (does not ride: gate false)
+        f079_uint uint8                                         | min = 0, max = 17 // 5 bits (does not ride: gate false)
     }
     f080_bool   bool // 1 bit
     f081_bits   bits(29) // 29 bits
     f082_bits   bits(25) // 25 bits
     f083_enum   PacketMode // 3 bits
-    f084_ufixed ufixed(1, 7)          [min = 0, max = 1] // 8 bits
+    f084_ufixed ufixed(1, 7)          | min = 0, max = 1 // 8 bits
     f085_bits   bits(21) // 21 bits
-    f086_uint   uint16                [min = 0, max = 399] // 9 bits
+    f086_uint   uint16                | min = 0, max = 399 // 9 bits
     f087_f64    float64 // 64 bits
-    f088_int    int16                 [min = -694, max = 694] // 11 bits
+    f088_int    int16                 | min = -694, max = 694 // 11 bits
     f089_bits   bits(48) // 48 bits
-    f090_uint   uint8                 [min = 0, max = 214] // 8 bits
+    f090_uint   uint8                 | min = 0, max = 214 // 8 bits
     f091_flags  PacketFlags // 5 bits
     f092_bool   bool // 1 bit
     f093_bits   bits(64) // 64 bits
     f094_bool   bool // 1 bit
-    f095_fixed  fixed(16, 16)         [min = -1577, max = 1577] // 28 bits
+    f095_fixed  fixed(16, 16)         | min = -1577, max = 1577 // 28 bits
     f096_bits   bits(18) // 18 bits
     f097_bits   bits(12) // 12 bits
 }

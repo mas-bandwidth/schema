@@ -47,17 +47,17 @@ func TestFileDepsCoversEverySymbolicExpression(t *testing.T) {
 		name string
 		use  string
 	}{
-		{"int range min/max", "package t\ntype T { hp int32 [min = -Lim, max = Lim] }\n"},
-		{"fixed range min/max", "package t\ntype T { p fixed(48, 16) [min = -Lim, max = Lim] }\n"},
+		{"int range min/max", "package t\ntype T { hp int32 | min = -Lim, max = Lim }\n"},
+		{"fixed range min/max", "package t\ntype T { p fixed(48, 16) | min = -Lim, max = Lim }\n"},
 		{"array bound", "package t\ntype T { xs [Lim]uint8 }\n"},
 		{"counted array bound", "package t\ntype T { xs [..Lim]uint8 }\n"},
 		{"string size", "package t\ntype T { s string(Lim) }\n"},
 		{"bytes size", "package t\ntype T { b bytes(Lim) }\n"},
-		{"specified default", "package t\ntype T { n int32 [min = 0, max = 1000] = Lim }\n"},
-		{"composite quantize scale and max", "package t\ntype V { x float64\n y float64 }\nobject O {\n    p V [interpolate, quantize = Lim, max = 1]\n    b bool\n}\n"},
+		{"specified default", "package t\ntype T { n int32 = Lim | min = 0, max = 1000 }\n"},
+		{"composite quantize scale and max", "package t\ntype V { x float64\n y float64 }\nobject O {\n    p V | interpolate, quantize = Lim, max = 1\n    b bool\n}\n"},
 		// the bound inside a nested expression, not at the top of the tree
-		{"range bound in a binary expression", "package t\ntype T { hp int32 [min = 0, max = Lim * 2 + 1] }\n"},
-		{"range bound under a unary minus", "package t\ntype T { hp int32 [min = -Lim, max = 0] }\n"},
+		{"range bound in a binary expression", "package t\ntype T { hp int32 | min = 0, max = Lim * 2 + 1 }\n"},
+		{"range bound under a unary minus", "package t\ntype T { hp int32 | min = -Lim, max = 0 }\n"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -85,7 +85,7 @@ func TestFileDepsCoversEverySymbolicExpression(t *testing.T) {
 // the wrong file.
 func TestFileDepsRangeBoundDrivesMessageOwner(t *testing.T) {
 	u := loadFiles(t, map[string]string{
-		"Aaa.schema": "package t\nmessage Ma { hp int32 [min = 0, max = Limit] }\n",
+		"Aaa.schema": "package t\nmessage Ma { hp int32 | min = 0, max = Limit }\n",
 		"Bbb.schema": "package t\nconst Limit = 100\nmessage Mb { x uint8 }\n",
 	})
 	deps := ir.FileDeps(u)

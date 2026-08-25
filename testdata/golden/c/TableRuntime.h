@@ -51,7 +51,7 @@ typedef struct table_field_info_t
     int counted;              /* a count/length companion exists */
     int64_t array_bound;      /* array capacity / string max length; 0 for scalars */
     const struct table_type_info_t * table;  /* nested table's descriptor, or NULL */
-    int has_range;            /* a declared [min, max] */
+    int has_range;            /* a declared | min, max */
     double range_min;         /* NOTE: int64 ranges beyond 2^53 lose precision here */
     double range_max;
     int64_t enum_max;         /* enums: highest valid wire value; else -1 */

@@ -129,7 +129,7 @@ string/bytes capacity; float range, resolution and step count; fixed `I` and
 field sitting at its default); branch structure; `const`/`reserved`/`align`
 items; enum max and storage bits; flags wire bits; union variant order,
 count and payload type references (the tag is positional and the payload is
-the wire — §4.8); `[local]` and `[interpolate]` markers.
+the wire — §4.8); `local` and `interpolate` markers.
 
 **Excluded — each has no effect on the bytes:** comments and whitespace; file
 names, file layout and declaration order; enum variant names, union variant
@@ -207,8 +207,11 @@ band) is the application's choice — netcode-style stacks already carry one.
   literals** (decimal, with optional fraction and exponent) appear in float
   constants and as float attribute values (`min`/`max`/`resolution` on
   `float32`).
-- **Punctuation and operators:** `{ } ( ) [ ] , : = ! . .. + - * / %`
-  (maximal munch: `..` wins over `.`). `<=` is not in the language: a count
+- **Punctuation and operators:** `{ } ( ) [ ] , : = ! . .. | + - * / %`
+  (maximal munch: `..` wins over `.`). `|` opens a line's qualification
+  section (§4.2, Attributes) and claims the rest of the line — the newline
+  or a `//` comment terminates it, and no newline suppression applies after
+  `|` or after a `,` inside a qualification. `<=` is not in the language: a count
   bound is a range literal (`[..N]`, `[A..B]`), never a truncated
   comparison, and the retired `[<= N]` spelling is refused with the
   replacement named.
@@ -218,13 +221,21 @@ band) is the application's choice — netcode-style stacks already carry one.
   int32 int64 uint8 uint16 uint32 uint64 int128 uint128` — plus `int` and
   `uint`, reserved so `int` gets a "did you mean int32?" diagnostic instead
   of a parse error. Reserved words cannot be used as names. Attribute keys
-  (`min`, `max`, `resolution`, ...) are contextual — they live only inside
-  `[ ]` and are not reserved.
+  (`min`, `max`, `resolution`, ...) are contextual — they live only right of
+  `|` and are not reserved.
 - **Newlines terminate declarations and fields — there are no semicolons,
   like Go.** The newline is a terminator token, suppressed: immediately after
   `{`, `(`, `[`, `,`, `:`, `=`, `else`, and an infix operator; and
-  immediately before `)`, `]`, `}`. Blank lines are insignificant. `{` sits
-  on the same line as its construct; `} else {` is written on one line — a
+  immediately before `)`, `]`, `}`. **Right of `|`, ALL suppression is
+  off** — from the pipe to the physical end of line, the newline always
+  terminates (that is the no-wrap guarantee of §4.2), and a `/* */` block
+  comment is refused there (its swallowed newline would let the section
+  silently span lines). Blank lines are insignificant. `{` sits
+  on the same line as its construct — EXCEPT a declaration whose line
+  carries a `|` qualification section, whose body brace opens on the next
+  line (§4.2); a declaration without one may also put `{` on the next line,
+  tolerated by the parser and rewritten to the same line by the formatter;
+  `} else {` is written on one line — a
   newline between `}` and `else` is tolerated by the parser and rewritten by
   the formatter. Two consequences make the grammar implementable as written:
   **a closing `}` also terminates the item before it** — in every production
@@ -242,7 +253,10 @@ EBNF (`NL` = the newline terminator; `{X}` repetition; `[X]` option):
 File        = { Declaration } .
 Declaration = Package | Const | Enum | Flags | TypeDecl | Message | Object | Union | Contexts .
 Object      = "object" ident Block NL .
-Flags       = "flags" ident [ Attributes ] VariantList NL .        // "flags" contextual, §4.2
+Flags       = "flags" ident ( VariantList
+            | AttrSection NL VariantList ) NL .                // "flags" contextual, §4.2;
+                                                                   // a qualified declaration's
+                                                                   // body opens on the NEXT line
 Union       = "union" ident UnionBlock NL .                        // "union" contextual, §4.8
 UnionBlock  = "{" { UnionVariant } "}" .
 UnionVariant = ident ident NL .                                    // variant name, then its payload type
@@ -252,16 +266,19 @@ Package     = "package" ident NL .
 Const       = "const" ident [ ConstType ] "=" ConstExpr NL .
 ConstType   = IntType | "float32" | "float64" .
 ConstExpr   = IntExpr | FloatExpr .
-Enum        = "enum" ident [ Attributes ] VariantList NL .
+Enum        = "enum" ident ( VariantList
+            | AttrSection NL VariantList ) NL .
 VariantList = "{" [ ident { "," ident } [ "," ] ] "}" .            // commas; trailing comma OK
-TypeDecl    = ( "type" | "table" ) ident [ Attributes ] Block NL .  // attribute = the type TAG, §4.2;
-                                                            // "table" = a table-wire/reflection
-                                                            // ROOT (§4.11)
+TypeDecl    = ( "type" | "table" ) ident ( Block
+            | AttrSection NL Block ) NL .               // qualifiers = the type TAG and the
+                                                        // cpp_* pair, §4.2; "table" = a
+                                                        // table-wire/reflection ROOT (§4.11)
 Message     = "message" ident Block NL .
 
 Block       = "{" { Item } "}" .
 Item        = Field | ConstField | Reserved | Align | If .
-Field       = ident Type [ Attributes ] [ "=" Default ] NL .
+Field       = ident Type [ "=" Default ] [ AttrSection ] NL .   // the default DEFINES, so it
+                                                                 // precedes the qualification
 Default     = ConstExpr | ident .                    // specified default (see below):
                                                      // ident = true | false | an enum variant
 ConstField  = "const" "(" IntExpr "," IntExpr ")" NL .          // (value, bits)
@@ -286,7 +303,9 @@ IntType     = "int8" | "int16" | "int32" | "int64"
 Bound       = IntExpr | ".." IntExpr | IntExpr ".." IntExpr .       // [N] exact; [..N] = [0..N],
                                                                     // "up to N"; [A..B] = count in [A, B]
 
-Attributes  = "[" Attr { "," Attr } "]" .                        // trailing, optional, per field
+AttrSection = "|" Attr { "," Attr } .                            // runs to END OF LINE: the newline
+                                                                 // or a // comment terminates it —
+                                                                 // nothing follows a qualification
 Attr        = ident "=" ( ConstExpr | ident | string )           // valued:    min = 0, round = up,
                                                                  //            cpp_include = "a.h"
             | ident .                                            // valueless: interpolate, local
@@ -325,7 +344,8 @@ FloatExpr   = float expression over float literals, int literals and const names
   recursively for nested types — in every target (C++ emits default member initializers; the other
   languages get it from their own rules, stated so no target can silently be
   the odd one out). A field may override its zero with `= value` after the
-  attributes: `invulnerable bool [local] = true`. Defaults cover bool
+  type — the default DEFINES the fresh value, so it precedes any `|`
+  qualification: `invulnerable bool = true | local`. Defaults cover bool
   (`true`/`false`), integer and float fields (constant expressions,
   fit-checked like any use site), enum fields (a variant name), the 128-bit
   integers, and `fixed` (§4.6); arrays, strings, bytes, composite and union
@@ -353,18 +373,18 @@ FloatExpr   = float expression over float literals, int literals and const names
   makes a typed constant** — `const MaxBounds uint64 = 12000` — which pins
   the exported type in every target.
 - **Enum max references:** **`E.Max`** in any integer expression names enum
-  `E`'s max — the derived count, or the widened `[max = K]` — the same number
+  `E`'s max — the derived count, or the widened `| max = K` — the same number
   the enum's wire range and storage derive from. The count of wire values is
   `E.Max + 1` by ordinary constant arithmetic; the count of real (non-`None`)
   variants is `E.Max` (see the sentinel-zero convention below). Sizing
-  enum-indexed tables with `E.Max + 1` stays correct under `[max]` headroom,
+  enum-indexed tables with `E.Max + 1` stays correct under `max` headroom,
   where non-variant values are wire-legal. It works on generated sets too
   (`MessageType.Max`, `ObjectType.Max`, a union's `<Union>Type.Max` — §4.8);
   generated sets resolve in constant expressions and nowhere else. **Flags
   have `F.Count`, not `F.Max`** — a flags declaration is a set of
   independent bits, not a range with a top, so max-of-what is exactly the
   confusion `.Max` would invite and the compiler refuses it naming the
-  split. `F.Count` is the DECLARED variant count; under `[max = K]` headroom
+  split. `F.Count` is the DECLARED variant count; under `| max = K` headroom
   the wire width is K while `Count` stays the count — the one case the two
   numbers diverge. `Max` and `Count` after `.` are contextual, like
   attribute keys; the lexer keeps maximal munch, so `..` still wins over
@@ -382,7 +402,7 @@ FloatExpr   = float expression over float literals, int literals and const names
 - **Enum variants** are comma-separated identifiers, trailing comma allowed.
   **Every enum has `None = 0` implicitly — universal, never declared.**
   Declared variants pack tightly from 1; max derives as the count; the
-  `[max = K]` headroom attribute can widen the wire. **Enum storage derives
+  `| max = K` headroom attribute can widen the wire. **Enum storage derives
   from the enum's own max** — the smallest unsigned integer that fits.
 - **Canonical form only.** Enums are always `0 = None`, then `[1, max]`,
   dense. There are no explicit variant values and no sparse enums.
@@ -393,7 +413,7 @@ FloatExpr   = float expression over float literals, int literals and const names
   - **`flags Name { ... }`** — each variant names one bit, assigned densely
     from bit 0 in declaration order, **up to 64**; **storage is `uint64` in
     every target**; no implicit `None` — the empty mask is 0 and needs no
-    name. Wire: **W raw bits, W = variant count** (`[max = K]` widens to K
+    name. Wire: **W raw bits, W = variant count** (`| max = K` widens to K
     bits); every W-bit pattern is legal — a mask field's domain is all
     subsets. **More than 64 variants is a compile error** — one bit per
     variant, and the storage is `uint64`. Each target exports one mask
@@ -414,30 +434,74 @@ FloatExpr   = float expression over float literals, int literals and const names
   order-free; §4.5.)
 - `if` nests freely inside blocks (`switch` is not in v1; §4.4).
 
-### Attributes — per-field, optional, keyed
+### Attributes — the qualification section, after `|`
 
-Ranges and refinements are trailing per-field attributes in `[ ]`:
+A line is **definition, then qualification**: everything that defines the
+value — name, type, specified default — comes first, and the qualifiers
+follow a `|`, running to the end of the line:
 
 ```
-health      int16   [min = 0, max = MaxHealth]
-thrust      int8    [min = 0, max = 100]
-orientation float32 [min = -180.0, max = 180.0, resolution = 0.01]
+health      int16   | min = 0, max = MaxHealth
+thrust      int8    | min = 0, max = 100
+orientation float32 | min = -180.0, max = 180.0, resolution = 0.01
+w           fixed(2, 30) = 1.0 | min = -1, max = 1
 sequence    uint16
 ```
 
-- **Brackets never collide with array bounds, structurally:** an array bound
-  is a **prefix** — `[..MaxObjects]ObjectState`, Go's order — and attributes
-  **trail** the complete type. Position alone disambiguates; no lookahead.
-  Scalar constraints like `min`/`max` apply per element.
-- **Valueless attributes** (the object view markers `[interpolate]` and
-  `[local]`, §4.8) and valued keys sit side by side in one flat list —
-  `[interpolate, min = x, max = y]` — valueless markers first, then valued
+- **The section is terminated by the newline or by a `//` comment** —
+  `other DataHandle | local // simulation-only` carries exactly one
+  qualifier. (An ordinary comment BEFORE any pipe wins by ordinary lexing:
+  in `foo uint8 // c | local` the `|` is comment text and the field carries
+  no qualification.) A `|` with no qualifier before the terminator is a
+  parse error ("empty qualification section — write the qualifiers after |
+  or drop it"), and `|` on a line that admits no qualification — a
+  constant, an `object`/`message`/`union`/`contexts` declaration — is
+  refused with the reason named (`|` is never an operator; the language has
+  no bitwise-or). It cannot wrap: the pipe claims the rest of the line and
+  nothing else can follow it. That **no-exit property is a guarantee**, not
+  an accident — nothing can be appended past the qualifiers, so the
+  definition/qualification partition cannot erode; and the zone right of
+  the pipe is deliberately reserved room ("we can get much more creative in
+  future after `|` ... if we need to" — the design's stated headroom).
+- **The specified default sits BEFORE the pipe** — `= 1.0` defines what a
+  fresh value holds, so it belongs to the definition, not the
+  qualification: `invulnerable bool = true | local`.
+- **Declaration lines take the same section**: a type tag or native-type
+  binding, an enum's or flags' `max` headroom —
+  `type Quat | quat4`, `enum Weapon | max = 15`, `flags Damage | max = 8` —
+  and because the section runs to the end of the line, **a declaration
+  carrying one opens its body brace on the NEXT line**:
+
+  ```
+  type Quat | quat4, cpp_native = quat_t, cpp_include = "core_math.h"
+  {
+      x float64
+      ...
+  }
+
+  enum Weapon | max = 15
+  { Laser, Missile, Railgun }
+  ```
+
+  A declaration with no qualifiers keeps its brace on the declaration line.
+- **Array bounds are not attributes** and are untouched: a bound is a
+  **prefix** — `[..MaxObjects]ObjectState`, Go's order — part of the type's
+  shape. `[` after the complete type (or after its `= default`) opened the
+  RETIRED trailing attribute block; the parser refuses it with the `|`
+  spelling named. Scalar
+  constraints like `min`/`max` apply per element.
+- **Valueless qualifiers** (the object view markers `interpolate` and
+  `local`, §4.8) and valued keys sit side by side in one flat list —
+  `| interpolate, min = x, max = y` — valueless markers first, then valued
   keys; there is no nested argument syntax.
 - **The line between positional and attribute:** a *size* that defines the
   type's shape stays positional — `bits(64)`, `string(64)`, `bytes(N)`,
   `fixed(I, F)`, array bounds. A *constraint or refinement* of a named type
-  is an attribute. The enum's `[max = 15]` is the same syntax; it is one
-  general mechanism.
+  is a qualifier. The enum's `| max = 15` is the same syntax; it is one
+  general mechanism. The glyph is deliberately the language's own — a DSL
+  owns its spelling, and familiarity to other languages' readers is not a
+  design constraint where clarity is better served ("let's be bold and do
+  our own shit! It's a DSL anyway").
 - **The vocabulary is typed and closed per compiler version — an unknown
   attribute is a compile error**, never a silently ignored string. The
   vocabulary: integers take `min`/`max` (both together or neither); `float32`
@@ -446,7 +510,7 @@ sequence    uint16
   §4.3); enum declarations take `max`; type declarations take a tag and the
   `cpp_native`/`cpp_include` pair (below); `object` bodies additionally admit
   the view markers `interpolate` and `local`, `context = <name>` (legal only
-  beside `[local]` — Contexts, below), and the view-encoding keys `quantize`
+  beside `local` — Contexts, below), and the view-encoding keys `quantize`
   and `round` (§4.8).
 
 ### Type tags — types are the user's; meaning is claimed later
@@ -456,13 +520,15 @@ built-in quat, no privileged class list. A user declares a type and may
 **tag** it:
 
 ```
-type Vec3 [vec3] {
+type Vec3 | vec3
+{
     x float64
     y float64
     z float64
 }
 
-type Quat [quat4] {
+type Quat | quat4
+{
     x float64
     y float64
     z float64
@@ -483,7 +549,7 @@ type Quat [quat4] {
   (interpolation, prediction, normalization, render mapping). Claiming is an
   ordinary compiler-version event, and the protocol id never moves for it:
   tags are excluded from the wire shape projection (§3.1). The claiming pass
-  defines its own shape validation for claimed tags (e.g. `[quat4]` requiring
+  defines its own shape validation for claimed tags (e.g. `| quat4` requiring
   four float components) and its own policy toward unclaimed strangers.
 - The architecture: types on one side; a layer that defines the needed
   actions for those types on the other. v1 ships the types; each schema
@@ -496,7 +562,8 @@ behavior — and a hand-written math type **derives** from it, adding operators
 and methods without touching layout:
 
 ```
-type Vector3 [vec3, cpp_native = Vector3, cpp_include = "core_vector.h"] { ... }
+type Vector3 | vec3, cpp_native = Vector3, cpp_include = "core_vector.h"
+{ ... }
 ```
 
 ```cpp
@@ -549,10 +616,10 @@ contexts { client, server }
 - **`contexts { ... }`** — one comma-separated list per unit (the same
   `VariantList` form as enums; `contexts` is contextual at file scope, like
   `flags`). Context names are user-chosen; lowercase by convention.
-- **Per-`[local]` field, an optional `context = <name>` attribute:**
-  `predicted_explode bool [local, context = client]`. An unscoped field
+- **Per-`local` field, an optional `context = <name>` attribute:**
+  `predicted_explode bool | local, context = client`. An unscoped field
   defaults to `context = all` (every context); `all` is reserved and cannot
-  be declared. **`context` is legal only beside `[local]`** — a wire field
+  be declared. **`context` is legal only beside `local`** — a wire field
   with a context is a compile error, because the wire must be identical on
   every side. The `context` key's legal values are closed *by the unit's own
   `contexts` declaration*, not by the compiler.
@@ -597,7 +664,7 @@ extent as a member named `Max` in the target's own convention: `E::Max`
 (C++), `E.Max` (C#), `EMax` (Go), `E::MAX` (Rust), `E.Max` (JS), `E_MAX`
 (C). Its value is the enum's max — the same number `E.Max` names in schema
 expressions (§4.2): the highest wire-legal value, which under the
-sentinel-zero convention is the count of real variants when no `[max]`
+sentinel-zero convention is the count of real variants when no `max`
 headroom widens it. Application code states ranges and asserts directly
 against it (`ShipType`'s wire range is `[0, ShipType.Max]`, its real
 variants `[1, ShipType.Max]`) instead of exporting a hand-declared count
@@ -636,17 +703,17 @@ classic twin, which is the wire oracle for the stated model.
 |---|---|---|
 | `f bits(N)` | N raw bits, N in [1,64] | `serialize_bits` ([1,64]; >32 = low 32 bits first, then the high remainder) |
 | `f intN` / `f uintN` (bare, N ∈ 8/16/32/64) | N raw bits (two's complement for signed) | `serialize_uint8/16/32/64`; signed raw is the same bits, cast |
-| `f intN [min = A, max = B]` / `f uintN [min = A, max = B]` | minimal bits for the range, value − A; read rejects out-of-range; **the range must fit the declared storage** | `serialize_int` (≤32-bit int ranges) / `serialize_int64` / width-computed `serialize_bits` for full-unsigned ranges |
+| `f intN | min = A, max = B` / `f uintN | min = A, max = B` | minimal bits for the range, value − A; read rejects out-of-range; **the range must fit the declared storage** | `serialize_int` (≤32-bit int ranges) / `serialize_int64` / width-computed `serialize_bits` for full-unsigned ranges |
 | `f uint128` (bare only) | 128 raw bits — the low 64-bit half first, then the high half; representation-independent (native `__int128` and the emulated two-lane pair produce identical bytes) | `serialize_uint128` |
-| `f int128 [min = A, max = B]` (range required) | value − A in `bits_required128(A, B)` bits, 32-bit groups from the bottom; read rejects an offset above B − A — reject, never clamp; **where the range fits 64 bits or fewer the bytes are identical to `serialize_int64` over the same bounds.** Bare `int128` and ranged `uint128` are compile errors — serialize's own surface, mirrored exactly (uint→raw, int→ranged) | `serialize_int128` |
-| `f fixed(I, F) [min = A, max = B]` (range required; **signed**) | Q I.F, the sign bit counting toward I; storage is a signed integer of exactly I+F bits (I+F ∈ 8/16/32/64/128, I ≥ 1, F ≥ 0); bounds are compile-time WHOLE UNITS fitting the Q format and int64; wire = raw − (A << F) in bitlen(B − A) + F bits, 32-bit groups from the bottom — **except A == B, which costs ZERO bits (not F): the reader materializes raw = A << F from the range alone (§4.6)**; read rejects above the raw range; round trip is EXACT (no quantization step), and with F = 0 the operation IS a ranged integer | `serialize_fixed` |
-| `f ufixed(I, F) [min = A, max = B]` (range required; **unsigned**) | UQ I.F: no sign bit, whole-unit domain [0, 2^I); storage is an UNSIGNED integer of exactly I+F bits (I+F ∈ 8/16/32/64/128, I ≥ 1, F ≥ 0); bounds are compile-time WHOLE UNITS fitting the unsigned domain and int64 (so I ≥ 63 clamps to int64's ceiling); the wire law is fixed's own — raw − (A << F) in bitlen(B − A) + F bits, A == B costs ZERO bits, read rejects above the raw range, round trip EXACT. The raw values of wide formats legitimately fill uint64's HIGH HALF (above 2^63): every route through a signed-typed runtime API is a bit-exact cast or zero-extension, never sign extension, and the corpus pins that byte-for-byte | `serialize_fixed` (unsigned storage — the codec is storage-generic) |
+| `f int128 | min = A, max = B` (range required) | value − A in `bits_required128(A, B)` bits, 32-bit groups from the bottom; read rejects an offset above B − A — reject, never clamp; **where the range fits 64 bits or fewer the bytes are identical to `serialize_int64` over the same bounds.** Bare `int128` and ranged `uint128` are compile errors — serialize's own surface, mirrored exactly (uint→raw, int→ranged) | `serialize_int128` |
+| `f fixed(I, F) | min = A, max = B` (range required; **signed**) | Q I.F, the sign bit counting toward I; storage is a signed integer of exactly I+F bits (I+F ∈ 8/16/32/64/128, I ≥ 1, F ≥ 0); bounds are compile-time WHOLE UNITS fitting the Q format and int64; wire = raw − (A << F) in bitlen(B − A) + F bits, 32-bit groups from the bottom — **except A == B, which costs ZERO bits (not F): the reader materializes raw = A << F from the range alone (§4.6)**; read rejects above the raw range; round trip is EXACT (no quantization step), and with F = 0 the operation IS a ranged integer | `serialize_fixed` |
+| `f ufixed(I, F) | min = A, max = B` (range required; **unsigned**) | UQ I.F: no sign bit, whole-unit domain [0, 2^I); storage is an UNSIGNED integer of exactly I+F bits (I+F ∈ 8/16/32/64/128, I ≥ 1, F ≥ 0); bounds are compile-time WHOLE UNITS fitting the unsigned domain and int64 (so I ≥ 63 clamps to int64's ceiling); the wire law is fixed's own — raw − (A << F) in bitlen(B − A) + F bits, A == B costs ZERO bits, read rejects above the raw range, round trip EXACT. The raw values of wide formats legitimately fill uint64's HIGH HALF (above 2^63): every route through a signed-typed runtime API is a bit-exact cast or zero-extension, never sign extension, and the corpus pins that byte-for-byte | `serialize_fixed` (unsigned storage — the codec is storage-generic) |
 | `f bool` | 1 bit | `serialize_bool` |
 | `f float32` | 32 raw IEEE-754 bits | `serialize_float` |
 | `f float64` | 64 raw bits (low dword first) | `serialize_double` |
-| `f float32 [min = A, max = B, resolution = R]` | quantized to ceil((B−A)/R) steps — the actual step is (B−A)/ceil((B−A)/R), ≤ R; read rejects values above the step count | `serialize_compressed_float` (exact formulas incl. the ceil, +0.5f rounding and clamp); storage stays `float32` — the attributes describe the wire |
+| `f float32 | min = A, max = B, resolution = R` | quantized to ceil((B−A)/R) steps — the actual step is (B−A)/ceil((B−A)/R), ≤ R; read rejects values above the step count | `serialize_compressed_float` (exact formulas incl. the ceil, +0.5f rounding and clamp); storage stays `float32` — the attributes describe the wire |
 | `f Weapon` (an enum) | minimal bits for [0, max]; read rejects above max | `serialize_int` over [0, max] |
-| `f Damage` (a `flags` declaration, §4.2) | W raw bits, W = variant count (or [max]); every pattern legal; storage `uint64` in every target | `serialize_bits` |
+| `f Damage` (a `flags` declaration, §4.2) | W raw bits, W = variant count (or the widened max); every pattern legal; storage `uint64` in every target | `serialize_bits` |
 | `f Inner` (a type) | Inner's fields, in place | `serialize_object` |
 | `f Shape` (a `union`, §4.8) | tag in minimal bits for [0, variant count] (0 = None, no payload), then the selected variant's payload only; read rejects a tag above the count | `serialize_int` over [0, count] + `serialize_object` on the selected arm |
 | `const(Value, Bits)` | the constant; read **rejects** any other value | `serialize_bits` + compare |
@@ -734,12 +801,12 @@ All compile errors with positions:
   as language rules, so generated code cannot fail to compile):
   `fixed(I, F)` requires I ≥ 1 (the sign bit counts toward I), F ≥ 0, and
   I + F equal to a storage width — 8, 16, 32, 64 or 128; a `fixed` field
-  requires `[min = A, max = B]` in whole units, A ≤ B, both fitting the Q
+  requires `| min = A, max = B` in whole units, A ≤ B, both fitting the Q
   format's whole-unit domain [−2^(I−1), 2^(I−1) − 1] AND int64 (where the
   runtime's compile-time bound parameters live). `ufixed(I, F)` carries the
   same shape rules with the unsigned domain — I ≥ 1 still, bounds in
   [0, 2^I − 1] clamped to int64's ceiling — and its diagnostics name the
-  `ufixed` spelling. `int128` requires `[min = A, max = B]` (bare `int128` is
+  `ufixed` spelling. `int128` requires `| min = A, max = B` (bare `int128` is
   a compile error — serialize has no raw signed 128-bit operation); `uint128`
   refuses `min`/`max` (ranged 128-bit is `int128`). Specified defaults cover
   `int128`/`uint128` (fit-checked like any integer) and `fixed`: a fixed
@@ -749,7 +816,7 @@ All compile errors with positions:
   legal in Q2.30, `0.1` is a compile error naming the constraint. Storage
   initializes to the raw scaled integer.
 - **A range that does not fit its declared storage:**
-  `int8 [min = 0, max = 1000]` is a compile error — the range determines the
+  `int8 | min = 0, max = 1000` is a compile error — the range determines the
   wire, the type name determines the storage, and a legal wire value the
   storage truncates would be silent corruption that passes read validation.
 - **Attribute discipline:** an unknown attribute key, a key repeated, an
@@ -757,7 +824,7 @@ All compile errors with positions:
   versa), and `resolution` without both bounds are compile errors, each
   naming the field and the legal vocabulary for its type. One scoped
   exception: in the composite quantization form
-  `[interpolate, quantize = K, max = B]` (§4.8 rule 2), `max` is the quantize
+  `| interpolate, quantize = K, max = B` (§4.8 rule 2), `max` is the quantize
   bound and appears WITHOUT `min` by design — `min` is forbidden there, the
   domain being symmetric [-B, +B].
 - **Non-finite compressed-float parameters are rejected:** each of
@@ -797,7 +864,7 @@ All compile errors with positions:
   per-declaration generated symbols (`Write*`/`Read*`/`New*`,
   `*MaxBits`/`*MaxBytes`, companion length/count names, the dispatch
   surface). Diagnostics name the generated artifact that claims the name.
-- Enum `[max = K]` below the variant count.
+- Enum `| max = K` below the variant count.
 - **Duplicate field names anywhere in one type — including across branch
   sides.** One name, one field, declared once. (schema owns the type, and
   unique names keep the flattened generated output unambiguous.)
@@ -956,10 +1023,10 @@ is uniform across every generated discriminant.
 The view structs exist **in generated code only**; the schema holds one
 definition per object. The markers:
 
-- **`[interpolate]`** — visual state, sent to the client for interpolation.
+- **`interpolate`** — visual state, sent to the client for interpolation.
 - **deep** — the default: an unmarked field is full-state only, sent for
   client-side prediction.
-- **`[local]`** — simulation-only state that reaches no wire: lives in
+- **`local`** — simulation-only state that reaches no wire: lives in
   `ShipState`, absent from every network struct.
 
 What one definition generates per object, per target (shapes per language,
@@ -968,9 +1035,9 @@ behavior identical — the message-set rule):
 | artifact | contents |
 |---|---|
 | `ShipState` | every field — the simulation struct |
-| `ShipData_Deep` + serialize | every non-`[local]` field, deep encodings |
-| `ShipData_Shallow` + serialize | the `[interpolate]` fields, **quantized wire encodings** from the field's attributes |
-| `ShipData_Interpolate` | the same `[interpolate]` fields in continuous storage (see rule 5 for the projected-field exception) |
+| `ShipData_Deep` + serialize | every non-`local` field, deep encodings |
+| `ShipData_Shallow` + serialize | the `interpolate` fields, **quantized wire encodings** from the field's attributes |
+| `ShipData_Interpolate` | the same `interpolate` fields in continuous storage (see rule 5 for the projected-field exception) |
 | `Quantize` / `Unquantize` | the mapping pair between Interpolate and Shallow |
 
 **View-encoding semantics.** Inside an `object` body the attribute vocabulary
@@ -978,9 +1045,9 @@ widens: `interpolate` and `local` (valueless) and `quantize` / `round`
 (valued) join the set. View-encoding attributes describe the SHALLOW wire
 only; the deep wire always uses the bare storage type's encoding.
 
-1. **`[interpolate]` alone** — the shallow wire is the deep encoding,
+1. **`interpolate` alone** — the shallow wire is the deep encoding,
    unchanged.
-2. **Composite quantization** — `[interpolate, quantize = K, max = B]` on a
+2. **Composite quantization** — `| interpolate, quantize = K, max = B` on a
    field whose type is a composite of float components applies
    component-wise: the shallow wire per component is a ranged int
    `[−B·K, +B·K]`; write maps `c → floor(c·K + 0.5)`, clamped to the range;
@@ -989,14 +1056,14 @@ only; the deep wire always uses the bare storage type's encoding.
    smallest-three; the delta pass owns cleverer encodings.
 
    **Fixed components dissolve quantization.** When an object's
-   `[interpolate]` fields are all already wire-domain — fixed-component
+   `interpolate` fields are all already wire-domain — fixed-component
    composites (a `fixed(I, F)` component IS its own quantization: storage and
    wire share one integer domain, ranged by the component's declared bounds),
    plain integers, or int-composite types — the `QuantizeX`/`UnquantizeX`
    pair would be a pure member copy, and the backends do NOT emit it:
    Interpolate and Shallow are the same values.
 
-2b. **Fixed-composite shallow narrowing.** `[interpolate, quantize = K]` on a
+2b. **Fixed-composite shallow narrowing.** `| interpolate, quantize = K` on a
    composite whose components are ALL `fixed(I, F)` scalars narrows the
    shallow wire instead of dissolving: deep values keep full precision;
    shallow (non-simulating) values are quantized down to K, the kept
@@ -1004,7 +1071,7 @@ only; the deep wire always uses the bare storage type's encoding.
    of two with log2(K) ≤ F (the shallow wire cannot be finer than the
    storage; K = 2^F keeps everything and the pair degenerates to copies). No
    `max` here: each component's shallow wire range is its own whole-unit
-   `[min, max]` scaled by K — bounds every fixed component already declares
+   `| min, max` scaled by K — bounds every fixed component already declares
    (§4.3) — and its shallow storage is the smallest signed integer holding
    that range. The `Quantize`/`Unquantize` pair returns, as pure integer
    arithmetic with no floating point anywhere: quantize is round-to-nearest
@@ -1019,7 +1086,7 @@ only; the deep wire always uses the bare storage type's encoding.
    components: a wide ufixed raw legitimately fills uint64's high half,
    where these int64 shifts are wrong — the unsigned door needs its own
    arithmetic before it opens, and the diagnostic says so. Un-narrowed
-   `[interpolate]` composites of ufixed components dissolve fine, because
+   `interpolate` composites of ufixed components dissolve fine, because
    dissolving just delegates to the component encodings. The deep wire is
    untouched: full precision, the component's own ranged fixed encoding. The
    two forms compose field-by-field in one object.
@@ -1036,14 +1103,14 @@ only; the deep wire always uses the bare storage type's encoding.
 3. **No special composite cases in v1 — tags are inert (§4.2, Type tags).**
    Rules 2 and 2b are the whole of composite quantization: every composite
    quantizes per-component — a float rotation field states its bound like
-   anything else (`rotation Quat [interpolate, quantize = RotationUnits,
-   max = 1]`; unit quaternions are always unit length, so the bound is 1,
+   anything else (`rotation Quat | interpolate, quantize = RotationUnits,
+   max = 1`; unit quaternions are always unit length, so the bound is 1,
    written rather than implied). Rotation-specific actions (renormalize on
    unquantize, shortest-arc interpolation) belong to the future pass that
-   claims `[quat4]` — v1 generates the structural mapping only, and the
+   claims `| quat4` — v1 generates the structural mapping only, and the
    application keeps its hand-written rotation actions meanwhile.
 4. **Ranged-int projection** — on `float32`/`float64`,
-   `[interpolate, min = A, max = B, resolution = R]` reuses §4.3's
+   `| interpolate, min = A, max = B, resolution = R` reuses §4.3's
    compressed-float triple: min/max name the **CONTINUOUS domain**, the
    shallow wire is the int `[0, (B−A)/R]`, write maps `v → round((v−A)/R)`
    clamped, unproject maps `q → A + q·R`. The optional
@@ -1225,11 +1292,11 @@ type Vec {
 }
 
 type ObjectState {
-    id       int32 [min = 0, max = MaxObjects - 1]
+    id       int32 | min = 0, max = MaxObjects - 1
     position Vec
     active   bool
     if active {
-        orientation float32 [min = -180.0, max = 180.0, resolution = 0.01]
+        orientation float32 | min = -180.0, max = 180.0, resolution = 0.01
     }
 }
 
@@ -1428,7 +1495,7 @@ Per `type`, per target:
    buffer is fixed at its declared capacity with a used length/count beside
    it — no Go slices as storage, no Rust `Vec`, no growing containers.
 
-   Enums are integer-backed named types in every target because `[max = ...]`
+   Enums are integer-backed named types in every target because `| max = ...`
    headroom makes non-variant values wire-legal; a native Rust `enum` cannot
    hold them — C#'s `enum E : uint` can, natively, which is why it needs no
    newtype.
@@ -1611,8 +1678,8 @@ Go, zero third-party dependencies, one static binary: `schema`.
 schema check      [--verbose] [dir|files...]   // parse + typecheck; exit code for CI
 schema generate   [--lang c|cpp|cs|go|js|rust] [--cpp-message union|variant]
                   [--out <dir>] [--verbose] [dir|files...]
-schema id         [dir|files...]          // print the protocol id
-schema projection [dir|files...]          // print the wire shape projection (§3.1)
+schema id | dir|files... // print the protocol id
+schema projection | dir|files... // print the wire shape projection (§3.1)
 schema fmt        [--verbose] [dir|files...]   // the canonical formatter, standalone (editors, hooks)
 schema pack       [--verbose] <manifest.json>  // the data compiler: JSON instance files -> a
                                           // versioned, hashed .bin per the manifest's
@@ -1741,17 +1808,34 @@ consumer and run by every `schema` command over the unit before processing.
 Rules:
 
 1. **Indent: 4 spaces** per block level, never tabs. `{` on the construct's
-   line; `} else {` on one line. One field or declaration per line.
+   line — except a declaration whose line carries a `|` qualification
+   section, whose body brace opens on the next line (§4.2); `} else {` on
+   one line. One field or declaration per line.
 2. **Alignment groups**: within a contiguous run of fields — broken by blank
-   lines and by comment lines — pad names to align the type column and types
-   to align the `[` attribute column. The same rule aligns `=` in const runs.
-   Single space minimum between columns.
-3. **Attributes**: `[min = 0, max = MaxHealth]` — spaces around `=`,
-   comma-space between entries, no padding inside the brackets. Valueless
-   markers first, then valued keys.
+   lines and by comment lines — pad names to align the type column, and pad
+   past the longest DEFINITION (the type plus any `= default`) to align the
+   `|` qualification column. The same rule aligns `=` in const runs. Single
+   space minimum between columns.
+3. **Qualifications**: `| min = 0, max = MaxHealth` — a space each side of
+   `|`, spaces around `=`, comma-space between entries. Valueless markers
+   first, then valued keys. A trailing `//` comment survives after the
+   section.
+3b. **Migration is a one-shot mode, not the formatter's default**:
+   `schema fmt -migrate` additionally accepts the two RETIRED spellings —
+   the trailing `[ ... ]` attribute block (with its default after the
+   attributes) and the `[<= N]` bound — and re-emits the file in the
+   CURRENT canonical form: qualifiers moved right of `|`, the default moved
+   before the pipe, a qualified declaration's body brace moved to the next
+   line, then the ordinary rules above. An attribute block wrapped across
+   lines (the old grammar allowed it) is refused with "unwrap the attribute
+   block first" — a wrapped block can carry interior comments that have no
+   home right of a pipe. Plain `schema fmt` refuses retired spellings
+   exactly as the compiler does.
 4. **Expressions**: single spaces around binary operators.
-5. **Enums**: one line while they fit; the wrap trigger is decided at the
-   first multi-line instance (no line-length limit exists yet).
+5. **Enums**: the variant list is one line while it fits (a qualified enum
+   is two lines by grammar — the list is the measured unit); the wrap
+   trigger is decided at the first multi-line instance (no line-length
+   limit exists yet).
 6. **switch/case** (reserved for `switch`'s return): `case` at the same
    indent as its `switch`; a single-item case body inline after the label,
    bodies column-aligned across the cases of one switch; multi-item bodies on
@@ -1808,7 +1892,7 @@ Every row to date is settled, deferred with its design banked, or discarded.
    `string`/`bytes`; C# and Rust compose the wire from primitives; the
    interior-null check is generated-code validation in every target.
 2. ~~Storage-type overrides~~ — settled by the integer family: storage is
-   declared by the type name (`thrust int8 [min = 0, max = 100]`); no
+   declared by the type name (`thrust int8 | min = 0, max = 100`); no
    override mechanism exists.
 3. ~~Wide strings and relative integers~~ — deferred: §4.10. Wide strings
    have no usage anywhere in the surveyed tree; every `int_relative` use site
@@ -1820,7 +1904,7 @@ Every row to date is settled, deferred with its design banked, or discarded.
 7. ~~Const expressions over enum counts~~ — settled: `E.Max` (§4.2);
    `const NumTeams = Team.Max + 1`. `len(Team)` was declined: it has three
    plausible meanings, and every one sizes enum-indexed tables wrong under
-   `[max]` headroom — the max is the true primitive.
+   `max` headroom — the max is the true primitive.
 8. ~~Platform-conditional constants~~ — settled: constants are
    platform-uniform (§4.2); platform-varying tuning stays in application
    code.

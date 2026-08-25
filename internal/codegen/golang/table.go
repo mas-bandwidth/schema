@@ -958,7 +958,7 @@ func (g *tableGen) emitTableSetNumeric(matchType, normType string) {
 	g.pf("\t\tdefault:\n\t\t\treturn false\n\t\t}\n")
 }
 
-// emitTableSetClamp clamps n to [min, max]; an empty min means the low side
+// emitTableSetClamp clamps n to | min, max; an empty min means the low side
 // cannot underflow (unsigned with a non-positive declared min).
 func (g *tableGen) emitTableSetClamp(min, max, note string) {
 	if min != "" {
@@ -1020,7 +1020,7 @@ type TableFieldInfo struct {
 	Counted    bool                // a Count/Length int32 companion exists (counted arrays, strings, bytes)
 	ArrayBound int32               // array capacity / string max length; 0 for plain scalars
 	Table      *TableTypeInfo      // nested table's descriptor, or nil
-	HasRange   bool                // a declared [min, max] (int or float)
+	HasRange   bool                // a declared | min, max (int or float)
 	RangeMin   float64             // NOTE: int64 ranges beyond 2^53 lose precision here
 	RangeMax   float64
 	EnumMax    int64               // enums: highest valid wire value (None = 0 always valid); else -1

@@ -92,7 +92,7 @@ func genRangedInt(r *lcg) field {
 			st = "int16"
 		}
 		bits := ir.BitsRequired(big.NewInt(-h), big.NewInt(h))
-		return field{"int", fmt.Sprintf("%s [min = %d, max = %d]", st, -h, h), bits}
+		return field{"int", fmt.Sprintf("%s | min = %d, max = %d", st, -h, h), bits}
 	}
 	// unsigned range [0, m] with bitlen(m) == w
 	lo := int64(1) << uint(w-1)
@@ -106,7 +106,7 @@ func genRangedInt(r *lcg) field {
 		st = "uint16"
 	}
 	bits := ir.BitsRequired(big.NewInt(0), big.NewInt(m))
-	return field{"uint", fmt.Sprintf("%s [min = 0, max = %d]", st, m), bits}
+	return field{"uint", fmt.Sprintf("%s | min = 0, max = %d", st, m), bits}
 }
 
 func genBits(r *lcg) field {
@@ -140,7 +140,7 @@ func genCompressed(r *lcg) field {
 		if bits < 4 || bits > 20 {
 			continue // keep the field small, per the design; redraw deterministically
 		}
-		return field{"cf32", fmt.Sprintf("float32 [min = %s, max = %s, resolution = %s]",
+		return field{"cf32", fmt.Sprintf("float32 | min = %s, max = %s, resolution = %s",
 			flit(min), flit(max), flit(res)), bits}
 	}
 }
@@ -167,7 +167,7 @@ func genFixed(r *lcg, unsigned bool) field {
 			}
 			m := int64(r.between(1, int(capv)))
 			bits := ir.BitsRequired(big.NewInt(0), big.NewInt(m)) + int64(F)
-			return field{"ufixed", fmt.Sprintf("ufixed(%d, %d) [min = 0, max = %d]", I, F, m), bits}
+			return field{"ufixed", fmt.Sprintf("ufixed(%d, %d) | min = 0, max = %d", I, F, m), bits}
 		}
 		if I < 2 {
 			continue // signed whole-unit domain needs I >= 2 for a symmetric range
@@ -181,7 +181,7 @@ func genFixed(r *lcg, unsigned bool) field {
 		}
 		h := int64(r.between(1, int(capv)))
 		bits := ir.BitsRequired(big.NewInt(-h), big.NewInt(h)) + int64(F)
-		return field{"fixed", fmt.Sprintf("fixed(%d, %d) [min = %d, max = %d]", I, F, -h, h), bits}
+		return field{"fixed", fmt.Sprintf("fixed(%d, %d) | min = %d, max = %d", I, F, -h, h), bits}
 	}
 }
 

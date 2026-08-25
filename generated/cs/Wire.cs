@@ -16,7 +16,7 @@ namespace Example
 {
 
     // Weapon — None = 0 implicit, variants dense from 1, wire range [0, 15] (SPEC §4.2);
-    // a native enum with unsigned backing — [max = ...] headroom values are
+    // a native enum with unsigned backing — | max = ... headroom values are
     // representable because C# enums are open over their backing type (SPEC §6.1)
     public enum Weapon : byte
     {

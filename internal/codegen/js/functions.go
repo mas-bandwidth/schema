@@ -340,7 +340,7 @@ func intRangePath(min, max *big.Int) string {
 }
 
 // emitWriteFoldedNum writes the Number-domain integer expression expr, in
-// [min, max], as offset-from-min in a generation-time bit count. JS Number
+// | min, max, as offset-from-min in a generation-time bit count. JS Number
 // storage is untyped, so the guard is never vacuous and also refuses
 // non-integers (checkInt) — the runtime checked write's own shape, folded,
 // riding in both modes. The offset subtraction is exact: the int64-family
@@ -763,7 +763,7 @@ func (g *gen) emitReadScalar(f *ir.Field, name, ind string) {
 					g.pf("%s%s = %s.value;\n", ind, name, scratch)
 				} else {
 					// uint32 storage whose range escapes int32: the decoded
-					// value is inside [min, max], so the narrowing is exact
+					// value is inside | min, max, so the narrowing is exact
 					g.pf("%s%s = Number(%s.value);\n", ind, name, scratch)
 				}
 			default:

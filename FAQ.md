@@ -15,7 +15,7 @@ you need, FlatBuffers is the better tool.
 
 What you get for that cost is **size**. FlatBuffers is byte-aligned and carries
 vtables and offsets, because that is what makes in-place access work. schema is
-**bit-packed with no framing at all**: a field declared `[min = 0, max = 1000]`
+**bit-packed with no framing at all**: a field declared `| min = 0, max = 1000`
 occupies 10 bits, an enum with three variants occupies 2, and a branch that is
 not taken occupies nothing. There is no vtable, no offset table, no field
 identifier on the wire — both sides know the layout because the same compiler
@@ -113,7 +113,7 @@ would favour Cap'n Proto's packing far more than it favours schema.
 Honestly: not the idea of generating serializers from a schema. That is old.
 Three things in combination are unusual:
 
-1. **Bit-level bounds as part of the type.** `[min, max]` is not validation
+1. **Bit-level bounds as part of the type.** `| min, max` is not validation
    bolted on — it determines the wire width. Most formats give you a `uint32`
    and store 32 bits.
 2. **Fixed point as a first-class type.** `fixed(48, 16)` — and its unsigned

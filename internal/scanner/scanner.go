@@ -34,7 +34,8 @@ const (
 	Not    // !
 	Dot    // .
 	DotDot // ..
-	LessEq // <=
+	LessEq // <= — retired spelling; scanned so the parser can refuse it by name (SPEC §4.3)
+	Pipe   // | — opens a line's qualification section (SPEC §4.2)
 	Plus
 	Minus
 	Star
@@ -160,6 +161,7 @@ type state struct {
 	col          int
 	errs         []error
 	keepComments bool // raw-scan mode: comments become tokens
+	pipeLine     bool // right of | on the current line: no wrapping there (SPEC §4.1)
 }
 
 func (s *state) pos() Pos { return Pos{s.file, s.line, s.col} }
@@ -243,8 +245,15 @@ func (s *state) next() Token {
 				if s.keepComments {
 					return Token{Comment, string(s.src[start:s.off]), p}
 				}
+				if s.pipeLine {
+					// the qualification section runs to the PHYSICAL end of
+					// line; a block comment could swallow that newline and
+					// let the section silently span lines (SPEC §4.1)
+					s.errf(p, "a /* */ comment cannot sit right of | — the qualification section runs to the end of the line; use a trailing // comment (SPEC §4.1)")
+				}
 				if s.line > startLine {
 					// a block comment spanning lines acts as a newline (Go's rule)
+					s.pipeLine = false
 					return Token{Newline, "\n", p}
 				}
 				continue
@@ -261,6 +270,7 @@ func (s *state) next() Token {
 		switch {
 		case c == '\n':
 			s.advance()
+			s.pipeLine = false
 			return Token{Newline, "\n", p}
 
 		case isIdentStart(c):
@@ -323,6 +333,9 @@ func (s *state) next() Token {
 				return Token{Slash, "/", p}
 			case '%':
 				return Token{Percent, "%", p}
+			case '|':
+				s.pipeLine = true
+				return Token{Pipe, "|", p}
 			case '.':
 				if s.peek() == '.' {
 					s.advance()
@@ -419,15 +432,20 @@ func filter(raw []Token) []Token {
 	suppressBefore := map[Kind]bool{RParen: true, RBrack: true, RBrace: true}
 
 	var out []Token
+	sincePipe := false // right of |, ALL suppression is off (SPEC §4.1)
 	for _, t := range raw {
+		if t.Kind == Pipe {
+			sincePipe = true
+		}
 		if t.Kind == Newline {
 			if len(out) == 0 {
 				continue // leading newlines
 			}
 			last := out[len(out)-1].Kind
-			if last == Newline || suppressAfter[last] {
+			if last == Newline || (suppressAfter[last] && !sincePipe) {
 				continue
 			}
+			sincePipe = false
 			out = append(out, t)
 			continue
 		}

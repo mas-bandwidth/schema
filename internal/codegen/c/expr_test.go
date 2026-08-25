@@ -27,12 +27,12 @@ enum Team { Red, Blue }
 const NumTeams = Team.Max
 
 type Probe {
-    object_id int32  [min = 0, max = MaxObjects - 1]
-    doubled   int32  [min = --MaxUnits, max = MaxUnits * 2]
-    hexed     int32  [min = 0, max = 0x10]
-    overflow  int64  [min = 0, max = 2000000000 * 3]
-    wide_ok   int64  [min = -Wide, max = Wide]
-    team_size uint8  [min = 0, max = Team.Max]
+    object_id int32  | min = 0, max = MaxObjects - 1
+    doubled   int32  | min = --MaxUnits, max = MaxUnits * 2
+    hexed     int32  | min = 0, max = 0x10
+    overflow  int64  | min = 0, max = 2000000000 * 3
+    wide_ok   int64  | min = -Wide, max = Wide
+    team_size uint8  | min = 0, max = Team.Max
     counted   [..MaxObjects]uint8
     name      string(MaxUnits)
 }
@@ -181,17 +181,17 @@ const FloorLimit = -9223372036854775808
 const CeilingCount uint64 = 18446744073709551615
 
 type ExtremeProbe {
-    floor_bound int64 [min = -9223372036854775808, max = 100]
-    ceiling_range uint64 [min = 1, max = 18446744073709551615]
+    floor_bound int64 | min = -9223372036854775808, max = 100
+    ceiling_range uint64 | min = 1, max = 18446744073709551615
     floor_default int64 = -9223372036854775808
     ceiling_default uint64 = 18446744073709551615
-    doubled_floor int64 [min = --FloorLimit, max = 100]
-    deep_floor fixed(128, 0) [min = -9223372036854775808, max = 0]
+    doubled_floor int64 | min = --FloorLimit, max = 100
+    deep_floor fixed(128, 0) | min = -9223372036854775808, max = 0
 }
 
 table ExtremeRow {
-    clamped_floor int64 [min = -9223372036854775808, max = 100]
-    clamped_ceiling uint64 [min = 1, max = 18446744073709551614]
+    clamped_floor int64 | min = -9223372036854775808, max = 100
+    clamped_ceiling uint64 | min = 1, max = 18446744073709551614
     floor_def int64 = -9223372036854775808
     ceiling_def uint64 = 18446744073709551615
 }

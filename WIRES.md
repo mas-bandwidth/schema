@@ -40,7 +40,7 @@ message ShipCreate {
 
 table ShipConfig {
     ship_type ShipType
-    health    int32 [min = 0, max = 1000] = 100
+    health    int32 = 100 | min = 0, max = 1000
     name      string(32)
 }
 ```

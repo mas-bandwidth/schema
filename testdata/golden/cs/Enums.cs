@@ -5,7 +5,7 @@ namespace Example
 {
 
     // Team — None = 0 implicit, variants dense from 1, wire range [0, 2] (SPEC §4.2);
-    // a native enum with unsigned backing — [max = ...] headroom values are
+    // a native enum with unsigned backing — | max = ... headroom values are
     // representable because C# enums are open over their backing type (SPEC §6.1)
     public enum Team : byte
     {
@@ -16,7 +16,7 @@ namespace Example
     }
 
     // ShipType — None = 0 implicit, variants dense from 1, wire range [0, 5] (SPEC §4.2);
-    // a native enum with unsigned backing — [max = ...] headroom values are
+    // a native enum with unsigned backing — | max = ... headroom values are
     // representable because C# enums are open over their backing type (SPEC §6.1)
     public enum ShipType : byte
     {
@@ -30,7 +30,7 @@ namespace Example
     }
 
     // MissileType — None = 0 implicit, variants dense from 1, wire range [0, 3] (SPEC §4.2);
-    // a native enum with unsigned backing — [max = ...] headroom values are
+    // a native enum with unsigned backing — | max = ... headroom values are
     // representable because C# enums are open over their backing type (SPEC §6.1)
     public enum MissileType : byte
     {
@@ -42,7 +42,7 @@ namespace Example
     }
 
     // PropType — None = 0 implicit, variants dense from 1, wire range [0, 6] (SPEC §4.2);
-    // a native enum with unsigned backing — [max = ...] headroom values are
+    // a native enum with unsigned backing — | max = ... headroom values are
     // representable because C# enums are open over their backing type (SPEC §6.1)
     public enum PropType : byte
     {
@@ -57,7 +57,7 @@ namespace Example
     }
 
     // Pending — None = 0 implicit, variants dense from 1, wire range [0, 0] (SPEC §4.2);
-    // a native enum with unsigned backing — [max = ...] headroom values are
+    // a native enum with unsigned backing — | max = ... headroom values are
     // representable because C# enums are open over their backing type (SPEC §6.1)
     public enum Pending : byte
     {

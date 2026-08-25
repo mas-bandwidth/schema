@@ -44,7 +44,7 @@ export const MaxWorldUnits = 30000;
 
 // DriveMode — None = 0 implicit, variants dense from 1, wire range [0, 3] (SPEC §4.2);
 // a frozen object of Number values — the JS translation of the family's
-// integer-backed enums; [max = ...] headroom values are plain Numbers
+// integer-backed enums; | max = ... headroom values are plain Numbers
 export const DriveMode = Object.freeze({
   None: 0,
   Cruise: 1,
@@ -611,11 +611,11 @@ export class BodyState {
     this.Position = new FixedVec();
     this.Rotation = new FixedQuat();
     this.Velocity = new FixedVec();
-    this.Spin = 0; // [local] — no wire
+    this.Spin = 0; //  | local — no wire
   }
 }
 
-// BodyData_Deep — every non-[local] field, deep encodings: full state for
+// BodyData_Deep — every non- | local field, deep encodings: full state for
 // client-side prediction
 export class BodyData_Deep {
   constructor() {
@@ -625,7 +625,7 @@ export class BodyData_Deep {
   }
 }
 
-// BodyData_Shallow — the [interpolate] fields on the quantized wire: the
+// BodyData_Shallow — the | interpolate fields on the quantized wire: the
 // implementation detail on the way to interpolation on the client
 export class BodyData_Shallow {
   constructor() {
@@ -715,7 +715,7 @@ export class NarrowBodyState {
   }
 }
 
-// NarrowBodyData_Deep — every non-[local] field, deep encodings: full state for
+// NarrowBodyData_Deep — every non- | local field, deep encodings: full state for
 // client-side prediction
 export class NarrowBodyData_Deep {
   constructor() {
@@ -725,17 +725,17 @@ export class NarrowBodyData_Deep {
   }
 }
 
-// NarrowBodyData_Shallow — the [interpolate] fields on the quantized wire: the
+// NarrowBodyData_Shallow — the | interpolate fields on the quantized wire: the
 // implementation detail on the way to interpolation on the client
 export class NarrowBodyData_Shallow {
   constructor() {
     // position: FixedVec narrowed to 8 fractional bits (quantize = 256) — per-component
-    // quantized units; bounds are the component's whole-unit [min, max] scaled
+    // quantized units; bounds are the component's whole-unit | min, max scaled
     this.PositionX = 0; // in [-25600000, 25600000]
     this.PositionY = 0; // in [-25600000, 25600000]
     this.PositionZ = 0; // in [-25600000, 25600000]
     // rotation: FixedQuat narrowed to 10 fractional bits (quantize = 1024) — per-component
-    // quantized units; bounds are the component's whole-unit [min, max] scaled
+    // quantized units; bounds are the component's whole-unit | min, max scaled
     this.RotationX = 0; // in [-1024, 1024]
     this.RotationY = 0; // in [-1024, 1024]
     this.RotationZ = 0; // in [-1024, 1024]

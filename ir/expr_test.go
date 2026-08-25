@@ -34,12 +34,12 @@ const NumTeams = Team.Max
 const TeamsPlus = Team.Max + 1
 
 type Bounds {
-    object_id int32 [min = 0, max = MaxObjects - 1]
-    delta     int32 [min = -MaxUnits, max = MaxUnits]
-    hexed     int32 [min = 0, max = 0x10]
+    object_id int32 | min = 0, max = MaxObjects - 1
+    delta     int32 | min = -MaxUnits, max = MaxUnits
+    hexed     int32 | min = 0, max = 0x10
     counted   [..MaxObjects]uint8
     name      string(MaxUnits)
-    retries   int32 [min = 0, max = MaxObjects] = HalfObjects
+    retries   int32 = HalfObjects | min = 0, max = MaxObjects
 }
 `
 

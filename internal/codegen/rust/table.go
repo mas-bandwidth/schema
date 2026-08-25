@@ -567,7 +567,7 @@ func (g *tableGen) emitClampInt(f *ir.Field, kind int, src, lvalue, ind string) 
 	if f.Type.Kind == ir.TNamed {
 		if e, isEnum := f.Type.Ref.(*ir.Enum); isEnum {
 			// Enum.Max is the top WIRE value — the variant count, or the
-			// [max = K] widening. Values above it are not wire-legal, so they
+			// | max = K widening. Values above it are not wire-legal, so they
 			// clamp to None (0) and count, matching the other three backends.
 			g.pf("%slet mut v = %s;\n", ind, src)
 			g.pf("%sif v as u64 > %d { v = 0; report.clamped += 1; }\n", ind, e.Max)
@@ -682,7 +682,7 @@ pub struct TableFieldInfo {
     pub array_bound: i64,
     /// nested table's descriptor
     pub table: Option<&'static TableTypeInfo>,
-    /// a declared [min, max] (int or float)
+    /// a declared | min, max (int or float)
     pub has_range: bool,
     /// NOTE: i64 ranges beyond 2^53 lose precision here
     pub range_min: f64,

@@ -31,7 +31,7 @@ enum class ObjectType : uint8_t {
 // ---- object Ship — one definition, a generated family per target (SPEC §4.8) ----
 
 // ClientShipState — the full simulation struct for the client context: every `all`
-// field plus the fields scoped [local, context = client]
+// field plus the fields scoped | local, context = client
 struct ClientShipState {
     ShipType ship_type = ShipType::None;
     ::VecMath position;
@@ -58,15 +58,15 @@ struct ClientShipState {
     int8_t missile_index = 0; // wire [0, 15]
     Handle target;
     double lock_start_time = 0.0;
-    bool invulnerable = false; // [local] — no wire
-    ::VecMath previous_position; // [local] — no wire
-    int32_t num_colliders = 0; // [local] — no wire
-    int32_t collider_armor[MaxCollidersPerShip] = {}; // [local] — no wire
-    bool predicted_explode = false; // [local, context = client]
+    bool invulnerable = false; //  | local — no wire
+    ::VecMath previous_position; //  | local — no wire
+    int32_t num_colliders = 0; //  | local — no wire
+    int32_t collider_armor[MaxCollidersPerShip] = {}; //  | local — no wire
+    bool predicted_explode = false; //  | local, context = client
 };
 
 // ServerShipState — the full simulation struct for the server context: every `all`
-// field plus the fields scoped [local, context = server]
+// field plus the fields scoped | local, context = server
 struct ServerShipState {
     ShipType ship_type = ShipType::None;
     ::VecMath position;
@@ -93,13 +93,13 @@ struct ServerShipState {
     int8_t missile_index = 0; // wire [0, 15]
     Handle target;
     double lock_start_time = 0.0;
-    bool invulnerable = false; // [local] — no wire
-    ::VecMath previous_position; // [local] — no wire
-    int32_t num_colliders = 0; // [local] — no wire
-    int32_t collider_armor[MaxCollidersPerShip] = {}; // [local] — no wire
+    bool invulnerable = false; //  | local — no wire
+    ::VecMath previous_position; //  | local — no wire
+    int32_t num_colliders = 0; //  | local — no wire
+    int32_t collider_armor[MaxCollidersPerShip] = {}; //  | local — no wire
 };
 
-// ShipData_Deep — every non-[local] field, deep encodings: full state for
+// ShipData_Deep — every non- | local field, deep encodings: full state for
 // client-side prediction
 struct ShipData_Deep {
     ShipType ship_type = ShipType::None;
@@ -129,7 +129,7 @@ struct ShipData_Deep {
     double lock_start_time = 0.0;
 };
 
-// ShipData_Shallow — the [interpolate] fields on the quantized wire: the
+// ShipData_Shallow — the | interpolate fields on the quantized wire: the
 // implementation detail on the way to interpolation on the client
 struct ShipData_Shallow {
     ShipType ship_type = ShipType::None;
@@ -343,7 +343,7 @@ inline constexpr int64_t ShipData_ShallowMaxBytes = 32; // rounded up to the 8-b
 // ---- object Missile — one definition, a generated family per target (SPEC §4.8) ----
 
 // ClientMissileState — the full simulation struct for the client context: every `all`
-// field plus the fields scoped [local, context = client]
+// field plus the fields scoped | local, context = client
 struct ClientMissileState {
     MissileType missile_type = MissileType::None;
     ::VecMath position;
@@ -351,12 +351,12 @@ struct ClientMissileState {
     ::VecMath linear_velocity;
     Team team = Team::None;
     uint64_t flags = 0;
-    ::VecMath angular_velocity; // [local] — no wire
-    Handle target; // [local] — no wire
+    ::VecMath angular_velocity; //  | local — no wire
+    Handle target; //  | local — no wire
 };
 
 // ServerMissileState — the full simulation struct for the server context: every `all`
-// field plus the fields scoped [local, context = server]
+// field plus the fields scoped | local, context = server
 struct ServerMissileState {
     MissileType missile_type = MissileType::None;
     ::VecMath position;
@@ -364,12 +364,12 @@ struct ServerMissileState {
     ::VecMath linear_velocity;
     Team team = Team::None;
     uint64_t flags = 0;
-    ::VecMath angular_velocity; // [local] — no wire
-    Handle target; // [local] — no wire
-    double timer = 0.0; // [local, context = server]
+    ::VecMath angular_velocity; //  | local — no wire
+    Handle target; //  | local — no wire
+    double timer = 0.0; //  | local, context = server
 };
 
-// MissileData_Deep — every non-[local] field, deep encodings: full state for
+// MissileData_Deep — every non- | local field, deep encodings: full state for
 // client-side prediction
 struct MissileData_Deep {
     MissileType missile_type = MissileType::None;
@@ -380,7 +380,7 @@ struct MissileData_Deep {
     uint64_t flags = 0;
 };
 
-// MissileData_Shallow — the [interpolate] fields on the quantized wire: the
+// MissileData_Shallow — the | interpolate fields on the quantized wire: the
 // implementation detail on the way to interpolation on the client
 struct MissileData_Shallow {
     MissileType missile_type = MissileType::None;
@@ -593,10 +593,10 @@ struct DynamicPropState {
     ::VecMath linear_velocity;
     uint64_t flags = 0;
     Team team = Team::None;
-    ::VecMath angular_velocity; // [local] — no wire
+    ::VecMath angular_velocity; //  | local — no wire
 };
 
-// DynamicPropData_Deep — every non-[local] field, deep encodings: full state for
+// DynamicPropData_Deep — every non- | local field, deep encodings: full state for
 // client-side prediction
 struct DynamicPropData_Deep {
     PropType prop_type = PropType::None;
@@ -607,7 +607,7 @@ struct DynamicPropData_Deep {
     Team team = Team::None;
 };
 
-// DynamicPropData_Shallow — the [interpolate] fields on the quantized wire: the
+// DynamicPropData_Shallow — the | interpolate fields on the quantized wire: the
 // implementation detail on the way to interpolation on the client
 struct DynamicPropData_Shallow {
     PropType prop_type = PropType::None;
@@ -818,10 +818,10 @@ struct TurretState {
     int32_t turret_index = 0; // wire [0, 255]
     Quat rotation;
     uint64_t flags = 0;
-    Team team = Team::None; // [local] — no wire
+    Team team = Team::None; //  | local — no wire
 };
 
-// TurretData_Deep — every non-[local] field, deep encodings: full state for
+// TurretData_Deep — every non- | local field, deep encodings: full state for
 // client-side prediction
 struct TurretData_Deep {
     Handle parent;
@@ -830,7 +830,7 @@ struct TurretData_Deep {
     uint64_t flags = 0;
 };
 
-// TurretData_Shallow — the [interpolate] fields on the quantized wire: the
+// TurretData_Shallow — the | interpolate fields on the quantized wire: the
 // implementation detail on the way to interpolation on the client
 struct TurretData_Shallow {
     Handle parent;

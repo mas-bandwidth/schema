@@ -27,7 +27,7 @@ export const ProtocolId = 0x8f7228a19854fbb2n;
 
 // PacketMode — None = 0 implicit, variants dense from 1, wire range [0, 5] (SPEC §4.2);
 // a frozen object of Number values — the JS translation of the family's
-// integer-backed enums; [max = ...] headroom values are plain Numbers
+// integer-backed enums; | max = ... headroom values are plain Numbers
 export const PacketMode = Object.freeze({
   None: 0,
   Idle: 1,

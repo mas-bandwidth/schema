@@ -10,7 +10,7 @@
 // via ir.GoExportName — the SAME PascalCase mapping as the Go target, so the
 // checker's existing collision detection covers C# members without a second
 // registry. Integer families name their storage directly (sbyte..ulong),
-// enums are native C# enums with explicit unsigned backing ([max = ...]
+// enums are native C# enums with explicit unsigned backing ( | max = ...
 // headroom values are representable natively — C# enums are open over their
 // backing type, so no newtype is needed), flags-typed fields are plain ulong
 // with flat mask constants on Schema (the Go spelling exactly, so the
@@ -248,7 +248,7 @@ func (g *gen) emitFile(carriesProtocolId bool) {
 		case *ir.ContextsMarker:
 			g.tf("// contexts declared for this unit: %s (SPEC §4.2).\n", strings.Join(d.Names, ", "))
 			g.tf("// Contexts generate no standalone artifacts — where an object carries\n")
-			g.tf("// context-scoped [local] fields, its State class is generated once per\n")
+			g.tf("// context-scoped | local fields, its State class is generated once per\n")
 			g.tf("// context (ClientShipState, ServerShipState, ...), each holding the `all`\n")
 			g.tf("// fields plus its own context's. No preprocessor symbols in this target.\n\n")
 		case *ir.Struct:
@@ -336,7 +336,7 @@ func (g *gen) foldComment(e ast.Expr) string {
 
 func (g *gen) emitEnum(d *ir.Enum) {
 	g.tf("// %s — None = 0 implicit, variants dense from 1, wire range [0, %d] (SPEC §4.2);\n", d.Name, d.Max)
-	g.tf("// a native enum with unsigned backing — [max = ...] headroom values are\n")
+	g.tf("// a native enum with unsigned backing — | max = ... headroom values are\n")
 	g.tf("// representable because C# enums are open over their backing type (SPEC §6.1)\n")
 	g.tf("public enum %s : %s\n{\n", d.Name, csUint(d.StorageBits))
 	g.tf("    None = 0,\n")
@@ -457,7 +457,7 @@ func (g *gen) emitObject(d *ir.Object) {
 			}
 			name := capitalize(ctx) + d.Name + "State"
 			g.tf("// %s — the full simulation class for the %s context: every `all`\n", name, ctx)
-			g.tf("// field plus the fields scoped [local, context = %s]\n", ctx)
+			g.tf("// field plus the fields scoped | local, context = %s\n", ctx)
 			g.emitViewClass(name, fields, storageDeep)
 		}
 	} else {
@@ -467,11 +467,11 @@ func (g *gen) emitObject(d *ir.Object) {
 
 	deep, interp := splitObjectFields(d)
 
-	g.tf("// %sData_Deep — every non-[local] field, deep encodings: full state for\n", d.Name)
+	g.tf("// %sData_Deep — every non- | local field, deep encodings: full state for\n", d.Name)
 	g.tf("// client-side prediction\n")
 	g.emitViewClass(d.Name+"Data_Deep", deep, storageDeep)
 
-	g.tf("// %sData_Shallow — the [interpolate] fields on the quantized wire: the\n", d.Name)
+	g.tf("// %sData_Shallow — the | interpolate fields on the quantized wire: the\n", d.Name)
 	g.tf("// implementation detail on the way to interpolation on the client\n")
 	g.emitViewClass(d.Name+"Data_Shallow", interp, storageShallow)
 
@@ -543,7 +543,7 @@ func (g *gen) emitField(f *ir.Field, v view) {
 		if f.FixedShallow {
 			g.tf("    // %s: %s narrowed to %d fractional bits (quantize = %s) — per-component\n",
 				f.Name, f.Type.Name, f.QuantShift, ir.RenderExpr(f.QuantScaleExpr))
-			g.tf("    // quantized units; bounds are the component's whole-unit [min, max] scaled\n")
+			g.tf("    // quantized units; bounds are the component's whole-unit | min, max scaled\n")
 			for _, comp := range st.Fields {
 				lo, hi, _, typ, _ := fixedShallowComp(f, comp)
 				g.tf("    public %s %s; // in [%s, %s]\n", typ, g.m(ir.GoExportName(f.Name)+ir.GoExportName(comp.Name)), lo, hi)
@@ -637,9 +637,9 @@ func (g *gen) fieldComment(f *ir.Field) string {
 	}
 	if f.Local {
 		if f.Context != "" {
-			parts = append(parts, fmt.Sprintf("[local, context = %s]", f.Context))
+			parts = append(parts, fmt.Sprintf(" | local, context = %s", f.Context))
 		} else {
-			parts = append(parts, "[local] — no wire")
+			parts = append(parts, " | local — no wire")
 		}
 	}
 	if len(parts) == 0 {

@@ -20,11 +20,11 @@ enum DriveMode { Cruise, Warp, Ludicrous }
 // two groups), Q32.0 (a fixed with no fraction IS a ranged integer —
 // STANDARD.md), and a fixed array (per-element encoding)
 type FixedProbe {
-    angle    fixed(16, 16)    [min = -180, max = 180]
-    position fixed(48, 16)    [min = -MaxWorldUnits, max = MaxWorldUnits]
-    reach    fixed(112, 16)   [min = -1000000, max = 1000000]
-    ticks    fixed(32, 0)     [min = 0, max = 1000000]
-    samples  [2]fixed(16, 16) [min = -8, max = 8]
+    angle    fixed(16, 16)    | min = -180, max = 180
+    position fixed(48, 16)    | min = -MaxWorldUnits, max = MaxWorldUnits
+    reach    fixed(112, 16)   | min = -1000000, max = 1000000
+    ticks    fixed(32, 0)     | min = 0, max = 1000000
+    samples  [2]fixed(16, 16) | min = -8, max = 8
 }
 
 // The unsigned sibling — ufixed(I, F), DECIDED (Glenn, 2026-08-15: "ufixed
@@ -37,12 +37,12 @@ type FixedProbe {
 // byte-compare. locked is the degenerate ufixed shape (zero bits, F = 16
 // would show), riding in front of the tail byte like DegenerateProbe's.
 type UnsignedProbe {
-    angle   ufixed(16, 16)    [min = 0, max = 360]
-    span    ufixed(48, 16)    [min = 0, max = 281474976710655]
-    reach   ufixed(112, 16)   [min = 0, max = 2000000]
-    ticks   ufixed(32, 0)     [min = 0, max = 1000000]
-    samples [2]ufixed(16, 16) [min = 0, max = 16]
-    locked  ufixed(16, 16)    [min = 3, max = 3]
+    angle   ufixed(16, 16)    | min = 0, max = 360
+    span    ufixed(48, 16)    | min = 0, max = 281474976710655
+    reach   ufixed(112, 16)   | min = 0, max = 2000000
+    ticks   ufixed(32, 0)     | min = 0, max = 1000000
+    samples [2]ufixed(16, 16) | min = 0, max = 16
+    locked  ufixed(16, 16)    | min = 3, max = 3
     tail    uint8
 }
 
@@ -54,9 +54,9 @@ type UnsignedProbe {
 // composed unsigned halves (no 128-bit literal exists)
 type WideProbe {
     entity_id uint128
-    energy    int128  [min = -5000000000, max = 5000000000]
-    flux      int128  [min = -1267650600228229401496703205376, max = 1267650600228229401496703205376]
-    bias      int128  [min = -1000, max = 1000] = -250
+    energy    int128                         | min = -5000000000, max = 5000000000
+    flux      int128                         | min = -1267650600228229401496703205376, max = 1267650600228229401496703205376
+    bias      int128 = -250                  | min = -1000, max = 1000
     seed      uint128 = 36893488147419103232
 }
 
@@ -82,9 +82,9 @@ message LudicrousState {
 // fails the byte-compare. locked_fixed is the fraction_bits shape
 // (F = 16 would appear); locked_wide is the 64/128 boundary shape.
 type DegenerateProbe {
-    locked_fixed fixed(16, 16) [min = -3, max = -3]
-    locked_int   int32         [min = 7, max = 7]
-    locked_wide  int128        [min = -12345678901234, max = -12345678901234]
+    locked_fixed fixed(16, 16) | min = -3, max = -3
+    locked_int   int32         | min = 7, max = 7
+    locked_wide  int128        | min = -12345678901234, max = -12345678901234
     tail         uint8
 }
 
@@ -93,26 +93,28 @@ type DegenerateProbe {
 // wire-domain scalar, so NO Quantize/Unquantize pair is emitted — the
 // Interpolate and Shallow views hold the same values, and the wire is the
 // ranged fixed encoding from the component bounds.
-type FixedVec [vec3] {
-    x fixed(48, 16) [min = -100000, max = 100000]
-    y fixed(48, 16) [min = -100000, max = 100000]
-    z fixed(48, 16) [min = -100000, max = 100000]
+type FixedVec | vec3
+{
+    x fixed(48, 16) | min = -100000, max = 100000
+    y fixed(48, 16) | min = -100000, max = 100000
+    z fixed(48, 16) | min = -100000, max = 100000
 }
 
-type FixedQuat [quat4] {
-    x fixed(2, 30) [min = -1, max = 1]
-    y fixed(2, 30) [min = -1, max = 1]
-    z fixed(2, 30) [min = -1, max = 1]
+type FixedQuat | quat4
+{
+    x fixed(2, 30) | min = -1, max = 1
+    y fixed(2, 30) | min = -1, max = 1
+    z fixed(2, 30) | min = -1, max = 1
     // the identity rest state — THE case that reopened fixed defaults
     // (SPEC §4.3): whole units, exactly representable (1.0 * 2^30)
-    w fixed(2, 30) [min = -1, max = 1] = 1.0
+    w fixed(2, 30) = 1.0 | min = -1, max = 1
 }
 
 object Body {
-    position FixedVec  [interpolate]
-    rotation FixedQuat [interpolate]
-    velocity FixedVec  [interpolate]
-    spin     float64   [local]
+    position FixedVec  | interpolate
+    rotation FixedQuat | interpolate
+    velocity FixedVec  | interpolate
+    spin     float64   | local
 }
 
 // The narrowed shallow — §4.8 rule 2b: [interpolate, quantize = K] on a
@@ -124,7 +126,7 @@ object Body {
 // [min, max] scaled by K. velocity stays full precision beside them — the
 // two forms compose in one object.
 object NarrowBody {
-    position FixedVec  [interpolate, quantize = 256]
-    rotation FixedQuat [interpolate, quantize = 1024]
-    velocity FixedVec  [interpolate]
+    position FixedVec  | interpolate, quantize = 256
+    rotation FixedQuat | interpolate, quantize = 1024
+    velocity FixedVec  | interpolate
 }

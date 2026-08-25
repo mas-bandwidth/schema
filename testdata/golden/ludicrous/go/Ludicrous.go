@@ -486,10 +486,10 @@ type BodyState struct {
 	Position FixedVec
 	Rotation FixedQuat
 	Velocity FixedVec
-	Spin     float64 // [local] — no wire
+	Spin     float64 //  | local — no wire
 }
 
-// BodyData_Deep — every non-[local] field, deep encodings: full state for
+// BodyData_Deep — every non- | local field, deep encodings: full state for
 // client-side prediction
 type BodyData_Deep struct {
 	Position FixedVec
@@ -497,7 +497,7 @@ type BodyData_Deep struct {
 	Velocity FixedVec
 }
 
-// BodyData_Shallow — the [interpolate] fields on the quantized wire: the
+// BodyData_Shallow — the | interpolate fields on the quantized wire: the
 // implementation detail on the way to interpolation on the client
 type BodyData_Shallow struct {
 	Position FixedVec
@@ -581,7 +581,7 @@ type NarrowBodyState struct {
 	Velocity FixedVec
 }
 
-// NarrowBodyData_Deep — every non-[local] field, deep encodings: full state for
+// NarrowBodyData_Deep — every non- | local field, deep encodings: full state for
 // client-side prediction
 type NarrowBodyData_Deep struct {
 	Position FixedVec
@@ -589,16 +589,16 @@ type NarrowBodyData_Deep struct {
 	Velocity FixedVec
 }
 
-// NarrowBodyData_Shallow — the [interpolate] fields on the quantized wire: the
+// NarrowBodyData_Shallow — the | interpolate fields on the quantized wire: the
 // implementation detail on the way to interpolation on the client
 type NarrowBodyData_Shallow struct {
 	// position: FixedVec narrowed to 8 fractional bits (quantize = 256) — per-component
-	// quantized units; bounds are the component's whole-unit [min, max] scaled
+	// quantized units; bounds are the component's whole-unit | min, max scaled
 	PositionX int32 // in [-25600000, 25600000]
 	PositionY int32 // in [-25600000, 25600000]
 	PositionZ int32 // in [-25600000, 25600000]
 	// rotation: FixedQuat narrowed to 10 fractional bits (quantize = 1024) — per-component
-	// quantized units; bounds are the component's whole-unit [min, max] scaled
+	// quantized units; bounds are the component's whole-unit | min, max scaled
 	RotationX int16 // in [-1024, 1024]
 	RotationY int16 // in [-1024, 1024]
 	RotationZ int16 // in [-1024, 1024]

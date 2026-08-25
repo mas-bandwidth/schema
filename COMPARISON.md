@@ -28,8 +28,8 @@ type ShipCreate {
         flags       ShipFlags                       // 4 flag bits
     }
     team            Team                            // 3 wire values incl. None
-    health          int16 [min = 0, max = MaxHealth]  // MaxHealth = 1000
-    thrust          int8  [min = 0, max = 100]
+    health          int16 | min = 0, max = MaxHealth // MaxHealth = 1000
+    thrust          int8 | min = 0, max = 100
 }
 ```
 
@@ -72,7 +72,7 @@ the writer's own byte count — 219 bits, which is exactly the compiler's
 | **total** | **219 bits = 28 bytes** | |
 
 Nothing is spent identifying a field, because both sides were generated from
-the same schema. `health` is 10 bits because it was declared `[min = 0, max =
+the same schema. `health` is 10 bits because it was declared `| min = 0, max =
 1000]`, not because anyone hand-packed it.
 
 ## What the others are buying

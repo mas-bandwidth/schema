@@ -21,8 +21,8 @@ import (
 func multiFileUnit(t *testing.T) *ir.Unit {
 	t.Helper()
 	sources := map[string]string{
-		"MessagesA.schema": "package t\nmessage Ping { x uint8 }\nobject Rock { size uint8 [interpolate, min = 0, max = 100] }\n",
-		"MessagesB.schema": "package t\nmessage Pong { y uint8 }\nobject Tree { size uint8 [interpolate, min = 0, max = 100] }\n",
+		"MessagesA.schema": "package t\nmessage Ping { x uint8 }\nobject Rock { size uint8 | interpolate, min = 0, max = 100 }\n",
+		"MessagesB.schema": "package t\nmessage Pong { y uint8 }\nobject Tree { size uint8 | interpolate, min = 0, max = 100 }\n",
 	}
 	var files []check.SourceFile
 	for name, src := range sources {
@@ -90,11 +90,11 @@ func TestBareFloatConstExportsTypedFloat64(t *testing.T) {
 // E.Max's generated twin instead of a hand-declared count constant.
 func TestEnumExtentEmitted(t *testing.T) {
 	src := "package t\n\n" +
-		"enum Weapon [max = 15] { Laser, Missile }\n\n" +
+		"enum Weapon | max = 15\n{ Laser, Missile }\n\n" +
 		"message Ping { w Weapon }\n\n" +
 		"message Pong { y uint8 }\n\n" +
-		"object Rock { size uint8 [interpolate, min = 0, max = 100] }\n\n" +
-		"object Tree { size uint8 [interpolate, min = 0, max = 100] }\n"
+		"object Rock { size uint8 | interpolate, min = 0, max = 100 }\n\n" +
+		"object Tree { size uint8 | interpolate, min = 0, max = 100 }\n"
 	f, perrs := parser.Parse("Extent.schema", []byte(src))
 	if len(perrs) > 0 {
 		t.Fatalf("parse: %v", perrs[0])
@@ -271,7 +271,7 @@ func TestUnionSurfaceEmitted(t *testing.T) {
 
 // Flags export their declared variant count as Count (SPEC §4.2 — one name,
 // not Max: the variants are independent bits, not a range with a top), and
-// the wire spends EXACTLY Count bits when no [max = K] widens it (schema
+// the wire spends EXACTLY Count bits when no | max = K widens it (schema
 // issue #129's verification): a 4-variant flags field serializes in 4 bits
 // in every target, write and read alike.
 func TestFlagsCountAndWireBits(t *testing.T) {
