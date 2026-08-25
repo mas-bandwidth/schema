@@ -4,12 +4,11 @@
 // AGPL-3.0, its output is not.
 // package ludicrous — protocol id 0xa925c86b46058512
 //
-// Storage members are PascalCase via the same mapping as the Go target, so
-// the checker's collision registry covers C# for free. Wire functions return
-// bool — the C++-style early-out. A schema validation failure (a wrong wire
-// constant, nonzero reserved bits, an interior null) returns false WITHOUT
-// latching; stream failures latch on stream.Error — the runtime's own sticky
-// latch. Callers get bool always; Error tells the two apart.
+// Wire functions return bool — the C++-style early-out. A schema validation
+// failure (a wrong wire constant, nonzero reserved bits, an interior null)
+// returns false WITHOUT latching; stream failures latch on stream.Error —
+// the runtime's own sticky latch. Callers get bool always; Error tells the
+// two apart.
 
 using System;
 using System.Runtime.CompilerServices;
@@ -83,8 +82,8 @@ namespace Ludicrous
         public UInt128Value EntityId;
         public Int128Value Energy; // wire [-5000000000, 5000000000]
         public Int128Value Flux; // wire [-1267650600228229401496703205376, 1267650600228229401496703205376]
-        public Int128Value Bias = -250; // = -250 at construction; Zero* gives the §5 zero form; wire [-1000, 1000]
-        public UInt128Value Seed = new UInt128Value(0x2ul, 0x0ul); // = new UInt128Value(0x2ul, 0x0ul) at construction; Zero* gives the §5 zero form
+        public Int128Value Bias = -250; // specified default at construction; Zero* gives the §5 zero form; wire [-1000, 1000]
+        public UInt128Value Seed = new UInt128Value(0x2ul, 0x0ul); // specified default at construction; Zero* gives the §5 zero form
     }
 
     // message LudicrousState
@@ -113,8 +112,7 @@ namespace Ludicrous
         public byte Tail;
     }
 
-    // type FixedVec [vec3] — the tag is user-chosen and inert in v1; the delta pass
-    // claims tags and assigns actions (SPEC §4.2, Type tags)
+    // type FixedVec [vec3] — tags are user-chosen and inert in v1 (SPEC §4.2, Type tags)
     public sealed class FixedVec
     {
         public long X; // wire [-100000, 100000]
@@ -122,14 +120,13 @@ namespace Ludicrous
         public long Z; // wire [-100000, 100000]
     }
 
-    // type FixedQuat [quat4] — the tag is user-chosen and inert in v1; the delta pass
-    // claims tags and assigns actions (SPEC §4.2, Type tags)
+    // type FixedQuat [quat4] — tags are user-chosen and inert in v1 (SPEC §4.2, Type tags)
     public sealed class FixedQuat
     {
         public int X; // wire [-1, 1]
         public int Y; // wire [-1, 1]
         public int Z; // wire [-1, 1]
-        public int W = 1073741824; // = 1073741824 at construction; Zero* gives the §5 zero form; wire [-1, 1]
+        public int W = 1073741824; // specified default at construction; Zero* gives the §5 zero form; wire [-1, 1]
     }
 
     // ---- object Body — one definition, a generated family per target (SPEC §4.8) ----
@@ -140,7 +137,7 @@ namespace Ludicrous
         public FixedVec Position = new FixedVec();
         public FixedQuat Rotation = new FixedQuat();
         public FixedVec Velocity = new FixedVec();
-        public double Spin; //  | local — no wire
+        public double Spin; // | local — no wire
     }
 
     // BodyData_Deep — every non- | local field, deep encodings: full state for
@@ -263,8 +260,7 @@ namespace Ludicrous
         public const long FixedProbeMaxBits = 156;
         public const long FixedProbeMaxBytes = 24;
 
-        // ZeroFixedProbe resets value to the §5 ZERO form — all-zero storage; specified
-        // defaults live in construction only and are NOT reapplied here.
+        // The §5 zero form: all-zero storage; specified defaults live only in construction.
         public static void ZeroFixedProbe(FixedProbe value)
         {
             value.Angle = 0;
@@ -274,21 +270,17 @@ namespace Ludicrous
             Array.Clear(value.Samples, 0, 2);
         }
 
-        // WriteFixedProbe/ReadFixedProbe run as a batch: the stream state lives in registers
-        // across the body's serialize calls and is stored back once at End —
-        // the tiny-message hot path (serialize.cs WriteBatch/ReadBatch). Same
-        // wire bytes, same validation, same latched-error model.
+        // batch form: stream state stays in registers across the body and End
+        // publishes it — same wire bytes, same validation, same error model.
         public static bool WriteFixedProbe(WriteStream stream, FixedProbe value)
         {
             WriteBatch batch = stream.BeginBatch();
             bool result = WriteFixedProbeBatch(ref batch, value);
-            batch.End(); // on every path out — End publishes the state and the error
+            batch.End();
             return result;
         }
 
-        // The batch-form core — INLINE-ONLY: a non-inlined call taking the batch by
-        // ref address-exposes it and enregistration dies (measured 0.71x, worse than
-        // no batch). Nested types compose core-to-core by ref, never via the stream.
+        // inline-only batch core — a real call would address-expose the batch
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static bool WriteFixedProbeBatch(ref WriteBatch batch, FixedProbe value)
         {
@@ -322,13 +314,11 @@ namespace Ludicrous
         {
             ReadBatch batch = stream.BeginBatch();
             bool result = ReadFixedProbeBatch(ref batch, value);
-            batch.End(); // on every path out — End publishes the cursor and the error
+            batch.End();
             return result;
         }
 
-        // The batch-form core — INLINE-ONLY: a non-inlined call taking the batch by
-        // ref address-exposes it and enregistration dies (measured 0.71x, worse than
-        // no batch). Nested types compose core-to-core by ref, never via the stream.
+        // inline-only batch core — a real call would address-expose the batch
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static bool ReadFixedProbeBatch(ref ReadBatch batch, FixedProbe value)
         {
@@ -363,8 +353,7 @@ namespace Ludicrous
         public const long UnsignedProbeMaxBits = 196;
         public const long UnsignedProbeMaxBytes = 32;
 
-        // ZeroUnsignedProbe resets value to the §5 ZERO form — all-zero storage; specified
-        // defaults live in construction only and are NOT reapplied here.
+        // The §5 zero form: all-zero storage; specified defaults live only in construction.
         public static void ZeroUnsignedProbe(UnsignedProbe value)
         {
             value.Angle = 0;
@@ -376,21 +365,17 @@ namespace Ludicrous
             value.Tail = 0;
         }
 
-        // WriteUnsignedProbe/ReadUnsignedProbe run as a batch: the stream state lives in registers
-        // across the body's serialize calls and is stored back once at End —
-        // the tiny-message hot path (serialize.cs WriteBatch/ReadBatch). Same
-        // wire bytes, same validation, same latched-error model.
+        // batch form: stream state stays in registers across the body and End
+        // publishes it — same wire bytes, same validation, same error model.
         public static bool WriteUnsignedProbe(WriteStream stream, UnsignedProbe value)
         {
             WriteBatch batch = stream.BeginBatch();
             bool result = WriteUnsignedProbeBatch(ref batch, value);
-            batch.End(); // on every path out — End publishes the state and the error
+            batch.End();
             return result;
         }
 
-        // The batch-form core — INLINE-ONLY: a non-inlined call taking the batch by
-        // ref address-exposes it and enregistration dies (measured 0.71x, worse than
-        // no batch). Nested types compose core-to-core by ref, never via the stream.
+        // inline-only batch core — a real call would address-expose the batch
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static bool WriteUnsignedProbeBatch(ref WriteBatch batch, UnsignedProbe value)
         {
@@ -417,7 +402,7 @@ namespace Ludicrous
                     return false;
                 }
             }
-            if ((ulong)value.Locked != 196608UL) // out-of-contract writes are refused, not wrapped
+            if ((ulong)value.Locked != 196608UL)
             {
                 return false;
             }
@@ -435,13 +420,11 @@ namespace Ludicrous
         {
             ReadBatch batch = stream.BeginBatch();
             bool result = ReadUnsignedProbeBatch(ref batch, value);
-            batch.End(); // on every path out — End publishes the cursor and the error
+            batch.End();
             return result;
         }
 
-        // The batch-form core — INLINE-ONLY: a non-inlined call taking the batch by
-        // ref address-exposes it and enregistration dies (measured 0.71x, worse than
-        // no batch). Nested types compose core-to-core by ref, never via the stream.
+        // inline-only batch core — a real call would address-expose the batch
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static bool ReadUnsignedProbeBatch(ref ReadBatch batch, UnsignedProbe value)
         {
@@ -485,8 +468,7 @@ namespace Ludicrous
         public const long WideProbeMaxBits = 403;
         public const long WideProbeMaxBytes = 56;
 
-        // ZeroWideProbe resets value to the §5 ZERO form — all-zero storage; specified
-        // defaults live in construction only and are NOT reapplied here.
+        // The §5 zero form: all-zero storage; specified defaults live only in construction.
         public static void ZeroWideProbe(WideProbe value)
         {
             value.EntityId = 0;
@@ -496,21 +478,17 @@ namespace Ludicrous
             value.Seed = 0;
         }
 
-        // WriteWideProbe/ReadWideProbe run as a batch: the stream state lives in registers
-        // across the body's serialize calls and is stored back once at End —
-        // the tiny-message hot path (serialize.cs WriteBatch/ReadBatch). Same
-        // wire bytes, same validation, same latched-error model.
+        // batch form: stream state stays in registers across the body and End
+        // publishes it — same wire bytes, same validation, same error model.
         public static bool WriteWideProbe(WriteStream stream, WideProbe value)
         {
             WriteBatch batch = stream.BeginBatch();
             bool result = WriteWideProbeBatch(ref batch, value);
-            batch.End(); // on every path out — End publishes the state and the error
+            batch.End();
             return result;
         }
 
-        // The batch-form core — INLINE-ONLY: a non-inlined call taking the batch by
-        // ref address-exposes it and enregistration dies (measured 0.71x, worse than
-        // no batch). Nested types compose core-to-core by ref, never via the stream.
+        // inline-only batch core — a real call would address-expose the batch
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static bool WriteWideProbeBatch(ref WriteBatch batch, WideProbe value)
         {
@@ -541,13 +519,11 @@ namespace Ludicrous
         {
             ReadBatch batch = stream.BeginBatch();
             bool result = ReadWideProbeBatch(ref batch, value);
-            batch.End(); // on every path out — End publishes the cursor and the error
+            batch.End();
             return result;
         }
 
-        // The batch-form core — INLINE-ONLY: a non-inlined call taking the batch by
-        // ref address-exposes it and enregistration dies (measured 0.71x, worse than
-        // no batch). Nested types compose core-to-core by ref, never via the stream.
+        // inline-only batch core — a real call would address-expose the batch
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static bool ReadWideProbeBatch(ref ReadBatch batch, WideProbe value)
         {
@@ -579,8 +555,7 @@ namespace Ludicrous
         public const long LudicrousStateMaxBits = 1205;
         public const long LudicrousStateMaxBytes = 152;
 
-        // ZeroLudicrousState resets value to the §5 ZERO form — all-zero storage; specified
-        // defaults live in construction only and are NOT reapplied here.
+        // The §5 zero form: all-zero storage; specified defaults live only in construction.
         public static void ZeroLudicrousState(LudicrousState value)
         {
             value.Mode = DriveMode.None;
@@ -592,21 +567,17 @@ namespace Ludicrous
             value.TargetId = 0;
         }
 
-        // WriteLudicrousState/ReadLudicrousState run as a batch: the stream state lives in registers
-        // across the body's serialize calls and is stored back once at End —
-        // the tiny-message hot path (serialize.cs WriteBatch/ReadBatch). Same
-        // wire bytes, same validation, same latched-error model.
+        // batch form: stream state stays in registers across the body and End
+        // publishes it — same wire bytes, same validation, same error model.
         public static bool WriteLudicrousState(WriteStream stream, LudicrousState value)
         {
             WriteBatch batch = stream.BeginBatch();
             bool result = WriteLudicrousStateBatch(ref batch, value);
-            batch.End(); // on every path out — End publishes the state and the error
+            batch.End();
             return result;
         }
 
-        // The batch-form core — INLINE-ONLY: a non-inlined call taking the batch by
-        // ref address-exposes it and enregistration dies (measured 0.71x, worse than
-        // no batch). Nested types compose core-to-core by ref, never via the stream.
+        // inline-only batch core — a real call would address-expose the batch
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static bool WriteLudicrousStateBatch(ref WriteBatch batch, LudicrousState value)
         {
@@ -665,13 +636,11 @@ namespace Ludicrous
         {
             ReadBatch batch = stream.BeginBatch();
             bool result = ReadLudicrousStateBatch(ref batch, value);
-            batch.End(); // on every path out — End publishes the cursor and the error
+            batch.End();
             return result;
         }
 
-        // The batch-form core — INLINE-ONLY: a non-inlined call taking the batch by
-        // ref address-exposes it and enregistration dies (measured 0.71x, worse than
-        // no batch). Nested types compose core-to-core by ref, never via the stream.
+        // inline-only batch core — a real call would address-expose the batch
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static bool ReadLudicrousStateBatch(ref ReadBatch batch, LudicrousState value)
         {
@@ -725,8 +694,7 @@ namespace Ludicrous
         public const long DegenerateProbeMaxBits = 8;
         public const long DegenerateProbeMaxBytes = 8;
 
-        // ZeroDegenerateProbe resets value to the §5 ZERO form — all-zero storage; specified
-        // defaults live in construction only and are NOT reapplied here.
+        // The §5 zero form: all-zero storage; specified defaults live only in construction.
         public static void ZeroDegenerateProbe(DegenerateProbe value)
         {
             value.LockedFixed = 0;
@@ -735,33 +703,29 @@ namespace Ludicrous
             value.Tail = 0;
         }
 
-        // WriteDegenerateProbe/ReadDegenerateProbe run as a batch: the stream state lives in registers
-        // across the body's serialize calls and is stored back once at End —
-        // the tiny-message hot path (serialize.cs WriteBatch/ReadBatch). Same
-        // wire bytes, same validation, same latched-error model.
+        // batch form: stream state stays in registers across the body and End
+        // publishes it — same wire bytes, same validation, same error model.
         public static bool WriteDegenerateProbe(WriteStream stream, DegenerateProbe value)
         {
             WriteBatch batch = stream.BeginBatch();
             bool result = WriteDegenerateProbeBatch(ref batch, value);
-            batch.End(); // on every path out — End publishes the state and the error
+            batch.End();
             return result;
         }
 
-        // The batch-form core — INLINE-ONLY: a non-inlined call taking the batch by
-        // ref address-exposes it and enregistration dies (measured 0.71x, worse than
-        // no batch). Nested types compose core-to-core by ref, never via the stream.
+        // inline-only batch core — a real call would address-expose the batch
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static bool WriteDegenerateProbeBatch(ref WriteBatch batch, DegenerateProbe value)
         {
-            if ((long)value.LockedFixed != -196608L) // out-of-contract writes are refused, not wrapped
+            if ((long)value.LockedFixed != -196608L)
             {
                 return false;
             }
-            if (value.LockedInt < 7 || value.LockedInt > 7) // out-of-contract writes are refused, not wrapped
+            if (value.LockedInt < 7 || value.LockedInt > 7)
             {
                 return false;
             }
-            if (value.LockedWide != (Int128Value)(-12345678901234L)) // out-of-contract writes are refused, not wrapped
+            if (value.LockedWide != (Int128Value)(-12345678901234L))
             {
                 return false;
             }
@@ -779,13 +743,11 @@ namespace Ludicrous
         {
             ReadBatch batch = stream.BeginBatch();
             bool result = ReadDegenerateProbeBatch(ref batch, value);
-            batch.End(); // on every path out — End publishes the cursor and the error
+            batch.End();
             return result;
         }
 
-        // The batch-form core — INLINE-ONLY: a non-inlined call taking the batch by
-        // ref address-exposes it and enregistration dies (measured 0.71x, worse than
-        // no batch). Nested types compose core-to-core by ref, never via the stream.
+        // inline-only batch core — a real call would address-expose the batch
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static bool ReadDegenerateProbeBatch(ref ReadBatch batch, DegenerateProbe value)
         {
@@ -808,8 +770,7 @@ namespace Ludicrous
         public const long FixedVecMaxBits = 102;
         public const long FixedVecMaxBytes = 16;
 
-        // ZeroFixedVec resets value to the §5 ZERO form — all-zero storage; specified
-        // defaults live in construction only and are NOT reapplied here.
+        // The §5 zero form: all-zero storage; specified defaults live only in construction.
         public static void ZeroFixedVec(FixedVec value)
         {
             value.X = 0;
@@ -817,21 +778,17 @@ namespace Ludicrous
             value.Z = 0;
         }
 
-        // WriteFixedVec/ReadFixedVec run as a batch: the stream state lives in registers
-        // across the body's serialize calls and is stored back once at End —
-        // the tiny-message hot path (serialize.cs WriteBatch/ReadBatch). Same
-        // wire bytes, same validation, same latched-error model.
+        // batch form: stream state stays in registers across the body and End
+        // publishes it — same wire bytes, same validation, same error model.
         public static bool WriteFixedVec(WriteStream stream, FixedVec value)
         {
             WriteBatch batch = stream.BeginBatch();
             bool result = WriteFixedVecBatch(ref batch, value);
-            batch.End(); // on every path out — End publishes the state and the error
+            batch.End();
             return result;
         }
 
-        // The batch-form core — INLINE-ONLY: a non-inlined call taking the batch by
-        // ref address-exposes it and enregistration dies (measured 0.71x, worse than
-        // no batch). Nested types compose core-to-core by ref, never via the stream.
+        // inline-only batch core — a real call would address-expose the batch
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static bool WriteFixedVecBatch(ref WriteBatch batch, FixedVec value)
         {
@@ -854,13 +811,11 @@ namespace Ludicrous
         {
             ReadBatch batch = stream.BeginBatch();
             bool result = ReadFixedVecBatch(ref batch, value);
-            batch.End(); // on every path out — End publishes the cursor and the error
+            batch.End();
             return result;
         }
 
-        // The batch-form core — INLINE-ONLY: a non-inlined call taking the batch by
-        // ref address-exposes it and enregistration dies (measured 0.71x, worse than
-        // no batch). Nested types compose core-to-core by ref, never via the stream.
+        // inline-only batch core — a real call would address-expose the batch
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static bool ReadFixedVecBatch(ref ReadBatch batch, FixedVec value)
         {
@@ -884,8 +839,7 @@ namespace Ludicrous
         public const long FixedQuatMaxBits = 128;
         public const long FixedQuatMaxBytes = 16;
 
-        // ZeroFixedQuat resets value to the §5 ZERO form — all-zero storage; specified
-        // defaults live in construction only and are NOT reapplied here.
+        // The §5 zero form: all-zero storage; specified defaults live only in construction.
         public static void ZeroFixedQuat(FixedQuat value)
         {
             value.X = 0;
@@ -894,21 +848,17 @@ namespace Ludicrous
             value.W = 0;
         }
 
-        // WriteFixedQuat/ReadFixedQuat run as a batch: the stream state lives in registers
-        // across the body's serialize calls and is stored back once at End —
-        // the tiny-message hot path (serialize.cs WriteBatch/ReadBatch). Same
-        // wire bytes, same validation, same latched-error model.
+        // batch form: stream state stays in registers across the body and End
+        // publishes it — same wire bytes, same validation, same error model.
         public static bool WriteFixedQuat(WriteStream stream, FixedQuat value)
         {
             WriteBatch batch = stream.BeginBatch();
             bool result = WriteFixedQuatBatch(ref batch, value);
-            batch.End(); // on every path out — End publishes the state and the error
+            batch.End();
             return result;
         }
 
-        // The batch-form core — INLINE-ONLY: a non-inlined call taking the batch by
-        // ref address-exposes it and enregistration dies (measured 0.71x, worse than
-        // no batch). Nested types compose core-to-core by ref, never via the stream.
+        // inline-only batch core — a real call would address-expose the batch
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static bool WriteFixedQuatBatch(ref WriteBatch batch, FixedQuat value)
         {
@@ -935,13 +885,11 @@ namespace Ludicrous
         {
             ReadBatch batch = stream.BeginBatch();
             bool result = ReadFixedQuatBatch(ref batch, value);
-            batch.End(); // on every path out — End publishes the cursor and the error
+            batch.End();
             return result;
         }
 
-        // The batch-form core — INLINE-ONLY: a non-inlined call taking the batch by
-        // ref address-exposes it and enregistration dies (measured 0.71x, worse than
-        // no batch). Nested types compose core-to-core by ref, never via the stream.
+        // inline-only batch core — a real call would address-expose the batch
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static bool ReadFixedQuatBatch(ref ReadBatch batch, FixedQuat value)
         {
@@ -967,21 +915,17 @@ namespace Ludicrous
         public const long BodyData_DeepMaxBits = 332;
         public const long BodyData_DeepMaxBytes = 48; // rounded up to the 8-byte write-buffer granularity
 
-        // WriteBodyData_Deep/ReadBodyData_Deep run as a batch: the stream state lives in registers
-        // across the body's serialize calls and is stored back once at End —
-        // the tiny-message hot path (serialize.cs WriteBatch/ReadBatch). Same
-        // wire bytes, same validation, same latched-error model.
+        // batch form: stream state stays in registers across the body and End
+        // publishes it — same wire bytes, same validation, same error model.
         public static bool WriteBodyData_Deep(WriteStream stream, BodyData_Deep value)
         {
             WriteBatch batch = stream.BeginBatch();
             bool result = WriteBodyData_DeepBatch(ref batch, value);
-            batch.End(); // on every path out — End publishes the state and the error
+            batch.End();
             return result;
         }
 
-        // The batch-form core — INLINE-ONLY: a non-inlined call taking the batch by
-        // ref address-exposes it and enregistration dies (measured 0.71x, worse than
-        // no batch). Nested types compose core-to-core by ref, never via the stream.
+        // inline-only batch core — a real call would address-expose the batch
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static bool WriteBodyData_DeepBatch(ref WriteBatch batch, BodyData_Deep value)
         {
@@ -1004,13 +948,11 @@ namespace Ludicrous
         {
             ReadBatch batch = stream.BeginBatch();
             bool result = ReadBodyData_DeepBatch(ref batch, value);
-            batch.End(); // on every path out — End publishes the cursor and the error
+            batch.End();
             return result;
         }
 
-        // The batch-form core — INLINE-ONLY: a non-inlined call taking the batch by
-        // ref address-exposes it and enregistration dies (measured 0.71x, worse than
-        // no batch). Nested types compose core-to-core by ref, never via the stream.
+        // inline-only batch core — a real call would address-expose the batch
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static bool ReadBodyData_DeepBatch(ref ReadBatch batch, BodyData_Deep value)
         {
@@ -1032,21 +974,17 @@ namespace Ludicrous
         public const long BodyData_ShallowMaxBits = 332;
         public const long BodyData_ShallowMaxBytes = 48; // rounded up to the 8-byte write-buffer granularity
 
-        // WriteBodyData_Shallow/ReadBodyData_Shallow run as a batch: the stream state lives in registers
-        // across the body's serialize calls and is stored back once at End —
-        // the tiny-message hot path (serialize.cs WriteBatch/ReadBatch). Same
-        // wire bytes, same validation, same latched-error model.
+        // batch form: stream state stays in registers across the body and End
+        // publishes it — same wire bytes, same validation, same error model.
         public static bool WriteBodyData_Shallow(WriteStream stream, BodyData_Shallow value)
         {
             WriteBatch batch = stream.BeginBatch();
             bool result = WriteBodyData_ShallowBatch(ref batch, value);
-            batch.End(); // on every path out — End publishes the state and the error
+            batch.End();
             return result;
         }
 
-        // The batch-form core — INLINE-ONLY: a non-inlined call taking the batch by
-        // ref address-exposes it and enregistration dies (measured 0.71x, worse than
-        // no batch). Nested types compose core-to-core by ref, never via the stream.
+        // inline-only batch core — a real call would address-expose the batch
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static bool WriteBodyData_ShallowBatch(ref WriteBatch batch, BodyData_Shallow value)
         {
@@ -1069,13 +1007,11 @@ namespace Ludicrous
         {
             ReadBatch batch = stream.BeginBatch();
             bool result = ReadBodyData_ShallowBatch(ref batch, value);
-            batch.End(); // on every path out — End publishes the cursor and the error
+            batch.End();
             return result;
         }
 
-        // The batch-form core — INLINE-ONLY: a non-inlined call taking the batch by
-        // ref address-exposes it and enregistration dies (measured 0.71x, worse than
-        // no batch). Nested types compose core-to-core by ref, never via the stream.
+        // inline-only batch core — a real call would address-expose the batch
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static bool ReadBodyData_ShallowBatch(ref ReadBatch batch, BodyData_Shallow value)
         {
@@ -1097,21 +1033,17 @@ namespace Ludicrous
         public const long NarrowBodyData_DeepMaxBits = 332;
         public const long NarrowBodyData_DeepMaxBytes = 48; // rounded up to the 8-byte write-buffer granularity
 
-        // WriteNarrowBodyData_Deep/ReadNarrowBodyData_Deep run as a batch: the stream state lives in registers
-        // across the body's serialize calls and is stored back once at End —
-        // the tiny-message hot path (serialize.cs WriteBatch/ReadBatch). Same
-        // wire bytes, same validation, same latched-error model.
+        // batch form: stream state stays in registers across the body and End
+        // publishes it — same wire bytes, same validation, same error model.
         public static bool WriteNarrowBodyData_Deep(WriteStream stream, NarrowBodyData_Deep value)
         {
             WriteBatch batch = stream.BeginBatch();
             bool result = WriteNarrowBodyData_DeepBatch(ref batch, value);
-            batch.End(); // on every path out — End publishes the state and the error
+            batch.End();
             return result;
         }
 
-        // The batch-form core — INLINE-ONLY: a non-inlined call taking the batch by
-        // ref address-exposes it and enregistration dies (measured 0.71x, worse than
-        // no batch). Nested types compose core-to-core by ref, never via the stream.
+        // inline-only batch core — a real call would address-expose the batch
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static bool WriteNarrowBodyData_DeepBatch(ref WriteBatch batch, NarrowBodyData_Deep value)
         {
@@ -1134,13 +1066,11 @@ namespace Ludicrous
         {
             ReadBatch batch = stream.BeginBatch();
             bool result = ReadNarrowBodyData_DeepBatch(ref batch, value);
-            batch.End(); // on every path out — End publishes the cursor and the error
+            batch.End();
             return result;
         }
 
-        // The batch-form core — INLINE-ONLY: a non-inlined call taking the batch by
-        // ref address-exposes it and enregistration dies (measured 0.71x, worse than
-        // no batch). Nested types compose core-to-core by ref, never via the stream.
+        // inline-only batch core — a real call would address-expose the batch
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static bool ReadNarrowBodyData_DeepBatch(ref ReadBatch batch, NarrowBodyData_Deep value)
         {
@@ -1162,21 +1092,17 @@ namespace Ludicrous
         public const long NarrowBodyData_ShallowMaxBits = 228;
         public const long NarrowBodyData_ShallowMaxBytes = 32; // rounded up to the 8-byte write-buffer granularity
 
-        // WriteNarrowBodyData_Shallow/ReadNarrowBodyData_Shallow run as a batch: the stream state lives in registers
-        // across the body's serialize calls and is stored back once at End —
-        // the tiny-message hot path (serialize.cs WriteBatch/ReadBatch). Same
-        // wire bytes, same validation, same latched-error model.
+        // batch form: stream state stays in registers across the body and End
+        // publishes it — same wire bytes, same validation, same error model.
         public static bool WriteNarrowBodyData_Shallow(WriteStream stream, NarrowBodyData_Shallow value)
         {
             WriteBatch batch = stream.BeginBatch();
             bool result = WriteNarrowBodyData_ShallowBatch(ref batch, value);
-            batch.End(); // on every path out — End publishes the state and the error
+            batch.End();
             return result;
         }
 
-        // The batch-form core — INLINE-ONLY: a non-inlined call taking the batch by
-        // ref address-exposes it and enregistration dies (measured 0.71x, worse than
-        // no batch). Nested types compose core-to-core by ref, never via the stream.
+        // inline-only batch core — a real call would address-expose the batch
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static bool WriteNarrowBodyData_ShallowBatch(ref WriteBatch batch, NarrowBodyData_Shallow value)
         {
@@ -1268,13 +1194,11 @@ namespace Ludicrous
         {
             ReadBatch batch = stream.BeginBatch();
             bool result = ReadNarrowBodyData_ShallowBatch(ref batch, value);
-            batch.End(); // on every path out — End publishes the cursor and the error
+            batch.End();
             return result;
         }
 
-        // The batch-form core — INLINE-ONLY: a non-inlined call taking the batch by
-        // ref address-exposes it and enregistration dies (measured 0.71x, worse than
-        // no batch). Nested types compose core-to-core by ref, never via the stream.
+        // inline-only batch core — a real call would address-expose the batch
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static bool ReadNarrowBodyData_ShallowBatch(ref ReadBatch batch, NarrowBodyData_Shallow value)
         {

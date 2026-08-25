@@ -322,7 +322,7 @@ function writeBenchPacketFlatChecked(value, view) {
   let v = 0, s = 0, x = 0, t0 = 0, t1 = 0;
   let bg = 0n;
   let lo = 0, hi = 0, sb = 0, wi = 0;
-  if (!Number.isInteger(value.A) || value.A < -100 || value.A > 100) { // out-of-contract writes are refused, not wrapped
+  if (!Number.isInteger(value.A) || value.A < -100 || value.A > 100) {
     return -1;
   }
   v = ((((value.A >>> 0) - 4294967196) >>> 0) & 0xff) >>> 0;
@@ -342,7 +342,7 @@ function writeBenchPacketFlatChecked(value, view) {
     hi = 0;
     sb -= 64;
   }
-  if (!Number.isInteger(value.B) || value.B < 0 || value.B > 65535) { // out-of-contract writes are refused, not wrapped
+  if (!Number.isInteger(value.B) || value.B < 0 || value.B > 65535) {
     return -1;
   }
   v = ((value.B) & 0xffff) >>> 0;
@@ -362,7 +362,7 @@ function writeBenchPacketFlatChecked(value, view) {
     hi = 0;
     sb -= 64;
   }
-  if (!Number.isInteger(value.C) || value.C < -1000000 || value.C > 1000000) { // out-of-contract writes are refused, not wrapped
+  if (!Number.isInteger(value.C) || value.C < -1000000 || value.C > 1000000) {
     return -1;
   }
   v = ((((value.C >>> 0) - 4293967296) >>> 0) & 0x1fffff) >>> 0;
@@ -953,7 +953,7 @@ function writeBenchIntsFlatProduction(value, view) {
 function writeBenchIntsFlatChecked(value, view) {
   let v = 0, s = 0;
   let lo = 0, hi = 0, sb = 0, wi = 0;
-  if (!Number.isInteger(value.F0) || value.F0 < -100 || value.F0 > 100) { // out-of-contract writes are refused, not wrapped
+  if (!Number.isInteger(value.F0) || value.F0 < -100 || value.F0 > 100) {
     return -1;
   }
   v = ((((value.F0 >>> 0) - 4294967196) >>> 0) & 0xff) >>> 0;
@@ -973,7 +973,7 @@ function writeBenchIntsFlatChecked(value, view) {
     hi = 0;
     sb -= 64;
   }
-  if (!Number.isInteger(value.F1) || value.F1 < 0 || value.F1 > 65535) { // out-of-contract writes are refused, not wrapped
+  if (!Number.isInteger(value.F1) || value.F1 < 0 || value.F1 > 65535) {
     return -1;
   }
   v = ((value.F1) & 0xffff) >>> 0;
@@ -993,7 +993,7 @@ function writeBenchIntsFlatChecked(value, view) {
     hi = 0;
     sb -= 64;
   }
-  if (!Number.isInteger(value.F2) || value.F2 < -1000000 || value.F2 > 1000000) { // out-of-contract writes are refused, not wrapped
+  if (!Number.isInteger(value.F2) || value.F2 < -1000000 || value.F2 > 1000000) {
     return -1;
   }
   v = ((((value.F2 >>> 0) - 4293967296) >>> 0) & 0x1fffff) >>> 0;
@@ -1013,7 +1013,7 @@ function writeBenchIntsFlatChecked(value, view) {
     hi = 0;
     sb -= 64;
   }
-  if (!Number.isInteger(value.F3) || value.F3 < 0 || value.F3 > 3) { // out-of-contract writes are refused, not wrapped
+  if (!Number.isInteger(value.F3) || value.F3 < 0 || value.F3 > 3) {
     return -1;
   }
   v = ((value.F3) & 0x3) >>> 0;
@@ -1033,7 +1033,7 @@ function writeBenchIntsFlatChecked(value, view) {
     hi = 0;
     sb -= 64;
   }
-  if (!Number.isInteger(value.F4) || value.F4 < -15 || value.F4 > 15) { // out-of-contract writes are refused, not wrapped
+  if (!Number.isInteger(value.F4) || value.F4 < -15 || value.F4 > 15) {
     return -1;
   }
   v = ((((value.F4 >>> 0) - 4294967281) >>> 0) & 0x1f) >>> 0;
@@ -1053,7 +1053,7 @@ function writeBenchIntsFlatChecked(value, view) {
     hi = 0;
     sb -= 64;
   }
-  if (!Number.isInteger(value.F5) || value.F5 < 0 || value.F5 > 1000) { // out-of-contract writes are refused, not wrapped
+  if (!Number.isInteger(value.F5) || value.F5 < 0 || value.F5 > 1000) {
     return -1;
   }
   v = ((value.F5) & 0x3ff) >>> 0;
@@ -1073,7 +1073,7 @@ function writeBenchIntsFlatChecked(value, view) {
     hi = 0;
     sb -= 64;
   }
-  if (!Number.isInteger(value.F6) || value.F6 < -2048 || value.F6 > 2047) { // out-of-contract writes are refused, not wrapped
+  if (!Number.isInteger(value.F6) || value.F6 < -2048 || value.F6 > 2047) {
     return -1;
   }
   v = ((((value.F6 >>> 0) - 4294965248) >>> 0) & 0xfff) >>> 0;
@@ -1093,7 +1093,7 @@ function writeBenchIntsFlatChecked(value, view) {
     hi = 0;
     sb -= 64;
   }
-  if (!Number.isInteger(value.F7) || value.F7 < 0 || value.F7 > 255) { // out-of-contract writes are refused, not wrapped
+  if (!Number.isInteger(value.F7) || value.F7 < 0 || value.F7 > 255) {
     return -1;
   }
   v = ((value.F7) & 0xff) >>> 0;
@@ -1113,7 +1113,7 @@ function writeBenchIntsFlatChecked(value, view) {
     hi = 0;
     sb -= 64;
   }
-  if (!Number.isInteger(value.F8) || value.F8 < -600000 || value.F8 > 600000) { // out-of-contract writes are refused, not wrapped
+  if (!Number.isInteger(value.F8) || value.F8 < -600000 || value.F8 > 600000) {
     return -1;
   }
   v = ((((value.F8 >>> 0) - 4294367296) >>> 0) & 0x1fffff) >>> 0;
@@ -1133,7 +1133,7 @@ function writeBenchIntsFlatChecked(value, view) {
     hi = 0;
     sb -= 64;
   }
-  if (!Number.isInteger(value.F9) || value.F9 < 0 || value.F9 > 100) { // out-of-contract writes are refused, not wrapped
+  if (!Number.isInteger(value.F9) || value.F9 < 0 || value.F9 > 100) {
     return -1;
   }
   v = ((value.F9) & 0x7f) >>> 0;
@@ -1917,7 +1917,7 @@ function writeBenchMixedFlatChecked(value, view) {
   let v = 0, s = 0;
   let bg = 0n;
   let lo = 0, hi = 0, sb = 0, wi = 0;
-  if (!Number.isInteger(value.Sequence) || value.Sequence < 0 || value.Sequence > 65535) { // out-of-contract writes are refused, not wrapped
+  if (!Number.isInteger(value.Sequence) || value.Sequence < 0 || value.Sequence > 65535) {
     return -1;
   }
   v = ((value.Sequence) & 0xffff) >>> 0;
@@ -1971,7 +1971,7 @@ function writeBenchMixedFlatChecked(value, view) {
     hi = 0;
     sb -= 64;
   }
-  if (!Number.isInteger(value.PosX) || value.PosX < -16384 || value.PosX > 16383) { // out-of-contract writes are refused, not wrapped
+  if (!Number.isInteger(value.PosX) || value.PosX < -16384 || value.PosX > 16383) {
     return -1;
   }
   v = ((((value.PosX >>> 0) - 4294950912) >>> 0) & 0x7fff) >>> 0;
@@ -1991,7 +1991,7 @@ function writeBenchMixedFlatChecked(value, view) {
     hi = 0;
     sb -= 64;
   }
-  if (!Number.isInteger(value.PosY) || value.PosY < -16384 || value.PosY > 16383) { // out-of-contract writes are refused, not wrapped
+  if (!Number.isInteger(value.PosY) || value.PosY < -16384 || value.PosY > 16383) {
     return -1;
   }
   v = ((((value.PosY >>> 0) - 4294950912) >>> 0) & 0x7fff) >>> 0;
@@ -2011,7 +2011,7 @@ function writeBenchMixedFlatChecked(value, view) {
     hi = 0;
     sb -= 64;
   }
-  if (!Number.isInteger(value.PosZ) || value.PosZ < -16384 || value.PosZ > 16383) { // out-of-contract writes are refused, not wrapped
+  if (!Number.isInteger(value.PosZ) || value.PosZ < -16384 || value.PosZ > 16383) {
     return -1;
   }
   v = ((((value.PosZ >>> 0) - 4294950912) >>> 0) & 0x7fff) >>> 0;
@@ -2117,7 +2117,7 @@ function writeBenchMixedFlatChecked(value, view) {
     hi = 0;
     sb -= 64;
   }
-  if (!Number.isInteger(value.Weapon) || value.Weapon < 0 || value.Weapon > 15) { // out-of-contract writes are refused, not wrapped
+  if (!Number.isInteger(value.Weapon) || value.Weapon < 0 || value.Weapon > 15) {
     return -1;
   }
   v = ((value.Weapon) & 0xf) >>> 0;

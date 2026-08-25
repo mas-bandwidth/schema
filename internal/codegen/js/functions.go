@@ -118,8 +118,7 @@ func (g *gen) emitStructFunctions(st *ir.Struct) {
 // reference types, so this is the C# in-place-zero idiom: branch zeroing
 // and ReadMessage's storage reset both go through here.
 func (g *gen) emitZeroFunction(st *ir.Struct) {
-	g.pf("// Zero%s resets value to the §5 ZERO form — all-zero storage; specified\n", st.Name)
-	g.pf("// defaults live in construction only and are NOT reapplied here.\n")
+	g.pf("// The §5 zero form: all-zero storage; specified defaults live only in construction.\n")
 	g.pf("export function Zero%s(value) {\n", st.Name)
 	if len(st.Fields) == 0 {
 		g.pf("  // empty body — nothing to reset (SPEC §4.6)\n")
@@ -430,7 +429,7 @@ func (g *gen) emitWriteField(f *ir.Field, ind string) {
 			count := name + "Count"
 			g.emitWriteFoldedNum(count, fmt.Sprintf("%d", f.ArrayMin), bound,
 				big.NewInt(f.ArrayMin), big.NewInt(f.ArrayBound), true,
-				" // the count guards the loop (§6.3); out-of-contract writes are refused", ind)
+				" // the count guards the loop (§6.3)", ind)
 			g.pf("%sfor (let i = 0; i < %s; i++) {\n", ind, count)
 		} else {
 			// the SCHEMA bound, never the storage's length: reassigned-short
@@ -445,15 +444,14 @@ func (g *gen) emitWriteField(f *ir.Field, ind string) {
 }
 
 func (g *gen) emitWriteScalar(f *ir.Field, name, ind string) {
-	const refuse = " // out-of-contract writes are refused, not wrapped"
-	switch f.Type.Kind {
+		switch f.Type.Kind {
 	case ir.TFixed:
 		if f.IntMin.Cmp(f.IntMax) == 0 {
 			// degenerate range: ZERO bits — the folded range refusal and no
 			// wire call at all (SPEC §4.6, decided 2026-08-15). The one legal
 			// raw is min << F, an exact literal in either value domain.
 			rawMin := new(big.Int).Lsh(f.IntMin, uint(f.Type.FracBits))
-			g.pf("%sif (%s !== %s) {%s\n%s  return false;\n%s}\n", ind, name, g.rawLit(f.Type, rawMin), refuse, ind, ind)
+			g.pf("%sif (%s !== %s) {%s\n%s  return false;\n%s}\n", ind, name, g.rawLit(f.Type, rawMin), "", ind, ind)
 			return
 		}
 		// the Q format and whole-unit bounds are compile-time constants of
@@ -475,7 +473,7 @@ func (g *gen) emitWriteScalar(f *ir.Field, name, ind string) {
 			if f.HasIntRange {
 				if f.IntMin.Cmp(f.IntMax) == 0 {
 					// degenerate range: ZERO bits — refusal only (SPEC §4.6)
-					g.pf("%sif (%s !== %s) {%s\n%s  return false;\n%s}\n", ind, name, bigLit(f.IntMin), refuse, ind, ind)
+					g.pf("%sif (%s !== %s) {%s\n%s  return false;\n%s}\n", ind, name, bigLit(f.IntMin), "", ind, ind)
 					return
 				}
 				// int128 is ALWAYS ranged (SPEC §4.3): offset from min —
@@ -500,11 +498,11 @@ func (g *gen) emitWriteScalar(f *ir.Field, name, ind string) {
 					// the call family's domain first — the C# (int) cast's
 					// twin — then guard in the Number domain
 					g.pf("%s{\n%s  const rangeValue = Number(BigInt.asIntN(32, %s));\n", ind, ind, name)
-					g.emitWriteFoldedNum("rangeValue", lo, hi, f.IntMin, f.IntMax, false, refuse, ind+"  ")
+					g.emitWriteFoldedNum("rangeValue", lo, hi, f.IntMin, f.IntMax, false, "", ind+"  ")
 					g.pf("%s}\n", ind)
 					return
 				}
-				g.emitWriteFoldedNum(name, lo, hi, f.IntMin, f.IntMax, true, refuse, ind)
+				g.emitWriteFoldedNum(name, lo, hi, f.IntMin, f.IntMax, true, "", ind)
 			case "int64":
 				if f.Type.Width <= 32 {
 					// Number storage on the int64 path: only uint32 storage
@@ -513,13 +511,13 @@ func (g *gen) emitWriteScalar(f *ir.Field, name, ind string) {
 					// the double domain, no BigInt needed. Byte-identical: the
 					// same offset in the same bit count.
 					lo, hi := g.rangeArgsNum(f)
-					g.emitWriteFoldedNum(name, lo, hi, f.IntMin, f.IntMax, true, refuse, ind)
+					g.emitWriteFoldedNum(name, lo, hi, f.IntMin, f.IntMax, true, "", ind)
 					return
 				}
 				lo, hi := g.rangeArgsBig(f)
 				sMin, sMax := storageBoundsBig(f.Type)
 				g.emitWriteFoldedBig(name, lo, hi, f.IntMin, f.IntMax,
-					f.IntMin.Cmp(sMin) > 0, f.IntMax.Cmp(sMax) < 0, refuse, ind)
+					f.IntMin.Cmp(sMin) > 0, f.IntMax.Cmp(sMax) < 0, "", ind)
 			default:
 				// full-range unsigned: raw offset bits (uint64 storage only —
 				// no narrower storage can hold a range past int64); vacuous
@@ -527,7 +525,7 @@ func (g *gen) emitWriteScalar(f *ir.Field, name, ind string) {
 				// two's-complement wrap C# ulong storage performs by type
 				lo, hi := g.rangeArgsBig(f)
 				g.emitWriteFoldedBig(name, lo, hi, f.IntMin, f.IntMax,
-					f.IntMin.Sign() != 0, f.IntMax.Cmp(maxUint64) != 0, refuse, ind)
+					f.IntMin.Sign() != 0, f.IntMax.Cmp(maxUint64) != 0, "", ind)
 			}
 			return
 		}

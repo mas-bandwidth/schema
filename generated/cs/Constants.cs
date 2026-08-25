@@ -3,6 +3,12 @@
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
 // package example — protocol id 0xbc05d83a8135cdb9
+//
+// Wire functions return bool — the C++-style early-out. A schema validation
+// failure (a wrong wire constant, nonzero reserved bits, an interior null)
+// returns false WITHOUT latching; stream failures latch on stream.Error —
+// the runtime's own sticky latch. Callers get bool always; Error tells the
+// two apart.
 
 namespace Example
 {

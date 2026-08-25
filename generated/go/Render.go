@@ -36,7 +36,7 @@ func WriteRenderSprite(stream *serialize.WriteStream, value *RenderSprite) error
 	}
 	{
 		enumValue := int32(value.Team)
-		if enumValue < 0 || enumValue > 2 { // the runtime range refusal, folded (SPEC §5)
+		if enumValue < 0 || enumValue > 2 {
 			return serialize.ErrValueOutOfRange
 		}
 		{
@@ -80,7 +80,7 @@ const RenderBlockMaxBytes = 1120
 func WriteRenderBlock(stream *serialize.WriteStream, value *RenderBlock) error {
 	stream.SerializeBits(&value.WorkerIndex, 32)
 	stream.SerializeBits(&value.SpriteCountHint, 32)
-	if value.SpritesCount < 0 || value.SpritesCount > RenderBlockMaxSprites { // the runtime range refusal, folded (SPEC §5)
+	if value.SpritesCount < 0 || value.SpritesCount > RenderBlockMaxSprites {
 		return serialize.ErrValueOutOfRange
 	}
 	{

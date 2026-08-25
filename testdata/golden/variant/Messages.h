@@ -41,7 +41,7 @@ struct Test {
 };
 
 inline constexpr int64_t TestMaxBits = 46; // longest wire path; align pads at worst case (SPEC §6.1)
-inline constexpr int64_t TestMaxBytes = 8; // rounded up to the 8-byte write-buffer granularity; a read buffer's allocation must extend at least 8 bytes past the data — the reader loads 64-bit windows
+inline constexpr int64_t TestMaxBytes = 8; // 8-byte write granularity; read slack per the contract above
 
 // message Block
 struct Block {
@@ -50,7 +50,7 @@ struct Block {
 };
 
 inline constexpr int64_t BlockMaxBits = 16018; // longest wire path; align pads at worst case (SPEC §6.1)
-inline constexpr int64_t BlockMaxBytes = 2008; // rounded up to the 8-byte write-buffer granularity; a read buffer's allocation must extend at least 8 bytes past the data — the reader loads 64-bit windows
+inline constexpr int64_t BlockMaxBytes = 2008; // 8-byte write granularity; read slack per the contract above
 
 // message Chat
 struct Chat {
@@ -59,7 +59,7 @@ struct Chat {
 };
 
 inline constexpr int64_t ChatMaxBits = 2064; // longest wire path; align pads at worst case (SPEC §6.1)
-inline constexpr int64_t ChatMaxBytes = 264; // rounded up to the 8-byte write-buffer granularity; a read buffer's allocation must extend at least 8 bytes past the data — the reader loads 64-bit windows
+inline constexpr int64_t ChatMaxBytes = 264; // 8-byte write granularity; read slack per the contract above
 
 // message Synchronize
 struct Synchronize {
@@ -68,7 +68,7 @@ struct Synchronize {
 };
 
 inline constexpr int64_t SynchronizeMaxBits = 80; // longest wire path; align pads at worst case (SPEC §6.1)
-inline constexpr int64_t SynchronizeMaxBytes = 16; // rounded up to the 8-byte write-buffer granularity; a read buffer's allocation must extend at least 8 bytes past the data — the reader loads 64-bit windows
+inline constexpr int64_t SynchronizeMaxBytes = 16; // 8-byte write granularity; read slack per the contract above
 
 // message Timescale
 struct Timescale {
@@ -78,11 +78,11 @@ struct Timescale {
 };
 
 inline constexpr int64_t TimescaleMaxBits = 128; // longest wire path; align pads at worst case (SPEC §6.1)
-inline constexpr int64_t TimescaleMaxBytes = 16; // rounded up to the 8-byte write-buffer granularity; a read buffer's allocation must extend at least 8 bytes past the data — the reader loads 64-bit windows
+inline constexpr int64_t TimescaleMaxBytes = 16; // 8-byte write granularity; read slack per the contract above
 
 // The message-level bound: the tag plus the largest message (SPEC §6.1)
 inline constexpr int64_t MessageMaxBits = 16021;
-inline constexpr int64_t MessageMaxBytes = 2008; // rounded up to the 8-byte write-buffer granularity; a read buffer's allocation must extend at least 8 bytes past the data — the reader loads 64-bit windows
+inline constexpr int64_t MessageMaxBytes = 2008; // 8-byte write granularity; read slack per the contract above
 
 // The message value: index == wire tag (std::monostate is None = 0, then each
 // message in tag order). Inline storage, no heap, trivially copyable.

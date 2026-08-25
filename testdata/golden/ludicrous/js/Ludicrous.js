@@ -4,22 +4,18 @@
 // AGPL-3.0, its output is not.
 // package ludicrous — protocol id 0xa925c86b46058512
 //
-// Storage members are PascalCase via the same mapping as the Go target, so
-// the checker's collision registry covers JS for free. Wire functions return
-// bool — the C++-style early-out. A schema validation failure (a wrong wire
-// constant, nonzero reserved bits, an out-of-contract write) returns false
-// WITHOUT latching; stream failures latch on stream.error — the runtime's own
-// sticky latch. Callers get bool always; error tells the two apart.
+// Wire functions return bool — the C++-style early-out. A schema validation
+// failure (a wrong wire constant, nonzero reserved bits, an out-of-contract
+// write) returns false WITHOUT latching; stream failures latch on
+// stream.error — the runtime's own sticky latch. Callers get bool always;
+// error tells the two apart.
 //
 // Number storage for widths of 32 bits or fewer, BigInt for 64 and 128 —
 // the serialize.js value-domain seam. Checked/production comes from the
 // stream object; generated code never reads NODE_ENV.
 
-// Scratch holders for the runtime's {value} refs (streams.js has no ref
-// parameters). Module scope is safe — JavaScript is single threaded per
-// realm and a holder is consumed in the same call that fills it, the
-// runtime's own FLOAT_SCRATCH argument; generated code never holds one
-// across a nested Write/Read call.
+// Scratch holders for the runtime's {value} refs — single threaded per
+// realm, always consumed in the same call that fills them.
 const NUMBER_SCRATCH = { value: 0 };
 const BIGINT_SCRATCH = { value: 0n };
 const BOOL_SCRATCH = { value: false };
@@ -89,8 +85,7 @@ export class FixedProbe {
 export const FixedProbeMaxBits = 156;
 export const FixedProbeMaxBytes = 24;
 
-// ZeroFixedProbe resets value to the §5 ZERO form — all-zero storage; specified
-// defaults live in construction only and are NOT reapplied here.
+// The §5 zero form: all-zero storage; specified defaults live only in construction.
 export function ZeroFixedProbe(value) {
   value.Angle = 0;
   value.Position = 0n;
@@ -169,8 +164,7 @@ export class UnsignedProbe {
 export const UnsignedProbeMaxBits = 196;
 export const UnsignedProbeMaxBytes = 32;
 
-// ZeroUnsignedProbe resets value to the §5 ZERO form — all-zero storage; specified
-// defaults live in construction only and are NOT reapplied here.
+// The §5 zero form: all-zero storage; specified defaults live only in construction.
 export function ZeroUnsignedProbe(value) {
   value.Angle = 0;
   value.Span = 0n;
@@ -204,7 +198,7 @@ export function WriteUnsignedProbe(stream, value) {
       return false;
     }
   }
-  if (value.Locked !== 196608) { // out-of-contract writes are refused, not wrapped
+  if (value.Locked !== 196608) {
     return false;
   }
   NUMBER_SCRATCH.value = value.Tail;
@@ -251,8 +245,8 @@ export class WideProbe {
     this.EntityId = 0n;
     this.Energy = 0n; // wire [-5000000000, 5000000000]
     this.Flux = 0n; // wire [-1267650600228229401496703205376, 1267650600228229401496703205376]
-    this.Bias = -250n; // = -250n at construction; Zero* gives the §5 zero form; wire [-1000, 1000]
-    this.Seed = 36893488147419103232n; // = 36893488147419103232n at construction; Zero* gives the §5 zero form
+    this.Bias = -250n; // specified default at construction; Zero* gives the §5 zero form; wire [-1000, 1000]
+    this.Seed = 36893488147419103232n; // specified default at construction; Zero* gives the §5 zero form
   }
 }
 
@@ -261,8 +255,7 @@ export class WideProbe {
 export const WideProbeMaxBits = 403;
 export const WideProbeMaxBytes = 56;
 
-// ZeroWideProbe resets value to the §5 ZERO form — all-zero storage; specified
-// defaults live in construction only and are NOT reapplied here.
+// The §5 zero form: all-zero storage; specified defaults live only in construction.
 export function ZeroWideProbe(value) {
   value.EntityId = 0n;
   value.Energy = 0n;
@@ -346,8 +339,7 @@ export class LudicrousState {
 export const LudicrousStateMaxBits = 1205;
 export const LudicrousStateMaxBytes = 152;
 
-// ZeroLudicrousState resets value to the §5 ZERO form — all-zero storage; specified
-// defaults live in construction only and are NOT reapplied here.
+// The §5 zero form: all-zero storage; specified defaults live only in construction.
 export function ZeroLudicrousState(value) {
   value.Mode = DriveMode.None;
   ZeroFixedProbe(value.Probe);
@@ -372,7 +364,7 @@ export function WriteLudicrousState(stream, value) {
   if (!WriteWideProbe(stream, value.Wide)) {
     return false;
   }
-  if (!Number.isInteger(value.KeysCount) || value.KeysCount < 0 || value.KeysCount > 4) { // the count guards the loop (§6.3); out-of-contract writes are refused
+  if (!Number.isInteger(value.KeysCount) || value.KeysCount < 0 || value.KeysCount > 4) { // the count guards the loop (§6.3)
     return false;
   }
   NUMBER_SCRATCH.value = value.KeysCount;
@@ -449,8 +441,7 @@ export class DegenerateProbe {
 export const DegenerateProbeMaxBits = 8;
 export const DegenerateProbeMaxBytes = 8;
 
-// ZeroDegenerateProbe resets value to the §5 ZERO form — all-zero storage; specified
-// defaults live in construction only and are NOT reapplied here.
+// The §5 zero form: all-zero storage; specified defaults live only in construction.
 export function ZeroDegenerateProbe(value) {
   value.LockedFixed = 0;
   value.LockedInt = 0;
@@ -459,13 +450,13 @@ export function ZeroDegenerateProbe(value) {
 }
 
 export function WriteDegenerateProbe(stream, value) {
-  if (value.LockedFixed !== -196608) { // out-of-contract writes are refused, not wrapped
+  if (value.LockedFixed !== -196608) {
     return false;
   }
-  if (!Number.isInteger(value.LockedInt) || value.LockedInt < 7 || value.LockedInt > 7) { // out-of-contract writes are refused, not wrapped
+  if (!Number.isInteger(value.LockedInt) || value.LockedInt < 7 || value.LockedInt > 7) {
     return false;
   }
-  if (value.LockedWide !== -12345678901234n) { // out-of-contract writes are refused, not wrapped
+  if (value.LockedWide !== -12345678901234n) {
     return false;
   }
   NUMBER_SCRATCH.value = value.Tail;
@@ -486,8 +477,7 @@ export function ReadDegenerateProbe(stream, value) {
   return true;
 }
 
-// type FixedVec [vec3] — the tag is user-chosen and inert in v1; the delta pass
-// claims tags and assigns actions (SPEC §4.2, Type tags)
+// type FixedVec [vec3] — tags are user-chosen and inert in v1 (SPEC §4.2, Type tags)
 export class FixedVec {
   constructor() {
     this.X = 0n; // wire [-100000, 100000]
@@ -501,8 +491,7 @@ export class FixedVec {
 export const FixedVecMaxBits = 102;
 export const FixedVecMaxBytes = 16;
 
-// ZeroFixedVec resets value to the §5 ZERO form — all-zero storage; specified
-// defaults live in construction only and are NOT reapplied here.
+// The §5 zero form: all-zero storage; specified defaults live only in construction.
 export function ZeroFixedVec(value) {
   value.X = 0n;
   value.Y = 0n;
@@ -541,14 +530,13 @@ export function ReadFixedVec(stream, value) {
   return true;
 }
 
-// type FixedQuat [quat4] — the tag is user-chosen and inert in v1; the delta pass
-// claims tags and assigns actions (SPEC §4.2, Type tags)
+// type FixedQuat [quat4] — tags are user-chosen and inert in v1 (SPEC §4.2, Type tags)
 export class FixedQuat {
   constructor() {
     this.X = 0; // wire [-1, 1]
     this.Y = 0; // wire [-1, 1]
     this.Z = 0; // wire [-1, 1]
-    this.W = 1073741824; // = 1073741824 at construction; Zero* gives the §5 zero form; wire [-1, 1]
+    this.W = 1073741824; // specified default at construction; Zero* gives the §5 zero form; wire [-1, 1]
   }
 }
 
@@ -557,8 +545,7 @@ export class FixedQuat {
 export const FixedQuatMaxBits = 128;
 export const FixedQuatMaxBytes = 16;
 
-// ZeroFixedQuat resets value to the §5 ZERO form — all-zero storage; specified
-// defaults live in construction only and are NOT reapplied here.
+// The §5 zero form: all-zero storage; specified defaults live only in construction.
 export function ZeroFixedQuat(value) {
   value.X = 0;
   value.Y = 0;
@@ -614,7 +601,7 @@ export class BodyState {
     this.Position = new FixedVec();
     this.Rotation = new FixedQuat();
     this.Velocity = new FixedVec();
-    this.Spin = 0; //  | local — no wire
+    this.Spin = 0; // | local — no wire
   }
 }
 
@@ -791,49 +778,49 @@ export const NarrowBodyData_ShallowMaxBits = 228;
 export const NarrowBodyData_ShallowMaxBytes = 32; // rounded up to the 8-byte write-buffer granularity
 
 export function WriteNarrowBodyData_Shallow(stream, value) {
-  if (!Number.isInteger(value.PositionX) || value.PositionX < -25600000 || value.PositionX > 25600000) { // out-of-contract writes are refused, not wrapped
+  if (!Number.isInteger(value.PositionX) || value.PositionX < -25600000 || value.PositionX > 25600000) {
     return false;
   }
   NUMBER_SCRATCH.value = ((value.PositionX >>> 0) - (-25600000 >>> 0)) >>> 0;
   if (!stream.serializeBits(NUMBER_SCRATCH, 26)) {
     return false;
   }
-  if (!Number.isInteger(value.PositionY) || value.PositionY < -25600000 || value.PositionY > 25600000) { // out-of-contract writes are refused, not wrapped
+  if (!Number.isInteger(value.PositionY) || value.PositionY < -25600000 || value.PositionY > 25600000) {
     return false;
   }
   NUMBER_SCRATCH.value = ((value.PositionY >>> 0) - (-25600000 >>> 0)) >>> 0;
   if (!stream.serializeBits(NUMBER_SCRATCH, 26)) {
     return false;
   }
-  if (!Number.isInteger(value.PositionZ) || value.PositionZ < -25600000 || value.PositionZ > 25600000) { // out-of-contract writes are refused, not wrapped
+  if (!Number.isInteger(value.PositionZ) || value.PositionZ < -25600000 || value.PositionZ > 25600000) {
     return false;
   }
   NUMBER_SCRATCH.value = ((value.PositionZ >>> 0) - (-25600000 >>> 0)) >>> 0;
   if (!stream.serializeBits(NUMBER_SCRATCH, 26)) {
     return false;
   }
-  if (!Number.isInteger(value.RotationX) || value.RotationX < -1024 || value.RotationX > 1024) { // out-of-contract writes are refused, not wrapped
+  if (!Number.isInteger(value.RotationX) || value.RotationX < -1024 || value.RotationX > 1024) {
     return false;
   }
   NUMBER_SCRATCH.value = ((value.RotationX >>> 0) - (-1024 >>> 0)) >>> 0;
   if (!stream.serializeBits(NUMBER_SCRATCH, 12)) {
     return false;
   }
-  if (!Number.isInteger(value.RotationY) || value.RotationY < -1024 || value.RotationY > 1024) { // out-of-contract writes are refused, not wrapped
+  if (!Number.isInteger(value.RotationY) || value.RotationY < -1024 || value.RotationY > 1024) {
     return false;
   }
   NUMBER_SCRATCH.value = ((value.RotationY >>> 0) - (-1024 >>> 0)) >>> 0;
   if (!stream.serializeBits(NUMBER_SCRATCH, 12)) {
     return false;
   }
-  if (!Number.isInteger(value.RotationZ) || value.RotationZ < -1024 || value.RotationZ > 1024) { // out-of-contract writes are refused, not wrapped
+  if (!Number.isInteger(value.RotationZ) || value.RotationZ < -1024 || value.RotationZ > 1024) {
     return false;
   }
   NUMBER_SCRATCH.value = ((value.RotationZ >>> 0) - (-1024 >>> 0)) >>> 0;
   if (!stream.serializeBits(NUMBER_SCRATCH, 12)) {
     return false;
   }
-  if (!Number.isInteger(value.RotationW) || value.RotationW < -1024 || value.RotationW > 1024) { // out-of-contract writes are refused, not wrapped
+  if (!Number.isInteger(value.RotationW) || value.RotationW < -1024 || value.RotationW > 1024) {
     return false;
   }
   NUMBER_SCRATCH.value = ((value.RotationW >>> 0) - (-1024 >>> 0)) >>> 0;

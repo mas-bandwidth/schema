@@ -65,7 +65,7 @@ struct ProbeBits {
 };
 
 inline constexpr int64_t ProbeBitsMaxBits = 202; // longest wire path; align pads at worst case (SPEC §6.1)
-inline constexpr int64_t ProbeBitsMaxBytes = 32; // rounded up to the 8-byte write-buffer granularity; a read buffer's allocation must extend at least 8 bytes past the data — the reader loads 64-bit windows
+inline constexpr int64_t ProbeBitsMaxBytes = 32; // 8-byte write granularity; read slack per the contract above
 
 // type ProbeSample
 struct ProbeSample {
@@ -92,7 +92,7 @@ struct ProbeSample {
 };
 
 inline constexpr int64_t ProbeSampleMaxBits = 276; // longest wire path; align pads at worst case (SPEC §6.1)
-inline constexpr int64_t ProbeSampleMaxBytes = 40; // rounded up to the 8-byte write-buffer granularity; a read buffer's allocation must extend at least 8 bytes past the data — the reader loads 64-bit windows
+inline constexpr int64_t ProbeSampleMaxBytes = 40; // 8-byte write granularity; read slack per the contract above
 
 // type ProbeRing
 struct ProbeRing {
@@ -100,7 +100,7 @@ struct ProbeRing {
 };
 
 inline constexpr int64_t ProbeRingMaxBits = 16; // longest wire path; align pads at worst case (SPEC §6.1)
-inline constexpr int64_t ProbeRingMaxBytes = 8; // rounded up to the 8-byte write-buffer granularity; a read buffer's allocation must extend at least 8 bytes past the data — the reader loads 64-bit windows
+inline constexpr int64_t ProbeRingMaxBytes = 8; // 8-byte write granularity; read slack per the contract above
 
 // type ProbeSlab
 struct ProbeSlab {
@@ -109,7 +109,7 @@ struct ProbeSlab {
 };
 
 inline constexpr int64_t ProbeSlabMaxBits = 15; // longest wire path; align pads at worst case (SPEC §6.1)
-inline constexpr int64_t ProbeSlabMaxBytes = 8; // rounded up to the 8-byte write-buffer granularity; a read buffer's allocation must extend at least 8 bytes past the data — the reader loads 64-bit windows
+inline constexpr int64_t ProbeSlabMaxBytes = 8; // 8-byte write granularity; read slack per the contract above
 
 // ProbeShapeType: union ProbeShape's tag — None = 0, then each variant in declared order (SPEC §4.8)
 enum class ProbeShapeType : uint8_t {
@@ -137,7 +137,7 @@ struct ProbeShape
 };
 
 inline constexpr int64_t ProbeShapeMaxBits = 18; // tag + the largest arm; None costs the tag only (SPEC §4.8)
-inline constexpr int64_t ProbeShapeMaxBytes = 8; // rounded up to the 8-byte write-buffer granularity; a read buffer's allocation must extend at least 8 bytes past the data — the reader loads 64-bit windows
+inline constexpr int64_t ProbeShapeMaxBytes = 8; // 8-byte write granularity; read slack per the contract above
 
 // type ProbeCollider
 struct ProbeCollider {
@@ -149,7 +149,7 @@ struct ProbeCollider {
 };
 
 inline constexpr int64_t ProbeColliderMaxBits = 82; // longest wire path; align pads at worst case (SPEC §6.1)
-inline constexpr int64_t ProbeColliderMaxBytes = 16; // rounded up to the 8-byte write-buffer granularity; a read buffer's allocation must extend at least 8 bytes past the data — the reader loads 64-bit windows
+inline constexpr int64_t ProbeColliderMaxBytes = 16; // 8-byte write granularity; read slack per the contract above
 
 // type ProbeConfig
 struct ProbeConfig {
@@ -158,7 +158,7 @@ struct ProbeConfig {
 };
 
 inline constexpr int64_t ProbeConfigMaxBits = 36; // longest wire path; align pads at worst case (SPEC §6.1)
-inline constexpr int64_t ProbeConfigMaxBytes = 8; // rounded up to the 8-byte write-buffer granularity; a read buffer's allocation must extend at least 8 bytes past the data — the reader loads 64-bit windows
+inline constexpr int64_t ProbeConfigMaxBytes = 8; // 8-byte write granularity; read slack per the contract above
 
 // type ProbeArray
 struct ProbeArray {
@@ -167,7 +167,7 @@ struct ProbeArray {
 };
 
 inline constexpr int64_t ProbeArrayMaxBits = 588; // longest wire path; align pads at worst case (SPEC §6.1)
-inline constexpr int64_t ProbeArrayMaxBytes = 80; // rounded up to the 8-byte write-buffer granularity; a read buffer's allocation must extend at least 8 bytes past the data — the reader loads 64-bit windows
+inline constexpr int64_t ProbeArrayMaxBytes = 80; // 8-byte write granularity; read slack per the contract above
 
 // type ProbeReport
 struct ProbeReport {
@@ -177,7 +177,7 @@ struct ProbeReport {
 };
 
 inline constexpr int64_t ProbeReportMaxBits = 141; // longest wire path; align pads at worst case (SPEC §6.1)
-inline constexpr int64_t ProbeReportMaxBytes = 24; // rounded up to the 8-byte write-buffer granularity; a read buffer's allocation must extend at least 8 bytes past the data — the reader loads 64-bit windows
+inline constexpr int64_t ProbeReportMaxBytes = 24; // 8-byte write granularity; read slack per the contract above
 
 // type TestData
 struct TestData {
@@ -207,7 +207,7 @@ struct TestData {
 };
 
 inline constexpr int64_t TestDataMaxBits = 2735; // longest wire path; align pads at worst case (SPEC §6.1)
-inline constexpr int64_t TestDataMaxBytes = 344; // rounded up to the 8-byte write-buffer granularity; a read buffer's allocation must extend at least 8 bytes past the data — the reader loads 64-bit windows
+inline constexpr int64_t TestDataMaxBytes = 344; // 8-byte write granularity; read slack per the contract above
 
 // type CompressedProbe
 struct CompressedProbe {
@@ -216,6 +216,6 @@ struct CompressedProbe {
 };
 
 inline constexpr int64_t CompressedProbeMaxBits = 24; // longest wire path; align pads at worst case (SPEC §6.1)
-inline constexpr int64_t CompressedProbeMaxBytes = 8; // rounded up to the 8-byte write-buffer granularity; a read buffer's allocation must extend at least 8 bytes past the data — the reader loads 64-bit windows
+inline constexpr int64_t CompressedProbeMaxBytes = 8; // 8-byte write granularity; read slack per the contract above
 
 } // namespace example

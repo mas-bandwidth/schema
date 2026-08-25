@@ -203,7 +203,7 @@ const RealPacketMaxBits = 1810
 const RealPacketMaxBytes = 232
 
 func WriteRealPacket(stream *serialize.WriteStream, value *RealPacket) error {
-	if value.F001Int < -805495 || value.F001Int > 805495 { // the runtime range refusal, folded (SPEC §5)
+	if value.F001Int < -805495 || value.F001Int > 805495 {
 		return serialize.ErrValueOutOfRange
 	}
 	{
@@ -211,7 +211,7 @@ func WriteRealPacket(stream *serialize.WriteStream, value *RealPacket) error {
 		stream.SerializeBits(&offsetValue, 21)
 	}
 	stream.SerializeFloat64(&value.F002F64)
-	if value.F003Int < -835897 || value.F003Int > 835897 { // the runtime range refusal, folded (SPEC §5)
+	if value.F003Int < -835897 || value.F003Int > 835897 {
 		return serialize.ErrValueOutOfRange
 	}
 	{
@@ -230,7 +230,7 @@ func WriteRealPacket(stream *serialize.WriteStream, value *RealPacket) error {
 	}
 	{
 		rangeValue := int32(value.F005Uint)
-		if rangeValue < 0 || rangeValue > 7316 { // the runtime range refusal, folded (SPEC §5)
+		if rangeValue < 0 || rangeValue > 7316 {
 			return serialize.ErrValueOutOfRange
 		}
 		{
@@ -240,7 +240,7 @@ func WriteRealPacket(stream *serialize.WriteStream, value *RealPacket) error {
 	}
 	{
 		rangeValue := int32(value.F006Int)
-		if rangeValue < -1513 || rangeValue > 1513 { // the runtime range refusal, folded (SPEC §5)
+		if rangeValue < -1513 || rangeValue > 1513 {
 			return serialize.ErrValueOutOfRange
 		}
 		{
@@ -252,7 +252,7 @@ func WriteRealPacket(stream *serialize.WriteStream, value *RealPacket) error {
 	stream.SerializeBits64(&value.F008U64, 64)
 	{
 		rangeValue := int32(value.F009Int)
-		if rangeValue < -22 || rangeValue > 22 { // the runtime range refusal, folded (SPEC §5)
+		if rangeValue < -22 || rangeValue > 22 {
 			return serialize.ErrValueOutOfRange
 		}
 		{
@@ -267,7 +267,7 @@ func WriteRealPacket(stream *serialize.WriteStream, value *RealPacket) error {
 		stream.SerializeFloat32(&value.F013F32)
 		{
 			rangeValue := int32(value.F014Uint)
-			if rangeValue < 0 || rangeValue > 775 { // the runtime range refusal, folded (SPEC §5)
+			if rangeValue < 0 || rangeValue > 775 {
 				return serialize.ErrValueOutOfRange
 			}
 			{
@@ -277,7 +277,7 @@ func WriteRealPacket(stream *serialize.WriteStream, value *RealPacket) error {
 		}
 		{
 			rangeValue := int32(value.F015Int)
-			if rangeValue < -21 || rangeValue > 21 { // the runtime range refusal, folded (SPEC §5)
+			if rangeValue < -21 || rangeValue > 21 {
 				return serialize.ErrValueOutOfRange
 			}
 			{
@@ -291,7 +291,7 @@ func WriteRealPacket(stream *serialize.WriteStream, value *RealPacket) error {
 		}
 		{
 			rangeValue := int32(value.F017Uint)
-			if rangeValue < 0 || rangeValue > 4606 { // the runtime range refusal, folded (SPEC §5)
+			if rangeValue < 0 || rangeValue > 4606 {
 				return serialize.ErrValueOutOfRange
 			}
 			{
@@ -302,7 +302,7 @@ func WriteRealPacket(stream *serialize.WriteStream, value *RealPacket) error {
 	}
 	{
 		rangeValue := int32(value.F018Int)
-		if rangeValue < -834 || rangeValue > 834 { // the runtime range refusal, folded (SPEC §5)
+		if rangeValue < -834 || rangeValue > 834 {
 			return serialize.ErrValueOutOfRange
 		}
 		{
@@ -343,7 +343,7 @@ func WriteRealPacket(stream *serialize.WriteStream, value *RealPacket) error {
 	stream.SerializeBits(&value.F031Bits, 1)
 	{
 		rangeValue := int32(value.F032Int)
-		if rangeValue < -3 || rangeValue > 3 { // the runtime range refusal, folded (SPEC §5)
+		if rangeValue < -3 || rangeValue > 3 {
 			return serialize.ErrValueOutOfRange
 		}
 		{
@@ -353,7 +353,7 @@ func WriteRealPacket(stream *serialize.WriteStream, value *RealPacket) error {
 	}
 	{
 		rangeValue := int32(value.F033Uint)
-		if rangeValue < 0 || rangeValue > 142780 { // the runtime range refusal, folded (SPEC §5)
+		if rangeValue < 0 || rangeValue > 142780 {
 			return serialize.ErrValueOutOfRange
 		}
 		{
@@ -363,7 +363,7 @@ func WriteRealPacket(stream *serialize.WriteStream, value *RealPacket) error {
 	}
 	{
 		rangeValue := int32(value.F034Uint)
-		if rangeValue < 0 || rangeValue > 14149 { // the runtime range refusal, folded (SPEC §5)
+		if rangeValue < 0 || rangeValue > 14149 {
 			return serialize.ErrValueOutOfRange
 		}
 		{
@@ -374,7 +374,7 @@ func WriteRealPacket(stream *serialize.WriteStream, value *RealPacket) error {
 	stream.SerializeBits(&value.F035Bits, 9)
 	{
 		enumValue := int32(value.F036Enum)
-		if enumValue < 0 || enumValue > 5 { // the runtime range refusal, folded (SPEC §5)
+		if enumValue < 0 || enumValue > 5 {
 			return serialize.ErrValueOutOfRange
 		}
 		{
@@ -391,7 +391,7 @@ func WriteRealPacket(stream *serialize.WriteStream, value *RealPacket) error {
 	}
 	{
 		rangeValue := int32(value.F041Int)
-		if rangeValue < -55 || rangeValue > 55 { // the runtime range refusal, folded (SPEC §5)
+		if rangeValue < -55 || rangeValue > 55 {
 			return serialize.ErrValueOutOfRange
 		}
 		{
@@ -406,7 +406,7 @@ func WriteRealPacket(stream *serialize.WriteStream, value *RealPacket) error {
 		stream.SerializeBits(&value.F045Bits, 12)
 		{
 			rangeValue := int32(value.F046Uint)
-			if rangeValue < 0 || rangeValue > 76063 { // the runtime range refusal, folded (SPEC §5)
+			if rangeValue < 0 || rangeValue > 76063 {
 				return serialize.ErrValueOutOfRange
 			}
 			{
@@ -414,7 +414,7 @@ func WriteRealPacket(stream *serialize.WriteStream, value *RealPacket) error {
 				stream.SerializeBits(&offsetValue, 17)
 			}
 		}
-		if value.F047Int < -430976 || value.F047Int > 430976 { // the runtime range refusal, folded (SPEC §5)
+		if value.F047Int < -430976 || value.F047Int > 430976 {
 			return serialize.ErrValueOutOfRange
 		}
 		{
@@ -432,7 +432,7 @@ func WriteRealPacket(stream *serialize.WriteStream, value *RealPacket) error {
 		stream.SerializeBool(&value.F051Bool)
 		{
 			rangeValue := int32(value.F052Int)
-			if rangeValue < -57 || rangeValue > 57 { // the runtime range refusal, folded (SPEC §5)
+			if rangeValue < -57 || rangeValue > 57 {
 				return serialize.ErrValueOutOfRange
 			}
 			{
@@ -443,7 +443,7 @@ func WriteRealPacket(stream *serialize.WriteStream, value *RealPacket) error {
 		stream.SerializeFloat32(&value.F053F32)
 		{
 			rangeValue := int32(value.F054Int)
-			if rangeValue < -35 || rangeValue > 35 { // the runtime range refusal, folded (SPEC §5)
+			if rangeValue < -35 || rangeValue > 35 {
 				return serialize.ErrValueOutOfRange
 			}
 			{
@@ -455,7 +455,7 @@ func WriteRealPacket(stream *serialize.WriteStream, value *RealPacket) error {
 	stream.SerializeBool(&value.F055Bool)
 	{
 		rangeValue := int32(value.F056Int)
-		if rangeValue < -13 || rangeValue > 13 { // the runtime range refusal, folded (SPEC §5)
+		if rangeValue < -13 || rangeValue > 13 {
 			return serialize.ErrValueOutOfRange
 		}
 		{
@@ -465,7 +465,7 @@ func WriteRealPacket(stream *serialize.WriteStream, value *RealPacket) error {
 	}
 	{
 		rangeValue := int32(value.F057Int)
-		if rangeValue < -15 || rangeValue > 15 { // the runtime range refusal, folded (SPEC §5)
+		if rangeValue < -15 || rangeValue > 15 {
 			return serialize.ErrValueOutOfRange
 		}
 		{
@@ -488,7 +488,7 @@ func WriteRealPacket(stream *serialize.WriteStream, value *RealPacket) error {
 	}
 	{
 		rangeValue := int32(value.F062Uint)
-		if rangeValue < 0 || rangeValue > 503 { // the runtime range refusal, folded (SPEC §5)
+		if rangeValue < 0 || rangeValue > 503 {
 			return serialize.ErrValueOutOfRange
 		}
 		{
@@ -502,7 +502,7 @@ func WriteRealPacket(stream *serialize.WriteStream, value *RealPacket) error {
 	}
 	{
 		rangeValue := int32(value.F064Uint)
-		if rangeValue < 0 || rangeValue > 299 { // the runtime range refusal, folded (SPEC §5)
+		if rangeValue < 0 || rangeValue > 299 {
 			return serialize.ErrValueOutOfRange
 		}
 		{
@@ -547,7 +547,7 @@ func WriteRealPacket(stream *serialize.WriteStream, value *RealPacket) error {
 	stream.SerializeBits(&value.F069Bits, 11)
 	{
 		rangeValue := int32(value.F070Uint)
-		if rangeValue < 0 || rangeValue > 2 { // the runtime range refusal, folded (SPEC §5)
+		if rangeValue < 0 || rangeValue > 2 {
 			return serialize.ErrValueOutOfRange
 		}
 		{
@@ -577,7 +577,7 @@ func WriteRealPacket(stream *serialize.WriteStream, value *RealPacket) error {
 	}
 	{
 		rangeValue := int32(value.F073Int)
-		if rangeValue < -4 || rangeValue > 4 { // the runtime range refusal, folded (SPEC §5)
+		if rangeValue < -4 || rangeValue > 4 {
 			return serialize.ErrValueOutOfRange
 		}
 		{
@@ -590,7 +590,7 @@ func WriteRealPacket(stream *serialize.WriteStream, value *RealPacket) error {
 		stream.SerializeBits64(&value.F075U64, 64)
 		{
 			rangeValue := int32(value.F076Int)
-			if rangeValue < -26218 || rangeValue > 26218 { // the runtime range refusal, folded (SPEC §5)
+			if rangeValue < -26218 || rangeValue > 26218 {
 				return serialize.ErrValueOutOfRange
 			}
 			{
@@ -600,7 +600,7 @@ func WriteRealPacket(stream *serialize.WriteStream, value *RealPacket) error {
 		}
 		{
 			rangeValue := int32(value.F077Int)
-			if rangeValue < -17 || rangeValue > 17 { // the runtime range refusal, folded (SPEC §5)
+			if rangeValue < -17 || rangeValue > 17 {
 				return serialize.ErrValueOutOfRange
 			}
 			{
@@ -611,7 +611,7 @@ func WriteRealPacket(stream *serialize.WriteStream, value *RealPacket) error {
 		stream.SerializeBits(&value.F078Bits, 9)
 		{
 			rangeValue := int32(value.F079Uint)
-			if rangeValue < 0 || rangeValue > 17 { // the runtime range refusal, folded (SPEC §5)
+			if rangeValue < 0 || rangeValue > 17 {
 				return serialize.ErrValueOutOfRange
 			}
 			{
@@ -625,7 +625,7 @@ func WriteRealPacket(stream *serialize.WriteStream, value *RealPacket) error {
 	stream.SerializeBits(&value.F082Bits, 25)
 	{
 		enumValue := int32(value.F083Enum)
-		if enumValue < 0 || enumValue > 5 { // the runtime range refusal, folded (SPEC §5)
+		if enumValue < 0 || enumValue > 5 {
 			return serialize.ErrValueOutOfRange
 		}
 		{
@@ -640,7 +640,7 @@ func WriteRealPacket(stream *serialize.WriteStream, value *RealPacket) error {
 	stream.SerializeBits(&value.F085Bits, 21)
 	{
 		rangeValue := int32(value.F086Uint)
-		if rangeValue < 0 || rangeValue > 399 { // the runtime range refusal, folded (SPEC §5)
+		if rangeValue < 0 || rangeValue > 399 {
 			return serialize.ErrValueOutOfRange
 		}
 		{
@@ -651,7 +651,7 @@ func WriteRealPacket(stream *serialize.WriteStream, value *RealPacket) error {
 	stream.SerializeFloat64(&value.F087F64)
 	{
 		rangeValue := int32(value.F088Int)
-		if rangeValue < -694 || rangeValue > 694 { // the runtime range refusal, folded (SPEC §5)
+		if rangeValue < -694 || rangeValue > 694 {
 			return serialize.ErrValueOutOfRange
 		}
 		{
@@ -662,7 +662,7 @@ func WriteRealPacket(stream *serialize.WriteStream, value *RealPacket) error {
 	stream.SerializeBits64(&value.F089Bits, 48)
 	{
 		rangeValue := int32(value.F090Uint)
-		if rangeValue < 0 || rangeValue > 214 { // the runtime range refusal, folded (SPEC §5)
+		if rangeValue < 0 || rangeValue > 214 {
 			return serialize.ErrValueOutOfRange
 		}
 		{

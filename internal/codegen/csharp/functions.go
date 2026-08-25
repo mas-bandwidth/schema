@@ -58,22 +58,20 @@ func (g *gen) emitStructFunctions(st *ir.Struct) {
 // emitPair emits the Write/Read pair named pair over the C# type typ, honoring
 // the batch plan: a batched pair keeps its public stream signature but runs an
 // AggressiveInlining batch-form core against register-resident stream state
-// (serialize.cs WriteBatch/ReadBatch — PR #3's emitter follow-up); a pair
-// composed under a batched one gets the core beside its stream form. The two
-// laws the shape obeys — inline-only composition and per-type opt-in by
-// scalar density — are #3's measured rules; see batch.go for the density
-// threshold. Wire bytes and the error model are identical on every path.
+// (serialize.cs WriteBatch/ReadBatch); a pair composed under a batched one
+// gets the core beside its stream form. The two measured laws the shape
+// obeys: inline-only composition and per-type opt-in by scalar density — see
+// batch.go for the density threshold. Wire bytes and the error model are
+// identical on every path.
 func (g *gen) emitPair(pair, typ string, writeBody, readBody func()) {
 	batched := g.batched[pair]
 	if batched {
-		g.sf("// Write%s/Read%s run as a batch: the stream state lives in registers\n", pair, pair)
-		g.sf("// across the body's serialize calls and is stored back once at End —\n")
-		g.sf("// the tiny-message hot path (serialize.cs WriteBatch/ReadBatch). Same\n")
-		g.sf("// wire bytes, same validation, same latched-error model.\n")
+		g.sf("// batch form: stream state stays in registers across the body and End\n")
+		g.sf("// publishes it — same wire bytes, same validation, same error model.\n")
 		g.sf("public static bool Write%s(WriteStream stream, %s value)\n{\n", pair, typ)
 		g.sf("    WriteBatch batch = stream.BeginBatch();\n")
 		g.sf("    bool result = Write%sBatch(ref batch, value);\n", pair)
-		g.sf("    batch.End(); // on every path out — End publishes the state and the error\n")
+		g.sf("    batch.End();\n")
 		g.sf("    return result;\n}\n\n")
 	} else {
 		g.sf("public static bool Write%s(WriteStream stream, %s value)\n{\n", pair, typ)
@@ -92,7 +90,7 @@ func (g *gen) emitPair(pair, typ string, writeBody, readBody func()) {
 		g.sf("public static bool Read%s(ReadStream stream, %s value)\n{\n", pair, typ)
 		g.sf("    ReadBatch batch = stream.BeginBatch();\n")
 		g.sf("    bool result = Read%sBatch(ref batch, value);\n", pair)
-		g.sf("    batch.End(); // on every path out — End publishes the cursor and the error\n")
+		g.sf("    batch.End();\n")
 		g.sf("    return result;\n}\n\n")
 	} else {
 		g.sf("public static bool Read%s(ReadStream stream, %s value)\n{\n", pair, typ)
@@ -109,15 +107,14 @@ func (g *gen) emitPair(pair, typ string, writeBody, readBody func()) {
 	}
 }
 
-// emitCoreAttr marks a batch core INLINE-ONLY. Law (serialize.cs #3): a real
+// emitCoreAttr marks a batch core INLINE-ONLY. The law, measured: a real
 // call taking `ref WriteBatch` address-exposes the ref struct and
-// enregistration dies for the whole calling scope — measured 0.71x, slower
-// than no batch at all. Composition is core-to-core by ref, always inlined.
+// enregistration dies for the whole calling scope — 0.71x, slower than no
+// batch at all. Composition is core-to-core by ref, always inlined; the
+// emitted comment states the rule once per core without the numbers.
 func (g *gen) emitCoreAttr() {
 	g.needsCompiler = true
-	g.sf("// The batch-form core — INLINE-ONLY: a non-inlined call taking the batch by\n")
-	g.sf("// ref address-exposes it and enregistration dies (measured 0.71x, worse than\n")
-	g.sf("// no batch). Nested types compose core-to-core by ref, never via the stream.\n")
+	g.sf("// inline-only batch core — a real call would address-expose the batch\n")
 	g.sf("[MethodImpl(MethodImplOptions.AggressiveInlining)]\n")
 }
 
@@ -127,8 +124,7 @@ func (g *gen) emitCoreAttr() {
 // C++ target's memset: branch zeroing and ReadMessage's storage reset both go
 // through here.
 func (g *gen) emitZeroFunction(st *ir.Struct) {
-	g.sf("// Zero%s resets value to the §5 ZERO form — all-zero storage; specified\n", st.Name)
-	g.sf("// defaults live in construction only and are NOT reapplied here.\n")
+	g.sf("// The §5 zero form: all-zero storage; specified defaults live only in construction.\n")
 	g.sf("public static void Zero%s(%s value)\n{\n", st.Name, st.Name)
 	if len(st.Fields) == 0 {
 		g.sf("    _ = value; // empty body — nothing to reset (SPEC §4.6)\n")
@@ -460,7 +456,7 @@ func (g *gen) emitWriteFoldedInt(f *ir.Field, name, ind string) {
 	}
 	lo, hi := g.rangeArgs(f, typ)
 	g.emitWriteFoldedRange(name, lo, hi, f.IntMin, f.IntMax, wide, guardLo, guardHi,
-		" // out-of-contract writes are refused, not wrapped", ind)
+		"", ind)
 }
 
 // maxUint64 is 2^64 - 1, the top of unsigned-64 storage — the bound against
@@ -528,16 +524,16 @@ func (g *gen) emitWriteScalar(f *ir.Field, name, ind string) {
 			rawMin := new(big.Int).Lsh(f.IntMin, uint(f.Type.FracBits))
 			switch {
 			case f.Type.Width == 128 && f.Type.Signed:
-				g.sf("%sif (%s != (Int128Value)(%s)) // out-of-contract writes are refused, not wrapped\n%s{\n%s    return false;\n%s}\n",
+				g.sf("%sif (%s != (Int128Value)(%s))\n%s{\n%s    return false;\n%s}\n",
 					ind, name, csRender128(rawMin), ind, ind, ind)
 			case f.Type.Width == 128:
-				g.sf("%sif (%s != (UInt128Value)(%s)) // out-of-contract writes are refused, not wrapped\n%s{\n%s    return false;\n%s}\n",
+				g.sf("%sif (%s != (UInt128Value)(%s))\n%s{\n%s    return false;\n%s}\n",
 					ind, name, csRenderU128(rawMin), ind, ind, ind)
 			case f.Type.Signed:
-				g.sf("%sif ((long)%s != %sL) // out-of-contract writes are refused, not wrapped\n%s{\n%s    return false;\n%s}\n",
+				g.sf("%sif ((long)%s != %sL)\n%s{\n%s    return false;\n%s}\n",
 					ind, name, rawMin.String(), ind, ind, ind)
 			default:
-				g.sf("%sif ((ulong)%s != %sUL) // out-of-contract writes are refused, not wrapped\n%s{\n%s    return false;\n%s}\n",
+				g.sf("%sif ((ulong)%s != %sUL)\n%s{\n%s    return false;\n%s}\n",
 					ind, name, rawMin.String(), ind, ind, ind)
 			}
 			return
@@ -561,7 +557,7 @@ func (g *gen) emitWriteScalar(f *ir.Field, name, ind string) {
 			if f.HasIntRange {
 				if f.IntMin.Cmp(f.IntMax) == 0 {
 					// degenerate range: ZERO bits — refusal only (SPEC §4.6)
-					g.sf("%sif (%s != (Int128Value)(%s)) // out-of-contract writes are refused, not wrapped\n%s{\n%s    return false;\n%s}\n",
+					g.sf("%sif (%s != (Int128Value)(%s))\n%s{\n%s    return false;\n%s}\n",
 						ind, name, csRender128(f.IntMin), ind, ind, ind)
 					return
 				}
@@ -591,13 +587,13 @@ func (g *gen) emitWriteScalar(f *ir.Field, name, ind string) {
 				hiVacuous := f.IntMax.Cmp(maxUint64) == 0
 				switch {
 				case !loVacuous && !hiVacuous:
-					g.sf("%sif (%s < %s || %s > %s) // out-of-contract writes are refused, not wrapped\n", ind, name, lo, name, f.IntMax.String())
+					g.sf("%sif (%s < %s || %s > %s)\n", ind, name, lo, name, f.IntMax.String())
 					g.sf("%s{\n%s    return false;\n%s}\n", ind, ind, ind)
 				case !loVacuous:
-					g.sf("%sif (%s < %s) // out-of-contract writes are refused, not wrapped\n", ind, name, lo)
+					g.sf("%sif (%s < %s)\n", ind, name, lo)
 					g.sf("%s{\n%s    return false;\n%s}\n", ind, ind, ind)
 				case !hiVacuous:
-					g.sf("%sif (%s > %s) // out-of-contract writes are refused, not wrapped\n", ind, name, f.IntMax.String())
+					g.sf("%sif (%s > %s)\n", ind, name, f.IntMax.String())
 					g.sf("%s{\n%s    return false;\n%s}\n", ind, ind, ind)
 				}
 				if loVacuous {

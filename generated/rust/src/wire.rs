@@ -31,13 +31,7 @@ impl Weapon {
 
 /// Debug/log name for any `Weapon` value, out-of-set included.
 pub fn enum_name_weapon(value: Weapon) -> &'static str {
-    enum_name_weapon_dyn(value.0 as u64)
-}
-
-/// As [`enum_name_weapon`], over a raw wire value — the form the table
-/// reflection descriptors hold.
-pub fn enum_name_weapon_dyn(value: u64) -> &'static str {
-    match value {
+    match value.0 {
         0 => "None",
         1 => "Laser",
         2 => "Missile",
@@ -273,7 +267,7 @@ pub fn write_probe_sample(stream: &mut WriteStream<'_>, value: &ProbeSample) -> 
     }
     {
         let mut compressed_value = value.orientation;
-        stream.serialize_compressed_float_precomputed(&mut compressed_value, 36000, 16, 360.0_f32, -180.0_f32)?; // compressed float [-180.0, 180.0] @ 0.01, constants folded at generation (issue #82)
+        stream.serialize_compressed_float_precomputed(&mut compressed_value, 36000, 16, 360.0_f32, -180.0_f32)?; // compressed float [-180.0, 180.0] @ 0.01, constants folded at generation
     }
     {
         let mut raw_value = value.raw_delta as u32;
@@ -307,7 +301,7 @@ pub fn write_probe_sample(stream: &mut WriteStream<'_>, value: &ProbeSample) -> 
             stream.serialize_bits(&mut raw_value, 32)?;
         }
     }
-    if value.samples_count < 1 || value.samples_count > 8 { // refused, not wrapped: the runtime's write side only debug_asserts
+    if value.samples_count < 1 || value.samples_count > 8 {
         return Err(Error::Stream(serialize::Error::ValueOutOfRange));
     }
     {
@@ -326,7 +320,7 @@ pub fn write_probe_sample(stream: &mut WriteStream<'_>, value: &ProbeSample) -> 
 #[inline]
 pub fn read_probe_sample(stream: &mut ReadStream<'_>, value: &mut ProbeSample) -> Result {
     stream.serialize_bool(&mut value.active)?;
-    stream.serialize_compressed_float_precomputed(&mut value.orientation, 36000, 16, 360.0_f32, -180.0_f32)?; // compressed float [-180.0, 180.0] @ 0.01, constants folded at generation (issue #82)
+    stream.serialize_compressed_float_precomputed(&mut value.orientation, 36000, 16, 360.0_f32, -180.0_f32)?; // compressed float [-180.0, 180.0] @ 0.01, constants folded at generation
     {
         let mut raw_value: u32 = 0;
         stream.serialize_bits(&mut raw_value, 32)?;
@@ -436,7 +430,7 @@ pub const PROBE_SLAB_MAX_BYTES: usize = 8;
 
 #[inline(always)]
 pub fn write_probe_slab(stream: &mut WriteStream<'_>, value: &ProbeSlab) -> Result {
-    if value.width > 100 { // out-of-contract writes are refused, not wrapped
+    if value.width > 100 {
         return Err(Error::Stream(serialize::Error::ValueOutOfRange));
     }
     {
@@ -568,7 +562,7 @@ pub fn write_probe_collider(stream: &mut WriteStream<'_>, value: &ProbeCollider)
     }
     write_probe_shape(stream, &value.shape)?;
     write_probe_shape(stream, &value.backup)?;
-    if value.extras_count < 0 || value.extras_count > 2 { // refused, not wrapped: the runtime's write side only debug_asserts
+    if value.extras_count < 0 || value.extras_count > 2 {
         return Err(Error::Stream(serialize::Error::ValueOutOfRange));
     }
     {
@@ -837,21 +831,21 @@ pub const TEST_DATA_MAX_BYTES: usize = 344;
 
 #[inline(always)]
 pub fn write_test_data(stream: &mut WriteStream<'_>, value: &TestData) -> Result {
-    if value.a < -100 || value.a > 100 { // out-of-contract writes are refused, not wrapped
+    if value.a < -100 || value.a > 100 {
         return Err(Error::Stream(serialize::Error::ValueOutOfRange));
     }
     {
         let mut offset_value = (value.a as u32).wrapping_sub((-100_i32) as u32);
         stream.serialize_bits(&mut offset_value, 8)?;
     }
-    if value.b < -100 || value.b > 100 { // out-of-contract writes are refused, not wrapped
+    if value.b < -100 || value.b > 100 {
         return Err(Error::Stream(serialize::Error::ValueOutOfRange));
     }
     {
         let mut offset_value = (value.b as u32).wrapping_sub((-100_i32) as u32);
         stream.serialize_bits(&mut offset_value, 8)?;
     }
-    if value.c < -100 || value.c > 150 { // out-of-contract writes are refused, not wrapped
+    if value.c < -100 || value.c > 150 {
         return Err(Error::Stream(serialize::Error::ValueOutOfRange));
     }
     {
@@ -883,7 +877,7 @@ pub fn write_test_data(stream: &mut WriteStream<'_>, value: &TestData) -> Result
         let mut bool_value = value.g;
         stream.serialize_bool(&mut bool_value)?;
     }
-    if value.items_count < 0 || value.items_count > 16 { // refused, not wrapped: the runtime's write side only debug_asserts
+    if value.items_count < 0 || value.items_count > 16 {
         return Err(Error::Stream(serialize::Error::ValueOutOfRange));
     }
     {
@@ -891,7 +885,7 @@ pub fn write_test_data(stream: &mut WriteStream<'_>, value: &TestData) -> Result
         stream.serialize_bits(&mut offset_value, 5)?; // the count guards the loop (§6.3)
     }
     for i in 0..value.items_count as usize {
-        if value.items[i] < 0 || value.items[i] > 255 { // out-of-contract writes are refused, not wrapped
+        if value.items[i] < 0 || value.items[i] > 255 {
             return Err(Error::Stream(serialize::Error::ValueOutOfRange));
         }
         {
@@ -905,7 +899,7 @@ pub fn write_test_data(stream: &mut WriteStream<'_>, value: &TestData) -> Result
     }
     {
         let mut compressed_value = value.compressed_float_value;
-        stream.serialize_compressed_float_precomputed(&mut compressed_value, 1000, 10, 10.0_f32, 0.0_f32)?; // compressed float [0.0, 10.0] @ 0.01, constants folded at generation (issue #82)
+        stream.serialize_compressed_float_precomputed(&mut compressed_value, 1000, 10, 10.0_f32, 0.0_f32)?; // compressed float [0.0, 10.0] @ 0.01, constants folded at generation
     }
     {
         let mut float_value = value.double_value;
@@ -939,7 +933,7 @@ pub fn write_test_data(stream: &mut WriteStream<'_>, value: &TestData) -> Result
         let mut raw_value = value.int64_full as u64;
         stream.serialize_bits64(&mut raw_value, 64)?;
     }
-    if value.int64_range < -1000000000000 || value.int64_range > 1000000000000 { // out-of-contract writes are refused, not wrapped
+    if value.int64_range < -1000000000000 || value.int64_range > 1000000000000 {
         return Err(Error::Stream(serialize::Error::ValueOutOfRange));
     }
     {
@@ -948,7 +942,7 @@ pub fn write_test_data(stream: &mut WriteStream<'_>, value: &TestData) -> Result
     }
     stream.serialize_align()?;
     stream.write_bytes(&value.fixed_bytes); // byte-aligned [N]u8 — bulk copy, wire-identical to the per-byte loop (infallible: returns () in serialize.rs 2.0.0)
-    if value.text_length < 0 || value.text_length > 255 { // refused, not wrapped or panicked: guards the slice too
+    if value.text_length < 0 || value.text_length > 255 {
         return Err(Error::Stream(serialize::Error::ValueOutOfRange));
     }
     debug_assert!(
@@ -977,7 +971,7 @@ pub fn read_test_data(stream: &mut ReadStream<'_>, value: &mut TestData) -> Resu
         stream.serialize_int(&mut value.items[i], 0, 255)?;
     }
     stream.serialize_f32(&mut value.float_value)?;
-    stream.serialize_compressed_float_precomputed(&mut value.compressed_float_value, 1000, 10, 10.0_f32, 0.0_f32)?; // compressed float [0.0, 10.0] @ 0.01, constants folded at generation (issue #82)
+    stream.serialize_compressed_float_precomputed(&mut value.compressed_float_value, 1000, 10, 10.0_f32, 0.0_f32)?; // compressed float [0.0, 10.0] @ 0.01, constants folded at generation
     stream.serialize_f64(&mut value.double_value)?;
     {
         let mut raw_value: u32 = 0;
@@ -1046,19 +1040,19 @@ pub const COMPRESSED_PROBE_MAX_BYTES: usize = 8;
 pub fn write_compressed_probe(stream: &mut WriteStream<'_>, value: &CompressedProbe) -> Result {
     {
         let mut compressed_value = value.boundary;
-        stream.serialize_compressed_float_precomputed(&mut compressed_value, 1000, 10, 10.0_f32, 0.0_f32)?; // compressed float [0.0, 10.0] @ 0.01, constants folded at generation (issue #82)
+        stream.serialize_compressed_float_precomputed(&mut compressed_value, 1000, 10, 10.0_f32, 0.0_f32)?; // compressed float [0.0, 10.0] @ 0.01, constants folded at generation
     }
     {
         let mut compressed_value = value.offset;
-        stream.serialize_compressed_float_precomputed(&mut compressed_value, 10000, 14, 10.0_f32, -5.0_f32)?; // compressed float [-5.0, 5.0] @ 0.001, constants folded at generation (issue #82)
+        stream.serialize_compressed_float_precomputed(&mut compressed_value, 10000, 14, 10.0_f32, -5.0_f32)?; // compressed float [-5.0, 5.0] @ 0.001, constants folded at generation
     }
     Ok(())
 }
 
 #[inline]
 pub fn read_compressed_probe(stream: &mut ReadStream<'_>, value: &mut CompressedProbe) -> Result {
-    stream.serialize_compressed_float_precomputed(&mut value.boundary, 1000, 10, 10.0_f32, 0.0_f32)?; // compressed float [0.0, 10.0] @ 0.01, constants folded at generation (issue #82)
-    stream.serialize_compressed_float_precomputed(&mut value.offset, 10000, 14, 10.0_f32, -5.0_f32)?; // compressed float [-5.0, 5.0] @ 0.001, constants folded at generation (issue #82)
+    stream.serialize_compressed_float_precomputed(&mut value.boundary, 1000, 10, 10.0_f32, 0.0_f32)?; // compressed float [0.0, 10.0] @ 0.01, constants folded at generation
+    stream.serialize_compressed_float_precomputed(&mut value.offset, 10000, 14, 10.0_f32, -5.0_f32)?; // compressed float [-5.0, 5.0] @ 0.001, constants folded at generation
     Ok(())
 }
 

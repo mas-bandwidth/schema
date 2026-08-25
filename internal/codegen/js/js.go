@@ -84,8 +84,8 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 		}
 	}
 	for _, f := range u.Files {
-		g := &gen{unit: u, file: f, msgOwner: msgOwner, objOwner: objOwner, imports: map[string]map[string]bool{}}
-		g.emitFile(f.Base == home)
+		g := &gen{unit: u, file: f, home: f.Base == home, msgOwner: msgOwner, objOwner: objOwner, imports: map[string]map[string]bool{}}
+		g.emitFile(g.home)
 		out[f.Base+".js"] = g.assemble()
 	}
 	// the flat tier: BaseFlat.js beside Base.js wherever the file carries a
@@ -114,6 +114,7 @@ func protocolIdHome(u *ir.Unit) string {
 type gen struct {
 	unit     *ir.Unit
 	file     *ir.File
+	home     bool   // this file carries ProtocolId and the unit-level target notes
 	msgOwner string // the one file that carries the message dispatch surface
 	objOwner string // the one file that carries the object tag surface
 
@@ -176,17 +177,21 @@ func (g *gen) assemble() []byte {
 	h.WriteString("// your choice. See the LICENSE exception in the schema compiler; the compiler is\n")
 	h.WriteString("// AGPL-3.0, its output is not.\n")
 	fmt.Fprintf(&h, "// package %s — protocol id 0x%016x\n", g.unit.Package, g.unit.ProtocolId)
-	h.WriteString("//\n")
-	h.WriteString("// Storage members are PascalCase via the same mapping as the Go target, so\n")
-	h.WriteString("// the checker's collision registry covers JS for free. Wire functions return\n")
-	h.WriteString("// bool — the C++-style early-out. A schema validation failure (a wrong wire\n")
-	h.WriteString("// constant, nonzero reserved bits, an out-of-contract write) returns false\n")
-	h.WriteString("// WITHOUT latching; stream failures latch on stream.error — the runtime's own\n")
-	h.WriteString("// sticky latch. Callers get bool always; error tells the two apart.\n")
-	h.WriteString("//\n")
-	h.WriteString("// Number storage for widths of 32 bits or fewer, BigInt for 64 and 128 —\n")
-	h.WriteString("// the serialize.js value-domain seam. Checked/production comes from the\n")
-	h.WriteString("// stream object; generated code never reads NODE_ENV.\n\n")
+	if g.home {
+		// the unit-level target notes ride the home file only — said once
+		// per unit, not once per file
+		h.WriteString("//\n")
+		h.WriteString("// Wire functions return bool — the C++-style early-out. A schema validation\n")
+		h.WriteString("// failure (a wrong wire constant, nonzero reserved bits, an out-of-contract\n")
+		h.WriteString("// write) returns false WITHOUT latching; stream failures latch on\n")
+		h.WriteString("// stream.error — the runtime's own sticky latch. Callers get bool always;\n")
+		h.WriteString("// error tells the two apart.\n")
+		h.WriteString("//\n")
+		h.WriteString("// Number storage for widths of 32 bits or fewer, BigInt for 64 and 128 —\n")
+		h.WriteString("// the serialize.js value-domain seam. Checked/production comes from the\n")
+		h.WriteString("// stream object; generated code never reads NODE_ENV.\n")
+	}
+	h.WriteString("\n")
 	if len(g.imports) > 0 {
 		bases := make([]string, 0, len(g.imports))
 		for b := range g.imports {
@@ -204,11 +209,8 @@ func (g *gen) assemble() []byte {
 		h.WriteString("\n")
 	}
 	if g.needNumScratch || g.needBigScratch || g.needBoolScratch {
-		h.WriteString("// Scratch holders for the runtime's {value} refs (streams.js has no ref\n")
-		h.WriteString("// parameters). Module scope is safe — JavaScript is single threaded per\n")
-		h.WriteString("// realm and a holder is consumed in the same call that fills it, the\n")
-		h.WriteString("// runtime's own FLOAT_SCRATCH argument; generated code never holds one\n")
-		h.WriteString("// across a nested Write/Read call.\n")
+		h.WriteString("// Scratch holders for the runtime's {value} refs — single threaded per\n")
+		h.WriteString("// realm, always consumed in the same call that fills them.\n")
 		if g.needNumScratch {
 			h.WriteString("const NUMBER_SCRATCH = { value: 0 };\n")
 		}
@@ -382,8 +384,7 @@ func (g *gen) emitClass(d *ir.Struct) {
 		kind = "message"
 	}
 	if len(d.Tags) > 0 {
-		g.pf("// %s %s [%s] — the tag is user-chosen and inert in v1; the delta pass\n", kind, d.Name, strings.Join(d.Tags, ", "))
-		g.pf("// claims tags and assigns actions (SPEC §4.2, Type tags)\n")
+		g.pf("// %s %s [%s] — tags are user-chosen and inert in v1 (SPEC §4.2, Type tags)\n", kind, d.Name, strings.Join(d.Tags, ", "))
 	} else {
 		g.pf("// %s %s\n", kind, d.Name)
 	}
@@ -554,7 +555,7 @@ func (g *gen) fieldComment(f *ir.Field) string {
 		}
 	}
 	if f.HasDefault {
-		parts = append(parts, fmt.Sprintf("= %s at construction; Zero* gives the §5 zero form", g.defaultValue(f)))
+		parts = append(parts, "specified default at construction; Zero* gives the §5 zero form")
 	}
 	if f.HasIntRange {
 		parts = append(parts, fmt.Sprintf("wire [%s, %s]", f.IntMin, f.IntMax))
@@ -574,9 +575,9 @@ func (g *gen) fieldComment(f *ir.Field) string {
 	}
 	if f.Local {
 		if f.Context != "" {
-			parts = append(parts, fmt.Sprintf(" | local, context = %s", f.Context))
+			parts = append(parts, fmt.Sprintf("| local, context = %s", f.Context))
 		} else {
-			parts = append(parts, " | local — no wire")
+			parts = append(parts, "| local — no wire")
 		}
 	}
 	if len(parts) == 0 {

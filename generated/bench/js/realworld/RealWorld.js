@@ -4,22 +4,18 @@
 // AGPL-3.0, its output is not.
 // package realworld — protocol id 0x8f7228a19854fbb2
 //
-// Storage members are PascalCase via the same mapping as the Go target, so
-// the checker's collision registry covers JS for free. Wire functions return
-// bool — the C++-style early-out. A schema validation failure (a wrong wire
-// constant, nonzero reserved bits, an out-of-contract write) returns false
-// WITHOUT latching; stream failures latch on stream.error — the runtime's own
-// sticky latch. Callers get bool always; error tells the two apart.
+// Wire functions return bool — the C++-style early-out. A schema validation
+// failure (a wrong wire constant, nonzero reserved bits, an out-of-contract
+// write) returns false WITHOUT latching; stream failures latch on
+// stream.error — the runtime's own sticky latch. Callers get bool always;
+// error tells the two apart.
 //
 // Number storage for widths of 32 bits or fewer, BigInt for 64 and 128 —
 // the serialize.js value-domain seam. Checked/production comes from the
 // stream object; generated code never reads NODE_ENV.
 
-// Scratch holders for the runtime's {value} refs (streams.js has no ref
-// parameters). Module scope is safe — JavaScript is single threaded per
-// realm and a holder is consumed in the same call that fills it, the
-// runtime's own FLOAT_SCRATCH argument; generated code never holds one
-// across a nested Write/Read call.
+// Scratch holders for the runtime's {value} refs — single threaded per
+// realm, always consumed in the same call that fills them.
 const NUMBER_SCRATCH = { value: 0 };
 const BIGINT_SCRATCH = { value: 0n };
 const BOOL_SCRATCH = { value: false };
@@ -87,7 +83,7 @@ export class RealPacket {
     this.F009Int = 0; // wire [-22, 22]
     this.F010F32 = 0;
     this.F011Bits = 0;
-    this.F012Bool = true; // = true at construction; Zero* gives the §5 zero form
+    this.F012Bool = true; // specified default at construction; Zero* gives the §5 zero form
 
     // if f012_bool — wire branch; storage holds both sides, a read zeroes the
     // untaken side (SPEC §5)
@@ -122,7 +118,7 @@ export class RealPacket {
     this.F040Fixed = 0; // wire [-5, 5]
     this.F041Int = 0; // wire [-55, 55]
     this.F042Bits = 0;
-    this.F043Bool = false; // = false at construction; Zero* gives the §5 zero form
+    this.F043Bool = false; // specified default at construction; Zero* gives the §5 zero form
 
     // if f043_bool — wire branch; storage holds both sides, a read zeroes the
     // untaken side (SPEC §5)
@@ -133,7 +129,7 @@ export class RealPacket {
 
     this.F048F64 = 0;
     this.F049Ufixed = 0; // wire [0, 3]
-    this.F050Bool = true; // = true at construction; Zero* gives the §5 zero form
+    this.F050Bool = true; // specified default at construction; Zero* gives the §5 zero form
 
     // if f050_bool — wire branch; storage holds both sides, a read zeroes the
     // untaken side (SPEC §5)
@@ -161,7 +157,7 @@ export class RealPacket {
     this.F071Cf32 = 0; // compressed float [0.0, 10.0] @ 0.02
     this.F072Cf32 = 0; // compressed float [0.0, 100.0] @ 0.01
     this.F073Int = 0; // wire [-4, 4]
-    this.F074Bool = false; // = false at construction; Zero* gives the §5 zero form
+    this.F074Bool = false; // specified default at construction; Zero* gives the §5 zero form
 
     // if f074_bool — wire branch; storage holds both sides, a read zeroes the
     // untaken side (SPEC §5)
@@ -197,8 +193,7 @@ export class RealPacket {
 export const RealPacketMaxBits = 1810;
 export const RealPacketMaxBytes = 232;
 
-// ZeroRealPacket resets value to the §5 ZERO form — all-zero storage; specified
-// defaults live in construction only and are NOT reapplied here.
+// The §5 zero form: all-zero storage; specified defaults live only in construction.
 export function ZeroRealPacket(value) {
   value.F001Int = 0;
   value.F002F64 = 0;
@@ -300,7 +295,7 @@ export function ZeroRealPacket(value) {
 }
 
 export function WriteRealPacket(stream, value) {
-  if (!Number.isInteger(value.F001Int) || value.F001Int < -805495 || value.F001Int > 805495) { // out-of-contract writes are refused, not wrapped
+  if (!Number.isInteger(value.F001Int) || value.F001Int < -805495 || value.F001Int > 805495) {
     return false;
   }
   NUMBER_SCRATCH.value = ((value.F001Int >>> 0) - (-805495 >>> 0)) >>> 0;
@@ -311,7 +306,7 @@ export function WriteRealPacket(stream, value) {
   if (!stream.serializeDouble(NUMBER_SCRATCH)) {
     return false;
   }
-  if (!Number.isInteger(value.F003Int) || value.F003Int < -835897 || value.F003Int > 835897) { // out-of-contract writes are refused, not wrapped
+  if (!Number.isInteger(value.F003Int) || value.F003Int < -835897 || value.F003Int > 835897) {
     return false;
   }
   NUMBER_SCRATCH.value = ((value.F003Int >>> 0) - (-835897 >>> 0)) >>> 0;
@@ -322,14 +317,14 @@ export function WriteRealPacket(stream, value) {
   if (!stream.serializeCompressedFloat(NUMBER_SCRATCH, 0.0, 2000.0, 0.1)) {
     return false;
   }
-  if (!Number.isInteger(value.F005Uint) || value.F005Uint < 0 || value.F005Uint > 7316) { // out-of-contract writes are refused, not wrapped
+  if (!Number.isInteger(value.F005Uint) || value.F005Uint < 0 || value.F005Uint > 7316) {
     return false;
   }
   NUMBER_SCRATCH.value = value.F005Uint;
   if (!stream.serializeBits(NUMBER_SCRATCH, 13)) {
     return false;
   }
-  if (!Number.isInteger(value.F006Int) || value.F006Int < -1513 || value.F006Int > 1513) { // out-of-contract writes are refused, not wrapped
+  if (!Number.isInteger(value.F006Int) || value.F006Int < -1513 || value.F006Int > 1513) {
     return false;
   }
   NUMBER_SCRATCH.value = ((value.F006Int >>> 0) - (-1513 >>> 0)) >>> 0;
@@ -344,7 +339,7 @@ export function WriteRealPacket(stream, value) {
   if (!stream.serializeBits64(BIGINT_SCRATCH, 64)) {
     return false;
   }
-  if (!Number.isInteger(value.F009Int) || value.F009Int < -22 || value.F009Int > 22) { // out-of-contract writes are refused, not wrapped
+  if (!Number.isInteger(value.F009Int) || value.F009Int < -22 || value.F009Int > 22) {
     return false;
   }
   NUMBER_SCRATCH.value = ((value.F009Int >>> 0) - (-22 >>> 0)) >>> 0;
@@ -368,14 +363,14 @@ export function WriteRealPacket(stream, value) {
     if (!stream.serializeFloat(NUMBER_SCRATCH)) {
       return false;
     }
-    if (!Number.isInteger(value.F014Uint) || value.F014Uint < 0 || value.F014Uint > 775) { // out-of-contract writes are refused, not wrapped
+    if (!Number.isInteger(value.F014Uint) || value.F014Uint < 0 || value.F014Uint > 775) {
       return false;
     }
     NUMBER_SCRATCH.value = value.F014Uint;
     if (!stream.serializeBits(NUMBER_SCRATCH, 10)) {
       return false;
     }
-    if (!Number.isInteger(value.F015Int) || value.F015Int < -21 || value.F015Int > 21) { // out-of-contract writes are refused, not wrapped
+    if (!Number.isInteger(value.F015Int) || value.F015Int < -21 || value.F015Int > 21) {
       return false;
     }
     NUMBER_SCRATCH.value = ((value.F015Int >>> 0) - (-21 >>> 0)) >>> 0;
@@ -386,7 +381,7 @@ export function WriteRealPacket(stream, value) {
     if (!stream.serializeFixed(NUMBER_SCRATCH, 12, 20, -36, 36)) {
       return false;
     }
-    if (!Number.isInteger(value.F017Uint) || value.F017Uint < 0 || value.F017Uint > 4606) { // out-of-contract writes are refused, not wrapped
+    if (!Number.isInteger(value.F017Uint) || value.F017Uint < 0 || value.F017Uint > 4606) {
       return false;
     }
     NUMBER_SCRATCH.value = value.F017Uint;
@@ -394,7 +389,7 @@ export function WriteRealPacket(stream, value) {
       return false;
     }
   }
-  if (!Number.isInteger(value.F018Int) || value.F018Int < -834 || value.F018Int > 834) { // out-of-contract writes are refused, not wrapped
+  if (!Number.isInteger(value.F018Int) || value.F018Int < -834 || value.F018Int > 834) {
     return false;
   }
   NUMBER_SCRATCH.value = ((value.F018Int >>> 0) - (-834 >>> 0)) >>> 0;
@@ -453,21 +448,21 @@ export function WriteRealPacket(stream, value) {
   if (!stream.serializeBits(NUMBER_SCRATCH, 1)) {
     return false;
   }
-  if (!Number.isInteger(value.F032Int) || value.F032Int < -3 || value.F032Int > 3) { // out-of-contract writes are refused, not wrapped
+  if (!Number.isInteger(value.F032Int) || value.F032Int < -3 || value.F032Int > 3) {
     return false;
   }
   NUMBER_SCRATCH.value = ((value.F032Int >>> 0) - (-3 >>> 0)) >>> 0;
   if (!stream.serializeBits(NUMBER_SCRATCH, 3)) {
     return false;
   }
-  if (!Number.isInteger(value.F033Uint) || value.F033Uint < 0 || value.F033Uint > 142780) { // out-of-contract writes are refused, not wrapped
+  if (!Number.isInteger(value.F033Uint) || value.F033Uint < 0 || value.F033Uint > 142780) {
     return false;
   }
   NUMBER_SCRATCH.value = value.F033Uint;
   if (!stream.serializeBits(NUMBER_SCRATCH, 18)) {
     return false;
   }
-  if (!Number.isInteger(value.F034Uint) || value.F034Uint < 0 || value.F034Uint > 14149) { // out-of-contract writes are refused, not wrapped
+  if (!Number.isInteger(value.F034Uint) || value.F034Uint < 0 || value.F034Uint > 14149) {
     return false;
   }
   NUMBER_SCRATCH.value = value.F034Uint;
@@ -501,7 +496,7 @@ export function WriteRealPacket(stream, value) {
   if (!stream.serializeFixed(NUMBER_SCRATCH, 4, 12, -5, 5)) {
     return false;
   }
-  if (!Number.isInteger(value.F041Int) || value.F041Int < -55 || value.F041Int > 55) { // out-of-contract writes are refused, not wrapped
+  if (!Number.isInteger(value.F041Int) || value.F041Int < -55 || value.F041Int > 55) {
     return false;
   }
   NUMBER_SCRATCH.value = ((value.F041Int >>> 0) - (-55 >>> 0)) >>> 0;
@@ -525,14 +520,14 @@ export function WriteRealPacket(stream, value) {
     if (!stream.serializeBits(NUMBER_SCRATCH, 12)) {
       return false;
     }
-    if (!Number.isInteger(value.F046Uint) || value.F046Uint < 0 || value.F046Uint > 76063) { // out-of-contract writes are refused, not wrapped
+    if (!Number.isInteger(value.F046Uint) || value.F046Uint < 0 || value.F046Uint > 76063) {
       return false;
     }
     NUMBER_SCRATCH.value = value.F046Uint;
     if (!stream.serializeBits(NUMBER_SCRATCH, 17)) {
       return false;
     }
-    if (!Number.isInteger(value.F047Int) || value.F047Int < -430976 || value.F047Int > 430976) { // out-of-contract writes are refused, not wrapped
+    if (!Number.isInteger(value.F047Int) || value.F047Int < -430976 || value.F047Int > 430976) {
       return false;
     }
     NUMBER_SCRATCH.value = ((value.F047Int >>> 0) - (-430976 >>> 0)) >>> 0;
@@ -557,7 +552,7 @@ export function WriteRealPacket(stream, value) {
     if (!stream.serializeBool(BOOL_SCRATCH)) {
       return false;
     }
-    if (!Number.isInteger(value.F052Int) || value.F052Int < -57 || value.F052Int > 57) { // out-of-contract writes are refused, not wrapped
+    if (!Number.isInteger(value.F052Int) || value.F052Int < -57 || value.F052Int > 57) {
       return false;
     }
     NUMBER_SCRATCH.value = ((value.F052Int >>> 0) - (-57 >>> 0)) >>> 0;
@@ -568,7 +563,7 @@ export function WriteRealPacket(stream, value) {
     if (!stream.serializeFloat(NUMBER_SCRATCH)) {
       return false;
     }
-    if (!Number.isInteger(value.F054Int) || value.F054Int < -35 || value.F054Int > 35) { // out-of-contract writes are refused, not wrapped
+    if (!Number.isInteger(value.F054Int) || value.F054Int < -35 || value.F054Int > 35) {
       return false;
     }
     NUMBER_SCRATCH.value = ((value.F054Int >>> 0) - (-35 >>> 0)) >>> 0;
@@ -580,14 +575,14 @@ export function WriteRealPacket(stream, value) {
   if (!stream.serializeBool(BOOL_SCRATCH)) {
     return false;
   }
-  if (!Number.isInteger(value.F056Int) || value.F056Int < -13 || value.F056Int > 13) { // out-of-contract writes are refused, not wrapped
+  if (!Number.isInteger(value.F056Int) || value.F056Int < -13 || value.F056Int > 13) {
     return false;
   }
   NUMBER_SCRATCH.value = ((value.F056Int >>> 0) - (-13 >>> 0)) >>> 0;
   if (!stream.serializeBits(NUMBER_SCRATCH, 5)) {
     return false;
   }
-  if (!Number.isInteger(value.F057Int) || value.F057Int < -15 || value.F057Int > 15) { // out-of-contract writes are refused, not wrapped
+  if (!Number.isInteger(value.F057Int) || value.F057Int < -15 || value.F057Int > 15) {
     return false;
   }
   NUMBER_SCRATCH.value = ((value.F057Int >>> 0) - (-15 >>> 0)) >>> 0;
@@ -610,7 +605,7 @@ export function WriteRealPacket(stream, value) {
   if (!stream.serializeCompressedFloat(NUMBER_SCRATCH, -90.0, 90.0, 0.5)) {
     return false;
   }
-  if (!Number.isInteger(value.F062Uint) || value.F062Uint < 0 || value.F062Uint > 503) { // out-of-contract writes are refused, not wrapped
+  if (!Number.isInteger(value.F062Uint) || value.F062Uint < 0 || value.F062Uint > 503) {
     return false;
   }
   NUMBER_SCRATCH.value = value.F062Uint;
@@ -621,7 +616,7 @@ export function WriteRealPacket(stream, value) {
   if (!stream.serializeBits64(BIGINT_SCRATCH, 64)) {
     return false;
   }
-  if (!Number.isInteger(value.F064Uint) || value.F064Uint < 0 || value.F064Uint > 299) { // out-of-contract writes are refused, not wrapped
+  if (!Number.isInteger(value.F064Uint) || value.F064Uint < 0 || value.F064Uint > 299) {
     return false;
   }
   NUMBER_SCRATCH.value = value.F064Uint;
@@ -648,7 +643,7 @@ export function WriteRealPacket(stream, value) {
   if (!stream.serializeBits(NUMBER_SCRATCH, 11)) {
     return false;
   }
-  if (!Number.isInteger(value.F070Uint) || value.F070Uint < 0 || value.F070Uint > 2) { // out-of-contract writes are refused, not wrapped
+  if (!Number.isInteger(value.F070Uint) || value.F070Uint < 0 || value.F070Uint > 2) {
     return false;
   }
   NUMBER_SCRATCH.value = value.F070Uint;
@@ -663,7 +658,7 @@ export function WriteRealPacket(stream, value) {
   if (!stream.serializeCompressedFloat(NUMBER_SCRATCH, 0.0, 100.0, 0.01)) {
     return false;
   }
-  if (!Number.isInteger(value.F073Int) || value.F073Int < -4 || value.F073Int > 4) { // out-of-contract writes are refused, not wrapped
+  if (!Number.isInteger(value.F073Int) || value.F073Int < -4 || value.F073Int > 4) {
     return false;
   }
   NUMBER_SCRATCH.value = ((value.F073Int >>> 0) - (-4 >>> 0)) >>> 0;
@@ -679,14 +674,14 @@ export function WriteRealPacket(stream, value) {
     if (!stream.serializeBits64(BIGINT_SCRATCH, 64)) {
       return false;
     }
-    if (!Number.isInteger(value.F076Int) || value.F076Int < -26218 || value.F076Int > 26218) { // out-of-contract writes are refused, not wrapped
+    if (!Number.isInteger(value.F076Int) || value.F076Int < -26218 || value.F076Int > 26218) {
       return false;
     }
     NUMBER_SCRATCH.value = ((value.F076Int >>> 0) - (-26218 >>> 0)) >>> 0;
     if (!stream.serializeBits(NUMBER_SCRATCH, 16)) {
       return false;
     }
-    if (!Number.isInteger(value.F077Int) || value.F077Int < -17 || value.F077Int > 17) { // out-of-contract writes are refused, not wrapped
+    if (!Number.isInteger(value.F077Int) || value.F077Int < -17 || value.F077Int > 17) {
       return false;
     }
     NUMBER_SCRATCH.value = ((value.F077Int >>> 0) - (-17 >>> 0)) >>> 0;
@@ -697,7 +692,7 @@ export function WriteRealPacket(stream, value) {
     if (!stream.serializeBits(NUMBER_SCRATCH, 9)) {
       return false;
     }
-    if (!Number.isInteger(value.F079Uint) || value.F079Uint < 0 || value.F079Uint > 17) { // out-of-contract writes are refused, not wrapped
+    if (!Number.isInteger(value.F079Uint) || value.F079Uint < 0 || value.F079Uint > 17) {
       return false;
     }
     NUMBER_SCRATCH.value = value.F079Uint;
@@ -732,7 +727,7 @@ export function WriteRealPacket(stream, value) {
   if (!stream.serializeBits(NUMBER_SCRATCH, 21)) {
     return false;
   }
-  if (!Number.isInteger(value.F086Uint) || value.F086Uint < 0 || value.F086Uint > 399) { // out-of-contract writes are refused, not wrapped
+  if (!Number.isInteger(value.F086Uint) || value.F086Uint < 0 || value.F086Uint > 399) {
     return false;
   }
   NUMBER_SCRATCH.value = value.F086Uint;
@@ -743,7 +738,7 @@ export function WriteRealPacket(stream, value) {
   if (!stream.serializeDouble(NUMBER_SCRATCH)) {
     return false;
   }
-  if (!Number.isInteger(value.F088Int) || value.F088Int < -694 || value.F088Int > 694) { // out-of-contract writes are refused, not wrapped
+  if (!Number.isInteger(value.F088Int) || value.F088Int < -694 || value.F088Int > 694) {
     return false;
   }
   NUMBER_SCRATCH.value = ((value.F088Int >>> 0) - (-694 >>> 0)) >>> 0;
@@ -754,7 +749,7 @@ export function WriteRealPacket(stream, value) {
   if (!stream.serializeBits64(BIGINT_SCRATCH, 48)) {
     return false;
   }
-  if (!Number.isInteger(value.F090Uint) || value.F090Uint < 0 || value.F090Uint > 214) { // out-of-contract writes are refused, not wrapped
+  if (!Number.isInteger(value.F090Uint) || value.F090Uint < 0 || value.F090Uint > 214) {
     return false;
   }
   NUMBER_SCRATCH.value = value.F090Uint;

@@ -4,12 +4,11 @@
 // AGPL-3.0, its output is not.
 // package bench — protocol id 0x694f261d887abaa5
 //
-// Storage members are PascalCase via the same mapping as the Go target, so
-// the checker's collision registry covers C# for free. Wire functions return
-// bool — the C++-style early-out. A schema validation failure (a wrong wire
-// constant, nonzero reserved bits, an interior null) returns false WITHOUT
-// latching; stream failures latch on stream.Error — the runtime's own sticky
-// latch. Callers get bool always; Error tells the two apart.
+// Wire functions return bool — the C++-style early-out. A schema validation
+// failure (a wrong wire constant, nonzero reserved bits, an interior null)
+// returns false WITHOUT latching; stream failures latch on stream.Error —
+// the runtime's own sticky latch. Callers get bool always; Error tells the
+// two apart.
 
 using System;
 using System.Runtime.CompilerServices;
@@ -93,8 +92,7 @@ namespace Bench
         public const long BenchPacketMaxBits = 392;
         public const long BenchPacketMaxBytes = 56;
 
-        // ZeroBenchPacket resets value to the §5 ZERO form — all-zero storage; specified
-        // defaults live in construction only and are NOT reapplied here.
+        // The §5 zero form: all-zero storage; specified defaults live only in construction.
         public static void ZeroBenchPacket(BenchPacket value)
         {
             value.A = 0;
@@ -111,25 +109,21 @@ namespace Bench
             Array.Clear(value.Blob, 0, 17);
         }
 
-        // WriteBenchPacket/ReadBenchPacket run as a batch: the stream state lives in registers
-        // across the body's serialize calls and is stored back once at End —
-        // the tiny-message hot path (serialize.cs WriteBatch/ReadBatch). Same
-        // wire bytes, same validation, same latched-error model.
+        // batch form: stream state stays in registers across the body and End
+        // publishes it — same wire bytes, same validation, same error model.
         public static bool WriteBenchPacket(WriteStream stream, BenchPacket value)
         {
             WriteBatch batch = stream.BeginBatch();
             bool result = WriteBenchPacketBatch(ref batch, value);
-            batch.End(); // on every path out — End publishes the state and the error
+            batch.End();
             return result;
         }
 
-        // The batch-form core — INLINE-ONLY: a non-inlined call taking the batch by
-        // ref address-exposes it and enregistration dies (measured 0.71x, worse than
-        // no batch). Nested types compose core-to-core by ref, never via the stream.
+        // inline-only batch core — a real call would address-expose the batch
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static bool WriteBenchPacketBatch(ref WriteBatch batch, BenchPacket value)
         {
-            if (value.A < -100 || value.A > 100) // out-of-contract writes are refused, not wrapped
+            if (value.A < -100 || value.A > 100)
             {
                 return false;
             }
@@ -140,7 +134,7 @@ namespace Bench
                     return false;
                 }
             }
-            if (value.B < 0 || value.B > 65535) // out-of-contract writes are refused, not wrapped
+            if (value.B < 0 || value.B > 65535)
             {
                 return false;
             }
@@ -151,7 +145,7 @@ namespace Bench
                     return false;
                 }
             }
-            if (value.C < -1000000 || value.C > 1000000) // out-of-contract writes are refused, not wrapped
+            if (value.C < -1000000 || value.C > 1000000)
             {
                 return false;
             }
@@ -209,13 +203,11 @@ namespace Bench
         {
             ReadBatch batch = stream.BeginBatch();
             bool result = ReadBenchPacketBatch(ref batch, value);
-            batch.End(); // on every path out — End publishes the cursor and the error
+            batch.End();
             return result;
         }
 
-        // The batch-form core — INLINE-ONLY: a non-inlined call taking the batch by
-        // ref address-exposes it and enregistration dies (measured 0.71x, worse than
-        // no batch). Nested types compose core-to-core by ref, never via the stream.
+        // inline-only batch core — a real call would address-expose the batch
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static bool ReadBenchPacketBatch(ref ReadBatch batch, BenchPacket value)
         {
@@ -279,8 +271,7 @@ namespace Bench
         public const long BenchIntsMaxBits = 110;
         public const long BenchIntsMaxBytes = 16;
 
-        // ZeroBenchInts resets value to the §5 ZERO form — all-zero storage; specified
-        // defaults live in construction only and are NOT reapplied here.
+        // The §5 zero form: all-zero storage; specified defaults live only in construction.
         public static void ZeroBenchInts(BenchInts value)
         {
             value.F0 = 0;
@@ -295,25 +286,21 @@ namespace Bench
             value.F9 = 0;
         }
 
-        // WriteBenchInts/ReadBenchInts run as a batch: the stream state lives in registers
-        // across the body's serialize calls and is stored back once at End —
-        // the tiny-message hot path (serialize.cs WriteBatch/ReadBatch). Same
-        // wire bytes, same validation, same latched-error model.
+        // batch form: stream state stays in registers across the body and End
+        // publishes it — same wire bytes, same validation, same error model.
         public static bool WriteBenchInts(WriteStream stream, BenchInts value)
         {
             WriteBatch batch = stream.BeginBatch();
             bool result = WriteBenchIntsBatch(ref batch, value);
-            batch.End(); // on every path out — End publishes the state and the error
+            batch.End();
             return result;
         }
 
-        // The batch-form core — INLINE-ONLY: a non-inlined call taking the batch by
-        // ref address-exposes it and enregistration dies (measured 0.71x, worse than
-        // no batch). Nested types compose core-to-core by ref, never via the stream.
+        // inline-only batch core — a real call would address-expose the batch
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static bool WriteBenchIntsBatch(ref WriteBatch batch, BenchInts value)
         {
-            if (value.F0 < -100 || value.F0 > 100) // out-of-contract writes are refused, not wrapped
+            if (value.F0 < -100 || value.F0 > 100)
             {
                 return false;
             }
@@ -324,7 +311,7 @@ namespace Bench
                     return false;
                 }
             }
-            if (value.F1 < 0 || value.F1 > 65535) // out-of-contract writes are refused, not wrapped
+            if (value.F1 < 0 || value.F1 > 65535)
             {
                 return false;
             }
@@ -335,7 +322,7 @@ namespace Bench
                     return false;
                 }
             }
-            if (value.F2 < -1000000 || value.F2 > 1000000) // out-of-contract writes are refused, not wrapped
+            if (value.F2 < -1000000 || value.F2 > 1000000)
             {
                 return false;
             }
@@ -346,7 +333,7 @@ namespace Bench
                     return false;
                 }
             }
-            if (value.F3 < 0 || value.F3 > 3) // out-of-contract writes are refused, not wrapped
+            if (value.F3 < 0 || value.F3 > 3)
             {
                 return false;
             }
@@ -357,7 +344,7 @@ namespace Bench
                     return false;
                 }
             }
-            if (value.F4 < -15 || value.F4 > 15) // out-of-contract writes are refused, not wrapped
+            if (value.F4 < -15 || value.F4 > 15)
             {
                 return false;
             }
@@ -368,7 +355,7 @@ namespace Bench
                     return false;
                 }
             }
-            if (value.F5 < 0 || value.F5 > 1000) // out-of-contract writes are refused, not wrapped
+            if (value.F5 < 0 || value.F5 > 1000)
             {
                 return false;
             }
@@ -379,7 +366,7 @@ namespace Bench
                     return false;
                 }
             }
-            if (value.F6 < -2048 || value.F6 > 2047) // out-of-contract writes are refused, not wrapped
+            if (value.F6 < -2048 || value.F6 > 2047)
             {
                 return false;
             }
@@ -390,7 +377,7 @@ namespace Bench
                     return false;
                 }
             }
-            if (value.F7 < 0 || value.F7 > 255) // out-of-contract writes are refused, not wrapped
+            if (value.F7 < 0 || value.F7 > 255)
             {
                 return false;
             }
@@ -401,7 +388,7 @@ namespace Bench
                     return false;
                 }
             }
-            if (value.F8 < -600000 || value.F8 > 600000) // out-of-contract writes are refused, not wrapped
+            if (value.F8 < -600000 || value.F8 > 600000)
             {
                 return false;
             }
@@ -412,7 +399,7 @@ namespace Bench
                     return false;
                 }
             }
-            if (value.F9 < 0 || value.F9 > 100) // out-of-contract writes are refused, not wrapped
+            if (value.F9 < 0 || value.F9 > 100)
             {
                 return false;
             }
@@ -430,13 +417,11 @@ namespace Bench
         {
             ReadBatch batch = stream.BeginBatch();
             bool result = ReadBenchIntsBatch(ref batch, value);
-            batch.End(); // on every path out — End publishes the cursor and the error
+            batch.End();
             return result;
         }
 
-        // The batch-form core — INLINE-ONLY: a non-inlined call taking the batch by
-        // ref address-exposes it and enregistration dies (measured 0.71x, worse than
-        // no batch). Nested types compose core-to-core by ref, never via the stream.
+        // inline-only batch core — a real call would address-expose the batch
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static bool ReadBenchIntsBatch(ref ReadBatch batch, BenchInts value)
         {
@@ -488,8 +473,7 @@ namespace Bench
         public const long BenchBitsMaxBits = 156;
         public const long BenchBitsMaxBytes = 24;
 
-        // ZeroBenchBits resets value to the §5 ZERO form — all-zero storage; specified
-        // defaults live in construction only and are NOT reapplied here.
+        // The §5 zero form: all-zero storage; specified defaults live only in construction.
         public static void ZeroBenchBits(BenchBits value)
         {
             value.B7 = 0;
@@ -502,21 +486,17 @@ namespace Bench
             value.B48 = 0;
         }
 
-        // WriteBenchBits/ReadBenchBits run as a batch: the stream state lives in registers
-        // across the body's serialize calls and is stored back once at End —
-        // the tiny-message hot path (serialize.cs WriteBatch/ReadBatch). Same
-        // wire bytes, same validation, same latched-error model.
+        // batch form: stream state stays in registers across the body and End
+        // publishes it — same wire bytes, same validation, same error model.
         public static bool WriteBenchBits(WriteStream stream, BenchBits value)
         {
             WriteBatch batch = stream.BeginBatch();
             bool result = WriteBenchBitsBatch(ref batch, value);
-            batch.End(); // on every path out — End publishes the state and the error
+            batch.End();
             return result;
         }
 
-        // The batch-form core — INLINE-ONLY: a non-inlined call taking the batch by
-        // ref address-exposes it and enregistration dies (measured 0.71x, worse than
-        // no batch). Nested types compose core-to-core by ref, never via the stream.
+        // inline-only batch core — a real call would address-expose the batch
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static bool WriteBenchBitsBatch(ref WriteBatch batch, BenchBits value)
         {
@@ -559,13 +539,11 @@ namespace Bench
         {
             ReadBatch batch = stream.BeginBatch();
             bool result = ReadBenchBitsBatch(ref batch, value);
-            batch.End(); // on every path out — End publishes the cursor and the error
+            batch.End();
             return result;
         }
 
-        // The batch-form core — INLINE-ONLY: a non-inlined call taking the batch by
-        // ref address-exposes it and enregistration dies (measured 0.71x, worse than
-        // no batch). Nested types compose core-to-core by ref, never via the stream.
+        // inline-only batch core — a real call would address-expose the batch
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static bool ReadBenchBitsBatch(ref ReadBatch batch, BenchBits value)
         {
@@ -609,8 +587,7 @@ namespace Bench
         public const long BenchMixedMaxBits = 168;
         public const long BenchMixedMaxBytes = 24;
 
-        // ZeroBenchMixed resets value to the §5 ZERO form — all-zero storage; specified
-        // defaults live in construction only and are NOT reapplied here.
+        // The §5 zero form: all-zero storage; specified defaults live only in construction.
         public static void ZeroBenchMixed(BenchMixed value)
         {
             value.Sequence = 0;
@@ -626,25 +603,21 @@ namespace Bench
             value.Weapon = 0;
         }
 
-        // WriteBenchMixed/ReadBenchMixed run as a batch: the stream state lives in registers
-        // across the body's serialize calls and is stored back once at End —
-        // the tiny-message hot path (serialize.cs WriteBatch/ReadBatch). Same
-        // wire bytes, same validation, same latched-error model.
+        // batch form: stream state stays in registers across the body and End
+        // publishes it — same wire bytes, same validation, same error model.
         public static bool WriteBenchMixed(WriteStream stream, BenchMixed value)
         {
             WriteBatch batch = stream.BeginBatch();
             bool result = WriteBenchMixedBatch(ref batch, value);
-            batch.End(); // on every path out — End publishes the state and the error
+            batch.End();
             return result;
         }
 
-        // The batch-form core — INLINE-ONLY: a non-inlined call taking the batch by
-        // ref address-exposes it and enregistration dies (measured 0.71x, worse than
-        // no batch). Nested types compose core-to-core by ref, never via the stream.
+        // inline-only batch core — a real call would address-expose the batch
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static bool WriteBenchMixedBatch(ref WriteBatch batch, BenchMixed value)
         {
-            if (value.Sequence < 0 || value.Sequence > 65535) // out-of-contract writes are refused, not wrapped
+            if (value.Sequence < 0 || value.Sequence > 65535)
             {
                 return false;
             }
@@ -663,7 +636,7 @@ namespace Bench
             {
                 return false;
             }
-            if (value.PosX < -16384 || value.PosX > 16383) // out-of-contract writes are refused, not wrapped
+            if (value.PosX < -16384 || value.PosX > 16383)
             {
                 return false;
             }
@@ -674,7 +647,7 @@ namespace Bench
                     return false;
                 }
             }
-            if (value.PosY < -16384 || value.PosY > 16383) // out-of-contract writes are refused, not wrapped
+            if (value.PosY < -16384 || value.PosY > 16383)
             {
                 return false;
             }
@@ -685,7 +658,7 @@ namespace Bench
                     return false;
                 }
             }
-            if (value.PosZ < -16384 || value.PosZ > 16383) // out-of-contract writes are refused, not wrapped
+            if (value.PosZ < -16384 || value.PosZ > 16383)
             {
                 return false;
             }
@@ -712,7 +685,7 @@ namespace Bench
             {
                 return false;
             }
-            if (value.Weapon < 0 || value.Weapon > 15) // out-of-contract writes are refused, not wrapped
+            if (value.Weapon < 0 || value.Weapon > 15)
             {
                 return false;
             }
@@ -730,13 +703,11 @@ namespace Bench
         {
             ReadBatch batch = stream.BeginBatch();
             bool result = ReadBenchMixedBatch(ref batch, value);
-            batch.End(); // on every path out — End publishes the cursor and the error
+            batch.End();
             return result;
         }
 
-        // The batch-form core — INLINE-ONLY: a non-inlined call taking the batch by
-        // ref address-exposes it and enregistration dies (measured 0.71x, worse than
-        // no batch). Nested types compose core-to-core by ref, never via the stream.
+        // inline-only batch core — a real call would address-expose the batch
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static bool ReadBenchMixedBatch(ref ReadBatch batch, BenchMixed value)
         {

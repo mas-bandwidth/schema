@@ -2042,7 +2042,7 @@ function writeRealPacketFlatChecked(value, view) {
   let v = 0, s = 0, x = 0, n = 0, t0 = 0, t1 = 0;
   let bg = 0n;
   let lo = 0, hi = 0, sb = 0, wi = 0;
-  if (!Number.isInteger(value.F001Int) || value.F001Int < -805495 || value.F001Int > 805495) { // out-of-contract writes are refused, not wrapped
+  if (!Number.isInteger(value.F001Int) || value.F001Int < -805495 || value.F001Int > 805495) {
     return -1;
   }
   v = ((((value.F001Int >>> 0) - 4294161801) >>> 0) & 0x1fffff) >>> 0;
@@ -2097,7 +2097,7 @@ function writeRealPacketFlatChecked(value, view) {
     hi = 0;
     sb -= 64;
   }
-  if (!Number.isInteger(value.F003Int) || value.F003Int < -835897 || value.F003Int > 835897) { // out-of-contract writes are refused, not wrapped
+  if (!Number.isInteger(value.F003Int) || value.F003Int < -835897 || value.F003Int > 835897) {
     return -1;
   }
   v = ((((value.F003Int >>> 0) - 4294131399) >>> 0) & 0x1fffff) >>> 0;
@@ -2118,7 +2118,7 @@ function writeRealPacketFlatChecked(value, view) {
     sb -= 64;
   }
   x = Math.fround(value.F004Cf32);
-  if (!Number.isFinite(x)) { // out-of-contract writes are refused, not wrapped
+  if (!Number.isFinite(x)) {
     return -1;
   }
   n = Math.fround(Math.fround(x - 0.0) / 2000.0);
@@ -2140,7 +2140,7 @@ function writeRealPacketFlatChecked(value, view) {
     hi = 0;
     sb -= 64;
   }
-  if (!Number.isInteger(value.F005Uint) || value.F005Uint < 0 || value.F005Uint > 7316) { // out-of-contract writes are refused, not wrapped
+  if (!Number.isInteger(value.F005Uint) || value.F005Uint < 0 || value.F005Uint > 7316) {
     return -1;
   }
   v = ((value.F005Uint) & 0x1fff) >>> 0;
@@ -2160,7 +2160,7 @@ function writeRealPacketFlatChecked(value, view) {
     hi = 0;
     sb -= 64;
   }
-  if (!Number.isInteger(value.F006Int) || value.F006Int < -1513 || value.F006Int > 1513) { // out-of-contract writes are refused, not wrapped
+  if (!Number.isInteger(value.F006Int) || value.F006Int < -1513 || value.F006Int > 1513) {
     return -1;
   }
   v = ((((value.F006Int >>> 0) - 4294965783) >>> 0) & 0xfff) >>> 0;
@@ -2243,7 +2243,7 @@ function writeRealPacketFlatChecked(value, view) {
     hi = 0;
     sb -= 64;
   }
-  if (!Number.isInteger(value.F009Int) || value.F009Int < -22 || value.F009Int > 22) { // out-of-contract writes are refused, not wrapped
+  if (!Number.isInteger(value.F009Int) || value.F009Int < -22 || value.F009Int > 22) {
     return -1;
   }
   v = ((((value.F009Int >>> 0) - 4294967274) >>> 0) & 0x3f) >>> 0;
@@ -2354,7 +2354,7 @@ function writeRealPacketFlatChecked(value, view) {
       hi = 0;
       sb -= 64;
     }
-    if (!Number.isInteger(value.F014Uint) || value.F014Uint < 0 || value.F014Uint > 775) { // out-of-contract writes are refused, not wrapped
+    if (!Number.isInteger(value.F014Uint) || value.F014Uint < 0 || value.F014Uint > 775) {
       return -1;
     }
     v = ((value.F014Uint) & 0x3ff) >>> 0;
@@ -2374,7 +2374,7 @@ function writeRealPacketFlatChecked(value, view) {
       hi = 0;
       sb -= 64;
     }
-    if (!Number.isInteger(value.F015Int) || value.F015Int < -21 || value.F015Int > 21) { // out-of-contract writes are refused, not wrapped
+    if (!Number.isInteger(value.F015Int) || value.F015Int < -21 || value.F015Int > 21) {
       return -1;
     }
     v = ((((value.F015Int >>> 0) - 4294967275) >>> 0) & 0x3f) >>> 0;
@@ -2394,7 +2394,7 @@ function writeRealPacketFlatChecked(value, view) {
       hi = 0;
       sb -= 64;
     }
-    if (!Number.isInteger(value.F016Fixed) || value.F016Fixed < -37748736 || value.F016Fixed > 37748736) { // out-of-contract writes are refused, not wrapped
+    if (!Number.isInteger(value.F016Fixed) || value.F016Fixed < -37748736 || value.F016Fixed > 37748736) {
       return -1;
     }
     v = ((((value.F016Fixed >>> 0) - 4257218560) >>> 0) & 0x7ffffff) >>> 0;
@@ -2414,7 +2414,7 @@ function writeRealPacketFlatChecked(value, view) {
       hi = 0;
       sb -= 64;
     }
-    if (!Number.isInteger(value.F017Uint) || value.F017Uint < 0 || value.F017Uint > 4606) { // out-of-contract writes are refused, not wrapped
+    if (!Number.isInteger(value.F017Uint) || value.F017Uint < 0 || value.F017Uint > 4606) {
       return -1;
     }
     v = ((value.F017Uint) & 0x1fff) >>> 0;
@@ -2435,7 +2435,7 @@ function writeRealPacketFlatChecked(value, view) {
       sb -= 64;
     }
   }
-  if (!Number.isInteger(value.F018Int) || value.F018Int < -834 || value.F018Int > 834) { // out-of-contract writes are refused, not wrapped
+  if (!Number.isInteger(value.F018Int) || value.F018Int < -834 || value.F018Int > 834) {
     return -1;
   }
   v = ((((value.F018Int >>> 0) - 4294966462) >>> 0) & 0x7ff) >>> 0;
@@ -2518,7 +2518,7 @@ function writeRealPacketFlatChecked(value, view) {
     hi = 0;
     sb -= 64;
   }
-  if (!Number.isInteger(value.F021Ufixed) || value.F021Ufixed < 0 || value.F021Ufixed > 102977536) { // out-of-contract writes are refused, not wrapped
+  if (!Number.isInteger(value.F021Ufixed) || value.F021Ufixed < 0 || value.F021Ufixed > 102977536) {
     return -1;
   }
   v = ((value.F021Ufixed) & 0x7ffffff) >>> 0;
@@ -2611,7 +2611,7 @@ function writeRealPacketFlatChecked(value, view) {
     hi = 0;
     sb -= 64;
   }
-  if (!Number.isInteger(value.F025Fixed) || value.F025Fixed < -30464 || value.F025Fixed > 30464) { // out-of-contract writes are refused, not wrapped
+  if (!Number.isInteger(value.F025Fixed) || value.F025Fixed < -30464 || value.F025Fixed > 30464) {
     return -1;
   }
   v = ((((value.F025Fixed >>> 0) - 4294936832) >>> 0) & 0xffff) >>> 0;
@@ -2649,7 +2649,7 @@ function writeRealPacketFlatChecked(value, view) {
     sb -= 64;
   }
   x = Math.fround(value.F027Cf32);
-  if (!Number.isFinite(x)) { // out-of-contract writes are refused, not wrapped
+  if (!Number.isFinite(x)) {
     return -1;
   }
   n = Math.fround(Math.fround(x - -2.0) / 4.0);
@@ -2768,7 +2768,7 @@ function writeRealPacketFlatChecked(value, view) {
     hi = 0;
     sb -= 64;
   }
-  if (!Number.isInteger(value.F032Int) || value.F032Int < -3 || value.F032Int > 3) { // out-of-contract writes are refused, not wrapped
+  if (!Number.isInteger(value.F032Int) || value.F032Int < -3 || value.F032Int > 3) {
     return -1;
   }
   v = ((((value.F032Int >>> 0) - 4294967293) >>> 0) & 0x7) >>> 0;
@@ -2788,7 +2788,7 @@ function writeRealPacketFlatChecked(value, view) {
     hi = 0;
     sb -= 64;
   }
-  if (!Number.isInteger(value.F033Uint) || value.F033Uint < 0 || value.F033Uint > 142780) { // out-of-contract writes are refused, not wrapped
+  if (!Number.isInteger(value.F033Uint) || value.F033Uint < 0 || value.F033Uint > 142780) {
     return -1;
   }
   v = ((value.F033Uint) & 0x3ffff) >>> 0;
@@ -2808,7 +2808,7 @@ function writeRealPacketFlatChecked(value, view) {
     hi = 0;
     sb -= 64;
   }
-  if (!Number.isInteger(value.F034Uint) || value.F034Uint < 0 || value.F034Uint > 14149) { // out-of-contract writes are refused, not wrapped
+  if (!Number.isInteger(value.F034Uint) || value.F034Uint < 0 || value.F034Uint > 14149) {
     return -1;
   }
   v = ((value.F034Uint) & 0x3fff) >>> 0;
@@ -2916,7 +2916,7 @@ function writeRealPacketFlatChecked(value, view) {
     hi = 0;
     sb -= 64;
   }
-  if (!Number.isInteger(value.F040Fixed) || value.F040Fixed < -20480 || value.F040Fixed > 20480) { // out-of-contract writes are refused, not wrapped
+  if (!Number.isInteger(value.F040Fixed) || value.F040Fixed < -20480 || value.F040Fixed > 20480) {
     return -1;
   }
   v = ((((value.F040Fixed >>> 0) - 4294946816) >>> 0) & 0xffff) >>> 0;
@@ -2936,7 +2936,7 @@ function writeRealPacketFlatChecked(value, view) {
     hi = 0;
     sb -= 64;
   }
-  if (!Number.isInteger(value.F041Int) || value.F041Int < -55 || value.F041Int > 55) { // out-of-contract writes are refused, not wrapped
+  if (!Number.isInteger(value.F041Int) || value.F041Int < -55 || value.F041Int > 55) {
     return -1;
   }
   v = ((((value.F041Int >>> 0) - 4294967241) >>> 0) & 0x7f) >>> 0;
@@ -3036,7 +3036,7 @@ function writeRealPacketFlatChecked(value, view) {
       hi = 0;
       sb -= 64;
     }
-    if (!Number.isInteger(value.F046Uint) || value.F046Uint < 0 || value.F046Uint > 76063) { // out-of-contract writes are refused, not wrapped
+    if (!Number.isInteger(value.F046Uint) || value.F046Uint < 0 || value.F046Uint > 76063) {
       return -1;
     }
     v = ((value.F046Uint) & 0x1ffff) >>> 0;
@@ -3056,7 +3056,7 @@ function writeRealPacketFlatChecked(value, view) {
       hi = 0;
       sb -= 64;
     }
-    if (!Number.isInteger(value.F047Int) || value.F047Int < -430976 || value.F047Int > 430976) { // out-of-contract writes are refused, not wrapped
+    if (!Number.isInteger(value.F047Int) || value.F047Int < -430976 || value.F047Int > 430976) {
       return -1;
     }
     v = ((((value.F047Int >>> 0) - 4294536320) >>> 0) & 0xfffff) >>> 0;
@@ -3112,7 +3112,7 @@ function writeRealPacketFlatChecked(value, view) {
     hi = 0;
     sb -= 64;
   }
-  if (!Number.isInteger(value.F049Ufixed) || value.F049Ufixed < 0 || value.F049Ufixed > 49152) { // out-of-contract writes are refused, not wrapped
+  if (!Number.isInteger(value.F049Ufixed) || value.F049Ufixed < 0 || value.F049Ufixed > 49152) {
     return -1;
   }
   v = ((value.F049Ufixed) & 0xffff) >>> 0;
@@ -3167,7 +3167,7 @@ function writeRealPacketFlatChecked(value, view) {
       hi = 0;
       sb -= 64;
     }
-    if (!Number.isInteger(value.F052Int) || value.F052Int < -57 || value.F052Int > 57) { // out-of-contract writes are refused, not wrapped
+    if (!Number.isInteger(value.F052Int) || value.F052Int < -57 || value.F052Int > 57) {
       return -1;
     }
     v = ((((value.F052Int >>> 0) - 4294967239) >>> 0) & 0x7f) >>> 0;
@@ -3215,7 +3215,7 @@ function writeRealPacketFlatChecked(value, view) {
       hi = 0;
       sb -= 64;
     }
-    if (!Number.isInteger(value.F054Int) || value.F054Int < -35 || value.F054Int > 35) { // out-of-contract writes are refused, not wrapped
+    if (!Number.isInteger(value.F054Int) || value.F054Int < -35 || value.F054Int > 35) {
       return -1;
     }
     v = ((((value.F054Int >>> 0) - 4294967261) >>> 0) & 0x7f) >>> 0;
@@ -3253,7 +3253,7 @@ function writeRealPacketFlatChecked(value, view) {
     hi = 0;
     sb -= 64;
   }
-  if (!Number.isInteger(value.F056Int) || value.F056Int < -13 || value.F056Int > 13) { // out-of-contract writes are refused, not wrapped
+  if (!Number.isInteger(value.F056Int) || value.F056Int < -13 || value.F056Int > 13) {
     return -1;
   }
   v = ((((value.F056Int >>> 0) - 4294967283) >>> 0) & 0x1f) >>> 0;
@@ -3273,7 +3273,7 @@ function writeRealPacketFlatChecked(value, view) {
     hi = 0;
     sb -= 64;
   }
-  if (!Number.isInteger(value.F057Int) || value.F057Int < -15 || value.F057Int > 15) { // out-of-contract writes are refused, not wrapped
+  if (!Number.isInteger(value.F057Int) || value.F057Int < -15 || value.F057Int > 15) {
     return -1;
   }
   v = ((((value.F057Int >>> 0) - 4294967281) >>> 0) & 0x1f) >>> 0;
@@ -3374,7 +3374,7 @@ function writeRealPacketFlatChecked(value, view) {
     sb -= 64;
   }
   x = Math.fround(value.F061Cf32);
-  if (!Number.isFinite(x)) { // out-of-contract writes are refused, not wrapped
+  if (!Number.isFinite(x)) {
     return -1;
   }
   n = Math.fround(Math.fround(x - -90.0) / 180.0);
@@ -3396,7 +3396,7 @@ function writeRealPacketFlatChecked(value, view) {
     hi = 0;
     sb -= 64;
   }
-  if (!Number.isInteger(value.F062Uint) || value.F062Uint < 0 || value.F062Uint > 503) { // out-of-contract writes are refused, not wrapped
+  if (!Number.isInteger(value.F062Uint) || value.F062Uint < 0 || value.F062Uint > 503) {
     return -1;
   }
   v = ((value.F062Uint) & 0x1ff) >>> 0;
@@ -3451,7 +3451,7 @@ function writeRealPacketFlatChecked(value, view) {
     hi = 0;
     sb -= 64;
   }
-  if (!Number.isInteger(value.F064Uint) || value.F064Uint < 0 || value.F064Uint > 299) { // out-of-contract writes are refused, not wrapped
+  if (!Number.isInteger(value.F064Uint) || value.F064Uint < 0 || value.F064Uint > 299) {
     return -1;
   }
   v = ((value.F064Uint) & 0x1ff) >>> 0;
@@ -3472,7 +3472,7 @@ function writeRealPacketFlatChecked(value, view) {
     sb -= 64;
   }
   x = Math.fround(value.F065Cf32);
-  if (!Number.isFinite(x)) { // out-of-contract writes are refused, not wrapped
+  if (!Number.isFinite(x)) {
     return -1;
   }
   n = Math.fround(Math.fround(x - 0.0) / 30.0);
@@ -3494,7 +3494,7 @@ function writeRealPacketFlatChecked(value, view) {
     hi = 0;
     sb -= 64;
   }
-  if (!Number.isInteger(value.F066Ufixed) || value.F066Ufixed < 0 || value.F066Ufixed > 32768) { // out-of-contract writes are refused, not wrapped
+  if (!Number.isInteger(value.F066Ufixed) || value.F066Ufixed < 0 || value.F066Ufixed > 32768) {
     return -1;
   }
   v = ((value.F066Ufixed) & 0xffff) >>> 0;
@@ -3515,7 +3515,7 @@ function writeRealPacketFlatChecked(value, view) {
     sb -= 64;
   }
   x = Math.fround(value.F067Cf32);
-  if (!Number.isFinite(x)) { // out-of-contract writes are refused, not wrapped
+  if (!Number.isFinite(x)) {
     return -1;
   }
   n = Math.fround(Math.fround(x - -100.0) / 200.0);
@@ -3538,7 +3538,7 @@ function writeRealPacketFlatChecked(value, view) {
     sb -= 64;
   }
   x = Math.fround(value.F068Cf32);
-  if (!Number.isFinite(x)) { // out-of-contract writes are refused, not wrapped
+  if (!Number.isFinite(x)) {
     return -1;
   }
   n = Math.fround(Math.fround(x - 0.0) / 2000.0);
@@ -3577,7 +3577,7 @@ function writeRealPacketFlatChecked(value, view) {
     hi = 0;
     sb -= 64;
   }
-  if (!Number.isInteger(value.F070Uint) || value.F070Uint < 0 || value.F070Uint > 2) { // out-of-contract writes are refused, not wrapped
+  if (!Number.isInteger(value.F070Uint) || value.F070Uint < 0 || value.F070Uint > 2) {
     return -1;
   }
   v = ((value.F070Uint) & 0x3) >>> 0;
@@ -3598,7 +3598,7 @@ function writeRealPacketFlatChecked(value, view) {
     sb -= 64;
   }
   x = Math.fround(value.F071Cf32);
-  if (!Number.isFinite(x)) { // out-of-contract writes are refused, not wrapped
+  if (!Number.isFinite(x)) {
     return -1;
   }
   n = Math.fround(Math.fround(x - 0.0) / 10.0);
@@ -3621,7 +3621,7 @@ function writeRealPacketFlatChecked(value, view) {
     sb -= 64;
   }
   x = Math.fround(value.F072Cf32);
-  if (!Number.isFinite(x)) { // out-of-contract writes are refused, not wrapped
+  if (!Number.isFinite(x)) {
     return -1;
   }
   n = Math.fround(Math.fround(x - 0.0) / 100.0);
@@ -3643,7 +3643,7 @@ function writeRealPacketFlatChecked(value, view) {
     hi = 0;
     sb -= 64;
   }
-  if (!Number.isInteger(value.F073Int) || value.F073Int < -4 || value.F073Int > 4) { // out-of-contract writes are refused, not wrapped
+  if (!Number.isInteger(value.F073Int) || value.F073Int < -4 || value.F073Int > 4) {
     return -1;
   }
   v = ((((value.F073Int >>> 0) - 4294967292) >>> 0) & 0xf) >>> 0;
@@ -3716,7 +3716,7 @@ function writeRealPacketFlatChecked(value, view) {
       hi = 0;
       sb -= 64;
     }
-    if (!Number.isInteger(value.F076Int) || value.F076Int < -26218 || value.F076Int > 26218) { // out-of-contract writes are refused, not wrapped
+    if (!Number.isInteger(value.F076Int) || value.F076Int < -26218 || value.F076Int > 26218) {
       return -1;
     }
     v = ((((value.F076Int >>> 0) - 4294941078) >>> 0) & 0xffff) >>> 0;
@@ -3736,7 +3736,7 @@ function writeRealPacketFlatChecked(value, view) {
       hi = 0;
       sb -= 64;
     }
-    if (!Number.isInteger(value.F077Int) || value.F077Int < -17 || value.F077Int > 17) { // out-of-contract writes are refused, not wrapped
+    if (!Number.isInteger(value.F077Int) || value.F077Int < -17 || value.F077Int > 17) {
       return -1;
     }
     v = ((((value.F077Int >>> 0) - 4294967279) >>> 0) & 0x3f) >>> 0;
@@ -3773,7 +3773,7 @@ function writeRealPacketFlatChecked(value, view) {
       hi = 0;
       sb -= 64;
     }
-    if (!Number.isInteger(value.F079Uint) || value.F079Uint < 0 || value.F079Uint > 17) { // out-of-contract writes are refused, not wrapped
+    if (!Number.isInteger(value.F079Uint) || value.F079Uint < 0 || value.F079Uint > 17) {
       return -1;
     }
     v = ((value.F079Uint) & 0x1f) >>> 0;
@@ -3865,7 +3865,7 @@ function writeRealPacketFlatChecked(value, view) {
     hi = 0;
     sb -= 64;
   }
-  if (!Number.isInteger(value.F084Ufixed) || value.F084Ufixed < 0 || value.F084Ufixed > 128) { // out-of-contract writes are refused, not wrapped
+  if (!Number.isInteger(value.F084Ufixed) || value.F084Ufixed < 0 || value.F084Ufixed > 128) {
     return -1;
   }
   v = ((value.F084Ufixed) & 0xff) >>> 0;
@@ -3902,7 +3902,7 @@ function writeRealPacketFlatChecked(value, view) {
     hi = 0;
     sb -= 64;
   }
-  if (!Number.isInteger(value.F086Uint) || value.F086Uint < 0 || value.F086Uint > 399) { // out-of-contract writes are refused, not wrapped
+  if (!Number.isInteger(value.F086Uint) || value.F086Uint < 0 || value.F086Uint > 399) {
     return -1;
   }
   v = ((value.F086Uint) & 0x1ff) >>> 0;
@@ -3957,7 +3957,7 @@ function writeRealPacketFlatChecked(value, view) {
     hi = 0;
     sb -= 64;
   }
-  if (!Number.isInteger(value.F088Int) || value.F088Int < -694 || value.F088Int > 694) { // out-of-contract writes are refused, not wrapped
+  if (!Number.isInteger(value.F088Int) || value.F088Int < -694 || value.F088Int > 694) {
     return -1;
   }
   v = ((((value.F088Int >>> 0) - 4294966602) >>> 0) & 0x7ff) >>> 0;
@@ -4012,7 +4012,7 @@ function writeRealPacketFlatChecked(value, view) {
     hi = 0;
     sb -= 64;
   }
-  if (!Number.isInteger(value.F090Uint) || value.F090Uint < 0 || value.F090Uint > 214) { // out-of-contract writes are refused, not wrapped
+  if (!Number.isInteger(value.F090Uint) || value.F090Uint < 0 || value.F090Uint > 214) {
     return -1;
   }
   v = ((value.F090Uint) & 0xff) >>> 0;
@@ -4121,7 +4121,7 @@ function writeRealPacketFlatChecked(value, view) {
     hi = 0;
     sb -= 64;
   }
-  if (!Number.isInteger(value.F095Fixed) || value.F095Fixed < -103350272 || value.F095Fixed > 103350272) { // out-of-contract writes are refused, not wrapped
+  if (!Number.isInteger(value.F095Fixed) || value.F095Fixed < -103350272 || value.F095Fixed > 103350272) {
     return -1;
   }
   v = ((((value.F095Fixed >>> 0) - 4191617024) >>> 0) & 0xfffffff) >>> 0;

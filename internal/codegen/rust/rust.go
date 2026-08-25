@@ -346,18 +346,11 @@ func (g *gen) emitEnum(d *ir.Enum) {
 	g.pf("}\n\n")
 
 	// Debug/log name for any value, out-of-set included — the counterpart of
-	// C++'s and Go's EnumName. The wire-value form (u64) is what the table
-	// reflection descriptors carry, so both spellings exist and neither
-	// forces a cast at the call site.
+	// C++'s and Go's EnumName.
 	snake := ir.RustSnake(d.Name)
 	g.pf("/// Debug/log name for any `%s` value, out-of-set included.\n", d.Name)
 	g.pf("pub fn enum_name_%s(value: %s) -> &'static str {\n", snake, d.Name)
-	g.pf("    enum_name_%s_dyn(value.0 as u64)\n}\n\n", snake)
-
-	g.pf("/// As [`enum_name_%s`], over a raw wire value — the form the table\n", snake)
-	g.pf("/// reflection descriptors hold.\n")
-	g.pf("pub fn enum_name_%s_dyn(value: u64) -> &'static str {\n", snake)
-	g.pf("    match value {\n")
+	g.pf("    match value.0 {\n")
 	g.pf("        0 => \"None\",\n")
 	for i, v := range d.Variants {
 		g.pf("        %d => %q,\n", i+1, v)
@@ -384,8 +377,7 @@ func (g *gen) emitStruct(d *ir.Struct) {
 		kind = "message"
 	}
 	if len(d.Tags) > 0 {
-		g.pf("// %s %s [%s] — the tag is user-chosen and inert in v1; the delta pass\n", kind, d.Name, strings.Join(d.Tags, ", "))
-		g.pf("// claims tags and assigns actions (SPEC §4.2, Type tags)\n")
+		g.pf("// %s %s [%s] — tags are user-chosen and inert in v1 (SPEC §4.2, Type tags)\n", kind, d.Name, strings.Join(d.Tags, ", "))
 	} else {
 		g.pf("// %s %s\n", kind, d.Name)
 	}
@@ -752,9 +744,9 @@ func (g *gen) fieldComment(f *ir.Field) string {
 	}
 	if f.Local {
 		if f.Context != "" {
-			parts = append(parts, fmt.Sprintf(" | local, context = %s", f.Context))
+			parts = append(parts, fmt.Sprintf("| local, context = %s", f.Context))
 		} else {
-			parts = append(parts, " | local — no wire")
+			parts = append(parts, "| local — no wire")
 		}
 	}
 	if len(parts) == 0 {

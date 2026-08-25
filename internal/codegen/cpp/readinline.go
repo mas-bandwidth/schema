@@ -39,11 +39,10 @@ func (g *gen) fileEmitsWire() bool {
 // timed loop at cost=1055 against threshold=45, while the C backend's
 // read_message — static in one TU — inlines into its identical loop
 // (last-call-to-static, cost=-13285) and carries no per-message call at all.
-// The demand shipped first as a default-off switch, then won its tournament
+// The demand won its tournament
 // (tournament-air off→armed with the serialize read demand: batch read +68%,
 // rigidbody_at_rest read +244%, testdata read +109%, zero regressions;
-// reconfirmed confirmation-air r2), so per the feature lifecycle the winner
-// became unconditional code and the switch was deleted. The demand is a
+// reconfirmed confirmation-air r2). The demand is a
 // DEMAND, not a branch-weight hint: __builtin_expect-style cold hints were
 // measured in this family to activate the machine outliner and shred hot
 // bodies (bits write -25%) — do not swap this for hints. Guarded against

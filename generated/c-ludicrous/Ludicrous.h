@@ -9,7 +9,6 @@
 
 #include <stdint.h>
 #include <string.h>   /* memset — the zero form (SPEC §4.2) */
-#include <math.h>     /* floor — the quantize pair */
 #include "serialize.h"   /* serialize_int128_t: C has no 128-bit builtin */
 
 #ifndef SCHEMA_UNUSED
@@ -47,23 +46,9 @@ static SCHEMA_UNUSED const char * enum_name_drive_mode( DriveMode value )
     switch ( value )
     {
         case DRIVE_MODE_NONE: return "None";
-        case 1: return "Cruise";
-        case 2: return "Warp";
-        case 3: return "Ludicrous";
-        default: return "???";
-    }
-}
-
-/* As enum_name_drive_mode, over a raw wire value — the form the table reflection
-   descriptors hold. */
-static SCHEMA_UNUSED const char * enum_name_drive_mode_dyn( uint64_t value )
-{
-    switch ( value )
-    {
-        case 0: return "None";
-        case 1: return "Cruise";
-        case 2: return "Warp";
-        case 3: return "Ludicrous";
+        case DRIVE_MODE_CRUISE: return "Cruise";
+        case DRIVE_MODE_WARP: return "Warp";
+        case DRIVE_MODE_LUDICROUS: return "Ludicrous";
         default: return "???";
     }
 }
@@ -94,7 +79,7 @@ typedef struct UnsignedProbe {
 } UnsignedProbe;
 
 #define UNSIGNED_PROBE_MAX_BITS 196   /* longest wire path; align pads at worst case (SPEC §6.1) */
-#define UNSIGNED_PROBE_MAX_BYTES 32  /* rounded up to the 8-byte write-buffer granularity; a READ buffer's allocation must extend at least 8 bytes past the data — serialize.c loads 64-bit windows */
+#define UNSIGNED_PROBE_MAX_BYTES 32  /* 8-byte write granularity; read slack per the contract above */
 
 
 /* type WideProbe */
@@ -107,7 +92,7 @@ typedef struct WideProbe {
 } WideProbe;
 
 #define WIDE_PROBE_MAX_BITS 403   /* longest wire path; align pads at worst case (SPEC §6.1) */
-#define WIDE_PROBE_MAX_BYTES 56  /* rounded up to the 8-byte write-buffer granularity; a READ buffer's allocation must extend at least 8 bytes past the data — serialize.c loads 64-bit windows */
+#define WIDE_PROBE_MAX_BYTES 56  /* 8-byte write granularity; read slack per the contract above */
 
 /* Returns a WideProbe with its SPECIFIED defaults applied. A memset to zero is
    the schema's own default (SPEC §4.2: zero initialization unless a
@@ -134,7 +119,7 @@ typedef struct LudicrousState {
 } LudicrousState;
 
 #define LUDICROUS_STATE_MAX_BITS 1205   /* longest wire path; align pads at worst case (SPEC §6.1) */
-#define LUDICROUS_STATE_MAX_BYTES 152  /* rounded up to the 8-byte write-buffer granularity; a READ buffer's allocation must extend at least 8 bytes past the data — serialize.c loads 64-bit windows */
+#define LUDICROUS_STATE_MAX_BYTES 152  /* 8-byte write granularity; read slack per the contract above */
 
 /* Returns a LudicrousState with its SPECIFIED defaults applied. A memset to zero is
    the schema's own default (SPEC §4.2: zero initialization unless a
@@ -157,7 +142,7 @@ typedef struct DegenerateProbe {
 } DegenerateProbe;
 
 #define DEGENERATE_PROBE_MAX_BITS 8   /* longest wire path; align pads at worst case (SPEC §6.1) */
-#define DEGENERATE_PROBE_MAX_BYTES 8  /* rounded up to the 8-byte write-buffer granularity; a READ buffer's allocation must extend at least 8 bytes past the data — serialize.c loads 64-bit windows */
+#define DEGENERATE_PROBE_MAX_BYTES 8  /* 8-byte write granularity; read slack per the contract above */
 
 
 /* type FixedVec */
@@ -168,7 +153,7 @@ typedef struct FixedVec {
 } FixedVec;
 
 #define FIXED_VEC_MAX_BITS 102   /* longest wire path; align pads at worst case (SPEC §6.1) */
-#define FIXED_VEC_MAX_BYTES 16  /* rounded up to the 8-byte write-buffer granularity; a READ buffer's allocation must extend at least 8 bytes past the data — serialize.c loads 64-bit windows */
+#define FIXED_VEC_MAX_BYTES 16  /* 8-byte write granularity; read slack per the contract above */
 
 
 /* type FixedQuat */
@@ -180,7 +165,7 @@ typedef struct FixedQuat {
 } FixedQuat;
 
 #define FIXED_QUAT_MAX_BITS 128   /* longest wire path; align pads at worst case (SPEC §6.1) */
-#define FIXED_QUAT_MAX_BYTES 16  /* rounded up to the 8-byte write-buffer granularity; a READ buffer's allocation must extend at least 8 bytes past the data — serialize.c loads 64-bit windows */
+#define FIXED_QUAT_MAX_BYTES 16  /* 8-byte write granularity; read slack per the contract above */
 
 /* Returns a FixedQuat with its SPECIFIED defaults applied. A memset to zero is
    the schema's own default (SPEC §4.2: zero initialization unless a

@@ -79,7 +79,7 @@ struct UnsignedProbe {
 };
 
 inline constexpr int64_t UnsignedProbeMaxBits = 196; // longest wire path; align pads at worst case (SPEC §6.1)
-inline constexpr int64_t UnsignedProbeMaxBytes = 32; // rounded up to the 8-byte write-buffer granularity; a read buffer's allocation must extend at least 8 bytes past the data — the reader loads 64-bit windows
+inline constexpr int64_t UnsignedProbeMaxBytes = 32; // 8-byte write granularity; read slack per the contract above
 
 // type WideProbe
 struct WideProbe {
@@ -91,7 +91,7 @@ struct WideProbe {
 };
 
 inline constexpr int64_t WideProbeMaxBits = 403; // longest wire path; align pads at worst case (SPEC §6.1)
-inline constexpr int64_t WideProbeMaxBytes = 56; // rounded up to the 8-byte write-buffer granularity; a read buffer's allocation must extend at least 8 bytes past the data — the reader loads 64-bit windows
+inline constexpr int64_t WideProbeMaxBytes = 56; // 8-byte write granularity; read slack per the contract above
 
 // message LudicrousState
 struct LudicrousState {
@@ -108,7 +108,7 @@ struct LudicrousState {
 };
 
 inline constexpr int64_t LudicrousStateMaxBits = 1205; // longest wire path; align pads at worst case (SPEC §6.1)
-inline constexpr int64_t LudicrousStateMaxBytes = 152; // rounded up to the 8-byte write-buffer granularity; a read buffer's allocation must extend at least 8 bytes past the data — the reader loads 64-bit windows
+inline constexpr int64_t LudicrousStateMaxBytes = 152; // 8-byte write granularity; read slack per the contract above
 
 // type DegenerateProbe
 struct DegenerateProbe {
@@ -119,10 +119,9 @@ struct DegenerateProbe {
 };
 
 inline constexpr int64_t DegenerateProbeMaxBits = 8; // longest wire path; align pads at worst case (SPEC §6.1)
-inline constexpr int64_t DegenerateProbeMaxBytes = 8; // rounded up to the 8-byte write-buffer granularity; a read buffer's allocation must extend at least 8 bytes past the data — the reader loads 64-bit windows
+inline constexpr int64_t DegenerateProbeMaxBytes = 8; // 8-byte write granularity; read slack per the contract above
 
-// type FixedVec [vec3] — the tag is user-chosen and inert in v1; the delta pass
-// claims tags and assigns actions (SPEC §4.2, Type tags)
+// type FixedVec [vec3] — tags are user-chosen and inert in v1 (SPEC §4.2, Type tags)
 struct FixedVec {
     int64_t x = 0; // fixed(48, 16) — Q48.16, raw value scaled by 2^16; bounds in whole units; wire [-100000, 100000]
     int64_t y = 0; // fixed(48, 16) — Q48.16, raw value scaled by 2^16; bounds in whole units; wire [-100000, 100000]
@@ -130,10 +129,9 @@ struct FixedVec {
 };
 
 inline constexpr int64_t FixedVecMaxBits = 102; // longest wire path; align pads at worst case (SPEC §6.1)
-inline constexpr int64_t FixedVecMaxBytes = 16; // rounded up to the 8-byte write-buffer granularity; a read buffer's allocation must extend at least 8 bytes past the data — the reader loads 64-bit windows
+inline constexpr int64_t FixedVecMaxBytes = 16; // 8-byte write granularity; read slack per the contract above
 
-// type FixedQuat [quat4] — the tag is user-chosen and inert in v1; the delta pass
-// claims tags and assigns actions (SPEC §4.2, Type tags)
+// type FixedQuat [quat4] — tags are user-chosen and inert in v1 (SPEC §4.2, Type tags)
 struct FixedQuat {
     int32_t x = 0; // fixed(2, 30) — Q2.30, raw value scaled by 2^30; bounds in whole units; wire [-1, 1]
     int32_t y = 0; // fixed(2, 30) — Q2.30, raw value scaled by 2^30; bounds in whole units; wire [-1, 1]
@@ -142,7 +140,7 @@ struct FixedQuat {
 };
 
 inline constexpr int64_t FixedQuatMaxBits = 128; // longest wire path; align pads at worst case (SPEC §6.1)
-inline constexpr int64_t FixedQuatMaxBytes = 16; // rounded up to the 8-byte write-buffer granularity; a read buffer's allocation must extend at least 8 bytes past the data — the reader loads 64-bit windows
+inline constexpr int64_t FixedQuatMaxBytes = 16; // 8-byte write granularity; read slack per the contract above
 
 // ---- object Body — one definition, a generated family per target (SPEC §4.8) ----
 
@@ -151,7 +149,7 @@ struct BodyState {
     FixedVec position;
     FixedQuat rotation;
     FixedVec velocity;
-    double spin = 0.0; //  | local — no wire
+    double spin = 0.0; // | local — no wire
 };
 
 // BodyData_Deep — every non- | local field, deep encodings: full state for
@@ -184,10 +182,10 @@ struct BodyData_Interpolate {
 // SPEC §4.8) — Interpolate and Shallow are the same values.
 
 inline constexpr int64_t BodyData_DeepMaxBits = 332;
-inline constexpr int64_t BodyData_DeepMaxBytes = 48; // rounded up to the 8-byte write-buffer granularity; a read buffer's allocation must extend at least 8 bytes past the data — the reader loads 64-bit windows
+inline constexpr int64_t BodyData_DeepMaxBytes = 48; // 8-byte write granularity; read slack per the contract above
 
 inline constexpr int64_t BodyData_ShallowMaxBits = 332;
-inline constexpr int64_t BodyData_ShallowMaxBytes = 48; // rounded up to the 8-byte write-buffer granularity; a read buffer's allocation must extend at least 8 bytes past the data — the reader loads 64-bit windows
+inline constexpr int64_t BodyData_ShallowMaxBytes = 48; // 8-byte write granularity; read slack per the contract above
 
 // ---- object NarrowBody — one definition, a generated family per target (SPEC §4.8) ----
 
@@ -278,14 +276,14 @@ inline void UnquantizeNarrowBody( const NarrowBodyData_Shallow & input, NarrowBo
 }
 
 inline constexpr int64_t NarrowBodyData_DeepMaxBits = 332;
-inline constexpr int64_t NarrowBodyData_DeepMaxBytes = 48; // rounded up to the 8-byte write-buffer granularity; a read buffer's allocation must extend at least 8 bytes past the data — the reader loads 64-bit windows
+inline constexpr int64_t NarrowBodyData_DeepMaxBytes = 48; // 8-byte write granularity; read slack per the contract above
 
 inline constexpr int64_t NarrowBodyData_ShallowMaxBits = 228;
-inline constexpr int64_t NarrowBodyData_ShallowMaxBytes = 32; // rounded up to the 8-byte write-buffer granularity; a read buffer's allocation must extend at least 8 bytes past the data — the reader loads 64-bit windows
+inline constexpr int64_t NarrowBodyData_ShallowMaxBytes = 32; // 8-byte write granularity; read slack per the contract above
 
 // The message-level bound: the tag plus the largest message (SPEC §6.1)
 inline constexpr int64_t MessageMaxBits = 1206;
-inline constexpr int64_t MessageMaxBytes = 152; // rounded up to the 8-byte write-buffer granularity; a read buffer's allocation must extend at least 8 bytes past the data — the reader loads 64-bit windows
+inline constexpr int64_t MessageMaxBytes = 152; // 8-byte write granularity; read slack per the contract above
 
 // The message value: index == wire tag (std::monostate is None = 0, then each
 // message in tag order). Inline storage, no heap, trivially copyable.

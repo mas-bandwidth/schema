@@ -3,13 +3,6 @@
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
 // package example — protocol id 0xbc05d83a8135cdb9
-//
-// Storage members are PascalCase via the same mapping as the Go target, so
-// the checker's collision registry covers C# for free. Wire functions return
-// bool — the C++-style early-out. A schema validation failure (a wrong wire
-// constant, nonzero reserved bits, an interior null) returns false WITHOUT
-// latching; stream failures latch on stream.Error — the runtime's own sticky
-// latch. Callers get bool always; Error tells the two apart.
 
 using System.Runtime.CompilerServices;
 using Serialize;
@@ -56,8 +49,7 @@ namespace Example
         public const long RenderSpriteMaxBits = 138;
         public const long RenderSpriteMaxBytes = 24;
 
-        // ZeroRenderSprite resets value to the §5 ZERO form — all-zero storage; specified
-        // defaults live in construction only and are NOT reapplied here.
+        // The §5 zero form: all-zero storage; specified defaults live only in construction.
         public static void ZeroRenderSprite(RenderSprite value)
         {
             value.SortKey = 0;
@@ -67,21 +59,17 @@ namespace Example
             value.Team = Team.None;
         }
 
-        // WriteRenderSprite/ReadRenderSprite run as a batch: the stream state lives in registers
-        // across the body's serialize calls and is stored back once at End —
-        // the tiny-message hot path (serialize.cs WriteBatch/ReadBatch). Same
-        // wire bytes, same validation, same latched-error model.
+        // batch form: stream state stays in registers across the body and End
+        // publishes it — same wire bytes, same validation, same error model.
         public static bool WriteRenderSprite(WriteStream stream, RenderSprite value)
         {
             WriteBatch batch = stream.BeginBatch();
             bool result = WriteRenderSpriteBatch(ref batch, value);
-            batch.End(); // on every path out — End publishes the state and the error
+            batch.End();
             return result;
         }
 
-        // The batch-form core — INLINE-ONLY: a non-inlined call taking the batch by
-        // ref address-exposes it and enregistration dies (measured 0.71x, worse than
-        // no batch). Nested types compose core-to-core by ref, never via the stream.
+        // inline-only batch core — a real call would address-expose the batch
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static bool WriteRenderSpriteBatch(ref WriteBatch batch, RenderSprite value)
         {
@@ -122,13 +110,11 @@ namespace Example
         {
             ReadBatch batch = stream.BeginBatch();
             bool result = ReadRenderSpriteBatch(ref batch, value);
-            batch.End(); // on every path out — End publishes the cursor and the error
+            batch.End();
             return result;
         }
 
-        // The batch-form core — INLINE-ONLY: a non-inlined call taking the batch by
-        // ref address-exposes it and enregistration dies (measured 0.71x, worse than
-        // no batch). Nested types compose core-to-core by ref, never via the stream.
+        // inline-only batch core — a real call would address-expose the batch
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static bool ReadRenderSpriteBatch(ref ReadBatch batch, RenderSprite value)
         {
@@ -168,8 +154,7 @@ namespace Example
         public const long RenderBlockMaxBits = 8903;
         public const long RenderBlockMaxBytes = 1120;
 
-        // ZeroRenderBlock resets value to the §5 ZERO form — all-zero storage; specified
-        // defaults live in construction only and are NOT reapplied here.
+        // The §5 zero form: all-zero storage; specified defaults live only in construction.
         public static void ZeroRenderBlock(RenderBlock value)
         {
             value.WorkerIndex = 0;
@@ -181,21 +166,17 @@ namespace Example
             value.SpritesCount = 0;
         }
 
-        // WriteRenderBlock/ReadRenderBlock run as a batch: the stream state lives in registers
-        // across the body's serialize calls and is stored back once at End —
-        // the tiny-message hot path (serialize.cs WriteBatch/ReadBatch). Same
-        // wire bytes, same validation, same latched-error model.
+        // batch form: stream state stays in registers across the body and End
+        // publishes it — same wire bytes, same validation, same error model.
         public static bool WriteRenderBlock(WriteStream stream, RenderBlock value)
         {
             WriteBatch batch = stream.BeginBatch();
             bool result = WriteRenderBlockBatch(ref batch, value);
-            batch.End(); // on every path out — End publishes the state and the error
+            batch.End();
             return result;
         }
 
-        // The batch-form core — INLINE-ONLY: a non-inlined call taking the batch by
-        // ref address-exposes it and enregistration dies (measured 0.71x, worse than
-        // no batch). Nested types compose core-to-core by ref, never via the stream.
+        // inline-only batch core — a real call would address-expose the batch
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static bool WriteRenderBlockBatch(ref WriteBatch batch, RenderBlock value)
         {
@@ -232,13 +213,11 @@ namespace Example
         {
             ReadBatch batch = stream.BeginBatch();
             bool result = ReadRenderBlockBatch(ref batch, value);
-            batch.End(); // on every path out — End publishes the cursor and the error
+            batch.End();
             return result;
         }
 
-        // The batch-form core — INLINE-ONLY: a non-inlined call taking the batch by
-        // ref address-exposes it and enregistration dies (measured 0.71x, worse than
-        // no batch). Nested types compose core-to-core by ref, never via the stream.
+        // inline-only batch core — a real call would address-expose the batch
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static bool ReadRenderBlockBatch(ref ReadBatch batch, RenderBlock value)
         {

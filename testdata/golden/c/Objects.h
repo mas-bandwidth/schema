@@ -8,7 +8,6 @@
 #define SCHEMA_EXAMPLE_OBJECTS_H
 
 #include <stdint.h>
-#include <string.h>   /* memset — the zero form (SPEC §4.2) */
 #include <math.h>     /* floor — the quantize pair */
 
 #ifndef SCHEMA_UNUSED

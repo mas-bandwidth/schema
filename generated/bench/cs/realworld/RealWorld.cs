@@ -4,12 +4,11 @@
 // AGPL-3.0, its output is not.
 // package realworld — protocol id 0x8f7228a19854fbb2
 //
-// Storage members are PascalCase via the same mapping as the Go target, so
-// the checker's collision registry covers C# for free. Wire functions return
-// bool — the C++-style early-out. A schema validation failure (a wrong wire
-// constant, nonzero reserved bits, an interior null) returns false WITHOUT
-// latching; stream failures latch on stream.Error — the runtime's own sticky
-// latch. Callers get bool always; Error tells the two apart.
+// Wire functions return bool — the C++-style early-out. A schema validation
+// failure (a wrong wire constant, nonzero reserved bits, an interior null)
+// returns false WITHOUT latching; stream failures latch on stream.Error —
+// the runtime's own sticky latch. Callers get bool always; Error tells the
+// two apart.
 
 using System.Runtime.CompilerServices;
 using Serialize;
@@ -45,7 +44,7 @@ namespace Realworld
         public sbyte F009Int; // wire [-22, 22]
         public float F010F32;
         public uint F011Bits;
-        public bool F012Bool = true; // = true at construction; Zero* gives the §5 zero form
+        public bool F012Bool = true; // specified default at construction; Zero* gives the §5 zero form
 
         // if f012_bool — wire branch; storage holds both sides, a read zeroes the
         // untaken side (SPEC §5)
@@ -80,7 +79,7 @@ namespace Realworld
         public short F040Fixed; // wire [-5, 5]
         public sbyte F041Int; // wire [-55, 55]
         public uint F042Bits;
-        public bool F043Bool = false; // = false at construction; Zero* gives the §5 zero form
+        public bool F043Bool = false; // specified default at construction; Zero* gives the §5 zero form
 
         // if f043_bool — wire branch; storage holds both sides, a read zeroes the
         // untaken side (SPEC §5)
@@ -91,7 +90,7 @@ namespace Realworld
 
         public double F048F64;
         public ushort F049Ufixed; // wire [0, 3]
-        public bool F050Bool = true; // = true at construction; Zero* gives the §5 zero form
+        public bool F050Bool = true; // specified default at construction; Zero* gives the §5 zero form
 
         // if f050_bool — wire branch; storage holds both sides, a read zeroes the
         // untaken side (SPEC §5)
@@ -119,7 +118,7 @@ namespace Realworld
         public float F071Cf32; // compressed float [0.0, 10.0] @ 0.02
         public float F072Cf32; // compressed float [0.0, 100.0] @ 0.01
         public sbyte F073Int; // wire [-4, 4]
-        public bool F074Bool = false; // = false at construction; Zero* gives the §5 zero form
+        public bool F074Bool = false; // specified default at construction; Zero* gives the §5 zero form
 
         // if f074_bool — wire branch; storage holds both sides, a read zeroes the
         // untaken side (SPEC §5)
@@ -196,8 +195,7 @@ namespace Realworld
         public const long RealPacketMaxBits = 1810;
         public const long RealPacketMaxBytes = 232;
 
-        // ZeroRealPacket resets value to the §5 ZERO form — all-zero storage; specified
-        // defaults live in construction only and are NOT reapplied here.
+        // The §5 zero form: all-zero storage; specified defaults live only in construction.
         public static void ZeroRealPacket(RealPacket value)
         {
             value.F001Int = 0;
@@ -299,25 +297,21 @@ namespace Realworld
             value.F097Bits = 0;
         }
 
-        // WriteRealPacket/ReadRealPacket run as a batch: the stream state lives in registers
-        // across the body's serialize calls and is stored back once at End —
-        // the tiny-message hot path (serialize.cs WriteBatch/ReadBatch). Same
-        // wire bytes, same validation, same latched-error model.
+        // batch form: stream state stays in registers across the body and End
+        // publishes it — same wire bytes, same validation, same error model.
         public static bool WriteRealPacket(WriteStream stream, RealPacket value)
         {
             WriteBatch batch = stream.BeginBatch();
             bool result = WriteRealPacketBatch(ref batch, value);
-            batch.End(); // on every path out — End publishes the state and the error
+            batch.End();
             return result;
         }
 
-        // The batch-form core — INLINE-ONLY: a non-inlined call taking the batch by
-        // ref address-exposes it and enregistration dies (measured 0.71x, worse than
-        // no batch). Nested types compose core-to-core by ref, never via the stream.
+        // inline-only batch core — a real call would address-expose the batch
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static bool WriteRealPacketBatch(ref WriteBatch batch, RealPacket value)
         {
-            if (value.F001Int < -805495 || value.F001Int > 805495) // out-of-contract writes are refused, not wrapped
+            if (value.F001Int < -805495 || value.F001Int > 805495)
             {
                 return false;
             }
@@ -332,7 +326,7 @@ namespace Realworld
             {
                 return false;
             }
-            if (value.F003Int < -835897 || value.F003Int > 835897) // out-of-contract writes are refused, not wrapped
+            if (value.F003Int < -835897 || value.F003Int > 835897)
             {
                 return false;
             }
@@ -350,7 +344,7 @@ namespace Realworld
                     return false;
                 }
             }
-            if (value.F005Uint > 7316) // out-of-contract writes are refused, not wrapped
+            if (value.F005Uint > 7316)
             {
                 return false;
             }
@@ -361,7 +355,7 @@ namespace Realworld
                     return false;
                 }
             }
-            if (value.F006Int < -1513 || value.F006Int > 1513) // out-of-contract writes are refused, not wrapped
+            if (value.F006Int < -1513 || value.F006Int > 1513)
             {
                 return false;
             }
@@ -380,7 +374,7 @@ namespace Realworld
             {
                 return false;
             }
-            if (value.F009Int < -22 || value.F009Int > 22) // out-of-contract writes are refused, not wrapped
+            if (value.F009Int < -22 || value.F009Int > 22)
             {
                 return false;
             }
@@ -409,7 +403,7 @@ namespace Realworld
                 {
                     return false;
                 }
-                if (value.F014Uint > 775) // out-of-contract writes are refused, not wrapped
+                if (value.F014Uint > 775)
                 {
                     return false;
                 }
@@ -420,7 +414,7 @@ namespace Realworld
                         return false;
                     }
                 }
-                if (value.F015Int < -21 || value.F015Int > 21) // out-of-contract writes are refused, not wrapped
+                if (value.F015Int < -21 || value.F015Int > 21)
                 {
                     return false;
                 }
@@ -435,7 +429,7 @@ namespace Realworld
                 {
                     return false;
                 }
-                if (value.F017Uint > 4606) // out-of-contract writes are refused, not wrapped
+                if (value.F017Uint > 4606)
                 {
                     return false;
                 }
@@ -447,7 +441,7 @@ namespace Realworld
                     }
                 }
             }
-            if (value.F018Int < -834 || value.F018Int > 834) // out-of-contract writes are refused, not wrapped
+            if (value.F018Int < -834 || value.F018Int > 834)
             {
                 return false;
             }
@@ -516,7 +510,7 @@ namespace Realworld
             {
                 return false;
             }
-            if (value.F032Int < -3 || value.F032Int > 3) // out-of-contract writes are refused, not wrapped
+            if (value.F032Int < -3 || value.F032Int > 3)
             {
                 return false;
             }
@@ -527,7 +521,7 @@ namespace Realworld
                     return false;
                 }
             }
-            if (value.F033Uint > 142780) // out-of-contract writes are refused, not wrapped
+            if (value.F033Uint > 142780)
             {
                 return false;
             }
@@ -538,7 +532,7 @@ namespace Realworld
                     return false;
                 }
             }
-            if (value.F034Uint > 14149) // out-of-contract writes are refused, not wrapped
+            if (value.F034Uint > 14149)
             {
                 return false;
             }
@@ -580,7 +574,7 @@ namespace Realworld
             {
                 return false;
             }
-            if (value.F041Int < -55 || value.F041Int > 55) // out-of-contract writes are refused, not wrapped
+            if (value.F041Int < -55 || value.F041Int > 55)
             {
                 return false;
             }
@@ -609,7 +603,7 @@ namespace Realworld
                 {
                     return false;
                 }
-                if (value.F046Uint > 76063) // out-of-contract writes are refused, not wrapped
+                if (value.F046Uint > 76063)
                 {
                     return false;
                 }
@@ -620,7 +614,7 @@ namespace Realworld
                         return false;
                     }
                 }
-                if (value.F047Int < -430976 || value.F047Int > 430976) // out-of-contract writes are refused, not wrapped
+                if (value.F047Int < -430976 || value.F047Int > 430976)
                 {
                     return false;
                 }
@@ -650,7 +644,7 @@ namespace Realworld
                 {
                     return false;
                 }
-                if (value.F052Int < -57 || value.F052Int > 57) // out-of-contract writes are refused, not wrapped
+                if (value.F052Int < -57 || value.F052Int > 57)
                 {
                     return false;
                 }
@@ -665,7 +659,7 @@ namespace Realworld
                 {
                     return false;
                 }
-                if (value.F054Int < -35 || value.F054Int > 35) // out-of-contract writes are refused, not wrapped
+                if (value.F054Int < -35 || value.F054Int > 35)
                 {
                     return false;
                 }
@@ -681,7 +675,7 @@ namespace Realworld
             {
                 return false;
             }
-            if (value.F056Int < -13 || value.F056Int > 13) // out-of-contract writes are refused, not wrapped
+            if (value.F056Int < -13 || value.F056Int > 13)
             {
                 return false;
             }
@@ -692,7 +686,7 @@ namespace Realworld
                     return false;
                 }
             }
-            if (value.F057Int < -15 || value.F057Int > 15) // out-of-contract writes are refused, not wrapped
+            if (value.F057Int < -15 || value.F057Int > 15)
             {
                 return false;
             }
@@ -722,7 +716,7 @@ namespace Realworld
                     return false;
                 }
             }
-            if (value.F062Uint > 503) // out-of-contract writes are refused, not wrapped
+            if (value.F062Uint > 503)
             {
                 return false;
             }
@@ -740,7 +734,7 @@ namespace Realworld
                     return false;
                 }
             }
-            if (value.F064Uint > 299) // out-of-contract writes are refused, not wrapped
+            if (value.F064Uint > 299)
             {
                 return false;
             }
@@ -780,7 +774,7 @@ namespace Realworld
             {
                 return false;
             }
-            if (value.F070Uint > 2) // out-of-contract writes are refused, not wrapped
+            if (value.F070Uint > 2)
             {
                 return false;
             }
@@ -805,7 +799,7 @@ namespace Realworld
                     return false;
                 }
             }
-            if (value.F073Int < -4 || value.F073Int > 4) // out-of-contract writes are refused, not wrapped
+            if (value.F073Int < -4 || value.F073Int > 4)
             {
                 return false;
             }
@@ -826,7 +820,7 @@ namespace Realworld
                 {
                     return false;
                 }
-                if (value.F076Int < -26218 || value.F076Int > 26218) // out-of-contract writes are refused, not wrapped
+                if (value.F076Int < -26218 || value.F076Int > 26218)
                 {
                     return false;
                 }
@@ -837,7 +831,7 @@ namespace Realworld
                         return false;
                     }
                 }
-                if (value.F077Int < -17 || value.F077Int > 17) // out-of-contract writes are refused, not wrapped
+                if (value.F077Int < -17 || value.F077Int > 17)
                 {
                     return false;
                 }
@@ -852,7 +846,7 @@ namespace Realworld
                 {
                     return false;
                 }
-                if (value.F079Uint > 17) // out-of-contract writes are refused, not wrapped
+                if (value.F079Uint > 17)
                 {
                     return false;
                 }
@@ -898,7 +892,7 @@ namespace Realworld
             {
                 return false;
             }
-            if (value.F086Uint > 399) // out-of-contract writes are refused, not wrapped
+            if (value.F086Uint > 399)
             {
                 return false;
             }
@@ -913,7 +907,7 @@ namespace Realworld
             {
                 return false;
             }
-            if (value.F088Int < -694 || value.F088Int > 694) // out-of-contract writes are refused, not wrapped
+            if (value.F088Int < -694 || value.F088Int > 694)
             {
                 return false;
             }
@@ -928,7 +922,7 @@ namespace Realworld
             {
                 return false;
             }
-            if (value.F090Uint > 214) // out-of-contract writes are refused, not wrapped
+            if (value.F090Uint > 214)
             {
                 return false;
             }
@@ -981,13 +975,11 @@ namespace Realworld
         {
             ReadBatch batch = stream.BeginBatch();
             bool result = ReadRealPacketBatch(ref batch, value);
-            batch.End(); // on every path out — End publishes the cursor and the error
+            batch.End();
             return result;
         }
 
-        // The batch-form core — INLINE-ONLY: a non-inlined call taking the batch by
-        // ref address-exposes it and enregistration dies (measured 0.71x, worse than
-        // no batch). Nested types compose core-to-core by ref, never via the stream.
+        // inline-only batch core — a real call would address-expose the batch
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static bool ReadRealPacketBatch(ref ReadBatch batch, RealPacket value)
         {

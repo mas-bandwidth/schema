@@ -62,8 +62,8 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 	objOwner := ir.ObjectOwner(u)
 	batched, needCore := batchPlan(u)
 	for _, f := range u.Files {
-		g := &gen{unit: u, file: f, msgOwner: msgOwner, objOwner: objOwner, batched: batched, needCore: needCore}
-		g.emitFile(f.Base == home)
+		g := &gen{unit: u, file: f, home: f.Base == home, msgOwner: msgOwner, objOwner: objOwner, batched: batched, needCore: needCore}
+		g.emitFile(g.home)
 		out[f.Base+".cs"] = g.assemble()
 	}
 	return out, nil
@@ -87,6 +87,7 @@ func protocolIdHome(u *ir.Unit) string {
 type gen struct {
 	unit     *ir.Unit
 	file     *ir.File
+	home     bool   // this file carries ProtocolId and the unit-level target notes
 	msgOwner string // the one file that carries the message dispatch surface
 	objOwner string // the one file that carries the object tag surface
 	owner    string // the class whose members are being emitted (CS0542 escape)
@@ -143,14 +144,15 @@ func (g *gen) assemble() []byte {
 	h.WriteString("// your choice. See the LICENSE exception in the schema compiler; the compiler is\n")
 	h.WriteString("// AGPL-3.0, its output is not.\n")
 	fmt.Fprintf(&h, "// package %s — protocol id 0x%016x\n", g.unit.Package, g.unit.ProtocolId)
-	if g.needsSerialize {
+	if g.home {
+		// the unit-level target notes ride the home file only — said once
+		// per unit, not once per file
 		h.WriteString("//\n")
-		h.WriteString("// Storage members are PascalCase via the same mapping as the Go target, so\n")
-		h.WriteString("// the checker's collision registry covers C# for free. Wire functions return\n")
-		h.WriteString("// bool — the C++-style early-out. A schema validation failure (a wrong wire\n")
-		h.WriteString("// constant, nonzero reserved bits, an interior null) returns false WITHOUT\n")
-		h.WriteString("// latching; stream failures latch on stream.Error — the runtime's own sticky\n")
-		h.WriteString("// latch. Callers get bool always; Error tells the two apart.\n")
+		h.WriteString("// Wire functions return bool — the C++-style early-out. A schema validation\n")
+		h.WriteString("// failure (a wrong wire constant, nonzero reserved bits, an interior null)\n")
+		h.WriteString("// returns false WITHOUT latching; stream failures latch on stream.Error —\n")
+		h.WriteString("// the runtime's own sticky latch. Callers get bool always; Error tells the\n")
+		h.WriteString("// two apart.\n")
 	}
 	h.WriteString("\n")
 	if g.needsSystem {
@@ -364,8 +366,7 @@ func (g *gen) emitClass(d *ir.Struct) {
 		kind = "message"
 	}
 	if len(d.Tags) > 0 {
-		g.tf("// %s %s [%s] — the tag is user-chosen and inert in v1; the delta pass\n", kind, d.Name, strings.Join(d.Tags, ", "))
-		g.tf("// claims tags and assigns actions (SPEC §4.2, Type tags)\n")
+		g.tf("// %s %s [%s] — tags are user-chosen and inert in v1 (SPEC §4.2, Type tags)\n", kind, d.Name, strings.Join(d.Tags, ", "))
 	} else {
 		g.tf("// %s %s\n", kind, d.Name)
 	}
@@ -605,7 +606,7 @@ func (g *gen) fieldComment(f *ir.Field) string {
 		}
 	}
 	if f.HasDefault {
-		parts = append(parts, fmt.Sprintf("= %s at construction; Zero* gives the §5 zero form", g.defaultValue(f, false)))
+		parts = append(parts, "specified default at construction; Zero* gives the §5 zero form")
 	}
 	if f.HasIntRange {
 		parts = append(parts, fmt.Sprintf("wire [%s, %s]", f.IntMin, f.IntMax))
@@ -625,9 +626,9 @@ func (g *gen) fieldComment(f *ir.Field) string {
 	}
 	if f.Local {
 		if f.Context != "" {
-			parts = append(parts, fmt.Sprintf(" | local, context = %s", f.Context))
+			parts = append(parts, fmt.Sprintf("| local, context = %s", f.Context))
 		} else {
-			parts = append(parts, " | local — no wire")
+			parts = append(parts, "| local — no wire")
 		}
 	}
 	if len(parts) == 0 {

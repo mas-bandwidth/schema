@@ -48,7 +48,7 @@ struct BenchInts {
 };
 
 inline constexpr int64_t BenchIntsMaxBits = 110; // longest wire path; align pads at worst case (SPEC §6.1)
-inline constexpr int64_t BenchIntsMaxBytes = 16; // rounded up to the 8-byte write-buffer granularity; a read buffer's allocation must extend at least 8 bytes past the data — the reader loads 64-bit windows
+inline constexpr int64_t BenchIntsMaxBytes = 16; // 8-byte write granularity; read slack per the contract above
 
 // type BenchBits
 struct BenchBits {
@@ -63,7 +63,7 @@ struct BenchBits {
 };
 
 inline constexpr int64_t BenchBitsMaxBits = 156; // longest wire path; align pads at worst case (SPEC §6.1)
-inline constexpr int64_t BenchBitsMaxBytes = 24; // rounded up to the 8-byte write-buffer granularity; a read buffer's allocation must extend at least 8 bytes past the data — the reader loads 64-bit windows
+inline constexpr int64_t BenchBitsMaxBytes = 24; // 8-byte write granularity; read slack per the contract above
 
 // type BenchMixed
 struct BenchMixed {
@@ -81,6 +81,6 @@ struct BenchMixed {
 };
 
 inline constexpr int64_t BenchMixedMaxBits = 168; // longest wire path; align pads at worst case (SPEC §6.1)
-inline constexpr int64_t BenchMixedMaxBytes = 24; // rounded up to the 8-byte write-buffer granularity; a read buffer's allocation must extend at least 8 bytes past the data — the reader loads 64-bit windows
+inline constexpr int64_t BenchMixedMaxBytes = 24; // 8-byte write granularity; read slack per the contract above
 
 } // namespace bench

@@ -52,11 +52,11 @@ pub struct ClientShipState {
     pub missile_index: i8, // wire [0, 15]
     pub target: Handle,
     pub lock_start_time: f64,
-    pub invulnerable: bool, //  | local — no wire
-    pub previous_position: Vec3, //  | local — no wire
-    pub num_colliders: i32, //  | local — no wire
-    pub collider_armor: [i32; MAX_COLLIDERS_PER_SHIP as usize], //  | local — no wire
-    pub predicted_explode: bool, //  | local, context = client
+    pub invulnerable: bool, // | local — no wire
+    pub previous_position: Vec3, // | local — no wire
+    pub num_colliders: i32, // | local — no wire
+    pub collider_armor: [i32; MAX_COLLIDERS_PER_SHIP as usize], // | local — no wire
+    pub predicted_explode: bool, // | local, context = client
 }
 
 // The zero form (SPEC §5): specified defaults live only in new(), never here.
@@ -126,10 +126,10 @@ pub struct ServerShipState {
     pub missile_index: i8, // wire [0, 15]
     pub target: Handle,
     pub lock_start_time: f64,
-    pub invulnerable: bool, //  | local — no wire
-    pub previous_position: Vec3, //  | local — no wire
-    pub num_colliders: i32, //  | local — no wire
-    pub collider_armor: [i32; MAX_COLLIDERS_PER_SHIP as usize], //  | local — no wire
+    pub invulnerable: bool, // | local — no wire
+    pub previous_position: Vec3, // | local — no wire
+    pub num_colliders: i32, // | local — no wire
+    pub collider_armor: [i32; MAX_COLLIDERS_PER_SHIP as usize], // | local — no wire
 }
 
 // The zero form (SPEC §5): specified defaults live only in new(), never here.
@@ -395,14 +395,14 @@ pub fn write_ship_data_deep(stream: &mut WriteStream<'_>, value: &ShipData_Deep)
         let mut float_value = value.aim_velocity;
         stream.serialize_f32(&mut float_value)?;
     }
-    if value.laser_index < 0 || value.laser_index > 15 { // out-of-contract writes are refused, not wrapped
+    if value.laser_index < 0 || value.laser_index > 15 {
         return Err(Error::Stream(serialize::Error::ValueOutOfRange));
     }
     {
         let mut offset_value = value.laser_index as u32;
         stream.serialize_bits(&mut offset_value, 4)?;
     }
-    if value.missile_index < 0 || value.missile_index > 15 { // out-of-contract writes are refused, not wrapped
+    if value.missile_index < 0 || value.missile_index > 15 {
         return Err(Error::Stream(serialize::Error::ValueOutOfRange));
     }
     {
@@ -761,8 +761,8 @@ pub struct ClientMissileState {
     pub linear_velocity: Vec3,
     pub team: Team,
     pub flags: u64,
-    pub angular_velocity: Vec3, //  | local — no wire
-    pub target: Handle, //  | local — no wire
+    pub angular_velocity: Vec3, // | local — no wire
+    pub target: Handle, // | local — no wire
 }
 
 // The zero form (SPEC §5): specified defaults live only in new(), never here.
@@ -791,9 +791,9 @@ pub struct ServerMissileState {
     pub linear_velocity: Vec3,
     pub team: Team,
     pub flags: u64,
-    pub angular_velocity: Vec3, //  | local — no wire
-    pub target: Handle, //  | local — no wire
-    pub timer: f64, //  | local, context = server
+    pub angular_velocity: Vec3, // | local — no wire
+    pub target: Handle, // | local — no wire
+    pub timer: f64, // | local, context = server
 }
 
 // The zero form (SPEC §5): specified defaults live only in new(), never here.
@@ -1221,7 +1221,7 @@ pub struct DynamicPropState {
     pub linear_velocity: Vec3,
     pub flags: u64,
     pub team: Team,
-    pub angular_velocity: Vec3, //  | local — no wire
+    pub angular_velocity: Vec3, // | local — no wire
 }
 
 // The zero form (SPEC §5): specified defaults live only in new(), never here.
@@ -1645,7 +1645,7 @@ pub struct TurretState {
     pub turret_index: i32, // wire [0, 255]
     pub rotation: Quat,
     pub flags: u64,
-    pub team: Team, //  | local — no wire
+    pub team: Team, // | local — no wire
 }
 
 // The zero form (SPEC §5): specified defaults live only in new(), never here.
@@ -1744,7 +1744,7 @@ pub const TURRET_DATA_DEEP_MAX_BYTES: usize = 48; // rounded up to the 8-byte wr
 #[inline(always)]
 pub fn write_turret_data_deep(stream: &mut WriteStream<'_>, value: &TurretData_Deep) -> Result {
     write_handle(stream, &value.parent)?;
-    if value.turret_index < 0 || value.turret_index > 255 { // out-of-contract writes are refused, not wrapped
+    if value.turret_index < 0 || value.turret_index > 255 {
         return Err(Error::Stream(serialize::Error::ValueOutOfRange));
     }
     {
@@ -1774,7 +1774,7 @@ pub const TURRET_DATA_SHALLOW_MAX_BYTES: usize = 24; // rounded up to the 8-byte
 #[inline(always)]
 pub fn write_turret_data_shallow(stream: &mut WriteStream<'_>, value: &TurretData_Shallow) -> Result {
     write_handle(stream, &value.parent)?;
-    if value.turret_index < 0 || value.turret_index > 255 { // out-of-contract writes are refused, not wrapped
+    if value.turret_index < 0 || value.turret_index > 255 {
         return Err(Error::Stream(serialize::Error::ValueOutOfRange));
     }
     {

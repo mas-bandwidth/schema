@@ -292,8 +292,7 @@ func (g *gen) emitStruct(d *ir.Struct) {
 		kind = "message"
 	}
 	if len(d.Tags) > 0 {
-		g.pf("// %s %s [%s] — the tag is user-chosen and inert in v1; the delta pass\n", kind, d.Name, strings.Join(d.Tags, ", "))
-		g.pf("// claims tags and assigns actions (SPEC §4.2, Type tags)\n")
+		g.pf("// %s %s [%s] — tags are user-chosen and inert in v1 (SPEC §4.2, Type tags)\n", kind, d.Name, strings.Join(d.Tags, ", "))
 	} else {
 		g.pf("// %s %s\n", kind, d.Name)
 	}
@@ -595,9 +594,9 @@ func (g *gen) fieldComment(f *ir.Field) string {
 	}
 	if f.Local {
 		if f.Context != "" {
-			parts = append(parts, fmt.Sprintf(" | local, context = %s", f.Context))
+			parts = append(parts, fmt.Sprintf("| local, context = %s", f.Context))
 		} else {
-			parts = append(parts, " | local — no wire")
+			parts = append(parts, "| local — no wire")
 		}
 	}
 	if len(parts) == 0 {

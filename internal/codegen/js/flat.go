@@ -78,6 +78,7 @@ import (
 type fgen struct {
 	unit     *ir.Unit
 	file     *ir.File
+	home     bool // the unit's first flat module — carries the tier-level notes
 	msgOwner string
 
 	body    strings.Builder
@@ -105,14 +106,18 @@ func flatFileHasSurface(u *ir.Unit, f *ir.File, msgOwner string) bool {
 	return f.Base == msgOwner && len(u.Messages) > 0
 }
 
-// generateFlat returns basename+"Flat.js" -> contents for every carrying file.
+// generateFlat returns basename+"Flat.js" -> contents for every carrying
+// file. The tier-level notes ride the FIRST carrying file (basename order)
+// only — said once per unit, not once per file.
 func generateFlat(u *ir.Unit, msgOwner string) map[string][]byte {
 	out := map[string][]byte{}
+	first := true
 	for _, f := range u.Files {
 		if !flatFileHasSurface(u, f, msgOwner) {
 			continue
 		}
-		g := &fgen{unit: u, file: f, msgOwner: msgOwner, imports: map[string]map[string]bool{}}
+		g := &fgen{unit: u, file: f, home: first, msgOwner: msgOwner, imports: map[string]map[string]bool{}}
+		first = false
 		g.emitModule()
 		out[f.Base+"Flat.js"] = g.assemble()
 	}
@@ -150,25 +155,28 @@ func (g *fgen) assemble() []byte {
 	h.WriteString("// your choice. See the LICENSE exception in the schema compiler; the compiler is\n")
 	h.WriteString("// AGPL-3.0, its output is not.\n")
 	fmt.Fprintf(&h, "// package %s — protocol id 0x%016x\n", g.unit.Package, g.unit.ProtocolId)
-	h.WriteString("//\n")
-	h.WriteString("// THE FLAT TIER — the shipped JavaScript wire path: the serialize.js\n")
-	h.WriteString("// two-lane bitpacker inlined at every field, constant widths and masks,\n")
-	h.WriteString("// zero function calls. Same generated classes, same bytes as the runtime\n")
-	h.WriteString("// tier (a standing CI gate); the runtime tier remains the diagnostic and\n")
-	h.WriteString("// reference surface — re-read a failing buffer through it to learn WHICH\n")
-	h.WriteString("// operation failed and why.\n")
-	h.WriteString("//\n")
-	h.WriteString("// Write<Name>Flat(value, view) -> bytes written, or -1 when the checked\n")
-	h.WriteString("// writer refuses an out-of-contract value (the production writer trusts\n")
-	h.WriteString("// the caller — serialize.js src/mode.js's own NODE_ENV fork, frozen at\n")
-	h.WriteString("// module load). Read<Name>Flat(value, view, numBits) -> bool, the family\n")
-	h.WriteString("// read verdict; reader obligations ride in every mode.\n")
-	h.WriteString("//\n")
-	h.WriteString("// Buffers are caller-owned DataViews. Write buffers: at least <Name>MaxBytes\n")
-	h.WriteString("// (the constants live in the runtime-tier module). Read buffers: at least\n")
-	h.WriteString("// FLAT_READ_SLACK = 8 bytes past the payload — 64-bit windows load\n")
-	h.WriteString("// unconditionally; copy exactly-sized receive buffers into a persistent\n")
-	h.WriteString("// MaxBytes + 8 scratch first.\n\n")
+	if g.home {
+		h.WriteString("//\n")
+		h.WriteString("// THE FLAT TIER — the shipped JavaScript wire path: the serialize.js\n")
+		h.WriteString("// two-lane bitpacker inlined at every field, constant widths and masks,\n")
+		h.WriteString("// zero function calls. Same generated classes, same bytes as the runtime\n")
+		h.WriteString("// tier (a standing CI gate); the runtime tier remains the diagnostic and\n")
+		h.WriteString("// reference surface — re-read a failing buffer through it to learn WHICH\n")
+		h.WriteString("// operation failed and why.\n")
+		h.WriteString("//\n")
+		h.WriteString("// Write<Name>Flat(value, view) -> bytes written, or -1 when the checked\n")
+		h.WriteString("// writer refuses an out-of-contract value (the production writer trusts\n")
+		h.WriteString("// the caller — serialize.js src/mode.js's own NODE_ENV fork, frozen at\n")
+		h.WriteString("// module load). Read<Name>Flat(value, view, numBits) -> bool, the family\n")
+		h.WriteString("// read verdict; reader obligations ride in every mode.\n")
+		h.WriteString("//\n")
+		h.WriteString("// Buffers are caller-owned DataViews. Write buffers: at least <Name>MaxBytes\n")
+		h.WriteString("// (the constants live in the runtime-tier module). Read buffers: at least\n")
+		h.WriteString("// FLAT_READ_SLACK = 8 bytes past the payload — 64-bit windows load\n")
+		h.WriteString("// unconditionally; copy exactly-sized receive buffers into a persistent\n")
+		h.WriteString("// MaxBytes + 8 scratch first.\n")
+	}
+	h.WriteString("\n")
 	if len(g.imports) > 0 {
 		bases := make([]string, 0, len(g.imports))
 		for b := range g.imports {
@@ -694,7 +702,6 @@ func (g *fgen) emitWriteWideOffset(offExpr string, bits int64, ind string) {
 	}
 }
 
-const refuseComment = " // out-of-contract writes are refused, not wrapped"
 
 func (g *fgen) emitWriteScalar(f *ir.Field, name, ind string) {
 	switch f.Type.Kind {
@@ -782,7 +789,7 @@ func (g *fgen) emitWriteCompressedFloat(f *ir.Field, name, ind string) {
 	deltaF := float32(f.FMax) - minF
 	mivF := float32(maxInt)
 	g.pf("%sx = Math.fround(%s);\n", ind, name)
-	g.guard("!Number.isFinite(x)", refuseComment, ind)
+	g.guard("!Number.isFinite(x)", "", ind)
 	g.pf("%sn = Math.fround(Math.fround(x - %s) / %s);\n", ind, f32lit(float64(minF)), f32lit(float64(deltaF)))
 	g.pf("%sif (!(n >= 0.0)) { n = 0.0; } else if (!(n <= 1.0)) { n = 1.0; }\n", ind)
 	g.pf("%sv = Math.floor(Math.fround(Math.fround(n * %s) + 0.5));\n", ind, f32lit(float64(mivF)))
@@ -804,15 +811,15 @@ func (g *fgen) emitWriteFixed(f *ir.Field, name, ind string) {
 	if f.IntMin.Cmp(f.IntMax) == 0 {
 		// degenerate: zero bits — the checked refusal is the whole write
 		if f.Type.Width > 32 {
-			g.guard(fmt.Sprintf("%s !== %sn", name, rawMin.String()), refuseComment, ind)
+			g.guard(fmt.Sprintf("%s !== %sn", name, rawMin.String()), "", ind)
 		} else {
-			g.guard(fmt.Sprintf("%s !== %s", name, rawMin.String()), refuseComment, ind)
+			g.guard(fmt.Sprintf("%s !== %s", name, rawMin.String()), "", ind)
 		}
 		return
 	}
 	if f.Type.Width <= 32 {
 		g.guard(fmt.Sprintf("!Number.isInteger(%s) || %s < %s || %s > %s", name, name, rawMin.String(), name, rawMax.String()),
-			refuseComment, ind)
+			"", ind)
 		var off string
 		switch {
 		case rawMin.Sign() == 0:
@@ -831,7 +838,7 @@ func (g *fgen) emitWriteFixed(f *ir.Field, name, ind string) {
 		return
 	}
 	// wide lane: BigInt raw storage, offset in 32-bit groups
-	g.guard(fmt.Sprintf("%s < %sn || %s > %sn", name, rawMin.String(), name, rawMax.String()), refuseComment, ind)
+	g.guard(fmt.Sprintf("%s < %sn || %s > %sn", name, rawMin.String(), name, rawMax.String()), "", ind)
 	off := fmt.Sprintf("BigInt.asUintN(%d, %s - %sn)", wideOffsetWidth(bits), name, rawMin.String())
 	if rawMin.Sign() == 0 {
 		off = fmt.Sprintf("BigInt.asUintN(%d, %s)", wideOffsetWidth(bits), name)
@@ -854,11 +861,11 @@ func (g *fgen) emitWriteInt(f *ir.Field, name, ind string) {
 	if w == 128 {
 		if f.HasIntRange {
 			if f.IntMin.Cmp(f.IntMax) == 0 {
-				g.guard(fmt.Sprintf("%s !== %sn", name, f.IntMin.String()), refuseComment, ind)
+				g.guard(fmt.Sprintf("%s !== %sn", name, f.IntMin.String()), "", ind)
 				return
 			}
 			bits := ir.BitsRequired(f.IntMin, f.IntMax)
-			g.guard(fmt.Sprintf("%s < %sn || %s > %sn", name, f.IntMin.String(), name, f.IntMax.String()), refuseComment, ind)
+			g.guard(fmt.Sprintf("%s < %sn || %s > %sn", name, f.IntMin.String(), name, f.IntMax.String()), "", ind)
 			off := fmt.Sprintf("BigInt.asUintN(%d, %s - %sn)", wideOffsetWidth(bits), name, f.IntMin.String())
 			if f.IntMin.Sign() == 0 {
 				off = fmt.Sprintf("BigInt.asUintN(%d, %s)", wideOffsetWidth(bits), name)
@@ -873,9 +880,9 @@ func (g *fgen) emitWriteInt(f *ir.Field, name, ind string) {
 	if f.HasIntRange {
 		if f.IntMin.Cmp(f.IntMax) == 0 {
 			if w > 32 {
-				g.guard(fmt.Sprintf("%s !== %sn", name, f.IntMin.String()), refuseComment, ind)
+				g.guard(fmt.Sprintf("%s !== %sn", name, f.IntMin.String()), "", ind)
 			} else {
-				g.guard(fmt.Sprintf("%s !== %s", name, f.IntMin.String()), refuseComment, ind)
+				g.guard(fmt.Sprintf("%s !== %s", name, f.IntMin.String()), "", ind)
 			}
 			return
 		}
@@ -887,19 +894,19 @@ func (g *fgen) emitWriteInt(f *ir.Field, name, ind string) {
 				// Number-domain offset
 				g.needN = true
 				g.pf("%sn = Number(BigInt.asIntN(32, %s));\n", ind, name)
-				g.guard(fmt.Sprintf("n < %s || n > %s", f.IntMin.String(), f.IntMax.String()), refuseComment, ind)
+				g.guard(fmt.Sprintf("n < %s || n > %s", f.IntMin.String(), f.IntMax.String()), "", ind)
 				g.emitWriteRangedNum("n", f.IntMin.Int64(), f.IntMax.Int64(), ind)
 				return
 			}
 			g.guard(fmt.Sprintf("!Number.isInteger(%s) || %s < %s || %s > %s", name, name, f.IntMin.String(), name, f.IntMax.String()),
-				refuseComment, ind)
+				"", ind)
 			g.emitWriteRangedNum(name, f.IntMin.Int64(), f.IntMax.Int64(), ind)
 		case "int64":
 			if w <= 32 {
 				// uint32 storage whose range escapes int32: values and offsets
 				// stay below 2^32 — exact in doubles
 				g.guard(fmt.Sprintf("!Number.isInteger(%s) || %s < %s || %s > %s", name, name, f.IntMin.String(), name, f.IntMax.String()),
-					refuseComment, ind)
+					"", ind)
 				g.emitWriteRangedNum(name, f.IntMin.Int64(), f.IntMax.Int64(), ind)
 				return
 			}
@@ -943,11 +950,11 @@ func (g *fgen) emitWriteRangedBig(f *ir.Field, name, ind string) {
 	guardHi := f.IntMax.Cmp(sMax) < 0
 	switch {
 	case guardLo && guardHi:
-		g.guard(fmt.Sprintf("%s < %sn || %s > %sn", name, f.IntMin.String(), name, f.IntMax.String()), refuseComment, ind)
+		g.guard(fmt.Sprintf("%s < %sn || %s > %sn", name, f.IntMin.String(), name, f.IntMax.String()), "", ind)
 	case guardLo:
-		g.guard(fmt.Sprintf("%s < %sn", name, f.IntMin.String()), refuseComment, ind)
+		g.guard(fmt.Sprintf("%s < %sn", name, f.IntMin.String()), "", ind)
 	case guardHi:
-		g.guard(fmt.Sprintf("%s > %sn", name, f.IntMax.String()), refuseComment, ind)
+		g.guard(fmt.Sprintf("%s > %sn", name, f.IntMax.String()), "", ind)
 	}
 	off := fmt.Sprintf("BigInt.asUintN(64, %s - %sn)", name, f.IntMin.String())
 	if f.IntMin.Sign() == 0 {

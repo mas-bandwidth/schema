@@ -160,7 +160,7 @@ function writeFixedProbeFlatChecked(value, view) {
   let v = 0, s = 0;
   let bg = 0n;
   let lo = 0, hi = 0, sb = 0, wi = 0;
-  if (!Number.isInteger(value.Angle) || value.Angle < -11796480 || value.Angle > 11796480) { // out-of-contract writes are refused, not wrapped
+  if (!Number.isInteger(value.Angle) || value.Angle < -11796480 || value.Angle > 11796480) {
     return -1;
   }
   v = ((((value.Angle >>> 0) - 4283170816) >>> 0) & 0x1ffffff) >>> 0;
@@ -180,7 +180,7 @@ function writeFixedProbeFlatChecked(value, view) {
     hi = 0;
     sb -= 64;
   }
-  if (value.Position < -1966080000n || value.Position > 1966080000n) { // out-of-contract writes are refused, not wrapped
+  if (value.Position < -1966080000n || value.Position > 1966080000n) {
     return -1;
   }
   v = Number(BigInt.asUintN(64, value.Position - -1966080000n));
@@ -200,7 +200,7 @@ function writeFixedProbeFlatChecked(value, view) {
     hi = 0;
     sb -= 64;
   }
-  if (value.Reach < -65536000000n || value.Reach > 65536000000n) { // out-of-contract writes are refused, not wrapped
+  if (value.Reach < -65536000000n || value.Reach > 65536000000n) {
     return -1;
   }
   SC.setBigUint64(0, BigInt.asUintN(64, value.Reach - -65536000000n), true);
@@ -238,7 +238,7 @@ function writeFixedProbeFlatChecked(value, view) {
     hi = 0;
     sb -= 64;
   }
-  if (!Number.isInteger(value.Ticks) || value.Ticks < 0 || value.Ticks > 1000000) { // out-of-contract writes are refused, not wrapped
+  if (!Number.isInteger(value.Ticks) || value.Ticks < 0 || value.Ticks > 1000000) {
     return -1;
   }
   v = ((value.Ticks) & 0xfffff) >>> 0;
@@ -259,7 +259,7 @@ function writeFixedProbeFlatChecked(value, view) {
     sb -= 64;
   }
   for (let i0 = 0; i0 < 2; i0++) {
-    if (!Number.isInteger(value.Samples[i0]) || value.Samples[i0] < -524288 || value.Samples[i0] > 524288) { // out-of-contract writes are refused, not wrapped
+    if (!Number.isInteger(value.Samples[i0]) || value.Samples[i0] < -524288 || value.Samples[i0] > 524288) {
       return -1;
     }
     v = ((((value.Samples[i0] >>> 0) - 4294443008) >>> 0) & 0x1fffff) >>> 0;
@@ -528,7 +528,7 @@ function writeUnsignedProbeFlatChecked(value, view) {
   let v = 0, s = 0;
   let bg = 0n;
   let lo = 0, hi = 0, sb = 0, wi = 0;
-  if (!Number.isInteger(value.Angle) || value.Angle < 0 || value.Angle > 23592960) { // out-of-contract writes are refused, not wrapped
+  if (!Number.isInteger(value.Angle) || value.Angle < 0 || value.Angle > 23592960) {
     return -1;
   }
   v = ((value.Angle) & 0x1ffffff) >>> 0;
@@ -548,7 +548,7 @@ function writeUnsignedProbeFlatChecked(value, view) {
     hi = 0;
     sb -= 64;
   }
-  if (value.Span < 0n || value.Span > 18446744073709486080n) { // out-of-contract writes are refused, not wrapped
+  if (value.Span < 0n || value.Span > 18446744073709486080n) {
     return -1;
   }
   SC.setBigUint64(0, BigInt.asUintN(64, value.Span), true);
@@ -586,7 +586,7 @@ function writeUnsignedProbeFlatChecked(value, view) {
     hi = 0;
     sb -= 64;
   }
-  if (value.Reach < 0n || value.Reach > 131072000000n) { // out-of-contract writes are refused, not wrapped
+  if (value.Reach < 0n || value.Reach > 131072000000n) {
     return -1;
   }
   SC.setBigUint64(0, BigInt.asUintN(64, value.Reach), true);
@@ -624,7 +624,7 @@ function writeUnsignedProbeFlatChecked(value, view) {
     hi = 0;
     sb -= 64;
   }
-  if (!Number.isInteger(value.Ticks) || value.Ticks < 0 || value.Ticks > 1000000) { // out-of-contract writes are refused, not wrapped
+  if (!Number.isInteger(value.Ticks) || value.Ticks < 0 || value.Ticks > 1000000) {
     return -1;
   }
   v = ((value.Ticks) & 0xfffff) >>> 0;
@@ -645,7 +645,7 @@ function writeUnsignedProbeFlatChecked(value, view) {
     sb -= 64;
   }
   for (let i0 = 0; i0 < 2; i0++) {
-    if (!Number.isInteger(value.Samples[i0]) || value.Samples[i0] < 0 || value.Samples[i0] > 1048576) { // out-of-contract writes are refused, not wrapped
+    if (!Number.isInteger(value.Samples[i0]) || value.Samples[i0] < 0 || value.Samples[i0] > 1048576) {
       return -1;
     }
     v = ((value.Samples[i0]) & 0x1fffff) >>> 0;
@@ -666,7 +666,7 @@ function writeUnsignedProbeFlatChecked(value, view) {
       sb -= 64;
     }
   }
-  if (value.Locked !== 196608) { // out-of-contract writes are refused, not wrapped
+  if (value.Locked !== 196608) {
     return -1;
   }
   v = ((value.Tail) & 0xff) >>> 0;
@@ -1140,7 +1140,7 @@ function writeWideProbeFlatChecked(value, view) {
     hi = 0;
     sb -= 64;
   }
-  if (value.Energy < -5000000000n || value.Energy > 5000000000n) { // out-of-contract writes are refused, not wrapped
+  if (value.Energy < -5000000000n || value.Energy > 5000000000n) {
     return -1;
   }
   SC.setBigUint64(0, BigInt.asUintN(64, value.Energy - -5000000000n), true);
@@ -1178,7 +1178,7 @@ function writeWideProbeFlatChecked(value, view) {
     hi = 0;
     sb -= 64;
   }
-  if (value.Flux < -1267650600228229401496703205376n || value.Flux > 1267650600228229401496703205376n) { // out-of-contract writes are refused, not wrapped
+  if (value.Flux < -1267650600228229401496703205376n || value.Flux > 1267650600228229401496703205376n) {
     return -1;
   }
   bg = BigInt.asUintN(128, value.Flux - -1267650600228229401496703205376n);
@@ -1250,7 +1250,7 @@ function writeWideProbeFlatChecked(value, view) {
     hi = 0;
     sb -= 64;
   }
-  if (value.Bias < -1000n || value.Bias > 1000n) { // out-of-contract writes are refused, not wrapped
+  if (value.Bias < -1000n || value.Bias > 1000n) {
     return -1;
   }
   v = Number(BigInt.asUintN(64, value.Bias - -1000n));
@@ -2091,7 +2091,7 @@ function writeLudicrousStateFlatChecked(value, view) {
     hi = 0;
     sb -= 64;
   }
-  if (!Number.isInteger(value.Probe.Angle) || value.Probe.Angle < -11796480 || value.Probe.Angle > 11796480) { // out-of-contract writes are refused, not wrapped
+  if (!Number.isInteger(value.Probe.Angle) || value.Probe.Angle < -11796480 || value.Probe.Angle > 11796480) {
     return -1;
   }
   v = ((((value.Probe.Angle >>> 0) - 4283170816) >>> 0) & 0x1ffffff) >>> 0;
@@ -2111,7 +2111,7 @@ function writeLudicrousStateFlatChecked(value, view) {
     hi = 0;
     sb -= 64;
   }
-  if (value.Probe.Position < -1966080000n || value.Probe.Position > 1966080000n) { // out-of-contract writes are refused, not wrapped
+  if (value.Probe.Position < -1966080000n || value.Probe.Position > 1966080000n) {
     return -1;
   }
   v = Number(BigInt.asUintN(64, value.Probe.Position - -1966080000n));
@@ -2131,7 +2131,7 @@ function writeLudicrousStateFlatChecked(value, view) {
     hi = 0;
     sb -= 64;
   }
-  if (value.Probe.Reach < -65536000000n || value.Probe.Reach > 65536000000n) { // out-of-contract writes are refused, not wrapped
+  if (value.Probe.Reach < -65536000000n || value.Probe.Reach > 65536000000n) {
     return -1;
   }
   SC.setBigUint64(0, BigInt.asUintN(64, value.Probe.Reach - -65536000000n), true);
@@ -2169,7 +2169,7 @@ function writeLudicrousStateFlatChecked(value, view) {
     hi = 0;
     sb -= 64;
   }
-  if (!Number.isInteger(value.Probe.Ticks) || value.Probe.Ticks < 0 || value.Probe.Ticks > 1000000) { // out-of-contract writes are refused, not wrapped
+  if (!Number.isInteger(value.Probe.Ticks) || value.Probe.Ticks < 0 || value.Probe.Ticks > 1000000) {
     return -1;
   }
   v = ((value.Probe.Ticks) & 0xfffff) >>> 0;
@@ -2190,7 +2190,7 @@ function writeLudicrousStateFlatChecked(value, view) {
     sb -= 64;
   }
   for (let i0 = 0; i0 < 2; i0++) {
-    if (!Number.isInteger(value.Probe.Samples[i0]) || value.Probe.Samples[i0] < -524288 || value.Probe.Samples[i0] > 524288) { // out-of-contract writes are refused, not wrapped
+    if (!Number.isInteger(value.Probe.Samples[i0]) || value.Probe.Samples[i0] < -524288 || value.Probe.Samples[i0] > 524288) {
       return -1;
     }
     v = ((((value.Probe.Samples[i0] >>> 0) - 4294443008) >>> 0) & 0x1fffff) >>> 0;
@@ -2280,7 +2280,7 @@ function writeLudicrousStateFlatChecked(value, view) {
     hi = 0;
     sb -= 64;
   }
-  if (value.Wide.Energy < -5000000000n || value.Wide.Energy > 5000000000n) { // out-of-contract writes are refused, not wrapped
+  if (value.Wide.Energy < -5000000000n || value.Wide.Energy > 5000000000n) {
     return -1;
   }
   SC.setBigUint64(0, BigInt.asUintN(64, value.Wide.Energy - -5000000000n), true);
@@ -2318,7 +2318,7 @@ function writeLudicrousStateFlatChecked(value, view) {
     hi = 0;
     sb -= 64;
   }
-  if (value.Wide.Flux < -1267650600228229401496703205376n || value.Wide.Flux > 1267650600228229401496703205376n) { // out-of-contract writes are refused, not wrapped
+  if (value.Wide.Flux < -1267650600228229401496703205376n || value.Wide.Flux > 1267650600228229401496703205376n) {
     return -1;
   }
   bg = BigInt.asUintN(128, value.Wide.Flux - -1267650600228229401496703205376n);
@@ -2390,7 +2390,7 @@ function writeLudicrousStateFlatChecked(value, view) {
     hi = 0;
     sb -= 64;
   }
-  if (value.Wide.Bias < -1000n || value.Wide.Bias > 1000n) { // out-of-contract writes are refused, not wrapped
+  if (value.Wide.Bias < -1000n || value.Wide.Bias > 1000n) {
     return -1;
   }
   v = Number(BigInt.asUintN(64, value.Wide.Bias - -1000n));
@@ -3603,7 +3603,7 @@ function writeLudicrousStateFlatArrayChecked(values, count, view) {
       hi = 0;
       sb -= 64;
     }
-    if (!Number.isInteger(value.Probe.Angle) || value.Probe.Angle < -11796480 || value.Probe.Angle > 11796480) { // out-of-contract writes are refused, not wrapped
+    if (!Number.isInteger(value.Probe.Angle) || value.Probe.Angle < -11796480 || value.Probe.Angle > 11796480) {
       return -1;
     }
     v = ((((value.Probe.Angle >>> 0) - 4283170816) >>> 0) & 0x1ffffff) >>> 0;
@@ -3623,7 +3623,7 @@ function writeLudicrousStateFlatArrayChecked(values, count, view) {
       hi = 0;
       sb -= 64;
     }
-    if (value.Probe.Position < -1966080000n || value.Probe.Position > 1966080000n) { // out-of-contract writes are refused, not wrapped
+    if (value.Probe.Position < -1966080000n || value.Probe.Position > 1966080000n) {
       return -1;
     }
     v = Number(BigInt.asUintN(64, value.Probe.Position - -1966080000n));
@@ -3643,7 +3643,7 @@ function writeLudicrousStateFlatArrayChecked(values, count, view) {
       hi = 0;
       sb -= 64;
     }
-    if (value.Probe.Reach < -65536000000n || value.Probe.Reach > 65536000000n) { // out-of-contract writes are refused, not wrapped
+    if (value.Probe.Reach < -65536000000n || value.Probe.Reach > 65536000000n) {
       return -1;
     }
     SC.setBigUint64(0, BigInt.asUintN(64, value.Probe.Reach - -65536000000n), true);
@@ -3681,7 +3681,7 @@ function writeLudicrousStateFlatArrayChecked(values, count, view) {
       hi = 0;
       sb -= 64;
     }
-    if (!Number.isInteger(value.Probe.Ticks) || value.Probe.Ticks < 0 || value.Probe.Ticks > 1000000) { // out-of-contract writes are refused, not wrapped
+    if (!Number.isInteger(value.Probe.Ticks) || value.Probe.Ticks < 0 || value.Probe.Ticks > 1000000) {
       return -1;
     }
     v = ((value.Probe.Ticks) & 0xfffff) >>> 0;
@@ -3702,7 +3702,7 @@ function writeLudicrousStateFlatArrayChecked(values, count, view) {
       sb -= 64;
     }
     for (let i0 = 0; i0 < 2; i0++) {
-      if (!Number.isInteger(value.Probe.Samples[i0]) || value.Probe.Samples[i0] < -524288 || value.Probe.Samples[i0] > 524288) { // out-of-contract writes are refused, not wrapped
+      if (!Number.isInteger(value.Probe.Samples[i0]) || value.Probe.Samples[i0] < -524288 || value.Probe.Samples[i0] > 524288) {
         return -1;
       }
       v = ((((value.Probe.Samples[i0] >>> 0) - 4294443008) >>> 0) & 0x1fffff) >>> 0;
@@ -3792,7 +3792,7 @@ function writeLudicrousStateFlatArrayChecked(values, count, view) {
       hi = 0;
       sb -= 64;
     }
-    if (value.Wide.Energy < -5000000000n || value.Wide.Energy > 5000000000n) { // out-of-contract writes are refused, not wrapped
+    if (value.Wide.Energy < -5000000000n || value.Wide.Energy > 5000000000n) {
       return -1;
     }
     SC.setBigUint64(0, BigInt.asUintN(64, value.Wide.Energy - -5000000000n), true);
@@ -3830,7 +3830,7 @@ function writeLudicrousStateFlatArrayChecked(values, count, view) {
       hi = 0;
       sb -= 64;
     }
-    if (value.Wide.Flux < -1267650600228229401496703205376n || value.Wide.Flux > 1267650600228229401496703205376n) { // out-of-contract writes are refused, not wrapped
+    if (value.Wide.Flux < -1267650600228229401496703205376n || value.Wide.Flux > 1267650600228229401496703205376n) {
       return -1;
     }
     bg = BigInt.asUintN(128, value.Wide.Flux - -1267650600228229401496703205376n);
@@ -3902,7 +3902,7 @@ function writeLudicrousStateFlatArrayChecked(values, count, view) {
       hi = 0;
       sb -= 64;
     }
-    if (value.Wide.Bias < -1000n || value.Wide.Bias > 1000n) { // out-of-contract writes are refused, not wrapped
+    if (value.Wide.Bias < -1000n || value.Wide.Bias > 1000n) {
       return -1;
     }
     v = Number(BigInt.asUintN(64, value.Wide.Bias - -1000n));
@@ -4548,13 +4548,13 @@ function writeDegenerateProbeFlatProduction(value, view) {
 function writeDegenerateProbeFlatChecked(value, view) {
   let v = 0, s = 0;
   let lo = 0, hi = 0, sb = 0, wi = 0;
-  if (value.LockedFixed !== -196608) { // out-of-contract writes are refused, not wrapped
+  if (value.LockedFixed !== -196608) {
     return -1;
   }
-  if (value.LockedInt !== 7) { // out-of-contract writes are refused, not wrapped
+  if (value.LockedInt !== 7) {
     return -1;
   }
-  if (value.LockedWide !== -12345678901234n) { // out-of-contract writes are refused, not wrapped
+  if (value.LockedWide !== -12345678901234n) {
     return -1;
   }
   v = ((value.Tail) & 0xff) >>> 0;
@@ -4729,7 +4729,7 @@ function writeFixedVecFlatChecked(value, view) {
   let v = 0, s = 0;
   let bg = 0n;
   let lo = 0, hi = 0, sb = 0, wi = 0;
-  if (value.X < -6553600000n || value.X > 6553600000n) { // out-of-contract writes are refused, not wrapped
+  if (value.X < -6553600000n || value.X > 6553600000n) {
     return -1;
   }
   SC.setBigUint64(0, BigInt.asUintN(64, value.X - -6553600000n), true);
@@ -4767,7 +4767,7 @@ function writeFixedVecFlatChecked(value, view) {
     hi = 0;
     sb -= 64;
   }
-  if (value.Y < -6553600000n || value.Y > 6553600000n) { // out-of-contract writes are refused, not wrapped
+  if (value.Y < -6553600000n || value.Y > 6553600000n) {
     return -1;
   }
   SC.setBigUint64(0, BigInt.asUintN(64, value.Y - -6553600000n), true);
@@ -4805,7 +4805,7 @@ function writeFixedVecFlatChecked(value, view) {
     hi = 0;
     sb -= 64;
   }
-  if (value.Z < -6553600000n || value.Z > 6553600000n) { // out-of-contract writes are refused, not wrapped
+  if (value.Z < -6553600000n || value.Z > 6553600000n) {
     return -1;
   }
   SC.setBigUint64(0, BigInt.asUintN(64, value.Z - -6553600000n), true);
@@ -5012,7 +5012,7 @@ function writeFixedQuatFlatProduction(value, view) {
 function writeFixedQuatFlatChecked(value, view) {
   let v = 0, s = 0;
   let lo = 0, hi = 0, sb = 0, wi = 0;
-  if (!Number.isInteger(value.X) || value.X < -1073741824 || value.X > 1073741824) { // out-of-contract writes are refused, not wrapped
+  if (!Number.isInteger(value.X) || value.X < -1073741824 || value.X > 1073741824) {
     return -1;
   }
   v = (((value.X >>> 0) - 3221225472) >>> 0) >>> 0;
@@ -5032,7 +5032,7 @@ function writeFixedQuatFlatChecked(value, view) {
     hi = 0;
     sb -= 64;
   }
-  if (!Number.isInteger(value.Y) || value.Y < -1073741824 || value.Y > 1073741824) { // out-of-contract writes are refused, not wrapped
+  if (!Number.isInteger(value.Y) || value.Y < -1073741824 || value.Y > 1073741824) {
     return -1;
   }
   v = (((value.Y >>> 0) - 3221225472) >>> 0) >>> 0;
@@ -5052,7 +5052,7 @@ function writeFixedQuatFlatChecked(value, view) {
     hi = 0;
     sb -= 64;
   }
-  if (!Number.isInteger(value.Z) || value.Z < -1073741824 || value.Z > 1073741824) { // out-of-contract writes are refused, not wrapped
+  if (!Number.isInteger(value.Z) || value.Z < -1073741824 || value.Z > 1073741824) {
     return -1;
   }
   v = (((value.Z >>> 0) - 3221225472) >>> 0) >>> 0;
@@ -5072,7 +5072,7 @@ function writeFixedQuatFlatChecked(value, view) {
     hi = 0;
     sb -= 64;
   }
-  if (!Number.isInteger(value.W) || value.W < -1073741824 || value.W > 1073741824) { // out-of-contract writes are refused, not wrapped
+  if (!Number.isInteger(value.W) || value.W < -1073741824 || value.W > 1073741824) {
     return -1;
   }
   v = (((value.W >>> 0) - 3221225472) >>> 0) >>> 0;
@@ -5836,7 +5836,7 @@ function writeMessageFlatChecked(message, view) {
       hi = 0;
       sb -= 64;
     }
-    if (!Number.isInteger(message.Probe.Angle) || message.Probe.Angle < -11796480 || message.Probe.Angle > 11796480) { // out-of-contract writes are refused, not wrapped
+    if (!Number.isInteger(message.Probe.Angle) || message.Probe.Angle < -11796480 || message.Probe.Angle > 11796480) {
       return -1;
     }
     v = ((((message.Probe.Angle >>> 0) - 4283170816) >>> 0) & 0x1ffffff) >>> 0;
@@ -5856,7 +5856,7 @@ function writeMessageFlatChecked(message, view) {
       hi = 0;
       sb -= 64;
     }
-    if (message.Probe.Position < -1966080000n || message.Probe.Position > 1966080000n) { // out-of-contract writes are refused, not wrapped
+    if (message.Probe.Position < -1966080000n || message.Probe.Position > 1966080000n) {
       return -1;
     }
     v = Number(BigInt.asUintN(64, message.Probe.Position - -1966080000n));
@@ -5876,7 +5876,7 @@ function writeMessageFlatChecked(message, view) {
       hi = 0;
       sb -= 64;
     }
-    if (message.Probe.Reach < -65536000000n || message.Probe.Reach > 65536000000n) { // out-of-contract writes are refused, not wrapped
+    if (message.Probe.Reach < -65536000000n || message.Probe.Reach > 65536000000n) {
       return -1;
     }
     SC.setBigUint64(0, BigInt.asUintN(64, message.Probe.Reach - -65536000000n), true);
@@ -5914,7 +5914,7 @@ function writeMessageFlatChecked(message, view) {
       hi = 0;
       sb -= 64;
     }
-    if (!Number.isInteger(message.Probe.Ticks) || message.Probe.Ticks < 0 || message.Probe.Ticks > 1000000) { // out-of-contract writes are refused, not wrapped
+    if (!Number.isInteger(message.Probe.Ticks) || message.Probe.Ticks < 0 || message.Probe.Ticks > 1000000) {
       return -1;
     }
     v = ((message.Probe.Ticks) & 0xfffff) >>> 0;
@@ -5935,7 +5935,7 @@ function writeMessageFlatChecked(message, view) {
       sb -= 64;
     }
     for (let i0 = 0; i0 < 2; i0++) {
-      if (!Number.isInteger(message.Probe.Samples[i0]) || message.Probe.Samples[i0] < -524288 || message.Probe.Samples[i0] > 524288) { // out-of-contract writes are refused, not wrapped
+      if (!Number.isInteger(message.Probe.Samples[i0]) || message.Probe.Samples[i0] < -524288 || message.Probe.Samples[i0] > 524288) {
         return -1;
       }
       v = ((((message.Probe.Samples[i0] >>> 0) - 4294443008) >>> 0) & 0x1fffff) >>> 0;
@@ -6025,7 +6025,7 @@ function writeMessageFlatChecked(message, view) {
       hi = 0;
       sb -= 64;
     }
-    if (message.Wide.Energy < -5000000000n || message.Wide.Energy > 5000000000n) { // out-of-contract writes are refused, not wrapped
+    if (message.Wide.Energy < -5000000000n || message.Wide.Energy > 5000000000n) {
       return -1;
     }
     SC.setBigUint64(0, BigInt.asUintN(64, message.Wide.Energy - -5000000000n), true);
@@ -6063,7 +6063,7 @@ function writeMessageFlatChecked(message, view) {
       hi = 0;
       sb -= 64;
     }
-    if (message.Wide.Flux < -1267650600228229401496703205376n || message.Wide.Flux > 1267650600228229401496703205376n) { // out-of-contract writes are refused, not wrapped
+    if (message.Wide.Flux < -1267650600228229401496703205376n || message.Wide.Flux > 1267650600228229401496703205376n) {
       return -1;
     }
     bg = BigInt.asUintN(128, message.Wide.Flux - -1267650600228229401496703205376n);
@@ -6135,7 +6135,7 @@ function writeMessageFlatChecked(message, view) {
       hi = 0;
       sb -= 64;
     }
-    if (message.Wide.Bias < -1000n || message.Wide.Bias > 1000n) { // out-of-contract writes are refused, not wrapped
+    if (message.Wide.Bias < -1000n || message.Wide.Bias > 1000n) {
       return -1;
     }
     v = Number(BigInt.asUintN(64, message.Wide.Bias - -1000n));

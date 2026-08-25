@@ -8,8 +8,6 @@
 #define SCHEMA_EXAMPLE_MESSAGES_H
 
 #include <stdint.h>
-#include <string.h>   /* memset — the zero form (SPEC §4.2) */
-#include <math.h>     /* floor — the quantize pair */
 
 #ifndef SCHEMA_UNUSED
 #if defined(__GNUC__) || defined(__clang__)
@@ -50,7 +48,7 @@ typedef struct Block {
 } Block;
 
 #define BLOCK_MAX_BITS 16018   /* longest wire path; align pads at worst case (SPEC §6.1) */
-#define BLOCK_MAX_BYTES 2008  /* rounded up to the 8-byte write-buffer granularity; a READ buffer's allocation must extend at least 8 bytes past the data — serialize.c loads 64-bit windows */
+#define BLOCK_MAX_BYTES 2008  /* 8-byte write granularity; read slack per the contract above */
 
 
 /* message Chat */
@@ -60,7 +58,7 @@ typedef struct Chat {
 } Chat;
 
 #define CHAT_MAX_BITS 2064   /* longest wire path; align pads at worst case (SPEC §6.1) */
-#define CHAT_MAX_BYTES 264  /* rounded up to the 8-byte write-buffer granularity; a READ buffer's allocation must extend at least 8 bytes past the data — serialize.c loads 64-bit windows */
+#define CHAT_MAX_BYTES 264  /* 8-byte write granularity; read slack per the contract above */
 
 
 /* message Synchronize */
@@ -70,7 +68,7 @@ typedef struct Synchronize {
 } Synchronize;
 
 #define SYNCHRONIZE_MAX_BITS 80   /* longest wire path; align pads at worst case (SPEC §6.1) */
-#define SYNCHRONIZE_MAX_BYTES 16  /* rounded up to the 8-byte write-buffer granularity; a READ buffer's allocation must extend at least 8 bytes past the data — serialize.c loads 64-bit windows */
+#define SYNCHRONIZE_MAX_BYTES 16  /* 8-byte write granularity; read slack per the contract above */
 
 
 /* message Timescale */
@@ -81,7 +79,7 @@ typedef struct Timescale {
 } Timescale;
 
 #define TIMESCALE_MAX_BITS 128   /* longest wire path; align pads at worst case (SPEC §6.1) */
-#define TIMESCALE_MAX_BYTES 16  /* rounded up to the 8-byte write-buffer granularity; a READ buffer's allocation must extend at least 8 bytes past the data — serialize.c loads 64-bit windows */
+#define TIMESCALE_MAX_BYTES 16  /* 8-byte write granularity; read slack per the contract above */
 
 
 /* The message tag: the discriminant for a heterogeneous stream. None = 0 is

@@ -76,7 +76,7 @@ const dispatchInline = "#[inline]\n"
 // emitWriteDispatchComment is the emitted rationale for why write_message —
 // the write dispatch surface — keeps the plain #[inline] hint while every
 // write spine it calls carries the demand. Mirrors cpp's
-// emitWriteDispatchComment (schema #60): the blanket demand closed every
+// emitWriteDispatchComment: the blanket demand closed every
 // per-message write row but regressed the batch dispatch loop, because the
 // dispatcher itself was forced whole into the loop body. Exempting it keeps
 // the per-message write spines flattening INTO the dispatcher's outlined body
@@ -87,6 +87,6 @@ func (g *gen) emitWriteDispatchComment() {
 	g.pf("// write_*) flatten into its body, but the dispatch match itself stays a\n")
 	g.pf("// call boundary — demanding the C++ twin into a batch build loop was\n")
 	g.pf("// measured to slow that loop ~21%% while every per-message row kept its\n")
-	g.pf("// win with the boundary in place (schema #60). The compiler remains free\n")
+	g.pf("// win with the boundary in place. The compiler remains free\n")
 	g.pf("// to inline it where that pays.\n")
 }

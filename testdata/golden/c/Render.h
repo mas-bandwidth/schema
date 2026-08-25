@@ -8,16 +8,6 @@
 #define SCHEMA_EXAMPLE_RENDER_H
 
 #include <stdint.h>
-#include <string.h>   /* memset — the zero form (SPEC §4.2) */
-#include <math.h>     /* floor — the quantize pair */
-
-#ifndef SCHEMA_UNUSED
-#if defined(__GNUC__) || defined(__clang__)
-#define SCHEMA_UNUSED __attribute__((unused))
-#else
-#define SCHEMA_UNUSED
-#endif
-#endif
 #include "Enums.h"
 
 #ifdef __cplusplus
@@ -48,7 +38,7 @@ typedef struct RenderBlock {
 } RenderBlock;
 
 #define RENDER_BLOCK_MAX_BITS 8903   /* longest wire path; align pads at worst case (SPEC §6.1) */
-#define RENDER_BLOCK_MAX_BYTES 1120  /* rounded up to the 8-byte write-buffer granularity; a READ buffer's allocation must extend at least 8 bytes past the data — serialize.c loads 64-bit windows */
+#define RENDER_BLOCK_MAX_BYTES 1120  /* 8-byte write granularity; read slack per the contract above */
 
 #ifdef __cplusplus
 }

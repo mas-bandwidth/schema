@@ -109,6 +109,7 @@ type gen struct {
 	needs128 bool // a 128-bit or Q112.16 storage member needs serialize.h in the DATA header
 
 	emitMessagesPending bool // this file owns the message dispatch surface
+	saidReadSlack       bool // the read-slack buffer contract is stated once per file, on its first MAX_BYTES
 	file                *ir.File
 	msgOwner            string
 	objOwner            string
@@ -155,13 +156,25 @@ func (g *gen) assembleHeader() []byte {
 	g.header(&h, g.file.Base)
 	guard := g.guardName("")
 	fmt.Fprintf(&h, "#ifndef %s\n#define %s\n\n", guard, guard)
-	h.WriteString("#include <stdint.h>\n#include <string.h>   /* memset — the zero form (SPEC §4.2) */\n#include <math.h>     /* floor — the quantize pair */\n")
+	// includes follow what the body actually emitted, so a header never
+	// carries an include nothing in it uses (a contains check can only ever
+	// keep one too many, never drop one in use)
+	body := g.body.String()
+	h.WriteString("#include <stdint.h>\n")
+	if strings.Contains(body, "memset") {
+		h.WriteString("#include <string.h>   /* memset — the zero form (SPEC §4.2) */\n")
+	}
+	if strings.Contains(body, "floor") {
+		h.WriteString("#include <math.h>     /* floor — the quantize pair */\n")
+	}
 	if g.needs128 {
 		// serialize_int128_t / serialize_uint128_t are STORAGE here, so the
 		// runtime header has to reach the data header and not only the wire one
 		h.WriteString("#include \"serialize.h\"   /* serialize_int128_t: C has no 128-bit builtin */\n")
 	}
-	h.WriteString(unusedMacro)
+	if strings.Contains(body, "SCHEMA_UNUSED") {
+		h.WriteString(unusedMacro)
+	}
 	for _, d := range g.deps {
 		fmt.Fprintf(&h, "#include \"%s.h\"\n", d)
 	}
@@ -178,8 +191,14 @@ func (g *gen) assembleWireHeader() []byte {
 	guard := g.guardName("WIRE")
 	fmt.Fprintf(&h, "#ifndef %s\n#define %s\n\n", guard, guard)
 	fmt.Fprintf(&h, "#include \"%s.h\"\n", g.file.Base)
-	h.WriteString("#include <string.h>   /* memset, strlen */\n#include \"serialize.h\"\n")
-	h.WriteString(unusedMacro)
+	body := g.body.String()
+	if strings.Contains(body, "memset") || strings.Contains(body, "strlen") {
+		h.WriteString("#include <string.h>   /* memset, strlen */\n")
+	}
+	h.WriteString("#include \"serialize.h\"\n")
+	if strings.Contains(body, "SCHEMA_UNUSED") {
+		h.WriteString(unusedMacro)
+	}
 	for _, d := range g.deps {
 		fmt.Fprintf(&h, "#include \"%sWire.h\"\n", d)
 	}
@@ -323,22 +342,8 @@ func (g *gen) emitEnum(d *ir.Enum) {
 	g.pf("static SCHEMA_UNUSED const char * enum_name_%s( %s value )\n{\n", snake(d.Name), d.Name)
 	g.pf("    switch ( value )\n    {\n")
 	g.pf("        case %s_NONE: return \"None\";\n", screaming(d.Name))
-	for i, v := range d.Variants {
-		g.pf("        case %d: return %q;\n", i+1, v)
-	}
-	g.pf("        default: return \"???\";\n    }\n}\n\n")
-
-	// The wire-value form the table reflection descriptors hold. They store a
-	// uint64_t-taking function pointer, so the typed one above cannot be used
-	// directly -- a function pointer conversion between differing parameter
-	// types is undefined behaviour, not merely a warning.
-	g.pf("/* As enum_name_%s, over a raw wire value — the form the table reflection\n", snake(d.Name))
-	g.pf("   descriptors hold. */\n")
-	g.pf("static SCHEMA_UNUSED const char * enum_name_%s_dyn( uint64_t value )\n{\n", snake(d.Name))
-	g.pf("    switch ( value )\n    {\n")
-	g.pf("        case 0: return \"None\";\n")
-	for i, v := range d.Variants {
-		g.pf("        case %d: return %q;\n", i+1, v)
+	for _, v := range d.Variants {
+		g.pf("        case %s_%s: return %q;\n", screaming(d.Name), screaming(v), v)
 	}
 	g.pf("        default: return \"???\";\n    }\n}\n\n")
 }
@@ -418,7 +423,17 @@ func (g *gen) emitUnion(d *ir.Union) {
 
 	maxBits := ir.MaxBitsUnion(d)
 	g.pf("#define %s_MAX_BITS %d   /* tag + the largest arm; None costs the tag only (SPEC §4.8) */\n", screaming(d.Name), maxBits)
-	g.pf("#define %s_MAX_BYTES %d  /* rounded up to the 8-byte write-buffer granularity; a READ buffer's allocation must extend at least 8 bytes past the data — serialize.c loads 64-bit windows */\n\n", screaming(d.Name), ir.MaxBytes(maxBits))
+	g.pf("#define %s_MAX_BYTES %d  %s\n\n", screaming(d.Name), ir.MaxBytes(maxBits), g.maxBytesTail())
+}
+
+// maxBytesTail is the comment after a MAX_BYTES define: the whole buffer
+// contract on the file's first, the short form after.
+func (g *gen) maxBytesTail() string {
+	if g.saidReadSlack {
+		return "/* 8-byte write granularity; read slack per the contract above */"
+	}
+	g.saidReadSlack = true
+	return "/* rounded up to the 8-byte write-buffer granularity; a READ buffer's allocation must extend at least 8 bytes past the data — serialize.c loads 64-bit windows */"
 }
 
 func (g *gen) emitField(f *ir.Field) {
@@ -544,6 +559,13 @@ func (g *gen) emitWireHeader() {
 	}
 
 	if g.fileEmitsWire() {
+		// the calling convention, once per wire header — the per-function
+		// comments below it stay one line each
+		g.pf("/* Every write_x/read_x returns 1 on success, 0 on failure — the stream\n")
+		g.pf("   latches the error, so a caller may check once at the end of a message.\n")
+		g.pf("   Reads REFUSE out-of-range values, never clamp. A tag is validated BEFORE\n")
+		g.pf("   it rides, and a read zero-establishes the selected arm before decoding\n")
+		g.pf("   it (SPEC §4.8, §5). */\n\n")
 		g.emitSpineInlineMacros()
 	}
 	if fileHasStrings(g.file) {
@@ -577,8 +599,7 @@ func (g *gen) emitUnionWire(d *ir.Union) {
 	tag := d.Name + "Type"
 	bits := ir.BitsRequired(big.NewInt(0), big.NewInt(d.Max))
 
-	g.pf("/* Writes %s. Returns 1 on success, 0 on failure. The tag is validated\n", d.Name)
-	g.pf("   BEFORE it rides: an out-of-set tag writes nothing (SPEC §4.8). */\n")
+	g.pf("/* Writes %s. */\n", d.Name)
 	g.pf("static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_%s( serialize_write_stream_t * stream, const %s * value )\n{\n", snake(d.Name), d.Name)
 	if d.Max == 0 {
 		g.pf("    (void) stream; /* only None exists; the degenerate tag range [0, 0] costs zero bits */\n")
@@ -594,8 +615,7 @@ func (g *gen) emitUnionWire(d *ir.Union) {
 		g.pf("    }\n}\n\n")
 	}
 
-	g.pf("/* Reads %s. Returns 1 on success, 0 on failure — a tag above %s_MAX is\n", d.Name, screaming(tag))
-	g.pf("   refused (SPEC §4.8); the selected arm is zero-established before decoding (§5). */\n")
+	g.pf("/* Reads %s. */\n", d.Name)
 	g.pf("static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_%s( serialize_read_stream_t * stream, %s * value )\n{\n", snake(d.Name), d.Name)
 	if d.Max == 0 {
 		g.pf("    (void) stream; /* zero wire bits — only None exists */\n")
@@ -623,8 +643,7 @@ func (g *gen) emitWriteFunc(st *ir.Struct) {
 	// is byte-identical (the same switch, off the same analysis, as the C++
 	// backend)
 	g.bulkBytes = ir.AlignedFixedByteArrays(st)
-	g.pf("/* Writes %s. Returns 1 on success, 0 on failure — the stream latches the\n", st.Name)
-	g.pf("   error, so a caller may check once at the end of a message. */\n")
+	g.pf("/* Writes %s. */\n", st.Name)
 	g.pf("static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_%s( serialize_write_stream_t * stream, const %s * value )\n{\n", snake(st.Name), st.Name)
 	// The early-out is keyed on ITEMS, not fields: a struct whose only items
 	// are reserved/const/align has no storage but DOES have wire bits, and
@@ -650,8 +669,7 @@ func (g *gen) emitWriteFunc(st *ir.Struct) {
 
 func (g *gen) emitReadFunc(st *ir.Struct) {
 	g.bulkBytes = ir.AlignedFixedByteArrays(st) // see emitWriteFunc
-	g.pf("/* Reads %s. Returns 1 on success, 0 on failure. Out-of-range values are\n", st.Name)
-	g.pf("   REFUSED, never clamped. */\n")
+	g.pf("/* Reads %s. */\n", st.Name)
 	g.pf("static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_%s( serialize_read_stream_t * stream, %s * value )\n{\n", snake(st.Name), st.Name)
 	if len(st.Items) == 0 {
 		g.pf("    (void) stream;\n    (void) value;\n    return 1;\n}\n\n")

@@ -8,16 +8,7 @@
 #define SCHEMA_EXAMPLE_CONSTANTSWIRE_H
 
 #include "Constants.h"
-#include <string.h>   /* memset, strlen */
 #include "serialize.h"
-
-#ifndef SCHEMA_UNUSED
-#if defined(__GNUC__) || defined(__clang__)
-#define SCHEMA_UNUSED __attribute__((unused))
-#else
-#define SCHEMA_UNUSED
-#endif
-#endif
 
 #ifdef __cplusplus
 extern "C" {
