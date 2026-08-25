@@ -660,7 +660,6 @@ func main() {
 
 	fmt.Fprintf(os.Stderr, "schema bench (go)\n")
 
-
 	// rigidbody_at_rest: the pinned at-rest twin of rigidbody_moving
 	atRest := pinRigidBodyMoving()
 	atRest.AtRest = true
@@ -682,7 +681,6 @@ func main() {
 	// golden-gated like every row above. Iteration count sized in the C++
 	// reference (§2.1).
 	benchMessage("real_packet", "real_packet", 8000000, realworld.NewRealPacket(), realworld.WriteRealPacket, realworld.ReadRealPacket, varyRealPacket)
-
 
 	// family rt (§1.3/§1.5): the runtime API by hand, oracle-gated against
 	// the goldens the generated code pinned. Iteration counts are fixed and

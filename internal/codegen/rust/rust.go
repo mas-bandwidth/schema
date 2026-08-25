@@ -116,9 +116,9 @@ func assembleLib(u *ir.Unit, modules map[string]string) []byte {
 }
 
 type gen struct {
-	unit     *ir.Unit
-	file     *ir.File
-	home     string // the file that carries PROTOCOL_ID and Error/Result
+	unit *ir.Unit
+	file *ir.File
+	home string // the file that carries PROTOCOL_ID and Error/Result
 
 	body             strings.Builder
 	bulkBytes        map[*ir.Field]bool // fixed [N]u8 arrays at statically byte-aligned positions (ir.AlignedFixedByteArrays)
@@ -639,31 +639,6 @@ func (g *gen) renderArg(e ast.Expr, folded *big.Int, typ string) string {
 	return "(" + s + ") as " + typ
 }
 
-// renderScaleF64 renders a quantization scale in f64 arithmetic: symbolic
-// consts cast (`POSITION_UNITS as f64`), folded values become float literals.
-func (g *gen) renderScaleF64(e ast.Expr, folded int64) string {
-	if e == nil || ir.ExprHasEnumMax(e) || !g.renderable(e) || !containsIdent(e) {
-		return strconv.FormatInt(folded, 10) + ".0"
-	}
-	s := renderExpr(e)
-	if _, ok := e.(*ast.IdentExpr); ok {
-		return s + " as f64"
-	}
-	return "(" + s + ") as f64"
-}
-
-// renderScaleF32 is renderScaleF64's f32 twin, for f32 component division.
-func (g *gen) renderScaleF32(e ast.Expr, folded int64) string {
-	if e == nil || ir.ExprHasEnumMax(e) || !g.renderable(e) || !containsIdent(e) {
-		return strconv.FormatInt(folded, 10) + ".0"
-	}
-	s := renderExpr(e)
-	if _, ok := e.(*ast.IdentExpr); ok {
-		return s + " as f32"
-	}
-	return "(" + s + ") as f32"
-}
-
 // overflowSafe reports whether e can render symbolically without the
 // TARGET's arithmetic overflowing on the way to the folded value. Schema
 // folding is arbitrary-precision; Rust is not, and rustc DENIES the overflow
@@ -770,7 +745,6 @@ func containsIdent(e ast.Expr) bool {
 func rustInt(width int) string  { return fmt.Sprintf("i%d", width) }
 func rustUint(width int) string { return fmt.Sprintf("u%d", width) }
 
-
 // signedStorageBounds is the | min, max domain of an iN storage type.
 func signedStorageBounds(width int) (lo, hi *big.Int) {
 	lo = new(big.Int).Neg(new(big.Int).Lsh(big.NewInt(1), uint(width-1)))
@@ -787,19 +761,6 @@ func rustIntLit(v *big.Int, width int) string {
 		return fmt.Sprintf("i%d::MIN", width)
 	}
 	return fmt.Sprintf("%s_i%d", v, width)
-}
-
-func smallestSigned(bound int64) int {
-	switch {
-	case bound <= 127:
-		return 8
-	case bound <= 32767:
-		return 16
-	case bound <= 2147483647:
-		return 32
-	default:
-		return 64
-	}
 }
 
 func formatFloat(v float64) string {
@@ -822,11 +783,4 @@ func formatFloat32(v float64) string {
 		s += ".0"
 	}
 	return s + "_f32"
-}
-
-func capitalize(s string) string {
-	if s == "" {
-		return s
-	}
-	return strings.ToUpper(s[:1]) + s[1:]
 }

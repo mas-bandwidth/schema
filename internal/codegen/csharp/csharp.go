@@ -68,8 +68,8 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 }
 
 type gen struct {
-	unit     *ir.Unit
-	file     *ir.File
+	unit  *ir.Unit
+	file  *ir.File
 	home  bool   // this file carries ProtocolId and the unit-level target notes
 	owner string // the class whose members are being emitted (CS0542 escape)
 
@@ -573,31 +573,6 @@ func (g *gen) renderArg(e ast.Expr, folded *big.Int, typ string, qualified bool)
 	return "(" + typ + ")(" + s + ")"
 }
 
-// renderScaleF64 renders a quantization scale in double arithmetic: symbolic
-// consts cast ((double)PositionUnits), folded values become double literals.
-func (g *gen) renderScaleF64(e ast.Expr, folded int64) string {
-	if e == nil || ir.ExprHasEnumMax(e) || !g.renderable(e) || !containsIdent(e) {
-		return strconv.FormatInt(folded, 10) + ".0"
-	}
-	s := renderExpr(e, false)
-	if _, ok := e.(*ast.IdentExpr); ok {
-		return "(double)" + s
-	}
-	return "(double)(" + s + ")"
-}
-
-// renderScaleF32 is renderScaleF64's float twin, for float component division.
-func (g *gen) renderScaleF32(e ast.Expr, folded int64) string {
-	if e == nil || ir.ExprHasEnumMax(e) || !g.renderable(e) || !containsIdent(e) {
-		return strconv.FormatInt(folded, 10) + ".0f"
-	}
-	s := renderExpr(e, false)
-	if _, ok := e.(*ast.IdentExpr); ok {
-		return "(float)" + s
-	}
-	return "(float)(" + s + ")"
-}
-
 // overflowSafe reports whether e can render symbolically without C#'s
 // CHECKED constant arithmetic rejecting it. Schema folding is
 // arbitrary-precision; C# literal subtrees evaluate in int, so
@@ -763,19 +738,6 @@ func csUint(width int) string {
 		return "uint"
 	}
 	return "ulong"
-}
-
-func smallestSigned(bound int64) int {
-	switch {
-	case bound <= 127:
-		return 8
-	case bound <= 32767:
-		return 16
-	case bound <= 2147483647:
-		return 32
-	default:
-		return 64
-	}
 }
 
 func formatFloat(v float64) string {

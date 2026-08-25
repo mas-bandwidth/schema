@@ -119,9 +119,6 @@ func (g *gen) emitDefaultInit(f *ir.Field) {
 	}
 }
 
-func bigZero() *big.Int         { return big.NewInt(0) }
-func bigInt64(v int64) *big.Int { return big.NewInt(v) }
-
 // uint128Literal renders an unsigned 128-bit default from its two lanes.
 func uint128Literal(v *big.Int) string {
 	mod := new(big.Int).Lsh(big.NewInt(1), 128)

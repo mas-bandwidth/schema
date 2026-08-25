@@ -537,7 +537,6 @@ func goInt2(signed bool, width int) string {
 func goInt(width int) string  { return fmt.Sprintf("int%d", width) }
 func goUint(width int) string { return fmt.Sprintf("uint%d", width) }
 
-
 func formatFloat(v float64) string {
 	s := strconv.FormatFloat(v, 'g', -1, 64)
 	if !strings.ContainsAny(s, ".eE") {

@@ -190,11 +190,11 @@ type Field struct {
 	DefExpr    Expr   // for symbolic rendering
 
 	// resolved wire refinements
-	HasIntRange    bool
-	IntMin         *big.Int
-	IntMax         *big.Int
-	IntMinExpr     Expr // for symbolic rendering in generated code
-	IntMaxExpr     Expr
+	HasIntRange   bool
+	IntMin        *big.Int
+	IntMax        *big.Int
+	IntMinExpr    Expr // for symbolic rendering in generated code
+	IntMaxExpr    Expr
 	HasFloatRange bool // the compressed-float triple (SPEC §4.3)
 	FMin          float64
 	FMax          float64
@@ -308,4 +308,3 @@ func StorageBitsFor(max int64) int {
 		return 64
 	}
 }
-

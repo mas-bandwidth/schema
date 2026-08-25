@@ -258,7 +258,7 @@ func main() {
 		check(ludicrous.ReadUnsignedProbe(hrs, &hOut) != nil, "a smuggled ufixed high-half offset is REJECTED")
 	}
 
-if failed {
+	if failed {
 		os.Exit(1)
 	}
 	fmt.Println("OK")

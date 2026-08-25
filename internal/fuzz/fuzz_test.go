@@ -41,7 +41,7 @@ var backends = []struct {
 	name     string
 	generate func(*ir.Unit) (map[string][]byte, error)
 }{
-	{"cpp", func(u *ir.Unit) (map[string][]byte, error) { return cpp.Generate(u) }},
+	{"cpp", cpp.Generate},
 	{"csharp", csharp.Generate},
 	{"golang", golang.Generate},
 	{"rust", rust.Generate},

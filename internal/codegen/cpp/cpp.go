@@ -59,27 +59,6 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 	return out, nil
 }
 
-// camelToSnake maps an UpperCamelCase declaration name to the
-// lower_snake_case union member name: ShipCreate -> ship_create,
-// ABTest -> ab_test.
-func camelToSnake(name string) string {
-	var b strings.Builder
-	runes := []rune(name)
-	for i, r := range runes {
-		if r >= 'A' && r <= 'Z' {
-			prevLower := i > 0 && runes[i-1] >= 'a' && runes[i-1] <= 'z'
-			nextLower := i+1 < len(runes) && runes[i+1] >= 'a' && runes[i+1] <= 'z'
-			if i > 0 && (prevLower || nextLower) {
-				b.WriteByte('_')
-			}
-			b.WriteRune(r - 'A' + 'a')
-			continue
-		}
-		b.WriteRune(r)
-	}
-	return b.String()
-}
-
 // includeCycle returns a printable cycle among generated headers, or "".
 func includeCycle(u *ir.Unit) string {
 	deps := ir.FileDeps(u)
@@ -835,7 +814,6 @@ func cppInt2(signed bool, width int) string {
 	return fmt.Sprintf("uint%d_t", width)
 }
 
-func cppInt(width int) string  { return fmt.Sprintf("int%d_t", width) }
 func cppUint(width int) string { return fmt.Sprintf("uint%d_t", width) }
 
 // cppInt64Lit renders a signed 64-bit literal; INT64_MIN has no direct
@@ -846,21 +824,6 @@ func cppInt64Lit(v *big.Int) string {
 	}
 	return v.String() + "ll"
 }
-
-func smallestSigned(bound int64) int {
-	switch {
-	case bound <= 127:
-		return 8
-	case bound <= 32767:
-		return 16
-	case bound <= 2147483647:
-		return 32
-	default:
-		return 64
-	}
-}
-
-func smallestUnsigned(max int64) int { return ir.StorageBitsFor(max) }
 
 func formatFloat(v float64, single bool) string {
 	// single-precision literals format at FLOAT32 precision: the shortest
@@ -883,11 +846,4 @@ func formatFloat(v float64, single bool) string {
 
 func formatFloatShort(v float64) string {
 	return strconv.FormatFloat(v, 'g', -1, 64)
-}
-
-func capitalize(s string) string {
-	if s == "" {
-		return s
-	}
-	return strings.ToUpper(s[:1]) + s[1:]
 }
