@@ -113,12 +113,10 @@ chat chat Chat example
 test test Test example
 inputpacket input_packet InputPacket example
 shipcreate ship_create ShipCreate example
-ship_shallow ship_shallow ShipData_Shallow example
 probe_header probe_header ProbeHeader example
 probebits probe_bits ProbeBits example
 probearray probe_array ProbeArray example
 testdata test_data TestData example
-message_batch message Message example
 real_packet real_packet RealPacket realworld'
 
 # families rt and bits: bench -> the runner's noinline timed-loop symbol stems
@@ -688,8 +686,7 @@ c|cpp)
             echo "note: SHADOW DRIFT: measured binary has $M_TOTAL transitive runtime calls (hot+cold), -g shadow has $S_TOTAL — verdicts below describe the shadow" >> "$LEDGER"
         fi
 
-        # timed-loop line ranges: write/read loops inside the include
-        # template; batch loops inside bench_batch in bench_main.c
+        # timed-loop line ranges: write/read loops inside the include template
         INC=bench/c/bench_message.inc
         SRC=bench/c/bench_main.c
         # tail -1: the markers are the ones in CODE — a doc line quoting them
@@ -699,14 +696,9 @@ c|cpp)
         W1=$(grep -n 'write path: 1 warmup' "$INC" | cut -d: -f1 | tail -1)
         W2=$(grep -n 'read path: 1 warmup' "$INC" | cut -d: -f1 | tail -1)
         RE=$(grep -n 'report( name, "write"' "$INC" | cut -d: -f1 | tail -1)
-        B1=$(grep -n 'write path: whole batch' "$SRC" | cut -d: -f1 | head -1)
-        B2=$(grep -n 'the read buffer: rebuild' "$SRC" | cut -d: -f1 | head -1)
-        B3=$(grep -n 'read path: read messages' "$SRC" | cut -d: -f1 | head -1)
-        B4=$(grep -n 'report( "message_batch"' "$SRC" | cut -d: -f1 | head -1)
-        if [ -z "$W1" ] || [ -z "$W2" ] || [ -z "$RE" ] || [ "$W1" -ge "$W2" ] || [ "$W2" -ge "$RE" ] || \
-           [ -z "$B1" ] || [ -z "$B2" ] || [ -z "$B3" ] || [ -z "$B4" ] || [ "$B1" -ge "$B2" ] || [ "$B2" -ge "$B3" ] || [ "$B3" -ge "$B4" ]; then
-            echo "c attribution: timed-range markers missing or out of order (W1=$W1 W2=$W2 RE=$RE B=$B1/$B2/$B3/$B4) — inline stays unknown" >&2
-            echo "note: c attribution marker failure (W1=$W1 W2=$W2 RE=$RE B=$B1/$B2/$B3/$B4) — all c gen rows left unknown" >> "$LEDGER"
+        if [ -z "$W1" ] || [ -z "$W2" ] || [ -z "$RE" ] || [ "$W1" -ge "$W2" ] || [ "$W2" -ge "$RE" ]; then
+            echo "c attribution: timed-range markers missing or out of order (W1=$W1 W2=$W2 RE=$RE) — inline stays unknown" >&2
+            echo "note: c attribution marker failure (W1=$W1 W2=$W2 RE=$RE) — all c gen rows left unknown" >> "$LEDGER"
             exit 1
         fi
 
@@ -726,7 +718,7 @@ c|cpp)
         }
 
         awk -v RTPAT="$RT" -v COLD="$COLD_SPLIT" -v addrsf="$VD/addrs.txt" -v countsf="$VD/shadow-counts.txt" \
-            -v W1="$W1" -v W2="$W2" -v RE="$RE" -v B1="$B1" -v B2="$B2" -v B3="$B3" -v B4="$B4" '
+            -v W1="$W1" -v W2="$W2" -v RE="$RE" '
             BEGIN {
                 while ((getline line < addrsf) > 0) { na++; split(line, a, " "); target[na] = a[2] }
                 while ((getline line < countsf) > 0) { split(line, a, " "); if (a[1] == "SYM") { tot[a[2]] = a[4]; ctot[a[2]] = a[7] } }
@@ -735,7 +727,7 @@ c|cpp)
                 bmap["rigidbody_at_rest"] = "rigidbody_at_rest"
                 bmap["chat"] = "chat"; bmap["test"] = "test"
                 bmap["inputpacket"] = "inputpacket"; bmap["shipcreate"] = "shipcreate"
-                bmap["ship_shallow"] = "ship_shallow"; bmap["probe_header"] = "probe_header"
+                bmap["probe_header"] = "probe_header"
                 bmap["probebits"] = "probebits"; bmap["probearray"] = "probearray"
                 bmap["testdata"] = "testdata"
                 # the realworld unit (issue #104): BM_SUFFIX real_packet, so
@@ -759,14 +751,6 @@ c|cpp)
                             else { untimed++; nf = 0; return }
                             bench = bmap[sfx]
                         }
-                        break
-                    }
-                    if (f ~ /bench_batch/ && match(f, /bench_main\.c:[0-9]+/)) {
-                        L = substr(f, RSTART + 13, RLENGTH - 13) + 0
-                        bench = "message_batch"
-                        if (L >= B1 && L < B2) path = "write"
-                        else if (L >= B3 && L < B4) path = "read"
-                        else { untimed++; nf = 0; return }
                         break
                     }
                 }
@@ -884,23 +868,17 @@ c|cpp)
         fi
 
         # source maps: which main line calls which bench, and the timed-loop
-        # line ranges inside bench_message / bench_batch
+        # line ranges inside bench_message
         SRC=bench/cpp/bench_main.cpp
         grep -n 'bench_message( "' "$SRC" | sed -E 's/^([0-9]+):.*bench_message\( "([a-z_]+)".*/\1 \2/' > "$VD/benchlines.txt"
-        grep -n 'bench_batch();' "$SRC" | sed -E 's/^([0-9]+):.*/\1 message_batch/' >> "$VD/benchlines.txt"
         W1=$(grep -n 'write path: 1 warmup' "$SRC" | cut -d: -f1 | head -1)
         W2=$(grep -n 'read path: 1 warmup' "$SRC" | cut -d: -f1 | head -1)
         RE=$(grep -n 'report( name, "write"' "$SRC" | cut -d: -f1 | head -1)
-        B1=$(grep -n 'write path: whole batch' "$SRC" | cut -d: -f1 | head -1)
-        B2=$(grep -n 'the read buffer: rebuild' "$SRC" | cut -d: -f1 | head -1)
-        B3=$(grep -n 'read path: read messages' "$SRC" | cut -d: -f1 | head -1)
-        B4=$(grep -n 'report( "message_batch"' "$SRC" | cut -d: -f1 | head -1)
         # marker sanity (same guard as the c branch): a missing or reordered
         # marker silently reclassifies timed sites as untimed and publishes
         # false fulls — refuse instead
-        if [ -z "$W1" ] || [ -z "$W2" ] || [ -z "$RE" ] || [ "$W1" -ge "$W2" ] || [ "$W2" -ge "$RE" ] || \
-           [ -z "$B1" ] || [ -z "$B2" ] || [ -z "$B3" ] || [ -z "$B4" ] || [ "$B1" -ge "$B2" ] || [ "$B2" -ge "$B3" ] || [ "$B3" -ge "$B4" ]; then
-            echo "cpp attribution: timed-range markers missing or out of order in $SRC (W1=$W1 W2=$W2 RE=$RE B=$B1/$B2/$B3/$B4) — inline stays unknown" >&2
+        if [ -z "$W1" ] || [ -z "$W2" ] || [ -z "$RE" ] || [ "$W1" -ge "$W2" ] || [ "$W2" -ge "$RE" ]; then
+            echo "cpp attribution: timed-range markers missing or out of order in $SRC (W1=$W1 W2=$W2 RE=$RE) — inline stays unknown" >&2
             echo "note: cpp attribution marker failure — all cpp rows left unknown" >> "$LEDGER"
             exit 1
         fi
@@ -923,14 +901,14 @@ c|cpp)
 
         awk -v RTPAT="$RT" -v COLD="$COLD_SPLIT" -v addrsf="$VD/addrs.txt" -v countsf="$VD/shadow-counts.txt" \
             -v benchf="$VD/benchlines.txt" \
-            -v W1="$W1" -v W2="$W2" -v RE="$RE" -v B1="$B1" -v B2="$B2" -v B3="$B3" -v B4="$B4" '
+            -v W1="$W1" -v W2="$W2" -v RE="$RE" '
             BEGIN {
                 while ((getline line < addrsf) > 0) { na++; split(line, a, " "); target[na] = a[2] }
                 while ((getline line < countsf) > 0) { split(line, a, " "); if (a[1] == "SYM") { tot[a[2]] = a[4]; ctot[a[2]] = a[7] } }
                 while ((getline line < benchf) > 0) { split(line, a, " "); benchof[a[1]] = a[2] }
                 tmap["RigidBody"] = "rigidbody_moving"; tmap["Chat"] = "chat"
                 tmap["Test"] = "test"; tmap["InputPacket"] = "inputpacket"
-                tmap["ShipCreate"] = "shipcreate"; tmap["ShipData_Shallow"] = "ship_shallow"
+                tmap["ShipCreate"] = "shipcreate"
                 tmap["ProbeHeader"] = "probe_header"; tmap["ProbeBits"] = "probebits"
                 tmap["ProbeArray"] = "probearray"; tmap["TestData"] = "testdata"
                 tmap["RealPacket"] = "real_packet"      # the realworld unit (issue #104)
@@ -942,14 +920,6 @@ c|cpp)
                 bench = ""; path = ""
                 for (i = 1; i <= nf; i++) {
                     f = frames[i]
-                    if (f ~ /bench_batch\(\)/ && match(f, /bench_main\.cpp:[0-9]+/)) {
-                        L = substr(f, RSTART + 15, RLENGTH - 15) + 0
-                        bench = "message_batch"
-                        if (L >= B1 && L < B2) path = "write"
-                        else if (L >= B3 && L < B4) path = "read"
-                        else { untimed++; nf = 0; return }
-                        break
-                    }
                     if (f ~ /bench_message</ && match(f, /bench_main\.cpp:[0-9]+/)) {
                         L = substr(f, RSTART + 15, RLENGTH - 15) + 0
                         if (L >= W1 && L < W2) path = "write"
@@ -1187,16 +1157,6 @@ rust)
     echo "$BENCH_MAP" | while read -r bench snake camel unit; do
         for path in write read; do
             name="${path}_${snake}"
-            if [ "$bench" = message_batch ] && [ "$path" = read ]; then
-                name="read_message_into"   # the batch read rides the into-path
-            fi
-            if [ "$bench" = ship_shallow ]; then
-                # the generators disagree on this one name: C emits
-                # write_ship_shallow, Rust emits write_ship_data_shallow —
-                # the map's snake is the C spelling, and matching it against
-                # the Rust binary is what kept both ship_shallow rows unknown
-                name="${path}_ship_data_shallow"
-            fi
             pat="$(unit_rust_sym "$unit" "$name")" || { echo "inline-verdict: $LANG_ARG $bench $path: BENCH_MAP names generated unit '$unit', which UNIT_MAP does not carry — refusing rather than guessing a prefix" >&2; exit 1; }
             n="$(count_for "$pat")"
             cold="$(cold_for "$pat")"

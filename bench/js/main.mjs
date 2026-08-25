@@ -203,8 +203,8 @@ let failed = false;
 // the C bench's uint64 LCG (Knuth MMIX: rng * 6364136223846793005 +
 // 1442695040888963407 mod 2^64), carried in two 32-bit lanes — the exact
 // generator serialize.js/bench/bench.js authored, seedable because the
-// schema runners seed it per section (1 for the per-bench variants, 12345
-// for the batch builder, 999 for the batch write loop). Lane arithmetic is
+// schema runners seed it per section (1 for the per-bench variants). Lane
+// arithmetic is
 // exact in the double domain: the low 32x32 product goes through 16-bit
 // limbs (every partial sum stays far below 2^53), the cross products only
 // matter mod 2^32 so Math.imul carries them, and the carries are recovered

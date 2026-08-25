@@ -143,13 +143,11 @@ it. Human-readable tables live beside the CSVs in `bench/results/`.
 | test              | —                     | tiny: 16 raw bits + 3 ranged ints                 |
 | inputpacket       | inputpacket           | counted array of nested Input                     |
 | shipcreate        | shipcreate_flags      | quantized composites + bool-gated flags           |
-| ship_shallow      | ship_shallow          | object view: 10 ranged ints + flags + projections |
 | probe_header      | probe_header          | wire const + reserved + align + 64 bits           |
 | probebits         | probebits             | odd bit widths (9/33/64) + full-range ints        |
 | probearray        | probearray            | nested samples, both branch arms, counted arrays  |
 | testdata          | testdata              | the everything message (floats, strings, arrays)  |
 | real_packet       | real_packet           | the §1.7 realistic snapshot (`bench/corpus/RealWorld.schema`): ~93 riding individually serialized small fields of every scalar kind, 204 B, 0% bulk share by bits; pin = the all-defaults instance |
-| message_batch     | (message_stream golden checks the dispatch wire) | 4096 mixed messages + terminator through WriteMessage/ReadMessage, steady-state; mix rebalanced 2026-08-23 to ≤15% bulk by bits (§1.7 rule 3's latitude, issue #64: bulk share 75.95% → 14.20%, bytes/op 25 → 10 — cross-era batch ratios refuse on the moved bytes_per_op, which is the era mark working) |
 
 Family `rt` (hand-written runtime API, oracle-gated per §1.5; iteration
 counts fixed and identical across all six languages) and family `bits`:
@@ -223,10 +221,8 @@ A runner is a standalone program in `bench/<lang>/` that:
   measure the FLAT tier (`codec=flat`, §5.1) — THE js path, per-call,
   golden-gated and cross-validated against the runtime tier (bytes, fields,
   verdicts, 64 variants) before any timing; the runtime-call generated rows
-  ride as labeled supplementary rows (`codec=runtime`), and `ship_shallow` /
-  `message_batch` are runtime-only in v1 (object views; a continuous
-  multi-message bitstream). The `rt` and `bits` families measure the
-  serialize.js library itself and carry no codec column.
+  ride as labeled supplementary rows (`codec=runtime`). The `rt` and `bits`
+  families measure the serialize.js library itself and carry no codec column.
 
 If a runner or its toolchain is missing, `run.sh` prints `SKIP <lang>`
 with the reason.
