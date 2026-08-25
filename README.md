@@ -26,7 +26,7 @@ type Quaternion
     x float64
     y float64
     z float64
-    w float64
+    w float64 = 1.0
 }
 
 type ShipState
