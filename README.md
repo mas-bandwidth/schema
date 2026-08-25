@@ -12,7 +12,7 @@ const MaxHealth = 1000
 
 enum ShipType { Fighter, Corvette, Bomber }
 
-enum ShipFlags { Firing, Thrusting, Disabled }
+flags ShipFlags { Firing, Thrusting, Disabled }
 
 type Vec3
 {
