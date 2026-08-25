@@ -437,19 +437,20 @@ func (g *gen) emitStorageField(f *ir.Field) {
 		g.pf("    this.%sLength = 0;\n", name)
 	case f.Array != ir.ArrayNone:
 		bound := g.renderNum(f.ArrayExpr, big.NewInt(f.ArrayBound))
-		if f.Type.Kind == ir.TNamed && isClassRef(f.Type.Ref) {
+		switch {
+		case f.Type.Kind == ir.TNamed && isClassRef(f.Type.Ref):
 			// pre-allocated element instances — the storage principle
 			// (SPEC §6.1): every buffer exists at construction; unions are
 			// classes here exactly like structs
 			g.addRef(f.Type.Name, f.Type.Name)
 			g.pf("    this.%s = Array.from({ length: %s }, () => new %s());%s\n", name, bound, f.Type.Name, g.fieldComment(f))
-		} else if isByteElem(f.Type) {
+		case isByteElem(f.Type):
 			// uint8 arrays store as Uint8Array — the runtime's own byte-buffer
 			// type (serializeBytes' contract), so the aligned bulk path can
 			// hand the buffer over whole; element access is Number as in any
 			// array, and the wire is identical either way
 			g.pf("    this.%s = new Uint8Array(%s);%s\n", name, bound, g.fieldComment(f))
-		} else {
+		default:
 			g.pf("    this.%s = new Array(%s).fill(%s);%s\n", name, bound, g.zeroValue(f.Type), g.fieldComment(f))
 		}
 		if f.Array == ir.ArrayCounted {
@@ -457,13 +458,14 @@ func (g *gen) emitStorageField(f *ir.Field) {
 		}
 	default:
 		init := ""
-		if f.HasDefault {
+		switch {
+		case f.HasDefault:
 			init = g.defaultValue(f)
-		} else if f.Type.Kind == ir.TNamed && isClassRef(f.Type.Ref) {
+		case f.Type.Kind == ir.TNamed && isClassRef(f.Type.Ref):
 			// pre-allocated at construction — the storage principle (SPEC §6.1)
 			g.addRef(f.Type.Name, f.Type.Name)
 			init = "new " + f.Type.Name + "()"
-		} else {
+		default:
 			init = g.zeroValue(f.Type)
 		}
 		g.pf("    this.%s = %s;%s\n", name, init, g.fieldComment(f))

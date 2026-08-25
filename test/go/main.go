@@ -353,6 +353,11 @@ func main() {
 		checkErr(example.WriteProbeBits(ws, &in), "write ProbeBits")
 		ws.Flush()
 		goldenWire("probebits", ws.Data())
+
+		out := example.ProbeBits{}
+		rs := serialize.NewReadStream(ws.Data())
+		checkErr(example.ReadProbeBits(rs, &out), "read ProbeBits")
+		check(out == in, "ProbeBits round-trips — 9/33/64-bit and full-range paths")
 	}
 
 	// ---- ProbeCollider: first-class one-of (SPEC §4.8) — C++-pinned wire,
@@ -410,11 +415,6 @@ func main() {
 		ws2, _ := newWriteStream()
 		check(example.WriteProbeShape(ws2, &rogue) != nil,
 			"an out-of-set union tag writes nothing (SPEC §4.8)")
-
-		out := example.ProbeBits{}
-		rs := serialize.NewReadStream(ws.Data())
-		checkErr(example.ReadProbeBits(rs, &out), "read ProbeBits")
-		check(out == in, "ProbeBits round-trips — 9/33/64-bit and full-range paths")
 	}
 
 	// ---- TestData and InputPacket against their C++ pins ----
