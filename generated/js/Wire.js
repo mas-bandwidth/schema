@@ -29,6 +29,8 @@ export const HalfTurn = 180.0;
 
 export const TickRate = 60.0;
 
+export const SpinRate = 1.5;
+
 // Weapon — None = 0 implicit, variants dense from 1, wire range [0, 15] (SPEC §4.2);
 // a frozen object of Number values — the JS translation of the family's
 // integer-backed enums; [max = ...] headroom values are plain Numbers

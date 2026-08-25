@@ -48,6 +48,39 @@ func countAcross(files map[string][]byte, needle string) int {
 	return n
 }
 
+// A bare float const infers float64 (SPEC §4.2, Go's literal rule): the Go
+// target must export it exactly as the explicit annotation would — a TYPED
+// float64 constant, the same surface every other target already emits
+// (issue #120). An untyped Go constant is a different exported type: it
+// converts where float64 does not, so consumer code written against one
+// form breaks against the other.
+func TestBareFloatConstExportsTypedFloat64(t *testing.T) {
+	src := "package t\n\nconst Bare      = 1.5\nconst Annotated float64 = 1.5\n"
+	f, perrs := parser.Parse("Consts.schema", []byte(src))
+	if len(perrs) > 0 {
+		t.Fatalf("parse: %v", perrs[0])
+	}
+	u, cerrs := check.Unit([]check.SourceFile{{
+		Path: "Consts.schema", Name: "Consts.schema", Base: "Consts",
+		Bytes: []byte(src), AST: f,
+	}})
+	if len(cerrs) > 0 {
+		t.Fatalf("check: %v", cerrs[0])
+	}
+	files, err := Generate(u)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{
+		"const Bare float64 = 1.5",
+		"const Annotated float64 = 1.5",
+	} {
+		if got := countAcross(files, want); got != 1 {
+			t.Errorf("Go: %q emitted %d times — a bare float const must export the same typed float64 the annotation spells", want, got)
+		}
+	}
+}
+
 func TestDispatchSurfaceEmittedOnce(t *testing.T) {
 	u := multiFileUnit(t)
 

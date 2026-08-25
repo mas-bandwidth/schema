@@ -6,10 +6,12 @@
 package example
 
 // typed constants pin their exported type in every target (SPEC §4.2);
-// float constants exist since the integer-only note was retired
+// a bare const with a float literal infers float64 — Go's rule: a decimal
+// point or exponent in the literal makes it float
 const ProbeId uint64   = 0xDEADBEEFCAFE
 const HalfTurn float64 = 180.0
 const TickRate float32 = 60.0
+const SpinRate         = 1.5
 
 // enum headroom: the wire range is [0, 15] whatever the variant count, and
 // non-variant values are wire-legal (SPEC §4.2, §6.1)

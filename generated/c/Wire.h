@@ -27,6 +27,7 @@ extern "C" {
 #define PROBE_ID (0xDEADBEEFCAFE)
 #define HALF_TURN 180.0
 #define TICK_RATE 60.0
+#define SPIN_RATE 1.5
 
 /* enum Weapon — None = 0 implicit, variants dense from 1, wire range [0, 15]
    (SPEC §4.2). A fixed-width typedef rather than a C enum: an enum's underlying

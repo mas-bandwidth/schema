@@ -144,6 +144,8 @@ namespace Example
 
         public const float TickRate = 60.0f;
 
+        public const double SpinRate = 1.5;
+
         // EnumNameWeapon: debug/log/tooling name for any Weapon wire value —
         // out-of-set values (wire-legal up to the declared max) name as "???"
         public static string EnumNameWeapon(ulong value)

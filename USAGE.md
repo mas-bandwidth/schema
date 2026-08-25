@@ -87,15 +87,17 @@ Run the same command with `--lang cs`, `--lang go`, `--lang js` or
 
 ```
 const MaxHealth = 1000
-const Pi float64 = 3.14159265359
+const TickInterval = 1.5
+const Pi float32 = 3.14159265359
 ```
 
 Constants are exported into every generated language, so the bound you
 declared is the bound your code compares against — no second copy to drift.
 They may reference each other in any order, across files.
 
-An untyped constant takes the type its use needs. Name a type explicitly
-when you care.
+An untyped constant infers its type from its expression, Go's rule: a
+literal with a decimal point or exponent makes it `float64`, a bare integer
+makes it `int64`. Name a type explicitly when you want a different one.
 
 ### enum
 

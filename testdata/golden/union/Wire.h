@@ -15,6 +15,7 @@ namespace example {
 inline constexpr uint64_t ProbeId = 0xDEADBEEFCAFE;
 inline constexpr double HalfTurn = 180.0;
 inline constexpr float TickRate = 60.0f;
+inline constexpr double SpinRate = 1.5;
 // enum Weapon — None = 0 implicit, variants dense from 1, wire range [0, 15] (SPEC §4.2)
 enum class Weapon : uint8_t {
     None = 0,

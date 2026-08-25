@@ -335,7 +335,12 @@ FloatExpr   = float expression over float literals, int literals and const names
   arithmetic, fit-checked at each use) or float (float64 arithmetic; `+ - *
   /` and parentheses, no `%`) — and converts wherever that kind fits: integer
   constants in any range, bound, width, case label or float position; float
-  constants in float attribute values and float contexts. An **explicit type
+  constants in float attribute values and float contexts. The kind follows
+  Go's literal rule: a literal containing a decimal point or an exponent is a
+  float literal, so a bare `const` whose expression contains a float literal
+  or references a float constant **infers `float64`** — `const Rate = 1.5`
+  exports in every target exactly as `const Rate float64 = 1.5` would; a bare
+  integer expression infers `int64` storage as before. An **explicit type
   makes a typed constant** — `const MaxBounds uint64 = 12000` — which pins
   the exported type in every target.
 - **Enum max references:** **`E.Max`** in any integer expression names enum
