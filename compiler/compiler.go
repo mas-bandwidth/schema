@@ -242,13 +242,10 @@ func MigrateFile(path string) (canonical []byte, rewrote bool, err error) {
 	return out, true, nil
 }
 
-// Version reports which build of the compiler is running: the linker stamp if
-// the build carried one, otherwise the module version or a VCS revision.
-// Never empty. Deliberately absent from generated output — generated code
+// UserAgent reports which build of the compiler is running, as the one-line
+// form `schema version` prints and the form to quote in a bug report: the
+// linker stamp if the build carried one, otherwise the module version or a
+// VCS revision. Deliberately absent from generated output — generated code
 // carries the protocol id, which is what actually governs compatibility (see
 // VERSIONING.md).
-func Version() string { return version.Version() }
-
-// UserAgent is the one-line form `schema version` prints, and the form to
-// quote in a bug report.
 func UserAgent() string { return version.UserAgent() }

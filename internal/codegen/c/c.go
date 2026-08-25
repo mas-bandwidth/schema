@@ -57,7 +57,7 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 	}
 
 	out := map[string][]byte{}
-	home := protocolIdHome(u)
+	home := ir.ProtocolIdHome(u)
 	msgOwner := ir.MessageOwner(u)
 	objOwner := ir.ObjectOwner(u)
 	deps := ir.FileDeps(u)
@@ -89,18 +89,6 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 	}
 
 	return out, nil
-}
-
-func protocolIdHome(u *ir.Unit) string {
-	for _, f := range u.Files {
-		if f.Base == "Constants" {
-			return f.Base
-		}
-	}
-	if len(u.Files) > 0 {
-		return u.Files[0].Base
-	}
-	return ""
 }
 
 type gen struct {

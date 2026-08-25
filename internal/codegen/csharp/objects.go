@@ -258,7 +258,7 @@ func (g *gen) emitQuantizeField(f *ir.Field, ind string) {
 			g.sf("%s    output.%s%s = (%s)componentValue;\n%s}\n", ind, name, compName, compT, ind)
 		}
 	default:
-		g.emitCopyField("output", "input", "", f, ind, 0)
+		g.emitCopyField("output", "input", f, ind, 0)
 	}
 }
 
@@ -294,7 +294,7 @@ func (g *gen) emitUnquantizeField(f *ir.Field, ind string) {
 				ind, name, compName, cast, name, compName, scale)
 		}
 	default:
-		g.emitCopyField("output", "input", "", f, ind, 0)
+		g.emitCopyField("output", "input", f, ind, 0)
 	}
 }
 
@@ -302,11 +302,9 @@ func (g *gen) emitUnquantizeField(f *ir.Field, ind string) {
 // other targets copy with one value assignment; C# classes and arrays are
 // references, so buffers copy element-wise into the destination's
 // pre-allocated storage and composed classes copy member-wise (recursion ends
-// because composition cycles are compile errors). owner is the class the
-// field belongs to, for the CS0542 member escape ("" for the view classes,
-// whose underscored names the mapping can never produce); depth uniquifies
-// nested loop variables.
-func (g *gen) emitCopyField(dstPrefix, srcPrefix, owner string, f *ir.Field, ind string, depth int) {
+// because composition cycles are compile errors). depth uniquifies nested
+// loop variables.
+func (g *gen) emitCopyField(dstPrefix, srcPrefix string, f *ir.Field, ind string, depth int) {
 	base := ir.GoExportName(f.Name)
 	dst := dstPrefix + "." + base
 	src := srcPrefix + "." + base
@@ -341,7 +339,7 @@ func (g *gen) emitCopyField(dstPrefix, srcPrefix, owner string, f *ir.Field, ind
 
 func (g *gen) emitCopyStruct(dst, src string, st *ir.Struct, ind string, depth int) {
 	for _, f := range st.Fields {
-		g.emitCopyField(dst, src, st.Name, f, ind, depth)
+		g.emitCopyField(dst, src, f, ind, depth)
 	}
 }
 

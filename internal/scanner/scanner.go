@@ -183,7 +183,7 @@ func (s *state) peek2() byte {
 	return s.src[s.off+1]
 }
 
-func (s *state) advance() byte {
+func (s *state) advance() {
 	c := s.src[s.off]
 	s.off++
 	if c == '\n' {
@@ -192,7 +192,6 @@ func (s *state) advance() byte {
 	} else {
 		s.col++
 	}
-	return c
 }
 
 func isIdentStart(c byte) bool {

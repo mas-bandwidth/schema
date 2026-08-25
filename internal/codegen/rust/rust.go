@@ -40,7 +40,7 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 	// over FixedPointStorage) — storage is native, wire calls mirror the C++
 	// macros.
 	out := map[string][]byte{}
-	home := protocolIdHome(u)
+	home := ir.ProtocolIdHome(u)
 	msgOwner := ir.MessageOwner(u)
 	objOwner := ir.ObjectOwner(u)
 	deps := ir.FileDeps(u)
@@ -73,27 +73,12 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 	return out, nil
 }
 
-// protocolIdHome picks the file that carries PROTOCOL_ID and the Error/Result
-// pair: the constants aspect file if the unit has one, else the first — the
-// same rule as the Go target.
-func protocolIdHome(u *ir.Unit) string {
-	for _, f := range u.Files {
-		if f.Base == "Constants" {
-			return f.Base
-		}
-	}
-	if len(u.Files) > 0 {
-		return u.Files[0].Base
-	}
-	return ""
-}
-
 func assembleLib(u *ir.Unit, modules map[string]string) []byte {
 	// a module re-exports into the crate root only if it declares anything: a
 	// glob over an item-less module (a contexts aspect file — comments only)
 	// is an unused import
 	exports := map[string]bool{}
-	home := protocolIdHome(u)
+	home := ir.ProtocolIdHome(u)
 	msgOwner := ir.MessageOwner(u)
 	objOwner := ir.ObjectOwner(u)
 	for _, f := range u.Files {

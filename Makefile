@@ -43,7 +43,7 @@ generated/cpp/.stamp: bin/schema $(SCHEMAS)
 	./bin/schema generate --lang cpp --out generated/cpp examples
 	@touch $@
 
-# the fixed-point + 128-bit unit (examples128/) — all five targets since the
+# the fixed-point + 128-bit unit (examples128/) — all six targets since the
 # serialize ports carry the phase-1 surface; each generated unit gets the same
 # module/manifest wiring as its main-corpus twin
 generated/cpp/ludicrous/.stamp: bin/schema $(SCHEMAS128)
@@ -151,7 +151,7 @@ generated/c-ludicrous/.stamp: bin/schema $(SCHEMAS128)
 #     (BENCH-STANDARD.md §1.3); goldens testdata/wire/bench_*.bin
 #   bench/corpus/RealWorld.schema  package realworld  — the §1.7 realistic
 #     snapshot (RealPacket); golden testdata/wire/real_packet.bin
-# Both are generated into all five languages so the bench shapes have ONE
+# Both are generated into all six languages so the bench shapes have ONE
 # definition; the goldens come from the generated C++ (test/bench/main.cpp)
 # and every bench runner is §1.5-gated against them. Languages whose module
 # layout cannot hold two packages in one directory put the realworld unit in

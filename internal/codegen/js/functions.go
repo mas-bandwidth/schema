@@ -444,7 +444,7 @@ func (g *gen) emitWriteField(f *ir.Field, ind string) {
 }
 
 func (g *gen) emitWriteScalar(f *ir.Field, name, ind string) {
-		switch f.Type.Kind {
+	switch f.Type.Kind {
 	case ir.TFixed:
 		if f.IntMin.Cmp(f.IntMax) == 0 {
 			// degenerate range: ZERO bits — the folded range refusal and no
