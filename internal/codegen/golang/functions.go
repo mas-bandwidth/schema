@@ -327,7 +327,7 @@ func (g *gen) emitWriteRangedFold64(expr, lo, hi string, bits int64, loZero bool
 // here instead of on every field of every message.
 //
 // The float32() around the product is LOAD BEARING, exactly as it is in the
-// runtime and in internal/pack: STANDARD.md pins this arithmetic to float32 with
+// runtime: STANDARD.md pins this arithmetic to float32 with
 // TWO roundings, and Go permits fusing a multiply into an add unless a
 // conversion forces the intermediate rounding. arm64 takes that permission, so a
 // fused line writes different bytes for 0.005 over [0, 10] at resolution 0.01.

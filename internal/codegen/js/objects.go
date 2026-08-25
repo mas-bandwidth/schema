@@ -393,7 +393,7 @@ func (g *gen) emitQuantizeField(f *ir.Field, ind string) {
 				continue
 			}
 			// round-to-nearest narrowing shift — ties AWAY FROM ZERO: the one
-			// fixed-point rounding rule (SPEC §4.8, decided 2026-08-15).
+			// fixed-point rounding rule (SPEC §4.8).
 			// Negative raws mirror through negation so the tie leaves zero in
 			// both signs. In-bounds raws cannot overflow the add (checker-
 			// enforced bounds leave 2^(F-1) of headroom past any legal raw).

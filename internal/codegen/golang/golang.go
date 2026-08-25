@@ -41,15 +41,6 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 	home := protocolIdHome(u)
 	msgOwner := ir.MessageOwner(u)
 	objOwner := ir.ObjectOwner(u)
-	bases := map[string]bool{}
-	for _, f := range u.Files {
-		bases[f.Base] = true
-	}
-	for _, f := range u.Files {
-		if bases[f.Base+"Table"] {
-			return nil, fmt.Errorf("schema files %s and %sTable collide — the Go emitter writes %sTable.go as %s's table codec; rename one file", f.Base, f.Base, f.Base, f.Base)
-		}
-	}
 	for _, f := range u.Files {
 		g := &gen{unit: u, file: f, msgOwner: msgOwner, objOwner: objOwner}
 		g.emitFile(f.Base == home)

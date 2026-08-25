@@ -258,7 +258,7 @@ func (p *parser) parseDecl() {
 			p.expectTerminator("union declaration")
 			p.file.Decls = append(p.file.Decls, d)
 		default:
-			p.errf(t.Pos, "unexpected %q at file scope (declarations begin with package, const, enum, flags, type, table, message, object, union or contexts)", t.Text)
+			p.errf(t.Pos, "unexpected %q at file scope (declarations begin with package, const, enum, flags, type, message, object, union or contexts)", t.Text)
 			p.skipDecl()
 		}
 

@@ -639,7 +639,7 @@ func (g *gen) emitWriteScalar(f *ir.Field, name, ind string) {
 // precomputed compressed-float entry point (issue #82): the family contract's
 // four scalars in the family order — max_integer_value, bits, delta, min, with
 // min last. The values are ir.CompressedFloatParams' generation-time fold, the
-// same derivation internal/pack, the JS flat backend, the Go fold (#79) and
+// same derivation the JS flat backend, the Go fold (#79) and
 // the cpp backend (#114) already consume, and the same arithmetic
 // serialize.rs's serialize_compressed_float_params performs per call — so the
 // entry points are wire-identical by construction, and the runtime's debug

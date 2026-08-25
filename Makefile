@@ -155,7 +155,7 @@ generated/c-ludicrous/.stamp: bin/schema $(SCHEMAS128)
 # definition; the goldens come from the generated C++ (test/bench/main.cpp)
 # and every bench runner is §1.5-gated against them. Languages whose module
 # layout cannot hold two packages in one directory put the realworld unit in
-# its own subdirectory (go, cs — per-package TableRuntime) or sibling crate
+# its own subdirectory (go, cs) or sibling crate
 # (rust — one crate root per unit).
 #
 # COMPILE gates: generating a unit proves nothing about it compiling — the cs

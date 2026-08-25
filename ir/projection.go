@@ -27,8 +27,8 @@ package ir
 //   object ordinals          the ObjectType tag likewise
 //   contexts                 a context scopes | local fields out of a view
 //   every type's fields      order IS the wire order
-//   field names              the TABLE wire's field identity is
-//                            fold16(fnv1a32(name)) — a rename moves data
+//   field names              FROZEN input (see projectField) — a rename
+//                            moves the id
 //   type kind/width/sign     the bit width and the encoding
 //   declared bounds          the width follows from the range
 //   array kind and bounds    the count field's width, and the element count
@@ -36,7 +36,7 @@ package ir
 //   float range + resolution the quantized step count
 //   fixed I and F            the Q format and the raw bounds
 //   quantize scale/bound     the shallow view's per-component width
-//   specified defaults       the TABLE wire elides a field at its default
+//   specified defaults       FROZEN input (see projectField)
 //   branch structure         a guard removes fields from the wire
 //   const/reserved/align     literal bits, zero bits, and padding
 //   enum max, storage bits   the tag's wire range
@@ -183,9 +183,11 @@ func projectItems(b *strings.Builder, items []Item, ind string) {
 }
 
 func projectField(b *strings.Builder, f *Field, ind string) {
-	// the NAME rides: the table wire's field identity is its name hash, so a
-	// rename is a wire-breaking change even though the message wire is
-	// unmoved
+	// the NAME rides as a FROZEN token: it projected for the retired table
+	// wire (field identity was its name hash), and keeping it keeps every
+	// existing id stable — so a rename moves the id even though the message
+	// wire is unmoved. Dropping it is a ProjectionVersion bump, taken
+	// deliberately or not at all.
 	fmt.Fprintf(b, "%sfield %s kind=%d", ind, f.Name, int(f.Type.Kind))
 
 	if f.Type.Kind == TNamed {
@@ -228,8 +230,9 @@ func projectField(b *strings.Builder, f *Field, ind string) {
 	if f.Context != "" {
 		fmt.Fprintf(b, " context=%s", f.Context)
 	}
-	// the TABLE wire elides a field sitting at its default, so the default is
-	// part of the bytes
+	// the default rides as a FROZEN token (the retired table wire elided a
+	// field sitting at its default); it stays part of the bytes to keep
+	// existing ids stable
 	if f.HasDefault {
 		switch {
 		case f.DefVariant != "":

@@ -60,8 +60,8 @@ func (g *gen) emitWriteScalar(f *ir.Field, expr, ind string) {
 			// The runtime's precomputed entry point (issue #82): the step
 			// count, wire width and float32 range width depend only on the
 			// declaration, so ir.CompressedFloatParams derives them ONCE at
-			// generation time — the same derivation internal/pack and the
-			// Go fold (#79) emit from — and the quantization arithmetic
+			// generation time — the same derivation the Go fold (#79)
+			// emits from — and the quantization arithmetic
 			// keeps its one audited home in serialize.h.
 			steps, wireBits := ir.CompressedFloatParams(f.FMin, f.FMax, f.Resolution)
 			min32 := float32(f.FMin)
