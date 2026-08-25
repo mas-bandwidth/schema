@@ -16,8 +16,7 @@ project has, and it is worth interrupting anything else to fix. See
 read path.
 
 **Documentation that lied to you.** If something in the docs did not match what
-the compiler did, that is a bug in the docs and worth an issue. This has
-already happened more than once.
+the compiler did, that is a bug in the docs and worth an issue.
 
 **Cap'n Proto, Protobuf or FlatBuffers comparisons we got wrong.** The numbers
 in [COMPARISON.md](COMPARISON.md) are measured by a committed script. If we
@@ -27,22 +26,23 @@ the claim can be checked rather than believed.
 ## Building
 
 Needs Go 1.26+, a C++17 compiler, a C99 compiler, and — for the full
-cross-language test — the Rust, Go and .NET toolchains.
+cross-language test — the Rust, Go, Node.js and .NET toolchains.
 
-The five serialize runtimes must be checked out as **siblings** of this
+The six serialize runtimes must be checked out as **siblings** of this
 repository:
 
 ```bash
 git clone https://github.com/mas-bandwidth/serialize.git
 git clone https://github.com/mas-bandwidth/serialize.c.git
 git clone https://github.com/mas-bandwidth/serialize.go.git
+git clone https://github.com/mas-bandwidth/serialize.js.git
 git clone https://github.com/mas-bandwidth/serialize.rs.git
 git clone https://github.com/mas-bandwidth/serialize.cs.git
 git clone https://github.com/mas-bandwidth/schema.git
 cd schema && make test
 ```
 
-`make test` builds the compiler, generates the corpus in all five languages,
+`make test` builds the compiler, generates the corpus in all six languages,
 compiles each, and compares the emitted wire against pinned goldens. That
 cross-language bit-identity check is the property this project exists to
 provide, so a change that breaks it is wrong until proven otherwise.

@@ -76,8 +76,8 @@ inline bool WriteShipCreate( serialize::WriteStream & stream, const ShipCreate &
 inline bool ReadShipCreate( serialize::ReadStream & stream, ShipCreate & value );
 ```
 
-Run the same command with `--lang cs`, `--lang go`, `--lang js` or
-`--lang rust` and you get the equivalent in that language — writing the
+Run the same command with `--lang c`, `--lang cs`, `--lang go`, `--lang js`
+or `--lang rust` and you get the equivalent in that language — writing the
 **same bits**.
 
 ---
@@ -353,8 +353,8 @@ ranged_count [2..8]uint32
 A fixed array always writes N elements. A counted array writes the count
 first, in the fewest bits that can express the bound, then that many
 elements. The bound is a range literal: `[..N]` reads "up to N" and is sugar
-for `[0..N]`; `[A..B]` is a count in [A, B], encoded relative to A. (The old
-`[<= N]` spelling is refused with `[..N]` named.)
+for `[0..N]`; `[A..B]` is a count in [A, B], encoded relative to A. (A
+retired `[<= N]` spelling is refused with `[..N]` named.)
 
 ### Composition
 
@@ -432,7 +432,8 @@ tool.
 Generated storage is **relocatable by construction** — trivially copyable,
 standard layout, no pointers — so instances can be memcpy'd, memory-mapped,
 shared between processes, or built in parallel across threads and gathered
-by concatenation.
+by concatenation, a pattern offset-based formats cannot express. The corpus
+test proves parallel scatter/gather byte-identical to serial.
 
 ---
 
@@ -459,10 +460,9 @@ if ( !ReadShipCreate( stream, value ) )
 }
 ```
 
-The slack requirement differs per language: **C++ ≥8 bytes, C ≥8 bytes
-(serialize.c adopted C++'s align-up contract — its PR #21), Go ≥7, Rust ≥8,
-C# none.** The C++/Go/Rust/C# columns are normative in [SPEC.md](SPEC.md)
-§6.3; §6.3 predates the C target, so C's contract is serialize.c's own. Write
+The slack requirement differs per language: **C ≥8 bytes, C++ ≥8, Go ≥7,
+Rust ≥8, C# none, and JavaScript's flat tier ≥8 past the payload.** The
+per-target columns are normative in [SPEC.md](SPEC.md) §6.3. Write
 buffers are a multiple of 8 in every language.
 
 That covers ranges, counts past an array bound, string lengths past their
@@ -490,13 +490,14 @@ and it holds in every language.
 **Each language uses its own correctness idiom on the write side.** C++ has
 `assert`/`NDEBUG`, a check that disappears in a release build, so the C++
 backend uses `serialize_assert`. Go has no assert idiom, so it returns
-`ErrValueOutOfRange`. Rust and C# likewise return an error rather than invent
-one. The rule is that a language should verify correctness the way that
-language verifies correctness — not that every target behaves identically here.
+`ErrValueOutOfRange`; C, C#, Rust and JavaScript likewise return failure
+rather than invent an assert. The rule is that a language should verify
+correctness the way that language verifies correctness — not that every
+target behaves identically here.
 
 So writing `health = 2000` into a field declared `| min = 0, max = 1000`
 asserts in a C++ debug build, silently writes the truncated low bits in a C++
-release build, and returns an error in the other three.
+release build, and returns failure in the other five.
 
 Do not build on any of it. **Keep your values inside their declared bounds on
 the write side** — your simulation already knows they are, and that is the only
@@ -692,9 +693,8 @@ say which operation failed and why, `MeasureStream`, per-op checked
 granularity, and the only tier for object views. Both tiers emit identical
 bytes for identical values — a standing CI gate — so the debugging story is
 one import away: re-read a failing buffer through the runtime tier and read
-`stream.error`. Everything measured so far is node/V8; the flat modules are pure spec'd
-ECMAScript with no node APIs, but browser-engine gates and numbers are still
-owed before browser claims.
+`stream.error`. The flat modules are pure spec'd ECMAScript with no node
+APIs.
 
 All six are generated from the same IR and compared against each other in CI
 on every push. The wire is bit-packed, so the property being checked is

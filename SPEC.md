@@ -453,7 +453,7 @@ sequence    uint16
 ```
 
 - **The section is terminated by the newline or by a `//` comment** —
-  `other DataHandle | local // simulation-only` carries exactly one
+  `other ShipData | local // simulation-only` carries exactly one
   qualifier. (An ordinary comment BEFORE any pipe wins by ordinary lexing:
   in `foo uint8 // c | local` the `|` is comment text and the field carries
   no qualification.) A `|` with no qualifier before the terminator is a
@@ -1104,8 +1104,8 @@ only; the deep wire always uses the bare storage type's encoding.
    two forms compose field-by-field in one object.
 
    **The one rounding rule: fixed point rounds half AWAY FROM ZERO,
-   everywhere it rounds.** This rule, rule 4's `nearest` default, and the
-   data compiler's rational rounding are the SAME rule, stated once, here.
+   everywhere it rounds.** This rule and rule 4's `nearest` default are the
+   SAME rule, stated once, here.
    The per-language hazard, named: the naive arithmetic shift FLOORS, so on
    negative ties every target language would agree with every other and all
    of them would be wrong against this rule — cross-language identity cannot
@@ -1495,7 +1495,9 @@ Per `type`, per target:
    with their split read/write pairs, the Interpolate struct, and the
    `Quantize`/`Unquantize` mapping pair (§4.8's artifact table).
 
-**Generated symbol naming:** functions attach per target idiom — C++: free
+**Generated symbol naming:** functions attach per target idiom — C:
+lower_snake free functions `write_ship_data_deep(stream, value)`, with
+`schema_`-prefixed internal helpers; C++: free
 functions `WriteShip(...)` in `namespace <package>`; C#: `static class
 Schema` members in `namespace <Package>`; Go: free functions
 `WriteShip(stream, &ship)` in package `<package>` (no overloading — the type
@@ -1611,23 +1613,18 @@ What this buys: generated source stays small and reviewable, count ranges
 need no cap, and the backends stay simple enough to verify against each
 other. What it forgoes: the last-mile instruction-level guarantees of the TMP
 splicer. The v1 performance thesis is that eliminating unified-function
-branching and runtime range computation captures most of the win; if
-measurement against serialize.modern's schema mode on the C++ target shows a
-gap worth closing, a bitpacker-level emission mode for fixed-layout structs
-is the planned v2 lever, behind the same byte-identity tests.
+branching and runtime range computation captures most of the win; a
+bitpacker-level emission mode for fixed-layout structs remains available
+behind the same byte-identity tests if measurement ever shows a gap worth
+closing.
 
 ### 6.3 Per-target notes
 
-| | C++ | C# | Go | Rust |
-|---|---|---|---|---|
-| emits against | `WriteStream`/`ReadStream` methods (or `serialize_*`-equivalent calls) | sealed `WriteStream`/`ReadStream` (`ref` params, `bool` returns + sticky `Error`) | `WriteStream`/`ReadStream` concrete types (no interface dispatch) | `WriteStream`/`ReadStream` via the `Stream` trait, monomorphized |
-| error idiom | `return false` early-out | `bool` early-out; counts checked before loops; latched `Error` for callers | sticky stream errors; counts checked before loops; `return stream.Err()` | `?` propagation of `serialize::Error` |
-| buffer contract | write buffers multiple of 8 (asserted); read allocations extend ≥8 bytes past packet data (required) | write buffers multiple of 8 (throws); reader takes (buffer, bytes), no slack required | write buffers multiple of 8; ≥7 bytes read slack for the fast path | write buffers multiple of 8; ≥8 bytes read slack for the fast path |
-
-This table predates the C and JavaScript targets: C's contract is
-serialize.c's own (it adopts C++'s align-up rules — write buffers a multiple
-of 8, read allocations extending ≥8 bytes past packet data), and
-JavaScript's is serialize.js's.
+| | C | C++ | C# | Go | JavaScript | Rust |
+|---|---|---|---|---|---|---|
+| emits against | `serialize_write_stream_t`/`serialize_read_stream_t` free functions | `WriteStream`/`ReadStream` methods (or `serialize_*`-equivalent calls) | sealed `WriteStream`/`ReadStream` (`ref` params, `bool` returns + sticky `Error`) | `WriteStream`/`ReadStream` concrete types (no interface dispatch) | methods on the stream parameter — generated JS never imports the runtime | `WriteStream`/`ReadStream` via the `Stream` trait, monomorphized |
+| error idiom | `int` 1/0 early-out; the stream latches the error | `return false` early-out | `bool` early-out; counts checked before loops; latched `Error` for callers | sticky stream errors; counts checked before loops; `return stream.Err()` | `bool` early-out; validation failures return false without latching, stream failures latch on `stream.error` | `?` propagation of `serialize::Error` |
+| buffer contract | write buffers multiple of 8; read allocations extend ≥8 bytes past packet data (required) | write buffers multiple of 8 (asserted); read allocations extend ≥8 bytes past packet data (required) | write buffers multiple of 8 (throws); reader takes (buffer, bytes), no slack required | write buffers multiple of 8; ≥7 bytes read slack for the fast path | caller-owned DataViews; the flat tier requires ≥8 bytes read slack past the payload | write buffers multiple of 8; ≥8 bytes read slack for the fast path |
 
 ## 7. The compiler
 
@@ -1645,7 +1642,7 @@ schema version
 
 Success is silent. Commands whose printed output is their answer (`id`,
 `projection`, `version`) print it; everything else prints nothing unless
-`--verbose` asks for the per-file report — the files `generate` and `pack`
+`--verbose` asks for the per-file report — the files `generate`
 wrote, the files the formatter rewrote, `check`'s ok line. Errors and
 diagnostics always reach stderr, and exit codes do not depend on verbosity.
 
@@ -1744,18 +1741,14 @@ cannot hold exactly is a §4.6 compile error.
 CI needs every target toolchain for gates 3–5 and 7; that cost is accepted —
 it is the product's central claim.
 
-### 7.3 The path — the order of work
+### 7.3 The corpus discipline
 
-1. **The spec and the language design.** This document. The language is the
-   volatile part; everything downstream (compiler, backends) amplifies its
-   changes, so it settles first.
-2. **The examples corpus** (`examples/`): realistic `*.schema` files written
-   against the spec — testing that the language can actually express those
-   things, on paper, before a line of compiler exists. The language iterates
-   against the corpus; a construct no example needs is a construct the
-   language may not need.
-3. **Only then, implementation** — and the corpus graduates into `testdata/`
-   as the compiler's first test suite.
+The examples corpus (`examples/`) is the language's proving ground: a
+construct earns its place by a realistic example needing it, and a construct
+no example needs is a construct the language may not need. The corpus must
+always compile under the spec as written (`make check`), and it feeds the
+golden pins of §7.2 — so the language's own examples are also the compiler's
+first test suite.
 
 ### 7.4 schemafmt — the one style
 
@@ -1791,7 +1784,7 @@ Rules:
 5. **Enums**: the variant list is one line while it fits (a qualified enum
    is two lines by grammar — the list is the measured unit); the wrap
    trigger is decided at the first multi-line instance (no line-length
-   limit exists yet).
+   limit exists).
 6. **switch/case** (reserved for `switch`'s return): `case` at the same
    indent as its `switch`; a single-item case body inline after the label,
    bodies column-aligned across the cases of one switch; multi-item bodies on
@@ -1811,7 +1804,7 @@ implementation, with no compatibility promise (VERSIONING.md).
 
 ```
 cmd/schema/            the CLI — a client of the public API, and nothing more
-compiler/              PUBLIC: the driver — load, generate, pack, format, and
+compiler/              PUBLIC: the driver — load, generate, format, and
                        the generator registration interface
 ir/                    PUBLIC: the lowered form; the wire shape projection
                        (§3.1); the derived parameters the backends share

@@ -84,7 +84,7 @@ would have hand-written, not an interpreter walking a schema at runtime.
   refused, not clamped or trusted.
 - **Relocatable by construction** — generated types are trivially copyable
   and standard-layout, so raw-struct blobs and parallel scatter/gather are
-  safe by design; see [WIRES.md](WIRES.md).
+  safe by design; see [The wire](USAGE.md#the-wire).
 - **The compiler is a library too** — load, check and generate from Go,
   and register generators of your own; the six built-in backends come through
   the same interface yours does. See
@@ -107,23 +107,15 @@ examples and the code each one generates, and how to drive the compiler from
 Go instead of the command line.
 
 Building the tests needs the six serialize runtimes checked out beside this
-repo — [serialize](https://github.com/mas-bandwidth/serialize),
-[serialize.c](https://github.com/mas-bandwidth/serialize.c),
-[serialize.cs](https://github.com/mas-bandwidth/serialize.cs),
-[serialize.go](https://github.com/mas-bandwidth/serialize.go),
-[serialize.js](https://github.com/mas-bandwidth/serialize.js),
-[serialize.rs](https://github.com/mas-bandwidth/serialize.rs) — then
-`make test`. The Makefile's `SERIALIZE*` variables override the locations
-(serialize.js needs no variable: the JS test legs import it by relative
-path, and generated JS never imports the runtime at all).
+repo, then `make test` — [CONTRIBUTING.md](CONTRIBUTING.md) has the clone
+list and what the gates prove.
 
 ## Documentation
 
 | Document | What's in it |
 |---|---|
 | **[USAGE.md](USAGE.md)** | Every language feature, with the code it generates. Start here. |
-| **[WIRES.md](WIRES.md)** | The wire law in practice, and relocatable storage. |
-| **[PERFORMANCE.md](PERFORMANCE.md)** | Generated-code benchmarks — published passes cover five languages; the JavaScript leg is wired and rides the next driver pass. |
+| **[PERFORMANCE.md](PERFORMANCE.md)** | Generated-code benchmarks, and how to read them honestly. |
 | **[SPEC.md](SPEC.md)** | The normative reference — grammar, wire law, every edge case. |
 | **[COMPARISON.md](COMPARISON.md)** | The same message in schema, Cap'n Proto, Protobuf and FlatBuffers — 28 vs 52 vs 56 vs 72 bytes, measured, with a script to re-run it. |
 | **[FAQ.md](FAQ.md)** | Isn't this just FlatBuffers / Protobuf / Cap'n Proto? And other blunt questions. |
