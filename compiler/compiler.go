@@ -1,10 +1,9 @@
 // Package compiler is schema's public driver: it turns *.schema paths into a
-// checked unit ([ir.Unit]), hands that unit to a registered generator, and
-// runs the data compiler over a pack manifest. It is the whole compiler as a
-// library — cmd/schema is its first client and imports nothing else from this
-// module except [ir].
+// checked unit ([ir.Unit]) and hands that unit to a registered generator. It
+// is the whole compiler as a library — cmd/schema is its first client and
+// imports nothing else from this module except [ir].
 //
-// The three steps are separate on purpose. [Compiler.Load] does the loud part
+// The two steps are separate on purpose. [Compiler.Load] does the loud part
 // (formatting, parsing, checking, the protocol id) and returns either a unit
 // or the diagnostics; [Compiler.Generate] is pure — a unit in, the emitted
 // file bytes out, nothing written; writing is the caller's, so an embedder can
@@ -33,8 +32,8 @@ import (
 // with the six built-in generators registered.
 //
 // Register and the two policy fields configure a Compiler; do that before use
-// and from one goroutine. Once configured it is read-only, and Load, Generate
-// and Pack may run concurrently — with the caveat that FormatInPlace writes to
+// and from one goroutine. Once configured it is read-only, and Load and
+// Generate may run concurrently — with the caveat that FormatInPlace writes to
 // the input tree, so concurrent loads must not name the same files.
 type Compiler struct {
 	// FormatInPlace canonicalizes every schema file on disk before parsing it

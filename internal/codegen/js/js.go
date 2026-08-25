@@ -73,9 +73,6 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 		bases[f.Base] = true
 	}
 	for _, f := range u.Files {
-		if bases[f.Base+"Table"] {
-			return nil, fmt.Errorf("schema files %s and %sTable collide — the JS emitter writes %sTable.js as %s's table codec; rename one file", f.Base, f.Base, f.Base, f.Base)
-		}
 		if bases[f.Base+"Flat"] {
 			return nil, fmt.Errorf("schema files %s and %sFlat collide — the JS emitter writes %sFlat.js as %s's flat-tier codec; rename one file", f.Base, f.Base, f.Base, f.Base)
 		}

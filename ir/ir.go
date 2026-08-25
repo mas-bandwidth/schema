@@ -79,7 +79,7 @@ type ContextsMarker struct {
 	Names []string
 }
 
-// Struct is a `type`, `table` or `message` declaration.
+// Struct is a `type` or `message` declaration.
 // Union is a first-class one-of type (SPEC §4.8): the implicit None row at
 // tag 0, then each variant in DECLARED order, dense from 1. The tag encodes
 // in minimal bits for [0, Max]; the wire then carries the selected variant's

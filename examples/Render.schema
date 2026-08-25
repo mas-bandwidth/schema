@@ -1,5 +1,5 @@
-// Render.schema — the parallel scatter/gather worked example. Table types
-// are trivially copyable and standard-layout by enforced construction, so
+// Render.schema — the parallel scatter/gather worked example. Generated
+// types are trivially copyable and standard-layout by enforced construction, so
 // N workers can build instances INDEPENDENTLY — into their own memory, or
 // scattered directly into disjoint sections of one shared blob — and the
 // gather is concatenation or offset arithmetic, never a serial builder.

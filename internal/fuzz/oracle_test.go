@@ -19,7 +19,7 @@
 //     the check is exact-duplicate DEFINITION LINES within one file — two
 //     byte-identical `inline bool WriteShip(...)` openers in one translation
 //     unit are a redefinition whatever the bodies say. Pure forward
-//     declarations (`struct TableTypeInfo;`) may repeat and are excluded.
+//     declarations (`struct ShipData;`) may repeat and are excluded.
 package fuzz_test
 
 import (
@@ -148,9 +148,8 @@ var cFamilyDefLine = regexp.MustCompile(`^(static |inline |constexpr |struct |cl
 
 // csTypeDefLine matches C# type declarations (indented inside the namespace).
 // Member and method lines are excluded on purpose: identical member text in
-// two classes is legal and common — and so are repeated `partial class`
-// openers, which this emitter really does put twice in one file
-// (generated/cs/TypesTable.cs), so `partial` is excluded too.
+// two classes is legal and common, and repeated `partial class` openers are
+// legal C# an emitter may legitimately produce, so `partial` is excluded too.
 var csTypeDefLine = regexp.MustCompile(`^(public |internal |static )*(sealed |static )*(class|struct|enum|interface) `)
 
 // pure forward declarations may legally repeat.

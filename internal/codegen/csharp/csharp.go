@@ -61,15 +61,6 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 	msgOwner := ir.MessageOwner(u)
 	objOwner := ir.ObjectOwner(u)
 	batched, needCore := batchPlan(u)
-	bases := map[string]bool{}
-	for _, f := range u.Files {
-		bases[f.Base] = true
-	}
-	for _, f := range u.Files {
-		if bases[f.Base+"Table"] {
-			return nil, fmt.Errorf("schema files %s and %sTable collide — the C# emitter writes %sTable.cs as %s's table codec; rename one file", f.Base, f.Base, f.Base, f.Base)
-		}
-	}
 	for _, f := range u.Files {
 		g := &gen{unit: u, file: f, msgOwner: msgOwner, objOwner: objOwner, batched: batched, needCore: needCore}
 		g.emitFile(f.Base == home)

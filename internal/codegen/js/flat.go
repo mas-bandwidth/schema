@@ -9,7 +9,7 @@
 // reference surface and the CI oracle this tier is held byte-identical to.
 //
 // Per schema file Base.schema, BaseFlat.js is emitted beside Base.js
-// whenever the file declares types, messages or tables (their dense wire) or
+// whenever the file declares types or messages or
 // carries the message dispatch surface. Per struct Name:
 //
 //	Write<Name>Flat(value, view)          -> bytes written | -1 (checked refusal)
@@ -94,7 +94,7 @@ type fgen struct {
 }
 
 // flatFileHasSurface reports whether a file gets a Flat module: any file
-// declaring structs (types, messages, tables' dense wire), or the message
+// declaring structs (types, messages), or the message
 // owner file (the dispatch surface).
 func flatFileHasSurface(u *ir.Unit, f *ir.File, msgOwner string) bool {
 	for _, d := range f.Decls {

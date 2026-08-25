@@ -67,10 +67,8 @@ func Generate(u *ir.Unit, opts Options) (map[string][]byte, error) {
 		bases[f.Base] = true
 	}
 	for _, f := range u.Files {
-		for _, suffix := range []string{"Wire", "Table"} {
-			if bases[f.Base+suffix] {
-				return nil, fmt.Errorf("schema files %s and %s%s collide — the C++ emitter writes %s%s.h as %s's %s header; rename one file (SPEC §6.1)", f.Base, f.Base, suffix, f.Base, suffix, f.Base, strings.ToLower(suffix))
-			}
+		if bases[f.Base+"Wire"] {
+			return nil, fmt.Errorf("schema files %s and %sWire collide — the C++ emitter writes %sWire.h as %s's wire header; rename one file (SPEC §6.1)", f.Base, f.Base, f.Base, f.Base)
 		}
 	}
 	out := map[string][]byte{}
