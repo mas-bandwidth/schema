@@ -386,6 +386,7 @@ func (g *gen) emitFlags(d *ir.Flags) {
 	for i, v := range d.Variants {
 		g.pf("pub const %s_%s: %s = 1 << %d;\n", ir.RustConstName(d.Name), ir.RustConstName(v), d.Name, i)
 	}
+	g.pf("pub const %s: i64 = %d; // the declared variant count (SPEC §4.2)\n", ir.RustConstName(d.Name+"Count"), len(d.Variants))
 	g.pf("\n")
 }
 

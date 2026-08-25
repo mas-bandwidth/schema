@@ -6,6 +6,7 @@
 package check
 
 import (
+	"fmt"
 	"math"
 	"strings"
 	"testing"
@@ -33,6 +34,15 @@ func runUnit(t *testing.T, sources map[string]string) []error {
 	_, errs := Unit(files)
 	return errs
 }
+
+// flags65 spells 65 comma-separated variant names — one past uint64 storage.
+var flags65 = func() string {
+	names := make([]string, 65)
+	for i := range names {
+		names[i] = fmt.Sprintf("V%d", i)
+	}
+	return strings.Join(names, ", ")
+}()
 
 func TestDiagnostics(t *testing.T) {
 	cases := []struct {
@@ -167,6 +177,14 @@ func TestDiagnostics(t *testing.T) {
 			src: "package t\nenum E [max = 2] { A, B, C }\n"},
 		{name: "Max reference to a non-enum", want: "is not an enum",
 			src: "package t\ntype V { x uint8 }\nconst N = V.Max + 1\n"},
+		{name: "Max reference to a flags declaration", want: "has no .Max",
+			src: "package t\nflags F { A, B }\nconst N = F.Max\n"},
+		{name: "Count reference to an enum", want: "is not a flags declaration",
+			src: "package t\nenum E { A }\nconst N = E.Count\n"},
+		{name: "Count reference undefined", want: "undefined flags",
+			src: "package t\nconst N = F.Count\n"},
+		{name: "65 flags variants overflow uint64 storage", want: "one bit per variant, up to 64",
+			src: "package t\nflags F { " + flags65 + " }\n"},
 		// ---- unions (SPEC §4.8) ----
 		{name: "union variant named none (exported spelling)", want: "every union has None = 0 implicitly",
 			src: "package t\nunion U {\n    none Box\n}\ntype Box { x uint8 }\n"},
@@ -459,6 +477,10 @@ func TestGoodCornersStillCompile(t *testing.T) {
 			src: "package t\ntype Q { w fixed(2, 30) [min = -1, max = 1] = 1.0 \n x fixed(16, 16) [min = 0, max = 100] = 0.5 \n y fixed(48, 16) [min = -10, max = 10] = 3 }\n"},
 		{name: "field named flags at block scope",
 			src: "package t\nflags F { A }\ntype T { flags F }\n"},
+		{name: "64 flags variants fill uint64 storage exactly",
+			src: "package t\nflags F { " + strings.Replace(flags65, ", V64", "", 1) + " }\n"},
+		{name: "F.Count in a constant expression",
+			src: "package t\nflags F { A, B }\nconst N = F.Count\n"},
 		{name: "message as a field type",
 			src: "package t\nmessage M { x uint8 }\ntype T { m M }\n"},
 		{name: "empty type and empty message",

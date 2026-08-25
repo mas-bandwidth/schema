@@ -166,4 +166,5 @@ pub const SHIP_FLAGS_FIRING_LASER: ShipFlags = 1 << 0;
 pub const SHIP_FLAGS_BOOSTING: ShipFlags = 1 << 1;
 pub const SHIP_FLAGS_BRAKING: ShipFlags = 1 << 2;
 pub const SHIP_FLAGS_AIMING: ShipFlags = 1 << 3;
+pub const SHIP_FLAGS_COUNT: i64 = 4; // the declared variant count (SPEC §4.2)
 

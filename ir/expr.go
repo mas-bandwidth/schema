@@ -26,7 +26,7 @@ func RenderExpr(e Expr) string {
 	case *ast.IdentExpr:
 		return e.Name
 	case *ast.MaxExpr:
-		return e.Enum + ".Max"
+		return e.Enum + "." + e.Sel
 	case *ast.UnaryExpr:
 		return "-" + RenderExpr(e.X)
 	case *ast.BinaryExpr:

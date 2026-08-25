@@ -299,7 +299,7 @@ If          = "if" [ "!" ] ident Block [ "else" Block ] NL .
                                                                  // as variants first)
 
 IntExpr     = integer expression over literals, const names, and enum max
-              references ( ident "." "Max" ):
+              references ( ident "." "Max" | ident "." "Count" ):
               "+" "-" "*" "/" "%", unary "-", parentheses.
 FloatExpr   = float expression over float literals, int literals and const names:
               "+" "-" "*" "/", unary "-", parentheses — float64 arithmetic, no "%".
@@ -355,8 +355,16 @@ FloatExpr   = float expression over float literals, int literals and const names
   variants is `E.Max` (see the sentinel-zero convention below). Sizing
   enum-indexed tables with `E.Max + 1` stays correct under `[max]` headroom,
   where non-variant values are wire-legal. It works on generated sets too
-  (`MessageType.Max`). `Max` after `.` is contextual, like attribute keys;
-  the lexer keeps maximal munch, so `..` still wins over `.`.
+  (`MessageType.Max`, `ObjectType.Max`, a union's `<Union>Type.Max` — §4.8);
+  generated sets resolve in constant expressions and nowhere else. **Flags
+  have `F.Count`, not `F.Max`** — a flags declaration is a set of
+  independent bits, not a range with a top, so max-of-what is exactly the
+  confusion `.Max` would invite and the compiler refuses it naming the
+  split. `F.Count` is the DECLARED variant count; under `[max = K]` headroom
+  the wire width is K while `Count` stays the count — the one case the two
+  numbers diverge. `Max` and `Count` after `.` are contextual, like
+  attribute keys; the lexer keeps maximal munch, so `..` still wins over
+  `.`.
 - **Constants are platform-uniform.** A schema has no platform conditionals.
   One schema is one protocol id on every platform; a platform-conditional
   constant reaching any range, bound or width would let two builds carry the
@@ -383,8 +391,13 @@ FloatExpr   = float expression over float literals, int literals and const names
     every target**; no implicit `None` — the empty mask is 0 and needs no
     name. Wire: **W raw bits, W = variant count** (`[max = K]` widens to K
     bits); every W-bit pattern is legal — a mask field's domain is all
-    subsets. Each target exports one mask constant per variant (`1 << bit`),
-    because mask tests are how flag state is consumed. **`flags` is a
+    subsets. **More than 64 variants is a compile error** — one bit per
+    variant, and the storage is `uint64`. Each target exports one mask
+    constant per variant (`1 << bit`),
+    because mask tests are how flag state is consumed, **plus the `Count`
+    constant** — the declared variant count, spelled per target beside the
+    enum extents (`CapsCount` in C++/C#/Go/JS, `CAPS_COUNT` in C and Rust).
+    **`flags` is a
     contextual keyword, not reserved** — it introduces a declaration at file
     scope only, so a *field* named `flags` stays fully legal; declarations at
     file scope otherwise begin with reserved words, so one token of lookahead

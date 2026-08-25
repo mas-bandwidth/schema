@@ -229,6 +229,40 @@ const Arms     = HeldType.Max
 	}
 }
 
+// F.Count is the DECLARED variant count (SPEC §4.2) — under [max = K]
+// headroom it diverges from the wire width, and Count stays the count.
+func TestFlagsCountValue(t *testing.T) {
+	u := build(t, `package probe
+
+flags Plain {
+    A,
+    B,
+    C,
+}
+
+flags Wide [max = 8] {
+    A,
+    B,
+    C,
+}
+
+const PlainN = Plain.Count
+const WideN  = Wide.Count
+`)
+	for _, tc := range []struct {
+		name string
+		want int64
+	}{{"PlainN", 3}, {"WideN", 3}} {
+		c := u.Consts[tc.name]
+		if c == nil || c.Int == nil || c.Int.Int64() != tc.want {
+			t.Errorf("const %s: want %d, got %v — Count is the declared count, never the widened wire width", tc.name, tc.want, c)
+		}
+	}
+	if u.Flags["Wide"].WireBits != 8 {
+		t.Errorf("Wide.WireBits = %d, want 8 — the [max = 8] widening is the WIRE width, distinct from Count", u.Flags["Wide"].WireBits)
+	}
+}
+
 // The projection is a reviewable artifact, so it has to be deterministic:
 // same unit, same text, every time and in any map iteration order.
 func TestProjectionIsDeterministic(t *testing.T) {

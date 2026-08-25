@@ -269,6 +269,87 @@ func TestUnionSurfaceEmitted(t *testing.T) {
 	}
 }
 
+// Flags export their declared variant count as Count (SPEC §4.2 — one name,
+// not Max: the variants are independent bits, not a range with a top), and
+// the wire spends EXACTLY Count bits when no [max = K] widens it (schema
+// issue #129's verification): a 4-variant flags field serializes in 4 bits
+// in every target, write and read alike.
+func TestFlagsCountAndWireBits(t *testing.T) {
+	src := "package t\n\n" +
+		"flags Caps { A, B, C, D }\n\n" +
+		"type Holder { caps Caps }\n"
+	f, perrs := parser.Parse("Flags.schema", []byte(src))
+	if len(perrs) > 0 {
+		t.Fatalf("parse: %v", perrs[0])
+	}
+	u, cerrs := check.Unit([]check.SourceFile{{
+		Path: "Flags.schema", Name: "Flags.schema", Base: "Flags",
+		Bytes: []byte(src), AST: f,
+	}})
+	if len(cerrs) > 0 {
+		t.Fatalf("check: %v", cerrs[0])
+	}
+	if got := ir.MaxBitsStruct(u.Structs["Holder"]); got != 4 {
+		t.Fatalf("MaxBits(Holder) = %d, want 4 — a 4-variant flags spends exactly Count bits", got)
+	}
+
+	type expectation struct {
+		needle string
+		count  int
+	}
+	type target struct {
+		name    string
+		files   map[string][]byte
+		genErr  error
+		expects []expectation
+	}
+	var targets []target
+	addTarget := func(name string, files map[string][]byte, err error, expects ...expectation) {
+		targets = append(targets, target{name, files, err, expects})
+	}
+
+	goFiles, goErr := Generate(u)
+	addTarget("Go", goFiles, goErr,
+		expectation{"const CapsCount = 4", 1},
+		expectation{"stream.SerializeBits(&flagsValue, 4)", 2}) // write + read
+	rustFiles, rustErr := rust.Generate(u)
+	addTarget("Rust", rustFiles, rustErr,
+		expectation{"pub const CAPS_COUNT: i64 = 4;", 1},
+		expectation{"stream.serialize_bits(&mut flags_value, 4)?;", 2})
+	csFiles, csErr := csharp.Generate(u)
+	addTarget("C#", csFiles, csErr,
+		expectation{"public const long CapsCount = 4;", 1},
+		expectation{"SerializeBits(ref flagsValue, 4)", 2})
+	jsFiles, jsErr := js.Generate(u)
+	addTarget("JS", jsFiles, jsErr,
+		expectation{"export const CapsCount = 4;", 1},
+		expectation{"stream.serializeBits(NUMBER_SCRATCH, 4)", 2})
+	cFiles, cErr := cgen.Generate(u)
+	addTarget("C", cFiles, cErr,
+		expectation{"#define CAPS_COUNT 4", 1},
+		expectation{"serialize_write_bits( stream, (serialize_uint32_t) value->caps, 4 )", 1},
+		expectation{"serialize_read_bits( stream, &flags_value, 4 )", 1})
+	for _, mode := range []string{"union", "variant"} {
+		cppFiles, cppErr := cpp.Generate(u, cpp.Options{MessageRepr: mode})
+		addTarget("C++ ("+mode+")", cppFiles, cppErr,
+			expectation{"inline constexpr int64_t CapsCount = 4;", 1},
+			expectation{"write_bits( stream, value.caps, 4 );", 1},
+			expectation{"read_bits( stream, value.caps, 4 );", 1})
+	}
+
+	for _, tgt := range targets {
+		if tgt.genErr != nil {
+			t.Errorf("%s: generate: %v", tgt.name, tgt.genErr)
+			continue
+		}
+		for _, e := range tgt.expects {
+			if got := countAcross(tgt.files, e.needle); got != e.count {
+				t.Errorf("%s: %q emitted %d times, want %d — flags spend exactly Count wire bits and export Count (SPEC §4.2)", tgt.name, e.needle, got, e.count)
+			}
+		}
+	}
+}
+
 func TestDispatchSurfaceEmittedOnce(t *testing.T) {
 	u := multiFileUnit(t)
 

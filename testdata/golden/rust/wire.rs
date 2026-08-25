@@ -50,6 +50,7 @@ pub type ProbeFlags = u64;
 pub const PROBE_FLAGS_ARMED: ProbeFlags = 1 << 0;
 pub const PROBE_FLAGS_CLOAKED: ProbeFlags = 1 << 1;
 pub const PROBE_FLAGS_DAMAGED: ProbeFlags = 1 << 2;
+pub const PROBE_FLAGS_COUNT: i64 = 3; // the declared variant count (SPEC §4.2)
 
 // type ProbeHeader
 #[repr(C)]

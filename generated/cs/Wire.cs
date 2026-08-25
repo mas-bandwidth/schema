@@ -223,6 +223,7 @@ namespace Example
         public const ulong ProbeFlagsArmed = 1ul << 0;
         public const ulong ProbeFlagsCloaked = 1ul << 1;
         public const ulong ProbeFlagsDamaged = 1ul << 2;
+        public const long ProbeFlagsCount = 3; // the declared variant count (SPEC §4.2)
 
         // ProbeHeaderMaxBits is the longest wire path; align pads at worst case (SPEC §6.1).
         // ProbeHeaderMaxBytes is rounded up to the 8-byte write-buffer granularity.

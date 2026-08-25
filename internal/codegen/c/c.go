@@ -357,6 +357,7 @@ func (g *gen) emitFlags(d *ir.Flags) {
 	for i, v := range d.Variants {
 		g.pf("#define %s_%s (1ULL << %d)\n", screaming(d.Name), screaming(v), i)
 	}
+	g.pf("#define %s_COUNT %d /* the declared variant count (SPEC §4.2) */\n", screaming(d.Name), len(d.Variants))
 	g.pf("\n")
 }
 

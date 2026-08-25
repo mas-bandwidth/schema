@@ -174,6 +174,7 @@ namespace Example
         public const ulong ShipFlagsBoosting = 1ul << 1;
         public const ulong ShipFlagsBraking = 1ul << 2;
         public const ulong ShipFlagsAiming = 1ul << 3;
+        public const long ShipFlagsCount = 4; // the declared variant count (SPEC §4.2)
     }
 
 }

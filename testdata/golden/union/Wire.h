@@ -44,6 +44,7 @@ using ProbeFlags = uint64_t;
 inline constexpr ProbeFlags ProbeFlags_Armed = 1ull << 0;
 inline constexpr ProbeFlags ProbeFlags_Cloaked = 1ull << 1;
 inline constexpr ProbeFlags ProbeFlags_Damaged = 1ull << 2;
+inline constexpr int64_t ProbeFlagsCount = 3; // the declared variant count (SPEC §4.2)
 
 // type ProbeHeader
 struct ProbeHeader {

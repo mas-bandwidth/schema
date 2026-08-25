@@ -68,6 +68,7 @@ export const PacketFlagsCloaked = 1n << 1n;
 export const PacketFlagsOverheated = 1n << 2n;
 export const PacketFlagsLowPower = 1n << 3n;
 export const PacketFlagsJamming = 1n << 4n;
+export const PacketFlagsCount = 5; // the declared variant count (SPEC §4.2)
 
 // type RealPacket
 export class RealPacket {
