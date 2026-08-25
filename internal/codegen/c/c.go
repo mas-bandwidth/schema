@@ -98,6 +98,7 @@ type gen struct {
 
 	emitMessagesPending bool // this file owns the message dispatch surface
 	saidReadSlack       bool // the read-slack buffer contract is stated once per file, on its first MAX_BYTES
+	saidFlagAppend      bool // the flag_names_* append helpers are emitted once per file
 	file                *ir.File
 	msgOwner            string
 	objOwner            string
@@ -345,6 +346,63 @@ func (g *gen) emitFlags(d *ir.Flags) {
 	}
 	g.pf("#define %s_COUNT %d /* the declared variant count (SPEC §4.2) */\n", screaming(d.Name), len(d.Variants))
 	g.pf("\n")
+
+	g.pf("/* Debug/log name for bit i of %s — out-of-range bits name as \"???\". */\n", d.Name)
+	g.pf("static SCHEMA_UNUSED const char * flag_name_%s( int bit )\n{\n", snake(d.Name))
+	g.pf("    switch ( bit )\n    {\n")
+	for i, v := range d.Variants {
+		g.pf("        case %d: return %q;\n", i, v)
+	}
+	g.pf("        default: return \"???\";\n    }\n}\n\n")
+
+	g.emitFlagAppendHelpers()
+	g.pf("/* Renders the set bits of value into buffer as \"A|B\" — \"0\" for the empty\n")
+	g.pf("   set, bits past the declared variants as hex — NUL-terminates and returns\n")
+	g.pf("   buffer; %s_NAMES_MAX bytes always suffice. */\n", screaming(d.Name))
+	g.pf("#define %s_NAMES_MAX %d\n", screaming(d.Name), flagNamesMax(d))
+	g.pf("static SCHEMA_UNUSED const char * flag_names_%s( uint64_t value, char * buffer, int buffer_size )\n{\n", snake(d.Name))
+	g.pf("    int position = 0;\n")
+	for i := range d.Variants {
+		g.pf("    if ( value & ( 1ULL << %d ) )\n    {\n        position = schema_flag_append_( buffer, buffer_size, position, flag_name_%s( %d ) );\n    }\n", i, snake(d.Name), i)
+	}
+	if len(d.Variants) < 64 { // a 64-variant set has no room for unknown bits
+		g.pf("    if ( value >> %d )\n    {\n        position = schema_flag_append_hex_( buffer, buffer_size, position, ( value >> %d ) << %d );\n    }\n", len(d.Variants), len(d.Variants), len(d.Variants))
+	}
+	g.pf("    if ( position == 0 )\n    {\n        position = schema_flag_append_( buffer, buffer_size, position, \"0\" );\n    }\n")
+	g.pf("    if ( position < buffer_size )\n    {\n        buffer[position] = '\\0';\n    }\n")
+	g.pf("    return buffer;\n}\n\n")
+}
+
+// flagNamesMax is the buffer size that always holds a rendered flag set: every
+// name plus its separator, the hex form of the residual bits, and the NUL.
+func flagNamesMax(d *ir.Flags) int {
+	n := 0
+	for _, v := range d.Variants {
+		n += len(v) + 1
+	}
+	return n + len("|0x") + 16 + 1
+}
+
+// emitFlagAppendHelpers emits the bounded append pair the flag_names_*
+// renderers share, once per file — guarded like the SCHEMA_UNUSED macro
+// because two data headers can land in one translation unit.
+func (g *gen) emitFlagAppendHelpers() {
+	if g.saidFlagAppend {
+		return
+	}
+	g.saidFlagAppend = true
+	g.pf("#ifndef SCHEMA_FLAG_APPEND_DEFINED\n#define SCHEMA_FLAG_APPEND_DEFINED\n")
+	g.pf("static SCHEMA_UNUSED int schema_flag_append_( char * buffer, int buffer_size, int position, const char * name )\n{\n")
+	g.pf("    if ( position > 0 && position < buffer_size - 1 )\n    {\n        buffer[position++] = '|';\n    }\n")
+	g.pf("    while ( *name && position < buffer_size - 1 )\n    {\n        buffer[position++] = *name++;\n    }\n")
+	g.pf("    return position;\n}\n\n")
+	g.pf("static SCHEMA_UNUSED int schema_flag_append_hex_( char * buffer, int buffer_size, int position, uint64_t bits )\n{\n")
+	g.pf("    int shift = 60;\n")
+	g.pf("    position = schema_flag_append_( buffer, buffer_size, position, \"0x\" );\n")
+	g.pf("    while ( shift > 0 && ( ( bits >> shift ) & 0xf ) == 0 )\n    {\n        shift -= 4;\n    }\n")
+	g.pf("    for ( ; shift >= 0; shift -= 4 )\n    {\n")
+	g.pf("        if ( position < buffer_size - 1 )\n        {\n            buffer[position++] = \"0123456789abcdef\"[( bits >> shift ) & 0xf];\n        }\n    }\n")
+	g.pf("    return position;\n}\n#endif /* SCHEMA_FLAG_APPEND_DEFINED */\n\n")
 }
 
 func (g *gen) emitStruct(d *ir.Struct) {

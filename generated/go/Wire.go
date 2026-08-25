@@ -7,6 +7,8 @@
 package example
 
 import (
+	"strconv"
+
 	"github.com/mas-bandwidth/serialize.go"
 )
 
@@ -57,6 +59,42 @@ const (
 
 // ProbeFlagsCount is the declared variant count (SPEC §4.2).
 const ProbeFlagsCount = 3
+
+// FlagNameProbeFlags: debug/log/tooling name for bit i of ProbeFlags —
+// out-of-range bits name as "???"
+func FlagNameProbeFlags(bit int) string {
+	switch bit {
+	case 0:
+		return "Armed"
+	case 1:
+		return "Cloaked"
+	case 2:
+		return "Damaged"
+	}
+	return "???"
+}
+
+// FlagNamesProbeFlags renders the set bits of value as "A|B" — "0" for the
+// empty set, bits past the declared variants as hex
+func FlagNamesProbeFlags(value uint64) string {
+	names := ""
+	if value&(1<<0) != 0 {
+		names += "|Armed"
+	}
+	if value&(1<<1) != 0 {
+		names += "|Cloaked"
+	}
+	if value&(1<<2) != 0 {
+		names += "|Damaged"
+	}
+	if rest := value >> 3; rest != 0 {
+		names += "|0x" + strconv.FormatUint(rest<<3, 16)
+	}
+	if names == "" {
+		return "0"
+	}
+	return names[1:]
+}
 
 // type ProbeHeader
 type ProbeHeader struct {

@@ -131,4 +131,89 @@ inline constexpr ShipFlags ShipFlags_Braking = 1ull << 2;
 inline constexpr ShipFlags ShipFlags_Aiming = 1ull << 3;
 inline constexpr int64_t ShipFlagsCount = 4; // the declared variant count (SPEC §4.2)
 
+// FlagNameShipFlags: debug/log name for bit i of ShipFlags — out-of-range bits name as "???"
+inline const char * FlagNameShipFlags( int bit )
+{
+    switch ( bit )
+    {
+        case 0: return "FiringLaser";
+        case 1: return "Boosting";
+        case 2: return "Braking";
+        case 3: return "Aiming";
+        default: return "???";
+    }
+}
+
+#ifndef SCHEMA_EXAMPLE_FLAG_APPEND_DEFINED
+#define SCHEMA_EXAMPLE_FLAG_APPEND_DEFINED
+inline int SchemaFlagAppend_( char * buffer, int bufferSize, int position, const char * name )
+{
+    if ( position > 0 && position < bufferSize - 1 )
+    {
+        buffer[position++] = '|';
+    }
+    while ( *name && position < bufferSize - 1 )
+    {
+        buffer[position++] = *name++;
+    }
+    return position;
+}
+
+inline int SchemaFlagAppendHex_( char * buffer, int bufferSize, int position, uint64_t bits )
+{
+    position = SchemaFlagAppend_( buffer, bufferSize, position, "0x" );
+    int shift = 60;
+    while ( shift > 0 && ( ( bits >> shift ) & 0xf ) == 0 )
+    {
+        shift -= 4;
+    }
+    for ( ; shift >= 0; shift -= 4 )
+    {
+        if ( position < bufferSize - 1 )
+        {
+            buffer[position++] = "0123456789abcdef"[( bits >> shift ) & 0xf];
+        }
+    }
+    return position;
+}
+#endif // SCHEMA_EXAMPLE_FLAG_APPEND_DEFINED
+
+// FlagNamesShipFlags renders the set bits of value into buffer as "A|B" — "0" for
+// the empty set, bits past the declared variants as hex — NUL-terminates and
+// returns buffer; ShipFlagsNamesMax bytes always suffice
+inline constexpr int ShipFlagsNamesMax = 56;
+inline const char * FlagNamesShipFlags( uint64_t value, char * buffer, int bufferSize )
+{
+    int position = 0;
+    if ( value & ( 1ull << 0 ) )
+    {
+        position = SchemaFlagAppend_( buffer, bufferSize, position, FlagNameShipFlags( 0 ) );
+    }
+    if ( value & ( 1ull << 1 ) )
+    {
+        position = SchemaFlagAppend_( buffer, bufferSize, position, FlagNameShipFlags( 1 ) );
+    }
+    if ( value & ( 1ull << 2 ) )
+    {
+        position = SchemaFlagAppend_( buffer, bufferSize, position, FlagNameShipFlags( 2 ) );
+    }
+    if ( value & ( 1ull << 3 ) )
+    {
+        position = SchemaFlagAppend_( buffer, bufferSize, position, FlagNameShipFlags( 3 ) );
+    }
+    if ( value >> 4 )
+    {
+        position = SchemaFlagAppendHex_( buffer, bufferSize, position, ( value >> 4 ) << 4 );
+    }
+    if ( position == 0 )
+    {
+        position = SchemaFlagAppend_( buffer, bufferSize, position, "0" );
+    }
+    if ( position < bufferSize )
+    {
+        buffer[position] = '\0';
+    }
+    return buffer;
+}
+
 } // namespace example

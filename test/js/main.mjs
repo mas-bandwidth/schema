@@ -1217,6 +1217,17 @@ if (CHECKED_MODE) {
     "both tiers refuse enum headroom above the wire range");
 }
 
+// ---- FlagName / FlagNames: per-bit names and the set renderer ----
+{
+  check(ex.FlagNameShipFlags(0) === "FiringLaser", "FlagName names bit 0");
+  check(ex.FlagNameShipFlags(9) === "???", "FlagName is out-of-range safe");
+  check(ex.FlagNamesShipFlags(0n) === "0", "FlagNames renders the empty set as 0");
+  check(ex.FlagNamesShipFlags(ex.ShipFlagsFiringLaser | ex.ShipFlagsBraking) === "FiringLaser|Braking",
+    "FlagNames renders the set bits");
+  check(ex.FlagNamesShipFlags(ex.ShipFlagsAiming | (1n << 63n)) === "Aiming|0x8000000000000000",
+    "FlagNames renders unknown high bits as hex");
+}
+
 if (failed) {
   process.exit(1);
 }

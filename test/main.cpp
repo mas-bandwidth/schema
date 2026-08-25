@@ -882,6 +882,17 @@ int main()
         check( strcmp( EnumName( Team::Blue ), "Blue" ) == 0 ); // overload resolution across enums
     }
 
+    // ---- FlagName / FlagNames: the flags twin — per-bit names and the set
+    // renderer ("A|B", "0" empty, unknown high bits as hex) ----
+    {
+        check( strcmp( FlagNameShipFlags( 0 ), "FiringLaser" ) == 0 );
+        check( strcmp( FlagNameShipFlags( 9 ), "???" ) == 0 );
+        char buffer[ShipFlagsNamesMax];
+        check( strcmp( FlagNamesShipFlags( 0, buffer, sizeof( buffer ) ), "0" ) == 0 );
+        check( strcmp( FlagNamesShipFlags( ShipFlags_FiringLaser | ShipFlags_Braking, buffer, sizeof( buffer ) ), "FiringLaser|Braking" ) == 0 );
+        check( strcmp( FlagNamesShipFlags( ShipFlags_Aiming | ( 1ull << 63 ), buffer, sizeof( buffer ) ), "Aiming|0x8000000000000000" ) == 0 );
+    }
+
     // ---- parallel scatter/gather (Render.schema): threads build render
     // types independently and the result is byte-identical to serial — the
     // relocatable-by-construction property doing real work. flatbuffers

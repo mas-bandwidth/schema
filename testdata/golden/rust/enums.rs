@@ -141,3 +141,54 @@ pub const SHIP_FLAGS_BRAKING: ShipFlags = 1 << 2;
 pub const SHIP_FLAGS_AIMING: ShipFlags = 1 << 3;
 pub const SHIP_FLAGS_COUNT: i64 = 4; // the declared variant count (SPEC §4.2)
 
+/// Debug/log name for bit `i` of `ShipFlags` — out-of-range bits name as `"???"`.
+pub fn flag_name_ship_flags(bit: u32) -> &'static str {
+    match bit {
+        0 => "FiringLaser",
+        1 => "Boosting",
+        2 => "Braking",
+        3 => "Aiming",
+        _ => "???",
+    }
+}
+
+/// Renders the set bits of `value` as `"A|B"` — `"0"` for the empty set,
+/// bits past the declared variants as hex.
+pub fn flag_names_ship_flags(value: ShipFlags) -> String {
+    let mut names = String::new();
+    if value & (1 << 0) != 0 {
+        if !names.is_empty() {
+            names.push('|');
+        }
+        names.push_str(flag_name_ship_flags(0));
+    }
+    if value & (1 << 1) != 0 {
+        if !names.is_empty() {
+            names.push('|');
+        }
+        names.push_str(flag_name_ship_flags(1));
+    }
+    if value & (1 << 2) != 0 {
+        if !names.is_empty() {
+            names.push('|');
+        }
+        names.push_str(flag_name_ship_flags(2));
+    }
+    if value & (1 << 3) != 0 {
+        if !names.is_empty() {
+            names.push('|');
+        }
+        names.push_str(flag_name_ship_flags(3));
+    }
+    if value >> 4 != 0 {
+        if !names.is_empty() {
+            names.push('|');
+        }
+        names.push_str(&format!("{:#x}", (value >> 4) << 4));
+    }
+    if names.is_empty() {
+        names.push('0');
+    }
+    names
+}
+

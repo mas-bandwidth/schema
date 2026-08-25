@@ -970,6 +970,23 @@ fn main() {
         );
     }
 
+    // ---- flag_name / flag_names: per-bit names and the set renderer ----
+    {
+        check(example::flag_name_ship_flags(0) == "FiringLaser", "flag_name names bit 0");
+        check(example::flag_name_ship_flags(9) == "???", "flag_name is out-of-range safe");
+        check(example::flag_names_ship_flags(0) == "0", "flag_names renders the empty set as 0");
+        check(
+            example::flag_names_ship_flags(example::SHIP_FLAGS_FIRING_LASER | example::SHIP_FLAGS_BRAKING)
+                == "FiringLaser|Braking",
+            "flag_names renders the set bits",
+        );
+        check(
+            example::flag_names_ship_flags(example::SHIP_FLAGS_AIMING | (1 << 63))
+                == "Aiming|0x8000000000000000",
+            "flag_names renders unknown high bits as hex",
+        );
+    }
+
     if FAILED.load(Ordering::Relaxed) {
         std::process::exit(1);
     }

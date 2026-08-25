@@ -69,6 +69,44 @@ export const PacketFlagsLowPower = 1n << 3n;
 export const PacketFlagsJamming = 1n << 4n;
 export const PacketFlagsCount = 5; // the declared variant count (SPEC §4.2)
 
+// FlagNamePacketFlags: debug/log/tooling name for bit i of PacketFlags —
+// out-of-range bits name as "???"
+export function FlagNamePacketFlags(bit) {
+  switch (bit) {
+    case 0: return "Shielded";
+    case 1: return "Cloaked";
+    case 2: return "Overheated";
+    case 3: return "LowPower";
+    case 4: return "Jamming";
+    default: return "???";
+  }
+}
+
+// FlagNamesPacketFlags renders the set bits of value (BigInt) as "A|B" — "0" for
+// the empty set, bits past the declared variants as hex
+export function FlagNamesPacketFlags(value) {
+  const names = [];
+  if (value & (1n << 0n)) {
+    names.push("Shielded");
+  }
+  if (value & (1n << 1n)) {
+    names.push("Cloaked");
+  }
+  if (value & (1n << 2n)) {
+    names.push("Overheated");
+  }
+  if (value & (1n << 3n)) {
+    names.push("LowPower");
+  }
+  if (value & (1n << 4n)) {
+    names.push("Jamming");
+  }
+  if (value >> 5n) {
+    names.push("0x" + ((value >> 5n) << 5n).toString(16));
+  }
+  return names.length === 0 ? "0" : names.join("|");
+}
+
 // type RealPacket
 export class RealPacket {
   constructor() {

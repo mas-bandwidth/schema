@@ -183,6 +183,7 @@ type gen struct {
 	emitted        map[string]bool    // consts of this file emitted so far (symbolic-reference safety)
 	bulkBytes      map[*ir.Field]bool // fixed [N]uint8 arrays at statically byte-aligned positions (ir.AlignedFixedByteArrays)
 	saidReadSlack  bool               // the read-slack buffer contract is stated once per file, on its first MaxBytes
+	saidFlagAppend bool               // the FlagNames append helpers are emitted once per file
 	needsSerialize bool               // the file emits wire functions -> include "serialize.h"
 	needsCstring   bool               // the file emits memset -> include <cstring>
 	needsCmath     bool               // the file emits floor() -> include <cmath>
@@ -491,6 +492,66 @@ func (g *gen) emitFlags(d *ir.Flags) {
 	}
 	g.pf("inline constexpr int64_t %sCount = %d; // the declared variant count (SPEC §4.2)\n", d.Name, len(d.Variants))
 	g.pf("\n")
+
+	g.pf("// FlagName%s: debug/log name for bit i of %s — out-of-range bits name as \"???\"\n", d.Name, d.Name)
+	g.pf("inline const char * FlagName%s( int bit )\n{\n", d.Name)
+	g.pf("    switch ( bit )\n    {\n")
+	for i, v := range d.Variants {
+		g.pf("        case %d: return \"%s\";\n", i, v)
+	}
+	g.pf("        default: return \"???\";\n    }\n}\n\n")
+
+	g.emitFlagAppendHelper()
+	g.pf("// FlagNames%s renders the set bits of value into buffer as \"A|B\" — \"0\" for\n", d.Name)
+	g.pf("// the empty set, bits past the declared variants as hex — NUL-terminates and\n")
+	g.pf("// returns buffer; %sNamesMax bytes always suffice\n", d.Name)
+	g.pf("inline constexpr int %sNamesMax = %d;\n", d.Name, flagNamesMax(d))
+	g.pf("inline const char * FlagNames%s( uint64_t value, char * buffer, int bufferSize )\n{\n", d.Name)
+	g.pf("    int position = 0;\n")
+	for i := range d.Variants {
+		g.pf("    if ( value & ( 1ull << %d ) )\n    {\n        position = SchemaFlagAppend_( buffer, bufferSize, position, FlagName%s( %d ) );\n    }\n", i, d.Name, i)
+	}
+	if len(d.Variants) < 64 { // a 64-variant set has no room for unknown bits
+		g.pf("    if ( value >> %d )\n    {\n        position = SchemaFlagAppendHex_( buffer, bufferSize, position, ( value >> %d ) << %d );\n    }\n", len(d.Variants), len(d.Variants), len(d.Variants))
+	}
+	g.pf("    if ( position == 0 )\n    {\n        position = SchemaFlagAppend_( buffer, bufferSize, position, \"0\" );\n    }\n")
+	g.pf("    if ( position < bufferSize )\n    {\n        buffer[position] = '\\0';\n    }\n")
+	g.pf("    return buffer;\n}\n\n")
+}
+
+// flagNamesMax is the buffer size that always holds a rendered flag set: every
+// name plus its separator, the hex form of the residual bits, and the NUL.
+func flagNamesMax(d *ir.Flags) int {
+	n := 0
+	for _, v := range d.Variants {
+		n += len(v) + 1
+	}
+	return n + len("|0x") + 16 + 1
+}
+
+// emitFlagAppendHelper emits the bounded append pair the FlagNames renderers
+// share, once per file (inline, so repeated definitions across headers in one
+// translation unit are legal and identical).
+func (g *gen) emitFlagAppendHelper() {
+	if g.saidFlagAppend {
+		return
+	}
+	g.saidFlagAppend = true
+	// guarded per package: the helpers live inside namespace <package>, so
+	// each unit in a translation unit needs its own copy exactly once
+	guard := "SCHEMA_" + strings.ToUpper(g.unit.Package) + "_FLAG_APPEND_DEFINED"
+	g.pf("#ifndef %s\n#define %s\n", guard, guard)
+	g.pf("inline int SchemaFlagAppend_( char * buffer, int bufferSize, int position, const char * name )\n{\n")
+	g.pf("    if ( position > 0 && position < bufferSize - 1 )\n    {\n        buffer[position++] = '|';\n    }\n")
+	g.pf("    while ( *name && position < bufferSize - 1 )\n    {\n        buffer[position++] = *name++;\n    }\n")
+	g.pf("    return position;\n}\n\n")
+	g.pf("inline int SchemaFlagAppendHex_( char * buffer, int bufferSize, int position, uint64_t bits )\n{\n")
+	g.pf("    position = SchemaFlagAppend_( buffer, bufferSize, position, \"0x\" );\n")
+	g.pf("    int shift = 60;\n")
+	g.pf("    while ( shift > 0 && ( ( bits >> shift ) & 0xf ) == 0 )\n    {\n        shift -= 4;\n    }\n")
+	g.pf("    for ( ; shift >= 0; shift -= 4 )\n    {\n")
+	g.pf("        if ( position < bufferSize - 1 )\n        {\n            buffer[position++] = \"0123456789abcdef\"[( bits >> shift ) & 0xf];\n        }\n    }\n")
+	g.pf("    return position;\n}\n#endif // %s\n\n", guard)
 }
 
 func (g *gen) emitStruct(d *ir.Struct) {

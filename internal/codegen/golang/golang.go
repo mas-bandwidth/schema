@@ -63,6 +63,7 @@ type gen struct {
 	needsSerialize bool // the file emits wire functions -> import the runtime
 	needsMath      bool // the file emits math.Floor -> import math
 	needsErrors    bool // the file declares ErrValidation -> import errors
+	needsStrconv   bool // the file emits FlagNames* -> import strconv
 
 	// bulkBytes marks the current struct's statically byte-aligned [N]uint8
 	// arrays (ir.AlignedFixedByteArrays): these serialize through the
@@ -91,6 +92,9 @@ func (g *gen) assemble() []byte {
 	}
 	if g.needsMath {
 		std = append(std, `"math"`)
+	}
+	if g.needsStrconv {
+		std = append(std, `"strconv"`)
 	}
 	if g.needsSerialize {
 		ext = append(ext, `"github.com/mas-bandwidth/serialize.go"`)
@@ -270,6 +274,30 @@ func (g *gen) emitFlags(d *ir.Flags) {
 	g.pf(")\n\n")
 	g.pf("// %sCount is the declared variant count (SPEC §4.2).\n", d.Name)
 	g.pf("const %sCount = %d\n\n", d.Name, len(d.Variants))
+
+	g.pf("// FlagName%s: debug/log/tooling name for bit i of %s —\n", d.Name, d.Name)
+	g.pf("// out-of-range bits name as \"???\"\n")
+	g.pf("func FlagName%s(bit int) string {\n", d.Name)
+	g.pf("\tswitch bit {\n")
+	for i, v := range d.Variants {
+		g.pf("\tcase %d:\n\t\treturn \"%s\"\n", i, v)
+	}
+	g.pf("\t}\n\treturn \"???\"\n}\n\n")
+
+	g.needsStrconv = true
+	g.pf("// FlagNames%s renders the set bits of value as \"A|B\" — \"0\" for the\n", d.Name)
+	g.pf("// empty set, bits past the declared variants as hex\n")
+	g.pf("func FlagNames%s(value uint64) string {\n", d.Name)
+	g.pf("\tnames := \"\"\n")
+	for i, v := range d.Variants {
+		g.pf("\tif value&(1<<%d) != 0 {\n\t\tnames += \"|%s\"\n\t}\n", i, v)
+	}
+	if len(d.Variants) < 64 { // a 64-variant set has no room for unknown bits
+		g.pf("\tif rest := value >> %d; rest != 0 {\n", len(d.Variants))
+		g.pf("\t\tnames += \"|0x\" + strconv.FormatUint(rest<<%d, 16)\n\t}\n", len(d.Variants))
+	}
+	g.pf("\tif names == \"\" {\n\t\treturn \"0\"\n\t}\n")
+	g.pf("\treturn names[1:]\n}\n\n")
 }
 
 func (g *gen) emitStruct(d *ir.Struct) {

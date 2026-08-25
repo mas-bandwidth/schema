@@ -157,3 +157,37 @@ export const ShipFlagsBraking = 1n << 2n;
 export const ShipFlagsAiming = 1n << 3n;
 export const ShipFlagsCount = 4; // the declared variant count (SPEC §4.2)
 
+// FlagNameShipFlags: debug/log/tooling name for bit i of ShipFlags —
+// out-of-range bits name as "???"
+export function FlagNameShipFlags(bit) {
+  switch (bit) {
+    case 0: return "FiringLaser";
+    case 1: return "Boosting";
+    case 2: return "Braking";
+    case 3: return "Aiming";
+    default: return "???";
+  }
+}
+
+// FlagNamesShipFlags renders the set bits of value (BigInt) as "A|B" — "0" for
+// the empty set, bits past the declared variants as hex
+export function FlagNamesShipFlags(value) {
+  const names = [];
+  if (value & (1n << 0n)) {
+    names.push("FiringLaser");
+  }
+  if (value & (1n << 1n)) {
+    names.push("Boosting");
+  }
+  if (value & (1n << 2n)) {
+    names.push("Braking");
+  }
+  if (value & (1n << 3n)) {
+    names.push("Aiming");
+  }
+  if (value >> 4n) {
+    names.push("0x" + ((value >> 4n) << 4n).toString(16));
+  }
+  return names.length === 0 ? "0" : names.join("|");
+}
+

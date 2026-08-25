@@ -221,6 +221,43 @@ namespace Example
         public const ulong ProbeFlagsDamaged = 1ul << 2;
         public const long ProbeFlagsCount = 3; // the declared variant count (SPEC §4.2)
 
+        // FlagNameProbeFlags: debug/log/tooling name for bit i of ProbeFlags —
+        // out-of-range bits name as "???"
+        public static string FlagNameProbeFlags(int bit)
+        {
+            switch (bit)
+            {
+                case 0: return "Armed";
+                case 1: return "Cloaked";
+                case 2: return "Damaged";
+                default: return "???";
+            }
+        }
+
+        // FlagNamesProbeFlags renders the set bits of value as "A|B" — "0" for the
+        // empty set, bits past the declared variants as hex
+        public static string FlagNamesProbeFlags(ulong value)
+        {
+            string names = "";
+            if ((value & (1ul << 0)) != 0)
+            {
+                names += "|Armed";
+            }
+            if ((value & (1ul << 1)) != 0)
+            {
+                names += "|Cloaked";
+            }
+            if ((value & (1ul << 2)) != 0)
+            {
+                names += "|Damaged";
+            }
+            if ((value >> 3) != 0)
+            {
+                names += "|0x" + ((value >> 3) << 3).ToString("x");
+            }
+            return names.Length == 0 ? "0" : names.Substring(1);
+        }
+
         // ProbeHeaderMaxBits is the longest wire path; align pads at worst case (SPEC §6.1).
         // ProbeHeaderMaxBytes is rounded up to the 8-byte write-buffer granularity.
         public const long ProbeHeaderMaxBits = 87;

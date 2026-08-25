@@ -343,6 +343,27 @@ func (g *gen) emitFlags(d *ir.Flags) {
 	}
 	g.sf("public const long %sCount = %d; // the declared variant count (SPEC §4.2)\n", d.Name, len(d.Variants))
 	g.sf("\n")
+
+	g.sf("// FlagName%s: debug/log/tooling name for bit i of %s —\n", d.Name, d.Name)
+	g.sf("// out-of-range bits name as \"???\"\n")
+	g.sf("public static string FlagName%s(int bit)\n{\n", d.Name)
+	g.sf("    switch (bit)\n    {\n")
+	for i, v := range d.Variants {
+		g.sf("        case %d: return \"%s\";\n", i, v)
+	}
+	g.sf("        default: return \"???\";\n    }\n}\n\n")
+
+	g.sf("// FlagNames%s renders the set bits of value as \"A|B\" — \"0\" for the\n", d.Name)
+	g.sf("// empty set, bits past the declared variants as hex\n")
+	g.sf("public static string FlagNames%s(ulong value)\n{\n", d.Name)
+	g.sf("    string names = \"\";\n")
+	for i, v := range d.Variants {
+		g.sf("    if ((value & (1ul << %d)) != 0)\n    {\n        names += \"|%s\";\n    }\n", i, v)
+	}
+	if len(d.Variants) < 64 { // a 64-variant set has no room for unknown bits
+		g.sf("    if ((value >> %d) != 0)\n    {\n        names += \"|0x\" + ((value >> %d) << %d).ToString(\"x\");\n    }\n", len(d.Variants), len(d.Variants), len(d.Variants))
+	}
+	g.sf("    return names.Length == 0 ? \"0\" : names.Substring(1);\n}\n\n")
 }
 
 func (g *gen) emitClass(d *ir.Struct) {

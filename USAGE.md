@@ -129,6 +129,11 @@ carry it too, so ranges and asserts reference the enum directly instead of a
 hand-declared count constant. `Max` is consequently reserved as a variant
 name, like `None`.
 
+Every target also generates a **debug/log name function** — `EnumName(value)`
+in C++ (overloaded per enum), `EnumNameShipType` in C#/Go/JS,
+`enum_name_ship_type` in Rust/C — returning the variant's declared spelling
+for any wire value, out-of-set values included (`"???"`).
+
 ### flags
 
 ```
@@ -151,6 +156,15 @@ The declared variant count is exported as `Count` and usable in schema
 expressions as `Capabilities.Count`. Flags have no `.Max` — the variants are
 independent bits, not a range with a top; the compiler refuses `.Max` on a
 flags type and names `.Count` instead.
+
+Flags get the same **debug/log name surface** as enums, in two forms: a
+per-bit name — `FlagNameCapabilities(bit)` (`flag_name_capabilities` in
+Rust/C), out-of-range bits naming as `"???"` — and a set renderer,
+`FlagNamesCapabilities(value)`, which formats the set bits the way a log line
+wants them: `"Cloak|Warp"`, `"0"` for the empty set, and any bits past the
+declared variants rendered honestly as hex. In C and C++ the renderer writes
+into a caller-provided buffer (`CapabilitiesNamesMax` /
+`CAPABILITIES_NAMES_MAX` bytes always suffice) and allocates nothing.
 
 ### type
 
