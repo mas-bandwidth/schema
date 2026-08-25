@@ -18,6 +18,7 @@ const (
 	ObjectTypeMissile     ObjectType = 2
 	ObjectTypeShip        ObjectType = 3
 	ObjectTypeTurret      ObjectType = 4
+	ObjectTypeMax         ObjectType = 4 // the exported extent (SPEC §4.2)
 )
 
 // ---- object Ship — one definition, a generated family per target (SPEC §4.8) ----

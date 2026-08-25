@@ -17,6 +17,7 @@ impl MessageType {
     pub const SYNCHRONIZE: MessageType = MessageType(4);
     pub const TEST: MessageType = MessageType(5);
     pub const TIMESCALE: MessageType = MessageType(6);
+    pub const MAX: MessageType = MessageType(6); // the exported extent (SPEC §4.2)
 }
 
 // message Heartbeat

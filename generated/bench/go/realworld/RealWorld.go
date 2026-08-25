@@ -27,6 +27,7 @@ const (
 	PacketModeCombat  PacketMode = 3
 	PacketModeDocked  PacketMode = 4
 	PacketModeWarping PacketMode = 5
+	PacketModeMax     PacketMode = 5 // the exported extent (SPEC §4.2)
 )
 
 // EnumNamePacketMode: debug/log/tooling name for any PacketMode wire value —

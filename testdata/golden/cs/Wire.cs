@@ -24,6 +24,7 @@ namespace Example
         Laser = 1,
         Missile = 2,
         Railgun = 3,
+        Max = 15, // the exported extent (SPEC §4.2)
     }
 
     // type ProbeHeader

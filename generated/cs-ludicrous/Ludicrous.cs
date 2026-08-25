@@ -20,6 +20,7 @@ namespace Ludicrous
     {
         None = 0,
         LudicrousState = 1,
+        Max = 1, // the exported extent (SPEC §4.2)
     }
 
     // Message is the dispatch surface: the abstract base every generated message
@@ -36,6 +37,7 @@ namespace Ludicrous
         None = 0,
         Body = 1,
         NarrowBody = 2,
+        Max = 2, // the exported extent (SPEC §4.2)
     }
 
     // DriveMode — None = 0 implicit, variants dense from 1, wire range [0, 3] (SPEC §4.2);
@@ -47,6 +49,7 @@ namespace Ludicrous
         Cruise = 1,
         Warp = 2,
         Ludicrous = 3,
+        Max = 3, // the exported extent (SPEC §4.2)
     }
 
     // type FixedProbe

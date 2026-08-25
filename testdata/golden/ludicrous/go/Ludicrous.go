@@ -23,6 +23,7 @@ type MessageType uint8
 const (
 	MessageTypeNone           MessageType = 0
 	MessageTypeLudicrousState MessageType = 1
+	MessageTypeMax            MessageType = 1 // the exported extent (SPEC §4.2)
 )
 
 // ObjectType: the object set, extracted by the compiler — None = 0, then each object sorted by name (SPEC §4.8)
@@ -32,6 +33,7 @@ const (
 	ObjectTypeNone       ObjectType = 0
 	ObjectTypeBody       ObjectType = 1
 	ObjectTypeNarrowBody ObjectType = 2
+	ObjectTypeMax        ObjectType = 2 // the exported extent (SPEC §4.2)
 )
 
 const MaxWorldUnits = 30000
@@ -44,6 +46,7 @@ const (
 	DriveModeCruise    DriveMode = 1
 	DriveModeWarp      DriveMode = 2
 	DriveModeLudicrous DriveMode = 3
+	DriveModeMax       DriveMode = 3 // the exported extent (SPEC §4.2)
 )
 
 // EnumNameDriveMode: debug/log/tooling name for any DriveMode wire value —

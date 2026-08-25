@@ -11,6 +11,7 @@ impl Team {
     pub const NONE: Team = Team(0);
     pub const RED: Team = Team(1);
     pub const BLUE: Team = Team(2);
+    pub const MAX: Team = Team(2); // the exported extent (SPEC §4.2)
 }
 
 /// Debug/log name for any `Team` value, out-of-set included.
@@ -42,6 +43,7 @@ impl ShipType {
     pub const BOMBER: ShipType = ShipType(3);
     pub const DESTROYER: ShipType = ShipType(4);
     pub const CARRIER: ShipType = ShipType(5);
+    pub const MAX: ShipType = ShipType(5); // the exported extent (SPEC §4.2)
 }
 
 /// Debug/log name for any `ShipType` value, out-of-set included.
@@ -74,6 +76,7 @@ impl MissileType {
     pub const HEATSEEKER: MissileType = MissileType(1);
     pub const TORPEDO: MissileType = MissileType(2);
     pub const NUKE: MissileType = MissileType(3);
+    pub const MAX: MissileType = MissileType(3); // the exported extent (SPEC §4.2)
 }
 
 /// Debug/log name for any `MissileType` value, out-of-set included.
@@ -107,6 +110,7 @@ impl PropType {
     pub const SPHERE: PropType = PropType(4);
     pub const BLACK_HOLE: PropType = PropType(5);
     pub const DYSON_PANEL: PropType = PropType(6);
+    pub const MAX: PropType = PropType(6); // the exported extent (SPEC §4.2)
 }
 
 /// Debug/log name for any `PropType` value, out-of-set included.
@@ -137,6 +141,7 @@ pub struct Pending(pub u8);
 
 impl Pending {
     pub const NONE: Pending = Pending(0);
+    pub const MAX: Pending = Pending(0); // the exported extent (SPEC §4.2)
 }
 
 /// Debug/log name for any `Pending` value, out-of-set included.

@@ -290,6 +290,7 @@ func (g *gen) emitTagEnum(name string, members []string, comment string) {
 	for i, m := range members {
 		g.pf("  %s: %d,\n", m, i+1)
 	}
+	g.pf("  Max: %d, // the exported extent (SPEC §4.2)\n", len(members))
 	g.pf("});\n\n")
 }
 
@@ -347,6 +348,7 @@ func (g *gen) emitEnum(d *ir.Enum) {
 	for i, v := range d.Variants {
 		g.pf("  %s: %d,\n", v, i+1)
 	}
+	g.pf("  Max: %d, // the exported extent (SPEC §4.2)\n", d.Max)
 	g.pf("});\n\n")
 	g.pf("// EnumName%s: debug/log/tooling name for any %s wire value —\n", d.Name, d.Name)
 	g.pf("// out-of-set values (wire-legal up to the declared max) name as \"???\"\n")

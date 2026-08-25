@@ -25,6 +25,7 @@ namespace Example
         Synchronize = 4,
         Test = 5,
         Timescale = 6,
+        Max = 6, // the exported extent (SPEC §4.2)
     }
 
     // Message is the dispatch surface: the abstract base every generated message

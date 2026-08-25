@@ -12,6 +12,7 @@ namespace Example
         None = 0,
         Red = 1,
         Blue = 2,
+        Max = 2, // the exported extent (SPEC §4.2)
     }
 
     // ShipType — None = 0 implicit, variants dense from 1, wire range [0, 5] (SPEC §4.2);
@@ -25,6 +26,7 @@ namespace Example
         Bomber = 3,
         Destroyer = 4,
         Carrier = 5,
+        Max = 5, // the exported extent (SPEC §4.2)
     }
 
     // MissileType — None = 0 implicit, variants dense from 1, wire range [0, 3] (SPEC §4.2);
@@ -36,6 +38,7 @@ namespace Example
         Heatseeker = 1,
         Torpedo = 2,
         Nuke = 3,
+        Max = 3, // the exported extent (SPEC §4.2)
     }
 
     // PropType — None = 0 implicit, variants dense from 1, wire range [0, 6] (SPEC §4.2);
@@ -50,6 +53,7 @@ namespace Example
         Sphere = 4,
         BlackHole = 5,
         DysonPanel = 6,
+        Max = 6, // the exported extent (SPEC §4.2)
     }
 
     // Pending — None = 0 implicit, variants dense from 1, wire range [0, 0] (SPEC §4.2);
@@ -58,6 +62,7 @@ namespace Example
     public enum Pending : byte
     {
         None = 0,
+        Max = 0, // the exported extent (SPEC §4.2)
     }
 
     // Schema carries every generated function and constant of the unit — C# has

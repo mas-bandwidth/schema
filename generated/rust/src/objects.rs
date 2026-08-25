@@ -15,6 +15,7 @@ impl ObjectType {
     pub const MISSILE: ObjectType = ObjectType(2);
     pub const SHIP: ObjectType = ObjectType(3);
     pub const TURRET: ObjectType = ObjectType(4);
+    pub const MAX: ObjectType = ObjectType(4); // the exported extent (SPEC §4.2)
 }
 
 // ---- object Ship — one definition, a generated family per target (SPEC §4.8) ----

@@ -110,12 +110,22 @@ zero-initialized enum field is therefore the null, in band, and you never
 need a separate has-flag beside it:
 
 ```cpp
-enum class ShipType : uint8_t { None = 0, Fighter = 1, Corvette = 2, Bomber = 3 };
+enum class ShipType : uint8_t { None = 0, Fighter = 1, Corvette = 2, Bomber = 3, Max = 3 };
 ```
 
 On the wire it costs `bitsRequired(variant count)` — 2 bits here, for four
 values. Declaring `enum E [max = 15] { ... }` reserves headroom so you can
 add variants later without moving the field width.
+
+The `Max` member is the enum's **extent** — the same number `E.Max` names in
+schema expressions: the highest wire-legal value, and (headroom aside) the
+count of real variants under the sentinel-zero convention. Every target
+spells it its own way — `ShipType::Max` (C++), `ShipType.Max` (C#),
+`ShipTypeMax` (Go), `ShipType::MAX` (Rust), `ShipType.Max` (JS),
+`SHIP_TYPE_MAX` (C) — and the generated `MessageType`/`ObjectType` tag enums
+carry it too, so ranges and asserts reference the enum directly instead of a
+hand-declared count constant. `Max` is consequently reserved as a variant
+name, like `None`.
 
 ### flags
 

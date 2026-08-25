@@ -39,6 +39,7 @@ export const Weapon = Object.freeze({
   Laser: 1,
   Missile: 2,
   Railgun: 3,
+  Max: 15, // the exported extent (SPEC §4.2)
 });
 
 // EnumNameWeapon: debug/log/tooling name for any Weapon wire value —

@@ -25,6 +25,7 @@ namespace Realworld
         Combat = 3,
         Docked = 4,
         Warping = 5,
+        Max = 5, // the exported extent (SPEC §4.2)
     }
 
     // type RealPacket

@@ -31,6 +31,7 @@ export const MessageType = Object.freeze({
   Synchronize: 4,
   Test: 5,
   Timescale: 6,
+  Max: 6, // the exported extent (SPEC §4.2)
 });
 
 // message Heartbeat

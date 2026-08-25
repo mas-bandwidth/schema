@@ -277,6 +277,7 @@ func (g *gen) emitTagEnum(name string, members []string, comment string) {
 	for i, m := range members {
 		g.tf("    %s = %d,\n", m, i+1)
 	}
+	g.tf("    Max = %d, // the exported extent (SPEC §4.2)\n", len(members))
 	g.tf("}\n\n")
 }
 
@@ -315,6 +316,7 @@ func (g *gen) emitEnum(d *ir.Enum) {
 	for i, v := range d.Variants {
 		g.tf("    %s = %d,\n", v, i+1)
 	}
+	g.tf("    Max = %d, // the exported extent (SPEC §4.2)\n", d.Max)
 	g.tf("}\n\n")
 	// the ulong parameter (not the enum type) keeps out-of-set values exact:
 	// a cast through a narrower backing would truncate 256 -> 0 -> "None"
