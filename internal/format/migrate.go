@@ -72,7 +72,7 @@ func Migrate(path string, src []byte) ([]byte, error) {
 		tokens := l.tokens
 
 		// [<= N] -> [..N] (the #125 respell)
-		for i := 0; i < len(tokens); i++ {
+		for i := range tokens {
 			if tokens[i].Kind == scanner.LessEq && i > 0 && tokens[i-1].Kind == scanner.LBrack {
 				tokens[i] = scanner.Token{Kind: scanner.DotDot, Text: "..", Pos: tokens[i].Pos}
 			}
