@@ -82,12 +82,10 @@ would have hand-written, not an interpreter walking a schema at runtime.
   writing your own buffers.
 - **Reads validate, always — in every language.** Out-of-range values are
   refused, not clamped or trusted.
-- **A second, evolution-tolerant wire** for config, assets and settings, with
-  reflection and relocatable storage — in C, C++, C#, Go and Rust; see
-  [WIRES.md](WIRES.md).
-- **`schema pack`** compiles directories of JSON into one binary container,
-  validating every value against the schema as it goes.
-- **The compiler is a library too** — load, check, generate and pack from Go,
+- **Relocatable by construction** — generated types are trivially copyable
+  and standard-layout, so raw-struct blobs and parallel scatter/gather are
+  safe by design; see [WIRES.md](WIRES.md).
+- **The compiler is a library too** — load, check and generate from Go,
   and register generators of your own; the six built-in backends come through
   the same interface yours does. See
   [Embedding the compiler](USAGE.md#embedding-the-compiler).
@@ -102,7 +100,6 @@ go build -o /usr/local/bin/schema ./cmd/schema
 
 schema check    <dir of .schema files>
 schema generate --lang c|cpp|cs|go|js|rust --out <outdir> <dir>
-schema pack     <PackManifest.json>
 ```
 
 **[USAGE.md](USAGE.md)** is the guide — every language feature, with real
@@ -125,7 +122,7 @@ path, and generated JS never imports the runtime at all).
 | Document | What's in it |
 |---|---|
 | **[USAGE.md](USAGE.md)** | Every language feature, with the code it generates. Start here. |
-| **[WIRES.md](WIRES.md)** | The two wires, tables, reflection, relocatable storage. |
+| **[WIRES.md](WIRES.md)** | The wire law in practice, and relocatable storage. |
 | **[PERFORMANCE.md](PERFORMANCE.md)** | Generated-code benchmarks — published passes cover five languages; the JavaScript leg is wired and rides the next driver pass. |
 | **[SPEC.md](SPEC.md)** | The normative reference — grammar, wire law, every edge case. |
 | **[COMPARISON.md](COMPARISON.md)** | The same message in schema, Cap'n Proto, Protobuf and FlatBuffers — 28 vs 52 vs 56 vs 72 bytes, measured, with a script to re-run it. |
@@ -149,8 +146,8 @@ yours.**
 - **Generated code is explicitly NOT covered by the AGPL.** The output the
   compiler produces from YOUR schema files belongs to YOU, under whatever
   terms you choose — including in closed-source projects. Running the
-  compiler over schemas you own does not make your generated serializers,
-  table codecs, or reflection descriptors derivative works of the compiler,
+  compiler over schemas you own does not make your generated serializers
+  derivative works of the compiler,
   and this grant is intentional and permanent: schema is meant to be useful
   to people shipping proprietary software. Only the compiler itself is open
   source.

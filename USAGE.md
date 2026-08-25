@@ -9,8 +9,7 @@ compiler does.
 - [The five minute version](#the-five-minute-version)
 - [Declarations](#declarations)
   - [const](#const) · [enum](#enum) · [flags](#flags) · [type](#type) ·
-    [union](#union) · [message](#message) · [table](#table) ·
-    [object](#object)
+    [union](#union) · [message](#message) · [object](#object)
 - [Field types](#field-types)
   - [Integers](#integers) · [Ranged integers](#ranged-integers) ·
     [bits(N)](#bitsn) · [bool](#bool) · [Floats](#floats) ·
@@ -19,9 +18,8 @@ compiler does.
     [Composition](#composition)
 - [Branches: if / else](#branches-if--else)
 - [Defaults](#defaults)
-- [The two wires](#the-two-wires)
+- [The wire](#the-wire)
 - [Reading untrusted data](#reading-untrusted-data)
-- [Packing JSON into binary](#packing-json-into-binary)
 - [The protocol id](#the-protocol-id)
 - [Embedding the compiler](#embedding-the-compiler)
 - [Per-language notes](#per-language-notes)
@@ -62,7 +60,7 @@ schema generate --lang cpp --out generated/cpp .
 
 Success is silent — the files land in the output directory and nothing is
 printed, so a build wrapping this command stays clean. Add `--verbose` to
-list every file written (`check`, `fmt` and `pack` take the same flag).
+list every file written (`check` and `fmt` take the same flag).
 Errors always print, whatever the verbosity.
 
 You get a struct and a pair of wire functions:
@@ -156,7 +154,7 @@ flags type and names `.Count` instead.
 
 ### type
 
-A plain struct. Composes into messages, tables and other types:
+A plain struct. Composes into messages and other types:
 
 ```
 type Vector3
@@ -222,10 +220,8 @@ the tag beside one pre-allocated arm per variant; Rust gets a real
 `enum ColliderShape { None, Box(BoxCollider), ... }`.
 
 Payloads are declared types — wrap a scalar or enum in a type. Unions ride
-`type` and `message` bodies (arrays too); an `object` body and the table
-closure refuse them in v1. In pack JSON a union value is a single-key
-object, the key naming the variant: `{ "sphere": { "radius": 2.5 } }`;
-`null` or absence is None.
+`type` and `message` bodies (arrays too); an `object` body refuses them
+in v1.
 
 ### message
 
@@ -233,12 +229,6 @@ A message is a type that also joins the unit's **dispatch surface**: the
 compiler emits a `MessageType` enum, tag read/write functions, and
 `WriteMessage`/`ReadMessage` that dispatch on it. That is how you get a
 single entry point for a packet stream.
-
-### table
-
-Declaring `table` instead of `type` puts a type on the **table wire** — the
-evolution-tolerant encoding for data that outlives builds. See
-[The two wires](#the-two-wires).
 
 ### object
 
@@ -429,34 +419,20 @@ compiler refuses one that would silently round.
 
 ---
 
-## The two wires
+## The wire
 
-**The message wire** is bit-packed and decided at compile time. Nothing on
-it identifies fields — both sides know the layout because they were
-generated from the same schema. That is what makes it small and fast, and
-why versioning is by [protocol id](#the-protocol-id).
+**The wire** is bit-packed and decided at compile time. Nothing on it
+identifies fields — both sides know the layout because they were generated
+from the same schema. That is what makes it small and fast, and why
+versioning is by [protocol id](#the-protocol-id): one id, same-or-refuse,
+with no evolution machinery anywhere. schema is deliberately not an
+evolution system; data that must survive schema drift wants a different
+tool.
 
-**The table wire** is for data that outlives builds — config, assets, saved
-settings. Fields are identified by name hash, defaults elide, unknown fields
-skip, removed fields default, changed types skip rather than misdecode, and
-out-of-range values clamp. Every such event is counted in a report you can
-inspect. Add or remove a property and older readers keep working.
-
-Declaring `table` puts a type and everything it references on that wire, and
-generates:
-
-- **Codecs** — `TableWriteX` / `TableReadX`.
-- **Reflection** — `TableTypeX()` field descriptors: names, wire ids,
-  bounds, enum value names. Flat arrays, no per-instance weight, no RTTI, no
-  `System.Reflection`, and no schema files shipped at runtime.
-
-Table storage is **relocatable by construction** — trivially copyable,
+Generated storage is **relocatable by construction** — trivially copyable,
 standard layout, no pointers — so instances can be memcpy'd, memory-mapped,
 shared between processes, or built in parallel across threads and gathered
 by concatenation.
-
-Use the message wire for gameplay; use tables for anything you will still be
-reading after three more builds ship.
 
 ---
 
@@ -504,11 +480,6 @@ yet can arrive, and your `switch` should have a default. The same VALIDATION rul
 the same compiler wrote all six — the buffer-slack contract above is the one
 thing that differs per language.
 
-The one deliberate exception is the table wire, where out-of-range values
-*clamp* and are counted in the report — because table data is meant to
-survive schema drift, and refusing to load a config over one stale field
-would be worse than clamping it.
-
 ---
 
 ## Writes are the caller's responsibility
@@ -532,45 +503,6 @@ the write side** — your simulation already knows they are, and that is the onl
 assumption the wire makes. The C++ behaviour in particular is the right one for
 a game shipping at 60 Hz, where re-checking every field of every packet in
 release is a cost with no buyer.
-
-## Packing JSON into binary
-
-`schema pack` compiles directories of JSON into a single binary container,
-per a manifest:
-
-```
-schema pack PackManifest.json
-```
-
-The manifest names the output and the collections that fill it — a single
-JSON file for a singleton, or a directory keyed by an enum:
-
-```json
-{
-  "unit": ".",
-  "outputs": [
-    {
-      "file": "Config.bin",
-      "collections": [
-        { "type": "GlobalConfig", "file": "Config/Global.json" },
-        { "type": "TeamConfig", "dir": "Config/Teams",
-          "key_enum": "Team", "key_field": "team" }
-      ]
-    }
-  ]
-}
-```
-
-Packing validates as it goes: values are checked against the schema's
-ranges, a keyed collection missing a variant's file is an error, and so is a
-stray file that matches no variant — which catches both a forgotten config
-and a stale one.
-
-The result is one file with a schema hash stamped in it, read through the
-generated table codecs, in any of the five table-wire languages (C, C++, C#,
-Go and Rust — JavaScript has no table backend yet).
-
----
 
 ## The protocol id
 
@@ -700,18 +632,6 @@ backends disagree with each other here), and `ir.ExprHasEnumMax` reports an
 the resolved value and keep the schema form in a comment, as the built-in
 backends do.
 
-### The data compiler
-
-`schema pack` is a driver call too, and like `Generate` it hands back bytes:
-
-```go
-unit, outputs, err := c.Pack("PackManifest.json")
-for _, o := range outputs {
-	fmt.Printf("%s: %d bytes, content hash 0x%016x\n", o.File, len(o.Bytes), o.ContentHash)
-	os.WriteFile(o.File, o.Bytes, 0o644)
-}
-```
-
 `compiler.Version()` and `compiler.UserAgent()` report which build of the
 compiler is running, for a tool that stamps its own output.
 
@@ -729,14 +649,12 @@ your own math type with `| cpp_native = Vector3, cpp_include = "vec.h"`, so
 simulation code does math directly on generated storage.
 
 **C#** — C# 9 / netstandard2.1-clean, so it runs on Unity-class runtimes.
-Reads scalars without boxing; `AppendTableX` writers reuse a buffer.
+Reads scalars without boxing.
 
-**Go** — `AppendTableX` append-form writers over a reused buffer; accessors
-avoid allocation.
+**Go** — accessors avoid allocation; reads and writes run on caller-owned
+buffers.
 
 **Rust** — no `unsafe` in generated code, `Result`-returning read and write.
-Table-wire parity since v1.5.0: codecs are `table_write_x` / `table_read_x`,
-following Rust naming.
 
 **JavaScript** — ES modules, zero dependencies, Number storage for widths of
 32 bits or fewer, BigInt for 64 and 128. Two codecs are generated over the
@@ -774,8 +692,7 @@ say which operation failed and why, `MeasureStream`, per-op checked
 granularity, and the only tier for object views. Both tiers emit identical
 bytes for identical values — a standing CI gate — so the debugging story is
 one import away: re-read a failing buffer through the runtime tier and read
-`stream.error`. Message wire only: the table wire has no JavaScript backend
-yet. Everything measured so far is node/V8; the flat modules are pure spec'd
+`stream.error`. Everything measured so far is node/V8; the flat modules are pure spec'd
 ECMAScript with no node APIs, but browser-engine gates and numbers are still
 owed before browser claims.
 

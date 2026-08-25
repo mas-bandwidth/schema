@@ -19,7 +19,7 @@
   and runs.
 - **The public Go API is `compiler/` and `ir/`; everything else stays `internal/`**
   (issue #85, 2026-08-20). The compiler is a library as well as a binary: `compiler` is the
-  driver (load, generate, pack, format) plus the `Generator` interface every backend
+  driver (load, generate, format) plus the `Generator` interface every backend
   registers through, and `ir` is the checked unit with the derived parameters the backends
   share. `cmd/schema` is a client of that API and must stay one — `internal/publicapi`
   rebuilds the CLI inside an external module, so the day it reaches past the public surface
@@ -41,9 +41,7 @@
   (`test/{c,go,rust,cs}-ludicrous`) byte-compare the same pinned instance
   against them — fixed(I, F)/int128/uint128 wire identity is a standing gate too — then
   the break-the-language diagnostics suite (70+ refusal cases) and the
-  source/id/wire golden pins. The data compiler's own encoder (`internal/pack`) packs
-  those same pinned instances from JSON and byte-compares them too, so the Go-side wire
-  oracle cannot drift from the generated ones. Each backend
+  source/id/wire golden pins. Each backend
   emits what a careful expert would write against its serialize runtime: split
   `Write`/`Read` per type; per-target dispatch (C++ tagged union or opt-in
   `std::variant`; C tagged union; Go interface + storage; Rust enum; C# abstract class + storage); object
@@ -62,48 +60,13 @@ a baseline, all generated from one source. His one-sentence version: *"so much
 boilerplate would just go away, replaced with a definition of what object types there
 are, and what properties and attributes per-property."*
 
-- **Ordering (Glenn, 2026-08-11): messages (landed) → table layer → delta pass.** The
-  table layer's wire/reflection half landed as SPEC §4.11 and `schema pack`; the
-  space-side `Config.schema`/`Assets.schema` migration is the open half.
-- **The delta pass** changes the generated function signature (current object plus a
-  baseline), not the wire model or compiler architecture. The surveyed hand-written
-  delta code (`core_delta.h`, 2026-08-04) follows one grammar — per-field encoding
-  tiers tried cheapest-first, one bit selecting the tier (small-window delta vs
-  absolute; or error-vs-prediction, the prediction arithmetic over sibling fields plus
-  an external parameter like `deltaFrames`) — so the pass needs three language
-  surfaces: per-field tier lists, prediction expressions over sibling fields, and
-  declared external parameters. Scope is wider than serialize functions — schema
-  eventually owns the object TYPE: deep/shallow struct definitions, capacity
-  constants, per-type dispatch cases, manager integration points, and further
-  generator kinds (interpolation, render data, struct-to-struct mapping). The IR is a
-  typed object model; backends generalize from language targets to generator kinds;
-  per-field metadata attaches through SPEC §4.2's attribute mechanism — the
-  attachment point already exists in v1's grammar.
-- **The flatbuffers replacement (DECIDED in direction, Glenn, 2026-08-05):** config
-  and assets move to `Config.schema`/`Assets.schema`; the Go pipeline
-  (`cmd/update_schemas`, `cmd/update_config`) and the C++
-  `ConfigManager`/`AssetsManager` boilerplate become schema compiler outputs. Not a
-  flatbuffers equivalent — *"the minimal representation of the true thing in the
-  schema language"*, scoped to the subset space game actually uses. Collections are
-  one mechanism differentiated by declared PROPERTIES, not different kinds: reload
-  semantics (config hot-swaps atomically mid-game; assets load once per level) and
-  directional cross-collection references (config → assets, a DAG verified at
-  data-compile time). Aspirationally `Config.bin`/`Assets.bin` are expressions of a
-  general collection pattern — his `Constants.h` already carries FOUR data blobs
-  (config, options, assets, user settings), so first-class `config`/`assets` keywords
-  would undercount day one; the fallback is first-class concepts if the general form
-  fails. The frame: **the schema compiler is a compiler-linker for data** — JSON
-  instances are source files with human authors (designers, artists exporting from
-  Maya/Blender), one source directory against one declared set of types into one
-  versioned, hashed binary with generated loaders, accessors and derived enums;
-  verification is a compile step. `schema pack` is the transition form. Structural
-  shapes still owed from the .fbs survey: enums with explicit values at the table
-  layer, unions at the type level, vectors of tables.
-- **Enum convergence (his catch):** some hand-declared enums are flatbuffers residue;
-  the table pass derives them from the definitions (`ShipType` from ship
-  configs/assets) — the set-extraction move a third time (messages → `MessageType`,
-  objects → `ObjectType`, definitions → their type enums). Genuinely hand-owned sets
-  (`Team`) stay declared.
+- **The table layer left the language (2026-08-25).** Tables, collections and
+  the JSON data compiler are not part of schema: the language is the realtime
+  wire — hardcoded structs, one protocol id, same-or-refuse — and content
+  pipelines are out of scope. `table` stays a reserved word and the parser
+  refuses it by name.
+- **The delta pass** stays out of scope here (SPEC's non-goals): schema
+  declares types and messages; delta encoding is an application's own layer.
 - **Constants migrate through a temporary duplicate set** (schema + flatbuffers) while
   .fbs consumers remain; `Constants.schema` is the one home, C++ reads generated
   `space::` values through name-preserving aliases, and a static_assert guard block
@@ -112,9 +75,6 @@ are, and what properties and attributes per-property."*
   cannot run the generator** (Unity, a Go module on fresh clone) — *"If it were just
   C++ only, I would not."* C++-only consumers generate at build (the space CMake
   `schema_generate` target).
-- **The event set is the nearest edge:** its wire half is already expressible in v1
-  (an enum-dispatched union with per-case fields — the `Messages.schema` shape; the
-  current `events.fbs` union maps onto it directly); only its table-layer half waits.
 - **Reserved surface for these passes:** `packet`, `delta`, `baseline`, `index`
   (SPEC §1); `lerp`/`slerp`/`snap`/`angle`/`smooth` informally reserved as attribute
   values for the interpolation pass; SPEC §9 q11 banks the cut `enum_index` design;
@@ -142,8 +102,8 @@ numbers §1–§9 and the §9 q-rows are frozen — code, corpus and docs cite t
   byte-identical); gate 4 live in pinned-instance form plus the randomized C++
   round-trip suite; gate 3 in seed form (RigidBody and string classic twins in
   `test/main.cpp`), growing with the corpus; gate 6 live as the break-the-language
-  diagnostics suite (70+ cases) plus `internal/fuzz` (compile, oracle, property and
-  pack fuzzers); gate 5 and gate 4's full random matrix are the remaining conformance
+  diagnostics suite (70+ cases) plus `internal/fuzz` (compile, oracle and property
+  fuzzers); gate 5 and gate 4's full random matrix are the remaining conformance
   work. A fmt-drift gate asserts the corpus stays formatter-canonical.
 - **Held-loosely tells** (the spec states these as law; the confidence metadata lives
   here): the bracket attribute syntax carries Glenn's hedge ("just a personal
@@ -168,8 +128,7 @@ numbers §1–§9 and the §9 q-rows are frozen — code, corpus and docs cite t
 - **§6.1 gaps equal in the old text** (surfaced by the rewrite's verification pass,
   not introduced by it): the symbol-naming paragraph gives five targets' conventions
   but not C's (lower_snake free functions — `write_ship_data_deep(stream, value)` —
-  with `schema_`-prefixed internal helpers), and neither output-layout bullet names
-  the third per-file header (`<Base>Table.h`) that C and C++ closure files emit.
+  with `schema_`-prefixed internal helpers).
 - **Removed as dead grammar residue** (not relocated — it described nothing the
   grammar can express): §4.6's `bytes(<= N)` error row; the `<=` marker on
   string/bytes died in the §4.7 unification. The EBNF gained the `ufixed(I, F)`

@@ -36,9 +36,9 @@ reads but cannot validate.
 
 For a 60 Hz gameplay packet where you decode the whole thing anyway, that trade
 runs strongly one way. For a memory-mapped asset you want to touch three fields
-of, it runs the other. schema's answer to *that* case is its second wire (see
-[WIRES.md](WIRES.md)), where storage is relocatable, memcpy-able and
-memory-mappable — but that is a separate encoding, not the gameplay one.
+of, it runs the other — and that case is deliberately not schema's job. schema
+serves the realtime wire; generated storage is relocatable and memcpy-able
+(see [WIRES.md](WIRES.md)), but the wire is one encoding with one purpose.
 
 ## Isn't this just Protobuf?
 
@@ -62,10 +62,11 @@ together, which is the normal case for a game client and its dedicated server,
 the tags were pure overhead and the protocol id is the honest statement of what
 was always true.
 
-schema does have an evolution-tolerant encoding for the data that genuinely
-outlives builds — config, assets, settings — where fields are identified by
-name hash, unknown fields skip and removed fields default. That is the table
-wire, and it is a different tool for a different job.
+That narrowness is the design, stated plainly: **schema is deliberately not
+an evolution system.** Hardcoded structs, one protocol id, same-or-refuse.
+Data that genuinely outlives builds and must survive schema drift wants an
+evolution-tolerant format, and Protobuf is a fine one — schema does not
+compete for that job.
 
 ## Isn't this just Cap'n Proto?
 
@@ -165,9 +166,9 @@ The protocol id changes, and peers on the old id will refuse the new one. That
 is the design: the id is a hash of the schema, so a changed format is a changed
 identity.
 
-Practically this means **client and server deploy together** for message-wire
-changes. If that is unacceptable for your deployment model, the message wire is
-the wrong tool and you want the table wire or Protobuf.
+Practically this means **client and server deploy together** for wire
+changes. If that is unacceptable for your deployment model, schema is the
+wrong tool and you want an evolution system like Protobuf.
 
 The id hashes a **wire shape projection**, not the source text, so an edit
 that moves no bytes does not move the id: a comment, a blank line, a renamed
@@ -226,10 +227,6 @@ maximum, enum values that are not variants, and reads that run past the end of
 the buffer all fail the read, and the same rules hold in all five languages
 because one compiler emitted all five.
 
-There is a deliberate exception: on the **table wire**, out-of-range values
-clamp and are counted in a report, because that data is meant to survive schema
-drift and refusing to load a config over one stale field would be worse.
-
 What it does *not* do: it is not a transport, so it does nothing about replay,
 amplification, rate limiting or authentication. Those belong to the layer
 below.
@@ -257,38 +254,32 @@ cost with no buyer. See
 
 ## Is everything supported in all five languages?
 
-**Yes.** Both wires — message and table — are generated for C, C++, C#, Go and
-Rust from one IR, and checked against each other in CI on every push. Every
-target's output is held to the same pinned goldens.
+**Yes.** The wire is generated for C, C++, C#, Go and Rust from one IR, and
+checked against each other in CI on every push. Every target's output is held
+to the same pinned goldens.
 
 C was the last to arrive and reached parity in v1.6.0: fixed point, 128-bit
-integers, objects and their quantize pair, message dispatch, and the table
-wire with its reflection descriptors.
-
-Rust reached table parity in v1.5.0 with the codecs, the reflection
-descriptors, and `#[repr(C)]` storage — which is what makes the relocatability
-the table wire promises actually true there rather than incidental.
+integers, objects and their quantize pair, and message dispatch. Rust's
+`#[repr(C)]` storage is what makes relocatability actually true there rather
+than incidental.
 
 ## What does the language NOT have?
 
 Worth knowing before you adopt rather than after:
 
-- **No `oneof` / discriminated union.** Branches are `if` on a bool already
-  written, so N mutually-exclusive payload shapes are N messages and your own
-  dispatch. Protobuf, FlatBuffers and Cap'n Proto all have unions.
 - **No maps.** Use a counted array of key/value pairs.
 - **No recursive types.** `type Node { children [..4]Node }` is rejected as a
   composition cycle — generated storage is by value, with no pointers, which is
   what makes it relocatable and memcpy-able.
-- **No optional / nullable**, except the honest version: a bool and a branch.
-- **No field-number pinning on the table wire** — identity is the field's name
-  hash, so renaming is wire-breaking. See
-  [WIRES.md](WIRES.md#renaming-a-table-field-changes-its-identity).
+- **No optional / nullable**, except the honest version: a bool and a branch,
+  or a `union` whose first variant is the absence.
+- **No schema evolution.** No field numbers, no unknown-field skipping, no
+  cross-version bridging — one protocol id, same-or-refuse, on purpose.
 - **No zero-copy access.** Reads decode into your struct.
 
 Some of these are scope (a game's packet does not need maps), some are
-consequences of relocatable storage (recursion), and some are just not built
-yet (`oneof`). The list is here so you can tell which of your
+consequences of relocatable storage (recursion), and one is the design's
+spine (evolution). The list is here so you can tell which of your
 requirements are unmet before you find out the hard way.
 
 ## Do I need the serialize runtimes?
