@@ -3,25 +3,11 @@
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
 // package example — protocol id 0xbc05d83a8135cdb9
-//
-// Storage members are PascalCase via the same mapping as the Go target, so
-// the checker's collision registry covers JS for free. Wire functions return
-// bool — the C++-style early-out. A schema validation failure (a wrong wire
-// constant, nonzero reserved bits, an out-of-contract write) returns false
-// WITHOUT latching; stream failures latch on stream.error — the runtime's own
-// sticky latch. Callers get bool always; error tells the two apart.
-//
-// Number storage for widths of 32 bits or fewer, BigInt for 64 and 128 —
-// the serialize.js value-domain seam. Checked/production comes from the
-// stream object; generated code never reads NODE_ENV.
 
 import { ReadTest, Test, WriteTest, ZeroTest } from "./Messages.js";
 
-// Scratch holders for the runtime's {value} refs (streams.js has no ref
-// parameters). Module scope is safe — JavaScript is single threaded per
-// realm and a holder is consumed in the same call that fills it, the
-// runtime's own FLOAT_SCRATCH argument; generated code never holds one
-// across a nested Write/Read call.
+// Scratch holders for the runtime's {value} refs — single threaded per
+// realm, always consumed in the same call that fills them.
 const NUMBER_SCRATCH = { value: 0 };
 const BIGINT_SCRATCH = { value: 0n };
 const BOOL_SCRATCH = { value: false };
@@ -84,8 +70,7 @@ export class ProbeHeader {
 export const ProbeHeaderMaxBits = 87;
 export const ProbeHeaderMaxBytes = 16;
 
-// ZeroProbeHeader resets value to the §5 ZERO form — all-zero storage; specified
-// defaults live in construction only and are NOT reapplied here.
+// The §5 zero form: all-zero storage; specified defaults live only in construction.
 export function ZeroProbeHeader(value) {
   value.Version = 0;
   value.ProbeId = 0n;
@@ -157,8 +142,7 @@ export class ProbeBits {
 export const ProbeBitsMaxBits = 202;
 export const ProbeBitsMaxBytes = 32;
 
-// ZeroProbeBits resets value to the §5 ZERO form — all-zero storage; specified
-// defaults live in construction only and are NOT reapplied here.
+// The §5 zero form: all-zero storage; specified defaults live only in construction.
 export function ZeroProbeBits(value) {
   value.Small = 0;
   value.Boundary = 0n;
@@ -180,7 +164,7 @@ export function WriteProbeBits(stream, value) {
   if (!stream.serializeBits64(BIGINT_SCRATCH, 64)) {
     return false;
   }
-  if (!Number.isInteger(value.Sensor) || value.Sensor < 0 || value.Sensor > 4294967295) { // out-of-contract writes are refused, not wrapped
+  if (!Number.isInteger(value.Sensor) || value.Sensor < 0 || value.Sensor > 4294967295) {
     return false;
   }
   NUMBER_SCRATCH.value = value.Sensor;
@@ -221,7 +205,7 @@ export function ReadProbeBits(stream, value) {
 // type ProbeSample
 export class ProbeSample {
   constructor() {
-    this.Active = true; // = true at construction; Zero* gives the §5 zero form
+    this.Active = true; // specified default at construction; Zero* gives the §5 zero form
     this.Orientation = 0; // compressed float [-180.0, 180.0] @ 0.01
     this.RawDelta = 0;
     this.BigDelta = 0n;
@@ -249,8 +233,7 @@ export class ProbeSample {
 export const ProbeSampleMaxBits = 276;
 export const ProbeSampleMaxBytes = 40;
 
-// ZeroProbeSample resets value to the §5 ZERO form — all-zero storage; specified
-// defaults live in construction only and are NOT reapplied here.
+// The §5 zero form: all-zero storage; specified defaults live only in construction.
 export function ZeroProbeSample(value) {
   value.Active = false;
   value.Orientation = 0;
@@ -305,7 +288,7 @@ export function WriteProbeSample(stream, value) {
       return false;
     }
   }
-  if (!Number.isInteger(value.SamplesCount) || value.SamplesCount < 1 || value.SamplesCount > 8) { // the count guards the loop (§6.3); out-of-contract writes are refused
+  if (!Number.isInteger(value.SamplesCount) || value.SamplesCount < 1 || value.SamplesCount > 8) { // the count guards the loop (§6.3)
     return false;
   }
   NUMBER_SCRATCH.value = ((value.SamplesCount >>> 0) - (1 >>> 0)) >>> 0;
@@ -390,8 +373,7 @@ export class ProbeRing {
 export const ProbeRingMaxBits = 16;
 export const ProbeRingMaxBytes = 8;
 
-// ZeroProbeRing resets value to the §5 ZERO form — all-zero storage; specified
-// defaults live in construction only and are NOT reapplied here.
+// The §5 zero form: all-zero storage; specified defaults live only in construction.
 export function ZeroProbeRing(value) {
   value.Radius = 0;
 }
@@ -425,15 +407,14 @@ export class ProbeSlab {
 export const ProbeSlabMaxBits = 15;
 export const ProbeSlabMaxBytes = 8;
 
-// ZeroProbeSlab resets value to the §5 ZERO form — all-zero storage; specified
-// defaults live in construction only and are NOT reapplied here.
+// The §5 zero form: all-zero storage; specified defaults live only in construction.
 export function ZeroProbeSlab(value) {
   value.Width = 0;
   value.Height = 0;
 }
 
 export function WriteProbeSlab(stream, value) {
-  if (!Number.isInteger(value.Width) || value.Width < 0 || value.Width > 100) { // out-of-contract writes are refused, not wrapped
+  if (!Number.isInteger(value.Width) || value.Width < 0 || value.Width > 100) {
     return false;
   }
   NUMBER_SCRATCH.value = value.Width;
@@ -540,8 +521,7 @@ export class ProbeCollider {
 export const ProbeColliderMaxBits = 82;
 export const ProbeColliderMaxBytes = 16;
 
-// ZeroProbeCollider resets value to the §5 ZERO form — all-zero storage; specified
-// defaults live in construction only and are NOT reapplied here.
+// The §5 zero form: all-zero storage; specified defaults live only in construction.
 export function ZeroProbeCollider(value) {
   value.Armor = 0;
   ZeroProbeShape(value.Shape);
@@ -563,7 +543,7 @@ export function WriteProbeCollider(stream, value) {
   if (!WriteProbeShape(stream, value.Backup)) {
     return false;
   }
-  if (!Number.isInteger(value.ExtrasCount) || value.ExtrasCount < 0 || value.ExtrasCount > 2) { // the count guards the loop (§6.3); out-of-contract writes are refused
+  if (!Number.isInteger(value.ExtrasCount) || value.ExtrasCount < 0 || value.ExtrasCount > 2) { // the count guards the loop (§6.3)
     return false;
   }
   NUMBER_SCRATCH.value = value.ExtrasCount;
@@ -604,8 +584,8 @@ export function ReadProbeCollider(stream, value) {
 // type ProbeConfig
 export class ProbeConfig {
   constructor() {
-    this.Retries = -1; // = -1 at construction; Zero* gives the §5 zero form
-    this.Preferred = Weapon.Railgun; // = Weapon.Railgun at construction; Zero* gives the §5 zero form
+    this.Retries = -1; // specified default at construction; Zero* gives the §5 zero form
+    this.Preferred = Weapon.Railgun; // specified default at construction; Zero* gives the §5 zero form
   }
 }
 
@@ -614,8 +594,7 @@ export class ProbeConfig {
 export const ProbeConfigMaxBits = 36;
 export const ProbeConfigMaxBytes = 8;
 
-// ZeroProbeConfig resets value to the §5 ZERO form — all-zero storage; specified
-// defaults live in construction only and are NOT reapplied here.
+// The §5 zero form: all-zero storage; specified defaults live only in construction.
 export function ZeroProbeConfig(value) {
   value.Retries = 0;
   value.Preferred = Weapon.None;
@@ -661,8 +640,7 @@ export class ProbeArray {
 export const ProbeArrayMaxBits = 588;
 export const ProbeArrayMaxBytes = 80;
 
-// ZeroProbeArray resets value to the §5 ZERO form — all-zero storage; specified
-// defaults live in construction only and are NOT reapplied here.
+// The §5 zero form: all-zero storage; specified defaults live only in construction.
 export function ZeroProbeArray(value) {
   for (let i = 0; i < 2; i++) {
     ZeroProbeSample(value.Samples[i]);
@@ -708,8 +686,7 @@ export class ProbeReport {
 export const ProbeReportMaxBits = 141;
 export const ProbeReportMaxBytes = 24;
 
-// ZeroProbeReport resets value to the §5 ZERO form — all-zero storage; specified
-// defaults live in construction only and are NOT reapplied here.
+// The §5 zero form: all-zero storage; specified defaults live only in construction.
 export function ZeroProbeReport(value) {
   ZeroProbeHeader(value.Header);
   value.Flags = 0n;
@@ -784,8 +761,7 @@ export class TestData {
 export const TestDataMaxBits = 2735;
 export const TestDataMaxBytes = 344;
 
-// ZeroTestData resets value to the §5 ZERO form — all-zero storage; specified
-// defaults live in construction only and are NOT reapplied here.
+// The §5 zero form: all-zero storage; specified defaults live only in construction.
 export function ZeroTestData(value) {
   value.A = 0;
   value.B = 0;
@@ -813,21 +789,21 @@ export function ZeroTestData(value) {
 }
 
 export function WriteTestData(stream, value) {
-  if (!Number.isInteger(value.A) || value.A < -100 || value.A > 100) { // out-of-contract writes are refused, not wrapped
+  if (!Number.isInteger(value.A) || value.A < -100 || value.A > 100) {
     return false;
   }
   NUMBER_SCRATCH.value = ((value.A >>> 0) - (-100 >>> 0)) >>> 0;
   if (!stream.serializeBits(NUMBER_SCRATCH, 8)) {
     return false;
   }
-  if (!Number.isInteger(value.B) || value.B < -100 || value.B > 100) { // out-of-contract writes are refused, not wrapped
+  if (!Number.isInteger(value.B) || value.B < -100 || value.B > 100) {
     return false;
   }
   NUMBER_SCRATCH.value = ((value.B >>> 0) - (-100 >>> 0)) >>> 0;
   if (!stream.serializeBits(NUMBER_SCRATCH, 8)) {
     return false;
   }
-  if (!Number.isInteger(value.C) || value.C < -100 || value.C > 150) { // out-of-contract writes are refused, not wrapped
+  if (!Number.isInteger(value.C) || value.C < -100 || value.C > 150) {
     return false;
   }
   NUMBER_SCRATCH.value = ((value.C >>> 0) - (-100 >>> 0)) >>> 0;
@@ -850,7 +826,7 @@ export function WriteTestData(stream, value) {
   if (!stream.serializeBool(BOOL_SCRATCH)) {
     return false;
   }
-  if (!Number.isInteger(value.ItemsCount) || value.ItemsCount < 0 || value.ItemsCount > 16) { // the count guards the loop (§6.3); out-of-contract writes are refused
+  if (!Number.isInteger(value.ItemsCount) || value.ItemsCount < 0 || value.ItemsCount > 16) { // the count guards the loop (§6.3)
     return false;
   }
   NUMBER_SCRATCH.value = value.ItemsCount;
@@ -858,7 +834,7 @@ export function WriteTestData(stream, value) {
     return false;
   }
   for (let i = 0; i < value.ItemsCount; i++) {
-    if (!Number.isInteger(value.Items[i]) || value.Items[i] < 0 || value.Items[i] > 255) { // out-of-contract writes are refused, not wrapped
+    if (!Number.isInteger(value.Items[i]) || value.Items[i] < 0 || value.Items[i] > 255) {
       return false;
     }
     NUMBER_SCRATCH.value = value.Items[i];
@@ -906,7 +882,7 @@ export function WriteTestData(stream, value) {
   if (!stream.serializeBits64(BIGINT_SCRATCH, 64)) {
     return false;
   }
-  if (value.Int64Range < -1000000000000n || value.Int64Range > 1000000000000n) { // out-of-contract writes are refused, not wrapped
+  if (value.Int64Range < -1000000000000n || value.Int64Range > 1000000000000n) {
     return false;
   }
   BIGINT_SCRATCH.value = BigInt.asUintN(64, value.Int64Range - -1000000000000n);
@@ -1049,8 +1025,7 @@ export class CompressedProbe {
 export const CompressedProbeMaxBits = 24;
 export const CompressedProbeMaxBytes = 8;
 
-// ZeroCompressedProbe resets value to the §5 ZERO form — all-zero storage; specified
-// defaults live in construction only and are NOT reapplied here.
+// The §5 zero form: all-zero storage; specified defaults live only in construction.
 export function ZeroCompressedProbe(value) {
   value.Boundary = 0;
   value.Offset = 0;

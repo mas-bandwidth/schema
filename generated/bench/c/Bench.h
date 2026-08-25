@@ -8,16 +8,6 @@
 #define SCHEMA_BENCH_BENCH_H
 
 #include <stdint.h>
-#include <string.h>   /* memset — the zero form (SPEC §4.2) */
-#include <math.h>     /* floor — the quantize pair */
-
-#ifndef SCHEMA_UNUSED
-#if defined(__GNUC__) || defined(__clang__)
-#define SCHEMA_UNUSED __attribute__((unused))
-#else
-#define SCHEMA_UNUSED
-#endif
-#endif
 
 #ifdef __cplusplus
 extern "C" {
@@ -63,7 +53,7 @@ typedef struct BenchInts {
 } BenchInts;
 
 #define BENCH_INTS_MAX_BITS 110   /* longest wire path; align pads at worst case (SPEC §6.1) */
-#define BENCH_INTS_MAX_BYTES 16  /* rounded up to the 8-byte write-buffer granularity; a READ buffer's allocation must extend at least 8 bytes past the data — serialize.c loads 64-bit windows */
+#define BENCH_INTS_MAX_BYTES 16  /* 8-byte write granularity; read slack per the contract above */
 
 
 /* type BenchBits */
@@ -79,7 +69,7 @@ typedef struct BenchBits {
 } BenchBits;
 
 #define BENCH_BITS_MAX_BITS 156   /* longest wire path; align pads at worst case (SPEC §6.1) */
-#define BENCH_BITS_MAX_BYTES 24  /* rounded up to the 8-byte write-buffer granularity; a READ buffer's allocation must extend at least 8 bytes past the data — serialize.c loads 64-bit windows */
+#define BENCH_BITS_MAX_BYTES 24  /* 8-byte write granularity; read slack per the contract above */
 
 
 /* type BenchMixed */
@@ -98,7 +88,7 @@ typedef struct BenchMixed {
 } BenchMixed;
 
 #define BENCH_MIXED_MAX_BITS 168   /* longest wire path; align pads at worst case (SPEC §6.1) */
-#define BENCH_MIXED_MAX_BYTES 24  /* rounded up to the 8-byte write-buffer granularity; a READ buffer's allocation must extend at least 8 bytes past the data — serialize.c loads 64-bit windows */
+#define BENCH_MIXED_MAX_BYTES 24  /* 8-byte write granularity; read slack per the contract above */
 
 #ifdef __cplusplus
 }

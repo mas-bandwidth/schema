@@ -10,8 +10,7 @@ import (
 	"github.com/mas-bandwidth/serialize.go"
 )
 
-// type Vec3 [vec3] — the tag is user-chosen and inert in v1; the delta pass
-// claims tags and assigns actions (SPEC §4.2, Type tags)
+// type Vec3 [vec3] — tags are user-chosen and inert in v1 (SPEC §4.2, Type tags)
 type Vec3 struct {
 	X float64
 	Y float64
@@ -37,8 +36,7 @@ func ReadVec3(stream *serialize.ReadStream, value *Vec3) error {
 	return stream.Err()
 }
 
-// type Quat [quat4] — the tag is user-chosen and inert in v1; the delta pass
-// claims tags and assigns actions (SPEC §4.2, Type tags)
+// type Quat [quat4] — tags are user-chosen and inert in v1 (SPEC §4.2, Type tags)
 type Quat struct {
 	X float64
 	Y float64
@@ -79,7 +77,7 @@ const HandleMaxBits = 22
 const HandleMaxBytes = 8
 
 func WriteHandle(stream *serialize.WriteStream, value *Handle) error {
-	if value.ObjectId < 0 || value.ObjectId > MaxObjects-1 { // the runtime range refusal, folded (SPEC §5)
+	if value.ObjectId < 0 || value.ObjectId > MaxObjects-1 {
 		return serialize.ErrValueOutOfRange
 	}
 	{
@@ -116,21 +114,21 @@ const QuantizedPositionMaxBits = 75
 const QuantizedPositionMaxBytes = 16
 
 func WriteQuantizedPosition(stream *serialize.WriteStream, value *QuantizedPosition) error {
-	if value.X < -MaxPositionUnits || value.X > MaxPositionUnits { // the runtime range refusal, folded (SPEC §5)
+	if value.X < -MaxPositionUnits || value.X > MaxPositionUnits {
 		return serialize.ErrValueOutOfRange
 	}
 	{
 		offsetValue := uint32(value.X - (-MaxPositionUnits))
 		stream.SerializeBits(&offsetValue, 25)
 	}
-	if value.Y < -MaxPositionUnits || value.Y > MaxPositionUnits { // the runtime range refusal, folded (SPEC §5)
+	if value.Y < -MaxPositionUnits || value.Y > MaxPositionUnits {
 		return serialize.ErrValueOutOfRange
 	}
 	{
 		offsetValue := uint32(value.Y - (-MaxPositionUnits))
 		stream.SerializeBits(&offsetValue, 25)
 	}
-	if value.Z < -MaxPositionUnits || value.Z > MaxPositionUnits { // the runtime range refusal, folded (SPEC §5)
+	if value.Z < -MaxPositionUnits || value.Z > MaxPositionUnits {
 		return serialize.ErrValueOutOfRange
 	}
 	{
@@ -160,21 +158,21 @@ const QuantizedVelocityMaxBits = 69
 const QuantizedVelocityMaxBytes = 16
 
 func WriteQuantizedVelocity(stream *serialize.WriteStream, value *QuantizedVelocity) error {
-	if value.X < -MaxVelocityUnits || value.X > MaxVelocityUnits { // the runtime range refusal, folded (SPEC §5)
+	if value.X < -MaxVelocityUnits || value.X > MaxVelocityUnits {
 		return serialize.ErrValueOutOfRange
 	}
 	{
 		offsetValue := uint32(value.X - (-MaxVelocityUnits))
 		stream.SerializeBits(&offsetValue, 23)
 	}
-	if value.Y < -MaxVelocityUnits || value.Y > MaxVelocityUnits { // the runtime range refusal, folded (SPEC §5)
+	if value.Y < -MaxVelocityUnits || value.Y > MaxVelocityUnits {
 		return serialize.ErrValueOutOfRange
 	}
 	{
 		offsetValue := uint32(value.Y - (-MaxVelocityUnits))
 		stream.SerializeBits(&offsetValue, 23)
 	}
-	if value.Z < -MaxVelocityUnits || value.Z > MaxVelocityUnits { // the runtime range refusal, folded (SPEC §5)
+	if value.Z < -MaxVelocityUnits || value.Z > MaxVelocityUnits {
 		return serialize.ErrValueOutOfRange
 	}
 	{
@@ -207,7 +205,7 @@ const QuantizedRotationMaxBytes = 8
 func WriteQuantizedRotation(stream *serialize.WriteStream, value *QuantizedRotation) error {
 	{
 		rangeValue := int32(value.X)
-		if rangeValue < -RotationUnits || rangeValue > RotationUnits { // the runtime range refusal, folded (SPEC §5)
+		if rangeValue < -RotationUnits || rangeValue > RotationUnits {
 			return serialize.ErrValueOutOfRange
 		}
 		{
@@ -217,7 +215,7 @@ func WriteQuantizedRotation(stream *serialize.WriteStream, value *QuantizedRotat
 	}
 	{
 		rangeValue := int32(value.Y)
-		if rangeValue < -RotationUnits || rangeValue > RotationUnits { // the runtime range refusal, folded (SPEC §5)
+		if rangeValue < -RotationUnits || rangeValue > RotationUnits {
 			return serialize.ErrValueOutOfRange
 		}
 		{
@@ -227,7 +225,7 @@ func WriteQuantizedRotation(stream *serialize.WriteStream, value *QuantizedRotat
 	}
 	{
 		rangeValue := int32(value.Z)
-		if rangeValue < -RotationUnits || rangeValue > RotationUnits { // the runtime range refusal, folded (SPEC §5)
+		if rangeValue < -RotationUnits || rangeValue > RotationUnits {
 			return serialize.ErrValueOutOfRange
 		}
 		{
@@ -237,7 +235,7 @@ func WriteQuantizedRotation(stream *serialize.WriteStream, value *QuantizedRotat
 	}
 	{
 		rangeValue := int32(value.W)
-		if rangeValue < -RotationUnits || rangeValue > RotationUnits { // the runtime range refusal, folded (SPEC §5)
+		if rangeValue < -RotationUnits || rangeValue > RotationUnits {
 			return serialize.ErrValueOutOfRange
 		}
 		{
@@ -407,7 +405,7 @@ func WriteInputPacket(stream *serialize.WriteStream, value *InputPacket) error {
 	}
 	stream.SerializeBits64(&value.CurrentFrame, 64)
 	stream.SerializeBits64(&value.StartFrame, 64)
-	if value.InputsCount < 0 || value.InputsCount > MaxInputsPerPacket { // the runtime range refusal, folded (SPEC §5)
+	if value.InputsCount < 0 || value.InputsCount > MaxInputsPerPacket {
 		return serialize.ErrValueOutOfRange
 	}
 	{
@@ -471,7 +469,7 @@ const ShipCreateMaxBytes = 32
 func WriteShipCreate(stream *serialize.WriteStream, value *ShipCreate) error {
 	{
 		enumValue := int32(value.ShipType)
-		if enumValue < 0 || enumValue > 5 { // the runtime range refusal, folded (SPEC §5)
+		if enumValue < 0 || enumValue > 5 {
 			return serialize.ErrValueOutOfRange
 		}
 		{
@@ -500,7 +498,7 @@ func WriteShipCreate(stream *serialize.WriteStream, value *ShipCreate) error {
 	}
 	{
 		enumValue := int32(value.Team)
-		if enumValue < 0 || enumValue > 2 { // the runtime range refusal, folded (SPEC §5)
+		if enumValue < 0 || enumValue > 2 {
 			return serialize.ErrValueOutOfRange
 		}
 		{
@@ -510,7 +508,7 @@ func WriteShipCreate(stream *serialize.WriteStream, value *ShipCreate) error {
 	}
 	{
 		rangeValue := int32(value.Health)
-		if rangeValue < 0 || rangeValue > MaxHealth { // the runtime range refusal, folded (SPEC §5)
+		if rangeValue < 0 || rangeValue > MaxHealth {
 			return serialize.ErrValueOutOfRange
 		}
 		{
@@ -520,7 +518,7 @@ func WriteShipCreate(stream *serialize.WriteStream, value *ShipCreate) error {
 	}
 	{
 		rangeValue := int32(value.Thrust)
-		if rangeValue < 0 || rangeValue > 100 { // the runtime range refusal, folded (SPEC §5)
+		if rangeValue < 0 || rangeValue > 100 {
 			return serialize.ErrValueOutOfRange
 		}
 		{
@@ -530,7 +528,7 @@ func WriteShipCreate(stream *serialize.WriteStream, value *ShipCreate) error {
 	}
 	{
 		enumValue := int32(value.Pending)
-		if enumValue < 0 || enumValue > 0 { // the runtime range refusal, folded (SPEC §5)
+		if enumValue < 0 || enumValue > 0 {
 			return serialize.ErrValueOutOfRange
 		}
 	}
@@ -597,14 +595,14 @@ const ExpressionProbeMaxBits = 16
 const ExpressionProbeMaxBytes = 8
 
 func WriteExpressionProbe(stream *serialize.WriteStream, value *ExpressionProbe) error {
-	if value.HardpointIndex < 0 || value.HardpointIndex > (ShipMaxLasers+ShipMaxMissiles)-1 { // the runtime range refusal, folded (SPEC §5)
+	if value.HardpointIndex < 0 || value.HardpointIndex > (ShipMaxLasers+ShipMaxMissiles)-1 {
 		return serialize.ErrValueOutOfRange
 	}
 	{
 		offsetValue := uint32(value.HardpointIndex)
 		stream.SerializeBits(&offsetValue, 5)
 	}
-	if value.SpinRate < -(-RotationUnits) || value.SpinRate > RotationUnits*2 { // the runtime range refusal, folded (SPEC §5)
+	if value.SpinRate < -(-RotationUnits) || value.SpinRate > RotationUnits*2 {
 		return serialize.ErrValueOutOfRange
 	}
 	{
@@ -649,14 +647,14 @@ const ExtremeProbeMaxBits = 320
 const ExtremeProbeMaxBytes = 40
 
 func WriteExtremeProbe(stream *serialize.WriteStream, value *ExtremeProbe) error {
-	if value.FloorBound < -9223372036854775808 || value.FloorBound > 100 { // the runtime range refusal, folded (SPEC §5)
+	if value.FloorBound < -9223372036854775808 || value.FloorBound > 100 {
 		return serialize.ErrValueOutOfRange
 	}
 	{
 		offsetValue := uint64(value.FloorBound - (-9223372036854775808))
 		stream.SerializeBits64(&offsetValue, 64)
 	}
-	if value.DoubledFloor < -(-FloorLimit) || value.DoubledFloor > 100 { // the runtime range refusal, folded (SPEC §5)
+	if value.DoubledFloor < -(-FloorLimit) || value.DoubledFloor > 100 {
 		return serialize.ErrValueOutOfRange
 	}
 	{
@@ -725,7 +723,7 @@ const ExtremeRowMaxBits = 256
 const ExtremeRowMaxBytes = 32
 
 func WriteExtremeRow(stream *serialize.WriteStream, value *ExtremeRow) error {
-	if value.ClampedFloor < -9223372036854775808 || value.ClampedFloor > 100 { // the runtime range refusal, folded (SPEC §5)
+	if value.ClampedFloor < -9223372036854775808 || value.ClampedFloor > 100 {
 		return serialize.ErrValueOutOfRange
 	}
 	{

@@ -164,7 +164,7 @@ func WriteUnsignedProbe(stream *serialize.WriteStream, value *UnsignedProbe) err
 			stream.SerializeFixed64(&fixedValue, 16, 16, 0, 16)
 		}
 	}
-	if uint64(value.Locked) != 196608 { // the runtime range refusal, folded (SPEC §5)
+	if uint64(value.Locked) != 196608 {
 		return serialize.ErrValueOutOfRange
 	}
 	{
@@ -284,7 +284,7 @@ const LudicrousStateMaxBytes = 152
 func WriteLudicrousState(stream *serialize.WriteStream, value *LudicrousState) error {
 	{
 		enumValue := int32(value.Mode)
-		if enumValue < 0 || enumValue > 3 { // the runtime range refusal, folded (SPEC §5)
+		if enumValue < 0 || enumValue > 3 {
 			return serialize.ErrValueOutOfRange
 		}
 		{
@@ -298,7 +298,7 @@ func WriteLudicrousState(stream *serialize.WriteStream, value *LudicrousState) e
 	if err := WriteWideProbe(stream, &value.Wide); err != nil {
 		return err
 	}
-	if value.KeysCount < 0 || value.KeysCount > 4 { // the runtime range refusal, folded (SPEC §5)
+	if value.KeysCount < 0 || value.KeysCount > 4 {
 		return serialize.ErrValueOutOfRange
 	}
 	{
@@ -360,13 +360,13 @@ const DegenerateProbeMaxBits = 8
 const DegenerateProbeMaxBytes = 8
 
 func WriteDegenerateProbe(stream *serialize.WriteStream, value *DegenerateProbe) error {
-	if int64(value.LockedFixed) != -196608 { // the runtime range refusal, folded (SPEC §5)
+	if int64(value.LockedFixed) != -196608 {
 		return serialize.ErrValueOutOfRange
 	}
-	if value.LockedInt < 7 || value.LockedInt > 7 { // the runtime range refusal, folded (SPEC §5)
+	if value.LockedInt < 7 || value.LockedInt > 7 {
 		return serialize.ErrValueOutOfRange
 	}
-	if value.LockedWide != serialize.Int128From64(-12345678901234) { // the runtime range refusal, folded (SPEC §5)
+	if value.LockedWide != serialize.Int128From64(-12345678901234) {
 		return serialize.ErrValueOutOfRange
 	}
 	{
@@ -388,8 +388,7 @@ func ReadDegenerateProbe(stream *serialize.ReadStream, value *DegenerateProbe) e
 	return stream.Err()
 }
 
-// type FixedVec [vec3] — the tag is user-chosen and inert in v1; the delta pass
-// claims tags and assigns actions (SPEC §4.2, Type tags)
+// type FixedVec [vec3] — tags are user-chosen and inert in v1 (SPEC §4.2, Type tags)
 type FixedVec struct {
 	X int64 // wire [-100000, 100000]
 	Y int64 // wire [-100000, 100000]
@@ -415,8 +414,7 @@ func ReadFixedVec(stream *serialize.ReadStream, value *FixedVec) error {
 	return stream.Err()
 }
 
-// type FixedQuat [quat4] — the tag is user-chosen and inert in v1; the delta pass
-// claims tags and assigns actions (SPEC §4.2, Type tags)
+// type FixedQuat [quat4] — tags are user-chosen and inert in v1 (SPEC §4.2, Type tags)
 type FixedQuat struct {
 	X int32 // wire [-1, 1]
 	Y int32 // wire [-1, 1]
@@ -489,7 +487,7 @@ type BodyState struct {
 	Position FixedVec
 	Rotation FixedQuat
 	Velocity FixedVec
-	Spin     float64 //  | local — no wire
+	Spin     float64 // | local — no wire
 }
 
 // BodyData_Deep — every non- | local field, deep encodings: full state for
@@ -651,21 +649,21 @@ const NarrowBodyData_ShallowMaxBits = 228
 const NarrowBodyData_ShallowMaxBytes = 32 // rounded up to the 8-byte write-buffer granularity
 
 func WriteNarrowBodyData_Shallow(stream *serialize.WriteStream, value *NarrowBodyData_Shallow) error {
-	if value.PositionX < -25600000 || value.PositionX > 25600000 { // the runtime range refusal, folded (SPEC §5)
+	if value.PositionX < -25600000 || value.PositionX > 25600000 {
 		return serialize.ErrValueOutOfRange
 	}
 	{
 		offsetValue := uint32(value.PositionX - (-25600000))
 		stream.SerializeBits(&offsetValue, 26)
 	}
-	if value.PositionY < -25600000 || value.PositionY > 25600000 { // the runtime range refusal, folded (SPEC §5)
+	if value.PositionY < -25600000 || value.PositionY > 25600000 {
 		return serialize.ErrValueOutOfRange
 	}
 	{
 		offsetValue := uint32(value.PositionY - (-25600000))
 		stream.SerializeBits(&offsetValue, 26)
 	}
-	if value.PositionZ < -25600000 || value.PositionZ > 25600000 { // the runtime range refusal, folded (SPEC §5)
+	if value.PositionZ < -25600000 || value.PositionZ > 25600000 {
 		return serialize.ErrValueOutOfRange
 	}
 	{
@@ -674,7 +672,7 @@ func WriteNarrowBodyData_Shallow(stream *serialize.WriteStream, value *NarrowBod
 	}
 	{
 		componentValue := int32(value.RotationX)
-		if componentValue < -1024 || componentValue > 1024 { // the runtime range refusal, folded (SPEC §5)
+		if componentValue < -1024 || componentValue > 1024 {
 			return serialize.ErrValueOutOfRange
 		}
 		{
@@ -684,7 +682,7 @@ func WriteNarrowBodyData_Shallow(stream *serialize.WriteStream, value *NarrowBod
 	}
 	{
 		componentValue := int32(value.RotationY)
-		if componentValue < -1024 || componentValue > 1024 { // the runtime range refusal, folded (SPEC §5)
+		if componentValue < -1024 || componentValue > 1024 {
 			return serialize.ErrValueOutOfRange
 		}
 		{
@@ -694,7 +692,7 @@ func WriteNarrowBodyData_Shallow(stream *serialize.WriteStream, value *NarrowBod
 	}
 	{
 		componentValue := int32(value.RotationZ)
-		if componentValue < -1024 || componentValue > 1024 { // the runtime range refusal, folded (SPEC §5)
+		if componentValue < -1024 || componentValue > 1024 {
 			return serialize.ErrValueOutOfRange
 		}
 		{
@@ -704,7 +702,7 @@ func WriteNarrowBodyData_Shallow(stream *serialize.WriteStream, value *NarrowBod
 	}
 	{
 		componentValue := int32(value.RotationW)
-		if componentValue < -1024 || componentValue > 1024 { // the runtime range refusal, folded (SPEC §5)
+		if componentValue < -1024 || componentValue > 1024 {
 			return serialize.ErrValueOutOfRange
 		}
 		{
@@ -823,7 +821,7 @@ func UnquantizeNarrowBody(input *NarrowBodyData_Shallow, output *NarrowBodyData_
 // valid wire value meaning *no message* — the stream terminator (SPEC §4.8).
 func WriteMessageType(stream *serialize.WriteStream, value MessageType) error {
 	tagValue := int32(value)
-	if tagValue < 0 || tagValue > 1 { // the runtime range refusal, folded (SPEC §5)
+	if tagValue < 0 || tagValue > 1 {
 		return serialize.ErrValueOutOfRange
 	}
 	{
@@ -901,7 +899,7 @@ func ReadMessage(stream *serialize.ReadStream, storage *MessageStorage) (Message
 // null — the sentinel the surveyed baseline streams terminate with (SPEC §4.8).
 func WriteObjectType(stream *serialize.WriteStream, value ObjectType) error {
 	tagValue := int32(value)
-	if tagValue < 0 || tagValue > 2 { // the runtime range refusal, folded (SPEC §5)
+	if tagValue < 0 || tagValue > 2 {
 		return serialize.ErrValueOutOfRange
 	}
 	{

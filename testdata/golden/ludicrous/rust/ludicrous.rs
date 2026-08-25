@@ -75,13 +75,7 @@ impl DriveMode {
 
 /// Debug/log name for any `DriveMode` value, out-of-set included.
 pub fn enum_name_drive_mode(value: DriveMode) -> &'static str {
-    enum_name_drive_mode_dyn(value.0 as u64)
-}
-
-/// As [`enum_name_drive_mode`], over a raw wire value — the form the table
-/// reflection descriptors hold.
-pub fn enum_name_drive_mode_dyn(value: u64) -> &'static str {
-    match value {
+    match value.0 {
         0 => "None",
         1 => "Cruise",
         2 => "Warp",
@@ -121,28 +115,28 @@ pub const FIXED_PROBE_MAX_BYTES: usize = 24;
 
 #[inline(always)]
 pub fn write_fixed_probe(stream: &mut WriteStream<'_>, value: &FixedProbe) -> Result {
-    if value.angle < -11796480 || value.angle > 11796480 { // out-of-contract writes are refused, not wrapped (raw scaled domain)
+    if value.angle < -11796480 || value.angle > 11796480 {
         return Err(Error::Stream(serialize::Error::ValueOutOfRange));
     }
     {
         let mut fixed_value = value.angle;
         stream.serialize_fixed(&mut fixed_value, 16, 16, -180, 180)?;
     }
-    if value.position < -1966080000 || value.position > 1966080000 { // out-of-contract writes are refused, not wrapped (raw scaled domain)
+    if value.position < -1966080000 || value.position > 1966080000 {
         return Err(Error::Stream(serialize::Error::ValueOutOfRange));
     }
     {
         let mut fixed_value = value.position;
         stream.serialize_fixed(&mut fixed_value, 48, 16, -MAX_WORLD_UNITS, MAX_WORLD_UNITS)?;
     }
-    if value.reach < -65536000000 || value.reach > 65536000000 { // out-of-contract writes are refused, not wrapped (raw scaled domain)
+    if value.reach < -65536000000 || value.reach > 65536000000 {
         return Err(Error::Stream(serialize::Error::ValueOutOfRange));
     }
     {
         let mut fixed_value = value.reach;
         stream.serialize_fixed(&mut fixed_value, 112, 16, -1000000, 1000000)?;
     }
-    if value.ticks < 0 || value.ticks > 1000000 { // out-of-contract writes are refused, not wrapped (raw scaled domain)
+    if value.ticks < 0 || value.ticks > 1000000 {
         return Err(Error::Stream(serialize::Error::ValueOutOfRange));
     }
     {
@@ -150,7 +144,7 @@ pub fn write_fixed_probe(stream: &mut WriteStream<'_>, value: &FixedProbe) -> Re
         stream.serialize_fixed(&mut fixed_value, 32, 0, 0, 1000000)?;
     }
     for i in 0..2 {
-        if value.samples[i] < -524288 || value.samples[i] > 524288 { // out-of-contract writes are refused, not wrapped (raw scaled domain)
+        if value.samples[i] < -524288 || value.samples[i] > 524288 {
             return Err(Error::Stream(serialize::Error::ValueOutOfRange));
         }
         {
@@ -208,28 +202,28 @@ pub const UNSIGNED_PROBE_MAX_BYTES: usize = 32;
 
 #[inline(always)]
 pub fn write_unsigned_probe(stream: &mut WriteStream<'_>, value: &UnsignedProbe) -> Result {
-    if value.angle > 23592960 { // out-of-contract writes are refused, not wrapped (raw scaled domain)
+    if value.angle > 23592960 {
         return Err(Error::Stream(serialize::Error::ValueOutOfRange));
     }
     {
         let mut fixed_value = value.angle;
         stream.serialize_fixed(&mut fixed_value, 16, 16, 0, 360)?;
     }
-    if value.span > 18446744073709486080 { // out-of-contract writes are refused, not wrapped (raw scaled domain)
+    if value.span > 18446744073709486080 {
         return Err(Error::Stream(serialize::Error::ValueOutOfRange));
     }
     {
         let mut fixed_value = value.span;
         stream.serialize_fixed(&mut fixed_value, 48, 16, 0, 281474976710655)?;
     }
-    if value.reach > 131072000000 { // out-of-contract writes are refused, not wrapped (raw scaled domain)
+    if value.reach > 131072000000 {
         return Err(Error::Stream(serialize::Error::ValueOutOfRange));
     }
     {
         let mut fixed_value = value.reach;
         stream.serialize_fixed(&mut fixed_value, 112, 16, 0, 2000000)?;
     }
-    if value.ticks > 1000000 { // out-of-contract writes are refused, not wrapped (raw scaled domain)
+    if value.ticks > 1000000 {
         return Err(Error::Stream(serialize::Error::ValueOutOfRange));
     }
     {
@@ -237,7 +231,7 @@ pub fn write_unsigned_probe(stream: &mut WriteStream<'_>, value: &UnsignedProbe)
         stream.serialize_fixed(&mut fixed_value, 32, 0, 0, 1000000)?;
     }
     for i in 0..2 {
-        if value.samples[i] > 1048576 { // out-of-contract writes are refused, not wrapped (raw scaled domain)
+        if value.samples[i] > 1048576 {
             return Err(Error::Stream(serialize::Error::ValueOutOfRange));
         }
         {
@@ -245,7 +239,7 @@ pub fn write_unsigned_probe(stream: &mut WriteStream<'_>, value: &UnsignedProbe)
             stream.serialize_fixed(&mut fixed_value, 16, 16, 0, 16)?;
         }
     }
-    if value.locked < 196608 || value.locked > 196608 { // out-of-contract writes are refused, not wrapped (raw scaled domain)
+    if value.locked < 196608 || value.locked > 196608 {
         return Err(Error::Stream(serialize::Error::ValueOutOfRange));
     }
     {
@@ -320,21 +314,21 @@ pub fn write_wide_probe(stream: &mut WriteStream<'_>, value: &WideProbe) -> Resu
         let mut raw_value = value.entity_id;
         stream.serialize_u128(&mut raw_value)?;
     }
-    if value.energy < -5000000000 || value.energy > 5000000000 { // out-of-contract writes are refused, not wrapped
+    if value.energy < -5000000000 || value.energy > 5000000000 {
         return Err(Error::Stream(serialize::Error::ValueOutOfRange));
     }
     {
         let mut range_value = value.energy;
         stream.serialize_int128(&mut range_value, -5000000000, 5000000000)?;
     }
-    if value.flux < -1267650600228229401496703205376 || value.flux > 1267650600228229401496703205376 { // out-of-contract writes are refused, not wrapped
+    if value.flux < -1267650600228229401496703205376 || value.flux > 1267650600228229401496703205376 {
         return Err(Error::Stream(serialize::Error::ValueOutOfRange));
     }
     {
         let mut range_value = value.flux;
         stream.serialize_int128(&mut range_value, -1267650600228229401496703205376, 1267650600228229401496703205376)?;
     }
-    if value.bias < -1000 || value.bias > 1000 { // out-of-contract writes are refused, not wrapped
+    if value.bias < -1000 || value.bias > 1000 {
         return Err(Error::Stream(serialize::Error::ValueOutOfRange));
     }
     {
@@ -416,7 +410,7 @@ pub fn write_ludicrous_state(stream: &mut WriteStream<'_>, value: &LudicrousStat
     }
     write_fixed_probe(stream, &value.probe)?;
     write_wide_probe(stream, &value.wide)?;
-    if value.keys_count < 0 || value.keys_count > 4 { // refused, not wrapped: the runtime's write side only debug_asserts
+    if value.keys_count < 0 || value.keys_count > 4 {
         return Err(Error::Stream(serialize::Error::ValueOutOfRange));
     }
     {
@@ -493,13 +487,13 @@ pub const DEGENERATE_PROBE_MAX_BYTES: usize = 8;
 
 #[inline(always)]
 pub fn write_degenerate_probe(stream: &mut WriteStream<'_>, value: &DegenerateProbe) -> Result {
-    if value.locked_fixed < -196608 || value.locked_fixed > -196608 { // out-of-contract writes are refused, not wrapped (raw scaled domain)
+    if value.locked_fixed < -196608 || value.locked_fixed > -196608 {
         return Err(Error::Stream(serialize::Error::ValueOutOfRange));
     }
-    if value.locked_int < 7 || value.locked_int > 7 { // out-of-contract writes are refused, not wrapped
+    if value.locked_int < 7 || value.locked_int > 7 {
         return Err(Error::Stream(serialize::Error::ValueOutOfRange));
     }
-    if value.locked_wide < -12345678901234 || value.locked_wide > -12345678901234 { // out-of-contract writes are refused, not wrapped
+    if value.locked_wide < -12345678901234 || value.locked_wide > -12345678901234 {
         return Err(Error::Stream(serialize::Error::ValueOutOfRange));
     }
     {
@@ -522,8 +516,7 @@ pub fn read_degenerate_probe(stream: &mut ReadStream<'_>, value: &mut Degenerate
     Ok(())
 }
 
-// type FixedVec [vec3] — the tag is user-chosen and inert in v1; the delta pass
-// claims tags and assigns actions (SPEC §4.2, Type tags)
+// type FixedVec [vec3] — tags are user-chosen and inert in v1 (SPEC §4.2, Type tags)
 #[repr(C)]
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub struct FixedVec {
@@ -550,21 +543,21 @@ pub const FIXED_VEC_MAX_BYTES: usize = 16;
 
 #[inline(always)]
 pub fn write_fixed_vec(stream: &mut WriteStream<'_>, value: &FixedVec) -> Result {
-    if value.x < -6553600000 || value.x > 6553600000 { // out-of-contract writes are refused, not wrapped (raw scaled domain)
+    if value.x < -6553600000 || value.x > 6553600000 {
         return Err(Error::Stream(serialize::Error::ValueOutOfRange));
     }
     {
         let mut fixed_value = value.x;
         stream.serialize_fixed(&mut fixed_value, 48, 16, -100000, 100000)?;
     }
-    if value.y < -6553600000 || value.y > 6553600000 { // out-of-contract writes are refused, not wrapped (raw scaled domain)
+    if value.y < -6553600000 || value.y > 6553600000 {
         return Err(Error::Stream(serialize::Error::ValueOutOfRange));
     }
     {
         let mut fixed_value = value.y;
         stream.serialize_fixed(&mut fixed_value, 48, 16, -100000, 100000)?;
     }
-    if value.z < -6553600000 || value.z > 6553600000 { // out-of-contract writes are refused, not wrapped (raw scaled domain)
+    if value.z < -6553600000 || value.z > 6553600000 {
         return Err(Error::Stream(serialize::Error::ValueOutOfRange));
     }
     {
@@ -582,8 +575,7 @@ pub fn read_fixed_vec(stream: &mut ReadStream<'_>, value: &mut FixedVec) -> Resu
     Ok(())
 }
 
-// type FixedQuat [quat4] — the tag is user-chosen and inert in v1; the delta pass
-// claims tags and assigns actions (SPEC §4.2, Type tags)
+// type FixedQuat [quat4] — tags are user-chosen and inert in v1 (SPEC §4.2, Type tags)
 #[repr(C)]
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub struct FixedQuat {
@@ -623,28 +615,28 @@ pub const FIXED_QUAT_MAX_BYTES: usize = 16;
 
 #[inline(always)]
 pub fn write_fixed_quat(stream: &mut WriteStream<'_>, value: &FixedQuat) -> Result {
-    if value.x < -1073741824 || value.x > 1073741824 { // out-of-contract writes are refused, not wrapped (raw scaled domain)
+    if value.x < -1073741824 || value.x > 1073741824 {
         return Err(Error::Stream(serialize::Error::ValueOutOfRange));
     }
     {
         let mut fixed_value = value.x;
         stream.serialize_fixed(&mut fixed_value, 2, 30, -1, 1)?;
     }
-    if value.y < -1073741824 || value.y > 1073741824 { // out-of-contract writes are refused, not wrapped (raw scaled domain)
+    if value.y < -1073741824 || value.y > 1073741824 {
         return Err(Error::Stream(serialize::Error::ValueOutOfRange));
     }
     {
         let mut fixed_value = value.y;
         stream.serialize_fixed(&mut fixed_value, 2, 30, -1, 1)?;
     }
-    if value.z < -1073741824 || value.z > 1073741824 { // out-of-contract writes are refused, not wrapped (raw scaled domain)
+    if value.z < -1073741824 || value.z > 1073741824 {
         return Err(Error::Stream(serialize::Error::ValueOutOfRange));
     }
     {
         let mut fixed_value = value.z;
         stream.serialize_fixed(&mut fixed_value, 2, 30, -1, 1)?;
     }
-    if value.w < -1073741824 || value.w > 1073741824 { // out-of-contract writes are refused, not wrapped (raw scaled domain)
+    if value.w < -1073741824 || value.w > 1073741824 {
         return Err(Error::Stream(serialize::Error::ValueOutOfRange));
     }
     {
@@ -671,7 +663,7 @@ pub struct BodyState {
     pub position: FixedVec,
     pub rotation: FixedQuat,
     pub velocity: FixedVec,
-    pub spin: f64, //  | local — no wire
+    pub spin: f64, // | local — no wire
 }
 
 // The zero form (SPEC §5): specified defaults live only in new(), never here.
@@ -1063,7 +1055,7 @@ pub enum Message {
 // write_*) flatten into its body, but the dispatch match itself stays a
 // call boundary — demanding the C++ twin into a batch build loop was
 // measured to slow that loop ~21% while every per-message row kept its
-// win with the boundary in place (schema #60). The compiler remains free
+// win with the boundary in place. The compiler remains free
 // to inline it where that pays.
 #[inline]
 pub fn write_message(stream: &mut WriteStream<'_>, message: &Message) -> Result {
@@ -1085,7 +1077,7 @@ pub fn write_message(stream: &mut WriteStream<'_>, message: &Message) -> Result 
 // read_message_into for reuse loops — hoist ONE Message and read every
 // message into it (the Go/C# MessageStorage discipline). Reuse removes the
 // per-message copy-out of the union and measured 2.6x on the steady-state
-// batch read (M2, 2026-08-06). The two surfaces stay separate on purpose —
+// batch read. The two surfaces stay separate on purpose —
 // see the note on read_message.
 #[inline]
 pub fn read_message_into(stream: &mut ReadStream<'_>, message: &mut Message) -> Result {
@@ -1112,8 +1104,8 @@ pub fn read_message_into(stream: &mut ReadStream<'_>, message: &mut Message) -> 
 // read_message decodes the next message by value — the one-shot surface.
 // It deliberately does NOT delegate to read_message_into: routing the
 // return through a &mut out-param defeated LLVM's in-place construction
-// of the returned union and cost the batch read 23% (measured M2,
-// 2026-08-06). Both surfaces stay; reuse loops call read_message_into.
+// of the returned union, measured at 23% on the batch read. Both
+// surfaces stay; reuse loops call read_message_into.
 #[inline]
 pub fn read_message(stream: &mut ReadStream<'_>) -> Result<Message> {
     let mut tag_value = MessageType::NONE;

@@ -52,13 +52,7 @@ impl PacketMode {
 
 /// Debug/log name for any `PacketMode` value, out-of-set included.
 pub fn enum_name_packet_mode(value: PacketMode) -> &'static str {
-    enum_name_packet_mode_dyn(value.0 as u64)
-}
-
-/// As [`enum_name_packet_mode`], over a raw wire value — the form the table
-/// reflection descriptors hold.
-pub fn enum_name_packet_mode_dyn(value: u64) -> &'static str {
-    match value {
+    match value.0 {
         0 => "None",
         1 => "Idle",
         2 => "Active",
@@ -325,7 +319,7 @@ pub const REAL_PACKET_MAX_BYTES: usize = 232;
 
 #[inline(always)]
 pub fn write_real_packet(stream: &mut WriteStream<'_>, value: &RealPacket) -> Result {
-    if value.f001_int < -805495 || value.f001_int > 805495 { // out-of-contract writes are refused, not wrapped
+    if value.f001_int < -805495 || value.f001_int > 805495 {
         return Err(Error::Stream(serialize::Error::ValueOutOfRange));
     }
     {
@@ -336,7 +330,7 @@ pub fn write_real_packet(stream: &mut WriteStream<'_>, value: &RealPacket) -> Re
         let mut float_value = value.f002_f64;
         stream.serialize_f64(&mut float_value)?;
     }
-    if value.f003_int < -835897 || value.f003_int > 835897 { // out-of-contract writes are refused, not wrapped
+    if value.f003_int < -835897 || value.f003_int > 835897 {
         return Err(Error::Stream(serialize::Error::ValueOutOfRange));
     }
     {
@@ -345,16 +339,16 @@ pub fn write_real_packet(stream: &mut WriteStream<'_>, value: &RealPacket) -> Re
     }
     {
         let mut compressed_value = value.f004_cf32;
-        stream.serialize_compressed_float_precomputed(&mut compressed_value, 20000, 15, 2000.0_f32, 0.0_f32)?; // compressed float [0.0, 2000.0] @ 0.1, constants folded at generation (issue #82)
+        stream.serialize_compressed_float_precomputed(&mut compressed_value, 20000, 15, 2000.0_f32, 0.0_f32)?; // compressed float [0.0, 2000.0] @ 0.1, constants folded at generation
     }
-    if value.f005_uint > 7316 { // out-of-contract writes are refused, not wrapped
+    if value.f005_uint > 7316 {
         return Err(Error::Stream(serialize::Error::ValueOutOfRange));
     }
     {
         let mut offset_value = value.f005_uint as u32;
         stream.serialize_bits(&mut offset_value, 13)?;
     }
-    if value.f006_int < -1513 || value.f006_int > 1513 { // out-of-contract writes are refused, not wrapped
+    if value.f006_int < -1513 || value.f006_int > 1513 {
         return Err(Error::Stream(serialize::Error::ValueOutOfRange));
     }
     {
@@ -369,7 +363,7 @@ pub fn write_real_packet(stream: &mut WriteStream<'_>, value: &RealPacket) -> Re
         let mut raw_value = value.f008_u64;
         stream.serialize_bits64(&mut raw_value, 64)?;
     }
-    if value.f009_int < -22 || value.f009_int > 22 { // out-of-contract writes are refused, not wrapped
+    if value.f009_int < -22 || value.f009_int > 22 {
         return Err(Error::Stream(serialize::Error::ValueOutOfRange));
     }
     {
@@ -396,28 +390,28 @@ pub fn write_real_packet(stream: &mut WriteStream<'_>, value: &RealPacket) -> Re
             let mut float_value = value.f013_f32;
             stream.serialize_f32(&mut float_value)?;
         }
-        if value.f014_uint > 775 { // out-of-contract writes are refused, not wrapped
+        if value.f014_uint > 775 {
             return Err(Error::Stream(serialize::Error::ValueOutOfRange));
         }
         {
             let mut offset_value = value.f014_uint as u32;
             stream.serialize_bits(&mut offset_value, 10)?;
         }
-        if value.f015_int < -21 || value.f015_int > 21 { // out-of-contract writes are refused, not wrapped
+        if value.f015_int < -21 || value.f015_int > 21 {
             return Err(Error::Stream(serialize::Error::ValueOutOfRange));
         }
         {
             let mut offset_value = (value.f015_int as u32).wrapping_sub((-21_i32) as u32);
             stream.serialize_bits(&mut offset_value, 6)?;
         }
-        if value.f016_fixed < -37748736 || value.f016_fixed > 37748736 { // out-of-contract writes are refused, not wrapped (raw scaled domain)
+        if value.f016_fixed < -37748736 || value.f016_fixed > 37748736 {
             return Err(Error::Stream(serialize::Error::ValueOutOfRange));
         }
         {
             let mut fixed_value = value.f016_fixed;
             stream.serialize_fixed(&mut fixed_value, 12, 20, -36, 36)?;
         }
-        if value.f017_uint > 4606 { // out-of-contract writes are refused, not wrapped
+        if value.f017_uint > 4606 {
             return Err(Error::Stream(serialize::Error::ValueOutOfRange));
         }
         {
@@ -425,7 +419,7 @@ pub fn write_real_packet(stream: &mut WriteStream<'_>, value: &RealPacket) -> Re
             stream.serialize_bits(&mut offset_value, 13)?;
         }
     }
-    if value.f018_int < -834 || value.f018_int > 834 { // out-of-contract writes are refused, not wrapped
+    if value.f018_int < -834 || value.f018_int > 834 {
         return Err(Error::Stream(serialize::Error::ValueOutOfRange));
     }
     {
@@ -440,7 +434,7 @@ pub fn write_real_packet(stream: &mut WriteStream<'_>, value: &RealPacket) -> Re
         let mut float_value = value.f020_f32;
         stream.serialize_f32(&mut float_value)?;
     }
-    if value.f021_ufixed > 102977536 { // out-of-contract writes are refused, not wrapped (raw scaled domain)
+    if value.f021_ufixed > 102977536 {
         return Err(Error::Stream(serialize::Error::ValueOutOfRange));
     }
     {
@@ -462,7 +456,7 @@ pub fn write_real_packet(stream: &mut WriteStream<'_>, value: &RealPacket) -> Re
         let mut float_value = value.f024_f32;
         stream.serialize_f32(&mut float_value)?;
     }
-    if value.f025_fixed < -30464 || value.f025_fixed > 30464 { // out-of-contract writes are refused, not wrapped (raw scaled domain)
+    if value.f025_fixed < -30464 || value.f025_fixed > 30464 {
         return Err(Error::Stream(serialize::Error::ValueOutOfRange));
     }
     {
@@ -478,7 +472,7 @@ pub fn write_real_packet(stream: &mut WriteStream<'_>, value: &RealPacket) -> Re
     }
     {
         let mut compressed_value = value.f027_cf32;
-        stream.serialize_compressed_float_precomputed(&mut compressed_value, 16, 5, 4.0_f32, -2.0_f32)?; // compressed float [-2.0, 2.0] @ 0.25, constants folded at generation (issue #82)
+        stream.serialize_compressed_float_precomputed(&mut compressed_value, 16, 5, 4.0_f32, -2.0_f32)?; // compressed float [-2.0, 2.0] @ 0.25, constants folded at generation
     }
     if value.f028_bits >= 1 << 4 {
         return Err(Error::Stream(serialize::Error::ValueOutOfRange));
@@ -502,21 +496,21 @@ pub fn write_real_packet(stream: &mut WriteStream<'_>, value: &RealPacket) -> Re
         let mut raw_value = value.f031_bits;
         stream.serialize_bits(&mut raw_value, 1)?;
     }
-    if value.f032_int < -3 || value.f032_int > 3 { // out-of-contract writes are refused, not wrapped
+    if value.f032_int < -3 || value.f032_int > 3 {
         return Err(Error::Stream(serialize::Error::ValueOutOfRange));
     }
     {
         let mut offset_value = (value.f032_int as u32).wrapping_sub((-3_i32) as u32);
         stream.serialize_bits(&mut offset_value, 3)?;
     }
-    if value.f033_uint > 142780 { // out-of-contract writes are refused, not wrapped
+    if value.f033_uint > 142780 {
         return Err(Error::Stream(serialize::Error::ValueOutOfRange));
     }
     {
         let mut offset_value = value.f033_uint;
         stream.serialize_bits(&mut offset_value, 18)?;
     }
-    if value.f034_uint > 14149 { // out-of-contract writes are refused, not wrapped
+    if value.f034_uint > 14149 {
         return Err(Error::Stream(serialize::Error::ValueOutOfRange));
     }
     {
@@ -552,14 +546,14 @@ pub fn write_real_packet(stream: &mut WriteStream<'_>, value: &RealPacket) -> Re
         let mut raw_value = value.f039_bits;
         stream.serialize_bits(&mut raw_value, 19)?;
     }
-    if value.f040_fixed < -20480 || value.f040_fixed > 20480 { // out-of-contract writes are refused, not wrapped (raw scaled domain)
+    if value.f040_fixed < -20480 || value.f040_fixed > 20480 {
         return Err(Error::Stream(serialize::Error::ValueOutOfRange));
     }
     {
         let mut fixed_value = value.f040_fixed;
         stream.serialize_fixed(&mut fixed_value, 4, 12, -5, 5)?;
     }
-    if value.f041_int < -55 || value.f041_int > 55 { // out-of-contract writes are refused, not wrapped
+    if value.f041_int < -55 || value.f041_int > 55 {
         return Err(Error::Stream(serialize::Error::ValueOutOfRange));
     }
     {
@@ -589,14 +583,14 @@ pub fn write_real_packet(stream: &mut WriteStream<'_>, value: &RealPacket) -> Re
             let mut raw_value = value.f045_bits;
             stream.serialize_bits(&mut raw_value, 12)?;
         }
-        if value.f046_uint > 76063 { // out-of-contract writes are refused, not wrapped
+        if value.f046_uint > 76063 {
             return Err(Error::Stream(serialize::Error::ValueOutOfRange));
         }
         {
             let mut offset_value = value.f046_uint;
             stream.serialize_bits(&mut offset_value, 17)?;
         }
-        if value.f047_int < -430976 || value.f047_int > 430976 { // out-of-contract writes are refused, not wrapped
+        if value.f047_int < -430976 || value.f047_int > 430976 {
             return Err(Error::Stream(serialize::Error::ValueOutOfRange));
         }
         {
@@ -608,7 +602,7 @@ pub fn write_real_packet(stream: &mut WriteStream<'_>, value: &RealPacket) -> Re
         let mut float_value = value.f048_f64;
         stream.serialize_f64(&mut float_value)?;
     }
-    if value.f049_ufixed > 49152 { // out-of-contract writes are refused, not wrapped (raw scaled domain)
+    if value.f049_ufixed > 49152 {
         return Err(Error::Stream(serialize::Error::ValueOutOfRange));
     }
     {
@@ -624,7 +618,7 @@ pub fn write_real_packet(stream: &mut WriteStream<'_>, value: &RealPacket) -> Re
             let mut bool_value = value.f051_bool;
             stream.serialize_bool(&mut bool_value)?;
         }
-        if value.f052_int < -57 || value.f052_int > 57 { // out-of-contract writes are refused, not wrapped
+        if value.f052_int < -57 || value.f052_int > 57 {
             return Err(Error::Stream(serialize::Error::ValueOutOfRange));
         }
         {
@@ -635,7 +629,7 @@ pub fn write_real_packet(stream: &mut WriteStream<'_>, value: &RealPacket) -> Re
             let mut float_value = value.f053_f32;
             stream.serialize_f32(&mut float_value)?;
         }
-        if value.f054_int < -35 || value.f054_int > 35 { // out-of-contract writes are refused, not wrapped
+        if value.f054_int < -35 || value.f054_int > 35 {
             return Err(Error::Stream(serialize::Error::ValueOutOfRange));
         }
         {
@@ -647,14 +641,14 @@ pub fn write_real_packet(stream: &mut WriteStream<'_>, value: &RealPacket) -> Re
         let mut bool_value = value.f055_bool;
         stream.serialize_bool(&mut bool_value)?;
     }
-    if value.f056_int < -13 || value.f056_int > 13 { // out-of-contract writes are refused, not wrapped
+    if value.f056_int < -13 || value.f056_int > 13 {
         return Err(Error::Stream(serialize::Error::ValueOutOfRange));
     }
     {
         let mut offset_value = (value.f056_int as u32).wrapping_sub((-13_i32) as u32);
         stream.serialize_bits(&mut offset_value, 5)?;
     }
-    if value.f057_int < -15 || value.f057_int > 15 { // out-of-contract writes are refused, not wrapped
+    if value.f057_int < -15 || value.f057_int > 15 {
         return Err(Error::Stream(serialize::Error::ValueOutOfRange));
     }
     {
@@ -678,9 +672,9 @@ pub fn write_real_packet(stream: &mut WriteStream<'_>, value: &RealPacket) -> Re
     }
     {
         let mut compressed_value = value.f061_cf32;
-        stream.serialize_compressed_float_precomputed(&mut compressed_value, 360, 9, 180.0_f32, -90.0_f32)?; // compressed float [-90.0, 90.0] @ 0.5, constants folded at generation (issue #82)
+        stream.serialize_compressed_float_precomputed(&mut compressed_value, 360, 9, 180.0_f32, -90.0_f32)?; // compressed float [-90.0, 90.0] @ 0.5, constants folded at generation
     }
-    if value.f062_uint > 503 { // out-of-contract writes are refused, not wrapped
+    if value.f062_uint > 503 {
         return Err(Error::Stream(serialize::Error::ValueOutOfRange));
     }
     {
@@ -691,7 +685,7 @@ pub fn write_real_packet(stream: &mut WriteStream<'_>, value: &RealPacket) -> Re
         let mut raw_value = value.f063_i64 as u64;
         stream.serialize_bits64(&mut raw_value, 64)?;
     }
-    if value.f064_uint > 299 { // out-of-contract writes are refused, not wrapped
+    if value.f064_uint > 299 {
         return Err(Error::Stream(serialize::Error::ValueOutOfRange));
     }
     {
@@ -700,9 +694,9 @@ pub fn write_real_packet(stream: &mut WriteStream<'_>, value: &RealPacket) -> Re
     }
     {
         let mut compressed_value = value.f065_cf32;
-        stream.serialize_compressed_float_precomputed(&mut compressed_value, 60, 6, 30.0_f32, 0.0_f32)?; // compressed float [0.0, 30.0] @ 0.5, constants folded at generation (issue #82)
+        stream.serialize_compressed_float_precomputed(&mut compressed_value, 60, 6, 30.0_f32, 0.0_f32)?; // compressed float [0.0, 30.0] @ 0.5, constants folded at generation
     }
-    if value.f066_ufixed > 32768 { // out-of-contract writes are refused, not wrapped (raw scaled domain)
+    if value.f066_ufixed > 32768 {
         return Err(Error::Stream(serialize::Error::ValueOutOfRange));
     }
     {
@@ -711,11 +705,11 @@ pub fn write_real_packet(stream: &mut WriteStream<'_>, value: &RealPacket) -> Re
     }
     {
         let mut compressed_value = value.f067_cf32;
-        stream.serialize_compressed_float_precomputed(&mut compressed_value, 800, 10, 200.0_f32, -100.0_f32)?; // compressed float [-100.0, 100.0] @ 0.25, constants folded at generation (issue #82)
+        stream.serialize_compressed_float_precomputed(&mut compressed_value, 800, 10, 200.0_f32, -100.0_f32)?; // compressed float [-100.0, 100.0] @ 0.25, constants folded at generation
     }
     {
         let mut compressed_value = value.f068_cf32;
-        stream.serialize_compressed_float_precomputed(&mut compressed_value, 2000, 11, 2000.0_f32, 0.0_f32)?; // compressed float [0.0, 2000.0] @ 1.0, constants folded at generation (issue #82)
+        stream.serialize_compressed_float_precomputed(&mut compressed_value, 2000, 11, 2000.0_f32, 0.0_f32)?; // compressed float [0.0, 2000.0] @ 1.0, constants folded at generation
     }
     if value.f069_bits >= 1 << 11 {
         return Err(Error::Stream(serialize::Error::ValueOutOfRange));
@@ -724,7 +718,7 @@ pub fn write_real_packet(stream: &mut WriteStream<'_>, value: &RealPacket) -> Re
         let mut raw_value = value.f069_bits;
         stream.serialize_bits(&mut raw_value, 11)?;
     }
-    if value.f070_uint > 2 { // out-of-contract writes are refused, not wrapped
+    if value.f070_uint > 2 {
         return Err(Error::Stream(serialize::Error::ValueOutOfRange));
     }
     {
@@ -733,13 +727,13 @@ pub fn write_real_packet(stream: &mut WriteStream<'_>, value: &RealPacket) -> Re
     }
     {
         let mut compressed_value = value.f071_cf32;
-        stream.serialize_compressed_float_precomputed(&mut compressed_value, 500, 9, 10.0_f32, 0.0_f32)?; // compressed float [0.0, 10.0] @ 0.02, constants folded at generation (issue #82)
+        stream.serialize_compressed_float_precomputed(&mut compressed_value, 500, 9, 10.0_f32, 0.0_f32)?; // compressed float [0.0, 10.0] @ 0.02, constants folded at generation
     }
     {
         let mut compressed_value = value.f072_cf32;
-        stream.serialize_compressed_float_precomputed(&mut compressed_value, 10000, 14, 100.0_f32, 0.0_f32)?; // compressed float [0.0, 100.0] @ 0.01, constants folded at generation (issue #82)
+        stream.serialize_compressed_float_precomputed(&mut compressed_value, 10000, 14, 100.0_f32, 0.0_f32)?; // compressed float [0.0, 100.0] @ 0.01, constants folded at generation
     }
-    if value.f073_int < -4 || value.f073_int > 4 { // out-of-contract writes are refused, not wrapped
+    if value.f073_int < -4 || value.f073_int > 4 {
         return Err(Error::Stream(serialize::Error::ValueOutOfRange));
     }
     {
@@ -755,14 +749,14 @@ pub fn write_real_packet(stream: &mut WriteStream<'_>, value: &RealPacket) -> Re
             let mut raw_value = value.f075_u64;
             stream.serialize_bits64(&mut raw_value, 64)?;
         }
-        if value.f076_int < -26218 || value.f076_int > 26218 { // out-of-contract writes are refused, not wrapped
+        if value.f076_int < -26218 || value.f076_int > 26218 {
             return Err(Error::Stream(serialize::Error::ValueOutOfRange));
         }
         {
             let mut offset_value = (value.f076_int as u32).wrapping_sub((-26218_i32) as u32);
             stream.serialize_bits(&mut offset_value, 16)?;
         }
-        if value.f077_int < -17 || value.f077_int > 17 { // out-of-contract writes are refused, not wrapped
+        if value.f077_int < -17 || value.f077_int > 17 {
             return Err(Error::Stream(serialize::Error::ValueOutOfRange));
         }
         {
@@ -776,7 +770,7 @@ pub fn write_real_packet(stream: &mut WriteStream<'_>, value: &RealPacket) -> Re
             let mut raw_value = value.f078_bits;
             stream.serialize_bits(&mut raw_value, 9)?;
         }
-        if value.f079_uint > 17 { // out-of-contract writes are refused, not wrapped
+        if value.f079_uint > 17 {
             return Err(Error::Stream(serialize::Error::ValueOutOfRange));
         }
         {
@@ -809,7 +803,7 @@ pub fn write_real_packet(stream: &mut WriteStream<'_>, value: &RealPacket) -> Re
         let mut offset_value = value.f083_enum.0 as u32;
         stream.serialize_bits(&mut offset_value, 3)?;
     }
-    if value.f084_ufixed > 128 { // out-of-contract writes are refused, not wrapped (raw scaled domain)
+    if value.f084_ufixed > 128 {
         return Err(Error::Stream(serialize::Error::ValueOutOfRange));
     }
     {
@@ -823,7 +817,7 @@ pub fn write_real_packet(stream: &mut WriteStream<'_>, value: &RealPacket) -> Re
         let mut raw_value = value.f085_bits;
         stream.serialize_bits(&mut raw_value, 21)?;
     }
-    if value.f086_uint > 399 { // out-of-contract writes are refused, not wrapped
+    if value.f086_uint > 399 {
         return Err(Error::Stream(serialize::Error::ValueOutOfRange));
     }
     {
@@ -834,7 +828,7 @@ pub fn write_real_packet(stream: &mut WriteStream<'_>, value: &RealPacket) -> Re
         let mut float_value = value.f087_f64;
         stream.serialize_f64(&mut float_value)?;
     }
-    if value.f088_int < -694 || value.f088_int > 694 { // out-of-contract writes are refused, not wrapped
+    if value.f088_int < -694 || value.f088_int > 694 {
         return Err(Error::Stream(serialize::Error::ValueOutOfRange));
     }
     {
@@ -848,7 +842,7 @@ pub fn write_real_packet(stream: &mut WriteStream<'_>, value: &RealPacket) -> Re
         let mut raw_value = value.f089_bits;
         stream.serialize_bits64(&mut raw_value, 48)?;
     }
-    if value.f090_uint > 214 { // out-of-contract writes are refused, not wrapped
+    if value.f090_uint > 214 {
         return Err(Error::Stream(serialize::Error::ValueOutOfRange));
     }
     {
@@ -875,7 +869,7 @@ pub fn write_real_packet(stream: &mut WriteStream<'_>, value: &RealPacket) -> Re
         let mut bool_value = value.f094_bool;
         stream.serialize_bool(&mut bool_value)?;
     }
-    if value.f095_fixed < -103350272 || value.f095_fixed > 103350272 { // out-of-contract writes are refused, not wrapped (raw scaled domain)
+    if value.f095_fixed < -103350272 || value.f095_fixed > 103350272 {
         return Err(Error::Stream(serialize::Error::ValueOutOfRange));
     }
     {
@@ -904,7 +898,7 @@ pub fn read_real_packet(stream: &mut ReadStream<'_>, value: &mut RealPacket) -> 
     stream.serialize_int(&mut value.f001_int, -805495, 805495)?;
     stream.serialize_f64(&mut value.f002_f64)?;
     stream.serialize_int(&mut value.f003_int, -835897, 835897)?;
-    stream.serialize_compressed_float_precomputed(&mut value.f004_cf32, 20000, 15, 2000.0_f32, 0.0_f32)?; // compressed float [0.0, 2000.0] @ 0.1, constants folded at generation (issue #82)
+    stream.serialize_compressed_float_precomputed(&mut value.f004_cf32, 20000, 15, 2000.0_f32, 0.0_f32)?; // compressed float [0.0, 2000.0] @ 0.1, constants folded at generation
     {
         let mut range_value: i32 = 0;
         stream.serialize_int(&mut range_value, 0, 7316)?;
@@ -963,7 +957,7 @@ pub fn read_real_packet(stream: &mut ReadStream<'_>, value: &mut RealPacket) -> 
     stream.serialize_f32(&mut value.f024_f32)?;
     stream.serialize_fixed(&mut value.f025_fixed, 8, 8, -119, 119)?;
     stream.serialize_bits(&mut value.f026_bits, 9)?;
-    stream.serialize_compressed_float_precomputed(&mut value.f027_cf32, 16, 5, 4.0_f32, -2.0_f32)?; // compressed float [-2.0, 2.0] @ 0.25, constants folded at generation (issue #82)
+    stream.serialize_compressed_float_precomputed(&mut value.f027_cf32, 16, 5, 4.0_f32, -2.0_f32)?; // compressed float [-2.0, 2.0] @ 0.25, constants folded at generation
     stream.serialize_bits(&mut value.f028_bits, 4)?;
     {
         let mut raw_value: u64 = 0;
@@ -1055,7 +1049,7 @@ pub fn read_real_packet(stream: &mut ReadStream<'_>, value: &mut RealPacket) -> 
     stream.serialize_f32(&mut value.f058_f32)?;
     stream.serialize_f64(&mut value.f059_f64)?;
     stream.serialize_bits(&mut value.f060_bits, 8)?;
-    stream.serialize_compressed_float_precomputed(&mut value.f061_cf32, 360, 9, 180.0_f32, -90.0_f32)?; // compressed float [-90.0, 90.0] @ 0.5, constants folded at generation (issue #82)
+    stream.serialize_compressed_float_precomputed(&mut value.f061_cf32, 360, 9, 180.0_f32, -90.0_f32)?; // compressed float [-90.0, 90.0] @ 0.5, constants folded at generation
     {
         let mut range_value: i32 = 0;
         stream.serialize_int(&mut range_value, 0, 503)?;
@@ -1071,18 +1065,18 @@ pub fn read_real_packet(stream: &mut ReadStream<'_>, value: &mut RealPacket) -> 
         stream.serialize_int(&mut range_value, 0, 299)?;
         value.f064_uint = range_value as u16;
     }
-    stream.serialize_compressed_float_precomputed(&mut value.f065_cf32, 60, 6, 30.0_f32, 0.0_f32)?; // compressed float [0.0, 30.0] @ 0.5, constants folded at generation (issue #82)
+    stream.serialize_compressed_float_precomputed(&mut value.f065_cf32, 60, 6, 30.0_f32, 0.0_f32)?; // compressed float [0.0, 30.0] @ 0.5, constants folded at generation
     stream.serialize_fixed(&mut value.f066_ufixed, 2, 14, 0, 2)?;
-    stream.serialize_compressed_float_precomputed(&mut value.f067_cf32, 800, 10, 200.0_f32, -100.0_f32)?; // compressed float [-100.0, 100.0] @ 0.25, constants folded at generation (issue #82)
-    stream.serialize_compressed_float_precomputed(&mut value.f068_cf32, 2000, 11, 2000.0_f32, 0.0_f32)?; // compressed float [0.0, 2000.0] @ 1.0, constants folded at generation (issue #82)
+    stream.serialize_compressed_float_precomputed(&mut value.f067_cf32, 800, 10, 200.0_f32, -100.0_f32)?; // compressed float [-100.0, 100.0] @ 0.25, constants folded at generation
+    stream.serialize_compressed_float_precomputed(&mut value.f068_cf32, 2000, 11, 2000.0_f32, 0.0_f32)?; // compressed float [0.0, 2000.0] @ 1.0, constants folded at generation
     stream.serialize_bits(&mut value.f069_bits, 11)?;
     {
         let mut range_value: i32 = 0;
         stream.serialize_int(&mut range_value, 0, 2)?;
         value.f070_uint = range_value as u8;
     }
-    stream.serialize_compressed_float_precomputed(&mut value.f071_cf32, 500, 9, 10.0_f32, 0.0_f32)?; // compressed float [0.0, 10.0] @ 0.02, constants folded at generation (issue #82)
-    stream.serialize_compressed_float_precomputed(&mut value.f072_cf32, 10000, 14, 100.0_f32, 0.0_f32)?; // compressed float [0.0, 100.0] @ 0.01, constants folded at generation (issue #82)
+    stream.serialize_compressed_float_precomputed(&mut value.f071_cf32, 500, 9, 10.0_f32, 0.0_f32)?; // compressed float [0.0, 10.0] @ 0.02, constants folded at generation
+    stream.serialize_compressed_float_precomputed(&mut value.f072_cf32, 10000, 14, 100.0_f32, 0.0_f32)?; // compressed float [0.0, 100.0] @ 0.01, constants folded at generation
     {
         let mut range_value: i32 = 0;
         stream.serialize_int(&mut range_value, -4, 4)?;

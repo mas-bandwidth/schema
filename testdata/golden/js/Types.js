@@ -3,32 +3,17 @@
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
 // package example — protocol id 0xbc05d83a8135cdb9
-//
-// Storage members are PascalCase via the same mapping as the Go target, so
-// the checker's collision registry covers JS for free. Wire functions return
-// bool — the C++-style early-out. A schema validation failure (a wrong wire
-// constant, nonzero reserved bits, an out-of-contract write) returns false
-// WITHOUT latching; stream failures latch on stream.error — the runtime's own
-// sticky latch. Callers get bool always; error tells the two apart.
-//
-// Number storage for widths of 32 bits or fewer, BigInt for 64 and 128 —
-// the serialize.js value-domain seam. Checked/production comes from the
-// stream object; generated code never reads NODE_ENV.
 
 import { MaxHealth, MaxInputsPerPacket, MaxObjects, MaxPositionUnits, MaxVelocityUnits, RotationUnits, ShipMaxLasers, ShipMaxMissiles } from "./Constants.js";
 import { Pending, ShipType, Team } from "./Enums.js";
 
-// Scratch holders for the runtime's {value} refs (streams.js has no ref
-// parameters). Module scope is safe — JavaScript is single threaded per
-// realm and a holder is consumed in the same call that fills it, the
-// runtime's own FLOAT_SCRATCH argument; generated code never holds one
-// across a nested Write/Read call.
+// Scratch holders for the runtime's {value} refs — single threaded per
+// realm, always consumed in the same call that fills them.
 const NUMBER_SCRATCH = { value: 0 };
 const BIGINT_SCRATCH = { value: 0n };
 const BOOL_SCRATCH = { value: false };
 
-// type Vec3 [vec3] — the tag is user-chosen and inert in v1; the delta pass
-// claims tags and assigns actions (SPEC §4.2, Type tags)
+// type Vec3 [vec3] — tags are user-chosen and inert in v1 (SPEC §4.2, Type tags)
 export class Vec3 {
   constructor() {
     this.X = 0;
@@ -42,8 +27,7 @@ export class Vec3 {
 export const Vec3MaxBits = 192;
 export const Vec3MaxBytes = 24;
 
-// ZeroVec3 resets value to the §5 ZERO form — all-zero storage; specified
-// defaults live in construction only and are NOT reapplied here.
+// The §5 zero form: all-zero storage; specified defaults live only in construction.
 export function ZeroVec3(value) {
   value.X = 0;
   value.Y = 0;
@@ -82,8 +66,7 @@ export function ReadVec3(stream, value) {
   return true;
 }
 
-// type Quat [quat4] — the tag is user-chosen and inert in v1; the delta pass
-// claims tags and assigns actions (SPEC §4.2, Type tags)
+// type Quat [quat4] — tags are user-chosen and inert in v1 (SPEC §4.2, Type tags)
 export class Quat {
   constructor() {
     this.X = 0;
@@ -98,8 +81,7 @@ export class Quat {
 export const QuatMaxBits = 256;
 export const QuatMaxBytes = 32;
 
-// ZeroQuat resets value to the §5 ZERO form — all-zero storage; specified
-// defaults live in construction only and are NOT reapplied here.
+// The §5 zero form: all-zero storage; specified defaults live only in construction.
 export function ZeroQuat(value) {
   value.X = 0;
   value.Y = 0;
@@ -160,15 +142,14 @@ export class Handle {
 export const HandleMaxBits = 22;
 export const HandleMaxBytes = 8;
 
-// ZeroHandle resets value to the §5 ZERO form — all-zero storage; specified
-// defaults live in construction only and are NOT reapplied here.
+// The §5 zero form: all-zero storage; specified defaults live only in construction.
 export function ZeroHandle(value) {
   value.ObjectId = 0;
   value.ObjectSequence = 0;
 }
 
 export function WriteHandle(stream, value) {
-  if (!Number.isInteger(value.ObjectId) || value.ObjectId < 0 || value.ObjectId > MaxObjects - 1) { // out-of-contract writes are refused, not wrapped
+  if (!Number.isInteger(value.ObjectId) || value.ObjectId < 0 || value.ObjectId > MaxObjects - 1) {
     return false;
   }
   NUMBER_SCRATCH.value = value.ObjectId;
@@ -208,8 +189,7 @@ export class QuantizedPosition {
 export const QuantizedPositionMaxBits = 75;
 export const QuantizedPositionMaxBytes = 16;
 
-// ZeroQuantizedPosition resets value to the §5 ZERO form — all-zero storage; specified
-// defaults live in construction only and are NOT reapplied here.
+// The §5 zero form: all-zero storage; specified defaults live only in construction.
 export function ZeroQuantizedPosition(value) {
   value.X = 0;
   value.Y = 0;
@@ -217,21 +197,21 @@ export function ZeroQuantizedPosition(value) {
 }
 
 export function WriteQuantizedPosition(stream, value) {
-  if (!Number.isInteger(value.X) || value.X < -MaxPositionUnits || value.X > MaxPositionUnits) { // out-of-contract writes are refused, not wrapped
+  if (!Number.isInteger(value.X) || value.X < -MaxPositionUnits || value.X > MaxPositionUnits) {
     return false;
   }
   NUMBER_SCRATCH.value = ((value.X >>> 0) - (-MaxPositionUnits >>> 0)) >>> 0;
   if (!stream.serializeBits(NUMBER_SCRATCH, 25)) {
     return false;
   }
-  if (!Number.isInteger(value.Y) || value.Y < -MaxPositionUnits || value.Y > MaxPositionUnits) { // out-of-contract writes are refused, not wrapped
+  if (!Number.isInteger(value.Y) || value.Y < -MaxPositionUnits || value.Y > MaxPositionUnits) {
     return false;
   }
   NUMBER_SCRATCH.value = ((value.Y >>> 0) - (-MaxPositionUnits >>> 0)) >>> 0;
   if (!stream.serializeBits(NUMBER_SCRATCH, 25)) {
     return false;
   }
-  if (!Number.isInteger(value.Z) || value.Z < -MaxPositionUnits || value.Z > MaxPositionUnits) { // out-of-contract writes are refused, not wrapped
+  if (!Number.isInteger(value.Z) || value.Z < -MaxPositionUnits || value.Z > MaxPositionUnits) {
     return false;
   }
   NUMBER_SCRATCH.value = ((value.Z >>> 0) - (-MaxPositionUnits >>> 0)) >>> 0;
@@ -271,8 +251,7 @@ export class QuantizedVelocity {
 export const QuantizedVelocityMaxBits = 69;
 export const QuantizedVelocityMaxBytes = 16;
 
-// ZeroQuantizedVelocity resets value to the §5 ZERO form — all-zero storage; specified
-// defaults live in construction only and are NOT reapplied here.
+// The §5 zero form: all-zero storage; specified defaults live only in construction.
 export function ZeroQuantizedVelocity(value) {
   value.X = 0;
   value.Y = 0;
@@ -280,21 +259,21 @@ export function ZeroQuantizedVelocity(value) {
 }
 
 export function WriteQuantizedVelocity(stream, value) {
-  if (!Number.isInteger(value.X) || value.X < -MaxVelocityUnits || value.X > MaxVelocityUnits) { // out-of-contract writes are refused, not wrapped
+  if (!Number.isInteger(value.X) || value.X < -MaxVelocityUnits || value.X > MaxVelocityUnits) {
     return false;
   }
   NUMBER_SCRATCH.value = ((value.X >>> 0) - (-MaxVelocityUnits >>> 0)) >>> 0;
   if (!stream.serializeBits(NUMBER_SCRATCH, 23)) {
     return false;
   }
-  if (!Number.isInteger(value.Y) || value.Y < -MaxVelocityUnits || value.Y > MaxVelocityUnits) { // out-of-contract writes are refused, not wrapped
+  if (!Number.isInteger(value.Y) || value.Y < -MaxVelocityUnits || value.Y > MaxVelocityUnits) {
     return false;
   }
   NUMBER_SCRATCH.value = ((value.Y >>> 0) - (-MaxVelocityUnits >>> 0)) >>> 0;
   if (!stream.serializeBits(NUMBER_SCRATCH, 23)) {
     return false;
   }
-  if (!Number.isInteger(value.Z) || value.Z < -MaxVelocityUnits || value.Z > MaxVelocityUnits) { // out-of-contract writes are refused, not wrapped
+  if (!Number.isInteger(value.Z) || value.Z < -MaxVelocityUnits || value.Z > MaxVelocityUnits) {
     return false;
   }
   NUMBER_SCRATCH.value = ((value.Z >>> 0) - (-MaxVelocityUnits >>> 0)) >>> 0;
@@ -335,8 +314,7 @@ export class QuantizedRotation {
 export const QuantizedRotationMaxBits = 48;
 export const QuantizedRotationMaxBytes = 8;
 
-// ZeroQuantizedRotation resets value to the §5 ZERO form — all-zero storage; specified
-// defaults live in construction only and are NOT reapplied here.
+// The §5 zero form: all-zero storage; specified defaults live only in construction.
 export function ZeroQuantizedRotation(value) {
   value.X = 0;
   value.Y = 0;
@@ -345,28 +323,28 @@ export function ZeroQuantizedRotation(value) {
 }
 
 export function WriteQuantizedRotation(stream, value) {
-  if (!Number.isInteger(value.X) || value.X < -RotationUnits || value.X > RotationUnits) { // out-of-contract writes are refused, not wrapped
+  if (!Number.isInteger(value.X) || value.X < -RotationUnits || value.X > RotationUnits) {
     return false;
   }
   NUMBER_SCRATCH.value = ((value.X >>> 0) - (-RotationUnits >>> 0)) >>> 0;
   if (!stream.serializeBits(NUMBER_SCRATCH, 12)) {
     return false;
   }
-  if (!Number.isInteger(value.Y) || value.Y < -RotationUnits || value.Y > RotationUnits) { // out-of-contract writes are refused, not wrapped
+  if (!Number.isInteger(value.Y) || value.Y < -RotationUnits || value.Y > RotationUnits) {
     return false;
   }
   NUMBER_SCRATCH.value = ((value.Y >>> 0) - (-RotationUnits >>> 0)) >>> 0;
   if (!stream.serializeBits(NUMBER_SCRATCH, 12)) {
     return false;
   }
-  if (!Number.isInteger(value.Z) || value.Z < -RotationUnits || value.Z > RotationUnits) { // out-of-contract writes are refused, not wrapped
+  if (!Number.isInteger(value.Z) || value.Z < -RotationUnits || value.Z > RotationUnits) {
     return false;
   }
   NUMBER_SCRATCH.value = ((value.Z >>> 0) - (-RotationUnits >>> 0)) >>> 0;
   if (!stream.serializeBits(NUMBER_SCRATCH, 12)) {
     return false;
   }
-  if (!Number.isInteger(value.W) || value.W < -RotationUnits || value.W > RotationUnits) { // out-of-contract writes are refused, not wrapped
+  if (!Number.isInteger(value.W) || value.W < -RotationUnits || value.W > RotationUnits) {
     return false;
   }
   NUMBER_SCRATCH.value = ((value.W >>> 0) - (-RotationUnits >>> 0)) >>> 0;
@@ -415,8 +393,7 @@ export class RigidBody {
 export const RigidBodyMaxBits = 833;
 export const RigidBodyMaxBytes = 112;
 
-// ZeroRigidBody resets value to the §5 ZERO form — all-zero storage; specified
-// defaults live in construction only and are NOT reapplied here.
+// The §5 zero form: all-zero storage; specified defaults live only in construction.
 export function ZeroRigidBody(value) {
   ZeroVec3(value.Position);
   ZeroQuat(value.Orientation);
@@ -496,8 +473,7 @@ export class Input {
 export const InputMaxBits = 168;
 export const InputMaxBytes = 24;
 
-// ZeroInput resets value to the §5 ZERO form — all-zero storage; specified
-// defaults live in construction only and are NOT reapplied here.
+// The §5 zero form: all-zero storage; specified defaults live only in construction.
 export function ZeroInput(value) {
   value.StickX = 0;
   value.StickY = 0;
@@ -642,8 +618,7 @@ export class InputPacket {
 export const InputPacketMaxBits = 2837;
 export const InputPacketMaxBytes = 360;
 
-// ZeroInputPacket resets value to the §5 ZERO form — all-zero storage; specified
-// defaults live in construction only and are NOT reapplied here.
+// The §5 zero form: all-zero storage; specified defaults live only in construction.
 export function ZeroInputPacket(value) {
   value.SynchronizeSequence = 0;
   value.CurrentFrame = 0n;
@@ -667,7 +642,7 @@ export function WriteInputPacket(stream, value) {
   if (!stream.serializeBits64(BIGINT_SCRATCH, 64)) {
     return false;
   }
-  if (!Number.isInteger(value.InputsCount) || value.InputsCount < 0 || value.InputsCount > MaxInputsPerPacket) { // the count guards the loop (§6.3); out-of-contract writes are refused
+  if (!Number.isInteger(value.InputsCount) || value.InputsCount < 0 || value.InputsCount > MaxInputsPerPacket) { // the count guards the loop (§6.3)
     return false;
   }
   NUMBER_SCRATCH.value = value.InputsCount;
@@ -732,8 +707,7 @@ export class ShipCreate {
 export const ShipCreateMaxBits = 219;
 export const ShipCreateMaxBytes = 32;
 
-// ZeroShipCreate resets value to the §5 ZERO form — all-zero storage; specified
-// defaults live in construction only and are NOT reapplied here.
+// The §5 zero form: all-zero storage; specified defaults live only in construction.
 export function ZeroShipCreate(value) {
   value.ShipType = ShipType.None;
   ZeroQuantizedPosition(value.Position);
@@ -787,14 +761,14 @@ export function WriteShipCreate(stream, value) {
   if (!stream.serializeBits(NUMBER_SCRATCH, 2)) {
     return false;
   }
-  if (!Number.isInteger(value.Health) || value.Health < 0 || value.Health > MaxHealth) { // out-of-contract writes are refused, not wrapped
+  if (!Number.isInteger(value.Health) || value.Health < 0 || value.Health > MaxHealth) {
     return false;
   }
   NUMBER_SCRATCH.value = value.Health;
   if (!stream.serializeBits(NUMBER_SCRATCH, 10)) {
     return false;
   }
-  if (!Number.isInteger(value.Thrust) || value.Thrust < 0 || value.Thrust > 100) { // out-of-contract writes are refused, not wrapped
+  if (!Number.isInteger(value.Thrust) || value.Thrust < 0 || value.Thrust > 100) {
     return false;
   }
   NUMBER_SCRATCH.value = value.Thrust;
@@ -865,22 +839,21 @@ export class ExpressionProbe {
 export const ExpressionProbeMaxBits = 16;
 export const ExpressionProbeMaxBytes = 8;
 
-// ZeroExpressionProbe resets value to the §5 ZERO form — all-zero storage; specified
-// defaults live in construction only and are NOT reapplied here.
+// The §5 zero form: all-zero storage; specified defaults live only in construction.
 export function ZeroExpressionProbe(value) {
   value.HardpointIndex = 0;
   value.SpinRate = 0;
 }
 
 export function WriteExpressionProbe(stream, value) {
-  if (!Number.isInteger(value.HardpointIndex) || value.HardpointIndex < 0 || value.HardpointIndex > (ShipMaxLasers + ShipMaxMissiles) - 1) { // out-of-contract writes are refused, not wrapped
+  if (!Number.isInteger(value.HardpointIndex) || value.HardpointIndex < 0 || value.HardpointIndex > (ShipMaxLasers + ShipMaxMissiles) - 1) {
     return false;
   }
   NUMBER_SCRATCH.value = value.HardpointIndex;
   if (!stream.serializeBits(NUMBER_SCRATCH, 5)) {
     return false;
   }
-  if (!Number.isInteger(value.SpinRate) || value.SpinRate < -(-RotationUnits) || value.SpinRate > RotationUnits * 2) { // out-of-contract writes are refused, not wrapped
+  if (!Number.isInteger(value.SpinRate) || value.SpinRate < -(-RotationUnits) || value.SpinRate > RotationUnits * 2) {
     return false;
   }
   NUMBER_SCRATCH.value = ((value.SpinRate >>> 0) - (-(-RotationUnits) >>> 0)) >>> 0;
@@ -912,8 +885,8 @@ export class ExtremeProbe {
     this.FloorBound = 0n; // wire [-9223372036854775808, 100]
     this.DoubledFloor = 0n; // wire [-9223372036854775808, 100]
     this.CeilingRange = 0n; // wire [1, 18446744073709551615]
-    this.FloorDefault = -9223372036854775808n; // = -9223372036854775808n at construction; Zero* gives the §5 zero form
-    this.CeilingDefault = 18446744073709551615n; // = 18446744073709551615n at construction; Zero* gives the §5 zero form
+    this.FloorDefault = -9223372036854775808n; // specified default at construction; Zero* gives the §5 zero form
+    this.CeilingDefault = 18446744073709551615n; // specified default at construction; Zero* gives the §5 zero form
   }
 }
 
@@ -922,8 +895,7 @@ export class ExtremeProbe {
 export const ExtremeProbeMaxBits = 320;
 export const ExtremeProbeMaxBytes = 40;
 
-// ZeroExtremeProbe resets value to the §5 ZERO form — all-zero storage; specified
-// defaults live in construction only and are NOT reapplied here.
+// The §5 zero form: all-zero storage; specified defaults live only in construction.
 export function ZeroExtremeProbe(value) {
   value.FloorBound = 0n;
   value.DoubledFloor = 0n;
@@ -933,21 +905,21 @@ export function ZeroExtremeProbe(value) {
 }
 
 export function WriteExtremeProbe(stream, value) {
-  if (value.FloorBound > 100n) { // out-of-contract writes are refused, not wrapped
+  if (value.FloorBound > 100n) {
     return false;
   }
   BIGINT_SCRATCH.value = BigInt.asUintN(64, value.FloorBound - -9223372036854775808n);
   if (!stream.serializeBits64(BIGINT_SCRATCH, 64)) {
     return false;
   }
-  if (value.DoubledFloor > 100n) { // out-of-contract writes are refused, not wrapped
+  if (value.DoubledFloor > 100n) {
     return false;
   }
   BIGINT_SCRATCH.value = BigInt.asUintN(64, value.DoubledFloor - -9223372036854775808n);
   if (!stream.serializeBits64(BIGINT_SCRATCH, 64)) {
     return false;
   }
-  if (value.CeilingRange < 1n) { // out-of-contract writes are refused, not wrapped
+  if (value.CeilingRange < 1n) {
     return false;
   }
   BIGINT_SCRATCH.value = BigInt.asUintN(64, value.CeilingRange - 1n);
@@ -997,8 +969,8 @@ export class ExtremeRow {
   constructor() {
     this.ClampedFloor = 0n; // wire [-9223372036854775808, 100]
     this.ClampedCeiling = 0n; // wire [1, 18446744073709551614]
-    this.FloorDef = -9223372036854775808n; // = -9223372036854775808n at construction; Zero* gives the §5 zero form
-    this.CeilingDef = 18446744073709551615n; // = 18446744073709551615n at construction; Zero* gives the §5 zero form
+    this.FloorDef = -9223372036854775808n; // specified default at construction; Zero* gives the §5 zero form
+    this.CeilingDef = 18446744073709551615n; // specified default at construction; Zero* gives the §5 zero form
   }
 }
 
@@ -1007,8 +979,7 @@ export class ExtremeRow {
 export const ExtremeRowMaxBits = 256;
 export const ExtremeRowMaxBytes = 32;
 
-// ZeroExtremeRow resets value to the §5 ZERO form — all-zero storage; specified
-// defaults live in construction only and are NOT reapplied here.
+// The §5 zero form: all-zero storage; specified defaults live only in construction.
 export function ZeroExtremeRow(value) {
   value.ClampedFloor = 0n;
   value.ClampedCeiling = 0n;
@@ -1017,14 +988,14 @@ export function ZeroExtremeRow(value) {
 }
 
 export function WriteExtremeRow(stream, value) {
-  if (value.ClampedFloor > 100n) { // out-of-contract writes are refused, not wrapped
+  if (value.ClampedFloor > 100n) {
     return false;
   }
   BIGINT_SCRATCH.value = BigInt.asUintN(64, value.ClampedFloor - -9223372036854775808n);
   if (!stream.serializeBits64(BIGINT_SCRATCH, 64)) {
     return false;
   }
-  if (value.ClampedCeiling < 1n || value.ClampedCeiling > 18446744073709551614n) { // out-of-contract writes are refused, not wrapped
+  if (value.ClampedCeiling < 1n || value.ClampedCeiling > 18446744073709551614n) {
     return false;
   }
   BIGINT_SCRATCH.value = BigInt.asUintN(64, value.ClampedCeiling - 1n);

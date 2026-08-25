@@ -19,13 +19,7 @@ impl Team {
 
 /// Debug/log name for any `Team` value, out-of-set included.
 pub fn enum_name_team(value: Team) -> &'static str {
-    enum_name_team_dyn(value.0 as u64)
-}
-
-/// As [`enum_name_team`], over a raw wire value — the form the table
-/// reflection descriptors hold.
-pub fn enum_name_team_dyn(value: u64) -> &'static str {
-    match value {
+    match value.0 {
         0 => "None",
         1 => "Red",
         2 => "Blue",
@@ -51,13 +45,7 @@ impl ShipType {
 
 /// Debug/log name for any `ShipType` value, out-of-set included.
 pub fn enum_name_ship_type(value: ShipType) -> &'static str {
-    enum_name_ship_type_dyn(value.0 as u64)
-}
-
-/// As [`enum_name_ship_type`], over a raw wire value — the form the table
-/// reflection descriptors hold.
-pub fn enum_name_ship_type_dyn(value: u64) -> &'static str {
-    match value {
+    match value.0 {
         0 => "None",
         1 => "Fighter",
         2 => "Corvette",
@@ -84,13 +72,7 @@ impl MissileType {
 
 /// Debug/log name for any `MissileType` value, out-of-set included.
 pub fn enum_name_missile_type(value: MissileType) -> &'static str {
-    enum_name_missile_type_dyn(value.0 as u64)
-}
-
-/// As [`enum_name_missile_type`], over a raw wire value — the form the table
-/// reflection descriptors hold.
-pub fn enum_name_missile_type_dyn(value: u64) -> &'static str {
-    match value {
+    match value.0 {
         0 => "None",
         1 => "Heatseeker",
         2 => "Torpedo",
@@ -118,13 +100,7 @@ impl PropType {
 
 /// Debug/log name for any `PropType` value, out-of-set included.
 pub fn enum_name_prop_type(value: PropType) -> &'static str {
-    enum_name_prop_type_dyn(value.0 as u64)
-}
-
-/// As [`enum_name_prop_type`], over a raw wire value — the form the table
-/// reflection descriptors hold.
-pub fn enum_name_prop_type_dyn(value: u64) -> &'static str {
-    match value {
+    match value.0 {
         0 => "None",
         1 => "Asteroid",
         2 => "Chunk",
@@ -149,13 +125,7 @@ impl Pending {
 
 /// Debug/log name for any `Pending` value, out-of-set included.
 pub fn enum_name_pending(value: Pending) -> &'static str {
-    enum_name_pending_dyn(value.0 as u64)
-}
-
-/// As [`enum_name_pending`], over a raw wire value — the form the table
-/// reflection descriptors hold.
-pub fn enum_name_pending_dyn(value: u64) -> &'static str {
-    match value {
+    match value.0 {
         0 => "None",
         _ => "???",
     }

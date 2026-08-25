@@ -3,25 +3,6 @@
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
 // package example — protocol id 0xbc05d83a8135cdb9
-//
-// THE FLAT TIER — the shipped JavaScript wire path: the serialize.js
-// two-lane bitpacker inlined at every field, constant widths and masks,
-// zero function calls. Same generated classes, same bytes as the runtime
-// tier (a standing CI gate); the runtime tier remains the diagnostic and
-// reference surface — re-read a failing buffer through it to learn WHICH
-// operation failed and why.
-//
-// Write<Name>Flat(value, view) -> bytes written, or -1 when the checked
-// writer refuses an out-of-contract value (the production writer trusts
-// the caller — serialize.js src/mode.js's own NODE_ENV fork, frozen at
-// module load). Read<Name>Flat(value, view, numBits) -> bool, the family
-// read verdict; reader obligations ride in every mode.
-//
-// Buffers are caller-owned DataViews. Write buffers: at least <Name>MaxBytes
-// (the constants live in the runtime-tier module). Read buffers: at least
-// FLAT_READ_SLACK = 8 bytes past the payload — 64-bit windows load
-// unconditionally; copy exactly-sized receive buffers into a persistent
-// MaxBytes + 8 scratch first.
 
 // The 8-byte conversion scratch — serialize.js's FLOAT_SCRATCH twin. Module
 // scope is safe: single threaded per realm, consumed in the same op that
@@ -768,7 +749,7 @@ function writeHandleFlatProduction(value, view) {
 function writeHandleFlatChecked(value, view) {
   let v = 0, s = 0;
   let lo = 0, hi = 0, sb = 0, wi = 0;
-  if (!Number.isInteger(value.ObjectId) || value.ObjectId < 0 || value.ObjectId > 9999) { // out-of-contract writes are refused, not wrapped
+  if (!Number.isInteger(value.ObjectId) || value.ObjectId < 0 || value.ObjectId > 9999) {
     return -1;
   }
   v = ((value.ObjectId) & 0x3fff) >>> 0;
@@ -912,7 +893,7 @@ function writeQuantizedPositionFlatProduction(value, view) {
 function writeQuantizedPositionFlatChecked(value, view) {
   let v = 0, s = 0;
   let lo = 0, hi = 0, sb = 0, wi = 0;
-  if (!Number.isInteger(value.X) || value.X < -8388608 || value.X > 8388608) { // out-of-contract writes are refused, not wrapped
+  if (!Number.isInteger(value.X) || value.X < -8388608 || value.X > 8388608) {
     return -1;
   }
   v = ((((value.X >>> 0) - 4286578688) >>> 0) & 0x1ffffff) >>> 0;
@@ -932,7 +913,7 @@ function writeQuantizedPositionFlatChecked(value, view) {
     hi = 0;
     sb -= 64;
   }
-  if (!Number.isInteger(value.Y) || value.Y < -8388608 || value.Y > 8388608) { // out-of-contract writes are refused, not wrapped
+  if (!Number.isInteger(value.Y) || value.Y < -8388608 || value.Y > 8388608) {
     return -1;
   }
   v = ((((value.Y >>> 0) - 4286578688) >>> 0) & 0x1ffffff) >>> 0;
@@ -952,7 +933,7 @@ function writeQuantizedPositionFlatChecked(value, view) {
     hi = 0;
     sb -= 64;
   }
-  if (!Number.isInteger(value.Z) || value.Z < -8388608 || value.Z > 8388608) { // out-of-contract writes are refused, not wrapped
+  if (!Number.isInteger(value.Z) || value.Z < -8388608 || value.Z > 8388608) {
     return -1;
   }
   v = ((((value.Z >>> 0) - 4286578688) >>> 0) & 0x1ffffff) >>> 0;
@@ -1093,7 +1074,7 @@ function writeQuantizedVelocityFlatProduction(value, view) {
 function writeQuantizedVelocityFlatChecked(value, view) {
   let v = 0, s = 0;
   let lo = 0, hi = 0, sb = 0, wi = 0;
-  if (!Number.isInteger(value.X) || value.X < -2097152 || value.X > 2097152) { // out-of-contract writes are refused, not wrapped
+  if (!Number.isInteger(value.X) || value.X < -2097152 || value.X > 2097152) {
     return -1;
   }
   v = ((((value.X >>> 0) - 4292870144) >>> 0) & 0x7fffff) >>> 0;
@@ -1113,7 +1094,7 @@ function writeQuantizedVelocityFlatChecked(value, view) {
     hi = 0;
     sb -= 64;
   }
-  if (!Number.isInteger(value.Y) || value.Y < -2097152 || value.Y > 2097152) { // out-of-contract writes are refused, not wrapped
+  if (!Number.isInteger(value.Y) || value.Y < -2097152 || value.Y > 2097152) {
     return -1;
   }
   v = ((((value.Y >>> 0) - 4292870144) >>> 0) & 0x7fffff) >>> 0;
@@ -1133,7 +1114,7 @@ function writeQuantizedVelocityFlatChecked(value, view) {
     hi = 0;
     sb -= 64;
   }
-  if (!Number.isInteger(value.Z) || value.Z < -2097152 || value.Z > 2097152) { // out-of-contract writes are refused, not wrapped
+  if (!Number.isInteger(value.Z) || value.Z < -2097152 || value.Z > 2097152) {
     return -1;
   }
   v = ((((value.Z >>> 0) - 4292870144) >>> 0) & 0x7fffff) >>> 0;
@@ -1291,7 +1272,7 @@ function writeQuantizedRotationFlatProduction(value, view) {
 function writeQuantizedRotationFlatChecked(value, view) {
   let v = 0, s = 0;
   let lo = 0, hi = 0, sb = 0, wi = 0;
-  if (!Number.isInteger(value.X) || value.X < -1024 || value.X > 1024) { // out-of-contract writes are refused, not wrapped
+  if (!Number.isInteger(value.X) || value.X < -1024 || value.X > 1024) {
     return -1;
   }
   v = ((((value.X >>> 0) - 4294966272) >>> 0) & 0xfff) >>> 0;
@@ -1311,7 +1292,7 @@ function writeQuantizedRotationFlatChecked(value, view) {
     hi = 0;
     sb -= 64;
   }
-  if (!Number.isInteger(value.Y) || value.Y < -1024 || value.Y > 1024) { // out-of-contract writes are refused, not wrapped
+  if (!Number.isInteger(value.Y) || value.Y < -1024 || value.Y > 1024) {
     return -1;
   }
   v = ((((value.Y >>> 0) - 4294966272) >>> 0) & 0xfff) >>> 0;
@@ -1331,7 +1312,7 @@ function writeQuantizedRotationFlatChecked(value, view) {
     hi = 0;
     sb -= 64;
   }
-  if (!Number.isInteger(value.Z) || value.Z < -1024 || value.Z > 1024) { // out-of-contract writes are refused, not wrapped
+  if (!Number.isInteger(value.Z) || value.Z < -1024 || value.Z > 1024) {
     return -1;
   }
   v = ((((value.Z >>> 0) - 4294966272) >>> 0) & 0xfff) >>> 0;
@@ -1351,7 +1332,7 @@ function writeQuantizedRotationFlatChecked(value, view) {
     hi = 0;
     sb -= 64;
   }
-  if (!Number.isInteger(value.W) || value.W < -1024 || value.W > 1024) { // out-of-contract writes are refused, not wrapped
+  if (!Number.isInteger(value.W) || value.W < -1024 || value.W > 1024) {
     return -1;
   }
   v = ((((value.W >>> 0) - 4294966272) >>> 0) & 0xfff) >>> 0;
@@ -4704,7 +4685,7 @@ function writeShipCreateFlatChecked(value, view) {
     hi = 0;
     sb -= 64;
   }
-  if (!Number.isInteger(value.Position.X) || value.Position.X < -8388608 || value.Position.X > 8388608) { // out-of-contract writes are refused, not wrapped
+  if (!Number.isInteger(value.Position.X) || value.Position.X < -8388608 || value.Position.X > 8388608) {
     return -1;
   }
   v = ((((value.Position.X >>> 0) - 4286578688) >>> 0) & 0x1ffffff) >>> 0;
@@ -4724,7 +4705,7 @@ function writeShipCreateFlatChecked(value, view) {
     hi = 0;
     sb -= 64;
   }
-  if (!Number.isInteger(value.Position.Y) || value.Position.Y < -8388608 || value.Position.Y > 8388608) { // out-of-contract writes are refused, not wrapped
+  if (!Number.isInteger(value.Position.Y) || value.Position.Y < -8388608 || value.Position.Y > 8388608) {
     return -1;
   }
   v = ((((value.Position.Y >>> 0) - 4286578688) >>> 0) & 0x1ffffff) >>> 0;
@@ -4744,7 +4725,7 @@ function writeShipCreateFlatChecked(value, view) {
     hi = 0;
     sb -= 64;
   }
-  if (!Number.isInteger(value.Position.Z) || value.Position.Z < -8388608 || value.Position.Z > 8388608) { // out-of-contract writes are refused, not wrapped
+  if (!Number.isInteger(value.Position.Z) || value.Position.Z < -8388608 || value.Position.Z > 8388608) {
     return -1;
   }
   v = ((((value.Position.Z >>> 0) - 4286578688) >>> 0) & 0x1ffffff) >>> 0;
@@ -4764,7 +4745,7 @@ function writeShipCreateFlatChecked(value, view) {
     hi = 0;
     sb -= 64;
   }
-  if (!Number.isInteger(value.Rotation.X) || value.Rotation.X < -1024 || value.Rotation.X > 1024) { // out-of-contract writes are refused, not wrapped
+  if (!Number.isInteger(value.Rotation.X) || value.Rotation.X < -1024 || value.Rotation.X > 1024) {
     return -1;
   }
   v = ((((value.Rotation.X >>> 0) - 4294966272) >>> 0) & 0xfff) >>> 0;
@@ -4784,7 +4765,7 @@ function writeShipCreateFlatChecked(value, view) {
     hi = 0;
     sb -= 64;
   }
-  if (!Number.isInteger(value.Rotation.Y) || value.Rotation.Y < -1024 || value.Rotation.Y > 1024) { // out-of-contract writes are refused, not wrapped
+  if (!Number.isInteger(value.Rotation.Y) || value.Rotation.Y < -1024 || value.Rotation.Y > 1024) {
     return -1;
   }
   v = ((((value.Rotation.Y >>> 0) - 4294966272) >>> 0) & 0xfff) >>> 0;
@@ -4804,7 +4785,7 @@ function writeShipCreateFlatChecked(value, view) {
     hi = 0;
     sb -= 64;
   }
-  if (!Number.isInteger(value.Rotation.Z) || value.Rotation.Z < -1024 || value.Rotation.Z > 1024) { // out-of-contract writes are refused, not wrapped
+  if (!Number.isInteger(value.Rotation.Z) || value.Rotation.Z < -1024 || value.Rotation.Z > 1024) {
     return -1;
   }
   v = ((((value.Rotation.Z >>> 0) - 4294966272) >>> 0) & 0xfff) >>> 0;
@@ -4824,7 +4805,7 @@ function writeShipCreateFlatChecked(value, view) {
     hi = 0;
     sb -= 64;
   }
-  if (!Number.isInteger(value.Rotation.W) || value.Rotation.W < -1024 || value.Rotation.W > 1024) { // out-of-contract writes are refused, not wrapped
+  if (!Number.isInteger(value.Rotation.W) || value.Rotation.W < -1024 || value.Rotation.W > 1024) {
     return -1;
   }
   v = ((((value.Rotation.W >>> 0) - 4294966272) >>> 0) & 0xfff) >>> 0;
@@ -4844,7 +4825,7 @@ function writeShipCreateFlatChecked(value, view) {
     hi = 0;
     sb -= 64;
   }
-  if (!Number.isInteger(value.LinearVelocity.X) || value.LinearVelocity.X < -2097152 || value.LinearVelocity.X > 2097152) { // out-of-contract writes are refused, not wrapped
+  if (!Number.isInteger(value.LinearVelocity.X) || value.LinearVelocity.X < -2097152 || value.LinearVelocity.X > 2097152) {
     return -1;
   }
   v = ((((value.LinearVelocity.X >>> 0) - 4292870144) >>> 0) & 0x7fffff) >>> 0;
@@ -4864,7 +4845,7 @@ function writeShipCreateFlatChecked(value, view) {
     hi = 0;
     sb -= 64;
   }
-  if (!Number.isInteger(value.LinearVelocity.Y) || value.LinearVelocity.Y < -2097152 || value.LinearVelocity.Y > 2097152) { // out-of-contract writes are refused, not wrapped
+  if (!Number.isInteger(value.LinearVelocity.Y) || value.LinearVelocity.Y < -2097152 || value.LinearVelocity.Y > 2097152) {
     return -1;
   }
   v = ((((value.LinearVelocity.Y >>> 0) - 4292870144) >>> 0) & 0x7fffff) >>> 0;
@@ -4884,7 +4865,7 @@ function writeShipCreateFlatChecked(value, view) {
     hi = 0;
     sb -= 64;
   }
-  if (!Number.isInteger(value.LinearVelocity.Z) || value.LinearVelocity.Z < -2097152 || value.LinearVelocity.Z > 2097152) { // out-of-contract writes are refused, not wrapped
+  if (!Number.isInteger(value.LinearVelocity.Z) || value.LinearVelocity.Z < -2097152 || value.LinearVelocity.Z > 2097152) {
     return -1;
   }
   v = ((((value.LinearVelocity.Z >>> 0) - 4292870144) >>> 0) & 0x7fffff) >>> 0;
@@ -4963,7 +4944,7 @@ function writeShipCreateFlatChecked(value, view) {
     hi = 0;
     sb -= 64;
   }
-  if (!Number.isInteger(value.Health) || value.Health < 0 || value.Health > 1000) { // out-of-contract writes are refused, not wrapped
+  if (!Number.isInteger(value.Health) || value.Health < 0 || value.Health > 1000) {
     return -1;
   }
   v = ((value.Health) & 0x3ff) >>> 0;
@@ -4983,7 +4964,7 @@ function writeShipCreateFlatChecked(value, view) {
     hi = 0;
     sb -= 64;
   }
-  if (!Number.isInteger(value.Thrust) || value.Thrust < 0 || value.Thrust > 100) { // out-of-contract writes are refused, not wrapped
+  if (!Number.isInteger(value.Thrust) || value.Thrust < 0 || value.Thrust > 100) {
     return -1;
   }
   v = ((value.Thrust) & 0x7f) >>> 0;
@@ -5258,7 +5239,7 @@ function writeExpressionProbeFlatProduction(value, view) {
 function writeExpressionProbeFlatChecked(value, view) {
   let v = 0, s = 0;
   let lo = 0, hi = 0, sb = 0, wi = 0;
-  if (!Number.isInteger(value.HardpointIndex) || value.HardpointIndex < 0 || value.HardpointIndex > 31) { // out-of-contract writes are refused, not wrapped
+  if (!Number.isInteger(value.HardpointIndex) || value.HardpointIndex < 0 || value.HardpointIndex > 31) {
     return -1;
   }
   v = ((value.HardpointIndex) & 0x1f) >>> 0;
@@ -5278,7 +5259,7 @@ function writeExpressionProbeFlatChecked(value, view) {
     hi = 0;
     sb -= 64;
   }
-  if (!Number.isInteger(value.SpinRate) || value.SpinRate < 1024 || value.SpinRate > 2048) { // out-of-contract writes are refused, not wrapped
+  if (!Number.isInteger(value.SpinRate) || value.SpinRate < 1024 || value.SpinRate > 2048) {
     return -1;
   }
   v = ((((value.SpinRate >>> 0) - 1024) >>> 0) & 0x7ff) >>> 0;
@@ -5531,7 +5512,7 @@ function writeExtremeProbeFlatChecked(value, view) {
   let v = 0, s = 0;
   let bg = 0n;
   let lo = 0, hi = 0, sb = 0, wi = 0;
-  if (value.FloorBound > 100n) { // out-of-contract writes are refused, not wrapped
+  if (value.FloorBound > 100n) {
     return -1;
   }
   SC.setBigUint64(0, BigInt.asUintN(64, value.FloorBound - -9223372036854775808n), true);
@@ -5569,7 +5550,7 @@ function writeExtremeProbeFlatChecked(value, view) {
     hi = 0;
     sb -= 64;
   }
-  if (value.DoubledFloor > 100n) { // out-of-contract writes are refused, not wrapped
+  if (value.DoubledFloor > 100n) {
     return -1;
   }
   SC.setBigUint64(0, BigInt.asUintN(64, value.DoubledFloor - -9223372036854775808n), true);
@@ -5607,7 +5588,7 @@ function writeExtremeProbeFlatChecked(value, view) {
     hi = 0;
     sb -= 64;
   }
-  if (value.CeilingRange < 1n) { // out-of-contract writes are refused, not wrapped
+  if (value.CeilingRange < 1n) {
     return -1;
   }
   SC.setBigUint64(0, BigInt.asUintN(64, value.CeilingRange - 1n), true);
@@ -5994,7 +5975,7 @@ function writeExtremeRowFlatChecked(value, view) {
   let v = 0, s = 0;
   let bg = 0n;
   let lo = 0, hi = 0, sb = 0, wi = 0;
-  if (value.ClampedFloor > 100n) { // out-of-contract writes are refused, not wrapped
+  if (value.ClampedFloor > 100n) {
     return -1;
   }
   SC.setBigUint64(0, BigInt.asUintN(64, value.ClampedFloor - -9223372036854775808n), true);
@@ -6032,7 +6013,7 @@ function writeExtremeRowFlatChecked(value, view) {
     hi = 0;
     sb -= 64;
   }
-  if (value.ClampedCeiling < 1n || value.ClampedCeiling > 18446744073709551614n) { // out-of-contract writes are refused, not wrapped
+  if (value.ClampedCeiling < 1n || value.ClampedCeiling > 18446744073709551614n) {
     return -1;
   }
   SC.setBigUint64(0, BigInt.asUintN(64, value.ClampedCeiling - 1n), true);

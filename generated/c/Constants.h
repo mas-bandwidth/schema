@@ -8,16 +8,6 @@
 #define SCHEMA_EXAMPLE_CONSTANTS_H
 
 #include <stdint.h>
-#include <string.h>   /* memset — the zero form (SPEC §4.2) */
-#include <math.h>     /* floor — the quantize pair */
-
-#ifndef SCHEMA_UNUSED
-#if defined(__GNUC__) || defined(__clang__)
-#define SCHEMA_UNUSED __attribute__((unused))
-#else
-#define SCHEMA_UNUSED
-#endif
-#endif
 
 #ifdef __cplusplus
 extern "C" {

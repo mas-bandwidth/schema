@@ -23,6 +23,12 @@
 extern "C" {
 #endif
 
+/* Every write_x/read_x returns 1 on success, 0 on failure — the stream
+   latches the error, so a caller may check once at the end of a message.
+   Reads REFUSE out-of-range values, never clamp. A tag is validated BEFORE
+   it rides, and a read zero-establishes the selected arm before decoding
+   it (SPEC §4.8, §5). */
+
 #ifndef SCHEMA_C_SPINE_INLINE_DEFINED
 #define SCHEMA_C_SPINE_INLINE_DEFINED
 /* SCHEMA_C_READ_INLINE / SCHEMA_C_WRITE_INLINE — how every generated wire
@@ -45,8 +51,7 @@ extern "C" {
 #endif
 #endif /* SCHEMA_C_SPINE_INLINE_DEFINED */
 
-/* Writes FixedProbe. Returns 1 on success, 0 on failure — the stream latches the
-   error, so a caller may check once at the end of a message. */
+/* Writes FixedProbe. */
 static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_fixed_probe( serialize_write_stream_t * stream, const FixedProbe * value )
 {
     {
@@ -93,8 +98,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_fixed_probe( serialize_writ
     return 1;
 }
 
-/* Reads FixedProbe. Returns 1 on success, 0 on failure. Out-of-range values are
-   REFUSED, never clamped. */
+/* Reads FixedProbe. */
 static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_fixed_probe( serialize_read_stream_t * stream, FixedProbe * value )
 {
     {
@@ -151,8 +155,7 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_fixed_probe( serialize_read_s
     return 1;
 }
 
-/* Writes UnsignedProbe. Returns 1 on success, 0 on failure — the stream latches the
-   error, so a caller may check once at the end of a message. */
+/* Writes UnsignedProbe. */
 static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_unsigned_probe( serialize_write_stream_t * stream, const UnsignedProbe * value )
 {
     {
@@ -207,8 +210,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_unsigned_probe( serialize_w
     return 1;
 }
 
-/* Reads UnsignedProbe. Returns 1 on success, 0 on failure. Out-of-range values are
-   REFUSED, never clamped. */
+/* Reads UnsignedProbe. */
 static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_unsigned_probe( serialize_read_stream_t * stream, UnsignedProbe * value )
 {
     {
@@ -269,8 +271,7 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_unsigned_probe( serialize_rea
     return 1;
 }
 
-/* Writes WideProbe. Returns 1 on success, 0 on failure — the stream latches the
-   error, so a caller may check once at the end of a message. */
+/* Writes WideProbe. */
 static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_wide_probe( serialize_write_stream_t * stream, const WideProbe * value )
 {
     if ( !serialize_write_uint128( stream, value->entity_id ) )
@@ -296,8 +297,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_wide_probe( serialize_write
     return 1;
 }
 
-/* Reads WideProbe. Returns 1 on success, 0 on failure. Out-of-range values are
-   REFUSED, never clamped. */
+/* Reads WideProbe. */
 static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_wide_probe( serialize_read_stream_t * stream, WideProbe * value )
 {
     if ( !serialize_read_uint128( stream, &value->entity_id ) )
@@ -323,8 +323,7 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_wide_probe( serialize_read_st
     return 1;
 }
 
-/* Writes LudicrousState. Returns 1 on success, 0 on failure — the stream latches the
-   error, so a caller may check once at the end of a message. */
+/* Writes LudicrousState. */
 static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_ludicrous_state( serialize_write_stream_t * stream, const LudicrousState * value )
 {
     if ( value->mode > 3 )
@@ -371,8 +370,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_ludicrous_state( serialize_
     return 1;
 }
 
-/* Reads LudicrousState. Returns 1 on success, 0 on failure. Out-of-range values are
-   REFUSED, never clamped. */
+/* Reads LudicrousState. */
 static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_ludicrous_state( serialize_read_stream_t * stream, LudicrousState * value )
 {
     {
@@ -427,8 +425,7 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_ludicrous_state( serialize_re
     return 1;
 }
 
-/* Writes DegenerateProbe. Returns 1 on success, 0 on failure — the stream latches the
-   error, so a caller may check once at the end of a message. */
+/* Writes DegenerateProbe. */
 static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_degenerate_probe( serialize_write_stream_t * stream, const DegenerateProbe * value )
 {
     if ( (serialize_int64_t) value->locked_fixed != -196608LL )
@@ -450,8 +447,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_degenerate_probe( serialize
     return 1;
 }
 
-/* Reads DegenerateProbe. Returns 1 on success, 0 on failure. Out-of-range values are
-   REFUSED, never clamped. */
+/* Reads DegenerateProbe. */
 static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_degenerate_probe( serialize_read_stream_t * stream, DegenerateProbe * value )
 {
     value->locked_fixed = (int32_t) -196608LL;
@@ -468,8 +464,7 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_degenerate_probe( serialize_r
     return 1;
 }
 
-/* Writes FixedVec. Returns 1 on success, 0 on failure — the stream latches the
-   error, so a caller may check once at the end of a message. */
+/* Writes FixedVec. */
 static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_fixed_vec( serialize_write_stream_t * stream, const FixedVec * value )
 {
     {
@@ -496,8 +491,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_fixed_vec( serialize_write_
     return 1;
 }
 
-/* Reads FixedVec. Returns 1 on success, 0 on failure. Out-of-range values are
-   REFUSED, never clamped. */
+/* Reads FixedVec. */
 static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_fixed_vec( serialize_read_stream_t * stream, FixedVec * value )
 {
     {
@@ -530,8 +524,7 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_fixed_vec( serialize_read_str
     return 1;
 }
 
-/* Writes FixedQuat. Returns 1 on success, 0 on failure — the stream latches the
-   error, so a caller may check once at the end of a message. */
+/* Writes FixedQuat. */
 static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_fixed_quat( serialize_write_stream_t * stream, const FixedQuat * value )
 {
     {
@@ -565,8 +558,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_fixed_quat( serialize_write
     return 1;
 }
 
-/* Reads FixedQuat. Returns 1 on success, 0 on failure. Out-of-range values are
-   REFUSED, never clamped. */
+/* Reads FixedQuat. */
 static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_fixed_quat( serialize_read_stream_t * stream, FixedQuat * value )
 {
     {

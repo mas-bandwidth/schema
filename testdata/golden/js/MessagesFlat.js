@@ -229,7 +229,7 @@ function writeTestFlatChecked(value, view) {
     hi = 0;
     sb -= 64;
   }
-  if (!Number.isInteger(value.TestB) || value.TestB < 0 || value.TestB > 1000) { // out-of-contract writes are refused, not wrapped
+  if (!Number.isInteger(value.TestB) || value.TestB < 0 || value.TestB > 1000) {
     return -1;
   }
   v = ((value.TestB) & 0x3ff) >>> 0;
@@ -249,7 +249,7 @@ function writeTestFlatChecked(value, view) {
     hi = 0;
     sb -= 64;
   }
-  if (!Number.isInteger(value.TestC) || value.TestC < 0 || value.TestC > 1000) { // out-of-contract writes are refused, not wrapped
+  if (!Number.isInteger(value.TestC) || value.TestC < 0 || value.TestC > 1000) {
     return -1;
   }
   v = ((value.TestC) & 0x3ff) >>> 0;
@@ -269,7 +269,7 @@ function writeTestFlatChecked(value, view) {
     hi = 0;
     sb -= 64;
   }
-  if (!Number.isInteger(value.TestD) || value.TestD < 0 || value.TestD > 1000) { // out-of-contract writes are refused, not wrapped
+  if (!Number.isInteger(value.TestD) || value.TestD < 0 || value.TestD > 1000) {
     return -1;
   }
   v = ((value.TestD) & 0x3ff) >>> 0;
@@ -466,7 +466,7 @@ function writeTestFlatArrayChecked(values, count, view) {
       hi = 0;
       sb -= 64;
     }
-    if (!Number.isInteger(value.TestB) || value.TestB < 0 || value.TestB > 1000) { // out-of-contract writes are refused, not wrapped
+    if (!Number.isInteger(value.TestB) || value.TestB < 0 || value.TestB > 1000) {
       return -1;
     }
     v = ((value.TestB) & 0x3ff) >>> 0;
@@ -486,7 +486,7 @@ function writeTestFlatArrayChecked(values, count, view) {
       hi = 0;
       sb -= 64;
     }
-    if (!Number.isInteger(value.TestC) || value.TestC < 0 || value.TestC > 1000) { // out-of-contract writes are refused, not wrapped
+    if (!Number.isInteger(value.TestC) || value.TestC < 0 || value.TestC > 1000) {
       return -1;
     }
     v = ((value.TestC) & 0x3ff) >>> 0;
@@ -506,7 +506,7 @@ function writeTestFlatArrayChecked(values, count, view) {
       hi = 0;
       sb -= 64;
     }
-    if (!Number.isInteger(value.TestD) || value.TestD < 0 || value.TestD > 1000) { // out-of-contract writes are refused, not wrapped
+    if (!Number.isInteger(value.TestD) || value.TestD < 0 || value.TestD > 1000) {
       return -1;
     }
     v = ((value.TestD) & 0x3ff) >>> 0;
@@ -2889,7 +2889,7 @@ function writeMessageFlatChecked(message, view) {
       hi = 0;
       sb -= 64;
     }
-    if (!Number.isInteger(message.TestB) || message.TestB < 0 || message.TestB > 1000) { // out-of-contract writes are refused, not wrapped
+    if (!Number.isInteger(message.TestB) || message.TestB < 0 || message.TestB > 1000) {
       return -1;
     }
     v = ((message.TestB) & 0x3ff) >>> 0;
@@ -2909,7 +2909,7 @@ function writeMessageFlatChecked(message, view) {
       hi = 0;
       sb -= 64;
     }
-    if (!Number.isInteger(message.TestC) || message.TestC < 0 || message.TestC > 1000) { // out-of-contract writes are refused, not wrapped
+    if (!Number.isInteger(message.TestC) || message.TestC < 0 || message.TestC > 1000) {
       return -1;
     }
     v = ((message.TestC) & 0x3ff) >>> 0;
@@ -2929,7 +2929,7 @@ function writeMessageFlatChecked(message, view) {
       hi = 0;
       sb -= 64;
     }
-    if (!Number.isInteger(message.TestD) || message.TestD < 0 || message.TestD > 1000) { // out-of-contract writes are refused, not wrapped
+    if (!Number.isInteger(message.TestD) || message.TestD < 0 || message.TestD > 1000) {
       return -1;
     }
     v = ((message.TestD) & 0x3ff) >>> 0;

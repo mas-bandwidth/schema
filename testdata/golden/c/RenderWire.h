@@ -8,7 +8,6 @@
 #define SCHEMA_EXAMPLE_RENDERWIRE_H
 
 #include "Render.h"
-#include <string.h>   /* memset, strlen */
 #include "serialize.h"
 
 #ifndef SCHEMA_UNUSED
@@ -23,6 +22,12 @@
 #ifdef __cplusplus
 extern "C" {
 #endif
+
+/* Every write_x/read_x returns 1 on success, 0 on failure — the stream
+   latches the error, so a caller may check once at the end of a message.
+   Reads REFUSE out-of-range values, never clamp. A tag is validated BEFORE
+   it rides, and a read zero-establishes the selected arm before decoding
+   it (SPEC §4.8, §5). */
 
 #ifndef SCHEMA_C_SPINE_INLINE_DEFINED
 #define SCHEMA_C_SPINE_INLINE_DEFINED
@@ -46,8 +51,7 @@ extern "C" {
 #endif
 #endif /* SCHEMA_C_SPINE_INLINE_DEFINED */
 
-/* Writes RenderSprite. Returns 1 on success, 0 on failure — the stream latches the
-   error, so a caller may check once at the end of a message. */
+/* Writes RenderSprite. */
 static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_render_sprite( serialize_write_stream_t * stream, const RenderSprite * value )
 {
     if ( !serialize_write_uint64( stream, (serialize_uint64_t) value->sort_key ) )
@@ -77,8 +81,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_render_sprite( serialize_wr
     return 1;
 }
 
-/* Reads RenderSprite. Returns 1 on success, 0 on failure. Out-of-range values are
-   REFUSED, never clamped. */
+/* Reads RenderSprite. */
 static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_render_sprite( serialize_read_stream_t * stream, RenderSprite * value )
 {
     {
@@ -128,8 +131,7 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_render_sprite( serialize_read
     return 1;
 }
 
-/* Writes RenderBlock. Returns 1 on success, 0 on failure — the stream latches the
-   error, so a caller may check once at the end of a message. */
+/* Writes RenderBlock. */
 static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_render_block( serialize_write_stream_t * stream, const RenderBlock * value )
 {
     if ( !serialize_write_bits( stream, (serialize_uint32_t) value->worker_index, 32 ) )
@@ -157,8 +159,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_render_block( serialize_wri
     return 1;
 }
 
-/* Reads RenderBlock. Returns 1 on success, 0 on failure. Out-of-range values are
-   REFUSED, never clamped. */
+/* Reads RenderBlock. */
 static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_render_block( serialize_read_stream_t * stream, RenderBlock * value )
 {
     {

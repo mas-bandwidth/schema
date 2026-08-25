@@ -28,11 +28,11 @@ func (g *gen) emitObjectMaxBits(d *ir.Object) {
 	deepName := d.Name + "Data_Deep"
 	deepBits := g.maxBitsView(deep, viewDeep)
 	g.pf("inline constexpr int64_t %sMaxBits = %d;\n", deepName, deepBits)
-	g.pf("inline constexpr int64_t %sMaxBytes = %d; // rounded up to the 8-byte write-buffer granularity; a read buffer's allocation must extend at least 8 bytes past the data — the reader loads 64-bit windows\n\n", deepName, ir.MaxBytes(deepBits))
+	g.pf("inline constexpr int64_t %sMaxBytes = %d;%s\n\n", deepName, ir.MaxBytes(deepBits), g.maxBytesTail())
 	shName := d.Name + "Data_Shallow"
 	shBits := g.maxBitsView(interp, viewShallow)
 	g.pf("inline constexpr int64_t %sMaxBits = %d;\n", shName, shBits)
-	g.pf("inline constexpr int64_t %sMaxBytes = %d; // rounded up to the 8-byte write-buffer granularity; a read buffer's allocation must extend at least 8 bytes past the data — the reader loads 64-bit windows\n\n", shName, ir.MaxBytes(shBits))
+	g.pf("inline constexpr int64_t %sMaxBytes = %d;%s\n\n", shName, ir.MaxBytes(shBits), g.maxBytesTail())
 }
 
 // voidIfEmpty emits (void) casts for params when no statement has been

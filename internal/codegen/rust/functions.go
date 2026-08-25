@@ -88,7 +88,7 @@ func (g *gen) emitStructFunctions(st *ir.Struct) {
 	// Both spines carry an attribute because the generated crate is a separate
 	// compilation unit from the caller, and without one a 6-10 byte message
 	// pays a full call (and loses constant folding of its bit widths) per
-	// serialize — measured 2-6x on tiny messages (bench 2026-08-06).
+	// serialize — measured 2-6x on tiny messages.
 	//
 	// The WRITE spine demands (see inline.go): the plain hint only raises
 	// LLVM's threshold, and these spines price far over it and were refused
@@ -405,13 +405,13 @@ func (g *gen) emitWriteRangeGuard(name string, f *ir.Field, ind string) {
 	hiVacuous := f.IntMax.Cmp(storageMax(f.Type)) >= 0
 	switch {
 	case !loVacuous && !hiVacuous:
-		g.pf("%sif %s < %s || %s > %s { // out-of-contract writes are refused, not wrapped\n", ind, name, f.IntMin.String(), name, f.IntMax.String())
+		g.pf("%sif %s < %s || %s > %s {\n", ind, name, f.IntMin.String(), name, f.IntMax.String())
 		g.pf("%s    return Err(Error::Stream(serialize::Error::ValueOutOfRange));\n%s}\n", ind, ind)
 	case !loVacuous:
-		g.pf("%sif %s < %s { // out-of-contract writes are refused, not wrapped\n", ind, name, f.IntMin.String())
+		g.pf("%sif %s < %s {\n", ind, name, f.IntMin.String())
 		g.pf("%s    return Err(Error::Stream(serialize::Error::ValueOutOfRange));\n%s}\n", ind, ind)
 	case !hiVacuous:
-		g.pf("%sif %s > %s { // out-of-contract writes are refused, not wrapped\n", ind, name, f.IntMax.String())
+		g.pf("%sif %s > %s {\n", ind, name, f.IntMax.String())
 		g.pf("%s    return Err(Error::Stream(serialize::Error::ValueOutOfRange));\n%s}\n", ind, ind)
 	}
 }
@@ -439,13 +439,13 @@ func (g *gen) emitWriteFixedRawGuard(name string, f *ir.Field, ind string) {
 	hiVacuous := rawMax.Cmp(smax) >= 0
 	switch {
 	case !loVacuous && !hiVacuous:
-		g.pf("%sif %s < %s || %s > %s { // out-of-contract writes are refused, not wrapped (raw scaled domain)\n", ind, name, rawMin.String(), name, rawMax.String())
+		g.pf("%sif %s < %s || %s > %s {\n", ind, name, rawMin.String(), name, rawMax.String())
 		g.pf("%s    return Err(Error::Stream(serialize::Error::ValueOutOfRange));\n%s}\n", ind, ind)
 	case !loVacuous:
-		g.pf("%sif %s < %s { // out-of-contract writes are refused, not wrapped (raw scaled domain)\n", ind, name, rawMin.String())
+		g.pf("%sif %s < %s {\n", ind, name, rawMin.String())
 		g.pf("%s    return Err(Error::Stream(serialize::Error::ValueOutOfRange));\n%s}\n", ind, ind)
 	case !hiVacuous:
-		g.pf("%sif %s > %s { // out-of-contract writes are refused, not wrapped (raw scaled domain)\n", ind, name, rawMax.String())
+		g.pf("%sif %s > %s {\n", ind, name, rawMax.String())
 		g.pf("%s    return Err(Error::Stream(serialize::Error::ValueOutOfRange));\n%s}\n", ind, ind)
 	}
 }
@@ -463,7 +463,7 @@ func (g *gen) emitWriteField(f *ir.Field, ind string) {
 			return
 		}
 		if f.Array == ir.ArrayCounted {
-			g.pf("%sif %s_count < %d || %s_count > %d { // refused, not wrapped: the runtime's write side only debug_asserts\n", ind, name, f.ArrayMin, name, f.ArrayBound)
+			g.pf("%sif %s_count < %d || %s_count > %d {\n", ind, name, f.ArrayMin, name, f.ArrayBound)
 			g.pf("%s    return Err(Error::Stream(serialize::Error::ValueOutOfRange));\n%s}\n", ind, ind)
 			g.emitWriteRangedFold32(name+"_count", false, fmt.Sprintf("%d_i32", f.ArrayMin), f.ArrayMin == 0,
 				ir.BitsRequired(big.NewInt(f.ArrayMin), big.NewInt(f.ArrayBound)), " // the count guards the loop (§6.3)", ind)
@@ -599,7 +599,7 @@ func (g *gen) emitWriteScalar(f *ir.Field, name, ind string) {
 		// length in [0, N], align, then the used bytes — the classic
 		// serialize_string framing over a buffer of N + 1 (SPEC §4.7).
 		// Interior nulls are writer misuse; the read side rejects them (§4.7).
-		g.pf("%sif %s_length < 0 || %s_length > %d { // refused, not wrapped or panicked: guards the slice too\n", ind, name, name, f.Type.Size)
+		g.pf("%sif %s_length < 0 || %s_length > %d {\n", ind, name, name, f.Type.Size)
 		g.pf("%s    return Err(Error::Stream(serialize::Error::ValueOutOfRange));\n%s}\n", ind, ind)
 		if f.Type.Kind == ir.TString {
 			// well-formed UTF-8 by contract, writer-trusted: debug-only
@@ -612,7 +612,7 @@ func (g *gen) emitWriteScalar(f *ir.Field, name, ind string) {
 		// the write side borrows the used bytes in place: WriteStream::write_bytes
 		// takes &[u8] (same wire as serialize_bytes — align, then the block copy),
 		// where the unified &mut signature forced a whole-array copy into a mutable
-		// local first — 256 B per chat, 2 KB per block, visible in perf (2026-08-06)
+		// local first — 256 B per chat, 2 KB per block, visible in perf
 		g.pf("%sstream.write_bytes(&%s[..%s_length as usize]); // borrowed in place: the write side never mutates (infallible: returns () in serialize.rs 2.0.0)\n", ind, name, name)
 	case ir.TNamed:
 		switch ref := f.Type.Ref.(type) {
@@ -660,7 +660,7 @@ func compressedFloatArgs(f *ir.Field) string {
 // consumed by the step count — and a reader auditing a call site should not
 // have to run the derivation backwards.
 func compressedFloatNote(f *ir.Field) string {
-	return fmt.Sprintf(" // compressed float [%s, %s] @ %s, constants folded at generation (issue #82)",
+	return fmt.Sprintf(" // compressed float [%s, %s] @ %s, constants folded at generation",
 		formatFloat(f.FMin), formatFloat(f.FMax), formatFloat(f.Resolution))
 }
 
@@ -979,7 +979,7 @@ func (g *gen) emitMessageTagFunctions() {
 	g.pf("// read_message_into for reuse loops — hoist ONE Message and read every\n")
 	g.pf("// message into it (the Go/C# MessageStorage discipline). Reuse removes the\n")
 	g.pf("// per-message copy-out of the union and measured 2.6x on the steady-state\n")
-	g.pf("// batch read (M2, 2026-08-06). The two surfaces stay separate on purpose —\n")
+	g.pf("// batch read. The two surfaces stay separate on purpose —\n")
 	g.pf("// see the note on read_message.\n")
 	g.pf(readSpineInline)
 	g.pf("pub fn read_message_into(stream: &mut ReadStream<'_>, message: &mut Message) -> Result {\n")
@@ -1004,16 +1004,16 @@ func (g *gen) emitMessageTagFunctions() {
 	g.pf("        _ => Err(Error::Validation),\n")
 	g.pf("    }\n}\n\n")
 
-	// read_message keeps its original by-value body rather than delegating to
-	// read_message_into: routing the return through a &mut out-param defeated
-	// LLVM's in-place construction of the returned union and cost the batch
-	// read 23% (measured M2, 2026-08-06) — each arm constructing directly
-	// into the return slot is what keeps the by-value surface cheap
+	// read_message keeps its own by-value body rather than delegating to
+	// read_message_into: routing the return through a &mut out-param defeats
+	// LLVM's in-place construction of the returned union, measured at 23% on
+	// the batch read — each arm constructing directly into the return slot is
+	// what keeps the by-value surface cheap
 	g.pf("// read_message decodes the next message by value — the one-shot surface.\n")
 	g.pf("// It deliberately does NOT delegate to read_message_into: routing the\n")
 	g.pf("// return through a &mut out-param defeated LLVM's in-place construction\n")
-	g.pf("// of the returned union and cost the batch read 23%% (measured M2,\n")
-	g.pf("// 2026-08-06). Both surfaces stay; reuse loops call read_message_into.\n")
+	g.pf("// of the returned union, measured at 23%% on the batch read. Both\n")
+	g.pf("// surfaces stay; reuse loops call read_message_into.\n")
 	g.pf(readSpineInline)
 	g.pf("pub fn read_message(stream: &mut ReadStream<'_>) -> Result<Message> {\n")
 	g.pf("    let mut tag_value = MessageType::NONE;\n")

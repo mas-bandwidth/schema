@@ -282,7 +282,7 @@ func (g *gen) rangeArgs(f *ir.Field) (string, string) {
 // generation-time bit count (the int32 family: SerializeInt's encoding).
 // expr must be an int32-typed expression.
 func (g *gen) emitWriteRangedFold32(expr, lo, hi string, bits int64, loZero bool, ind string) {
-	g.pf("%sif %s < %s || %s > %s { // the runtime range refusal, folded (SPEC §5)\n%s\treturn serialize.ErrValueOutOfRange\n%s}\n",
+	g.pf("%sif %s < %s || %s > %s {\n%s\treturn serialize.ErrValueOutOfRange\n%s}\n",
 		ind, expr, lo, expr, hi, ind, ind)
 	// A degenerate range costs ZERO BITS -- the value is known from the range
 	// alone, so nothing rides. The bit packer requires at least one bit, so
@@ -303,7 +303,7 @@ func (g *gen) emitWriteRangedFold32(expr, lo, hi string, bits int64, loZero bool
 // then the high remainder — SerializeBits64's own split, byte-identical).
 // expr must be an int64-typed expression.
 func (g *gen) emitWriteRangedFold64(expr, lo, hi string, bits int64, loZero bool, ind string) {
-	g.pf("%sif %s < %s || %s > %s { // the runtime range refusal, folded (SPEC §5)\n%s\treturn serialize.ErrValueOutOfRange\n%s}\n",
+	g.pf("%sif %s < %s || %s > %s {\n%s\treturn serialize.ErrValueOutOfRange\n%s}\n",
 		ind, expr, lo, expr, hi, ind, ind)
 	offset := "uint64(" + expr + ")"
 	if !loZero {
@@ -445,13 +445,13 @@ func (g *gen) emitWriteScalar(f *ir.Field, name, ind string) {
 			rawMin := new(big.Int).Lsh(f.IntMin, uint(f.Type.FracBits))
 			switch {
 			case f.Type.Width == 128 && f.Type.Signed:
-				g.pf("%sif %s != %s { // the runtime range refusal, folded (SPEC §5)\n", ind, name, g.render128(nil, rawMin))
+				g.pf("%sif %s != %s {\n", ind, name, g.render128(nil, rawMin))
 			case f.Type.Width == 128:
-				g.pf("%sif %s != %s { // the runtime range refusal, folded (SPEC §5)\n", ind, name, g.renderU128(nil, rawMin))
+				g.pf("%sif %s != %s {\n", ind, name, g.renderU128(nil, rawMin))
 			case f.Type.Signed:
-				g.pf("%sif int64(%s) != %s { // the runtime range refusal, folded (SPEC §5)\n", ind, name, rawMin.String())
+				g.pf("%sif int64(%s) != %s {\n", ind, name, rawMin.String())
 			default:
-				g.pf("%sif uint64(%s) != %s { // the runtime range refusal, folded (SPEC §5)\n", ind, name, rawMin.String())
+				g.pf("%sif uint64(%s) != %s {\n", ind, name, rawMin.String())
 			}
 			g.pf("%s\treturn serialize.ErrValueOutOfRange\n%s}\n", ind, ind)
 			return
@@ -484,7 +484,7 @@ func (g *gen) emitWriteScalar(f *ir.Field, name, ind string) {
 			if f.HasIntRange {
 				if f.IntMin.Cmp(f.IntMax) == 0 {
 					// degenerate range: ZERO bits — refusal only (SPEC §4.6)
-					g.pf("%sif %s != %s { // the runtime range refusal, folded (SPEC §5)\n", ind, name, g.render128(f.IntMinExpr, f.IntMin))
+					g.pf("%sif %s != %s {\n", ind, name, g.render128(f.IntMinExpr, f.IntMin))
 					g.pf("%s\treturn serialize.ErrValueOutOfRange\n%s}\n", ind, ind)
 					return
 				}

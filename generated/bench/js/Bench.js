@@ -4,22 +4,18 @@
 // AGPL-3.0, its output is not.
 // package bench — protocol id 0x694f261d887abaa5
 //
-// Storage members are PascalCase via the same mapping as the Go target, so
-// the checker's collision registry covers JS for free. Wire functions return
-// bool — the C++-style early-out. A schema validation failure (a wrong wire
-// constant, nonzero reserved bits, an out-of-contract write) returns false
-// WITHOUT latching; stream failures latch on stream.error — the runtime's own
-// sticky latch. Callers get bool always; error tells the two apart.
+// Wire functions return bool — the C++-style early-out. A schema validation
+// failure (a wrong wire constant, nonzero reserved bits, an out-of-contract
+// write) returns false WITHOUT latching; stream failures latch on
+// stream.error — the runtime's own sticky latch. Callers get bool always;
+// error tells the two apart.
 //
 // Number storage for widths of 32 bits or fewer, BigInt for 64 and 128 —
 // the serialize.js value-domain seam. Checked/production comes from the
 // stream object; generated code never reads NODE_ENV.
 
-// Scratch holders for the runtime's {value} refs (streams.js has no ref
-// parameters). Module scope is safe — JavaScript is single threaded per
-// realm and a holder is consumed in the same call that fills it, the
-// runtime's own FLOAT_SCRATCH argument; generated code never holds one
-// across a nested Write/Read call.
+// Scratch holders for the runtime's {value} refs — single threaded per
+// realm, always consumed in the same call that fills them.
 const NUMBER_SCRATCH = { value: 0 };
 const BIGINT_SCRATCH = { value: 0n };
 const BOOL_SCRATCH = { value: false };
@@ -51,8 +47,7 @@ export class BenchPacket {
 export const BenchPacketMaxBits = 392;
 export const BenchPacketMaxBytes = 56;
 
-// ZeroBenchPacket resets value to the §5 ZERO form — all-zero storage; specified
-// defaults live in construction only and are NOT reapplied here.
+// The §5 zero form: all-zero storage; specified defaults live only in construction.
 export function ZeroBenchPacket(value) {
   value.A = 0;
   value.B = 0;
@@ -69,21 +64,21 @@ export function ZeroBenchPacket(value) {
 }
 
 export function WriteBenchPacket(stream, value) {
-  if (!Number.isInteger(value.A) || value.A < -100 || value.A > 100) { // out-of-contract writes are refused, not wrapped
+  if (!Number.isInteger(value.A) || value.A < -100 || value.A > 100) {
     return false;
   }
   NUMBER_SCRATCH.value = ((value.A >>> 0) - (-100 >>> 0)) >>> 0;
   if (!stream.serializeBits(NUMBER_SCRATCH, 8)) {
     return false;
   }
-  if (!Number.isInteger(value.B) || value.B < 0 || value.B > 65535) { // out-of-contract writes are refused, not wrapped
+  if (!Number.isInteger(value.B) || value.B < 0 || value.B > 65535) {
     return false;
   }
   NUMBER_SCRATCH.value = value.B;
   if (!stream.serializeBits(NUMBER_SCRATCH, 16)) {
     return false;
   }
-  if (!Number.isInteger(value.C) || value.C < -1000000 || value.C > 1000000) { // out-of-contract writes are refused, not wrapped
+  if (!Number.isInteger(value.C) || value.C < -1000000 || value.C > 1000000) {
     return false;
   }
   NUMBER_SCRATCH.value = ((value.C >>> 0) - (-1000000 >>> 0)) >>> 0;
@@ -206,8 +201,7 @@ export class BenchInts {
 export const BenchIntsMaxBits = 110;
 export const BenchIntsMaxBytes = 16;
 
-// ZeroBenchInts resets value to the §5 ZERO form — all-zero storage; specified
-// defaults live in construction only and are NOT reapplied here.
+// The §5 zero form: all-zero storage; specified defaults live only in construction.
 export function ZeroBenchInts(value) {
   value.F0 = 0;
   value.F1 = 0;
@@ -222,70 +216,70 @@ export function ZeroBenchInts(value) {
 }
 
 export function WriteBenchInts(stream, value) {
-  if (!Number.isInteger(value.F0) || value.F0 < -100 || value.F0 > 100) { // out-of-contract writes are refused, not wrapped
+  if (!Number.isInteger(value.F0) || value.F0 < -100 || value.F0 > 100) {
     return false;
   }
   NUMBER_SCRATCH.value = ((value.F0 >>> 0) - (-100 >>> 0)) >>> 0;
   if (!stream.serializeBits(NUMBER_SCRATCH, 8)) {
     return false;
   }
-  if (!Number.isInteger(value.F1) || value.F1 < 0 || value.F1 > 65535) { // out-of-contract writes are refused, not wrapped
+  if (!Number.isInteger(value.F1) || value.F1 < 0 || value.F1 > 65535) {
     return false;
   }
   NUMBER_SCRATCH.value = value.F1;
   if (!stream.serializeBits(NUMBER_SCRATCH, 16)) {
     return false;
   }
-  if (!Number.isInteger(value.F2) || value.F2 < -1000000 || value.F2 > 1000000) { // out-of-contract writes are refused, not wrapped
+  if (!Number.isInteger(value.F2) || value.F2 < -1000000 || value.F2 > 1000000) {
     return false;
   }
   NUMBER_SCRATCH.value = ((value.F2 >>> 0) - (-1000000 >>> 0)) >>> 0;
   if (!stream.serializeBits(NUMBER_SCRATCH, 21)) {
     return false;
   }
-  if (!Number.isInteger(value.F3) || value.F3 < 0 || value.F3 > 3) { // out-of-contract writes are refused, not wrapped
+  if (!Number.isInteger(value.F3) || value.F3 < 0 || value.F3 > 3) {
     return false;
   }
   NUMBER_SCRATCH.value = value.F3;
   if (!stream.serializeBits(NUMBER_SCRATCH, 2)) {
     return false;
   }
-  if (!Number.isInteger(value.F4) || value.F4 < -15 || value.F4 > 15) { // out-of-contract writes are refused, not wrapped
+  if (!Number.isInteger(value.F4) || value.F4 < -15 || value.F4 > 15) {
     return false;
   }
   NUMBER_SCRATCH.value = ((value.F4 >>> 0) - (-15 >>> 0)) >>> 0;
   if (!stream.serializeBits(NUMBER_SCRATCH, 5)) {
     return false;
   }
-  if (!Number.isInteger(value.F5) || value.F5 < 0 || value.F5 > 1000) { // out-of-contract writes are refused, not wrapped
+  if (!Number.isInteger(value.F5) || value.F5 < 0 || value.F5 > 1000) {
     return false;
   }
   NUMBER_SCRATCH.value = value.F5;
   if (!stream.serializeBits(NUMBER_SCRATCH, 10)) {
     return false;
   }
-  if (!Number.isInteger(value.F6) || value.F6 < -2048 || value.F6 > 2047) { // out-of-contract writes are refused, not wrapped
+  if (!Number.isInteger(value.F6) || value.F6 < -2048 || value.F6 > 2047) {
     return false;
   }
   NUMBER_SCRATCH.value = ((value.F6 >>> 0) - (-2048 >>> 0)) >>> 0;
   if (!stream.serializeBits(NUMBER_SCRATCH, 12)) {
     return false;
   }
-  if (!Number.isInteger(value.F7) || value.F7 < 0 || value.F7 > 255) { // out-of-contract writes are refused, not wrapped
+  if (!Number.isInteger(value.F7) || value.F7 < 0 || value.F7 > 255) {
     return false;
   }
   NUMBER_SCRATCH.value = value.F7;
   if (!stream.serializeBits(NUMBER_SCRATCH, 8)) {
     return false;
   }
-  if (!Number.isInteger(value.F8) || value.F8 < -600000 || value.F8 > 600000) { // out-of-contract writes are refused, not wrapped
+  if (!Number.isInteger(value.F8) || value.F8 < -600000 || value.F8 > 600000) {
     return false;
   }
   NUMBER_SCRATCH.value = ((value.F8 >>> 0) - (-600000 >>> 0)) >>> 0;
   if (!stream.serializeBits(NUMBER_SCRATCH, 21)) {
     return false;
   }
-  if (!Number.isInteger(value.F9) || value.F9 < 0 || value.F9 > 100) { // out-of-contract writes are refused, not wrapped
+  if (!Number.isInteger(value.F9) || value.F9 < 0 || value.F9 > 100) {
     return false;
   }
   NUMBER_SCRATCH.value = value.F9;
@@ -358,8 +352,7 @@ export class BenchBits {
 export const BenchBitsMaxBits = 156;
 export const BenchBitsMaxBytes = 24;
 
-// ZeroBenchBits resets value to the §5 ZERO form — all-zero storage; specified
-// defaults live in construction only and are NOT reapplied here.
+// The §5 zero form: all-zero storage; specified defaults live only in construction.
 export function ZeroBenchBits(value) {
   value.B7 = 0;
   value.B13 = 0;
@@ -465,8 +458,7 @@ export class BenchMixed {
 export const BenchMixedMaxBits = 168;
 export const BenchMixedMaxBytes = 24;
 
-// ZeroBenchMixed resets value to the §5 ZERO form — all-zero storage; specified
-// defaults live in construction only and are NOT reapplied here.
+// The §5 zero form: all-zero storage; specified defaults live only in construction.
 export function ZeroBenchMixed(value) {
   value.Sequence = 0;
   value.AckBits = 0;
@@ -482,7 +474,7 @@ export function ZeroBenchMixed(value) {
 }
 
 export function WriteBenchMixed(stream, value) {
-  if (!Number.isInteger(value.Sequence) || value.Sequence < 0 || value.Sequence > 65535) { // out-of-contract writes are refused, not wrapped
+  if (!Number.isInteger(value.Sequence) || value.Sequence < 0 || value.Sequence > 65535) {
     return false;
   }
   NUMBER_SCRATCH.value = value.Sequence;
@@ -497,21 +489,21 @@ export function WriteBenchMixed(stream, value) {
   if (!stream.serializeBits(NUMBER_SCRATCH, 12)) {
     return false;
   }
-  if (!Number.isInteger(value.PosX) || value.PosX < -16384 || value.PosX > 16383) { // out-of-contract writes are refused, not wrapped
+  if (!Number.isInteger(value.PosX) || value.PosX < -16384 || value.PosX > 16383) {
     return false;
   }
   NUMBER_SCRATCH.value = ((value.PosX >>> 0) - (-16384 >>> 0)) >>> 0;
   if (!stream.serializeBits(NUMBER_SCRATCH, 15)) {
     return false;
   }
-  if (!Number.isInteger(value.PosY) || value.PosY < -16384 || value.PosY > 16383) { // out-of-contract writes are refused, not wrapped
+  if (!Number.isInteger(value.PosY) || value.PosY < -16384 || value.PosY > 16383) {
     return false;
   }
   NUMBER_SCRATCH.value = ((value.PosY >>> 0) - (-16384 >>> 0)) >>> 0;
   if (!stream.serializeBits(NUMBER_SCRATCH, 15)) {
     return false;
   }
-  if (!Number.isInteger(value.PosZ) || value.PosZ < -16384 || value.PosZ > 16383) { // out-of-contract writes are refused, not wrapped
+  if (!Number.isInteger(value.PosZ) || value.PosZ < -16384 || value.PosZ > 16383) {
     return false;
   }
   NUMBER_SCRATCH.value = ((value.PosZ >>> 0) - (-16384 >>> 0)) >>> 0;
@@ -534,7 +526,7 @@ export function WriteBenchMixed(stream, value) {
   if (!stream.serializeBits64(BIGINT_SCRATCH, 48)) {
     return false;
   }
-  if (!Number.isInteger(value.Weapon) || value.Weapon < 0 || value.Weapon > 15) { // out-of-contract writes are refused, not wrapped
+  if (!Number.isInteger(value.Weapon) || value.Weapon < 0 || value.Weapon > 15) {
     return false;
   }
   NUMBER_SCRATCH.value = value.Weapon;

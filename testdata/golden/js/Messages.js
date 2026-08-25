@@ -3,25 +3,11 @@
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
 // package example — protocol id 0xbc05d83a8135cdb9
-//
-// Storage members are PascalCase via the same mapping as the Go target, so
-// the checker's collision registry covers JS for free. Wire functions return
-// bool — the C++-style early-out. A schema validation failure (a wrong wire
-// constant, nonzero reserved bits, an out-of-contract write) returns false
-// WITHOUT latching; stream failures latch on stream.error — the runtime's own
-// sticky latch. Callers get bool always; error tells the two apart.
-//
-// Number storage for widths of 32 bits or fewer, BigInt for 64 and 128 —
-// the serialize.js value-domain seam. Checked/production comes from the
-// stream object; generated code never reads NODE_ENV.
 
 import { MaxBlockSize, MaxChatLength } from "./Constants.js";
 
-// Scratch holders for the runtime's {value} refs (streams.js has no ref
-// parameters). Module scope is safe — JavaScript is single threaded per
-// realm and a holder is consumed in the same call that fills it, the
-// runtime's own FLOAT_SCRATCH argument; generated code never holds one
-// across a nested Write/Read call.
+// Scratch holders for the runtime's {value} refs — single threaded per
+// realm, always consumed in the same call that fills them.
 const NUMBER_SCRATCH = { value: 0 };
 const BIGINT_SCRATCH = { value: 0n };
 
@@ -55,8 +41,7 @@ export class Heartbeat {
 export const HeartbeatMaxBits = 0;
 export const HeartbeatMaxBytes = 0;
 
-// ZeroHeartbeat resets value to the §5 ZERO form — all-zero storage; specified
-// defaults live in construction only and are NOT reapplied here.
+// The §5 zero form: all-zero storage; specified defaults live only in construction.
 export function ZeroHeartbeat(value) {
   // empty body — nothing to reset (SPEC §4.6)
 }
@@ -91,8 +76,7 @@ export class Test {
 export const TestMaxBits = 46;
 export const TestMaxBytes = 8;
 
-// ZeroTest resets value to the §5 ZERO form — all-zero storage; specified
-// defaults live in construction only and are NOT reapplied here.
+// The §5 zero form: all-zero storage; specified defaults live only in construction.
 export function ZeroTest(value) {
   value.TestA = 0;
   value.TestB = 0;
@@ -105,21 +89,21 @@ export function WriteTest(stream, value) {
   if (!stream.serializeBits(NUMBER_SCRATCH, 16)) {
     return false;
   }
-  if (!Number.isInteger(value.TestB) || value.TestB < 0 || value.TestB > 1000) { // out-of-contract writes are refused, not wrapped
+  if (!Number.isInteger(value.TestB) || value.TestB < 0 || value.TestB > 1000) {
     return false;
   }
   NUMBER_SCRATCH.value = value.TestB;
   if (!stream.serializeBits(NUMBER_SCRATCH, 10)) {
     return false;
   }
-  if (!Number.isInteger(value.TestC) || value.TestC < 0 || value.TestC > 1000) { // out-of-contract writes are refused, not wrapped
+  if (!Number.isInteger(value.TestC) || value.TestC < 0 || value.TestC > 1000) {
     return false;
   }
   NUMBER_SCRATCH.value = value.TestC;
   if (!stream.serializeBits(NUMBER_SCRATCH, 10)) {
     return false;
   }
-  if (!Number.isInteger(value.TestD) || value.TestD < 0 || value.TestD > 1000) { // out-of-contract writes are refused, not wrapped
+  if (!Number.isInteger(value.TestD) || value.TestD < 0 || value.TestD > 1000) {
     return false;
   }
   NUMBER_SCRATCH.value = value.TestD;
@@ -168,8 +152,7 @@ export class Block {
 export const BlockMaxBits = 16018;
 export const BlockMaxBytes = 2008;
 
-// ZeroBlock resets value to the §5 ZERO form — all-zero storage; specified
-// defaults live in construction only and are NOT reapplied here.
+// The §5 zero form: all-zero storage; specified defaults live only in construction.
 export function ZeroBlock(value) {
   value.Data.fill(0);
   value.DataLength = 0;
@@ -219,8 +202,7 @@ export class Chat {
 export const ChatMaxBits = 2064;
 export const ChatMaxBytes = 264;
 
-// ZeroChat resets value to the §5 ZERO form — all-zero storage; specified
-// defaults live in construction only and are NOT reapplied here.
+// The §5 zero form: all-zero storage; specified defaults live only in construction.
 export function ZeroChat(value) {
   value.Text.fill(0);
   value.TextLength = 0;
@@ -275,8 +257,7 @@ export class Synchronize {
 export const SynchronizeMaxBits = 80;
 export const SynchronizeMaxBytes = 16;
 
-// ZeroSynchronize resets value to the §5 ZERO form — all-zero storage; specified
-// defaults live in construction only and are NOT reapplied here.
+// The §5 zero form: all-zero storage; specified defaults live only in construction.
 export function ZeroSynchronize(value) {
   value.SyncFrame = 0n;
   value.SyncSequence = 0;
@@ -326,8 +307,7 @@ export class Timescale {
 export const TimescaleMaxBits = 128;
 export const TimescaleMaxBytes = 16;
 
-// ZeroTimescale resets value to the §5 ZERO form — all-zero storage; specified
-// defaults live in construction only and are NOT reapplied here.
+// The §5 zero form: all-zero storage; specified defaults live only in construction.
 export function ZeroTimescale(value) {
   value.Scale = 0;
   value.FrameA = 0;

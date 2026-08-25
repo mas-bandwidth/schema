@@ -13,8 +13,7 @@
 
 namespace example {
 
-// type Vec3 [vec3] — the tag is user-chosen and inert in v1; the delta pass
-// claims tags and assigns actions (SPEC §4.2, Type tags)
+// type Vec3 [vec3] — tags are user-chosen and inert in v1 (SPEC §4.2, Type tags)
 struct Vec3 {
     double x = 0.0;
     double y = 0.0;
@@ -24,8 +23,7 @@ struct Vec3 {
 inline constexpr int64_t Vec3MaxBits = 192; // longest wire path; align pads at worst case (SPEC §6.1)
 inline constexpr int64_t Vec3MaxBytes = 24; // rounded up to the 8-byte write-buffer granularity; a read buffer's allocation must extend at least 8 bytes past the data — the reader loads 64-bit windows
 
-// type Quat [quat4] — the tag is user-chosen and inert in v1; the delta pass
-// claims tags and assigns actions (SPEC §4.2, Type tags)
+// type Quat [quat4] — tags are user-chosen and inert in v1 (SPEC §4.2, Type tags)
 struct Quat {
     double x = 0.0;
     double y = 0.0;
@@ -34,7 +32,7 @@ struct Quat {
 };
 
 inline constexpr int64_t QuatMaxBits = 256; // longest wire path; align pads at worst case (SPEC §6.1)
-inline constexpr int64_t QuatMaxBytes = 32; // rounded up to the 8-byte write-buffer granularity; a read buffer's allocation must extend at least 8 bytes past the data — the reader loads 64-bit windows
+inline constexpr int64_t QuatMaxBytes = 32; // 8-byte write granularity; read slack per the contract above
 
 // type Handle
 struct Handle {
@@ -43,7 +41,7 @@ struct Handle {
 };
 
 inline constexpr int64_t HandleMaxBits = 22; // longest wire path; align pads at worst case (SPEC §6.1)
-inline constexpr int64_t HandleMaxBytes = 8; // rounded up to the 8-byte write-buffer granularity; a read buffer's allocation must extend at least 8 bytes past the data — the reader loads 64-bit windows
+inline constexpr int64_t HandleMaxBytes = 8; // 8-byte write granularity; read slack per the contract above
 
 // type QuantizedPosition
 struct QuantizedPosition {
@@ -53,7 +51,7 @@ struct QuantizedPosition {
 };
 
 inline constexpr int64_t QuantizedPositionMaxBits = 75; // longest wire path; align pads at worst case (SPEC §6.1)
-inline constexpr int64_t QuantizedPositionMaxBytes = 16; // rounded up to the 8-byte write-buffer granularity; a read buffer's allocation must extend at least 8 bytes past the data — the reader loads 64-bit windows
+inline constexpr int64_t QuantizedPositionMaxBytes = 16; // 8-byte write granularity; read slack per the contract above
 
 // type QuantizedVelocity
 struct QuantizedVelocity {
@@ -63,7 +61,7 @@ struct QuantizedVelocity {
 };
 
 inline constexpr int64_t QuantizedVelocityMaxBits = 69; // longest wire path; align pads at worst case (SPEC §6.1)
-inline constexpr int64_t QuantizedVelocityMaxBytes = 16; // rounded up to the 8-byte write-buffer granularity; a read buffer's allocation must extend at least 8 bytes past the data — the reader loads 64-bit windows
+inline constexpr int64_t QuantizedVelocityMaxBytes = 16; // 8-byte write granularity; read slack per the contract above
 
 // type QuantizedRotation
 struct QuantizedRotation {
@@ -74,7 +72,7 @@ struct QuantizedRotation {
 };
 
 inline constexpr int64_t QuantizedRotationMaxBits = 48; // longest wire path; align pads at worst case (SPEC §6.1)
-inline constexpr int64_t QuantizedRotationMaxBytes = 8; // rounded up to the 8-byte write-buffer granularity; a read buffer's allocation must extend at least 8 bytes past the data — the reader loads 64-bit windows
+inline constexpr int64_t QuantizedRotationMaxBytes = 8; // 8-byte write granularity; read slack per the contract above
 
 // type RigidBody
 struct RigidBody {
@@ -89,7 +87,7 @@ struct RigidBody {
 };
 
 inline constexpr int64_t RigidBodyMaxBits = 833; // longest wire path; align pads at worst case (SPEC §6.1)
-inline constexpr int64_t RigidBodyMaxBytes = 112; // rounded up to the 8-byte write-buffer granularity; a read buffer's allocation must extend at least 8 bytes past the data — the reader loads 64-bit windows
+inline constexpr int64_t RigidBodyMaxBytes = 112; // 8-byte write granularity; read slack per the contract above
 
 // type Input
 struct Input {
@@ -109,7 +107,7 @@ struct Input {
 };
 
 inline constexpr int64_t InputMaxBits = 168; // longest wire path; align pads at worst case (SPEC §6.1)
-inline constexpr int64_t InputMaxBytes = 24; // rounded up to the 8-byte write-buffer granularity; a read buffer's allocation must extend at least 8 bytes past the data — the reader loads 64-bit windows
+inline constexpr int64_t InputMaxBytes = 24; // 8-byte write granularity; read slack per the contract above
 
 // type InputPacket
 struct InputPacket {
@@ -121,7 +119,7 @@ struct InputPacket {
 };
 
 inline constexpr int64_t InputPacketMaxBits = 2837; // longest wire path; align pads at worst case (SPEC §6.1)
-inline constexpr int64_t InputPacketMaxBytes = 360; // rounded up to the 8-byte write-buffer granularity; a read buffer's allocation must extend at least 8 bytes past the data — the reader loads 64-bit windows
+inline constexpr int64_t InputPacketMaxBytes = 360; // 8-byte write granularity; read slack per the contract above
 
 // type ShipCreate
 struct ShipCreate {
@@ -142,7 +140,7 @@ struct ShipCreate {
 };
 
 inline constexpr int64_t ShipCreateMaxBits = 219; // longest wire path; align pads at worst case (SPEC §6.1)
-inline constexpr int64_t ShipCreateMaxBytes = 32; // rounded up to the 8-byte write-buffer granularity; a read buffer's allocation must extend at least 8 bytes past the data — the reader loads 64-bit windows
+inline constexpr int64_t ShipCreateMaxBytes = 32; // 8-byte write granularity; read slack per the contract above
 
 // type ExpressionProbe
 struct ExpressionProbe {
@@ -151,7 +149,7 @@ struct ExpressionProbe {
 };
 
 inline constexpr int64_t ExpressionProbeMaxBits = 16; // longest wire path; align pads at worst case (SPEC §6.1)
-inline constexpr int64_t ExpressionProbeMaxBytes = 8; // rounded up to the 8-byte write-buffer granularity; a read buffer's allocation must extend at least 8 bytes past the data — the reader loads 64-bit windows
+inline constexpr int64_t ExpressionProbeMaxBytes = 8; // 8-byte write granularity; read slack per the contract above
 
 inline constexpr int64_t FloorLimit = ( -9223372036854775807ll - 1 );
 inline constexpr uint64_t CeilingCount = 18446744073709551615ull; // = 18446744073709551615
@@ -165,7 +163,7 @@ struct ExtremeProbe {
 };
 
 inline constexpr int64_t ExtremeProbeMaxBits = 320; // longest wire path; align pads at worst case (SPEC §6.1)
-inline constexpr int64_t ExtremeProbeMaxBytes = 40; // rounded up to the 8-byte write-buffer granularity; a read buffer's allocation must extend at least 8 bytes past the data — the reader loads 64-bit windows
+inline constexpr int64_t ExtremeProbeMaxBytes = 40; // 8-byte write granularity; read slack per the contract above
 
 // type ExtremeRow
 struct ExtremeRow {
@@ -176,6 +174,6 @@ struct ExtremeRow {
 };
 
 inline constexpr int64_t ExtremeRowMaxBits = 256; // longest wire path; align pads at worst case (SPEC §6.1)
-inline constexpr int64_t ExtremeRowMaxBytes = 32; // rounded up to the 8-byte write-buffer granularity; a read buffer's allocation must extend at least 8 bytes past the data — the reader loads 64-bit windows
+inline constexpr int64_t ExtremeRowMaxBytes = 32; // 8-byte write granularity; read slack per the contract above
 
 } // namespace example

@@ -8,8 +8,6 @@
 #define SCHEMA_EXAMPLE_ENUMS_H
 
 #include <stdint.h>
-#include <string.h>   /* memset — the zero form (SPEC §4.2) */
-#include <math.h>     /* floor — the quantize pair */
 
 #ifndef SCHEMA_UNUSED
 #if defined(__GNUC__) || defined(__clang__)
@@ -40,21 +38,8 @@ static SCHEMA_UNUSED const char * enum_name_team( Team value )
     switch ( value )
     {
         case TEAM_NONE: return "None";
-        case 1: return "Red";
-        case 2: return "Blue";
-        default: return "???";
-    }
-}
-
-/* As enum_name_team, over a raw wire value — the form the table reflection
-   descriptors hold. */
-static SCHEMA_UNUSED const char * enum_name_team_dyn( uint64_t value )
-{
-    switch ( value )
-    {
-        case 0: return "None";
-        case 1: return "Red";
-        case 2: return "Blue";
+        case TEAM_RED: return "Red";
+        case TEAM_BLUE: return "Blue";
         default: return "???";
     }
 }
@@ -79,27 +64,11 @@ static SCHEMA_UNUSED const char * enum_name_ship_type( ShipType value )
     switch ( value )
     {
         case SHIP_TYPE_NONE: return "None";
-        case 1: return "Fighter";
-        case 2: return "Corvette";
-        case 3: return "Bomber";
-        case 4: return "Destroyer";
-        case 5: return "Carrier";
-        default: return "???";
-    }
-}
-
-/* As enum_name_ship_type, over a raw wire value — the form the table reflection
-   descriptors hold. */
-static SCHEMA_UNUSED const char * enum_name_ship_type_dyn( uint64_t value )
-{
-    switch ( value )
-    {
-        case 0: return "None";
-        case 1: return "Fighter";
-        case 2: return "Corvette";
-        case 3: return "Bomber";
-        case 4: return "Destroyer";
-        case 5: return "Carrier";
+        case SHIP_TYPE_FIGHTER: return "Fighter";
+        case SHIP_TYPE_CORVETTE: return "Corvette";
+        case SHIP_TYPE_BOMBER: return "Bomber";
+        case SHIP_TYPE_DESTROYER: return "Destroyer";
+        case SHIP_TYPE_CARRIER: return "Carrier";
         default: return "???";
     }
 }
@@ -122,23 +91,9 @@ static SCHEMA_UNUSED const char * enum_name_missile_type( MissileType value )
     switch ( value )
     {
         case MISSILE_TYPE_NONE: return "None";
-        case 1: return "Heatseeker";
-        case 2: return "Torpedo";
-        case 3: return "Nuke";
-        default: return "???";
-    }
-}
-
-/* As enum_name_missile_type, over a raw wire value — the form the table reflection
-   descriptors hold. */
-static SCHEMA_UNUSED const char * enum_name_missile_type_dyn( uint64_t value )
-{
-    switch ( value )
-    {
-        case 0: return "None";
-        case 1: return "Heatseeker";
-        case 2: return "Torpedo";
-        case 3: return "Nuke";
+        case MISSILE_TYPE_HEATSEEKER: return "Heatseeker";
+        case MISSILE_TYPE_TORPEDO: return "Torpedo";
+        case MISSILE_TYPE_NUKE: return "Nuke";
         default: return "???";
     }
 }
@@ -164,29 +119,12 @@ static SCHEMA_UNUSED const char * enum_name_prop_type( PropType value )
     switch ( value )
     {
         case PROP_TYPE_NONE: return "None";
-        case 1: return "Asteroid";
-        case 2: return "Chunk";
-        case 3: return "Fragment";
-        case 4: return "Sphere";
-        case 5: return "BlackHole";
-        case 6: return "DysonPanel";
-        default: return "???";
-    }
-}
-
-/* As enum_name_prop_type, over a raw wire value — the form the table reflection
-   descriptors hold. */
-static SCHEMA_UNUSED const char * enum_name_prop_type_dyn( uint64_t value )
-{
-    switch ( value )
-    {
-        case 0: return "None";
-        case 1: return "Asteroid";
-        case 2: return "Chunk";
-        case 3: return "Fragment";
-        case 4: return "Sphere";
-        case 5: return "BlackHole";
-        case 6: return "DysonPanel";
+        case PROP_TYPE_ASTEROID: return "Asteroid";
+        case PROP_TYPE_CHUNK: return "Chunk";
+        case PROP_TYPE_FRAGMENT: return "Fragment";
+        case PROP_TYPE_SPHERE: return "Sphere";
+        case PROP_TYPE_BLACK_HOLE: return "BlackHole";
+        case PROP_TYPE_DYSON_PANEL: return "DysonPanel";
         default: return "???";
     }
 }
@@ -206,17 +144,6 @@ static SCHEMA_UNUSED const char * enum_name_pending( Pending value )
     switch ( value )
     {
         case PENDING_NONE: return "None";
-        default: return "???";
-    }
-}
-
-/* As enum_name_pending, over a raw wire value — the form the table reflection
-   descriptors hold. */
-static SCHEMA_UNUSED const char * enum_name_pending_dyn( uint64_t value )
-{
-    switch ( value )
-    {
-        case 0: return "None";
         default: return "???";
     }
 }

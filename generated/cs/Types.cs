@@ -3,13 +3,6 @@
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
 // package example — protocol id 0xbc05d83a8135cdb9
-//
-// Storage members are PascalCase via the same mapping as the Go target, so
-// the checker's collision registry covers C# for free. Wire functions return
-// bool — the C++-style early-out. A schema validation failure (a wrong wire
-// constant, nonzero reserved bits, an interior null) returns false WITHOUT
-// latching; stream failures latch on stream.Error — the runtime's own sticky
-// latch. Callers get bool always; Error tells the two apart.
 
 using System.Runtime.CompilerServices;
 using Serialize;
@@ -17,8 +10,7 @@ using Serialize;
 namespace Example
 {
 
-    // type Vec3 [vec3] — the tag is user-chosen and inert in v1; the delta pass
-    // claims tags and assigns actions (SPEC §4.2, Type tags)
+    // type Vec3 [vec3] — tags are user-chosen and inert in v1 (SPEC §4.2, Type tags)
     public sealed class Vec3
     {
         public double X;
@@ -26,8 +18,7 @@ namespace Example
         public double Z;
     }
 
-    // type Quat [quat4] — the tag is user-chosen and inert in v1; the delta pass
-    // claims tags and assigns actions (SPEC §4.2, Type tags)
+    // type Quat [quat4] — tags are user-chosen and inert in v1 (SPEC §4.2, Type tags)
     public sealed class Quat
     {
         public double X;
@@ -149,8 +140,8 @@ namespace Example
         public long FloorBound; // wire [-9223372036854775808, 100]
         public long DoubledFloor; // wire [-9223372036854775808, 100]
         public ulong CeilingRange; // wire [1, 18446744073709551615]
-        public long FloorDefault = -9223372036854775808; // = -9223372036854775808 at construction; Zero* gives the §5 zero form
-        public ulong CeilingDefault = 18446744073709551615; // = 18446744073709551615 at construction; Zero* gives the §5 zero form
+        public long FloorDefault = -9223372036854775808; // specified default at construction; Zero* gives the §5 zero form
+        public ulong CeilingDefault = 18446744073709551615; // specified default at construction; Zero* gives the §5 zero form
     }
 
     // type ExtremeRow
@@ -158,8 +149,8 @@ namespace Example
     {
         public long ClampedFloor; // wire [-9223372036854775808, 100]
         public ulong ClampedCeiling; // wire [1, 18446744073709551614]
-        public long FloorDef = -9223372036854775808; // = -9223372036854775808 at construction; Zero* gives the §5 zero form
-        public ulong CeilingDef = 18446744073709551615; // = 18446744073709551615 at construction; Zero* gives the §5 zero form
+        public long FloorDef = -9223372036854775808; // specified default at construction; Zero* gives the §5 zero form
+        public ulong CeilingDef = 18446744073709551615; // specified default at construction; Zero* gives the §5 zero form
     }
 
     // Schema carries every generated function and constant of the unit — C# has
@@ -172,8 +163,7 @@ namespace Example
         public const long Vec3MaxBits = 192;
         public const long Vec3MaxBytes = 24;
 
-        // ZeroVec3 resets value to the §5 ZERO form — all-zero storage; specified
-        // defaults live in construction only and are NOT reapplied here.
+        // The §5 zero form: all-zero storage; specified defaults live only in construction.
         public static void ZeroVec3(Vec3 value)
         {
             value.X = 0.0;
@@ -181,21 +171,17 @@ namespace Example
             value.Z = 0.0;
         }
 
-        // WriteVec3/ReadVec3 run as a batch: the stream state lives in registers
-        // across the body's serialize calls and is stored back once at End —
-        // the tiny-message hot path (serialize.cs WriteBatch/ReadBatch). Same
-        // wire bytes, same validation, same latched-error model.
+        // batch form: stream state stays in registers across the body and End
+        // publishes it — same wire bytes, same validation, same error model.
         public static bool WriteVec3(WriteStream stream, Vec3 value)
         {
             WriteBatch batch = stream.BeginBatch();
             bool result = WriteVec3Batch(ref batch, value);
-            batch.End(); // on every path out — End publishes the state and the error
+            batch.End();
             return result;
         }
 
-        // The batch-form core — INLINE-ONLY: a non-inlined call taking the batch by
-        // ref address-exposes it and enregistration dies (measured 0.71x, worse than
-        // no batch). Nested types compose core-to-core by ref, never via the stream.
+        // inline-only batch core — a real call would address-expose the batch
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static bool WriteVec3Batch(ref WriteBatch batch, Vec3 value)
         {
@@ -218,13 +204,11 @@ namespace Example
         {
             ReadBatch batch = stream.BeginBatch();
             bool result = ReadVec3Batch(ref batch, value);
-            batch.End(); // on every path out — End publishes the cursor and the error
+            batch.End();
             return result;
         }
 
-        // The batch-form core — INLINE-ONLY: a non-inlined call taking the batch by
-        // ref address-exposes it and enregistration dies (measured 0.71x, worse than
-        // no batch). Nested types compose core-to-core by ref, never via the stream.
+        // inline-only batch core — a real call would address-expose the batch
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static bool ReadVec3Batch(ref ReadBatch batch, Vec3 value)
         {
@@ -248,8 +232,7 @@ namespace Example
         public const long QuatMaxBits = 256;
         public const long QuatMaxBytes = 32;
 
-        // ZeroQuat resets value to the §5 ZERO form — all-zero storage; specified
-        // defaults live in construction only and are NOT reapplied here.
+        // The §5 zero form: all-zero storage; specified defaults live only in construction.
         public static void ZeroQuat(Quat value)
         {
             value.X = 0.0;
@@ -258,21 +241,17 @@ namespace Example
             value.W = 0.0;
         }
 
-        // WriteQuat/ReadQuat run as a batch: the stream state lives in registers
-        // across the body's serialize calls and is stored back once at End —
-        // the tiny-message hot path (serialize.cs WriteBatch/ReadBatch). Same
-        // wire bytes, same validation, same latched-error model.
+        // batch form: stream state stays in registers across the body and End
+        // publishes it — same wire bytes, same validation, same error model.
         public static bool WriteQuat(WriteStream stream, Quat value)
         {
             WriteBatch batch = stream.BeginBatch();
             bool result = WriteQuatBatch(ref batch, value);
-            batch.End(); // on every path out — End publishes the state and the error
+            batch.End();
             return result;
         }
 
-        // The batch-form core — INLINE-ONLY: a non-inlined call taking the batch by
-        // ref address-exposes it and enregistration dies (measured 0.71x, worse than
-        // no batch). Nested types compose core-to-core by ref, never via the stream.
+        // inline-only batch core — a real call would address-expose the batch
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static bool WriteQuatBatch(ref WriteBatch batch, Quat value)
         {
@@ -299,13 +278,11 @@ namespace Example
         {
             ReadBatch batch = stream.BeginBatch();
             bool result = ReadQuatBatch(ref batch, value);
-            batch.End(); // on every path out — End publishes the cursor and the error
+            batch.End();
             return result;
         }
 
-        // The batch-form core — INLINE-ONLY: a non-inlined call taking the batch by
-        // ref address-exposes it and enregistration dies (measured 0.71x, worse than
-        // no batch). Nested types compose core-to-core by ref, never via the stream.
+        // inline-only batch core — a real call would address-expose the batch
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static bool ReadQuatBatch(ref ReadBatch batch, Quat value)
         {
@@ -333,33 +310,28 @@ namespace Example
         public const long HandleMaxBits = 22;
         public const long HandleMaxBytes = 8;
 
-        // ZeroHandle resets value to the §5 ZERO form — all-zero storage; specified
-        // defaults live in construction only and are NOT reapplied here.
+        // The §5 zero form: all-zero storage; specified defaults live only in construction.
         public static void ZeroHandle(Handle value)
         {
             value.ObjectId = 0;
             value.ObjectSequence = 0;
         }
 
-        // WriteHandle/ReadHandle run as a batch: the stream state lives in registers
-        // across the body's serialize calls and is stored back once at End —
-        // the tiny-message hot path (serialize.cs WriteBatch/ReadBatch). Same
-        // wire bytes, same validation, same latched-error model.
+        // batch form: stream state stays in registers across the body and End
+        // publishes it — same wire bytes, same validation, same error model.
         public static bool WriteHandle(WriteStream stream, Handle value)
         {
             WriteBatch batch = stream.BeginBatch();
             bool result = WriteHandleBatch(ref batch, value);
-            batch.End(); // on every path out — End publishes the state and the error
+            batch.End();
             return result;
         }
 
-        // The batch-form core — INLINE-ONLY: a non-inlined call taking the batch by
-        // ref address-exposes it and enregistration dies (measured 0.71x, worse than
-        // no batch). Nested types compose core-to-core by ref, never via the stream.
+        // inline-only batch core — a real call would address-expose the batch
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static bool WriteHandleBatch(ref WriteBatch batch, Handle value)
         {
-            if (value.ObjectId < 0 || value.ObjectId > (int)(MaxObjects - 1)) // out-of-contract writes are refused, not wrapped
+            if (value.ObjectId < 0 || value.ObjectId > (int)(MaxObjects - 1))
             {
                 return false;
             }
@@ -384,13 +356,11 @@ namespace Example
         {
             ReadBatch batch = stream.BeginBatch();
             bool result = ReadHandleBatch(ref batch, value);
-            batch.End(); // on every path out — End publishes the cursor and the error
+            batch.End();
             return result;
         }
 
-        // The batch-form core — INLINE-ONLY: a non-inlined call taking the batch by
-        // ref address-exposes it and enregistration dies (measured 0.71x, worse than
-        // no batch). Nested types compose core-to-core by ref, never via the stream.
+        // inline-only batch core — a real call would address-expose the batch
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static bool ReadHandleBatch(ref ReadBatch batch, Handle value)
         {
@@ -414,8 +384,7 @@ namespace Example
         public const long QuantizedPositionMaxBits = 75;
         public const long QuantizedPositionMaxBytes = 16;
 
-        // ZeroQuantizedPosition resets value to the §5 ZERO form — all-zero storage; specified
-        // defaults live in construction only and are NOT reapplied here.
+        // The §5 zero form: all-zero storage; specified defaults live only in construction.
         public static void ZeroQuantizedPosition(QuantizedPosition value)
         {
             value.X = 0;
@@ -423,25 +392,21 @@ namespace Example
             value.Z = 0;
         }
 
-        // WriteQuantizedPosition/ReadQuantizedPosition run as a batch: the stream state lives in registers
-        // across the body's serialize calls and is stored back once at End —
-        // the tiny-message hot path (serialize.cs WriteBatch/ReadBatch). Same
-        // wire bytes, same validation, same latched-error model.
+        // batch form: stream state stays in registers across the body and End
+        // publishes it — same wire bytes, same validation, same error model.
         public static bool WriteQuantizedPosition(WriteStream stream, QuantizedPosition value)
         {
             WriteBatch batch = stream.BeginBatch();
             bool result = WriteQuantizedPositionBatch(ref batch, value);
-            batch.End(); // on every path out — End publishes the state and the error
+            batch.End();
             return result;
         }
 
-        // The batch-form core — INLINE-ONLY: a non-inlined call taking the batch by
-        // ref address-exposes it and enregistration dies (measured 0.71x, worse than
-        // no batch). Nested types compose core-to-core by ref, never via the stream.
+        // inline-only batch core — a real call would address-expose the batch
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static bool WriteQuantizedPositionBatch(ref WriteBatch batch, QuantizedPosition value)
         {
-            if (value.X < (int)(-MaxPositionUnits) || value.X > (int)MaxPositionUnits) // out-of-contract writes are refused, not wrapped
+            if (value.X < (int)(-MaxPositionUnits) || value.X > (int)MaxPositionUnits)
             {
                 return false;
             }
@@ -452,7 +417,7 @@ namespace Example
                     return false;
                 }
             }
-            if (value.Y < (int)(-MaxPositionUnits) || value.Y > (int)MaxPositionUnits) // out-of-contract writes are refused, not wrapped
+            if (value.Y < (int)(-MaxPositionUnits) || value.Y > (int)MaxPositionUnits)
             {
                 return false;
             }
@@ -463,7 +428,7 @@ namespace Example
                     return false;
                 }
             }
-            if (value.Z < (int)(-MaxPositionUnits) || value.Z > (int)MaxPositionUnits) // out-of-contract writes are refused, not wrapped
+            if (value.Z < (int)(-MaxPositionUnits) || value.Z > (int)MaxPositionUnits)
             {
                 return false;
             }
@@ -481,13 +446,11 @@ namespace Example
         {
             ReadBatch batch = stream.BeginBatch();
             bool result = ReadQuantizedPositionBatch(ref batch, value);
-            batch.End(); // on every path out — End publishes the cursor and the error
+            batch.End();
             return result;
         }
 
-        // The batch-form core — INLINE-ONLY: a non-inlined call taking the batch by
-        // ref address-exposes it and enregistration dies (measured 0.71x, worse than
-        // no batch). Nested types compose core-to-core by ref, never via the stream.
+        // inline-only batch core — a real call would address-expose the batch
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static bool ReadQuantizedPositionBatch(ref ReadBatch batch, QuantizedPosition value)
         {
@@ -511,8 +474,7 @@ namespace Example
         public const long QuantizedVelocityMaxBits = 69;
         public const long QuantizedVelocityMaxBytes = 16;
 
-        // ZeroQuantizedVelocity resets value to the §5 ZERO form — all-zero storage; specified
-        // defaults live in construction only and are NOT reapplied here.
+        // The §5 zero form: all-zero storage; specified defaults live only in construction.
         public static void ZeroQuantizedVelocity(QuantizedVelocity value)
         {
             value.X = 0;
@@ -520,25 +482,21 @@ namespace Example
             value.Z = 0;
         }
 
-        // WriteQuantizedVelocity/ReadQuantizedVelocity run as a batch: the stream state lives in registers
-        // across the body's serialize calls and is stored back once at End —
-        // the tiny-message hot path (serialize.cs WriteBatch/ReadBatch). Same
-        // wire bytes, same validation, same latched-error model.
+        // batch form: stream state stays in registers across the body and End
+        // publishes it — same wire bytes, same validation, same error model.
         public static bool WriteQuantizedVelocity(WriteStream stream, QuantizedVelocity value)
         {
             WriteBatch batch = stream.BeginBatch();
             bool result = WriteQuantizedVelocityBatch(ref batch, value);
-            batch.End(); // on every path out — End publishes the state and the error
+            batch.End();
             return result;
         }
 
-        // The batch-form core — INLINE-ONLY: a non-inlined call taking the batch by
-        // ref address-exposes it and enregistration dies (measured 0.71x, worse than
-        // no batch). Nested types compose core-to-core by ref, never via the stream.
+        // inline-only batch core — a real call would address-expose the batch
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static bool WriteQuantizedVelocityBatch(ref WriteBatch batch, QuantizedVelocity value)
         {
-            if (value.X < (int)(-MaxVelocityUnits) || value.X > (int)MaxVelocityUnits) // out-of-contract writes are refused, not wrapped
+            if (value.X < (int)(-MaxVelocityUnits) || value.X > (int)MaxVelocityUnits)
             {
                 return false;
             }
@@ -549,7 +507,7 @@ namespace Example
                     return false;
                 }
             }
-            if (value.Y < (int)(-MaxVelocityUnits) || value.Y > (int)MaxVelocityUnits) // out-of-contract writes are refused, not wrapped
+            if (value.Y < (int)(-MaxVelocityUnits) || value.Y > (int)MaxVelocityUnits)
             {
                 return false;
             }
@@ -560,7 +518,7 @@ namespace Example
                     return false;
                 }
             }
-            if (value.Z < (int)(-MaxVelocityUnits) || value.Z > (int)MaxVelocityUnits) // out-of-contract writes are refused, not wrapped
+            if (value.Z < (int)(-MaxVelocityUnits) || value.Z > (int)MaxVelocityUnits)
             {
                 return false;
             }
@@ -578,13 +536,11 @@ namespace Example
         {
             ReadBatch batch = stream.BeginBatch();
             bool result = ReadQuantizedVelocityBatch(ref batch, value);
-            batch.End(); // on every path out — End publishes the cursor and the error
+            batch.End();
             return result;
         }
 
-        // The batch-form core — INLINE-ONLY: a non-inlined call taking the batch by
-        // ref address-exposes it and enregistration dies (measured 0.71x, worse than
-        // no batch). Nested types compose core-to-core by ref, never via the stream.
+        // inline-only batch core — a real call would address-expose the batch
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static bool ReadQuantizedVelocityBatch(ref ReadBatch batch, QuantizedVelocity value)
         {
@@ -608,8 +564,7 @@ namespace Example
         public const long QuantizedRotationMaxBits = 48;
         public const long QuantizedRotationMaxBytes = 8;
 
-        // ZeroQuantizedRotation resets value to the §5 ZERO form — all-zero storage; specified
-        // defaults live in construction only and are NOT reapplied here.
+        // The §5 zero form: all-zero storage; specified defaults live only in construction.
         public static void ZeroQuantizedRotation(QuantizedRotation value)
         {
             value.X = 0;
@@ -618,25 +573,21 @@ namespace Example
             value.W = 0;
         }
 
-        // WriteQuantizedRotation/ReadQuantizedRotation run as a batch: the stream state lives in registers
-        // across the body's serialize calls and is stored back once at End —
-        // the tiny-message hot path (serialize.cs WriteBatch/ReadBatch). Same
-        // wire bytes, same validation, same latched-error model.
+        // batch form: stream state stays in registers across the body and End
+        // publishes it — same wire bytes, same validation, same error model.
         public static bool WriteQuantizedRotation(WriteStream stream, QuantizedRotation value)
         {
             WriteBatch batch = stream.BeginBatch();
             bool result = WriteQuantizedRotationBatch(ref batch, value);
-            batch.End(); // on every path out — End publishes the state and the error
+            batch.End();
             return result;
         }
 
-        // The batch-form core — INLINE-ONLY: a non-inlined call taking the batch by
-        // ref address-exposes it and enregistration dies (measured 0.71x, worse than
-        // no batch). Nested types compose core-to-core by ref, never via the stream.
+        // inline-only batch core — a real call would address-expose the batch
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static bool WriteQuantizedRotationBatch(ref WriteBatch batch, QuantizedRotation value)
         {
-            if (value.X < (int)(-RotationUnits) || value.X > (int)RotationUnits) // out-of-contract writes are refused, not wrapped
+            if (value.X < (int)(-RotationUnits) || value.X > (int)RotationUnits)
             {
                 return false;
             }
@@ -647,7 +598,7 @@ namespace Example
                     return false;
                 }
             }
-            if (value.Y < (int)(-RotationUnits) || value.Y > (int)RotationUnits) // out-of-contract writes are refused, not wrapped
+            if (value.Y < (int)(-RotationUnits) || value.Y > (int)RotationUnits)
             {
                 return false;
             }
@@ -658,7 +609,7 @@ namespace Example
                     return false;
                 }
             }
-            if (value.Z < (int)(-RotationUnits) || value.Z > (int)RotationUnits) // out-of-contract writes are refused, not wrapped
+            if (value.Z < (int)(-RotationUnits) || value.Z > (int)RotationUnits)
             {
                 return false;
             }
@@ -669,7 +620,7 @@ namespace Example
                     return false;
                 }
             }
-            if (value.W < (int)(-RotationUnits) || value.W > (int)RotationUnits) // out-of-contract writes are refused, not wrapped
+            if (value.W < (int)(-RotationUnits) || value.W > (int)RotationUnits)
             {
                 return false;
             }
@@ -687,13 +638,11 @@ namespace Example
         {
             ReadBatch batch = stream.BeginBatch();
             bool result = ReadQuantizedRotationBatch(ref batch, value);
-            batch.End(); // on every path out — End publishes the cursor and the error
+            batch.End();
             return result;
         }
 
-        // The batch-form core — INLINE-ONLY: a non-inlined call taking the batch by
-        // ref address-exposes it and enregistration dies (measured 0.71x, worse than
-        // no batch). Nested types compose core-to-core by ref, never via the stream.
+        // inline-only batch core — a real call would address-expose the batch
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static bool ReadQuantizedRotationBatch(ref ReadBatch batch, QuantizedRotation value)
         {
@@ -737,8 +686,7 @@ namespace Example
         public const long RigidBodyMaxBits = 833;
         public const long RigidBodyMaxBytes = 112;
 
-        // ZeroRigidBody resets value to the §5 ZERO form — all-zero storage; specified
-        // defaults live in construction only and are NOT reapplied here.
+        // The §5 zero form: all-zero storage; specified defaults live only in construction.
         public static void ZeroRigidBody(RigidBody value)
         {
             ZeroVec3(value.Position);
@@ -748,21 +696,17 @@ namespace Example
             ZeroVec3(value.AngularVelocity);
         }
 
-        // WriteRigidBody/ReadRigidBody run as a batch: the stream state lives in registers
-        // across the body's serialize calls and is stored back once at End —
-        // the tiny-message hot path (serialize.cs WriteBatch/ReadBatch). Same
-        // wire bytes, same validation, same latched-error model.
+        // batch form: stream state stays in registers across the body and End
+        // publishes it — same wire bytes, same validation, same error model.
         public static bool WriteRigidBody(WriteStream stream, RigidBody value)
         {
             WriteBatch batch = stream.BeginBatch();
             bool result = WriteRigidBodyBatch(ref batch, value);
-            batch.End(); // on every path out — End publishes the state and the error
+            batch.End();
             return result;
         }
 
-        // The batch-form core — INLINE-ONLY: a non-inlined call taking the batch by
-        // ref address-exposes it and enregistration dies (measured 0.71x, worse than
-        // no batch). Nested types compose core-to-core by ref, never via the stream.
+        // inline-only batch core — a real call would address-expose the batch
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static bool WriteRigidBodyBatch(ref WriteBatch batch, RigidBody value)
         {
@@ -796,13 +740,11 @@ namespace Example
         {
             ReadBatch batch = stream.BeginBatch();
             bool result = ReadRigidBodyBatch(ref batch, value);
-            batch.End(); // on every path out — End publishes the cursor and the error
+            batch.End();
             return result;
         }
 
-        // The batch-form core — INLINE-ONLY: a non-inlined call taking the batch by
-        // ref address-exposes it and enregistration dies (measured 0.71x, worse than
-        // no batch). Nested types compose core-to-core by ref, never via the stream.
+        // inline-only batch core — a real call would address-expose the batch
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static bool ReadRigidBodyBatch(ref ReadBatch batch, RigidBody value)
         {
@@ -842,8 +784,7 @@ namespace Example
         public const long InputMaxBits = 168;
         public const long InputMaxBytes = 24;
 
-        // ZeroInput resets value to the §5 ZERO form — all-zero storage; specified
-        // defaults live in construction only and are NOT reapplied here.
+        // The §5 zero form: all-zero storage; specified defaults live only in construction.
         public static void ZeroInput(Input value)
         {
             value.StickX = 0.0f;
@@ -861,21 +802,17 @@ namespace Example
             value.Ping = false;
         }
 
-        // WriteInput/ReadInput run as a batch: the stream state lives in registers
-        // across the body's serialize calls and is stored back once at End —
-        // the tiny-message hot path (serialize.cs WriteBatch/ReadBatch). Same
-        // wire bytes, same validation, same latched-error model.
+        // batch form: stream state stays in registers across the body and End
+        // publishes it — same wire bytes, same validation, same error model.
         public static bool WriteInput(WriteStream stream, Input value)
         {
             WriteBatch batch = stream.BeginBatch();
             bool result = WriteInputBatch(ref batch, value);
-            batch.End(); // on every path out — End publishes the state and the error
+            batch.End();
             return result;
         }
 
-        // The batch-form core — INLINE-ONLY: a non-inlined call taking the batch by
-        // ref address-exposes it and enregistration dies (measured 0.71x, worse than
-        // no batch). Nested types compose core-to-core by ref, never via the stream.
+        // inline-only batch core — a real call would address-expose the batch
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static bool WriteInputBatch(ref WriteBatch batch, Input value)
         {
@@ -938,13 +875,11 @@ namespace Example
         {
             ReadBatch batch = stream.BeginBatch();
             bool result = ReadInputBatch(ref batch, value);
-            batch.End(); // on every path out — End publishes the cursor and the error
+            batch.End();
             return result;
         }
 
-        // The batch-form core — INLINE-ONLY: a non-inlined call taking the batch by
-        // ref address-exposes it and enregistration dies (measured 0.71x, worse than
-        // no batch). Nested types compose core-to-core by ref, never via the stream.
+        // inline-only batch core — a real call would address-expose the batch
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static bool ReadInputBatch(ref ReadBatch batch, Input value)
         {
@@ -1008,8 +943,7 @@ namespace Example
         public const long InputPacketMaxBits = 2837;
         public const long InputPacketMaxBytes = 360;
 
-        // ZeroInputPacket resets value to the §5 ZERO form — all-zero storage; specified
-        // defaults live in construction only and are NOT reapplied here.
+        // The §5 zero form: all-zero storage; specified defaults live only in construction.
         public static void ZeroInputPacket(InputPacket value)
         {
             value.SynchronizeSequence = 0;
@@ -1022,21 +956,17 @@ namespace Example
             value.InputsCount = 0;
         }
 
-        // WriteInputPacket/ReadInputPacket run as a batch: the stream state lives in registers
-        // across the body's serialize calls and is stored back once at End —
-        // the tiny-message hot path (serialize.cs WriteBatch/ReadBatch). Same
-        // wire bytes, same validation, same latched-error model.
+        // batch form: stream state stays in registers across the body and End
+        // publishes it — same wire bytes, same validation, same error model.
         public static bool WriteInputPacket(WriteStream stream, InputPacket value)
         {
             WriteBatch batch = stream.BeginBatch();
             bool result = WriteInputPacketBatch(ref batch, value);
-            batch.End(); // on every path out — End publishes the state and the error
+            batch.End();
             return result;
         }
 
-        // The batch-form core — INLINE-ONLY: a non-inlined call taking the batch by
-        // ref address-exposes it and enregistration dies (measured 0.71x, worse than
-        // no batch). Nested types compose core-to-core by ref, never via the stream.
+        // inline-only batch core — a real call would address-expose the batch
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static bool WriteInputPacketBatch(ref WriteBatch batch, InputPacket value)
         {
@@ -1080,13 +1010,11 @@ namespace Example
         {
             ReadBatch batch = stream.BeginBatch();
             bool result = ReadInputPacketBatch(ref batch, value);
-            batch.End(); // on every path out — End publishes the cursor and the error
+            batch.End();
             return result;
         }
 
-        // The batch-form core — INLINE-ONLY: a non-inlined call taking the batch by
-        // ref address-exposes it and enregistration dies (measured 0.71x, worse than
-        // no batch). Nested types compose core-to-core by ref, never via the stream.
+        // inline-only batch core — a real call would address-expose the batch
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static bool ReadInputPacketBatch(ref ReadBatch batch, InputPacket value)
         {
@@ -1125,8 +1053,7 @@ namespace Example
         public const long ShipCreateMaxBits = 219;
         public const long ShipCreateMaxBytes = 32;
 
-        // ZeroShipCreate resets value to the §5 ZERO form — all-zero storage; specified
-        // defaults live in construction only and are NOT reapplied here.
+        // The §5 zero form: all-zero storage; specified defaults live only in construction.
         public static void ZeroShipCreate(ShipCreate value)
         {
             value.ShipType = ShipType.None;
@@ -1141,21 +1068,17 @@ namespace Example
             value.Pending = Pending.None;
         }
 
-        // WriteShipCreate/ReadShipCreate run as a batch: the stream state lives in registers
-        // across the body's serialize calls and is stored back once at End —
-        // the tiny-message hot path (serialize.cs WriteBatch/ReadBatch). Same
-        // wire bytes, same validation, same latched-error model.
+        // batch form: stream state stays in registers across the body and End
+        // publishes it — same wire bytes, same validation, same error model.
         public static bool WriteShipCreate(WriteStream stream, ShipCreate value)
         {
             WriteBatch batch = stream.BeginBatch();
             bool result = WriteShipCreateBatch(ref batch, value);
-            batch.End(); // on every path out — End publishes the state and the error
+            batch.End();
             return result;
         }
 
-        // The batch-form core — INLINE-ONLY: a non-inlined call taking the batch by
-        // ref address-exposes it and enregistration dies (measured 0.71x, worse than
-        // no batch). Nested types compose core-to-core by ref, never via the stream.
+        // inline-only batch core — a real call would address-expose the batch
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static bool WriteShipCreateBatch(ref WriteBatch batch, ShipCreate value)
         {
@@ -1211,7 +1134,7 @@ namespace Example
                     return false;
                 }
             }
-            if (value.Health < 0 || value.Health > (int)MaxHealth) // out-of-contract writes are refused, not wrapped
+            if (value.Health < 0 || value.Health > (int)MaxHealth)
             {
                 return false;
             }
@@ -1222,7 +1145,7 @@ namespace Example
                     return false;
                 }
             }
-            if (value.Thrust < 0 || value.Thrust > 100) // out-of-contract writes are refused, not wrapped
+            if (value.Thrust < 0 || value.Thrust > 100)
             {
                 return false;
             }
@@ -1247,13 +1170,11 @@ namespace Example
         {
             ReadBatch batch = stream.BeginBatch();
             bool result = ReadShipCreateBatch(ref batch, value);
-            batch.End(); // on every path out — End publishes the cursor and the error
+            batch.End();
             return result;
         }
 
-        // The batch-form core — INLINE-ONLY: a non-inlined call taking the batch by
-        // ref address-exposes it and enregistration dies (measured 0.71x, worse than
-        // no batch). Nested types compose core-to-core by ref, never via the stream.
+        // inline-only batch core — a real call would address-expose the batch
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static bool ReadShipCreateBatch(ref ReadBatch batch, ShipCreate value)
         {
@@ -1336,33 +1257,28 @@ namespace Example
         public const long ExpressionProbeMaxBits = 16;
         public const long ExpressionProbeMaxBytes = 8;
 
-        // ZeroExpressionProbe resets value to the §5 ZERO form — all-zero storage; specified
-        // defaults live in construction only and are NOT reapplied here.
+        // The §5 zero form: all-zero storage; specified defaults live only in construction.
         public static void ZeroExpressionProbe(ExpressionProbe value)
         {
             value.HardpointIndex = 0;
             value.SpinRate = 0;
         }
 
-        // WriteExpressionProbe/ReadExpressionProbe run as a batch: the stream state lives in registers
-        // across the body's serialize calls and is stored back once at End —
-        // the tiny-message hot path (serialize.cs WriteBatch/ReadBatch). Same
-        // wire bytes, same validation, same latched-error model.
+        // batch form: stream state stays in registers across the body and End
+        // publishes it — same wire bytes, same validation, same error model.
         public static bool WriteExpressionProbe(WriteStream stream, ExpressionProbe value)
         {
             WriteBatch batch = stream.BeginBatch();
             bool result = WriteExpressionProbeBatch(ref batch, value);
-            batch.End(); // on every path out — End publishes the state and the error
+            batch.End();
             return result;
         }
 
-        // The batch-form core — INLINE-ONLY: a non-inlined call taking the batch by
-        // ref address-exposes it and enregistration dies (measured 0.71x, worse than
-        // no batch). Nested types compose core-to-core by ref, never via the stream.
+        // inline-only batch core — a real call would address-expose the batch
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static bool WriteExpressionProbeBatch(ref WriteBatch batch, ExpressionProbe value)
         {
-            if (value.HardpointIndex < 0 || value.HardpointIndex > (int)((ShipMaxLasers + ShipMaxMissiles) - 1)) // out-of-contract writes are refused, not wrapped
+            if (value.HardpointIndex < 0 || value.HardpointIndex > (int)((ShipMaxLasers + ShipMaxMissiles) - 1))
             {
                 return false;
             }
@@ -1373,7 +1289,7 @@ namespace Example
                     return false;
                 }
             }
-            if (value.SpinRate < (int)(-(-RotationUnits)) || value.SpinRate > (int)(RotationUnits * 2)) // out-of-contract writes are refused, not wrapped
+            if (value.SpinRate < (int)(-(-RotationUnits)) || value.SpinRate > (int)(RotationUnits * 2))
             {
                 return false;
             }
@@ -1391,13 +1307,11 @@ namespace Example
         {
             ReadBatch batch = stream.BeginBatch();
             bool result = ReadExpressionProbeBatch(ref batch, value);
-            batch.End(); // on every path out — End publishes the cursor and the error
+            batch.End();
             return result;
         }
 
-        // The batch-form core — INLINE-ONLY: a non-inlined call taking the batch by
-        // ref address-exposes it and enregistration dies (measured 0.71x, worse than
-        // no batch). Nested types compose core-to-core by ref, never via the stream.
+        // inline-only batch core — a real call would address-expose the batch
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static bool ReadExpressionProbeBatch(ref ReadBatch batch, ExpressionProbe value)
         {
@@ -1421,8 +1335,7 @@ namespace Example
         public const long ExtremeProbeMaxBits = 320;
         public const long ExtremeProbeMaxBytes = 40;
 
-        // ZeroExtremeProbe resets value to the §5 ZERO form — all-zero storage; specified
-        // defaults live in construction only and are NOT reapplied here.
+        // The §5 zero form: all-zero storage; specified defaults live only in construction.
         public static void ZeroExtremeProbe(ExtremeProbe value)
         {
             value.FloorBound = 0;
@@ -1432,25 +1345,21 @@ namespace Example
             value.CeilingDefault = 0;
         }
 
-        // WriteExtremeProbe/ReadExtremeProbe run as a batch: the stream state lives in registers
-        // across the body's serialize calls and is stored back once at End —
-        // the tiny-message hot path (serialize.cs WriteBatch/ReadBatch). Same
-        // wire bytes, same validation, same latched-error model.
+        // batch form: stream state stays in registers across the body and End
+        // publishes it — same wire bytes, same validation, same error model.
         public static bool WriteExtremeProbe(WriteStream stream, ExtremeProbe value)
         {
             WriteBatch batch = stream.BeginBatch();
             bool result = WriteExtremeProbeBatch(ref batch, value);
-            batch.End(); // on every path out — End publishes the state and the error
+            batch.End();
             return result;
         }
 
-        // The batch-form core — INLINE-ONLY: a non-inlined call taking the batch by
-        // ref address-exposes it and enregistration dies (measured 0.71x, worse than
-        // no batch). Nested types compose core-to-core by ref, never via the stream.
+        // inline-only batch core — a real call would address-expose the batch
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static bool WriteExtremeProbeBatch(ref WriteBatch batch, ExtremeProbe value)
         {
-            if (value.FloorBound > 100) // out-of-contract writes are refused, not wrapped
+            if (value.FloorBound > 100)
             {
                 return false;
             }
@@ -1461,7 +1370,7 @@ namespace Example
                     return false;
                 }
             }
-            if (value.DoubledFloor > 100) // out-of-contract writes are refused, not wrapped
+            if (value.DoubledFloor > 100)
             {
                 return false;
             }
@@ -1472,7 +1381,7 @@ namespace Example
                     return false;
                 }
             }
-            if (value.CeilingRange < 1) // out-of-contract writes are refused, not wrapped
+            if (value.CeilingRange < 1)
             {
                 return false;
             }
@@ -1501,13 +1410,11 @@ namespace Example
         {
             ReadBatch batch = stream.BeginBatch();
             bool result = ReadExtremeProbeBatch(ref batch, value);
-            batch.End(); // on every path out — End publishes the cursor and the error
+            batch.End();
             return result;
         }
 
-        // The batch-form core — INLINE-ONLY: a non-inlined call taking the batch by
-        // ref address-exposes it and enregistration dies (measured 0.71x, worse than
-        // no batch). Nested types compose core-to-core by ref, never via the stream.
+        // inline-only batch core — a real call would address-expose the batch
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static bool ReadExtremeProbeBatch(ref ReadBatch batch, ExtremeProbe value)
         {
@@ -1551,8 +1458,7 @@ namespace Example
         public const long ExtremeRowMaxBits = 256;
         public const long ExtremeRowMaxBytes = 32;
 
-        // ZeroExtremeRow resets value to the §5 ZERO form — all-zero storage; specified
-        // defaults live in construction only and are NOT reapplied here.
+        // The §5 zero form: all-zero storage; specified defaults live only in construction.
         public static void ZeroExtremeRow(ExtremeRow value)
         {
             value.ClampedFloor = 0;
@@ -1561,25 +1467,21 @@ namespace Example
             value.CeilingDef = 0;
         }
 
-        // WriteExtremeRow/ReadExtremeRow run as a batch: the stream state lives in registers
-        // across the body's serialize calls and is stored back once at End —
-        // the tiny-message hot path (serialize.cs WriteBatch/ReadBatch). Same
-        // wire bytes, same validation, same latched-error model.
+        // batch form: stream state stays in registers across the body and End
+        // publishes it — same wire bytes, same validation, same error model.
         public static bool WriteExtremeRow(WriteStream stream, ExtremeRow value)
         {
             WriteBatch batch = stream.BeginBatch();
             bool result = WriteExtremeRowBatch(ref batch, value);
-            batch.End(); // on every path out — End publishes the state and the error
+            batch.End();
             return result;
         }
 
-        // The batch-form core — INLINE-ONLY: a non-inlined call taking the batch by
-        // ref address-exposes it and enregistration dies (measured 0.71x, worse than
-        // no batch). Nested types compose core-to-core by ref, never via the stream.
+        // inline-only batch core — a real call would address-expose the batch
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static bool WriteExtremeRowBatch(ref WriteBatch batch, ExtremeRow value)
         {
-            if (value.ClampedFloor > 100) // out-of-contract writes are refused, not wrapped
+            if (value.ClampedFloor > 100)
             {
                 return false;
             }
@@ -1590,7 +1492,7 @@ namespace Example
                     return false;
                 }
             }
-            if (value.ClampedCeiling < 1 || value.ClampedCeiling > 18446744073709551614) // out-of-contract writes are refused, not wrapped
+            if (value.ClampedCeiling < 1 || value.ClampedCeiling > 18446744073709551614)
             {
                 return false;
             }
@@ -1619,13 +1521,11 @@ namespace Example
         {
             ReadBatch batch = stream.BeginBatch();
             bool result = ReadExtremeRowBatch(ref batch, value);
-            batch.End(); // on every path out — End publishes the cursor and the error
+            batch.End();
             return result;
         }
 
-        // The batch-form core — INLINE-ONLY: a non-inlined call taking the batch by
-        // ref address-exposes it and enregistration dies (measured 0.71x, worse than
-        // no batch). Nested types compose core-to-core by ref, never via the stream.
+        // inline-only batch core — a real call would address-expose the batch
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static bool ReadExtremeRowBatch(ref ReadBatch batch, ExtremeRow value)
         {

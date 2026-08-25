@@ -259,14 +259,13 @@ func smallestSigned(bound int64) int {
 // emitViewRangedWrite is the shallow write fold for a view component: the
 // generated guard plus offset bits, in the storage's value domain.
 func (g *gen) emitViewRangedWrite(name string, lo, hi *big.Int, storageBig bool, ind string) {
-	const refuse = " // out-of-contract writes are refused, not wrapped"
 	if storageBig {
 		sMin, sMax := storageBoundsBig(ir.FieldType{Kind: ir.TInt, Signed: true, Width: 64})
 		g.emitWriteFoldedBig(name, bigLit(lo), bigLit(hi), lo, hi,
-			lo.Cmp(sMin) > 0, hi.Cmp(sMax) < 0, refuse, ind)
+			lo.Cmp(sMin) > 0, hi.Cmp(sMax) < 0, "", ind)
 		return
 	}
-	g.emitWriteFoldedNum(name, lo.String(), hi.String(), lo, hi, true, refuse, ind)
+	g.emitWriteFoldedNum(name, lo.String(), hi.String(), lo, hi, true, "", ind)
 }
 
 // emitViewRangedRead is the shallow read for a view component: the runtime

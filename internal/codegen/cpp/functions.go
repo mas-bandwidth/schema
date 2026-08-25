@@ -27,11 +27,22 @@ func (g *gen) maxBitsStruct(st *ir.Struct) int64 { return ir.MaxBitsStruct(st) }
 // the allocation backing a read buffer must extend at least 8 bytes past
 // the data (serialize::BitReader loads unconditional 64-bit windows), so a
 // caller sizing a receive allocation at exactly MaxBytes would be handing
-// the reader undefined behavior.
+// the reader undefined behavior. The full contract is stated once per file
+// (maxBytesTail); every later MaxBytes carries the short form.
 func (g *gen) emitStructMaxBits(st *ir.Struct) {
 	maxBits := g.maxBitsStruct(st)
 	g.pf("inline constexpr int64_t %sMaxBits = %d; // longest wire path; align pads at worst case (SPEC §6.1)\n", st.Name, maxBits)
-	g.pf("inline constexpr int64_t %sMaxBytes = %d; // rounded up to the 8-byte write-buffer granularity; a read buffer's allocation must extend at least 8 bytes past the data — the reader loads 64-bit windows\n\n", st.Name, ir.MaxBytes(maxBits))
+	g.pf("inline constexpr int64_t %sMaxBytes = %d;%s\n\n", st.Name, ir.MaxBytes(maxBits), g.maxBytesTail())
+}
+
+// maxBytesTail is the comment after a MaxBytes constant: the whole buffer
+// contract on the file's first, the short form after.
+func (g *gen) maxBytesTail() string {
+	if g.saidReadSlack {
+		return " // 8-byte write granularity; read slack per the contract above"
+	}
+	g.saidReadSlack = true
+	return " // rounded up to the 8-byte write-buffer granularity; a read buffer's allocation must extend at least 8 bytes past the data — the reader loads 64-bit windows"
 }
 
 // emitUnionMaxBits mirrors emitStructMaxBits: the tag plus the largest arm
@@ -39,7 +50,7 @@ func (g *gen) emitStructMaxBits(st *ir.Struct) {
 func (g *gen) emitUnionMaxBits(d *ir.Union) {
 	maxBits := ir.MaxBitsUnion(d)
 	g.pf("inline constexpr int64_t %sMaxBits = %d; // tag + the largest arm; None costs the tag only (SPEC §4.8)\n", d.Name, maxBits)
-	g.pf("inline constexpr int64_t %sMaxBytes = %d; // rounded up to the 8-byte write-buffer granularity; a read buffer's allocation must extend at least 8 bytes past the data — the reader loads 64-bit windows\n\n", d.Name, ir.MaxBytes(maxBits))
+	g.pf("inline constexpr int64_t %sMaxBytes = %d;%s\n\n", d.Name, ir.MaxBytes(maxBits), g.maxBytesTail())
 }
 
 // emitUnionWire is the message dispatch pair scaled down to a field type
@@ -704,7 +715,7 @@ func (g *gen) emitMessageData() {
 	}
 	g.pf("// The message-level bound: the tag plus the largest message (SPEC §6.1)\n")
 	g.pf("inline constexpr int64_t MessageMaxBits = %d;\n", tagBits+largest)
-	g.pf("inline constexpr int64_t MessageMaxBytes = %d; // rounded up to the 8-byte write-buffer granularity; a read buffer's allocation must extend at least 8 bytes past the data — the reader loads 64-bit windows\n\n", ir.MaxBytes(tagBits+largest))
+	g.pf("inline constexpr int64_t MessageMaxBytes = %d;%s\n\n", ir.MaxBytes(tagBits+largest), g.maxBytesTail())
 
 	if g.opts.MessageRepr == "variant" {
 		g.emitMessageStorageVariant()

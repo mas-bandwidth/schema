@@ -58,11 +58,11 @@ struct ClientShipState {
     int8_t missile_index = 0; // wire [0, 15]
     Handle target;
     double lock_start_time = 0.0;
-    bool invulnerable = false; //  | local — no wire
-    ::VecMath previous_position; //  | local — no wire
-    int32_t num_colliders = 0; //  | local — no wire
-    int32_t collider_armor[MaxCollidersPerShip] = {}; //  | local — no wire
-    bool predicted_explode = false; //  | local, context = client
+    bool invulnerable = false; // | local — no wire
+    ::VecMath previous_position; // | local — no wire
+    int32_t num_colliders = 0; // | local — no wire
+    int32_t collider_armor[MaxCollidersPerShip] = {}; // | local — no wire
+    bool predicted_explode = false; // | local, context = client
 };
 
 // ServerShipState — the full simulation struct for the server context: every `all`
@@ -93,10 +93,10 @@ struct ServerShipState {
     int8_t missile_index = 0; // wire [0, 15]
     Handle target;
     double lock_start_time = 0.0;
-    bool invulnerable = false; //  | local — no wire
-    ::VecMath previous_position; //  | local — no wire
-    int32_t num_colliders = 0; //  | local — no wire
-    int32_t collider_armor[MaxCollidersPerShip] = {}; //  | local — no wire
+    bool invulnerable = false; // | local — no wire
+    ::VecMath previous_position; // | local — no wire
+    int32_t num_colliders = 0; // | local — no wire
+    int32_t collider_armor[MaxCollidersPerShip] = {}; // | local — no wire
 };
 
 // ShipData_Deep — every non- | local field, deep encodings: full state for
@@ -338,7 +338,7 @@ inline constexpr int64_t ShipData_DeepMaxBits = 1703;
 inline constexpr int64_t ShipData_DeepMaxBytes = 216; // rounded up to the 8-byte write-buffer granularity; a read buffer's allocation must extend at least 8 bytes past the data — the reader loads 64-bit windows
 
 inline constexpr int64_t ShipData_ShallowMaxBits = 218;
-inline constexpr int64_t ShipData_ShallowMaxBytes = 32; // rounded up to the 8-byte write-buffer granularity; a read buffer's allocation must extend at least 8 bytes past the data — the reader loads 64-bit windows
+inline constexpr int64_t ShipData_ShallowMaxBytes = 32; // 8-byte write granularity; read slack per the contract above
 
 // ---- object Missile — one definition, a generated family per target (SPEC §4.8) ----
 
@@ -351,8 +351,8 @@ struct ClientMissileState {
     ::VecMath linear_velocity;
     Team team = Team::None;
     uint64_t flags = 0;
-    ::VecMath angular_velocity; //  | local — no wire
-    Handle target; //  | local — no wire
+    ::VecMath angular_velocity; // | local — no wire
+    Handle target; // | local — no wire
 };
 
 // ServerMissileState — the full simulation struct for the server context: every `all`
@@ -364,9 +364,9 @@ struct ServerMissileState {
     ::VecMath linear_velocity;
     Team team = Team::None;
     uint64_t flags = 0;
-    ::VecMath angular_velocity; //  | local — no wire
-    Handle target; //  | local — no wire
-    double timer = 0.0; //  | local, context = server
+    ::VecMath angular_velocity; // | local — no wire
+    Handle target; // | local — no wire
+    double timer = 0.0; // | local, context = server
 };
 
 // MissileData_Deep — every non- | local field, deep encodings: full state for
@@ -578,10 +578,10 @@ inline void UnquantizeMissile( const MissileData_Shallow & input, MissileData_In
 }
 
 inline constexpr int64_t MissileData_DeepMaxBits = 708;
-inline constexpr int64_t MissileData_DeepMaxBytes = 96; // rounded up to the 8-byte write-buffer granularity; a read buffer's allocation must extend at least 8 bytes past the data — the reader loads 64-bit windows
+inline constexpr int64_t MissileData_DeepMaxBytes = 96; // 8-byte write granularity; read slack per the contract above
 
 inline constexpr int64_t MissileData_ShallowMaxBits = 260;
-inline constexpr int64_t MissileData_ShallowMaxBytes = 40; // rounded up to the 8-byte write-buffer granularity; a read buffer's allocation must extend at least 8 bytes past the data — the reader loads 64-bit windows
+inline constexpr int64_t MissileData_ShallowMaxBytes = 40; // 8-byte write granularity; read slack per the contract above
 
 // ---- object DynamicProp — one definition, a generated family per target (SPEC §4.8) ----
 
@@ -593,7 +593,7 @@ struct DynamicPropState {
     ::VecMath linear_velocity;
     uint64_t flags = 0;
     Team team = Team::None;
-    ::VecMath angular_velocity; //  | local — no wire
+    ::VecMath angular_velocity; // | local — no wire
 };
 
 // DynamicPropData_Deep — every non- | local field, deep encodings: full state for
@@ -805,10 +805,10 @@ inline void UnquantizeDynamicProp( const DynamicPropData_Shallow & input, Dynami
 }
 
 inline constexpr int64_t DynamicPropData_DeepMaxBits = 709;
-inline constexpr int64_t DynamicPropData_DeepMaxBytes = 96; // rounded up to the 8-byte write-buffer granularity; a read buffer's allocation must extend at least 8 bytes past the data — the reader loads 64-bit windows
+inline constexpr int64_t DynamicPropData_DeepMaxBytes = 96; // 8-byte write granularity; read slack per the contract above
 
 inline constexpr int64_t DynamicPropData_ShallowMaxBits = 261;
-inline constexpr int64_t DynamicPropData_ShallowMaxBytes = 40; // rounded up to the 8-byte write-buffer granularity; a read buffer's allocation must extend at least 8 bytes past the data — the reader loads 64-bit windows
+inline constexpr int64_t DynamicPropData_ShallowMaxBytes = 40; // 8-byte write granularity; read slack per the contract above
 
 // ---- object Turret — one definition, a generated family per target (SPEC §4.8) ----
 
@@ -818,7 +818,7 @@ struct TurretState {
     int32_t turret_index = 0; // wire [0, 255]
     Quat rotation;
     uint64_t flags = 0;
-    Team team = Team::None; //  | local — no wire
+    Team team = Team::None; // | local — no wire
 };
 
 // TurretData_Deep — every non- | local field, deep encodings: full state for
@@ -928,9 +928,9 @@ inline void UnquantizeTurret( const TurretData_Shallow & input, TurretData_Inter
 }
 
 inline constexpr int64_t TurretData_DeepMaxBits = 350;
-inline constexpr int64_t TurretData_DeepMaxBytes = 48; // rounded up to the 8-byte write-buffer granularity; a read buffer's allocation must extend at least 8 bytes past the data — the reader loads 64-bit windows
+inline constexpr int64_t TurretData_DeepMaxBytes = 48; // 8-byte write granularity; read slack per the contract above
 
 inline constexpr int64_t TurretData_ShallowMaxBits = 142;
-inline constexpr int64_t TurretData_ShallowMaxBytes = 24; // rounded up to the 8-byte write-buffer granularity; a read buffer's allocation must extend at least 8 bytes past the data — the reader loads 64-bit windows
+inline constexpr int64_t TurretData_ShallowMaxBytes = 24; // 8-byte write granularity; read slack per the contract above
 
 } // namespace example

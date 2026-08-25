@@ -54,11 +54,11 @@ type ClientShipState struct {
 	MissileIndex        int8 // wire [0, 15]
 	Target              Handle
 	LockStartTime       float64
-	Invulnerable        bool                       //  | local — no wire
-	PreviousPosition    Vec3                       //  | local — no wire
-	NumColliders        int32                      //  | local — no wire
-	ColliderArmor       [MaxCollidersPerShip]int32 //  | local — no wire
-	PredictedExplode    bool                       //  | local, context = client
+	Invulnerable        bool                       // | local — no wire
+	PreviousPosition    Vec3                       // | local — no wire
+	NumColliders        int32                      // | local — no wire
+	ColliderArmor       [MaxCollidersPerShip]int32 // | local — no wire
+	PredictedExplode    bool                       // | local, context = client
 }
 
 // ServerShipState — the full simulation struct for the server context: every `all`
@@ -89,10 +89,10 @@ type ServerShipState struct {
 	MissileIndex        int8 // wire [0, 15]
 	Target              Handle
 	LockStartTime       float64
-	Invulnerable        bool                       //  | local — no wire
-	PreviousPosition    Vec3                       //  | local — no wire
-	NumColliders        int32                      //  | local — no wire
-	ColliderArmor       [MaxCollidersPerShip]int32 //  | local — no wire
+	Invulnerable        bool                       // | local — no wire
+	PreviousPosition    Vec3                       // | local — no wire
+	NumColliders        int32                      // | local — no wire
+	ColliderArmor       [MaxCollidersPerShip]int32 // | local — no wire
 }
 
 // ShipData_Deep — every non- | local field, deep encodings: full state for
@@ -168,7 +168,7 @@ const ShipData_DeepMaxBytes = 216 // rounded up to the 8-byte write-buffer granu
 func WriteShipData_Deep(stream *serialize.WriteStream, value *ShipData_Deep) error {
 	{
 		enumValue := int32(value.ShipType)
-		if enumValue < 0 || enumValue > 5 { // the runtime range refusal, folded (SPEC §5)
+		if enumValue < 0 || enumValue > 5 {
 			return serialize.ErrValueOutOfRange
 		}
 		{
@@ -194,7 +194,7 @@ func WriteShipData_Deep(stream *serialize.WriteStream, value *ShipData_Deep) err
 	}
 	{
 		enumValue := int32(value.Team)
-		if enumValue < 0 || enumValue > 2 { // the runtime range refusal, folded (SPEC §5)
+		if enumValue < 0 || enumValue > 2 {
 			return serialize.ErrValueOutOfRange
 		}
 		{
@@ -225,7 +225,7 @@ func WriteShipData_Deep(stream *serialize.WriteStream, value *ShipData_Deep) err
 	stream.SerializeFloat32(&value.AimVelocity)
 	{
 		rangeValue := int32(value.LaserIndex)
-		if rangeValue < 0 || rangeValue > ShipMaxLasers-1 { // the runtime range refusal, folded (SPEC §5)
+		if rangeValue < 0 || rangeValue > ShipMaxLasers-1 {
 			return serialize.ErrValueOutOfRange
 		}
 		{
@@ -235,7 +235,7 @@ func WriteShipData_Deep(stream *serialize.WriteStream, value *ShipData_Deep) err
 	}
 	{
 		rangeValue := int32(value.MissileIndex)
-		if rangeValue < 0 || rangeValue > ShipMaxMissiles-1 { // the runtime range refusal, folded (SPEC §5)
+		if rangeValue < 0 || rangeValue > ShipMaxMissiles-1 {
 			return serialize.ErrValueOutOfRange
 		}
 		{
@@ -319,7 +319,7 @@ const ShipData_ShallowMaxBytes = 32 // rounded up to the 8-byte write-buffer gra
 func WriteShipData_Shallow(stream *serialize.WriteStream, value *ShipData_Shallow) error {
 	{
 		enumValue := int32(value.ShipType)
-		if enumValue < 0 || enumValue > 5 { // the runtime range refusal, folded (SPEC §5)
+		if enumValue < 0 || enumValue > 5 {
 			return serialize.ErrValueOutOfRange
 		}
 		{
@@ -327,21 +327,21 @@ func WriteShipData_Shallow(stream *serialize.WriteStream, value *ShipData_Shallo
 			stream.SerializeBits(&offsetValue, 3)
 		}
 	}
-	if value.PositionX < -8388608 || value.PositionX > 8388608 { // the runtime range refusal, folded (SPEC §5)
+	if value.PositionX < -8388608 || value.PositionX > 8388608 {
 		return serialize.ErrValueOutOfRange
 	}
 	{
 		offsetValue := uint32(value.PositionX - (-8388608))
 		stream.SerializeBits(&offsetValue, 25)
 	}
-	if value.PositionY < -8388608 || value.PositionY > 8388608 { // the runtime range refusal, folded (SPEC §5)
+	if value.PositionY < -8388608 || value.PositionY > 8388608 {
 		return serialize.ErrValueOutOfRange
 	}
 	{
 		offsetValue := uint32(value.PositionY - (-8388608))
 		stream.SerializeBits(&offsetValue, 25)
 	}
-	if value.PositionZ < -8388608 || value.PositionZ > 8388608 { // the runtime range refusal, folded (SPEC §5)
+	if value.PositionZ < -8388608 || value.PositionZ > 8388608 {
 		return serialize.ErrValueOutOfRange
 	}
 	{
@@ -350,7 +350,7 @@ func WriteShipData_Shallow(stream *serialize.WriteStream, value *ShipData_Shallo
 	}
 	{
 		componentValue := int32(value.RotationX)
-		if componentValue < -1024 || componentValue > 1024 { // the runtime range refusal, folded (SPEC §5)
+		if componentValue < -1024 || componentValue > 1024 {
 			return serialize.ErrValueOutOfRange
 		}
 		{
@@ -360,7 +360,7 @@ func WriteShipData_Shallow(stream *serialize.WriteStream, value *ShipData_Shallo
 	}
 	{
 		componentValue := int32(value.RotationY)
-		if componentValue < -1024 || componentValue > 1024 { // the runtime range refusal, folded (SPEC §5)
+		if componentValue < -1024 || componentValue > 1024 {
 			return serialize.ErrValueOutOfRange
 		}
 		{
@@ -370,7 +370,7 @@ func WriteShipData_Shallow(stream *serialize.WriteStream, value *ShipData_Shallo
 	}
 	{
 		componentValue := int32(value.RotationZ)
-		if componentValue < -1024 || componentValue > 1024 { // the runtime range refusal, folded (SPEC §5)
+		if componentValue < -1024 || componentValue > 1024 {
 			return serialize.ErrValueOutOfRange
 		}
 		{
@@ -380,7 +380,7 @@ func WriteShipData_Shallow(stream *serialize.WriteStream, value *ShipData_Shallo
 	}
 	{
 		componentValue := int32(value.RotationW)
-		if componentValue < -1024 || componentValue > 1024 { // the runtime range refusal, folded (SPEC §5)
+		if componentValue < -1024 || componentValue > 1024 {
 			return serialize.ErrValueOutOfRange
 		}
 		{
@@ -388,21 +388,21 @@ func WriteShipData_Shallow(stream *serialize.WriteStream, value *ShipData_Shallo
 			stream.SerializeBits(&offsetValue, 12)
 		}
 	}
-	if value.LinearVelocityX < -2097152 || value.LinearVelocityX > 2097152 { // the runtime range refusal, folded (SPEC §5)
+	if value.LinearVelocityX < -2097152 || value.LinearVelocityX > 2097152 {
 		return serialize.ErrValueOutOfRange
 	}
 	{
 		offsetValue := uint32(value.LinearVelocityX - (-2097152))
 		stream.SerializeBits(&offsetValue, 23)
 	}
-	if value.LinearVelocityY < -2097152 || value.LinearVelocityY > 2097152 { // the runtime range refusal, folded (SPEC §5)
+	if value.LinearVelocityY < -2097152 || value.LinearVelocityY > 2097152 {
 		return serialize.ErrValueOutOfRange
 	}
 	{
 		offsetValue := uint32(value.LinearVelocityY - (-2097152))
 		stream.SerializeBits(&offsetValue, 23)
 	}
-	if value.LinearVelocityZ < -2097152 || value.LinearVelocityZ > 2097152 { // the runtime range refusal, folded (SPEC §5)
+	if value.LinearVelocityZ < -2097152 || value.LinearVelocityZ > 2097152 {
 		return serialize.ErrValueOutOfRange
 	}
 	{
@@ -418,7 +418,7 @@ func WriteShipData_Shallow(stream *serialize.WriteStream, value *ShipData_Shallo
 	}
 	{
 		enumValue := int32(value.Team)
-		if enumValue < 0 || enumValue > 2 { // the runtime range refusal, folded (SPEC §5)
+		if enumValue < 0 || enumValue > 2 {
 			return serialize.ErrValueOutOfRange
 		}
 		{
@@ -428,7 +428,7 @@ func WriteShipData_Shallow(stream *serialize.WriteStream, value *ShipData_Shallo
 	}
 	{
 		projectedValue := int32(value.Health)
-		if projectedValue < 0 || projectedValue > 1000 { // the runtime range refusal, folded (SPEC §5)
+		if projectedValue < 0 || projectedValue > 1000 {
 			return serialize.ErrValueOutOfRange
 		}
 		{
@@ -438,7 +438,7 @@ func WriteShipData_Shallow(stream *serialize.WriteStream, value *ShipData_Shallo
 	}
 	{
 		projectedValue := int32(value.Thrust)
-		if projectedValue < 0 || projectedValue > 100 { // the runtime range refusal, folded (SPEC §5)
+		if projectedValue < 0 || projectedValue > 100 {
 			return serialize.ErrValueOutOfRange
 		}
 		{
@@ -651,8 +651,8 @@ type ClientMissileState struct {
 	LinearVelocity  Vec3
 	Team            Team
 	Flags           uint64
-	AngularVelocity Vec3   //  | local — no wire
-	Target          Handle //  | local — no wire
+	AngularVelocity Vec3   // | local — no wire
+	Target          Handle // | local — no wire
 }
 
 // ServerMissileState — the full simulation struct for the server context: every `all`
@@ -664,9 +664,9 @@ type ServerMissileState struct {
 	LinearVelocity  Vec3
 	Team            Team
 	Flags           uint64
-	AngularVelocity Vec3    //  | local — no wire
-	Target          Handle  //  | local — no wire
-	Timer           float64 //  | local, context = server
+	AngularVelocity Vec3    // | local — no wire
+	Target          Handle  // | local — no wire
+	Timer           float64 // | local, context = server
 }
 
 // MissileData_Deep — every non- | local field, deep encodings: full state for
@@ -719,7 +719,7 @@ const MissileData_DeepMaxBytes = 96 // rounded up to the 8-byte write-buffer gra
 func WriteMissileData_Deep(stream *serialize.WriteStream, value *MissileData_Deep) error {
 	{
 		enumValue := int32(value.MissileType)
-		if enumValue < 0 || enumValue > 3 { // the runtime range refusal, folded (SPEC §5)
+		if enumValue < 0 || enumValue > 3 {
 			return serialize.ErrValueOutOfRange
 		}
 		{
@@ -738,7 +738,7 @@ func WriteMissileData_Deep(stream *serialize.WriteStream, value *MissileData_Dee
 	}
 	{
 		enumValue := int32(value.Team)
-		if enumValue < 0 || enumValue > 2 { // the runtime range refusal, folded (SPEC §5)
+		if enumValue < 0 || enumValue > 2 {
 			return serialize.ErrValueOutOfRange
 		}
 		{
@@ -780,7 +780,7 @@ const MissileData_ShallowMaxBytes = 40 // rounded up to the 8-byte write-buffer 
 func WriteMissileData_Shallow(stream *serialize.WriteStream, value *MissileData_Shallow) error {
 	{
 		enumValue := int32(value.MissileType)
-		if enumValue < 0 || enumValue > 3 { // the runtime range refusal, folded (SPEC §5)
+		if enumValue < 0 || enumValue > 3 {
 			return serialize.ErrValueOutOfRange
 		}
 		{
@@ -788,21 +788,21 @@ func WriteMissileData_Shallow(stream *serialize.WriteStream, value *MissileData_
 			stream.SerializeBits(&offsetValue, 2)
 		}
 	}
-	if value.PositionX < -8388608 || value.PositionX > 8388608 { // the runtime range refusal, folded (SPEC §5)
+	if value.PositionX < -8388608 || value.PositionX > 8388608 {
 		return serialize.ErrValueOutOfRange
 	}
 	{
 		offsetValue := uint32(value.PositionX - (-8388608))
 		stream.SerializeBits(&offsetValue, 25)
 	}
-	if value.PositionY < -8388608 || value.PositionY > 8388608 { // the runtime range refusal, folded (SPEC §5)
+	if value.PositionY < -8388608 || value.PositionY > 8388608 {
 		return serialize.ErrValueOutOfRange
 	}
 	{
 		offsetValue := uint32(value.PositionY - (-8388608))
 		stream.SerializeBits(&offsetValue, 25)
 	}
-	if value.PositionZ < -8388608 || value.PositionZ > 8388608 { // the runtime range refusal, folded (SPEC §5)
+	if value.PositionZ < -8388608 || value.PositionZ > 8388608 {
 		return serialize.ErrValueOutOfRange
 	}
 	{
@@ -811,7 +811,7 @@ func WriteMissileData_Shallow(stream *serialize.WriteStream, value *MissileData_
 	}
 	{
 		componentValue := int32(value.RotationX)
-		if componentValue < -1024 || componentValue > 1024 { // the runtime range refusal, folded (SPEC §5)
+		if componentValue < -1024 || componentValue > 1024 {
 			return serialize.ErrValueOutOfRange
 		}
 		{
@@ -821,7 +821,7 @@ func WriteMissileData_Shallow(stream *serialize.WriteStream, value *MissileData_
 	}
 	{
 		componentValue := int32(value.RotationY)
-		if componentValue < -1024 || componentValue > 1024 { // the runtime range refusal, folded (SPEC §5)
+		if componentValue < -1024 || componentValue > 1024 {
 			return serialize.ErrValueOutOfRange
 		}
 		{
@@ -831,7 +831,7 @@ func WriteMissileData_Shallow(stream *serialize.WriteStream, value *MissileData_
 	}
 	{
 		componentValue := int32(value.RotationZ)
-		if componentValue < -1024 || componentValue > 1024 { // the runtime range refusal, folded (SPEC §5)
+		if componentValue < -1024 || componentValue > 1024 {
 			return serialize.ErrValueOutOfRange
 		}
 		{
@@ -841,7 +841,7 @@ func WriteMissileData_Shallow(stream *serialize.WriteStream, value *MissileData_
 	}
 	{
 		componentValue := int32(value.RotationW)
-		if componentValue < -1024 || componentValue > 1024 { // the runtime range refusal, folded (SPEC §5)
+		if componentValue < -1024 || componentValue > 1024 {
 			return serialize.ErrValueOutOfRange
 		}
 		{
@@ -849,21 +849,21 @@ func WriteMissileData_Shallow(stream *serialize.WriteStream, value *MissileData_
 			stream.SerializeBits(&offsetValue, 12)
 		}
 	}
-	if value.LinearVelocityX < -2097152 || value.LinearVelocityX > 2097152 { // the runtime range refusal, folded (SPEC §5)
+	if value.LinearVelocityX < -2097152 || value.LinearVelocityX > 2097152 {
 		return serialize.ErrValueOutOfRange
 	}
 	{
 		offsetValue := uint32(value.LinearVelocityX - (-2097152))
 		stream.SerializeBits(&offsetValue, 23)
 	}
-	if value.LinearVelocityY < -2097152 || value.LinearVelocityY > 2097152 { // the runtime range refusal, folded (SPEC §5)
+	if value.LinearVelocityY < -2097152 || value.LinearVelocityY > 2097152 {
 		return serialize.ErrValueOutOfRange
 	}
 	{
 		offsetValue := uint32(value.LinearVelocityY - (-2097152))
 		stream.SerializeBits(&offsetValue, 23)
 	}
-	if value.LinearVelocityZ < -2097152 || value.LinearVelocityZ > 2097152 { // the runtime range refusal, folded (SPEC §5)
+	if value.LinearVelocityZ < -2097152 || value.LinearVelocityZ > 2097152 {
 		return serialize.ErrValueOutOfRange
 	}
 	{
@@ -872,7 +872,7 @@ func WriteMissileData_Shallow(stream *serialize.WriteStream, value *MissileData_
 	}
 	{
 		enumValue := int32(value.Team)
-		if enumValue < 0 || enumValue > 2 { // the runtime range refusal, folded (SPEC §5)
+		if enumValue < 0 || enumValue > 2 {
 			return serialize.ErrValueOutOfRange
 		}
 		{
@@ -1067,7 +1067,7 @@ type DynamicPropState struct {
 	LinearVelocity  Vec3
 	Flags           uint64
 	Team            Team
-	AngularVelocity Vec3 //  | local — no wire
+	AngularVelocity Vec3 // | local — no wire
 }
 
 // DynamicPropData_Deep — every non- | local field, deep encodings: full state for
@@ -1120,7 +1120,7 @@ const DynamicPropData_DeepMaxBytes = 96 // rounded up to the 8-byte write-buffer
 func WriteDynamicPropData_Deep(stream *serialize.WriteStream, value *DynamicPropData_Deep) error {
 	{
 		enumValue := int32(value.PropType)
-		if enumValue < 0 || enumValue > 6 { // the runtime range refusal, folded (SPEC §5)
+		if enumValue < 0 || enumValue > 6 {
 			return serialize.ErrValueOutOfRange
 		}
 		{
@@ -1140,7 +1140,7 @@ func WriteDynamicPropData_Deep(stream *serialize.WriteStream, value *DynamicProp
 	stream.SerializeBits64(&value.Flags, 64)
 	{
 		enumValue := int32(value.Team)
-		if enumValue < 0 || enumValue > 2 { // the runtime range refusal, folded (SPEC §5)
+		if enumValue < 0 || enumValue > 2 {
 			return serialize.ErrValueOutOfRange
 		}
 		{
@@ -1181,7 +1181,7 @@ const DynamicPropData_ShallowMaxBytes = 40 // rounded up to the 8-byte write-buf
 func WriteDynamicPropData_Shallow(stream *serialize.WriteStream, value *DynamicPropData_Shallow) error {
 	{
 		enumValue := int32(value.PropType)
-		if enumValue < 0 || enumValue > 6 { // the runtime range refusal, folded (SPEC §5)
+		if enumValue < 0 || enumValue > 6 {
 			return serialize.ErrValueOutOfRange
 		}
 		{
@@ -1189,21 +1189,21 @@ func WriteDynamicPropData_Shallow(stream *serialize.WriteStream, value *DynamicP
 			stream.SerializeBits(&offsetValue, 3)
 		}
 	}
-	if value.PositionX < -8388608 || value.PositionX > 8388608 { // the runtime range refusal, folded (SPEC §5)
+	if value.PositionX < -8388608 || value.PositionX > 8388608 {
 		return serialize.ErrValueOutOfRange
 	}
 	{
 		offsetValue := uint32(value.PositionX - (-8388608))
 		stream.SerializeBits(&offsetValue, 25)
 	}
-	if value.PositionY < -8388608 || value.PositionY > 8388608 { // the runtime range refusal, folded (SPEC §5)
+	if value.PositionY < -8388608 || value.PositionY > 8388608 {
 		return serialize.ErrValueOutOfRange
 	}
 	{
 		offsetValue := uint32(value.PositionY - (-8388608))
 		stream.SerializeBits(&offsetValue, 25)
 	}
-	if value.PositionZ < -8388608 || value.PositionZ > 8388608 { // the runtime range refusal, folded (SPEC §5)
+	if value.PositionZ < -8388608 || value.PositionZ > 8388608 {
 		return serialize.ErrValueOutOfRange
 	}
 	{
@@ -1212,7 +1212,7 @@ func WriteDynamicPropData_Shallow(stream *serialize.WriteStream, value *DynamicP
 	}
 	{
 		componentValue := int32(value.RotationX)
-		if componentValue < -1024 || componentValue > 1024 { // the runtime range refusal, folded (SPEC §5)
+		if componentValue < -1024 || componentValue > 1024 {
 			return serialize.ErrValueOutOfRange
 		}
 		{
@@ -1222,7 +1222,7 @@ func WriteDynamicPropData_Shallow(stream *serialize.WriteStream, value *DynamicP
 	}
 	{
 		componentValue := int32(value.RotationY)
-		if componentValue < -1024 || componentValue > 1024 { // the runtime range refusal, folded (SPEC §5)
+		if componentValue < -1024 || componentValue > 1024 {
 			return serialize.ErrValueOutOfRange
 		}
 		{
@@ -1232,7 +1232,7 @@ func WriteDynamicPropData_Shallow(stream *serialize.WriteStream, value *DynamicP
 	}
 	{
 		componentValue := int32(value.RotationZ)
-		if componentValue < -1024 || componentValue > 1024 { // the runtime range refusal, folded (SPEC §5)
+		if componentValue < -1024 || componentValue > 1024 {
 			return serialize.ErrValueOutOfRange
 		}
 		{
@@ -1242,7 +1242,7 @@ func WriteDynamicPropData_Shallow(stream *serialize.WriteStream, value *DynamicP
 	}
 	{
 		componentValue := int32(value.RotationW)
-		if componentValue < -1024 || componentValue > 1024 { // the runtime range refusal, folded (SPEC §5)
+		if componentValue < -1024 || componentValue > 1024 {
 			return serialize.ErrValueOutOfRange
 		}
 		{
@@ -1250,21 +1250,21 @@ func WriteDynamicPropData_Shallow(stream *serialize.WriteStream, value *DynamicP
 			stream.SerializeBits(&offsetValue, 12)
 		}
 	}
-	if value.LinearVelocityX < -2097152 || value.LinearVelocityX > 2097152 { // the runtime range refusal, folded (SPEC §5)
+	if value.LinearVelocityX < -2097152 || value.LinearVelocityX > 2097152 {
 		return serialize.ErrValueOutOfRange
 	}
 	{
 		offsetValue := uint32(value.LinearVelocityX - (-2097152))
 		stream.SerializeBits(&offsetValue, 23)
 	}
-	if value.LinearVelocityY < -2097152 || value.LinearVelocityY > 2097152 { // the runtime range refusal, folded (SPEC §5)
+	if value.LinearVelocityY < -2097152 || value.LinearVelocityY > 2097152 {
 		return serialize.ErrValueOutOfRange
 	}
 	{
 		offsetValue := uint32(value.LinearVelocityY - (-2097152))
 		stream.SerializeBits(&offsetValue, 23)
 	}
-	if value.LinearVelocityZ < -2097152 || value.LinearVelocityZ > 2097152 { // the runtime range refusal, folded (SPEC §5)
+	if value.LinearVelocityZ < -2097152 || value.LinearVelocityZ > 2097152 {
 		return serialize.ErrValueOutOfRange
 	}
 	{
@@ -1274,7 +1274,7 @@ func WriteDynamicPropData_Shallow(stream *serialize.WriteStream, value *DynamicP
 	stream.SerializeBits64(&value.Flags, 64)
 	{
 		enumValue := int32(value.Team)
-		if enumValue < 0 || enumValue > 2 { // the runtime range refusal, folded (SPEC §5)
+		if enumValue < 0 || enumValue > 2 {
 			return serialize.ErrValueOutOfRange
 		}
 		{
@@ -1466,7 +1466,7 @@ type TurretState struct {
 	TurretIndex int32 // wire [0, 255]
 	Rotation    Quat
 	Flags       uint64
-	Team        Team //  | local — no wire
+	Team        Team // | local — no wire
 }
 
 // TurretData_Deep — every non- | local field, deep encodings: full state for
@@ -1508,7 +1508,7 @@ func WriteTurretData_Deep(stream *serialize.WriteStream, value *TurretData_Deep)
 	if err := WriteHandle(stream, &value.Parent); err != nil {
 		return err
 	}
-	if value.TurretIndex < 0 || value.TurretIndex > MaxTurretsPerShip-1 { // the runtime range refusal, folded (SPEC §5)
+	if value.TurretIndex < 0 || value.TurretIndex > MaxTurretsPerShip-1 {
 		return serialize.ErrValueOutOfRange
 	}
 	{
@@ -1541,7 +1541,7 @@ func WriteTurretData_Shallow(stream *serialize.WriteStream, value *TurretData_Sh
 	if err := WriteHandle(stream, &value.Parent); err != nil {
 		return err
 	}
-	if value.TurretIndex < 0 || value.TurretIndex > MaxTurretsPerShip-1 { // the runtime range refusal, folded (SPEC §5)
+	if value.TurretIndex < 0 || value.TurretIndex > MaxTurretsPerShip-1 {
 		return serialize.ErrValueOutOfRange
 	}
 	{
@@ -1550,7 +1550,7 @@ func WriteTurretData_Shallow(stream *serialize.WriteStream, value *TurretData_Sh
 	}
 	{
 		componentValue := int32(value.RotationX)
-		if componentValue < -1024 || componentValue > 1024 { // the runtime range refusal, folded (SPEC §5)
+		if componentValue < -1024 || componentValue > 1024 {
 			return serialize.ErrValueOutOfRange
 		}
 		{
@@ -1560,7 +1560,7 @@ func WriteTurretData_Shallow(stream *serialize.WriteStream, value *TurretData_Sh
 	}
 	{
 		componentValue := int32(value.RotationY)
-		if componentValue < -1024 || componentValue > 1024 { // the runtime range refusal, folded (SPEC §5)
+		if componentValue < -1024 || componentValue > 1024 {
 			return serialize.ErrValueOutOfRange
 		}
 		{
@@ -1570,7 +1570,7 @@ func WriteTurretData_Shallow(stream *serialize.WriteStream, value *TurretData_Sh
 	}
 	{
 		componentValue := int32(value.RotationZ)
-		if componentValue < -1024 || componentValue > 1024 { // the runtime range refusal, folded (SPEC §5)
+		if componentValue < -1024 || componentValue > 1024 {
 			return serialize.ErrValueOutOfRange
 		}
 		{
@@ -1580,7 +1580,7 @@ func WriteTurretData_Shallow(stream *serialize.WriteStream, value *TurretData_Sh
 	}
 	{
 		componentValue := int32(value.RotationW)
-		if componentValue < -1024 || componentValue > 1024 { // the runtime range refusal, folded (SPEC §5)
+		if componentValue < -1024 || componentValue > 1024 {
 			return serialize.ErrValueOutOfRange
 		}
 		{
@@ -1685,7 +1685,7 @@ func UnquantizeTurret(input *TurretData_Shallow, output *TurretData_Interpolate)
 // null — the sentinel the surveyed baseline streams terminate with (SPEC §4.8).
 func WriteObjectType(stream *serialize.WriteStream, value ObjectType) error {
 	tagValue := int32(value)
-	if tagValue < 0 || tagValue > 4 { // the runtime range refusal, folded (SPEC §5)
+	if tagValue < 0 || tagValue > 4 {
 		return serialize.ErrValueOutOfRange
 	}
 	{

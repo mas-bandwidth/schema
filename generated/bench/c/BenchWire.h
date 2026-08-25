@@ -8,7 +8,6 @@
 #define SCHEMA_BENCH_BENCHWIRE_H
 
 #include "Bench.h"
-#include <string.h>   /* memset, strlen */
 #include "serialize.h"
 
 #ifndef SCHEMA_UNUSED
@@ -22,6 +21,12 @@
 #ifdef __cplusplus
 extern "C" {
 #endif
+
+/* Every write_x/read_x returns 1 on success, 0 on failure — the stream
+   latches the error, so a caller may check once at the end of a message.
+   Reads REFUSE out-of-range values, never clamp. A tag is validated BEFORE
+   it rides, and a read zero-establishes the selected arm before decoding
+   it (SPEC §4.8, §5). */
 
 #ifndef SCHEMA_C_SPINE_INLINE_DEFINED
 #define SCHEMA_C_SPINE_INLINE_DEFINED
@@ -45,8 +50,7 @@ extern "C" {
 #endif
 #endif /* SCHEMA_C_SPINE_INLINE_DEFINED */
 
-/* Writes BenchPacket. Returns 1 on success, 0 on failure — the stream latches the
-   error, so a caller may check once at the end of a message. */
+/* Writes BenchPacket. */
 static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_bench_packet( serialize_write_stream_t * stream, const BenchPacket * value )
 {
     if ( (serialize_int64_t) value->a < -100 || (serialize_int64_t) value->a > 100 )
@@ -116,8 +120,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_bench_packet( serialize_wri
     return 1;
 }
 
-/* Reads BenchPacket. Returns 1 on success, 0 on failure. Out-of-range values are
-   REFUSED, never clamped. */
+/* Reads BenchPacket. */
 static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_bench_packet( serialize_read_stream_t * stream, BenchPacket * value )
 {
     {
@@ -221,8 +224,7 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_bench_packet( serialize_read_
     return 1;
 }
 
-/* Writes BenchInts. Returns 1 on success, 0 on failure — the stream latches the
-   error, so a caller may check once at the end of a message. */
+/* Writes BenchInts. */
 static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_bench_ints( serialize_write_stream_t * stream, const BenchInts * value )
 {
     if ( (serialize_int64_t) value->f0 < -100 || (serialize_int64_t) value->f0 > 100 )
@@ -308,8 +310,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_bench_ints( serialize_write
     return 1;
 }
 
-/* Reads BenchInts. Returns 1 on success, 0 on failure. Out-of-range values are
-   REFUSED, never clamped. */
+/* Reads BenchInts. */
 static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_bench_ints( serialize_read_stream_t * stream, BenchInts * value )
 {
     {
@@ -455,8 +456,7 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_bench_ints( serialize_read_st
     return 1;
 }
 
-/* Writes BenchBits. Returns 1 on success, 0 on failure — the stream latches the
-   error, so a caller may check once at the end of a message. */
+/* Writes BenchBits. */
 static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_bench_bits( serialize_write_stream_t * stream, const BenchBits * value )
 {
     if ( !serialize_write_bits( stream, (serialize_uint32_t) value->b7, 7 ) )
@@ -501,8 +501,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_bench_bits( serialize_write
     return 1;
 }
 
-/* Reads BenchBits. Returns 1 on success, 0 on failure. Out-of-range values are
-   REFUSED, never clamped. */
+/* Reads BenchBits. */
 static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_bench_bits( serialize_read_stream_t * stream, BenchBits * value )
 {
     {
@@ -577,8 +576,7 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_bench_bits( serialize_read_st
     return 1;
 }
 
-/* Writes BenchMixed. Returns 1 on success, 0 on failure — the stream latches the
-   error, so a caller may check once at the end of a message. */
+/* Writes BenchMixed. */
 static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_bench_mixed( serialize_write_stream_t * stream, const BenchMixed * value )
 {
     if ( (serialize_int64_t) value->sequence < 0 || (serialize_int64_t) value->sequence > 65535 )
@@ -655,8 +653,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_bench_mixed( serialize_writ
     return 1;
 }
 
-/* Reads BenchMixed. Returns 1 on success, 0 on failure. Out-of-range values are
-   REFUSED, never clamped. */
+/* Reads BenchMixed. */
 static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_bench_mixed( serialize_read_stream_t * stream, BenchMixed * value )
 {
     {

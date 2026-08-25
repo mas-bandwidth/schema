@@ -3,13 +3,6 @@
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
 // package example — protocol id 0xbc05d83a8135cdb9
-//
-// Storage members are PascalCase via the same mapping as the Go target, so
-// the checker's collision registry covers C# for free. Wire functions return
-// bool — the C++-style early-out. A schema validation failure (a wrong wire
-// constant, nonzero reserved bits, an interior null) returns false WITHOUT
-// latching; stream failures latch on stream.Error — the runtime's own sticky
-// latch. Callers get bool always; Error tells the two apart.
 
 using System;
 using System.Runtime.CompilerServices;
@@ -60,11 +53,11 @@ namespace Example
         public sbyte MissileIndex; // wire [0, 15]
         public Handle Target = new Handle();
         public double LockStartTime;
-        public bool Invulnerable; //  | local — no wire
-        public Vec3 PreviousPosition = new Vec3(); //  | local — no wire
-        public int NumColliders; //  | local — no wire
-        public int[] ColliderArmor = new int[Schema.MaxCollidersPerShip]; //  | local — no wire
-        public bool PredictedExplode; //  | local, context = client
+        public bool Invulnerable; // | local — no wire
+        public Vec3 PreviousPosition = new Vec3(); // | local — no wire
+        public int NumColliders; // | local — no wire
+        public int[] ColliderArmor = new int[Schema.MaxCollidersPerShip]; // | local — no wire
+        public bool PredictedExplode; // | local, context = client
     }
 
     // ServerShipState — the full simulation class for the server context: every `all`
@@ -96,10 +89,10 @@ namespace Example
         public sbyte MissileIndex; // wire [0, 15]
         public Handle Target = new Handle();
         public double LockStartTime;
-        public bool Invulnerable; //  | local — no wire
-        public Vec3 PreviousPosition = new Vec3(); //  | local — no wire
-        public int NumColliders; //  | local — no wire
-        public int[] ColliderArmor = new int[Schema.MaxCollidersPerShip]; //  | local — no wire
+        public bool Invulnerable; // | local — no wire
+        public Vec3 PreviousPosition = new Vec3(); // | local — no wire
+        public int NumColliders; // | local — no wire
+        public int[] ColliderArmor = new int[Schema.MaxCollidersPerShip]; // | local — no wire
     }
 
     // ShipData_Deep — every non- | local field, deep encodings: full state for
@@ -184,8 +177,8 @@ namespace Example
         public Vec3 LinearVelocity = new Vec3();
         public Team Team;
         public ulong Flags;
-        public Vec3 AngularVelocity = new Vec3(); //  | local — no wire
-        public Handle Target = new Handle(); //  | local — no wire
+        public Vec3 AngularVelocity = new Vec3(); // | local — no wire
+        public Handle Target = new Handle(); // | local — no wire
     }
 
     // ServerMissileState — the full simulation class for the server context: every `all`
@@ -198,9 +191,9 @@ namespace Example
         public Vec3 LinearVelocity = new Vec3();
         public Team Team;
         public ulong Flags;
-        public Vec3 AngularVelocity = new Vec3(); //  | local — no wire
-        public Handle Target = new Handle(); //  | local — no wire
-        public double Timer; //  | local, context = server
+        public Vec3 AngularVelocity = new Vec3(); // | local — no wire
+        public Handle Target = new Handle(); // | local — no wire
+        public double Timer; // | local, context = server
     }
 
     // MissileData_Deep — every non- | local field, deep encodings: full state for
@@ -261,7 +254,7 @@ namespace Example
         public Vec3 LinearVelocity = new Vec3();
         public ulong Flags;
         public Team Team;
-        public Vec3 AngularVelocity = new Vec3(); //  | local — no wire
+        public Vec3 AngularVelocity = new Vec3(); // | local — no wire
     }
 
     // DynamicPropData_Deep — every non- | local field, deep encodings: full state for
@@ -320,7 +313,7 @@ namespace Example
         public int TurretIndex; // wire [0, 255]
         public Quat Rotation = new Quat();
         public ulong Flags;
-        public Team Team; //  | local — no wire
+        public Team Team; // | local — no wire
     }
 
     // TurretData_Deep — every non- | local field, deep encodings: full state for
@@ -366,21 +359,17 @@ namespace Example
         public const long ShipData_DeepMaxBits = 1703;
         public const long ShipData_DeepMaxBytes = 216; // rounded up to the 8-byte write-buffer granularity
 
-        // WriteShipData_Deep/ReadShipData_Deep run as a batch: the stream state lives in registers
-        // across the body's serialize calls and is stored back once at End —
-        // the tiny-message hot path (serialize.cs WriteBatch/ReadBatch). Same
-        // wire bytes, same validation, same latched-error model.
+        // batch form: stream state stays in registers across the body and End
+        // publishes it — same wire bytes, same validation, same error model.
         public static bool WriteShipData_Deep(WriteStream stream, ShipData_Deep value)
         {
             WriteBatch batch = stream.BeginBatch();
             bool result = WriteShipData_DeepBatch(ref batch, value);
-            batch.End(); // on every path out — End publishes the state and the error
+            batch.End();
             return result;
         }
 
-        // The batch-form core — INLINE-ONLY: a non-inlined call taking the batch by
-        // ref address-exposes it and enregistration dies (measured 0.71x, worse than
-        // no batch). Nested types compose core-to-core by ref, never via the stream.
+        // inline-only batch core — a real call would address-expose the batch
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static bool WriteShipData_DeepBatch(ref WriteBatch batch, ShipData_Deep value)
         {
@@ -489,7 +478,7 @@ namespace Example
             {
                 return false;
             }
-            if (value.LaserIndex < 0 || value.LaserIndex > (int)(ShipMaxLasers - 1)) // out-of-contract writes are refused, not wrapped
+            if (value.LaserIndex < 0 || value.LaserIndex > (int)(ShipMaxLasers - 1))
             {
                 return false;
             }
@@ -500,7 +489,7 @@ namespace Example
                     return false;
                 }
             }
-            if (value.MissileIndex < 0 || value.MissileIndex > (int)(ShipMaxMissiles - 1)) // out-of-contract writes are refused, not wrapped
+            if (value.MissileIndex < 0 || value.MissileIndex > (int)(ShipMaxMissiles - 1))
             {
                 return false;
             }
@@ -526,13 +515,11 @@ namespace Example
         {
             ReadBatch batch = stream.BeginBatch();
             bool result = ReadShipData_DeepBatch(ref batch, value);
-            batch.End(); // on every path out — End publishes the cursor and the error
+            batch.End();
             return result;
         }
 
-        // The batch-form core — INLINE-ONLY: a non-inlined call taking the batch by
-        // ref address-exposes it and enregistration dies (measured 0.71x, worse than
-        // no batch). Nested types compose core-to-core by ref, never via the stream.
+        // inline-only batch core — a real call would address-expose the batch
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static bool ReadShipData_DeepBatch(ref ReadBatch batch, ShipData_Deep value)
         {
@@ -662,21 +649,17 @@ namespace Example
         public const long ShipData_ShallowMaxBits = 218;
         public const long ShipData_ShallowMaxBytes = 32; // rounded up to the 8-byte write-buffer granularity
 
-        // WriteShipData_Shallow/ReadShipData_Shallow run as a batch: the stream state lives in registers
-        // across the body's serialize calls and is stored back once at End —
-        // the tiny-message hot path (serialize.cs WriteBatch/ReadBatch). Same
-        // wire bytes, same validation, same latched-error model.
+        // batch form: stream state stays in registers across the body and End
+        // publishes it — same wire bytes, same validation, same error model.
         public static bool WriteShipData_Shallow(WriteStream stream, ShipData_Shallow value)
         {
             WriteBatch batch = stream.BeginBatch();
             bool result = WriteShipData_ShallowBatch(ref batch, value);
-            batch.End(); // on every path out — End publishes the state and the error
+            batch.End();
             return result;
         }
 
-        // The batch-form core — INLINE-ONLY: a non-inlined call taking the batch by
-        // ref address-exposes it and enregistration dies (measured 0.71x, worse than
-        // no batch). Nested types compose core-to-core by ref, never via the stream.
+        // inline-only batch core — a real call would address-expose the batch
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static bool WriteShipData_ShallowBatch(ref WriteBatch batch, ShipData_Shallow value)
         {
@@ -852,13 +835,11 @@ namespace Example
         {
             ReadBatch batch = stream.BeginBatch();
             bool result = ReadShipData_ShallowBatch(ref batch, value);
-            batch.End(); // on every path out — End publishes the cursor and the error
+            batch.End();
             return result;
         }
 
-        // The batch-form core — INLINE-ONLY: a non-inlined call taking the batch by
-        // ref address-exposes it and enregistration dies (measured 0.71x, worse than
-        // no batch). Nested types compose core-to-core by ref, never via the stream.
+        // inline-only batch core — a real call would address-expose the batch
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static bool ReadShipData_ShallowBatch(ref ReadBatch batch, ShipData_Shallow value)
         {
@@ -1122,21 +1103,17 @@ namespace Example
         public const long MissileData_DeepMaxBits = 708;
         public const long MissileData_DeepMaxBytes = 96; // rounded up to the 8-byte write-buffer granularity
 
-        // WriteMissileData_Deep/ReadMissileData_Deep run as a batch: the stream state lives in registers
-        // across the body's serialize calls and is stored back once at End —
-        // the tiny-message hot path (serialize.cs WriteBatch/ReadBatch). Same
-        // wire bytes, same validation, same latched-error model.
+        // batch form: stream state stays in registers across the body and End
+        // publishes it — same wire bytes, same validation, same error model.
         public static bool WriteMissileData_Deep(WriteStream stream, MissileData_Deep value)
         {
             WriteBatch batch = stream.BeginBatch();
             bool result = WriteMissileData_DeepBatch(ref batch, value);
-            batch.End(); // on every path out — End publishes the state and the error
+            batch.End();
             return result;
         }
 
-        // The batch-form core — INLINE-ONLY: a non-inlined call taking the batch by
-        // ref address-exposes it and enregistration dies (measured 0.71x, worse than
-        // no batch). Nested types compose core-to-core by ref, never via the stream.
+        // inline-only batch core — a real call would address-expose the batch
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static bool WriteMissileData_DeepBatch(ref WriteBatch batch, MissileData_Deep value)
         {
@@ -1185,13 +1162,11 @@ namespace Example
         {
             ReadBatch batch = stream.BeginBatch();
             bool result = ReadMissileData_DeepBatch(ref batch, value);
-            batch.End(); // on every path out — End publishes the cursor and the error
+            batch.End();
             return result;
         }
 
-        // The batch-form core — INLINE-ONLY: a non-inlined call taking the batch by
-        // ref address-exposes it and enregistration dies (measured 0.71x, worse than
-        // no batch). Nested types compose core-to-core by ref, never via the stream.
+        // inline-only batch core — a real call would address-expose the batch
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static bool ReadMissileData_DeepBatch(ref ReadBatch batch, MissileData_Deep value)
         {
@@ -1233,21 +1208,17 @@ namespace Example
         public const long MissileData_ShallowMaxBits = 260;
         public const long MissileData_ShallowMaxBytes = 40; // rounded up to the 8-byte write-buffer granularity
 
-        // WriteMissileData_Shallow/ReadMissileData_Shallow run as a batch: the stream state lives in registers
-        // across the body's serialize calls and is stored back once at End —
-        // the tiny-message hot path (serialize.cs WriteBatch/ReadBatch). Same
-        // wire bytes, same validation, same latched-error model.
+        // batch form: stream state stays in registers across the body and End
+        // publishes it — same wire bytes, same validation, same error model.
         public static bool WriteMissileData_Shallow(WriteStream stream, MissileData_Shallow value)
         {
             WriteBatch batch = stream.BeginBatch();
             bool result = WriteMissileData_ShallowBatch(ref batch, value);
-            batch.End(); // on every path out — End publishes the state and the error
+            batch.End();
             return result;
         }
 
-        // The batch-form core — INLINE-ONLY: a non-inlined call taking the batch by
-        // ref address-exposes it and enregistration dies (measured 0.71x, worse than
-        // no batch). Nested types compose core-to-core by ref, never via the stream.
+        // inline-only batch core — a real call would address-expose the batch
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static bool WriteMissileData_ShallowBatch(ref WriteBatch batch, MissileData_Shallow value)
         {
@@ -1394,13 +1365,11 @@ namespace Example
         {
             ReadBatch batch = stream.BeginBatch();
             bool result = ReadMissileData_ShallowBatch(ref batch, value);
-            batch.End(); // on every path out — End publishes the cursor and the error
+            batch.End();
             return result;
         }
 
-        // The batch-form core — INLINE-ONLY: a non-inlined call taking the batch by
-        // ref address-exposes it and enregistration dies (measured 0.71x, worse than
-        // no batch). Nested types compose core-to-core by ref, never via the stream.
+        // inline-only batch core — a real call would address-expose the batch
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static bool ReadMissileData_ShallowBatch(ref ReadBatch batch, MissileData_Shallow value)
         {
@@ -1640,21 +1609,17 @@ namespace Example
         public const long DynamicPropData_DeepMaxBits = 709;
         public const long DynamicPropData_DeepMaxBytes = 96; // rounded up to the 8-byte write-buffer granularity
 
-        // WriteDynamicPropData_Deep/ReadDynamicPropData_Deep run as a batch: the stream state lives in registers
-        // across the body's serialize calls and is stored back once at End —
-        // the tiny-message hot path (serialize.cs WriteBatch/ReadBatch). Same
-        // wire bytes, same validation, same latched-error model.
+        // batch form: stream state stays in registers across the body and End
+        // publishes it — same wire bytes, same validation, same error model.
         public static bool WriteDynamicPropData_Deep(WriteStream stream, DynamicPropData_Deep value)
         {
             WriteBatch batch = stream.BeginBatch();
             bool result = WriteDynamicPropData_DeepBatch(ref batch, value);
-            batch.End(); // on every path out — End publishes the state and the error
+            batch.End();
             return result;
         }
 
-        // The batch-form core — INLINE-ONLY: a non-inlined call taking the batch by
-        // ref address-exposes it and enregistration dies (measured 0.71x, worse than
-        // no batch). Nested types compose core-to-core by ref, never via the stream.
+        // inline-only batch core — a real call would address-expose the batch
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static bool WriteDynamicPropData_DeepBatch(ref WriteBatch batch, DynamicPropData_Deep value)
         {
@@ -1703,13 +1668,11 @@ namespace Example
         {
             ReadBatch batch = stream.BeginBatch();
             bool result = ReadDynamicPropData_DeepBatch(ref batch, value);
-            batch.End(); // on every path out — End publishes the cursor and the error
+            batch.End();
             return result;
         }
 
-        // The batch-form core — INLINE-ONLY: a non-inlined call taking the batch by
-        // ref address-exposes it and enregistration dies (measured 0.71x, worse than
-        // no batch). Nested types compose core-to-core by ref, never via the stream.
+        // inline-only batch core — a real call would address-expose the batch
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static bool ReadDynamicPropData_DeepBatch(ref ReadBatch batch, DynamicPropData_Deep value)
         {
@@ -1751,21 +1714,17 @@ namespace Example
         public const long DynamicPropData_ShallowMaxBits = 261;
         public const long DynamicPropData_ShallowMaxBytes = 40; // rounded up to the 8-byte write-buffer granularity
 
-        // WriteDynamicPropData_Shallow/ReadDynamicPropData_Shallow run as a batch: the stream state lives in registers
-        // across the body's serialize calls and is stored back once at End —
-        // the tiny-message hot path (serialize.cs WriteBatch/ReadBatch). Same
-        // wire bytes, same validation, same latched-error model.
+        // batch form: stream state stays in registers across the body and End
+        // publishes it — same wire bytes, same validation, same error model.
         public static bool WriteDynamicPropData_Shallow(WriteStream stream, DynamicPropData_Shallow value)
         {
             WriteBatch batch = stream.BeginBatch();
             bool result = WriteDynamicPropData_ShallowBatch(ref batch, value);
-            batch.End(); // on every path out — End publishes the state and the error
+            batch.End();
             return result;
         }
 
-        // The batch-form core — INLINE-ONLY: a non-inlined call taking the batch by
-        // ref address-exposes it and enregistration dies (measured 0.71x, worse than
-        // no batch). Nested types compose core-to-core by ref, never via the stream.
+        // inline-only batch core — a real call would address-expose the batch
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static bool WriteDynamicPropData_ShallowBatch(ref WriteBatch batch, DynamicPropData_Shallow value)
         {
@@ -1912,13 +1871,11 @@ namespace Example
         {
             ReadBatch batch = stream.BeginBatch();
             bool result = ReadDynamicPropData_ShallowBatch(ref batch, value);
-            batch.End(); // on every path out — End publishes the cursor and the error
+            batch.End();
             return result;
         }
 
-        // The batch-form core — INLINE-ONLY: a non-inlined call taking the batch by
-        // ref address-exposes it and enregistration dies (measured 0.71x, worse than
-        // no batch). Nested types compose core-to-core by ref, never via the stream.
+        // inline-only batch core — a real call would address-expose the batch
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static bool ReadDynamicPropData_ShallowBatch(ref ReadBatch batch, DynamicPropData_Shallow value)
         {
@@ -2158,21 +2115,17 @@ namespace Example
         public const long TurretData_DeepMaxBits = 350;
         public const long TurretData_DeepMaxBytes = 48; // rounded up to the 8-byte write-buffer granularity
 
-        // WriteTurretData_Deep/ReadTurretData_Deep run as a batch: the stream state lives in registers
-        // across the body's serialize calls and is stored back once at End —
-        // the tiny-message hot path (serialize.cs WriteBatch/ReadBatch). Same
-        // wire bytes, same validation, same latched-error model.
+        // batch form: stream state stays in registers across the body and End
+        // publishes it — same wire bytes, same validation, same error model.
         public static bool WriteTurretData_Deep(WriteStream stream, TurretData_Deep value)
         {
             WriteBatch batch = stream.BeginBatch();
             bool result = WriteTurretData_DeepBatch(ref batch, value);
-            batch.End(); // on every path out — End publishes the state and the error
+            batch.End();
             return result;
         }
 
-        // The batch-form core — INLINE-ONLY: a non-inlined call taking the batch by
-        // ref address-exposes it and enregistration dies (measured 0.71x, worse than
-        // no batch). Nested types compose core-to-core by ref, never via the stream.
+        // inline-only batch core — a real call would address-expose the batch
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static bool WriteTurretData_DeepBatch(ref WriteBatch batch, TurretData_Deep value)
         {
@@ -2180,7 +2133,7 @@ namespace Example
             {
                 return false;
             }
-            if (value.TurretIndex < 0 || value.TurretIndex > (int)(MaxTurretsPerShip - 1)) // out-of-contract writes are refused, not wrapped
+            if (value.TurretIndex < 0 || value.TurretIndex > (int)(MaxTurretsPerShip - 1))
             {
                 return false;
             }
@@ -2206,13 +2159,11 @@ namespace Example
         {
             ReadBatch batch = stream.BeginBatch();
             bool result = ReadTurretData_DeepBatch(ref batch, value);
-            batch.End(); // on every path out — End publishes the cursor and the error
+            batch.End();
             return result;
         }
 
-        // The batch-form core — INLINE-ONLY: a non-inlined call taking the batch by
-        // ref address-exposes it and enregistration dies (measured 0.71x, worse than
-        // no batch). Nested types compose core-to-core by ref, never via the stream.
+        // inline-only batch core — a real call would address-expose the batch
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static bool ReadTurretData_DeepBatch(ref ReadBatch batch, TurretData_Deep value)
         {
@@ -2238,21 +2189,17 @@ namespace Example
         public const long TurretData_ShallowMaxBits = 142;
         public const long TurretData_ShallowMaxBytes = 24; // rounded up to the 8-byte write-buffer granularity
 
-        // WriteTurretData_Shallow/ReadTurretData_Shallow run as a batch: the stream state lives in registers
-        // across the body's serialize calls and is stored back once at End —
-        // the tiny-message hot path (serialize.cs WriteBatch/ReadBatch). Same
-        // wire bytes, same validation, same latched-error model.
+        // batch form: stream state stays in registers across the body and End
+        // publishes it — same wire bytes, same validation, same error model.
         public static bool WriteTurretData_Shallow(WriteStream stream, TurretData_Shallow value)
         {
             WriteBatch batch = stream.BeginBatch();
             bool result = WriteTurretData_ShallowBatch(ref batch, value);
-            batch.End(); // on every path out — End publishes the state and the error
+            batch.End();
             return result;
         }
 
-        // The batch-form core — INLINE-ONLY: a non-inlined call taking the batch by
-        // ref address-exposes it and enregistration dies (measured 0.71x, worse than
-        // no batch). Nested types compose core-to-core by ref, never via the stream.
+        // inline-only batch core — a real call would address-expose the batch
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static bool WriteTurretData_ShallowBatch(ref WriteBatch batch, TurretData_Shallow value)
         {
@@ -2260,7 +2207,7 @@ namespace Example
             {
                 return false;
             }
-            if (value.TurretIndex < 0 || value.TurretIndex > (int)(MaxTurretsPerShip - 1)) // out-of-contract writes are refused, not wrapped
+            if (value.TurretIndex < 0 || value.TurretIndex > (int)(MaxTurretsPerShip - 1))
             {
                 return false;
             }
@@ -2326,13 +2273,11 @@ namespace Example
         {
             ReadBatch batch = stream.BeginBatch();
             bool result = ReadTurretData_ShallowBatch(ref batch, value);
-            batch.End(); // on every path out — End publishes the cursor and the error
+            batch.End();
             return result;
         }
 
-        // The batch-form core — INLINE-ONLY: a non-inlined call taking the batch by
-        // ref address-exposes it and enregistration dies (measured 0.71x, worse than
-        // no batch). Nested types compose core-to-core by ref, never via the stream.
+        // inline-only batch core — a real call would address-expose the batch
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static bool ReadTurretData_ShallowBatch(ref ReadBatch batch, TurretData_Shallow value)
         {

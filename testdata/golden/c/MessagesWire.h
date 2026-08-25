@@ -24,6 +24,12 @@
 extern "C" {
 #endif
 
+/* Every write_x/read_x returns 1 on success, 0 on failure — the stream
+   latches the error, so a caller may check once at the end of a message.
+   Reads REFUSE out-of-range values, never clamp. A tag is validated BEFORE
+   it rides, and a read zero-establishes the selected arm before decoding
+   it (SPEC §4.8, §5). */
+
 #ifndef SCHEMA_C_SPINE_INLINE_DEFINED
 #define SCHEMA_C_SPINE_INLINE_DEFINED
 /* SCHEMA_C_READ_INLINE / SCHEMA_C_WRITE_INLINE — how every generated wire
@@ -158,8 +164,7 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int schema_interior_null_( const seria
 }
 #endif /* SCHEMA_INTERIOR_NULL_DEFINED */
 
-/* Writes Heartbeat. Returns 1 on success, 0 on failure — the stream latches the
-   error, so a caller may check once at the end of a message. */
+/* Writes Heartbeat. */
 static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_heartbeat( serialize_write_stream_t * stream, const Heartbeat * value )
 {
     (void) stream;
@@ -167,8 +172,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_heartbeat( serialize_write_
     return 1; /* no fields: no wire bits */
 }
 
-/* Reads Heartbeat. Returns 1 on success, 0 on failure. Out-of-range values are
-   REFUSED, never clamped. */
+/* Reads Heartbeat. */
 static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_heartbeat( serialize_read_stream_t * stream, Heartbeat * value )
 {
     (void) stream;
@@ -176,8 +180,7 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_heartbeat( serialize_read_str
     return 1;
 }
 
-/* Writes Test. Returns 1 on success, 0 on failure — the stream latches the
-   error, so a caller may check once at the end of a message. */
+/* Writes Test. */
 static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_test( serialize_write_stream_t * stream, const Test * value )
 {
     if ( !serialize_write_bits( stream, (serialize_uint32_t) value->test_a, 16 ) )
@@ -211,8 +214,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_test( serialize_write_strea
     return 1;
 }
 
-/* Reads Test. Returns 1 on success, 0 on failure. Out-of-range values are
-   REFUSED, never clamped. */
+/* Reads Test. */
 static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_test( serialize_read_stream_t * stream, Test * value )
 {
     {
@@ -268,8 +270,7 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_test( serialize_read_stream_t
     return 1;
 }
 
-/* Writes Block. Returns 1 on success, 0 on failure — the stream latches the
-   error, so a caller may check once at the end of a message. */
+/* Writes Block. */
 static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_block( serialize_write_stream_t * stream, const Block * value )
 {
     if ( !serialize_write_int( stream, value->data_length, 0, MAX_BLOCK_SIZE ) )
@@ -283,8 +284,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_block( serialize_write_stre
     return 1;
 }
 
-/* Reads Block. Returns 1 on success, 0 on failure. Out-of-range values are
-   REFUSED, never clamped. */
+/* Reads Block. */
 static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_block( serialize_read_stream_t * stream, Block * value )
 {
     if ( !serialize_read_int( stream, &value->data_length, 0, MAX_BLOCK_SIZE ) )
@@ -298,8 +298,7 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_block( serialize_read_stream_
     return 1;
 }
 
-/* Writes Chat. Returns 1 on success, 0 on failure — the stream latches the
-   error, so a caller may check once at the end of a message. */
+/* Writes Chat. */
 static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_chat( serialize_write_stream_t * stream, const Chat * value )
 {
     serialize_assert( schema_utf8_valid_( (const serialize_uint8_t *) value->text, value->text_length ) );
@@ -314,8 +313,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_chat( serialize_write_strea
     return 1;
 }
 
-/* Reads Chat. Returns 1 on success, 0 on failure. Out-of-range values are
-   REFUSED, never clamped. */
+/* Reads Chat. */
 static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_chat( serialize_read_stream_t * stream, Chat * value )
 {
     if ( !serialize_read_int( stream, &value->text_length, 0, MAX_CHAT_LENGTH ) )
@@ -334,8 +332,7 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_chat( serialize_read_stream_t
     return 1;
 }
 
-/* Writes Synchronize. Returns 1 on success, 0 on failure — the stream latches the
-   error, so a caller may check once at the end of a message. */
+/* Writes Synchronize. */
 static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_synchronize( serialize_write_stream_t * stream, const Synchronize * value )
 {
     if ( !serialize_write_uint64( stream, (serialize_uint64_t) value->sync_frame ) )
@@ -349,8 +346,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_synchronize( serialize_writ
     return 1;
 }
 
-/* Reads Synchronize. Returns 1 on success, 0 on failure. Out-of-range values are
-   REFUSED, never clamped. */
+/* Reads Synchronize. */
 static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_synchronize( serialize_read_stream_t * stream, Synchronize * value )
 {
     {
@@ -372,8 +368,7 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_synchronize( serialize_read_s
     return 1;
 }
 
-/* Writes Timescale. Returns 1 on success, 0 on failure — the stream latches the
-   error, so a caller may check once at the end of a message. */
+/* Writes Timescale. */
 static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_timescale( serialize_write_stream_t * stream, const Timescale * value )
 {
     if ( !serialize_write_double( stream, value->scale ) )
@@ -391,8 +386,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_timescale( serialize_write_
     return 1;
 }
 
-/* Reads Timescale. Returns 1 on success, 0 on failure. Out-of-range values are
-   REFUSED, never clamped. */
+/* Reads Timescale. */
 static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_timescale( serialize_read_stream_t * stream, Timescale * value )
 {
     if ( !serialize_read_double( stream, &value->scale ) )

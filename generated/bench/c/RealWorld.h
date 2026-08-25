@@ -9,7 +9,6 @@
 
 #include <stdint.h>
 #include <string.h>   /* memset — the zero form (SPEC §4.2) */
-#include <math.h>     /* floor — the quantize pair */
 
 #ifndef SCHEMA_UNUSED
 #if defined(__GNUC__) || defined(__clang__)
@@ -47,27 +46,11 @@ static SCHEMA_UNUSED const char * enum_name_packet_mode( PacketMode value )
     switch ( value )
     {
         case PACKET_MODE_NONE: return "None";
-        case 1: return "Idle";
-        case 2: return "Active";
-        case 3: return "Combat";
-        case 4: return "Docked";
-        case 5: return "Warping";
-        default: return "???";
-    }
-}
-
-/* As enum_name_packet_mode, over a raw wire value — the form the table reflection
-   descriptors hold. */
-static SCHEMA_UNUSED const char * enum_name_packet_mode_dyn( uint64_t value )
-{
-    switch ( value )
-    {
-        case 0: return "None";
-        case 1: return "Idle";
-        case 2: return "Active";
-        case 3: return "Combat";
-        case 4: return "Docked";
-        case 5: return "Warping";
+        case PACKET_MODE_IDLE: return "Idle";
+        case PACKET_MODE_ACTIVE: return "Active";
+        case PACKET_MODE_COMBAT: return "Combat";
+        case PACKET_MODE_DOCKED: return "Docked";
+        case PACKET_MODE_WARPING: return "Warping";
         default: return "???";
     }
 }

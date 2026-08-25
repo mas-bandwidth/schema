@@ -37,11 +37,10 @@ func (g *gen) fileEmitsWire() bool {
 // probe_header-sized messages. Unlike the C++ read-spine case this is not
 // the fallible-chain frequency decay — it is a plain cost-over-threshold
 // refusal, the same in both directions, hence the demand covers both. Both
-// halves shipped first as default-off switches, then swept their tournament
-// A/Bs with zero regressions across 34 rows (tournament-air; the write half's
-// rigidbody_moving write +1016%; reconfirmed confirmation-air r2), so per the
-// feature lifecycle the winners became unconditional code and the switches
-// were deleted. The demand is a DEMAND, not a branch-weight hint:
+// halves swept their tournament A/Bs with zero regressions across 34 rows
+// (tournament-air; the write half's rigidbody_moving write +1016%;
+// reconfirmed confirmation-air r2). The demand is a DEMAND, not a
+// branch-weight hint:
 // __builtin_expect-style cold hints were measured in this family to activate
 // the machine outliner and shred hot bodies (bits write -25%) — do not swap
 // this for hints. Guarded against redefinition because several wire headers

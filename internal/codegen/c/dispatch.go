@@ -22,8 +22,8 @@ func (g *gen) emitMaxBits(st *ir.Struct) {
 	bits := ir.MaxBitsStruct(st)
 	g.pf("#define %s_MAX_BITS %d   /* longest wire path; align pads at worst case (SPEC §6.1) */\n",
 		screaming(st.Name), bits)
-	g.pf("#define %s_MAX_BYTES %d  /* rounded up to the 8-byte write-buffer granularity; a READ buffer's allocation must extend at least 8 bytes past the data — serialize.c loads 64-bit windows */\n\n",
-		screaming(st.Name), ir.MaxBytes(bits))
+	g.pf("#define %s_MAX_BYTES %d  %s\n\n",
+		screaming(st.Name), ir.MaxBytes(bits), g.maxBytesTail())
 }
 
 // ---- specified defaults ----

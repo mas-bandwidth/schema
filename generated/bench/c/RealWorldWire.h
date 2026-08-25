@@ -8,7 +8,6 @@
 #define SCHEMA_REALWORLD_REAL_WORLDWIRE_H
 
 #include "RealWorld.h"
-#include <string.h>   /* memset, strlen */
 #include "serialize.h"
 
 #ifndef SCHEMA_UNUSED
@@ -22,6 +21,12 @@
 #ifdef __cplusplus
 extern "C" {
 #endif
+
+/* Every write_x/read_x returns 1 on success, 0 on failure — the stream
+   latches the error, so a caller may check once at the end of a message.
+   Reads REFUSE out-of-range values, never clamp. A tag is validated BEFORE
+   it rides, and a read zero-establishes the selected arm before decoding
+   it (SPEC §4.8, §5). */
 
 #ifndef SCHEMA_C_SPINE_INLINE_DEFINED
 #define SCHEMA_C_SPINE_INLINE_DEFINED
@@ -45,8 +50,7 @@ extern "C" {
 #endif
 #endif /* SCHEMA_C_SPINE_INLINE_DEFINED */
 
-/* Writes RealPacket. Returns 1 on success, 0 on failure — the stream latches the
-   error, so a caller may check once at the end of a message. */
+/* Writes RealPacket. */
 static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_real_packet( serialize_write_stream_t * stream, const RealPacket * value )
 {
     if ( (serialize_int64_t) value->f001_int < -805495 || (serialize_int64_t) value->f001_int > 805495 )
@@ -614,8 +618,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_real_packet( serialize_writ
     return 1;
 }
 
-/* Reads RealPacket. Returns 1 on success, 0 on failure. Out-of-range values are
-   REFUSED, never clamped. */
+/* Reads RealPacket. */
 static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_real_packet( serialize_read_stream_t * stream, RealPacket * value )
 {
     {

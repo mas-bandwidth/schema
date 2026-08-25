@@ -42,21 +42,21 @@ const BenchPacketMaxBits = 392
 const BenchPacketMaxBytes = 56
 
 func WriteBenchPacket(stream *serialize.WriteStream, value *BenchPacket) error {
-	if value.A < -100 || value.A > 100 { // the runtime range refusal, folded (SPEC §5)
+	if value.A < -100 || value.A > 100 {
 		return serialize.ErrValueOutOfRange
 	}
 	{
 		offsetValue := uint32(value.A - (-100))
 		stream.SerializeBits(&offsetValue, 8)
 	}
-	if value.B < 0 || value.B > 65535 { // the runtime range refusal, folded (SPEC §5)
+	if value.B < 0 || value.B > 65535 {
 		return serialize.ErrValueOutOfRange
 	}
 	{
 		offsetValue := uint32(value.B)
 		stream.SerializeBits(&offsetValue, 16)
 	}
-	if value.C < -1000000 || value.C > 1000000 { // the runtime range refusal, folded (SPEC §5)
+	if value.C < -1000000 || value.C > 1000000 {
 		return serialize.ErrValueOutOfRange
 	}
 	{
@@ -113,70 +113,70 @@ const BenchIntsMaxBits = 110
 const BenchIntsMaxBytes = 16
 
 func WriteBenchInts(stream *serialize.WriteStream, value *BenchInts) error {
-	if value.F0 < -100 || value.F0 > 100 { // the runtime range refusal, folded (SPEC §5)
+	if value.F0 < -100 || value.F0 > 100 {
 		return serialize.ErrValueOutOfRange
 	}
 	{
 		offsetValue := uint32(value.F0 - (-100))
 		stream.SerializeBits(&offsetValue, 8)
 	}
-	if value.F1 < 0 || value.F1 > 65535 { // the runtime range refusal, folded (SPEC §5)
+	if value.F1 < 0 || value.F1 > 65535 {
 		return serialize.ErrValueOutOfRange
 	}
 	{
 		offsetValue := uint32(value.F1)
 		stream.SerializeBits(&offsetValue, 16)
 	}
-	if value.F2 < -1000000 || value.F2 > 1000000 { // the runtime range refusal, folded (SPEC §5)
+	if value.F2 < -1000000 || value.F2 > 1000000 {
 		return serialize.ErrValueOutOfRange
 	}
 	{
 		offsetValue := uint32(value.F2 - (-1000000))
 		stream.SerializeBits(&offsetValue, 21)
 	}
-	if value.F3 < 0 || value.F3 > 3 { // the runtime range refusal, folded (SPEC §5)
+	if value.F3 < 0 || value.F3 > 3 {
 		return serialize.ErrValueOutOfRange
 	}
 	{
 		offsetValue := uint32(value.F3)
 		stream.SerializeBits(&offsetValue, 2)
 	}
-	if value.F4 < -15 || value.F4 > 15 { // the runtime range refusal, folded (SPEC §5)
+	if value.F4 < -15 || value.F4 > 15 {
 		return serialize.ErrValueOutOfRange
 	}
 	{
 		offsetValue := uint32(value.F4 - (-15))
 		stream.SerializeBits(&offsetValue, 5)
 	}
-	if value.F5 < 0 || value.F5 > 1000 { // the runtime range refusal, folded (SPEC §5)
+	if value.F5 < 0 || value.F5 > 1000 {
 		return serialize.ErrValueOutOfRange
 	}
 	{
 		offsetValue := uint32(value.F5)
 		stream.SerializeBits(&offsetValue, 10)
 	}
-	if value.F6 < -2048 || value.F6 > 2047 { // the runtime range refusal, folded (SPEC §5)
+	if value.F6 < -2048 || value.F6 > 2047 {
 		return serialize.ErrValueOutOfRange
 	}
 	{
 		offsetValue := uint32(value.F6 - (-2048))
 		stream.SerializeBits(&offsetValue, 12)
 	}
-	if value.F7 < 0 || value.F7 > 255 { // the runtime range refusal, folded (SPEC §5)
+	if value.F7 < 0 || value.F7 > 255 {
 		return serialize.ErrValueOutOfRange
 	}
 	{
 		offsetValue := uint32(value.F7)
 		stream.SerializeBits(&offsetValue, 8)
 	}
-	if value.F8 < -600000 || value.F8 > 600000 { // the runtime range refusal, folded (SPEC §5)
+	if value.F8 < -600000 || value.F8 > 600000 {
 		return serialize.ErrValueOutOfRange
 	}
 	{
 		offsetValue := uint32(value.F8 - (-600000))
 		stream.SerializeBits(&offsetValue, 21)
 	}
-	if value.F9 < 0 || value.F9 > 100 { // the runtime range refusal, folded (SPEC §5)
+	if value.F9 < 0 || value.F9 > 100 {
 		return serialize.ErrValueOutOfRange
 	}
 	{
@@ -262,7 +262,7 @@ const BenchMixedMaxBits = 168
 const BenchMixedMaxBytes = 24
 
 func WriteBenchMixed(stream *serialize.WriteStream, value *BenchMixed) error {
-	if value.Sequence < 0 || value.Sequence > 65535 { // the runtime range refusal, folded (SPEC §5)
+	if value.Sequence < 0 || value.Sequence > 65535 {
 		return serialize.ErrValueOutOfRange
 	}
 	{
@@ -271,21 +271,21 @@ func WriteBenchMixed(stream *serialize.WriteStream, value *BenchMixed) error {
 	}
 	stream.SerializeBits(&value.AckBits, 32)
 	stream.SerializeBits(&value.EntityId, 12)
-	if value.PosX < -16384 || value.PosX > 16383 { // the runtime range refusal, folded (SPEC §5)
+	if value.PosX < -16384 || value.PosX > 16383 {
 		return serialize.ErrValueOutOfRange
 	}
 	{
 		offsetValue := uint32(value.PosX - (-16384))
 		stream.SerializeBits(&offsetValue, 15)
 	}
-	if value.PosY < -16384 || value.PosY > 16383 { // the runtime range refusal, folded (SPEC §5)
+	if value.PosY < -16384 || value.PosY > 16383 {
 		return serialize.ErrValueOutOfRange
 	}
 	{
 		offsetValue := uint32(value.PosY - (-16384))
 		stream.SerializeBits(&offsetValue, 15)
 	}
-	if value.PosZ < -16384 || value.PosZ > 16383 { // the runtime range refusal, folded (SPEC §5)
+	if value.PosZ < -16384 || value.PosZ > 16383 {
 		return serialize.ErrValueOutOfRange
 	}
 	{
@@ -296,7 +296,7 @@ func WriteBenchMixed(stream *serialize.WriteStream, value *BenchMixed) error {
 	stream.SerializeBool(&value.Moving)
 	stream.SerializeBool(&value.Firing)
 	stream.SerializeBits64(&value.Timestamp, 48)
-	if value.Weapon < 0 || value.Weapon > 15 { // the runtime range refusal, folded (SPEC §5)
+	if value.Weapon < 0 || value.Weapon > 15 {
 		return serialize.ErrValueOutOfRange
 	}
 	{

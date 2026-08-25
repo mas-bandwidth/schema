@@ -46,7 +46,7 @@ typedef struct Quat {
 } Quat;
 
 #define QUAT_MAX_BITS 256   /* longest wire path; align pads at worst case (SPEC §6.1) */
-#define QUAT_MAX_BYTES 32  /* rounded up to the 8-byte write-buffer granularity; a READ buffer's allocation must extend at least 8 bytes past the data — serialize.c loads 64-bit windows */
+#define QUAT_MAX_BYTES 32  /* 8-byte write granularity; read slack per the contract above */
 
 
 /* type Handle */
@@ -56,7 +56,7 @@ typedef struct Handle {
 } Handle;
 
 #define HANDLE_MAX_BITS 22   /* longest wire path; align pads at worst case (SPEC §6.1) */
-#define HANDLE_MAX_BYTES 8  /* rounded up to the 8-byte write-buffer granularity; a READ buffer's allocation must extend at least 8 bytes past the data — serialize.c loads 64-bit windows */
+#define HANDLE_MAX_BYTES 8  /* 8-byte write granularity; read slack per the contract above */
 
 
 /* type QuantizedPosition */
@@ -67,7 +67,7 @@ typedef struct QuantizedPosition {
 } QuantizedPosition;
 
 #define QUANTIZED_POSITION_MAX_BITS 75   /* longest wire path; align pads at worst case (SPEC §6.1) */
-#define QUANTIZED_POSITION_MAX_BYTES 16  /* rounded up to the 8-byte write-buffer granularity; a READ buffer's allocation must extend at least 8 bytes past the data — serialize.c loads 64-bit windows */
+#define QUANTIZED_POSITION_MAX_BYTES 16  /* 8-byte write granularity; read slack per the contract above */
 
 
 /* type QuantizedVelocity */
@@ -78,7 +78,7 @@ typedef struct QuantizedVelocity {
 } QuantizedVelocity;
 
 #define QUANTIZED_VELOCITY_MAX_BITS 69   /* longest wire path; align pads at worst case (SPEC §6.1) */
-#define QUANTIZED_VELOCITY_MAX_BYTES 16  /* rounded up to the 8-byte write-buffer granularity; a READ buffer's allocation must extend at least 8 bytes past the data — serialize.c loads 64-bit windows */
+#define QUANTIZED_VELOCITY_MAX_BYTES 16  /* 8-byte write granularity; read slack per the contract above */
 
 
 /* type QuantizedRotation */
@@ -90,7 +90,7 @@ typedef struct QuantizedRotation {
 } QuantizedRotation;
 
 #define QUANTIZED_ROTATION_MAX_BITS 48   /* longest wire path; align pads at worst case (SPEC §6.1) */
-#define QUANTIZED_ROTATION_MAX_BYTES 8  /* rounded up to the 8-byte write-buffer granularity; a READ buffer's allocation must extend at least 8 bytes past the data — serialize.c loads 64-bit windows */
+#define QUANTIZED_ROTATION_MAX_BYTES 8  /* 8-byte write granularity; read slack per the contract above */
 
 
 /* type RigidBody */
@@ -103,7 +103,7 @@ typedef struct RigidBody {
 } RigidBody;
 
 #define RIGID_BODY_MAX_BITS 833   /* longest wire path; align pads at worst case (SPEC §6.1) */
-#define RIGID_BODY_MAX_BYTES 112  /* rounded up to the 8-byte write-buffer granularity; a READ buffer's allocation must extend at least 8 bytes past the data — serialize.c loads 64-bit windows */
+#define RIGID_BODY_MAX_BYTES 112  /* 8-byte write granularity; read slack per the contract above */
 
 
 /* type Input */
@@ -124,7 +124,7 @@ typedef struct Input {
 } Input;
 
 #define INPUT_MAX_BITS 168   /* longest wire path; align pads at worst case (SPEC §6.1) */
-#define INPUT_MAX_BYTES 24  /* rounded up to the 8-byte write-buffer granularity; a READ buffer's allocation must extend at least 8 bytes past the data — serialize.c loads 64-bit windows */
+#define INPUT_MAX_BYTES 24  /* 8-byte write granularity; read slack per the contract above */
 
 
 /* type InputPacket */
@@ -137,7 +137,7 @@ typedef struct InputPacket {
 } InputPacket;
 
 #define INPUT_PACKET_MAX_BITS 2837   /* longest wire path; align pads at worst case (SPEC §6.1) */
-#define INPUT_PACKET_MAX_BYTES 360  /* rounded up to the 8-byte write-buffer granularity; a READ buffer's allocation must extend at least 8 bytes past the data — serialize.c loads 64-bit windows */
+#define INPUT_PACKET_MAX_BYTES 360  /* 8-byte write granularity; read slack per the contract above */
 
 
 /* type ShipCreate */
@@ -155,7 +155,7 @@ typedef struct ShipCreate {
 } ShipCreate;
 
 #define SHIP_CREATE_MAX_BITS 219   /* longest wire path; align pads at worst case (SPEC §6.1) */
-#define SHIP_CREATE_MAX_BYTES 32  /* rounded up to the 8-byte write-buffer granularity; a READ buffer's allocation must extend at least 8 bytes past the data — serialize.c loads 64-bit windows */
+#define SHIP_CREATE_MAX_BYTES 32  /* 8-byte write granularity; read slack per the contract above */
 
 
 /* type ExpressionProbe */
@@ -165,7 +165,7 @@ typedef struct ExpressionProbe {
 } ExpressionProbe;
 
 #define EXPRESSION_PROBE_MAX_BITS 16   /* longest wire path; align pads at worst case (SPEC §6.1) */
-#define EXPRESSION_PROBE_MAX_BYTES 8  /* rounded up to the 8-byte write-buffer granularity; a READ buffer's allocation must extend at least 8 bytes past the data — serialize.c loads 64-bit windows */
+#define EXPRESSION_PROBE_MAX_BYTES 8  /* 8-byte write granularity; read slack per the contract above */
 
 #define FLOOR_LIMIT (( -9223372036854775807LL - 1 ))
 #define CEILING_COUNT (18446744073709551615ULL)
@@ -180,7 +180,7 @@ typedef struct ExtremeProbe {
 } ExtremeProbe;
 
 #define EXTREME_PROBE_MAX_BITS 320   /* longest wire path; align pads at worst case (SPEC §6.1) */
-#define EXTREME_PROBE_MAX_BYTES 40  /* rounded up to the 8-byte write-buffer granularity; a READ buffer's allocation must extend at least 8 bytes past the data — serialize.c loads 64-bit windows */
+#define EXTREME_PROBE_MAX_BYTES 40  /* 8-byte write granularity; read slack per the contract above */
 
 /* Returns a ExtremeProbe with its SPECIFIED defaults applied. A memset to zero is
    the schema's own default (SPEC §4.2: zero initialization unless a
@@ -204,7 +204,7 @@ typedef struct ExtremeRow {
 } ExtremeRow;
 
 #define EXTREME_ROW_MAX_BITS 256   /* longest wire path; align pads at worst case (SPEC §6.1) */
-#define EXTREME_ROW_MAX_BYTES 32  /* rounded up to the 8-byte write-buffer granularity; a READ buffer's allocation must extend at least 8 bytes past the data — serialize.c loads 64-bit windows */
+#define EXTREME_ROW_MAX_BYTES 32  /* 8-byte write granularity; read slack per the contract above */
 
 /* Returns a ExtremeRow with its SPECIFIED defaults applied. A memset to zero is
    the schema's own default (SPEC §4.2: zero initialization unless a

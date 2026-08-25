@@ -85,21 +85,21 @@ pub fn write_test(stream: &mut WriteStream<'_>, value: &Test) -> Result {
         let mut raw_value = value.test_a as u32;
         stream.serialize_bits(&mut raw_value, 16)?;
     }
-    if value.test_b < 0 || value.test_b > 1000 { // out-of-contract writes are refused, not wrapped
+    if value.test_b < 0 || value.test_b > 1000 {
         return Err(Error::Stream(serialize::Error::ValueOutOfRange));
     }
     {
         let mut offset_value = value.test_b as u32;
         stream.serialize_bits(&mut offset_value, 10)?;
     }
-    if value.test_c < 0 || value.test_c > 1000 { // out-of-contract writes are refused, not wrapped
+    if value.test_c < 0 || value.test_c > 1000 {
         return Err(Error::Stream(serialize::Error::ValueOutOfRange));
     }
     {
         let mut offset_value = value.test_c as u32;
         stream.serialize_bits(&mut offset_value, 10)?;
     }
-    if value.test_d < 0 || value.test_d > 1000 { // out-of-contract writes are refused, not wrapped
+    if value.test_d < 0 || value.test_d > 1000 {
         return Err(Error::Stream(serialize::Error::ValueOutOfRange));
     }
     {
@@ -159,7 +159,7 @@ pub const BLOCK_MAX_BYTES: usize = 2008;
 
 #[inline(always)]
 pub fn write_block(stream: &mut WriteStream<'_>, value: &Block) -> Result {
-    if value.data_length < 0 || value.data_length > 2000 { // refused, not wrapped or panicked: guards the slice too
+    if value.data_length < 0 || value.data_length > 2000 {
         return Err(Error::Stream(serialize::Error::ValueOutOfRange));
     }
     {
@@ -202,7 +202,7 @@ pub const CHAT_MAX_BYTES: usize = 264;
 
 #[inline(always)]
 pub fn write_chat(stream: &mut WriteStream<'_>, value: &Chat) -> Result {
-    if value.text_length < 0 || value.text_length > 256 { // refused, not wrapped or panicked: guards the slice too
+    if value.text_length < 0 || value.text_length > 256 {
         return Err(Error::Stream(serialize::Error::ValueOutOfRange));
     }
     debug_assert!(
@@ -372,7 +372,7 @@ pub enum Message {
 // write_*) flatten into its body, but the dispatch match itself stays a
 // call boundary — demanding the C++ twin into a batch build loop was
 // measured to slow that loop ~21% while every per-message row kept its
-// win with the boundary in place (schema #60). The compiler remains free
+// win with the boundary in place. The compiler remains free
 // to inline it where that pays.
 #[inline]
 pub fn write_message(stream: &mut WriteStream<'_>, message: &Message) -> Result {
@@ -414,7 +414,7 @@ pub fn write_message(stream: &mut WriteStream<'_>, message: &Message) -> Result 
 // read_message_into for reuse loops — hoist ONE Message and read every
 // message into it (the Go/C# MessageStorage discipline). Reuse removes the
 // per-message copy-out of the union and measured 2.6x on the steady-state
-// batch read (M2, 2026-08-06). The two surfaces stay separate on purpose —
+// batch read. The two surfaces stay separate on purpose —
 // see the note on read_message.
 #[inline]
 pub fn read_message_into(stream: &mut ReadStream<'_>, message: &mut Message) -> Result {
@@ -476,8 +476,8 @@ pub fn read_message_into(stream: &mut ReadStream<'_>, message: &mut Message) -> 
 // read_message decodes the next message by value — the one-shot surface.
 // It deliberately does NOT delegate to read_message_into: routing the
 // return through a &mut out-param defeated LLVM's in-place construction
-// of the returned union and cost the batch read 23% (measured M2,
-// 2026-08-06). Both surfaces stay; reuse loops call read_message_into.
+// of the returned union, measured at 23% on the batch read. Both
+// surfaces stay; reuse loops call read_message_into.
 #[inline]
 pub fn read_message(stream: &mut ReadStream<'_>) -> Result<Message> {
     let mut tag_value = MessageType::NONE;

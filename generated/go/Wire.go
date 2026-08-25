@@ -131,7 +131,7 @@ func WriteProbeBits(stream *serialize.WriteStream, value *ProbeBits) error {
 	stream.SerializeBits64(&value.Wide, 64)
 	{
 		rangeValue := int64(value.Sensor)
-		if rangeValue < 0 || rangeValue > 4294967295 { // the runtime range refusal, folded (SPEC §5)
+		if rangeValue < 0 || rangeValue > 4294967295 {
 			return serialize.ErrValueOutOfRange
 		}
 		{
@@ -224,7 +224,7 @@ func WriteProbeSample(stream *serialize.WriteStream, value *ProbeSample) error {
 	if value.Active {
 		{
 			enumValue := int32(value.Weapon)
-			if enumValue < 0 || enumValue > 15 { // the runtime range refusal, folded (SPEC §5)
+			if enumValue < 0 || enumValue > 15 {
 				return serialize.ErrValueOutOfRange
 			}
 			{
@@ -242,7 +242,7 @@ func WriteProbeSample(stream *serialize.WriteStream, value *ProbeSample) error {
 	} else {
 		stream.SerializeBits(&value.IdleTicks, 32)
 	}
-	if value.SamplesCount < 1 || value.SamplesCount > 8 { // the runtime range refusal, folded (SPEC §5)
+	if value.SamplesCount < 1 || value.SamplesCount > 8 {
 		return serialize.ErrValueOutOfRange
 	}
 	{
@@ -363,7 +363,7 @@ const ProbeSlabMaxBytes = 8
 func WriteProbeSlab(stream *serialize.WriteStream, value *ProbeSlab) error {
 	{
 		rangeValue := int32(value.Width)
-		if rangeValue < 0 || rangeValue > 100 { // the runtime range refusal, folded (SPEC §5)
+		if rangeValue < 0 || rangeValue > 100 {
 			return serialize.ErrValueOutOfRange
 		}
 		{
@@ -478,7 +478,7 @@ func WriteProbeCollider(stream *serialize.WriteStream, value *ProbeCollider) err
 	if err := WriteProbeShape(stream, &value.Backup); err != nil {
 		return err
 	}
-	if value.ExtrasCount < 0 || value.ExtrasCount > 2 { // the runtime range refusal, folded (SPEC §5)
+	if value.ExtrasCount < 0 || value.ExtrasCount > 2 {
 		return serialize.ErrValueOutOfRange
 	}
 	{
@@ -548,7 +548,7 @@ func WriteProbeConfig(stream *serialize.WriteStream, value *ProbeConfig) error {
 	}
 	{
 		enumValue := int32(value.Preferred)
-		if enumValue < 0 || enumValue > 15 { // the runtime range refusal, folded (SPEC §5)
+		if enumValue < 0 || enumValue > 15 {
 			return serialize.ErrValueOutOfRange
 		}
 		{
@@ -697,21 +697,21 @@ const TestDataMaxBits = 2735
 const TestDataMaxBytes = 344
 
 func WriteTestData(stream *serialize.WriteStream, value *TestData) error {
-	if value.A < -100 || value.A > 100 { // the runtime range refusal, folded (SPEC §5)
+	if value.A < -100 || value.A > 100 {
 		return serialize.ErrValueOutOfRange
 	}
 	{
 		offsetValue := uint32(value.A - (-100))
 		stream.SerializeBits(&offsetValue, 8)
 	}
-	if value.B < -100 || value.B > 100 { // the runtime range refusal, folded (SPEC §5)
+	if value.B < -100 || value.B > 100 {
 		return serialize.ErrValueOutOfRange
 	}
 	{
 		offsetValue := uint32(value.B - (-100))
 		stream.SerializeBits(&offsetValue, 8)
 	}
-	if value.C < -100 || value.C > 150 { // the runtime range refusal, folded (SPEC §5)
+	if value.C < -100 || value.C > 150 {
 		return serialize.ErrValueOutOfRange
 	}
 	{
@@ -722,7 +722,7 @@ func WriteTestData(stream *serialize.WriteStream, value *TestData) error {
 	stream.SerializeBits(&value.E, 8)
 	stream.SerializeBits(&value.F, 8)
 	stream.SerializeBool(&value.G)
-	if value.ItemsCount < 0 || value.ItemsCount > 16 { // the runtime range refusal, folded (SPEC §5)
+	if value.ItemsCount < 0 || value.ItemsCount > 16 {
 		return serialize.ErrValueOutOfRange
 	}
 	{
@@ -733,7 +733,7 @@ func WriteTestData(stream *serialize.WriteStream, value *TestData) error {
 		return stream.Err()
 	}
 	for i := int32(0); i < value.ItemsCount; i++ {
-		if value.Items[i] < 0 || value.Items[i] > 255 { // the runtime range refusal, folded (SPEC §5)
+		if value.Items[i] < 0 || value.Items[i] > 255 {
 			return serialize.ErrValueOutOfRange
 		}
 		{
@@ -775,7 +775,7 @@ func WriteTestData(stream *serialize.WriteStream, value *TestData) error {
 		rawValue := uint64(value.Int64Full)
 		stream.SerializeBits64(&rawValue, 64)
 	}
-	if value.Int64Range < -1000000000000 || value.Int64Range > 1000000000000 { // the runtime range refusal, folded (SPEC §5)
+	if value.Int64Range < -1000000000000 || value.Int64Range > 1000000000000 {
 		return serialize.ErrValueOutOfRange
 	}
 	{
@@ -783,8 +783,8 @@ func WriteTestData(stream *serialize.WriteStream, value *TestData) error {
 		stream.SerializeBits64(&offsetValue, 41)
 	}
 	stream.SerializeAlign()
-	stream.SerializeBytes(value.FixedBytes[:])          // byte-aligned [N]uint8 — bulk copy, wire-identical to the per-byte loop
-	if value.TextLength < 0 || value.TextLength > 255 { // the runtime range refusal, folded (SPEC §5)
+	stream.SerializeBytes(value.FixedBytes[:]) // byte-aligned [N]uint8 — bulk copy, wire-identical to the per-byte loop
+	if value.TextLength < 0 || value.TextLength > 255 {
 		return serialize.ErrValueOutOfRange
 	}
 	{

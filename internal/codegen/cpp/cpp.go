@@ -196,6 +196,7 @@ type gen struct {
 	nativeIncludes map[string]bool    // cpp_include headers of referenced native-mapped types
 	emitted        map[string]bool    // consts of this file emitted so far (symbolic-reference safety)
 	bulkBytes      map[*ir.Field]bool // fixed [N]uint8 arrays at statically byte-aligned positions (ir.AlignedFixedByteArrays)
+	saidReadSlack  bool               // the read-slack buffer contract is stated once per file, on its first MaxBytes
 	needsSerialize bool               // the file emits wire functions -> include "serialize.h"
 	needsCstring   bool               // the file emits memset -> include <cstring>
 	needsCmath     bool               // the file emits floor() -> include <cmath>
@@ -512,8 +513,7 @@ func (g *gen) emitStruct(d *ir.Struct) {
 		kind = "message"
 	}
 	if len(d.Tags) > 0 {
-		g.pf("// %s %s [%s] — the tag is user-chosen and inert in v1; the delta pass\n", kind, d.Name, strings.Join(d.Tags, ", "))
-		g.pf("// claims tags and assigns actions (SPEC §4.2, Type tags)\n")
+		g.pf("// %s %s [%s] — tags are user-chosen and inert in v1 (SPEC §4.2, Type tags)\n", kind, d.Name, strings.Join(d.Tags, ", "))
 	} else {
 		g.pf("// %s %s\n", kind, d.Name)
 	}
@@ -752,9 +752,9 @@ func (g *gen) fieldComment(f *ir.Field) string {
 	}
 	if f.Local {
 		if f.Context != "" {
-			parts = append(parts, fmt.Sprintf(" | local, context = %s", f.Context))
+			parts = append(parts, fmt.Sprintf("| local, context = %s", f.Context))
 		} else {
-			parts = append(parts, " | local — no wire")
+			parts = append(parts, "| local — no wire")
 		}
 	}
 	if len(parts) == 0 {

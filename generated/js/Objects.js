@@ -3,27 +3,13 @@
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
 // package example — protocol id 0xbc05d83a8135cdb9
-//
-// Storage members are PascalCase via the same mapping as the Go target, so
-// the checker's collision registry covers JS for free. Wire functions return
-// bool — the C++-style early-out. A schema validation failure (a wrong wire
-// constant, nonzero reserved bits, an out-of-contract write) returns false
-// WITHOUT latching; stream failures latch on stream.error — the runtime's own
-// sticky latch. Callers get bool always; error tells the two apart.
-//
-// Number storage for widths of 32 bits or fewer, BigInt for 64 and 128 —
-// the serialize.js value-domain seam. Checked/production comes from the
-// stream object; generated code never reads NODE_ENV.
 
 import { MaxCollidersPerShip, MaxTurretsPerShip, PositionUnits, RotationUnits, ShipMaxLasers, ShipMaxMissiles, VelocityUnits } from "./Constants.js";
 import { MissileType, PropType, ShipType, Team } from "./Enums.js";
 import { Handle, Quat, ReadHandle, ReadQuat, ReadVec3, Vec3, WriteHandle, WriteQuat, WriteVec3 } from "./Types.js";
 
-// Scratch holders for the runtime's {value} refs (streams.js has no ref
-// parameters). Module scope is safe — JavaScript is single threaded per
-// realm and a holder is consumed in the same call that fills it, the
-// runtime's own FLOAT_SCRATCH argument; generated code never holds one
-// across a nested Write/Read call.
+// Scratch holders for the runtime's {value} refs — single threaded per
+// realm, always consumed in the same call that fills them.
 const NUMBER_SCRATCH = { value: 0 };
 const BIGINT_SCRATCH = { value: 0n };
 
@@ -68,11 +54,11 @@ export class ClientShipState {
     this.MissileIndex = 0; // wire [0, 15]
     this.Target = new Handle();
     this.LockStartTime = 0;
-    this.Invulnerable = false; //  | local — no wire
-    this.PreviousPosition = new Vec3(); //  | local — no wire
-    this.NumColliders = 0; //  | local — no wire
-    this.ColliderArmor = new Array(MaxCollidersPerShip).fill(0); //  | local — no wire
-    this.PredictedExplode = false; //  | local, context = client
+    this.Invulnerable = false; // | local — no wire
+    this.PreviousPosition = new Vec3(); // | local — no wire
+    this.NumColliders = 0; // | local — no wire
+    this.ColliderArmor = new Array(MaxCollidersPerShip).fill(0); // | local — no wire
+    this.PredictedExplode = false; // | local, context = client
   }
 }
 
@@ -105,10 +91,10 @@ export class ServerShipState {
     this.MissileIndex = 0; // wire [0, 15]
     this.Target = new Handle();
     this.LockStartTime = 0;
-    this.Invulnerable = false; //  | local — no wire
-    this.PreviousPosition = new Vec3(); //  | local — no wire
-    this.NumColliders = 0; //  | local — no wire
-    this.ColliderArmor = new Array(MaxCollidersPerShip).fill(0); //  | local — no wire
+    this.Invulnerable = false; // | local — no wire
+    this.PreviousPosition = new Vec3(); // | local — no wire
+    this.NumColliders = 0; // | local — no wire
+    this.ColliderArmor = new Array(MaxCollidersPerShip).fill(0); // | local — no wire
   }
 }
 
@@ -279,14 +265,14 @@ export function WriteShipData_Deep(stream, value) {
   if (!stream.serializeFloat(NUMBER_SCRATCH)) {
     return false;
   }
-  if (!Number.isInteger(value.LaserIndex) || value.LaserIndex < 0 || value.LaserIndex > ShipMaxLasers - 1) { // out-of-contract writes are refused, not wrapped
+  if (!Number.isInteger(value.LaserIndex) || value.LaserIndex < 0 || value.LaserIndex > ShipMaxLasers - 1) {
     return false;
   }
   NUMBER_SCRATCH.value = value.LaserIndex;
   if (!stream.serializeBits(NUMBER_SCRATCH, 4)) {
     return false;
   }
-  if (!Number.isInteger(value.MissileIndex) || value.MissileIndex < 0 || value.MissileIndex > ShipMaxMissiles - 1) { // out-of-contract writes are refused, not wrapped
+  if (!Number.isInteger(value.MissileIndex) || value.MissileIndex < 0 || value.MissileIndex > ShipMaxMissiles - 1) {
     return false;
   }
   NUMBER_SCRATCH.value = value.MissileIndex;
@@ -411,70 +397,70 @@ export function WriteShipData_Shallow(stream, value) {
   if (!stream.serializeBits(NUMBER_SCRATCH, 3)) {
     return false;
   }
-  if (!Number.isInteger(value.PositionX) || value.PositionX < -8388608 || value.PositionX > 8388608) { // out-of-contract writes are refused, not wrapped
+  if (!Number.isInteger(value.PositionX) || value.PositionX < -8388608 || value.PositionX > 8388608) {
     return false;
   }
   NUMBER_SCRATCH.value = ((value.PositionX >>> 0) - (-8388608 >>> 0)) >>> 0;
   if (!stream.serializeBits(NUMBER_SCRATCH, 25)) {
     return false;
   }
-  if (!Number.isInteger(value.PositionY) || value.PositionY < -8388608 || value.PositionY > 8388608) { // out-of-contract writes are refused, not wrapped
+  if (!Number.isInteger(value.PositionY) || value.PositionY < -8388608 || value.PositionY > 8388608) {
     return false;
   }
   NUMBER_SCRATCH.value = ((value.PositionY >>> 0) - (-8388608 >>> 0)) >>> 0;
   if (!stream.serializeBits(NUMBER_SCRATCH, 25)) {
     return false;
   }
-  if (!Number.isInteger(value.PositionZ) || value.PositionZ < -8388608 || value.PositionZ > 8388608) { // out-of-contract writes are refused, not wrapped
+  if (!Number.isInteger(value.PositionZ) || value.PositionZ < -8388608 || value.PositionZ > 8388608) {
     return false;
   }
   NUMBER_SCRATCH.value = ((value.PositionZ >>> 0) - (-8388608 >>> 0)) >>> 0;
   if (!stream.serializeBits(NUMBER_SCRATCH, 25)) {
     return false;
   }
-  if (!Number.isInteger(value.RotationX) || value.RotationX < -1024 || value.RotationX > 1024) { // out-of-contract writes are refused, not wrapped
+  if (!Number.isInteger(value.RotationX) || value.RotationX < -1024 || value.RotationX > 1024) {
     return false;
   }
   NUMBER_SCRATCH.value = ((value.RotationX >>> 0) - (-1024 >>> 0)) >>> 0;
   if (!stream.serializeBits(NUMBER_SCRATCH, 12)) {
     return false;
   }
-  if (!Number.isInteger(value.RotationY) || value.RotationY < -1024 || value.RotationY > 1024) { // out-of-contract writes are refused, not wrapped
+  if (!Number.isInteger(value.RotationY) || value.RotationY < -1024 || value.RotationY > 1024) {
     return false;
   }
   NUMBER_SCRATCH.value = ((value.RotationY >>> 0) - (-1024 >>> 0)) >>> 0;
   if (!stream.serializeBits(NUMBER_SCRATCH, 12)) {
     return false;
   }
-  if (!Number.isInteger(value.RotationZ) || value.RotationZ < -1024 || value.RotationZ > 1024) { // out-of-contract writes are refused, not wrapped
+  if (!Number.isInteger(value.RotationZ) || value.RotationZ < -1024 || value.RotationZ > 1024) {
     return false;
   }
   NUMBER_SCRATCH.value = ((value.RotationZ >>> 0) - (-1024 >>> 0)) >>> 0;
   if (!stream.serializeBits(NUMBER_SCRATCH, 12)) {
     return false;
   }
-  if (!Number.isInteger(value.RotationW) || value.RotationW < -1024 || value.RotationW > 1024) { // out-of-contract writes are refused, not wrapped
+  if (!Number.isInteger(value.RotationW) || value.RotationW < -1024 || value.RotationW > 1024) {
     return false;
   }
   NUMBER_SCRATCH.value = ((value.RotationW >>> 0) - (-1024 >>> 0)) >>> 0;
   if (!stream.serializeBits(NUMBER_SCRATCH, 12)) {
     return false;
   }
-  if (!Number.isInteger(value.LinearVelocityX) || value.LinearVelocityX < -2097152 || value.LinearVelocityX > 2097152) { // out-of-contract writes are refused, not wrapped
+  if (!Number.isInteger(value.LinearVelocityX) || value.LinearVelocityX < -2097152 || value.LinearVelocityX > 2097152) {
     return false;
   }
   NUMBER_SCRATCH.value = ((value.LinearVelocityX >>> 0) - (-2097152 >>> 0)) >>> 0;
   if (!stream.serializeBits(NUMBER_SCRATCH, 23)) {
     return false;
   }
-  if (!Number.isInteger(value.LinearVelocityY) || value.LinearVelocityY < -2097152 || value.LinearVelocityY > 2097152) { // out-of-contract writes are refused, not wrapped
+  if (!Number.isInteger(value.LinearVelocityY) || value.LinearVelocityY < -2097152 || value.LinearVelocityY > 2097152) {
     return false;
   }
   NUMBER_SCRATCH.value = ((value.LinearVelocityY >>> 0) - (-2097152 >>> 0)) >>> 0;
   if (!stream.serializeBits(NUMBER_SCRATCH, 23)) {
     return false;
   }
-  if (!Number.isInteger(value.LinearVelocityZ) || value.LinearVelocityZ < -2097152 || value.LinearVelocityZ > 2097152) { // out-of-contract writes are refused, not wrapped
+  if (!Number.isInteger(value.LinearVelocityZ) || value.LinearVelocityZ < -2097152 || value.LinearVelocityZ > 2097152) {
     return false;
   }
   NUMBER_SCRATCH.value = ((value.LinearVelocityZ >>> 0) - (-2097152 >>> 0)) >>> 0;
@@ -498,14 +484,14 @@ export function WriteShipData_Shallow(stream, value) {
   if (!stream.serializeBits(NUMBER_SCRATCH, 2)) {
     return false;
   }
-  if (!Number.isInteger(value.Health) || value.Health < 0 || value.Health > 1000) { // out-of-contract writes are refused, not wrapped
+  if (!Number.isInteger(value.Health) || value.Health < 0 || value.Health > 1000) {
     return false;
   }
   NUMBER_SCRATCH.value = value.Health;
   if (!stream.serializeBits(NUMBER_SCRATCH, 10)) {
     return false;
   }
-  if (!Number.isInteger(value.Thrust) || value.Thrust < 0 || value.Thrust > 100) { // out-of-contract writes are refused, not wrapped
+  if (!Number.isInteger(value.Thrust) || value.Thrust < 0 || value.Thrust > 100) {
     return false;
   }
   NUMBER_SCRATCH.value = value.Thrust;
@@ -720,8 +706,8 @@ export class ClientMissileState {
     this.LinearVelocity = new Vec3();
     this.Team = Team.None;
     this.Flags = 0n;
-    this.AngularVelocity = new Vec3(); //  | local — no wire
-    this.Target = new Handle(); //  | local — no wire
+    this.AngularVelocity = new Vec3(); // | local — no wire
+    this.Target = new Handle(); // | local — no wire
   }
 }
 
@@ -735,9 +721,9 @@ export class ServerMissileState {
     this.LinearVelocity = new Vec3();
     this.Team = Team.None;
     this.Flags = 0n;
-    this.AngularVelocity = new Vec3(); //  | local — no wire
-    this.Target = new Handle(); //  | local — no wire
-    this.Timer = 0; //  | local, context = server
+    this.AngularVelocity = new Vec3(); // | local — no wire
+    this.Target = new Handle(); // | local — no wire
+    this.Timer = 0; // | local, context = server
   }
 }
 
@@ -861,70 +847,70 @@ export function WriteMissileData_Shallow(stream, value) {
   if (!stream.serializeBits(NUMBER_SCRATCH, 2)) {
     return false;
   }
-  if (!Number.isInteger(value.PositionX) || value.PositionX < -8388608 || value.PositionX > 8388608) { // out-of-contract writes are refused, not wrapped
+  if (!Number.isInteger(value.PositionX) || value.PositionX < -8388608 || value.PositionX > 8388608) {
     return false;
   }
   NUMBER_SCRATCH.value = ((value.PositionX >>> 0) - (-8388608 >>> 0)) >>> 0;
   if (!stream.serializeBits(NUMBER_SCRATCH, 25)) {
     return false;
   }
-  if (!Number.isInteger(value.PositionY) || value.PositionY < -8388608 || value.PositionY > 8388608) { // out-of-contract writes are refused, not wrapped
+  if (!Number.isInteger(value.PositionY) || value.PositionY < -8388608 || value.PositionY > 8388608) {
     return false;
   }
   NUMBER_SCRATCH.value = ((value.PositionY >>> 0) - (-8388608 >>> 0)) >>> 0;
   if (!stream.serializeBits(NUMBER_SCRATCH, 25)) {
     return false;
   }
-  if (!Number.isInteger(value.PositionZ) || value.PositionZ < -8388608 || value.PositionZ > 8388608) { // out-of-contract writes are refused, not wrapped
+  if (!Number.isInteger(value.PositionZ) || value.PositionZ < -8388608 || value.PositionZ > 8388608) {
     return false;
   }
   NUMBER_SCRATCH.value = ((value.PositionZ >>> 0) - (-8388608 >>> 0)) >>> 0;
   if (!stream.serializeBits(NUMBER_SCRATCH, 25)) {
     return false;
   }
-  if (!Number.isInteger(value.RotationX) || value.RotationX < -1024 || value.RotationX > 1024) { // out-of-contract writes are refused, not wrapped
+  if (!Number.isInteger(value.RotationX) || value.RotationX < -1024 || value.RotationX > 1024) {
     return false;
   }
   NUMBER_SCRATCH.value = ((value.RotationX >>> 0) - (-1024 >>> 0)) >>> 0;
   if (!stream.serializeBits(NUMBER_SCRATCH, 12)) {
     return false;
   }
-  if (!Number.isInteger(value.RotationY) || value.RotationY < -1024 || value.RotationY > 1024) { // out-of-contract writes are refused, not wrapped
+  if (!Number.isInteger(value.RotationY) || value.RotationY < -1024 || value.RotationY > 1024) {
     return false;
   }
   NUMBER_SCRATCH.value = ((value.RotationY >>> 0) - (-1024 >>> 0)) >>> 0;
   if (!stream.serializeBits(NUMBER_SCRATCH, 12)) {
     return false;
   }
-  if (!Number.isInteger(value.RotationZ) || value.RotationZ < -1024 || value.RotationZ > 1024) { // out-of-contract writes are refused, not wrapped
+  if (!Number.isInteger(value.RotationZ) || value.RotationZ < -1024 || value.RotationZ > 1024) {
     return false;
   }
   NUMBER_SCRATCH.value = ((value.RotationZ >>> 0) - (-1024 >>> 0)) >>> 0;
   if (!stream.serializeBits(NUMBER_SCRATCH, 12)) {
     return false;
   }
-  if (!Number.isInteger(value.RotationW) || value.RotationW < -1024 || value.RotationW > 1024) { // out-of-contract writes are refused, not wrapped
+  if (!Number.isInteger(value.RotationW) || value.RotationW < -1024 || value.RotationW > 1024) {
     return false;
   }
   NUMBER_SCRATCH.value = ((value.RotationW >>> 0) - (-1024 >>> 0)) >>> 0;
   if (!stream.serializeBits(NUMBER_SCRATCH, 12)) {
     return false;
   }
-  if (!Number.isInteger(value.LinearVelocityX) || value.LinearVelocityX < -2097152 || value.LinearVelocityX > 2097152) { // out-of-contract writes are refused, not wrapped
+  if (!Number.isInteger(value.LinearVelocityX) || value.LinearVelocityX < -2097152 || value.LinearVelocityX > 2097152) {
     return false;
   }
   NUMBER_SCRATCH.value = ((value.LinearVelocityX >>> 0) - (-2097152 >>> 0)) >>> 0;
   if (!stream.serializeBits(NUMBER_SCRATCH, 23)) {
     return false;
   }
-  if (!Number.isInteger(value.LinearVelocityY) || value.LinearVelocityY < -2097152 || value.LinearVelocityY > 2097152) { // out-of-contract writes are refused, not wrapped
+  if (!Number.isInteger(value.LinearVelocityY) || value.LinearVelocityY < -2097152 || value.LinearVelocityY > 2097152) {
     return false;
   }
   NUMBER_SCRATCH.value = ((value.LinearVelocityY >>> 0) - (-2097152 >>> 0)) >>> 0;
   if (!stream.serializeBits(NUMBER_SCRATCH, 23)) {
     return false;
   }
-  if (!Number.isInteger(value.LinearVelocityZ) || value.LinearVelocityZ < -2097152 || value.LinearVelocityZ > 2097152) { // out-of-contract writes are refused, not wrapped
+  if (!Number.isInteger(value.LinearVelocityZ) || value.LinearVelocityZ < -2097152 || value.LinearVelocityZ > 2097152) {
     return false;
   }
   NUMBER_SCRATCH.value = ((value.LinearVelocityZ >>> 0) - (-2097152 >>> 0)) >>> 0;
@@ -1137,7 +1123,7 @@ export class DynamicPropState {
     this.LinearVelocity = new Vec3();
     this.Flags = 0n;
     this.Team = Team.None;
-    this.AngularVelocity = new Vec3(); //  | local — no wire
+    this.AngularVelocity = new Vec3(); // | local — no wire
   }
 }
 
@@ -1261,70 +1247,70 @@ export function WriteDynamicPropData_Shallow(stream, value) {
   if (!stream.serializeBits(NUMBER_SCRATCH, 3)) {
     return false;
   }
-  if (!Number.isInteger(value.PositionX) || value.PositionX < -8388608 || value.PositionX > 8388608) { // out-of-contract writes are refused, not wrapped
+  if (!Number.isInteger(value.PositionX) || value.PositionX < -8388608 || value.PositionX > 8388608) {
     return false;
   }
   NUMBER_SCRATCH.value = ((value.PositionX >>> 0) - (-8388608 >>> 0)) >>> 0;
   if (!stream.serializeBits(NUMBER_SCRATCH, 25)) {
     return false;
   }
-  if (!Number.isInteger(value.PositionY) || value.PositionY < -8388608 || value.PositionY > 8388608) { // out-of-contract writes are refused, not wrapped
+  if (!Number.isInteger(value.PositionY) || value.PositionY < -8388608 || value.PositionY > 8388608) {
     return false;
   }
   NUMBER_SCRATCH.value = ((value.PositionY >>> 0) - (-8388608 >>> 0)) >>> 0;
   if (!stream.serializeBits(NUMBER_SCRATCH, 25)) {
     return false;
   }
-  if (!Number.isInteger(value.PositionZ) || value.PositionZ < -8388608 || value.PositionZ > 8388608) { // out-of-contract writes are refused, not wrapped
+  if (!Number.isInteger(value.PositionZ) || value.PositionZ < -8388608 || value.PositionZ > 8388608) {
     return false;
   }
   NUMBER_SCRATCH.value = ((value.PositionZ >>> 0) - (-8388608 >>> 0)) >>> 0;
   if (!stream.serializeBits(NUMBER_SCRATCH, 25)) {
     return false;
   }
-  if (!Number.isInteger(value.RotationX) || value.RotationX < -1024 || value.RotationX > 1024) { // out-of-contract writes are refused, not wrapped
+  if (!Number.isInteger(value.RotationX) || value.RotationX < -1024 || value.RotationX > 1024) {
     return false;
   }
   NUMBER_SCRATCH.value = ((value.RotationX >>> 0) - (-1024 >>> 0)) >>> 0;
   if (!stream.serializeBits(NUMBER_SCRATCH, 12)) {
     return false;
   }
-  if (!Number.isInteger(value.RotationY) || value.RotationY < -1024 || value.RotationY > 1024) { // out-of-contract writes are refused, not wrapped
+  if (!Number.isInteger(value.RotationY) || value.RotationY < -1024 || value.RotationY > 1024) {
     return false;
   }
   NUMBER_SCRATCH.value = ((value.RotationY >>> 0) - (-1024 >>> 0)) >>> 0;
   if (!stream.serializeBits(NUMBER_SCRATCH, 12)) {
     return false;
   }
-  if (!Number.isInteger(value.RotationZ) || value.RotationZ < -1024 || value.RotationZ > 1024) { // out-of-contract writes are refused, not wrapped
+  if (!Number.isInteger(value.RotationZ) || value.RotationZ < -1024 || value.RotationZ > 1024) {
     return false;
   }
   NUMBER_SCRATCH.value = ((value.RotationZ >>> 0) - (-1024 >>> 0)) >>> 0;
   if (!stream.serializeBits(NUMBER_SCRATCH, 12)) {
     return false;
   }
-  if (!Number.isInteger(value.RotationW) || value.RotationW < -1024 || value.RotationW > 1024) { // out-of-contract writes are refused, not wrapped
+  if (!Number.isInteger(value.RotationW) || value.RotationW < -1024 || value.RotationW > 1024) {
     return false;
   }
   NUMBER_SCRATCH.value = ((value.RotationW >>> 0) - (-1024 >>> 0)) >>> 0;
   if (!stream.serializeBits(NUMBER_SCRATCH, 12)) {
     return false;
   }
-  if (!Number.isInteger(value.LinearVelocityX) || value.LinearVelocityX < -2097152 || value.LinearVelocityX > 2097152) { // out-of-contract writes are refused, not wrapped
+  if (!Number.isInteger(value.LinearVelocityX) || value.LinearVelocityX < -2097152 || value.LinearVelocityX > 2097152) {
     return false;
   }
   NUMBER_SCRATCH.value = ((value.LinearVelocityX >>> 0) - (-2097152 >>> 0)) >>> 0;
   if (!stream.serializeBits(NUMBER_SCRATCH, 23)) {
     return false;
   }
-  if (!Number.isInteger(value.LinearVelocityY) || value.LinearVelocityY < -2097152 || value.LinearVelocityY > 2097152) { // out-of-contract writes are refused, not wrapped
+  if (!Number.isInteger(value.LinearVelocityY) || value.LinearVelocityY < -2097152 || value.LinearVelocityY > 2097152) {
     return false;
   }
   NUMBER_SCRATCH.value = ((value.LinearVelocityY >>> 0) - (-2097152 >>> 0)) >>> 0;
   if (!stream.serializeBits(NUMBER_SCRATCH, 23)) {
     return false;
   }
-  if (!Number.isInteger(value.LinearVelocityZ) || value.LinearVelocityZ < -2097152 || value.LinearVelocityZ > 2097152) { // out-of-contract writes are refused, not wrapped
+  if (!Number.isInteger(value.LinearVelocityZ) || value.LinearVelocityZ < -2097152 || value.LinearVelocityZ > 2097152) {
     return false;
   }
   NUMBER_SCRATCH.value = ((value.LinearVelocityZ >>> 0) - (-2097152 >>> 0)) >>> 0;
@@ -1535,7 +1521,7 @@ export class TurretState {
     this.TurretIndex = 0; // wire [0, 255]
     this.Rotation = new Quat();
     this.Flags = 0n;
-    this.Team = Team.None; //  | local — no wire
+    this.Team = Team.None; // | local — no wire
   }
 }
 
@@ -1584,7 +1570,7 @@ export function WriteTurretData_Deep(stream, value) {
   if (!WriteHandle(stream, value.Parent)) {
     return false;
   }
-  if (!Number.isInteger(value.TurretIndex) || value.TurretIndex < 0 || value.TurretIndex > MaxTurretsPerShip - 1) { // out-of-contract writes are refused, not wrapped
+  if (!Number.isInteger(value.TurretIndex) || value.TurretIndex < 0 || value.TurretIndex > MaxTurretsPerShip - 1) {
     return false;
   }
   NUMBER_SCRATCH.value = value.TurretIndex;
@@ -1626,35 +1612,35 @@ export function WriteTurretData_Shallow(stream, value) {
   if (!WriteHandle(stream, value.Parent)) {
     return false;
   }
-  if (!Number.isInteger(value.TurretIndex) || value.TurretIndex < 0 || value.TurretIndex > MaxTurretsPerShip - 1) { // out-of-contract writes are refused, not wrapped
+  if (!Number.isInteger(value.TurretIndex) || value.TurretIndex < 0 || value.TurretIndex > MaxTurretsPerShip - 1) {
     return false;
   }
   NUMBER_SCRATCH.value = value.TurretIndex;
   if (!stream.serializeBits(NUMBER_SCRATCH, 8)) {
     return false;
   }
-  if (!Number.isInteger(value.RotationX) || value.RotationX < -1024 || value.RotationX > 1024) { // out-of-contract writes are refused, not wrapped
+  if (!Number.isInteger(value.RotationX) || value.RotationX < -1024 || value.RotationX > 1024) {
     return false;
   }
   NUMBER_SCRATCH.value = ((value.RotationX >>> 0) - (-1024 >>> 0)) >>> 0;
   if (!stream.serializeBits(NUMBER_SCRATCH, 12)) {
     return false;
   }
-  if (!Number.isInteger(value.RotationY) || value.RotationY < -1024 || value.RotationY > 1024) { // out-of-contract writes are refused, not wrapped
+  if (!Number.isInteger(value.RotationY) || value.RotationY < -1024 || value.RotationY > 1024) {
     return false;
   }
   NUMBER_SCRATCH.value = ((value.RotationY >>> 0) - (-1024 >>> 0)) >>> 0;
   if (!stream.serializeBits(NUMBER_SCRATCH, 12)) {
     return false;
   }
-  if (!Number.isInteger(value.RotationZ) || value.RotationZ < -1024 || value.RotationZ > 1024) { // out-of-contract writes are refused, not wrapped
+  if (!Number.isInteger(value.RotationZ) || value.RotationZ < -1024 || value.RotationZ > 1024) {
     return false;
   }
   NUMBER_SCRATCH.value = ((value.RotationZ >>> 0) - (-1024 >>> 0)) >>> 0;
   if (!stream.serializeBits(NUMBER_SCRATCH, 12)) {
     return false;
   }
-  if (!Number.isInteger(value.RotationW) || value.RotationW < -1024 || value.RotationW > 1024) { // out-of-contract writes are refused, not wrapped
+  if (!Number.isInteger(value.RotationW) || value.RotationW < -1024 || value.RotationW > 1024) {
     return false;
   }
   NUMBER_SCRATCH.value = ((value.RotationW >>> 0) - (-1024 >>> 0)) >>> 0;

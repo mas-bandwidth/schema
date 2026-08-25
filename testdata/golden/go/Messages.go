@@ -63,7 +63,7 @@ func WriteTest(stream *serialize.WriteStream, value *Test) error {
 	}
 	{
 		rangeValue := int32(value.TestB)
-		if rangeValue < 0 || rangeValue > 1000 { // the runtime range refusal, folded (SPEC §5)
+		if rangeValue < 0 || rangeValue > 1000 {
 			return serialize.ErrValueOutOfRange
 		}
 		{
@@ -73,7 +73,7 @@ func WriteTest(stream *serialize.WriteStream, value *Test) error {
 	}
 	{
 		rangeValue := int32(value.TestC)
-		if rangeValue < 0 || rangeValue > 1000 { // the runtime range refusal, folded (SPEC §5)
+		if rangeValue < 0 || rangeValue > 1000 {
 			return serialize.ErrValueOutOfRange
 		}
 		{
@@ -83,7 +83,7 @@ func WriteTest(stream *serialize.WriteStream, value *Test) error {
 	}
 	{
 		rangeValue := int32(value.TestD)
-		if rangeValue < 0 || rangeValue > 1000 { // the runtime range refusal, folded (SPEC §5)
+		if rangeValue < 0 || rangeValue > 1000 {
 			return serialize.ErrValueOutOfRange
 		}
 		{
@@ -130,7 +130,7 @@ const BlockMaxBits = 16018
 const BlockMaxBytes = 2008
 
 func WriteBlock(stream *serialize.WriteStream, value *Block) error {
-	if value.DataLength < 0 || value.DataLength > MaxBlockSize { // the runtime range refusal, folded (SPEC §5)
+	if value.DataLength < 0 || value.DataLength > MaxBlockSize {
 		return serialize.ErrValueOutOfRange
 	}
 	{
@@ -165,7 +165,7 @@ const ChatMaxBits = 2064
 const ChatMaxBytes = 264
 
 func WriteChat(stream *serialize.WriteStream, value *Chat) error {
-	if value.TextLength < 0 || value.TextLength > MaxChatLength { // the runtime range refusal, folded (SPEC §5)
+	if value.TextLength < 0 || value.TextLength > MaxChatLength {
 		return serialize.ErrValueOutOfRange
 	}
 	{
@@ -256,7 +256,7 @@ func ReadTimescale(stream *serialize.ReadStream, value *Timescale) error {
 // valid wire value meaning *no message* — the stream terminator (SPEC §4.8).
 func WriteMessageType(stream *serialize.WriteStream, value MessageType) error {
 	tagValue := int32(value)
-	if tagValue < 0 || tagValue > 6 { // the runtime range refusal, folded (SPEC §5)
+	if tagValue < 0 || tagValue > 6 {
 		return serialize.ErrValueOutOfRange
 	}
 	{

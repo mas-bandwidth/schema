@@ -9,7 +9,6 @@
 
 #include <stdint.h>
 #include <string.h>   /* memset — the zero form (SPEC §4.2) */
-#include <math.h>     /* floor — the quantize pair */
 
 #ifndef SCHEMA_UNUSED
 #if defined(__GNUC__) || defined(__clang__)
@@ -46,23 +45,9 @@ static SCHEMA_UNUSED const char * enum_name_weapon( Weapon value )
     switch ( value )
     {
         case WEAPON_NONE: return "None";
-        case 1: return "Laser";
-        case 2: return "Missile";
-        case 3: return "Railgun";
-        default: return "???";
-    }
-}
-
-/* As enum_name_weapon, over a raw wire value — the form the table reflection
-   descriptors hold. */
-static SCHEMA_UNUSED const char * enum_name_weapon_dyn( uint64_t value )
-{
-    switch ( value )
-    {
-        case 0: return "None";
-        case 1: return "Laser";
-        case 2: return "Missile";
-        case 3: return "Railgun";
+        case WEAPON_LASER: return "Laser";
+        case WEAPON_MISSILE: return "Missile";
+        case WEAPON_RAILGUN: return "Railgun";
         default: return "???";
     }
 }
@@ -97,7 +82,7 @@ typedef struct ProbeBits {
 } ProbeBits;
 
 #define PROBE_BITS_MAX_BITS 202   /* longest wire path; align pads at worst case (SPEC §6.1) */
-#define PROBE_BITS_MAX_BYTES 32  /* rounded up to the 8-byte write-buffer granularity; a READ buffer's allocation must extend at least 8 bytes past the data — serialize.c loads 64-bit windows */
+#define PROBE_BITS_MAX_BYTES 32  /* 8-byte write granularity; read slack per the contract above */
 
 
 /* type ProbeSample */
@@ -115,7 +100,7 @@ typedef struct ProbeSample {
 } ProbeSample;
 
 #define PROBE_SAMPLE_MAX_BITS 276   /* longest wire path; align pads at worst case (SPEC §6.1) */
-#define PROBE_SAMPLE_MAX_BYTES 40  /* rounded up to the 8-byte write-buffer granularity; a READ buffer's allocation must extend at least 8 bytes past the data — serialize.c loads 64-bit windows */
+#define PROBE_SAMPLE_MAX_BYTES 40  /* 8-byte write granularity; read slack per the contract above */
 
 /* Returns a ProbeSample with its SPECIFIED defaults applied. A memset to zero is
    the schema's own default (SPEC §4.2: zero initialization unless a
@@ -135,7 +120,7 @@ typedef struct ProbeRing {
 } ProbeRing;
 
 #define PROBE_RING_MAX_BITS 16   /* longest wire path; align pads at worst case (SPEC §6.1) */
-#define PROBE_RING_MAX_BYTES 8  /* rounded up to the 8-byte write-buffer granularity; a READ buffer's allocation must extend at least 8 bytes past the data — serialize.c loads 64-bit windows */
+#define PROBE_RING_MAX_BYTES 8  /* 8-byte write granularity; read slack per the contract above */
 
 
 /* type ProbeSlab */
@@ -145,7 +130,7 @@ typedef struct ProbeSlab {
 } ProbeSlab;
 
 #define PROBE_SLAB_MAX_BITS 15   /* longest wire path; align pads at worst case (SPEC §6.1) */
-#define PROBE_SLAB_MAX_BYTES 8  /* rounded up to the 8-byte write-buffer granularity; a READ buffer's allocation must extend at least 8 bytes past the data — serialize.c loads 64-bit windows */
+#define PROBE_SLAB_MAX_BYTES 8  /* 8-byte write granularity; read slack per the contract above */
 
 
 /* union ProbeShape — first-class one-of (SPEC §4.8): the tag says which arm is
@@ -177,7 +162,7 @@ typedef struct ProbeShape {
 } ProbeShape;
 
 #define PROBE_SHAPE_MAX_BITS 18   /* tag + the largest arm; None costs the tag only (SPEC §4.8) */
-#define PROBE_SHAPE_MAX_BYTES 8  /* rounded up to the 8-byte write-buffer granularity; a READ buffer's allocation must extend at least 8 bytes past the data — serialize.c loads 64-bit windows */
+#define PROBE_SHAPE_MAX_BYTES 8  /* 8-byte write granularity; read slack per the contract above */
 
 
 /* type ProbeCollider */
@@ -190,7 +175,7 @@ typedef struct ProbeCollider {
 } ProbeCollider;
 
 #define PROBE_COLLIDER_MAX_BITS 82   /* longest wire path; align pads at worst case (SPEC §6.1) */
-#define PROBE_COLLIDER_MAX_BYTES 16  /* rounded up to the 8-byte write-buffer granularity; a READ buffer's allocation must extend at least 8 bytes past the data — serialize.c loads 64-bit windows */
+#define PROBE_COLLIDER_MAX_BYTES 16  /* 8-byte write granularity; read slack per the contract above */
 
 
 /* type ProbeConfig */
@@ -200,7 +185,7 @@ typedef struct ProbeConfig {
 } ProbeConfig;
 
 #define PROBE_CONFIG_MAX_BITS 36   /* longest wire path; align pads at worst case (SPEC §6.1) */
-#define PROBE_CONFIG_MAX_BYTES 8  /* rounded up to the 8-byte write-buffer granularity; a READ buffer's allocation must extend at least 8 bytes past the data — serialize.c loads 64-bit windows */
+#define PROBE_CONFIG_MAX_BYTES 8  /* 8-byte write granularity; read slack per the contract above */
 
 /* Returns a ProbeConfig with its SPECIFIED defaults applied. A memset to zero is
    the schema's own default (SPEC §4.2: zero initialization unless a
@@ -222,7 +207,7 @@ typedef struct ProbeArray {
 } ProbeArray;
 
 #define PROBE_ARRAY_MAX_BITS 588   /* longest wire path; align pads at worst case (SPEC §6.1) */
-#define PROBE_ARRAY_MAX_BYTES 80  /* rounded up to the 8-byte write-buffer granularity; a READ buffer's allocation must extend at least 8 bytes past the data — serialize.c loads 64-bit windows */
+#define PROBE_ARRAY_MAX_BYTES 80  /* 8-byte write granularity; read slack per the contract above */
 
 /* Returns a ProbeArray with its SPECIFIED defaults applied. A memset to zero is
    the schema's own default (SPEC §4.2: zero initialization unless a
@@ -251,7 +236,7 @@ typedef struct ProbeReport {
 } ProbeReport;
 
 #define PROBE_REPORT_MAX_BITS 141   /* longest wire path; align pads at worst case (SPEC §6.1) */
-#define PROBE_REPORT_MAX_BYTES 24  /* rounded up to the 8-byte write-buffer granularity; a READ buffer's allocation must extend at least 8 bytes past the data — serialize.c loads 64-bit windows */
+#define PROBE_REPORT_MAX_BYTES 24  /* 8-byte write granularity; read slack per the contract above */
 
 
 /* type TestData */
@@ -282,7 +267,7 @@ typedef struct TestData {
 } TestData;
 
 #define TEST_DATA_MAX_BITS 2735   /* longest wire path; align pads at worst case (SPEC §6.1) */
-#define TEST_DATA_MAX_BYTES 344  /* rounded up to the 8-byte write-buffer granularity; a READ buffer's allocation must extend at least 8 bytes past the data — serialize.c loads 64-bit windows */
+#define TEST_DATA_MAX_BYTES 344  /* 8-byte write granularity; read slack per the contract above */
 
 
 /* type CompressedProbe */
@@ -292,7 +277,7 @@ typedef struct CompressedProbe {
 } CompressedProbe;
 
 #define COMPRESSED_PROBE_MAX_BITS 24   /* longest wire path; align pads at worst case (SPEC §6.1) */
-#define COMPRESSED_PROBE_MAX_BYTES 8  /* rounded up to the 8-byte write-buffer granularity; a READ buffer's allocation must extend at least 8 bytes past the data — serialize.c loads 64-bit windows */
+#define COMPRESSED_PROBE_MAX_BYTES 8  /* 8-byte write granularity; read slack per the contract above */
 
 #ifdef __cplusplus
 }

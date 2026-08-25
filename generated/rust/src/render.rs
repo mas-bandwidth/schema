@@ -121,7 +121,7 @@ pub fn write_render_block(stream: &mut WriteStream<'_>, value: &RenderBlock) -> 
         let mut raw_value = value.sprite_count_hint;
         stream.serialize_bits(&mut raw_value, 32)?;
     }
-    if value.sprites_count < 0 || value.sprites_count > 64 { // refused, not wrapped: the runtime's write side only debug_asserts
+    if value.sprites_count < 0 || value.sprites_count > 64 {
         return Err(Error::Stream(serialize::Error::ValueOutOfRange));
     }
     {

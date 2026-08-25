@@ -22,22 +22,20 @@ package cpp
 // last-call-to-static bonus exists for a linkonce_odr function, so unlike
 // C's static entries these sites never flatten on their own.
 //
-// The demand shipped first as a default-off switch
-// (SCHEMA_WRITE_SPINE_DEMAND, #55). Blanket — WriteMessage included — it
-// swept the per-message write rows but demanded the dispatcher (inline cost
-// ~1555) whole into the batch build loop and regressed it. Scoped —
-// WriteMessage exempted, its callees still flattening into its outlined
-// body — it won the cross-architecture tournament (eras space-55-scoped /
-// air-55-scoped: blended geomean 81.8 vs 99.7 off on Zen 4 gcc, 100.8 vs
-// 137.8 off on Apple M-series clang, % of the C baseline), so per the
-// feature lifecycle the winner became unconditional code and the switch was
-// deleted. The accepted residual: message_batch write +7-16% vs the old off
-// state on both architectures — bounded, and bought back many times over by
-// the per-message rows. The demand is a DEMAND, not a branch-weight hint:
-// __builtin_expect-style cold hints were measured in this family to
-// activate the machine outliner and shred hot bodies (bits write -25%) — do
-// not swap this for hints. Guarded against redefinition because several
-// wire headers can land in one translation unit.
+// The demand is SCOPED: blanket — WriteMessage included — it swept the
+// per-message write rows but demanded the dispatcher (inline cost ~1555)
+// whole into the batch build loop and regressed it; scoped — WriteMessage
+// exempted, its callees still flattening into its outlined body — it won
+// the cross-architecture tournament (bench/results/tournament-air: blended
+// geomean 81.8 vs 99.7 off on Zen 4 gcc, 100.8 vs 137.8 off on Apple
+// M-series clang, % of the C baseline). The accepted residual:
+// message_batch write +7-16% vs no demand on both architectures — bounded,
+// and bought back many times over by the per-message rows. The demand is a
+// DEMAND, not a branch-weight hint: __builtin_expect-style cold hints were
+// measured in this family to activate the machine outliner and shred hot
+// bodies (bits write -25%) — do not swap this for hints. Guarded against
+// redefinition because several wire headers can land in one translation
+// unit.
 func (g *gen) emitWriteInlineMacro() {
 	g.pf("#ifndef SCHEMA_WRITE_INLINE_DEFINED\n#define SCHEMA_WRITE_INLINE_DEFINED\n")
 	g.pf("// SCHEMA_WRITE_INLINE — how every generated Write function is spelled,\n")
