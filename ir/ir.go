@@ -27,7 +27,7 @@ type Unit struct {
 	Package    string
 	ProtocolId uint64
 	Contexts   []string // declared order; empty if the unit declares none
-	Files      []*File  // sorted by basename (the §3.1 order)
+	Files      []*File  // sorted by basename
 
 	// lookups for backends
 	DeclFile map[string]string // declaration name -> file base

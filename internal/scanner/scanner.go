@@ -119,7 +119,7 @@ func (e Error) Error() string { return fmt.Sprintf("%s: %s", e.Pos, e.Msg) }
 func Scan(file string, src []byte) ([]Token, []error) {
 	if bytes.HasPrefix(src, []byte{0xEF, 0xBB, 0xBF}) {
 		return nil, []error{Error{Pos{file, 1, 1},
-			"UTF-8 BOM rejected: it would silently move the protocol id (SPEC §4.1)"}}
+			"UTF-8 BOM rejected: schema source is plain UTF-8 with no BOM (SPEC §4.1)"}}
 	}
 	s := &state{file: file, src: src, line: 1, col: 1}
 	var raw []Token
@@ -139,7 +139,7 @@ func Scan(file string, src []byte) ([]Token, []error) {
 func ScanRaw(file string, src []byte) ([]Token, []error) {
 	if bytes.HasPrefix(src, []byte{0xEF, 0xBB, 0xBF}) {
 		return nil, []error{Error{Pos{file, 1, 1},
-			"UTF-8 BOM rejected: it would silently move the protocol id (SPEC §4.1)"}}
+			"UTF-8 BOM rejected: schema source is plain UTF-8 with no BOM (SPEC §4.1)"}}
 	}
 	s := &state{file: file, src: src, line: 1, col: 1, keepComments: true}
 	var raw []Token

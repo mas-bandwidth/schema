@@ -23,7 +23,7 @@ import (
 // SourceFile is one *.schema file of the unit.
 type SourceFile struct {
 	Path  string // as given
-	Name  string // basename with extension — the §3.1 hash label
+	Name  string // basename with extension — the unit's sort key, unique per unit
 	Base  string // basename without extension
 	Bytes []byte
 	AST   *ast.File
@@ -57,7 +57,7 @@ type checker struct {
 	// composite-quantize checks deferred until every body is resolved: the
 	// rule 2 / rule 2b classification READS the referenced composite's
 	// component list, and that composite may be declared in a file that
-	// sorts after the object's (§3.1 order) — at field-resolution time only
+	// sorts after the object's (basename order) — at field-resolution time only
 	// its SHELL exists. Running the classification against a half-built
 	// shell mis-classifies by file order (found the day rule 2b landed: the
 	// game's Objects.schema sorts before Types.schema).
@@ -75,7 +75,8 @@ func (c *checker) errf(pos ast.Pos, format string, args ...any) {
 }
 
 // Unit checks the files and lowers them to IR. Files may arrive in any order;
-// the unit is processed and hashed in sorted-basename order (SPEC §3.1).
+// the unit is processed in sorted-basename order, so everything derived from
+// it is deterministic.
 func Unit(files []SourceFile) (*ir.Unit, []error) {
 	sort.Slice(files, func(i, j int) bool { return files[i].Name < files[j].Name })
 
@@ -190,7 +191,7 @@ func (c *checker) collectDecls() {
 			}
 			name := d.DeclName()
 			if prev, ok := c.astDecls[name]; ok {
-				c.errf(d.DeclPos(), "duplicate declaration %q (first declared at %s; all five declaration kinds share one unit-level namespace — SPEC §4.6)",
+				c.errf(d.DeclPos(), "duplicate declaration %q (first declared at %s; all declaration kinds share one unit-level namespace — SPEC §4.6)",
 					name, prev.DeclPos())
 				continue
 			}
@@ -1605,7 +1606,7 @@ func (c *checker) resolveAttrs(kind declKind, owner string, f *ast.Field, out *i
 // checkCompositeQuantize is the deferred half of the composite-quantize rule
 // (SPEC §4.8 rules 2 and 2b): it runs after EVERY body is resolved, so the
 // referenced composite's component list is complete regardless of which file
-// declared it (§3.1 file order). resolveAttrs verified | interpolate-on-object
+// declared it (basename file order). resolveAttrs verified | interpolate-on-object
 // and scheduled this; everything that reads component fields lives here.
 func (c *checker) checkCompositeQuantize(f *ast.Field, out *ir.Field, byKey map[string]*ast.Attr, hasMin, hasMax, hasRes bool) {
 	a := byKey["quantize"]
@@ -2463,9 +2464,6 @@ func (c *checker) assemble() {
 
 // ---- the protocol id (SPEC §3.1) ----
 
-// protocolId hashes the unit's files: sorted by bytewise ascending basename;
-// per file, basename bytes, one 0x00, then raw content bytes; the id is the
-// final 8 bytes of the SHA-256 digest interpreted big-endian.
 // protocolIdFromProjection is the unit's identity: the low 64 bits of SHA-256
 // over the WIRE SHAPE PROJECTION (ir.WireProjection), not over the schema
 // source.
