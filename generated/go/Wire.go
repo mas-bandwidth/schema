@@ -13,6 +13,8 @@ const HalfTurn float64 = 180.0
 
 const TickRate float32 = 60.0
 
+const SpinRate float64 = 1.5
+
 // Weapon — None = 0 implicit, variants dense from 1, wire range [0, 15] (SPEC §4.2)
 type Weapon uint8
 

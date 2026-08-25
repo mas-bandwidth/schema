@@ -206,16 +206,20 @@ func (g *gen) emitTagEnum(name string, members []string, comment string) {
 	g.pf(")\n\n")
 }
 
-// emitConst emits a bare schema const as an UNTYPED Go constant — usable as an
-// array length, a wire argument, anything — and an explicitly-typed schema
-// const as a typed one (the declared type pins the exported type, SPEC §4.2).
+// emitConst emits a bare INTEGER schema const as an UNTYPED Go constant —
+// usable as an array length, a wire argument, anything — and an
+// explicitly-typed schema const as a typed one (the declared type pins the
+// exported type, SPEC §4.2). A FLOAT const is always typed: a bare float
+// const infers float64 (SPEC §4.2, Go's literal rule), and the export must
+// be the same surface the explicit annotation spells — every other target
+// already pins the type either way (issue #120).
 func (g *gen) emitConst(d *ir.Const) {
 	typ := ""
 	if d.Explicit {
 		typ = " " + d.Storage
 	}
 	if d.IsFloat {
-		g.pf("const %s%s = %s%s\n\n", d.Name, typ, formatFloat(d.Float), g.foldComment(d.Expr))
+		g.pf("const %s %s = %s%s\n\n", d.Name, d.Storage, formatFloat(d.Float), g.foldComment(d.Expr))
 		return
 	}
 	g.pf("const %s%s = %s%s\n\n", d.Name, typ, g.renderInt(d.Expr, d.Int), g.foldComment(d.Expr))

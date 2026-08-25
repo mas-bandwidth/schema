@@ -10,6 +10,8 @@ pub const HALF_TURN: f64 = 180.0;
 
 pub const TICK_RATE: f32 = 60.0;
 
+pub const SPIN_RATE: f64 = 1.5;
+
 // Weapon — None = 0 implicit, variants dense from 1, wire range [0, 15] (SPEC §4.2);
 // a newtype because [max = ...] headroom makes non-variant values wire-legal
 #[repr(transparent)]

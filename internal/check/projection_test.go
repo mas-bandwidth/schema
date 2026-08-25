@@ -80,6 +80,27 @@ func TestIdIsStableUnderNonWireEdits(t *testing.T) {
 	}
 }
 
+// Float const inference is id-neutral (SPEC §4.2, issue #120): a bare float
+// const infers float64, so dropping the annotation resolves to the same
+// value reaching the same wire facts — the id must not move in either
+// direction, whether the const feeds an attribute or sits unused.
+func TestIdIsStableUnderFloatConstAnnotation(t *testing.T) {
+	const annotated = `package probe
+
+const Half float64 = 180.0
+
+type Sample {
+    orientation float32 [min = -Half, max = Half, resolution = 0.01]
+}
+`
+	bare := strings.Replace(annotated, "const Half float64 = 180.0", "const Half = 180.0", 1)
+	a := build(t, annotated).ProtocolId
+	b := build(t, bare).ProtocolId
+	if a != b {
+		t.Errorf("removing a float const's annotation moved the protocol id (0x%016x -> 0x%016x); the inferred type is the annotated type and no wire byte changed", a, b)
+	}
+}
+
 // The other direction, and the one that must never regress: an edit that DOES
 // move bytes must move the id. A missed case here is two incompatible builds
 // claiming compatibility.
