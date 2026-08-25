@@ -229,9 +229,8 @@ type Field struct {
 	HasQuantize    bool   // composite quantization (SPEC §4.8 rule 2)
 	QuantScale     int64
 	QuantScaleExpr Expr
-	QuantMax       float64
-	QuantMaxExpr   Expr
-	QuantBound     int64 // round(QuantScale * QuantMax) — per-component wire range is [-QuantBound, +QuantBound]
+	QuantMaxExpr   Expr  // the declared max = B, for symbolic rendering
+	QuantBound     int64 // round(QuantScale * B) — per-component wire range is [-QuantBound, +QuantBound]
 
 	// fixed-composite shallow narrowing (SPEC §4.8 rule 2b): the composite's
 	// components are all fixed(I, F); the shallow wire keeps QuantShift =
@@ -239,7 +238,7 @@ type Field struct {
 	// HALF AWAY FROM ZERO over (F - QuantShift) dropped bits — the one
 	// fixed-point rounding rule (SPEC §4.8). Unquantize is the left shift
 	// back; the per-component wire bound is the component's own whole-unit
-	// [IntMin, IntMax] times QuantScale. QuantMax/QuantBound are
+	// [IntMin, IntMax] times QuantScale. QuantMaxExpr/QuantBound are
 	// meaningless here — bounds live on the components, not the field.
 	FixedShallow bool
 	QuantShift   int
