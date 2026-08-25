@@ -2,7 +2,7 @@
 // package example — protocol id 0x9cdffa5a3048f991
 
 // Team — None = 0 implicit, variants dense from 1, wire range [0, 2] (SPEC §4.2);
-// a newtype because [max = ...] headroom makes non-variant values wire-legal
+// a newtype because | max = ... headroom makes non-variant values wire-legal
 #[repr(transparent)]
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
 pub struct Team(pub u8);
@@ -31,7 +31,7 @@ pub fn enum_name_team_dyn(value: u64) -> &'static str {
 }
 
 // ShipType — None = 0 implicit, variants dense from 1, wire range [0, 5] (SPEC §4.2);
-// a newtype because [max = ...] headroom makes non-variant values wire-legal
+// a newtype because | max = ... headroom makes non-variant values wire-legal
 #[repr(transparent)]
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
 pub struct ShipType(pub u8);
@@ -66,7 +66,7 @@ pub fn enum_name_ship_type_dyn(value: u64) -> &'static str {
 }
 
 // MissileType — None = 0 implicit, variants dense from 1, wire range [0, 3] (SPEC §4.2);
-// a newtype because [max = ...] headroom makes non-variant values wire-legal
+// a newtype because | max = ... headroom makes non-variant values wire-legal
 #[repr(transparent)]
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
 pub struct MissileType(pub u8);
@@ -97,7 +97,7 @@ pub fn enum_name_missile_type_dyn(value: u64) -> &'static str {
 }
 
 // PropType — None = 0 implicit, variants dense from 1, wire range [0, 6] (SPEC §4.2);
-// a newtype because [max = ...] headroom makes non-variant values wire-legal
+// a newtype because | max = ... headroom makes non-variant values wire-legal
 #[repr(transparent)]
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
 pub struct PropType(pub u8);
@@ -134,7 +134,7 @@ pub fn enum_name_prop_type_dyn(value: u64) -> &'static str {
 }
 
 // Pending — None = 0 implicit, variants dense from 1, wire range [0, 0] (SPEC §4.2);
-// a newtype because [max = ...] headroom makes non-variant values wire-legal
+// a newtype because | max = ... headroom makes non-variant values wire-legal
 #[repr(transparent)]
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
 pub struct Pending(pub u8);

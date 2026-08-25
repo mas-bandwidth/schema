@@ -258,7 +258,7 @@ func (g *gen) emitFile(carriesProtocolId bool) {
 		case *ir.ContextsMarker:
 			g.pf("// contexts declared for this unit: %s (SPEC §4.2).\n", strings.Join(d.Names, ", "))
 			g.pf("// Contexts generate no standalone artifacts — where an object carries\n")
-			g.pf("// context-scoped [local] fields, its State class is generated once per\n")
+			g.pf("// context-scoped | local fields, its State class is generated once per\n")
 			g.pf("// context (ClientShipState, ServerShipState, ...), each holding the `all`\n")
 			g.pf("// fields plus its own context's.\n\n")
 		case *ir.Struct:
@@ -345,7 +345,7 @@ func (g *gen) foldComment(e ast.Expr) string {
 func (g *gen) emitEnum(d *ir.Enum) {
 	g.pf("// %s — None = 0 implicit, variants dense from 1, wire range [0, %d] (SPEC §4.2);\n", d.Name, d.Max)
 	g.pf("// a frozen object of Number values — the JS translation of the family's\n")
-	g.pf("// integer-backed enums; [max = ...] headroom values are plain Numbers\n")
+	g.pf("// integer-backed enums; | max = ... headroom values are plain Numbers\n")
 	g.pf("export const %s = Object.freeze({\n", d.Name)
 	g.pf("  None: 0,\n")
 	for i, v := range d.Variants {
@@ -577,9 +577,9 @@ func (g *gen) fieldComment(f *ir.Field) string {
 	}
 	if f.Local {
 		if f.Context != "" {
-			parts = append(parts, fmt.Sprintf("[local, context = %s]", f.Context))
+			parts = append(parts, fmt.Sprintf(" | local, context = %s", f.Context))
 		} else {
-			parts = append(parts, "[local] — no wire")
+			parts = append(parts, " | local — no wire")
 		}
 	}
 	if len(parts) == 0 {

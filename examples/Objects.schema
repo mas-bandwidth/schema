@@ -27,21 +27,21 @@ object Ship {
     // ---- visual state, [interpolate]: sent for client interpolation, rides
     // the quantized shallow wire into ShipData_Interpolate ----
 
-    ship_type ShipType [interpolate]
+    ship_type ShipType | interpolate
 
-    position        Vec3 [interpolate, quantize = PositionUnits, max = MaxWorldMeters]
-    rotation        Quat [interpolate, quantize = RotationUnits, max = 1]
-    linear_velocity Vec3 [interpolate, quantize = VelocityUnits, max = MaxSpeedMeters]
+    position        Vec3 | interpolate, quantize = PositionUnits, max = MaxWorldMeters
+    rotation        Quat | interpolate, quantize = RotationUnits, max = 1
+    linear_velocity Vec3 | interpolate, quantize = VelocityUnits, max = MaxSpeedMeters
 
-    flags ShipFlags [interpolate]
-    team  Team      [interpolate]
+    flags ShipFlags | interpolate
+    team  Team      | interpolate
 
     // float in deep; ranged-int projection on the shallow wire (SPEC §4.8 rule 4).
     // health rounds UP so any living fractional health quantizes alive — the
     // hand-written ceil is load-bearing. thrust's continuous domain is [0, 1];
     // resolution 0.01 gives the wire int [0, 100], identical bits to today.
-    health float32 [interpolate, min = 0, max = MaxHealth, resolution = 1, round = up]
-    thrust float32 [interpolate, min = 0, max = 1, resolution = 0.01]
+    health float32 | interpolate, min = 0, max = MaxHealth, resolution = 1, round = up
+    thrust float32 | interpolate, min = 0, max = 1, resolution = 0.01
 
     // ---- full state: deep only (the default — no marker) ----
 
@@ -65,29 +65,29 @@ object Ship {
     aim_current  float32
     aim_velocity float32
 
-    laser_index   int8 [min = 0, max = ShipMaxLasers - 1]
-    missile_index int8 [min = 0, max = ShipMaxMissiles - 1]
+    laser_index   int8 | min = 0, max = ShipMaxLasers - 1
+    missile_index int8 | min = 0, max = ShipMaxMissiles - 1
 
     target          Handle
     lock_start_time float64
 
     // ---- simulation-only: no wire at all ----
 
-    invulnerable bool [local]
+    invulnerable bool | local
 
     // the wrapper class's sim-local state, folded in so the generated state is
     // the FULL working ship state (surveyed from the hand-written Ship class
     // 2026-08-05): previous position, and the per-collider armor table. Engine
     // runtime handles (the physics body id) stay in engine code — they are
     // process-local resources, not state the schema owns.
-    previous_position Vec3                       [local]
-    num_colliders     int32                      [local]
-    collider_armor    [MaxCollidersPerShip]int32 [local]
+    previous_position Vec3                       | local
+    num_colliders     int32                      | local
+    collider_armor    [MaxCollidersPerShip]int32 | local
 
     // context-scoped local state (SPEC §4.2, Contexts): exists only in the
     // client's generated type (ClientShipState) — the declared replacement for
     // the hand-written #if GAME_CLIENT
-    predicted_explode bool [local, context = client]
+    predicted_explode bool | local, context = client
 }
 
 object Missile {
@@ -97,25 +97,25 @@ object Missile {
     // [1,MAX] on create but [0,MAX] on delta — drift; as a plain enum the
     // generated wire is [0,MAX] on both paths (enum_index is cut, SPEC §9 q11).
 
-    missile_type MissileType [interpolate]
+    missile_type MissileType | interpolate
 
-    position        Vec3 [interpolate, quantize = PositionUnits, max = MaxWorldMeters]
-    rotation        Quat [interpolate, quantize = RotationUnits, max = 1]
-    linear_velocity Vec3 [interpolate, quantize = VelocityUnits, max = MaxSpeedMeters]
+    position        Vec3 | interpolate, quantize = PositionUnits, max = MaxWorldMeters
+    rotation        Quat | interpolate, quantize = RotationUnits, max = 1
+    linear_velocity Vec3 | interpolate, quantize = VelocityUnits, max = MaxSpeedMeters
 
-    team Team [interpolate]
+    team Team | interpolate
 
     // real field is an anonymous uint64 — bits unnamed in hand code; named bits
     // move to a flags declaration when they are identified
-    flags uint64 [interpolate]
+    flags uint64 | interpolate
 
     // ---- simulation-only ----
 
-    angular_velocity Vec3   [local]
-    target           Handle [local]
+    angular_velocity Vec3   | local
+    target           Handle | local
 
     // server-only sim state — exists only in ServerMissileState (SPEC §4.2)
-    timer float64 [local, context = server]
+    timer float64 | local, context = server
 }
 
 object DynamicProp {
@@ -124,18 +124,18 @@ object DynamicProp {
     // that form returns (SPEC §9 q11); a plain enum spends the None value
     // meanwhile.
 
-    prop_type PropType [interpolate]
+    prop_type PropType | interpolate
 
-    position        Vec3 [interpolate, quantize = PositionUnits, max = MaxWorldMeters]
-    rotation        Quat [interpolate, quantize = RotationUnits, max = 1]
-    linear_velocity Vec3 [interpolate, quantize = VelocityUnits, max = MaxSpeedMeters]
+    position        Vec3 | interpolate, quantize = PositionUnits, max = MaxWorldMeters
+    rotation        Quat | interpolate, quantize = RotationUnits, max = 1
+    linear_velocity Vec3 | interpolate, quantize = VelocityUnits, max = MaxSpeedMeters
 
-    flags uint64 [interpolate]
-    team  Team   [interpolate]
+    flags uint64 | interpolate
+    team  Team   | interpolate
 
     // ---- simulation-only ----
 
-    angular_velocity Vec3 [local]
+    angular_velocity Vec3 | local
 }
 
 object Turret {
@@ -147,17 +147,17 @@ object Turret {
     // deep view is full-state per the model — the stub is unfinished hand code,
     // not a design to reproduce.
 
-    parent       Handle [interpolate]
-    turret_index int32  [interpolate, min = 0, max = MaxTurretsPerShip - 1]
+    parent       Handle | interpolate
+    turret_index int32  | interpolate, min = 0, max = MaxTurretsPerShip - 1
 
-    rotation Quat [interpolate, quantize = RotationUnits, max = 1]
+    rotation Quat | interpolate, quantize = RotationUnits, max = 1
 
-    flags uint64 [interpolate]
+    flags uint64 | interpolate
 
     // ---- simulation-only ----
 
     // real TurretState carries team with zero wire presence — [local] here,
     // unlike Ship where team is [interpolate]. Same name, different wire
     // treatment, per object: the marker is per-field, so this is free.
-    team Team [local]
+    team Team | local
 }

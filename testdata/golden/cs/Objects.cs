@@ -29,7 +29,7 @@ namespace Example
     // ---- object Ship — one definition, a generated family per target (SPEC §4.8) ----
 
     // ClientShipState — the full simulation class for the client context: every `all`
-    // field plus the fields scoped [local, context = client]
+    // field plus the fields scoped | local, context = client
     public sealed class ClientShipState
     {
         public ShipType ShipType;
@@ -57,15 +57,15 @@ namespace Example
         public sbyte MissileIndex; // wire [0, 15]
         public Handle Target = new Handle();
         public double LockStartTime;
-        public bool Invulnerable; // [local] — no wire
-        public Vec3 PreviousPosition = new Vec3(); // [local] — no wire
-        public int NumColliders; // [local] — no wire
-        public int[] ColliderArmor = new int[Schema.MaxCollidersPerShip]; // [local] — no wire
-        public bool PredictedExplode; // [local, context = client]
+        public bool Invulnerable; //  | local — no wire
+        public Vec3 PreviousPosition = new Vec3(); //  | local — no wire
+        public int NumColliders; //  | local — no wire
+        public int[] ColliderArmor = new int[Schema.MaxCollidersPerShip]; //  | local — no wire
+        public bool PredictedExplode; //  | local, context = client
     }
 
     // ServerShipState — the full simulation class for the server context: every `all`
-    // field plus the fields scoped [local, context = server]
+    // field plus the fields scoped | local, context = server
     public sealed class ServerShipState
     {
         public ShipType ShipType;
@@ -93,13 +93,13 @@ namespace Example
         public sbyte MissileIndex; // wire [0, 15]
         public Handle Target = new Handle();
         public double LockStartTime;
-        public bool Invulnerable; // [local] — no wire
-        public Vec3 PreviousPosition = new Vec3(); // [local] — no wire
-        public int NumColliders; // [local] — no wire
-        public int[] ColliderArmor = new int[Schema.MaxCollidersPerShip]; // [local] — no wire
+        public bool Invulnerable; //  | local — no wire
+        public Vec3 PreviousPosition = new Vec3(); //  | local — no wire
+        public int NumColliders; //  | local — no wire
+        public int[] ColliderArmor = new int[Schema.MaxCollidersPerShip]; //  | local — no wire
     }
 
-    // ShipData_Deep — every non-[local] field, deep encodings: full state for
+    // ShipData_Deep — every non- | local field, deep encodings: full state for
     // client-side prediction
     public sealed class ShipData_Deep
     {
@@ -130,7 +130,7 @@ namespace Example
         public double LockStartTime;
     }
 
-    // ShipData_Shallow — the [interpolate] fields on the quantized wire: the
+    // ShipData_Shallow — the | interpolate fields on the quantized wire: the
     // implementation detail on the way to interpolation on the client
     public sealed class ShipData_Shallow
     {
@@ -172,7 +172,7 @@ namespace Example
     // ---- object Missile — one definition, a generated family per target (SPEC §4.8) ----
 
     // ClientMissileState — the full simulation class for the client context: every `all`
-    // field plus the fields scoped [local, context = client]
+    // field plus the fields scoped | local, context = client
     public sealed class ClientMissileState
     {
         public MissileType MissileType;
@@ -181,12 +181,12 @@ namespace Example
         public Vec3 LinearVelocity = new Vec3();
         public Team Team;
         public ulong Flags;
-        public Vec3 AngularVelocity = new Vec3(); // [local] — no wire
-        public Handle Target = new Handle(); // [local] — no wire
+        public Vec3 AngularVelocity = new Vec3(); //  | local — no wire
+        public Handle Target = new Handle(); //  | local — no wire
     }
 
     // ServerMissileState — the full simulation class for the server context: every `all`
-    // field plus the fields scoped [local, context = server]
+    // field plus the fields scoped | local, context = server
     public sealed class ServerMissileState
     {
         public MissileType MissileType;
@@ -195,12 +195,12 @@ namespace Example
         public Vec3 LinearVelocity = new Vec3();
         public Team Team;
         public ulong Flags;
-        public Vec3 AngularVelocity = new Vec3(); // [local] — no wire
-        public Handle Target = new Handle(); // [local] — no wire
-        public double Timer; // [local, context = server]
+        public Vec3 AngularVelocity = new Vec3(); //  | local — no wire
+        public Handle Target = new Handle(); //  | local — no wire
+        public double Timer; //  | local, context = server
     }
 
-    // MissileData_Deep — every non-[local] field, deep encodings: full state for
+    // MissileData_Deep — every non- | local field, deep encodings: full state for
     // client-side prediction
     public sealed class MissileData_Deep
     {
@@ -212,7 +212,7 @@ namespace Example
         public ulong Flags;
     }
 
-    // MissileData_Shallow — the [interpolate] fields on the quantized wire: the
+    // MissileData_Shallow — the | interpolate fields on the quantized wire: the
     // implementation detail on the way to interpolation on the client
     public sealed class MissileData_Shallow
     {
@@ -258,10 +258,10 @@ namespace Example
         public Vec3 LinearVelocity = new Vec3();
         public ulong Flags;
         public Team Team;
-        public Vec3 AngularVelocity = new Vec3(); // [local] — no wire
+        public Vec3 AngularVelocity = new Vec3(); //  | local — no wire
     }
 
-    // DynamicPropData_Deep — every non-[local] field, deep encodings: full state for
+    // DynamicPropData_Deep — every non- | local field, deep encodings: full state for
     // client-side prediction
     public sealed class DynamicPropData_Deep
     {
@@ -273,7 +273,7 @@ namespace Example
         public Team Team;
     }
 
-    // DynamicPropData_Shallow — the [interpolate] fields on the quantized wire: the
+    // DynamicPropData_Shallow — the | interpolate fields on the quantized wire: the
     // implementation detail on the way to interpolation on the client
     public sealed class DynamicPropData_Shallow
     {
@@ -317,10 +317,10 @@ namespace Example
         public int TurretIndex; // wire [0, 255]
         public Quat Rotation = new Quat();
         public ulong Flags;
-        public Team Team; // [local] — no wire
+        public Team Team; //  | local — no wire
     }
 
-    // TurretData_Deep — every non-[local] field, deep encodings: full state for
+    // TurretData_Deep — every non- | local field, deep encodings: full state for
     // client-side prediction
     public sealed class TurretData_Deep
     {
@@ -330,7 +330,7 @@ namespace Example
         public ulong Flags;
     }
 
-    // TurretData_Shallow — the [interpolate] fields on the quantized wire: the
+    // TurretData_Shallow — the | interpolate fields on the quantized wire: the
     // implementation detail on the way to interpolation on the client
     public sealed class TurretData_Shallow
     {

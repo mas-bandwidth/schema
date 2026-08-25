@@ -64,7 +64,7 @@ type UnmarkedOffBoundary {
 
 type UnmarkedRanged {
     align
-    data [4]uint8 [min = 0, max = 255]
+    data [4]uint8 | min = 0, max = 255
 }
 
 type UnmarkedCounted {

@@ -9,9 +9,9 @@ package bench
 // The stream packet. Transcribed from serialize/bench.cpp:141-182 —
 // 12 operations in that exact order. 392 bits = 49 wire bytes.
 type BenchPacket {
-    a      int32          [min = -100, max = 100] //  8 bits
-    b      int32          [min = 0, max = 65535] // 16
-    c      int32          [min = -1000000, max = 1000000] // 21
+    a      int32          | min = -100, max = 100 //  8 bits
+    b      int32          | min = 0, max = 65535 // 16
+    c      int32          | min = -1000000, max = 1000000 // 21
     bits7  bits(7) //  7
     bits13 bits(13) // 13
     bits23 bits(23) // 23
@@ -26,16 +26,16 @@ type BenchPacket {
 
 // serialize/bench.cpp:391-403. 110 bits = 14 wire bytes.
 type BenchInts {
-    f0 int32 [min = -100, max = 100] //  8
-    f1 int32 [min = 0, max = 65535] // 16
-    f2 int32 [min = -1000000, max = 1000000] // 21
-    f3 int32 [min = 0, max = 3] //  2
-    f4 int32 [min = -15, max = 15] //  5
-    f5 int32 [min = 0, max = 1000] // 10
-    f6 int32 [min = -2048, max = 2047] // 12
-    f7 int32 [min = 0, max = 255] //  8
-    f8 int32 [min = -600000, max = 600000] // 21
-    f9 int32 [min = 0, max = 100] //  7
+    f0 int32 | min = -100, max = 100 //  8
+    f1 int32 | min = 0, max = 65535 // 16
+    f2 int32 | min = -1000000, max = 1000000 // 21
+    f3 int32 | min = 0, max = 3 //  2
+    f4 int32 | min = -15, max = 15 //  5
+    f5 int32 | min = 0, max = 1000 // 10
+    f6 int32 | min = -2048, max = 2047 // 12
+    f7 int32 | min = 0, max = 255 //  8
+    f8 int32 | min = -600000, max = 600000 // 21
+    f9 int32 | min = 0, max = 100 //  7
 } // = 110 bits, 14 bytes
 
 // serialize/bench.cpp:449-457. 156 bits = 20 wire bytes.
@@ -54,15 +54,15 @@ type BenchBits {
 
 // serialize/bench.cpp:517-528. 168 bits = 21 wire bytes.
 type BenchMixed {
-    sequence  int32          [min = 0, max = 65535] // 16
+    sequence  int32          | min = 0, max = 65535 // 16
     ack_bits  bits(32) // 32
     entity_id bits(12) // 12
-    pos_x     int32          [min = -16384, max = 16383] // 15
-    pos_y     int32          [min = -16384, max = 16383] // 15
-    pos_z     int32          [min = -16384, max = 16383] // 15
+    pos_x     int32          | min = -16384, max = 16383 // 15
+    pos_y     int32          | min = -16384, max = 16383 // 15
+    pos_z     int32          | min = -16384, max = 16383 // 15
     yaw       bits(9) //  9
     moving    bool //  1
     firing    bool //  1
     timestamp bits(48) // 48
-    weapon    int32          [min = 0, max = 15] //  4
+    weapon    int32          | min = 0, max = 15 //  4
 } // = 168 bits, 21 bytes

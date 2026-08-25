@@ -34,15 +34,15 @@ type Inner {
 }
 
 table Cfg {
-    a     int32   [min = -1000, max = 1000] = 5
+    a     int32   = 5 | min = -1000, max = 1000
     b     float32                           = 1.5
-    big   uint64  [min = 0, max = 18446744073709551615]
+    big   uint64  | min = 0, max = 18446744073709551615
     mode  Mode                              = Beta
     caps  Caps
     name  string(32)
     blob  bytes(64)
     inner Inner
-    items [..8]int32 [min = 0, max = 255]
+    items [..8]int32 | min = 0, max = 255
     on    bool = true
 }
 `

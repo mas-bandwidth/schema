@@ -219,6 +219,30 @@ func FormatFile(path string) (canonical []byte, rewrote bool, err error) {
 	return out, true, nil
 }
 
+// MigrateFile is the ONE-SHOT migration mode (SPEC §7.4 rule 3b): it
+// additionally accepts the retired spellings — the trailing [ ... ]
+// attribute block (default after the attributes) and the [<= N] bound —
+// rewrites them into the current grammar, formats, and writes the file back
+// when the bytes change. Plain formatting refuses retired spellings exactly
+// as the compiler does.
+func MigrateFile(path string) (canonical []byte, rewrote bool, err error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, false, err
+	}
+	out, err := format.Migrate(path, data)
+	if err != nil {
+		return nil, false, err
+	}
+	if string(out) == string(data) {
+		return out, false, nil
+	}
+	if err := os.WriteFile(path, out, 0o644); err != nil {
+		return nil, false, err
+	}
+	return out, true, nil
+}
+
 // Version reports which build of the compiler is running: the linker stamp if
 // the build carried one, otherwise the module version or a VCS revision.
 // Never empty. Deliberately absent from generated output — generated code

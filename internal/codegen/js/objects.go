@@ -1,5 +1,5 @@
 // Object-view emission (SPEC §4.8, §6.1 item 7): the State classes (one per
-// context where context-scoped [local] fields exist), the Deep and Shallow
+// context where context-scoped | local fields exist), the Deep and Shallow
 // wire classes' split Write/Read pairs, the Interpolate class, and the
 // Quantize/Unquantize mapping between Interpolate and Shallow —
 // floor(c*K + 0.5) per component in double math for float composites,
@@ -46,7 +46,7 @@ func (g *gen) emitObject(d *ir.Object) {
 			}
 			name := capitalize(ctx) + d.Name + "State"
 			g.pf("// %s — the full simulation class for the %s context: every `all`\n", name, ctx)
-			g.pf("// field plus the fields scoped [local, context = %s]\n", ctx)
+			g.pf("// field plus the fields scoped | local, context = %s\n", ctx)
 			g.emitViewClass(name, fields, storageDeep)
 		}
 	} else {
@@ -56,11 +56,11 @@ func (g *gen) emitObject(d *ir.Object) {
 
 	deep, interp := splitObjectFields(d)
 
-	g.pf("// %sData_Deep — every non-[local] field, deep encodings: full state for\n", d.Name)
+	g.pf("// %sData_Deep — every non- | local field, deep encodings: full state for\n", d.Name)
 	g.pf("// client-side prediction\n")
 	g.emitViewClass(d.Name+"Data_Deep", deep, storageDeep)
 
-	g.pf("// %sData_Shallow — the [interpolate] fields on the quantized wire: the\n", d.Name)
+	g.pf("// %sData_Shallow — the | interpolate fields on the quantized wire: the\n", d.Name)
 	g.pf("// implementation detail on the way to interpolation on the client\n")
 	g.emitViewClass(d.Name+"Data_Shallow", interp, storageShallow)
 
@@ -123,7 +123,7 @@ func (g *gen) emitViewStorageField(f *ir.Field, v view) {
 		if f.FixedShallow {
 			g.pf("    // %s: %s narrowed to %d fractional bits (quantize = %s) — per-component\n",
 				f.Name, f.Type.Name, f.QuantShift, ir.RenderExpr(f.QuantScaleExpr))
-			g.pf("    // quantized units; bounds are the component's whole-unit [min, max] scaled\n")
+			g.pf("    // quantized units; bounds are the component's whole-unit | min, max scaled\n")
 			for _, comp := range st.Fields {
 				lo, hi, width := fixedShallowComp(f, comp)
 				g.pf("    this.%s%s = %s; // in [%s, %s]\n",
@@ -205,7 +205,7 @@ func (g *gen) emitObjectFunctions(d *ir.Object) {
 
 	// ---- Quantize / Unquantize: the Interpolate <-> Shallow mapping pair
 	// (SPEC §4.8's artifact table — the hand-written Quantize(), generated).
-	// NOT emitted when every [interpolate] field is already wire-domain —
+	// NOT emitted when every | interpolate field is already wire-domain —
 	// fixed components are their own quantization (SPEC §4.8).
 	if ir.ObjectNeedsQuantize(d) {
 		inName := d.Name + "Data_Interpolate"

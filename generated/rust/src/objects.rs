@@ -21,7 +21,7 @@ impl ObjectType {
 // ---- object Ship — one definition, a generated family per target (SPEC §4.8) ----
 
 // ClientShipState — the full simulation struct for the client context: every `all`
-// field plus the fields scoped [local, context = client]
+// field plus the fields scoped | local, context = client
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub struct ClientShipState {
     pub ship_type: ShipType,
@@ -49,11 +49,11 @@ pub struct ClientShipState {
     pub missile_index: i8, // wire [0, 15]
     pub target: Handle,
     pub lock_start_time: f64,
-    pub invulnerable: bool, // [local] — no wire
-    pub previous_position: Vec3, // [local] — no wire
-    pub num_colliders: i32, // [local] — no wire
-    pub collider_armor: [i32; MAX_COLLIDERS_PER_SHIP as usize], // [local] — no wire
-    pub predicted_explode: bool, // [local, context = client]
+    pub invulnerable: bool, //  | local — no wire
+    pub previous_position: Vec3, //  | local — no wire
+    pub num_colliders: i32, //  | local — no wire
+    pub collider_armor: [i32; MAX_COLLIDERS_PER_SHIP as usize], //  | local — no wire
+    pub predicted_explode: bool, //  | local, context = client
 }
 
 // The zero form (SPEC §5): specified defaults live only in new(), never here.
@@ -95,7 +95,7 @@ impl Default for ClientShipState {
 }
 
 // ServerShipState — the full simulation struct for the server context: every `all`
-// field plus the fields scoped [local, context = server]
+// field plus the fields scoped | local, context = server
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub struct ServerShipState {
     pub ship_type: ShipType,
@@ -123,10 +123,10 @@ pub struct ServerShipState {
     pub missile_index: i8, // wire [0, 15]
     pub target: Handle,
     pub lock_start_time: f64,
-    pub invulnerable: bool, // [local] — no wire
-    pub previous_position: Vec3, // [local] — no wire
-    pub num_colliders: i32, // [local] — no wire
-    pub collider_armor: [i32; MAX_COLLIDERS_PER_SHIP as usize], // [local] — no wire
+    pub invulnerable: bool, //  | local — no wire
+    pub previous_position: Vec3, //  | local — no wire
+    pub num_colliders: i32, //  | local — no wire
+    pub collider_armor: [i32; MAX_COLLIDERS_PER_SHIP as usize], //  | local — no wire
 }
 
 // The zero form (SPEC §5): specified defaults live only in new(), never here.
@@ -166,7 +166,7 @@ impl Default for ServerShipState {
     }
 }
 
-// ShipData_Deep — every non-[local] field, deep encodings: full state for
+// ShipData_Deep — every non- | local field, deep encodings: full state for
 // client-side prediction
 #[allow(non_camel_case_types)] // the name is fixed across targets (SPEC §4.8)
 #[derive(Clone, Copy, PartialEq, Debug)]
@@ -231,7 +231,7 @@ impl Default for ShipData_Deep {
     }
 }
 
-// ShipData_Shallow — the [interpolate] fields on the quantized wire: the
+// ShipData_Shallow — the | interpolate fields on the quantized wire: the
 // implementation detail on the way to interpolation on the client
 #[allow(non_camel_case_types)] // the name is fixed across targets (SPEC §4.8)
 #[derive(Clone, Copy, PartialEq, Debug)]
@@ -749,7 +749,7 @@ pub fn unquantize_ship(input: &ShipData_Shallow, output: &mut ShipData_Interpola
 // ---- object Missile — one definition, a generated family per target (SPEC §4.8) ----
 
 // ClientMissileState — the full simulation struct for the client context: every `all`
-// field plus the fields scoped [local, context = client]
+// field plus the fields scoped | local, context = client
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub struct ClientMissileState {
     pub missile_type: MissileType,
@@ -758,8 +758,8 @@ pub struct ClientMissileState {
     pub linear_velocity: Vec3,
     pub team: Team,
     pub flags: u64,
-    pub angular_velocity: Vec3, // [local] — no wire
-    pub target: Handle, // [local] — no wire
+    pub angular_velocity: Vec3, //  | local — no wire
+    pub target: Handle, //  | local — no wire
 }
 
 // The zero form (SPEC §5): specified defaults live only in new(), never here.
@@ -779,7 +779,7 @@ impl Default for ClientMissileState {
 }
 
 // ServerMissileState — the full simulation struct for the server context: every `all`
-// field plus the fields scoped [local, context = server]
+// field plus the fields scoped | local, context = server
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub struct ServerMissileState {
     pub missile_type: MissileType,
@@ -788,9 +788,9 @@ pub struct ServerMissileState {
     pub linear_velocity: Vec3,
     pub team: Team,
     pub flags: u64,
-    pub angular_velocity: Vec3, // [local] — no wire
-    pub target: Handle, // [local] — no wire
-    pub timer: f64, // [local, context = server]
+    pub angular_velocity: Vec3, //  | local — no wire
+    pub target: Handle, //  | local — no wire
+    pub timer: f64, //  | local, context = server
 }
 
 // The zero form (SPEC §5): specified defaults live only in new(), never here.
@@ -810,7 +810,7 @@ impl Default for ServerMissileState {
     }
 }
 
-// MissileData_Deep — every non-[local] field, deep encodings: full state for
+// MissileData_Deep — every non- | local field, deep encodings: full state for
 // client-side prediction
 #[allow(non_camel_case_types)] // the name is fixed across targets (SPEC §4.8)
 #[derive(Clone, Copy, PartialEq, Debug)]
@@ -837,7 +837,7 @@ impl Default for MissileData_Deep {
     }
 }
 
-// MissileData_Shallow — the [interpolate] fields on the quantized wire: the
+// MissileData_Shallow — the | interpolate fields on the quantized wire: the
 // implementation detail on the way to interpolation on the client
 #[allow(non_camel_case_types)] // the name is fixed across targets (SPEC §4.8)
 #[derive(Clone, Copy, PartialEq, Debug)]
@@ -1218,7 +1218,7 @@ pub struct DynamicPropState {
     pub linear_velocity: Vec3,
     pub flags: u64,
     pub team: Team,
-    pub angular_velocity: Vec3, // [local] — no wire
+    pub angular_velocity: Vec3, //  | local — no wire
 }
 
 // The zero form (SPEC §5): specified defaults live only in new(), never here.
@@ -1236,7 +1236,7 @@ impl Default for DynamicPropState {
     }
 }
 
-// DynamicPropData_Deep — every non-[local] field, deep encodings: full state for
+// DynamicPropData_Deep — every non- | local field, deep encodings: full state for
 // client-side prediction
 #[allow(non_camel_case_types)] // the name is fixed across targets (SPEC §4.8)
 #[derive(Clone, Copy, PartialEq, Debug)]
@@ -1263,7 +1263,7 @@ impl Default for DynamicPropData_Deep {
     }
 }
 
-// DynamicPropData_Shallow — the [interpolate] fields on the quantized wire: the
+// DynamicPropData_Shallow — the | interpolate fields on the quantized wire: the
 // implementation detail on the way to interpolation on the client
 #[allow(non_camel_case_types)] // the name is fixed across targets (SPEC §4.8)
 #[derive(Clone, Copy, PartialEq, Debug)]
@@ -1642,7 +1642,7 @@ pub struct TurretState {
     pub turret_index: i32, // wire [0, 255]
     pub rotation: Quat,
     pub flags: u64,
-    pub team: Team, // [local] — no wire
+    pub team: Team, //  | local — no wire
 }
 
 // The zero form (SPEC §5): specified defaults live only in new(), never here.
@@ -1658,7 +1658,7 @@ impl Default for TurretState {
     }
 }
 
-// TurretData_Deep — every non-[local] field, deep encodings: full state for
+// TurretData_Deep — every non- | local field, deep encodings: full state for
 // client-side prediction
 #[allow(non_camel_case_types)] // the name is fixed across targets (SPEC §4.8)
 #[derive(Clone, Copy, PartialEq, Debug)]
@@ -1681,7 +1681,7 @@ impl Default for TurretData_Deep {
     }
 }
 
-// TurretData_Shallow — the [interpolate] fields on the quantized wire: the
+// TurretData_Shallow — the | interpolate fields on the quantized wire: the
 // implementation detail on the way to interpolation on the client
 #[allow(non_camel_case_types)] // the name is fixed across targets (SPEC §4.8)
 #[derive(Clone, Copy, PartialEq, Debug)]

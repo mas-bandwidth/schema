@@ -77,7 +77,7 @@ func TestDiagnostics(t *testing.T) {
 
 		// ---- ranges and storage ----
 		{name: "range does not fit storage", want: "does not fit its declared storage",
-			src: "package t\ntype T { h int8 [min = 0, max = 1000] }\n"},
+			src: "package t\ntype T { h int8 | min = 0, max = 1000 }\n"},
 		{name: "implicit const past int64 (FuzzGeneratedCompiles 0c59b1fd)", want: "does not fit int64, the default constant storage",
 			src: "package t\nconst A = 20000000000000000000\n"},
 		{name: "implicit const past int64, uint64 range (constexpr narrowing repro)", want: "does not fit int64, the default constant storage",
@@ -85,17 +85,17 @@ func TestDiagnostics(t *testing.T) {
 		{name: "implicit const below int64 min", want: "does not fit int64, the default constant storage",
 			src: "package t\nconst A = -9223372036854775809\n"},
 		{name: "min without max", want: "min without max",
-			src: "package t\ntype T { h int16 [min = 0] }\n"},
+			src: "package t\ntype T { h int16 | min = 0 }\n"},
 		{name: "inverted range", want: "inverted range",
-			src: "package t\ntype T { h int16 [min = 6, max = 5] }\n"},
+			src: "package t\ntype T { h int16 | min = 6, max = 5 }\n"},
 		{name: "unknown attribute", want: "unknown attribute",
-			src: "package t\ntype T { h int16 [flavor = 3] }\n"},
+			src: "package t\ntype T { h int16 | flavor = 3 }\n"},
 		{name: "resolution on an integer", want: "resolution applies to float",
-			src: "package t\ntype T { h int16 [min = 0, max = 10, resolution = 1] }\n"},
+			src: "package t\ntype T { h int16 | min = 0, max = 10, resolution = 1 }\n"},
 		{name: "range on an enum field", want: "derives its range",
-			src: "package t\nenum E { A }\ntype T { e E [min = 0, max = 1] }\n"},
+			src: "package t\nenum E { A }\ntype T { e E | min = 0, max = 1 }\n"},
 		{name: "float64 compressed in a plain type", want: "compressed float is float32",
-			src: "package t\ntype T { v float64 [min = 0, max = 1, resolution = 0.1] }\n"},
+			src: "package t\ntype T { v float64 | min = 0, max = 1, resolution = 0.1 }\n"},
 
 		// ---- widths and bounds ----
 		{name: "bits zero", want: "outside [1, 64]",
@@ -112,6 +112,23 @@ func TestDiagnostics(t *testing.T) {
 			src: "package t\ntype T { a [0]uint8 }\n"},
 		{name: "count range backwards", want: "0 <= Min < N",
 			src: "package t\ntype T { a [5..3]uint8 }\n"},
+		// ---- the qualification section (SPEC §4.2) ----
+		{name: "the retired field attribute block names its replacement", want: "qualifiers follow | to the end of the line",
+			src: "package t\ntype T { h int16 " + "[min = 0, max = 5] }\n"},
+		{name: "the retired declaration attribute block names its replacement", want: "the body opens on the next line",
+			src: "package t\nenum E " + "[max = 5] { A }\n"},
+		{name: "empty qualification section", want: "empty qualification section",
+			src: "package t\ntype T { h int16 | }\n"},
+		{name: "a constant takes no qualification", want: "| is never an operator",
+			src: "package t\nconst X = 1 | 2\n"},
+		{name: "a message declaration takes no qualification", want: "message declaration takes no qualification",
+			src: "package t\nmessage M | x { }\n"},
+		{name: "an object declaration takes no qualification", want: "object declaration takes no qualification",
+			src: "package t\nobject O | x { f uint8 }\n"},
+		{name: "a union declaration takes no qualification", want: "union declaration takes no qualification",
+			src: "package t\nunion U | x { }\n"},
+		{name: "a block comment cannot sit right of |", want: "cannot sit right of |",
+			src: "package t\ntype T { h int16 | min = 0, /* c */ max = 5 }\n"},
 		{name: "the retired <= bound names its replacement", want: "spell it [..N], the range literal",
 			src: "package t\ntype T { a [" + "<= 4]uint8 }\n"}, // spliced so the migration sweep never respells this fixture
 		{name: "bound above int32", want: "counts live in int32",
@@ -123,17 +140,17 @@ func TestDiagnostics(t *testing.T) {
 
 		// ---- fixed point and the 128-bit family (SPEC §4.3, §4.6) ----
 		{name: "fixed I+F is not a storage width", want: "must equal a storage width",
-			src: "package t\ntype T { x fixed(16, 15) [min = 0, max = 1] }\n"},
+			src: "package t\ntype T { x fixed(16, 15) | min = 0, max = 1 }\n"},
 		{name: "fixed with zero integer bits", want: "at least one integer bit",
-			src: "package t\ntype T { x fixed(0, 32) [min = 0, max = 1] }\n"},
+			src: "package t\ntype T { x fixed(0, 32) | min = 0, max = 1 }\n"},
 		{name: "fixed with negative fractional bits", want: "cannot be negative",
-			src: "package t\ntype T { x fixed(24, -8) [min = 0, max = 1] }\n"},
-		{name: "fixed without bounds", want: "requires [min = A, max = B]",
+			src: "package t\ntype T { x fixed(24, -8) | min = 0, max = 1 }\n"},
+		{name: "fixed without bounds", want: "requires | min = A, max = B",
 			src: "package t\ntype T { x fixed(48, 16) }\n"},
 		{name: "fixed bounds outside the Q format", want: "do not fit fixed(8, 8)",
-			src: "package t\ntype T { x fixed(8, 8) [min = -300, max = 300] }\n"},
+			src: "package t\ntype T { x fixed(8, 8) | min = -300, max = 300 }\n"},
 		{name: "fixed with resolution", want: "resolution applies to float",
-			src: "package t\ntype T { x fixed(16, 16) [min = 0, max = 1, resolution = 0.1] }\n"},
+			src: "package t\ntype T { x fixed(16, 16) | min = 0, max = 1, resolution = 0.1 }\n"},
 		// fixed defaults are LEGAL since 2026-08-12 (whole units, exact) — the
 		// old rejection case lives on as the good corner below; what stays
 		// illegal is inexactness and range violation (cases at the bottom).
@@ -141,32 +158,32 @@ func TestDiagnostics(t *testing.T) {
 		// is fine" — §9 q17 closed). Same shape rules, unsigned domain, and
 		// the diagnostics name the ufixed spelling. ----
 		{name: "ufixed bounds below zero", want: "do not fit ufixed(16, 16)",
-			src: "package t\ntype T { x ufixed(16, 16) [min = -1, max = 5] }\n"},
+			src: "package t\ntype T { x ufixed(16, 16) | min = -1, max = 5 }\n"},
 		{name: "ufixed with zero integer bits", want: "at least one integer bit",
-			src: "package t\ntype T { x ufixed(0, 32) [min = 0, max = 1] }\n"},
+			src: "package t\ntype T { x ufixed(0, 32) | min = 0, max = 1 }\n"},
 		{name: "ufixed I+F is not a storage width", want: "must equal a storage width",
-			src: "package t\ntype T { x ufixed(16, 15) [min = 0, max = 1] }\n"},
-		{name: "ufixed without bounds", want: "ufixed(48, 16) requires [min = A, max = B]",
+			src: "package t\ntype T { x ufixed(16, 15) | min = 0, max = 1 }\n"},
+		{name: "ufixed without bounds", want: "ufixed(48, 16) requires | min = A, max = B",
 			src: "package t\ntype T { x ufixed(48, 16) }\n"},
 		{name: "ufixed bounds above the unsigned domain", want: "do not fit ufixed(8, 8)",
-			src: "package t\ntype T { x ufixed(8, 8) [min = 0, max = 300] }\n"},
+			src: "package t\ntype T { x ufixed(8, 8) | min = 0, max = 300 }\n"},
 		{name: "ufixed(64, 0) bounds clamp at int64's ceiling", want: "do not fit ufixed(64, 0)",
-			src: "package t\ntype T { x ufixed(64, 0) [min = 0, max = 18446744073709551615] }\n"},
+			src: "package t\ntype T { x ufixed(64, 0) | min = 0, max = 18446744073709551615 }\n"},
 		{name: "ufixed default below its unsigned range", want: "outside its range",
-			src: "package t\ntype T { x ufixed(16, 16) [min = 0, max = 5] = -1.0 }\n"},
+			src: "package t\ntype T { x ufixed(16, 16) = -1.0 | min = 0, max = 5 }\n"},
 		{name: "ufixed in a table closure", want: "ufixed(I, F) has no table-wire kind",
-			src: "package t\ntable T { x ufixed(16, 16) [min = 0, max = 5] }\n"},
+			src: "package t\ntable T { x ufixed(16, 16) | min = 0, max = 5 }\n"},
 		{name: "ufixed components do not narrow (rule 2b is signed-only)", want: "signed fixed(I, F) only",
-			src: "package t\ntype V { x ufixed(16, 16) [min = 0, max = 5]\n y ufixed(16, 16) [min = 0, max = 5] }\nobject O { p V [interpolate, quantize = 256] \n b bool }\n"},
+			src: "package t\ntype V { x ufixed(16, 16) | min = 0, max = 5\n y ufixed(16, 16) | min = 0, max = 5 }\nobject O { p V | interpolate, quantize = 256 \n b bool }\n"},
 		{name: "ufixed with resolution", want: "resolution applies to float",
-			src: "package t\ntype T { x ufixed(16, 16) [min = 0, max = 1, resolution = 0.1] }\n"},
+			src: "package t\ntype T { x ufixed(16, 16) | min = 0, max = 1, resolution = 0.1 }\n"},
 
 		{name: "bare int128", want: "int128 requires",
 			src: "package t\ntype T { x int128 }\n"},
 		{name: "uint128 with a range", want: "not valid on uint128",
-			src: "package t\ntype T { x uint128 [min = 0, max = 5] }\n"},
+			src: "package t\ntype T { x uint128 | min = 0, max = 5 }\n"},
 		{name: "int128 range above its storage", want: "does not fit its declared storage int128",
-			src: "package t\ntype T { x int128 [min = 0, max = 340282366920938463463374607431768211456] }\n"},
+			src: "package t\ntype T { x int128 | min = 0, max = 340282366920938463463374607431768211456 }\n"},
 
 		// ---- enums, flags, contexts ----
 		{name: "variant named None", want: "None",
@@ -176,7 +193,7 @@ func TestDiagnostics(t *testing.T) {
 		{name: "a decl collides with an enum's generated Max extent (Go)", want: "generated Max extent",
 			src: "package t\nenum Team { Red }\nconst TeamMax = 3\n"},
 		{name: "enum max below variant count", want: "below its variant count",
-			src: "package t\nenum E [max = 2] { A, B, C }\n"},
+			src: "package t\nenum E | max = 2\n{ A, B, C }\n"},
 		{name: "Max reference to a non-enum", want: "is not an enum",
 			src: "package t\ntype V { x uint8 }\nconst N = V.Max + 1\n"},
 		{name: "Max reference to a flags declaration", want: "has no .Max",
@@ -209,7 +226,7 @@ func TestDiagnostics(t *testing.T) {
 		{name: "union composition cycle", want: "type composition cycle",
 			src: "package t\nunion U {\n    b Box\n}\ntype Box { u U }\n"},
 		{name: "union field in an object body", want: "not reachable from an object body in v1",
-			src: "package t\nobject O { u U [interpolate] \n x uint8 }\nunion U { }\n"},
+			src: "package t\nobject O { u U | interpolate \n x uint8 }\nunion U { }\n"},
 		{name: "an object reaching a union transitively", want: "reaches a union, and an object body may not",
 			src: "package t\nobject O { w Wrap \n x uint8 }\ntype Wrap { u U }\nunion U { }\n"},
 		{name: "a union on a table-closure path", want: "may not sit on a table-closure path in v1",
@@ -218,10 +235,10 @@ func TestDiagnostics(t *testing.T) {
 			src: "package t\nmessage Msg { }\nunion Message { }\n"},
 		{name: "a decl colliding with a union's generated tag enum", want: "generated tag enum",
 			src: "package t\nunion U { }\ntype UType { x uint8 }\n"},
-		{name: "context without local", want: "legal only beside [local]",
-			src: "package t\ncontexts { client }\nobject O { a bool [context = client] \n b uint8 }\n"},
+		{name: "context without local", want: "legal only beside | local",
+			src: "package t\ncontexts { client }\nobject O { a bool | context = client \n b uint8 }\n"},
 		{name: "undeclared context", want: "not declared",
-			src: "package t\ncontexts { client }\nobject O { a bool [local, context = server] \n b uint8 }\n"},
+			src: "package t\ncontexts { client }\nobject O { a bool | local, context = server \n b uint8 }\n"},
 		{name: "context all is reserved", want: "reserved",
 			src: "package t\ncontexts { all, client }\n"},
 
@@ -232,64 +249,64 @@ func TestDiagnostics(t *testing.T) {
 			src: "package t\nobject O { }\n"},
 		{name: "object as a field type", want: "not a field type",
 			src: "package t\nobject O { a bool }\ntype T { o O }\n"},
-		{name: "quantize without interpolate", want: "quantize belongs to the [interpolate]",
-			src: "package t\ntype V { x float64 }\nobject O { p V [quantize = 10, max = 1] \n b bool }\n"},
+		{name: "quantize without interpolate", want: "quantize belongs to the | interpolate",
+			src: "package t\ntype V { x float64 }\nobject O { p V | quantize = 10, max = 1 \n b bool }\n"},
 		{name: "quantize on a non-composite", want: "component-wise",
-			src: "package t\nobject O { p uint32 [interpolate, quantize = 10, max = 1] \n b bool }\n"},
+			src: "package t\nobject O { p uint32 | interpolate, quantize = 10, max = 1 \n b bool }\n"},
 		{name: "fixed-composite quantize scale must be a power of two", want: "positive power of two",
-			src: "package t\ntype V { x fixed(16, 16) [min = -8, max = 8] }\nobject O { p V [interpolate, quantize = 100] \n b bool }\n"},
+			src: "package t\ntype V { x fixed(16, 16) | min = -8, max = 8 }\nobject O { p V | interpolate, quantize = 100 \n b bool }\n"},
 		{name: "fixed-composite quantize cannot exceed the storage's fraction", want: "cannot be finer than the storage",
-			src: "package t\ntype V { x fixed(8, 8) [min = -8, max = 8] }\nobject O { p V [interpolate, quantize = 512] \n b bool }\n"},
+			src: "package t\ntype V { x fixed(8, 8) | min = -8, max = 8 }\nobject O { p V | interpolate, quantize = 512 \n b bool }\n"},
 		{name: "fixed-composite quantize takes no max", want: "the bound comes from the components",
-			src: "package t\ntype V { x fixed(16, 16) [min = -8, max = 8] }\nobject O { p V [interpolate, quantize = 256, max = 8] \n b bool }\n"},
+			src: "package t\ntype V { x fixed(16, 16) | min = -8, max = 8 }\nobject O { p V | interpolate, quantize = 256, max = 8 \n b bool }\n"},
 		// an unbounded fixed component is already illegal by §4.3 (bounds are
 		// part of the wire format) — the narrowing rule never sees one alone;
 		// this documents the error the author gets, and that the composite
 		// rule survives the multi-error pass beside it
-		{name: "fixed-composite quantize under an unbounded component", want: "requires [min = A, max = B]",
-			src: "package t\ntype V { x fixed(16, 16) }\nobject O { p V [interpolate, quantize = 256] \n b bool }\n"},
+		{name: "fixed-composite quantize under an unbounded component", want: "requires | min = A, max = B",
+			src: "package t\ntype V { x fixed(16, 16) }\nobject O { p V | interpolate, quantize = 256 \n b bool }\n"},
 		{name: "fixed-composite quantize is 64-bit at most", want: "wider than 64 bits",
-			src: "package t\ntype V { x fixed(112, 16) [min = -8, max = 8] }\nobject O { p V [interpolate, quantize = 256] \n b bool }\n"},
+			src: "package t\ntype V { x fixed(112, 16) | min = -8, max = 8 }\nobject O { p V | interpolate, quantize = 256 \n b bool }\n"},
 		{name: "mixed float/fixed composite falls to the float rule", want: "every component of V to be a float scalar",
-			src: "package t\ntype V { x fixed(16, 16) [min = -8, max = 8]\n y float64 }\nobject O { p V [interpolate, quantize = 256, max = 8] \n b bool }\n"},
+			src: "package t\ntype V { x fixed(16, 16) | min = -8, max = 8\n y float64 }\nobject O { p V | interpolate, quantize = 256, max = 8 \n b bool }\n"},
 		// the deferred pass also CLOSES a latent hole: with the composite in
 		// a later-sorting file, the inline rule used to validate components
 		// against an empty shell — vacuously passing anything
 		{name: "non-float non-fixed component rejected across file order", want: "every component of V to be a float scalar",
 			srcs: map[string]string{
-				"A_Objects.schema": "package t\nobject O { p V [interpolate, quantize = 10, max = 1] \n b bool }\n",
+				"A_Objects.schema": "package t\nobject O { p V | interpolate, quantize = 10, max = 1 \n b bool }\n",
 				"Z_Types.schema":   "package t\ntype V { x float64\n s string(8) }\n"},
 		},
 
 		// ---- namespace, names, claims ----
 		// valued attributes written bare. FOUND BY THE FUZZER (internal/fuzz)
-		// in 3 seconds: `[min, max]` reached expression evaluation as a nil
+		// in 3 seconds: ` | min, max` reached expression evaluation as a nil
 		// and panicked the compiler with a stack trace instead of pointing at
 		// the typo. One case per valued attribute — the guard is a table, and
 		// a table with an untested entry is a table that will lose one.
 		{name: "min written without a value", want: "requires a value",
-			src: "package t\ntype T { n int32 [min, max = 10] }\n"},
+			src: "package t\ntype T { n int32 | min, max = 10 }\n"},
 		{name: "max written without a value", want: "requires a value",
-			src: "package t\ntype T { n int32 [min = 0, max] }\n"},
+			src: "package t\ntype T { n int32 | min = 0, max }\n"},
 		{name: "resolution written without a value", want: "requires a value",
-			src: "package t\ntype T { x float32 [min = 0, max = 1, resolution] }\n"},
+			src: "package t\ntype T { x float32 | min = 0, max = 1, resolution }\n"},
 		{name: "quantize written without a value", want: "requires a value",
-			src: "package t\ntype V { x float64 }\nobject O { p V [interpolate, quantize, max = 1] \n b bool }\n"},
+			src: "package t\ntype V { x float64 }\nobject O { p V | interpolate, quantize, max = 1 \n b bool }\n"},
 		{name: "round written without a value", want: "requires a value",
-			src: "package t\nobject O { x float32 [interpolate, min = 0, max = 1, resolution = 0.1, round] \n b bool }\n"},
+			src: "package t\nobject O { x float32 | interpolate, min = 0, max = 1, resolution = 0.1, round \n b bool }\n"},
 
 		// cycle guards: every resolver that can re-enter itself must REJECT,
 		// not recurse. Before the enum guard these crashed the compiler with
 		// a raw "fatal error: stack overflow" — no diagnostic, no position.
-		{name: "enum [max = E.Max] self-cycle", want: "reference cycle",
-			src: "package t\nenum Alpha [max = Alpha.Max] { One }\n"},
-		{name: "enum [max = E.Max] mutual cycle across files", want: "reference cycle",
+		{name: "enum | max = E.Max self-cycle", want: "reference cycle",
+			src: "package t\nenum Alpha | max = Alpha.Max\n{ One }\n"},
+		{name: "enum | max = E.Max mutual cycle across files", want: "reference cycle",
 			srcs: map[string]string{
-				"A_e.schema": "package t\nenum Alpha [max = Zed.Max] { One, Two }\n",
-				"Z_e.schema": "package t\nenum Zed [max = Alpha.Max] { Three }\n"},
+				"A_e.schema": "package t\nenum Alpha | max = Zed.Max\n{ One, Two }\n",
+				"Z_e.schema": "package t\nenum Zed | max = Alpha.Max\n{ Three }\n"},
 		},
-		{name: "enum [max = E.Max] three-enum cycle", want: "reference cycle",
-			src: "package t\nenum A [max = B.Max] { One }\nenum B [max = C.Max] { Two }\nenum C [max = A.Max] { Three }\n"},
+		{name: "enum | max = E.Max three-enum cycle", want: "reference cycle",
+			src: "package t\nenum A | max = B.Max\n{ One }\nenum B | max = C.Max\n{ Two }\nenum C | max = A.Max\n{ Three }\n"},
 		{name: "constant self-cycle", want: "reference cycle",
 			src: "package t\nconst A = A + 1\n"},
 		{name: "constant mutual cycle", want: "reference cycle",
@@ -326,11 +343,11 @@ func TestDiagnostics(t *testing.T) {
 		{name: "field export equals its declaring type's name (C# CS0542)", want: "enclosing type",
 			src: "package t\nmessage Timescale { timescale float64 }\n"},
 		{name: "object field export equals a generated family class name", want: "enclosing class",
-			src: "package t\nobject Ship { ship_state uint8 [interpolate, min = 0, max = 3] }\n"},
+			src: "package t\nobject Ship { ship_state uint8 | interpolate, min = 0, max = 3 }\n"},
 		{name: "float triple degenerate at float32", want: "degenerate at float32",
-			src: "package t\ntype T { x float32 [min = 1.0, max = 1.00000001, resolution = 0.000000001] }\n"},
+			src: "package t\ntype T { x float32 | min = 1.0, max = 1.00000001, resolution = 0.000000001 }\n"},
 		{name: "resolution collapses to zero at float32", want: "collapses to zero at float32",
-			src: "package t\ntype T { x float32 [min = 0.0, max = 1.0, resolution = 1e-46] }\n"},
+			src: "package t\ntype T { x float32 | min = 0.0, max = 1.0, resolution = 1e-46 }\n"},
 
 		// ---- package names that cannot compile (the 2026-08-16 ruling on the
 		// compile fuzzer's `package exit` specimen — Glenn, verbatim: "Refuse
@@ -369,33 +386,33 @@ func TestDiagnostics(t *testing.T) {
 		// range is a parse error; constant arithmetic is overflow-guarded).
 		// NaN has no spelling at all — its arm is TestNonFiniteTripleNaN. ----
 		{name: "compressed float min -Inf at float32", want: "min = -1e+39 overflows float32",
-			src: "package t\ntype T { x float32 [min = -1e39, max = 1e39, resolution = 1e30] }\n"},
+			src: "package t\ntype T { x float32 | min = -1e39, max = 1e39, resolution = 1e30 }\n"},
 		{name: "compressed float min +Inf at float32", want: "min = 1e+39 overflows float32",
-			src: "package t\ntype T { x float32 [min = 1e39, max = 2e39, resolution = 1e30] }\n"},
+			src: "package t\ntype T { x float32 | min = 1e39, max = 2e39, resolution = 1e30 }\n"},
 		{name: "compressed float max +Inf at float32", want: "max = 1e+39 overflows float32",
-			src: "package t\ntype T { x float32 [min = 0.0, max = 1e39, resolution = 1e30] }\n"},
+			src: "package t\ntype T { x float32 | min = 0.0, max = 1e39, resolution = 1e30 }\n"},
 		// (a -Inf max cannot be its own diagnostic: min < max puts min below
 		// it, so the min arm always fires first — the parameter is still
 		// covered, by ordering rather than by a separate message)
 		{name: "compressed float resolution +Inf at float32", want: "resolution = 1e+39 overflows float32",
-			src: "package t\ntype T { x float32 [min = 0.0, max = 1.0, resolution = 1e39] }\n"},
+			src: "package t\ntype T { x float32 | min = 0.0, max = 1.0, resolution = 1e39 }\n"},
 		{name: "compressed float min +Inf at float64, integer literal", want: "does not fit float64",
-			src: "package t\ntype T { x float32 [min = 1" + strings.Repeat("0", 400) + ", max = 1.0, resolution = 0.1] }\n"},
+			src: "package t\ntype T { x float32 | min = 1" + strings.Repeat("0", 400) + ", max = 1.0, resolution = 0.1 }\n"},
 		{name: "compressed float min -Inf at float64, negated integer literal", want: "does not fit float64",
-			src: "package t\ntype T { x float32 [min = -1" + strings.Repeat("0", 400) + ", max = 1.0, resolution = 0.1] }\n"},
+			src: "package t\ntype T { x float32 | min = -1" + strings.Repeat("0", 400) + ", max = 1.0, resolution = 0.1 }\n"},
 		// The through-a-const vehicle is refused EARLIER since the #22 guard
 		// landed: an implicitly-typed const past int64 fails at its own
 		// declaration, so the float64-finiteness arm can no longer be reached
 		// through a const — the schema is refused either way, and the float64
 		// arm keeps its coverage via the integer-literal cases beside this one.
 		{name: "compressed float max +Inf at float64, through a const", want: "does not fit int64, the default constant storage",
-			src: "package t\nconst Big = 1" + strings.Repeat("0", 400) + "\ntype T { x float32 [min = 0.0, max = Big, resolution = 0.1] }\n"},
+			src: "package t\nconst Big = 1" + strings.Repeat("0", 400) + "\ntype T { x float32 | min = 0.0, max = Big, resolution = 0.1 }\n"},
 		{name: "compressed float resolution +Inf at float64, integer literal", want: "does not fit float64",
-			src: "package t\ntype T { x float32 [min = 0.0, max = 1.0, resolution = 1" + strings.Repeat("0", 400) + "] }\n"},
+			src: "package t\ntype T { x float32 | min = 0.0, max = 1.0, resolution = 1" + strings.Repeat("0", 400) + " }\n"},
 		{name: "interpolate float64 triple infinite at float32 — rule 4 shares the path", want: "overflows float32, where every runtime evaluates the triple",
-			src: "package t\nobject O { x float64 [interpolate, min = -1e39, max = 1e39, resolution = 1e30]\n b bool }\n"},
+			src: "package t\nobject O { x float64 | interpolate, min = -1e39, max = 1e39, resolution = 1e30\n b bool }\n"},
 		{name: "enum max above the 32-bit tag wire", want: "32-bit tag wire",
-			src: "package t\nenum E [max = 2147483648] { A }\ntype T { e E }\n"},
+			src: "package t\nenum E | max = 2147483648\n{ A }\ntype T { e E }\n"},
 		{name: "message field would shadow the C# Type dispatch property", want: "Type dispatch property",
 			src: "package t\nmessage M { type_ uint8 }\n"},
 		{name: "a message named Type cannot carry its own C# dispatch property", want: "Type dispatch property",
@@ -409,9 +426,9 @@ func TestDiagnostics(t *testing.T) {
 		{name: "two consts whose Rust constant spellings collide", want: "both generate the symbol AB_MAX",
 			src: "package t\nconst ABMax = 1\nconst AbMax = 2\n"},
 		{name: "quantize scale beyond float64 exactness", want: "not exactly representable in float64",
-			src: "package t\ntype V {\n    x float32\n    y float32\n}\nobject O { p V [interpolate, quantize = 9007199254740993, max = 1] }\n"},
+			src: "package t\ntype V {\n    x float32\n    y float32\n}\nobject O { p V | interpolate, quantize = 9007199254740993, max = 1 }\n"},
 		{name: "a type collides with an object view's flat wire function (Rust/C)", want: "both generate the symbol write_ship_data_shallow",
-			src: "package t\nobject Ship { x uint8 [interpolate, min = 0, max = 3] }\ntype ShipDataShallow { y uint8 }\n"},
+			src: "package t\nobject Ship { x uint8 | interpolate, min = 0, max = 3 }\ntype ShipDataShallow { y uint8 }\n"},
 		{name: "a const collides with an enum's C variant #define", want: "variant constants (C form)",
 			src: "package t\nenum DriveMode { Ludicrous }\nconst DriveModeLudicrous = 1\ntype T { m DriveMode }\n"},
 		{name: "two enums whose C debug-name functions collide", want: "both generate the symbol enum_name_ab_mode",
@@ -424,7 +441,7 @@ func TestDiagnostics(t *testing.T) {
 
 		// ---- defaults ----
 		{name: "default out of range", want: "outside its range",
-			src: "package t\ntype T { h int16 [min = 0, max = 10] = 99 }\n"},
+			src: "package t\ntype T { h int16 = 99 | min = 0, max = 10 }\n"},
 		{name: "default on an array", want: "array takes no specified default",
 			src: "package t\ntype T { a [4]uint8 = 1 }\n"},
 		{name: "enum default is not a variant", want: "names a variant",
@@ -434,15 +451,15 @@ func TestDiagnostics(t *testing.T) {
 
 		// ---- native type mapping (SPEC §4.2) ----
 		{name: "cpp_native without cpp_include", want: "cpp_native and cpp_include go together",
-			src: "package t\ntype V [cpp_native = VMath] { x float64 }\n"},
+			src: "package t\ntype V | cpp_native = VMath { x float64 }\n"},
 		{name: "cpp_include without cpp_native", want: "cpp_native and cpp_include go together",
-			src: "package t\ntype V [cpp_include = \"v.h\"] { x float64 }\n"},
+			src: "package t\ntype V | cpp_include = \"v.h\" { x float64 }\n"},
 		{name: "cpp_native takes an identifier", want: "cpp_native takes an identifier",
-			src: "package t\ntype V [cpp_native = \"VMath\", cpp_include = \"v.h\"] { x float64 }\n"},
+			src: "package t\ntype V | cpp_native = \"VMath\", cpp_include = \"v.h\" { x float64 }\n"},
 		{name: "cpp_include takes a string", want: "cpp_include takes a quoted header path",
-			src: "package t\ntype V [cpp_native = VMath, cpp_include = vh] { x float64 }\n"},
+			src: "package t\ntype V | cpp_native = VMath, cpp_include = vh { x float64 }\n"},
 		{name: "a valued type attr that is not a binding is still rejected", want: "bare identifier",
-			src: "package t\ntype V [vec3 = 4] { x float64 }\n"},
+			src: "package t\ntype V | vec3 = 4 { x float64 }\n"},
 	}
 
 	for _, tc := range cases {
@@ -476,35 +493,39 @@ func TestGoodCornersStillCompile(t *testing.T) {
 		{name: "nested if with cond in the same branch",
 			src: "package t\ntype T {\n    a bool\n    if a {\n        b bool\n        if b { x uint8 }\n    }\n}\n"},
 		{name: "fixed default in whole units, exactly representable (the reopened door)",
-			src: "package t\ntype Q { w fixed(2, 30) [min = -1, max = 1] = 1.0 \n x fixed(16, 16) [min = 0, max = 100] = 0.5 \n y fixed(48, 16) [min = -10, max = 10] = 3 }\n"},
+			src: "package t\ntype Q { w fixed(2, 30) = 1.0 | min = -1, max = 1\n x fixed(16, 16) = 0.5 | min = 0, max = 100\n y fixed(48, 16) = 3 | min = -10, max = 10 }\n"},
 		{name: "field named flags at block scope",
 			src: "package t\nflags F { A }\ntype T { flags F }\n"},
 		{name: "64 flags variants fill uint64 storage exactly",
 			src: "package t\nflags F { " + strings.Replace(flags65, ", V64", "", 1) + " }\n"},
 		{name: "F.Count in a constant expression",
 			src: "package t\nflags F { A, B }\nconst N = F.Count\n"},
+		{name: "a // comment terminates the qualification section",
+			src: "package t\ntype T { h int16 | min = 0, max = 5 // the section ends here\n}\n"},
+		{name: "a qualified declaration's body opens on the next line",
+			src: "package t\nenum E | max = 5\n{ A, B }\ntype Q | tagged\n{\n    e E\n}\n"},
 		{name: "message as a field type",
 			src: "package t\nmessage M { x uint8 }\ntype T { m M }\n"},
 		{name: "empty type and empty message",
 			src: "package t\ntype T { }\nmessage M { }\n"},
 		{name: "full-range uint64",
-			src: "package t\ntype T { n uint64 [min = 0, max = 18446744073709551615] }\n"},
+			src: "package t\ntype T { n uint64 | min = 0, max = 18446744073709551615 }\n"},
 		{name: "fixed at every storage width, F = 0, and the sign-bit-only corner",
-			src: "package t\ntype T {\n    a fixed(8, 8) [min = -100, max = 100]\n    b fixed(16, 16) [min = -180, max = 180]\n    c fixed(32, 0) [min = 0, max = 1000000]\n    d fixed(48, 16) [min = -30000, max = 30000]\n    e fixed(112, 16) [min = -1000000, max = 1000000]\n    f fixed(1, 63) [min = -1, max = 0]\n}\n"},
+			src: "package t\ntype T {\n    a fixed(8, 8) | min = -100, max = 100\n    b fixed(16, 16) | min = -180, max = 180\n    c fixed(32, 0) | min = 0, max = 1000000\n    d fixed(48, 16) | min = -30000, max = 30000\n    e fixed(112, 16) | min = -1000000, max = 1000000\n    f fixed(1, 63) | min = -1, max = 0\n}\n"},
 		{name: "ufixed at every storage width, the full unsigned domains, and the one-bit corner",
-			src: "package t\ntype T {\n    a ufixed(8, 8) [min = 0, max = 255]\n    b ufixed(16, 16) [min = 0, max = 360]\n    c ufixed(32, 0) [min = 0, max = 4294967295]\n    d ufixed(48, 16) [min = 0, max = 281474976710655]\n    e ufixed(112, 16) [min = 0, max = 2000000]\n    f ufixed(1, 63) [min = 0, max = 1]\n    g ufixed(16, 16) [min = 3, max = 3]\n}\n"},
+			src: "package t\ntype T {\n    a ufixed(8, 8) | min = 0, max = 255\n    b ufixed(16, 16) | min = 0, max = 360\n    c ufixed(32, 0) | min = 0, max = 4294967295\n    d ufixed(48, 16) | min = 0, max = 281474976710655\n    e ufixed(112, 16) | min = 0, max = 2000000\n    f ufixed(1, 63) | min = 0, max = 1\n    g ufixed(16, 16) | min = 3, max = 3\n}\n"},
 		{name: "ufixed default in whole units, exactly representable",
-			src: "package t\ntype T { x ufixed(2, 30) [min = 0, max = 1] = 1.0 \n y ufixed(16, 16) [min = 0, max = 100] = 0.5 }\n"},
+			src: "package t\ntype T { x ufixed(2, 30) = 1.0 | min = 0, max = 1\n y ufixed(16, 16) = 0.5 | min = 0, max = 100 }\n"},
 		{name: "un-narrowed ufixed composite dissolves (rule 2, sign-agnostic delegation)",
-			src: "package t\ntype V { x ufixed(48, 16) [min = 0, max = 100]\n y ufixed(48, 16) [min = 0, max = 100] }\nobject O { p V [interpolate] \n b bool }\n"},
+			src: "package t\ntype V { x ufixed(48, 16) | min = 0, max = 100\n y ufixed(48, 16) | min = 0, max = 100 }\nobject O { p V | interpolate \n b bool }\n"},
 		{name: "int128 with a range only 128 bits can hold, and raw uint128",
-			src: "package t\ntype T {\n    flux int128 [min = -1267650600228229401496703205376, max = 1267650600228229401496703205376]\n    id   uint128\n}\n"},
+			src: "package t\ntype T {\n    flux int128 | min = -1267650600228229401496703205376, max = 1267650600228229401496703205376\n    id   uint128\n}\n"},
 		{name: "128-bit defaults inside their range",
-			src: "package t\ntype T {\n    a int128 [min = -10, max = 10] = -5\n    b uint128 = 7\n}\n"},
-		{name: "a [local] fixed object field carries no bounds (it reaches no wire)",
-			src: "package t\nobject O {\n    cache fixed(16, 16) [local]\n    size  uint8 [interpolate, min = 0, max = 100]\n}\n"},
+			src: "package t\ntype T {\n    a int128 = -5 | min = -10, max = 10\n    b uint128 = 7\n}\n"},
+		{name: "a | local fixed object field carries no bounds (it reaches no wire)",
+			src: "package t\nobject O {\n    cache fixed(16, 16) | local\n    size  uint8 | interpolate, min = 0, max = 100\n}\n"},
 		{name: "headroom enum with non-variant wire values",
-			src: "package t\nenum E [max = 15] { A, B }\ntype T { e E }\n"},
+			src: "package t\nenum E | max = 15\n{ A, B }\ntype T { e E }\n"},
 		{name: "field named message_type on a plain type (only messages claim the method)",
 			src: "package t\ntype T { message_type uint8 }\n"},
 		{name: "a type named WriteFoo with no type Foo anywhere",
@@ -535,12 +556,12 @@ func TestGoodCornersStillCompile(t *testing.T) {
 		// component list (the deferred pass; found the day rule 2b landed)
 		{name: "fixed-composite quantize with the composite in a later-sorting file",
 			srcs: map[string]string{
-				"A_Objects.schema": "package t\nobject O { rotation Q [interpolate, quantize = 1024] \n b bool }\n",
-				"Z_Types.schema":   "package t\ntype Q { x fixed(2, 30) [min = -1, max = 1]\n y fixed(2, 30) [min = -1, max = 1]\n z fixed(2, 30) [min = -1, max = 1]\n w fixed(2, 30) [min = -1, max = 1] = 1.0 }\n"},
+				"A_Objects.schema": "package t\nobject O { rotation Q | interpolate, quantize = 1024 \n b bool }\n",
+				"Z_Types.schema":   "package t\ntype Q { x fixed(2, 30) | min = -1, max = 1\n y fixed(2, 30) | min = -1, max = 1\n z fixed(2, 30) | min = -1, max = 1\n w fixed(2, 30) = 1.0 | min = -1, max = 1 }\n"},
 		},
 		{name: "float-composite quantize with the composite in a later-sorting file",
 			srcs: map[string]string{
-				"A_Objects.schema": "package t\nobject O { p V [interpolate, quantize = 10, max = 1] \n b bool }\n",
+				"A_Objects.schema": "package t\nobject O { p V | interpolate, quantize = 10, max = 1 \n b bool }\n",
 				"Z_Types.schema":   "package t\ntype V { x float64\n y float64 }\n"},
 		},
 	}
@@ -564,7 +585,7 @@ func TestGoodCornersStillCompile(t *testing.T) {
 // exercised the only way a NaN can exist in the checker's input: planted
 // directly in the AST. Defense in depth, proven rather than assumed.
 func TestNonFiniteTripleNaN(t *testing.T) {
-	src := "package t\ntype T { x float32 [min = 0.5, max = 1.0, resolution = 0.25] }\n"
+	src := "package t\ntype T { x float32 | min = 0.5, max = 1.0, resolution = 0.25 }\n"
 	f, perrs := parser.Parse("T.schema", []byte(src))
 	if len(perrs) > 0 {
 		t.Fatal(perrs[0])

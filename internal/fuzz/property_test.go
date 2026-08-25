@@ -174,7 +174,7 @@ func TestFormatIsIdempotent(t *testing.T) {
 // source the formatter accepts must be a fixed point after one pass — and it
 // must mean the same thing. Idempotence alone is a trap: a formatter that
 // silently DROPPED an attribute (the exact class of the 9468155 crash, a
-// `[min = 0]` on a wrapped attribute list) is perfectly idempotent while
+// ` | min = 0` on a wrapped attribute list) is perfectly idempotent while
 // changing the wire of every field it touched. The protocol id is the low 64
 // bits of SHA-256 over the wire-shape projection, so "same id" is precisely
 // "same wire": for any source that checks, format() must preserve it.
@@ -222,8 +222,8 @@ func TestDiagnosticOrderIsDeterministic(t *testing.T) {
 	// error and the ordering is observable
 	const src = `package t
 
-type Aaa { x fixed(16, 16) [min = -100, max = 100] }
-type Bbb { y int128 [min = -10, max = 10] }
+type Aaa { x fixed(16, 16) | min = -100, max = 100 }
+type Bbb { y int128 | min = -10, max = 10 }
 type Ccc { z bits(96) }
 
 table Root {

@@ -178,56 +178,16 @@ func dropTrailingCommaOneLine(tokens []scanner.Token) []scanner.Token {
 	return tokens
 }
 
-// reorderAttrs rewrites every [ ... ] attribute list on the line with
-// valueless markers first, then valued keys, both in stable order — except
-// array bounds, which are not attribute lists (they FOLLOW no expression
-// context that has keys; a bound never contains a comma at the top level in
-// v1, so any bracket group containing `=` or lone identifiers only is safe
-// to normalize, and groups that are bounds pass through unchanged).
+// reorderAttrs rewrites a line's | qualification section with valueless
+// markers first, then valued keys, both in stable order (SPEC §7.4 rule 3).
+// The section runs from the first top-level | to the end of the line, so
+// there is at most one and nothing can follow it.
 func reorderAttrs(tokens []scanner.Token) []scanner.Token {
-	out := make([]scanner.Token, 0, len(tokens))
-	i := 0
-	for i < len(tokens) {
-		t := tokens[i]
-		if t.Kind != scanner.LBrack || !isAttrOpen(tokens, i) {
-			out = append(out, t)
-			i++
+	for i, t := range tokens {
+		if t.Kind != scanner.Pipe {
 			continue
 		}
-		// collect the bracket group
-		j := i + 1
-		depth := 1
-		for j < len(tokens) && depth > 0 {
-			switch tokens[j].Kind {
-			case scanner.LBrack:
-				depth++
-			case scanner.RBrack:
-				depth--
-			}
-			j++
-		}
-		if depth != 0 {
-			// The bracket group does not close on this line. reorderAttrs runs
-			// per LINE, and the scanner deliberately suppresses the newline
-			// after `[` and `,` so that attribute lists MAY wrap (SPEC §4.1) —
-			// so this is ordinary valid source, not malformed input:
-			//
-			//     a int32 [
-			//         min = 0,
-			//         max = 10
-			//     ]
-			//
-			// Reordering needs the whole group, and we do not have it. Emit the
-			// rest of the line untouched. Previously this fell through to
-			// tokens[i+1 : j-1] with j == i+1 and panicked the process — from
-			// `check`, `generate`, `id`, `fmt` and `pack` alike, since they all
-			// format before parsing.
-			out = append(out, tokens[i:]...)
-			return out
-		}
-
-		group := tokens[i+1 : j-1] // inside the brackets
-		entries := splitTop(group, scanner.Comma)
+		entries := splitTop(tokens[i+1:], scanner.Comma)
 		var valueless, valued [][]scanner.Token
 		for _, e := range entries {
 			if containsKind(e, scanner.Assign) {
@@ -236,7 +196,7 @@ func reorderAttrs(tokens []scanner.Token) []scanner.Token {
 				valueless = append(valueless, e)
 			}
 		}
-		out = append(out, tokens[i]) // [
+		out := append([]scanner.Token{}, tokens[:i+1]...)
 		first := true
 		for _, e := range append(valueless, valued...) {
 			if !first {
@@ -245,10 +205,9 @@ func reorderAttrs(tokens []scanner.Token) []scanner.Token {
 			first = false
 			out = append(out, e...)
 		}
-		out = append(out, tokens[j-1]) // ]
-		i = j
+		return out
 	}
-	return out
+	return tokens
 }
 
 // isAttrOpen reports whether the [ at index i opens an ATTRIBUTE list rather
@@ -491,12 +450,12 @@ func splitField(s string) (name, typ, tail string, ok bool) {
 	if rest == "" || strings.HasPrefix(rest, "//") {
 		return "", "", "", false
 	}
-	// the type runs to the first ` [` (attributes) or ` =` (default)
+	// the DEFINITION (type plus any `= default`) runs to the first ` |` —
+	// the qualification column is padded past the longest definition in the
+	// run (SPEC §7.4 rule 2)
 	typ = rest
 	tail = ""
-	if k := strings.Index(rest, " ["); k >= 0 {
-		typ, tail = rest[:k], strings.TrimLeft(rest[k:], " ")
-	} else if k := strings.Index(rest, " ="); k >= 0 {
+	if k := strings.Index(rest, " |"); k >= 0 {
 		typ, tail = rest[:k], strings.TrimLeft(rest[k:], " ")
 	}
 	if strings.HasSuffix(typ, "{") {

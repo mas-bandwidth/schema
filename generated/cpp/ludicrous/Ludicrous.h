@@ -150,10 +150,10 @@ struct BodyState {
     FixedVec position;
     FixedQuat rotation;
     FixedVec velocity;
-    double spin = 0.0; // [local] — no wire
+    double spin = 0.0; //  | local — no wire
 };
 
-// BodyData_Deep — every non-[local] field, deep encodings: full state for
+// BodyData_Deep — every non- | local field, deep encodings: full state for
 // client-side prediction
 struct BodyData_Deep {
     FixedVec position;
@@ -161,7 +161,7 @@ struct BodyData_Deep {
     FixedVec velocity;
 };
 
-// BodyData_Shallow — the [interpolate] fields on the quantized wire: the
+// BodyData_Shallow — the | interpolate fields on the quantized wire: the
 // implementation detail on the way to interpolation on the client
 struct BodyData_Shallow {
     FixedVec position;
@@ -178,7 +178,7 @@ struct BodyData_Interpolate {
     FixedVec velocity;
 };
 
-// QuantizeBody/UnquantizeBody are not emitted: every [interpolate] field
+// QuantizeBody/UnquantizeBody are not emitted: every | interpolate field
 // is already wire-domain (fixed components are their own quantization,
 // SPEC §4.8) — Interpolate and Shallow are the same values.
 
@@ -197,7 +197,7 @@ struct NarrowBodyState {
     FixedVec velocity;
 };
 
-// NarrowBodyData_Deep — every non-[local] field, deep encodings: full state for
+// NarrowBodyData_Deep — every non- | local field, deep encodings: full state for
 // client-side prediction
 struct NarrowBodyData_Deep {
     FixedVec position;
@@ -205,16 +205,16 @@ struct NarrowBodyData_Deep {
     FixedVec velocity;
 };
 
-// NarrowBodyData_Shallow — the [interpolate] fields on the quantized wire: the
+// NarrowBodyData_Shallow — the | interpolate fields on the quantized wire: the
 // implementation detail on the way to interpolation on the client
 struct NarrowBodyData_Shallow {
     // position: FixedVec narrowed to 8 fractional bits (quantize = 256) — per-component
-    // quantized units; bounds are the component's whole-unit [min, max] scaled
+    // quantized units; bounds are the component's whole-unit | min, max scaled
     int32_t position_x = 0; // in [-25600000, 25600000]
     int32_t position_y = 0; // in [-25600000, 25600000]
     int32_t position_z = 0; // in [-25600000, 25600000]
     // rotation: FixedQuat narrowed to 10 fractional bits (quantize = 1024) — per-component
-    // quantized units; bounds are the component's whole-unit [min, max] scaled
+    // quantized units; bounds are the component's whole-unit | min, max scaled
     int16_t rotation_x = 0; // in [-1024, 1024]
     int16_t rotation_y = 0; // in [-1024, 1024]
     int16_t rotation_z = 0; // in [-1024, 1024]

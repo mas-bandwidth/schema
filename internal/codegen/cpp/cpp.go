@@ -312,7 +312,7 @@ func (g *gen) emitDataFile(carriesProtocolId bool) {
 		case *ir.ContextsMarker:
 			g.pf("// contexts declared for this unit: %s (SPEC §4.2).\n", strings.Join(d.Names, ", "))
 			g.pf("// Contexts generate no standalone artifacts — where an object carries\n")
-			g.pf("// context-scoped [local] fields, its State struct is generated once per\n")
+			g.pf("// context-scoped | local fields, its State struct is generated once per\n")
 			g.pf("// context (ClientShipState, ServerShipState, ...), each holding the `all`\n")
 			g.pf("// fields plus its own context's. No preprocessor in any target.\n\n")
 		case *ir.Struct:
@@ -553,7 +553,7 @@ func (g *gen) emitObject(d *ir.Object) {
 				}
 			}
 			g.pf("// %s%sState — the full simulation struct for the %s context: every `all`\n", capitalize(ctx), d.Name, ctx)
-			g.pf("// field plus the fields scoped [local, context = %s]\n", ctx)
+			g.pf("// field plus the fields scoped | local, context = %s\n", ctx)
 			g.pf("struct %s%sState {\n", capitalize(ctx), d.Name)
 			g.emitFields(fields, storageDeep)
 			g.pf("};\n\n")
@@ -575,13 +575,13 @@ func (g *gen) emitObject(d *ir.Object) {
 		}
 	}
 
-	g.pf("// %sData_Deep — every non-[local] field, deep encodings: full state for\n", d.Name)
+	g.pf("// %sData_Deep — every non- | local field, deep encodings: full state for\n", d.Name)
 	g.pf("// client-side prediction\n")
 	g.pf("struct %sData_Deep {\n", d.Name)
 	g.emitFields(deep, storageDeep)
 	g.pf("};\n\n")
 
-	g.pf("// %sData_Shallow — the [interpolate] fields on the quantized wire: the\n", d.Name)
+	g.pf("// %sData_Shallow — the | interpolate fields on the quantized wire: the\n", d.Name)
 	g.pf("// implementation detail on the way to interpolation on the client\n")
 	g.pf("struct %sData_Shallow {\n", d.Name)
 	g.emitFields(interp, storageShallow)
@@ -626,7 +626,7 @@ func (g *gen) emitField(f *ir.Field, v view) {
 		if f.FixedShallow {
 			g.pf("    // %s: %s narrowed to %d fractional bits (quantize = %s) — per-component\n",
 				f.Name, f.Type.Name, f.QuantShift, ir.RenderExpr(f.QuantScaleExpr))
-			g.pf("    // quantized units; bounds are the component's whole-unit [min, max] scaled\n")
+			g.pf("    // quantized units; bounds are the component's whole-unit | min, max scaled\n")
 			for _, comp := range st.Fields {
 				lo, hi, _, _, typ := fixedShallowComp(f, comp)
 				g.pf("    %s %s_%s = 0; // in [%s, %s]\n", typ, f.Name, comp.Name, lo, hi)
@@ -760,9 +760,9 @@ func (g *gen) fieldComment(f *ir.Field) string {
 	}
 	if f.Local {
 		if f.Context != "" {
-			parts = append(parts, fmt.Sprintf("[local, context = %s]", f.Context))
+			parts = append(parts, fmt.Sprintf(" | local, context = %s", f.Context))
 		} else {
-			parts = append(parts, "[local] — no wire")
+			parts = append(parts, " | local — no wire")
 		}
 	}
 	if len(parts) == 0 {

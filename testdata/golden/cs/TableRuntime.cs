@@ -53,7 +53,7 @@ namespace Example
         public bool Counted;                 // a Count/Length companion exists (counted arrays, strings, bytes)
         public int ArrayBound;               // array capacity / string max length; 0 for plain scalars
         public TableTypeInfo Table;          // nested table's descriptor, or null
-        public bool HasRange;                // a declared [min, max] (int or float)
+        public bool HasRange;                // a declared | min, max (int or float)
         public double RangeMin;              // NOTE: int64 ranges beyond 2^53 lose precision here
         public double RangeMax;
         public long EnumMax;                 // enums: highest valid wire value (None = 0 always valid); else -1

@@ -70,13 +70,19 @@ func main() {
 		// processing, so this exists for editors and pre-commit hooks
 		fs := flag.NewFlagSet("fmt", flag.ExitOnError)
 		fs.BoolVar(&verbose, "verbose", false, "list the files rewritten")
+		migrate := fs.Bool("migrate", false, "one-shot migration: additionally accept the retired spellings ([ ... ] attribute blocks, [<= N] bounds) and rewrite them to the current grammar (SPEC §7.4)")
 		_ = fs.Parse(os.Args[2:]) // ExitOnError: Parse never returns an error
 		paths, err := compiler.GatherPaths(fs.Args())
 		if err != nil {
 			fail(err)
 		}
 		for _, p := range paths {
-			_, rewrote, err := compiler.FormatFile(p)
+			var rewrote bool
+			if *migrate {
+				_, rewrote, err = compiler.MigrateFile(p)
+			} else {
+				_, rewrote, err = compiler.FormatFile(p)
+			}
 			if err != nil {
 				fail(err)
 			}

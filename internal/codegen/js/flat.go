@@ -1499,7 +1499,7 @@ func (g *fgen) emitReadInt(f *ir.Field, name, ind string) {
 // emitReadRangedBig decodes a BigInt-domain ranged integer (int64 family
 // and full-range unsigned): offset read wide, headroom rejected unless the
 // range fills the width, min added in the value domain (exact — decoded
-// values are in [min, max]).
+// values are in | min, max).
 func (g *fgen) emitReadRangedBig(f *ir.Field, name string, bits int64, ind string) {
 	diff := new(big.Int).Sub(f.IntMax, f.IntMin)
 	full := new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), uint(bits)), big.NewInt(1))

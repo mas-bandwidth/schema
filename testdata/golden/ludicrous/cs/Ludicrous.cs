@@ -41,7 +41,7 @@ namespace Ludicrous
     }
 
     // DriveMode — None = 0 implicit, variants dense from 1, wire range [0, 3] (SPEC §4.2);
-    // a native enum with unsigned backing — [max = ...] headroom values are
+    // a native enum with unsigned backing — | max = ... headroom values are
     // representable because C# enums are open over their backing type (SPEC §6.1)
     public enum DriveMode : byte
     {
@@ -137,10 +137,10 @@ namespace Ludicrous
         public FixedVec Position = new FixedVec();
         public FixedQuat Rotation = new FixedQuat();
         public FixedVec Velocity = new FixedVec();
-        public double Spin; // [local] — no wire
+        public double Spin; //  | local — no wire
     }
 
-    // BodyData_Deep — every non-[local] field, deep encodings: full state for
+    // BodyData_Deep — every non- | local field, deep encodings: full state for
     // client-side prediction
     public sealed class BodyData_Deep
     {
@@ -149,7 +149,7 @@ namespace Ludicrous
         public FixedVec Velocity = new FixedVec();
     }
 
-    // BodyData_Shallow — the [interpolate] fields on the quantized wire: the
+    // BodyData_Shallow — the | interpolate fields on the quantized wire: the
     // implementation detail on the way to interpolation on the client
     public sealed class BodyData_Shallow
     {
@@ -178,7 +178,7 @@ namespace Ludicrous
         public FixedVec Velocity = new FixedVec();
     }
 
-    // NarrowBodyData_Deep — every non-[local] field, deep encodings: full state for
+    // NarrowBodyData_Deep — every non- | local field, deep encodings: full state for
     // client-side prediction
     public sealed class NarrowBodyData_Deep
     {
@@ -187,17 +187,17 @@ namespace Ludicrous
         public FixedVec Velocity = new FixedVec();
     }
 
-    // NarrowBodyData_Shallow — the [interpolate] fields on the quantized wire: the
+    // NarrowBodyData_Shallow — the | interpolate fields on the quantized wire: the
     // implementation detail on the way to interpolation on the client
     public sealed class NarrowBodyData_Shallow
     {
         // position: FixedVec narrowed to 8 fractional bits (quantize = 256) — per-component
-        // quantized units; bounds are the component's whole-unit [min, max] scaled
+        // quantized units; bounds are the component's whole-unit | min, max scaled
         public int PositionX; // in [-25600000, 25600000]
         public int PositionY; // in [-25600000, 25600000]
         public int PositionZ; // in [-25600000, 25600000]
         // rotation: FixedQuat narrowed to 10 fractional bits (quantize = 1024) — per-component
-        // quantized units; bounds are the component's whole-unit [min, max] scaled
+        // quantized units; bounds are the component's whole-unit | min, max scaled
         public short RotationX; // in [-1024, 1024]
         public short RotationY; // in [-1024, 1024]
         public short RotationZ; // in [-1024, 1024]

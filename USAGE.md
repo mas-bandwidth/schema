@@ -48,7 +48,7 @@ type Vector3 {
 message ShipCreate {
     ship_type ShipType
     position  Vector3
-    health    int32 [min = 0, max = MaxHealth]
+    health    int32 | min = 0, max = MaxHealth
 }
 ```
 
@@ -115,7 +115,8 @@ enum class ShipType : uint8_t { None = 0, Fighter = 1, Corvette = 2, Bomber = 3,
 ```
 
 On the wire it costs `bitsRequired(variant count)` — 2 bits here, for four
-values. Declaring `enum E [max = 15] { ... }` reserves headroom so you can
+values. Declaring `enum E | max = 15` (its variant list on the next line) reserves
+headroom so you can
 add variants later without moving the field width.
 
 The `Max` member is the enum's **extent** — the same number `E.Max` names in
@@ -238,7 +239,7 @@ evolution-tolerant encoding for data that outlives builds. See
 
 An object declares state that is replicated in more than one form — a full
 state, a deep wire, a lightweight shallow wire, and an interpolation view.
-Fields carry `[interpolate]` and `[local]` markers to say which views they
+Fields carry `interpolate` and `local` markers to say which views they
 belong to. This is the delta/snapshot machinery; if you are not writing a
 replication layer you will not need it.
 
@@ -254,7 +255,7 @@ width on the wire unless you give a range.
 ### Ranged integers
 
 ```
-health int32 [min = 0, max = MaxHealth]
+health int32 | min = 0, max = MaxHealth
 ```
 
 The range is **part of the type**, and the wire cost follows from it. This
@@ -289,7 +290,7 @@ One bit.
 ### Compressed floats
 
 ```
-throttle float32 [min = 0, max = 1, resolution = 0.01]
+throttle float32 | min = 0, max = 1, resolution = 0.01
 ```
 
 A float quantized onto a grid: the wire carries the step index, not the
@@ -299,7 +300,7 @@ float. 101 steps here, so 7 bits instead of 32. Add `round = up` / `down` /
 ### fixed(I, F)
 
 ```
-position fixed(48, 16) [min = -30000, max = 30000]
+position fixed(48, 16) | min = -30000, max = 30000
 ```
 
 Signed fixed point: `I` integer bits (the sign bit counts), `F` fractional
@@ -318,7 +319,7 @@ one integer domain, so there is no separate quantize step to keep in sync.
 ### ufixed(I, F)
 
 ```
-distance ufixed(48, 16) [min = 0, max = 60000]
+distance ufixed(48, 16) | min = 0, max = 60000
 ```
 
 The unsigned sibling: no sign bit, whole-unit domain `[0, 2^I)`, same `F`
@@ -408,8 +409,8 @@ previous packet through a branch that was not taken this time.
 ## Defaults
 
 ```
-health int32 [min = 0, max = 1000] = 100
-w      fixed(2, 30) [min = -1, max = 1] = 1.0
+health int32 = 100 | min = 0, max = 1000
+w      fixed(2, 30) = 1.0 | min = -1, max = 1
 ```
 
 Everything zero-initializes unless a default says otherwise. Defaults are
@@ -487,8 +488,9 @@ end of the buffer.
 
 One precision worth having: an enum read is bounded by the enum's declared
 **max**, not by its variant count. For a plain `enum E { A, B, C }` those are
-the same thing and a non-variant cannot survive a read. But `enum E [max = 15]
-{ A, B }` deliberately reserves headroom so variants can be added later without
+the same thing and a non-variant cannot survive a read. But `enum E | max = 15`
+(variants `{ A, B }` on the next line) deliberately reserves headroom so
+variants can be added later without
 moving the field width — and a read of that enum accepts anything in `[0, 15]`.
 That is the point of the headroom, but it means a value you have not defined
 yet can arrive, and your `switch` should have a default. The same VALIDATION rules hold in all six languages, because
@@ -514,7 +516,7 @@ backend uses `serialize_assert`. Go has no assert idiom, so it returns
 one. The rule is that a language should verify correctness the way that
 language verifies correctness — not that every target behaves identically here.
 
-So writing `health = 2000` into a field declared `[min = 0, max = 1000]`
+So writing `health = 2000` into a field declared `| min = 0, max = 1000`
 asserts in a C++ debug build, silently writes the truncated low bits in a C++
 release build, and returns an error in the other three.
 
@@ -676,7 +678,7 @@ output can say `MaxObjects - 1` where the resolved field alone could only
 say `9999`:
 
 ```go
-// object_id int32 [min = 0, max = MaxObjects - 1]
+// object_id int32 | min = 0, max = MaxObjects - 1
 f := handle.Fields[0]
 ir.RenderExpr(f.IntMaxExpr)                        // "MaxObjects - 1" — schema spelling, for comments
 ir.RenderExprIdent(f.IntMaxExpr, nil)              // "MaxObjects - 1" — a target that keeps the name
@@ -716,7 +718,7 @@ that first carries it; everything under `internal/` is not
 
 **C++** — header-only generated output, targeting
 [serialize](https://github.com/mas-bandwidth/serialize). A type can map to
-your own math type with `[cpp_native = Vector3, cpp_include = "vec.h"]`, so
+your own math type with `| cpp_native = Vector3, cpp_include = "vec.h"`, so
 simulation code does math directly on generated storage.
 
 **C#** — C# 9 / netstandard2.1-clean, so it runs on Unity-class runtimes.

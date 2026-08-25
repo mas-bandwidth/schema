@@ -301,13 +301,13 @@ func (e *Encoder) encodeScalar(w *bitWriter, f *ir.Field, val any, fpath string)
 
 	case ir.TFixed:
 		if !f.HasIntRange {
-			// only a [local] field reaches no wire, and no [local] field is
+			// only a | local field reaches no wire, and no | local field is
 			// ever encoded — so this is a compiler bug, not a data error
 			spelling := "fixed"
 			if !f.Type.Signed {
 				spelling = "ufixed"
 			}
-			return fmt.Errorf("%s: %s(%d, %d) carries no [min, max] — the whole-unit bounds are part of the wire format (SPEC §4.3)",
+			return fmt.Errorf("%s: %s(%d, %d) carries no | min, max — the whole-unit bounds are part of the wire format (SPEC §4.3)",
 				fpath, spelling, f.Type.IntBits, f.Type.FracBits)
 		}
 		raw, err := e.fixedRaw(f, val, fpath)
@@ -413,7 +413,7 @@ func (e *Encoder) boundInt(v, min, max *big.Int, fpath string) (*big.Int, error)
 // fixedRaw resolves a fixed(I, F) field's JSON value to its RAW scaled
 // integer — the value the wire carries an offset of.
 //
-// A JSON value is in WHOLE UNITS, the same domain as the field's [min, max]
+// A JSON value is in WHOLE UNITS, the same domain as the field's | min, max
 // and its specified default (SPEC §4.6: "declared in WHOLE UNITS ... so no
 // raw/units confusion is possible"). Units × 2^F is rounded to nearest, half
 // away from zero — the ONE fixed-point rounding rule (SPEC §4.8, decided

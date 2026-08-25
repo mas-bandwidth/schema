@@ -32,7 +32,7 @@ impl From<core::convert::Infallible> for Error {
 pub type Result<T = ()> = core::result::Result<T, Error>;
 
 // PacketMode — None = 0 implicit, variants dense from 1, wire range [0, 5] (SPEC §4.2);
-// a newtype because [max = ...] headroom makes non-variant values wire-legal
+// a newtype because | max = ... headroom makes non-variant values wire-legal
 #[repr(transparent)]
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
 pub struct PacketMode(pub u8);

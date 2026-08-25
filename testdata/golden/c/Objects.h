@@ -30,7 +30,7 @@ extern "C" {
 /* ---- object Ship — one definition, a generated family per target (SPEC §4.8) ---- */
 
 /* ClientShipState — the full simulation struct for the client context: every `all`
-   field plus the fields scoped [local, context = client] */
+   field plus the fields scoped | local, context = client */
 typedef struct ClientShipState {
     ShipType ship_type;
     Vec3 position;
@@ -65,7 +65,7 @@ typedef struct ClientShipState {
 } ClientShipState;
 
 /* ServerShipState — the full simulation struct for the server context: every `all`
-   field plus the fields scoped [local, context = server] */
+   field plus the fields scoped | local, context = server */
 typedef struct ServerShipState {
     ShipType ship_type;
     Vec3 position;
@@ -98,7 +98,7 @@ typedef struct ServerShipState {
     int32_t collider_armor[MAX_COLLIDERS_PER_SHIP];
 } ServerShipState;
 
-/* ShipData_Deep — every non-[local] field, deep encodings: full state for
+/* ShipData_Deep — every non- | local field, deep encodings: full state for
    client-side prediction */
 typedef struct ShipData_Deep {
     ShipType ship_type;
@@ -128,7 +128,7 @@ typedef struct ShipData_Deep {
     double lock_start_time;
 } ShipData_Deep;
 
-/* ShipData_Shallow — the [interpolate] fields on the quantized wire */
+/* ShipData_Shallow — the | interpolate fields on the quantized wire */
 typedef struct ShipData_Shallow {
     ShipType ship_type;
     /* position: Vec3 quantized — per-component int in [-8388608, 8388608] */
@@ -336,7 +336,7 @@ static SCHEMA_UNUSED void unquantize_ship( const ShipData_Shallow * input, ShipD
 /* ---- object Missile — one definition, a generated family per target (SPEC §4.8) ---- */
 
 /* ClientMissileState — the full simulation struct for the client context: every `all`
-   field plus the fields scoped [local, context = client] */
+   field plus the fields scoped | local, context = client */
 typedef struct ClientMissileState {
     MissileType missile_type;
     Vec3 position;
@@ -349,7 +349,7 @@ typedef struct ClientMissileState {
 } ClientMissileState;
 
 /* ServerMissileState — the full simulation struct for the server context: every `all`
-   field plus the fields scoped [local, context = server] */
+   field plus the fields scoped | local, context = server */
 typedef struct ServerMissileState {
     MissileType missile_type;
     Vec3 position;
@@ -362,7 +362,7 @@ typedef struct ServerMissileState {
     double timer;
 } ServerMissileState;
 
-/* MissileData_Deep — every non-[local] field, deep encodings: full state for
+/* MissileData_Deep — every non- | local field, deep encodings: full state for
    client-side prediction */
 typedef struct MissileData_Deep {
     MissileType missile_type;
@@ -373,7 +373,7 @@ typedef struct MissileData_Deep {
     uint64_t flags;
 } MissileData_Deep;
 
-/* MissileData_Shallow — the [interpolate] fields on the quantized wire */
+/* MissileData_Shallow — the | interpolate fields on the quantized wire */
 typedef struct MissileData_Shallow {
     MissileType missile_type;
     /* position: Vec3 quantized — per-component int in [-8388608, 8388608] */
@@ -583,7 +583,7 @@ typedef struct DynamicPropState {
     Vec3 angular_velocity;
 } DynamicPropState;
 
-/* DynamicPropData_Deep — every non-[local] field, deep encodings: full state for
+/* DynamicPropData_Deep — every non- | local field, deep encodings: full state for
    client-side prediction */
 typedef struct DynamicPropData_Deep {
     PropType prop_type;
@@ -594,7 +594,7 @@ typedef struct DynamicPropData_Deep {
     Team team;
 } DynamicPropData_Deep;
 
-/* DynamicPropData_Shallow — the [interpolate] fields on the quantized wire */
+/* DynamicPropData_Shallow — the | interpolate fields on the quantized wire */
 typedef struct DynamicPropData_Shallow {
     PropType prop_type;
     /* position: Vec3 quantized — per-component int in [-8388608, 8388608] */
@@ -802,7 +802,7 @@ typedef struct TurretState {
     Team team;
 } TurretState;
 
-/* TurretData_Deep — every non-[local] field, deep encodings: full state for
+/* TurretData_Deep — every non- | local field, deep encodings: full state for
    client-side prediction */
 typedef struct TurretData_Deep {
     Handle parent;
@@ -811,7 +811,7 @@ typedef struct TurretData_Deep {
     uint64_t flags;
 } TurretData_Deep;
 
-/* TurretData_Shallow — the [interpolate] fields on the quantized wire */
+/* TurretData_Shallow — the | interpolate fields on the quantized wire */
 typedef struct TurretData_Shallow {
     Handle parent;
     int32_t turret_index;

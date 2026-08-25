@@ -44,7 +44,7 @@ pub struct TableFieldInfo {
     pub array_bound: i64,
     /// nested table's descriptor
     pub table: Option<&'static TableTypeInfo>,
-    /// a declared [min, max] (int or float)
+    /// a declared | min, max (int or float)
     pub has_range: bool,
     /// NOTE: i64 ranges beyond 2^53 lose precision here
     pub range_min: f64,

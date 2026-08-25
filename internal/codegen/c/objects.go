@@ -3,9 +3,9 @@ package c
 // Objects (SPEC §4.8): one declaration, a generated family per target.
 //
 // An object produces a State struct (the full simulation type, generated once
-// per context where the object carries [local, context = ...] fields), plus
-// three views: Data_Deep (every non-[local] field, declared encodings),
-// Data_Shallow (the [interpolate] fields on the quantized wire) and
+// per context where the object carries | local, context = ... fields), plus
+// three views: Data_Deep (every non- | local field, declared encodings),
+// Data_Shallow (the | interpolate fields on the quantized wire) and
 // Data_Interpolate (the same fields in their interpolation domain). The
 // Quantize/Unquantize pair moves between the last two.
 
@@ -34,8 +34,8 @@ func hasContextFields(d *ir.Object) bool {
 	return false
 }
 
-// splitObjectFields separates the deep view (every non-[local] field) from the
-// interpolate view (the [interpolate] fields).
+// splitObjectFields separates the deep view (every non- | local field) from the
+// interpolate view (the | interpolate fields).
 func splitObjectFields(d *ir.Object) (deep, interp []*ir.Field) {
 	for _, f := range d.Fields {
 		if !f.Local {
@@ -70,7 +70,7 @@ func (g *gen) emitObject(d *ir.Object) {
 			}
 			name := capitalize(ctx) + d.Name + "State"
 			g.pf("/* %s — the full simulation struct for the %s context: every `all`\n", name, ctx)
-			g.pf("   field plus the fields scoped [local, context = %s] */\n", ctx)
+			g.pf("   field plus the fields scoped | local, context = %s */\n", ctx)
 			g.emitViewStruct(name, fields, storageDeep)
 		}
 	} else {
@@ -80,11 +80,11 @@ func (g *gen) emitObject(d *ir.Object) {
 
 	deep, interp := splitObjectFields(d)
 
-	g.pf("/* %sData_Deep — every non-[local] field, deep encodings: full state for\n", d.Name)
+	g.pf("/* %sData_Deep — every non- | local field, deep encodings: full state for\n", d.Name)
 	g.pf("   client-side prediction */\n")
 	g.emitViewStruct(d.Name+"Data_Deep", deep, storageDeep)
 
-	g.pf("/* %sData_Shallow — the [interpolate] fields on the quantized wire */\n", d.Name)
+	g.pf("/* %sData_Shallow — the | interpolate fields on the quantized wire */\n", d.Name)
 	g.emitViewStruct(d.Name+"Data_Shallow", interp, storageShallow)
 
 	g.pf("/* %sData_Interpolate — the same fields in their interpolation domain */\n", d.Name)
@@ -113,7 +113,7 @@ func (g *gen) emitViewField(f *ir.Field, v view) {
 	if v == storageShallow && f.HasQuantize && f.FixedShallow {
 		st, ok := f.Type.Ref.(*ir.Struct)
 		if !ok {
-			g.unsupported("field %s is [quantize]d but does not reference a composite type", f.Name)
+			g.unsupported("field %s is | quantized but does not reference a composite type", f.Name)
 			return
 		}
 		g.pf("    /* %s: %s narrowed — %d fractional bits kept (SPEC §4.8 rule 2b) */\n", f.Name, f.Type.Name, f.QuantShift)
@@ -128,7 +128,7 @@ func (g *gen) emitViewField(f *ir.Field, v view) {
 	if v == storageShallow && f.HasQuantize {
 		st, ok := f.Type.Ref.(*ir.Struct)
 		if !ok {
-			g.unsupported("field %s is [quantize]d but does not reference a composite type", f.Name)
+			g.unsupported("field %s is | quantized but does not reference a composite type", f.Name)
 			return
 		}
 		lo, hi := quantBounds(f)
@@ -285,7 +285,7 @@ func (g *gen) emitShallowWriteField(f *ir.Field, ind string) {
 	if f.HasQuantize && f.FixedShallow {
 		st, ok := f.Type.Ref.(*ir.Struct)
 		if !ok {
-			g.unsupported("field %s is [quantize]d but does not reference a composite type", f.Name)
+			g.unsupported("field %s is | quantized but does not reference a composite type", f.Name)
 			return
 		}
 		for _, comp := range st.Fields {
@@ -315,7 +315,7 @@ func (g *gen) emitShallowWriteField(f *ir.Field, ind string) {
 	if f.HasQuantize {
 		st, ok := f.Type.Ref.(*ir.Struct)
 		if !ok {
-			g.unsupported("field %s is [quantize]d but does not reference a composite type", f.Name)
+			g.unsupported("field %s is | quantized but does not reference a composite type", f.Name)
 			return
 		}
 		lo, hi := quantBounds(f)
@@ -344,7 +344,7 @@ func (g *gen) emitShallowReadField(f *ir.Field, ind string) {
 	if f.HasQuantize && f.FixedShallow {
 		st, ok := f.Type.Ref.(*ir.Struct)
 		if !ok {
-			g.unsupported("field %s is [quantize]d but does not reference a composite type", f.Name)
+			g.unsupported("field %s is | quantized but does not reference a composite type", f.Name)
 			return
 		}
 		for _, comp := range st.Fields {
@@ -378,7 +378,7 @@ func (g *gen) emitShallowReadField(f *ir.Field, ind string) {
 	if f.HasQuantize {
 		st, ok := f.Type.Ref.(*ir.Struct)
 		if !ok {
-			g.unsupported("field %s is [quantize]d but does not reference a composite type", f.Name)
+			g.unsupported("field %s is | quantized but does not reference a composite type", f.Name)
 			return
 		}
 		lo, hi := quantBounds(f)
@@ -440,11 +440,11 @@ func (g *gen) emitDeepReadField(f *ir.Field, ind string) {
 
 func (g *gen) emitQuantizePair(d *ir.Object) {
 	if !ir.ObjectNeedsQuantize(d) {
-		// every [interpolate] field rides the wire domain verbatim — fixed
+		// every | interpolate field rides the wire domain verbatim — fixed
 		// components are their own quantization (SPEC §4.8) — so the pair
 		// would be a pure member copy and is NOT emitted. The same rule,
 		// the same words, as the other four backends.
-		g.pf("/* Quantize%s/Unquantize%s are not emitted: every [interpolate] field\n", d.Name, d.Name)
+		g.pf("/* Quantize%s/Unquantize%s are not emitted: every | interpolate field\n", d.Name, d.Name)
 		g.pf("   is already wire-domain (fixed components are their own quantization,\n")
 		g.pf("   SPEC §4.8) — Interpolate and Shallow are the same values. */\n\n")
 		return
@@ -489,7 +489,7 @@ func (g *gen) emitQuantizeField(f *ir.Field) {
 	if f.FixedShallow {
 		st, ok := f.Type.Ref.(*ir.Struct)
 		if !ok {
-			g.unsupported("field %s is [quantize]d but does not reference a composite type", f.Name)
+			g.unsupported("field %s is | quantized but does not reference a composite type", f.Name)
 			return
 		}
 		for _, comp := range st.Fields {
@@ -516,7 +516,7 @@ func (g *gen) emitQuantizeField(f *ir.Field) {
 	}
 	st, ok := f.Type.Ref.(*ir.Struct)
 	if !ok {
-		g.unsupported("field %s is [quantize]d but does not reference a composite type", f.Name)
+		g.unsupported("field %s is | quantized but does not reference a composite type", f.Name)
 		return
 	}
 	bound := f.QuantBound
@@ -549,7 +549,7 @@ func (g *gen) emitUnquantizeField(f *ir.Field) {
 	if f.FixedShallow {
 		st, ok := f.Type.Ref.(*ir.Struct)
 		if !ok {
-			g.unsupported("field %s is [quantize]d but does not reference a composite type", f.Name)
+			g.unsupported("field %s is | quantized but does not reference a composite type", f.Name)
 			return
 		}
 		for _, comp := range st.Fields {
@@ -566,7 +566,7 @@ func (g *gen) emitUnquantizeField(f *ir.Field) {
 	}
 	st, ok := f.Type.Ref.(*ir.Struct)
 	if !ok {
-		g.unsupported("field %s is [quantize]d but does not reference a composite type", f.Name)
+		g.unsupported("field %s is | quantized but does not reference a composite type", f.Name)
 		return
 	}
 	for _, comp := range st.Fields {

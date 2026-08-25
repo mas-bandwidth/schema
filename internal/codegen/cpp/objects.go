@@ -62,7 +62,7 @@ func (g *gen) emitObjectWire(d *ir.Object) {
 	}
 
 	// ---- Deep: every non-local field, deep encodings — the view-encoding
-	// attributes describe the SHALLOW wire only, so an [interpolate] float
+	// attributes describe the SHALLOW wire only, so an | interpolate float
 	// triple serializes as a bare float here (SPEC §4.8)
 	deepName := d.Name + "Data_Deep"
 	g.pf("SCHEMA_WRITE_INLINE bool Write%s( serialize::WriteStream & stream, const %s & value )\n{\n", deepName, deepName)
@@ -80,7 +80,7 @@ func (g *gen) emitObjectWire(d *ir.Object) {
 	g.voidIfEmpty(mark, "stream", "value")
 	g.pf("    return true;\n}\n\n")
 
-	// ---- Shallow: the [interpolate] fields on the quantized wire
+	// ---- Shallow: the | interpolate fields on the quantized wire
 	shName := d.Name + "Data_Shallow"
 	g.pf("SCHEMA_WRITE_INLINE bool Write%s( serialize::WriteStream & stream, const %s & value )\n{\n", shName, shName)
 	mark = g.body.Len()
@@ -107,10 +107,10 @@ func (g *gen) emitObjectWire(d *ir.Object) {
 // without the wire header's serialize.h.
 func (g *gen) emitObjectQuantize(d *ir.Object) {
 	if !ir.ObjectNeedsQuantize(d) {
-		// every [interpolate] field rides the wire domain verbatim — fixed
+		// every | interpolate field rides the wire domain verbatim — fixed
 		// components are their own quantization (SPEC §4.8) — so the pair
 		// would be a pure member copy and is NOT emitted.
-		g.pf("// Quantize%s/Unquantize%s are not emitted: every [interpolate] field\n", d.Name, d.Name)
+		g.pf("// Quantize%s/Unquantize%s are not emitted: every | interpolate field\n", d.Name, d.Name)
 		g.pf("// is already wire-domain (fixed components are their own quantization,\n")
 		g.pf("// SPEC §4.8) — Interpolate and Shallow are the same values.\n\n")
 		return

@@ -399,7 +399,7 @@ func storageBounds(t ir.FieldType) (*big.Int, *big.Int) {
 	return big.NewInt(0), new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), w), big.NewInt(1))
 }
 
-// emitWriteFoldedRange writes the integer expression expr, in [min, max], as
+// emitWriteFoldedRange writes the integer expression expr, in | min, max, as
 // offset-from-min in a generation-time bit count. lo/hi are the rendered
 // bound expressions (typed so they compare against expr legally); wide picks
 // the 64-bit call family; guardLo/guardHi say whether each half of the range

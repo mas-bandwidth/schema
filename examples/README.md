@@ -31,9 +31,9 @@ hard requirement, just a personal preference"*; order-free cross-file resolution
 | `Contexts.schema` | the build contexts | `contexts { client, server }` — user-declared sides, per-context generated types |
 | `Constants.schema` | every `const` | composition (`const C = A * B`), `Team.Max` enum references, order-free cross-file refs |
 | `Enums.schema` | the enum family | both forms, comma-separated variants: `enum` (with-None) and `flags` (uint64, bit-per-variant) |
-| `Types.schema` | every `type` | tagged user types (`Vec3 [vec3]`, `Quat [quat4]` — tags inert in v1, claimed by the delta pass), quantized-int types, prefix arrays `[..N]T`, bool-gated `if` with a `flags` field, and `RigidBody` — the serialize README's own example, schema-specified: the velocity group rides only when `!at_rest`, and §5's zero-on-untaken-branch rule is the hand-written `else if ( Stream::IsReading )` zeroing made contract |
+| `Types.schema` | every `type` | tagged user types (`Vec3 | vec3`, `Quat | quat4` — tags inert in v1, claimed by the delta pass), quantized-int types, prefix arrays `[..N]T`, bool-gated `if` with a `flags` field, and `RigidBody` — the serialize README's own example, schema-specified: the velocity group rides only when `!at_rest`, and §5's zero-on-untaken-branch rule is the hand-written `else if ( Stream::IsReading )` zeroing made contract |
 | `Messages.schema` | every `message` | the implicit `MessageType` set, sorted-by-name tags, empty message, unified `string(N)`/`bytes(N)` (fixed buffers, used-length wire) |
-| `Objects.schema` | all four `object`s | the view markers (`[interpolate]`/`[local]`, deep by default), explicit-bound composite `quantize`, ranged-int projection with `round = up`, `[local, context = ...]` scoped fields, per-field wire treatment divergences between objects — and the FULL working ship state: the wrapper class's sim-local fields (previous position, collider armor table) folded in, so the generated per-context state structs could serve as the simulation struct outright |
+| `Objects.schema` | all four `object`s | the view markers (`interpolate`/`local`, deep by default), explicit-bound composite `quantize`, ranged-int projection with `round = up`, `| local, context = ...` scoped fields, per-field wire treatment divergences between objects — and the FULL working ship state: the wrapper class's sim-local fields (previous position, collider armor table) folded in, so the generated per-context state structs could serve as the simulation struct outright |
 
 *Coming when their design passes open: `Config.schema` and `Assets.schema` (SPEC, "The
 horizon" — the flatbuffers replacement), and the delta pass (out of v1 scope by decision).*
@@ -45,7 +45,7 @@ horizon" — the flatbuffers replacement), and the delta pass (out of v1 scope b
    recorded at SPEC §9 q11. Kind fields are plain enums spending one unused wire value —
    the honest v1 cost, back to this finding's original state.
 2. **Quantized ints are the real float idiom** — *(outcome, 2026-08-05: the
-   `compressed_float` keyword dissolved into `float32 [min, max, resolution]`; the
+   `compressed_float` keyword dissolved into `float32 | min, max, resolution`; the
    ranged-int projection in object views carries the same triple plus `round`.)*
 3. **Sentinel-terminated collections** — **deferred into the delta pass by decision**
    (three terminator idioms measured in the real packets; inseparable from budget-driven
@@ -58,5 +58,5 @@ we will hit that once we lay the foundation of types/objects."*): delta-against-
 with prediction expressions, `int_relative` ascending-id streams, mid-stream packet
 splitting, sentinel-terminated streams. The table layer: `Config.schema`/`Assets.schema`
 and the derived type enums. *(Side-conditional fields, once an omission note here, are
-now first-class: `Contexts.schema` + `[local, context = ...]` — both former omission
+now first-class: `Contexts.schema` + `| local, context = ...` — both former omission
 sites are declared fields in `Objects.schema`.)*

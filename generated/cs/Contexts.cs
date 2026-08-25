@@ -6,7 +6,7 @@ namespace Example
 
     // contexts declared for this unit: client, server (SPEC §4.2).
     // Contexts generate no standalone artifacts — where an object carries
-    // context-scoped [local] fields, its State class is generated once per
+    // context-scoped | local fields, its State class is generated once per
     // context (ClientShipState, ServerShipState, ...), each holding the `all`
     // fields plus its own context's. No preprocessor symbols in this target.
 

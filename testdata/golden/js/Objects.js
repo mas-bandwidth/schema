@@ -37,7 +37,7 @@ export const ObjectType = Object.freeze({
 // ---- object Ship — one definition, a generated family per target (SPEC §4.8) ----
 
 // ClientShipState — the full simulation class for the client context: every `all`
-// field plus the fields scoped [local, context = client]
+// field plus the fields scoped | local, context = client
 export class ClientShipState {
   constructor() {
     this.ShipType = ShipType.None;
@@ -65,16 +65,16 @@ export class ClientShipState {
     this.MissileIndex = 0; // wire [0, 15]
     this.Target = new Handle();
     this.LockStartTime = 0;
-    this.Invulnerable = false; // [local] — no wire
-    this.PreviousPosition = new Vec3(); // [local] — no wire
-    this.NumColliders = 0; // [local] — no wire
-    this.ColliderArmor = new Array(MaxCollidersPerShip).fill(0); // [local] — no wire
-    this.PredictedExplode = false; // [local, context = client]
+    this.Invulnerable = false; //  | local — no wire
+    this.PreviousPosition = new Vec3(); //  | local — no wire
+    this.NumColliders = 0; //  | local — no wire
+    this.ColliderArmor = new Array(MaxCollidersPerShip).fill(0); //  | local — no wire
+    this.PredictedExplode = false; //  | local, context = client
   }
 }
 
 // ServerShipState — the full simulation class for the server context: every `all`
-// field plus the fields scoped [local, context = server]
+// field plus the fields scoped | local, context = server
 export class ServerShipState {
   constructor() {
     this.ShipType = ShipType.None;
@@ -102,14 +102,14 @@ export class ServerShipState {
     this.MissileIndex = 0; // wire [0, 15]
     this.Target = new Handle();
     this.LockStartTime = 0;
-    this.Invulnerable = false; // [local] — no wire
-    this.PreviousPosition = new Vec3(); // [local] — no wire
-    this.NumColliders = 0; // [local] — no wire
-    this.ColliderArmor = new Array(MaxCollidersPerShip).fill(0); // [local] — no wire
+    this.Invulnerable = false; //  | local — no wire
+    this.PreviousPosition = new Vec3(); //  | local — no wire
+    this.NumColliders = 0; //  | local — no wire
+    this.ColliderArmor = new Array(MaxCollidersPerShip).fill(0); //  | local — no wire
   }
 }
 
-// ShipData_Deep — every non-[local] field, deep encodings: full state for
+// ShipData_Deep — every non- | local field, deep encodings: full state for
 // client-side prediction
 export class ShipData_Deep {
   constructor() {
@@ -141,7 +141,7 @@ export class ShipData_Deep {
   }
 }
 
-// ShipData_Shallow — the [interpolate] fields on the quantized wire: the
+// ShipData_Shallow — the | interpolate fields on the quantized wire: the
 // implementation detail on the way to interpolation on the client
 export class ShipData_Shallow {
   constructor() {
@@ -708,7 +708,7 @@ export function UnquantizeShip(input, output) {
 // ---- object Missile — one definition, a generated family per target (SPEC §4.8) ----
 
 // ClientMissileState — the full simulation class for the client context: every `all`
-// field plus the fields scoped [local, context = client]
+// field plus the fields scoped | local, context = client
 export class ClientMissileState {
   constructor() {
     this.MissileType = MissileType.None;
@@ -717,13 +717,13 @@ export class ClientMissileState {
     this.LinearVelocity = new Vec3();
     this.Team = Team.None;
     this.Flags = 0n;
-    this.AngularVelocity = new Vec3(); // [local] — no wire
-    this.Target = new Handle(); // [local] — no wire
+    this.AngularVelocity = new Vec3(); //  | local — no wire
+    this.Target = new Handle(); //  | local — no wire
   }
 }
 
 // ServerMissileState — the full simulation class for the server context: every `all`
-// field plus the fields scoped [local, context = server]
+// field plus the fields scoped | local, context = server
 export class ServerMissileState {
   constructor() {
     this.MissileType = MissileType.None;
@@ -732,13 +732,13 @@ export class ServerMissileState {
     this.LinearVelocity = new Vec3();
     this.Team = Team.None;
     this.Flags = 0n;
-    this.AngularVelocity = new Vec3(); // [local] — no wire
-    this.Target = new Handle(); // [local] — no wire
-    this.Timer = 0; // [local, context = server]
+    this.AngularVelocity = new Vec3(); //  | local — no wire
+    this.Target = new Handle(); //  | local — no wire
+    this.Timer = 0; //  | local, context = server
   }
 }
 
-// MissileData_Deep — every non-[local] field, deep encodings: full state for
+// MissileData_Deep — every non- | local field, deep encodings: full state for
 // client-side prediction
 export class MissileData_Deep {
   constructor() {
@@ -751,7 +751,7 @@ export class MissileData_Deep {
   }
 }
 
-// MissileData_Shallow — the [interpolate] fields on the quantized wire: the
+// MissileData_Shallow — the | interpolate fields on the quantized wire: the
 // implementation detail on the way to interpolation on the client
 export class MissileData_Shallow {
   constructor() {
@@ -1134,11 +1134,11 @@ export class DynamicPropState {
     this.LinearVelocity = new Vec3();
     this.Flags = 0n;
     this.Team = Team.None;
-    this.AngularVelocity = new Vec3(); // [local] — no wire
+    this.AngularVelocity = new Vec3(); //  | local — no wire
   }
 }
 
-// DynamicPropData_Deep — every non-[local] field, deep encodings: full state for
+// DynamicPropData_Deep — every non- | local field, deep encodings: full state for
 // client-side prediction
 export class DynamicPropData_Deep {
   constructor() {
@@ -1151,7 +1151,7 @@ export class DynamicPropData_Deep {
   }
 }
 
-// DynamicPropData_Shallow — the [interpolate] fields on the quantized wire: the
+// DynamicPropData_Shallow — the | interpolate fields on the quantized wire: the
 // implementation detail on the way to interpolation on the client
 export class DynamicPropData_Shallow {
   constructor() {
@@ -1532,11 +1532,11 @@ export class TurretState {
     this.TurretIndex = 0; // wire [0, 255]
     this.Rotation = new Quat();
     this.Flags = 0n;
-    this.Team = Team.None; // [local] — no wire
+    this.Team = Team.None; //  | local — no wire
   }
 }
 
-// TurretData_Deep — every non-[local] field, deep encodings: full state for
+// TurretData_Deep — every non- | local field, deep encodings: full state for
 // client-side prediction
 export class TurretData_Deep {
   constructor() {
@@ -1547,7 +1547,7 @@ export class TurretData_Deep {
   }
 }
 
-// TurretData_Shallow — the [interpolate] fields on the quantized wire: the
+// TurretData_Shallow — the | interpolate fields on the quantized wire: the
 // implementation detail on the way to interpolation on the client
 export class TurretData_Shallow {
   constructor() {

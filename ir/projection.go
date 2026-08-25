@@ -25,7 +25,7 @@ package ir
 //                            protocols; conservative, and can only add ids
 //   message ordinals         the MessageType tag is the message's index
 //   object ordinals          the ObjectType tag likewise
-//   contexts                 a context scopes [local] fields out of a view
+//   contexts                 a context scopes | local fields out of a view
 //   every type's fields      order IS the wire order
 //   field names              the TABLE wire's field identity is
 //                            fold16(fnv1a32(name)) — a rename moves data
@@ -214,7 +214,7 @@ func projectField(b *strings.Builder, f *Field, ind string) {
 			f.QuantScale, f.QuantBound, f.FixedShallow, f.QuantShift)
 	}
 	// view membership changes which fields appear in which generated view,
-	// and a [local] field is off the deep wire entirely
+	// and a | local field is off the deep wire entirely
 	if f.Local {
 		b.WriteString(" local")
 	}

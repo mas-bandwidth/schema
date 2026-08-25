@@ -238,7 +238,7 @@ func (g *gen) emitFile(carriesProtocolId bool) {
 		case *ir.ContextsMarker:
 			g.pf("// contexts declared for this unit: %s (SPEC §4.2).\n", strings.Join(d.Names, ", "))
 			g.pf("// Contexts generate no standalone artifacts — where an object carries\n")
-			g.pf("// context-scoped [local] fields, its State struct is generated once per\n")
+			g.pf("// context-scoped | local fields, its State struct is generated once per\n")
 			g.pf("// context (ClientShipState, ServerShipState, ...), each holding the `all`\n")
 			g.pf("// fields plus its own context's. No cfg gates in this target.\n\n")
 		case *ir.Struct:
@@ -345,7 +345,7 @@ func (g *gen) emitUnion(d *ir.Union) {
 
 func (g *gen) emitEnum(d *ir.Enum) {
 	g.pf("// %s — None = 0 implicit, variants dense from 1, wire range [0, %d] (SPEC §4.2);\n", d.Name, d.Max)
-	g.pf("// a newtype because [max = ...] headroom makes non-variant values wire-legal\n")
+	g.pf("// a newtype because | max = ... headroom makes non-variant values wire-legal\n")
 	g.allowNonCamel(d.Name)
 	g.pf("#[repr(transparent)]\n#[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]\n")
 	g.pf("pub struct %s(pub %s);\n\n", d.Name, rustUint(d.StorageBits))
@@ -593,7 +593,7 @@ func (g *gen) emitObject(d *ir.Object) {
 			}
 			stateName := capitalize(ctx) + d.Name + "State"
 			g.pf("// %s — the full simulation struct for the %s context: every `all`\n", stateName, ctx)
-			g.pf("// field plus the fields scoped [local, context = %s]\n", ctx)
+			g.pf("// field plus the fields scoped | local, context = %s\n", ctx)
 			g.allowNonCamel(stateName)
 			g.pf("#[derive(Clone, Copy, PartialEq, Debug)]\n")
 			g.pf("pub struct %s {\n", stateName)
@@ -613,7 +613,7 @@ func (g *gen) emitObject(d *ir.Object) {
 
 	deep, interp := splitObjectFields(d)
 
-	g.pf("// %sData_Deep — every non-[local] field, deep encodings: full state for\n", d.Name)
+	g.pf("// %sData_Deep — every non- | local field, deep encodings: full state for\n", d.Name)
 	g.pf("// client-side prediction\n")
 	g.allowNonCamel(d.Name + "Data_Deep")
 	g.pf("#[derive(Clone, Copy, PartialEq, Debug)]\n")
@@ -622,7 +622,7 @@ func (g *gen) emitObject(d *ir.Object) {
 	g.pf("}\n\n")
 	g.emitDefaultImpl(d.Name+"Data_Deep", deep, storageDeep)
 
-	g.pf("// %sData_Shallow — the [interpolate] fields on the quantized wire: the\n", d.Name)
+	g.pf("// %sData_Shallow — the | interpolate fields on the quantized wire: the\n", d.Name)
 	g.pf("// implementation detail on the way to interpolation on the client\n")
 	g.allowNonCamel(d.Name + "Data_Shallow")
 	g.pf("#[derive(Clone, Copy, PartialEq, Debug)]\n")
@@ -685,7 +685,7 @@ func (g *gen) emitField(f *ir.Field, v view) {
 		if f.FixedShallow {
 			g.pf("    // %s: %s narrowed to %d fractional bits (quantize = %s) — per-component\n",
 				f.Name, f.Type.Name, f.QuantShift, ir.RenderExpr(f.QuantScaleExpr))
-			g.pf("    // quantized units; bounds are the component's whole-unit [min, max] scaled\n")
+			g.pf("    // quantized units; bounds are the component's whole-unit | min, max scaled\n")
 			for _, comp := range st.Fields {
 				lo, hi, _, _, typ, _ := fixedShallowComp(f, comp)
 				g.pf("    pub %s_%s: %s, // in [%s, %s]\n", f.Name, comp.Name, typ, lo, hi)
@@ -764,9 +764,9 @@ func (g *gen) fieldComment(f *ir.Field) string {
 	}
 	if f.Local {
 		if f.Context != "" {
-			parts = append(parts, fmt.Sprintf("[local, context = %s]", f.Context))
+			parts = append(parts, fmt.Sprintf(" | local, context = %s", f.Context))
 		} else {
-			parts = append(parts, "[local] — no wire")
+			parts = append(parts, " | local — no wire")
 		}
 	}
 	if len(parts) == 0 {
@@ -1000,7 +1000,7 @@ func fixedShallowComp(f, cf *ir.Field) (lo, hi *big.Int, bits int64, wide bool, 
 	return
 }
 
-// signedStorageBounds is the [min, max] domain of an iN storage type.
+// signedStorageBounds is the | min, max domain of an iN storage type.
 func signedStorageBounds(width int) (lo, hi *big.Int) {
 	lo = new(big.Int).Neg(new(big.Int).Lsh(big.NewInt(1), uint(width-1)))
 	hi = new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), uint(width-1)), big.NewInt(1))

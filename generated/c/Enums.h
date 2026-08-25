@@ -26,7 +26,7 @@ extern "C" {
 
 /* enum Team — None = 0 implicit, variants dense from 1, wire range [0, 2]
    (SPEC §4.2). A fixed-width typedef rather than a C enum: an enum's underlying
-   type is implementation-defined, and [max = K] headroom makes non-variant
+   type is implementation-defined, and | max = K headroom makes non-variant
    values wire-legal, which a C enum cannot hold honestly. */
 typedef uint8_t Team;
 #define TEAM_NONE 0
@@ -62,7 +62,7 @@ static SCHEMA_UNUSED const char * enum_name_team_dyn( uint64_t value )
 
 /* enum ShipType — None = 0 implicit, variants dense from 1, wire range [0, 5]
    (SPEC §4.2). A fixed-width typedef rather than a C enum: an enum's underlying
-   type is implementation-defined, and [max = K] headroom makes non-variant
+   type is implementation-defined, and | max = K headroom makes non-variant
    values wire-legal, which a C enum cannot hold honestly. */
 typedef uint8_t ShipType;
 #define SHIP_TYPE_NONE 0
@@ -107,7 +107,7 @@ static SCHEMA_UNUSED const char * enum_name_ship_type_dyn( uint64_t value )
 
 /* enum MissileType — None = 0 implicit, variants dense from 1, wire range [0, 3]
    (SPEC §4.2). A fixed-width typedef rather than a C enum: an enum's underlying
-   type is implementation-defined, and [max = K] headroom makes non-variant
+   type is implementation-defined, and | max = K headroom makes non-variant
    values wire-legal, which a C enum cannot hold honestly. */
 typedef uint8_t MissileType;
 #define MISSILE_TYPE_NONE 0
@@ -146,7 +146,7 @@ static SCHEMA_UNUSED const char * enum_name_missile_type_dyn( uint64_t value )
 
 /* enum PropType — None = 0 implicit, variants dense from 1, wire range [0, 6]
    (SPEC §4.2). A fixed-width typedef rather than a C enum: an enum's underlying
-   type is implementation-defined, and [max = K] headroom makes non-variant
+   type is implementation-defined, and | max = K headroom makes non-variant
    values wire-legal, which a C enum cannot hold honestly. */
 typedef uint8_t PropType;
 #define PROP_TYPE_NONE 0
@@ -194,7 +194,7 @@ static SCHEMA_UNUSED const char * enum_name_prop_type_dyn( uint64_t value )
 
 /* enum Pending — None = 0 implicit, variants dense from 1, wire range [0, 0]
    (SPEC §4.2). A fixed-width typedef rather than a C enum: an enum's underlying
-   type is implementation-defined, and [max = K] headroom makes non-variant
+   type is implementation-defined, and | max = K headroom makes non-variant
    values wire-legal, which a C enum cannot hold honestly. */
 typedef uint8_t Pending;
 #define PENDING_NONE 0

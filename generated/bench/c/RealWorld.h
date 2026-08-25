@@ -30,7 +30,7 @@ extern "C" {
 
 /* enum PacketMode — None = 0 implicit, variants dense from 1, wire range [0, 5]
    (SPEC §4.2). A fixed-width typedef rather than a C enum: an enum's underlying
-   type is implementation-defined, and [max = K] headroom makes non-variant
+   type is implementation-defined, and | max = K headroom makes non-variant
    values wire-legal, which a C enum cannot hold honestly. */
 typedef uint8_t PacketMode;
 #define PACKET_MODE_NONE 0

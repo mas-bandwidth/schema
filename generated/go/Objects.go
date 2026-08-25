@@ -24,7 +24,7 @@ const (
 // ---- object Ship — one definition, a generated family per target (SPEC §4.8) ----
 
 // ClientShipState — the full simulation struct for the client context: every `all`
-// field plus the fields scoped [local, context = client]
+// field plus the fields scoped | local, context = client
 type ClientShipState struct {
 	ShipType            ShipType
 	Position            Vec3
@@ -51,15 +51,15 @@ type ClientShipState struct {
 	MissileIndex        int8 // wire [0, 15]
 	Target              Handle
 	LockStartTime       float64
-	Invulnerable        bool                       // [local] — no wire
-	PreviousPosition    Vec3                       // [local] — no wire
-	NumColliders        int32                      // [local] — no wire
-	ColliderArmor       [MaxCollidersPerShip]int32 // [local] — no wire
-	PredictedExplode    bool                       // [local, context = client]
+	Invulnerable        bool                       //  | local — no wire
+	PreviousPosition    Vec3                       //  | local — no wire
+	NumColliders        int32                      //  | local — no wire
+	ColliderArmor       [MaxCollidersPerShip]int32 //  | local — no wire
+	PredictedExplode    bool                       //  | local, context = client
 }
 
 // ServerShipState — the full simulation struct for the server context: every `all`
-// field plus the fields scoped [local, context = server]
+// field plus the fields scoped | local, context = server
 type ServerShipState struct {
 	ShipType            ShipType
 	Position            Vec3
@@ -86,13 +86,13 @@ type ServerShipState struct {
 	MissileIndex        int8 // wire [0, 15]
 	Target              Handle
 	LockStartTime       float64
-	Invulnerable        bool                       // [local] — no wire
-	PreviousPosition    Vec3                       // [local] — no wire
-	NumColliders        int32                      // [local] — no wire
-	ColliderArmor       [MaxCollidersPerShip]int32 // [local] — no wire
+	Invulnerable        bool                       //  | local — no wire
+	PreviousPosition    Vec3                       //  | local — no wire
+	NumColliders        int32                      //  | local — no wire
+	ColliderArmor       [MaxCollidersPerShip]int32 //  | local — no wire
 }
 
-// ShipData_Deep — every non-[local] field, deep encodings: full state for
+// ShipData_Deep — every non- | local field, deep encodings: full state for
 // client-side prediction
 type ShipData_Deep struct {
 	ShipType            ShipType
@@ -122,7 +122,7 @@ type ShipData_Deep struct {
 	LockStartTime       float64
 }
 
-// ShipData_Shallow — the [interpolate] fields on the quantized wire: the
+// ShipData_Shallow — the | interpolate fields on the quantized wire: the
 // implementation detail on the way to interpolation on the client
 type ShipData_Shallow struct {
 	ShipType ShipType
@@ -640,7 +640,7 @@ func UnquantizeShip(input *ShipData_Shallow, output *ShipData_Interpolate) {
 // ---- object Missile — one definition, a generated family per target (SPEC §4.8) ----
 
 // ClientMissileState — the full simulation struct for the client context: every `all`
-// field plus the fields scoped [local, context = client]
+// field plus the fields scoped | local, context = client
 type ClientMissileState struct {
 	MissileType     MissileType
 	Position        Vec3
@@ -648,12 +648,12 @@ type ClientMissileState struct {
 	LinearVelocity  Vec3
 	Team            Team
 	Flags           uint64
-	AngularVelocity Vec3   // [local] — no wire
-	Target          Handle // [local] — no wire
+	AngularVelocity Vec3   //  | local — no wire
+	Target          Handle //  | local — no wire
 }
 
 // ServerMissileState — the full simulation struct for the server context: every `all`
-// field plus the fields scoped [local, context = server]
+// field plus the fields scoped | local, context = server
 type ServerMissileState struct {
 	MissileType     MissileType
 	Position        Vec3
@@ -661,12 +661,12 @@ type ServerMissileState struct {
 	LinearVelocity  Vec3
 	Team            Team
 	Flags           uint64
-	AngularVelocity Vec3    // [local] — no wire
-	Target          Handle  // [local] — no wire
-	Timer           float64 // [local, context = server]
+	AngularVelocity Vec3    //  | local — no wire
+	Target          Handle  //  | local — no wire
+	Timer           float64 //  | local, context = server
 }
 
-// MissileData_Deep — every non-[local] field, deep encodings: full state for
+// MissileData_Deep — every non- | local field, deep encodings: full state for
 // client-side prediction
 type MissileData_Deep struct {
 	MissileType    MissileType
@@ -677,7 +677,7 @@ type MissileData_Deep struct {
 	Flags          uint64
 }
 
-// MissileData_Shallow — the [interpolate] fields on the quantized wire: the
+// MissileData_Shallow — the | interpolate fields on the quantized wire: the
 // implementation detail on the way to interpolation on the client
 type MissileData_Shallow struct {
 	MissileType MissileType
@@ -1064,10 +1064,10 @@ type DynamicPropState struct {
 	LinearVelocity  Vec3
 	Flags           uint64
 	Team            Team
-	AngularVelocity Vec3 // [local] — no wire
+	AngularVelocity Vec3 //  | local — no wire
 }
 
-// DynamicPropData_Deep — every non-[local] field, deep encodings: full state for
+// DynamicPropData_Deep — every non- | local field, deep encodings: full state for
 // client-side prediction
 type DynamicPropData_Deep struct {
 	PropType       PropType
@@ -1078,7 +1078,7 @@ type DynamicPropData_Deep struct {
 	Team           Team
 }
 
-// DynamicPropData_Shallow — the [interpolate] fields on the quantized wire: the
+// DynamicPropData_Shallow — the | interpolate fields on the quantized wire: the
 // implementation detail on the way to interpolation on the client
 type DynamicPropData_Shallow struct {
 	PropType PropType
@@ -1463,10 +1463,10 @@ type TurretState struct {
 	TurretIndex int32 // wire [0, 255]
 	Rotation    Quat
 	Flags       uint64
-	Team        Team // [local] — no wire
+	Team        Team //  | local — no wire
 }
 
-// TurretData_Deep — every non-[local] field, deep encodings: full state for
+// TurretData_Deep — every non- | local field, deep encodings: full state for
 // client-side prediction
 type TurretData_Deep struct {
 	Parent      Handle
@@ -1475,7 +1475,7 @@ type TurretData_Deep struct {
 	Flags       uint64
 }
 
-// TurretData_Shallow — the [interpolate] fields on the quantized wire: the
+// TurretData_Shallow — the | interpolate fields on the quantized wire: the
 // implementation detail on the way to interpolation on the client
 type TurretData_Shallow struct {
 	Parent      Handle

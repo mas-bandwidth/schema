@@ -44,12 +44,12 @@ type checker struct {
 	unions   map[string]*ir.Union
 	ctxDecl  *ast.ContextsDecl
 
-	// enums currently being resolved — the cycle guard for [max = E.Max]
+	// enums currently being resolved — the cycle guard for | max = E.Max
 	// chains (resolveEnum memoizes only on completion, so recursion needs
 	// its own in-progress set, exactly as constants have one)
 	resolvingEnum map[string]bool
 
-	// enums whose [max = ...] failed to resolve — their Max fell back to the
+	// enums whose | max = ... failed to resolve — their Max fell back to the
 	// variant count, which is NOT what the author wrote, so .Max references
 	// to them must fail rather than propagate a fabricated bound
 	failedEnum map[string]bool
@@ -534,7 +534,7 @@ func (c *checker) bigIntFloat(v *big.Int, pos ast.Pos) (float64, bool) {
 }
 
 // valuedAttr lists the field attributes that MUST carry `= value`. The bare
-// markers ([interpolate], [local], and the context words) are absent by
+// markers ( | interpolate, | local, and the context words) are absent by
 // design. Adding a valued attribute means adding it here, or a bare spelling
 // of it reaches expression evaluation as a nil and panics.
 var valuedAttr = map[string]bool{
@@ -586,7 +586,7 @@ func (c *checker) enumMax(e *ast.MaxExpr) (*big.Int, bool) {
 }
 
 // flagsCount resolves F.Count (SPEC §4.2): the DECLARED variant count of a
-// flags declaration — not the wire width, which a [max = K] widening can
+// flags declaration — not the wire width, which a | max = K widening can
 // raise above it.
 func (c *checker) flagsCount(e *ast.MaxExpr) (*big.Int, bool) {
 	d, ok := c.astDecls[e.Enum]
@@ -656,7 +656,7 @@ func (c *checker) resolveEnum(d *ast.EnumDecl) *ir.Enum {
 		return en
 	}
 	// In-progress guard, the twin of resolveConst's state machine. An
-	// enum's [max = Other.Max] resolves Other, which can lead back here —
+	// enum's | max = Other.Max resolves Other, which can lead back here —
 	// and the memo below is only written at the END, so without this the
 	// recursion never terminates. It reached the Go runtime as a raw
 	// "fatal error: stack overflow" with no diagnostic and no source
@@ -691,7 +691,7 @@ func (c *checker) resolveEnum(d *ast.EnumDecl) *ir.Enum {
 	}
 	// An enum with no variants is LEGAL: it holds only the implicit None = 0,
 	// so its wire range is the degenerate [0, 0] and it costs zero bits. That
-	// is the same rule a [min = K, max = K] field follows, and every runtime
+	// is the same rule a | min = K, max = K field follows, and every runtime
 	// supports it — a degenerate range is defined by STANDARD.md and the five
 	// serialize ports agree on it.
 	//
@@ -702,7 +702,7 @@ func (c *checker) resolveEnum(d *ast.EnumDecl) *ir.Enum {
 	max := int64(len(variants))
 	for _, a := range d.Attrs {
 		if a.Key != "max" {
-			c.errf(a.Pos, "unknown attribute %q on an enum — enums take [max = K] only (SPEC §4.6)", a.Key)
+			c.errf(a.Pos, "unknown attribute %q on an enum — enums take | max = K only (SPEC §4.6)", a.Key)
 			continue
 		}
 		if a.Value == nil {
@@ -722,12 +722,12 @@ func (c *checker) resolveEnum(d *ast.EnumDecl) *ir.Enum {
 			continue
 		}
 		if !v.IsInt64() || v.Int64() < max {
-			c.errf(a.Pos, "enum %s [max = %s] is below its variant count %d (SPEC §4.6)", d.Name, v, max)
+			c.errf(a.Pos, "enum %s | max = %s is below its variant count %d (SPEC §4.6)", d.Name, v, max)
 			continue
 		}
 		if v.Int64() > math.MaxInt32 {
 			// the enum wire rides the 32-bit ranged call in every target
-			c.errf(a.Pos, "enum %s [max = %s] exceeds the 32-bit tag wire's ceiling %d (SPEC §4.6)", d.Name, v, int64(math.MaxInt32))
+			c.errf(a.Pos, "enum %s | max = %s exceeds the 32-bit tag wire's ceiling %d (SPEC §4.6)", d.Name, v, int64(math.MaxInt32))
 			continue
 		}
 		max = v.Int64()
@@ -760,7 +760,7 @@ func (c *checker) resolveFlags(d *ast.FlagsDecl) *ir.Flags {
 	bits := len(variants)
 	for _, a := range d.Attrs {
 		if a.Key != "max" {
-			c.errf(a.Pos, "unknown attribute %q on flags — flags take [max = K] only", a.Key)
+			c.errf(a.Pos, "unknown attribute %q on flags — flags take | max = K only", a.Key)
 			continue
 		}
 		if a.Value == nil {
@@ -772,7 +772,7 @@ func (c *checker) resolveFlags(d *ast.FlagsDecl) *ir.Flags {
 			continue
 		}
 		if !v.IsInt64() || v.Int64() < int64(bits) || v.Int64() > 64 {
-			c.errf(a.Pos, "flags %s [max = %s] must be in [%d, 64]", d.Name, v, bits)
+			c.errf(a.Pos, "flags %s | max = %s must be in [%d, 64]", d.Name, v, bits)
 			continue
 		}
 		bits = int(v.Int64())
@@ -1196,7 +1196,7 @@ func (c *checker) resolveField(kind declKind, owner string, f *ast.Field) *ir.Fi
 	// the fixed and 128-bit families mirror serialize's own surface exactly
 	// (SPEC §4.3, runtime-first): fixed(I, F) and int128 are RANGED — the
 	// bounds are part of the wire format — and uint128 is the raw field.
-	// [local] fields reach no wire, so they carry no bounds (resolveAttrs
+	// | local fields reach no wire, so they carry no bounds (resolveAttrs
 	// already rejects encoding attributes there); a field whose declared
 	// bounds failed above was already diagnosed, so the requirement error
 	// fires only when no bounds were attempted at all.
@@ -1207,12 +1207,12 @@ func (c *checker) resolveField(kind declKind, owner string, f *ast.Field) *ir.Fi
 		}
 	}
 	if !out.Local && !attempted && out.Type.Kind == ir.TFixed && !out.HasIntRange {
-		c.errf(f.Pos, "field %s: %s(%d, %d) requires [min = A, max = B] — the whole-unit bounds are part of the wire format, exactly like a ranged integer's (SPEC §4.3)",
+		c.errf(f.Pos, "field %s: %s(%d, %d) requires | min = A, max = B — the whole-unit bounds are part of the wire format, exactly like a ranged integer's (SPEC §4.3)",
 			f.Name, fixedSpelling(out.Type.Signed), out.Type.IntBits, out.Type.FracBits)
 		return nil
 	}
 	if !out.Local && !attempted && out.Type.Kind == ir.TInt && out.Type.Width == 128 && out.Type.Signed && !out.HasIntRange {
-		c.errf(f.Pos, "field %s: int128 requires [min = A, max = B] — serialize_int128 is the only ranged 128-bit operation; a raw 128-bit field is uint128 (SPEC §4.3)",
+		c.errf(f.Pos, "field %s: int128 requires | min = A, max = B — serialize_int128 is the only ranged 128-bit operation; a raw 128-bit field is uint128 (SPEC §4.3)",
 			f.Name)
 		return nil
 	}
@@ -1280,7 +1280,7 @@ func (c *checker) resolveDefault(f *ast.Field, out *ir.Field) {
 	case ir.TFixed:
 		// the door reopened 2026-08-12: the quaternion identity (w = 1.0) is
 		// the real case. A fixed default is declared in WHOLE UNITS — the same
-		// domain as the [min, max] bounds — and must scale EXACTLY: v * 2^F an
+		// domain as the | min, max bounds — and must scale EXACTLY: v * 2^F an
 		// integer, so no rounding rule is ever involved in a default.
 		v, ok := c.evalFloat(f.Default)
 		if !ok {
@@ -1343,8 +1343,8 @@ func (c *checker) resolveAttrs(kind declKind, owner string, f *ast.Field, out *i
 			c.errf(a.Pos, "attribute %s repeated (SPEC §4.6)", a.Key)
 			continue
 		}
-		// A valued attribute written bare — `[min, max]` for
-		// `[min = 0, max = 10]` — used to reach evalInt with a nil
+		// A valued attribute written bare — ` | min, max` for
+		// ` | min = 0, max = 10` — used to reach evalInt with a nil
 		// expression and panic the compiler. Reject it here, once, for every
 		// valued attribute, rather than nil-checking at each use: a typo in a
 		// schema must produce a diagnostic, never a stack trace.
@@ -1399,9 +1399,9 @@ func (c *checker) resolveAttrs(kind declKind, owner string, f *ast.Field, out *i
 	}
 	if a, ok := byKey["context"]; ok {
 		if kind != objectD {
-			c.errf(a.Pos, "context scopes a [local] object field (SPEC §4.2, Contexts)")
+			c.errf(a.Pos, "context scopes a | local object field (SPEC §4.2, Contexts)")
 		} else if !out.Local {
-			c.errf(a.Pos, "context is legal only beside [local] — a wire field must be identical on every side (SPEC §4.2)")
+			c.errf(a.Pos, "context is legal only beside | local — a wire field must be identical on every side (SPEC §4.2)")
 		} else if w, ok := wordValue(a); ok {
 			switch {
 			case w == "all":
@@ -1420,22 +1420,22 @@ func (c *checker) resolveAttrs(kind declKind, owner string, f *ast.Field, out *i
 	}
 
 	if out.Local && out.Interpolate {
-		c.errf(f.Pos, "field %s is [local, interpolate] — a local field reaches no wire and cannot be in the interpolate view (SPEC §4.8)", f.Name)
+		c.errf(f.Pos, "field %s is | local, interpolate — a local field reaches no wire and cannot be in the interpolate view (SPEC §4.8)", f.Name)
 	}
 
 	hasMin, hasMax := byKey["min"] != nil, byKey["max"] != nil
 	hasRes, hasQuant, hasRound := byKey["resolution"] != nil, byKey["quantize"] != nil, byKey["round"] != nil
 
 	if out.Local && (hasMin || hasMax || hasRes || hasQuant || hasRound) {
-		c.errf(f.Pos, "field %s is [local] — it reaches no wire, so encoding attributes are not valid on it", f.Name)
+		c.errf(f.Pos, "field %s is | local — it reaches no wire, so encoding attributes are not valid on it", f.Name)
 		return
 	}
 
-	// composite quantization (SPEC §4.8 rules 2/2b): [interpolate, quantize = K, ...]
+	// composite quantization (SPEC §4.8 rules 2/2b): | interpolate, quantize = K, ...
 	if hasQuant {
 		a := byKey["quantize"]
 		if kind != objectD || !out.Interpolate {
-			c.errf(a.Pos, "quantize belongs to the [interpolate] view-encoding rules of an object body (SPEC §4.8)")
+			c.errf(a.Pos, "quantize belongs to the | interpolate view-encoding rules of an object body (SPEC §4.8)")
 			return
 		}
 		// classification and validation DEFER until every body is resolved —
@@ -1461,7 +1461,7 @@ func (c *checker) resolveAttrs(kind declKind, owner string, f *ast.Field, out *i
 			return
 		}
 		if out.Type.Kind == ir.TFloat64 && (kind != objectD || !out.Interpolate) {
-			c.errf(f.Pos, "field %s: the compressed float is float32 (SPEC §4.3) — float64 takes the triple only as an [interpolate] object-view projection (SPEC §4.8 rule 4)", f.Name)
+			c.errf(f.Pos, "field %s: the compressed float is float32 (SPEC §4.3) — float64 takes the triple only as an | interpolate object-view projection (SPEC §4.8 rule 4)", f.Name)
 			return
 		}
 		if !hasMin || !hasMax || !hasRes {
@@ -1485,8 +1485,8 @@ func (c *checker) resolveAttrs(kind declKind, owner string, f *ast.Field, out *i
 		// carry the write asserts; the compiler's half is refusing the
 		// declaration). Both levels matter: non-finite at float64, and finite
 		// at float64 but infinite at FLOAT32, where every runtime evaluates
-		// the triple — before this check [min = -1e39, max = 1e39,
-		// resolution = 1e30] compiled, and the C++ emitter printed -Inf.0f,
+		// the triple — before this check | min = -1e39, max = 1e39,
+		// resolution = 1e30 compiled, and the C++ emitter printed -Inf.0f,
 		// a token no C++ compiler accepts (SPEC §4.6, the non-finite rule).
 		for _, p := range [3]struct {
 			key string
@@ -1606,7 +1606,7 @@ func (c *checker) resolveAttrs(kind declKind, owner string, f *ast.Field, out *i
 // checkCompositeQuantize is the deferred half of the composite-quantize rule
 // (SPEC §4.8 rules 2 and 2b): it runs after EVERY body is resolved, so the
 // referenced composite's component list is complete regardless of which file
-// declared it (§3.1 file order). resolveAttrs verified [interpolate]-on-object
+// declared it (§3.1 file order). resolveAttrs verified | interpolate-on-object
 // and scheduled this; everything that reads component fields lives here.
 func (c *checker) checkCompositeQuantize(f *ast.Field, out *ir.Field, byKey map[string]*ast.Attr, hasMin, hasMax, hasRes bool) {
 	a := byKey["quantize"]
@@ -1624,29 +1624,29 @@ func (c *checker) checkCompositeQuantize(f *ast.Field, out *ir.Field, byKey map[
 	}
 	if allFixed {
 		// fixed-composite shallow narrowing (SPEC §4.8 rule 2b):
-		// [interpolate, quantize = K] — the shallow wire keeps log2(K)
+		// | interpolate, quantize = K — the shallow wire keeps log2(K)
 		// fractional bits of the component format (K quantized units per
 		// whole unit, a power of two no finer than the storage's 2^F).
 		// Quantize is a round-to-nearest arithmetic shift, Unquantize a left
 		// shift; no max here — the shallow bound derives from each
-		// component's own whole-unit [min, max], which every component must
+		// component's own whole-unit | min, max, which every component must
 		// therefore declare.
 		//
 		// SIGNED components only in this landing: rule 2b's generated
 		// narrowing runs through int64 shifts, and a ufixed raw may occupy
 		// the u64 high half where those shifts are wrong — the unsigned door
 		// needs its own arithmetic before it opens (SPEC §4.8 rule 2b;
-		// plain [interpolate] ufixed composites dissolve fine, because
+		// plain | interpolate ufixed composites dissolve fine, because
 		// dissolving just delegates to the component encodings).
 		for _, cf := range st.Fields {
 			if !cf.Type.Signed {
-				c.errf(a.Pos, "fixed-composite shallow narrowing is signed fixed(I, F) only — %s.%s is ufixed(%d, %d); an un-narrowed [interpolate] composite of ufixed components is fine (SPEC §4.8 rule 2b)",
+				c.errf(a.Pos, "fixed-composite shallow narrowing is signed fixed(I, F) only — %s.%s is ufixed(%d, %d); an un-narrowed | interpolate composite of ufixed components is fine (SPEC §4.8 rule 2b)",
 					st.Name, cf.Name, cf.Type.IntBits, cf.Type.FracBits)
 				return
 			}
 		}
 		if hasMax || hasMin || hasRes {
-			c.errf(a.Pos, "fixed-composite quantization is [interpolate, quantize = K] alone — the bound comes from the components' own [min, max], not the field (SPEC §4.8 rule 2b)")
+			c.errf(a.Pos, "fixed-composite quantization is | interpolate, quantize = K alone — the bound comes from the components' own | min, max, not the field (SPEC §4.8 rule 2b)")
 			return
 		}
 		k, ok := c.evalInt(a.Value)
@@ -1673,7 +1673,7 @@ func (c *checker) checkCompositeQuantize(f *ast.Field, out *ir.Field, byKey map[
 				return
 			}
 			if !cf.HasIntRange {
-				c.errf(a.Pos, "fixed-composite quantization derives its wire bound from the components — %s.%s must declare whole-unit [min, max] (SPEC §4.8 rule 2b)", st.Name, cf.Name)
+				c.errf(a.Pos, "fixed-composite quantization derives its wire bound from the components — %s.%s must declare whole-unit | min, max (SPEC §4.8 rule 2b)", st.Name, cf.Name)
 				return
 			}
 		}
@@ -1691,7 +1691,7 @@ func (c *checker) checkCompositeQuantize(f *ast.Field, out *ir.Field, byKey map[
 		}
 	}
 	if !hasMax || hasMin || hasRes {
-		c.errf(a.Pos, "composite quantization is [interpolate, quantize = K, max = B] — max required, min and resolution not valid here (SPEC §4.8 rule 2)")
+		c.errf(a.Pos, "composite quantization is | interpolate, quantize = K, max = B — max required, min and resolution not valid here (SPEC §4.8 rule 2)")
 		return
 	}
 	k, ok := c.evalInt(a.Value)

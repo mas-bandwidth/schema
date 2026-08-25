@@ -53,7 +53,7 @@ struct TableFieldInfo
     uint32_t elem_size;     // sizeof the member (element size for arrays)
     uint32_t count_offset;  // offsetof the _count/_length companion, or 0xffffffff
     const TableTypeInfo * table; // nested table's descriptor, or NULL
-    bool has_range;         // a declared [min, max] (int or float)
+    bool has_range;         // a declared | min, max (int or float)
     double range_min;       // NOTE: int64 ranges beyond 2^53 lose precision here
     double range_max;
     int64_t enum_max;       // enums: highest valid value (None = 0 always valid); else -1

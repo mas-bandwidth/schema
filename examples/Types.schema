@@ -13,7 +13,8 @@ package example
 // declares Vec3 storage as ::VecMath — a hand math type deriving from the
 // generated basis struct (same layout, plus operators) — and every header
 // referencing it includes the mapped header. Other targets ignore the pair.
-type Vec3 [vec3, cpp_native = VecMath, cpp_include = "vec_math.h"] {
+type Vec3 | vec3, cpp_native = VecMath, cpp_include = "vec_math.h"
+{
     x float64
     y float64
     z float64
@@ -22,7 +23,8 @@ type Vec3 [vec3, cpp_native = VecMath, cpp_include = "vec_math.h"] {
 // Unit rotation quaternion — always unit length (rotations are). The tag is
 // what the delta pass will claim for renormalize + shortest-arc actions; in v1
 // this is a plain 4-float type and the hand-written rotation actions remain.
-type Quat [quat4] {
+type Quat | quat4
+{
     x float64
     y float64
     z float64
@@ -32,7 +34,7 @@ type Quat [quat4] {
 // A handle to another object: id + generation sequence.
 // object_id 0 doubles as the null sentinel (the surveyed NULL_OBJECT convention).
 type Handle {
-    object_id       int32 [min = 0, max = MaxObjects - 1]
+    object_id       int32 | min = 0, max = MaxObjects - 1
     object_sequence uint8
 }
 
@@ -40,22 +42,22 @@ type Handle {
 // (Object views express the same thing with [interpolate, quantize = ...]; both
 // belong in the corpus while both idioms exist in real code.)
 type QuantizedPosition {
-    x int32 [min = -MaxPositionUnits, max = MaxPositionUnits]
-    y int32 [min = -MaxPositionUnits, max = MaxPositionUnits]
-    z int32 [min = -MaxPositionUnits, max = MaxPositionUnits]
+    x int32 | min = -MaxPositionUnits, max = MaxPositionUnits
+    y int32 | min = -MaxPositionUnits, max = MaxPositionUnits
+    z int32 | min = -MaxPositionUnits, max = MaxPositionUnits
 }
 
 type QuantizedVelocity {
-    x int32 [min = -MaxVelocityUnits, max = MaxVelocityUnits]
-    y int32 [min = -MaxVelocityUnits, max = MaxVelocityUnits]
-    z int32 [min = -MaxVelocityUnits, max = MaxVelocityUnits]
+    x int32 | min = -MaxVelocityUnits, max = MaxVelocityUnits
+    y int32 | min = -MaxVelocityUnits, max = MaxVelocityUnits
+    z int32 | min = -MaxVelocityUnits, max = MaxVelocityUnits
 }
 
 type QuantizedRotation {
-    x int16 [min = -RotationUnits, max = RotationUnits]
-    y int16 [min = -RotationUnits, max = RotationUnits]
-    z int16 [min = -RotationUnits, max = RotationUnits]
-    w int16 [min = -RotationUnits, max = RotationUnits]
+    x int16 | min = -RotationUnits, max = RotationUnits
+    y int16 | min = -RotationUnits, max = RotationUnits
+    z int16 | min = -RotationUnits, max = RotationUnits
+    w int16 | min = -RotationUnits, max = RotationUnits
 }
 
 // ---- the back-reference worked example (SPEC §4.4, §4.5, §5) ----
@@ -126,8 +128,8 @@ type ShipCreate {
     }
 
     team   Team
-    health int16 [min = 0, max = MaxHealth]
-    thrust int8  [min = 0, max = 100]
+    health int16 | min = 0, max = MaxHealth
+    thrust int8  | min = 0, max = 100
 
     // an empty enum: the degenerate [0, 0] wire range, ZERO BITS. It rides
     // here to keep the no-variant path in the cross-language corpus rather
@@ -146,8 +148,8 @@ type ShipCreate {
 // doubled-minus parenthesization changes no wire bit and no folded value —
 // only these goldens go red.
 type ExpressionProbe {
-    hardpoint_index int32 [min = 0, max = (ShipMaxLasers + ShipMaxMissiles) - 1]
-    spin_rate       int32 [min = --RotationUnits, max = RotationUnits * 2]
+    hardpoint_index int32 | min = 0, max = (ShipMaxLasers + ShipMaxMissiles) - 1
+    spin_rate       int32 | min = --RotationUnits, max = RotationUnits * 2
 }
 
 // ---- issue #95: the integer extremes, pinned end-to-end ----
@@ -170,16 +172,16 @@ const FloorLimit          = -9223372036854775808
 const CeilingCount uint64 = 18446744073709551615
 
 type ExtremeProbe {
-    floor_bound     int64  [min = -9223372036854775808, max = 100]
-    doubled_floor   int64  [min = --FloorLimit, max = 100]
-    ceiling_range   uint64 [min = 1, max = 18446744073709551615]
-    floor_default   int64  = -9223372036854775808
+    floor_bound     int64                         | min = -9223372036854775808, max = 100
+    doubled_floor   int64                         | min = --FloorLimit, max = 100
+    ceiling_range   uint64                        | min = 1, max = 18446744073709551615
+    floor_default   int64 = -9223372036854775808
     ceiling_default uint64 = 18446744073709551615
 }
 
 table ExtremeRow {
-    clamped_floor   int64  [min = -9223372036854775808, max = 100]
-    clamped_ceiling uint64 [min = 1, max = 18446744073709551614]
-    floor_def       int64  = -9223372036854775808
+    clamped_floor   int64                         | min = -9223372036854775808, max = 100
+    clamped_ceiling uint64                        | min = 1, max = 18446744073709551614
+    floor_def       int64 = -9223372036854775808
     ceiling_def     uint64 = 18446744073709551615
 }

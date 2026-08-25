@@ -63,14 +63,14 @@ type Const struct {
 type Enum struct {
 	Name        string
 	Variants    []string // implicit None = 0 is not listed; variants pack from 1
-	Max         int64    // top wire value: variant count, or the [max = K] widening
+	Max         int64    // top wire value: variant count, or the | max = K widening
 	StorageBits int      // 8 / 16 / 32 / 64 — smallest unsigned fitting Max
 }
 
 type Flags struct {
 	Name     string
 	Variants []string // bit i is variant i
-	WireBits int      // variant count, or the [max = K] widening
+	WireBits int      // variant count, or the | max = K widening
 }
 
 // ContextsMarker records the contexts declaration in its declaring file so the
@@ -381,7 +381,7 @@ func FixedShallowBounds(f *Field, cf *Field) (lo, hi *big.Int) {
 }
 
 // ObjectNeedsQuantize reports whether an object's Quantize/Unquantize pair
-// does any work: true when some [interpolate] field quantizes a composite
+// does any work: true when some | interpolate field quantizes a composite
 // (HasQuantize) or projects a float (HasFloatRange). When false the pair
 // would be a pure member copy — fixed-point components are their own
 // quantization (SPEC §4.8) — and the backends do not emit it at all.

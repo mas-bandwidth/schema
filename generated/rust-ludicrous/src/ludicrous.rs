@@ -57,7 +57,7 @@ impl ObjectType {
 pub const MAX_WORLD_UNITS: i64 = 30000;
 
 // DriveMode — None = 0 implicit, variants dense from 1, wire range [0, 3] (SPEC §4.2);
-// a newtype because [max = ...] headroom makes non-variant values wire-legal
+// a newtype because | max = ... headroom makes non-variant values wire-legal
 #[repr(transparent)]
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
 pub struct DriveMode(pub u8);
@@ -668,7 +668,7 @@ pub struct BodyState {
     pub position: FixedVec,
     pub rotation: FixedQuat,
     pub velocity: FixedVec,
-    pub spin: f64, // [local] — no wire
+    pub spin: f64, //  | local — no wire
 }
 
 // The zero form (SPEC §5): specified defaults live only in new(), never here.
@@ -683,7 +683,7 @@ impl Default for BodyState {
     }
 }
 
-// BodyData_Deep — every non-[local] field, deep encodings: full state for
+// BodyData_Deep — every non- | local field, deep encodings: full state for
 // client-side prediction
 #[allow(non_camel_case_types)] // the name is fixed across targets (SPEC §4.8)
 #[derive(Clone, Copy, PartialEq, Debug)]
@@ -704,7 +704,7 @@ impl Default for BodyData_Deep {
     }
 }
 
-// BodyData_Shallow — the [interpolate] fields on the quantized wire: the
+// BodyData_Shallow — the | interpolate fields on the quantized wire: the
 // implementation detail on the way to interpolation on the client
 #[allow(non_camel_case_types)] // the name is fixed across targets (SPEC §4.8)
 #[derive(Clone, Copy, PartialEq, Debug)]
@@ -806,7 +806,7 @@ impl Default for NarrowBodyState {
     }
 }
 
-// NarrowBodyData_Deep — every non-[local] field, deep encodings: full state for
+// NarrowBodyData_Deep — every non- | local field, deep encodings: full state for
 // client-side prediction
 #[allow(non_camel_case_types)] // the name is fixed across targets (SPEC §4.8)
 #[derive(Clone, Copy, PartialEq, Debug)]
@@ -827,18 +827,18 @@ impl Default for NarrowBodyData_Deep {
     }
 }
 
-// NarrowBodyData_Shallow — the [interpolate] fields on the quantized wire: the
+// NarrowBodyData_Shallow — the | interpolate fields on the quantized wire: the
 // implementation detail on the way to interpolation on the client
 #[allow(non_camel_case_types)] // the name is fixed across targets (SPEC §4.8)
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub struct NarrowBodyData_Shallow {
     // position: FixedVec narrowed to 8 fractional bits (quantize = 256) — per-component
-    // quantized units; bounds are the component's whole-unit [min, max] scaled
+    // quantized units; bounds are the component's whole-unit | min, max scaled
     pub position_x: i32, // in [-25600000, 25600000]
     pub position_y: i32, // in [-25600000, 25600000]
     pub position_z: i32, // in [-25600000, 25600000]
     // rotation: FixedQuat narrowed to 10 fractional bits (quantize = 1024) — per-component
-    // quantized units; bounds are the component's whole-unit [min, max] scaled
+    // quantized units; bounds are the component's whole-unit | min, max scaled
     pub rotation_x: i16, // in [-1024, 1024]
     pub rotation_y: i16, // in [-1024, 1024]
     pub rotation_z: i16, // in [-1024, 1024]
