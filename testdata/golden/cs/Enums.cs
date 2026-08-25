@@ -178,6 +178,48 @@ namespace Example
         public const ulong ShipFlagsBraking = 1ul << 2;
         public const ulong ShipFlagsAiming = 1ul << 3;
         public const long ShipFlagsCount = 4; // the declared variant count (SPEC §4.2)
+
+        // FlagNameShipFlags: debug/log/tooling name for bit i of ShipFlags —
+        // out-of-range bits name as "???"
+        public static string FlagNameShipFlags(int bit)
+        {
+            switch (bit)
+            {
+                case 0: return "FiringLaser";
+                case 1: return "Boosting";
+                case 2: return "Braking";
+                case 3: return "Aiming";
+                default: return "???";
+            }
+        }
+
+        // FlagNamesShipFlags renders the set bits of value as "A|B" — "0" for the
+        // empty set, bits past the declared variants as hex
+        public static string FlagNamesShipFlags(ulong value)
+        {
+            string names = "";
+            if ((value & (1ul << 0)) != 0)
+            {
+                names += "|FiringLaser";
+            }
+            if ((value & (1ul << 1)) != 0)
+            {
+                names += "|Boosting";
+            }
+            if ((value & (1ul << 2)) != 0)
+            {
+                names += "|Braking";
+            }
+            if ((value & (1ul << 3)) != 0)
+            {
+                names += "|Aiming";
+            }
+            if ((value >> 4) != 0)
+            {
+                names += "|0x" + ((value >> 4) << 4).ToString("x");
+            }
+            return names.Length == 0 ? "0" : names.Substring(1);
+        }
     }
 
 }

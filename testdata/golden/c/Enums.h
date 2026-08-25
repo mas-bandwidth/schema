@@ -158,6 +158,91 @@ typedef uint64_t ShipFlags;
 #define SHIP_FLAGS_AIMING (1ULL << 3)
 #define SHIP_FLAGS_COUNT 4 /* the declared variant count (SPEC §4.2) */
 
+/* Debug/log name for bit i of ShipFlags — out-of-range bits name as "???". */
+static SCHEMA_UNUSED const char * flag_name_ship_flags( int bit )
+{
+    switch ( bit )
+    {
+        case 0: return "FiringLaser";
+        case 1: return "Boosting";
+        case 2: return "Braking";
+        case 3: return "Aiming";
+        default: return "???";
+    }
+}
+
+#ifndef SCHEMA_FLAG_APPEND_DEFINED
+#define SCHEMA_FLAG_APPEND_DEFINED
+static SCHEMA_UNUSED int schema_flag_append_( char * buffer, int buffer_size, int position, const char * name )
+{
+    if ( position > 0 && position < buffer_size - 1 )
+    {
+        buffer[position++] = '|';
+    }
+    while ( *name && position < buffer_size - 1 )
+    {
+        buffer[position++] = *name++;
+    }
+    return position;
+}
+
+static SCHEMA_UNUSED int schema_flag_append_hex_( char * buffer, int buffer_size, int position, uint64_t bits )
+{
+    int shift = 60;
+    position = schema_flag_append_( buffer, buffer_size, position, "0x" );
+    while ( shift > 0 && ( ( bits >> shift ) & 0xf ) == 0 )
+    {
+        shift -= 4;
+    }
+    for ( ; shift >= 0; shift -= 4 )
+    {
+        if ( position < buffer_size - 1 )
+        {
+            buffer[position++] = "0123456789abcdef"[( bits >> shift ) & 0xf];
+        }
+    }
+    return position;
+}
+#endif /* SCHEMA_FLAG_APPEND_DEFINED */
+
+/* Renders the set bits of value into buffer as "A|B" — "0" for the empty
+   set, bits past the declared variants as hex — NUL-terminates and returns
+   buffer; SHIP_FLAGS_NAMES_MAX bytes always suffice. */
+#define SHIP_FLAGS_NAMES_MAX 56
+static SCHEMA_UNUSED const char * flag_names_ship_flags( uint64_t value, char * buffer, int buffer_size )
+{
+    int position = 0;
+    if ( value & ( 1ULL << 0 ) )
+    {
+        position = schema_flag_append_( buffer, buffer_size, position, flag_name_ship_flags( 0 ) );
+    }
+    if ( value & ( 1ULL << 1 ) )
+    {
+        position = schema_flag_append_( buffer, buffer_size, position, flag_name_ship_flags( 1 ) );
+    }
+    if ( value & ( 1ULL << 2 ) )
+    {
+        position = schema_flag_append_( buffer, buffer_size, position, flag_name_ship_flags( 2 ) );
+    }
+    if ( value & ( 1ULL << 3 ) )
+    {
+        position = schema_flag_append_( buffer, buffer_size, position, flag_name_ship_flags( 3 ) );
+    }
+    if ( value >> 4 )
+    {
+        position = schema_flag_append_hex_( buffer, buffer_size, position, ( value >> 4 ) << 4 );
+    }
+    if ( position == 0 )
+    {
+        position = schema_flag_append_( buffer, buffer_size, position, "0" );
+    }
+    if ( position < buffer_size )
+    {
+        buffer[position] = '\0';
+    }
+    return buffer;
+}
+
 #ifdef __cplusplus
 }
 #endif

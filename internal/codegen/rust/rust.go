@@ -354,6 +354,32 @@ func (g *gen) emitFlags(d *ir.Flags) {
 	}
 	g.pf("pub const %s: i64 = %d; // the declared variant count (SPEC §4.2)\n", ir.RustConstName(d.Name+"Count"), len(d.Variants))
 	g.pf("\n")
+
+	snake := ir.RustSnake(d.Name)
+	g.pf("/// Debug/log name for bit `i` of `%s` — out-of-range bits name as `\"???\"`.\n", d.Name)
+	g.pf("pub fn flag_name_%s(bit: u32) -> &'static str {\n", snake)
+	g.pf("    match bit {\n")
+	for i, v := range d.Variants {
+		g.pf("        %d => %q,\n", i, v)
+	}
+	g.pf("        _ => \"???\",\n    }\n}\n\n")
+
+	g.pf("/// Renders the set bits of `value` as `\"A|B\"` — `\"0\"` for the empty set,\n")
+	g.pf("/// bits past the declared variants as hex.\n")
+	g.pf("pub fn flag_names_%s(value: %s) -> String {\n", snake, d.Name)
+	g.pf("    let mut names = String::new();\n")
+	for i := range d.Variants {
+		g.pf("    if value & (1 << %d) != 0 {\n", i)
+		g.pf("        if !names.is_empty() {\n            names.push('|');\n        }\n")
+		g.pf("        names.push_str(flag_name_%s(%d));\n    }\n", snake, i)
+	}
+	if len(d.Variants) < 64 { // a 64-variant set has no room for unknown bits
+		g.pf("    if value >> %d != 0 {\n", len(d.Variants))
+		g.pf("        if !names.is_empty() {\n            names.push('|');\n        }\n")
+		g.pf("        names.push_str(&format!(\"{:#x}\", (value >> %d) << %d));\n    }\n", len(d.Variants), len(d.Variants))
+	}
+	g.pf("    if names.is_empty() {\n        names.push('0');\n    }\n")
+	g.pf("    names\n}\n\n")
 }
 
 func (g *gen) emitStruct(d *ir.Struct) {

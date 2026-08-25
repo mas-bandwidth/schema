@@ -2326,6 +2326,11 @@ func (c *checker) checkClaimedNames() {
 		case *ast.FlagsDecl:
 			add(name+"Count", fmt.Sprintf("flags %s's generated Count constant", name), d.Pos)
 			addRust(ir.RustConstName(name+"Count"), fmt.Sprintf("flags %s's generated Count constant (Rust/C form)", name), d.Pos, name+"Count")
+			whyName := fmt.Sprintf("flags %s's generated name functions", name)
+			add("FlagName"+name, whyName, d.Pos)
+			add("FlagNames"+name, whyName, d.Pos)
+			addRust("flag_name_"+ir.RustSnake(name), whyName+" (Rust/C form)", d.Pos)
+			addRust("flag_names_"+ir.RustSnake(name), whyName+" (Rust/C form)", d.Pos)
 			for _, v := range d.Variants {
 				add(name+v.Text, fmt.Sprintf("flags %s's generated mask constant (Go form)", name), v.Pos)
 				add(name+"_"+v.Text, fmt.Sprintf("flags %s's generated mask constant (C++ form)", name), v.Pos)

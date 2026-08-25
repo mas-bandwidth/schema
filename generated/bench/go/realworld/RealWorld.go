@@ -8,6 +8,7 @@ package realworld
 
 import (
 	"errors"
+	"strconv"
 
 	"github.com/mas-bandwidth/serialize.go"
 )
@@ -67,6 +68,52 @@ const (
 
 // PacketFlagsCount is the declared variant count (SPEC §4.2).
 const PacketFlagsCount = 5
+
+// FlagNamePacketFlags: debug/log/tooling name for bit i of PacketFlags —
+// out-of-range bits name as "???"
+func FlagNamePacketFlags(bit int) string {
+	switch bit {
+	case 0:
+		return "Shielded"
+	case 1:
+		return "Cloaked"
+	case 2:
+		return "Overheated"
+	case 3:
+		return "LowPower"
+	case 4:
+		return "Jamming"
+	}
+	return "???"
+}
+
+// FlagNamesPacketFlags renders the set bits of value as "A|B" — "0" for the
+// empty set, bits past the declared variants as hex
+func FlagNamesPacketFlags(value uint64) string {
+	names := ""
+	if value&(1<<0) != 0 {
+		names += "|Shielded"
+	}
+	if value&(1<<1) != 0 {
+		names += "|Cloaked"
+	}
+	if value&(1<<2) != 0 {
+		names += "|Overheated"
+	}
+	if value&(1<<3) != 0 {
+		names += "|LowPower"
+	}
+	if value&(1<<4) != 0 {
+		names += "|Jamming"
+	}
+	if rest := value >> 5; rest != 0 {
+		names += "|0x" + strconv.FormatUint(rest<<5, 16)
+	}
+	if names == "" {
+		return "0"
+	}
+	return names[1:]
+}
 
 // type RealPacket
 type RealPacket struct {

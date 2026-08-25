@@ -57,6 +57,36 @@ export const ProbeFlagsCloaked = 1n << 1n;
 export const ProbeFlagsDamaged = 1n << 2n;
 export const ProbeFlagsCount = 3; // the declared variant count (SPEC §4.2)
 
+// FlagNameProbeFlags: debug/log/tooling name for bit i of ProbeFlags —
+// out-of-range bits name as "???"
+export function FlagNameProbeFlags(bit) {
+  switch (bit) {
+    case 0: return "Armed";
+    case 1: return "Cloaked";
+    case 2: return "Damaged";
+    default: return "???";
+  }
+}
+
+// FlagNamesProbeFlags renders the set bits of value (BigInt) as "A|B" — "0" for
+// the empty set, bits past the declared variants as hex
+export function FlagNamesProbeFlags(value) {
+  const names = [];
+  if (value & (1n << 0n)) {
+    names.push("Armed");
+  }
+  if (value & (1n << 1n)) {
+    names.push("Cloaked");
+  }
+  if (value & (1n << 2n)) {
+    names.push("Damaged");
+  }
+  if (value >> 3n) {
+    names.push("0x" + ((value >> 3n) << 3n).toString(16));
+  }
+  return names.length === 0 ? "0" : names.join("|");
+}
+
 // type ProbeHeader
 export class ProbeHeader {
   constructor() {

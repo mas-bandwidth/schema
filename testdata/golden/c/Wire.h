@@ -61,6 +61,86 @@ typedef uint64_t ProbeFlags;
 #define PROBE_FLAGS_DAMAGED (1ULL << 2)
 #define PROBE_FLAGS_COUNT 3 /* the declared variant count (SPEC §4.2) */
 
+/* Debug/log name for bit i of ProbeFlags — out-of-range bits name as "???". */
+static SCHEMA_UNUSED const char * flag_name_probe_flags( int bit )
+{
+    switch ( bit )
+    {
+        case 0: return "Armed";
+        case 1: return "Cloaked";
+        case 2: return "Damaged";
+        default: return "???";
+    }
+}
+
+#ifndef SCHEMA_FLAG_APPEND_DEFINED
+#define SCHEMA_FLAG_APPEND_DEFINED
+static SCHEMA_UNUSED int schema_flag_append_( char * buffer, int buffer_size, int position, const char * name )
+{
+    if ( position > 0 && position < buffer_size - 1 )
+    {
+        buffer[position++] = '|';
+    }
+    while ( *name && position < buffer_size - 1 )
+    {
+        buffer[position++] = *name++;
+    }
+    return position;
+}
+
+static SCHEMA_UNUSED int schema_flag_append_hex_( char * buffer, int buffer_size, int position, uint64_t bits )
+{
+    int shift = 60;
+    position = schema_flag_append_( buffer, buffer_size, position, "0x" );
+    while ( shift > 0 && ( ( bits >> shift ) & 0xf ) == 0 )
+    {
+        shift -= 4;
+    }
+    for ( ; shift >= 0; shift -= 4 )
+    {
+        if ( position < buffer_size - 1 )
+        {
+            buffer[position++] = "0123456789abcdef"[( bits >> shift ) & 0xf];
+        }
+    }
+    return position;
+}
+#endif /* SCHEMA_FLAG_APPEND_DEFINED */
+
+/* Renders the set bits of value into buffer as "A|B" — "0" for the empty
+   set, bits past the declared variants as hex — NUL-terminates and returns
+   buffer; PROBE_FLAGS_NAMES_MAX bytes always suffice. */
+#define PROBE_FLAGS_NAMES_MAX 42
+static SCHEMA_UNUSED const char * flag_names_probe_flags( uint64_t value, char * buffer, int buffer_size )
+{
+    int position = 0;
+    if ( value & ( 1ULL << 0 ) )
+    {
+        position = schema_flag_append_( buffer, buffer_size, position, flag_name_probe_flags( 0 ) );
+    }
+    if ( value & ( 1ULL << 1 ) )
+    {
+        position = schema_flag_append_( buffer, buffer_size, position, flag_name_probe_flags( 1 ) );
+    }
+    if ( value & ( 1ULL << 2 ) )
+    {
+        position = schema_flag_append_( buffer, buffer_size, position, flag_name_probe_flags( 2 ) );
+    }
+    if ( value >> 3 )
+    {
+        position = schema_flag_append_hex_( buffer, buffer_size, position, ( value >> 3 ) << 3 );
+    }
+    if ( position == 0 )
+    {
+        position = schema_flag_append_( buffer, buffer_size, position, "0" );
+    }
+    if ( position < buffer_size )
+    {
+        buffer[position] = '\0';
+    }
+    return buffer;
+}
+
 
 /* type ProbeHeader */
 typedef struct ProbeHeader {

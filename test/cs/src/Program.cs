@@ -909,6 +909,15 @@ static class Program
             Check(tag == ObjectType.None, "the None sentinel round-trips");
         }
 
+        // ---- FlagName / FlagNames: per-bit names and the set renderer ----
+        {
+            Check(FlagNameShipFlags(0) == "FiringLaser", "FlagName names bit 0");
+            Check(FlagNameShipFlags(9) == "???", "FlagName is out-of-range safe");
+            Check(FlagNamesShipFlags(0) == "0", "FlagNames renders the empty set as 0");
+            Check(FlagNamesShipFlags(ShipFlagsFiringLaser | ShipFlagsBraking) == "FiringLaser|Braking", "FlagNames renders the set bits");
+            Check(FlagNamesShipFlags(ShipFlagsAiming | (1ul << 63)) == "Aiming|0x8000000000000000", "FlagNames renders unknown high bits as hex");
+        }
+
         if (failed)
         {
             return 1;

@@ -66,6 +66,96 @@ typedef uint64_t PacketFlags;
 #define PACKET_FLAGS_JAMMING (1ULL << 4)
 #define PACKET_FLAGS_COUNT 5 /* the declared variant count (SPEC §4.2) */
 
+/* Debug/log name for bit i of PacketFlags — out-of-range bits name as "???". */
+static SCHEMA_UNUSED const char * flag_name_packet_flags( int bit )
+{
+    switch ( bit )
+    {
+        case 0: return "Shielded";
+        case 1: return "Cloaked";
+        case 2: return "Overheated";
+        case 3: return "LowPower";
+        case 4: return "Jamming";
+        default: return "???";
+    }
+}
+
+#ifndef SCHEMA_FLAG_APPEND_DEFINED
+#define SCHEMA_FLAG_APPEND_DEFINED
+static SCHEMA_UNUSED int schema_flag_append_( char * buffer, int buffer_size, int position, const char * name )
+{
+    if ( position > 0 && position < buffer_size - 1 )
+    {
+        buffer[position++] = '|';
+    }
+    while ( *name && position < buffer_size - 1 )
+    {
+        buffer[position++] = *name++;
+    }
+    return position;
+}
+
+static SCHEMA_UNUSED int schema_flag_append_hex_( char * buffer, int buffer_size, int position, uint64_t bits )
+{
+    int shift = 60;
+    position = schema_flag_append_( buffer, buffer_size, position, "0x" );
+    while ( shift > 0 && ( ( bits >> shift ) & 0xf ) == 0 )
+    {
+        shift -= 4;
+    }
+    for ( ; shift >= 0; shift -= 4 )
+    {
+        if ( position < buffer_size - 1 )
+        {
+            buffer[position++] = "0123456789abcdef"[( bits >> shift ) & 0xf];
+        }
+    }
+    return position;
+}
+#endif /* SCHEMA_FLAG_APPEND_DEFINED */
+
+/* Renders the set bits of value into buffer as "A|B" — "0" for the empty
+   set, bits past the declared variants as hex — NUL-terminates and returns
+   buffer; PACKET_FLAGS_NAMES_MAX bytes always suffice. */
+#define PACKET_FLAGS_NAMES_MAX 65
+static SCHEMA_UNUSED const char * flag_names_packet_flags( uint64_t value, char * buffer, int buffer_size )
+{
+    int position = 0;
+    if ( value & ( 1ULL << 0 ) )
+    {
+        position = schema_flag_append_( buffer, buffer_size, position, flag_name_packet_flags( 0 ) );
+    }
+    if ( value & ( 1ULL << 1 ) )
+    {
+        position = schema_flag_append_( buffer, buffer_size, position, flag_name_packet_flags( 1 ) );
+    }
+    if ( value & ( 1ULL << 2 ) )
+    {
+        position = schema_flag_append_( buffer, buffer_size, position, flag_name_packet_flags( 2 ) );
+    }
+    if ( value & ( 1ULL << 3 ) )
+    {
+        position = schema_flag_append_( buffer, buffer_size, position, flag_name_packet_flags( 3 ) );
+    }
+    if ( value & ( 1ULL << 4 ) )
+    {
+        position = schema_flag_append_( buffer, buffer_size, position, flag_name_packet_flags( 4 ) );
+    }
+    if ( value >> 5 )
+    {
+        position = schema_flag_append_hex_( buffer, buffer_size, position, ( value >> 5 ) << 5 );
+    }
+    if ( position == 0 )
+    {
+        position = schema_flag_append_( buffer, buffer_size, position, "0" );
+    }
+    if ( position < buffer_size )
+    {
+        buffer[position] = '\0';
+    }
+    return buffer;
+}
+
 
 /* type RealPacket */
 typedef struct RealPacket {

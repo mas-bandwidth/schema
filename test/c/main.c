@@ -611,6 +611,16 @@ int main( void )
                "the UNTAKEN then fields are zeroed when the else arm is taken (SPEC §5)" );
     }
 
+    /* ---- flag_name / flag_names: per-bit names and the set renderer ---- */
+    {
+        char buffer[SHIP_FLAGS_NAMES_MAX];
+        check( strcmp( flag_name_ship_flags( 0 ), "FiringLaser" ) == 0, "flag_name names bit 0" );
+        check( strcmp( flag_name_ship_flags( 9 ), "???" ) == 0, "flag_name is out-of-range safe" );
+        check( strcmp( flag_names_ship_flags( 0, buffer, sizeof( buffer ) ), "0" ) == 0, "flag_names renders the empty set as 0" );
+        check( strcmp( flag_names_ship_flags( SHIP_FLAGS_FIRING_LASER | SHIP_FLAGS_BRAKING, buffer, sizeof( buffer ) ), "FiringLaser|Braking" ) == 0, "flag_names renders the set bits" );
+        check( strcmp( flag_names_ship_flags( SHIP_FLAGS_AIMING | ( 1ULL << 63 ), buffer, sizeof( buffer ) ), "Aiming|0x8000000000000000" ) == 0, "flag_names renders unknown high bits as hex" );
+    }
+
     if ( failed )
     {
         printf( "FAILED\n" );

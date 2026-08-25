@@ -74,6 +74,64 @@ pub const PACKET_FLAGS_LOW_POWER: PacketFlags = 1 << 3;
 pub const PACKET_FLAGS_JAMMING: PacketFlags = 1 << 4;
 pub const PACKET_FLAGS_COUNT: i64 = 5; // the declared variant count (SPEC §4.2)
 
+/// Debug/log name for bit `i` of `PacketFlags` — out-of-range bits name as `"???"`.
+pub fn flag_name_packet_flags(bit: u32) -> &'static str {
+    match bit {
+        0 => "Shielded",
+        1 => "Cloaked",
+        2 => "Overheated",
+        3 => "LowPower",
+        4 => "Jamming",
+        _ => "???",
+    }
+}
+
+/// Renders the set bits of `value` as `"A|B"` — `"0"` for the empty set,
+/// bits past the declared variants as hex.
+pub fn flag_names_packet_flags(value: PacketFlags) -> String {
+    let mut names = String::new();
+    if value & (1 << 0) != 0 {
+        if !names.is_empty() {
+            names.push('|');
+        }
+        names.push_str(flag_name_packet_flags(0));
+    }
+    if value & (1 << 1) != 0 {
+        if !names.is_empty() {
+            names.push('|');
+        }
+        names.push_str(flag_name_packet_flags(1));
+    }
+    if value & (1 << 2) != 0 {
+        if !names.is_empty() {
+            names.push('|');
+        }
+        names.push_str(flag_name_packet_flags(2));
+    }
+    if value & (1 << 3) != 0 {
+        if !names.is_empty() {
+            names.push('|');
+        }
+        names.push_str(flag_name_packet_flags(3));
+    }
+    if value & (1 << 4) != 0 {
+        if !names.is_empty() {
+            names.push('|');
+        }
+        names.push_str(flag_name_packet_flags(4));
+    }
+    if value >> 5 != 0 {
+        if !names.is_empty() {
+            names.push('|');
+        }
+        names.push_str(&format!("{:#x}", (value >> 5) << 5));
+    }
+    if names.is_empty() {
+        names.push('0');
+    }
+    names
+}
+
 // type RealPacket
 #[repr(C)]
 #[derive(Clone, Copy, PartialEq, Debug)]

@@ -361,6 +361,27 @@ func (g *gen) emitFlags(d *ir.Flags) {
 	}
 	g.pf("export const %sCount = %d; // the declared variant count (SPEC §4.2)\n", d.Name, len(d.Variants))
 	g.pf("\n")
+
+	g.pf("// FlagName%s: debug/log/tooling name for bit i of %s —\n", d.Name, d.Name)
+	g.pf("// out-of-range bits name as \"???\"\n")
+	g.pf("export function FlagName%s(bit) {\n", d.Name)
+	g.pf("  switch (bit) {\n")
+	for i, v := range d.Variants {
+		g.pf("    case %d: return %q;\n", i, v)
+	}
+	g.pf("    default: return \"???\";\n  }\n}\n\n")
+
+	g.pf("// FlagNames%s renders the set bits of value (BigInt) as \"A|B\" — \"0\" for\n", d.Name)
+	g.pf("// the empty set, bits past the declared variants as hex\n")
+	g.pf("export function FlagNames%s(value) {\n", d.Name)
+	g.pf("  const names = [];\n")
+	for i, v := range d.Variants {
+		g.pf("  if (value & (1n << %dn)) {\n    names.push(%q);\n  }\n", i, v)
+	}
+	if len(d.Variants) < 64 { // a 64-variant set has no room for unknown bits
+		g.pf("  if (value >> %dn) {\n    names.push(\"0x\" + ((value >> %dn) << %dn).toString(16));\n  }\n", len(d.Variants), len(d.Variants), len(d.Variants))
+	}
+	g.pf("  return names.length === 0 ? \"0\" : names.join(\"|\");\n}\n\n")
 }
 
 func (g *gen) emitClass(d *ir.Struct) {

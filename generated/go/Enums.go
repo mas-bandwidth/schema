@@ -6,6 +6,10 @@
 
 package example
 
+import (
+	"strconv"
+)
+
 // Team — None = 0 implicit, variants dense from 1, wire range [0, 2] (SPEC §4.2)
 type Team uint8
 
@@ -157,3 +161,44 @@ const (
 
 // ShipFlagsCount is the declared variant count (SPEC §4.2).
 const ShipFlagsCount = 4
+
+// FlagNameShipFlags: debug/log/tooling name for bit i of ShipFlags —
+// out-of-range bits name as "???"
+func FlagNameShipFlags(bit int) string {
+	switch bit {
+	case 0:
+		return "FiringLaser"
+	case 1:
+		return "Boosting"
+	case 2:
+		return "Braking"
+	case 3:
+		return "Aiming"
+	}
+	return "???"
+}
+
+// FlagNamesShipFlags renders the set bits of value as "A|B" — "0" for the
+// empty set, bits past the declared variants as hex
+func FlagNamesShipFlags(value uint64) string {
+	names := ""
+	if value&(1<<0) != 0 {
+		names += "|FiringLaser"
+	}
+	if value&(1<<1) != 0 {
+		names += "|Boosting"
+	}
+	if value&(1<<2) != 0 {
+		names += "|Braking"
+	}
+	if value&(1<<3) != 0 {
+		names += "|Aiming"
+	}
+	if rest := value >> 4; rest != 0 {
+		names += "|0x" + strconv.FormatUint(rest<<4, 16)
+	}
+	if names == "" {
+		return "0"
+	}
+	return names[1:]
+}
