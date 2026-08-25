@@ -12,6 +12,8 @@ const MaxHealth = 1000
 
 enum ShipType { Fighter, Corvette, Bomber }
 
+enum ShipFlags { Firing, Thrusting, Disabled }
+
 type Vec3
 {
     x float64
@@ -19,15 +21,26 @@ type Vec3
     z float64
 }
 
+type Quaternion
+{
+    x float64
+    y float64
+    z float64
+    w float64
+}
+
 type ShipState
 {
-    ship_type ShipType
+    type      ShipType
+    flags     ShipFlags
     position  Vec3
+    rotation  Quaternion
     health    int32 | min = 0, max = MaxHealth
     at_rest   bool
     if !at_rest
     {
-        velocity Vec3
+        linear_velocity  Vec3
+        angular_velocity Vec3
     }
 }
 ```
