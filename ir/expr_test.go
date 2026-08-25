@@ -1,4 +1,4 @@
-// Tests for the public expression-rendering surface (issue #89): an external
+// Tests for the public expression-rendering surface: an external
 // generator holding a checked unit must be able to render every kept bound,
 // size, and default expression as the author's own source spelling — the
 // same capability the built-in backends use for symbolic emission. The

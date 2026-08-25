@@ -1,8 +1,8 @@
-// The batch opt-in (serialize.cs PR #3's emitter follow-up): scalar-dense
+// The batch opt-in (serialize.cs.s batch surface, emitter half): scalar-dense
 // Write/Read pairs keep their public stream signature but run their body as
 // an AggressiveInlining batch-form core against WriteBatch/ReadBatch —
 // register-resident stream state, stored back once at End. Two measured laws
-// from #3 govern the shape:
+// from the batch measurements govern the shape:
 //
 //  1. INLINE-ONLY COMPOSITION. A non-inlined call taking `ref WriteBatch`
 //     address-exposes the ref struct and enregistration dies for the whole
@@ -27,7 +27,7 @@
 //
 //	S >= 2 + 4*B
 //
-// The constants anchor on #3's measurements: chat (S=1, B=1) lost 9%, so a
+// The constants anchor on the batch measurements: chat (S=1, B=1) lost 9%, so a
 // bulk site must be outweighed by several scalars (the 4); an empty or
 // near-empty body (heartbeat) cannot amortize Begin/End at all (the 2). On
 // this corpus the rule excludes exactly Heartbeat (S=0), Chat and Block

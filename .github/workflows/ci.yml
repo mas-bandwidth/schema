@@ -243,9 +243,7 @@ jobs:
       - name: inline gate — ${{ matrix.leg }} leg
         run: bench/tools/inline-gate.sh leg ${{ matrix.leg }}
 
-  # Lifted from serialize.go's ci.yml (issue #31): the estate's largest Go
-  # codebase had no Go linting at all while serialize.go ran six gates. The
-  # job is self-contained; .golangci.yml carries the (ported) config.
+  # Self-contained Go lint job; .golangci.yml carries the config.
   lint:
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -255,12 +253,9 @@ jobs:
       # golangci-lint pin below. golangci-lint links a copy of the Go
       # typechecker, so a linter release can only typecheck the toolchains
       # that existed when it shipped: `stable` + a pinned linter is a pairing
-      # that goes red on its own, with no commit, the day Go releases. It did
-      # — 2026-08-20, Go 1.27.0 landing in `stable` against v2.12.2 (May),
-      # which reported `unknown field rfd in struct literal of type
-      # splicePipe` from the runner's OWN internal/poll. The identical commit
-      # had passed lint 55 minutes earlier in its PR. Bumping the linter is
-      # now a two-line, deliberate act: this version and that one, together.
+      # that goes red on its own, with no commit, the day Go releases.
+      # Bumping the linter is a two-line, deliberate act: this version and
+      # that one, together.
       - uses: actions/setup-go@v7
         with:
           go-version: '1.26'

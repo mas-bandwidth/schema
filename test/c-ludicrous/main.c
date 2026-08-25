@@ -142,7 +142,7 @@ int main( void )
                "the untaken branch zeroes the 128-bit member (SPEC §5)" );
     }
 
-    /* ---- DegenerateProbe: min == max costs ZERO bits (SPEC §4.6, 2026-08-15) ----
+    /* ---- DegenerateProbe: min == max costs ZERO bits (SPEC §4.6) ----
        The whole wire is the tail byte; a port that emits ANY bits for a
        degenerate range shifts it and fails the golden compare. */
     {
@@ -170,7 +170,7 @@ int main( void )
     }
 
     /* ---- UnsignedProbe: ufixed(I, F), the unsigned sibling (SPEC §4.3;
-       Glenn 2026-08-15: "ufixed is fine", closing §9 q17) ----
+) ----
        span's raw value fills uint64's HIGH HALF (above 2^63). The C entries
        take SIGNED values, so the generated routing must zero-extend — 16/32
        bit storage through the fixed64 entry, 64-bit storage into the

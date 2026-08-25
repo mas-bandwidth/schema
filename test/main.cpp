@@ -153,7 +153,7 @@ int main()
     static_assert(RigidBodyMaxBits > 0 && RigidBodyMaxBytes >= RigidBodyMaxBits / 8, "MaxBits/MaxBytes");
     static_assert(MessageMaxBytes > 0, "message-level bound");
 
-    // zero initialization is the rule (Glenn, 2026-08-05)
+    // zero initialization is the rule
     ClientShipState client_ship;
     check( !client_ship.predicted_explode && client_ship.num_colliders == 0 );
     ServerMissileState missile;

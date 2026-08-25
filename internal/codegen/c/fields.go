@@ -25,7 +25,7 @@ func (g *gen) emitWriteField(f *ir.Field, ind string) {
 		// the length over [0, N] where the runtime's string call frames it over
 		// [0, N-1]. One bit of difference, and every following field shifts.
 		// Well-formed UTF-8 by contract, writer-trusted: debug-only assert,
-		// no read-path validation (SPEC §4.7, decided 2026-08-15).
+		// no read-path validation (SPEC §4.7).
 		g.pf("%sserialize_assert( schema_utf8_valid_( (const serialize_uint8_t *) value->%s, value->%s_length ) );\n", ind, f.Name, f.Name)
 		g.call(ind, fmt.Sprintf("serialize_write_int( stream, value->%s_length, 0, %s )", f.Name, g.renderInt(f.Type.SizeExpr, big.NewInt(f.Type.Size))))
 		g.call(ind, fmt.Sprintf("serialize_write_bytes( stream, (const serialize_uint8_t *) value->%s, (int) value->%s_length )", f.Name, f.Name))
@@ -57,10 +57,10 @@ func (g *gen) emitWriteScalar(f *ir.Field, expr, ind string) {
 		g.call(ind, fmt.Sprintf("serialize_write_bool( stream, %s )", expr))
 	case ir.TFloat32:
 		if f.HasFloatRange {
-			// The runtime's precomputed entry point (issue #82): the step
+			// The runtime's precomputed entry point: the step
 			// count, wire width and float32 range width depend only on the
 			// declaration, so ir.CompressedFloatParams derives them ONCE at
-			// generation time — the same derivation the Go fold (#79)
+			// generation time — the same derivation the Go fold
 			// emits from — and the quantization arithmetic
 			// keeps its one audited home in serialize.h.
 			steps, wireBits := ir.CompressedFloatParams(f.FMin, f.FMax, f.Resolution)
@@ -192,7 +192,7 @@ func (g *gen) emitRangeAssertWrite(f *ir.Field, expr, ind string) {
 	default:
 		cond = fmt.Sprintf("(%s) %s > %s", cast, expr, hi)
 	}
-	g.pf("%sif ( %s )\n%s{\n%s    return 0; /* out-of-contract writes are refused, not wrapped */\n%s}\n",
+	g.pf("%sif ( %s )\n%s{\n%s    return 0;\n%s}\n",
 		ind, cond, ind, ind, ind)
 }
 
@@ -406,7 +406,7 @@ func (g *gen) emitWriteFixed(f *ir.Field, expr, ind string) {
 	if lo.Cmp(hi) == 0 {
 		// degenerate range: ZERO bits — the range refusal and no wire call
 		// at all, so no runtime degenerate support is needed (SPEC §4.6,
-		// decided 2026-08-15). The one legal raw is min << F, compared in
+		// decided deliberately). The one legal raw is min << F, compared in
 		// the storage's own signedness (a wide ufixed raw can live above
 		// INT64_MAX).
 		rawMin := new(big.Int).Lsh(lo, uint(f.Type.FracBits))
@@ -552,7 +552,7 @@ func (g *gen) emitWrite128(f *ir.Field, expr, ind string) {
 		return
 	}
 	if f.IntMin.Cmp(f.IntMax) == 0 {
-		// degenerate range: ZERO bits — refusal only (SPEC §4.6, 2026-08-15)
+		// degenerate range: ZERO bits — refusal only (SPEC §4.6)
 		g.pf("%sif ( !serialize_int128_equal( %s, %s ) )\n%s{\n%s    return 0;\n%s}\n",
 			ind, expr, g.int128Literal(f.IntMinExpr, f.IntMin), ind, ind, ind)
 		return
@@ -571,7 +571,7 @@ func (g *gen) emitRead128(f *ir.Field, expr, ind string) {
 		return
 	}
 	if f.IntMin.Cmp(f.IntMax) == 0 {
-		// degenerate range: zero bits — materialize (SPEC §4.6, 2026-08-15)
+		// degenerate range: zero bits — materialize (SPEC §4.6)
 		g.pf("%s%s = %s;\n", ind, expr, g.int128Literal(f.IntMinExpr, f.IntMin))
 		return
 	}

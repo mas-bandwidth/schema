@@ -239,7 +239,7 @@ static bool equal( const Block & a, const Block & b )
 
 // fill_utf8 fills buffer with random well-formed UTF-8 — string(N) payloads
 // are well-formed UTF-8 by contract and the write path debug-asserts it
-// (SPEC §4.7, 2026-08-15). Random code points over all four encoded lengths,
+// (SPEC §4.7). Random code points over all four encoded lengths,
 // skipping 0 and the surrogate block, truncated to fit. Returns bytes used.
 static int32_t fill_utf8( Rng & r, char * buffer, int32_t budget )
 {

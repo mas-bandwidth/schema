@@ -45,7 +45,7 @@ func RenderExpr(e Expr) string {
 //
 //   - Doubled unary minus parenthesizes ("-(-x)"): "--" is a decrement
 //     operator in the C family and a parse error in Go and Rust, so the bare
-//     concatenation compiles somewhere as the wrong program (issue #22).
+//     concatenation compiles somewhere as the wrong program.
 //   - An enum max reference renders as "?": E.Max has no cross-target
 //     spelling. Callers fold expressions containing one to the resolved
 //     value first — [ExprHasEnumMax] is that test — as every built-in

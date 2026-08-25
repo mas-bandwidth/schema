@@ -17,10 +17,10 @@ package rust
 //                      and both read dispatch surfaces (read_message,
 //                      read_message_into).
 //   dispatchInline   = #[inline] — the HINT. write_message, the write dispatch
-//                      surface, mirroring the one exemption #60 carved out of
+//                      surface, mirroring the one exemption the C++ pass carved out of
 //                      the C++ write demand.
 //
-// Why the write demand exists (issue #77, from the sixlang-air-1 attribution):
+// Why the write demand exists (from the sixlang-air-1 attribution):
 // #[inline] is a HINT — it raises LLVM's inline threshold for the callee
 // (275 -> 325 in the reference builds) but LLVM still declines when the
 // callee's inline cost is over it, and the generated spines are far over:
@@ -42,13 +42,13 @@ package rust
 // to 0.71x of their hinted rates, in twin-gate-OK passes with 1.4-5.7%
 // spreads, while the hand-written rt-family control rows held at 1.00-1.03x.
 // An isolating pass returned every collapsed row to 1.00x by hinting the read
-// spines alone, with every write win intact. It is the same failure class #60
+// spines alone, with every write win intact. It is the same failure class it
 // attributed on the C++ write side — a large body forced whole into a timed
 // loop — arriving on Rust's read side, and it is why the C++ write demand
 // itself stayed default-off until its own regressions were attributed.
 //
 // This divergence from the reference is therefore evidence-driven and
-// per-backend, the rule #28 already banked when it refused to transplant a
+// per-backend, the banked rule that refused to transplant a
 // C/C++/Rust mechanism into Go sight-unseen. It is a deviation from the C++
 // shape, recorded as such: raising the read half to the demand again is a
 // measurement, not an edit.

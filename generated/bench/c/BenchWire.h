@@ -55,7 +55,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_bench_packet( serialize_wri
 {
     if ( (serialize_int64_t) value->a < -100 || (serialize_int64_t) value->a > 100 )
     {
-        return 0; /* out-of-contract writes are refused, not wrapped */
+        return 0;
     }
     if ( !serialize_write_bits( stream, (serialize_uint32_t) ( (value->a) - (-100) ), 8 ) )
     {
@@ -63,7 +63,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_bench_packet( serialize_wri
     }
     if ( (serialize_int64_t) value->b < 0 || (serialize_int64_t) value->b > 65535 )
     {
-        return 0; /* out-of-contract writes are refused, not wrapped */
+        return 0;
     }
     if ( !serialize_write_bits( stream, (serialize_uint32_t) ( value->b ), 16 ) )
     {
@@ -71,7 +71,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_bench_packet( serialize_wri
     }
     if ( (serialize_int64_t) value->c < -1000000 || (serialize_int64_t) value->c > 1000000 )
     {
-        return 0; /* out-of-contract writes are refused, not wrapped */
+        return 0;
     }
     if ( !serialize_write_bits( stream, (serialize_uint32_t) ( (value->c) - (-1000000) ), 21 ) )
     {
@@ -229,7 +229,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_bench_ints( serialize_write
 {
     if ( (serialize_int64_t) value->f0 < -100 || (serialize_int64_t) value->f0 > 100 )
     {
-        return 0; /* out-of-contract writes are refused, not wrapped */
+        return 0;
     }
     if ( !serialize_write_bits( stream, (serialize_uint32_t) ( (value->f0) - (-100) ), 8 ) )
     {
@@ -237,7 +237,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_bench_ints( serialize_write
     }
     if ( (serialize_int64_t) value->f1 < 0 || (serialize_int64_t) value->f1 > 65535 )
     {
-        return 0; /* out-of-contract writes are refused, not wrapped */
+        return 0;
     }
     if ( !serialize_write_bits( stream, (serialize_uint32_t) ( value->f1 ), 16 ) )
     {
@@ -245,7 +245,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_bench_ints( serialize_write
     }
     if ( (serialize_int64_t) value->f2 < -1000000 || (serialize_int64_t) value->f2 > 1000000 )
     {
-        return 0; /* out-of-contract writes are refused, not wrapped */
+        return 0;
     }
     if ( !serialize_write_bits( stream, (serialize_uint32_t) ( (value->f2) - (-1000000) ), 21 ) )
     {
@@ -253,7 +253,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_bench_ints( serialize_write
     }
     if ( (serialize_int64_t) value->f3 < 0 || (serialize_int64_t) value->f3 > 3 )
     {
-        return 0; /* out-of-contract writes are refused, not wrapped */
+        return 0;
     }
     if ( !serialize_write_bits( stream, (serialize_uint32_t) ( value->f3 ), 2 ) )
     {
@@ -261,7 +261,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_bench_ints( serialize_write
     }
     if ( (serialize_int64_t) value->f4 < -15 || (serialize_int64_t) value->f4 > 15 )
     {
-        return 0; /* out-of-contract writes are refused, not wrapped */
+        return 0;
     }
     if ( !serialize_write_bits( stream, (serialize_uint32_t) ( (value->f4) - (-15) ), 5 ) )
     {
@@ -269,7 +269,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_bench_ints( serialize_write
     }
     if ( (serialize_int64_t) value->f5 < 0 || (serialize_int64_t) value->f5 > 1000 )
     {
-        return 0; /* out-of-contract writes are refused, not wrapped */
+        return 0;
     }
     if ( !serialize_write_bits( stream, (serialize_uint32_t) ( value->f5 ), 10 ) )
     {
@@ -277,7 +277,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_bench_ints( serialize_write
     }
     if ( (serialize_int64_t) value->f6 < -2048 || (serialize_int64_t) value->f6 > 2047 )
     {
-        return 0; /* out-of-contract writes are refused, not wrapped */
+        return 0;
     }
     if ( !serialize_write_bits( stream, (serialize_uint32_t) ( (value->f6) - (-2048) ), 12 ) )
     {
@@ -285,7 +285,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_bench_ints( serialize_write
     }
     if ( (serialize_int64_t) value->f7 < 0 || (serialize_int64_t) value->f7 > 255 )
     {
-        return 0; /* out-of-contract writes are refused, not wrapped */
+        return 0;
     }
     if ( !serialize_write_bits( stream, (serialize_uint32_t) ( value->f7 ), 8 ) )
     {
@@ -293,7 +293,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_bench_ints( serialize_write
     }
     if ( (serialize_int64_t) value->f8 < -600000 || (serialize_int64_t) value->f8 > 600000 )
     {
-        return 0; /* out-of-contract writes are refused, not wrapped */
+        return 0;
     }
     if ( !serialize_write_bits( stream, (serialize_uint32_t) ( (value->f8) - (-600000) ), 21 ) )
     {
@@ -301,7 +301,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_bench_ints( serialize_write
     }
     if ( (serialize_int64_t) value->f9 < 0 || (serialize_int64_t) value->f9 > 100 )
     {
-        return 0; /* out-of-contract writes are refused, not wrapped */
+        return 0;
     }
     if ( !serialize_write_bits( stream, (serialize_uint32_t) ( value->f9 ), 7 ) )
     {
@@ -581,7 +581,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_bench_mixed( serialize_writ
 {
     if ( (serialize_int64_t) value->sequence < 0 || (serialize_int64_t) value->sequence > 65535 )
     {
-        return 0; /* out-of-contract writes are refused, not wrapped */
+        return 0;
     }
     if ( !serialize_write_bits( stream, (serialize_uint32_t) ( value->sequence ), 16 ) )
     {
@@ -597,7 +597,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_bench_mixed( serialize_writ
     }
     if ( (serialize_int64_t) value->pos_x < -16384 || (serialize_int64_t) value->pos_x > 16383 )
     {
-        return 0; /* out-of-contract writes are refused, not wrapped */
+        return 0;
     }
     if ( !serialize_write_bits( stream, (serialize_uint32_t) ( (value->pos_x) - (-16384) ), 15 ) )
     {
@@ -605,7 +605,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_bench_mixed( serialize_writ
     }
     if ( (serialize_int64_t) value->pos_y < -16384 || (serialize_int64_t) value->pos_y > 16383 )
     {
-        return 0; /* out-of-contract writes are refused, not wrapped */
+        return 0;
     }
     if ( !serialize_write_bits( stream, (serialize_uint32_t) ( (value->pos_y) - (-16384) ), 15 ) )
     {
@@ -613,7 +613,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_bench_mixed( serialize_writ
     }
     if ( (serialize_int64_t) value->pos_z < -16384 || (serialize_int64_t) value->pos_z > 16383 )
     {
-        return 0; /* out-of-contract writes are refused, not wrapped */
+        return 0;
     }
     if ( !serialize_write_bits( stream, (serialize_uint32_t) ( (value->pos_z) - (-16384) ), 15 ) )
     {
@@ -644,7 +644,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_bench_mixed( serialize_writ
     }
     if ( (serialize_int64_t) value->weapon < 0 || (serialize_int64_t) value->weapon > 15 )
     {
-        return 0; /* out-of-contract writes are refused, not wrapped */
+        return 0;
     }
     if ( !serialize_write_bits( stream, (serialize_uint32_t) ( value->weapon ), 4 ) )
     {

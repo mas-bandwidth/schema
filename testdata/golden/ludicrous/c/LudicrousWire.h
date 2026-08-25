@@ -434,7 +434,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_degenerate_probe( serialize
     }
     if ( (serialize_int64_t) value->locked_int < 7 || (serialize_int64_t) value->locked_int > 7 )
     {
-        return 0; /* out-of-contract writes are refused, not wrapped */
+        return 0;
     }
     if ( !serialize_int128_equal( value->locked_wide, serialize_int128_from_int64( -12345678901234 ) ) )
     {

@@ -533,7 +533,7 @@ func (p *parser) parseScalar() ast.ScalarType {
 		// is positional like bits(N)/string(N) (SPEC §4.2, the
 		// positional/attribute line); the u prefix names the storage's
 		// signedness, the integer family's own int/uint precedent (§9 q17,
-		// closed 2026-08-15)
+		// closed)
 		p.advance()
 		p.expect(scanner.LParen, "(")
 		i := p.parseExpr()

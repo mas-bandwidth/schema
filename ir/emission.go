@@ -13,13 +13,13 @@ import (
 // start; the C backend emitted in raw declaration order and shipped
 // `unknown type name` / implicit-declaration errors for any unit whose
 // schema declared a by-value user before its type in one file (found by
-// FuzzGeneratedCompiles, the clang -fsyntax-only leg — issue #22).
+// FuzzGeneratedCompiles, the clang -fsyntax-only leg ).
 //
 // Constants are nodes too: a const named in an expression a backend renders
 // symbolically (a const initializer, an array bound, a range bound, a
 // default) must precede its user, or renderInt finds it un-emitted and folds
 // to the literal — silently, and only under some declaration orders (the
-// defect behind issue #29). The expression list mirrors FileDeps: EVERY
+// defect behind the ordering rule). The expression list mirrors FileDeps: EVERY
 // expression a backend renders symbolically is an ordering edge.
 func EmissionOrder(file *File) []Decl {
 	decls := file.Decls

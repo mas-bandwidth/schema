@@ -545,7 +545,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_probe_slab( serialize_write
 {
     if ( (serialize_int64_t) value->width > 100 )
     {
-        return 0; /* out-of-contract writes are refused, not wrapped */
+        return 0;
     }
     if ( !serialize_write_bits( stream, (serialize_uint32_t) ( value->width ), 7 ) )
     {
@@ -833,7 +833,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_test_data( serialize_write_
 {
     if ( (serialize_int64_t) value->a < -100 || (serialize_int64_t) value->a > 100 )
     {
-        return 0; /* out-of-contract writes are refused, not wrapped */
+        return 0;
     }
     if ( !serialize_write_bits( stream, (serialize_uint32_t) ( (value->a) - (-100) ), 8 ) )
     {
@@ -841,7 +841,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_test_data( serialize_write_
     }
     if ( (serialize_int64_t) value->b < -100 || (serialize_int64_t) value->b > 100 )
     {
-        return 0; /* out-of-contract writes are refused, not wrapped */
+        return 0;
     }
     if ( !serialize_write_bits( stream, (serialize_uint32_t) ( (value->b) - (-100) ), 8 ) )
     {
@@ -849,7 +849,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_test_data( serialize_write_
     }
     if ( (serialize_int64_t) value->c < -100 || (serialize_int64_t) value->c > 150 )
     {
-        return 0; /* out-of-contract writes are refused, not wrapped */
+        return 0;
     }
     if ( !serialize_write_bits( stream, (serialize_uint32_t) ( (value->c) - (-100) ), 8 ) )
     {
@@ -881,7 +881,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_test_data( serialize_write_
         {
             if ( (serialize_int64_t) value->items[i] < 0 || (serialize_int64_t) value->items[i] > 255 )
             {
-                return 0; /* out-of-contract writes are refused, not wrapped */
+                return 0;
             }
             if ( !serialize_write_bits( stream, (serialize_uint32_t) ( value->items[i] ), 8 ) )
             {
@@ -931,7 +931,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_test_data( serialize_write_
     }
     if ( (serialize_int64_t) value->int64_range < -1000000000000 || (serialize_int64_t) value->int64_range > 1000000000000 )
     {
-        return 0; /* out-of-contract writes are refused, not wrapped */
+        return 0;
     }
     {
         serialize_uint64_t offset_value = (serialize_uint64_t) ( (value->int64_range) - (-1000000000000) );

@@ -366,7 +366,7 @@ func (g *gen) rangeArgs(f *ir.Field, typ string) (string, string) {
 	return g.renderArg(f.IntMinExpr, f.IntMin, typ, false), g.renderArg(f.IntMaxExpr, f.IntMax, typ, false)
 }
 
-// ---- generation-time bound folding on the write path (C++ PR #8's
+// ---- generation-time bound folding on the write path (the C++ fold pass.s
 // mechanism, carried to C#) ----
 //
 // A ranged integer's min/max/bit count are schema constants, so the generator
@@ -375,13 +375,13 @@ func (g *gen) rangeArgs(f *ir.Field, typ string) (string, string) {
 // runtime BitsRequired, no min/max parameter traffic, and the 32/64 dword
 // split resolves here, not at run time. The wire bytes are identical to the
 // runtime SerializeInt/SerializeInt64 forms (offset-from-min in
-// BitsRequired(min, max) bits — the wire-identity property C++ #25/#8 proved,
+// BitsRequired(min, max) bits — the wire-identity property the C++ backend proved,
 // re-proven here by the wire golden gate). The runtime ranged write's
 // out-of-range refusal moves into the generated code with the fold: the guard
 // returns false WITHOUT latching — the family's generated-guard form (the
 // flags wire-width guard and the full-range unsigned raw path already refuse
 // this way); vacuous halves (bounds the storage type cannot escape) are
-// elided. Reads stay on the runtime ranged calls: #25/#8 measured nothing to
+// elided. Reads stay on the runtime ranged calls: the measurements found nothing to
 // gain on the read path, and the read side's latched ValueOutOfRange
 // semantics (pinned by test/cs) stay untouched.
 
@@ -414,7 +414,7 @@ func (g *gen) emitWriteFoldedRange(expr, lo, hi string, min, max *big.Int, wide,
 	if bits == 0 {
 		// A degenerate range costs ZERO BITS — the value is known from the
 		// range alone; the refusal above is the whole write (SPEC §4.6,
-		// decided 2026-08-15)
+		// decided deliberately)
 		return
 	}
 	typ, fn := "uint", "SerializeBits"
@@ -518,7 +518,7 @@ func (g *gen) emitWriteScalar(f *ir.Field, name, ind string) {
 		if f.IntMin.Cmp(f.IntMax) == 0 {
 			// degenerate range: ZERO bits — the folded range refusal and no
 			// wire call at all, so no runtime degenerate support is needed
-			// (SPEC §4.6, decided 2026-08-15). The one legal raw is min << F,
+			// (SPEC §4.6). The one legal raw is min << F,
 			// compared in the storage's own signedness (a wide ufixed raw can
 			// live above long.MaxValue).
 			rawMin := new(big.Int).Lsh(f.IntMin, uint(f.Type.FracBits))

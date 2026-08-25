@@ -261,7 +261,7 @@ const (
 
 type FieldType struct {
 	Kind     FieldTypeKind
-	Signed   bool   // TInt; TFixed (fixed = true; ufixed = false — Glenn 2026-08-15, §9 q17 closed)
+	Signed   bool   // TInt; TFixed (fixed = true; ufixed = false)
 	Width    int    // TInt: 8/16/32/64/128; TBits: N; TFixed: I+F (the storage width)
 	IntBits  int    // TFixed: I — integer bits; the sign bit counts when Signed (SPEC §4.3)
 	FracBits int    // TFixed: F — fractional bits

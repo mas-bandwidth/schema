@@ -273,7 +273,7 @@ func (g *gen) emitViewRangedWrite(name string, lo, hi *big.Int, storageBig bool,
 func (g *gen) emitViewRangedRead(name string, lo, hi *big.Int, storageBig bool, ind string) {
 	if lo.Cmp(hi) == 0 {
 		// a degenerate component narrows to zero bits — the value is the
-		// range (SPEC §4.6, decided 2026-08-15)
+		// range (SPEC §4.6)
 		if storageBig {
 			g.pf("%s%s = %s;\n", ind, name, bigLit(lo))
 		} else {

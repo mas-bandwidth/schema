@@ -22,7 +22,7 @@ import (
 // widths is a generator that emits nothing a language would compile — it
 // reports each message's worst-case wire width, the bound the emitters
 // advertise (SPEC §6.1 item 4), then every symbolically-declared range bound
-// in the author's own spelling and a target spelling (issue #89). The point
+// in the author's own spelling and a target spelling. The point
 // is the shape: a type outside this module satisfying compiler.Generator,
 // reading the IR through the public derived-parameter helpers and rendering
 // declared expressions through the public expression surface.

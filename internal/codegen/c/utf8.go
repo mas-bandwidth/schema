@@ -4,7 +4,7 @@ import "github.com/mas-bandwidth/schema/ir"
 
 // fileHasStrings reports whether any declaration in the file carries a
 // string(N) field — the trigger for emitting the UTF-8 validator the
-// write-side debug assert calls (SPEC §4.7, decided 2026-08-15).
+// write-side debug assert calls (SPEC §4.7).
 func fileHasStrings(f *ir.File) bool {
 	for _, d := range f.Decls {
 		var fields []*ir.Field
@@ -25,7 +25,7 @@ func fileHasStrings(f *ir.File) bool {
 
 // emitUtf8Validator emits the well-formedness check behind the write-side
 // debug assert: string(N) payloads are well-formed UTF-8 BY CONTRACT,
-// writer-trusted (SPEC §4.7, decided 2026-08-15) — no release-path cost, no
+// writer-trusted (SPEC §4.7) — no release-path cost, no
 // read-path validation. serialize_assert compiles out under NDEBUG, exactly
 // like every other C write-side assert. Guarded against redefinition because
 // several wire headers can land in one translation unit; the trailing

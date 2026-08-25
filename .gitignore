@@ -17,8 +17,7 @@
 /test/cs-ludicrous/bin/
 /test/cs-ludicrous/obj/
 # every build stamp under generated/ — stamps order the build and are not
-# generator output; the old explicit list missed the C and bench stamps and
-# seven of them got committed (found while adding the goldens-current gate)
+# generator output
 generated/**/.stamp
 /bench/rust/target/
 /bench/rust/Cargo.lock
@@ -31,3 +30,6 @@ tending/
 # CI clones the five serialize runtimes here (see .github/workflows/ci.yml)
 /runtimes/
 /tools
+
+# test-leg build artifact
+/test/go/schematest

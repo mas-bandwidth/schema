@@ -1,4 +1,4 @@
-// Tests for the C backend's symbolic expression rendering (issue #92): the
+// Tests for the C backend's symbolic expression rendering: the
 // sixth client of ir.RenderExprIdent. The cases that matter are the HOSTILE
 // ones — every spelling that would compile to the wrong C program must fold,
 // because a fold is always correct and a bad symbolic rendering is a wire
@@ -74,7 +74,7 @@ func TestExprConstDefines(t *testing.T) {
 
 // TestExprBounds pins the wire-function bound spellings, the hostile
 // parenthesization case included: a doubled unary minus must render
-// parenthesized, because "--X" is a decrement in C (issue #22's class).
+// parenthesized, because "--X" is a decrement in C (the doubled-minus class).
 func TestExprBounds(t *testing.T) {
 	data, wire := generateExprCorpus(t)
 	for _, want := range []string{
@@ -110,7 +110,7 @@ func TestExprBounds(t *testing.T) {
 	// the decrement spelling must appear NOWHERE
 	for _, header := range []string{data, wire} {
 		if strings.Contains(header, "--MAX_UNITS") {
-			t.Errorf("generated C contains the decrement spelling --MAX_UNITS (issue #22's class):\n%s", header)
+			t.Errorf("generated C contains the decrement spelling --MAX_UNITS (the doubled-minus class):\n%s", header)
 		}
 	}
 }
@@ -144,7 +144,7 @@ func TestExprHostileDirect(t *testing.T) {
 		t.Errorf("renderInt after the referenced #defines = %q, want %q", got, "MAX_OBJECTS * MAX_UNITS")
 	}
 
-	// the extreme folds (issue #95): INT64_MIN has no literal spelling in C
+	// the extreme folds: INT64_MIN has no literal spelling in C
 	// — the literal half overflows long long before the unary minus applies
 	// — and a value past INT64_MAX has no signed rung to land on, so the
 	// suffix the site asked for gives way to ULL
@@ -167,7 +167,7 @@ func TestExprHostileDirect(t *testing.T) {
 	}
 }
 
-// ---- issue #95: the integer extremes ----
+// ---- the integer extremes ----
 //
 // Two folded values have no direct decimal spelling in C. INT64_MIN's literal
 // half (9223372036854775808) overflows long long before the unary minus
@@ -233,7 +233,7 @@ func TestExtremeLiterals(t *testing.T) {
 		"offset_value + (( -9223372036854775807LL - 1 ))",
 		// the doubled minus AT the extreme folds too: the intermediate
 		// -(-9223372036854775808) overflows the long long carrier even
-		// though the final value fits (issue #22's class meets #95's)
+		// though the final value fits (two extreme classes meet)
 		"(value->doubled_floor) - (( -9223372036854775807LL - 1 ))",
 		// a 128-bit fixed bound that fits int64 rides from_int64, guarded
 		"serialize_write_fixed128( stream, fixed_value, 128, 0, ( -9223372036854775807LL - 1 ), 0 )",

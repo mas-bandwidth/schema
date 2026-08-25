@@ -262,7 +262,7 @@ func (g *gen) rangeArgs(f *ir.Field) (string, string) {
 	return g.renderInt(f.IntMinExpr, f.IntMin), g.renderInt(f.IntMaxExpr, f.IntMax)
 }
 
-// ---- compile-time bound emission (the const-emit lever, C++ schema#8) ----
+// ---- compile-time bound emission (the const-emit lever) ----
 //
 // A ranged integer's min/max/bit count are schema constants, so the GENERATOR
 // folds them: the write emits the offset from min in a bit count computed at
@@ -439,7 +439,7 @@ func (g *gen) emitWriteScalar(f *ir.Field, name, ind string) {
 		if f.IntMin.Cmp(f.IntMax) == 0 {
 			// degenerate range: ZERO bits — the folded range refusal and no
 			// wire call at all, so no runtime degenerate support is needed
-			// (SPEC §4.6, decided 2026-08-15). The one legal raw is min << F,
+			// (SPEC §4.6). The one legal raw is min << F,
 			// compared in the storage's own signedness (a wide ufixed raw can
 			// live above int64).
 			rawMin := new(big.Int).Lsh(f.IntMin, uint(f.Type.FracBits))
@@ -535,7 +535,7 @@ func (g *gen) emitWriteScalar(f *ir.Field, name, ind string) {
 				}
 				if ir.BitsRequired(f.IntMin, f.IntMax) == 0 {
 					// degenerate range: zero bits — the refusal above is the
-					// whole write (SPEC §4.6, decided 2026-08-15)
+					// whole write (SPEC §4.6)
 					return
 				}
 				if loVacuous {

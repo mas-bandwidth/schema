@@ -144,7 +144,7 @@ func (g *gen) emitViewReadField(f *ir.Field, v ir.View, ind string) {
 			lo, hi, bits, wide, compT, width := fixedShallowComp(f, comp)
 			if bits == 0 {
 				// a degenerate component narrows to zero bits — the value is
-				// the range (SPEC §4.6, decided 2026-08-15)
+				// the range (SPEC §4.6)
 				g.pf("%s%s = %s(%s)\n", ind, compName, compT, lo.String())
 				continue
 			}
@@ -247,7 +247,7 @@ func (g *gen) emitQuantizeField(f *ir.Field, ind string) {
 			// float64 conversion — the Go spec permits fusing ACROSS
 			// statements, and only an explicit conversion forces the rounding
 			// that bars the FMA (the compressed_float hazard one level up,
-			// the same remedy serialize.go's writer uses) (#26)
+			// the same remedy serialize.go's writer uses)
 			g.pf("%s{\n%s\tscaledValue := float64(input.%s.%s) * float64(%s)\n",
 				ind, ind, name, compName, scale)
 			g.pf("%s\tquantizedValue := math.Floor(float64(scaledValue) + 0.5)\n", ind)

@@ -224,7 +224,7 @@ static class Program
             Check(!ReadLudicrousState(rs, output), "a truncated stream is a read failure");
         }
 
-        // ---- DegenerateProbe: min == max costs ZERO bits (SPEC §4.6, 2026-08-15) ----
+        // ---- DegenerateProbe: min == max costs ZERO bits (SPEC §4.6) ----
         // The whole wire is the tail byte; a port that emits ANY bits for a
         // degenerate range shifts it and fails the golden compare.
         {
@@ -252,7 +252,7 @@ static class Program
         // ---- NarrowBody: the narrowed fixed shallow (SPEC §4.8 rule 2b) ----
         // The pinned tie semantics: quantize rounds to nearest, ties AWAY
         // FROM ZERO — the one fixed-point rounding rule (SPEC §4.8, decided
-        // 2026-08-15) — and unquantize is the left shift back. The
+        // the ruled form) — and unquantize is the left shift back. The
         // wire bytes are the C++-pinned goldens; the values mirror
         // test/ludicrous_main.cpp block for block.
         {
@@ -325,7 +325,7 @@ static class Program
         }
 
         // ---- UnsignedProbe: ufixed(I, F), the unsigned sibling (SPEC §4.3;
-        // Glenn 2026-08-15: "ufixed is fine", closing §9 q17) ----
+        //) ----
         // Span's raw value fills ulong's HIGH HALF (above 2^63) — the
         // unsigned SerializeFixed overloads carry it natively, and the
         // C++-pinned golden is the gate. Values mirror

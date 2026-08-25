@@ -13,7 +13,7 @@ import (
 // emitMaxBits emits a type's worst-case wire size. Callers size their buffers
 // from these, so their absence is not cosmetic — it is the difference between
 // a caller sizing a buffer correctly and guessing. The MAX_BYTES comment
-// carries the read half of serialize.c's buffer contract (its PR #21, the
+// carries the read half of serialize.c's buffer contract (the
 // align-up ruling): the allocation backing a read buffer must extend at
 // least 8 bytes past the data, because the reader loads unconditional
 // 64-bit windows — a caller sizing a receive allocation at exactly

@@ -59,7 +59,7 @@ func (g *gen) emitWriteInlineMacro() {
 
 // emitWriteDispatchComment is the emitted rationale for why WriteMessage — the
 // dispatch surface — is spelled plain `inline` and NOT SCHEMA_WRITE_INLINE.
-// The scoping (write-spine-scoped, 2026-08-17): the blanket demand closed
+// The scoping: the blanket demand closed
 // every per-message write row but regressed the batch dispatch loop
 // (message_batch write +21%, Zen 4 gcc -O3) — WriteMessage at inline cost
 // ~1555 forced whole into the loop body. Exempting the dispatcher keeps the

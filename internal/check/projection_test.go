@@ -80,7 +80,7 @@ func TestIdIsStableUnderNonWireEdits(t *testing.T) {
 	}
 }
 
-// Float const inference is id-neutral (SPEC §4.2, issue #120): a bare float
+// Float const inference is id-neutral (SPEC §4.2): a bare float
 // const infers float64, so dropping the annotation resolves to the same
 // value reaching the same wire facts — the id must not move in either
 // direction, whether the const feeds an attribute or sits unused.
@@ -304,7 +304,7 @@ type Config {
 	}
 }
 
-// Tables left the language (2026-08-25), and the projection keeps a FROZEN
+// Tables left the language, and the projection keeps a FROZEN
 // `table=false` token on every type line so the removal moved no id for any
 // unit that never declared one — verified at the removal against the pinned
 // examples128 id, and held here so the token cannot quietly disappear.

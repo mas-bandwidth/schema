@@ -3,10 +3,8 @@
 // input bytes, the compiler either produces a unit or reports errors — it
 // never panics, and it never hangs. A crash on malformed input is a compiler
 // bug even when the input is nonsense, because "nonsense" is exactly what a
-// hostile or mistaken author supplies (Glenn, 2026-08-13: "think of this
-// like language hardening... Find ways to break the language, and then fix
-// them" / "Or loop the compiler forever, or crash it and so on. Any failure
-// mode.").
+// hostile or mistaken author supplies — language hardening: find ways to
+// break the language, then fix the class and keep the fuzzer.
 //
 // Why this exists alongside the reasoned adversarial corpus: reasoning finds
 // the bugs someone thought of. Fuzzing finds the ones nobody did, and keeps
@@ -150,7 +148,7 @@ var handSeeds = []string{
 	"package t\nenum E | max = 2147483648\n{ A }\n",
 	"package t\ntype T { x bits(0) }\n",
 	"package t\ntype T { x bits(65) }\n",
-	// issue #95: the integer extremes. INT64_MIN has no direct literal in C
+	// the integer extremes. INT64_MIN has no direct literal in C
 	// or C++ (the literal half overflows long long before the unary minus
 	// applies) and an above-INT64_MAX value has no signed rung to land on —
 	// both must reach the compiler in their guarded spellings, the doubled
@@ -158,7 +156,7 @@ var handSeeds = []string{
 	"package t\nconst F = -9223372036854775808\ntype T { x int64 = -9223372036854775808 | min = --F, max = 100 }\n",
 	"package t\nconst H uint64 = 18446744073709551615\ntype T { x uint64 | min = 1, max = 18446744073709551615 }\n",
 	"package t\ntype R {\n    x int64 = -9223372036854775808 | min = -9223372036854775808, max = 100\n    y uint64 | min = 1, max = 18446744073709551614\n}\n",
-	// issue #100: a uint64 DEFAULT above INT64_MAX — the member-initializer
+	// a uint64 DEFAULT above INT64_MAX — the member-initializer
 	// path must suffix it ull like every other fold of the value (an
 	// unsuffixed decimal deduces unsigned, -Wimplicitly-unsigned-literal
 	// under -Werror).

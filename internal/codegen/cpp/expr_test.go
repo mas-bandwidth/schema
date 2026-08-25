@@ -1,10 +1,10 @@
-// The C++ integer extremes: issue #95 guarded every fold site the corpus
+// The C++ integer extremes: every fold site guarded the corpus
 // could reach — emitConst's ull suffix, cppInt64Lit, tableIntLit, the table
 // clamps — but the MEMBER INITIALIZER path (initializer -> renderInt, plain
 // and table structs both) still spelled a uint64 default above INT64_MAX as
 // a bare decimal: `uint64_t huge = 18446744073709551615;` deduces unsigned
 // with -Wimplicitly-unsigned-literal, a -Werror build break in the
-// consumer's tree (issue #100). These tests pin the NSDMI spellings the way
+// consumer's tree. These tests pin the NSDMI spellings the way
 // c/expr_test.go pins the C fold sites.
 package cpp
 
