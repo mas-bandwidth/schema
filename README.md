@@ -31,12 +31,12 @@ type Quaternion
 
 type ShipState
 {
-    type      ShipType
-    flags     ShipFlags
-    position  Vec3
-    rotation  Quaternion
-    health    int32 | min = 0, max = MaxHealth
-    at_rest   bool
+    ship_type  ShipType
+    ship_flags ShipFlags
+    position   Vec3
+    rotation   Quaternion
+    health     int32 | min = 0, max = MaxHealth
+    at_rest    bool
     if !at_rest
     {
         linear_velocity  Vec3
