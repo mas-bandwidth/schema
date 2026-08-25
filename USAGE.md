@@ -9,7 +9,7 @@ compiler does.
 - [The five minute version](#the-five-minute-version)
 - [Declarations](#declarations)
   - [const](#const) · [enum](#enum) · [flags](#flags) · [type](#type) ·
-    [union](#union) · [message](#message) · [object](#object)
+    [union](#union)
 - [Field types](#field-types)
   - [Integers](#integers) · [Ranged integers](#ranged-integers) ·
     [bits(N)](#bitsn) · [bool](#bool) · [Floats](#floats) ·
@@ -44,7 +44,7 @@ type Vector3
     z float64
 }
 
-message ShipCreate
+type ShipCreate
 {
     ship_type ShipType
     position  Vector3
@@ -124,9 +124,9 @@ schema expressions: the highest wire-legal value, and (headroom aside) the
 count of real variants under the sentinel-zero convention. Every target
 spells it its own way — `ShipType::Max` (C++), `ShipType.Max` (C#),
 `ShipTypeMax` (Go), `ShipType::MAX` (Rust), `ShipType.Max` (JS),
-`SHIP_TYPE_MAX` (C) — and the generated `MessageType`/`ObjectType` tag enums
-carry it too, so ranges and asserts reference the enum directly instead of a
-hand-declared count constant. `Max` is consequently reserved as a variant
+`SHIP_TYPE_MAX` (C) — and a union's generated `<Union>Type` tag enum
+carries it too, so ranges and asserts reference the enum directly instead of
+a hand-declared count constant. `Max` is consequently reserved as a variant
 name, like `None`.
 
 Every target also generates a **debug/log name function** — `EnumName(value)`
@@ -168,7 +168,7 @@ into a caller-provided buffer (`CapabilitiesNamesMax` /
 
 ### type
 
-A plain struct. Composes into messages and other types:
+A plain struct. Composes into other types:
 
 ```
 type Vector3
@@ -229,28 +229,39 @@ That replaces the bool-guard idiom — `has_box bool` / `if has_box { box
 BoxCollider }` repeated per shape — which spends a bit per absent arm and
 lets illegal states (two shapes at once) exist for every consumer to police.
 A read **rejects a tag above the count**, and a write validates the tag
-before it rides. C++ reuses the message union shape above; Go, C# and JS lay
+before it rides. C++ generates the tagged union above; Go, C# and JS lay
 the tag beside one pre-allocated arm per variant; Rust gets a real
 `enum ColliderShape { None, Box(BoxCollider), ... }`.
 
 Payloads are declared types — wrap a scalar or enum in a type. Unions ride
-`type` and `message` bodies (arrays too); an `object` body refuses them
-in v1.
+`type` bodies, arrays included.
 
-### message
+**Building your protocol.** A union of payload types is a message system
+waiting for your framing, and the primitives compose into whichever framing
+your protocol wants:
 
-A message is a type that also joins the unit's **dispatch surface**: the
-compiler emits a `MessageType` enum, tag read/write functions, and
-`WriteMessage`/`ReadMessage` that dispatch on it. That is how you get a
-single entry point for a packet stream.
+```
+union Payload
+{
+    input    InputPacket
+    chat     Chat
+    snapshot Snapshot
+}
 
-### object
+type Packet
+{
+    sequence uint16
+    payloads [..MaxPayloadsPerPacket]Payload
+}
+```
 
-An object declares state that is replicated in more than one form — a full
-state, a deep wire, a lightweight shallow wire, and an interpolation view.
-Fields carry `interpolate` and `local` markers to say which views they
-belong to. This is the delta/snapshot machinery; if you are not writing a
-replication layer you will not need it.
+One declaration gives you the tag enum, the validated tag wire, and
+`WritePacket`/`ReadPacket` end to end. Prefer a terminated stream to a
+counted array? Write `Payload` values back to back and end on the in-band
+`None` — the tag costs the same bits either way, and the loop is yours. The
+protocol id (see below) covers every payload shape, so both peers agree on
+the whole set or refuse to talk — the same guarantee, whatever framing you
+choose.
 
 ---
 
@@ -303,8 +314,8 @@ throttle float32 | min = 0, max = 1, resolution = 0.01
 ```
 
 A float quantized onto a grid: the wire carries the step index, not the
-float. 101 steps here, so 7 bits instead of 32. Add `round = up` / `down` /
-`nearest` to control the write rounding.
+float. 101 steps here, so 7 bits instead of 32. The write rounds to the
+nearest step, half away from zero — the one rounding rule, everywhere.
 
 ### fixed(I, F)
 
@@ -387,7 +398,7 @@ if ( !WriteVector3( stream, value.position ) )
 ## Branches: if / else
 
 ```
-message ShipCreate
+type ShipCreate
 {
     at_rest bool
     if !at_rest
@@ -549,7 +560,7 @@ unit, err := c.Load(paths)                              // format-free: nothing 
 
 fmt.Printf("package %s, protocol id 0x%016x\n", unit.Package, unit.ProtocolId)
 
-files, err := c.Generate(unit, "cpp", compiler.Options{"cpp-message": "variant"})
+files, err := c.Generate(unit, "cpp", nil)
 for name, data := range files {
 	os.WriteFile(filepath.Join(outDir, name), data, 0o644)
 }
@@ -557,8 +568,8 @@ for name, data := range files {
 
 `Generate` writes nothing: it returns the emitted files keyed by name, so the
 bytes can go to a build directory, an archive, or straight into a comparison.
-`Options` carries the per-target settings the CLI spells as flags —
-`"cpp-message"` is the only one the built-in targets read today.
+`Options` carries per-target settings for registered generators; the
+built-in targets read none today.
 
 A unit that does not compile comes back as `compiler.Diagnostics`, the whole
 error list rather than the first one:
@@ -591,21 +602,22 @@ A generator is an interface, and the built-in backends have no private path in:
 they are registered exactly the way yours is.
 
 ```go
-// Markdown docs for every message in the unit.
+// Markdown docs for every type in the unit.
 type docs struct{}
 
 func (docs) Names() []string { return []string{"docs"} } // `--lang docs`
 
 func (docs) Generate(u *ir.Unit, _ compiler.Options) (map[string][]byte, error) {
 	var b strings.Builder
-	for _, name := range u.Messages {
+	names := slices.Sorted(maps.Keys(u.Structs))
+	for _, name := range names {
 		st := u.Structs[name]
 		fmt.Fprintf(&b, "## %s — %d bits max\n", name, ir.MaxBitsStruct(st))
 		for _, f := range st.Fields {
 			fmt.Fprintf(&b, "- `%s` (%d bits)\n", f.Name, ir.MaxBitsField(f))
 		}
 	}
-	return map[string][]byte{"messages.md": []byte(b.String())}, nil
+	return map[string][]byte{"types.md": []byte(b.String())}, nil
 }
 
 c := compiler.New()
@@ -697,14 +709,12 @@ const ok = ReadShipCreateFlat(out, new DataView(rbuf.buffer), bytes * 8);
 
 Reads validate in every mode; writes fork checked/production once at module
 load on `NODE_ENV` (bundlers tree-shake the checked writer out of production
-bundles). Messages also get batch entries (`Write<Name>FlatArray` /
-`Read<Name>FlatArray` — back-to-back packets, the whole loop in one call) and
-the flat dispatch pair `WriteMessageFlat` / `ReadMessageFlat`.
+bundles).
 
 The **runtime tier** (`Wire.js` + [serialize.js](https://github.com/mas-bandwidth/serialize.js)
 streams) is the diagnostic and reference surface: sticky latched errors that
-say which operation failed and why, `MeasureStream`, per-op checked
-granularity, and the only tier for object views. Both tiers emit identical
+say which operation failed and why, `MeasureStream`, and per-op checked
+granularity. Both tiers emit identical
 bytes for identical values — a standing CI gate — so the debugging story is
 one import away: re-read a failing buffer through the runtime tier and read
 `stream.error`. The flat modules are pure spec'd ECMAScript with no node

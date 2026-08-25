@@ -28,8 +28,7 @@ type Expr = ast.Expr
 type Unit struct {
 	Package    string
 	ProtocolId uint64
-	Contexts   []string // declared order; empty if the unit declares none
-	Files      []*File  // sorted by basename
+	Files      []*File // sorted by basename
 
 	// lookups for backends
 	DeclFile map[string]string // declaration name -> file base
@@ -37,11 +36,7 @@ type Unit struct {
 	Enums    map[string]*Enum
 	Flags    map[string]*Flags
 	Structs  map[string]*Struct
-	Objects  map[string]*Object
 	Unions   map[string]*Union
-
-	Messages []string // sorted by name — the MessageType order (SPEC §4.8)
-	ObjNames []string // sorted by name — the ObjectType order
 }
 
 // File is one schema file's declarations, in declaration order.
@@ -82,12 +77,6 @@ type Flags struct {
 	WireBits int      // variant count, or the | max = K widening
 }
 
-// ContextsMarker records the contexts declaration in its declaring file so the
-// generated header can document it; contexts generate no standalone artifacts.
-type ContextsMarker struct {
-	Names []string
-}
-
 // Union is a first-class one-of type (SPEC §4.8): the implicit None row at
 // tag 0, then each variant in DECLARED order, dense from 1. The tag encodes
 // in minimal bits for [0, Max]; the wire then carries the selected variant's
@@ -106,11 +95,10 @@ type UnionVariant struct {
 	Ref  *Struct // the payload
 }
 
-// Struct is a `type` or `message` declaration.
+// Struct is a `type` declaration.
 type Struct struct {
-	Name      string
-	IsMessage bool
-	Tags      []string // inert in v1 (SPEC §4.2)
+	Name string
+	Tags []string // inert in v1 (SPEC §4.2)
 	// C++ native type mapping (SPEC §4.2, Native type mapping): when set,
 	// generated C++ declares fields of this type as ::CppNative (a hand type
 	// deriving from the generated basis struct — same layout, plus behavior)
@@ -164,19 +152,11 @@ func (*ConstItem) irItem()    {}
 func (*ReservedItem) irItem() {}
 func (*AlignItem) irItem()    {}
 
-// Object is an `object` declaration — the view-family surface (SPEC §4.8).
-type Object struct {
-	Name   string
-	Fields []*Field
-}
-
-func (*Const) irDecl()          {}
-func (*Enum) irDecl()           {}
-func (*Flags) irDecl()          {}
-func (*ContextsMarker) irDecl() {}
-func (*Struct) irDecl()         {}
-func (*Object) irDecl()         {}
-func (*Union) irDecl()          {}
+func (*Const) irDecl()  {}
+func (*Enum) irDecl()   {}
+func (*Flags) irDecl()  {}
+func (*Struct) irDecl() {}
+func (*Union) irDecl()  {}
 
 // ArrayKind classifies a field's array form.
 type ArrayKind int
@@ -187,16 +167,11 @@ const (
 	ArrayCounted // [..N]T and [Min..N]T
 )
 
-// Field is one storage-carrying member of a struct or object, with its
-// resolved wire refinements.
+// Field is one storage-carrying member of a struct, with its resolved wire
+// refinements.
 type Field struct {
 	Name  string
 	Guard string // "" or "if !at_rest" — branch context, kept as a comment
-
-	// object view markers (SPEC §4.8)
-	Local       bool
-	Interpolate bool
-	Context     string // "" = all contexts
 
 	Array      ArrayKind
 	ArrayBound int64
@@ -215,33 +190,21 @@ type Field struct {
 	DefExpr    Expr   // for symbolic rendering
 
 	// resolved wire refinements
-	HasIntRange    bool
-	IntMin         *big.Int
-	IntMax         *big.Int
-	IntMinExpr     Expr // for symbolic rendering in generated code
-	IntMaxExpr     Expr
-	HasFloatRange  bool // the compressed-float triple (SPEC §4.3) / projection (§4.8 rule 4)
-	FMin           float64
-	FMax           float64
-	Resolution     float64
-	Round          string // "", "nearest", "up", "down"
-	Steps          int64  // ceil((FMax-FMin)/Resolution)
-	HasQuantize    bool   // composite quantization (SPEC §4.8 rule 2)
-	QuantScale     int64
-	QuantScaleExpr Expr
-	QuantMaxExpr   Expr  // the declared max = B, for symbolic rendering
-	QuantBound     int64 // round(QuantScale * B) — per-component wire range is [-QuantBound, +QuantBound]
-
-	// fixed-composite shallow narrowing (SPEC §4.8 rule 2b): the composite's
-	// components are all fixed(I, F); the shallow wire keeps QuantShift =
-	// log2(QuantScale) fractional bits. Quantize rounds to nearest with ties
-	// HALF AWAY FROM ZERO over (F - QuantShift) dropped bits — the one
-	// fixed-point rounding rule (SPEC §4.8). Unquantize is the left shift
-	// back; the per-component wire bound is the component's own whole-unit
-	// [IntMin, IntMax] times QuantScale. QuantMaxExpr/QuantBound are
-	// meaningless here — bounds live on the components, not the field.
-	FixedShallow bool
-	QuantShift   int
+	HasIntRange   bool
+	IntMin        *big.Int
+	IntMax        *big.Int
+	IntMinExpr    Expr // for symbolic rendering in generated code
+	IntMaxExpr    Expr
+	HasFloatRange bool // the compressed-float triple (SPEC §4.3)
+	FMin          float64
+	FMax          float64
+	Resolution    float64
+	// Round is "" on non-compressed fields and "nearest" on every
+	// compressed float — a FROZEN projection token (`round=nearest`
+	// renders on every compressed-float line, and keeping it keeps every
+	// such unit's id stable; see ir.WireProjection).
+	Round string
+	Steps int64 // ceil((FMax-FMin)/Resolution)
 }
 
 type FieldTypeKind int
@@ -344,29 +307,4 @@ func StorageBitsFor(max int64) int {
 	default:
 		return 64
 	}
-}
-
-// FixedShallowBounds is the per-component shallow wire range of a narrowed
-// fixed composite (SPEC §4.8 rule 2b): the component's own whole-unit
-// [IntMin, IntMax] scaled by QuantScale. Every backend derives storage and
-// wire bounds from this one function, or the generated wires disagree.
-func FixedShallowBounds(f *Field, cf *Field) (lo, hi *big.Int) {
-	k := big.NewInt(f.QuantScale)
-	lo = new(big.Int).Mul(cf.IntMin, k)
-	hi = new(big.Int).Mul(cf.IntMax, k)
-	return lo, hi
-}
-
-// ObjectNeedsQuantize reports whether an object's Quantize/Unquantize pair
-// does any work: true when some | interpolate field quantizes a composite
-// (HasQuantize) or projects a float (HasFloatRange). When false the pair
-// would be a pure member copy — fixed-point components are their own
-// quantization (SPEC §4.8) — and the backends do not emit it at all.
-func ObjectNeedsQuantize(d *Object) bool {
-	for _, f := range d.Fields {
-		if f.Interpolate && (f.HasQuantize || f.HasFloatRange) {
-			return true
-		}
-	}
-	return false
 }

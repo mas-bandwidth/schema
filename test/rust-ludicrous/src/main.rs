@@ -94,7 +94,6 @@ fn main() {
     check(FIXED_PROBE_MAX_BITS == 156, "FixedProbe worst case");
     check(WIDE_PROBE_MAX_BITS == 403, "WideProbe worst case");
     check(LUDICROUS_STATE_MAX_BITS == 1205, "LudicrousState worst case");
-    check(MESSAGE_MAX_BITS == 1206, "message-level bound");
     check(PROTOCOL_ID != 0, "the unit has a protocol id");
 
     // zero initialization with specified defaults (SPEC §4.2), sentinel-zero
@@ -239,94 +238,6 @@ fn main() {
         check(out == input, "DegenerateProbe round-trips — every value materialized from its range");
     }
 
-    // ---- NarrowBody: the narrowed fixed shallow (SPEC §4.8 rule 2b) ----
-    // The pinned tie semantics: quantize rounds to nearest, ties AWAY FROM
-    // ZERO — the one fixed-point rounding rule (SPEC §4.8, decided
-    // the ruled form) — and unquantize is the left shift back. The wire
-    // bytes are the C++-pinned goldens; the values mirror
-    // test/ludicrous_main.cpp block for block.
-    {
-        check(NARROW_BODY_DATA_SHALLOW_MAX_BITS == 228, "narrowed shallow worst case");
-        check(NARROW_BODY_DATA_DEEP_MAX_BITS == 332, "narrow deep worst case");
-
-        let mut input = NarrowBodyData_Interpolate::default();
-        input.position.x = 384; // +1.5 eighths: tie, rounds AWAY to 2
-        input.position.y = -384; // -1.5 eighths: tie, rounds AWAY to -2 — THE distinguishing value
-        input.position.z = -6586368; // -100.5 * 2^16, exact in 8 kept bits
-        input.rotation.w = 1 << 30; // identity, hits the +1024 bound exactly
-        input.velocity.x = 1;
-        input.velocity.y = -1;
-        input.velocity.z = 123456789;
-
-        let mut sh = NarrowBodyData_Shallow::default();
-        quantize_narrow_body(&input, &mut sh);
-        check(sh.position_x == 2, "+1.5 eighths ties away to 2");
-        check(sh.position_y == -2, "-1.5 eighths ties away from zero to -2 (the bare shift would say -1)");
-        check(sh.position_z == -25728, "-100.5 units exact in 8 kept bits");
-        check(sh.rotation_x == 0 && sh.rotation_y == 0 && sh.rotation_z == 0, "identity xyz quantize to 0");
-        check(sh.rotation_w == 1024, "identity w hits the +1024 bound exactly");
-        check(
-            sh.velocity.x == 1 && sh.velocity.y == -1 && sh.velocity.z == 123456789,
-            "full-precision velocity copies",
-        );
-
-        let mut back = NarrowBodyData_Interpolate::default();
-        unquantize_narrow_body(&sh, &mut back);
-        check(back.position.x == 512, "narrowing loss, 384 -> 2 -> 512");
-        check(back.position.y == -512, "narrowing loss, -384 -> -2 -> -512");
-        check(back.position.z == -6586368, "exact multiple of 2^8 restores exactly");
-        check(back.rotation.w == 1 << 30, "the identity survives the round trip");
-
-        let mut buffer = [0u8; 256];
-        let mut ws = WriteStream::new(&mut buffer);
-        check_err(write_narrow_body_data_shallow(&mut ws, &sh), "write NarrowBodyData_Shallow");
-        ws.flush();
-        let sh_len = ws.bytes_processed() as usize;
-        let mut sh_wire = [0u8; 256];
-        sh_wire[..sh_len].copy_from_slice(&buffer[..sh_len]);
-        golden_wire("narrow_body_shallow", &sh_wire[..sh_len]);
-
-        let mut sh_out = NarrowBodyData_Shallow::default();
-        let mut rs = ReadStream::new(&sh_wire, sh_len);
-        check_err(read_narrow_body_data_shallow(&mut rs, &mut sh_out), "read NarrowBodyData_Shallow");
-        check(
-            sh_out.position_y == -2 && sh_out.rotation_w == 1024 && sh_out.velocity.z == 123456789,
-            "shallow round trip",
-        );
-
-        let mut deep = NarrowBodyData_Deep::default();
-        deep.position = input.position;
-        deep.rotation = input.rotation;
-        deep.velocity = input.velocity;
-        let mut ws_deep = WriteStream::new(&mut buffer);
-        check_err(write_narrow_body_data_deep(&mut ws_deep, &deep), "write NarrowBodyData_Deep");
-        ws_deep.flush();
-        let deep_len = ws_deep.bytes_processed() as usize;
-        let mut deep_wire = [0u8; 256];
-        deep_wire[..deep_len].copy_from_slice(&buffer[..deep_len]);
-        golden_wire("narrow_body_deep", &deep_wire[..deep_len]);
-
-        let mut deep_out = NarrowBodyData_Deep::default();
-        let mut rs_deep = ReadStream::new(&deep_wire, deep_len);
-        check_err(read_narrow_body_data_deep(&mut rs_deep, &mut deep_out), "read NarrowBodyData_Deep");
-        check(
-            deep_out.position.z == -6586368 && deep_out.rotation.w == 1 << 30,
-            "deep full precision round trip",
-        );
-
-        // hostile shallow read: position_x's 26 offset bits all-ones =
-        // 67108863, above the range size 51200000 — reject, never clamp
-        let mut hostile = [0u8; 256];
-        hostile[..sh_len].copy_from_slice(&sh_wire[..sh_len]);
-        set_bits(&mut hostile, 0, 26);
-        let mut h_out = NarrowBodyData_Shallow::default();
-        let mut h_rs = ReadStream::new(&hostile, sh_len);
-        check(
-            read_narrow_body_data_shallow(&mut h_rs, &mut h_out).is_err(),
-            "a smuggled narrowed offset is REJECTED",
-        );
-    }
-
     // ---- UnsignedProbe: ufixed(I, F), the unsigned sibling (SPEC §4.3;
     //) ----
     // span's raw value fills u64's HIGH HALF (above 2^63) — native unsigned
@@ -381,28 +292,6 @@ fn main() {
             read_unsigned_probe(&mut h_rs, &mut h_out).is_err(),
             "a smuggled ufixed high-half offset is REJECTED",
         );
-    }
-
-    // ---- the message dispatch surface over the new unit ----
-    {
-        let input = make_state();
-        let mut buffer = [0u8; 256];
-        let mut ws = WriteStream::new(&mut buffer);
-        check_err(
-            write_message(&mut ws, &Message::LudicrousState(input)),
-            "write Message LudicrousState",
-        );
-        ws.flush();
-        let n = ws.bytes_processed() as usize;
-
-        let mut rs = ReadStream::new(&buffer, n);
-        match read_message(&mut rs) {
-            Ok(Message::LudicrousState(out)) => {
-                check(out.wide.flux == input.wide.flux, "flux rides the dispatch surface");
-                check(out.probe.angle == 2981888, "angle rides the dispatch surface");
-            }
-            other => check(false, &format!("expected the LudicrousState message, got {other:?}")),
-        }
     }
 
     if FAILED.load(Ordering::Relaxed) {

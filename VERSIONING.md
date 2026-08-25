@@ -58,16 +58,13 @@ line is the line that exists.
 The rules above are policy; this section records the concrete instances, so
 the history of "a release moved bits" lives where the compatibility rules do.
 
-**2026-08-15 — fixed-point rounding unified: half away from zero.** SPEC §4.8
-rule 2b's generated shallow narrowing changed from the bare arithmetic shift
-(ties toward +infinity) to the one fixed-point rounding rule, ties away from
-zero — the rule that rule 4 already used. This moves the
-bytes generated code produces **only on exact ties of negative raw values in
-shallow narrowing**, and the protocol id does NOT move — a rounding rule is
-not wire shape, so the id cannot see this class of change. It rides the next
-release loudly, with this note. The negative-tie conformance vector pinned in
-the ludicrous corpus is the tripwire that keeps five ports on the unified
-rule.
+**2026-08-15 — fixed-point rounding unified: half away from zero.** The
+generated fixed-point narrowing of that era changed from the bare arithmetic
+shift (ties toward +infinity) to the one fixed-point rounding rule, ties
+away from zero. This moved the bytes generated code produced **only on
+exact ties of negative raw values in that narrowing**, and the protocol id
+did NOT move — a rounding rule is not wire shape, so the id cannot see this
+class of change. It rode the next release loudly, with this note.
 
 The standing risk calculus for this and every future wire-affecting
 amendment: both sides of every connection redeploy together, so an amendment

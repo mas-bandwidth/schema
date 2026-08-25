@@ -2,10 +2,7 @@
 // link step proves the headers define no duplicate symbols across TUs.
 
 #include "ConstantsWire.h"
-#include "ContextsWire.h"
 #include "EnumsWire.h"
-#include "MessagesWire.h"
-#include "ObjectsWire.h"
 #include "RenderWire.h"
 #include "TypesWire.h"
 #include "WireWire.h"
@@ -14,10 +11,8 @@
 int touch_generated_types()
 {
     using namespace example;
-    Synchronize sync;
+    Test test;
     ShipCreate create;
     Handle handle;
-    ClientMissileState missile;
-    return static_cast<int>(sync.sync_frame) + create.has_flags + handle.object_id +
-           static_cast<int>(missile.missile_type != MissileType::None);
+    return static_cast<int>(test.test_a) + create.has_flags + handle.object_id;
 }

@@ -19,7 +19,7 @@ type File struct {
 
 // Decl is a top-level declaration.
 type Decl interface {
-	DeclName() string // "" for contexts
+	DeclName() string
 	DeclPos() Pos
 }
 
@@ -42,11 +42,6 @@ type FlagsDecl struct {
 	Pos      Pos
 	Attrs    []Attr
 	Variants []Name
-}
-
-type ContextsDecl struct {
-	Pos   Pos
-	Names []Name
 }
 
 type TypeDecl struct {
@@ -72,35 +67,17 @@ type UnionVariant struct {
 	TypePos Pos
 }
 
-type MessageDecl struct {
-	Name string
-	Pos  Pos
-	Body *Block
-}
+func (d *ConstDecl) DeclName() string { return d.Name }
+func (d *EnumDecl) DeclName() string  { return d.Name }
+func (d *FlagsDecl) DeclName() string { return d.Name }
+func (d *TypeDecl) DeclName() string  { return d.Name }
+func (d *UnionDecl) DeclName() string { return d.Name }
 
-type ObjectDecl struct {
-	Name string
-	Pos  Pos
-	Body *Block
-}
-
-func (d *ConstDecl) DeclName() string    { return d.Name }
-func (d *EnumDecl) DeclName() string     { return d.Name }
-func (d *FlagsDecl) DeclName() string    { return d.Name }
-func (d *ContextsDecl) DeclName() string { return "" }
-func (d *TypeDecl) DeclName() string     { return d.Name }
-func (d *UnionDecl) DeclName() string    { return d.Name }
-func (d *MessageDecl) DeclName() string  { return d.Name }
-func (d *ObjectDecl) DeclName() string   { return d.Name }
-
-func (d *ConstDecl) DeclPos() Pos    { return d.Pos }
-func (d *EnumDecl) DeclPos() Pos     { return d.Pos }
-func (d *FlagsDecl) DeclPos() Pos    { return d.Pos }
-func (d *ContextsDecl) DeclPos() Pos { return d.Pos }
-func (d *TypeDecl) DeclPos() Pos     { return d.Pos }
-func (d *UnionDecl) DeclPos() Pos    { return d.Pos }
-func (d *MessageDecl) DeclPos() Pos  { return d.Pos }
-func (d *ObjectDecl) DeclPos() Pos   { return d.Pos }
+func (d *ConstDecl) DeclPos() Pos { return d.Pos }
+func (d *EnumDecl) DeclPos() Pos  { return d.Pos }
+func (d *FlagsDecl) DeclPos() Pos { return d.Pos }
+func (d *TypeDecl) DeclPos() Pos  { return d.Pos }
+func (d *UnionDecl) DeclPos() Pos { return d.Pos }
 
 type Name struct {
 	Text string

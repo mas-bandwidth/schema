@@ -9,10 +9,10 @@ import (
 )
 
 // Options carries the per-target settings a generate request names, keyed by
-// the CLI flag that sets them — "cpp-message" is the one the built-in targets
-// read today. A generator ignores keys it does not know, and an absent or
-// empty value means that target's default; a value it knows but cannot honor
-// is an error, never a silent fallback.
+// the CLI flag that sets them. The built-in targets read none today; the
+// door stays open for registered generators. A generator ignores keys it
+// does not know, and an absent or empty value means that target's default;
+// a value it knows but cannot honor is an error, never a silent fallback.
 type Options map[string]string
 
 // A Generator emits one target language's source for a checked unit. The six

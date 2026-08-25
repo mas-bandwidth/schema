@@ -11,7 +11,7 @@
 // constants, flags are a uint64-backed named type with mask constants,
 // string(N)/bytes(N) are [N]byte plus an int32 used length, arrays are fixed
 // Go arrays with an int32 used count beside the counted form. Nothing here
-// heap-allocates per message.
+// heap-allocates per value.
 //
 // Functions follow the §6.3 Go row: free functions against the concrete
 // WriteStream/ReadStream types (no interface dispatch), sticky stream errors,
@@ -39,10 +39,8 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 	// bits, wire calls mirror the C++ macros.
 	out := map[string][]byte{}
 	home := ir.ProtocolIdHome(u)
-	msgOwner := ir.MessageOwner(u)
-	objOwner := ir.ObjectOwner(u)
 	for _, f := range u.Files {
-		g := &gen{unit: u, file: f, msgOwner: msgOwner, objOwner: objOwner}
+		g := &gen{unit: u, file: f}
 		g.emitFile(f.Base == home)
 		src, err := format.Source(g.assemble())
 		if err != nil {
@@ -54,10 +52,8 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 }
 
 type gen struct {
-	unit     *ir.Unit
-	file     *ir.File
-	msgOwner string // the one file that carries the message dispatch surface
-	objOwner string // the one file that carries the object tag surface
+	unit *ir.Unit
+	file *ir.File
 
 	body           strings.Builder
 	needsSerialize bool // the file emits wire functions -> import the runtime
@@ -127,19 +123,6 @@ func (g *gen) emitFile(carriesProtocolId bool) {
 		g.pf("var ErrValidation = errors.New(\"%s: wire validation failed\")\n\n", g.unit.Package)
 	}
 
-	// MessageType / ObjectType lead their OWNER file — the unit-level surface
-	// is emitted exactly once, in the topologically last carrying file, so
-	// declarations spread across files never redeclare it in the package
-	// (SPEC §2 keeps the aspect layout non-enforced; ir.MessageOwner picks).
-	if g.file.Base == g.msgOwner && len(g.unit.Messages) > 0 {
-		g.emitTagEnum("MessageType", g.unit.Messages,
-			"the message set, extracted by the compiler — None = 0, then each message sorted by name (SPEC §4.8)")
-	}
-	if g.file.Base == g.objOwner && len(g.unit.ObjNames) > 0 {
-		g.emitTagEnum("ObjectType", g.unit.ObjNames,
-			"the object set, extracted by the compiler — None = 0, then each object sorted by name (SPEC §4.8)")
-	}
-
 	// declaration order — schema references are order-free and so is Go
 	for _, d := range g.file.Decls {
 		switch d := d.(type) {
@@ -149,12 +132,6 @@ func (g *gen) emitFile(carriesProtocolId bool) {
 			g.emitEnum(d)
 		case *ir.Flags:
 			g.emitFlags(d)
-		case *ir.ContextsMarker:
-			g.pf("// contexts declared for this unit: %s (SPEC §4.2).\n", strings.Join(d.Names, ", "))
-			g.pf("// Contexts generate no standalone artifacts — where an object carries\n")
-			g.pf("// context-scoped | local fields, its State struct is generated once per\n")
-			g.pf("// context (ClientShipState, ServerShipState, ...), each holding the `all`\n")
-			g.pf("// fields plus its own context's. No build tags in this target.\n\n")
 		case *ir.Struct:
 			g.emitStruct(d)
 			g.emitConstructor(d)
@@ -162,17 +139,7 @@ func (g *gen) emitFile(carriesProtocolId bool) {
 		case *ir.Union:
 			g.emitUnion(d)
 			g.emitUnionFunctions(d)
-		case *ir.Object:
-			g.emitObject(d)
-			g.emitObjectFunctions(d)
 		}
-	}
-
-	if g.file.Base == g.msgOwner && len(g.unit.Messages) > 0 {
-		g.emitMessageTagFunctions()
-	}
-	if g.file.Base == g.objOwner && len(g.unit.ObjNames) > 0 {
-		g.emitObjectTagFunctions()
 	}
 }
 
@@ -218,8 +185,7 @@ func (g *gen) foldComment(e ast.Expr) string {
 
 // emitUnion emits a first-class one-of (SPEC §4.8): the <Name>Type tag enum,
 // then the interface-free storage — the tag beside one pre-allocated arm per
-// variant, the MessageStorage stand-in exactly. Nothing heap-allocates per
-// value; the zero value IS None.
+// variant. Nothing heap-allocates per value; the zero value IS None.
 func (g *gen) emitUnion(d *ir.Union) {
 	members := make([]string, len(d.Variants))
 	for i, v := range d.Variants {
@@ -231,7 +197,7 @@ func (g *gen) emitUnion(d *ir.Union) {
 	g.pf("// %s — at most one of the arms; Type says which. The zero value is the\n", d.Name)
 	g.pf("// empty union (None). A read zero-establishes exactly the selected arm before\n")
 	g.pf("// decoding it (SPEC §5); unselected arms keep what they last held — the\n")
-	g.pf("// MessageStorage reuse discipline. Consumers read the selected arm only.\n")
+	g.pf("// reused-storage discipline. Consumers read the selected arm only.\n")
 	g.pf("type %s struct {\n", d.Name)
 	g.pf("\tType %sType\n", d.Name)
 	for _, v := range d.Variants {
@@ -301,17 +267,13 @@ func (g *gen) emitFlags(d *ir.Flags) {
 }
 
 func (g *gen) emitStruct(d *ir.Struct) {
-	kind := "type"
-	if d.IsMessage {
-		kind = "message"
-	}
 	if len(d.Tags) > 0 {
-		g.pf("// %s %s [%s] — tags are user-chosen and inert in v1 (SPEC §4.2, Type tags)\n", kind, d.Name, strings.Join(d.Tags, ", "))
+		g.pf("// type %s [%s] — tags are user-chosen and inert in v1 (SPEC §4.2, Type tags)\n", d.Name, strings.Join(d.Tags, ", "))
 	} else {
-		g.pf("// %s %s\n", kind, d.Name)
+		g.pf("// type %s\n", d.Name)
 	}
 	g.pf("type %s struct {\n", d.Name)
-	g.emitFields(d.Fields, storageDeep)
+	g.emitFields(d.Fields)
 	g.pf("}\n\n")
 }
 
@@ -429,83 +391,7 @@ func (g *gen) renderU128(e ast.Expr, folded *big.Int) string {
 	return fmt.Sprintf("serialize.Uint128{Lo: 0x%x, Hi: 0x%x}", lo, hi)
 }
 
-// view selects which storage a field emission derives (SPEC §4.8).
-type view int
-
-const (
-	storageDeep    view = iota // declared storage — State and Data_Deep
-	storageShallow             // quantized wire storage
-	storageInterp              // interpolate storage: projected fields wire-int, composites continuous
-)
-
-func (g *gen) emitObject(d *ir.Object) {
-	g.pf("// ---- object %s — one definition, a generated family per target (SPEC §4.8) ----\n\n", d.Name)
-
-	if hasContextFields(d) {
-		for _, ctx := range g.unit.Contexts {
-			var fields []*ir.Field
-			for _, f := range d.Fields {
-				if f.Context == "" || f.Context == ctx {
-					fields = append(fields, f)
-				}
-			}
-			g.pf("// %s%sState — the full simulation struct for the %s context: every `all`\n", capitalize(ctx), d.Name, ctx)
-			g.pf("// field plus the fields scoped | local, context = %s\n", ctx)
-			g.pf("type %s%sState struct {\n", capitalize(ctx), d.Name)
-			g.emitFields(fields, storageDeep)
-			g.pf("}\n\n")
-		}
-	} else {
-		g.pf("// %sState — the full simulation struct: every field\n", d.Name)
-		g.pf("type %sState struct {\n", d.Name)
-		g.emitFields(d.Fields, storageDeep)
-		g.pf("}\n\n")
-	}
-
-	deep, interp := splitObjectFields(d)
-
-	g.pf("// %sData_Deep — every non- | local field, deep encodings: full state for\n", d.Name)
-	g.pf("// client-side prediction\n")
-	g.pf("type %sData_Deep struct {\n", d.Name)
-	g.emitFields(deep, storageDeep)
-	g.pf("}\n\n")
-
-	g.pf("// %sData_Shallow — the | interpolate fields on the quantized wire: the\n", d.Name)
-	g.pf("// implementation detail on the way to interpolation on the client\n")
-	g.pf("type %sData_Shallow struct {\n", d.Name)
-	g.emitFields(interp, storageShallow)
-	g.pf("}\n\n")
-
-	g.pf("// %sData_Interpolate — the same fields in interpolate storage: projected\n", d.Name)
-	g.pf("// fields stay in the wire integer domain and snap-interpolate; quantized\n")
-	g.pf("// composites store continuous (SPEC §4.8 rule 5)\n")
-	g.pf("type %sData_Interpolate struct {\n", d.Name)
-	g.emitFields(interp, storageInterp)
-	g.pf("}\n\n")
-}
-
-func splitObjectFields(d *ir.Object) (deep, interp []*ir.Field) {
-	for _, f := range d.Fields {
-		if !f.Local {
-			deep = append(deep, f)
-		}
-		if f.Interpolate {
-			interp = append(interp, f)
-		}
-	}
-	return
-}
-
-func hasContextFields(d *ir.Object) bool {
-	for _, f := range d.Fields {
-		if f.Context != "" {
-			return true
-		}
-	}
-	return false
-}
-
-func (g *gen) emitFields(fields []*ir.Field, v view) {
+func (g *gen) emitFields(fields []*ir.Field) {
 	prevGuard := ""
 	for _, f := range fields {
 		if f.Guard != prevGuard {
@@ -517,48 +403,8 @@ func (g *gen) emitFields(fields []*ir.Field, v view) {
 			}
 			prevGuard = f.Guard
 		}
-		g.emitField(f, v)
+		g.emitStorageField(f)
 	}
-}
-
-func (g *gen) emitField(f *ir.Field, v view) {
-	name := ir.GoExportName(f.Name)
-	if v == storageShallow && f.HasQuantize {
-		st := f.Type.Ref.(*ir.Struct)
-		if f.FixedShallow {
-			g.pf("\t// %s: %s narrowed to %d fractional bits (quantize = %s) — per-component\n",
-				f.Name, f.Type.Name, f.QuantShift, ir.RenderExpr(f.QuantScaleExpr))
-			g.pf("\t// quantized units; bounds are the component's whole-unit | min, max scaled\n")
-			for _, comp := range st.Fields {
-				lo, hi, _, _, typ, _ := fixedShallowComp(f, comp)
-				g.pf("\t%s%s %s // in [%s, %s]\n", name, ir.GoExportName(comp.Name), typ, lo, hi)
-			}
-			return
-		}
-		g.pf("\t// %s: %s quantized by %s, max %s — per-component int in [-%d, %d]\n",
-			f.Name, f.Type.Name, ir.RenderExpr(f.QuantScaleExpr), ir.RenderExpr(f.QuantMaxExpr), f.QuantBound, f.QuantBound)
-		typ := goInt(smallestSigned(f.QuantBound))
-		for _, comp := range st.Fields {
-			g.pf("\t%s%s %s\n", name, ir.GoExportName(comp.Name), typ)
-		}
-		return
-	}
-	if (v == storageShallow || v == storageInterp) && f.HasFloatRange {
-		typ := goUint(ir.StorageBitsFor(f.Steps))
-		note := ""
-		if f.Round != "nearest" {
-			note = ", round " + f.Round + " (advisory: SPEC §4.8 rule 4 — projection, not this wire conversion)"
-		}
-		tail := ""
-		if v == storageInterp {
-			tail = " — wire-int domain, snap-interpolated (SPEC §4.8 rule 5)"
-		}
-		g.pf("\t%s %s // float [%s, %s] @ resolution %s -> wire int [0, %d]%s%s\n",
-			name, typ, formatFloat(f.FMin), formatFloat(f.FMax),
-			formatFloat(f.Resolution), f.Steps, note, tail)
-		return
-	}
-	g.emitStorageField(f)
 }
 
 func (g *gen) emitStorageField(f *ir.Field) {
@@ -594,24 +440,8 @@ func (g *gen) fieldComment(f *ir.Field) string {
 		parts = append(parts, fmt.Sprintf("wire [%s, %s]", f.IntMin, f.IntMax))
 	}
 	if f.HasFloatRange {
-		note := ""
-		if f.Round != "nearest" {
-			note = ", round " + f.Round + " (advisory: SPEC §4.8 rule 4 — projection, not this wire conversion)"
-		}
-		if f.Interpolate {
-			parts = append(parts, fmt.Sprintf("shallow wire: [%s, %s] @ %s -> int [0, %d]%s",
-				formatFloat(f.FMin), formatFloat(f.FMax), formatFloat(f.Resolution), f.Steps, note))
-		} else {
-			parts = append(parts, fmt.Sprintf("compressed float [%s, %s] @ %s%s",
-				formatFloat(f.FMin), formatFloat(f.FMax), formatFloat(f.Resolution), note))
-		}
-	}
-	if f.Local {
-		if f.Context != "" {
-			parts = append(parts, fmt.Sprintf("| local, context = %s", f.Context))
-		} else {
-			parts = append(parts, "| local — no wire")
-		}
+		parts = append(parts, fmt.Sprintf("compressed float [%s, %s] @ %s",
+			formatFloat(f.FMin), formatFloat(f.FMax), formatFloat(f.Resolution)))
 	}
 	if len(parts) == 0 {
 		return ""
@@ -707,40 +537,6 @@ func goInt2(signed bool, width int) string {
 func goInt(width int) string  { return fmt.Sprintf("int%d", width) }
 func goUint(width int) string { return fmt.Sprintf("uint%d", width) }
 
-// fixedShallowComp resolves one component of a narrowed fixed composite
-// (SPEC §4.8 rule 2b) to its Go shallow shape: wire bounds, wire bits, the
-// int32/int64 serialize switch, and the storage type. The bounds mirror
-// ir.FixedShallowBounds so all five backends agree on the wire.
-func fixedShallowComp(f, cf *ir.Field) (lo, hi *big.Int, bits int64, wide bool, typ string, width int) {
-	lo, hi = ir.FixedShallowBounds(f, cf)
-	bits = ir.BitsRequired(lo, hi)
-	wide = hi.Cmp(big.NewInt(2147483647)) > 0 || lo.Cmp(big.NewInt(-2147483648)) < 0
-	abs := new(big.Int).Neg(lo)
-	if abs.Cmp(hi) < 0 {
-		abs = hi
-	}
-	bound := int64(9223372036854775807)
-	if abs.IsInt64() {
-		bound = abs.Int64()
-	}
-	width = smallestSigned(bound)
-	typ = goInt(width)
-	return
-}
-
-func smallestSigned(bound int64) int {
-	switch {
-	case bound <= 127:
-		return 8
-	case bound <= 32767:
-		return 16
-	case bound <= 2147483647:
-		return 32
-	default:
-		return 64
-	}
-}
-
 func formatFloat(v float64) string {
 	s := strconv.FormatFloat(v, 'g', -1, 64)
 	if !strings.ContainsAny(s, ".eE") {
@@ -760,11 +556,4 @@ func formatFloat32(v float64) string {
 		s += ".0"
 	}
 	return s
-}
-
-func capitalize(s string) string {
-	if s == "" {
-		return s
-	}
-	return strings.ToUpper(s[:1]) + s[1:]
 }

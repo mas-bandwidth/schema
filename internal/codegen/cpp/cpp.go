@@ -1,12 +1,11 @@
 // Package cpp emits the C++ target: TWO headers per schema file, everything in
 // namespace <package>, #pragma once, deterministic to the byte (SPEC §6.1).
 //
-// <Base>.h is the DATA header — constants, enums, flags, type/message structs,
-// the per-object view families, MaxBits/MaxBytes bounds and the Message
-// storage surface — and depends on serialize.h only when a storage type
-// requires it (int128/fixed). <Base>Wire.h is the WIRE header — the
-// Write/Read functions, Quantize/Unquantize and the tag/dispatch wire — and
-// includes <Base>.h plus serialize.h. The split exists so data consumers (a
+// <Base>.h is the DATA header — constants, enums, flags, type structs and
+// MaxBits/MaxBytes bounds — and depends on serialize.h only when a storage
+// type requires it (int128/fixed). <Base>Wire.h is the WIRE header — the
+// Write/Read functions and the union tag wire — and includes <Base>.h plus
+// serialize.h. The split exists so data consumers (a
 // game basing its math types on generated structs) never inherit the
 // serialize runtime or its macro namespace, which collides with vendored
 // older serialize copies (the space integration finding).
@@ -27,37 +26,12 @@ import (
 	"github.com/mas-bandwidth/schema/ir"
 )
 
-// Options selects caller-facing generation choices (SPEC §4.8).
-type Options struct {
-	// MessageRepr is the C++ message dispatch representation: "union" (a
-	// tagged struct over an anonymous union, the classic game idiom — the
-	// DEFAULT) or "variant" (std::variant, index == wire tag, opt-in).
-	// Caller's choice; the default is union on the ruled
-	// compile-time measurement the same hour: 0.17s -> 0.27s "is not trivial
-	// for me. it's almost 2X" / "I'm very negative on modern C++ for this
-	// reason... you almost always pay through the nose for it at compile
-	// time."
-	MessageRepr string
-}
-
 // Generate returns basename.h -> file contents for every file of the unit.
 // It fails loudly on a cross-file include cycle: schema references are
 // order-free (SPEC §4.2), but a by-value C++ member needs a complete type, so
 // mutually-including headers cannot compile and the fix is moving a
 // declaration, which only the author can choose.
-func Generate(u *ir.Unit, opts Options) (map[string][]byte, error) {
-	switch opts.MessageRepr {
-	case "":
-		opts.MessageRepr = "union"
-	case "variant", "union":
-	default:
-		return nil, fmt.Errorf("unknown --cpp-message %q — the choices are union (default) and variant", opts.MessageRepr)
-	}
-	if opts.MessageRepr == "union" {
-		if err := checkUnionMemberNames(u); err != nil {
-			return nil, err
-		}
-	}
+func Generate(u *ir.Unit) (map[string][]byte, error) {
 	if cycle := includeCycle(u); cycle != "" {
 		return nil, fmt.Errorf(
 			"generated C++ headers would include each other in a cycle (%s) — types compose across files order-free in schema, but C++ headers cannot include mutually; move a declaration so the file graph is acyclic", cycle)
@@ -73,56 +47,16 @@ func Generate(u *ir.Unit, opts Options) (map[string][]byte, error) {
 	}
 	out := map[string][]byte{}
 	home := ir.ProtocolIdHome(u)
-	msgOwner := ir.MessageOwner(u)
-	objOwner := ir.ObjectOwner(u)
 	for _, f := range u.Files {
-		g := &gen{unit: u, file: f, opts: opts, msgOwner: msgOwner, objOwner: objOwner}
+		g := &gen{unit: u, file: f}
 		g.emitDataFile(f.Base == home)
 		out[f.Base+".h"] = g.assemble()
 
-		w := &gen{unit: u, file: f, opts: opts, msgOwner: msgOwner, objOwner: objOwner, wire: true}
+		w := &gen{unit: u, file: f, wire: true}
 		w.emitWireFile()
 		out[f.Base+"Wire.h"] = w.assemble()
 	}
 	return out, nil
-}
-
-// camelToSnake maps an UpperCamelCase declaration name to the
-// lower_snake_case union member name: ShipCreate -> ship_create,
-// ABTest -> ab_test.
-func camelToSnake(name string) string {
-	var b strings.Builder
-	runes := []rune(name)
-	for i, r := range runes {
-		if r >= 'A' && r <= 'Z' {
-			prevLower := i > 0 && runes[i-1] >= 'a' && runes[i-1] <= 'z'
-			nextLower := i+1 < len(runes) && runes[i+1] >= 'a' && runes[i+1] <= 'z'
-			if i > 0 && (prevLower || nextLower) {
-				b.WriteByte('_')
-			}
-			b.WriteRune(r - 'A' + 'a')
-			continue
-		}
-		b.WriteRune(r)
-	}
-	return b.String()
-}
-
-// checkUnionMemberNames guards the union representation's derived member
-// names: distinct after snake-casing, and never the tag field's own name.
-func checkUnionMemberNames(u *ir.Unit) error {
-	seen := map[string]string{}
-	for _, m := range u.Messages {
-		s := camelToSnake(m)
-		if s == "type" {
-			return fmt.Errorf("message %s: its union member name would be %q, which is the tag field — rename the message (SPEC §4.8)", m, s)
-		}
-		if prev, dup := seen[s]; dup {
-			return fmt.Errorf("messages %s and %s share the union member name %q after snake-casing — rename one (SPEC §4.8)", prev, m, s)
-		}
-		seen[s] = m
-	}
-	return nil
 }
 
 // includeCycle returns a printable cycle among generated headers, or "".
@@ -170,12 +104,9 @@ func includeCycle(u *ir.Unit) string {
 }
 
 type gen struct {
-	unit     *ir.Unit
-	file     *ir.File
-	opts     Options
-	msgOwner string // the one file that carries the message dispatch surface
-	objOwner string // the one file that carries the object tag surface
-	wire     bool   // emitting the wire half (<Base>Wire.h): functions over serialize streams
+	unit *ir.Unit
+	file *ir.File
+	wire bool // emitting the wire half (<Base>Wire.h): functions over serialize streams
 
 	body           strings.Builder
 	includes       map[string]bool
@@ -187,7 +118,6 @@ type gen struct {
 	needsSerialize bool               // the file emits wire functions -> include "serialize.h"
 	needsCstring   bool               // the file emits memset -> include <cstring>
 	needsCmath     bool               // the file emits floor() -> include <cmath>
-	needsVariant   bool               // the file emits the Message dispatch -> include <variant>
 }
 
 func (g *gen) pf(format string, args ...any) {
@@ -207,9 +137,6 @@ func (g *gen) assemble() []byte {
 	}
 	if g.needsCstring {
 		h.WriteString("#include <cstring>\n")
-	}
-	if g.needsVariant {
-		h.WriteString("#include <variant>\n")
 	}
 	if g.needsSerialize {
 		h.WriteString("\n#include \"serialize.h\"\n")
@@ -268,19 +195,6 @@ func (g *gen) emitDataFile(carriesProtocolId bool) {
 		g.pf("inline constexpr uint64_t ProtocolId = 0x%016xull;\n\n", g.unit.ProtocolId)
 	}
 
-	// MessageType / ObjectType lead their OWNER file — the unit-level surface
-	// is emitted exactly once, in the topologically last carrying file, so
-	// declarations spread across files never redeclare it (SPEC §2 keeps the
-	// aspect layout non-enforced; ir.MessageOwner picks the file).
-	if g.file.Base == g.msgOwner && len(g.unit.Messages) > 0 {
-		g.emitTagEnum("MessageType", g.unit.Messages,
-			"the message set, extracted by the compiler — None = 0, then each message sorted by name (SPEC §4.8)")
-	}
-	if g.file.Base == g.objOwner && len(g.unit.ObjNames) > 0 {
-		g.emitTagEnum("ObjectType", g.unit.ObjNames,
-			"the object set, extracted by the compiler — None = 0, then each object sorted by name (SPEC §4.8)")
-	}
-
 	for _, d := range ir.EmissionOrder(g.file) {
 		switch d := d.(type) {
 		case *ir.Const:
@@ -289,27 +203,13 @@ func (g *gen) emitDataFile(carriesProtocolId bool) {
 			g.emitEnum(d)
 		case *ir.Flags:
 			g.emitFlags(d)
-		case *ir.ContextsMarker:
-			g.pf("// contexts declared for this unit: %s (SPEC §4.2).\n", strings.Join(d.Names, ", "))
-			g.pf("// Contexts generate no standalone artifacts — where an object carries\n")
-			g.pf("// context-scoped | local fields, its State struct is generated once per\n")
-			g.pf("// context (ClientShipState, ServerShipState, ...), each holding the `all`\n")
-			g.pf("// fields plus its own context's. No preprocessor in any target.\n\n")
 		case *ir.Struct:
 			g.emitStruct(d)
 			g.emitStructMaxBits(d)
 		case *ir.Union:
 			g.emitUnion(d)
 			g.emitUnionMaxBits(d)
-		case *ir.Object:
-			g.emitObject(d)
-			g.emitObjectQuantize(d)
-			g.emitObjectMaxBits(d)
 		}
-	}
-
-	if g.file.Base == g.msgOwner && len(g.unit.Messages) > 0 {
-		g.emitMessageData()
 	}
 }
 
@@ -342,8 +242,6 @@ func (g *gen) emitWireFile() {
 		switch d := d.(type) {
 		case *ir.Struct:
 			fields = d.Fields
-		case *ir.Object:
-			fields = d.Fields
 		case *ir.Union:
 			// cross-file payloads mean cross-file wire calls exactly like
 			// named field types
@@ -363,16 +261,7 @@ func (g *gen) emitWireFile() {
 			g.emitStructWire(d)
 		case *ir.Union:
 			g.emitUnionWire(d)
-		case *ir.Object:
-			g.emitObjectWire(d)
 		}
-	}
-
-	if g.file.Base == g.msgOwner && len(g.unit.Messages) > 0 {
-		g.emitMessageWire()
-	}
-	if g.file.Base == g.objOwner && len(g.unit.ObjNames) > 0 {
-		g.emitObjectTagWire()
 	}
 }
 
@@ -389,7 +278,7 @@ func (g *gen) emitTagEnum(name string, members []string, comment string) {
 }
 
 // emitUnion emits a first-class one-of (SPEC §4.8): the generated <Name>Type
-// tag enum, then the message union shape exactly — a struct holding the tag
+// tag enum, then the tagged-union shape — a struct holding the tag
 // over an anonymous union of the arms, constructed as None, trivially
 // copyable. An arm's storage is established ZEROED when the arm is selected
 // (by Read<Name> before it decodes, or by a writer assigning the arm).
@@ -555,95 +444,17 @@ func (g *gen) emitFlagAppendHelper() {
 }
 
 func (g *gen) emitStruct(d *ir.Struct) {
-	kind := "type"
-	if d.IsMessage {
-		kind = "message"
-	}
 	if len(d.Tags) > 0 {
-		g.pf("// %s %s [%s] — tags are user-chosen and inert in v1 (SPEC §4.2, Type tags)\n", kind, d.Name, strings.Join(d.Tags, ", "))
+		g.pf("// type %s [%s] — tags are user-chosen and inert in v1 (SPEC §4.2, Type tags)\n", d.Name, strings.Join(d.Tags, ", "))
 	} else {
-		g.pf("// %s %s\n", kind, d.Name)
+		g.pf("// type %s\n", d.Name)
 	}
 	g.pf("struct %s {\n", d.Name)
-	g.emitFields(d.Fields, storageDeep)
+	g.emitFields(d.Fields)
 	g.pf("};\n\n")
 }
 
-// view selects which storage a field emission derives (SPEC §4.8).
-type view int
-
-const (
-	storageDeep    view = iota // declared storage — State and Data_Deep
-	storageShallow             // quantized wire storage
-	storageInterp              // interpolate storage: projected fields wire-int, composites continuous
-)
-
-func (g *gen) emitObject(d *ir.Object) {
-	g.pf("// ---- object %s — one definition, a generated family per target (SPEC §4.8) ----\n\n", d.Name)
-
-	// State: the full simulation struct — every field; one per context where
-	// context-scoped fields exist, else once, unprefixed.
-	if hasContextFields(d) {
-		for _, ctx := range g.unit.Contexts {
-			var fields []*ir.Field
-			for _, f := range d.Fields {
-				if f.Context == "" || f.Context == ctx {
-					fields = append(fields, f)
-				}
-			}
-			g.pf("// %s%sState — the full simulation struct for the %s context: every `all`\n", capitalize(ctx), d.Name, ctx)
-			g.pf("// field plus the fields scoped | local, context = %s\n", ctx)
-			g.pf("struct %s%sState {\n", capitalize(ctx), d.Name)
-			g.emitFields(fields, storageDeep)
-			g.pf("};\n\n")
-		}
-	} else {
-		g.pf("// %sState — the full simulation struct: every field\n", d.Name)
-		g.pf("struct %sState {\n", d.Name)
-		g.emitFields(d.Fields, storageDeep)
-		g.pf("};\n\n")
-	}
-
-	var deep, interp []*ir.Field
-	for _, f := range d.Fields {
-		if !f.Local {
-			deep = append(deep, f)
-		}
-		if f.Interpolate {
-			interp = append(interp, f)
-		}
-	}
-
-	g.pf("// %sData_Deep — every non- | local field, deep encodings: full state for\n", d.Name)
-	g.pf("// client-side prediction\n")
-	g.pf("struct %sData_Deep {\n", d.Name)
-	g.emitFields(deep, storageDeep)
-	g.pf("};\n\n")
-
-	g.pf("// %sData_Shallow — the | interpolate fields on the quantized wire: the\n", d.Name)
-	g.pf("// implementation detail on the way to interpolation on the client\n")
-	g.pf("struct %sData_Shallow {\n", d.Name)
-	g.emitFields(interp, storageShallow)
-	g.pf("};\n\n")
-
-	g.pf("// %sData_Interpolate — the same fields in interpolate storage: projected\n", d.Name)
-	g.pf("// fields stay in the wire integer domain and snap-interpolate; quantized\n")
-	g.pf("// composites store continuous (SPEC §4.8 rule 5)\n")
-	g.pf("struct %sData_Interpolate {\n", d.Name)
-	g.emitFields(interp, storageInterp)
-	g.pf("};\n\n")
-}
-
-func hasContextFields(d *ir.Object) bool {
-	for _, f := range d.Fields {
-		if f.Context != "" {
-			return true
-		}
-	}
-	return false
-}
-
-func (g *gen) emitFields(fields []*ir.Field, v view) {
+func (g *gen) emitFields(fields []*ir.Field) {
 	prevGuard := ""
 	for _, f := range fields {
 		if f.Guard != prevGuard {
@@ -655,50 +466,8 @@ func (g *gen) emitFields(fields []*ir.Field, v view) {
 			}
 			prevGuard = f.Guard
 		}
-		g.emitField(f, v)
+		g.emitStorageField(f)
 	}
-}
-
-func (g *gen) emitField(f *ir.Field, v view) {
-	if v == storageShallow && f.HasQuantize {
-		st := f.Type.Ref.(*ir.Struct)
-		if f.FixedShallow {
-			g.pf("    // %s: %s narrowed to %d fractional bits (quantize = %s) — per-component\n",
-				f.Name, f.Type.Name, f.QuantShift, ir.RenderExpr(f.QuantScaleExpr))
-			g.pf("    // quantized units; bounds are the component's whole-unit | min, max scaled\n")
-			for _, comp := range st.Fields {
-				lo, hi, _, _, typ := fixedShallowComp(f, comp)
-				g.pf("    %s %s_%s = 0; // in [%s, %s]\n", typ, f.Name, comp.Name, lo, hi)
-			}
-			return
-		}
-		g.pf("    // %s: %s quantized by %s, max %s — per-component int in [-%d, %d]\n",
-			f.Name, f.Type.Name, ir.RenderExpr(f.QuantScaleExpr), ir.RenderExpr(f.QuantMaxExpr), f.QuantBound, f.QuantBound)
-		typ := cppInt(smallestSigned(f.QuantBound))
-		for _, comp := range st.Fields {
-			g.pf("    %s %s_%s = 0;\n", typ, f.Name, comp.Name)
-		}
-		return
-	}
-	if (v == storageShallow || v == storageInterp) && f.HasFloatRange {
-		typ := cppUint(smallestUnsigned(f.Steps))
-		note := ""
-		if f.Round != "nearest" {
-			note = ", round " + f.Round + " (advisory: SPEC §4.8 rule 4 — projection, not this wire conversion)"
-		}
-		tail := ""
-		if v == storageInterp {
-			tail = " — wire-int domain, snap-interpolated (SPEC §4.8 rule 5)"
-		}
-		g.pf("    %s %s = 0; // float [%s, %s] @ resolution %s -> wire int [0, %d]%s%s\n",
-			typ, f.Name, formatFloatShort(f.FMin), formatFloatShort(f.FMax),
-			formatFloatShort(f.Resolution), f.Steps, note, tail)
-		return
-	}
-
-	// declared storage (deep view), and shallow/interp passthrough for
-	// discrete fields (enums, flags, plain scalars)
-	g.emitStorageField(f)
 }
 
 func (g *gen) emitStorageField(f *ir.Field) {
@@ -783,26 +552,8 @@ func (g *gen) fieldComment(f *ir.Field) string {
 		parts = append(parts, fmt.Sprintf("wire [%s, %s]", f.IntMin, f.IntMax))
 	}
 	if f.HasFloatRange {
-		note := ""
-		if f.Round != "nearest" {
-			note = ", round " + f.Round + " (advisory: SPEC §4.8 rule 4 — projection, not this wire conversion)"
-		}
-		if f.Interpolate {
-			// the triple describes the SHALLOW wire only; the deep wire is the
-			// bare storage type's encoding (SPEC §4.8)
-			parts = append(parts, fmt.Sprintf("shallow wire: [%s, %s] @ %s -> int [0, %d]%s",
-				formatFloatShort(f.FMin), formatFloatShort(f.FMax), formatFloatShort(f.Resolution), f.Steps, note))
-		} else {
-			parts = append(parts, fmt.Sprintf("compressed float [%s, %s] @ %s%s",
-				formatFloatShort(f.FMin), formatFloatShort(f.FMax), formatFloatShort(f.Resolution), note))
-		}
-	}
-	if f.Local {
-		if f.Context != "" {
-			parts = append(parts, fmt.Sprintf("| local, context = %s", f.Context))
-		} else {
-			parts = append(parts, "| local — no wire")
-		}
+		parts = append(parts, fmt.Sprintf("compressed float [%s, %s] @ %s",
+			formatFloatShort(f.FMin), formatFloatShort(f.FMax), formatFloatShort(f.Resolution)))
 	}
 	if len(parts) == 0 {
 		return ""
@@ -1063,27 +814,7 @@ func cppInt2(signed bool, width int) string {
 	return fmt.Sprintf("uint%d_t", width)
 }
 
-func cppInt(width int) string  { return fmt.Sprintf("int%d_t", width) }
 func cppUint(width int) string { return fmt.Sprintf("uint%d_t", width) }
-
-// fixedShallowComp resolves one component of a narrowed fixed composite
-// (SPEC §4.8 rule 2b) to its C++ shallow shape: wire bounds, wire bits,
-// the int32/int64 read-write switch, and the storage type.
-func fixedShallowComp(f, cf *ir.Field) (lo, hi *big.Int, bits int64, wide bool, typ string) {
-	lo, hi = ir.FixedShallowBounds(f, cf)
-	bits = bitsRequired(lo, hi)
-	wide = hi.Cmp(big.NewInt(2147483647)) > 0 || lo.Cmp(big.NewInt(-2147483648)) < 0
-	abs := new(big.Int).Neg(lo)
-	if abs.Cmp(hi) < 0 {
-		abs = hi
-	}
-	bound := int64(9223372036854775807)
-	if abs.IsInt64() {
-		bound = abs.Int64()
-	}
-	typ = cppInt(smallestSigned(bound))
-	return
-}
 
 // cppInt64Lit renders a signed 64-bit literal; INT64_MIN has no direct
 // literal in C++ (the unary minus applies after the overflowing parse).
@@ -1093,21 +824,6 @@ func cppInt64Lit(v *big.Int) string {
 	}
 	return v.String() + "ll"
 }
-
-func smallestSigned(bound int64) int {
-	switch {
-	case bound <= 127:
-		return 8
-	case bound <= 32767:
-		return 16
-	case bound <= 2147483647:
-		return 32
-	default:
-		return 64
-	}
-}
-
-func smallestUnsigned(max int64) int { return ir.StorageBitsFor(max) }
 
 func formatFloat(v float64, single bool) string {
 	// single-precision literals format at FLOAT32 precision: the shortest
@@ -1130,11 +846,4 @@ func formatFloat(v float64, single bool) string {
 
 func formatFloatShort(v float64) string {
 	return strconv.FormatFloat(v, 'g', -1, 64)
-}
-
-func capitalize(s string) string {
-	if s == "" {
-		return s
-	}
-	return strings.ToUpper(s[:1]) + s[1:]
 }

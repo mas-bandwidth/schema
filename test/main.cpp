@@ -1,4 +1,4 @@
-// Includes every generated header, round-trips generated types and messages
+// Includes every generated header, round-trips generated types
 // through the classic serialize runtime, and prints OK. second.cpp includes
 // the same headers into a second translation unit, so a successful link also
 // proves the headers are multiple-inclusion safe.
@@ -12,10 +12,7 @@
 #include <new> // placement new — the raw-struct scatter constructs in place
 
 #include "ConstantsWire.h"
-#include "ContextsWire.h"
 #include "EnumsWire.h"
-#include "MessagesWire.h"
-#include "ObjectsWire.h"
 #include "RenderWire.h"
 #include "TypesWire.h"
 #include "WireWire.h"
@@ -142,8 +139,6 @@ int main()
     // enums: None = 0 implicit, variants dense from 1 (SPEC §4.2)
     static_assert(static_cast<int>(Team::None) == 0, "None = 0");
     static_assert(static_cast<int>(Team::Blue) == 2, "variants pack from 1");
-    static_assert(static_cast<int>(MessageType::Block) == 1, "message tags sorted by name");
-    static_assert(static_cast<int>(ObjectType::DynamicProp) == 1, "object tags sorted by name");
 
     // flags: one bit per variant from bit 0 (SPEC §4.2)
     static_assert(ShipFlags_FiringLaser == 1ull << 0, "flags bits assign in declaration order");
@@ -151,13 +146,6 @@ int main()
 
     // worst-case bounds exist and are sane (SPEC §6.1 item 4)
     static_assert(RigidBodyMaxBits > 0 && RigidBodyMaxBytes >= RigidBodyMaxBits / 8, "MaxBits/MaxBytes");
-    static_assert(MessageMaxBytes > 0, "message-level bound");
-
-    // zero initialization is the rule
-    ClientShipState client_ship;
-    check( !client_ship.predicted_explode && client_ship.num_colliders == 0 );
-    ServerMissileState missile;
-    check( missile.timer == 0.0 );
 
     alignas( 8 ) uint8_t buffer[2048 + 8];  // + 8: read buffer allocations extend 8 bytes past the data (the reader loads 64-bit windows)
 
@@ -337,7 +325,7 @@ int main()
         check( !out.inputs[1].fire );
     }
 
-    // ---- Test message: ranged integers validate on read (SPEC §5) ----
+    // ---- Test: ranged integers validate on read (SPEC §5) ----
     {
         Test in;
         in.test_a = 1000;
@@ -353,21 +341,6 @@ int main()
         serialize::ReadStream rs( buffer, ws.GetBytesProcessed() );
         check( ReadTest( rs, out ) );
         check( out.test_a == 1000 && out.test_b == 1000 && out.test_c == 0 && out.test_d == 500 );
-    }
-
-    // ---- the message tag wire (SPEC §4.8) ----
-    {
-        serialize::WriteStream ws( buffer, sizeof( buffer ) );
-        check( WriteMessageType( ws, MessageType::Chat ) );
-        check( WriteMessageType( ws, MessageType::None ) ); // the stream terminator
-        ws.Flush();
-
-        serialize::ReadStream rs( buffer, ws.GetBytesProcessed() );
-        MessageType tag = MessageType::None;
-        check( ReadMessageType( rs, tag ) );
-        check( tag == MessageType::Chat );
-        check( ReadMessageType( rs, tag ) );
-        check( tag == MessageType::None );
     }
 
     // ---- ShipCreate: the bool-gated flags branch, both ways ----
@@ -464,83 +437,6 @@ int main()
         check( golden_wire( "chat", buffer, ws.GetBytesProcessed() ) );
     }
 
-    // ---- the Message dispatch surface (default: tagged union) ----
-    {
-        static_assert(std::is_trivially_copyable<Message>::value,
-                      "the tagged union is trivially copyable — no heap anywhere");
-
-        Message stream_out[3]; // constructed as the None message: type == None
-        check( stream_out[2].type == MessageType::None );
-        // a writer SELECTS an arm by assigning it — the assignment establishes
-        // the arm's storage as its zero value (default member initializers);
-        // construction alone initializes only the tag
-        stream_out[0].type = MessageType::Chat;
-        stream_out[0].chat = Chat{};
-        std::memcpy( stream_out[0].chat.text, "dispatch", 8 );
-        stream_out[0].chat.text_length = 8;
-        stream_out[1].type = MessageType::Test;
-        stream_out[1].test = Test{};
-        stream_out[1].test.test_b = 42;
-
-        serialize::WriteStream ws( buffer, sizeof( buffer ) );
-        for ( const Message & m : stream_out )
-            check( WriteMessage( ws, m ) );
-        ws.Flush();
-
-        check( golden_wire( "message_stream", buffer, ws.GetBytesProcessed() ) );
-
-        serialize::ReadStream rs( buffer, ws.GetBytesProcessed() );
-        Message in;
-        check( ReadMessage( rs, in ) );
-        check( GetMessageType( in ) == MessageType::Chat );
-        check( in.chat.text_length == 8 );
-        check( std::strcmp( in.chat.text, "dispatch" ) == 0 );
-        check( ReadMessage( rs, in ) );
-        check( GetMessageType( in ) == MessageType::Test );
-        check( in.test.test_b == 42 );
-        check( ReadMessage( rs, in ) );
-        check( GetMessageType( in ) == MessageType::None ); // the terminator
-    }
-
-    // ---- union arm re-init: a re-read must not leak a previous arm's bytes ----
-    // SPEC §5: read success fully initializes relative to a ZERO-INITIALIZED
-    // output object — ReadMessage provides that baseline for exactly the arm
-    // the wire tag selects, so a Block full of nonzero bytes decoded into a
-    // Message must not remain readable through the chat arm after a smaller
-    // Chat is decoded into the SAME value. This pins the arm re-init: remove
-    // `message.chat = Chat{};` from ReadMessage and this fails.
-    {
-        serialize::WriteStream ws( buffer, sizeof( buffer ) );
-        Message big;
-        big.type = MessageType::Block;
-        big.block = Block{};
-        big.block.data_length = MaxBlockSize;
-        std::memset( big.block.data, 0xFF, MaxBlockSize ); // stand-in attacker bytes
-        check( WriteMessage( ws, big ) );
-        Message small;
-        small.type = MessageType::Chat;
-        small.chat = Chat{};
-        std::memcpy( small.chat.text, "hi", 2 );
-        small.chat.text_length = 2;
-        check( WriteMessage( ws, small ) );
-        ws.Flush();
-
-        Message reused; // ONE value, reused across reads — the arm-swap case
-        serialize::ReadStream rs( buffer, ws.GetBytesProcessed() );
-        check( ReadMessage( rs, reused ) );
-        check( GetMessageType( reused ) == MessageType::Block );
-        check( reused.block.data_length == MaxBlockSize );
-        check( reused.block.data[0] == 0xFF && reused.block.data[MaxBlockSize - 1] == 0xFF );
-        check( ReadMessage( rs, reused ) ); // the same value, now a Chat
-        check( GetMessageType( reused ) == MessageType::Chat );
-        check( reused.chat.text_length == 2 );
-        check( std::strcmp( reused.chat.text, "hi" ) == 0 );
-        for ( int i = 3; i < MaxChatLength + 1; i++ )
-        {
-            check( reused.chat.text[i] == 0 ); // no Block byte survives in the arm
-        }
-    }
-
     // ---- the wire constants: const(0xAB, 8) leads, reserved holds zero,
     // and a corrupted constant is REJECTED on read (SPEC §4.3) ----
     {
@@ -559,78 +455,6 @@ int main()
         buffer[0] = 0xAC; // corrupt the wire constant
         serialize::ReadStream rs2( buffer, ws.GetBytesProcessed() );
         check( !ReadProbeHeader( rs2, out ) );
-    }
-
-    // ---- the object views: Quantize/Unquantize and the two wires (SPEC §4.8) ----
-    {
-        ShipData_Interpolate interp;
-        interp.ship_type = ShipType::Corvette;
-        interp.position = { 1.5, -2.25, 100.0 };
-        interp.rotation = { 0.0, 0.0, 0.0, 1.0 };
-        interp.linear_velocity = { 3.0, 0.0, -1.0 };
-        interp.flags = ShipFlags_Boosting;
-        interp.team = Team::Red;
-        interp.health = 750; // wire-int domain (rule 5)
-        interp.thrust = 55;
-
-        ShipData_Shallow q;
-        QuantizeShip( interp, q );
-        check( q.position_x == 1536 );          // 1.5 * 1024
-        check( q.position_y == -2304 );         // -2.25 * 1024
-        check( q.rotation_w == 1024 );          // 1.0 * 1024
-        check( q.health == 750 && q.thrust == 55 ); // projected fields copy
-        check( q.team == Team::Red && q.flags == ShipFlags_Boosting );
-
-        // the shallow wire round-trips the quantized struct
-        serialize::WriteStream ws( buffer, sizeof( buffer ) );
-        check( WriteShipData_Shallow( ws, q ) );
-        ws.Flush();
-        check( golden_wire( "ship_shallow", buffer, ws.GetBytesProcessed() ) );
-        ShipData_Shallow q2;
-        serialize::ReadStream rs( buffer, ws.GetBytesProcessed() );
-        check( ReadShipData_Shallow( rs, q2 ) );
-        check( q2.position_x == 1536 && q2.rotation_w == 1024 && q2.health == 750 );
-
-        // unquantize recovers within one step of the scale
-        ShipData_Interpolate back;
-        UnquantizeShip( q2, back );
-        check( back.position.x == 1536.0 / 1024.0 );
-        check( back.position.y == -2304.0 / 1024.0 );
-        check( back.rotation.w == 1.0 );
-        check( back.health == 750 && back.team == Team::Red );
-
-        // the deep wire: [interpolate] float triples ride as BARE floats here —
-        // the view-encoding attributes describe the shallow wire only (SPEC §4.8)
-        ShipData_Deep deep;
-        deep.ship_type = ShipType::Carrier;
-        deep.health = 333.25f; // fractional survives the deep wire exactly
-        deep.laser_index = 15;
-        deep.target.object_id = 4242;
-        deep.lock_start_time = 12.5;
-        serialize::WriteStream ws2( buffer, sizeof( buffer ) );
-        check( WriteShipData_Deep( ws2, deep ) );
-        ws2.Flush();
-        ShipData_Deep deep2;
-        serialize::ReadStream rs2( buffer, ws2.GetBytesProcessed() );
-        check( ReadShipData_Deep( rs2, deep2 ) );
-        check( deep2.ship_type == ShipType::Carrier );
-        check( deep2.health == 333.25f );
-        check( deep2.laser_index == 15 && deep2.target.object_id == 4242 );
-        check( deep2.lock_start_time == 12.5 );
-    }
-
-    // ---- the object tag wire ----
-    {
-        serialize::WriteStream ws( buffer, sizeof( buffer ) );
-        check( WriteObjectType( ws, ObjectType::Turret ) );
-        check( WriteObjectType( ws, ObjectType::None ) ); // the baseline sentinel
-        ws.Flush();
-        serialize::ReadStream rs( buffer, ws.GetBytesProcessed() );
-        ObjectType tag = ObjectType::None;
-        check( ReadObjectType( rs, tag ) );
-        check( tag == ObjectType::Turret );
-        check( ReadObjectType( rs, tag ) );
-        check( tag == ObjectType::None );
     }
 
     // ---- cross-language pins: the shapes the Go test round-trips get C++
@@ -772,7 +596,7 @@ int main()
     // array of unions, the wire golden, and the refusal negative controls ----
     {
         static_assert( std::is_trivially_copyable<ProbeShape>::value,
-                       "the union representation is trivially copyable, the message union's contract (SPEC §4.8)" );
+                       "the union representation is trivially copyable (SPEC §4.8)" );
         ProbeCollider in;
         check( in.shape.type == ProbeShapeType::None ); // constructed as the empty union
         check( ProbeShapeMaxBits == 2 + 16 );           // tag + the largest arm (SPEC §4.8)
@@ -829,8 +653,8 @@ int main()
             check( !ReadProbeCollider( crs, bad ) );
         }
 
-        // the write side validates the tag BEFORE it rides (SPEC §4.8,
-        // WriteMessage's rule): an out-of-set tag writes nothing
+        // the write side validates the tag BEFORE it rides (SPEC §4.8):
+        // an out-of-set tag writes nothing
         ProbeShape rogue;
         rogue.type = ProbeShapeType( 3 );
         serialize::WriteStream bs( buffer, sizeof( buffer ) );

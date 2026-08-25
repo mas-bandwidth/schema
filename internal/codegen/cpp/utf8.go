@@ -8,11 +8,8 @@ import "github.com/mas-bandwidth/schema/ir"
 func fileHasStrings(f *ir.File) bool {
 	for _, d := range f.Decls {
 		var fields []*ir.Field
-		switch d := d.(type) {
-		case *ir.Struct:
-			fields = d.Fields
-		case *ir.Object:
-			fields = d.Fields
+		if st, ok := d.(*ir.Struct); ok {
+			fields = st.Fields
 		}
 		for _, fd := range fields {
 			if fd.Type.Kind == ir.TString {

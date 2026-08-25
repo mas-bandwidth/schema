@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package example — protocol id 0xbc05d83a8135cdb9
+// package example — protocol id 0x0bde7acdd36abc6a
 
 using System;
 using System.Runtime.CompilerServices;
@@ -136,6 +136,34 @@ namespace Example
                 Samples[i] = new ProbeSample();
             }
         }
+    }
+
+    // type Heartbeat
+    public sealed class Heartbeat
+    {
+    }
+
+    // type Test
+    public sealed class Test
+    {
+        public ushort TestA;
+        public short TestB; // wire [0, 1000]
+        public short TestC; // wire [0, 1000]
+        public short TestD; // wire [0, 1000]
+    }
+
+    // type Block
+    public sealed class Block
+    {
+        public byte[] Data = new byte[Schema.MaxBlockSize]; // bytes(MaxBlockSize): fixed buffer, used length beside it (SPEC §4.7)
+        public int DataLength;
+    }
+
+    // type Chat
+    public sealed class Chat
+    {
+        public byte[] Text = new byte[Schema.MaxChatLength]; // string(MaxChatLength): max length, used length beside it (SPEC §4.7)
+        public int TextLength;
     }
 
     // type ProbeReport
@@ -1075,6 +1103,243 @@ namespace Example
             if (!ReadProbeConfigBatch(ref batch, value.Config))
             {
                 return false;
+            }
+            return true;
+        }
+
+        // HeartbeatMaxBits is the longest wire path; align pads at worst case (SPEC §6.1).
+        // HeartbeatMaxBytes is rounded up to the 8-byte write-buffer granularity.
+        public const long HeartbeatMaxBits = 0;
+        public const long HeartbeatMaxBytes = 0;
+
+        // The §5 zero form: all-zero storage; specified defaults live only in construction.
+        public static void ZeroHeartbeat(Heartbeat value)
+        {
+            _ = value; // empty body — nothing to reset (SPEC §4.6)
+        }
+
+        public static bool WriteHeartbeat(WriteStream stream, Heartbeat value)
+        {
+            // empty body — presence is the payload (SPEC §4.6)
+            return true;
+        }
+
+        public static bool ReadHeartbeat(ReadStream stream, Heartbeat value)
+        {
+            return true;
+        }
+
+        // TestMaxBits is the longest wire path; align pads at worst case (SPEC §6.1).
+        // TestMaxBytes is rounded up to the 8-byte write-buffer granularity.
+        public const long TestMaxBits = 46;
+        public const long TestMaxBytes = 8;
+
+        // The §5 zero form: all-zero storage; specified defaults live only in construction.
+        public static void ZeroTest(Test value)
+        {
+            value.TestA = 0;
+            value.TestB = 0;
+            value.TestC = 0;
+            value.TestD = 0;
+        }
+
+        // batch form: stream state stays in registers across the body and End
+        // publishes it — same wire bytes, same validation, same error model.
+        public static bool WriteTest(WriteStream stream, Test value)
+        {
+            WriteBatch batch = stream.BeginBatch();
+            bool result = WriteTestBatch(ref batch, value);
+            batch.End();
+            return result;
+        }
+
+        // inline-only batch core — a real call would address-expose the batch
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static bool WriteTestBatch(ref WriteBatch batch, Test value)
+        {
+            {
+                uint rawValue = value.TestA;
+                if (!batch.SerializeBits(ref rawValue, 16))
+                {
+                    return false;
+                }
+            }
+            if (value.TestB < 0 || value.TestB > 1000)
+            {
+                return false;
+            }
+            {
+                uint offsetValue = (uint)(value.TestB);
+                if (!batch.SerializeBits(ref offsetValue, 10))
+                {
+                    return false;
+                }
+            }
+            if (value.TestC < 0 || value.TestC > 1000)
+            {
+                return false;
+            }
+            {
+                uint offsetValue = (uint)(value.TestC);
+                if (!batch.SerializeBits(ref offsetValue, 10))
+                {
+                    return false;
+                }
+            }
+            if (value.TestD < 0 || value.TestD > 1000)
+            {
+                return false;
+            }
+            {
+                uint offsetValue = (uint)(value.TestD);
+                if (!batch.SerializeBits(ref offsetValue, 10))
+                {
+                    return false;
+                }
+            }
+            return true;
+        }
+
+        public static bool ReadTest(ReadStream stream, Test value)
+        {
+            ReadBatch batch = stream.BeginBatch();
+            bool result = ReadTestBatch(ref batch, value);
+            batch.End();
+            return result;
+        }
+
+        // inline-only batch core — a real call would address-expose the batch
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static bool ReadTestBatch(ref ReadBatch batch, Test value)
+        {
+            {
+                uint rawValue = 0;
+                if (!batch.SerializeBits(ref rawValue, 16))
+                {
+                    return false;
+                }
+                value.TestA = (ushort)rawValue;
+            }
+            {
+                int rangeValue = 0;
+                if (!batch.SerializeInt(ref rangeValue, 0, 1000))
+                {
+                    return false;
+                }
+                value.TestB = (short)rangeValue;
+            }
+            {
+                int rangeValue = 0;
+                if (!batch.SerializeInt(ref rangeValue, 0, 1000))
+                {
+                    return false;
+                }
+                value.TestC = (short)rangeValue;
+            }
+            {
+                int rangeValue = 0;
+                if (!batch.SerializeInt(ref rangeValue, 0, 1000))
+                {
+                    return false;
+                }
+                value.TestD = (short)rangeValue;
+            }
+            return true;
+        }
+
+        // BlockMaxBits is the longest wire path; align pads at worst case (SPEC §6.1).
+        // BlockMaxBytes is rounded up to the 8-byte write-buffer granularity.
+        public const long BlockMaxBits = 16018;
+        public const long BlockMaxBytes = 2008;
+
+        // The §5 zero form: all-zero storage; specified defaults live only in construction.
+        public static void ZeroBlock(Block value)
+        {
+            Array.Clear(value.Data, 0, (int)MaxBlockSize);
+            value.DataLength = 0;
+        }
+
+        public static bool WriteBlock(WriteStream stream, Block value)
+        {
+            if (value.DataLength < 0 || value.DataLength > (int)MaxBlockSize) // the length guards the slice (§6.3); out-of-contract writes are refused
+            {
+                return false;
+            }
+            {
+                uint offsetValue = (uint)(value.DataLength);
+                if (!stream.SerializeBits(ref offsetValue, 11))
+                {
+                    return false;
+                }
+            }
+            if (!stream.SerializeBytes(value.Data.AsSpan(0, value.DataLength)))
+            {
+                return false;
+            }
+            return true;
+        }
+
+        public static bool ReadBlock(ReadStream stream, Block value)
+        {
+            if (!stream.SerializeInt(ref value.DataLength, 0, (int)MaxBlockSize)) // the length guards the slice (§6.3)
+            {
+                return false;
+            }
+            if (!stream.SerializeBytes(value.Data.AsSpan(0, value.DataLength)))
+            {
+                return false;
+            }
+            return true;
+        }
+
+        // ChatMaxBits is the longest wire path; align pads at worst case (SPEC §6.1).
+        // ChatMaxBytes is rounded up to the 8-byte write-buffer granularity.
+        public const long ChatMaxBits = 2064;
+        public const long ChatMaxBytes = 264;
+
+        // The §5 zero form: all-zero storage; specified defaults live only in construction.
+        public static void ZeroChat(Chat value)
+        {
+            Array.Clear(value.Text, 0, (int)MaxChatLength);
+            value.TextLength = 0;
+        }
+
+        public static bool WriteChat(WriteStream stream, Chat value)
+        {
+            if (value.TextLength < 0 || value.TextLength > (int)MaxChatLength) // the length guards the slice (§6.3); out-of-contract writes are refused
+            {
+                return false;
+            }
+            {
+                uint offsetValue = (uint)(value.TextLength);
+                if (!stream.SerializeBits(ref offsetValue, 9))
+                {
+                    return false;
+                }
+            }
+            if (!stream.SerializeBytes(value.Text.AsSpan(0, value.TextLength)))
+            {
+                return false;
+            }
+            return true;
+        }
+
+        public static bool ReadChat(ReadStream stream, Chat value)
+        {
+            if (!stream.SerializeInt(ref value.TextLength, 0, (int)MaxChatLength)) // the length guards the slice (§6.3)
+            {
+                return false;
+            }
+            if (!stream.SerializeBytes(value.Text.AsSpan(0, value.TextLength)))
+            {
+                return false;
+            }
+            for (int i = 0; i < value.TextLength; i++)
+            {
+                if (value.Text[i] == 0) // an interior null is content the read refuses (SPEC §4.7)
+                {
+                    return false;
+                }
             }
             return true;
         }

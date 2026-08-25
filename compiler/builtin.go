@@ -36,15 +36,13 @@ func (cTarget) Generate(u *ir.Unit, _ Options) (map[string][]byte, error) {
 	return cgen.Generate(u)
 }
 
-// cppTarget emits C++17, in either message representation.
+// cppTarget emits C++17.
 type cppTarget struct{}
 
 func (cppTarget) Names() []string { return []string{"cpp"} }
 
-// Generate reads one option: "cpp-message" selects the C++ message dispatch
-// representation, "union" (the default) or "variant" (SPEC §4.8).
-func (cppTarget) Generate(u *ir.Unit, opts Options) (map[string][]byte, error) {
-	return cpp.Generate(u, cpp.Options{MessageRepr: opts["cpp-message"]})
+func (cppTarget) Generate(u *ir.Unit, _ Options) (map[string][]byte, error) {
+	return cpp.Generate(u)
 }
 
 // csTarget emits C#.

@@ -14,7 +14,7 @@
 //     the serialized work
 //   - streams are reused via Reset (the runtime's documented no-allocation
 //     reuse path); the read path decodes into ONE reused instance per bench
-//     (the MessageStorage discipline — the C# stand-in for C++'s free stack
+//     (the reused-storage discipline — the C# stand-in for C++'s free stack
 //     temporary; §5 zeroing makes reuse equivalent on every field that rides)
 //   - the driver passes write/read/vary as delegates (one indirect call per
 //     op; Rust and C++ get this inlined via generics — noted in the results)
@@ -110,7 +110,7 @@ static partial class Program
 
     // buffers: write buffers must be a multiple of 8 bytes (qword-flush
     // contract); variant buffers keep slack past the packet for the reader's
-    // window loads. 4096 covers MessageMaxBytes (2008) with slack.
+    // window loads. 4096 covers the largest pinned shape (2008 bytes) with slack.
     const int BufferSize = 4096;
 
     // §2.7 variant-buffer stride: the 64 rotating read buffers are allocated
@@ -301,7 +301,7 @@ static partial class Program
         }
 
         // read path: 1 warmup + NumRuns measured; ONE reused decode instance
-        // (the MessageStorage discipline — see the file header)
+        // (the reused-storage discipline — see the file header)
         T outValue = new T();
         ReadStream rs = new ReadStream(gVariants[0], (int)bytesPerOp);
         for (int run = -1; run < gNumRuns; run++)
@@ -432,28 +432,7 @@ static partial class Program
         return input;
     }
 
-    static ShipData_Shallow PinShipShallow()
-    {
-        ShipData_Interpolate interp = new ShipData_Interpolate();
-        interp.ShipType = ShipType.Corvette;
-        interp.Position.X = 1.5;
-        interp.Position.Y = -2.25;
-        interp.Position.Z = 100.0;
-        interp.Rotation.X = 0.0;
-        interp.Rotation.Y = 0.0;
-        interp.Rotation.Z = 0.0;
-        interp.Rotation.W = 1.0;
-        interp.LinearVelocity.X = 3.0;
-        interp.LinearVelocity.Y = 0.0;
-        interp.LinearVelocity.Z = -1.0;
-        interp.Flags = ShipFlagsBoosting;
-        interp.Team = Team.Red;
-        interp.Health = 750;
-        interp.Thrust = 55;
-        ShipData_Shallow q = new ShipData_Shallow();
-        QuantizeShip(interp, q);
-        return q;
-    }
+
 
     static ProbeHeader PinProbeHeader()
     {
@@ -595,18 +574,7 @@ static partial class Program
         m.Thrust = (sbyte)((rng >> 14) & 63); // within [0, 100]
     }
 
-    static void VaryShipShallow(ShipData_Shallow m, ulong rng)
-    {
-        m.PositionX = (int)((rng >> 8) & 0xFFFFF) - 0x80000;
-        m.PositionY = (int)((rng >> 16) & 0xFFFFF) - 0x80000;
-        m.PositionZ = (int)((rng >> 24) & 0xFFFFF) - 0x80000;
-        m.RotationX = (short)((int)(rng & 0x7FF) - 1024);
-        m.RotationW = (short)((int)((rng >> 11) & 0x7FF) - 1024);
-        m.LinearVelocityX = (int)((rng >> 32) & 0x3FFFFF) - 2097152;
-        m.Flags = rng & 15;
-        m.Health = (ushort)((rng >> 5) & 511);
-        m.Thrust = (byte)((rng >> 14) & 63);
-    }
+
 
     static void VaryProbeHeader(ProbeHeader m, ulong rng)
     {
@@ -744,257 +712,7 @@ static partial class Program
         m.F054Int = (sbyte)((int)((rng >> 45) & 63) - 32); // +/-32 within +/-35
     }
 
-    // ------------------------------------------------------------------------------------------
-    // the synthetic steady-state batch: NumBatchMessages messages through the
-    // Message dispatch surface (WriteMessage/ReadMessage) plus the None
-    // terminator, mixed types driven by the LCG — the C++ batch builder
-    // exactly.
-    // ------------------------------------------------------------------------------------------
 
-    const int NumBatchMessages = 4096;
-    const int BatchPasses = 25600; // rescaled 2026-08-23 with the mix rebalance: §2.1's floor wins (§1.2)
-
-    static Message[] BuildBatch(byte[] batchBuffer, out long batchBytes)
-    {
-        batchBytes = 0;
-        Message[] messages = new Message[NumBatchMessages];
-
-        ulong rng = 12345;
-        for (int k = 0; k < NumBatchMessages; k++)
-        {
-            rng = BenchRng(rng);
-            int pick = (int)((rng >> 32) % 20);
-            if (pick < 1) // 5% Chat
-            {
-                Chat m = new Chat();
-                m.TextLength = 8 + (int)(rng & 7);
-                for (int i = 0; i < m.TextLength; i++)
-                {
-                    m.Text[i] = (byte)('a' + (int)((rng >> (i & 7)) & 15));
-                }
-                messages[k] = m;
-            }
-            else if (pick < 7) // 30% Test
-            {
-                Test m = new Test();
-                m.TestA = (ushort)rng;
-                m.TestB = (short)((rng >> 16) & 511);
-                m.TestC = (short)((rng >> 25) & 511);
-                m.TestD = (short)((rng >> 34) & 511);
-                messages[k] = m;
-            }
-            else if (pick < 12) // 25% Synchronize
-            {
-                Synchronize m = new Synchronize();
-                m.SyncFrame = rng;
-                m.SyncSequence = (ushort)(rng >> 8);
-                messages[k] = m;
-            }
-            else if (pick < 17) // 25% Timescale
-            {
-                Timescale m = new Timescale();
-                m.Scale = ((uint)rng & 0xFFFF) / 65536.0;
-                m.FrameA = (uint)(rng >> 16);
-                m.FrameB = (uint)(rng >> 24);
-                messages[k] = m;
-            }
-            else if (pick < 19) // 10% Heartbeat
-            {
-                messages[k] = new Heartbeat();
-            }
-            else // 5% Block
-            {
-                Block m = new Block();
-                m.DataLength = 8 + (int)(rng & 15);
-                for (int i = 0; i < m.DataLength; i++)
-                {
-                    m.Data[i] = (byte)(rng >> (i & 31));
-                }
-                messages[k] = m;
-            }
-        }
-
-        WriteStream ws = new WriteStream(batchBuffer);
-        for (int k = 0; k < NumBatchMessages; k++)
-        {
-            if (!WriteMessage(ws, messages[k]))
-            {
-                Fail("message_batch", "batch write failed during setup");
-                return null;
-            }
-        }
-        if (!WriteMessage(ws, null)) // null is the None terminator
-        {
-            Fail("message_batch", "terminator write failed during setup");
-            return null;
-        }
-        ws.Flush();
-        batchBytes = ws.BytesProcessed;
-        return messages;
-    }
-
-    static void BenchBatch()
-    {
-        // worst case is NumBatchMessages * MessageMaxBytes; actual is far
-        // less. + 8 read slack, and the size is a multiple of 8 (write
-        // contract).
-        int batchBufferSize = (NumBatchMessages + 1) * (int)MessageMaxBytes + 8;
-        byte[] batchBuffer = new byte[batchBufferSize];
-
-        Message[] messages = BuildBatch(batchBuffer, out long batchBytes);
-        if (messages == null)
-        {
-            return;
-        }
-
-        const long passes = BatchPasses;
-        const long totalMsgs = passes * NumBatchMessages;
-
-        double[] writeRates = new double[gNumRuns];
-        double[] readRates = new double[gNumRuns];
-        ulong rng = 999;
-
-        // write path: whole batch per pass; one message mutates per pass so
-        // the batch is never loop-invariant
-        WriteStream ws = new WriteStream(batchBuffer);
-        for (int run = -1; run < gNumRuns; run++)
-        {
-            Stopwatch sw = Stopwatch.StartNew();
-            for (long pass = 0; pass < passes; pass++)
-            {
-                rng = BenchRng(rng);
-                switch (messages[(rng >> 16) % NumBatchMessages])
-                {
-                    case Synchronize s:
-                        s.SyncFrame = rng;
-                        break;
-                    case Test t:
-                        t.TestA = (ushort)rng;
-                        break;
-                }
-                ws.Reset(batchBuffer);
-                for (int k = 0; k < NumBatchMessages; k++)
-                {
-                    if (!WriteMessage(ws, messages[k]))
-                    {
-                        Fail("message_batch", "write failed in loop");
-                        return;
-                    }
-                }
-                WriteMessage(ws, null);
-                ws.Flush();
-                gSink = gSink + (ulong)ws.BytesProcessed;
-            }
-            double time = sw.Elapsed.TotalSeconds;
-            if (run >= 0)
-            {
-                writeRates[run] = totalMsgs / time;
-            }
-        }
-
-        // the read buffer: rebuild once from the deterministic batch state so bytes match
-        if (BuildBatch(batchBuffer, out batchBytes) == null)
-        {
-            return;
-        }
-
-        // read path: read messages until the None terminator, whole batch per
-        // pass; reads land in pre-allocated storage — no heap per message
-        MessageStorage storage = new MessageStorage();
-        ReadStream rs = new ReadStream(batchBuffer, (int)batchBytes);
-        for (int run = -1; run < gNumRuns; run++)
-        {
-            Stopwatch sw = Stopwatch.StartNew();
-            for (long pass = 0; pass < passes; pass++)
-            {
-                rs.Reset(batchBuffer, (int)batchBytes);
-                long count = 0;
-                for (;;)
-                {
-                    if (!ReadMessage(rs, storage, out Message m))
-                    {
-                        Fail("message_batch", "read failed in loop");
-                        return;
-                    }
-                    if (m == null)
-                    {
-                        break;
-                    }
-                    count++;
-                }
-                if (count != NumBatchMessages)
-                {
-                    Fail("message_batch", "batch message count mismatch on read");
-                    return;
-                }
-                gSink = gSink + (ulong)count;
-            }
-            double time = sw.Elapsed.TotalSeconds;
-            if (run >= 0)
-            {
-                readRates[run] = totalMsgs / time;
-            }
-        }
-        GC.KeepAlive(storage);
-
-        long bytesPerMsg = batchBytes / NumBatchMessages;
-        Report("message_batch", "write", totalMsgs, bytesPerMsg, Stats(writeRates), "gen");
-        Report("message_batch", "read", totalMsgs, bytesPerMsg, Stats(readRates), "gen");
-
-        // allocation note (optimization seed, not a benchmark): bytes
-        // allocated and Gen0 collections during one extra untimed pass of
-        // each path
-        long allocBefore = GC.GetAllocatedBytesForCurrentThread();
-        int gen0Before = GC.CollectionCount(0);
-        ws.Reset(batchBuffer);
-        for (int k = 0; k < NumBatchMessages; k++)
-        {
-            WriteMessage(ws, messages[k]);
-        }
-        WriteMessage(ws, null);
-        ws.Flush();
-        long writeAlloc = GC.GetAllocatedBytesForCurrentThread() - allocBefore;
-        int writeGen0 = GC.CollectionCount(0) - gen0Before;
-
-        allocBefore = GC.GetAllocatedBytesForCurrentThread();
-        gen0Before = GC.CollectionCount(0);
-        rs.Reset(batchBuffer, (int)batchBytes);
-        for (;;)
-        {
-            if (!ReadMessage(rs, storage, out Message m) || m == null)
-            {
-                break;
-            }
-        }
-        long readAlloc = GC.GetAllocatedBytesForCurrentThread() - allocBefore;
-        int readGen0 = GC.CollectionCount(0) - gen0Before;
-        Console.Error.WriteLine(
-            $"alloc note: message_batch one pass ({NumBatchMessages} msgs): write {writeAlloc} bytes ({writeGen0} gen0), read {readAlloc} bytes ({readGen0} gen0)");
-    }
-
-    // ------------------------------------------------------------------------------------------
-
-    // the message_stream golden: dispatch wire self-check (not a benchmark)
-    static void CheckMessageStreamGolden()
-    {
-        Chat chat = new Chat();
-        SetText(chat.Text, "dispatch");
-        chat.TextLength = 8;
-        Test test = new Test();
-        test.TestB = 42;
-
-        WriteStream ws = new WriteStream(gBuffer);
-        if (!WriteMessage(ws, chat) || !WriteMessage(ws, test))
-        {
-            Fail("message_stream", "dispatch write failed");
-            return;
-        }
-        ws.Flush();
-        if (!CheckGolden("message_stream", gBuffer.AsSpan(0, (int)ws.BytesProcessed)))
-        {
-            failed = true;
-        }
-    }
 
     static int Main(string[] args)
     {
@@ -1049,7 +767,6 @@ static partial class Program
         Console.Error.WriteLine(
             $"schema bench (cs, {(GCSettings.IsServerGC ? "server" : "workstation")} GC)");
 
-        CheckMessageStreamGolden();
 
         // rigidbody_at_rest: the pinned at-rest twin of rigidbody_moving
         RigidBody atRest = PinRigidBodyMoving();
@@ -1061,7 +778,6 @@ static partial class Program
         BenchMessage("test", null, 192000000, new Test(), WriteTest, ReadTest, VaryTest);
         BenchMessage("inputpacket", "inputpacket", 16000000, PinInputPacket(), WriteInputPacket, ReadInputPacket, VaryInputPacket);
         BenchMessage("shipcreate", "shipcreate_flags", 32000000, PinShipCreate(), WriteShipCreate, ReadShipCreate, VaryShipCreate);
-        BenchMessage("ship_shallow", "ship_shallow", 32000000, PinShipShallow(), WriteShipData_Shallow, ReadShipData_Shallow, VaryShipShallow);
         BenchMessage("probe_header", "probe_header", 256000000, PinProbeHeader(), WriteProbeHeader, ReadProbeHeader, VaryProbeHeader);
         BenchMessage("probebits", "probebits", 128000000, PinProbeBits(), WriteProbeBits, ReadProbeBits, VaryProbeBits);
         BenchMessage("probearray", "probearray", 20000000, PinProbeArray(), WriteProbeArray, ReadProbeArray, VaryProbeArray);
@@ -1074,7 +790,6 @@ static partial class Program
         // sized in the C++ reference (§2.1).
         BenchMessage("real_packet", "real_packet", 8000000, new Realworld.RealPacket(), Realworld.Schema.WriteRealPacket, Realworld.Schema.ReadRealPacket, VaryRealPacket);
 
-        BenchBatch();
 
         // family rt (§1.3/§1.5): the runtime API by hand, oracle-gated
         // against the goldens the generated code pinned. Iteration counts

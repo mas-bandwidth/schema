@@ -2,7 +2,7 @@
    SPDX-License-Identifier: NONE — this generated output is yours, under terms of
    your choice. See the LICENSE exception in the schema compiler; the compiler is
    AGPL-3.0, its output is not.
-   package example — protocol id 0xbc05d83a8135cdb9 */
+   package example — protocol id 0x0bde7acdd36abc6a */
 
 #ifndef SCHEMA_EXAMPLE_WIREWIRE_H
 #define SCHEMA_EXAMPLE_WIREWIRE_H
@@ -18,7 +18,7 @@
 #define SCHEMA_UNUSED
 #endif
 #endif
-#include "MessagesWire.h"
+#include "ConstantsWire.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -785,6 +785,174 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_probe_array( serialize_read_s
     {
         return 0;
     }
+    return 1;
+}
+
+/* Writes Heartbeat. */
+static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_heartbeat( serialize_write_stream_t * stream, const Heartbeat * value )
+{
+    (void) stream;
+    (void) value;
+    return 1; /* no fields: no wire bits */
+}
+
+/* Reads Heartbeat. */
+static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_heartbeat( serialize_read_stream_t * stream, Heartbeat * value )
+{
+    (void) stream;
+    (void) value;
+    return 1;
+}
+
+/* Writes Test. */
+static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_test( serialize_write_stream_t * stream, const Test * value )
+{
+    if ( !serialize_write_bits( stream, (serialize_uint32_t) value->test_a, 16 ) )
+    {
+        return 0;
+    }
+    if ( (serialize_int64_t) value->test_b < 0 || (serialize_int64_t) value->test_b > 1000 )
+    {
+        return 0;
+    }
+    if ( !serialize_write_bits( stream, (serialize_uint32_t) ( value->test_b ), 10 ) )
+    {
+        return 0;
+    }
+    if ( (serialize_int64_t) value->test_c < 0 || (serialize_int64_t) value->test_c > 1000 )
+    {
+        return 0;
+    }
+    if ( !serialize_write_bits( stream, (serialize_uint32_t) ( value->test_c ), 10 ) )
+    {
+        return 0;
+    }
+    if ( (serialize_int64_t) value->test_d < 0 || (serialize_int64_t) value->test_d > 1000 )
+    {
+        return 0;
+    }
+    if ( !serialize_write_bits( stream, (serialize_uint32_t) ( value->test_d ), 10 ) )
+    {
+        return 0;
+    }
+    return 1;
+}
+
+/* Reads Test. */
+static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_test( serialize_read_stream_t * stream, Test * value )
+{
+    {
+        serialize_uint32_t raw = 0;
+        if ( !serialize_read_bits( stream, &raw, 16 ) )
+        {
+            return 0;
+        }
+        value->test_a = (uint16_t) raw;
+    }
+    {
+        serialize_uint64_t offset_value = 0;
+        serialize_uint32_t raw = 0;
+        if ( !serialize_read_bits( stream, &raw, 10 ) )
+        {
+            return 0;
+        }
+        offset_value = raw;
+        if ( offset_value > 1000ULL )
+        {
+            return 0;
+        }
+        value->test_b = (int16_t) offset_value;
+    }
+    {
+        serialize_uint64_t offset_value = 0;
+        serialize_uint32_t raw = 0;
+        if ( !serialize_read_bits( stream, &raw, 10 ) )
+        {
+            return 0;
+        }
+        offset_value = raw;
+        if ( offset_value > 1000ULL )
+        {
+            return 0;
+        }
+        value->test_c = (int16_t) offset_value;
+    }
+    {
+        serialize_uint64_t offset_value = 0;
+        serialize_uint32_t raw = 0;
+        if ( !serialize_read_bits( stream, &raw, 10 ) )
+        {
+            return 0;
+        }
+        offset_value = raw;
+        if ( offset_value > 1000ULL )
+        {
+            return 0;
+        }
+        value->test_d = (int16_t) offset_value;
+    }
+    return 1;
+}
+
+/* Writes Block. */
+static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_block( serialize_write_stream_t * stream, const Block * value )
+{
+    if ( !serialize_write_int( stream, value->data_length, 0, MAX_BLOCK_SIZE ) )
+    {
+        return 0;
+    }
+    if ( !serialize_write_bytes( stream, value->data, (int) value->data_length ) )
+    {
+        return 0;
+    }
+    return 1;
+}
+
+/* Reads Block. */
+static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_block( serialize_read_stream_t * stream, Block * value )
+{
+    if ( !serialize_read_int( stream, &value->data_length, 0, MAX_BLOCK_SIZE ) )
+    {
+        return 0;
+    }
+    if ( !serialize_read_bytes( stream, value->data, (int) value->data_length ) )
+    {
+        return 0;
+    }
+    return 1;
+}
+
+/* Writes Chat. */
+static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_chat( serialize_write_stream_t * stream, const Chat * value )
+{
+    serialize_assert( schema_utf8_valid_( (const serialize_uint8_t *) value->text, value->text_length ) );
+    if ( !serialize_write_int( stream, value->text_length, 0, MAX_CHAT_LENGTH ) )
+    {
+        return 0;
+    }
+    if ( !serialize_write_bytes( stream, (const serialize_uint8_t *) value->text, (int) value->text_length ) )
+    {
+        return 0;
+    }
+    return 1;
+}
+
+/* Reads Chat. */
+static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_chat( serialize_read_stream_t * stream, Chat * value )
+{
+    if ( !serialize_read_int( stream, &value->text_length, 0, MAX_CHAT_LENGTH ) )
+    {
+        return 0;
+    }
+    if ( !serialize_read_bytes( stream, (serialize_uint8_t *) value->text, (int) value->text_length ) )
+    {
+        return 0;
+    }
+    if ( schema_interior_null_( (const serialize_uint8_t *) value->text, value->text_length ) )
+    {
+        return 0; /* an interior null is content the read refuses (SPEC §4.7) */
+    }
+    value->text[value->text_length] = 0;
     return 1;
 }
 

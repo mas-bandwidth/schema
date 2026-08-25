@@ -121,7 +121,7 @@ func (g *gen) emitCoreAttr() {
 // emitZeroFunction emits the §5 ZERO form for a class — all-zero storage,
 // specified defaults NOT reapplied (those live in construction only; the wire
 // contract stays a pure function of the encodings). It is the C# twin of the
-// C++ target's memset: branch zeroing and ReadMessage's storage reset both go
+// C++ target's memset: branch zeroing and the union arm reset both go
 // through here.
 func (g *gen) emitZeroFunction(st *ir.Struct) {
 	g.sf("// The §5 zero form: all-zero storage; specified defaults live only in construction.\n")
@@ -198,7 +198,7 @@ func (g *gen) emitReadItems(items []ir.Item, ind string) {
 // emitUnionFunctions emits the union's bounds and wire pair (SPEC §4.8):
 // plain stream functions — a union never batches (batchPlan excludes any
 // type that reaches one), so no *Batch core exists. The write validates the
-// tag BEFORE it rides (WriteMessage's rule); the read rejects a tag above
+// tag BEFORE it rides; the read rejects a tag above
 // the count and zero-establishes exactly the selected arm.
 func (g *gen) emitUnionFunctions(d *ir.Union) {
 	g.needsSerialize = true
@@ -978,86 +978,4 @@ func (g *gen) emitWriteFlagsValue(name string, wireBits int, ind string) {
 	g.sf("%s{\n%s    ulong flagsValue = %s;\n", ind, ind, name)
 	g.call(ind+"    ", fmt.Sprintf("%s.SerializeBits64(ref flagsValue, %d)", g.rv(), wireBits), "")
 	g.sf("%s}\n", ind)
-}
-
-// emitMessageStorage emits the pre-allocated home reads land in.
-func (g *gen) emitMessageStorage() {
-	g.tf("// MessageStorage is the pre-allocated home a read message lands in — the C#\n")
-	g.tf("// stand-in for the C++ tagged union (SPEC §6.1: storage never heap-allocates\n")
-	g.tf("// per message; fixed buffers on sender and receiver). Reuse it across reads:\n")
-	g.tf("// the Message a read returns points into it and stays valid until the next\n")
-	g.tf("// read against the same storage — the union's own discipline, exactly.\n")
-	g.tf("public sealed class MessageStorage\n{\n")
-	for _, m := range g.unit.Messages {
-		g.tf("    public %s %s = new %s();\n", m, m, m)
-	}
-	g.tf("}\n\n")
-}
-
-// emitMessageTagFunctions emits the tag wire pair, the message-level bound,
-// and the C# dispatch surface: a type-pattern switch over the abstract base —
-// the language's own idiom (SPEC §6.1 item 6). null is None, the stream
-// terminator.
-func (g *gen) emitMessageTagFunctions() {
-	g.needsSerialize = true
-	count := int64(len(g.unit.Messages))
-	g.sf("// The message tag wire: MessageType in [0, %d], minimal bits; None = 0 is a\n", count)
-	g.sf("// valid wire value meaning *no message* — the stream terminator (SPEC §4.8).\n")
-	g.sf("// The write folds the tag's bit count at generation time (byte-identical to\n")
-	g.sf("// the ranged form); a tag outside the set is refused — bool alone.\n")
-	g.sf("public static bool WriteMessageType(WriteStream stream, MessageType value)\n{\n")
-	g.sf("    uint tagValue = (uint)value;\n")
-	g.sf("    if (tagValue > %d)\n    {\n        return false;\n    }\n", count)
-	g.sf("    return stream.SerializeBits(ref tagValue, %d);\n}\n\n", ir.BitsRequired(big.NewInt(0), big.NewInt(count)))
-	g.sf("public static bool ReadMessageType(ReadStream stream, ref MessageType value)\n{\n")
-	g.sf("    int tagValue = 0;\n")
-	g.sf("    if (!stream.SerializeInt(ref tagValue, 0, %d))\n    {\n        return false;\n    }\n", count)
-	g.sf("    value = (MessageType)tagValue;\n    return true;\n}\n\n")
-
-	tagBits := ir.BitsRequired(big.NewInt(0), big.NewInt(count))
-	largest := int64(0)
-	for _, m := range g.unit.Messages {
-		if b := ir.MaxBitsStruct(g.unit.Structs[m]); b > largest {
-			largest = b
-		}
-	}
-	g.sf("// The message-level bound: the tag plus the largest message (SPEC §6.1);\n")
-	g.sf("// MessageMaxBytes is rounded up to the 8-byte write-buffer granularity.\n")
-	g.sf("public const long MessageMaxBits = %d;\n", tagBits+largest)
-	g.sf("public const long MessageMaxBytes = %d;\n\n", ir.MaxBytes(tagBits+largest))
-
-	msgs := g.unit.Messages
-
-	// dispatch validates BEFORE the tag rides the wire: a Message subclass
-	// from outside the generated set writes nothing (a tag with no payload
-	// would desynchronize the stream), and the tag framing is the tag
-	// pair's — one source
-	g.sf("public static bool WriteMessage(WriteStream stream, Message message)\n{\n")
-	g.sf("    switch (message)\n    {\n")
-	g.sf("        case null:\n            return WriteMessageType(stream, MessageType.None); // the stream terminator (SPEC §4.8)\n")
-	for _, m := range msgs {
-		g.sf("        case %s value:\n", m)
-		g.sf("            if (!WriteMessageType(stream, MessageType.%s))\n            {\n                return false;\n            }\n", m)
-		g.sf("            return Write%s(stream, value);\n", m)
-	}
-	g.sf("        default:\n            return false; // not a generated message type; nothing was written\n")
-	g.sf("    }\n}\n\n")
-
-	g.sf("public static bool ReadMessage(ReadStream stream, MessageStorage storage, out Message message)\n{\n")
-	g.sf("    message = null;\n")
-	g.sf("    MessageType tagValue = MessageType.None;\n")
-	g.sf("    if (!ReadMessageType(stream, ref tagValue))\n    {\n        return false;\n    }\n")
-	g.sf("    switch (tagValue)\n    {\n")
-	g.sf("        case MessageType.None:\n            return true; // the stream terminator (SPEC §4.8) — message stays null\n")
-	for _, m := range msgs {
-		g.sf("        case MessageType.%s:\n", m)
-		g.sf("            Zero%s(storage.%s); // reused storage starts from the zero form, as the union does\n", m, m)
-		g.sf("            if (!Read%s(stream, storage.%s))\n            {\n                return false;\n            }\n", m, m)
-		g.sf("            message = storage.%s;\n            return true;\n", m)
-	}
-	g.sf("        default:\n")
-	g.sf("            // ReadMessageType already rejected tags past the set; the switch\n")
-	g.sf("            // still needs the arm because enums are open storage\n")
-	g.sf("            return false;\n")
-	g.sf("    }\n}\n\n")
 }

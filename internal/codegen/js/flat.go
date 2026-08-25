@@ -9,27 +9,10 @@
 // reference surface and the CI oracle this tier is held byte-identical to.
 //
 // Per schema file Base.schema, BaseFlat.js is emitted beside Base.js
-// whenever the file declares types or messages or
-// carries the message dispatch surface. Per struct Name:
+// whenever the file declares types. Per struct Name:
 //
 //	Write<Name>Flat(value, view)          -> bytes written | -1 (checked refusal)
 //	Read<Name>Flat(value, view, numBits)  -> bool
-//
-// plus, for messages, the batch entries (back-to-back byte-aligned packets
-// in one buffer — the shape that beat wasm 1.75x; a caller-side loop cannot
-// recover it, because the caller's loop re-pays the non-inlined per-packet
-// call the probe isolated):
-//
-//	Write<Name>FlatArray(values, count, view)          -> total bytes | -1
-//	Read<Name>FlatArray(values, count, view, numBits)  -> bool
-//
-// and, in the message owner file, the flat dispatch pair with the runtime
-// tier's tag framing exactly (the whole message body inlines beneath the tag
-// bits — the tag is not byte-aligned, so the per-message flat entry points
-// cannot be composed by a wrapper):
-//
-//	WriteMessageFlat(message, view)                      -> bytes | -1
-//	ReadMessageFlat(storage, message, view, numBits)     -> bool
 //
 // Check model (the design's §4, the family's JavaScript #ifdef):
 //   - The READ side is never configurable. Reader obligations are format:
@@ -76,10 +59,9 @@ import (
 
 // fgen emits one BaseFlat.js module.
 type fgen struct {
-	unit     *ir.Unit
-	file     *ir.File
-	home     bool // the unit's first flat module — carries the tier-level notes
-	msgOwner string
+	unit *ir.Unit
+	file *ir.File
+	home bool // the unit's first flat module — carries the tier-level notes
 
 	body    strings.Builder
 	imports map[string]map[string]bool
@@ -95,28 +77,27 @@ type fgen struct {
 }
 
 // flatFileHasSurface reports whether a file gets a Flat module: any file
-// declaring structs (types, messages), or the message
-// owner file (the dispatch surface).
-func flatFileHasSurface(u *ir.Unit, f *ir.File, msgOwner string) bool {
+// declaring structs.
+func flatFileHasSurface(f *ir.File) bool {
 	for _, d := range f.Decls {
 		if _, ok := d.(*ir.Struct); ok {
 			return true
 		}
 	}
-	return f.Base == msgOwner && len(u.Messages) > 0
+	return false
 }
 
 // generateFlat returns basename+"Flat.js" -> contents for every carrying
 // file. The tier-level notes ride the FIRST carrying file (basename order)
 // only — said once per unit, not once per file.
-func generateFlat(u *ir.Unit, msgOwner string) map[string][]byte {
+func generateFlat(u *ir.Unit) map[string][]byte {
 	out := map[string][]byte{}
 	first := true
 	for _, f := range u.Files {
-		if !flatFileHasSurface(u, f, msgOwner) {
+		if !flatFileHasSurface(f) {
 			continue
 		}
-		g := &fgen{unit: u, file: f, home: first, msgOwner: msgOwner, imports: map[string]map[string]bool{}}
+		g := &fgen{unit: u, file: f, home: first, imports: map[string]map[string]bool{}}
 		first = false
 		g.emitModule()
 		out[f.Base+"Flat.js"] = g.assemble()
@@ -132,20 +113,6 @@ func (g *fgen) pf(format string, args ...any) {
 // builder g.fn is reset between variants; section text must not ride it).
 func (g *fgen) bpf(format string, args ...any) {
 	fmt.Fprintf(&g.body, format, args...)
-}
-
-// addRefBase records an import from a runtime-tier module. Unlike the
-// runtime tier's rule there is no same-file skip: the flat module is a
-// SIBLING of Base.js, so even its own file's classes are imports.
-func (g *fgen) addRefBase(base string, symbols ...string) {
-	set := g.imports[base]
-	if set == nil {
-		set = map[string]bool{}
-		g.imports[base] = set
-	}
-	for _, s := range symbols {
-		set[s] = true
-	}
 }
 
 func (g *fgen) assemble() []byte {
@@ -214,9 +181,6 @@ func (g *fgen) emitModule() {
 			continue
 		}
 		g.emitStructFlat(st)
-	}
-	if g.file.Base == g.msgOwner && len(g.unit.Messages) > 0 {
-		g.emitMessageDispatchFlat()
 	}
 }
 
@@ -357,11 +321,7 @@ func (g *fgen) staticBitsScalar(f *ir.Field) (int64, bool) {
 // ---- per-struct emission ----
 
 func (g *fgen) emitStructFlat(st *ir.Struct) {
-	kind := "type"
-	if st.IsMessage {
-		kind = "message"
-	}
-	g.bpf("// ---- %s %s: the flat codec ----\n\n", kind, st.Name)
+	g.bpf("// ---- type %s: the flat codec ----\n\n", st.Name)
 
 	g.emitWriteVariant(st, false)
 	g.emitWriteVariant(st, true)
@@ -370,17 +330,6 @@ func (g *fgen) emitStructFlat(st *ir.Struct) {
 	g.bpf("export const Write%sFlat = PRODUCTION ? write%sFlatProduction : write%sFlatChecked;\n\n", st.Name, st.Name, st.Name)
 
 	g.emitReadFlat(st)
-
-	if st.IsMessage {
-		g.emitWriteArrayVariant(st, false)
-		g.emitWriteArrayVariant(st, true)
-		g.bpf("// Write%sFlatArray(values, count, view) -> total bytes, or -1 on a checked\n", st.Name)
-		g.bpf("// refusal. Packets pack back to back, each starting on its own byte; the\n")
-		g.bpf("// buffer must hold the running total plus %sMaxBytes at every step\n", st.Name)
-		g.bpf("// (count * %sMaxBytes always suffices).\n", st.Name)
-		g.bpf("export const Write%sFlatArray = PRODUCTION ? write%sFlatArrayProduction : write%sFlatArrayChecked;\n\n", st.Name, st.Name, st.Name)
-		g.emitReadArrayFlat(st)
-	}
 }
 
 func (g *fgen) resetNeeds() {
@@ -450,34 +399,6 @@ func (g *fgen) emitWriteVariant(st *ir.Struct, checked bool) {
 	g.body.WriteString("}\n\n")
 }
 
-func (g *fgen) emitWriteArrayVariant(st *ir.Struct, checked bool) {
-	g.fn.Reset()
-	g.resetNeeds()
-	g.checked = checked
-	g.emitWriteItems(st.Items, "value", "    ")
-	body := g.fn.String()
-	g.fn.Reset()
-
-	g.pf("function write%sFlatArray%s(values, count, view) {\n", st.Name, variantName(checked))
-	g.body.WriteString(g.fn.String())
-	g.fn.Reset()
-	g.body.WriteString(g.writeLocals("  "))
-	g.body.WriteString("  let lo = 0, hi = 0, sb = 0, wi = 0;\n")
-	g.body.WriteString("  let base = 0;\n")
-	g.body.WriteString("  for (let k = 0; k < count; k++) {\n")
-	g.body.WriteString("    const value = values[k];\n")
-	g.body.WriteString("    lo = 0;\n    hi = 0;\n    sb = 0;\n    wi = base;\n")
-	g.body.WriteString(body)
-	g.body.WriteString("    if (sb !== 0) {\n")
-	g.body.WriteString("      view.setUint32(wi, lo, true);\n")
-	g.body.WriteString("      view.setUint32(wi + 4, hi, true);\n")
-	g.body.WriteString("    }\n")
-	g.body.WriteString("    base = wi + ((sb + 7) >> 3);\n")
-	g.body.WriteString("  }\n")
-	g.body.WriteString("  return base;\n")
-	g.body.WriteString("}\n\n")
-}
-
 func (g *fgen) emitReadFlat(st *ir.Struct) {
 	g.fn.Reset()
 	g.resetNeeds()
@@ -493,30 +414,6 @@ func (g *fgen) emitReadFlat(st *ir.Struct) {
 	g.body.WriteString(g.readLocals("  "))
 	g.body.WriteString("  let br = 0;\n")
 	g.body.WriteString(body)
-	g.body.WriteString("  return true;\n")
-	g.body.WriteString("}\n\n")
-}
-
-func (g *fgen) emitReadArrayFlat(st *ir.Struct) {
-	g.fn.Reset()
-	g.resetNeeds()
-	g.emitReadItems(st.Items, "value", "    ", false)
-	body := g.fn.String()
-	g.fn.Reset()
-
-	g.pf("// Read%sFlatArray(values, count, view, numBits) -> bool: count back-to-back\n", st.Name)
-	g.pf("// packets, each starting on its own byte boundary — the loop-fused batch\n")
-	g.pf("// shape. The buffer must extend FLAT_READ_SLACK bytes past the payload.\n")
-	g.pf("export function Read%sFlatArray(values, count, view, numBits) {\n", st.Name)
-	g.body.WriteString(g.fn.String())
-	g.fn.Reset()
-	g.body.WriteString(g.readLocals("  "))
-	g.body.WriteString("  let br = 0;\n")
-	g.body.WriteString("  for (let k = 0; k < count; k++) {\n")
-	g.body.WriteString("    const value = values[k];\n")
-	g.body.WriteString(body)
-	g.body.WriteString("    br = (br + 7) & ~7;\n")
-	g.body.WriteString("  }\n")
 	g.body.WriteString("  return true;\n")
 	g.body.WriteString("}\n\n")
 }
@@ -1664,108 +1561,4 @@ func (g *fgen) flatZeroValue(t ir.FieldType) string {
 		return "0n"
 	}
 	return "0"
-}
-
-// ---- the flat message dispatch surface ----
-
-func (g *fgen) emitMessageDispatchFlat() {
-	count := int64(len(g.unit.Messages))
-	tagBits := ir.BitsRequired(big.NewInt(0), big.NewInt(count))
-
-	for _, checked := range []bool{false, true} {
-		g.fn.Reset()
-		g.resetNeeds()
-		g.checked = checked
-		var arms strings.Builder
-		// None first: null is the terminator
-		fmt.Fprintf(&arms, "  if (message === null) {\n")
-		g.fn.Reset()
-		g.pf("    v = 0;\n")
-		g.mergeW(tagBits, "    ")
-		g.pf("    if (sb !== 0) {\n      view.setUint32(wi, lo, true);\n      view.setUint32(wi + 4, hi, true);\n    }\n")
-		g.pf("    return ((wi * 8 + sb) + 7) >> 3; // the None terminator\n  }\n")
-		arms.WriteString(g.fn.String())
-		for i, m := range g.unit.Messages {
-			st := g.unit.Structs[m]
-			g.addRefBase(g.unit.DeclFile[m], m)
-			g.fn.Reset()
-			g.pf("  if (message instanceof %s) {\n", m)
-			g.pf("    v = %d;\n", i+1)
-			g.mergeW(tagBits, "    ")
-			g.emitWriteItems(st.Items, "message", "    ")
-			g.pf("    if (sb !== 0) {\n      view.setUint32(wi, lo, true);\n      view.setUint32(wi + 4, hi, true);\n    }\n")
-			g.pf("    return ((wi * 8 + sb) + 7) >> 3;\n  }\n")
-			arms.WriteString(g.fn.String())
-		}
-		g.fn.Reset()
-		g.pf("function writeMessageFlat%s(message, view) {\n", variantName(checked))
-		g.body.WriteString(g.fn.String())
-		g.fn.Reset()
-		g.body.WriteString(g.writeLocals("  "))
-		g.body.WriteString("  let lo = 0, hi = 0, sb = 0, wi = 0;\n")
-		g.body.WriteString(arms.String())
-		g.body.WriteString("  return -1; // not a generated message class; nothing was written\n")
-		g.body.WriteString("}\n\n")
-	}
-	g.pf("// WriteMessageFlat(message, view) -> bytes written, or -1: null is the None\n")
-	g.pf("// terminator; a value outside the generated class set writes NOTHING (a tag\n")
-	g.pf("// with no payload would desynchronize the stream). Tag framing is the\n")
-	g.pf("// runtime tier's exactly; the message body inlines beneath the tag bits.\n")
-	g.pf("export const WriteMessageFlat = PRODUCTION ? writeMessageFlatProduction : writeMessageFlatChecked;\n\n")
-	g.flushFn()
-
-	// the read side: tag switch into caller storage, §5 zero form first
-	g.fn.Reset()
-	g.resetNeeds()
-	var arms strings.Builder
-	for i, m := range g.unit.Messages {
-		st := g.unit.Structs[m]
-		g.fn.Reset()
-		g.pf("    case %d: { // %s\n", i+1, m)
-		g.pf("      const value = storage.%s;\n", m)
-		g.loopDepth = 0
-		for _, nf := range st.Fields {
-			g.emitZeroFieldFlat(nf, "value", "      ")
-		}
-		g.emitReadItems(st.Items, "value", "      ", false)
-		g.pf("      message.value = value;\n")
-		g.pf("      return true;\n    }\n")
-		arms.WriteString(g.fn.String())
-	}
-	g.fn.Reset()
-	g.pf("// ReadMessageFlat(storage, message, view, numBits) -> bool: the tag, then\n")
-	g.pf("// the message into the caller's MessageStorage (zeroed to the §5 form\n")
-	g.pf("// first — the union's own discipline); message.value is null under a None\n")
-	g.pf("// tag (the terminator, a success), the storage's instance otherwise.\n")
-	g.pf("export function ReadMessageFlat(storage, message, view, numBits) {\n")
-	head := g.fn.String()
-	g.fn.Reset()
-	g.pf("  message.value = null;\n")
-	g.pf("  if (br + %d > numBits) {\n    return false;\n  }\n", tagBits)
-	g.readR(tagBits, "  ")
-	if count != (int64(1)<<tagBits)-1 {
-		g.pf("  if (v > %d) { // a tag outside the set is refused\n    return false;\n  }\n", count)
-	}
-	g.pf("  switch (v) {\n")
-	g.pf("    case 0:\n      return true; // the None terminator — message stays null\n")
-	tagRead := g.fn.String()
-	g.fn.Reset()
-
-	g.body.WriteString(head)
-	g.body.WriteString(g.readLocals("  "))
-	g.body.WriteString("  let br = 0;\n")
-	g.body.WriteString(tagRead)
-	g.body.WriteString(arms.String())
-	g.body.WriteString("    default:\n")
-	g.body.WriteString("      // unreachable: the tag was bounded above; the default keeps the\n")
-	g.body.WriteString("      // verdict total\n")
-	g.body.WriteString("      return false;\n")
-	g.body.WriteString("  }\n")
-	g.body.WriteString("}\n\n")
-}
-
-// flushFn moves any pending fn text into the module body.
-func (g *fgen) flushFn() {
-	g.body.WriteString(g.fn.String())
-	g.fn.Reset()
 }

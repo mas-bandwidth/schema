@@ -9,10 +9,7 @@
 #include <cstring>
 
 #include "ConstantsWire.h"
-#include "ContextsWire.h"
 #include "EnumsWire.h"
-#include "MessagesWire.h"
-#include "ObjectsWire.h"
 #include "TypesWire.h"
 #include "WireWire.h"
 
@@ -211,7 +208,7 @@ static bool equal( const ShipCreate & a, const ShipCreate & b )
     return a.team == b.team && a.health == b.health && a.thrust == b.thrust;
 }
 
-// ---- messages ----
+// ---- the Wire.schema report shapes ----
 
 static void fill( Rng & r, Test & t )
 {
@@ -291,102 +288,6 @@ static bool equal( const Chat & a, const Chat & b )
 {
     return a.text_length == b.text_length &&
            std::memcmp( a.text, b.text, (size_t) a.text_length ) == 0;
-}
-
-static void fill( Rng & r, Synchronize & s )
-{
-    s.sync_frame = r.next();
-    s.sync_sequence = (uint16_t) r.range( 0, 65535 );
-}
-static bool equal( const Synchronize & a, const Synchronize & b )
-{
-    return a.sync_frame == b.sync_frame && a.sync_sequence == b.sync_sequence;
-}
-
-static void fill( Rng & r, Timescale & t )
-{
-    t.scale = r.real( 0.01, 100.0 );
-    t.frame_a = (uint32_t) r.next();
-    t.frame_b = (uint32_t) r.next();
-}
-static bool equal( const Timescale & a, const Timescale & b )
-{
-    return a.scale == b.scale && a.frame_a == b.frame_a && a.frame_b == b.frame_b;
-}
-
-// ---- object views ----
-
-static void fill( Rng & r, ShipData_Deep & s )
-{
-    s.ship_type = (ShipType) r.range( 0, 5 );
-    fill( r, s.position );
-    fill( r, s.rotation );
-    fill( r, s.linear_velocity );
-    s.flags = (uint64_t) r.range( 0, 15 );
-    s.team = (Team) r.range( 0, 2 );
-    s.health = r.realf( 0, MaxHealth );
-    s.thrust = r.realf( 0, 1 );
-    fill( r, s.angular_velocity );
-    s.laser_cooldown = r.realf( 0, 10 );
-    s.missile_cooldown = r.realf( 0, 10 );
-    s.speed_current = r.realf( 0, 100 );
-    s.speed_velocity = r.realf( -10, 10 );
-    fill( r, s.stick_current );
-    fill( r, s.stick_velocity );
-    s.sensitivity_current = r.realf( 0, 1 );
-    s.sensitivity_velocity = r.realf( -1, 1 );
-    s.roll_current = r.realf( -180, 180 );
-    s.roll_velocity = r.realf( -10, 10 );
-    s.aim_current = r.realf( 0, 1 );
-    s.aim_velocity = r.realf( -1, 1 );
-    s.laser_index = (int8_t) r.range( 0, ShipMaxLasers - 1 );
-    s.missile_index = (int8_t) r.range( 0, ShipMaxMissiles - 1 );
-    fill( r, s.target );
-    s.lock_start_time = r.real( 0, 100000 );
-}
-static bool equal( const ShipData_Deep & a, const ShipData_Deep & b )
-{
-    return a.ship_type == b.ship_type && equal( a.position, b.position ) &&
-           equal( a.rotation, b.rotation ) && equal( a.linear_velocity, b.linear_velocity ) &&
-           a.flags == b.flags && a.team == b.team && a.health == b.health && a.thrust == b.thrust &&
-           equal( a.angular_velocity, b.angular_velocity ) &&
-           a.laser_cooldown == b.laser_cooldown && a.missile_cooldown == b.missile_cooldown &&
-           a.speed_current == b.speed_current && a.speed_velocity == b.speed_velocity &&
-           equal( a.stick_current, b.stick_current ) && equal( a.stick_velocity, b.stick_velocity ) &&
-           a.sensitivity_current == b.sensitivity_current && a.sensitivity_velocity == b.sensitivity_velocity &&
-           a.roll_current == b.roll_current && a.roll_velocity == b.roll_velocity &&
-           a.aim_current == b.aim_current && a.aim_velocity == b.aim_velocity &&
-           a.laser_index == b.laser_index && a.missile_index == b.missile_index &&
-           equal( a.target, b.target ) && a.lock_start_time == b.lock_start_time;
-}
-
-static void fill( Rng & r, ShipData_Shallow & s )
-{
-    s.ship_type = (ShipType) r.range( 0, 5 );
-    s.position_x = (int32_t) r.range( -8388608, 8388608 );
-    s.position_y = (int32_t) r.range( -8388608, 8388608 );
-    s.position_z = (int32_t) r.range( -8388608, 8388608 );
-    s.rotation_x = (int16_t) r.range( -1024, 1024 );
-    s.rotation_y = (int16_t) r.range( -1024, 1024 );
-    s.rotation_z = (int16_t) r.range( -1024, 1024 );
-    s.rotation_w = (int16_t) r.range( -1024, 1024 );
-    s.linear_velocity_x = (int32_t) r.range( -2097152, 2097152 );
-    s.linear_velocity_y = (int32_t) r.range( -2097152, 2097152 );
-    s.linear_velocity_z = (int32_t) r.range( -2097152, 2097152 );
-    s.flags = (uint64_t) r.range( 0, 15 );
-    s.team = (Team) r.range( 0, 2 );
-    s.health = (uint16_t) r.range( 0, 1000 );
-    s.thrust = (uint8_t) r.range( 0, 100 );
-}
-static bool equal( const ShipData_Shallow & a, const ShipData_Shallow & b )
-{
-    return a.ship_type == b.ship_type &&
-           a.position_x == b.position_x && a.position_y == b.position_y && a.position_z == b.position_z &&
-           a.rotation_x == b.rotation_x && a.rotation_y == b.rotation_y &&
-           a.rotation_z == b.rotation_z && a.rotation_w == b.rotation_w &&
-           a.linear_velocity_x == b.linear_velocity_x && a.linear_velocity_y == b.linear_velocity_y &&
-           a.linear_velocity_z == b.linear_velocity_z &&
-           a.flags == b.flags && a.team == b.team && a.health == b.health && a.thrust == b.thrust;
 }
 
 // ---- the Wire.schema coverage types ----
@@ -582,8 +483,6 @@ static bool roundtrip( Rng & r,
     return true;
 }
 
-static bool quantize_consistency( Rng & r, int iterations );
-
 int main()
 {
     g_seed = 0x5EED0001;
@@ -607,10 +506,6 @@ int main()
         if ( !roundtrip<Test>( r, fill, equal, WriteTest, ReadTest, TestMaxBytes ) ) return 1;
         if ( !roundtrip<Block>( r, fill, equal, WriteBlock, ReadBlock, BlockMaxBytes ) ) return 1;
         if ( !roundtrip<Chat>( r, fill, equal, WriteChat, ReadChat, ChatMaxBytes ) ) return 1;
-        if ( !roundtrip<Synchronize>( r, fill, equal, WriteSynchronize, ReadSynchronize, SynchronizeMaxBytes ) ) return 1;
-        if ( !roundtrip<Timescale>( r, fill, equal, WriteTimescale, ReadTimescale, TimescaleMaxBytes ) ) return 1;
-        if ( !roundtrip<ShipData_Deep>( r, fill, equal, WriteShipData_Deep, ReadShipData_Deep, ShipData_DeepMaxBytes ) ) return 1;
-        if ( !roundtrip<ShipData_Shallow>( r, fill, equal, WriteShipData_Shallow, ReadShipData_Shallow, ShipData_ShallowMaxBytes ) ) return 1;
         if ( !roundtrip<ProbeHeader>( r, fill, equal, WriteProbeHeader, ReadProbeHeader, ProbeHeaderMaxBytes ) ) return 1;
         if ( !roundtrip<ProbeBits>( r, fill, equal, WriteProbeBits, ReadProbeBits, ProbeBitsMaxBytes ) ) return 1;
         if ( !roundtrip<ProbeSample>( r, fill, equal, WriteProbeSample, ReadProbeSample, ProbeSampleMaxBytes ) ) return 1;
@@ -643,54 +538,6 @@ int main()
         }
     }
 
-    if ( !quantize_consistency( r, iterations ) )
-        return 1;
-
     printf( "OK (%d iterations, seed %llu)\n", iterations, (unsigned long long) g_seed );
     return 0;
-}
-
-// Quantize -> shallow wire -> Unquantize -> re-Quantize: the mapping is
-// exact under the corpus's power-of-two scales, so the second quantize
-// must reproduce the first bit-for-bit
-static bool quantize_consistency( Rng & r, int iterations )
-{
-    for ( g_iter = 0; g_iter < iterations; g_iter++ )
-    {
-        ShipData_Interpolate interp;
-        interp.ship_type = (ShipType) r.range( 0, 5 );
-        interp.position = { r.real( -8192, 8192 ), r.real( -8192, 8192 ), r.real( -8192, 8192 ) };
-        interp.rotation = { r.real( -1, 1 ), r.real( -1, 1 ), r.real( -1, 1 ), r.real( -1, 1 ) };
-        interp.linear_velocity = { r.real( -2048, 2048 ), r.real( -2048, 2048 ), r.real( -2048, 2048 ) };
-        interp.flags = (uint64_t) r.range( 0, 15 );
-        interp.team = (Team) r.range( 0, 2 );
-        interp.health = (uint16_t) r.range( 0, 1000 );
-        interp.thrust = (uint8_t) r.range( 0, 100 );
-
-        ShipData_Shallow q;
-        QuantizeShip( interp, q );
-
-        alignas( 8 ) static uint8_t buffer[4096 + 8];  // + 8: read buffer allocations extend 8 bytes past the data
-        serialize::WriteStream ws( buffer, sizeof( buffer ) );
-        check( WriteShipData_Shallow( ws, q ) );
-        ws.Flush();
-        ShipData_Shallow q2;
-        fill( r, q2 );
-        serialize::ReadStream rs( buffer, ws.GetBytesProcessed() );
-        check( ReadShipData_Shallow( rs, q2 ) );
-        check( equal( q, q2 ) );
-
-        ShipData_Interpolate back;
-        UnquantizeShip( q2, back );
-        ShipData_Shallow q3;
-        QuantizeShip( back, q3 );
-        check( equal( q2, q3 ) );
-
-        // and the recovered continuous values sit within half a step
-        check( back.position.x >= interp.position.x - 0.5 / PositionUnits &&
-               back.position.x <= interp.position.x + 0.5 / PositionUnits );
-        check( back.rotation.w >= interp.rotation.w - 0.5 / RotationUnits &&
-               back.rotation.w <= interp.rotation.w + 0.5 / RotationUnits );
-    }
-    return true;
 }

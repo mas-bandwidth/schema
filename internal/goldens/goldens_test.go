@@ -1,6 +1,6 @@
 // Package goldens pins the compiler's output (SPEC §7.2 gates 1 and 2): the
-// corpus's generated source byte-for-byte in both C++ message modes, the
-// protocol id exactly, and the corpus's formatter-canonical form. A change to
+// corpus's generated source byte-for-byte, the protocol id exactly, and the
+// corpus's formatter-canonical form. A change to
 // any of these is loud by construction; a WIRE-affecting change under an
 // unchanged schema is a stop-the-line event, never a quiet re-pin (SPEC §3.1).
 //
@@ -116,14 +116,11 @@ func TestGoldenId(t *testing.T) {
 	}
 }
 
-// TestGoldenSource pins the generated C++ byte-for-byte, both message
-// representations (SPEC §7.2 gate 1).
+// TestGoldenSource pins the generated C++ byte-for-byte (SPEC §7.2 gate 1).
 func TestGoldenSource(t *testing.T) {
 	u := loadCorpus(t)
-	for _, mode := range []string{"union", "variant"} {
-		files := generate(t, u, "cpp", compiler.Options{"cpp-message": mode})
-		pinDir(t, filepath.Join(goldenDir, mode), files)
-	}
+	files := generate(t, u, "cpp", nil)
+	pinDir(t, filepath.Join(goldenDir, "cpp"), files)
 }
 
 // TestGoldenSourceGo pins the generated Go byte-for-byte (SPEC §7.2 gate 1,
@@ -190,18 +187,13 @@ func TestGoldenLudicrousId(t *testing.T) {
 }
 
 // TestGoldenLudicrousSource pins the fixed-point + 128-bit unit's generated
-// source byte-for-byte for ALL SIX targets: C++ (both message
-// representations), Go, Rust, C#, C and JavaScript. Every serialize port
-// carries the phase-1 surface — a backend erroring here is a loud failure —
-// and the unit rides the same cross-language
-// wire gates as the main corpus (test/{c,go,rust,cs}-ludicrous).
+// source byte-for-byte for ALL SIX targets. Every serialize port carries the
+// phase-1 surface — a backend erroring here is a loud failure — and the unit
+// rides the same cross-language wire gates as the main corpus
+// (test/{c,go,rust,cs}-ludicrous).
 func TestGoldenLudicrousSource(t *testing.T) {
 	u := loadCorpusDir(t, corpus128Dir)
-	for _, mode := range []string{"union", "variant"} {
-		files := generate(t, u, "cpp", compiler.Options{"cpp-message": mode})
-		pinDir(t, filepath.Join(goldenDir, "ludicrous", mode), files)
-	}
-	for _, target := range []string{"go", "rust", "cs", "c", "js"} {
+	for _, target := range []string{"cpp", "go", "rust", "cs", "c", "js"} {
 		pinDir(t, filepath.Join(goldenDir, "ludicrous", target), generate(t, u, target, nil))
 	}
 }

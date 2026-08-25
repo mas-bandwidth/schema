@@ -11,7 +11,7 @@
 // native Rust enum cannot hold), flags are a u64 alias with flat mask
 // constants, string(N)/bytes(N) are [u8; N] plus an i32 used length, arrays
 // are fixed Rust arrays with an i32 used count beside the counted form.
-// Nothing here heap-allocates per message.
+// Nothing here heap-allocates per value.
 //
 // Functions follow the §6.3 Rust row: free functions against the concrete
 // WriteStream/ReadStream types (the Stream trait in scope for its methods),
@@ -41,8 +41,6 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 	// macros.
 	out := map[string][]byte{}
 	home := ir.ProtocolIdHome(u)
-	msgOwner := ir.MessageOwner(u)
-	objOwner := ir.ObjectOwner(u)
 	deps := ir.FileDeps(u)
 
 	// module names lowercase the basename; two bases that collapse to the
@@ -63,7 +61,7 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 	}
 
 	for _, f := range u.Files {
-		g := &gen{unit: u, file: f, home: home, msgOwner: msgOwner, objOwner: objOwner}
+		g := &gen{unit: u, file: f, home: home}
 		g.emitFile(f.Base == home)
 		g.needsCrate = g.needsCrate || len(deps[f.Base]) > 0 || (g.needsStreams && f.Base != home)
 		out[strings.ToLower(f.Base)+".rs"] = g.assemble()
@@ -75,19 +73,15 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 
 func assembleLib(u *ir.Unit, modules map[string]string) []byte {
 	// a module re-exports into the crate root only if it declares anything: a
-	// glob over an item-less module (a contexts aspect file — comments only)
-	// is an unused import
+	// glob over an item-less module (a comments-only file) is an unused
+	// import
 	exports := map[string]bool{}
 	home := ir.ProtocolIdHome(u)
-	msgOwner := ir.MessageOwner(u)
-	objOwner := ir.ObjectOwner(u)
 	for _, f := range u.Files {
-		has := f.Base == home ||
-			(f.Base == msgOwner && len(u.Messages) > 0) ||
-			(f.Base == objOwner && len(u.ObjNames) > 0)
+		has := f.Base == home
 		for _, d := range f.Decls {
 			switch d.(type) {
-			case *ir.Const, *ir.Enum, *ir.Flags, *ir.Struct, *ir.Object:
+			case *ir.Const, *ir.Enum, *ir.Flags, *ir.Struct:
 				has = true
 			}
 		}
@@ -122,11 +116,9 @@ func assembleLib(u *ir.Unit, modules map[string]string) []byte {
 }
 
 type gen struct {
-	unit     *ir.Unit
-	file     *ir.File
-	home     string // the file that carries PROTOCOL_ID and Error/Result
-	msgOwner string // the one file that carries the message dispatch surface
-	objOwner string // the one file that carries the object tag surface
+	unit *ir.Unit
+	file *ir.File
+	home string // the file that carries PROTOCOL_ID and Error/Result
 
 	body             strings.Builder
 	bulkBytes        map[*ir.Field]bool // fixed [N]u8 arrays at statically byte-aligned positions (ir.AlignedFixedByteArrays)
@@ -186,19 +178,6 @@ func (g *gen) emitFile(carriesProtocolId bool) {
 		g.pf("pub type Result<T = ()> = core::result::Result<T, Error>;\n\n")
 	}
 
-	// MessageType / ObjectType lead their OWNER file — the unit-level surface
-	// is emitted exactly once, in the topologically last carrying file, so
-	// declarations spread across files never redeclare it in the crate
-	// (SPEC §2 keeps the aspect layout non-enforced; ir.MessageOwner picks).
-	if g.file.Base == g.msgOwner && len(g.unit.Messages) > 0 {
-		g.emitTagEnum("MessageType", g.unit.Messages,
-			"the message set, extracted by the compiler — None = 0, then each message sorted by name (SPEC §4.8)")
-	}
-	if g.file.Base == g.objOwner && len(g.unit.ObjNames) > 0 {
-		g.emitTagEnum("ObjectType", g.unit.ObjNames,
-			"the object set, extracted by the compiler — None = 0, then each object sorted by name (SPEC §4.8)")
-	}
-
 	// declaration order — schema references are order-free and so is the crate
 	for _, d := range g.file.Decls {
 		switch d := d.(type) {
@@ -208,31 +187,15 @@ func (g *gen) emitFile(carriesProtocolId bool) {
 			g.emitEnum(d)
 		case *ir.Flags:
 			g.emitFlags(d)
-		case *ir.ContextsMarker:
-			g.pf("// contexts declared for this unit: %s (SPEC §4.2).\n", strings.Join(d.Names, ", "))
-			g.pf("// Contexts generate no standalone artifacts — where an object carries\n")
-			g.pf("// context-scoped | local fields, its State struct is generated once per\n")
-			g.pf("// context (ClientShipState, ServerShipState, ...), each holding the `all`\n")
-			g.pf("// fields plus its own context's. No cfg gates in this target.\n\n")
 		case *ir.Struct:
 			g.emitStruct(d)
-			g.emitDefaultImpl(d.Name, d.Fields, storageDeep)
+			g.emitDefaultImpl(d.Name, d.Fields)
 			g.emitConstructor(d)
 			g.emitStructFunctions(d)
 		case *ir.Union:
 			g.emitUnion(d)
 			g.emitUnionFunctions(d)
-		case *ir.Object:
-			g.emitObject(d)
-			g.emitObjectFunctions(d)
 		}
-	}
-
-	if g.file.Base == g.msgOwner && len(g.unit.Messages) > 0 {
-		g.emitMessageTagFunctions()
-	}
-	if g.file.Base == g.objOwner && len(g.unit.ObjNames) > 0 {
-		g.emitObjectTagFunctions()
 	}
 }
 
@@ -283,9 +246,9 @@ func (g *gen) foldComment(e ast.Expr) string {
 }
 
 // allowNonCamel emits the one narrow lint allow the generated code needs:
-// generated family names are fixed across targets (XData_Deep — SPEC §4.8)
-// and can carry an underscore Rust's camel-case lint rejects. Emitted only
-// when the name actually violates the lint.
+// generated names are fixed across targets and a declared name can carry an
+// underscore Rust's camel-case lint rejects. Emitted only when the name
+// actually violates the lint.
 func (g *gen) allowNonCamel(name string) {
 	if strings.Contains(name, "_") {
 		g.pf("#[allow(non_camel_case_types)] // the name is fixed across targets (SPEC §4.8)\n")
@@ -293,10 +256,10 @@ func (g *gen) allowNonCamel(name string) {
 }
 
 // emitUnion emits a first-class one-of (SPEC §4.8): the <Name>Type tag
-// newtype (uniform tag surface across targets, exactly as MessageType exists
-// beside enum Message), then the value as a REAL Rust enum — None the
-// default, one tuple variant per arm. Out-of-set tags are unrepresentable by
-// construction, so the write side needs no guard.
+// newtype (the uniform tag surface across targets), then the value as a
+// REAL Rust enum — None the default, one tuple variant per arm. Out-of-set
+// tags are unrepresentable by construction, so the write side needs no
+// guard.
 func (g *gen) emitUnion(d *ir.Union) {
 	members := make([]string, len(d.Variants))
 	for i, v := range d.Variants {
@@ -383,14 +346,10 @@ func (g *gen) emitFlags(d *ir.Flags) {
 }
 
 func (g *gen) emitStruct(d *ir.Struct) {
-	kind := "type"
-	if d.IsMessage {
-		kind = "message"
-	}
 	if len(d.Tags) > 0 {
-		g.pf("// %s %s [%s] — tags are user-chosen and inert in v1 (SPEC §4.2, Type tags)\n", kind, d.Name, strings.Join(d.Tags, ", "))
+		g.pf("// type %s [%s] — tags are user-chosen and inert in v1 (SPEC §4.2, Type tags)\n", d.Name, strings.Join(d.Tags, ", "))
 	} else {
-		g.pf("// %s %s\n", kind, d.Name)
+		g.pf("// type %s\n", d.Name)
 	}
 	g.allowNonCamel(d.Name)
 	// #[repr(C)] is what makes the relocatable-storage promise true here.
@@ -408,7 +367,7 @@ func (g *gen) emitStruct(d *ir.Struct) {
 		return
 	}
 	g.pf("pub struct %s {\n", d.Name)
-	g.emitFields(d.Fields, storageDeep)
+	g.emitFields(d.Fields)
 	g.pf("}\n\n")
 }
 
@@ -416,7 +375,7 @@ func (g *gen) emitStruct(d *ir.Struct) {
 // all-zero value — §5's untaken-branch value and the base new() starts from;
 // specified defaults live only in new(), never here (derive(Default) is not
 // used: hand emission is uniform across array sizes and nested types).
-func (g *gen) emitDefaultImpl(name string, fields []*ir.Field, v view) {
+func (g *gen) emitDefaultImpl(name string, fields []*ir.Field) {
 	g.pf("// The zero form (SPEC §5): specified defaults live only in new(), never here.\n")
 	g.pf("impl Default for %s {\n", name)
 	g.pf("    fn default() -> Self {\n")
@@ -425,27 +384,15 @@ func (g *gen) emitDefaultImpl(name string, fields []*ir.Field, v view) {
 	} else {
 		g.pf("        %s {\n", name)
 		for _, f := range fields {
-			g.emitZeroInit(f, v, "            ")
+			g.emitZeroInit(f, "            ")
 		}
 		g.pf("        }\n")
 	}
 	g.pf("    }\n}\n\n")
 }
 
-// emitZeroInit writes one field's zero-form struct-literal entries under the
-// same storage view rules emitField uses.
-func (g *gen) emitZeroInit(f *ir.Field, v view, ind string) {
-	if v == storageShallow && f.HasQuantize {
-		st := f.Type.Ref.(*ir.Struct)
-		for _, comp := range st.Fields {
-			g.pf("%s%s_%s: 0,\n", ind, f.Name, comp.Name)
-		}
-		return
-	}
-	if (v == storageShallow || v == storageInterp) && f.HasFloatRange {
-		g.pf("%s%s: 0,\n", ind, f.Name)
-		return
-	}
+// emitZeroInit writes one field's zero-form struct-literal entries.
+func (g *gen) emitZeroInit(f *ir.Field, ind string) {
 	switch {
 	case f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes:
 		g.pf("%s%s: [0; %s],\n", ind, f.Name, g.renderArg(f.Type.SizeExpr, big.NewInt(f.Type.Size), "usize"))
@@ -562,99 +509,7 @@ func (g *gen) defaultValue(f *ir.Field) string {
 	}
 }
 
-// view selects which storage a field emission derives (SPEC §4.8).
-type view int
-
-const (
-	storageDeep    view = iota // declared storage — State and Data_Deep
-	storageShallow             // quantized wire storage
-	storageInterp              // interpolate storage: projected fields wire-int, composites continuous
-)
-
-func (g *gen) emitObject(d *ir.Object) {
-	g.pf("// ---- object %s — one definition, a generated family per target (SPEC §4.8) ----\n\n", d.Name)
-
-	if hasContextFields(d) {
-		for _, ctx := range g.unit.Contexts {
-			var fields []*ir.Field
-			for _, f := range d.Fields {
-				if f.Context == "" || f.Context == ctx {
-					fields = append(fields, f)
-				}
-			}
-			stateName := capitalize(ctx) + d.Name + "State"
-			g.pf("// %s — the full simulation struct for the %s context: every `all`\n", stateName, ctx)
-			g.pf("// field plus the fields scoped | local, context = %s\n", ctx)
-			g.allowNonCamel(stateName)
-			g.pf("#[derive(Clone, Copy, PartialEq, Debug)]\n")
-			g.pf("pub struct %s {\n", stateName)
-			g.emitFields(fields, storageDeep)
-			g.pf("}\n\n")
-			g.emitDefaultImpl(stateName, fields, storageDeep)
-		}
-	} else {
-		g.pf("// %sState — the full simulation struct: every field\n", d.Name)
-		g.allowNonCamel(d.Name + "State")
-		g.pf("#[derive(Clone, Copy, PartialEq, Debug)]\n")
-		g.pf("pub struct %sState {\n", d.Name)
-		g.emitFields(d.Fields, storageDeep)
-		g.pf("}\n\n")
-		g.emitDefaultImpl(d.Name+"State", d.Fields, storageDeep)
-	}
-
-	deep, interp := splitObjectFields(d)
-
-	g.pf("// %sData_Deep — every non- | local field, deep encodings: full state for\n", d.Name)
-	g.pf("// client-side prediction\n")
-	g.allowNonCamel(d.Name + "Data_Deep")
-	g.pf("#[derive(Clone, Copy, PartialEq, Debug)]\n")
-	g.pf("pub struct %sData_Deep {\n", d.Name)
-	g.emitFields(deep, storageDeep)
-	g.pf("}\n\n")
-	g.emitDefaultImpl(d.Name+"Data_Deep", deep, storageDeep)
-
-	g.pf("// %sData_Shallow — the | interpolate fields on the quantized wire: the\n", d.Name)
-	g.pf("// implementation detail on the way to interpolation on the client\n")
-	g.allowNonCamel(d.Name + "Data_Shallow")
-	g.pf("#[derive(Clone, Copy, PartialEq, Debug)]\n")
-	g.pf("pub struct %sData_Shallow {\n", d.Name)
-	g.emitFields(interp, storageShallow)
-	g.pf("}\n\n")
-	g.emitDefaultImpl(d.Name+"Data_Shallow", interp, storageShallow)
-
-	g.pf("// %sData_Interpolate — the same fields in interpolate storage: projected\n", d.Name)
-	g.pf("// fields stay in the wire integer domain and snap-interpolate; quantized\n")
-	g.pf("// composites store continuous (SPEC §4.8 rule 5)\n")
-	g.allowNonCamel(d.Name + "Data_Interpolate")
-	g.pf("#[derive(Clone, Copy, PartialEq, Debug)]\n")
-	g.pf("pub struct %sData_Interpolate {\n", d.Name)
-	g.emitFields(interp, storageInterp)
-	g.pf("}\n\n")
-	g.emitDefaultImpl(d.Name+"Data_Interpolate", interp, storageInterp)
-}
-
-func splitObjectFields(d *ir.Object) (deep, interp []*ir.Field) {
-	for _, f := range d.Fields {
-		if !f.Local {
-			deep = append(deep, f)
-		}
-		if f.Interpolate {
-			interp = append(interp, f)
-		}
-	}
-	return
-}
-
-func hasContextFields(d *ir.Object) bool {
-	for _, f := range d.Fields {
-		if f.Context != "" {
-			return true
-		}
-	}
-	return false
-}
-
-func (g *gen) emitFields(fields []*ir.Field, v view) {
+func (g *gen) emitFields(fields []*ir.Field) {
 	prevGuard := ""
 	for _, f := range fields {
 		if f.Guard != prevGuard {
@@ -666,47 +521,8 @@ func (g *gen) emitFields(fields []*ir.Field, v view) {
 			}
 			prevGuard = f.Guard
 		}
-		g.emitField(f, v)
+		g.emitStorageField(f)
 	}
-}
-
-func (g *gen) emitField(f *ir.Field, v view) {
-	if v == storageShallow && f.HasQuantize {
-		st := f.Type.Ref.(*ir.Struct)
-		if f.FixedShallow {
-			g.pf("    // %s: %s narrowed to %d fractional bits (quantize = %s) — per-component\n",
-				f.Name, f.Type.Name, f.QuantShift, ir.RenderExpr(f.QuantScaleExpr))
-			g.pf("    // quantized units; bounds are the component's whole-unit | min, max scaled\n")
-			for _, comp := range st.Fields {
-				lo, hi, _, _, typ, _ := fixedShallowComp(f, comp)
-				g.pf("    pub %s_%s: %s, // in [%s, %s]\n", f.Name, comp.Name, typ, lo, hi)
-			}
-			return
-		}
-		g.pf("    // %s: %s quantized by %s, max %s — per-component int in [-%d, %d]\n",
-			f.Name, f.Type.Name, ir.RenderExpr(f.QuantScaleExpr), ir.RenderExpr(f.QuantMaxExpr), f.QuantBound, f.QuantBound)
-		typ := rustInt(smallestSigned(f.QuantBound))
-		for _, comp := range st.Fields {
-			g.pf("    pub %s_%s: %s,\n", f.Name, comp.Name, typ)
-		}
-		return
-	}
-	if (v == storageShallow || v == storageInterp) && f.HasFloatRange {
-		typ := rustUint(ir.StorageBitsFor(f.Steps))
-		note := ""
-		if f.Round != "nearest" {
-			note = ", round " + f.Round + " (advisory: SPEC §4.8 rule 4 — projection, not this wire conversion)"
-		}
-		tail := ""
-		if v == storageInterp {
-			tail = " — wire-int domain, snap-interpolated (SPEC §4.8 rule 5)"
-		}
-		g.pf("    pub %s: %s, // float [%s, %s] @ resolution %s -> wire int [0, %d]%s%s\n",
-			f.Name, typ, formatFloat(f.FMin), formatFloat(f.FMax),
-			formatFloat(f.Resolution), f.Steps, note, tail)
-		return
-	}
-	g.emitStorageField(f)
 }
 
 func (g *gen) emitStorageField(f *ir.Field) {
@@ -741,24 +557,8 @@ func (g *gen) fieldComment(f *ir.Field) string {
 		parts = append(parts, fmt.Sprintf("wire [%s, %s]", f.IntMin, f.IntMax))
 	}
 	if f.HasFloatRange {
-		note := ""
-		if f.Round != "nearest" {
-			note = ", round " + f.Round + " (advisory: SPEC §4.8 rule 4 — projection, not this wire conversion)"
-		}
-		if f.Interpolate {
-			parts = append(parts, fmt.Sprintf("shallow wire: [%s, %s] @ %s -> int [0, %d]%s",
-				formatFloat(f.FMin), formatFloat(f.FMax), formatFloat(f.Resolution), f.Steps, note))
-		} else {
-			parts = append(parts, fmt.Sprintf("compressed float [%s, %s] @ %s%s",
-				formatFloat(f.FMin), formatFloat(f.FMax), formatFloat(f.Resolution), note))
-		}
-	}
-	if f.Local {
-		if f.Context != "" {
-			parts = append(parts, fmt.Sprintf("| local, context = %s", f.Context))
-		} else {
-			parts = append(parts, "| local — no wire")
-		}
+		parts = append(parts, fmt.Sprintf("compressed float [%s, %s] @ %s",
+			formatFloat(f.FMin), formatFloat(f.FMax), formatFloat(f.Resolution)))
 	}
 	if len(parts) == 0 {
 		return ""
@@ -837,31 +637,6 @@ func (g *gen) renderArg(e ast.Expr, folded *big.Int, typ string) string {
 		return s + " as " + typ
 	}
 	return "(" + s + ") as " + typ
-}
-
-// renderScaleF64 renders a quantization scale in f64 arithmetic: symbolic
-// consts cast (`POSITION_UNITS as f64`), folded values become float literals.
-func (g *gen) renderScaleF64(e ast.Expr, folded int64) string {
-	if e == nil || ir.ExprHasEnumMax(e) || !g.renderable(e) || !containsIdent(e) {
-		return strconv.FormatInt(folded, 10) + ".0"
-	}
-	s := renderExpr(e)
-	if _, ok := e.(*ast.IdentExpr); ok {
-		return s + " as f64"
-	}
-	return "(" + s + ") as f64"
-}
-
-// renderScaleF32 is renderScaleF64's f32 twin, for f32 component division.
-func (g *gen) renderScaleF32(e ast.Expr, folded int64) string {
-	if e == nil || ir.ExprHasEnumMax(e) || !g.renderable(e) || !containsIdent(e) {
-		return strconv.FormatInt(folded, 10) + ".0"
-	}
-	s := renderExpr(e)
-	if _, ok := e.(*ast.IdentExpr); ok {
-		return s + " as f32"
-	}
-	return "(" + s + ") as f32"
 }
 
 // overflowSafe reports whether e can render symbolically without the
@@ -970,27 +745,6 @@ func containsIdent(e ast.Expr) bool {
 func rustInt(width int) string  { return fmt.Sprintf("i%d", width) }
 func rustUint(width int) string { return fmt.Sprintf("u%d", width) }
 
-// fixedShallowComp resolves one component of a narrowed fixed composite
-// (SPEC §4.8 rule 2b) to its Rust shallow shape: wire bounds, wire bits, the
-// i32/i64 serialize switch, and the storage type. The bounds mirror
-// ir.FixedShallowBounds so all five backends agree on the wire.
-func fixedShallowComp(f, cf *ir.Field) (lo, hi *big.Int, bits int64, wide bool, typ string, width int) {
-	lo, hi = ir.FixedShallowBounds(f, cf)
-	bits = ir.BitsRequired(lo, hi)
-	wide = hi.Cmp(big.NewInt(2147483647)) > 0 || lo.Cmp(big.NewInt(-2147483648)) < 0
-	abs := new(big.Int).Neg(lo)
-	if abs.Cmp(hi) < 0 {
-		abs = hi
-	}
-	bound := int64(9223372036854775807)
-	if abs.IsInt64() {
-		bound = abs.Int64()
-	}
-	width = smallestSigned(bound)
-	typ = rustInt(width)
-	return
-}
-
 // signedStorageBounds is the | min, max domain of an iN storage type.
 func signedStorageBounds(width int) (lo, hi *big.Int) {
 	lo = new(big.Int).Neg(new(big.Int).Lsh(big.NewInt(1), uint(width-1)))
@@ -1007,19 +761,6 @@ func rustIntLit(v *big.Int, width int) string {
 		return fmt.Sprintf("i%d::MIN", width)
 	}
 	return fmt.Sprintf("%s_i%d", v, width)
-}
-
-func smallestSigned(bound int64) int {
-	switch {
-	case bound <= 127:
-		return 8
-	case bound <= 32767:
-		return 16
-	case bound <= 2147483647:
-		return 32
-	default:
-		return 64
-	}
 }
 
 func formatFloat(v float64) string {
@@ -1042,11 +783,4 @@ func formatFloat32(v float64) string {
 		s += ".0"
 	}
 	return s + "_f32"
-}
-
-func capitalize(s string) string {
-	if s == "" {
-		return s
-	}
-	return strings.ToUpper(s[:1]) + s[1:]
 }

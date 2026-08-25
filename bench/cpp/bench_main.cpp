@@ -1,15 +1,14 @@
 // schema bench — the C++ runner.
 //
 // Measures the schema-GENERATED C++ code (generated/cpp) against the classic
-// serialize runtime: write path and read path, messages/sec and MB/sec, over
+// serialize runtime: write path and read path, ops/sec and MB/sec, over
 // the pinned corpus instances (the same instances test/main.cpp pins to the
-// wire goldens in testdata/wire) plus one large synthetic message batch for
-// steady-state dispatch throughput.
+// wire goldens in testdata/wire).
 //
 // Methodology (follows the serialize repo's bench.cpp conventions — see the
 // const-params experiment for the reasoning behind the escape barriers and
 // the per-iteration LCG variation):
-//   - every write loop varies message fields per iteration through a serially
+//   - every write loop varies fields per iteration through a serially
 //     dependent LCG the compiler cannot fold; structure fields (counts,
 //     lengths, branch bools) stay fixed so bytes/op is constant
 //   - every read loop reads from 64 pre-written variant buffers round-robin,
@@ -37,10 +36,7 @@
 #include <vector>
 
 #include "ConstantsWire.h"
-#include "ContextsWire.h"
 #include "EnumsWire.h"
-#include "MessagesWire.h"
-#include "ObjectsWire.h"
 #include "TypesWire.h"
 #include "WireWire.h"
 #include "RealWorldWire.h"      // generated/bench/cpp — the §1.7 realistic snapshot (real_packet)
@@ -151,7 +147,7 @@ static void flush_csv()
 
 // buffers: write buffers must be a multiple of 8 bytes (qword-flush contract);
 // read allocations extend >= 8 bytes past the packet (64-bit window contract).
-// 4096 covers MessageMaxBytes (2008) with slack on both contracts.
+// 4096 covers the largest pinned shape (2008 bytes) with slack on both contracts.
 const int BufferSize = 4096;
 // §2.7 variant-buffer stride: the 64 rotating read buffers are allocated at
 // BufferSize + 64 per slot, NOT packed at exact 4096. At stride 4096 every
@@ -231,7 +227,7 @@ static void report( const char * bench, const char * path, long iters, int64_t b
 }
 
 // ------------------------------------------------------------------------------------------
-// the per-message benchmark driver
+// the per-shape benchmark driver
 // ------------------------------------------------------------------------------------------
 
 template <typename T, typename WriteFn, typename ReadFn, typename VaryFn>
@@ -407,21 +403,6 @@ static ShipCreate pin_shipcreate()
     return in;
 }
 
-static ShipData_Shallow pin_ship_shallow()
-{
-    ShipData_Interpolate interp;
-    interp.ship_type = ShipType::Corvette;
-    interp.position = { 1.5, -2.25, 100.0 };
-    interp.rotation = { 0.0, 0.0, 0.0, 1.0 };
-    interp.linear_velocity = { 3.0, 0.0, -1.0 };
-    interp.flags = ShipFlags_Boosting;
-    interp.team = Team::Red;
-    interp.health = 750;
-    interp.thrust = 55;
-    ShipData_Shallow q;
-    QuantizeShip( interp, q );
-    return q;
-}
 
 static ProbeHeader pin_probe_header()
 {
@@ -553,18 +534,6 @@ static void vary_shipcreate( ShipCreate & m, uint64_t rng )
     m.thrust = int8_t( ( rng >> 14 ) & 63 );                        // within [0, 100]
 }
 
-static void vary_ship_shallow( ShipData_Shallow & m, uint64_t rng )
-{
-    m.position_x = int32_t( ( rng >> 8 ) & 0xFFFFF ) - 0x80000;
-    m.position_y = int32_t( ( rng >> 16 ) & 0xFFFFF ) - 0x80000;
-    m.position_z = int32_t( ( rng >> 24 ) & 0xFFFFF ) - 0x80000;
-    m.rotation_x = int16_t( int32_t( rng & 0x7FF ) - 1024 );
-    m.rotation_w = int16_t( int32_t( ( rng >> 11 ) & 0x7FF ) - 1024 );
-    m.linear_velocity_x = int32_t( ( rng >> 32 ) & 0x3FFFFF ) - 2097152;
-    m.flags = rng & 15;
-    m.health = uint16_t( ( rng >> 5 ) & 511 );
-    m.thrust = uint8_t( ( rng >> 14 ) & 63 );
-}
 
 static void vary_probe_header( ProbeHeader & m, uint64_t rng )
 {
@@ -702,199 +671,6 @@ static void vary_real_packet( realworld::RealPacket & m, uint64_t rng )
 }
 
 // ------------------------------------------------------------------------------------------
-// the synthetic steady-state batch: NumBatchMessages messages through the
-// Message dispatch surface (WriteMessage/ReadMessage) plus the None
-// terminator, mixed types driven by the LCG. Larger than L1/L2 working sets
-// on both bench hosts.
-// Mix rebalanced 2026-08-23 (BENCH-STANDARD §1.7 rule 3's latitude, issue
-// #64): bulk share by bits 75.95% -> 14.20%, bytes/op 25 -> 10, identical
-// constants in every runner; the moved bytes_per_op is the era mark.
-// ------------------------------------------------------------------------------------------
-
-const int NumBatchMessages = 4096;
-const int BatchPasses = 25600;   // rescaled 2026-08-23 with the mix rebalance: §2.1's floor wins (§1.2)
-
-static Message * build_batch( int64_t & batch_bytes, uint8_t * batch_buffer, int batch_buffer_size )
-{
-    static Message messages[NumBatchMessages];
-
-    uint64_t rng = 12345;
-    for ( int k = 0; k < NumBatchMessages; k++ )
-    {
-        rng = bench_rng( rng );
-        Message & m = messages[k];
-        const int pick = int( ( rng >> 32 ) % 20 );
-        if ( pick < 1 )                     // 5% Chat
-        {
-            m.type = MessageType::Chat;
-            m.chat.text_length = 8 + int( rng & 7 );
-            for ( int i = 0; i < m.chat.text_length; i++ )
-                m.chat.text[i] = char( 'a' + ( ( rng >> ( i & 7 ) ) & 15 ) );
-        }
-        else if ( pick < 7 )                // 30% Test
-        {
-            m.type = MessageType::Test;
-            m.test.test_a = uint16_t( rng );
-            m.test.test_b = int16_t( ( rng >> 16 ) & 511 );
-            m.test.test_c = int16_t( ( rng >> 25 ) & 511 );
-            m.test.test_d = int16_t( ( rng >> 34 ) & 511 );
-        }
-        else if ( pick < 12 )               // 25% Synchronize
-        {
-            m.type = MessageType::Synchronize;
-            m.synchronize.sync_frame = rng;
-            m.synchronize.sync_sequence = uint16_t( rng >> 8 );
-        }
-        else if ( pick < 17 )               // 25% Timescale
-        {
-            m.type = MessageType::Timescale;
-            m.timescale.scale = double( uint32_t( rng ) & 0xFFFF ) / 65536.0;
-            m.timescale.frame_a = uint32_t( rng >> 16 );
-            m.timescale.frame_b = uint32_t( rng >> 24 );
-        }
-        else if ( pick < 19 )               // 10% Heartbeat
-        {
-            m.type = MessageType::Heartbeat;
-        }
-        else                                // 5% Block
-        {
-            m.type = MessageType::Block;
-            m.block.data_length = 8 + int( rng & 15 );
-            for ( int i = 0; i < m.block.data_length; i++ )
-                m.block.data[i] = uint8_t( rng >> ( i & 31 ) );
-        }
-    }
-
-    serialize::WriteStream ws( batch_buffer, batch_buffer_size );
-    for ( int k = 0; k < NumBatchMessages; k++ )
-    {
-        if ( !WriteMessage( ws, messages[k] ) )
-        {
-            fail( "message_batch", "batch write failed during setup" );
-            return NULL;
-        }
-    }
-    Message terminator;     // zero-initialized: type == None
-    if ( !WriteMessage( ws, terminator ) )
-    {
-        fail( "message_batch", "terminator write failed during setup" );
-        return NULL;
-    }
-    ws.Flush();
-    batch_bytes = ws.GetBytesProcessed();
-    return messages;
-}
-
-static void bench_batch()
-{
-    // worst case is NumBatchMessages * MessageMaxBytes; actual is far less.
-    // + 8 read slack, and the size is a multiple of 8 (write contract).
-    const int batch_buffer_size = int( ( NumBatchMessages + 1 ) * MessageMaxBytes + 8 );
-    uint8_t * batch_buffer = (uint8_t *) malloc( (size_t) batch_buffer_size );
-    if ( !batch_buffer )
-    {
-        fail( "message_batch", "allocation failed" );
-        return;
-    }
-    memset( batch_buffer, 0, (size_t) batch_buffer_size );
-
-    int64_t batch_bytes = 0;
-    Message * messages = build_batch( batch_bytes, batch_buffer, batch_buffer_size );
-    if ( !messages )
-    {
-        free( batch_buffer );
-        return;
-    }
-
-    const long passes = BatchPasses / ( IterScale > 4 ? 4 : IterScale );    // debug: /4 only — the batch is already slow
-    const long total_msgs = passes * NumBatchMessages;
-
-    double write_rates[MaxNumRuns];
-    double read_rates[MaxNumRuns];
-    uint64_t rng = 999;
-
-    // write path: whole batch per pass; one message mutates per pass so the
-    // batch is never loop-invariant
-    for ( int run = -1; run < g_num_runs; run++ )
-    {
-        double start = time_now();
-        for ( long pass = 0; pass < passes; pass++ )
-        {
-            rng = bench_rng( rng );
-            Message & mutate = messages[( rng >> 16 ) % NumBatchMessages];
-            if ( mutate.type == MessageType::Synchronize )
-                mutate.synchronize.sync_frame = rng;
-            else if ( mutate.type == MessageType::Test )
-                mutate.test.test_a = uint16_t( rng );
-            serialize::WriteStream ws( batch_buffer, batch_buffer_size );
-            for ( int k = 0; k < NumBatchMessages; k++ )
-            {
-                if ( !WriteMessage( ws, messages[k] ) )
-                {
-                    fail( "message_batch", "write failed in loop" );
-                    free( batch_buffer );
-                    return;
-                }
-            }
-            Message terminator;
-            WriteMessage( ws, terminator );
-            ws.Flush();
-            bench_escape( batch_buffer );
-            g_sink = g_sink + (uint64_t) ws.GetBytesProcessed();
-        }
-        double time = time_now() - start;
-        if ( run >= 0 )
-            write_rates[run] = double( total_msgs ) / time;
-    }
-
-    // the read buffer: rebuild once from the final batch state so bytes match
-    build_batch( batch_bytes, batch_buffer, batch_buffer_size );
-
-    // read path: read messages until the None terminator, whole batch per
-    // pass; ONE reused Message hoisted out of the loop (the C++ shape of the
-    // go/cs MessageStorage discipline) — ReadMessage re-establishes the
-    // selected arm itself (`message.arm = Arm{}` at dispatch), so reuse is
-    // exact and a fresh Message per read is pure constructor overhead
-    Message m;
-    for ( int run = -1; run < g_num_runs; run++ )
-    {
-        double start = time_now();
-        for ( long pass = 0; pass < passes; pass++ )
-        {
-            serialize::ReadStream rs( batch_buffer, (int) batch_bytes );
-            long count = 0;
-            for ( ;; )
-            {
-                if ( !ReadMessage( rs, m ) )
-                {
-                    fail( "message_batch", "read failed in loop" );
-                    free( batch_buffer );
-                    return;
-                }
-                if ( GetMessageType( m ) == MessageType::None )
-                    break;
-                bench_escape( &m );
-                count++;
-            }
-            if ( count != NumBatchMessages )
-            {
-                fail( "message_batch", "batch message count mismatch on read" );
-                free( batch_buffer );
-                return;
-            }
-            g_sink = g_sink + (uint64_t) count;
-        }
-        double time = time_now() - start;
-        if ( run >= 0 )
-            read_rates[run] = double( total_msgs ) / time;
-    }
-
-    const int64_t bytes_per_msg = batch_bytes / NumBatchMessages;
-    report( "message_batch", "write", total_msgs, bytes_per_msg, run_stats( write_rates, g_num_runs ) );
-    report( "message_batch", "read", total_msgs, bytes_per_msg, run_stats( read_rates, g_num_runs ) );
-
-    free( batch_buffer );
-}
 
 // ------------------------------------------------------------------------------------------
 // family rt (BENCH-STANDARD.md §1.3, §1.5): the serialize runtime API called
@@ -1405,33 +1181,6 @@ void bench_bitpacker( long base_passes )
 
 // ------------------------------------------------------------------------------------------
 
-// the message_stream golden: dispatch wire self-check (not a benchmark)
-static void check_message_stream_golden()
-{
-    Message stream_out[3];
-    // an arm is SELECTED by assigning it (establishes the arm zeroed);
-    // construction alone initializes only the tag (None)
-    stream_out[0].type = MessageType::Chat;
-    stream_out[0].chat = Chat{};
-    memcpy( stream_out[0].chat.text, "dispatch", 8 );
-    stream_out[0].chat.text_length = 8;
-    stream_out[1].type = MessageType::Test;
-    stream_out[1].test = Test{};
-    stream_out[1].test.test_b = 42;
-
-    serialize::WriteStream ws( g_buffer, BufferSize );
-    for ( const Message & m : stream_out )
-    {
-        if ( !WriteMessage( ws, m ) )
-        {
-            fail( "message_stream", "dispatch write failed" );
-            return;
-        }
-    }
-    ws.Flush();
-    if ( !check_golden( "message_stream", g_buffer, ws.GetBytesProcessed() ) )
-        failed = true;
-}
 
 int main( int argc, char ** argv )
 {
@@ -1471,7 +1220,6 @@ int main( int argc, char ** argv )
     if ( g_csv )
         printf( "lang,bench,path,iters,bytes_per_op,runs,median_msgs_per_sec,min_msgs_per_sec,max_msgs_per_sec,median_mb_per_sec,spread_pct,corpus_id,family,linkage,checks,opt,inline\n" );
 
-    check_message_stream_golden();
 
     // rigidbody_at_rest: the pinned at-rest twin of rigidbody_moving
     RigidBody at_rest = pin_rigidbody_moving();
@@ -1489,7 +1237,6 @@ int main( int argc, char ** argv )
     bench_message( "test", (const char *) NULL, 192000000L, Test{}, WriteTest, ReadTest, vary_test );
     bench_message( "inputpacket", "inputpacket", 16000000L, pin_inputpacket(), WriteInputPacket, ReadInputPacket, vary_inputpacket );
     bench_message( "shipcreate", "shipcreate_flags", 32000000L, pin_shipcreate(), WriteShipCreate, ReadShipCreate, vary_shipcreate );
-    bench_message( "ship_shallow", "ship_shallow", 32000000L, pin_ship_shallow(), WriteShipData_Shallow, ReadShipData_Shallow, vary_ship_shallow );
     bench_message( "probe_header", "probe_header", 256000000L, pin_probe_header(), WriteProbeHeader, ReadProbeHeader, vary_probe_header );
     bench_message( "probebits", "probebits", 128000000L, pin_probebits(), WriteProbeBits, ReadProbeBits, vary_probebits );
     bench_message( "probearray", "probearray", 20000000L, pin_probearray(), WriteProbeArray, ReadProbeArray, vary_probearray );
@@ -1505,7 +1252,6 @@ int main( int argc, char ** argv )
     // near 3x the fully-inlined header-only C++.
     bench_message( "real_packet", "real_packet", 8000000L, realworld::RealPacket{}, realworld::WriteRealPacket, realworld::ReadRealPacket, vary_real_packet );
 
-    bench_batch();
 
     // family rt (§1.3/§1.5): the runtime API by hand, oracle-gated against
     // the goldens the generated code pinned. Iteration counts are fixed and

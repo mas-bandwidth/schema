@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package example — protocol id 0xbc05d83a8135cdb9
+// package example — protocol id 0x0bde7acdd36abc6a
 
 package example
 
@@ -12,7 +12,7 @@ import (
 
 // The unit's protocol id — the hash of its wire shape (SPEC §3.1). Two
 // sides at the same id speak identical bits; there is no other versioning.
-const ProtocolId uint64 = 0xbc05d83a8135cdb9
+const ProtocolId uint64 = 0x0bde7acdd36abc6a
 
 // ErrValidation is returned when a read rejects the wire: a wrong constant,
 // nonzero reserved bits, or an interior null in a string (SPEC §4.3, §4.7).
@@ -39,10 +39,6 @@ const MaxObjects = 10000
 const ShipMaxLasers = 16
 
 const ShipMaxMissiles = 16
-
-const MaxTurretsPerShip = 256
-
-const MaxCollidersPerShip = 64
 
 const NumTeams = 2 // = Team.Max
 

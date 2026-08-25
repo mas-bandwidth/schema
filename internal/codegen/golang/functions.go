@@ -1,4 +1,4 @@
-// Write/Read function emission for types and messages (SPEC §6.1 items 2-4,
+// Write/Read function emission for types (SPEC §6.1 items 2-4,
 // §6.2): straight-line split functions against the serialize.go pointer API —
 // sticky stream errors, counts error-checked before every loop and slice (the
 // untrusted-data rule), `return stream.Err()` at the end. The wire is
@@ -13,7 +13,7 @@ import (
 )
 
 // emitUnionFunctions emits the union's bounds and wire pair (SPEC §4.8): the
-// write validates the tag BEFORE it rides (WriteMessage's rule — an
+// write validates the tag BEFORE it rides (an
 // out-of-set tag writes nothing), the read rejects a tag above the count and
 // zero-establishes exactly the selected arm before decoding it.
 func (g *gen) emitUnionFunctions(d *ir.Union) {
@@ -64,7 +64,7 @@ func (g *gen) emitUnionFunctions(d *ir.Union) {
 }
 
 // emitStructFunctions emits MaxBits/MaxBytes and the split Write/Read pair
-// for a type or message.
+// for a type.
 func (g *gen) emitStructFunctions(st *ir.Struct) {
 	g.needsSerialize = true
 	g.bulkBytes = ir.AlignedFixedByteArrays(st)
@@ -324,7 +324,7 @@ func (g *gen) emitWriteRangedFold64(expr, lo, hi string, bits int64, loZero bool
 // The step count, wire width and delta depend only on (min, max, resolution),
 // which are compile-time constants of the call site, so the runtime's per-field
 // derivation (a float32 divide, a clamp, a Ceil and a BitsRequired) is paid once
-// here instead of on every field of every message.
+// here instead of on every field of every type.
 //
 // The float32() around the product is LOAD BEARING, exactly as it is in the
 // runtime: STANDARD.md pins this arithmetic to float32 with
@@ -845,86 +845,4 @@ func (g *gen) emitWriteFlagsValue(name string, wireBits int, ind string) {
 	}
 	g.pf("%s{\n%s\tflagsValue := uint64(%s)\n", ind, ind, name)
 	g.pf("%s\tstream.SerializeBits64(&flagsValue, %d)\n%s}\n", ind, wireBits, ind)
-}
-
-// emitMessageTagFunctions emits the tag wire pair, the message-level bound,
-// and the Go dispatch surface: an interface over the message set with a type
-// switch — the language's own idiom (SPEC §6.1 item 6). nil is None, the
-// stream terminator.
-func (g *gen) emitMessageTagFunctions() {
-	g.needsSerialize = true
-	count := int64(len(g.unit.Messages))
-	g.pf("// The message tag wire: MessageType in [0, %d], minimal bits; None = 0 is a\n", count)
-	g.pf("// valid wire value meaning *no message* — the stream terminator (SPEC §4.8).\n")
-	g.pf("func WriteMessageType(stream *serialize.WriteStream, value MessageType) error {\n")
-	g.pf("\ttagValue := int32(value)\n")
-	g.emitWriteRangedFold32("tagValue", "0", big.NewInt(count).String(),
-		ir.BitsRequired(big.NewInt(0), big.NewInt(count)), true, "\t")
-	g.pf("\treturn stream.Err()\n}\n\n")
-	g.pf("func ReadMessageType(stream *serialize.ReadStream, value *MessageType) error {\n")
-	g.pf("\ttagValue := int32(0)\n")
-	g.pf("\tstream.SerializeInt(&tagValue, 0, %d)\n", count)
-	g.pf("\t*value = MessageType(tagValue)\n")
-	g.pf("\treturn stream.Err()\n}\n\n")
-
-	tagBits := ir.BitsRequired(big.NewInt(0), big.NewInt(count))
-	largest := int64(0)
-	for _, m := range g.unit.Messages {
-		if b := ir.MaxBitsStruct(g.unit.Structs[m]); b > largest {
-			largest = b
-		}
-	}
-	g.pf("// The message-level bound: the tag plus the largest message (SPEC §6.1);\n")
-	g.pf("// MessageMaxBytes is rounded up to the 8-byte write-buffer granularity.\n")
-	g.pf("const MessageMaxBits = %d\n", tagBits+largest)
-	g.pf("const MessageMaxBytes = %d\n\n", ir.MaxBytes(tagBits+largest))
-
-	msgs := g.unit.Messages
-	g.pf("// Message is the dispatch surface: the interface every message satisfies.\n")
-	g.pf("// nil is None — the stream terminator (SPEC §4.8). The concrete types are\n")
-	g.pf("// the message structs themselves; dispatch is a type switch, the Go idiom.\n")
-	g.pf("type Message interface {\n\tMessageType() MessageType\n}\n\n")
-	for _, m := range msgs {
-		g.pf("func (*%s) MessageType() MessageType { return MessageType%s }\n", m, m)
-	}
-	g.pf("\n")
-
-	g.pf("// MessageStorage is the pre-allocated home a read message lands in — the Go\n")
-	g.pf("// stand-in for the C++ tagged union (SPEC §6.1: storage never heap-allocates\n")
-	g.pf("// per message; fixed buffers on sender and receiver). Reuse it across reads:\n")
-	g.pf("// the Message a read returns points into it and stays valid until the next\n")
-	g.pf("// read against the same storage — the union's own discipline, exactly.\n")
-	g.pf("type MessageStorage struct {\n")
-	for _, m := range msgs {
-		g.pf("\t%s %s\n", m, m)
-	}
-	g.pf("}\n\n")
-
-	// dispatch validates BEFORE the tag rides the wire: a Message
-	// implementation from outside the generated set writes nothing (a tag
-	// with no payload would desynchronize the stream), and the tag framing
-	// is the tag pair's — one source
-	g.pf("func WriteMessage(stream *serialize.WriteStream, message Message) error {\n")
-	g.pf("\tswitch m := message.(type) {\n")
-	g.pf("\tcase nil:\n\t\treturn WriteMessageType(stream, MessageTypeNone) // the stream terminator (SPEC §4.8)\n")
-	for _, m := range msgs {
-		g.pf("\tcase *%s:\n", m)
-		g.pf("\t\tif m == nil { // a typed nil is not a writable message; nothing rides\n\t\t\treturn ErrValidation\n\t\t}\n")
-		g.pf("\t\tif err := WriteMessageType(stream, MessageType%s); err != nil {\n\t\t\treturn err\n\t\t}\n", m)
-		g.pf("\t\treturn Write%s(stream, m)\n", m)
-	}
-	g.pf("\t}\n\treturn ErrValidation // not a generated message type; nothing was written\n}\n\n")
-
-	g.pf("func ReadMessage(stream *serialize.ReadStream, storage *MessageStorage) (Message, error) {\n")
-	g.pf("\ttagValue := MessageTypeNone\n")
-	g.pf("\tif err := ReadMessageType(stream, &tagValue); err != nil {\n\t\treturn nil, err\n\t}\n")
-	g.pf("\tswitch tagValue {\n")
-	g.pf("\tcase MessageTypeNone:\n\t\treturn nil, nil // the stream terminator (SPEC §4.8)\n")
-	for _, m := range msgs {
-		g.pf("\tcase MessageType%s:\n", m)
-		g.pf("\t\tstorage.%s = %s{} // reused storage starts from the zero form, as the union does\n", m, m)
-		g.pf("\t\tif err := Read%s(stream, &storage.%s); err != nil {\n\t\t\treturn nil, err\n\t\t}\n", m, m)
-		g.pf("\t\treturn &storage.%s, nil\n", m)
-	}
-	g.pf("\t}\n\treturn nil, ErrValidation\n}\n\n")
 }

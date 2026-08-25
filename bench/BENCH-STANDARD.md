@@ -90,11 +90,14 @@ Three families. Every row in every CSV belongs to exactly one.
 
 ### §1.2 Family `gen` — shapes unchanged, iteration counts rescaled
 
-The 12 existing benchmarks: 11 pinned corpus messages plus the 4096-message dispatch
-batch. Shapes and pinned instances are identical across the five runners and gated
-against `testdata/wire/*.bin`; iteration counts are identical across the five
-runners. They keep their names and their `bytes_per_op`: 105, 57, 13, 6, 61, 28, 28,
-10, 26, 47, 92, 25.
+The 10 corpus benchmarks: 10 pinned corpus shapes. Shapes and pinned
+instances are identical across the runners and gated against
+`testdata/wire/*.bin`; iteration counts are identical across the runners.
+They keep their names and their `bytes_per_op`: 105, 57, 13, 6, 61, 28,
+10, 26, 47, 92. (Rows over the retired protocol constructs — the object
+view `ship_shallow` and the dispatch `message_batch` — retired with them;
+their historical CSVs and the dated audit records below read as what they
+are.)
 
 This section originally froze the iteration counts too. Measured on the M2 on
 2026-08-14, those counts finished the fastest legs in 7.5–44 ms — every gen
@@ -114,12 +117,10 @@ all five runners, carried in the `iters` column:
 | test | 16,000,000 | 192,000,000 | 12 |
 | inputpacket | 2,000,000 | 16,000,000 | 8 |
 | shipcreate | 4,000,000 | 32,000,000 | 8 |
-| ship_shallow | 4,000,000 | 32,000,000 | 8 |
 | probe_header | 16,000,000 | 256,000,000 | 16 |
 | probebits | 4,000,000 | 128,000,000 | 32 |
 | probearray | 2,000,000 | 20,000,000 | 10 |
 | testdata | 1,000,000 | 8,000,000 | 8 |
-| message_batch | 800 passes (3,276,800 msgs) | 6,400 passes (26,214,400 msgs) | 8 |
 
 Historical CSVs carry the old counts in their `iters` column and are readable as
 what they are: legs measured under §2.1's floor, whose spreads say so. This is

@@ -136,13 +136,12 @@ func TestExternalModuleBuildsTheCLI(t *testing.T) {
 		}
 	}
 
-	// every target, both corpora, both C++ message representations: the
-	// emitted trees must match file for file and byte for byte.
+	// every target, both corpora: the emitted trees must match file for
+	// file and byte for byte.
 	type genCase struct {
-		name    string
-		corpus  string
-		target  string
-		variant bool
+		name   string
+		corpus string
+		target string
 	}
 	var cases []genCase
 	for _, corpus := range []string{corpusDir, corpus128Dir} {
@@ -153,18 +152,9 @@ func TestExternalModuleBuildsTheCLI(t *testing.T) {
 				target: target,
 			})
 		}
-		cases = append(cases, genCase{
-			name:    filepath.Base(corpus) + "-cpp-variant",
-			corpus:  corpus,
-			target:  "cpp",
-			variant: true,
-		})
 	}
 	generateArgs := func(c genCase, outDir string) []string {
 		args := []string{"generate", "--lang", c.target, "--out", outDir}
-		if c.variant {
-			args = append(args, "--cpp-message", "variant")
-		}
 		return append(args, c.corpus)
 	}
 	for _, c := range cases {
@@ -288,11 +278,6 @@ func wantClientOutput(t *testing.T) string {
 	targets := append(c.Targets(), "widths")
 	sort.Strings(targets)
 	fmt.Fprintf(&b, "targets %s\n", strings.Join(targets, " "))
-	for _, name := range u.Messages {
-		st := u.Structs[name]
-		fmt.Fprintf(&b, "%s %d bits %d bytes %d fields\n",
-			name, ir.MaxBitsStruct(st), ir.MaxBytes(ir.MaxBitsStruct(st)), len(st.Fields))
-	}
 	// the symbolic-rendering surface: declared bounds rendered as source expressions,
 	// mirrored line for line in the external module's widths generator
 	structs := make([]string, 0, len(u.Structs))

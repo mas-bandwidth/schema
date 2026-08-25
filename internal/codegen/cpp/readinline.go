@@ -3,23 +3,16 @@ package cpp
 import "github.com/mas-bandwidth/schema/ir"
 
 // fileEmitsWire reports whether this wire file will emit any Write/Read wire
-// function — struct/object wire pairs, or the owner files' message/object
-// dispatch surfaces. Files that only carry consts/enums/flags emit no wire
-// functions and no macro blocks. (Named after the C backend's twin: every
-// file that emits one half of a wire pair emits the other, so one predicate
-// guards both macro blocks.)
+// function — struct or union wire pairs. Files that only carry
+// consts/enums/flags emit no wire functions and no macro blocks. (Named
+// after the C backend's twin: every file that emits one half of a wire pair
+// emits the other, so one predicate guards both macro blocks.)
 func (g *gen) fileEmitsWire() bool {
 	for _, d := range g.file.Decls {
 		switch d.(type) {
-		case *ir.Struct, *ir.Object:
+		case *ir.Struct, *ir.Union:
 			return true
 		}
-	}
-	if g.file.Base == g.msgOwner && len(g.unit.Messages) > 0 {
-		return true
-	}
-	if g.file.Base == g.objOwner && len(g.unit.ObjNames) > 0 {
-		return true
 	}
 	return false
 }
@@ -35,10 +28,9 @@ func (g *gen) fileEmitsWire() bool {
 // a read chain is fallible, LLVM prices each Ok/Err split at ~even odds, so
 // block frequency decays geometrically down the chain and later call sites
 // are held to the cold-callsite inline threshold (45, vs 250+ hot). The
-// batch-read dispatch loop shows it exactly: ReadMessage is refused into the
-// timed loop at cost=1055 against threshold=45, while the C backend's
-// read_message — static in one TU — inlines into its identical loop
-// (last-call-to-static, cost=-13285) and carries no per-message call at all.
+// linkonce_odr Read entries are refused into timed loops at costs far over
+// it, while the C backend's static entries inline into identical loops
+// (last-call-to-static) and carry no per-call boundary at all.
 // The demand won its tournament
 // (tournament-air off→armed with the serialize read demand: batch read +68%,
 // rigidbody_at_rest read +244%, testdata read +109%, zero regressions;

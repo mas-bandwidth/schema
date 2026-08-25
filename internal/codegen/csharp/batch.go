@@ -19,7 +19,7 @@
 // The density rule, and the threshold chosen here: count S = the scalar
 // serialize sites of the body (register-resident on a batch: fixed-width
 // ints/bits/bools/floats, ranged ints, enums, flags, compressed floats,
-// const/reserved/align items, quantized components, projected floats —
+// const/reserved/align items —
 // fixed scalar arrays weighted by their schema bound, counted ones by bound
 // plus the count site, nested structs transitively) and B = its delegated
 // bulk sites (strings, bytes, bulk-byte arrays — each one sync/recapture
@@ -126,24 +126,6 @@ func densityField(f *ir.Field, isBulkByteArray bool) (s, b int64) {
 	return es, eb
 }
 
-// densityView is densityStruct for an object view's field list.
-func densityView(fields []*ir.Field, v ir.View) (s, b int64) {
-	for _, f := range fields {
-		switch {
-		case v == ir.ViewShallow && f.HasQuantize:
-			s += int64(len(f.Type.Ref.(*ir.Struct).Fields)) // one ranged int per component
-		case v == ir.ViewShallow && f.HasFloatRange:
-			s++ // the projected int
-		case v == ir.ViewDeep && f.HasFloatRange && f.Interpolate:
-			s++ // the bare float
-		default:
-			fs, fb := densityField(f, false) // view entry alignment is unknown — no bulk marks
-			s, b = s+fs, b+fb
-		}
-	}
-	return
-}
-
 // batchPlan decides, per Write/Read pair name, whether the entry runs a batch
 // (batched) and whether a *Batch core is emitted (needCore: the closure of
 // batched pairs over struct composition — rule 1 requires every composed type
@@ -154,8 +136,7 @@ func batchPlan(u *ir.Unit) (batched, needCore map[string]bool) {
 	var pending []*ir.Struct
 	for _, f := range u.Files {
 		for _, d := range f.Decls {
-			switch d := d.(type) {
-			case *ir.Struct:
+			if d, ok := d.(*ir.Struct); ok {
 				if reachesUnion(d, map[string]bool{}) {
 					continue // stays on the stream — see reachesUnion
 				}
@@ -163,28 +144,6 @@ func batchPlan(u *ir.Unit) (batched, needCore map[string]bool) {
 					batched[d.Name] = true
 					needCore[d.Name] = true
 					pending = append(pending, d)
-				}
-			case *ir.Object:
-				deep, interp := splitObjectFields(d)
-				if s, b := densityView(deep, ir.ViewDeep); batchWorthwhile(s, b) {
-					name := d.Name + "Data_Deep"
-					batched[name] = true
-					needCore[name] = true
-					pending = append(pending, &ir.Struct{Name: name, Fields: deep})
-				}
-				if s, b := densityView(interp, ir.ViewShallow); batchWorthwhile(s, b) {
-					name := d.Name + "Data_Shallow"
-					batched[name] = true
-					needCore[name] = true
-					// shallow quantized/projected fields serialize inline;
-					// only the default-path struct fields compose
-					var composed []*ir.Field
-					for _, fl := range interp {
-						if !fl.HasQuantize && !fl.HasFloatRange {
-							composed = append(composed, fl)
-						}
-					}
-					pending = append(pending, &ir.Struct{Name: name, Fields: composed})
 				}
 			}
 		}

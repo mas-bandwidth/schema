@@ -35,8 +35,6 @@ func EmissionOrder(file *File) []Decl {
 			byName[d.Name] = i
 		case *Flags:
 			byName[d.Name] = i
-		case *Object:
-			byName[d.Name] = i
 		case *Union:
 			byName[d.Name] = i
 		}
@@ -71,8 +69,6 @@ func EmissionOrder(file *File) []Decl {
 			}
 		case *Struct:
 			fields = d.Fields
-		case *Object:
-			fields = d.Fields
 		case *Union:
 			// payload types are held by value in the generated union storage,
 			// so every payload must precede the union in C and C++
@@ -96,8 +92,6 @@ func EmissionOrder(file *File) []Decl {
 				f.DefExpr,
 				f.IntMinExpr,
 				f.IntMaxExpr,
-				f.QuantScaleExpr,
-				f.QuantMaxExpr,
 			} {
 				if e != nil {
 					noteExpr(i, e)

@@ -1,17 +1,17 @@
 # Size comparison
 
 The README claims general-purpose formats pay for their generality on the wire.
-This is that claim, measured, on one representative message.
+This is that claim, measured, on one representative packet.
 
 **Every number here is produced by running the real encoder.** Nothing is
 computed by hand, and nothing is read out of a compiler constant. The schemas,
 the input values and the script are all in [`comparison/`](comparison/) — run
 `./comparison/measure.sh` and you should get this table.
 
-**One message is not a benchmark suite.** It is a worked example you can check
+**One packet is not a benchmark suite.** It is a worked example you can check
 line by line, which is worth more than a table of numbers you cannot.
 
-## The message
+## The packet
 
 A ship-spawn packet: type, quantized position, quantized rotation, quantized
 velocity, some flags, a team, health and thrust. It is the corpus's
@@ -56,7 +56,7 @@ compiler at this commit.
 
 ## Where schema's 28 bytes go
 
-The measurement program encodes the message, round-trips it back, and reports
+The measurement program encodes the packet, round-trips it back, and reports
 the writer's own byte count — 219 bits, which is exactly the compiler's
 `ShipCreateMaxBits`. Those bits:
 
@@ -85,8 +85,8 @@ does not offer, and if you need that thing the price is fair.
 **Protobuf — 56 bytes — buys field-number evolution.** Every field carries a
 tag, so old readers skip unknown fields and missing fields take defaults. That
 is why Protobuf is right for service APIs that version independently over
-years. schema's message wire has no tags at all; it has a protocol id and the
-rule that both peers deploy together.
+years. schema's wire has no tags at all; it has a protocol id and the rule that
+both peers deploy together.
 
 **FlatBuffers — 72 bytes — buys zero-copy access.** The root offset, vtable and
 alignment padding are what make reading a field without parsing the buffer
@@ -96,7 +96,7 @@ outright and this comparison is the wrong one to be reading.
 **Cap'n Proto — 52 packed, 96 unpacked — buys the same in-place model**, plus an
 RPC system schema has no answer to. Its packed encoding is a general-purpose
 zero-suppression pass over the unpacked layout; it does well here (52) and would
-do dramatically better on a mostly-zero message. Note that packing costs a
+do dramatically better on a mostly-zero packet. Note that packing costs a
 compression pass, so the 52 is not free the way the 96 is.
 
 schema wins this table by knowing the bounds. `health` cannot exceed 1000, so
@@ -116,12 +116,12 @@ checkout, and `make` run once at the repository root to emit the generated C++.
 
 ## What this does and does not show
 
-It shows the wire cost of one gameplay message, which is the case schema is
+It shows the wire cost of one gameplay packet, which is the case schema is
 built for: small, highly-constrained values sent at high frequency.
 
 It does not show throughput — see [PERFORMANCE.md](PERFORMANCE.md) for that —
-and it does not generalise. A message of strings and unconstrained 64-bit
-integers would narrow the gap sharply, and a mostly-zero message would favour
+and it does not generalise. A packet of strings and unconstrained 64-bit
+integers would narrow the gap sharply, and a mostly-zero packet would favour
 Cap'n Proto's packing far more than it favours schema. Bit-packing wins where
 values are *bounded*, and bounds are what a game's data has and a
 general-purpose format cannot assume.

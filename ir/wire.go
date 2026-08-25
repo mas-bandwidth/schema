@@ -6,7 +6,6 @@ import (
 	"math"
 	"math/big"
 	"math/bits"
-	"sort"
 
 	"github.com/mas-bandwidth/schema/internal/ast"
 )
@@ -287,47 +286,6 @@ func afterField(f *Field, pos wirePos) wirePos {
 	return pos.add(maxBitsScalar(f))
 }
 
-// View selects an object view's wire (SPEC §4.8).
-type View int
-
-const (
-	ViewDeep View = iota
-	ViewShallow
-)
-
-// MaxBitsView is the worst-case wire bits of an object view's field list.
-func MaxBitsView(fields []*Field, v View) int64 {
-	var total int64
-	for _, f := range fields {
-		switch {
-		case v == ViewShallow && f.HasQuantize && f.FixedShallow:
-			// narrowed fixed composite (SPEC §4.8 rule 2b): each component's
-			// wire range is its own whole-unit bounds scaled by QuantScale
-			st := f.Type.Ref.(*Struct)
-			for _, cf := range st.Fields {
-				lo, hi := FixedShallowBounds(f, cf)
-				total += BitsRequired(lo, hi)
-			}
-		case v == ViewShallow && f.HasQuantize:
-			st := f.Type.Ref.(*Struct)
-			per := BitsRequired(big.NewInt(-f.QuantBound), big.NewInt(f.QuantBound))
-			total += per * int64(len(st.Fields))
-		case v == ViewShallow && f.HasFloatRange:
-			total += BitsRequired(big.NewInt(0), big.NewInt(f.Steps))
-		case v == ViewDeep && f.HasFloatRange && f.Interpolate:
-			// bare storage encoding on the deep wire (SPEC §4.8)
-			if f.Type.Kind == TFloat64 {
-				total += 64
-			} else {
-				total += 32
-			}
-		default:
-			total += MaxBitsField(f)
-		}
-	}
-	return total
-}
-
 // FileDeps collects, per file, the other files its declarations reference —
 // named types by value, and constants named in emitted expressions. The C++
 // backend derives its #include graph from this; owner selection for the
@@ -379,8 +337,6 @@ func FileDeps(u *Unit) map[string]map[string]bool {
 					fld.DefExpr,
 					fld.IntMinExpr,
 					fld.IntMaxExpr,
-					fld.QuantScaleExpr,
-					fld.QuantMaxExpr,
 				} {
 					if e != nil {
 						noteExpr(e)
@@ -396,8 +352,6 @@ func FileDeps(u *Unit) map[string]map[string]bool {
 				}
 			case *Struct:
 				noteFields(d.Fields)
-			case *Object:
-				noteFields(d.Fields)
 			case *Union:
 				// payloads are held by value — a cross-file payload is an
 				// include/use edge exactly like a named field type
@@ -409,37 +363,6 @@ func FileDeps(u *Unit) map[string]map[string]bool {
 		deps[f.Base] = set
 	}
 	return deps
-}
-
-// MessageOwner and ObjectOwner name the file that carries a unit-level
-// dispatch surface (the MessageType/ObjectType enums, the tag pairs, the
-// dispatch functions): the LAST file in the unit's dependency topo order
-// containing that kind of declaration. Emitting the surface once fixes the
-// duplicate-symbol break when messages or objects span files (legal — the
-// aspect layout is never compiler-enforced, SPEC §2); choosing the
-// topologically last file means the C++ owner can include every other
-// carrying file without ever creating an include cycle.
-func MessageOwner(u *Unit) string {
-	return dispatchOwner(u, func(f *File) bool {
-		for _, d := range f.Decls {
-			if st, ok := d.(*Struct); ok && st.IsMessage {
-				return true
-			}
-		}
-		return false
-	})
-}
-
-// ObjectOwner is MessageOwner's twin for the object tag surface.
-func ObjectOwner(u *Unit) string {
-	return dispatchOwner(u, func(f *File) bool {
-		for _, d := range f.Decls {
-			if _, ok := d.(*Object); ok {
-				return true
-			}
-		}
-		return false
-	})
 }
 
 // ProtocolIdHome picks the file whose output carries the unit-level protocol
@@ -456,52 +379,4 @@ func ProtocolIdHome(u *Unit) string {
 		return u.Files[0].Base
 	}
 	return ""
-}
-
-func dispatchOwner(u *Unit, has func(*File) bool) string {
-	deps := FileDeps(u)
-	// Kahn's algorithm over sorted bases — the same deterministic order the
-	// C++ emitter's includes resolve in
-	bases := make([]string, 0, len(u.Files))
-	byBase := map[string]*File{}
-	for _, f := range u.Files {
-		bases = append(bases, f.Base)
-		byBase[f.Base] = f
-	}
-	sort.Strings(bases)
-	indeg := map[string]int{}
-	for _, b := range bases {
-		indeg[b] = len(deps[b])
-	}
-	done := map[string]bool{}
-	owner := ""
-	for range bases {
-		pick := ""
-		for _, b := range bases {
-			if !done[b] && indeg[b] == 0 {
-				pick = b
-				break
-			}
-		}
-		if pick == "" {
-			// a file cycle — the C++ backend refuses it separately; fall back
-			// to any remaining base so owner selection still terminates
-			for _, b := range bases {
-				if !done[b] {
-					pick = b
-					break
-				}
-			}
-		}
-		done[pick] = true
-		if has(byBase[pick]) {
-			owner = pick
-		}
-		for _, b := range bases {
-			if !done[b] && deps[b][pick] {
-				indeg[b]--
-			}
-		}
-	}
-	return owner
 }

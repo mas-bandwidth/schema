@@ -44,7 +44,7 @@ type Vec3 {
     z float64
 }
 
-message State {
+type State {
     team     Team
     position Vec3
     health   int32 | min = 0, max = MaxHealth
@@ -65,7 +65,7 @@ func TestIdIsStableUnderNonWireEdits(t *testing.T) {
 		source string
 	}{
 		{"a trailing comment", baseSchema + "\n// a comment costs no bits\n"},
-		{"an interior comment", strings.Replace(baseSchema, "message State {", "// describes a ship\nmessage State {", 1)},
+		{"an interior comment", strings.Replace(baseSchema, "type State {", "// describes a ship\ntype State {", 1)},
 		{"blank lines", strings.Replace(baseSchema, "enum Team", "\n\nenum Team", 1)},
 		{"an enum variant renamed", strings.Replace(baseSchema, "{ Red, Blue }", "{ Crimson, Blue }", 1)},
 		{"a const renamed", strings.NewReplacer("MaxHealth", "HealthCeiling").Replace(baseSchema)},
@@ -188,22 +188,10 @@ type Holder {
 	}
 }
 
-// Generated sets resolve in constant expressions (SPEC §4.2, §4.8):
-// MessageType.Max, ObjectType.Max and <Union>Type.Max are the member counts.
+// The generated tag set resolves in constant expressions (SPEC §4.2, §4.8):
+// <Union>Type.Max is the declared variant count.
 func TestGeneratedSetMaxInConstExprs(t *testing.T) {
 	u := build(t, `package probe
-
-message Ping {
-    x uint8
-}
-
-message Pong {
-    y uint8
-}
-
-object Rock {
-    size uint8 | interpolate, min = 0, max = 100
-}
 
 type Arm {
     v uint8
@@ -214,14 +202,12 @@ union Held {
     right Arm
 }
 
-const Messages = MessageType.Max
-const Objects  = ObjectType.Max
-const Arms     = HeldType.Max
+const Arms = HeldType.Max
 `)
 	for _, tc := range []struct {
 		name string
 		want int64
-	}{{"Messages", 2}, {"Objects", 1}, {"Arms", 2}} {
+	}{{"Arms", 2}} {
 		c := u.Consts[tc.name]
 		if c == nil || c.Int == nil || c.Int.Int64() != tc.want {
 			t.Errorf("const %s: want %d, got %v — generated-set Max must resolve during const folding", tc.name, tc.want, c)
@@ -304,14 +290,71 @@ type Config {
 	}
 }
 
-// Tables left the language, and the projection keeps a FROZEN
-// `table=false` token on every type line so the removal moved no id for any
-// unit that never declared one — verified at the removal against the pinned
-// examples128 id, and held here so the token cannot quietly disappear.
-// Dropping it is a ProjectionVersion bump, taken deliberately or not at all.
+// Tables, messages and the round spelling left the language, and the
+// projection keeps THREE FROZEN tokens so each removal moved no id for any
+// unit that never declared one: `table=false` and `message=false` on every
+// type line, and `round=nearest` on every compressed-float field line (the
+// checker defaults it, so it rendered on every such line already). Held
+// here so no token can quietly disappear. Dropping one is a
+// ProjectionVersion bump, taken deliberately or not at all.
 func TestFrozenTableToken(t *testing.T) {
-	u := build(t, "package probe\n\ntype P {\n    x int32\n}\n")
-	if !strings.Contains(ir.WireProjection(u), "type P table=false message=false") {
-		t.Fatal("the frozen table=false token left the projection — every unit's id just moved without a ProjectionVersion bump")
+	u := build(t, "package probe\n\ntype P {\n    x int32\n    f float32 | min = 0, max = 1, resolution = 0.1\n}\n")
+	proj := ir.WireProjection(u)
+	if !strings.Contains(proj, "type P table=false message=false") {
+		t.Fatal("a frozen token left the type line — every unit's id just moved without a ProjectionVersion bump")
+	}
+	if !strings.Contains(proj, "field f kind=3 floatrange=[0,1] res=0.1 steps=10 round=nearest") {
+		t.Fatal("the frozen round=nearest token left the compressed-float line — every compressed-float unit's id just moved without a ProjectionVersion bump")
+	}
+}
+
+// The protocol-free neutrality probe: a unit of types, enums, flags, unions,
+// constants and a COMPRESSED FLOAT (the composition matters — a float-free
+// probe could not see the round token), with its id and full projection
+// pinned as literals. Any rendering change that moves this unit's id is a
+// compatibility break for every protocol-free unit in the wild and must be
+// a deliberate ProjectionVersion bump.
+func TestProtocolFreeUnitIdPinned(t *testing.T) {
+	u := build(t, `package probe
+
+const MaxHealth = 1000
+
+enum Team { Red, Blue }
+
+flags ProbeFlags { Armed, Cloaked, Damaged }
+
+type Attitude {
+    orientation float32 | min = 0, max = 360, resolution = 0.1
+    health      int32   | min = 0, max = MaxHealth
+}
+
+type Ring {
+    radius uint16
+}
+
+union Shape {
+    ring     Ring
+    attitude Attitude
+}
+`)
+	const pinnedId = uint64(0xad54eaab53f241b4)
+	if u.ProtocolId != pinnedId {
+		t.Fatalf("the neutrality probe's id moved: 0x%016x, pinned 0x%016x", u.ProtocolId, pinnedId)
+	}
+	const pinnedProjection = `schema-wire-projection 1
+package probe
+enum Team max=2 storage=8 variants=2
+flags ProbeFlags wirebits=3
+type Attitude table=false message=false
+  field orientation kind=3 floatrange=[0,360] res=0.1 steps=3600 round=nearest
+  field health kind=0 width=32 signed=true intrange=[0,1000]
+type Ring table=false message=false
+  field radius kind=0 width=16 signed=false
+union Shape max=2
+  variant 1 payload=Ring
+  variant 2 payload=Attitude
+`
+	if got := ir.WireProjection(u); got != pinnedProjection {
+		t.Fatalf("the neutrality probe's projection moved:\n%s\npinned:\n%s", got, pinnedProjection)
 	}
 }
