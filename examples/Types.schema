@@ -33,7 +33,8 @@ type Quat | quat4
 
 // A handle to another object: id + generation sequence.
 // object_id 0 doubles as the null sentinel (the surveyed NULL_OBJECT convention).
-type Handle {
+type Handle
+{
     object_id       int32 | min = 0, max = MaxObjects - 1
     object_sequence uint8
 }
@@ -41,19 +42,22 @@ type Handle {
 // Hand-quantized vectors and rotation — the pre-object-views idiom ShipCreate uses below.
 // (Object views express the same thing with [interpolate, quantize = ...]; both
 // belong in the corpus while both idioms exist in real code.)
-type QuantizedPosition {
+type QuantizedPosition
+{
     x int32 | min = -MaxPositionUnits, max = MaxPositionUnits
     y int32 | min = -MaxPositionUnits, max = MaxPositionUnits
     z int32 | min = -MaxPositionUnits, max = MaxPositionUnits
 }
 
-type QuantizedVelocity {
+type QuantizedVelocity
+{
     x int32 | min = -MaxVelocityUnits, max = MaxVelocityUnits
     y int32 | min = -MaxVelocityUnits, max = MaxVelocityUnits
     z int32 | min = -MaxVelocityUnits, max = MaxVelocityUnits
 }
 
-type QuantizedRotation {
+type QuantizedRotation
+{
     x int16 | min = -RotationUnits, max = RotationUnits
     y int16 | min = -RotationUnits, max = RotationUnits
     z int16 | min = -RotationUnits, max = RotationUnits
@@ -70,11 +74,13 @@ type QuantizedRotation {
 // zero-on-untaken-branch rule, the language's contract rather than a
 // convention the caller remembers. The branch costs no wire bits beyond the
 // bool already paid for (back-referencing, SPEC §4.5).
-table RigidBody {
+table RigidBody
+{
     position    Vec3
     orientation Quat
     at_rest     bool
-    if !at_rest {
+    if !at_rest
+    {
         linear_velocity  Vec3
         angular_velocity Vec3
     }
@@ -82,7 +88,8 @@ table RigidBody {
 
 // ---- input ----
 
-type Input {
+type Input
+{
     stick_x  float32
     stick_y  float32
     throttle float32
@@ -99,7 +106,8 @@ type Input {
     ping     bool
 }
 
-type InputPacket {
+type InputPacket
+{
     synchronize_sequence uint16
     current_frame        uint64
     start_frame          uint64
@@ -110,7 +118,8 @@ type InputPacket {
 
 // ---- the create idiom (pre-object-views) ----
 
-type ShipCreate {
+type ShipCreate
+{
     // ship_type is a plain enum: wire [0, ShipType.Max], None wire-legal. The
     // hand-written create path writes [1, MAX] — that index form (enum_index)
     // was designed and cut for now (SPEC §9 q11); one unused wire value is the
@@ -123,7 +132,8 @@ type ShipCreate {
 
     // the flags gate idiom: one bool saves the flag bits in the common all-zero case
     has_flags bool
-    if has_flags {
+    if has_flags
+    {
         flags ShipFlags
     }
 
@@ -147,7 +157,8 @@ type ShipCreate {
 // themselves refuse a paren regression: dropping the author's parens or the
 // doubled-minus parenthesization changes no wire bit and no folded value —
 // only these goldens go red.
-type ExpressionProbe {
+type ExpressionProbe
+{
     hardpoint_index int32 | min = 0, max = (ShipMaxLasers + ShipMaxMissiles) - 1
     spin_rate       int32 | min = --RotationUnits, max = RotationUnits * 2
 }
@@ -171,7 +182,8 @@ type ExpressionProbe {
 const FloorLimit          = -9223372036854775808
 const CeilingCount uint64 = 18446744073709551615
 
-type ExtremeProbe {
+type ExtremeProbe
+{
     floor_bound     int64                         | min = -9223372036854775808, max = 100
     doubled_floor   int64                         | min = --FloorLimit, max = 100
     ceiling_range   uint64                        | min = 1, max = 18446744073709551615
@@ -179,7 +191,8 @@ type ExtremeProbe {
     ceiling_default uint64 = 18446744073709551615
 }
 
-table ExtremeRow {
+table ExtremeRow
+{
     clamped_floor   int64                         | min = -9223372036854775808, max = 100
     clamped_ceiling uint64                        | min = 1, max = 18446744073709551614
     floor_def       int64 = -9223372036854775808

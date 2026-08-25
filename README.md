@@ -12,18 +12,21 @@ const MaxHealth = 1000
 
 enum ShipType { Fighter, Corvette, Bomber }
 
-type Vec3 {
+type Vec3
+{
     x float64
     y float64
     z float64
 }
 
-message ShipState {
+message ShipState
+{
     ship_type ShipType
     position  Vec3
     health    int32 | min = 0, max = MaxHealth
     at_rest   bool
-    if !at_rest {
+    if !at_rest
+    {
         velocity Vec3
     }
 }

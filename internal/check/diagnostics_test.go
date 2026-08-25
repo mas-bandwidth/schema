@@ -504,6 +504,8 @@ func TestGoodCornersStillCompile(t *testing.T) {
 			src: "package t\ntype T { h int16 | min = 0, max = 5 // the section ends here\n}\n"},
 		{name: "a qualified declaration's body opens on the next line",
 			src: "package t\nenum E | max = 5\n{ A, B }\ntype Q | tagged\n{\n    e E\n}\n"},
+		{name: "both brace placements parse (Allman canonical, same-line tolerated)",
+			src: "package t\ntype A {\n    x uint8\n}\ntype B\n{\n    a bool\n    if a {\n        y uint8\n    }\n    if !a\n    {\n        z uint8\n    }\n}\n"},
 		{name: "message as a field type",
 			src: "package t\nmessage M { x uint8 }\ntype T { m M }\n"},
 		{name: "empty type and empty message",

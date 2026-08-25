@@ -39,13 +39,15 @@ const MaxHealth = 1000
 
 enum ShipType { Fighter, Corvette, Bomber }
 
-type Vector3 {
+type Vector3
+{
     x float64
     y float64
     z float64
 }
 
-message ShipCreate {
+message ShipCreate
+{
     ship_type ShipType
     position  Vector3
     health    int32 | min = 0, max = MaxHealth
@@ -157,7 +159,8 @@ flags type and names `.Count` instead.
 A plain struct. Composes into messages, tables and other types:
 
 ```
-type Vector3 {
+type Vector3
+{
     x float64
     y float64
     z float64
@@ -170,14 +173,16 @@ A first-class one-of: at most one of a named set of payloads, discriminated
 by a generated tag.
 
 ```
-union ColliderShape {
+union ColliderShape
+{
     box     BoxCollider
     sphere  SphereCollider
     capsule CapsuleCollider
     hull    HullCollider
 }
 
-type Collider {
+type Collider
+{
     armor uint8
     shape ColliderShape
 }
@@ -378,9 +383,11 @@ if ( !WriteVector3( stream, value.position ) )
 ## Branches: if / else
 
 ```
-message ShipCreate {
+message ShipCreate
+{
     at_rest bool
-    if !at_rest {
+    if !at_rest
+    {
         velocity Vector3
     }
 }

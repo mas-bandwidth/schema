@@ -24,7 +24,8 @@ flags ProbeFlags | max = 8
 
 // the storage-less wire constructs (SPEC §4.3): a magic byte the read
 // REJECTS if wrong, reserved bits held at zero, and an alignment point
-type ProbeHeader {
+type ProbeHeader
+{
     const(0xAB, 8)
     version     bits(3)
     reserved(5)
@@ -35,7 +36,8 @@ type ProbeHeader {
 // bits at the interesting widths — 9, the 33-bit low-first boundary, 64 —
 // and the ranged-integer emission paths past int32: a full-range uint32
 // (the int64 call family) and a full-range uint64 (raw offset bits)
-type ProbeBits {
+type ProbeBits
+{
     small    bits(9)
     boundary bits(33)
     wide     bits(64)
@@ -47,18 +49,23 @@ type ProbeBits {
 // projection is a different codepath), a specified default, if/else with a
 // nested branch, bare int32/int64, and a range-counted array whose count
 // can never be zero
-type ProbeSample {
+type ProbeSample
+{
     active      bool = true
     orientation float32     | min = -HalfTurn, max = HalfTurn, resolution = 0.01
     raw_delta   int32
     big_delta   int64
-    if active {
+    if active
+    {
         weapon     Weapon
         has_target bool
-        if has_target {
+        if has_target
+        {
             target_id uint16
         }
-    } else {
+    }
+    else
+    {
         idle_ticks uint32
     }
     samples [1..8]uint16
@@ -67,23 +74,27 @@ type ProbeSample {
 // first-class one-of (SPEC §4.8): the tag rides in minimal bits for
 // [0, variant count], then the selected arm only; None = 0 is the in-band
 // empty union and a read rejects a tag above the count
-type ProbeRing {
+type ProbeRing
+{
     radius uint16
 }
 
-type ProbeSlab {
+type ProbeSlab
+{
     width  uint8 | min = 0, max = 100
     height uint8
 }
 
-union ProbeShape {
+union ProbeShape
+{
     ring ProbeRing
     slab ProbeSlab
 }
 
 // a union as a field, an empty (None) union field, and a counted array of
 // unions — every composition form the language admits
-type ProbeCollider {
+type ProbeCollider
+{
     armor  uint8
     shape  ProbeShape
     backup ProbeShape
@@ -92,7 +103,8 @@ type ProbeCollider {
 
 // specified defaults past bool (SPEC §4.2): a negative integer and an enum
 // variant — zero init everywhere else
-type ProbeConfig {
+type ProbeConfig
+{
     retries   int32 = -1
     preferred Weapon = Railgun
 }
@@ -100,14 +112,16 @@ type ProbeConfig {
 // a type composing DEFAULTED types — through a fixed array and a plain
 // member: New*/construction must install the inner defaults transitively in
 // every target (zero init reaches only fields with no specified default)
-table ProbeArray {
+table ProbeArray
+{
     samples [2]ProbeSample
     config  ProbeConfig
 }
 
 // a message used as an ordinary field type — a message IS an ordinary type
 // (SPEC §4.8)
-type ProbeReport {
+type ProbeReport
+{
     header ProbeHeader
     flags  ProbeFlags
     echo   Test
@@ -121,7 +135,8 @@ type ProbeReport {
 // explicit align (the exact-N bytes form died in the §4.7 unification); and
 // two constructs are v1-deferred by decision and absent — int_relative
 // (§4.10, the delta pass) and wstring.
-table TestData {
+table TestData
+{
     a int32 | min = -100, max = 100
     b int32 | min = -100, max = 100
     c int32 | min = -100, max = 150
@@ -167,7 +182,8 @@ table TestData {
 //                        on write and the + min reconstruction on read; a
 //                        full-range float32 sweep found no fused divergence
 //                        on this shape — measured, not assumed)
-type CompressedProbe {
+type CompressedProbe
+{
     boundary float32 | min = 0, max = 10, resolution = 0.01
     offset   float32 | min = -5, max = 5, resolution = 0.001
 }
