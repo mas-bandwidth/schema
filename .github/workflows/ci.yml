@@ -1,20 +1,70 @@
 name: CI
 
+# The gate split (issue #133): pull requests run a FAST iteration gate;
+# certification runs on every push to main, nightly, and on demand.
+#
+# What the split moves is WHEN the inline-budget gates run, not whether —
+# nothing checks less. Measured basis (2026-08-25, runs 32826150095 /
+# 32827197339): the full six-language conformance (`make test`) costs 31-45s;
+# the inline-budget gates cost ~9 of the ~10:30 wall minutes (go 2:44,
+# cs 3:47, rust 1:16, cpp 0:36, c 0:32 on macOS; go 2:23 on ubuntu). So the
+# PR leg KEEPS the entire conformance corpus — every construct class, every
+# target, both OSes, the goldens, the fuzz seeds, the staleness check — and
+# moves only the inline gates, which are certification instruments (they
+# fire on compiler-version changes by design) rather than iteration ones.
+# A cross-compiler inline regression a PR cannot see still fails loudly on
+# main minutes after merge, and nightly re-certifies a quiet main.
+#
+# For a full run on a branch before merging (e.g. a change near the hot
+# paths): gh workflow run ci.yml --ref <branch>.
+
 on:
   push:
     branches: [ main ]
   pull_request:
     branches: [ main ]
+  # a quiet main still gets certified daily (and govulncheck sees new CVEs)
+  schedule:
+    - cron: '17 9 * * *'
   workflow_dispatch:
 
+# Superseded pushes to the same PR cancel each other; certification runs
+# (main / nightly / dispatch) are NEVER cancelled — every main commit's
+# full-matrix proof must run to completion. The event name is part of the
+# group so a queued nightly and a queued push run can never displace each
+# other (a group holds only one pending run).
 concurrency:
-  group: ci-${{ github.ref }}
-  cancel-in-progress: true
+  group: ci-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+# The six runtimes the generated code targets, PINNED to each sibling's
+# latest RELEASED tag, never main: a sibling merging to main mid-day must
+# not change what a schema commit's CI proves — the sibling-HEAD race broke
+# this gate three separate times (2026-08-16/17) with green schema commits
+# going red on foreign pushes. One pin per sibling, exactly one place each
+# (these lines), shared by every job that clones the siblings.
+# To bump a pin: edit the *_TAG line to the new release tag — nothing else
+# changes. Find the newest tag with:
+#   gh release list --repo mas-bandwidth/<repo> --limit 1
+env:
+  SERIALIZE_TAG: v1.12.0
+  SERIALIZE_C_TAG: v1.5.0
+  SERIALIZE_GO_TAG: v1.11.0
+  SERIALIZE_RS_TAG: v2.2.0
+  SERIALIZE_CS_TAG: v1.5.0
+  SERIALIZE_JS_TAG: v1.1.0
 
 jobs:
+  # The fast gate, and the conformance half of certification. `make test`
+  # builds the corpus in all six languages and compares their wire against
+  # the C++-pinned goldens — that cross-language bit identity is the property
+  # this project exists to provide, and CI is where it gets proven on
+  # hardware we do not own. It runs on every trigger, PRs included, because
+  # it is cheap (31-45s measured): the fast leg trims nothing from it.
   test:
     name: test (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
     strategy:
       fail-fast: false
       matrix:
@@ -23,33 +73,12 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      # The six runtimes the generated code targets. `make test` builds the
-      # corpus in all six languages and compares their wire against the
-      # C++-pinned goldens, so every one of them has to be present — that
-      # cross-language bit identity is the property this project exists to
-      # provide, and CI is where it gets proven on hardware we do not own.
-      # Cloned as SIBLINGS of this repo, which is exactly what README.md tells a
-      # newcomer to do — so CI exercises the documented path rather than a
-      # special one. The Makefile's SERIALIZE* defaults already point here, and
-      # the generated go.mod / Cargo.toml and the test/js* module-relative
-      # imports embed relative paths that only resolve under this layout.
-      #
-      # PINNED to each sibling's latest RELEASED tag, never main: a sibling
-      # merging to main mid-day must not change what a schema commit's CI
-      # proves — the sibling-HEAD race broke this gate three separate times
-      # (2026-08-16/17) with green schema commits going red on foreign pushes.
-      # One pin per sibling, exactly one place each (the env lines below).
-      # To bump a pin: edit that sibling's *_TAG line to the new release tag —
-      # nothing else changes. Find the newest tag with:
-      #   gh release list --repo mas-bandwidth/<repo> --limit 1
+      # Siblings cloned exactly where README.md tells a newcomer to put them —
+      # CI exercises the documented path rather than a special one. The
+      # Makefile's SERIALIZE* defaults already point here, and the generated
+      # go.mod / Cargo.toml and the test/js* module-relative imports embed
+      # relative paths that only resolve under this layout.
       - name: Check out the serialize runtimes (pinned releases)
-        env:
-          SERIALIZE_TAG: v1.12.0
-          SERIALIZE_C_TAG: v1.5.0
-          SERIALIZE_GO_TAG: v1.11.0
-          SERIALIZE_RS_TAG: v2.2.0
-          SERIALIZE_CS_TAG: v1.5.0
-          SERIALIZE_JS_TAG: v1.1.0
         run: |
           cd ..
           git clone --quiet --depth 1 --branch "$SERIALIZE_TAG"    https://github.com/mas-bandwidth/serialize.git    serialize
@@ -91,12 +120,11 @@ jobs:
         run: make test RUSTUP_BIN=/usr/bin
 
       # The committed generated/ tree is what this repo treats as ground
-      # truth — findings are receipted against its line numbers — and until
-      # now nothing ever proved it matches what the current generator emits.
-      # `make test` above regenerated every tracked file IN PLACE, so
-      # staleness is precisely a dirty tree here: a tracked file that
-      # changed, or a newly emitted file nobody committed (which a diff-only
-      # check would miss). Locally: `make generated-current`.
+      # truth — findings are receipted against its line numbers. `make test`
+      # above regenerated every tracked file IN PLACE, so staleness is
+      # precisely a dirty tree here: a tracked file that changed, or a newly
+      # emitted file nobody committed (which a diff-only check would miss).
+      # Locally: `make generated-current`.
       - name: generated tree is current
         run: |
           git diff --exit-code generated/ || {
@@ -116,47 +144,96 @@ jobs:
       - name: fuzz seeds
         run: go test ./internal/fuzz/
 
-      # The per-port inline-budget gate (issue #25; BENCH-STANDARD.md §4.3).
-      # Every runtime's throughput depends on the serialize chain inlining
-      # end to end, and until this gate nothing warned when it stopped. The
-      # adversarial selftest runs FIRST and everywhere: the verdict machinery
-      # must prove it CAN fail (out-of-line -> partial, cold never counted
-      # hot, the 4dc9b62 namespace-join false-full caught) before any leg's
-      # green is trusted. Then each language leg rebuilds, re-derives the
-      # §4.2 verdict from the current tree, and fails the job if any hot-path
-      # partial:N exceeds bench/inline-budget.txt. The go leg's remark scan
-      # runs under `go build -a` and REFUSES if it prints nothing — without
-      # -a the build cache reads as a false clean bill of health (§4.1).
-      # Accepted deliberately: the gate also fires on compiler-version
-      # changes, and telling those apart from regressions is manual. There
-      # is no js leg on purpose: every verdict pass is ahead-of-time
-      # disassembly, and a JIT has no build-time artifact to gate — faking
-      # one would be a green light that proves nothing.
+  # The per-port inline-budget gate (issue #25; BENCH-STANDARD.md §4.3),
+  # fanned out one leg per job so the legs run concurrently instead of
+  # serially (they were ~9 minutes end to end in one job; the longest single
+  # leg is ~4). Certification triggers only — these are certification
+  # instruments, not iteration ones (the gate fires on compiler-version
+  # changes by design, issue #25), so PRs skip them and main / nightly /
+  # dispatch prove them minutes later.
+  #
+  # Every runtime's throughput depends on the serialize chain inlining end
+  # to end, and until this gate nothing warned when it stopped. The
+  # adversarial selftest runs FIRST and in EVERY leg job: the verdict
+  # machinery must prove it CAN fail (out-of-line -> partial, cold never
+  # counted hot, the 4dc9b62 namespace-join false-full caught) before that
+  # leg's green is trusted. Each leg builds its own artifacts (one untimed
+  # bench round), re-derives the §4.2 verdict from the current tree, and
+  # fails the job if any hot-path partial:N exceeds bench/inline-budget.txt.
+  # The go leg's remark scan runs under `go build -a` and REFUSES if it
+  # prints nothing — without -a the build cache reads as a false clean bill
+  # of health (§4.1).
+  #
+  # The go leg gates on BOTH OSes; the c/cpp/rust verdict passes are
+  # otool/arm64-shaped (§4.1), so on linux inline-verdict.sh refuses
+  # honestly rather than faking a full — those legs, and the JitDisasm-shaped
+  # cs leg, gate on the macOS runner only. There is no js leg on purpose:
+  # every verdict pass is ahead-of-time disassembly, and a JIT has no
+  # build-time artifact to gate — faking one would be a green light that
+  # proves nothing.
+  # No explicit name: the default gives "inline-gate (os, leg)" per matrix
+  # combination when it runs, and a clean single "inline-gate" placeholder on
+  # PR runs — an expression name would show up raw there, because a skipped
+  # job's matrix is never expanded.
+  inline-gate:
+    if: github.event_name != 'pull_request'
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: ubuntu-latest, leg: go }
+          - { os: macos-latest,  leg: go }
+          - { os: macos-latest,  leg: cpp }
+          - { os: macos-latest,  leg: c }
+          - { os: macos-latest,  leg: rust }
+          - { os: macos-latest,  leg: cs }
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Check out the serialize runtimes (pinned releases)
+        run: |
+          cd ..
+          git clone --quiet --depth 1 --branch "$SERIALIZE_TAG"    https://github.com/mas-bandwidth/serialize.git    serialize
+          git clone --quiet --depth 1 --branch "$SERIALIZE_C_TAG"  https://github.com/mas-bandwidth/serialize.c.git  serialize.c
+          git clone --quiet --depth 1 --branch "$SERIALIZE_GO_TAG" https://github.com/mas-bandwidth/serialize.go.git serialize.go
+          git clone --quiet --depth 1 --branch "$SERIALIZE_RS_TAG" https://github.com/mas-bandwidth/serialize.rs.git serialize.rs
+          git clone --quiet --depth 1 --branch "$SERIALIZE_CS_TAG" https://github.com/mas-bandwidth/serialize.cs.git serialize.cs
+          git clone --quiet --depth 1 --branch "$SERIALIZE_JS_TAG" https://github.com/mas-bandwidth/serialize.js.git serialize.js
+
+      # All four toolchains regardless of leg: the `make test` precondition
+      # step below builds the whole tree (six languages), exactly as the
+      # single-job flow did before the fan-out — the gate legs verdict the
+      # same artifacts they always have.
+      - uses: actions/setup-go@v7
+        with:
+          go-version: '1.26'
+          cache: false
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: '8.0'
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '20'
+
+      # The same preconditions the gates had when they ran after `make test`
+      # in one job: bin/schema, the generated trees, and the bench units all
+      # built (31-45s measured — cheap enough to repeat per leg rather than
+      # invent a narrower target with different semantics).
+      - name: make test
+        run: make test RUSTUP_BIN=/usr/bin
+
       - name: inline gate — adversarial selftest
         run: bench/tools/inline-gate.sh selftest
 
-      - name: inline gate — go leg
-        run: bench/tools/inline-gate.sh leg go
-
-      # The c/cpp/rust verdict passes are otool/arm64-shaped (§4.1); on
-      # linux inline-verdict.sh refuses honestly rather than faking a full,
-      # so these legs — and the JitDisasm-shaped cs leg — gate on the macOS
-      # runner only.
-      - name: inline gate — cpp leg
-        if: runner.os == 'macOS'
-        run: bench/tools/inline-gate.sh leg cpp
-
-      - name: inline gate — c leg
-        if: runner.os == 'macOS'
-        run: bench/tools/inline-gate.sh leg c
-
-      - name: inline gate — rust leg
-        if: runner.os == 'macOS'
-        run: bench/tools/inline-gate.sh leg rust
-
-      - name: inline gate — cs leg
-        if: runner.os == 'macOS'
-        run: bench/tools/inline-gate.sh leg cs
+      - name: inline gate — ${{ matrix.leg }} leg
+        run: bench/tools/inline-gate.sh leg ${{ matrix.leg }}
 
   # Lifted from serialize.go's ci.yml (issue #31): the estate's largest Go
   # codebase had no Go linting at all while serialize.go ran six gates. The
