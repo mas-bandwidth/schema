@@ -168,6 +168,107 @@ func TestEnumExtentEmitted(t *testing.T) {
 	}
 }
 
+// A union declaration emits its full surface in every target (SPEC §4.8):
+// the <Union>Type tag enum with None/variants/Max, the storage shape, the
+// wire pair, and the bounds. The needles pin each target's idiom — red-first
+// against the pre-union compiler, where the C backend refused the IR kind
+// loudly and every other backend skipped it silently.
+func TestUnionSurfaceEmitted(t *testing.T) {
+	src := "package t\n\n" +
+		"type Box { x uint8 }\n\n" +
+		"type Ball { r uint16 }\n\n" +
+		"union Shape {\n    box  Box\n    ball Ball\n}\n\n" +
+		"type Holder { shape Shape }\n"
+	f, perrs := parser.Parse("Unions.schema", []byte(src))
+	if len(perrs) > 0 {
+		t.Fatalf("parse: %v", perrs[0])
+	}
+	u, cerrs := check.Unit([]check.SourceFile{{
+		Path: "Unions.schema", Name: "Unions.schema", Base: "Unions",
+		Bytes: []byte(src), AST: f,
+	}})
+	if len(cerrs) > 0 {
+		t.Fatalf("check: %v", cerrs[0])
+	}
+
+	type expectation struct {
+		needle string
+		count  int
+	}
+	type target struct {
+		name    string
+		files   map[string][]byte
+		genErr  error
+		expects []expectation
+	}
+	var targets []target
+	addTarget := func(name string, files map[string][]byte, err error, expects ...expectation) {
+		targets = append(targets, target{name, files, err, expects})
+	}
+
+	goFiles, goErr := Generate(u)
+	addTarget("Go", goFiles, goErr,
+		expectation{"type ShapeType uint8", 1},
+		expectation{"ShapeTypeMax", 1},
+		expectation{"type Shape struct", 1},
+		expectation{"func WriteShape(stream *serialize.WriteStream, value *Shape) error", 1},
+		expectation{"func ReadShape(stream *serialize.ReadStream, value *Shape) error", 1},
+		expectation{"const ShapeMaxBits = 18", 1})
+	rustFiles, rustErr := rust.Generate(u)
+	addTarget("Rust", rustFiles, rustErr,
+		expectation{"pub struct ShapeType(pub u8);", 1},
+		expectation{"pub const MAX: ShapeType = ShapeType(2);", 1},
+		expectation{"pub enum Shape {", 1},
+		expectation{"pub fn write_shape(stream: &mut WriteStream<'_>, value: &Shape) -> Result {", 1},
+		expectation{"pub fn read_shape(stream: &mut ReadStream<'_>, value: &mut Shape) -> Result {", 1},
+		expectation{"pub const SHAPE_MAX_BITS: u64 = 18;", 1})
+	csFiles, csErr := csharp.Generate(u)
+	addTarget("C#", csFiles, csErr,
+		expectation{"public enum ShapeType", 1},
+		expectation{"public sealed class Shape", 1},
+		expectation{"public static bool WriteShape(WriteStream stream, Shape value)", 1},
+		expectation{"public static bool ReadShape(ReadStream stream, Shape value)", 1},
+		expectation{"public static void ZeroShape(Shape value)", 1},
+		expectation{"public const long ShapeMaxBits = 18;", 1})
+	jsFiles, jsErr := js.Generate(u)
+	addTarget("JS", jsFiles, jsErr,
+		expectation{"export const ShapeType = Object.freeze({", 1},
+		expectation{"export class Shape {", 1},
+		expectation{"export function WriteShape(stream, value) {", 1},
+		expectation{"export function ReadShape(stream, value) {", 1},
+		expectation{"export function ZeroShape(value) {", 1},
+		expectation{"export const ShapeMaxBits = 18;", 1})
+	cFiles, cErr := cgen.Generate(u)
+	addTarget("C", cFiles, cErr,
+		expectation{"typedef uint8_t ShapeType;", 1},
+		expectation{"#define SHAPE_TYPE_MAX 2", 1},
+		expectation{"typedef struct Shape {", 1},
+		expectation{"int write_shape( serialize_write_stream_t * stream, const Shape * value )", 1},
+		expectation{"int read_shape( serialize_read_stream_t * stream, Shape * value )", 1},
+		expectation{"#define SHAPE_MAX_BITS 18", 1})
+	for _, mode := range []string{"union", "variant"} {
+		cppFiles, cppErr := cpp.Generate(u, cpp.Options{MessageRepr: mode})
+		addTarget("C++ ("+mode+")", cppFiles, cppErr,
+			expectation{"enum class ShapeType : uint8_t {", 1},
+			expectation{"struct Shape\n{", 1},
+			expectation{"SCHEMA_WRITE_INLINE bool WriteShape( serialize::WriteStream & stream, const Shape & value )", 1},
+			expectation{"SCHEMA_READ_INLINE bool ReadShape( serialize::ReadStream & stream, Shape & value )", 1},
+			expectation{"inline constexpr int64_t ShapeMaxBits = 18;", 1})
+	}
+
+	for _, tgt := range targets {
+		if tgt.genErr != nil {
+			t.Errorf("%s: generate: %v", tgt.name, tgt.genErr)
+			continue
+		}
+		for _, e := range tgt.expects {
+			if got := countAcross(tgt.files, e.needle); got != e.count {
+				t.Errorf("%s: %q emitted %d times, want %d — the union surface must ride every target (SPEC §4.8)", tgt.name, e.needle, got, e.count)
+			}
+		}
+	}
+}
+
 func TestDispatchSurfaceEmittedOnce(t *testing.T) {
 	u := multiFileUnit(t)
 

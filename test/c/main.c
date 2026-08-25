@@ -334,6 +334,62 @@ int main( void )
                "ProbeBits round-trips — 9/33/64-bit and full-range paths" );
     }
 
+    /* ---- ProbeCollider: first-class one-of (SPEC §4.8) — C++-pinned wire,
+       round trip, the None arm, an array of unions, and the refusal
+       negative controls ---- */
+    {
+        ProbeCollider in, out;
+        int bytes;
+        memset( &in, 0, sizeof( in ) );
+        check( in.shape.type == PROBE_SHAPE_TYPE_NONE, "zero IS the empty union" );
+        check( PROBE_SHAPE_MAX_BITS == 2 + 16, "MAX_BITS is tag + the largest arm" );
+
+        in.armor = 7;
+        in.shape.type = PROBE_SHAPE_TYPE_SLAB;
+        in.shape.as.slab.width = 42;
+        in.shape.as.slab.height = 9;
+        /* in.backup stays None — the empty arm costs the tag bits only */
+        in.extras_count = 1;
+        in.extras[0].type = PROBE_SHAPE_TYPE_RING;
+        in.extras[0].as.ring.radius = 777;
+
+        serialize_write_stream_init( &w, buffer, sizeof( buffer ) );
+        check( write_probe_collider( &w, &in ), "write ProbeCollider" );
+        serialize_write_flush( &w );
+        bytes = serialize_write_bytes_processed( &w );
+        golden_wire( "probecollider", buffer, bytes );
+
+        memset( &out, 0, sizeof( out ) );
+        out.backup.type = PROBE_SHAPE_TYPE_RING; /* dirty — the read must restore None */
+        serialize_read_stream_init( &r, buffer, bytes );
+        check( read_probe_collider( &r, &out ), "read ProbeCollider" );
+        check( out.armor == 7 && out.shape.type == PROBE_SHAPE_TYPE_SLAB &&
+               out.shape.as.slab.width == 42 && out.shape.as.slab.height == 9,
+               "the selected arm round-trips" );
+        check( out.backup.type == PROBE_SHAPE_TYPE_NONE, "the None arm reads back empty" );
+        check( out.extras_count == 1 && out.extras[0].type == PROBE_SHAPE_TYPE_RING &&
+               out.extras[0].as.ring.radius == 777, "the union array round-trips" );
+
+        /* NEGATIVE CONTROL — perturb the tag: 2 bits at bit offset 8, range
+           [0, 2]; forcing both bits makes 3 and the read must refuse */
+        buffer[1] |= 0x03;
+        serialize_read_stream_init( &r, buffer, bytes );
+        check( !read_probe_collider( &r, &out ), "an out-of-range union tag is refused (SPEC §4.8)" );
+        buffer[1] = (unsigned char) ( buffer[1] & ~0x03 ) | 0x02; /* restore tag = 2 */
+
+        /* NEGATIVE CONTROL — corrupt the arm payload: width rides 7 bits at
+           bit offset 10 with range [0, 100]; all seven bits decode 127 */
+        buffer[1] |= 0xFC;
+        buffer[2] |= 0x01;
+        serialize_read_stream_init( &r, buffer, bytes );
+        check( !read_probe_collider( &r, &out ), "a corrupt union arm payload is refused (SPEC §4.8)" );
+
+        /* the write side validates the tag BEFORE it rides */
+        in.shape.type = (ProbeShapeType) 3;
+        serialize_write_stream_init( &w, buffer, sizeof( buffer ) );
+        check( !write_probe_collider( &w, &in ), "an out-of-set union tag writes nothing (SPEC §4.8)" );
+    }
+
     /* ---- TestData: signed narrows, full-range ints, align, fixed bytes, string ---- */
     {
         TestData in, out;

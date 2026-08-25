@@ -2,7 +2,7 @@
    SPDX-License-Identifier: NONE — this generated output is yours, under terms of
    your choice. See the LICENSE exception in the schema compiler; the compiler is
    AGPL-3.0, its output is not.
-   package example — protocol id 0x40230069cc791fab */
+   package example — protocol id 0x9cdffa5a3048f991 */
 
 #ifndef SCHEMA_EXAMPLE_WIREWIRE_H
 #define SCHEMA_EXAMPLE_WIREWIRE_H
@@ -510,6 +510,202 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_probe_sample( serialize_read_
                     return 0;
                 }
                 value->samples[i] = (uint16_t) raw;
+            }
+        }
+    }
+    return 1;
+}
+
+/* Writes ProbeRing. Returns 1 on success, 0 on failure — the stream latches the
+   error, so a caller may check once at the end of a message. */
+static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_probe_ring( serialize_write_stream_t * stream, const ProbeRing * value )
+{
+    if ( !serialize_write_bits( stream, (serialize_uint32_t) value->radius, 16 ) )
+    {
+        return 0;
+    }
+    return 1;
+}
+
+/* Reads ProbeRing. Returns 1 on success, 0 on failure. Out-of-range values are
+   REFUSED, never clamped. */
+static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_probe_ring( serialize_read_stream_t * stream, ProbeRing * value )
+{
+    {
+        serialize_uint32_t raw = 0;
+        if ( !serialize_read_bits( stream, &raw, 16 ) )
+        {
+            return 0;
+        }
+        value->radius = (uint16_t) raw;
+    }
+    return 1;
+}
+
+/* Writes ProbeSlab. Returns 1 on success, 0 on failure — the stream latches the
+   error, so a caller may check once at the end of a message. */
+static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_probe_slab( serialize_write_stream_t * stream, const ProbeSlab * value )
+{
+    if ( (serialize_int64_t) value->width > 100 )
+    {
+        return 0; /* out-of-contract writes are refused, not wrapped */
+    }
+    if ( !serialize_write_bits( stream, (serialize_uint32_t) ( value->width ), 7 ) )
+    {
+        return 0;
+    }
+    if ( !serialize_write_bits( stream, (serialize_uint32_t) value->height, 8 ) )
+    {
+        return 0;
+    }
+    return 1;
+}
+
+/* Reads ProbeSlab. Returns 1 on success, 0 on failure. Out-of-range values are
+   REFUSED, never clamped. */
+static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_probe_slab( serialize_read_stream_t * stream, ProbeSlab * value )
+{
+    {
+        serialize_uint64_t offset_value = 0;
+        serialize_uint32_t raw = 0;
+        if ( !serialize_read_bits( stream, &raw, 7 ) )
+        {
+            return 0;
+        }
+        offset_value = raw;
+        if ( offset_value > 100ULL )
+        {
+            return 0;
+        }
+        value->width = (uint8_t) offset_value;
+    }
+    {
+        serialize_uint32_t raw = 0;
+        if ( !serialize_read_bits( stream, &raw, 8 ) )
+        {
+            return 0;
+        }
+        value->height = (uint8_t) raw;
+    }
+    return 1;
+}
+
+/* Writes ProbeShape. Returns 1 on success, 0 on failure. The tag is validated
+   BEFORE it rides: an out-of-set tag writes nothing (SPEC §4.8). */
+static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_probe_shape( serialize_write_stream_t * stream, const ProbeShape * value )
+{
+    if ( value->type > PROBE_SHAPE_TYPE_MAX )
+    {
+        return 0; /* not a ProbeShapeType value; nothing was written */
+    }
+    if ( !serialize_write_bits( stream, (serialize_uint32_t) value->type, 2 ) )
+    {
+        return 0;
+    }
+    switch ( value->type )
+    {
+        case 1:
+            return write_probe_ring( stream, &value->as.ring );
+        case 2:
+            return write_probe_slab( stream, &value->as.slab );
+        default:
+            return 1; /* None — the tag is the whole wire (SPEC §4.8) */
+    }
+}
+
+/* Reads ProbeShape. Returns 1 on success, 0 on failure — a tag above PROBE_SHAPE_TYPE_MAX is
+   refused (SPEC §4.8); the selected arm is zero-established before decoding (§5). */
+static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_probe_shape( serialize_read_stream_t * stream, ProbeShape * value )
+{
+    {
+        serialize_uint32_t tag_value = 0;
+        if ( !serialize_read_bits( stream, &tag_value, 2 ) )
+        {
+            return 0;
+        }
+        if ( tag_value > PROBE_SHAPE_TYPE_MAX )
+        {
+            return 0; /* not a wire-legal tag */
+        }
+        value->type = (ProbeShapeType) tag_value;
+    }
+    switch ( value->type )
+    {
+        case 1:
+            memset( &value->as.ring, 0, sizeof( value->as.ring ) );
+            return read_probe_ring( stream, &value->as.ring );
+        case 2:
+            memset( &value->as.slab, 0, sizeof( value->as.slab ) );
+            return read_probe_slab( stream, &value->as.slab );
+        default:
+            return 1; /* None */
+    }
+}
+
+/* Writes ProbeCollider. Returns 1 on success, 0 on failure — the stream latches the
+   error, so a caller may check once at the end of a message. */
+static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_probe_collider( serialize_write_stream_t * stream, const ProbeCollider * value )
+{
+    if ( !serialize_write_bits( stream, (serialize_uint32_t) value->armor, 8 ) )
+    {
+        return 0;
+    }
+    if ( !write_probe_shape( stream, &value->shape ) )
+    {
+        return 0;
+    }
+    if ( !write_probe_shape( stream, &value->backup ) )
+    {
+        return 0;
+    }
+    if ( !serialize_write_int( stream, value->extras_count, 0, 2 ) )
+    {
+        return 0;
+    }
+    {
+        int32_t i;
+        for ( i = 0; i < value->extras_count; i++ )
+        {
+            if ( !write_probe_shape( stream, &value->extras[i] ) )
+            {
+                return 0;
+            }
+        }
+    }
+    return 1;
+}
+
+/* Reads ProbeCollider. Returns 1 on success, 0 on failure. Out-of-range values are
+   REFUSED, never clamped. */
+static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_probe_collider( serialize_read_stream_t * stream, ProbeCollider * value )
+{
+    {
+        serialize_uint32_t raw = 0;
+        if ( !serialize_read_bits( stream, &raw, 8 ) )
+        {
+            return 0;
+        }
+        value->armor = (uint8_t) raw;
+    }
+    if ( !read_probe_shape( stream, &value->shape ) )
+    {
+        return 0;
+    }
+    if ( !read_probe_shape( stream, &value->backup ) )
+    {
+        return 0;
+    }
+    if ( !serialize_read_int( stream, &value->extras_count, 0, 2 ) )
+    {
+        return 0;
+    }
+    {
+        int32_t i;
+        for ( i = 0; i < value->extras_count; i++ )
+        {
+            if ( !read_probe_shape( stream, &value->extras[i] ) )
+            {
+                return 0;
             }
         }
     }

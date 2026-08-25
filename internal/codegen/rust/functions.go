@@ -17,6 +17,58 @@ import (
 	"github.com/mas-bandwidth/schema/ir"
 )
 
+// emitUnionFunctions emits the union's bounds and wire pair (SPEC §4.8). The
+// tag rides in minimal bits for [0, count]; the read rejects a tag above the
+// count (serialize_int's own refusal) and builds the selected arm from its
+// zero form before decoding it — the read_message shape exactly.
+func (g *gen) emitUnionFunctions(d *ir.Union) {
+	g.needsStreams = true
+	snake := ir.RustSnake(d.Name)
+	maxBits := ir.MaxBitsUnion(d)
+	g.pf("// %s is the tag plus the largest arm; None costs the tag only (SPEC §4.8).\n", ir.RustConstName(d.Name+"MaxBits"))
+	g.pf("// %s is rounded up to the 8-byte write-buffer granularity.\n", ir.RustConstName(d.Name+"MaxBytes"))
+	g.pf("pub const %s: u64 = %d;\n", ir.RustConstName(d.Name+"MaxBits"), maxBits)
+	g.pf("pub const %s: usize = %d;\n\n", ir.RustConstName(d.Name+"MaxBytes"), ir.MaxBytes(maxBits))
+
+	bits := ir.BitsRequired(big.NewInt(0), big.NewInt(d.Max))
+	g.pf("pub fn write_%s(stream: &mut WriteStream<'_>, value: &%s) -> Result {\n", snake, d.Name)
+	if d.Max == 0 {
+		g.pf("    let _ = (stream, value); // only None exists; the degenerate tag range [0, 0] costs zero bits (SPEC §4.8)\n")
+		g.pf("    Ok(())\n}\n\n")
+	} else {
+		g.pf("    match value {\n")
+		g.pf("        %s::None => {\n", d.Name)
+		g.pf("            let mut offset_value: u32 = 0;\n")
+		g.pf("            stream.serialize_bits(&mut offset_value, %d)?;\n", bits)
+		g.pf("            Ok(()) // no payload — the tag is the whole wire (SPEC §4.8)\n        }\n")
+		for i, v := range d.Variants {
+			g.pf("        %s::%s(arm) => {\n", d.Name, ir.GoExportName(v.Name))
+			g.pf("            let mut offset_value: u32 = %d;\n", i+1)
+			g.pf("            stream.serialize_bits(&mut offset_value, %d)?;\n", bits)
+			g.pf("            write_%s(stream, arm)\n        }\n", ir.RustSnake(v.Type))
+		}
+		g.pf("    }\n}\n\n")
+	}
+
+	g.pf("pub fn read_%s(stream: &mut ReadStream<'_>, value: &mut %s) -> Result {\n", snake, d.Name)
+	if d.Max == 0 {
+		g.pf("    let _ = stream; // zero wire bits — only None exists (SPEC §4.8)\n")
+		g.pf("    *value = %s::None;\n    Ok(())\n}\n\n", d.Name)
+		return
+	}
+	g.pf("    let mut tag_value: i32 = 0;\n")
+	g.pf("    stream.serialize_int(&mut tag_value, 0, %d)?; // rejects a tag above the count (SPEC §4.8)\n", d.Max)
+	g.pf("    match tag_value {\n")
+	for i, v := range d.Variants {
+		g.pf("        %d => {\n", i+1)
+		g.pf("            let mut arm = %s::default();\n", v.Type)
+		g.pf("            read_%s(stream, &mut arm)?;\n", ir.RustSnake(v.Type))
+		g.pf("            *value = %s::%s(arm);\n        }\n", d.Name, ir.GoExportName(v.Name))
+	}
+	g.pf("        _ => *value = %s::None,\n", d.Name)
+	g.pf("    }\n    Ok(())\n}\n\n")
+}
+
 // emitStructFunctions emits MAX_BITS/MAX_BYTES and the split write/read pair
 // for a type or message.
 func (g *gen) emitStructFunctions(st *ir.Struct) {
@@ -577,6 +629,8 @@ func (g *gen) emitWriteScalar(f *ir.Field, name, ind string) {
 			g.emitWriteFlagsValue(name, ref.WireBits, ind)
 		case *ir.Struct:
 			g.pf("%swrite_%s(stream, &%s)?;\n", ind, ir.RustSnake(f.Type.Name), name)
+		case *ir.Union:
+			g.pf("%swrite_%s(stream, &%s)?;\n", ind, ir.RustSnake(f.Type.Name), name)
 		}
 	}
 }
@@ -777,6 +831,8 @@ func (g *gen) emitReadScalar(f *ir.Field, name, ind string) {
 		case *ir.Flags:
 			g.emitReadFlags(name, f.Type.Name, ref.WireBits, ind)
 		case *ir.Struct:
+			g.pf("%sread_%s(stream, &mut %s)?;\n", ind, ir.RustSnake(f.Type.Name), name)
+		case *ir.Union:
 			g.pf("%sread_%s(stream, &mut %s)?;\n", ind, ir.RustSnake(f.Type.Name), name)
 		}
 	}

@@ -9,7 +9,8 @@ compiler does.
 - [The five minute version](#the-five-minute-version)
 - [Declarations](#declarations)
   - [const](#const) · [enum](#enum) · [flags](#flags) · [type](#type) ·
-    [message](#message) · [table](#table) · [object](#object)
+    [union](#union) · [message](#message) · [table](#table) ·
+    [object](#object)
 - [Field types](#field-types)
   - [Integers](#integers) · [Ranged integers](#ranged-integers) ·
     [bits(N)](#bitsn) · [bool](#bool) · [Floats](#floats) ·
@@ -154,6 +155,64 @@ type Vector3 {
     z float64
 }
 ```
+
+### union
+
+A first-class one-of: at most one of a named set of payloads, discriminated
+by a generated tag.
+
+```
+union ColliderShape {
+    box     BoxCollider
+    sphere  SphereCollider
+    capsule CapsuleCollider
+    hull    HullCollider
+}
+
+type Collider {
+    armor uint8
+    shape ColliderShape
+}
+```
+
+**Every union has an implicit `None = 0`** — the empty union, in band, so a
+zero-initialized union field carries "no shape" without a has-flag. The
+compiler generates the tag enum `ColliderShapeType` (`None = 0`, variants in
+declared order, plus `Max`), and the wire is the tag in minimal bits for
+`[0, variant count]` followed by **the selected payload only**:
+
+```cpp
+enum class ColliderShapeType : uint8_t { None = 0, Box = 1, Sphere = 2, Capsule = 3, Hull = 4, Max = 4 };
+
+struct ColliderShape
+{
+    ColliderShapeType type;
+
+    union
+    {
+        BoxCollider box;
+        SphereCollider sphere;
+        CapsuleCollider capsule;
+        HullCollider hull;
+    };
+
+    ColliderShape() : type( ColliderShapeType::None ) {}
+};
+```
+
+That replaces the bool-guard idiom — `has_box bool` / `if has_box { box
+BoxCollider }` repeated per shape — which spends a bit per absent arm and
+lets illegal states (two shapes at once) exist for every consumer to police.
+A read **rejects a tag above the count**, and a write validates the tag
+before it rides. C++ reuses the message union shape above; Go, C# and JS lay
+the tag beside one pre-allocated arm per variant; Rust gets a real
+`enum ColliderShape { None, Box(BoxCollider), ... }`.
+
+Payloads are declared types — wrap a scalar or enum in a type. Unions ride
+`type` and `message` bodies (arrays too); an `object` body and the table
+closure refuse them in v1. In pack JSON a union value is a single-key
+object, the key naming the variant: `{ "sphere": { "radius": 2.5 } }`;
+`null` or absence is None.
 
 ### message
 

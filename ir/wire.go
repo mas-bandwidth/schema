@@ -106,9 +106,24 @@ func maxBitsScalar(f *Field) int64 {
 			return int64(ref.WireBits)
 		case *Struct:
 			return MaxBitsStruct(ref)
+		case *Union:
+			return MaxBitsUnion(ref)
 		}
 	}
 	return 0
+}
+
+// MaxBitsUnion is the longest wire path through a union: the tag plus the
+// largest payload (SPEC §4.8 — None costs the tag bits only).
+func MaxBitsUnion(u *Union) int64 {
+	bits := BitsRequired(big.NewInt(0), big.NewInt(u.Max))
+	var largest int64
+	for _, v := range u.Variants {
+		if b := MaxBitsStruct(v.Ref); b > largest {
+			largest = b
+		}
+	}
+	return bits + largest
 }
 
 // MaxBitsStruct is the longest wire path through a struct: branches take the
@@ -383,6 +398,12 @@ func FileDeps(u *Unit) map[string]map[string]bool {
 				noteFields(d.Fields)
 			case *Object:
 				noteFields(d.Fields)
+			case *Union:
+				// payloads are held by value — a cross-file payload is an
+				// include/use edge exactly like a named field type
+				for _, v := range d.Variants {
+					note(v.Type)
+				}
 			}
 		}
 		deps[f.Base] = set

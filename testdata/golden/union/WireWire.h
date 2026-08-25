@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package example — protocol id 0x40230069cc791fab
+// package example — protocol id 0x9cdffa5a3048f991
 
 #pragma once
 
@@ -306,6 +306,132 @@ SCHEMA_READ_INLINE bool ReadProbeSample( serialize::ReadStream & stream, ProbeSa
             uint32_t raw_value = 0;
             read_bits( stream, raw_value, 16 );
             value.samples[i] = uint16_t( raw_value );
+        }
+    }
+    return true;
+}
+
+SCHEMA_WRITE_INLINE bool WriteProbeRing( serialize::WriteStream & stream, const ProbeRing & value )
+{
+    write_bits( stream, value.radius, 16 );
+    return true;
+}
+
+SCHEMA_READ_INLINE bool ReadProbeRing( serialize::ReadStream & stream, ProbeRing & value )
+{
+    {
+        uint32_t raw_value = 0;
+        read_bits( stream, raw_value, 16 );
+        value.radius = uint16_t( raw_value );
+    }
+    return true;
+}
+
+SCHEMA_WRITE_INLINE bool WriteProbeSlab( serialize::WriteStream & stream, const ProbeSlab & value )
+{
+    serialize_assert( int32_t( value.width ) >= int32_t( 0 ) && int32_t( value.width ) <= int32_t( 100 ) );
+    write_bits( stream, uint32_t( value.width ), 7 );
+    write_bits( stream, value.height, 8 );
+    return true;
+}
+
+SCHEMA_READ_INLINE bool ReadProbeSlab( serialize::ReadStream & stream, ProbeSlab & value )
+{
+    {
+        int32_t range_value = 0;
+        read_int( stream, range_value, 0, 100 );
+        value.width = uint8_t( range_value );
+    }
+    {
+        uint32_t raw_value = 0;
+        read_bits( stream, raw_value, 8 );
+        value.height = uint8_t( raw_value );
+    }
+    return true;
+}
+
+SCHEMA_WRITE_INLINE bool WriteProbeShape( serialize::WriteStream & stream, const ProbeShape & value )
+{
+    switch ( value.type )
+    {
+        case ProbeShapeType::None:
+            write_bits( stream, 0u, 2 );
+            return true; // no payload — the tag is the whole wire (SPEC §4.8)
+        case ProbeShapeType::Ring:
+            write_bits( stream, 1u, 2 );
+            return WriteProbeRing( stream, value.ring );
+        case ProbeShapeType::Slab:
+            write_bits( stream, 2u, 2 );
+            return WriteProbeSlab( stream, value.slab );
+        default:
+            break;
+    }
+    return false; // not a ProbeShapeType value; nothing was written (SPEC §4.8)
+}
+
+SCHEMA_READ_INLINE bool ReadProbeShape( serialize::ReadStream & stream, ProbeShape & value )
+{
+    int32_t tag_value = 0;
+    read_int( stream, tag_value, 0, 2 ); // rejects a tag above the count (SPEC §4.8)
+    value.type = ProbeShapeType( tag_value );
+    switch ( value.type )
+    {
+        case ProbeShapeType::None:
+            return true;
+        case ProbeShapeType::Ring:
+            value.ring = ProbeRing{};
+            return ReadProbeRing( stream, value.ring );
+        case ProbeShapeType::Slab:
+            value.slab = ProbeSlab{};
+            return ReadProbeSlab( stream, value.slab );
+    }
+    return false;
+}
+
+SCHEMA_WRITE_INLINE bool WriteProbeCollider( serialize::WriteStream & stream, const ProbeCollider & value )
+{
+    write_bits( stream, value.armor, 8 );
+    if ( !WriteProbeShape( stream, value.shape ) )
+    {
+        return false;
+    }
+    if ( !WriteProbeShape( stream, value.backup ) )
+    {
+        return false;
+    }
+    serialize_assert( int32_t( value.extras_count ) >= int32_t( 0 ) && int32_t( value.extras_count ) <= int32_t( 2 ) );
+    write_bits( stream, uint32_t( value.extras_count ), 2 );
+    for ( int32_t i = 0; i < value.extras_count; i++ )
+    {
+        if ( !WriteProbeShape( stream, value.extras[i] ) )
+        {
+            return false;
+        }
+    }
+    return true;
+}
+
+SCHEMA_READ_INLINE bool ReadProbeCollider( serialize::ReadStream & stream, ProbeCollider & value )
+{
+    {
+        uint32_t raw_value = 0;
+        read_bits( stream, raw_value, 8 );
+        value.armor = uint8_t( raw_value );
+    }
+    if ( !ReadProbeShape( stream, value.shape ) )
+    {
+        return false;
+    }
+    if ( !ReadProbeShape( stream, value.backup ) )
+    {
+        return false;
+    }
+    read_int( stream, value.extras_count, 0, 2 );
+    for ( int32_t i = 0; i < value.extras_count; i++ )
+    {
+        if ( !ReadProbeShape( stream, value.extras[i] ) )
+        {
+            return false;
         }
     }
     return true;

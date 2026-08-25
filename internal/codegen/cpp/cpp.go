@@ -318,6 +318,9 @@ func (g *gen) emitDataFile(carriesProtocolId bool) {
 		case *ir.Struct:
 			g.emitStruct(d)
 			g.emitStructMaxBits(d)
+		case *ir.Union:
+			g.emitUnion(d)
+			g.emitUnionMaxBits(d)
 		case *ir.Object:
 			g.emitObject(d)
 			g.emitObjectQuantize(d)
@@ -361,6 +364,12 @@ func (g *gen) emitWireFile() {
 			fields = d.Fields
 		case *ir.Object:
 			fields = d.Fields
+		case *ir.Union:
+			// cross-file payloads mean cross-file wire calls exactly like
+			// named field types
+			for _, v := range d.Variants {
+				g.noteRef(v.Type)
+			}
 		}
 		// cross-file field types mean cross-file wire calls (WriteVector3 from
 		// another file's wire header) — record the dep before emitting
@@ -372,6 +381,8 @@ func (g *gen) emitWireFile() {
 		switch d := d.(type) {
 		case *ir.Struct:
 			g.emitStructWire(d)
+		case *ir.Union:
+			g.emitUnionWire(d)
 		case *ir.Object:
 			g.emitObjectWire(d)
 		}
@@ -395,6 +406,55 @@ func (g *gen) emitTagEnum(name string, members []string, comment string) {
 	}
 	g.pf("    Max = %d, // the exported extent (SPEC §4.2)\n", len(members))
 	g.pf("};\n\n")
+}
+
+// emitUnion emits a first-class one-of (SPEC §4.8): the generated <Name>Type
+// tag enum, then the message union shape exactly — a struct holding the tag
+// over an anonymous union of the arms, constructed as None, trivially
+// copyable. An arm's storage is established ZEROED when the arm is selected
+// (by Read<Name> before it decodes, or by a writer assigning the arm).
+func (g *gen) emitUnion(d *ir.Union) {
+	members := make([]string, len(d.Variants))
+	for i, v := range d.Variants {
+		members[i] = ir.GoExportName(v.Name)
+	}
+	g.emitTagEnum(d.Name+"Type",
+		members,
+		fmt.Sprintf("union %s's tag — None = 0, then each variant in declared order (SPEC §4.8)", d.Name))
+
+	g.pf("// union %s — at most one of the arms; the tag says which. Construction is\n", d.Name)
+	g.pf("// None: the tag alone is initialized; an arm's storage is established ZEROED\n")
+	g.pf("// when the arm is selected — by Read%s before it decodes (SPEC §5), or by\n", d.Name)
+	g.pf("// assigning it: value.%s = %s{}. Bytes of unselected arms are indeterminate.\n",
+		unionExampleArm(d), unionExampleType(d))
+	g.pf("struct %s\n{\n", d.Name)
+	g.pf("    %sType type;\n", d.Name)
+	if len(d.Variants) > 0 {
+		g.pf("\n    union\n    {\n")
+		for _, v := range d.Variants {
+			g.noteRef(v.Type)
+			g.pf("        %s %s;\n", v.Type, v.Name)
+		}
+		g.pf("    };\n")
+	}
+	g.pf("\n    %s() : type( %sType::None ) {} // the tag only — arms are zero-established at selection\n", d.Name, d.Name)
+	g.pf("};\n\n")
+}
+
+// unionExampleArm/Type name the first arm for the assignment example in the
+// generated comment; an empty union gets a placeholder that names the rule.
+func unionExampleArm(d *ir.Union) string {
+	if len(d.Variants) == 0 {
+		return "arm"
+	}
+	return d.Variants[0].Name
+}
+
+func unionExampleType(d *ir.Union) string {
+	if len(d.Variants) == 0 {
+		return "Arm"
+	}
+	return d.Variants[0].Type
 }
 
 func (g *gen) emitConst(d *ir.Const) {
@@ -752,6 +812,11 @@ func (g *gen) cppFieldType(t ir.FieldType) (string, bool) {
 		return "double", false
 	case ir.TNamed:
 		g.noteRef(t.Name)
+		if _, isUnion := t.Ref.(*ir.Union); isUnion {
+			// the generated union struct self-initializes (its constructor
+			// is the None value), the struct rule exactly
+			return t.Name, true
+		}
 		st, isStruct := t.Ref.(*ir.Struct)
 		if isStruct && st.CppNative != "" && g.unit.DeclFile[t.Name] != g.file.Base {
 			// native type mapping (SPEC §4.2): storage speaks the hand math

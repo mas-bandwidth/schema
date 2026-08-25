@@ -37,6 +37,8 @@ func EmissionOrder(file *File) []Decl {
 			byName[d.Name] = i
 		case *Object:
 			byName[d.Name] = i
+		case *Union:
+			byName[d.Name] = i
 		}
 	}
 	adj := make([][]int, n)
@@ -71,6 +73,15 @@ func EmissionOrder(file *File) []Decl {
 			fields = d.Fields
 		case *Object:
 			fields = d.Fields
+		case *Union:
+			// payload types are held by value in the generated union storage,
+			// so every payload must precede the union in C and C++
+			for _, v := range d.Variants {
+				if j, ok := byName[v.Type]; ok && j != i {
+					adj[j] = append(adj[j], i)
+					indeg[i]++
+				}
+			}
 		}
 		for _, f := range fields {
 			if f.Type.Kind == TNamed {

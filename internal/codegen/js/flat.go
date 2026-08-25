@@ -610,11 +610,19 @@ func (g *fgen) emitWriteField(f *ir.Field, path, ind string) {
 
 // emitWriteElem writes one array element; struct elements hoist a const ref.
 func (g *fgen) emitWriteElem(f *ir.Field, name, iv, ind string) {
-	if st, ok := f.Type.Ref.(*ir.Struct); ok && f.Type.Kind == ir.TNamed {
-		ev := fmt.Sprintf("e%d", g.loopDepth-1)
-		g.pf("%sconst %s = %s[%s];\n", ind, ev, name, iv)
-		g.emitWriteItems(st.Items, ev, ind)
-		return
+	if f.Type.Kind == ir.TNamed {
+		switch ref := f.Type.Ref.(type) {
+		case *ir.Struct:
+			ev := fmt.Sprintf("e%d", g.loopDepth-1)
+			g.pf("%sconst %s = %s[%s];\n", ind, ev, name, iv)
+			g.emitWriteItems(ref.Items, ev, ind)
+			return
+		case *ir.Union:
+			ev := fmt.Sprintf("e%d", g.loopDepth-1)
+			g.pf("%sconst %s = %s[%s];\n", ind, ev, name, iv)
+			g.emitWriteUnionFlat(ref, ev, ind)
+			return
+		}
 	}
 	g.emitWriteScalar(f, fmt.Sprintf("%s[%s]", name, iv), ind)
 }
@@ -732,6 +740,8 @@ func (g *fgen) emitWriteScalar(f *ir.Field, name, ind string) {
 			g.emitWriteFlags(ref, name, ind)
 		case *ir.Struct:
 			g.emitWriteItems(ref.Items, name, ind)
+		case *ir.Union:
+			g.emitWriteUnionFlat(ref, name, ind)
 		}
 	}
 }
@@ -1121,11 +1131,19 @@ func (g *fgen) emitReadStaticField(f *ir.Field, path, ind string) {
 }
 
 func (g *fgen) emitReadElem(f *ir.Field, name, iv, ind string, bounded bool) {
-	if st, ok := f.Type.Ref.(*ir.Struct); ok && f.Type.Kind == ir.TNamed {
-		ev := fmt.Sprintf("e%d", g.loopDepth-1)
-		g.pf("%sconst %s = %s[%s];\n", ind, ev, name, iv)
-		g.emitReadItems(st.Items, ev, ind, bounded)
-		return
+	if f.Type.Kind == ir.TNamed {
+		switch ref := f.Type.Ref.(type) {
+		case *ir.Struct:
+			ev := fmt.Sprintf("e%d", g.loopDepth-1)
+			g.pf("%sconst %s = %s[%s];\n", ind, ev, name, iv)
+			g.emitReadItems(ref.Items, ev, ind, bounded)
+			return
+		case *ir.Union:
+			ev := fmt.Sprintf("e%d", g.loopDepth-1)
+			g.pf("%sconst %s = %s[%s];\n", ind, ev, name, iv)
+			g.emitReadUnionFlat(ref, ev, ind, bounded)
+			return
+		}
 	}
 	g.emitReadScalar(f, fmt.Sprintf("%s[%s]", name, iv), ind, bounded)
 }
@@ -1312,6 +1330,8 @@ func (g *fgen) emitReadScalar(f *ir.Field, name, ind string, bounded bool) {
 			g.pf("%s%s = bg;\n", ind, name)
 		case *ir.Struct:
 			g.emitReadItems(ref.Items, name, ind, bounded)
+		case *ir.Union:
+			g.emitReadUnionFlat(ref, name, ind, bounded)
 		}
 	}
 }
@@ -1508,6 +1528,57 @@ func (g *fgen) emitReadRangedBig(f *ir.Field, name string, bits int64, ind strin
 
 // ---- inline zeroing (SPEC §5: untaken branch sides read as ZERO) ----
 
+// emitWriteUnionFlat inlines a union field (SPEC §4.8): the checked guard
+// validates the tag BEFORE it rides, the tag merges in minimal bits, then a
+// switch inlines each arm's items — the struct-inlining move, per arm. expr
+// is the union object (a field path or a hoisted element ref).
+func (g *fgen) emitWriteUnionFlat(u *ir.Union, expr, ind string) {
+	g.guard(fmt.Sprintf("!Number.isInteger(%s.Type) || %s.Type < 0 || %s.Type > %d", expr, expr, expr, u.Max),
+		" // the tag validates BEFORE it rides (SPEC §4.8)", ind)
+	if u.Max == 0 {
+		return // an empty union's degenerate tag range [0, 0] costs zero bits
+	}
+	bits := ir.BitsRequired(big.NewInt(0), big.NewInt(u.Max))
+	g.pf("%sv = (%s.Type & %s) >>> 0;\n", ind, expr, maskHex(bits))
+	g.mergeW(bits, ind)
+	g.pf("%sswitch (%s.Type) {\n", ind, expr)
+	for i, vr := range u.Variants {
+		g.pf("%s  case %d: {\n", ind, i+1)
+		g.emitWriteItems(vr.Ref.Items, expr+"."+ir.GoExportName(vr.Name), ind+"    ")
+		g.pf("%s    break;\n%s  }\n", ind, ind)
+	}
+	g.pf("%s}\n", ind)
+}
+
+// emitReadUnionFlat is the read half: the tag reads in minimal bits and a
+// value above the count is refused (SPEC §4.8); the selected arm
+// zero-establishes field by field, then its items inline — byte- and
+// acceptance-identical to the runtime tier's Read<Union>.
+func (g *fgen) emitReadUnionFlat(u *ir.Union, expr, ind string, bounded bool) {
+	if u.Max == 0 {
+		g.pf("%s%s.Type = 0; // zero wire bits — only None exists (SPEC §4.8)\n", ind, expr)
+		return
+	}
+	bits := ir.BitsRequired(big.NewInt(0), big.NewInt(u.Max))
+	g.readR(bits, ind)
+	if u.Max != (int64(1)<<bits)-1 {
+		g.pf("%sif (v > %d) { // not a wire-legal tag (SPEC §4.8)\n%s  return false;\n%s}\n", ind, u.Max, ind, ind)
+	}
+	g.pf("%s%s.Type = v;\n", ind, expr)
+	g.pf("%sswitch (%s.Type) {\n", ind, expr)
+	for i, vr := range u.Variants {
+		arm := expr + "." + ir.GoExportName(vr.Name)
+		g.pf("%s  case %d: {\n", ind, i+1)
+		// the selected arm starts from the zero form (SPEC §5)
+		for _, nf := range vr.Ref.Fields {
+			g.emitZeroFieldFlat(nf, arm, ind+"    ")
+		}
+		g.emitReadItems(vr.Ref.Items, arm, ind+"    ", bounded)
+		g.pf("%s    break;\n%s  }\n", ind, ind)
+	}
+	g.pf("%s}\n", ind)
+}
+
 func (g *fgen) emitZeroItems(items []ir.Item, path, ind string) {
 	for _, item := range items {
 		switch item := item.(type) {
@@ -1537,6 +1608,15 @@ func (g *fgen) emitZeroFieldFlat(f *ir.Field, path, ind string) {
 			}
 			g.pf("%s}\n", ind)
 			g.loopDepth--
+		} else if _, isUnion := f.Type.Ref.(*ir.Union); isUnion && f.Type.Kind == ir.TNamed {
+			// zero IS None per element: the tag resets; arms are unspecified
+			// at None (SPEC §4.8)
+			iv := fmt.Sprintf("i%d", g.loopDepth)
+			g.loopDepth++
+			g.pf("%sfor (let %s = 0; %s < %d; %s++) {\n", ind, iv, iv, f.ArrayBound, iv)
+			g.pf("%s  %s[%s].Type = 0;\n", ind, name, iv)
+			g.pf("%s}\n", ind)
+			g.loopDepth--
 		} else {
 			g.pf("%s%s.fill(%s);\n", ind, name, g.flatZeroValue(f.Type))
 		}
@@ -1548,6 +1628,11 @@ func (g *fgen) emitZeroFieldFlat(f *ir.Field, path, ind string) {
 			for _, nf := range st.Fields {
 				g.emitZeroFieldFlat(nf, name, ind)
 			}
+			return
+		}
+		if _, isUnion := f.Type.Ref.(*ir.Union); isUnion && f.Type.Kind == ir.TNamed {
+			// zero IS None: the tag resets; arms are unspecified at None
+			g.pf("%s%s.Type = 0;\n", ind, name)
 			return
 		}
 		g.pf("%s%s = %s;\n", ind, name, g.flatZeroValue(f.Type))

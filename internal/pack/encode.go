@@ -348,9 +348,48 @@ func (e *Encoder) encodeScalar(w *bitWriter, f *ir.Field, val any, fpath string)
 				}
 			}
 			return e.encodeStruct(w, ref, sub, fpath)
+		case *ir.Union:
+			return e.encodeUnion(w, ref, val, fpath)
 		}
 	}
 	return fmt.Errorf("%s: unhandled field kind", fpath)
+}
+
+// encodeUnion packs a union value (SPEC §4.8): a single-key JSON object, the
+// key naming the variant in its source spelling; null or absent is None. The
+// key's value must be an object — null under a key is a refusal, as is zero
+// keys or more than one. A one-of holds one thing, and the encoder does not
+// guess which.
+func (e *Encoder) encodeUnion(w *bitWriter, u *ir.Union, val any, fpath string) error {
+	bits := ir.BitsRequired(big.NewInt(0), big.NewInt(u.Max))
+	if val == nil {
+		if bits > 0 {
+			w.writeBits(0, bits) // None — the tag is the whole wire
+		}
+		return nil
+	}
+	obj, ok := val.(map[string]any)
+	if !ok {
+		return fmt.Errorf("%s: union %s takes a single-key object { \"<variant>\": { ... } } or null, got %T (SPEC §4.8)", fpath, u.Name, val)
+	}
+	if len(obj) != 1 {
+		return fmt.Errorf("%s: union %s takes exactly one variant key, got %d — a one-of holds one thing (SPEC §4.8)", fpath, u.Name, len(obj))
+	}
+	for key, payload := range obj {
+		for i, v := range u.Variants {
+			if v.Name != key {
+				continue
+			}
+			sub, ok := payload.(map[string]any)
+			if !ok {
+				return fmt.Errorf("%s.%s: a variant's value must be a JSON object; null spells None only at the union itself (SPEC §4.8)", fpath, key)
+			}
+			w.writeBits(uint64(i+1), bits)
+			return e.encodeStruct(w, v.Ref, sub, fpath+"."+key)
+		}
+		return fmt.Errorf("%s: %q is not a variant of union %s", fpath, key, u.Name)
+	}
+	return nil // unreachable: len(obj) == 1
 }
 
 // boundInt enforces a declared wire range, honouring ClampBounds: strict

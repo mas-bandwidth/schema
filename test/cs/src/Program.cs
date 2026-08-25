@@ -598,6 +598,62 @@ static class Program
             Check(EqProbeBits(output, input), "ProbeBits round-trips — 9/33/64-bit and full-range paths");
         }
 
+        // ---- ProbeCollider: first-class one-of (SPEC §4.8) — C++-pinned wire,
+        // round trip, the None arm, an array of unions, and the refusal
+        // negative controls ----
+        {
+            ProbeCollider input = new ProbeCollider();
+            Check(input.Shape.Type == ProbeShapeType.None, "construction is the empty union");
+            Check(ProbeShapeMaxBits == 2 + 16, "MaxBits is tag + the largest arm");
+
+            input.Armor = 7;
+            input.Shape.Type = ProbeShapeType.Slab;
+            input.Shape.Slab.Width = 42;
+            input.Shape.Slab.Height = 9;
+            // input.Backup stays None — the empty arm costs the tag bits only
+            input.ExtrasCount = 1;
+            input.Extras[0].Type = ProbeShapeType.Ring;
+            input.Extras[0].Ring.Radius = 777;
+
+            WriteStream ws = NewWriteStream();
+            Check(WriteProbeCollider(ws, input), "write ProbeCollider");
+            byte[] wire = Data(ws);
+            GoldenWire("probecollider", wire);
+
+            ProbeCollider output = new ProbeCollider();
+            output.Backup.Type = ProbeShapeType.Ring; // dirty — the read must restore None
+            ReadStream rs = new ReadStream(wire);
+            Check(ReadProbeCollider(rs, output), "read ProbeCollider");
+            Check(output.Armor == 7 && output.Shape.Type == ProbeShapeType.Slab &&
+                  output.Shape.Slab.Width == 42 && output.Shape.Slab.Height == 9,
+                  "the selected arm round-trips");
+            Check(output.Backup.Type == ProbeShapeType.None, "the None arm reads back empty");
+            Check(output.ExtrasCount == 1 && output.Extras[0].Type == ProbeShapeType.Ring &&
+                  output.Extras[0].Ring.Radius == 777, "the union array round-trips");
+
+            // NEGATIVE CONTROL — perturb the tag: 2 bits at bit offset 8,
+            // range [0, 2]; forcing both bits makes 3 and the read must refuse
+            byte[] corrupt = (byte[]) wire.Clone();
+            corrupt[1] |= 0x03;
+            ProbeCollider bad = new ProbeCollider();
+            Check(!ReadProbeCollider(new ReadStream(corrupt), bad),
+                  "an out-of-range union tag is refused (SPEC §4.8)");
+
+            // NEGATIVE CONTROL — corrupt the arm payload: width rides 7 bits
+            // at bit offset 10 with range [0, 100]; all seven bits decode 127
+            corrupt = (byte[]) wire.Clone();
+            corrupt[1] |= 0xFC;
+            corrupt[2] |= 0x01;
+            Check(!ReadProbeCollider(new ReadStream(corrupt), bad),
+                  "a corrupt union arm payload is refused (SPEC §4.8)");
+
+            // the write side validates the tag BEFORE it rides
+            ProbeShape rogue = new ProbeShape();
+            rogue.Type = (ProbeShapeType) 3;
+            WriteStream ws2 = NewWriteStream();
+            Check(!WriteProbeShape(ws2, rogue), "an out-of-set union tag writes nothing (SPEC §4.8)");
+        }
+
         // ---- TestData and InputPacket against their C++ pins ----
         {
             TestData input = TestDataInstance();

@@ -199,6 +199,63 @@ func (g *gen) emitReadItems(items []ir.Item, ind string) {
 
 // call emits the C++-style bool early-out around one serialize call; comment
 // (leading " // ...") rides the if line.
+// emitUnionFunctions emits the union's bounds and wire pair (SPEC §4.8):
+// plain stream functions — a union never batches (batchPlan excludes any
+// type that reaches one), so no *Batch core exists. The write validates the
+// tag BEFORE it rides (WriteMessage's rule); the read rejects a tag above
+// the count and zero-establishes exactly the selected arm.
+func (g *gen) emitUnionFunctions(d *ir.Union) {
+	g.needsSerialize = true
+	g.owner = d.Name
+	maxBits := ir.MaxBitsUnion(d)
+	g.sf("// %sMaxBits is the tag plus the largest arm; None costs the tag only (SPEC §4.8).\n", d.Name)
+	g.sf("// %sMaxBytes is rounded up to the 8-byte write-buffer granularity.\n", d.Name)
+	g.sf("public const long %sMaxBits = %d;\n", d.Name, maxBits)
+	g.sf("public const long %sMaxBytes = %d;\n\n", d.Name, ir.MaxBytes(maxBits))
+
+	g.sf("// Zero%s resets value to the §5 zero form — the empty union. The tag alone\n", d.Name)
+	g.sf("// resets: unselected arms are unspecified by rule (SPEC §4.8), and every arm\n")
+	g.sf("// is unselected at None; an arm re-zeroes at its next selection.\n")
+	g.sf("public static void Zero%s(%s value)\n{\n", d.Name, d.Name)
+	g.sf("    value.Type = %sType.None;\n}\n\n", d.Name)
+
+	bits := ir.BitsRequired(big.NewInt(0), big.NewInt(d.Max))
+	g.sf("public static bool Write%s(WriteStream stream, %s value)\n{\n", d.Name, d.Name)
+	if d.Max == 0 {
+		g.sf("    // an empty union holds only None; its degenerate tag range [0, 0]\n")
+		g.sf("    // costs zero bits (SPEC §4.8)\n")
+		g.sf("    return value.Type == %sType.None;\n}\n\n", d.Name)
+	} else {
+		g.sf("    uint tagValue = (uint)value.Type;\n")
+		g.sf("    if (tagValue > %d) // the tag validates BEFORE it rides (SPEC §4.8)\n", d.Max)
+		g.sf("    {\n        return false;\n    }\n")
+		g.call("    ", fmt.Sprintf("stream.SerializeBits(ref tagValue, %d)", bits), "")
+		g.sf("    switch (value.Type)\n    {\n")
+		for _, v := range d.Variants {
+			g.sf("        case %sType.%s:\n            return Write%s(stream, value.%s);\n",
+				d.Name, ir.GoExportName(v.Name), v.Type, ir.GoExportName(v.Name))
+		}
+		g.sf("    }\n    return true; // None — the tag is the whole wire (SPEC §4.8)\n}\n\n")
+	}
+
+	g.sf("public static bool Read%s(ReadStream stream, %s value)\n{\n", d.Name, d.Name)
+	if d.Max == 0 {
+		g.sf("    value.Type = %sType.None; // zero wire bits — only None exists (SPEC §4.8)\n", d.Name)
+		g.sf("    return true;\n}\n\n")
+		return
+	}
+	g.sf("    int tagValue = 0;\n")
+	g.call("    ", fmt.Sprintf("stream.SerializeInt(ref tagValue, 0, %d)", d.Max), " // rejects a tag above the count (SPEC §4.8)")
+	g.sf("    value.Type = (%sType)tagValue;\n", d.Name)
+	g.sf("    switch (value.Type)\n    {\n")
+	for _, v := range d.Variants {
+		g.sf("        case %sType.%s:\n", d.Name, ir.GoExportName(v.Name))
+		g.sf("            Zero%s(value.%s); // the selected arm starts from the zero form (SPEC §5)\n", v.Type, ir.GoExportName(v.Name))
+		g.sf("            return Read%s(stream, value.%s);\n", v.Type, ir.GoExportName(v.Name))
+	}
+	g.sf("    }\n    return true; // None\n}\n\n")
+}
+
 func (g *gen) call(ind, expr, comment string) {
 	g.sf("%sif (!%s)%s\n%s{\n%s    return false;\n%s}\n", ind, expr, comment, ind, ind, ind)
 }
@@ -266,7 +323,7 @@ func (g *gen) emitZeroField(f *ir.Field, ind string) {
 		g.needsSystem = true
 		g.sf("%sArray.Clear(%s, 0, %s);\n%svalue.%s = 0;\n", ind, name, g.renderArg(f.Type.SizeExpr, big.NewInt(f.Type.Size), "int", false), ind, g.m(base+"Length"))
 	case f.Array != ir.ArrayNone:
-		if _, isStruct := f.Type.Ref.(*ir.Struct); isStruct && f.Type.Kind == ir.TNamed {
+		if f.Type.Kind == ir.TNamed && isClassRef(f.Type.Ref) {
 			// clearing a class array would null the pre-allocated elements —
 			// zero through them instead (the SCHEMA bound, like the wire loops)
 			g.sf("%sfor (int i = 0; i < %s; i++)\n%s{\n", ind, g.renderArg(f.ArrayExpr, big.NewInt(f.ArrayBound), "int", false), ind)
@@ -295,6 +352,10 @@ func (g *gen) emitZeroField(f *ir.Field, ind string) {
 			case *ir.Struct:
 				// through the nested Zero — §5 wants ZERO values recursively,
 				// and re-newing would restore specified defaults instead
+				g.sf("%sZero%s(%s);\n", ind, f.Type.Name, name)
+			case *ir.Union:
+				// through Zero<Union> — the tag resets to None; arms are
+				// re-zeroed at their next selection (SPEC §4.8)
 				g.sf("%sZero%s(%s);\n", ind, f.Type.Name, name)
 			}
 		default:
@@ -599,6 +660,10 @@ func (g *gen) emitWriteScalar(f *ir.Field, name, ind string) {
 			} else {
 				g.call(ind, fmt.Sprintf("Write%s(stream, %s)", f.Type.Name, name), "")
 			}
+		case *ir.Union:
+			// never inside a batch core: batchPlan excludes any pair that
+			// reaches a union (batch.go, reachesUnion)
+			g.call(ind, fmt.Sprintf("Write%s(stream, %s)", f.Type.Name, name), "")
 		}
 	}
 }
@@ -854,6 +919,10 @@ func (g *gen) emitReadScalar(f *ir.Field, name, ind string) {
 			} else {
 				g.call(ind, fmt.Sprintf("Read%s(stream, %s)", f.Type.Name, name), "")
 			}
+		case *ir.Union:
+			// never inside a batch core: batchPlan excludes any pair that
+			// reaches a union (batch.go, reachesUnion)
+			g.call(ind, fmt.Sprintf("Read%s(stream, %s)", f.Type.Name, name), "")
 		}
 	}
 }

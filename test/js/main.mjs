@@ -452,6 +452,62 @@ function testDataInstance() {
   check(deepEqual(out, inp), "ProbeBits round-trips — 9/33/64-bit and full-range paths");
 }
 
+// ---- ProbeCollider: first-class one-of (SPEC §4.8) — C++-pinned wire,
+// round trip, the None arm, an array of unions, and the refusal negative
+// controls ----
+{
+  const inp = new ex.ProbeCollider();
+  check(inp.Shape.Type === ex.ProbeShapeType.None, "construction is the empty union");
+  check(ex.ProbeShapeMaxBits === 2 + 16, "MaxBits is tag + the largest arm");
+
+  inp.Armor = 7;
+  inp.Shape.Type = ex.ProbeShapeType.Slab;
+  inp.Shape.Slab.Width = 42;
+  inp.Shape.Slab.Height = 9;
+  // inp.Backup stays None — the empty arm costs the tag bits only
+  inp.ExtrasCount = 1;
+  inp.Extras[0].Type = ex.ProbeShapeType.Ring;
+  inp.Extras[0].Ring.Radius = 777;
+
+  const ws = newWriteStream();
+  check(ex.WriteProbeCollider(ws, inp), "write ProbeCollider");
+  ws.flush();
+  goldenWire("probecollider", ws.data());
+
+  const out = new ex.ProbeCollider();
+  out.Backup.Type = ex.ProbeShapeType.Ring; // dirty — the read must restore None
+  const rs = new ReadStream(ws.data());
+  check(ex.ReadProbeCollider(rs, out), "read ProbeCollider");
+  check(out.Armor === 7 && out.Shape.Type === ex.ProbeShapeType.Slab &&
+        out.Shape.Slab.Width === 42 && out.Shape.Slab.Height === 9,
+        "the selected arm round-trips");
+  check(out.Backup.Type === ex.ProbeShapeType.None, "the None arm reads back empty");
+  check(out.ExtrasCount === 1 && out.Extras[0].Type === ex.ProbeShapeType.Ring &&
+        out.Extras[0].Ring.Radius === 777, "the union array round-trips");
+
+  // NEGATIVE CONTROL — perturb the tag: 2 bits at bit offset 8, range
+  // [0, 2]; forcing both bits makes 3 and the read must refuse
+  const corrupt = Uint8Array.from(ws.data());
+  corrupt[1] |= 0x03;
+  const bad = new ex.ProbeCollider();
+  check(!ex.ReadProbeCollider(new ReadStream(corrupt), bad),
+        "an out-of-range union tag is refused (SPEC §4.8)");
+
+  // NEGATIVE CONTROL — corrupt the arm payload: width rides 7 bits at bit
+  // offset 10 with range [0, 100]; all seven bits decode 127
+  const corrupt2 = Uint8Array.from(ws.data());
+  corrupt2[1] |= 0xfc;
+  corrupt2[2] |= 0x01;
+  check(!ex.ReadProbeCollider(new ReadStream(corrupt2), bad),
+        "a corrupt union arm payload is refused (SPEC §4.8)");
+
+  // the write side validates the tag BEFORE it rides
+  const rogue = new ex.ProbeShape();
+  rogue.Type = 3;
+  const ws2 = newWriteStream();
+  check(!ex.WriteProbeShape(ws2, rogue), "an out-of-set union tag writes nothing (SPEC §4.8)");
+}
+
 // ---- TestData and InputPacket against their C++ pins ----
 {
   const inp = testDataInstance();

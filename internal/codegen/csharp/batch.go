@@ -48,6 +48,34 @@ func batchWorthwhile(s, b int64) bool {
 	return s >= 2+4*b
 }
 
+// reachesUnion reports whether a struct's wire body reaches a union through
+// any field, transitively. Such a pair stays on the stream: a union's arm
+// dispatch calls the arms' plain stream entries, and composing that under a
+// ref-struct batch core would address-expose the batch (rule 1's measured
+// 0.71x). Union batch cores are a follow-on if a profile ever convicts the
+// plain path — land-simple, not a ruling against.
+func reachesUnion(st *ir.Struct, visiting map[string]bool) bool {
+	if visiting[st.Name] {
+		return false
+	}
+	visiting[st.Name] = true
+	defer delete(visiting, st.Name)
+	for _, f := range st.Fields {
+		if f.Type.Kind != ir.TNamed {
+			continue
+		}
+		switch ref := f.Type.Ref.(type) {
+		case *ir.Union:
+			return true
+		case *ir.Struct:
+			if reachesUnion(ref, visiting) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 // densityStruct is the (scalar, bulk) site weight of a struct's wire body.
 func densityStruct(st *ir.Struct) (int64, int64) {
 	return densityItems(st.Items, ir.AlignedFixedByteArrays(st))
@@ -128,6 +156,9 @@ func batchPlan(u *ir.Unit) (batched, needCore map[string]bool) {
 		for _, d := range f.Decls {
 			switch d := d.(type) {
 			case *ir.Struct:
+				if reachesUnion(d, map[string]bool{}) {
+					continue // stays on the stream — see reachesUnion
+				}
 				if s, b := densityStruct(d); batchWorthwhile(s, b) {
 					batched[d.Name] = true
 					needCore[d.Name] = true

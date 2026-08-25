@@ -59,6 +59,22 @@ type TypeDecl struct {
 	// and field descriptors
 }
 
+// UnionDecl is a first-class one-of type (SPEC §4.8): an implicit None row,
+// then each variant naming its payload type. The tag enum <Name>Type is
+// generated, never declared.
+type UnionDecl struct {
+	Name     string
+	Pos      Pos
+	Variants []UnionVariant
+}
+
+type UnionVariant struct {
+	Name    string // field-style lower_snake, unique within the union
+	Pos     Pos
+	Type    string // the payload type name (a declared type)
+	TypePos Pos
+}
+
 type MessageDecl struct {
 	Name string
 	Pos  Pos
@@ -76,6 +92,7 @@ func (d *EnumDecl) DeclName() string     { return d.Name }
 func (d *FlagsDecl) DeclName() string    { return d.Name }
 func (d *ContextsDecl) DeclName() string { return "" }
 func (d *TypeDecl) DeclName() string     { return d.Name }
+func (d *UnionDecl) DeclName() string    { return d.Name }
 func (d *MessageDecl) DeclName() string  { return d.Name }
 func (d *ObjectDecl) DeclName() string   { return d.Name }
 
@@ -84,6 +101,7 @@ func (d *EnumDecl) DeclPos() Pos     { return d.Pos }
 func (d *FlagsDecl) DeclPos() Pos    { return d.Pos }
 func (d *ContextsDecl) DeclPos() Pos { return d.Pos }
 func (d *TypeDecl) DeclPos() Pos     { return d.Pos }
+func (d *UnionDecl) DeclPos() Pos    { return d.Pos }
 func (d *MessageDecl) DeclPos() Pos  { return d.Pos }
 func (d *ObjectDecl) DeclPos() Pos   { return d.Pos }
 

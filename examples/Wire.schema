@@ -62,6 +62,32 @@ type ProbeSample {
     samples [1..8]uint16
 }
 
+// first-class one-of (SPEC §4.8): the tag rides in minimal bits for
+// [0, variant count], then the selected arm only; None = 0 is the in-band
+// empty union and a read rejects a tag above the count
+type ProbeRing {
+    radius uint16
+}
+
+type ProbeSlab {
+    width  uint8 [min = 0, max = 100]
+    height uint8
+}
+
+union ProbeShape {
+    ring ProbeRing
+    slab ProbeSlab
+}
+
+// a union as a field, an empty (None) union field, and a counted array of
+// unions — every composition form the language admits
+type ProbeCollider {
+    armor  uint8
+    shape  ProbeShape
+    backup ProbeShape
+    extras [<= 2]ProbeShape
+}
+
 // specified defaults past bool (SPEC §4.2): a negative integer and an enum
 // variant — zero init everywhere else
 type ProbeConfig {

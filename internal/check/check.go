@@ -41,6 +41,7 @@ type checker struct {
 	flagsD   map[string]*ir.Flags
 	structs  map[string]*ir.Struct
 	objects  map[string]*ir.Object
+	unions   map[string]*ir.Union
 	ctxDecl  *ast.ContextsDecl
 
 	// enums currently being resolved — the cycle guard for [max = E.Max]
@@ -87,6 +88,7 @@ func Unit(files []SourceFile) (*ir.Unit, []error) {
 		flagsD:   map[string]*ir.Flags{},
 		structs:  map[string]*ir.Struct{},
 		objects:  map[string]*ir.Object{},
+		unions:   map[string]*ir.Union{},
 		unit: &ir.Unit{
 			DeclFile: map[string]string{},
 			Consts:   map[string]*ir.Const{},
@@ -94,6 +96,7 @@ func Unit(files []SourceFile) (*ir.Unit, []error) {
 			Flags:    map[string]*ir.Flags{},
 			Structs:  map[string]*ir.Struct{},
 			Objects:  map[string]*ir.Object{},
+			Unions:   map[string]*ir.Union{},
 		},
 	}
 
@@ -108,6 +111,7 @@ func Unit(files []SourceFile) (*ir.Unit, []error) {
 		check()
 	}
 	c.checkCycles()
+	c.checkObjectUnionReach()
 	c.checkClaimedNames()
 	c.checkTargetNames()
 	c.assemble()
@@ -544,6 +548,13 @@ var valuedAttr = map[string]bool{
 func (c *checker) enumMax(e *ast.MaxExpr) (*big.Int, bool) {
 	d, ok := c.astDecls[e.Enum]
 	if !ok {
+		// generated sets work in constant expressions too (SPEC §4.2, §4.8):
+		// MessageType.Max, ObjectType.Max, and <Union>Type.Max. All three
+		// derive from declaration counts alone, so they resolve during const
+		// folding, before any body resolves.
+		if max, isGen := c.generatedSetMax(e.Enum); isGen {
+			return big.NewInt(max), true
+		}
 		c.errf(e.Pos, "undefined enum %s in %s.Max", e.Enum, e.Enum)
 		return nil, false
 	}
@@ -563,6 +574,36 @@ func (c *checker) enumMax(e *ast.MaxExpr) (*big.Int, bool) {
 		return nil, false
 	}
 	return big.NewInt(en.Max), true
+}
+
+// generatedSetMax resolves E.Max over the GENERATED tag sets (SPEC §4.2,
+// §4.8): MessageType and ObjectType when the unit has any, and <Union>Type
+// for a declared union. The max is the member count — dense from 1, None = 0.
+func (c *checker) generatedSetMax(name string) (int64, bool) {
+	switch name {
+	case "MessageType":
+		if n := countMessages(c.astDecls); n > 0 {
+			return int64(n), true
+		}
+		return 0, false
+	case "ObjectType":
+		n := 0
+		for _, d := range c.astDecls {
+			if _, ok := d.(*ast.ObjectDecl); ok {
+				n++
+			}
+		}
+		if n > 0 {
+			return int64(n), true
+		}
+		return 0, false
+	}
+	if base, ok := strings.CutSuffix(name, "Type"); ok {
+		if ud, isUnion := c.astDecls[base].(*ast.UnionDecl); isUnion {
+			return int64(len(ud.Variants)), true
+		}
+	}
+	return 0, false
 }
 
 // ---- enums and flags ----
@@ -765,6 +806,17 @@ func (c *checker) resolveBodies() {
 				c.structs[d.Name] = &ir.Struct{Name: d.Name, IsMessage: true}
 			case *ast.ObjectDecl:
 				c.objects[d.Name] = &ir.Object{Name: d.Name}
+			case *ast.UnionDecl:
+				// the shell first, so fields can reference the union in any
+				// order; variants resolve in the second pass below. Max and
+				// storage come from the declared count alone — zero variants
+				// is legal, the empty-enum rule (SPEC §4.8): tag range [0, 0],
+				// zero bits.
+				c.unions[d.Name] = &ir.Union{
+					Name:        d.Name,
+					Max:         int64(len(d.Variants)),
+					StorageBits: ir.StorageBitsFor(int64(len(d.Variants))),
+				}
 			}
 		}
 	}
@@ -781,9 +833,71 @@ func (c *checker) resolveBodies() {
 					c.errf(d.Pos, "empty object body — it generates a meaningless view family (SPEC §4.6)")
 				}
 				c.objects[d.Name].Fields = fields
+			case *ast.UnionDecl:
+				c.resolveUnion(d)
 			}
 		}
 	}
+}
+
+// resolveUnion fills a union shell's variants (SPEC §4.8): names checked over
+// the EXPORTED spelling (None/Max reserved post-mapping, uniqueness
+// post-mapping — box_a and boxA both export BoxA), payloads restricted to
+// declared types.
+func (c *checker) resolveUnion(d *ast.UnionDecl) {
+	un := c.unions[d.Name]
+	seen := map[string]ast.Pos{}
+	for _, v := range d.Variants {
+		exported := ir.GoExportName(v.Name)
+		switch exported {
+		case "None":
+			c.errf(v.Pos, "variant %s is a compile error — every union has None = 0 implicitly, checked over the exported spelling (SPEC §4.8)", v.Name)
+			continue
+		case "Max":
+			c.errf(v.Pos, "variant %s is a compile error — every generated union tag enum carries its extent as the member Max, checked over the exported spelling (SPEC §4.8, §4.2)", v.Name)
+			continue
+		case "Type":
+			c.errf(v.Pos, "variant %s is a compile error — its exported spelling is Type, the tag member's own name in the Go and C# representations; rename at the source (SPEC §4.8)", v.Name)
+			continue
+		case d.Name:
+			// C# refuses a member named after its enclosing class (CS0542)
+			c.errf(v.Pos, "variant %s is a compile error — its exported spelling equals the union's own name, which C# refuses (CS0542); rename at the source (SPEC §4.6)", v.Name)
+			continue
+		}
+		if lang, bad := targetReserved[v.Name]; bad {
+			c.errf(v.Pos, "variant %s is a reserved word in %s — rename at the source, no escaping machinery (SPEC §4.6)", v.Name, lang)
+			continue
+		}
+		if prev, dup := seen[exported]; dup {
+			c.errf(v.Pos, "duplicate variant %s in union %s (first at %s; names are unique AFTER export mapping — both become %s) (SPEC §4.8)",
+				v.Name, d.Name, prev, exported)
+			continue
+		}
+		seen[exported] = v.Pos
+
+		pd, ok := c.astDecls[v.Type]
+		if !ok {
+			c.errf(v.TypePos, "undefined type %s in union %s", v.Type, d.Name)
+			continue
+		}
+		switch pd.(type) {
+		case *ast.TypeDecl:
+			un.Variants = append(un.Variants, ir.UnionVariant{Name: v.Name, Type: v.Type, Ref: c.structs[v.Type]})
+		case *ast.MessageDecl:
+			c.errf(v.TypePos, "a message is not a union payload in v1 — wrap it in a type (SPEC §4.8)")
+		case *ast.EnumDecl, *ast.FlagsDecl:
+			c.errf(v.TypePos, "%s is not a union payload — a payload is a declared type; wrap the value in a type (SPEC §4.8)", v.Type)
+		case *ast.UnionDecl:
+			c.errf(v.TypePos, "a union is not a union payload in v1 — wrap it in a type (SPEC §4.8)")
+		case *ast.ObjectDecl:
+			c.errf(v.TypePos, "an object is not a union payload — an object has no single wire form (SPEC §4.8)")
+		default:
+			c.errf(v.TypePos, "%s is not a type", v.Type)
+		}
+	}
+	// dropped variants (duplicates, bad payloads) already errored; Max and
+	// storage stay the DECLARED count so cascade diagnostics do not invent a
+	// second wire shape — the unit is refused either way.
 }
 
 type scopeFrame struct {
@@ -992,6 +1106,12 @@ func (c *checker) resolveField(kind declKind, owner string, f *ast.Field) *ir.Fi
 			out.Type = ir.FieldType{Kind: ir.TNamed, Name: f.Type.Name, Ref: c.enums[f.Type.Name]}
 		case *ast.FlagsDecl:
 			out.Type = ir.FieldType{Kind: ir.TNamed, Name: f.Type.Name, Ref: c.flagsD[f.Type.Name]}
+		case *ast.UnionDecl:
+			if kind == objectD {
+				c.errf(f.Type.Pos, "a union is not reachable from an object body in v1 — the view-splitting rules say nothing about a one-of (SPEC §4.8)")
+				return nil
+			}
+			out.Type = ir.FieldType{Kind: ir.TNamed, Name: f.Type.Name, Ref: c.unions[f.Type.Name]}
 		case *ast.ObjectDecl:
 			c.errf(f.Type.Pos, "an object name is not a field type in v1 — an object has no single wire form (SPEC §4.8)")
 			return nil
@@ -1678,11 +1798,13 @@ func (c *checker) checkCycles() {
 		}
 		color[name] = grey
 		path = append(path, name)
-		st := c.structs[name]
-		if st != nil {
+		if st := c.structs[name]; st != nil {
 			for _, f := range st.Fields {
 				if f.Type.Kind == ir.TNamed {
-					if _, isStruct := f.Type.Ref.(*ir.Struct); isStruct {
+					// unions join the composition graph: a payload holding
+					// its own union has infinite size (SPEC §4.8)
+					switch f.Type.Ref.(type) {
+					case *ir.Struct, *ir.Union:
 						if !visit(f.Type.Name) {
 							break
 						}
@@ -1690,17 +1812,87 @@ func (c *checker) checkCycles() {
 				}
 			}
 		}
+		if un := c.unions[name]; un != nil {
+			for _, v := range un.Variants {
+				if !visit(v.Type) {
+					break
+				}
+			}
+		}
 		path = path[:len(path)-1]
 		color[name] = black
 		return true
 	}
-	names := make([]string, 0, len(c.structs))
+	names := make([]string, 0, len(c.structs)+len(c.unions))
 	for n := range c.structs {
+		names = append(names, n)
+	}
+	for n := range c.unions {
 		names = append(names, n)
 	}
 	sort.Strings(names)
 	for _, n := range names {
 		visit(n)
+	}
+}
+
+// checkObjectUnionReach enforces the object-body union ban TRANSITIVELY
+// (SPEC §4.8): an object may not reach a union through any field's type —
+// nesting a union inside a plain type does not smuggle it into the view
+// machinery. Direct union fields are refused at resolution; this walk
+// catches the composition closure.
+func (c *checker) checkObjectUnionReach() {
+	reach := map[string]bool{} // struct name -> reaches a union
+	var walk func(name string, visiting map[string]bool) bool
+	walk = func(name string, visiting map[string]bool) bool {
+		if r, done := reach[name]; done {
+			return r
+		}
+		if visiting[name] {
+			return false // a cycle is its own error (checkCycles)
+		}
+		visiting[name] = true
+		defer delete(visiting, name)
+		st := c.structs[name]
+		if st == nil {
+			return false
+		}
+		r := false
+		for _, f := range st.Fields {
+			if f.Type.Kind != ir.TNamed {
+				continue
+			}
+			switch f.Type.Ref.(type) {
+			case *ir.Union:
+				r = true
+			case *ir.Struct:
+				if walk(f.Type.Name, visiting) {
+					r = true
+				}
+			}
+		}
+		reach[name] = r
+		return r
+	}
+	names := make([]string, 0, len(c.objects))
+	for n := range c.objects {
+		names = append(names, n)
+	}
+	sort.Strings(names)
+	for _, n := range names {
+		for _, f := range c.objects[n].Fields {
+			if f.Type.Kind != ir.TNamed {
+				continue
+			}
+			if _, isStruct := f.Type.Ref.(*ir.Struct); isStruct && walk(f.Type.Name, map[string]bool{}) {
+				pos := ast.Pos{}
+				if d, ok := c.astDecls[n]; ok {
+					pos = d.DeclPos()
+				}
+				c.errf(pos, "%s.%s: type %s reaches a union, and an object body may not — the view-splitting rules say nothing about a one-of; a follow-on pass, not a ruling against (SPEC §4.8)",
+					n, f.Name, f.Type.Name)
+			}
+		}
 	}
 }
 
@@ -1874,6 +2066,17 @@ func (c *checker) checkTables() {
 				bad = fixedSpelling(f.Type.Signed) + "(I, F)"
 			case f.Type.Kind == ir.TBits && f.Type.Width > 64:
 				bad = fmt.Sprintf("bits(%d)", f.Type.Width)
+			}
+			if f.Type.Kind == ir.TNamed {
+				if _, isUnion := f.Type.Ref.(*ir.Union); isUnion {
+					pos := ast.Pos{}
+					if d, ok := c.astDecls[name]; ok {
+						pos = d.DeclPos()
+					}
+					c.errf(pos, "%s.%s: a union may not sit on a table-closure path in v1 — the table wire's evolution semantics (elision, unknown-field skip) are undefined over a one-of, a follow-on pass, not a ruling against (SPEC §4.8)",
+						name, f.Name)
+					continue
+				}
 			}
 			if bad != "" {
 				pos := ast.Pos{}
@@ -2116,6 +2319,39 @@ func (c *checker) checkClaimedNames() {
 			for _, v := range d.Variants {
 				addRust(ir.RustConstName(name)+"_"+ir.RustConstName(v.Text), whyC, v.Pos, name+v.Text)
 			}
+		case *ast.UnionDecl:
+			// the union's generated surface (SPEC §4.8): the <Name>Type tag
+			// enum with None/Max and one constant per variant (flat in Go),
+			// the wire pair and the bounds — plus the C forms: the flat
+			// #define family and the tag debug-name function. Registering
+			// them here is what refuses a union named Message in a unit with
+			// messages (its MessageType/WriteMessage/ReadMessage collide
+			// with the dispatch surface) — generated-vs-generated, one map.
+			whyTag := fmt.Sprintf("union %s's generated tag enum", name)
+			add(name+"Type", whyTag, d.Pos)
+			add(name+"TypeNone", whyTag, d.Pos)
+			add(name+"TypeMax", whyTag, d.Pos)
+			for _, v := range d.Variants {
+				add(name+"Type"+ir.GoExportName(v.Name), fmt.Sprintf("union %s's generated tag constant", name), v.Pos)
+			}
+			whyFn := fmt.Sprintf("union %s's generated functions and constants", name)
+			add("Write"+name, whyFn, d.Pos)
+			add("Read"+name, whyFn, d.Pos)
+			add("Zero"+name, whyFn, d.Pos) // the C#/JS §5 zero-form helper
+			add(name+"MaxBits", whyFn, d.Pos)
+			add(name+"MaxBytes", whyFn, d.Pos)
+			whyRustU := fmt.Sprintf("union %s's generated functions and constants (Rust/C form)", name)
+			addRust("write_"+ir.RustSnake(name), whyRustU, d.Pos, "Write"+name)
+			addRust("read_"+ir.RustSnake(name), whyRustU, d.Pos, "Read"+name)
+			addRust(ir.RustConstName(name+"MaxBits"), whyRustU, d.Pos, name+"MaxBits")
+			addRust(ir.RustConstName(name+"MaxBytes"), whyRustU, d.Pos, name+"MaxBytes")
+			whyCTag := fmt.Sprintf("union %s's generated tag constants (C form)", name)
+			addRust(ir.RustConstName(name+"Type")+"_NONE", whyCTag, d.Pos, name+"TypeNone")
+			addRust(ir.RustConstName(name+"Type")+"_MAX", whyCTag, d.Pos, name+"TypeMax")
+			for _, v := range d.Variants {
+				addRust(ir.RustConstName(name+"Type")+"_"+ir.RustConstName(v.Name), whyCTag, v.Pos, name+"Type"+ir.GoExportName(v.Name))
+			}
+			addRust("enum_name_"+ir.RustSnake(name+"Type"), fmt.Sprintf("union %s's generated tag debug-name function (C form)", name), d.Pos)
 		case *ast.FlagsDecl:
 			for _, v := range d.Variants {
 				add(name+v.Text, fmt.Sprintf("flags %s's generated mask constant (Go form)", name), v.Pos)
@@ -2236,6 +2472,10 @@ func (c *checker) assemble() {
 				irf.Decls = append(irf.Decls, ob)
 				u.Objects[d.Name] = ob
 				u.ObjNames = append(u.ObjNames, d.Name)
+			case *ast.UnionDecl:
+				un := c.unions[d.Name]
+				irf.Decls = append(irf.Decls, un)
+				u.Unions[d.Name] = un
 			}
 		}
 		u.Files = append(u.Files, irf)

@@ -246,8 +246,15 @@ func (p *parser) parseDecl() {
 			d.Names = p.parseVariantList("contexts")
 			p.expectTerminator("contexts declaration")
 			p.file.Decls = append(p.file.Decls, d)
+		case "union":
+			p.advance()
+			name := p.expect(scanner.Ident, "union name")
+			d := &ast.UnionDecl{Name: name.Text, Pos: t.Pos}
+			d.Variants = p.parseUnionBody()
+			p.expectTerminator("union declaration")
+			p.file.Decls = append(p.file.Decls, d)
 		default:
-			p.errf(t.Pos, "unexpected %q at file scope (declarations begin with package, const, enum, flags, type, table, message, object or contexts)", t.Text)
+			p.errf(t.Pos, "unexpected %q at file scope (declarations begin with package, const, enum, flags, type, table, message, object, union or contexts)", t.Text)
 			p.skipDecl()
 		}
 
@@ -285,6 +292,64 @@ func (p *parser) parseVariantList(what string) []ast.Name {
 	}
 	p.expect(scanner.RBrace, "}")
 	return names
+}
+
+// parseUnionBody parses a union's { variant Type ... } rows (SPEC §4.8): each
+// row is a variant name then its payload type name, newline-terminated like a
+// field. No attributes, no defaults, no bounds — a variant row names a thing,
+// it does not describe a wire refinement.
+func (p *parser) parseUnionBody() []ast.UnionVariant {
+	var variants []ast.UnionVariant
+	p.expect(scanner.LBrace, "{")
+	for {
+		switch p.kind() {
+		case scanner.RBrace:
+			p.advance()
+			return variants
+		case scanner.EOF:
+			p.errf(p.tok().Pos, "unexpected end of file inside union body (missing } )")
+			return variants
+		case scanner.Newline:
+			p.advance()
+		default:
+			if p.kind() == scanner.KwType {
+				// `type` scans as a keyword, so this cannot reach the
+				// checker: the named refusal lives here (SPEC §4.8 — it is
+				// the tag member's own name in the C/C++ representations)
+				p.errf(p.tok().Pos, "variant type is a compile error — it is the tag member's own name in the C and C++ union representations; rename at the source (SPEC §4.8)")
+				p.advance()
+				p.skipToTerminator()
+				continue
+			}
+			name := p.expect(scanner.Ident, "union variant name")
+			if name.Kind != scanner.Ident {
+				p.skipToTerminator()
+				continue
+			}
+			// the named refusal for non-type payloads the grammar can spot
+			// here: a scalar keyword or an array bound (SPEC §4.8 — a
+			// payload is a declared type; wrap scalars, no arrays)
+			switch t := p.tok(); t.Kind {
+			case scanner.LBrack, scanner.KwBits, scanner.KwBool, scanner.KwFloat32,
+				scanner.KwFloat64, scanner.KwString, scanner.KwBytes, scanner.KwFixed,
+				scanner.KwUfixed, scanner.KwInt8, scanner.KwInt16, scanner.KwInt32,
+				scanner.KwInt64, scanner.KwUint8, scanner.KwUint16, scanner.KwUint32,
+				scanner.KwUint64, scanner.KwInt128, scanner.KwUint128:
+				p.errf(t.Pos, "a union variant's payload is a declared type — wrap a scalar or array in a type (SPEC §4.8)")
+				p.skipToTerminator()
+				continue
+			}
+			typ := p.expect(scanner.Ident, "union variant payload type")
+			if typ.Kind != scanner.Ident {
+				p.skipToTerminator()
+				continue
+			}
+			variants = append(variants, ast.UnionVariant{
+				Name: name.Text, Pos: name.Pos, Type: typ.Text, TypePos: typ.Pos,
+			})
+			p.expectTerminator("union variant")
+		}
+	}
 }
 
 func (p *parser) parseBlock() *ast.Block {

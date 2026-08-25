@@ -2,7 +2,7 @@
    SPDX-License-Identifier: NONE — this generated output is yours, under terms of
    your choice. See the LICENSE exception in the schema compiler; the compiler is
    AGPL-3.0, its output is not.
-   package example — protocol id 0x40230069cc791fab */
+   package example — protocol id 0x9cdffa5a3048f991 */
 
 #ifndef SCHEMA_EXAMPLE_WIRE_H
 #define SCHEMA_EXAMPLE_WIRE_H
@@ -126,6 +126,70 @@ static SCHEMA_UNUSED ProbeSample new_probe_sample( void )
     value.active = 1;
     return value;
 }
+
+
+/* type ProbeRing */
+typedef struct ProbeRing {
+    uint16_t radius;
+} ProbeRing;
+
+#define PROBE_RING_MAX_BITS 16   /* longest wire path; align pads at worst case (SPEC §6.1) */
+#define PROBE_RING_MAX_BYTES 8  /* rounded up to the 8-byte write-buffer granularity; a READ buffer's allocation must extend at least 8 bytes past the data — serialize.c loads 64-bit windows */
+
+
+/* type ProbeSlab */
+typedef struct ProbeSlab {
+    uint8_t width;
+    uint8_t height;
+} ProbeSlab;
+
+#define PROBE_SLAB_MAX_BITS 15   /* longest wire path; align pads at worst case (SPEC §6.1) */
+#define PROBE_SLAB_MAX_BYTES 8  /* rounded up to the 8-byte write-buffer granularity; a READ buffer's allocation must extend at least 8 bytes past the data — serialize.c loads 64-bit windows */
+
+
+/* union ProbeShape — first-class one-of (SPEC §4.8): the tag says which arm is
+   live; None = 0 is the empty union, and the tag range is [0, 2]. */
+typedef uint8_t ProbeShapeType;
+#define PROBE_SHAPE_TYPE_NONE 0
+#define PROBE_SHAPE_TYPE_RING 1
+#define PROBE_SHAPE_TYPE_SLAB 2
+#define PROBE_SHAPE_TYPE_MAX 2
+
+/* Debug/log name for any ProbeShapeType value, out-of-set included. */
+static SCHEMA_UNUSED const char * enum_name_probe_shape_type( ProbeShapeType value )
+{
+    switch ( value )
+    {
+        case PROBE_SHAPE_TYPE_NONE: return "None";
+        case 1: return "Ring";
+        case 2: return "Slab";
+        default: return "???";
+    }
+}
+
+typedef struct ProbeShape {
+    ProbeShapeType type;
+    union {
+        ProbeRing ring;
+        ProbeSlab slab;
+    } as;
+} ProbeShape;
+
+#define PROBE_SHAPE_MAX_BITS 18   /* tag + the largest arm; None costs the tag only (SPEC §4.8) */
+#define PROBE_SHAPE_MAX_BYTES 8  /* rounded up to the 8-byte write-buffer granularity; a READ buffer's allocation must extend at least 8 bytes past the data — serialize.c loads 64-bit windows */
+
+
+/* type ProbeCollider */
+typedef struct ProbeCollider {
+    uint8_t armor;
+    ProbeShape shape;
+    ProbeShape backup;
+    ProbeShape extras[2];
+    int32_t extras_count;
+} ProbeCollider;
+
+#define PROBE_COLLIDER_MAX_BITS 82   /* longest wire path; align pads at worst case (SPEC §6.1) */
+#define PROBE_COLLIDER_MAX_BYTES 16  /* rounded up to the 8-byte write-buffer granularity; a READ buffer's allocation must extend at least 8 bytes past the data — serialize.c loads 64-bit windows */
 
 
 /* type ProbeConfig */
