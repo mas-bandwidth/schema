@@ -9,6 +9,7 @@
 #include <cstring>
 #include <type_traits>
 #include <thread>
+#include <new> // placement new — the raw-struct scatter constructs in place
 
 #include "ConstantsWire.h"
 #include "ContextsWire.h"
