@@ -31,8 +31,8 @@
   human front page, load-bearing for a working session): all six backends live (the JS
   legs — `test/js`, `test/js-ludicrous` — joined 2026-08-16 with the sixth backend); `make`
   builds the compiler, generates C++ headers (`generated/cpp/`), C sources, a Go package,
-  a Rust crate and C# sources from `examples/`, and runs twelve binaries — the C++ tests
-  (both message representations plus a randomized round-trip suite) and the C, Go, Rust
+  a Rust crate and C# sources from `examples/`, and runs the test binaries — the C++ tests
+  (plus a randomized round-trip suite) and the C, Go, Rust
   and C# wire tests, each byte-comparing against the same C++-pinned wire goldens
   (cross-language wire identity is a standing gate) — plus the fixed-point + 128-bit
   unit (`examples128/`, all five targets: the C leg landed 2026-08-13, the other four
@@ -43,9 +43,8 @@
   the break-the-language diagnostics suite (70+ refusal cases) and the
   source/id/wire golden pins. Each backend
   emits what a careful expert would write against its serialize runtime: split
-  `Write`/`Read` per type; per-target dispatch (C++ tagged union or opt-in
-  `std::variant`; C tagged union; Go interface + storage; Rust enum; C# abstract class + storage); object
-  view families with deterministic `Quantize`/`Unquantize`; zero initialization with
+  `Write`/`Read` per type; per-target union representations (C++/C tagged union;
+  Go/C#/JS tag beside pre-allocated arms; Rust enum); zero initialization with
   specified defaults; `schemafmt` canonicalizing every input in place.
 - **Trajectory** (Glenn, 2026-08-05): once design settles and implementation starts, this
   repo represents the most recent state only, not the total history of everything —
@@ -53,20 +52,25 @@
 
 ## The horizon — campaign context (relocated from SPEC §1, 2026-08-18)
 
-The long arc (Glenn, 2026-08-04): schema as the single data-definition language for
-Space Game — bitpacked realtime messages (v1, shipped), object and event type
-definitions, flatbuffers-style versioned config/asset data, and delta encoding against
-a baseline, all generated from one source. His one-sentence version: *"so much
-boilerplate would just go away, replaced with a definition of what object types there
-are, and what properties and attributes per-property."*
+The long arc (Glenn, 2026-08-04): schema as the single data-definition language, with
+the opinionated layers built on top of it living elsewhere. The boundary, in Glenn's
+words (2026-08-25): *"schema is types and bitpacking and enums and constants."*
 
 - **The table layer left the language (2026-08-25).** Tables, collections and
   the JSON data compiler are not part of schema: the language is the realtime
   wire — hardcoded structs, one protocol id, same-or-refuse — and content
   pipelines are out of scope. `table` stays a reserved word and the parser
   refuses it by name.
+- **The protocol layer left the language (2026-08-26).** Messages, objects,
+  the view markers, quantize, round and contexts are not part of schema: the
+  free offering is types, enums, flags, unions, constants and bitpacking — a
+  pure data contract, zero protocol conventions. `message` and `object` stay
+  reserved words and the parser refuses them by name; the projection carries
+  frozen `message=false` and `round=nearest` tokens beside `table=false` so
+  the refusals moved no protocol-free unit's id. The positioning is
+  empowerment: build your own message types with enums and unions.
 - **The delta pass** stays out of scope here (SPEC's non-goals): schema
-  declares types and messages; delta encoding is an application's own layer.
+  declares types; delta encoding is an application's own layer.
 - **Constants migrate through a temporary duplicate set** (schema + flatbuffers) while
   .fbs consumers remain; `Constants.schema` is the one home, C++ reads generated
   `space::` values through name-preserving aliases, and a static_assert guard block
@@ -77,15 +81,10 @@ are, and what properties and attributes per-property."*
   `schema_generate` target).
 - **Reserved surface for these passes:** `packet`, `delta`, `baseline`, `index`
   (SPEC §1); `lerp`/`slerp`/`snap`/`angle`/`smooth` informally reserved as attribute
-  values for the interpolation pass; SPEC §9 q11 banks the cut `enum_index` design;
-  §9 q13's design input — measured interpolation policy is 100% type-derived across
-  all four real objects (lerp floats, shortest-arc nlerp rotations, snap discrete),
-  no field overrides its type's policy.
-- **The v1 scope sentences (Glenn, 2026-08-05, verbatim):** *"goal for v1 is schema
-  fully defines generated code for the constants, enums, types, messages, object
-  definitions. the delta serialization is out of scope of v1."* Object layer v1
-  deliverable: *"just build the structs from the definition in schema lang to start.
-  (shallow, deep, interpolated, quantize)."*
+  values for a claiming pass; SPEC §9 q11 banks the cut `enum_index` design.
+- **The current scope sentence (Glenn, 2026-08-25, verbatim):** *"schema is types
+  and bitpacking and enums and constants."* The opinionated protocol layers live
+  above the language, built from its primitives.
 
 ## SPEC maintenance ledger (from the 2026-08-18 human-readability rewrite)
 
@@ -98,8 +97,7 @@ numbers §1–§9 and the §9 q-rows are frozen — code, corpus and docs cite t
 
 - **Testing status at the rewrite** (was SPEC §7.2's status paragraph): gates 1, 2 and 7
   live across the matrix (`testdata/golden/`, `testdata/wire/` — C++ writes the pins,
-  every other leg byte-compares them; both C++ message representations proven
-  byte-identical); gate 4 live in pinned-instance form plus the randomized C++
+  every other leg byte-compares them); gate 4 live in pinned-instance form plus the randomized C++
   round-trip suite; gate 3 in seed form (RigidBody and string classic twins in
   `test/main.cpp`), growing with the corpus; gate 6 live as the break-the-language
   diagnostics suite (70+ cases) plus `internal/fuzz` (compile, oracle and property
@@ -107,9 +105,7 @@ numbers §1–§9 and the §9 q-rows are frozen — code, corpus and docs cite t
   work. A fmt-drift gate asserts the corpus stays formatter-canonical.
 - **Held-loosely tells** (the spec states these as law; the confidence metadata lives
   here): the bracket attribute syntax carries Glenn's hedge ("just a personal
-  preference, could be wrong but let's see in time"); the Contexts mechanism and the
-  §4.8 view-encoding rules are Rowan-drafted transcriptions of the measured
-  hand-written referents (`Ship.h`/`core_quantize.h`/`core_delta.h`) ratified in use;
+  preference, could be wrong but let's see in time");
   the §5 reused-output tail rule is priced-later (tail-clearing on read would be a
   generated-code change); whether untaken branches should restore specified defaults
   instead of zeros is Glenn's call if a real case ever wants it; an exact-length
@@ -171,12 +167,10 @@ numbers §1–§9 and the §9 q-rows are frozen — code, corpus and docs cite t
   SPEC §5 semantics, guarded by the stale-leak pinned test). C# batch emission: cores are
   INLINE-ONLY (an address-exposed ref-struct measured WORSE than no batch) and OPT-IN by
   scalar density (bulk-dominated types lose; rule in `internal/codegen/csharp/batch.go`).
-  Rust dispatch: `read_message` for one-shot, `read_message_into` for reuse loops
-  (2.25x); NEVER delegate one to the other (measured −23%, defeats in-place return).
 - **Instrument honesty**: harness defects crowned the wrong winner once (v1's "C# beats
   C++ batch read" was a per-iteration alloc in every OTHER runner) — the harness is code
   and rots too. Relative tables move when the DENOMINATOR moves (v4's widening was C++
-  accelerating, zero regressions). `message_batch` swings ±20% between byte-identical
+  accelerating, zero regressions). Batch-shaped rows swing ±20% between byte-identical
   binaries (layout noise) — pair same-sitting, discard contaminated runs whole, file
   unattributed movements instead of claiming them. One bench at a time per machine:
   check for sibling bench processes and wait for a quiet window. **A tiered-JIT runtime

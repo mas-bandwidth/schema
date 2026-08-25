@@ -443,7 +443,7 @@ const (
 // ProbeShape — at most one of the arms; Type says which. The zero value is the
 // empty union (None). A read zero-establishes exactly the selected arm before
 // decoding it (SPEC §5); unselected arms keep what they last held — the
-// MessageStorage reuse discipline. Consumers read the selected arm only.
+// reused-storage discipline. Consumers read the selected arm only.
 type ProbeShape struct {
 	Type ProbeShapeType
 	Ring ProbeRing

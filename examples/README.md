@@ -17,11 +17,8 @@ resolution makes it free):
 
 | file | holds | exercises |
 |---|---|---|
-| `Contexts.schema` | the build contexts | `contexts { client, server }` — user-declared sides, per-context generated types |
 | `Constants.schema` | every `const` | composition (`const C = A * B`), `Team.Max` enum references, order-free cross-file refs |
 | `Enums.schema` | the enum family | both forms, comma-separated variants: `enum` (with-None) and `flags` (uint64, bit-per-variant) |
 | `Types.schema` | every `type` | tagged user types (`Vec3 \| vec3`, `Quat \| quat4` — tags inert in v1), quantized-int types, prefix arrays `[..N]T`, bool-gated `if` with a `flags` field, and `RigidBody` — the serialize README's own example, schema-specified: the velocity group rides only when `!at_rest`, and §5's zero-on-untaken-branch rule is the hand-written `else if ( Stream::IsReading )` zeroing made contract |
-| `Messages.schema` | every `message` | the implicit `MessageType` set, sorted-by-name tags, empty message, unified `string(N)`/`bytes(N)` (fixed buffers, used-length wire) |
-| `Objects.schema` | all four `object`s | the view markers (`interpolate`/`local`, deep by default), explicit-bound composite `quantize`, ranged-int projection with `round = up`, `\| local, context = ...` scoped fields, per-field wire treatment divergences between objects — and the FULL working ship state: sim-local fields folded in, so the generated per-context state structs can serve as the simulation struct outright |
 | `Render.schema` | the render blob | parallel scatter/gather: trivially-copyable generated types built independently by N workers and gathered by concatenation |
-| `Wire.schema` | wire-construct coverage | the constructs the other files don't reach — typed constants, `union` (first-class one-of), `const`/`reserved`/`align` wire items, compressed floats — so every emitter codepath is exercised in the corpus |
+| `Wire.schema` | wire-construct coverage | the constructs the other files don't reach — typed constants, `union` (first-class one-of), `const`/`reserved`/`align` wire items, compressed floats, empty bodies, unified `string(N)`/`bytes(N)` (fixed buffers, used-length wire) — so every emitter codepath is exercised in the corpus |

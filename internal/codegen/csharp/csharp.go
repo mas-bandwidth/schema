@@ -211,8 +211,7 @@ func (g *gen) emitFile(carriesProtocolId bool) {
 
 // emitUnion emits a first-class one-of (SPEC §4.8): the <Name>Type tag enum,
 // then the variant-class storage — the tag beside one pre-allocated arm per
-// variant (the MessageStorage stand-in; nothing heap-allocates per value
-// after construction).
+// variant; nothing heap-allocates per value after construction.
 func (g *gen) emitUnion(d *ir.Union) {
 	members := make([]string, len(d.Variants))
 	for i, v := range d.Variants {

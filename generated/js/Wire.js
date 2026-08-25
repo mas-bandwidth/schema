@@ -481,7 +481,7 @@ export const ProbeShapeType = Object.freeze({
 // ProbeShape — at most one of the arms; Type says which. Construction is the empty
 // union (None). A read zero-establishes exactly the selected arm before
 // decoding it (SPEC §5); unselected arms keep what they last held — the
-// MessageStorage reuse discipline. Consumers read the selected arm only.
+// reused-storage discipline. Consumers read the selected arm only.
 export class ProbeShape {
   constructor() {
     this.Type = ProbeShapeType.None;

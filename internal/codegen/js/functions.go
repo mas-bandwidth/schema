@@ -1,4 +1,4 @@
-// Write/Read function emission for types and messages (SPEC §6.1 items 2-4,
+// Write/Read function emission for types (SPEC §6.1 items 2-4,
 // §6.2): straight-line split functions against the serialize.js holder API —
 // every call's bool is checked and early-outs, the C++ twin's shape (§6.3),
 // so counts and lengths are validated before the loop or slice they guard.
@@ -27,7 +27,7 @@ import (
 )
 
 // emitUnionFunctions emits the union's bounds, Zero helper and wire pair
-// (SPEC §4.8): the write validates the tag BEFORE it rides (WriteMessage's
+// (SPEC §4.8): the write validates the tag BEFORE it rides (the union tag
 // rule), the read rejects a tag above the count and zero-establishes exactly
 // the selected arm.
 func (g *gen) emitUnionFunctions(d *ir.Union) {
@@ -84,7 +84,7 @@ func (g *gen) emitUnionFunctions(d *ir.Union) {
 }
 
 // emitStructFunctions emits MaxBits/MaxBytes, the Zero helper, and the split
-// Write/Read pair for a type or message.
+// Write/Read pair for a type.
 func (g *gen) emitStructFunctions(st *ir.Struct) {
 	// the statically byte-aligned [N]uint8 fields of THIS struct take the
 	// serializeBytes bulk path (a per-struct alignment proof)
@@ -116,7 +116,7 @@ func (g *gen) emitStructFunctions(st *ir.Struct) {
 // specified defaults NOT reapplied (those live in construction only; the
 // wire contract stays a pure function of the encodings). JS classes are
 // reference types, so this is the C# in-place-zero idiom: branch zeroing
-// and ReadMessage's storage reset both go through here.
+// and the union arm reset both go through here.
 func (g *gen) emitZeroFunction(st *ir.Struct) {
 	g.pf("// The §5 zero form: all-zero storage; specified defaults live only in construction.\n")
 	g.pf("export function Zero%s(value) {\n", st.Name)

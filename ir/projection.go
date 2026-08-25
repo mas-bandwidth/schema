@@ -159,9 +159,9 @@ func projectItems(b *strings.Builder, items []Item, ind string) {
 func projectField(b *strings.Builder, f *Field, ind string) {
 	// the NAME rides as a FROZEN token: it projected for the retired table
 	// wire (field identity was its name hash), and keeping it keeps every
-	// existing id stable — so a rename moves the id even though the message
-	// wire is unmoved. Dropping it is a ProjectionVersion bump, taken
-	// deliberately or not at all.
+	// existing id stable — so a rename moves the id even though the wire is
+	// unmoved. Dropping it is a ProjectionVersion bump, taken deliberately
+	// or not at all.
 	fmt.Fprintf(b, "%sfield %s kind=%d", ind, f.Name, int(f.Type.Kind))
 
 	if f.Type.Kind == TNamed {

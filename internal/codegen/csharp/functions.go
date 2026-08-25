@@ -121,7 +121,7 @@ func (g *gen) emitCoreAttr() {
 // emitZeroFunction emits the §5 ZERO form for a class — all-zero storage,
 // specified defaults NOT reapplied (those live in construction only; the wire
 // contract stays a pure function of the encodings). It is the C# twin of the
-// C++ target's memset: branch zeroing and ReadMessage's storage reset both go
+// C++ target's memset: branch zeroing and the union arm reset both go
 // through here.
 func (g *gen) emitZeroFunction(st *ir.Struct) {
 	g.sf("// The §5 zero form: all-zero storage; specified defaults live only in construction.\n")
@@ -198,7 +198,7 @@ func (g *gen) emitReadItems(items []ir.Item, ind string) {
 // emitUnionFunctions emits the union's bounds and wire pair (SPEC §4.8):
 // plain stream functions — a union never batches (batchPlan excludes any
 // type that reaches one), so no *Batch core exists. The write validates the
-// tag BEFORE it rides (WriteMessage's rule); the read rejects a tag above
+// tag BEFORE it rides; the read rejects a tag above
 // the count and zero-establishes exactly the selected arm.
 func (g *gen) emitUnionFunctions(d *ir.Union) {
 	g.needsSerialize = true

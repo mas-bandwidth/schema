@@ -54,8 +54,8 @@ consumer.
    and names the fix.
 
 **Scope (v1).** schema fully defines the generated code for constants, enums,
-flags, types, messages and object definitions. Delta serialization is
-out of scope for v1.
+flags, types and unions — a pure data contract with zero protocol
+conventions. Delta serialization is out of scope for v1.
 
 ### Non-goals (v1)
 
@@ -85,8 +85,7 @@ The language is called **schema**. Schema files use the `.schema` extension,
 named in UpperCamelCase after their contents.
 
 The conventional file layout is aspect-oriented — `Constants.schema`,
-`Enums.schema`, `Types.schema`, `Messages.schema`, `Objects.schema` — one
-aspect per file. This is a convention the corpus and documentation follow and
+`Enums.schema`, `Types.schema`, `Wire.schema` — one aspect per file. This is a convention the corpus and documentation follow and
 `schemafmt` respects, never compiler-enforced; cross-file resolution is
 order-free (§3.2), so the layout carries no semantic weight.
 
@@ -121,17 +120,18 @@ walk forgot becomes two incompatible builds shaking hands. The projection is
 TEXT: what the id depends on can be printed, read and diffed, and a fact
 missing from it is a review question rather than an implementation detail.
 
-**Included — each fact moves the wire:** the package; message and object
-ordinals (the tag IS the index); contexts; every type's field order; field
-NAMES; type
-kind, width and signedness; declared bounds; array kind and bounds;
-string/bytes capacity; float range, resolution and step count; fixed `I` and
-`F`; quantize scale and bound; specified defaults (both ends must agree on
-the value an untaken branch zeroes toward and a constructor materializes);
-branch structure; `const`/`reserved`/`align`
-items; enum max and storage bits; flags wire bits; union variant order,
-count and payload type references (the tag is positional and the payload is
-the wire — §4.8); `local` and `interpolate` markers.
+**Included — each fact moves the wire:** the package; every type's field
+order; field NAMES; type kind, width and signedness; declared bounds; array
+kind and bounds; string/bytes capacity; float range, resolution and step
+count; fixed `I` and `F`; specified defaults (both ends must agree on the
+value an untaken branch zeroes toward and a constructor materializes);
+branch structure; `const`/`reserved`/`align` items; enum max and storage
+bits; flags wire bits; union variant order, count and payload type
+references (the tag is positional and the payload is the wire — §4.8). The
+projection also carries FROZEN tokens — `table=false message=false` on
+every type line and `round=nearest` on every compressed-float field line —
+kept so the refusals of §4.11 moved no id; dropping one is a
+`ProjectionVersion` bump.
 
 **Excluded — each has no effect on the bytes:** comments and whitespace; file
 names, file layout and declaration order; enum variant names, union variant
@@ -257,8 +257,7 @@ placement and the formatter normalizes to it:
 
 ```
 File        = { Declaration } .
-Declaration = Package | Const | Enum | Flags | TypeDecl | Message | Object | Union | Contexts .
-Object      = "object" ident Block NL .
+Declaration = Package | Const | Enum | Flags | TypeDecl | Union .
 Flags       = "flags" ident ( VariantList
             | AttrSection NL VariantList ) NL .                // "flags" contextual, §4.2;
                                                                    // a qualified declaration's
@@ -266,8 +265,6 @@ Flags       = "flags" ident ( VariantList
 Union       = "union" ident UnionBlock NL .                        // "union" contextual, §4.8
 UnionBlock  = "{" { UnionVariant } "}" .
 UnionVariant = ident ident NL .                                    // variant name, then its payload type
-Contexts    = "contexts" VariantList NL .                          // "contexts" contextual, §4.2;
-                                                                   // one list per unit
 Package     = "package" ident NL .
 Const       = "const" ident [ ConstType ] "=" ConstExpr NL .
 ConstType   = IntType | "float32" | "float64" .
@@ -278,7 +275,6 @@ VariantList = "{" [ ident { "," ident } [ "," ] ] "}" .            // commas; tr
 TypeDecl    = "type" ident ( Block
             | AttrSection NL Block ) NL .               // qualifiers = the type TAG and the
                                                         // cpp_* pair, §4.2
-Message     = "message" ident Block NL .
 
 Block       = "{" { Item } "}" .
 Item        = Field | ConstField | Reserved | Align | If .
@@ -311,9 +307,9 @@ Bound       = IntExpr | ".." IntExpr | IntExpr ".." IntExpr .       // [N] exact
 AttrSection = "|" Attr { "," Attr } .                            // runs to END OF LINE: the newline
                                                                  // or a // comment terminates it —
                                                                  // nothing follows a qualification
-Attr        = ident "=" ( ConstExpr | ident | string )           // valued:    min = 0, round = up,
+Attr        = ident "=" ( ConstExpr | ident | string )           // valued:    min = 0, max = 100,
                                                                  //            cpp_include = "a.h"
-            | ident .                                            // valueless: interpolate, local
+            | ident .                                            // valueless: a type tag (§4.2)
                                                                  // (ident values are keyword-like:
                                                                  // each valued key declares whether
                                                                  // it takes an expression, a word,
@@ -350,7 +346,7 @@ FloatExpr   = float expression over float literals, int literals and const names
   languages get it from their own rules, stated so no target can silently be
   the odd one out). A field may override its zero with `= value` after the
   type — the default DEFINES the fresh value, so it precedes any `|`
-  qualification: `invulnerable bool = true | local`. Defaults cover bool
+  qualification: `active bool = true`. Defaults cover bool
   (`true`/`false`), integer and float fields (constant expressions,
   fit-checked like any use site), enum fields (a variant name), the 128-bit
   integers, and `fixed` (§4.6); arrays, strings, bytes, composite and union
@@ -382,9 +378,9 @@ FloatExpr   = float expression over float literals, int literals and const names
   `E.Max + 1` by ordinary constant arithmetic; the count of real (non-`None`)
   variants is `E.Max` (see the sentinel-zero convention below). Sizing
   enum-indexed tables with `E.Max + 1` stays correct under `max` headroom,
-  where non-variant values are wire-legal. It works on generated sets too
-  (`MessageType.Max`, `ObjectType.Max`, a union's `<Union>Type.Max` — §4.8);
-  generated sets resolve in constant expressions and nowhere else. **Flags
+  where non-variant values are wire-legal. It works on the generated tag set
+  too (a union's `<Union>Type.Max` — §4.8); generated sets resolve in
+  constant expressions and nowhere else. **Flags
   have `F.Count`, not `F.Max`** — a flags declaration is a set of
   independent bits, not a range with a top, so max-of-what is exactly the
   confusion `.Max` would invite and the compiler refuses it naming the
@@ -412,8 +408,8 @@ FloatExpr   = float expression over float literals, int literals and const names
   dense. There are no explicit variant values and no sparse enums.
 - **The enum family is two declaration forms:**
   - **`enum`** — the canonical with-`None` form above. Wire: the raw value,
-    in **[0, max]**; `None` is a legal wire value (the null — the shape of
-    the generated `MessageType`/`ObjectType`).
+    in **[0, max]**; `None` is a legal wire value (the null — the shape the
+    generated `<Union>Type` tag follows too).
   - **`flags Name { ... }`** — each variant names one bit, assigned densely
     from bit 0 in declaration order, **up to 64**; **storage is `uint64` in
     every target**; no implicit `None` — the empty mask is 0 and needs no
@@ -453,13 +449,13 @@ sequence    uint16
 ```
 
 - **The section is terminated by the newline or by a `//` comment** —
-  `other ShipData | local // simulation-only` carries exactly one
-  qualifier. (An ordinary comment BEFORE any pipe wins by ordinary lexing:
-  in `foo uint8 // c | local` the `|` is comment text and the field carries
+  `thrust int8 | min = 0, max = 100 // engine output` ends at the comment.
+  (An ordinary comment BEFORE any pipe wins by ordinary lexing:
+  in `foo uint8 // c | min = 0` the `|` is comment text and the field carries
   no qualification.) A `|` with no qualifier before the terminator is a
   parse error ("empty qualification section — write the qualifiers after |
   or drop it"), and `|` on a line that admits no qualification — a
-  constant, an `object`/`message`/`union`/`contexts` declaration — is
+  constant or a `union` declaration — is
   refused with the reason named (`|` is never an operator; the language has
   no bitwise-or). It cannot wrap: the pipe claims the rest of the line and
   nothing else can follow it. That **no-exit property is a guarantee**, not
@@ -469,7 +465,7 @@ sequence    uint16
   future after `|` ... if we need to" — the design's stated headroom).
 - **The specified default sits BEFORE the pipe** — `= 1.0` defines what a
   fresh value holds, so it belongs to the definition, not the
-  qualification: `invulnerable bool = true | local`.
+  qualification: `w fixed(2, 30) = 1.0 | min = -1, max = 1`.
 - **Declaration lines take the same section**: a type tag or native-type
   binding, an enum's or flags' `max` headroom —
   `type Quat | quat4`, `enum Weapon | max = 15`, `flags Damage | max = 8` —
@@ -497,10 +493,9 @@ sequence    uint16
   RETIRED trailing attribute block; the parser refuses it with the `|`
   spelling named. Scalar
   constraints like `min`/`max` apply per element.
-- **Valueless qualifiers** (the object view markers `interpolate` and
-  `local`, §4.8) and valued keys sit side by side in one flat list —
-  `| interpolate, min = x, max = y` — valueless markers first, then valued
-  keys; there is no nested argument syntax.
+- **Valueless qualifiers** (a type tag, §4.2) and valued keys sit side by
+  side in one flat list — `| vec3, cpp_native = VecMath` — valueless
+  markers first, then valued keys; there is no nested argument syntax.
 - **The line between positional and attribute:** a *size* that defines the
   type's shape stays positional — `bits(64)`, `string(64)`, `bytes(N)`,
   `fixed(I, F)`, array bounds. A *constraint or refinement* of a named type
@@ -515,10 +510,7 @@ sequence    uint16
   takes `min`/`max`/`resolution` (all three together — §4.3: this IS the
   compressed float); `fixed`/`ufixed`/`int128` take `min`/`max` (required —
   §4.3); enum declarations take `max`; type declarations take a tag and the
-  `cpp_native`/`cpp_include` pair (below); `object` bodies additionally admit
-  the view markers `interpolate` and `local`, `context = <name>` (legal only
-  beside `local` — Contexts, below), and the view-encoding keys `quantize`
-  and `round` (§4.8).
+  `cpp_native`/`cpp_include` pair (below).
 
 ### Type tags — types are the user's; meaning is claimed later
 
@@ -579,8 +571,8 @@ struct Vector3 : public space::Vector3 { /* operators, length(), ... */ };
 ```
 
 With the mapping declared, generated C++ **storage speaks the native type**:
-every field of a mapped type in every generated struct (states, data views,
-render types) declares `::Vector3` instead of `space::Vector3`, and
+every field of a mapped type in every generated struct declares
+`::Vector3` instead of `space::Vector3`, and
 every generated header that references it emits `#include "core_vector.h"`.
 Simulation code then does math on generated state directly — no conversion
 layer, no per-site casts. Derivation guarantees layout identity — the emitted
@@ -605,40 +597,6 @@ The rules:
 - **C++ only, by prefix.** Other targets ignore `cpp_*` keys. If another
   target ever earns a native mapping, it gets its own prefixed keys and its
   own soundness argument; nothing is shared but the spelling convention.
-
-### Contexts
-
-Types sometimes need per-side local state — client-only or server-only
-simulation fields — without preprocessor conditionals, which not all target
-languages have. Contexts are declared in the schema, not baked into the
-language:
-
-```
-// Contexts.schema
-package example
-
-contexts { client, server }
-```
-
-- **`contexts { ... }`** — one comma-separated list per unit (the same
-  `VariantList` form as enums; `contexts` is contextual at file scope, like
-  `flags`). Context names are user-chosen; lowercase by convention.
-- **Per-`local` field, an optional `context = <name>` attribute:**
-  `predicted_explode bool | local, context = client`. An unscoped field
-  defaults to `context = all` (every context); `all` is reserved and cannot
-  be declared. **`context` is legal only beside `local`** — a wire field
-  with a context is a compile error, because the wire must be identical on
-  every side. The `context` key's legal values are closed *by the unit's own
-  `contexts` declaration*, not by the compiler.
-- **Generation resolves the variance — no preprocessor anywhere, one output,
-  a type per context.** When a type or object carries context-scoped fields,
-  the generator emits one variant per context, named by capitalizing the
-  context onto the type — `ClientShipState`, `ServerShipState` — each holding
-  the `all` fields plus its own context's. A type with no context-scoped
-  fields generates once, unprefixed. Each side's code uses its own type.
-- **Wire and protocol id are context-invariant by construction:** context
-  fields are local-only, so every context generates byte-identical wire code,
-  and the unit has one id for all contexts.
 
 ### Constants and enums are exported
 
@@ -666,7 +624,7 @@ saying so. This is a convention over the corpus and generated-code usage, not
 a language rule — the language does not enforce entry 0's meaning.
 
 **The extent is exported.** Every generated enum surface — each declared
-enum and the generated `MessageType`/`ObjectType` tag enums — carries its
+enum and the generated `<Union>Type` tag enums — carries its
 extent as a member named `Max` in the target's own convention: `E::Max`
 (C++), `E.Max` (C#), `EMax` (Go), `E::MAX` (Rust), `E.Max` (JS), `E_MAX`
 (C). Its value is the enum's max — the same number `E.Max` names in schema
@@ -831,13 +789,9 @@ All compile errors with positions:
 - **Attribute discipline:** an unknown attribute key, a key repeated, an
   attribute on a type that does not take it, `min` without `max` (or vice
   versa), and `resolution` without both bounds are compile errors, each
-  naming the field and the legal vocabulary for its type. One scoped
-  exception: in the composite quantization form
-  `| interpolate, quantize = K, max = B` (§4.8 rule 2), `max` is the quantize
-  bound and appears WITHOUT `min` by design — `min` is forbidden there, the
-  domain being symmetric [-B, +B].
+  naming the field and the legal vocabulary for its type.
 - **Non-finite compressed-float parameters are rejected:** each of
-  `min`/`max`/`resolution` (§4.3's triple, and §4.8 rule 4's reuse of it)
+  `min`/`max`/`resolution` (§4.3's triple)
   must be finite at float64 AND at float32, where every runtime evaluates the
   triple — the diagnostic names the parameter. The grammar cannot spell NaN
   at all — a float literal beyond the double's range is a parse error,
@@ -854,9 +808,8 @@ All compile errors with positions:
   degenerate support from any runtime. What stays an error: an INVERTED range
   (min > max) anywhere; `[Min..N]T` with Min ≥ N (`[N]T` is the degenerate
   spelling); `string(N)` with N < 2; `bytes(N)` with N < 1; `[N]T` with
-  N < 1; `[..N]T` with N < 1; `resolution` ≤ 0. An empty `type` or `message`
-  body is legal — zero wire bits, presence as the payload; an empty `object`
-  body is an error (it would generate a meaningless view family); a unit with
+  N < 1; `[..N]T` with N < 1; `resolution` ≤ 0. An empty `type`
+  body is legal — zero wire bits, presence as the payload; a unit with
   no `.schema` files is an error.
 
   **An enum with no variants is legal.** It holds only the implicit
@@ -864,15 +817,12 @@ All compile errors with positions:
   bits — the value is recovered from the range alone, under the same rule as
   any degenerate range.
 - **One flat namespace, and the compiler's claimed names:** all declaration
-  kinds share one unit-level namespace (`const Foo` and `type Foo` collide).
-  A unit with `message` declarations may not declare `MessageType`;
-  symmetrically, a unit with `object` declarations may not declare
-  `ObjectType`, nor — per object `X` — the generated family names (`XState`,
-  `XData_Deep`, `XData_Shallow`, `XData_Interpolate`); and no unit declares
-  `ProtocolId`. The checker likewise refuses user names that collide with
-  per-declaration generated symbols (`Write*`/`Read*`/`New*`,
-  `*MaxBits`/`*MaxBytes`, companion length/count names, the dispatch
-  surface). Diagnostics name the generated artifact that claims the name.
+  kinds share one unit-level namespace (`const Foo` and `type Foo` collide),
+  and no unit declares `ProtocolId`. The checker likewise refuses user names
+  that collide with per-declaration generated symbols
+  (`Write*`/`Read*`/`New*`, `*MaxBits`/`*MaxBytes`, companion length/count
+  names, a union's generated tag surface). Diagnostics name the generated
+  artifact that claims the name.
 - Enum `| max = K` below the variant count.
 - **Duplicate field names anywhere in one type — including across branch
   sides.** One name, one field, declared once. (schema owns the type, and
@@ -947,224 +897,13 @@ runtime string call for the framing. **The interior-null check is
 generated-code validation in every target** — no runtime primitive performs
 it (classic C++ read appends `'\0'` and would silently truncate).
 
-### 4.8 Declaration sets — `message` and `object`, their types implicit
-
-Each message is its own declaration; the discriminant enum, the wire tag and
-the dispatch are the compiler's job, not the author's.
-
-```
-message Ping
-{
-    sequence uint16
-}
-
-message Chat
-{
-    text string(MaxChatLength)
-}
-
-message Heartbeat
-{
-    // empty body — presence is the payload
-}
-```
-
-From the unit's `message` declarations the resolver extracts the message set
-and the compiler generates, per target:
-
-- **The `MessageType` enum, with `None = 0`, then each message SORTED BY
-  NAME** — bytewise ascending over the declared names. Tags are a pure
-  function of the declared name set — independent of file layout, declaration
-  order, and any cut-and-paste reshuffling. Renumbering on growth is
-  wire-safe by construction: adding a message edits the unit, the id moves,
-  both sides regenerate together. `MessageType` is a claimed name: a unit
-  with messages may not declare its own.
-- **The wire framing**: the tag in minimal bits for `[0, count]` (the enum
-  wire rule; read rejects tags above count), then the message body. **Tag 0 =
-  None is a valid wire value meaning *no message*** — the null that gives
-  message streams a natural terminator.
-- **`WriteMessage` / `ReadMessage`** plus a dispatch surface in each
-  language's idiom: a real `enum Message { None, Chat(Chat), Ping(Ping), ...
-  }` in Rust, an interface + type switch in Go, a base type + pattern match
-  in C#, a tagged union (or opt-in `std::variant`) in C++. **Representation
-  is per-language and explicitly NOT part of the contract.** What binds every
-  target is behavioral only: identical bytes, **reading `None` is a valid
-  none-result, reading an out-of-range tag is a validation failure.**
-
-  **The C++ representation is the caller's choice:** `schema generate
-  --cpp-message union|variant`, and the **default is union** — a tagged
-  struct over an anonymous union, constructed as the None message (the tag
-  initializes to `None`; an arm's storage is established ZEROED when the arm
-  is selected — by `ReadMessage` before it decodes, per §5's zero-baseline
-  read rule, or by a writer assigning the arm), plain-switch dispatch,
-  `GetMessageType` reads the tag field.
-
-  **The opt-in variant surface** (`--cpp-message variant`):
-  `using Message = std::variant<std::monostate, <messages in tag order>>` —
-  the variant INDEX equals the wire tag, `std::monostate` is `None = 0`. No
-  heap ever (`std::variant` stores inline at the largest alternative — the
-  union's exact footprint), trivially copyable (asserted in the test),
-  dispatch via `switch` on `index()` + `get_if` (no `std::visit` in generated
-  code — it remains a caller's option for compile-time exhaustiveness). Both
-  representations are compiled and run in the test chain so neither rots;
-  both speak the identical wire (the tag + the same per-message functions).
-
-  **The standing generation principle, wider than this choice: generated C++
-  defaults to the C-flavored idiom; modern constructs enter only behind
-  opt-in flags, and any proposal to use one arrives with a measured
-  compile-time cost, never an asserted one.**
-- Every message is also an ordinary type: its own
-  `Write`/`Read`/`MaxBits`/`MaxBytes`, usable standalone and composable as a
-  field (the grammar's `ident // a declared type or enum` includes message
-  names). **An `object` name is NOT a field type in v1**: an object has no
-  single wire form (Deep vs Shallow), so `ship Ship` inside a message is a
-  compile error naming this rule; view-qualified references are a later pass
-  if ever needed. **And an `object` body admits plain fields only in v1** —
-  no `if`/`switch`/`const()`/`reserved`/`align` — because the view-splitting
-  rules assign *fields* to views and say nothing about what a branch means
-  for Shallow/Interpolate/Quantize; the restriction lifts when the delta pass
-  defines it.
-
-#### Object sets — `object`, `ObjectType`, and the generated views
-
-`object` declarations are tracked exactly like messages: the resolver
-extracts the object set and generates **`ObjectType` with `None = 0`** and
-each object in the same deterministic sorted order. The 0-reserved principle
-is uniform across every generated discriminant.
-
-The view structs exist **in generated code only**; the schema holds one
-definition per object. The markers:
-
-- **`interpolate`** — visual state, sent to the client for interpolation.
-- **deep** — the default: an unmarked field is full-state only, sent for
-  client-side prediction.
-- **`local`** — simulation-only state that reaches no wire: lives in
-  `ShipState`, absent from every network struct.
-
-What one definition generates per object, per target (shapes per language,
-behavior identical — the message-set rule):
-
-| artifact | contents |
-|---|---|
-| `ShipState` | every field — the simulation struct |
-| `ShipData_Deep` + serialize | every non-`local` field, deep encodings |
-| `ShipData_Shallow` + serialize | the `interpolate` fields, **quantized wire encodings** from the field's attributes |
-| `ShipData_Interpolate` | the same `interpolate` fields in continuous storage (see rule 5 for the projected-field exception) |
-| `Quantize` / `Unquantize` | the mapping pair between Interpolate and Shallow |
-
-**View-encoding semantics.** Inside an `object` body the attribute vocabulary
-widens: `interpolate` and `local` (valueless) and `quantize` / `round`
-(valued) join the set. View-encoding attributes describe the SHALLOW wire
-only; the deep wire always uses the bare storage type's encoding.
-
-1. **`interpolate` alone** — the shallow wire is the deep encoding,
-   unchanged.
-2. **Composite quantization** — `| interpolate, quantize = K, max = B` on a
-   field whose type is a composite of float components applies
-   component-wise: the shallow wire per component is a ranged int
-   `[−B·K, +B·K]`; write maps `c → floor(c·K + 0.5)`, clamped to the range;
-   read rejects out-of-range; unquantize maps `q → q / K`. The quantized
-   twin's storage derives from the range. All components are sent — no
-   smallest-three; the delta pass owns cleverer encodings.
-
-   **Fixed components dissolve quantization.** When an object's
-   `interpolate` fields are all already wire-domain — fixed-component
-   composites (a `fixed(I, F)` component IS its own quantization: storage and
-   wire share one integer domain, ranged by the component's declared bounds),
-   plain integers, or int-composite types — the `QuantizeX`/`UnquantizeX`
-   pair would be a pure member copy, and the backends do NOT emit it:
-   Interpolate and Shallow are the same values.
-
-2b. **Fixed-composite shallow narrowing.** `| interpolate, quantize = K` on a
-   composite whose components are ALL `fixed(I, F)` scalars narrows the
-   shallow wire instead of dissolving: deep values keep full precision;
-   shallow (non-simulating) values are quantized down to K, the kept
-   resolution in quantized units per whole unit. K must be a positive power
-   of two with log2(K) ≤ F (the shallow wire cannot be finer than the
-   storage; K = 2^F keeps everything and the pair degenerates to copies). No
-   `max` here: each component's shallow wire range is its own whole-unit
-   `| min, max` scaled by K — bounds every fixed component already declares
-   (§4.3) — and its shallow storage is the smallest signed integer holding
-   that range. The `Quantize`/`Unquantize` pair returns, as pure integer
-   arithmetic with no floating point anywhere: quantize is round-to-nearest
-   with **ties away from zero** over `drop = F − log2(K)` dropped bits —
-   `( raw + half ) >> drop` for `raw ≥ 0`,
-   `−( ( −raw + half ) >> drop )` for `raw < 0`, with
-   `half = 1 << (drop−1)`, arithmetic on int64 (in-bounds raws cannot
-   overflow the add or the negation: checker-enforced bounds leave 2^(F−1)
-   of headroom past any legal raw) — and unquantize is the left shift back
-   (dropped bits return as zeros). Components wider than 64 bits are a
-   compile error (the arithmetic runs in int64), and so are `ufixed`
-   components: a wide ufixed raw legitimately fills uint64's high half,
-   where these int64 shifts are wrong — the unsigned door needs its own
-   arithmetic before it opens, and the diagnostic says so. Un-narrowed
-   `interpolate` composites of ufixed components dissolve fine, because
-   dissolving just delegates to the component encodings. The deep wire is
-   untouched: full precision, the component's own ranged fixed encoding. The
-   two forms compose field-by-field in one object.
-
-   **The one rounding rule: fixed point rounds half AWAY FROM ZERO,
-   everywhere it rounds.** This rule and rule 4's `nearest` default are the
-   SAME rule, stated once, here.
-   The per-language hazard, named: the naive arithmetic shift FLOORS, so on
-   negative ties every target language would agree with every other and all
-   of them would be wrong against this rule — cross-language identity cannot
-   catch it; only the pinned negative-tie conformance vector can (§7.2).
-   Implement the sign mirror, not the bare shift.
-
-3. **No special composite cases in v1 — tags are inert (§4.2, Type tags).**
-   Rules 2 and 2b are the whole of composite quantization: every composite
-   quantizes per-component — a float rotation field states its bound like
-   anything else (`rotation Quat | interpolate, quantize = RotationUnits,
-   max = 1`; unit quaternions are always unit length, so the bound is 1,
-   written rather than implied). Rotation-specific actions (renormalize on
-   unquantize, shortest-arc interpolation) belong to the future pass that
-   claims `| quat4` — v1 generates the structural mapping only, and the
-   application keeps its hand-written rotation actions meanwhile.
-4. **Ranged-int projection** — on `float32`/`float64`,
-   `| interpolate, min = A, max = B, resolution = R` reuses §4.3's
-   compressed-float triple: min/max name the **CONTINUOUS domain**, the
-   shallow wire is the int `[0, (B−A)/R]`, write maps `v → round((v−A)/R)`
-   clamped, unproject maps `q → A + q·R`. The optional
-   `round = nearest|up|down` key (default `nearest`, half away from zero —
-   the one fixed-point rounding rule above) names the write rounding.
-   **`round` is ADVISORY METADATA in v1:** under rule 5 a projected field is
-   STORED in the wire-integer domain in both the Shallow and Interpolate
-   views, so the float-to-step conversion is the application's, not generated
-   code's — no generated byte depends on `round`, and nothing in v1 enforces
-   it. Every backend carries the declared rounding into the generated storage
-   comment for the application to honour (`up` exists because a
-   health-style quantization's ceil is load-bearing: any positive health must
-   quantize alive). If a generated projection helper ever lands, `round` is
-   its law and this rule tightens from advisory to normative.
-5. **Interpolate storage** — projected fields (rule 4) are stored in the
-   Interpolate struct in the WIRE integer domain and snap-interpolate;
-   quantized composites (rules 2–3) are stored continuous (the un-quantized
-   twin).
-
-**No interpolation generation in v1.** v1 generates the STRUCTS (State, Deep,
-Shallow, Interpolate) and the `Quantize`/`Unquantize` mapping pair. The
-`Interpolate(t, a, b, out)` FUNCTION stays hand-written until a later pass
-claims type tags and assigns actions (§4.2, Type tags); `lerp`, `slerp`,
-`snap`, `angle`, `smooth` stay informally reserved as attribute values for
-it.
-
-The worked example is
-[`examples/Objects.schema`](examples/Objects.schema); Missile, DynamicProp
-and Turret are written beside it — all four objects are in the corpus.
-
-**Generated layout is the generator's.** Field order inside every generated
-view derives from need (wire order for wire structs, contiguous spans where
-machinery wants them), never a convention a human maintains.
-
-#### Unions — `union`, first-class one-of fields
+### 4.8 Unions — `union`, first-class one-of fields
 
 A `union` declares a type that holds **at most one** of a named set of
-payloads. It is the message set's tagged-union machinery promoted to a
-declarable type, replacing the bool-guard idiom (`has_box bool` / `if
-has_box { box BoxCollider }` repeated per shape), which spends one bit per
-absent arm and makes illegal states representable — zero payloads, or
-several at once.
+payloads — first-class tagged-union machinery as a declarable type,
+replacing the bool-guard idiom (`has_box bool` / `if has_box { box
+BoxCollider }` repeated per shape), which spends one bit per absent arm and
+makes illegal states representable — zero payloads, or several at once.
 
 ```
 union ColliderShape
@@ -1185,7 +924,7 @@ union ColliderShape
   attributes and no `= default` (it zero-initializes to None, joining
   arrays, strings, bytes and composites in §4.2's no-override list).
 - **Payloads are declared types.** A variant's payload must name a declared
-  `type`. An enum, flags, object, message or union name is not a payload in
+  `type`. An enum, flags or union name is not a payload in
   v1 — wrap it in a type; scalar and array payloads likewise (the parser
   names this rule when a scalar keyword or `[` appears in payload
   position). Follow-ons if a real case wants them. Composition cycles
@@ -1194,16 +933,16 @@ union ColliderShape
   variants is legal**, mirroring the empty enum (§4.6): it holds only None,
   its tag range is the degenerate [0, 0], and it costs zero bits.
 - **The implicit None row.** Entry 0 of every union is **None — no
-  payload** — mirroring the enum sentinel-zero convention and the message
-  stream's `None` terminator: optionality rides in-band, a zero-initialized
+  payload** — mirroring the enum sentinel-zero convention: optionality
+  rides in-band as the natural stream terminator, a zero-initialized
   union field IS the empty union by construction (zero-value lists in §4.2
   and §5 include "None for a union"), and no separate has-flag exists to
   disagree with the tag. **Reserved variant names are checked over the
   EXPORTED spelling**: any variant whose exported form (the field-name
   mapping) is `None` or `Max` is refused — `none` and `max` included, not
   just the literal spellings.
-- **The tag enum is generated, named `<Union>Type`** — the same shape as
-  `MessageType`: `None = 0`, then each variant **in declared order**
+- **The tag enum is generated, named `<Union>Type`**: `None = 0`, then
+  each variant **in declared order**
   (exported spelling per target, the field-name mapping), dense from 1, plus
   the exported `Max` extent; storage per the enum storage rule, the
   smallest unsigned integer fitting max. Declared order, not sorted: a
@@ -1211,13 +950,11 @@ union ColliderShape
   enum's variants do — and reordering variants is a wire change (see id,
   below), so the spelling of the source is the truth of the wire.
   `<Union>Type` and its member constants are claimed names, and the claimed
-  set covers generated-vs-generated collisions too: in a unit with
-  messages, a union named `Message` is refused (its `MessageType`,
-  `WriteMessage`, `ReadMessage` collide with the dispatch surface), and
-  likewise `Object` against the object tag surface. **Generated sets are
-  usable in constant expressions and nowhere else**: `<Union>Type.Max`,
-  `MessageType.Max` and `ObjectType.Max` all work in integer expressions
-  (§4.2); no generated set is a declarable field type. Variant names pass
+  set covers generated-vs-generated collisions too — two declarations whose
+  generated symbols collide are refused as one namespace. **Generated sets
+  are usable in constant expressions and nowhere else**: `<Union>Type.Max`
+  works in integer expressions (§4.2); no generated set is a declarable
+  field type. Variant names pass
   the same target-name safety and post-export uniqueness rules as field
   names (§4.6): a variant named a target's reserved word is refused, and
   two variants whose exported spellings collide (`box_a`/`boxA`) are
@@ -1227,27 +964,20 @@ union ColliderShape
   only**. Tag 0 = None costs the tag bits and nothing else. The read path
   **rejects a tag above the count** — refusal, never clamping, the ranged-
   integer rule. MaxBits = tag bits + the largest payload's MaxBits.
-  `Write<Union>` follows `WriteMessage`'s rule (§6.1): the tag is validated
-  BEFORE it rides — an out-of-set tag value in storage writes nothing and
-  fails, it never desyncs the stream.
+  `Write<Union>` validates the tag BEFORE it rides — an out-of-set tag
+  value in storage writes nothing and fails, it never desyncs the stream.
 - **Read semantics are §5's.** The selected arm is **zero-established at
-  selection** before its payload decodes — the message union's rule exactly.
-  Arms not selected by a read are unspecified: in the C/C++ union
-  representation their bytes are indeterminate; in targets whose storage
-  lays every arm out separately (Go, C#, JS) an unselected arm keeps
-  whatever it last held, the `MessageStorage` reuse discipline (§5's
-  stale-tail carve-out extends to unselected union arms; whole-object
-  comparison in the conformance matrix is over a fresh output or the
-  selected arm). Consumers read the selected arm only. Nothing branches on
+  selection** before its payload decodes. Arms not selected by a read are
+  unspecified: in the C/C++ union representation their bytes are
+  indeterminate; in targets whose storage lays every arm out separately
+  (Go, C#, JS) an unselected arm keeps whatever it last held — the reused-
+  storage discipline (§5's stale-tail carve-out extends to unselected union
+  arms; whole-object comparison in the conformance matrix is over a fresh
+  output or the selected arm). Consumers read the selected arm only. Nothing branches on
   a union's tag in v1 — `if` takes bools only (§4.4) — and a `switch` over
   `<Union>Type` is ruled-not-now, banked with §4.4's switch design.
-- **A union field.** A union name is a field type inside `type` and
-  `message` bodies, arrays included (`shapes [..4]ColliderShape`). Not in
-  v1, stated over the COMPOSITION CLOSURE so nesting cannot smuggle one
-  through: an `object` body may not reach a union through any field's
-  type, transitively (the view-splitting rules say nothing about what
-  Shallow/Interpolate mean for a one-of). A compile error naming this
-  rule, and a follow-on pass, not a ruling against.
+- **A union field.** A union name is a field type inside `type` bodies,
+  arrays included (`shapes [..4]ColliderShape`).
 - **The id moves.** A union is wire structure: its variant order, count and
   payload type references all shape bytes, so they project into the
   protocol id (§3.1) — declaring a union, adding, removing or reordering
@@ -1255,28 +985,27 @@ union ColliderShape
   VARIANT does **not** move it: the ordinal is the wire, the enum-variant
   rule exactly (§3.1) — renaming `box` to `crate` leaves every byte
   identical.
-- **Generated code, per target** — the message-set rule verbatim:
-  representation is per-language and explicitly NOT part of the contract;
-  what binds every target is behavioral only — identical bytes, None is a
-  valid empty read, an out-of-range tag is a validation failure. C++ reuses
-  the message union shape: a struct holding the `<Union>Type type;` tag
-  over an anonymous union of the arms (member names = variant names),
-  constructed as None, trivially copyable (asserted); a variant named
-  `type` is refused at check time, the message-member rule. C mirrors it
-  with its named `as` union. Go, C# and JS lay the tag beside one
-  pre-allocated arm per variant (the `MessageStorage` stand-in — nothing
-  heap-allocates per value). Rust holds the value as a real
+- **Generated code, per target**: representation is per-language and
+  explicitly NOT part of the contract; what binds every target is
+  behavioral only — identical bytes, None is a valid empty read, an
+  out-of-range tag is a validation failure. C++ generates a struct holding
+  the `<Union>Type type;` tag over an anonymous union of the arms (member
+  names = variant names), constructed as None, trivially copyable
+  (asserted); a variant named `type` is refused at check time — the tag
+  field's own name. C mirrors it with its named `as` union. Go, C# and JS
+  lay the tag beside one pre-allocated arm per variant — nothing
+  heap-allocates per value. Rust holds the value as a real
   `enum <Union> { None, Box(BoxCollider), ... }`, `None` the default — and
-  STILL emits the `<Union>Type` tag newtype beside it, exactly as
-  `MessageType` exists beside `enum Message`: the tag surface (constants,
-  `Max`) is uniform across targets whatever the value representation.
-  Every union also gets `Write<Union>`/`Read<Union>` wire functions and
-  `<Union>MaxBits`/`<Union>MaxBytes`, composable exactly like a type's.
+  STILL emits the `<Union>Type` tag newtype beside it: the tag surface
+  (constants, `Max`) is uniform across targets whatever the value
+  representation. Every union also gets `Write<Union>`/`Read<Union>` wire
+  functions and `<Union>MaxBits`/`<Union>MaxBytes`, composable exactly
+  like a type's.
 
 ### 4.9 A complete example
 
 ```
-// Messages.schema
+// Wire.schema
 package protocol
 
 const MaxObjects    = 1024
@@ -1300,33 +1029,43 @@ type ObjectState
     }
 }
 
-message Ping
+type Ping
 {
     sequence uint16
 }
 
-message Pong
+type Pong
 {
     sequence uint16
 }
 
-message Chat
+type Chat
 {
     text string(MaxChatLength)
 }
 
-message Snapshot
+type Snapshot
 {
     base_sequence uint16
     objects       [..MaxObjects]ObjectState
 }
+
+union Payload
+{
+    ping     Ping
+    pong     Pong
+    chat     Chat
+    snapshot Snapshot
+}
 ```
 
-No `MessageType` enum is declared and no dispatch is written — the compiler
-extracts the message set and generates both (§4.8):
-`MessageType { None = 0, Chat, Ping, Pong, Snapshot }` and the per-language
-`WriteMessage`/`ReadMessage`. (Ping and Pong may both name a field `sequence`
-because they are separate types; §4.6's unique-names rule is per type.)
+No tag enum is declared and no dispatch is written — the compiler generates
+`PayloadType { None = 0, Ping, Pong, Chat, Snapshot }` and
+`WritePayload`/`ReadPayload` from the union declaration (§4.8), and the
+primitives compose into whatever framing the protocol wants: a `[..N]` array
+of `Payload`, or a hand-written loop ending on the in-band `None`. (Ping and
+Pong may both name a field `sequence` because they are separate types;
+§4.6's unique-names rule is per type.)
 
 ### 4.10 Deferred constructs
 
@@ -1362,15 +1101,29 @@ because they are separate types; §4.6's unique-names rule is per type.)
   `current > previous`, the reader fails otherwise; no wrap semantics exist,
   and a caller with a wrapping counter unwraps before serializing.
 
-### 4.11 `table` — reserved, refused
+### 4.11 Reserved and refused by name
 
-`table` is a reserved word the parser refuses by name: tables are not part
-of the language. schema declares the realtime wire — hardcoded structs, one
-protocol id, same-or-refuse (§3) — and content that outlives builds is out
-of its scope entirely. The projection (§3.1) keeps a frozen `table=false`
-token on every type line so the refusal was id-neutral for every unit that
-never declared one; changing that token is a `ProjectionVersion` bump,
-taken deliberately or not at all.
+schema declares a pure data contract — hardcoded structs, one protocol id,
+same-or-refuse (§3) — and constructs outside that contract are refused BY
+NAME rather than falling into a generic parse error:
+
+- **`table`** — tables are not part of the language; content that outlives
+  builds is out of schema's scope entirely.
+- **`message`** — messages are not part of the language: a message set is a
+  union of payload types plus your own framing (§4.8, and the pattern in
+  §4.9's example).
+- **`object`** — objects are not part of the language; wire types are
+  `type`.
+- **`contexts`** (contextual, at file scope) — build contexts are not part
+  of the language; every field of a type is identical on every peer.
+- **`round`** (the attribute) — rounding is not an attribute: it is the one
+  fixed-point rule, half away from zero, everywhere (§4.3).
+
+The projection (§3.1) keeps FROZEN tokens — `table=false message=false` on
+every type line, `round=nearest` on every compressed-float field line — so
+each refusal was id-neutral for every unit that never declared the
+construct; changing a token is a `ProjectionVersion` bump, taken
+deliberately or not at all.
 
 ## 5. Trust model — inherited
 
@@ -1384,7 +1137,8 @@ controls iteration go unchecked before use.
 **Read termination:** `Read` consumes exactly the encoded bits and reports
 bits consumed, so callers can frame several objects in one buffer; bytes
 remaining after the last field are the caller's concern, not a validation
-failure — `ReadMessage` streams end on the `None` tag by design.
+failure — a stream framed over a union ends on the in-band `None` tag by
+design.
 
 **Writes assume trusted data.** The write path is trusted; writing correctly
 is the caller's responsibility. Writer inputs are stated as OBLIGATIONS, not
@@ -1450,7 +1204,7 @@ Per `type`, per target:
    64 and 128 (the serialize.js value-domain seam).
 
    **The storage principle behind every row: nothing is dynamically sized.**
-   Generated storage never heap-allocates per message in any target: every
+   Generated storage never heap-allocates per value in any target: every
    buffer is fixed at its declared capacity with a used length/count beside
    it — no Go slices as storage, no Rust `Vec`, no growing containers.
 
@@ -1475,28 +1229,14 @@ Per `type`, per target:
    bound. **`MaxBytes` is rounded up to the 8-byte write-buffer granularity
    every serialize runtime requires.**
 5. **`ProtocolId`** — one constant per unit (§3).
-6. **For a unit with `message` declarations (§4.8):** the `MessageType` enum
-   (`None = 0`, then the messages sorted by name),
-   `WriteMessage`/`ReadMessage` with the tag framing, a message-level
-   `MaxBytes` (tag plus the largest message), and the dispatch surface in
-   each language's own idiom — representation per target, behavior identical.
-   The Go dispatch: a `Message` interface the message structs satisfy, `nil`
-   as the None terminator, a type switch — and reads land in a
-   caller-supplied `MessageStorage` struct holding one field per message, the
-   Go stand-in for the C++ tagged union, so the receive path never
-   heap-allocates per message. In every target, `WriteMessage` validates the
-   message BEFORE the tag rides the wire — an out-of-set value writes
-   nothing, because a tag with no payload would desynchronize the stream —
-   and both dispatch functions frame the tag through the
-   `WriteMessageType`/`ReadMessageType` pair (one source).
-7. **For a unit with `object` declarations (§4.8):** the `ObjectType` enum
-   (`None = 0`, same deterministic order) and, per object, the generated view
-   family — the full simulation struct, the Deep and Shallow wire structs
-   with their split read/write pairs, the Interpolate struct, and the
-   `Quantize`/`Unquantize` mapping pair (§4.8's artifact table).
+6. **For a `union` declaration (§4.8):** the `<Union>Type` tag enum
+   (`None = 0`, then the variants in declared order), the value
+   representation in each language's own idiom, and
+   `Write<Union>`/`Read<Union>` with the tag framing — representation per
+   target, behavior identical.
 
 **Generated symbol naming:** functions attach per target idiom — C:
-lower_snake free functions `write_ship_data_deep(stream, value)`, with
+lower_snake free functions `write_ship_create(stream, value)`, with
 `schema_`-prefixed internal helpers; C++: free
 functions `WriteShip(...)` in `namespace <package>`; C#: `static class
 Schema` members in `namespace <Package>`; Go: free functions
@@ -1508,12 +1248,12 @@ ident maps to the target's namespace/module/package concept verbatim. JS
 storage members are PascalCase via the same mapping as the Go target — not
 camelCase — so the checker's collision registry covers JS with zero new
 rules; the generated function names are the family's own
-`WriteX`/`ReadX`/`ZeroX`/`QuantizeX` (the runtime's methods stay camelCase —
+`WriteX`/`ReadX`/`ZeroX` (the runtime's methods stay camelCase —
 the seam is the stream parameter).
 
 **There is no generated measure function.** `Write` returns the actual size,
 `MaxBytes` sizes buffers, and that covers the real uses. Anyone who genuinely
-needs per-object sizing can hand-write stream code beside the generated
+needs per-value sizing can hand-write stream code beside the generated
 code — the runtimes are unchanged and the two mix freely on the same wire. If
 a real need appears, an opt-in exact measure (a generated running bit count)
 is a clean later addition.
@@ -1538,11 +1278,10 @@ correct at any entry offset; the same type works standalone and nested.
 tree mirrors the schema tree a person navigates.
 
 - **C++: the header splits into a data/wire pair.** `<Base>.h` is the DATA
-  header (constants, enums, flags, structs, object view families,
-  MaxBits/MaxBytes bounds, the Message storage surface and `GetMessageType`)
+  header (constants, enums, flags, structs and MaxBits/MaxBytes bounds)
   and includes `serialize.h` only when a storage type demands it
-  (int128/fixed); `<Base>Wire.h` is the WIRE header (`Write*`/`Read*`,
-  `Quantize`/`Unquantize`, the tag pairs and `WriteMessage`/`ReadMessage`)
+  (int128/fixed); `<Base>Wire.h` is the WIRE header (`Write*`/`Read*` and
+  the union tag pairs)
   and includes `<Base>.h` plus `serialize.h`, with cross-file wire deps
   riding the deps' wire headers. The split exists so a consumer can base its
   math types on generated structs without inheriting the serialize runtime at
@@ -1571,10 +1310,7 @@ tree mirrors the schema tree a person navigates.
   runtime's own load-time mode selection (generated code never reads
   `NODE_ENV`).
 
-The unit-level dispatch surface (the tag enums, tag pairs, dispatch value and
-functions) is emitted exactly ONCE per unit in every target, in the
-topologically last carrying file, so declarations spread across files never
-redeclare it. Each generated file is headed by the source file's BASENAME
+Each generated file is headed by the source file's BASENAME
 (never an invocation-relative path — the same input must produce the same
 bytes wherever the compiler runs), the protocol id, and a do-not-edit line.
 Output is **deterministic to the byte** for identical input; no external
@@ -1632,7 +1368,7 @@ Go, zero third-party dependencies, one static binary: `schema`.
 
 ```
 schema check      [--verbose] [dir|files...]   // parse + typecheck; exit code for CI
-schema generate   [--lang c|cpp|cs|go|js|rust] [--cpp-message union|variant]
+schema generate   [--lang c|cpp|cs|go|js|rust]
                   [--out <dir>] [--verbose] [dir|files...]
 schema id | dir|files... // print the protocol id
 schema projection | dir|files... // print the wire shape projection (§3.1)
@@ -1666,10 +1402,7 @@ meaning — and it verifies its own idempotence on every run.
   hide the rest.
 - **Resolver/checker**: name resolution across the unit's files, constant
   folding (arbitrary-precision with per-use fit checks, §4.2), the shape
-  checks of §4.6, the dominance rule of §4.5, and the message-set and
-  object-set extractions — the symbol tables over `message` and `object`
-  declarations from which `MessageType`/`ObjectType`, the dispatch, and the
-  per-object view families are generated (§4.8).
+  checks of §4.6, and the dominance rule of §4.5.
 - **IR — the load-bearing design decision.** The checker lowers to a small,
   fully-resolved intermediate representation, and backends consume only the
   IR — a per-target divergence must be written into a printer to exist at
@@ -1731,12 +1464,7 @@ step at boundary values, so all C and C++ conformance builds compile with
 chosen to DISCRIMINATE — values where a fused or double-precision build
 produces a different step index — with the discrimination property itself
 asserted in the C and C++ legs, so a vector cannot quietly stop
-discriminating. The corpus likewise pins a negative fixed-point tie value
-that distinguishes half-away-from-zero rounding from the naive arithmetic
-shift (§4.8 rule 2b). The generated quantize arithmetic is emitted
-contraction-proof besides — the product lands in a named local in C/C++, an
-explicit float64 conversion in Go — and a quantize scale the double domain
-cannot hold exactly is a §4.6 compile error.
+discriminating.
 
 CI needs every target toolchain for gates 3–5 and 7; that cost is accepted —
 it is the product's central claim.
@@ -1858,7 +1586,7 @@ Every row to date is settled, deferred with its design banked, or discarded.
 9. ~~Explicit enum variant values, flag enums, the separator~~ — settled:
    canonical enums only (§4.2) — explicit and sparse values are declined
    permanently; `flags` is supported (§4.2); variants are comma-separated.
-10. ~~Sentinel-terminated collections~~ — deferred to the object/delta pass,
+10. ~~Sentinel-terminated collections~~ — deferred to the delta pass,
     which designs all three measured terminator idioms at once
     (bool-continuation, sentinel value, stop action). Readers are
     structurally oblivious to packet splits, so the language owes readers
@@ -1878,9 +1606,9 @@ Every row to date is settled, deferred with its design banked, or discarded.
 12. ~~`int` → `int32`?~~ — settled by the integer family: bare `int` is
     gone; every integer names its width, and `int`/`uint` are reserved purely
     to give a helpful diagnostic.
-13. ~~Interpolation policy~~ — settled: no interpolation generation in v1
-    (§4.8). `Interpolate()` stays hand-written until a claiming pass assigns
-    per-tag actions (§4.2, Type tags).
+13. ~~Interpolation policy~~ — settled: no interpolation generation;
+    interpolation stays hand-written until a claiming pass assigns per-tag
+    actions (§4.2, Type tags).
 14. ~~The replication-policy boundary~~ — discarded: no send-scheduling
     knobs (priority/TTL/coherence) exist in this architecture, and no policy
     attributes ever will. schema fully owns serialization; nothing else was
@@ -1892,6 +1620,4 @@ Every row to date is settled, deferred with its design banked, or discarded.
     `ufixed(I, F)` keyword (§4.3, §4.6), storage always manifest in the type
     name — the integer family's own int/uint precedent. Deriving signedness
     from `min >= 0` was declined because a field's storage type would
-    silently change when a bound crossed zero. One scope fence, recorded at
-    §4.8 rule 2b: shallow narrowing stays signed-only until the unsigned
-    shift arithmetic is designed.
+    silently change when a bound crossed zero.

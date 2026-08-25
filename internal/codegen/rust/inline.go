@@ -5,20 +5,14 @@ package rust
 // cpp/readinline.go), spelled in Rust attributes because Rust needs no
 // macro: the attribute is per-item already.
 //
-// Three names, two spellings, and the line between them was drawn by
+// Two names, two spellings, and the line between them was drawn by
 // measurement on this backend rather than copied from the C++ one:
 //
 //   writeSpineInline = #[inline(always)] — the DEMAND. Every generated WRITE
-//                      wire function: the per-type/per-message write_* spines,
-//                      the object Deep/Shallow view writers, and both tag
-//                      writers (write_message_type, write_object_type).
+//                      wire function: the per-type write_* spines and the
+//                      union tag writers.
 //   readSpineInline  = #[inline] — the HINT. Every generated READ wire
-//                      function, per-type spines, view readers, tag readers,
-//                      and both read dispatch surfaces (read_message,
-//                      read_message_into).
-//   dispatchInline   = #[inline] — the HINT. write_message, the write dispatch
-//                      surface, mirroring the one exemption the C++ pass carved out of
-//                      the C++ write demand.
+//                      function: per-type spines and union tag readers.
 //
 // Why the write demand exists (from the sixlang-air-1 attribution):
 // #[inline] is a HINT — it raises LLVM's inline threshold for the callee
@@ -35,8 +29,8 @@ package rust
 // close the gap.
 //
 // WHY THE READ HALF IS DELIBERATELY NOT THE C++ SHAPE. The C++ backend
-// demands inlining on its READ spines too (SCHEMA_READ_INLINE, blanket,
-// ReadMessage included). That shape was ported here exactly, measured, and
+// demands inlining on its READ spines too (SCHEMA_READ_INLINE, blanket).
+// That shape was ported here exactly, measured, and
 // REFUSED by the evidence: on Apple M-series / rustc release, no LTO, the
 // blanket read demand collapsed probearray read to 0.53x and shipcreate read
 // to 0.71x of their hinted rates, in twin-gate-OK passes with 1.4-5.7%
@@ -66,27 +60,6 @@ package rust
 const writeSpineInline = "#[inline(always)]\n"
 
 // readSpineInline is the inlining HINT every generated read wire function
-// keeps, including both read dispatch surfaces. See the read-half note above:
-// the demand was ported from C++, measured, and refused.
+// keeps. See the read-half note above: the demand was ported from C++,
+// measured, and refused.
 const readSpineInline = "#[inline]\n"
-
-// dispatchInline is the inlining HINT the write dispatch surface keeps.
-const dispatchInline = "#[inline]\n"
-
-// emitWriteDispatchComment is the emitted rationale for why write_message —
-// the write dispatch surface — keeps the plain #[inline] hint while every
-// write spine it calls carries the demand. Mirrors cpp's
-// emitWriteDispatchComment: the blanket demand closed every
-// per-message write row but regressed the batch dispatch loop, because the
-// dispatcher itself was forced whole into the loop body. Exempting it keeps
-// the per-message write spines flattening INTO the dispatcher's outlined body
-// while the loop keeps a call boundary.
-func (g *gen) emitWriteDispatchComment() {
-	g.pf("// write_message is deliberately OUTSIDE the write-spine inlining demand:\n")
-	g.pf("// plain #[inline], not #[inline(always)]. Its callees (every per-message\n")
-	g.pf("// write_*) flatten into its body, but the dispatch match itself stays a\n")
-	g.pf("// call boundary — demanding the C++ twin into a batch build loop was\n")
-	g.pf("// measured to slow that loop ~21%% while every per-message row kept its\n")
-	g.pf("// win with the boundary in place. The compiler remains free\n")
-	g.pf("// to inline it where that pays.\n")
-}

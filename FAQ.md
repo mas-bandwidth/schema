@@ -49,7 +49,7 @@ carries a tag, so old readers skip fields they do not know and missing fields
 fall back to defaults. That is why Protobuf is the right answer for service
 APIs that version independently over years.
 
-**The schema message wire has no field numbers, no tags and no evolution
+**The schema wire has no field numbers, no tags and no evolution
 machinery at all.** Versioning is a **protocol id** — a hash of the schema
 itself, checked once at connect time. Two peers on the same id speak identical
 bits; two peers on different ids should not talk. That is an intentionally
@@ -57,7 +57,7 @@ harsher contract, and it buys the thing Protobuf cannot give you: nothing on
 the wire identifies a field, so nothing on the wire is spent identifying one.
 
 If your client and server ship independently and must interoperate across
-versions, **use Protobuf** — schema's message wire will fight you. If they ship
+versions, **use Protobuf** — schema's wire will fight you. If they ship
 together, which is the normal case for a game client and its dedicated server,
 the tags were pure overhead and the protocol id is the honest statement of what
 was always true.
@@ -80,10 +80,10 @@ where schema packs to the bit. And Cap'n Proto brings a large surface: RPC,
 promise pipelining, capabilities, an ecosystem. schema brings a language and
 six code generators, and nothing else.
 
-On size: on the gameplay message in [COMPARISON.md](COMPARISON.md), Cap'n Proto
+On size: on the gameplay packet in [COMPARISON.md](COMPARISON.md), Cap'n Proto
 is 96 bytes unpacked and **52 packed**, against schema's 28. Packed is the
 closest of the three general-purpose formats — its zero-suppression pass is
-genuinely good, and on a mostly-zero message it would beat schema's fixed
+genuinely good, and on a mostly-zero packet it would beat schema's fixed
 bit-widths outright. It costs a compression pass that schema's writer does not
 run, and it cannot know that your `health` field stops at 1000.
 
@@ -92,7 +92,7 @@ the narrower tool.
 
 ## Do you have numbers against Protobuf, FlatBuffers or Cap'n Proto?
 
-Yes — [COMPARISON.md](COMPARISON.md). The same gameplay message:
+Yes — [COMPARISON.md](COMPARISON.md). The same gameplay packet:
 
 | schema | Cap'n Proto (packed) | Protobuf | FlatBuffers |
 |---:|---:|---:|---:|
@@ -106,7 +106,7 @@ trust it.
 It also says what those extra bytes buy, because they are not waste: Protobuf's
 overhead is field-number evolution, FlatBuffers' and Cap'n Proto's is zero-copy
 access. If you need either, that is a fair price and schema does not offer it.
-The values encoded are deliberately large and non-zero — a mostly-zero message
+The values encoded are deliberately large and non-zero — a mostly-zero packet
 would favour Cap'n Proto's packing far more than it favours schema.
 
 ## So what is actually novel here?
@@ -134,7 +134,7 @@ Sometimes it is not, and you should know which case you are in.
 
 Bit-packing costs shifts and masks and saves bytes. If your bottleneck is CPU
 and you have bandwidth to spare, that is the wrong trade — and if you are
-sending a few large messages rather than many small ones, the saving is small
+sending a few large packets rather than many small ones, the saving is small
 anyway.
 
 It pays when you are sending small, highly-constrained values at high frequency
@@ -260,8 +260,8 @@ cost with no buyer. See
 checked against each other in CI on every push. Every target's output is held
 to the same pinned goldens.
 
-Parity means everything: fixed point, 128-bit integers, objects and their
-quantize pair, and message dispatch, in every target. Rust's
+Parity means everything: fixed point, 128-bit integers, unions and their
+generated tag surface, in every target. Rust's
 `#[repr(C)]` storage is what makes relocatability actually true there rather
 than incidental.
 

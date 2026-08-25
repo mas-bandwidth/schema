@@ -1,8 +1,6 @@
-// Write/Read function emission for types and messages (SPEC §6.1 items 2-4,
-// §6.2): straight-line split functions against the classic serialize one-way
-// macro families, plus MaxBits/MaxBytes constants and the message tag pair.
-// Object view functions (Quantize/Unquantize, view read/write) are a later
-// pass.
+// Write/Read function emission for types (SPEC §6.1 items 2-4, §6.2):
+// straight-line split functions against the classic serialize one-way macro
+// families, plus MaxBits/MaxBytes constants and the union tag wire.
 package cpp
 
 import (

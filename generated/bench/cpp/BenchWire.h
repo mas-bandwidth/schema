@@ -16,8 +16,7 @@ namespace bench {
 
 #ifndef SCHEMA_WRITE_INLINE_DEFINED
 #define SCHEMA_WRITE_INLINE_DEFINED
-// SCHEMA_WRITE_INLINE — how every generated Write function is spelled,
-// EXCEPT the WriteMessage dispatch surface (see the comment on it): an
+// SCHEMA_WRITE_INLINE — how every generated Write function is spelled: an
 // inlining DEMAND (always_inline / __forceinline), the serialize family's
 // remedy for LLVM refusing the linkonce_odr Write entries into their call
 // sites at cost over threshold — no last-call-to-static bonus exists for a

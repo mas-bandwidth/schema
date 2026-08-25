@@ -299,7 +299,7 @@ func (g *gen) emitTagEnum(name string, members []string, comment string) {
 }
 
 // emitUnion emits a first-class one-of (SPEC §4.8): the generated <Name>Type
-// tag enum, then the message union shape exactly — a struct holding the tag
+// tag enum, then the tagged-union shape — a struct holding the tag
 // over an anonymous union of the arms, constructed as None, trivially
 // copyable. An arm's storage is established ZEROED when the arm is selected
 // (by Read<Name> before it decodes, or by a writer assigning the arm).

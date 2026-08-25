@@ -95,11 +95,9 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 }
 
 type gen struct {
-	unit     *ir.Unit
-	file     *ir.File
-	home     bool   // this file carries ProtocolId and the unit-level target notes
-	msgOwner string // the one file that carries the message dispatch surface
-	objOwner string // the one file that carries the object tag surface
+	unit *ir.Unit
+	file *ir.File
+	home bool // this file carries ProtocolId and the unit-level target notes
 
 	body strings.Builder
 
@@ -135,7 +133,7 @@ func (g *gen) addRef(decl string, symbols ...string) {
 }
 
 // addRefBase imports symbols from a known file base — for the synthesized
-// unit-level surfaces (MessageType/ObjectType live in their owner file, not
+// unit-level surfaces (ProtocolId lives in its home file, not
 // in DeclFile).
 func (g *gen) addRefBase(base string, symbols ...string) {
 	if base == g.file.Base {
@@ -365,10 +363,6 @@ func (g *gen) emitClass(d *ir.Struct) {
 	g.pf("  }\n}\n\n")
 }
 
-// The MessageType reference above needs the owner file's export; message
-// classes outside the owner import it. ESM import cycles are legal here:
-// the getter runs at call time, after every module in the cycle evaluated.
-
 func (g *gen) emitClassFields(fields []*ir.Field) {
 	prevGuard := ""
 	for _, f := range fields {
@@ -444,9 +438,8 @@ func isClassRef(ref ir.Decl) bool {
 }
 
 // emitUnion emits a first-class one-of (SPEC §4.8): the <Name>Type tag
-// object, then the class — the tag beside one pre-allocated arm per variant
-// (the MessageStorage stand-in; nothing allocates per value after
-// construction).
+// object, then the class — the tag beside one pre-allocated arm per variant;
+// nothing allocates per value after construction.
 func (g *gen) emitUnion(d *ir.Union) {
 	members := make([]string, len(d.Variants))
 	for i, v := range d.Variants {
@@ -458,7 +451,7 @@ func (g *gen) emitUnion(d *ir.Union) {
 	g.pf("// %s — at most one of the arms; Type says which. Construction is the empty\n", d.Name)
 	g.pf("// union (None). A read zero-establishes exactly the selected arm before\n")
 	g.pf("// decoding it (SPEC §5); unselected arms keep what they last held — the\n")
-	g.pf("// MessageStorage reuse discipline. Consumers read the selected arm only.\n")
+	g.pf("// reused-storage discipline. Consumers read the selected arm only.\n")
 	g.pf("export class %s {\n", d.Name)
 	g.pf("  constructor() {\n")
 	g.pf("    this.Type = %sType.None;\n", d.Name)

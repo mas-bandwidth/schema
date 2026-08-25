@@ -19,7 +19,7 @@
 // The density rule, and the threshold chosen here: count S = the scalar
 // serialize sites of the body (register-resident on a batch: fixed-width
 // ints/bits/bools/floats, ranged ints, enums, flags, compressed floats,
-// const/reserved/align items, quantized components, projected floats —
+// const/reserved/align items —
 // fixed scalar arrays weighted by their schema bound, counted ones by bound
 // plus the count site, nested structs transitively) and B = its delegated
 // bulk sites (strings, bytes, bulk-byte arrays — each one sync/recapture

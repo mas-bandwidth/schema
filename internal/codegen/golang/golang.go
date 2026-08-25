@@ -11,7 +11,7 @@
 // constants, flags are a uint64-backed named type with mask constants,
 // string(N)/bytes(N) are [N]byte plus an int32 used length, arrays are fixed
 // Go arrays with an int32 used count beside the counted form. Nothing here
-// heap-allocates per message.
+// heap-allocates per value.
 //
 // Functions follow the §6.3 Go row: free functions against the concrete
 // WriteStream/ReadStream types (no interface dispatch), sticky stream errors,
@@ -185,8 +185,7 @@ func (g *gen) foldComment(e ast.Expr) string {
 
 // emitUnion emits a first-class one-of (SPEC §4.8): the <Name>Type tag enum,
 // then the interface-free storage — the tag beside one pre-allocated arm per
-// variant, the MessageStorage stand-in exactly. Nothing heap-allocates per
-// value; the zero value IS None.
+// variant. Nothing heap-allocates per value; the zero value IS None.
 func (g *gen) emitUnion(d *ir.Union) {
 	members := make([]string, len(d.Variants))
 	for i, v := range d.Variants {
@@ -198,7 +197,7 @@ func (g *gen) emitUnion(d *ir.Union) {
 	g.pf("// %s — at most one of the arms; Type says which. The zero value is the\n", d.Name)
 	g.pf("// empty union (None). A read zero-establishes exactly the selected arm before\n")
 	g.pf("// decoding it (SPEC §5); unselected arms keep what they last held — the\n")
-	g.pf("// MessageStorage reuse discipline. Consumers read the selected arm only.\n")
+	g.pf("// reused-storage discipline. Consumers read the selected arm only.\n")
 	g.pf("type %s struct {\n", d.Name)
 	g.pf("\tType %sType\n", d.Name)
 	for _, v := range d.Variants {

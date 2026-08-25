@@ -6,9 +6,7 @@ Measures three families per language, every row labelled with its family
 - **`gen`** — the schema-GENERATED code against its serialize runtime: write
   and read over the pinned corpus instances (the same instances
   `test/main.cpp` pins to `testdata/wire/*.bin`, plus `real_packet` — the
-  §1.7 realistic snapshot `test/bench/main.cpp` pins) and one large synthetic
-  message batch (4096 mixed messages through the Message dispatch surface)
-  for steady-state throughput.
+  §1.7 realistic snapshot `test/bench/main.cpp` pins).
 - **`rt`** — the serialize runtime API called BY HAND: the four
   `bench/corpus/Bench.schema` shapes as hand-written packets, §1.5
   oracle-gated against the goldens the GENERATED code pinned
@@ -63,7 +61,7 @@ experiment there for the reasoning, learned the hard way):
 - **Escape barriers** — the output buffer and the decoded object are observed
   through an empty-asm memory clobber, so the compiler cannot delete the work
   and report fictional throughput.
-- **Per-iteration variation** — every write loop mutates message fields
+- **Per-iteration variation** — every write loop mutates value fields
   through a serially dependent LCG (`rng * 6364136223846793005 +
   1442695040888963407`); with constant data, optimizers precompute scratch
   words at compile time. Structure fields (counts, lengths, branch bools)

@@ -1,4 +1,4 @@
-// Write/Read function emission for types and messages (SPEC §6.1 items 2-4,
+// Write/Read function emission for types (SPEC §6.1 items 2-4,
 // §6.2): straight-line split functions against the serialize.rs &mut API —
 // every serialize_* call returns Result and the generated code propagates
 // with `?` (this runtime has no sticky errors, §6.3 Rust row), so counts and
@@ -20,7 +20,7 @@ import (
 // emitUnionFunctions emits the union's bounds and wire pair (SPEC §4.8). The
 // tag rides in minimal bits for [0, count]; the read rejects a tag above the
 // count (serialize_int's own refusal) and builds the selected arm from its
-// zero form before decoding it — the read_message shape exactly.
+// zero form before decoding it.
 func (g *gen) emitUnionFunctions(d *ir.Union) {
 	g.needsStreams = true
 	snake := ir.RustSnake(d.Name)
@@ -70,7 +70,7 @@ func (g *gen) emitUnionFunctions(d *ir.Union) {
 }
 
 // emitStructFunctions emits MAX_BITS/MAX_BYTES and the split write/read pair
-// for a type or message.
+// for a type.
 func (g *gen) emitStructFunctions(st *ir.Struct) {
 	g.needsStreams = true
 	// fixed [N]u8 arrays at statically byte-aligned positions take the
@@ -86,9 +86,9 @@ func (g *gen) emitStructFunctions(st *ir.Struct) {
 	g.pf("pub const %s: usize = %d;\n\n", ir.RustConstName(st.Name+"MaxBytes"), ir.MaxBytes(maxBits))
 
 	// Both spines carry an attribute because the generated crate is a separate
-	// compilation unit from the caller, and without one a 6-10 byte message
+	// compilation unit from the caller, and without one a 6-10 byte packet
 	// pays a full call (and loses constant folding of its bit widths) per
-	// serialize — measured 2-6x on tiny messages.
+	// serialize — measured 2-6x on tiny types.
 	//
 	// The WRITE spine demands (see inline.go): the plain hint only raises
 	// LLVM's threshold, and these spines price far over it and were refused

@@ -28,10 +28,9 @@ func (g *gen) fileEmitsWire() bool {
 // a read chain is fallible, LLVM prices each Ok/Err split at ~even odds, so
 // block frequency decays geometrically down the chain and later call sites
 // are held to the cold-callsite inline threshold (45, vs 250+ hot). The
-// batch-read dispatch loop shows it exactly: ReadMessage is refused into the
-// timed loop at cost=1055 against threshold=45, while the C backend's
-// read_message — static in one TU — inlines into its identical loop
-// (last-call-to-static, cost=-13285) and carries no per-message call at all.
+// linkonce_odr Read entries are refused into timed loops at costs far over
+// it, while the C backend's static entries inline into identical loops
+// (last-call-to-static) and carry no per-call boundary at all.
 // The demand won its tournament
 // (tournament-air off→armed with the serialize read demand: batch read +68%,
 // rigidbody_at_rest read +244%, testdata read +109%, zero regressions;

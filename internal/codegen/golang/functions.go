@@ -1,4 +1,4 @@
-// Write/Read function emission for types and messages (SPEC §6.1 items 2-4,
+// Write/Read function emission for types (SPEC §6.1 items 2-4,
 // §6.2): straight-line split functions against the serialize.go pointer API —
 // sticky stream errors, counts error-checked before every loop and slice (the
 // untrusted-data rule), `return stream.Err()` at the end. The wire is
@@ -13,7 +13,7 @@ import (
 )
 
 // emitUnionFunctions emits the union's bounds and wire pair (SPEC §4.8): the
-// write validates the tag BEFORE it rides (WriteMessage's rule — an
+// write validates the tag BEFORE it rides (an
 // out-of-set tag writes nothing), the read rejects a tag above the count and
 // zero-establishes exactly the selected arm before decoding it.
 func (g *gen) emitUnionFunctions(d *ir.Union) {
@@ -64,7 +64,7 @@ func (g *gen) emitUnionFunctions(d *ir.Union) {
 }
 
 // emitStructFunctions emits MaxBits/MaxBytes and the split Write/Read pair
-// for a type or message.
+// for a type.
 func (g *gen) emitStructFunctions(st *ir.Struct) {
 	g.needsSerialize = true
 	g.bulkBytes = ir.AlignedFixedByteArrays(st)
@@ -324,7 +324,7 @@ func (g *gen) emitWriteRangedFold64(expr, lo, hi string, bits int64, loZero bool
 // The step count, wire width and delta depend only on (min, max, resolution),
 // which are compile-time constants of the call site, so the runtime's per-field
 // derivation (a float32 divide, a clamp, a Ceil and a BitsRequired) is paid once
-// here instead of on every field of every message.
+// here instead of on every field of every type.
 //
 // The float32() around the product is LOAD BEARING, exactly as it is in the
 // runtime: STANDARD.md pins this arithmetic to float32 with

@@ -19,7 +19,7 @@ type Vec3
     z float64
 }
 
-message ShipState
+type ShipState
 {
     ship_type ShipType
     position  Vec3
@@ -54,7 +54,7 @@ Every way of solving that costs something:
 - **Solving it with heavier template machinery costs compile time**, in headers
   every translation unit includes.
 - **General-purpose formats** fix the drift by paying for it on the wire.
-  On one representative gameplay message that is **28 bytes against Cap'n Proto's
+  On one representative gameplay packet that is **28 bytes against Cap'n Proto's
   52, Protobuf's 56 and FlatBuffers' 72** — every number measured by running the
   real encoder, [reproducible from COMPARISON.md](COMPARISON.md).
 
@@ -117,7 +117,7 @@ list and what the gates prove.
 | **[USAGE.md](USAGE.md)** | Every language feature, with the code it generates. Start here. |
 | **[PERFORMANCE.md](PERFORMANCE.md)** | Generated-code benchmarks, and how to read them honestly. |
 | **[SPEC.md](SPEC.md)** | The normative reference — grammar, wire law, every edge case. |
-| **[COMPARISON.md](COMPARISON.md)** | The same message in schema, Cap'n Proto, Protobuf and FlatBuffers — 28 vs 52 vs 56 vs 72 bytes, measured, with a script to re-run it. |
+| **[COMPARISON.md](COMPARISON.md)** | The same packet in schema, Cap'n Proto, Protobuf and FlatBuffers — 28 vs 52 vs 56 vs 72 bytes, measured, with a script to re-run it. |
 | **[FAQ.md](FAQ.md)** | Isn't this just FlatBuffers / Protobuf / Cap'n Proto? And other blunt questions. |
 | **[VERSIONING.md](VERSIONING.md)** | What a version number promises — chiefly that a 1.x upgrade will not move your wire. |
 | **[CONTRIBUTING.md](CONTRIBUTING.md)** | How to build it, the gates a change has to pass, and what a golden change means. |

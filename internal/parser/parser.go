@@ -220,7 +220,7 @@ func (p *parser) parseDecl() {
 		p.skipDecl()
 
 	case scanner.Ident:
-		// contextual keywords at file scope: flags, contexts (SPEC §4.2)
+		// contextual keywords at file scope: flags, union (SPEC §4.2)
 		switch t.Text {
 		case "flags":
 			p.advance()
@@ -248,7 +248,7 @@ func (p *parser) parseDecl() {
 			p.expectTerminator("union declaration")
 			p.file.Decls = append(p.file.Decls, d)
 		default:
-			p.errf(t.Pos, "unexpected %q at file scope (declarations begin with package, const, enum, flags, type, message, object, union or contexts)", t.Text)
+			p.errf(t.Pos, "unexpected %q at file scope (declarations begin with package, const, enum, flags, type or union)", t.Text)
 			p.skipDecl()
 		}
 

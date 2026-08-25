@@ -11,7 +11,7 @@
 // native Rust enum cannot hold), flags are a u64 alias with flat mask
 // constants, string(N)/bytes(N) are [u8; N] plus an i32 used length, arrays
 // are fixed Rust arrays with an i32 used count beside the counted form.
-// Nothing here heap-allocates per message.
+// Nothing here heap-allocates per value.
 //
 // Functions follow the §6.3 Rust row: free functions against the concrete
 // WriteStream/ReadStream types (the Stream trait in scope for its methods),
@@ -73,8 +73,8 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 
 func assembleLib(u *ir.Unit, modules map[string]string) []byte {
 	// a module re-exports into the crate root only if it declares anything: a
-	// glob over an item-less module (a contexts aspect file — comments only)
-	// is an unused import
+	// glob over an item-less module (a comments-only file) is an unused
+	// import
 	exports := map[string]bool{}
 	home := ir.ProtocolIdHome(u)
 	for _, f := range u.Files {
@@ -246,9 +246,9 @@ func (g *gen) foldComment(e ast.Expr) string {
 }
 
 // allowNonCamel emits the one narrow lint allow the generated code needs:
-// generated family names are fixed across targets (XData_Deep — SPEC §4.8)
-// and can carry an underscore Rust's camel-case lint rejects. Emitted only
-// when the name actually violates the lint.
+// generated names are fixed across targets and a declared name can carry an
+// underscore Rust's camel-case lint rejects. Emitted only when the name
+// actually violates the lint.
 func (g *gen) allowNonCamel(name string) {
 	if strings.Contains(name, "_") {
 		g.pf("#[allow(non_camel_case_types)] // the name is fixed across targets (SPEC §4.8)\n")
@@ -256,10 +256,10 @@ func (g *gen) allowNonCamel(name string) {
 }
 
 // emitUnion emits a first-class one-of (SPEC §4.8): the <Name>Type tag
-// newtype (uniform tag surface across targets, exactly as MessageType exists
-// beside enum Message), then the value as a REAL Rust enum — None the
-// default, one tuple variant per arm. Out-of-set tags are unrepresentable by
-// construction, so the write side needs no guard.
+// newtype (the uniform tag surface across targets), then the value as a
+// REAL Rust enum — None the default, one tuple variant per arm. Out-of-set
+// tags are unrepresentable by construction, so the write side needs no
+// guard.
 func (g *gen) emitUnion(d *ir.Union) {
 	members := make([]string, len(d.Variants))
 	for i, v := range d.Variants {
