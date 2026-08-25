@@ -213,11 +213,11 @@ func (c *checker) resolveAllConsts() {
 	}
 	sort.Strings(names)
 	for _, n := range names {
-		c.resolveConst(n, ast.Pos{})
+		c.resolveConst(n)
 	}
 }
 
-func (c *checker) resolveConst(name string, usePos ast.Pos) *ir.Const {
+func (c *checker) resolveConst(name string) *ir.Const {
 	e := c.constant[name]
 	if e == nil {
 		return nil
@@ -392,7 +392,7 @@ func (c *checker) evalInt(e ast.Expr) (*big.Int, bool) {
 			}
 			return nil, false
 		}
-		out := c.resolveConst(e.Name, e.Pos)
+		out := c.resolveConst(e.Name)
 		if out == nil {
 			return nil, false
 		}
@@ -459,7 +459,7 @@ func (c *checker) evalFloat(e ast.Expr) (float64, bool) {
 			c.errf(e.Pos, "undefined constant %s", e.Name)
 			return 0, false
 		}
-		out := c.resolveConst(e.Name, e.Pos)
+		out := c.resolveConst(e.Name)
 		if out == nil {
 			return 0, false
 		}
@@ -1191,7 +1191,7 @@ func (c *checker) resolveField(kind declKind, owner string, f *ast.Field) *ir.Fi
 		}
 	}
 
-	c.resolveAttrs(kind, owner, f, out)
+	c.resolveAttrs(kind, f, out)
 
 	// the fixed and 128-bit families mirror serialize's own surface exactly
 	// (SPEC §4.3, runtime-first): fixed(I, F) and int128 are RANGED — the
@@ -1335,7 +1335,7 @@ func scalarName(k ir.FieldTypeKind) string {
 	return "?"
 }
 
-func (c *checker) resolveAttrs(kind declKind, owner string, f *ast.Field, out *ir.Field) {
+func (c *checker) resolveAttrs(kind declKind, f *ast.Field, out *ir.Field) {
 	byKey := map[string]*ast.Attr{}
 	for i := range f.Attrs {
 		a := &f.Attrs[i]

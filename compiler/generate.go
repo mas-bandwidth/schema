@@ -71,13 +71,6 @@ func (c *Compiler) Targets() []string {
 	return out
 }
 
-// Generator returns the generator that `--lang name` selects, by canonical
-// name or alias.
-func (c *Compiler) Generator(name string) (Generator, bool) {
-	g, ok := c.gens[name]
-	return g, ok
-}
-
 // Generate emits target's source for the unit and returns the files, keyed by
 // output file name. It writes nothing — the caller chooses the destination —
 // and it is pure in the unit: generating twice yields the same bytes.

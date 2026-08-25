@@ -23,6 +23,8 @@ import (
 // backends go through.
 type Expr = ast.Expr
 
+// Unit is one checked compilation unit — the checker's output and every
+// generator's input (SPEC §3.2).
 type Unit struct {
 	Package    string
 	ProtocolId uint64
@@ -42,14 +44,17 @@ type Unit struct {
 	ObjNames []string // sorted by name — the ObjectType order
 }
 
+// File is one schema file's declarations, in declaration order.
 type File struct {
 	Base  string // "Constants"
 	Path  string // as given, e.g. "examples/Constants.schema"
 	Decls []Decl
 }
 
+// Decl is one top-level declaration.
 type Decl interface{ irDecl() }
 
+// Const is a `const` declaration, its value folded.
 type Const struct {
 	Name     string
 	IsFloat  bool
@@ -60,6 +65,8 @@ type Const struct {
 	Expr     Expr // for symbolic rendering in generated code
 }
 
+// Enum is an `enum` declaration: None = 0 implicit, variants dense from 1
+// (SPEC §4.2).
 type Enum struct {
 	Name        string
 	Variants    []string // implicit None = 0 is not listed; variants pack from 1
@@ -67,6 +74,8 @@ type Enum struct {
 	StorageBits int      // 8 / 16 / 32 / 64 — smallest unsigned fitting Max
 }
 
+// Flags is a `flags` declaration: one bit per variant, consumed as masks
+// (SPEC §4.2).
 type Flags struct {
 	Name     string
 	Variants []string // bit i is variant i
@@ -79,7 +88,6 @@ type ContextsMarker struct {
 	Names []string
 }
 
-// Struct is a `type` or `message` declaration.
 // Union is a first-class one-of type (SPEC §4.8): the implicit None row at
 // tag 0, then each variant in DECLARED order, dense from 1. The tag encodes
 // in minimal bits for [0, Max]; the wire then carries the selected variant's
@@ -91,12 +99,14 @@ type Union struct {
 	StorageBits int            // 8 / 16 / 32 / 64 — smallest unsigned fitting Max
 }
 
+// UnionVariant is one arm of a [Union].
 type UnionVariant struct {
 	Name string  // declared, field-style lower_snake
 	Type string  // the payload type's name
 	Ref  *Struct // the payload
 }
 
+// Struct is a `type` or `message` declaration.
 type Struct struct {
 	Name      string
 	IsMessage bool
@@ -119,10 +129,12 @@ type Struct struct {
 // constructs (const, reserved, align — SPEC §4.3).
 type Item interface{ irItem() }
 
+// FieldItem wraps a [Field] as an [Item].
 type FieldItem struct {
 	F *Field
 }
 
+// Branch is an if/else wire branch (SPEC §4.5).
 type Branch struct {
 	Neg  bool   // if !cond
 	Cond string // the back-referenced bool field's name (SPEC §4.5)
@@ -152,6 +164,7 @@ func (*ConstItem) irItem()    {}
 func (*ReservedItem) irItem() {}
 func (*AlignItem) irItem()    {}
 
+// Object is an `object` declaration — the view-family surface (SPEC §4.8).
 type Object struct {
 	Name   string
 	Fields []*Field
@@ -165,6 +178,7 @@ func (*Struct) irDecl()         {}
 func (*Object) irDecl()         {}
 func (*Union) irDecl()          {}
 
+// ArrayKind classifies a field's array form.
 type ArrayKind int
 
 const (
@@ -173,6 +187,8 @@ const (
 	ArrayCounted // [..N]T and [Min..N]T
 )
 
+// Field is one storage-carrying member of a struct or object, with its
+// resolved wire refinements.
 type Field struct {
 	Name  string
 	Guard string // "" or "if !at_rest" — branch context, kept as a comment
@@ -189,8 +205,8 @@ type Field struct {
 
 	Type FieldType
 
-	// specified default (SPEC: zero initialization everywhere unless a
-	// specified default overrides it — Glenn, 2026-08-05)
+	// specified default (SPEC §5: zero initialization everywhere unless a
+	// specified default overrides it)
 	HasDefault bool
 	DefBool    bool
 	DefInt     *big.Int
@@ -221,10 +237,7 @@ type Field struct {
 	// components are all fixed(I, F); the shallow wire keeps QuantShift =
 	// log2(QuantScale) fractional bits. Quantize rounds to nearest with ties
 	// HALF AWAY FROM ZERO over (F - QuantShift) dropped bits — the one
-	// fixed-point rounding rule (SPEC §4.8, decided 2026-08-15; before the
-	// unification the emitters shipped the bare shift, ties toward
-	// +infinity, and this comment already said half-away — the code moved to
-	// match the words, not the other way). Unquantize is the left shift
+	// fixed-point rounding rule (SPEC §4.8). Unquantize is the left shift
 	// back; the per-component wire bound is the component's own whole-unit
 	// [IntMin, IntMax] times QuantScale. QuantMax/QuantBound are
 	// meaningless here — bounds live on the components, not the field.
@@ -337,7 +350,7 @@ func StorageBitsFor(max int64) int {
 // FixedShallowBounds is the per-component shallow wire range of a narrowed
 // fixed composite (SPEC §4.8 rule 2b): the component's own whole-unit
 // [IntMin, IntMax] scaled by QuantScale. Every backend derives storage and
-// wire bounds from this one function, or the five wires disagree.
+// wire bounds from this one function, or the generated wires disagree.
 func FixedShallowBounds(f *Field, cf *Field) (lo, hi *big.Int) {
 	k := big.NewInt(f.QuantScale)
 	lo = new(big.Int).Mul(cf.IntMin, k)

@@ -72,12 +72,12 @@ func Generate(u *ir.Unit, opts Options) (map[string][]byte, error) {
 		}
 	}
 	out := map[string][]byte{}
-	protocolIdHome := protocolIdHome(u)
+	home := ir.ProtocolIdHome(u)
 	msgOwner := ir.MessageOwner(u)
 	objOwner := ir.ObjectOwner(u)
 	for _, f := range u.Files {
 		g := &gen{unit: u, file: f, opts: opts, msgOwner: msgOwner, objOwner: objOwner}
-		g.emitDataFile(f.Base == protocolIdHome)
+		g.emitDataFile(f.Base == home)
 		out[f.Base+".h"] = g.assemble()
 
 		w := &gen{unit: u, file: f, opts: opts, msgOwner: msgOwner, objOwner: objOwner, wire: true}
@@ -165,20 +165,6 @@ func includeCycle(u *ir.Unit) string {
 		if !visit(f.Base) {
 			return found
 		}
-	}
-	return ""
-}
-
-// protocolIdHome picks the file that carries the unit-level ProtocolId
-// constant: the constants aspect file if the unit has one, else the first.
-func protocolIdHome(u *ir.Unit) string {
-	for _, f := range u.Files {
-		if f.Base == "Constants" {
-			return f.Base
-		}
-	}
-	if len(u.Files) > 0 {
-		return u.Files[0].Base
 	}
 	return ""
 }

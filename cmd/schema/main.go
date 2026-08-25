@@ -1,8 +1,11 @@
 // The schema compiler CLI (SPEC §7).
 //
-//	schema check    [dir|files...]                 parse + typecheck; exit code for CI
-//	schema generate --lang cpp --out <dir> [dir]   emit generated code
-//	schema id       [dir|files...]                 print the protocol id
+//	schema check      [dir|files...]                 parse + typecheck; exit code for CI
+//	schema generate   --lang cpp --out <dir> [dir]   emit generated code
+//	schema id         [dir|files...]                 print the protocol id
+//	schema projection [dir|files...]                 print the wire shape the id hashes
+//	schema fmt        [dir|files...]                 canonicalize schema files in place
+//	schema version                                   print the build identity
 //
 // Every command here is a few lines over the public API in
 // github.com/mas-bandwidth/schema/compiler: this binary holds the CLI's

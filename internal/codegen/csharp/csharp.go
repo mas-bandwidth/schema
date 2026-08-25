@@ -57,7 +57,7 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 	// on every TFM since the Int128Value/UInt128Value pair landed (2026-08-12,
 	// option b) — storage maps to the pair, wire calls mirror the C++ macros.
 	out := map[string][]byte{}
-	home := protocolIdHome(u)
+	home := ir.ProtocolIdHome(u)
 	msgOwner := ir.MessageOwner(u)
 	objOwner := ir.ObjectOwner(u)
 	batched, needCore := batchPlan(u)
@@ -67,21 +67,6 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 		out[f.Base+".cs"] = g.assemble()
 	}
 	return out, nil
-}
-
-// protocolIdHome picks the file that carries ProtocolId: the constants aspect
-// file if the unit has one, else the first — the same rule as the other
-// targets.
-func protocolIdHome(u *ir.Unit) string {
-	for _, f := range u.Files {
-		if f.Base == "Constants" {
-			return f.Base
-		}
-	}
-	if len(u.Files) > 0 {
-		return u.Files[0].Base
-	}
-	return ""
 }
 
 type gen struct {

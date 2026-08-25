@@ -430,6 +430,7 @@ func MessageOwner(u *Unit) string {
 	})
 }
 
+// ObjectOwner is MessageOwner's twin for the object tag surface.
 func ObjectOwner(u *Unit) string {
 	return dispatchOwner(u, func(f *File) bool {
 		for _, d := range f.Decls {
@@ -439,6 +440,22 @@ func ObjectOwner(u *Unit) string {
 		}
 		return false
 	})
+}
+
+// ProtocolIdHome picks the file whose output carries the unit-level protocol
+// id constant (and, per target, its companions): the constants aspect file if
+// the unit has one, else the first file. One rule for every backend, so the
+// id lives in the same schema file's output across all targets.
+func ProtocolIdHome(u *Unit) string {
+	for _, f := range u.Files {
+		if f.Base == "Constants" {
+			return f.Base
+		}
+	}
+	if len(u.Files) > 0 {
+		return u.Files[0].Base
+	}
+	return ""
 }
 
 func dispatchOwner(u *Unit, has func(*File) bool) string {
