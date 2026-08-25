@@ -54,7 +54,7 @@ import (
 // sort and no cross-file include graph to refuse.
 func Generate(u *ir.Unit) (map[string][]byte, error) {
 	// fixed(I, F), int128 and uint128: serialize.cs carries the full surface
-	// on every TFM since the Int128Value/UInt128Value pair landed (2026-08-12,
+	// on every TFM since the Int128Value/UInt128Value pair landed (
 	// option b) — storage maps to the pair, wire calls mirror the C++ macros.
 	out := map[string][]byte{}
 	home := ir.ProtocolIdHome(u)
@@ -777,7 +777,7 @@ func (g *gen) renderScaleF32(e ast.Expr, folded int64) string {
 // CHECKED constant arithmetic rejecting it. Schema folding is
 // arbitrary-precision; C# literal subtrees evaluate in int, so
 // `7 * 700000000` is a CS0220 compile error even though the product fits the
-// long bound it feeds (found by FuzzGeneratedCompiles, issue #22 — the C++
+// long bound it feeds (found by FuzzGeneratedCompiles — the C++
 // twin of this gate). A subtree referencing a constant evaluates in long.
 // Anything unprovable folds — folding is always correct.
 func (g *gen) overflowSafe(e ast.Expr) bool {

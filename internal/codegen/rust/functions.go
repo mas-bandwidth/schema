@@ -76,7 +76,7 @@ func (g *gen) emitStructFunctions(st *ir.Struct) {
 	// fixed [N]u8 arrays at statically byte-aligned positions take the
 	// runtime's bulk-bytes path instead of a per-byte loop — byte-identical
 	// wire (the internal align is zero bits when already aligned); the same
-	// ir.AlignedFixedByteArrays proof the C++ backend adopted (schema #7)
+	// ir.AlignedFixedByteArrays proof the C++ backend adopted
 	g.bulkBytes = ir.AlignedFixedByteArrays(st)
 	snake := ir.RustSnake(st.Name)
 	maxBits := ir.MaxBitsStruct(st)
@@ -92,7 +92,7 @@ func (g *gen) emitStructFunctions(st *ir.Struct) {
 	//
 	// The WRITE spine demands (see inline.go): the plain hint only raises
 	// LLVM's threshold, and these spines price far over it and were refused
-	// anyway (issue #77). The READ spine keeps the hint: the C++ backend's
+	// anyway. The READ spine keeps the hint: the C++ backend's
 	// blanket read demand was ported here, measured, and refused — it
 	// collapsed probearray read to 0.53x and shipcreate read to 0.71x.
 	g.pf(writeSpineInline)
@@ -282,7 +282,7 @@ func intRangePath(min, max *big.Int) string {
 	return "bits64" // full-range unsigned: width-computed raw bits over value - min
 }
 
-// ---- generation-time bound folding (C++ PR #8's mechanism, Rust shape) ----
+// ---- generation-time bound folding (the C++ fold pass.s mechanism, Rust shape) ----
 //
 // A ranged integer's min/max/bit count are schema constants, so the GENERATOR
 // folds them: a ranged write emits the offset from min in a bit count computed
@@ -295,14 +295,14 @@ func intRangePath(min, max *big.Int) string {
 // the wire golden gates.
 //
 // Deliberately NOT const-generic call forms (a serialize_int_const::<MIN,
-// MAX>): C++ PR #8 built the template twin of that design and measurement
+// MAX>): the C++ fold pass built the template twin of that design and measurement
 // disqualified it — instantiations shared by repeated bounds get outlined and
 // the call boundary cost 10-33% on ranged-int-heavy writes. The Rust hazard
 // is the same shape (each generic instantiation is a fresh function the
 // inliner may keep out of line), so the fold emits literals, never generics —
 // the entire benefit with no new call boundary.
 //
-// Reads stay on the runtime methods: serialize #25 measured the branchless
+// Reads stay on the runtime methods: the serialize const-params work measured the branchless
 // reader has nothing to gain from constant bounds, unchallenged since.
 
 // foldOffset32 renders the u32 offset expression for a fold site —
@@ -362,7 +362,7 @@ func (g *gen) emitWriteRangedFold64(expr string, exprIsU64, exprIsU32 bool, lo s
 // gains an explicit type suffix — `expr as uN` propagates the UNSIGNED target
 // into an unconstrained literal, so `(-100) as u32` refuses to compile — while
 // a symbolic render keeps its own typing through the referenced consts. The
-// overflow gate rides here too (issue #99): a fold FORCED by an i64-escaping
+// overflow gate rides here too: a fold FORCED by an i64-escaping
 // intermediate must take the suffixed spelling, not renderArg's bare one.
 func (g *gen) foldArg32(e ast.Expr, folded *big.Int) string {
 	if e == nil || ir.ExprHasEnumMax(e) || !g.renderable(e) || !containsIdent(e) || !g.overflowSafe(e) {
@@ -484,7 +484,7 @@ func (g *gen) emitWriteScalar(f *ir.Field, name, ind string) {
 		if f.IntMin.Cmp(f.IntMax) == 0 {
 			// degenerate range: ZERO bits — the generated raw-domain refusal
 			// and no wire call at all, so no runtime degenerate support is
-			// needed (SPEC §4.6, decided 2026-08-15)
+			// needed (SPEC §4.6)
 			g.emitWriteFixedRawGuard(name, f, ind)
 			return
 		}
@@ -603,7 +603,7 @@ func (g *gen) emitWriteScalar(f *ir.Field, name, ind string) {
 		g.pf("%s    return Err(Error::Stream(serialize::Error::ValueOutOfRange));\n%s}\n", ind, ind)
 		if f.Type.Kind == ir.TString {
 			// well-formed UTF-8 by contract, writer-trusted: debug-only
-			// assert, no read-path validation (SPEC §4.7, decided 2026-08-15)
+			// assert, no read-path validation (SPEC §4.7)
 			g.pf("%sdebug_assert!(\n%s    std::str::from_utf8(&%s[..%s_length as usize]).is_ok(),\n", ind, ind, name, name)
 			g.pf("%s    \"string(N) payloads are well-formed UTF-8 by contract (SPEC 4.7)\"\n%s);\n", ind, ind)
 		}
@@ -636,11 +636,11 @@ func (g *gen) emitWriteScalar(f *ir.Field, name, ind string) {
 }
 
 // compressedFloatArgs renders the constant arguments of the runtime's
-// precomputed compressed-float entry point (issue #82): the family contract's
+// precomputed compressed-float entry point: the family contract's
 // four scalars in the family order — max_integer_value, bits, delta, min, with
 // min last. The values are ir.CompressedFloatParams' generation-time fold, the
-// same derivation the JS flat backend, the Go fold (#79) and
-// the cpp backend (#114) already consume, and the same arithmetic
+// same derivation the JS flat backend, the Go fold and
+// the cpp backend already consume, and the same arithmetic
 // serialize.rs's serialize_compressed_float_params performs per call — so the
 // entry points are wire-identical by construction, and the runtime's debug
 // misuse checks (bits == bits_required(0, max_integer_value), delta finite

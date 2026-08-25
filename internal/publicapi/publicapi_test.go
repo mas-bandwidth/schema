@@ -1,5 +1,5 @@
 // Package publicapi is the acceptance gate on the public compiler API
-// (issue #85): a Go module OUTSIDE this one, importing nothing but
+// : a Go module OUTSIDE this one, importing nothing but
 // github.com/mas-bandwidth/schema/compiler and .../ir, builds a schema
 // compiler that emits the same bytes this repo's own binary emits.
 //
@@ -83,7 +83,7 @@ func run(t *testing.T, binPath string, args ...string) string {
 	return string(out)
 }
 
-// TestExternalModuleBuildsTheCLI is the acceptance test of issue #85.
+// TestExternalModuleBuildsTheCLI is the acceptance test of the public-API boundary.
 func TestExternalModuleBuildsTheCLI(t *testing.T) {
 	if testing.Short() {
 		t.Skip("builds two compilers")
@@ -104,7 +104,7 @@ func TestExternalModuleBuildsTheCLI(t *testing.T) {
 		t.Fatal(err)
 	}
 	if bytes.Contains(main, []byte("mas-bandwidth/schema/internal/")) {
-		t.Fatal("cmd/schema imports an internal package — the CLI is supposed to be a client of the public API (issue #85)")
+		t.Fatal("cmd/schema imports an internal package — the CLI is supposed to be a client of the public API")
 	}
 	if err := os.WriteFile(filepath.Join(clientDir, "main.go"), main, 0o644); err != nil {
 		t.Fatal(err)
@@ -293,7 +293,7 @@ func wantClientOutput(t *testing.T) string {
 		fmt.Fprintf(&b, "%s %d bits %d bytes %d fields\n",
 			name, ir.MaxBitsStruct(st), ir.MaxBytes(ir.MaxBitsStruct(st)), len(st.Fields))
 	}
-	// the issue #89 surface: declared bounds rendered as source expressions,
+	// the symbolic-rendering surface: declared bounds rendered as source expressions,
 	// mirrored line for line in the external module's widths generator
 	structs := make([]string, 0, len(u.Structs))
 	for name := range u.Structs {

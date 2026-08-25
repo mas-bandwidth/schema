@@ -1106,7 +1106,7 @@ namespace Ludicrous
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static bool WriteNarrowBodyData_ShallowBatch(ref WriteBatch batch, NarrowBodyData_Shallow value)
         {
-            if (value.PositionX < -25600000 || value.PositionX > 25600000) // out-of-contract writes are refused, not wrapped
+            if (value.PositionX < -25600000 || value.PositionX > 25600000)
             {
                 return false;
             }
@@ -1117,7 +1117,7 @@ namespace Ludicrous
                     return false;
                 }
             }
-            if (value.PositionY < -25600000 || value.PositionY > 25600000) // out-of-contract writes are refused, not wrapped
+            if (value.PositionY < -25600000 || value.PositionY > 25600000)
             {
                 return false;
             }
@@ -1128,7 +1128,7 @@ namespace Ludicrous
                     return false;
                 }
             }
-            if (value.PositionZ < -25600000 || value.PositionZ > 25600000) // out-of-contract writes are refused, not wrapped
+            if (value.PositionZ < -25600000 || value.PositionZ > 25600000)
             {
                 return false;
             }
@@ -1139,7 +1139,7 @@ namespace Ludicrous
                     return false;
                 }
             }
-            if (value.RotationX < -1024 || value.RotationX > 1024) // out-of-contract writes are refused, not wrapped
+            if (value.RotationX < -1024 || value.RotationX > 1024)
             {
                 return false;
             }
@@ -1150,7 +1150,7 @@ namespace Ludicrous
                     return false;
                 }
             }
-            if (value.RotationY < -1024 || value.RotationY > 1024) // out-of-contract writes are refused, not wrapped
+            if (value.RotationY < -1024 || value.RotationY > 1024)
             {
                 return false;
             }
@@ -1161,7 +1161,7 @@ namespace Ludicrous
                     return false;
                 }
             }
-            if (value.RotationZ < -1024 || value.RotationZ > 1024) // out-of-contract writes are refused, not wrapped
+            if (value.RotationZ < -1024 || value.RotationZ > 1024)
             {
                 return false;
             }
@@ -1172,7 +1172,7 @@ namespace Ludicrous
                     return false;
                 }
             }
-            if (value.RotationW < -1024 || value.RotationW > 1024) // out-of-contract writes are refused, not wrapped
+            if (value.RotationW < -1024 || value.RotationW > 1024)
             {
                 return false;
             }

@@ -1,7 +1,7 @@
 package c
 
 // Symbolic expression rendering — the C twin of the C++ backend's renderInt
-// family, making this the sixth client of ir.RenderExprIdent (issue #92). A
+// family, making this the sixth client of ir.RenderExprIdent. A
 // declared bound or constant reference renders as the author's expression
 // (MAX_OBJECTS - 1) wherever that is provably safe C, and folds to the
 // computed literal everywhere else. Wire bytes are identical either way:
@@ -43,7 +43,7 @@ func (g *gen) renderIntSuffixed(e ast.Expr, folded *big.Int, suffix string) stri
 // intLit renders a folded integer as a valid C literal, with the suffix the
 // site always spelled ("" where unsuffixed, "LL"/"ULL" elsewhere). Two
 // extremes have no direct decimal spelling and are guarded the way the C++
-// backend guards them (issue #95): INT64_MIN's literal half overflows long
+// backend guards them: INT64_MIN's literal half overflows long
 // long before the unary minus applies, so it renders as the C++ twin's
 // ( -9223372036854775807LL - 1 ); a value past INT64_MAX exceeds every
 // signed rung of C's decimal ladder (which ends at long long), so only the

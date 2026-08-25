@@ -53,7 +53,7 @@ func countAcross(files map[string][]byte, needle string) int {
 // A bare float const infers float64 (SPEC §4.2, Go's literal rule): the Go
 // target must export it exactly as the explicit annotation would — a TYPED
 // float64 constant, the same surface every other target already emits
-// (issue #120). An untyped Go constant is a different exported type: it
+// . An untyped Go constant is a different exported type: it
 // converts where float64 does not, so consumer code written against one
 // form breaks against the other.
 func TestBareFloatConstExportsTypedFloat64(t *testing.T) {
@@ -84,7 +84,7 @@ func TestBareFloatConstExportsTypedFloat64(t *testing.T) {
 }
 
 // Every generated enum surface carries its extent as the member Max (SPEC
-// §4.2 — the exported-extent rule, issue #121): declared enums (headroom
+// §4.2 — the exported-extent rule): declared enums (headroom
 // included) and the generated MessageType/ObjectType tag enums alike, in
 // each target's own convention. Call sites then state ranges against
 // E.Max's generated twin instead of a hand-declared count constant.
@@ -272,7 +272,7 @@ func TestUnionSurfaceEmitted(t *testing.T) {
 // Flags export their declared variant count as Count (SPEC §4.2 — one name,
 // not Max: the variants are independent bits, not a range with a top), and
 // the wire spends EXACTLY Count bits when no | max = K widens it (schema
-// issue #129's verification): a 4-variant flags field serializes in 4 bits
+// the flags-width verification): a 4-variant flags field serializes in 4 bits
 // in every target, write and read alike.
 func TestFlagsCountAndWireBits(t *testing.T) {
 	src := "package t\n\n" +

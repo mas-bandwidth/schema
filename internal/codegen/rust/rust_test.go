@@ -4,7 +4,7 @@
 // symbolic rendering is a build break in the consumer's tree: rustc DENIES
 // const arithmetic overflow (`arithmetic_overflow` is deny by default), so a
 // symbolic form whose INTERMEDIATE overflows i64 never compiles even when
-// the final value fits (issue #99).
+// the final value fits.
 package rust
 
 import (
@@ -33,7 +33,7 @@ func unitFromSource(t *testing.T, name, src string) *ir.Unit {
 	return u
 }
 
-// ---- issue #99: the doubled unary minus AT the extreme ----
+// ---- the doubled unary minus AT the extreme ----
 //
 // min = --FloorLimit folds to INT64_MIN, but its symbolic rendering
 // -(-FLOOR_LIMIT) carries an intermediate of +2^63 — one past i64::MAX.
@@ -71,7 +71,7 @@ func generateExtremesCorpus(t *testing.T) string {
 // doubled-minus bound: the write-side fold offset and the read-side
 // serialize_int64 arguments. At the extreme they must fold to the proven
 // plain-INT64_MIN spellings; in range the doubled minus keeps its symbolic,
-// parenthesized form (issue #22's pin — a fold here would be a silent
+// parenthesized form (the pinned rule — a fold here would be a silent
 // retreat from symbolic rendering).
 func TestDoubledMinusAtExtremeFolds(t *testing.T) {
 	rs := generateExtremesCorpus(t)

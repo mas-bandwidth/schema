@@ -138,7 +138,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_handle( serialize_write_str
 {
     if ( (serialize_int64_t) value->object_id < 0 || (serialize_int64_t) value->object_id > MAX_OBJECTS - 1 )
     {
-        return 0; /* out-of-contract writes are refused, not wrapped */
+        return 0;
     }
     if ( !serialize_write_bits( stream, (serialize_uint32_t) ( value->object_id ), 14 ) )
     {
@@ -184,7 +184,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_quantized_position( seriali
 {
     if ( (serialize_int64_t) value->x < -MAX_POSITION_UNITS || (serialize_int64_t) value->x > MAX_POSITION_UNITS )
     {
-        return 0; /* out-of-contract writes are refused, not wrapped */
+        return 0;
     }
     if ( !serialize_write_bits( stream, (serialize_uint32_t) ( (value->x) - (-MAX_POSITION_UNITS) ), 25 ) )
     {
@@ -192,7 +192,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_quantized_position( seriali
     }
     if ( (serialize_int64_t) value->y < -MAX_POSITION_UNITS || (serialize_int64_t) value->y > MAX_POSITION_UNITS )
     {
-        return 0; /* out-of-contract writes are refused, not wrapped */
+        return 0;
     }
     if ( !serialize_write_bits( stream, (serialize_uint32_t) ( (value->y) - (-MAX_POSITION_UNITS) ), 25 ) )
     {
@@ -200,7 +200,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_quantized_position( seriali
     }
     if ( (serialize_int64_t) value->z < -MAX_POSITION_UNITS || (serialize_int64_t) value->z > MAX_POSITION_UNITS )
     {
-        return 0; /* out-of-contract writes are refused, not wrapped */
+        return 0;
     }
     if ( !serialize_write_bits( stream, (serialize_uint32_t) ( (value->z) - (-MAX_POSITION_UNITS) ), 25 ) )
     {
@@ -262,7 +262,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_quantized_velocity( seriali
 {
     if ( (serialize_int64_t) value->x < -MAX_VELOCITY_UNITS || (serialize_int64_t) value->x > MAX_VELOCITY_UNITS )
     {
-        return 0; /* out-of-contract writes are refused, not wrapped */
+        return 0;
     }
     if ( !serialize_write_bits( stream, (serialize_uint32_t) ( (value->x) - (-MAX_VELOCITY_UNITS) ), 23 ) )
     {
@@ -270,7 +270,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_quantized_velocity( seriali
     }
     if ( (serialize_int64_t) value->y < -MAX_VELOCITY_UNITS || (serialize_int64_t) value->y > MAX_VELOCITY_UNITS )
     {
-        return 0; /* out-of-contract writes are refused, not wrapped */
+        return 0;
     }
     if ( !serialize_write_bits( stream, (serialize_uint32_t) ( (value->y) - (-MAX_VELOCITY_UNITS) ), 23 ) )
     {
@@ -278,7 +278,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_quantized_velocity( seriali
     }
     if ( (serialize_int64_t) value->z < -MAX_VELOCITY_UNITS || (serialize_int64_t) value->z > MAX_VELOCITY_UNITS )
     {
-        return 0; /* out-of-contract writes are refused, not wrapped */
+        return 0;
     }
     if ( !serialize_write_bits( stream, (serialize_uint32_t) ( (value->z) - (-MAX_VELOCITY_UNITS) ), 23 ) )
     {
@@ -340,7 +340,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_quantized_rotation( seriali
 {
     if ( (serialize_int64_t) value->x < -ROTATION_UNITS || (serialize_int64_t) value->x > ROTATION_UNITS )
     {
-        return 0; /* out-of-contract writes are refused, not wrapped */
+        return 0;
     }
     if ( !serialize_write_bits( stream, (serialize_uint32_t) ( (value->x) - (-ROTATION_UNITS) ), 12 ) )
     {
@@ -348,7 +348,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_quantized_rotation( seriali
     }
     if ( (serialize_int64_t) value->y < -ROTATION_UNITS || (serialize_int64_t) value->y > ROTATION_UNITS )
     {
-        return 0; /* out-of-contract writes are refused, not wrapped */
+        return 0;
     }
     if ( !serialize_write_bits( stream, (serialize_uint32_t) ( (value->y) - (-ROTATION_UNITS) ), 12 ) )
     {
@@ -356,7 +356,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_quantized_rotation( seriali
     }
     if ( (serialize_int64_t) value->z < -ROTATION_UNITS || (serialize_int64_t) value->z > ROTATION_UNITS )
     {
-        return 0; /* out-of-contract writes are refused, not wrapped */
+        return 0;
     }
     if ( !serialize_write_bits( stream, (serialize_uint32_t) ( (value->z) - (-ROTATION_UNITS) ), 12 ) )
     {
@@ -364,7 +364,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_quantized_rotation( seriali
     }
     if ( (serialize_int64_t) value->w < -ROTATION_UNITS || (serialize_int64_t) value->w > ROTATION_UNITS )
     {
-        return 0; /* out-of-contract writes are refused, not wrapped */
+        return 0;
     }
     if ( !serialize_write_bits( stream, (serialize_uint32_t) ( (value->w) - (-ROTATION_UNITS) ), 12 ) )
     {
@@ -734,7 +734,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_ship_create( serialize_writ
     }
     if ( (serialize_int64_t) value->health < 0 || (serialize_int64_t) value->health > MAX_HEALTH )
     {
-        return 0; /* out-of-contract writes are refused, not wrapped */
+        return 0;
     }
     if ( !serialize_write_bits( stream, (serialize_uint32_t) ( value->health ), 10 ) )
     {
@@ -742,7 +742,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_ship_create( serialize_writ
     }
     if ( (serialize_int64_t) value->thrust < 0 || (serialize_int64_t) value->thrust > 100 )
     {
-        return 0; /* out-of-contract writes are refused, not wrapped */
+        return 0;
     }
     if ( !serialize_write_bits( stream, (serialize_uint32_t) ( value->thrust ), 7 ) )
     {
@@ -850,7 +850,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_expression_probe( serialize
 {
     if ( (serialize_int64_t) value->hardpoint_index < 0 || (serialize_int64_t) value->hardpoint_index > (SHIP_MAX_LASERS + SHIP_MAX_MISSILES) - 1 )
     {
-        return 0; /* out-of-contract writes are refused, not wrapped */
+        return 0;
     }
     if ( !serialize_write_bits( stream, (serialize_uint32_t) ( value->hardpoint_index ), 5 ) )
     {
@@ -858,7 +858,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_expression_probe( serialize
     }
     if ( (serialize_int64_t) value->spin_rate < -(-ROTATION_UNITS) || (serialize_int64_t) value->spin_rate > ROTATION_UNITS * 2 )
     {
-        return 0; /* out-of-contract writes are refused, not wrapped */
+        return 0;
     }
     if ( !serialize_write_bits( stream, (serialize_uint32_t) ( (value->spin_rate) - (-(-ROTATION_UNITS)) ), 11 ) )
     {
@@ -906,7 +906,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_extreme_probe( serialize_wr
 {
     if ( (serialize_int64_t) value->floor_bound > 100 )
     {
-        return 0; /* out-of-contract writes are refused, not wrapped */
+        return 0;
     }
     {
         serialize_uint64_t offset_value = (serialize_uint64_t) ( (value->floor_bound) - (( -9223372036854775807LL - 1 )) );
@@ -921,7 +921,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_extreme_probe( serialize_wr
     }
     if ( (serialize_int64_t) value->doubled_floor > 100 )
     {
-        return 0; /* out-of-contract writes are refused, not wrapped */
+        return 0;
     }
     {
         serialize_uint64_t offset_value = (serialize_uint64_t) ( (value->doubled_floor) - (( -9223372036854775807LL - 1 )) );
@@ -936,7 +936,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_extreme_probe( serialize_wr
     }
     if ( (serialize_uint64_t) value->ceiling_range < 1 )
     {
-        return 0; /* out-of-contract writes are refused, not wrapped */
+        return 0;
     }
     {
         serialize_uint64_t offset_value = (serialize_uint64_t) ( (value->ceiling_range) - (1) );
@@ -1044,7 +1044,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_extreme_row( serialize_writ
 {
     if ( (serialize_int64_t) value->clamped_floor > 100 )
     {
-        return 0; /* out-of-contract writes are refused, not wrapped */
+        return 0;
     }
     {
         serialize_uint64_t offset_value = (serialize_uint64_t) ( (value->clamped_floor) - (( -9223372036854775807LL - 1 )) );
@@ -1059,7 +1059,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_extreme_row( serialize_writ
     }
     if ( (serialize_uint64_t) value->clamped_ceiling < 1 || (serialize_uint64_t) value->clamped_ceiling > 18446744073709551614ULL )
     {
-        return 0; /* out-of-contract writes are refused, not wrapped */
+        return 0;
     }
     {
         serialize_uint64_t offset_value = (serialize_uint64_t) ( (value->clamped_ceiling) - (1) );

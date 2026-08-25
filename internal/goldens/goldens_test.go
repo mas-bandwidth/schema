@@ -191,10 +191,9 @@ func TestGoldenLudicrousId(t *testing.T) {
 
 // TestGoldenLudicrousSource pins the fixed-point + 128-bit unit's generated
 // source byte-for-byte for ALL SIX targets: C++ (both message
-// representations), Go, Rust, C#, C and JavaScript. Every serialize port now
-// carries the phase-1 surface, so the old refusal pin
-// (TestLudicrous128Refusals) is retired — a backend erroring here is the
-// loud failure that replaces it, and the unit rides the same cross-language
+// representations), Go, Rust, C#, C and JavaScript. Every serialize port
+// carries the phase-1 surface — a backend erroring here is a loud failure —
+// and the unit rides the same cross-language
 // wire gates as the main corpus (test/{c,go,rust,cs}-ludicrous).
 func TestGoldenLudicrousSource(t *testing.T) {
 	u := loadCorpusDir(t, corpus128Dir)

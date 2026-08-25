@@ -4,7 +4,7 @@
 // function calls. THE JavaScript path under the ruling ("whichever correct
 // implementation is fastest is the one we use for JavaScript"): the
 // flattened-JS probe measured it 8-10x the runtime-call tier and within
-// 3.2-5.1x of native C (era flatjs-probe, 2026-08-18, M2 Air, node 26.7).
+// 3.2-5.1x of native C (era flatjs-probe, M2 Air, node 26.7).
 // The runtime tier (Base.js + serialize.js) remains the compat/debug/
 // reference surface and the CI oracle this tier is held byte-identical to.
 //

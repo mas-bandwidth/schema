@@ -844,7 +844,7 @@ func (g *gen) renderScaleF32(e ast.Expr, folded int64) string {
 // (`arithmetic_overflow` is deny by default), so a doubled unary minus over
 // an INT64_MIN constant renders symbolically as -(-FLOOR_LIMIT) — an
 // intermediate one past i64::MAX that is a build break even though the outer
-// minus brings the value home (issue #99; the C and C# backends' carrierEval
+// minus brings the value home (the C and C# backends' carrierEval
 // already folds this shape). A symbolic rendering evaluates in i64: every
 // renderable constant is a bare schema const — i64 in Rust — and the
 // literals beside one infer i64 through the operations, so the carrier is

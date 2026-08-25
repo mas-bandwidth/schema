@@ -98,7 +98,7 @@ func (g *gen) emitViewWriteField(f *ir.Field, v ir.View, ind string) {
 			sMin, sMax := storageBounds(ir.FieldType{Kind: ir.TInt, Signed: true, Width: width})
 			g.emitWriteFoldedRange(compName, lo.String(), hi.String(),
 				lo, hi, wide, lo.Cmp(sMin) > 0, hi.Cmp(sMax) < 0,
-				" // out-of-contract writes are refused, not wrapped", ind)
+				"", ind)
 		}
 	case v == ir.ViewShallow && f.HasQuantize:
 		st := f.Type.Ref.(*ir.Struct)
@@ -112,7 +112,7 @@ func (g *gen) emitViewWriteField(f *ir.Field, v ir.View, ind string) {
 			compName := name + ir.GoExportName(comp.Name)
 			g.emitWriteFoldedRange(compName, fmt.Sprintf("-%d", f.QuantBound), fmt.Sprintf("%d", f.QuantBound),
 				nqb, qb, wide, nqb.Cmp(sMin) > 0, qb.Cmp(sMax) < 0,
-				" // out-of-contract writes are refused, not wrapped", ind)
+				"", ind)
 		}
 	case v == ir.ViewShallow && f.HasFloatRange:
 		wide := f.Steps > 2147483647
@@ -122,7 +122,7 @@ func (g *gen) emitViewWriteField(f *ir.Field, v ir.View, ind string) {
 		_, sMax := storageBounds(ir.FieldType{Kind: ir.TInt, Signed: false, Width: ir.StorageBitsFor(f.Steps)})
 		g.emitWriteFoldedRange(name, "0", fmt.Sprintf("%d", f.Steps),
 			big.NewInt(0), steps, wide, false, steps.Cmp(sMax) < 0,
-			" // out-of-contract writes are refused, not wrapped", ind)
+			"", ind)
 	case v == ir.ViewDeep && f.HasFloatRange && f.Interpolate:
 		// the triple describes the shallow wire only — deep is the bare float
 		if f.Type.Kind == ir.TFloat64 {
@@ -145,7 +145,7 @@ func (g *gen) emitViewReadField(f *ir.Field, v ir.View, ind string) {
 			lo, hi, wide, compT, width := fixedShallowComp(f, comp)
 			if lo.Cmp(hi) == 0 {
 				// a degenerate component narrows to zero bits — the value is
-				// the range (SPEC §4.6, decided 2026-08-15)
+				// the range (SPEC §4.6)
 				g.sf("%s%s = unchecked((%s)(%sL));\n", ind, compName, compT, lo.String())
 				continue
 			}

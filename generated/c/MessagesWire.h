@@ -189,7 +189,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_test( serialize_write_strea
     }
     if ( (serialize_int64_t) value->test_b < 0 || (serialize_int64_t) value->test_b > 1000 )
     {
-        return 0; /* out-of-contract writes are refused, not wrapped */
+        return 0;
     }
     if ( !serialize_write_bits( stream, (serialize_uint32_t) ( value->test_b ), 10 ) )
     {
@@ -197,7 +197,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_test( serialize_write_strea
     }
     if ( (serialize_int64_t) value->test_c < 0 || (serialize_int64_t) value->test_c > 1000 )
     {
-        return 0; /* out-of-contract writes are refused, not wrapped */
+        return 0;
     }
     if ( !serialize_write_bits( stream, (serialize_uint32_t) ( value->test_c ), 10 ) )
     {
@@ -205,7 +205,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_test( serialize_write_strea
     }
     if ( (serialize_int64_t) value->test_d < 0 || (serialize_int64_t) value->test_d > 1000 )
     {
-        return 0; /* out-of-contract writes are refused, not wrapped */
+        return 0;
     }
     if ( !serialize_write_bits( stream, (serialize_uint32_t) ( value->test_d ), 10 ) )
     {

@@ -190,7 +190,7 @@ func (g *gen) emitTagEnum(name string, members []string, comment string) {
 // exported type, SPEC §4.2). A FLOAT const is always typed: a bare float
 // const infers float64 (SPEC §4.2, Go's literal rule), and the export must
 // be the same surface the explicit annotation spells — every other target
-// already pins the type either way (issue #120).
+// already pins the type either way.
 func (g *gen) emitConst(d *ir.Const) {
 	typ := ""
 	if d.Explicit {

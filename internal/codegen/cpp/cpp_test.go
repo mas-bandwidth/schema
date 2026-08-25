@@ -1,7 +1,7 @@
 // The declaration-order test: schema references are order-free (SPEC §4.2),
 // so the C++ data header must be a function of the schema's MEANING, not of
 // the order the author wrote the constants in. Before emissionOrder gained
-// const nodes (issue #29), a const referenced by an earlier-declared entity
+// const nodes, a const referenced by an earlier-declared entity
 // emitted as the folded literal — values identical, the symbolic link that
 // makes the header maintainable silently lost, and only under some
 // declaration orders.

@@ -271,7 +271,7 @@ int main()
     // ---- NarrowBody: the narrowed fixed shallow (SPEC §4.8 rule 2b) ----
     // The Quantize/Unquantize pair RETURNS as round-to-nearest integer
     // arithmetic, ties AWAY FROM ZERO — the one fixed-point rounding rule
-    // (decided 2026-08-15; the bare shift's ties-toward-+infinity is the
+    // (the bare shift's ties-toward-+infinity is the
     // superseded behavior this block used to pin). The shallow wire carries
     // the narrowed per-component ints, and the deep wire stays full
     // precision. Derivation, in wire order:
@@ -385,7 +385,7 @@ int main()
         check( !ReadNarrowBodyData_Shallow( hrs, hOut ) );
     }
 
-    // ---- DegenerateProbe: min == max costs ZERO bits (SPEC §4.6, 2026-08-15) ----
+    // ---- DegenerateProbe: min == max costs ZERO bits (SPEC §4.6) ----
     // Three degenerate shapes ride in front of a tail byte: the whole wire
     // is that one byte, derived from the wire law by hand below. A port that
     // emits ANY bits for a degenerate range — the audit found F bits on the
@@ -418,7 +418,7 @@ int main()
     }
 
     // ---- UnsignedProbe: ufixed(I, F), the unsigned sibling (SPEC §4.3;
-    // Glenn 2026-08-15: "ufixed is fine", closing §9 q17) ----
+    //) ----
     // The width ladder mirrors FixedProbe's and adds the unsigned-only
     // hazard: span's raw values fill uint64's HIGH HALF (above 2^63) — any
     // sign-extending route corrupts them, and this byte-compare is the gate.

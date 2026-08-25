@@ -9,10 +9,10 @@
 // includes <Base>.h plus serialize.h. The split exists so data consumers (a
 // game basing its math types on generated structs) never inherit the
 // serialize runtime or its macro namespace, which collides with vendored
-// older serialize copies (the space integration finding, 2026-08-11).
+// older serialize copies (the space integration finding).
 //
 // Every member zero-initializes unless the schema specifies a default
-// (Glenn, 2026-08-05).
+// (ruled).
 package cpp
 
 import (
@@ -32,7 +32,7 @@ type Options struct {
 	// MessageRepr is the C++ message dispatch representation: "union" (a
 	// tagged struct over an anonymous union, the classic game idiom — the
 	// DEFAULT) or "variant" (std::variant, index == wire tag, opt-in).
-	// Caller's choice per Glenn 2026-08-05; the default is union on his
+	// Caller's choice; the default is union on the ruled
 	// compile-time measurement the same hour: 0.17s -> 0.27s "is not trivial
 	// for me. it's almost 2X" / "I'm very negative on modern C++ for this
 	// reason... you almost always pay through the nose for it at compile
@@ -827,7 +827,7 @@ func (g *gen) noteRef(name string) {
 // half overflows long long before the unary minus applies, and a value past
 // INT64_MAX deduces unsigned as a bare decimal — -Wimplicitly-unsigned-
 // literal, a -Werror build break in the consumer's tree — so only the ull
-// spelling can hold it (issue #100; the member initializers were the one
+// spelling can hold it (the member initializers were the one
 // fold site reaching here unguarded).
 func (g *gen) renderInt(e ast.Expr, folded *big.Int) string {
 	if folded != nil && folded.IsInt64() && folded.Int64() == math.MinInt64 {
@@ -847,7 +847,7 @@ func (g *gen) renderInt(e ast.Expr, folded *big.Int) string {
 // arbitrary-precision; C++ is not: a literal-only subtree evaluates in int
 // (small decimal literals deduce int), and `7 * 700000000` is a
 // -Werror=-Winteger-overflow build break even though the product fits the
-// int64 bound it feeds (found by FuzzGeneratedCompiles, issue #22). A subtree
+// int64 bound it feeds (found by FuzzGeneratedCompiles). A subtree
 // referencing a constant evaluates in int64 (constants emit as typed
 // constexpr int64_t). Anything unprovable folds — folding is always correct,
 // symbolic rendering is the luxury.

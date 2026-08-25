@@ -674,7 +674,7 @@ namespace Example
                     return false;
                 }
             }
-            if (value.PositionX < -8388608 || value.PositionX > 8388608) // out-of-contract writes are refused, not wrapped
+            if (value.PositionX < -8388608 || value.PositionX > 8388608)
             {
                 return false;
             }
@@ -685,7 +685,7 @@ namespace Example
                     return false;
                 }
             }
-            if (value.PositionY < -8388608 || value.PositionY > 8388608) // out-of-contract writes are refused, not wrapped
+            if (value.PositionY < -8388608 || value.PositionY > 8388608)
             {
                 return false;
             }
@@ -696,7 +696,7 @@ namespace Example
                     return false;
                 }
             }
-            if (value.PositionZ < -8388608 || value.PositionZ > 8388608) // out-of-contract writes are refused, not wrapped
+            if (value.PositionZ < -8388608 || value.PositionZ > 8388608)
             {
                 return false;
             }
@@ -707,7 +707,7 @@ namespace Example
                     return false;
                 }
             }
-            if (value.RotationX < -1024 || value.RotationX > 1024) // out-of-contract writes are refused, not wrapped
+            if (value.RotationX < -1024 || value.RotationX > 1024)
             {
                 return false;
             }
@@ -718,7 +718,7 @@ namespace Example
                     return false;
                 }
             }
-            if (value.RotationY < -1024 || value.RotationY > 1024) // out-of-contract writes are refused, not wrapped
+            if (value.RotationY < -1024 || value.RotationY > 1024)
             {
                 return false;
             }
@@ -729,7 +729,7 @@ namespace Example
                     return false;
                 }
             }
-            if (value.RotationZ < -1024 || value.RotationZ > 1024) // out-of-contract writes are refused, not wrapped
+            if (value.RotationZ < -1024 || value.RotationZ > 1024)
             {
                 return false;
             }
@@ -740,7 +740,7 @@ namespace Example
                     return false;
                 }
             }
-            if (value.RotationW < -1024 || value.RotationW > 1024) // out-of-contract writes are refused, not wrapped
+            if (value.RotationW < -1024 || value.RotationW > 1024)
             {
                 return false;
             }
@@ -751,7 +751,7 @@ namespace Example
                     return false;
                 }
             }
-            if (value.LinearVelocityX < -2097152 || value.LinearVelocityX > 2097152) // out-of-contract writes are refused, not wrapped
+            if (value.LinearVelocityX < -2097152 || value.LinearVelocityX > 2097152)
             {
                 return false;
             }
@@ -762,7 +762,7 @@ namespace Example
                     return false;
                 }
             }
-            if (value.LinearVelocityY < -2097152 || value.LinearVelocityY > 2097152) // out-of-contract writes are refused, not wrapped
+            if (value.LinearVelocityY < -2097152 || value.LinearVelocityY > 2097152)
             {
                 return false;
             }
@@ -773,7 +773,7 @@ namespace Example
                     return false;
                 }
             }
-            if (value.LinearVelocityZ < -2097152 || value.LinearVelocityZ > 2097152) // out-of-contract writes are refused, not wrapped
+            if (value.LinearVelocityZ < -2097152 || value.LinearVelocityZ > 2097152)
             {
                 return false;
             }
@@ -806,7 +806,7 @@ namespace Example
                     return false;
                 }
             }
-            if (value.Health > 1000) // out-of-contract writes are refused, not wrapped
+            if (value.Health > 1000)
             {
                 return false;
             }
@@ -817,7 +817,7 @@ namespace Example
                     return false;
                 }
             }
-            if (value.Thrust > 100) // out-of-contract writes are refused, not wrapped
+            if (value.Thrust > 100)
             {
                 return false;
             }
@@ -1233,7 +1233,7 @@ namespace Example
                     return false;
                 }
             }
-            if (value.PositionX < -8388608 || value.PositionX > 8388608) // out-of-contract writes are refused, not wrapped
+            if (value.PositionX < -8388608 || value.PositionX > 8388608)
             {
                 return false;
             }
@@ -1244,7 +1244,7 @@ namespace Example
                     return false;
                 }
             }
-            if (value.PositionY < -8388608 || value.PositionY > 8388608) // out-of-contract writes are refused, not wrapped
+            if (value.PositionY < -8388608 || value.PositionY > 8388608)
             {
                 return false;
             }
@@ -1255,7 +1255,7 @@ namespace Example
                     return false;
                 }
             }
-            if (value.PositionZ < -8388608 || value.PositionZ > 8388608) // out-of-contract writes are refused, not wrapped
+            if (value.PositionZ < -8388608 || value.PositionZ > 8388608)
             {
                 return false;
             }
@@ -1266,7 +1266,7 @@ namespace Example
                     return false;
                 }
             }
-            if (value.RotationX < -1024 || value.RotationX > 1024) // out-of-contract writes are refused, not wrapped
+            if (value.RotationX < -1024 || value.RotationX > 1024)
             {
                 return false;
             }
@@ -1277,7 +1277,7 @@ namespace Example
                     return false;
                 }
             }
-            if (value.RotationY < -1024 || value.RotationY > 1024) // out-of-contract writes are refused, not wrapped
+            if (value.RotationY < -1024 || value.RotationY > 1024)
             {
                 return false;
             }
@@ -1288,7 +1288,7 @@ namespace Example
                     return false;
                 }
             }
-            if (value.RotationZ < -1024 || value.RotationZ > 1024) // out-of-contract writes are refused, not wrapped
+            if (value.RotationZ < -1024 || value.RotationZ > 1024)
             {
                 return false;
             }
@@ -1299,7 +1299,7 @@ namespace Example
                     return false;
                 }
             }
-            if (value.RotationW < -1024 || value.RotationW > 1024) // out-of-contract writes are refused, not wrapped
+            if (value.RotationW < -1024 || value.RotationW > 1024)
             {
                 return false;
             }
@@ -1310,7 +1310,7 @@ namespace Example
                     return false;
                 }
             }
-            if (value.LinearVelocityX < -2097152 || value.LinearVelocityX > 2097152) // out-of-contract writes are refused, not wrapped
+            if (value.LinearVelocityX < -2097152 || value.LinearVelocityX > 2097152)
             {
                 return false;
             }
@@ -1321,7 +1321,7 @@ namespace Example
                     return false;
                 }
             }
-            if (value.LinearVelocityY < -2097152 || value.LinearVelocityY > 2097152) // out-of-contract writes are refused, not wrapped
+            if (value.LinearVelocityY < -2097152 || value.LinearVelocityY > 2097152)
             {
                 return false;
             }
@@ -1332,7 +1332,7 @@ namespace Example
                     return false;
                 }
             }
-            if (value.LinearVelocityZ < -2097152 || value.LinearVelocityZ > 2097152) // out-of-contract writes are refused, not wrapped
+            if (value.LinearVelocityZ < -2097152 || value.LinearVelocityZ > 2097152)
             {
                 return false;
             }
@@ -1739,7 +1739,7 @@ namespace Example
                     return false;
                 }
             }
-            if (value.PositionX < -8388608 || value.PositionX > 8388608) // out-of-contract writes are refused, not wrapped
+            if (value.PositionX < -8388608 || value.PositionX > 8388608)
             {
                 return false;
             }
@@ -1750,7 +1750,7 @@ namespace Example
                     return false;
                 }
             }
-            if (value.PositionY < -8388608 || value.PositionY > 8388608) // out-of-contract writes are refused, not wrapped
+            if (value.PositionY < -8388608 || value.PositionY > 8388608)
             {
                 return false;
             }
@@ -1761,7 +1761,7 @@ namespace Example
                     return false;
                 }
             }
-            if (value.PositionZ < -8388608 || value.PositionZ > 8388608) // out-of-contract writes are refused, not wrapped
+            if (value.PositionZ < -8388608 || value.PositionZ > 8388608)
             {
                 return false;
             }
@@ -1772,7 +1772,7 @@ namespace Example
                     return false;
                 }
             }
-            if (value.RotationX < -1024 || value.RotationX > 1024) // out-of-contract writes are refused, not wrapped
+            if (value.RotationX < -1024 || value.RotationX > 1024)
             {
                 return false;
             }
@@ -1783,7 +1783,7 @@ namespace Example
                     return false;
                 }
             }
-            if (value.RotationY < -1024 || value.RotationY > 1024) // out-of-contract writes are refused, not wrapped
+            if (value.RotationY < -1024 || value.RotationY > 1024)
             {
                 return false;
             }
@@ -1794,7 +1794,7 @@ namespace Example
                     return false;
                 }
             }
-            if (value.RotationZ < -1024 || value.RotationZ > 1024) // out-of-contract writes are refused, not wrapped
+            if (value.RotationZ < -1024 || value.RotationZ > 1024)
             {
                 return false;
             }
@@ -1805,7 +1805,7 @@ namespace Example
                     return false;
                 }
             }
-            if (value.RotationW < -1024 || value.RotationW > 1024) // out-of-contract writes are refused, not wrapped
+            if (value.RotationW < -1024 || value.RotationW > 1024)
             {
                 return false;
             }
@@ -1816,7 +1816,7 @@ namespace Example
                     return false;
                 }
             }
-            if (value.LinearVelocityX < -2097152 || value.LinearVelocityX > 2097152) // out-of-contract writes are refused, not wrapped
+            if (value.LinearVelocityX < -2097152 || value.LinearVelocityX > 2097152)
             {
                 return false;
             }
@@ -1827,7 +1827,7 @@ namespace Example
                     return false;
                 }
             }
-            if (value.LinearVelocityY < -2097152 || value.LinearVelocityY > 2097152) // out-of-contract writes are refused, not wrapped
+            if (value.LinearVelocityY < -2097152 || value.LinearVelocityY > 2097152)
             {
                 return false;
             }
@@ -1838,7 +1838,7 @@ namespace Example
                     return false;
                 }
             }
-            if (value.LinearVelocityZ < -2097152 || value.LinearVelocityZ > 2097152) // out-of-contract writes are refused, not wrapped
+            if (value.LinearVelocityZ < -2097152 || value.LinearVelocityZ > 2097152)
             {
                 return false;
             }
@@ -2218,7 +2218,7 @@ namespace Example
                     return false;
                 }
             }
-            if (value.RotationX < -1024 || value.RotationX > 1024) // out-of-contract writes are refused, not wrapped
+            if (value.RotationX < -1024 || value.RotationX > 1024)
             {
                 return false;
             }
@@ -2229,7 +2229,7 @@ namespace Example
                     return false;
                 }
             }
-            if (value.RotationY < -1024 || value.RotationY > 1024) // out-of-contract writes are refused, not wrapped
+            if (value.RotationY < -1024 || value.RotationY > 1024)
             {
                 return false;
             }
@@ -2240,7 +2240,7 @@ namespace Example
                     return false;
                 }
             }
-            if (value.RotationZ < -1024 || value.RotationZ > 1024) // out-of-contract writes are refused, not wrapped
+            if (value.RotationZ < -1024 || value.RotationZ > 1024)
             {
                 return false;
             }
@@ -2251,7 +2251,7 @@ namespace Example
                     return false;
                 }
             }
-            if (value.RotationW < -1024 || value.RotationW > 1024) // out-of-contract writes are refused, not wrapped
+            if (value.RotationW < -1024 || value.RotationW > 1024)
             {
                 return false;
             }

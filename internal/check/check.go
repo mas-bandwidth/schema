@@ -144,9 +144,8 @@ func (c *checker) collectPackage() {
 	}
 }
 
-// checkPackageName refuses package names that generate uncompilable code (the
-// 2026-08-16 ruling on the compile fuzzer's `package exit` specimen: "Refuse
-// the colliding names with a clear diagnostic"). The package ident maps to the
+// checkPackageName refuses package names that generate uncompilable code —
+// the colliding names get a clear diagnostic. The package ident maps to the
 // target's namespace/module/package concept verbatim (SPEC §6.1), which exposes
 // it to three collision classes no declaration or field name can hit.
 func (c *checker) checkPackageName(name string, pos ast.Pos) {
@@ -297,7 +296,7 @@ func (c *checker) resolveConst(name string) *ir.Const {
 			// never held to it: a value past the int64 range reached every
 			// backend as an int64 constant it cannot represent — an
 			// unrepresentable (or constexpr-narrowing) literal in C, C++ and
-			// C# (found by FuzzGeneratedCompiles, issue #22)
+			// C# (found by FuzzGeneratedCompiles)
 			c.errf(e.decl.Pos, "constant %s value %s does not fit int64, the default constant storage — declare an explicit type (const %s uint64 = ...) if a wider range is intended", name, v, name)
 			e.state = 3
 			return nil
@@ -1064,9 +1063,8 @@ func (c *checker) resolveField(kind declKind, owner string, f *ast.Field) *ir.Fi
 		}
 		out.Type = ir.FieldType{Kind: ir.TBits, Width: int(w)}
 	case ast.ScalarFixed:
-		// fixed(I, F) — SIGNED (Glenn, 2026-08-06: "fixed point is signed") —
-		// and its unsigned sibling ufixed(I, F) (Glenn, 2026-08-15: "ufixed is
-		// fine", closing §9 q17): the storage is an integer of exactly I+F
+		// fixed(I, F) — SIGNED — and its unsigned sibling
+		// ufixed(I, F): the storage is an integer of exactly I+F
 		// bits; for fixed the sign bit counts toward I, for ufixed there is no
 		// sign bit and the whole-unit domain is [0, 2^I). Both mirror
 		// serialize_fixed's static_asserts (SPEC §4.3, §4.6) — I >= 1 is the
@@ -1227,9 +1225,9 @@ func (c *checker) resolveField(kind declKind, owner string, f *ast.Field) *ir.Fi
 	return out
 }
 
-// resolveDefault validates an optional specified default (Glenn, 2026-08-05:
-// zero initialization for all types in all generated languages, "unless we
-// allow some specified default, eg. ... = true").
+// resolveDefault validates an optional specified default: zero initialization
+// for all types in all generated languages unless a specified default
+// overrides it (SPEC §5).
 func (c *checker) resolveDefault(f *ast.Field, out *ir.Field) {
 	if f.Default == nil {
 		return
@@ -1278,7 +1276,7 @@ func (c *checker) resolveDefault(f *ast.Field, out *ir.Field) {
 		out.HasDefault = true
 		out.DefFloat = v
 	case ir.TFixed:
-		// the door reopened 2026-08-12: the quaternion identity (w = 1.0) is
+		// the quaternion identity (w = 1.0) is
 		// the real case. A fixed default is declared in WHOLE UNITS — the same
 		// domain as the | min, max bounds — and must scale EXACTLY: v * 2^F an
 		// integer, so no rounding rule is ever involved in a default.
@@ -1479,8 +1477,7 @@ func (c *checker) resolveAttrs(kind declKind, f *ast.Field, out *ir.Field) {
 			return
 		}
 		// Non-finite triple parameters are rejected HERE, by name, before any
-		// derived check can trip over them (Glenn, 2026-08-15: "attempting to
-		// send NaN or INF or anything else through compressed float is
+		// derived check can trip over them 		// send NaN or INF or anything else through compressed float is
 		// non-conforming and should assert out on write too" — the runtimes
 		// carry the write asserts; the compiler's half is refusing the
 		// declaration). Both levels matter: non-finite at float64, and finite
@@ -1568,7 +1565,7 @@ func (c *checker) resolveAttrs(kind declKind, f *ast.Field, out *ir.Field) {
 		if !ok1 || !ok2 {
 			return
 		}
-		// min == max is LEGAL — DECIDED (Glenn, 2026-08-15): a degenerate
+		// min == max is LEGAL: a degenerate
 		// range costs zero bits and the reader recovers the value from the
 		// range alone, the same rule STANDARD.md has always stated for
 		// ranged integers and the empty enum already exercises. Only an
@@ -1704,7 +1701,7 @@ func (c *checker) checkCompositeQuantize(f *ast.Field, out *ir.Field, byKey map[
 	}
 	// every backend computes the quantize product in float64, so a scale the
 	// double cannot hold exactly would round before the arithmetic even
-	// starts — the compressed_float precision hazard one level up (#26)
+	// starts — the compressed_float precision hazard one level up
 	if f := new(big.Float).SetPrec(53).SetInt64(k.Int64()); true {
 		if i, acc := f.Int64(); acc != big.Exact || i != k.Int64() {
 			c.errf(a.Pos, "quantize scale %s is not exactly representable in float64 — the quantize arithmetic runs in double in every backend (SPEC §4.8 rule 2)", k)
@@ -1969,8 +1966,8 @@ var targetReserved = func() map[string]string {
 // includes eventually pull in. A package named after one generates
 // `namespace <name>` beside libc's declaration of the same name — proven with
 // the compile fuzzer's specimen: clang rejects the generated `namespace exit`
-// with "redefinition of 'exit' as different kind of symbol" (issue #22's run;
-// ruling 2026-08-16). Curated by walking the C11 header list, one block per
+// with "redefinition of 'exit' as different kind of symbol" (the compile
+// fuzzer's run). Curated by walking the C11 header list, one block per
 // header; additions are cheap — one word here. Omitted on purpose: function-like
 // macros (assert, offsetof, va_arg, ...), which expand only before a '(' and
 // cannot bite a namespace declaration; names that are target reserved words,
@@ -2282,7 +2279,7 @@ func (c *checker) checkClaimedNames() {
 			}
 			// the C target flattens variants as #define ENUM_VARIANT into the
 			// one preprocessor namespace, plus _NONE, _MAX and the debug-name
-			// function — spellings no other claim covers (#23: they were
+			// function — spellings no other claim covers (they were
 			// emitted and never registered, so a const like DriveModeLudicrous
 			// beside enum DriveMode { Ludicrous } produced a silent duplicate
 			// #define in C while every other target compiled)

@@ -1,6 +1,6 @@
-// The break-the-language suite (SPEC §7.2 gate 6's diagnostics half, seeded
-// on Glenn's ask 2026-08-05: "look for ways the schema language could break,
-// and verify that the compiler catches them"). Every case is an illegal
+// The break-the-language suite (SPEC §7.2 gate 6's diagnostics half): look
+// for ways the schema language could break, and verify the compiler catches
+// them. Every case is an illegal
 // schema and the substring its diagnostic must carry — a way to break the
 // language that the compiler provably catches, forever.
 package check
@@ -151,11 +151,10 @@ func TestDiagnostics(t *testing.T) {
 			src: "package t\ntype T { x fixed(8, 8) | min = -300, max = 300 }\n"},
 		{name: "fixed with resolution", want: "resolution applies to float",
 			src: "package t\ntype T { x fixed(16, 16) | min = 0, max = 1, resolution = 0.1 }\n"},
-		// fixed defaults are LEGAL since 2026-08-12 (whole units, exact) — the
-		// old rejection case lives on as the good corner below; what stays
+		// fixed defaults are LEGAL (whole units, exact) — the
+		// good corner below pins the accepted form; what stays
 		// illegal is inexactness and range violation (cases at the bottom).
-		// ---- ufixed(I, F): the unsigned sibling (Glenn, 2026-08-15: "ufixed
-		// is fine" — §9 q17 closed). Same shape rules, unsigned domain, and
+		// ---- ufixed(I, F): the unsigned sibling. Same shape rules, unsigned domain, and
 		// the diagnostics name the ufixed spelling. ----
 		{name: "ufixed bounds below zero", want: "do not fit ufixed(16, 16)",
 			src: "package t\ntype T { x ufixed(16, 16) | min = -1, max = 5 }\n"},
@@ -350,15 +349,13 @@ func TestDiagnostics(t *testing.T) {
 		{name: "resolution collapses to zero at float32", want: "collapses to zero at float32",
 			src: "package t\ntype T { x float32 | min = 0.0, max = 1.0, resolution = 1e-46 }\n"},
 
-		// ---- package names that cannot compile (the 2026-08-16 ruling on the
-		// compile fuzzer's `package exit` specimen — Glenn, verbatim: "Refuse
-		// the colliding names with a clear diagnostic"). Before the rule, the
+		// ---- package names that cannot compile (the compile fuzzer's
+		// `package exit` specimen). Without the rule, the
 		// checker said `ok: package exit` and clang rejected the generated
 		// `namespace exit` against <cstdlib> with "redefinition of 'exit' as
 		// different kind of symbol"; `package for` checked clean and generated
 		// keyword namespaces; `package main` generated Go that fails with
-		// "function main is undeclared in the main package". All three proven
-		// on the pre-change compiler, 2026-08-16. ----
+		// "function main is undeclared in the main package". ----
 		{name: "package exit collides with libc at C++ namespace scope", want: "C standard library identifier",
 			src: "package exit\ntype A { x uint8 }\n"},
 		{name: "package free collides with libc", want: "C standard library identifier",
@@ -374,8 +371,7 @@ func TestDiagnostics(t *testing.T) {
 		{name: "package main is not importable Go", want: "cannot be imported",
 			src: "package main\ntype A { x uint8 }\n"},
 
-		// ---- non-finite compressed-float parameters (Glenn, 2026-08-15:
-		// "attempting to send NaN or INF or anything else through compressed
+		// ---- non-finite compressed-float parameters ("attempting to send NaN or INF or anything else through compressed
 		// float is non-conforming and should assert out on write too" — the
 		// compiler's half of the ruling; the runtimes carry the write
 		// asserts). Two levels per parameter: finite at float64, and finite
@@ -401,7 +397,7 @@ func TestDiagnostics(t *testing.T) {
 			src: "package t\ntype T { x float32 | min = 1" + strings.Repeat("0", 400) + ", max = 1.0, resolution = 0.1 }\n"},
 		{name: "compressed float min -Inf at float64, negated integer literal", want: "does not fit float64",
 			src: "package t\ntype T { x float32 | min = -1" + strings.Repeat("0", 400) + ", max = 1.0, resolution = 0.1 }\n"},
-		// The through-a-const vehicle is refused EARLIER since the #22 guard
+		// The through-a-const vehicle is refused EARLIER since the extremes guard
 		// landed: an implicitly-typed const past int64 fails at its own
 		// declaration, so the float64-finiteness arm can no longer be reached
 		// through a const — the schema is refused either way, and the float64
@@ -582,7 +578,7 @@ func TestGoodCornersStillCompile(t *testing.T) {
 }
 
 // TestNonFiniteTripleNaN exercises the NaN arm of the non-finite rule (SPEC
-// §4.6; Glenn, 2026-08-15). The grammar cannot spell NaN — a float literal
+// §4.6). The grammar cannot spell NaN — a float literal
 // beyond the double's range is a parse error, every constant arithmetic
 // result is overflow-guarded, and division by zero is refused — so the arm is
 // exercised the only way a NaN can exist in the checker's input: planted

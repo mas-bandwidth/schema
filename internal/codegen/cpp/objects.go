@@ -38,7 +38,7 @@ func (g *gen) emitObjectMaxBits(d *ir.Object) {
 // voidIfEmpty emits (void) casts for params when no statement has been
 // emitted since mark — a view function over zero wire components must not
 // strand its parameters, or every -Wall -Wextra -Werror consumer breaks
-// (found by FuzzGeneratedCompiles, issue #22).
+// (found by FuzzGeneratedCompiles).
 func (g *gen) voidIfEmpty(mark int, params ...string) {
 	if g.body.Len() != mark {
 		return
@@ -131,7 +131,7 @@ func (g *gen) emitObjectQuantize(d *ir.Object) {
 	if g.body.Len() == mark {
 		// a quantized property over a type with no numeric components emits
 		// no statements; keep -Werror consumers building (found by
-		// FuzzGeneratedCompiles, issue #22)
+		// FuzzGeneratedCompiles)
 		g.pf("    (void) input;\n    (void) output; // no numeric components to quantize\n")
 	}
 	g.pf("}\n\n")
@@ -212,7 +212,7 @@ func (g *gen) emitViewReadField(f *ir.Field, v objView, ind string) {
 			lo, hi, bits, wide, compT := fixedShallowComp(f, comp)
 			if bits == 0 {
 				// a degenerate component narrows to zero bits — the value is
-				// the range (SPEC §4.6, decided 2026-08-15)
+				// the range (SPEC §4.6)
 				g.pf("%s%s_%s = %s( %s );\n", ind, name, comp.Name, compT, cppInt64Lit(lo))
 				continue
 			}
@@ -301,7 +301,7 @@ func (g *gen) emitQuantizeField(f *ir.Field, ind string) {
 			// the product lands in a named local BEFORE the + 0.5, so
 			// FP_CONTRACT cannot fuse the multiply into the add — the
 			// compressed_float FMA hazard one level up, defended the way
-			// serialize.c defends its writer (#26)
+			// serialize.c defends its writer
 			g.pf("%s{\n%s    double scaled_value = double( input.%s.%s ) * double( %s );\n",
 				ind, ind, f.Name, comp.Name, scale)
 			g.pf("%s    double quantized_value = floor( scaled_value + 0.5 );\n", ind)

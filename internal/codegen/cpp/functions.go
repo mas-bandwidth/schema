@@ -118,12 +118,12 @@ func (g *gen) emitStructWire(st *ir.Struct) {
 	// bits) emits no stream operation, and its write body's only value uses
 	// are serialize_asserts that compile away under NDEBUG. The (void) casts
 	// keep -Wall -Wextra -Werror consumers building in every configuration
-	// (found by FuzzGeneratedCompiles, issue #22); they are harmless when a
+	// (found by FuzzGeneratedCompiles); they are harmless when a
 	// nested call does use the parameters.
 	zeroWire := len(st.Items) > 0 && ir.MaxBitsStruct(st) == 0
 	// items but no fields: reserved/const/align carry wire bits with no
 	// storage, so the body uses the stream and never the value (found by
-	// FuzzGeneratedCompiles, issue #22)
+	// FuzzGeneratedCompiles)
 	noStorage := len(st.Items) > 0 && len(st.Fields) == 0
 
 	g.pf("SCHEMA_WRITE_INLINE bool Write%s( serialize::WriteStream & stream, const %s & value )\n{\n", st.Name, st.Name)
@@ -311,17 +311,17 @@ func intRangePath(min, max *big.Int) string {
 	return "bits64" // full-range unsigned: width-computed raw bits over value - min
 }
 
-// ---- compile-time bound emission (the const-params lever, serialize #25) ----
+// ---- compile-time bound emission (the const-params lever) ----
 //
 // A ranged integer's min/max/bit count are schema constants, so the GENERATOR
 // folds them: the write emits the offset from min in a bit count computed at
 // generation time, through the always-inline write_bits macro — no runtime
 // bits_required, no min/max parameter traffic, and the 32/64 dword split
 // resolves here, not at run time. The wire bytes are identical to the runtime
-// SerializeInteger/SerializeInteger64 forms (#25's wire-identity property,
+// SerializeInteger/SerializeInteger64 forms (the wire-identity property,
 // re-proven by the wire golden gate), and the range assert the runtime form
 // carried survives for debug parity. Reads stay on the runtime macros: the
-// branchless reader already folds — #25 measured nothing to gain there.
+// branchless reader already folds — the measurements found nothing to gain there.
 //
 // Deliberately NOT serialize's SerializeIntConst/SerializeBitsConst template
 // forms, though they compute the same encoding: instantiations shared by
@@ -400,7 +400,7 @@ func (g *gen) emitWriteScalar(f *ir.Field, name, ind string) {
 		if f.IntMin.Cmp(f.IntMax) == 0 {
 			// degenerate range: ZERO bits — the §5 misuse assert and no wire
 			// call at all, so no runtime degenerate support is needed
-			// (SPEC §4.6, decided 2026-08-15). The one legal raw is min << F.
+			// (SPEC §4.6). The one legal raw is min << F.
 			// The compare runs in the storage's own signedness: a wide ufixed
 			// raw can live above int64, where the signed cast would mangle it.
 			rawMin := new(big.Int).Lsh(f.IntMin, uint(f.Type.FracBits))
@@ -430,7 +430,7 @@ func (g *gen) emitWriteScalar(f *ir.Field, name, ind string) {
 			if f.HasIntRange {
 				if f.IntMin.Cmp(f.IntMax) == 0 {
 					// degenerate range: ZERO bits — assert and no wire call
-					// (SPEC §4.6, decided 2026-08-15)
+					// (SPEC §4.6)
 					g.pf("%sserialize_assert( %s == %s );\n", ind, name, g.render128(f.IntMinExpr, f.IntMin, true))
 					return
 				}
@@ -470,7 +470,7 @@ func (g *gen) emitWriteScalar(f *ir.Field, name, ind string) {
 				}
 				if bitsRequired(f.IntMin, f.IntMax) == 0 {
 					// degenerate range: zero bits — the assert above is the
-					// whole write (SPEC §4.6, decided 2026-08-15)
+					// whole write (SPEC §4.6)
 					return
 				}
 				if loVacuous {
@@ -515,7 +515,7 @@ func (g *gen) emitWriteScalar(f *ir.Field, name, ind string) {
 			g.pf("%sfor ( int32_t i = 0; i < %s_length; i++ )\n%s{\n", ind, name, ind)
 			g.pf("%s    serialize_assert( %s[i] != 0 );\n%s}\n", ind, name, ind)
 			// well-formed UTF-8 by contract, writer-trusted: debug-only
-			// assert, no read-path validation (SPEC §4.7, decided 2026-08-15)
+			// assert, no read-path validation (SPEC §4.7)
 			g.pf("%sserialize_assert( schema_utf8_valid( reinterpret_cast<const uint8_t *>( %s ), %s_length ) );\n", ind, name, name)
 		}
 		g.emitWriteRangedFold32(name+"_length", "0", g.renderInt(f.Type.SizeExpr, big.NewInt(f.Type.Size)),
@@ -762,12 +762,12 @@ func (g *gen) emitMessageWire() {
 // zero-initialized output object, and the arm re-init below provides that
 // baseline for exactly the arm the wire tag selects), or by the writer
 // assigning the arm (message.chat = Chat{} — the generated structs'
-// default member initializers make that a zero value). The constructor
-// used to memset the whole Block-sized union; the 2026-08-06 bench pass
-// measured that memset at 60.6% of batch-read self-cycles (Zen 4, ~2 KB
-// zeroed per ~25 B message), and the zeroing moved to arm selection —
-// the exact shape the variant surface always had: default construction
-// is monostate, emplace<T>() value-initializes only the selected arm.
+// default member initializers make that a zero value). A whole-union
+// memset at construction is deliberately absent — it measured at 60.6%
+// of batch-read self-cycles (Zen 4, ~2 KB zeroed per ~25 B message);
+// zeroing at arm selection is the variant surface's own shape: default
+// construction is monostate, emplace<T>() value-initializes only the
+// selected arm.
 func (g *gen) emitMessageStorageUnion() {
 	msgs := g.unit.Messages
 

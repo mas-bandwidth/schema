@@ -77,7 +77,7 @@ func maxBitsScalar(f *Field) int64 {
 		// the raw range is the whole-unit range shifted by F, and shifting a
 		// range left by F adds exactly F to its bit length (STANDARD.md,
 		// fixed) — EXCEPT the degenerate range, which costs zero bits, not F
-		// (SPEC §4.6, decided 2026-08-15; bitlen(B−A) + F generalizes wrong
+		// (SPEC §4.6; bitlen(B−A) + F generalizes wrong
 		// at exactly B == A, which is how two ports came to emit
 		// fraction_bits on the wide path)
 		if f.IntMin.Cmp(f.IntMax) == 0 {

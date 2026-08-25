@@ -150,7 +150,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_ship_data_deep( serialize_w
     }
     if ( (serialize_int64_t) value->laser_index < 0 || (serialize_int64_t) value->laser_index > SHIP_MAX_LASERS - 1 )
     {
-        return 0; /* out-of-contract writes are refused, not wrapped */
+        return 0;
     }
     if ( !serialize_write_bits( stream, (serialize_uint32_t) ( value->laser_index ), 4 ) )
     {
@@ -158,7 +158,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_ship_data_deep( serialize_w
     }
     if ( (serialize_int64_t) value->missile_index < 0 || (serialize_int64_t) value->missile_index > SHIP_MAX_MISSILES - 1 )
     {
-        return 0; /* out-of-contract writes are refused, not wrapped */
+        return 0;
     }
     if ( !serialize_write_bits( stream, (serialize_uint32_t) ( value->missile_index ), 4 ) )
     {
@@ -1338,7 +1338,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_turret_data_deep( serialize
     }
     if ( (serialize_int64_t) value->turret_index < 0 || (serialize_int64_t) value->turret_index > MAX_TURRETS_PER_SHIP - 1 )
     {
-        return 0; /* out-of-contract writes are refused, not wrapped */
+        return 0;
     }
     if ( !serialize_write_bits( stream, (serialize_uint32_t) ( value->turret_index ), 8 ) )
     {
@@ -1400,7 +1400,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_turret_data_shallow( serial
     }
     if ( (serialize_int64_t) value->turret_index < 0 || (serialize_int64_t) value->turret_index > MAX_TURRETS_PER_SHIP - 1 )
     {
-        return 0; /* out-of-contract writes are refused, not wrapped */
+        return 0;
     }
     if ( !serialize_write_bits( stream, (serialize_uint32_t) ( value->turret_index ), 8 ) )
     {

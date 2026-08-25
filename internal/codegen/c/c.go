@@ -10,9 +10,9 @@
 // here more than anywhere else: the two halves cannot drift when one
 // declaration produces both.
 //
-// CONVENTIONS, decided here because SPEC had no C column (2026-08-13)
+// CONVENTIONS (SPEC §6.1's C column)
 //
-//   - Constants are #define, on Glenn's direction. A #define carries no storage
+//   - Constants are #define, by ruling. A #define carries no storage
 //     and works in every context C has — array bounds, case labels, other
 //     #defines — which a const int does not.
 //
@@ -476,7 +476,7 @@ func (g *gen) storageType(f *ir.Field) string {
 	case ir.TFixed:
 		// the raw scaled integer, in storage of exactly I + F bits with the
 		// type's own signedness -- serialize_fixed's convention (STANDARD.md,
-		// fixed; ufixed landed 2026-08-15)
+		// fixed)
 		if f.Type.Width == 128 {
 			g.needs128 = true
 			if f.Type.Signed {
@@ -510,13 +510,13 @@ func cUint(bits int) string {
 // registry stores one flat spelling for both flat-snake targets. The local
 // split this used to be disagreed on consecutive capitals (MaxHP became
 // MAX_H_P here and MAX_HP in Rust) and only the Rust spelling was registered,
-// so the C emission could collide unchecked (#23).
+// so the C emission could collide unchecked.
 func screaming(name string) string {
 	return ir.RustConstName(name)
 }
 
 // snake converts PascalCase or snake_case to snake_case — ir.RustSnake, the
-// registry's one flat spelling, for the same reason as screaming (#23).
+// registry's one flat spelling, for the same reason as screaming.
 func snake(name string) string {
 	return ir.RustSnake(name)
 }
@@ -637,7 +637,7 @@ func (g *gen) emitWriteFunc(st *ir.Struct) {
 	// are reserved/const/align has no storage but DOES have wire bits, and
 	// keying on fields made C write nothing where C++ wrote the reserved
 	// bits — a silent cross-language wire divergence (found by
-	// FuzzGeneratedCompiles, issue #22).
+	// FuzzGeneratedCompiles).
 	if len(st.Items) == 0 {
 		g.pf("    (void) stream;\n    (void) value;\n    return 1; /* no fields: no wire bits */\n}\n\n")
 		return
@@ -648,7 +648,7 @@ func (g *gen) emitWriteFunc(st *ir.Struct) {
 	if ir.MaxBitsStruct(st) == 0 {
 		// every range degenerate: the body refuses out-of-contract values but
 		// never touches the stream (zero wire bits — found by
-		// FuzzGeneratedCompiles, issue #22)
+		// FuzzGeneratedCompiles)
 		g.pf("    (void) stream; /* zero wire bits */\n")
 	}
 	g.emitWriteItems(st.Items, "    ")

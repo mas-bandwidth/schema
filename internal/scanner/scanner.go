@@ -63,7 +63,7 @@ const (
 	KwString
 	KwBytes
 	KwFixed  // fixed(I, F) — signed fixed point (SPEC §4.3)
-	KwUfixed // ufixed(I, F) — unsigned fixed point (SPEC §4.3; Glenn 2026-08-15: "ufixed is fine", closing §9 q17)
+	KwUfixed // ufixed(I, F) — unsigned fixed point (SPEC §4.3)
 	KwInt8
 	KwInt16
 	KwInt32

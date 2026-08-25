@@ -216,7 +216,7 @@ func fixedShallowComp(f, cf *ir.Field) (lo, hi *big.Int, bits int64, typ string)
 // voidIfEmpty emits (void) casts for params when no statement has been
 // emitted since mark — a view function over zero wire components must not
 // strand its parameters, or every -Wall -Wextra -Werror consumer breaks
-// (found by FuzzGeneratedCompiles, issue #22).
+// (found by FuzzGeneratedCompiles).
 func (g *gen) voidIfEmpty(mark int, params ...string) {
 	if g.body.Len() != mark {
 		return
@@ -239,7 +239,7 @@ func (g *gen) emitObjectFunctions(d *ir.Object) {
 	// the function name derives from the VIEW STRUCT name, exactly like the
 	// other four backends (WriteShipData_Deep -> write_ship_data_deep) — the
 	// object-name form this used to emit (write_ship_deep) lived outside the
-	// claimed-name registry and could collide with a user type (#23)
+	// claimed-name registry and could collide with a user type
 	g.pf("static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_%s( serialize_write_stream_t * stream, const %sData_Deep * value )\n{\n",
 		snake(d.Name+"Data_Deep"), d.Name)
 	mark := g.body.Len()
@@ -298,7 +298,7 @@ func (g *gen) emitShallowWriteField(f *ir.Field, ind string) {
 				ind, member, intLit(lo, "LL"), member, intLit(hi, "LL"), ind, ind, ind)
 			if bits == 0 {
 				// a degenerate component narrows to zero bits — the refusal
-				// above is the whole write (SPEC §4.6, decided 2026-08-15)
+				// above is the whole write (SPEC §4.6)
 				continue
 			}
 			if bits <= 32 {
@@ -353,7 +353,7 @@ func (g *gen) emitShallowReadField(f *ir.Field, ind string) {
 			span := new(big.Int).Sub(hi, lo)
 			if bits == 0 {
 				// a degenerate component narrows to zero bits — the value is
-				// the range (SPEC §4.6, decided 2026-08-15)
+				// the range (SPEC §4.6)
 				g.pf("%s%s = (%s) %s;\n", ind, member, typ, intLit(lo, "LL"))
 				continue
 			}
@@ -461,7 +461,7 @@ func (g *gen) emitQuantizePair(d *ir.Object) {
 	if g.body.Len() == mark {
 		// a quantized property over a type with no numeric components emits
 		// no statements; keep -Werror consumers building (found by
-		// FuzzGeneratedCompiles, issue #22)
+		// FuzzGeneratedCompiles)
 		g.pf("    (void) input; /* no numeric components to quantize */\n    (void) output;\n")
 	}
 	g.pf("}\n\n")
@@ -523,7 +523,7 @@ func (g *gen) emitQuantizeField(f *ir.Field) {
 		// the product lands in a named local BEFORE the + 0.5, so FP_CONTRACT
 		// cannot fuse the multiply into the add — the compressed_float FMA
 		// hazard one level up, defended the way serialize.c defends its
-		// writer (#26)
+		// writer
 		g.pf("        double scaled_value = (double) input->%s.%s * (double) ( %s );\n",
 			f.Name, comp.Name, g.renderInt(f.QuantScaleExpr, big.NewInt(f.QuantScale)))
 		g.pf("        double quantized_value = floor( scaled_value + 0.5 );\n")
