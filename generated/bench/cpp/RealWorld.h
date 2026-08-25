@@ -48,6 +48,7 @@ inline constexpr PacketFlags PacketFlags_Cloaked = 1ull << 1;
 inline constexpr PacketFlags PacketFlags_Overheated = 1ull << 2;
 inline constexpr PacketFlags PacketFlags_LowPower = 1ull << 3;
 inline constexpr PacketFlags PacketFlags_Jamming = 1ull << 4;
+inline constexpr int64_t PacketFlagsCount = 5; // the declared variant count (SPEC §4.2)
 
 // type RealPacket
 struct RealPacket {

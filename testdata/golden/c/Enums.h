@@ -229,6 +229,7 @@ typedef uint64_t ShipFlags;
 #define SHIP_FLAGS_BOOSTING (1ULL << 1)
 #define SHIP_FLAGS_BRAKING (1ULL << 2)
 #define SHIP_FLAGS_AIMING (1ULL << 3)
+#define SHIP_FLAGS_COUNT 4 /* the declared variant count (SPEC §4.2) */
 
 #ifdef __cplusplus
 }

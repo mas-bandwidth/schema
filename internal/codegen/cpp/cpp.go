@@ -510,6 +510,7 @@ func (g *gen) emitFlags(d *ir.Flags) {
 	for i, v := range d.Variants {
 		g.pf("inline constexpr %s %s_%s = 1ull << %d;\n", d.Name, d.Name, v, i)
 	}
+	g.pf("inline constexpr int64_t %sCount = %d; // the declared variant count (SPEC §4.2)\n", d.Name, len(d.Variants))
 	g.pf("\n")
 }
 

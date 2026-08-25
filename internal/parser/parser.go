@@ -617,14 +617,14 @@ func (p *parser) parsePrimary() ast.Expr {
 		return &ast.StringLit{Pos: t.Pos, Value: strings.Trim(t.Text, `"`)}
 	case scanner.Ident:
 		p.advance()
-		// E.Max — Max is contextual after '.' (SPEC §4.2)
+		// E.Max / F.Count — contextual after '.' (SPEC §4.2)
 		if p.kind() == scanner.Dot {
 			dot := p.advance()
-			m := p.expect(scanner.Ident, `"Max"`)
-			if m.Text != "Max" {
-				p.errf(dot.Pos, "only .Max is legal after an enum name (found .%s)", m.Text)
+			m := p.expect(scanner.Ident, `"Max" or "Count"`)
+			if m.Text != "Max" && m.Text != "Count" {
+				p.errf(dot.Pos, "only .Max (enums and generated sets) and .Count (flags) are legal after a name (found .%s)", m.Text)
 			}
-			return &ast.MaxExpr{Pos: t.Pos, Enum: t.Text}
+			return &ast.MaxExpr{Pos: t.Pos, Enum: t.Text, Sel: m.Text}
 		}
 		return &ast.IdentExpr{Pos: t.Pos, Name: t.Text}
 	case scanner.LParen:

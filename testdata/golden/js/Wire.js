@@ -66,6 +66,7 @@ export function EnumNameWeapon(value) {
 export const ProbeFlagsArmed = 1n << 0n;
 export const ProbeFlagsCloaked = 1n << 1n;
 export const ProbeFlagsDamaged = 1n << 2n;
+export const ProbeFlagsCount = 3; // the declared variant count (SPEC §4.2)
 
 // type ProbeHeader
 export class ProbeHeader {

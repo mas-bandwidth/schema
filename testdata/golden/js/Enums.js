@@ -163,4 +163,5 @@ export const ShipFlagsFiringLaser = 1n << 0n;
 export const ShipFlagsBoosting = 1n << 1n;
 export const ShipFlagsBraking = 1n << 2n;
 export const ShipFlagsAiming = 1n << 3n;
+export const ShipFlagsCount = 4; // the declared variant count (SPEC §4.2)
 

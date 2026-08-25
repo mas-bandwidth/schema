@@ -294,6 +294,8 @@ func (g *gen) emitFlags(d *ir.Flags) {
 		g.pf("\t%s%s %s = 1 << %d\n", d.Name, v, d.Name, i)
 	}
 	g.pf(")\n\n")
+	g.pf("// %sCount is the declared variant count (SPEC §4.2).\n", d.Name)
+	g.pf("const %sCount = %d\n\n", d.Name, len(d.Variants))
 }
 
 func (g *gen) emitStruct(d *ir.Struct) {

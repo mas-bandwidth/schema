@@ -62,6 +62,9 @@ const (
 	PacketFlagsJamming    PacketFlags = 1 << 4
 )
 
+// PacketFlagsCount is the declared variant count (SPEC §4.2).
+const PacketFlagsCount = 5
+
 // type RealPacket
 type RealPacket struct {
 	F001Int  int32 // wire [-805495, 805495]

@@ -129,5 +129,6 @@ inline constexpr ShipFlags ShipFlags_FiringLaser = 1ull << 0;
 inline constexpr ShipFlags ShipFlags_Boosting = 1ull << 1;
 inline constexpr ShipFlags ShipFlags_Braking = 1ull << 2;
 inline constexpr ShipFlags ShipFlags_Aiming = 1ull << 3;
+inline constexpr int64_t ShipFlagsCount = 4; // the declared variant count (SPEC §4.2)
 
 } // namespace example

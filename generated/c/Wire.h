@@ -74,6 +74,7 @@ typedef uint64_t ProbeFlags;
 #define PROBE_FLAGS_ARMED (1ULL << 0)
 #define PROBE_FLAGS_CLOAKED (1ULL << 1)
 #define PROBE_FLAGS_DAMAGED (1ULL << 2)
+#define PROBE_FLAGS_COUNT 3 /* the declared variant count (SPEC §4.2) */
 
 
 /* type ProbeHeader */

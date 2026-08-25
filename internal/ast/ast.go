@@ -228,10 +228,12 @@ type StringLit struct {
 	Value string // without the quotes
 }
 
-// MaxExpr is an enum max reference: E.Max (SPEC §4.2).
+// MaxExpr is a set-extent reference: E.Max on an enum or generated set, and
+// F.Count on a flags declaration (SPEC §4.2). Sel is "Max" or "Count".
 type MaxExpr struct {
 	Pos  Pos
 	Enum string
+	Sel  string
 }
 
 type UnaryExpr struct {

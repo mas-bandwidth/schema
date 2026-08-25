@@ -546,6 +546,9 @@ var valuedAttr = map[string]bool{
 }
 
 func (c *checker) enumMax(e *ast.MaxExpr) (*big.Int, bool) {
+	if e.Sel == "Count" {
+		return c.flagsCount(e)
+	}
 	d, ok := c.astDecls[e.Enum]
 	if !ok {
 		// generated sets work in constant expressions too (SPEC §4.2, §4.8):
@@ -556,6 +559,12 @@ func (c *checker) enumMax(e *ast.MaxExpr) (*big.Int, bool) {
 			return big.NewInt(max), true
 		}
 		c.errf(e.Pos, "undefined enum %s in %s.Max", e.Enum, e.Enum)
+		return nil, false
+	}
+	if _, isFlags := d.(*ast.FlagsDecl); isFlags {
+		// max-of-what is the exact confusion a flags .Max would invite: the
+		// variants are independent bits, not an ordered range with a top
+		c.errf(e.Pos, "flags %s has no .Max — a flags declaration is a set of independent bits, not a range with a top; %s.Count names the declared variant count (SPEC §4.2)", e.Enum, e.Enum)
 		return nil, false
 	}
 	ed, ok := d.(*ast.EnumDecl)
@@ -574,6 +583,27 @@ func (c *checker) enumMax(e *ast.MaxExpr) (*big.Int, bool) {
 		return nil, false
 	}
 	return big.NewInt(en.Max), true
+}
+
+// flagsCount resolves F.Count (SPEC §4.2): the DECLARED variant count of a
+// flags declaration — not the wire width, which a [max = K] widening can
+// raise above it.
+func (c *checker) flagsCount(e *ast.MaxExpr) (*big.Int, bool) {
+	d, ok := c.astDecls[e.Enum]
+	if !ok {
+		c.errf(e.Pos, "undefined flags %s in %s.Count", e.Enum, e.Enum)
+		return nil, false
+	}
+	fd, ok := d.(*ast.FlagsDecl)
+	if !ok {
+		c.errf(e.Pos, "%s is not a flags declaration — .Count names a flags declaration's variant count; an enum's extent is %s.Max (SPEC §4.2)", e.Enum, e.Enum)
+		return nil, false
+	}
+	fl := c.resolveFlags(fd)
+	if fl == nil {
+		return nil, false
+	}
+	return big.NewInt(int64(len(fl.Variants))), true
 }
 
 // generatedSetMax resolves E.Max over the GENERATED tag sets (SPEC §4.2,
@@ -2353,6 +2383,8 @@ func (c *checker) checkClaimedNames() {
 			}
 			addRust("enum_name_"+ir.RustSnake(name+"Type"), fmt.Sprintf("union %s's generated tag debug-name function (C form)", name), d.Pos)
 		case *ast.FlagsDecl:
+			add(name+"Count", fmt.Sprintf("flags %s's generated Count constant", name), d.Pos)
+			addRust(ir.RustConstName(name+"Count"), fmt.Sprintf("flags %s's generated Count constant (Rust/C form)", name), d.Pos, name+"Count")
 			for _, v := range d.Variants {
 				add(name+v.Text, fmt.Sprintf("flags %s's generated mask constant (Go form)", name), v.Pos)
 				add(name+"_"+v.Text, fmt.Sprintf("flags %s's generated mask constant (C++ form)", name), v.Pos)

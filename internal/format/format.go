@@ -680,7 +680,7 @@ func fpExpr(e ast.Expr) string {
 	case *ast.StringLit:
 		return `"` + e.Value + `"`
 	case *ast.MaxExpr:
-		return e.Enum + ".Max"
+		return e.Enum + "." + e.Sel
 	case *ast.UnaryExpr:
 		return "(- " + fpExpr(e.X) + ")"
 	case *ast.BinaryExpr:

@@ -135,14 +135,21 @@ flags Capabilities { Cloak, Shield, Warp }
 ```
 
 One bit per variant, consumed as a mask. Storage is `uint64` in every
-language; the wire is exactly as many bits as there are variants:
+language (more than 64 variants is a compile error); the wire is exactly as
+many bits as there are variants:
 
 ```cpp
 using Capabilities = uint64_t;
 inline constexpr Capabilities Capabilities_Cloak  = 1ull << 0;
 inline constexpr Capabilities Capabilities_Shield = 1ull << 1;
 inline constexpr Capabilities Capabilities_Warp   = 1ull << 2;
+inline constexpr int64_t CapabilitiesCount = 3;
 ```
+
+The declared variant count is exported as `Count` and usable in schema
+expressions as `Capabilities.Count`. Flags have no `.Max` — the variants are
+independent bits, not a range with a top; the compiler refuses `.Max` on a
+flags type and names `.Count` instead.
 
 ### type
 

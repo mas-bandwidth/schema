@@ -186,6 +186,7 @@ namespace Realworld
         public const ulong PacketFlagsOverheated = 1ul << 2;
         public const ulong PacketFlagsLowPower = 1ul << 3;
         public const ulong PacketFlagsJamming = 1ul << 4;
+        public const long PacketFlagsCount = 5; // the declared variant count (SPEC §4.2)
 
         // RealPacketMaxBits is the longest wire path; align pads at worst case (SPEC §6.1).
         // RealPacketMaxBytes is rounded up to the 8-byte write-buffer granularity.

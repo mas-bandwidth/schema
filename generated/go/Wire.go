@@ -52,6 +52,9 @@ const (
 	ProbeFlagsDamaged ProbeFlags = 1 << 2
 )
 
+// ProbeFlagsCount is the declared variant count (SPEC §4.2).
+const ProbeFlagsCount = 3
+
 // type ProbeHeader
 type ProbeHeader struct {
 	Version uint32

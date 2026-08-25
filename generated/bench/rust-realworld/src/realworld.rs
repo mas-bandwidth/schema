@@ -75,6 +75,7 @@ pub const PACKET_FLAGS_CLOAKED: PacketFlags = 1 << 1;
 pub const PACKET_FLAGS_OVERHEATED: PacketFlags = 1 << 2;
 pub const PACKET_FLAGS_LOW_POWER: PacketFlags = 1 << 3;
 pub const PACKET_FLAGS_JAMMING: PacketFlags = 1 << 4;
+pub const PACKET_FLAGS_COUNT: i64 = 5; // the declared variant count (SPEC §4.2)
 
 // type RealPacket
 #[repr(C)]

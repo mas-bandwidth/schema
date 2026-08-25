@@ -372,6 +372,7 @@ func (g *gen) emitFlags(d *ir.Flags) {
 	for i, v := range d.Variants {
 		g.pf("export const %s%s = 1n << %dn;\n", d.Name, v, i)
 	}
+	g.pf("export const %sCount = %d; // the declared variant count (SPEC §4.2)\n", d.Name, len(d.Variants))
 	g.pf("\n")
 }
 

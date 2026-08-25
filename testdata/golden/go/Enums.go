@@ -151,3 +151,6 @@ const (
 	ShipFlagsBraking     ShipFlags = 1 << 2
 	ShipFlagsAiming      ShipFlags = 1 << 3
 )
+
+// ShipFlagsCount is the declared variant count (SPEC §4.2).
+const ShipFlagsCount = 4

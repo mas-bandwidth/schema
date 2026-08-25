@@ -81,6 +81,7 @@ typedef uint64_t PacketFlags;
 #define PACKET_FLAGS_OVERHEATED (1ULL << 2)
 #define PACKET_FLAGS_LOW_POWER (1ULL << 3)
 #define PACKET_FLAGS_JAMMING (1ULL << 4)
+#define PACKET_FLAGS_COUNT 5 /* the declared variant count (SPEC §4.2) */
 
 
 /* type RealPacket */
