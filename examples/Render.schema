@@ -16,7 +16,8 @@ package example
 
 const RenderBlockMaxSprites = 64
 
-table RenderSprite {
+table RenderSprite
+{
     sort_key    uint64
     mesh_id     uint32
     material_id uint32
@@ -24,7 +25,8 @@ table RenderSprite {
     team        Team
 }
 
-table RenderBlock {
+table RenderBlock
+{
     worker_index      uint32
     sprite_count_hint uint32
     sprites           [..RenderBlockMaxSprites]RenderSprite

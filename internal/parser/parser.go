@@ -285,6 +285,7 @@ func (p *parser) constType() (string, bool) {
 
 func (p *parser) parseVariantList(what string) []ast.Name {
 	var names []ast.Name
+	p.skipNewlineBeforeBrace()
 	p.expect(scanner.LBrace, "{")
 	for p.kind() != scanner.RBrace && p.kind() != scanner.EOF {
 		t := p.expect(scanner.Ident, what+" variant name")
@@ -308,6 +309,7 @@ func (p *parser) parseVariantList(what string) []ast.Name {
 // it does not describe a wire refinement.
 func (p *parser) parseUnionBody() []ast.UnionVariant {
 	var variants []ast.UnionVariant
+	p.skipNewlineBeforeBrace()
 	p.expect(scanner.LBrace, "{")
 	for {
 		switch p.kind() {
@@ -360,8 +362,18 @@ func (p *parser) parseUnionBody() []ast.UnionVariant {
 	}
 }
 
+// skipNewlineBeforeBrace tolerates the opening brace on its own line —
+// Allman is the house style (SPEC §4.1); the formatter normalizes, the
+// parser reads both placements.
+func (p *parser) skipNewlineBeforeBrace() {
+	if p.kind() == scanner.Newline && p.peek().Kind == scanner.LBrace {
+		p.advance()
+	}
+}
+
 func (p *parser) parseBlock() *ast.Block {
 	b := &ast.Block{}
+	p.skipNewlineBeforeBrace()
 	p.expect(scanner.LBrace, "{")
 	for {
 		switch p.kind() {

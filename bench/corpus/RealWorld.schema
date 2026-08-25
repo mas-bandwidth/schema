@@ -31,7 +31,8 @@ enum PacketMode { Idle, Active, Combat, Docked, Warping }
 // The one small flags the packet's flags fields reference: 5 named bits.
 flags PacketFlags { Shielded, Cloaked, Overheated, LowPower, Jamming }
 
-type RealPacket {
+type RealPacket
+{
     f001_int  int32                                                                                | min = -805495, max = 805495 // 21 bits
     f002_f64  float64 // 64 bits
     f003_int  int32                                                                                | min = -835897, max = 835897 // 21 bits
@@ -44,7 +45,8 @@ type RealPacket {
     f010_f32  float32 // 32 bits
     f011_bits bits(10) // 10 bits
     f012_bool bool = true // 1 bit — branch gate: STRUCTURE (§2.7), held fixed during variation
-    if f012_bool {
+    if f012_bool
+    {
         f013_f32   float32 // 32 bits
         f014_uint  uint16             | min = 0, max = 775 // 10 bits
         f015_int   int8               | min = -21, max = 21 // 6 bits
@@ -77,7 +79,8 @@ type RealPacket {
     f041_int    int8                                                                                  | min = -55, max = 55 // 7 bits
     f042_bits   bits(30) // 30 bits
     f043_bool   bool = false // 1 bit — branch gate: STRUCTURE (§2.7), held fixed during variation
-    if f043_bool {
+    if f043_bool
+    {
         f044_f32  float32 // 32 bits (does not ride: gate false)
         f045_bits bits(12) // 12 bits (does not ride: gate false)
         f046_uint uint32                                          | min = 0, max = 76063 // 17 bits (does not ride: gate false)
@@ -86,7 +89,8 @@ type RealPacket {
     f048_f64    float64 // 64 bits
     f049_ufixed ufixed(2, 14)                                                                        | min = 0, max = 3 // 16 bits
     f050_bool   bool = true // 1 bit — branch gate: STRUCTURE (§2.7), held fixed during variation
-    if f050_bool {
+    if f050_bool
+    {
         f051_bool bool // 1 bit
         f052_int  int8               | min = -57, max = 57 // 7 bits
         f053_f32  float32 // 32 bits
@@ -112,7 +116,8 @@ type RealPacket {
     f072_cf32   float32                                                                               | min = 0.0, max = 100.0, resolution = 0.01 // 14 bits
     f073_int    int8                                                                                  | min = -4, max = 4 // 4 bits
     f074_bool   bool = false // 1 bit — branch gate: STRUCTURE (§2.7), held fixed during variation
-    if f074_bool {
+    if f074_bool
+    {
         f075_u64  uint64 // 64 bits (does not ride: gate false)
         f076_int  int16                                         | min = -26218, max = 26218 // 16 bits (does not ride: gate false)
         f077_int  int8                                          | min = -17, max = 17 // 6 bits (does not ride: gate false)

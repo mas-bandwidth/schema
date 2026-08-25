@@ -19,7 +19,8 @@ enum DriveMode { Cruise, Warp, Ludicrous }
 // Q48.16 (32-bit wire, the single-group boundary), Q112.16 (the wide path,
 // two groups), Q32.0 (a fixed with no fraction IS a ranged integer —
 // STANDARD.md), and a fixed array (per-element encoding)
-type FixedProbe {
+type FixedProbe
+{
     angle    fixed(16, 16)    | min = -180, max = 180
     position fixed(48, 16)    | min = -MaxWorldUnits, max = MaxWorldUnits
     reach    fixed(112, 16)   | min = -1000000, max = 1000000
@@ -36,7 +37,8 @@ type FixedProbe {
 // them — the C entry routing and the Go bit-casts are proven by the
 // byte-compare. locked is the degenerate ufixed shape (zero bits, F = 16
 // would show), riding in front of the tail byte like DegenerateProbe's.
-type UnsignedProbe {
+type UnsignedProbe
+{
     angle   ufixed(16, 16)    | min = 0, max = 360
     span    ufixed(48, 16)    | min = 0, max = 281474976710655
     reach   ufixed(112, 16)   | min = 0, max = 2000000
@@ -52,7 +54,8 @@ type UnsignedProbe {
 // (serialize's own ±2^100 band: 102 wire bits, four groups), and specified
 // defaults on both kinds — including one beyond int64, which C++ renders as
 // composed unsigned halves (no 128-bit literal exists)
-type WideProbe {
+type WideProbe
+{
     entity_id uint128
     energy    int128                         | min = -5000000000, max = 5000000000
     flux      int128                         | min = -1267650600228229401496703205376, max = 1267650600228229401496703205376
@@ -62,13 +65,15 @@ type WideProbe {
 
 // composition, a counted array of the raw field, and branch zeroing over a
 // 128-bit field (SPEC §5: the untaken side reads back as zero)
-message LudicrousState {
+message LudicrousState
+{
     mode       DriveMode
     probe      FixedProbe
     wide       WideProbe
     keys       [..4]uint128
     has_target bool
-    if has_target {
+    if has_target
+    {
         target_id uint128
     }
 }
@@ -81,7 +86,8 @@ message LudicrousState {
 // byte: a port that emits ANY bits for one of them shifts the tail and
 // fails the byte-compare. locked_fixed is the fraction_bits shape
 // (F = 16 would appear); locked_wide is the 64/128 boundary shape.
-type DegenerateProbe {
+type DegenerateProbe
+{
     locked_fixed fixed(16, 16) | min = -3, max = -3
     locked_int   int32         | min = 7, max = 7
     locked_wide  int128        | min = -12345678901234, max = -12345678901234
@@ -110,7 +116,8 @@ type FixedQuat | quat4
     w fixed(2, 30) = 1.0 | min = -1, max = 1
 }
 
-object Body {
+object Body
+{
     position FixedVec  | interpolate
     rotation FixedQuat | interpolate
     velocity FixedVec  | interpolate
@@ -125,7 +132,8 @@ object Body {
 // The per-component shallow bound is the component's own whole-unit
 // [min, max] scaled by K. velocity stays full precision beside them — the
 // two forms compose in one object.
-object NarrowBody {
+object NarrowBody
+{
     position FixedVec  | interpolate, quantize = 256
     rotation FixedQuat | interpolate, quantize = 1024
     velocity FixedVec  | interpolate

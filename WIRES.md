@@ -27,18 +27,21 @@ package example
 
 enum ShipType { Fighter, Corvette, Bomber }
 
-type Vector3 {
+type Vector3
+{
     x float64
     y float64
     z float64
 }
 
-message ShipCreate {
+message ShipCreate
+{
     ship_type ShipType
     position  Vector3
 }
 
-table ShipConfig {
+table ShipConfig
+{
     ship_type ShipType
     health    int32 = 100 | min = 0, max = 1000
     name      string(32)

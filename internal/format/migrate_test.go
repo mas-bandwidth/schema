@@ -26,7 +26,8 @@ func TestMigrateRewritesRetiredSpellings(t *testing.T) {
 		"enum Weapon | max = 15\n" +
 		"{ Laser, Missile }\n" +
 		"\n" +
-		"type T {\n" +
+		"type T\n" +
+		"{\n" +
 		"    health       int16              | min = 0, max = 100\n" +
 		"    invulnerable bool = true        | local\n" +
 		"    w            fixed(2, 30) = 1.0 | min = -1, max = 1\n" +

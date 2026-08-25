@@ -18,13 +18,15 @@ velocity, some flags, a team, health and thrust. It is the corpus's
 `ShipCreate` from [`examples/Types.schema`](examples/Types.schema), unchanged.
 
 ```
-type ShipCreate {
+type ShipCreate
+{
     ship_type       ShipType                        // 6 wire values incl. None
     position        QuantizedPosition               // 3 x int32, each ±8388608
     rotation        QuantizedRotation               // 4 x int16, each ±1024
     linear_velocity QuantizedVelocity               // 3 x int32, each ±2097152
     has_flags       bool
-    if has_flags {
+    if has_flags
+    {
         flags       ShipFlags                       // 4 flag bits
     }
     team            Team                            // 3 wire values incl. None

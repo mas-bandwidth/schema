@@ -23,7 +23,8 @@
 
 package example
 
-object Ship {
+object Ship
+{
     // ---- visual state, [interpolate]: sent for client interpolation, rides
     // the quantized shallow wire into ShipData_Interpolate ----
 
@@ -90,7 +91,8 @@ object Ship {
     predicted_explode bool | local, context = client
 }
 
-object Missile {
+object Missile
+{
     // The hand-written Missile has NO deep structs (shallow/interpolate only);
     // v1 generates the full family regardless — the unused deep view costs
     // nothing and the model stays uniform. Hand-code writes missile_type
@@ -118,7 +120,8 @@ object Missile {
     timer float64 | local, context = server
 }
 
-object DynamicProp {
+object DynamicProp
+{
     // Also shallow/interpolate-only in hand code; prop_type's hand wire is
     // [1, MAX] on both paths — the cleanest future enum_index customer when
     // that form returns (SPEC §9 q11); a plain enum spends the None value
@@ -138,7 +141,8 @@ object DynamicProp {
     angular_velocity Vec3 | local
 }
 
-object Turret {
+object Turret
+{
     // The turret rides its parent ship: the parent Handle and turret_index are
     // on every wire path, in the interpolate set (discrete fields; their action
     // when the claiming pass arrives is snap).

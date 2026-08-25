@@ -230,14 +230,15 @@ band) is the application's choice — netcode-style stacks already carry one.
   off** — from the pipe to the physical end of line, the newline always
   terminates (that is the no-wrap guarantee of §4.2), and a `/* */` block
   comment is refused there (its swallowed newline would let the section
-  silently span lines). Blank lines are insignificant. `{` sits
-  on the same line as its construct — EXCEPT a declaration whose line
-  carries a `|` qualification section, whose body brace opens on the next
-  line (§4.2); a declaration without one may also put `{` on the next line,
-  tolerated by the parser and rewritten to the same line by the formatter;
-  `} else {` is written on one line — a
-  newline between `}` and `else` is tolerated by the parser and rewritten by
-  the formatter. Two consequences make the grammar implementable as written:
+  silently span lines). Blank lines are insignificant. **The house
+  brace style is Allman**: a multi-line block's opening `{` stands on its
+  own line, and `else` stands alone between its braces. A one-line
+  `{ ... }` group — an inline enum list, a one-line type body — closes on
+  its own line and stays whole. The parser reads BOTH placements (a
+  line-oriented grammar treats a lone `{` line as the block opener); the
+  formatter normalizes to Allman as the one canonical output. This is the
+  language's own style, not a borrowed one ("we stop looking like a dialect
+  of golang — we're not"). Two consequences make the grammar implementable as written:
   **a closing `}` also terminates the item before it** — in every production
   below, a trailing `NL` is satisfied by an actual newline or by the
   immediately following `}` — and **end-of-file synthesizes a terminator**,
@@ -247,7 +248,10 @@ band) is the application's choice — netcode-style stacks already carry one.
 
 ### 4.2 Grammar
 
-EBNF (`NL` = the newline terminator; `{X}` repetition; `[X]` option):
+EBNF (`NL` = the newline terminator; `{X}` repetition; `[X]` option). The
+productions elide one tolerance stated in §4.1: a newline is accepted before
+any `Block`, `UnionBlock` or `VariantList` opener — Allman is the canonical
+placement and the formatter normalizes to it:
 
 ```
 File        = { Declaration } .
@@ -469,8 +473,9 @@ sequence    uint16
 - **Declaration lines take the same section**: a type tag or native-type
   binding, an enum's or flags' `max` headroom —
   `type Quat | quat4`, `enum Weapon | max = 15`, `flags Damage | max = 8` —
-  and because the section runs to the end of the line, **a declaration
-  carrying one opens its body brace on the NEXT line**:
+  and the body brace opens on the next line — with a qualification section
+  that is forced (the section runs to the end of the line), and everywhere
+  else it is the Allman house style (§4.1):
 
   ```
   type Quat | quat4, cpp_native = quat_t, cpp_include = "core_math.h"
@@ -483,7 +488,9 @@ sequence    uint16
   { Laser, Missile, Railgun }
   ```
 
-  A declaration with no qualifiers keeps its brace on the declaration line.
+  A one-line body (`{ Laser, Missile }`, `type Box { x uint8 }`) stays
+  whole on its line — braces around a group that closes on the same line
+  are a list, not a block.
 - **Array bounds are not attributes** and are untouched: a bound is a
   **prefix** — `[..MaxObjects]ObjectState`, Go's order — part of the type's
   shape. `[` after the complete type (or after its `= default`) opened the
@@ -749,10 +756,12 @@ back-reference. The branch itself costs no wire bits; the referenced field
 was already paid for.
 
 ```
-type Body {
+type Body
+{
     position Vec
     at_rest  bool
-    if !at_rest {
+    if !at_rest
+    {
         velocity         Vec
         angular_velocity Vec
     }
@@ -944,15 +953,18 @@ Each message is its own declaration; the discriminant enum, the wire tag and
 the dispatch are the compiler's job, not the author's.
 
 ```
-message Ping {
+message Ping
+{
     sequence uint16
 }
 
-message Chat {
+message Chat
+{
     text string(MaxChatLength)
 }
 
-message Heartbeat {
+message Heartbeat
+{
     // empty body — presence is the payload
 }
 ```
@@ -1155,7 +1167,8 @@ absent arm and makes illegal states representable — zero payloads, or
 several at once.
 
 ```
-union ColliderShape {
+union ColliderShape
+{
     box     BoxCollider
     sphere  SphereCollider
     capsule CapsuleCollider
@@ -1285,34 +1298,41 @@ package protocol
 const MaxObjects    = 1024
 const MaxChatLength = 256
 
-type Vec {
+type Vec
+{
     x float32
     y float32
     z float32
 }
 
-type ObjectState {
+type ObjectState
+{
     id       int32 | min = 0, max = MaxObjects - 1
     position Vec
     active   bool
-    if active {
+    if active
+    {
         orientation float32 | min = -180.0, max = 180.0, resolution = 0.01
     }
 }
 
-message Ping {
+message Ping
+{
     sequence uint16
 }
 
-message Pong {
+message Pong
+{
     sequence uint16
 }
 
-message Chat {
+message Chat
+{
     text string(MaxChatLength)
 }
 
-message Snapshot {
+message Snapshot
+{
     base_sequence uint16
     objects       [..MaxObjects]ObjectState
 }
@@ -1807,10 +1827,10 @@ gofmt's philosophy: one style, no options. Built as the parser's first
 consumer and run by every `schema` command over the unit before processing.
 Rules:
 
-1. **Indent: 4 spaces** per block level, never tabs. `{` on the construct's
-   line — except a declaration whose line carries a `|` qualification
-   section, whose body brace opens on the next line (§4.2); `} else {` on
-   one line. One field or declaration per line.
+1. **Indent: 4 spaces** per block level, never tabs. **Braces are Allman**
+   (§4.1): a multi-line block's `{` on its own line at the construct's
+   depth, `else` alone between its braces; a one-line `{ ... }` group stays
+   whole. One field or declaration per line.
 2. **Alignment groups**: within a contiguous run of fields — broken by blank
    lines and by comment lines — pad names to align the type column, and pad
    past the longest DEFINITION (the type plus any `= default`) to align the

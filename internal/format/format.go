@@ -89,6 +89,30 @@ func render(path string, src []byte) ([]byte, error) {
 		}
 	}
 
+	// Allman normalization (SPEC §4.1, §7.4 rule 1): a MULTI-LINE block's
+	// opening brace moves to its own line, and `else` stands alone between
+	// its braces. One-line { ... } groups — an inline enum list, a one-line
+	// type body — close on their own line and stay whole. Both placements
+	// parse; this is the one canonical output.
+	var normalized []line
+	for _, l := range lines {
+		work := l
+		// a closing } followed by more tokens (`} else {`) splits after the }
+		for len(work.tokens) > 1 && work.tokens[0].Kind == scanner.RBrace {
+			normalized = append(normalized, line{tokens: work.tokens[:1]})
+			work = line{tokens: work.tokens[1:], comment: work.comment}
+		}
+		// a line ENDING in { opens a multi-line block: the brace stands alone
+		// (a group that closes on the same line ends in }, not {, and passes
+		// through untouched)
+		if n := len(work.tokens); n > 1 && work.tokens[n-1].Kind == scanner.LBrace {
+			normalized = append(normalized, line{tokens: work.tokens[:n-1], comment: work.comment})
+			work = line{tokens: work.tokens[n-1:]}
+		}
+		normalized = append(normalized, work)
+	}
+	lines = normalized
+
 	// render each line at its depth, collapsing blank runs and dropping
 	// blanks at the file start, after an opener and before a closer
 	var rendered []string
