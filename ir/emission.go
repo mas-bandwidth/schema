@@ -1,7 +1,7 @@
 package ir
 
 import (
-	"github.com/mas-bandwidth/schema/internal/ast"
+	"github.com/mas-bandwidth/schema/v2/internal/ast"
 )
 
 // EmissionOrder returns the file's declarations in an order where every

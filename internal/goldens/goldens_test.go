@@ -16,8 +16,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/compiler"
-	"github.com/mas-bandwidth/schema/ir"
+	"github.com/mas-bandwidth/schema/v2/compiler"
+	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
 var update = flag.Bool("update", false, "rewrite the golden files from current output")

@@ -33,7 +33,7 @@ all: test
 # (a source tarball, say) the stamp is left empty and internal/version falls
 # back to the toolchain's own build info.
 VERSION ?= $(shell git describe --tags --dirty 2>/dev/null)
-LDFLAGS := $(if $(VERSION),-X github.com/mas-bandwidth/schema/internal/version.version=$(VERSION),)
+LDFLAGS := $(if $(VERSION),-X github.com/mas-bandwidth/schema/v2/internal/version.version=$(VERSION),)
 
 bin/schema: $(GO_SOURCES)
 	go build -ldflags "$(LDFLAGS)" -o $@ ./cmd/schema

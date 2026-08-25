@@ -4,14 +4,14 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/internal/check"
-	cgen "github.com/mas-bandwidth/schema/internal/codegen/c"
-	"github.com/mas-bandwidth/schema/internal/codegen/cpp"
-	"github.com/mas-bandwidth/schema/internal/codegen/csharp"
-	"github.com/mas-bandwidth/schema/internal/codegen/js"
-	"github.com/mas-bandwidth/schema/internal/codegen/rust"
-	"github.com/mas-bandwidth/schema/internal/parser"
-	"github.com/mas-bandwidth/schema/ir"
+	"github.com/mas-bandwidth/schema/v2/internal/check"
+	cgen "github.com/mas-bandwidth/schema/v2/internal/codegen/c"
+	"github.com/mas-bandwidth/schema/v2/internal/codegen/cpp"
+	"github.com/mas-bandwidth/schema/v2/internal/codegen/csharp"
+	"github.com/mas-bandwidth/schema/v2/internal/codegen/js"
+	"github.com/mas-bandwidth/schema/v2/internal/codegen/rust"
+	"github.com/mas-bandwidth/schema/v2/internal/parser"
+	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
 func countAcross(files map[string][]byte, needle string) int {

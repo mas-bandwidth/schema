@@ -40,7 +40,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/mas-bandwidth/schema/ir"
+	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
 // Generate returns filename -> contents for the unit: a header and a source

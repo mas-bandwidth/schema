@@ -43,8 +43,8 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/mas-bandwidth/schema/internal/format"
-	"github.com/mas-bandwidth/schema/ir"
+	"github.com/mas-bandwidth/schema/v2/internal/format"
+	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
 const (

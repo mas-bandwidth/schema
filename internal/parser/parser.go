@@ -11,8 +11,8 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/mas-bandwidth/schema/internal/ast"
-	"github.com/mas-bandwidth/schema/internal/scanner"
+	"github.com/mas-bandwidth/schema/v2/internal/ast"
+	"github.com/mas-bandwidth/schema/v2/internal/scanner"
 )
 
 // Parse scans and parses one file.

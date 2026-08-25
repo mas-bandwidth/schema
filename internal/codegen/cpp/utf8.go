@@ -1,6 +1,6 @@
 package cpp
 
-import "github.com/mas-bandwidth/schema/ir"
+import "github.com/mas-bandwidth/schema/v2/ir"
 
 // fileHasStrings reports whether any declaration in the file carries a
 // string(N) field — the trigger for emitting the UTF-8 validator the

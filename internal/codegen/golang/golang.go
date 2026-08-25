@@ -25,8 +25,8 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/mas-bandwidth/schema/internal/ast"
-	"github.com/mas-bandwidth/schema/ir"
+	"github.com/mas-bandwidth/schema/v2/internal/ast"
+	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
 // Generate returns basename.go -> file contents for every file of the unit.

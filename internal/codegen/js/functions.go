@@ -23,7 +23,7 @@ import (
 	"math"
 	"math/big"
 
-	"github.com/mas-bandwidth/schema/ir"
+	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
 // emitUnionFunctions emits the union's bounds, Zero helper and wire pair

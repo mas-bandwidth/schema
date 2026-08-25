@@ -11,8 +11,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/internal/ast"
-	"github.com/mas-bandwidth/schema/internal/parser"
+	"github.com/mas-bandwidth/schema/v2/internal/ast"
+	"github.com/mas-bandwidth/schema/v2/internal/parser"
 )
 
 func runUnit(t *testing.T, sources map[string]string) []error {

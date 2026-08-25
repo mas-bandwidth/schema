@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"math/big"
 
-	"github.com/mas-bandwidth/schema/ir"
+	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
 // emitMaxBits emits a type's worst-case wire size. Callers size their buffers

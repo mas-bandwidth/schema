@@ -8,7 +8,7 @@ import (
 	"math"
 	"math/big"
 
-	"github.com/mas-bandwidth/schema/ir"
+	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
 // ---- worst-case wire size: shared in ir/wire.go ----

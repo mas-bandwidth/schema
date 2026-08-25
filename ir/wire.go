@@ -7,7 +7,7 @@ import (
 	"math/big"
 	"math/bits"
 
-	"github.com/mas-bandwidth/schema/internal/ast"
+	"github.com/mas-bandwidth/schema/v2/internal/ast"
 )
 
 // BitsRequired mirrors the runtimes' bits_required(min, max): the bit length

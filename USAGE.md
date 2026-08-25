@@ -549,8 +549,8 @@ so anything the CLI does, your program can do.
 
 ```go
 import (
-	"github.com/mas-bandwidth/schema/compiler"
-	"github.com/mas-bandwidth/schema/ir"
+	"github.com/mas-bandwidth/schema/v2/compiler"
+	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
 c := compiler.New() // the six built-in targets, registered
@@ -628,7 +628,7 @@ fmt.Println(c.Targets()) // [c cpp cs docs go js rust]
 files, err := c.Generate(unit, "docs", nil)
 ```
 
-The unit your generator receives is the same fully-resolved [`ir`](https://pkg.go.dev/github.com/mas-bandwidth/schema/ir)
+The unit your generator receives is the same fully-resolved [`ir`](https://pkg.go.dev/github.com/mas-bandwidth/schema/v2/ir)
 the built-in backends read: types resolved, constants folded, ranges and bit
 widths derived, wire order fixed. The derived parameters the six emitters
 share are functions there rather than per-backend arithmetic — `ir.BitsRequired`,

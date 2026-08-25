@@ -12,9 +12,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/internal/check"
-	"github.com/mas-bandwidth/schema/internal/format"
-	"github.com/mas-bandwidth/schema/internal/parser"
+	"github.com/mas-bandwidth/schema/v2/internal/check"
+	"github.com/mas-bandwidth/schema/v2/internal/format"
+	"github.com/mas-bandwidth/schema/v2/internal/parser"
 )
 
 func corpusUnits(t *testing.T) map[string][]check.SourceFile {
