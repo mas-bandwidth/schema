@@ -2,11 +2,11 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package example — protocol id 0xbc05d83a8135cdb9
+// package example — protocol id 0x0bde7acdd36abc6a
 
 // The unit's protocol id — the hash of its wire shape (SPEC §3.1). Two
 // sides at the same id speak identical bits; there is no other versioning.
-pub const PROTOCOL_ID: u64 = 0xbc05d83a8135cdb9;
+pub const PROTOCOL_ID: u64 = 0x0bde7acdd36abc6a;
 
 /// The generated crate's error: the runtime's own errors pass through;
 /// Validation is a read rejecting the wire (SPEC §4.3, §4.7).
@@ -53,10 +53,6 @@ pub const MAX_OBJECTS: i64 = 10000;
 pub const SHIP_MAX_LASERS: i64 = 16;
 
 pub const SHIP_MAX_MISSILES: i64 = 16;
-
-pub const MAX_TURRETS_PER_SHIP: i64 = 256;
-
-pub const MAX_COLLIDERS_PER_SHIP: i64 = 64;
 
 pub const NUM_TEAMS: i64 = 2; // = Team.Max
 

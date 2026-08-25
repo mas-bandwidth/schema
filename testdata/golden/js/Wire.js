@@ -2,9 +2,9 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package example — protocol id 0xbc05d83a8135cdb9
+// package example — protocol id 0x0bde7acdd36abc6a
 
-import { ReadTest, Test, WriteTest, ZeroTest } from "./Messages.js";
+import { MaxBlockSize, MaxChatLength } from "./Constants.js";
 
 // Scratch holders for the runtime's {value} refs — single threaded per
 // realm, always consumed in the same call that fills them.
@@ -698,6 +698,197 @@ export function ReadProbeArray(stream, value) {
   }
   if (!ReadProbeConfig(stream, value.Config)) {
     return false;
+  }
+  return true;
+}
+
+// type Heartbeat
+export class Heartbeat {
+  constructor() {
+    // empty body — presence is the payload (SPEC §4.6)
+  }
+}
+
+// HeartbeatMaxBits is the longest wire path; align pads at worst case (SPEC §6.1).
+// HeartbeatMaxBytes is rounded up to the 8-byte write-buffer granularity.
+export const HeartbeatMaxBits = 0;
+export const HeartbeatMaxBytes = 0;
+
+// The §5 zero form: all-zero storage; specified defaults live only in construction.
+export function ZeroHeartbeat(value) {
+  // empty body — nothing to reset (SPEC §4.6)
+}
+
+export function WriteHeartbeat(stream, value) {
+  // empty body — presence is the payload (SPEC §4.6)
+  return true;
+}
+
+export function ReadHeartbeat(stream, value) {
+  return true;
+}
+
+// type Test
+export class Test {
+  constructor() {
+    this.TestA = 0;
+    this.TestB = 0; // wire [0, 1000]
+    this.TestC = 0; // wire [0, 1000]
+    this.TestD = 0; // wire [0, 1000]
+  }
+}
+
+// TestMaxBits is the longest wire path; align pads at worst case (SPEC §6.1).
+// TestMaxBytes is rounded up to the 8-byte write-buffer granularity.
+export const TestMaxBits = 46;
+export const TestMaxBytes = 8;
+
+// The §5 zero form: all-zero storage; specified defaults live only in construction.
+export function ZeroTest(value) {
+  value.TestA = 0;
+  value.TestB = 0;
+  value.TestC = 0;
+  value.TestD = 0;
+}
+
+export function WriteTest(stream, value) {
+  NUMBER_SCRATCH.value = value.TestA;
+  if (!stream.serializeBits(NUMBER_SCRATCH, 16)) {
+    return false;
+  }
+  if (!Number.isInteger(value.TestB) || value.TestB < 0 || value.TestB > 1000) {
+    return false;
+  }
+  NUMBER_SCRATCH.value = value.TestB;
+  if (!stream.serializeBits(NUMBER_SCRATCH, 10)) {
+    return false;
+  }
+  if (!Number.isInteger(value.TestC) || value.TestC < 0 || value.TestC > 1000) {
+    return false;
+  }
+  NUMBER_SCRATCH.value = value.TestC;
+  if (!stream.serializeBits(NUMBER_SCRATCH, 10)) {
+    return false;
+  }
+  if (!Number.isInteger(value.TestD) || value.TestD < 0 || value.TestD > 1000) {
+    return false;
+  }
+  NUMBER_SCRATCH.value = value.TestD;
+  if (!stream.serializeBits(NUMBER_SCRATCH, 10)) {
+    return false;
+  }
+  return true;
+}
+
+export function ReadTest(stream, value) {
+  if (!stream.serializeBits(NUMBER_SCRATCH, 16)) {
+    return false;
+  }
+  value.TestA = NUMBER_SCRATCH.value;
+  if (!stream.serializeInt(NUMBER_SCRATCH, 0, 1000)) {
+    return false;
+  }
+  value.TestB = NUMBER_SCRATCH.value;
+  if (!stream.serializeInt(NUMBER_SCRATCH, 0, 1000)) {
+    return false;
+  }
+  value.TestC = NUMBER_SCRATCH.value;
+  if (!stream.serializeInt(NUMBER_SCRATCH, 0, 1000)) {
+    return false;
+  }
+  value.TestD = NUMBER_SCRATCH.value;
+  return true;
+}
+
+// type Block
+export class Block {
+  constructor() {
+    this.Data = new Uint8Array(MaxBlockSize); // bytes(MaxBlockSize): fixed buffer, used length beside it (SPEC §4.7)
+    this.DataLength = 0;
+  }
+}
+
+// BlockMaxBits is the longest wire path; align pads at worst case (SPEC §6.1).
+// BlockMaxBytes is rounded up to the 8-byte write-buffer granularity.
+export const BlockMaxBits = 16018;
+export const BlockMaxBytes = 2008;
+
+// The §5 zero form: all-zero storage; specified defaults live only in construction.
+export function ZeroBlock(value) {
+  value.Data.fill(0);
+  value.DataLength = 0;
+}
+
+export function WriteBlock(stream, value) {
+  if (!Number.isInteger(value.DataLength) || value.DataLength < 0 || value.DataLength > MaxBlockSize) { // the length guards the slice (§6.3); out-of-contract writes are refused
+    return false;
+  }
+  NUMBER_SCRATCH.value = value.DataLength;
+  if (!stream.serializeBits(NUMBER_SCRATCH, 11)) {
+    return false;
+  }
+  if (!stream.serializeBytes(value.Data.subarray(0, value.DataLength))) {
+    return false;
+  }
+  return true;
+}
+
+export function ReadBlock(stream, value) {
+  if (!stream.serializeInt(NUMBER_SCRATCH, 0, MaxBlockSize)) { // the length guards the slice (§6.3)
+    return false;
+  }
+  value.DataLength = NUMBER_SCRATCH.value;
+  if (!stream.serializeBytes(value.Data.subarray(0, value.DataLength))) {
+    return false;
+  }
+  return true;
+}
+
+// type Chat
+export class Chat {
+  constructor() {
+    this.Text = new Uint8Array(MaxChatLength); // string(MaxChatLength): max length, used length beside it (SPEC §4.7)
+    this.TextLength = 0;
+  }
+}
+
+// ChatMaxBits is the longest wire path; align pads at worst case (SPEC §6.1).
+// ChatMaxBytes is rounded up to the 8-byte write-buffer granularity.
+export const ChatMaxBits = 2064;
+export const ChatMaxBytes = 264;
+
+// The §5 zero form: all-zero storage; specified defaults live only in construction.
+export function ZeroChat(value) {
+  value.Text.fill(0);
+  value.TextLength = 0;
+}
+
+export function WriteChat(stream, value) {
+  if (!Number.isInteger(value.TextLength) || value.TextLength < 0 || value.TextLength > MaxChatLength) { // the length guards the slice (§6.3); out-of-contract writes are refused
+    return false;
+  }
+  NUMBER_SCRATCH.value = value.TextLength;
+  if (!stream.serializeBits(NUMBER_SCRATCH, 9)) {
+    return false;
+  }
+  if (!stream.serializeBytes(value.Text.subarray(0, value.TextLength))) {
+    return false;
+  }
+  return true;
+}
+
+export function ReadChat(stream, value) {
+  if (!stream.serializeInt(NUMBER_SCRATCH, 0, MaxChatLength)) { // the length guards the slice (§6.3)
+    return false;
+  }
+  value.TextLength = NUMBER_SCRATCH.value;
+  if (!stream.serializeBytes(value.Text.subarray(0, value.TextLength))) {
+    return false;
+  }
+  for (let i = 0; i < value.TextLength; i++) {
+    if (value.Text[i] === 0) { // an interior null is content the read refuses (SPEC §4.7)
+      return false;
+    }
   }
   return true;
 }

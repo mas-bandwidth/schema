@@ -66,8 +66,6 @@ import (
 func Generate(u *ir.Unit) (map[string][]byte, error) {
 	out := map[string][]byte{}
 	home := ir.ProtocolIdHome(u)
-	msgOwner := ir.MessageOwner(u)
-	objOwner := ir.ObjectOwner(u)
 	bases := map[string]bool{}
 	for _, f := range u.Files {
 		bases[f.Base] = true
@@ -84,7 +82,7 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 		}
 	}
 	for _, f := range u.Files {
-		g := &gen{unit: u, file: f, home: f.Base == home, msgOwner: msgOwner, objOwner: objOwner, imports: map[string]map[string]bool{}}
+		g := &gen{unit: u, file: f, home: f.Base == home, imports: map[string]map[string]bool{}}
 		g.emitFile(g.home)
 		out[f.Base+".js"] = g.assemble()
 	}
@@ -92,7 +90,7 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 	// wire surface (flat.go) — always emitted, never flag-gated: the ruling
 	// makes flat THE JavaScript path, and the runtime tier above is emitted
 	// regardless because it is the flat tier's CI oracle
-	maps.Copy(out, generateFlat(u, msgOwner))
+	maps.Copy(out, generateFlat(u))
 	return out, nil
 }
 
@@ -218,19 +216,6 @@ func (g *gen) emitFile(carriesProtocolId bool) {
 		g.pf("export const ProtocolId = 0x%016xn;\n\n", g.unit.ProtocolId)
 	}
 
-	// MessageType / ObjectType lead their OWNER file — the unit-level surface
-	// is emitted exactly once, in the topologically last carrying file, so
-	// declarations spread across files never redeclare it (SPEC §2 keeps the
-	// aspect layout non-enforced; ir.MessageOwner picks).
-	if g.file.Base == g.msgOwner && len(g.unit.Messages) > 0 {
-		g.emitTagEnum("MessageType", g.unit.Messages,
-			"the message set, extracted by the compiler — None = 0, then each message sorted by name (SPEC §4.8)")
-	}
-	if g.file.Base == g.objOwner && len(g.unit.ObjNames) > 0 {
-		g.emitTagEnum("ObjectType", g.unit.ObjNames,
-			"the object set, extracted by the compiler — None = 0, then each object sorted by name (SPEC §4.8)")
-	}
-
 	// EmissionOrder, not declaration order: top-level const initializers
 	// evaluate top to bottom in an ES module, so a symbolic reference to a
 	// later const would be a temporal-dead-zone error
@@ -242,32 +227,13 @@ func (g *gen) emitFile(carriesProtocolId bool) {
 			g.emitEnum(d)
 		case *ir.Flags:
 			g.emitFlags(d)
-		case *ir.ContextsMarker:
-			g.pf("// contexts declared for this unit: %s (SPEC §4.2).\n", strings.Join(d.Names, ", "))
-			g.pf("// Contexts generate no standalone artifacts — where an object carries\n")
-			g.pf("// context-scoped | local fields, its State class is generated once per\n")
-			g.pf("// context (ClientShipState, ServerShipState, ...), each holding the `all`\n")
-			g.pf("// fields plus its own context's.\n\n")
 		case *ir.Struct:
 			g.emitClass(d)
 			g.emitStructFunctions(d)
 		case *ir.Union:
 			g.emitUnion(d)
 			g.emitUnionFunctions(d)
-		case *ir.Object:
-			g.emitObject(d)
-			g.emitObjectFunctions(d)
 		}
-	}
-
-	// the dispatch surfaces close their owner files, after every class they
-	// reference — the C# target's layout exactly
-	if g.file.Base == g.msgOwner && len(g.unit.Messages) > 0 {
-		g.emitMessageStorage()
-		g.emitMessageTagFunctions()
-	}
-	if g.file.Base == g.objOwner && len(g.unit.ObjNames) > 0 {
-		g.emitObjectTagFunctions()
 	}
 }
 
@@ -385,22 +351,12 @@ func (g *gen) emitFlags(d *ir.Flags) {
 }
 
 func (g *gen) emitClass(d *ir.Struct) {
-	kind := "type"
-	if d.IsMessage {
-		kind = "message"
-	}
 	if len(d.Tags) > 0 {
-		g.pf("// %s %s [%s] — tags are user-chosen and inert in v1 (SPEC §4.2, Type tags)\n", kind, d.Name, strings.Join(d.Tags, ", "))
+		g.pf("// type %s [%s] — tags are user-chosen and inert in v1 (SPEC §4.2, Type tags)\n", d.Name, strings.Join(d.Tags, ", "))
 	} else {
-		g.pf("// %s %s\n", kind, d.Name)
+		g.pf("// type %s\n", d.Name)
 	}
 	g.pf("export class %s {\n", d.Name)
-	if d.IsMessage {
-		g.addRefBase(g.msgOwner, "MessageType")
-		g.pf("  // the message's tag — dispatch pins it per class, as the C# target's\n")
-		g.pf("  // Type property does\n")
-		g.pf("  get Type() {\n    return MessageType.%s;\n  }\n\n", d.Name)
-	}
 	g.pf("  constructor() {\n")
 	if len(d.Fields) == 0 {
 		g.pf("    // empty body — presence is the payload (SPEC §4.6)\n")
@@ -567,24 +523,8 @@ func (g *gen) fieldComment(f *ir.Field) string {
 		parts = append(parts, fmt.Sprintf("wire [%s, %s]", f.IntMin, f.IntMax))
 	}
 	if f.HasFloatRange {
-		note := ""
-		if f.Round != "nearest" {
-			note = ", round " + f.Round + " (advisory: SPEC §4.8 rule 4 — projection, not this wire conversion)"
-		}
-		if f.Interpolate {
-			parts = append(parts, fmt.Sprintf("shallow wire: [%s, %s] @ %s -> int [0, %d]%s",
-				formatFloat(f.FMin), formatFloat(f.FMax), formatFloat(f.Resolution), f.Steps, note))
-		} else {
-			parts = append(parts, fmt.Sprintf("compressed float [%s, %s] @ %s%s",
-				formatFloat(f.FMin), formatFloat(f.FMax), formatFloat(f.Resolution), note))
-		}
-	}
-	if f.Local {
-		if f.Context != "" {
-			parts = append(parts, fmt.Sprintf("| local, context = %s", f.Context))
-		} else {
-			parts = append(parts, "| local — no wire")
-		}
+		parts = append(parts, fmt.Sprintf("compressed float [%s, %s] @ %s",
+			formatFloat(f.FMin), formatFloat(f.FMax), formatFloat(f.Resolution)))
 	}
 	if len(parts) == 0 {
 		return ""

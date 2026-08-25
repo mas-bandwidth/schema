@@ -41,7 +41,7 @@ type ExtremeRow {
 func generateExtremesCorpus(t *testing.T) (data, wire string) {
 	t.Helper()
 	u := unitFromSources(t, map[string]string{"Extreme.schema": extremesCorpus})
-	files, err := Generate(u, Options{})
+	files, err := Generate(u)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -21,12 +21,6 @@ import (
 
 var failed bool
 
-// foreignMessage satisfies the Message interface from outside the generated
-// set — WriteMessage must refuse it without touching the stream.
-type foreignMessage struct{}
-
-func (foreignMessage) MessageType() example.MessageType { return example.MessageTypeChat }
-
 func check(ok bool, what string) {
 	if !ok {
 		fmt.Printf("FAILED: %s\n", what)
@@ -136,67 +130,6 @@ func main() {
 		check(out == in, "Chat round-trips")
 	}
 
-	// ---- the Message dispatch surface: interface + type switch ----
-	{
-		chat := &example.Chat{}
-		copy(chat.Text[:], "dispatch")
-		chat.TextLength = 8
-		test := &example.Test{TestB: 42}
-
-		ws, _ := newWriteStream()
-		checkErr(example.WriteMessage(ws, chat), "write Message chat")
-		checkErr(example.WriteMessage(ws, test), "write Message test")
-		checkErr(example.WriteMessage(ws, nil), "write Message terminator")
-		ws.Flush()
-		goldenWire("message_stream", ws.Data())
-
-		// reads land in pre-allocated storage — no heap per message (SPEC §6.1);
-		// the returned Message points into it, the union's own discipline
-		storage := example.MessageStorage{}
-		rs := serialize.NewReadStream(ws.Data())
-		m1, err := example.ReadMessage(rs, &storage)
-		checkErr(err, "read message 1")
-		c, ok := m1.(*example.Chat)
-		check(ok && c.TextLength == 8 && string(c.Text[:8]) == "dispatch", "message 1 is the chat")
-		check(c == &storage.Chat, "the read message points into the caller's storage")
-		m2, err := example.ReadMessage(rs, &storage)
-		checkErr(err, "read message 2")
-		t, ok := m2.(*example.Test)
-		check(ok && t.TestB == 42, "message 2 is the test")
-		m3, err := example.ReadMessage(rs, &storage)
-		checkErr(err, "read message 3")
-		check(m3 == nil, "message 3 is the None terminator")
-
-		// the tag pair stands alone too
-		ws2, _ := newWriteStream()
-		checkErr(example.WriteMessageType(ws2, example.MessageTypeChat), "write message type")
-		checkErr(example.WriteMessageType(ws2, example.MessageTypeNone), "write message type terminator")
-		ws2.Flush()
-		rs2 := serialize.NewReadStream(ws2.Data())
-		tag := example.MessageTypeNone
-		checkErr(example.ReadMessageType(rs2, &tag), "read message type")
-		check(tag == example.MessageTypeChat, "tag round-trips")
-		checkErr(example.ReadMessageType(rs2, &tag), "read message type terminator")
-		check(tag == example.MessageTypeNone, "terminator tag round-trips")
-
-		// a foreign Message implementation writes NOTHING — the stream cannot
-		// be left with a tag and no payload (a desync), and the refusal is loud
-		ws3, _ := newWriteStream()
-		err = example.WriteMessage(ws3, foreignMessage{})
-		check(err != nil, "a foreign Message implementation is refused")
-		ws3.Flush()
-		check(ws3.BytesProcessed() == 0, "and nothing was written")
-
-		// a typed nil inside the interface is refused the same way — no tag,
-		// no panic, nothing on the stream
-		ws4, _ := newWriteStream()
-		var nilChat *example.Chat
-		err = example.WriteMessage(ws4, nilChat)
-		check(err != nil, "a typed-nil message is refused")
-		ws4.Flush()
-		check(ws4.BytesProcessed() == 0, "and nothing was written for the typed nil")
-	}
-
 	// ---- ProbeHeader: const/reserved/align on the wire; corruption rejected ----
 	{
 		in := example.ProbeHeader{Version: 5, ProbeId: 0x1122334455667788}
@@ -216,44 +149,6 @@ func main() {
 		corrupt[0] = 0xAC
 		rs2 := serialize.NewReadStream(corrupt)
 		check(example.ReadProbeHeader(rs2, &out) != nil, "a corrupted wire constant is REJECTED (SPEC §4.3)")
-	}
-
-	// ---- the object views: Quantize/Unquantize and the shallow wire ----
-	{
-		interp := example.ShipData_Interpolate{}
-		interp.ShipType = example.ShipTypeCorvette
-		interp.Position = example.Vec3{X: 1.5, Y: -2.25, Z: 100.0}
-		interp.Rotation = example.Quat{X: 0.0, Y: 0.0, Z: 0.0, W: 1.0}
-		interp.LinearVelocity = example.Vec3{X: 3.0, Y: 0.0, Z: -1.0}
-		interp.Flags = example.ShipFlagsBoosting
-		interp.Team = example.TeamRed
-		interp.Health = 750 // wire-int domain (rule 5)
-		interp.Thrust = 55
-
-		q := example.ShipData_Shallow{}
-		example.QuantizeShip(&interp, &q)
-		check(q.PositionX == 1536, "1.5 * 1024 quantizes to 1536")
-		check(q.PositionY == -2304, "-2.25 * 1024 quantizes to -2304")
-		check(q.RotationW == 1024, "1.0 * 1024 quantizes to 1024")
-		check(q.Health == 750 && q.Thrust == 55, "projected fields copy")
-		check(q.Team == example.TeamRed && q.Flags == example.ShipFlagsBoosting, "discrete fields copy")
-
-		ws, _ := newWriteStream()
-		checkErr(example.WriteShipData_Shallow(ws, &q), "write ShipData_Shallow")
-		ws.Flush()
-		goldenWire("ship_shallow", ws.Data())
-
-		q2 := example.ShipData_Shallow{}
-		rs := serialize.NewReadStream(ws.Data())
-		checkErr(example.ReadShipData_Shallow(rs, &q2), "read ShipData_Shallow")
-		check(q2 == q, "the shallow wire round-trips")
-
-		back := example.ShipData_Interpolate{}
-		example.UnquantizeShip(&q2, &back)
-		check(back.Position.X == 1536.0/1024.0, "unquantize recovers x")
-		check(back.Position.Y == -2304.0/1024.0, "unquantize recovers y")
-		check(back.Rotation.W == 1.0, "unquantize recovers w")
-		check(back.Health == 750 && back.Team == example.TeamRed, "discrete and projected copy back")
 	}
 
 	// ---- InputPacket: counted array of nested structs ----
@@ -399,7 +294,7 @@ func main() {
 		check(example.ReadProbeCollider(serialize.NewReadStream(corrupt), &bad) != nil,
 			"a corrupt union arm payload is refused (SPEC §4.8)")
 
-		// the write side validates the tag BEFORE it rides (WriteMessage's rule)
+		// the write side validates the tag BEFORE it rides
 		rogue := example.ProbeShape{Type: example.ProbeShapeType(3)}
 		ws2, _ := newWriteStream()
 		check(example.WriteProbeShape(ws2, &rogue) != nil,
@@ -506,7 +401,7 @@ func main() {
 		check(out.Config.Retries == 3 && out.Config.Preferred == example.WeaponMissile, "config round-trips")
 	}
 
-	// ---- ProbeReport: message-as-field, and the widened flags wire ----
+	// ---- ProbeReport: nested composition, and the widened flags wire ----
 	{
 		in := example.ProbeReport{}
 		in.Header.Version = 3
@@ -521,7 +416,7 @@ func main() {
 		out := example.ProbeReport{}
 		rs := serialize.NewReadStream(ws.Data())
 		checkErr(example.ReadProbeReport(rs, &out), "read ProbeReport")
-		check(out == in, "ProbeReport round-trips — a message as an ordinary field")
+		check(out == in, "ProbeReport round-trips — a named type as an ordinary field")
 
 		// a mask bit above the widened 8-bit wire is refused, not truncated
 		in.Flags = 1 << 9
@@ -603,48 +498,6 @@ func main() {
 		rs := serialize.NewReadStream(ws.Data())
 		checkErr(example.ReadRigidBody(rs, &out), "read RigidBody moving")
 		check(out == in, "the moving branch round-trips with velocities intact")
-	}
-
-	// ---- Missile: a second object family end to end ----
-	{
-		interp := example.MissileData_Interpolate{}
-		interp.MissileType = example.MissileTypeTorpedo
-		interp.Position = example.Vec3{X: -4.0, Y: 8.0, Z: 15.5}
-		interp.Rotation = example.Quat{X: 0.0, Y: 0.0, Z: 0.0, W: 1.0}
-		interp.LinearVelocity = example.Vec3{X: 1.0, Y: 2.0, Z: 3.0}
-		interp.Team = example.TeamBlue
-		interp.Flags = 0xF00F
-
-		q := example.MissileData_Shallow{}
-		example.QuantizeMissile(&interp, &q)
-		check(q.PositionZ == 15872, "15.5 * 1024 quantizes to 15872")
-		check(q.RotationW == 1024 && q.Team == example.TeamBlue && q.Flags == 0xF00F, "discrete fields copy")
-
-		ws, _ := newWriteStream()
-		checkErr(example.WriteMissileData_Shallow(ws, &q), "write MissileData_Shallow")
-		ws.Flush()
-		q2 := example.MissileData_Shallow{}
-		rs := serialize.NewReadStream(ws.Data())
-		checkErr(example.ReadMissileData_Shallow(rs, &q2), "read MissileData_Shallow")
-		check(q2 == q, "the missile shallow wire round-trips")
-
-		back := example.MissileData_Interpolate{}
-		example.UnquantizeMissile(&q2, &back)
-		check(back.Position.Z == 15872.0/1024.0, "unquantize recovers z")
-	}
-
-	// ---- the object tag pair ----
-	{
-		ws, _ := newWriteStream()
-		checkErr(example.WriteObjectType(ws, example.ObjectTypeTurret), "write object type")
-		checkErr(example.WriteObjectType(ws, example.ObjectTypeNone), "write object type sentinel")
-		ws.Flush()
-		rs := serialize.NewReadStream(ws.Data())
-		tag := example.ObjectTypeNone
-		checkErr(example.ReadObjectType(rs, &tag), "read object type")
-		check(tag == example.ObjectTypeTurret, "object tag round-trips")
-		checkErr(example.ReadObjectType(rs, &tag), "read object type sentinel")
-		check(tag == example.ObjectTypeNone, "the None sentinel round-trips")
 	}
 
 	if failed {

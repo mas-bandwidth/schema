@@ -23,9 +23,6 @@ package ir
 //
 //   package                  peers of different packages are different
 //                            protocols; conservative, and can only add ids
-//   message ordinals         the MessageType tag is the message's index
-//   object ordinals          the ObjectType tag likewise
-//   contexts                 a context scopes | local fields out of a view
 //   every type's fields      order IS the wire order
 //   field names              FROZEN input (see projectField) — a rename
 //                            moves the id
@@ -35,7 +32,6 @@ package ir
 //   string/bytes capacity    the length field's width
 //   float range + resolution the quantized step count
 //   fixed I and F            the Q format and the raw bounds
-//   quantize scale/bound     the shallow view's per-component width
 //   specified defaults       FROZEN input (see projectField)
 //   branch structure         a guard removes fields from the wire
 //   const/reserved/align     literal bits, zero bits, and padding
@@ -81,16 +77,6 @@ func WireProjection(u *Unit) string {
 	fmt.Fprintf(&b, "schema-wire-projection %d\n", ProjectionVersion)
 	fmt.Fprintf(&b, "package %s\n", u.Package)
 
-	for _, c := range u.Contexts {
-		fmt.Fprintf(&b, "context %s\n", c)
-	}
-	for i, m := range u.Messages {
-		fmt.Fprintf(&b, "message-ordinal %d %s\n", i+1, m)
-	}
-	for i, o := range u.ObjNames {
-		fmt.Fprintf(&b, "object-ordinal %d %s\n", i+1, o)
-	}
-
 	names := make([]string, 0, len(u.Enums))
 	for n := range u.Enums {
 		names = append(names, n)
@@ -119,11 +105,12 @@ func WireProjection(u *Unit) string {
 	sort.Strings(names)
 	for _, n := range names {
 		st := u.Structs[n]
-		// `table=false` is a FROZEN token: tables left the language, and
-		// keeping the literal keeps the removal id-neutral for every unit
-		// that never declared one. Changing this line is a ProjectionVersion
-		// bump, taken deliberately or not at all.
-		fmt.Fprintf(&b, "type %s table=false message=%t\n", st.Name, st.IsMessage)
+		// `table=false` and `message=false` are FROZEN tokens: tables and
+		// messages left the language, and keeping the literals keeps the
+		// removals id-neutral for every unit that never declared one.
+		// Changing this line is a ProjectionVersion bump, taken deliberately
+		// or not at all.
+		fmt.Fprintf(&b, "type %s table=false message=false\n", st.Name)
 		projectItems(&b, st.Items, "  ")
 	}
 
@@ -142,19 +129,6 @@ func WireProjection(u *Unit) string {
 		fmt.Fprintf(&b, "union %s max=%d\n", un.Name, un.Max)
 		for i, v := range un.Variants {
 			fmt.Fprintf(&b, "  variant %d payload=%s\n", i+1, v.Type)
-		}
-	}
-
-	names = names[:0]
-	for n := range u.Objects {
-		names = append(names, n)
-	}
-	sort.Strings(names)
-	for _, n := range names {
-		o := u.Objects[n]
-		fmt.Fprintf(&b, "object %s\n", o.Name)
-		for _, f := range o.Fields {
-			projectField(&b, f, "  ")
 		}
 	}
 
@@ -212,23 +186,13 @@ func projectField(b *strings.Builder, f *Field, ind string) {
 	if f.HasFloatRange {
 		fmt.Fprintf(b, " floatrange=[%v,%v] res=%v steps=%d", f.FMin, f.FMax, f.Resolution, f.Steps)
 	}
+	// `round=nearest` rides every compressed-float line as a FROZEN token:
+	// the rounding spelling left the language (half away from zero is the
+	// one fixed-point rule), and keeping the literal keeps every
+	// compressed-float unit's id stable. Dropping it is a ProjectionVersion
+	// bump, taken deliberately or not at all.
 	if f.Round != "" {
 		fmt.Fprintf(b, " round=%s", f.Round)
-	}
-	if f.HasQuantize {
-		fmt.Fprintf(b, " quantize scale=%d bound=%d shallow=%t shift=%d",
-			f.QuantScale, f.QuantBound, f.FixedShallow, f.QuantShift)
-	}
-	// view membership changes which fields appear in which generated view,
-	// and a | local field is off the deep wire entirely
-	if f.Local {
-		b.WriteString(" local")
-	}
-	if f.Interpolate {
-		b.WriteString(" interpolate")
-	}
-	if f.Context != "" {
-		fmt.Fprintf(b, " context=%s", f.Context)
 	}
 	// the default rides as a FROZEN token (the retired table wire elided a
 	// field sitting at its default); it stays part of the bytes to keep

@@ -18,12 +18,9 @@
 // §3.2's cross-language-comparable shape, each leg golden-gated AND
 // cross-validated against the runtime tier (bytes, fields, verdicts, 64
 // variants) before any timing. The runtime-call generated rows ride beside
-// them as labeled supplementary rows (codec=runtime); two surfaces stay
-// runtime-only in v1 and are marked so: ship_shallow (object views) and
-// message_batch (a continuous multi-message bitstream — flat packets are
-// byte-aligned per packet by construction). Flat rows carry no runtime
-// version: the flat modules import nothing, and the preamble's schema
-// commit is their whole provenance (§3.5).
+// them as labeled supplementary rows (codec=runtime). Flat rows carry no
+// runtime version: the flat modules import nothing, and the preamble's
+// schema commit is their whole provenance (§3.5).
 //
 // Language-specific discipline:
 //   - the LCG is the C bench's uint64 LCG carried in two 32-bit lanes, the
@@ -73,9 +70,7 @@ import path from "node:path";
 
 import * as enums from "../../generated/js/Enums.js";
 import * as types from "../../generated/js/Types.js";
-import * as messages from "../../generated/js/Messages.js";
 import * as wire from "../../generated/js/Wire.js";
-import * as objects from "../../generated/js/Objects.js";
 import * as realworld from "../../generated/bench/js/realworld/RealWorld.js";
 
 // THE js path: the flat tier (the 2026-08-18 ruling — whichever correct
@@ -86,14 +81,13 @@ import * as realworld from "../../generated/bench/js/realworld/RealWorld.js";
 // (codec=runtime) so the compat tier stays observable; they never stand as
 // the js number.
 import * as typesFlat from "../../generated/js/TypesFlat.js";
-import * as messagesFlat from "../../generated/js/MessagesFlat.js";
 import * as wireFlat from "../../generated/js/WireFlat.js";
 import * as realworldFlat from "../../generated/bench/js/realworld/RealWorldFlat.js";
 
 // one namespace over the unit, the way Go sees package example — the checker
 // guarantees unit-wide name uniqueness, so the merge cannot collide
-const ex = { ...enums, ...types, ...messages, ...wire, ...objects };
-const exFlat = { ...typesFlat, ...messagesFlat, ...wireFlat };
+const ex = { ...enums, ...types, ...wire };
+const exFlat = { ...typesFlat, ...wireFlat };
 
 // ---- §3.5 runtime resolution: the sibling checkout, overridable. A
 // relative SERIALIZE_JS resolves against the REPO ROOT, not this process's
@@ -348,13 +342,9 @@ function deepEqual(a, b) {
 }
 
 // --------------------------------------------------------------------------
-// the per-message benchmark drivers. benchMessageFlat measures THE js path
+// the per-shape benchmark drivers. benchMessageFlat measures THE js path
 // (the flat tier, codec=flat); benchMessage measures the runtime-call
-// generated tier, riding as labeled supplementary rows (codec=runtime) —
-// and alone for the surfaces flat does not cover in v1 (the object views'
-// ship_shallow, and message_batch, whose continuous multi-message bitstream
-// is a runtime-tier stream shape: flat packets are byte-aligned per packet
-// by construction).
+// generated tier, riding as labeled supplementary rows (codec=runtime).
 // --------------------------------------------------------------------------
 
 // benchMessageFlat: the §1.5 oracle gate binds the flat leg to the corpus
@@ -661,27 +651,6 @@ function pinShipCreate() {
   return input;
 }
 
-function pinShipShallow() {
-  const interp = new ex.ShipData_Interpolate();
-  interp.ShipType = ex.ShipType.Corvette;
-  interp.Position.X = 1.5;
-  interp.Position.Y = -2.25;
-  interp.Position.Z = 100.0;
-  interp.Rotation.X = 0.0;
-  interp.Rotation.Y = 0.0;
-  interp.Rotation.Z = 0.0;
-  interp.Rotation.W = 1.0;
-  interp.LinearVelocity.X = 3.0;
-  interp.LinearVelocity.Y = 0.0;
-  interp.LinearVelocity.Z = -1.0;
-  interp.Flags = ex.ShipFlagsBoosting;
-  interp.Team = ex.Team.Red;
-  interp.Health = 750;
-  interp.Thrust = 55;
-  const q = new ex.ShipData_Shallow();
-  ex.QuantizeShip(interp, q);
-  return q;
-}
 
 function pinProbeHeader() {
   const h = new ex.ProbeHeader();
@@ -815,17 +784,6 @@ function varyShipCreate(m) {
   m.Thrust = shr64(14) & 63; // within [0, 100]
 }
 
-function varyShipShallow(m) {
-  m.PositionX = (shr64(8) & 0xfffff) - 0x80000;
-  m.PositionY = (shr64(16) & 0xfffff) - 0x80000;
-  m.PositionZ = (shr64(24) & 0xfffff) - 0x80000;
-  m.RotationX = (rng.lo & 0x7ff) - 1024;
-  m.RotationW = (shr64(11) & 0x7ff) - 1024;
-  m.LinearVelocityX = (shr64(32) & 0x3fffff) - 2097152;
-  m.Flags = rngBig() & 15n;
-  m.Health = shr64(5) & 511;
-  m.Thrust = shr64(14) & 63;
-}
 
 function varyProbeHeader(m) {
   m.Version = rng.lo & 7; // 3 wire bits
@@ -954,181 +912,6 @@ function varyRealPacket(m) {
   m.F054Int = (shr64(45) & 63) - 32; // +/-32 within +/-35
 }
 
-// --------------------------------------------------------------------------
-// the synthetic steady-state batch: NumBatchMessages messages through the
-// Message dispatch surface (WriteMessage/ReadMessage) plus the None
-// terminator, mixed types driven by the LCG — the C++ batch builder exactly.
-// --------------------------------------------------------------------------
-
-const NumBatchMessages = 4096;
-const BatchPasses = 25600; // rescaled 2026-08-23 with the mix rebalance: §2.1's floor wins (§1.2)
-
-function buildBatch(batchBuffer) {
-  const batch = new Array(NumBatchMessages);
-
-  lcgSeed(12345);
-  for (let k = 0; k < NumBatchMessages; k++) {
-    lcgStep();
-    const pick = shr64(32) % 20;
-    if (pick < 1) {
-      // 5% Chat
-      const m = new ex.Chat();
-      m.TextLength = 8 + (rng.lo & 7);
-      for (let i = 0; i < m.TextLength; i++) {
-        m.Text[i] = 97 + ((rng.lo >>> (i & 7)) & 15);
-      }
-      batch[k] = m;
-    } else if (pick < 7) {
-      // 30% Test
-      const m = new ex.Test();
-      m.TestA = rng.lo & 0xffff;
-      m.TestB = shr64(16) & 511;
-      m.TestC = shr64(25) & 511;
-      m.TestD = shr64(34) & 511;
-      batch[k] = m;
-    } else if (pick < 12) {
-      // 25% Synchronize
-      const m = new ex.Synchronize();
-      m.SyncFrame = rngBig();
-      m.SyncSequence = shr64(8) & 0xffff;
-      batch[k] = m;
-    } else if (pick < 17) {
-      // 25% Timescale
-      const m = new ex.Timescale();
-      m.Scale = (rng.lo & 0xffff) / 65536.0;
-      m.FrameA = shr64(16);
-      m.FrameB = shr64(24);
-      batch[k] = m;
-    } else if (pick < 19) {
-      // 10% Heartbeat
-      batch[k] = new ex.Heartbeat();
-    } else {
-      // 5% Block
-      const m = new ex.Block();
-      m.DataLength = 8 + (rng.lo & 15);
-      for (let i = 0; i < m.DataLength; i++) {
-        m.Data[i] = shr64(i & 31) & 0xff;
-      }
-      batch[k] = m;
-    }
-  }
-
-  const ws = new WriteStream(batchBuffer);
-  for (let k = 0; k < NumBatchMessages; k++) {
-    if (!ex.WriteMessage(ws, batch[k])) {
-      fail("message_batch", "batch write failed during setup");
-      return null;
-    }
-  }
-  if (!ex.WriteMessage(ws, null)) {
-    // null is the None terminator
-    fail("message_batch", "terminator write failed during setup");
-    return null;
-  }
-  ws.flush();
-  return { batch, batchBytes: ws.bytesProcessed() };
-}
-
-function benchBatch() {
-  // worst case is NumBatchMessages * MessageMaxBytes; actual is far less.
-  // + 8 read slack, and the size is a multiple of 8 (write contract).
-  const batchBufferSize = (NumBatchMessages + 1) * ex.MessageMaxBytes + 8;
-  const batchBuffer = new Uint8Array(batchBufferSize);
-
-  const built = buildBatch(batchBuffer);
-  if (built === null) {
-    return;
-  }
-  const batch = built.batch;
-  let batchBytes = built.batchBytes;
-
-  const passes = BatchPasses;
-  const totalMsgs = passes * NumBatchMessages;
-
-  const writeRates = new Array(gNumRuns);
-  const readRates = new Array(gNumRuns);
-
-  // write path: whole batch per pass; one message mutates per pass so the
-  // batch is never loop-invariant
-  lcgSeed(999);
-  const ws = new WriteStream(batchBuffer);
-  for (let run = -1; run < gNumRuns; run++) {
-    const start = performance.now();
-    for (let pass = 0; pass < passes; pass++) {
-      lcgStep();
-      const mutate = batch[shr64(16) & (NumBatchMessages - 1)];
-      if (mutate instanceof ex.Synchronize) {
-        mutate.SyncFrame = rngBig();
-      } else if (mutate instanceof ex.Test) {
-        mutate.TestA = rng.lo & 0xffff;
-      }
-      ws.reset(batchBuffer);
-      for (let k = 0; k < NumBatchMessages; k++) {
-        if (!ex.WriteMessage(ws, batch[k])) {
-          fail("message_batch", "write failed in loop");
-          return;
-        }
-      }
-      ex.WriteMessage(ws, null);
-      ws.flush();
-      gSink = (gSink + ws.bytesProcessed()) >>> 0;
-    }
-    const elapsed = (performance.now() - start) / 1000.0;
-    if (run >= 0) {
-      writeRates[run] = totalMsgs / elapsed;
-    }
-  }
-
-  // the read buffer: rebuild once from the deterministic batch state so
-  // bytes match
-  const rebuilt = buildBatch(batchBuffer);
-  if (rebuilt === null) {
-    return;
-  }
-  batchBytes = rebuilt.batchBytes;
-
-  // read path: read messages until the None terminator, whole batch per
-  // pass; reads land in pre-allocated storage — no heap per message
-  const storage = new ex.MessageStorage();
-  const holder = { value: null };
-  const batchView = batchBuffer.subarray(0, batchBytes);
-  const rs = new ReadStream(batchView);
-  for (let run = -1; run < gNumRuns; run++) {
-    const start = performance.now();
-    for (let pass = 0; pass < passes; pass++) {
-      rs.reset(batchView);
-      let count = 0;
-      for (;;) {
-        if (!ex.ReadMessage(rs, storage, holder)) {
-          fail("message_batch", "read failed in loop");
-          return;
-        }
-        if (holder.value === null) {
-          break;
-        }
-        count++;
-      }
-      if (count !== NumBatchMessages) {
-        fail("message_batch", "batch message count mismatch on read");
-        return;
-      }
-      gSink = (gSink + count) >>> 0;
-    }
-    const elapsed = (performance.now() - start) / 1000.0;
-    if (run >= 0) {
-      readRates[run] = totalMsgs / elapsed;
-    }
-  }
-
-  const bytesPerMsg = Math.floor(batchBytes / NumBatchMessages);
-  // codec=runtime: the batch is a CONTINUOUS multi-message bitstream (no
-  // byte alignment between messages) — a runtime-tier stream shape by
-  // construction. Flat packets are byte-aligned per packet; the flat batch
-  // entries measure a different wire and ride only when the §8.2 lever
-  // opens a comparable shape.
-  report("message_batch", "write", totalMsgs, bytesPerMsg, stats(writeRates), "gen", "runtime");
-  report("message_batch", "read", totalMsgs, bytesPerMsg, stats(readRates), "gen", "runtime");
-}
 
 // --------------------------------------------------------------------------
 // family rt (BENCH-STANDARD.md §1.3, §1.5): the serialize.js runtime API
@@ -1832,24 +1615,6 @@ function benchBitpacker(passes) {
 
 // --------------------------------------------------------------------------
 
-// the message_stream golden: dispatch wire self-check (not a benchmark)
-function checkMessageStreamGolden() {
-  const chat = new ex.Chat();
-  chat.Text.set(textBytes("dispatch"));
-  chat.TextLength = 8;
-  const test = new ex.Test();
-  test.TestB = 42;
-
-  const ws = new WriteStream(gBuffer);
-  if (!ex.WriteMessage(ws, chat) || !ex.WriteMessage(ws, test) || !ex.WriteMessage(ws, null)) {
-    fail("message_stream", "dispatch write failed");
-    return;
-  }
-  ws.flush();
-  if (!checkGolden("message_stream", gBuffer.subarray(0, ws.bytesProcessed()))) {
-    failed = true;
-  }
-}
 
 // --------------------------------------------------------------------------
 
@@ -1878,7 +1643,6 @@ function main() {
 
   process.stderr.write(`schema bench (js, node ${process.versions.node}, ${PRODUCTION ? "production" : "checked"} mode)\n`);
 
-  checkMessageStreamGolden();
 
   // rigidbody_at_rest: the pinned at-rest twin of rigidbody_moving
   const atRest = pinRigidBodyMoving();
@@ -1922,13 +1686,6 @@ function main() {
   benchMessage("probearray", "probearray", 20000000, pinProbeArray(), ex.WriteProbeArray, ex.ReadProbeArray, varyProbeArray);
   benchMessage("testdata", "testdata", 8000000, pinTestData(), ex.WriteTestData, ex.ReadTestData, varyTestData);
   benchMessage("real_packet", "real_packet", 8000000, new realworld.RealPacket(), realworld.WriteRealPacket, realworld.ReadRealPacket, varyRealPacket);
-
-  // ship_shallow: an OBJECT-family view — the runtime tier is its only
-  // codec in v1 (flat covers types, messages and dispatch; §8.1 names the
-  // object lever)
-  benchMessage("ship_shallow", "ship_shallow", 32000000, pinShipShallow(), ex.WriteShipData_Shallow, ex.ReadShipData_Shallow, varyShipShallow);
-
-  benchBatch();
 
   // family rt (§1.3/§1.5): the runtime API by hand, oracle-gated against
   // the goldens the generated code pinned. Iteration counts are fixed and

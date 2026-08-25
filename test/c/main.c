@@ -11,10 +11,8 @@
 #include <string.h>
 
 #include "TypesWire.h"
-#include "MessagesWire.h"
 #include "EnumsWire.h"
 #include "WireWire.h"
-#include "ObjectsWire.h"
 
 static int failed = 0;
 
@@ -452,117 +450,6 @@ int main( void )
         check( write_input_packet( &w, &packet ), "write InputPacket" );
         serialize_write_flush( &w );
         golden_wire( "inputpacket", buffer, serialize_write_bytes_processed( &w ) );
-    }
-
-    /* ---- the object SHALLOW view: the quantized wire ----
-       The quantized values are the ones QuantizeShip produces for the Go and
-       C++ tests' interpolate input; populating the shallow view directly tests
-       the WIRE independently of the quantize pair. */
-    {
-        ShipData_Shallow q;
-        memset( &q, 0, sizeof( q ) );
-        q.ship_type = SHIP_TYPE_CORVETTE;
-        q.position_x = 1536;      /* 1.5 * 1024 */
-        q.position_y = -2304;     /* -2.25 * 1024 */
-        q.position_z = 102400;    /* 100.0 * 1024 */
-        q.rotation_x = 0; q.rotation_y = 0; q.rotation_z = 0; q.rotation_w = 1024;
-        q.linear_velocity_x = 3072; q.linear_velocity_y = 0; q.linear_velocity_z = -1024;
-        q.flags = SHIP_FLAGS_BOOSTING;
-        q.team = TEAM_RED;
-        q.health = 750;
-        q.thrust = 55;
-
-        /* the Quantize pair must produce exactly these values from the
-           interpolate domain — the same check the Go and C++ tests make */
-        {
-            ShipData_Interpolate interp;
-            ShipData_Shallow qq;
-            memset( &interp, 0, sizeof( interp ) );
-            interp.ship_type = SHIP_TYPE_CORVETTE;
-            interp.position.x = 1.5; interp.position.y = -2.25; interp.position.z = 100.0;
-            interp.rotation.x = 0.0; interp.rotation.y = 0.0; interp.rotation.z = 0.0; interp.rotation.w = 1.0;
-            interp.linear_velocity.x = 3.0; interp.linear_velocity.y = 0.0; interp.linear_velocity.z = -1.0;
-            interp.flags = SHIP_FLAGS_BOOSTING;
-            interp.team = TEAM_RED;
-            interp.health = 750;
-            interp.thrust = 55;
-
-            memset( &qq, 0, sizeof( qq ) );
-            quantize_ship( &interp, &qq );
-            check( qq.position_x == 1536, "1.5 * 1024 quantizes to 1536" );
-            check( qq.position_y == -2304, "-2.25 * 1024 quantizes to -2304" );
-            check( qq.position_z == 102400, "100.0 * 1024 quantizes to 102400" );
-            check( qq.rotation_w == 1024, "1.0 * 1024 quantizes to 1024" );
-            check( qq.linear_velocity_x == 3072 && qq.linear_velocity_z == -1024,
-                   "velocity quantizes" );
-            check( qq.health == 750 && qq.thrust == 55, "projected fields copy" );
-            check( qq.team == TEAM_RED && qq.flags == SHIP_FLAGS_BOOSTING, "discrete fields copy" );
-
-            /* and back: unquantize returns the representable quantum */
-            {
-                ShipData_Interpolate back;
-                memset( &back, 0, sizeof( back ) );
-                unquantize_ship( &qq, &back );
-                check( back.position.x == 1.5, "1536 / 1024 unquantizes to 1.5 exactly" );
-                check( back.position.y == -2.25, "-2304 / 1024 unquantizes to -2.25 exactly" );
-                check( back.rotation.w == 1.0, "1024 / 1024 unquantizes to 1.0 exactly" );
-            }
-        }
-
-        serialize_write_stream_init( &w, buffer, sizeof( buffer ) );
-        check( write_ship_data_shallow( &w, &q ), "write ShipData_Shallow" );
-        serialize_write_flush( &w );
-        golden_wire( "ship_shallow", buffer, serialize_write_bytes_processed( &w ) );
-
-        {
-            ShipData_Shallow back;
-            memset( &back, 0, sizeof( back ) );
-            serialize_read_stream_init( &r, buffer, serialize_write_bytes_processed( &w ) );
-            check( read_ship_data_shallow( &r, &back ), "read ShipData_Shallow" );
-            check( back.position_x == 1536 && back.position_y == -2304 && back.position_z == 102400,
-                   "shallow position round-trips" );
-            check( back.rotation_w == 1024, "shallow rotation round-trips" );
-            check( back.health == 750 && back.thrust == 55, "shallow projected fields round-trip" );
-        }
-    }
-
-    /* ---- the Message dispatch surface: tag + union, and the terminator ---- */
-    {
-        Message m;
-        memset( &m, 0, sizeof( m ) );
-
-        serialize_write_stream_init( &w, buffer, sizeof( buffer ) );
-
-        m.type = MESSAGE_TYPE_CHAT;
-        memset( &m.as.chat, 0, sizeof( m.as.chat ) );
-        memcpy( m.as.chat.text, "dispatch", 8 );
-        m.as.chat.text_length = 8;
-        check( write_message( &w, &m ), "write Message chat" );
-
-        m.type = MESSAGE_TYPE_TEST;
-        memset( &m.as.test, 0, sizeof( m.as.test ) );
-        m.as.test.test_b = 42;
-        check( write_message( &w, &m ), "write Message test" );
-
-        m.type = MESSAGE_TYPE_NONE;
-        check( write_message( &w, &m ), "write Message terminator" );
-
-        serialize_write_flush( &w );
-        golden_wire( "message_stream", buffer, serialize_write_bytes_processed( &w ) );
-
-        {
-            Message back;
-            serialize_read_stream_init( &r, buffer, serialize_write_bytes_processed( &w ) );
-            memset( &back, 0, sizeof( back ) );
-            check( read_message( &r, &back ), "read Message 1" );
-            check( back.type == MESSAGE_TYPE_CHAT, "first message is Chat" );
-            check( back.as.chat.text_length == 8 && memcmp( back.as.chat.text, "dispatch", 8 ) == 0,
-                   "Chat arm decodes" );
-            check( read_message( &r, &back ), "read Message 2" );
-            check( back.type == MESSAGE_TYPE_TEST && back.as.test.test_b == 42, "Test arm decodes" );
-            check( read_message( &r, &back ), "read Message terminator" );
-            check( back.type == MESSAGE_TYPE_NONE, "terminator decodes as None" );
-        }
     }
 
     /* ---- SPEC §5: BOTH untaken sides zero on read ----

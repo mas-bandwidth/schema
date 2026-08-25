@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package example — protocol id 0xbc05d83a8135cdb9
+// package example — protocol id 0x0bde7acdd36abc6a
 
 package example
 
@@ -654,6 +654,178 @@ func ReadProbeArray(stream *serialize.ReadStream, value *ProbeArray) error {
 	}
 	if err := ReadProbeConfig(stream, &value.Config); err != nil {
 		return err
+	}
+	return stream.Err()
+}
+
+// type Heartbeat
+type Heartbeat struct {
+}
+
+// HeartbeatMaxBits is the longest wire path; align pads at worst case (SPEC §6.1).
+// HeartbeatMaxBytes is rounded up to the 8-byte write-buffer granularity.
+const HeartbeatMaxBits = 0
+const HeartbeatMaxBytes = 0
+
+func WriteHeartbeat(stream *serialize.WriteStream, value *Heartbeat) error {
+	_ = value // empty body — presence is the payload (SPEC §4.6)
+	return stream.Err()
+}
+
+func ReadHeartbeat(stream *serialize.ReadStream, value *Heartbeat) error {
+	_ = value
+	return stream.Err()
+}
+
+// type Test
+type Test struct {
+	TestA uint16
+	TestB int16 // wire [0, 1000]
+	TestC int16 // wire [0, 1000]
+	TestD int16 // wire [0, 1000]
+}
+
+// TestMaxBits is the longest wire path; align pads at worst case (SPEC §6.1).
+// TestMaxBytes is rounded up to the 8-byte write-buffer granularity.
+const TestMaxBits = 46
+const TestMaxBytes = 8
+
+func WriteTest(stream *serialize.WriteStream, value *Test) error {
+	{
+		rawValue := uint32(value.TestA)
+		stream.SerializeBits(&rawValue, 16)
+	}
+	{
+		rangeValue := int32(value.TestB)
+		if rangeValue < 0 || rangeValue > 1000 {
+			return serialize.ErrValueOutOfRange
+		}
+		{
+			offsetValue := uint32(rangeValue)
+			stream.SerializeBits(&offsetValue, 10)
+		}
+	}
+	{
+		rangeValue := int32(value.TestC)
+		if rangeValue < 0 || rangeValue > 1000 {
+			return serialize.ErrValueOutOfRange
+		}
+		{
+			offsetValue := uint32(rangeValue)
+			stream.SerializeBits(&offsetValue, 10)
+		}
+	}
+	{
+		rangeValue := int32(value.TestD)
+		if rangeValue < 0 || rangeValue > 1000 {
+			return serialize.ErrValueOutOfRange
+		}
+		{
+			offsetValue := uint32(rangeValue)
+			stream.SerializeBits(&offsetValue, 10)
+		}
+	}
+	return stream.Err()
+}
+
+func ReadTest(stream *serialize.ReadStream, value *Test) error {
+	{
+		rawValue := uint32(0)
+		stream.SerializeBits(&rawValue, 16)
+		value.TestA = uint16(rawValue)
+	}
+	{
+		rangeValue := int32(0)
+		stream.SerializeInt(&rangeValue, 0, 1000)
+		value.TestB = int16(rangeValue)
+	}
+	{
+		rangeValue := int32(0)
+		stream.SerializeInt(&rangeValue, 0, 1000)
+		value.TestC = int16(rangeValue)
+	}
+	{
+		rangeValue := int32(0)
+		stream.SerializeInt(&rangeValue, 0, 1000)
+		value.TestD = int16(rangeValue)
+	}
+	return stream.Err()
+}
+
+// type Block
+type Block struct {
+	Data       [MaxBlockSize]byte // bytes(MaxBlockSize): fixed buffer, used length beside it (SPEC §4.7)
+	DataLength int32
+}
+
+// BlockMaxBits is the longest wire path; align pads at worst case (SPEC §6.1).
+// BlockMaxBytes is rounded up to the 8-byte write-buffer granularity.
+const BlockMaxBits = 16018
+const BlockMaxBytes = 2008
+
+func WriteBlock(stream *serialize.WriteStream, value *Block) error {
+	if value.DataLength < 0 || value.DataLength > MaxBlockSize {
+		return serialize.ErrValueOutOfRange
+	}
+	{
+		offsetValue := uint32(value.DataLength)
+		stream.SerializeBits(&offsetValue, 11)
+	}
+	if stream.Err() != nil { // the length guards the slice (§6.3)
+		return stream.Err()
+	}
+	stream.SerializeBytes(value.Data[:value.DataLength])
+	return stream.Err()
+}
+
+func ReadBlock(stream *serialize.ReadStream, value *Block) error {
+	stream.SerializeInt(&value.DataLength, 0, MaxBlockSize)
+	if stream.Err() != nil { // the length guards the slice (§6.3)
+		return stream.Err()
+	}
+	stream.SerializeBytes(value.Data[:value.DataLength])
+	return stream.Err()
+}
+
+// type Chat
+type Chat struct {
+	Text       [MaxChatLength]byte // string(MaxChatLength): max length, used length beside it (SPEC §4.7)
+	TextLength int32
+}
+
+// ChatMaxBits is the longest wire path; align pads at worst case (SPEC §6.1).
+// ChatMaxBytes is rounded up to the 8-byte write-buffer granularity.
+const ChatMaxBits = 2064
+const ChatMaxBytes = 264
+
+func WriteChat(stream *serialize.WriteStream, value *Chat) error {
+	if value.TextLength < 0 || value.TextLength > MaxChatLength {
+		return serialize.ErrValueOutOfRange
+	}
+	{
+		offsetValue := uint32(value.TextLength)
+		stream.SerializeBits(&offsetValue, 9)
+	}
+	if stream.Err() != nil { // the length guards the slice (§6.3)
+		return stream.Err()
+	}
+	stream.SerializeBytes(value.Text[:value.TextLength])
+	return stream.Err()
+}
+
+func ReadChat(stream *serialize.ReadStream, value *Chat) error {
+	stream.SerializeInt(&value.TextLength, 0, MaxChatLength)
+	if stream.Err() != nil { // the length guards the slice (§6.3)
+		return stream.Err()
+	}
+	stream.SerializeBytes(value.Text[:value.TextLength])
+	if stream.Err() != nil {
+		return stream.Err()
+	}
+	for i := int32(0); i < value.TextLength; i++ {
+		if value.Text[i] == 0 {
+			return ErrValidation
+		}
 	}
 	return stream.Err()
 }

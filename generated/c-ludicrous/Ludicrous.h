@@ -2,7 +2,7 @@
    SPDX-License-Identifier: NONE — this generated output is yours, under terms of
    your choice. See the LICENSE exception in the schema compiler; the compiler is
    AGPL-3.0, its output is not.
-   package ludicrous — protocol id 0xa925c86b46058512 */
+   package ludicrous — protocol id 0xa388f75ddc741965 */
 
 #ifndef SCHEMA_LUDICROUS_LUDICROUS_H
 #define SCHEMA_LUDICROUS_LUDICROUS_H
@@ -25,7 +25,7 @@ extern "C" {
 
 /* The unit's protocol id — the hash of its wire shape (SPEC §3.1). Two
    sides at the same id speak identical bits; there is no other versioning. */
-#define LUDICROUS_PROTOCOL_ID 0xa925c86b46058512ULL
+#define LUDICROUS_PROTOCOL_ID 0xa388f75ddc741965ULL
 
 #define MAX_WORLD_UNITS (30000)
 
@@ -107,7 +107,7 @@ static SCHEMA_UNUSED WideProbe new_wide_probe( void )
 }
 
 
-/* message LudicrousState */
+/* type LudicrousState */
 typedef struct LudicrousState {
     DriveMode mode;
     FixedProbe probe;
@@ -177,159 +177,6 @@ static SCHEMA_UNUSED FixedQuat new_fixed_quat( void )
     value.w = 1073741824;
     return value;
 }
-
-
-/* ---- object Body — one definition, a generated family per target (SPEC §4.8) ---- */
-
-/* BodyState — the full simulation struct: every field */
-typedef struct BodyState {
-    FixedVec position;
-    FixedQuat rotation;
-    FixedVec velocity;
-    double spin;
-} BodyState;
-
-/* BodyData_Deep — every non- | local field, deep encodings: full state for
-   client-side prediction */
-typedef struct BodyData_Deep {
-    FixedVec position;
-    FixedQuat rotation;
-    FixedVec velocity;
-} BodyData_Deep;
-
-/* BodyData_Shallow — the | interpolate fields on the quantized wire */
-typedef struct BodyData_Shallow {
-    FixedVec position;
-    FixedQuat rotation;
-    FixedVec velocity;
-} BodyData_Shallow;
-
-/* BodyData_Interpolate — the same fields in their interpolation domain */
-typedef struct BodyData_Interpolate {
-    FixedVec position;
-    FixedQuat rotation;
-    FixedVec velocity;
-} BodyData_Interpolate;
-
-/* QuantizeBody/UnquantizeBody are not emitted: every | interpolate field
-   is already wire-domain (fixed components are their own quantization,
-   SPEC §4.8) — Interpolate and Shallow are the same values. */
-
-
-/* ---- object NarrowBody — one definition, a generated family per target (SPEC §4.8) ---- */
-
-/* NarrowBodyState — the full simulation struct: every field */
-typedef struct NarrowBodyState {
-    FixedVec position;
-    FixedQuat rotation;
-    FixedVec velocity;
-} NarrowBodyState;
-
-/* NarrowBodyData_Deep — every non- | local field, deep encodings: full state for
-   client-side prediction */
-typedef struct NarrowBodyData_Deep {
-    FixedVec position;
-    FixedQuat rotation;
-    FixedVec velocity;
-} NarrowBodyData_Deep;
-
-/* NarrowBodyData_Shallow — the | interpolate fields on the quantized wire */
-typedef struct NarrowBodyData_Shallow {
-    /* position: FixedVec narrowed — 8 fractional bits kept (SPEC §4.8 rule 2b) */
-    int32_t position_x; /* [-25600000, 25600000] */
-    int32_t position_y; /* [-25600000, 25600000] */
-    int32_t position_z; /* [-25600000, 25600000] */
-    /* rotation: FixedQuat narrowed — 10 fractional bits kept (SPEC §4.8 rule 2b) */
-    int16_t rotation_x; /* [-1024, 1024] */
-    int16_t rotation_y; /* [-1024, 1024] */
-    int16_t rotation_z; /* [-1024, 1024] */
-    int16_t rotation_w; /* [-1024, 1024] */
-    FixedVec velocity;
-} NarrowBodyData_Shallow;
-
-/* NarrowBodyData_Interpolate — the same fields in their interpolation domain */
-typedef struct NarrowBodyData_Interpolate {
-    FixedVec position;
-    FixedQuat rotation;
-    FixedVec velocity;
-} NarrowBodyData_Interpolate;
-
-/* QuantizeNarrowBody — the interpolate domain to the quantized wire domain. */
-static SCHEMA_UNUSED void quantize_narrow_body( const NarrowBodyData_Interpolate * input, NarrowBodyData_Shallow * output )
-{
-    {
-        serialize_int64_t raw = (serialize_int64_t) input->position.x;
-        output->position_x = (int32_t) ( raw >= 0 ? ( raw + 128LL ) >> 8 : -( ( -raw + 128LL ) >> 8 ) );
-    }
-    {
-        serialize_int64_t raw = (serialize_int64_t) input->position.y;
-        output->position_y = (int32_t) ( raw >= 0 ? ( raw + 128LL ) >> 8 : -( ( -raw + 128LL ) >> 8 ) );
-    }
-    {
-        serialize_int64_t raw = (serialize_int64_t) input->position.z;
-        output->position_z = (int32_t) ( raw >= 0 ? ( raw + 128LL ) >> 8 : -( ( -raw + 128LL ) >> 8 ) );
-    }
-    {
-        serialize_int64_t raw = (serialize_int64_t) input->rotation.x;
-        output->rotation_x = (int16_t) ( raw >= 0 ? ( raw + 524288LL ) >> 20 : -( ( -raw + 524288LL ) >> 20 ) );
-    }
-    {
-        serialize_int64_t raw = (serialize_int64_t) input->rotation.y;
-        output->rotation_y = (int16_t) ( raw >= 0 ? ( raw + 524288LL ) >> 20 : -( ( -raw + 524288LL ) >> 20 ) );
-    }
-    {
-        serialize_int64_t raw = (serialize_int64_t) input->rotation.z;
-        output->rotation_z = (int16_t) ( raw >= 0 ? ( raw + 524288LL ) >> 20 : -( ( -raw + 524288LL ) >> 20 ) );
-    }
-    {
-        serialize_int64_t raw = (serialize_int64_t) input->rotation.w;
-        output->rotation_w = (int16_t) ( raw >= 0 ? ( raw + 524288LL ) >> 20 : -( ( -raw + 524288LL ) >> 20 ) );
-    }
-    output->velocity = input->velocity;
-}
-
-/* UnquantizeNarrowBody — the quantized wire domain back to the interpolate domain. */
-static SCHEMA_UNUSED void unquantize_narrow_body( const NarrowBodyData_Shallow * input, NarrowBodyData_Interpolate * output )
-{
-    output->position.x = (int64_t) ( (serialize_int64_t) input->position_x << 8 );
-    output->position.y = (int64_t) ( (serialize_int64_t) input->position_y << 8 );
-    output->position.z = (int64_t) ( (serialize_int64_t) input->position_z << 8 );
-    output->rotation.x = (int32_t) ( (serialize_int64_t) input->rotation_x << 20 );
-    output->rotation.y = (int32_t) ( (serialize_int64_t) input->rotation_y << 20 );
-    output->rotation.z = (int32_t) ( (serialize_int64_t) input->rotation_z << 20 );
-    output->rotation.w = (int32_t) ( (serialize_int64_t) input->rotation_w << 20 );
-    output->velocity = input->velocity;
-}
-
-
-/* The message tag: the discriminant for a heterogeneous stream. None = 0 is
-   the stream terminator (SPEC §4.8). */
-typedef uint8_t MessageType;
-#define MESSAGE_TYPE_NONE 0
-#define MESSAGE_TYPE_LUDICROUS_STATE 1
-#define MESSAGE_TYPE_MAX 1
-
-/* Debug/log name for any MessageType value, out-of-set included. */
-static SCHEMA_UNUSED const char * enum_name_message_type( MessageType value )
-{
-    switch ( value )
-    {
-        case MESSAGE_TYPE_NONE: return "None";
-        case 1: return "LudicrousState";
-        default: return "???";
-    }
-}
-
-/* The message union. C has no variant, so this is the tag plus a union of
-   the arms — the same shape the C++ target's default representation uses.
-   The selected arm is established ZEROED at selection (SPEC §5): read_message
-   zeroes before decoding. Bytes of unselected arms are indeterminate. */
-typedef struct Message {
-    MessageType type;
-    union {
-        LudicrousState ludicrous_state;
-    } as;
-} Message;
 
 #ifdef __cplusplus
 }

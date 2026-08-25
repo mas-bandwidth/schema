@@ -20,29 +20,19 @@ import (
 )
 
 // widths is a generator that emits nothing a language would compile — it
-// reports each message's worst-case wire width, the bound the emitters
-// advertise (SPEC §6.1 item 4), then every symbolically-declared range bound
-// in the author's own spelling and a target spelling. The point
-// is the shape: a type outside this module satisfying compiler.Generator,
-// reading the IR through the public derived-parameter helpers and rendering
-// declared expressions through the public expression surface.
+// reports every symbolically-declared range bound in the author's own
+// spelling and a target spelling. The point is the shape: a type outside
+// this module satisfying compiler.Generator, reading the IR through the
+// public derived-parameter helpers and rendering declared expressions
+// through the public expression surface.
 type widths struct{}
 
 // Names registers this generator as `--lang widths`.
 func (widths) Names() []string { return []string{"widths"} }
 
-// Generate reports one line per message: worst-case bits, the write-buffer
-// size that holds them, and the field count.
+// Generate reports every symbolically-declared bound.
 func (widths) Generate(u *ir.Unit, _ compiler.Options) (map[string][]byte, error) {
 	var b strings.Builder
-	for _, name := range u.Messages {
-		st, ok := u.Structs[name]
-		if !ok {
-			return nil, fmt.Errorf("message %s has no struct in the unit", name)
-		}
-		bits := ir.MaxBitsStruct(st)
-		fmt.Fprintf(&b, "%s %d bits %d bytes %d fields\n", name, bits, ir.MaxBytes(bits), len(st.Fields))
-	}
 	// Every range bound the author declared through named constants, rendered
 	// as the source expression the resolved IntMax alone cannot give back —
 	// once in the schema spelling, once the way a SCREAMING_SNAKE target

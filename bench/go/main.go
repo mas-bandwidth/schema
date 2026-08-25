@@ -42,7 +42,7 @@ const NumVariants = 64 // read-path variant buffers
 
 // buffers: write buffers must be a multiple of 8 bytes (qword-flush contract);
 // variant arrays keep >= 7 bytes of backing slack past the packet for the
-// reader's window loads. 4096 covers MessageMaxBytes (2008) with slack.
+// reader's window loads. 4096 covers the largest pinned shape (2008 bytes) with slack.
 const BufferSize = 4096
 
 // §2.7 variant-buffer stride: the 64 rotating read buffers are allocated at
@@ -181,7 +181,7 @@ func report(bench, path string, iters int64, bytesPerOp int64, s runStats, famil
 }
 
 // ------------------------------------------------------------------------------------------
-// the per-message benchmark driver
+// the per-shape benchmark driver
 // ------------------------------------------------------------------------------------------
 
 func benchMessage[T any](name, golden string, iters int64, pinned T,
@@ -375,21 +375,6 @@ func pinShipCreate() example.ShipCreate {
 	return in
 }
 
-func pinShipShallow() example.ShipData_Shallow {
-	var interp example.ShipData_Interpolate
-	interp.ShipType = example.ShipTypeCorvette
-	interp.Position = example.Vec3{X: 1.5, Y: -2.25, Z: 100.0}
-	interp.Rotation = example.Quat{X: 0.0, Y: 0.0, Z: 0.0, W: 1.0}
-	interp.LinearVelocity = example.Vec3{X: 3.0, Y: 0.0, Z: -1.0}
-	interp.Flags = example.ShipFlagsBoosting
-	interp.Team = example.TeamRed
-	interp.Health = 750
-	interp.Thrust = 55
-	var q example.ShipData_Shallow
-	example.QuantizeShip(&interp, &q)
-	return q
-}
-
 func pinProbeHeader() example.ProbeHeader {
 	var h example.ProbeHeader
 	h.Version = 5
@@ -515,18 +500,6 @@ func varyShipCreate(m *example.ShipCreate, rng uint64) {
 	m.Flags = example.ShipFlags(rng & 15) // 4 wire bits, has_flags stays true
 	m.Health = int16((rng >> 5) & 511)    // within [0, 1000]
 	m.Thrust = int8((rng >> 14) & 63)     // within [0, 100]
-}
-
-func varyShipShallow(m *example.ShipData_Shallow, rng uint64) {
-	m.PositionX = int32((rng>>8)&0xFFFFF) - 0x80000
-	m.PositionY = int32((rng>>16)&0xFFFFF) - 0x80000
-	m.PositionZ = int32((rng>>24)&0xFFFFF) - 0x80000
-	m.RotationX = int16(int32(rng&0x7FF) - 1024)
-	m.RotationW = int16(int32((rng>>11)&0x7FF) - 1024)
-	m.LinearVelocityX = int32((rng>>32)&0x3FFFFF) - 2097152
-	m.Flags = example.ShipFlags(rng & 15)
-	m.Health = uint16((rng >> 5) & 511)
-	m.Thrust = uint8((rng >> 14) & 63)
 }
 
 func varyProbeHeader(m *example.ProbeHeader, rng uint64) {
@@ -657,214 +630,8 @@ func varyRealPacket(m *realworld.RealPacket, rng uint64) {
 }
 
 // ------------------------------------------------------------------------------------------
-// the synthetic steady-state batch: NumBatchMessages messages through the
-// Message dispatch surface (WriteMessage/ReadMessage) plus the None
-// terminator, mixed types driven by the LCG — the C++ batch builder exactly.
-// ------------------------------------------------------------------------------------------
-
-const NumBatchMessages = 4096
-const BatchPasses = 25600 // rescaled 2026-08-23 with the mix rebalance: §2.1's floor wins (§1.2)
-
-func buildBatch(batchBuffer []byte) ([]example.Message, int64) {
-	messages := make([]example.Message, NumBatchMessages)
-
-	rng := uint64(12345)
-	for k := 0; k < NumBatchMessages; k++ {
-		rng = benchRng(rng)
-		pick := int((rng >> 32) % 20)
-		switch {
-		case pick < 1: // 5% Chat
-			m := &example.Chat{}
-			m.TextLength = 8 + int32(rng&7)
-			for i := int32(0); i < m.TextLength; i++ {
-				m.Text[i] = byte('a' + ((rng >> (i & 7)) & 15))
-			}
-			messages[k] = m
-		case pick < 7: // 30% Test
-			m := &example.Test{}
-			m.TestA = uint16(rng)
-			m.TestB = int16((rng >> 16) & 511)
-			m.TestC = int16((rng >> 25) & 511)
-			m.TestD = int16((rng >> 34) & 511)
-			messages[k] = m
-		case pick < 12: // 25% Synchronize
-			m := &example.Synchronize{}
-			m.SyncFrame = rng
-			m.SyncSequence = uint16(rng >> 8)
-			messages[k] = m
-		case pick < 17: // 25% Timescale
-			m := &example.Timescale{}
-			m.Scale = float64(uint32(rng)&0xFFFF) / 65536.0
-			m.FrameA = uint32(rng >> 16)
-			m.FrameB = uint32(rng >> 24)
-			messages[k] = m
-		case pick < 19: // 10% Heartbeat
-			messages[k] = &example.Heartbeat{}
-		default: // 5% Block
-			m := &example.Block{}
-			m.DataLength = 8 + int32(rng&15)
-			for i := int32(0); i < m.DataLength; i++ {
-				m.Data[i] = uint8(rng >> (uint(i) & 31))
-			}
-			messages[k] = m
-		}
-	}
-
-	ws := serialize.NewWriteStream(batchBuffer)
-	for k := 0; k < NumBatchMessages; k++ {
-		if err := example.WriteMessage(ws, messages[k]); err != nil {
-			fail("message_batch", "batch write failed during setup")
-			return nil, 0
-		}
-	}
-	if err := example.WriteMessage(ws, nil); err != nil { // nil is the None terminator
-		fail("message_batch", "terminator write failed during setup")
-		return nil, 0
-	}
-	ws.Flush()
-	return messages, ws.BytesProcessed()
-}
-
-func benchBatch() {
-	// worst case is NumBatchMessages * MessageMaxBytes; actual is far less.
-	// + 8 read slack, and the size is a multiple of 8 (write contract).
-	batchBufferSize := (NumBatchMessages+1)*example.MessageMaxBytes + 8
-	batchBuffer := make([]byte, batchBufferSize)
-
-	messages, batchBytes := buildBatch(batchBuffer)
-	if messages == nil {
-		return
-	}
-
-	const passes = int64(BatchPasses)
-	totalMsgs := passes * NumBatchMessages
-
-	writeRates := make([]float64, gNumRuns)
-	readRates := make([]float64, gNumRuns)
-	rng := uint64(999)
-
-	// write path: whole batch per pass; one message mutates per pass so the
-	// batch is never loop-invariant
-	ws := serialize.NewWriteStream(batchBuffer)
-	for run := -1; run < gNumRuns; run++ {
-		start := time.Now()
-		for pass := int64(0); pass < passes; pass++ {
-			rng = benchRng(rng)
-			switch m := messages[(rng>>16)%NumBatchMessages].(type) {
-			case *example.Synchronize:
-				m.SyncFrame = rng
-			case *example.Test:
-				m.TestA = uint16(rng)
-			}
-			ws.Reset(batchBuffer)
-			for k := 0; k < NumBatchMessages; k++ {
-				if err := example.WriteMessage(ws, messages[k]); err != nil {
-					fail("message_batch", "write failed in loop")
-					return
-				}
-			}
-			example.WriteMessage(ws, nil)
-			ws.Flush()
-			gSink = gSink + uint64(ws.BytesProcessed())
-		}
-		elapsed := time.Since(start).Seconds()
-		if run >= 0 {
-			writeRates[run] = float64(totalMsgs) / elapsed
-		}
-	}
-
-	// the read buffer: rebuild once from the deterministic batch state so bytes match
-	if m, _ := buildBatch(batchBuffer); m == nil {
-		return
-	}
-
-	// read path: read messages until the None terminator, whole batch per pass;
-	// reads land in pre-allocated storage — no heap per message
-	var storage example.MessageStorage
-	rs := serialize.NewReadStream(batchBuffer[:batchBytes])
-	for run := -1; run < gNumRuns; run++ {
-		start := time.Now()
-		for pass := int64(0); pass < passes; pass++ {
-			rs.Reset(batchBuffer[:batchBytes])
-			count := int64(0)
-			for {
-				m, err := example.ReadMessage(rs, &storage)
-				if err != nil {
-					fail("message_batch", "read failed in loop")
-					return
-				}
-				if m == nil {
-					break
-				}
-				runtime.KeepAlive(m)
-				count++
-			}
-			if count != NumBatchMessages {
-				fail("message_batch", "batch message count mismatch on read")
-				return
-			}
-			gSink = gSink + uint64(count)
-		}
-		elapsed := time.Since(start).Seconds()
-		if run >= 0 {
-			readRates[run] = float64(totalMsgs) / elapsed
-		}
-	}
-
-	bytesPerMsg := batchBytes / NumBatchMessages
-	report("message_batch", "write", totalMsgs, bytesPerMsg, stats(writeRates), "gen")
-	report("message_batch", "read", totalMsgs, bytesPerMsg, stats(readRates), "gen")
-
-	// allocation note (optimization seed, not a benchmark): allocs during one
-	// extra untimed pass of each path
-	var before, after runtime.MemStats
-	runtime.ReadMemStats(&before)
-	ws.Reset(batchBuffer)
-	for k := 0; k < NumBatchMessages; k++ {
-		example.WriteMessage(ws, messages[k])
-	}
-	example.WriteMessage(ws, nil)
-	ws.Flush()
-	runtime.ReadMemStats(&after)
-	writeAllocs := after.Mallocs - before.Mallocs
-
-	runtime.ReadMemStats(&before)
-	rs.Reset(batchBuffer[:batchBytes])
-	for {
-		m, err := example.ReadMessage(rs, &storage)
-		if err != nil || m == nil {
-			break
-		}
-	}
-	runtime.ReadMemStats(&after)
-	readAllocs := after.Mallocs - before.Mallocs
-	fmt.Fprintf(os.Stderr, "alloc note: message_batch one pass (%d msgs): write %d allocs, read %d allocs\n",
-		NumBatchMessages, writeAllocs, readAllocs)
-}
 
 // ------------------------------------------------------------------------------------------
-
-// the message_stream golden: dispatch wire self-check (not a benchmark)
-func checkMessageStreamGolden() {
-	chat := &example.Chat{}
-	copy(chat.Text[:], "dispatch")
-	chat.TextLength = 8
-	test := &example.Test{TestB: 42}
-
-	ws := serialize.NewWriteStream(gBuffer[:])
-	if err := example.WriteMessage(ws, chat); err != nil {
-		fail("message_stream", "dispatch write failed")
-		return
-	}
-	if err := example.WriteMessage(ws, test); err != nil {
-		fail("message_stream", "dispatch write failed")
-		return
-	}
-	ws.Flush()
-	if !checkGolden("message_stream", gBuffer[:ws.BytesProcessed()]) {
-		failed = true
-	}
-}
 
 func main() {
 	args := os.Args[1:]
@@ -893,7 +660,6 @@ func main() {
 
 	fmt.Fprintf(os.Stderr, "schema bench (go)\n")
 
-	checkMessageStreamGolden()
 
 	// rigidbody_at_rest: the pinned at-rest twin of rigidbody_moving
 	atRest := pinRigidBodyMoving()
@@ -905,7 +671,6 @@ func main() {
 	benchMessage("test", "", 192000000, example.Test{}, example.WriteTest, example.ReadTest, varyTest)
 	benchMessage("inputpacket", "inputpacket", 16000000, pinInputPacket(), example.WriteInputPacket, example.ReadInputPacket, varyInputPacket)
 	benchMessage("shipcreate", "shipcreate_flags", 32000000, pinShipCreate(), example.WriteShipCreate, example.ReadShipCreate, varyShipCreate)
-	benchMessage("ship_shallow", "ship_shallow", 32000000, pinShipShallow(), example.WriteShipData_Shallow, example.ReadShipData_Shallow, varyShipShallow)
 	benchMessage("probe_header", "probe_header", 256000000, pinProbeHeader(), example.WriteProbeHeader, example.ReadProbeHeader, varyProbeHeader)
 	benchMessage("probebits", "probebits", 128000000, pinProbeBits(), example.WriteProbeBits, example.ReadProbeBits, varyProbeBits)
 	benchMessage("probearray", "probearray", 20000000, pinProbeArray(), example.WriteProbeArray, example.ReadProbeArray, varyProbeArray)
@@ -918,7 +683,6 @@ func main() {
 	// reference (§2.1).
 	benchMessage("real_packet", "real_packet", 8000000, realworld.NewRealPacket(), realworld.WriteRealPacket, realworld.ReadRealPacket, varyRealPacket)
 
-	benchBatch()
 
 	// family rt (§1.3/§1.5): the runtime API by hand, oracle-gated against
 	// the goldens the generated code pinned. Iteration counts are fixed and

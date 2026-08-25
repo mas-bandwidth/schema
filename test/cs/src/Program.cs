@@ -13,7 +13,7 @@
 // Mirrors test/go/main.go block for block where applicable. The Go test's
 // typed-nil refusal case has no C# twin: null IS the None terminator here (a
 // C# null carries no type), so the only out-of-set value is a user-defined
-// Message subclass — refused with nothing written, tested below. Generated
+// Generated
 // classes have no operator==, so per-type Eq helpers compare field by field.
 //
 // Error semantics under test: wire functions return bool; a schema validation
@@ -224,23 +224,9 @@ static class Program
         return EqProbeHeader(a.Header, b.Header) && a.Flags == b.Flags && EqTest(a.Echo, b.Echo);
     }
 
-    static bool EqShipShallow(ShipData_Shallow a, ShipData_Shallow b)
-    {
-        return a.ShipType == b.ShipType
-            && a.PositionX == b.PositionX && a.PositionY == b.PositionY && a.PositionZ == b.PositionZ
-            && a.RotationX == b.RotationX && a.RotationY == b.RotationY && a.RotationZ == b.RotationZ && a.RotationW == b.RotationW
-            && a.LinearVelocityX == b.LinearVelocityX && a.LinearVelocityY == b.LinearVelocityY && a.LinearVelocityZ == b.LinearVelocityZ
-            && a.Flags == b.Flags && a.Team == b.Team && a.Health == b.Health && a.Thrust == b.Thrust;
-    }
 
-    static bool EqMissileShallow(MissileData_Shallow a, MissileData_Shallow b)
-    {
-        return a.MissileType == b.MissileType
-            && a.PositionX == b.PositionX && a.PositionY == b.PositionY && a.PositionZ == b.PositionZ
-            && a.RotationX == b.RotationX && a.RotationY == b.RotationY && a.RotationZ == b.RotationZ && a.RotationW == b.RotationW
-            && a.LinearVelocityX == b.LinearVelocityX && a.LinearVelocityY == b.LinearVelocityY && a.LinearVelocityZ == b.LinearVelocityZ
-            && a.Team == b.Team && a.Flags == b.Flags;
-    }
+
+
 
     // TestDataInstance is the deterministic TestData the C++ test pins — the
     // values must stay mirrored on both sides.
@@ -371,56 +357,6 @@ static class Program
             Check(EqChat(output, input), "Chat round-trips");
         }
 
-        // ---- the Message dispatch surface: abstract base + type-pattern switch ----
-        {
-            Chat chat = new Chat();
-            SetText(chat.Text, "dispatch");
-            chat.TextLength = 8;
-            Test test = new Test();
-            test.TestB = 42;
-
-            WriteStream ws = NewWriteStream();
-            Check(WriteMessage(ws, chat), "write Message chat");
-            Check(WriteMessage(ws, test), "write Message test");
-            Check(WriteMessage(ws, null), "write Message terminator");
-            byte[] wire = Data(ws);
-            GoldenWire("message_stream", wire);
-
-            // reads land in pre-allocated storage — no heap per message (SPEC §6.1);
-            // the returned Message points into it, the union's own discipline
-            MessageStorage storage = new MessageStorage();
-            ReadStream rs = new ReadStream(wire);
-            Check(ReadMessage(rs, storage, out Message m1), "read message 1");
-            Check(m1 is Chat c1 && c1.TextLength == 8
-                && Encoding.ASCII.GetString(c1.Text, 0, 8) == "dispatch", "message 1 is the chat");
-            Check(ReferenceEquals(m1, storage.Chat), "the read message points into the caller's storage");
-            Check(ReadMessage(rs, storage, out Message m2), "read message 2");
-            Check(m2 is Test t2 && t2.TestB == 42, "message 2 is the test");
-            Check(ReadMessage(rs, storage, out Message m3), "read message 3");
-            Check(m3 == null, "message 3 is the None terminator");
-
-            // the tag pair stands alone too
-            WriteStream ws2 = NewWriteStream();
-            Check(WriteMessageType(ws2, MessageType.Chat), "write message type");
-            Check(WriteMessageType(ws2, MessageType.None), "write message type terminator");
-            byte[] wire2 = Data(ws2);
-            ReadStream rs2 = new ReadStream(wire2);
-            MessageType tag = MessageType.None;
-            Check(ReadMessageType(rs2, ref tag), "read message type");
-            Check(tag == MessageType.Chat, "tag round-trips");
-            Check(ReadMessageType(rs2, ref tag), "read message type terminator");
-            Check(tag == MessageType.None, "terminator tag round-trips");
-
-            // a Message subclass from outside the generated set writes NOTHING —
-            // the stream cannot be left with a tag and no payload (a desync), and
-            // the refusal is loud. (The Go typed-nil case has no C# twin: null
-            // carries no type here — null IS the None terminator.)
-            WriteStream ws3 = NewWriteStream();
-            Check(!WriteMessage(ws3, new ForeignMessage()), "a foreign Message subclass is refused");
-            ws3.Flush();
-            Check(ws3.BytesProcessed == 0, "and nothing was written");
-        }
-
         // ---- ProbeHeader: const/reserved/align on the wire; corruption rejected ----
         {
             ProbeHeader input = new ProbeHeader();
@@ -441,51 +377,6 @@ static class Program
             corrupt[0] = 0xAC;
             ReadStream rs2 = new ReadStream(corrupt);
             Check(!ReadProbeHeader(rs2, output), "a corrupted wire constant is REJECTED (SPEC §4.3)");
-        }
-
-        // ---- the object views: Quantize/Unquantize and the shallow wire ----
-        {
-            ShipData_Interpolate interp = new ShipData_Interpolate();
-            interp.ShipType = ShipType.Corvette;
-            interp.Position.X = 1.5;
-            interp.Position.Y = -2.25;
-            interp.Position.Z = 100.0;
-            interp.Rotation.X = 0.0;
-            interp.Rotation.Y = 0.0;
-            interp.Rotation.Z = 0.0;
-            interp.Rotation.W = 1.0;
-            interp.LinearVelocity.X = 3.0;
-            interp.LinearVelocity.Y = 0.0;
-            interp.LinearVelocity.Z = -1.0;
-            interp.Flags = ShipFlagsBoosting;
-            interp.Team = Team.Red;
-            interp.Health = 750; // wire-int domain (rule 5)
-            interp.Thrust = 55;
-
-            ShipData_Shallow q = new ShipData_Shallow();
-            QuantizeShip(interp, q);
-            Check(q.PositionX == 1536, "1.5 * 1024 quantizes to 1536");
-            Check(q.PositionY == -2304, "-2.25 * 1024 quantizes to -2304");
-            Check(q.RotationW == 1024, "1.0 * 1024 quantizes to 1024");
-            Check(q.Health == 750 && q.Thrust == 55, "projected fields copy");
-            Check(q.Team == Team.Red && q.Flags == ShipFlagsBoosting, "discrete fields copy");
-
-            WriteStream ws = NewWriteStream();
-            Check(WriteShipData_Shallow(ws, q), "write ShipData_Shallow");
-            byte[] wire = Data(ws);
-            GoldenWire("ship_shallow", wire);
-
-            ShipData_Shallow q2 = new ShipData_Shallow();
-            ReadStream rs = new ReadStream(wire);
-            Check(ReadShipData_Shallow(rs, q2), "read ShipData_Shallow");
-            Check(EqShipShallow(q2, q), "the shallow wire round-trips");
-
-            ShipData_Interpolate back = new ShipData_Interpolate();
-            UnquantizeShip(q2, back);
-            Check(back.Position.X == 1536.0 / 1024.0, "unquantize recovers x");
-            Check(back.Position.Y == -2304.0 / 1024.0, "unquantize recovers y");
-            Check(back.Rotation.W == 1.0, "unquantize recovers w");
-            Check(back.Health == 750 && back.Team == Team.Red, "discrete and projected copy back");
         }
 
         // ---- InputPacket: counted array of nested classes ----
@@ -736,7 +627,7 @@ static class Program
             Check(output.Config.Retries == 3 && output.Config.Preferred == Weapon.Missile, "config round-trips");
         }
 
-        // ---- ProbeReport: message-as-field, and the widened flags wire ----
+        // ---- ProbeReport: nested composition, and the widened flags wire ----
         {
             ProbeReport input = new ProbeReport();
             input.Header.Version = 3;
@@ -751,7 +642,7 @@ static class Program
             ProbeReport output = new ProbeReport();
             ReadStream rs = new ReadStream(wire);
             Check(ReadProbeReport(rs, output), "read ProbeReport");
-            Check(EqProbeReport(output, input), "ProbeReport round-trips — a message as an ordinary field");
+            Check(EqProbeReport(output, input), "ProbeReport round-trips — a named type as an ordinary field");
 
             // a mask bit above the widened 8-bit wire is refused, not truncated —
             // this refusal is a GENERATED guard (the runtime's raw bit calls mask
@@ -860,55 +751,6 @@ static class Program
             Check(EqRigidBody(output, input), "the moving branch round-trips with velocities intact");
         }
 
-        // ---- Missile: a second object family end to end ----
-        {
-            MissileData_Interpolate interp = new MissileData_Interpolate();
-            interp.MissileType = MissileType.Torpedo;
-            interp.Position.X = -4.0;
-            interp.Position.Y = 8.0;
-            interp.Position.Z = 15.5;
-            interp.Rotation.X = 0.0;
-            interp.Rotation.Y = 0.0;
-            interp.Rotation.Z = 0.0;
-            interp.Rotation.W = 1.0;
-            interp.LinearVelocity.X = 1.0;
-            interp.LinearVelocity.Y = 2.0;
-            interp.LinearVelocity.Z = 3.0;
-            interp.Team = Team.Blue;
-            interp.Flags = 0xF00F;
-
-            MissileData_Shallow q = new MissileData_Shallow();
-            QuantizeMissile(interp, q);
-            Check(q.PositionZ == 15872, "15.5 * 1024 quantizes to 15872");
-            Check(q.RotationW == 1024 && q.Team == Team.Blue && q.Flags == 0xF00F, "discrete fields copy");
-
-            WriteStream ws = NewWriteStream();
-            Check(WriteMissileData_Shallow(ws, q), "write MissileData_Shallow");
-            byte[] wire = Data(ws);
-            MissileData_Shallow q2 = new MissileData_Shallow();
-            ReadStream rs = new ReadStream(wire);
-            Check(ReadMissileData_Shallow(rs, q2), "read MissileData_Shallow");
-            Check(EqMissileShallow(q2, q), "the missile shallow wire round-trips");
-
-            MissileData_Interpolate back = new MissileData_Interpolate();
-            UnquantizeMissile(q2, back);
-            Check(back.Position.Z == 15872.0 / 1024.0, "unquantize recovers z");
-        }
-
-        // ---- the object tag pair ----
-        {
-            WriteStream ws = NewWriteStream();
-            Check(WriteObjectType(ws, ObjectType.Turret), "write object type");
-            Check(WriteObjectType(ws, ObjectType.None), "write object type sentinel");
-            byte[] wire = Data(ws);
-            ReadStream rs = new ReadStream(wire);
-            ObjectType tag = ObjectType.None;
-            Check(ReadObjectType(rs, ref tag), "read object type");
-            Check(tag == ObjectType.Turret, "object tag round-trips");
-            Check(ReadObjectType(rs, ref tag), "read object type sentinel");
-            Check(tag == ObjectType.None, "the None sentinel round-trips");
-        }
-
         // ---- FlagName / FlagNames: per-bit names and the set renderer ----
         {
             Check(FlagNameShipFlags(0) == "FiringLaser", "FlagName names bit 0");
@@ -925,11 +767,4 @@ static class Program
         Console.WriteLine("OK");
         return 0;
     }
-}
-
-// ForeignMessage satisfies the Message base from outside the generated set —
-// WriteMessage must refuse it without touching the stream.
-sealed class ForeignMessage : Example.Message
-{
-    public override Example.MessageType Type => Example.MessageType.Chat;
 }

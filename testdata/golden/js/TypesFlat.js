@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package example — protocol id 0xbc05d83a8135cdb9
+// package example — protocol id 0x0bde7acdd36abc6a
 
 // The 8-byte conversion scratch — serialize.js's FLOAT_SCRATCH twin. Module
 // scope is safe: single threaded per realm, consumed in the same op that

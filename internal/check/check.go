@@ -1,8 +1,7 @@
 // Package check resolves and validates a compilation unit and lowers it to IR
 // (SPEC §7.1): name resolution across the unit's files, constant folding
 // (arbitrary precision with per-use fit checks, §4.2), the shape checks of
-// §4.6, the dominance rule of §4.5, the message-set and object-set
-// extractions (§4.8), and the §3.1 protocol id.
+// §4.6, the dominance rule of §4.5, and the §3.1 protocol id.
 package check
 
 import (
@@ -40,9 +39,7 @@ type checker struct {
 	enums    map[string]*ir.Enum
 	flagsD   map[string]*ir.Flags
 	structs  map[string]*ir.Struct
-	objects  map[string]*ir.Object
 	unions   map[string]*ir.Union
-	ctxDecl  *ast.ContextsDecl
 
 	// enums currently being resolved — the cycle guard for | max = E.Max
 	// chains (resolveEnum memoizes only on completion, so recursion needs
@@ -53,15 +50,6 @@ type checker struct {
 	// variant count, which is NOT what the author wrote, so .Max references
 	// to them must fail rather than propagate a fabricated bound
 	failedEnum map[string]bool
-
-	// composite-quantize checks deferred until every body is resolved: the
-	// rule 2 / rule 2b classification READS the referenced composite's
-	// component list, and that composite may be declared in a file that
-	// sorts after the object's (basename order) — at field-resolution time only
-	// its SHELL exists. Running the classification against a half-built
-	// shell mis-classifies by file order (found the day rule 2b landed: the
-	// game's Objects.schema sorts before Types.schema).
-	deferredQuantize []func()
 }
 
 type constEntry struct {
@@ -88,7 +76,6 @@ func Unit(files []SourceFile) (*ir.Unit, []error) {
 		enums:    map[string]*ir.Enum{},
 		flagsD:   map[string]*ir.Flags{},
 		structs:  map[string]*ir.Struct{},
-		objects:  map[string]*ir.Object{},
 		unions:   map[string]*ir.Union{},
 		unit: &ir.Unit{
 			DeclFile: map[string]string{},
@@ -96,7 +83,6 @@ func Unit(files []SourceFile) (*ir.Unit, []error) {
 			Enums:    map[string]*ir.Enum{},
 			Flags:    map[string]*ir.Flags{},
 			Structs:  map[string]*ir.Struct{},
-			Objects:  map[string]*ir.Object{},
 			Unions:   map[string]*ir.Union{},
 		},
 	}
@@ -106,13 +92,7 @@ func Unit(files []SourceFile) (*ir.Unit, []error) {
 	c.resolveEnumsAndFlags()
 	c.resolveAllConsts()
 	c.resolveBodies()
-	// deferred composite-quantize checks: every body is resolved now, so
-	// rule 2/2b classification sees complete component lists in any file order
-	for _, check := range c.deferredQuantize {
-		check()
-	}
 	c.checkCycles()
-	c.checkObjectUnionReach()
 	c.checkClaimedNames()
 	c.checkTargetNames()
 	c.assemble()
@@ -167,27 +147,6 @@ func (c *checker) checkPackageName(name string, pos ast.Pos) {
 func (c *checker) collectDecls() {
 	for _, f := range c.files {
 		for _, d := range f.AST.Decls {
-			if ctx, ok := d.(*ast.ContextsDecl); ok {
-				if c.ctxDecl != nil {
-					c.errf(ctx.Pos, "duplicate contexts declaration (one list per unit — SPEC §4.2)")
-					continue
-				}
-				c.ctxDecl = ctx
-				seen := map[string]bool{}
-				for _, n := range ctx.Names {
-					if n.Text == "all" {
-						c.errf(n.Pos, "context name \"all\" is reserved — it is the default scope and cannot be declared")
-						continue
-					}
-					if seen[n.Text] {
-						c.errf(n.Pos, "duplicate context name %q", n.Text)
-						continue
-					}
-					seen[n.Text] = true
-					c.unit.Contexts = append(c.unit.Contexts, n.Text)
-				}
-				continue
-			}
 			name := d.DeclName()
 			if prev, ok := c.astDecls[name]; ok {
 				c.errf(d.DeclPos(), "duplicate declaration %q (first declared at %s; all declaration kinds share one unit-level namespace — SPEC §4.6)",
@@ -532,16 +491,13 @@ func (c *checker) bigIntFloat(v *big.Int, pos ast.Pos) (float64, bool) {
 	return f, true
 }
 
-// valuedAttr lists the field attributes that MUST carry `= value`. The bare
-// markers ( | interpolate, | local, and the context words) are absent by
-// design. Adding a valued attribute means adding it here, or a bare spelling
-// of it reaches expression evaluation as a nil and panics.
+// valuedAttr lists the field attributes that MUST carry `= value`. Adding a
+// valued attribute means adding it here, or a bare spelling of it reaches
+// expression evaluation as a nil and panics.
 var valuedAttr = map[string]bool{
 	"min":        true,
 	"max":        true,
 	"resolution": true,
-	"quantize":   true,
-	"round":      true,
 }
 
 func (c *checker) enumMax(e *ast.MaxExpr) (*big.Int, bool) {
@@ -550,10 +506,10 @@ func (c *checker) enumMax(e *ast.MaxExpr) (*big.Int, bool) {
 	}
 	d, ok := c.astDecls[e.Enum]
 	if !ok {
-		// generated sets work in constant expressions too (SPEC §4.2, §4.8):
-		// MessageType.Max, ObjectType.Max, and <Union>Type.Max. All three
-		// derive from declaration counts alone, so they resolve during const
-		// folding, before any body resolves.
+		// the generated tag set works in constant expressions too (SPEC §4.2,
+		// §4.8): <Union>Type.Max derives from the declared variant count
+		// alone, so it resolves during const folding, before any body
+		// resolves.
 		if max, isGen := c.generatedSetMax(e.Enum); isGen {
 			return big.NewInt(max), true
 		}
@@ -605,28 +561,10 @@ func (c *checker) flagsCount(e *ast.MaxExpr) (*big.Int, bool) {
 	return big.NewInt(int64(len(fl.Variants))), true
 }
 
-// generatedSetMax resolves E.Max over the GENERATED tag sets (SPEC §4.2,
-// §4.8): MessageType and ObjectType when the unit has any, and <Union>Type
-// for a declared union. The max is the member count — dense from 1, None = 0.
+// generatedSetMax resolves E.Max over the GENERATED tag set (SPEC §4.2,
+// §4.8): <Union>Type for a declared union. The max is the member count —
+// dense from 1, None = 0.
 func (c *checker) generatedSetMax(name string) (int64, bool) {
-	switch name {
-	case "MessageType":
-		if n := countMessages(c.astDecls); n > 0 {
-			return int64(n), true
-		}
-		return 0, false
-	case "ObjectType":
-		n := 0
-		for _, d := range c.astDecls {
-			if _, ok := d.(*ast.ObjectDecl); ok {
-				n++
-			}
-		}
-		if n > 0 {
-			return int64(n), true
-		}
-		return 0, false
-	}
 	if base, ok := strings.CutSuffix(name, "Type"); ok {
 		if ud, isUnion := c.astDecls[base].(*ast.UnionDecl); isUnion {
 			return int64(len(ud.Variants)), true
@@ -781,15 +719,7 @@ func (c *checker) resolveFlags(d *ast.FlagsDecl) *ir.Flags {
 	return fl
 }
 
-// ---- type / message / object bodies ----
-
-type declKind int
-
-const (
-	typeD declKind = iota
-	messageD
-	objectD
-)
+// ---- type bodies ----
 
 func (c *checker) resolveBodies() {
 	// shells first so composition can reference in any order
@@ -831,10 +761,6 @@ func (c *checker) resolveBodies() {
 					c.errf(d.Pos, "cpp_native and cpp_include go together: the mapped name needs the header that declares it (SPEC §4.2 Native type mapping)")
 				}
 				c.structs[d.Name] = st
-			case *ast.MessageDecl:
-				c.structs[d.Name] = &ir.Struct{Name: d.Name, IsMessage: true}
-			case *ast.ObjectDecl:
-				c.objects[d.Name] = &ir.Object{Name: d.Name}
 			case *ast.UnionDecl:
 				// the shell first, so fields can reference the union in any
 				// order; variants resolve in the second pass below. Max and
@@ -853,15 +779,7 @@ func (c *checker) resolveBodies() {
 		for _, d := range f.AST.Decls {
 			switch d := d.(type) {
 			case *ast.TypeDecl:
-				c.structs[d.Name].Fields, c.structs[d.Name].Items = c.resolveBody(typeD, d.Name, d.Body)
-			case *ast.MessageDecl:
-				c.structs[d.Name].Fields, c.structs[d.Name].Items = c.resolveBody(messageD, d.Name, d.Body)
-			case *ast.ObjectDecl:
-				fields, _ := c.resolveBody(objectD, d.Name, d.Body)
-				if len(fields) == 0 {
-					c.errf(d.Pos, "empty object body — it generates a meaningless view family (SPEC §4.6)")
-				}
-				c.objects[d.Name].Fields = fields
+				c.structs[d.Name].Fields, c.structs[d.Name].Items = c.resolveBody(d.Name, d.Body)
 			case *ast.UnionDecl:
 				c.resolveUnion(d)
 			}
@@ -912,14 +830,10 @@ func (c *checker) resolveUnion(d *ast.UnionDecl) {
 		switch pd.(type) {
 		case *ast.TypeDecl:
 			un.Variants = append(un.Variants, ir.UnionVariant{Name: v.Name, Type: v.Type, Ref: c.structs[v.Type]})
-		case *ast.MessageDecl:
-			c.errf(v.TypePos, "a message is not a union payload in v1 — wrap it in a type (SPEC §4.8)")
 		case *ast.EnumDecl, *ast.FlagsDecl:
 			c.errf(v.TypePos, "%s is not a union payload — a payload is a declared type; wrap the value in a type (SPEC §4.8)", v.Type)
 		case *ast.UnionDecl:
 			c.errf(v.TypePos, "a union is not a union payload in v1 — wrap it in a type (SPEC §4.8)")
-		case *ast.ObjectDecl:
-			c.errf(v.TypePos, "an object is not a union payload — an object has no single wire form (SPEC §4.8)")
 		default:
 			c.errf(v.TypePos, "%s is not a type", v.Type)
 		}
@@ -933,7 +847,7 @@ type scopeFrame struct {
 	fields map[string]*ir.Field
 }
 
-func (c *checker) resolveBody(kind declKind, owner string, body *ast.Block) ([]*ir.Field, []ir.Item) {
+func (c *checker) resolveBody(owner string, body *ast.Block) ([]*ir.Field, []ir.Item) {
 	var out []*ir.Field
 	names := map[string]ast.Pos{}
 	var walk func(b *ast.Block, guard string, scopes []*scopeFrame) []ir.Item
@@ -949,7 +863,7 @@ func (c *checker) resolveBody(kind declKind, owner string, body *ast.Block) ([]*
 					continue
 				}
 				names[item.Name] = item.Pos
-				f := c.resolveField(kind, owner, item)
+				f := c.resolveField(owner, item)
 				if f == nil {
 					continue
 				}
@@ -958,10 +872,6 @@ func (c *checker) resolveBody(kind declKind, owner string, body *ast.Block) ([]*
 				frame.fields[item.Name] = f
 				items = append(items, &ir.FieldItem{F: f})
 			case *ast.IfItem:
-				if kind == objectD {
-					c.errf(item.Pos, "an object body admits plain fields only in v1 — no if (SPEC §4.8)")
-					continue
-				}
 				cond := c.lookupScope(scopes, item.Cond.Text)
 				if cond == nil {
 					c.errf(item.Cond.Pos, "if condition %s must be a bool field declared earlier in the same or an enclosing block (the dominance rule, SPEC §4.5)", item.Cond.Text)
@@ -983,10 +893,6 @@ func (c *checker) resolveBody(kind declKind, owner string, body *ast.Block) ([]*
 				}
 				items = append(items, br)
 			case *ast.ConstField:
-				if kind == objectD {
-					c.errf(item.Pos, "an object body admits plain fields only in v1 — no const() (SPEC §4.8)")
-					continue
-				}
 				bits, ok := c.evalWidth(item.Bits, "const width")
 				if !ok {
 					continue
@@ -1001,18 +907,10 @@ func (c *checker) resolveBody(kind declKind, owner string, body *ast.Block) ([]*
 				}
 				items = append(items, &ir.ConstItem{Value: v, Bits: bits}) // wire-only: no storage
 			case *ast.ReservedItem:
-				if kind == objectD {
-					c.errf(item.Pos, "an object body admits plain fields only in v1 — no reserved (SPEC §4.8)")
-					continue
-				}
 				if bits, ok := c.evalWidth(item.Bits, "reserved width"); ok {
 					items = append(items, &ir.ReservedItem{Bits: bits})
 				}
 			case *ast.AlignItem:
-				if kind == objectD {
-					c.errf(item.Pos, "an object body admits plain fields only in v1 — no align (SPEC §4.8)")
-					continue
-				}
 				items = append(items, &ir.AlignItem{})
 			}
 		}
@@ -1043,7 +941,7 @@ func (c *checker) evalWidth(e ast.Expr, what string) (int64, bool) {
 	return v.Int64(), true
 }
 
-func (c *checker) resolveField(kind declKind, owner string, f *ast.Field) *ir.Field {
+func (c *checker) resolveField(owner string, f *ast.Field) *ir.Field {
 	out := &ir.Field{Name: f.Name}
 
 	// scalar type
@@ -1128,21 +1026,14 @@ func (c *checker) resolveField(kind declKind, owner string, f *ast.Field) *ir.Fi
 			return nil
 		}
 		switch d.(type) {
-		case *ast.TypeDecl, *ast.MessageDecl:
+		case *ast.TypeDecl:
 			out.Type = ir.FieldType{Kind: ir.TNamed, Name: f.Type.Name, Ref: c.structs[f.Type.Name]}
 		case *ast.EnumDecl:
 			out.Type = ir.FieldType{Kind: ir.TNamed, Name: f.Type.Name, Ref: c.enums[f.Type.Name]}
 		case *ast.FlagsDecl:
 			out.Type = ir.FieldType{Kind: ir.TNamed, Name: f.Type.Name, Ref: c.flagsD[f.Type.Name]}
 		case *ast.UnionDecl:
-			if kind == objectD {
-				c.errf(f.Type.Pos, "a union is not reachable from an object body in v1 — the view-splitting rules say nothing about a one-of (SPEC §4.8)")
-				return nil
-			}
 			out.Type = ir.FieldType{Kind: ir.TNamed, Name: f.Type.Name, Ref: c.unions[f.Type.Name]}
-		case *ast.ObjectDecl:
-			c.errf(f.Type.Pos, "an object name is not a field type in v1 — an object has no single wire form (SPEC §4.8)")
-			return nil
 		default:
 			c.errf(f.Type.Pos, "%s is not a type", f.Type.Name)
 			return nil
@@ -1189,35 +1080,33 @@ func (c *checker) resolveField(kind declKind, owner string, f *ast.Field) *ir.Fi
 		}
 	}
 
-	c.resolveAttrs(kind, f, out)
+	c.resolveAttrs(f, out)
 
 	// the fixed and 128-bit families mirror serialize's own surface exactly
 	// (SPEC §4.3, runtime-first): fixed(I, F) and int128 are RANGED — the
 	// bounds are part of the wire format — and uint128 is the raw field.
-	// | local fields reach no wire, so they carry no bounds (resolveAttrs
-	// already rejects encoding attributes there); a field whose declared
-	// bounds failed above was already diagnosed, so the requirement error
-	// fires only when no bounds were attempted at all.
+	// A field whose declared bounds failed above was already diagnosed, so
+	// the requirement error fires only when no bounds were attempted at all.
 	attempted := false
 	for _, a := range f.Attrs {
 		if a.Key == "min" || a.Key == "max" {
 			attempted = true
 		}
 	}
-	if !out.Local && !attempted && out.Type.Kind == ir.TFixed && !out.HasIntRange {
+	if !attempted && out.Type.Kind == ir.TFixed && !out.HasIntRange {
 		c.errf(f.Pos, "field %s: %s(%d, %d) requires | min = A, max = B — the whole-unit bounds are part of the wire format, exactly like a ranged integer's (SPEC §4.3)",
 			f.Name, fixedSpelling(out.Type.Signed), out.Type.IntBits, out.Type.FracBits)
 		return nil
 	}
-	if !out.Local && !attempted && out.Type.Kind == ir.TInt && out.Type.Width == 128 && out.Type.Signed && !out.HasIntRange {
+	if !attempted && out.Type.Kind == ir.TInt && out.Type.Width == 128 && out.Type.Signed && !out.HasIntRange {
 		c.errf(f.Pos, "field %s: int128 requires | min = A, max = B — serialize_int128 is the only ranged 128-bit operation; a raw 128-bit field is uint128 (SPEC §4.3)",
 			f.Name)
 		return nil
 	}
-	if !out.Local && out.Type.Kind == ir.TFixed && !out.HasIntRange {
+	if out.Type.Kind == ir.TFixed && !out.HasIntRange {
 		return nil // bounds attempted and rejected above — already diagnosed
 	}
-	if !out.Local && out.Type.Kind == ir.TInt && out.Type.Width == 128 && out.Type.Signed && !out.HasIntRange {
+	if out.Type.Kind == ir.TInt && out.Type.Width == 128 && out.Type.Signed && !out.HasIntRange {
 		return nil // bounds attempted and rejected above — already diagnosed
 	}
 
@@ -1333,7 +1222,7 @@ func scalarName(k ir.FieldTypeKind) string {
 	return "?"
 }
 
-func (c *checker) resolveAttrs(kind declKind, f *ast.Field, out *ir.Field) {
+func (c *checker) resolveAttrs(f *ast.Field, out *ir.Field) {
 	byKey := map[string]*ast.Attr{}
 	for i := range f.Attrs {
 		a := &f.Attrs[i]
@@ -1353,100 +1242,25 @@ func (c *checker) resolveAttrs(kind declKind, f *ast.Field, out *ir.Field) {
 		byKey[a.Key] = a
 	}
 
-	wordValue := func(a *ast.Attr) (string, bool) {
-		if id, ok := a.Value.(*ast.IdentExpr); ok {
-			return id.Name, true
-		}
-		c.errf(a.Pos, "%s takes a word value", a.Key)
-		return "", false
-	}
-
 	for i := range f.Attrs { // declaration order, so diagnostics are deterministic
 		a := &f.Attrs[i]
 		if byKey[a.Key] != a {
 			continue // a repeated key, already reported above
 		}
 		switch a.Key {
-		case "min", "max", "resolution", "quantize", "round", "interpolate", "local", "context":
+		case "min", "max", "resolution":
 			// validated below
+		case "round":
+			// refused by name: rounding is not an attribute — it is the one
+			// fixed-point rule, half away from zero, everywhere (SPEC §4.3)
+			c.errf(a.Pos, "round is not part of the language — rounding is the one fixed-point rule: half away from zero, everywhere (SPEC §4.3)")
 		default:
 			c.errf(a.Pos, "unknown attribute %q — the vocabulary is typed and closed per compiler version (SPEC §4.6)", a.Key)
 		}
 	}
 
-	// markers first
-	if a, ok := byKey["interpolate"]; ok {
-		switch {
-		case kind != objectD:
-			c.errf(a.Pos, "interpolate is an object view marker (SPEC §4.8) — not valid in a %s", kindName(kind))
-		case a.Value != nil:
-			c.errf(a.Pos, "interpolate is valueless")
-		default:
-			out.Interpolate = true
-		}
-	}
-	if a, ok := byKey["local"]; ok {
-		switch {
-		case kind != objectD:
-			c.errf(a.Pos, "local is an object view marker (SPEC §4.8) — not valid in a %s", kindName(kind))
-		case a.Value != nil:
-			c.errf(a.Pos, "local is valueless")
-		default:
-			out.Local = true
-		}
-	}
-	if a, ok := byKey["context"]; ok {
-		if kind != objectD {
-			c.errf(a.Pos, "context scopes a | local object field (SPEC §4.2, Contexts)")
-		} else if !out.Local {
-			c.errf(a.Pos, "context is legal only beside | local — a wire field must be identical on every side (SPEC §4.2)")
-		} else if w, ok := wordValue(a); ok {
-			switch {
-			case w == "all":
-				c.errf(a.Pos, "context = all is the default — omit the attribute")
-			case !contains(c.unit.Contexts, w):
-				declared := "no contexts are declared in this unit"
-				if len(c.unit.Contexts) > 0 {
-					declared = "declared: " + strings.Join(c.unit.Contexts, ", ")
-				}
-				c.errf(a.Pos, "context %q is not declared — the unit's contexts declaration closes the legal values (SPEC §4.2); %s",
-					w, declared)
-			default:
-				out.Context = w
-			}
-		}
-	}
-
-	if out.Local && out.Interpolate {
-		c.errf(f.Pos, "field %s is | local, interpolate — a local field reaches no wire and cannot be in the interpolate view (SPEC §4.8)", f.Name)
-	}
-
 	hasMin, hasMax := byKey["min"] != nil, byKey["max"] != nil
-	hasRes, hasQuant, hasRound := byKey["resolution"] != nil, byKey["quantize"] != nil, byKey["round"] != nil
-
-	if out.Local && (hasMin || hasMax || hasRes || hasQuant || hasRound) {
-		c.errf(f.Pos, "field %s is | local — it reaches no wire, so encoding attributes are not valid on it", f.Name)
-		return
-	}
-
-	// composite quantization (SPEC §4.8 rules 2/2b): | interpolate, quantize = K, ...
-	if hasQuant {
-		a := byKey["quantize"]
-		if kind != objectD || !out.Interpolate {
-			c.errf(a.Pos, "quantize belongs to the | interpolate view-encoding rules of an object body (SPEC §4.8)")
-			return
-		}
-		// classification and validation DEFER until every body is resolved —
-		// the referenced composite may live in a later-sorting file and have
-		// only its shell here (see the checker's deferredQuantize comment)
-		c.deferredQuantize = append(c.deferredQuantize, func() {
-			c.checkCompositeQuantize(f, out, byKey, hasMin, hasMax, hasRes)
-		})
-		return
-	}
-	if hasRound && !hasRes {
-		c.errf(byKey["round"].Pos, "round selects the write rounding of a ranged-int projection — it requires the min/max/resolution triple (SPEC §4.8 rule 4)")
-	}
+	hasRes := byKey["resolution"] != nil
 
 	isInt := out.Type.Kind == ir.TInt
 	isFixed := out.Type.Kind == ir.TFixed
@@ -1458,16 +1272,14 @@ func (c *checker) resolveAttrs(kind declKind, f *ast.Field, out *ir.Field) {
 			c.errf(byKey["resolution"].Pos, "resolution applies to float fields (SPEC §4.6)")
 			return
 		}
-		if out.Type.Kind == ir.TFloat64 && (kind != objectD || !out.Interpolate) {
-			c.errf(f.Pos, "field %s: the compressed float is float32 (SPEC §4.3) — float64 takes the triple only as an | interpolate object-view projection (SPEC §4.8 rule 4)", f.Name)
+		if out.Type.Kind == ir.TFloat64 {
+			c.errf(f.Pos, "field %s: the compressed float is float32 (SPEC §4.3)", f.Name)
 			return
 		}
 		if !hasMin || !hasMax || !hasRes {
 			c.errf(f.Pos, "field %s: a float range is min, max and resolution, all three together (SPEC §4.6)", f.Name)
 			return
 		}
-		// a deep-only float with a range triple in an object body is legal —
-		// it is §4.3's compressed float, no view rule involved
 		fmin, ok1 := c.evalFloat(byKey["min"].Value)
 		fmax, ok2 := c.evalFloat(byKey["max"].Value)
 		res, ok3 := c.evalFloat(byKey["resolution"].Value)
@@ -1525,17 +1337,11 @@ func (c *checker) resolveAttrs(kind declKind, f *ast.Field, out *ir.Field) {
 		out.HasFloatRange = true
 		out.FMin, out.FMax, out.Resolution = fmin, fmax, res
 		out.Steps = int64(steps)
+		// `nearest` is a FROZEN projection token: every compressed-float
+		// line renders `round=nearest`, and keeping the assignment keeps
+		// every compressed-float unit's id stable. Changing it is a
+		// ProjectionVersion bump, taken deliberately or not at all.
 		out.Round = "nearest"
-		if hasRound {
-			if w, ok := wordValue(byKey["round"]); ok {
-				switch w {
-				case "nearest", "up", "down":
-					out.Round = w
-				default:
-					c.errf(byKey["round"].Pos, "round = %s — legal values are nearest, up, down (SPEC §4.8 rule 4)", w)
-				}
-			}
-		}
 		return
 	}
 
@@ -1598,134 +1404,6 @@ func (c *checker) resolveAttrs(kind declKind, f *ast.Field, out *ir.Field) {
 	}
 }
 
-// checkCompositeQuantize is the deferred half of the composite-quantize rule
-// (SPEC §4.8 rules 2 and 2b): it runs after EVERY body is resolved, so the
-// referenced composite's component list is complete regardless of which file
-// declared it (basename file order). resolveAttrs verified | interpolate-on-object
-// and scheduled this; everything that reads component fields lives here.
-func (c *checker) checkCompositeQuantize(f *ast.Field, out *ir.Field, byKey map[string]*ast.Attr, hasMin, hasMax, hasRes bool) {
-	a := byKey["quantize"]
-	st, okT := out.Type.Ref.(*ir.Struct)
-	if out.Type.Kind != ir.TNamed || !okT {
-		c.errf(a.Pos, "quantize applies component-wise to a composite of float or fixed components (SPEC §4.8 rule 2)")
-		return
-	}
-	allFixed := len(st.Fields) > 0
-	for _, cf := range st.Fields {
-		if cf.Type.Kind != ir.TFixed || cf.Array != ir.ArrayNone {
-			allFixed = false
-			break
-		}
-	}
-	if allFixed {
-		// fixed-composite shallow narrowing (SPEC §4.8 rule 2b):
-		// | interpolate, quantize = K — the shallow wire keeps log2(K)
-		// fractional bits of the component format (K quantized units per
-		// whole unit, a power of two no finer than the storage's 2^F).
-		// Quantize is a round-to-nearest arithmetic shift, Unquantize a left
-		// shift; no max here — the shallow bound derives from each
-		// component's own whole-unit | min, max, which every component must
-		// therefore declare.
-		//
-		// SIGNED components only in this landing: rule 2b's generated
-		// narrowing runs through int64 shifts, and a ufixed raw may occupy
-		// the u64 high half where those shifts are wrong — the unsigned door
-		// needs its own arithmetic before it opens (SPEC §4.8 rule 2b;
-		// plain | interpolate ufixed composites dissolve fine, because
-		// dissolving just delegates to the component encodings).
-		for _, cf := range st.Fields {
-			if !cf.Type.Signed {
-				c.errf(a.Pos, "fixed-composite shallow narrowing is signed fixed(I, F) only — %s.%s is ufixed(%d, %d); an un-narrowed | interpolate composite of ufixed components is fine (SPEC §4.8 rule 2b)",
-					st.Name, cf.Name, cf.Type.IntBits, cf.Type.FracBits)
-				return
-			}
-		}
-		if hasMax || hasMin || hasRes {
-			c.errf(a.Pos, "fixed-composite quantization is | interpolate, quantize = K alone — the bound comes from the components' own | min, max, not the field (SPEC §4.8 rule 2b)")
-			return
-		}
-		k, ok := c.evalInt(a.Value)
-		if !ok {
-			return
-		}
-		if !k.IsInt64() || k.Int64() < 1 || k.Int64()&(k.Int64()-1) != 0 {
-			c.errf(a.Pos, "fixed-composite quantize scale %s must be a positive power of two — it is the kept fractional resolution, 2^bits (SPEC §4.8 rule 2b)", k)
-			return
-		}
-		log2k := 0
-		for v := k.Int64(); v > 1; v >>= 1 {
-			log2k++
-		}
-		for _, cf := range st.Fields {
-			if cf.Type.IntBits+cf.Type.FracBits > 64 {
-				c.errf(a.Pos, "fixed-composite quantization narrows through int64 shifts — %s.%s is fixed(%d, %d), wider than 64 bits (SPEC §4.8 rule 2b)",
-					st.Name, cf.Name, cf.Type.IntBits, cf.Type.FracBits)
-				return
-			}
-			if log2k > cf.Type.FracBits {
-				c.errf(a.Pos, "quantize = %s keeps %d fractional bits but %s.%s is fixed(%d, %d) — the shallow wire cannot be finer than the storage (SPEC §4.8 rule 2b)",
-					k, log2k, st.Name, cf.Name, cf.Type.IntBits, cf.Type.FracBits)
-				return
-			}
-			if !cf.HasIntRange {
-				c.errf(a.Pos, "fixed-composite quantization derives its wire bound from the components — %s.%s must declare whole-unit | min, max (SPEC §4.8 rule 2b)", st.Name, cf.Name)
-				return
-			}
-		}
-		out.HasQuantize = true
-		out.FixedShallow = true
-		out.QuantScale = k.Int64()
-		out.QuantScaleExpr = a.Value
-		out.QuantShift = log2k
-		return
-	}
-	for _, cf := range st.Fields {
-		if cf.Type.Kind != ir.TFloat32 && cf.Type.Kind != ir.TFloat64 || cf.Array != ir.ArrayNone {
-			c.errf(a.Pos, "quantize requires every component of %s to be a float scalar (%s.%s is not)", st.Name, st.Name, cf.Name)
-			return
-		}
-	}
-	if !hasMax || hasMin || hasRes {
-		c.errf(a.Pos, "composite quantization is | interpolate, quantize = K, max = B — max required, min and resolution not valid here (SPEC §4.8 rule 2)")
-		return
-	}
-	k, ok := c.evalInt(a.Value)
-	if !ok {
-		return
-	}
-	if !k.IsInt64() || k.Int64() < 1 {
-		c.errf(a.Pos, "quantize scale %s must be a positive integer", k)
-		return
-	}
-	// every backend computes the quantize product in float64, so a scale the
-	// double cannot hold exactly would round before the arithmetic even
-	// starts — the compressed_float precision hazard one level up
-	if f := new(big.Float).SetPrec(53).SetInt64(k.Int64()); true {
-		if i, acc := f.Int64(); acc != big.Exact || i != k.Int64() {
-			c.errf(a.Pos, "quantize scale %s is not exactly representable in float64 — the quantize arithmetic runs in double in every backend (SPEC §4.8 rule 2)", k)
-			return
-		}
-	}
-	b, ok := c.evalFloat(byKey["max"].Value)
-	if !ok {
-		return
-	}
-	if b <= 0 {
-		c.errf(byKey["max"].Pos, "quantize bound max = %g must be positive", b)
-		return
-	}
-	bound := float64(k.Int64()) * b
-	if bound < 1 || bound > math.MaxInt64/2 {
-		c.errf(a.Pos, "quantized range [-%g, %g] is out of range", bound, bound)
-		return
-	}
-	out.HasQuantize = true
-	out.QuantScale = k.Int64()
-	out.QuantScaleExpr = a.Value
-	out.QuantMaxExpr = byKey["max"].Value
-	out.QuantBound = int64(math.Round(bound))
-}
-
 // fixedSpelling names the source spelling of a fixed-point type: the sign is
 // part of the name, the integer family's own int/uint precedent (SPEC §4.3).
 func fixedSpelling(signed bool) string {
@@ -1758,16 +1436,6 @@ func fixedUnitBounds(signed bool, intBits int) (*big.Int, *big.Int) {
 		hi = i64hi
 	}
 	return lo, hi
-}
-
-func kindName(k declKind) string {
-	switch k {
-	case typeD:
-		return "type body"
-	case messageD:
-		return "message body"
-	}
-	return "object body"
 }
 
 func intTypeName(signed bool, width int) string {
@@ -1857,66 +1525,6 @@ func (c *checker) checkCycles() {
 	sort.Strings(names)
 	for _, n := range names {
 		visit(n)
-	}
-}
-
-// checkObjectUnionReach enforces the object-body union ban TRANSITIVELY
-// (SPEC §4.8): an object may not reach a union through any field's type —
-// nesting a union inside a plain type does not smuggle it into the view
-// machinery. Direct union fields are refused at resolution; this walk
-// catches the composition closure.
-func (c *checker) checkObjectUnionReach() {
-	reach := map[string]bool{} // struct name -> reaches a union
-	var walk func(name string, visiting map[string]bool) bool
-	walk = func(name string, visiting map[string]bool) bool {
-		if r, done := reach[name]; done {
-			return r
-		}
-		if visiting[name] {
-			return false // a cycle is its own error (checkCycles)
-		}
-		visiting[name] = true
-		defer delete(visiting, name)
-		st := c.structs[name]
-		if st == nil {
-			return false
-		}
-		r := false
-		for _, f := range st.Fields {
-			if f.Type.Kind != ir.TNamed {
-				continue
-			}
-			switch f.Type.Ref.(type) {
-			case *ir.Union:
-				r = true
-			case *ir.Struct:
-				if walk(f.Type.Name, visiting) {
-					r = true
-				}
-			}
-		}
-		reach[name] = r
-		return r
-	}
-	names := make([]string, 0, len(c.objects))
-	for n := range c.objects {
-		names = append(names, n)
-	}
-	sort.Strings(names)
-	for _, n := range names {
-		for _, f := range c.objects[n].Fields {
-			if f.Type.Kind != ir.TNamed {
-				continue
-			}
-			if _, isStruct := f.Type.Ref.(*ir.Struct); isStruct && walk(f.Type.Name, map[string]bool{}) {
-				pos := ast.Pos{}
-				if d, ok := c.astDecls[n]; ok {
-					pos = d.DeclPos()
-				}
-				c.errf(pos, "%s.%s: type %s reaches a union, and an object body may not — the view-splitting rules say nothing about a one-of; a follow-on pass, not a ruling against (SPEC §4.8)",
-					n, f.Name, f.Type.Name)
-			}
-		}
 	}
 }
 
@@ -2128,37 +1736,6 @@ func (c *checker) checkTargetNames() {
 			switch d := d.(type) {
 			case *ast.TypeDecl:
 				walkBlock(d.Body, d.Name, map[string]claim{})
-			case *ast.MessageDecl:
-				// the C# dispatch property is named Type, and a C# member
-				// cannot share its enclosing class's name — a message named
-				// Type has no compilable C# class
-				if d.Name == "Type" {
-					c.errf(d.DeclPos(), "message Type collides with its own generated C# Type dispatch property (a member cannot share its enclosing class's name) — rename at the source (SPEC §4.6)")
-				}
-				// the Go dispatch surface gives every message a MessageType()
-				// method, and the C# dispatch gives every message a Type
-				// property — a field exporting to either name cannot compile
-				walkBlock(d.Body, d.Name, map[string]claim{
-					"MessageType": {as: "the generated MessageType dispatch method (SPEC §6.1 item 6)"},
-					"Type":        {as: "the generated Type dispatch property (C#, SPEC §6.1 item 6)"},
-				})
-			case *ast.ObjectDecl:
-				// objects generate XState/XData_*/CtxXState classes, never a
-				// class named X — but a FIELD exporting to one of those class
-				// names lands INSIDE that class and C# forbids a member
-				// sharing its enclosing class's name (CS0542), so the family
-				// names are seeded as claims
-				family := map[string]claim{}
-				for _, cls := range []string{d.Name + "State", d.Name + "Data_Deep", d.Name + "Data_Shallow", d.Name + "Data_Interpolate"} {
-					family[cls] = claim{as: "the generated " + cls + " class name (a C# member cannot share its enclosing class's name)"}
-				}
-				if c.ctxDecl != nil {
-					for _, ctx := range c.unit.Contexts {
-						cls := capitalize(ctx) + d.Name + "State"
-						family[cls] = claim{as: "the generated " + cls + " class name (a C# member cannot share its enclosing class's name)"}
-					}
-				}
-				walkBlock(d.Body, "", family)
 			case *ast.EnumDecl:
 				for _, v := range d.Variants {
 					checkName(v.Text, v.Pos, "enum variant")
@@ -2213,25 +1790,6 @@ func (c *checker) checkClaimedNames() {
 	add("PROTOCOL_ID", "the unit's generated PROTOCOL_ID (Rust form)", unitPos)
 	add("Error", "the unit's generated Error type (Rust form)", unitPos)
 	add("Result", "the unit's generated Result alias (Rust form)", unitPos)
-	hasMessages := countMessages(c.astDecls) > 0
-	if hasMessages {
-		for _, gen := range []string{"MessageType", "MessageTypeNone", "MessageTypeMax", "Message", "MessageStorage",
-			"WriteMessage", "ReadMessage", "WriteMessageType", "ReadMessageType", "MessageMaxBits", "MessageMaxBytes"} {
-			add(gen, "the generated message dispatch surface", unitPos)
-		}
-		for _, gen := range []string{"write_message", "read_message", "write_message_type",
-			"read_message_type", "MESSAGE_TYPE_MAX", "MESSAGE_MAX_BITS", "MESSAGE_MAX_BYTES"} {
-			add(gen, "the generated message dispatch surface (Rust/C form)", unitPos)
-		}
-	}
-	if len(c.objects) > 0 {
-		for _, gen := range []string{"ObjectType", "ObjectTypeNone", "ObjectTypeMax", "WriteObjectType", "ReadObjectType"} {
-			add(gen, "the generated object tag surface", unitPos)
-		}
-		for _, gen := range []string{"write_object_type", "read_object_type"} {
-			add(gen, "the generated object tag surface (Rust/C form)", unitPos)
-		}
-	}
 
 	declNames := make([]string, 0, len(c.astDecls))
 	for name := range c.astDecls {
@@ -2337,45 +1895,13 @@ func (c *checker) checkClaimedNames() {
 			}
 		case *ast.TypeDecl:
 			c.addStructSymbols(add, addRust, name, d.DeclPos())
-		case *ast.MessageDecl:
-			c.addStructSymbols(add, addRust, name, d.DeclPos())
-			// the Rust tag constant is associated (MessageType::NAME) — no flat claim
-			add("MessageType"+name, fmt.Sprintf("message %s's generated tag constant", name), d.DeclPos())
-		case *ast.ObjectDecl:
-			pos := d.DeclPos()
-			why := fmt.Sprintf("object %s's generated family", name)
-			add(name+"State", why, pos)
-			add(name+"Data_Deep", why, pos)
-			add(name+"Data_Shallow", why, pos)
-			add(name+"Data_Interpolate", why, pos)
-			add("Quantize"+name, why, pos)
-			add("Unquantize"+name, why, pos)
-			for _, view := range []string{"Data_Deep", "Data_Shallow"} {
-				add("Write"+name+view, why, pos)
-				add("Read"+name+view, why, pos)
-				add(name+view+"MaxBits", why, pos)
-				add(name+view+"MaxBytes", why, pos)
-			}
-			whyRust := fmt.Sprintf("object %s's generated family (Rust/C form)", name)
-			addRust("quantize_"+ir.RustSnake(name), whyRust, pos, "Quantize"+name)
-			addRust("unquantize_"+ir.RustSnake(name), whyRust, pos, "Unquantize"+name)
-			for _, view := range []string{"Data_Deep", "Data_Shallow"} {
-				addRust("write_"+ir.RustSnake(name+view), whyRust, pos, "Write"+name+view)
-				addRust("read_"+ir.RustSnake(name+view), whyRust, pos, "Read"+name+view)
-				addRust(ir.RustConstName(name+view+"MaxBits"), whyRust, pos, name+view+"MaxBits")
-				addRust(ir.RustConstName(name+view+"MaxBytes"), whyRust, pos, name+view+"MaxBytes")
-			}
-			add("ObjectType"+name, fmt.Sprintf("object %s's generated tag constant", name), pos)
-			for _, ctx := range c.unit.Contexts {
-				add(capitalize(ctx)+name+"State", fmt.Sprintf("object %s's generated %s-context state", name, ctx), pos)
-			}
 		}
 	}
 }
 
-// addStructSymbols registers the per-type generated names shared by types and
-// messages: the split functions, the constructor, and the size constants —
-// plus their flat Rust spellings (new() is associated and claims nothing).
+// addStructSymbols registers the per-type generated names: the split
+// functions, the constructor, and the size constants — plus their flat Rust
+// spellings (new() is associated and claims nothing).
 func (c *checker) addStructSymbols(add func(name, what string, pos ast.Pos), addRust func(name, what string, pos ast.Pos, siblings ...string), name string, pos ast.Pos) {
 	why := fmt.Sprintf("type %s's generated functions and constants", name)
 	add("Write"+name, why, pos)
@@ -2389,23 +1915,6 @@ func (c *checker) addStructSymbols(add func(name, what string, pos ast.Pos), add
 	addRust("read_"+ir.RustSnake(name), whyRust, pos, "Read"+name)
 	addRust(ir.RustConstName(name+"MaxBits"), whyRust, pos, name+"MaxBits")
 	addRust(ir.RustConstName(name+"MaxBytes"), whyRust, pos, name+"MaxBytes")
-}
-
-func countMessages(decls map[string]ast.Decl) int {
-	n := 0
-	for _, d := range decls {
-		if _, ok := d.(*ast.MessageDecl); ok {
-			n++
-		}
-	}
-	return n
-}
-
-func capitalize(s string) string {
-	if s == "" {
-		return s
-	}
-	return strings.ToUpper(s[:1]) + s[1:]
 }
 
 // ---- assembly ----
@@ -2431,22 +1940,10 @@ func (c *checker) assemble() {
 					irf.Decls = append(irf.Decls, fl)
 					u.Flags[d.Name] = fl
 				}
-			case *ast.ContextsDecl:
-				irf.Decls = append(irf.Decls, &ir.ContextsMarker{Names: u.Contexts})
 			case *ast.TypeDecl:
 				st := c.structs[d.Name]
 				irf.Decls = append(irf.Decls, st)
 				u.Structs[d.Name] = st
-			case *ast.MessageDecl:
-				st := c.structs[d.Name]
-				irf.Decls = append(irf.Decls, st)
-				u.Structs[d.Name] = st
-				u.Messages = append(u.Messages, d.Name)
-			case *ast.ObjectDecl:
-				ob := c.objects[d.Name]
-				irf.Decls = append(irf.Decls, ob)
-				u.Objects[d.Name] = ob
-				u.ObjNames = append(u.ObjNames, d.Name)
 			case *ast.UnionDecl:
 				un := c.unions[d.Name]
 				irf.Decls = append(irf.Decls, un)
@@ -2456,9 +1953,6 @@ func (c *checker) assemble() {
 		u.Files = append(u.Files, irf)
 	}
 	maps.Copy(u.DeclFile, c.declFile)
-	// the deterministic tag order: SORTED BY NAME, bytewise (SPEC §4.8)
-	sort.Strings(u.Messages)
-	sort.Strings(u.ObjNames)
 }
 
 // ---- the protocol id (SPEC §3.1) ----

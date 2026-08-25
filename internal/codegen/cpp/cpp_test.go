@@ -59,7 +59,7 @@ const MaxText    = 32
 const MinReserve = 3
 `,
 	})
-	files, err := Generate(u, Options{})
+	files, err := Generate(u)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -41,7 +41,7 @@ var backends = []struct {
 	name     string
 	generate func(*ir.Unit) (map[string][]byte, error)
 }{
-	{"cpp", func(u *ir.Unit) (map[string][]byte, error) { return cpp.Generate(u, cpp.Options{}) }},
+	{"cpp", func(u *ir.Unit) (map[string][]byte, error) { return cpp.Generate(u) }},
 	{"csharp", csharp.Generate},
 	{"golang", golang.Generate},
 	{"rust", rust.Generate},
@@ -141,7 +141,6 @@ var handSeeds = []string{
 	"package t\ntype T { s string(0) }\n",
 	"package t\ntype T { xs [0]uint8 }\n",
 	"package t\ntype T { x float32 | min = 0, max = 1, resolution = 0 }\n",
-	"package t\nobject O { p V | interpolate, quantize = 0, max = 1 \n b bool }\ntype V { x float64 }\n",
 	"package t\ntype T {\n    c bool\n    if c { x uint8 } else { x uint8 }\n}\n",
 	"package t\ntype T { x uint64 | min = 0, max = 18446744073709551615 }\n",
 	"package t\ntype T { x int128 | min = -1267650600228229401496703205376, max = 1267650600228229401496703205376 }\n",
@@ -185,8 +184,6 @@ func FuzzPipelineTwoFiles(f *testing.F) {
 	f.Add("package t\nconst Lim = 100\n", "package t\ntype T { hp int32 | min = 0, max = Lim }\n")
 	f.Add("package t\ntype T { hp int32 | min = 0, max = Lim }\n", "package t\nconst Lim = 100\n")
 	f.Add("package t\nenum A | max = Z.Max\n{ One }\n", "package t\nenum Z | max = A.Max\n{ Two }\n")
-	f.Add("package t\nobject O { p V | interpolate, quantize = 1024 \n b bool }\n",
-		"package t\ntype V { x fixed(2, 30) | min = -1, max = 1 }\n")
 	f.Add("package t\ntype A { b B }\n", "package t\ntype B { a A }\n")
 	f.Fuzz(func(t *testing.T, a, b string) {
 		// A_ and Z_ so the pair straddles the §3.1 name sort in both

@@ -522,8 +522,6 @@ func fpDecl(b *strings.Builder, d ast.Decl) {
 		fmt.Fprintf(b, "enum %s %s {%s}\n", d.Name, fpAttrs(d.Attrs), fpNames(d.Variants))
 	case *ast.FlagsDecl:
 		fmt.Fprintf(b, "flags %s %s {%s}\n", d.Name, fpAttrs(d.Attrs), fpNames(d.Variants))
-	case *ast.ContextsDecl:
-		fmt.Fprintf(b, "contexts {%s}\n", fpNames(d.Names))
 	case *ast.TypeDecl:
 		fmt.Fprintf(b, "type %s %s\n", d.Name, fpAttrs(d.Attrs))
 		fpBlock(b, d.Body)
@@ -533,12 +531,6 @@ func fpDecl(b *strings.Builder, d ast.Decl) {
 			fmt.Fprintf(b, "variant %s %s\n", v.Name, v.Type)
 		}
 		b.WriteString("}\n")
-	case *ast.MessageDecl:
-		fmt.Fprintf(b, "message %s\n", d.Name)
-		fpBlock(b, d.Body)
-	case *ast.ObjectDecl:
-		fmt.Fprintf(b, "object %s\n", d.Name)
-		fpBlock(b, d.Body)
 	}
 }
 

@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package example — protocol id 0xbc05d83a8135cdb9
+// package example — protocol id 0x0bde7acdd36abc6a
 
 // The 8-byte conversion scratch — serialize.js's FLOAT_SCRATCH twin. Module
 // scope is safe: single threaded per realm, consumed in the same op that
@@ -3024,6 +3024,598 @@ export function ReadProbeArrayFlat(value, view, numBits) {
   br += 4;
   v = (out & 0xf) >>> 0;
   value.Config.Preferred = v;
+  return true;
+}
+
+// ---- type Heartbeat: the flat codec ----
+
+function writeHeartbeatFlatProduction(value, view) {
+  let v = 0, s = 0;
+  let lo = 0, hi = 0, sb = 0, wi = 0;
+  if (sb !== 0) {
+    view.setUint32(wi, lo, true);
+    view.setUint32(wi + 4, hi, true);
+  }
+  return ((wi * 8 + sb) + 7) >> 3;
+}
+
+function writeHeartbeatFlatChecked(value, view) {
+  let v = 0, s = 0;
+  let lo = 0, hi = 0, sb = 0, wi = 0;
+  if (sb !== 0) {
+    view.setUint32(wi, lo, true);
+    view.setUint32(wi + 4, hi, true);
+  }
+  return ((wi * 8 + sb) + 7) >> 3;
+}
+
+// WriteHeartbeatFlat(value, view) -> bytes written (>= 0), or -1 on a checked
+// contract refusal. The buffer behind view must hold HeartbeatMaxBytes.
+export const WriteHeartbeatFlat = PRODUCTION ? writeHeartbeatFlatProduction : writeHeartbeatFlatChecked;
+
+// ReadHeartbeatFlat(value, view, numBits) -> bool. The buffer behind view must
+// extend FLAT_READ_SLACK bytes past the payload.
+export function ReadHeartbeatFlat(value, view, numBits) {
+  let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0;
+  let br = 0;
+  return true;
+}
+
+// ---- type Test: the flat codec ----
+
+function writeTestFlatProduction(value, view) {
+  let v = 0, s = 0;
+  let lo = 0, hi = 0, sb = 0, wi = 0;
+  v = ((value.TestA) & 0xffff) >>> 0;
+  s = sb;
+  if (s < 32) {
+    lo = (lo | (v << s)) >>> 0;
+    if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
+  } else {
+    hi = (hi | (v << (s - 32))) >>> 0;
+  }
+  sb = s + 16;
+  if (sb >= 64) {
+    view.setUint32(wi, lo, true);
+    view.setUint32(wi + 4, hi, true);
+    wi += 8;
+    lo = s === 32 ? 0 : v >>> (64 - s);
+    hi = 0;
+    sb -= 64;
+  }
+  v = ((value.TestB) & 0x3ff) >>> 0;
+  s = sb;
+  if (s < 32) {
+    lo = (lo | (v << s)) >>> 0;
+    if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
+  } else {
+    hi = (hi | (v << (s - 32))) >>> 0;
+  }
+  sb = s + 10;
+  if (sb >= 64) {
+    view.setUint32(wi, lo, true);
+    view.setUint32(wi + 4, hi, true);
+    wi += 8;
+    lo = s === 32 ? 0 : v >>> (64 - s);
+    hi = 0;
+    sb -= 64;
+  }
+  v = ((value.TestC) & 0x3ff) >>> 0;
+  s = sb;
+  if (s < 32) {
+    lo = (lo | (v << s)) >>> 0;
+    if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
+  } else {
+    hi = (hi | (v << (s - 32))) >>> 0;
+  }
+  sb = s + 10;
+  if (sb >= 64) {
+    view.setUint32(wi, lo, true);
+    view.setUint32(wi + 4, hi, true);
+    wi += 8;
+    lo = s === 32 ? 0 : v >>> (64 - s);
+    hi = 0;
+    sb -= 64;
+  }
+  v = ((value.TestD) & 0x3ff) >>> 0;
+  s = sb;
+  if (s < 32) {
+    lo = (lo | (v << s)) >>> 0;
+    if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
+  } else {
+    hi = (hi | (v << (s - 32))) >>> 0;
+  }
+  sb = s + 10;
+  if (sb >= 64) {
+    view.setUint32(wi, lo, true);
+    view.setUint32(wi + 4, hi, true);
+    wi += 8;
+    lo = s === 32 ? 0 : v >>> (64 - s);
+    hi = 0;
+    sb -= 64;
+  }
+  if (sb !== 0) {
+    view.setUint32(wi, lo, true);
+    view.setUint32(wi + 4, hi, true);
+  }
+  return ((wi * 8 + sb) + 7) >> 3;
+}
+
+function writeTestFlatChecked(value, view) {
+  let v = 0, s = 0;
+  let lo = 0, hi = 0, sb = 0, wi = 0;
+  v = ((value.TestA) & 0xffff) >>> 0;
+  s = sb;
+  if (s < 32) {
+    lo = (lo | (v << s)) >>> 0;
+    if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
+  } else {
+    hi = (hi | (v << (s - 32))) >>> 0;
+  }
+  sb = s + 16;
+  if (sb >= 64) {
+    view.setUint32(wi, lo, true);
+    view.setUint32(wi + 4, hi, true);
+    wi += 8;
+    lo = s === 32 ? 0 : v >>> (64 - s);
+    hi = 0;
+    sb -= 64;
+  }
+  if (!Number.isInteger(value.TestB) || value.TestB < 0 || value.TestB > 1000) {
+    return -1;
+  }
+  v = ((value.TestB) & 0x3ff) >>> 0;
+  s = sb;
+  if (s < 32) {
+    lo = (lo | (v << s)) >>> 0;
+    if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
+  } else {
+    hi = (hi | (v << (s - 32))) >>> 0;
+  }
+  sb = s + 10;
+  if (sb >= 64) {
+    view.setUint32(wi, lo, true);
+    view.setUint32(wi + 4, hi, true);
+    wi += 8;
+    lo = s === 32 ? 0 : v >>> (64 - s);
+    hi = 0;
+    sb -= 64;
+  }
+  if (!Number.isInteger(value.TestC) || value.TestC < 0 || value.TestC > 1000) {
+    return -1;
+  }
+  v = ((value.TestC) & 0x3ff) >>> 0;
+  s = sb;
+  if (s < 32) {
+    lo = (lo | (v << s)) >>> 0;
+    if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
+  } else {
+    hi = (hi | (v << (s - 32))) >>> 0;
+  }
+  sb = s + 10;
+  if (sb >= 64) {
+    view.setUint32(wi, lo, true);
+    view.setUint32(wi + 4, hi, true);
+    wi += 8;
+    lo = s === 32 ? 0 : v >>> (64 - s);
+    hi = 0;
+    sb -= 64;
+  }
+  if (!Number.isInteger(value.TestD) || value.TestD < 0 || value.TestD > 1000) {
+    return -1;
+  }
+  v = ((value.TestD) & 0x3ff) >>> 0;
+  s = sb;
+  if (s < 32) {
+    lo = (lo | (v << s)) >>> 0;
+    if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
+  } else {
+    hi = (hi | (v << (s - 32))) >>> 0;
+  }
+  sb = s + 10;
+  if (sb >= 64) {
+    view.setUint32(wi, lo, true);
+    view.setUint32(wi + 4, hi, true);
+    wi += 8;
+    lo = s === 32 ? 0 : v >>> (64 - s);
+    hi = 0;
+    sb -= 64;
+  }
+  if (sb !== 0) {
+    view.setUint32(wi, lo, true);
+    view.setUint32(wi + 4, hi, true);
+  }
+  return ((wi * 8 + sb) + 7) >> 3;
+}
+
+// WriteTestFlat(value, view) -> bytes written (>= 0), or -1 on a checked
+// contract refusal. The buffer behind view must hold TestMaxBytes.
+export const WriteTestFlat = PRODUCTION ? writeTestFlatProduction : writeTestFlatChecked;
+
+// ReadTestFlat(value, view, numBits) -> bool. The buffer behind view must
+// extend FLAT_READ_SLACK bytes past the payload.
+export function ReadTestFlat(value, view, numBits) {
+  let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0;
+  let br = 0;
+  if (br + 46 > numBits) {
+    return false;
+  }
+  bi = br >>> 3;
+  wlo = view.getUint32(bi, true);
+  whi = view.getUint32(bi + 4, true);
+  s2 = br & 7;
+  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+  br += 16;
+  v = (out & 0xffff) >>> 0;
+  value.TestA = v;
+  bi = br >>> 3;
+  wlo = view.getUint32(bi, true);
+  whi = view.getUint32(bi + 4, true);
+  s2 = br & 7;
+  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+  br += 10;
+  v = (out & 0x3ff) >>> 0;
+  if (v > 1000) { // a smuggled offset is refused
+    return false;
+  }
+  value.TestB = v | 0;
+  bi = br >>> 3;
+  wlo = view.getUint32(bi, true);
+  whi = view.getUint32(bi + 4, true);
+  s2 = br & 7;
+  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+  br += 10;
+  v = (out & 0x3ff) >>> 0;
+  if (v > 1000) { // a smuggled offset is refused
+    return false;
+  }
+  value.TestC = v | 0;
+  bi = br >>> 3;
+  wlo = view.getUint32(bi, true);
+  whi = view.getUint32(bi + 4, true);
+  s2 = br & 7;
+  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+  br += 10;
+  v = (out & 0x3ff) >>> 0;
+  if (v > 1000) { // a smuggled offset is refused
+    return false;
+  }
+  value.TestD = v | 0;
+  return true;
+}
+
+// ---- type Block: the flat codec ----
+
+function writeBlockFlatProduction(value, view) {
+  let v = 0, s = 0;
+  let lo = 0, hi = 0, sb = 0, wi = 0;
+  v = ((value.DataLength) & 0x7ff) >>> 0;
+  s = sb;
+  if (s < 32) {
+    lo = (lo | (v << s)) >>> 0;
+    if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
+  } else {
+    hi = (hi | (v << (s - 32))) >>> 0;
+  }
+  sb = s + 11;
+  if (sb >= 64) {
+    view.setUint32(wi, lo, true);
+    view.setUint32(wi + 4, hi, true);
+    wi += 8;
+    lo = s === 32 ? 0 : v >>> (64 - s);
+    hi = 0;
+    sb -= 64;
+  }
+  s = sb & 7;
+  if (s !== 0) {
+    sb += 8 - s;
+    if (sb >= 64) {
+      view.setUint32(wi, lo, true);
+      view.setUint32(wi + 4, hi, true);
+      wi += 8;
+      lo = 0;
+      hi = 0;
+      sb -= 64;
+    }
+  }
+  for (let i0 = 0; i0 < value.DataLength; i0++) {
+    v = value.Data[i0];
+    s = sb;
+    if (s < 32) {
+      lo = (lo | (v << s)) >>> 0;
+      if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
+    } else {
+      hi = (hi | (v << (s - 32))) >>> 0;
+    }
+    sb = s + 8;
+    if (sb >= 64) {
+      view.setUint32(wi, lo, true);
+      view.setUint32(wi + 4, hi, true);
+      wi += 8;
+      lo = s === 32 ? 0 : v >>> (64 - s);
+      hi = 0;
+      sb -= 64;
+    }
+  }
+  if (sb !== 0) {
+    view.setUint32(wi, lo, true);
+    view.setUint32(wi + 4, hi, true);
+  }
+  return ((wi * 8 + sb) + 7) >> 3;
+}
+
+function writeBlockFlatChecked(value, view) {
+  let v = 0, s = 0;
+  let lo = 0, hi = 0, sb = 0, wi = 0;
+  if (!Number.isInteger(value.DataLength) || value.DataLength < 0 || value.DataLength > 2000) { // the length guards the slice; out-of-contract writes are refused
+    return -1;
+  }
+  v = ((value.DataLength) & 0x7ff) >>> 0;
+  s = sb;
+  if (s < 32) {
+    lo = (lo | (v << s)) >>> 0;
+    if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
+  } else {
+    hi = (hi | (v << (s - 32))) >>> 0;
+  }
+  sb = s + 11;
+  if (sb >= 64) {
+    view.setUint32(wi, lo, true);
+    view.setUint32(wi + 4, hi, true);
+    wi += 8;
+    lo = s === 32 ? 0 : v >>> (64 - s);
+    hi = 0;
+    sb -= 64;
+  }
+  s = sb & 7;
+  if (s !== 0) {
+    sb += 8 - s;
+    if (sb >= 64) {
+      view.setUint32(wi, lo, true);
+      view.setUint32(wi + 4, hi, true);
+      wi += 8;
+      lo = 0;
+      hi = 0;
+      sb -= 64;
+    }
+  }
+  for (let i0 = 0; i0 < value.DataLength; i0++) {
+    v = value.Data[i0];
+    s = sb;
+    if (s < 32) {
+      lo = (lo | (v << s)) >>> 0;
+      if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
+    } else {
+      hi = (hi | (v << (s - 32))) >>> 0;
+    }
+    sb = s + 8;
+    if (sb >= 64) {
+      view.setUint32(wi, lo, true);
+      view.setUint32(wi + 4, hi, true);
+      wi += 8;
+      lo = s === 32 ? 0 : v >>> (64 - s);
+      hi = 0;
+      sb -= 64;
+    }
+  }
+  if (sb !== 0) {
+    view.setUint32(wi, lo, true);
+    view.setUint32(wi + 4, hi, true);
+  }
+  return ((wi * 8 + sb) + 7) >> 3;
+}
+
+// WriteBlockFlat(value, view) -> bytes written (>= 0), or -1 on a checked
+// contract refusal. The buffer behind view must hold BlockMaxBytes.
+export const WriteBlockFlat = PRODUCTION ? writeBlockFlatProduction : writeBlockFlatChecked;
+
+// ReadBlockFlat(value, view, numBits) -> bool. The buffer behind view must
+// extend FLAT_READ_SLACK bytes past the payload.
+export function ReadBlockFlat(value, view, numBits) {
+  let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0;
+  let br = 0;
+  if (br + 11 > numBits) {
+    return false;
+  }
+  bi = br >>> 3;
+  wlo = view.getUint32(bi, true);
+  whi = view.getUint32(bi + 4, true);
+  s2 = br & 7;
+  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+  br += 11;
+  v = (out & 0x7ff) >>> 0;
+  if (v > 2000) { // the length guards the slice — reject, never clamp
+    return false;
+  }
+  value.DataLength = v;
+  s2 = br & 7;
+  if (s2 !== 0) {
+    if (br + (8 - s2) > numBits) {
+      return false;
+    }
+    if ((view.getUint8(br >>> 3) >>> s2) !== 0) { // nonzero padding is refused
+      return false;
+    }
+    br += 8 - s2;
+  }
+  if (br + value.DataLength * 8 > numBits) {
+    return false;
+  }
+  bi = br >>> 3;
+  for (let i0 = 0; i0 < value.DataLength; i0++) {
+    value.Data[i0] = view.getUint8(bi + i0);
+  }
+  br += value.DataLength * 8;
+  return true;
+}
+
+// ---- type Chat: the flat codec ----
+
+function writeChatFlatProduction(value, view) {
+  let v = 0, s = 0;
+  let lo = 0, hi = 0, sb = 0, wi = 0;
+  v = ((value.TextLength) & 0x1ff) >>> 0;
+  s = sb;
+  if (s < 32) {
+    lo = (lo | (v << s)) >>> 0;
+    if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
+  } else {
+    hi = (hi | (v << (s - 32))) >>> 0;
+  }
+  sb = s + 9;
+  if (sb >= 64) {
+    view.setUint32(wi, lo, true);
+    view.setUint32(wi + 4, hi, true);
+    wi += 8;
+    lo = s === 32 ? 0 : v >>> (64 - s);
+    hi = 0;
+    sb -= 64;
+  }
+  s = sb & 7;
+  if (s !== 0) {
+    sb += 8 - s;
+    if (sb >= 64) {
+      view.setUint32(wi, lo, true);
+      view.setUint32(wi + 4, hi, true);
+      wi += 8;
+      lo = 0;
+      hi = 0;
+      sb -= 64;
+    }
+  }
+  for (let i0 = 0; i0 < value.TextLength; i0++) {
+    v = value.Text[i0];
+    s = sb;
+    if (s < 32) {
+      lo = (lo | (v << s)) >>> 0;
+      if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
+    } else {
+      hi = (hi | (v << (s - 32))) >>> 0;
+    }
+    sb = s + 8;
+    if (sb >= 64) {
+      view.setUint32(wi, lo, true);
+      view.setUint32(wi + 4, hi, true);
+      wi += 8;
+      lo = s === 32 ? 0 : v >>> (64 - s);
+      hi = 0;
+      sb -= 64;
+    }
+  }
+  if (sb !== 0) {
+    view.setUint32(wi, lo, true);
+    view.setUint32(wi + 4, hi, true);
+  }
+  return ((wi * 8 + sb) + 7) >> 3;
+}
+
+function writeChatFlatChecked(value, view) {
+  let v = 0, s = 0;
+  let lo = 0, hi = 0, sb = 0, wi = 0;
+  if (!Number.isInteger(value.TextLength) || value.TextLength < 0 || value.TextLength > 256) { // the length guards the slice; out-of-contract writes are refused
+    return -1;
+  }
+  v = ((value.TextLength) & 0x1ff) >>> 0;
+  s = sb;
+  if (s < 32) {
+    lo = (lo | (v << s)) >>> 0;
+    if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
+  } else {
+    hi = (hi | (v << (s - 32))) >>> 0;
+  }
+  sb = s + 9;
+  if (sb >= 64) {
+    view.setUint32(wi, lo, true);
+    view.setUint32(wi + 4, hi, true);
+    wi += 8;
+    lo = s === 32 ? 0 : v >>> (64 - s);
+    hi = 0;
+    sb -= 64;
+  }
+  s = sb & 7;
+  if (s !== 0) {
+    sb += 8 - s;
+    if (sb >= 64) {
+      view.setUint32(wi, lo, true);
+      view.setUint32(wi + 4, hi, true);
+      wi += 8;
+      lo = 0;
+      hi = 0;
+      sb -= 64;
+    }
+  }
+  for (let i0 = 0; i0 < value.TextLength; i0++) {
+    v = value.Text[i0];
+    s = sb;
+    if (s < 32) {
+      lo = (lo | (v << s)) >>> 0;
+      if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
+    } else {
+      hi = (hi | (v << (s - 32))) >>> 0;
+    }
+    sb = s + 8;
+    if (sb >= 64) {
+      view.setUint32(wi, lo, true);
+      view.setUint32(wi + 4, hi, true);
+      wi += 8;
+      lo = s === 32 ? 0 : v >>> (64 - s);
+      hi = 0;
+      sb -= 64;
+    }
+  }
+  if (sb !== 0) {
+    view.setUint32(wi, lo, true);
+    view.setUint32(wi + 4, hi, true);
+  }
+  return ((wi * 8 + sb) + 7) >> 3;
+}
+
+// WriteChatFlat(value, view) -> bytes written (>= 0), or -1 on a checked
+// contract refusal. The buffer behind view must hold ChatMaxBytes.
+export const WriteChatFlat = PRODUCTION ? writeChatFlatProduction : writeChatFlatChecked;
+
+// ReadChatFlat(value, view, numBits) -> bool. The buffer behind view must
+// extend FLAT_READ_SLACK bytes past the payload.
+export function ReadChatFlat(value, view, numBits) {
+  let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0;
+  let br = 0;
+  if (br + 9 > numBits) {
+    return false;
+  }
+  bi = br >>> 3;
+  wlo = view.getUint32(bi, true);
+  whi = view.getUint32(bi + 4, true);
+  s2 = br & 7;
+  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+  br += 9;
+  v = (out & 0x1ff) >>> 0;
+  if (v > 256) { // the length guards the slice — reject, never clamp
+    return false;
+  }
+  value.TextLength = v;
+  s2 = br & 7;
+  if (s2 !== 0) {
+    if (br + (8 - s2) > numBits) {
+      return false;
+    }
+    if ((view.getUint8(br >>> 3) >>> s2) !== 0) { // nonzero padding is refused
+      return false;
+    }
+    br += 8 - s2;
+  }
+  if (br + value.TextLength * 8 > numBits) {
+    return false;
+  }
+  bi = br >>> 3;
+  for (let i0 = 0; i0 < value.TextLength; i0++) {
+    value.Text[i0] = view.getUint8(bi + i0);
+  }
+  br += value.TextLength * 8;
+  for (let i0 = 0; i0 < value.TextLength; i0++) {
+    if (value.Text[i0] === 0) { // an interior null is content the read refuses
+      return false;
+    }
+  }
   return true;
 }
 

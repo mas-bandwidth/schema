@@ -453,33 +453,6 @@ fn pin_shipcreate() -> ShipCreate {
     input
 }
 
-fn pin_ship_shallow() -> ShipData_Shallow {
-    let mut interp = ShipData_Interpolate::default();
-    interp.ship_type = ShipType::CORVETTE;
-    interp.position = Vec3 {
-        x: 1.5,
-        y: -2.25,
-        z: 100.0,
-    };
-    interp.rotation = Quat {
-        x: 0.0,
-        y: 0.0,
-        z: 0.0,
-        w: 1.0,
-    };
-    interp.linear_velocity = Vec3 {
-        x: 3.0,
-        y: 0.0,
-        z: -1.0,
-    };
-    interp.flags = SHIP_FLAGS_BOOSTING;
-    interp.team = Team::RED;
-    interp.health = 750;
-    interp.thrust = 55;
-    let mut q = ShipData_Shallow::default();
-    quantize_ship(&interp, &mut q);
-    q
-}
 
 fn pin_probe_header() -> ProbeHeader {
     ProbeHeader {
@@ -609,17 +582,6 @@ fn vary_shipcreate(m: &mut ShipCreate, rng: u64) {
     m.thrust = ((rng >> 14) & 63) as i8; // within [0, 100]
 }
 
-fn vary_ship_shallow(m: &mut ShipData_Shallow, rng: u64) {
-    m.position_x = (((rng >> 8) & 0xFFFFF) as i32) - 0x80000;
-    m.position_y = (((rng >> 16) & 0xFFFFF) as i32) - 0x80000;
-    m.position_z = (((rng >> 24) & 0xFFFFF) as i32) - 0x80000;
-    m.rotation_x = ((rng & 0x7FF) as i32 - 1024) as i16;
-    m.rotation_w = (((rng >> 11) & 0x7FF) as i32 - 1024) as i16;
-    m.linear_velocity_x = (((rng >> 32) & 0x3FFFFF) as i32) - 2097152;
-    m.flags = rng & 15;
-    m.health = ((rng >> 5) & 511) as u16;
-    m.thrust = ((rng >> 14) & 63) as u8;
-}
 
 fn vary_probe_header(m: &mut ProbeHeader, rng: u64) {
     m.version = (rng as u32) & 7; // 3 wire bits
@@ -749,299 +711,9 @@ fn vary_real_packet(m: &mut realworld::RealPacket, rng: u64) {
     m.f054_int = ((((rng >> 45) & 63) as i32) - 32) as i8; // +/-32 within +/-35
 }
 
-// ------------------------------------------------------------------------------------------
-// the synthetic steady-state batch: NUM_BATCH_MESSAGES messages through the
-// Message dispatch surface (write_message/read_message) plus the None
-// terminator, mixed types driven by the LCG — the C++ batch builder exactly.
-// ------------------------------------------------------------------------------------------
-
-const NUM_BATCH_MESSAGES: usize = 4096;
-const BATCH_PASSES: usize = 25600; // rescaled 2026-08-23 with the mix rebalance: §2.1's floor wins (§1.2)
-
-fn build_batch(ctx: &Ctx, messages: &mut Vec<Message>, batch_buffer: &mut [u8]) -> Option<i64> {
-    messages.clear();
-
-    let mut rng: u64 = 12345;
-    for _ in 0..NUM_BATCH_MESSAGES {
-        rng = bench_rng(rng);
-        let pick = ((rng >> 32) % 20) as i32;
-        let m = if pick < 1 {
-            // 5% Chat
-            let mut c = Chat::default();
-            c.text_length = 8 + (rng & 7) as i32;
-            for i in 0..c.text_length as usize {
-                c.text[i] = b'a' + ((rng >> (i & 7)) & 15) as u8;
-            }
-            Message::Chat(c)
-        } else if pick < 7 {
-            // 30% Test
-            let mut t = Test::default();
-            t.test_a = rng as u16;
-            t.test_b = ((rng >> 16) & 511) as i16;
-            t.test_c = ((rng >> 25) & 511) as i16;
-            t.test_d = ((rng >> 34) & 511) as i16;
-            Message::Test(t)
-        } else if pick < 12 {
-            // 25% Synchronize
-            let mut s = Synchronize::default();
-            s.sync_frame = rng;
-            s.sync_sequence = (rng >> 8) as u16;
-            Message::Synchronize(s)
-        } else if pick < 17 {
-            // 25% Timescale
-            let mut t = Timescale::default();
-            t.scale = ((rng as u32) & 0xFFFF) as f64 / 65536.0;
-            t.frame_a = (rng >> 16) as u32;
-            t.frame_b = (rng >> 24) as u32;
-            Message::Timescale(t)
-        } else if pick < 19 {
-            // 10% Heartbeat
-            Message::Heartbeat(Heartbeat::default())
-        } else {
-            // 5% Block
-            let mut b = Block::default();
-            b.data_length = 8 + (rng & 15) as i32;
-            for i in 0..b.data_length as usize {
-                b.data[i] = (rng >> (i & 31)) as u8;
-            }
-            Message::Block(b)
-        };
-        messages.push(m);
-    }
-
-    let mut ws = WriteStream::new(batch_buffer);
-    for m in messages.iter() {
-        if write_message(&mut ws, m).is_err() {
-            ctx.fail("message_batch", "batch write failed during setup");
-            return None;
-        }
-    }
-    if write_message(&mut ws, &Message::None).is_err() {
-        ctx.fail("message_batch", "terminator write failed during setup");
-        return None;
-    }
-    ws.flush();
-    Some(ws.bytes_processed() as i64)
-}
-
-fn bench_batch(ctx: &Ctx) {
-    // worst case is NUM_BATCH_MESSAGES * MESSAGE_MAX_BYTES; actual is far
-    // less. + 8 read slack, and the size is a multiple of 8 (write contract).
-    let batch_buffer_size = (NUM_BATCH_MESSAGES + 1) * MESSAGE_MAX_BYTES + 8;
-    let mut batch_buffer = vec![0u8; batch_buffer_size];
-
-    let mut messages: Vec<Message> = Vec::with_capacity(NUM_BATCH_MESSAGES);
-    let Some(batch_bytes) = build_batch(ctx, &mut messages, &mut batch_buffer) else {
-        return;
-    };
-
-    let passes = BATCH_PASSES;
-    let total_msgs = (passes * NUM_BATCH_MESSAGES) as i64;
-
-    let mut write_rates = [0.0f64; MAX_NUM_RUNS];
-    let mut read_rates = [0.0f64; MAX_NUM_RUNS];
-    let mut rng: u64 = 999;
-
-    // write path: whole batch per pass; one message mutates per pass so the
-    // batch is never loop-invariant
-    for run in 0..(ctx.num_runs + 1) {
-        let start = Instant::now();
-        for _ in 0..passes {
-            rng = bench_rng(rng);
-            match &mut messages[((rng >> 16) as usize) % NUM_BATCH_MESSAGES] {
-                Message::Synchronize(s) => s.sync_frame = rng,
-                Message::Test(t) => t.test_a = rng as u16,
-                _ => {}
-            }
-            let n;
-            {
-                let mut ws = WriteStream::new(&mut batch_buffer);
-                for m in messages.iter() {
-                    if write_message(&mut ws, m).is_err() {
-                        ctx.fail("message_batch", "write failed in loop");
-                        return;
-                    }
-                }
-                let _ = write_message(&mut ws, &Message::None);
-                ws.flush();
-                n = ws.bytes_processed();
-            }
-            black_box(&batch_buffer);
-            ctx.sink.set(ctx.sink.get().wrapping_add(n));
-        }
-        let time = start.elapsed().as_secs_f64();
-        if run >= 1 {
-            write_rates[run - 1] = total_msgs as f64 / time;
-        }
-    }
-
-    // the read buffer: rebuild once from the deterministic batch state so bytes match
-    if build_batch(ctx, &mut messages, &mut batch_buffer).is_none() {
-        return;
-    }
-
-    // read path: read messages until the None terminator, whole batch per
-    // pass; ONE reused Message hoisted out of the loop, filled through
-    // read_message_into (the Rust shape of the go/cs runners' hoisted
-    // MessageStorage and the C++ runner's reused Message) — read_message's
-    // by-value return copies the ~2 KB union out of the call per message,
-    // which is harness shape, not serialize work. The into-path is
-    // byte-verified against the corpus golden in check_message_stream_golden
-    // before any number is produced.
-    let mut storage = Message::None;
-    for run in 0..(ctx.num_runs + 1) {
-        let start = Instant::now();
-        for _ in 0..passes {
-            let mut rs = ReadStream::new(&batch_buffer, batch_bytes as usize);
-            let mut count: i64 = 0;
-            loop {
-                if read_message_into(&mut rs, &mut storage).is_err() {
-                    ctx.fail("message_batch", "read failed in loop");
-                    return;
-                }
-                if matches!(storage, Message::None) {
-                    break;
-                }
-                black_box(&storage); // every decoded field is observed
-                count += 1;
-            }
-            if count != NUM_BATCH_MESSAGES as i64 {
-                ctx.fail("message_batch", "batch message count mismatch on read");
-                return;
-            }
-            ctx.sink.set(ctx.sink.get().wrapping_add(count as u64));
-        }
-        let time = start.elapsed().as_secs_f64();
-        if run >= 1 {
-            read_rates[run - 1] = total_msgs as f64 / time;
-        }
-    }
-
-    let bytes_per_msg = batch_bytes / NUM_BATCH_MESSAGES as i64;
-    ctx.report(
-        "message_batch",
-        "write",
-        total_msgs,
-        bytes_per_msg,
-        &run_stats(&mut write_rates[..ctx.num_runs]),
-        "gen",
-    );
-    ctx.report(
-        "message_batch",
-        "read",
-        total_msgs,
-        bytes_per_msg,
-        &run_stats(&mut read_rates[..ctx.num_runs]),
-        "gen",
-    );
-}
 
 // ------------------------------------------------------------------------------------------
 
-// the message_stream golden: dispatch wire self-check (not a benchmark).
-// Both dispatch read surfaces are held to the golden bytes — read_message
-// (by-value) and read_message_into (the reused-storage surface the batch
-// read loop runs on) must decode the golden to equal messages, and the
-// into-path decode must re-write to the golden byte-for-byte.
-fn check_message_stream_golden(ctx: &Ctx) {
-    let mut chat = Chat::default();
-    chat.text[..8].copy_from_slice(b"dispatch");
-    chat.text_length = 8;
-    let mut test = Test::default();
-    test.test_b = 42;
-
-    let mut buffer = vec![0u8; BUFFER_SIZE];
-    let n;
-    {
-        let mut ws = WriteStream::new(&mut buffer);
-        if write_message(&mut ws, &Message::Chat(chat)).is_err()
-            || write_message(&mut ws, &Message::Test(test)).is_err()
-            || write_message(&mut ws, &Message::None).is_err()
-        {
-            ctx.fail("message_stream", "dispatch write failed");
-            return;
-        }
-        ws.flush();
-        n = ws.bytes_processed() as usize;
-    }
-    if !ctx.check_golden("message_stream", &buffer[..n]) {
-        ctx.failed.set(true);
-        return;
-    }
-
-    // by-value decode of the golden bytes
-    let mut by_value = Vec::new();
-    {
-        let mut rs = ReadStream::new(&buffer, n);
-        loop {
-            match read_message(&mut rs) {
-                Ok(Message::None) => break,
-                Ok(m) => by_value.push(m),
-                Err(_) => {
-                    ctx.fail("message_stream", "by-value dispatch read failed");
-                    return;
-                }
-            }
-        }
-    }
-
-    // into-path decode into ONE reused storage, pre-poisoned with a full
-    // Block so the zero-form reset (SPEC §5) is what equality proves
-    let mut storage = {
-        let mut b = Block::default();
-        b.data_length = b.data.len() as i32;
-        for byte in b.data.iter_mut() {
-            *byte = 0xFF;
-        }
-        Message::Block(b)
-    };
-    let mut into_msgs = Vec::new();
-    {
-        let mut rs = ReadStream::new(&buffer, n);
-        loop {
-            if read_message_into(&mut rs, &mut storage).is_err() {
-                ctx.fail("message_stream", "read_message_into failed on the golden bytes");
-                return;
-            }
-            if matches!(storage, Message::None) {
-                break;
-            }
-            into_msgs.push(storage);
-        }
-    }
-    if by_value.len() != 2 || into_msgs != by_value {
-        ctx.fail(
-            "message_stream",
-            "read_message_into decode differs from read_message on the golden bytes",
-        );
-        return;
-    }
-
-    // and the into-path decode re-writes to the golden bytes exactly
-    let mut twin = vec![0u8; BUFFER_SIZE];
-    let twin_n;
-    {
-        let mut tws = WriteStream::new(&mut twin);
-        for m in &into_msgs {
-            if write_message(&mut tws, m).is_err() {
-                ctx.fail("message_stream", "re-write of into-path decode failed");
-                return;
-            }
-        }
-        if write_message(&mut tws, &Message::None).is_err() {
-            ctx.fail("message_stream", "re-write of into-path terminator failed");
-            return;
-        }
-        tws.flush();
-        twin_n = tws.bytes_processed() as usize;
-    }
-    if twin_n != n || twin[..twin_n] != buffer[..n] {
-        ctx.fail(
-            "message_stream",
-            "into-path round-trip bytes differ from the golden",
-        );
-    }
-}
 
 fn main() {
     let mut csv = false;
@@ -1087,7 +759,6 @@ fn main() {
 
     eprintln!("schema bench (rust)");
 
-    check_message_stream_golden(&ctx);
 
     // rigidbody_at_rest: the pinned at-rest twin of rigidbody_moving
     let mut at_rest = pin_rigidbody_moving();
@@ -1099,7 +770,6 @@ fn main() {
     bench_message(&ctx, "test", None, 192000000, Test::default(), write_test, read_test, vary_test);
     bench_message(&ctx, "inputpacket", Some("inputpacket"), 16000000, pin_inputpacket(), write_input_packet, read_input_packet, vary_inputpacket);
     bench_message(&ctx, "shipcreate", Some("shipcreate_flags"), 32000000, pin_shipcreate(), write_ship_create, read_ship_create, vary_shipcreate);
-    bench_message(&ctx, "ship_shallow", Some("ship_shallow"), 32000000, pin_ship_shallow(), write_ship_data_shallow, read_ship_data_shallow, vary_ship_shallow);
     bench_message(&ctx, "probe_header", Some("probe_header"), 256000000, pin_probe_header(), write_probe_header, read_probe_header, vary_probe_header);
     bench_message(&ctx, "probebits", Some("probebits"), 128000000, pin_probebits(), write_probe_bits, read_probe_bits, vary_probebits);
     bench_message(&ctx, "probearray", Some("probearray"), 20000000, pin_probearray(), write_probe_array, read_probe_array, vary_probearray);
@@ -1112,7 +782,6 @@ fn main() {
     // reference (§2.1).
     bench_message(&ctx, "real_packet", Some("real_packet"), 8000000, realworld::RealPacket::new(), realworld::write_real_packet, realworld::read_real_packet, vary_real_packet);
 
-    bench_batch(&ctx);
 
     // family rt (§1.3/§1.5): the runtime API by hand, oracle-gated against
     // the goldens the generated code pinned. Iteration counts are fixed and

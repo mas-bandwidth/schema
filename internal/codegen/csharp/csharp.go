@@ -58,11 +58,9 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 	// option b) — storage maps to the pair, wire calls mirror the C++ macros.
 	out := map[string][]byte{}
 	home := ir.ProtocolIdHome(u)
-	msgOwner := ir.MessageOwner(u)
-	objOwner := ir.ObjectOwner(u)
 	batched, needCore := batchPlan(u)
 	for _, f := range u.Files {
-		g := &gen{unit: u, file: f, home: f.Base == home, msgOwner: msgOwner, objOwner: objOwner, batched: batched, needCore: needCore}
+		g := &gen{unit: u, file: f, home: f.Base == home, batched: batched, needCore: needCore}
 		g.emitFile(g.home)
 		out[f.Base+".cs"] = g.assemble()
 	}
@@ -72,10 +70,8 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 type gen struct {
 	unit     *ir.Unit
 	file     *ir.File
-	home     bool   // this file carries ProtocolId and the unit-level target notes
-	msgOwner string // the one file that carries the message dispatch surface
-	objOwner string // the one file that carries the object tag surface
-	owner    string // the class whose members are being emitted (CS0542 escape)
+	home  bool   // this file carries ProtocolId and the unit-level target notes
+	owner string // the class whose members are being emitted (CS0542 escape)
 
 	batched   map[string]bool    // Write/Read pair names whose entry runs a batch
 	needCore  map[string]bool    // pair names that get a *Batch core (batched or composed under one)
@@ -194,23 +190,6 @@ func (g *gen) emitFile(carriesProtocolId bool) {
 		g.sf("public const ulong ProtocolId = 0x%016x;\n\n", g.unit.ProtocolId)
 	}
 
-	// MessageType / ObjectType lead their OWNER file — the unit-level surface
-	// is emitted exactly once, in the topologically last carrying file, so
-	// declarations spread across files never redeclare it in the compilation
-	// (SPEC §2 keeps the aspect layout non-enforced; ir.MessageOwner picks).
-	if g.file.Base == g.msgOwner && len(g.unit.Messages) > 0 {
-		g.emitTagEnum("MessageType", g.unit.Messages,
-			"the message set, extracted by the compiler — None = 0, then each message sorted by name (SPEC §4.8)")
-		g.tf("// Message is the dispatch surface: the abstract base every generated message\n")
-		g.tf("// extends. null is None — the stream terminator (SPEC §4.8). Each sealed\n")
-		g.tf("// override pins its message's tag; dispatch is a type-pattern switch.\n")
-		g.tf("public abstract class Message\n{\n    public abstract MessageType Type { get; }\n}\n\n")
-	}
-	if g.file.Base == g.objOwner && len(g.unit.ObjNames) > 0 {
-		g.emitTagEnum("ObjectType", g.unit.ObjNames,
-			"the object set, extracted by the compiler — None = 0, then each object sorted by name (SPEC §4.8)")
-	}
-
 	// declaration order — schema references are order-free and so is C#
 	for _, d := range g.file.Decls {
 		switch d := d.(type) {
@@ -220,30 +199,13 @@ func (g *gen) emitFile(carriesProtocolId bool) {
 			g.emitEnum(d)
 		case *ir.Flags:
 			g.emitFlags(d)
-		case *ir.ContextsMarker:
-			g.tf("// contexts declared for this unit: %s (SPEC §4.2).\n", strings.Join(d.Names, ", "))
-			g.tf("// Contexts generate no standalone artifacts — where an object carries\n")
-			g.tf("// context-scoped | local fields, its State class is generated once per\n")
-			g.tf("// context (ClientShipState, ServerShipState, ...), each holding the `all`\n")
-			g.tf("// fields plus its own context's. No preprocessor symbols in this target.\n\n")
 		case *ir.Struct:
 			g.emitClass(d)
 			g.emitStructFunctions(d)
 		case *ir.Union:
 			g.emitUnion(d)
 			g.emitUnionFunctions(d)
-		case *ir.Object:
-			g.emitObject(d)
-			g.emitObjectFunctions(d)
 		}
-	}
-
-	if g.file.Base == g.msgOwner && len(g.unit.Messages) > 0 {
-		g.emitMessageStorage()
-		g.emitMessageTagFunctions()
-	}
-	if g.file.Base == g.objOwner && len(g.unit.ObjNames) > 0 {
-		g.emitObjectTagFunctions()
 	}
 }
 
@@ -367,29 +329,15 @@ func (g *gen) emitFlags(d *ir.Flags) {
 }
 
 func (g *gen) emitClass(d *ir.Struct) {
-	kind := "type"
-	if d.IsMessage {
-		kind = "message"
-	}
 	if len(d.Tags) > 0 {
-		g.tf("// %s %s [%s] — tags are user-chosen and inert in v1 (SPEC §4.2, Type tags)\n", kind, d.Name, strings.Join(d.Tags, ", "))
+		g.tf("// type %s [%s] — tags are user-chosen and inert in v1 (SPEC §4.2, Type tags)\n", d.Name, strings.Join(d.Tags, ", "))
 	} else {
-		g.tf("// %s %s\n", kind, d.Name)
-	}
-	base := ""
-	if d.IsMessage {
-		base = " : Message"
+		g.tf("// type %s\n", d.Name)
 	}
 	g.owner = d.Name
-	g.tf("public sealed class %s%s\n{\n", d.Name, base)
-	if d.IsMessage {
-		g.tf("    public override MessageType Type => MessageType.%s;\n", d.Name)
-		if len(d.Fields) > 0 {
-			g.tf("\n")
-		}
-	}
-	g.emitClassFields(d.Fields, storageDeep)
-	g.emitElementConstructor(d.Name, d.Fields, storageDeep)
+	g.tf("public sealed class %s\n{\n", d.Name)
+	g.emitClassFields(d.Fields)
+	g.emitElementConstructor(d.Name, d.Fields)
 	g.tf("}\n\n")
 }
 
@@ -397,10 +345,10 @@ func (g *gen) emitClass(d *ir.Struct) {
 // arrays — the storage principle (SPEC §6.1): every buffer exists at
 // construction, nothing allocates per message. Scalar arrays and plain
 // class-typed members are pre-allocated by their field initializers.
-func (g *gen) emitElementConstructor(className string, fields []*ir.Field, v view) {
+func (g *gen) emitElementConstructor(className string, fields []*ir.Field) {
 	var elems []*ir.Field
 	for _, f := range fields {
-		if g.viewKeepsStorage(f, v) && f.Array != ir.ArrayNone {
+		if f.Array != ir.ArrayNone {
 			if f.Type.Kind == ir.TNamed && isClassRef(f.Type.Ref) {
 				elems = append(elems, f)
 			}
@@ -418,93 +366,6 @@ func (g *gen) emitElementConstructor(className string, fields []*ir.Field, v vie
 	g.tf("    }\n")
 }
 
-// viewKeepsStorage reports whether a field keeps its declared storage under
-// the view (quantized composites and projected floats replace theirs).
-func (g *gen) viewKeepsStorage(f *ir.Field, v view) bool {
-	if v == storageShallow && f.HasQuantize {
-		return false
-	}
-	if (v == storageShallow || v == storageInterp) && f.HasFloatRange {
-		return false
-	}
-	return true
-}
-
-// view selects which storage a field emission derives (SPEC §4.8).
-type view int
-
-const (
-	storageDeep    view = iota // declared storage — State and Data_Deep
-	storageShallow             // quantized wire storage
-	storageInterp              // interpolate storage: projected fields wire-int, composites continuous
-)
-
-func (g *gen) emitObject(d *ir.Object) {
-	g.tf("// ---- object %s — one definition, a generated family per target (SPEC §4.8) ----\n\n", d.Name)
-
-	if hasContextFields(d) {
-		for _, ctx := range g.unit.Contexts {
-			var fields []*ir.Field
-			for _, f := range d.Fields {
-				if f.Context == "" || f.Context == ctx {
-					fields = append(fields, f)
-				}
-			}
-			name := capitalize(ctx) + d.Name + "State"
-			g.tf("// %s — the full simulation class for the %s context: every `all`\n", name, ctx)
-			g.tf("// field plus the fields scoped | local, context = %s\n", ctx)
-			g.emitViewClass(name, fields, storageDeep)
-		}
-	} else {
-		g.tf("// %sState — the full simulation class: every field\n", d.Name)
-		g.emitViewClass(d.Name+"State", d.Fields, storageDeep)
-	}
-
-	deep, interp := splitObjectFields(d)
-
-	g.tf("// %sData_Deep — every non- | local field, deep encodings: full state for\n", d.Name)
-	g.tf("// client-side prediction\n")
-	g.emitViewClass(d.Name+"Data_Deep", deep, storageDeep)
-
-	g.tf("// %sData_Shallow — the | interpolate fields on the quantized wire: the\n", d.Name)
-	g.tf("// implementation detail on the way to interpolation on the client\n")
-	g.emitViewClass(d.Name+"Data_Shallow", interp, storageShallow)
-
-	g.tf("// %sData_Interpolate — the same fields in interpolate storage: projected\n", d.Name)
-	g.tf("// fields stay in the wire integer domain and snap-interpolate; quantized\n")
-	g.tf("// composites store continuous (SPEC §4.8 rule 5)\n")
-	g.emitViewClass(d.Name+"Data_Interpolate", interp, storageInterp)
-}
-
-func (g *gen) emitViewClass(name string, fields []*ir.Field, v view) {
-	g.owner = name
-	g.tf("public sealed class %s\n{\n", name)
-	g.emitClassFields(fields, v)
-	g.emitElementConstructor(name, fields, v)
-	g.tf("}\n\n")
-}
-
-func splitObjectFields(d *ir.Object) (deep, interp []*ir.Field) {
-	for _, f := range d.Fields {
-		if !f.Local {
-			deep = append(deep, f)
-		}
-		if f.Interpolate {
-			interp = append(interp, f)
-		}
-	}
-	return
-}
-
-func hasContextFields(d *ir.Object) bool {
-	for _, f := range d.Fields {
-		if f.Context != "" {
-			return true
-		}
-	}
-	return false
-}
-
 // isClassRef reports a named reference whose C# storage is a pre-allocated
 // class instance: a generated struct class or a union (SPEC §4.8).
 func isClassRef(ref ir.Decl) bool {
@@ -515,7 +376,7 @@ func isClassRef(ref ir.Decl) bool {
 	return false
 }
 
-func (g *gen) emitClassFields(fields []*ir.Field, v view) {
+func (g *gen) emitClassFields(fields []*ir.Field) {
 	prevGuard := ""
 	for _, f := range fields {
 		if f.Guard != prevGuard {
@@ -527,48 +388,8 @@ func (g *gen) emitClassFields(fields []*ir.Field, v view) {
 			}
 			prevGuard = f.Guard
 		}
-		g.emitField(f, v)
+		g.emitStorageField(f)
 	}
-}
-
-func (g *gen) emitField(f *ir.Field, v view) {
-	name := g.fieldBase(f)
-	if v == storageShallow && f.HasQuantize {
-		st := f.Type.Ref.(*ir.Struct)
-		if f.FixedShallow {
-			g.tf("    // %s: %s narrowed to %d fractional bits (quantize = %s) — per-component\n",
-				f.Name, f.Type.Name, f.QuantShift, ir.RenderExpr(f.QuantScaleExpr))
-			g.tf("    // quantized units; bounds are the component's whole-unit | min, max scaled\n")
-			for _, comp := range st.Fields {
-				lo, hi, _, typ, _ := fixedShallowComp(f, comp)
-				g.tf("    public %s %s; // in [%s, %s]\n", typ, g.m(ir.GoExportName(f.Name)+ir.GoExportName(comp.Name)), lo, hi)
-			}
-			return
-		}
-		g.tf("    // %s: %s quantized by %s, max %s — per-component int in [-%d, %d]\n",
-			f.Name, f.Type.Name, ir.RenderExpr(f.QuantScaleExpr), ir.RenderExpr(f.QuantMaxExpr), f.QuantBound, f.QuantBound)
-		typ := csInt(smallestSigned(f.QuantBound))
-		for _, comp := range st.Fields {
-			g.tf("    public %s %s;\n", typ, g.m(ir.GoExportName(f.Name)+ir.GoExportName(comp.Name)))
-		}
-		return
-	}
-	if (v == storageShallow || v == storageInterp) && f.HasFloatRange {
-		typ := csUint(ir.StorageBitsFor(f.Steps))
-		note := ""
-		if f.Round != "nearest" {
-			note = ", round " + f.Round + " (advisory: SPEC §4.8 rule 4 — projection, not this wire conversion)"
-		}
-		tail := ""
-		if v == storageInterp {
-			tail = " — wire-int domain, snap-interpolated (SPEC §4.8 rule 5)"
-		}
-		g.tf("    public %s %s; // float [%s, %s] @ resolution %s -> wire int [0, %d]%s%s\n",
-			typ, name, formatFloat(f.FMin), formatFloat(f.FMax),
-			formatFloat(f.Resolution), f.Steps, note, tail)
-		return
-	}
-	g.emitStorageField(f)
 }
 
 func (g *gen) emitStorageField(f *ir.Field) {
@@ -618,24 +439,8 @@ func (g *gen) fieldComment(f *ir.Field) string {
 		parts = append(parts, fmt.Sprintf("wire [%s, %s]", f.IntMin, f.IntMax))
 	}
 	if f.HasFloatRange {
-		note := ""
-		if f.Round != "nearest" {
-			note = ", round " + f.Round + " (advisory: SPEC §4.8 rule 4 — projection, not this wire conversion)"
-		}
-		if f.Interpolate {
-			parts = append(parts, fmt.Sprintf("shallow wire: [%s, %s] @ %s -> int [0, %d]%s",
-				formatFloat(f.FMin), formatFloat(f.FMax), formatFloat(f.Resolution), f.Steps, note))
-		} else {
-			parts = append(parts, fmt.Sprintf("compressed float [%s, %s] @ %s%s",
-				formatFloat(f.FMin), formatFloat(f.FMax), formatFloat(f.Resolution), note))
-		}
-	}
-	if f.Local {
-		if f.Context != "" {
-			parts = append(parts, fmt.Sprintf("| local, context = %s", f.Context))
-		} else {
-			parts = append(parts, "| local — no wire")
-		}
+		parts = append(parts, fmt.Sprintf("compressed float [%s, %s] @ %s",
+			formatFloat(f.FMin), formatFloat(f.FMax), formatFloat(f.Resolution)))
 	}
 	if len(parts) == 0 {
 		return ""
@@ -959,26 +764,6 @@ func csUint(width int) string {
 		return "uint"
 	}
 	return "ulong"
-}
-
-// fixedShallowComp resolves one component of a narrowed fixed composite
-// (SPEC §4.8 rule 2b) to its C# shallow shape: wire bounds, the int/long
-// serialize switch, and the storage type. The bounds mirror
-// ir.FixedShallowBounds so all five backends agree on the wire.
-func fixedShallowComp(f, cf *ir.Field) (lo, hi *big.Int, wide bool, typ string, width int) {
-	lo, hi = ir.FixedShallowBounds(f, cf)
-	wide = hi.Cmp(big.NewInt(2147483647)) > 0 || lo.Cmp(big.NewInt(-2147483648)) < 0
-	abs := new(big.Int).Neg(lo)
-	if abs.Cmp(hi) < 0 {
-		abs = hi
-	}
-	bound := int64(9223372036854775807)
-	if abs.IsInt64() {
-		bound = abs.Int64()
-	}
-	width = smallestSigned(bound)
-	typ = csInt(width)
-	return
 }
 
 func smallestSigned(bound int64) int {

@@ -1,7 +1,3 @@
-// The multi-file dispatch test: messages and objects spread across schema
-// files are legal (SPEC §2 — the aspect layout is never compiler-enforced),
-// so the unit-level dispatch surface must be emitted exactly ONCE per unit in
-// every target, or the generated package/TU cannot compile.
 package golang
 
 import (
@@ -17,30 +13,6 @@ import (
 	"github.com/mas-bandwidth/schema/internal/parser"
 	"github.com/mas-bandwidth/schema/ir"
 )
-
-func multiFileUnit(t *testing.T) *ir.Unit {
-	t.Helper()
-	sources := map[string]string{
-		"MessagesA.schema": "package t\nmessage Ping { x uint8 }\nobject Rock { size uint8 | interpolate, min = 0, max = 100 }\n",
-		"MessagesB.schema": "package t\nmessage Pong { y uint8 }\nobject Tree { size uint8 | interpolate, min = 0, max = 100 }\n",
-	}
-	var files []check.SourceFile
-	for name, src := range sources {
-		f, perrs := parser.Parse(name, []byte(src))
-		if len(perrs) > 0 {
-			t.Fatalf("parse: %v", perrs[0])
-		}
-		files = append(files, check.SourceFile{
-			Path: name, Name: name, Base: strings.TrimSuffix(name, ".schema"),
-			Bytes: []byte(src), AST: f,
-		})
-	}
-	u, cerrs := check.Unit(files)
-	if len(cerrs) > 0 {
-		t.Fatalf("check: %v", cerrs[0])
-	}
-	return u
-}
 
 func countAcross(files map[string][]byte, needle string) int {
 	n := 0
@@ -85,16 +57,15 @@ func TestBareFloatConstExportsTypedFloat64(t *testing.T) {
 
 // Every generated enum surface carries its extent as the member Max (SPEC
 // §4.2 — the exported-extent rule): declared enums (headroom
-// included) and the generated MessageType/ObjectType tag enums alike, in
-// each target's own convention. Call sites then state ranges against
-// E.Max's generated twin instead of a hand-declared count constant.
+// included) and the generated <Union>Type tag enum alike, in each target's
+// own convention. Call sites then state ranges against E.Max's generated
+// twin instead of a hand-declared count constant.
 func TestEnumExtentEmitted(t *testing.T) {
 	src := "package t\n\n" +
 		"enum Weapon | max = 15\n{ Laser, Missile }\n\n" +
-		"message Ping { w Weapon }\n\n" +
-		"message Pong { y uint8 }\n\n" +
-		"object Rock { size uint8 | interpolate, min = 0, max = 100 }\n\n" +
-		"object Tree { size uint8 | interpolate, min = 0, max = 100 }\n"
+		"type Box { w Weapon }\n\n" +
+		"type Ball { y uint8 }\n\n" +
+		"union Shape {\n    box  Box\n    ball Ball\n}\n"
 	f, perrs := parser.Parse("Extent.schema", []byte(src))
 	if len(perrs) > 0 {
 		t.Fatalf("parse: %v", perrs[0])
@@ -127,33 +98,29 @@ func TestEnumExtentEmitted(t *testing.T) {
 	// as separate needles rather than one whitespace-sensitive line
 	addTarget("Go", goFiles, goErr,
 		expectation{"WeaponMax", 1},
-		expectation{"MessageTypeMax", 1},
-		expectation{"ObjectTypeMax", 1},
+		expectation{"ShapeTypeMax", 1},
 		expectation{"= 15 // the exported extent (SPEC §4.2)", 1},
-		expectation{"= 2 // the exported extent (SPEC §4.2)", 2})
+		expectation{"= 2 // the exported extent (SPEC §4.2)", 1})
 	rustFiles, rustErr := rust.Generate(u)
 	addTarget("Rust", rustFiles, rustErr,
 		expectation{"pub const MAX: Weapon = Weapon(15);", 1},
-		expectation{"pub const MAX: MessageType = MessageType(2);", 1},
-		expectation{"pub const MAX: ObjectType = ObjectType(2);", 1})
+		expectation{"pub const MAX: ShapeType = ShapeType(2);", 1})
 	csFiles, csErr := csharp.Generate(u)
 	addTarget("C#", csFiles, csErr,
 		expectation{"Max = 15,", 1}, // Weapon
-		expectation{"Max = 2,", 2})  // MessageType + ObjectType
+		expectation{"Max = 2,", 1})  // ShapeType
 	jsFiles, jsErr := js.Generate(u)
 	addTarget("JS", jsFiles, jsErr,
 		expectation{"Max: 15,", 1},
-		expectation{"Max: 2,", 2})
+		expectation{"Max: 2,", 1})
 	cFiles, cErr := cgen.Generate(u)
 	addTarget("C", cFiles, cErr,
 		expectation{"#define WEAPON_MAX 15", 1},
-		expectation{"#define MESSAGE_TYPE_MAX 2", 1})
-	for _, mode := range []string{"union", "variant"} {
-		cppFiles, cppErr := cpp.Generate(u, cpp.Options{MessageRepr: mode})
-		addTarget("C++ ("+mode+")", cppFiles, cppErr,
-			expectation{"Max = 15,", 1},
-			expectation{"Max = 2,", 2})
-	}
+		expectation{"#define SHAPE_TYPE_MAX 2", 1})
+	cppFiles, cppErr := cpp.Generate(u)
+	addTarget("C++", cppFiles, cppErr,
+		expectation{"Max = 15,", 1},
+		expectation{"Max = 2,", 1})
 
 	for _, tgt := range targets {
 		if tgt.genErr != nil {
@@ -246,15 +213,13 @@ func TestUnionSurfaceEmitted(t *testing.T) {
 		expectation{"int write_shape( serialize_write_stream_t * stream, const Shape * value )", 1},
 		expectation{"int read_shape( serialize_read_stream_t * stream, Shape * value )", 1},
 		expectation{"#define SHAPE_MAX_BITS 18", 1})
-	for _, mode := range []string{"union", "variant"} {
-		cppFiles, cppErr := cpp.Generate(u, cpp.Options{MessageRepr: mode})
-		addTarget("C++ ("+mode+")", cppFiles, cppErr,
-			expectation{"enum class ShapeType : uint8_t {", 1},
-			expectation{"struct Shape\n{", 1},
-			expectation{"SCHEMA_WRITE_INLINE bool WriteShape( serialize::WriteStream & stream, const Shape & value )", 1},
-			expectation{"SCHEMA_READ_INLINE bool ReadShape( serialize::ReadStream & stream, Shape & value )", 1},
-			expectation{"inline constexpr int64_t ShapeMaxBits = 18;", 1})
-	}
+	cppFiles, cppErr := cpp.Generate(u)
+	addTarget("C++", cppFiles, cppErr,
+		expectation{"enum class ShapeType : uint8_t {", 1},
+		expectation{"struct Shape\n{", 1},
+		expectation{"SCHEMA_WRITE_INLINE bool WriteShape( serialize::WriteStream & stream, const Shape & value )", 1},
+		expectation{"SCHEMA_READ_INLINE bool ReadShape( serialize::ReadStream & stream, Shape & value )", 1},
+		expectation{"inline constexpr int64_t ShapeMaxBits = 18;", 1})
 
 	for _, tgt := range targets {
 		if tgt.genErr != nil {
@@ -329,13 +294,11 @@ func TestFlagsCountAndWireBits(t *testing.T) {
 		expectation{"#define CAPS_COUNT 4", 1},
 		expectation{"serialize_write_bits( stream, (serialize_uint32_t) value->caps, 4 )", 1},
 		expectation{"serialize_read_bits( stream, &flags_value, 4 )", 1})
-	for _, mode := range []string{"union", "variant"} {
-		cppFiles, cppErr := cpp.Generate(u, cpp.Options{MessageRepr: mode})
-		addTarget("C++ ("+mode+")", cppFiles, cppErr,
-			expectation{"inline constexpr int64_t CapsCount = 4;", 1},
-			expectation{"write_bits( stream, value.caps, 4 );", 1},
-			expectation{"read_bits( stream, value.caps, 4 );", 1})
-	}
+	cppFlagFiles, cppFlagErr := cpp.Generate(u)
+	addTarget("C++", cppFlagFiles, cppFlagErr,
+		expectation{"inline constexpr int64_t CapsCount = 4;", 1},
+		expectation{"write_bits( stream, value.caps, 4 );", 1},
+		expectation{"read_bits( stream, value.caps, 4 );", 1})
 
 	for _, tgt := range targets {
 		if tgt.genErr != nil {
@@ -346,98 +309,6 @@ func TestFlagsCountAndWireBits(t *testing.T) {
 			if got := countAcross(tgt.files, e.needle); got != e.count {
 				t.Errorf("%s: %q emitted %d times, want %d — flags spend exactly Count wire bits and export Count (SPEC §4.2)", tgt.name, e.needle, got, e.count)
 			}
-		}
-	}
-}
-
-func TestDispatchSurfaceEmittedOnce(t *testing.T) {
-	u := multiFileUnit(t)
-
-	goFiles, err := Generate(u)
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, needle := range []string{
-		"type MessageType ", "type Message interface", "type MessageStorage struct",
-		"func WriteMessage(", "func ReadMessage(", "func WriteMessageType(",
-		"type ObjectType ", "func WriteObjectType(",
-	} {
-		if got := countAcross(goFiles, needle); got != 1 {
-			t.Errorf("Go: %q emitted %d times across the unit — the package cannot compile unless it is exactly once", needle, got)
-		}
-	}
-	// both messages' dispatch methods live with the surface, in the owner file
-	if got := countAcross(goFiles, ") MessageType() MessageType {"); got != 2 {
-		t.Errorf("Go: expected 2 dispatch methods (one per message), got %d", got)
-	}
-
-	rustFiles, err := rust.Generate(u)
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, needle := range []string{
-		"pub struct MessageType(", "pub enum Message {", "pub struct ObjectType(",
-		// the inline taxonomy rides on the dispatch-once gate, as the C++
-		// twin's does below. Rust's line is NOT C++'s: the WRITE spines and
-		// tag writers demand, and every READ surface plus write_message keeps
-		// the plain hint — the C++ blanket read demand was ported, measured,
-		// and refused (see rust/inline.go's read-half note).
-		"#[inline(always)]\npub fn write_message_type(", "#[inline(always)]\npub fn write_object_type(",
-		"#[inline]\npub fn write_message(", "#[inline]\npub fn read_message(",
-		"#[inline]\npub fn read_message_into(", "#[inline]\npub fn read_message_type(",
-		"#[inline]\npub fn read_object_type(",
-	} {
-		if got := countAcross(rustFiles, needle); got != 1 {
-			t.Errorf("Rust: %q emitted %d times across the unit — the crate cannot compile unless it is exactly once", needle, got)
-		}
-	}
-	// both messages ride the one dispatch enum, in the owner file
-	if got := countAcross(rustFiles, "(value) => {"); got != 2 {
-		t.Errorf("Rust: expected 2 write dispatch arms (one per message), got %d", got)
-	}
-
-	csFiles, err := csharp.Generate(u)
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, needle := range []string{
-		"public enum MessageType", "public abstract class Message", "public sealed class MessageStorage",
-		"public static bool WriteMessage(", "public static bool ReadMessage(", "public static bool WriteMessageType(",
-		"public enum ObjectType", "public static bool WriteObjectType(",
-	} {
-		if got := countAcross(csFiles, needle); got != 1 {
-			t.Errorf("C#: %q emitted %d times across the unit — the compilation cannot succeed unless it is exactly once", needle, got)
-		}
-	}
-	// both messages carry the dispatch property, beside their own class
-	if got := countAcross(csFiles, "public override MessageType Type =>"); got != 2 {
-		t.Errorf("C#: expected 2 Type dispatch overrides (one per message), got %d", got)
-	}
-
-	for _, mode := range []string{"union", "variant"} {
-		cppFiles, err := cpp.Generate(u, cpp.Options{MessageRepr: mode})
-		if err != nil {
-			t.Fatal(err)
-		}
-		for _, needle := range []string{
-			// WriteMessage is the dispatch surface — deliberately plain `inline`,
-			// outside the write-spine demand (see cpp emitWriteDispatchComment)
-			"enum class MessageType", "inline bool WriteMessage(", "SCHEMA_READ_INLINE bool ReadMessage(",
-			"enum class ObjectType", "SCHEMA_WRITE_INLINE bool WriteObjectType(", "SCHEMA_READ_INLINE bool ReadObjectType(",
-		} {
-			if got := countAcross(cppFiles, needle); got != 1 {
-				t.Errorf("C++ (%s): %q emitted %d times across the unit — a TU including both headers cannot compile unless it is exactly once", mode, needle, got)
-			}
-		}
-		// the owner file must include the other message file: the dispatch
-		// value holds every message by value
-		owner := ir.MessageOwner(u) + ".h"
-		other := "MessagesA"
-		if ir.MessageOwner(u) == "MessagesA" {
-			other = "MessagesB"
-		}
-		if !strings.Contains(string(cppFiles[owner]), "#include \""+other+".h\"") {
-			t.Errorf("C++ (%s): the dispatch owner %s does not include %s.h", mode, owner, other)
 		}
 	}
 }

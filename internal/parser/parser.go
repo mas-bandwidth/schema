@@ -198,28 +198,18 @@ func (p *parser) parseDecl() {
 		p.skipDecl()
 
 	case scanner.KwMessage:
-		p.advance()
-		name := p.expect(scanner.Ident, "message name")
-		d := &ast.MessageDecl{Name: name.Text, Pos: t.Pos}
-		if p.kind() == scanner.Pipe {
-			p.errf(p.tok().Pos, "a message declaration takes no qualification (SPEC §4.2)")
-			p.skipToTerminator()
-		}
-		d.Body = p.parseBlock()
-		p.expectTerminator("message declaration")
-		p.file.Decls = append(p.file.Decls, d)
+		// `message` is reserved and refused: messages are not part of the
+		// language. A message set is a union of payload types plus your own
+		// framing — declare the payloads as `type` and tag them with a
+		// `union` (SPEC §4.8).
+		p.errf(t.Pos, "messages are not part of the language — declare a `type` and tag a set with a `union` (SPEC §4.8)")
+		p.skipDecl()
 
 	case scanner.KwObject:
-		p.advance()
-		name := p.expect(scanner.Ident, "object name")
-		d := &ast.ObjectDecl{Name: name.Text, Pos: t.Pos}
-		if p.kind() == scanner.Pipe {
-			p.errf(p.tok().Pos, "an object declaration takes no qualification (SPEC §4.2)")
-			p.skipToTerminator()
-		}
-		d.Body = p.parseBlock()
-		p.expectTerminator("object declaration")
-		p.file.Decls = append(p.file.Decls, d)
+		// `object` is reserved and refused: objects are not part of the
+		// language. Wire types are `type`.
+		p.errf(t.Pos, "objects are not part of the language — declare a `type` (SPEC §4.2)")
+		p.skipDecl()
 
 	case scanner.KwSwitch, scanner.KwCase:
 		p.errf(t.Pos, "switch is cut from v1 (SPEC §4.4); the keyword stays reserved")
@@ -241,11 +231,11 @@ func (p *parser) parseDecl() {
 			p.expectTerminator("flags declaration")
 			p.file.Decls = append(p.file.Decls, d)
 		case "contexts":
-			p.advance()
-			d := &ast.ContextsDecl{Pos: t.Pos}
-			d.Names = p.parseVariantList("contexts")
-			p.expectTerminator("contexts declaration")
-			p.file.Decls = append(p.file.Decls, d)
+			// contexts is refused at file scope: build contexts are not
+			// part of the language — every field of a type is identical
+			// on every side of the wire.
+			p.errf(t.Pos, "contexts are not part of the language — a type's fields are identical on every peer (SPEC §4.2)")
+			p.skipDecl()
 		case "union":
 			p.advance()
 			name := p.expect(scanner.Ident, "union name")

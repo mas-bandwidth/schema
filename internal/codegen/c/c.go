@@ -58,18 +58,16 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 
 	out := map[string][]byte{}
 	home := ir.ProtocolIdHome(u)
-	msgOwner := ir.MessageOwner(u)
-	objOwner := ir.ObjectOwner(u)
 	deps := ir.FileDeps(u)
 
 	var errs []error
 	for _, f := range u.Files {
-		g := &gen{unit: u, file: f, msgOwner: msgOwner, objOwner: objOwner, deps: sortedDeps(deps[f.Base])}
+		g := &gen{unit: u, file: f, deps: sortedDeps(deps[f.Base])}
 		g.emitDataHeader(f.Base == home)
 		out[f.Base+".h"] = g.assembleHeader()
 		errs = append(errs, g.errs...)
 
-		w := &gen{unit: u, file: f, msgOwner: msgOwner, objOwner: objOwner, deps: sortedDeps(deps[f.Base]), wire: true}
+		w := &gen{unit: u, file: f, deps: sortedDeps(deps[f.Base]), wire: true}
 		w.emitWireHeader()
 		out[f.Base+"Wire.h"] = w.assembleWireHeader()
 		errs = append(errs, w.errs...)
@@ -96,15 +94,12 @@ type gen struct {
 	errs     []error
 	needs128 bool // a 128-bit or Q112.16 storage member needs serialize.h in the DATA header
 
-	emitMessagesPending bool // this file owns the message dispatch surface
-	saidReadSlack       bool // the read-slack buffer contract is stated once per file, on its first MAX_BYTES
-	saidFlagAppend      bool // the flag_names_* append helpers are emitted once per file
-	file                *ir.File
-	msgOwner            string
-	objOwner            string
-	deps                []string
-	wire                bool
-	body                strings.Builder
+	saidReadSlack  bool // the read-slack buffer contract is stated once per file, on its first MAX_BYTES
+	saidFlagAppend bool // the flag_names_* append helpers are emitted once per file
+	file           *ir.File
+	deps           []string
+	wire           bool
+	body           strings.Builder
 
 	// fixed [N]uint8 arrays of the struct being emitted whose element bytes
 	// are statically byte-aligned (ir.AlignedFixedByteArrays) — the same map
@@ -230,10 +225,6 @@ func (g *gen) emitDataHeader(carriesProtocolId bool) {
 		g.pf("#define %s_PROTOCOL_ID 0x%016xULL\n\n", screaming(g.unit.Package), g.unit.ProtocolId)
 	}
 
-	if g.file.Base == g.msgOwner && len(g.unit.Messages) > 0 {
-		g.emitMessagesPending = true
-	}
-
 	// emission order, not declaration order: C needs every same-file named
 	// type defined before its by-value users, same as C++ (found by
 	// FuzzGeneratedCompiles — `type A { B B }  type B {}` emitted A first
@@ -250,22 +241,9 @@ func (g *gen) emitDataHeader(carriesProtocolId bool) {
 			g.emitStruct(decl)
 		case *ir.Union:
 			g.emitUnion(decl)
-		case *ir.Object:
-			g.emitObject(decl)
-		case *ir.ContextsMarker:
-			g.pf("/* contexts declared for this unit: %s (SPEC §4.2).\n", strings.Join(decl.Names, ", "))
-			g.pf("   Contexts generate no standalone artifacts — where an object carries\n")
-			g.pf("   context-scoped | local fields, its State struct is generated once per\n")
-			g.pf("   context (ClientShipState, ServerShipState, ...), each holding the `all`\n")
-			g.pf("   fields plus its own context's. No preprocessor in any target. */\n\n")
 		default:
 			g.unsupported("declaration kind %T in %s.schema has no C emission", decl, g.file.Base)
 		}
-	}
-
-	// the message tag and union come after the arms they name
-	if g.emitMessagesPending {
-		g.emitMessageTypes()
 	}
 }
 
@@ -406,11 +384,7 @@ func (g *gen) emitFlagAppendHelpers() {
 }
 
 func (g *gen) emitStruct(d *ir.Struct) {
-	kind := "type"
-	if d.IsMessage {
-		kind = "message"
-	}
-	g.pf("\n/* %s %s */\n", kind, d.Name)
+	g.pf("\n/* type %s */\n", d.Name)
 	if len(d.Fields) == 0 {
 		// C forbids an empty struct; one padding byte keeps sizeof() legal and
 		// the type usable. It carries no wire bits.
@@ -627,13 +601,7 @@ func (g *gen) emitWireHeader() {
 			g.emitReadFunc(decl)
 		case *ir.Union:
 			g.emitUnionWire(decl)
-		case *ir.Object:
-			g.emitObjectFunctions(decl)
 		}
-	}
-
-	if g.file.Base == g.msgOwner && len(g.unit.Messages) > 0 {
-		g.emitMessageDispatch()
 	}
 }
 

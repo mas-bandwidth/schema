@@ -95,7 +95,6 @@ func main() {
 	check(ludicrous.FixedProbeMaxBits == 156, "FixedProbe worst case")
 	check(ludicrous.WideProbeMaxBits == 403, "WideProbe worst case")
 	check(ludicrous.LudicrousStateMaxBits == 1205, "LudicrousState worst case")
-	check(ludicrous.MessageMaxBits == 1206, "message-level bound")
 	check(ludicrous.ProtocolId != 0, "the unit has a protocol id")
 
 	// zero initialization with specified defaults (SPEC §4.2), sentinel-zero
@@ -212,73 +211,6 @@ func main() {
 		check(out == in, "DegenerateProbe round-trips — every value materialized from its range")
 	}
 
-	// ---- NarrowBody: the narrowed fixed shallow (SPEC §4.8 rule 2b) ----
-	// The pinned tie semantics: quantize rounds to nearest, ties AWAY FROM
-	// ZERO — the one fixed-point rounding rule (SPEC §4.8, decided
-	// the ruled form) — and unquantize is the left shift back. The wire
-	// bytes are the C++-pinned goldens; the values mirror
-	// test/ludicrous_main.cpp block for block.
-	{
-		check(ludicrous.NarrowBodyData_ShallowMaxBits == 228, "narrowed shallow worst case")
-		check(ludicrous.NarrowBodyData_DeepMaxBits == 332, "narrow deep worst case")
-
-		in := ludicrous.NarrowBodyData_Interpolate{}
-		in.Position.X = 384      // +1.5 eighths: tie, rounds AWAY to 2
-		in.Position.Y = -384     // -1.5 eighths: tie, rounds AWAY to -2 — THE distinguishing value
-		in.Position.Z = -6586368 // -100.5 * 2^16, exact in 8 kept bits
-		in.Rotation.W = 1 << 30  // identity, hits the +1024 bound exactly
-		in.Velocity.X = 1
-		in.Velocity.Y = -1
-		in.Velocity.Z = 123456789
-
-		sh := ludicrous.NarrowBodyData_Shallow{}
-		ludicrous.QuantizeNarrowBody(&in, &sh)
-		check(sh.PositionX == 2, "+1.5 eighths ties away to 2")
-		check(sh.PositionY == -2, "-1.5 eighths ties away from zero to -2 (the bare shift would say -1)")
-		check(sh.PositionZ == -25728, "-100.5 units exact in 8 kept bits")
-		check(sh.RotationX == 0 && sh.RotationY == 0 && sh.RotationZ == 0, "identity xyz quantize to 0")
-		check(sh.RotationW == 1024, "identity w hits the +1024 bound exactly")
-		check(sh.Velocity.X == 1 && sh.Velocity.Y == -1 && sh.Velocity.Z == 123456789, "full-precision velocity copies")
-
-		back := ludicrous.NarrowBodyData_Interpolate{}
-		ludicrous.UnquantizeNarrowBody(&sh, &back)
-		check(back.Position.X == 512, "narrowing loss, 384 -> 2 -> 512")
-		check(back.Position.Y == -512, "narrowing loss, -384 -> -2 -> -512")
-		check(back.Position.Z == -6586368, "exact multiple of 2^8 restores exactly")
-		check(back.Rotation.W == 1<<30, "the identity survives the round trip")
-
-		ws, _ := newWriteStream()
-		checkErr(ludicrous.WriteNarrowBodyData_Shallow(ws, &sh), "write NarrowBodyData_Shallow")
-		ws.Flush()
-		shWire := append([]byte(nil), ws.Data()...)
-		goldenWire("narrow_body_shallow", shWire)
-
-		shOut := ludicrous.NarrowBodyData_Shallow{}
-		rs := serialize.NewReadStream(shWire)
-		checkErr(ludicrous.ReadNarrowBodyData_Shallow(rs, &shOut), "read NarrowBodyData_Shallow")
-		check(shOut.PositionY == -2 && shOut.RotationW == 1024 && shOut.Velocity.Z == 123456789, "shallow round trip")
-
-		deep := ludicrous.NarrowBodyData_Deep{Position: in.Position, Rotation: in.Rotation, Velocity: in.Velocity}
-		wsd, _ := newWriteStream()
-		checkErr(ludicrous.WriteNarrowBodyData_Deep(wsd, &deep), "write NarrowBodyData_Deep")
-		wsd.Flush()
-		deepWire := append([]byte(nil), wsd.Data()...)
-		goldenWire("narrow_body_deep", deepWire)
-
-		deepOut := ludicrous.NarrowBodyData_Deep{}
-		rsd := serialize.NewReadStream(deepWire)
-		checkErr(ludicrous.ReadNarrowBodyData_Deep(rsd, &deepOut), "read NarrowBodyData_Deep")
-		check(deepOut.Position.Z == -6586368 && deepOut.Rotation.W == 1<<30, "deep full precision round trip")
-
-		// hostile shallow read: position_x's 26 offset bits all-ones =
-		// 67108863, above the range size 51200000 — reject, never clamp
-		hostile := append([]byte(nil), shWire...)
-		setBits(hostile, 0, 26)
-		hOut := ludicrous.NarrowBodyData_Shallow{}
-		hrs := serialize.NewReadStream(hostile)
-		check(ludicrous.ReadNarrowBodyData_Shallow(hrs, &hOut) != nil, "a smuggled narrowed offset is REJECTED")
-	}
-
 	// ---- UnsignedProbe: ufixed(I, F), the unsigned sibling (SPEC §4.3;
 	//) ----
 	// span's raw value fills uint64's HIGH HALF (above 2^63) — the int64
@@ -326,26 +258,7 @@ func main() {
 		check(ludicrous.ReadUnsignedProbe(hrs, &hOut) != nil, "a smuggled ufixed high-half offset is REJECTED")
 	}
 
-	// ---- the message dispatch surface over the new unit ----
-	{
-		in := makeState()
-		ws, _ := newWriteStream()
-		checkErr(ludicrous.WriteMessage(ws, &in), "write Message LudicrousState")
-		ws.Flush()
-
-		storage := ludicrous.MessageStorage{}
-		rs := serialize.NewReadStream(ws.Data())
-		m, err := ludicrous.ReadMessage(rs, &storage)
-		checkErr(err, "read Message LudicrousState")
-		out, ok := m.(*ludicrous.LudicrousState)
-		check(ok, "the message is the LudicrousState")
-		if ok {
-			check(out.Wide.Flux == in.Wide.Flux, "flux rides the dispatch surface")
-			check(out.Probe.Angle == 2981888, "angle rides the dispatch surface")
-		}
-	}
-
-	if failed {
+if failed {
 		os.Exit(1)
 	}
 	fmt.Println("OK")

@@ -19,9 +19,7 @@ import { WriteStream, ReadStream } from "../../../serialize.js/src/index.js";
 
 import * as enums from "../../generated/js/Enums.js";
 import * as types from "../../generated/js/Types.js";
-import * as messages from "../../generated/js/Messages.js";
 import * as wire from "../../generated/js/Wire.js";
-import * as objects from "../../generated/js/Objects.js";
 import * as bench from "../../generated/bench/js/Bench.js";
 import * as realworld from "../../generated/bench/js/realworld/RealWorld.js";
 
@@ -29,15 +27,14 @@ import * as realworld from "../../generated/bench/js/realworld/RealWorld.js";
 // runtime tier and to the same C++-pinned goldens in the section at the
 // bottom of this file
 import * as typesFlat from "../../generated/js/TypesFlat.js";
-import * as messagesFlat from "../../generated/js/MessagesFlat.js";
 import * as wireFlat from "../../generated/js/WireFlat.js";
 import * as benchFlat from "../../generated/bench/js/BenchFlat.js";
 import * as realworldFlat from "../../generated/bench/js/realworld/RealWorldFlat.js";
 
 // one namespace over the unit, the way Go sees package example — the checker
 // guarantees unit-wide name uniqueness, so the merge cannot collide
-const ex = { ...enums, ...types, ...messages, ...wire, ...objects };
-const exFlat = { ...typesFlat, ...messagesFlat, ...wireFlat };
+const ex = { ...enums, ...types, ...wire };
+const exFlat = { ...typesFlat, ...wireFlat };
 
 let failed = false;
 
@@ -190,65 +187,6 @@ function textBytes(s) {
   check(deepEqual(out, inp), "Chat round-trips");
 }
 
-// ---- the Message dispatch surface: classes + instanceof chain ----
-{
-  const chat = new ex.Chat();
-  chat.Text.set(textBytes("dispatch"));
-  chat.TextLength = 8;
-  const test = new ex.Test();
-  test.TestB = 42;
-
-  const ws = newWriteStream();
-  check(ex.WriteMessage(ws, chat), "write Message chat");
-  check(ex.WriteMessage(ws, test), "write Message test");
-  check(ex.WriteMessage(ws, null), "write Message terminator");
-  ws.flush();
-  goldenWire("message_stream", ws.data());
-
-  // reads land in pre-allocated storage — no heap per message (SPEC §6.1);
-  // the returned message points into it, the union's own discipline
-  const storage = new ex.MessageStorage();
-  const holder = { value: null };
-  const rs = new ReadStream(ws.data());
-  check(ex.ReadMessage(rs, storage, holder), "read message 1");
-  const c = holder.value;
-  check(c instanceof ex.Chat && c.TextLength === 8 &&
-    new TextDecoder().decode(c.Text.subarray(0, 8)) === "dispatch", "message 1 is the chat");
-  check(c === storage.Chat, "the read message points into the caller's storage");
-  check(ex.ReadMessage(rs, storage, holder), "read message 2");
-  const t = holder.value;
-  check(t instanceof ex.Test && t.TestB === 42, "message 2 is the test");
-  check(ex.ReadMessage(rs, storage, holder), "read message 3");
-  check(holder.value === null, "message 3 is the None terminator");
-
-  // the tag pair stands alone too
-  const ws2 = newWriteStream();
-  check(ex.WriteMessageType(ws2, ex.MessageType.Chat), "write message type");
-  check(ex.WriteMessageType(ws2, ex.MessageType.None), "write message type terminator");
-  ws2.flush();
-  const rs2 = new ReadStream(ws2.data());
-  const tag = { value: ex.MessageType.None };
-  check(ex.ReadMessageType(rs2, tag), "read message type");
-  check(tag.value === ex.MessageType.Chat, "tag round-trips");
-  check(ex.ReadMessageType(rs2, tag), "read message type terminator");
-  check(tag.value === ex.MessageType.None, "terminator tag round-trips");
-
-  // a value outside the generated class set writes NOTHING — the stream
-  // cannot be left with a tag and no payload (a desync), and the refusal is
-  // loud (bool). The JS twins of Go's foreign-implementation and typed-nil
-  // probes: a duck-typed impostor with the right Type, and undefined.
-  const ws3 = newWriteStream();
-  const impostor = { Type: ex.MessageType.Chat, TextLength: 0 };
-  check(!ex.WriteMessage(ws3, impostor), "a foreign message implementation is refused");
-  ws3.flush();
-  check(ws3.bytesProcessed() === 0, "and nothing was written");
-
-  const ws4 = newWriteStream();
-  check(!ex.WriteMessage(ws4, undefined), "undefined is refused — only null terminates");
-  ws4.flush();
-  check(ws4.bytesProcessed() === 0, "and nothing was written for undefined");
-}
-
 // ---- ProbeHeader: const/reserved/align on the wire; corruption rejected ----
 {
   const inp = new ex.ProbeHeader();
@@ -270,51 +208,6 @@ function textBytes(s) {
   corrupt[0] = 0xac;
   const rs2 = new ReadStream(corrupt);
   check(!ex.ReadProbeHeader(rs2, out), "a corrupted wire constant is REJECTED (SPEC §4.3)");
-}
-
-// ---- the object views: Quantize/Unquantize and the shallow wire ----
-{
-  const interp = new ex.ShipData_Interpolate();
-  interp.ShipType = ex.ShipType.Corvette;
-  interp.Position.X = 1.5;
-  interp.Position.Y = -2.25;
-  interp.Position.Z = 100.0;
-  interp.Rotation.X = 0.0;
-  interp.Rotation.Y = 0.0;
-  interp.Rotation.Z = 0.0;
-  interp.Rotation.W = 1.0;
-  interp.LinearVelocity.X = 3.0;
-  interp.LinearVelocity.Y = 0.0;
-  interp.LinearVelocity.Z = -1.0;
-  interp.Flags = ex.ShipFlagsBoosting;
-  interp.Team = ex.Team.Red;
-  interp.Health = 750; // wire-int domain (rule 5)
-  interp.Thrust = 55;
-
-  const q = new ex.ShipData_Shallow();
-  ex.QuantizeShip(interp, q);
-  check(q.PositionX === 1536, "1.5 * 1024 quantizes to 1536");
-  check(q.PositionY === -2304, "-2.25 * 1024 quantizes to -2304");
-  check(q.RotationW === 1024, "1.0 * 1024 quantizes to 1024");
-  check(q.Health === 750 && q.Thrust === 55, "projected fields copy");
-  check(q.Team === ex.Team.Red && q.Flags === ex.ShipFlagsBoosting, "discrete fields copy");
-
-  const ws = newWriteStream();
-  check(ex.WriteShipData_Shallow(ws, q), "write ShipData_Shallow");
-  ws.flush();
-  goldenWire("ship_shallow", ws.data());
-
-  const q2 = new ex.ShipData_Shallow();
-  const rs = new ReadStream(ws.data());
-  check(ex.ReadShipData_Shallow(rs, q2), "read ShipData_Shallow");
-  check(deepEqual(q2, q), "the shallow wire round-trips");
-
-  const back = new ex.ShipData_Interpolate();
-  ex.UnquantizeShip(q2, back);
-  check(back.Position.X === 1536.0 / 1024.0, "unquantize recovers x");
-  check(back.Position.Y === -2304.0 / 1024.0, "unquantize recovers y");
-  check(back.Rotation.W === 1.0, "unquantize recovers w");
-  check(back.Health === 750 && back.Team === ex.Team.Red, "discrete and projected copy back");
 }
 
 // makeInputPacket is the pinned InputPacket instance, shared by the
@@ -596,7 +489,7 @@ function testDataInstance() {
   check(out.Config.Retries === 3 && out.Config.Preferred === ex.Weapon.Missile, "config round-trips");
 }
 
-// ---- ProbeReport: message-as-field, and the widened flags wire ----
+// ---- ProbeReport: nested composition, and the widened flags wire ----
 {
   const inp = new ex.ProbeReport();
   inp.Header.Version = 3;
@@ -611,7 +504,7 @@ function testDataInstance() {
   const out = new ex.ProbeReport();
   const rs = new ReadStream(ws.data());
   check(ex.ReadProbeReport(rs, out), "read ProbeReport");
-  check(deepEqual(out, inp), "ProbeReport round-trips — a message as an ordinary field");
+  check(deepEqual(out, inp), "ProbeReport round-trips — a named type as an ordinary field");
 
   // a mask bit above the widened 8-bit wire is refused, not truncated
   inp.Flags = 1n << 9n;
@@ -700,55 +593,6 @@ function testDataInstance() {
   const rs = new ReadStream(ws.data());
   check(ex.ReadRigidBody(rs, out), "read RigidBody moving");
   check(deepEqual(out, inp), "the moving branch round-trips with velocities intact");
-}
-
-// ---- Missile: a second object family end to end ----
-{
-  const interp = new ex.MissileData_Interpolate();
-  interp.MissileType = ex.MissileType.Torpedo;
-  interp.Position.X = -4.0;
-  interp.Position.Y = 8.0;
-  interp.Position.Z = 15.5;
-  interp.Rotation.X = 0.0;
-  interp.Rotation.Y = 0.0;
-  interp.Rotation.Z = 0.0;
-  interp.Rotation.W = 1.0;
-  interp.LinearVelocity.X = 1.0;
-  interp.LinearVelocity.Y = 2.0;
-  interp.LinearVelocity.Z = 3.0;
-  interp.Team = ex.Team.Blue;
-  interp.Flags = 0xf00fn;
-
-  const q = new ex.MissileData_Shallow();
-  ex.QuantizeMissile(interp, q);
-  check(q.PositionZ === 15872, "15.5 * 1024 quantizes to 15872");
-  check(q.RotationW === 1024 && q.Team === ex.Team.Blue && q.Flags === 0xf00fn, "discrete fields copy");
-
-  const ws = newWriteStream();
-  check(ex.WriteMissileData_Shallow(ws, q), "write MissileData_Shallow");
-  ws.flush();
-  const q2 = new ex.MissileData_Shallow();
-  const rs = new ReadStream(ws.data());
-  check(ex.ReadMissileData_Shallow(rs, q2), "read MissileData_Shallow");
-  check(deepEqual(q2, q), "the missile shallow wire round-trips");
-
-  const back = new ex.MissileData_Interpolate();
-  ex.UnquantizeMissile(q2, back);
-  check(back.Position.Z === 15872.0 / 1024.0, "unquantize recovers z");
-}
-
-// ---- the object tag pair ----
-{
-  const ws = newWriteStream();
-  check(ex.WriteObjectType(ws, ex.ObjectType.Turret), "write object type");
-  check(ex.WriteObjectType(ws, ex.ObjectType.None), "write object type sentinel");
-  ws.flush();
-  const rs = new ReadStream(ws.data());
-  const tag = { value: ex.ObjectType.None };
-  check(ex.ReadObjectType(rs, tag), "read object type");
-  check(tag.value === ex.ObjectType.Turret, "object tag round-trips");
-  check(ex.ReadObjectType(rs, tag), "read object type sentinel");
-  check(tag.value === ex.ObjectType.None, "the None sentinel round-trips");
 }
 
 // ================= THE BENCH CORPUS (BENCH-STANDARD.md §1.5) =================
@@ -1067,75 +911,6 @@ flatCross("flat testdata", ex, exFlat, "TestData", testDataInstance(), "testdata
   flatCross("flat bench_mixed", bench, benchFlat, "BenchMixed", mixed, "bench_mixed");
 
   flatCross("flat real_packet", realworld, realworldFlat, "RealPacket", new realworld.RealPacket(), "real_packet");
-}
-
-// ---- the flat dispatch pair: tag framing identical to the runtime tier ----
-{
-  const chat = new ex.Chat();
-  chat.Text.set(textBytes("dispatch"));
-  chat.TextLength = 8;
-
-  const ws = newWriteStream();
-  check(ex.WriteMessage(ws, chat), "dispatch runtime write");
-  ws.flush();
-  const rtBytes = Uint8Array.from(ws.data());
-
-  const fbuf = new Uint8Array(4096);
-  const fview = new DataView(fbuf.buffer);
-  const n = exFlat.WriteMessageFlat(chat, fview);
-  check(n === rtBytes.length && bytesEqual(fbuf.subarray(0, n), rtBytes),
-    "flat dispatch bytes === runtime dispatch bytes (one message per packet)");
-
-  const storage = new ex.MessageStorage();
-  const holder = { value: null };
-  const rbuf = new Uint8Array(n + 8);
-  rbuf.set(fbuf.subarray(0, n));
-  check(exFlat.ReadMessageFlat(storage, holder, new DataView(rbuf.buffer), n * 8), "flat dispatch read verdict");
-  check(holder.value instanceof ex.Chat && holder.value === storage.Chat &&
-    new TextDecoder().decode(holder.value.Text.subarray(0, 8)) === "dispatch",
-    "flat dispatch lands in the caller's storage");
-
-  check(exFlat.WriteMessageFlat(null, fview) === 1, "the None terminator writes the tag alone");
-  const rt = new Uint8Array(9);
-  check(exFlat.ReadMessageFlat(storage, holder, new DataView(rt.buffer), 8) && holder.value === null,
-    "a None tag reads as the terminator — message stays null");
-  check(exFlat.WriteMessageFlat({ Type: ex.MessageType.Chat }, fview) === -1,
-    "a foreign message implementation is refused with -1 in every mode");
-  check(exFlat.WriteMessageFlat(undefined, fview) === -1, "undefined is refused — only null terminates");
-}
-
-// ---- the batch entries: back-to-back byte-aligned packets, one call ----
-{
-  const mkChat = (s) => {
-    const m = new ex.Chat();
-    m.Text.set(textBytes(s));
-    m.TextLength = s.length;
-    return m;
-  };
-  const vals = [mkChat("alpha"), mkChat("bravo!"), mkChat("charlie7")];
-  const fbuf = new Uint8Array(4096);
-  const fview = new DataView(fbuf.buffer);
-  const total = exFlat.WriteChatFlatArray(vals, 3, fview);
-
-  // the batch bytes are exactly the per-call packets concatenated at their
-  // byte-rounded lengths
-  const one = new Uint8Array(4096);
-  const oneView = new DataView(one.buffer);
-  let off = 0;
-  const expected = new Uint8Array(4096);
-  for (const m of vals) {
-    const n = exFlat.WriteChatFlat(m, oneView);
-    expected.set(one.subarray(0, n), off);
-    off += n;
-  }
-  check(total === off, `batch total ${total} === concatenated singles ${off}`);
-  check(bytesEqual(fbuf.subarray(0, total), expected.subarray(0, off)), "batch bytes === per-call packets");
-
-  const outs = [new ex.Chat(), new ex.Chat(), new ex.Chat()];
-  const rbuf = new Uint8Array(total + 8);
-  rbuf.set(fbuf.subarray(0, total));
-  check(exFlat.ReadChatFlatArray(outs, 3, new DataView(rbuf.buffer), total * 8), "batch read verdict");
-  check(outs.every((o, i) => deepEqual(o, vals[i])), "batch read fields");
 }
 
 // ---- refusal vectors THROUGH the flat reader (refusal rules are format) ----

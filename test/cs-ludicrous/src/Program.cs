@@ -127,7 +127,6 @@ static class Program
         Check(FixedProbeMaxBits == 156, "FixedProbe worst case");
         Check(WideProbeMaxBits == 403, "WideProbe worst case");
         Check(LudicrousStateMaxBits == 1205, "LudicrousState worst case");
-        Check(MessageMaxBits == 1206, "message-level bound");
         Check(ProtocolId != 0, "the unit has a protocol id");
 
         // zero initialization with specified defaults (SPEC §4.2),
@@ -249,81 +248,6 @@ static class Program
             Check(output.Tail == 0xA5, "the tail rides at bit 0");
         }
 
-        // ---- NarrowBody: the narrowed fixed shallow (SPEC §4.8 rule 2b) ----
-        // The pinned tie semantics: quantize rounds to nearest, ties AWAY
-        // FROM ZERO — the one fixed-point rounding rule (SPEC §4.8, decided
-        // the ruled form) — and unquantize is the left shift back. The
-        // wire bytes are the C++-pinned goldens; the values mirror
-        // test/ludicrous_main.cpp block for block.
-        {
-            Check(NarrowBodyData_ShallowMaxBits == 228, "narrowed shallow worst case");
-            Check(NarrowBodyData_DeepMaxBits == 332, "narrow deep worst case");
-
-            NarrowBodyData_Interpolate input = new NarrowBodyData_Interpolate();
-            input.Position.X = 384;      // +1.5 eighths: tie, rounds AWAY to 2
-            input.Position.Y = -384;     // -1.5 eighths: tie, rounds AWAY to -2 — THE distinguishing value
-            input.Position.Z = -6586368; // -100.5 * 2^16, exact in 8 kept bits
-            input.Rotation.W = 1 << 30;  // identity, hits the +1024 bound exactly
-            input.Velocity.X = 1;
-            input.Velocity.Y = -1;
-            input.Velocity.Z = 123456789;
-
-            NarrowBodyData_Shallow sh = new NarrowBodyData_Shallow();
-            QuantizeNarrowBody(input, sh);
-            Check(sh.PositionX == 2, "+1.5 eighths ties away to 2");
-            Check(sh.PositionY == -2, "-1.5 eighths ties away from zero to -2 (the bare shift would say -1)");
-            Check(sh.PositionZ == -25728, "-100.5 units exact in 8 kept bits");
-            Check(sh.RotationX == 0 && sh.RotationY == 0 && sh.RotationZ == 0, "identity xyz quantize to 0");
-            Check(sh.RotationW == 1024, "identity w hits the +1024 bound exactly");
-            Check(sh.Velocity.X == 1 && sh.Velocity.Y == -1 && sh.Velocity.Z == 123456789, "full-precision velocity copies");
-
-            NarrowBodyData_Interpolate back = new NarrowBodyData_Interpolate();
-            UnquantizeNarrowBody(sh, back);
-            Check(back.Position.X == 512, "narrowing loss, 384 -> 2 -> 512");
-            Check(back.Position.Y == -512, "narrowing loss, -384 -> -2 -> -512");
-            Check(back.Position.Z == -6586368, "exact multiple of 2^8 restores exactly");
-            Check(back.Rotation.W == 1 << 30, "the identity survives the round trip");
-
-            WriteStream ws = NewWriteStream();
-            Check(WriteNarrowBodyData_Shallow(ws, sh), "write NarrowBodyData_Shallow");
-            byte[] shWire = Data(ws);
-            GoldenWire("narrow_body_shallow", shWire);
-
-            NarrowBodyData_Shallow shOut = new NarrowBodyData_Shallow();
-            ReadStream rs = new ReadStream(shWire);
-            Check(ReadNarrowBodyData_Shallow(rs, shOut), "read NarrowBodyData_Shallow");
-            Check(shOut.PositionY == -2 && shOut.RotationW == 1024 && shOut.Velocity.Z == 123456789, "shallow round trip");
-
-            NarrowBodyData_Deep deep = new NarrowBodyData_Deep();
-            deep.Position.X = input.Position.X;
-            deep.Position.Y = input.Position.Y;
-            deep.Position.Z = input.Position.Z;
-            deep.Rotation.X = input.Rotation.X;
-            deep.Rotation.Y = input.Rotation.Y;
-            deep.Rotation.Z = input.Rotation.Z;
-            deep.Rotation.W = input.Rotation.W;
-            deep.Velocity.X = input.Velocity.X;
-            deep.Velocity.Y = input.Velocity.Y;
-            deep.Velocity.Z = input.Velocity.Z;
-            WriteStream wsDeep = NewWriteStream();
-            Check(WriteNarrowBodyData_Deep(wsDeep, deep), "write NarrowBodyData_Deep");
-            byte[] deepWire = Data(wsDeep);
-            GoldenWire("narrow_body_deep", deepWire);
-
-            NarrowBodyData_Deep deepOut = new NarrowBodyData_Deep();
-            ReadStream rsDeep = new ReadStream(deepWire);
-            Check(ReadNarrowBodyData_Deep(rsDeep, deepOut), "read NarrowBodyData_Deep");
-            Check(deepOut.Position.Z == -6586368 && deepOut.Rotation.W == 1 << 30, "deep full precision round trip");
-
-            // hostile shallow read: position_x's 26 offset bits all-ones =
-            // 67108863, above the range size 51200000 — reject, never clamp
-            byte[] hostile = (byte[])shWire.Clone();
-            SetBits(hostile, 0, 26);
-            NarrowBodyData_Shallow hOut = new NarrowBodyData_Shallow();
-            ReadStream hRs = new ReadStream(hostile);
-            Check(!ReadNarrowBodyData_Shallow(hRs, hOut), "a smuggled narrowed offset is REJECTED");
-        }
-
         // ---- UnsignedProbe: ufixed(I, F), the unsigned sibling (SPEC §4.3;
         //) ----
         // Span's raw value fills ulong's HIGH HALF (above 2^63) — the
@@ -378,25 +302,6 @@ static class Program
             UnsignedProbe hOut = new UnsignedProbe();
             ReadStream hRs = new ReadStream(hostile);
             Check(!ReadUnsignedProbe(hRs, hOut), "a smuggled ufixed high-half offset is REJECTED");
-        }
-
-        // ---- the message dispatch surface over the new unit ----
-        {
-            LudicrousState input = MakeState();
-            WriteStream ws = NewWriteStream();
-            Check(WriteMessage(ws, input), "write Message LudicrousState");
-            byte[] wire = Data(ws);
-
-            MessageStorage storage = new MessageStorage();
-            ReadStream rs = new ReadStream(wire);
-            Check(ReadMessage(rs, storage, out Message m), "read Message LudicrousState");
-            LudicrousState output = m as LudicrousState;
-            Check(output != null, "the message is the LudicrousState");
-            if (output != null)
-            {
-                Check(output.Wide.Flux == input.Wide.Flux, "flux rides the dispatch surface");
-                Check(output.Probe.Angle == 2981888, "angle rides the dispatch surface");
-            }
         }
 
         if (failed)

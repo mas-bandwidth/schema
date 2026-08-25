@@ -1,7 +1,6 @@
 package c
 
-// MaxBits/MaxBytes constants, the message dispatch surface, and the
-// specified-default constructors.
+// MaxBits/MaxBytes constants and the specified-default constructors.
 
 import (
 	"fmt"
@@ -118,85 +117,6 @@ func (g *gen) emitDefaultInit(f *ir.Field) {
 		// whole-units expression out as the raw initializer
 		g.pf("    value.%s = %s;\n", f.Name, g.renderInt(f.DefExpr, f.DefInt))
 	}
-}
-
-// ---- message dispatch ----
-
-// emitMessageTypes emits the MessageType tag enum. Only the file that owns the
-// message surface emits it (ir.MessageOwner), so a unit has exactly one.
-func (g *gen) emitMessageTypes() {
-	g.pf("\n/* The message tag: the discriminant for a heterogeneous stream. None = 0 is\n")
-	g.pf("   the stream terminator (SPEC §4.8). */\n")
-	g.pf("typedef uint8_t MessageType;\n")
-	g.pf("#define MESSAGE_TYPE_NONE 0\n")
-	for i, m := range g.unit.Messages {
-		g.pf("#define MESSAGE_TYPE_%s %d\n", screaming(m), i+1)
-	}
-	g.pf("#define MESSAGE_TYPE_MAX %d\n\n", len(g.unit.Messages))
-
-	g.pf("/* Debug/log name for any MessageType value, out-of-set included. */\n")
-	g.pf("static SCHEMA_UNUSED const char * enum_name_message_type( MessageType value )\n{\n")
-	g.pf("    switch ( value )\n    {\n")
-	g.pf("        case MESSAGE_TYPE_NONE: return \"None\";\n")
-	for i, m := range g.unit.Messages {
-		g.pf("        case %d: return %q;\n", i+1, m)
-	}
-	g.pf("        default: return \"???\";\n    }\n}\n\n")
-
-	// the tagged union
-	g.pf("/* The message union. C has no variant, so this is the tag plus a union of\n")
-	g.pf("   the arms — the same shape the C++ target's default representation uses.\n")
-	g.pf("   The selected arm is established ZEROED at selection (SPEC §5): read_message\n")
-	g.pf("   zeroes before decoding. Bytes of unselected arms are indeterminate. */\n")
-	g.pf("typedef struct Message {\n")
-	g.pf("    MessageType type;\n")
-	g.pf("    union {\n")
-	for _, m := range g.unit.Messages {
-		g.pf("        %s %s;\n", m, snake(m))
-	}
-	g.pf("    } as;\n")
-	g.pf("} Message;\n\n")
-}
-
-func (g *gen) emitMessageDispatch() {
-	g.pf("/* The tag itself, over [0, MESSAGE_TYPE_MAX]. */\n")
-	g.pf("static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_message_type( serialize_write_stream_t * stream, MessageType value )\n{\n")
-	bits := ir.BitsRequired(bigZero(), bigInt64(int64(len(g.unit.Messages))))
-	g.pf("    if ( value > MESSAGE_TYPE_MAX )\n    {\n        return 0;\n    }\n")
-	g.call("    ", fmt.Sprintf("serialize_write_bits( stream, (serialize_uint32_t) value, %d )", bits))
-	g.pf("    return 1;\n}\n\n")
-
-	g.pf("static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_message_type( serialize_read_stream_t * stream, MessageType * value )\n{\n")
-	g.pf("    serialize_uint32_t raw = 0;\n")
-	g.call("    ", fmt.Sprintf("serialize_read_bits( stream, &raw, %d )", bits))
-	g.pf("    if ( raw > MESSAGE_TYPE_MAX )\n    {\n        return 0;\n    }\n")
-	g.pf("    *value = (MessageType) raw;\n    return 1;\n}\n\n")
-
-	g.pf("/* Writes the tag and then the selected arm. */\n")
-	g.pf("static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_message( serialize_write_stream_t * stream, const Message * message )\n{\n")
-	g.pf("    switch ( message->type )\n    {\n")
-	g.pf("        case MESSAGE_TYPE_NONE:\n")
-	g.pf("            return write_message_type( stream, MESSAGE_TYPE_NONE ); /* the stream terminator */\n")
-	for _, m := range g.unit.Messages {
-		g.pf("        case MESSAGE_TYPE_%s:\n", screaming(m))
-		g.pf("            if ( !write_message_type( stream, MESSAGE_TYPE_%s ) )\n            {\n                return 0;\n            }\n", screaming(m))
-		g.pf("            return write_%s( stream, &message->as.%s );\n", snake(m), snake(m))
-	}
-	g.pf("        default:\n            return 0;\n    }\n}\n\n")
-
-	g.pf("/* Reads the tag, ZEROES the selected arm, then decodes into it (SPEC §5). */\n")
-	g.pf("static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_message( serialize_read_stream_t * stream, Message * message )\n{\n")
-	g.pf("    MessageType type = MESSAGE_TYPE_NONE;\n")
-	g.call("    ", "read_message_type( stream, &type )")
-	g.pf("    message->type = type;\n")
-	g.pf("    switch ( type )\n    {\n")
-	g.pf("        case MESSAGE_TYPE_NONE:\n            return 1;\n")
-	for _, m := range g.unit.Messages {
-		g.pf("        case MESSAGE_TYPE_%s:\n", screaming(m))
-		g.pf("            memset( &message->as.%s, 0, sizeof( message->as.%s ) );\n", snake(m), snake(m))
-		g.pf("            return read_%s( stream, &message->as.%s );\n", snake(m), snake(m))
-	}
-	g.pf("        default:\n            return 0;\n    }\n}\n\n")
 }
 
 func bigZero() *big.Int         { return big.NewInt(0) }

@@ -3,17 +3,17 @@ package c
 import "github.com/mas-bandwidth/schema/ir"
 
 // fileEmitsWire reports whether this wire file will emit any read/write wire
-// function — struct wire pairs, object deep/shallow view pairs, or the owner
+// function — struct or union wire pairs.
 // file's message dispatch surface. Files that only carry consts/enums/flags
 // emit no wire functions and no macro block.
 func (g *gen) fileEmitsWire() bool {
 	for _, d := range g.file.Decls {
 		switch d.(type) {
-		case *ir.Struct, *ir.Object:
+		case *ir.Struct, *ir.Union:
 			return true
 		}
 	}
-	return g.file.Base == g.msgOwner && len(g.unit.Messages) > 0
+	return false
 }
 
 // emitSpineInlineMacros emits the wire-spine inlining demand every generated

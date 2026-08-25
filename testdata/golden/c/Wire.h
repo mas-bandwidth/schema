@@ -2,7 +2,7 @@
    SPDX-License-Identifier: NONE — this generated output is yours, under terms of
    your choice. See the LICENSE exception in the schema compiler; the compiler is
    AGPL-3.0, its output is not.
-   package example — protocol id 0xbc05d83a8135cdb9 */
+   package example — protocol id 0x0bde7acdd36abc6a */
 
 #ifndef SCHEMA_EXAMPLE_WIRE_H
 #define SCHEMA_EXAMPLE_WIRE_H
@@ -17,7 +17,7 @@
 #define SCHEMA_UNUSED
 #endif
 #endif
-#include "Messages.h"
+#include "Constants.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -306,6 +306,44 @@ static SCHEMA_UNUSED ProbeArray new_probe_array( void )
     value.config = new_probe_config();
     return value;
 }
+
+
+/* type Heartbeat */
+typedef struct Heartbeat {
+    char unused_; /* C has no empty struct; carries no wire bits */
+} Heartbeat;
+
+
+/* type Test */
+typedef struct Test {
+    uint16_t test_a;
+    int16_t test_b;
+    int16_t test_c;
+    int16_t test_d;
+} Test;
+
+#define TEST_MAX_BITS 46   /* longest wire path; align pads at worst case (SPEC §6.1) */
+#define TEST_MAX_BYTES 8  /* 8-byte write granularity; read slack per the contract above */
+
+
+/* type Block */
+typedef struct Block {
+    uint8_t data[MAX_BLOCK_SIZE];
+    int32_t data_length;
+} Block;
+
+#define BLOCK_MAX_BITS 16018   /* longest wire path; align pads at worst case (SPEC §6.1) */
+#define BLOCK_MAX_BYTES 2008  /* 8-byte write granularity; read slack per the contract above */
+
+
+/* type Chat */
+typedef struct Chat {
+    char text[MAX_CHAT_LENGTH + 1]; /* string(MaxChatLength): N + 1 for the terminator the wire does not carry */
+    int32_t text_length;
+} Chat;
+
+#define CHAT_MAX_BITS 2064   /* longest wire path; align pads at worst case (SPEC §6.1) */
+#define CHAT_MAX_BYTES 264  /* 8-byte write granularity; read slack per the contract above */
 
 
 /* type ProbeReport */

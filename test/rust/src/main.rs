@@ -8,9 +8,7 @@
 // Prints OK and exits 0, exactly like its C++ and Go twins. Run from
 // test/rust (the Makefile does): the wire goldens are at ../../testdata/wire.
 //
-// Mirrors test/go/main.go block for block where applicable. The Go test's
-// foreign-Message and typed-nil refusal cases have no Rust twin: the Message
-// enum is closed, so no out-of-set or null message value exists to refuse.
+// Mirrors test/go/main.go block for block where applicable.
 
 // Instances are built field-by-field from Default exactly like the Go test
 // (the two files stay diffable side by side), so clippy's initializer-style
@@ -168,102 +166,6 @@ fn main() {
         check(out == input, "Chat round-trips");
     }
 
-    // ---- the Message dispatch surface: the enum IS the tagged union ----
-    {
-        let mut chat = Chat::default();
-        chat.text[..8].copy_from_slice(b"dispatch");
-        chat.text_length = 8;
-        let mut test = Test::default();
-        test.test_b = 42;
-
-        let mut buffer = [0u8; 2048];
-        let mut ws = WriteStream::new(&mut buffer);
-        check_err(write_message(&mut ws, &Message::Chat(chat)), "write Message chat");
-        check_err(write_message(&mut ws, &Message::Test(test)), "write Message test");
-        check_err(write_message(&mut ws, &Message::None), "write Message terminator");
-        ws.flush();
-        let n = ws.bytes_processed() as usize;
-        golden_wire("message_stream", &buffer[..n]);
-
-        // reads return by value into the caller's storage — the enum IS the
-        // pre-allocated home, no heap per message (SPEC §6.1)
-        let mut rs = ReadStream::new(&buffer, n);
-        match read_message(&mut rs) {
-            Ok(Message::Chat(c)) => check(
-                c.text_length == 8 && c.text[..8] == *b"dispatch",
-                "message 1 is the chat",
-            ),
-            other => check(false, &format!("message 1 is the chat (got {other:?})")),
-        }
-        match read_message(&mut rs) {
-            Ok(Message::Test(t)) => check(t.test_b == 42, "message 2 is the test"),
-            other => check(false, &format!("message 2 is the test (got {other:?})")),
-        }
-        match read_message(&mut rs) {
-            Ok(Message::None) => {}
-            other => check(false, &format!("message 3 is the None terminator (got {other:?})")),
-        }
-
-        // read_message_into — the reuse-loop surface — is held to the SAME
-        // pinned wire: decode the golden bytes into ONE reused storage,
-        // pre-poisoned with a full Block so the zero-form reset (SPEC §5) is
-        // what equality proves (stale bytes from the previous occupant must
-        // not survive the variant switch), then re-write each decode and
-        // byte-compare the rewrite against the golden itself.
-        let mut storage = {
-            let mut b = Block::default();
-            b.data_length = b.data.len() as i32;
-            for byte in b.data.iter_mut() {
-                *byte = 0xFF;
-            }
-            Message::Block(b)
-        };
-        let mut twin = [0u8; 2048];
-        let twin_n;
-        {
-            let mut tws = WriteStream::new(&mut twin);
-            let mut rs3 = ReadStream::new(&buffer, n);
-            check_err(read_message_into(&mut rs3, &mut storage), "read_message_into chat");
-            check(
-                storage == Message::Chat(chat),
-                "into-path message 1 equals the pinned chat (zero form held over poisoned storage)",
-            );
-            check_err(write_message(&mut tws, &storage), "re-write into-path chat");
-            check_err(read_message_into(&mut rs3, &mut storage), "read_message_into test");
-            check(
-                storage == Message::Test(test),
-                "into-path message 2 equals the pinned test (reused storage across variants)",
-            );
-            check_err(write_message(&mut tws, &storage), "re-write into-path test");
-            check_err(
-                read_message_into(&mut rs3, &mut storage),
-                "read_message_into terminator",
-            );
-            check(storage == Message::None, "into-path message 3 is the None terminator");
-            check_err(write_message(&mut tws, &storage), "re-write into-path terminator");
-            tws.flush();
-            twin_n = tws.bytes_processed() as usize;
-        }
-        golden_wire("message_stream", &twin[..twin_n]);
-
-        // the tag pair stands alone too
-        let mut buffer2 = [0u8; 2048];
-        let mut ws2 = WriteStream::new(&mut buffer2);
-        check_err(write_message_type(&mut ws2, MessageType::CHAT), "write message type");
-        check_err(
-            write_message_type(&mut ws2, MessageType::NONE),
-            "write message type terminator",
-        );
-        ws2.flush();
-        let n2 = ws2.bytes_processed() as usize;
-        let mut rs2 = ReadStream::new(&buffer2, n2);
-        let mut tag = MessageType::NONE;
-        check_err(read_message_type(&mut rs2, &mut tag), "read message type");
-        check(tag == MessageType::CHAT, "tag round-trips");
-        check_err(read_message_type(&mut rs2, &mut tag), "read message type terminator");
-        check(tag == MessageType::NONE, "terminator tag round-trips");
-    }
-
     // ---- ProbeHeader: const/reserved/align on the wire; corruption rejected ----
     {
         let input = ProbeHeader {
@@ -290,65 +192,6 @@ fn main() {
         check(
             read_probe_header(&mut rs2, &mut out).is_err(),
             "a corrupted wire constant is REJECTED (SPEC §4.3)",
-        );
-    }
-
-    // ---- the object views: quantize/unquantize and the shallow wire ----
-    {
-        let mut interp = ShipData_Interpolate::default();
-        interp.ship_type = ShipType::CORVETTE;
-        interp.position = Vec3 {
-            x: 1.5,
-            y: -2.25,
-            z: 100.0,
-        };
-        interp.rotation = Quat {
-            x: 0.0,
-            y: 0.0,
-            z: 0.0,
-            w: 1.0,
-        };
-        interp.linear_velocity = Vec3 {
-            x: 3.0,
-            y: 0.0,
-            z: -1.0,
-        };
-        interp.flags = SHIP_FLAGS_BOOSTING;
-        interp.team = Team::RED;
-        interp.health = 750; // wire-int domain (rule 5)
-        interp.thrust = 55;
-
-        let mut q = ShipData_Shallow::default();
-        quantize_ship(&interp, &mut q);
-        check(q.position_x == 1536, "1.5 * 1024 quantizes to 1536");
-        check(q.position_y == -2304, "-2.25 * 1024 quantizes to -2304");
-        check(q.rotation_w == 1024, "1.0 * 1024 quantizes to 1024");
-        check(q.health == 750 && q.thrust == 55, "projected fields copy");
-        check(
-            q.team == Team::RED && q.flags == SHIP_FLAGS_BOOSTING,
-            "discrete fields copy",
-        );
-
-        let mut buffer = [0u8; 2048];
-        let mut ws = WriteStream::new(&mut buffer);
-        check_err(write_ship_data_shallow(&mut ws, &q), "write ShipData_Shallow");
-        ws.flush();
-        let n = ws.bytes_processed() as usize;
-        golden_wire("ship_shallow", &buffer[..n]);
-
-        let mut q2 = ShipData_Shallow::default();
-        let mut rs = ReadStream::new(&buffer, n);
-        check_err(read_ship_data_shallow(&mut rs, &mut q2), "read ShipData_Shallow");
-        check(q2 == q, "the shallow wire round-trips");
-
-        let mut back = ShipData_Interpolate::default();
-        unquantize_ship(&q2, &mut back);
-        check(back.position.x == 1536.0 / 1024.0, "unquantize recovers x");
-        check(back.position.y == -2304.0 / 1024.0, "unquantize recovers y");
-        check(back.rotation.w == 1.0, "unquantize recovers w");
-        check(
-            back.health == 750 && back.team == Team::RED,
-            "discrete and projected copy back",
         );
     }
 
@@ -650,7 +493,7 @@ fn main() {
         );
     }
 
-    // ---- ProbeReport: message-as-field, and the widened flags wire ----
+    // ---- ProbeReport: nested composition, and the widened flags wire ----
     {
         let mut input = ProbeReport::default();
         input.header.version = 3;
@@ -667,7 +510,7 @@ fn main() {
         let mut out = ProbeReport::default();
         let mut rs = ReadStream::new(&buffer, n);
         check_err(read_probe_report(&mut rs, &mut out), "read ProbeReport");
-        check(out == input, "ProbeReport round-trips — a message as an ordinary field");
+        check(out == input, "ProbeReport round-trips — a named type as an ordinary field");
 
         // a mask bit above the widened 8-bit wire is refused, not truncated
         input.flags = 1 << 9;
@@ -877,71 +720,6 @@ fn main() {
         let mut rs = ReadStream::new(&buffer, n);
         check_err(read_rigid_body(&mut rs, &mut out), "read RigidBody moving");
         check(out == input, "the moving branch round-trips with velocities intact");
-    }
-
-    // ---- Missile: a second object family end to end ----
-    {
-        let mut interp = MissileData_Interpolate::default();
-        interp.missile_type = MissileType::TORPEDO;
-        interp.position = Vec3 {
-            x: -4.0,
-            y: 8.0,
-            z: 15.5,
-        };
-        interp.rotation = Quat {
-            x: 0.0,
-            y: 0.0,
-            z: 0.0,
-            w: 1.0,
-        };
-        interp.linear_velocity = Vec3 {
-            x: 1.0,
-            y: 2.0,
-            z: 3.0,
-        };
-        interp.team = Team::BLUE;
-        interp.flags = 0xF00F;
-
-        let mut q = MissileData_Shallow::default();
-        quantize_missile(&interp, &mut q);
-        check(q.position_z == 15872, "15.5 * 1024 quantizes to 15872");
-        check(
-            q.rotation_w == 1024 && q.team == Team::BLUE && q.flags == 0xF00F,
-            "discrete fields copy",
-        );
-
-        let mut buffer = [0u8; 2048];
-        let mut ws = WriteStream::new(&mut buffer);
-        check_err(write_missile_data_shallow(&mut ws, &q), "write MissileData_Shallow");
-        ws.flush();
-        let n = ws.bytes_processed() as usize;
-        let mut q2 = MissileData_Shallow::default();
-        let mut rs = ReadStream::new(&buffer, n);
-        check_err(read_missile_data_shallow(&mut rs, &mut q2), "read MissileData_Shallow");
-        check(q2 == q, "the missile shallow wire round-trips");
-
-        let mut back = MissileData_Interpolate::default();
-        unquantize_missile(&q2, &mut back);
-        check(back.position.z == 15872.0 / 1024.0, "unquantize recovers z");
-    }
-
-    // ---- the object tag pair ----
-    {
-        let mut buffer = [0u8; 2048];
-        let mut ws = WriteStream::new(&mut buffer);
-        check_err(write_object_type(&mut ws, ObjectType::TURRET), "write object type");
-        check_err(
-            write_object_type(&mut ws, ObjectType::NONE),
-            "write object type sentinel",
-        );
-        ws.flush();
-        let n = ws.bytes_processed() as usize;
-        let mut rs = ReadStream::new(&buffer, n);
-        let mut tag = ObjectType::NONE;
-        check_err(read_object_type(&mut rs, &mut tag), "read object type");
-        check(tag == ObjectType::TURRET, "object tag round-trips");
-        check_err(read_object_type(&mut rs, &mut tag), "read object type sentinel");
-        check(tag == ObjectType::NONE, "the None sentinel round-trips");
     }
 
     // ---- the string UTF-8 contract's debug assert can FAIL (SPEC §4.7) ----

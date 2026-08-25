@@ -64,13 +64,6 @@ generated/cs-ludicrous/.stamp: bin/schema $(SCHEMAS128)
 	./bin/schema generate --lang cs --out generated/cs-ludicrous examples128
 	@touch $@
 
-# the opt-in variant dispatch surface, generated beside the default so both
-# representations stay compiled and run (--cpp-message variant)
-build/generated-variant/.stamp: bin/schema $(SCHEMAS)
-	@mkdir -p build
-	./bin/schema generate --lang cpp --cpp-message variant --out build/generated-variant examples
-	@touch $@
-
 # the Go target: generated package + module wiring (the go.mod is build
 # wiring, not schema output — the emitter writes only .go files)
 generated/go/.stamp: bin/schema $(SCHEMAS)
@@ -107,10 +100,6 @@ generated/js-ludicrous/.stamp: bin/schema $(SCHEMAS128)
 build/schema_test: generated/cpp/.stamp test/main.cpp test/second.cpp
 	@mkdir -p build
 	$(CXX) $(CXXFLAGS) -Igenerated/cpp -Itest test/main.cpp test/second.cpp -o $@
-
-build/schema_test_variant: build/generated-variant/.stamp test/variant_main.cpp
-	@mkdir -p build
-	$(CXX) $(CXXFLAGS) -Ibuild/generated-variant -Itest test/variant_main.cpp -o $@
 
 build/schema_test_random: generated/cpp/.stamp test/random_main.cpp
 	@mkdir -p build
@@ -221,9 +210,8 @@ build/schema_test_c_ludicrous: generated/c-ludicrous/.stamp test/c-ludicrous/mai
 		-O2 -ffp-contract=off -Igenerated/c-ludicrous -I$(SERIALIZE_C) \
 		test/c-ludicrous/main.c $(SERIALIZE_C)/serialize.c -o $@ -lm
 
-test: build/schema_test build/schema_test_variant build/schema_test_random build/schema_test_ludicrous build/schema_test_c build/schema_test_c_ludicrous build/schema_test_bench build/schema_test_bench_c generated/go/.stamp generated/rust/.stamp generated/cs/.stamp generated/js/.stamp generated/go-ludicrous/.stamp generated/rust-ludicrous/.stamp generated/cs-ludicrous/.stamp generated/js-ludicrous/.stamp generated/bench/go/.stamp generated/bench/rust/.stamp generated/bench/cs/.stamp generated/bench/js/.stamp
+test: build/schema_test build/schema_test_random build/schema_test_ludicrous build/schema_test_c build/schema_test_c_ludicrous build/schema_test_bench build/schema_test_bench_c generated/go/.stamp generated/rust/.stamp generated/cs/.stamp generated/js/.stamp generated/go-ludicrous/.stamp generated/rust-ludicrous/.stamp generated/cs-ludicrous/.stamp generated/js-ludicrous/.stamp generated/bench/go/.stamp generated/bench/rust/.stamp generated/bench/cs/.stamp generated/bench/js/.stamp
 	./build/schema_test
-	./build/schema_test_variant
 	./build/schema_test_random
 	./build/schema_test_ludicrous
 	cd test/c && ../../build/schema_test_c
@@ -247,13 +235,12 @@ test: build/schema_test build/schema_test_variant build/schema_test_random build
 # Re-pin the goldens DELIBERATELY (SPEC §7.2 gates 1, 2, 7). A wire golden
 # breaking under an unchanged schema is stop-the-line, never a quiet re-pin
 # (SPEC §3.1) — this target is for intentional emitter/schema changes only.
-update-goldens: build/schema_test build/schema_test_variant build/schema_test_ludicrous build/schema_test_bench
+update-goldens: build/schema_test build/schema_test_ludicrous build/schema_test_bench
 	@mkdir -p testdata/golden testdata/wire
 	go test ./internal/goldens -update -run 'TestGolden'
 	SCHEMA_UPDATE_WIRE_GOLDENS=1 ./build/schema_test
 	SCHEMA_UPDATE_WIRE_GOLDENS=1 ./build/schema_test_ludicrous
 	SCHEMA_UPDATE_WIRE_GOLDENS=1 ./build/schema_test_bench
-	./build/schema_test_variant
 	go test ./...
 
 # the cross-language serialize profiling harness (bench/README.md): builds and

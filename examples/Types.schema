@@ -39,9 +39,8 @@ type Handle
     object_sequence uint8
 }
 
-// Hand-quantized vectors and rotation — the pre-object-views idiom ShipCreate uses below.
-// (Object views express the same thing with [interpolate, quantize = ...]; both
-// belong in the corpus while both idioms exist in real code.)
+// Hand-quantized vectors and rotation — the quantization idiom ShipCreate
+// uses below: scaled integers with declared bounds, tuned per domain.
 type QuantizedPosition
 {
     x int32 | min = -MaxPositionUnits, max = MaxPositionUnits
@@ -116,7 +115,7 @@ type InputPacket
     inputs [..MaxInputsPerPacket]Input
 }
 
-// ---- the create idiom (pre-object-views) ----
+// ---- the create idiom ----
 
 type ShipCreate
 {

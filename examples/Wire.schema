@@ -118,8 +118,38 @@ type ProbeArray
     config  ProbeConfig
 }
 
-// a message used as an ordinary field type — a message IS an ordinary type
-// (SPEC §4.8)
+// an empty body — presence is the payload; zero wire bits, and the one
+// empty-struct emission corner every target must keep legal
+type Heartbeat
+{
+}
+
+// a nested report shape: composition through a named type, and the widened
+// flags wire riding beside it
+type Test
+{
+    test_a uint16
+    test_b int16  | min = 0, max = 1000
+    test_c int16  | min = 0, max = 1000
+    test_d int16  | min = 0, max = 1000
+}
+
+// wire: length in [0, MaxBlockSize], align, then the used bytes — the
+// bytes(N) form: pre-allocated fixed buffer + used length (SPEC §4.7)
+type Block
+{
+    data bytes(MaxBlockSize)
+}
+
+// wire: length in [0, MaxChatLength], align, then the used bytes —
+// well-formed UTF-8 by contract (writer-trusted, debug-asserted), interior
+// 0x00 rejected on read; N is the max length behind a symbolic bound, and
+// the bound sizes the length prefix's bits (SPEC §4.7)
+type Chat
+{
+    text string(MaxChatLength)
+}
+
 type ProbeReport
 {
     header ProbeHeader

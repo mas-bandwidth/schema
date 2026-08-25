@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package example — protocol id 0xbc05d83a8135cdb9
+// package example — protocol id 0x0bde7acdd36abc6a
 
 use crate::*;
 use serialize::{ReadStream, Stream, WriteStream};
@@ -753,6 +753,212 @@ pub fn read_probe_array(stream: &mut ReadStream<'_>, value: &mut ProbeArray) -> 
         read_probe_sample(stream, &mut value.samples[i])?;
     }
     read_probe_config(stream, &mut value.config)?;
+    Ok(())
+}
+
+// type Heartbeat
+#[repr(C)]
+#[derive(Clone, Copy, PartialEq, Debug)]
+pub struct Heartbeat {}
+
+// The zero form (SPEC §5): specified defaults live only in new(), never here.
+impl Default for Heartbeat {
+    fn default() -> Self {
+        Heartbeat {}
+    }
+}
+
+// HEARTBEAT_MAX_BITS is the longest wire path; align pads at worst case (SPEC §6.1).
+// HEARTBEAT_MAX_BYTES is rounded up to the 8-byte write-buffer granularity.
+pub const HEARTBEAT_MAX_BITS: u64 = 0;
+pub const HEARTBEAT_MAX_BYTES: usize = 0;
+
+#[inline(always)]
+pub fn write_heartbeat(stream: &mut WriteStream<'_>, value: &Heartbeat) -> Result {
+    let _ = (stream, value); // empty body — presence is the payload (SPEC §4.6)
+    Ok(())
+}
+
+#[inline]
+pub fn read_heartbeat(stream: &mut ReadStream<'_>, value: &mut Heartbeat) -> Result {
+    let _ = (stream, value);
+    Ok(())
+}
+
+// type Test
+#[repr(C)]
+#[derive(Clone, Copy, PartialEq, Debug)]
+pub struct Test {
+    pub test_a: u16,
+    pub test_b: i16, // wire [0, 1000]
+    pub test_c: i16, // wire [0, 1000]
+    pub test_d: i16, // wire [0, 1000]
+}
+
+// The zero form (SPEC §5): specified defaults live only in new(), never here.
+impl Default for Test {
+    fn default() -> Self {
+        Test {
+            test_a: 0,
+            test_b: 0,
+            test_c: 0,
+            test_d: 0,
+        }
+    }
+}
+
+// TEST_MAX_BITS is the longest wire path; align pads at worst case (SPEC §6.1).
+// TEST_MAX_BYTES is rounded up to the 8-byte write-buffer granularity.
+pub const TEST_MAX_BITS: u64 = 46;
+pub const TEST_MAX_BYTES: usize = 8;
+
+#[inline(always)]
+pub fn write_test(stream: &mut WriteStream<'_>, value: &Test) -> Result {
+    {
+        let mut raw_value = value.test_a as u32;
+        stream.serialize_bits(&mut raw_value, 16)?;
+    }
+    if value.test_b < 0 || value.test_b > 1000 {
+        return Err(Error::Stream(serialize::Error::ValueOutOfRange));
+    }
+    {
+        let mut offset_value = value.test_b as u32;
+        stream.serialize_bits(&mut offset_value, 10)?;
+    }
+    if value.test_c < 0 || value.test_c > 1000 {
+        return Err(Error::Stream(serialize::Error::ValueOutOfRange));
+    }
+    {
+        let mut offset_value = value.test_c as u32;
+        stream.serialize_bits(&mut offset_value, 10)?;
+    }
+    if value.test_d < 0 || value.test_d > 1000 {
+        return Err(Error::Stream(serialize::Error::ValueOutOfRange));
+    }
+    {
+        let mut offset_value = value.test_d as u32;
+        stream.serialize_bits(&mut offset_value, 10)?;
+    }
+    Ok(())
+}
+
+#[inline]
+pub fn read_test(stream: &mut ReadStream<'_>, value: &mut Test) -> Result {
+    {
+        let mut raw_value: u32 = 0;
+        stream.serialize_bits(&mut raw_value, 16)?;
+        value.test_a = raw_value as u16;
+    }
+    {
+        let mut range_value: i32 = 0;
+        stream.serialize_int(&mut range_value, 0, 1000)?;
+        value.test_b = range_value as i16;
+    }
+    {
+        let mut range_value: i32 = 0;
+        stream.serialize_int(&mut range_value, 0, 1000)?;
+        value.test_c = range_value as i16;
+    }
+    {
+        let mut range_value: i32 = 0;
+        stream.serialize_int(&mut range_value, 0, 1000)?;
+        value.test_d = range_value as i16;
+    }
+    Ok(())
+}
+
+// type Block
+#[repr(C)]
+#[derive(Clone, Copy, PartialEq, Debug)]
+pub struct Block {
+    pub data: [u8; MAX_BLOCK_SIZE as usize], // bytes(MaxBlockSize): fixed buffer, used length beside it (SPEC §4.7)
+    pub data_length: i32,
+}
+
+// The zero form (SPEC §5): specified defaults live only in new(), never here.
+impl Default for Block {
+    fn default() -> Self {
+        Block {
+            data: [0; MAX_BLOCK_SIZE as usize],
+            data_length: 0,
+        }
+    }
+}
+
+// BLOCK_MAX_BITS is the longest wire path; align pads at worst case (SPEC §6.1).
+// BLOCK_MAX_BYTES is rounded up to the 8-byte write-buffer granularity.
+pub const BLOCK_MAX_BITS: u64 = 16018;
+pub const BLOCK_MAX_BYTES: usize = 2008;
+
+#[inline(always)]
+pub fn write_block(stream: &mut WriteStream<'_>, value: &Block) -> Result {
+    if value.data_length < 0 || value.data_length > 2000 {
+        return Err(Error::Stream(serialize::Error::ValueOutOfRange));
+    }
+    {
+        let mut offset_value = value.data_length as u32;
+        stream.serialize_bits(&mut offset_value, 11)?; // the length guards the slice (§6.3)
+    }
+    stream.write_bytes(&value.data[..value.data_length as usize]); // borrowed in place: the write side never mutates (infallible: returns () in serialize.rs 2.0.0)
+    Ok(())
+}
+
+#[inline]
+pub fn read_block(stream: &mut ReadStream<'_>, value: &mut Block) -> Result {
+    stream.serialize_int(&mut value.data_length, 0, MAX_BLOCK_SIZE as i32)?; // the length guards the slice (§6.3)
+    stream.serialize_bytes(&mut value.data[..value.data_length as usize])?;
+    Ok(())
+}
+
+// type Chat
+#[repr(C)]
+#[derive(Clone, Copy, PartialEq, Debug)]
+pub struct Chat {
+    pub text: [u8; MAX_CHAT_LENGTH as usize], // string(MaxChatLength): max length, used length beside it (SPEC §4.7)
+    pub text_length: i32,
+}
+
+// The zero form (SPEC §5): specified defaults live only in new(), never here.
+impl Default for Chat {
+    fn default() -> Self {
+        Chat {
+            text: [0; MAX_CHAT_LENGTH as usize],
+            text_length: 0,
+        }
+    }
+}
+
+// CHAT_MAX_BITS is the longest wire path; align pads at worst case (SPEC §6.1).
+// CHAT_MAX_BYTES is rounded up to the 8-byte write-buffer granularity.
+pub const CHAT_MAX_BITS: u64 = 2064;
+pub const CHAT_MAX_BYTES: usize = 264;
+
+#[inline(always)]
+pub fn write_chat(stream: &mut WriteStream<'_>, value: &Chat) -> Result {
+    if value.text_length < 0 || value.text_length > 256 {
+        return Err(Error::Stream(serialize::Error::ValueOutOfRange));
+    }
+    debug_assert!(
+        std::str::from_utf8(&value.text[..value.text_length as usize]).is_ok(),
+        "string(N) payloads are well-formed UTF-8 by contract (SPEC 4.7)"
+    );
+    {
+        let mut offset_value = value.text_length as u32;
+        stream.serialize_bits(&mut offset_value, 9)?; // the length guards the slice (§6.3)
+    }
+    stream.write_bytes(&value.text[..value.text_length as usize]); // borrowed in place: the write side never mutates (infallible: returns () in serialize.rs 2.0.0)
+    Ok(())
+}
+
+#[inline]
+pub fn read_chat(stream: &mut ReadStream<'_>, value: &mut Chat) -> Result {
+    stream.serialize_int(&mut value.text_length, 0, MAX_CHAT_LENGTH as i32)?; // the length guards the slice (§6.3)
+    stream.serialize_bytes(&mut value.text[..value.text_length as usize])?;
+    for i in 0..value.text_length as usize {
+        if value.text[i] == 0 {
+            return Err(Error::Validation);
+        }
+    }
     Ok(())
 }
 
