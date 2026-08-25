@@ -1466,10 +1466,8 @@ func (c *checker) resolveAttrs(kind declKind, f *ast.Field, out *ir.Field) {
 			c.errf(f.Pos, "field %s: a float range is min, max and resolution, all three together (SPEC §4.6)", f.Name)
 			return
 		}
-		if kind == objectD && !out.Interpolate {
-			// deep-only float with a range triple: legal — it is §4.3's compressed float
-			_ = kind
-		}
+		// a deep-only float with a range triple in an object body is legal —
+		// it is §4.3's compressed float, no view rule involved
 		fmin, ok1 := c.evalFloat(byKey["min"].Value)
 		fmax, ok2 := c.evalFloat(byKey["max"].Value)
 		res, ok3 := c.evalFloat(byKey["resolution"].Value)
@@ -1724,7 +1722,6 @@ func (c *checker) checkCompositeQuantize(f *ast.Field, out *ir.Field, byKey map[
 	out.HasQuantize = true
 	out.QuantScale = k.Int64()
 	out.QuantScaleExpr = a.Value
-	out.QuantMax = b
 	out.QuantMaxExpr = byKey["max"].Value
 	out.QuantBound = int64(math.Round(bound))
 }
