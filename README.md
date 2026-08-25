@@ -64,8 +64,6 @@ Every way of solving that costs something:
   answer, and it is still slower than the hand-written pair — and it is not
   available at all in Go, or in most of the languages a game actually has to
   ship in.
-- **Solving it with heavier template machinery costs compile time**, in headers
-  every translation unit includes.
 - **General-purpose formats** fix the drift by paying for it on the wire.
   On one representative gameplay packet that is **28 bytes against Cap'n Proto's
   52, Protobuf's 56 and FlatBuffers' 72** — every number measured by running the
