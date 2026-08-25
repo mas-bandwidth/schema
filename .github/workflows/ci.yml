@@ -60,7 +60,15 @@ jobs:
   # the C++-pinned goldens — that cross-language bit identity is the property
   # this project exists to provide, and CI is where it gets proven on
   # hardware we do not own. It runs on every trigger, PRs included, because
-  # it is cheap (31-45s measured): the fast leg trims nothing from it.
+  # it is cheap (31-45s measured): the fast leg trims nothing from the
+  # corpus.
+  #
+  # PRs run it on ubuntu ONLY (the one platform #133 budgeted): the shared
+  # macOS pool is 5 runners wide and a certification run's gate fan-out
+  # saturates it, so a PR macOS job pushed during those minutes queues behind
+  # it and blows the 2-minute law (measured: 1:34 of queueing, 3:00 wall,
+  # run 32830268855). The ubuntu pool is 20 wide. macOS conformance still
+  # proves every main commit, minutes later, in this same job.
   test:
     name: test (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
@@ -68,7 +76,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ ubuntu-latest, macos-latest ]
+        os: ${{ github.event_name == 'pull_request' && fromJSON('["ubuntu-latest"]') || fromJSON('["ubuntu-latest","macos-latest"]') }}
 
     steps:
       - uses: actions/checkout@v7
