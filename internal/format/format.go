@@ -575,7 +575,7 @@ func fpBlock(b *strings.Builder, blk *ast.Block) {
 				case ast.ArrayFixed:
 					bound = fmt.Sprintf("[%s]", fpExpr(item.Array.Hi))
 				case ast.ArrayUpTo:
-					bound = fmt.Sprintf("[<=%s]", fpExpr(item.Array.Hi))
+					bound = fmt.Sprintf("[..%s]", fpExpr(item.Array.Hi))
 				case ast.ArrayRange:
 					bound = fmt.Sprintf("[%s..%s]", fpExpr(item.Array.Lo), fpExpr(item.Array.Hi))
 				}

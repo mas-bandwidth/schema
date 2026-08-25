@@ -33,7 +33,7 @@ type Probe {
     overflow  int64  [min = 0, max = 2000000000 * 3]
     wide_ok   int64  [min = -Wide, max = Wide]
     team_size uint8  [min = 0, max = Team.Max]
-    counted   [<= MaxObjects]uint8
+    counted   [..MaxObjects]uint8
     name      string(MaxUnits)
 }
 `

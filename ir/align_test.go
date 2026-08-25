@@ -59,7 +59,7 @@ type UnmarkedRanged {
 
 type UnmarkedCounted {
     align
-    data [<= 8]uint8
+    data [..8]uint8
 }
 
 type MarkedBranchAgree {
@@ -113,13 +113,13 @@ type UnmarkedAfterNestedUnknown {
 
 type UnmarkedAfterCountedPrefix {
     align
-    counted [<= 3]uint16
+    counted [..3]uint16
     data    [2]uint8
 }
 
 type MarkedAfterCountedBytePrefix {
     align
-    counted [<= 255]uint16
+    counted [..255]uint16
     data    [2]uint8
 }
 `

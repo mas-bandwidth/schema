@@ -53,7 +53,7 @@ table Cfg {
     mode  Mode                          = Beta
     name  string(32)
     inner Inner
-    items [<= 8]int32 [min = 0, max = 255]
+    items [..8]int32 [min = 0, max = 255]
 }
 `
 
@@ -73,7 +73,7 @@ table Cfg {
     mode  Mode    = Beta
     name  string(32)
     inner Inner
-    items [<= 8]int32 [min = 0, max = 255]
+    items [..8]int32 [min = 0, max = 255]
 }
 `
 

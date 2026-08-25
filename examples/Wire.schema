@@ -85,7 +85,7 @@ type ProbeCollider {
     armor  uint8
     shape  ProbeShape
     backup ProbeShape
-    extras [<= 2]ProbeShape
+    extras [..2]ProbeShape
 }
 
 // specified defaults past bool (SPEC §4.2): a negative integer and an enum
@@ -130,7 +130,7 @@ table TestData {
 
     g bool
 
-    items [<= 16]int32 [min = 0, max = 255]
+    items [..16]int32 [min = 0, max = 255]
 
     float_value            float32
     compressed_float_value float32 [min = 0, max = 10, resolution = 0.01]

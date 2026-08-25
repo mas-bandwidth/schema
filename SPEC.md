@@ -200,15 +200,18 @@ band) is the application's choice — netcode-style stacks already carry one.
 - **The register is Go-inspired.** Types are declared with `type`, not
   `struct`; declarations put the name first, then the type; scalar names are
   Go's (`float32` and `float64`, never `float`/`double`); `if` and `switch`
-  take no parentheses; array bounds are a prefix (`[<= MaxObjects]ObjectState`);
+  take no parentheses; array bounds are a prefix (`[..MaxObjects]ObjectState`);
   there are no semicolons; the canonical formatter is `schemafmt` — one
   style, no options.
 - **Integer literals:** decimal, hex (`0x`), binary (`0b`). **Float
   literals** (decimal, with optional fraction and exponent) appear in float
   constants and as float attribute values (`min`/`max`/`resolution` on
   `float32`).
-- **Punctuation and operators:** `{ } ( ) [ ] , : = ! . .. <= + - * / %`
-  (maximal munch: `..` wins over `.`).
+- **Punctuation and operators:** `{ } ( ) [ ] , : = ! . .. + - * / %`
+  (maximal munch: `..` wins over `.`). `<=` is not in the language: a count
+  bound is a range literal (`[..N]`, `[A..B]`), never a truncated
+  comparison, and the retired `[<= N]` spelling is refused with the
+  replacement named.
 - **Reserved words:** `package const enum type table message object if else
   switch case align reserved`, the wire-type keywords `bits bool float32
   float64 string bytes fixed ufixed`, and the integer family `int8 int16
@@ -280,7 +283,8 @@ Scalar      = IntType
             | ident .                                            // a declared type or enum
 IntType     = "int8" | "int16" | "int32" | "int64"
             | "uint8" | "uint16" | "uint32" | "uint64" .
-Bound       = IntExpr | "<=" IntExpr | IntExpr ".." IntExpr .
+Bound       = IntExpr | ".." IntExpr | IntExpr ".." IntExpr .       // [N] exact; [..N] = [0..N],
+                                                                    // "up to N"; [A..B] = count in [A, B]
 
 Attributes  = "[" Attr { "," Attr } "]" .                        // trailing, optional, per field
 Attr        = ident "=" ( ConstExpr | ident | string )           // valued:    min = 0, round = up,
@@ -422,7 +426,7 @@ sequence    uint16
 ```
 
 - **Brackets never collide with array bounds, structurally:** an array bound
-  is a **prefix** — `[<= MaxObjects]ObjectState`, Go's order — and attributes
+  is a **prefix** — `[..MaxObjects]ObjectState`, Go's order — and attributes
   **trail** the complete type. Position alone disambiguates; no lookahead.
   Scalar constraints like `min`/`max` apply per element.
 - **Valueless attributes** (the object view markers `[interpolate]` and
@@ -622,7 +626,7 @@ is.
   zigzag on the wire, ever.
 - **`align` emits zero bits up to the next byte boundary — zero bits when
   already aligned**; readers verify the padding is zero.
-- **Length prefixes** (`string(N)`, `bytes(N)`, `[<= N]T`, `[Min..N]T`) are
+- **Length prefixes** (`string(N)`, `bytes(N)`, `[..N]T`, `[Min..N]T`) are
   ranged integers over their declared count range, per the rows below.
 
 The wire encodings are exactly classic serialize's — each row names its
@@ -651,7 +655,7 @@ classic twin, which is the wire oracle for the stated model.
 | `f string(N)` | length in [0, N], align, then the used bytes — N = max length; the bound sizes the length prefix's bits | `serialize_string` with buffer N + 1 |
 | `f bytes(N)` | identical shape: length in [0, N], align, then the used bytes | `serialize_int` + `serialize_bytes` |
 | `f [N]T` | N elements, back to back | element per element |
-| `f [<= N]T` / `f [Min..N]T` | count in [Min, N] encoded relative to Min, then that many elements | `serialize_int` + the element loop |
+| `f [..N]T` / `f [Min..N]T` | count in [Min, N] encoded relative to Min, then that many elements | `serialize_int` + the element loop |
 
 Arrays: the element may be any scalar or named type; arrays of arrays are not
 in v1 (wrap the inner array in a type). Runtime-count arrays carry their own
@@ -668,7 +672,7 @@ conformance gates check.
 
 **The count-range cap is lifted.** serialize.modern caps `array_n`'s count
 range at 16 because each possible count is a separately spliced compile-time
-path. schema's generated code uses an honest loop (§6.2), so `[<= N]T` is
+path. schema's generated code uses an honest loop (§6.2), so `[..N]T` is
 bounded only by what the count's integer range can express.
 
 ### 4.4 Decisions: `if` — and `switch` is not in v1
@@ -774,7 +778,7 @@ All compile errors with positions:
   degenerate support from any runtime. What stays an error: an INVERTED range
   (min > max) anywhere; `[Min..N]T` with Min ≥ N (`[N]T` is the degenerate
   spelling); `string(N)` with N < 2; `bytes(N)` with N < 1; `[N]T` with
-  N < 1; `[<= N]T` with N < 1; `resolution` ≤ 0. An empty `type` or `message`
+  N < 1; `[..N]T` with N < 1; `resolution` ≤ 0. An empty `type` or `message`
   body is legal — zero wire bits, presence as the payload; an empty `object`
   body is an error (it would generate a meaningless view family); a unit with
   no `.schema` files is an error.
@@ -1159,7 +1163,7 @@ union ColliderShape {
   a union's tag in v1 — `if` takes bools only (§4.4) — and a `switch` over
   `<Union>Type` is ruled-not-now, banked with §4.4's switch design.
 - **A union field.** A union name is a field type inside `type` and
-  `message` bodies, arrays included (`shapes [<= 4]ColliderShape`). Not in
+  `message` bodies, arrays included (`shapes [..4]ColliderShape`). Not in
   v1, both stated over the COMPOSITION CLOSURE so nesting cannot smuggle
   one through: an `object` body may not reach a union through any field's
   type, transitively (the view-splitting rules say nothing about what
@@ -1243,7 +1247,7 @@ message Chat {
 
 message Snapshot {
     base_sequence uint16
-    objects       [<= MaxObjects]ObjectState
+    objects       [..MaxObjects]ObjectState
 }
 ```
 
@@ -1411,8 +1415,8 @@ Per `type`, per target:
    | `string(N)` | `char[N + 1]` + `int32_t` length | `byte[]` (capacity N, pre-allocated) + `int` length | `[N]byte` + `int32` length | `[u8; N]` + length |
    | `bytes(N)` | `uint8_t[N]` + `int32_t` length | `byte[]` (capacity N, pre-allocated) + `int` length | `[N]byte` + `int32` length | `[u8; N]` + length |
    | `[N]T` | `T[N]` | `T[N]` (pre-allocated) | `[N]T` | `[T; N]` |
-   | `[<=N]T` | `T[N]` + `int32_t` count | `T[N]` (pre-allocated) + `int` count | `[N]T` + `int32` count | `[T; N]` + count |
-   | `[Min..N]T` | as `[<=N]T` (count validated to [Min, N]) | as `[<=N]T` | as `[<=N]T` | as `[<=N]T` |
+   | `[..N]T` | `T[N]` + `int32_t` count | `T[N]` (pre-allocated) + `int` count | `[N]T` + `int32` count | `[T; N]` + count |
+   | `[Min..N]T` | as `[..N]T` (count validated to [Min, N]) | as `[..N]T` | as `[..N]T` | as `[..N]T` |
    | `f Inner` (a named type) | `Inner` | `Inner` | `Inner` | `Inner` |
 
    The C target mirrors the C++ storage rules in C's own types; JavaScript

@@ -27,5 +27,5 @@ table RenderSprite {
 table RenderBlock {
     worker_index      uint32
     sprite_count_hint uint32
-    sprites           [<= RenderBlockMaxSprites]RenderSprite
+    sprites           [..RenderBlockMaxSprites]RenderSprite
 }

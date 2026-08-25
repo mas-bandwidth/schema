@@ -69,7 +69,7 @@ type UnmarkedRanged {
 
 type UnmarkedCounted {
     align
-    data [<= 8]uint8
+    data [..8]uint8
 }
 `
 
