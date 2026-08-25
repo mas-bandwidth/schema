@@ -68,13 +68,6 @@ what the language specifies, in a way that weakens a check.
   buffer; how that buffer arrived is not its concern.
 - **Confidentiality.** schema does no encryption. The wire is plaintext bits by
   design; encrypt at the transport layer.
-- **The table wire's clamping behaviour.** On the table wire, out-of-range
-  values clamp and are recorded in a report rather than failing the read. This
-  is deliberate — that wire exists for config and assets that must survive
-  schema drift, where refusing to load over one stale field would be worse than
-  clamping it. It is documented in [WIRES.md](WIRES.md). If you feed
-  *untrusted* data to the table wire, that is a misuse: the message wire is the
-  one built for hostile input.
 - **Write-side validation.** Writes are the caller's responsibility and this is
   documented ([FAQ](FAQ.md), [USAGE.md](USAGE.md)). A program that writes an
   out-of-range value is buggy, but that is not a vulnerability in schema — the

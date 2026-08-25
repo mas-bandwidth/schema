@@ -40,7 +40,6 @@ package csharp
 
 import (
 	"fmt"
-	"maps"
 	"math"
 	"math/big"
 	"strconv"
@@ -76,11 +75,6 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 		g.emitFile(f.Base == home)
 		out[f.Base+".cs"] = g.assemble()
 	}
-	tables, err := GenerateTable(u)
-	if err != nil {
-		return nil, err
-	}
-	maps.Copy(out, tables)
 	return out, nil
 }
 

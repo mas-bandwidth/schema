@@ -189,7 +189,7 @@ type ExtremeProbe {
     deep_floor fixed(128, 0) | min = -9223372036854775808, max = 0
 }
 
-table ExtremeRow {
+type ExtremeRow {
     clamped_floor int64 | min = -9223372036854775808, max = 100
     clamped_ceiling uint64 | min = 1, max = 18446744073709551614
     floor_def int64 = -9223372036854775808
@@ -197,18 +197,14 @@ table ExtremeRow {
 }
 `
 
-func generateExtremesCorpus(t *testing.T) (data, wire, table string) {
+func generateExtremesCorpus(t *testing.T) (data, wire string) {
 	t.Helper()
 	u := unitFromSource(t, "Extreme.schema", extremesCorpus)
 	files, err := Generate(u)
 	if err != nil {
 		t.Fatal(err)
 	}
-	tables, err := GenerateTable(u)
-	if err != nil {
-		t.Fatal(err)
-	}
-	return string(files["Extreme.h"]), string(files["ExtremeWire.h"]), string(tables["ExtremeTable.h"])
+	return string(files["Extreme.h"]), string(files["ExtremeWire.h"])
 }
 
 // TestExtremeLiterals pins every C spelling of the two extremes: the guarded
@@ -216,7 +212,7 @@ func generateExtremesCorpus(t *testing.T) (data, wire, table string) {
 // one — #define bodies, defaults, wire offsets, fixed bounds, table default
 // comparisons and clamps.
 func TestExtremeLiterals(t *testing.T) {
-	data, wire, table := generateExtremesCorpus(t)
+	data, wire := generateExtremesCorpus(t)
 	for _, want := range []string{
 		// #define bodies: the C twin of C++'s emitConst guards
 		"#define FLOOR_LIMIT (( -9223372036854775807LL - 1 ))",
@@ -251,29 +247,6 @@ func TestExtremeLiterals(t *testing.T) {
 			t.Errorf("the doubled-minus-at-the-extreme bound must fold, not render symbolically")
 		}
 	}
-	for _, want := range []string{
-		// table write compares against the declared default, guarded
-		"if ( value->floor_def != ( -9223372036854775807LL - 1 ) )",
-		"if ( value->ceiling_def != 18446744073709551615ULL )",
-		// the int64 clamp keeps its hi half; the lo half at INT64_MIN is
-		// vacuous for the int64 carrier and must be ELIDED — gcc's
-		// -Wtype-limits makes a tautological compare a -Werror build break
-		"if ( v > 100LL ) { v = 100LL; report->clamped++; }",
-		// an unsigned 64-bit range clamps in ITS OWN domain: the bound can
-		// live above INT64_MAX (no LL spelling holds it), and the int64
-		// detour would fold large decoded values negative — the C++ reader
-		// clamps unsigned, and the two must agree
-		"serialize_uint64_t v = (serialize_uint64_t) raw;",
-		"if ( v < 1ULL ) { v = 1ULL; report->clamped++; }",
-		"if ( v > 18446744073709551614ULL ) { v = 18446744073709551614ULL; report->clamped++; }",
-	} {
-		if !strings.Contains(table, want) {
-			t.Errorf("generated table header must contain %q", want)
-		}
-	}
-	if strings.Contains(table, "if ( v < ( -9223372036854775807LL - 1 ) )") {
-		t.Errorf("the INT64_MIN clamp half is vacuous and must be elided (-Wtype-limits is -Werror in the C legs)")
-	}
 }
 
 // TestExtremeSpellingsAbsent proves the broken spellings appear NOWHERE in
@@ -281,8 +254,8 @@ func TestExtremeLiterals(t *testing.T) {
 // of long long range no matter the suffix), and any above-INT64_MAX decimal
 // not immediately suffixed ULL.
 func TestExtremeSpellingsAbsent(t *testing.T) {
-	data, wire, table := generateExtremesCorpus(t)
-	for name, text := range map[string]string{"data": data, "wire": wire, "table": table} {
+	data, wire := generateExtremesCorpus(t)
+	for name, text := range map[string]string{"data": data, "wire": wire} {
 		if strings.Contains(text, "-9223372036854775808") {
 			t.Errorf("%s header spells the unspellable INT64_MIN literal", name)
 		}

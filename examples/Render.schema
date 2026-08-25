@@ -9,14 +9,13 @@
 // Field order is largest-alignment-first: the natural C++ layout then has
 // zero interior padding, and packed sequential mirrors in other languages
 // match byte-for-byte. The corpus test scatters blocks across real threads
-// and proves the parallel result byte-identical to the serial one, on both
-// the raw-struct blob and the table wire.
+// and proves the parallel result byte-identical to the serial one.
 
 package example
 
 const RenderBlockMaxSprites = 64
 
-table RenderSprite
+type RenderSprite
 {
     sort_key    uint64
     mesh_id     uint32
@@ -25,7 +24,7 @@ table RenderSprite
     team        Team
 }
 
-table RenderBlock
+type RenderBlock
 {
     worker_index      uint32
     sprite_count_hint uint32

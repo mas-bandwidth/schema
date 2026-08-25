@@ -34,7 +34,6 @@ package c
 
 import (
 	"fmt"
-	"maps"
 	"math"
 	"math/big"
 	"sort"
@@ -75,12 +74,6 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 		out[f.Base+"Wire.h"] = w.assembleWireHeader()
 		errs = append(errs, w.errs...)
 	}
-
-	tables, terr := GenerateTable(u)
-	if terr != nil {
-		errs = append(errs, terr)
-	}
-	maps.Copy(out, tables)
 
 	// Refuse to emit a partial target. Returning the files alongside an error
 	// would invite a caller to use them.

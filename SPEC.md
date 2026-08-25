@@ -54,14 +54,15 @@ consumer.
    and names the fix.
 
 **Scope (v1).** schema fully defines the generated code for constants, enums,
-flags, types, messages, tables and object definitions. Delta serialization is
+flags, types, messages and object definitions. Delta serialization is
 out of scope for v1.
 
 ### Non-goals (v1)
 
-- **No wire-format versioning on the realtime wire.** Versioning is by
-  protocol id, deliberately (§3). Data that must outlive builds uses the
-  table wire (§4.11), which is evolution-tolerant by design.
+- **No wire-format versioning, anywhere.** Versioning is by protocol id,
+  deliberately (§3): hardcoded structs, one id, same-or-refuse. schema is
+  not an evolution system, and data that must outlive builds is out of its
+  scope entirely.
 - **No unbounded collections.** Everything on the wire has a declared bound,
   as everywhere in the serialize family.
 - **No annotation of existing hand-written types.** schema owns the types it
@@ -122,11 +123,12 @@ missing from it is a review question rather than an implementation detail.
 
 **Included — each fact moves the wire:** the package; message and object
 ordinals (the tag IS the index); contexts; every type's field order; field
-NAMES (the table wire's field identity is `fold16(fnv1a32(name))`); type
+NAMES; type
 kind, width and signedness; declared bounds; array kind and bounds;
 string/bytes capacity; float range, resolution and step count; fixed `I` and
-`F`; quantize scale and bound; specified defaults (the table wire elides a
-field sitting at its default); branch structure; `const`/`reserved`/`align`
+`F`; quantize scale and bound; specified defaults (both ends must agree on
+the value an untaken branch zeroes toward and a constructor materializes);
+branch structure; `const`/`reserved`/`align`
 items; enum max and storage bits; flags wire bits; union variant order,
 count and payload type references (the tag is positional and the payload is
 the wire — §4.8); `local` and `interpolate` markers.
@@ -273,10 +275,9 @@ ConstExpr   = IntExpr | FloatExpr .
 Enum        = "enum" ident ( VariantList
             | AttrSection NL VariantList ) NL .
 VariantList = "{" [ ident { "," ident } [ "," ] ] "}" .            // commas; trailing comma OK
-TypeDecl    = ( "type" | "table" ) ident ( Block
+TypeDecl    = "type" ident ( Block
             | AttrSection NL Block ) NL .               // qualifiers = the type TAG and the
-                                                        // cpp_* pair, §4.2; "table" = a
-                                                        // table-wire/reflection ROOT (§4.11)
+                                                        // cpp_* pair, §4.2
 Message     = "message" ident Block NL .
 
 Block       = "{" { Item } "}" .
@@ -357,8 +358,7 @@ FloatExpr   = float expression over float literals, int literals and const names
   what a freshly constructed object holds. It does not touch the wire**: per
   §5's read rule, fields in untaken branches read as ZERO values, not as
   defaults — the wire contract stays a pure function of the schema's
-  encodings. (On the table wire, a field sitting at its specified default is
-  elided — §4.11.)
+  encodings.
 - **Constants compose.** A `const` may reference any other `const` in the
   unit, order-free across files like type references; reference cycles are a
   compile error naming the cycle. Example:
@@ -580,7 +580,7 @@ struct Vector3 : public space::Vector3 { /* operators, length(), ... */ };
 
 With the mapping declared, generated C++ **storage speaks the native type**:
 every field of a mapped type in every generated struct (states, data views,
-render types, tables) declares `::Vector3` instead of `space::Vector3`, and
+render types) declares `::Vector3` instead of `space::Vector3`, and
 every generated header that references it emits `#include "core_vector.h"`.
 Simulation code then does math on generated state directly — no conversion
 layer, no per-site casts. Derivation guarantees layout identity — the emitted
@@ -1185,8 +1185,7 @@ union ColliderShape
   attributes and no `= default` (it zero-initializes to None, joining
   arrays, strings, bytes and composites in §4.2's no-override list).
 - **Payloads are declared types.** A variant's payload must name a declared
-  `type` (or `table` — the declaration kind does not matter here, the type
-  does). An enum, flags, object, message or union name is not a payload in
+  `type`. An enum, flags, object, message or union name is not a payload in
   v1 — wrap it in a type; scalar and array payloads likewise (the parser
   names this rule when a scalar keyword or `[` appears in payload
   position). Follow-ons if a real case wants them. Composition cycles
@@ -1244,16 +1243,11 @@ union ColliderShape
   `<Union>Type` is ruled-not-now, banked with §4.4's switch design.
 - **A union field.** A union name is a field type inside `type` and
   `message` bodies, arrays included (`shapes [..4]ColliderShape`). Not in
-  v1, both stated over the COMPOSITION CLOSURE so nesting cannot smuggle
-  one through: an `object` body may not reach a union through any field's
+  v1, stated over the COMPOSITION CLOSURE so nesting cannot smuggle one
+  through: an `object` body may not reach a union through any field's
   type, transitively (the view-splitting rules say nothing about what
-  Shallow/Interpolate mean for a one-of), and no **table-closure member**
-  may declare a union-typed field, transitively through arrays and
-  branches (the table wire's evolution semantics — elision, unknown-field
-  skip — are undefined over a one-of). A `table` used as a union PAYLOAD
-  stays legal — the table is a closure root either way; it is the union
-  that may not sit on a closure path. Both are compile errors naming this
-  rule, and both are follow-on passes, not rulings against.
+  Shallow/Interpolate mean for a one-of). A compile error naming this
+  rule, and a follow-on pass, not a ruling against.
 - **The id moves.** A union is wire structure: its variant order, count and
   payload type references all shape bytes, so they project into the
   protocol id (§3.1) — declaring a union, adding, removing or reordering
@@ -1261,16 +1255,6 @@ union ColliderShape
   VARIANT does **not** move it: the ordinal is the wire, the enum-variant
   rule exactly (§3.1) — renaming `box` to `crate` leaves every byte
   identical.
-- **Pack/JSON authoring** (the data compiler's dense-wire instance
-  encoding, `internal/pack` — the wire oracle that packs the pinned
-  conformance instances; a table-closure manifest cannot carry a union
-  until the closure lift above, so this rule reaches the manifest surface
-  then): a union value is **a single-key object, the key naming the
-  variant in its source spelling** — `{ "sphere": { "radius": 2.5 } }`,
-  and the key's value must be a JSON object. JSON `null`, or leaving the
-  field absent, is None; `null` UNDER a variant key is a refusal, as is an
-  object with zero keys or more than one — a one-of holds one thing, and
-  the encoder does not guess which.
 - **Generated code, per target** — the message-set rule verbatim:
   representation is per-language and explicitly NOT part of the contract;
   what binds every target is behavioral only — identical bytes, None is a
@@ -1378,60 +1362,15 @@ because they are separate types; §4.6's unique-names rule is per type.)
   `current > previous`, the reader fails otherwise; no wrap semantics exist,
   and a caller with a wrapping counter unwraps before serializing.
 
-### 4.11 Tables — the second wire, and reflection
+### 4.11 `table` — reserved, refused
 
-`table X { ... }` declares a type that is also a **table-wire root**. The
-body grammar is identical to `type` — every field kind, guard, default, and
-bound works the same, and a table is usable anywhere a type is (message
-fields, arrays, other tables). What the keyword changes is what the compiler
-EMITS for it.
-
-**The closure.** The table closure is every `table` declaration plus every
-struct one references through fields, transitively. Closure members get, in
-every generated language except JavaScript (whose table wire does not exist
-yet):
-
-1. **Table-wire codecs** (`TableWriteX` / `TableReadX`; `table_write_x` /
-   `table_read_x` in Rust's own naming — the bytes are identical) — the
-   evolution-tolerant TLV encoding specified in notes/table-wire.md:
-   name-hash field ids, defaults elide, unknown fields skip, changed kinds
-   skip, out-of-range clamps, all counted in a `TableReport`. This wire is
-   for data that outlives builds (config, assets, settings, events); the
-   realtime message wire (§4) is untouched and exact-match as ever.
-2. **Reflection descriptors** (`TableTypeX()`) — static per-type field
-   metadata: name, wire id and kind, array bounds and count companions,
-   nested descriptor links, declared ranges, enum wire max and value→name
-   functions, and branch guards. C++ additionally carries storage offsets
-   (zero-cost direct access); Go and C# carry generated get/set-by-name
-   accessors instead, with set clamping to declared ranges exactly as the
-   wire read does. No RTTI, no `System.Reflection`, no schema files at
-   runtime — editors and tooling bind against the descriptors alone.
-
-   **The descriptors are data-oriented, and emitters must keep this shape:**
-   SEPARATE STATIC DATA, one set per type, shared by every instance — an
-   instance is exactly its fields, carries zero reflection weight, and stays
-   trivially copyable. A type's field descriptors are one flat contiguous
-   array walked linearly; instance access is base + offset arithmetic (C++)
-   or a generated direct accessor (Go/C#); nested types cost one hop to
-   another flat array. No per-instance metadata, no fat objects, no
-   pointer-chased descriptor graphs beyond the nested-type link.
-
-Plain `type` declarations outside the closure get NONE of this — the realtime
-types pay nothing for the table layer's existence.
-
-**Capability rule.** A closure member must stay on table-wire kinds:
-`int128`/`uint128`, `fixed(I, F)`/`ufixed(I, F)` and `bits` wider than 64
-have no table-wire kind, and the checker refuses them inside the closure at
-compile time. Pack roots (`schema pack` manifest collection types) must be
-declared `table`, and `EncodeTable`/`DecodeTable` require closure
-membership — reflection and table codecs follow the declaration, never
-accident.
-
-**Protocol id.** The `table` keyword participates in the wire shape
-projection (§3.1), so marking a table moves the unit's protocol id like any
-other declaration change. The table wire's own compatibility does not depend
-on it: a table bin from a different protocol id still reads under the
-permissive contract, which is the point.
+`table` is a reserved word the parser refuses by name: tables are not part
+of the language. schema declares the realtime wire — hardcoded structs, one
+protocol id, same-or-refuse (§3) — and content that outlives builds is out
+of its scope entirely. The projection (§3.1) keeps a frozen `table=false`
+token on every type line so the refusal was id-neutral for every unit that
+never declared one; changing that token is a `ProjectionVersion` bump,
+taken deliberately or not at all.
 
 ## 5. Trust model — inherited
 
@@ -1701,9 +1640,6 @@ schema generate   [--lang c|cpp|cs|go|js|rust] [--cpp-message union|variant]
 schema id | dir|files... // print the protocol id
 schema projection | dir|files... // print the wire shape projection (§3.1)
 schema fmt        [--verbose] [dir|files...]   // the canonical formatter, standalone (editors, hooks)
-schema pack       [--verbose] <manifest.json>  // the data compiler: JSON instance files -> a
-                                          // versioned, hashed .bin per the manifest's
-                                          // ordered collections (§4.11)
 schema version
 ```
 
@@ -1885,15 +1821,13 @@ internal/ast/
 internal/check/        resolver, constant folding, shape checks, dominance rule,
                        the protocol id
 internal/format/       schemafmt
-internal/pack/         the data compiler (schema pack)
 internal/codegen/      c/  cpp/  csharp/  golang/  js/  rust/ — registered on
                        the driver through the public generator interface
 internal/fuzz/         compiler fuzzing (gate 6)
 internal/publicapi/    the acceptance gate: an external module, public API only
 examples/              the corpus — always compiles under this spec as written
 examples128/           the fixed-point + 128-bit corpus
-testdata/              golden generated source, golden ids, golden wire bytes,
-                       table goldens
+testdata/              golden generated source, golden ids, golden wire bytes
 test/                  the per-language wire test legs
 bench/                 the benchmarking program (see bench/BENCH-STANDARD.md)
 notes/                 extracted runtime API contracts (design inputs, non-normative)

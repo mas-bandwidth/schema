@@ -56,7 +56,6 @@ horizon" — the flatbuffers replacement), and the delta pass (out of v1 scope b
 The delta pass (out of v1 scope — Glenn: *"the delta serialization is out of scope of v1.
 we will hit that once we lay the foundation of types/objects."*): delta-against-baseline
 with prediction expressions, `int_relative` ascending-id streams, mid-stream packet
-splitting, sentinel-terminated streams. The table layer: `Config.schema`/`Assets.schema`
-and the derived type enums. *(Side-conditional fields, once an omission note here, are
+splitting, sentinel-terminated streams. *(Side-conditional fields, once an omission note here, are
 now first-class: `Contexts.schema` + `| local, context = ...` — both former omission
 sites are declared fields in `Objects.schema`.)*

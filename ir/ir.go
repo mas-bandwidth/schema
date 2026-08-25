@@ -100,10 +100,7 @@ type UnionVariant struct {
 type Struct struct {
 	Name      string
 	IsMessage bool
-	IsTable   bool // declared with `table`: a table-wire/reflection ROOT.
-	// The closure (this table plus everything it references, transitively)
-	// gets table codecs and field descriptors — see TableClosure.
-	Tags []string // inert in v1 (SPEC §4.2)
+	Tags      []string // inert in v1 (SPEC §4.2)
 	// C++ native type mapping (SPEC §4.2, Native type mapping): when set,
 	// generated C++ declares fields of this type as ::CppNative (a hand type
 	// deriving from the generated basis struct — same layout, plus behavior)
@@ -115,38 +112,6 @@ type Struct struct {
 	CppInclude string
 	Fields     []*Field // flattened; branch fields carry Guard — storage emission
 	Items      []Item   // the wire tree: fields and branches in wire order — function emission
-}
-
-// TableClosure is the set of structs that carry table codecs and reflection
-// descriptors: every `table` declaration plus every struct reachable from one
-// through fields (nested types, array elements), transitively. Plain types
-// outside the closure stay dense-wire only.
-func TableClosure(u *Unit) map[string]bool {
-	closure := map[string]bool{}
-	var walk func(name string)
-	walk = func(name string) {
-		if closure[name] {
-			return
-		}
-		st, ok := u.Structs[name]
-		if !ok {
-			return
-		}
-		closure[name] = true
-		for _, f := range st.Fields {
-			if f.Type.Kind == TNamed {
-				if _, isStruct := f.Type.Ref.(*Struct); isStruct {
-					walk(f.Type.Name)
-				}
-			}
-		}
-	}
-	for name, st := range u.Structs {
-		if st.IsTable {
-			walk(name)
-		}
-	}
-	return closure
 }
 
 // Item is one wire-ordered element of a struct body: a field, an if branch

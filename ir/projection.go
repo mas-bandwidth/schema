@@ -119,7 +119,11 @@ func WireProjection(u *Unit) string {
 	sort.Strings(names)
 	for _, n := range names {
 		st := u.Structs[n]
-		fmt.Fprintf(&b, "type %s table=%t message=%t\n", st.Name, st.IsTable, st.IsMessage)
+		// `table=false` is a FROZEN token: tables left the language, and
+		// keeping the literal keeps the removal id-neutral for every unit
+		// that never declared one. Changing this line is a ProjectionVersion
+		// bump, taken deliberately or not at all.
+		fmt.Fprintf(&b, "type %s table=false message=%t\n", st.Name, st.IsMessage)
 		projectItems(&b, st.Items, "  ")
 	}
 

@@ -69,17 +69,7 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 		out[strings.ToLower(f.Base)+".rs"] = g.assemble()
 	}
 
-	tables, err := GenerateTable(u)
-	if err != nil {
-		return nil, err
-	}
-	var tableMods []string
-	for name, data := range tables {
-		out[name] = data
-		tableMods = append(tableMods, strings.TrimSuffix(name, ".rs"))
-	}
-
-	out["lib.rs"] = assembleLib(u, modules, tableMods)
+	out["lib.rs"] = assembleLib(u, modules)
 	return out, nil
 }
 
@@ -98,7 +88,7 @@ func protocolIdHome(u *ir.Unit) string {
 	return ""
 }
 
-func assembleLib(u *ir.Unit, modules map[string]string, tableMods []string) []byte {
+func assembleLib(u *ir.Unit, modules map[string]string) []byte {
 	// a module re-exports into the crate root only if it declares anything: a
 	// glob over an item-less module (a contexts aspect file — comments only)
 	// is an unused import
@@ -138,14 +128,6 @@ func assembleLib(u *ir.Unit, modules map[string]string, tableMods []string) []by
 			fmt.Fprintf(&b, "mod %s;\npub use %s::*;\n", mod, mod)
 		} else {
 			fmt.Fprintf(&b, "mod %s; // no items — documentation only\n", mod)
-		}
-	}
-	// the table wire's own modules, when the unit declares or reaches a table
-	if len(tableMods) > 0 {
-		sort.Strings(tableMods)
-		b.WriteString("\n// The TABLE wire (evolution-tolerant) — see WIRES.md.\n")
-		for _, mod := range tableMods {
-			fmt.Fprintf(&b, "mod %s;\npub use %s::*;\n", mod, mod)
 		}
 	}
 	return []byte(b.String())

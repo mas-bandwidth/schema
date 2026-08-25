@@ -21,7 +21,6 @@ package golang
 import (
 	"fmt"
 	"go/format"
-	"maps"
 	"math/big"
 	"strconv"
 	"strings"
@@ -60,11 +59,6 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 		}
 		out[f.Base+".go"] = src
 	}
-	tables, err := GenerateTable(u)
-	if err != nil {
-		return nil, err
-	}
-	maps.Copy(out, tables)
 	return out, nil
 }
 

@@ -8,10 +8,6 @@
 // pinner authored — the JS leg gates them here because the bench runner rig
 // imports these exact modules.
 //
-// The table-wire section of the Go twin (testdata/table/*.bin) is NOT here:
-// the JS backend does not emit table codecs yet — that is its own chunk, and
-// this leg grows the section when it lands.
-//
 // Prints OK and exits 0, exactly like its C++ and Go twins. Run from test/js
 // (the Makefile does): the wire goldens are at ../../testdata/wire. The
 // serialize.js runtime is the documented sibling checkout, imported by

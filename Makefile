@@ -193,9 +193,8 @@ generated/bench/cs/.stamp: bin/schema $(SCHEMAS_BENCH)
 	./bin/schema generate --lang cs --out generated/bench/cs/realworld bench/corpus/RealWorld.schema
 	@touch $@
 
-# the realworld unit sits in its own subdirectory like go/cs: the units'
-# basenames never collide today, but the table chunk adds a per-unit
-# TableRuntime.js that would
+# the realworld unit sits in its own subdirectory like go/cs, so the two
+# units' outputs never collide
 generated/bench/js/.stamp: bin/schema $(SCHEMAS_BENCH)
 	./bin/schema generate --lang js --out generated/bench/js bench/corpus/Bench.schema
 	./bin/schema generate --lang js --out generated/bench/js/realworld bench/corpus/RealWorld.schema
@@ -249,7 +248,7 @@ test: build/schema_test build/schema_test_variant build/schema_test_random build
 # breaking under an unchanged schema is stop-the-line, never a quiet re-pin
 # (SPEC §3.1) — this target is for intentional emitter/schema changes only.
 update-goldens: build/schema_test build/schema_test_variant build/schema_test_ludicrous build/schema_test_bench
-	@mkdir -p testdata/golden testdata/wire testdata/table
+	@mkdir -p testdata/golden testdata/wire
 	go test ./internal/goldens -update -run 'TestGolden'
 	SCHEMA_UPDATE_WIRE_GOLDENS=1 ./build/schema_test
 	SCHEMA_UPDATE_WIRE_GOLDENS=1 ./build/schema_test_ludicrous

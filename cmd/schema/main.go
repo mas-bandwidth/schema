@@ -119,26 +119,6 @@ func main() {
 				fmt.Printf("wrote %s\n", path)
 			}
 		}
-	case "pack":
-		fs := flag.NewFlagSet("pack", flag.ExitOnError)
-		fs.BoolVar(&verbose, "verbose", false, "report each artifact written")
-		_ = fs.Parse(os.Args[2:]) // ExitOnError: Parse never returns an error
-		if fs.NArg() != 1 {
-			fatalf("usage: schema pack [--verbose] <manifest.json>")
-		}
-		unit, outputs, err := c.Pack(fs.Arg(0))
-		if err != nil {
-			fail(err)
-		}
-		for _, o := range outputs {
-			if err := os.WriteFile(o.File, o.Bytes, 0o644); err != nil {
-				fatalf("%v", err)
-			}
-			if verbose {
-				fmt.Printf("wrote %s (%d bytes, protocol id 0x%016x, content hash 0x%016x)\n",
-					o.File, len(o.Bytes), unit.ProtocolId, o.ContentHash)
-			}
-		}
 	default:
 		usage()
 		os.Exit(2)
@@ -152,14 +132,11 @@ func usage() {
   schema id         [dir|files...]
   schema projection [dir|files...]
   schema fmt        [--verbose] [dir|files...]
-  schema pack       [--verbose] <manifest.json>
   schema version
 
 Every command formats the unit's schema files in place before processing them
 (schemafmt — one style, no options); a file already in format is not touched.
 Success is silent: --verbose lists the files a command wrote or reformatted.
-pack is the data compiler: JSON instance files -> a versioned, hashed .bin,
-per the manifest's ordered collections (the table layer's transition form).
 `)
 }
 
