@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package example — protocol id 0x9cdffa5a3048f991
+// package example — protocol id 0xbc05d83a8135cdb9
 
 #pragma once
 
@@ -12,7 +12,7 @@ namespace example {
 
 // The unit's protocol id — the hash of its schema files (SPEC §3.1). Two
 // sides at the same id speak identical bits; there is no other versioning.
-inline constexpr uint64_t ProtocolId = 0x9cdffa5a3048f991ull;
+inline constexpr uint64_t ProtocolId = 0xbc05d83a8135cdb9ull;
 
 inline constexpr int64_t PositionUnits = 1024;
 inline constexpr int64_t VelocityUnits = 1024;

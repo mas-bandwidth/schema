@@ -191,15 +191,11 @@ func (p *parser) parseDecl() {
 		p.file.Decls = append(p.file.Decls, d)
 
 	case scanner.KwTable:
-		// a table is a type that is ALSO a table-wire/reflection root: it and
-		// everything it references get table codecs and field descriptors
-		p.advance()
-		name := p.expect(scanner.Ident, "table name")
-		d := &ast.TypeDecl{Name: name.Text, Pos: t.Pos, IsTable: true}
-		d.Attrs = p.declQualifiers("table")
-		d.Body = p.parseBlock()
-		p.expectTerminator("table declaration")
-		p.file.Decls = append(p.file.Decls, d)
+		// `table` is reserved and refused: tables are not part of the
+		// language. Realtime wire types are `type`; the id is exact-match
+		// and content that outlives builds is not this compiler's subject.
+		p.errf(t.Pos, "tables are not part of the language — declare a `type` (the id is exact-match: same protocol id or refuse, SPEC §3)")
+		p.skipDecl()
 
 	case scanner.KwMessage:
 		p.advance()

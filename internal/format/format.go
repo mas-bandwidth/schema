@@ -526,11 +526,7 @@ func fpDecl(b *strings.Builder, d ast.Decl) {
 	case *ast.ContextsDecl:
 		fmt.Fprintf(b, "contexts {%s}\n", fpNames(d.Names))
 	case *ast.TypeDecl:
-		kw := "type"
-		if d.IsTable {
-			kw = "table"
-		}
-		fmt.Fprintf(b, "%s %s %s\n", kw, d.Name, fpAttrs(d.Attrs))
+		fmt.Fprintf(b, "type %s %s\n", d.Name, fpAttrs(d.Attrs))
 		fpBlock(b, d.Body)
 	case *ast.UnionDecl:
 		fmt.Fprintf(b, "union %s\n{\n", d.Name)

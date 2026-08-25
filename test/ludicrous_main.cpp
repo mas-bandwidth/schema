@@ -15,7 +15,6 @@
 #include <cstring>
 
 #include "LudicrousWire.h"
-#include "LudicrousTable.h" // every type here is table-tainted (int128/fixed); the header must still compile
 
 #define check( condition )                                                    \
     do                                                                        \

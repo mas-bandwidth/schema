@@ -15,7 +15,6 @@
 #include "EnumsWire.h"
 #include "WireWire.h"
 #include "ObjectsWire.h"
-#include "TypesTable.h"
 
 static int failed = 0;
 
@@ -100,43 +99,6 @@ static void fill_test_data( TestData * in )
     in->text_length = 19;
 }
 
-/* golden_table byte-compares table-wire output against the C++-pinned golden. */
-static void golden_table( const char * name, const unsigned char * data, int bytes )
-{
-    char path[512];
-    static unsigned char expected[8192];
-    FILE * file;
-    size_t n;
-    int i;
-
-    sprintf( path, "../../testdata/table/%s.bin", name );
-    file = fopen( path, "rb" );
-    if ( !file )
-    {
-        printf( "FAILED: cannot open table golden %s\n", path );
-        failed = 1;
-        return;
-    }
-    n = fread( expected, 1, sizeof( expected ), file );
-    fclose( file );
-
-    if ( (int) n != bytes )
-    {
-        printf( "FAILED: table golden %s — C wrote %d bytes, golden is %d\n", name, bytes, (int) n );
-        failed = 1;
-        return;
-    }
-    for ( i = 0; i < bytes; i++ )
-    {
-        if ( data[i] != expected[i] )
-        {
-            printf( "FAILED: table golden %s — first difference at byte %d: C=%02x golden=%02x\n",
-                    name, i, data[i], expected[i] );
-            failed = 1;
-            return;
-        }
-    }
-}
 
 int main( void )
 {
@@ -647,58 +609,6 @@ int main( void )
         check( !out.active && out.idle_ticks == 1234, "the else arm decodes" );
         check( out.weapon == 0 && out.target_id == 0,
                "the UNTAKEN then fields are zeroed when the else arm is taken (SPEC §5)" );
-    }
-
-    /* ---- the TABLE wire: the same C++-pinned goldens the other four use ---- */
-    {
-        RigidBody in, out;
-        table_report_t report;
-        int n;
-
-        memset( &in, 0, sizeof( in ) );
-        in.position.x = 1.5; in.position.y = -2.5; in.position.z = 3.25;
-        in.orientation.x = 0.1; in.orientation.y = 0.2; in.orientation.z = 0.3; in.orientation.w = 0.9;
-        in.at_rest = 0;
-        in.linear_velocity.x = 10.0; in.linear_velocity.y = 20.0; in.linear_velocity.z = -3.0;
-        in.angular_velocity.x = 0.25; in.angular_velocity.y = 0.5; in.angular_velocity.z = 0.75;
-
-        n = table_write_rigid_body( buffer, sizeof( buffer ), &in );
-        check( n > 0, "table write RigidBody" );
-        golden_table( "rigidbody_moving", buffer, n );
-
-        memset( &report, 0, sizeof( report ) );
-        memset( &out, 0, sizeof( out ) );
-        check( table_read_rigid_body( buffer, n, &out, &report ), "table read RigidBody" );
-        check( report.unknown == 0 && report.kind_mismatch == 0 && report.clamped == 0 && !report.malformed,
-               "same-schema table decode is silent" );
-        check( out.position.x == 1.5 && out.position.z == 3.25, "table position round-trips" );
-        check( out.linear_velocity.y == 20.0, "table velocity round-trips" );
-
-        in.at_rest = 1;
-        n = table_write_rigid_body( buffer, sizeof( buffer ), &in );
-        check( n > 0, "table write RigidBody at rest" );
-        golden_table( "rigidbody_at_rest", buffer, n );
-
-        memset( &report, 0, sizeof( report ) );
-        memset( &out, 0, sizeof( out ) );
-        out.linear_velocity.x = 99.0;  /* dirty — prefill must reset it */
-        check( table_read_rigid_body( buffer, n, &out, &report ), "table read RigidBody at rest" );
-        check( out.at_rest, "at_rest reads true" );
-        check( out.linear_velocity.x == 0.0 && out.angular_velocity.z == 0.0,
-               "the guard kept both velocities off the wire; prefill supplies the defaults" );
-
-        /* the descriptor is static data describing the same fields */
-        {
-            const table_type_info_t * info = table_type_rigid_body();
-            int guarded = 0, i;
-            check( strcmp( info->name, "RigidBody" ) == 0, "descriptor names the type" );
-            check( info->field_count == 5, "descriptor has every field" );
-            for ( i = 0; i < info->field_count; i++ )
-            {
-                if ( info->fields[i].guard[0] != 0 ) guarded++;
-            }
-            check( guarded == 2, "the descriptor carries the guard for exactly the guarded fields" );
-        }
     }
 
     if ( failed )

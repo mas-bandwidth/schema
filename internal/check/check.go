@@ -115,7 +115,6 @@ func Unit(files []SourceFile) (*ir.Unit, []error) {
 	c.checkClaimedNames()
 	c.checkTargetNames()
 	c.assemble()
-	c.checkTables()
 	if len(c.errs) > 0 {
 		return nil, c.errs
 	}
@@ -798,7 +797,7 @@ func (c *checker) resolveBodies() {
 		for _, d := range f.AST.Decls {
 			switch d := d.(type) {
 			case *ast.TypeDecl:
-				st := &ir.Struct{Name: d.Name, IsTable: d.IsTable}
+				st := &ir.Struct{Name: d.Name}
 				for _, a := range d.Attrs {
 					switch a.Key {
 					case "cpp_native":
@@ -2062,62 +2061,6 @@ var libcNamespaceScope = func() map[string]bool {
 // coexist in one type (SPEC §4.6).
 func goExportName(name string) string {
 	return ir.GoExportName(name)
-}
-
-// checkTables enforces the table closure's wire capability: a `table` and
-// everything it references, transitively, must stay on table-wire kinds.
-// int128/uint128, fixed(I, F) and bits wider than 64 have no table-wire kind
-// (notes/table-wire.md), so they are refused HERE, loudly, instead of
-// surprising a pack run or a generated reader later.
-func (c *checker) checkTables() {
-	closure := ir.TableClosure(c.unit)
-	// SORTED. Ranging a map here made the ORDER of these diagnostics vary
-	// run to run (Go randomizes map iteration), so one input could print its
-	// errors three different ways — which defeats golden-diagnostic
-	// comparison and makes CI logs irreproducible. The exit code and the
-	// error set were never affected, but a compiler whose wire is byte-pinned
-	// should not shuffle its own output either.
-	names := make([]string, 0, len(closure))
-	for name := range closure {
-		names = append(names, name)
-	}
-	sort.Strings(names)
-	for _, name := range names {
-		st := c.unit.Structs[name]
-		if st == nil {
-			continue
-		}
-		for _, f := range st.Fields {
-			var bad string
-			switch {
-			case f.Type.Kind == ir.TInt && f.Type.Width == 128:
-				bad = "int128/uint128"
-			case f.Type.Kind == ir.TFixed:
-				bad = fixedSpelling(f.Type.Signed) + "(I, F)"
-			case f.Type.Kind == ir.TBits && f.Type.Width > 64:
-				bad = fmt.Sprintf("bits(%d)", f.Type.Width)
-			}
-			if f.Type.Kind == ir.TNamed {
-				if _, isUnion := f.Type.Ref.(*ir.Union); isUnion {
-					pos := ast.Pos{}
-					if d, ok := c.astDecls[name]; ok {
-						pos = d.DeclPos()
-					}
-					c.errf(pos, "%s.%s: a union may not sit on a table-closure path in v1 — the table wire's evolution semantics (elision, unknown-field skip) are undefined over a one-of, a follow-on pass, not a ruling against (SPEC §4.8)",
-						name, f.Name)
-					continue
-				}
-			}
-			if bad != "" {
-				pos := ast.Pos{}
-				if d, ok := c.astDecls[name]; ok {
-					pos = d.DeclPos()
-				}
-				c.errf(pos, "%s.%s: %s has no table-wire kind, and %s is in a table's closure — a `table` and everything it references must stay on table-wire kinds (notes/table-wire.md)",
-					name, f.Name, bad, name)
-			}
-		}
-	}
 }
 
 func (c *checker) checkTargetNames() {

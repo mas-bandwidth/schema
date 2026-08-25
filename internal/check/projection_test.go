@@ -112,7 +112,7 @@ func TestIdMovesUnderWireEdits(t *testing.T) {
 		source string
 	}{
 		{"a widened bound", strings.Replace(baseSchema, "const MaxHealth = 1000", "const MaxHealth = 2000", 1)},
-		{"a field renamed (table identity is the name hash)",
+		{"a field renamed (field names are projected facts)",
 			strings.Replace(baseSchema, "health   int32", "hp       int32", 1)},
 		{"a field reordered", strings.Replace(baseSchema,
 			"    team     Team\n    position Vec3", "    position Vec3\n    team     Team", 1)},
@@ -288,17 +288,30 @@ func TestProjectionIsDeterministic(t *testing.T) {
 	}
 }
 
-// A default is part of the TABLE wire, because a field sitting at its default
-// is elided. So changing one must move the id.
+// A specified default is a wire fact: both ends must materialize the same
+// value for an untaken branch's zeroing and for constructors, and the
+// projection includes it (SPEC §3.1). Changing one must move the id.
 func TestDefaultsAreWireFacts(t *testing.T) {
 	withDefault := `package probe
 
-table Config {
+type Config {
     retries int32 = -1
 }
 `
 	other := strings.Replace(withDefault, "= -1", "= -2", 1)
 	if build(t, withDefault).ProtocolId == build(t, other).ProtocolId {
-		t.Error("changing a specified default did not move the id — the table wire elides a field at its default, so it IS a wire fact")
+		t.Error("changing a specified default did not move the id — defaults are projected wire facts (SPEC §3.1)")
+	}
+}
+
+// Tables left the language (2026-08-25), and the projection keeps a FROZEN
+// `table=false` token on every type line so the removal moved no id for any
+// unit that never declared one — verified at the removal against the pinned
+// examples128 id, and held here so the token cannot quietly disappear.
+// Dropping it is a ProjectionVersion bump, taken deliberately or not at all.
+func TestFrozenTableToken(t *testing.T) {
+	u := build(t, "package probe\n\ntype P {\n    x int32\n}\n")
+	if !strings.Contains(ir.WireProjection(u), "type P table=false message=false") {
+		t.Fatal("the frozen table=false token left the projection — every unit's id just moved without a ProjectionVersion bump")
 	}
 }

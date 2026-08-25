@@ -30,7 +30,7 @@ type ExtremeProbe {
     doubled_floor int64 | min = --FloorLimit, max = 100
 }
 
-table ExtremeRow {
+type ExtremeRow {
     clamped_floor int64 | min = -9223372036854775808, max = 100
     clamped_ceiling uint64 | min = 1, max = 18446744073709551614
     floor_def int64 = -9223372036854775808
@@ -38,18 +38,14 @@ table ExtremeRow {
 }
 `
 
-func generateExtremesCorpus(t *testing.T) (data, wire, table string) {
+func generateExtremesCorpus(t *testing.T) (data, wire string) {
 	t.Helper()
 	u := unitFromSources(t, map[string]string{"Extreme.schema": extremesCorpus})
 	files, err := Generate(u, Options{})
 	if err != nil {
 		t.Fatal(err)
 	}
-	tables, err := GenerateTable(u)
-	if err != nil {
-		t.Fatal(err)
-	}
-	return string(files["Extreme.h"]), string(files["ExtremeWire.h"]), string(tables["ExtremeTable.h"])
+	return string(files["Extreme.h"]), string(files["ExtremeWire.h"])
 }
 
 // TestExtremeDefaultInitializers pins the NSDMI spellings: an above-INT64_MAX
@@ -57,7 +53,7 @@ func generateExtremesCorpus(t *testing.T) (data, wire, table string) {
 // a constant of the same value), and the INT64_MIN default keeps its guarded
 // arithmetic form — in the plain struct and the table struct alike.
 func TestExtremeDefaultInitializers(t *testing.T) {
-	data, _, _ := generateExtremesCorpus(t)
+	data, _ := generateExtremesCorpus(t)
 	for _, want := range []string{
 		// the constant of the same value: emitConst's guard, the positive control
 		"inline constexpr uint64_t CeilingCount = 18446744073709551615ull; // = 18446744073709551615",
@@ -80,8 +76,8 @@ func TestExtremeDefaultInitializers(t *testing.T) {
 // immediately suffixed ull. Comments are stripped first — the wire-range
 // comments legitimately carry the bare decimals as documentation.
 func TestExtremeSpellingsAbsentCpp(t *testing.T) {
-	data, wire, table := generateExtremesCorpus(t)
-	for name, text := range map[string]string{"data": data, "wire": wire, "table": table} {
+	data, wire := generateExtremesCorpus(t)
+	for name, text := range map[string]string{"data": data, "wire": wire} {
 		code := stripLineComments(text)
 		if strings.Contains(code, "-9223372036854775808") {
 			t.Errorf("%s header spells the unspellable INT64_MIN literal", name)

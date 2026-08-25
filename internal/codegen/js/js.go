@@ -381,9 +381,6 @@ func (g *gen) emitClass(d *ir.Struct) {
 	if d.IsMessage {
 		kind = "message"
 	}
-	if d.IsTable {
-		kind = "table"
-	}
 	if len(d.Tags) > 0 {
 		g.pf("// %s %s [%s] — the tag is user-chosen and inert in v1; the delta pass\n", kind, d.Name, strings.Join(d.Tags, ", "))
 		g.pf("// claims tags and assigns actions (SPEC §4.2, Type tags)\n")

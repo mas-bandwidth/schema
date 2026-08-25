@@ -192,67 +192,6 @@ func TestExternalModuleBuildsTheCLI(t *testing.T) {
 		t.Errorf("generate --verbose did not list the emitted files: %q", wantV)
 	}
 
-	// the data compiler: same manifest, same instance, same container bytes —
-	// down to the content hash the two builds print under --verbose (the
-	// default is silent, checked below).
-	wantBin, wantLine := runPack(t, inRepo, filepath.Join(work, "pack-want"), root)
-	gotBin, gotLine := runPack(t, external, filepath.Join(work, "pack-got"), root)
-	if !bytes.Equal(wantBin, gotBin) {
-		t.Errorf("pack: the container bytes differ between the in-repo and external builds")
-	}
-	if gotLine != wantLine {
-		t.Errorf("pack: the report differs\n in-repo: %q\nexternal: %q", wantLine, gotLine)
-	}
-}
-
-// packManifest packs one ProbeArray instance out of the main corpus: a table
-// root that composes a defaulted type through a fixed array, so the container
-// exercises defaults, nesting and a counted array rather than a single scalar.
-const packManifest = `{
-  "unit": %q,
-  "outputs": [
-    { "file": "probes.bin", "collections": [ { "type": "ProbeArray", "file": "probe.json" } ] }
-  ]
-}`
-
-const packInstance = `{
-  "samples": [
-    { "active": true, "orientation": 1.25, "raw_delta": 7, "big_delta": 900, "samples": [1, 2, 3] },
-    { "active": false, "orientation": -0.5, "raw_delta": -7, "big_delta": -900, "samples": [9] }
-  ],
-  "config": { "retries": 3 }
-}`
-
-// runPack writes the manifest and its instance into dir, packs it with bin,
-// and returns the container bytes and the report line (with the run's own
-// temporary paths removed, since only the numbers are comparable).
-func runPack(t *testing.T, bin, dir, root string) ([]byte, string) {
-	t.Helper()
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	manifest := filepath.Join(dir, "manifest.json")
-	// Manifest paths resolve against the manifest's own directory, so the
-	// corpus is named relative to the temporary directory this one sits in.
-	unit, err := filepath.Rel(dir, filepath.Join(root, "examples"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(manifest, []byte(fmt.Sprintf(packManifest, unit)), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(dir, "probe.json"), []byte(packInstance), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	if out := run(t, bin, "pack", manifest); out != "" {
-		t.Errorf("pack: success is silent by default, printed %q", out)
-	}
-	report := strings.ReplaceAll(run(t, bin, "pack", "--verbose", manifest), dir, "<dir>")
-	data, err := os.ReadFile(filepath.Join(dir, "probes.bin"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	return data, report
 }
 
 // compareTrees fails on any difference between two emitted directories: a

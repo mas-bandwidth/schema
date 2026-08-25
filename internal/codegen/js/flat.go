@@ -350,9 +350,6 @@ func (g *fgen) emitStructFlat(st *ir.Struct) {
 	if st.IsMessage {
 		kind = "message"
 	}
-	if st.IsTable {
-		kind = "table (dense wire)"
-	}
 	g.bpf("// ---- %s %s: the flat codec ----\n\n", kind, st.Name)
 
 	g.emitWriteVariant(st, false)

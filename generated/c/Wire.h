@@ -2,7 +2,7 @@
    SPDX-License-Identifier: NONE — this generated output is yours, under terms of
    your choice. See the LICENSE exception in the schema compiler; the compiler is
    AGPL-3.0, its output is not.
-   package example — protocol id 0x9cdffa5a3048f991 */
+   package example — protocol id 0xbc05d83a8135cdb9 */
 
 #ifndef SCHEMA_EXAMPLE_WIRE_H
 #define SCHEMA_EXAMPLE_WIRE_H

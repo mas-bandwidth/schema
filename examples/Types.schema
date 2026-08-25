@@ -74,7 +74,7 @@ type QuantizedRotation
 // zero-on-untaken-branch rule, the language's contract rather than a
 // convention the caller remembers. The branch costs no wire bits beyond the
 // bool already paid for (back-referencing, SPEC §4.5).
-table RigidBody
+type RigidBody
 {
     position    Vec3
     orientation Quat
@@ -171,7 +171,7 @@ type ExpressionProbe
 // ladder to land on. Every fold of these must reach the compiler in a
 // guarded spelling — ( -9223372036854775807LL - 1 ), the ULL suffix — so
 // this type keeps them in every -Werror leg, bounds and constants and
-// defaults and table clamps alike. The doubled-minus-AT-the-extreme
+// defaults alike. The doubled-minus-AT-the-extreme
 // interaction — an intermediate -(-9223372036854775808) that overflows the
 // 64-bit carrier though the final value fits — rides here as doubled_floor:
 // every symbolic backend must fold it (C and C# through carrierEval, Rust
@@ -191,7 +191,7 @@ type ExtremeProbe
     ceiling_default uint64 = 18446744073709551615
 }
 
-table ExtremeRow
+type ExtremeRow
 {
     clamped_floor   int64                         | min = -9223372036854775808, max = 100
     clamped_ceiling uint64                        | min = 1, max = 18446744073709551614

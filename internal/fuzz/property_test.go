@@ -216,21 +216,15 @@ func FuzzFormatIdempotent(f *testing.F) {
 // shuffle its output — one input printing its errors three different ways.
 // The exit code and the error SET survive that, which is why it hid for so
 // long, but it defeats golden-diagnostic comparison and makes CI logs
-// irreproducible. checkTables was the one that did this.
+// irreproducible.
 func TestDiagnosticOrderIsDeterministic(t *testing.T) {
-	// every component is a table-wire-illegal kind, so each names its own
-	// error and the ordering is observable
+	// three declarations, each naming its own undeclared type, so the errors
+	// are plural and the ordering is observable
 	const src = `package t
 
-type Aaa { x fixed(16, 16) | min = -100, max = 100 }
-type Bbb { y int128 | min = -10, max = 10 }
-type Ccc { z bits(96) }
-
-table Root {
-    a Aaa
-    b Bbb
-    c Ccc
-}
+type Aaa { x Ghost }
+type Bbb { y Phantom }
+type Ccc { z Wraith }
 `
 	var want []string
 	for pass := range 16 {

@@ -17,7 +17,6 @@ package cpp
 
 import (
 	"fmt"
-	"maps"
 	"math"
 	"math/big"
 	"sort"
@@ -87,11 +86,6 @@ func Generate(u *ir.Unit, opts Options) (map[string][]byte, error) {
 		w.emitWireFile()
 		out[f.Base+"Wire.h"] = w.assemble()
 	}
-	tables, err := GenerateTable(u)
-	if err != nil {
-		return nil, err
-	}
-	maps.Copy(out, tables)
 	return out, nil
 }
 
