@@ -1,6 +1,6 @@
 // Package publicapi is the acceptance gate on the public compiler API
 // : a Go module OUTSIDE this one, importing nothing but
-// github.com/mas-bandwidth/schema/compiler and .../ir, builds a schema
+// github.com/mas-bandwidth/schema/v2/compiler and .../ir, builds a schema
 // compiler that emits the same bytes this repo's own binary emits.
 //
 // Two legs, because the claim has two halves.
@@ -36,8 +36,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/compiler"
-	"github.com/mas-bandwidth/schema/ir"
+	"github.com/mas-bandwidth/schema/v2/compiler"
+	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
 // the corpora, from this package's directory.
@@ -103,13 +103,13 @@ func TestExternalModuleBuildsTheCLI(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if bytes.Contains(main, []byte("mas-bandwidth/schema/internal/")) {
+	if bytes.Contains(main, []byte("mas-bandwidth/schema/v2/internal/")) {
 		t.Fatal("cmd/schema imports an internal package — the CLI is supposed to be a client of the public API")
 	}
 	if err := os.WriteFile(filepath.Join(clientDir, "main.go"), main, 0o644); err != nil {
 		t.Fatal(err)
 	}
-	gomod := fmt.Sprintf("module schemacli\n\ngo 1.26\n\nrequire github.com/mas-bandwidth/schema v0.0.0\n\nreplace github.com/mas-bandwidth/schema => %s\n", root)
+	gomod := fmt.Sprintf("module schemacli\n\ngo 1.26\n\nrequire github.com/mas-bandwidth/schema/v2 v2.0.0\n\nreplace github.com/mas-bandwidth/schema/v2 => %s\n", root)
 	if err := os.WriteFile(filepath.Join(clientDir, "go.mod"), []byte(gomod), 0o644); err != nil {
 		t.Fatal(err)
 	}

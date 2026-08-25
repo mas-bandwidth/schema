@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/mas-bandwidth/schema/internal/ast"
+	"github.com/mas-bandwidth/schema/v2/internal/ast"
 )
 
 // RenderExpr renders a kept expression in schema source form: literals keep

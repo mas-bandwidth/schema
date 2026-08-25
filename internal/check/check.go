@@ -15,8 +15,8 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/mas-bandwidth/schema/internal/ast"
-	"github.com/mas-bandwidth/schema/ir"
+	"github.com/mas-bandwidth/schema/v2/internal/ast"
+	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
 // SourceFile is one *.schema file of the unit.

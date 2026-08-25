@@ -9,7 +9,7 @@ import (
 	"fmt"
 	"math/big"
 
-	"github.com/mas-bandwidth/schema/ir"
+	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
 // call wraps an expression that returns 1/0 in the early-out the whole target

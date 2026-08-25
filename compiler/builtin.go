@@ -1,13 +1,13 @@
 package compiler
 
 import (
-	cgen "github.com/mas-bandwidth/schema/internal/codegen/c"
-	"github.com/mas-bandwidth/schema/internal/codegen/cpp"
-	"github.com/mas-bandwidth/schema/internal/codegen/csharp"
-	"github.com/mas-bandwidth/schema/internal/codegen/golang"
-	"github.com/mas-bandwidth/schema/internal/codegen/js"
-	"github.com/mas-bandwidth/schema/internal/codegen/rust"
-	"github.com/mas-bandwidth/schema/ir"
+	cgen "github.com/mas-bandwidth/schema/v2/internal/codegen/c"
+	"github.com/mas-bandwidth/schema/v2/internal/codegen/cpp"
+	"github.com/mas-bandwidth/schema/v2/internal/codegen/csharp"
+	"github.com/mas-bandwidth/schema/v2/internal/codegen/golang"
+	"github.com/mas-bandwidth/schema/v2/internal/codegen/js"
+	"github.com/mas-bandwidth/schema/v2/internal/codegen/rust"
+	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
 // builtins is the set [New] registers. The per-language emitters stay

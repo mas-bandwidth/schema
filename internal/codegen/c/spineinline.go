@@ -1,6 +1,6 @@
 package c
 
-import "github.com/mas-bandwidth/schema/ir"
+import "github.com/mas-bandwidth/schema/v2/ir"
 
 // fileEmitsWire reports whether this wire file will emit any read/write wire
 // function — struct or union wire pairs.

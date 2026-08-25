@@ -12,7 +12,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/mas-bandwidth/schema/internal/scanner"
+	"github.com/mas-bandwidth/schema/v2/internal/scanner"
 )
 
 // Migrate rewrites retired spellings in src into the current grammar, then

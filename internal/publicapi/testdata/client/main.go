@@ -5,7 +5,7 @@
 //
 // It is a module of its own (see go.mod), so Go's internal rule applies to it
 // exactly as it applies to a stranger's repository: an import of
-// github.com/mas-bandwidth/schema/internal/... does not compile here. What
+// github.com/mas-bandwidth/schema/v2/internal/... does not compile here. What
 // this program does is therefore what anyone can do.
 package main
 
@@ -15,8 +15,8 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/mas-bandwidth/schema/compiler"
-	"github.com/mas-bandwidth/schema/ir"
+	"github.com/mas-bandwidth/schema/v2/compiler"
+	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
 // widths is a generator that emits nothing a language would compile — it

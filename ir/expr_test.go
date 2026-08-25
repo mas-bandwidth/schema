@@ -9,9 +9,9 @@ package ir_test
 import (
 	"testing"
 
-	"github.com/mas-bandwidth/schema/internal/check"
-	"github.com/mas-bandwidth/schema/internal/parser"
-	"github.com/mas-bandwidth/schema/ir"
+	"github.com/mas-bandwidth/schema/v2/internal/check"
+	"github.com/mas-bandwidth/schema/v2/internal/parser"
+	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
 const exprCorpus = `package exprtest

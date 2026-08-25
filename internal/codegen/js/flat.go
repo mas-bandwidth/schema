@@ -54,7 +54,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/mas-bandwidth/schema/ir"
+	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
 // fgen emits one BaseFlat.js module.

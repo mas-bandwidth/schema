@@ -7,7 +7,7 @@ package ir
 import (
 	"math/big"
 
-	"github.com/mas-bandwidth/schema/internal/ast"
+	"github.com/mas-bandwidth/schema/v2/internal/ast"
 )
 
 // Expr is a schema expression the checker resolved but kept, so a backend can

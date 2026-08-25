@@ -4,7 +4,7 @@ package ast
 import (
 	"math/big"
 
-	"github.com/mas-bandwidth/schema/internal/scanner"
+	"github.com/mas-bandwidth/schema/v2/internal/scanner"
 )
 
 type Pos = scanner.Pos

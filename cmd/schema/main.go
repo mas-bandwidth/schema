@@ -8,7 +8,7 @@
 //	schema version                                   print the build identity
 //
 // Every command here is a few lines over the public API in
-// github.com/mas-bandwidth/schema/compiler: this binary holds the CLI's
+// github.com/mas-bandwidth/schema/v2/compiler: this binary holds the CLI's
 // policy — which flags exist, what gets printed, what the exit code is, where
 // the bytes land — and none of the compiler. Anything it can do, an embedder
 // can do.
@@ -22,8 +22,8 @@ import (
 	"path/filepath"
 	"sort"
 
-	"github.com/mas-bandwidth/schema/compiler"
-	"github.com/mas-bandwidth/schema/ir"
+	"github.com/mas-bandwidth/schema/v2/compiler"
+	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
 func main() {

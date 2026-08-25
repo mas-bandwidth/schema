@@ -50,8 +50,10 @@ carries it wears the number these rules assign.
 
 ## History: the v2 line
 
-v2.0.0 and v2.1.0 were re-versioned into the 1.x line as v1.6.0; the 1.x
-line is the line that exists.
+An early v2.0.0 and v2.1.0 were re-versioned into the 1.x line as v1.6.0 and
+their tags retired; the 2.x line that exists today starts at the v2.0.0 that
+follows v1.16.0, and — per Go's major-version rule — carries the module path
+`github.com/mas-bandwidth/schema/v2`.
 
 ## Recorded wire-affecting amendments
 
@@ -87,9 +89,9 @@ thing that governs compatibility. If you want to know which compiler produced a
 tree, that belongs in your build system, not in every file.
 
 **The Go API under `compiler/` and `ir/` IS covered; `internal/` is not.** The
-compiler is also a library — `github.com/mas-bandwidth/schema/compiler` loads
+compiler is also a library — `github.com/mas-bandwidth/schema/v2/compiler` loads
 and checks units and generates through registered generators;
-`github.com/mas-bandwidth/schema/ir` is the checked unit those generators read.
+`github.com/mas-bandwidth/schema/v2/ir` is the checked unit those generators read.
 From the first release that carries them, their exported surface follows the
 rules above: breaking it is a major, adding to it is a minor. Everything under
 `internal/` — the scanner, parser, AST, checker and the six per-language

@@ -13,8 +13,8 @@ import (
 	"math"
 	"math/big"
 
-	"github.com/mas-bandwidth/schema/internal/ast"
-	"github.com/mas-bandwidth/schema/ir"
+	"github.com/mas-bandwidth/schema/v2/internal/ast"
+	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
 // emitUnionFunctions emits the union's bounds and wire pair (SPEC §4.8). The

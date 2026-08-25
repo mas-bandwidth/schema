@@ -12,8 +12,8 @@ import (
 	"math"
 	"math/big"
 
-	"github.com/mas-bandwidth/schema/internal/ast"
-	"github.com/mas-bandwidth/schema/ir"
+	"github.com/mas-bandwidth/schema/v2/internal/ast"
+	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
 // renderInt renders an integer expression symbolically where its constant

@@ -5,7 +5,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/mas-bandwidth/schema/ir"
+	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
 // Options carries the per-target settings a generate request names, keyed by

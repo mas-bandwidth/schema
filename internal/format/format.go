@@ -13,9 +13,9 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/mas-bandwidth/schema/internal/ast"
-	"github.com/mas-bandwidth/schema/internal/parser"
-	"github.com/mas-bandwidth/schema/internal/scanner"
+	"github.com/mas-bandwidth/schema/v2/internal/ast"
+	"github.com/mas-bandwidth/schema/v2/internal/parser"
+	"github.com/mas-bandwidth/schema/v2/internal/scanner"
 )
 
 // Format canonicalizes one schema file. The returned bytes may equal the
