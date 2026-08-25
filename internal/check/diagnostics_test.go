@@ -173,6 +173,8 @@ func TestDiagnostics(t *testing.T) {
 			src: "package t\ntype T { x ufixed(16, 16) = -1.0 | min = 0, max = 5 }\n"},
 		{name: "table is not part of the language", want: "tables are not part of the language",
 			src: "package t\ntable T { x int32 }\n"},
+		{name: "a UTF-8 BOM is refused", want: "UTF-8 BOM rejected",
+			src: "\xEF\xBB\xBFpackage t\n"},
 		{name: "ufixed components do not narrow (rule 2b is signed-only)", want: "signed fixed(I, F) only",
 			src: "package t\ntype V { x ufixed(16, 16) | min = 0, max = 5\n y ufixed(16, 16) | min = 0, max = 5 }\nobject O { p V | interpolate, quantize = 256 \n b bool }\n"},
 		{name: "ufixed with resolution", want: "resolution applies to float",

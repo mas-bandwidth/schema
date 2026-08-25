@@ -37,12 +37,11 @@ import (
 // the input tree, so concurrent loads must not name the same files.
 type Compiler struct {
 	// FormatInPlace canonicalizes every schema file on disk before parsing it
-	// (schemafmt, SPEC §7.4), which is what every CLI command does: the
-	// protocol id is then always computed over canonical bytes, so §3.1's
-	// raw-byte hash is a canonical-form hash structurally. An embedder that
-	// must not write to its input tree leaves this false; the unit is
-	// identical either way for a tree that is already canonical, which the
-	// corpus gate keeps true.
+	// (schemafmt, SPEC §7.4), which is what every CLI command does. An
+	// embedder that must not write to its input tree leaves this false; the
+	// unit is identical either way — formatting never changes what a file
+	// declares, and the protocol id depends only on the wire shape (SPEC
+	// §3.1), never on source bytes.
 	FormatInPlace bool
 
 	// OnFormat, when set, is called with the path of each file FormatInPlace
@@ -89,7 +88,8 @@ func (d Diagnostics) Error() string {
 // it formats each file when FormatInPlace is set, parses it, and checks the
 // unit — name resolution, constant folding, the shape rules, and the protocol
 // id. The paths are the unit's files in the order [GatherPaths] returns them;
-// the checker sorts them by basename itself (the §3.1 order).
+// the checker sorts them by basename itself, so the unit is deterministic
+// whatever order the paths arrive in.
 //
 // A unit that does not compile returns [Diagnostics] holding every parse and
 // check error. Everything else — an unreadable file, a file the formatter
@@ -102,7 +102,7 @@ func (c *Compiler) Load(paths []string) (*ir.Unit, error) {
 	for _, p := range paths {
 		name := filepath.Base(p)
 		if prev, dup := seen[name]; dup {
-			return nil, fmt.Errorf("duplicate basename %s (%s and %s) — basenames are the hash labels (SPEC §3.1)", name, prev, p)
+			return nil, fmt.Errorf("duplicate basename %s (%s and %s) — a unit's files are identified by basename, and generated files are named by it; rename one", name, prev, p)
 		}
 		seen[name] = p
 		data, err := c.read(p)
@@ -151,8 +151,8 @@ func (c *Compiler) read(path string) ([]byte, error) {
 // GatherPaths collects one unit's *.schema files from the given arguments:
 // directories contribute their schema files, a named file contributes itself,
 // and no arguments means the working directory (one directory is one unit —
-// SPEC §3.2). The order is the caller's argument order; the §3.1 hash order is
-// by basename and the checker applies it.
+// SPEC §3.2). The order is the caller's argument order; the checker sorts by
+// basename itself.
 func GatherPaths(args []string) ([]string, error) {
 	if len(args) == 0 {
 		args = []string{"."}
@@ -170,7 +170,7 @@ func GatherPaths(args []string) ([]string, error) {
 			}
 			for _, e := range entries {
 				// *.schema means a nonempty basename before the extension — a
-				// bare dotfile named ".schema" is not a schema file (SPEC §3.1)
+				// bare dotfile named ".schema" is not a schema file
 				if !e.IsDir() && strings.HasSuffix(e.Name(), ".schema") && len(e.Name()) > len(".schema") {
 					paths = append(paths, filepath.Join(arg, e.Name()))
 				}
@@ -178,7 +178,7 @@ func GatherPaths(args []string) ([]string, error) {
 		} else {
 			name := filepath.Base(arg)
 			if !strings.HasSuffix(name, ".schema") || len(name) == len(".schema") {
-				return nil, fmt.Errorf("%s: only *.schema files form a unit (SPEC §3.1 — the extension rule is part of the hash procedure)", arg)
+				return nil, fmt.Errorf("%s: only *.schema files form a unit (SPEC §3.2)", arg)
 			}
 			paths = append(paths, arg)
 		}
