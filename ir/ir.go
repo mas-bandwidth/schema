@@ -205,7 +205,7 @@ type ArrayKind int
 const (
 	ArrayNone ArrayKind = iota
 	ArrayFixed
-	ArrayCounted // [<= N]T and [Min..N]T
+	ArrayCounted // [..N]T and [Min..N]T
 )
 
 type Field struct {

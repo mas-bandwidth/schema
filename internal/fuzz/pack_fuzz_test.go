@@ -42,7 +42,7 @@ table Cfg {
     name  string(32)
     blob  bytes(64)
     inner Inner
-    items [<= 8]int32 [min = 0, max = 255]
+    items [..8]int32 [min = 0, max = 255]
     on    bool = true
 }
 `

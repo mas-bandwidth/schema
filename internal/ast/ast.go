@@ -130,7 +130,7 @@ type ArrayKind int
 
 const (
 	ArrayFixed ArrayKind = iota // [N]T
-	ArrayUpTo                   // [<= N]T
+	ArrayUpTo                   // [..N]T — sugar for [0..N] (SPEC §4.3)
 	ArrayRange                  // [Min..N]T
 )
 

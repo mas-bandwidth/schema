@@ -334,7 +334,7 @@ func (s *state) next() Token {
 					s.advance()
 					return Token{LessEq, "<=", p}
 				}
-				s.errf(p, "unexpected character %q (did you mean <= ?)", "<")
+				s.errf(p, "unexpected character %q — counts are range literals: [..N] or [A..B] (SPEC §4.3)", "<")
 			default:
 				s.errf(p, "unexpected character %q", string(c))
 			}

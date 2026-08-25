@@ -50,7 +50,7 @@ func TestFileDepsCoversEverySymbolicExpression(t *testing.T) {
 		{"int range min/max", "package t\ntype T { hp int32 [min = -Lim, max = Lim] }\n"},
 		{"fixed range min/max", "package t\ntype T { p fixed(48, 16) [min = -Lim, max = Lim] }\n"},
 		{"array bound", "package t\ntype T { xs [Lim]uint8 }\n"},
-		{"counted array bound", "package t\ntype T { xs [<= Lim]uint8 }\n"},
+		{"counted array bound", "package t\ntype T { xs [..Lim]uint8 }\n"},
 		{"string size", "package t\ntype T { s string(Lim) }\n"},
 		{"bytes size", "package t\ntype T { b bytes(Lim) }\n"},
 		{"specified default", "package t\ntype T { n int32 [min = 0, max = 1000] = Lim }\n"},

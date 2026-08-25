@@ -277,7 +277,7 @@ Worth knowing before you adopt rather than after:
   written, so N mutually-exclusive payload shapes are N messages and your own
   dispatch. Protobuf, FlatBuffers and Cap'n Proto all have unions.
 - **No maps.** Use a counted array of key/value pairs.
-- **No recursive types.** `type Node { children [<= 4]Node }` is rejected as a
+- **No recursive types.** `type Node { children [..4]Node }` is rejected as a
   composition cycle — generated storage is by value, with no pointers, which is
   what makes it relocatable and memcpy-able.
 - **No optional / nullable**, except the honest version: a bool and a branch.

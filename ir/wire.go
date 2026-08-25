@@ -192,7 +192,7 @@ var wireAligned = wirePos{mod: 0, known: true}
 //
 // Entry position is unknown (a struct may be embedded at any bit offset),
 // so nothing before the first alignment-forcing item is ever marked.
-// Counted arrays ([<= N]uint8) are tracked for position but not marked —
+// Counted arrays ([..N]uint8) are tracked for position but not marked —
 // extending the bulk path to them is future work.
 func AlignedFixedByteArrays(st *Struct) map[*Field]bool {
 	out := map[*Field]bool{}

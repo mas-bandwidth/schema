@@ -460,11 +460,22 @@ func (p *parser) parseItem() ast.Item {
 func (p *parser) parseArrayBound() *ast.ArrayBound {
 	p.expect(scanner.LBrack, "[")
 	b := &ast.ArrayBound{}
-	if p.kind() == scanner.LessEq {
+	switch p.kind() {
+	case scanner.LessEq:
+		// the comparison-operator spelling is retired (SPEC §4.3): a bound
+		// is a range literal, not a truncated expression — refusal with the
+		// replacement named, then parse on so one bound does not hide the
+		// rest of the file's diagnostics
+		p.errf(p.tok().Pos, "the [<= N] bound is retired — spell it [..N], the range literal for a count in [0, N] (SPEC §4.3)")
 		p.advance()
 		b.Kind = ast.ArrayUpTo
 		b.Hi = p.parseExpr()
-	} else {
+	case scanner.DotDot:
+		// [..N] — sugar for [0..N], reads "up to N" (SPEC §4.3)
+		p.advance()
+		b.Kind = ast.ArrayUpTo
+		b.Hi = p.parseExpr()
+	default:
 		first := p.parseExpr()
 		if p.kind() == scanner.DotDot {
 			p.advance()

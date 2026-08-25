@@ -350,13 +350,15 @@ validates both.
 
 ```
 fixed_size   [4]Vector3
-counted      [<= 16]uint32
+counted      [..16]uint32
 ranged_count [2..8]uint32
 ```
 
 A fixed array always writes N elements. A counted array writes the count
 first, in the fewest bits that can express the bound, then that many
-elements.
+elements. The bound is a range literal: `[..N]` reads "up to N" and is sugar
+for `[0..N]`; `[A..B]` is a count in [A, B], encoded relative to A. (The old
+`[<= N]` spelling is refused with `[..N]` named.)
 
 ### Composition
 

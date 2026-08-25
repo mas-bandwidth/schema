@@ -103,7 +103,7 @@ type InputPacket {
     start_frame          uint64
 
     // wire: count in [0, MaxInputsPerPacket], then that many Input elements
-    inputs [<= MaxInputsPerPacket]Input
+    inputs [..MaxInputsPerPacket]Input
 }
 
 // ---- the create idiom (pre-object-views) ----

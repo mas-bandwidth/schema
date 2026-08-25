@@ -103,7 +103,7 @@ static void put_bits( uint8_t * data, int pos, int n, uint64_t value )
 //   flux      int128 [-2^100,2^100]      = 2^99 + 7             ->  2^100 + 2^99 + 7 in 102 bits
 //   bias      int128 [-1000,1000]        = -250 (its DEFAULT)   ->  750 in 11 bits
 //   seed      uint128                    = 2^65 (its DEFAULT)   ->  128 bits
-//   keys      [<= 4]uint128 count = 2                           ->  2 in 3 bits, then 2 x 128 bits
+//   keys      [..4]uint128 count = 2                           ->  2 in 3 bits, then 2 x 128 bits
 //   has_target bool                                             ->  1 bit
 //   target_id uint128 = 42 (taken branch only)                  ->  128 bits
 // Totals: 949 bits = 119 bytes taken, 821 bits = 103 bytes untaken.

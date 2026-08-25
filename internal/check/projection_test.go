@@ -263,6 +263,16 @@ const WideN  = Wide.Count
 	}
 }
 
+// [..N] is pure sugar for [0..N] (SPEC §4.3): same IR, same wire, same
+// protocol id — the respelling of the retired [..N] must be spelling only.
+func TestUpToBoundIsSugar(t *testing.T) {
+	sugar := build(t, "package probe\n\ntype T {\n    a [..8]uint16\n}\n")
+	full := build(t, "package probe\n\ntype T {\n    a [0..8]uint16\n}\n")
+	if sugar.ProtocolId != full.ProtocolId {
+		t.Errorf("[..8] and [0..8] disagree on the protocol id (0x%016x vs 0x%016x) — the sugar changed the wire", sugar.ProtocolId, full.ProtocolId)
+	}
+}
+
 // The projection is a reviewable artifact, so it has to be deterministic:
 // same unit, same text, every time and in any map iteration order.
 func TestProjectionIsDeterministic(t *testing.T) {
