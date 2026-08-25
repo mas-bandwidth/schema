@@ -702,7 +702,6 @@ func (g *fgen) emitWriteWideOffset(offExpr string, bits int64, ind string) {
 	}
 }
 
-
 func (g *fgen) emitWriteScalar(f *ir.Field, name, ind string) {
 	switch f.Type.Kind {
 	case ir.TFixed:
