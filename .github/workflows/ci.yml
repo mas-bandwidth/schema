@@ -171,8 +171,11 @@ jobs:
   # every verdict pass is ahead-of-time disassembly, and a JIT has no
   # build-time artifact to gate — faking one would be a green light that
   # proves nothing.
+  # No explicit name: the default gives "inline-gate (os, leg)" per matrix
+  # combination when it runs, and a clean single "inline-gate" placeholder on
+  # PR runs — an expression name would show up raw there, because a skipped
+  # job's matrix is never expanded.
   inline-gate:
-    name: inline gate (${{ matrix.leg }}, ${{ matrix.os }})
     if: github.event_name != 'pull_request'
     runs-on: ${{ matrix.os }}
     timeout-minutes: 20
