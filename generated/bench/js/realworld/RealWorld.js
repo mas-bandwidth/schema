@@ -35,6 +35,7 @@ export const PacketMode = Object.freeze({
   Combat: 3,
   Docked: 4,
   Warping: 5,
+  Max: 5, // the exported extent (SPEC §4.2)
 });
 
 // EnumNamePacketMode: debug/log/tooling name for any PacketMode wire value —

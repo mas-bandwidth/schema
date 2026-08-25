@@ -15,6 +15,7 @@ enum class Team : uint8_t {
     None = 0,
     Red = 1,
     Blue = 2,
+    Max = 2, // the exported extent (SPEC §4.2)
 };
 
 // EnumName: debug/log name for any Team value, out-of-set included
@@ -37,6 +38,7 @@ enum class ShipType : uint8_t {
     Bomber = 3,
     Destroyer = 4,
     Carrier = 5,
+    Max = 5, // the exported extent (SPEC §4.2)
 };
 
 // EnumName: debug/log name for any ShipType value, out-of-set included
@@ -60,6 +62,7 @@ enum class MissileType : uint8_t {
     Heatseeker = 1,
     Torpedo = 2,
     Nuke = 3,
+    Max = 3, // the exported extent (SPEC §4.2)
 };
 
 // EnumName: debug/log name for any MissileType value, out-of-set included
@@ -84,6 +87,7 @@ enum class PropType : uint8_t {
     Sphere = 4,
     BlackHole = 5,
     DysonPanel = 6,
+    Max = 6, // the exported extent (SPEC §4.2)
 };
 
 // EnumName: debug/log name for any PropType value, out-of-set included
@@ -105,6 +109,7 @@ inline const char * EnumName( PropType value )
 // enum Pending — None = 0 implicit, variants dense from 1, wire range [0, 0] (SPEC §4.2)
 enum class Pending : uint8_t {
     None = 0,
+    Max = 0, // the exported extent (SPEC §4.2)
 };
 
 // EnumName: debug/log name for any Pending value, out-of-set included

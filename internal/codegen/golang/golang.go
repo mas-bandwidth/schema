@@ -203,6 +203,7 @@ func (g *gen) emitTagEnum(name string, members []string, comment string) {
 	for i, m := range members {
 		g.pf("\t%s%s %s = %d\n", name, m, name, i+1)
 	}
+	g.pf("\t%sMax %s = %d // the exported extent (SPEC §4.2)\n", name, name, len(members))
 	g.pf(")\n\n")
 }
 
@@ -242,6 +243,7 @@ func (g *gen) emitEnum(d *ir.Enum) {
 	for i, v := range d.Variants {
 		g.pf("\t%s%s %s = %d\n", d.Name, v, d.Name, i+1)
 	}
+	g.pf("\t%sMax %s = %d // the exported extent (SPEC §4.2)\n", d.Name, d.Name, d.Max)
 	g.pf(")\n\n")
 	// the uint64 parameter (not the enum type) keeps out-of-set values exact:
 	// a narrower named type would truncate 256 -> 0 -> "None" for an 8-bit enum

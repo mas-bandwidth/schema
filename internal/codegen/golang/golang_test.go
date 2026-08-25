@@ -9,8 +9,10 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/internal/check"
+	cgen "github.com/mas-bandwidth/schema/internal/codegen/c"
 	"github.com/mas-bandwidth/schema/internal/codegen/cpp"
 	"github.com/mas-bandwidth/schema/internal/codegen/csharp"
+	"github.com/mas-bandwidth/schema/internal/codegen/js"
 	"github.com/mas-bandwidth/schema/internal/codegen/rust"
 	"github.com/mas-bandwidth/schema/internal/parser"
 	"github.com/mas-bandwidth/schema/ir"
@@ -77,6 +79,91 @@ func TestBareFloatConstExportsTypedFloat64(t *testing.T) {
 	} {
 		if got := countAcross(files, want); got != 1 {
 			t.Errorf("Go: %q emitted %d times — a bare float const must export the same typed float64 the annotation spells", want, got)
+		}
+	}
+}
+
+// Every generated enum surface carries its extent as the member Max (SPEC
+// §4.2 — the exported-extent rule, issue #121): declared enums (headroom
+// included) and the generated MessageType/ObjectType tag enums alike, in
+// each target's own convention. Call sites then state ranges against
+// E.Max's generated twin instead of a hand-declared count constant.
+func TestEnumExtentEmitted(t *testing.T) {
+	src := "package t\n\n" +
+		"enum Weapon [max = 15] { Laser, Missile }\n\n" +
+		"message Ping { w Weapon }\n\n" +
+		"message Pong { y uint8 }\n\n" +
+		"object Rock { size uint8 [interpolate, min = 0, max = 100] }\n\n" +
+		"object Tree { size uint8 [interpolate, min = 0, max = 100] }\n"
+	f, perrs := parser.Parse("Extent.schema", []byte(src))
+	if len(perrs) > 0 {
+		t.Fatalf("parse: %v", perrs[0])
+	}
+	u, cerrs := check.Unit([]check.SourceFile{{
+		Path: "Extent.schema", Name: "Extent.schema", Base: "Extent",
+		Bytes: []byte(src), AST: f,
+	}})
+	if len(cerrs) > 0 {
+		t.Fatalf("check: %v", cerrs[0])
+	}
+
+	type expectation struct {
+		needle string
+		count  int
+	}
+	type target struct {
+		name    string
+		files   map[string][]byte
+		genErr  error
+		expects []expectation
+	}
+	var targets []target
+	addTarget := func(name string, files map[string][]byte, err error, expects ...expectation) {
+		targets = append(targets, target{name, files, err, expects})
+	}
+
+	goFiles, goErr := Generate(u)
+	// go/format aligns const blocks, so the symbol and its value are asserted
+	// as separate needles rather than one whitespace-sensitive line
+	addTarget("Go", goFiles, goErr,
+		expectation{"WeaponMax", 1},
+		expectation{"MessageTypeMax", 1},
+		expectation{"ObjectTypeMax", 1},
+		expectation{"= 15 // the exported extent (SPEC §4.2)", 1},
+		expectation{"= 2 // the exported extent (SPEC §4.2)", 2})
+	rustFiles, rustErr := rust.Generate(u)
+	addTarget("Rust", rustFiles, rustErr,
+		expectation{"pub const MAX: Weapon = Weapon(15);", 1},
+		expectation{"pub const MAX: MessageType = MessageType(2);", 1},
+		expectation{"pub const MAX: ObjectType = ObjectType(2);", 1})
+	csFiles, csErr := csharp.Generate(u)
+	addTarget("C#", csFiles, csErr,
+		expectation{"Max = 15,", 1}, // Weapon
+		expectation{"Max = 2,", 2})  // MessageType + ObjectType
+	jsFiles, jsErr := js.Generate(u)
+	addTarget("JS", jsFiles, jsErr,
+		expectation{"Max: 15,", 1},
+		expectation{"Max: 2,", 2})
+	cFiles, cErr := cgen.Generate(u)
+	addTarget("C", cFiles, cErr,
+		expectation{"#define WEAPON_MAX 15", 1},
+		expectation{"#define MESSAGE_TYPE_MAX 2", 1})
+	for _, mode := range []string{"union", "variant"} {
+		cppFiles, cppErr := cpp.Generate(u, cpp.Options{MessageRepr: mode})
+		addTarget("C++ ("+mode+")", cppFiles, cppErr,
+			expectation{"Max = 15,", 1},
+			expectation{"Max = 2,", 2})
+	}
+
+	for _, tgt := range targets {
+		if tgt.genErr != nil {
+			t.Errorf("%s: generate: %v", tgt.name, tgt.genErr)
+			continue
+		}
+		for _, e := range tgt.expects {
+			if got := countAcross(tgt.files, e.needle); got != e.count {
+				t.Errorf("%s: %q emitted %d times, want %d — the enum extent must ride every generated enum surface", tgt.name, e.needle, got, e.count)
+			}
 		}
 	}
 }

@@ -25,6 +25,7 @@ enum class ObjectType : uint8_t {
     Missile = 2,
     Ship = 3,
     Turret = 4,
+    Max = 4, // the exported extent (SPEC §4.2)
 };
 
 // ---- object Ship — one definition, a generated family per target (SPEC §4.8) ----

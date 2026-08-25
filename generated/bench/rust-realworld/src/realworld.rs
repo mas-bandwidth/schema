@@ -44,6 +44,7 @@ impl PacketMode {
     pub const COMBAT: PacketMode = PacketMode(3);
     pub const DOCKED: PacketMode = PacketMode(4);
     pub const WARPING: PacketMode = PacketMode(5);
+    pub const MAX: PacketMode = PacketMode(5); // the exported extent (SPEC §4.2)
 }
 
 /// Debug/log name for any `PacketMode` value, out-of-set included.

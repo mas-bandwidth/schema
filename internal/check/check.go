@@ -607,6 +607,10 @@ func (c *checker) resolveEnum(d *ast.EnumDecl) *ir.Enum {
 			c.errf(v.Pos, "variant None is a compile error — every enum has None = 0 implicitly (SPEC §4.2)")
 			continue
 		}
+		if v.Text == "Max" {
+			c.errf(v.Pos, "variant Max is a compile error — every generated enum carries its extent as the member Max, the same number E.Max names (SPEC §4.2)")
+			continue
+		}
 		if seen[v.Text] {
 			c.errf(v.Pos, "duplicate variant %s", v.Text)
 			continue
@@ -2040,17 +2044,17 @@ func (c *checker) checkClaimedNames() {
 	add("Result", "the unit's generated Result alias (Rust form)", unitPos)
 	hasMessages := countMessages(c.astDecls) > 0
 	if hasMessages {
-		for _, gen := range []string{"MessageType", "MessageTypeNone", "Message", "MessageStorage",
+		for _, gen := range []string{"MessageType", "MessageTypeNone", "MessageTypeMax", "Message", "MessageStorage",
 			"WriteMessage", "ReadMessage", "WriteMessageType", "ReadMessageType", "MessageMaxBits", "MessageMaxBytes"} {
 			add(gen, "the generated message dispatch surface", unitPos)
 		}
 		for _, gen := range []string{"write_message", "read_message", "write_message_type",
-			"read_message_type", "MESSAGE_MAX_BITS", "MESSAGE_MAX_BYTES"} {
+			"read_message_type", "MESSAGE_TYPE_MAX", "MESSAGE_MAX_BITS", "MESSAGE_MAX_BYTES"} {
 			add(gen, "the generated message dispatch surface (Rust/C form)", unitPos)
 		}
 	}
 	if len(c.objects) > 0 {
-		for _, gen := range []string{"ObjectType", "ObjectTypeNone", "WriteObjectType", "ReadObjectType"} {
+		for _, gen := range []string{"ObjectType", "ObjectTypeNone", "ObjectTypeMax", "WriteObjectType", "ReadObjectType"} {
 			add(gen, "the generated object tag surface", unitPos)
 		}
 		for _, gen := range []string{"write_object_type", "read_object_type"} {
@@ -2087,7 +2091,8 @@ func (c *checker) checkClaimedNames() {
 			// SCREAMING_SNAKE spellings need only be unique WITHIN the enum —
 			// including against the implicit NONE
 			add(name+"None", fmt.Sprintf("enum %s's generated None constant", name), d.Pos)
-			assoc := map[string]string{"NONE": "the implicit None variant"}
+			add(name+"Max", fmt.Sprintf("enum %s's generated Max extent (Go form)", name), d.Pos)
+			assoc := map[string]string{"NONE": "the implicit None variant", "MAX": "the generated Max extent"}
 			for _, v := range d.Variants {
 				add(name+v.Text, fmt.Sprintf("enum %s's generated variant constant", name), v.Pos)
 				rv := ir.RustConstName(v.Text)

@@ -159,6 +159,10 @@ func TestDiagnostics(t *testing.T) {
 		// ---- enums, flags, contexts ----
 		{name: "variant named None", want: "None",
 			src: "package t\nenum E { None, A }\n"},
+		{name: "variant named Max", want: "carries its extent as the member Max",
+			src: "package t\nenum E { A, Max }\n"},
+		{name: "a decl collides with an enum's generated Max extent (Go)", want: "generated Max extent",
+			src: "package t\nenum Team { Red }\nconst TeamMax = 3\n"},
 		{name: "enum max below variant count", want: "below its variant count",
 			src: "package t\nenum E [max = 2] { A, B, C }\n"},
 		{name: "Max reference to a non-enum", want: "is not an enum",

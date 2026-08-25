@@ -22,6 +22,7 @@ enum class PacketMode : uint8_t {
     Combat = 3,
     Docked = 4,
     Warping = 5,
+    Max = 5, // the exported extent (SPEC §4.2)
 };
 
 // EnumName: debug/log name for any PacketMode value, out-of-set included

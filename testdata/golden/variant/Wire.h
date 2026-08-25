@@ -22,6 +22,7 @@ enum class Weapon : uint8_t {
     Laser = 1,
     Missile = 2,
     Railgun = 3,
+    Max = 15, // the exported extent (SPEC §4.2)
 };
 
 // EnumName: debug/log name for any Weapon value, out-of-set included

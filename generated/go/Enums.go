@@ -10,6 +10,7 @@ const (
 	TeamNone Team = 0
 	TeamRed  Team = 1
 	TeamBlue Team = 2
+	TeamMax  Team = 2 // the exported extent (SPEC §4.2)
 )
 
 // EnumNameTeam: debug/log/tooling name for any Team wire value —
@@ -36,6 +37,7 @@ const (
 	ShipTypeBomber    ShipType = 3
 	ShipTypeDestroyer ShipType = 4
 	ShipTypeCarrier   ShipType = 5
+	ShipTypeMax       ShipType = 5 // the exported extent (SPEC §4.2)
 )
 
 // EnumNameShipType: debug/log/tooling name for any ShipType wire value —
@@ -66,6 +68,7 @@ const (
 	MissileTypeHeatseeker MissileType = 1
 	MissileTypeTorpedo    MissileType = 2
 	MissileTypeNuke       MissileType = 3
+	MissileTypeMax        MissileType = 3 // the exported extent (SPEC §4.2)
 )
 
 // EnumNameMissileType: debug/log/tooling name for any MissileType wire value —
@@ -95,6 +98,7 @@ const (
 	PropTypeSphere     PropType = 4
 	PropTypeBlackHole  PropType = 5
 	PropTypeDysonPanel PropType = 6
+	PropTypeMax        PropType = 6 // the exported extent (SPEC §4.2)
 )
 
 // EnumNamePropType: debug/log/tooling name for any PropType wire value —
@@ -124,6 +128,7 @@ type Pending uint8
 
 const (
 	PendingNone Pending = 0
+	PendingMax  Pending = 0 // the exported extent (SPEC §4.2)
 )
 
 // EnumNamePending: debug/log/tooling name for any Pending wire value —

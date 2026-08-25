@@ -23,6 +23,7 @@ const (
 	WeaponLaser   Weapon = 1
 	WeaponMissile Weapon = 2
 	WeaponRailgun Weapon = 3
+	WeaponMax     Weapon = 15 // the exported extent (SPEC §4.2)
 )
 
 // EnumNameWeapon: debug/log/tooling name for any Weapon wire value —

@@ -18,6 +18,7 @@ const (
 	MessageTypeSynchronize MessageType = 4
 	MessageTypeTest        MessageType = 5
 	MessageTypeTimescale   MessageType = 6
+	MessageTypeMax         MessageType = 6 // the exported extent (SPEC §4.2)
 )
 
 // message Heartbeat

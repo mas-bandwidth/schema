@@ -39,6 +39,7 @@ pub struct MessageType(pub u8);
 impl MessageType {
     pub const NONE: MessageType = MessageType(0);
     pub const LUDICROUS_STATE: MessageType = MessageType(1);
+    pub const MAX: MessageType = MessageType(1); // the exported extent (SPEC §4.2)
 }
 
 // ObjectType: the object set, extracted by the compiler — None = 0, then each object sorted by name (SPEC §4.8)
@@ -50,6 +51,7 @@ impl ObjectType {
     pub const NONE: ObjectType = ObjectType(0);
     pub const BODY: ObjectType = ObjectType(1);
     pub const NARROW_BODY: ObjectType = ObjectType(2);
+    pub const MAX: ObjectType = ObjectType(2); // the exported extent (SPEC §4.2)
 }
 
 pub const MAX_WORLD_UNITS: i64 = 30000;
@@ -65,6 +67,7 @@ impl DriveMode {
     pub const CRUISE: DriveMode = DriveMode(1);
     pub const WARP: DriveMode = DriveMode(2);
     pub const LUDICROUS: DriveMode = DriveMode(3);
+    pub const MAX: DriveMode = DriveMode(3); // the exported extent (SPEC §4.2)
 }
 
 /// Debug/log name for any `DriveMode` value, out-of-set included.

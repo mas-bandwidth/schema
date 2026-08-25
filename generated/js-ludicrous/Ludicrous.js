@@ -29,6 +29,7 @@ export const ProtocolId = 0xa925c86b46058512n;
 export const MessageType = Object.freeze({
   None: 0,
   LudicrousState: 1,
+  Max: 1, // the exported extent (SPEC §4.2)
 });
 
 // ObjectType: the object set, extracted by the compiler — None = 0, then each object sorted by name (SPEC §4.8)
@@ -36,6 +37,7 @@ export const ObjectType = Object.freeze({
   None: 0,
   Body: 1,
   NarrowBody: 2,
+  Max: 2, // the exported extent (SPEC §4.2)
 });
 
 export const MaxWorldUnits = 30000;
@@ -48,6 +50,7 @@ export const DriveMode = Object.freeze({
   Cruise: 1,
   Warp: 2,
   Ludicrous: 3,
+  Max: 3, // the exported extent (SPEC §4.2)
 });
 
 // EnumNameDriveMode: debug/log/tooling name for any DriveMode wire value —

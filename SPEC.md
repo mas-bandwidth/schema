@@ -569,6 +569,20 @@ construction, so a fresh struct starts in the null state without any code
 saying so. This is a convention over the corpus and generated-code usage, not
 a language rule — the language does not enforce entry 0's meaning.
 
+**The extent is exported.** Every generated enum surface — each declared
+enum and the generated `MessageType`/`ObjectType` tag enums — carries its
+extent as a member named `Max` in the target's own convention: `E::Max`
+(C++), `E.Max` (C#), `EMax` (Go), `E::MAX` (Rust), `E.Max` (JS), `E_MAX`
+(C). Its value is the enum's max — the same number `E.Max` names in schema
+expressions (§4.2): the highest wire-legal value, which under the
+sentinel-zero convention is the count of real variants when no `[max]`
+headroom widens it. Application code states ranges and asserts directly
+against it (`ShipType`'s wire range is `[0, ShipType.Max]`, its real
+variants `[1, ShipType.Max]`) instead of exporting a hand-declared count
+constant that re-derives it. `Max` is therefore a reserved variant name —
+declaring a variant named `Max` is refused at check time, exactly as `None`
+is.
+
 ### 4.3 Field types and their wire encodings
 
 **The wire model — normative:**
