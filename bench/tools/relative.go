@@ -45,11 +45,9 @@ import (
 // The benchmark corpus, in the order the tables present it.
 var corpus = []string{
 	"rigidbody_moving", "rigidbody_at_rest", "chat", "test", "inputpacket",
-	"shipcreate", "ship_shallow", "probe_header", "probebits", "probearray",
+	"shipcreate", "probe_header", "probebits", "probearray",
 	"testdata", "real_packet",
 }
-
-const batch = "message_batch"
 
 // family rt (BENCH-STANDARD.md §1.3) and family bits (§1.4) — presentation
 // order only; the family column, not this list, is what the §5.3 refusal
@@ -60,7 +58,7 @@ var rtCorpus = []string{"bench_packet", "bench_ints", "bench_bits", "bench_mixed
 
 const bitpacker = "bitpacker"
 
-var order = append(append(append(append([]string{}, corpus...), batch), rtCorpus...), bitpacker)
+var order = append(append(append([]string{}, corpus...), rtCorpus...), bitpacker)
 
 // langs is the presentation order. c is the reference the relative table is
 // expressed against (Glenn, 2026-08-17: "make C the reference. It is the
@@ -491,20 +489,6 @@ func guardRatio(ds *dataset, ka, kb key, a, b row) []string {
 	return d
 }
 
-// mustRatio divides b into a (a.mx / b.mx, the §2.2 headline) after the
-// §5.3 guard; any violation refuses and exits.
-func mustRatio(ds *dataset, ka, kb key) (float64, bool) {
-	a, oka := ds.rows[ka]
-	b, okb := ds.rows[kb]
-	if !oka || !okb || b.mx == 0 {
-		return 0, false
-	}
-	if d := guardRatio(ds, ka, kb, a, b); len(d) > 0 {
-		refuseRatio(ds, ka, kb, a, b, d)
-	}
-	return a.mx / b.mx * 100.0, true
-}
-
 func merge(paths []string) *dataset {
 	ds := &dataset{rows: map[key]row{}}
 	for _, p := range paths {
@@ -625,9 +609,9 @@ func relativeTable(ds *dataset) string {
 		"<!-- HIGHER IS SLOWER: each cell is C's best rate divided by this",
 		"     language's best rate, so 200% means it takes twice as long.",
 		"     C is the reference (Glenn, 2026-08-17). -->",
-		"| backend | write | read | batch write | batch read |",
-		"|---|---:|---:|---:|---:|",
-		"| C | 100% | 100% | 100% | 100% |",
+		"| backend | write | read |",
+		"|---|---:|---:|",
+		"| C | 100% | 100% |",
 	}
 	for _, l := range langs {
 		if l.key == reference {
@@ -642,14 +626,12 @@ func relativeTable(ds *dataset) string {
 		}
 		w, okw := rel(ds, l.key, "write")
 		r, okr := rel(ds, l.key, "read")
-		bw, okbw := mustRatio(ds, key{reference, batch, "write", ""}, key{l.key, batch, "write", ""})
-		br, okbr := mustRatio(ds, key{reference, batch, "read", ""}, key{l.key, batch, "read", ""})
-		if !okw || !okr || !okbw || !okbr {
-			out = append(out, fmt.Sprintf("| %s | — | — | — | — |", l.name))
+		if !okw || !okr {
+			out = append(out, fmt.Sprintf("| %s | — | — |", l.name))
 			continue
 		}
-		out = append(out, fmt.Sprintf("| %s | **%.0f%%** | **%.0f%%** | **%.0f%%** | **%.0f%%** |",
-			l.name, w, r, bw, br))
+		out = append(out, fmt.Sprintf("| %s | **%.0f%%** | **%.0f%%** |",
+			l.name, w, r))
 	}
 	return strings.Join(out, "\n")
 }
