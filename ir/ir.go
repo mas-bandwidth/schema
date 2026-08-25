@@ -36,6 +36,7 @@ type Unit struct {
 	Flags    map[string]*Flags
 	Structs  map[string]*Struct
 	Objects  map[string]*Object
+	Unions   map[string]*Union
 
 	Messages []string // sorted by name — the MessageType order (SPEC §4.8)
 	ObjNames []string // sorted by name — the ObjectType order
@@ -79,6 +80,23 @@ type ContextsMarker struct {
 }
 
 // Struct is a `type`, `table` or `message` declaration.
+// Union is a first-class one-of type (SPEC §4.8): the implicit None row at
+// tag 0, then each variant in DECLARED order, dense from 1. The tag encodes
+// in minimal bits for [0, Max]; the wire then carries the selected variant's
+// payload only. The generated tag enum is named <Name>Type.
+type Union struct {
+	Name        string
+	Variants    []UnionVariant // declared order — the tag order
+	Max         int64          // = len(Variants); the tag wire range is [0, Max]
+	StorageBits int            // 8 / 16 / 32 / 64 — smallest unsigned fitting Max
+}
+
+type UnionVariant struct {
+	Name string  // declared, field-style lower_snake
+	Type string  // the payload type's name
+	Ref  *Struct // the payload
+}
+
 type Struct struct {
 	Name      string
 	IsMessage bool
@@ -180,6 +198,7 @@ func (*Flags) irDecl()          {}
 func (*ContextsMarker) irDecl() {}
 func (*Struct) irDecl()         {}
 func (*Object) irDecl()         {}
+func (*Union) irDecl()          {}
 
 type ArrayKind int
 
@@ -271,7 +290,7 @@ type FieldType struct {
 	Size     int64  // TString/TBytes: N (max length)
 	SizeExpr Expr   // TString/TBytes: the declared N expression
 	Name     string // TNamed
-	Ref      Decl   // TNamed: *Struct, *Enum or *Flags
+	Ref      Decl   // TNamed: *Struct, *Enum, *Flags or *Union
 }
 
 // GoExportName is the one true mapping from a schema field name to its

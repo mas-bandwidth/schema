@@ -133,6 +133,102 @@ func TestIdMovesUnderWireEdits(t *testing.T) {
 	}
 }
 
+// Union id behavior (SPEC §4.8, §3.1): a union is wire structure — variant
+// order, count and payload types project — but variant NAMES do not, the
+// enum-variant rule exactly.
+func TestUnionIdBehavior(t *testing.T) {
+	const unionSchema = `package probe
+
+type Ring {
+    radius uint16
+}
+
+type Slab {
+    width uint8
+}
+
+union Shape {
+    ring Ring
+    slab Slab
+}
+
+type Holder {
+    shape Shape
+}
+`
+	base := build(t, unionSchema).ProtocolId
+
+	moves := []struct {
+		name   string
+		source string
+	}{
+		{"a variant added", strings.Replace(unionSchema, "    slab Slab\n", "    slab Slab\n    slab_b Slab\n", 1)},
+		{"a variant removed", strings.Replace(unionSchema, "    slab Slab\n", "", 1)},
+		{"variants reordered (the tag is positional)", strings.Replace(unionSchema,
+			"    ring Ring\n    slab Slab", "    slab Slab\n    ring Ring", 1)},
+		{"a payload type changed", strings.Replace(unionSchema, "slab Slab", "slab Ring", 1)},
+		{"a payload's field widened", strings.Replace(unionSchema, "width uint8", "width uint16", 1)},
+	}
+	for _, tc := range moves {
+		if got := build(t, tc.source).ProtocolId; got == base {
+			t.Errorf("%s did NOT move the protocol id (0x%016x) — two incompatible builds would claim compatibility", tc.name, base)
+		}
+	}
+
+	stable := []struct {
+		name   string
+		source string
+	}{
+		{"a variant renamed (the ordinal is the wire)", strings.Replace(unionSchema, "ring Ring", "hoop Ring", 1)},
+	}
+	for _, tc := range stable {
+		if got := build(t, tc.source).ProtocolId; got != base {
+			t.Errorf("%s moved the protocol id (0x%016x -> 0x%016x); no wire byte changed", tc.name, base, got)
+		}
+	}
+}
+
+// Generated sets resolve in constant expressions (SPEC §4.2, §4.8):
+// MessageType.Max, ObjectType.Max and <Union>Type.Max are the member counts.
+func TestGeneratedSetMaxInConstExprs(t *testing.T) {
+	u := build(t, `package probe
+
+message Ping {
+    x uint8
+}
+
+message Pong {
+    y uint8
+}
+
+object Rock {
+    size uint8 [interpolate, min = 0, max = 100]
+}
+
+type Arm {
+    v uint8
+}
+
+union Held {
+    left  Arm
+    right Arm
+}
+
+const Messages = MessageType.Max
+const Objects  = ObjectType.Max
+const Arms     = HeldType.Max
+`)
+	for _, tc := range []struct {
+		name string
+		want int64
+	}{{"Messages", 2}, {"Objects", 1}, {"Arms", 2}} {
+		c := u.Consts[tc.name]
+		if c == nil || c.Int == nil || c.Int.Int64() != tc.want {
+			t.Errorf("const %s: want %d, got %v — generated-set Max must resolve during const folding", tc.name, tc.want, c)
+		}
+	}
+}
+
 // The projection is a reviewable artifact, so it has to be deterministic:
 // same unit, same text, every time and in any map iteration order.
 func TestProjectionIsDeterministic(t *testing.T) {

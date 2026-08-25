@@ -26,6 +26,63 @@ import (
 	"github.com/mas-bandwidth/schema/ir"
 )
 
+// emitUnionFunctions emits the union's bounds, Zero helper and wire pair
+// (SPEC §4.8): the write validates the tag BEFORE it rides (WriteMessage's
+// rule), the read rejects a tag above the count and zero-establishes exactly
+// the selected arm.
+func (g *gen) emitUnionFunctions(d *ir.Union) {
+	maxBits := ir.MaxBitsUnion(d)
+	g.pf("// %sMaxBits is the tag plus the largest arm; None costs the tag only (SPEC §4.8).\n", d.Name)
+	g.pf("// %sMaxBytes is rounded up to the 8-byte write-buffer granularity.\n", d.Name)
+	g.pf("export const %sMaxBits = %d;\n", d.Name, maxBits)
+	g.pf("export const %sMaxBytes = %d;\n\n", d.Name, ir.MaxBytes(maxBits))
+
+	g.pf("// Zero%s resets value to the §5 zero form — the empty union. The tag alone\n", d.Name)
+	g.pf("// resets: unselected arms are unspecified by rule (SPEC §4.8), and every arm\n")
+	g.pf("// is unselected at None; an arm re-zeroes at its next selection.\n")
+	g.pf("export function Zero%s(value) {\n", d.Name)
+	g.pf("  value.Type = %sType.None;\n}\n\n", d.Name)
+
+	bits := ir.BitsRequired(big.NewInt(0), big.NewInt(d.Max))
+	g.pf("export function Write%s(stream, value) {\n", d.Name)
+	if d.Max == 0 {
+		g.pf("  // an empty union holds only None; its degenerate tag range [0, 0] costs\n")
+		g.pf("  // zero bits (SPEC §4.8)\n")
+		g.pf("  return value.Type === %sType.None;\n}\n\n", d.Name)
+	} else {
+		g.pf("  if (!Number.isInteger(value.Type) || value.Type < 0 || value.Type > %d) {\n", d.Max)
+		g.pf("    return false; // the tag validates BEFORE it rides (SPEC §4.8)\n  }\n")
+		scratch := g.numScratch()
+		g.pf("  %s.value = value.Type;\n", scratch)
+		g.call("  ", fmt.Sprintf("stream.serializeBits(%s, %d)", scratch, bits), "")
+		g.pf("  switch (value.Type) {\n")
+		for _, v := range d.Variants {
+			g.addRef(v.Type, "Write"+v.Type)
+			g.pf("    case %sType.%s:\n      return Write%s(stream, value.%s);\n",
+				d.Name, ir.GoExportName(v.Name), v.Type, ir.GoExportName(v.Name))
+		}
+		g.pf("  }\n  return true; // None — the tag is the whole wire (SPEC §4.8)\n}\n\n")
+	}
+
+	g.pf("export function Read%s(stream, value) {\n", d.Name)
+	if d.Max == 0 {
+		g.pf("  value.Type = %sType.None; // zero wire bits — only None exists (SPEC §4.8)\n", d.Name)
+		g.pf("  return true;\n}\n\n")
+		return
+	}
+	scratch := g.numScratch()
+	g.call("  ", fmt.Sprintf("stream.serializeInt(%s, 0, %d)", scratch, d.Max), " // rejects a tag above the count (SPEC §4.8)")
+	g.pf("  value.Type = %s.value;\n", scratch)
+	g.pf("  switch (value.Type) {\n")
+	for _, v := range d.Variants {
+		g.addRef(v.Type, "Zero"+v.Type, "Read"+v.Type)
+		g.pf("    case %sType.%s:\n", d.Name, ir.GoExportName(v.Name))
+		g.pf("      Zero%s(value.%s); // the selected arm starts from the zero form (SPEC §5)\n", v.Type, ir.GoExportName(v.Name))
+		g.pf("      return Read%s(stream, value.%s);\n", v.Type, ir.GoExportName(v.Name))
+	}
+	g.pf("  }\n  return true; // None\n}\n\n")
+}
+
 // emitStructFunctions emits MaxBits/MaxBytes, the Zero helper, and the split
 // Write/Read pair for a type or message.
 func (g *gen) emitStructFunctions(st *ir.Struct) {
@@ -193,7 +250,7 @@ func (g *gen) emitZeroField(f *ir.Field, ind string) {
 	case f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes:
 		g.pf("%s%s.fill(0);\n%s%sLength = 0;\n", ind, name, ind, name)
 	case f.Array != ir.ArrayNone:
-		if _, isStruct := f.Type.Ref.(*ir.Struct); isStruct && f.Type.Kind == ir.TNamed {
+		if f.Type.Kind == ir.TNamed && isClassRef(f.Type.Ref) {
 			// clearing the array would drop the pre-allocated elements — zero
 			// through them instead (the SCHEMA bound, like the wire loops)
 			g.addRef(f.Type.Name, "Zero"+f.Type.Name)
@@ -206,11 +263,12 @@ func (g *gen) emitZeroField(f *ir.Field, ind string) {
 			g.pf("%s%sCount = 0;\n", ind, name)
 		}
 	default:
-		if st, ok := f.Type.Ref.(*ir.Struct); ok && f.Type.Kind == ir.TNamed {
-			// through the nested Zero — §5 wants ZERO values recursively, and
-			// re-constructing would restore specified defaults instead
-			g.addRef(st.Name, "Zero"+st.Name)
-			g.pf("%sZero%s(%s);\n", ind, st.Name, name)
+		if f.Type.Kind == ir.TNamed && isClassRef(f.Type.Ref) {
+			// through the nested Zero — §5 wants ZERO values recursively (a
+			// union's Zero is the tag reset), and re-constructing would
+			// restore specified defaults instead
+			g.addRef(f.Type.Name, "Zero"+f.Type.Name)
+			g.pf("%sZero%s(%s);\n", ind, f.Type.Name, name)
 			return
 		}
 		g.pf("%s%s = %s;\n", ind, name, g.zeroValue(f.Type))
@@ -527,6 +585,9 @@ func (g *gen) emitWriteScalar(f *ir.Field, name, ind string) {
 		case *ir.Struct:
 			g.addRef(f.Type.Name, "Write"+f.Type.Name)
 			g.call(ind, fmt.Sprintf("Write%s(stream, %s)", f.Type.Name, name), "")
+		case *ir.Union:
+			g.addRef(f.Type.Name, "Write"+f.Type.Name)
+			g.call(ind, fmt.Sprintf("Write%s(stream, %s)", f.Type.Name, name), "")
 		}
 	}
 }
@@ -779,6 +840,9 @@ func (g *gen) emitReadScalar(f *ir.Field, name, ind string) {
 		case *ir.Flags:
 			g.emitReadFlags(name, ref.WireBits, ind)
 		case *ir.Struct:
+			g.addRef(f.Type.Name, "Read"+f.Type.Name)
+			g.call(ind, fmt.Sprintf("Read%s(stream, %s)", f.Type.Name, name), "")
+		case *ir.Union:
 			g.addRef(f.Type.Name, "Read"+f.Type.Name)
 			g.call(ind, fmt.Sprintf("Read%s(stream, %s)", f.Type.Name, name), "")
 		}

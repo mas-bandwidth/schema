@@ -12,6 +12,57 @@ import (
 	"github.com/mas-bandwidth/schema/ir"
 )
 
+// emitUnionFunctions emits the union's bounds and wire pair (SPEC §4.8): the
+// write validates the tag BEFORE it rides (WriteMessage's rule — an
+// out-of-set tag writes nothing), the read rejects a tag above the count and
+// zero-establishes exactly the selected arm before decoding it.
+func (g *gen) emitUnionFunctions(d *ir.Union) {
+	g.needsSerialize = true
+	maxBits := ir.MaxBitsUnion(d)
+	g.pf("// %sMaxBits is the tag plus the largest arm; None costs the tag only (SPEC §4.8).\n", d.Name)
+	g.pf("// %sMaxBytes is rounded up to the 8-byte write-buffer granularity.\n", d.Name)
+	g.pf("const %sMaxBits = %d\n", d.Name, maxBits)
+	g.pf("const %sMaxBytes = %d\n\n", d.Name, ir.MaxBytes(maxBits))
+
+	bits := ir.BitsRequired(big.NewInt(0), big.NewInt(d.Max))
+	g.pf("func Write%s(stream *serialize.WriteStream, value *%s) error {\n", d.Name, d.Name)
+	if d.Max == 0 {
+		g.pf("\t// an empty union holds only None; its degenerate tag range [0, 0] costs\n")
+		g.pf("\t// zero bits (SPEC §4.8)\n")
+		g.pf("\tif value.Type != %sTypeNone {\n\t\treturn serialize.ErrValueOutOfRange\n\t}\n", d.Name)
+		g.pf("\treturn stream.Err()\n}\n\n")
+	} else {
+		g.pf("\ttagValue := int32(value.Type)\n")
+		g.pf("\tif tagValue < 0 || tagValue > %d { // the tag validates BEFORE it rides (SPEC §4.8)\n", d.Max)
+		g.pf("\t\treturn serialize.ErrValueOutOfRange\n\t}\n")
+		g.pf("\t{\n\t\toffsetValue := uint32(tagValue)\n\t\tstream.SerializeBits(&offsetValue, %d)\n\t}\n", bits)
+		g.pf("\tswitch value.Type {\n")
+		for _, v := range d.Variants {
+			g.pf("\tcase %sType%s:\n\t\treturn Write%s(stream, &value.%s)\n",
+				d.Name, ir.GoExportName(v.Name), v.Type, ir.GoExportName(v.Name))
+		}
+		g.pf("\t}\n\treturn stream.Err() // None — the tag is the whole wire (SPEC §4.8)\n}\n\n")
+	}
+
+	g.pf("func Read%s(stream *serialize.ReadStream, value *%s) error {\n", d.Name, d.Name)
+	if d.Max == 0 {
+		g.pf("\tvalue.Type = %sTypeNone // zero wire bits — only None exists (SPEC §4.8)\n", d.Name)
+		g.pf("\treturn stream.Err()\n}\n\n")
+		return
+	}
+	g.pf("\ttagValue := int32(0)\n")
+	g.pf("\tstream.SerializeInt(&tagValue, 0, %d) // rejects a tag above the count (SPEC §4.8)\n", d.Max)
+	g.pf("\tif stream.Err() != nil {\n\t\treturn stream.Err()\n\t}\n")
+	g.pf("\tvalue.Type = %sType(tagValue)\n", d.Name)
+	g.pf("\tswitch value.Type {\n")
+	for _, v := range d.Variants {
+		g.pf("\tcase %sType%s:\n", d.Name, ir.GoExportName(v.Name))
+		g.pf("\t\tvalue.%s = %s{} // the selected arm starts from the zero form (SPEC §5)\n", ir.GoExportName(v.Name), v.Type)
+		g.pf("\t\treturn Read%s(stream, &value.%s)\n", v.Type, ir.GoExportName(v.Name))
+	}
+	g.pf("\t}\n\treturn stream.Err() // None\n}\n\n")
+}
+
 // emitStructFunctions emits MaxBits/MaxBytes and the split Write/Read pair
 // for a type or message.
 func (g *gen) emitStructFunctions(st *ir.Struct) {
@@ -195,6 +246,9 @@ func (g *gen) emitZeroField(f *ir.Field, ind string) {
 			case *ir.Struct:
 				// the zero value is §5's ZERO form; specified defaults live
 				// only in New*, so this is the memset twin exactly
+				g.pf("%s%s = %s{}\n", ind, name, f.Type.Name)
+			case *ir.Union:
+				// zero IS None (sentinel-zero tag), §5's zero form
 				g.pf("%s%s = %s{}\n", ind, name, f.Type.Name)
 			}
 		default:
@@ -529,6 +583,8 @@ func (g *gen) emitWriteScalar(f *ir.Field, name, ind string) {
 			g.emitWriteFlagsValue(name, ref.WireBits, ind)
 		case *ir.Struct:
 			g.pf("%sif err := Write%s(stream, &%s); err != nil {\n%s\treturn err\n%s}\n", ind, f.Type.Name, name, ind, ind)
+		case *ir.Union:
+			g.pf("%sif err := Write%s(stream, &%s); err != nil {\n%s\treturn err\n%s}\n", ind, f.Type.Name, name, ind, ind)
 		}
 	}
 }
@@ -728,6 +784,8 @@ func (g *gen) emitReadScalar(f *ir.Field, name, ind string) {
 		case *ir.Flags:
 			g.emitReadFlags(name, f.Type.Name, ref.WireBits, ind)
 		case *ir.Struct:
+			g.pf("%sif err := Read%s(stream, &%s); err != nil {\n%s\treturn err\n%s}\n", ind, f.Type.Name, name, ind, ind)
+		case *ir.Union:
 			g.pf("%sif err := Read%s(stream, &%s); err != nil {\n%s\treturn err\n%s}\n", ind, f.Type.Name, name, ind, ind)
 		}
 	}

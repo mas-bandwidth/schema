@@ -141,6 +141,15 @@ func TestPackAgainstWireGoldens(t *testing.T) {
 		"nonce":    18446744073709551615
 	}`), golden(t, "probebits.bin"))
 
+	// the union instance (SPEC §4.8): a selected arm as a single-key object,
+	// an ABSENT field spelling None, and a union array — byte-compared
+	// against the same C++ pin the five other legs compare
+	checkWire(t, "probecollider", packJSON(t, u, "ProbeCollider", `{
+		"armor": 7,
+		"shape": { "slab": { "width": 42, "height": 9 } },
+		"extras": [ { "ring": { "radius": 777 } } ]
+	}`), golden(t, "probecollider.bin"))
+
 	// the everything instance (test/main.cpp's TestData): the COMPRESSED FLOAT
 	// among strings, counted arrays, raw bits, an align and a fixed byte array.
 	// The quantized integer is float32 arithmetic in every runtime, so a
@@ -294,6 +303,38 @@ func TestPackWideRefusals(t *testing.T) {
 			t.Fatal(err)
 		}
 		_, err := enc.EncodeInstance(c.typeName, obj)
+		if err == nil || !strings.Contains(err.Error(), c.wantErr) {
+			t.Fatalf("%s: want error containing %q, got %v", c.name, c.wantErr, err)
+		}
+	}
+}
+
+// TestPackUnionRefusals: a one-of holds one thing and the encoder does not
+// guess which (SPEC §4.8) — zero keys, two keys, an unknown variant, null
+// under a variant key and a non-object value are all refused with the union
+// named.
+func TestPackUnionRefusals(t *testing.T) {
+	u := loadCorpus(t)
+	enc := &Encoder{Unit: u}
+
+	cases := []struct {
+		name, jsonText, wantErr string
+	}{
+		{"zero keys", `{ "shape": {} }`, "exactly one variant key"},
+		{"two keys", `{ "shape": { "ring": { "radius": 1 }, "slab": { "width": 1, "height": 1 } } }`, "exactly one variant key"},
+		{"unknown variant", `{ "shape": { "cone": { "radius": 1 } } }`, "not a variant of union ProbeShape"},
+		{"null under a key", `{ "shape": { "ring": null } }`, "null spells None only at the union itself"},
+		{"non-object union value", `{ "shape": 3 }`, "single-key object"},
+		{"payload range refused through the arm", `{ "shape": { "slab": { "width": 101, "height": 1 } } }`, "outside wire range [0, 100]"},
+	}
+	for _, c := range cases {
+		var obj map[string]any
+		dec := json.NewDecoder(strings.NewReader(c.jsonText))
+		dec.UseNumber()
+		if err := dec.Decode(&obj); err != nil {
+			t.Fatal(err)
+		}
+		_, err := enc.EncodeInstance("ProbeCollider", obj)
 		if err == nil || !strings.Contains(err.Error(), c.wantErr) {
 			t.Fatalf("%s: want error containing %q, got %v", c.name, c.wantErr, err)
 		}

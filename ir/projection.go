@@ -41,6 +41,8 @@ package ir
 //   const/reserved/align     literal bits, zero bits, and padding
 //   enum max, storage bits   the tag's wire range
 //   flags wire bits          the mask width
+//   union variant order,     the tag is positional and the payload is the
+//     count, payload types   wire (SPEC §4.8)
 //
 // WHAT IS EXCLUDED, and why each one does NOT move the wire:
 //
@@ -49,6 +51,7 @@ package ir
 //                            is declared in, nor on declaration order
 //   enum VARIANT names       ordinals are the wire; renaming Red to Crimson
 //                            leaves every byte identical
+//   union VARIANT names      the same rule — the ordinal is the wire
 //   const declarations       their values are already resolved into the
 //                            bounds that appear above
 //   type tags, native-type   generation-time only
@@ -118,6 +121,24 @@ func WireProjection(u *Unit) string {
 		st := u.Structs[n]
 		fmt.Fprintf(&b, "type %s table=%t message=%t\n", st.Name, st.IsTable, st.IsMessage)
 		projectItems(&b, st.Items, "  ")
+	}
+
+	// unions: variant ORDER, count and payload type references project —
+	// variant names do not (the ordinal is the wire, the enum-variant rule;
+	// SPEC §3.1, §4.8). Rendering a section only for units that declare
+	// unions leaves every union-free unit's id untouched, so this needed no
+	// ProjectionVersion bump: no existing fact renders differently.
+	names = names[:0]
+	for n := range u.Unions {
+		names = append(names, n)
+	}
+	sort.Strings(names)
+	for _, n := range names {
+		un := u.Unions[n]
+		fmt.Fprintf(&b, "union %s max=%d\n", un.Name, un.Max)
+		for i, v := range un.Variants {
+			fmt.Fprintf(&b, "  variant %d payload=%s\n", i+1, v.Type)
+		}
 	}
 
 	names = names[:0]

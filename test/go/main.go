@@ -353,6 +353,63 @@ func main() {
 		checkErr(example.WriteProbeBits(ws, &in), "write ProbeBits")
 		ws.Flush()
 		goldenWire("probebits", ws.Data())
+	}
+
+	// ---- ProbeCollider: first-class one-of (SPEC §4.8) — C++-pinned wire,
+	// round trip, the None arm, an array of unions, and the refusal
+	// negative controls ----
+	{
+		in := example.ProbeCollider{}
+		check(in.Shape.Type == example.ProbeShapeTypeNone, "the zero value is the empty union")
+		check(example.ProbeShapeMaxBits == 2+16, "ProbeShapeMaxBits is tag + the largest arm")
+
+		in.Armor = 7
+		in.Shape.Type = example.ProbeShapeTypeSlab
+		in.Shape.Slab.Width = 42
+		in.Shape.Slab.Height = 9
+		// in.Backup stays None — the empty arm costs the tag bits only
+		in.ExtrasCount = 1
+		in.Extras[0].Type = example.ProbeShapeTypeRing
+		in.Extras[0].Ring.Radius = 777
+
+		ws, _ := newWriteStream()
+		checkErr(example.WriteProbeCollider(ws, &in), "write ProbeCollider")
+		ws.Flush()
+		goldenWire("probecollider", ws.Data())
+
+		out := example.ProbeCollider{}
+		out.Backup.Type = example.ProbeShapeTypeRing // dirty — the read must restore None
+		rs := serialize.NewReadStream(ws.Data())
+		checkErr(example.ReadProbeCollider(rs, &out), "read ProbeCollider")
+		check(out.Armor == 7, "ProbeCollider.armor round-trips")
+		check(out.Shape.Type == example.ProbeShapeTypeSlab, "the selected arm round-trips")
+		check(out.Shape.Slab.Width == 42 && out.Shape.Slab.Height == 9, "the arm payload round-trips")
+		check(out.Backup.Type == example.ProbeShapeTypeNone, "the None arm reads back empty")
+		check(out.ExtrasCount == 1 && out.Extras[0].Type == example.ProbeShapeTypeRing && out.Extras[0].Ring.Radius == 777,
+			"the union array round-trips")
+
+		// NEGATIVE CONTROL — perturb the tag: 2 bits at bit offset 8, range
+		// [0, 2]; forcing both bits makes it 3 and the read must refuse
+		corrupt := make([]byte, len(ws.Data()))
+		copy(corrupt, ws.Data())
+		corrupt[1] |= 0x03
+		bad := example.ProbeCollider{}
+		check(example.ReadProbeCollider(serialize.NewReadStream(corrupt), &bad) != nil,
+			"an out-of-range union tag is refused (SPEC §4.8)")
+
+		// NEGATIVE CONTROL — corrupt the arm payload: width rides 7 bits at
+		// bit offset 10 with range [0, 100]; all seven bits decode 127
+		copy(corrupt, ws.Data())
+		corrupt[1] |= 0xFC
+		corrupt[2] |= 0x01
+		check(example.ReadProbeCollider(serialize.NewReadStream(corrupt), &bad) != nil,
+			"a corrupt union arm payload is refused (SPEC §4.8)")
+
+		// the write side validates the tag BEFORE it rides (WriteMessage's rule)
+		rogue := example.ProbeShape{Type: example.ProbeShapeType(3)}
+		ws2, _ := newWriteStream()
+		check(example.WriteProbeShape(ws2, &rogue) != nil,
+			"an out-of-set union tag writes nothing (SPEC §4.8)")
 
 		out := example.ProbeBits{}
 		rs := serialize.NewReadStream(ws.Data())

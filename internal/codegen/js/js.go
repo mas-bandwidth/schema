@@ -264,6 +264,9 @@ func (g *gen) emitFile(carriesProtocolId bool) {
 		case *ir.Struct:
 			g.emitClass(d)
 			g.emitStructFunctions(d)
+		case *ir.Union:
+			g.emitUnion(d)
+			g.emitUnionFunctions(d)
 		case *ir.Object:
 			g.emitObject(d)
 			g.emitObjectFunctions(d)
@@ -434,11 +437,12 @@ func (g *gen) emitStorageField(f *ir.Field) {
 		g.pf("    this.%sLength = 0;\n", name)
 	case f.Array != ir.ArrayNone:
 		bound := g.renderNum(f.ArrayExpr, big.NewInt(f.ArrayBound))
-		if st, ok := f.Type.Ref.(*ir.Struct); ok && f.Type.Kind == ir.TNamed {
+		if f.Type.Kind == ir.TNamed && isClassRef(f.Type.Ref) {
 			// pre-allocated element instances — the storage principle
-			// (SPEC §6.1): every buffer exists at construction
-			g.addRef(st.Name, st.Name)
-			g.pf("    this.%s = Array.from({ length: %s }, () => new %s());%s\n", name, bound, st.Name, g.fieldComment(f))
+			// (SPEC §6.1): every buffer exists at construction; unions are
+			// classes here exactly like structs
+			g.addRef(f.Type.Name, f.Type.Name)
+			g.pf("    this.%s = Array.from({ length: %s }, () => new %s());%s\n", name, bound, f.Type.Name, g.fieldComment(f))
 		} else if isByteElem(f.Type) {
 			// uint8 arrays store as Uint8Array — the runtime's own byte-buffer
 			// type (serializeBytes' contract), so the aligned bulk path can
@@ -455,15 +459,51 @@ func (g *gen) emitStorageField(f *ir.Field) {
 		init := ""
 		if f.HasDefault {
 			init = g.defaultValue(f)
-		} else if st, ok := f.Type.Ref.(*ir.Struct); ok && f.Type.Kind == ir.TNamed {
+		} else if f.Type.Kind == ir.TNamed && isClassRef(f.Type.Ref) {
 			// pre-allocated at construction — the storage principle (SPEC §6.1)
-			g.addRef(st.Name, st.Name)
-			init = "new " + st.Name + "()"
+			g.addRef(f.Type.Name, f.Type.Name)
+			init = "new " + f.Type.Name + "()"
 		} else {
 			init = g.zeroValue(f.Type)
 		}
 		g.pf("    this.%s = %s;%s\n", name, init, g.fieldComment(f))
 	}
+}
+
+// isClassRef reports a named reference whose JS storage is a pre-allocated
+// class instance: a generated struct class or a union (SPEC §4.8).
+func isClassRef(ref ir.Decl) bool {
+	switch ref.(type) {
+	case *ir.Struct, *ir.Union:
+		return true
+	}
+	return false
+}
+
+// emitUnion emits a first-class one-of (SPEC §4.8): the <Name>Type tag
+// object, then the class — the tag beside one pre-allocated arm per variant
+// (the MessageStorage stand-in; nothing allocates per value after
+// construction).
+func (g *gen) emitUnion(d *ir.Union) {
+	members := make([]string, len(d.Variants))
+	for i, v := range d.Variants {
+		members[i] = ir.GoExportName(v.Name)
+	}
+	g.emitTagEnum(d.Name+"Type", members,
+		fmt.Sprintf("union %s's tag — None = 0, then each variant in declared order (SPEC §4.8)", d.Name))
+
+	g.pf("// %s — at most one of the arms; Type says which. Construction is the empty\n", d.Name)
+	g.pf("// union (None). A read zero-establishes exactly the selected arm before\n")
+	g.pf("// decoding it (SPEC §5); unselected arms keep what they last held — the\n")
+	g.pf("// MessageStorage reuse discipline. Consumers read the selected arm only.\n")
+	g.pf("export class %s {\n", d.Name)
+	g.pf("  constructor() {\n")
+	g.pf("    this.Type = %sType.None;\n", d.Name)
+	for _, v := range d.Variants {
+		g.addRef(v.Type, v.Type)
+		g.pf("    this.%s = new %s();\n", ir.GoExportName(v.Name), v.Type)
+	}
+	g.pf("  }\n}\n\n")
 }
 
 // zeroValue is the §5 zero form of a scalar storage slot.

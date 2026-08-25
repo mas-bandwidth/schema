@@ -34,6 +34,65 @@ func (g *gen) emitStructMaxBits(st *ir.Struct) {
 	g.pf("inline constexpr int64_t %sMaxBytes = %d; // rounded up to the 8-byte write-buffer granularity; a read buffer's allocation must extend at least 8 bytes past the data — the reader loads 64-bit windows\n\n", st.Name, ir.MaxBytes(maxBits))
 }
 
+// emitUnionMaxBits mirrors emitStructMaxBits: the tag plus the largest arm
+// (SPEC §4.8 — None costs the tag bits only).
+func (g *gen) emitUnionMaxBits(d *ir.Union) {
+	maxBits := ir.MaxBitsUnion(d)
+	g.pf("inline constexpr int64_t %sMaxBits = %d; // tag + the largest arm; None costs the tag only (SPEC §4.8)\n", d.Name, maxBits)
+	g.pf("inline constexpr int64_t %sMaxBytes = %d; // rounded up to the 8-byte write-buffer granularity; a read buffer's allocation must extend at least 8 bytes past the data — the reader loads 64-bit windows\n\n", d.Name, ir.MaxBytes(maxBits))
+}
+
+// emitUnionWire is the message dispatch pair scaled down to a field type
+// (SPEC §4.8): the write validates the tag BEFORE it rides — an out-of-set
+// tag writes nothing, it never desyncs the stream — and the read rejects a
+// tag above the count inside read_int, then zero-establishes exactly the
+// selected arm before decoding it.
+func (g *gen) emitUnionWire(d *ir.Union) {
+	g.needsSerialize = true
+	tag := d.Name + "Type"
+
+	g.pf("SCHEMA_WRITE_INLINE bool Write%s( serialize::WriteStream & stream, const %s & value )\n{\n", d.Name, d.Name)
+	if d.Max == 0 {
+		g.pf("    (void) stream;\n")
+		g.pf("    // an empty union holds only None and its degenerate tag range [0, 0]\n")
+		g.pf("    // costs zero bits (SPEC §4.8)\n")
+		g.pf("    return value.type == %s::None;\n}\n\n", tag)
+	} else {
+		bits := bitsRequired(big.NewInt(0), big.NewInt(d.Max))
+		g.pf("    switch ( value.type )\n    {\n")
+		g.pf("        case %s::None:\n", tag)
+		g.pf("            write_bits( stream, 0u, %d );\n", bits)
+		g.pf("            return true; // no payload — the tag is the whole wire (SPEC §4.8)\n")
+		for i, v := range d.Variants {
+			g.pf("        case %s::%s:\n", tag, ir.GoExportName(v.Name))
+			g.pf("            write_bits( stream, %du, %d );\n", i+1, bits)
+			g.pf("            return Write%s( stream, value.%s );\n", v.Type, v.Name)
+		}
+		g.pf("        default:\n")
+		g.pf("            break;\n")
+		g.pf("    }\n")
+		g.pf("    return false; // not a %s value; nothing was written (SPEC §4.8)\n}\n\n", tag)
+	}
+
+	g.pf("SCHEMA_READ_INLINE bool Read%s( serialize::ReadStream & stream, %s & value )\n{\n", d.Name, d.Name)
+	if d.Max == 0 {
+		g.pf("    (void) stream; // zero wire bits — only None exists\n")
+		g.pf("    value.type = %s::None;\n    return true;\n}\n\n", tag)
+		return
+	}
+	g.pf("    int32_t tag_value = 0;\n")
+	g.pf("    read_int( stream, tag_value, 0, %d ); // rejects a tag above the count (SPEC §4.8)\n", d.Max)
+	g.pf("    value.type = %s( tag_value );\n", tag)
+	g.pf("    switch ( value.type )\n    {\n")
+	g.pf("        case %s::None:\n            return true;\n", tag)
+	for _, v := range d.Variants {
+		g.pf("        case %s::%s:\n", tag, ir.GoExportName(v.Name))
+		g.pf("            value.%s = %s{};\n", v.Name, v.Type)
+		g.pf("            return Read%s( stream, value.%s );\n", v.Type, v.Name)
+	}
+	g.pf("    }\n    return false;\n}\n\n")
+}
+
 // emitStructWire emits the split Write/Read pair for a type or message, in
 // the topo order the struct itself was emitted in the data header.
 func (g *gen) emitStructWire(st *ir.Struct) {
@@ -203,6 +262,11 @@ func (g *gen) emitZeroField(f *ir.Field, ind string) {
 				// here — T{} restores defaults instead of zeroing, and a
 				// template costs compile time in a header every translation
 				// unit includes.
+				g.needsCstring = true
+				g.pf("%smemset( (void*) &%s, 0, sizeof( %s ) );\n", ind, name, name)
+			case *ir.Union:
+				// zero IS None: the tag is sentinel-zero, and §5's zero rule
+				// wants the whole value cleared — the struct memset exactly
 				g.needsCstring = true
 				g.pf("%smemset( (void*) &%s, 0, sizeof( %s ) );\n", ind, name, name)
 			}
@@ -460,6 +524,8 @@ func (g *gen) emitWriteScalar(f *ir.Field, name, ind string) {
 			g.pf("%swrite_bits( stream, %s, %d );\n", ind, name, ref.WireBits)
 		case *ir.Struct:
 			g.pf("%sif ( !Write%s( stream, %s ) )\n%s{\n%s    return false;\n%s}\n", ind, f.Type.Name, name, ind, ind, ind)
+		case *ir.Union:
+			g.pf("%sif ( !Write%s( stream, %s ) )\n%s{\n%s    return false;\n%s}\n", ind, f.Type.Name, name, ind, ind, ind)
 		}
 	}
 }
@@ -612,6 +678,8 @@ func (g *gen) emitReadScalar(f *ir.Field, name, ind string) {
 		case *ir.Flags:
 			g.pf("%sread_bits( stream, %s, %d );\n", ind, name, ref.WireBits)
 		case *ir.Struct:
+			g.pf("%sif ( !Read%s( stream, %s ) )\n%s{\n%s    return false;\n%s}\n", ind, f.Type.Name, name, ind, ind, ind)
+		case *ir.Union:
 			g.pf("%sif ( !Read%s( stream, %s ) )\n%s{\n%s    return false;\n%s}\n", ind, f.Type.Name, name, ind, ind, ind)
 		}
 	}

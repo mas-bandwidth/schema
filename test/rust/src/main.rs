@@ -454,6 +454,69 @@ fn main() {
         check(out == input, "ProbeBits round-trips — 9/33/64-bit and full-range paths");
     }
 
+    // ---- ProbeCollider: first-class one-of (SPEC §4.8) — C++-pinned wire,
+    // round trip, the None arm, an array of unions, and the refusal
+    // negative controls ----
+    {
+        let mut input = ProbeCollider::default();
+        check(
+            input.shape == ProbeShape::None,
+            "the default is the empty union",
+        );
+        check(
+            PROBE_SHAPE_MAX_BITS == 2 + 16,
+            "MAX_BITS is tag + the largest arm",
+        );
+        check(
+            ProbeShapeType::MAX == ProbeShapeType(2),
+            "the tag newtype rides beside the value enum",
+        );
+
+        input.armor = 7;
+        input.shape = ProbeShape::Slab(ProbeSlab {
+            width: 42,
+            height: 9,
+        });
+        // input.backup stays None — the empty arm costs the tag bits only
+        input.extras_count = 1;
+        input.extras[0] = ProbeShape::Ring(ProbeRing { radius: 777 });
+
+        let mut buffer = [0u8; 2048];
+        let mut ws = WriteStream::new(&mut buffer);
+        check_err(write_probe_collider(&mut ws, &input), "write ProbeCollider");
+        ws.flush();
+        let n = ws.bytes_processed() as usize;
+        golden_wire("probecollider", &buffer[..n]);
+
+        let mut out = ProbeCollider::default();
+        out.backup = ProbeShape::Ring(ProbeRing { radius: 1 }); // dirty — the read must restore None
+        let mut rs = ReadStream::new(&buffer, n);
+        check_err(read_probe_collider(&mut rs, &mut out), "read ProbeCollider");
+        check(out == input, "ProbeCollider round-trips, None arm included");
+
+        // NEGATIVE CONTROL — perturb the tag: 2 bits at bit offset 8, range
+        // [0, 2]; forcing both bits makes 3 and the read must refuse
+        let mut corrupt = buffer;
+        corrupt[1] |= 0x03;
+        let mut bad = ProbeCollider::default();
+        let mut crs = ReadStream::new(&corrupt, n);
+        check(
+            read_probe_collider(&mut crs, &mut bad).is_err(),
+            "an out-of-range union tag is refused (SPEC §4.8)",
+        );
+
+        // NEGATIVE CONTROL — corrupt the arm payload: width rides 7 bits at
+        // bit offset 10 with range [0, 100]; all seven bits decode 127
+        let mut corrupt2 = buffer;
+        corrupt2[1] |= 0xFC;
+        corrupt2[2] |= 0x01;
+        let mut crs2 = ReadStream::new(&corrupt2, n);
+        check(
+            read_probe_collider(&mut crs2, &mut bad).is_err(),
+            "a corrupt union arm payload is refused (SPEC §4.8)",
+        );
+    }
+
     // ---- TestData and InputPacket against their C++ pins ----
     {
         let input = test_data_instance();

@@ -127,12 +127,14 @@ kind, width and signedness; declared bounds; array kind and bounds;
 string/bytes capacity; float range, resolution and step count; fixed `I` and
 `F`; quantize scale and bound; specified defaults (the table wire elides a
 field sitting at its default); branch structure; `const`/`reserved`/`align`
-items; enum max and storage bits; flags wire bits; `[local]` and
-`[interpolate]` markers.
+items; enum max and storage bits; flags wire bits; union variant order,
+count and payload type references (the tag is positional and the payload is
+the wire — §4.8); `[local]` and `[interpolate]` markers.
 
 **Excluded — each has no effect on the bytes:** comments and whitespace; file
-names, file layout and declaration order; enum variant names (the ordinal is
-the wire — renaming `Red` to `Crimson` leaves every byte identical); `const`
+names, file layout and declaration order; enum variant names, union variant
+names included (the ordinal is the wire — renaming `Red` to `Crimson`, or a
+union's `box` to `crate`, leaves every byte identical); `const`
 declarations (their values are already resolved into the bounds above); type
 tags and native-type attributes.
 
@@ -235,9 +237,12 @@ EBNF (`NL` = the newline terminator; `{X}` repetition; `[X]` option):
 
 ```
 File        = { Declaration } .
-Declaration = Package | Const | Enum | Flags | TypeDecl | Message | Object | Contexts .
+Declaration = Package | Const | Enum | Flags | TypeDecl | Message | Object | Union | Contexts .
 Object      = "object" ident Block NL .
 Flags       = "flags" ident [ Attributes ] VariantList NL .        // "flags" contextual, §4.2
+Union       = "union" ident UnionBlock NL .                        // "union" contextual, §4.8
+UnionBlock  = "{" { UnionVariant } "}" .
+UnionVariant = ident ident NL .                                    // variant name, then its payload type
 Contexts    = "contexts" VariantList NL .                          // "contexts" contextual, §4.2;
                                                                    // one list per unit
 Package     = "package" ident NL .
@@ -312,15 +317,15 @@ FloatExpr   = float expression over float literals, int literals and const names
 - **Zero initialization is the rule, in every generated language, with an
   optional specified default overriding it.** Every generated type fully
   initializes to zero values on construction — 0, 0.0, false, `None` for an
-  enum, 0 for a flags mask, zeroed buffers and counts, recursively for nested
-  types — in every target (C++ emits default member initializers; the other
+  enum, `None` for a union, 0 for a flags mask, zeroed buffers and counts,
+  recursively for nested types — in every target (C++ emits default member initializers; the other
   languages get it from their own rules, stated so no target can silently be
   the odd one out). A field may override its zero with `= value` after the
   attributes: `invulnerable bool [local] = true`. Defaults cover bool
   (`true`/`false`), integer and float fields (constant expressions,
   fit-checked like any use site), enum fields (a variant name), the 128-bit
-  integers, and `fixed` (§4.6); arrays, strings, bytes and composite fields
-  zero-initialize with no override. **The default is STORAGE initialization —
+  integers, and `fixed` (§4.6); arrays, strings, bytes, composite and union
+  fields zero-initialize with no override. **The default is STORAGE initialization —
   what a freshly constructed object holds. It does not touch the wire**: per
   §5's read rule, fields in untaken branches read as ZERO values, not as
   defaults — the wire contract stays a pure function of the schema's
@@ -626,6 +631,7 @@ classic twin, which is the wire oracle for the stated model.
 | `f Weapon` (an enum) | minimal bits for [0, max]; read rejects above max | `serialize_int` over [0, max] |
 | `f Damage` (a `flags` declaration, §4.2) | W raw bits, W = variant count (or [max]); every pattern legal; storage `uint64` in every target | `serialize_bits` |
 | `f Inner` (a type) | Inner's fields, in place | `serialize_object` |
+| `f Shape` (a `union`, §4.8) | tag in minimal bits for [0, variant count] (0 = None, no payload), then the selected variant's payload only; read rejects a tag above the count | `serialize_int` over [0, count] + `serialize_object` on the selected arm |
 | `const(Value, Bits)` | the constant; read **rejects** any other value | `serialize_bits` + compare |
 | `reserved(Bits)` | zeros; read rejects nonzero | `serialize_bits` + compare |
 | `align` | zero-pad to the next byte boundary; read rejects nonzero padding | `serialize_align` |
@@ -1055,6 +1061,137 @@ and Turret are written beside it — all four objects are in the corpus.
 view derives from need (wire order for wire structs, contiguous spans where
 machinery wants them), never a convention a human maintains.
 
+#### Unions — `union`, first-class one-of fields
+
+A `union` declares a type that holds **at most one** of a named set of
+payloads. It is the message set's tagged-union machinery promoted to a
+declarable type, replacing the bool-guard idiom (`has_box bool` / `if
+has_box { box BoxCollider }` repeated per shape), which spends one bit per
+absent arm and makes illegal states representable — zero payloads, or
+several at once.
+
+```
+union ColliderShape {
+    box     BoxCollider
+    sphere  SphereCollider
+    capsule CapsuleCollider
+    hull    HullCollider
+}
+```
+
+- **Grammar.** `union` is contextual like `flags`: `union ident { ... }`
+  declares a union; `union` remains usable as an ordinary name everywhere
+  else. Each body row is `ident ident NL` — a variant name (field-style
+  lower_snake, unique within the union), then its payload type. A variant
+  row takes no attributes, no default, no bound — a row names a thing, it
+  does not describe a wire refinement. A union field likewise takes no
+  attributes and no `= default` (it zero-initializes to None, joining
+  arrays, strings, bytes and composites in §4.2's no-override list).
+- **Payloads are declared types.** A variant's payload must name a declared
+  `type` (or `table` — the declaration kind does not matter here, the type
+  does). An enum, flags, object, message or union name is not a payload in
+  v1 — wrap it in a type; scalar and array payloads likewise (the parser
+  names this rule when a scalar keyword or `[` appears in payload
+  position). Follow-ons if a real case wants them. Composition cycles
+  through unions are compile errors exactly like type cycles (a payload
+  that contains its own union has infinite size). A union with **zero
+  variants is legal**, mirroring the empty enum (§4.6): it holds only None,
+  its tag range is the degenerate [0, 0], and it costs zero bits.
+- **The implicit None row.** Entry 0 of every union is **None — no
+  payload** — mirroring the enum sentinel-zero convention and the message
+  stream's `None` terminator: optionality rides in-band, a zero-initialized
+  union field IS the empty union by construction (zero-value lists in §4.2
+  and §5 include "None for a union"), and no separate has-flag exists to
+  disagree with the tag. **Reserved variant names are checked over the
+  EXPORTED spelling**: any variant whose exported form (the field-name
+  mapping) is `None` or `Max` is refused — `none` and `max` included, not
+  just the literal spellings.
+- **The tag enum is generated, named `<Union>Type`** — the same shape as
+  `MessageType`: `None = 0`, then each variant **in declared order**
+  (exported spelling per target, the field-name mapping), dense from 1, plus
+  the exported `Max` extent; storage per the enum storage rule, the
+  smallest unsigned integer fitting max. Declared order, not sorted: a
+  union is one declaration whose author states the order, exactly as an
+  enum's variants do — and reordering variants is a wire change (see id,
+  below), so the spelling of the source is the truth of the wire.
+  `<Union>Type` and its member constants are claimed names, and the claimed
+  set covers generated-vs-generated collisions too: in a unit with
+  messages, a union named `Message` is refused (its `MessageType`,
+  `WriteMessage`, `ReadMessage` collide with the dispatch surface), and
+  likewise `Object` against the object tag surface. **Generated sets are
+  usable in constant expressions and nowhere else**: `<Union>Type.Max`,
+  `MessageType.Max` and `ObjectType.Max` all work in integer expressions
+  (§4.2); no generated set is a declarable field type. Variant names pass
+  the same target-name safety and post-export uniqueness rules as field
+  names (§4.6): a variant named a target's reserved word is refused, and
+  two variants whose exported spellings collide (`box_a`/`boxA`) are
+  refused.
+- **The wire.** The tag encodes in **minimal bits for `[0, variant
+  count]`** (the enum wire rule), then **the selected variant's payload
+  only**. Tag 0 = None costs the tag bits and nothing else. The read path
+  **rejects a tag above the count** — refusal, never clamping, the ranged-
+  integer rule. MaxBits = tag bits + the largest payload's MaxBits.
+  `Write<Union>` follows `WriteMessage`'s rule (§6.1): the tag is validated
+  BEFORE it rides — an out-of-set tag value in storage writes nothing and
+  fails, it never desyncs the stream.
+- **Read semantics are §5's.** The selected arm is **zero-established at
+  selection** before its payload decodes — the message union's rule exactly.
+  Arms not selected by a read are unspecified: in the C/C++ union
+  representation their bytes are indeterminate; in targets whose storage
+  lays every arm out separately (Go, C#, JS) an unselected arm keeps
+  whatever it last held, the `MessageStorage` reuse discipline (§5's
+  stale-tail carve-out extends to unselected union arms; whole-object
+  comparison in the conformance matrix is over a fresh output or the
+  selected arm). Consumers read the selected arm only. Nothing branches on
+  a union's tag in v1 — `if` takes bools only (§4.4) — and a `switch` over
+  `<Union>Type` is ruled-not-now, banked with §4.4's switch design.
+- **A union field.** A union name is a field type inside `type` and
+  `message` bodies, arrays included (`shapes [<= 4]ColliderShape`). Not in
+  v1, both stated over the COMPOSITION CLOSURE so nesting cannot smuggle
+  one through: an `object` body may not reach a union through any field's
+  type, transitively (the view-splitting rules say nothing about what
+  Shallow/Interpolate mean for a one-of), and no **table-closure member**
+  may declare a union-typed field, transitively through arrays and
+  branches (the table wire's evolution semantics — elision, unknown-field
+  skip — are undefined over a one-of). A `table` used as a union PAYLOAD
+  stays legal — the table is a closure root either way; it is the union
+  that may not sit on a closure path. Both are compile errors naming this
+  rule, and both are follow-on passes, not rulings against.
+- **The id moves.** A union is wire structure: its variant order, count and
+  payload type references all shape bytes, so they project into the
+  protocol id (§3.1) — declaring a union, adding, removing or reordering
+  variants, or changing a payload type moves the unit's id. Renaming a
+  VARIANT does **not** move it: the ordinal is the wire, the enum-variant
+  rule exactly (§3.1) — renaming `box` to `crate` leaves every byte
+  identical.
+- **Pack/JSON authoring** (the data compiler's dense-wire instance
+  encoding, `internal/pack` — the wire oracle that packs the pinned
+  conformance instances; a table-closure manifest cannot carry a union
+  until the closure lift above, so this rule reaches the manifest surface
+  then): a union value is **a single-key object, the key naming the
+  variant in its source spelling** — `{ "sphere": { "radius": 2.5 } }`,
+  and the key's value must be a JSON object. JSON `null`, or leaving the
+  field absent, is None; `null` UNDER a variant key is a refusal, as is an
+  object with zero keys or more than one — a one-of holds one thing, and
+  the encoder does not guess which.
+- **Generated code, per target** — the message-set rule verbatim:
+  representation is per-language and explicitly NOT part of the contract;
+  what binds every target is behavioral only — identical bytes, None is a
+  valid empty read, an out-of-range tag is a validation failure. C++ reuses
+  the message union shape: a struct holding the `<Union>Type type;` tag
+  over an anonymous union of the arms (member names = variant names),
+  constructed as None, trivially copyable (asserted); a variant named
+  `type` is refused at check time, the message-member rule. C mirrors it
+  with its named `as` union. Go, C# and JS lay the tag beside one
+  pre-allocated arm per variant (the `MessageStorage` stand-in — nothing
+  heap-allocates per value). Rust holds the value as a real
+  `enum <Union> { None, Box(BoxCollider), ... }`, `None` the default — and
+  STILL emits the `<Union>Type` tag newtype beside it, exactly as
+  `MessageType` exists beside `enum Message`: the tag surface (constants,
+  `Max`) is uniform across targets whatever the value representation.
+  Every union also gets `Write<Union>`/`Read<Union>` wire functions and
+  `<Union>MaxBits`/`<Union>MaxBytes`, composable exactly like a type's.
+
 ### 4.9 A complete example
 
 ```
@@ -1224,14 +1361,15 @@ min/max.
 **Read failure leaves the output object in an unspecified state**; callers
 use it only on success. **Read success fully initializes it**: fields in
 untaken branches are set to their zero values — 0, 0.0, false, empty bytes,
-zero count, `None` for an enum, recursively zeroed for a nested type,
-element-wise zeroed for a fixed array. **Zero values, not specified
-defaults** — the defaults of §4.2 are storage initialization at construction;
-the wire contract stays a pure function of the encodings. *Fully initializes*
-is relative to a zero-initialized output object: elements past a used count
-and bytes past a used length are not rewritten by a successful read, so a
-REUSED output object keeps stale tail data there (the classic runtime's own
-prefix convention). Whole-object comparison in the conformance matrix is
+zero count, `None` for an enum, `None` for a union, recursively zeroed for a
+nested type, element-wise zeroed for a fixed array. **Zero values, not
+specified defaults** — the defaults of §4.2 are storage initialization at
+construction; the wire contract stays a pure function of the encodings.
+*Fully initializes* is relative to a zero-initialized output object:
+elements past a used count and bytes past a used length are not rewritten by
+a successful read, and a union's UNSELECTED arms are not rewritten either
+(the selected arm is zero-established, §4.8), so a REUSED output object
+keeps stale tail data there (the classic runtime's own prefix convention). Whole-object comparison in the conformance matrix is
 defined over a fresh output or the used prefix. Write reads only taken
 fields.
 

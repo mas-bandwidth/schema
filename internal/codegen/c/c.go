@@ -247,6 +247,8 @@ func (g *gen) emitDataHeader(carriesProtocolId bool) {
 			g.emitFlags(decl)
 		case *ir.Struct:
 			g.emitStruct(decl)
+		case *ir.Union:
+			g.emitUnion(decl)
 		case *ir.Object:
 			g.emitObject(decl)
 		case *ir.ContextsMarker:
@@ -377,6 +379,52 @@ func (g *gen) emitStruct(d *ir.Struct) {
 	g.pf("} %s;\n\n", d.Name)
 	g.emitMaxBits(d)
 	g.emitConstructor(d)
+}
+
+// emitUnion emits a first-class one-of (SPEC §4.8): the flat <NAME>_TYPE
+// tag family (typedef + defines + debug-name function, the MessageType
+// shape), then the tag-plus-named-union struct — the same shape the message
+// dispatch uses. The selected arm is established ZEROED at selection
+// (read_<name> memsets before decoding); bytes of unselected arms are
+// indeterminate.
+func (g *gen) emitUnion(d *ir.Union) {
+	tag := d.Name + "Type"
+	g.pf("\n/* union %s — first-class one-of (SPEC §4.8): the tag says which arm is\n", d.Name)
+	g.pf("   live; None = 0 is the empty union, and the tag range is [0, %d]. */\n", d.Max)
+	g.pf("typedef %s %s;\n", cUint(d.StorageBits), tag)
+	g.pf("#define %s_NONE 0\n", screaming(tag))
+	for i, v := range d.Variants {
+		g.pf("#define %s_%s %d\n", screaming(tag), screaming(v.Name), i+1)
+	}
+	g.pf("#define %s_MAX %d\n", screaming(tag), d.Max)
+
+	g.pf("\n/* Debug/log name for any %s value, out-of-set included. */\n", tag)
+	g.pf("static SCHEMA_UNUSED const char * enum_name_%s( %s value )\n{\n", snake(tag), tag)
+	g.pf("    switch ( value )\n    {\n")
+	g.pf("        case %s_NONE: return \"None\";\n", screaming(tag))
+	for i, v := range d.Variants {
+		g.pf("        case %d: return %q;\n", i+1, ir.GoExportName(v.Name))
+	}
+	g.pf("        default: return \"???\";\n    }\n}\n\n")
+
+	if len(d.Variants) == 0 {
+		g.pf("/* An empty union holds only None; C forbids an empty union member, so the\n")
+		g.pf("   struct is the tag alone. */\n")
+		g.pf("typedef struct %s {\n    %s type;\n} %s;\n\n", d.Name, tag, d.Name)
+	} else {
+		g.pf("typedef struct %s {\n", d.Name)
+		g.pf("    %s type;\n", tag)
+		g.pf("    union {\n")
+		for _, v := range d.Variants {
+			g.pf("        %s %s;\n", v.Type, v.Name)
+		}
+		g.pf("    } as;\n")
+		g.pf("} %s;\n\n", d.Name)
+	}
+
+	maxBits := ir.MaxBitsUnion(d)
+	g.pf("#define %s_MAX_BITS %d   /* tag + the largest arm; None costs the tag only (SPEC §4.8) */\n", screaming(d.Name), maxBits)
+	g.pf("#define %s_MAX_BYTES %d  /* rounded up to the 8-byte write-buffer granularity; a READ buffer's allocation must extend at least 8 bytes past the data — serialize.c loads 64-bit windows */\n\n", screaming(d.Name), ir.MaxBytes(maxBits))
 }
 
 func (g *gen) emitField(f *ir.Field) {
@@ -515,6 +563,8 @@ func (g *gen) emitWireHeader() {
 		case *ir.Struct:
 			g.emitWriteFunc(decl)
 			g.emitReadFunc(decl)
+		case *ir.Union:
+			g.emitUnionWire(decl)
 		case *ir.Object:
 			g.emitObjectFunctions(decl)
 		}
@@ -523,6 +573,53 @@ func (g *gen) emitWireHeader() {
 	if g.file.Base == g.msgOwner && len(g.unit.Messages) > 0 {
 		g.emitMessageDispatch()
 	}
+}
+
+// emitUnionWire emits the union's write/read pair (SPEC §4.8): the write
+// validates the tag BEFORE it rides (the message dispatch rule — an
+// out-of-set tag writes nothing), the read rejects a tag above the count and
+// memsets exactly the selected arm before decoding it (§5).
+func (g *gen) emitUnionWire(d *ir.Union) {
+	tag := d.Name + "Type"
+	bits := ir.BitsRequired(big.NewInt(0), big.NewInt(d.Max))
+
+	g.pf("/* Writes %s. Returns 1 on success, 0 on failure. The tag is validated\n", d.Name)
+	g.pf("   BEFORE it rides: an out-of-set tag writes nothing (SPEC §4.8). */\n")
+	g.pf("static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_%s( serialize_write_stream_t * stream, const %s * value )\n{\n", snake(d.Name), d.Name)
+	if d.Max == 0 {
+		g.pf("    (void) stream; /* only None exists; the degenerate tag range [0, 0] costs zero bits */\n")
+		g.pf("    return value->type == %s_NONE;\n}\n\n", screaming(tag))
+	} else {
+		g.pf("    if ( value->type > %s_MAX )\n    {\n        return 0; /* not a %s value; nothing was written */\n    }\n", screaming(tag), tag)
+		g.call("    ", fmt.Sprintf("serialize_write_bits( stream, (serialize_uint32_t) value->type, %d )", bits))
+		g.pf("    switch ( value->type )\n    {\n")
+		for i, v := range d.Variants {
+			g.pf("        case %d:\n            return write_%s( stream, &value->as.%s );\n", i+1, snake(v.Type), v.Name)
+		}
+		g.pf("        default:\n            return 1; /* None — the tag is the whole wire (SPEC §4.8) */\n")
+		g.pf("    }\n}\n\n")
+	}
+
+	g.pf("/* Reads %s. Returns 1 on success, 0 on failure — a tag above %s_MAX is\n", d.Name, screaming(tag))
+	g.pf("   refused (SPEC §4.8); the selected arm is zero-established before decoding (§5). */\n")
+	g.pf("static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_%s( serialize_read_stream_t * stream, %s * value )\n{\n", snake(d.Name), d.Name)
+	if d.Max == 0 {
+		g.pf("    (void) stream; /* zero wire bits — only None exists */\n")
+		g.pf("    value->type = %s_NONE;\n    return 1;\n}\n\n", screaming(tag))
+		return
+	}
+	g.pf("    {\n        serialize_uint32_t tag_value = 0;\n")
+	g.call("        ", fmt.Sprintf("serialize_read_bits( stream, &tag_value, %d )", bits))
+	g.pf("        if ( tag_value > %s_MAX )\n        {\n            return 0; /* not a wire-legal tag */\n        }\n", screaming(tag))
+	g.pf("        value->type = (%s) tag_value;\n    }\n", tag)
+	g.pf("    switch ( value->type )\n    {\n")
+	for i, v := range d.Variants {
+		g.pf("        case %d:\n", i+1)
+		g.pf("            memset( &value->as.%s, 0, sizeof( value->as.%s ) );\n", v.Name, v.Name)
+		g.pf("            return read_%s( stream, &value->as.%s );\n", snake(v.Type), v.Name)
+	}
+	g.pf("        default:\n            return 1; /* None */\n")
+	g.pf("    }\n}\n\n")
 }
 
 func (g *gen) emitWriteFunc(st *ir.Struct) {
@@ -670,7 +767,12 @@ func (g *gen) emitZeroField(f *ir.Field, ind string) {
 			g.pf("%svalue->%s_count = 0;\n", ind, f.Name)
 		}
 	case f.Type.Kind == ir.TNamed:
-		if _, isStruct := f.Type.Ref.(*ir.Struct); isStruct {
+		switch f.Type.Ref.(type) {
+		case *ir.Struct:
+			g.pf("%smemset( &value->%s, 0, sizeof( value->%s ) );\n", ind, f.Name, f.Name)
+			return
+		case *ir.Union:
+			/* zero IS None: the tag is sentinel-zero (SPEC §4.8) */
 			g.pf("%smemset( &value->%s, 0, sizeof( value->%s ) );\n", ind, f.Name, f.Name)
 			return
 		}

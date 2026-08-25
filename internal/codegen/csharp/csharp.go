@@ -254,6 +254,9 @@ func (g *gen) emitFile(carriesProtocolId bool) {
 		case *ir.Struct:
 			g.emitClass(d)
 			g.emitStructFunctions(d)
+		case *ir.Union:
+			g.emitUnion(d)
+			g.emitUnionFunctions(d)
 		case *ir.Object:
 			g.emitObject(d)
 			g.emitObjectFunctions(d)
@@ -267,6 +270,30 @@ func (g *gen) emitFile(carriesProtocolId bool) {
 	if g.file.Base == g.objOwner && len(g.unit.ObjNames) > 0 {
 		g.emitObjectTagFunctions()
 	}
+}
+
+// emitUnion emits a first-class one-of (SPEC §4.8): the <Name>Type tag enum,
+// then the variant-class storage — the tag beside one pre-allocated arm per
+// variant (the MessageStorage stand-in; nothing heap-allocates per value
+// after construction).
+func (g *gen) emitUnion(d *ir.Union) {
+	members := make([]string, len(d.Variants))
+	for i, v := range d.Variants {
+		members[i] = ir.GoExportName(v.Name)
+	}
+	g.emitTagEnum(d.Name+"Type", members,
+		fmt.Sprintf("union %s's tag — None = 0, then each variant in declared order (SPEC §4.8)", d.Name))
+
+	g.tf("// %s — at most one of the arms; Type says which. Construction is the empty\n", d.Name)
+	g.tf("// union (None). A read zero-establishes exactly the selected arm before\n")
+	g.tf("// decoding it (SPEC §5); unselected arms keep what they last held — the\n")
+	g.tf("// MessageStorage reuse discipline. Consumers read the selected arm only.\n")
+	g.tf("public sealed class %s\n{\n", d.Name)
+	g.tf("    public %sType Type;\n", d.Name)
+	for _, v := range d.Variants {
+		g.tf("    public %s %s = new %s();\n", v.Type, ir.GoExportName(v.Name), v.Type)
+	}
+	g.tf("}\n\n")
 }
 
 // emitTagEnum emits a tag enum with unsigned backing sized to the set.
@@ -378,7 +405,7 @@ func (g *gen) emitElementConstructor(className string, fields []*ir.Field, v vie
 	var elems []*ir.Field
 	for _, f := range fields {
 		if g.viewKeepsStorage(f, v) && f.Array != ir.ArrayNone {
-			if _, ok := f.Type.Ref.(*ir.Struct); ok && f.Type.Kind == ir.TNamed {
+			if f.Type.Kind == ir.TNamed && isClassRef(f.Type.Ref) {
 				elems = append(elems, f)
 			}
 		}
@@ -482,6 +509,16 @@ func hasContextFields(d *ir.Object) bool {
 	return false
 }
 
+// isClassRef reports a named reference whose C# storage is a pre-allocated
+// class instance: a generated struct class or a union (SPEC §4.8).
+func isClassRef(ref ir.Decl) bool {
+	switch ref.(type) {
+	case *ir.Struct, *ir.Union:
+		return true
+	}
+	return false
+}
+
 func (g *gen) emitClassFields(fields []*ir.Field, v view) {
 	prevGuard := ""
 	for _, f := range fields {
@@ -562,8 +599,9 @@ func (g *gen) emitStorageField(f *ir.Field) {
 		init := ""
 		if f.HasDefault {
 			init = " = " + g.defaultValue(f, true)
-		} else if _, isStruct := f.Type.Ref.(*ir.Struct); isStruct && f.Type.Kind == ir.TNamed {
-			// pre-allocated at construction — the storage principle (SPEC §6.1)
+		} else if f.Type.Kind == ir.TNamed && isClassRef(f.Type.Ref) {
+			// pre-allocated at construction — the storage principle (SPEC §6.1);
+			// unions are classes here exactly like structs
 			init = " = new " + f.Type.Name + "()"
 		}
 		g.tf("    public %s %s%s;%s\n", typ, name, init, g.fieldComment(f))

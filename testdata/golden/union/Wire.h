@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package example — protocol id 0x40230069cc791fab
+// package example — protocol id 0x9cdffa5a3048f991
 
 #pragma once
 
@@ -92,6 +92,63 @@ struct ProbeSample {
 
 inline constexpr int64_t ProbeSampleMaxBits = 276; // longest wire path; align pads at worst case (SPEC §6.1)
 inline constexpr int64_t ProbeSampleMaxBytes = 40; // rounded up to the 8-byte write-buffer granularity; a read buffer's allocation must extend at least 8 bytes past the data — the reader loads 64-bit windows
+
+// type ProbeRing
+struct ProbeRing {
+    uint16_t radius = 0;
+};
+
+inline constexpr int64_t ProbeRingMaxBits = 16; // longest wire path; align pads at worst case (SPEC §6.1)
+inline constexpr int64_t ProbeRingMaxBytes = 8; // rounded up to the 8-byte write-buffer granularity; a read buffer's allocation must extend at least 8 bytes past the data — the reader loads 64-bit windows
+
+// type ProbeSlab
+struct ProbeSlab {
+    uint8_t width = 0; // wire [0, 100]
+    uint8_t height = 0;
+};
+
+inline constexpr int64_t ProbeSlabMaxBits = 15; // longest wire path; align pads at worst case (SPEC §6.1)
+inline constexpr int64_t ProbeSlabMaxBytes = 8; // rounded up to the 8-byte write-buffer granularity; a read buffer's allocation must extend at least 8 bytes past the data — the reader loads 64-bit windows
+
+// ProbeShapeType: union ProbeShape's tag — None = 0, then each variant in declared order (SPEC §4.8)
+enum class ProbeShapeType : uint8_t {
+    None = 0,
+    Ring = 1,
+    Slab = 2,
+    Max = 2, // the exported extent (SPEC §4.2)
+};
+
+// union ProbeShape — at most one of the arms; the tag says which. Construction is
+// None: the tag alone is initialized; an arm's storage is established ZEROED
+// when the arm is selected — by ReadProbeShape before it decodes (SPEC §5), or by
+// assigning it: value.ring = ProbeRing{}. Bytes of unselected arms are indeterminate.
+struct ProbeShape
+{
+    ProbeShapeType type;
+
+    union
+    {
+        ProbeRing ring;
+        ProbeSlab slab;
+    };
+
+    ProbeShape() : type( ProbeShapeType::None ) {} // the tag only — arms are zero-established at selection
+};
+
+inline constexpr int64_t ProbeShapeMaxBits = 18; // tag + the largest arm; None costs the tag only (SPEC §4.8)
+inline constexpr int64_t ProbeShapeMaxBytes = 8; // rounded up to the 8-byte write-buffer granularity; a read buffer's allocation must extend at least 8 bytes past the data — the reader loads 64-bit windows
+
+// type ProbeCollider
+struct ProbeCollider {
+    uint8_t armor = 0;
+    ProbeShape shape;
+    ProbeShape backup;
+    ProbeShape extras[2] = {}; // used count beside it; wire count in [0, 2]
+    int32_t extras_count = 0;
+};
+
+inline constexpr int64_t ProbeColliderMaxBits = 82; // longest wire path; align pads at worst case (SPEC §6.1)
+inline constexpr int64_t ProbeColliderMaxBytes = 16; // rounded up to the 8-byte write-buffer granularity; a read buffer's allocation must extend at least 8 bytes past the data — the reader loads 64-bit windows
 
 // type ProbeConfig
 struct ProbeConfig {

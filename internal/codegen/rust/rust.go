@@ -246,6 +246,9 @@ func (g *gen) emitFile(carriesProtocolId bool) {
 			g.emitDefaultImpl(d.Name, d.Fields, storageDeep)
 			g.emitConstructor(d)
 			g.emitStructFunctions(d)
+		case *ir.Union:
+			g.emitUnion(d)
+			g.emitUnionFunctions(d)
 		case *ir.Object:
 			g.emitObject(d)
 			g.emitObjectFunctions(d)
@@ -314,6 +317,30 @@ func (g *gen) allowNonCamel(name string) {
 	if strings.Contains(name, "_") {
 		g.pf("#[allow(non_camel_case_types)] // the name is fixed across targets (SPEC §4.8)\n")
 	}
+}
+
+// emitUnion emits a first-class one-of (SPEC §4.8): the <Name>Type tag
+// newtype (uniform tag surface across targets, exactly as MessageType exists
+// beside enum Message), then the value as a REAL Rust enum — None the
+// default, one tuple variant per arm. Out-of-set tags are unrepresentable by
+// construction, so the write side needs no guard.
+func (g *gen) emitUnion(d *ir.Union) {
+	members := make([]string, len(d.Variants))
+	for i, v := range d.Variants {
+		members[i] = ir.GoExportName(v.Name)
+	}
+	g.emitTagEnum(d.Name+"Type", members,
+		fmt.Sprintf("union %s's tag — None = 0, then each variant in declared order (SPEC §4.8)", d.Name))
+
+	g.pf("// %s — at most one of the arms. The default is None (the empty union);\n", d.Name)
+	g.pf("// a read replaces the whole value, so stale-arm semantics cannot arise here.\n")
+	g.pf("#[derive(Clone, Copy, PartialEq, Debug, Default)]\n")
+	g.pf("pub enum %s {\n", d.Name)
+	g.pf("    #[default]\n    None,\n")
+	for _, v := range d.Variants {
+		g.pf("    %s(%s),\n", ir.GoExportName(v.Name), v.Type)
+	}
+	g.pf("}\n\n")
 }
 
 func (g *gen) emitEnum(d *ir.Enum) {
@@ -457,6 +484,8 @@ func (g *gen) zeroScalar(f *ir.Field) string {
 		case *ir.Struct:
 			// Default IS the zero form; specified defaults live only in new()
 			return f.Type.Name + "::default()"
+		case *ir.Union:
+			return f.Type.Name + "::None" // zero IS the empty union (SPEC §4.8)
 		}
 	}
 	return "0"

@@ -549,6 +549,12 @@ func fpDecl(b *strings.Builder, d ast.Decl) {
 		}
 		fmt.Fprintf(b, "%s %s %s\n", kw, d.Name, fpAttrs(d.Attrs))
 		fpBlock(b, d.Body)
+	case *ast.UnionDecl:
+		fmt.Fprintf(b, "union %s\n{\n", d.Name)
+		for _, v := range d.Variants {
+			fmt.Fprintf(b, "variant %s %s\n", v.Name, v.Type)
+		}
+		b.WriteString("}\n")
 	case *ast.MessageDecl:
 		fmt.Fprintf(b, "message %s\n", d.Name)
 		fpBlock(b, d.Body)

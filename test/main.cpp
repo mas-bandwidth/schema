@@ -810,6 +810,76 @@ int main()
         ws.Flush();
         check( golden_wire( "probebits", buffer, ws.GetBytesProcessed() ) );
     }
+
+    // ---- ProbeCollider: first-class one-of (SPEC §4.8) — construction is
+    // None, round trip through a selected arm, a None arm beside it, an
+    // array of unions, the wire golden, and the refusal negative controls ----
+    {
+        static_assert( std::is_trivially_copyable<ProbeShape>::value,
+                       "the union representation is trivially copyable, the message union's contract (SPEC §4.8)" );
+        ProbeCollider in;
+        check( in.shape.type == ProbeShapeType::None ); // constructed as the empty union
+        check( ProbeShapeMaxBits == 2 + 16 );           // tag + the largest arm (SPEC §4.8)
+
+        in.armor = 7;
+        in.shape.type = ProbeShapeType::Slab;
+        in.shape.slab = ProbeSlab{};
+        in.shape.slab.width = 42;
+        in.shape.slab.height = 9;
+        // in.backup stays None — the empty arm costs the tag bits only
+        in.extras_count = 1;
+        in.extras[0].type = ProbeShapeType::Ring;
+        in.extras[0].ring = ProbeRing{};
+        in.extras[0].ring.radius = 777;
+
+        serialize::WriteStream ws( buffer, sizeof( buffer ) );
+        check( WriteProbeCollider( ws, in ) );
+        ws.Flush();
+        check( golden_wire( "probecollider", buffer, ws.GetBytesProcessed() ) );
+
+        ProbeCollider out;
+        out.backup.type = ProbeShapeType::Ring; // dirty — the read must restore None
+        serialize::ReadStream rs( buffer, ws.GetBytesProcessed() );
+        check( ReadProbeCollider( rs, out ) );
+        check( out.armor == 7 );
+        check( out.shape.type == ProbeShapeType::Slab );
+        check( out.shape.slab.width == 42 && out.shape.slab.height == 9 );
+        check( out.backup.type == ProbeShapeType::None );
+        check( out.extras_count == 1 );
+        check( out.extras[0].type == ProbeShapeType::Ring );
+        check( out.extras[0].ring.radius == 777 );
+
+        // NEGATIVE CONTROL — perturb the tag: the shape tag rides 2 bits at
+        // bit offset 8 (after the armor byte), range [0, 2]; forcing both
+        // bits makes it 3, and the reader must refuse (SPEC §4.8)
+        alignas( 8 ) static uint8_t corrupt[2048 + 8]; // + 8: the reader loads 64-bit windows
+        memcpy( corrupt, buffer, (size_t) ws.GetBytesProcessed() );
+        corrupt[1] |= 0x03;
+        {
+            serialize::ReadStream crs( corrupt, ws.GetBytesProcessed() );
+            ProbeCollider bad;
+            check( !ReadProbeCollider( crs, bad ) );
+        }
+
+        // NEGATIVE CONTROL — corrupt the selected arm's payload: width rides
+        // 7 bits at bit offset 10 with range [0, 100]; forcing all seven
+        // bits decodes 127, above the range, and the reader must refuse
+        memcpy( corrupt, buffer, (size_t) ws.GetBytesProcessed() );
+        corrupt[1] |= 0xFC;
+        corrupt[2] |= 0x01;
+        {
+            serialize::ReadStream crs( corrupt, ws.GetBytesProcessed() );
+            ProbeCollider bad;
+            check( !ReadProbeCollider( crs, bad ) );
+        }
+
+        // the write side validates the tag BEFORE it rides (SPEC §4.8,
+        // WriteMessage's rule): an out-of-set tag writes nothing
+        ProbeShape rogue;
+        rogue.type = ProbeShapeType( 3 );
+        serialize::WriteStream bs( buffer, sizeof( buffer ) );
+        check( !WriteProbeShape( bs, rogue ) );
+    }
     {
         ProbeArray in; // defaults are the constructed state, transitively
         check( in.samples[0].active && in.samples[1].active );
