@@ -75,7 +75,7 @@ the writer's own byte count — 219 bits, which is exactly the compiler's
 
 Nothing is spent identifying a field, because both sides were generated from
 the same schema. `health` is 10 bits because it was declared `| min = 0, max =
-1000]`, not because anyone hand-packed it.
+1000`, not because anyone hand-packed it.
 
 ## What the others are buying
 
@@ -125,11 +125,3 @@ integers would narrow the gap sharply, and a mostly-zero message would favour
 Cap'n Proto's packing far more than it favours schema. Bit-packing wins where
 values are *bounded*, and bounds are what a game's data has and a
 general-purpose format cannot assume.
-
-## A note on an earlier version of this file
-
-An earlier revision listed Protobuf at 50 bytes and FlatBuffers at 68. The
-Protobuf figure was arithmetic over the wire spec rather than a measurement,
-and it was wrong — the real encoder produces 56. The FlatBuffers figure came
-from a slightly different schema shape. Both are now measured by the committed
-script, which is why the script is committed.

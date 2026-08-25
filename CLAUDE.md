@@ -116,19 +116,11 @@ numbers §1–§9 and the §9 q-rows are frozen — code, corpus and docs cite t
   `bytes` form and a validated-UTF-8 read mode can return if a need appears.
 - **Open follow-ups carried out of the spec text:** the C# `Debug.Assert` half of the
   §4.7 UTF-8 writer contract is a recorded follow-up (C#, like Go, asserts nothing
-  today); the scanner's BOM diagnostic still says "it would silently move the protocol
-  id" — the source-hash rationale, stale since the §3.1 projection ruling — a cleanup
-  that must re-pin its exact-message diagnostics test. The same stale class is wider
-  than the scanner: all six codegen backends emit "the hash of its schema files
-  (SPEC §3.1)" into every generated file's header (38 occurrences across `generated/`
-  and the goldens today), and `internal/check/check.go` still cites §3.1 for
-  sorted-basename *hashing* — pre-projection language throughout; fixing it is one
-  deliberate pass with a golden re-pin. WIRES.md's message-wire paragraph lists four
-  runtimes where six exist.
-- **§6.1 gaps equal in the old text** (surfaced by the rewrite's verification pass,
-  not introduced by it): the symbol-naming paragraph gives five targets' conventions
-  but not C's (lower_snake free functions — `write_ship_data_deep(stream, value)` —
-  with `schema_`-prefixed internal helpers).
+  today). (The stale-§3.1 class — the scanner BOM diagnostic, the six banners'
+  "hash of its schema files", check.go's sorted-basename-hashing language — was
+  cleaned in the pre-v1.0.0 review pass, 2026-08-25, with its golden re-pin;
+  WIRES.md folded into USAGE "The wire" in the same pass, and SPEC §6.1/§6.3
+  gained C's naming conventions and the C/JS columns.)
 - **Removed as dead grammar residue** (not relocated — it described nothing the
   grammar can express): §4.6's `bytes(<= N)` error row; the `<=` marker on
   string/bytes died in the §4.7 unification. The EBNF gained the `ufixed(I, F)`

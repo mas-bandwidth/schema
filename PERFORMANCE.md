@@ -1,10 +1,9 @@
 # Performance
 
-> **Convention note (2026-08-17):** C is the reference from here on — C is the 100% and every
-> other language, C++ included, is measured against it
-> ([BENCH-STANDARD §5](bench/BENCH-STANDARD.md#5-reporting-format)). The tables below predate
-> the flip and are kept exactly as published, in their recorded convention (C++ = 100%); the
-> next published pass prints C = 100%.
+> **Convention note:** the standard's reporting convention is C = 100%, every other
+> language measured against it
+> ([BENCH-STANDARD §5](bench/BENCH-STANDARD.md#5-reporting-format)). The tables below
+> are kept exactly as published, in their recorded convention (C++ = 100%).
 
 Generated-code performance as time relative to C++ (100%; higher is slower), medians across
 the corpus on an **Apple M3 Ultra**, the 2026-08-15 five-language pass **at `-O3`**
@@ -53,34 +52,7 @@ Only C and C++ appear because only they have real `-O2` builds: Rust's bench run
 its release profile (`opt-level = 3`), and the harness's own refusal rules will not ratio
 an explicit `-O3` row inside an `-O2` table — no override exists, by design. Go and C#
 build at their single default level and their rankings are level-independent by
-construction. The Rust `-O2` leg is a named harness gap; its column returns when the
-runner grows one.
-
-## What changed, and why the C row moved
-
-The previous published table (2026-08-14, Apple M2) put C at 348% write and **530%** read,
-with batch read at 435%. The gap was never the generated code. It was a compiler heuristic
-nobody had named: **LLVM prices an `Ok`/`Err` split at roughly even odds, so a fallible
-serialize chain's block frequency decays geometrically, and a few fields in, every remaining
-call site is held to the cold inline threshold instead of the hot one.** Reads decay. Writes
-never do, because writes cannot fail. That one word — *fallible* — explains a read/write
-asymmetry that had been sitting in these libraries since they were written.
-
-The remedies did not transplant even though the mechanism did: Rust wanted its error
-constructor pinned cold, C wanted the demand placed on the read spine, and in C++ the same
-cold hint activated the machine outliner and cost 25%. Same disease, three prescriptions,
-each measured. C now leads C++ on batch read.
-
-Two honest caveats on the comparison. The machine changed (M2 → M3 Ultra), so the two tables
-are not a controlled before/after — the C read movement is far outside machine variance and
-the mechanism is confirmed by inline verdicts, but the exact figures are not subtraction. And
-the C row's remaining gap was packaging *in this table's era*: `serialize.c` was then a
-compiled translation unit, so every runtime call crossed a boundary the header-only C++
-runtime does not have, and no leg here is built with LTO because none of the other four are.
-(That era ended 2026-08-17: serialize.c #25 made the C runtime header-only too, and every
-pass since records `linkage=hdr` for both legs — see BENCH-STANDARD §3.1's amendment and
-issue #66. The figures in this table predate the change and are correct for what they
-measured.)
+construction. The Rust `-O2` leg is a named harness gap.
 
 ## Reading the table honestly
 

@@ -31,14 +31,14 @@ safely accept a packet from the network at all. You are then choosing between
 In schema there is nothing to omit. Refusing an out-of-range value is not a
 verification pass you run first, it is what the read does: the bound is part of
 the type, so the generated reader checks it inline in every language, because
-one compiler emitted all five. There is no such thing as a schema port that
+one compiler emitted all six. There is no such thing as a schema port that
 reads but cannot validate.
 
 For a 60 Hz gameplay packet where you decode the whole thing anyway, that trade
 runs strongly one way. For a memory-mapped asset you want to touch three fields
 of, it runs the other — and that case is deliberately not schema's job. schema
 serves the realtime wire; generated storage is relocatable and memcpy-able
-(see [WIRES.md](WIRES.md)), but the wire is one encoding with one purpose.
+(see [USAGE.md](USAGE.md#the-wire)), but the wire is one encoding with one purpose.
 
 ## Isn't this just Protobuf?
 
@@ -78,7 +78,7 @@ Two further differences worth being precise about. Cap'n Proto is byte- and
 word-aligned by design — alignment is what makes the in-place trick sound —
 where schema packs to the bit. And Cap'n Proto brings a large surface: RPC,
 promise pipelining, capabilities, an ecosystem. schema brings a language and
-five code generators, and nothing else.
+six code generators, and nothing else.
 
 On size: on the gameplay message in [COMPARISON.md](COMPARISON.md), Cap'n Proto
 is 96 bytes unpacked and **52 packed**, against schema's 28. Packed is the
@@ -124,8 +124,8 @@ Three things in combination are unusual:
    rollback and deterministic replay cannot be built on floats. No mainstream
    format offers a fixed-point type; you store an int and remember the scale
    yourself, in every language, forever.
-3. **Five languages proven identical mechanically.** Every CI run generates the
-   corpus in C, C++, C#, Go and Rust and compares the emitted wire against pinned
+3. **Six languages proven identical mechanically.** Every CI run generates the
+   corpus in C, C++, C#, Go, JavaScript and Rust and compares the emitted wire against pinned
    goldens. Cross-language agreement is checked, not asserted.
 
 ## Is bit-packing worth the CPU? Bandwidth is cheap.
@@ -203,17 +203,18 @@ demo. That is worth exactly as much as you think it is.
 
 Two things that reduce the risk if it were abandoned: the output is **ordinary
 source code in your repo** with no runtime dependency on the compiler, and the
-generated C, C++, C#, Go and Rust reads like the code you would have written. If the
+generated C, C++, C#, Go, JavaScript and Rust reads like the code you would have written. If the
 project stopped tomorrow, you would still have working serializers and could
 maintain them by hand. That is a materially different exposure from depending
 on a runtime library.
 
-## Only five languages. What about Python, TypeScript, Java, Swift?
+## Only six languages. What about Python, Java, Swift?
 
-Not supported today. The five exist because they are what the authors ship in:
-C++ engine, C# for Unity, Go for backend services, Rust for tooling.
+Not supported today. The six exist because they are what the authors ship in:
+C++ engine, C# for Unity, Go for backend services, Rust for tooling,
+JavaScript for the browser client.
 
-A new backend is a Go package that walks the same IR the existing five consume,
+A new backend is a Go package that walks the same IR the existing six consume,
 and the cross-language test harness would tell you immediately whether it
 agrees with the others bit for bit. That is the mechanism, but it is real work
 and nobody should pretend otherwise.
@@ -224,27 +225,28 @@ That is what it is designed for, and the specific guarantee is: **a read
 refuses out-of-range input rather than clamping or trusting it.** Ranged
 values, array counts past their bound, string and bytes lengths past their
 maximum, enum values that are not variants, and reads that run past the end of
-the buffer all fail the read, and the same rules hold in all five languages
-because one compiler emitted all five.
+the buffer all fail the read, and the same rules hold in all six languages
+because one compiler emitted all six.
 
 What it does *not* do: it is not a transport, so it does nothing about replay,
 amplification, rate limiting or authentication. Those belong to the layer
 below.
 
 The compiler is fuzzed — a native Go fuzz harness drives parse → check →
-generate across all five backends, and every crasher ever found is committed as
+generate across all six backends, and every crasher ever found is committed as
 a permanent regression input. Generated readers are exercised against
 hand-crafted hostile bytes in the cross-language test corpus.
 
 ## Do writes validate like reads do?
 
 No. **The guarantee is on reads** — that is where untrusted input arrives, and
-it holds in all five languages.
+it holds in all six languages.
 
 On the write side each language uses its own correctness idiom: C++ has
 `assert`/`NDEBUG`, a check that disappears in release, so that is what it uses;
-Go has no assert idiom, so it returns `ErrValueOutOfRange`, and Rust and C# do
-likewise. A language should verify correctness the way that language verifies
+Go has no assert idiom, so it returns `ErrValueOutOfRange`, and C, C#, Rust
+and JavaScript likewise return failure rather than invent an assert. A
+language should verify correctness the way that language verifies
 correctness — which means the write side is not uniform across targets, and you
 should not build on it. Keep values inside
 their declared bounds when you write them — your code already knows they are,
@@ -252,14 +254,14 @@ and in a game shipping at 60 Hz re-checking every field on the write path is a
 cost with no buyer. See
 [USAGE.md](USAGE.md#writes-are-the-callers-responsibility).
 
-## Is everything supported in all five languages?
+## Is everything supported in all six languages?
 
-**Yes.** The wire is generated for C, C++, C#, Go and Rust from one IR, and
+**Yes.** The wire is generated for C, C++, C#, Go, JavaScript and Rust from one IR, and
 checked against each other in CI on every push. Every target's output is held
 to the same pinned goldens.
 
-C was the last to arrive and reached parity in v1.6.0: fixed point, 128-bit
-integers, objects and their quantize pair, and message dispatch. Rust's
+Parity means everything: fixed point, 128-bit integers, objects and their
+quantize pair, and message dispatch, in every target. Rust's
 `#[repr(C)]` storage is what makes relocatability actually true there rather
 than incidental.
 
@@ -289,8 +291,11 @@ Yes — generated code targets a small runtime per language
 [serialize.c](https://github.com/mas-bandwidth/serialize.c),
 [serialize.cs](https://github.com/mas-bandwidth/serialize.cs),
 [serialize.go](https://github.com/mas-bandwidth/serialize.go),
+[serialize.js](https://github.com/mas-bandwidth/serialize.js),
 [serialize.rs](https://github.com/mas-bandwidth/serialize.rs)). They are small,
-open source, and doing the bit-level stream work the generated code calls into.
+open source, and doing the bit-level stream work the generated code calls into
+(generated JavaScript never imports its runtime — every wire call is a method
+on the stream you pass in, and the stream comes from serialize.js).
 
 ## How do I get out if I regret it?
 

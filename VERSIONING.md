@@ -50,13 +50,8 @@ carries it wears the number these rules assign.
 
 ## History: the v2 line
 
-v2.0.0 and v2.1.0 were published under an older reading of these rules — one
-where a protocol id move for unchanged schemas was itself a major event. Under
-the policy above that class of release is a minor with its id bump stated
-loudly, and the two releases have been re-versioned into the 1.x line as
-v1.6.0. Additionally, schema's `go.mod` carries no `/v2` module suffix, so the
-v2 tags were never resolvable to Go tooling in the first place — the 1.x line
-is the line that exists.
+v2.0.0 and v2.1.0 were re-versioned into the 1.x line as v1.6.0; the 1.x
+line is the line that exists.
 
 ## Recorded wire-affecting amendments
 
@@ -66,7 +61,7 @@ the history of "a release moved bits" lives where the compatibility rules do.
 **2026-08-15 — fixed-point rounding unified: half away from zero.** SPEC §4.8
 rule 2b's generated shallow narrowing changed from the bare arithmetic shift
 (ties toward +infinity) to the one fixed-point rounding rule, ties away from
-zero — the rule the data compiler and rule 4 already used. This moves the
+zero — the rule that rule 4 already used. This moves the
 bytes generated code produces **only on exact ties of negative raw values in
 shallow narrowing**, and the protocol id does NOT move — a rounding rule is
 not wire shape, so the id cannot see this class of change. It rides the next
@@ -75,11 +70,9 @@ the ludicrous corpus is the tripwire that keeps five ports on the unified
 rule.
 
 The standing risk calculus for this and every future wire-affecting
-amendment, Glenn's words (2026-08-15): *"I will always deploy client and
-server together on any breakage. so this is no concern."* Both sides of every
-connection redeploy together; an amendment that moves bytes is priced by that
-doctrine, not by the fiction that deployed halves must interoperate across
-the change.
+amendment: both sides of every connection redeploy together, so an amendment
+that moves bytes is priced by that doctrine, not by the fiction that deployed
+halves must interoperate across the change.
 
 ## What is not covered
 
@@ -98,12 +91,12 @@ tree, that belongs in your build system, not in every file.
 
 **The Go API under `compiler/` and `ir/` IS covered; `internal/` is not.** The
 compiler is also a library — `github.com/mas-bandwidth/schema/compiler` loads
-and checks units, generates through registered generators, and packs data;
+and checks units and generates through registered generators;
 `github.com/mas-bandwidth/schema/ir` is the checked unit those generators read.
 From the first release that carries them, their exported surface follows the
 rules above: breaking it is a major, adding to it is a minor. Everything under
-`internal/` — the scanner, parser, AST, checker, the six per-language emitters
-and the data compiler's encoder — carries no promise and may change in any
+`internal/` — the scanner, parser, AST, checker and the six per-language
+emitters — carries no promise and may change in any
 release. Building on the compiler means `compiler.Generator` and `ir`, which is
 the same door the built-in backends come through.
 
@@ -121,9 +114,10 @@ projects with their own version numbers:
 | [serialize.c](https://github.com/mas-bandwidth/serialize.c) | C |
 | [serialize.cs](https://github.com/mas-bandwidth/serialize.cs) | C# |
 | [serialize.go](https://github.com/mas-bandwidth/serialize.go) | Go |
+| [serialize.js](https://github.com/mas-bandwidth/serialize.js) | JavaScript |
 | [serialize.rs](https://github.com/mas-bandwidth/serialize.rs) | Rust |
 
-They share a wire standard (`STANDARD.md`, kept identical across all five) and
+They share a wire standard (`STANDARD.md`, kept identical across all six) and
 are checked against each other. A given compiler release states the minimum
 runtime version it needs; newer runtimes keep working with older generated
 code.
