@@ -68,10 +68,13 @@ The view work is specifying this artifact as a **generated, runtime-loadable
 descriptor** and emitting it in each target language. The descriptor format is
 specced once, per the SPEC discipline, before any emission is written; the
 facts it carries are exactly the projection's inclusion list (SPEC §3.1) plus
-the names the projection already renders. Nothing is computed twice: the
-descriptor and the protocol id derive from the same IR facts, so a descriptor
-that disagrees with the generated wire code cannot exist without the id
-moving.
+the names the projection already renders. Nothing is computed twice: a
+descriptor and its hash derive from the same IR facts, so a descriptor that
+disagrees with the generated wire code cannot exist without a hash moving.
+**Which hash depends on the declaration** (§3.3): a type's facts print in
+the unit's projection, so the protocol id moves; a table's do not — the
+projection never prints table declarations — so its **lineage hash** moves,
+and the protocol id stands still.
 
 ### 2.2 What is generated
 
@@ -82,7 +85,10 @@ Per target language:
    name and kind, and its field list in wire order, each field carrying name,
    kind, width/signedness, declared bounds, string/bytes/array capacities,
    float range/resolution, fixed `I`/`F`, specified default, and branch
-   structure. Generated as data, not code — one table the walker indexes.
+   structure. A `table`'s metadata is its lineage — one descriptor per
+   fenced version (§3.5), hashed into the lineage and never into the
+   unit's projection (§3.3). Generated as data, not code — one table the
+   walker indexes.
 2. **A generic walker** — one per target, living in the table runtime
    library (§9), never regenerated per schema: given a descriptor and a
    value, it visits the value's fields in wire order, dispatching on field
@@ -254,10 +260,12 @@ a reader must never refuse a row merely for being newer than itself:
   validation; payload bytes beyond the known prefix are skipped, never
   judged.
 
-In both cases a payload consuming beyond `length` refuses; consuming less
-than `length` is legal exactly and only as the N > M skip. An offset-index
-entry out of bounds or non-monotonic, and a row overrunning its slab, are
-read failures always. Writes assume trusted data, as everywhere.
+A row claiming version 0 refuses — versions begin at 1 (§10.5) — so the
+two branches above are total over every accepted row. In both cases a
+payload consuming beyond `length` refuses; consuming less than `length` is
+legal exactly and only as the N > M skip. An offset-index entry out of
+bounds or non-monotonic, and a row overrunning its slab, are read failures
+always. Writes assume trusted data, as everywhere.
 
 ### 3.5 Versioning: fences over the flattened shape
 
@@ -316,8 +324,9 @@ table Spawn
 }
 ```
 
-Fields above the first `version` marker are version 1; each marker opens the
-next version's appended tail; the head version is the highest marker.
+Fields above the first marker are version 1 — the unmarked head of the
+body (§10.5); each marker opens the next version's appended tail; the
+head version is the highest marker.
 Version 1's flat shape is `position.x, position.y, position.z, kind`;
 version 2 appends `yaw`. Both snapshots live in the lineage.
 
@@ -347,11 +356,14 @@ offers is legal under this section's own law: append, revert, or fork;
 never remove.
 
 **Deleting a fenced table declaration is legal, with its lineage retained**
-(PROPOSED): stored documents keep reading through the retained descriptors
-— the walker needs the lineage, not the declaration — so deletion ends
-future fences and future writes, never past readability. What removal
-cannot do is free the fenced shapes: the lineage is append-only and
-outlives the declaration, exactly as archives outlive builds.
+(PROPOSED) — and deletion **ends the freeze**: types that contributed
+fields below the deleted table's fences unfreeze, except where another
+fenced table still uses them. That is sound on both sides of time: no
+current build writes the deleted table, so nothing new can be produced
+under its shapes; and stored documents keep reading regardless, because
+they carry their descriptors embedded by default (§14 q1) — the walker
+needs the lineage, not the declaration. Deletion ends future fences and
+future writes, never past readability.
 
 ### 3.6 Layouts and the parallel build
 
@@ -404,7 +416,8 @@ data through a directory identity is what pointer semantics *means*. And
 versioning is untouched, because fences govern shape while mutation changes
 values — which yields a free feature: **a packed document of state tables
 is a save game**, and an old save loads through the fence machinery,
-prefix-read with the tail zero-defaulted — versioned save compatibility
+prefix-read with the tail construction-defaulted (specified default, else
+zero; §3.5) — versioned save compatibility
 across patches, from the content machinery, at no new cost (§6 takes this
 further).
 
@@ -553,9 +566,13 @@ Because a declared ref changes no wire, **v1 may ship without it**: plain
 indices and enums under the inherited grammar already express every
 reference §4.2 names, which is how the first consumers solve this today.
 `ref` is therefore specified here as its own subsection so it can land
-separately — a follow-on that adds meaning, never representation. Row
-identity is ruled (§14 q3): a ref targets the declared `key` field where
-the table declares one, and the bare row index otherwise.
+separately — a follow-on that adds meaning, never representation. It is
+legal on any integer field **wherever one appears — inside `type` bodies
+included**, because types compose into rows (§10.2) and the annotated
+field travels with the type; in pure packet use it is inert, exactly the
+meaning-never-representation rule applied. Row identity is ruled
+(§14 q3): a ref targets the declared `key` field where the table declares
+one, and the bare row index otherwise.
 
 ## 5. Live documents: hot reload and patching
 
@@ -654,9 +671,15 @@ live fleet.
 ## 6. The row as a versioned message
 
 A table row packed alone **is a versioned message**. The row encoding —
-version plus length header, prefix evolution, zero-defaulted tails (§3.4,
+version plus length header, prefix evolution, construction-defaulted tails
+(specified default, else zero; §3.4,
 §3.5) — is self-delimiting and skew-tolerant, so one row sent over a socket
-is a message two peers can exchange while on different builds. Nothing new
+is a message two peers can exchange while on different builds. And a
+build's generated table code carries its table's **full in-file lineage**
+— every version at or below its head is derivable from the fence markers
+alone — which is what licenses standalone-row reading of N < M: a bare
+row needs no document and no embedded descriptor to be read by any build
+at or past its version. Nothing new
 is defined here; the property falls out of the row wire, and it completes
 the wire story:
 
@@ -673,7 +696,8 @@ The proving use cases, named: **save games and per-user profile data**. They
 are the same use case at different addresses — versioned state documents
 that outlive every build that wrote them, in the player's hands and in the
 studio's. Both ride the fence machinery unchanged: a years-old save or
-profile loads through its lineage, prefix-read and zero-defaulted, and
+profile loads through its lineage, prefix-read and construction-defaulted
+(specified default, else zero; §3.5), and
 hostile or corrupted data refuses cleanly on read (§3.4) — a property the
 formats usually reached for here never offered.
 
@@ -698,17 +722,28 @@ over all wire-legal values**: every value a generated reader accepts has
 exactly one canonical dump, headroom values included:
 
 - **Fields in declaration order** — the wire order, so a dump reads like
-  the declaration. **No insignificant whitespace**; **strings escaped
-  minimally** — only the escapes JSON mandates, nothing optional.
+  the declaration. **No insignificant whitespace.** **Escapes are pinned**:
+  the two-character short forms (`\"` `\\` `\b` `\f` `\n` `\r` `\t`) where
+  they exist, `\u00xx` with lowercase hex for the remaining mandatory
+  control characters, and nothing else escaped.
+- **Untaken `if` branches are omitted from the dump**; import materializes
+  their fields at construction values (specified default, else zero —
+  §3.5's rule for absent fields, applied to absent branches).
 - **Integers with storage wider than 32 bits as strings, uniformly** —
   `int64`/`uint64`, the 128-bit family, `bits(N > 32)` — such values do
   not survive double-precision JSON readers; 32-bit-and-narrower storage
   dumps as JSON numbers.
-- **`float64` by shortest round trip; `float32` by float-shortest round
-  trip** — the shortest decimal string that parses back to the exact
-  `float32`, not the double's longer spelling. **Non-finite floats as
-  `"NaN"`, `"Infinity"`, `"-Infinity"` strings** (raw-bit float fields can
-  carry them; JSON cannot, unquoted).
+- **Finite floats by shortest round trip**: `float64` rendered by the
+  ECMAScript Number-to-String algorithm — a published, deterministic
+  algorithm — and `float32` by the same algorithm over the
+  float32-shortest digits (the shortest decimal that parses back to the
+  exact `float32`); lowercase `e` in exponents (PROPOSED). **Negative
+  zero dumps as `-0.0`**, and import maps it to the negative-zero bits.
+- **ALL non-finite values dump as an object carrying the exact bits**:
+  `{"nonfinite": "0x7ff8000000000000"}` — 8 hex digits for `float32`, 16
+  for `float64`, lowercase. One spelling class for every NaN payload and
+  both infinities, canonical NaN included — no name-based special cases,
+  and the round trip is byte-exact by construction.
 - **`fixed`/`ufixed` as the raw scaled integer** — exact and
   deterministic; a decimal spelling would lose nothing but adds taste
   calls (PROPOSED as raw). Wide fixed storage rides the string rule above.
@@ -718,25 +753,32 @@ exactly one canonical dump, headroom values included:
   wire-legal (SPEC §4.2) and must dump; a dump that says `"Railgun"`
   survives a renumbering the wire would not.
 - **Flags as an array of set variant names in declaration order, plus one
-  trailing integer element carrying any set headroom bits, omitted when
-  zero** — `["Firing", "Disabled"]`, or `["Firing", 96]` when widened
-  bits 5 and 6 are set.
+  trailing STRING element carrying any set headroom bits, omitted when
+  zero** — `["Firing", "Disabled"]`, or `["Firing", "96"]` when widened
+  bits 5 and 6 are set. A string always: flags storage is `uint64`, the
+  wider-than-32 class.
 - **Unions as a single-variant object** — `{"sphere": {...}}`; `None` is
   the empty object.
-- **Declared table refs as indices, `null` for optional-empty** — the
-  presence bit spelled the JSON way. (Stated over the declared ref of
-  §4.4; a wrapper union without the annotation dumps by the union rule.)
+- **A document dumps as an array of `{"table": name, "rows": [...]}` in
+  directory order** (PROPOSED). Descriptors are not dumped: canonical
+  JSON is **schema-relative** — the walker reads the declarations, so the
+  spelling follows them (enum names, union variant objects, a nullable
+  table ref by its union spelling, a bare index as the integer it is),
+  and two schemas declaring the same bytes differently dump differently,
+  by design. Refs are integers and dump as integers; the `ref` annotation
+  changes meaning, never spelling (§4.4).
 
 The conformance property is **golden-gated round trip: pack of import of
 dump is byte-identical** — `pack(import(dump(x))) == pack(x)`, over the
-full corpus including headroom and non-finite values — which pins every
-spelling rule above the same way golden wire bytes pin the encodings.
-**Import is a validated read**, untrusted exactly like wire bytes (SPEC
-§5): ranges, bounds, capacities and tags refuse loudly, so a hand-edited
-file cannot smuggle a value the wire would reject. **Versioning works in
-text**: a dumped table carries its version, and an old file imports through
-the fences with the tail zero-defaulted, exactly as an old row reads
-(§3.5).
+full corpus including headroom, non-finite and negative-zero values — and
+with every spelling above pinned, the property is total: every wire-legal
+value has exactly one dump, and every dump packs back to the bytes it came
+from. **Import is a validated read**, untrusted exactly like wire bytes
+(SPEC §5): ranges, bounds, capacities and tags refuse loudly, so a
+hand-edited file cannot smuggle a value the wire would reject.
+**Versioning works in text**: a dumped table carries its version, and an
+old file imports through the fences with the tail construction-defaulted
+(specified default, else zero; §3.5), exactly as an old row reads.
 
 The workflow this unlocks: **content lives as text in git** — diffable,
 mergeable, reviewable — and is **packed at build, byte-reproducibly**
@@ -815,18 +857,27 @@ Declaration = Package | Const | Enum | Flags | TypeDecl | Union
 TableDecl   = "table" ident ( TableBlock
             | AttrSection NL TableBlock ) NL .             // qualifiers: capacity, below
 TableBlock  = "{" { Item | Fence } "}" .                   // Item is §4.2's, unchanged
-Fence       = "version" IntExpr NL .                       // fence marker (PROPOSED);
-                                                           // "version" is contextual
+Fence       = "version" IntLiteral NL .                    // fence marker (PROPOSED);
+                                                           // "version" is contextual;
+                                                           // a LITERAL, never an expression
 ```
 
-`version` is a contextual keyword, like `flags` and `union`: inside a
-table body, the identifier `version` followed by an integer expression is
-a fence; followed by a type it is an ordinary field — one token of
-lookahead disambiguates, and the grammar stays LL(2). The attribute
+`version` is a contextual keyword, like `flags` and `union` — and a fence
+number is an **integer literal, deliberately**: a fence is a lineage
+ordinal, not a tunable, so a const-named or computed fence adds nothing
+and is refused. The restriction is also what keeps the grammar
+unambiguous: inside a table body, the identifier `version` followed by an
+integer literal is a fence; followed by an identifier it is an ordinary
+field of a declared type — `version SemVer` stays a legal field — and the
+literal-versus-identifier split disambiguates in one token, so the grammar
+stays LL(2). The attribute
 vocabulary (SPEC §4.2, closed and checked) grows three entries: table
 declarations take **`capacity`** (valued — §10.4, PROPOSED); table fields
-additionally take the valueless **`key`** (§10.3, PROPOSED) and, as the
-§4.4 follow-on, the valued **`ref`**.
+additionally take the valueless **`key`** (§10.3, PROPOSED); and the
+valued **`ref`** (the §4.4 follow-on) is legal on any integer field
+**anywhere — inside `type` bodies too**, since types compose into rows
+(§10.6's `ShipEntry` is the canonical spelling). In pure packet use the
+annotation is inert: meaning, never representation (§4.4).
 
 ### 10.1 Declaration, and the inherited field grammar
 
@@ -1129,10 +1180,13 @@ makes it safe, and they ship together. The sequencing question this draft
 posed is closed.
 
 What remains PROPOSED is spelling, not design, held for the language
-review of §10: the row-header widths (§3.4), the table-deletion rule
-(§3.5), the `capacity` attribute (§3.7), the `key` attribute's surface
-(§10.3), and the canonical-JSON taste calls (raw fixed-point spelling,
-`None` as the empty object — §7).
+review of §10: the `table` declaration syntax and the §10 grammar
+productions themselves; the row-header widths (§3.4); the table-deletion
+rule (§3.5); the `capacity` attribute (§3.7, §10.4); the `key`
+attribute's surface (§10.3); the `ref` annotation's spelling (§4.4); the
+directory rendering (§4.1); and the canonical-JSON taste calls (raw
+fixed-point spelling, `None` as the empty object, the float-rendering
+algorithm, the document dump shape — §7).
 
 ## 15. What changes in SPEC.md when this lands
 
