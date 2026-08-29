@@ -7,8 +7,8 @@ surface — [#157](https://github.com/mas-bandwidth/schema/issues/157)) and
 [#158](https://github.com/mas-bandwidth/schema/issues/158)). It is written in
 SPEC.md's register and to its rigor, but it is not yet normative: SPEC.md
 promises that where the compiler and the document disagree one of them is a
-bug, and the compiler refuses `table` by name today (SPEC §4.11). §9 lists the
-open questions this draft deliberately does not decide, and §10 lists the
+bug, and the compiler refuses `table` by name today (SPEC §4.11). §13 lists the
+open questions this draft deliberately does not decide, and §14 lists the
 SPEC.md text that changes when this lands. Syntax shown in examples is marked
 **PROPOSED** wherever it is not already in the language.
 
@@ -82,11 +82,12 @@ Per target language:
    kind, width/signedness, declared bounds, string/bytes/array capacities,
    float range/resolution, fixed `I`/`F`, specified default, and branch
    structure. Generated as data, not code — one table the walker indexes.
-2. **A generic walker** — one per target, in the runtime or generated
-   support code: given a descriptor and a value, it visits the value's fields
-   in wire order, dispatching on field kind, invoking a caller-supplied
-   visitor. The walker is how a dumper prints any type, an editor edits any
-   row, and an exporter emits any document, with zero per-type glue.
+2. **A generic walker** — one per target, living in the table runtime
+   library (§9), never regenerated per schema: given a descriptor and a
+   value, it visits the value's fields in wire order, dispatching on field
+   kind, invoking a caller-supplied visitor. The walker is how a dumper
+   prints any type, an editor edits any row, and an exporter emits any
+   document, with zero per-type glue.
 3. **The walker's write half** — set-field-by-descriptor, for the trusted
    tooling side: an editor that walks the view to read a row writes it back
    the same way. This sits squarely inside SPEC §5's doctrine — writes
@@ -110,7 +111,7 @@ path load-bearing for the protocol.
 A view over a `type` is compiled in: the static metadata matches the build's
 own shape, always. A view over a `table` is the same machinery pointed at
 retained descriptors: reading a row written under an older version means
-loading that version's descriptor (§3.5, §9 q1) and walking the row through
+loading that version's descriptor (§3.5, §13 q1) and walking the row through
 it. This is the whole trick — tables need no second reflection system,
 because the view already is one.
 
@@ -172,7 +173,7 @@ table Item
 type may hold: bare and ranged integers, the 128-bit family, `bits(N)`,
 `bool`, floats and compressed floats, `fixed`/`ufixed`, enums, flags,
 strings, bytes, bounded arrays, unions, `if` branches, `const`/`reserved`/
-`align` items — and declared types as field groups, pending §9 q4. That is
+`align` items — and declared types as field groups, pending §13 q4. That is
 most of the table's power at zero new constructs, and it composes with the
 versioning model because rows are length-prefixed and sequentially decoded:
 variable-length fields do not fight prefix evolution (§3.5).
@@ -228,7 +229,7 @@ the skip.
 doctrine, unchanged: every range, bound, count, tag and padding check the
 type wire performs, the row payload performs; a `length` that disagrees with
 the decoded payload's consumed size, a `version` outside the reader's known
-lineage (subject to §9 q1's descriptor availability), an offset-index entry
+lineage (subject to §13 q1's descriptor availability), an offset-index entry
 out of bounds or non-monotonic, and a row overrunning its slab are all read
 failures. Writes assume trusted data, as everywhere.
 
@@ -270,7 +271,7 @@ Reading across versions, both directions:
   not wire semantics.)
 
 **PROPOSED fence syntax** (the candidates and the enforcement question are
-§9 q2; this example uses candidate A):
+§13 q2; this example uses candidate A):
 
 ```
 type Vec3
@@ -300,7 +301,7 @@ which point the fence owns those fields' shape. Editing `Vec3.z` to
 `float64` after the fences above exist is refused the next time the fence
 check runs against the retained lineage — at the declaration of the next
 fence at the latest, and at every compile where the lineage is on hand
-(§9 q2) — with the shape's owner named:
+(§13 q2) — with the shape's owner named:
 
 ```
 Types.schema:6:5: Vec3.z changed from float32 to float64, but Vec3 is part
@@ -341,6 +342,52 @@ measure stream the parallel build's first phase runs. This is a table-only
 addition: SPEC §6.1's "no generated measure function" rule for types stands
 unchanged, and the table build is exactly the real need that rule reserved
 the door for.
+
+### 3.7 Mutable instances: content and state
+
+One distinction, kept deliberately out of the language: **content versus
+state is a property of the instance, not the declaration.** Any table may be
+**held immutable** — shared, hot-swappable (§5), hash-audited (§5.3) — or
+**instantiated mutable** — a private working copy. Same declaration, same
+descriptors, same view; nothing in the `.schema` file says which, because
+the same table is legitimately both (a spawn table is content on the server
+and a working copy in the editor).
+
+The mutable form is the fixed-slot layout §3.6 already blesses, and it is
+always available because the grammar bounds every field: the worst-case row
+size is static. In memory, a mutable instance holds its rows as the
+generated native structs the compiler already emits (SPEC §6.1), with
+bitpacking at the boundaries — save, wire, transfer — so mutation is plain
+field assignment on plain structs, at memory speed. A mutable table of
+types is a component array with index joins: **ECS falls out as a special
+case**, not a feature.
+
+This vindicates §1's cornerstone rather than bending it: mutating shared
+data through a directory identity is what pointer semantics *means*. And
+versioning is untouched, because fences govern shape while mutation changes
+values — which yields a free feature: **a packed document of state tables
+is a save game**, and an old save loads through the fence machinery,
+prefix-read with the tail zero-defaulted — versioned save compatibility
+across patches, from the content machinery, at no new cost (§6 takes this
+further).
+
+The honest costs of the mutable instance, named:
+
+- **Declared capacity** — a mutable instance preallocates its slab, so
+  state use wants the bound in the declaration. PROPOSED, the attribute
+  grammar's own: `table Ships | capacity = MaxShips`. Consistent with
+  no-unbounded-anything (§11).
+- **A free list** for row lifecycle — create and destroy against the
+  fixed-slot slab. Runtime machinery beside the instance, never format.
+- **Optional generation counters** for stale-ref detection into mutable
+  instances — again runtime level, never stored format.
+- **Concurrency stays the application's**, via index-range ownership — the
+  same discipline as the parallel build (§3.2). No locks in the format.
+
+The hot-is-cold audit (§5.3) applies to **immutable instances only** — a
+mutable instance diverges from the canonical document by definition; saving
+it produces a new document. The keyed-lookup bonus of §4.2 survives
+wherever keys stay fixed while values mutate.
 
 ## 4. Documents and references
 
@@ -386,7 +433,7 @@ The forms compose under the ordinary grammar, with no new constructs: an
 **array of table refs** is a bounded array of nullable directory indices —
 the array grammar composed with the reference forms above; a **map** is a
 keyed table whose rows pair a key with a table ref (keyed lookup arrives
-with the row-identity ruling, §9 q3). A runtime bonus falls out of
+with the row-identity ruling, §13 q3). A runtime bonus falls out of
 immutability: a loaded table never changes, so keyed lookup can be a
 build-time perfect hash or a sorted key column, stored as plain relocatable
 data inside the table — O(1) keyed access with no runtime hashing machinery
@@ -447,7 +494,7 @@ indices and enums under the inherited grammar already express every
 reference §4.2 names, which is how the first consumers solve this today.
 `ref` is therefore specified here as its own subsection so it can land
 separately — a follow-on that adds meaning, never representation. Whether a
-ref's row identity is the index or a declared key field is §9 q3.
+ref's row identity is the index or a declared key field is §13 q3.
 
 ## 5. Live documents: hot reload and patching
 
@@ -543,7 +590,136 @@ patch hot-applies to running servers with no downtime; an amber patch
 schedules a restart. One validator, one contract, from the dev loop to the
 live fleet.
 
-## 6. Lineage, retention, and the descriptor across time
+## 6. The row as a versioned message
+
+A table row packed alone **is a versioned message**. The row encoding —
+version plus length header, prefix evolution, zero-defaulted tails (§3.4,
+§3.5) — is self-delimiting and skew-tolerant, so one row sent over a socket
+is a message two peers can exchange while on different builds. Nothing new
+is defined here; the property falls out of the row wire, and it completes
+the wire story:
+
+**Types are the wire for peers who deploy together; table rows are the wire
+for peers who cannot.** The type wire (SPEC §3) is same-or-refuse — one
+protocol id, both ends redeployed as one — and stays exactly that. The row
+wire serves the peers the type wire deliberately refuses: an editor talking
+to a running game, tools talking to pipelines, telemetry events read years
+after they were written, through the lineage. The versioned-message niche —
+the place a tag-based format would otherwise be reached for — is served by
+the same machinery, with no tags and no vtables.
+
+The proving use cases, named: **save games and per-user profile data**. They
+are the same use case at different addresses — versioned state documents
+that outlive every build that wrote them, in the player's hands and in the
+studio's. Both ride the fence machinery unchanged: a years-old save or
+profile loads through its lineage, prefix-read and zero-defaulted, and
+hostile or corrupted data refuses cleanly on read (§3.4) — a property the
+formats usually reached for here never offered.
+
+## 7. Canonical JSON
+
+The positioning this section serves: anywhere JSON would otherwise be
+reached for, this design keeps JSON's virtues rather than trading them.
+Any document dumps to JSON and loads back through the view with no per-type
+code — hand-inspection, diffing and interop stay — while the stored and
+wired form is no longer the text: typed, bounded, validated on every read,
+versioned with enforced lineage, far smaller, and readable at memcpy speed.
+
+**Canonical JSON is read and write through the type and table views,
+specced as tightly as the wire.** The projection is the canonical text of
+the shape; canonical JSON is the canonical text of the values. One JSON
+spelling per document or type value, one parse back, through the view's
+generic walker — one implementation per language, over descriptors, no
+per-type code anywhere.
+
+Canonical means, normatively:
+
+- **Fields in declaration order** — the wire order, so a dump reads like
+  the declaration.
+- **64-bit and wider integers as strings** — `uint64`, the 128-bit family
+  and wide `fixed` raws do not survive double-precision JSON readers;
+  narrower integers are JSON numbers.
+- **Doubles by shortest round-trip**; **non-finite floats as `"NaN"`,
+  `"Infinity"`, `"-Infinity"` strings** (raw-bit float fields can carry
+  them; JSON cannot, unquoted).
+- **Bytes as base64.**
+- **Enums and flags by name** — the descriptor carries the names; a dump
+  that says `"Railgun"` survives a renumbering the wire would not.
+- **Unions as a single-variant object** — `{"sphere": {...}}`; `None` is
+  the empty object.
+- **Table refs as indices, `null` for optional-empty** — the presence bit
+  spelled the JSON way.
+
+The conformance property is **golden-gated round trip: pack of import of
+dump is byte-identical** — `pack(import(dump(x))) == pack(x)` — which pins
+every spelling rule above the same way golden wire bytes pin the encodings.
+**Import is a validated read**, untrusted exactly like wire bytes (SPEC
+§5): ranges, bounds, capacities and tags refuse loudly, so a hand-edited
+file cannot smuggle a value the wire would reject. **Versioning works in
+text**: a dumped table carries its version, and an old file imports through
+the fences with the tail zero-defaulted, exactly as an old row reads
+(§3.5).
+
+The workflow this unlocks: **content lives as text in git** — diffable,
+mergeable, reviewable — and is **packed at build, byte-reproducibly**
+(canonical encoding is already a contract, SPEC §6.1). JSON keeps the jobs
+it is good at — humans, version control, interop — and never ships.
+
+## 8. What this buys, use case by machinery
+
+The coverage, enumerated — each use case named with the machinery that
+serves it, so a gap would be visible:
+
+- **DCC exporters and asset conditioning** — the parallel pack (§3.2),
+  immutable documents, content hashes (§5.1).
+- **Editors and inspectors** — the view's walk and write half (§2.2)
+  against the hot-reload loop (§5.2).
+- **The editor-to-game protocol itself** — row messages, skew-tolerant
+  (§6).
+- **Analytics and telemetry** — versioned rows as events; mixed-version
+  logs readable years later through lineage (§6, §10).
+- **Build and patch pipelines** — per-table hashes, minimal verified
+  patches (§5.1).
+- **Save games and profiles** — state documents, fence-compatible across
+  patches (§3.7, §6).
+- **Config and live-ops** — immutable documents, green-and-amber hot
+  patching (§5.4).
+- **A universal exporter** — any document dumpable to CSV or JSON through
+  the view, with no per-type code (§7).
+
+## 9. Architecture: a runtime library family
+
+Tables and views ship as a **new runtime library family, named `table`** —
+`table.js`, `table.cs` and siblings, one per target, each beside and
+depending on its serialize counterpart — rather than as fully generated
+per-language output. The library is forced by the design's own
+requirements, not chosen:
+
+- **Tooling must open documents its build has never seen.** Only a library
+  walking retained descriptors — carried in the document or fetched by
+  hash, whichever §13 q1 rules — can do that; generated code is by
+  definition the shapes the build knew.
+- **Old fences exist only as data in a lineage.** Versioned reading is
+  interpretation of retained descriptors — it requires the walker by
+  construction.
+
+The split follows the measured hot/cold line of §2.3. **The library owns
+the generic machinery**: document load and the directory, the validation
+driver, the atomic swap and the hot-is-cold hash audit (§5), the patch
+splice, the view walker in both directions, canonical JSON (§7), free
+lists and generation counters for mutable instances (§3.7), and the
+measure/prefix-sum/scatter build engine (§3.2). **The compiler generates
+only the thin fast layer**: descriptors as data (§2.2) plus monomorphic
+current-version row codecs and accessors — exactly where generation
+measurably earns its speed.
+
+This is the serialize-to-schema relationship promoted one level: serialize
+is each language's home for bitpacked streams, schema generates the code
+that speaks them, and the table library is each language's home for
+everything that is not bitpacked types — documents, lineage, walking,
+swapping, building.
+
+## 10. Lineage, retention, and the descriptor across time
 
 Each table version's descriptor hashes exactly as the unit's projection does
 (SPEC §3.1): low 64 bits of SHA-256 over the canonical rendering. Lineage —
@@ -552,32 +728,35 @@ and diffable end to end, and "what changed between v3 and v4" is a text
 diff, the projection discipline extended in time.
 
 Where retained descriptors live — embedded in every document, referenced by
-hash, or embedded by default with an opt-out — is §9 q1, and it is the one
+hash, or embedded by default with an opt-out — is §13 q1, and it is the one
 open question that shapes the stored bytes. Everything else in this document
 is independent of its answer: the row wire, the fences, the validation
 rules and the view machinery are identical under either.
 
-## 7. What tables refuse to be
+## 11. What tables refuse to be
 
 Stated so the boundary survives contact with feature requests:
 
 - **No runtime relational semantics.** A ref is integrity as a check, never
   a behavior: no joins, no cascades, no queries. Tables are a content
   system, not a database.
-- **No in-place mutation of a table's bytes.** The unit of change is the
-  whole table: a swap replaces one slab and one directory entry (§5.1), and
-  every change lands in the canonical document under the hot-is-cold
-  invariant (§5.3). Nothing patches a row inside a loaded slab.
+- **No in-place mutation of a SHARED table's bytes.** For an immutable
+  instance the unit of change is the whole table: a swap replaces one slab
+  and one directory entry (§5.1), and every change lands in the canonical
+  document under the hot-is-cold invariant (§5.3) — nothing patches a row
+  inside a shared slab. A mutable instance (§3.7) is a private working
+  copy, and mutation there is the point; what is refused is mutating an
+  instance others share.
 - **No migration machinery, ever** (§5.4). A change is green and applies
   hot, or it is amber and the remedy is a data reboot; no transform code
   runs between versions, in either direction.
 - **No unbounded anything.** Row counts, string capacities, array bounds and
   table counts are declared bounds, as everywhere in the family.
-- **No self-describing `type` wire.** Whatever §9 q1 decides for documents,
+- **No self-describing `type` wire.** Whatever §13 q1 decides for documents,
   the `type` wire of SPEC §3 stays an unattributed bit stream. Descriptors
   travel with archives, never with packets.
 
-## 8. The unfreeze
+## 12. The unfreeze
 
 The projection carries FROZEN tokens today — `table=false` (and
 `message=false`) on every type line — kept so the refusals of SPEC §4.11
@@ -588,9 +767,9 @@ bump** — every protocol id moves, once, visibly, by the mechanism built for
 exactly this — taken deliberately or not at all. `message=false` and
 `round=nearest` are untouched; their refusals stand.
 
-## 9. Open questions, for ruling
+## 13. Open questions, for ruling
 
-Numbered for citation as `SPEC-TABLES §9 qN`; each is presented, not
+Numbered for citation as `SPEC-TABLES §13 qN`; each is presented, not
 decided.
 
 **q1 — Where retained descriptors live.** (a) **Embed** each referenced
@@ -664,7 +843,7 @@ way: a flattened composed field and a directly declared field render
 identically in the descriptor, so composition can land later without moving
 any fenced shape.
 
-## 10. What changes in SPEC.md when this lands
+## 14. What changes in SPEC.md when this lands
 
 For the adjudication record — the present-state edits landing requires,
 none of them taken by this draft:
@@ -672,15 +851,19 @@ none of them taken by this draft:
 - **§1 Scope and Non-goals**: "No wire-format versioning, anywhere" and
   "data that must outlive builds is out of its scope entirely" narrow to
   the `type` wire; "No self-describing wire data" gains the archive carve-
-  out §9 q1 decides. The scope statement adds `table` and the view.
+  out §13 q1 decides. The scope statement adds `table` and the view.
 - **§4.11**: `table` moves from refused-by-name to a pointer at the table
-  section; the `table=false` FROZEN token is dropped under §8's
+  section; the `table=false` FROZEN token is dropped under §12's
   `ProjectionVersion` bump.
+- **§1**: the runtime-library table gains the `table` family beside the
+  serialize family (§9).
 - **§6.1**: the no-generated-measure rule gains the table exception
-  (§3.6).
+  (§3.6), and the generated-output list gains descriptors-as-data and the
+  current-version row codecs (§9).
 - **§7.2**: the conformance program grows table gates — golden lineage,
   cross-version read matrices (old reader × new row, new reader × old
-  row), and document-validation refusal suites.
+  row), document-validation refusal suites, and the canonical JSON round
+  trip (`pack(import(dump(x))) == pack(x)`, golden-gated — §7).
 
 This document then folds into SPEC.md as sections of the one normative
 reference, and SPEC-TABLES.md retires.
