@@ -57,7 +57,7 @@ generated/go-ludicrous/.stamp: bin/schema $(SCHEMAS128)
 
 generated/rust-ludicrous/.stamp: bin/schema $(SCHEMAS128)
 	./bin/schema generate --lang rust --out generated/rust-ludicrous/src examples128
-	@printf '[package]\nname = "ludicrous"\nversion = "0.0.0"\nedition = "2024"\n\n[dependencies]\nserialize = { path = "../../$(SERIALIZE_RS)" }\n' > generated/rust-ludicrous/Cargo.toml
+	@printf '[package]\nname = "ludicrous"\nversion = "0.0.0"\nedition = "2024"\n\n[dependencies]\nserialize = { package = "serialize-official", path = "../../$(SERIALIZE_RS)" }\n' > generated/rust-ludicrous/Cargo.toml
 	@touch $@
 
 generated/cs-ludicrous/.stamp: bin/schema $(SCHEMAS128)
@@ -76,7 +76,7 @@ generated/go/.stamp: bin/schema $(SCHEMAS)
 # sits one level above src/, so the runtime path gains one more ../)
 generated/rust/.stamp: bin/schema $(SCHEMAS)
 	./bin/schema generate --lang rust --out generated/rust/src examples
-	@printf '[package]\nname = "example"\nversion = "0.0.0"\nedition = "2024"\n\n[dependencies]\nserialize = { path = "../../$(SERIALIZE_RS)" }\n' > generated/rust/Cargo.toml
+	@printf '[package]\nname = "example"\nversion = "0.0.0"\nedition = "2024"\n\n[dependencies]\nserialize = { package = "serialize-official", path = "../../$(SERIALIZE_RS)" }\n' > generated/rust/Cargo.toml
 	@touch $@
 
 # the C# target: generated sources only — test/cs/schematest.csproj compiles
@@ -173,8 +173,8 @@ generated/bench/go/.stamp: bin/schema $(SCHEMAS_BENCH)
 generated/bench/rust/.stamp: bin/schema $(SCHEMAS_BENCH)
 	./bin/schema generate --lang rust --out generated/bench/rust/src bench/corpus/Bench.schema
 	./bin/schema generate --lang rust --out generated/bench/rust-realworld/src bench/corpus/RealWorld.schema
-	@printf '[package]\nname = "benchcorpus"\nversion = "0.0.0"\nedition = "2024"\n\n[dependencies]\nserialize = { path = "../../../$(SERIALIZE_RS)" }\n' > generated/bench/rust/Cargo.toml
-	@printf '[package]\nname = "realworldcorpus"\nversion = "0.0.0"\nedition = "2024"\n\n[dependencies]\nserialize = { path = "../../../$(SERIALIZE_RS)" }\n' > generated/bench/rust-realworld/Cargo.toml
+	@printf '[package]\nname = "benchcorpus"\nversion = "0.0.0"\nedition = "2024"\n\n[dependencies]\nserialize = { package = "serialize-official", path = "../../../$(SERIALIZE_RS)" }\n' > generated/bench/rust/Cargo.toml
+	@printf '[package]\nname = "realworldcorpus"\nversion = "0.0.0"\nedition = "2024"\n\n[dependencies]\nserialize = { package = "serialize-official", path = "../../../$(SERIALIZE_RS)" }\n' > generated/bench/rust-realworld/Cargo.toml
 	@touch $@
 
 generated/bench/cs/.stamp: bin/schema $(SCHEMAS_BENCH)
