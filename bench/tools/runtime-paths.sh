@@ -224,8 +224,17 @@ verify_runtime() {
         # itself would do (path deps only, no network), so it proves nothing
         # the build would not.
         rt_cargo generate-lockfile --manifest-path "$RS_MANIFEST" >/dev/null 2>&1 || true
-        if ! id="$(rt_cargo pkgid --manifest-path "$RS_MANIFEST" serialize 2>&1)"; then
-            echo "rust: cargo cannot resolve a unique serialize crate from $RS_MANIFEST:" >&2
+        # The PACKAGE name is read out of the manifest rather than written here.
+        # serialize.rs publishes as serialize-official (the bare name is taken on
+        # crates.io) while its [lib] stays `serialize`, so the dependency is
+        # declared `serialize = { package = "serialize-official", ... }`. A name
+        # hardcoded in this gate is a second copy of somebody else's decision,
+        # and it rotted the moment that rename landed. Falls back to the
+        # dependency name, which is what an unrenamed dep resolves as anyway.
+        rs_pkg="$(sed -n 's/^serialize = .*package = "\([^"]*\)".*/\1/p' "$RS_MANIFEST" | head -1)"
+        [ -n "$rs_pkg" ] || rs_pkg=serialize
+        if ! id="$(rt_cargo pkgid --manifest-path "$RS_MANIFEST" "$rs_pkg" 2>&1)"; then
+            echo "rust: cargo cannot resolve a unique $rs_pkg crate from $RS_MANIFEST:" >&2
             echo "$id" | sed 's/^/    /' >&2
             return 1
         fi

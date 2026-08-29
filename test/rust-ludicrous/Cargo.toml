@@ -5,4 +5,4 @@ edition = "2024"
 
 [dependencies]
 ludicrous = { path = "../../generated/rust-ludicrous" }
-serialize = { path = "../../../serialize.rs" }
+serialize = { package = "serialize-official", path = "../../../serialize.rs" }

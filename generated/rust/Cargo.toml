@@ -4,4 +4,4 @@ version = "0.0.0"
 edition = "2024"
 
 [dependencies]
-serialize = { path = "../../../serialize.rs" }
+serialize = { package = "serialize-official", path = "../../../serialize.rs" }
