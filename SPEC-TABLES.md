@@ -7,10 +7,11 @@ surface — [#157](https://github.com/mas-bandwidth/schema/issues/157)) and
 [#158](https://github.com/mas-bandwidth/schema/issues/158)). It is written in
 SPEC.md's register and to its rigor, but it is not yet normative: SPEC.md
 promises that where the compiler and the document disagree one of them is a
-bug, and the compiler refuses `table` by name today (SPEC §4.11). §13 lists the
-open questions this draft deliberately does not decide, and §14 lists the
-SPEC.md text that changes when this lands. Syntax shown in examples is marked
-**PROPOSED** wherever it is not already in the language.
+bug, and the compiler refuses `table` by name today (SPEC §4.11). The four
+design questions this draft opened are now decided — §14 records the
+rulings — and §15 lists the SPEC.md text that changes when this lands. §10
+gathers the complete table source language for review. Syntax is marked
+**PROPOSED** wherever the spelling, rather than the design, is still open.
 
 ## 1. One descriptor, three tenses
 
@@ -58,7 +59,7 @@ the compiler already knows — and the projection already prints — everything 
 generic walker needs:
 
 ```
-type Spawn table=false message=false
+type Body table=false message=false
   field kind kind=0 width=8 signed=false
   field health kind=0 width=32 signed=true intrange=[0,1000]
 ```
@@ -111,7 +112,7 @@ path load-bearing for the protocol.
 A view over a `type` is compiled in: the static metadata matches the build's
 own shape, always. A view over a `table` is the same machinery pointed at
 retained descriptors: reading a row written under an older version means
-loading that version's descriptor (§3.5, §13 q1) and walking the row through
+loading that version's descriptor (§3.5, §11) and walking the row through
 it. This is the whole trick — tables need no second reflection system,
 because the view already is one.
 
@@ -121,7 +122,9 @@ because the view already is one.
 
 - **`type`** — the moment's contract: same-or-refuse, one protocol id, naked
   bitpacked wire, freely editable (any edit moves the id; both ends redeploy
-  together). Reader and writer are the same build, by contract.
+  together) — free, that is, until fenced table rows use the type, which
+  freezes its fenced fields (§3.5). Reader and writer are the same build,
+  by contract.
 - **`table`** — the archive's contract: versioned, append-only lineage,
   header'd wire (version and length per row), compiler-enforced evolution.
   The reader may be a different build than the writer; content outlives
@@ -173,7 +176,8 @@ table Item
 type may hold: bare and ranged integers, the 128-bit family, `bits(N)`,
 `bool`, floats and compressed floats, `fixed`/`ufixed`, enums, flags,
 strings, bytes, bounded arrays, unions, `if` branches, `const`/`reserved`/
-`align` items — and declared types as field groups, pending §13 q4. That is
+`align` items — and declared types as field groups, in from day one
+(ruled; §14 q4). That is
 most of the table's power at zero new constructs, and it composes with the
 versioning model because rows are length-prefixed and sequentially decoded:
 variable-length fields do not fight prefix evolution (§3.5).
@@ -184,11 +188,19 @@ type is bitpacked naked inside a packet and encoded under the table regime
 inside a row. Types do NOT implicitly become tables — the explicit `table`
 declaration is what carries the retention contract and licenses the compiler
 to enforce append-only exactly where archives exist, while types stay freely
-editable.
+editable everywhere fenced rows do not use them (§3.5's fence ownership is
+the one exception, and it is opt-in by using the type in a table).
 
-Tables and their versions contribute to the unit like any declaration:
-a table's shape projects and hashes (§3.6), and table declarations share the
-unit's one flat namespace (SPEC §4.6).
+**Table declarations do not enter the unit's wire shape projection.** The
+protocol id covers the type wire alone: adding a table, fencing a new
+version, or deleting one moves no `ProtocolId`, because peers whose
+packets did not change must never be forced into a lockstep redeploy by a
+content-shape edit — the two contracts version independently by
+construction. Each table's shape hashes into its own lineage instead
+(§3.5, §11), version by version. Table declarations still share the unit's
+one flat namespace (SPEC §4.6), and the FROZEN-token drop of §13 remains a
+`ProjectionVersion` bump — a change to the projection's rendering, not a
+claim that table shapes ride in it.
 
 ### 3.4 The row wire
 
@@ -215,8 +227,9 @@ A worked row. Take version 2 of a table whose flat shape is
 ```
 02 00                  version = 2      (uint16, little-endian)
 04 00 00 00            length  = 4      (uint32, little-endian)
-07 00 FA 03            payload: id = 7 in bits 0..15;
-                       health − 0 = 250 in bits 16..25 (10 bits);
+07 00 FA 00            payload: id = 7 in bits 0..15;
+                       health − 0 = 250 in bits 16..25 (10 bits:
+                       0xFA in bits 16..23, zero in bits 24..25);
                        zero-filled to the byte
 ```
 
@@ -225,13 +238,26 @@ decodes the prefix it knows, and advances by `length` regardless — skipping
 tail bits it cannot name costs nothing, because the header already paid for
 the skip.
 
-**Reads validate everything.** Rows are untrusted input under SPEC §5's
-doctrine, unchanged: every range, bound, count, tag and padding check the
-type wire performs, the row payload performs; a `length` that disagrees with
-the decoded payload's consumed size, a `version` outside the reader's known
-lineage (subject to §13 q1's descriptor availability), an offset-index entry
-out of bounds or non-monotonic, and a row overrunning its slab are all read
-failures. Writes assume trusted data, as everywhere.
+**Reads validate everything — prefix-relative, never version-equal.** Rows
+are untrusted input under SPEC §5's doctrine, unchanged: every range,
+bound, count, tag and padding check the type wire performs, the row payload
+performs. But validation is stated relative to the reader's own fence M and
+the row's version N, because skew is the row wire's contract (§3.5, §6) —
+a reader must never refuse a row merely for being newer than itself:
+
+- **N ≤ M** — the reader holds N's exact shape in the lineage and
+  validates the row in full; the decoded payload's consumed size must
+  equal `length` exactly.
+- **N > M** — the reader decodes the prefix it knows — M's flat shape —
+  and skips the remainder by `length`. It refuses only if `length` is
+  smaller than the decoded prefix consumed or a prefix field fails
+  validation; payload bytes beyond the known prefix are skipped, never
+  judged.
+
+In both cases a payload consuming beyond `length` refuses; consuming less
+than `length` is legal exactly and only as the N > M skip. An offset-index
+entry out of bounds or non-monotonic, and a row overrunning its slab, are
+read failures always. Writes assume trusted data, as everywhere.
 
 ### 3.5 Versioning: fences over the flattened shape
 
@@ -270,8 +296,8 @@ Reading across versions, both directions:
   missing tail is a field the row never carried — construction semantics,
   not wire semantics.)
 
-**PROPOSED fence syntax** (the candidates and the enforcement question are
-§13 q2; this example uses candidate A):
+**The fence syntax is ruled (§14 q2): in-file `version N` markers,
+enforced against the retained lineage** (§10.5 carries the full grammar):
 
 ```
 type Vec3
@@ -297,11 +323,11 @@ version 2 appends `yaw`. Both snapshots live in the lineage.
 
 **A mid-row edit to a table-used type refuses the fence check.** Types stay
 freely editable — until one contributes fields below a table's fence, at
-which point the fence owns those fields' shape. Editing `Vec3.z` to
-`float64` after the fences above exist is refused the next time the fence
-check runs against the retained lineage — at the declaration of the next
-fence at the latest, and at every compile where the lineage is on hand
-(§13 q2) — with the shape's owner named:
+which point the fence owns those fields' shape. The retained lineage is the
+enforcement oracle (ruled — §14 q2): every compile re-renders each fenced
+prefix from the current declarations and compares it against the retained
+snapshot, so editing `Vec3.z` to `float64` after the fences above exist is
+refused at the very next compile, with the shape's owner named:
 
 ```
 Types.schema:6:5: Vec3.z changed from float32 to float64, but Vec3 is part
@@ -309,12 +335,23 @@ of fenced table rows: table Spawn fenced position.z as float32 at version 1,
 and rows already written under that fence must decode unchanged forever.
 Fields below a table's newest fence are frozen, and a type freezes wherever
 fenced rows use it. To evolve Spawn, append fields after its newest fence
-under a new version; to change Vec3, remove it from fenced tables first.
+under a new version. To change this shape, revert the edit — or fork the
+type: keep Vec3 as fenced, declare a new type with the new shape, and use
+it in newly appended fields or new tables.
 Vec3 is used below the newest fence of: Spawn (v1).
 ```
 
 The diagnostic names every table that froze the type, because the author's
-question is always "who is holding this shape still."
+question is always "who is holding this shape still" — and every remedy it
+offers is legal under this section's own law: append, revert, or fork;
+never remove.
+
+**Deleting a fenced table declaration is legal, with its lineage retained**
+(PROPOSED): stored documents keep reading through the retained descriptors
+— the walker needs the lineage, not the declaration — so deletion ends
+future fences and future writes, never past readability. What removal
+cannot do is free the fenced shapes: the lineage is append-only and
+outlives the declaration, exactly as archives outlive builds.
 
 ### 3.6 Layouts and the parallel build
 
@@ -376,7 +413,7 @@ The honest costs of the mutable instance, named:
 - **Declared capacity** — a mutable instance preallocates its slab, so
   state use wants the bound in the declaration. PROPOSED, the attribute
   grammar's own: `table Ships | capacity = MaxShips`. Consistent with
-  no-unbounded-anything (§11).
+  no-unbounded-anything (§12).
 - **A free list** for row lifecycle — create and destroy against the
   fixed-slot slab. Runtime machinery beside the instance, never format.
 - **Optional generation counters** for stale-ref detection into mutable
@@ -413,27 +450,40 @@ concatenation plus the directory.
 
 ### 4.2 References are values, never addresses
 
-Three reference forms, all of them integers under the inherited grammar:
+Three reference forms, all of them values under the inherited grammar —
+and all of them spelled with existing constructs, deliberately: SPEC §4.8
+refuses bare-scalar union payloads and keeps `if` out of array elements,
+and the forms below respect both by using **wrapper types**, so no SPEC
+edit is needed to express any of them (§10.6 carries worked examples):
 
-- **A row index** — a ranged integer naming a row within one table. An index
-  is already expressible today (`owner uint16 | min = 0, max = MaxShips - 1`);
-  §4.5 is what a *declared* ref adds.
-- **A discriminated ref** — a union of typed refs, when the target may be a
-  row in one of several tables: the union's tag names the target space, the
-  payload carries the index. The existing `union` machinery, unchanged.
-- **A table ref** — a directory index naming a whole table, nullable via a
-  presence bit. Wire: one presence bit; if present, the directory index as a
-  ranged integer. This is what makes hierarchical content expressible —
-  levels owning spawn tables, items owning affix tables, arbitrary nesting —
-  while every constraint holds: relocatable, because an index through a
-  directory points nowhere; validatable, because the target space is the
-  document's own directory, shipped with the data.
+- **A row ref** — a value naming a row within one table. For an unkeyed
+  table it is the row index, a ranged integer already expressible today
+  (`owner uint16 | min = 0, max = MaxShips - 1`); for a table that
+  declares a `key` field (ruled — §14 q3) it is the key's value, and the
+  ref field's type matches the key field's. §4.4 is what a *declared* ref
+  adds.
+- **A discriminated ref** — a `union` whose variants are wrapper types,
+  each holding the target's index or key field: the tag names the target
+  space, the payload carries the value. The existing §4.8 machinery,
+  unchanged — the wrapper is the declared type the payload rule requires.
+- **A table ref** — a directory index naming a whole table, nullable. The
+  spelling is a **single-variant union over a wrapper type holding the
+  directory index**: the tag over [0, 1] IS the presence bit — one bit,
+  then the index when present — and `None` is the null, so the wire of
+  §4.8 is exactly "one presence bit; if present, the directory index as a
+  ranged integer". Arrays of nullable table refs follow for free, because
+  a union field composes in arrays. This is what makes hierarchical
+  content expressible — levels owning spawn tables, items owning affix
+  tables, arbitrary nesting — while every constraint holds: relocatable,
+  because an index through a directory points nowhere; validatable,
+  because the target space is the document's own directory, shipped with
+  the data.
 
 The forms compose under the ordinary grammar, with no new constructs: an
-**array of table refs** is a bounded array of nullable directory indices —
-the array grammar composed with the reference forms above; a **map** is a
-keyed table whose rows pair a key with a table ref (keyed lookup arrives
-with the row-identity ruling, §13 q3). A runtime bonus falls out of
+**array of table refs** is a bounded array of the single-variant-union
+spelling above; a **map** is a keyed table whose rows pair a `key` field
+(ruled — §14 q3) with a table ref, and a **set** is a keyed table whose
+rows are the keys. A runtime bonus falls out of
 immutability: a loaded table never changes, so keyed lookup can be a
 build-time perfect hash or a sorted key column, stored as plain relocatable
 data inside the table — O(1) keyed access with no runtime hashing machinery
@@ -456,6 +506,16 @@ self-nesting, never memory pointers. That is the one representation that is
 simultaneously relocatable, parallel-buildable, serializable and
 hot-swappable (§5), so the restriction selects the correct spelling rather
 than limiting what can be said.
+
+**Whether a ref may cross versions** — the sub-question the design record
+left open — is answered by the reading model rather than by a rule, and is
+stated here as derived, not decreed: a ref names an **identity** — a row
+key or index, a directory entry — never a shape. Per-table version
+independence (§5.1) already lets a target table advance fences while the
+referring table stays old, so the target's version is orthogonal to the
+ref by construction; validation is always against the target's **current
+instance**, at build, load, or swap (§5.2). No cross-version rule exists
+because nothing in a ref can see a version.
 
 ### 4.3 Refused by name
 
@@ -493,8 +553,9 @@ Because a declared ref changes no wire, **v1 may ship without it**: plain
 indices and enums under the inherited grammar already express every
 reference §4.2 names, which is how the first consumers solve this today.
 `ref` is therefore specified here as its own subsection so it can land
-separately — a follow-on that adds meaning, never representation. Whether a
-ref's row identity is the index or a declared key field is §13 q3.
+separately — a follow-on that adds meaning, never representation. Row
+identity is ruled (§14 q3): a ref targets the declared `key` field where
+the table declares one, and the bare row index otherwise.
 
 ## 5. Live documents: hot reload and patching
 
@@ -632,27 +693,44 @@ spelling per document or type value, one parse back, through the view's
 generic walker — one implementation per language, over descriptors, no
 per-type code anywhere.
 
-Canonical means, normatively:
+Canonical means, normatively — one spelling, deterministic, and **total
+over all wire-legal values**: every value a generated reader accepts has
+exactly one canonical dump, headroom values included:
 
 - **Fields in declaration order** — the wire order, so a dump reads like
-  the declaration.
-- **64-bit and wider integers as strings** — `uint64`, the 128-bit family
-  and wide `fixed` raws do not survive double-precision JSON readers;
-  narrower integers are JSON numbers.
-- **Doubles by shortest round-trip**; **non-finite floats as `"NaN"`,
-  `"Infinity"`, `"-Infinity"` strings** (raw-bit float fields can carry
-  them; JSON cannot, unquoted).
+  the declaration. **No insignificant whitespace**; **strings escaped
+  minimally** — only the escapes JSON mandates, nothing optional.
+- **Integers with storage wider than 32 bits as strings, uniformly** —
+  `int64`/`uint64`, the 128-bit family, `bits(N > 32)` — such values do
+  not survive double-precision JSON readers; 32-bit-and-narrower storage
+  dumps as JSON numbers.
+- **`float64` by shortest round trip; `float32` by float-shortest round
+  trip** — the shortest decimal string that parses back to the exact
+  `float32`, not the double's longer spelling. **Non-finite floats as
+  `"NaN"`, `"Infinity"`, `"-Infinity"` strings** (raw-bit float fields can
+  carry them; JSON cannot, unquoted).
+- **`fixed`/`ufixed` as the raw scaled integer** — exact and
+  deterministic; a decimal spelling would lose nothing but adds taste
+  calls (PROPOSED as raw). Wide fixed storage rides the string rule above.
 - **Bytes as base64.**
-- **Enums and flags by name** — the descriptor carries the names; a dump
-  that says `"Railgun"` survives a renumbering the wire would not.
+- **Enums by name when the value matches a declared variant** (`None`
+  included), **as a number otherwise** — `| max` headroom values are
+  wire-legal (SPEC §4.2) and must dump; a dump that says `"Railgun"`
+  survives a renumbering the wire would not.
+- **Flags as an array of set variant names in declaration order, plus one
+  trailing integer element carrying any set headroom bits, omitted when
+  zero** — `["Firing", "Disabled"]`, or `["Firing", 96]` when widened
+  bits 5 and 6 are set.
 - **Unions as a single-variant object** — `{"sphere": {...}}`; `None` is
   the empty object.
-- **Table refs as indices, `null` for optional-empty** — the presence bit
-  spelled the JSON way.
+- **Declared table refs as indices, `null` for optional-empty** — the
+  presence bit spelled the JSON way. (Stated over the declared ref of
+  §4.4; a wrapper union without the annotation dumps by the union rule.)
 
 The conformance property is **golden-gated round trip: pack of import of
-dump is byte-identical** — `pack(import(dump(x))) == pack(x)` — which pins
-every spelling rule above the same way golden wire bytes pin the encodings.
+dump is byte-identical** — `pack(import(dump(x))) == pack(x)`, over the
+full corpus including headroom and non-finite values — which pins every
+spelling rule above the same way golden wire bytes pin the encodings.
 **Import is a validated read**, untrusted exactly like wire bytes (SPEC
 §5): ranges, bounds, capacities and tags refuse loudly, so a hand-edited
 file cannot smuggle a value the wire would reject. **Versioning works in
@@ -677,15 +755,16 @@ serves it, so a gap would be visible:
 - **The editor-to-game protocol itself** — row messages, skew-tolerant
   (§6).
 - **Analytics and telemetry** — versioned rows as events; mixed-version
-  logs readable years later through lineage (§6, §10).
+  logs readable years later through lineage (§6, §11).
 - **Build and patch pipelines** — per-table hashes, minimal verified
   patches (§5.1).
 - **Save games and profiles** — state documents, fence-compatible across
   patches (§3.7, §6).
 - **Config and live-ops** — immutable documents, green-and-amber hot
   patching (§5.4).
-- **A universal exporter** — any document dumpable to CSV or JSON through
-  the view, with no per-type code (§7).
+- **A universal exporter** — any document dumpable to canonical JSON
+  through the view, with no per-type code (§7); tabular flattenings such
+  as CSV are library affordances beside it, not specced here.
 
 ## 9. Architecture: a runtime library family
 
@@ -696,9 +775,9 @@ per-language output. The library is forced by the design's own
 requirements, not chosen:
 
 - **Tooling must open documents its build has never seen.** Only a library
-  walking retained descriptors — carried in the document or fetched by
-  hash, whichever §13 q1 rules — can do that; generated code is by
-  definition the shapes the build knew.
+  walking retained descriptors — embedded in the document by default
+  (§14 q1) — can do that; generated code is by definition the shapes the
+  build knew.
 - **Old fences exist only as data in a lineage.** Versioned reading is
   interpretation of retained descriptors — it requires the walker by
   construction.
@@ -719,7 +798,248 @@ that speaks them, and the table library is each language's home for
 everything that is not bitpacked types — documents, lineage, walking,
 swapping, building.
 
-## 10. Lineage, retention, and the descriptor across time
+## 10. The table source language
+
+The complete source surface for tables, gathered in one place for the
+language review. Everything here lives in ordinary `.schema` files beside
+types, compiled in the same unit under the same rules; a construct is
+marked PROPOSED where its spelling is new, and unmarked where it is the
+existing language doing its ordinary work.
+
+The grammar, extending SPEC §4.2's productions (`table` is already a
+reserved word — SPEC §4.1 — held for exactly this):
+
+```
+Declaration = Package | Const | Enum | Flags | TypeDecl | Union
+            | TableDecl .                                  // TableDecl added (PROPOSED)
+TableDecl   = "table" ident ( TableBlock
+            | AttrSection NL TableBlock ) NL .             // qualifiers: capacity, below
+TableBlock  = "{" { Item | Fence } "}" .                   // Item is §4.2's, unchanged
+Fence       = "version" IntExpr NL .                       // fence marker (PROPOSED);
+                                                           // "version" is contextual
+```
+
+`version` is a contextual keyword, like `flags` and `union`: inside a
+table body, the identifier `version` followed by an integer expression is
+a fence; followed by a type it is an ordinary field — one token of
+lookahead disambiguates, and the grammar stays LL(2). The attribute
+vocabulary (SPEC §4.2, closed and checked) grows three entries: table
+declarations take **`capacity`** (valued — §10.4, PROPOSED); table fields
+additionally take the valueless **`key`** (§10.3, PROPOSED) and, as the
+§4.4 follow-on, the valued **`ref`**.
+
+### 10.1 Declaration, and the inherited field grammar
+
+A table body is a type body under the archive contract — every field kind
+the language has, unchanged (§3.3):
+
+```
+table Item
+{
+    id         uint32 | key
+    name       string(64)
+    kind       ItemKind
+    price      uint16 | min = 0, max = MaxPrice
+    damage     DamageFlags
+    durability ufixed(8, 8) | min = 0, max = 255
+    sockets    [..4]SocketKind
+    active     bool
+    if active
+    {
+        cooldown float32 | min = 0.0, max = 60.0, resolution = 0.01
+    }
+}
+```
+
+Nothing in the body is new: ranged integers, enums, flags, strings,
+bounded arrays, fixed point, branches — the §4.2 grammar of SPEC, hosted
+by `table` instead of `type`. Only the hosting keyword and the attributes
+of this chapter are PROPOSED.
+
+### 10.2 Composition: types in rows
+
+Composition is in from day one (ruled — §14 q4). A declared type is a
+field group in a row, exactly as in a packet:
+
+```
+type Vec3
+{
+    x float32
+    y float32
+    z float32
+}
+
+table Prop
+{
+    position Vec3
+    rotation Quat
+    kind     PropKind
+}
+```
+
+The row's flat shape is `position.x, position.y, position.z, rotation.x,
+..., kind` — the flattening §3.5 fences. The same `Vec3` serializes naked
+in a packet and under the row regime here; the container decides the
+contract (§3.3). The price of composition is fence ownership: once `Prop`
+is fenced, `Vec3`'s fields below that fence are frozen wherever `Prop`
+uses them (§3.5).
+
+### 10.3 The `key` attribute
+
+PROPOSED — the ruled optional declared key (§14 q3): at most **one field
+per table**, marked valueless:
+
+```
+table Ship
+{
+    id     uint32 | key
+    class  ShipClass
+    health int32  | min = 0, max = MaxHealth
+}
+```
+
+A keyed table is addressed by its key: refs into it carry the key's value
+(§10.6), lookup is by key, and hot reload survives row reordering and
+compaction (§5). Key uniqueness is validated at build and at load, like
+every document invariant (§4.1); the lookup column or perfect hash a
+loaded instance uses is library machinery over relocatable data (§4.2),
+never stored semantics. A table without a `key` field is addressed by row
+index. `key` on a `type` field, on more than one field, or on a
+non-scalar field is refused with the rule named.
+
+### 10.4 The `capacity` attribute
+
+PROPOSED — the declared bound a mutable instance preallocates (§3.7), on
+the declaration line:
+
+```
+table Ship | capacity = MaxShips
+{
+    id     uint32 | key
+    class  ShipClass
+    health int32  | min = 0, max = MaxHealth
+}
+```
+
+`capacity` bounds live rows in a mutable instance, consistent with
+no-unbounded-anything (§12); it does not touch the row wire, the fences,
+or an immutable instance's row count, which the directory carries per
+document. A table never instantiated mutable needs no `capacity` and pays
+nothing for its absence.
+
+### 10.5 Version fences
+
+The ruled fence syntax (§14 q2): in-file `version N` markers. Fields above
+the first marker are version 1; each marker opens the next version's
+appended tail; the head version is the highest marker. A complete
+two-fence file:
+
+```
+// Spawns.schema
+package content
+
+const MaxSpawns = 4096
+
+enum SpawnKind { Grunt, Turret, Boss }
+
+type Vec3
+{
+    x float32
+    y float32
+    z float32
+}
+
+table Spawn | capacity = MaxSpawns
+{
+    id       uint32 | key
+    position Vec3
+    kind     SpawnKind
+    version 2
+    yaw      float32 | min = -180.0, max = 180.0, resolution = 0.01
+    version 3
+    elite    bool
+}
+```
+
+Version 1 is `id, position.x, position.y, position.z, kind`; version 2
+appends `yaw`; version 3 appends `elite`; the head version — what this
+build writes — is 3. All three snapshots live in the lineage, and the
+retained lineage is the enforcement oracle (§3.5): markers say where the
+fences fall; the lineage says what they froze. Markers run consecutively
+from 2 upward — version 1 is the unmarked head of the body — and a gap,
+a repeat, or a marker out of order is refused with the expected number
+named.
+
+### 10.6 References in source
+
+All reference forms are spelled with existing constructs plus the §4.4
+`ref` annotation — wrapper types satisfy SPEC §4.8's payload rule, so no
+SPEC edit is needed (§4.2):
+
+```
+const MaxTables = 16
+
+// A row ref into a keyed table: the field's type matches the key's.
+// `ref` is the §4.4 follow-on annotation — wire-identical to the bare int.
+table Squad
+{
+    leader uint32 | key
+    ships  [..8]ShipEntry
+}
+
+type ShipEntry
+{
+    ship uint32 | ref = Ship            // key-valued ref into table Ship
+}
+
+// A discriminated ref: a union over wrapper types, one per target space.
+type ShipRowRef    { index uint16 | min = 0, max = MaxShips - 1 }
+type StationRowRef { index uint16 | min = 0, max = MaxStations - 1 }
+
+union TargetRef
+{
+    ship    ShipRowRef
+    station StationRowRef
+}
+
+// A nullable table ref: a single-variant union over a wrapper type
+// holding the directory index — the tag IS the presence bit (§4.2).
+type LootTableRef
+{
+    directory uint8 | min = 0, max = MaxTables - 1
+}
+
+union LootRef
+{
+    loot LootTableRef
+}
+
+table Encounter
+{
+    spawn    uint32  | ref = Spawn
+    target   TargetRef
+    loot     LootRef
+    alt_loot [..4]LootRef                // arrays compose for free
+}
+```
+
+Every spelling above is today's grammar except the `ref` annotation
+(§4.4, follow-on) — a union field in an array, a wrapper type as a
+payload, a ranged integer as an index are all SPEC §4.8 and §4.3 doing
+ordinary work.
+
+### 10.7 Documents are not declared in source
+
+**There is no document declaration.** A document — which tables, in which
+directory order — is an **assembly artifact of the build or the runtime**
+(§4.1): the packer's input, the swap's output, never the language's
+concern. Tables are the source-level unit; the same `table Spawn` may
+appear in a shipped content document, a save game, and an editor's
+working document, and the declaration neither knows nor cares. This is
+§1's semantics doing its job — declarations define shapes; documents are
+the heap, and heaps are built, not declared.
+
+## 11. Lineage, retention, and the descriptor across time
 
 Each table version's descriptor hashes exactly as the unit's projection does
 (SPEC §3.1): low 64 bits of SHA-256 over the canonical rendering. Lineage —
@@ -727,13 +1047,17 @@ the ordered list of a table's version descriptors — is therefore printable
 and diffable end to end, and "what changed between v3 and v4" is a text
 diff, the projection discipline extended in time.
 
-Where retained descriptors live — embedded in every document, referenced by
-hash, or embedded by default with an opt-out — is §13 q1, and it is the one
-open question that shapes the stored bytes. Everything else in this document
-is independent of its answer: the row wire, the fences, the validation
-rules and the view machinery are identical under either.
+Where retained descriptors live is ruled (§14 q1): **embedded in every
+document by default** — archives are self-contained, and any build with
+the walker can read any document found years later, lineage on hand or
+not — **with a strip flag** for size-critical pipelines that guarantee
+lineage availability. A stripped document carries the version hashes and
+is readable wherever the lineage is on hand; the safe form is the default
+form. Everything else in this document is independent of that ruling: the
+row wire, the fences, the validation rules and the view machinery are
+identical under either form.
 
-## 11. What tables refuse to be
+## 12. What tables refuse to be
 
 Stated so the boundary survives contact with feature requests:
 
@@ -752,11 +1076,11 @@ Stated so the boundary survives contact with feature requests:
   runs between versions, in either direction.
 - **No unbounded anything.** Row counts, string capacities, array bounds and
   table counts are declared bounds, as everywhere in the family.
-- **No self-describing `type` wire.** Whatever §13 q1 decides for documents,
-  the `type` wire of SPEC §3 stays an unattributed bit stream. Descriptors
-  travel with archives, never with packets.
+- **No self-describing `type` wire.** Documents embed their descriptors by
+  default (§14 q1); the `type` wire of SPEC §3 stays an unattributed bit
+  stream regardless. Descriptors travel with archives, never with packets.
 
-## 12. The unfreeze
+## 13. The unfreeze
 
 The projection carries FROZEN tokens today — `table=false` (and
 `message=false`) on every type line — kept so the refusals of SPEC §4.11
@@ -767,93 +1091,65 @@ bump** — every protocol id moves, once, visibly, by the mechanism built for
 exactly this — taken deliberately or not at all. `message=false` and
 `round=nearest` are untouched; their refusals stand.
 
-## 13. Open questions, for ruling
+## 14. The rulings, recorded
 
-Numbered for citation as `SPEC-TABLES §13 qN`; each is presented, not
-decided.
+The four questions this draft opened are decided. They keep their numbers
+permanently — text above cites them as `SPEC-TABLES §14 qN` — and each
+entry records the ruling and the reasoning that carried it, in the manner
+of SPEC §9.
 
-**q1 — Where retained descriptors live.** (a) **Embed** each referenced
-version's descriptor in every document: archives are self-contained — any
-build with the walker can read any document found on a disk years later,
-lineage on hand or not — at a per-document size cost that amortizes poorly
-for tiny documents and beautifully for large ones. (b) **Reference by
-hash**: documents carry only version hashes; leaner files, but reading
-requires the lineage to be on hand, so a document separated from its schema
-history is opaque, and the failure arrives years after the choice.
-(c) **Embed by default, with a flag** to strip for size-critical pipelines
-that guarantee lineage availability: the safe default and the lean option,
-at the cost of two document forms existing in the wild. Both honest costs on
-the table: (a) and (c) make documents bigger; (b) makes them mortal.
+**q1 — Where retained descriptors live** — ruled: **embedded in every
+document by default, with a strip flag** for size-critical pipelines that
+guarantee lineage on hand. The safe form is the default form: an archive
+found years later reads with no lineage anywhere; the lean form is an
+explicit opt-in that accepts mortality for size. §11 carries the
+consequence.
 
-**q2 — Fence syntax, and where the check runs.** Three candidates:
+**q2 — Fence syntax and enforcement** — ruled: **in-file `version N`
+markers (candidate A), enforced against the retained lineage.** The
+declaration reads as the timeline it is, and the lineage is the oracle: a
+fenced prefix that no longer matches its retained snapshot is an error at
+the very next compile, which is what makes §3.5's refusal immediate rather
+than deferred. In-file markers alone could never catch a mid-row type edit
+(the source carries no history of the type); the lineage can, and does.
 
-- **A: flat markers.** `version 2` as an item between field runs (§3.5's
-  example) — the declaration reads as the timeline it is, one body, no
-  nesting; `version` becomes a contextual keyword like `flags` and `union`.
-- **B: version blocks.** `version 2 { price uint16 }` — appended fields
-  grouped explicitly per version; more structure, more indentation, and the
-  common case (read the current shape top to bottom) reads worse.
-- **C: no syntax.** Fences live only in retained lineage (a committed
-  snapshot the compiler compares against); the declaration stays clean, but
-  the source no longer shows where the fences fall, and a reader of the
-  `.schema` file cannot see what is frozen.
+**q3 — Row identity for refs** — ruled: **an optional declared key** — a
+`key` attribute on one field (§10.3). A table that declares a key is
+addressed by it: refs carry the key's value, hot reload survives row
+reordering and compaction, and maps and sets fall out as keyed tables. A
+table without one is addressed by bare row index: free, dense, and exactly
+right for content whose row order the build owns. The cost lands only
+where the benefit is taken — uniqueness validation and a lookup column
+exist only in keyed tables, softened by the immutability bonus (§4.2).
 
-The enforcement half: check against in-file fences, against the retained
-previous projection, or both. In-file fences alone cannot catch a mid-row
-type edit (the source carries no history of the type); lineage alone is
-candidate C.
+**q4 — Composition in tables** — ruled directly: **composition from day
+one.** Declared types are field groups in rows from the first version;
+the flattening and fence-ownership rules of §3.5 are the machinery that
+makes it safe, and they ship together. The sequencing question this draft
+posed is closed.
 
-*Recommendation — marked as a recommendation:* **A, enforced by both** —
-markers in the file so the frozen boundary is visible where the fields are
-declared, retained lineage as the oracle so every edit below a fence is
-caught (§3.5's worked refusal), and the two cross-checked so a fence marker
-that disagrees with lineage is itself an error.
+What remains PROPOSED is spelling, not design, held for the language
+review of §10: the row-header widths (§3.4), the table-deletion rule
+(§3.5), the `capacity` attribute (§3.7), the `key` attribute's surface
+(§10.3), and the canonical-JSON taste calls (raw fixed-point spelling,
+`None` as the empty object — §7).
 
-**q3 — Row identity for refs: index or declared key.** An **index** is
-free (it is the offset-index ordinal), dense, and validated by a bounds
-check — but it is positional: any tool that reorders, compacts or merges
-rows must rewrite every inbound ref, and identity does not survive across
-documents (consistent with §4.3, which refuses cross-document refs anyway).
-A **declared key field** is stable under reordering and meaningful to
-humans and merge tooling — but it costs a per-table uniqueness check, a
-lookup structure at load or build, and it edges toward the relational slope
-§4.3 fences off. The reading model should decide this, not an added rule.
-
-Hot reload (§5) is ammunition on the key side of the scale, presented as
-such and not as the decision: row refs into a swapped table go stale when
-the replacement dropped or reordered rows. The closed world makes
-revalidation at the publish point cheap and loud either way, but **stable
-declared keys make hot reload robust where bare indices make it fast and
-fragile** — an index-addressed ref is only as durable as the target table's
-row order, and the daily live loop swaps tables constantly. Keys also carry
-the collection story: maps and sets are keyed tables and arrive with this
-ruling (§4.2). Against that stands everything in the previous paragraph,
-plus the immutability bonus that softens the key cost (build-time perfect
-hash or sorted key column, stored as relocatable data — §4.2).
-
-**q4 — v1 composition in tables.** Ship **record composition** (declared
-types as field groups in rows) in v1, or ship **fields-only** rows with
-composition as the named follow-on? Composition is the one-language
-property delivered immediately — the same `Vec3` in a packet and a row —
-and §3.5's flattening and freezing rules exist precisely to make it safe;
-but those rules are also v1's subtlest machinery (a type edit refusing a
-fence two declarations away), and fields-only rows ship the archive
-contract with none of it. The follow-on costs nothing on the wire either
-way: a flattened composed field and a directly declared field render
-identically in the descriptor, so composition can land later without moving
-any fenced shape.
-
-## 14. What changes in SPEC.md when this lands
+## 15. What changes in SPEC.md when this lands
 
 For the adjudication record — the present-state edits landing requires,
 none of them taken by this draft:
 
-- **§1 Scope and Non-goals**: "No wire-format versioning, anywhere" and
-  "data that must outlive builds is out of its scope entirely" narrow to
-  the `type` wire; "No self-describing wire data" gains the archive carve-
-  out §13 q1 decides. The scope statement adds `table` and the view.
+- **§1 Scope and Non-goals**: "No wire-format versioning, anywhere",
+  "schema is not an evolution system", and "data that must outlive builds
+  is out of its scope entirely" all narrow to the `type` wire; "No
+  self-describing wire data" gains the archive carve-out (documents embed
+  descriptors by default — §14 q1). The scope statement adds `table` and
+  the view.
+- **§3.1**: gains the explicit statement that table declarations do NOT
+  enter the wire shape projection — the protocol id covers the type wire
+  alone, and table shapes hash into their own lineage (§3.3).
 - **§4.11**: `table` moves from refused-by-name to a pointer at the table
-  section; the `table=false` FROZEN token is dropped under §12's
+  section; the `table=false` FROZEN token is dropped under §13's
   `ProjectionVersion` bump.
 - **§1**: the runtime-library table gains the `table` family beside the
   serialize family (§9).
