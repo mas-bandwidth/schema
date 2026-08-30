@@ -72,6 +72,7 @@ inline uint64_t bench_rng( uint64_t rng )
 
 const int MaxNumRuns = 7;       // median of 7 (N >= 5), after 1 warmup run
 static int g_num_runs = MaxNumRuns; // --round K drops this to 1 (§2.4: one warmup + one measured run per round; the driver aggregates across rounds)
+static bool g_quick = false;    // --quick: bench_mixed only, 3 measured runs — the iteration instrument, never the certification instrument
 const int NumVariants = 64;     // read-path variant buffers
 
 #if defined(NDEBUG)
@@ -1204,12 +1205,16 @@ int main( int argc, char ** argv )
             }
             g_num_runs = 1;
         }
+        else if ( strcmp( argv[i], "--quick" ) == 0 )
+            g_quick = true;
         else
         {
-            fprintf( stderr, "usage: %s [--csv] [--round K] [--wire-dir <dir>]\n", argv[0] );
+            fprintf( stderr, "usage: %s [--csv] [--round K] [--quick] [--wire-dir <dir>]\n", argv[0] );
             return 1;
         }
     }
+    if ( g_quick && g_num_runs == MaxNumRuns )
+        g_num_runs = 3;
 
 #if defined(NDEBUG)
     fprintf( stderr, "schema bench (cpp, Release)\n" );
@@ -1220,6 +1225,23 @@ int main( int argc, char ** argv )
     if ( g_csv )
         printf( "lang,bench,path,iters,bytes_per_op,runs,median_msgs_per_sec,min_msgs_per_sec,max_msgs_per_sec,median_mb_per_sec,spread_pct,corpus_id,family,linkage,checks,opt,inline\n" );
 
+
+    if ( g_quick )
+    {
+        // --quick: bench_mixed only — golden gate unconditional (bench_rt
+        // gates before timing)
+        fprintf( stderr, "--quick: iteration instrument, not certification\n" );
+        bench_rt( "bench_mixed", 40000000L, pin_rt_mixed(), rt_bench_mixed_write_loop, rt_bench_mixed_read_loop, vary_rt_mixed );
+        flush_csv();
+        if ( failed )
+        {
+            fprintf( stderr, "BENCH FAILED (corpus_id %s)\n", corpus_id().c_str() );
+            return 1;
+        }
+        fprintf( stderr, "OK (corpus_id %s)\n", corpus_id().c_str() );
+        ( void ) g_sink;
+        return 0;
+    }
 
     // rigidbody_at_rest: the pinned at-rest twin of rigidbody_moving
     RigidBody at_rest = pin_rigidbody_moving();

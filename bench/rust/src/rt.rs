@@ -451,6 +451,11 @@ pub fn bench_rt_all(ctx: &Ctx) {
         rt_once_write_ints, rt_once_read_ints, rt_bench_ints_write_loop, rt_bench_ints_read_loop, vary_rt_ints);
     bench_rt(ctx, "bench_bits", 48000000, pin_rt_bits(),
         rt_once_write_bits, rt_once_read_bits, rt_bench_bits_write_loop, rt_bench_bits_read_loop, vary_rt_bits);
+    bench_rt_mixed(ctx);
+}
+
+// the --quick leg: bench_mixed alone (golden-gated by bench_rt like every leg)
+pub fn bench_rt_mixed(ctx: &Ctx) {
     bench_rt(ctx, "bench_mixed", 40000000, pin_rt_mixed(),
         rt_once_write_mixed, rt_once_read_mixed, rt_bench_mixed_write_loop, rt_bench_mixed_read_loop, vary_rt_mixed);
 }

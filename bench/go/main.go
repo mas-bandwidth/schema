@@ -36,6 +36,7 @@ import (
 )
 
 const MaxNumRuns = 7      // median of 7 (N >= 5), after 1 warmup run
+var gQuick = false        // --quick: bench_mixed only, 3 measured runs
 var gNumRuns = MaxNumRuns // --round K drops this to 1 (§2.4: one warmup + one
 // measured run per round; the driver aggregates across rounds)
 const NumVariants = 64 // read-path variant buffers
@@ -652,10 +653,30 @@ func main() {
 				os.Exit(1)
 			}
 			gNumRuns = 1
+		case args[i] == "--quick":
+			gQuick = true
 		default:
-			fmt.Fprintf(os.Stderr, "usage: %s [--csv] [--round K] [--wire-dir <dir>]\n", os.Args[0])
+			fmt.Fprintf(os.Stderr, "usage: %s [--csv] [--round K] [--quick] [--wire-dir <dir>]\n", os.Args[0])
 			os.Exit(1)
 		}
+	}
+	if gQuick && gNumRuns == MaxNumRuns {
+		gNumRuns = 3
+	}
+
+	if gQuick {
+		// --quick: bench_mixed only, 3 measured runs — the iteration
+		// instrument, never the certification instrument. Golden gate
+		// unconditional (benchRt gates before timing).
+		fmt.Fprintf(os.Stderr, "schema bench (go, --quick: iteration instrument, not certification)\n")
+		benchRt("bench_mixed", 40000000, pinRtMixed(), rtOnceWriteMixed, rtOnceReadMixed, rtBenchMixedWriteLoop, rtBenchMixedReadLoop, varyRtMixed)
+		flushCsv()
+		if failed {
+			fmt.Fprintf(os.Stderr, "BENCH FAILED (corpus_id %s)\n", corpusID())
+			os.Exit(1)
+		}
+		fmt.Fprintf(os.Stderr, "OK (corpus_id %s)\n", corpusID())
+		return
 	}
 
 	fmt.Fprintf(os.Stderr, "schema bench (go)\n")

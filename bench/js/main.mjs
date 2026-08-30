@@ -84,6 +84,15 @@ import * as typesFlat from "../../generated/js/TypesFlat.js";
 import * as wireFlat from "../../generated/js/WireFlat.js";
 import * as realworldFlat from "../../generated/bench/js/realworld/RealWorldFlat.js";
 
+// the four bench/corpus/Bench.schema shapes as GENERATED code: the flat
+// tier is THE js path for these shapes exactly as for the corpus shapes
+// above, cross-validated against the runtime-call tier by the same oracle.
+// The family rt rows for the same shapes (the serialize.js runtime API
+// called by hand, below) ride beside them as library-context data — the
+// same bench names, distinguished by family and codec.
+import * as bench from "../../generated/bench/js/Bench.js";
+import * as benchFlat from "../../generated/bench/js/BenchFlat.js";
+
 // one namespace over the unit, the way Go sees package example — the checker
 // guarantees unit-wide name uniqueness, so the merge cannot collide
 const ex = { ...enums, ...types, ...wire };
@@ -113,6 +122,9 @@ const { WriteStream, ReadStream, BitWriter, BitReader } = await import(
 const { PRODUCTION } = await import(new URL("src/mode.js", runtimeRoot).href);
 
 const MaxNumRuns = 7; // median of 7 (N >= 5), after 1 warmup run
+let gQuick = false; // --quick: flat bench_mixed only, 3 measured runs —
+// the iteration instrument, never the certification instrument
+const QuickMixedIters = 40000000;
 let gNumRuns = MaxNumRuns; // --round K drops this to 1 (§2.4: one warmup +
 // one measured run per round; the driver aggregates across rounds)
 const NumVariants = 64; // read-path variant buffers
@@ -1617,6 +1629,126 @@ function benchBitpacker(passes) {
 
 
 // --------------------------------------------------------------------------
+// the four Bench.schema shapes as GENERATED code (flat tier = THE js path):
+// pins and vary functions over the generated classes, field mappings
+// verbatim from the family benches; the same LCG draws as the rt legs
+// --------------------------------------------------------------------------
+
+function pinBenchPacketGen() {
+  const p = new bench.BenchPacket();
+  p.A = -37;
+  p.B = 12345;
+  p.C = 987654;
+  p.Bits7 = 97;
+  p.Bits13 = 5000;
+  p.Bits23 = 1234567;
+  p.Flag = true;
+  p.X = 1.5;
+  p.Y = -3.25;
+  p.Z = 100.125;
+  p.Big = 0x123456789abcdef0n;
+  for (let i = 0; i < 17; i++) {
+    p.Blob[i] = (i * 31) & 0xff;
+  }
+  return p;
+}
+
+function varyBenchPacketGen(p) {
+  p.A = (shr64(8) & 63) - 32;
+  p.B = shr64(16) & 65535;
+  p.C = (shr64(24) & 0xfffff) - 500000;
+  p.Bits7 = rng.lo & 127;
+  p.Bits13 = shr64(3) & 8191;
+  p.Bits23 = shr64(5) & 8388607;
+  p.Flag = (rng.lo & 1) !== 0;
+  p.X = rng.lo & 0xffff; // exact in float32
+  p.Big = rngBig(); // the full 64 bits, direct
+  p.Blob[0] = shr64(32) & 0xff;
+}
+
+function pinBenchIntsGen() {
+  const f = new bench.BenchInts();
+  f.F0 = -37;
+  f.F1 = 12345;
+  f.F2 = 987654;
+  f.F3 = 2;
+  f.F4 = -15;
+  f.F5 = 777;
+  f.F6 = -2048;
+  f.F7 = 200;
+  f.F8 = -543210;
+  f.F9 = 99;
+  return f;
+}
+
+function varyBenchIntsGen(f) {
+  f.F0 = (shr64(8) & 63) - 32;
+  f.F1 = shr64(16) & 65535;
+  f.F2 = (shr64(24) & 0xfffff) - 500000;
+  f.F3 = shr64(2) & 3;
+  f.F4 = (shr64(11) & 15) - 8;
+  f.F5 = shr64(22) & 511;
+  f.F6 = (shr64(33) & 2047) - 1024;
+  f.F7 = shr64(40) & 255;
+  f.F8 = (shr64(30) & 0xfffff) - 500000;
+  f.F9 = shr64(57) & 63;
+}
+
+function pinBenchBitsGen() {
+  const f = new bench.BenchBits();
+  f.B7 = 97;
+  f.B13 = 5000;
+  f.B23 = 1234567;
+  f.B3 = 5;
+  f.B32 = 0xdeadbeef;
+  f.B11 = 1024;
+  f.B19 = 333333;
+  f.B48 = 0xfedcba987654n;
+  return f;
+}
+
+function varyBenchBitsGen(f) {
+  f.B7 = rng.lo & 127;
+  f.B13 = shr64(3) & 8191;
+  f.B23 = shr64(5) & 8388607;
+  f.B3 = shr64(29) & 7;
+  f.B32 = shr64(16);
+  f.B11 = shr64(37) & 2047;
+  f.B19 = shr64(44) & 524287;
+  f.B48 = rngBig() & 0xffffffffffffn;
+}
+
+function pinBenchMixedGen() {
+  const f = new bench.BenchMixed();
+  f.Sequence = 52428;
+  f.AckBits = 0xa5a5a5a5;
+  f.EntityId = 2049;
+  f.PosX = -16384;
+  f.PosY = 16383;
+  f.PosZ = -1;
+  f.Yaw = 511;
+  f.Moving = true;
+  f.Firing = false;
+  f.Timestamp = 0x123456789abcn;
+  f.Weapon = 15;
+  return f;
+}
+
+function varyBenchMixedGen(f) {
+  f.Sequence = shr64(8) & 65535;
+  f.AckBits = shr64(16);
+  f.EntityId = rng.lo & 4095;
+  f.PosX = (shr64(20) & 32767) - 16384;
+  f.PosY = (shr64(25) & 32767) - 16384;
+  f.PosZ = (shr64(30) & 32767) - 16384;
+  f.Yaw = shr64(3) & 511;
+  f.Moving = (rng.lo & 1) !== 0;
+  f.Firing = (rng.lo & 2) !== 0;
+  f.Timestamp = rngBig() & 0xffffffffffffn;
+  f.Weapon = shr64(60) & 15;
+}
+
+// --------------------------------------------------------------------------
 
 function main() {
   const args = process.argv.slice(2);
@@ -1635,13 +1767,31 @@ function main() {
         process.exit(1);
       }
       gNumRuns = 1;
+    } else if (args[i] === "--quick") {
+      gQuick = true;
     } else {
-      process.stderr.write("usage: node main.mjs [--csv] [--round K] [--wire-dir <dir>] [--print-runtime]\n");
+      process.stderr.write("usage: node main.mjs [--csv] [--round K] [--quick] [--wire-dir <dir>] [--print-runtime]\n");
       process.exit(1);
     }
   }
+  if (gQuick && gNumRuns === MaxNumRuns) {
+    gNumRuns = 3;
+  }
 
-  process.stderr.write(`schema bench (js, node ${process.versions.node}, ${PRODUCTION ? "production" : "checked"} mode)\n`);
+  process.stderr.write(`schema bench (js, node ${process.versions.node}, ${PRODUCTION ? "production" : "checked"} mode${gQuick ? ", --quick: iteration instrument, not certification" : ""})\n`);
+
+  if (gQuick) {
+    // --quick: the flat bench_mixed leg only (THE js path for the shape),
+    // golden-gated and cross-validated like every flat leg
+    benchMessageFlat("bench_mixed", "bench_mixed", QuickMixedIters, pinBenchMixedGen(), bench.WriteBenchMixed, bench.ReadBenchMixed, benchFlat.WriteBenchMixedFlat, benchFlat.ReadBenchMixedFlat, varyBenchMixedGen);
+    flushCsv();
+    if (failed) {
+      process.stderr.write(`BENCH FAILED (corpus_id ${corpusId()})\n`);
+      process.exit(1);
+    }
+    process.stderr.write(`OK (corpus_id ${corpusId()})\n`);
+    return;
+  }
 
 
   // rigidbody_at_rest: the pinned at-rest twin of rigidbody_moving
@@ -1686,6 +1836,17 @@ function main() {
   benchMessage("probearray", "probearray", 20000000, pinProbeArray(), ex.WriteProbeArray, ex.ReadProbeArray, varyProbeArray);
   benchMessage("testdata", "testdata", 8000000, pinTestData(), ex.WriteTestData, ex.ReadTestData, varyTestData);
   benchMessage("real_packet", "real_packet", 8000000, new realworld.RealPacket(), realworld.WriteRealPacket, realworld.ReadRealPacket, varyRealPacket);
+
+  // the four Bench.schema shapes as GENERATED code — the flat tier is THE
+  // js entry for these shapes in any cross-language comparison, exactly as
+  // for the corpus shapes above (family gen, codec=flat), cross-validated
+  // against the runtime-call tier by the same oracle. The family rt rows
+  // below keep the same bench names and measure the serialize.js runtime
+  // API instead — honest library-context data, never the js number.
+  benchMessageFlat("bench_packet", "bench_packet", 32000000, pinBenchPacketGen(), bench.WriteBenchPacket, bench.ReadBenchPacket, benchFlat.WriteBenchPacketFlat, benchFlat.ReadBenchPacketFlat, varyBenchPacketGen);
+  benchMessageFlat("bench_ints", "bench_ints", 40000000, pinBenchIntsGen(), bench.WriteBenchInts, bench.ReadBenchInts, benchFlat.WriteBenchIntsFlat, benchFlat.ReadBenchIntsFlat, varyBenchIntsGen);
+  benchMessageFlat("bench_bits", "bench_bits", 48000000, pinBenchBitsGen(), bench.WriteBenchBits, bench.ReadBenchBits, benchFlat.WriteBenchBitsFlat, benchFlat.ReadBenchBitsFlat, varyBenchBitsGen);
+  benchMessageFlat("bench_mixed", "bench_mixed", 40000000, pinBenchMixedGen(), bench.WriteBenchMixed, bench.ReadBenchMixed, benchFlat.WriteBenchMixedFlat, benchFlat.ReadBenchMixedFlat, varyBenchMixedGen);
 
   // family rt (§1.3/§1.5): the runtime API by hand, oracle-gated against
   // the goldens the generated code pinned. Iteration counts are fixed and

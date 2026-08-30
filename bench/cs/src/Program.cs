@@ -33,6 +33,7 @@ using static Example.Schema;
 static partial class Program
 {
     const int MaxNumRuns = 7;   // median of 7 (N >= 5), after 1 warmup run
+    static bool gQuick = false; // --quick: bench_mixed only, 3 measured runs
     static int gNumRuns = MaxNumRuns; // --round K drops this to 1 (§2.4: one warmup +
                                       // one measured run per round; the driver
                                       // aggregates across rounds)
@@ -740,11 +741,19 @@ static partial class Program
                 }
                 gNumRuns = 1;
             }
+            else if (args[i] == "--quick")
+            {
+                gQuick = true;
+            }
             else
             {
-                Console.Error.WriteLine("usage: schemabench [--csv] [--round K] [--wire-dir <dir>]");
+                Console.Error.WriteLine("usage: schemabench [--csv] [--round K] [--quick] [--wire-dir <dir>]");
                 return 1;
             }
+        }
+        if (gQuick && gNumRuns == MaxNumRuns)
+        {
+            gNumRuns = 3;
         }
 
         // dotnet run leaves the working directory at the project dir
@@ -767,6 +776,23 @@ static partial class Program
         Console.Error.WriteLine(
             $"schema bench (cs, {(GCSettings.IsServerGC ? "server" : "workstation")} GC)");
 
+        if (gQuick)
+        {
+            // --quick: bench_mixed only, 3 measured runs — the iteration
+            // instrument, never the certification instrument. Golden gate
+            // unconditional (BenchRt gates before timing).
+            Console.Error.WriteLine("--quick: iteration instrument, not certification");
+            BenchRtMixed();
+            FlushCsv();
+            if (failed)
+            {
+                Console.Error.WriteLine($"BENCH FAILED (corpus_id {CorpusId()})");
+                return 1;
+            }
+            Console.Error.WriteLine($"OK (corpus_id {CorpusId()})");
+            GC.KeepAlive(gSink);
+            return 0;
+        }
 
         // rigidbody_at_rest: the pinned at-rest twin of rigidbody_moving
         RigidBody atRest = PinRigidBodyMoving();
