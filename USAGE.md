@@ -631,7 +631,7 @@ c := compiler.New()
 if err := c.Register(docs{}); err != nil { // refuses a name a target already holds
 	return err
 }
-fmt.Println(c.Targets()) // [c cpp cs docs go java js rust]
+fmt.Println(c.Targets()) // [c cpp cs dart docs go java js rust]
 files, err := c.Generate(unit, "docs", nil)
 ```
 
