@@ -56,7 +56,7 @@ env:
 
 jobs:
   # The fast gate, and the conformance half of certification. `make test`
-  # builds the corpus in all eight languages and compares their wire against
+  # builds the corpus in all nine languages and compares their wire against
   # the C++-pinned goldens — that cross-language bit identity is the property
   # this project exists to provide, and CI is where it gets proven on
   # hardware we do not own. It runs on every trigger, PRs included, because
@@ -236,7 +236,7 @@ jobs:
           git clone --quiet --depth 1 --branch "$SERIALIZE_JS_TAG" https://github.com/mas-bandwidth/serialize.js.git serialize.js
 
       # All the toolchains regardless of leg: the `make test` precondition
-      # step below builds the whole tree (eight languages), exactly as the
+      # step below builds the whole tree (nine languages), exactly as the
       # single-job flow did before the fan-out — the gate legs verdict the
       # same artifacts they always have.
       - uses: actions/setup-go@v7

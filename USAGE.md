@@ -743,8 +743,6 @@ case Example.Types.read_ship_create(packet, byte_size(packet) * 8) do
 end
 ```
 
-
-
 **Java** — Java 17 on the JVM, built to issue #156's measured directives.
 Generated code is **self-contained**: it references only `java.lang`,
 `VarHandle` little-endian word access and `java.util.Arrays`, never a runtime

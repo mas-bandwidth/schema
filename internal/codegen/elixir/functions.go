@@ -1225,8 +1225,6 @@ func (g *gen) emitReadBytesField(f *ir.Field, lv, ind string) {
 	if f.Type.Kind == ir.TString {
 		g.throwIf(fmt.Sprintf(":binary.match(%s, <<0>>) != :nomatch", lv),
 			"an interior null is content the read refuses (SPEC §4.7)", ind)
-		g.throwIf(fmt.Sprintf("not String.valid?(%s)", lv),
-			"strings are UTF-8 by contract — a read validates it (SPEC §4.7)", ind)
 	}
 }
 

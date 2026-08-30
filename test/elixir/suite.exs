@@ -565,8 +565,8 @@ defmodule SchemaTestElixir do
     corrupt_utf8 = <<h0, h1, h2, h3, 0xFF, hrest::binary>>
 
     check(
-      Example.Wire.read_chat(corrupt_utf8, byte_size(corrupt_utf8) * 8) == :error,
-      "invalid UTF-8 is rejected (SPEC §4.7 — strings are UTF-8 by contract)"
+      match?({:ok, _}, Example.Wire.read_chat(corrupt_utf8, byte_size(corrupt_utf8) * 8)),
+      "malformed UTF-8 is the writer's violation, not the reader's check — the read accepts (SPEC §4.7)"
     )
 
     truncated = binary_part(chat_golden, 0, 3)

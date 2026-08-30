@@ -124,8 +124,8 @@ Three things in combination are unusual:
    rollback and deterministic replay cannot be built on floats. No mainstream
    format offers a fixed-point type; you store an int and remember the scale
    yourself, in every language, forever.
-3. **Eight languages proven identical mechanically.** Every CI run generates the
-   corpus in C, C++, C#, Dart, Go, Java, JavaScript and Rust and compares the emitted wire against pinned
+3. **Nine languages proven identical mechanically.** Every CI run generates the
+   corpus in C, C++, C#, Dart, Elixir, Go, Java, JavaScript and Rust and compares the emitted wire against pinned
    goldens. Cross-language agreement is checked, not asserted.
 
 ## Is bit-packing worth the CPU? Bandwidth is cheap.
@@ -212,8 +212,8 @@ on a runtime library.
 
 Not supported today. The nine exist because they are what the authors ship
 in: C++ engine, C# for Unity, Go for backend services, Rust for tooling,
-JavaScript for the browser client, Dart for Flutter clients, Java for the
-JVM side of the estate.
+JavaScript for the browser client, Dart for Flutter clients, Elixir for the
+BEAM realtime services, Java for the JVM side of the estate.
 
 A new backend is a Go package that walks the same IR the existing nine consume,
 and the cross-language test harness would tell you immediately whether it
@@ -258,7 +258,7 @@ cost with no buyer. See
 
 ## Is everything supported in all nine languages?
 
-**Yes.** The wire is generated for C, C++, C#, Dart, Go, Java, JavaScript and Rust from one IR, and
+**Yes.** The wire is generated for C, C++, C#, Dart, Elixir, Go, Java, JavaScript and Rust from one IR, and
 checked against each other in CI on every push. Every target's output is held
 to the same pinned goldens.
 

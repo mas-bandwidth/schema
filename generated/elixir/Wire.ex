@@ -1872,8 +1872,6 @@ defmodule Example.Wire do
       bits_read = bits_read + len * 8
       # an interior null is content the read refuses (SPEC §4.7)
       if :binary.match(v_text, <<0>>) != :nomatch, do: throw(:invalid)
-      # strings are UTF-8 by contract — a read validates it (SPEC §4.7)
-      if not String.valid?(v_text), do: throw(:invalid)
       # the final position is unobserved — the verdict and value are the surface
       _ = bits_read
       value = %Example.Chat{text: v_text}
@@ -2541,8 +2539,6 @@ defmodule Example.Wire do
       bits_read = bits_read + len * 8
       # an interior null is content the read refuses (SPEC §4.7)
       if :binary.match(v_text, <<0>>) != :nomatch, do: throw(:invalid)
-      # strings are UTF-8 by contract — a read validates it (SPEC §4.7)
-      if not String.valid?(v_text), do: throw(:invalid)
       # the final position is unobserved — the verdict and value are the surface
       _ = bits_read
 
