@@ -2057,7 +2057,7 @@ export const WriteProbeColliderFlat = PRODUCTION ? writeProbeColliderFlatProduct
 export function ReadProbeColliderFlat(value, view, numBits) {
   let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0;
   let br = 0;
-  if (br + 44 > numBits) {
+  if (br + 8 > numBits) {
     return false;
   }
   bi = br >>> 3;
@@ -2068,6 +2068,9 @@ export function ReadProbeColliderFlat(value, view, numBits) {
   br += 8;
   v = (out & 0xff) >>> 0;
   value.Armor = v;
+  if (br + 2 > numBits) {
+    return false;
+  }
   bi = br >>> 3;
   wlo = view.getUint32(bi, true);
   whi = view.getUint32(bi + 4, true);
@@ -2082,6 +2085,9 @@ export function ReadProbeColliderFlat(value, view, numBits) {
   switch (value.Shape.Type) {
     case 1: {
       value.Shape.Ring.Radius = 0;
+      if (br + 16 > numBits) {
+        return false;
+      }
       bi = br >>> 3;
       wlo = view.getUint32(bi, true);
       whi = view.getUint32(bi + 4, true);
@@ -2095,6 +2101,9 @@ export function ReadProbeColliderFlat(value, view, numBits) {
     case 2: {
       value.Shape.Slab.Width = 0;
       value.Shape.Slab.Height = 0;
+      if (br + 15 > numBits) {
+        return false;
+      }
       bi = br >>> 3;
       wlo = view.getUint32(bi, true);
       whi = view.getUint32(bi + 4, true);
@@ -2117,6 +2126,9 @@ export function ReadProbeColliderFlat(value, view, numBits) {
       break;
     }
   }
+  if (br + 2 > numBits) {
+    return false;
+  }
   bi = br >>> 3;
   wlo = view.getUint32(bi, true);
   whi = view.getUint32(bi + 4, true);
@@ -2131,6 +2143,9 @@ export function ReadProbeColliderFlat(value, view, numBits) {
   switch (value.Backup.Type) {
     case 1: {
       value.Backup.Ring.Radius = 0;
+      if (br + 16 > numBits) {
+        return false;
+      }
       bi = br >>> 3;
       wlo = view.getUint32(bi, true);
       whi = view.getUint32(bi + 4, true);
@@ -2144,6 +2159,9 @@ export function ReadProbeColliderFlat(value, view, numBits) {
     case 2: {
       value.Backup.Slab.Width = 0;
       value.Backup.Slab.Height = 0;
+      if (br + 15 > numBits) {
+        return false;
+      }
       bi = br >>> 3;
       wlo = view.getUint32(bi, true);
       whi = view.getUint32(bi + 4, true);
@@ -2180,11 +2198,11 @@ export function ReadProbeColliderFlat(value, view, numBits) {
     return false;
   }
   value.ExtrasCount = v;
-  if (br + value.ExtrasCount * 18 > numBits) {
-    return false;
-  }
   for (let i0 = 0; i0 < value.ExtrasCount; i0++) {
     const e0 = value.Extras[i0];
+    if (br + 2 > numBits) {
+      return false;
+    }
     bi = br >>> 3;
     wlo = view.getUint32(bi, true);
     whi = view.getUint32(bi + 4, true);
@@ -2199,6 +2217,9 @@ export function ReadProbeColliderFlat(value, view, numBits) {
     switch (e0.Type) {
       case 1: {
         e0.Ring.Radius = 0;
+        if (br + 16 > numBits) {
+          return false;
+        }
         bi = br >>> 3;
         wlo = view.getUint32(bi, true);
         whi = view.getUint32(bi + 4, true);
@@ -2212,6 +2233,9 @@ export function ReadProbeColliderFlat(value, view, numBits) {
       case 2: {
         e0.Slab.Width = 0;
         e0.Slab.Height = 0;
+        if (br + 15 > numBits) {
+          return false;
+        }
         bi = br >>> 3;
         wlo = view.getUint32(bi, true);
         whi = view.getUint32(bi + 4, true);

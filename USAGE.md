@@ -76,7 +76,7 @@ inline bool WriteShipCreate( serialize::WriteStream & stream, const ShipCreate &
 inline bool ReadShipCreate( serialize::ReadStream & stream, ShipCreate & value );
 ```
 
-Run the same command with `--lang c`, `--lang cs`, `--lang go`, `--lang js`
+Run the same command with `--lang c`, `--lang cs`, `--lang go`, `--lang js`, `--lang dart`
 or `--lang rust` and you get the equivalent in that language — writing the
 **same bits**.
 
@@ -486,7 +486,8 @@ if ( !ReadShipCreate( stream, value ) )
 ```
 
 The slack requirement differs per language: **C ≥8 bytes, C++ ≥8, Go ≥7,
-Rust ≥8, C# none, and JavaScript's flat tier ≥8 past the payload.** The
+Rust ≥8, C# none, Dart none, and JavaScript's flat tier ≥8 past the
+payload.** The
 per-target columns are normative in [SPEC.md](SPEC.md) §6.3. Write
 buffers are a multiple of 8 in every language.
 
@@ -501,8 +502,8 @@ the same thing and a non-variant cannot survive a read. But `enum E | max = 15`
 variants can be added later without
 moving the field width — and a read of that enum accepts anything in `[0, 15]`.
 That is the point of the headroom, but it means a value you have not defined
-yet can arrive, and your `switch` should have a default. The same VALIDATION rules hold in all six languages, because
-the same compiler wrote all six — the buffer-slack contract above is the one
+yet can arrive, and your `switch` should have a default. The same VALIDATION rules hold in all seven languages, because
+the same compiler wrote all seven — the buffer-slack contract above is the one
 thing that differs per language.
 
 ---
@@ -516,13 +517,15 @@ and it holds in every language.
 `assert`/`NDEBUG`, a check that disappears in a release build, so the C++
 backend uses `serialize_assert`. Go has no assert idiom, so it returns
 `ErrValueOutOfRange`; C, C#, Rust and JavaScript likewise return failure
-rather than invent an assert. The rule is that a language should verify
+rather than invent an assert. Dart has `assert` — active under
+`--enable-asserts`, compiled out of release and AOT builds — so the Dart
+writer asserts, exactly like C++. The rule is that a language should verify
 correctness the way that language verifies correctness — not that every
 target behaves identically here.
 
 So writing `health = 2000` into a field declared `| min = 0, max = 1000`
-asserts in a C++ debug build, silently writes the truncated low bits in a C++
-release build, and returns failure in the other five.
+asserts in a C++ or checked Dart build, silently writes the truncated low
+bits in a C++ release or Dart AOT build, and returns failure in the others.
 
 Do not build on any of it. **Keep your values inside their declared bounds on
 the write side** — your simulation already knows they are, and that is the only
@@ -553,7 +556,7 @@ import (
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
-c := compiler.New() // the six built-in targets, registered
+c := compiler.New() // the seven built-in targets, registered
 
 paths, err := compiler.GatherPaths([]string{"schemas"}) // one directory is one unit
 unit, err := c.Load(paths)                              // format-free: nothing is written
@@ -630,7 +633,7 @@ files, err := c.Generate(unit, "docs", nil)
 
 The unit your generator receives is the same fully-resolved [`ir`](https://pkg.go.dev/github.com/mas-bandwidth/schema/v2/ir)
 the built-in backends read: types resolved, constants folded, ranges and bit
-widths derived, wire order fixed. The derived parameters the six emitters
+widths derived, wire order fixed. The derived parameters the seven emitters
 share are functions there rather than per-backend arithmetic — `ir.BitsRequired`,
 `ir.MaxBitsStruct`, `ir.MaxBytes`, `ir.CompressedFloatParams`,
 `ir.AlignedFixedByteArrays`, `ir.FieldId` — so a new target computes the same
@@ -678,6 +681,33 @@ simulation code does math directly on generated storage.
 **C#** — C# 9 / netstandard2.1-clean, so it runs on Unity-class runtimes.
 Reads scalars without boxing.
 
+**Dart** — Dart 3, VM and AOT (Flutter release ships AOT — the deployment
+the backend is tuned for). Generated code is **self-contained**: it imports
+`dart:typed_data` and its sibling generated files, never a runtime package.
+The serialize.dart bitpacker is inlined at every field with literal constant
+widths and masks, and every type gets monomorphic `write<Name>` /
+`read<Name>` / `measure<Name>` / `zero<Name>` functions — no streams, no
+dispatch. Buffers are caller-owned `ByteData` views; the writer needs
+`<name>MaxBytes` (a multiple of 8), the reader needs **no slack** past the
+payload. Reads validate everything and never throw on hostile bytes; writer
+contracts are `assert`s that compile out of release builds. Integer widths
+through 64 ride bit-transparently in `int`; the 128-bit widths ride an
+emitted `Int128`/`UInt128` pair (`Int128.dart`, generated beside a unit that
+needs it):
+
+```dart
+import 'Wire.dart';
+
+final buf = Uint8List(shipCreateMaxBytes);
+final view = ByteData.sublistView(buf);
+final bytes = writeShipCreate(ship, view); // bytes written; contracts asserted
+
+final ok = readShipCreate(out, ByteData.sublistView(packet), packet.length * 8);
+if (!ok) {
+  // malformed or hostile — drop it
+}
+```
+
 **Go** — accessors avoid allocation; reads and writes run on caller-owned
 buffers.
 
@@ -720,7 +750,7 @@ one import away: re-read a failing buffer through the runtime tier and read
 `stream.error`. The flat modules are pure spec'd ECMAScript with no node
 APIs.
 
-All six are generated from the same IR and compared against each other in CI
+All seven are generated from the same IR and compared against each other in CI
 on every push. The wire is bit-packed, so the property being checked is
 bit-identity — if they ever disagree by one bit, the build fails.
 

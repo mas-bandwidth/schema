@@ -15,8 +15,8 @@ import (
 // a value it knows but cannot honor is an error, never a silent fallback.
 type Options map[string]string
 
-// A Generator emits one target language's source for a checked unit. The six
-// built-in backends reach the driver through this interface and through no
+// A Generator emits one target language's source for a checked unit. The
+// seven built-in backends reach the driver through this interface and through no
 // other path, so a generator written outside this module is a first-class one:
 // register it on a [Compiler] and `--lang <name>` selects it.
 type Generator interface {

@@ -26,9 +26,11 @@ the claim can be checked rather than believed.
 ## Building
 
 Needs Go 1.26+, a C++17 compiler, a C99 compiler, and — for the full
-cross-language test — the Rust, Go, Node.js and .NET toolchains.
+cross-language test — the Rust, Go, Node.js, .NET and Dart toolchains (the
+Makefile pins Dart SDK 3.13.2; unpack it under `dist/` per the Makefile's
+`DART` note, or set `DART=dart` if that version is on your PATH).
 
-The six serialize runtimes must be checked out as **siblings** of this
+The serialize runtimes must be checked out as **siblings** of this
 repository:
 
 ```bash
@@ -38,11 +40,12 @@ git clone https://github.com/mas-bandwidth/serialize.go.git
 git clone https://github.com/mas-bandwidth/serialize.js.git
 git clone https://github.com/mas-bandwidth/serialize.rs.git
 git clone https://github.com/mas-bandwidth/serialize.cs.git
+# no serialize.dart clone: generated Dart is self-contained
 git clone https://github.com/mas-bandwidth/schema.git
 cd schema && make test
 ```
 
-`make test` builds the compiler, generates the corpus in all six languages,
+`make test` builds the compiler, generates the corpus in all seven languages,
 compiles each, and compares the emitted wire against pinned goldens. That
 cross-language bit-identity check is the property this project exists to
 provide, so a change that breaks it is wrong until proven otherwise.
@@ -74,11 +77,11 @@ to somebody, so it needs to be worth it.
 ## Adding a language backend
 
 A backend is a Go package under `internal/codegen/` that walks the same IR the
-existing six consume, plus one entry in `compiler/builtin.go` implementing
+existing seven consume, plus one entry in `compiler/builtin.go` implementing
 `compiler.Generator` — the public registration interface, which is the only way
 any target reaches the driver. The cross-language harness is what makes this
 tractable: generate the corpus in your language, encode the same values, and the
-goldens tell you immediately whether you agree with the other six bit for bit.
+goldens tell you immediately whether you agree with the other targets bit for bit.
 
 You do not have to be in this repository to try one. `compiler.Generator` is
 public, so a generator can live in your own module, register on a

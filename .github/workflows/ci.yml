@@ -56,7 +56,7 @@ env:
 
 jobs:
   # The fast gate, and the conformance half of certification. `make test`
-  # builds the corpus in all six languages and compares their wire against
+  # builds the corpus in all seven languages and compares their wire against
   # the C++-pinned goldens — that cross-language bit identity is the property
   # this project exists to provide, and CI is where it gets proven on
   # hardware we do not own. It runs on every trigger, PRs included, because
@@ -114,6 +114,13 @@ jobs:
         with:
           node-version: '20'
 
+      # The Dart SDK, pinned to the same version the Makefile documents for
+      # the repo-local dist/ (generated Dart is self-contained — the SDK is
+      # the only Dart dependency, so there is no serialize.dart clone above).
+      - uses: dart-lang/setup-dart@v1
+        with:
+          sdk: '3.13.2'
+
       # vet rides in the test job on both OSes: an emitter codebase built
       # almost entirely out of format strings is exactly where printf-verb
       # mismatches live (issue #31).
@@ -123,9 +130,10 @@ jobs:
       # No SERIALIZE* overrides: the Makefile defaults already point at the
       # sibling layout cloned above. RUSTUP_BIN defaults to a homebrew keg on
       # the author's machine; on CI cargo is on PATH, so point it somewhere
-      # harmless.
+      # harmless. DART likewise defaults to the repo-local dist/ SDK; on CI
+      # setup-dart puts the pinned version on PATH.
       - name: make test
-        run: make test RUSTUP_BIN=/usr/bin
+        run: make test RUSTUP_BIN=/usr/bin DART=dart
 
       # The committed generated/ tree is what this repo treats as ground
       # truth — findings are receipted against its line numbers. `make test`
@@ -211,8 +219,8 @@ jobs:
           git clone --quiet --depth 1 --branch "$SERIALIZE_CS_TAG" https://github.com/mas-bandwidth/serialize.cs.git serialize.cs
           git clone --quiet --depth 1 --branch "$SERIALIZE_JS_TAG" https://github.com/mas-bandwidth/serialize.js.git serialize.js
 
-      # All four toolchains regardless of leg: the `make test` precondition
-      # step below builds the whole tree (six languages), exactly as the
+      # All the toolchains regardless of leg: the `make test` precondition
+      # step below builds the whole tree (seven languages), exactly as the
       # single-job flow did before the fan-out — the gate legs verdict the
       # same artifacts they always have.
       - uses: actions/setup-go@v7
@@ -230,12 +238,16 @@ jobs:
         with:
           node-version: '20'
 
+      - uses: dart-lang/setup-dart@v1
+        with:
+          sdk: '3.13.2'
+
       # The same preconditions the gates had when they ran after `make test`
       # in one job: bin/schema, the generated trees, and the bench units all
       # built (31-45s measured — cheap enough to repeat per leg rather than
       # invent a narrower target with different semantics).
       - name: make test
-        run: make test RUSTUP_BIN=/usr/bin
+        run: make test RUSTUP_BIN=/usr/bin DART=dart
 
       - name: inline gate — adversarial selftest
         run: bench/tools/inline-gate.sh selftest

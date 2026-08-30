@@ -24,7 +24,7 @@ var update = flag.Bool("update", false, "rewrite the golden files from current o
 
 const (
 	corpusDir = "../../examples"
-	// the fixed-point + 128-bit unit: all six targets, pinned like the main
+	// the fixed-point + 128-bit unit: all seven targets, pinned like the main
 	// corpus (the serialize ports all carry the phase-1 surface).
 	corpus128Dir = "../../examples128"
 	goldenDir    = "../../testdata/golden"
@@ -163,6 +163,14 @@ func TestGoldenSourceJs(t *testing.T) {
 	pinDir(t, filepath.Join(goldenDir, "js"), files)
 }
 
+// TestGoldenSourceDart pins the generated Dart byte-for-byte (SPEC §7.2
+// gate 1, seventh target).
+func TestGoldenSourceDart(t *testing.T) {
+	u := loadCorpus(t)
+	files := generate(t, u, "dart", nil)
+	pinDir(t, filepath.Join(goldenDir, "dart"), files)
+}
+
 // TestGoldenLudicrousId pins the fixed-point + 128-bit unit's protocol id.
 func TestGoldenLudicrousId(t *testing.T) {
 	u := loadCorpusDir(t, corpus128Dir)
@@ -187,13 +195,13 @@ func TestGoldenLudicrousId(t *testing.T) {
 }
 
 // TestGoldenLudicrousSource pins the fixed-point + 128-bit unit's generated
-// source byte-for-byte for ALL SIX targets. Every serialize port carries the
+// source byte-for-byte for ALL SEVEN targets. Every serialize port carries the
 // phase-1 surface — a backend erroring here is a loud failure — and the unit
 // rides the same cross-language wire gates as the main corpus
 // (test/{c,go,rust,cs}-ludicrous).
 func TestGoldenLudicrousSource(t *testing.T) {
 	u := loadCorpusDir(t, corpus128Dir)
-	for _, target := range []string{"cpp", "go", "rust", "cs", "c", "js"} {
+	for _, target := range []string{"cpp", "go", "rust", "cs", "c", "js", "dart"} {
 		pinDir(t, filepath.Join(goldenDir, "ludicrous", target), generate(t, u, target, nil))
 	}
 }
