@@ -190,8 +190,7 @@ type gen struct {
 	needRd     bool // rd/3 — the 40-bit window decode
 	needF32    bool // f32_bits/1 + f32_value/1
 	needF64    bool // f64_bits/1 + f64_value/1
-	needFr     bool // fr/1 — round-to-float32 with overflow atoms
-	needCf     bool // cf_quantize/4 + cf_decode/4 (imply fr)
+	needCf     bool // cf_quantize/4 + cf_decode/4 (and their fr/1)
 	usesImport bool // the module body uses Bitwise operators
 
 	// loop helpers the current file's wire bodies need, in first-need order,
@@ -466,36 +465,36 @@ func (g *gen) storageDefault(f *ir.Field) string {
 
 func (g *gen) scalarDefault(f *ir.Field) string {
 	t := f.Type
-	switch {
-	case t.Kind == ir.TBool:
+	switch t.Kind {
+	case ir.TBool:
 		if f.HasDefault {
 			return fmt.Sprintf("%v", f.DefBool)
 		}
 		return "false"
-	case t.Kind == ir.TFloat32:
+	case ir.TFloat32:
 		if f.HasDefault {
 			return formatFloat32(f.DefFloat)
 		}
 		return "0.0"
-	case t.Kind == ir.TFloat64:
+	case ir.TFloat64:
 		if f.HasDefault {
 			return formatFloat(f.DefFloat)
 		}
 		return "0.0"
-	case t.Kind == ir.TString || t.Kind == ir.TBytes:
+	case ir.TString, ir.TBytes:
 		return "<<>>"
-	case t.Kind == ir.TFixed:
+	case ir.TFixed:
 		// ir.Field.DefInt for a fixed default is ALREADY the raw scaled
 		// integer (issue #168) — storage is that raw value directly
 		if f.HasDefault {
 			return intLit(f.DefInt)
 		}
 		return "0"
-	case t.Kind == ir.TNamed:
-		switch t.Ref.(type) {
+	case ir.TNamed:
+		switch ref := t.Ref.(type) {
 		case *ir.Enum:
 			if f.DefVariant != "" {
-				return fmt.Sprintf("%d", enumVariantValue(t.Ref.(*ir.Enum), f.DefVariant))
+				return fmt.Sprintf("%d", enumVariantValue(ref, f.DefVariant))
 			}
 			return "0"
 		case *ir.Flags:
