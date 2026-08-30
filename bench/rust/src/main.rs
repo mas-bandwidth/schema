@@ -717,6 +717,7 @@ fn vary_real_packet(m: &mut realworld::RealPacket, rng: u64) {
 
 fn main() {
     let mut csv = false;
+    let mut quick = false;
     let mut wire_dir = String::from("../../testdata/wire");
     let mut num_runs = MAX_NUM_RUNS;
     let args: Vec<String> = std::env::args().collect();
@@ -739,12 +740,16 @@ fn main() {
                 }
                 num_runs = 1;
             }
+            "--quick" => quick = true,
             _ => {
-                eprintln!("usage: {} [--csv] [--round K] [--wire-dir <dir>]", args[0]);
+                eprintln!("usage: {} [--csv] [--round K] [--quick] [--wire-dir <dir>]", args[0]);
                 std::process::exit(1);
             }
         }
         i += 1;
+    }
+    if quick && num_runs == MAX_NUM_RUNS {
+        num_runs = 3;
     }
 
     let ctx = Ctx {
@@ -756,6 +761,22 @@ fn main() {
         csv_rows: RefCell::new(Vec::new()),
         goldens_loaded: RefCell::new(BTreeMap::new()),
     };
+
+    if quick {
+        // --quick: bench_mixed only, 3 measured runs — the iteration
+        // instrument, never the certification instrument. Golden gate
+        // unconditional (bench_rt gates before timing).
+        eprintln!("schema bench (rust, --quick: iteration instrument, not certification)");
+        rt::bench_rt_mixed(&ctx);
+        ctx.flush_csv();
+        if ctx.failed.get() {
+            eprintln!("BENCH FAILED (corpus_id {})", ctx.corpus_id());
+            std::process::exit(1);
+        }
+        eprintln!("OK (corpus_id {})", ctx.corpus_id());
+        black_box(ctx.sink.get());
+        return;
+    }
 
     eprintln!("schema bench (rust)");
 

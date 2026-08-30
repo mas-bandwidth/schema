@@ -1,14 +1,65 @@
-# The timed rows — main.exs loads the generated modules first; see the note
-# there on why the two files are split.
+# schema bench — the Elixir runner: a conforming run.sh leg per
+# bench/README.md's runner contract, measuring the generated monomorphic
+# Elixir codecs over the four bench/corpus/Bench.schema shapes.
+#
+# CONTRACT (BENCH-STANDARD.md): fixed iteration counts identical to every
+# other runner's rows for these benches (--quick's reduced count is the one
+# deliberate exception, recorded in the iters column); 1 discarded warmup
+# run then 7 measured runs per (bench, path) — or exactly one measured run
+# under --round K, where the interleaved driver aggregates across rounds
+# (§2.4); per-iteration LCG variation on the write path; 64 rotating
+# variant read buffers; median/min/max/spread over the measured runs;
+# CSV v2 rows on stdout under --csv, human table on stderr.
+#
+# WHAT THE ROWS MEASURE: the generated codec — schema's Elixir backend
+# emits self-contained accumulator-threaded write/read functions with zero
+# runtime dependencies, so the generated code IS the Elixir serialize path.
+# The rows carry family=gen: a ratio against another language's family=rt
+# row (the serialize runtime API called by hand) is a subject difference,
+# not a language difference, and the tools refuse it. Peak-style numbers
+# from this runner's earlier serialize-family form (tight loops,
+# best-of-five) are NOT comparable to these rows — different measurement
+# contract, and the statistic alone moves the number.
+#
+# GOLDEN GATED (§1.5): before any timing, every measured shape's pinned
+# instance is written and byte-compared against the C++-pinned
+# testdata/wire golden, and all 64 LCG variant buffers are decoded back
+# with every field verified. A runner that mismatches REFUSES to bench.
+# corpus_id is FNV-1a-64 over the goldens this run actually loaded (§1.6).
+#
+# Invocation is main.exs, from bench/elixir, under the repo's pinned
+# BEAM/Elixir toolchain (the Makefile's $(ELIXIR) PATH form):
+#
+#   cd bench/elixir && PATH="<dist otp>:<dist elixir>:$PATH" \
+#       elixir main.exs [--csv] [--round K] [--quick]
+#
+# --quick: bench_mixed only, 3 measured runs at a reduced iteration count
+# (the BEAM is ~2 orders behind the native legs; the full count would blow
+# quick mode's one-minute-per-language bound) — run.sh's iteration
+# instrument, never the certification instrument.
 defmodule SchemaBenchElixir do
   import Bitwise
 
-  @num_trials 5
   @num_variants 64
+
+  # §1.2/§2.1: fixed per-benchmark iteration counts, identical across every
+  # language's rows for these benches, recorded in the iters column
+  @packet_iters 32_000_000
+  @ints_iters 40_000_000
+  @bits_iters 48_000_000
+  @mixed_iters 40_000_000
+  # --quick only (PROPOSED, BENCH-STANDARD quick-mode scaling)
+  @quick_mixed_iters 8_000_000
+
+  # CSV v2 (§5.1) per-runner constants: family gen (the rows measure
+  # generated code), linkage beam (codec modules compiled beside the caller
+  # into one VM, no library boundary), checks contract (no caller-error
+  # checks in the writer, wire-contract validation unconditional in the
+  # reader), opt default (no level), inline unknown (no §4 elixir branch).
+  @csv_suffix "gen,beam,contract,default,unknown"
 
   # ------------------------------------------------------------------
   # the C bench's uint64 LCG, direct in BEAM integers under a 64-bit mask
-  # (serialize.elixir bench/bench.exs, verbatim)
   # ------------------------------------------------------------------
 
   @mask64 0xFFFFFFFFFFFFFFFF
@@ -160,32 +211,46 @@ defmodule SchemaBenchElixir do
   # harness
   # ------------------------------------------------------------------
 
-  defp env_int(name, fallback) do
-    case System.get_env(name) do
-      nil ->
-        fallback
-
-      raw ->
-        case Integer.parse(raw) do
-          {value, ""} when value >= 1 ->
-            value
-
-          _ ->
-            IO.write(:stderr, "#{name} must be a positive integer\n")
-            System.halt(1)
-        end
-    end
-  end
-
   defp gate_fail(row, what) do
     IO.write(:stderr, "GOLDEN GATE FAILED: #{row} #{what}\nreporting nothing.\n")
     System.halt(1)
   end
 
-  defp golden(name), do: File.read!("../../testdata/wire/#{name}.bin")
+  defp golden(name) do
+    path = "../../testdata/wire/#{name}.bin"
+
+    case File.read(path) do
+      {:ok, bytes} ->
+        bytes
+
+      {:error, _} ->
+        IO.write(:stderr, "missing wire golden #{path} — run from bench/elixir\n")
+        System.halt(1)
+    end
+  end
 
   defp fmt(value, decimals), do: :erlang.float_to_binary(value * 1.0, decimals: decimals)
   defp pad(value, width), do: String.pad_leading(value, width)
+
+  # corpus_id (§1.6): FNV-1a-64 over the goldens this run loaded — for each
+  # file in sorted basename order, the basename bytes, a 0x00 byte, the
+  # contents — rendered as 16 lowercase hex digits
+  defp fnv1a64(h, bytes) do
+    for <<b <- bytes>>, reduce: h do
+      acc -> bxor(acc, b) * 0x100000001B3 &&& @mask64
+    end
+  end
+
+  defp corpus_id(goldens) do
+    goldens
+    |> Enum.sort_by(fn {name, _} -> name end)
+    |> Enum.reduce(0xCBF29CE484222325, fn {name, bytes}, h ->
+      h |> fnv1a64(name) |> fnv1a64(<<0>>) |> fnv1a64(bytes)
+    end)
+    |> Integer.to_string(16)
+    |> String.downcase()
+    |> String.pad_leading(16, "0")
+  end
 
   # ------------------------------------------------------------------
   # the golden gate (§1.5), shared by every shape: the PINNED instance's
@@ -196,8 +261,9 @@ defmodule SchemaBenchElixir do
   defp gate_shape(row, golden_name, init, vary, write, read) do
     packet = init.()
     wire = write.(packet)
+    golden_bytes = golden(golden_name)
 
-    if wire != golden(golden_name) do
+    if wire != golden_bytes do
       gate_fail(row, "pinned instance vs testdata/wire/#{golden_name}.bin")
     end
 
@@ -237,15 +303,13 @@ defmodule SchemaBenchElixir do
         end
       end)
 
-    {List.to_tuple(variants), bytes_per_packet}
+    {List.to_tuple(variants), bytes_per_packet, {golden_name <> ".bin", golden_bytes}}
   end
 
   # ------------------------------------------------------------------
-  # the timed rows: write and read (and measure, where the family prints
-  # it), best of five trials — serialize.elixir bench/bench.exs's loop, with
-  # the generated monomorphic functions in place of the stream calls. Every
-  # loop's work flows into the sink (published at exit under an env var the
-  # runtime cannot rule out), and the LCG varies every written packet.
+  # the timed loops: write varies every packet through the LCG, read
+  # rotates the 64 gated variant buffers; every loop's work flows into the
+  # sink (published at exit under an env var the runtime cannot rule out)
   # ------------------------------------------------------------------
 
   defp write_loop(0, rng, _p, _vary, _write, acc), do: {acc, rng}
@@ -265,140 +329,108 @@ defmodule SchemaBenchElixir do
     read_loop(n - 1, i + 1, variants, read, num_bits, sink_of, acc + sink_of.(decoded))
   end
 
-  defp measure_loop(0, _rng, _p, _vary, _measure, acc), do: acc
+  # per (bench, path): 1 discarded warmup run then num_runs measured runs;
+  # the rng threads across runs (the write stream keeps varying, never
+  # replaying one sequence the branch predictor could memorize)
+  defp timed_runs(num_runs, run_fn) do
+    {rates, _} =
+      Enum.reduce(-1..(num_runs - 1), {[], lcg_seed()}, fn run, {rates, rng} ->
+        t0 = System.monotonic_time(:nanosecond)
+        {rng, iters} = run_fn.(rng)
+        elapsed = (System.monotonic_time(:nanosecond) - t0) * 1.0e-9
 
-  defp measure_loop(n, rng, p, vary, measure, acc) do
-    rng = lcg_step(rng)
-    p = vary.(p, rng)
-    measure_loop(n - 1, rng, p, vary, measure, acc + measure.(p))
+        if run >= 0 do
+          {[iters / elapsed | rates], rng}
+        else
+          {rates, rng}
+        end
+      end)
+
+    Enum.reverse(rates)
   end
 
-  defp best_of(nil, ns), do: ns
-  defp best_of(best, ns), do: min(best, ns)
+  defp stats(rates) do
+    sorted = Enum.sort(rates)
+    n = length(sorted)
+    median = Enum.at(sorted, div(n, 2))
+    min = hd(sorted)
+    max = List.last(sorted)
+    {median, min, max, (max - min) / median * 100.0}
+  end
 
-  defp bench_shape(row, label, gated, opts) do
-    {variants, bytes_per_packet} = gated
+  defp report(bench, path, iters, bytes_per_op, rates) do
+    {median, min, max, spread} = stats(rates)
+    mbps = median * bytes_per_op / (1024.0 * 1024.0)
+
+    IO.write(
+      :stderr,
+      "#{String.pad_trailing(bench, 18)} #{String.pad_trailing(path, 5)} " <>
+        "#{pad(fmt(median / 1.0e6, 2), 10)} M msg/s #{pad(fmt(mbps, 1), 10)} MB/s   " <>
+        "(min #{fmt(min / 1.0e6, 2)}, max #{fmt(max / 1.0e6, 2)}, spread #{fmt(spread, 1)}%)\n"
+    )
+
+    "elixir,#{bench},#{path},#{iters},#{bytes_per_op},#{length(rates)}," <>
+      "#{fmt(median, 0)},#{fmt(min, 0)},#{fmt(max, 0)},#{fmt(mbps, 2)},#{fmt(spread, 2)}"
+  end
+
+  defp bench_shape(row, gated, iters, num_runs, opts) do
+    {variants, bytes_per_packet, _golden} = gated
     init = opts[:init]
     vary = opts[:vary]
     write = opts[:write]
     read = opts[:read]
     sink_of = opts[:sink_of]
-    measure = opts[:measure]
-    mb_row = opts[:mb_row] || false
-    num_packets = opts[:num_packets]
     num_bits = bytes_per_packet * 8
 
-    {best_write, best_read, best_measure, sink} =
-      Enum.reduce(0..@num_trials, {nil, nil, nil, 0}, fn trial, {bw, br, bm, sink} ->
-        t0 = System.monotonic_time(:nanosecond)
-        {sink_w, rng} = write_loop(num_packets, lcg_seed(), init.(), vary, write, 0)
-        write_ns = System.monotonic_time(:nanosecond) - t0
-
-        t0 = System.monotonic_time(:nanosecond)
-        sink_r = read_loop(num_packets, 0, variants, read, num_bits, sink_of, 0)
-        read_ns = System.monotonic_time(:nanosecond) - t0
-
-        {sink_m, measure_ns} =
-          if measure do
-            t0 = System.monotonic_time(:nanosecond)
-            sink_m = measure_loop(num_packets, rng, init.(), vary, measure, 0)
-            {sink_m, System.monotonic_time(:nanosecond) - t0}
-          else
-            {0, 0}
-          end
-
-        sink = sink + sink_w + sink_r + sink_m
-
-        if trial == 0 do
-          # the untimed warmup pass
-          {bw, br, bm, sink}
-        else
-          {best_of(bw, write_ns), best_of(br, read_ns), best_of(bm, measure_ns), sink}
-        end
+    write_rates =
+      timed_runs(num_runs, fn rng ->
+        {sink_w, rng} = write_loop(iters, rng, init.(), vary, write, 0)
+        Process.put(:bench_sink, Process.get(:bench_sink, 0) + sink_w)
+        {rng, iters}
       end)
 
-    total_mb = bytes_per_packet * num_packets / (1024 * 1024)
-    packets = num_packets / 1_000_000
+    read_rates =
+      timed_runs(num_runs, fn rng ->
+        sink_r = read_loop(iters, 0, variants, read, num_bits, sink_of, 0)
+        Process.put(:bench_sink, Process.get(:bench_sink, 0) + sink_r)
+        {rng, iters}
+      end)
 
-    write_s = best_write * 1.0e-9
-    read_s = best_read * 1.0e-9
+    [
+      report(row, "write", iters, bytes_per_packet, write_rates),
+      report(row, "read", iters, bytes_per_packet, read_rates)
+    ]
+  end
 
-    rows =
-      if mb_row do
-        IO.write(
-          "#{label} write: #{pad(fmt(total_mb / write_s, 1), 8)} MB/s  (#{fmt(packets / write_s, 1)} M packets/s)\n" <>
-            "#{label} read:  #{pad(fmt(total_mb / read_s, 1), 8)} MB/s  (#{fmt(packets / read_s, 1)} M packets/s)\n"
-        )
+  defp parse_args(argv) do
+    parse_args(argv, %{csv: false, quick: false, num_runs: 7})
+  end
 
-        [
-          {row, "write", "MB/s", total_mb / write_s},
-          {row, "write", "Mpackets/s", packets / write_s},
-          {row, "read", "MB/s", total_mb / read_s},
-          {row, "read", "Mpackets/s", packets / read_s}
-        ]
-      else
-        IO.write(
-          "#{label} write: #{pad(fmt(packets / write_s, 1), 6)} M packets/s   read: #{pad(fmt(packets / read_s, 1), 6)} M packets/s\n"
-        )
+  defp parse_args([], opts), do: opts
+  defp parse_args(["--csv" | rest], opts), do: parse_args(rest, %{opts | csv: true})
+  defp parse_args(["--quick" | rest], opts), do: parse_args(rest, %{opts | quick: true})
 
-        [
-          {row, "write", "Mpackets/s", packets / write_s},
-          {row, "read", "Mpackets/s", packets / read_s}
-        ]
-      end
+  defp parse_args(["--round", _k | rest], opts),
+    do: parse_args(rest, %{opts | num_runs: 1})
 
-    rows =
-      if measure do
-        measure_s = best_measure * 1.0e-9
-
-        IO.write(
-          "#{label} measure: #{pad(fmt(packets / measure_s, 1), 6)} M packets/s (generation-time folded)\n"
-        )
-
-        rows ++ [{row, "measure", "Mpackets/s", packets / measure_s}]
-      else
-        rows
-      end
-
-    {rows, sink}
+  defp parse_args([arg | _], _opts) do
+    IO.write(:stderr, "usage: main.exs [--csv] [--round K] [--quick] (got #{arg})\n")
+    System.halt(1)
   end
 
   def main(argv) do
-    csv = "--csv" in argv
-    num_packets = env_int("BENCH_STREAM_PACKETS", 1_000_000)
+    opts = parse_args(argv)
+    quick = opts.quick
+    num_runs = if quick and opts.num_runs == 7, do: 3, else: opts.num_runs
 
-    # every row's golden gate runs before any row is timed: a runner that
-    # fails its goldens reports nothing at all (§1.5)
-    gated_packet =
-      gate_shape(
-        "bench_packet",
-        "bench_packet",
-        &init_bench_packet/0,
-        &vary_bench_packet/2,
-        &Bench.Bench.write_bench_packet/1,
-        &Bench.Bench.read_bench_packet/2
-      )
+    IO.write(
+      :stderr,
+      "schema bench (elixir, generated codecs" <>
+        if(quick, do: ", --quick: iteration instrument, not certification", else: "") <> ")\n"
+    )
 
-    gated_ints =
-      gate_shape(
-        "bench_ints",
-        "bench_ints",
-        &init_bench_ints/0,
-        &vary_bench_ints/2,
-        &Bench.Bench.write_bench_ints/1,
-        &Bench.Bench.read_bench_ints/2
-      )
-
-    gated_bits =
-      gate_shape(
-        "bench_bits",
-        "bench_bits",
-        &init_bench_bits/0,
-        &vary_bench_bits/2,
-        &Bench.Bench.write_bench_bits/1,
-        &Bench.Bench.read_bench_bits/2
-      )
-
+    # every measured row's golden gate runs before any row is timed: a
+    # runner that fails its goldens reports nothing at all (§1.5)
     gated_mixed =
       gate_shape(
         "bench_mixed",
@@ -409,68 +441,102 @@ defmodule SchemaBenchElixir do
         &Bench.Bench.read_bench_mixed/2
       )
 
-    IO.write("\n[schema bench — generated Elixir]\n\n")
+    mixed_opts = [
+      init: &init_bench_mixed/0,
+      vary: &vary_bench_mixed/2,
+      write: &Bench.Bench.write_bench_mixed/1,
+      read: &Bench.Bench.read_bench_mixed/2,
+      sink_of: & &1.sequence
+    ]
 
-    # the stream-comparable row: the same 12-op packet serialize.elixir's
-    # stream rows measure, through the generated monomorphic codec
-    {rows1, sink1} =
-      bench_shape("bench_packet", "packet (generated):", gated_packet,
-        init: &init_bench_packet/0,
-        vary: &vary_bench_packet/2,
-        write: &Bench.Bench.write_bench_packet/1,
-        read: &Bench.Bench.read_bench_packet/2,
-        sink_of: & &1.b,
-        measure: &Bench.Bench.measure_bench_packet/1,
-        mb_row: true,
-        num_packets: num_packets
+    {rows, goldens} =
+      if quick do
+        {_, _, golden_mixed} = gated_mixed
+
+        {bench_shape("bench_mixed", gated_mixed, @quick_mixed_iters, num_runs, mixed_opts),
+         [golden_mixed]}
+      else
+        gated_packet =
+          gate_shape(
+            "bench_packet",
+            "bench_packet",
+            &init_bench_packet/0,
+            &vary_bench_packet/2,
+            &Bench.Bench.write_bench_packet/1,
+            &Bench.Bench.read_bench_packet/2
+          )
+
+        gated_ints =
+          gate_shape(
+            "bench_ints",
+            "bench_ints",
+            &init_bench_ints/0,
+            &vary_bench_ints/2,
+            &Bench.Bench.write_bench_ints/1,
+            &Bench.Bench.read_bench_ints/2
+          )
+
+        gated_bits =
+          gate_shape(
+            "bench_bits",
+            "bench_bits",
+            &init_bench_bits/0,
+            &vary_bench_bits/2,
+            &Bench.Bench.write_bench_bits/1,
+            &Bench.Bench.read_bench_bits/2
+          )
+
+        {_, _, g_packet} = gated_packet
+        {_, _, g_ints} = gated_ints
+        {_, _, g_bits} = gated_bits
+        {_, _, g_mixed} = gated_mixed
+
+        rows =
+          bench_shape("bench_packet", gated_packet, @packet_iters, num_runs,
+            init: &init_bench_packet/0,
+            vary: &vary_bench_packet/2,
+            write: &Bench.Bench.write_bench_packet/1,
+            read: &Bench.Bench.read_bench_packet/2,
+            sink_of: & &1.b
+          ) ++
+            bench_shape("bench_ints", gated_ints, @ints_iters, num_runs,
+              init: &init_bench_ints/0,
+              vary: &vary_bench_ints/2,
+              write: &Bench.Bench.write_bench_ints/1,
+              read: &Bench.Bench.read_bench_ints/2,
+              sink_of: & &1.f0
+            ) ++
+            bench_shape("bench_bits", gated_bits, @bits_iters, num_runs,
+              init: &init_bench_bits/0,
+              vary: &vary_bench_bits/2,
+              write: &Bench.Bench.write_bench_bits/1,
+              read: &Bench.Bench.read_bench_bits/2,
+              sink_of: & &1.b7
+            ) ++
+            bench_shape("bench_mixed", gated_mixed, @mixed_iters, num_runs, mixed_opts)
+
+        {rows, [g_packet, g_ints, g_bits, g_mixed]}
+      end
+
+    id = corpus_id(goldens)
+
+    if opts.csv do
+      IO.write(
+        "lang,bench,path,iters,bytes_per_op,runs,median_msgs_per_sec,min_msgs_per_sec," <>
+          "max_msgs_per_sec,median_mb_per_sec,spread_pct,corpus_id,family,linkage,checks,opt,inline\n"
       )
 
-    IO.write("\n")
-
-    {rows2, sink2} =
-      bench_shape("bench_ints", "int packet   (generated):", gated_ints,
-        init: &init_bench_ints/0,
-        vary: &vary_bench_ints/2,
-        write: &Bench.Bench.write_bench_ints/1,
-        read: &Bench.Bench.read_bench_ints/2,
-        sink_of: & &1.f0,
-        num_packets: num_packets
-      )
-
-    {rows3, sink3} =
-      bench_shape("bench_bits", "bits packet  (generated):", gated_bits,
-        init: &init_bench_bits/0,
-        vary: &vary_bench_bits/2,
-        write: &Bench.Bench.write_bench_bits/1,
-        read: &Bench.Bench.read_bench_bits/2,
-        sink_of: & &1.b7,
-        num_packets: num_packets
-      )
-
-    {rows4, sink4} =
-      bench_shape("bench_mixed", "mixed packet (generated):", gated_mixed,
-        init: &init_bench_mixed/0,
-        vary: &vary_bench_mixed/2,
-        write: &Bench.Bench.write_bench_mixed/1,
-        read: &Bench.Bench.read_bench_mixed/2,
-        sink_of: & &1.sequence,
-        num_packets: num_packets
-      )
-
-    IO.write("\n")
-
-    if csv do
-      IO.write("row,op,units,value\n")
-
-      for {row, op, units, value} <- rows1 ++ rows2 ++ rows3 ++ rows4 do
-        IO.write("#{row},#{op},#{units},#{fmt(value, 4)}\n")
+      for row <- rows do
+        IO.write("#{row},#{id},#{@csv_suffix}\n")
       end
     end
+
+    IO.write(:stderr, "OK (corpus_id #{id})\n")
 
     # the g_sink escape: the runtime cannot prove the env var absent, so the
     # accumulated sink is observable and no loop's work can be deleted
     if System.get_env("SERIALIZE_BENCH_SINK") do
-      IO.write(:stderr, "sink: #{sink1 + sink2 + sink3 + sink4}\n")
+      IO.write(:stderr, "sink: #{Process.get(:bench_sink, 0)}\n")
     end
   end
 end

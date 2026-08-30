@@ -23,13 +23,23 @@ This README is the operating manual.
 collects everything into one CSV under `bench/results/`. The C++ runner
 (`bench/cpp/bench_main.cpp`) is the reference implementation; the c, go,
 rust, cs and js runners (`bench/c`, `bench/go`, `bench/rust`, `bench/cs`,
-`bench/js`) are its ports, wired per the contract below.
+`bench/js`) are its ports, wired per the contract below. Three further
+legs — `bench/java`, `bench/dart`, `bench/elixir` — measure those
+backends' GENERATED codecs over the four Bench-corpus shapes under the
+same contract (see "The codegen-only legs" below).
 
 ## Running
 
     bench/run.sh                 # Release, results in bench/results/<date>-<arch>-<host>.csv
     bench/run.sh --debug         # also the Debug pair (matched-pair methodology)
-    bench/run.sh --only c|cpp|go|rust|cs|js   # one language leg
+    bench/run.sh --only c|cpp|go|rust|cs|js|java|dart|elixir   # one language leg
+    bench/run.sh --quick         # the iteration instrument: bench_mixed only,
+                                 # 3 measured runs per leg, golden gate intact,
+                                 # and the blended table (per-message time
+                                 # averaged over write+read, fastest = 100%)
+                                 # printed after the CSV. NEVER a
+                                 # certification run; scaling constants are
+                                 # PROPOSED in BENCH-STANDARD.md §2.8.
     bench/run.sh --inline        # + the §4 inline verdict pass: writes the
                                  # per-symbol ledger and backfills the inline
                                  # column (rows stay un-ratioable without it)
@@ -172,6 +182,44 @@ these runners; the definitions land ahead of any further string/wstring
 optimization, and the rows themselves land as their own additive change
 (corpus type, goldens, runner rows, new corpus_id).
 
+The js leg additionally carries the four Bench-corpus shapes through the
+FLAT generated tier (family `gen`, `codec=flat` — THE js path), golden-
+gated and cross-validated against the runtime-call tier by the same oracle
+as the corpus shapes; its family `rt` rows keep the same bench names and
+measure the serialize.js runtime API beside them.
+
+## The codegen-only legs (java, dart, elixir)
+
+schema's Java, Dart and Elixir backends emit SELF-CONTAINED monomorphic
+codecs — no runtime library exists for these languages, so the generated
+code IS their serialize path. Their runners
+(`bench/java/Main.java`, `bench/dart/main.dart`, `bench/elixir/main.exs` +
+`runner.exs`) measure the generated codecs over the four Bench-corpus
+shapes under the full BENCH-STANDARD contract: fixed iteration counts
+identical to the six runners' rows for these benches, 1 warmup + 7
+measured runs (1 under `--round K`), per-iteration LCG variation, 64
+rotating read variants, §1.5 golden gate before any timing, CSV v2 rows
+with `corpus_id` over the goldens loaded.
+
+Their rows carry **family `gen`** — a ratio against another language's
+family `rt` row (the runtime API called by hand) is a subject difference,
+not a language difference, and `relative.go` refuses it. New `linkage`
+values, same recorded-property rule as `esm`: `class` (Java codec
+classfiles compiled beside the caller into one JVM), `aot` (Dart
+whole-program AOT executable), `beam` (Elixir modules compiled beside the
+caller into one BEAM VM). `checks=contract` (caller-error asserts dormant,
+wire-contract validation unconditional in the reader), `opt=default`,
+`inline=unknown` (no AOT artifact the §4 verdict pass can walk — Dart AOT
+attribution is an open follow-on).
+
+Peak-style numbers from these runners' earlier serialize-family form
+(tight per-shape loops, warmup then best-of-five) are NOT comparable to
+their rows under this contract: the statistic, loop discipline and
+iteration counts all differ, and the measured harness-contract term alone
+moves a number up to ~20% on the read paths (issue #170's decomposition).
+Toolchains are the repo-pinned `dist/` installs (the Makefile's own
+defaults; `JAVA`/`JAVAC`/`DART`/`BEAM_PATH` override).
+
 ## Runner contract (how go/rust/cs plug in)
 
 A runner is a standalone program in `bench/<lang>/` that:
@@ -223,6 +271,15 @@ A runner is a standalone program in `bench/<lang>/` that:
   verdicts, 64 variants) before any timing; the runtime-call generated rows
   ride as labeled supplementary rows (`codec=runtime`). The `rt` and `bits`
   families measure the serialize.js library itself and carry no codec column.
+
+- **java**: `bench/java/Main.java` — compiled with the pinned dist JDK's
+  javac (`--release 17 -Xlint:all -Werror`) beside `generated/bench/java`,
+  run from `bench/java` as `java -cp ../../build/bench/java Main --csv`
+- **dart**: `bench/dart/main.dart` — AOT-compiled with the pinned dist SDK
+  (`dart compile exe`, the timed form), run from `bench/dart` as
+  `../../build/bench/schema_bench_dart --csv`
+- **elixir**: `bench/elixir/main.exs` — run from `bench/elixir` under the
+  pinned BEAM toolchain PATH as `elixir main.exs --csv`
 
 If a runner or its toolchain is missing, `run.sh` prints `SKIP <lang>`
 with the reason.

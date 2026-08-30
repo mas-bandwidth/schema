@@ -64,6 +64,8 @@ static uint64_t bench_rng( uint64_t rng )
 }
 
 #define MaxNumRuns 7        /* median of 7 (N >= 5), after 1 warmup run */
+static int g_quick = 0;             /* --quick: bench_mixed only, 3 measured runs —
+                                       the iteration instrument, never certification */
 static int g_num_runs = MaxNumRuns; /* --round K drops this to 1 (§2.4: one warmup +
                                        one measured run per round; the driver
                                        aggregates across rounds) */
@@ -1300,18 +1302,24 @@ int main( int argc, char ** argv )
             }
             g_num_runs = 1;
         }
+        else if ( strcmp( argv[i], "--quick" ) == 0 )
+            g_quick = 1;
         else
         {
-            fprintf( stderr, "usage: %s [--csv] [--round K] [--wire-dir <dir>]\n", argv[0] );
+            fprintf( stderr, "usage: %s [--csv] [--round K] [--quick] [--wire-dir <dir>]\n", argv[0] );
             return 1;
         }
     }
+    if ( g_quick && g_num_runs == MaxNumRuns )
+        g_num_runs = 3;
 
 #if defined(NDEBUG)
     fprintf( stderr, "schema bench (c, Release)\n" );
 #else
     fprintf( stderr, "schema bench (c, Debug — only release numbers are meaningful)\n" );
 #endif
+    if ( g_quick )
+        fprintf( stderr, "--quick: iteration instrument, not certification\n" );
 
     if ( g_csv )
         printf( "lang,bench,path,iters,bytes_per_op,runs,median_msgs_per_sec,min_msgs_per_sec,max_msgs_per_sec,median_mb_per_sec,spread_pct,corpus_id,family,linkage,checks,opt,inline\n" );
@@ -1333,22 +1341,25 @@ int main( int argc, char ** argv )
        f050 true, f074 false) over zero, exactly as C++ RealPacket{} does */
     real_packet = new_real_packet();
 
-    bench_message_rigidbody( "rigidbody_moving", "rigidbody_moving", 24000000L, &moving );
-    bench_message_rigidbody_at_rest( "rigidbody_at_rest", "rigidbody_at_rest", 32000000L, &at_rest );
-    bench_message_chat( "chat", "chat", 48000000L, &chat );
-    bench_message_test( "test", NULL, 192000000L, &test );
-    bench_message_inputpacket( "inputpacket", "inputpacket", 16000000L, &inputpacket );
-    bench_message_shipcreate( "shipcreate", "shipcreate_flags", 32000000L, &shipcreate );
-    bench_message_probe_header( "probe_header", "probe_header", 256000000L, &probe_header );
-    bench_message_probebits( "probebits", "probebits", 128000000L, &probebits );
-    bench_message_probearray( "probearray", "probearray", 20000000L, &probearray );
-    bench_message_testdata( "testdata", "testdata", 8000000L, &testdata );
+    if ( !g_quick )
+    {
+        bench_message_rigidbody( "rigidbody_moving", "rigidbody_moving", 24000000L, &moving );
+        bench_message_rigidbody_at_rest( "rigidbody_at_rest", "rigidbody_at_rest", 32000000L, &at_rest );
+        bench_message_chat( "chat", "chat", 48000000L, &chat );
+        bench_message_test( "test", NULL, 192000000L, &test );
+        bench_message_inputpacket( "inputpacket", "inputpacket", 16000000L, &inputpacket );
+        bench_message_shipcreate( "shipcreate", "shipcreate_flags", 32000000L, &shipcreate );
+        bench_message_probe_header( "probe_header", "probe_header", 256000000L, &probe_header );
+        bench_message_probebits( "probebits", "probebits", 128000000L, &probebits );
+        bench_message_probearray( "probearray", "probearray", 20000000L, &probearray );
+        bench_message_testdata( "testdata", "testdata", 8000000L, &testdata );
 
-    /* real_packet (§1.7): the realistic snapshot — ~93 riding individually
-       serialized small fields, 204 wire bytes, 0% bulk share by bits.
-       base_iters sized in the C++ reference (§2.1: 8M puts the 200 ms floor
-       at 40 M msg/s). */
-    bench_message_real_packet( "real_packet", "real_packet", 8000000L, &real_packet );
+        /* real_packet (§1.7): the realistic snapshot — ~93 riding individually
+           serialized small fields, 204 wire bytes, 0% bulk share by bits.
+           base_iters sized in the C++ reference (§2.1: 8M puts the 200 ms floor
+           at 40 M msg/s). */
+        bench_message_real_packet( "real_packet", "real_packet", 8000000L, &real_packet );
+    }
 
 
     /* family rt (§1.3/§1.5): the runtime API by hand, oracle-gated against
@@ -1384,14 +1395,19 @@ int main( int argc, char ** argv )
         rt_mixed.yaw = 511; rt_mixed.moving = 1; rt_mixed.firing = 0;
         rt_mixed.timestamp = 0x123456789ABCULL; rt_mixed.weapon = 15;
 
-        bench_rt_bench_packet( "bench_packet", 32000000L, &rt_packet );
-        bench_rt_bench_ints( "bench_ints", 40000000L, &rt_ints );
-        bench_rt_bench_bits( "bench_bits", 48000000L, &rt_bits );
+        if ( !g_quick )
+        {
+            bench_rt_bench_packet( "bench_packet", 32000000L, &rt_packet );
+            bench_rt_bench_ints( "bench_ints", 40000000L, &rt_ints );
+            bench_rt_bench_bits( "bench_bits", 48000000L, &rt_bits );
+        }
+        /* --quick runs exactly this leg: bench_mixed, golden gate intact */
         bench_rt_bench_mixed( "bench_mixed", 40000000L, &rt_mixed );
     }
 
     /* family bits (§1.4): the one bitpacker workload in the estate */
-    bench_bitpacker( 24576L );
+    if ( !g_quick )
+        bench_bitpacker( 24576L );
 
     flush_csv();    /* rows carry the corpus_id of the goldens this run loaded */
 

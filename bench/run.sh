@@ -8,13 +8,20 @@
 # with the serialize ports (see bench/README.md for the runner contract).
 #
 # usage: bench/run.sh [--debug] [--out FILE] [--compiler CXX] [--only LANG]
-#                     [--round K] [--bare] [--reuse-build]
+#                     [--round K] [--bare] [--reuse-build] [--quick]
 #   --debug       also build and run the Debug pair (matched-pair methodology;
 #                 only Release numbers are meaningful, Debug is recorded so
 #                 pathological debug regressions are visible)
 #   --out FILE    results CSV (default bench/results/<date>-<arch>-<host>.csv)
 #   --compiler    C++ compiler (default: $CXX, else c++)
-#   --only LANG   run a single language leg (c|cpp|go|rust|cs|js). For shared boxes
+#   --quick       the iteration instrument, never the certification
+#                 instrument: every leg runs bench_mixed ONLY (3 measured
+#                 runs, golden gate intact), and the driver prints the
+#                 blended table — per-message time averaged over write and
+#                 read, fastest language = 100% — after the CSV lands.
+#                 Scaling constants are PROPOSED in BENCH-STANDARD.md terms.
+#   --only LANG   run a single language leg (c|cpp|go|rust|cs|js|java|dart|elixir).
+#                 For shared boxes
 #                 under one-profile-at-a-time discipline: a driver runs the
 #                 legs serially with quiet-window checks between them. Each
 #                 leg's CSV carries the full preamble; measurement code and
@@ -68,6 +75,7 @@ ROUND=""
 BARE=0
 REUSE=0
 INLINE=0
+QUICK=0
 CXX_BIN="${CXX:-c++}"
 while [ $# -gt 0 ]; do
     case "$1" in
@@ -79,6 +87,7 @@ while [ $# -gt 0 ]; do
         --bare) BARE=1 ;;
         --reuse-build) REUSE=1 ;;
         --inline) INLINE=1 ;;
+        --quick) QUICK=1 ;;
         *) echo "unknown argument: $1" >&2; exit 1 ;;
     esac
     shift
@@ -87,9 +96,12 @@ RUNNER_ARGS="--csv"
 if [ -n "$ROUND" ]; then
     RUNNER_ARGS="--csv --round $ROUND"
 fi
+if [ "$QUICK" = 1 ]; then
+    RUNNER_ARGS="$RUNNER_ARGS --quick"
+fi
 case "$ONLY" in
-    ""|c|cpp|go|rust|cs|js) ;;
-    *) echo "unknown --only language: $ONLY (c|cpp|go|rust|cs|js)" >&2; exit 1 ;;
+    ""|c|cpp|go|rust|cs|js|java|dart|elixir) ;;
+    *) echo "unknown --only language: $ONLY (c|cpp|go|rust|cs|js|java|dart|elixir)" >&2; exit 1 ;;
 esac
 
 # §3.5 provenance mechanics: sets the SERIALIZE* defaults, materializes the
@@ -132,6 +144,19 @@ elif [ -x /opt/homebrew/opt/rustup/bin/cargo ]; then
 fi
 DOTNET_VERSION="$(dotnet --version 2>/dev/null | head -1 || true)"
 NODE_VERSION="$(node --version 2>/dev/null | head -1 || true)"
+
+# The codegen-only legs (java, dart, elixir): schema's backends for these
+# languages emit self-contained code with no runtime library, so the legs
+# build from the repo's own generated/bench sources and there is no §3.5
+# runtime checkout to verify. Toolchains are the repo-pinned dist/ installs
+# (the Makefile's own defaults); JAVA/JAVAC/DART/BEAM_PATH override.
+JAVA_BIN="${JAVA:-$PWD/dist/jdk-21.0.12.1/Contents/Home/bin/java}"
+JAVAC_BIN="${JAVAC:-$PWD/dist/jdk-21.0.12.1/Contents/Home/bin/javac}"
+DART_BIN="${DART:-$PWD/dist/dart-sdk-3.13.2/bin/dart}"
+BEAM_PATH="${BEAM_PATH:-$PWD/dist/otp-29.0.5/bin:$PWD/dist/elixir-1.20.4/bin}"
+JAVA_VERSION="$("$JAVA_BIN" --version 2>/dev/null | head -1 || true)"
+DART_VERSION="$("$DART_BIN" --version 2>/dev/null | head -1 || true)"
+ELIXIR_VERSION="$(PATH="$BEAM_PATH:$PATH" elixir --short-version 2>/dev/null | head -1 || true)"
 
 # Release flags: the schema repo's own flags (-std=c++17 -Wall -Wextra -Werror
 # -ffp-contract=off) plus the serialize repo's Release bench configuration
@@ -205,6 +230,9 @@ emit_preamble() {
         echo "# rust: ${RUST_VERSION:-not present} (cargo run --release at opt-level ${OPT_LEVEL#O}, no LTO)"
         echo "# dotnet: ${DOTNET_VERSION:-not present} (dotnet run -c Release, workstation GC)"
         echo "# node: ${NODE_VERSION:-not present} (NODE_ENV=production — serialize.js's caller-trust release mode; the runner records the mode that ran in its checks column)"
+        echo "# java: ${JAVA_VERSION:-not present} (generated codecs, zero runtime dependency; default JVM flags, no -ea)"
+        echo "# dart: ${DART_VERSION:-not present} (generated codecs, zero runtime dependency; AOT executable)"
+        echo "# elixir: ${ELIXIR_VERSION:-not present} (generated codecs, zero runtime dependency; pinned BEAM toolchain)"
         echo "# pinning: $PIN_DESC"
         echo "# noise: ${BENCH_NOISE:-unlabelled}"
         echo "# schema commit: $(git rev-parse --short HEAD 2>/dev/null || echo unknown)"
@@ -278,8 +306,14 @@ prov_note() {
         js)   PROV_JS="$resolved" ;;
     esac
 }
+# java/dart/elixir never appear here: their legs build from the repo's own
+# generated sources with no runtime checkout, so there is nothing for the
+# §3.5 guard to verify or misrecord.
 if [ -n "$ONLY" ]; then
-    prov_verify "$ONLY"
+    case "$ONLY" in
+        java|dart|elixir) ;;
+        *) prov_verify "$ONLY" ;;
+    esac
     for _lang in cpp c go rust cs js; do
         [ "$_lang" != "$ONLY" ] && prov_note "$_lang"
     done
@@ -417,6 +451,62 @@ if [ -z "$ONLY" ] || [ "$ONLY" = js ]; then
     fi
 fi
 
+# ---- Java (generated codecs over the Bench corpus; no runtime checkout) ----
+if [ -z "$ONLY" ] || [ "$ONLY" = java ]; then
+    if [ -f bench/java/Main.java ]; then
+        if [ -x "$JAVAC_BIN" ] || command -v "$JAVAC_BIN" >/dev/null 2>&1; then
+            if [ "$REUSE" = 1 ] && [ -f build/bench/java/Main.class ]; then
+                echo "== java: reusing build/bench/java ==" >&2
+            else
+                echo "== java: build ==" >&2
+                mkdir -p build/bench/java
+                "$JAVAC_BIN" --release 17 -Xlint:all -Werror -d build/bench/java \
+                    generated/bench/java/*.java bench/java/Main.java
+            fi
+            echo "== java: run ==" >&2
+            ( cd bench/java && $PIN "$JAVA_BIN" -cp ../../build/bench/java Main $RUNNER_ARGS ) >> "$OUT"
+        else
+            echo "SKIP java: runner present but no javac at $JAVAC_BIN (populate dist/ per the Makefile, or set JAVA/JAVAC)" >&2
+        fi
+    else
+        echo "SKIP java: runner not landed yet (bench/java/Main.java)" >&2
+    fi
+fi
+
+# ---- Dart (generated codecs over the Bench corpus; AOT is the timed form) ----
+if [ -z "$ONLY" ] || [ "$ONLY" = dart ]; then
+    if [ -f bench/dart/main.dart ]; then
+        if [ -x "$DART_BIN" ] || command -v "$DART_BIN" >/dev/null 2>&1; then
+            if [ "$REUSE" = 1 ] && [ -x build/bench/schema_bench_dart ]; then
+                echo "== dart: reusing build/bench/schema_bench_dart ==" >&2
+            else
+                echo "== dart: build (AOT) ==" >&2
+                "$DART_BIN" compile exe bench/dart/main.dart -o build/bench/schema_bench_dart >/dev/null
+            fi
+            echo "== dart: run ==" >&2
+            ( cd bench/dart && $PIN ../../build/bench/schema_bench_dart $RUNNER_ARGS ) >> "$OUT"
+        else
+            echo "SKIP dart: runner present but no dart at $DART_BIN (populate dist/ per the Makefile, or set DART)" >&2
+        fi
+    else
+        echo "SKIP dart: runner not landed yet (bench/dart/main.dart)" >&2
+    fi
+fi
+
+# ---- Elixir (generated codecs over the Bench corpus; pinned BEAM toolchain) ----
+if [ -z "$ONLY" ] || [ "$ONLY" = elixir ]; then
+    if [ -f bench/elixir/main.exs ]; then
+        if PATH="$BEAM_PATH:$PATH" command -v elixir >/dev/null 2>&1; then
+            echo "== elixir: run ==" >&2
+            ( cd bench/elixir && $PIN env PATH="$BEAM_PATH:$PATH" elixir main.exs $RUNNER_ARGS ) >> "$OUT"
+        else
+            echo "SKIP elixir: runner present but no elixir on $BEAM_PATH (populate dist/ per the Makefile, or set BEAM_PATH)" >&2
+        fi
+    else
+        echo "SKIP elixir: runner not landed yet (bench/elixir/main.exs)" >&2
+    fi
+fi
+
 # ---- inline verdict pass (§4.1/§4.2): backfill the inline column ----
 # js is absent from this list DELIBERATELY: the verdict is a per-compiled-
 # language disassembly pass and a JIT leg has no AOT artifact to walk —
@@ -428,6 +518,38 @@ if [ "$INLINE" = 1 ]; then
                 || echo "inline verdict failed for $lang — its rows stay unknown (un-ratioable)" >&2
         fi
     done
+fi
+
+# ---- --quick: the blended table — one row per language over bench_mixed,
+# per-message time averaged across write and read on the §2.2 headline
+# (max) rate, fastest language = 100%, every other as its time multiple ----
+if [ "$QUICK" = 1 ]; then
+    {
+        echo ""
+        echo "quick mode — iteration instrument, not certification (bench_mixed only, blended write+read)"
+        awk -F, '
+            $2 == "bench_mixed" && $3 == "write" { w[$1] = $9 }
+            $2 == "bench_mixed" && $3 == "read"  { r[$1] = $9 }
+            END {
+                n = 0
+                for (lang in w) {
+                    if (r[lang] > 0 && w[lang] > 0) {
+                        t = (1.0 / w[lang] + 1.0 / r[lang]) / 2.0 * 1e9
+                        n++; langs[n] = lang; ts[n] = t
+                    }
+                }
+                # sort ascending by blended time
+                for (i = 1; i <= n; i++)
+                    for (j = i + 1; j <= n; j++)
+                        if (ts[j] < ts[i]) {
+                            tt = ts[i]; ts[i] = ts[j]; ts[j] = tt
+                            tl = langs[i]; langs[i] = langs[j]; langs[j] = tl
+                        }
+                printf "  %-8s %14s %10s\n", "lang", "ns/msg", "% of best"
+                for (i = 1; i <= n; i++)
+                    printf "  %-8s %14.2f %9.0f%%\n", langs[i], ts[i], ts[i] / ts[1] * 100.0
+            }' "$OUT"
+    } >&2
 fi
 
 echo "results: $OUT" >&2

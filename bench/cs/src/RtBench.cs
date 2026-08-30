@@ -554,6 +554,12 @@ static partial class Program
         BenchRt("bench_packet", 32000000, PinRtPacket(), RtOnceWritePacket, RtOnceReadPacket, RtBenchPacketWriteLoop, RtBenchPacketReadLoop, VaryRtPacket);
         BenchRt("bench_ints", 40000000, PinRtInts(), RtOnceWriteInts, RtOnceReadInts, RtBenchIntsWriteLoop, RtBenchIntsReadLoop, VaryRtInts);
         BenchRt("bench_bits", 48000000, PinRtBits(), RtOnceWriteBits, RtOnceReadBits, RtBenchBitsWriteLoop, RtBenchBitsReadLoop, VaryRtBits);
+        BenchRtMixed();
+    }
+
+    // the --quick leg: bench_mixed alone (golden-gated by BenchRt like every leg)
+    static void BenchRtMixed()
+    {
         BenchRt("bench_mixed", 40000000, PinRtMixed(), RtOnceWriteMixed, RtOnceReadMixed, RtBenchMixedWriteLoop, RtBenchMixedReadLoop, VaryRtMixed);
     }
 
