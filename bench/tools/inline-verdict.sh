@@ -591,10 +591,28 @@ nonzero_symbols() {
 
 # ---- backfill: rewrite this language's rows' inline column ----
 # verdicts.txt lines: "<bench> <path> <verdict>"
+# Family-guarded (issue #177): the four Bench shapes now carry BOTH a gen row
+# (generated code) and an rt row (hand-written runtime usage) under one bench
+# name. A verdict computed from the rt noinline loop symbols (RT_MAP) stamps
+# only rt/bits rows, and the corpus attributions (BENCH_MAP) stamp only gen
+# rows — without the guard the rt verdict would stamp the gen twin, a false
+# claim about a different binary path. The native gen Bench-shape rows have
+# no verdict source yet and stay inline=unknown (correctly un-ratioable)
+# until the verdict pass learns to attribute them (named follow-on on #177).
 backfill() {
     awk -F, -v OFS=, -v lang="$LANG_ARG" -v vf="$VD/verdicts.txt" '
-        BEGIN { while ((getline line < vf) > 0) { split(line, a, " "); v[a[1] "," a[2]] = a[3] } }
-        $1 == lang && NF == 17 { key = $2 "," $3; if (key in v) $17 = v[key] }
+        BEGIN {
+            while ((getline line < vf) > 0) { split(line, a, " "); v[a[1] "," a[2]] = a[3] }
+            rtfam["bench_packet"] = rtfam["bench_ints"] = rtfam["bench_bits"] = 1
+            rtfam["bench_mixed"] = rtfam["bitpacker"] = 1
+        }
+        $1 == lang && NF == 17 {
+            key = $2 "," $3
+            if (key in v) {
+                if ($2 in rtfam) { if ($13 == "rt" || $13 == "bits") $17 = v[key] }
+                else if ($13 == "gen") $17 = v[key]
+            }
+        }
         { print }' "$CSV" > "$CSV.tmp" && mv "$CSV.tmp" "$CSV"
     echo "backfilled $LANG_ARG rows in $CSV" >&2
 }
