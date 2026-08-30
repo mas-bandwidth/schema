@@ -31,7 +31,7 @@ safely accept a packet from the network at all. You are then choosing between
 In schema there is nothing to omit. Refusing an out-of-range value is not a
 verification pass you run first, it is what the read does: the bound is part of
 the type, so the generated reader checks it inline in every language, because
-one compiler emitted all eight. There is no such thing as a schema port that
+one compiler emitted all nine. There is no such thing as a schema port that
 reads but cannot validate.
 
 For a 60 Hz gameplay packet where you decode the whole thing anyway, that trade
@@ -78,7 +78,7 @@ Two further differences worth being precise about. Cap'n Proto is byte- and
 word-aligned by design — alignment is what makes the in-place trick sound —
 where schema packs to the bit. And Cap'n Proto brings a large surface: RPC,
 promise pipelining, capabilities, an ecosystem. schema brings a language and
-eight code generators, and nothing else.
+nine code generators, and nothing else.
 
 On size: on the gameplay packet in [COMPARISON.md](COMPARISON.md), Cap'n Proto
 is 96 bytes unpacked and **52 packed**, against schema's 28. Packed is the
@@ -208,14 +208,14 @@ project stopped tomorrow, you would still have working serializers and could
 maintain them by hand. That is a materially different exposure from depending
 on a runtime library.
 
-## Only eight languages. What about Python, Swift?
+## Only nine languages. What about Python, Swift?
 
-Not supported today. The eight exist because they are what the authors ship
+Not supported today. The nine exist because they are what the authors ship
 in: C++ engine, C# for Unity, Go for backend services, Rust for tooling,
 JavaScript for the browser client, Dart for Flutter clients, Java for the
 JVM side of the estate.
 
-A new backend is a Go package that walks the same IR the existing eight consume,
+A new backend is a Go package that walks the same IR the existing nine consume,
 and the cross-language test harness would tell you immediately whether it
 agrees with the others bit for bit. That is the mechanism, but it is real work
 and nobody should pretend otherwise.
@@ -226,8 +226,8 @@ That is what it is designed for, and the specific guarantee is: **a read
 refuses out-of-range input rather than clamping or trusting it.** Ranged
 values, array counts past their bound, string and bytes lengths past their
 maximum, enum values that are not variants, and reads that run past the end of
-the buffer all fail the read, and the same rules hold in all eight languages
-because one compiler emitted all eight.
+the buffer all fail the read, and the same rules hold in all nine languages
+because one compiler emitted all nine.
 
 What it does *not* do: it is not a transport, so it does nothing about replay,
 amplification, rate limiting or authentication. Those belong to the layer
@@ -241,7 +241,7 @@ hand-crafted hostile bytes in the cross-language test corpus.
 ## Do writes validate like reads do?
 
 No. **The guarantee is on reads** — that is where untrusted input arrives, and
-it holds in all eight languages.
+it holds in all nine languages.
 
 On the write side each language uses its own correctness idiom: C++ has
 `assert`/`NDEBUG`, a check that disappears in release, so that is what it uses;
@@ -256,7 +256,7 @@ and in a game shipping at 60 Hz re-checking every field on the write path is a
 cost with no buyer. See
 [USAGE.md](USAGE.md#writes-are-the-callers-responsibility).
 
-## Is everything supported in all eight languages?
+## Is everything supported in all nine languages?
 
 **Yes.** The wire is generated for C, C++, C#, Dart, Go, Java, JavaScript and Rust from one IR, and
 checked against each other in CI on every push. Every target's output is held

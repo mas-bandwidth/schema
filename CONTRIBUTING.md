@@ -26,10 +26,11 @@ the claim can be checked rather than believed.
 ## Building
 
 Needs Go 1.26+, a C++17 compiler, a C99 compiler, and — for the full
-cross-language test — the Rust, Go, Node.js, .NET, Dart and Java toolchains
-(the Makefile pins Dart SDK 3.13.2 and Temurin JDK 21.0.12.1; unpack them
-under `dist/` per the Makefile's `DART` and `JAVA`/`JAVAC` notes, or set
-`DART=dart JAVA=java JAVAC=javac` if compatible versions are on your PATH).
+cross-language test — the Rust, Go, Node.js, .NET, Dart, Java and Erlang/Elixir
+toolchains (the Makefile pins Dart SDK 3.13.2, Temurin JDK 21.0.12.1 and
+Erlang/OTP 29.0.5 + Elixir 1.20.4; unpack them under `dist/` per the Makefile's
+`DART`, `JAVA`/`JAVAC` and `ELIXIR`/`MIX` notes, or set `DART=dart JAVA=java
+JAVAC=javac ELIXIR=elixir MIX=mix` if compatible versions are on your PATH).
 
 The serialize runtimes must be checked out as **siblings** of this
 repository:
@@ -46,7 +47,7 @@ git clone https://github.com/mas-bandwidth/schema.git
 cd schema && make test
 ```
 
-`make test` builds the compiler, generates the corpus in all eight languages,
+`make test` builds the compiler, generates the corpus in all nine languages,
 compiles each, and compares the emitted wire against pinned goldens. That
 cross-language bit-identity check is the property this project exists to
 provide, so a change that breaks it is wrong until proven otherwise.
@@ -78,7 +79,7 @@ to somebody, so it needs to be worth it.
 ## Adding a language backend
 
 A backend is a Go package under `internal/codegen/` that walks the same IR the
-existing eight consume, plus one entry in `compiler/builtin.go` implementing
+existing nine consume, plus one entry in `compiler/builtin.go` implementing
 `compiler.Generator` — the public registration interface, which is the only way
 any target reaches the driver. The cross-language harness is what makes this
 tractable: generate the corpus in your language, encode the same values, and the
