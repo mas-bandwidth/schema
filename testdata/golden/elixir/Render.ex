@@ -184,10 +184,6 @@ defmodule Example.Render do
     scratch_bits = scratch_bits &&& 7
     n = length(value.sprites)
 
-    if n < 0 do
-      raise ArgumentError, "value.sprites count is below the wire minimum"
-    end
-
     if n > 64 do
       raise ArgumentError, "value.sprites count is above the wire maximum"
     end

@@ -999,10 +999,6 @@ defmodule Ludicrous.Ludicrous do
     scratch_bits = scratch_bits &&& 7
     n = length(value.keys)
 
-    if n < 0 do
-      raise ArgumentError, "value.keys count is below the wire minimum"
-    end
-
     if n > 4 do
       raise ArgumentError, "value.keys count is above the wire maximum"
     end

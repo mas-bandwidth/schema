@@ -1199,10 +1199,6 @@ defmodule Example.Wire do
 
     n = length(value.extras)
 
-    if n < 0 do
-      raise ArgumentError, "value.extras count is below the wire minimum"
-    end
-
     if n > 2 do
       raise ArgumentError, "value.extras count is above the wire maximum"
     end
@@ -2237,10 +2233,6 @@ defmodule Example.Wire do
     scratch = scratch >>> (flush <<< 3)
     scratch_bits = scratch_bits &&& 7
     n = length(value.items)
-
-    if n < 0 do
-      raise ArgumentError, "value.items count is below the wire minimum"
-    end
 
     if n > 16 do
       raise ArgumentError, "value.items count is above the wire maximum"

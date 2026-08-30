@@ -486,7 +486,13 @@ func (g *gen) emitWriteField(f *ir.Field, path, ind string) {
 			fmt.Sprintf("%s(%s, data, scratch, scratch_bits)", helper, name), ind)
 	case ir.ArrayCounted:
 		g.pf("%sn = length(%s)\n", ind, name)
-		g.emitCheckRange("n", name+" count", big.NewInt(f.ArrayMin), big.NewInt(f.ArrayBound), ind)
+		// length/1 is never negative, so a zero floor has no violable side
+		if f.ArrayMin > 0 {
+			g.raiseIf(fmt.Sprintf("n < %s", intLit64(f.ArrayMin)),
+				fmt.Sprintf("%s count is below the wire minimum", name), ind)
+		}
+		g.raiseIf(fmt.Sprintf("n > %s", intLit64(f.ArrayBound)),
+			fmt.Sprintf("%s count is above the wire maximum", name), ind)
 		g.emitWriteOffset("n", big.NewInt(f.ArrayMin), big.NewInt(f.ArrayBound), ind)
 		helper := g.writeHelper(f)
 		g.callAssign("{data, scratch, scratch_bits}",

@@ -1466,10 +1466,6 @@ defmodule Example.Types do
     scratch_bits = scratch_bits &&& 7
     n = length(value.inputs)
 
-    if n < 0 do
-      raise ArgumentError, "value.inputs count is below the wire minimum"
-    end
-
     if n > 16 do
       raise ArgumentError, "value.inputs count is above the wire maximum"
     end
