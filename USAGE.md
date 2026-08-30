@@ -76,7 +76,7 @@ inline bool WriteShipCreate( serialize::WriteStream & stream, const ShipCreate &
 inline bool ReadShipCreate( serialize::ReadStream & stream, ShipCreate & value );
 ```
 
-Run the same command with `--lang c`, `--lang cs`, `--lang go`, `--lang java`,
+Run the same command with `--lang c`, `--lang cs`, `--lang elixir`, `--lang go`, `--lang java`,
 `--lang js`, `--lang dart` or `--lang rust` and you get the equivalent in that
 language — writing the
 **same bits**.
@@ -487,7 +487,7 @@ if ( !ReadShipCreate( stream, value ) )
 ```
 
 The slack requirement differs per language: **C ≥8 bytes, C++ ≥8, Go ≥7,
-Rust ≥8, C# none, Dart none, Java none, and JavaScript's flat tier ≥8 past
+Rust ≥8, C# none, Dart none, Java none, Elixir none, and JavaScript's flat tier ≥8 past
 the payload.** The
 per-target columns are normative in [SPEC.md](SPEC.md) §6.3. Write
 buffers are a multiple of 8 in every language.
@@ -503,8 +503,8 @@ the same thing and a non-variant cannot survive a read. But `enum E | max = 15`
 variants can be added later without
 moving the field width — and a read of that enum accepts anything in `[0, 15]`.
 That is the point of the headroom, but it means a value you have not defined
-yet can arrive, and your `switch` should have a default. The same VALIDATION rules hold in all eight languages, because
-the same compiler wrote all eight — the buffer-slack contract above is the one
+yet can arrive, and your `switch` should have a default. The same VALIDATION rules hold in all nine languages, because
+the same compiler wrote all nine — the buffer-slack contract above is the one
 thing that differs per language.
 
 ---
@@ -522,14 +522,16 @@ rather than invent an assert. Dart has `assert` — active under
 `--enable-asserts`, compiled out of release and AOT builds — so the Dart
 writer asserts, exactly like C++; Java's `assert` is active under `-ea` and
 dormant otherwise, so the Java writer asserts too (one predicate call per
-write, issue #156's inline-threshold discipline). The rule is that a language should verify
+write, issue #156's inline-threshold discipline); the BEAM has no dormant
+assert, so the Elixir writer raises `ArgumentError` on a violated contract in
+every build. The rule is that a language should verify
 correctness the way that language verifies correctness — not that every
 target behaves identically here.
 
 So writing `health = 2000` into a field declared `| min = 0, max = 1000`
-asserts in a C++, checked-Dart or `-ea` Java build, silently writes the
-truncated low bits in a C++ release, Dart AOT or default-JVM build, and
-returns failure in the others.
+asserts in a C++, checked-Dart or `-ea` Java build, raises in Elixir, silently
+writes the truncated low bits in a C++ release, Dart AOT or default-JVM build,
+and returns failure in the others.
 
 Do not build on any of it. **Keep your values inside their declared bounds on
 the write side** — your simulation already knows they are, and that is the only
@@ -560,7 +562,7 @@ import (
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
-c := compiler.New() // the eight built-in targets, registered
+c := compiler.New() // the nine built-in targets, registered
 
 paths, err := compiler.GatherPaths([]string{"schemas"}) // one directory is one unit
 unit, err := c.Load(paths)                              // format-free: nothing is written
@@ -631,13 +633,13 @@ c := compiler.New()
 if err := c.Register(docs{}); err != nil { // refuses a name a target already holds
 	return err
 }
-fmt.Println(c.Targets()) // [c cpp cs dart docs go java js rust]
+fmt.Println(c.Targets()) // [c cpp cs dart docs elixir go java js rust]
 files, err := c.Generate(unit, "docs", nil)
 ```
 
 The unit your generator receives is the same fully-resolved [`ir`](https://pkg.go.dev/github.com/mas-bandwidth/schema/v2/ir)
 the built-in backends read: types resolved, constants folded, ranges and bit
-widths derived, wire order fixed. The derived parameters the eight emitters
+widths derived, wire order fixed. The derived parameters the nine emitters
 share are functions there rather than per-backend arithmetic — `ir.BitsRequired`,
 `ir.MaxBitsStruct`, `ir.MaxBytes`, `ir.CompressedFloatParams`,
 `ir.AlignedFixedByteArrays`, `ir.FieldId` — so a new target computes the same
@@ -715,6 +717,32 @@ if (!ok) {
 **Go** — accessors avoid allocation; reads and writes run on caller-owned
 buffers.
 
+**Elixir** — Elixir 1.20 on Erlang/OTP 29, built to issue #167's measured
+directives from the serialize.elixir port. Generated code is
+**self-contained**: it defines its own modules and touches nothing beyond the
+standard library. Each schema file becomes one module of `defstruct` types
+plus a file-scope module of wire functions — `write_<name>(value)` returns
+the wire binary, `read_<name>(data, num_bits)` returns the family verdict as
+`{:ok, value} | :error` and never raises on hostile bytes,
+`measure_<name>(value)` and `zero_<name>()` complete the surface. Every
+packing intermediate stays under the BEAM's small-integer boundary (32-bit
+groups through a byte-granular scratch on the write side, the port's 40-bit
+windows on the read side), and loops are tail-recursive function heads.
+Integers of every width — 128-bit included — ride plain BEAM integers;
+non-finite float patterns, which no BEAM float term can hold, travel as
+`{:nonfinite, bits}`. Validation is always on: there is no compile-out
+assert on the BEAM, so writer contracts raise `ArgumentError` in every
+build (the O(1) checks only) and readers validate everything:
+
+```elixir
+wire = Example.Types.write_ship_create(ship)
+
+case Example.Types.read_ship_create(packet, byte_size(packet) * 8) do
+  {:ok, value} -> handle(value)
+  :error -> :drop # malformed or hostile
+end
+```
+
 **Java** — Java 17 on the JVM, built to issue #156's measured directives.
 Generated code is **self-contained**: it references only `java.lang`,
 `VarHandle` little-endian word access and `java.util.Arrays`, never a runtime
@@ -784,7 +812,7 @@ one import away: re-read a failing buffer through the runtime tier and read
 `stream.error`. The flat modules are pure spec'd ECMAScript with no node
 APIs.
 
-All eight are generated from the same IR and compared against each other in CI
+All nine are generated from the same IR and compared against each other in CI
 on every push. The wire is bit-packed, so the property being checked is
 bit-identity — if they ever disagree by one bit, the build fails.
 

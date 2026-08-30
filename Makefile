@@ -43,6 +43,24 @@ DART ?= $(CURDIR)/dist/dart-sdk-3.13.2/bin/dart
 # Generated code and the test legs compile with --release 17.
 JAVA  ?= $(CURDIR)/dist/jdk-21.0.12.1/Contents/Home/bin/java
 JAVAC ?= $(CURDIR)/dist/jdk-21.0.12.1/Contents/Home/bin/javac
+# The BEAM toolchain, pinned per project (generated Elixir is self-contained —
+# no runtime checkout — so Erlang/OTP + Elixir are the only dependencies).
+# The defaults point at the repo-local unpacked toolchain; CI installs the
+# same versions and overrides with ELIXIR=elixir MIX=mix. To populate dist/
+# (gitignored):
+#   Erlang/OTP 29.0.5 (erlef/otp_builds, signed macOS build, aarch64-apple-darwin)
+#   url:    https://github.com/erlef/otp_builds/releases/download/OTP-29.0.5/otp-aarch64-apple-darwin.tar.gz
+#   sha256: 24b9e00da2b9ad25b1f182e2efd73ff316e46ec4b143c0cc3c69dbd27d5a594d
+#   untar into dist/otp-29.0.5
+#   Elixir 1.20.4 (precompiled for OTP 29)
+#   url:    https://github.com/elixir-lang/elixir/releases/download/v1.20.4/elixir-otp-29.zip
+#   sha256: 7863c546cda13fecc949e562e326042451dacf8fd8698a36783cb71eeb223b46
+#   unzip into dist/elixir-1.20.4
+# The elixir/mix launchers find erl through PATH, so the pinned invocations
+# carry both bin directories.
+BEAM_PATH ?= $(CURDIR)/dist/otp-29.0.5/bin:$(CURDIR)/dist/elixir-1.20.4/bin
+ELIXIR    ?= PATH="$(BEAM_PATH):$$PATH" elixir
+MIX       ?= PATH="$(BEAM_PATH):$$PATH" mix
 
 GO_SOURCES   := $(shell find cmd internal -name '*.go') go.mod
 SCHEMAS      := $(wildcard examples/*.schema)
@@ -142,6 +160,18 @@ generated/java/.stamp: bin/schema $(SCHEMAS)
 
 generated/java-ludicrous/.stamp: bin/schema $(SCHEMAS128)
 	./bin/schema generate --lang java --out generated/java-ludicrous examples128
+	@touch $@
+
+# the Elixir target: generated modules only, no wiring file at all —
+# generated Elixir is self-contained (the port's packing shapes are inlined
+# per issue #167), so there is no runtime checkout and no mix project; the
+# test legs Code.require_file the generated files by relative path directly
+generated/elixir/.stamp: bin/schema $(SCHEMAS)
+	./bin/schema generate --lang elixir --out generated/elixir examples
+	@touch $@
+
+generated/elixir-ludicrous/.stamp: bin/schema $(SCHEMAS128)
+	./bin/schema generate --lang elixir --out generated/elixir-ludicrous examples128
 	@touch $@
 
 build/schema_test: generated/cpp/.stamp test/main.cpp test/second.cpp
@@ -244,6 +274,9 @@ generated/bench/dart/.stamp: bin/schema $(SCHEMAS_BENCH)
 generated/bench/java/.stamp: bin/schema $(SCHEMAS_BENCH)
 	./bin/schema generate --lang java --out generated/bench/java bench/corpus/Bench.schema
 	./bin/schema generate --lang java --out generated/bench/java/realworld bench/corpus/RealWorld.schema
+generated/bench/elixir/.stamp: bin/schema $(SCHEMAS_BENCH)
+	./bin/schema generate --lang elixir --out generated/bench/elixir bench/corpus/Bench.schema
+	./bin/schema generate --lang elixir --out generated/bench/elixir/realworld bench/corpus/RealWorld.schema
 	@touch $@
 
 # the C++ producer/verifier of the bench-corpus goldens, and the C twin that
@@ -293,7 +326,7 @@ build/schema_test_c_ludicrous: generated/c-ludicrous/.stamp test/c-ludicrous/mai
 		-O2 -ffp-contract=off -Igenerated/c-ludicrous -I$(SERIALIZE_C) \
 		test/c-ludicrous/main.c $(SERIALIZE_C)/serialize.c -o $@ -lm
 
-test: build/schema_test build/schema_test_random build/schema_test_ludicrous build/schema_test_c build/schema_test_c_ludicrous build/schema_test_bench build/schema_test_bench_c generated/go/.stamp generated/rust/.stamp generated/cs/.stamp generated/js/.stamp generated/dart/.stamp generated/java/.stamp generated/go-ludicrous/.stamp generated/rust-ludicrous/.stamp generated/cs-ludicrous/.stamp generated/js-ludicrous/.stamp generated/dart-ludicrous/.stamp generated/java-ludicrous/.stamp generated/bench/go/.stamp generated/bench/rust/.stamp generated/bench/cs/.stamp generated/bench/js/.stamp generated/bench/dart/.stamp generated/bench/java/.stamp build/java-test/.stamp build/java-test-ludicrous/.stamp build/java-bench/.stamp
+test: build/schema_test build/schema_test_random build/schema_test_ludicrous build/schema_test_c build/schema_test_c_ludicrous build/schema_test_bench build/schema_test_bench_c generated/go/.stamp generated/rust/.stamp generated/cs/.stamp generated/js/.stamp generated/dart/.stamp generated/java/.stamp generated/elixir/.stamp generated/go-ludicrous/.stamp generated/rust-ludicrous/.stamp generated/cs-ludicrous/.stamp generated/js-ludicrous/.stamp generated/dart-ludicrous/.stamp generated/java-ludicrous/.stamp generated/elixir-ludicrous/.stamp generated/bench/go/.stamp generated/bench/rust/.stamp generated/bench/cs/.stamp generated/bench/js/.stamp generated/bench/dart/.stamp generated/bench/java/.stamp generated/bench/elixir/.stamp build/java-test/.stamp build/java-test-ludicrous/.stamp build/java-bench/.stamp
 	./build/schema_test
 	./build/schema_test_random
 	./build/schema_test_ludicrous
@@ -324,6 +357,9 @@ test: build/schema_test build/schema_test_random build/schema_test_ludicrous bui
 	cd test/java && $(JAVA) -cp ../../build/java-test Main
 	cd test/java-ludicrous && $(JAVA) -ea -cp ../../build/java-test-ludicrous Main
 	cd test/java-ludicrous && $(JAVA) -cp ../../build/java-test-ludicrous Main
+	$(MIX) format --check-formatted generated/elixir/*.ex generated/elixir-ludicrous/*.ex generated/bench/elixir/*.ex generated/bench/elixir/realworld/*.ex
+	cd test/elixir && $(ELIXIR) main.exs
+	cd test/elixir-ludicrous && $(ELIXIR) main.exs
 	go test ./...
 
 # Re-pin the goldens DELIBERATELY (SPEC §7.2 gates 1, 2, 7). A wire golden

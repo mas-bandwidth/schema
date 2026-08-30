@@ -56,7 +56,7 @@ env:
 
 jobs:
   # The fast gate, and the conformance half of certification. `make test`
-  # builds the corpus in all eight languages and compares their wire against
+  # builds the corpus in all nine languages and compares their wire against
   # the C++-pinned goldens — that cross-language bit identity is the property
   # this project exists to provide, and CI is where it gets proven on
   # hardware we do not own. It runs on every trigger, PRs included, because
@@ -128,6 +128,13 @@ jobs:
         with:
           distribution: 'temurin'
           java-version: '21'
+      # The BEAM toolchain, same versions as the Makefile's dist/ pins
+      # (generated Elixir is self-contained — Erlang/OTP + Elixir are the
+      # only dependencies, so there is no serialize.elixir clone above).
+      - uses: erlef/setup-beam@v1
+        with:
+          otp-version: '29.0.5'
+          elixir-version: '1.20.4'
 
       # vet rides in the test job on both OSes: an emitter codebase built
       # almost entirely out of format strings is exactly where printf-verb
@@ -138,11 +145,11 @@ jobs:
       # No SERIALIZE* overrides: the Makefile defaults already point at the
       # sibling layout cloned above. RUSTUP_BIN defaults to a homebrew keg on
       # the author's machine; on CI cargo is on PATH, so point it somewhere
-      # harmless. DART and JAVA/JAVAC likewise default to the repo-local
-      # dist/ toolchains; on CI setup-dart and setup-java put the pinned
-      # versions on PATH.
+      # harmless. DART, JAVA/JAVAC and ELIXIR/MIX likewise default to the
+      # repo-local dist/ toolchains; on CI setup-dart, setup-java and
+      # setup-beam put the pinned versions on PATH.
       - name: make test
-        run: make test RUSTUP_BIN=/usr/bin DART=dart JAVA=java JAVAC=javac
+        run: make test RUSTUP_BIN=/usr/bin DART=dart JAVA=java JAVAC=javac ELIXIR=elixir MIX=mix
 
       # The committed generated/ tree is what this repo treats as ground
       # truth — findings are receipted against its line numbers. `make test`
@@ -229,7 +236,7 @@ jobs:
           git clone --quiet --depth 1 --branch "$SERIALIZE_JS_TAG" https://github.com/mas-bandwidth/serialize.js.git serialize.js
 
       # All the toolchains regardless of leg: the `make test` precondition
-      # step below builds the whole tree (eight languages), exactly as the
+      # step below builds the whole tree (nine languages), exactly as the
       # single-job flow did before the fan-out — the gate legs verdict the
       # same artifacts they always have.
       - uses: actions/setup-go@v7
@@ -255,13 +262,17 @@ jobs:
         with:
           distribution: 'temurin'
           java-version: '21'
+      - uses: erlef/setup-beam@v1
+        with:
+          otp-version: '29.0.5'
+          elixir-version: '1.20.4'
 
       # The same preconditions the gates had when they ran after `make test`
       # in one job: bin/schema, the generated trees, and the bench units all
       # built (31-45s measured — cheap enough to repeat per leg rather than
       # invent a narrower target with different semantics).
       - name: make test
-        run: make test RUSTUP_BIN=/usr/bin DART=dart JAVA=java JAVAC=javac
+        run: make test RUSTUP_BIN=/usr/bin DART=dart JAVA=java JAVAC=javac ELIXIR=elixir MIX=mix
 
       - name: inline gate — adversarial selftest
         run: bench/tools/inline-gate.sh selftest

@@ -5,6 +5,7 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/cpp"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/csharp"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/dart"
+	"github.com/mas-bandwidth/schema/v2/internal/codegen/elixir"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/golang"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/java"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/js"
@@ -24,6 +25,7 @@ func builtins() []Generator {
 		cppTarget{},
 		csTarget{},
 		dartTarget{},
+		elixirTarget{},
 		goTarget{},
 		javaTarget{},
 		jsTarget{},
@@ -38,6 +40,15 @@ func (dartTarget) Names() []string { return []string{"dart"} }
 
 func (dartTarget) Generate(u *ir.Unit, _ Options) (map[string][]byte, error) {
 	return dart.Generate(u)
+}
+
+// elixirTarget emits Elixir 1.20.
+type elixirTarget struct{}
+
+func (elixirTarget) Names() []string { return []string{"elixir"} }
+
+func (elixirTarget) Generate(u *ir.Unit, _ Options) (map[string][]byte, error) {
+	return elixir.Generate(u)
 }
 
 // cTarget emits C99 (SPEC §6.1).
