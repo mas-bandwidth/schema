@@ -450,6 +450,17 @@ The exact directory rendering is specced with the implementation; PROPOSED:
 byte-aligned fixed-width fields, little-endian, for the same reason as the
 row header.
 
+**Stored tables are uniform-version.** Every row in a stored table carries
+the same version — the version its directory entry names — and document
+validation refuses a mixed-version table. This is the reduce-cases rule
+doing its work: every specced pipeline produces uniform tables — the
+parallel pack writes at the current fence (§3.2), hot swap replaces whole
+tables (§5.1), a patch splices whole tables (§5.1) — so a mixed-version
+stored table is legal-but-unproducible, and refusing it beats speccing
+semantics nothing can produce. Standalone rows (§6) keep their per-row
+version headers and mix freely between peers: that is the skew story
+BETWEEN builds, never within one stored table.
+
 **The document is the closed world.** Every reference in every row targets
 something in the same document, which buys total load-time validation — a
 document either loads with every reference resolved and every bound checked,
@@ -677,7 +688,9 @@ version plus length header, prefix evolution, construction-defaulted tails
 is a message two peers can exchange while on different builds. And a
 build's generated table code carries its table's **full in-file lineage**
 — every version at or below its head is derivable from the fence markers
-alone — which is what licenses standalone-row reading of N < M: a bare
+together with the current declarations, sound because the fences froze
+exactly those declarations' contributions (§14 q2) — which is what
+licenses standalone-row reading of N < M: a bare
 row needs no document and no embedded descriptor to be read by any build
 at or past its version. Nothing new
 is defined here; the property falls out of the row wire, and it completes
@@ -718,8 +731,13 @@ generic walker — one implementation per language, over descriptors, no
 per-type code anywhere.
 
 Canonical means, normatively — one spelling, deterministic, and **total
-over all wire-legal values**: every value a generated reader accepts has
-exactly one canonical dump, headroom values included:
+over contract-honoring wire-legal values**: every value a generated reader
+accepts has exactly one canonical dump, headroom values included, with one
+named refusal scoping the claim. **Dump refuses a `string(N)` payload that
+violates the writer's UTF-8 contract** (SPEC §4.7) — dump is a
+trusted-side operation like write, and the refusal SURFACES A
+WRITER-CONTRACT VIOLATION: refusing loudly beats inventing a spelling for
+corrupt data. The rules:
 
 - **Fields in declaration order** — the wire order, so a dump reads like
   the declaration. **No insignificant whitespace.** **Escapes are pinned**:
@@ -728,11 +746,16 @@ exactly one canonical dump, headroom values included:
   control characters, and nothing else escaped.
 - **Untaken `if` branches are omitted from the dump**; import materializes
   their fields at construction values (specified default, else zero —
-  §3.5's rule for absent fields, applied to absent branches).
+  §3.5's rule for absent fields, applied to absent branches). This is a
+  deliberate, named divergence: untaken branches materialize ZEROS on a
+  wire read (SPEC §5) and CONSTRUCTION VALUES on JSON import — and it is
+  byte-invisible, because untaken branches pack no bytes and the dump
+  omits them.
 - **Integers with storage wider than 32 bits as strings, uniformly** —
   `int64`/`uint64`, the 128-bit family, `bits(N > 32)` — such values do
   not survive double-precision JSON readers; 32-bit-and-narrower storage
-  dumps as JSON numbers.
+  dumps as JSON numbers. String-spelled integers are **decimal, no
+  leading zeros, a leading minus only when negative**.
 - **Finite floats by shortest round trip**: `float64` rendered by the
   ECMAScript Number-to-String algorithm — a published, deterministic
   algorithm — and `float32` by the same algorithm over the
@@ -744,10 +767,14 @@ exactly one canonical dump, headroom values included:
   for `float64`, lowercase. One spelling class for every NaN payload and
   both infinities, canonical NaN included — no name-based special cases,
   and the round trip is byte-exact by construction.
+- **Compressed floats** (`min`/`max`/`resolution` — SPEC §4.3) **dump by
+  the finite-float rule over the DECODED value**; byte identity of the
+  round trip leans on the quantizer's encode-decode idempotence —
+  re-encoding a decoded value reproduces the step index.
 - **`fixed`/`ufixed` as the raw scaled integer** — exact and
   deterministic; a decimal spelling would lose nothing but adds taste
   calls (PROPOSED as raw). Wide fixed storage rides the string rule above.
-- **Bytes as base64.**
+- **Bytes as base64** — RFC 4648 standard alphabet, with padding.
 - **Enums by name when the value matches a declared variant** (`None`
   included), **as a number otherwise** — `| max` headroom values are
   wire-legal (SPEC §4.2) and must dump; a dump that says `"Railgun"`
@@ -759,8 +786,11 @@ exactly one canonical dump, headroom values included:
   wider-than-32 class.
 - **Unions as a single-variant object** — `{"sphere": {...}}`; `None` is
   the empty object.
-- **A document dumps as an array of `{"table": name, "rows": [...]}` in
-  directory order** (PROPOSED). Descriptors are not dumped: canonical
+- **A document dumps as an array of
+  `{"table": name, "version": N, "rows": [...]}` in directory order**
+  (PROPOSED) — one `version` per table object, and every row dumps at the
+  table's version by construction, because stored tables are
+  uniform-version (§4.1). Descriptors are not dumped: canonical
   JSON is **schema-relative** — the walker reads the declarations, so the
   spelling follows them (enum names, union variant objects, a nullable
   table ref by its union spelling, a bare index as the integer it is),
@@ -771,9 +801,10 @@ exactly one canonical dump, headroom values included:
 The conformance property is **golden-gated round trip: pack of import of
 dump is byte-identical** — `pack(import(dump(x))) == pack(x)`, over the
 full corpus including headroom, non-finite and negative-zero values — and
-with every spelling above pinned, the property is total: every wire-legal
-value has exactly one dump, and every dump packs back to the bytes it came
-from. **Import is a validated read**, untrusted exactly like wire bytes
+with every spelling above pinned, the property is total over
+contract-honoring wire-legal values: every such value has exactly one
+dump, and every dump packs back to the bytes it came from; the UTF-8
+refusal above is the one value class dump will not spell. **Import is a validated read**, untrusted exactly like wire bytes
 (SPEC §5): ranges, bounds, capacities and tags refuse loudly, so a
 hand-edited file cannot smuggle a value the wire would reject.
 **Versioning works in text**: a dumped table carries its version, and an
@@ -1202,6 +1233,9 @@ none of them taken by this draft:
 - **§3.1**: gains the explicit statement that table declarations do NOT
   enter the wire shape projection — the protocol id covers the type wire
   alone, and table shapes hash into their own lineage (§3.3).
+- **§4.2**: the closed attribute vocabulary grows `capacity` (table
+  declarations), `key` (table fields), and `ref` — legal on integer
+  fields in `type` bodies too (§10).
 - **§4.11**: `table` moves from refused-by-name to a pointer at the table
   section; the `table=false` FROZEN token is dropped under §13's
   `ProjectionVersion` bump.
