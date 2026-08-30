@@ -76,7 +76,7 @@ inline bool WriteShipCreate( serialize::WriteStream & stream, const ShipCreate &
 inline bool ReadShipCreate( serialize::ReadStream & stream, ShipCreate & value );
 ```
 
-Run the same command with `--lang c`, `--lang cs`, `--lang go`, `--lang js`
+Run the same command with `--lang c`, `--lang cs`, `--lang go`, `--lang js`, `--lang dart`
 or `--lang rust` and you get the equivalent in that language — writing the
 **same bits**.
 

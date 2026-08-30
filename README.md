@@ -47,7 +47,7 @@ type ShipState
 }
 ```
 
-This declaration compiles to C, C++, C#, Go, Rust and JavaScript code that 
+This declaration compiles to C, C++, C#, Go, Rust, JavaScript and Dart code that 
 reads and writes your data types and agrees on every bit. Now your native plugin, your Unity client, your Go backend, your browser client, and your tooling all speak the same language.
 
 ## Why it exists
@@ -112,7 +112,7 @@ would have hand-written, not an interpreter walking a schema at runtime.
 go build -o /usr/local/bin/schema ./cmd/schema
 
 schema check    <dir of .schema files>
-schema generate --lang c|cpp|cs|go|js|rust --out <outdir> <dir>
+schema generate --lang c|cpp|cs|go|js|rust|dart --out <outdir> <dir>
 ```
 
 **[USAGE.md](USAGE.md)** is the guide — every language feature, with real
