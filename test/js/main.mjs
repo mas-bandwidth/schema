@@ -852,6 +852,22 @@ flatCross("flat testdata", ex, exFlat, "TestData", testDataInstance(), "testdata
   inp.DataLength = 100;
   flatCross("flat block", ex, exFlat, "Block", inp, null);
 }
+{
+  // unions through the flat tier — including the shape that convicted the
+  // union-as-static run-fusing defect: every arm None, so the actual wire is
+  // far shorter than MaxBits and a fused bound counting MaxBitsUnion would
+  // refuse valid wire
+  const inp = new ex.ProbeCollider();
+  inp.Armor = 7;
+  flatCross("flat probecollider-none", ex, exFlat, "ProbeCollider", inp, null);
+  inp.Shape.Type = ex.ProbeShapeType.Slab;
+  inp.Shape.Slab.Width = 42;
+  inp.Shape.Slab.Height = 9;
+  inp.ExtrasCount = 1;
+  inp.Extras[0].Type = ex.ProbeShapeType.Ring;
+  inp.Extras[0].Ring.Radius = 777;
+  flatCross("flat probecollider", ex, exFlat, "ProbeCollider", inp, "probecollider");
+}
 
 // ---- the bench-corpus pins through flat (the §1.5 oracle instances) ----
 {

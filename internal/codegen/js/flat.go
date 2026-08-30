@@ -307,8 +307,18 @@ func (g *fgen) staticBitsScalar(f *ir.Field) (int64, bool) {
 	case ir.TString, ir.TBytes:
 		return 0, false
 	case ir.TNamed:
-		if st, ok := f.Type.Ref.(*ir.Struct); ok {
-			return g.staticBitsItems(st.Items)
+		switch ref := f.Type.Ref.(type) {
+		case *ir.Struct:
+			return g.staticBitsItems(ref.Items)
+		case *ir.Union:
+			// a union's wire is tag + SELECTED arm — static only in the
+			// degenerate no-variant case (zero bits). Counting MaxBitsUnion
+			// here let a fused read bound overshoot valid wire carrying a
+			// smaller arm and refuse it (the ProbeCollider None-arm class).
+			if ref.Max == 0 {
+				return 0, true
+			}
+			return 0, false
 		}
 	}
 	// every remaining scalar kind is fixed-width and ir.MaxBitsField is exact
@@ -1098,9 +1108,13 @@ func (g *fgen) emitReadDynamicField(f *ir.Field, path, ind string) {
 		g.pf("%s}\n", ind)
 		g.loopDepth--
 	default:
-		// a scalar whose size is dynamic: a nested struct with branches
-		if st, ok := f.Type.Ref.(*ir.Struct); ok && f.Type.Kind == ir.TNamed {
-			g.emitReadItems(st.Items, name, ind, false)
+		// a scalar whose size is dynamic: a nested struct with branches, or
+		// a union (tag + selected arm)
+		switch ref := f.Type.Ref.(type) {
+		case *ir.Struct:
+			g.emitReadItems(ref.Items, name, ind, false)
+		case *ir.Union:
+			g.emitReadUnionFlat(ref, name, ind, false)
 		}
 	}
 }
@@ -1463,6 +1477,9 @@ func (g *fgen) emitReadUnionFlat(u *ir.Union, expr, ind string, bounded bool) {
 		return
 	}
 	bits := ir.BitsRequired(big.NewInt(0), big.NewInt(u.Max))
+	if !bounded {
+		g.pf("%sif (br + %d > numBits) {\n%s  return false;\n%s}\n", ind, bits, ind, ind)
+	}
 	g.readR(bits, ind)
 	if u.Max != (int64(1)<<bits)-1 {
 		g.pf("%sif (v > %d) { // not a wire-legal tag (SPEC §4.8)\n%s  return false;\n%s}\n", ind, u.Max, ind, ind)
@@ -1472,11 +1489,12 @@ func (g *fgen) emitReadUnionFlat(u *ir.Union, expr, ind string, bounded bool) {
 	for i, vr := range u.Variants {
 		arm := expr + "." + ir.GoExportName(vr.Name)
 		g.pf("%s  case %d: {\n", ind, i+1)
-		// the selected arm starts from the zero form (SPEC §5)
+		// the selected arm starts from the zero form (SPEC §5); the arm's
+		// own runs re-check bounds — the tag's proof does not extend to it
 		for _, nf := range vr.Ref.Fields {
 			g.emitZeroFieldFlat(nf, arm, ind+"    ")
 		}
-		g.emitReadItems(vr.Ref.Items, arm, ind+"    ", bounded)
+		g.emitReadItems(vr.Ref.Items, arm, ind+"    ", false)
 		g.pf("%s    break;\n%s  }\n", ind, ind)
 	}
 	g.pf("%s}\n", ind)
