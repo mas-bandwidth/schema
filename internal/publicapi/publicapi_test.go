@@ -21,7 +21,7 @@
 // The issue asked for a byte-identical BINARY. Binaries carry their own
 // module path, build directory and linker stamps, so equal bytes there would
 // measure the build environment rather than the API; equal OUTPUT — every
-// generated file of six targets across two corpora, plus the protocol id and
+// generated file of seven targets across two corpora, plus the protocol id and
 // the wire projection — is the honest form of the same claim, and it is the
 // property this repo already treats as ground truth.
 package publicapi
@@ -273,7 +273,7 @@ func wantClientOutput(t *testing.T) string {
 	}
 	var b strings.Builder
 	fmt.Fprintf(&b, "package %s 0x%016x\n", u.Package, u.ProtocolId)
-	// The external module registers one more target than the built-in six,
+	// The external module registers one more target than the built-in seven,
 	// and it must appear in the driver's own list.
 	targets := append(c.Targets(), "widths")
 	sort.Strings(targets)

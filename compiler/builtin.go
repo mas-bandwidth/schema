@@ -4,6 +4,7 @@ import (
 	cgen "github.com/mas-bandwidth/schema/v2/internal/codegen/c"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/cpp"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/csharp"
+	"github.com/mas-bandwidth/schema/v2/internal/codegen/dart"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/golang"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/js"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/rust"
@@ -11,7 +12,7 @@ import (
 )
 
 // builtins is the set [New] registers. The per-language emitters stay
-// internal — they are implementations, not API, and freezing six emitter
+// internal — they are implementations, not API, and freezing seven emitter
 // packages under semver would buy nothing — but they reach the driver through
 // [Generator] and nothing else, which is what makes that interface a door
 // rather than a decoration: if a built-in target can be expressed as a
@@ -21,10 +22,20 @@ func builtins() []Generator {
 		cTarget{},
 		cppTarget{},
 		csTarget{},
+		dartTarget{},
 		goTarget{},
 		jsTarget{},
 		rustTarget{},
 	}
+}
+
+// dartTarget emits Dart 3.
+type dartTarget struct{}
+
+func (dartTarget) Names() []string { return []string{"dart"} }
+
+func (dartTarget) Generate(u *ir.Unit, _ Options) (map[string][]byte, error) {
+	return dart.Generate(u)
 }
 
 // cTarget emits C99 (SPEC §6.1).

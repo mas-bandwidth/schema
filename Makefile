@@ -21,6 +21,16 @@ CXXFLAGS     += -I$(SERIALIZE)
 # cargo lives in the rustup keg, which is not on PATH by default
 RUSTUP_BIN ?= /opt/homebrew/opt/rustup/bin
 
+# The Dart SDK, pinned per project (generated Dart is self-contained — no
+# runtime checkout — so the SDK is the only Dart dependency). The default
+# points at the repo-local unpacked SDK; CI installs the same version and
+# overrides with DART=dart. To populate dist/ (gitignored):
+#   Dart SDK 3.13.2 (stable, macos-arm64)
+#   url:    https://storage.googleapis.com/dart-archive/channels/stable/release/3.13.2/sdk/dartsdk-macos-arm64-release.zip
+#   sha256: 1e79f51341937f84cc1563a3fcad4a91706e35dee72bda69f4e955065c0e373a
+#   unzip into dist/ and rename dart-sdk -> dart-sdk-3.13.2
+DART ?= $(CURDIR)/dist/dart-sdk-3.13.2/bin/dart
+
 GO_SOURCES   := $(shell find cmd internal -name '*.go') go.mod
 SCHEMAS      := $(wildcard examples/*.schema)
 SCHEMAS128   := $(wildcard examples128/*.schema)
@@ -95,6 +105,18 @@ generated/js/.stamp: bin/schema $(SCHEMAS)
 
 generated/js-ludicrous/.stamp: bin/schema $(SCHEMAS128)
 	./bin/schema generate --lang js --out generated/js-ludicrous examples128
+	@touch $@
+
+# the Dart target: generated libraries only, no wiring file at all —
+# generated Dart is self-contained (the bitpacker is inlined per issue #155),
+# so there is no runtime checkout and no pubspec; the test legs import the
+# generated files by relative path directly
+generated/dart/.stamp: bin/schema $(SCHEMAS)
+	./bin/schema generate --lang dart --out generated/dart examples
+	@touch $@
+
+generated/dart-ludicrous/.stamp: bin/schema $(SCHEMAS128)
+	./bin/schema generate --lang dart --out generated/dart-ludicrous examples128
 	@touch $@
 
 build/schema_test: generated/cpp/.stamp test/main.cpp test/second.cpp
@@ -189,6 +211,11 @@ generated/bench/js/.stamp: bin/schema $(SCHEMAS_BENCH)
 	./bin/schema generate --lang js --out generated/bench/js/realworld bench/corpus/RealWorld.schema
 	@touch $@
 
+generated/bench/dart/.stamp: bin/schema $(SCHEMAS_BENCH)
+	./bin/schema generate --lang dart --out generated/bench/dart bench/corpus/Bench.schema
+	./bin/schema generate --lang dart --out generated/bench/dart/realworld bench/corpus/RealWorld.schema
+	@touch $@
+
 # the C++ producer/verifier of the bench-corpus goldens, and the C twin that
 # proves the C emitter compiles under the strict flags AND matches those bytes
 build/schema_test_bench: generated/bench/cpp/.stamp test/bench/main.cpp
@@ -210,7 +237,7 @@ build/schema_test_c_ludicrous: generated/c-ludicrous/.stamp test/c-ludicrous/mai
 		-O2 -ffp-contract=off -Igenerated/c-ludicrous -I$(SERIALIZE_C) \
 		test/c-ludicrous/main.c $(SERIALIZE_C)/serialize.c -o $@ -lm
 
-test: build/schema_test build/schema_test_random build/schema_test_ludicrous build/schema_test_c build/schema_test_c_ludicrous build/schema_test_bench build/schema_test_bench_c generated/go/.stamp generated/rust/.stamp generated/cs/.stamp generated/js/.stamp generated/go-ludicrous/.stamp generated/rust-ludicrous/.stamp generated/cs-ludicrous/.stamp generated/js-ludicrous/.stamp generated/bench/go/.stamp generated/bench/rust/.stamp generated/bench/cs/.stamp generated/bench/js/.stamp
+test: build/schema_test build/schema_test_random build/schema_test_ludicrous build/schema_test_c build/schema_test_c_ludicrous build/schema_test_bench build/schema_test_bench_c generated/go/.stamp generated/rust/.stamp generated/cs/.stamp generated/js/.stamp generated/dart/.stamp generated/go-ludicrous/.stamp generated/rust-ludicrous/.stamp generated/cs-ludicrous/.stamp generated/js-ludicrous/.stamp generated/dart-ludicrous/.stamp generated/bench/go/.stamp generated/bench/rust/.stamp generated/bench/cs/.stamp generated/bench/js/.stamp generated/bench/dart/.stamp
 	./build/schema_test
 	./build/schema_test_random
 	./build/schema_test_ludicrous
@@ -230,6 +257,13 @@ test: build/schema_test build/schema_test_random build/schema_test_ludicrous bui
 	cd test/rust-ludicrous && PATH="$(RUSTUP_BIN):$$PATH" cargo run --quiet
 	cd test/cs-ludicrous && dotnet run
 	cd test/js-ludicrous && node main.mjs && NODE_ENV=production node main.mjs
+	$(DART) analyze generated/dart generated/dart-ludicrous generated/bench/dart test/dart test/dart-ludicrous
+	$(DART) format --set-exit-if-changed --output=none generated/dart generated/dart-ludicrous generated/bench/dart
+	cd test/dart && $(DART) --enable-asserts main.dart
+	@mkdir -p build
+	cd test/dart && $(DART) compile exe -o ../../build/schema_test_dart main.dart >/dev/null && ../../build/schema_test_dart
+	cd test/dart-ludicrous && $(DART) --enable-asserts main.dart
+	cd test/dart-ludicrous && $(DART) compile exe -o ../../build/schema_test_dart_ludicrous main.dart >/dev/null && ../../build/schema_test_dart_ludicrous
 	go test ./...
 
 # Re-pin the goldens DELIBERATELY (SPEC §7.2 gates 1, 2, 7). A wire golden

@@ -5,7 +5,7 @@
 
 If this work helps you, please support it: **[Become a supporter](https://www.patreon.com/MasBandwidth/membership)**
 
-Write your data types once and generate code to read and write them in six languages.
+Write your data types once and generate code to read and write them in seven languages.
 
 ```
 package example
@@ -78,9 +78,9 @@ would have hand-written, not an interpreter walking a schema at runtime.
 
 ## Features
 
-- **One declaration, six languages** — C, C++, C#, Go, Rust and JavaScript,
-  bit-identical on the wire, reader and writer generated together so they
-  cannot drift.
+- **One declaration, seven languages** — C, C++, C#, Dart, Go, Rust and
+  JavaScript, bit-identical on the wire, reader and writer generated together
+  so they cannot drift.
 - **Bit-packed, not byte-packed** — `| min = 0, max = 1000` costs 10 bits, not
   4 bytes. Bounds are part of the type, and the wire cost follows from them.
 - **Branches that cost nothing** — `if !at_rest { … }` omits whole field groups
@@ -99,7 +99,7 @@ would have hand-written, not an interpreter walking a schema at runtime.
   and standard-layout, so raw-struct blobs and parallel scatter/gather are
   safe by design; see [The wire](USAGE.md#the-wire).
 - **The compiler is a library too** — load, check and generate from Go,
-  and register generators of your own; the six built-in backends come through
+  and register generators of your own; the seven built-in backends come through
   the same interface yours does. See
   [Embedding the compiler](USAGE.md#embedding-the-compiler).
 - **Canonical source format** — every command formats in place.
@@ -119,8 +119,9 @@ schema generate --lang c|cpp|cs|go|js|rust --out <outdir> <dir>
 examples and the code each one generates, and how to drive the compiler from
 Go instead of the command line.
 
-Building the tests needs the six serialize runtimes checked out beside this
-repo, then `make test` — [CONTRIBUTING.md](CONTRIBUTING.md) has the clone
+Building the tests needs the serialize runtimes checked out beside this
+repo (generated Dart is self-contained and needs only the pinned SDK), then
+`make test` — [CONTRIBUTING.md](CONTRIBUTING.md) has the clone
 list and what the gates prove.
 
 ## Documentation

@@ -114,6 +114,13 @@ jobs:
         with:
           node-version: '20'
 
+      # The Dart SDK, pinned to the same version the Makefile documents for
+      # the repo-local dist/ (generated Dart is self-contained — the SDK is
+      # the only Dart dependency, so there is no serialize.dart clone above).
+      - uses: dart-lang/setup-dart@v1
+        with:
+          sdk: '3.13.2'
+
       # vet rides in the test job on both OSes: an emitter codebase built
       # almost entirely out of format strings is exactly where printf-verb
       # mismatches live (issue #31).
@@ -123,9 +130,10 @@ jobs:
       # No SERIALIZE* overrides: the Makefile defaults already point at the
       # sibling layout cloned above. RUSTUP_BIN defaults to a homebrew keg on
       # the author's machine; on CI cargo is on PATH, so point it somewhere
-      # harmless.
+      # harmless. DART likewise defaults to the repo-local dist/ SDK; on CI
+      # setup-dart puts the pinned version on PATH.
       - name: make test
-        run: make test RUSTUP_BIN=/usr/bin
+        run: make test RUSTUP_BIN=/usr/bin DART=dart
 
       # The committed generated/ tree is what this repo treats as ground
       # truth — findings are receipted against its line numbers. `make test`

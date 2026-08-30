@@ -28,17 +28,20 @@
   needs or it stays internal. The per-language emitters are implementations, not API.
 
 - **What `make` proves, in full** (moved here from README 2026-08-06 — too dense for the
-  human front page, load-bearing for a working session): all six backends live (the JS
-  legs — `test/js`, `test/js-ludicrous` — joined 2026-08-16 with the sixth backend); `make`
+  human front page, load-bearing for a working session): all seven backends live (the JS
+  legs — `test/js`, `test/js-ludicrous` — joined 2026-08-16 with the sixth backend; the
+  Dart legs — `test/dart`, `test/dart-ludicrous`, each run twice: JIT --enable-asserts
+  and AOT release — joined 2026-08-30 with the seventh, whose generated output is
+  self-contained and needs only the pinned Dart SDK, no runtime sibling); `make`
   builds the compiler, generates C++ headers (`generated/cpp/`), C sources, a Go package,
-  a Rust crate and C# sources from `examples/`, and runs the test binaries — the C++ tests
-  (plus a randomized round-trip suite) and the C, Go, Rust
-  and C# wire tests, each byte-comparing against the same C++-pinned wire goldens
+  a Rust crate, C#, JS and Dart sources from `examples/`, and runs the test binaries — the C++ tests
+  (plus a randomized round-trip suite) and the C, Go, Rust,
+  C#, JS and Dart wire tests, each byte-comparing against the same C++-pinned wire goldens
   (cross-language wire identity is a standing gate) — plus the fixed-point + 128-bit
-  unit (`examples128/`, all five targets: the C leg landed 2026-08-13, the other four
+  unit (`examples128/`, all targets: the C leg landed 2026-08-13, the other four
   2026-08-12): its C++ test pins wire goldens DERIVED from serialize's STANDARD.md
-  independently, and the C, Go, Rust and C# ludicrous legs
-  (`test/{c,go,rust,cs}-ludicrous`) byte-compare the same pinned instance
+  independently, and the C, Go, Rust, C#, JS and Dart ludicrous legs
+  (`test/{c,go,rust,cs,js,dart}-ludicrous`) byte-compare the same pinned instance
   against them — fixed(I, F)/int128/uint128 wire identity is a standing gate too — then
   the break-the-language diagnostics suite (70+ refusal cases) and the
   source/id/wire golden pins. Each backend
