@@ -1,52 +1,56 @@
-// schema bench — the Dart runner (minimal form): the generated monomorphic
-// codecs over the four family `rt` shapes (BENCH-STANDARD.md §1.3), measured
-// with serialize.dart's own bench methodology so the rows read side by side
-// with that library's — same LCG, same vary-function field mappings, same
-// iteration counts, same 64 read variants, same best-of-five discipline,
-// same units and reporting format (serialize.dart bench/bench.dart is the
-// reference for all of it). This is the issue #155 prediction instrument:
-// generated constant-width monomorphic code vs the library's stream rows.
+// schema bench — the Dart runner: a conforming run.sh leg per
+// bench/README.md's runner contract, measuring the generated monomorphic
+// Dart codecs over the four bench/corpus/Bench.schema shapes.
 //
-// GOLDEN GATED (§1.5): before any row is timed, every pinned corpus
+// CONTRACT (BENCH-STANDARD.md): fixed iteration counts identical to every
+// other runner's rows for these benches; 1 discarded warmup run then 7
+// measured runs per (bench, path) — or exactly one measured run under
+// --round K, where the interleaved driver aggregates across rounds (§2.4);
+// per-iteration LCG variation on the write path; 64 rotating variant read
+// buffers; median/min/max/spread over the measured runs; CSV v2 rows on
+// stdout under --csv, human table on stderr.
+//
+// WHAT THE ROWS MEASURE: the generated codec — schema's Dart backend emits
+// self-contained monomorphic write/read functions with the bitpacker
+// inlined and zero runtime dependencies, so the generated code IS the Dart
+// serialize path. The rows carry family=gen: a ratio against another
+// language's family=rt row (the serialize runtime API called by hand) is a
+// subject difference, not a language difference, and the tools refuse it.
+// Peak-style numbers from this runner's earlier serialize-family form
+// (tight per-shape loops, best-of-five) are NOT comparable to these rows —
+// different measurement contract, and the statistic alone moves the number.
+//
+// GOLDEN GATED (§1.5): before any timing, every measured shape's pinned
 // instance is written and byte-compared against the C++-pinned
-// testdata/wire golden, and all 64 LCG variant buffers of every shape are
-// decoded back with every field verified. A runner that mismatches REFUSES
-// to bench.
+// testdata/wire golden, and all 64 LCG variant buffers are decoded back
+// with every field verified. A runner that mismatches REFUSES to bench.
+// corpus_id is FNV-1a-64 over the goldens this run actually loaded (§1.6).
+//
+// The timed form is the AOT executable (run.sh builds it) — the number
+// that ships. JIT (`dart main.dart`) runs the same contract for iteration.
 //
 //   dart compile exe bench/dart/main.dart -o build/schema_bench_dart
-//   cd bench/dart && ../../build/schema_bench_dart          # AOT — the number that ships
-//   cd bench/dart && dart main.dart                          # JIT — the iteration number
+//   cd bench/dart && ../../build/schema_bench_dart [--csv] [--round K] [--quick]
 //
-// Iteration counts are overridable, the library bench's own env names:
-//   BENCH_STREAM_PACKETS=100000 dart main.dart
-//
-// Full run.sh/CSV-preamble integration per bench/README.md is a named
-// follow-on; this runner carries the golden gate, the methodology and the
-// rows.
+// --quick: bench_mixed only, 3 measured runs — run.sh's iteration
+// instrument, never the certification instrument.
 import 'dart:io';
 import 'dart:typed_data';
 
 import '../../generated/bench/dart/Bench.dart';
 
-const int numTrials = 5;
 const int numVariants = 64;
 
-int envInt(String name, int fallback) {
-  final raw = Platform.environment[name];
-  if (raw == null) {
-    return fallback;
-  }
-  final value = int.tryParse(raw);
-  if (value == null || value < 1) {
-    stderr.write('$name must be a positive integer\n');
-    exit(1);
-  }
-  return value;
-}
-
-final int streamNumPackets = envInt('BENCH_STREAM_PACKETS', 1000000);
+// §1.2/§2.1: fixed per-benchmark iteration counts, identical across every
+// language's rows for these benches, recorded in the iters column
+const int packetIters = 32000000;
+const int intsIters = 40000000;
+const int bitsIters = 48000000;
+const int mixedIters = 40000000;
 
 bool csv = false;
+bool quick = false;
+int numRuns = 7;
 
 final Stopwatch _clock = Stopwatch()..start();
 
@@ -57,34 +61,90 @@ double now() => _clock.elapsedMicroseconds * 1e-6;
 // loop's work can be deleted
 int sink = 0;
 
-final class _Result {
-  final String row;
-  final String op;
-  final String units;
-  final double value;
-  _Result(this.row, this.op, this.units, this.value);
-}
-
-final List<_Result> results = [];
-
-void report(String row, String op, String units, double value) {
-  results.add(_Result(row, op, units, value));
-}
-
-void printRow(String line) {
-  if (!csv) {
-    stdout.write(line);
-  }
-}
-
 Never gateFail(String row, String what) {
   stderr.write('GOLDEN GATE FAILED: $row $what\nreporting nothing.\n');
   exit(1);
 }
 
 /* --------------------------------------------------------------------------
+   CSV v2 (§5.1): rows collected and flushed with the corpus_id of the
+   goldens this run loaded; the per-runner constants — family gen (the rows
+   measure generated code), linkage aot (codec compiled with the caller into
+   one whole-program AOT executable, no library boundary), checks contract
+   (caller-error asserts dormant in the AOT/product form, wire-contract
+   validation unconditional in the reader), opt default (Dart has no level),
+   inline unknown (the §4 verdict pass has no dart branch).
+   -------------------------------------------------------------------------- */
+
+const String csvSuffix = 'gen,aot,contract,default,unknown';
+final List<String> csvRows = [];
+final Map<String, Uint8List> goldensLoaded = {};
+
+String corpusId() {
+  const int mask = 0xFFFFFFFFFFFFFFFF;
+  var h = 0xcbf29ce484222325;
+  void mix(int byte) {
+    h = ((h ^ byte) * 0x100000001b3) & mask;
+  }
+
+  final names = goldensLoaded.keys.toList()..sort();
+  for (final name in names) {
+    for (final b in name.codeUnits) {
+      mix(b);
+    }
+    mix(0);
+    for (final b in goldensLoaded[name]!) {
+      mix(b);
+    }
+  }
+  // native Dart ints are signed 64-bit and toRadixString would print a
+  // negative id: format as two logical-shifted 32-bit halves instead
+  final hi = (h >>> 32) & 0xffffffff;
+  final lo = h & 0xffffffff;
+  return hi.toRadixString(16).padLeft(8, '0') + lo.toRadixString(16).padLeft(8, '0');
+}
+
+void report(String bench, String path, int iters, int bytesPerOp, List<double> rates) {
+  final sorted = List<double>.from(rates)..sort();
+  final median = sorted[sorted.length ~/ 2];
+  final min = sorted.first;
+  final max = sorted.last;
+  final spread = (max - min) / median * 100.0;
+  final mbps = median * bytesPerOp / (1024.0 * 1024.0);
+  stderr.write(
+    '${bench.padRight(18)} ${path.padRight(5)} '
+    '${(median / 1e6).toStringAsFixed(2).padLeft(10)} M msg/s '
+    '${mbps.toStringAsFixed(1).padLeft(10)} MB/s   '
+    '(min ${(min / 1e6).toStringAsFixed(2)}, max ${(max / 1e6).toStringAsFixed(2)}, '
+    'spread ${spread.toStringAsFixed(1)}%)\n',
+  );
+  if (csv) {
+    csvRows.add(
+      'dart,$bench,$path,$iters,$bytesPerOp,${rates.length},'
+      '${median.toStringAsFixed(0)},${min.toStringAsFixed(0)},${max.toStringAsFixed(0)},'
+      '${mbps.toStringAsFixed(2)},${spread.toStringAsFixed(2)}',
+    );
+  }
+}
+
+void flushCsv() {
+  if (!csv) {
+    return;
+  }
+  final id = corpusId();
+  final out = StringBuffer(
+    'lang,bench,path,iters,bytes_per_op,runs,median_msgs_per_sec,min_msgs_per_sec,'
+    'max_msgs_per_sec,median_mb_per_sec,spread_pct,corpus_id,family,linkage,checks,opt,inline\n',
+  );
+  for (final row in csvRows) {
+    out.write('$row,$id,$csvSuffix\n');
+  }
+  stdout.write(out.toString());
+}
+
+/* --------------------------------------------------------------------------
    the C bench's uint64 LCG, direct: Dart's int is 64 bits and wraps two's
-   complement, which IS arithmetic mod 2^64 (serialize.dart bench, verbatim)
+   complement, which IS arithmetic mod 2^64
    -------------------------------------------------------------------------- */
 
 const int lcgMul = 0x5851F42D4C957F2D;
@@ -319,8 +379,15 @@ _GatedShape<P> gateShape<P>(
   final view = ByteData.sublistView(buffer);
   init(packet);
   final n = write(packet, view);
-  final goldenBytes = File('../../testdata/wire/$goldenName.bin')
-      .readAsBytesSync();
+  final goldenFile = File('../../testdata/wire/$goldenName.bin');
+  if (!goldenFile.existsSync()) {
+    stderr.write(
+      'missing wire golden testdata/wire/$goldenName.bin — run from bench/dart\n',
+    );
+    exit(1);
+  }
+  final goldenBytes = goldenFile.readAsBytesSync();
+  goldensLoaded['$goldenName.bin'] = goldenBytes;
   if (!bytesEqual(Uint8List.sublistView(buffer, 0, n), goldenBytes)) {
     gateFail(row, 'pinned instance vs testdata/wire/$goldenName.bin');
   }
@@ -357,23 +424,21 @@ _GatedShape<P> gateShape<P>(
 }
 
 /* --------------------------------------------------------------------------
-   the timed rows: write and read (and measure, where the family prints it),
-   best of five trials — serialize.dart bench/bench.dart's loop, with the
-   generated monomorphic functions in place of the stream calls
+   the timed rows: per (bench, path), 1 discarded warmup run then numRuns
+   measured runs — the write loop varies every packet through the LCG, the
+   read loop rotates the 64 gated variant buffers, and every loop's work
+   flows into the sink.
    -------------------------------------------------------------------------- */
 
 void benchShape<P>(
   String row,
-  String label,
   _GatedShape<P> gated,
-  void Function(P) init,
+  int iters,
   void Function(P) vary,
   int Function(P, ByteData) write,
   bool Function(P, ByteData, int) read,
-  int Function(P) sinkOf, {
-  int Function(P)? measure,
-  bool mbRow = false,
-}) {
+  int Function(P) sinkOf,
+) {
   final packet = gated.packet;
   final decoded = gated.decoded;
   final variants = gated.variants;
@@ -381,118 +446,70 @@ void benchShape<P>(
   final buffer = Uint8List(256);
   final view = ByteData.sublistView(buffer);
 
-  var bestWrite = double.infinity;
-  var bestRead = double.infinity;
-  var bestMeasure = double.infinity;
-
-  for (var trial = 0; trial < numTrials; trial++) {
-    init(packet);
-    lcgSeed();
-
-    var start = now();
-    for (var i = 0; i < streamNumPackets; i++) {
+  final writeRates = <double>[];
+  for (var run = -1; run < numRuns; run++) {
+    final start = now();
+    for (var i = 0; i < iters; i++) {
       vary(packet);
       sink = (sink + write(packet, view)) & 0xffffffff;
     }
-    var elapsed = now() - start;
-    if (elapsed < bestWrite) {
-      bestWrite = elapsed;
+    final elapsed = now() - start;
+    if (run >= 0) {
+      writeRates.add(iters / elapsed);
     }
+  }
 
-    start = now();
-    for (var i = 0; i < streamNumPackets; i++) {
+  final readRates = <double>[];
+  for (var run = -1; run < numRuns; run++) {
+    final start = now();
+    for (var i = 0; i < iters; i++) {
       if (!read(decoded, variants[i & (numVariants - 1)], numBits)) {
         exit(1);
       }
       sink = (sink + sinkOf(decoded)) & 0xffffffff;
     }
-    elapsed = now() - start;
-    if (elapsed < bestRead) {
-      bestRead = elapsed;
-    }
-
-    if (measure != null) {
-      start = now();
-      for (var i = 0; i < streamNumPackets; i++) {
-        vary(packet);
-        sink = (sink + measure(packet)) & 0xffffffff;
-      }
-      elapsed = now() - start;
-      if (elapsed < bestMeasure) {
-        bestMeasure = elapsed;
-      }
+    final elapsed = now() - start;
+    if (run >= 0) {
+      readRates.add(iters / elapsed);
     }
   }
 
-  final totalMB = (gated.bytesPerPacket * streamNumPackets) / (1024 * 1024);
-  final packets = streamNumPackets / 1000000;
-
-  if (mbRow) {
-    report(row, 'write', 'MB/s', totalMB / bestWrite);
-    report(row, 'write', 'Mpackets/s', packets / bestWrite);
-    report(row, 'read', 'MB/s', totalMB / bestRead);
-    report(row, 'read', 'Mpackets/s', packets / bestRead);
-    printRow(
-      '$label write: ${(totalMB / bestWrite).toStringAsFixed(1).padLeft(8)} MB/s  (${(packets / bestWrite).toStringAsFixed(1)} M packets/s)\n',
-    );
-    printRow(
-      '$label read:  ${(totalMB / bestRead).toStringAsFixed(1).padLeft(8)} MB/s  (${(packets / bestRead).toStringAsFixed(1)} M packets/s)\n',
-    );
-  } else {
-    report(row, 'write', 'Mpackets/s', packets / bestWrite);
-    report(row, 'read', 'Mpackets/s', packets / bestRead);
-    printRow(
-      '$label write: ${(packets / bestWrite).toStringAsFixed(1).padLeft(6)} M packets/s   read: ${(packets / bestRead).toStringAsFixed(1).padLeft(6)} M packets/s\n',
-    );
-  }
-  if (measure != null) {
-    report(row, 'measure', 'Mpackets/s', packets / bestMeasure);
-    printRow(
-      '$label measure: ${(packets / bestMeasure).toStringAsFixed(1).padLeft(6)} M packets/s (generation-time folded)\n',
-    );
-  }
+  report(row, 'write', iters, gated.bytesPerPacket, writeRates);
+  report(row, 'read', iters, gated.bytesPerPacket, readRates);
 }
 
 /* ------------------------------------------------------------------------- */
 
 void main(List<String> arguments) {
-  csv = arguments.contains('--csv');
+  for (var i = 0; i < arguments.length; i++) {
+    switch (arguments[i]) {
+      case '--csv':
+        csv = true;
+      case '--quick':
+        quick = true;
+      case '--round':
+        if (i + 1 >= arguments.length) {
+          stderr.write('--round takes a round number\n');
+          exit(1);
+        }
+        i++; // K only identifies the round to the driver
+        numRuns = 1;
+      default:
+        stderr.write('usage: main.dart [--csv] [--round K] [--quick]\n');
+        exit(1);
+    }
+  }
+  if (quick && numRuns == 7) {
+    numRuns = 3;
+  }
 
-  // every row's golden gate runs before any row is timed: a runner that
-  // fails its goldens reports nothing at all (§1.5)
-  final gatedPacket = gateShape(
-    'bench_packet',
-    'bench_packet',
-    BenchPacket(),
-    BenchPacket(),
-    initBenchPacket,
-    varyBenchPacket,
-    writeBenchPacket,
-    readBenchPacket,
-    checkBenchPacket,
+  stderr.write(
+    'schema bench (dart, generated codecs'
+    '${quick ? ', --quick: iteration instrument, not certification' : ''})\n',
   );
-  final gatedInts = gateShape(
-    'bench_ints',
-    'bench_ints',
-    BenchInts(),
-    BenchInts(),
-    initBenchInts,
-    varyBenchInts,
-    writeBenchInts,
-    readBenchInts,
-    checkBenchInts,
-  );
-  final gatedBits = gateShape(
-    'bench_bits',
-    'bench_bits',
-    BenchBits(),
-    BenchBits(),
-    initBenchBits,
-    varyBenchBits,
-    writeBenchBits,
-    readBenchBits,
-    checkBenchBits,
-  );
+
+  // every measured row's golden gate runs before any row is timed: a runner
+  // that fails its goldens reports nothing at all (§1.5)
   final gatedMixed = gateShape(
     'bench_mixed',
     'bench_mixed',
@@ -505,67 +522,91 @@ void main(List<String> arguments) {
     checkBenchMixed,
   );
 
-  printRow('\n[schema bench — generated Dart]\n\n');
+  if (quick) {
+    benchShape(
+      'bench_mixed',
+      gatedMixed,
+      mixedIters,
+      varyBenchMixed,
+      writeBenchMixed,
+      readBenchMixed,
+      (BenchMixed d) => d.sequence,
+    );
+  } else {
+    final gatedPacket = gateShape(
+      'bench_packet',
+      'bench_packet',
+      BenchPacket(),
+      BenchPacket(),
+      initBenchPacket,
+      varyBenchPacket,
+      writeBenchPacket,
+      readBenchPacket,
+      checkBenchPacket,
+    );
+    final gatedInts = gateShape(
+      'bench_ints',
+      'bench_ints',
+      BenchInts(),
+      BenchInts(),
+      initBenchInts,
+      varyBenchInts,
+      writeBenchInts,
+      readBenchInts,
+      checkBenchInts,
+    );
+    final gatedBits = gateShape(
+      'bench_bits',
+      'bench_bits',
+      BenchBits(),
+      BenchBits(),
+      initBenchBits,
+      varyBenchBits,
+      writeBenchBits,
+      readBenchBits,
+      checkBenchBits,
+    );
 
-  // the stream-comparable row: the same 12-op packet serialize.dart's
-  // stream rows measure, through the generated monomorphic codec
-  benchShape(
-    'bench_packet',
-    'packet (generated):',
-    gatedPacket,
-    initBenchPacket,
-    varyBenchPacket,
-    writeBenchPacket,
-    readBenchPacket,
-    (BenchPacket d) => d.b,
-    measure: measureBenchPacket,
-    mbRow: true,
-  );
-
-  printRow('\n');
-
-  benchShape(
-    'bench_ints',
-    'int packet   (generated):',
-    gatedInts,
-    initBenchInts,
-    varyBenchInts,
-    writeBenchInts,
-    readBenchInts,
-    (BenchInts d) => d.f0,
-  );
-  benchShape(
-    'bench_bits',
-    'bits packet  (generated):',
-    gatedBits,
-    initBenchBits,
-    varyBenchBits,
-    writeBenchBits,
-    readBenchBits,
-    (BenchBits d) => d.b7,
-  );
-  benchShape(
-    'bench_mixed',
-    'mixed packet (generated):',
-    gatedMixed,
-    initBenchMixed,
-    varyBenchMixed,
-    writeBenchMixed,
-    readBenchMixed,
-    (BenchMixed d) => d.sequence,
-  );
-
-  printRow('\n');
-
-  if (csv) {
-    final buffer = StringBuffer('row,op,units,value\n');
-    for (final r in results) {
-      buffer.write(
-        '${r.row},${r.op},${r.units},${r.value.toStringAsFixed(4)}\n',
-      );
-    }
-    stdout.write(buffer.toString());
+    benchShape(
+      'bench_packet',
+      gatedPacket,
+      packetIters,
+      varyBenchPacket,
+      writeBenchPacket,
+      readBenchPacket,
+      (BenchPacket d) => d.b,
+    );
+    benchShape(
+      'bench_ints',
+      gatedInts,
+      intsIters,
+      varyBenchInts,
+      writeBenchInts,
+      readBenchInts,
+      (BenchInts d) => d.f0,
+    );
+    benchShape(
+      'bench_bits',
+      gatedBits,
+      bitsIters,
+      varyBenchBits,
+      writeBenchBits,
+      readBenchBits,
+      (BenchBits d) => d.b7,
+    );
+    benchShape(
+      'bench_mixed',
+      gatedMixed,
+      mixedIters,
+      varyBenchMixed,
+      writeBenchMixed,
+      readBenchMixed,
+      (BenchMixed d) => d.sequence,
+    );
   }
+
+  flushCsv();
+  stderr.write('OK (corpus_id ${corpusId()})\n');
 
   // the g_sink escape: the compiler cannot prove the env var absent, so the
   // accumulated sink is observable and no loop's work can be deleted
