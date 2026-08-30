@@ -53,7 +53,7 @@ generated/cpp/.stamp: bin/schema $(SCHEMAS)
 	./bin/schema generate --lang cpp --out generated/cpp examples
 	@touch $@
 
-# the fixed-point + 128-bit unit (examples128/) — all six targets since the
+# the fixed-point + 128-bit unit (examples128/) — all seven targets since the
 # serialize ports carry the phase-1 surface; each generated unit gets the same
 # module/manifest wiring as its main-corpus twin
 generated/cpp/ludicrous/.stamp: bin/schema $(SCHEMAS128)
@@ -257,7 +257,7 @@ test: build/schema_test build/schema_test_random build/schema_test_ludicrous bui
 	cd test/rust-ludicrous && PATH="$(RUSTUP_BIN):$$PATH" cargo run --quiet
 	cd test/cs-ludicrous && dotnet run
 	cd test/js-ludicrous && node main.mjs && NODE_ENV=production node main.mjs
-	$(DART) analyze generated/dart generated/dart-ludicrous generated/bench/dart test/dart test/dart-ludicrous
+	$(DART) analyze generated/dart generated/dart-ludicrous generated/bench/dart test/dart test/dart-ludicrous bench/dart
 	$(DART) format --set-exit-if-changed --output=none generated/dart generated/dart-ludicrous generated/bench/dart
 	cd test/dart && $(DART) --enable-asserts main.dart
 	@mkdir -p build
