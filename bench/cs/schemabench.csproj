@@ -25,6 +25,10 @@
 
   <ItemGroup>
     <Compile Include="../../generated/cs/*.cs" />
+    <!-- the Bench corpus unit (namespace Bench): the four Bench.schema
+         shapes GENERATED — the gen twins of the hand-written rt rows
+         (issue #177) -->
+    <Compile Include="../../generated/bench/cs/Bench.cs" />
     <!-- the bench-corpus realworld unit (namespace Realworld, so no
          basename/type collision with the Example unit above): RealPacket,
          the §1.7 realistic snapshot the real_packet rows measure -->
