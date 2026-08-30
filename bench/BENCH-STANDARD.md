@@ -647,6 +647,31 @@ stride clause was added 2026-08-15, with the measurement that demanded it):
   charged to the library. `bench/cpp/bench_main.cpp:250-256` already documents this;
   `throughput.rs:222` violates it and C/C++ do not.
 
+### §2.8 Quick mode — PROPOSED
+
+`run.sh --quick` is the ITERATION instrument, never the certification
+instrument, and every leg's stderr says so. It exists so a nine-language
+comparison costs minutes, not an evening; nothing it prints publishes.
+
+- Every runner's `--quick` runs `bench_mixed` ONLY: 1 discarded warmup run,
+  then **3** measured runs. The §1.5 golden gate stays unconditional.
+- Iteration counts stay the standard 40,000,000 except where a language
+  cannot hold quick mode's one-minute-per-leg bound: elixir runs 8,000,000
+  (the BEAM is ~2 orders behind the native legs). Every count is recorded
+  in the `iters` column as always.
+- The driver prints the blended table: per-language per-message time
+  `t = (1/w + 1/r) / 2` over the §2.2 headline (max) rates, sorted
+  ascending, fastest = 100%, every other language as its time multiple.
+- Warmup stays adequate for the JIT legs — the discarded run is tens of
+  millions of iterations, which carries the JVM to C2/OSR; a quick leg that
+  shortened warmup below that would measure the interpreter and be wrong
+  rather than fast.
+
+PROPOSED means: the constants above (3 runs, the reduced elixir count, the
+blended statistic) are working values pending the owner's ruling, marked
+here so a table produced by quick mode can name its contract. Certification
+and every published ratio remain governed by §2.1–§2.7.
+
 ---
 
 ## §3 The controls today's failures demand
