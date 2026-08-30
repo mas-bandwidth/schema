@@ -1,77 +1,66 @@
-// schema bench — the Java runner (minimal form): the generated monomorphic
-// codecs over the four family `rt` shapes (BENCH-STANDARD.md §1.3), measured
-// with serialize.java's own bench methodology so the rows read side by side
-// with that library's — same LCG, same vary-function field mappings, same
-// iteration counts, same 64 read variants, same warmup-then-best-of-five
-// discipline, same units and reporting format (serialize.java
-// bench/serialize/bench/Bench.java is the reference for all of it). This is
-// the issue #156 prediction instrument: generated constant-width monomorphic
-// code vs the library's stream rows.
+// schema bench — the Java runner: a conforming run.sh leg per
+// bench/README.md's runner contract, measuring the generated monomorphic
+// Java codecs over the four bench/corpus/Bench.schema shapes.
 //
-// GOLDEN GATED (§1.5): before any row is timed, every pinned corpus
+// CONTRACT (BENCH-STANDARD.md): fixed iteration counts identical to every
+// other runner's rows for these benches; 1 discarded warmup run then 7
+// measured runs per (bench, path) — or exactly one measured run under
+// --round K, where the interleaved driver aggregates across rounds (§2.4);
+// per-iteration LCG variation on the write path; 64 rotating variant read
+// buffers; median/min/max/spread over the measured runs; CSV v2 rows on
+// stdout under --csv, human table on stderr.
+//
+// WHAT THE ROWS MEASURE: the generated codec — schema's Java backend emits
+// self-contained monomorphic write/read functions with the bitpacker
+// inlined and zero runtime dependencies, so the generated code IS the Java
+// serialize path. The rows carry family=gen: a ratio against another
+// language's family=rt row (the serialize runtime API called by hand) is a
+// subject difference, not a language difference, and the tools refuse it.
+// Peak-style numbers from this runner's earlier serialize-family form
+// (tight per-shape loops, best-of-five) are NOT comparable to these rows —
+// different measurement contract, and the statistic alone moves the number.
+//
+// GOLDEN GATED (§1.5): before any timing, every measured shape's pinned
 // instance is written and byte-compared against the C++-pinned
-// testdata/wire golden, and all 64 LCG variant buffers of every shape are
-// decoded back with every field verified. A runner that mismatches REFUSES
-// to bench.
+// testdata/wire golden, and all 64 LCG variant buffers are decoded back
+// with every field verified. A runner that mismatches REFUSES to bench.
+// corpus_id is FNV-1a-64 over the goldens this run actually loaded (§1.6).
 //
 // JVM discipline, by hand (no JMH — zero dependencies): every timed loop
 // lives in its own method, one per shape and direction — a shared generic
 // loop pools its type profile across shapes, goes megamorphic, and turns
-// the timings bimodal (issue #156 item 5); warmup trials (default 2,
-// BENCH_WARMUP_TRIALS overrides) run each leg to full C2 compilation before
-// the five timed trials; and every loop's work drains into a static sink
-// the bench publishes at exit, so no loop can be proven unobservable. The
-// timed run uses default JVM flags and no -ea: asserts are dormant — the
-// number a user gets is the number reported.
+// the timings bimodal (issue #156 item 5); the discarded warmup run (tens
+// of millions of iterations) carries every loop to full C2/OSR compilation
+// before the measured runs; and every loop's work drains into a static
+// sink the bench publishes at exit under an env var the JIT cannot rule
+// out. Default JVM flags, no -ea: asserts are dormant — the number a user
+// gets is the number reported. Known artifact on this hardware: the packet
+// WRITE row is bimodal ACROSS PROCESSES (~76 vs ~129 M msgs/s on the M2
+// Air), keyed by process-environment-block size — an alignment effect, not
+// warmup; under --round it surfaces as cross-round spread.
 //
 //   make build/java-bench/.stamp
 //   cd bench/java && ../../dist/jdk-21.0.12.1/Contents/Home/bin/java \
-//       -cp ../../build/java-bench Main
+//       -cp ../../build/java-bench Main [--csv] [--round K] [--quick]
 //
-// Iteration counts are overridable, the library bench's own env names:
-//   BENCH_STREAM_PACKETS=100000 ... java -cp ../../build/java-bench Main
-//
-// Full run.sh/CSV-preamble integration per bench/README.md is a named
-// follow-on; this runner carries the golden gate, the methodology and the
-// rows.
+// --quick: bench_mixed only, 3 measured runs — run.sh's iteration
+// instrument, never the certification instrument.
 
 import bench.Bench;
 
 public final class Main {
-    static final int NUM_TRIALS = 5;
     static final int NUM_VARIANTS = 64;
 
-    static int envInt(String name, int fallback) {
-        final String raw = System.getenv(name);
-        if (raw == null) {
-            return fallback;
-        }
-        int value;
-        try {
-            value = Integer.parseInt(raw);
-        } catch (NumberFormatException e) {
-            value = 0;
-        }
-        if (value < 1) {
-            System.err.println(name + " must be a positive integer");
-            System.exit(1);
-        }
-        return value;
-    }
-
-    static final int STREAM_NUM_PACKETS = envInt("BENCH_STREAM_PACKETS", 1000000);
-    static final int WARMUP_TRIALS = envInt("BENCH_WARMUP_TRIALS", 2);
-
-    // MEASURED CAVEAT (this machine, 2026-08-30): the packet WRITE row is
-    // bimodal ACROSS PROCESSES — ~76 Mpps vs ~129 Mpps — keyed by the size
-    // of the process environment block (adding any env var flips it), an
-    // alignment artifact, not warmup (extra warmup trials do not move it)
-    // and not the harness (rates are stable within a process and linear in
-    // BENCH_STREAM_PACKETS). Every other row is stable. Read packet rows as
-    // the mode you measured; the family discipline of quiet-machine ratios
-    // applies per process.
+    // §1.2/§2.1: fixed per-benchmark iteration counts, identical across
+    // every language's rows for these benches, recorded in the iters column
+    static final int PACKET_ITERS = 32000000;
+    static final int INTS_ITERS = 40000000;
+    static final int BITS_ITERS = 48000000;
+    static final int MIXED_ITERS = 40000000;
 
     static boolean csv = false;
+    static boolean quick = false;
+    static int numRuns = 7;
 
     static double now() {
         return System.nanoTime() * 1e-9;
@@ -79,22 +68,8 @@ public final class Main {
 
     // the g_sink of the C bench: computed values flow here, and the bench
     // publishes it at exit under an env var the JIT cannot rule out, so no
-    // loop's work can be proven unobservable
+    // loop can be proven unobservable
     static long sink = 0;
-
-    record Result(String row, String op, String units, double value) {}
-
-    static final java.util.List<Result> results = new java.util.ArrayList<>();
-
-    static void report(String row, String op, String units, double value) {
-        results.add(new Result(row, op, units, value));
-    }
-
-    static void print(String line) {
-        if (!csv) {
-            System.out.print(line);
-        }
-    }
 
     static void gateFail(String row, String what) {
         System.err.println("GOLDEN GATE FAILED: " + row + " " + what);
@@ -103,9 +78,66 @@ public final class Main {
     }
 
     /* ----------------------------------------------------------------------
+       CSV v2 (§5.1): rows collected and flushed with the corpus_id of the
+       goldens this run loaded; the per-runner constants — family gen (the
+       rows measure generated code), linkage class (codec classfiles compiled
+       beside the caller into one JVM, no library boundary), checks contract
+       (caller-error asserts dormant without -ea, wire-contract validation
+       unconditional in the reader), opt default (JIT, no level), inline
+       unknown (no AOT artifact for the §4 verdict pass to walk).
+       ---------------------------------------------------------------------- */
+
+    static final String CSV_SUFFIX = "gen,class,contract,default,unknown";
+    static final java.util.List<String> csvRows = new java.util.ArrayList<>();
+    static final java.util.TreeMap<String, byte[]> goldensLoaded = new java.util.TreeMap<>();
+
+    static String corpusId() {
+        long h = 0xcbf29ce484222325L;
+        for (java.util.Map.Entry<String, byte[]> g : goldensLoaded.entrySet()) {
+            for (byte b : g.getKey().getBytes(java.nio.charset.StandardCharsets.UTF_8)) {
+                h = (h ^ (b & 0xff)) * 0x100000001b3L;
+            }
+            h = (h ^ 0) * 0x100000001b3L;
+            for (byte b : g.getValue()) {
+                h = (h ^ (b & 0xff)) * 0x100000001b3L;
+            }
+        }
+        return String.format("%016x", h);
+    }
+
+    static void report(String bench, String path, int iters, int bytesPerOp, double[] rates) {
+        final double[] sorted = rates.clone();
+        java.util.Arrays.sort(sorted);
+        final double median = sorted[sorted.length / 2];
+        final double min = sorted[0];
+        final double max = sorted[sorted.length - 1];
+        final double spread = (max - min) / median * 100.0;
+        final double mbps = median * bytesPerOp / (1024.0 * 1024.0);
+        System.err.printf("%-18s %-5s %10.2f M msg/s %10.1f MB/s   (min %.2f, max %.2f, spread %.1f%%)%n",
+                bench, path, median / 1e6, mbps, min / 1e6, max / 1e6, spread);
+        if (csv) {
+            csvRows.add(String.format("java,%s,%s,%d,%d,%d,%.0f,%.0f,%.0f,%.2f,%.2f",
+                    bench, path, iters, bytesPerOp, rates.length, median, min, max, mbps, spread));
+        }
+    }
+
+    static void flushCsv() {
+        if (!csv) {
+            return;
+        }
+        final String id = corpusId();
+        final StringBuilder out = new StringBuilder();
+        out.append("lang,bench,path,iters,bytes_per_op,runs,median_msgs_per_sec,min_msgs_per_sec,")
+           .append("max_msgs_per_sec,median_mb_per_sec,spread_pct,corpus_id,family,linkage,checks,opt,inline\n");
+        for (String row : csvRows) {
+            out.append(row).append(',').append(id).append(',').append(CSV_SUFFIX).append('\n');
+        }
+        System.out.print(out);
+    }
+
+    /* ----------------------------------------------------------------------
        the C bench's uint64 LCG, direct: Java's long is 64 bits and wraps
-       two's complement, which IS arithmetic mod 2^64 (serialize.java bench,
-       verbatim)
+       two's complement, which IS arithmetic mod 2^64
        ---------------------------------------------------------------------- */
 
     static final long LCG_MUL = 0x5851F42D4C957F2DL;
@@ -284,10 +316,15 @@ public final class Main {
 
     static byte[] golden(String name) {
         try {
-            return java.nio.file.Files.readAllBytes(
+            final byte[] bytes = java.nio.file.Files.readAllBytes(
                     java.nio.file.Path.of("../../testdata/wire/" + name + ".bin"));
+            goldensLoaded.put(name + ".bin", bytes);
+            return bytes;
         } catch (java.io.IOException e) {
-            throw new RuntimeException(e);
+            System.err.println("missing wire golden testdata/wire/" + name
+                    + ".bin — run from bench/java");
+            System.exit(1);
+            throw new IllegalStateException("unreachable");
         }
     }
 
@@ -445,19 +482,19 @@ public final class Main {
        calling the generated statics directly.
        ---------------------------------------------------------------------- */
 
-    static double timePacketWrite() {
+    static double timePacketWrite(int iters) {
         final double start = now();
-        for (int i = 0; i < STREAM_NUM_PACKETS; i++) {
+        for (int i = 0; i < iters; i++) {
             varyBenchPacket(packet);
             sink += Bench.writeBenchPacket(packet, writeBuf);
         }
         return now() - start;
     }
 
-    static double timePacketRead() {
+    static double timePacketRead(int iters) {
         final int numBits = packetBytes * 8;
         final double start = now();
-        for (int i = 0; i < STREAM_NUM_PACKETS; i++) {
+        for (int i = 0; i < iters; i++) {
             if (!Bench.readBenchPacket(packetDecoded, packetVariants[i & (NUM_VARIANTS - 1)], numBits)) {
                 System.exit(1);
             }
@@ -466,28 +503,19 @@ public final class Main {
         return now() - start;
     }
 
-    static double timePacketMeasure() {
+    static double timeIntsWrite(int iters) {
         final double start = now();
-        for (int i = 0; i < STREAM_NUM_PACKETS; i++) {
-            varyBenchPacket(packet);
-            sink += Bench.measureBenchPacket(packet);
-        }
-        return now() - start;
-    }
-
-    static double timeIntsWrite() {
-        final double start = now();
-        for (int i = 0; i < STREAM_NUM_PACKETS; i++) {
+        for (int i = 0; i < iters; i++) {
             varyBenchInts(ints);
             sink += Bench.writeBenchInts(ints, writeBuf);
         }
         return now() - start;
     }
 
-    static double timeIntsRead() {
+    static double timeIntsRead(int iters) {
         final int numBits = intsBytes * 8;
         final double start = now();
-        for (int i = 0; i < STREAM_NUM_PACKETS; i++) {
+        for (int i = 0; i < iters; i++) {
             if (!Bench.readBenchInts(intsDecoded, intsVariants[i & (NUM_VARIANTS - 1)], numBits)) {
                 System.exit(1);
             }
@@ -496,19 +524,19 @@ public final class Main {
         return now() - start;
     }
 
-    static double timeBitsWrite() {
+    static double timeBitsWrite(int iters) {
         final double start = now();
-        for (int i = 0; i < STREAM_NUM_PACKETS; i++) {
+        for (int i = 0; i < iters; i++) {
             varyBenchBits(bits);
             sink += Bench.writeBenchBits(bits, writeBuf);
         }
         return now() - start;
     }
 
-    static double timeBitsRead() {
+    static double timeBitsRead(int iters) {
         final int numBits = bitsBytes * 8;
         final double start = now();
-        for (int i = 0; i < STREAM_NUM_PACKETS; i++) {
+        for (int i = 0; i < iters; i++) {
             if (!Bench.readBenchBits(bitsDecoded, bitsVariants[i & (NUM_VARIANTS - 1)], numBits)) {
                 System.exit(1);
             }
@@ -517,19 +545,19 @@ public final class Main {
         return now() - start;
     }
 
-    static double timeMixedWrite() {
+    static double timeMixedWrite(int iters) {
         final double start = now();
-        for (int i = 0; i < STREAM_NUM_PACKETS; i++) {
+        for (int i = 0; i < iters; i++) {
             varyBenchMixed(mixed);
             sink += Bench.writeBenchMixed(mixed, writeBuf);
         }
         return now() - start;
     }
 
-    static double timeMixedRead() {
+    static double timeMixedRead(int iters) {
         final int numBits = mixedBytes * 8;
         final double start = now();
-        for (int i = 0; i < STREAM_NUM_PACKETS; i++) {
+        for (int i = 0; i < iters; i++) {
             if (!Bench.readBenchMixed(mixedDecoded, mixedVariants[i & (NUM_VARIANTS - 1)], numBits)) {
                 System.exit(1);
             }
@@ -539,126 +567,76 @@ public final class Main {
     }
 
     /* ----------------------------------------------------------------------
-       the trial scaffold, written once: the loops themselves are the
-       per-shape methods above, handed in as monomorphic wrappers (the
-       serialize.java bench's own shape).
+       the run scaffold: per (bench, path), 1 discarded warmup run — the C2
+       warmup, tens of millions of iterations — then numRuns measured runs.
+       The loops themselves are the per-shape methods above, handed in as
+       monomorphic wrappers.
        ---------------------------------------------------------------------- */
 
     interface TimedLeg {
-        double run();
+        double run(int iters);
     }
 
-    interface Reseed {
-        void run();
-    }
-
-    record Best(double write, double read, double measure) {}
-
-    static Best trials(Reseed reseed, TimedLeg writeLeg, TimedLeg readLeg, TimedLeg measureLeg) {
-        double bestWrite = Double.POSITIVE_INFINITY;
-        double bestRead = Double.POSITIVE_INFINITY;
-        double bestMeasure = Double.POSITIVE_INFINITY;
-        for (int trial = 0; trial < WARMUP_TRIALS + NUM_TRIALS; trial++) {
-            reseed.run();
-            double elapsed = writeLeg.run();
-            if (trial >= WARMUP_TRIALS && elapsed < bestWrite) {
-                bestWrite = elapsed;
-            }
-            elapsed = readLeg.run();
-            if (trial >= WARMUP_TRIALS && elapsed < bestRead) {
-                bestRead = elapsed;
-            }
-            if (measureLeg != null) {
-                elapsed = measureLeg.run();
-                if (trial >= WARMUP_TRIALS && elapsed < bestMeasure) {
-                    bestMeasure = elapsed;
-                }
+    static void benchLeg(String bench, String path, int iters, int bytesPerOp, TimedLeg leg) {
+        final double[] rates = new double[numRuns];
+        for (int run = -1; run < numRuns; run++) {
+            final double elapsed = leg.run(iters);
+            if (run >= 0) {
+                rates[run] = iters / elapsed;
             }
         }
-        return new Best(bestWrite, bestRead, bestMeasure);
+        report(bench, path, iters, bytesPerOp, rates);
     }
 
     public static void main(String[] args) {
-        for (String arg : args) {
-            if (arg.equals("--csv")) {
-                csv = true;
+        for (int i = 0; i < args.length; i++) {
+            switch (args[i]) {
+                case "--csv" -> csv = true;
+                case "--quick" -> quick = true;
+                case "--round" -> {
+                    if (i + 1 >= args.length) {
+                        System.err.println("--round takes a round number");
+                        System.exit(1);
+                    }
+                    i++; // K only identifies the round to the driver
+                    numRuns = 1;
+                }
+                default -> {
+                    System.err.println("usage: Main [--csv] [--round K] [--quick]");
+                    System.exit(1);
+                }
             }
         }
-
-        // every row's golden gate runs before any row is timed: a runner that
-        // fails its goldens reports nothing at all (§1.5)
-        gatePacket();
-        gateInts();
-        gateBits();
-        gateMixed();
-
-        print("\n[schema bench — generated Java]\n\n");
-
-        final double packets = STREAM_NUM_PACKETS / 1000000.0;
-
-        // the stream-comparable row: the same 12-op packet serialize.java's
-        // stream rows measure, through the generated monomorphic codec
-        {
-            final Best b = trials(() -> {
-                initBenchPacket(packet);
-                lcgSeed();
-            }, Main::timePacketWrite, Main::timePacketRead, Main::timePacketMeasure);
-            final double totalMB = (double) packetBytes * STREAM_NUM_PACKETS / (1024 * 1024);
-            report("bench_packet", "write", "MB/s", totalMB / b.write());
-            report("bench_packet", "write", "Mpackets/s", packets / b.write());
-            report("bench_packet", "read", "MB/s", totalMB / b.read());
-            report("bench_packet", "read", "Mpackets/s", packets / b.read());
-            report("bench_packet", "measure", "Mpackets/s", packets / b.measure());
-            print(String.format("packet (generated): write: %8.1f MB/s  (%.1f M packets/s)%n",
-                    totalMB / b.write(), packets / b.write()));
-            print(String.format("packet (generated): read:  %8.1f MB/s  (%.1f M packets/s)%n",
-                    totalMB / b.read(), packets / b.read()));
-            print(String.format("packet (generated): measure: %14.1f M packets/s%n",
-                    packets / b.measure()));
+        if (quick && numRuns == 7) {
+            numRuns = 3;
         }
 
-        print("\n");
+        System.err.println("schema bench (java, generated codecs"
+                + (quick ? ", --quick: iteration instrument, not certification" : "") + ")");
 
-        {
-            final Best b = trials(() -> {
-                initBenchInts(ints);
-                lcgSeed();
-            }, Main::timeIntsWrite, Main::timeIntsRead, null);
-            report("bench_ints", "write", "Mpackets/s", packets / b.write());
-            report("bench_ints", "read", "Mpackets/s", packets / b.read());
-            print(String.format("int packet   (generated):  write: %6.1f M packets/s   read: %6.1f M packets/s%n",
-                    packets / b.write(), packets / b.read()));
-        }
-        {
-            final Best b = trials(() -> {
-                initBenchBits(bits);
-                lcgSeed();
-            }, Main::timeBitsWrite, Main::timeBitsRead, null);
-            report("bench_bits", "write", "Mpackets/s", packets / b.write());
-            report("bench_bits", "read", "Mpackets/s", packets / b.read());
-            print(String.format("bits packet  (generated):  write: %6.1f M packets/s   read: %6.1f M packets/s%n",
-                    packets / b.write(), packets / b.read()));
-        }
-        {
-            final Best b = trials(() -> {
-                initBenchMixed(mixed);
-                lcgSeed();
-            }, Main::timeMixedWrite, Main::timeMixedRead, null);
-            report("bench_mixed", "write", "Mpackets/s", packets / b.write());
-            report("bench_mixed", "read", "Mpackets/s", packets / b.read());
-            print(String.format("mixed packet (generated):  write: %6.1f M packets/s   read: %6.1f M packets/s%n",
-                    packets / b.write(), packets / b.read()));
+        // every measured row's golden gate runs before any row is timed: a
+        // runner that fails its goldens reports nothing at all (§1.5)
+        if (quick) {
+            gateMixed();
+            benchLeg("bench_mixed", "write", MIXED_ITERS, mixedBytes, Main::timeMixedWrite);
+            benchLeg("bench_mixed", "read", MIXED_ITERS, mixedBytes, Main::timeMixedRead);
+        } else {
+            gatePacket();
+            gateInts();
+            gateBits();
+            gateMixed();
+            benchLeg("bench_packet", "write", PACKET_ITERS, packetBytes, Main::timePacketWrite);
+            benchLeg("bench_packet", "read", PACKET_ITERS, packetBytes, Main::timePacketRead);
+            benchLeg("bench_ints", "write", INTS_ITERS, intsBytes, Main::timeIntsWrite);
+            benchLeg("bench_ints", "read", INTS_ITERS, intsBytes, Main::timeIntsRead);
+            benchLeg("bench_bits", "write", BITS_ITERS, bitsBytes, Main::timeBitsWrite);
+            benchLeg("bench_bits", "read", BITS_ITERS, bitsBytes, Main::timeBitsRead);
+            benchLeg("bench_mixed", "write", MIXED_ITERS, mixedBytes, Main::timeMixedWrite);
+            benchLeg("bench_mixed", "read", MIXED_ITERS, mixedBytes, Main::timeMixedRead);
         }
 
-        print("\n");
-
-        if (csv) {
-            final StringBuilder out = new StringBuilder("row,op,units,value\n");
-            for (Result r : results) {
-                out.append(String.format("%s,%s,%s,%.4f%n", r.row(), r.op(), r.units(), r.value()));
-            }
-            System.out.print(out);
-        }
+        flushCsv();
+        System.err.println("OK (corpus_id " + corpusId() + ")");
 
         // the g_sink escape: the JIT cannot prove the env var absent, so the
         // accumulated sink is observable and no loop's work can be deleted
