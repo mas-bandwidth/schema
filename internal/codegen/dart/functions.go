@@ -184,7 +184,7 @@ func (g *gen) emitStructFunctions(st *ir.Struct) {
 	g.emitZeroFunction(st.Name, st.Fields)
 	g.emitWriteFunction(st.Name, low, st.Items)
 	g.emitReadFunction(st.Name, low, st.Items)
-	g.emitMeasureFunction(st.Name, st.Items, nil)
+	g.emitMeasureFunction(st.Name, st.Items)
 }
 
 // emitUnionFunctions emits the union's bounds and the same function surface
@@ -207,7 +207,7 @@ func (g *gen) emitUnionFunctions(d *ir.Union) {
 	item := unionItem(d)
 	g.emitWriteFunction(d.Name, low, []ir.Item{item})
 	g.emitReadFunction(d.Name, low, []ir.Item{item})
-	g.emitMeasureFunction(d.Name, []ir.Item{item}, d)
+	g.emitMeasureFunction(d.Name, []ir.Item{item})
 }
 
 // unionItem wraps a union as a self-typed field item so the standalone
@@ -1452,7 +1452,7 @@ func zeroScalar(t ir.FieldType, g *gen) string {
 // emitMeasureFunction emits measure<Name>: exact wire bits for a value,
 // static runs folded to generation-time literals; a fully static type folds
 // to a single return.
-func (g *gen) emitMeasureFunction(name string, items []ir.Item, _ *ir.Union) {
+func (g *gen) emitMeasureFunction(name string, items []ir.Item) {
 	g.resetFn()
 	pending := int64(0)
 	g.emitMeasureItems(items, "value", "  ", &pending)
