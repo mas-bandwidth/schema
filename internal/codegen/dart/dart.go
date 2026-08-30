@@ -204,8 +204,6 @@ type gen struct {
 	needV     bool // the group value temp
 	needLo    bool // the wide-lane accumulator (33..64-bit reads, 128 lanes)
 	needHi    bool // the high 64-bit lane (129-bit-storage reads)
-	needX     bool // the compressed-float double temp
-	needBits  bool // measure: the running bit counter (false = fully folded)
 	usesRead  bool // read side: the window machinery is used
 
 	// per-file helper needs

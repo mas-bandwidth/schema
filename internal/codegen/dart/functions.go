@@ -223,7 +223,6 @@ func (g *gen) resetFn() {
 	g.fn.Reset()
 	g.loopDepth = 0
 	g.needV, g.needLo, g.needHi, g.usesRead = false, false, false, false
-	g.needBits = false
 }
 
 func (g *gen) emitWriteFunction(name, low string, items []ir.Item) {
