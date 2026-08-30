@@ -24,6 +24,7 @@ use std::collections::BTreeMap;
 use std::hint::black_box;
 use std::time::Instant;
 
+use benchcorpus as benchgen;
 use example::*;
 use realworldcorpus as realworld;
 use serialize::{ReadStream, Stream, WriteStream};
@@ -713,6 +714,131 @@ fn vary_real_packet(m: &mut realworld::RealPacket, rng: u64) {
 
 
 // ------------------------------------------------------------------------------------------
+// family gen over the Bench corpus (issue #177): the four Bench.schema shapes
+// measured through the GENERATED code (generated/bench/rust, crate
+// benchcorpus) — the gen twins of the rt rows (rt.rs), which serialize the
+// same shapes BY HAND against the runtime API. Same golden files, same
+// pinned values, same LCG field mappings, same bench_message discipline as
+// every gen row above; the family column carries the subject, and
+// relative.go refuses gen-vs-rt ratios. Generated best case per the
+// profiling doctrine (#170): the plain cargo release build, no PGO.
+// ------------------------------------------------------------------------------------------
+
+fn pin_gen_packet() -> benchgen::BenchPacket {
+    let mut input = benchgen::BenchPacket::default();
+    input.a = -37;
+    input.b = 12345;
+    input.c = 987654;
+    input.bits7 = 97;
+    input.bits13 = 5000;
+    input.bits23 = 1234567;
+    input.flag = true;
+    input.x = 1.5;
+    input.y = -3.25;
+    input.z = 100.125;
+    input.big = 0x123456789ABCDEF0;
+    for i in 0..17 {
+        input.blob[i] = (i * 31) as u8;
+    }
+    input
+}
+
+fn pin_gen_ints() -> benchgen::BenchInts {
+    let mut input = benchgen::BenchInts::default();
+    input.f0 = -37;
+    input.f1 = 12345;
+    input.f2 = 987654;
+    input.f3 = 2;
+    input.f4 = -15;
+    input.f5 = 777;
+    input.f6 = -2048;
+    input.f7 = 200;
+    input.f8 = -543210;
+    input.f9 = 99;
+    input
+}
+
+fn pin_gen_bits() -> benchgen::BenchBits {
+    let mut input = benchgen::BenchBits::default();
+    input.b7 = 97;
+    input.b13 = 5000;
+    input.b23 = 1234567;
+    input.b3 = 5;
+    input.b32 = 0xDEADBEEF;
+    input.b11 = 1024;
+    input.b19 = 333333;
+    input.b48 = 0xFEDCBA987654;
+    input
+}
+
+fn pin_gen_mixed() -> benchgen::BenchMixed {
+    let mut input = benchgen::BenchMixed::default();
+    input.sequence = 52428;
+    input.ack_bits = 0xA5A5A5A5;
+    input.entity_id = 2049;
+    input.pos_x = -16384;
+    input.pos_y = 16383;
+    input.pos_z = -1;
+    input.yaw = 511;
+    input.moving = true;
+    input.firing = false;
+    input.timestamp = 0x123456789ABC;
+    input.weapon = 15;
+    input
+}
+
+fn vary_gen_packet(p: &mut benchgen::BenchPacket, rng: u64) {
+    p.a = (((rng >> 8) & 63) as i32) - 32;
+    p.b = ((rng >> 16) as u32 & 65535) as i32;
+    p.c = (((rng >> 24) & 0xFFFFF) as i32) - 500000;
+    p.bits7 = (rng as u32) & 127;
+    p.bits13 = ((rng >> 3) as u32) & 8191;
+    p.bits23 = ((rng >> 5) as u32) & 8388607;
+    p.flag = (rng & 1) != 0;
+    p.x = ((rng as u32) & 0xFFFF) as f32;
+    p.big = rng;
+    p.blob[0] = (rng >> 32) as u8;
+}
+
+fn vary_gen_ints(f: &mut benchgen::BenchInts, rng: u64) {
+    f.f0 = (((rng >> 8) & 63) as i32) - 32;
+    f.f1 = ((rng >> 16) as u32 & 65535) as i32;
+    f.f2 = (((rng >> 24) & 0xFFFFF) as i32) - 500000;
+    f.f3 = ((rng >> 2) as u32 & 3) as i32;
+    f.f4 = (((rng >> 11) & 15) as i32) - 8;
+    f.f5 = ((rng >> 22) as u32 & 511) as i32;
+    f.f6 = (((rng >> 33) & 2047) as i32) - 1024;
+    f.f7 = ((rng >> 40) as u32 & 255) as i32;
+    f.f8 = (((rng >> 30) & 0xFFFFF) as i32) - 500000;
+    f.f9 = ((rng >> 57) as u32 & 63) as i32;
+}
+
+fn vary_gen_bits(f: &mut benchgen::BenchBits, rng: u64) {
+    f.b7 = (rng as u32) & 127;
+    f.b13 = ((rng >> 3) as u32) & 8191;
+    f.b23 = ((rng >> 5) as u32) & 8388607;
+    f.b3 = ((rng >> 29) as u32) & 7;
+    f.b32 = (rng >> 16) as u32;
+    f.b11 = ((rng >> 37) as u32) & 2047;
+    f.b19 = ((rng >> 44) as u32) & 524287;
+    f.b48 = rng & 0xFFFF_FFFF_FFFF;
+}
+
+fn vary_gen_mixed(f: &mut benchgen::BenchMixed, rng: u64) {
+    f.sequence = ((rng >> 8) as u32 & 65535) as i32;
+    f.ack_bits = (rng >> 16) as u32;
+    f.entity_id = (rng as u32) & 4095;
+    f.pos_x = (((rng >> 20) & 32767) as i32) - 16384;
+    f.pos_y = (((rng >> 25) & 32767) as i32) - 16384;
+    f.pos_z = (((rng >> 30) & 32767) as i32) - 16384;
+    f.yaw = ((rng >> 3) as u32) & 511;
+    f.moving = (rng & 1) != 0;
+    f.firing = (rng & 2) != 0;
+    f.timestamp = rng & 0xFFFF_FFFF_FFFF;
+    f.weapon = ((rng >> 60) as u32 & 15) as i32;
+}
+
+// ------------------------------------------------------------------------------------------
 
 
 fn main() {
@@ -766,7 +892,10 @@ fn main() {
         // --quick: bench_mixed only, 3 measured runs — the iteration
         // instrument, never the certification instrument. Golden gate
         // unconditional (bench_rt gates before timing).
+        // The gen row is the schema subject (the blended table's row); the
+        // rt row rides beside it as the hand-written-usage subject.
         eprintln!("schema bench (rust, --quick: iteration instrument, not certification)");
+        bench_message(&ctx, "bench_mixed", Some("bench_mixed"), 40000000, pin_gen_mixed(), benchgen::write_bench_mixed, benchgen::read_bench_mixed, vary_gen_mixed);
         rt::bench_rt_mixed(&ctx);
         ctx.flush_csv();
         if ctx.failed.get() {
@@ -803,6 +932,14 @@ fn main() {
     // reference (§2.1).
     bench_message(&ctx, "real_packet", Some("real_packet"), 8000000, realworld::RealPacket::new(), realworld::write_real_packet, realworld::read_real_packet, vary_real_packet);
 
+    // family gen over the Bench corpus (issue #177): the generated twins of
+    // the rt rows below — same shapes, same goldens, same pins, same vary
+    // mappings, same iteration counts (fixed and identical across all five
+    // runners, §2.1); only the subject differs, and the family column says so.
+    bench_message(&ctx, "bench_packet", Some("bench_packet"), 32000000, pin_gen_packet(), benchgen::write_bench_packet, benchgen::read_bench_packet, vary_gen_packet);
+    bench_message(&ctx, "bench_ints", Some("bench_ints"), 40000000, pin_gen_ints(), benchgen::write_bench_ints, benchgen::read_bench_ints, vary_gen_ints);
+    bench_message(&ctx, "bench_bits", Some("bench_bits"), 48000000, pin_gen_bits(), benchgen::write_bench_bits, benchgen::read_bench_bits, vary_gen_bits);
+    bench_message(&ctx, "bench_mixed", Some("bench_mixed"), 40000000, pin_gen_mixed(), benchgen::write_bench_mixed, benchgen::read_bench_mixed, vary_gen_mixed);
 
     // family rt (§1.3/§1.5): the runtime API by hand, oracle-gated against
     // the goldens the generated code pinned. Iteration counts are fixed and
