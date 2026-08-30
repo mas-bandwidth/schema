@@ -31,6 +31,19 @@ RUSTUP_BIN ?= /opt/homebrew/opt/rustup/bin
 #   unzip into dist/ and rename dart-sdk -> dart-sdk-3.13.2
 DART ?= $(CURDIR)/dist/dart-sdk-3.13.2/bin/dart
 
+# The JDK, pinned per project (generated Java is self-contained — no runtime
+# checkout — so the JDK is the only Java dependency; same pin as the
+# serialize.java port). The defaults point at the repo-local unpacked JDK;
+# CI installs the same major and overrides with JAVA=java JAVAC=javac. To
+# populate dist/ (gitignored):
+#   Temurin JDK 21.0.12.1+1 (Eclipse Adoptium, macos aarch64)
+#   url:    https://github.com/adoptium/temurin21-binaries/releases/download/jdk-21.0.12.1%2B1/OpenJDK21U-jdk_aarch64_mac_hotspot_21.0.12.1_1.tar.gz
+#   sha256: 3623232f33a9c3baadf304480b2535f9a3cba8a58d42ecbb438ba267315d9998
+#   untar into dist/ and rename to dist/jdk-21.0.12.1
+# Generated code and the test legs compile with --release 17.
+JAVA  ?= $(CURDIR)/dist/jdk-21.0.12.1/Contents/Home/bin/java
+JAVAC ?= $(CURDIR)/dist/jdk-21.0.12.1/Contents/Home/bin/javac
+
 GO_SOURCES   := $(shell find cmd internal -name '*.go') go.mod
 SCHEMAS      := $(wildcard examples/*.schema)
 SCHEMAS128   := $(wildcard examples128/*.schema)
@@ -53,7 +66,7 @@ generated/cpp/.stamp: bin/schema $(SCHEMAS)
 	./bin/schema generate --lang cpp --out generated/cpp examples
 	@touch $@
 
-# the fixed-point + 128-bit unit (examples128/) — all seven targets since the
+# the fixed-point + 128-bit unit (examples128/) — all eight targets since the
 # serialize ports carry the phase-1 surface; each generated unit gets the same
 # module/manifest wiring as its main-corpus twin
 generated/cpp/ludicrous/.stamp: bin/schema $(SCHEMAS128)
@@ -117,6 +130,18 @@ generated/dart/.stamp: bin/schema $(SCHEMAS)
 
 generated/dart-ludicrous/.stamp: bin/schema $(SCHEMAS128)
 	./bin/schema generate --lang dart --out generated/dart-ludicrous examples128
+	@touch $@
+
+# the Java target: generated classes only, no wiring file at all — generated
+# Java is self-contained (the bitpacker is inlined per issue #156), so there
+# is no runtime checkout and no build file; the test legs compile the
+# generated sources beside their Main.java directly
+generated/java/.stamp: bin/schema $(SCHEMAS)
+	./bin/schema generate --lang java --out generated/java examples
+	@touch $@
+
+generated/java-ludicrous/.stamp: bin/schema $(SCHEMAS128)
+	./bin/schema generate --lang java --out generated/java-ludicrous examples128
 	@touch $@
 
 build/schema_test: generated/cpp/.stamp test/main.cpp test/second.cpp
@@ -216,6 +241,11 @@ generated/bench/dart/.stamp: bin/schema $(SCHEMAS_BENCH)
 	./bin/schema generate --lang dart --out generated/bench/dart/realworld bench/corpus/RealWorld.schema
 	@touch $@
 
+generated/bench/java/.stamp: bin/schema $(SCHEMAS_BENCH)
+	./bin/schema generate --lang java --out generated/bench/java bench/corpus/Bench.schema
+	./bin/schema generate --lang java --out generated/bench/java/realworld bench/corpus/RealWorld.schema
+	@touch $@
+
 # the C++ producer/verifier of the bench-corpus goldens, and the C twin that
 # proves the C emitter compiles under the strict flags AND matches those bytes
 build/schema_test_bench: generated/bench/cpp/.stamp test/bench/main.cpp
@@ -228,6 +258,32 @@ build/schema_test_bench_c: generated/bench/c/.stamp test/bench/c_main.c
 		-O2 -ffp-contract=off -Igenerated/bench/c -I$(SERIALIZE_C) \
 		test/bench/c_main.c $(SERIALIZE_C)/serialize.c -o $@ -lm
 
+# The Java test legs compile the generated sources beside their Main.java —
+# -Xlint:all -Werror on purpose: generated sources are compiled by the
+# CONSUMER's javac, so a warning here is a build failure in their tree, not
+# ours. Both modes then run: -ea (the checked twin — writer contracts fire)
+# and default (the release shape, issue #156's target).
+build/java-test/.stamp: generated/java/.stamp generated/bench/java/.stamp test/java/Main.java
+	@mkdir -p build/java-test
+	$(JAVAC) --release 17 -Xlint:all -Werror -d build/java-test \
+		generated/java/*.java generated/bench/java/*.java \
+		generated/bench/java/realworld/*.java test/java/Main.java
+	@touch $@
+
+build/java-test-ludicrous/.stamp: generated/java-ludicrous/.stamp test/java-ludicrous/Main.java
+	@mkdir -p build/java-test-ludicrous
+	$(JAVAC) --release 17 -Xlint:all -Werror -d build/java-test-ludicrous \
+		generated/java-ludicrous/*.java test/java-ludicrous/Main.java
+	@touch $@
+
+# the Java bench runner's compile gate (the twin of `dart analyze bench/dart`);
+# the timed run is by hand — bench/java/Main.java documents it
+build/java-bench/.stamp: generated/bench/java/.stamp bench/java/Main.java
+	@mkdir -p build/java-bench
+	$(JAVAC) --release 17 -Xlint:all -Werror -d build/java-bench \
+		generated/bench/java/*.java bench/java/Main.java
+	@touch $@
+
 # The C half of the fixed-point and 128-bit corpus. Its ABSENCE is why a C
 # codec that wrote nothing for every fixed field passed every gate: the C
 # target was generated from examples/ only, and examples/ has no `fixed(`.
@@ -237,7 +293,7 @@ build/schema_test_c_ludicrous: generated/c-ludicrous/.stamp test/c-ludicrous/mai
 		-O2 -ffp-contract=off -Igenerated/c-ludicrous -I$(SERIALIZE_C) \
 		test/c-ludicrous/main.c $(SERIALIZE_C)/serialize.c -o $@ -lm
 
-test: build/schema_test build/schema_test_random build/schema_test_ludicrous build/schema_test_c build/schema_test_c_ludicrous build/schema_test_bench build/schema_test_bench_c generated/go/.stamp generated/rust/.stamp generated/cs/.stamp generated/js/.stamp generated/dart/.stamp generated/go-ludicrous/.stamp generated/rust-ludicrous/.stamp generated/cs-ludicrous/.stamp generated/js-ludicrous/.stamp generated/dart-ludicrous/.stamp generated/bench/go/.stamp generated/bench/rust/.stamp generated/bench/cs/.stamp generated/bench/js/.stamp generated/bench/dart/.stamp
+test: build/schema_test build/schema_test_random build/schema_test_ludicrous build/schema_test_c build/schema_test_c_ludicrous build/schema_test_bench build/schema_test_bench_c generated/go/.stamp generated/rust/.stamp generated/cs/.stamp generated/js/.stamp generated/dart/.stamp generated/java/.stamp generated/go-ludicrous/.stamp generated/rust-ludicrous/.stamp generated/cs-ludicrous/.stamp generated/js-ludicrous/.stamp generated/dart-ludicrous/.stamp generated/java-ludicrous/.stamp generated/bench/go/.stamp generated/bench/rust/.stamp generated/bench/cs/.stamp generated/bench/js/.stamp generated/bench/dart/.stamp generated/bench/java/.stamp build/java-test/.stamp build/java-test-ludicrous/.stamp build/java-bench/.stamp
 	./build/schema_test
 	./build/schema_test_random
 	./build/schema_test_ludicrous
@@ -264,6 +320,10 @@ test: build/schema_test build/schema_test_random build/schema_test_ludicrous bui
 	cd test/dart && $(DART) compile exe -o ../../build/schema_test_dart main.dart >/dev/null && ../../build/schema_test_dart
 	cd test/dart-ludicrous && $(DART) --enable-asserts main.dart
 	cd test/dart-ludicrous && $(DART) compile exe -o ../../build/schema_test_dart_ludicrous main.dart >/dev/null && ../../build/schema_test_dart_ludicrous
+	cd test/java && $(JAVA) -ea -cp ../../build/java-test Main
+	cd test/java && $(JAVA) -cp ../../build/java-test Main
+	cd test/java-ludicrous && $(JAVA) -ea -cp ../../build/java-test-ludicrous Main
+	cd test/java-ludicrous && $(JAVA) -cp ../../build/java-test-ludicrous Main
 	go test ./...
 
 # Re-pin the goldens DELIBERATELY (SPEC §7.2 gates 1, 2, 7). A wire golden

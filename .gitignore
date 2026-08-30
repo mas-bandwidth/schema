@@ -34,5 +34,5 @@ tending/
 # test-leg build artifact
 /test/go/schematest
 
-# the pinned Dart SDK unpacked locally (see the Makefile DART variable)
+# pinned toolchains unpacked locally (Dart SDK, JDK — see the Makefile DART and JAVA variables)
 /dist/

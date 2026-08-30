@@ -6,13 +6,14 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/csharp"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/dart"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/golang"
+	"github.com/mas-bandwidth/schema/v2/internal/codegen/java"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/js"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/rust"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
 // builtins is the set [New] registers. The per-language emitters stay
-// internal — they are implementations, not API, and freezing seven emitter
+// internal — they are implementations, not API, and freezing eight emitter
 // packages under semver would buy nothing — but they reach the driver through
 // [Generator] and nothing else, which is what makes that interface a door
 // rather than a decoration: if a built-in target can be expressed as a
@@ -24,6 +25,7 @@ func builtins() []Generator {
 		csTarget{},
 		dartTarget{},
 		goTarget{},
+		javaTarget{},
 		jsTarget{},
 		rustTarget{},
 	}
@@ -72,6 +74,15 @@ func (goTarget) Names() []string { return []string{"go"} }
 
 func (goTarget) Generate(u *ir.Unit, _ Options) (map[string][]byte, error) {
 	return golang.Generate(u)
+}
+
+// javaTarget emits Java 17.
+type javaTarget struct{}
+
+func (javaTarget) Names() []string { return []string{"java"} }
+
+func (javaTarget) Generate(u *ir.Unit, _ Options) (map[string][]byte, error) {
+	return java.Generate(u)
 }
 
 // jsTarget emits JavaScript ES modules.

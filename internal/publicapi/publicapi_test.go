@@ -273,7 +273,7 @@ func wantClientOutput(t *testing.T) string {
 	}
 	var b strings.Builder
 	fmt.Fprintf(&b, "package %s 0x%016x\n", u.Package, u.ProtocolId)
-	// The external module registers one more target than the built-in seven,
+	// The external module registers one more target than the built-in eight,
 	// and it must appear in the driver's own list.
 	targets := append(c.Targets(), "widths")
 	sort.Strings(targets)
