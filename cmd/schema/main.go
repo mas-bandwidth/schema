@@ -95,7 +95,7 @@ func main() {
 		}
 	case "generate":
 		fs := flag.NewFlagSet("generate", flag.ExitOnError)
-		lang := fs.String("lang", "cpp", "target language (c, cpp, cs, go, js, rust)")
+		lang := fs.String("lang", "cpp", "target language (c, cpp, cs, go, java, js, rust, dart)")
 		out := fs.String("out", "generated", "output directory")
 		fs.BoolVar(&verbose, "verbose", false, "list the files emitted")
 		_ = fs.Parse(os.Args[2:]) // ExitOnError: Parse never returns an error
