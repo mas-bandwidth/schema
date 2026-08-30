@@ -1451,10 +1451,10 @@ func (g *gen) emitReadFixed(f *ir.Field, name, ind string) {
 	if f.IntMin.Cmp(f.IntMax) == 0 {
 		// degenerate: zero bits — the value is the range, raw min << F,
 		// materialized with no wire read (SPEC §4.6)
-		g.pf("%s%s = %s;\n", ind, name, narrowLit(intJavaType(int(f.Type.Width)), rawMin))
+		g.pf("%s%s = %s;\n", ind, name, narrowLit(intJavaType(f.Type.Width), rawMin))
 		return
 	}
-	g.emitReadOffset(name, intJavaType(int(f.Type.Width)), rawMin, rawMax, bits, ind)
+	g.emitReadOffset(name, intJavaType(f.Type.Width), rawMin, rawMax, bits, ind)
 }
 
 // emitReadOffset decodes a ranged value inside the 64-bit domain: the

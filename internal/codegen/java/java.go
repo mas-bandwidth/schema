@@ -619,7 +619,7 @@ func (g *gen) scalarStorage(f *ir.Field) (typ, init string) {
 		}
 		return typ, typ + ".zero"
 	case t.Kind == ir.TFixed:
-		typ = intJavaType(int(t.Width))
+		typ = intJavaType(t.Width)
 		if f.HasDefault {
 			// DefInt is ALREADY the raw scaled integer (the C++ target pins
 			// this); fixed storage is that raw value (STANDARD.md, fixed)
@@ -652,7 +652,7 @@ func (g *gen) scalarStorage(f *ir.Field) (typ, init string) {
 		return typ, ""
 	}
 	// integer storage in the same-width signed type, bit-transparent
-	typ = intJavaType(int(t.Width))
+	typ = intJavaType(t.Width)
 	if f.HasDefault {
 		if s := g.renderNarrowInt(typ, f.DefExpr, f.DefInt); s != "" {
 			return typ, s
@@ -695,7 +695,7 @@ func intJavaType(width int) string {
 func scalarJavaType(t ir.FieldType) string {
 	switch t.Kind {
 	case ir.TInt, ir.TFixed:
-		return intJavaType(int(t.Width))
+		return intJavaType(t.Width)
 	case ir.TBits:
 		if t.Width <= 32 {
 			return "int"
