@@ -56,7 +56,7 @@ env:
 
 jobs:
   # The fast gate, and the conformance half of certification. `make test`
-  # builds the corpus in all seven languages and compares their wire against
+  # builds the corpus in all eight languages and compares their wire against
   # the C++-pinned goldens — that cross-language bit identity is the property
   # this project exists to provide, and CI is where it gets proven on
   # hardware we do not own. It runs on every trigger, PRs included, because
@@ -121,6 +121,14 @@ jobs:
         with:
           sdk: '3.13.2'
 
+      # The JDK, same major as the Makefile's dist/ pin (generated Java is
+      # self-contained — the JDK is the only Java dependency, so there is no
+      # serialize.java clone above).
+      - uses: actions/setup-java@v5
+        with:
+          distribution: 'temurin'
+          java-version: '21'
+
       # vet rides in the test job on both OSes: an emitter codebase built
       # almost entirely out of format strings is exactly where printf-verb
       # mismatches live (issue #31).
@@ -130,10 +138,11 @@ jobs:
       # No SERIALIZE* overrides: the Makefile defaults already point at the
       # sibling layout cloned above. RUSTUP_BIN defaults to a homebrew keg on
       # the author's machine; on CI cargo is on PATH, so point it somewhere
-      # harmless. DART likewise defaults to the repo-local dist/ SDK; on CI
-      # setup-dart puts the pinned version on PATH.
+      # harmless. DART and JAVA/JAVAC likewise default to the repo-local
+      # dist/ toolchains; on CI setup-dart and setup-java put the pinned
+      # versions on PATH.
       - name: make test
-        run: make test RUSTUP_BIN=/usr/bin DART=dart
+        run: make test RUSTUP_BIN=/usr/bin DART=dart JAVA=java JAVAC=javac
 
       # The committed generated/ tree is what this repo treats as ground
       # truth — findings are receipted against its line numbers. `make test`
@@ -220,7 +229,7 @@ jobs:
           git clone --quiet --depth 1 --branch "$SERIALIZE_JS_TAG" https://github.com/mas-bandwidth/serialize.js.git serialize.js
 
       # All the toolchains regardless of leg: the `make test` precondition
-      # step below builds the whole tree (seven languages), exactly as the
+      # step below builds the whole tree (eight languages), exactly as the
       # single-job flow did before the fan-out — the gate legs verdict the
       # same artifacts they always have.
       - uses: actions/setup-go@v7
@@ -242,12 +251,17 @@ jobs:
         with:
           sdk: '3.13.2'
 
+      - uses: actions/setup-java@v5
+        with:
+          distribution: 'temurin'
+          java-version: '21'
+
       # The same preconditions the gates had when they ran after `make test`
       # in one job: bin/schema, the generated trees, and the bench units all
       # built (31-45s measured — cheap enough to repeat per leg rather than
       # invent a narrower target with different semantics).
       - name: make test
-        run: make test RUSTUP_BIN=/usr/bin DART=dart
+        run: make test RUSTUP_BIN=/usr/bin DART=dart JAVA=java JAVAC=javac
 
       - name: inline gate — adversarial selftest
         run: bench/tools/inline-gate.sh selftest

@@ -76,8 +76,9 @@ inline bool WriteShipCreate( serialize::WriteStream & stream, const ShipCreate &
 inline bool ReadShipCreate( serialize::ReadStream & stream, ShipCreate & value );
 ```
 
-Run the same command with `--lang c`, `--lang cs`, `--lang go`, `--lang js`, `--lang dart`
-or `--lang rust` and you get the equivalent in that language — writing the
+Run the same command with `--lang c`, `--lang cs`, `--lang go`, `--lang java`,
+`--lang js`, `--lang dart` or `--lang rust` and you get the equivalent in that
+language — writing the
 **same bits**.
 
 ---
@@ -486,8 +487,8 @@ if ( !ReadShipCreate( stream, value ) )
 ```
 
 The slack requirement differs per language: **C ≥8 bytes, C++ ≥8, Go ≥7,
-Rust ≥8, C# none, Dart none, and JavaScript's flat tier ≥8 past the
-payload.** The
+Rust ≥8, C# none, Dart none, Java none, and JavaScript's flat tier ≥8 past
+the payload.** The
 per-target columns are normative in [SPEC.md](SPEC.md) §6.3. Write
 buffers are a multiple of 8 in every language.
 
@@ -502,8 +503,8 @@ the same thing and a non-variant cannot survive a read. But `enum E | max = 15`
 variants can be added later without
 moving the field width — and a read of that enum accepts anything in `[0, 15]`.
 That is the point of the headroom, but it means a value you have not defined
-yet can arrive, and your `switch` should have a default. The same VALIDATION rules hold in all seven languages, because
-the same compiler wrote all seven — the buffer-slack contract above is the one
+yet can arrive, and your `switch` should have a default. The same VALIDATION rules hold in all eight languages, because
+the same compiler wrote all eight — the buffer-slack contract above is the one
 thing that differs per language.
 
 ---
@@ -519,13 +520,16 @@ backend uses `serialize_assert`. Go has no assert idiom, so it returns
 `ErrValueOutOfRange`; C, C#, Rust and JavaScript likewise return failure
 rather than invent an assert. Dart has `assert` — active under
 `--enable-asserts`, compiled out of release and AOT builds — so the Dart
-writer asserts, exactly like C++. The rule is that a language should verify
+writer asserts, exactly like C++; Java's `assert` is active under `-ea` and
+dormant otherwise, so the Java writer asserts too (one predicate call per
+write, issue #156's inline-threshold discipline). The rule is that a language should verify
 correctness the way that language verifies correctness — not that every
 target behaves identically here.
 
 So writing `health = 2000` into a field declared `| min = 0, max = 1000`
-asserts in a C++ or checked Dart build, silently writes the truncated low
-bits in a C++ release or Dart AOT build, and returns failure in the others.
+asserts in a C++, checked-Dart or `-ea` Java build, silently writes the
+truncated low bits in a C++ release, Dart AOT or default-JVM build, and
+returns failure in the others.
 
 Do not build on any of it. **Keep your values inside their declared bounds on
 the write side** — your simulation already knows they are, and that is the only
@@ -556,7 +560,7 @@ import (
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
-c := compiler.New() // the seven built-in targets, registered
+c := compiler.New() // the eight built-in targets, registered
 
 paths, err := compiler.GatherPaths([]string{"schemas"}) // one directory is one unit
 unit, err := c.Load(paths)                              // format-free: nothing is written
@@ -627,13 +631,13 @@ c := compiler.New()
 if err := c.Register(docs{}); err != nil { // refuses a name a target already holds
 	return err
 }
-fmt.Println(c.Targets()) // [c cpp cs docs go js rust]
+fmt.Println(c.Targets()) // [c cpp cs docs go java js rust]
 files, err := c.Generate(unit, "docs", nil)
 ```
 
 The unit your generator receives is the same fully-resolved [`ir`](https://pkg.go.dev/github.com/mas-bandwidth/schema/v2/ir)
 the built-in backends read: types resolved, constants folded, ranges and bit
-widths derived, wire order fixed. The derived parameters the seven emitters
+widths derived, wire order fixed. The derived parameters the eight emitters
 share are functions there rather than per-backend arithmetic — `ir.BitsRequired`,
 `ir.MaxBitsStruct`, `ir.MaxBytes`, `ir.CompressedFloatParams`,
 `ir.AlignedFixedByteArrays`, `ir.FieldId` — so a new target computes the same
@@ -711,6 +715,36 @@ if (!ok) {
 **Go** — accessors avoid allocation; reads and writes run on caller-owned
 buffers.
 
+**Java** — Java 17 on the JVM, built to issue #156's measured directives.
+Generated code is **self-contained**: it references only `java.lang`,
+`VarHandle` little-endian word access and `java.util.Arrays`, never a runtime
+package. Each schema file becomes one public class of the same name (the
+protobuf outer-class shape) with the file's types nested inside; every type
+gets monomorphic static `write<Name>` / `read<Name>` / `measure<Name>` /
+`zero<Name>` functions with the bitpacker inlined at every field, literal
+constant widths and masks — no streams, no dispatch (the unified stream
+pattern measured ~2x on the JVM). Writer contracts live in one private
+`checkWrite<Name>` predicate called through a single `assert` — active under
+`-ea`, dormant bytecode otherwise, and small enough that it never counts
+against the JIT's inline thresholds. Buffers are caller-owned byte arrays;
+the writer needs `<name>MaxBytes` (a multiple of 8), the reader needs **no
+slack** past the payload. Integer storage is the same-width signed type,
+bit-transparent (the protobuf convention); the 128-bit widths ride an
+emitted immutable `Int128`/`UInt128` pair, generated beside a unit that
+needs it:
+
+```java
+import example.Types;
+
+byte[] buf = new byte[Types.shipCreateMaxBytes];
+int bytes = Types.writeShipCreate(ship, buf); // bytes written; contracts asserted under -ea
+
+boolean ok = Types.readShipCreate(out, packet, packet.length * 8);
+if (!ok) {
+    // malformed or hostile — drop it
+}
+```
+
 **Rust** — no `unsafe` in generated code, `Result`-returning read and write.
 
 **JavaScript** — ES modules, zero dependencies, Number storage for widths of
@@ -750,7 +784,7 @@ one import away: re-read a failing buffer through the runtime tier and read
 `stream.error`. The flat modules are pure spec'd ECMAScript with no node
 APIs.
 
-All seven are generated from the same IR and compared against each other in CI
+All eight are generated from the same IR and compared against each other in CI
 on every push. The wire is bit-packed, so the property being checked is
 bit-identity — if they ever disagree by one bit, the build fails.
 

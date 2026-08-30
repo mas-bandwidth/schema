@@ -130,7 +130,7 @@ func main() {
 func usage() {
 	fmt.Fprintf(os.Stderr, `usage:
   schema check      [--verbose] [dir|files...]
-  schema generate   [--lang c|cpp|cs|go|js|rust|dart] [--out generated] [--verbose] [dir|files...]
+  schema generate   [--lang c|cpp|cs|go|java|js|rust|dart] [--out generated] [--verbose] [dir|files...]
   schema id         [dir|files...]
   schema projection [dir|files...]
   schema fmt        [--verbose] [dir|files...]

@@ -5,7 +5,7 @@
 
 If this work helps you, please support it: **[Become a supporter](https://www.patreon.com/MasBandwidth/membership)**
 
-Write your data types once and generate code to read and write them in seven languages.
+Write your data types once and generate code to read and write them in eight languages.
 
 ```
 package example
@@ -47,7 +47,7 @@ type ShipState
 }
 ```
 
-This declaration compiles to C, C++, C#, Go, Rust, JavaScript and Dart code that 
+This declaration compiles to C, C++, C#, Go, Java, Rust, JavaScript and Dart code that 
 reads and writes your data types and agrees on every bit. Now your native plugin, your Unity client, your Go backend, your browser client, and your tooling all speak the same language.
 
 ## Why it exists
@@ -78,8 +78,8 @@ would have hand-written, not an interpreter walking a schema at runtime.
 
 ## Features
 
-- **One declaration, seven languages** — C, C++, C#, Dart, Go, Rust and
-  JavaScript, bit-identical on the wire, reader and writer generated together
+- **One declaration, eight languages** — C, C++, C#, Dart, Go, Java,
+  Rust and JavaScript, bit-identical on the wire, reader and writer generated together
   so they cannot drift.
 - **Bit-packed, not byte-packed** — `| min = 0, max = 1000` costs 10 bits, not
   4 bytes. Bounds are part of the type, and the wire cost follows from them.
@@ -99,7 +99,7 @@ would have hand-written, not an interpreter walking a schema at runtime.
   and standard-layout, so raw-struct blobs and parallel scatter/gather are
   safe by design; see [The wire](USAGE.md#the-wire).
 - **The compiler is a library too** — load, check and generate from Go,
-  and register generators of your own; the seven built-in backends come through
+  and register generators of your own; the eight built-in backends come through
   the same interface yours does. See
   [Embedding the compiler](USAGE.md#embedding-the-compiler).
 - **Canonical source format** — every command formats in place.
@@ -112,7 +112,7 @@ would have hand-written, not an interpreter walking a schema at runtime.
 go build -o /usr/local/bin/schema ./cmd/schema
 
 schema check    <dir of .schema files>
-schema generate --lang c|cpp|cs|go|js|rust|dart --out <outdir> <dir>
+schema generate --lang c|cpp|cs|go|java|js|rust|dart --out <outdir> <dir>
 ```
 
 **[USAGE.md](USAGE.md)** is the guide — every language feature, with real
@@ -120,7 +120,8 @@ examples and the code each one generates, and how to drive the compiler from
 Go instead of the command line.
 
 Building the tests needs the serialize runtimes checked out beside this
-repo (generated Dart is self-contained and needs only the pinned SDK), then
+repo (generated Dart and Java are self-contained and need only their pinned
+SDK/JDK), then
 `make test` — [CONTRIBUTING.md](CONTRIBUTING.md) has the clone
 list and what the gates prove.
 

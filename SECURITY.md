@@ -7,7 +7,7 @@ deserve very different weight.
 packet paths and consume bytes from the network. A bug in the emitted read path
 — one that lets a hostile buffer read out of bounds, or lets a declared bound
 be exceeded without the read failing — is a serious vulnerability in every
-program built from that schema, in seven languages at once. Report these.
+program built from that schema, in eight languages at once. Report these.
 
 **The compiler itself is a build-time tool** that consumes schema files, which
 are normally written by you and live in your repository. A crash on a malformed
@@ -49,7 +49,7 @@ the buffer. Specifically:
 - An enum value that is not a declared variant being accepted.
 - Any read that continues past the end of the stream instead of failing.
 - Integer overflow in a bit or byte count computed from wire data.
-- **Any divergence between the seven languages on the above** — if C++ refuses
+- **Any divergence between the eight languages on the above** — if C++ refuses
   an input and Go accepts it, that is a security bug even if neither is
   memory-unsafe, because deployments mix languages across client and server.
 
@@ -78,7 +78,8 @@ what the language specifies, in a way that weakens a check.
 - A native Go fuzz harness drives parse → check → generate across the C, C++, C#, Go and Rust
   backends. Every crasher ever found is committed as a permanent regression
   input and re-run on every push.
-- The cross-language corpus generates the same schemas in C, C++, C#, Go, JavaScript and Rust
+- The cross-language corpus generates the same schemas in C, C++, C#, Dart, Go,
+  Java, JavaScript and Rust
   and compares emitted wire bit for bit against pinned goldens, on Linux and
   macOS, on every push. Divergence between languages fails CI.
 - Generated readers are exercised against hand-crafted hostile bytes.
