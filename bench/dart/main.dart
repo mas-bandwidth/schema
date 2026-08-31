@@ -38,7 +38,6 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import '../../generated/bench/dart/Bench.dart';
-import '../../generated/bench/dart/Int128.dart';
 
 const int numVariants = 64;
 
