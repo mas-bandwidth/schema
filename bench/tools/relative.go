@@ -58,6 +58,15 @@ var rtCorpus = []string{"bench_packet", "bench_ints", "bench_bits", "bench_mixed
 
 const bitpacker = "bitpacker"
 
+// paths is every value the §5.1 `path` column takes, in presentation order.
+// `round_trip` joined write/read when the gen family's bench_mixed rows went
+// data-driven (issue #191, BENCH-STANDARD §2.9): that leg's rows are write
+// and round_trip, and read is DERIVED to stderr rather than measured. This
+// list is the OUTPUT loop of aggregate, twingate, bands and the absolute
+// table, so a path missing from it makes rows silently vanish — which is
+// exactly what round_trip did between the tracer landing and this fix (F4).
+var paths = []string{"write", "read", "round_trip"}
+
 var order = append(append(append([]string{}, corpus...), rtCorpus...), bitpacker)
 
 // langs is the presentation order. c is the reference the relative table is
@@ -645,7 +654,7 @@ func absoluteTable(ds *dataset) string {
 		"|---|---|---|---:|---:|---:|---:|---:|---|",
 	}
 	for _, b := range order {
-		for _, p := range []string{"write", "read"} {
+		for _, p := range paths {
 			for _, l := range langs {
 				for _, c := range codecs {
 					x, ok := ds.rows[key{l.key, b, p, c}]

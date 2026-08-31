@@ -38,7 +38,6 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import '../../generated/bench/dart/Bench.dart';
-import '../../generated/bench/dart/Int128.dart';
 
 const int numVariants = 64;
 
@@ -97,72 +96,6 @@ int sinkOfBenchInts(BenchInts d) =>
 int sinkOfBenchBits(BenchBits d) =>
     d.b7 + d.b13 + d.b23 + d.b3 + d.b32 + d.b11 + d.b19 + d.b48;
 
-// §2.7 full-struct observation over the canonical shape: every decoded field
-// folds in — array elements one by one over the decoded extent, booleans as
-// 0/1, doubles truncated, the 128-bit values as both halves, the string and
-// byte block byte-summed over their used lengths.
-int sinkOfBenchMixed(BenchMixed d) {
-  var s = d.sequence +
-      d.ackSequence +
-      d.ackBits +
-      d.sessionId +
-      d.clientId +
-      d.nonce +
-      d.worldTime +
-      d.frameTick +
-      d.serverTime +
-      d.entitiesCount +
-      d.statsCount +
-      d.gameEvent.type +
-      d.playerNameLength +
-      d.payloadLength +
-      d.aimX.toInt() +
-      d.aimY.toInt() +
-      d.aimZ.toInt() +
-      d.recoil.toInt() +
-      d.drift.toInt() +
-      d.wideKey.hi +
-      d.wideKey.lo +
-      d.flux.hi +
-      d.flux.lo +
-      d.ping +
-      d.crcHint +
-      (d.hasExtra ? 1 : 0) +
-      d.extra +
-      d.idleTicks;
-  for (var i = 0; i < d.entitiesCount; i++) {
-    final e = d.entities[i];
-    s += e.entityId +
-        e.posX +
-        e.posY +
-        e.posZ +
-        e.yaw +
-        e.pitch +
-        e.velX +
-        e.velY +
-        e.velZ +
-        e.health +
-        e.weapon +
-        e.damage +
-        (e.moving ? 1 : 0) +
-        (e.firing ? 1 : 0);
-  }
-  for (var i = 0; i < d.statsCount; i++) {
-    s += d.stats[i].statId + d.stats[i].delta;
-  }
-  final h = d.gameEvent.hit;
-  s += h.targetId + h.damage + h.hitKind + (h.crit ? 1 : 0);
-  for (var i = 0; i < 4; i++) {
-    s += d.loadout[i];
-  }
-  for (var i = 0; i < d.playerNameLength; i++) {
-    s += d.playerName[i];
-  }
-  for (var i = 0; i < d.payloadLength; i++) {
-    s += d.payload[i];
-  }
-  return s;
-}
 
 Never gateFail(String row, String what) {
   stderr.write('GOLDEN GATE FAILED: $row $what\nreporting nothing.\n');
@@ -398,195 +331,6 @@ bool checkBenchBits(BenchBits e, BenchBits d) =>
     e.b19 == d.b19 &&
     e.b48 == d.b48;
 
-// BenchMixed — THE canonical benchmark shape (issue #184). The pin is
-// test/bench/main.cpp's, transcribed exactly; STRUCTURE fields (the two array
-// counts, the two used lengths, the union tag, the `if` gate) are set here and
-// never touched by varyBenchMixed, so bytes/op is constant (§2.7).
-final playerNamePin = Uint8List.fromList('Rowan_01'.codeUnits);
-final payloadPin = Uint8List.fromList(
-  [0xde, 0xad, 0xbe, 0xef, 0x01, 0x02, 0x03, 0x04],
-);
-
-void initBenchMixed(BenchMixed p) {
-  p.sequence = 52428;
-  p.ackSequence = 12345;
-  p.ackBits = 0xa5a5a5a5;
-  p.sessionId = 0x123456789abcdef0;
-  p.clientId = 0xdeadbeef;
-  p.nonce = 0xfedcba9876543210;
-  p.worldTime = -987654321000;
-  p.frameTick = 0x123456789abc;
-  p.serverTime = 12345678;
-  p.entitiesCount = 8;
-  for (var i = 0; i < 8; i++) {
-    final e = p.entities[i];
-    e.entityId = 2049 + i * 17;
-    e.posX = -16383 + i * 4096;
-    e.posY = 16383 - i * 4096;
-    e.posZ = -1 + i * 2048;
-    e.yaw = 511 - i * 64;
-    e.pitch = i * 73;
-    e.velX = -2048 + i * 512;
-    e.velY = 2047 - i * 512;
-    e.velZ = -1024 + i * 256;
-    e.health = 1000 - i * 100;
-    e.weapon = 1 + i;
-    e.damage = 0x5a + i;
-    e.moving = i % 2 == 0;
-    e.firing = i % 3 == 0;
-  }
-  p.statsCount = 80;
-  for (var i = 0; i < 80; i++) {
-    p.stats[i].statId = (i * 3) % 256;
-    p.stats[i].delta = -512 + (i * 13) % 1024;
-  }
-  p.gameEvent.type = MixedEventType.hit;
-  p.gameEvent.hit.targetId = 4095;
-  p.gameEvent.hit.damage = 4095;
-  p.gameEvent.hit.hitKind = 7;
-  p.gameEvent.hit.crit = true;
-  p.loadout.setAll(0, [0x11, 0x22, 0x33, 0x44]);
-  p.playerName.setAll(0, playerNamePin);
-  p.playerNameLength = 8;
-  p.payload.setAll(0, payloadPin);
-  p.payloadLength = 8;
-  p.aimX = 0.5;
-  p.aimY = -0.25;
-  p.aimZ = 0.75;
-  p.recoil = 1.5;
-  p.drift = -3.25;
-  p.wideKey = const UInt128(0x0123456789abcdef, 0xfedcba9876543210);
-  p.flux = const Int128(0x800000000, 7); // 2^99 + 7
-  p.ping = 12345;
-  p.crcHint = 0xabcdef;
-  p.hasExtra = true;
-  p.extra = 200;
-}
-
-// The LCG field mapping, identical in every runner. VALUE fields only:
-// every count, used length, union tag and branch gate is STRUCTURE (§2.7).
-// All 8 entities vary; the 80 stats vary delta (statId stays pinned).
-void varyBenchMixed(BenchMixed f) {
-  lcgStep();
-  f.sequence = shr(8) & 65535;
-  f.ackSequence = shr(24) & 65535;
-  f.ackBits = shr(16);
-  f.sessionId = rng;
-  f.clientId = shr(32);
-  f.nonce = rng ^ 0xa5a5a5a5a5a5a5a5;
-  f.worldTime = ((rng >>> 12) & 0xfffffffff) - 34359738368;
-  f.frameTick = rng & 0xffffffffffff;
-  f.serverTime = shr(20) & 0x7fffff;
-  for (var i = 0; i < 8; i++) {
-    final e = f.entities[i];
-    e.entityId = (rng >>> i) & 4095;
-    e.posX = ((rng >>> (i + 4)) & 16383) - 8192;
-    e.posY = ((rng >>> (i + 12)) & 16383) - 8192;
-    e.health = (rng >>> (i + 20)) & 511;
-    e.weapon = (rng >>> (i + 40)) & 15;
-    e.damage = (rng >>> (i + 28)) & 255;
-    e.moving = ((rng >>> i) & 1) != 0;
-  }
-  for (var i = 0; i < 80; i++) {
-    f.stats[i].delta = ((rng >>> (i & 31)) & 1023) - 512;
-  }
-  f.gameEvent.hit.targetId = shr(6) & 4095;
-  f.gameEvent.hit.damage = shr(18) & 4095;
-  f.gameEvent.hit.hitKind = shr(30) & 7;
-  f.gameEvent.hit.crit = (rng & 4) != 0;
-  f.loadout[0] = shr(56) & 255;
-  f.playerName[7] = 65 + (shr(50) & 15);
-  f.payload[0] = shr(48) & 255;
-  f.aimX = (shr(2) & 255) * (1 / 256) - 0.5;
-  f.aimY = (shr(10) & 255) * (1 / 256) - 0.5;
-  f.aimZ = (shr(18) & 255) * (1 / 256) - 0.5;
-  f.recoil = (rng & 0xffff).toDouble();
-  f.drift = ((rng >>> 8) & 0xffffff) * 0.5;
-  f.wideKey = UInt128(rng >>> 1, rng);
-  f.flux = Int128(0, rng >>> 16);
-  f.ping = shr(40) & 0x7fff;
-  f.crcHint = shr(24) & 0xffffff;
-  f.extra = shr(52) & 255;
-}
-
-bool checkBenchMixed(BenchMixed e, BenchMixed d) {
-  if (e.sequence != d.sequence ||
-      e.ackSequence != d.ackSequence ||
-      e.ackBits != d.ackBits ||
-      e.sessionId != d.sessionId ||
-      e.clientId != d.clientId ||
-      e.nonce != d.nonce ||
-      e.worldTime != d.worldTime ||
-      e.frameTick != d.frameTick ||
-      e.serverTime != d.serverTime ||
-      e.entitiesCount != d.entitiesCount ||
-      e.statsCount != d.statsCount ||
-      e.gameEvent.type != d.gameEvent.type ||
-      e.playerNameLength != d.playerNameLength ||
-      e.payloadLength != d.payloadLength ||
-      e.recoil != d.recoil ||
-      e.drift != d.drift ||
-      e.wideKey.hi != d.wideKey.hi ||
-      e.wideKey.lo != d.wideKey.lo ||
-      e.flux.hi != d.flux.hi ||
-      e.flux.lo != d.flux.lo ||
-      e.ping != d.ping ||
-      e.crcHint != d.crcHint ||
-      e.hasExtra != d.hasExtra ||
-      e.extra != d.extra) {
-    return false;
-  }
-  for (var i = 0; i < e.entitiesCount; i++) {
-    final a = e.entities[i];
-    final b = d.entities[i];
-    if (a.entityId != b.entityId ||
-        a.posX != b.posX ||
-        a.posY != b.posY ||
-        a.posZ != b.posZ ||
-        a.yaw != b.yaw ||
-        a.pitch != b.pitch ||
-        a.velX != b.velX ||
-        a.velY != b.velY ||
-        a.velZ != b.velZ ||
-        a.health != b.health ||
-        a.weapon != b.weapon ||
-        a.damage != b.damage ||
-        a.moving != b.moving ||
-        a.firing != b.firing) {
-      return false;
-    }
-  }
-  for (var i = 0; i < e.statsCount; i++) {
-    if (e.stats[i].statId != d.stats[i].statId ||
-        e.stats[i].delta != d.stats[i].delta) {
-      return false;
-    }
-  }
-  if (e.gameEvent.hit.targetId != d.gameEvent.hit.targetId ||
-      e.gameEvent.hit.damage != d.gameEvent.hit.damage ||
-      e.gameEvent.hit.hitKind != d.gameEvent.hit.hitKind ||
-      e.gameEvent.hit.crit != d.gameEvent.hit.crit) {
-    return false;
-  }
-  for (var i = 0; i < 4; i++) {
-    if (e.loadout[i] != d.loadout[i]) {
-      return false;
-    }
-  }
-  for (var i = 0; i < e.playerNameLength; i++) {
-    if (e.playerName[i] != d.playerName[i]) {
-      return false;
-    }
-  }
-  for (var i = 0; i < e.payloadLength; i++) {
-    if (e.payload[i] != d.payload[i]) {
-      return false;
-    }
-  }
-  // aimX/Y/Z are COMPRESSED floats: the wire carries a quantized step, so the
-  // decoded value is not the value that was written and no equality applies.
-  return true;
-}
 
 /* --------------------------------------------------------------------------
    the golden gate (§1.5), shared by every shape: the PINNED instance's
@@ -672,6 +416,191 @@ _GatedShape<P> gateShape<P>(
     }
   }
   return _GatedShape(packet, decoded, variants, bytesPerPacket);
+}
+
+/* --------------------------------------------------------------------------
+   the DATA-DRIVEN driver for bench_mixed (issue #191).
+
+   THE PROPERTY: nothing below names a field of the shape it measures. Shape
+   knowledge lives in the committed variant DATA (bench/corpus/variants,
+   emitted by bench/tools/variantgen) and in the generated codec, and nowhere
+   else — so this driver cannot drift from another language's driver in what
+   it measures, which is the whole reason the design exists. If a change here
+   ever needs a field name, the design has failed and that is the finding.
+
+   It replaces gateShape/benchShape for bench_mixed only; both still drive
+   every shape whose harness code is not yet data-driven.
+   -------------------------------------------------------------------------- */
+
+final class _DataDrivenShape<P> {
+  final List<P> instances;
+  final P decoded;
+  final List<ByteData> variants;
+  final int bytesPerPacket;
+  _DataDrivenShape(
+    this.instances,
+    this.decoded,
+    this.variants,
+    this.bytesPerPacket,
+  );
+}
+
+// P — the generated message type — is named once at the call site, through a
+// factory. A TYPE name is not a field name; the driver knows nothing about
+// the shape's contents.
+_DataDrivenShape<P> gateDataDriven<P>(
+  String row,
+  String goldenName,
+  P Function() make,
+  int Function(P, ByteData) write,
+  bool Function(P, ByteData, int) read,
+) {
+  // The records are fixed-width by construction (§2.7 pins every structure
+  // field), so the file needs no index: the record size IS file size /
+  // numVariants, and a file that does not divide evenly is a refusal.
+  final path = '../../bench/corpus/variants/$row.variants.bin';
+  final file = File(path);
+  if (!file.existsSync()) {
+    stderr.write(
+      'missing variant data $path — run `make bench-variants`, and run the '
+      'bench from bench/dart\n',
+    );
+    exit(1);
+  }
+  final packed = file.readAsBytesSync();
+  if (packed.isEmpty || packed.length % numVariants != 0) {
+    gateFail(
+      row,
+      'variant data $path is ${packed.length} bytes, not a multiple of '
+      '$numVariants records — refusing to bench data whose stride is not the '
+      'record size',
+    );
+  }
+  final record = packed.length ~/ numVariants;
+  final variants = <ByteData>[];
+  for (var k = 0; k < numVariants; k++) {
+    final slot = Uint8List(512);
+    slot.setRange(0, record, packed, k * record);
+    variants.add(ByteData.sublistView(slot, 0, record));
+  }
+  // The variant data is corpus (§1.6): it defines the work inside the timed
+  // loops, so it rides in corpus_id exactly as the wire goldens do.
+  goldensLoaded['$row.variants.bin'] = packed;
+
+  // gate 1 (§1.5): variant 0 IS the pinned instance, so the whole variant
+  // file is bound to the wire golden by one byte-compare.
+  final goldenFile = File('../../testdata/wire/$goldenName.bin');
+  if (!goldenFile.existsSync()) {
+    stderr.write(
+      'missing wire golden testdata/wire/$goldenName.bin — run from bench/dart\n',
+    );
+    exit(1);
+  }
+  final goldenBytes = goldenFile.readAsBytesSync();
+  goldensLoaded['$goldenName.bin'] = goldenBytes;
+  if (!bytesEqual(Uint8List.sublistView(packed, 0, record), goldenBytes)) {
+    gateFail(row, 'variant 0 vs testdata/wire/$goldenName.bin');
+  }
+
+  // gate 2: every variant decodes, re-encodes, and comes back byte-identical
+  // at the same length. This is stronger than the pinned-instance-only gate
+  // gateShape applies — §1.5's named residual (the 64 varied buffers
+  // length-checked but never value-checked) closes here, for every variant.
+  final twin = Uint8List(512);
+  final twinView = ByteData.sublistView(twin);
+  final instances = <P>[];
+  for (var v = 0; v < numVariants; v++) {
+    final instance = make();
+    if (!read(instance, variants[v], record * 8)) {
+      gateFail(row, 'decode of variant $v failed');
+    }
+    final n = write(instance, twinView);
+    if (n != record ||
+        !bytesEqual(
+          Uint8List.sublistView(twin, 0, n),
+          Uint8List.sublistView(packed, v * record, (v + 1) * record),
+        )) {
+      gateFail(
+        row,
+        'variant $v round-trip bytes differ — refusing to bench a codec that '
+        'does not reproduce the corpus',
+      );
+    }
+    instances.add(instance);
+  }
+  return _DataDrivenShape(instances, make(), variants, record);
+}
+
+void benchDataDriven<P>(
+  String row,
+  _DataDrivenShape<P> gated,
+  int iters,
+  int Function(P, ByteData) write,
+  bool Function(P, ByteData, int) read,
+) {
+  final instances = gated.instances;
+  final decoded = gated.decoded;
+  final variants = gated.variants;
+  final numBits = gated.bytesPerPacket * 8;
+  final buffer = Uint8List(512);
+  final view = ByteData.sublistView(buffer);
+
+  // WRITE: encode the 64 pre-decoded instances round-robin. Rotating the
+  // instances is what §2.7's per-iteration LCG mutation bought — the encoder
+  // never sees the same input twice in a row and cannot precompute scratch
+  // words — with none of the per-language mutation code, and with bytes/op
+  // constant by construction rather than by assertion.
+  final writeRates = <double>[];
+  for (var run = -1; run < numRuns; run++) {
+    final start = now();
+    for (var i = 0; i < iters; i++) {
+      sink =
+          (sink + write(instances[i & (numVariants - 1)], view)) & 0xffffffff;
+    }
+    final elapsed = now() - start;
+    if (run >= 0) {
+      writeRates.add(iters / elapsed);
+    }
+  }
+
+  // ROUND-TRIP: decode a variant buffer, then re-encode what came out. The
+  // decode needs no sink discipline of its own — its output IS the encode's
+  // input, so every decoded field is observed by construction, with no
+  // per-language fold to audit (§2.7's read-side sink problem dissolved
+  // rather than equalized).
+  final roundTripRates = <double>[];
+  for (var run = -1; run < numRuns; run++) {
+    final start = now();
+    for (var i = 0; i < iters; i++) {
+      if (!read(decoded, variants[i & (numVariants - 1)], numBits)) {
+        exit(1);
+      }
+      sink = (sink + write(decoded, view)) & 0xffffffff;
+    }
+    final elapsed = now() - start;
+    if (run >= 0) {
+      roundTripRates.add(iters / elapsed);
+    }
+  }
+
+  report(row, 'write', iters, gated.bytesPerPacket, writeRates);
+  report(row, 'round_trip', iters, gated.bytesPerPacket, roundTripRates);
+
+  // READ is DERIVED, never measured: round-trip time minus write time. It
+  // prints for continuity with the read rows the rest of the corpus still
+  // reports and is NOT a CSV row — a derived number in the CSV would be
+  // divided as if it had been measured.
+  final w = (List<double>.from(writeRates)..sort())[writeRates.length ~/ 2];
+  final rt =
+      (List<double>.from(roundTripRates)..sort())[roundTripRates.length ~/ 2];
+  final readTime = 1.0 / rt - 1.0 / w;
+  if (readTime > 0) {
+    stderr.write(
+      '${row.padRight(18)} ${'read'.padRight(5)} '
+      '${(1e-6 / readTime).toStringAsFixed(2).padLeft(10)} M msg/s   '
+      '(DERIVED: round-trip minus write, informational — not a measured row)\n',
+    );
+  }
 }
 
 /* --------------------------------------------------------------------------
@@ -761,27 +690,21 @@ void main(List<String> arguments) {
 
   // every measured row's golden gate runs before any row is timed: a runner
   // that fails its goldens reports nothing at all (§1.5)
-  final gatedMixed = gateShape(
+  final gatedMixed = gateDataDriven<BenchMixed>(
     'bench_mixed',
     'bench_mixed',
-    BenchMixed(),
-    BenchMixed(),
-    initBenchMixed,
-    varyBenchMixed,
+    BenchMixed.new,
     writeBenchMixed,
     readBenchMixed,
-    checkBenchMixed,
   );
 
   if (quick) {
-    benchShape(
+    benchDataDriven(
       'bench_mixed',
       gatedMixed,
       mixedIters,
-      varyBenchMixed,
       writeBenchMixed,
       readBenchMixed,
-      sinkOfBenchMixed, // full-struct observation (#175)
     );
   } else {
     final gatedPacket = gateShape(
@@ -845,14 +768,12 @@ void main(List<String> arguments) {
       readBenchBits,
       sinkOfBenchBits, // full-struct observation (#175)
     );
-    benchShape(
+    benchDataDriven(
       'bench_mixed',
       gatedMixed,
       mixedIters,
-      varyBenchMixed,
       writeBenchMixed,
       readBenchMixed,
-      sinkOfBenchMixed, // full-struct observation (#175)
     );
   }
 

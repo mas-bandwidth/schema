@@ -174,135 +174,6 @@ defmodule SchemaBenchElixir do
     }
   end
 
-  # BenchMixed — THE canonical benchmark shape (issue #184). The pin is
-  # test/bench/main.cpp's, transcribed exactly; STRUCTURE fields (the two
-  # array counts, the two used lengths, the union tag, the `if` gate) are set
-  # here and never touched by vary_bench_mixed, so bytes/op is constant (§2.7).
-  defp init_bench_mixed do
-    entities =
-      for i <- 0..7 do
-        %Bench.MixedEntity{
-          entity_id: 2049 + i * 17,
-          pos_x: -16_383 + i * 4096,
-          pos_y: 16_383 - i * 4096,
-          pos_z: -1 + i * 2048,
-          yaw: 511 - i * 64,
-          pitch: i * 73,
-          vel_x: -2048 + i * 512,
-          vel_y: 2047 - i * 512,
-          vel_z: -1024 + i * 256,
-          health: 1000 - i * 100,
-          weapon: 1 + i,
-          damage: 0x5A + i,
-          moving: rem(i, 2) == 0,
-          firing: rem(i, 3) == 0
-        }
-      end
-
-    stats =
-      for i <- 0..79 do
-        %Bench.MixedStat{stat_id: rem(i * 3, 256), delta: -512 + rem(i * 13, 1024)}
-      end
-
-    %Bench.BenchMixed{
-      sequence: 52_428,
-      ack_sequence: 12_345,
-      ack_bits: 0xA5A5A5A5,
-      session_id: 0x123456789ABCDEF0,
-      client_id: 0xDEADBEEF,
-      nonce: 0xFEDCBA9876543210,
-      world_time: -987_654_321_000,
-      frame_tick: 0x123456789ABC,
-      server_time: 12_345_678,
-      entities: entities,
-      stats: stats,
-      game_event: %Bench.MixedEvent{
-        type: Bench.MixedEventType.hit(),
-        hit: %Bench.MixedHitEvent{target_id: 4095, damage: 4095, hit_kind: 7, crit: true}
-      },
-      loadout: [0x11, 0x22, 0x33, 0x44],
-      player_name: "Rowan_01",
-      payload: <<0xDE, 0xAD, 0xBE, 0xEF, 0x01, 0x02, 0x03, 0x04>>,
-      aim_x: 0.5,
-      aim_y: -0.25,
-      aim_z: 0.75,
-      recoil: 1.5,
-      drift: -3.25,
-      wide_key: 0x0123456789ABCDEF_FEDCBA9876543210,
-      # 2^99 + 7
-      flux: (1 <<< 99) |> Kernel.+(7),
-      ping: 12_345,
-      crc_hint: 0xABCDEF,
-      has_extra: true,
-      extra: 200
-    }
-  end
-
-  # The LCG field mapping, identical in every runner. VALUE fields only: every
-  # count, used length, union tag and branch gate is STRUCTURE (§2.7). All 8
-  # entities vary; the 80 stats vary delta (stat_id stays pinned).
-  defp vary_bench_mixed(p, rng) do
-    entities =
-      for {e, i} <- Enum.with_index(p.entities) do
-        %{
-          e
-          | entity_id: shr(rng, i) &&& 4095,
-            pos_x: (shr(rng, i + 4) &&& 16_383) - 8192,
-            pos_y: (shr(rng, i + 12) &&& 16_383) - 8192,
-            health: shr(rng, i + 20) &&& 511,
-            weapon: shr(rng, i + 40) &&& 15,
-            damage: shr(rng, i + 28) &&& 255,
-            moving: (shr(rng, i) &&& 1) != 0
-        }
-      end
-
-    stats =
-      for {st, i} <- Enum.with_index(p.stats) do
-        %{st | delta: (shr(rng, Bitwise.band(i, 31)) &&& 1023) - 512}
-      end
-
-    hit = %{
-      p.game_event.hit
-      | target_id: shr(rng, 6) &&& 4095,
-        damage: shr(rng, 18) &&& 4095,
-        hit_kind: shr(rng, 30) &&& 7,
-        crit: (rng &&& 4) != 0
-    }
-
-    <<_::8, loadout_tail::binary>> = :binary.list_to_bin(p.loadout)
-    name = <<"Rowan_0", 65 + (shr(rng, 50) &&& 15)>>
-    <<_::8, payload_tail::binary>> = p.payload
-
-    %{
-      p
-      | sequence: shr(rng, 8) &&& 65_535,
-        ack_sequence: shr(rng, 24) &&& 65_535,
-        ack_bits: shr(rng, 16),
-        session_id: rng,
-        client_id: shr(rng, 32),
-        nonce: Bitwise.bxor(rng, 0xA5A5A5A5A5A5A5A5),
-        world_time: (shr(rng, 12) &&& 0xFFFFFFFFF) - 34_359_738_368,
-        frame_tick: rng &&& 0xFFFFFFFFFFFF,
-        server_time: shr(rng, 20) &&& 0x7FFFFF,
-        entities: entities,
-        stats: stats,
-        game_event: %{p.game_event | hit: hit},
-        loadout: :binary.bin_to_list(<<shr(rng, 56) &&& 255>> <> loadout_tail),
-        player_name: name,
-        payload: <<shr(rng, 48) &&& 255>> <> payload_tail,
-        aim_x: (shr(rng, 2) &&& 255) / 256 - 0.5,
-        aim_y: (shr(rng, 10) &&& 255) / 256 - 0.5,
-        aim_z: (shr(rng, 18) &&& 255) / 256 - 0.5,
-        recoil: (rng &&& 0xFFFF) * 1.0,
-        drift: (shr(rng, 8) &&& 0xFFFFFF) * 0.5,
-        wide_key: rng,
-        flux: shr(rng, 16),
-        ping: shr(rng, 40) &&& 0x7FFF,
-        crc_hint: shr(rng, 24) &&& 0xFFFFFF,
-        extra: shr(rng, 52) &&& 255
-    }
-  end
-
   # ------------------------------------------------------------------
   # harness
   # ------------------------------------------------------------------
@@ -310,8 +181,9 @@ defmodule SchemaBenchElixir do
   # COMPRESSED floats do not round-trip to the value that was written (the wire
   # carries a quantized step, SPEC §4.3), so they are excluded from the variant
   # field comparison. Their bytes are pinned by the golden and their width is
-  # fixed, which is what the §1.5 gate needs.
-  defp strip_lossy(%Bench.BenchMixed{} = m), do: %{m | aim_x: 0.0, aim_y: 0.0, aim_z: 0.0}
+  # fixed, which is what the §1.5 gate needs. bench_mixed — the one shape that
+  # carries compressed floats — is data-driven now and gates on BYTES, so no
+  # per-shape clause remains here.
   defp strip_lossy(other), do: other
 
   defp gate_fail(row, what) do
@@ -490,35 +362,6 @@ defmodule SchemaBenchElixir do
     b7 + b13 + b23 + b3 + b32 + b11 + b19 + b48
   end
 
-  # §2.7 full-struct observation over the canonical shape: every decoded field
-  # folds in — list elements one by one, booleans as 0/1, floats truncated,
-  # the string and byte block byte-summed over their used lengths.
-  defp sink_of_bench_mixed(%Bench.BenchMixed{} = d) do
-    entity_sum =
-      Enum.reduce(d.entities, 0, fn e, acc ->
-        acc + e.entity_id + e.pos_x + e.pos_y + e.pos_z + e.yaw + e.pitch +
-          e.vel_x + e.vel_y + e.vel_z + e.health + e.weapon + e.damage +
-          bool_bit(e.moving) + bool_bit(e.firing)
-      end)
-
-    stat_sum = Enum.reduce(d.stats, 0, fn st, acc -> acc + st.stat_id + st.delta end)
-    h = d.game_event.hit
-
-    d.sequence + d.ack_sequence + d.ack_bits + d.session_id + d.client_id +
-      d.nonce + d.world_time + d.frame_tick + d.server_time +
-      length(d.entities) + length(d.stats) + d.game_event.type +
-      byte_size(d.player_name) + byte_size(d.payload) +
-      trunc(d.aim_x) + trunc(d.aim_y) + trunc(d.aim_z) +
-      trunc(d.recoil) + trunc(d.drift) +
-      d.wide_key + d.flux + d.ping + d.crc_hint +
-      bool_bit(d.has_extra) + d.extra + d.idle_ticks +
-      entity_sum + stat_sum +
-      h.target_id + h.damage + h.hit_kind + bool_bit(h.crit) +
-      Enum.sum(d.loadout) +
-      Enum.sum(:binary.bin_to_list(d.player_name)) +
-      Enum.sum(:binary.bin_to_list(d.payload))
-  end
-
   # per (bench, path): 1 discarded warmup run then num_runs measured runs;
   # the rng threads across runs (the write stream keeps varying, never
   # replaying one sequence the branch predictor could memorize)
@@ -592,6 +435,166 @@ defmodule SchemaBenchElixir do
     ]
   end
 
+  # ------------------------------------------------------------------
+  # the DATA-DRIVEN driver for bench_mixed (issue #191)
+  #
+  # THE PROPERTY: nothing below names a field of the shape it measures. Shape
+  # knowledge lives in the committed variant DATA (bench/corpus/variants,
+  # emitted by bench/tools/variantgen) and in the generated codec, and nowhere
+  # else — so this driver cannot drift from another language's driver in what
+  # it measures, which is the whole reason the design exists. If a change here
+  # ever needs a field name, the design has failed and that is the finding.
+  #
+  # It replaces gate_shape/bench_shape for bench_mixed only; both still drive
+  # every shape whose harness code is not yet data-driven.
+  # ------------------------------------------------------------------
+
+  defp variant_data(row) do
+    path = "../../bench/corpus/variants/#{row}.variants.bin"
+
+    case File.read(path) do
+      {:ok, bytes} ->
+        bytes
+
+      {:error, _} ->
+        IO.write(
+          :stderr,
+          "missing variant data #{path} — run `make bench-variants`, and run the bench from bench/elixir\n"
+        )
+
+        System.halt(1)
+    end
+  end
+
+  defp gate_data_driven(row, golden_name, write, read) do
+    packed = variant_data(row)
+
+    # The records are fixed-width by construction (§2.7 pins every structure
+    # field), so the file needs no index: the record size IS file size /
+    # @num_variants, and a file that does not divide evenly is a refusal.
+    if byte_size(packed) == 0 or rem(byte_size(packed), @num_variants) != 0 do
+      gate_fail(
+        row,
+        "variant data is #{byte_size(packed)} bytes, not a multiple of #{@num_variants} " <>
+          "records — refusing to bench data whose stride is not the record size"
+      )
+    end
+
+    record = div(byte_size(packed), @num_variants)
+    variants = for <<chunk::binary-size(^record) <- packed>>, do: chunk
+
+    # gate 1 (§1.5): variant 0 IS the pinned instance, so the whole variant
+    # file is bound to the wire golden by one byte-compare.
+    golden_bytes = golden(golden_name)
+
+    if hd(variants) != golden_bytes do
+      gate_fail(row, "variant 0 vs testdata/wire/#{golden_name}.bin")
+    end
+
+    # gate 2: every variant decodes, re-encodes, and comes back byte-identical
+    # at the same length. This is stronger than the pinned-instance-only gate
+    # gate_shape applies — §1.5's named residual (the 64 varied buffers
+    # length-checked but never value-checked) closes here, for every variant.
+    instances =
+      variants
+      |> Enum.with_index()
+      |> Enum.map(fn {variant, k} ->
+        case read.(variant, record * 8) do
+          {:ok, decoded} ->
+            if write.(decoded) != variant do
+              gate_fail(
+                row,
+                "variant #{k} round-trip bytes differ — refusing to bench a codec " <>
+                  "that does not reproduce the corpus"
+              )
+            end
+
+            decoded
+
+          :error ->
+            gate_fail(row, "decode of variant #{k} failed")
+        end
+      end)
+
+    {List.to_tuple(instances), List.to_tuple(variants), record,
+     [{golden_name <> ".bin", golden_bytes}, {row <> ".variants.bin", packed}]}
+  end
+
+  # WRITE: encode the 64 pre-decoded instances round-robin. Rotating the
+  # instances is what §2.7's per-iteration LCG mutation bought — the encoder
+  # never sees the same input twice in a row — with none of the per-language
+  # mutation code, and with bytes/op constant by construction.
+  defp dd_write_loop(0, _i, _instances, _write, acc), do: acc
+
+  defp dd_write_loop(n, i, instances, write, acc) do
+    instance = elem(instances, i &&& @num_variants - 1)
+    dd_write_loop(n - 1, i + 1, instances, write, acc + byte_size(write.(instance)))
+  end
+
+  # ROUND-TRIP: decode a variant, then re-encode what came out. The decode
+  # needs no sink discipline of its own — its output IS the encode's input, so
+  # every decoded field is observed by construction, with no per-language fold
+  # to audit (§2.7's read-side sink problem dissolved rather than equalized).
+  defp dd_roundtrip_loop(0, _i, _variants, _read, _write, _num_bits, acc), do: acc
+
+  defp dd_roundtrip_loop(n, i, variants, read, write, num_bits, acc) do
+    variant = elem(variants, i &&& @num_variants - 1)
+    {:ok, decoded} = read.(variant, num_bits)
+
+    dd_roundtrip_loop(
+      n - 1,
+      i + 1,
+      variants,
+      read,
+      write,
+      num_bits,
+      acc + byte_size(write.(decoded))
+    )
+  end
+
+  defp bench_data_driven(row, gated, iters, num_runs, write, read) do
+    {instances, variants, bytes_per_packet, _goldens} = gated
+    num_bits = bytes_per_packet * 8
+
+    write_rates =
+      timed_runs(num_runs, fn rng ->
+        sink_w = dd_write_loop(iters, 0, instances, write, 0)
+        Process.put(:bench_sink, Process.get(:bench_sink, 0) + sink_w)
+        {rng, iters}
+      end)
+
+    roundtrip_rates =
+      timed_runs(num_runs, fn rng ->
+        sink_r = dd_roundtrip_loop(iters, 0, variants, read, write, num_bits, 0)
+        Process.put(:bench_sink, Process.get(:bench_sink, 0) + sink_r)
+        {rng, iters}
+      end)
+
+    rows = [
+      report(row, "write", iters, bytes_per_packet, write_rates),
+      report(row, "round_trip", iters, bytes_per_packet, roundtrip_rates)
+    ]
+
+    # READ is DERIVED, never measured: round-trip time minus write time. It
+    # prints for continuity with the read rows the rest of the corpus still
+    # reports and is NOT a CSV row — a derived number in the CSV would be
+    # divided as if it had been measured.
+    {w_median, _, _, _} = stats(write_rates)
+    {rt_median, _, _, _} = stats(roundtrip_rates)
+    read_time = 1.0 / rt_median - 1.0 / w_median
+
+    if read_time > 0 do
+      IO.write(
+        :stderr,
+        "#{String.pad_trailing(row, 18)} #{String.pad_trailing("read", 5)} " <>
+          "#{pad(fmt(1.0e-6 / read_time, 2), 10)} M msg/s   " <>
+          "(DERIVED: round-trip minus write, informational — not a measured row)\n"
+      )
+    end
+
+    rows
+  end
+
   defp parse_args(argv) do
     parse_args(argv, %{csv: false, quick: false, num_runs: 7})
   end
@@ -622,30 +625,25 @@ defmodule SchemaBenchElixir do
     # every measured row's golden gate runs before any row is timed: a
     # runner that fails its goldens reports nothing at all (§1.5)
     gated_mixed =
-      gate_shape(
+      gate_data_driven(
         "bench_mixed",
         "bench_mixed",
-        &init_bench_mixed/0,
-        &vary_bench_mixed/2,
         &Bench.Bench.write_bench_mixed/1,
         &Bench.Bench.read_bench_mixed/2
       )
 
-    mixed_opts = [
-      init: &init_bench_mixed/0,
-      vary: &vary_bench_mixed/2,
-      write: &Bench.Bench.write_bench_mixed/1,
-      read: &Bench.Bench.read_bench_mixed/2,
-      # full-struct observation (#175)
-      sink_of: &sink_of_bench_mixed/1
-    ]
-
     {rows, goldens} =
       if quick do
-        {_, _, golden_mixed} = gated_mixed
+        {_, _, _, goldens_mixed} = gated_mixed
 
-        {bench_shape("bench_mixed", gated_mixed, @quick_mixed_iters, num_runs, mixed_opts),
-         [golden_mixed]}
+        {bench_data_driven(
+           "bench_mixed",
+           gated_mixed,
+           @quick_mixed_iters,
+           num_runs,
+           &Bench.Bench.write_bench_mixed/1,
+           &Bench.Bench.read_bench_mixed/2
+         ), goldens_mixed}
       else
         gated_packet =
           gate_shape(
@@ -680,7 +678,7 @@ defmodule SchemaBenchElixir do
         {_, _, g_packet} = gated_packet
         {_, _, g_ints} = gated_ints
         {_, _, g_bits} = gated_bits
-        {_, _, g_mixed} = gated_mixed
+        {_, _, _, goldens_mixed} = gated_mixed
 
         rows =
           bench_shape("bench_packet", gated_packet, @packet_iters, num_runs,
@@ -704,9 +702,16 @@ defmodule SchemaBenchElixir do
               read: &Bench.Bench.read_bench_bits/2,
               sink_of: &sink_of_bench_bits/1
             ) ++
-            bench_shape("bench_mixed", gated_mixed, @mixed_iters, num_runs, mixed_opts)
+            bench_data_driven(
+              "bench_mixed",
+              gated_mixed,
+              @mixed_iters,
+              num_runs,
+              &Bench.Bench.write_bench_mixed/1,
+              &Bench.Bench.read_bench_mixed/2
+            )
 
-        {rows, [g_packet, g_ints, g_bits, g_mixed]}
+        {rows, [g_packet, g_ints, g_bits] ++ goldens_mixed}
       end
 
     id = corpus_id(goldens)

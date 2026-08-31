@@ -80,6 +80,7 @@ static int g_num_runs = MaxNumRuns; /* --round K drops this to 1 (§2.4: one war
 
 static int g_csv = 0;
 static const char * g_wire_dir = "testdata/wire";
+static const char * g_variant_dir = "bench/corpus/variants";
 
 /* ---- CSV v2 (BENCH-STANDARD.md §5.1) ----
    Rows are buffered and emitted at exit so every row carries the corpus_id
@@ -119,7 +120,10 @@ static int g_csv_row_count = 0;
 static struct
 {
     char name[64];
-    uint8_t data[4096];
+    /* sized for the LARGEST corpus member, which is no longer a wire golden:
+       the bench_mixed variant file is 64 x 438 = 28032 bytes and hashes into
+       corpus_id exactly as the goldens do (§1.6, issue #191). */
+    uint8_t data[32768];
     int len;
 } g_goldens_loaded[MaxGoldens];
 static int g_golden_count = 0;
@@ -250,6 +254,55 @@ static int check_golden( const char * name, const uint8_t * data, int bytes )
         return 0;
     }
     return 1;
+}
+
+/* Loads <variant-dir>/<name>.variants.bin into the NumVariants §2.7-staggered
+   slots and returns the record size, or -1. The records are fixed-width by
+   construction (§2.7 pins every structure field), so the file needs no index:
+   the record size IS file size / NumVariants, and a file that does not divide
+   evenly is a refusal. */
+static int load_variants( const char * name )
+{
+    char path[512];
+    static uint8_t packed[32768];
+    FILE * f;
+    size_t n;
+    int record, k;
+
+    sprintf( path, "%s/%s.variants.bin", g_variant_dir, name );
+    f = fopen( path, "rb" );
+    if ( !f )
+    {
+        fprintf( stderr, "missing variant data %s — run `make bench-variants`, and run the bench from the schema repo root (or pass --variant-dir)\n", path );
+        return -1;
+    }
+    n = fread( packed, 1, sizeof( packed ), f );
+    fclose( f );
+    if ( n == 0 || n % NumVariants != 0 )
+    {
+        fprintf( stderr, "variant data %s is %d bytes, not a multiple of %d records — refusing to bench data whose stride is not the record size\n",
+                 path, (int) n, NumVariants );
+        return -1;
+    }
+    record = (int) n / NumVariants;
+    if ( record > BufferSize )
+    {
+        fprintf( stderr, "variant data %s has %d-byte records, over the %d-byte buffer\n", path, record, BufferSize );
+        return -1;
+    }
+    for ( k = 0; k < NumVariants; k++ )
+        memcpy( g_variant( k ), packed + k * record, (size_t) record );
+
+    /* The variant data is corpus (§1.6): it defines the work inside the timed
+       loops, so it rides in corpus_id exactly as the wire goldens do. A run
+       against drifted variant data reports a different id and the tools refuse
+       the ratio, instead of publishing a number for different work. */
+    {
+        char basename[64];
+        sprintf( basename, "%s.variants.bin", name );
+        record_golden( basename, packed, (int) n );
+    }
+    return record;
 }
 
 typedef struct RunStats
@@ -626,54 +679,6 @@ static void vary_gen_bits( BenchBits * f, uint64_t rng )
     f->b48 = rng & 0xFFFFFFFFFFFFULL;
 }
 
-/* The LCG field mapping for BenchMixed, identical in every runner. VALUE
-   fields only: array counts, used lengths, the union tag and the branch gate
-   are STRUCTURE and stay where the pin put them (§2.7). Every entity varies;
-   the 80 stats vary `delta` (stat_id stays pinned). */
-static void vary_gen_mixed( BenchMixed * f, uint64_t rng )
-{
-    int i;
-    f->sequence = (serialize_uint32_t) ( rng >> 8 ) & 65535;
-    f->ack_sequence = (serialize_int32_t) ( (serialize_uint32_t) ( rng >> 24 ) & 65535 );
-    f->ack_bits = (serialize_uint32_t) ( rng >> 16 );
-    f->session_id = rng;
-    f->client_id = (serialize_uint32_t) ( rng >> 32 );
-    f->nonce = rng ^ 0xA5A5A5A5A5A5A5A5ULL;
-    f->world_time = (serialize_int64_t) ( ( rng >> 12 ) & 0xFFFFFFFFFULL ) - 34359738368LL;
-    f->frame_tick = rng & 0xFFFFFFFFFFFFULL;
-    f->server_time = (serialize_int32_t) ( ( rng >> 20 ) & 0x7FFFFF );
-    for ( i = 0; i < 8; i++ )
-    {
-        MixedEntity * e = &f->entities[i];
-        e->entity_id = (serialize_uint32_t) ( ( rng >> i ) & 4095 );
-        e->pos_x = (serialize_int32_t) ( ( rng >> ( i + 4 ) ) & 16383 ) - 8192;
-        e->pos_y = (serialize_int32_t) ( ( rng >> ( i + 12 ) ) & 16383 ) - 8192;
-        e->health = (serialize_int32_t) ( ( rng >> ( i + 20 ) ) & 511 );
-        e->weapon = (MixedWeapon) ( ( rng >> ( i + 40 ) ) & 15 );
-        e->damage = (MixedDamage) ( ( rng >> ( i + 28 ) ) & 255 );
-        e->moving = ( ( rng >> i ) & 1 ) != 0;
-    }
-    for ( i = 0; i < 80; i++ )
-        f->stats[i].delta = (serialize_int32_t) ( ( rng >> ( i & 31 ) ) & 1023 ) - 512;
-    f->game_event.as.hit.target_id = (serialize_uint32_t) ( ( rng >> 6 ) & 4095 );
-    f->game_event.as.hit.damage = (serialize_int32_t) ( ( rng >> 18 ) & 4095 );
-    f->game_event.as.hit.hit_kind = (serialize_int32_t) ( ( rng >> 30 ) & 7 );
-    f->game_event.as.hit.crit = ( rng & 4 ) != 0;
-    f->loadout[0] = (serialize_uint8_t) ( rng >> 56 );
-    f->player_name[7] = (char) ( 65 + ( ( rng >> 50 ) & 15 ) );
-    f->payload[0] = (serialize_uint8_t) ( rng >> 48 );
-    f->aim_x = (float) ( (serialize_uint32_t) ( rng >> 2 ) & 255 ) * ( 1.0f / 256.0f ) - 0.5f;
-    f->aim_y = (float) ( (serialize_uint32_t) ( rng >> 10 ) & 255 ) * ( 1.0f / 256.0f ) - 0.5f;
-    f->aim_z = (float) ( (serialize_uint32_t) ( rng >> 18 ) & 255 ) * ( 1.0f / 256.0f ) - 0.5f;
-    f->recoil = (float) ( (serialize_uint32_t) rng & 0xFFFF );
-    f->drift = (double) ( (serialize_int64_t) ( ( rng >> 8 ) & 0xFFFFFF ) ) * 0.5;
-    f->wide_key = serialize_uint128_make( rng >> 1, rng );
-    f->flux = serialize_int128_from_int64( (serialize_int64_t) ( rng >> 16 ) );
-    f->ping = (serialize_uint16_t) ( ( rng >> 40 ) & 0x7FFF );
-    f->crc_hint = (serialize_uint32_t) ( ( rng >> 24 ) & 0xFFFFFF );
-    f->extra = (serialize_int32_t) ( ( rng >> 52 ) & 255 );
-}
-
 #define BM_SUFFIX gen_bench_packet
 #define BM_TYPE BenchPacket
 #define BM_WRITE write_bench_packet
@@ -696,8 +701,7 @@ static void vary_gen_mixed( BenchMixed * f, uint64_t rng )
 #define BM_TYPE BenchMixed
 #define BM_WRITE write_bench_mixed
 #define BM_READ read_bench_mixed
-#define BM_VARY vary_gen_mixed
-#include "bench_message.inc"
+#include "bench_datadriven.inc"
 
 /* ------------------------------------------------------------------------------------------
    pinned corpus instances — the same values test/main.cpp pins to the goldens
@@ -1685,6 +1689,8 @@ int main( int argc, char ** argv )
             g_csv = 1;
         else if ( strcmp( argv[i], "--wire-dir" ) == 0 && i + 1 < argc )
             g_wire_dir = argv[++i];
+        else if ( strcmp( argv[i], "--variant-dir" ) == 0 && i + 1 < argc )
+            g_variant_dir = argv[++i];
         else if ( strcmp( argv[i], "--round" ) == 0 && i + 1 < argc )
         {
             /* §2.4: one warmup + one measured run of every benchmark, then
@@ -1703,7 +1709,7 @@ int main( int argc, char ** argv )
             g_quick = 1;
         else
         {
-            fprintf( stderr, "usage: %s [--csv] [--round K] [--quick] [--wire-dir <dir>]\n", argv[0] );
+            fprintf( stderr, "usage: %s [--csv] [--round K] [--quick] [--wire-dir <dir>] [--variant-dir <dir>]\n", argv[0] );
             return 1;
         }
     }
@@ -1768,7 +1774,6 @@ int main( int argc, char ** argv )
         BenchPacket gen_packet;
         BenchInts gen_ints;
         BenchBits gen_bits;
-        BenchMixed gen_mixed;
 
         memset( &gen_packet, 0, sizeof( gen_packet ) );
         gen_packet.a = -37; gen_packet.b = 12345; gen_packet.c = 987654;
@@ -1788,52 +1793,6 @@ int main( int argc, char ** argv )
         gen_bits.b32 = 0xDEADBEEFu; gen_bits.b11 = 1024; gen_bits.b19 = 333333;
         gen_bits.b48 = 0xFEDCBA987654ULL;
 
-        /* BenchMixed — THE canonical shape (#184); test/bench/main.cpp's pin */
-        memset( &gen_mixed, 0, sizeof( gen_mixed ) );
-        gen_mixed.sequence = 52428; gen_mixed.ack_sequence = 12345; gen_mixed.ack_bits = 0xA5A5A5A5u;
-        gen_mixed.session_id = 0x123456789ABCDEF0ULL; gen_mixed.client_id = 0xDEADBEEFu;
-        gen_mixed.nonce = 0xFEDCBA9876543210ULL; gen_mixed.world_time = -987654321000LL;
-        gen_mixed.frame_tick = 0x123456789ABCULL; gen_mixed.server_time = 12345678;
-        gen_mixed.entities_count = 8;
-        for ( i = 0; i < 8; i++ )
-        {
-            gen_mixed.entities[i].entity_id = (serialize_uint32_t) ( 2049 + i * 17 );
-            gen_mixed.entities[i].pos_x = -16383 + i * 4096;
-            gen_mixed.entities[i].pos_y = 16383 - i * 4096;
-            gen_mixed.entities[i].pos_z = -1 + i * 2048;
-            gen_mixed.entities[i].yaw = (serialize_uint32_t) ( 511 - i * 64 );
-            gen_mixed.entities[i].pitch = (serialize_uint32_t) ( i * 73 );
-            gen_mixed.entities[i].vel_x = -2048 + i * 512;
-            gen_mixed.entities[i].vel_y = 2047 - i * 512;
-            gen_mixed.entities[i].vel_z = -1024 + i * 256;
-            gen_mixed.entities[i].health = 1000 - i * 100;
-            gen_mixed.entities[i].weapon = (MixedWeapon) ( 1 + i );
-            gen_mixed.entities[i].damage = (MixedDamage) ( 0x5A + i );
-            gen_mixed.entities[i].moving = ( i % 2 ) == 0;
-            gen_mixed.entities[i].firing = ( i % 3 ) == 0;
-        }
-        gen_mixed.stats_count = 80;
-        for ( i = 0; i < 80; i++ )
-        {
-            gen_mixed.stats[i].stat_id = (serialize_uint32_t) ( ( i * 3 ) % 256 );
-            gen_mixed.stats[i].delta = -512 + ( i * 13 ) % 1024;
-        }
-        gen_mixed.game_event.type = MIXED_EVENT_TYPE_HIT;
-        gen_mixed.game_event.as.hit.target_id = 4095;
-        gen_mixed.game_event.as.hit.damage = 4095;
-        gen_mixed.game_event.as.hit.hit_kind = 7;
-        gen_mixed.game_event.as.hit.crit = 1;
-        gen_mixed.loadout[0] = 0x11; gen_mixed.loadout[1] = 0x22;
-        gen_mixed.loadout[2] = 0x33; gen_mixed.loadout[3] = 0x44;
-        memcpy( gen_mixed.player_name, "Rowan_01", 8 ); gen_mixed.player_name_length = 8;
-        memcpy( gen_mixed.payload, "\xDE\xAD\xBE\xEF\x01\x02\x03\x04", 8 ); gen_mixed.payload_length = 8;
-        gen_mixed.aim_x = 0.5f; gen_mixed.aim_y = -0.25f; gen_mixed.aim_z = 0.75f;
-        gen_mixed.recoil = 1.5f; gen_mixed.drift = -3.25;
-        gen_mixed.wide_key = serialize_uint128_make( 0x0123456789ABCDEFULL, 0xFEDCBA9876543210ULL );
-        gen_mixed.flux = serialize_int128_make( 0x800000000ULL, 7ULL );   /* 2^99 + 7 */
-        gen_mixed.ping = 12345; gen_mixed.crc_hint = 0xABCDEFu;
-        gen_mixed.has_extra = 1; gen_mixed.extra = 200;
-
         if ( !g_quick )
         {
             bench_message_gen_bench_packet( "bench_packet", "bench_packet", 32000000L, &gen_packet );
@@ -1841,7 +1800,7 @@ int main( int argc, char ** argv )
             bench_message_gen_bench_bits( "bench_bits", "bench_bits", 48000000L, &gen_bits );
         }
         /* --quick runs exactly this gen leg beside the rt one below */
-        bench_message_gen_bench_mixed( "bench_mixed", "bench_mixed", 4000000L, &gen_mixed );
+        bench_datadriven_gen_bench_mixed( "bench_mixed", "bench_mixed", 4000000L );
     }
 
     /* family rt (§1.3/§1.5): the runtime API by hand, oracle-gated against

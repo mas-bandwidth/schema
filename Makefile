@@ -379,6 +379,16 @@ update-goldens: build/schema_test build/schema_test_ludicrous build/schema_test_
 bench:
 	bench/run.sh
 
+# The bench_mixed variant data (issue #191): 64 wire buffers the data-driven
+# drivers bench, regenerated from bench/corpus/Bench.schema's generated Go
+# codec. Deterministic — a regeneration that changes the committed file means
+# the shape or the §2.7 LCG mapping moved, and the tool refuses outright if
+# variant 0 stops equalling testdata/wire/bench_mixed.bin. Needs the
+# serialize.go checkout ($(SERIALIZE_GO)); the committed data's own gate,
+# bench/corpus/variants_test.go, needs nothing and runs in `make test`.
+bench-variants: generated/bench/go/.stamp
+	cd bench/tools/variantgen && go run .
+
 # Prove the COMMITTED generated/ tree matches what the current compiler
 # emits (issue #30). `make test` regenerates every tracked generated file in
 # place, so staleness is precisely a dirty tree afterwards — a tracked file
@@ -421,4 +431,4 @@ fmt: bin/schema
 clean:
 	rm -rf bin build generated
 
-.PHONY: all test check id fmt clean update-goldens bench generated-current
+.PHONY: all test check id fmt clean update-goldens bench bench-variants generated-current

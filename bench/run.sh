@@ -539,48 +539,84 @@ if [ "$INLINE" = 1 ]; then
     done
 fi
 
-# ---- --quick: the blended tables — one row per language over bench_mixed,
-# per-message time averaged across write and read on the §2.2 headline
-# (max) rate, fastest language = 100%, every other as its time multiple.
-# SINGLE-SUBJECT (#177): the headline table ranks family gen only — every
-# language's schema-GENERATED code — with the family printed per row
-# (#175). The rt rows (the serialize runtime API called by hand) blend
-# into a second labeled section; the two subjects never rank against each
-# other, which is exactly the refusal relative.go enforces on the CSVs. ----
+# ---- --quick: the headline table — one row per language over bench_mixed,
+# in the owner's ruled form (#184, 2026-08-31: "I want nothing but a table
+# with two columns: language, %", with generated C++ pinned at 100% as the
+# DENOMINATOR, so a language beating C++ prints BELOW 100%). Everything
+# else — ns/msg, family, checks, spreads — lives in the CSV only.
+#
+# The gen statistic is the ROUND_TRIP row (BENCH-STANDARD §2.9): the gen
+# family's bench_mixed leg is data-driven in every language now (#191), its
+# timed rows are write and round_trip, and the published blend is the
+# round-trip. §2.9 records that the old (write+read)/2 blend is round_trip/2
+# in form; the factor of two cancels in a ratio, so the percentages below are
+# the same statistic either way.
+#
+# SINGLE-SUBJECT (#177): the headline is family gen — every language's
+# schema-GENERATED code. The rt rows (the serialize runtime API called by
+# hand) print as a second labeled section on their own unchanged write+read
+# blend; the two subjects never rank against each other, which is exactly the
+# refusal relative.go enforces on the CSVs.
+#
+# REFUSAL (#175, F4): a headline section with ZERO rows exits non-zero. The
+# old blender dropped every row it did not recognise and printed an empty
+# section at exit 0 — a leg that produced rows looked identical to a leg that
+# produced none. ----
 if [ "$QUICK" = 1 ]; then
+    QUICK_STATUS=0
     {
         echo ""
-        echo "quick mode — iteration instrument, not certification (bench_mixed only, blended write+read)"
+        echo "quick mode — iteration instrument, not certification (bench_mixed only)"
         # the caption (#175): every printed comparison names what it holds
         # constant — the profiling doctrine's apples-to-apples rule
-        echo "held constant: contract (BENCH-STANDARD §2.8 quick — bench_mixed, blended write+read over max rates), corpus (id per CSV row), machine ($HOST, $CPU), one sitting; sink discipline equalized to full-struct observation (#175)"
-        echo "NOT equalized: checks mode — printed per row below; a cross-language checks ruling is deferred to the owner (#175)"
+        echo "held constant: contract (BENCH-STANDARD §2.8 quick + §2.9 — bench_mixed, family gen round_trip over max rates), corpus (id per CSV row), machine ($HOST, $CPU), one sitting; the read-side sink deviations §2.7 named are gone — the round-trip observes its own decode (#191)"
+        echo "NOT equalized: checks mode — recorded per row in the CSV; a cross-language checks ruling is deferred to the owner (#175)"
         awk -F, -v skips="$SKIP_NOTES" '
             # js emits two gen tiers; the flat tier is THE js path (codec
-            # column, $18), so codec=runtime rows never blend
-            $2 == "bench_mixed" && $13 == "gen" && $18 != "runtime" && $3 == "write" { gw[$1] = $9; gc[$1] = $15 }
-            $2 == "bench_mixed" && $13 == "gen" && $18 != "runtime" && $3 == "read"  { gr[$1] = $9; gc[$1] = $15 }
-            $2 == "bench_mixed" && $13 == "rt" && $3 == "write" { rw[$1] = $9; rc[$1] = $15 }
-            $2 == "bench_mixed" && $13 == "rt" && $3 == "read"  { rr[$1] = $9; rc[$1] = $15 }
-            function render(family, w, r, c, absent,    n, langs, ts, i, j, t, tt, tl, lang, m, sk, parts) {
-                n = 0
-                for (lang in w) {
-                    if (r[lang] > 0 && w[lang] > 0) {
-                        t = (1.0 / w[lang] + 1.0 / r[lang]) / 2.0 * 1e9
-                        n++; langs[n] = lang; ts[n] = t
-                    }
-                }
-                if (n == 0 && !absent) return
-                # sort ascending by blended time
+            # column, $18), so codec=runtime rows never enter the table
+            $2 == "bench_mixed" && $13 == "gen" && $18 != "runtime" && $3 == "round_trip" { gt[$1] = 1e9 / $9; gs[$1] = $11 }
+            $2 == "bench_mixed" && $13 == "rt" && $3 == "write" { rw[$1] = $9; rws[$1] = $11 }
+            $2 == "bench_mixed" && $13 == "rt" && $3 == "read"  { rr[$1] = $9; rrs[$1] = $11 }
+            # ts[] is per-language time per message in ns; cpp is the
+            # denominator, so cpp prints 100% and a faster language prints
+            # below it.
+            # §2.3 spread policy, enforced without adding a column (the owner
+            # ruled the table to exactly two): a row over the INVALID
+            # threshold prints no number at all, and every noisy row is named
+            # in a note BELOW the table. spread_pct rides in the CSV as always.
+            function render(ts, sp, absent,    i, j, n, tt, tl, langs, m, sk, parts, ref, notes) {
+                i = 0
+                for (lang in ts) { i++; langs[i] = lang }
+                n = i
                 for (i = 1; i <= n; i++)
                     for (j = i + 1; j <= n; j++)
-                        if (ts[j] < ts[i]) {
-                            tt = ts[i]; ts[i] = ts[j]; ts[j] = tt
+                        if (ts[langs[j]] < ts[langs[i]]) {
                             tl = langs[i]; langs[i] = langs[j]; langs[j] = tl
                         }
-                printf "  %-8s %-6s %-9s %14s %10s\n", "lang", "family", "checks", "ns/msg", "% of best"
-                for (i = 1; i <= n; i++)
-                    printf "  %-8s %-6s %-9s %14.2f %9.0f%%\n", langs[i], family, c[langs[i]], ts[i], ts[i] / ts[1] * 100.0
+                ref = ("cpp" in ts) ? ts["cpp"] : 0
+                if (n == 0 && !absent) {
+                    print "  (no rows in this run)"
+                    return 0
+                }
+                printf "  %-10s %6s\n", "language", "%"
+                notes = ""
+                for (i = 1; i <= n; i++) {
+                    lang = langs[i]
+                    if (sp[lang] > 40.0) {
+                        printf "  %-10s %6s\n", lang, "—"
+                        notes = notes sprintf("  §2.3 INVALID: %s spread %.1f%% > 40%% — the row does not publish as a number\n", lang, sp[lang])
+                    } else if (ref > 0) {
+                        printf "  %-10s %5.0f%%\n", lang, ts[lang] / ref * 100.0
+                        if (sp[lang] > 15.0)
+                            notes = notes sprintf("  §2.3 NOISY: %s spread %.1f%% > 15%% — judge this row against the noise, not the digit\n", lang, sp[lang])
+                    } else {
+                        printf "  %-10s %6s\n", lang, "—"
+                    }
+                }
+                if (ref <= 0 && n > 0)
+                    print "  (no cpp row in this run: cpp is the 100% DENOMINATOR, so no percentage is defined — CSV carries the rates)"
+                if (notes != "")
+                    printf "%s", notes
                 # loud skips (#175): a missing leg is an ABSENT row with its
                 # reason, never a silently narrower table
                 if (absent) {
@@ -588,18 +624,31 @@ if [ "$QUICK" = 1 ]; then
                     for (i = 1; i <= m; i++) {
                         if (sk[i] == "") continue
                         split(sk[i], parts, "|")
-                        printf "  %-8s %-6s %-9s %14s   ABSENT — %s\n", parts[1], family, "-", "-", parts[2]
+                        printf "  %-10s %6s   ABSENT — %s\n", parts[1], "—", parts[2]
                     }
                 }
+                return n
             }
             END {
-                print "subject: schema-GENERATED code (family gen) — what the compiler delivers"
-                render("gen", gw, gr, gc, 1)
+                print "subject: schema-GENERATED code (family gen) — what the compiler delivers; C++ = 100%"
+                if (render(gt, gs, 1) == 0) {
+                    print "REFUSED (#175/§2.9): the gen headline section has ZERO rows — no leg reported a bench_mixed family-gen round_trip row. Nothing was measured; printing an empty table at exit 0 is the defect this refusal exists to stop." > "/dev/stderr"
+                    exit 3
+                }
                 print ""
                 print "subject: hand-written runtime usage (family rt) — what the serialize libraries deliver by hand; never ranked against gen"
-                render("rt", rw, rr, rc, 0)
-            }' "$OUT"
+                for (lang in rw)
+                    if (rr[lang] > 0 && rw[lang] > 0) {
+                        rt[lang] = (1.0 / rw[lang] + 1.0 / rr[lang]) / 2.0 * 1e9
+                        rts[lang] = (rws[lang] > rrs[lang]) ? rws[lang] : rrs[lang]
+                    }
+                render(rt, rts, 0)
+            }' "$OUT" || QUICK_STATUS=$?
     } >&2
+    if [ "${QUICK_STATUS:-0}" -ne 0 ]; then
+        echo "results: $OUT (headline REFUSED)" >&2
+        exit 1
+    fi
 fi
 
 # ---- #175: an --only run that produced zero data rows is a failure, not a
