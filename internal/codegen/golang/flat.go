@@ -77,7 +77,13 @@ import (
 // at the next field boundary: a run holds every one of its field values live
 // across its chunk assembly, and an unbounded run on a hundred-field message
 // spills them to the stack, which is the cost the form exists to avoid.
-const maxRunBits = 256
+//
+// Measured on the corpus shape, M2, one sitting (bench_mixed write / round_trip
+// M msg/s): 256 -> 2.66/1.40, 384 -> 2.78/1.49, 512 -> 2.75/1.46,
+// 1024 -> 2.62/1.43. The curve peaks and then falls: past the peak the run
+// holds more field values live than the register file has room for and they
+// spill, which is exactly the cost this cap exists to bound.
+const maxRunBits = 384
 
 // chunkBits is the word the stream sees. 64 is the measured choice for Go:
 // see the deviation note in this file's header.

@@ -1036,6 +1036,9 @@ func WriteTestData(stream *serialize.WriteStream, value *TestData) error {
 		}
 	}
 	{
+		if value.Int64Range < -1000000000000 || value.Int64Range > 1000000000000 {
+			return serialize.ErrValueOutOfRange
+		}
 		f0 := (uint64(math.Float32bits(value.FloatValue))) & 0xffffffff
 		f1 := uint64(0)
 		{
@@ -1054,25 +1057,20 @@ func WriteTestData(stream *serialize.WriteStream, value *TestData) error {
 		f6 := (uint64(value.Uint16Value)) & 0xffff
 		f7 := (uint64(value.Uint32Value)) & 0xffffffff
 		f8 := value.Uint64Value
+		f9 := uint64(value.Int64Full)
+		f10 := (uint64(value.Int64Range - (-1000000000000))) & 0x1ffffffffff
 		w0 := f0 | (f1 << 32) | (f2 << 42)
 		stream.SerializeBits64(&w0, 64)
 		w1 := (f2 >> 22) | (f3 << 42) | (f4 << 50)
 		stream.SerializeBits64(&w1, 64)
 		w2 := (f4 >> 14) | (f5 << 2) | (f6 << 10) | (f7 << 26) | (f8 << 58)
 		stream.SerializeBits64(&w2, 64)
-		w3 := (f8 >> 6)
-		stream.SerializeBits64(&w3, 58)
-	}
-	{
-		rawValue := uint64(value.Int64Full)
-		stream.SerializeBits64(&rawValue, 64)
-	}
-	if value.Int64Range < -1000000000000 || value.Int64Range > 1000000000000 {
-		return serialize.ErrValueOutOfRange
-	}
-	{
-		offsetValue := uint64(value.Int64Range - (-1000000000000))
-		stream.SerializeBits64(&offsetValue, 41)
+		w3 := (f8 >> 6) | (f9 << 58)
+		stream.SerializeBits64(&w3, 64)
+		w4 := (f9 >> 6) | (f10 << 58)
+		stream.SerializeBits64(&w4, 64)
+		w5 := (f10 >> 6)
+		stream.SerializeBits64(&w5, 35)
 	}
 	stream.SerializeAlign()
 	stream.SerializeBytes(value.FixedBytes[:]) // byte-aligned [N]uint8 — bulk copy, wire-identical to the per-byte loop
@@ -1159,7 +1157,11 @@ func ReadTestData(stream *serialize.ReadStream, value *TestData) error {
 		c2 := uint64(0)
 		stream.SerializeBits64(&c2, 64)
 		c3 := uint64(0)
-		stream.SerializeBits64(&c3, 58)
+		stream.SerializeBits64(&c3, 64)
+		c4 := uint64(0)
+		stream.SerializeBits64(&c4, 64)
+		c5 := uint64(0)
+		stream.SerializeBits64(&c5, 35)
 		if stream.Err() != nil {
 			return stream.Err()
 		}
@@ -1187,23 +1189,16 @@ func ReadTestData(stream *serialize.ReadStream, value *TestData) error {
 		value.Uint32Value = uint32(v7)
 		v8 := (c2 >> 58) | (c3 << 6)
 		value.Uint64Value = v8
-	}
-	{
-		rawValue := uint64(0)
-		stream.SerializeBits64(&rawValue, 64)
-		value.Int64Full = int64(rawValue)
-	}
-	{
-		offsetValue := uint64(0)
-		stream.SerializeBits64(&offsetValue, 41)
-		if stream.Err() != nil {
-			return stream.Err()
-		}
-		if offsetValue > 2000000000000 { // a value smuggled into the bit headroom is refused (SPEC §4.3)
+		v9 := (c3 >> 58) | (c4 << 6)
+		value.Int64Full = int64(v9)
+		v10 := ((c4 >> 58) | (c5 << 6)) & 0x1ffffffffff
+		if v10 > 2000000000000 { // a value smuggled into the bit headroom is refused (SPEC §4.3)
 			return serialize.ErrValueOutOfRange
 		}
-		lowValue := int64(-1000000000000)
-		value.Int64Range = int64(offsetValue + uint64(lowValue))
+		{
+			lowValue := int64(-1000000000000)
+			value.Int64Range = int64(v10 + uint64(lowValue))
+		}
 	}
 	stream.SerializeAlign()                    // rejects nonzero padding (SPEC §4.3)
 	stream.SerializeBytes(value.FixedBytes[:]) // byte-aligned [N]uint8 — bulk copy, wire-identical to the per-byte loop

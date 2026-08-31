@@ -562,12 +562,16 @@ func (g *gen) emitArrayLoop(f *ir.Field, name, limit, idxType, ind string,
 	flat func(*flatRun, string), scalar func(elem, eind string)) {
 	if k := g.flatGroupSize(f); k > 1 {
 		if run, ok := g.flatGroupRun(f, name, "i", k); ok {
-			g.pf("%si := %s(0)\n", ind, idxType)
-			g.pf("%sfor ; i+%d <= %s; i += %d {\n", ind, k, limit, k)
-			flat(run, ind+"\t")
-			g.pf("%s}\n", ind)
-			g.pf("%sfor ; i < %s; i++ {\n", ind, limit)
-			g.emitArrayElem(f, name, ind, flat, scalar)
+			// its own block: the grouped form declares the index outside the
+			// loop, and two grouped arrays in one function would collide
+			g.pf("%s{\n", ind)
+			g.pf("%s\ti := %s(0)\n", ind, idxType)
+			g.pf("%s\tfor ; i+%d <= %s; i += %d {\n", ind, k, limit, k)
+			flat(run, ind+"\t\t")
+			g.pf("%s\t}\n", ind)
+			g.pf("%s\tfor ; i < %s; i++ {\n", ind, limit)
+			g.emitArrayElem(f, name, ind+"\t", flat, scalar)
+			g.pf("%s\t}\n", ind)
 			g.pf("%s}\n", ind)
 			return
 		}

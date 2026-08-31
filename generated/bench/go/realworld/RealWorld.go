@@ -288,24 +288,22 @@ func WriteRealPacket(stream *serialize.WriteStream, value *RealPacket) error {
 		f6 := (uint64(math.Float32bits(value.F007F32))) & 0xffffffff
 		f7 := value.F008U64
 		f8 := (uint64(uint32(rangeValue8 - (-22)))) & 0x3f
+		f9 := (uint64(math.Float32bits(value.F010F32))) & 0xffffffff
+		f10 := (uint64(value.F011Bits)) & 0x3ff
+		f11 := uint64(0)
+		if value.F012Bool {
+			f11 = 1
+		}
 		w0 := f0 | (f1 << 21)
 		stream.SerializeBits64(&w0, 64)
 		w1 := (f1 >> 43) | (f2 << 21) | (f3 << 42) | (f4 << 57)
 		stream.SerializeBits64(&w1, 64)
 		w2 := (f4 >> 7) | (f5 << 6) | (f6 << 18) | (f7 << 50)
 		stream.SerializeBits64(&w2, 64)
-		w3 := (f7 >> 14) | (f8 << 50)
-		stream.SerializeBits64(&w3, 56)
-	}
-	{
-		f0 := (uint64(math.Float32bits(value.F010F32))) & 0xffffffff
-		f1 := (uint64(value.F011Bits)) & 0x3ff
-		f2 := uint64(0)
-		if value.F012Bool {
-			f2 = 1
-		}
-		w0 := f0 | (f1 << 32) | (f2 << 42)
-		stream.SerializeBits64(&w0, 43)
+		w3 := (f7 >> 14) | (f8 << 50) | (f9 << 56)
+		stream.SerializeBits64(&w3, 64)
+		w4 := (f9 >> 8) | (f10 << 24) | (f11 << 34)
+		stream.SerializeBits64(&w4, 35)
 	}
 	if value.F012Bool {
 		{
@@ -713,7 +711,9 @@ func ReadRealPacket(stream *serialize.ReadStream, value *RealPacket) error {
 		c2 := uint64(0)
 		stream.SerializeBits64(&c2, 64)
 		c3 := uint64(0)
-		stream.SerializeBits64(&c3, 56)
+		stream.SerializeBits64(&c3, 64)
+		c4 := uint64(0)
+		stream.SerializeBits64(&c4, 35)
 		if stream.Err() != nil {
 			return stream.Err()
 		}
@@ -768,19 +768,12 @@ func ReadRealPacket(stream *serialize.ReadStream, value *RealPacket) error {
 			lowValue := int32(-22)
 			value.F009Int = int8(int32(uint32(v8) + uint32(lowValue)))
 		}
-	}
-	{
-		c0 := uint64(0)
-		stream.SerializeBits64(&c0, 43)
-		if stream.Err() != nil {
-			return stream.Err()
-		}
-		v0 := c0 & 0xffffffff
-		value.F010F32 = math.Float32frombits(uint32(v0))
-		v1 := (c0 >> 32) & 0x3ff
-		value.F011Bits = uint32(v1)
-		v2 := (c0 >> 42) & 0x1
-		value.F012Bool = v2 != 0
+		v9 := ((c3 >> 56) | (c4 << 8)) & 0xffffffff
+		value.F010F32 = math.Float32frombits(uint32(v9))
+		v10 := (c4 >> 24) & 0x3ff
+		value.F011Bits = uint32(v10)
+		v11 := (c4 >> 34) & 0x1
+		value.F012Bool = v11 != 0
 	}
 	if value.F012Bool {
 		{
