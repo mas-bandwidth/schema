@@ -282,12 +282,54 @@ func (g *gen) emitFlatReadRun(r *flatRun, ind string) {
 	}
 }
 
+// flatStructRun builds the whole-body run for a nested struct against a base
+// expression, or reports false if any of its items breaks a run. It is what
+// lets a nested struct's fields be placed by the ENCLOSING function instead of
+// through a call: an array of eighty small structs paid eighty function calls
+// and eighty sticky-error loads per message, which the profile showed costing
+// more than the bit placement itself once the flat form had removed the
+// per-field calls. The nested Write/Read functions are still emitted — the
+// public surface does not change — they are simply no longer the path the
+// generated caller takes.
+func (g *gen) flatStructRun(st *ir.Struct, base string) (*flatRun, bool) {
+	if len(st.Items) == 0 {
+		return nil, false
+	}
+	run := &flatRun{}
+	for _, item := range st.Items {
+		p, ok := g.flatPieceOf(item, base)
+		if !ok {
+			return nil, false
+		}
+		run.pieces = append(run.pieces, p)
+		run.bits += p.bits
+	}
+	if run.bits > maxRunBits || !run.worthFlattening() {
+		return nil, false
+	}
+	return run, true
+}
+
+// flatElementRun builds the run for one element of an array of nested structs,
+// so the loop body places the element's fields directly instead of calling the
+// element's own wire function once per iteration.
+func (g *gen) flatElementRun(f *ir.Field, name string) (*flatRun, bool) {
+	if f.Type.Kind != ir.TNamed {
+		return nil, false
+	}
+	st, ok := f.Type.Ref.(*ir.Struct)
+	if !ok {
+		return nil, false
+	}
+	return g.flatStructRun(st, name+"[i].")
+}
+
 // ---- classification -------------------------------------------------------
 
 // flatPieceOf classifies one item. The second result is false for every
 // construct whose width or content is not a generation-time constant; those
 // break the run and keep the per-field form.
-func (g *gen) flatPieceOf(item ir.Item) (flatPiece, bool) {
+func (g *gen) flatPieceOf(item ir.Item, base string) (flatPiece, bool) {
 	switch it := item.(type) {
 	case *ir.ConstItem:
 		return g.flatConstPiece(it), true
@@ -297,7 +339,7 @@ func (g *gen) flatPieceOf(item ir.Item) (flatPiece, bool) {
 		if it.F.Array != ir.ArrayNone {
 			return flatPiece{}, false
 		}
-		return g.flatFieldPiece(item, it.F)
+		return g.flatFieldPiece(item, it.F, base)
 	}
 	return flatPiece{}, false
 }
@@ -343,8 +385,8 @@ func (g *gen) flatReservedPiece(it *ir.ReservedItem) flatPiece {
 // flatFieldPiece classifies a scalar field. Fixed point and the 128-bit
 // family stay on the per-field path and break the run: their value arithmetic
 // lives in the runtime.
-func (g *gen) flatFieldPiece(item ir.Item, f *ir.Field) (flatPiece, bool) {
-	name := "value." + ir.GoExportName(f.Name)
+func (g *gen) flatFieldPiece(item ir.Item, f *ir.Field, base string) (flatPiece, bool) {
+	name := base + ir.GoExportName(f.Name)
 
 	switch f.Type.Kind {
 	case ir.TBool:

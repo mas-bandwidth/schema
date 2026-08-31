@@ -111,7 +111,7 @@ func (g *gen) emitWriteItems(items []ir.Item, ind string) {
 		run = &flatRun{}
 	}
 	for _, item := range items {
-		if p, ok := g.flatPieceOf(item); ok {
+		if p, ok := g.flatPieceOf(item, "value."); ok {
 			if run.bits+p.bits > maxRunBits {
 				flush()
 			}
@@ -166,7 +166,7 @@ func (g *gen) emitReadItems(items []ir.Item, ind string) {
 		run = &flatRun{}
 	}
 	for _, item := range items {
-		if p, ok := g.flatPieceOf(item); ok {
+		if p, ok := g.flatPieceOf(item, "value."); ok {
 			if run.bits+p.bits > maxRunBits {
 				flush()
 			}
@@ -568,7 +568,11 @@ func (g *gen) emitWriteField(f *ir.Field, ind string) {
 		} else {
 			g.pf("%sfor i := 0; i < %s; i++ {\n", ind, bound)
 		}
-		g.emitWriteScalar(f, name+"[i]", ind+"\t")
+		if run, ok := g.flatElementRun(f, name); ok {
+			g.emitFlatWriteRun(run, ind+"\t")
+		} else {
+			g.emitWriteScalar(f, name+"[i]", ind+"\t")
+		}
 		g.pf("%s}\n", ind)
 		return
 	}
@@ -785,7 +789,11 @@ func (g *gen) emitReadField(f *ir.Field, ind string) {
 		} else {
 			g.pf("%sfor i := 0; i < %s; i++ {\n", ind, bound)
 		}
-		g.emitReadScalar(f, name+"[i]", ind+"\t")
+		if run, ok := g.flatElementRun(f, name); ok {
+			g.emitFlatReadRun(run, ind+"\t")
+		} else {
+			g.emitReadScalar(f, name+"[i]", ind+"\t")
+		}
 		g.pf("%s}\n", ind)
 		return
 	}

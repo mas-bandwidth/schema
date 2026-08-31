@@ -987,9 +987,60 @@ func WriteBenchMixed(stream *serialize.WriteStream, value *BenchMixed) error {
 		return stream.Err()
 	}
 	for i := int32(0); i < value.EntitiesCount; i++ {
-		if err := WriteMixedEntity(stream, &value.Entities[i]); err != nil {
-			return err
+		if value.Entities[i].PosX < -16383 || value.Entities[i].PosX > 16383 {
+			return serialize.ErrValueOutOfRange
 		}
+		if value.Entities[i].PosY < -16383 || value.Entities[i].PosY > 16383 {
+			return serialize.ErrValueOutOfRange
+		}
+		if value.Entities[i].PosZ < -16383 || value.Entities[i].PosZ > 16383 {
+			return serialize.ErrValueOutOfRange
+		}
+		if value.Entities[i].VelX < -2048 || value.Entities[i].VelX > 2047 {
+			return serialize.ErrValueOutOfRange
+		}
+		if value.Entities[i].VelY < -2048 || value.Entities[i].VelY > 2047 {
+			return serialize.ErrValueOutOfRange
+		}
+		if value.Entities[i].VelZ < -2048 || value.Entities[i].VelZ > 2047 {
+			return serialize.ErrValueOutOfRange
+		}
+		if value.Entities[i].Health < 0 || value.Entities[i].Health > 1000 {
+			return serialize.ErrValueOutOfRange
+		}
+		enumValue10 := int32(value.Entities[i].Weapon)
+		if enumValue10 < 0 || enumValue10 > 15 {
+			return serialize.ErrValueOutOfRange
+		}
+		if value.Entities[i].Damage >= 1<<8 { // a mask bit above the wire width cannot ride
+			return serialize.ErrValueOutOfRange
+		}
+		f0 := (uint64(value.Entities[i].EntityId)) & 0xfff
+		f1 := (uint64(uint32(value.Entities[i].PosX - (-16383)))) & 0x7fff
+		f2 := (uint64(uint32(value.Entities[i].PosY - (-16383)))) & 0x7fff
+		f3 := (uint64(uint32(value.Entities[i].PosZ - (-16383)))) & 0x7fff
+		f4 := (uint64(value.Entities[i].Yaw)) & 0x1ff
+		f5 := (uint64(value.Entities[i].Pitch)) & 0x1ff
+		f6 := (uint64(uint32(value.Entities[i].VelX - (-2048)))) & 0xfff
+		f7 := (uint64(uint32(value.Entities[i].VelY - (-2048)))) & 0xfff
+		f8 := (uint64(uint32(value.Entities[i].VelZ - (-2048)))) & 0xfff
+		f9 := (uint64(uint32(value.Entities[i].Health))) & 0x3ff
+		f10 := (uint64(uint32(enumValue10))) & 0xf
+		f11 := (uint64(value.Entities[i].Damage)) & 0xff
+		f12 := uint64(0)
+		if value.Entities[i].Moving {
+			f12 = 1
+		}
+		f13 := uint64(0)
+		if value.Entities[i].Firing {
+			f13 = 1
+		}
+		w0 := f0 | (f1 << 12) | (f2 << 27) | (f3 << 42) | (f4 << 57)
+		stream.SerializeBits64(&w0, 64)
+		w1 := (f4 >> 7) | (f5 << 2) | (f6 << 11) | (f7 << 23) | (f8 << 35) | (f9 << 47) | (f10 << 57) | (f11 << 61)
+		stream.SerializeBits64(&w1, 64)
+		w2 := uint32((f11 >> 3) | (f12 << 5) | (f13 << 6))
+		stream.SerializeBits(&w2, 7)
 	}
 	if value.StatsCount < 0 || value.StatsCount > 80 {
 		return serialize.ErrValueOutOfRange
@@ -1002,9 +1053,13 @@ func WriteBenchMixed(stream *serialize.WriteStream, value *BenchMixed) error {
 		return stream.Err()
 	}
 	for i := int32(0); i < value.StatsCount; i++ {
-		if err := WriteMixedStat(stream, &value.Stats[i]); err != nil {
-			return err
+		if value.Stats[i].Delta < -512 || value.Stats[i].Delta > 511 {
+			return serialize.ErrValueOutOfRange
 		}
+		f0 := (uint64(value.Stats[i].StatId)) & 0xff
+		f1 := (uint64(uint32(value.Stats[i].Delta - (-512)))) & 0x3ff
+		w0 := uint32(f0 | (f1 << 8))
+		stream.SerializeBits(&w0, 18)
 	}
 	if err := WriteMixedEvent(stream, &value.GameEvent); err != nil {
 		return err
@@ -1180,9 +1235,74 @@ func ReadBenchMixed(stream *serialize.ReadStream, value *BenchMixed) error {
 		value.EntitiesCount = int32(offsetValue + uint32(lowValue))
 	}
 	for i := int32(0); i < value.EntitiesCount; i++ {
-		if err := ReadMixedEntity(stream, &value.Entities[i]); err != nil {
-			return err
+		c0 := uint64(0)
+		stream.SerializeBits64(&c0, 64)
+		c1 := uint64(0)
+		stream.SerializeBits64(&c1, 64)
+		n2 := uint32(0)
+		stream.SerializeBits(&n2, 7)
+		c2 := uint64(n2)
+		if stream.Err() != nil {
+			return stream.Err()
 		}
+		v0 := c0 & 0xfff
+		value.Entities[i].EntityId = uint32(v0)
+		v1 := (c0 >> 12) & 0x7fff
+		if v1 > 32766 { // a value smuggled into the bit headroom is refused (SPEC §4.3)
+			return serialize.ErrValueOutOfRange
+		}
+		{
+			lowValue := int32(-16383)
+			value.Entities[i].PosX = int32(uint32(v1) + uint32(lowValue))
+		}
+		v2 := (c0 >> 27) & 0x7fff
+		if v2 > 32766 { // a value smuggled into the bit headroom is refused (SPEC §4.3)
+			return serialize.ErrValueOutOfRange
+		}
+		{
+			lowValue := int32(-16383)
+			value.Entities[i].PosY = int32(uint32(v2) + uint32(lowValue))
+		}
+		v3 := (c0 >> 42) & 0x7fff
+		if v3 > 32766 { // a value smuggled into the bit headroom is refused (SPEC §4.3)
+			return serialize.ErrValueOutOfRange
+		}
+		{
+			lowValue := int32(-16383)
+			value.Entities[i].PosZ = int32(uint32(v3) + uint32(lowValue))
+		}
+		v4 := ((c0 >> 57) | (c1 << 7)) & 0x1ff
+		value.Entities[i].Yaw = uint32(v4)
+		v5 := (c1 >> 2) & 0x1ff
+		value.Entities[i].Pitch = uint32(v5)
+		v6 := (c1 >> 11) & 0xfff
+		{
+			lowValue := int32(-2048)
+			value.Entities[i].VelX = int32(uint32(v6) + uint32(lowValue))
+		}
+		v7 := (c1 >> 23) & 0xfff
+		{
+			lowValue := int32(-2048)
+			value.Entities[i].VelY = int32(uint32(v7) + uint32(lowValue))
+		}
+		v8 := (c1 >> 35) & 0xfff
+		{
+			lowValue := int32(-2048)
+			value.Entities[i].VelZ = int32(uint32(v8) + uint32(lowValue))
+		}
+		v9 := (c1 >> 47) & 0x3ff
+		if v9 > 1000 { // a value smuggled into the bit headroom is refused (SPEC §4.3)
+			return serialize.ErrValueOutOfRange
+		}
+		value.Entities[i].Health = int32(v9)
+		v10 := (c1 >> 57) & 0xf
+		value.Entities[i].Weapon = MixedWeapon(int32(v10))
+		v11 := ((c1 >> 61) | (c2 << 3)) & 0xff
+		value.Entities[i].Damage = MixedDamage(v11)
+		v12 := (c2 >> 5) & 0x1
+		value.Entities[i].Moving = v12 != 0
+		v13 := (c2 >> 6) & 0x1
+		value.Entities[i].Firing = v13 != 0
 	}
 	{
 		offsetValue := uint32(0)
@@ -1196,8 +1316,18 @@ func ReadBenchMixed(stream *serialize.ReadStream, value *BenchMixed) error {
 		value.StatsCount = int32(offsetValue)
 	}
 	for i := int32(0); i < value.StatsCount; i++ {
-		if err := ReadMixedStat(stream, &value.Stats[i]); err != nil {
-			return err
+		n0 := uint32(0)
+		stream.SerializeBits(&n0, 18)
+		c0 := uint64(n0)
+		if stream.Err() != nil {
+			return stream.Err()
+		}
+		v0 := c0 & 0xff
+		value.Stats[i].StatId = uint32(v0)
+		v1 := (c0 >> 8) & 0x3ff
+		{
+			lowValue := int32(-512)
+			value.Stats[i].Delta = int32(uint32(v1) + uint32(lowValue))
 		}
 	}
 	if err := ReadMixedEvent(stream, &value.GameEvent); err != nil {

@@ -594,9 +594,49 @@ func WriteInputPacket(stream *serialize.WriteStream, value *InputPacket) error {
 		return stream.Err()
 	}
 	for i := int32(0); i < value.InputsCount; i++ {
-		if err := WriteInput(stream, &value.Inputs[i]); err != nil {
-			return err
+		f0 := (uint64(math.Float32bits(value.Inputs[i].StickX))) & 0xffffffff
+		f1 := (uint64(math.Float32bits(value.Inputs[i].StickY))) & 0xffffffff
+		f2 := (uint64(math.Float32bits(value.Inputs[i].Throttle))) & 0xffffffff
+		f3 := (uint64(math.Float32bits(value.Inputs[i].Yaw))) & 0xffffffff
+		f4 := (uint64(math.Float32bits(value.Inputs[i].Pitch))) & 0xffffffff
+		f5 := uint64(0)
+		if value.Inputs[i].Fire {
+			f5 = 1
 		}
+		f6 := uint64(0)
+		if value.Inputs[i].AltFire {
+			f6 = 1
+		}
+		f7 := uint64(0)
+		if value.Inputs[i].Boost {
+			f7 = 1
+		}
+		f8 := uint64(0)
+		if value.Inputs[i].Brake {
+			f8 = 1
+		}
+		f9 := uint64(0)
+		if value.Inputs[i].Aim {
+			f9 = 1
+		}
+		f10 := uint64(0)
+		if value.Inputs[i].LockOn {
+			f10 = 1
+		}
+		f11 := uint64(0)
+		if value.Inputs[i].Zoom {
+			f11 = 1
+		}
+		f12 := uint64(0)
+		if value.Inputs[i].Ping {
+			f12 = 1
+		}
+		w0 := f0 | (f1 << 32)
+		stream.SerializeBits64(&w0, 64)
+		w1 := f2 | (f3 << 32)
+		stream.SerializeBits64(&w1, 64)
+		w2 := f4 | (f5 << 32) | (f6 << 33) | (f7 << 34) | (f8 << 35) | (f9 << 36) | (f10 << 37) | (f11 << 38) | (f12 << 39)
+		stream.SerializeBits64(&w2, 40)
 	}
 	return stream.Err()
 }
@@ -632,9 +672,41 @@ func ReadInputPacket(stream *serialize.ReadStream, value *InputPacket) error {
 		value.InputsCount = int32(offsetValue)
 	}
 	for i := int32(0); i < value.InputsCount; i++ {
-		if err := ReadInput(stream, &value.Inputs[i]); err != nil {
-			return err
+		c0 := uint64(0)
+		stream.SerializeBits64(&c0, 64)
+		c1 := uint64(0)
+		stream.SerializeBits64(&c1, 64)
+		c2 := uint64(0)
+		stream.SerializeBits64(&c2, 40)
+		if stream.Err() != nil {
+			return stream.Err()
 		}
+		v0 := c0 & 0xffffffff
+		value.Inputs[i].StickX = math.Float32frombits(uint32(v0))
+		v1 := (c0 >> 32) & 0xffffffff
+		value.Inputs[i].StickY = math.Float32frombits(uint32(v1))
+		v2 := c1 & 0xffffffff
+		value.Inputs[i].Throttle = math.Float32frombits(uint32(v2))
+		v3 := (c1 >> 32) & 0xffffffff
+		value.Inputs[i].Yaw = math.Float32frombits(uint32(v3))
+		v4 := c2 & 0xffffffff
+		value.Inputs[i].Pitch = math.Float32frombits(uint32(v4))
+		v5 := (c2 >> 32) & 0x1
+		value.Inputs[i].Fire = v5 != 0
+		v6 := (c2 >> 33) & 0x1
+		value.Inputs[i].AltFire = v6 != 0
+		v7 := (c2 >> 34) & 0x1
+		value.Inputs[i].Boost = v7 != 0
+		v8 := (c2 >> 35) & 0x1
+		value.Inputs[i].Brake = v8 != 0
+		v9 := (c2 >> 36) & 0x1
+		value.Inputs[i].Aim = v9 != 0
+		v10 := (c2 >> 37) & 0x1
+		value.Inputs[i].LockOn = v10 != 0
+		v11 := (c2 >> 38) & 0x1
+		value.Inputs[i].Zoom = v11 != 0
+		v12 := (c2 >> 39) & 0x1
+		value.Inputs[i].Ping = v12 != 0
 	}
 	return stream.Err()
 }

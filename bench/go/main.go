@@ -26,6 +26,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"runtime/pprof"
 	"sort"
 	"strconv"
 	"time"
@@ -408,6 +409,14 @@ func main() {
 			gNumRuns = 1
 		case args[i] == "--quick":
 			gQuick = true
+		case args[i] == "--cpuprofile" && i+1 < len(args):
+			i++
+			pf, perr := os.Create(args[i])
+			if perr != nil {
+				panic(perr)
+			}
+			pprof.StartCPUProfile(pf)
+			defer pprof.StopCPUProfile()
 		default:
 			fmt.Fprintf(os.Stderr, "usage: %s [--csv] [--round K] [--quick] [--wire-dir <dir>] [--variant-dir <dir>]\n", os.Args[0])
 			os.Exit(1)

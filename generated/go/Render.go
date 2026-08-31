@@ -107,9 +107,21 @@ func WriteRenderBlock(stream *serialize.WriteStream, value *RenderBlock) error {
 		return stream.Err()
 	}
 	for i := int32(0); i < value.SpritesCount; i++ {
-		if err := WriteRenderSprite(stream, &value.Sprites[i]); err != nil {
-			return err
+		enumValue4 := int32(value.Sprites[i].Team)
+		if enumValue4 < 0 || enumValue4 > 2 {
+			return serialize.ErrValueOutOfRange
 		}
+		f0 := value.Sprites[i].SortKey
+		f1 := (uint64(value.Sprites[i].MeshId)) & 0xffffffff
+		f2 := (uint64(value.Sprites[i].MaterialId)) & 0xffffffff
+		f3 := (uint64(value.Sprites[i].Layer)) & 0xff
+		f4 := (uint64(uint32(enumValue4))) & 0x3
+		w0 := f0
+		stream.SerializeBits64(&w0, 64)
+		w1 := f1 | (f2 << 32)
+		stream.SerializeBits64(&w1, 64)
+		w2 := uint32(f3 | (f4 << 8))
+		stream.SerializeBits(&w2, 10)
 	}
 	return stream.Err()
 }
@@ -138,9 +150,29 @@ func ReadRenderBlock(stream *serialize.ReadStream, value *RenderBlock) error {
 		value.SpritesCount = int32(offsetValue)
 	}
 	for i := int32(0); i < value.SpritesCount; i++ {
-		if err := ReadRenderSprite(stream, &value.Sprites[i]); err != nil {
-			return err
+		c0 := uint64(0)
+		stream.SerializeBits64(&c0, 64)
+		c1 := uint64(0)
+		stream.SerializeBits64(&c1, 64)
+		n2 := uint32(0)
+		stream.SerializeBits(&n2, 10)
+		c2 := uint64(n2)
+		if stream.Err() != nil {
+			return stream.Err()
 		}
+		v0 := c0
+		value.Sprites[i].SortKey = v0
+		v1 := c1 & 0xffffffff
+		value.Sprites[i].MeshId = uint32(v1)
+		v2 := (c1 >> 32) & 0xffffffff
+		value.Sprites[i].MaterialId = uint32(v2)
+		v3 := c2 & 0xff
+		value.Sprites[i].Layer = uint8(v3)
+		v4 := (c2 >> 8) & 0x3
+		if v4 > 2 {
+			return serialize.ErrValueOutOfRange
+		}
+		value.Sprites[i].Team = Team(int32(v4))
 	}
 	return stream.Err()
 }
