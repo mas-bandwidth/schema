@@ -61,6 +61,54 @@ double now() => _clock.elapsedMicroseconds * 1e-6;
 // loop's work can be deleted
 int sink = 0;
 
+/* --------------------------------------------------------------------------
+   read-side sink discipline (#175, equalized to the cpp/c reference): every
+   read loop observes the FULL decoded struct per iteration. The C/C++ legs
+   get this for free from an empty-asm memory clobber over the whole struct;
+   Dart has no zero-cost clobber, so the leg's idiom is a per-iteration sum
+   of every decoded field — doubles truncated via toInt(), booleans as 0/1,
+   byte arrays element-by-element. The sink adds are real work the clobber
+   languages do not pay; the published number is an upper bound on the
+   observation cost.
+   -------------------------------------------------------------------------- */
+
+int sinkOfBenchPacket(BenchPacket d) {
+  var s = d.a +
+      d.b +
+      d.c +
+      d.bits7 +
+      d.bits13 +
+      d.bits23 +
+      (d.flag ? 1 : 0) +
+      d.x.toInt() +
+      d.y.toInt() +
+      d.z.toInt() +
+      d.big;
+  for (var i = 0; i < 17; i++) {
+    s += d.blob[i];
+  }
+  return s;
+}
+
+int sinkOfBenchInts(BenchInts d) =>
+    d.f0 + d.f1 + d.f2 + d.f3 + d.f4 + d.f5 + d.f6 + d.f7 + d.f8 + d.f9;
+
+int sinkOfBenchBits(BenchBits d) =>
+    d.b7 + d.b13 + d.b23 + d.b3 + d.b32 + d.b11 + d.b19 + d.b48;
+
+int sinkOfBenchMixed(BenchMixed d) =>
+    d.sequence +
+    d.ackBits +
+    d.entityId +
+    d.posX +
+    d.posY +
+    d.posZ +
+    d.yaw +
+    (d.moving ? 1 : 0) +
+    (d.firing ? 1 : 0) +
+    d.timestamp +
+    d.weapon;
+
 Never gateFail(String row, String what) {
   stderr.write('GOLDEN GATE FAILED: $row $what\nreporting nothing.\n');
   exit(1);
@@ -530,7 +578,7 @@ void main(List<String> arguments) {
       varyBenchMixed,
       writeBenchMixed,
       readBenchMixed,
-      (BenchMixed d) => d.sequence,
+      sinkOfBenchMixed, // full-struct observation (#175)
     );
   } else {
     final gatedPacket = gateShape(
@@ -574,7 +622,7 @@ void main(List<String> arguments) {
       varyBenchPacket,
       writeBenchPacket,
       readBenchPacket,
-      (BenchPacket d) => d.b,
+      sinkOfBenchPacket, // full-struct observation (#175)
     );
     benchShape(
       'bench_ints',
@@ -583,7 +631,7 @@ void main(List<String> arguments) {
       varyBenchInts,
       writeBenchInts,
       readBenchInts,
-      (BenchInts d) => d.f0,
+      sinkOfBenchInts, // full-struct observation (#175)
     );
     benchShape(
       'bench_bits',
@@ -592,7 +640,7 @@ void main(List<String> arguments) {
       varyBenchBits,
       writeBenchBits,
       readBenchBits,
-      (BenchBits d) => d.b7,
+      sinkOfBenchBits, // full-struct observation (#175)
     );
     benchShape(
       'bench_mixed',
@@ -601,7 +649,7 @@ void main(List<String> arguments) {
       varyBenchMixed,
       writeBenchMixed,
       readBenchMixed,
-      (BenchMixed d) => d.sequence,
+      sinkOfBenchMixed, // full-struct observation (#175)
     );
   }
 

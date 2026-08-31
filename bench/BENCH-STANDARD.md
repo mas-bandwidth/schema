@@ -642,6 +642,24 @@ stride clause was added 2026-08-15, with the measurement that demanded it):
 - **Escape barriers.** Empty-asm memory clobber (C/C++), `std::hint::black_box`
   (Rust), `runtime.KeepAlive` + package sink (Go), `GC.KeepAlive` + static sink (C#).
   Write barriers observe the **buffer**, not `buffer[0]`.
+- **Read-side sink discipline (#175): every read loop observes the FULL
+  decoded struct per iteration, by one of two mechanisms, each meeting one
+  bar — every decoded field store materializes in memory every iteration
+  and cannot be elided.** The native legs get it free: the C/C++ clobber
+  and Rust's `black_box(&out)` are zero-cost memory barriers over the whole
+  struct, and the Go and C# read calls are opaque out-of-line calls taking
+  the decode target's pointer (verified in the emitted assembly — an
+  indirect call through a function value / delegate per iteration), with
+  KeepAlive pinning liveness. The JIT/managed legs whose decode call the
+  compiler inlines (java, dart, js, elixir) have no free barrier, so their
+  idiom is a per-iteration fold of every decoded field into the sink —
+  numbers added, booleans as 0/1, arrays element-by-element over the
+  decoded extent, floats bitcast or truncated, JS BigInt observed by
+  allocation-free comparison. The fold is real work the barrier languages
+  do not pay; those legs' read numbers are therefore **upper bounds**
+  carrying the observation cost (measured on bench_mixed, M2: java -20%,
+  js-flat -29%, dart -5%, elixir -28% read rate against the pre-#175
+  narrow sinks).
 - **The decode target is hoisted out of the timed loop** and reused, in every
   language. Constructing a fresh zeroed message per iteration is harness overhead
   charged to the library. `bench/cpp/bench_main.cpp:250-256` already documents this;
@@ -659,9 +677,24 @@ comparison costs minutes, not an evening; nothing it prints publishes.
   cannot hold quick mode's one-minute-per-leg bound: elixir runs 8,000,000
   (the BEAM is ~2 orders behind the native legs). Every count is recorded
   in the `iters` column as always.
-- The driver prints the blended table: per-language per-message time
-  `t = (1/w + 1/r) / 2` over the §2.2 headline (max) rates, sorted
-  ascending, fastest = 100%, every other language as its time multiple.
+- The driver prints **two blended sections, one per subject, never ranked
+  against each other** (the profiling doctrine's apples-to-apples rule,
+  enacted for the table by #177/#178): the headline section is family
+  `gen` — every language's schema-GENERATED code, the native legs included
+  since their generated Bench legs landed — and the second labeled section
+  is family `rt`, the serialize runtime API called by hand. Within a
+  section: per-language per-message time `t = (1/w + 1/r) / 2` over the
+  §2.2 headline (max) rates, sorted ascending, fastest = 100%, every other
+  language as its time multiple. Family and `checks` mode print per row
+  (checks is a recorded, NOT equalized property — §3.4), the js blend takes
+  the `codec=flat` tier only (THE js path; `codec=runtime` rows never
+  blend), and a caption above the sections names what is held constant:
+  contract, corpus, machine, sitting, and the equalized full-struct sink
+  discipline (#175).
+- A language whose leg cannot run prints as an **ABSENT row with the
+  reason** in the headline section, and an `--only` invocation that
+  produced zero data rows **exits non-zero** — a skipped leg is a refusal,
+  never a quietly green empty table (#175).
 - Warmup stays adequate for the JIT legs — the discarded run is tens of
   millions of iterations, which carries the JVM to C2/OSR; a quick leg that
   shortened warmup below that would measure the interpreter and be wrong
