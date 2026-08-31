@@ -727,11 +727,40 @@ namespace Example
             return true;
         }
 
+        // inline-only batch core — a real call would address-expose the batch
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static bool WriteProbeRingBatch(ref WriteBatch batch, ProbeRing value)
+        {
+            {
+                uint rawValue = value.Radius;
+                if (!batch.SerializeBits(ref rawValue, 16))
+                {
+                    return false;
+                }
+            }
+            return true;
+        }
+
         public static bool ReadProbeRing(ReadStream stream, ProbeRing value)
         {
             {
                 uint rawValue = 0;
                 if (!stream.SerializeBits(ref rawValue, 16))
+                {
+                    return false;
+                }
+                value.Radius = (ushort)rawValue;
+            }
+            return true;
+        }
+
+        // inline-only batch core — a real call would address-expose the batch
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static bool ReadProbeRingBatch(ref ReadBatch batch, ProbeRing value)
+        {
+            {
+                uint rawValue = 0;
+                if (!batch.SerializeBits(ref rawValue, 16))
                 {
                     return false;
                 }
@@ -831,31 +860,53 @@ namespace Example
             value.Type = ProbeShapeType.None;
         }
 
+        // batch form: stream state stays in registers across the body and End
+        // publishes it — same wire bytes, same validation, same error model.
         public static bool WriteProbeShape(WriteStream stream, ProbeShape value)
+        {
+            WriteBatch batch = stream.BeginBatch();
+            bool result = WriteProbeShapeBatch(ref batch, value);
+            batch.End();
+            return result;
+        }
+
+        // inline-only batch core — a real call would address-expose the batch
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static bool WriteProbeShapeBatch(ref WriteBatch batch, ProbeShape value)
         {
             uint tagValue = (uint)value.Type;
             if (tagValue > 2) // the tag validates BEFORE it rides (SPEC §4.8)
             {
                 return false;
             }
-            if (!stream.SerializeBits(ref tagValue, 2))
+            if (!batch.SerializeBits(ref tagValue, 2))
             {
                 return false;
             }
             switch (value.Type)
             {
                 case ProbeShapeType.Ring:
-                    return WriteProbeRing(stream, value.Ring);
+                    return WriteProbeRingBatch(ref batch, value.Ring);
                 case ProbeShapeType.Slab:
-                    return WriteProbeSlab(stream, value.Slab);
+                    return WriteProbeSlabBatch(ref batch, value.Slab);
             }
             return true; // None — the tag is the whole wire (SPEC §4.8)
         }
 
         public static bool ReadProbeShape(ReadStream stream, ProbeShape value)
         {
+            ReadBatch batch = stream.BeginBatch();
+            bool result = ReadProbeShapeBatch(ref batch, value);
+            batch.End();
+            return result;
+        }
+
+        // inline-only batch core — a real call would address-expose the batch
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static bool ReadProbeShapeBatch(ref ReadBatch batch, ProbeShape value)
+        {
             int tagValue = 0;
-            if (!stream.SerializeInt(ref tagValue, 0, 2)) // rejects a tag above the count (SPEC §4.8)
+            if (!batch.SerializeInt(ref tagValue, 0, 2)) // rejects a tag above the count (SPEC §4.8)
             {
                 return false;
             }
@@ -864,10 +915,10 @@ namespace Example
             {
                 case ProbeShapeType.Ring:
                     ZeroProbeRing(value.Ring); // the selected arm starts from the zero form (SPEC §5)
-                    return ReadProbeRing(stream, value.Ring);
+                    return ReadProbeRingBatch(ref batch, value.Ring);
                 case ProbeShapeType.Slab:
                     ZeroProbeSlab(value.Slab); // the selected arm starts from the zero form (SPEC §5)
-                    return ReadProbeSlab(stream, value.Slab);
+                    return ReadProbeSlabBatch(ref batch, value.Slab);
             }
             return true; // None
         }
@@ -890,20 +941,32 @@ namespace Example
             value.ExtrasCount = 0;
         }
 
+        // batch form: stream state stays in registers across the body and End
+        // publishes it — same wire bytes, same validation, same error model.
         public static bool WriteProbeCollider(WriteStream stream, ProbeCollider value)
+        {
+            WriteBatch batch = stream.BeginBatch();
+            bool result = WriteProbeColliderBatch(ref batch, value);
+            batch.End();
+            return result;
+        }
+
+        // inline-only batch core — a real call would address-expose the batch
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static bool WriteProbeColliderBatch(ref WriteBatch batch, ProbeCollider value)
         {
             {
                 uint rawValue = value.Armor;
-                if (!stream.SerializeBits(ref rawValue, 8))
+                if (!batch.SerializeBits(ref rawValue, 8))
                 {
                     return false;
                 }
             }
-            if (!WriteProbeShape(stream, value.Shape))
+            if (!WriteProbeShapeBatch(ref batch, value.Shape))
             {
                 return false;
             }
-            if (!WriteProbeShape(stream, value.Backup))
+            if (!WriteProbeShapeBatch(ref batch, value.Backup))
             {
                 return false;
             }
@@ -913,14 +976,14 @@ namespace Example
             }
             {
                 uint offsetValue = (uint)(value.ExtrasCount);
-                if (!stream.SerializeBits(ref offsetValue, 2))
+                if (!batch.SerializeBits(ref offsetValue, 2))
                 {
                     return false;
                 }
             }
             for (int i = 0; i < value.ExtrasCount; i++)
             {
-                if (!WriteProbeShape(stream, value.Extras[i]))
+                if (!WriteProbeShapeBatch(ref batch, value.Extras[i]))
                 {
                     return false;
                 }
@@ -930,29 +993,39 @@ namespace Example
 
         public static bool ReadProbeCollider(ReadStream stream, ProbeCollider value)
         {
+            ReadBatch batch = stream.BeginBatch();
+            bool result = ReadProbeColliderBatch(ref batch, value);
+            batch.End();
+            return result;
+        }
+
+        // inline-only batch core — a real call would address-expose the batch
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static bool ReadProbeColliderBatch(ref ReadBatch batch, ProbeCollider value)
+        {
             {
                 uint rawValue = 0;
-                if (!stream.SerializeBits(ref rawValue, 8))
+                if (!batch.SerializeBits(ref rawValue, 8))
                 {
                     return false;
                 }
                 value.Armor = (byte)rawValue;
             }
-            if (!ReadProbeShape(stream, value.Shape))
+            if (!ReadProbeShapeBatch(ref batch, value.Shape))
             {
                 return false;
             }
-            if (!ReadProbeShape(stream, value.Backup))
+            if (!ReadProbeShapeBatch(ref batch, value.Backup))
             {
                 return false;
             }
-            if (!stream.SerializeInt(ref value.ExtrasCount, 0, 2)) // the count guards the loop (§6.3)
+            if (!batch.SerializeInt(ref value.ExtrasCount, 0, 2)) // the count guards the loop (§6.3)
             {
                 return false;
             }
             for (int i = 0; i < value.ExtrasCount; i++)
             {
-                if (!ReadProbeShape(stream, value.Extras[i]))
+                if (!ReadProbeShapeBatch(ref batch, value.Extras[i]))
                 {
                     return false;
                 }
@@ -1457,19 +1530,7 @@ namespace Example
             value.TextLength = 0;
         }
 
-        // batch form: stream state stays in registers across the body and End
-        // publishes it — same wire bytes, same validation, same error model.
         public static bool WriteTestData(WriteStream stream, TestData value)
-        {
-            WriteBatch batch = stream.BeginBatch();
-            bool result = WriteTestDataBatch(ref batch, value);
-            batch.End();
-            return result;
-        }
-
-        // inline-only batch core — a real call would address-expose the batch
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static bool WriteTestDataBatch(ref WriteBatch batch, TestData value)
         {
             if (value.A < -100 || value.A > 100)
             {
@@ -1477,7 +1538,7 @@ namespace Example
             }
             {
                 uint offsetValue = (uint)(value.A) - unchecked((uint)(-100));
-                if (!batch.SerializeBits(ref offsetValue, 8))
+                if (!stream.SerializeBits(ref offsetValue, 8))
                 {
                     return false;
                 }
@@ -1488,7 +1549,7 @@ namespace Example
             }
             {
                 uint offsetValue = (uint)(value.B) - unchecked((uint)(-100));
-                if (!batch.SerializeBits(ref offsetValue, 8))
+                if (!stream.SerializeBits(ref offsetValue, 8))
                 {
                     return false;
                 }
@@ -1499,24 +1560,24 @@ namespace Example
             }
             {
                 uint offsetValue = (uint)(value.C) - unchecked((uint)(-100));
-                if (!batch.SerializeBits(ref offsetValue, 8))
+                if (!stream.SerializeBits(ref offsetValue, 8))
                 {
                     return false;
                 }
             }
-            if (!batch.SerializeBits(ref value.D, 8))
+            if (!stream.SerializeBits(ref value.D, 8))
             {
                 return false;
             }
-            if (!batch.SerializeBits(ref value.E, 8))
+            if (!stream.SerializeBits(ref value.E, 8))
             {
                 return false;
             }
-            if (!batch.SerializeBits(ref value.F, 8))
+            if (!stream.SerializeBits(ref value.F, 8))
             {
                 return false;
             }
-            if (!batch.SerializeBool(ref value.G))
+            if (!stream.SerializeBool(ref value.G))
             {
                 return false;
             }
@@ -1526,7 +1587,7 @@ namespace Example
             }
             {
                 uint offsetValue = (uint)(value.ItemsCount);
-                if (!batch.SerializeBits(ref offsetValue, 5))
+                if (!stream.SerializeBits(ref offsetValue, 5))
                 {
                     return false;
                 }
@@ -1539,66 +1600,66 @@ namespace Example
                 }
                 {
                     uint offsetValue = (uint)(value.Items[i]);
-                    if (!batch.SerializeBits(ref offsetValue, 8))
+                    if (!stream.SerializeBits(ref offsetValue, 8))
                     {
                         return false;
                     }
                 }
             }
-            if (!batch.SerializeFloat(ref value.FloatValue))
+            if (!stream.SerializeFloat(ref value.FloatValue))
             {
                 return false;
             }
             {
                 float compressedValue = value.CompressedFloatValue;
-                if (!batch.SerializeCompressedFloatPrecomputed(ref compressedValue, 1000u, 10, 10.0f, 0.0f))
+                if (!stream.SerializeCompressedFloatPrecomputed(ref compressedValue, 1000u, 10, 10.0f, 0.0f))
                 {
                     return false;
                 }
             }
-            if (!batch.SerializeDouble(ref value.DoubleValue))
+            if (!stream.SerializeDouble(ref value.DoubleValue))
             {
                 return false;
             }
             {
                 uint rawValue = (byte)value.Int8Value;
-                if (!batch.SerializeBits(ref rawValue, 8))
+                if (!stream.SerializeBits(ref rawValue, 8))
                 {
                     return false;
                 }
             }
             {
                 uint rawValue = (ushort)value.Int16Value;
-                if (!batch.SerializeBits(ref rawValue, 16))
+                if (!stream.SerializeBits(ref rawValue, 16))
                 {
                     return false;
                 }
             }
             {
                 uint rawValue = value.Uint8Value;
-                if (!batch.SerializeBits(ref rawValue, 8))
+                if (!stream.SerializeBits(ref rawValue, 8))
                 {
                     return false;
                 }
             }
             {
                 uint rawValue = value.Uint16Value;
-                if (!batch.SerializeBits(ref rawValue, 16))
+                if (!stream.SerializeBits(ref rawValue, 16))
                 {
                     return false;
                 }
             }
-            if (!batch.SerializeBits(ref value.Uint32Value, 32))
+            if (!stream.SerializeBits(ref value.Uint32Value, 32))
             {
                 return false;
             }
-            if (!batch.SerializeBits64(ref value.Uint64Value, 64))
+            if (!stream.SerializeBits64(ref value.Uint64Value, 64))
             {
                 return false;
             }
             {
                 ulong rawValue = (ulong)value.Int64Full;
-                if (!batch.SerializeBits64(ref rawValue, 64))
+                if (!stream.SerializeBits64(ref rawValue, 64))
                 {
                     return false;
                 }
@@ -1609,16 +1670,16 @@ namespace Example
             }
             {
                 ulong offsetValue = (ulong)(value.Int64Range) - unchecked((ulong)(-1000000000000));
-                if (!batch.SerializeBits64(ref offsetValue, 41))
+                if (!stream.SerializeBits64(ref offsetValue, 41))
                 {
                     return false;
                 }
             }
-            if (!batch.SerializeAlign())
+            if (!stream.SerializeAlign())
             {
                 return false;
             }
-            if (!batch.SerializeBytes(value.FixedBytes.AsSpan(0, 17))) // byte-aligned [N]uint8 — bulk copy, wire-identical to the per-byte loop
+            if (!stream.SerializeBytes(value.FixedBytes.AsSpan(0, 17))) // byte-aligned [N]uint8 — bulk copy, wire-identical to the per-byte loop
             {
                 return false;
             }
@@ -1628,12 +1689,12 @@ namespace Example
             }
             {
                 uint offsetValue = (uint)(value.TextLength);
-                if (!batch.SerializeBits(ref offsetValue, 8))
+                if (!stream.SerializeBits(ref offsetValue, 8))
                 {
                     return false;
                 }
             }
-            if (!batch.SerializeBytes(value.Text.AsSpan(0, value.TextLength)))
+            if (!stream.SerializeBytes(value.Text.AsSpan(0, value.TextLength)))
             {
                 return false;
             }
@@ -1642,70 +1703,60 @@ namespace Example
 
         public static bool ReadTestData(ReadStream stream, TestData value)
         {
-            ReadBatch batch = stream.BeginBatch();
-            bool result = ReadTestDataBatch(ref batch, value);
-            batch.End();
-            return result;
-        }
-
-        // inline-only batch core — a real call would address-expose the batch
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static bool ReadTestDataBatch(ref ReadBatch batch, TestData value)
-        {
-            if (!batch.SerializeInt(ref value.A, -100, 100))
+            if (!stream.SerializeInt(ref value.A, -100, 100))
             {
                 return false;
             }
-            if (!batch.SerializeInt(ref value.B, -100, 100))
+            if (!stream.SerializeInt(ref value.B, -100, 100))
             {
                 return false;
             }
-            if (!batch.SerializeInt(ref value.C, -100, 150))
+            if (!stream.SerializeInt(ref value.C, -100, 150))
             {
                 return false;
             }
-            if (!batch.SerializeBits(ref value.D, 8))
+            if (!stream.SerializeBits(ref value.D, 8))
             {
                 return false;
             }
-            if (!batch.SerializeBits(ref value.E, 8))
+            if (!stream.SerializeBits(ref value.E, 8))
             {
                 return false;
             }
-            if (!batch.SerializeBits(ref value.F, 8))
+            if (!stream.SerializeBits(ref value.F, 8))
             {
                 return false;
             }
-            if (!batch.SerializeBool(ref value.G))
+            if (!stream.SerializeBool(ref value.G))
             {
                 return false;
             }
-            if (!batch.SerializeInt(ref value.ItemsCount, 0, 16)) // the count guards the loop (§6.3)
+            if (!stream.SerializeInt(ref value.ItemsCount, 0, 16)) // the count guards the loop (§6.3)
             {
                 return false;
             }
             for (int i = 0; i < value.ItemsCount; i++)
             {
-                if (!batch.SerializeInt(ref value.Items[i], 0, 255))
+                if (!stream.SerializeInt(ref value.Items[i], 0, 255))
                 {
                     return false;
                 }
             }
-            if (!batch.SerializeFloat(ref value.FloatValue))
+            if (!stream.SerializeFloat(ref value.FloatValue))
             {
                 return false;
             }
-            if (!batch.SerializeCompressedFloatPrecomputed(ref value.CompressedFloatValue, 1000u, 10, 10.0f, 0.0f))
+            if (!stream.SerializeCompressedFloatPrecomputed(ref value.CompressedFloatValue, 1000u, 10, 10.0f, 0.0f))
             {
                 return false;
             }
-            if (!batch.SerializeDouble(ref value.DoubleValue))
+            if (!stream.SerializeDouble(ref value.DoubleValue))
             {
                 return false;
             }
             {
                 uint rawValue = 0;
-                if (!batch.SerializeBits(ref rawValue, 8))
+                if (!stream.SerializeBits(ref rawValue, 8))
                 {
                     return false;
                 }
@@ -1713,7 +1764,7 @@ namespace Example
             }
             {
                 uint rawValue = 0;
-                if (!batch.SerializeBits(ref rawValue, 16))
+                if (!stream.SerializeBits(ref rawValue, 16))
                 {
                     return false;
                 }
@@ -1721,7 +1772,7 @@ namespace Example
             }
             {
                 uint rawValue = 0;
-                if (!batch.SerializeBits(ref rawValue, 8))
+                if (!stream.SerializeBits(ref rawValue, 8))
                 {
                     return false;
                 }
@@ -1729,45 +1780,45 @@ namespace Example
             }
             {
                 uint rawValue = 0;
-                if (!batch.SerializeBits(ref rawValue, 16))
+                if (!stream.SerializeBits(ref rawValue, 16))
                 {
                     return false;
                 }
                 value.Uint16Value = (ushort)rawValue;
             }
-            if (!batch.SerializeBits(ref value.Uint32Value, 32))
+            if (!stream.SerializeBits(ref value.Uint32Value, 32))
             {
                 return false;
             }
-            if (!batch.SerializeBits64(ref value.Uint64Value, 64))
+            if (!stream.SerializeBits64(ref value.Uint64Value, 64))
             {
                 return false;
             }
             {
                 ulong rawValue = 0;
-                if (!batch.SerializeBits64(ref rawValue, 64))
+                if (!stream.SerializeBits64(ref rawValue, 64))
                 {
                     return false;
                 }
                 value.Int64Full = (long)rawValue;
             }
-            if (!batch.SerializeInt64(ref value.Int64Range, -1000000000000, 1000000000000))
+            if (!stream.SerializeInt64(ref value.Int64Range, -1000000000000, 1000000000000))
             {
                 return false;
             }
-            if (!batch.SerializeAlign()) // rejects nonzero padding (SPEC §4.3)
+            if (!stream.SerializeAlign()) // rejects nonzero padding (SPEC §4.3)
             {
                 return false;
             }
-            if (!batch.SerializeBytes(value.FixedBytes.AsSpan(0, 17))) // byte-aligned [N]uint8 — bulk copy, wire-identical to the per-byte loop
+            if (!stream.SerializeBytes(value.FixedBytes.AsSpan(0, 17))) // byte-aligned [N]uint8 — bulk copy, wire-identical to the per-byte loop
             {
                 return false;
             }
-            if (!batch.SerializeInt(ref value.TextLength, 0, 255)) // the length guards the slice (§6.3)
+            if (!stream.SerializeInt(ref value.TextLength, 0, 255)) // the length guards the slice (§6.3)
             {
                 return false;
             }
-            if (!batch.SerializeBytes(value.Text.AsSpan(0, value.TextLength)))
+            if (!stream.SerializeBytes(value.Text.AsSpan(0, value.TextLength)))
             {
                 return false;
             }

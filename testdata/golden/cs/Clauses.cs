@@ -1024,7 +1024,22 @@ namespace Example
             return true;
         }
 
+        // inline-only batch core — a real call would address-expose the batch
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static bool WriteEmptyABatch(ref WriteBatch batch, EmptyA value)
+        {
+            // empty body — presence is the payload (SPEC §4.6)
+            return true;
+        }
+
         public static bool ReadEmptyA(ReadStream stream, EmptyA value)
+        {
+            return true;
+        }
+
+        // inline-only batch core — a real call would address-expose the batch
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static bool ReadEmptyABatch(ref ReadBatch batch, EmptyA value)
         {
             return true;
         }
@@ -1046,7 +1061,22 @@ namespace Example
             return true;
         }
 
+        // inline-only batch core — a real call would address-expose the batch
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static bool WriteEmptyBBatch(ref WriteBatch batch, EmptyB value)
+        {
+            // empty body — presence is the payload (SPEC §4.6)
+            return true;
+        }
+
         public static bool ReadEmptyB(ReadStream stream, EmptyB value)
+        {
+            return true;
+        }
+
+        // inline-only batch core — a real call would address-expose the batch
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static bool ReadEmptyBBatch(ref ReadBatch batch, EmptyB value)
         {
             return true;
         }
@@ -1085,6 +1115,29 @@ namespace Example
             return true; // None — the tag is the whole wire (SPEC §4.8)
         }
 
+        // inline-only batch core — a real call would address-expose the batch
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static bool WriteEmptyUnionBatch(ref WriteBatch batch, EmptyUnion value)
+        {
+            uint tagValue = (uint)value.Type;
+            if (tagValue > 2) // the tag validates BEFORE it rides (SPEC §4.8)
+            {
+                return false;
+            }
+            if (!batch.SerializeBits(ref tagValue, 2))
+            {
+                return false;
+            }
+            switch (value.Type)
+            {
+                case EmptyUnionType.A:
+                    return WriteEmptyABatch(ref batch, value.A);
+                case EmptyUnionType.B:
+                    return WriteEmptyBBatch(ref batch, value.B);
+            }
+            return true; // None — the tag is the whole wire (SPEC §4.8)
+        }
+
         public static bool ReadEmptyUnion(ReadStream stream, EmptyUnion value)
         {
             int tagValue = 0;
@@ -1105,6 +1158,28 @@ namespace Example
             return true; // None
         }
 
+        // inline-only batch core — a real call would address-expose the batch
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static bool ReadEmptyUnionBatch(ref ReadBatch batch, EmptyUnion value)
+        {
+            int tagValue = 0;
+            if (!batch.SerializeInt(ref tagValue, 0, 2)) // rejects a tag above the count (SPEC §4.8)
+            {
+                return false;
+            }
+            value.Type = (EmptyUnionType)tagValue;
+            switch (value.Type)
+            {
+                case EmptyUnionType.A:
+                    ZeroEmptyA(value.A); // the selected arm starts from the zero form (SPEC §5)
+                    return ReadEmptyABatch(ref batch, value.A);
+                case EmptyUnionType.B:
+                    ZeroEmptyB(value.B); // the selected arm starts from the zero form (SPEC §5)
+                    return ReadEmptyBBatch(ref batch, value.B);
+            }
+            return true; // None
+        }
+
         // HoldsEmptyUnionMaxBits is the longest wire path; align pads at worst case (SPEC §6.1).
         // HoldsEmptyUnionMaxBytes is rounded up to the 8-byte write-buffer granularity.
         public const long HoldsEmptyUnionMaxBits = 14;
@@ -1118,17 +1193,29 @@ namespace Example
             value.Tail = 0;
         }
 
+        // batch form: stream state stays in registers across the body and End
+        // publishes it — same wire bytes, same validation, same error model.
         public static bool WriteHoldsEmptyUnion(WriteStream stream, HoldsEmptyUnion value)
         {
-            if (!stream.SerializeBits(ref value.Lead, 5))
+            WriteBatch batch = stream.BeginBatch();
+            bool result = WriteHoldsEmptyUnionBatch(ref batch, value);
+            batch.End();
+            return result;
+        }
+
+        // inline-only batch core — a real call would address-expose the batch
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static bool WriteHoldsEmptyUnionBatch(ref WriteBatch batch, HoldsEmptyUnion value)
+        {
+            if (!batch.SerializeBits(ref value.Lead, 5))
             {
                 return false;
             }
-            if (!WriteEmptyUnion(stream, value.U))
+            if (!WriteEmptyUnionBatch(ref batch, value.U))
             {
                 return false;
             }
-            if (!stream.SerializeBits(ref value.Tail, 7))
+            if (!batch.SerializeBits(ref value.Tail, 7))
             {
                 return false;
             }
@@ -1137,15 +1224,25 @@ namespace Example
 
         public static bool ReadHoldsEmptyUnion(ReadStream stream, HoldsEmptyUnion value)
         {
-            if (!stream.SerializeBits(ref value.Lead, 5))
+            ReadBatch batch = stream.BeginBatch();
+            bool result = ReadHoldsEmptyUnionBatch(ref batch, value);
+            batch.End();
+            return result;
+        }
+
+        // inline-only batch core — a real call would address-expose the batch
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static bool ReadHoldsEmptyUnionBatch(ref ReadBatch batch, HoldsEmptyUnion value)
+        {
+            if (!batch.SerializeBits(ref value.Lead, 5))
             {
                 return false;
             }
-            if (!ReadEmptyUnion(stream, value.U))
+            if (!ReadEmptyUnionBatch(ref batch, value.U))
             {
                 return false;
             }
-            if (!stream.SerializeBits(ref value.Tail, 7))
+            if (!batch.SerializeBits(ref value.Tail, 7))
             {
                 return false;
             }

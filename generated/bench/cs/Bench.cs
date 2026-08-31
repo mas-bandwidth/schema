@@ -242,19 +242,7 @@ namespace Bench
             Array.Clear(value.Blob, 0, 17);
         }
 
-        // batch form: stream state stays in registers across the body and End
-        // publishes it — same wire bytes, same validation, same error model.
         public static bool WriteBenchPacket(WriteStream stream, BenchPacket value)
-        {
-            WriteBatch batch = stream.BeginBatch();
-            bool result = WriteBenchPacketBatch(ref batch, value);
-            batch.End();
-            return result;
-        }
-
-        // inline-only batch core — a real call would address-expose the batch
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static bool WriteBenchPacketBatch(ref WriteBatch batch, BenchPacket value)
         {
             if (value.A < -100 || value.A > 100)
             {
@@ -262,7 +250,7 @@ namespace Bench
             }
             {
                 uint offsetValue = (uint)(value.A) - unchecked((uint)(-100));
-                if (!batch.SerializeBits(ref offsetValue, 8))
+                if (!stream.SerializeBits(ref offsetValue, 8))
                 {
                     return false;
                 }
@@ -273,7 +261,7 @@ namespace Bench
             }
             {
                 uint offsetValue = (uint)(value.B);
-                if (!batch.SerializeBits(ref offsetValue, 16))
+                if (!stream.SerializeBits(ref offsetValue, 16))
                 {
                     return false;
                 }
@@ -284,48 +272,48 @@ namespace Bench
             }
             {
                 uint offsetValue = (uint)(value.C) - unchecked((uint)(-1000000));
-                if (!batch.SerializeBits(ref offsetValue, 21))
+                if (!stream.SerializeBits(ref offsetValue, 21))
                 {
                     return false;
                 }
             }
-            if (!batch.SerializeBits(ref value.Bits7, 7))
+            if (!stream.SerializeBits(ref value.Bits7, 7))
             {
                 return false;
             }
-            if (!batch.SerializeBits(ref value.Bits13, 13))
+            if (!stream.SerializeBits(ref value.Bits13, 13))
             {
                 return false;
             }
-            if (!batch.SerializeBits(ref value.Bits23, 23))
+            if (!stream.SerializeBits(ref value.Bits23, 23))
             {
                 return false;
             }
-            if (!batch.SerializeBool(ref value.Flag))
+            if (!stream.SerializeBool(ref value.Flag))
             {
                 return false;
             }
-            if (!batch.SerializeFloat(ref value.X))
+            if (!stream.SerializeFloat(ref value.X))
             {
                 return false;
             }
-            if (!batch.SerializeFloat(ref value.Y))
+            if (!stream.SerializeFloat(ref value.Y))
             {
                 return false;
             }
-            if (!batch.SerializeFloat(ref value.Z))
+            if (!stream.SerializeFloat(ref value.Z))
             {
                 return false;
             }
-            if (!batch.SerializeBits64(ref value.Big, 64))
+            if (!stream.SerializeBits64(ref value.Big, 64))
             {
                 return false;
             }
-            if (!batch.SerializeAlign())
+            if (!stream.SerializeAlign())
             {
                 return false;
             }
-            if (!batch.SerializeBytes(value.Blob.AsSpan(0, 17))) // byte-aligned [N]uint8 — bulk copy, wire-identical to the per-byte loop
+            if (!stream.SerializeBytes(value.Blob.AsSpan(0, 17))) // byte-aligned [N]uint8 — bulk copy, wire-identical to the per-byte loop
             {
                 return false;
             }
@@ -334,65 +322,55 @@ namespace Bench
 
         public static bool ReadBenchPacket(ReadStream stream, BenchPacket value)
         {
-            ReadBatch batch = stream.BeginBatch();
-            bool result = ReadBenchPacketBatch(ref batch, value);
-            batch.End();
-            return result;
-        }
-
-        // inline-only batch core — a real call would address-expose the batch
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static bool ReadBenchPacketBatch(ref ReadBatch batch, BenchPacket value)
-        {
-            if (!batch.SerializeInt(ref value.A, -100, 100))
+            if (!stream.SerializeInt(ref value.A, -100, 100))
             {
                 return false;
             }
-            if (!batch.SerializeInt(ref value.B, 0, 65535))
+            if (!stream.SerializeInt(ref value.B, 0, 65535))
             {
                 return false;
             }
-            if (!batch.SerializeInt(ref value.C, -1000000, 1000000))
+            if (!stream.SerializeInt(ref value.C, -1000000, 1000000))
             {
                 return false;
             }
-            if (!batch.SerializeBits(ref value.Bits7, 7))
+            if (!stream.SerializeBits(ref value.Bits7, 7))
             {
                 return false;
             }
-            if (!batch.SerializeBits(ref value.Bits13, 13))
+            if (!stream.SerializeBits(ref value.Bits13, 13))
             {
                 return false;
             }
-            if (!batch.SerializeBits(ref value.Bits23, 23))
+            if (!stream.SerializeBits(ref value.Bits23, 23))
             {
                 return false;
             }
-            if (!batch.SerializeBool(ref value.Flag))
+            if (!stream.SerializeBool(ref value.Flag))
             {
                 return false;
             }
-            if (!batch.SerializeFloat(ref value.X))
+            if (!stream.SerializeFloat(ref value.X))
             {
                 return false;
             }
-            if (!batch.SerializeFloat(ref value.Y))
+            if (!stream.SerializeFloat(ref value.Y))
             {
                 return false;
             }
-            if (!batch.SerializeFloat(ref value.Z))
+            if (!stream.SerializeFloat(ref value.Z))
             {
                 return false;
             }
-            if (!batch.SerializeBits64(ref value.Big, 64))
+            if (!stream.SerializeBits64(ref value.Big, 64))
             {
                 return false;
             }
-            if (!batch.SerializeAlign()) // rejects nonzero padding (SPEC §4.3)
+            if (!stream.SerializeAlign()) // rejects nonzero padding (SPEC §4.3)
             {
                 return false;
             }
-            if (!batch.SerializeBytes(value.Blob.AsSpan(0, 17))) // byte-aligned [N]uint8 — bulk copy, wire-identical to the per-byte loop
+            if (!stream.SerializeBytes(value.Blob.AsSpan(0, 17))) // byte-aligned [N]uint8 — bulk copy, wire-identical to the per-byte loop
             {
                 return false;
             }
@@ -1378,33 +1356,55 @@ namespace Bench
             value.Type = MixedEventType.None;
         }
 
+        // batch form: stream state stays in registers across the body and End
+        // publishes it — same wire bytes, same validation, same error model.
         public static bool WriteMixedEvent(WriteStream stream, MixedEvent value)
+        {
+            WriteBatch batch = stream.BeginBatch();
+            bool result = WriteMixedEventBatch(ref batch, value);
+            batch.End();
+            return result;
+        }
+
+        // inline-only batch core — a real call would address-expose the batch
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static bool WriteMixedEventBatch(ref WriteBatch batch, MixedEvent value)
         {
             uint tagValue = (uint)value.Type;
             if (tagValue > 3) // the tag validates BEFORE it rides (SPEC §4.8)
             {
                 return false;
             }
-            if (!stream.SerializeBits(ref tagValue, 2))
+            if (!batch.SerializeBits(ref tagValue, 2))
             {
                 return false;
             }
             switch (value.Type)
             {
                 case MixedEventType.Hit:
-                    return WriteMixedHitEvent(stream, value.Hit);
+                    return WriteMixedHitEventBatch(ref batch, value.Hit);
                 case MixedEventType.Chat:
-                    return WriteMixedChatEvent(stream, value.Chat);
+                    return WriteMixedChatEventBatch(ref batch, value.Chat);
                 case MixedEventType.Pickup:
-                    return WriteMixedPickupEvent(stream, value.Pickup);
+                    return WriteMixedPickupEventBatch(ref batch, value.Pickup);
             }
             return true; // None — the tag is the whole wire (SPEC §4.8)
         }
 
         public static bool ReadMixedEvent(ReadStream stream, MixedEvent value)
         {
+            ReadBatch batch = stream.BeginBatch();
+            bool result = ReadMixedEventBatch(ref batch, value);
+            batch.End();
+            return result;
+        }
+
+        // inline-only batch core — a real call would address-expose the batch
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static bool ReadMixedEventBatch(ref ReadBatch batch, MixedEvent value)
+        {
             int tagValue = 0;
-            if (!stream.SerializeInt(ref tagValue, 0, 3)) // rejects a tag above the count (SPEC §4.8)
+            if (!batch.SerializeInt(ref tagValue, 0, 3)) // rejects a tag above the count (SPEC §4.8)
             {
                 return false;
             }
@@ -1413,13 +1413,13 @@ namespace Bench
             {
                 case MixedEventType.Hit:
                     ZeroMixedHitEvent(value.Hit); // the selected arm starts from the zero form (SPEC §5)
-                    return ReadMixedHitEvent(stream, value.Hit);
+                    return ReadMixedHitEventBatch(ref batch, value.Hit);
                 case MixedEventType.Chat:
                     ZeroMixedChatEvent(value.Chat); // the selected arm starts from the zero form (SPEC §5)
-                    return ReadMixedChatEvent(stream, value.Chat);
+                    return ReadMixedChatEventBatch(ref batch, value.Chat);
                 case MixedEventType.Pickup:
                     ZeroMixedPickupEvent(value.Pickup); // the selected arm starts from the zero form (SPEC §5)
-                    return ReadMixedPickupEvent(stream, value.Pickup);
+                    return ReadMixedPickupEventBatch(ref batch, value.Pickup);
             }
             return true; // None
         }
@@ -1544,9 +1544,20 @@ namespace Bench
                     return false;
                 }
             }
-            for (int i = 0; i < value.EntitiesCount; i++)
             {
-                if (!WriteMixedEntity(stream, value.Entities[i]))
+                // scoped batch: one capture and one restore for the whole site
+                WriteBatch batch = stream.BeginBatch();
+                bool batchOk = true;
+                for (int i = 0; i < value.EntitiesCount; i++)
+                {
+                    if (!WriteMixedEntityBatch(ref batch, value.Entities[i]))
+                    {
+                        batchOk = false;
+                        break;
+                    }
+                }
+                batch.End();
+                if (!batchOk)
                 {
                     return false;
                 }
@@ -1562,16 +1573,33 @@ namespace Bench
                     return false;
                 }
             }
-            for (int i = 0; i < value.StatsCount; i++)
             {
-                if (!WriteMixedStat(stream, value.Stats[i]))
+                // scoped batch: one capture and one restore for the whole site
+                WriteBatch batch = stream.BeginBatch();
+                bool batchOk = true;
+                for (int i = 0; i < value.StatsCount; i++)
+                {
+                    if (!WriteMixedStatBatch(ref batch, value.Stats[i]))
+                    {
+                        batchOk = false;
+                        break;
+                    }
+                }
+                batch.End();
+                if (!batchOk)
                 {
                     return false;
                 }
             }
-            if (!WriteMixedEvent(stream, value.GameEvent))
             {
-                return false;
+                // scoped batch: one capture and one restore for the whole site
+                WriteBatch batch = stream.BeginBatch();
+                bool batchOk = WriteMixedEventBatch(ref batch, value.GameEvent);
+                batch.End();
+                if (!batchOk)
+                {
+                    return false;
+                }
             }
             for (int i = 0; i < 4; i++)
             {
@@ -1761,9 +1789,20 @@ namespace Bench
             {
                 return false;
             }
-            for (int i = 0; i < value.EntitiesCount; i++)
             {
-                if (!ReadMixedEntity(stream, value.Entities[i]))
+                // scoped batch: one capture and one restore for the whole site
+                ReadBatch batch = stream.BeginBatch();
+                bool batchOk = true;
+                for (int i = 0; i < value.EntitiesCount; i++)
+                {
+                    if (!ReadMixedEntityBatch(ref batch, value.Entities[i]))
+                    {
+                        batchOk = false;
+                        break;
+                    }
+                }
+                batch.End();
+                if (!batchOk)
                 {
                     return false;
                 }
@@ -1772,16 +1811,33 @@ namespace Bench
             {
                 return false;
             }
-            for (int i = 0; i < value.StatsCount; i++)
             {
-                if (!ReadMixedStat(stream, value.Stats[i]))
+                // scoped batch: one capture and one restore for the whole site
+                ReadBatch batch = stream.BeginBatch();
+                bool batchOk = true;
+                for (int i = 0; i < value.StatsCount; i++)
+                {
+                    if (!ReadMixedStatBatch(ref batch, value.Stats[i]))
+                    {
+                        batchOk = false;
+                        break;
+                    }
+                }
+                batch.End();
+                if (!batchOk)
                 {
                     return false;
                 }
             }
-            if (!ReadMixedEvent(stream, value.GameEvent))
             {
-                return false;
+                // scoped batch: one capture and one restore for the whole site
+                ReadBatch batch = stream.BeginBatch();
+                bool batchOk = ReadMixedEventBatch(ref batch, value.GameEvent);
+                batch.End();
+                if (!batchOk)
+                {
+                    return false;
+                }
             }
             for (int i = 0; i < 4; i++)
             {
