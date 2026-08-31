@@ -887,85 +887,6 @@ static void vary_real_packet( realworld::RealPacket & m, uint64_t rng )
     m.f054_int  = int8_t( int32_t( ( rng >> 45 ) & 63 ) - 32 );             // +/-32 within +/-35
 }
 
-// ------------------------------------------------------------------------------------------
-// family gen over the Bench corpus (issue #177): the four Bench.schema shapes
-// measured through the GENERATED code (generated/bench/cpp/BenchWire.h) —
-// same golden files, same pinned values, same LCG field mappings, same
-// bench_message discipline as every gen row above. Generated best case per
-// the profiling doctrine (#170): the plain optimized release build of the
-// emitted code, no PGO (#175 runs later).
-// ------------------------------------------------------------------------------------------
-
-static bench::BenchPacket pin_gen_packet()
-{
-    bench::BenchPacket in;
-    in.a = -37; in.b = 12345; in.c = 987654;
-    in.bits7 = 97; in.bits13 = 5000; in.bits23 = 1234567;
-    in.flag = true;
-    in.x = 1.5f; in.y = -3.25f; in.z = 100.125f;
-    in.big = 0x123456789ABCDEF0ull;
-    for ( int i = 0; i < 17; i++ )
-        in.blob[i] = (uint8_t) ( i * 31 );
-    return in;
-}
-
-static bench::BenchInts pin_gen_ints()
-{
-    bench::BenchInts in;
-    in.f0 = -37; in.f1 = 12345; in.f2 = 987654; in.f3 = 2; in.f4 = -15;
-    in.f5 = 777; in.f6 = -2048; in.f7 = 200; in.f8 = -543210; in.f9 = 99;
-    return in;
-}
-
-static bench::BenchBits pin_gen_bits()
-{
-    bench::BenchBits in;
-    in.b7 = 97; in.b13 = 5000; in.b23 = 1234567; in.b3 = 5;
-    in.b32 = 0xDEADBEEFu; in.b11 = 1024; in.b19 = 333333;
-    in.b48 = 0xFEDCBA987654ull;
-    return in;
-}
-
-static void vary_gen_packet( bench::BenchPacket & p, uint64_t rng )
-{
-    p.a = int32_t( ( rng >> 8 ) & 63 ) - 32;
-    p.b = int32_t( uint32_t( rng >> 16 ) & 65535 );
-    p.c = int32_t( ( rng >> 24 ) & 0xFFFFF ) - 500000;
-    p.bits7 = uint32_t( rng ) & 127;
-    p.bits13 = uint32_t( rng >> 3 ) & 8191;
-    p.bits23 = uint32_t( rng >> 5 ) & 8388607;
-    p.flag = ( rng & 1 ) != 0;
-    p.x = float( uint32_t( rng ) & 0xFFFF );
-    p.big = rng;
-    p.blob[0] = uint8_t( rng >> 32 );
-}
-
-static void vary_gen_ints( bench::BenchInts & f, uint64_t rng )
-{
-    f.f0 = int32_t( ( rng >> 8 ) & 63 ) - 32;
-    f.f1 = int32_t( uint32_t( rng >> 16 ) & 65535 );
-    f.f2 = int32_t( ( rng >> 24 ) & 0xFFFFF ) - 500000;
-    f.f3 = int32_t( uint32_t( rng >> 2 ) & 3 );
-    f.f4 = int32_t( ( rng >> 11 ) & 15 ) - 8;
-    f.f5 = int32_t( uint32_t( rng >> 22 ) & 511 );
-    f.f6 = int32_t( ( rng >> 33 ) & 2047 ) - 1024;
-    f.f7 = int32_t( uint32_t( rng >> 40 ) & 255 );
-    f.f8 = int32_t( ( rng >> 30 ) & 0xFFFFF ) - 500000;
-    f.f9 = int32_t( uint32_t( rng >> 57 ) & 63 );
-}
-
-static void vary_gen_bits( bench::BenchBits & f, uint64_t rng )
-{
-    f.b7 = uint32_t( rng ) & 127;
-    f.b13 = uint32_t( rng >> 3 ) & 8191;
-    f.b23 = uint32_t( rng >> 5 ) & 8388607;
-    f.b3 = uint32_t( rng >> 29 ) & 7;
-    f.b32 = uint32_t( rng >> 16 );
-    f.b11 = uint32_t( rng >> 37 ) & 2047;
-    f.b19 = uint32_t( rng >> 44 ) & 524287;
-    f.b48 = rng & 0xFFFFFFFFFFFFull;
-}
-
 #if defined(_MSC_VER)
 #define BENCH_NOINLINE __declspec( noinline )
 #else
@@ -1227,13 +1148,10 @@ int main( int argc, char ** argv )
     // near 3x the fully-inlined header-only C++.
     bench_message( "real_packet", "real_packet", 8000000L, realworld::RealPacket{}, realworld::WriteRealPacket, realworld::ReadRealPacket, vary_real_packet );
 
-    // family gen over the Bench corpus (issue #177): the four Bench.schema
-    // shapes through the generated code — same goldens, same pins, same vary
-    // mappings, same iteration counts (fixed and identical across all five
-    // runners, §2.1).
-    bench_message( "bench_packet", "bench_packet", 32000000L, pin_gen_packet(), bench::WriteBenchPacket, bench::ReadBenchPacket, vary_gen_packet );
-    bench_message( "bench_ints", "bench_ints", 40000000L, pin_gen_ints(), bench::WriteBenchInts, bench::ReadBenchInts, vary_gen_ints );
-    bench_message( "bench_bits", "bench_bits", 48000000L, pin_gen_bits(), bench::WriteBenchBits, bench::ReadBenchBits, vary_gen_bits );
+    // family gen over the Bench corpus: BenchMixed through the generated code,
+    // fed by the committed variant corpus — same goldens, same iteration count
+    // in every runner (§2.1). No hand-written pin, vary or sink code
+    // participates in this leg.
     bench_datadriven<bench::BenchMixed>( "bench_mixed", "bench_mixed", 4000000L, bench::WriteBenchMixed, bench::ReadBenchMixed );
 
     // family bits (§1.4): the one bitpacker workload in the estate. 24576

@@ -145,9 +145,26 @@ like both corrections before it.
 
 ### §1.3 The Bench corpus
 
-The four shapes the retired bespoke harnesses measured, transcribed from
-`serialize/bench.cpp` into schema so all nine languages inherit one
-definition and measure them through their generated code.
+**The Bench corpus is ONE measured shape: `BenchMixed` (§1.3a).** Owner
+ruling, 2026-08-31, verbatim: *"there should be only a single schema bench:
+Bench.schema, it generates per-language stuff that is how we measure how
+efficient serialize and schema is per-language."*
+
+`bench/corpus/Bench.schema` also declares `BenchPacket`, `BenchInts` and
+`BenchBits` — the three stress shapes the retired bespoke harnesses measured,
+transcribed from `serialize/bench.cpp`. **They are no longer measured by any
+runner.** They were the last hand-written pin / vary / field-check / sink code
+in the Bench-corpus leg, and that code is deleted in every one of the nine
+runners; the only measurement left there is the data-driven BenchMixed driver
+reading the committed variant corpus through the generated codecs.
+
+The three declarations and their `testdata/wire/bench_{packet,ints,bits}.bin`
+goldens **stay**, because they are load-bearing OUTSIDE the bench: the
+cross-language conformance suite pins them (`test/bench/main.cpp`,
+`test/bench/c_main.c`, and the java / js / dart / elixir port suites) and
+`make test` gates on those goldens byte-for-byte. They are conformance
+fixtures now, and nothing in this document is normative about them as bench
+rows. Their text is reproduced below as the record of what the fixtures are.
 
 ```
 // schema/bench/corpus/Bench.schema
@@ -310,17 +327,19 @@ The reference implementation is `bench/cpp/bench_main.cpp:165-203`. It gives the
 estate a mechanical proof that every language's leg measures the same work,
 rather than a header comment asserting it.
 
-The pinned instances are defined in `test/bench/main.cpp` (the golden producer;
-BenchPacket's pin is `serialize/bench.cpp` `Init()` verbatim, the other three are
-pinned there) and transcribed into every runner. The goldens keep the
-transcriptions honest — a wrong transcription cannot pass the gate.
+The pinned instance is defined in `test/bench/main.cpp` (the golden producer)
+and reaches every runner as DATA: `bench/corpus/variants/bench_mixed.variants.bin`
+is the committed variant corpus, whose record 0 IS the pinned instance. No
+runner transcribes a pin, so there is no transcription left to keep honest —
+variant 0 is byte-compared to the golden, and every other variant must decode
+and re-encode byte-identically at the same length.
 
-The gate's residual, named: the 64 varied read buffers are length-checked
-(bytes_per_op must not move under variation) but not value-checked — safe while
-the shape is branch-free and fixed-width, because a wrong decode of such a
-shape cannot change which fields ride without changing the byte count. A
-branchy or variable-width shape needs value checks on the variant decodes,
-not only on the pinned instance.
+The gate's residual is CLOSED for the measured shape. It was named when the
+hand-written shapes rode here: the 64 varied read buffers were length-checked
+(bytes_per_op must not move under variation) but not value-checked, which was
+safe only while a shape was branch-free and fixed-width. The data-driven gate
+value-checks every variant by re-encoding it, so a branchy, variable-width
+shape — BenchMixed is both — is covered.
 
 ### §1.6 `corpus_id`
 
@@ -1459,10 +1478,13 @@ does not pretend otherwise.
 
 1. Add `schema/bench/corpus/Bench.schema` (§1.3) and wire it into `SCHEMAS`.
 2. Generate into all nine languages; generate `testdata/wire/bench_*.bin` goldens.
-3. Bench the four shapes through each language's generated code, gated by §1.5
-   against those goldens.
-4. Verify the byte sizes: 49, 14, 20, 438. If generation disagrees with §1.3's
-   arithmetic, the goldens win and §1.3 is corrected.
+3. Bench `BenchMixed` through each language's generated code, gated by §1.5
+   against its golden and its committed variant corpus. (The three stress
+   shapes were benched here too until 2026-08-31; they are conformance
+   fixtures now — §1.3.)
+4. Verify the byte sizes: 438 for BenchMixed, 49/14/20 for the fixtures. If
+   generation disagrees with §1.3's arithmetic, the goldens win and §1.3 is
+   corrected.
 
 ### Step 7 — retire the bespoke harnesses
 

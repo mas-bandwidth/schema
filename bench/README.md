@@ -163,35 +163,38 @@ it. Human-readable tables live beside the CSVs in `bench/results/`.
 | testdata          | testdata              | the everything message (floats, strings, arrays)  |
 | real_packet       | real_packet           | the §1.7 realistic snapshot (`bench/corpus/RealWorld.schema`): ~93 riding individually serialized small fields of every scalar kind, 204 B, 0% bulk share by bits; pin = the all-defaults instance |
 
-The `bench/corpus/Bench.schema` shapes (family `gen`, oracle-gated per §1.5;
-iteration counts fixed and identical across all six languages) and family
+The `bench/corpus/Bench.schema` shape (family `gen`, oracle-gated per §1.5;
+iteration count fixed and identical across all nine languages) and family
 `bits`:
 
 | bench        | family | pinned to golden | shape                                              |
 |--------------|--------|------------------|----------------------------------------------------|
-| bench_packet | gen    | bench_packet     | the serialize/bench.cpp stream packet (49 B)       |
-| bench_ints   | gen    | bench_ints       | 10 ranged ints (14 B)                              |
-| bench_bits   | gen    | bench_bits       | 8 raw bit fields incl. one 48-bit (20 B)           |
 | bench_mixed  | gen    | bench_mixed      | **THE canonical benchmark** (#184): every construct the schema language expresses, in one representative game message, integers carrying 91.87% of the wire bits (438 B) |
 | bitpacker    | bits   | — (read-back verified in setup) | 16-width table over a 64 KiB buffer, 24576 passes/run (§1.4) |
 
-**bench_mixed is THE headline shape** (owner's ruling, issue #184: *"I'd
+**bench_mixed is THE Bench-corpus shape** (owner's ruling, issue #184: *"I'd
 rather we just have ONE good benchmark we can apply to all serialize and
-schema implementations"*). bench_packet / bench_ints / bits stay as full-sweep
-diagnostic stress rows and are out of the headline story. Its definition is
-`bench/corpus/Bench.schema`, and its weighting law — integers carry at least
-90% of the wire bits — is a GATE: `bench/corpus/budget_test.go` computes the
-share from the schema and fails the build below the floor, printing the full
-bit accounting. Two serialize.h operations are named as NOT expressible in
-schema v1 rather than silently skipped: `serialize_wstring` and
-`serialize_int_relative`, both deferred with their wire already decided
-(SPEC §4.10).
+schema implementations"*, and the 2026-08-31 ruling that there be *"only a
+single schema bench: Bench.schema"*). The three diagnostic stress shapes that
+used to ride beside it — `bench_packet`, `bench_ints`, `bench_bits` — are
+**retired from measurement**: they were the last hand-written pin/vary/sink
+code in the Bench-corpus leg, and every runner now measures BenchMixed and
+nothing else there. Their type declarations and `testdata/wire` goldens
+survive as CONFORMANCE fixtures (`test/bench/main.cpp`, `test/bench/c_main.c`
+and the six port suites gate on them under `make test`); no bench reads them.
 
-The four Bench shapes are measured through the GENERATED code
-(`generated/bench/<lang>`) in every runner, per the #170 profiling doctrine:
-generated best case, the plain optimized build, no PGO. Their `inline`
-column stays `unknown` until the §4 verdict pass learns to attribute them
-(named follow-on on #177).
+bench_mixed's definition is `bench/corpus/Bench.schema`, and its weighting
+law — integers carry at least 90% of the wire bits — is a GATE:
+`bench/corpus/budget_test.go` computes the share from the schema and fails the
+build below the floor, printing the full bit accounting. Two serialize.h
+operations are named as NOT expressible in schema v1 rather than silently
+skipped: `serialize_wstring` and `serialize_int_relative`, both deferred with
+their wire already decided (SPEC §4.10).
+
+bench_mixed is measured through the GENERATED code (`generated/bench/<lang>`)
+in every runner, per the #170 profiling doctrine: generated best case, the
+plain optimized build, no PGO. Its `inline` column stays `unknown` until the
+§4 verdict pass learns to attribute it (named follow-on on #177).
 
 The `bits` timed loops live in noinline symbols (`bitpacker_*_loop`) so the
 §4.1 inline verdict counts the emitted body of the timed loop directly, and

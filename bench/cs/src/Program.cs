@@ -953,106 +953,6 @@ static partial class Program
 
 
 
-    // ------------------------------------------------------------------------------------------
-    // family gen over the Bench corpus (issue #177): the four Bench.schema
-    // shapes measured through the GENERATED code (generated/bench/cs,
-    // namespace Bench) — same golden files, same pinned values, same LCG
-    // field mappings, same BenchMessage discipline as every gen row above.
-    // Generated best case per the profiling doctrine (#170): the plain
-    // Release build, no PGO beyond the JIT's own defaults.
-    // ------------------------------------------------------------------------------------------
-
-    static Bench.BenchPacket PinGenPacket()
-    {
-        Bench.BenchPacket input = new Bench.BenchPacket();
-        input.A = -37;
-        input.B = 12345;
-        input.C = 987654;
-        input.Bits7 = 97;
-        input.Bits13 = 5000;
-        input.Bits23 = 1234567;
-        input.Flag = true;
-        input.X = 1.5f;
-        input.Y = -3.25f;
-        input.Z = 100.125f;
-        input.Big = 0x123456789ABCDEF0;
-        for (int i = 0; i < 17; i++)
-        {
-            input.Blob[i] = (byte)(i * 31);
-        }
-        return input;
-    }
-
-    static Bench.BenchInts PinGenInts()
-    {
-        Bench.BenchInts input = new Bench.BenchInts();
-        input.F0 = -37;
-        input.F1 = 12345;
-        input.F2 = 987654;
-        input.F3 = 2;
-        input.F4 = -15;
-        input.F5 = 777;
-        input.F6 = -2048;
-        input.F7 = 200;
-        input.F8 = -543210;
-        input.F9 = 99;
-        return input;
-    }
-
-    static Bench.BenchBits PinGenBits()
-    {
-        Bench.BenchBits input = new Bench.BenchBits();
-        input.B7 = 97;
-        input.B13 = 5000;
-        input.B23 = 1234567;
-        input.B3 = 5;
-        input.B32 = 0xDEADBEEF;
-        input.B11 = 1024;
-        input.B19 = 333333;
-        input.B48 = 0xFEDCBA987654;
-        return input;
-    }
-
-    static void VaryGenPacket(Bench.BenchPacket p, ulong rng)
-    {
-        p.A = (int)((rng >> 8) & 63) - 32;
-        p.B = (int)((uint)(rng >> 16) & 65535);
-        p.C = (int)((rng >> 24) & 0xFFFFF) - 500000;
-        p.Bits7 = (uint)rng & 127;
-        p.Bits13 = (uint)(rng >> 3) & 8191;
-        p.Bits23 = (uint)(rng >> 5) & 8388607;
-        p.Flag = (rng & 1) != 0;
-        p.X = (uint)rng & 0xFFFF;
-        p.Big = rng;
-        p.Blob[0] = (byte)(rng >> 32);
-    }
-
-    static void VaryGenInts(Bench.BenchInts f, ulong rng)
-    {
-        f.F0 = (int)((rng >> 8) & 63) - 32;
-        f.F1 = (int)((uint)(rng >> 16) & 65535);
-        f.F2 = (int)((rng >> 24) & 0xFFFFF) - 500000;
-        f.F3 = (int)((uint)(rng >> 2) & 3);
-        f.F4 = (int)((rng >> 11) & 15) - 8;
-        f.F5 = (int)((uint)(rng >> 22) & 511);
-        f.F6 = (int)((rng >> 33) & 2047) - 1024;
-        f.F7 = (int)((uint)(rng >> 40) & 255);
-        f.F8 = (int)((rng >> 30) & 0xFFFFF) - 500000;
-        f.F9 = (int)((uint)(rng >> 57) & 63);
-    }
-
-    static void VaryGenBits(Bench.BenchBits f, ulong rng)
-    {
-        f.B7 = (uint)rng & 127;
-        f.B13 = (uint)(rng >> 3) & 8191;
-        f.B23 = (uint)(rng >> 5) & 8388607;
-        f.B3 = (uint)(rng >> 29) & 7;
-        f.B32 = (uint)(rng >> 16);
-        f.B11 = (uint)(rng >> 37) & 2047;
-        f.B19 = (uint)(rng >> 44) & 524287;
-        f.B48 = rng & 0xFFFFFFFFFFFFul;
-    }
-
     static int Main(string[] args)
     {
         CultureInfo.DefaultThreadCurrentCulture = CultureInfo.InvariantCulture;
@@ -1166,13 +1066,10 @@ static partial class Program
         // sized in the C++ reference (§2.1).
         BenchMessage("real_packet", "real_packet", 8000000, new Realworld.RealPacket(), Realworld.Schema.WriteRealPacket, Realworld.Schema.ReadRealPacket, VaryRealPacket);
 
-        // family gen over the Bench corpus (issue #177): the four
-        // Bench.schema shapes through the generated code — same goldens, same
-        // pins, same vary mappings, same iteration counts (fixed and
-        // identical across all five runners, §2.1).
-        BenchMessage("bench_packet", "bench_packet", 32000000, PinGenPacket(), Bench.Schema.WriteBenchPacket, Bench.Schema.ReadBenchPacket, VaryGenPacket);
-        BenchMessage("bench_ints", "bench_ints", 40000000, PinGenInts(), Bench.Schema.WriteBenchInts, Bench.Schema.ReadBenchInts, VaryGenInts);
-        BenchMessage("bench_bits", "bench_bits", 48000000, PinGenBits(), Bench.Schema.WriteBenchBits, Bench.Schema.ReadBenchBits, VaryGenBits);
+        // family gen over the Bench corpus: BenchMixed through the generated
+        // code, fed by the committed variant corpus — same goldens, same
+        // iteration count in every runner (§2.1). No hand-written pin, vary
+        // or sink code participates in this leg.
         BenchDataDriven<Bench.BenchMixed>("bench_mixed", "bench_mixed", 4000000, Bench.Schema.WriteBenchMixed, Bench.Schema.ReadBenchMixed);
 
         // family bits (§1.4): the one bitpacker workload in the estate

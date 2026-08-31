@@ -928,99 +928,6 @@ fn vary_real_packet(m: &mut realworld::RealPacket, rng: u64) {
 }
 
 // ------------------------------------------------------------------------------------------
-// family gen over the Bench corpus (issue #177): the four Bench.schema shapes
-// measured through the GENERATED code (generated/bench/rust, crate
-// benchcorpus) — same golden files, same pinned values, same LCG field
-// mappings, same bench_message discipline as every gen row above. Generated
-// best case per the profiling doctrine (#170): the plain cargo release
-// build, no PGO.
-// ------------------------------------------------------------------------------------------
-
-fn pin_gen_packet() -> benchgen::BenchPacket {
-    let mut input = benchgen::BenchPacket::default();
-    input.a = -37;
-    input.b = 12345;
-    input.c = 987654;
-    input.bits7 = 97;
-    input.bits13 = 5000;
-    input.bits23 = 1234567;
-    input.flag = true;
-    input.x = 1.5;
-    input.y = -3.25;
-    input.z = 100.125;
-    input.big = 0x123456789ABCDEF0;
-    for i in 0..17 {
-        input.blob[i] = (i * 31) as u8;
-    }
-    input
-}
-
-fn pin_gen_ints() -> benchgen::BenchInts {
-    let mut input = benchgen::BenchInts::default();
-    input.f0 = -37;
-    input.f1 = 12345;
-    input.f2 = 987654;
-    input.f3 = 2;
-    input.f4 = -15;
-    input.f5 = 777;
-    input.f6 = -2048;
-    input.f7 = 200;
-    input.f8 = -543210;
-    input.f9 = 99;
-    input
-}
-
-fn pin_gen_bits() -> benchgen::BenchBits {
-    let mut input = benchgen::BenchBits::default();
-    input.b7 = 97;
-    input.b13 = 5000;
-    input.b23 = 1234567;
-    input.b3 = 5;
-    input.b32 = 0xDEADBEEF;
-    input.b11 = 1024;
-    input.b19 = 333333;
-    input.b48 = 0xFEDCBA987654;
-    input
-}
-
-fn vary_gen_packet(p: &mut benchgen::BenchPacket, rng: u64) {
-    p.a = (((rng >> 8) & 63) as i32) - 32;
-    p.b = ((rng >> 16) as u32 & 65535) as i32;
-    p.c = (((rng >> 24) & 0xFFFFF) as i32) - 500000;
-    p.bits7 = (rng as u32) & 127;
-    p.bits13 = ((rng >> 3) as u32) & 8191;
-    p.bits23 = ((rng >> 5) as u32) & 8388607;
-    p.flag = (rng & 1) != 0;
-    p.x = ((rng as u32) & 0xFFFF) as f32;
-    p.big = rng;
-    p.blob[0] = (rng >> 32) as u8;
-}
-
-fn vary_gen_ints(f: &mut benchgen::BenchInts, rng: u64) {
-    f.f0 = (((rng >> 8) & 63) as i32) - 32;
-    f.f1 = ((rng >> 16) as u32 & 65535) as i32;
-    f.f2 = (((rng >> 24) & 0xFFFFF) as i32) - 500000;
-    f.f3 = ((rng >> 2) as u32 & 3) as i32;
-    f.f4 = (((rng >> 11) & 15) as i32) - 8;
-    f.f5 = ((rng >> 22) as u32 & 511) as i32;
-    f.f6 = (((rng >> 33) & 2047) as i32) - 1024;
-    f.f7 = ((rng >> 40) as u32 & 255) as i32;
-    f.f8 = (((rng >> 30) & 0xFFFFF) as i32) - 500000;
-    f.f9 = ((rng >> 57) as u32 & 63) as i32;
-}
-
-fn vary_gen_bits(f: &mut benchgen::BenchBits, rng: u64) {
-    f.b7 = (rng as u32) & 127;
-    f.b13 = ((rng >> 3) as u32) & 8191;
-    f.b23 = ((rng >> 5) as u32) & 8388607;
-    f.b3 = ((rng >> 29) as u32) & 7;
-    f.b32 = (rng >> 16) as u32;
-    f.b11 = ((rng >> 37) as u32) & 2047;
-    f.b19 = ((rng >> 44) as u32) & 524287;
-    f.b48 = rng & 0xFFFF_FFFF_FFFF;
-}
-
-// ------------------------------------------------------------------------------------------
 
 fn main() {
     let mut csv = false;
@@ -1224,40 +1131,10 @@ fn main() {
         vary_real_packet,
     );
 
-    // family gen over the Bench corpus (issue #177): the four Bench.schema
-    // shapes through the generated code — same goldens, same pins, same vary
-    // mappings, same iteration counts (fixed and identical across all five
-    // runners, §2.1).
-    bench_message(
-        &ctx,
-        "bench_packet",
-        Some("bench_packet"),
-        32000000,
-        pin_gen_packet(),
-        benchgen::write_bench_packet,
-        benchgen::read_bench_packet,
-        vary_gen_packet,
-    );
-    bench_message(
-        &ctx,
-        "bench_ints",
-        Some("bench_ints"),
-        40000000,
-        pin_gen_ints(),
-        benchgen::write_bench_ints,
-        benchgen::read_bench_ints,
-        vary_gen_ints,
-    );
-    bench_message(
-        &ctx,
-        "bench_bits",
-        Some("bench_bits"),
-        48000000,
-        pin_gen_bits(),
-        benchgen::write_bench_bits,
-        benchgen::read_bench_bits,
-        vary_gen_bits,
-    );
+    // family gen over the Bench corpus: BenchMixed through the generated code,
+    // fed by the committed variant corpus — same goldens, same iteration count
+    // in every runner (§2.1). No hand-written pin, vary or sink code
+    // participates in this leg.
     bench_datadriven::<benchgen::BenchMixed, _, _, _, _>(
         &ctx,
         "bench_mixed",

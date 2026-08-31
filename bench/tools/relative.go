@@ -53,7 +53,7 @@ var corpus = []string{
 // column, not this list, is what the §5.3 refusal rules read. A bench absent
 // from this list would silently vanish from every table and from aggregate,
 // so the list must know every bench the runners emit.
-var benchCorpus = []string{"bench_packet", "bench_ints", "bench_bits", "bench_mixed"}
+var benchCorpus = []string{"bench_mixed"}
 
 const bitpacker = "bitpacker"
 

@@ -79,9 +79,9 @@ import * as typesFlat from "../../generated/js/TypesFlat.js";
 import * as wireFlat from "../../generated/js/WireFlat.js";
 import * as realworldFlat from "../../generated/bench/js/realworld/RealWorldFlat.js";
 
-// the four bench/corpus/Bench.schema shapes as GENERATED code: the flat
-// tier is THE js path for these shapes exactly as for the corpus shapes
-// above, cross-validated against the runtime-call tier by the same oracle.
+// bench/corpus/Bench.schema's BenchMixed as GENERATED code: the flat tier
+// is THE js path for this shape exactly as for the corpus shapes above,
+// cross-validated against the runtime-call tier by the same oracle.
 import * as bench from "../../generated/bench/js/Bench.js";
 import * as benchFlat from "../../generated/bench/js/BenchFlat.js";
 
@@ -229,20 +229,6 @@ function sumBytes(a, n) {
   }
   return s;
 }
-
-function sinkOfBenchPacketGen(d) {
-  return d.A + d.B + d.C + d.Bits7 + d.Bits13 + d.Bits23 + boolBit(d.Flag) +
-    d.X + d.Y + d.Z + bigBit(d.Big) + sumBytes(d.Blob, 17);
-}
-
-function sinkOfBenchIntsGen(d) {
-  return d.F0 + d.F1 + d.F2 + d.F3 + d.F4 + d.F5 + d.F6 + d.F7 + d.F8 + d.F9;
-}
-
-function sinkOfBenchBitsGen(d) {
-  return d.B7 + d.B13 + d.B23 + d.B3 + d.B32 + d.B11 + d.B19 + bigBit(d.B48);
-}
-
 
 function sinkOfRigidBody(d) {
   return d.Position.X + d.Position.Y + d.Position.Z +
@@ -1386,97 +1372,6 @@ function benchBitpacker(passes) {
 }
 
 // --------------------------------------------------------------------------
-// the four Bench.schema shapes as GENERATED code (flat tier = THE js path):
-// pins and vary functions over the generated classes, field mappings
-// verbatim from the family benches
-// --------------------------------------------------------------------------
-
-function pinBenchPacketGen() {
-  const p = new bench.BenchPacket();
-  p.A = -37;
-  p.B = 12345;
-  p.C = 987654;
-  p.Bits7 = 97;
-  p.Bits13 = 5000;
-  p.Bits23 = 1234567;
-  p.Flag = true;
-  p.X = 1.5;
-  p.Y = -3.25;
-  p.Z = 100.125;
-  p.Big = 0x123456789abcdef0n;
-  for (let i = 0; i < 17; i++) {
-    p.Blob[i] = (i * 31) & 0xff;
-  }
-  return p;
-}
-
-function varyBenchPacketGen(p) {
-  p.A = (shr64(8) & 63) - 32;
-  p.B = shr64(16) & 65535;
-  p.C = (shr64(24) & 0xfffff) - 500000;
-  p.Bits7 = rng.lo & 127;
-  p.Bits13 = shr64(3) & 8191;
-  p.Bits23 = shr64(5) & 8388607;
-  p.Flag = (rng.lo & 1) !== 0;
-  p.X = rng.lo & 0xffff; // exact in float32
-  p.Big = rngBig(); // the full 64 bits, direct
-  p.Blob[0] = shr64(32) & 0xff;
-}
-
-function pinBenchIntsGen() {
-  const f = new bench.BenchInts();
-  f.F0 = -37;
-  f.F1 = 12345;
-  f.F2 = 987654;
-  f.F3 = 2;
-  f.F4 = -15;
-  f.F5 = 777;
-  f.F6 = -2048;
-  f.F7 = 200;
-  f.F8 = -543210;
-  f.F9 = 99;
-  return f;
-}
-
-function varyBenchIntsGen(f) {
-  f.F0 = (shr64(8) & 63) - 32;
-  f.F1 = shr64(16) & 65535;
-  f.F2 = (shr64(24) & 0xfffff) - 500000;
-  f.F3 = shr64(2) & 3;
-  f.F4 = (shr64(11) & 15) - 8;
-  f.F5 = shr64(22) & 511;
-  f.F6 = (shr64(33) & 2047) - 1024;
-  f.F7 = shr64(40) & 255;
-  f.F8 = (shr64(30) & 0xfffff) - 500000;
-  f.F9 = shr64(57) & 63;
-}
-
-function pinBenchBitsGen() {
-  const f = new bench.BenchBits();
-  f.B7 = 97;
-  f.B13 = 5000;
-  f.B23 = 1234567;
-  f.B3 = 5;
-  f.B32 = 0xdeadbeef;
-  f.B11 = 1024;
-  f.B19 = 333333;
-  f.B48 = 0xfedcba987654n;
-  return f;
-}
-
-function varyBenchBitsGen(f) {
-  f.B7 = rng.lo & 127;
-  f.B13 = shr64(3) & 8191;
-  f.B23 = shr64(5) & 8388607;
-  f.B3 = shr64(29) & 7;
-  f.B32 = shr64(16);
-  f.B11 = shr64(37) & 2047;
-  f.B19 = shr64(44) & 524287;
-  f.B48 = rngBig() & 0xffffffffffffn;
-}
-
-
-// --------------------------------------------------------------------------
 
 function main() {
   const args = process.argv.slice(2);
@@ -1567,13 +1462,11 @@ function main() {
   benchMessage("testdata", "testdata", 8000000, pinTestData(), ex.WriteTestData, ex.ReadTestData, varyTestData, sinkOfTestData);
   benchMessage("real_packet", "real_packet", 8000000, new realworld.RealPacket(), realworld.WriteRealPacket, realworld.ReadRealPacket, varyRealPacket, sinkOfRealPacket);
 
-  // the four Bench.schema shapes as GENERATED code — the flat tier is THE
-  // js entry for these shapes in any cross-language comparison, exactly as
-  // for the corpus shapes above (family gen, codec=flat), cross-validated
-  // against the runtime-call tier by the same oracle.
-  benchMessageFlat("bench_packet", "bench_packet", 32000000, pinBenchPacketGen(), bench.WriteBenchPacket, bench.ReadBenchPacket, benchFlat.WriteBenchPacketFlat, benchFlat.ReadBenchPacketFlat, varyBenchPacketGen, sinkOfBenchPacketGen);
-  benchMessageFlat("bench_ints", "bench_ints", 40000000, pinBenchIntsGen(), bench.WriteBenchInts, bench.ReadBenchInts, benchFlat.WriteBenchIntsFlat, benchFlat.ReadBenchIntsFlat, varyBenchIntsGen, sinkOfBenchIntsGen);
-  benchMessageFlat("bench_bits", "bench_bits", 48000000, pinBenchBitsGen(), bench.WriteBenchBits, bench.ReadBenchBits, benchFlat.WriteBenchBitsFlat, benchFlat.ReadBenchBitsFlat, varyBenchBitsGen, sinkOfBenchBitsGen);
+  // BenchMixed as GENERATED code — the flat tier is THE js entry for this
+  // shape in any cross-language comparison, exactly as for the corpus shapes
+  // above (family gen, codec=flat), cross-validated against the runtime-call
+  // tier by the same oracle. Fed entirely by the committed variant corpus:
+  // no hand-written pin, vary or sink code participates.
   benchDataDrivenFlat("bench_mixed", "bench_mixed", 4000000, bench.BenchMixed, bench.WriteBenchMixed, bench.ReadBenchMixed, benchFlat.WriteBenchMixedFlat, benchFlat.ReadBenchMixedFlat);
 
   // family bits (§1.4): the one bitpacker workload in the estate

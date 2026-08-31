@@ -25,8 +25,8 @@
 
   <ItemGroup>
     <Compile Include="../../generated/cs/*.cs" />
-    <!-- the Bench corpus unit (namespace Bench): the four Bench.schema
-         shapes GENERATED (issue #177) -->
+    <!-- the Bench corpus unit (namespace Bench): the Bench.schema shapes
+         GENERATED (issue #177) -->
     <Compile Include="../../generated/bench/cs/Bench.cs" />
     <!-- the bench-corpus realworld unit (namespace Realworld, so no
          basename/type collision with the Example unit above): RealPacket,

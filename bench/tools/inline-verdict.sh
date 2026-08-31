@@ -493,7 +493,7 @@ cold_for() {
 # PER-OP transitive count for a timed-loop symbol (§4.2: partial:N means N
 # runtime calls PER OP, never N call sites in the emitted loop body). An
 # unrolled loop repeats its per-op calls once per unrolled iteration — clang
-# unrolled the C rt_bench_packet_read_loop 4x and the raw body count
+# unrolled a retired hand-written read loop 4x and the raw body count
 # published partial:12 where the per-op truth is 3. §3.2 makes every
 # out-of-line helper called from a timed loop a once-per-op call in source,
 # so the smallest per-helper emitted edge count out of the loop body IS the
@@ -596,7 +596,6 @@ backfill() {
     awk -F, -v OFS=, -v lang="$LANG_ARG" -v vf="$VD/verdicts.txt" '
         BEGIN {
             while ((getline line < vf) > 0) { split(line, a, " "); v[a[1] "," a[2]] = a[3] }
-            loopfam["bench_packet"] = loopfam["bench_ints"] = loopfam["bench_bits"] = 1
             loopfam["bench_mixed"] = loopfam["bitpacker"] = 1
         }
         $1 == lang && NF == 17 {

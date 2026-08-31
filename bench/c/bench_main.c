@@ -629,72 +629,13 @@ static void vary_real_packet( RealPacket * m, uint64_t rng )
 #include "bench_message.inc"
 
 /* ------------------------------------------------------------------------------------------
-   family gen over the Bench corpus (issue #177): the four Bench.schema shapes
-   measured through the GENERATED code (generated/bench/c/BenchWire.h) — same
-   golden files, same pinned values, same LCG field mappings, same
-   bench_message.inc discipline as every gen row above. Generated best case
-   per the profiling doctrine (#170): the plain optimized release build, no
-   PGO.
+   family gen over the Bench corpus: BenchMixed measured through the GENERATED
+   code (generated/bench/c/BenchWire.h), driven entirely by the committed
+   variant corpus — no hand-written pin, vary or sink code participates.
+   Generated best case per the profiling doctrine (#170): the plain optimized
+   release build, no PGO.
    ------------------------------------------------------------------------------------------ */
 
-static void vary_gen_packet( BenchPacket * p, uint64_t rng )
-{
-    p->a = (int32_t) ( ( rng >> 8 ) & 63 ) - 32;
-    p->b = (int32_t) ( (uint32_t) ( rng >> 16 ) & 65535 );
-    p->c = (int32_t) ( ( rng >> 24 ) & 0xFFFFF ) - 500000;
-    p->bits7 = (uint32_t) rng & 127;
-    p->bits13 = (uint32_t) ( rng >> 3 ) & 8191;
-    p->bits23 = (uint32_t) ( rng >> 5 ) & 8388607;
-    p->flag = ( rng & 1 ) != 0;
-    p->x = (float) ( (uint32_t) rng & 0xFFFF );
-    p->big = rng;
-    p->blob[0] = (uint8_t) ( rng >> 32 );
-}
-
-static void vary_gen_ints( BenchInts * f, uint64_t rng )
-{
-    f->f0 = (int32_t) ( ( rng >> 8 ) & 63 ) - 32;
-    f->f1 = (int32_t) ( (uint32_t) ( rng >> 16 ) & 65535 );
-    f->f2 = (int32_t) ( ( rng >> 24 ) & 0xFFFFF ) - 500000;
-    f->f3 = (int32_t) ( (uint32_t) ( rng >> 2 ) & 3 );
-    f->f4 = (int32_t) ( ( rng >> 11 ) & 15 ) - 8;
-    f->f5 = (int32_t) ( (uint32_t) ( rng >> 22 ) & 511 );
-    f->f6 = (int32_t) ( ( rng >> 33 ) & 2047 ) - 1024;
-    f->f7 = (int32_t) ( (uint32_t) ( rng >> 40 ) & 255 );
-    f->f8 = (int32_t) ( ( rng >> 30 ) & 0xFFFFF ) - 500000;
-    f->f9 = (int32_t) ( (uint32_t) ( rng >> 57 ) & 63 );
-}
-
-static void vary_gen_bits( BenchBits * f, uint64_t rng )
-{
-    f->b7 = (uint32_t) rng & 127;
-    f->b13 = (uint32_t) ( rng >> 3 ) & 8191;
-    f->b23 = (uint32_t) ( rng >> 5 ) & 8388607;
-    f->b3 = (uint32_t) ( rng >> 29 ) & 7;
-    f->b32 = (uint32_t) ( rng >> 16 );
-    f->b11 = (uint32_t) ( rng >> 37 ) & 2047;
-    f->b19 = (uint32_t) ( rng >> 44 ) & 524287;
-    f->b48 = rng & 0xFFFFFFFFFFFFULL;
-}
-
-#define BM_SUFFIX gen_bench_packet
-#define BM_TYPE BenchPacket
-#define BM_WRITE write_bench_packet
-#define BM_READ read_bench_packet
-#define BM_VARY vary_gen_packet
-#include "bench_message.inc"
-#define BM_SUFFIX gen_bench_ints
-#define BM_TYPE BenchInts
-#define BM_WRITE write_bench_ints
-#define BM_READ read_bench_ints
-#define BM_VARY vary_gen_ints
-#include "bench_message.inc"
-#define BM_SUFFIX gen_bench_bits
-#define BM_TYPE BenchBits
-#define BM_WRITE write_bench_bits
-#define BM_READ read_bench_bits
-#define BM_VARY vary_gen_bits
-#include "bench_message.inc"
 #define BM_SUFFIX gen_bench_mixed
 #define BM_TYPE BenchMixed
 #define BM_WRITE write_bench_mixed
@@ -1120,42 +1061,11 @@ int main( int argc, char ** argv )
         bench_message_real_packet( "real_packet", "real_packet", 8000000L, &real_packet );
     }
 
-    /* family gen over the Bench corpus (issue #177): the four Bench.schema
-       shapes through the generated code — same goldens, same pins, same vary
-       mappings, same iteration counts (fixed and identical across all five
-       runners, §2.1). --quick runs the gen bench_mixed. */
-    {
-        BenchPacket gen_packet;
-        BenchInts gen_ints;
-        BenchBits gen_bits;
-
-        memset( &gen_packet, 0, sizeof( gen_packet ) );
-        gen_packet.a = -37; gen_packet.b = 12345; gen_packet.c = 987654;
-        gen_packet.bits7 = 97; gen_packet.bits13 = 5000; gen_packet.bits23 = 1234567;
-        gen_packet.flag = 1;
-        gen_packet.x = 1.5f; gen_packet.y = -3.25f; gen_packet.z = 100.125f;
-        gen_packet.big = 0x123456789ABCDEF0ULL;
-        for ( i = 0; i < 17; i++ )
-            gen_packet.blob[i] = (uint8_t) ( i * 31 );
-
-        memset( &gen_ints, 0, sizeof( gen_ints ) );
-        gen_ints.f0 = -37; gen_ints.f1 = 12345; gen_ints.f2 = 987654; gen_ints.f3 = 2; gen_ints.f4 = -15;
-        gen_ints.f5 = 777; gen_ints.f6 = -2048; gen_ints.f7 = 200; gen_ints.f8 = -543210; gen_ints.f9 = 99;
-
-        memset( &gen_bits, 0, sizeof( gen_bits ) );
-        gen_bits.b7 = 97; gen_bits.b13 = 5000; gen_bits.b23 = 1234567; gen_bits.b3 = 5;
-        gen_bits.b32 = 0xDEADBEEFu; gen_bits.b11 = 1024; gen_bits.b19 = 333333;
-        gen_bits.b48 = 0xFEDCBA987654ULL;
-
-        if ( !g_quick )
-        {
-            bench_message_gen_bench_packet( "bench_packet", "bench_packet", 32000000L, &gen_packet );
-            bench_message_gen_bench_ints( "bench_ints", "bench_ints", 40000000L, &gen_ints );
-            bench_message_gen_bench_bits( "bench_bits", "bench_bits", 48000000L, &gen_bits );
-        }
-        /* --quick runs exactly this gen leg */
-        bench_datadriven_gen_bench_mixed( "bench_mixed", "bench_mixed", 4000000L );
-    }
+    /* family gen over the Bench corpus: BenchMixed through the generated code,
+       fed by the committed variant corpus — same goldens, same iteration count
+       in every runner (§2.1). This is the whole of the Bench-corpus leg, in
+       --quick and in the full sweep alike. */
+    bench_datadriven_gen_bench_mixed( "bench_mixed", "bench_mixed", 4000000L );
 
     /* family bits (§1.4): the one bitpacker workload in the estate */
     if ( !g_quick )

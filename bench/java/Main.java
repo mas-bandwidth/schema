@@ -1,14 +1,14 @@
 // schema bench — the Java runner: a conforming run.sh leg per
 // bench/README.md's runner contract, measuring the generated monomorphic
-// Java codecs over the four bench/corpus/Bench.schema shapes.
+// Java codecs over bench/corpus/Bench.schema's BenchMixed.
 //
 // CONTRACT (BENCH-STANDARD.md): fixed iteration counts identical to every
 // other runner's rows for these benches; 1 discarded warmup run then 7
 // measured runs per (bench, path) — or exactly one measured run under
 // --round K, where the interleaved driver aggregates across rounds (§2.4);
-// per-iteration LCG variation on the write path; 64 rotating variant read
-// buffers; median/min/max/spread over the measured runs; CSV v2 rows on
-// stdout under --csv, human table on stderr.
+// 64 rotating variant buffers on both paths; median/min/max/spread over
+// the measured runs; CSV v2 rows on stdout under --csv, human table on
+// stderr.
 //
 // WHAT THE ROWS MEASURE: the generated codec — schema's Java backend emits
 // self-contained monomorphic write/read functions with the bitpacker
@@ -19,10 +19,10 @@
 // (tight per-shape loops, best-of-five) are NOT comparable to these rows —
 // different measurement contract, and the statistic alone moves the number.
 //
-// GOLDEN GATED (§1.5): before any timing, every measured shape's pinned
-// instance is written and byte-compared against the C++-pinned
-// testdata/wire golden, and all 64 LCG variant buffers are decoded back
-// with every field verified. A runner that mismatches REFUSES to bench.
+// GOLDEN GATED (§1.5): before any timing, variant 0 of the committed
+// variant corpus is byte-compared against the C++-pinned testdata/wire
+// golden, and every variant is decoded and re-encoded byte-identically.
+// A runner that mismatches REFUSES to bench.
 // corpus_id is FNV-1a-64 over the goldens this run actually loaded (§1.6).
 //
 // JVM discipline, by hand (no JMH — zero dependencies): every timed loop
@@ -33,17 +33,15 @@
 // before the measured runs; and every loop's work drains into a static
 // sink the bench publishes at exit under an env var the JIT cannot rule
 // out. Default JVM flags, no -ea: asserts are dormant — the number a user
-// gets is the number reported. Known artifact on this hardware: the packet
-// WRITE row is bimodal ACROSS PROCESSES (~76 vs ~129 M msgs/s on the M2
-// Air), keyed by process-environment-block size — an alignment effect, not
-// warmup; under --round it surfaces as cross-round spread.
+// gets is the number reported.
 //
 //   make build/java-bench/.stamp
 //   cd bench/java && ../../dist/jdk-21.0.12.1/Contents/Home/bin/java \
 //       -cp ../../build/java-bench Main [--csv] [--round K] [--quick]
 //
-// --quick: bench_mixed only, 3 measured runs — run.sh's iteration
-// instrument, never the certification instrument.
+// --quick: 3 measured runs instead of 7 — run.sh's iteration instrument,
+// never the certification instrument. bench_mixed is the whole leg either
+// way.
 
 import bench.Bench;
 
@@ -52,9 +50,6 @@ public final class Main {
 
     // §1.2/§2.1: fixed per-benchmark iteration counts, identical across
     // every language's rows for these benches, recorded in the iters column
-    static final int PACKET_ITERS = 32000000;
-    static final int INTS_ITERS = 40000000;
-    static final int BITS_ITERS = 48000000;
     static final int MIXED_ITERS = 4000000;
 
     static boolean csv = false;
@@ -140,146 +135,10 @@ public final class Main {
     }
 
     /* ----------------------------------------------------------------------
-       the C bench's uint64 LCG, direct: Java's long is 64 bits and wraps
-       two's complement, which IS arithmetic mod 2^64
-       ---------------------------------------------------------------------- */
-
-    static final long LCG_MUL = 0x5851F42D4C957F2DL;
-    static final long LCG_ADD = 0x14057B7EF767814FL;
-
-    static long rng = 1;
-
-    static void lcgSeed() {
-        rng = 1;
-    }
-
-    static void lcgStep() {
-        rng = rng * LCG_MUL + LCG_ADD;
-    }
-
-    // the low 32 bits of (rng >> s), for s in [0,63]
-    static int shr(int s) {
-        return (int) (rng >>> s);
-    }
-
-    /* ----------------------------------------------------------------------
-       pinned instances and vary functions — the §1.3 shapes, field mappings
-       verbatim from the family benches
-       ---------------------------------------------------------------------- */
-
-    static void initBenchPacket(Bench.BenchPacket p) {
-        p.a = -37;
-        p.b = 12345;
-        p.c = 987654;
-        p.bits7 = 97;
-        p.bits13 = 5000;
-        p.bits23 = 1234567;
-        p.flag = true;
-        p.x = 1.5f;
-        p.y = -3.25f;
-        p.z = 100.125f;
-        p.big = 0x123456789abcdef0L;
-        for (int i = 0; i < 17; i++) {
-            p.blob[i] = (byte) ((i * 31) & 0xff);
-        }
-    }
-
-    static void varyBenchPacket(Bench.BenchPacket p) {
-        lcgStep();
-        p.a = (shr(8) & 63) - 32;
-        p.b = shr(16) & 65535;
-        p.c = (shr(24) & 0xfffff) - 500000;
-        p.bits7 = shr(0) & 127;
-        p.bits13 = shr(3) & 8191;
-        p.bits23 = shr(5) & 8388607;
-        p.flag = (rng & 1) != 0;
-        p.x = (float) (rng & 0xffff); // exact in float32
-        p.big = rng; // the full 64 bits, direct
-        p.blob[0] = (byte) (shr(32) & 0xff);
-    }
-
-    static boolean checkBenchPacket(Bench.BenchPacket e, Bench.BenchPacket d) {
-        if (e.a != d.a || e.b != d.b || e.c != d.c
-                || e.bits7 != d.bits7 || e.bits13 != d.bits13 || e.bits23 != d.bits23
-                || e.flag != d.flag || e.x != d.x || e.y != d.y || e.z != d.z
-                || e.big != d.big) {
-            return false;
-        }
-        for (int i = 0; i < 17; i++) {
-            if (e.blob[i] != d.blob[i]) {
-                return false;
-            }
-        }
-        return true;
-    }
-
-    static void initBenchInts(Bench.BenchInts p) {
-        p.f0 = -37;
-        p.f1 = 12345;
-        p.f2 = 987654;
-        p.f3 = 2;
-        p.f4 = -15;
-        p.f5 = 777;
-        p.f6 = -2048;
-        p.f7 = 200;
-        p.f8 = -543210;
-        p.f9 = 99;
-    }
-
-    static void varyBenchInts(Bench.BenchInts f) {
-        lcgStep();
-        f.f0 = (shr(8) & 63) - 32;
-        f.f1 = shr(16) & 65535;
-        f.f2 = (shr(24) & 0xfffff) - 500000;
-        f.f3 = shr(2) & 3;
-        f.f4 = (shr(11) & 15) - 8;
-        f.f5 = shr(22) & 511;
-        f.f6 = (shr(33) & 2047) - 1024;
-        f.f7 = shr(40) & 255;
-        f.f8 = (shr(30) & 0xfffff) - 500000;
-        f.f9 = shr(57) & 63;
-    }
-
-    static boolean checkBenchInts(Bench.BenchInts e, Bench.BenchInts d) {
-        return e.f0 == d.f0 && e.f1 == d.f1 && e.f2 == d.f2 && e.f3 == d.f3
-                && e.f4 == d.f4 && e.f5 == d.f5 && e.f6 == d.f6 && e.f7 == d.f7
-                && e.f8 == d.f8 && e.f9 == d.f9;
-    }
-
-    static void initBenchBits(Bench.BenchBits p) {
-        p.b7 = 97;
-        p.b13 = 5000;
-        p.b23 = 1234567;
-        p.b3 = 5;
-        p.b32 = 0xdeadbeef;
-        p.b11 = 1024;
-        p.b19 = 333333;
-        p.b48 = 0xfedcba987654L;
-    }
-
-    static void varyBenchBits(Bench.BenchBits f) {
-        lcgStep();
-        f.b7 = shr(0) & 127;
-        f.b13 = shr(3) & 8191;
-        f.b23 = shr(5) & 8388607;
-        f.b3 = shr(29) & 7;
-        f.b32 = shr(16);
-        f.b11 = shr(37) & 2047;
-        f.b19 = shr(44) & 524287;
-        // the 48-bit field: low dword + 16-bit remainder, composed — the same
-        // bits the family benches send as two lanes
-        f.b48 = (rng & 0xffffffffL) | (((rng >>> 32) & 0xffffL) << 32);
-    }
-
-    static boolean checkBenchBits(Bench.BenchBits e, Bench.BenchBits d) {
-        return e.b7 == d.b7 && e.b13 == d.b13 && e.b23 == d.b23 && e.b3 == d.b3
-                && e.b32 == d.b32 && e.b11 == d.b11 && e.b19 == d.b19 && e.b48 == d.b48;
-    }
-
-    /* ----------------------------------------------------------------------
-       the golden gate (§1.5), per shape: the PINNED instance's bytes must
-       equal the C++-pinned testdata/wire golden, and all 64 variant buffers
-       must decode back field-perfect. A mismatch refuses to bench.
+       the golden gate (§1.5): variant 0 of the committed variant corpus must
+       equal the C++-pinned testdata/wire golden byte for byte, and every
+       variant must decode and re-encode byte-identically. A mismatch refuses
+       to bench.
        ---------------------------------------------------------------------- */
 
     static byte[] golden(String name) {
@@ -296,30 +155,6 @@ public final class Main {
         }
     }
 
-    static void gatePinned(String row, byte[] buffer, int n, String goldenName) {
-        final byte[] g = golden(goldenName);
-        if (n != g.length || !java.util.Arrays.equals(buffer, 0, n, g, 0, g.length)) {
-            gateFail(row, "pinned instance vs testdata/wire/" + goldenName + ".bin");
-        }
-    }
-
-    // the four shapes' state: packets, decode targets, variant buffers —
-    // static fields so the timed loop methods reference them directly
-    static final Bench.BenchPacket packet = new Bench.BenchPacket();
-    static final Bench.BenchPacket packetDecoded = new Bench.BenchPacket();
-    static final byte[][] packetVariants = new byte[NUM_VARIANTS][];
-    static int packetBytes;
-
-    static final Bench.BenchInts ints = new Bench.BenchInts();
-    static final Bench.BenchInts intsDecoded = new Bench.BenchInts();
-    static final byte[][] intsVariants = new byte[NUM_VARIANTS][];
-    static int intsBytes;
-
-    static final Bench.BenchBits bits = new Bench.BenchBits();
-    static final Bench.BenchBits bitsDecoded = new Bench.BenchBits();
-    static final byte[][] bitsVariants = new byte[NUM_VARIANTS][];
-    static int bitsBytes;
-
     // bench_mixed is DATA-DRIVEN (issue #191): its variants are the committed
     // wire records, its 64 instances are what those records decode to, and no
     // pinned initializer, vary function, field check or sink fold exists for
@@ -330,93 +165,6 @@ public final class Main {
     static int mixedBytes;
 
     static final byte[] writeBuf = new byte[512]; // >= benchMixedMaxBytes (456), multiple of 8
-
-    static void gatePacket() {
-        initBenchPacket(packet);
-        final int n = Bench.writeBenchPacket(packet, writeBuf);
-        gatePinned("bench_packet", writeBuf, n, "bench_packet");
-        initBenchPacket(packet);
-        lcgSeed();
-        for (int v = 0; v < NUM_VARIANTS; v++) {
-            varyBenchPacket(packet);
-            final int nv = Bench.writeBenchPacket(packet, writeBuf);
-            if (v == 0) {
-                packetBytes = nv;
-            } else if (nv != packetBytes) {
-                gateFail("bench_packet", "variant " + v + " size " + nv + " != " + packetBytes);
-            }
-            packetVariants[v] = java.util.Arrays.copyOf(writeBuf, nv);
-        }
-        initBenchPacket(packet);
-        lcgSeed();
-        for (int v = 0; v < NUM_VARIANTS; v++) {
-            varyBenchPacket(packet);
-            if (!Bench.readBenchPacket(packetDecoded, packetVariants[v], packetBytes * 8)) {
-                gateFail("bench_packet", "variant " + v + " read verdict");
-            }
-            if (!checkBenchPacket(packet, packetDecoded)) {
-                gateFail("bench_packet", "variant " + v + " field mismatch");
-            }
-        }
-    }
-
-    static void gateInts() {
-        initBenchInts(ints);
-        final int n = Bench.writeBenchInts(ints, writeBuf);
-        gatePinned("bench_ints", writeBuf, n, "bench_ints");
-        initBenchInts(ints);
-        lcgSeed();
-        for (int v = 0; v < NUM_VARIANTS; v++) {
-            varyBenchInts(ints);
-            final int nv = Bench.writeBenchInts(ints, writeBuf);
-            if (v == 0) {
-                intsBytes = nv;
-            } else if (nv != intsBytes) {
-                gateFail("bench_ints", "variant " + v + " size " + nv + " != " + intsBytes);
-            }
-            intsVariants[v] = java.util.Arrays.copyOf(writeBuf, nv);
-        }
-        initBenchInts(ints);
-        lcgSeed();
-        for (int v = 0; v < NUM_VARIANTS; v++) {
-            varyBenchInts(ints);
-            if (!Bench.readBenchInts(intsDecoded, intsVariants[v], intsBytes * 8)) {
-                gateFail("bench_ints", "variant " + v + " read verdict");
-            }
-            if (!checkBenchInts(ints, intsDecoded)) {
-                gateFail("bench_ints", "variant " + v + " field mismatch");
-            }
-        }
-    }
-
-    static void gateBits() {
-        initBenchBits(bits);
-        final int n = Bench.writeBenchBits(bits, writeBuf);
-        gatePinned("bench_bits", writeBuf, n, "bench_bits");
-        initBenchBits(bits);
-        lcgSeed();
-        for (int v = 0; v < NUM_VARIANTS; v++) {
-            varyBenchBits(bits);
-            final int nv = Bench.writeBenchBits(bits, writeBuf);
-            if (v == 0) {
-                bitsBytes = nv;
-            } else if (nv != bitsBytes) {
-                gateFail("bench_bits", "variant " + v + " size " + nv + " != " + bitsBytes);
-            }
-            bitsVariants[v] = java.util.Arrays.copyOf(writeBuf, nv);
-        }
-        initBenchBits(bits);
-        lcgSeed();
-        for (int v = 0; v < NUM_VARIANTS; v++) {
-            varyBenchBits(bits);
-            if (!Bench.readBenchBits(bitsDecoded, bitsVariants[v], bitsBytes * 8)) {
-                gateFail("bench_bits", "variant " + v + " read verdict");
-            }
-            if (!checkBenchBits(bits, bitsDecoded)) {
-                gateFail("bench_bits", "variant " + v + " field mismatch");
-            }
-        }
-    }
 
     /* ----------------------------------------------------------------------
        the DATA-DRIVEN driver for bench_mixed (issue #191).
@@ -526,88 +274,6 @@ public final class Main {
        the widening at -23% read on bench_mixed for exactly this loop).
        ---------------------------------------------------------------------- */
 
-    static long sinkOfBenchPacket(Bench.BenchPacket d) {
-        long s = d.a + d.b + d.c + d.bits7 + d.bits13 + d.bits23
-                + (d.flag ? 1 : 0)
-                + Float.floatToRawIntBits(d.x) + Float.floatToRawIntBits(d.y)
-                + Float.floatToRawIntBits(d.z) + d.big;
-        for (int i = 0; i < 17; i++) {
-            s += d.blob[i];
-        }
-        return s;
-    }
-
-    static long sinkOfBenchInts(Bench.BenchInts d) {
-        return (long) d.f0 + d.f1 + d.f2 + d.f3 + d.f4 + d.f5 + d.f6 + d.f7 + d.f8 + d.f9;
-    }
-
-    static long sinkOfBenchBits(Bench.BenchBits d) {
-        return (long) d.b7 + d.b13 + d.b23 + d.b3 + d.b32 + d.b11 + d.b19 + d.b48;
-    }
-
-    static double timePacketWrite(int iters) {
-        final double start = now();
-        for (int i = 0; i < iters; i++) {
-            varyBenchPacket(packet);
-            sink += Bench.writeBenchPacket(packet, writeBuf);
-        }
-        return now() - start;
-    }
-
-    static double timePacketRead(int iters) {
-        final int numBits = packetBytes * 8;
-        final double start = now();
-        for (int i = 0; i < iters; i++) {
-            if (!Bench.readBenchPacket(packetDecoded, packetVariants[i & (NUM_VARIANTS - 1)], numBits)) {
-                System.exit(1);
-            }
-            sink += sinkOfBenchPacket(packetDecoded); // full-struct observation (#175)
-        }
-        return now() - start;
-    }
-
-    static double timeIntsWrite(int iters) {
-        final double start = now();
-        for (int i = 0; i < iters; i++) {
-            varyBenchInts(ints);
-            sink += Bench.writeBenchInts(ints, writeBuf);
-        }
-        return now() - start;
-    }
-
-    static double timeIntsRead(int iters) {
-        final int numBits = intsBytes * 8;
-        final double start = now();
-        for (int i = 0; i < iters; i++) {
-            if (!Bench.readBenchInts(intsDecoded, intsVariants[i & (NUM_VARIANTS - 1)], numBits)) {
-                System.exit(1);
-            }
-            sink += sinkOfBenchInts(intsDecoded); // full-struct observation (#175)
-        }
-        return now() - start;
-    }
-
-    static double timeBitsWrite(int iters) {
-        final double start = now();
-        for (int i = 0; i < iters; i++) {
-            varyBenchBits(bits);
-            sink += Bench.writeBenchBits(bits, writeBuf);
-        }
-        return now() - start;
-    }
-
-    static double timeBitsRead(int iters) {
-        final int numBits = bitsBytes * 8;
-        final double start = now();
-        for (int i = 0; i < iters; i++) {
-            if (!Bench.readBenchBits(bitsDecoded, bitsVariants[i & (NUM_VARIANTS - 1)], numBits)) {
-                System.exit(1);
-            }
-            sink += sinkOfBenchBits(bitsDecoded); // full-struct observation (#175)
-        }
-        return now() - start;
-    }
-
     // WRITE: encode the 64 pre-decoded instances round-robin. Rotating the
     // instances is what §2.7's per-iteration LCG mutation bought — the encoder
     // never sees the same input twice in a row and cannot precompute scratch
@@ -710,28 +376,13 @@ public final class Main {
         System.err.println("schema bench (java, generated codecs"
                 + (quick ? ", --quick: iteration instrument, not certification" : "") + ")");
 
-        // every measured row's golden gate runs before any row is timed: a
-        // runner that fails its goldens reports nothing at all (§1.5)
-        if (quick) {
-            gateMixed();
-            benchLeg("bench_mixed", "write", MIXED_ITERS, mixedBytes, Main::timeMixedWrite);
-            benchLeg("bench_mixed", "round_trip", MIXED_ITERS, mixedBytes, Main::timeMixedRoundTrip);
-            reportDerivedRead("bench_mixed");
-        } else {
-            gatePacket();
-            gateInts();
-            gateBits();
-            gateMixed();
-            benchLeg("bench_packet", "write", PACKET_ITERS, packetBytes, Main::timePacketWrite);
-            benchLeg("bench_packet", "read", PACKET_ITERS, packetBytes, Main::timePacketRead);
-            benchLeg("bench_ints", "write", INTS_ITERS, intsBytes, Main::timeIntsWrite);
-            benchLeg("bench_ints", "read", INTS_ITERS, intsBytes, Main::timeIntsRead);
-            benchLeg("bench_bits", "write", BITS_ITERS, bitsBytes, Main::timeBitsWrite);
-            benchLeg("bench_bits", "read", BITS_ITERS, bitsBytes, Main::timeBitsRead);
-            benchLeg("bench_mixed", "write", MIXED_ITERS, mixedBytes, Main::timeMixedWrite);
-            benchLeg("bench_mixed", "round_trip", MIXED_ITERS, mixedBytes, Main::timeMixedRoundTrip);
-            reportDerivedRead("bench_mixed");
-        }
+        // the measured row's golden gate runs before it is timed: a runner
+        // that fails its goldens reports nothing at all (§1.5). bench_mixed is
+        // the whole leg — --quick differs only in the number of measured runs.
+        gateMixed();
+        benchLeg("bench_mixed", "write", MIXED_ITERS, mixedBytes, Main::timeMixedWrite);
+        benchLeg("bench_mixed", "round_trip", MIXED_ITERS, mixedBytes, Main::timeMixedRoundTrip);
+        reportDerivedRead("bench_mixed");
 
         flushCsv();
         System.err.println("OK (corpus_id " + corpusId() + ")");
