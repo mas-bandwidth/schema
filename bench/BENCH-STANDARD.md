@@ -655,11 +655,20 @@ stride clause was added 2026-08-15, with the measurement that demanded it):
   idiom is a per-iteration fold of every decoded field into the sink —
   numbers added, booleans as 0/1, arrays element-by-element over the
   decoded extent, floats bitcast or truncated, JS BigInt observed by
-  allocation-free comparison. The fold is real work the barrier languages
-  do not pay; those legs' read numbers are therefore **upper bounds**
-  carrying the observation cost (measured on bench_mixed, M2: java -20%,
-  js-flat -29%, dart -5%, elixir -28% read rate against the pre-#175
-  narrow sinks).
+  allocation-free comparison. **One named per-language deviation:** the JS
+  BigInt comparison observes a 64-bit field as one bit (nonzero-ness), where
+  java/dart/elixir fold the full value — a uniform full-value rule would tax
+  JS's allocator per iteration and measure the allocator instead; so the JS
+  read numbers are a FLOOR under a uniform fold rule, and the deviation is
+  stated here rather than smoothed (#181 review). The fold is real work the
+  barrier languages do not pay; those legs' read numbers are therefore
+  **upper bounds** carrying the observation cost (measured on bench_mixed,
+  M2, max rates per §2.2: java -20.9%, js-flat -27.7%, dart -6.4%,
+  elixir -26.1% read rate against the pre-#175 narrow sinks). The JS sink's
+  finite-gate catches plain-number field typos only; wrapped terms (boolBit,
+  bigBit) and deleted terms pass it, so the gate is a partial guard and the
+  sinks' completeness rests on review-time auditing (a recorded-read-set
+  gate is the named strengthening, #175).
 - **The decode target is hoisted out of the timed loop** and reused, in every
   language. Constructing a fresh zeroed message per iteration is harness overhead
   charged to the library. `bench/cpp/bench_main.cpp:250-256` already documents this;
