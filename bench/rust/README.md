@@ -33,8 +33,19 @@ profile on your own whole-program evidence. Full table:
 
 Escape barrier: `std::hint::black_box` on the written buffer and every
 decoded value. Streams borrow their buffers, so per-iteration construction
-is free — the C++ shape exactly; the generic driver monomorphizes and
-inlines like the C++ template reference. The batch read hoists ONE reused
+is free — the C++ shape exactly. The generic driver monomorphizes, but it
+does NOT inline like the C++ template reference, and the difference is
+measured: `#[inline(always)]` on a generated spine is honoured only into the
+`Fn::call` shim standing between the driver and the spine, and LLVM then
+prices that shim against its caller and refuses it, so every generated call
+in a timed loop is an out-of-line call entered with an unknown stream
+position. clang honours `always_inline` unconditionally, so the C and C++
+legs never see that regime. Rebuilding this leg with
+`RUSTFLAGS="-C llvm-args=--inline-threshold=5000"` — a diagnostic, not a
+shipped flag — moves the generated rows 2.3x and the hand-written `rt` rows
+4.5x on the same binary. Equalizing that discipline is a named open item on
+issue #170; until it is ruled, every rust row here is measured out of line.
+The batch read hoists ONE reused
 `Message` and fills it through `read_message_into` — the Rust shape of the
 go/cs runners' hoisted `MessageStorage` and the C++ runner's reused
 `Message` (`read_message`'s by-value return copies the ~2 KB enum out of

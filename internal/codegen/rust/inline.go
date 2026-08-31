@@ -54,6 +54,16 @@ package rust
 // Do NOT reach for branch-weight hints instead. Measured across this family
 // (the C++ tournament passes), cold hints activate the machine outliner and
 // shred the hot bodies; the C++ emitter carries the same standing warning.
+//
+// What either attribute buys depends entirely on what stands between the
+// spine and its caller, and in bench/rust nothing does: the driver reaches
+// the spine through a Fn::call shim, #[inline(always)] is honoured INTO that
+// shim, and LLVM then prices the shim against the driver and refuses it.
+// Flipping the read half to the demand there moves the bench_mixed rows by
+// less than half a percent — the attribute never reaches the timed loop.
+// Which is why the flat word codec (flat.go) is what closes the gap in that
+// regime: it makes the out-of-line body itself cheap, rather than betting on
+// an inlining decision the emitter does not control.
 
 // writeSpineInline is the inlining DEMAND every generated write wire function
 // is spelled with.
