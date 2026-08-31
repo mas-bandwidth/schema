@@ -987,6 +987,13 @@ benchmarks two different versions of the same C++ library and publishes both.
 > `msbuild -getItem:Compile`) before it is printed — **and a leg that cannot
 > prove its runtime path REFUSES (no rows) rather than reporting.**
 
+**The schema commit records its BRANCH too** (added 2026-09-01, alongside the
+runtime lines that already did). The failure it closes is the twin of the one
+below: a sweep that silently measured the wrong tree, and a CSV that could not
+have said so. A bare SHA also stops resolving the moment it is rebased away,
+which is how a published result came to carry a dead SHA; the branch name
+survives the rebase and says which tree was on the bench.
+
 This clause was earned on **2026-08-15**: `bench/rust/Cargo.toml`,
 `bench/go/go.mod` and `bench/cs/schemabench.csproj` hardcoded their runtime
 paths while `run.sh` recorded `$SERIALIZE_RS`/`GO`/`CS` in the preamble — so a
