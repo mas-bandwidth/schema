@@ -27,45 +27,51 @@ const RenderSpriteMaxBits = 138
 const RenderSpriteMaxBytes = 24
 
 func WriteRenderSprite(stream *serialize.WriteStream, value *RenderSprite) error {
-	stream.SerializeBits64(&value.SortKey, 64)
-	stream.SerializeBits(&value.MeshId, 32)
-	stream.SerializeBits(&value.MaterialId, 32)
 	{
-		rawValue := uint32(value.Layer)
-		stream.SerializeBits(&rawValue, 8)
-	}
-	{
-		enumValue := int32(value.Team)
-		if enumValue < 0 || enumValue > 2 {
+		enumValue4 := int32(value.Team)
+		if enumValue4 < 0 || enumValue4 > 2 {
 			return serialize.ErrValueOutOfRange
 		}
-		{
-			offsetValue := uint32(enumValue)
-			stream.SerializeBits(&offsetValue, 2)
-		}
+		f0 := value.SortKey
+		f1 := (uint64(value.MeshId)) & 0xffffffff
+		f2 := (uint64(value.MaterialId)) & 0xffffffff
+		f3 := (uint64(value.Layer)) & 0xff
+		f4 := (uint64(uint32(enumValue4))) & 0x3
+		w0 := f0
+		stream.SerializeBits64(&w0, 64)
+		w1 := f1 | (f2 << 32)
+		stream.SerializeBits64(&w1, 64)
+		w2 := uint32(f3 | (f4 << 8))
+		stream.SerializeBits(&w2, 10)
 	}
 	return stream.Err()
 }
 
 func ReadRenderSprite(stream *serialize.ReadStream, value *RenderSprite) error {
-	stream.SerializeBits64(&value.SortKey, 64)
-	stream.SerializeBits(&value.MeshId, 32)
-	stream.SerializeBits(&value.MaterialId, 32)
 	{
-		rawValue := uint32(0)
-		stream.SerializeBits(&rawValue, 8)
-		value.Layer = uint8(rawValue)
-	}
-	{
-		offsetValue := uint32(0)
-		stream.SerializeBits(&offsetValue, 2)
+		c0 := uint64(0)
+		stream.SerializeBits64(&c0, 64)
+		c1 := uint64(0)
+		stream.SerializeBits64(&c1, 64)
+		n2 := uint32(0)
+		stream.SerializeBits(&n2, 10)
+		c2 := uint64(n2)
 		if stream.Err() != nil {
 			return stream.Err()
 		}
-		if offsetValue > 2 { // a value smuggled into the bit headroom is refused (SPEC §4.3)
+		v0 := c0
+		value.SortKey = v0
+		v1 := c1 & 0xffffffff
+		value.MeshId = uint32(v1)
+		v2 := (c1 >> 32) & 0xffffffff
+		value.MaterialId = uint32(v2)
+		v3 := c2 & 0xff
+		value.Layer = uint8(v3)
+		v4 := (c2 >> 8) & 0x3
+		if v4 > 2 {
 			return serialize.ErrValueOutOfRange
 		}
-		value.Team = Team(int32(offsetValue))
+		value.Team = Team(int32(v4))
 	}
 	return stream.Err()
 }
@@ -84,8 +90,12 @@ const RenderBlockMaxBits = 8903
 const RenderBlockMaxBytes = 1120
 
 func WriteRenderBlock(stream *serialize.WriteStream, value *RenderBlock) error {
-	stream.SerializeBits(&value.WorkerIndex, 32)
-	stream.SerializeBits(&value.SpriteCountHint, 32)
+	{
+		f0 := (uint64(value.WorkerIndex)) & 0xffffffff
+		f1 := (uint64(value.SpriteCountHint)) & 0xffffffff
+		w0 := f0 | (f1 << 32)
+		stream.SerializeBits64(&w0, 64)
+	}
 	if value.SpritesCount < 0 || value.SpritesCount > RenderBlockMaxSprites {
 		return serialize.ErrValueOutOfRange
 	}
@@ -105,8 +115,17 @@ func WriteRenderBlock(stream *serialize.WriteStream, value *RenderBlock) error {
 }
 
 func ReadRenderBlock(stream *serialize.ReadStream, value *RenderBlock) error {
-	stream.SerializeBits(&value.WorkerIndex, 32)
-	stream.SerializeBits(&value.SpriteCountHint, 32)
+	{
+		c0 := uint64(0)
+		stream.SerializeBits64(&c0, 64)
+		if stream.Err() != nil {
+			return stream.Err()
+		}
+		v0 := c0 & 0xffffffff
+		value.WorkerIndex = uint32(v0)
+		v1 := (c0 >> 32) & 0xffffffff
+		value.SpriteCountHint = uint32(v1)
+	}
 	{
 		offsetValue := uint32(0)
 		stream.SerializeBits(&offsetValue, 7)
