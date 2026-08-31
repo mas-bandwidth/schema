@@ -22,10 +22,13 @@
 # a PR whose diff touches ONLY this file. The full lift condition is the
 # round closing, on the owner's word (issue #170).
 #
+# ONE-SHOT CARVE, owner ruling 2026-08-31 (issue #189): the emitter prefixes
+# are SUSPENDED for exactly one licensed change — the string-helper guard
+# scoping fix (#189, PR B of its protocol) — under the reproduction control
+# (frozen shapes' c/cpp rows re-run in-sitting). The prefixes are restored by
+# the protocol's PR C immediately after the fix merges. Any other emitter
+# change during the suspension is a review-block on sight.
+#
 # Locked prefixes, one per line (matched against changed paths):
-internal/codegen/c/
-internal/codegen/cpp/
-generated/c/
-generated/cpp/
-generated/c-ludicrous/
-generated/cpp-ludicrous/
+# (emitter and generated c/cpp prefixes temporarily suspended per the carve
+#  above — restored by #189 PR C)
