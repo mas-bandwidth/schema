@@ -44,43 +44,52 @@ defmodule Example.Render do
     data = <<>>
     scratch = 0
     scratch_bits = 0
-    v = value.sort_key &&& 0xFFFFFFFF
+
+    %{
+      sort_key: value_sort_key,
+      mesh_id: value_mesh_id,
+      material_id: value_material_id,
+      layer: value_layer,
+      team: value_team
+    } = value
+
+    v = value_sort_key &&& 0xFFFFFFFF
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 32
-    v = value.sort_key >>> 32 &&& 0xFFFFFFFF
+    v = value_sort_key >>> 32 &&& 0xFFFFFFFF
     flush = scratch_bits >>> 3
     data = <<data::binary, scratch::little-size(flush)-unit(8)>>
     scratch = scratch >>> (flush <<< 3)
     scratch_bits = scratch_bits &&& 7
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 32
-    v = value.mesh_id &&& 0xFFFFFFFF
+    v = value_mesh_id &&& 0xFFFFFFFF
     flush = scratch_bits >>> 3
     data = <<data::binary, scratch::little-size(flush)-unit(8)>>
     scratch = scratch >>> (flush <<< 3)
     scratch_bits = scratch_bits &&& 7
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 32
-    v = value.material_id &&& 0xFFFFFFFF
+    v = value_material_id &&& 0xFFFFFFFF
     flush = scratch_bits >>> 3
     data = <<data::binary, scratch::little-size(flush)-unit(8)>>
     scratch = scratch >>> (flush <<< 3)
     scratch_bits = scratch_bits &&& 7
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 32
-    v = value.layer &&& 0xFF
+    v = value_layer &&& 0xFF
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 8
 
-    if value.team < 0 do
+    if value_team < 0 do
       raise ArgumentError, "value.team is below the wire minimum"
     end
 
-    if value.team > 2 do
+    if value_team > 2 do
       raise ArgumentError, "value.team is above the wire maximum"
     end
 
-    v = value.team
+    v = value_team
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 2
     flush = scratch_bits >>> 3
@@ -166,17 +175,24 @@ defmodule Example.Render do
     data = <<>>
     scratch = 0
     scratch_bits = 0
-    v = value.worker_index &&& 0xFFFFFFFF
+
+    %{
+      worker_index: value_worker_index,
+      sprite_count_hint: value_sprite_count_hint,
+      sprites: value_sprites
+    } = value
+
+    v = value_worker_index &&& 0xFFFFFFFF
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 32
-    v = value.sprite_count_hint &&& 0xFFFFFFFF
+    v = value_sprite_count_hint &&& 0xFFFFFFFF
     flush = scratch_bits >>> 3
     data = <<data::binary, scratch::little-size(flush)-unit(8)>>
     scratch = scratch >>> (flush <<< 3)
     scratch_bits = scratch_bits &&& 7
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 32
-    n = length(value.sprites)
+    n = length(value_sprites)
 
     if n > 64 do
       raise ArgumentError, "value.sprites count is above the wire maximum"
@@ -191,7 +207,7 @@ defmodule Example.Render do
     scratch_bits = scratch_bits &&& 7
 
     {data, scratch, scratch_bits} =
-      w_render_block_sprites(value.sprites, data, scratch, scratch_bits)
+      w_render_block_sprites(value_sprites, data, scratch, scratch_bits)
 
     if scratch_bits != 0, do: <<data::binary, scratch>>, else: data
   end
@@ -252,43 +268,51 @@ defmodule Example.Render do
   defp w_render_block_sprites([], data, scratch, scratch_bits), do: {data, scratch, scratch_bits}
 
   defp w_render_block_sprites([e | rest], data, scratch, scratch_bits) do
-    v = e.sort_key &&& 0xFFFFFFFF
+    %{
+      sort_key: e_sort_key,
+      mesh_id: e_mesh_id,
+      material_id: e_material_id,
+      layer: e_layer,
+      team: e_team
+    } = e
+
+    v = e_sort_key &&& 0xFFFFFFFF
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 32
-    v = e.sort_key >>> 32 &&& 0xFFFFFFFF
+    v = e_sort_key >>> 32 &&& 0xFFFFFFFF
     flush = scratch_bits >>> 3
     data = <<data::binary, scratch::little-size(flush)-unit(8)>>
     scratch = scratch >>> (flush <<< 3)
     scratch_bits = scratch_bits &&& 7
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 32
-    v = e.mesh_id &&& 0xFFFFFFFF
+    v = e_mesh_id &&& 0xFFFFFFFF
     flush = scratch_bits >>> 3
     data = <<data::binary, scratch::little-size(flush)-unit(8)>>
     scratch = scratch >>> (flush <<< 3)
     scratch_bits = scratch_bits &&& 7
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 32
-    v = e.material_id &&& 0xFFFFFFFF
+    v = e_material_id &&& 0xFFFFFFFF
     flush = scratch_bits >>> 3
     data = <<data::binary, scratch::little-size(flush)-unit(8)>>
     scratch = scratch >>> (flush <<< 3)
     scratch_bits = scratch_bits &&& 7
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 32
-    v = e.layer &&& 0xFF
+    v = e_layer &&& 0xFF
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 8
 
-    if e.team < 0 do
+    if e_team < 0 do
       raise ArgumentError, "e.team is below the wire minimum"
     end
 
-    if e.team > 2 do
+    if e_team > 2 do
       raise ArgumentError, "e.team is above the wire maximum"
     end
 
-    v = e.team
+    v = e_team
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 2
     flush = scratch_bits >>> 3

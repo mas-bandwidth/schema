@@ -186,6 +186,14 @@ type gen struct {
 	// close it; mergeW closes it when the next field would pass the budget.
 	pendW int64
 
+	// bindW maps a write-side dotted field access to the local the scope's
+	// one map read bound; bindUsed is the names already taken in the
+	// function being emitted, so a nested scope can never shadow an outer
+	// local that is still live
+	bindW    map[string]string
+	bindDisp map[string]string // local -> the dotted access, for raise text
+	bindUsed map[string]bool
+
 	// the read group open at this point of read emission: rv carries
 	// rdOff + rdAvail bits, of which rdOff are already cut out; rdRun is
 	// the fused static run's remaining bits, or 0 when unknown

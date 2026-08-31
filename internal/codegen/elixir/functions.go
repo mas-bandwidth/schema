@@ -421,6 +421,7 @@ func (g *gen) emitWriteFunction(name string, items []ir.Item) {
 	snake := ir.RustSnake(name)
 	g.fn.Reset()
 	g.pendW = 0
+	g.bindW, g.bindDisp, g.bindUsed = nil, nil, map[string]bool{}
 	g.withOwner(name, func() {
 		g.emitWriteItems(items, "value", "    ")
 		g.flushW("    ") // the tail is a barrier: the residual is < 8 bits
@@ -500,7 +501,111 @@ func local(pre string, f *ir.Field) string {
 
 // ---- write emission ----
 
+// wref is a write-side field reference: the local the scope's one map read
+// bound, or the plain dotted access when the scope did not bind it.
+func (g *gen) wref(path, field string) string {
+	key := path + "." + elixirName(field)
+	if l, ok := g.bindW[key]; ok {
+		return l
+	}
+	return key
+}
+
+// dsp renders an expression the way the SCHEMA reads it, for the text of a
+// contract raise: a scope local resolves back to the dotted access it stands
+// for, so `%{delta: e_delta} = e` does not turn "e.delta is above the wire
+// maximum" into a message naming a local the caller never wrote.
+func (g *gen) dsp(expr string) string {
+	head, rest := expr, ""
+	if i := strings.Index(expr, "."); i >= 0 {
+		head, rest = expr[:i], expr[i:]
+	}
+	if d, ok := g.bindDisp[head]; ok {
+		return d + rest
+	}
+	return expr
+}
+
+// scopeBinds lists the fields a scope reads UNCONDITIONALLY at its own level:
+// its field items and the conditions of its branches. A branch arm's fields
+// are NOT here — an arm's own scope binds them when the arm is taken, so a
+// value the wire never asks for is never demanded of the caller.
+func scopeBinds(items []ir.Item) []string {
+	var out []string
+	seen := map[string]bool{}
+	add := func(n string) {
+		if n == "" || seen[n] {
+			return
+		}
+		seen[n] = true
+		out = append(out, n)
+	}
+	for _, item := range items {
+		switch item := item.(type) {
+		case *ir.FieldItem:
+			add(elixirName(item.F.Name))
+		case *ir.Branch:
+			add(elixirName(item.Cond))
+		}
+	}
+	return out
+}
+
+// bindScope emits the scope's ONE map read — `%{a: p_a, b: p_b} = path` —
+// and registers the locals. Elixir's `.` is a get_map_elements of its own
+// with its own raise branch per field; one pattern is one instruction for
+// the whole scope. Below two fields it would not pay for itself.
+//
+// The bound locals are unconditional, which is exactly what the dotted
+// accesses they replace were: a struct always carries every key, so the same
+// inputs are refused. A map missing a key raises MatchError here where it
+// raised KeyError before — a raise either way, never a wrong answer.
+func (g *gen) bindScope(items []ir.Item, path, ind string) func() {
+	saved, savedDisp := g.bindW, g.bindDisp
+	names := scopeBinds(items)
+	if len(names) < 2 {
+		return func() {}
+	}
+	g.bindW = make(map[string]string, len(saved)+len(names))
+	for k, v := range saved {
+		g.bindW[k] = v
+	}
+	g.bindDisp = make(map[string]string, len(savedDisp)+len(names))
+	for k, v := range savedDisp {
+		g.bindDisp[k] = v
+	}
+	base := strings.NewReplacer(".", "_").Replace(path)
+	shown := g.dsp(path)
+	pairs := make([]string, 0, len(names))
+	for _, n := range names {
+		l := base + "_" + n
+		for g.bindUsed[l] {
+			l += "_"
+		}
+		g.bindUsed[l] = true
+		g.bindW[path+"."+n] = l
+		g.bindDisp[l] = shown + "." + n
+		pairs = append(pairs, n+": "+l)
+	}
+	one := ind + "%{" + strings.Join(pairs, ", ") + "} = " + path
+	if len(one) <= formatWidth {
+		g.pf("%s\n", one)
+	} else {
+		g.pf("\n%s%%{\n", ind)
+		for i, pr := range pairs {
+			sep := ","
+			if i == len(pairs)-1 {
+				sep = ""
+			}
+			g.pf("%s  %s%s\n", ind, pr, sep)
+		}
+		g.pf("%s} = %s\n\n", ind, path)
+	}
+	return func() { g.bindW, g.bindDisp = saved, savedDisp }
+}
+
 func (g *gen) emitWriteItems(items []ir.Item, path, ind string) {
+	defer g.bindScope(items, path, ind)()
 	for _, item := range items {
 		switch item := item.(type) {
 		case *ir.FieldItem:
@@ -512,7 +617,7 @@ func (g *gen) emitWriteItems(items []ir.Item, path, ind string) {
 		case *ir.AlignItem:
 			g.emitWriteAlign(ind)
 		case *ir.Branch:
-			cond := path + "." + elixirName(item.Cond)
+			cond := g.wref(path, item.Cond)
 			if item.Neg {
 				cond = "not " + cond
 			}
@@ -572,14 +677,14 @@ func (g *gen) emitWriteAlign(ind string) {
 }
 
 func (g *gen) emitWriteField(f *ir.Field, path, ind string) {
-	name := path + "." + elixirName(f.Name)
+	name := g.wref(path, f.Name)
 	if f.Name == "" {
 		name = path // the standalone union functions' self item
 	}
 	switch f.Array {
 	case ir.ArrayFixed:
 		g.raiseIf(fmt.Sprintf("length(%s) != %s", name, intLit64(f.ArrayBound)),
-			fmt.Sprintf("%s must hold exactly %d elements", name, f.ArrayBound), ind)
+			fmt.Sprintf("%s must hold exactly %d elements", g.dsp(name), f.ArrayBound), ind)
 		helper := g.writeHelper(f)
 		g.flushW(ind) // the helper opens its own group
 		g.callAssign("{data, scratch, scratch_bits}",
@@ -589,10 +694,10 @@ func (g *gen) emitWriteField(f *ir.Field, path, ind string) {
 		// length/1 is never negative, so a zero floor has no violable side
 		if f.ArrayMin > 0 {
 			g.raiseIf(fmt.Sprintf("n < %s", intLit64(f.ArrayMin)),
-				fmt.Sprintf("%s count is below the wire minimum", name), ind)
+				fmt.Sprintf("%s count is below the wire minimum", g.dsp(name)), ind)
 		}
 		g.raiseIf(fmt.Sprintf("n > %s", intLit64(f.ArrayBound)),
-			fmt.Sprintf("%s count is above the wire maximum", name), ind)
+			fmt.Sprintf("%s count is above the wire maximum", g.dsp(name)), ind)
 		g.emitWriteOffset("n", big.NewInt(f.ArrayMin), big.NewInt(f.ArrayBound), ind)
 		helper := g.writeHelper(f)
 		g.flushW(ind) // the helper opens its own group
@@ -618,8 +723,11 @@ func (g *gen) writeHelper(f *ir.Field) string {
 	g.helpers[name] = "" // claim before recursing (helpers may nest)
 	saved := g.fn
 	savedPend := g.pendW
+	savedBind, savedDisp, savedUsed := g.bindW, g.bindDisp, g.bindUsed
 	g.fn = strings.Builder{}
 	g.pendW = 0 // the helper is entered with the caller's group closed
+	// a helper is its own function: its own locals, its own name space
+	g.bindW, g.bindDisp, g.bindUsed = nil, nil, map[string]bool{}
 	base := fmt.Sprintf("  defp %s([], data, scratch, scratch_bits), do: {data, scratch, scratch_bits}", name)
 	if len(base) <= formatWidth {
 		g.pf("%s\n\n", base)
@@ -634,6 +742,7 @@ func (g *gen) writeHelper(f *ir.Field) string {
 	g.helpers[name] = g.fn.String()
 	g.fn = saved
 	g.pendW = savedPend
+	g.bindW, g.bindDisp, g.bindUsed = savedBind, savedDisp, savedUsed
 	g.helperOrder = append(g.helperOrder, name)
 	return name
 }
@@ -763,7 +872,7 @@ func (g *gen) emitWriteScalar(f *ir.Field, name, ind string) {
 	case ir.TNamed:
 		switch ref := f.Type.Ref.(type) {
 		case *ir.Enum:
-			g.emitCheckRange(name, name, big.NewInt(0), big.NewInt(ref.Max), ind)
+			g.emitCheckRange(name, g.dsp(name), big.NewInt(0), big.NewInt(ref.Max), ind)
 			bits := ir.BitsRequired(big.NewInt(0), big.NewInt(ref.Max))
 			if bits == 0 {
 				return // degenerate [0, 0]: zero bits; the check still rides
@@ -775,10 +884,10 @@ func (g *gen) emitWriteScalar(f *ir.Field, name, ind string) {
 			if wb < 64 {
 				// a mask bit above the wire width cannot ride
 				g.raiseIf(fmt.Sprintf("%s >>> %d != 0", name, wb),
-					fmt.Sprintf("%s holds a mask bit above the %d-bit wire", name, wb), ind)
+					fmt.Sprintf("%s holds a mask bit above the %d-bit wire", g.dsp(name), wb), ind)
 			} else {
 				g.raiseIf(fmt.Sprintf("%s < 0 or %s >>> 64 != 0", name, name),
-					fmt.Sprintf("%s holds a mask bit above the 64-bit wire", name), ind)
+					fmt.Sprintf("%s holds a mask bit above the 64-bit wire", g.dsp(name)), ind)
 			}
 			if wb <= 32 {
 				g.pf("%sv = %s\n", ind, name)
@@ -819,10 +928,10 @@ func (g *gen) emitWriteFixed(f *ir.Field, name, ind string) {
 	if f.IntMin.Cmp(f.IntMax) == 0 {
 		// degenerate: zero bits — the check is the whole write (SPEC §4.6)
 		g.raiseIf(fmt.Sprintf("%s != %s", name, intLit(rawMin)),
-			fmt.Sprintf("%s must hold the locked value %s", name, rawMin), ind)
+			fmt.Sprintf("%s must hold the locked value %s", g.dsp(name), rawMin), ind)
 		return
 	}
-	g.emitCheckRange(name, name, rawMin, rawMax, ind)
+	g.emitCheckRange(name, g.dsp(name), rawMin, rawMax, ind)
 	g.emitWriteOffset(name, rawMin, rawMax, ind)
 }
 
@@ -832,10 +941,10 @@ func (g *gen) emitWriteInt(f *ir.Field, name, ind string) {
 		if f.IntMin.Cmp(f.IntMax) == 0 {
 			// degenerate range: ZERO bits — the check is the whole write
 			g.raiseIf(fmt.Sprintf("%s != %s", name, intLit(f.IntMin)),
-				fmt.Sprintf("%s must hold the locked value %s", name, f.IntMin), ind)
+				fmt.Sprintf("%s must hold the locked value %s", g.dsp(name), f.IntMin), ind)
 			return
 		}
-		g.emitCheckRange(name, name, f.IntMin, f.IntMax, ind)
+		g.emitCheckRange(name, g.dsp(name), f.IntMin, f.IntMax, ind)
 		g.emitWriteOffset(name, f.IntMin, f.IntMax, ind)
 		return
 	}
@@ -868,7 +977,7 @@ func (g *gen) emitWriteCompressedFloat(f *ir.Field, name, ind string) {
 // serialize_string framing, byte-identical to every other target's.
 func (g *gen) emitWriteBytesField(f *ir.Field, name, ind string) {
 	g.raiseIf(fmt.Sprintf("byte_size(%s) > %d", name, f.Type.Size),
-		fmt.Sprintf("%s longer than the declared %d-byte bound", name, f.Type.Size), ind)
+		fmt.Sprintf("%s longer than the declared %d-byte bound", g.dsp(name), f.Type.Size), ind)
 	lenBits := ir.BitsRequired(big.NewInt(0), big.NewInt(f.Type.Size))
 	g.pf("%sv = byte_size(%s)\n", ind, name)
 	g.mergeW(lenBits, ind)
@@ -882,7 +991,7 @@ func (g *gen) emitWriteBytesField(f *ir.Field, name, ind string) {
 // items — the struct-inlining move, per arm.
 func (g *gen) emitWriteUnion(u *ir.Union, expr, ind string) {
 	// the tag validates BEFORE it rides (SPEC §4.8)
-	g.emitCheckRange(expr+".type", expr+".type", big.NewInt(0), big.NewInt(u.Max), ind)
+	g.emitCheckRange(expr+".type", g.dsp(expr)+".type", big.NewInt(0), big.NewInt(u.Max), ind)
 	if u.Max == 0 {
 		return // an empty union's degenerate tag range [0, 0] costs zero bits
 	}

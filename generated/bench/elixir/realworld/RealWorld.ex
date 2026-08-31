@@ -385,18 +385,100 @@ defmodule Realworld.RealWorld do
     scratch = 0
     scratch_bits = 0
 
-    if value.f001_int < -805_495 do
+    %{
+      f001_int: value_f001_int,
+      f002f64: value_f002f64,
+      f003_int: value_f003_int,
+      f004_cf32: value_f004_cf32,
+      f005_uint: value_f005_uint,
+      f006_int: value_f006_int,
+      f007f32: value_f007f32,
+      f008u64: value_f008u64,
+      f009_int: value_f009_int,
+      f010f32: value_f010f32,
+      f011_bits: value_f011_bits,
+      f012_bool: value_f012_bool,
+      f018_int: value_f018_int,
+      f019f64: value_f019f64,
+      f020f32: value_f020f32,
+      f021_ufixed: value_f021_ufixed,
+      f022f32: value_f022f32,
+      f023_bits: value_f023_bits,
+      f024f32: value_f024f32,
+      f025_fixed: value_f025_fixed,
+      f026_bits: value_f026_bits,
+      f027_cf32: value_f027_cf32,
+      f028_bits: value_f028_bits,
+      f029i64: value_f029i64,
+      f030f32: value_f030f32,
+      f031_bits: value_f031_bits,
+      f032_int: value_f032_int,
+      f033_uint: value_f033_uint,
+      f034_uint: value_f034_uint,
+      f035_bits: value_f035_bits,
+      f036_enum: value_f036_enum,
+      f037_bool: value_f037_bool,
+      f038_bool: value_f038_bool,
+      f039_bits: value_f039_bits,
+      f040_fixed: value_f040_fixed,
+      f041_int: value_f041_int,
+      f042_bits: value_f042_bits,
+      f043_bool: value_f043_bool,
+      f048f64: value_f048f64,
+      f049_ufixed: value_f049_ufixed,
+      f050_bool: value_f050_bool,
+      f055_bool: value_f055_bool,
+      f056_int: value_f056_int,
+      f057_int: value_f057_int,
+      f058f32: value_f058f32,
+      f059f64: value_f059f64,
+      f060_bits: value_f060_bits,
+      f061_cf32: value_f061_cf32,
+      f062_uint: value_f062_uint,
+      f063i64: value_f063i64,
+      f064_uint: value_f064_uint,
+      f065_cf32: value_f065_cf32,
+      f066_ufixed: value_f066_ufixed,
+      f067_cf32: value_f067_cf32,
+      f068_cf32: value_f068_cf32,
+      f069_bits: value_f069_bits,
+      f070_uint: value_f070_uint,
+      f071_cf32: value_f071_cf32,
+      f072_cf32: value_f072_cf32,
+      f073_int: value_f073_int,
+      f074_bool: value_f074_bool,
+      f080_bool: value_f080_bool,
+      f081_bits: value_f081_bits,
+      f082_bits: value_f082_bits,
+      f083_enum: value_f083_enum,
+      f084_ufixed: value_f084_ufixed,
+      f085_bits: value_f085_bits,
+      f086_uint: value_f086_uint,
+      f087f64: value_f087f64,
+      f088_int: value_f088_int,
+      f089_bits: value_f089_bits,
+      f090_uint: value_f090_uint,
+      f091_flags: value_f091_flags,
+      f092_bool: value_f092_bool,
+      f093_bits: value_f093_bits,
+      f094_bool: value_f094_bool,
+      f095_fixed: value_f095_fixed,
+      f096_bits: value_f096_bits,
+      f097_bits: value_f097_bits
+    } = value
+
+    if value_f001_int < -805_495 do
       raise ArgumentError, "value.f001_int is below the wire minimum"
     end
 
-    if value.f001_int > 805_495 do
+    if value_f001_int > 805_495 do
       raise ArgumentError, "value.f001_int is above the wire maximum"
     end
 
-    v = value.f001_int + 805_495
+    v = value_f001_int + 805_495
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 21
-    w = f64_bits(value.f002f64)
+    w = f64_bits(value_f002f64)
     v = w &&& 0xFFFFFFFF
     flush = scratch_bits >>> 3
     data = <<data::binary, scratch::little-size(flush)-unit(8)>>
@@ -412,63 +494,63 @@ defmodule Realworld.RealWorld do
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 32
 
-    if value.f003_int < -835_897 do
+    if value_f003_int < -835_897 do
       raise ArgumentError, "value.f003_int is below the wire minimum"
     end
 
-    if value.f003_int > 835_897 do
+    if value_f003_int > 835_897 do
       raise ArgumentError, "value.f003_int is above the wire maximum"
     end
 
-    v = value.f003_int + 835_897
+    v = value_f003_int + 835_897
     flush = scratch_bits >>> 3
     data = <<data::binary, scratch::little-size(flush)-unit(8)>>
     scratch = scratch >>> (flush <<< 3)
     scratch_bits = scratch_bits &&& 7
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 21
-    v = cf_quantize(value.f004_cf32, 0.0, 2000.0, 20000)
+    v = cf_quantize(value_f004_cf32, 0.0, 2000.0, 20000)
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 15
 
-    if value.f005_uint < 0 do
+    if value_f005_uint < 0 do
       raise ArgumentError, "value.f005_uint is below the wire minimum"
     end
 
-    if value.f005_uint > 7316 do
+    if value_f005_uint > 7316 do
       raise ArgumentError, "value.f005_uint is above the wire maximum"
     end
 
-    v = value.f005_uint
+    v = value_f005_uint
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 13
 
-    if value.f006_int < -1513 do
+    if value_f006_int < -1513 do
       raise ArgumentError, "value.f006_int is below the wire minimum"
     end
 
-    if value.f006_int > 1513 do
+    if value_f006_int > 1513 do
       raise ArgumentError, "value.f006_int is above the wire maximum"
     end
 
-    v = value.f006_int + 1513
+    v = value_f006_int + 1513
     flush = scratch_bits >>> 3
     data = <<data::binary, scratch::little-size(flush)-unit(8)>>
     scratch = scratch >>> (flush <<< 3)
     scratch_bits = scratch_bits &&& 7
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 12
-    v = f32_bits(value.f007f32)
+    v = f32_bits(value_f007f32)
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 32
-    v = value.f008u64 &&& 0xFFFFFFFF
+    v = value_f008u64 &&& 0xFFFFFFFF
     flush = scratch_bits >>> 3
     data = <<data::binary, scratch::little-size(flush)-unit(8)>>
     scratch = scratch >>> (flush <<< 3)
     scratch_bits = scratch_bits &&& 7
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 32
-    v = value.f008u64 >>> 32 &&& 0xFFFFFFFF
+    v = value_f008u64 >>> 32 &&& 0xFFFFFFFF
     flush = scratch_bits >>> 3
     data = <<data::binary, scratch::little-size(flush)-unit(8)>>
     scratch = scratch >>> (flush <<< 3)
@@ -476,28 +558,28 @@ defmodule Realworld.RealWorld do
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 32
 
-    if value.f009_int < -22 do
+    if value_f009_int < -22 do
       raise ArgumentError, "value.f009_int is below the wire minimum"
     end
 
-    if value.f009_int > 22 do
+    if value_f009_int > 22 do
       raise ArgumentError, "value.f009_int is above the wire maximum"
     end
 
-    v = value.f009_int + 22
+    v = value_f009_int + 22
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 6
-    v = f32_bits(value.f010f32)
+    v = f32_bits(value_f010f32)
     flush = scratch_bits >>> 3
     data = <<data::binary, scratch::little-size(flush)-unit(8)>>
     scratch = scratch >>> (flush <<< 3)
     scratch_bits = scratch_bits &&& 7
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 32
-    v = value.f011_bits &&& 0x3FF
+    v = value_f011_bits &&& 0x3FF
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 10
-    v = if value.f012_bool, do: 1, else: 0
+    v = if value_f012_bool, do: 1, else: 0
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 1
     flush = scratch_bits >>> 3
@@ -506,44 +588,52 @@ defmodule Realworld.RealWorld do
     scratch_bits = scratch_bits &&& 7
 
     {data, scratch, scratch_bits} =
-      if value.f012_bool do
-        v = f32_bits(value.f013f32)
+      if value_f012_bool do
+        %{
+          f013f32: value_f013f32,
+          f014_uint: value_f014_uint,
+          f015_int: value_f015_int,
+          f016_fixed: value_f016_fixed,
+          f017_uint: value_f017_uint
+        } = value
+
+        v = f32_bits(value_f013f32)
         scratch = scratch ||| v <<< scratch_bits
         scratch_bits = scratch_bits + 32
 
-        if value.f014_uint < 0 do
+        if value_f014_uint < 0 do
           raise ArgumentError, "value.f014_uint is below the wire minimum"
         end
 
-        if value.f014_uint > 775 do
+        if value_f014_uint > 775 do
           raise ArgumentError, "value.f014_uint is above the wire maximum"
         end
 
-        v = value.f014_uint
+        v = value_f014_uint
         scratch = scratch ||| v <<< scratch_bits
         scratch_bits = scratch_bits + 10
 
-        if value.f015_int < -21 do
+        if value_f015_int < -21 do
           raise ArgumentError, "value.f015_int is below the wire minimum"
         end
 
-        if value.f015_int > 21 do
+        if value_f015_int > 21 do
           raise ArgumentError, "value.f015_int is above the wire maximum"
         end
 
-        v = value.f015_int + 21
+        v = value_f015_int + 21
         scratch = scratch ||| v <<< scratch_bits
         scratch_bits = scratch_bits + 6
 
-        if value.f016_fixed < -37_748_736 do
+        if value_f016_fixed < -37_748_736 do
           raise ArgumentError, "value.f016_fixed is below the wire minimum"
         end
 
-        if value.f016_fixed > 37_748_736 do
+        if value_f016_fixed > 37_748_736 do
           raise ArgumentError, "value.f016_fixed is above the wire maximum"
         end
 
-        v = value.f016_fixed + 37_748_736
+        v = value_f016_fixed + 37_748_736
         flush = scratch_bits >>> 3
         data = <<data::binary, scratch::little-size(flush)-unit(8)>>
         scratch = scratch >>> (flush <<< 3)
@@ -551,15 +641,15 @@ defmodule Realworld.RealWorld do
         scratch = scratch ||| v <<< scratch_bits
         scratch_bits = scratch_bits + 27
 
-        if value.f017_uint < 0 do
+        if value_f017_uint < 0 do
           raise ArgumentError, "value.f017_uint is below the wire minimum"
         end
 
-        if value.f017_uint > 4606 do
+        if value_f017_uint > 4606 do
           raise ArgumentError, "value.f017_uint is above the wire maximum"
         end
 
-        v = value.f017_uint
+        v = value_f017_uint
         scratch = scratch ||| v <<< scratch_bits
         scratch_bits = scratch_bits + 13
         flush = scratch_bits >>> 3
@@ -571,18 +661,18 @@ defmodule Realworld.RealWorld do
         {data, scratch, scratch_bits}
       end
 
-    if value.f018_int < -834 do
+    if value_f018_int < -834 do
       raise ArgumentError, "value.f018_int is below the wire minimum"
     end
 
-    if value.f018_int > 834 do
+    if value_f018_int > 834 do
       raise ArgumentError, "value.f018_int is above the wire maximum"
     end
 
-    v = value.f018_int + 834
+    v = value_f018_int + 834
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 11
-    w = f64_bits(value.f019f64)
+    w = f64_bits(value_f019f64)
     v = w &&& 0xFFFFFFFF
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 32
@@ -593,7 +683,7 @@ defmodule Realworld.RealWorld do
     scratch_bits = scratch_bits &&& 7
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 32
-    v = f32_bits(value.f020f32)
+    v = f32_bits(value_f020f32)
     flush = scratch_bits >>> 3
     data = <<data::binary, scratch::little-size(flush)-unit(8)>>
     scratch = scratch >>> (flush <<< 3)
@@ -601,36 +691,36 @@ defmodule Realworld.RealWorld do
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 32
 
-    if value.f021_ufixed < 0 do
+    if value_f021_ufixed < 0 do
       raise ArgumentError, "value.f021_ufixed is below the wire minimum"
     end
 
-    if value.f021_ufixed > 102_977_536 do
+    if value_f021_ufixed > 102_977_536 do
       raise ArgumentError, "value.f021_ufixed is above the wire maximum"
     end
 
-    v = value.f021_ufixed
+    v = value_f021_ufixed
     flush = scratch_bits >>> 3
     data = <<data::binary, scratch::little-size(flush)-unit(8)>>
     scratch = scratch >>> (flush <<< 3)
     scratch_bits = scratch_bits &&& 7
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 27
-    v = f32_bits(value.f022f32)
+    v = f32_bits(value_f022f32)
     flush = scratch_bits >>> 3
     data = <<data::binary, scratch::little-size(flush)-unit(8)>>
     scratch = scratch >>> (flush <<< 3)
     scratch_bits = scratch_bits &&& 7
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 32
-    v = value.f023_bits &&& 0x1FFFFFF
+    v = value_f023_bits &&& 0x1FFFFFF
     flush = scratch_bits >>> 3
     data = <<data::binary, scratch::little-size(flush)-unit(8)>>
     scratch = scratch >>> (flush <<< 3)
     scratch_bits = scratch_bits &&& 7
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 25
-    v = f32_bits(value.f024f32)
+    v = f32_bits(value_f024f32)
     flush = scratch_bits >>> 3
     data = <<data::binary, scratch::little-size(flush)-unit(8)>>
     scratch = scratch >>> (flush <<< 3)
@@ -638,72 +728,72 @@ defmodule Realworld.RealWorld do
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 32
 
-    if value.f025_fixed < -30464 do
+    if value_f025_fixed < -30464 do
       raise ArgumentError, "value.f025_fixed is below the wire minimum"
     end
 
-    if value.f025_fixed > 30464 do
+    if value_f025_fixed > 30464 do
       raise ArgumentError, "value.f025_fixed is above the wire maximum"
     end
 
-    v = value.f025_fixed + 30464
+    v = value_f025_fixed + 30464
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 16
-    v = value.f026_bits &&& 0x1FF
+    v = value_f026_bits &&& 0x1FF
     flush = scratch_bits >>> 3
     data = <<data::binary, scratch::little-size(flush)-unit(8)>>
     scratch = scratch >>> (flush <<< 3)
     scratch_bits = scratch_bits &&& 7
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 9
-    v = cf_quantize(value.f027_cf32, -2.0, 4.0, 16)
+    v = cf_quantize(value_f027_cf32, -2.0, 4.0, 16)
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 5
-    v = value.f028_bits &&& 0xF
+    v = value_f028_bits &&& 0xF
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 4
-    v = value.f029i64 &&& 0xFFFFFFFF
+    v = value_f029i64 &&& 0xFFFFFFFF
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 32
-    v = value.f029i64 >>> 32 &&& 0xFFFFFFFF
+    v = value_f029i64 >>> 32 &&& 0xFFFFFFFF
     flush = scratch_bits >>> 3
     data = <<data::binary, scratch::little-size(flush)-unit(8)>>
     scratch = scratch >>> (flush <<< 3)
     scratch_bits = scratch_bits &&& 7
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 32
-    v = f32_bits(value.f030f32)
+    v = f32_bits(value_f030f32)
     flush = scratch_bits >>> 3
     data = <<data::binary, scratch::little-size(flush)-unit(8)>>
     scratch = scratch >>> (flush <<< 3)
     scratch_bits = scratch_bits &&& 7
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 32
-    v = value.f031_bits &&& 0x1
+    v = value_f031_bits &&& 0x1
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 1
 
-    if value.f032_int < -3 do
+    if value_f032_int < -3 do
       raise ArgumentError, "value.f032_int is below the wire minimum"
     end
 
-    if value.f032_int > 3 do
+    if value_f032_int > 3 do
       raise ArgumentError, "value.f032_int is above the wire maximum"
     end
 
-    v = value.f032_int + 3
+    v = value_f032_int + 3
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 3
 
-    if value.f033_uint < 0 do
+    if value_f033_uint < 0 do
       raise ArgumentError, "value.f033_uint is below the wire minimum"
     end
 
-    if value.f033_uint > 142_780 do
+    if value_f033_uint > 142_780 do
       raise ArgumentError, "value.f033_uint is above the wire maximum"
     end
 
-    v = value.f033_uint
+    v = value_f033_uint
     flush = scratch_bits >>> 3
     data = <<data::binary, scratch::little-size(flush)-unit(8)>>
     scratch = scratch >>> (flush <<< 3)
@@ -711,39 +801,39 @@ defmodule Realworld.RealWorld do
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 18
 
-    if value.f034_uint < 0 do
+    if value_f034_uint < 0 do
       raise ArgumentError, "value.f034_uint is below the wire minimum"
     end
 
-    if value.f034_uint > 14149 do
+    if value_f034_uint > 14149 do
       raise ArgumentError, "value.f034_uint is above the wire maximum"
     end
 
-    v = value.f034_uint
+    v = value_f034_uint
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 14
-    v = value.f035_bits &&& 0x1FF
+    v = value_f035_bits &&& 0x1FF
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 9
 
-    if value.f036_enum < 0 do
+    if value_f036_enum < 0 do
       raise ArgumentError, "value.f036_enum is below the wire minimum"
     end
 
-    if value.f036_enum > 5 do
+    if value_f036_enum > 5 do
       raise ArgumentError, "value.f036_enum is above the wire maximum"
     end
 
-    v = value.f036_enum
+    v = value_f036_enum
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 3
-    v = if value.f037_bool, do: 1, else: 0
+    v = if value_f037_bool, do: 1, else: 0
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 1
-    v = if value.f038_bool, do: 1, else: 0
+    v = if value_f038_bool, do: 1, else: 0
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 1
-    v = value.f039_bits &&& 0x7FFFF
+    v = value_f039_bits &&& 0x7FFFF
     flush = scratch_bits >>> 3
     data = <<data::binary, scratch::little-size(flush)-unit(8)>>
     scratch = scratch >>> (flush <<< 3)
@@ -751,37 +841,37 @@ defmodule Realworld.RealWorld do
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 19
 
-    if value.f040_fixed < -20480 do
+    if value_f040_fixed < -20480 do
       raise ArgumentError, "value.f040_fixed is below the wire minimum"
     end
 
-    if value.f040_fixed > 20480 do
+    if value_f040_fixed > 20480 do
       raise ArgumentError, "value.f040_fixed is above the wire maximum"
     end
 
-    v = value.f040_fixed + 20480
+    v = value_f040_fixed + 20480
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 16
 
-    if value.f041_int < -55 do
+    if value_f041_int < -55 do
       raise ArgumentError, "value.f041_int is below the wire minimum"
     end
 
-    if value.f041_int > 55 do
+    if value_f041_int > 55 do
       raise ArgumentError, "value.f041_int is above the wire maximum"
     end
 
-    v = value.f041_int + 55
+    v = value_f041_int + 55
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 7
-    v = value.f042_bits &&& 0x3FFFFFFF
+    v = value_f042_bits &&& 0x3FFFFFFF
     flush = scratch_bits >>> 3
     data = <<data::binary, scratch::little-size(flush)-unit(8)>>
     scratch = scratch >>> (flush <<< 3)
     scratch_bits = scratch_bits &&& 7
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 30
-    v = if value.f043_bool, do: 1, else: 0
+    v = if value_f043_bool, do: 1, else: 0
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 1
     flush = scratch_bits >>> 3
@@ -790,23 +880,30 @@ defmodule Realworld.RealWorld do
     scratch_bits = scratch_bits &&& 7
 
     {data, scratch, scratch_bits} =
-      if value.f043_bool do
-        v = f32_bits(value.f044f32)
+      if value_f043_bool do
+        %{
+          f044f32: value_f044f32,
+          f045_bits: value_f045_bits,
+          f046_uint: value_f046_uint,
+          f047_int: value_f047_int
+        } = value
+
+        v = f32_bits(value_f044f32)
         scratch = scratch ||| v <<< scratch_bits
         scratch_bits = scratch_bits + 32
-        v = value.f045_bits &&& 0xFFF
+        v = value_f045_bits &&& 0xFFF
         scratch = scratch ||| v <<< scratch_bits
         scratch_bits = scratch_bits + 12
 
-        if value.f046_uint < 0 do
+        if value_f046_uint < 0 do
           raise ArgumentError, "value.f046_uint is below the wire minimum"
         end
 
-        if value.f046_uint > 76063 do
+        if value_f046_uint > 76063 do
           raise ArgumentError, "value.f046_uint is above the wire maximum"
         end
 
-        v = value.f046_uint
+        v = value_f046_uint
         flush = scratch_bits >>> 3
         data = <<data::binary, scratch::little-size(flush)-unit(8)>>
         scratch = scratch >>> (flush <<< 3)
@@ -814,15 +911,15 @@ defmodule Realworld.RealWorld do
         scratch = scratch ||| v <<< scratch_bits
         scratch_bits = scratch_bits + 17
 
-        if value.f047_int < -430_976 do
+        if value_f047_int < -430_976 do
           raise ArgumentError, "value.f047_int is below the wire minimum"
         end
 
-        if value.f047_int > 430_976 do
+        if value_f047_int > 430_976 do
           raise ArgumentError, "value.f047_int is above the wire maximum"
         end
 
-        v = value.f047_int + 430_976
+        v = value_f047_int + 430_976
         scratch = scratch ||| v <<< scratch_bits
         scratch_bits = scratch_bits + 20
         flush = scratch_bits >>> 3
@@ -834,7 +931,7 @@ defmodule Realworld.RealWorld do
         {data, scratch, scratch_bits}
       end
 
-    w = f64_bits(value.f048f64)
+    w = f64_bits(value_f048f64)
     v = w &&& 0xFFFFFFFF
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 32
@@ -846,18 +943,18 @@ defmodule Realworld.RealWorld do
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 32
 
-    if value.f049_ufixed < 0 do
+    if value_f049_ufixed < 0 do
       raise ArgumentError, "value.f049_ufixed is below the wire minimum"
     end
 
-    if value.f049_ufixed > 49152 do
+    if value_f049_ufixed > 49152 do
       raise ArgumentError, "value.f049_ufixed is above the wire maximum"
     end
 
-    v = value.f049_ufixed
+    v = value_f049_ufixed
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 16
-    v = if value.f050_bool, do: 1, else: 0
+    v = if value_f050_bool, do: 1, else: 0
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 1
     flush = scratch_bits >>> 3
@@ -866,35 +963,42 @@ defmodule Realworld.RealWorld do
     scratch_bits = scratch_bits &&& 7
 
     {data, scratch, scratch_bits} =
-      if value.f050_bool do
-        v = if value.f051_bool, do: 1, else: 0
+      if value_f050_bool do
+        %{
+          f051_bool: value_f051_bool,
+          f052_int: value_f052_int,
+          f053f32: value_f053f32,
+          f054_int: value_f054_int
+        } = value
+
+        v = if value_f051_bool, do: 1, else: 0
         scratch = scratch ||| v <<< scratch_bits
         scratch_bits = scratch_bits + 1
 
-        if value.f052_int < -57 do
+        if value_f052_int < -57 do
           raise ArgumentError, "value.f052_int is below the wire minimum"
         end
 
-        if value.f052_int > 57 do
+        if value_f052_int > 57 do
           raise ArgumentError, "value.f052_int is above the wire maximum"
         end
 
-        v = value.f052_int + 57
+        v = value_f052_int + 57
         scratch = scratch ||| v <<< scratch_bits
         scratch_bits = scratch_bits + 7
-        v = f32_bits(value.f053f32)
+        v = f32_bits(value_f053f32)
         scratch = scratch ||| v <<< scratch_bits
         scratch_bits = scratch_bits + 32
 
-        if value.f054_int < -35 do
+        if value_f054_int < -35 do
           raise ArgumentError, "value.f054_int is below the wire minimum"
         end
 
-        if value.f054_int > 35 do
+        if value_f054_int > 35 do
           raise ArgumentError, "value.f054_int is above the wire maximum"
         end
 
-        v = value.f054_int + 35
+        v = value_f054_int + 35
         scratch = scratch ||| v <<< scratch_bits
         scratch_bits = scratch_bits + 7
         flush = scratch_bits >>> 3
@@ -906,37 +1010,37 @@ defmodule Realworld.RealWorld do
         {data, scratch, scratch_bits}
       end
 
-    v = if value.f055_bool, do: 1, else: 0
+    v = if value_f055_bool, do: 1, else: 0
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 1
 
-    if value.f056_int < -13 do
+    if value_f056_int < -13 do
       raise ArgumentError, "value.f056_int is below the wire minimum"
     end
 
-    if value.f056_int > 13 do
+    if value_f056_int > 13 do
       raise ArgumentError, "value.f056_int is above the wire maximum"
     end
 
-    v = value.f056_int + 13
+    v = value_f056_int + 13
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 5
 
-    if value.f057_int < -15 do
+    if value_f057_int < -15 do
       raise ArgumentError, "value.f057_int is below the wire minimum"
     end
 
-    if value.f057_int > 15 do
+    if value_f057_int > 15 do
       raise ArgumentError, "value.f057_int is above the wire maximum"
     end
 
-    v = value.f057_int + 15
+    v = value_f057_int + 15
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 5
-    v = f32_bits(value.f058f32)
+    v = f32_bits(value_f058f32)
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 32
-    w = f64_bits(value.f059f64)
+    w = f64_bits(value_f059f64)
     v = w &&& 0xFFFFFFFF
     flush = scratch_bits >>> 3
     data = <<data::binary, scratch::little-size(flush)-unit(8)>>
@@ -951,32 +1055,32 @@ defmodule Realworld.RealWorld do
     scratch_bits = scratch_bits &&& 7
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 32
-    v = value.f060_bits &&& 0xFF
+    v = value_f060_bits &&& 0xFF
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 8
-    v = cf_quantize(value.f061_cf32, -90.0, 180.0, 360)
+    v = cf_quantize(value_f061_cf32, -90.0, 180.0, 360)
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 9
 
-    if value.f062_uint < 0 do
+    if value_f062_uint < 0 do
       raise ArgumentError, "value.f062_uint is below the wire minimum"
     end
 
-    if value.f062_uint > 503 do
+    if value_f062_uint > 503 do
       raise ArgumentError, "value.f062_uint is above the wire maximum"
     end
 
-    v = value.f062_uint
+    v = value_f062_uint
     flush = scratch_bits >>> 3
     data = <<data::binary, scratch::little-size(flush)-unit(8)>>
     scratch = scratch >>> (flush <<< 3)
     scratch_bits = scratch_bits &&& 7
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 9
-    v = value.f063i64 &&& 0xFFFFFFFF
+    v = value_f063i64 &&& 0xFFFFFFFF
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 32
-    v = value.f063i64 >>> 32 &&& 0xFFFFFFFF
+    v = value_f063i64 >>> 32 &&& 0xFFFFFFFF
     flush = scratch_bits >>> 3
     data = <<data::binary, scratch::little-size(flush)-unit(8)>>
     scratch = scratch >>> (flush <<< 3)
@@ -984,80 +1088,80 @@ defmodule Realworld.RealWorld do
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 32
 
-    if value.f064_uint < 0 do
+    if value_f064_uint < 0 do
       raise ArgumentError, "value.f064_uint is below the wire minimum"
     end
 
-    if value.f064_uint > 299 do
+    if value_f064_uint > 299 do
       raise ArgumentError, "value.f064_uint is above the wire maximum"
     end
 
-    v = value.f064_uint
+    v = value_f064_uint
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 9
-    v = cf_quantize(value.f065_cf32, 0.0, 30.0, 60)
+    v = cf_quantize(value_f065_cf32, 0.0, 30.0, 60)
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 6
 
-    if value.f066_ufixed < 0 do
+    if value_f066_ufixed < 0 do
       raise ArgumentError, "value.f066_ufixed is below the wire minimum"
     end
 
-    if value.f066_ufixed > 32768 do
+    if value_f066_ufixed > 32768 do
       raise ArgumentError, "value.f066_ufixed is above the wire maximum"
     end
 
-    v = value.f066_ufixed
+    v = value_f066_ufixed
     flush = scratch_bits >>> 3
     data = <<data::binary, scratch::little-size(flush)-unit(8)>>
     scratch = scratch >>> (flush <<< 3)
     scratch_bits = scratch_bits &&& 7
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 16
-    v = cf_quantize(value.f067_cf32, -100.0, 200.0, 800)
+    v = cf_quantize(value_f067_cf32, -100.0, 200.0, 800)
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 10
-    v = cf_quantize(value.f068_cf32, 0.0, 2000.0, 2000)
+    v = cf_quantize(value_f068_cf32, 0.0, 2000.0, 2000)
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 11
-    v = value.f069_bits &&& 0x7FF
+    v = value_f069_bits &&& 0x7FF
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 11
 
-    if value.f070_uint < 0 do
+    if value_f070_uint < 0 do
       raise ArgumentError, "value.f070_uint is below the wire minimum"
     end
 
-    if value.f070_uint > 2 do
+    if value_f070_uint > 2 do
       raise ArgumentError, "value.f070_uint is above the wire maximum"
     end
 
-    v = value.f070_uint
+    v = value_f070_uint
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 2
-    v = cf_quantize(value.f071_cf32, 0.0, 10.0, 500)
+    v = cf_quantize(value_f071_cf32, 0.0, 10.0, 500)
     flush = scratch_bits >>> 3
     data = <<data::binary, scratch::little-size(flush)-unit(8)>>
     scratch = scratch >>> (flush <<< 3)
     scratch_bits = scratch_bits &&& 7
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 9
-    v = cf_quantize(value.f072_cf32, 0.0, 100.0, 10000)
+    v = cf_quantize(value_f072_cf32, 0.0, 100.0, 10000)
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 14
 
-    if value.f073_int < -4 do
+    if value_f073_int < -4 do
       raise ArgumentError, "value.f073_int is below the wire minimum"
     end
 
-    if value.f073_int > 4 do
+    if value_f073_int > 4 do
       raise ArgumentError, "value.f073_int is above the wire maximum"
     end
 
-    v = value.f073_int + 4
+    v = value_f073_int + 4
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 4
-    v = if value.f074_bool, do: 1, else: 0
+    v = if value_f074_bool, do: 1, else: 0
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 1
     flush = scratch_bits >>> 3
@@ -1066,11 +1170,19 @@ defmodule Realworld.RealWorld do
     scratch_bits = scratch_bits &&& 7
 
     {data, scratch, scratch_bits} =
-      if value.f074_bool do
-        v = value.f075u64 &&& 0xFFFFFFFF
+      if value_f074_bool do
+        %{
+          f075u64: value_f075u64,
+          f076_int: value_f076_int,
+          f077_int: value_f077_int,
+          f078_bits: value_f078_bits,
+          f079_uint: value_f079_uint
+        } = value
+
+        v = value_f075u64 &&& 0xFFFFFFFF
         scratch = scratch ||| v <<< scratch_bits
         scratch_bits = scratch_bits + 32
-        v = value.f075u64 >>> 32 &&& 0xFFFFFFFF
+        v = value_f075u64 >>> 32 &&& 0xFFFFFFFF
         flush = scratch_bits >>> 3
         data = <<data::binary, scratch::little-size(flush)-unit(8)>>
         scratch = scratch >>> (flush <<< 3)
@@ -1078,46 +1190,46 @@ defmodule Realworld.RealWorld do
         scratch = scratch ||| v <<< scratch_bits
         scratch_bits = scratch_bits + 32
 
-        if value.f076_int < -26218 do
+        if value_f076_int < -26218 do
           raise ArgumentError, "value.f076_int is below the wire minimum"
         end
 
-        if value.f076_int > 26218 do
+        if value_f076_int > 26218 do
           raise ArgumentError, "value.f076_int is above the wire maximum"
         end
 
-        v = value.f076_int + 26218
+        v = value_f076_int + 26218
         scratch = scratch ||| v <<< scratch_bits
         scratch_bits = scratch_bits + 16
 
-        if value.f077_int < -17 do
+        if value_f077_int < -17 do
           raise ArgumentError, "value.f077_int is below the wire minimum"
         end
 
-        if value.f077_int > 17 do
+        if value_f077_int > 17 do
           raise ArgumentError, "value.f077_int is above the wire maximum"
         end
 
-        v = value.f077_int + 17
+        v = value_f077_int + 17
         flush = scratch_bits >>> 3
         data = <<data::binary, scratch::little-size(flush)-unit(8)>>
         scratch = scratch >>> (flush <<< 3)
         scratch_bits = scratch_bits &&& 7
         scratch = scratch ||| v <<< scratch_bits
         scratch_bits = scratch_bits + 6
-        v = value.f078_bits &&& 0x1FF
+        v = value_f078_bits &&& 0x1FF
         scratch = scratch ||| v <<< scratch_bits
         scratch_bits = scratch_bits + 9
 
-        if value.f079_uint < 0 do
+        if value_f079_uint < 0 do
           raise ArgumentError, "value.f079_uint is below the wire minimum"
         end
 
-        if value.f079_uint > 17 do
+        if value_f079_uint > 17 do
           raise ArgumentError, "value.f079_uint is above the wire maximum"
         end
 
-        v = value.f079_uint
+        v = value_f079_uint
         scratch = scratch ||| v <<< scratch_bits
         scratch_bits = scratch_bits + 5
         flush = scratch_bits >>> 3
@@ -1129,13 +1241,13 @@ defmodule Realworld.RealWorld do
         {data, scratch, scratch_bits}
       end
 
-    v = if value.f080_bool, do: 1, else: 0
+    v = if value_f080_bool, do: 1, else: 0
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 1
-    v = value.f081_bits &&& 0x1FFFFFFF
+    v = value_f081_bits &&& 0x1FFFFFFF
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 29
-    v = value.f082_bits &&& 0x1FFFFFF
+    v = value_f082_bits &&& 0x1FFFFFF
     flush = scratch_bits >>> 3
     data = <<data::binary, scratch::little-size(flush)-unit(8)>>
     scratch = scratch >>> (flush <<< 3)
@@ -1143,30 +1255,30 @@ defmodule Realworld.RealWorld do
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 25
 
-    if value.f083_enum < 0 do
+    if value_f083_enum < 0 do
       raise ArgumentError, "value.f083_enum is below the wire minimum"
     end
 
-    if value.f083_enum > 5 do
+    if value_f083_enum > 5 do
       raise ArgumentError, "value.f083_enum is above the wire maximum"
     end
 
-    v = value.f083_enum
+    v = value_f083_enum
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 3
 
-    if value.f084_ufixed < 0 do
+    if value_f084_ufixed < 0 do
       raise ArgumentError, "value.f084_ufixed is below the wire minimum"
     end
 
-    if value.f084_ufixed > 128 do
+    if value_f084_ufixed > 128 do
       raise ArgumentError, "value.f084_ufixed is above the wire maximum"
     end
 
-    v = value.f084_ufixed
+    v = value_f084_ufixed
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 8
-    v = value.f085_bits &&& 0x1FFFFF
+    v = value_f085_bits &&& 0x1FFFFF
     flush = scratch_bits >>> 3
     data = <<data::binary, scratch::little-size(flush)-unit(8)>>
     scratch = scratch >>> (flush <<< 3)
@@ -1174,18 +1286,18 @@ defmodule Realworld.RealWorld do
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 21
 
-    if value.f086_uint < 0 do
+    if value_f086_uint < 0 do
       raise ArgumentError, "value.f086_uint is below the wire minimum"
     end
 
-    if value.f086_uint > 399 do
+    if value_f086_uint > 399 do
       raise ArgumentError, "value.f086_uint is above the wire maximum"
     end
 
-    v = value.f086_uint
+    v = value_f086_uint
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 9
-    w = f64_bits(value.f087f64)
+    w = f64_bits(value_f087f64)
     v = w &&& 0xFFFFFFFF
     flush = scratch_bits >>> 3
     data = <<data::binary, scratch::little-size(flush)-unit(8)>>
@@ -1201,37 +1313,37 @@ defmodule Realworld.RealWorld do
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 32
 
-    if value.f088_int < -694 do
+    if value_f088_int < -694 do
       raise ArgumentError, "value.f088_int is below the wire minimum"
     end
 
-    if value.f088_int > 694 do
+    if value_f088_int > 694 do
       raise ArgumentError, "value.f088_int is above the wire maximum"
     end
 
-    v = value.f088_int + 694
+    v = value_f088_int + 694
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 11
-    v = value.f089_bits &&& 0xFFFFFFFF
+    v = value_f089_bits &&& 0xFFFFFFFF
     flush = scratch_bits >>> 3
     data = <<data::binary, scratch::little-size(flush)-unit(8)>>
     scratch = scratch >>> (flush <<< 3)
     scratch_bits = scratch_bits &&& 7
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 32
-    v = value.f089_bits >>> 32 &&& 0xFFFF
+    v = value_f089_bits >>> 32 &&& 0xFFFF
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 16
 
-    if value.f090_uint < 0 do
+    if value_f090_uint < 0 do
       raise ArgumentError, "value.f090_uint is below the wire minimum"
     end
 
-    if value.f090_uint > 214 do
+    if value_f090_uint > 214 do
       raise ArgumentError, "value.f090_uint is above the wire maximum"
     end
 
-    v = value.f090_uint
+    v = value_f090_uint
     flush = scratch_bits >>> 3
     data = <<data::binary, scratch::little-size(flush)-unit(8)>>
     scratch = scratch >>> (flush <<< 3)
@@ -1239,49 +1351,49 @@ defmodule Realworld.RealWorld do
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 8
 
-    if value.f091_flags >>> 5 != 0 do
+    if value_f091_flags >>> 5 != 0 do
       raise ArgumentError, "value.f091_flags holds a mask bit above the 5-bit wire"
     end
 
-    v = value.f091_flags
+    v = value_f091_flags
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 5
-    v = if value.f092_bool, do: 1, else: 0
+    v = if value_f092_bool, do: 1, else: 0
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 1
-    v = value.f093_bits &&& 0xFFFFFFFF
+    v = value_f093_bits &&& 0xFFFFFFFF
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 32
-    v = value.f093_bits >>> 32 &&& 0xFFFFFFFF
+    v = value_f093_bits >>> 32 &&& 0xFFFFFFFF
     flush = scratch_bits >>> 3
     data = <<data::binary, scratch::little-size(flush)-unit(8)>>
     scratch = scratch >>> (flush <<< 3)
     scratch_bits = scratch_bits &&& 7
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 32
-    v = if value.f094_bool, do: 1, else: 0
+    v = if value_f094_bool, do: 1, else: 0
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 1
 
-    if value.f095_fixed < -103_350_272 do
+    if value_f095_fixed < -103_350_272 do
       raise ArgumentError, "value.f095_fixed is below the wire minimum"
     end
 
-    if value.f095_fixed > 103_350_272 do
+    if value_f095_fixed > 103_350_272 do
       raise ArgumentError, "value.f095_fixed is above the wire maximum"
     end
 
-    v = value.f095_fixed + 103_350_272
+    v = value_f095_fixed + 103_350_272
     flush = scratch_bits >>> 3
     data = <<data::binary, scratch::little-size(flush)-unit(8)>>
     scratch = scratch >>> (flush <<< 3)
     scratch_bits = scratch_bits &&& 7
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 28
-    v = value.f096_bits &&& 0x3FFFF
+    v = value_f096_bits &&& 0x3FFFF
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 18
-    v = value.f097_bits &&& 0xFFF
+    v = value_f097_bits &&& 0xFFF
     flush = scratch_bits >>> 3
     data = <<data::binary, scratch::little-size(flush)-unit(8)>>
     scratch = scratch >>> (flush <<< 3)

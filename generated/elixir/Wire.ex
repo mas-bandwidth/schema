@@ -248,11 +248,12 @@ defmodule Example.Wire do
     data = <<>>
     scratch = 0
     scratch_bits = 0
+    %{version: value_version, probe_id: value_probe_id} = value
     # const(0xAB, 8) rides the wire (SPEC §4.3)
     v = 171
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 8
-    v = value.version &&& 0x7
+    v = value_version &&& 0x7
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 3
     # reserved bits ride as zeros (SPEC §4.3)
@@ -267,10 +268,10 @@ defmodule Example.Wire do
     data = if scratch_bits != 0, do: <<data::binary, scratch>>, else: data
     scratch = 0
     scratch_bits = 0
-    v = value.probe_id &&& 0xFFFFFFFF
+    v = value_probe_id &&& 0xFFFFFFFF
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 32
-    v = value.probe_id >>> 32 &&& 0xFFFFFFFF
+    v = value_probe_id >>> 32 &&& 0xFFFFFFFF
     flush = scratch_bits >>> 3
     data = <<data::binary, scratch::little-size(flush)-unit(8)>>
     scratch = scratch >>> (flush <<< 3)
@@ -366,23 +367,32 @@ defmodule Example.Wire do
     data = <<>>
     scratch = 0
     scratch_bits = 0
-    v = value.small &&& 0x1FF
+
+    %{
+      small: value_small,
+      boundary: value_boundary,
+      wide: value_wide,
+      sensor: value_sensor,
+      nonce: value_nonce
+    } = value
+
+    v = value_small &&& 0x1FF
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 9
-    v = value.boundary &&& 0xFFFFFFFF
+    v = value_boundary &&& 0xFFFFFFFF
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 32
-    v = value.boundary >>> 32 &&& 0x1
+    v = value_boundary >>> 32 &&& 0x1
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 1
-    v = value.wide &&& 0xFFFFFFFF
+    v = value_wide &&& 0xFFFFFFFF
     flush = scratch_bits >>> 3
     data = <<data::binary, scratch::little-size(flush)-unit(8)>>
     scratch = scratch >>> (flush <<< 3)
     scratch_bits = scratch_bits &&& 7
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 32
-    v = value.wide >>> 32 &&& 0xFFFFFFFF
+    v = value_wide >>> 32 &&& 0xFFFFFFFF
     flush = scratch_bits >>> 3
     data = <<data::binary, scratch::little-size(flush)-unit(8)>>
     scratch = scratch >>> (flush <<< 3)
@@ -390,15 +400,15 @@ defmodule Example.Wire do
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 32
 
-    if value.sensor < 0 do
+    if value_sensor < 0 do
       raise ArgumentError, "value.sensor is below the wire minimum"
     end
 
-    if value.sensor > 4_294_967_295 do
+    if value_sensor > 4_294_967_295 do
       raise ArgumentError, "value.sensor is above the wire maximum"
     end
 
-    v = value.sensor
+    v = value_sensor
     flush = scratch_bits >>> 3
     data = <<data::binary, scratch::little-size(flush)-unit(8)>>
     scratch = scratch >>> (flush <<< 3)
@@ -406,22 +416,22 @@ defmodule Example.Wire do
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 32
 
-    if value.nonce < 0 do
+    if value_nonce < 0 do
       raise ArgumentError, "value.nonce is below the wire minimum"
     end
 
-    if value.nonce > 18_446_744_073_709_551_615 do
+    if value_nonce > 18_446_744_073_709_551_615 do
       raise ArgumentError, "value.nonce is above the wire maximum"
     end
 
-    v = value.nonce &&& 0xFFFFFFFF
+    v = value_nonce &&& 0xFFFFFFFF
     flush = scratch_bits >>> 3
     data = <<data::binary, scratch::little-size(flush)-unit(8)>>
     scratch = scratch >>> (flush <<< 3)
     scratch_bits = scratch_bits &&& 7
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 32
-    v = value.nonce >>> 32
+    v = value_nonce >>> 32
     flush = scratch_bits >>> 3
     data = <<data::binary, scratch::little-size(flush)-unit(8)>>
     scratch = scratch >>> (flush <<< 3)
@@ -529,23 +539,32 @@ defmodule Example.Wire do
     data = <<>>
     scratch = 0
     scratch_bits = 0
-    v = if value.active, do: 1, else: 0
+
+    %{
+      active: value_active,
+      orientation: value_orientation,
+      raw_delta: value_raw_delta,
+      big_delta: value_big_delta,
+      samples: value_samples
+    } = value
+
+    v = if value_active, do: 1, else: 0
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 1
-    v = cf_quantize(value.orientation, -180.0, 360.0, 36000)
+    v = cf_quantize(value_orientation, -180.0, 360.0, 36000)
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 16
-    v = value.raw_delta &&& 0xFFFFFFFF
+    v = value_raw_delta &&& 0xFFFFFFFF
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 32
-    v = value.big_delta &&& 0xFFFFFFFF
+    v = value_big_delta &&& 0xFFFFFFFF
     flush = scratch_bits >>> 3
     data = <<data::binary, scratch::little-size(flush)-unit(8)>>
     scratch = scratch >>> (flush <<< 3)
     scratch_bits = scratch_bits &&& 7
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 32
-    v = value.big_delta >>> 32 &&& 0xFFFFFFFF
+    v = value_big_delta >>> 32 &&& 0xFFFFFFFF
     flush = scratch_bits >>> 3
     data = <<data::binary, scratch::little-size(flush)-unit(8)>>
     scratch = scratch >>> (flush <<< 3)
@@ -558,19 +577,21 @@ defmodule Example.Wire do
     scratch_bits = scratch_bits &&& 7
 
     {data, scratch, scratch_bits} =
-      if value.active do
-        if value.weapon < 0 do
+      if value_active do
+        %{weapon: value_weapon, has_target: value_has_target} = value
+
+        if value_weapon < 0 do
           raise ArgumentError, "value.weapon is below the wire minimum"
         end
 
-        if value.weapon > 15 do
+        if value_weapon > 15 do
           raise ArgumentError, "value.weapon is above the wire maximum"
         end
 
-        v = value.weapon
+        v = value_weapon
         scratch = scratch ||| v <<< scratch_bits
         scratch_bits = scratch_bits + 4
-        v = if value.has_target, do: 1, else: 0
+        v = if value_has_target, do: 1, else: 0
         scratch = scratch ||| v <<< scratch_bits
         scratch_bits = scratch_bits + 1
         flush = scratch_bits >>> 3
@@ -579,7 +600,7 @@ defmodule Example.Wire do
         scratch_bits = scratch_bits &&& 7
 
         {data, scratch, scratch_bits} =
-          if value.has_target do
+          if value_has_target do
             v = value.target_id &&& 0xFFFF
             scratch = scratch ||| v <<< scratch_bits
             scratch_bits = scratch_bits + 16
@@ -604,7 +625,7 @@ defmodule Example.Wire do
         {data, scratch, scratch_bits}
       end
 
-    n = length(value.samples)
+    n = length(value_samples)
 
     if n < 1 do
       raise ArgumentError, "value.samples count is below the wire minimum"
@@ -623,7 +644,7 @@ defmodule Example.Wire do
     scratch_bits = scratch_bits &&& 7
 
     {data, scratch, scratch_bits} =
-      w_probe_sample_samples(value.samples, data, scratch, scratch_bits)
+      w_probe_sample_samples(value_samples, data, scratch, scratch_bits)
 
     if scratch_bits != 0, do: <<data::binary, scratch>>, else: data
   end
@@ -826,19 +847,20 @@ defmodule Example.Wire do
     data = <<>>
     scratch = 0
     scratch_bits = 0
+    %{width: value_width, height: value_height} = value
 
-    if value.width < 0 do
+    if value_width < 0 do
       raise ArgumentError, "value.width is below the wire minimum"
     end
 
-    if value.width > 100 do
+    if value_width > 100 do
       raise ArgumentError, "value.width is above the wire maximum"
     end
 
-    v = value.width
+    v = value_width
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 7
-    v = value.height &&& 0xFF
+    v = value_height &&& 0xFF
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 8
     flush = scratch_bits >>> 3
@@ -929,18 +951,20 @@ defmodule Example.Wire do
           {data, scratch, scratch_bits}
 
         2 ->
-          if value.slab.width < 0 do
+          %{width: value_slab_width, height: value_slab_height} = value.slab
+
+          if value_slab_width < 0 do
             raise ArgumentError, "value.slab.width is below the wire minimum"
           end
 
-          if value.slab.width > 100 do
+          if value_slab_width > 100 do
             raise ArgumentError, "value.slab.width is above the wire maximum"
           end
 
-          v = value.slab.width
+          v = value_slab_width
           scratch = scratch ||| v <<< scratch_bits
           scratch_bits = scratch_bits + 7
-          v = value.slab.height &&& 0xFF
+          v = value_slab_height &&& 0xFF
           scratch = scratch ||| v <<< scratch_bits
           scratch_bits = scratch_bits + 8
           flush = scratch_bits >>> 3
@@ -1060,19 +1084,20 @@ defmodule Example.Wire do
     data = <<>>
     scratch = 0
     scratch_bits = 0
-    v = value.armor &&& 0xFF
+    %{armor: value_armor, shape: value_shape, backup: value_backup, extras: value_extras} = value
+    v = value_armor &&& 0xFF
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 8
 
-    if value.shape.type < 0 do
+    if value_shape.type < 0 do
       raise ArgumentError, "value.shape.type is below the wire minimum"
     end
 
-    if value.shape.type > 2 do
+    if value_shape.type > 2 do
       raise ArgumentError, "value.shape.type is above the wire maximum"
     end
 
-    v = value.shape.type
+    v = value_shape.type
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 2
     flush = scratch_bits >>> 3
@@ -1081,9 +1106,9 @@ defmodule Example.Wire do
     scratch_bits = scratch_bits &&& 7
 
     {data, scratch, scratch_bits} =
-      case value.shape.type do
+      case value_shape.type do
         1 ->
-          v = value.shape.ring.radius &&& 0xFFFF
+          v = value_shape.ring.radius &&& 0xFFFF
           scratch = scratch ||| v <<< scratch_bits
           scratch_bits = scratch_bits + 16
           flush = scratch_bits >>> 3
@@ -1093,18 +1118,20 @@ defmodule Example.Wire do
           {data, scratch, scratch_bits}
 
         2 ->
-          if value.shape.slab.width < 0 do
+          %{width: value_shape_slab_width, height: value_shape_slab_height} = value_shape.slab
+
+          if value_shape_slab_width < 0 do
             raise ArgumentError, "value.shape.slab.width is below the wire minimum"
           end
 
-          if value.shape.slab.width > 100 do
+          if value_shape_slab_width > 100 do
             raise ArgumentError, "value.shape.slab.width is above the wire maximum"
           end
 
-          v = value.shape.slab.width
+          v = value_shape_slab_width
           scratch = scratch ||| v <<< scratch_bits
           scratch_bits = scratch_bits + 7
-          v = value.shape.slab.height &&& 0xFF
+          v = value_shape_slab_height &&& 0xFF
           scratch = scratch ||| v <<< scratch_bits
           scratch_bits = scratch_bits + 8
           flush = scratch_bits >>> 3
@@ -1118,15 +1145,15 @@ defmodule Example.Wire do
           {data, scratch, scratch_bits}
       end
 
-    if value.backup.type < 0 do
+    if value_backup.type < 0 do
       raise ArgumentError, "value.backup.type is below the wire minimum"
     end
 
-    if value.backup.type > 2 do
+    if value_backup.type > 2 do
       raise ArgumentError, "value.backup.type is above the wire maximum"
     end
 
-    v = value.backup.type
+    v = value_backup.type
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 2
     flush = scratch_bits >>> 3
@@ -1135,9 +1162,9 @@ defmodule Example.Wire do
     scratch_bits = scratch_bits &&& 7
 
     {data, scratch, scratch_bits} =
-      case value.backup.type do
+      case value_backup.type do
         1 ->
-          v = value.backup.ring.radius &&& 0xFFFF
+          v = value_backup.ring.radius &&& 0xFFFF
           scratch = scratch ||| v <<< scratch_bits
           scratch_bits = scratch_bits + 16
           flush = scratch_bits >>> 3
@@ -1147,18 +1174,20 @@ defmodule Example.Wire do
           {data, scratch, scratch_bits}
 
         2 ->
-          if value.backup.slab.width < 0 do
+          %{width: value_backup_slab_width, height: value_backup_slab_height} = value_backup.slab
+
+          if value_backup_slab_width < 0 do
             raise ArgumentError, "value.backup.slab.width is below the wire minimum"
           end
 
-          if value.backup.slab.width > 100 do
+          if value_backup_slab_width > 100 do
             raise ArgumentError, "value.backup.slab.width is above the wire maximum"
           end
 
-          v = value.backup.slab.width
+          v = value_backup_slab_width
           scratch = scratch ||| v <<< scratch_bits
           scratch_bits = scratch_bits + 7
-          v = value.backup.slab.height &&& 0xFF
+          v = value_backup_slab_height &&& 0xFF
           scratch = scratch ||| v <<< scratch_bits
           scratch_bits = scratch_bits + 8
           flush = scratch_bits >>> 3
@@ -1172,7 +1201,7 @@ defmodule Example.Wire do
           {data, scratch, scratch_bits}
       end
 
-    n = length(value.extras)
+    n = length(value_extras)
 
     if n > 2 do
       raise ArgumentError, "value.extras count is above the wire maximum"
@@ -1187,7 +1216,7 @@ defmodule Example.Wire do
     scratch_bits = scratch_bits &&& 7
 
     {data, scratch, scratch_bits} =
-      w_probe_collider_extras(value.extras, data, scratch, scratch_bits)
+      w_probe_collider_extras(value_extras, data, scratch, scratch_bits)
 
     if scratch_bits != 0, do: <<data::binary, scratch>>, else: data
   end
@@ -1376,19 +1405,20 @@ defmodule Example.Wire do
     data = <<>>
     scratch = 0
     scratch_bits = 0
-    v = value.retries &&& 0xFFFFFFFF
+    %{retries: value_retries, preferred: value_preferred} = value
+    v = value_retries &&& 0xFFFFFFFF
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 32
 
-    if value.preferred < 0 do
+    if value_preferred < 0 do
       raise ArgumentError, "value.preferred is below the wire minimum"
     end
 
-    if value.preferred > 15 do
+    if value_preferred > 15 do
       raise ArgumentError, "value.preferred is above the wire maximum"
     end
 
-    v = value.preferred
+    v = value_preferred
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 4
     flush = scratch_bits >>> 3
@@ -1451,27 +1481,29 @@ defmodule Example.Wire do
     data = <<>>
     scratch = 0
     scratch_bits = 0
+    %{samples: value_samples, config: value_config} = value
 
-    if length(value.samples) != 2 do
+    if length(value_samples) != 2 do
       raise ArgumentError, "value.samples must hold exactly 2 elements"
     end
 
     {data, scratch, scratch_bits} =
-      w_probe_array_samples(value.samples, data, scratch, scratch_bits)
+      w_probe_array_samples(value_samples, data, scratch, scratch_bits)
 
-    v = value.config.retries &&& 0xFFFFFFFF
+    %{retries: value_config_retries, preferred: value_config_preferred} = value_config
+    v = value_config_retries &&& 0xFFFFFFFF
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 32
 
-    if value.config.preferred < 0 do
+    if value_config_preferred < 0 do
       raise ArgumentError, "value.config.preferred is below the wire minimum"
     end
 
-    if value.config.preferred > 15 do
+    if value_config_preferred > 15 do
       raise ArgumentError, "value.config.preferred is above the wire maximum"
     end
 
-    v = value.config.preferred
+    v = value_config_preferred
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 4
     flush = scratch_bits >>> 3
@@ -1578,43 +1610,51 @@ defmodule Example.Wire do
     data = <<>>
     scratch = 0
     scratch_bits = 0
-    v = value.test_a &&& 0xFFFF
+
+    %{
+      test_a: value_test_a,
+      test_b: value_test_b,
+      test_c: value_test_c,
+      test_d: value_test_d
+    } = value
+
+    v = value_test_a &&& 0xFFFF
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 16
 
-    if value.test_b < 0 do
+    if value_test_b < 0 do
       raise ArgumentError, "value.test_b is below the wire minimum"
     end
 
-    if value.test_b > 1000 do
+    if value_test_b > 1000 do
       raise ArgumentError, "value.test_b is above the wire maximum"
     end
 
-    v = value.test_b
+    v = value_test_b
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 10
 
-    if value.test_c < 0 do
+    if value_test_c < 0 do
       raise ArgumentError, "value.test_c is below the wire minimum"
     end
 
-    if value.test_c > 1000 do
+    if value_test_c > 1000 do
       raise ArgumentError, "value.test_c is above the wire maximum"
     end
 
-    v = value.test_c
+    v = value_test_c
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 10
 
-    if value.test_d < 0 do
+    if value_test_d < 0 do
       raise ArgumentError, "value.test_d is below the wire minimum"
     end
 
-    if value.test_d > 1000 do
+    if value_test_d > 1000 do
       raise ArgumentError, "value.test_d is above the wire maximum"
     end
 
-    v = value.test_d
+    v = value_test_d
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 10
     flush = scratch_bits >>> 3
@@ -1877,11 +1917,13 @@ defmodule Example.Wire do
     data = <<>>
     scratch = 0
     scratch_bits = 0
+    %{header: value_header, flags: value_flags, echo: value_echo} = value
+    %{version: value_header_version, probe_id: value_header_probe_id} = value_header
     # const(0xAB, 8) rides the wire (SPEC §4.3)
     v = 171
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 8
-    v = value.header.version &&& 0x7
+    v = value_header_version &&& 0x7
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 3
     # reserved bits ride as zeros (SPEC §4.3)
@@ -1896,10 +1938,10 @@ defmodule Example.Wire do
     data = if scratch_bits != 0, do: <<data::binary, scratch>>, else: data
     scratch = 0
     scratch_bits = 0
-    v = value.header.probe_id &&& 0xFFFFFFFF
+    v = value_header_probe_id &&& 0xFFFFFFFF
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 32
-    v = value.header.probe_id >>> 32 &&& 0xFFFFFFFF
+    v = value_header_probe_id >>> 32 &&& 0xFFFFFFFF
     flush = scratch_bits >>> 3
     data = <<data::binary, scratch::little-size(flush)-unit(8)>>
     scratch = scratch >>> (flush <<< 3)
@@ -1907,14 +1949,22 @@ defmodule Example.Wire do
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 32
 
-    if value.flags >>> 8 != 0 do
+    if value_flags >>> 8 != 0 do
       raise ArgumentError, "value.flags holds a mask bit above the 8-bit wire"
     end
 
-    v = value.flags
+    v = value_flags
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 8
-    v = value.echo.test_a &&& 0xFFFF
+
+    %{
+      test_a: value_echo_test_a,
+      test_b: value_echo_test_b,
+      test_c: value_echo_test_c,
+      test_d: value_echo_test_d
+    } = value_echo
+
+    v = value_echo_test_a &&& 0xFFFF
     flush = scratch_bits >>> 3
     data = <<data::binary, scratch::little-size(flush)-unit(8)>>
     scratch = scratch >>> (flush <<< 3)
@@ -1922,39 +1972,39 @@ defmodule Example.Wire do
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 16
 
-    if value.echo.test_b < 0 do
+    if value_echo_test_b < 0 do
       raise ArgumentError, "value.echo.test_b is below the wire minimum"
     end
 
-    if value.echo.test_b > 1000 do
+    if value_echo_test_b > 1000 do
       raise ArgumentError, "value.echo.test_b is above the wire maximum"
     end
 
-    v = value.echo.test_b
+    v = value_echo_test_b
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 10
 
-    if value.echo.test_c < 0 do
+    if value_echo_test_c < 0 do
       raise ArgumentError, "value.echo.test_c is below the wire minimum"
     end
 
-    if value.echo.test_c > 1000 do
+    if value_echo_test_c > 1000 do
       raise ArgumentError, "value.echo.test_c is above the wire maximum"
     end
 
-    v = value.echo.test_c
+    v = value_echo_test_c
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 10
 
-    if value.echo.test_d < 0 do
+    if value_echo_test_d < 0 do
       raise ArgumentError, "value.echo.test_d is below the wire minimum"
     end
 
-    if value.echo.test_d > 1000 do
+    if value_echo_test_d > 1000 do
       raise ArgumentError, "value.echo.test_d is above the wire maximum"
     end
 
-    v = value.echo.test_d
+    v = value_echo_test_d
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 10
     flush = scratch_bits >>> 3
@@ -2104,54 +2154,78 @@ defmodule Example.Wire do
     scratch = 0
     scratch_bits = 0
 
-    if value.a < -100 do
+    %{
+      a: value_a,
+      b: value_b,
+      c: value_c,
+      d: value_d,
+      e: value_e,
+      f: value_f,
+      g: value_g,
+      items: value_items,
+      float_value: value_float_value,
+      compressed_float_value: value_compressed_float_value,
+      double_value: value_double_value,
+      int8_value: value_int8_value,
+      int16_value: value_int16_value,
+      uint8_value: value_uint8_value,
+      uint16_value: value_uint16_value,
+      uint32_value: value_uint32_value,
+      uint64_value: value_uint64_value,
+      int64_full: value_int64_full,
+      int64_range: value_int64_range,
+      fixed_bytes: value_fixed_bytes,
+      text: value_text
+    } = value
+
+    if value_a < -100 do
       raise ArgumentError, "value.a is below the wire minimum"
     end
 
-    if value.a > 100 do
+    if value_a > 100 do
       raise ArgumentError, "value.a is above the wire maximum"
     end
 
-    v = value.a + 100
+    v = value_a + 100
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 8
 
-    if value.b < -100 do
+    if value_b < -100 do
       raise ArgumentError, "value.b is below the wire minimum"
     end
 
-    if value.b > 100 do
+    if value_b > 100 do
       raise ArgumentError, "value.b is above the wire maximum"
     end
 
-    v = value.b + 100
+    v = value_b + 100
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 8
 
-    if value.c < -100 do
+    if value_c < -100 do
       raise ArgumentError, "value.c is below the wire minimum"
     end
 
-    if value.c > 150 do
+    if value_c > 150 do
       raise ArgumentError, "value.c is above the wire maximum"
     end
 
-    v = value.c + 100
+    v = value_c + 100
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 8
-    v = value.d &&& 0xFF
+    v = value_d &&& 0xFF
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 8
-    v = value.e &&& 0xFF
+    v = value_e &&& 0xFF
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 8
-    v = value.f &&& 0xFF
+    v = value_f &&& 0xFF
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 8
-    v = if value.g, do: 1, else: 0
+    v = if value_g, do: 1, else: 0
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 1
-    n = length(value.items)
+    n = length(value_items)
 
     if n > 16 do
       raise ArgumentError, "value.items count is above the wire maximum"
@@ -2168,14 +2242,14 @@ defmodule Example.Wire do
     data = <<data::binary, scratch::little-size(flush)-unit(8)>>
     scratch = scratch >>> (flush <<< 3)
     scratch_bits = scratch_bits &&& 7
-    {data, scratch, scratch_bits} = w_test_data_items(value.items, data, scratch, scratch_bits)
-    v = f32_bits(value.float_value)
+    {data, scratch, scratch_bits} = w_test_data_items(value_items, data, scratch, scratch_bits)
+    v = f32_bits(value_float_value)
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 32
-    v = cf_quantize(value.compressed_float_value, 0.0, 10.0, 1000)
+    v = cf_quantize(value_compressed_float_value, 0.0, 10.0, 1000)
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 10
-    w = f64_bits(value.double_value)
+    w = f64_bits(value_double_value)
     v = w &&& 0xFFFFFFFF
     flush = scratch_bits >>> 3
     data = <<data::binary, scratch::little-size(flush)-unit(8)>>
@@ -2190,51 +2264,51 @@ defmodule Example.Wire do
     scratch_bits = scratch_bits &&& 7
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 32
-    v = value.int8_value &&& 0xFF
+    v = value_int8_value &&& 0xFF
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 8
-    v = value.int16_value &&& 0xFFFF
+    v = value_int16_value &&& 0xFFFF
     flush = scratch_bits >>> 3
     data = <<data::binary, scratch::little-size(flush)-unit(8)>>
     scratch = scratch >>> (flush <<< 3)
     scratch_bits = scratch_bits &&& 7
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 16
-    v = value.uint8_value &&& 0xFF
+    v = value_uint8_value &&& 0xFF
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 8
-    v = value.uint16_value &&& 0xFFFF
+    v = value_uint16_value &&& 0xFFFF
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 16
-    v = value.uint32_value &&& 0xFFFFFFFF
+    v = value_uint32_value &&& 0xFFFFFFFF
     flush = scratch_bits >>> 3
     data = <<data::binary, scratch::little-size(flush)-unit(8)>>
     scratch = scratch >>> (flush <<< 3)
     scratch_bits = scratch_bits &&& 7
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 32
-    v = value.uint64_value &&& 0xFFFFFFFF
+    v = value_uint64_value &&& 0xFFFFFFFF
     flush = scratch_bits >>> 3
     data = <<data::binary, scratch::little-size(flush)-unit(8)>>
     scratch = scratch >>> (flush <<< 3)
     scratch_bits = scratch_bits &&& 7
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 32
-    v = value.uint64_value >>> 32 &&& 0xFFFFFFFF
+    v = value_uint64_value >>> 32 &&& 0xFFFFFFFF
     flush = scratch_bits >>> 3
     data = <<data::binary, scratch::little-size(flush)-unit(8)>>
     scratch = scratch >>> (flush <<< 3)
     scratch_bits = scratch_bits &&& 7
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 32
-    v = value.int64_full &&& 0xFFFFFFFF
+    v = value_int64_full &&& 0xFFFFFFFF
     flush = scratch_bits >>> 3
     data = <<data::binary, scratch::little-size(flush)-unit(8)>>
     scratch = scratch >>> (flush <<< 3)
     scratch_bits = scratch_bits &&& 7
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 32
-    v = value.int64_full >>> 32 &&& 0xFFFFFFFF
+    v = value_int64_full >>> 32 &&& 0xFFFFFFFF
     flush = scratch_bits >>> 3
     data = <<data::binary, scratch::little-size(flush)-unit(8)>>
     scratch = scratch >>> (flush <<< 3)
@@ -2242,15 +2316,15 @@ defmodule Example.Wire do
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 32
 
-    if value.int64_range < -1_000_000_000_000 do
+    if value_int64_range < -1_000_000_000_000 do
       raise ArgumentError, "value.int64_range is below the wire minimum"
     end
 
-    if value.int64_range > 1_000_000_000_000 do
+    if value_int64_range > 1_000_000_000_000 do
       raise ArgumentError, "value.int64_range is above the wire maximum"
     end
 
-    w = value.int64_range + 1_000_000_000_000
+    w = value_int64_range + 1_000_000_000_000
     v = w &&& 0xFFFFFFFF
     flush = scratch_bits >>> 3
     data = <<data::binary, scratch::little-size(flush)-unit(8)>>
@@ -2270,18 +2344,18 @@ defmodule Example.Wire do
     scratch = 0
     scratch_bits = 0
 
-    if length(value.fixed_bytes) != 17 do
+    if length(value_fixed_bytes) != 17 do
       raise ArgumentError, "value.fixed_bytes must hold exactly 17 elements"
     end
 
     {data, scratch, scratch_bits} =
-      w_test_data_fixed_bytes(value.fixed_bytes, data, scratch, scratch_bits)
+      w_test_data_fixed_bytes(value_fixed_bytes, data, scratch, scratch_bits)
 
-    if byte_size(value.text) > 255 do
+    if byte_size(value_text) > 255 do
       raise ArgumentError, "value.text longer than the declared 255-byte bound"
     end
 
-    v = byte_size(value.text)
+    v = byte_size(value_text)
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 8
     flush = scratch_bits >>> 3
@@ -2293,7 +2367,7 @@ defmodule Example.Wire do
     scratch = 0
     scratch_bits = 0
     # the used bytes ride whole — the stream is byte-aligned here
-    data = <<data::binary, value.text::binary>>
+    data = <<data::binary, value_text::binary>>
     if scratch_bits != 0, do: <<data::binary, scratch>>, else: data
   end
 
@@ -2520,10 +2594,11 @@ defmodule Example.Wire do
     data = <<>>
     scratch = 0
     scratch_bits = 0
-    v = cf_quantize(value.boundary, 0.0, 10.0, 1000)
+    %{boundary: value_boundary, offset: value_offset} = value
+    v = cf_quantize(value_boundary, 0.0, 10.0, 1000)
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 10
-    v = cf_quantize(value.offset, -5.0, 10.0, 10000)
+    v = cf_quantize(value_offset, -5.0, 10.0, 10000)
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 14
     flush = scratch_bits >>> 3
@@ -2625,18 +2700,20 @@ defmodule Example.Wire do
           {data, scratch, scratch_bits}
 
         2 ->
-          if e.slab.width < 0 do
+          %{width: e_slab_width, height: e_slab_height} = e.slab
+
+          if e_slab_width < 0 do
             raise ArgumentError, "e.slab.width is below the wire minimum"
           end
 
-          if e.slab.width > 100 do
+          if e_slab_width > 100 do
             raise ArgumentError, "e.slab.width is above the wire maximum"
           end
 
-          v = e.slab.width
+          v = e_slab_width
           scratch = scratch ||| v <<< scratch_bits
           scratch_bits = scratch_bits + 7
-          v = e.slab.height &&& 0xFF
+          v = e_slab_height &&& 0xFF
           scratch = scratch ||| v <<< scratch_bits
           scratch_bits = scratch_bits + 8
           flush = scratch_bits >>> 3
@@ -2723,23 +2800,31 @@ defmodule Example.Wire do
   defp w_probe_array_samples([], data, scratch, scratch_bits), do: {data, scratch, scratch_bits}
 
   defp w_probe_array_samples([e | rest], data, scratch, scratch_bits) do
-    v = if e.active, do: 1, else: 0
+    %{
+      active: e_active,
+      orientation: e_orientation,
+      raw_delta: e_raw_delta,
+      big_delta: e_big_delta,
+      samples: e_samples
+    } = e
+
+    v = if e_active, do: 1, else: 0
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 1
-    v = cf_quantize(e.orientation, -180.0, 360.0, 36000)
+    v = cf_quantize(e_orientation, -180.0, 360.0, 36000)
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 16
-    v = e.raw_delta &&& 0xFFFFFFFF
+    v = e_raw_delta &&& 0xFFFFFFFF
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 32
-    v = e.big_delta &&& 0xFFFFFFFF
+    v = e_big_delta &&& 0xFFFFFFFF
     flush = scratch_bits >>> 3
     data = <<data::binary, scratch::little-size(flush)-unit(8)>>
     scratch = scratch >>> (flush <<< 3)
     scratch_bits = scratch_bits &&& 7
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 32
-    v = e.big_delta >>> 32 &&& 0xFFFFFFFF
+    v = e_big_delta >>> 32 &&& 0xFFFFFFFF
     flush = scratch_bits >>> 3
     data = <<data::binary, scratch::little-size(flush)-unit(8)>>
     scratch = scratch >>> (flush <<< 3)
@@ -2752,19 +2837,21 @@ defmodule Example.Wire do
     scratch_bits = scratch_bits &&& 7
 
     {data, scratch, scratch_bits} =
-      if e.active do
-        if e.weapon < 0 do
+      if e_active do
+        %{weapon: e_weapon, has_target: e_has_target} = e
+
+        if e_weapon < 0 do
           raise ArgumentError, "e.weapon is below the wire minimum"
         end
 
-        if e.weapon > 15 do
+        if e_weapon > 15 do
           raise ArgumentError, "e.weapon is above the wire maximum"
         end
 
-        v = e.weapon
+        v = e_weapon
         scratch = scratch ||| v <<< scratch_bits
         scratch_bits = scratch_bits + 4
-        v = if e.has_target, do: 1, else: 0
+        v = if e_has_target, do: 1, else: 0
         scratch = scratch ||| v <<< scratch_bits
         scratch_bits = scratch_bits + 1
         flush = scratch_bits >>> 3
@@ -2773,7 +2860,7 @@ defmodule Example.Wire do
         scratch_bits = scratch_bits &&& 7
 
         {data, scratch, scratch_bits} =
-          if e.has_target do
+          if e_has_target do
             v = e.target_id &&& 0xFFFF
             scratch = scratch ||| v <<< scratch_bits
             scratch_bits = scratch_bits + 16
@@ -2798,7 +2885,7 @@ defmodule Example.Wire do
         {data, scratch, scratch_bits}
       end
 
-    n = length(e.samples)
+    n = length(e_samples)
 
     if n < 1 do
       raise ArgumentError, "e.samples count is below the wire minimum"
@@ -2815,7 +2902,7 @@ defmodule Example.Wire do
     data = <<data::binary, scratch::little-size(flush)-unit(8)>>
     scratch = scratch >>> (flush <<< 3)
     scratch_bits = scratch_bits &&& 7
-    {data, scratch, scratch_bits} = w_probe_sample_samples(e.samples, data, scratch, scratch_bits)
+    {data, scratch, scratch_bits} = w_probe_sample_samples(e_samples, data, scratch, scratch_bits)
     w_probe_array_samples(rest, data, scratch, scratch_bits)
   end
 
