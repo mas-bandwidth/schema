@@ -1506,7 +1506,7 @@ defmodule Example.Clauses do
 
   defp w_w17_items([], data, scratch, scratch_bits), do: {data, scratch, scratch_bits}
 
-  defp w_w17_items([e1, e2, e3 | rest], data, scratch, scratch_bits) do
+  defp w_w17_items([e1, e2, e3, e4 | rest], data, scratch, scratch_bits) do
     if e1 < 0 do
       raise ArgumentError, "e is below the wire minimum"
     end
@@ -1542,8 +1542,24 @@ defmodule Example.Clauses do
     v = e3
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 17
+
+    if e4 < 0 do
+      raise ArgumentError, "e is below the wire minimum"
+    end
+
+    if e4 > 131_071 do
+      raise ArgumentError, "e is above the wire maximum"
+    end
+
+    v = e4
+    sc0 = scratch
+    fl0 = scratch_bits >>> 3
+    scratch = scratch >>> (fl0 <<< 3)
+    scratch_bits = scratch_bits &&& 7
+    scratch = scratch ||| v <<< scratch_bits
+    scratch_bits = scratch_bits + 17
     flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
+    data = <<data::binary, sc0::little-size(fl0)-unit(8), scratch::little-size(flush)-unit(8)>>
     scratch = scratch >>> (flush <<< 3)
     scratch_bits = scratch_bits &&& 7
     w_w17_items(rest, data, scratch, scratch_bits)
@@ -1592,7 +1608,7 @@ defmodule Example.Clauses do
 
   defp w_w26_items([], data, scratch, scratch_bits), do: {data, scratch, scratch_bits}
 
-  defp w_w26_items([e1, e2 | rest], data, scratch, scratch_bits) do
+  defp w_w26_items([e1, e2, e3, e4 | rest], data, scratch, scratch_bits) do
     if e1 < 0 do
       raise ArgumentError, "e is below the wire minimum"
     end
@@ -1616,8 +1632,36 @@ defmodule Example.Clauses do
     v = e2
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 26
+
+    if e3 < 0 do
+      raise ArgumentError, "e is below the wire minimum"
+    end
+
+    if e3 > 67_108_863 do
+      raise ArgumentError, "e is above the wire maximum"
+    end
+
+    v = e3
+    sc0 = scratch
+    fl0 = scratch_bits >>> 3
+    scratch = scratch >>> (fl0 <<< 3)
+    scratch_bits = scratch_bits &&& 7
+    scratch = scratch ||| v <<< scratch_bits
+    scratch_bits = scratch_bits + 26
+
+    if e4 < 0 do
+      raise ArgumentError, "e is below the wire minimum"
+    end
+
+    if e4 > 67_108_863 do
+      raise ArgumentError, "e is above the wire maximum"
+    end
+
+    v = e4
+    scratch = scratch ||| v <<< scratch_bits
+    scratch_bits = scratch_bits + 26
     flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
+    data = <<data::binary, sc0::little-size(fl0)-unit(8), scratch::little-size(flush)-unit(8)>>
     scratch = scratch >>> (flush <<< 3)
     scratch_bits = scratch_bits &&& 7
     w_w26_items(rest, data, scratch, scratch_bits)
@@ -1758,6 +1802,89 @@ defmodule Example.Clauses do
 
   defp w_w52_items([], data, scratch, scratch_bits), do: {data, scratch, scratch_bits}
 
+  defp w_w52_items([e1, e2, e3, e4 | rest], data, scratch, scratch_bits) do
+    if e1 < 0 do
+      raise ArgumentError, "e is below the wire minimum"
+    end
+
+    if e1 > 4_503_599_627_370_495 do
+      raise ArgumentError, "e is above the wire maximum"
+    end
+
+    v = e1 &&& 0xFFFFFFFF
+    scratch = scratch ||| v <<< scratch_bits
+    scratch_bits = scratch_bits + 32
+    v = e1 >>> 32
+    scratch = scratch ||| v <<< scratch_bits
+    scratch_bits = scratch_bits + 20
+
+    if e2 < 0 do
+      raise ArgumentError, "e is below the wire minimum"
+    end
+
+    if e2 > 4_503_599_627_370_495 do
+      raise ArgumentError, "e is above the wire maximum"
+    end
+
+    v = e2 &&& 0xFFFFFFFF
+    sc0 = scratch
+    fl0 = scratch_bits >>> 3
+    scratch = scratch >>> (fl0 <<< 3)
+    scratch_bits = scratch_bits &&& 7
+    scratch = scratch ||| v <<< scratch_bits
+    scratch_bits = scratch_bits + 32
+    v = e2 >>> 32
+    scratch = scratch ||| v <<< scratch_bits
+    scratch_bits = scratch_bits + 20
+
+    if e3 < 0 do
+      raise ArgumentError, "e is below the wire minimum"
+    end
+
+    if e3 > 4_503_599_627_370_495 do
+      raise ArgumentError, "e is above the wire maximum"
+    end
+
+    v = e3 &&& 0xFFFFFFFF
+    sc1 = scratch
+    fl1 = scratch_bits >>> 3
+    scratch = scratch >>> (fl1 <<< 3)
+    scratch_bits = scratch_bits &&& 7
+    scratch = scratch ||| v <<< scratch_bits
+    scratch_bits = scratch_bits + 32
+    v = e3 >>> 32
+    scratch = scratch ||| v <<< scratch_bits
+    scratch_bits = scratch_bits + 20
+
+    if e4 < 0 do
+      raise ArgumentError, "e is below the wire minimum"
+    end
+
+    if e4 > 4_503_599_627_370_495 do
+      raise ArgumentError, "e is above the wire maximum"
+    end
+
+    v = e4 &&& 0xFFFFFFFF
+    sc2 = scratch
+    fl2 = scratch_bits >>> 3
+    scratch = scratch >>> (fl2 <<< 3)
+    scratch_bits = scratch_bits &&& 7
+    scratch = scratch ||| v <<< scratch_bits
+    scratch_bits = scratch_bits + 32
+    v = e4 >>> 32
+    scratch = scratch ||| v <<< scratch_bits
+    scratch_bits = scratch_bits + 20
+    flush = scratch_bits >>> 3
+
+    data =
+      <<data::binary, sc0::little-size(fl0)-unit(8), sc1::little-size(fl1)-unit(8),
+        sc2::little-size(fl2)-unit(8), scratch::little-size(flush)-unit(8)>>
+
+    scratch = scratch >>> (flush <<< 3)
+    scratch_bits = scratch_bits &&& 7
+    w_w52_items(rest, data, scratch, scratch_bits)
+  end
+
   defp w_w52_items([e | rest], data, scratch, scratch_bits) do
     if e < 0 do
       raise ArgumentError, "e is below the wire minimum"
@@ -1796,6 +1923,89 @@ defmodule Example.Clauses do
   end
 
   defp w_w50_items([], data, scratch, scratch_bits), do: {data, scratch, scratch_bits}
+
+  defp w_w50_items([e1, e2, e3, e4 | rest], data, scratch, scratch_bits) do
+    if e1 < 0 do
+      raise ArgumentError, "e is below the wire minimum"
+    end
+
+    if e1 > 1_125_899_906_842_623 do
+      raise ArgumentError, "e is above the wire maximum"
+    end
+
+    v = e1 &&& 0xFFFFFFFF
+    scratch = scratch ||| v <<< scratch_bits
+    scratch_bits = scratch_bits + 32
+    v = e1 >>> 32
+    scratch = scratch ||| v <<< scratch_bits
+    scratch_bits = scratch_bits + 18
+
+    if e2 < 0 do
+      raise ArgumentError, "e is below the wire minimum"
+    end
+
+    if e2 > 1_125_899_906_842_623 do
+      raise ArgumentError, "e is above the wire maximum"
+    end
+
+    v = e2 &&& 0xFFFFFFFF
+    sc0 = scratch
+    fl0 = scratch_bits >>> 3
+    scratch = scratch >>> (fl0 <<< 3)
+    scratch_bits = scratch_bits &&& 7
+    scratch = scratch ||| v <<< scratch_bits
+    scratch_bits = scratch_bits + 32
+    v = e2 >>> 32
+    scratch = scratch ||| v <<< scratch_bits
+    scratch_bits = scratch_bits + 18
+
+    if e3 < 0 do
+      raise ArgumentError, "e is below the wire minimum"
+    end
+
+    if e3 > 1_125_899_906_842_623 do
+      raise ArgumentError, "e is above the wire maximum"
+    end
+
+    v = e3 &&& 0xFFFFFFFF
+    sc1 = scratch
+    fl1 = scratch_bits >>> 3
+    scratch = scratch >>> (fl1 <<< 3)
+    scratch_bits = scratch_bits &&& 7
+    scratch = scratch ||| v <<< scratch_bits
+    scratch_bits = scratch_bits + 32
+    v = e3 >>> 32
+    scratch = scratch ||| v <<< scratch_bits
+    scratch_bits = scratch_bits + 18
+
+    if e4 < 0 do
+      raise ArgumentError, "e is below the wire minimum"
+    end
+
+    if e4 > 1_125_899_906_842_623 do
+      raise ArgumentError, "e is above the wire maximum"
+    end
+
+    v = e4 &&& 0xFFFFFFFF
+    sc2 = scratch
+    fl2 = scratch_bits >>> 3
+    scratch = scratch >>> (fl2 <<< 3)
+    scratch_bits = scratch_bits &&& 7
+    scratch = scratch ||| v <<< scratch_bits
+    scratch_bits = scratch_bits + 32
+    v = e4 >>> 32
+    scratch = scratch ||| v <<< scratch_bits
+    scratch_bits = scratch_bits + 18
+    flush = scratch_bits >>> 3
+
+    data =
+      <<data::binary, sc0::little-size(fl0)-unit(8), sc1::little-size(fl1)-unit(8),
+        sc2::little-size(fl2)-unit(8), scratch::little-size(flush)-unit(8)>>
+
+    scratch = scratch >>> (flush <<< 3)
+    scratch_bits = scratch_bits &&& 7
+    w_w50_items(rest, data, scratch, scratch_bits)
+  end
 
   defp w_w50_items([e | rest], data, scratch, scratch_bits) do
     if e < 0 do

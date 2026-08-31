@@ -261,9 +261,9 @@ defmodule Example.Wire do
     v = value_probe_id &&& 0xFFFFFFFF
     scratch = v
     v = value_probe_id >>> 32 &&& 0xFFFFFFFF
-    data = <<data::binary, scratch::little-size(4)-unit(8)>>
+    sc0 = scratch
     scratch = v
-    data = <<data::binary, scratch::little-size(4)-unit(8)>>
+    data = <<data::binary, sc0::little-size(4)-unit(8), scratch::little-size(4)-unit(8)>>
     data
   end
 
@@ -363,11 +363,11 @@ defmodule Example.Wire do
     v = value_boundary >>> 32 &&& 0x1
     scratch = scratch ||| v <<< 41
     v = value_wide &&& 0xFFFFFFFF
-    data = <<data::binary, scratch::little-size(5)-unit(8)>>
+    sc0 = scratch
     scratch = scratch >>> 40
     scratch = scratch ||| v <<< 2
     v = value_wide >>> 32 &&& 0xFFFFFFFF
-    data = <<data::binary, scratch::little-size(4)-unit(8)>>
+    sc1 = scratch
     scratch = scratch >>> 32
     scratch = scratch ||| v <<< 2
 
@@ -380,7 +380,7 @@ defmodule Example.Wire do
     end
 
     v = value_sensor
-    data = <<data::binary, scratch::little-size(4)-unit(8)>>
+    sc2 = scratch
     scratch = scratch >>> 32
     scratch = scratch ||| v <<< 2
 
@@ -393,14 +393,19 @@ defmodule Example.Wire do
     end
 
     v = value_nonce &&& 0xFFFFFFFF
-    data = <<data::binary, scratch::little-size(4)-unit(8)>>
+    sc3 = scratch
     scratch = scratch >>> 32
     scratch = scratch ||| v <<< 2
     v = value_nonce >>> 32
-    data = <<data::binary, scratch::little-size(4)-unit(8)>>
+    sc4 = scratch
     scratch = scratch >>> 32
     scratch = scratch ||| v <<< 2
-    data = <<data::binary, scratch::little-size(4)-unit(8)>>
+
+    data =
+      <<data::binary, sc0::little-size(5)-unit(8), sc1::little-size(4)-unit(8),
+        sc2::little-size(4)-unit(8), sc3::little-size(4)-unit(8), sc4::little-size(4)-unit(8),
+        scratch::little-size(4)-unit(8)>>
+
     scratch = scratch >>> 32
     # the residual byte, statically known to be there
     <<data::binary, scratch>>
@@ -514,14 +519,18 @@ defmodule Example.Wire do
     v = value_raw_delta &&& 0xFFFFFFFF
     scratch = scratch ||| v <<< 17
     v = value_big_delta &&& 0xFFFFFFFF
-    data = <<data::binary, scratch::little-size(6)-unit(8)>>
+    sc0 = scratch
     scratch = scratch >>> 48
     scratch = scratch ||| v <<< 1
     v = value_big_delta >>> 32 &&& 0xFFFFFFFF
-    data = <<data::binary, scratch::little-size(4)-unit(8)>>
+    sc1 = scratch
     scratch = scratch >>> 32
     scratch = scratch ||| v <<< 1
-    data = <<data::binary, scratch::little-size(4)-unit(8)>>
+
+    data =
+      <<data::binary, sc0::little-size(6)-unit(8), sc1::little-size(4)-unit(8),
+        scratch::little-size(4)-unit(8)>>
+
     scratch = scratch >>> 32
 
     {data, scratch, scratch_bits} =
@@ -1810,7 +1819,7 @@ defmodule Example.Wire do
     v = value_header_probe_id &&& 0xFFFFFFFF
     scratch = v
     v = value_header_probe_id >>> 32 &&& 0xFFFFFFFF
-    data = <<data::binary, scratch::little-size(4)-unit(8)>>
+    sc0 = scratch
     scratch = v
 
     if value_flags >>> 8 != 0 do
@@ -1828,7 +1837,7 @@ defmodule Example.Wire do
     } = value_echo
 
     v = value_echo_test_a &&& 0xFFFF
-    data = <<data::binary, scratch::little-size(5)-unit(8)>>
+    sc1 = scratch
     scratch = v
 
     if value_echo_test_b < 0 do
@@ -1863,7 +1872,11 @@ defmodule Example.Wire do
 
     v = value_echo_test_d
     scratch = scratch ||| v <<< 36
-    data = <<data::binary, scratch::little-size(5)-unit(8)>>
+
+    data =
+      <<data::binary, sc0::little-size(4)-unit(8), sc1::little-size(5)-unit(8),
+        scratch::little-size(5)-unit(8)>>
+
     scratch = scratch >>> 40
     # the residual byte, statically known to be there
     <<data::binary, scratch>>
@@ -2078,9 +2091,10 @@ defmodule Example.Wire do
     end
 
     v = n
-    data = <<data::binary, scratch::little-size(6)-unit(8)>>
+    sc0 = scratch
     scratch = scratch >>> 48
     scratch = scratch ||| v <<< 1
+    data = <<data::binary, sc0::little-size(6)-unit(8)>>
     scratch_bits = 6
     {data, scratch, scratch_bits} = w_test_data_items(value_items, data, scratch, scratch_bits)
     v = f32_bits(value_float_value)
@@ -2091,16 +2105,16 @@ defmodule Example.Wire do
     scratch_bits = scratch_bits + 10
     w = f64_bits(value_double_value)
     v = w &&& 0xFFFFFFFF
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
+    sc1 = scratch
+    fl1 = scratch_bits >>> 3
+    scratch = scratch >>> (fl1 <<< 3)
     scratch_bits = scratch_bits &&& 7
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 32
     v = w >>> 32
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
+    sc2 = scratch
+    fl2 = scratch_bits >>> 3
+    scratch = scratch >>> (fl2 <<< 3)
     scratch_bits = scratch_bits &&& 7
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 32
@@ -2108,9 +2122,9 @@ defmodule Example.Wire do
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 8
     v = value_int16_value &&& 0xFFFF
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
+    sc3 = scratch
+    fl3 = scratch_bits >>> 3
+    scratch = scratch >>> (fl3 <<< 3)
     scratch_bits = scratch_bits &&& 7
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 16
@@ -2121,37 +2135,37 @@ defmodule Example.Wire do
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 16
     v = value_uint32_value &&& 0xFFFFFFFF
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
+    sc4 = scratch
+    fl4 = scratch_bits >>> 3
+    scratch = scratch >>> (fl4 <<< 3)
     scratch_bits = scratch_bits &&& 7
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 32
     v = value_uint64_value &&& 0xFFFFFFFF
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
+    sc5 = scratch
+    fl5 = scratch_bits >>> 3
+    scratch = scratch >>> (fl5 <<< 3)
     scratch_bits = scratch_bits &&& 7
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 32
     v = value_uint64_value >>> 32 &&& 0xFFFFFFFF
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
+    sc6 = scratch
+    fl6 = scratch_bits >>> 3
+    scratch = scratch >>> (fl6 <<< 3)
     scratch_bits = scratch_bits &&& 7
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 32
     v = value_int64_full &&& 0xFFFFFFFF
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
+    sc7 = scratch
+    fl7 = scratch_bits >>> 3
+    scratch = scratch >>> (fl7 <<< 3)
     scratch_bits = scratch_bits &&& 7
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 32
     v = value_int64_full >>> 32 &&& 0xFFFFFFFF
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
+    sc8 = scratch
+    fl8 = scratch_bits >>> 3
+    scratch = scratch >>> (fl8 <<< 3)
     scratch_bits = scratch_bits &&& 7
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 32
@@ -2166,9 +2180,9 @@ defmodule Example.Wire do
 
     w = value_int64_range + 1_000_000_000_000
     v = w &&& 0xFFFFFFFF
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
+    sc9 = scratch
+    fl9 = scratch_bits >>> 3
+    scratch = scratch >>> (fl9 <<< 3)
     scratch_bits = scratch_bits &&& 7
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 32
@@ -2176,7 +2190,14 @@ defmodule Example.Wire do
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 9
     flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
+
+    data =
+      <<data::binary, sc1::little-size(fl1)-unit(8), sc2::little-size(fl2)-unit(8),
+        sc3::little-size(fl3)-unit(8), sc4::little-size(fl4)-unit(8),
+        sc5::little-size(fl5)-unit(8), sc6::little-size(fl6)-unit(8),
+        sc7::little-size(fl7)-unit(8), sc8::little-size(fl8)-unit(8),
+        sc9::little-size(fl9)-unit(8), scratch::little-size(flush)-unit(8)>>
+
     scratch = scratch >>> (flush <<< 3)
     scratch_bits = scratch_bits &&& 7
     # align: zero-pad to the byte boundary (SPEC §4.3)
@@ -2478,7 +2499,7 @@ defmodule Example.Wire do
 
   defp w_probe_sample_samples([], data, scratch, scratch_bits), do: {data, scratch, scratch_bits}
 
-  defp w_probe_sample_samples([e1, e2, e3 | rest], data, scratch, scratch_bits) do
+  defp w_probe_sample_samples([e1, e2, e3, e4 | rest], data, scratch, scratch_bits) do
     v = e1 &&& 0xFFFF
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 16
@@ -2488,8 +2509,15 @@ defmodule Example.Wire do
     v = e3 &&& 0xFFFF
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 16
+    v = e4 &&& 0xFFFF
+    sc0 = scratch
+    fl0 = scratch_bits >>> 3
+    scratch = scratch >>> (fl0 <<< 3)
+    scratch_bits = scratch_bits &&& 7
+    scratch = scratch ||| v <<< scratch_bits
+    scratch_bits = scratch_bits + 16
     flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
+    data = <<data::binary, sc0::little-size(fl0)-unit(8), scratch::little-size(flush)-unit(8)>>
     scratch = scratch >>> (flush <<< 3)
     scratch_bits = scratch_bits &&& 7
     w_probe_sample_samples(rest, data, scratch, scratch_bits)
@@ -2682,21 +2710,25 @@ defmodule Example.Wire do
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 32
     v = e_big_delta &&& 0xFFFFFFFF
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
+    sc0 = scratch
+    fl0 = scratch_bits >>> 3
+    scratch = scratch >>> (fl0 <<< 3)
     scratch_bits = scratch_bits &&& 7
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 32
     v = e_big_delta >>> 32 &&& 0xFFFFFFFF
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
+    sc1 = scratch
+    fl1 = scratch_bits >>> 3
+    scratch = scratch >>> (fl1 <<< 3)
     scratch_bits = scratch_bits &&& 7
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 32
     flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
+
+    data =
+      <<data::binary, sc0::little-size(fl0)-unit(8), sc1::little-size(fl1)-unit(8),
+        scratch::little-size(flush)-unit(8)>>
+
     scratch = scratch >>> (flush <<< 3)
     scratch_bits = scratch_bits &&& 7
 

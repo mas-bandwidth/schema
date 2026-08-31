@@ -182,9 +182,16 @@ type gen struct {
 	fn strings.Builder
 
 	// pendW is the merge group open at this point of write emission: the
-	// static bits merged into the scratch since the last flush. Barriers
-	// close it; mergeW closes it when the next field would pass the budget.
+	// static bits merged into the scratch since the last spill. Barriers
+	// close it; mergeW spills when the next field would pass the budget.
 	pendW int64
+
+	// segW is the barrier's pending binary construction: the registers the
+	// full-group spills emptied the scratch into, waiting to ride ONE append
+	// as several segments. segN names the next one. A barrier drains them,
+	// so both are empty across every emission boundary.
+	segW []wseg
+	segN int
 
 	// the scratch's STATIC state, where the emitter knows it. A write
 	// function starts at a known zero and stays known until a value the
