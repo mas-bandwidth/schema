@@ -60,6 +60,19 @@
 //   - It is a lexical check. Code that computes a field name or a size at run
 //     time to evade it passes, and nothing short of a human reading the diff
 //     would catch that.
+//   - It guards MEASUREMENT, not CORRECTNESS. A shape-blind runner driving a
+//     defective emitter is still shape-blind and still passes here. #198 is
+//     the worked example: the Go emitter wrote a fixed scalar array twice, 32
+//     wire bytes where the other eight languages write 16, and Go-to-Go
+//     round-trips passed clean because both ends shared the defect. Nothing in
+//     this gate can see that. Cross-language wire agreement is the conformance
+//     suite's job, and issue #203 records the corpus blind spot that let it
+//     through.
+//   - It does not read comments differently from code. A shape NAME in a prose
+//     comment counts as a hit, which is why several ledger entries below are
+//     comments and say so. That is deliberate: a hand-coded bench announces
+//     itself in its own header comment, and teaching the gate to skip comments
+//     would teach it to skip the announcement.
 package main
 
 import (
@@ -111,11 +124,20 @@ var sourceExts = map[string]bool{
 	".kt": true, ".swift": true, ".zig": true,
 }
 
-// skipDirs — machine-written or vendored trees. Generated code names shapes
-// because that is its whole job; scanning it would flag the correct design.
+// skipDirs — machine-written, vendored or downloaded trees. Generated code
+// names shapes because that is its whole job; scanning it would flag the
+// correct design.
+//
+// `dist` is the Makefile's pinned toolchain drop (the Dart SDK, the JDK, OTP,
+// Elixir — see the DART/JAVA/BEAM_PATH comments at the top of the Makefile).
+// It is gitignored and absent on CI, which uses setup-dart/setup-java instead,
+// so the gate only ever meets it on a fully provisioned developer machine. The
+// Dart SDK alone ships `lib/core/stopwatch.dart`; without this line `make
+// shape-gate` refuses on exactly the trees that can run the whole bench.
 var skipDirs = map[string]bool{
 	".git": true, "generated": true, "testdata": true, "build": true,
 	"bin": true, "vendor": true, "node_modules": true, "target": true,
+	"dist": true,
 }
 
 // ------------------------------------------------------------------------------------------
