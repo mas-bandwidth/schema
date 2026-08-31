@@ -620,7 +620,7 @@ func main() {
 		w13Counts := []int{0, 1, 3, 4, 5, 7, 12}
 		w13At := func(c int) example.W13 {
 			v := example.W13{ItemsCount: int32(c)}
-			for i := 0; i < c; i++ {
+			for i := range c {
 				v.Items[i] = uint16(8191 - i*733)
 			}
 			return v
@@ -633,7 +633,7 @@ func main() {
 		w17Counts := []int{0, 1, 2, 3, 4, 9}
 		w17At := func(c int) example.W17 {
 			v := example.W17{ItemsCount: int32(c)}
-			for i := 0; i < c; i++ {
+			for i := range c {
 				v.Items[i] = uint32(131071 - i*11117)
 			}
 			return v
@@ -646,7 +646,7 @@ func main() {
 		w26Counts := []int{0, 1, 2, 3, 6}
 		w26At := func(c int) example.W26 {
 			v := example.W26{ItemsCount: int32(c)}
-			for i := 0; i < c; i++ {
+			for i := range c {
 				v.Items[i] = uint32(67108863 - i*5555555)
 			}
 			return v
@@ -659,7 +659,7 @@ func main() {
 		w1Counts := []int{0, 1, 3, 4, 5, 20}
 		w1At := func(c int) example.W1 {
 			v := example.W1{ItemsCount: int32(c)}
-			for i := 0; i < c; i++ {
+			for i := range c {
 				v.Items[i] = uint8(i % 2)
 			}
 			return v
@@ -671,7 +671,7 @@ func main() {
 
 		w52At := func(c int) example.W52 {
 			v := example.W52{ItemsCount: int32(c)}
-			for i := 0; i < c; i++ {
+			for i := range c {
 				v.Items[i] = 4503599627370495 - uint64(i)*123456789
 			}
 			return v
@@ -683,7 +683,7 @@ func main() {
 
 		w50At := func(c int) example.W50 {
 			v := example.W50{ItemsCount: int32(c)}
-			for i := 0; i < c; i++ {
+			for i := range c {
 				v.Items[i] = 1125899906842623 - uint64(i)*987654321
 			}
 			return v
@@ -694,7 +694,7 @@ func main() {
 		}
 
 		f13 := example.F13{}
-		for i := 0; i < 7; i++ {
+		for i := range 7 {
 			f13.Items[i] = uint16(8191 - i*911)
 		}
 		emit("F13", 91, func(ws *serialize.WriteStream) error { return example.WriteF13(ws, &f13) })
@@ -702,7 +702,7 @@ func main() {
 		triCounts := []int{0, 1, 3, 4, 5, 10}
 		triAt := func(c int) example.ArrTri3 {
 			v := example.ArrTri3{ItemsCount: int32(c)}
-			for i := 0; i < c; i++ {
+			for i := range c {
 				v.Items[i] = example.Tri3{A: uint32(i % 2), B: uint32(i % 4)}
 			}
 			return v
@@ -713,7 +713,7 @@ func main() {
 		}
 
 		arrEleven := example.ArrEleven{}
-		for i := 0; i < 9; i++ {
+		for i := range 9 {
 			arrEleven.Items[i] = example.Eleven{A: uint32(i % 8), B: uint32(255 - i*17)}
 		}
 		emit("ArrEleven", 99, func(ws *serialize.WriteStream) error { return example.WriteArrEleven(ws, &arrEleven) })
@@ -735,12 +735,12 @@ func main() {
 		strsEmpty := example.Strs{Lead: 21, Tail: 5}
 		strsFull := example.Strs{Lead: 21, Tail: 5, SLength: 8, BLength: 8}
 		copy(strsFull.S[:], "abcdefgh")
-		for i := 0; i < 8; i++ {
+		for i := range 8 {
 			strsFull.B[i] = uint8(0xF0 + i)
 		}
 		strsPart := example.Strs{Lead: 21, Tail: 5, SLength: 3, BLength: 3}
 		copy(strsPart.S[:], "xyz")
-		for i := 0; i < 3; i++ {
+		for i := range 3 {
 			strsPart.B[i] = uint8(i + 1)
 		}
 		strs := []struct {
@@ -754,7 +754,7 @@ func main() {
 
 		nestedAt := func(c int) example.ArrNested {
 			v := example.ArrNested{Lead: 21, Tail: 5, ItemsCount: int32(c)}
-			for i := 0; i < c; i++ {
+			for i := range c {
 				v.Items[i] = example.Eleven{A: uint32(i % 8), B: uint32(200 - i*7)}
 			}
 			return v
@@ -848,6 +848,15 @@ func main() {
 		stream = nil
 		off = 0
 
+		// pick chooses an arm's width — the two arms of these types differ, so
+		// the expected width is a function of the flag
+		pick := func(f bool, whenTrue, whenFalse int) int {
+			if f {
+				return whenTrue
+			}
+			return whenFalse
+		}
+
 		type joinShape struct {
 			name string
 			bits int
@@ -857,7 +866,7 @@ func main() {
 		}
 		var shapes []joinShape
 
-		for f := 0; f < 2; f++ {
+		for f := range 2 {
 			flag := f != 0
 			// the arms agree on WIDTH but not on value, so a join that keeps
 			// the wrong arm is a value mismatch and not just a width one
@@ -878,7 +887,7 @@ func main() {
 
 			disagree := example.ArmsDisagree{Lead: 21, Flag: flag, A: 1234, B: 5, Tail: 99}
 			var rDisagree example.ArmsDisagree
-			shapes = append(shapes, joinShape{"ArmsDisagree", map[bool]int{true: 24, false: 16}[flag],
+			shapes = append(shapes, joinShape{"ArmsDisagree", pick(flag, 24, 16),
 				func(ws *serialize.WriteStream) error { return example.WriteArmsDisagree(ws, &disagree) },
 				func(rs *serialize.ReadStream) error { return example.ReadArmsDisagree(rs, &rDisagree) },
 				func() bool {
@@ -893,7 +902,7 @@ func main() {
 
 			armEmpty := example.ArmEmpty{Lead: 21, Flag: flag, A: 456789, Tail: 99}
 			var rArmEmpty example.ArmEmpty
-			shapes = append(shapes, joinShape{"ArmEmpty", map[bool]int{true: 32, false: 13}[flag],
+			shapes = append(shapes, joinShape{"ArmEmpty", pick(flag, 32, 13),
 				func(ws *serialize.WriteStream) error { return example.WriteArmEmpty(ws, &armEmpty) },
 				func(rs *serialize.ReadStream) error { return example.ReadArmEmpty(rs, &rArmEmpty) },
 				func() bool {
@@ -907,7 +916,7 @@ func main() {
 			alignStr := example.ArmAlign{Lead: 21, Flag: flag, SLength: 4, B: 1000, Tail: 99}
 			copy(alignStr.S[:], "abcd")
 			var rAlignStr example.ArmAlign
-			shapes = append(shapes, joinShape{"ArmAlign", map[bool]int{true: 55, false: 23}[flag],
+			shapes = append(shapes, joinShape{"ArmAlign", pick(flag, 55, 23),
 				func(ws *serialize.WriteStream) error { return example.WriteArmAlign(ws, &alignStr) },
 				func(rs *serialize.ReadStream) error { return example.ReadArmAlign(rs, &rAlignStr) },
 				func() bool {
@@ -935,8 +944,8 @@ func main() {
 				}})
 		}
 
-		for o := 0; o < 2; o++ {
-			for i := 0; i < 2; i++ {
+		for o := range 2 {
+			for i := range 2 {
 				outer, inner := o != 0, i != 0
 				bits := 23
 				if outer {
@@ -967,7 +976,7 @@ func main() {
 			}
 		}
 
-		for f := 0; f < 2; f++ {
+		for f := range 2 {
 			for c := 0; c <= 3; c++ {
 				flag, count := f != 0, c
 				bits := 22
@@ -975,7 +984,7 @@ func main() {
 					bits = 15 + 13*count
 				}
 				v := example.ArmArray{Lead: 21, Flag: flag, ItemsCount: int32(count), B: 300, Tail: 99}
-				for i := 0; i < count; i++ {
+				for i := range count {
 					v.Items[i] = uint16(8191 - i*777)
 				}
 				var r example.ArmArray
@@ -986,7 +995,7 @@ func main() {
 						want := example.ArmArray{Lead: 21, Flag: flag, Tail: 99}
 						if flag {
 							want.ItemsCount = int32(count)
-							for i := 0; i < count; i++ {
+							for i := range count {
 								want.Items[i] = uint16(8191 - i*777)
 							}
 						} else {
@@ -1020,7 +1029,7 @@ func main() {
 		unevenItemBits := []int{0, 5, 44, 49}
 		arrUnevenAt := func(c int) example.ArrUneven {
 			v := example.ArrUneven{Lead: 21, Tail: 5, ItemsCount: int32(c)}
-			for i := 0; i < c; i++ {
+			for i := range c {
 				if i%2 == 0 {
 					v.Items[i] = example.Uneven{Type: example.UnevenTypeNarrow, Narrow: example.Narrow{N: uint32(i % 8)}}
 				} else {
@@ -1047,7 +1056,7 @@ func main() {
 			if sl != 0 {
 				copy(v.S[:], "wxyz")
 			}
-			for i := 0; i < c; i++ {
+			for i := range c {
 				v.Items[i] = uint16(8191 - i*999)
 			}
 			return v

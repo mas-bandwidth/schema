@@ -19,8 +19,10 @@ import 'dart:typed_data';
 import '../../generated/bench/dart/Bench.dart' as bench;
 import '../../generated/bench/dart/Int128.dart';
 import '../../generated/bench/dart/realworld/RealWorld.dart' as rw;
+import '../../generated/dart/Clauses.dart';
 import '../../generated/dart/Degenerate.dart';
 import '../../generated/dart/Enums.dart';
+import '../../generated/dart/Joins.dart';
 import '../../generated/dart/Types.dart';
 import '../../generated/dart/Wire.dart';
 
@@ -1078,6 +1080,542 @@ void main() {
       rStraddle.pad5 == 0xabcdef && rStraddle.inner.a == 0x11111 && rStraddle.inner.c == 0x33333,
       "TrioStraddle's nested fields round-trip across the boundary",
     );
+  }
+
+  // ---- Clauses.schema / Joins.schema: the mid-byte arrangements ----
+  //
+  // Degenerate.schema is every-type-a-whole-number-of-bytes by construction,
+  // so no clause boundary in it lands mid-byte. These two units are chosen so
+  // they do. This emitter writes a whole message into a buffer rather than
+  // appending to a bit stream, and here the shapes are NOT byte-aligned — so
+  // the golden is deliberately the concatenation of the shapes written alone,
+  // which is what every leg can reproduce.
+  {
+    final parts = <Uint8List>[];
+
+    void emit<T>(String name, int bits, T value, int Function(T, ByteData) write, int Function(T) measure) {
+      final buf = Uint8List(64);
+      final n = write(value, ByteData.sublistView(buf));
+      check(measure(value) == bits, '$name: measure ${measure(value)}, expected $bits bits');
+      check(n == (bits + 7) >>> 3, '$name: wrote $n bytes, expected ${(bits + 7) >>> 3}');
+      parts.add(Uint8List.sublistView(buf, 0, n));
+    }
+
+    Uint8List joinParts() {
+      final total = parts.fold<int>(0, (n, p) => n + p.length);
+      final joined = Uint8List(total);
+      var at = 0;
+      for (final part in parts) {
+        joined.setRange(at, at + part.length, part);
+        at += part.length;
+      }
+      return joined;
+    }
+
+    // ---- Clauses.schema ----
+
+    for (final c in [0, 1, 3, 4, 5, 7, 12]) {
+      final v = W13()..itemsCount = c;
+      for (var i = 0; i < c; i++) {
+        v.items[i] = 8191 - i * 733;
+      }
+      emit('W13/$c', 4 + 13 * c, v, writeW13, measureW13);
+    }
+    for (final c in [0, 1, 2, 3, 4, 9]) {
+      final v = W17()..itemsCount = c;
+      for (var i = 0; i < c; i++) {
+        v.items[i] = 131071 - i * 11117;
+      }
+      emit('W17/$c', 4 + 17 * c, v, writeW17, measureW17);
+    }
+    for (final c in [0, 1, 2, 3, 6]) {
+      final v = W26()..itemsCount = c;
+      for (var i = 0; i < c; i++) {
+        v.items[i] = 67108863 - i * 5555555;
+      }
+      emit('W26/$c', 3 + 26 * c, v, writeW26, measureW26);
+    }
+    for (final c in [0, 1, 3, 4, 5, 20]) {
+      final v = W1()..itemsCount = c;
+      for (var i = 0; i < c; i++) {
+        v.items[i] = i % 2;
+      }
+      emit('W1/$c', 5 + c, v, writeW1, measureW1);
+    }
+    for (var c = 0; c <= 3; c++) {
+      final v = W52()..itemsCount = c;
+      for (var i = 0; i < c; i++) {
+        v.items[i] = 4503599627370495 - i * 123456789;
+      }
+      emit('W52/$c', 2 + 52 * c, v, writeW52, measureW52);
+    }
+    for (var c = 0; c <= 3; c++) {
+      final v = W50()..itemsCount = c;
+      for (var i = 0; i < c; i++) {
+        v.items[i] = 1125899906842623 - i * 987654321;
+      }
+      emit('W50/$c', 2 + 50 * c, v, writeW50, measureW50);
+    }
+    {
+      final v = F13();
+      for (var i = 0; i < 7; i++) {
+        v.items[i] = 8191 - i * 911;
+      }
+      emit('F13', 91, v, writeF13, measureF13);
+    }
+    for (final c in [0, 1, 3, 4, 5, 10]) {
+      final v = ArrTri3()..itemsCount = c;
+      for (var i = 0; i < c; i++) {
+        v.items[i]
+          ..a = i % 2
+          ..b = i % 4;
+      }
+      emit('ArrTri3/$c', 4 + 3 * c, v, writeArrTri3, measureArrTri3);
+    }
+    {
+      final v = ArrEleven();
+      for (var i = 0; i < 9; i++) {
+        v.items[i]
+          ..a = i % 8
+          ..b = 255 - i * 17;
+      }
+      emit('ArrEleven', 99, v, writeArrEleven, measureArrEleven);
+    }
+    // lead 5 + tag 2 + tail 7 — a zero-bit arm behind a tag costs the tag
+    for (final tag in [EmptyUnionType.none, EmptyUnionType.a, EmptyUnionType.b]) {
+      final v = HoldsEmptyUnion()
+        ..lead = 21
+        ..tail = 99;
+      v.u.type = tag;
+      emit('HoldsEmptyUnion/$tag', 14, v, writeHoldsEmptyUnion, measureHoldsEmptyUnion);
+    }
+    // lead 5 + s_length 4 = 9, the align pads 7 to 16; then 8*s bytes,
+    // b_length 4, an align pad of 4, 8*b bytes and a 3-bit tail. The 5-bit
+    // lead is what puts the align at a non-zero offset.
+    final strsS = <List<int>>[
+      <int>[],
+      'abcdefgh'.codeUnits,
+      'xyz'.codeUnits,
+    ];
+    final strsB = <List<int>>[
+      <int>[],
+      <int>[0xf0, 0xf1, 0xf2, 0xf3, 0xf4, 0xf5, 0xf6, 0xf7],
+      <int>[1, 2, 3],
+    ];
+    final strsBits = <int>[27, 155, 75];
+    for (var k = 0; k < 3; k++) {
+      final v = Strs()
+        ..lead = 21
+        ..tail = 5
+        ..sLength = strsS[k].length
+        ..bLength = strsB[k].length;
+      v.s.setRange(0, strsS[k].length, strsS[k]);
+      v.b.setRange(0, strsB[k].length, strsB[k]);
+      emit('Strs/$k', strsBits[k], v, writeStrs, measureStrs);
+    }
+    for (var c = 0; c <= 4; c++) {
+      final v = ArrNested()
+        ..lead = 21
+        ..tail = 5
+        ..itemsCount = c;
+      for (var i = 0; i < c; i++) {
+        v.items[i]
+          ..a = i % 8
+          ..b = 200 - i * 7;
+      }
+      emit('ArrNested/$c', 11 + 11 * c, v, writeArrNested, measureArrNested);
+    }
+    emit('Sole', 13, Sole()..only = 5555, writeSole, measureSole);
+
+    {
+      final joined = joinParts();
+      final g = golden('clauses');
+      check(joined.length == g.length, 'clauses: wrote ${joined.length} bytes, golden has ${g.length}');
+      check(bytesEqual(joined, g), 'clauses: Dart bytes == the C++-pinned bytes');
+
+      // Read each shape back out of its own slice. A clause that decodes a
+      // different number of elements than the writer encoded shows up here
+      // even where the byte compare above happens to pass.
+      var at = 0;
+      bool back<T>(T out, int bits, bool Function(T, ByteData, int) read) {
+        final bytes = (bits + 7) >>> 3;
+        final slice = Uint8List(bytes + 8); // read slack
+        slice.setRange(0, bytes, g, at);
+        at += bytes;
+        return read(out, ByteData.sublistView(slice), bits);
+      }
+
+      for (final c in [0, 1, 3, 4, 5, 7, 12]) {
+        final r = W13();
+        check(back(r, 4 + 13 * c, readW13), 'read W13/$c');
+        check(r.itemsCount == c, 'W13/$c count round-trips');
+        for (var i = 0; i < c; i++) {
+          check(r.items[i] == 8191 - i * 733, 'W13/$c element round-trips');
+        }
+      }
+      for (final c in [0, 1, 2, 3, 4, 9]) {
+        final r = W17();
+        check(back(r, 4 + 17 * c, readW17), 'read W17/$c');
+        check(r.itemsCount == c, 'W17/$c count round-trips');
+        for (var i = 0; i < c; i++) {
+          check(r.items[i] == 131071 - i * 11117, 'W17/$c element round-trips');
+        }
+      }
+      for (final c in [0, 1, 2, 3, 6]) {
+        final r = W26();
+        check(back(r, 3 + 26 * c, readW26), 'read W26/$c');
+        check(r.itemsCount == c, 'W26/$c count round-trips');
+        for (var i = 0; i < c; i++) {
+          check(r.items[i] == 67108863 - i * 5555555, 'W26/$c element round-trips');
+        }
+      }
+      for (final c in [0, 1, 3, 4, 5, 20]) {
+        final r = W1();
+        check(back(r, 5 + c, readW1), 'read W1/$c');
+        check(r.itemsCount == c, 'W1/$c count round-trips');
+        for (var i = 0; i < c; i++) {
+          check(r.items[i] == i % 2, 'W1/$c element round-trips');
+        }
+      }
+      for (var c = 0; c <= 3; c++) {
+        final r = W52();
+        check(back(r, 2 + 52 * c, readW52), 'read W52/$c');
+        check(r.itemsCount == c, 'W52/$c count round-trips');
+        for (var i = 0; i < c; i++) {
+          check(r.items[i] == 4503599627370495 - i * 123456789, 'W52/$c element round-trips');
+        }
+      }
+      for (var c = 0; c <= 3; c++) {
+        final r = W50();
+        check(back(r, 2 + 50 * c, readW50), 'read W50/$c');
+        check(r.itemsCount == c, 'W50/$c count round-trips');
+        for (var i = 0; i < c; i++) {
+          check(r.items[i] == 1125899906842623 - i * 987654321, 'W50/$c element round-trips');
+        }
+      }
+      {
+        final r = F13();
+        check(back(r, 91, readF13), 'read F13');
+        for (var i = 0; i < 7; i++) {
+          check(r.items[i] == 8191 - i * 911, 'F13 element round-trips');
+        }
+      }
+      for (final c in [0, 1, 3, 4, 5, 10]) {
+        final r = ArrTri3();
+        check(back(r, 4 + 3 * c, readArrTri3), 'read ArrTri3/$c');
+        check(r.itemsCount == c, 'ArrTri3/$c count round-trips');
+        for (var i = 0; i < c; i++) {
+          check(r.items[i].a == i % 2 && r.items[i].b == i % 4, 'ArrTri3/$c element round-trips');
+        }
+      }
+      {
+        final r = ArrEleven();
+        check(back(r, 99, readArrEleven), 'read ArrEleven');
+        for (var i = 0; i < 9; i++) {
+          check(r.items[i].a == i % 8 && r.items[i].b == 255 - i * 17, 'ArrEleven element round-trips');
+        }
+      }
+      for (final tag in [EmptyUnionType.none, EmptyUnionType.a, EmptyUnionType.b]) {
+        final r = HoldsEmptyUnion();
+        check(back(r, 14, readHoldsEmptyUnion), 'read HoldsEmptyUnion/$tag');
+        check(r.lead == 21 && r.tail == 99 && r.u.type == tag, 'HoldsEmptyUnion/$tag round-trips');
+      }
+      for (var k = 0; k < 3; k++) {
+        final r = Strs();
+        check(back(r, strsBits[k], readStrs), 'read Strs/$k');
+        check(r.lead == 21 && r.tail == 5, 'Strs/$k lead and tail round-trip');
+        check(r.sLength == strsS[k].length && r.bLength == strsB[k].length, 'Strs/$k lengths round-trip');
+        for (var i = 0; i < strsS[k].length; i++) {
+          check(r.s[i] == strsS[k][i], 'Strs/$k string byte round-trips');
+        }
+        for (var i = 0; i < strsB[k].length; i++) {
+          check(r.b[i] == strsB[k][i], 'Strs/$k bytes byte round-trips');
+        }
+      }
+      for (var c = 0; c <= 4; c++) {
+        final r = ArrNested();
+        check(back(r, 11 + 11 * c, readArrNested), 'read ArrNested/$c');
+        check(r.itemsCount == c && r.lead == 21 && r.tail == 5, 'ArrNested/$c round-trips');
+        for (var i = 0; i < c; i++) {
+          check(r.items[i].a == i % 8 && r.items[i].b == 200 - i * 7, 'ArrNested/$c element round-trips');
+        }
+      }
+      {
+        final r = Sole();
+        check(back(r, 13, readSole), 'read Sole');
+        check(r.only == 5555, 'Sole round-trips');
+      }
+      check(at == g.length, 'the clauses reads consume the whole golden');
+    }
+
+    // ---- Joins.schema ----
+    //
+    // Every branch is written on BOTH arms, so no path is pinned by omission.
+    // The expected value after a round trip is not the value written: the
+    // untaken side reads back as zero (SPEC §5).
+
+    parts.clear();
+
+    for (final f in [false, true]) {
+      // the arms agree on WIDTH but not on value, so a join that keeps the
+      // wrong arm is a value mismatch and not just a width one
+      emit(
+        'ArmsAgree/$f',
+        24,
+        ArmsAgree()
+          ..lead = 21
+          ..flag = f
+          ..a = 1234
+          ..b = 1500
+          ..tail = 99,
+        writeArmsAgree,
+        measureArmsAgree,
+      );
+      emit(
+        'ArmsDisagree/$f',
+        f ? 24 : 16,
+        ArmsDisagree()
+          ..lead = 21
+          ..flag = f
+          ..a = 1234
+          ..b = 5
+          ..tail = 99,
+        writeArmsDisagree,
+        measureArmsDisagree,
+      );
+      emit(
+        'ArmEmpty/$f',
+        f ? 32 : 13,
+        ArmEmpty()
+          ..lead = 21
+          ..flag = f
+          ..a = 456789
+          ..tail = 99,
+        writeArmEmpty,
+        measureArmEmpty,
+      );
+      final alignStr = ArmAlign()
+        ..lead = 21
+        ..flag = f
+        ..sLength = 4
+        ..b = 1000
+        ..tail = 99;
+      alignStr.s.setRange(0, 4, 'abcd'.codeUnits);
+      emit('ArmAlign/$f', f ? 55 : 23, alignStr, writeArmAlign, measureArmAlign);
+      emit(
+        'ArmAlignEmptyStr/$f',
+        23,
+        ArmAlign()
+          ..lead = 21
+          ..flag = f
+          ..b = 1000
+          ..tail = 99,
+        writeArmAlign,
+        measureArmAlign,
+      );
+    }
+    for (final o in [false, true]) {
+      for (final i in [false, true]) {
+        emit(
+          'ArmsNested/$o$i',
+          o ? (i ? 40 : 16) : 23,
+          ArmsNested()
+            ..lead = 5
+            ..outer = o
+            ..inner = i
+            ..x = 500000000
+            ..y = 17
+            ..z = 4000
+            ..tail = 33,
+          writeArmsNested,
+          measureArmsNested,
+        );
+      }
+    }
+    for (final f in [false, true]) {
+      for (var c = 0; c <= 3; c++) {
+        final v = ArmArray()
+          ..lead = 21
+          ..flag = f
+          ..itemsCount = c
+          ..b = 300
+          ..tail = 99;
+        for (var i = 0; i < c; i++) {
+          v.items[i] = 8191 - i * 777;
+        }
+        emit('ArmArray/$f/$c', f ? 15 + 13 * c : 22, v, writeArmArray, measureArmArray);
+      }
+    }
+    // lead 5 + tag 2 + arm + tail 11 — the arms are 0, 3 and 37 bits
+    final unevenArms = <int>[UnevenType.none, UnevenType.narrow, UnevenType.wide];
+    final unevenBits = <int>[18, 21, 55];
+    for (var k = 0; k < 3; k++) {
+      final v = HoldsUneven()
+        ..lead = 21
+        ..tail = 1500;
+      v.u.type = unevenArms[k];
+      if (unevenArms[k] == UnevenType.narrow) v.u.narrow.n = 5;
+      if (unevenArms[k] == UnevenType.wide) v.u.wide.w = 123456789012;
+      emit('HoldsUneven/$k', unevenBits[k], v, writeHoldsUneven, measureHoldsUneven);
+    }
+    // alternating arms: item i is Narrow (2 + 3) when even, Wide (2 + 37)
+    final unevenItemBits = <int>[0, 5, 44, 49];
+    for (var c = 0; c <= 3; c++) {
+      final v = ArrUneven()
+        ..lead = 21
+        ..tail = 5
+        ..itemsCount = c;
+      for (var i = 0; i < c; i++) {
+        if (i % 2 == 0) {
+          v.items[i].type = UnevenType.narrow;
+          v.items[i].narrow.n = i % 8;
+        } else {
+          v.items[i].type = UnevenType.wide;
+          v.items[i].wide.w = 99887766554 + i;
+        }
+      }
+      emit('ArrUneven/$c', 10 + unevenItemBits[c], v, writeArrUneven, measureArrUneven);
+    }
+    // lead 5 + count 2 + 13*c + s_length 3, an align to the byte, 8*s, then a
+    // 32 + 29 + 19 + 4 static run after the align regains it
+    for (var c = 0; c <= 3; c++) {
+      for (final sl in [0, 4]) {
+        final v = RegainAfterAlign()
+          ..lead = 21
+          ..itemsCount = c
+          ..sLength = sl
+          ..p = 0xdeadbeef
+          ..q = (1 << 29) - 7
+          ..r = (1 << 19) - 3
+          ..tail = 9;
+        if (sl != 0) v.s.setRange(0, 4, 'wxyz'.codeUnits);
+        for (var i = 0; i < c; i++) {
+          v.items[i] = 8191 - i * 999;
+        }
+        final afterAlign = ((5 + 2 + 13 * c + 3 + 7) >>> 3) * 8;
+        emit('Regain/$c/$sl', afterAlign + 8 * sl + 84, v, writeRegainAfterAlign, measureRegainAfterAlign);
+      }
+    }
+
+    {
+      final joined = joinParts();
+      final g = golden('joins');
+      check(joined.length == g.length, 'joins: wrote ${joined.length} bytes, golden has ${g.length}');
+      check(bytesEqual(joined, g), 'joins: Dart bytes == the C++-pinned bytes');
+
+      var at = 0;
+      bool back<T>(T out, int bits, bool Function(T, ByteData, int) read) {
+        final bytes = (bits + 7) >>> 3;
+        final slice = Uint8List(bytes + 8);
+        slice.setRange(0, bytes, g, at);
+        at += bytes;
+        return read(out, ByteData.sublistView(slice), bits);
+      }
+
+      for (final f in [false, true]) {
+        final agree = ArmsAgree();
+        check(back(agree, 24, readArmsAgree), 'read ArmsAgree/$f');
+        check(agree.lead == 21 && agree.flag == f && agree.tail == 99, 'ArmsAgree/$f round-trips');
+        check(
+          f ? (agree.a == 1234 && agree.b == 0) : (agree.b == 1500 && agree.a == 0),
+          "ArmsAgree/$f's untaken side reads as zero (SPEC §5)",
+        );
+
+        final disagree = ArmsDisagree();
+        check(back(disagree, f ? 24 : 16, readArmsDisagree), 'read ArmsDisagree/$f');
+        check(disagree.lead == 21 && disagree.tail == 99, 'ArmsDisagree/$f round-trips');
+        check(
+          f ? (disagree.a == 1234 && disagree.b == 0) : (disagree.b == 5 && disagree.a == 0),
+          "ArmsDisagree/$f's untaken side reads as zero",
+        );
+
+        final armEmpty = ArmEmpty();
+        check(back(armEmpty, f ? 32 : 13, readArmEmpty), 'read ArmEmpty/$f');
+        check(armEmpty.lead == 21 && armEmpty.tail == 99, 'ArmEmpty/$f round-trips');
+        check(armEmpty.a == (f ? 456789 : 0), "ArmEmpty/$f's absent arm reads as zero");
+
+        final alignStr = ArmAlign();
+        check(back(alignStr, f ? 55 : 23, readArmAlign), 'read ArmAlign/$f');
+        check(alignStr.lead == 21 && alignStr.tail == 99, 'ArmAlign/$f round-trips');
+        check(
+          f
+              ? (alignStr.sLength == 4 && alignStr.s[0] == 0x61 && alignStr.s[3] == 0x64 && alignStr.b == 0)
+              : (alignStr.b == 1000 && alignStr.sLength == 0),
+          "ArmAlign/$f's untaken side reads as zero",
+        );
+
+        final alignEmpty = ArmAlign();
+        check(back(alignEmpty, 23, readArmAlign), 'read ArmAlignEmptyStr/$f');
+        check(alignEmpty.lead == 21 && alignEmpty.tail == 99, 'ArmAlignEmptyStr/$f round-trips');
+        check(
+          f ? (alignEmpty.sLength == 0 && alignEmpty.b == 0) : (alignEmpty.b == 1000),
+          "ArmAlign/$f's empty string round-trips",
+        );
+      }
+      for (final o in [false, true]) {
+        for (final i in [false, true]) {
+          final r = ArmsNested();
+          check(back(r, o ? (i ? 40 : 16) : 23, readArmsNested), 'read ArmsNested/$o$i');
+          check(r.lead == 5 && r.tail == 33 && r.outer == o, 'ArmsNested/$o$i round-trips');
+          if (o) {
+            check(r.inner == i && r.z == 0, "ArmsNested/$o$i's outer arm round-trips");
+            check(i ? (r.x == 500000000 && r.y == 0) : (r.y == 17 && r.x == 0), "ArmsNested/$o$i's inner arm round-trips");
+          } else {
+            check(r.z == 4000 && r.x == 0 && r.y == 0, "ArmsNested/$o$i's else arm round-trips");
+          }
+        }
+      }
+      for (final f in [false, true]) {
+        for (var c = 0; c <= 3; c++) {
+          final r = ArmArray();
+          check(back(r, f ? 15 + 13 * c : 22, readArmArray), 'read ArmArray/$f/$c');
+          check(r.lead == 21 && r.tail == 99, 'ArmArray/$f/$c round-trips');
+          if (f) {
+            check(r.itemsCount == c && r.b == 0, "ArmArray/$f/$c's array arm round-trips");
+            for (var i = 0; i < c; i++) {
+              check(r.items[i] == 8191 - i * 777, 'ArmArray/$f/$c element round-trips');
+            }
+          } else {
+            check(r.b == 300 && r.itemsCount == 0, "ArmArray/$f/$c's scalar arm round-trips");
+          }
+        }
+      }
+      for (var k = 0; k < 3; k++) {
+        final r = HoldsUneven();
+        check(back(r, unevenBits[k], readHoldsUneven), 'read HoldsUneven/$k');
+        check(r.lead == 21 && r.tail == 1500 && r.u.type == unevenArms[k], 'HoldsUneven/$k round-trips');
+        if (unevenArms[k] == UnevenType.narrow) check(r.u.narrow.n == 5, "HoldsUneven's narrow arm round-trips");
+        if (unevenArms[k] == UnevenType.wide) check(r.u.wide.w == 123456789012, "HoldsUneven's wide arm round-trips");
+      }
+      for (var c = 0; c <= 3; c++) {
+        final r = ArrUneven();
+        check(back(r, 10 + unevenItemBits[c], readArrUneven), 'read ArrUneven/$c');
+        check(r.itemsCount == c && r.lead == 21 && r.tail == 5, 'ArrUneven/$c round-trips');
+        for (var i = 0; i < c; i++) {
+          if (i % 2 == 0) {
+            check(r.items[i].type == UnevenType.narrow && r.items[i].narrow.n == i % 8, 'ArrUneven narrow element round-trips');
+          } else {
+            check(r.items[i].type == UnevenType.wide && r.items[i].wide.w == 99887766554 + i, 'ArrUneven wide element round-trips');
+          }
+        }
+      }
+      for (var c = 0; c <= 3; c++) {
+        for (final sl in [0, 4]) {
+          final r = RegainAfterAlign();
+          final afterAlign = ((5 + 2 + 13 * c + 3 + 7) >>> 3) * 8;
+          check(back(r, afterAlign + 8 * sl + 84, readRegainAfterAlign), 'read Regain/$c/$sl');
+          check(r.lead == 21 && r.itemsCount == c && r.sLength == sl, 'Regain/$c/$sl round-trips');
+          check(
+            r.p == 0xdeadbeef && r.q == (1 << 29) - 7 && r.r == (1 << 19) - 3 && r.tail == 9,
+            "Regain/$c/$sl's static run after the align round-trips",
+          );
+          for (var i = 0; i < c; i++) {
+            check(r.items[i] == 8191 - i * 999, 'Regain/$c/$sl element round-trips');
+          }
+        }
+      }
+      check(at == g.length, 'the joins reads consume the whole golden');
+    }
   }
 
   if (failed) {

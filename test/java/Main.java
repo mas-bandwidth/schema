@@ -14,9 +14,11 @@
 // #156's target — asserts dormant). The wire must be identical in both,
 // and the goldens prove it.
 
+import example.Clauses;
 import example.Constants;
 import example.Degenerate;
 import example.Enums;
+import example.Joins;
 import example.Types;
 import example.Wire;
 
@@ -695,6 +697,8 @@ public final class Main {
         testNames();
         testBenchCorpus();
         testDegenerate();
+        testClauses();
+        testJoins();
 
         if (failed) {
             System.exit(1);
@@ -856,6 +860,532 @@ public final class Main {
         System.arraycopy(g, off, slice, 0, bytes);
         check(read.run(out, slice, bytes * 8), "read " + name);
         return off + bytes;
+    }
+
+    // Clauses.schema and Joins.schema are NOT byte-aligned, so a shape's own
+    // width in BITS is the unit here, not its byte count.
+    static <T> int emitShape(byte[] joined, int at, int bits, T value, Writer<T> write, Measurer<T> measure,
+            String name) {
+        final int n = write.run(value, writeBuf);
+        check(measure.run(value) == bits, name + ": measure " + measure.run(value) + ", expected " + bits + " bits");
+        check(n == (bits + 7) >>> 3, name + ": wrote " + n + " bytes, expected " + ((bits + 7) >>> 3));
+        System.arraycopy(writeBuf, 0, joined, at, n);
+        return at + n;
+    }
+
+    static <T> int readShape(byte[] g, int off, int bits, T out, Reader<T> read, String name) {
+        final int bytes = (bits + 7) >>> 3;
+        final byte[] slice = new byte[bytes + 8]; // read slack
+        System.arraycopy(g, off, slice, 0, bytes);
+        check(read.run(out, slice, bits), "read " + name);
+        return off + bytes;
+    }
+
+    // ---- Clauses.schema: element widths whose clauses disagree ----
+    //
+    // Degenerate.schema is every-type-a-whole-number-of-bytes by
+    // construction, so no clause boundary in it lands mid-byte. These widths
+    // are chosen so they do: at 13 bits a write clause takes four elements
+    // and a read clause three. Each shape is written alone and the golden is
+    // those concatenated — the shapes are not byte-aligned, so a shared
+    // stream would not equal the concatenation every emitter can produce.
+    static final int[] W13_COUNTS = { 0, 1, 3, 4, 5, 7, 12 };
+    static final int[] W17_COUNTS = { 0, 1, 2, 3, 4, 9 };
+    static final int[] W26_COUNTS = { 0, 1, 2, 3, 6 };
+    static final int[] W1_COUNTS = { 0, 1, 3, 4, 5, 20 };
+    static final int[] TRI_COUNTS = { 0, 1, 3, 4, 5, 10 };
+    static final int[] STRS_BITS = { 27, 155, 75 };
+    static final int[] UNEVEN_ITEM_BITS = { 0, 5, 44, 49 };
+    static final int[] UNEVEN_BITS = { 18, 21, 55 };
+    static final byte[][] STRS_S = { {}, "abcdefgh".getBytes(java.nio.charset.StandardCharsets.US_ASCII),
+            "xyz".getBytes(java.nio.charset.StandardCharsets.US_ASCII) };
+    static final byte[][] STRS_B = { {}, { (byte) 0xF0, (byte) 0xF1, (byte) 0xF2, (byte) 0xF3, (byte) 0xF4,
+            (byte) 0xF5, (byte) 0xF6, (byte) 0xF7 }, { 1, 2, 3 } };
+
+    static void testClauses() {
+        final byte[] g = golden("clauses");
+        final byte[] joined = new byte[g.length];
+        int at = 0;
+
+        for (final int c : W13_COUNTS) {
+            final Clauses.W13 v = new Clauses.W13();
+            v.itemsCount = c;
+            for (int i = 0; i < c; i++) {
+                v.items[i] = (short) (8191 - i * 733);
+            }
+            at = emitShape(joined, at, 4 + 13 * c, v, Clauses::writeW13, Clauses::measureW13, "W13/" + c);
+        }
+        for (final int c : W17_COUNTS) {
+            final Clauses.W17 v = new Clauses.W17();
+            v.itemsCount = c;
+            for (int i = 0; i < c; i++) {
+                v.items[i] = 131071 - i * 11117;
+            }
+            at = emitShape(joined, at, 4 + 17 * c, v, Clauses::writeW17, Clauses::measureW17, "W17/" + c);
+        }
+        for (final int c : W26_COUNTS) {
+            final Clauses.W26 v = new Clauses.W26();
+            v.itemsCount = c;
+            for (int i = 0; i < c; i++) {
+                v.items[i] = 67108863 - i * 5555555;
+            }
+            at = emitShape(joined, at, 3 + 26 * c, v, Clauses::writeW26, Clauses::measureW26, "W26/" + c);
+        }
+        for (final int c : W1_COUNTS) {
+            final Clauses.W1 v = new Clauses.W1();
+            v.itemsCount = c;
+            for (int i = 0; i < c; i++) {
+                v.items[i] = (byte) (i % 2);
+            }
+            at = emitShape(joined, at, 5 + c, v, Clauses::writeW1, Clauses::measureW1, "W1/" + c);
+        }
+        for (int c = 0; c <= 3; c++) {
+            final Clauses.W52 v = new Clauses.W52();
+            v.itemsCount = c;
+            for (int i = 0; i < c; i++) {
+                v.items[i] = 4503599627370495L - (long) i * 123456789L;
+            }
+            at = emitShape(joined, at, 2 + 52 * c, v, Clauses::writeW52, Clauses::measureW52, "W52/" + c);
+        }
+        for (int c = 0; c <= 3; c++) {
+            final Clauses.W50 v = new Clauses.W50();
+            v.itemsCount = c;
+            for (int i = 0; i < c; i++) {
+                v.items[i] = 1125899906842623L - (long) i * 987654321L;
+            }
+            at = emitShape(joined, at, 2 + 50 * c, v, Clauses::writeW50, Clauses::measureW50, "W50/" + c);
+        }
+        final Clauses.F13 f13 = new Clauses.F13();
+        for (int i = 0; i < 7; i++) {
+            f13.items[i] = (short) (8191 - i * 911);
+        }
+        at = emitShape(joined, at, 91, f13, Clauses::writeF13, Clauses::measureF13, "F13");
+
+        for (final int c : TRI_COUNTS) {
+            final Clauses.ArrTri3 v = new Clauses.ArrTri3();
+            v.itemsCount = c;
+            for (int i = 0; i < c; i++) {
+                v.items[i].a = i % 2;
+                v.items[i].b = i % 4;
+            }
+            at = emitShape(joined, at, 4 + 3 * c, v, Clauses::writeArrTri3, Clauses::measureArrTri3, "ArrTri3/" + c);
+        }
+        final Clauses.ArrEleven arrEleven = new Clauses.ArrEleven();
+        for (int i = 0; i < 9; i++) {
+            arrEleven.items[i].a = i % 8;
+            arrEleven.items[i].b = 255 - i * 17;
+        }
+        at = emitShape(joined, at, 99, arrEleven, Clauses::writeArrEleven, Clauses::measureArrEleven, "ArrEleven");
+
+        // lead 5 + tag 2 + tail 7 — a zero-bit arm behind a tag costs the tag
+        for (byte tag = 0; tag <= 2; tag++) {
+            final Clauses.HoldsEmptyUnion v = new Clauses.HoldsEmptyUnion();
+            v.lead = 21;
+            v.tail = 99;
+            v.u.type = tag;
+            at = emitShape(joined, at, 14, v, Clauses::writeHoldsEmptyUnion, Clauses::measureHoldsEmptyUnion,
+                    "HoldsEmptyUnion/" + tag);
+        }
+
+        // lead 5 + s_length 4 = 9, the align pads 7 to 16; then 8*s bytes,
+        // b_length 4, an align pad of 4, 8*b bytes and a 3-bit tail. The
+        // 5-bit lead is what puts the align at a non-zero offset.
+        for (int k = 0; k < 3; k++) {
+            final Clauses.Strs v = new Clauses.Strs();
+            v.lead = 21;
+            v.tail = 5;
+            v.sLength = STRS_S[k].length;
+            v.bLength = STRS_B[k].length;
+            System.arraycopy(STRS_S[k], 0, v.s, 0, STRS_S[k].length);
+            System.arraycopy(STRS_B[k], 0, v.b, 0, STRS_B[k].length);
+            at = emitShape(joined, at, STRS_BITS[k], v, Clauses::writeStrs, Clauses::measureStrs, "Strs/" + k);
+        }
+
+        for (int c = 0; c <= 4; c++) {
+            final Clauses.ArrNested v = new Clauses.ArrNested();
+            v.lead = 21;
+            v.tail = 5;
+            v.itemsCount = c;
+            for (int i = 0; i < c; i++) {
+                v.items[i].a = i % 8;
+                v.items[i].b = 200 - i * 7;
+            }
+            at = emitShape(joined, at, 11 + 11 * c, v, Clauses::writeArrNested, Clauses::measureArrNested,
+                    "ArrNested/" + c);
+        }
+        final Clauses.Sole sole = new Clauses.Sole();
+        sole.only = 5555;
+        at = emitShape(joined, at, 13, sole, Clauses::writeSole, Clauses::measureSole, "Sole");
+
+        check(at == g.length, "clauses: wrote " + at + " bytes, golden has " + g.length);
+        check(java.util.Arrays.equals(joined, g), "clauses: Java bytes == the C++-pinned bytes");
+
+        // Read each shape back out of its own slice. A clause that decodes a
+        // different number of elements than the writer encoded shows up here
+        // even where the byte compare above happens to pass.
+        int off = 0;
+        for (final int c : W13_COUNTS) {
+            final Clauses.W13 r = new Clauses.W13();
+            off = readShape(g, off, 4 + 13 * c, r, Clauses::readW13, "W13/" + c);
+            check(r.itemsCount == c, "W13/" + c + " count round-trips");
+            for (int i = 0; i < c; i++) {
+                check(r.items[i] == (short) (8191 - i * 733), "W13/" + c + " element round-trips");
+            }
+        }
+        for (final int c : W17_COUNTS) {
+            final Clauses.W17 r = new Clauses.W17();
+            off = readShape(g, off, 4 + 17 * c, r, Clauses::readW17, "W17/" + c);
+            check(r.itemsCount == c, "W17/" + c + " count round-trips");
+            for (int i = 0; i < c; i++) {
+                check(r.items[i] == 131071 - i * 11117, "W17/" + c + " element round-trips");
+            }
+        }
+        for (final int c : W26_COUNTS) {
+            final Clauses.W26 r = new Clauses.W26();
+            off = readShape(g, off, 3 + 26 * c, r, Clauses::readW26, "W26/" + c);
+            check(r.itemsCount == c, "W26/" + c + " count round-trips");
+            for (int i = 0; i < c; i++) {
+                check(r.items[i] == 67108863 - i * 5555555, "W26/" + c + " element round-trips");
+            }
+        }
+        for (final int c : W1_COUNTS) {
+            final Clauses.W1 r = new Clauses.W1();
+            off = readShape(g, off, 5 + c, r, Clauses::readW1, "W1/" + c);
+            check(r.itemsCount == c, "W1/" + c + " count round-trips");
+            for (int i = 0; i < c; i++) {
+                check(r.items[i] == (byte) (i % 2), "W1/" + c + " element round-trips");
+            }
+        }
+        for (int c = 0; c <= 3; c++) {
+            final Clauses.W52 r = new Clauses.W52();
+            off = readShape(g, off, 2 + 52 * c, r, Clauses::readW52, "W52/" + c);
+            check(r.itemsCount == c, "W52/" + c + " count round-trips");
+            for (int i = 0; i < c; i++) {
+                check(r.items[i] == 4503599627370495L - (long) i * 123456789L, "W52/" + c + " element round-trips");
+            }
+        }
+        for (int c = 0; c <= 3; c++) {
+            final Clauses.W50 r = new Clauses.W50();
+            off = readShape(g, off, 2 + 50 * c, r, Clauses::readW50, "W50/" + c);
+            check(r.itemsCount == c, "W50/" + c + " count round-trips");
+            for (int i = 0; i < c; i++) {
+                check(r.items[i] == 1125899906842623L - (long) i * 987654321L, "W50/" + c + " element round-trips");
+            }
+        }
+        final Clauses.F13 rF13 = new Clauses.F13();
+        off = readShape(g, off, 91, rF13, Clauses::readF13, "F13");
+        for (int i = 0; i < 7; i++) {
+            check(rF13.items[i] == (short) (8191 - i * 911), "F13 element round-trips");
+        }
+        for (final int c : TRI_COUNTS) {
+            final Clauses.ArrTri3 r = new Clauses.ArrTri3();
+            off = readShape(g, off, 4 + 3 * c, r, Clauses::readArrTri3, "ArrTri3/" + c);
+            check(r.itemsCount == c, "ArrTri3/" + c + " count round-trips");
+            for (int i = 0; i < c; i++) {
+                check(r.items[i].a == i % 2 && r.items[i].b == i % 4, "ArrTri3/" + c + " element round-trips");
+            }
+        }
+        final Clauses.ArrEleven rEleven = new Clauses.ArrEleven();
+        off = readShape(g, off, 99, rEleven, Clauses::readArrEleven, "ArrEleven");
+        for (int i = 0; i < 9; i++) {
+            check(rEleven.items[i].a == i % 8 && rEleven.items[i].b == 255 - i * 17, "ArrEleven element round-trips");
+        }
+        for (byte tag = 0; tag <= 2; tag++) {
+            final Clauses.HoldsEmptyUnion r = new Clauses.HoldsEmptyUnion();
+            off = readShape(g, off, 14, r, Clauses::readHoldsEmptyUnion, "HoldsEmptyUnion/" + tag);
+            check(r.lead == 21 && r.tail == 99 && r.u.type == tag, "HoldsEmptyUnion/" + tag + " round-trips");
+        }
+        for (int k = 0; k < 3; k++) {
+            final Clauses.Strs r = new Clauses.Strs();
+            off = readShape(g, off, STRS_BITS[k], r, Clauses::readStrs, "Strs/" + k);
+            check(r.lead == 21 && r.tail == 5, "Strs/" + k + " lead and tail round-trip");
+            check(r.sLength == STRS_S[k].length && r.bLength == STRS_B[k].length, "Strs/" + k + " lengths round-trip");
+            for (int i = 0; i < STRS_S[k].length; i++) {
+                check(r.s[i] == STRS_S[k][i], "Strs/" + k + " string byte round-trips");
+            }
+            for (int i = 0; i < STRS_B[k].length; i++) {
+                check(r.b[i] == STRS_B[k][i], "Strs/" + k + " bytes byte round-trips");
+            }
+        }
+        for (int c = 0; c <= 4; c++) {
+            final Clauses.ArrNested r = new Clauses.ArrNested();
+            off = readShape(g, off, 11 + 11 * c, r, Clauses::readArrNested, "ArrNested/" + c);
+            check(r.itemsCount == c && r.lead == 21 && r.tail == 5, "ArrNested/" + c + " round-trips");
+            for (int i = 0; i < c; i++) {
+                check(r.items[i].a == i % 8 && r.items[i].b == 200 - i * 7, "ArrNested/" + c + " element round-trips");
+            }
+        }
+        final Clauses.Sole rSole = new Clauses.Sole();
+        off = readShape(g, off, 13, rSole, Clauses::readSole, "Sole");
+        check(rSole.only == 5555, "Sole round-trips");
+        check(off == g.length, "the clauses reads consume the whole golden");
+    }
+
+    // ---- Joins.schema: where a static offset is given up and regained ----
+    //
+    // Every branch is written on BOTH arms, so no path is pinned by omission.
+    // The expected value after a round trip is not the value written: the
+    // untaken side reads back as zero (SPEC §5).
+    static void testJoins() {
+        final byte[] g = golden("joins");
+        final byte[] joined = new byte[g.length];
+        int at = 0;
+
+        for (int fi = 0; fi <= 1; fi++) {
+            final boolean f = fi != 0;
+            // the arms agree on WIDTH but not on value, so a join that keeps
+            // the wrong arm is a value mismatch and not just a width one
+            final Joins.ArmsAgree agree = new Joins.ArmsAgree();
+            agree.lead = 21;
+            agree.flag = f;
+            agree.a = 1234;
+            agree.b = 1500;
+            agree.tail = 99;
+            at = emitShape(joined, at, 24, agree, Joins::writeArmsAgree, Joins::measureArmsAgree, "ArmsAgree/" + f);
+
+            final Joins.ArmsDisagree disagree = new Joins.ArmsDisagree();
+            disagree.lead = 21;
+            disagree.flag = f;
+            disagree.a = 1234;
+            disagree.b = 5;
+            disagree.tail = 99;
+            at = emitShape(joined, at, f ? 24 : 16, disagree, Joins::writeArmsDisagree, Joins::measureArmsDisagree,
+                    "ArmsDisagree/" + f);
+
+            final Joins.ArmEmpty armEmpty = new Joins.ArmEmpty();
+            armEmpty.lead = 21;
+            armEmpty.flag = f;
+            armEmpty.a = 456789;
+            armEmpty.tail = 99;
+            at = emitShape(joined, at, f ? 32 : 13, armEmpty, Joins::writeArmEmpty, Joins::measureArmEmpty,
+                    "ArmEmpty/" + f);
+
+            final Joins.ArmAlign alignStr = new Joins.ArmAlign();
+            alignStr.lead = 21;
+            alignStr.flag = f;
+            System.arraycopy("abcd".getBytes(java.nio.charset.StandardCharsets.US_ASCII), 0, alignStr.s, 0, 4);
+            alignStr.sLength = 4;
+            alignStr.b = 1000;
+            alignStr.tail = 99;
+            at = emitShape(joined, at, f ? 55 : 23, alignStr, Joins::writeArmAlign, Joins::measureArmAlign,
+                    "ArmAlign/" + f);
+
+            final Joins.ArmAlign alignEmpty = new Joins.ArmAlign();
+            alignEmpty.lead = 21;
+            alignEmpty.flag = f;
+            alignEmpty.b = 1000;
+            alignEmpty.tail = 99;
+            at = emitShape(joined, at, 23, alignEmpty, Joins::writeArmAlign, Joins::measureArmAlign,
+                    "ArmAlignEmptyStr/" + f);
+        }
+
+        for (int oi = 0; oi <= 1; oi++) {
+            for (int ii = 0; ii <= 1; ii++) {
+                final boolean o = oi != 0;
+                final boolean in = ii != 0;
+                final Joins.ArmsNested v = new Joins.ArmsNested();
+                v.lead = 5;
+                v.outer = o;
+                v.inner = in;
+                v.x = 500000000;
+                v.y = 17;
+                v.z = 4000;
+                v.tail = 33;
+                at = emitShape(joined, at, o ? (in ? 40 : 16) : 23, v, Joins::writeArmsNested, Joins::measureArmsNested,
+                        "ArmsNested/" + oi + ii);
+            }
+        }
+
+        for (int fi = 0; fi <= 1; fi++) {
+            for (int c = 0; c <= 3; c++) {
+                final boolean f = fi != 0;
+                final Joins.ArmArray v = new Joins.ArmArray();
+                v.lead = 21;
+                v.flag = f;
+                v.itemsCount = c;
+                v.b = 300;
+                v.tail = 99;
+                for (int i = 0; i < c; i++) {
+                    v.items[i] = (short) (8191 - i * 777);
+                }
+                at = emitShape(joined, at, f ? 15 + 13 * c : 22, v, Joins::writeArmArray, Joins::measureArmArray,
+                        "ArmArray/" + f + "/" + c);
+            }
+        }
+
+        // lead 5 + tag 2 + arm + tail 11 — the arms are 0, 3 and 37 bits
+        for (byte tag = 0; tag <= 2; tag++) {
+            final Joins.HoldsUneven v = new Joins.HoldsUneven();
+            v.lead = 21;
+            v.tail = 1500;
+            v.u.type = tag;
+            if (tag == Joins.UnevenType.narrow) {
+                v.u.narrow.n = 5;
+            }
+            if (tag == Joins.UnevenType.wide) {
+                v.u.wide.w = 123456789012L;
+            }
+            at = emitShape(joined, at, UNEVEN_BITS[tag], v, Joins::writeHoldsUneven, Joins::measureHoldsUneven,
+                    "HoldsUneven/" + tag);
+        }
+
+        // alternating arms: item i is Narrow (2 + 3) when even, Wide (2 + 37)
+        for (int c = 0; c <= 3; c++) {
+            final Joins.ArrUneven v = new Joins.ArrUneven();
+            v.lead = 21;
+            v.tail = 5;
+            v.itemsCount = c;
+            for (int i = 0; i < c; i++) {
+                if (i % 2 == 0) {
+                    v.items[i].type = Joins.UnevenType.narrow;
+                    v.items[i].narrow.n = i % 8;
+                } else {
+                    v.items[i].type = Joins.UnevenType.wide;
+                    v.items[i].wide.w = 99887766554L + i;
+                }
+            }
+            at = emitShape(joined, at, 10 + UNEVEN_ITEM_BITS[c], v, Joins::writeArrUneven, Joins::measureArrUneven,
+                    "ArrUneven/" + c);
+        }
+
+        // lead 5 + count 2 + 13*c + s_length 3, an align to the byte, 8*s,
+        // then a 32 + 29 + 19 + 4 static run after the align regains it
+        for (int c = 0; c <= 3; c++) {
+            for (int sl = 0; sl <= 4; sl += 4) {
+                final Joins.RegainAfterAlign v = new Joins.RegainAfterAlign();
+                v.lead = 21;
+                v.itemsCount = c;
+                v.sLength = sl;
+                if (sl != 0) {
+                    System.arraycopy("wxyz".getBytes(java.nio.charset.StandardCharsets.US_ASCII), 0, v.s, 0, 4);
+                }
+                for (int i = 0; i < c; i++) {
+                    v.items[i] = (short) (8191 - i * 999);
+                }
+                v.p = 0xDEADBEEF;
+                v.q = (1 << 29) - 7;
+                v.r = (1 << 19) - 3;
+                v.tail = 9;
+                final int afterAlign = ((5 + 2 + 13 * c + 3) + 7) / 8 * 8;
+                at = emitShape(joined, at, afterAlign + 8 * sl + 84, v, Joins::writeRegainAfterAlign,
+                        Joins::measureRegainAfterAlign, "Regain/" + c + "/" + sl);
+            }
+        }
+
+        check(at == g.length, "joins: wrote " + at + " bytes, golden has " + g.length);
+        check(java.util.Arrays.equals(joined, g), "joins: Java bytes == the C++-pinned bytes");
+
+        int off = 0;
+        for (int fi = 0; fi <= 1; fi++) {
+            final boolean f = fi != 0;
+            final Joins.ArmsAgree agree = new Joins.ArmsAgree();
+            off = readShape(g, off, 24, agree, Joins::readArmsAgree, "ArmsAgree/" + f);
+            check(agree.lead == 21 && agree.flag == f && agree.tail == 99, "ArmsAgree/" + f + " round-trips");
+            check(f ? (agree.a == 1234 && agree.b == 0) : (agree.b == 1500 && agree.a == 0),
+                    "ArmsAgree/" + f + "'s untaken side reads as zero (SPEC §5)");
+
+            final Joins.ArmsDisagree disagree = new Joins.ArmsDisagree();
+            off = readShape(g, off, f ? 24 : 16, disagree, Joins::readArmsDisagree, "ArmsDisagree/" + f);
+            check(disagree.lead == 21 && disagree.tail == 99, "ArmsDisagree/" + f + " round-trips");
+            check(f ? (disagree.a == 1234 && disagree.b == 0) : (disagree.b == 5 && disagree.a == 0),
+                    "ArmsDisagree/" + f + "'s untaken side reads as zero");
+
+            final Joins.ArmEmpty armEmpty = new Joins.ArmEmpty();
+            off = readShape(g, off, f ? 32 : 13, armEmpty, Joins::readArmEmpty, "ArmEmpty/" + f);
+            check(armEmpty.lead == 21 && armEmpty.tail == 99, "ArmEmpty/" + f + " round-trips");
+            check(armEmpty.a == (f ? 456789 : 0), "ArmEmpty/" + f + "'s absent arm reads as zero");
+
+            final Joins.ArmAlign alignStr = new Joins.ArmAlign();
+            off = readShape(g, off, f ? 55 : 23, alignStr, Joins::readArmAlign, "ArmAlign/" + f);
+            check(alignStr.lead == 21 && alignStr.tail == 99, "ArmAlign/" + f + " round-trips");
+            check(f ? (alignStr.sLength == 4 && alignStr.s[0] == 'a' && alignStr.s[3] == 'd' && alignStr.b == 0)
+                    : (alignStr.b == 1000 && alignStr.sLength == 0),
+                    "ArmAlign/" + f + "'s untaken side reads as zero");
+
+            final Joins.ArmAlign alignEmpty = new Joins.ArmAlign();
+            off = readShape(g, off, 23, alignEmpty, Joins::readArmAlign, "ArmAlignEmptyStr/" + f);
+            check(alignEmpty.lead == 21 && alignEmpty.tail == 99, "ArmAlignEmptyStr/" + f + " round-trips");
+            check(f ? (alignEmpty.sLength == 0 && alignEmpty.b == 0) : (alignEmpty.b == 1000),
+                    "ArmAlign/" + f + "'s empty string round-trips");
+        }
+
+        for (int oi = 0; oi <= 1; oi++) {
+            for (int ii = 0; ii <= 1; ii++) {
+                final boolean o = oi != 0;
+                final boolean in = ii != 0;
+                final Joins.ArmsNested r = new Joins.ArmsNested();
+                off = readShape(g, off, o ? (in ? 40 : 16) : 23, r, Joins::readArmsNested, "ArmsNested/" + oi + ii);
+                check(r.lead == 5 && r.tail == 33 && r.outer == o, "ArmsNested/" + oi + ii + " round-trips");
+                if (o) {
+                    check(r.inner == in && r.z == 0, "ArmsNested/" + oi + ii + "'s outer arm round-trips");
+                    check(in ? (r.x == 500000000 && r.y == 0) : (r.y == 17 && r.x == 0),
+                            "ArmsNested/" + oi + ii + "'s inner arm round-trips");
+                } else {
+                    check(r.z == 4000 && r.x == 0 && r.y == 0, "ArmsNested/" + oi + ii + "'s else arm round-trips");
+                }
+            }
+        }
+
+        for (int fi = 0; fi <= 1; fi++) {
+            for (int c = 0; c <= 3; c++) {
+                final boolean f = fi != 0;
+                final Joins.ArmArray r = new Joins.ArmArray();
+                off = readShape(g, off, f ? 15 + 13 * c : 22, r, Joins::readArmArray, "ArmArray/" + f + "/" + c);
+                check(r.lead == 21 && r.tail == 99, "ArmArray/" + f + "/" + c + " round-trips");
+                if (f) {
+                    check(r.itemsCount == c && r.b == 0, "ArmArray/" + f + "/" + c + "'s array arm round-trips");
+                    for (int i = 0; i < c; i++) {
+                        check(r.items[i] == (short) (8191 - i * 777),
+                                "ArmArray/" + f + "/" + c + " element round-trips");
+                    }
+                } else {
+                    check(r.b == 300 && r.itemsCount == 0, "ArmArray/" + f + "/" + c + "'s scalar arm round-trips");
+                }
+            }
+        }
+
+        for (byte tag = 0; tag <= 2; tag++) {
+            final Joins.HoldsUneven r = new Joins.HoldsUneven();
+            off = readShape(g, off, UNEVEN_BITS[tag], r, Joins::readHoldsUneven, "HoldsUneven/" + tag);
+            check(r.lead == 21 && r.tail == 1500 && r.u.type == tag, "HoldsUneven/" + tag + " round-trips");
+            if (tag == Joins.UnevenType.narrow) {
+                check(r.u.narrow.n == 5, "HoldsUneven's narrow arm round-trips");
+            }
+            if (tag == Joins.UnevenType.wide) {
+                check(r.u.wide.w == 123456789012L, "HoldsUneven's wide arm round-trips");
+            }
+        }
+
+        for (int c = 0; c <= 3; c++) {
+            final Joins.ArrUneven r = new Joins.ArrUneven();
+            off = readShape(g, off, 10 + UNEVEN_ITEM_BITS[c], r, Joins::readArrUneven, "ArrUneven/" + c);
+            check(r.itemsCount == c && r.lead == 21 && r.tail == 5, "ArrUneven/" + c + " round-trips");
+            for (int i = 0; i < c; i++) {
+                if (i % 2 == 0) {
+                    check(r.items[i].type == Joins.UnevenType.narrow && r.items[i].narrow.n == i % 8,
+                            "ArrUneven narrow element round-trips");
+                } else {
+                    check(r.items[i].type == Joins.UnevenType.wide && r.items[i].wide.w == 99887766554L + i,
+                            "ArrUneven wide element round-trips");
+                }
+            }
+        }
+
+        for (int c = 0; c <= 3; c++) {
+            for (int sl = 0; sl <= 4; sl += 4) {
+                final Joins.RegainAfterAlign r = new Joins.RegainAfterAlign();
+                final int afterAlign = ((5 + 2 + 13 * c + 3) + 7) / 8 * 8;
+                off = readShape(g, off, afterAlign + 8 * sl + 84, r, Joins::readRegainAfterAlign,
+                        "Regain/" + c + "/" + sl);
+                check(r.lead == 21 && r.itemsCount == c && r.sLength == sl, "Regain/" + c + "/" + sl + " round-trips");
+                check(r.p == 0xDEADBEEF && r.q == (1 << 29) - 7 && r.r == (1 << 19) - 3 && r.tail == 9,
+                        "Regain/" + c + "/" + sl + "'s static run after the align round-trips");
+                for (int i = 0; i < c; i++) {
+                    check(r.items[i] == (short) (8191 - i * 999), "Regain/" + c + "/" + sl + " element round-trips");
+                }
+            }
+        }
+        check(off == g.length, "the joins reads consume the whole golden");
     }
 
 }

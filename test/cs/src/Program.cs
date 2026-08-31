@@ -875,6 +875,435 @@ static class Program
                 "TrioStraddle's nested fields round-trip across the boundary");
         }
 
+        // ---- Clauses.schema / Joins.schema: the mid-byte arrangements ----
+        //
+        // Degenerate.schema is every-type-a-whole-number-of-bytes by
+        // construction, so no clause boundary in it lands mid-byte. These two
+        // units are chosen so they do. Each shape is written to its OWN
+        // stream and flushed, and the golden is those concatenated — the
+        // shapes are not byte-aligned, so a shared stream would not equal the
+        // concatenation every emitter can produce.
+        {
+            var stream = new System.Collections.Generic.List<byte>();
+
+            void Emit(string name, int bits, Func<WriteStream, bool> write)
+            {
+                WriteStream ws = NewWriteStream();
+                Check(write(ws), "write " + name);
+                Check(ws.BitsProcessed == bits, name + " rides its declared width");
+                byte[] bytes = Data(ws);
+                Check(bytes.Length == (bits + 7) / 8, name + " byte width");
+                stream.AddRange(bytes);
+            }
+
+            int off = 0;
+            void Consume(string name, int bits, Func<ReadStream, bool> read)
+            {
+                int n = (bits + 7) / 8;
+                byte[] slice = new byte[n];
+                stream.CopyTo(off, slice, 0, n);
+                Check(read(new ReadStream(slice)), "read " + name);
+                off += n;
+            }
+
+            // ---- Clauses.schema ----
+
+            int[] w13Counts = { 0, 1, 3, 4, 5, 7, 12 };
+            foreach (int c in w13Counts)
+            {
+                W13 v = new W13 { ItemsCount = c };
+                for (int i = 0; i < c; i++) v.Items[i] = (ushort)(8191 - i * 733);
+                Emit("W13/" + c, 4 + 13 * c, ws => WriteW13(ws, v));
+            }
+
+            int[] w17Counts = { 0, 1, 2, 3, 4, 9 };
+            foreach (int c in w17Counts)
+            {
+                W17 v = new W17 { ItemsCount = c };
+                for (int i = 0; i < c; i++) v.Items[i] = (uint)(131071 - i * 11117);
+                Emit("W17/" + c, 4 + 17 * c, ws => WriteW17(ws, v));
+            }
+
+            int[] w26Counts = { 0, 1, 2, 3, 6 };
+            foreach (int c in w26Counts)
+            {
+                W26 v = new W26 { ItemsCount = c };
+                for (int i = 0; i < c; i++) v.Items[i] = (uint)(67108863 - i * 5555555);
+                Emit("W26/" + c, 3 + 26 * c, ws => WriteW26(ws, v));
+            }
+
+            int[] w1Counts = { 0, 1, 3, 4, 5, 20 };
+            foreach (int c in w1Counts)
+            {
+                W1 v = new W1 { ItemsCount = c };
+                for (int i = 0; i < c; i++) v.Items[i] = (byte)(i % 2);
+                Emit("W1/" + c, 5 + c, ws => WriteW1(ws, v));
+            }
+
+            for (int c = 0; c <= 3; c++)
+            {
+                W52 v = new W52 { ItemsCount = c };
+                for (int i = 0; i < c; i++) v.Items[i] = 4503599627370495UL - (ulong)i * 123456789UL;
+                Emit("W52/" + c, 2 + 52 * c, ws => WriteW52(ws, v));
+            }
+
+            for (int c = 0; c <= 3; c++)
+            {
+                W50 v = new W50 { ItemsCount = c };
+                for (int i = 0; i < c; i++) v.Items[i] = 1125899906842623UL - (ulong)i * 987654321UL;
+                Emit("W50/" + c, 2 + 50 * c, ws => WriteW50(ws, v));
+            }
+
+            F13 f13 = new F13();
+            for (int i = 0; i < 7; i++) f13.Items[i] = (ushort)(8191 - i * 911);
+            Emit("F13", 91, ws => WriteF13(ws, f13));
+
+            int[] triCounts = { 0, 1, 3, 4, 5, 10 };
+            foreach (int c in triCounts)
+            {
+                ArrTri3 v = new ArrTri3 { ItemsCount = c };
+                for (int i = 0; i < c; i++) { v.Items[i].A = (uint)(i % 2); v.Items[i].B = (uint)(i % 4); }
+                Emit("ArrTri3/" + c, 4 + 3 * c, ws => WriteArrTri3(ws, v));
+            }
+
+            ArrEleven arrEleven = new ArrEleven();
+            for (int i = 0; i < 9; i++) { arrEleven.Items[i].A = (uint)(i % 8); arrEleven.Items[i].B = (uint)(255 - i * 17); }
+            Emit("ArrEleven", 99, ws => WriteArrEleven(ws, arrEleven));
+
+            // lead 5 + tag 2 + tail 7 — a zero-bit arm behind a tag costs the tag
+            EmptyUnionType[] emptyArms = { EmptyUnionType.None, EmptyUnionType.A, EmptyUnionType.B };
+            foreach (EmptyUnionType arm in emptyArms)
+            {
+                HoldsEmptyUnion v = new HoldsEmptyUnion { Lead = 21, Tail = 99 };
+                v.U.Type = arm;
+                Emit("HoldsEmptyUnion/" + arm, 14, ws => WriteHoldsEmptyUnion(ws, v));
+            }
+
+            // lead 5 + s_length 4 = 9, the align pads 7 to 16; then 8*s bytes,
+            // b_length 4, an align pad of 4, 8*b bytes and a 3-bit tail. The
+            // 5-bit lead is what puts the align at a non-zero offset.
+            int[] strsBits = { 27, 155, 75 };
+            byte[][] strsS = { new byte[0], Encoding.ASCII.GetBytes("abcdefgh"), Encoding.ASCII.GetBytes("xyz") };
+            byte[][] strsB = { new byte[0], new byte[] { 0xF0, 0xF1, 0xF2, 0xF3, 0xF4, 0xF5, 0xF6, 0xF7 }, new byte[] { 1, 2, 3 } };
+            for (int k = 0; k < 3; k++)
+            {
+                Strs v = new Strs { Lead = 21, Tail = 5, SLength = strsS[k].Length, BLength = strsB[k].Length };
+                Array.Copy(strsS[k], v.S, strsS[k].Length);
+                Array.Copy(strsB[k], v.B, strsB[k].Length);
+                Emit("Strs/" + k, strsBits[k], ws => WriteStrs(ws, v));
+            }
+
+            for (int c = 0; c <= 4; c++)
+            {
+                ArrNested v = new ArrNested { Lead = 21, Tail = 5, ItemsCount = c };
+                for (int i = 0; i < c; i++) { v.Items[i].A = (uint)(i % 8); v.Items[i].B = (uint)(200 - i * 7); }
+                Emit("ArrNested/" + c, 11 + 11 * c, ws => WriteArrNested(ws, v));
+            }
+
+            Sole sole = new Sole { Only = 5555 };
+            Emit("Sole", 13, ws => WriteSole(ws, sole));
+
+            GoldenWire("clauses", stream.ToArray());
+
+            // Read each shape back out of its own slice. A clause that decodes
+            // a different number of elements than the writer encoded shows up
+            // here even where the byte compare above happens to pass.
+            foreach (int c in w13Counts)
+            {
+                W13 r = new W13();
+                Consume("W13/" + c, 4 + 13 * c, rs => ReadW13(rs, r));
+                Check(r.ItemsCount == c, "W13 count round-trips");
+                for (int i = 0; i < c; i++) Check(r.Items[i] == (ushort)(8191 - i * 733), "W13 element round-trips");
+            }
+            foreach (int c in w17Counts)
+            {
+                W17 r = new W17();
+                Consume("W17/" + c, 4 + 17 * c, rs => ReadW17(rs, r));
+                Check(r.ItemsCount == c, "W17 count round-trips");
+                for (int i = 0; i < c; i++) Check(r.Items[i] == (uint)(131071 - i * 11117), "W17 element round-trips");
+            }
+            foreach (int c in w26Counts)
+            {
+                W26 r = new W26();
+                Consume("W26/" + c, 3 + 26 * c, rs => ReadW26(rs, r));
+                Check(r.ItemsCount == c, "W26 count round-trips");
+                for (int i = 0; i < c; i++) Check(r.Items[i] == (uint)(67108863 - i * 5555555), "W26 element round-trips");
+            }
+            foreach (int c in w1Counts)
+            {
+                W1 r = new W1();
+                Consume("W1/" + c, 5 + c, rs => ReadW1(rs, r));
+                Check(r.ItemsCount == c, "W1 count round-trips");
+                for (int i = 0; i < c; i++) Check(r.Items[i] == (byte)(i % 2), "W1 element round-trips");
+            }
+            for (int c = 0; c <= 3; c++)
+            {
+                W52 r = new W52();
+                Consume("W52/" + c, 2 + 52 * c, rs => ReadW52(rs, r));
+                Check(r.ItemsCount == c, "W52 count round-trips");
+                for (int i = 0; i < c; i++) Check(r.Items[i] == 4503599627370495UL - (ulong)i * 123456789UL, "W52 element round-trips");
+            }
+            for (int c = 0; c <= 3; c++)
+            {
+                W50 r = new W50();
+                Consume("W50/" + c, 2 + 50 * c, rs => ReadW50(rs, r));
+                Check(r.ItemsCount == c, "W50 count round-trips");
+                for (int i = 0; i < c; i++) Check(r.Items[i] == 1125899906842623UL - (ulong)i * 987654321UL, "W50 element round-trips");
+            }
+            {
+                F13 r = new F13();
+                Consume("F13", 91, rs => ReadF13(rs, r));
+                for (int i = 0; i < 7; i++) Check(r.Items[i] == (ushort)(8191 - i * 911), "F13 element round-trips");
+            }
+            foreach (int c in triCounts)
+            {
+                ArrTri3 r = new ArrTri3();
+                Consume("ArrTri3/" + c, 4 + 3 * c, rs => ReadArrTri3(rs, r));
+                Check(r.ItemsCount == c, "ArrTri3 count round-trips");
+                for (int i = 0; i < c; i++) Check(r.Items[i].A == (uint)(i % 2) && r.Items[i].B == (uint)(i % 4), "ArrTri3 element round-trips");
+            }
+            {
+                ArrEleven r = new ArrEleven();
+                Consume("ArrEleven", 99, rs => ReadArrEleven(rs, r));
+                for (int i = 0; i < 9; i++) Check(r.Items[i].A == (uint)(i % 8) && r.Items[i].B == (uint)(255 - i * 17), "ArrEleven element round-trips");
+            }
+            foreach (EmptyUnionType arm in emptyArms)
+            {
+                HoldsEmptyUnion r = new HoldsEmptyUnion();
+                Consume("HoldsEmptyUnion/" + arm, 14, rs => ReadHoldsEmptyUnion(rs, r));
+                Check(r.Lead == 21 && r.Tail == 99 && r.U.Type == arm, "HoldsEmptyUnion round-trips");
+            }
+            for (int k = 0; k < 3; k++)
+            {
+                Strs r = new Strs();
+                Consume("Strs/" + k, strsBits[k], rs => ReadStrs(rs, r));
+                Check(r.Lead == 21 && r.Tail == 5, "Strs lead and tail round-trip");
+                Check(r.SLength == strsS[k].Length && r.BLength == strsB[k].Length, "Strs lengths round-trip");
+                for (int i = 0; i < strsS[k].Length; i++) Check(r.S[i] == strsS[k][i], "Strs string byte round-trips");
+                for (int i = 0; i < strsB[k].Length; i++) Check(r.B[i] == strsB[k][i], "Strs bytes byte round-trips");
+            }
+            for (int c = 0; c <= 4; c++)
+            {
+                ArrNested r = new ArrNested();
+                Consume("ArrNested/" + c, 11 + 11 * c, rs => ReadArrNested(rs, r));
+                Check(r.ItemsCount == c && r.Lead == 21 && r.Tail == 5, "ArrNested round-trips");
+                for (int i = 0; i < c; i++) Check(r.Items[i].A == (uint)(i % 8) && r.Items[i].B == (uint)(200 - i * 7), "ArrNested element round-trips");
+            }
+            {
+                Sole r = new Sole();
+                Consume("Sole", 13, rs => ReadSole(rs, r));
+                Check(r.Only == 5555, "Sole round-trips");
+            }
+            Check(off == stream.Count, "the clauses reads consume the whole golden");
+
+            // ---- Joins.schema ----
+            //
+            // Every branch is written on BOTH arms, so no path is pinned by
+            // omission. The expected value after a round trip is not the value
+            // written: the untaken side reads back as zero (SPEC §5).
+
+            stream.Clear();
+            off = 0;
+
+            for (int fi = 0; fi <= 1; fi++)
+            {
+                bool f = fi != 0;
+                // the arms agree on WIDTH but not on value, so a join that
+                // keeps the wrong arm is a value mismatch, not just a width one
+                ArmsAgree agree = new ArmsAgree { Lead = 21, Flag = f, A = 1234, B = 1500, Tail = 99 };
+                Emit("ArmsAgree/" + f, 24, ws => WriteArmsAgree(ws, agree));
+
+                ArmsDisagree disagree = new ArmsDisagree { Lead = 21, Flag = f, A = 1234, B = 5, Tail = 99 };
+                Emit("ArmsDisagree/" + f, f ? 24 : 16, ws => WriteArmsDisagree(ws, disagree));
+
+                ArmEmpty armEmpty = new ArmEmpty { Lead = 21, Flag = f, A = 456789, Tail = 99 };
+                Emit("ArmEmpty/" + f, f ? 32 : 13, ws => WriteArmEmpty(ws, armEmpty));
+
+                ArmAlign alignStr = new ArmAlign { Lead = 21, Flag = f, SLength = 4, B = 1000, Tail = 99 };
+                Array.Copy(Encoding.ASCII.GetBytes("abcd"), alignStr.S, 4);
+                Emit("ArmAlign/" + f, f ? 55 : 23, ws => WriteArmAlign(ws, alignStr));
+
+                ArmAlign alignEmpty = new ArmAlign { Lead = 21, Flag = f, B = 1000, Tail = 99 };
+                Emit("ArmAlignEmptyStr/" + f, 23, ws => WriteArmAlign(ws, alignEmpty));
+            }
+
+            for (int oi = 0; oi <= 1; oi++)
+            {
+                for (int ii = 0; ii <= 1; ii++)
+                {
+                    bool o = oi != 0, inn = ii != 0;
+                    ArmsNested v = new ArmsNested { Lead = 5, Outer = o, Inner = inn, X = 500000000, Y = 17, Z = 4000, Tail = 33 };
+                    Emit("ArmsNested/" + oi + ii, o ? (inn ? 40 : 16) : 23, ws => WriteArmsNested(ws, v));
+                }
+            }
+
+            for (int fi = 0; fi <= 1; fi++)
+            {
+                for (int c = 0; c <= 3; c++)
+                {
+                    bool f = fi != 0;
+                    ArmArray v = new ArmArray { Lead = 21, Flag = f, ItemsCount = c, B = 300, Tail = 99 };
+                    for (int i = 0; i < c; i++) v.Items[i] = (ushort)(8191 - i * 777);
+                    Emit("ArmArray/" + f + "/" + c, f ? 15 + 13 * c : 22, ws => WriteArmArray(ws, v));
+                }
+            }
+
+            // lead 5 + tag 2 + arm + tail 11 — the arms are 0, 3 and 37 bits
+            UnevenType[] unevenArms = { UnevenType.None, UnevenType.Narrow, UnevenType.Wide };
+            int[] unevenBits = { 18, 21, 55 };
+            for (int k = 0; k < 3; k++)
+            {
+                HoldsUneven v = new HoldsUneven { Lead = 21, Tail = 1500 };
+                v.U.Type = unevenArms[k];
+                if (unevenArms[k] == UnevenType.Narrow) v.U.Narrow.N = 5;
+                if (unevenArms[k] == UnevenType.Wide) v.U.Wide.W = 123456789012UL;
+                Emit("HoldsUneven/" + unevenArms[k], unevenBits[k], ws => WriteHoldsUneven(ws, v));
+            }
+
+            // alternating arms: item i is Narrow (2 + 3) when even, Wide (2 + 37)
+            int[] unevenItemBits = { 0, 5, 44, 49 };
+            for (int c = 0; c <= 3; c++)
+            {
+                ArrUneven v = new ArrUneven { Lead = 21, Tail = 5, ItemsCount = c };
+                for (int i = 0; i < c; i++)
+                {
+                    if (i % 2 == 0) { v.Items[i].Type = UnevenType.Narrow; v.Items[i].Narrow.N = (uint)(i % 8); }
+                    else { v.Items[i].Type = UnevenType.Wide; v.Items[i].Wide.W = 99887766554UL + (ulong)i; }
+                }
+                Emit("ArrUneven/" + c, 10 + unevenItemBits[c], ws => WriteArrUneven(ws, v));
+            }
+
+            // lead 5 + count 2 + 13*c + s_length 3, an align to the byte, 8*s,
+            // then a 32 + 29 + 19 + 4 static run after the align regains it
+            for (int c = 0; c <= 3; c++)
+            {
+                for (int sl = 0; sl <= 4; sl += 4)
+                {
+                    RegainAfterAlign v = new RegainAfterAlign
+                    {
+                        Lead = 21, ItemsCount = c, SLength = sl,
+                        P = 0xDEADBEEF, Q = (1u << 29) - 7, R = (1u << 19) - 3, Tail = 9,
+                    };
+                    if (sl != 0) Array.Copy(Encoding.ASCII.GetBytes("wxyz"), v.S, 4);
+                    for (int i = 0; i < c; i++) v.Items[i] = (ushort)(8191 - i * 999);
+                    int afterAlign = ((5 + 2 + 13 * c + 3) + 7) / 8 * 8;
+                    Emit("Regain/" + c + "/" + sl, afterAlign + 8 * sl + 84, ws => WriteRegainAfterAlign(ws, v));
+                }
+            }
+
+            GoldenWire("joins", stream.ToArray());
+
+            for (int fi = 0; fi <= 1; fi++)
+            {
+                bool f = fi != 0;
+                ArmsAgree agree = new ArmsAgree();
+                Consume("ArmsAgree/" + f, 24, rs => ReadArmsAgree(rs, agree));
+                Check(agree.Lead == 21 && agree.Flag == f && agree.Tail == 99, "ArmsAgree round-trips");
+                Check(f ? (agree.A == 1234 && agree.B == 0) : (agree.B == 1500 && agree.A == 0),
+                    "ArmsAgree's untaken side reads as zero (SPEC §5)");
+
+                ArmsDisagree disagree = new ArmsDisagree();
+                Consume("ArmsDisagree/" + f, f ? 24 : 16, rs => ReadArmsDisagree(rs, disagree));
+                Check(disagree.Lead == 21 && disagree.Tail == 99, "ArmsDisagree round-trips");
+                Check(f ? (disagree.A == 1234 && disagree.B == 0) : (disagree.B == 5 && disagree.A == 0),
+                    "ArmsDisagree's untaken side reads as zero");
+
+                ArmEmpty armEmpty = new ArmEmpty();
+                Consume("ArmEmpty/" + f, f ? 32 : 13, rs => ReadArmEmpty(rs, armEmpty));
+                Check(armEmpty.Lead == 21 && armEmpty.Tail == 99, "ArmEmpty round-trips");
+                Check(armEmpty.A == (f ? 456789u : 0u), "ArmEmpty's absent arm reads as zero");
+
+                ArmAlign alignStr = new ArmAlign();
+                Consume("ArmAlign/" + f, f ? 55 : 23, rs => ReadArmAlign(rs, alignStr));
+                Check(alignStr.Lead == 21 && alignStr.Tail == 99, "ArmAlign round-trips");
+                Check(f ? (alignStr.SLength == 4 && alignStr.S[0] == (byte)'a' && alignStr.S[3] == (byte)'d' && alignStr.B == 0)
+                        : (alignStr.B == 1000 && alignStr.SLength == 0),
+                    "ArmAlign's untaken side reads as zero");
+
+                ArmAlign alignEmpty = new ArmAlign();
+                Consume("ArmAlignEmptyStr/" + f, 23, rs => ReadArmAlign(rs, alignEmpty));
+                Check(alignEmpty.Lead == 21 && alignEmpty.Tail == 99, "ArmAlign with an empty string round-trips");
+                Check(f ? (alignEmpty.SLength == 0 && alignEmpty.B == 0) : (alignEmpty.B == 1000),
+                    "ArmAlign's empty string round-trips");
+            }
+
+            for (int oi = 0; oi <= 1; oi++)
+            {
+                for (int ii = 0; ii <= 1; ii++)
+                {
+                    bool o = oi != 0, inn = ii != 0;
+                    ArmsNested r = new ArmsNested();
+                    Consume("ArmsNested/" + oi + ii, o ? (inn ? 40 : 16) : 23, rs => ReadArmsNested(rs, r));
+                    Check(r.Lead == 5 && r.Tail == 33 && r.Outer == o, "ArmsNested round-trips");
+                    if (o)
+                    {
+                        Check(r.Inner == inn && r.Z == 0, "ArmsNested's outer arm round-trips");
+                        Check(inn ? (r.X == 500000000 && r.Y == 0) : (r.Y == 17 && r.X == 0), "ArmsNested's inner arm round-trips");
+                    }
+                    else
+                    {
+                        Check(r.Z == 4000 && r.X == 0 && r.Y == 0, "ArmsNested's else arm round-trips");
+                    }
+                }
+            }
+
+            for (int fi = 0; fi <= 1; fi++)
+            {
+                for (int c = 0; c <= 3; c++)
+                {
+                    bool f = fi != 0;
+                    ArmArray r = new ArmArray();
+                    Consume("ArmArray/" + f + "/" + c, f ? 15 + 13 * c : 22, rs => ReadArmArray(rs, r));
+                    Check(r.Lead == 21 && r.Tail == 99, "ArmArray round-trips");
+                    if (f)
+                    {
+                        Check(r.ItemsCount == c && r.B == 0, "ArmArray's array arm round-trips");
+                        for (int i = 0; i < c; i++) Check(r.Items[i] == (ushort)(8191 - i * 777), "ArmArray element round-trips");
+                    }
+                    else
+                    {
+                        Check(r.B == 300 && r.ItemsCount == 0, "ArmArray's scalar arm round-trips");
+                    }
+                }
+            }
+
+            for (int k = 0; k < 3; k++)
+            {
+                HoldsUneven r = new HoldsUneven();
+                Consume("HoldsUneven/" + unevenArms[k], unevenBits[k], rs => ReadHoldsUneven(rs, r));
+                Check(r.Lead == 21 && r.Tail == 1500 && r.U.Type == unevenArms[k], "HoldsUneven round-trips");
+                if (unevenArms[k] == UnevenType.Narrow) Check(r.U.Narrow.N == 5, "HoldsUneven's narrow arm round-trips");
+                if (unevenArms[k] == UnevenType.Wide) Check(r.U.Wide.W == 123456789012UL, "HoldsUneven's wide arm round-trips");
+            }
+
+            for (int c = 0; c <= 3; c++)
+            {
+                ArrUneven r = new ArrUneven();
+                Consume("ArrUneven/" + c, 10 + unevenItemBits[c], rs => ReadArrUneven(rs, r));
+                Check(r.ItemsCount == c && r.Lead == 21 && r.Tail == 5, "ArrUneven round-trips");
+                for (int i = 0; i < c; i++)
+                {
+                    if (i % 2 == 0) Check(r.Items[i].Type == UnevenType.Narrow && r.Items[i].Narrow.N == (uint)(i % 8), "ArrUneven narrow element round-trips");
+                    else Check(r.Items[i].Type == UnevenType.Wide && r.Items[i].Wide.W == 99887766554UL + (ulong)i, "ArrUneven wide element round-trips");
+                }
+            }
+
+            for (int c = 0; c <= 3; c++)
+            {
+                for (int sl = 0; sl <= 4; sl += 4)
+                {
+                    RegainAfterAlign r = new RegainAfterAlign();
+                    int afterAlign = ((5 + 2 + 13 * c + 3) + 7) / 8 * 8;
+                    Consume("Regain/" + c + "/" + sl, afterAlign + 8 * sl + 84, rs => ReadRegainAfterAlign(rs, r));
+                    Check(r.Lead == 21 && r.ItemsCount == c && r.SLength == sl, "RegainAfterAlign round-trips");
+                    Check(r.P == 0xDEADBEEF && r.Q == (1u << 29) - 7 && r.R == (1u << 19) - 3 && r.Tail == 9,
+                        "RegainAfterAlign's static run after the align round-trips");
+                    for (int i = 0; i < c; i++) Check(r.Items[i] == (ushort)(8191 - i * 999), "RegainAfterAlign element round-trips");
+                }
+            }
+            Check(off == stream.Count, "the joins reads consume the whole golden");
+        }
+
         if (failed)
         {
             return 1;
