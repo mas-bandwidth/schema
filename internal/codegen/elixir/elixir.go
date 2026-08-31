@@ -181,6 +181,11 @@ type gen struct {
 	// per-function emission state (functions.go)
 	fn strings.Builder
 
+	// pendW is the merge group open at this point of write emission: the
+	// static bits merged into the scratch since the last flush. Barriers
+	// close it; mergeW closes it when the next field would pass the budget.
+	pendW int64
+
 	// helperOwner names the type whose items are being inlined — array loop
 	// helpers key on (owner, field), so a nested type's loops emit once per
 	// file however many callers inline it

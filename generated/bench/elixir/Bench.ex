@@ -268,10 +268,6 @@ defmodule Bench.Bench do
     v = value.a + 100
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 8
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
-    scratch_bits = scratch_bits &&& 7
 
     if value.b < 0 do
       raise ArgumentError, "value.b is below the wire minimum"
@@ -284,10 +280,6 @@ defmodule Bench.Bench do
     v = value.b
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 16
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
-    scratch_bits = scratch_bits &&& 7
 
     if value.c < -1_000_000 do
       raise ArgumentError, "value.c is below the wire minimum"
@@ -300,67 +292,55 @@ defmodule Bench.Bench do
     v = value.c + 1_000_000
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 21
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
-    scratch_bits = scratch_bits &&& 7
     v = value.bits7 &&& 0x7F
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 7
+    v = value.bits13 &&& 0x1FFF
     flush = scratch_bits >>> 3
     data = <<data::binary, scratch::little-size(flush)-unit(8)>>
     scratch = scratch >>> (flush <<< 3)
     scratch_bits = scratch_bits &&& 7
-    v = value.bits13 &&& 0x1FFF
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 13
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
-    scratch_bits = scratch_bits &&& 7
     v = value.bits23 &&& 0x7FFFFF
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 23
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
-    scratch_bits = scratch_bits &&& 7
     v = if value.flag, do: 1, else: 0
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 1
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
-    scratch_bits = scratch_bits &&& 7
     v = f32_bits(value.x)
-    scratch = scratch ||| v <<< scratch_bits
-    scratch_bits = scratch_bits + 32
     flush = scratch_bits >>> 3
     data = <<data::binary, scratch::little-size(flush)-unit(8)>>
     scratch = scratch >>> (flush <<< 3)
     scratch_bits = scratch_bits &&& 7
+    scratch = scratch ||| v <<< scratch_bits
+    scratch_bits = scratch_bits + 32
     v = f32_bits(value.y)
-    scratch = scratch ||| v <<< scratch_bits
-    scratch_bits = scratch_bits + 32
     flush = scratch_bits >>> 3
     data = <<data::binary, scratch::little-size(flush)-unit(8)>>
     scratch = scratch >>> (flush <<< 3)
     scratch_bits = scratch_bits &&& 7
+    scratch = scratch ||| v <<< scratch_bits
+    scratch_bits = scratch_bits + 32
     v = f32_bits(value.z)
-    scratch = scratch ||| v <<< scratch_bits
-    scratch_bits = scratch_bits + 32
     flush = scratch_bits >>> 3
     data = <<data::binary, scratch::little-size(flush)-unit(8)>>
     scratch = scratch >>> (flush <<< 3)
     scratch_bits = scratch_bits &&& 7
+    scratch = scratch ||| v <<< scratch_bits
+    scratch_bits = scratch_bits + 32
     v = value.big &&& 0xFFFFFFFF
-    scratch = scratch ||| v <<< scratch_bits
-    scratch_bits = scratch_bits + 32
     flush = scratch_bits >>> 3
     data = <<data::binary, scratch::little-size(flush)-unit(8)>>
     scratch = scratch >>> (flush <<< 3)
     scratch_bits = scratch_bits &&& 7
+    scratch = scratch ||| v <<< scratch_bits
+    scratch_bits = scratch_bits + 32
     v = value.big >>> 32 &&& 0xFFFFFFFF
+    flush = scratch_bits >>> 3
+    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
+    scratch = scratch >>> (flush <<< 3)
+    scratch_bits = scratch_bits &&& 7
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 32
     flush = scratch_bits >>> 3
@@ -512,10 +492,6 @@ defmodule Bench.Bench do
     v = value.f0 + 100
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 8
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
-    scratch_bits = scratch_bits &&& 7
 
     if value.f1 < 0 do
       raise ArgumentError, "value.f1 is below the wire minimum"
@@ -528,10 +504,6 @@ defmodule Bench.Bench do
     v = value.f1
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 16
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
-    scratch_bits = scratch_bits &&& 7
 
     if value.f2 < -1_000_000 do
       raise ArgumentError, "value.f2 is below the wire minimum"
@@ -544,10 +516,6 @@ defmodule Bench.Bench do
     v = value.f2 + 1_000_000
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 21
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
-    scratch_bits = scratch_bits &&& 7
 
     if value.f3 < 0 do
       raise ArgumentError, "value.f3 is below the wire minimum"
@@ -560,10 +528,6 @@ defmodule Bench.Bench do
     v = value.f3
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 2
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
-    scratch_bits = scratch_bits &&& 7
 
     if value.f4 < -15 do
       raise ArgumentError, "value.f4 is below the wire minimum"
@@ -576,10 +540,6 @@ defmodule Bench.Bench do
     v = value.f4 + 15
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 5
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
-    scratch_bits = scratch_bits &&& 7
 
     if value.f5 < 0 do
       raise ArgumentError, "value.f5 is below the wire minimum"
@@ -590,12 +550,12 @@ defmodule Bench.Bench do
     end
 
     v = value.f5
-    scratch = scratch ||| v <<< scratch_bits
-    scratch_bits = scratch_bits + 10
     flush = scratch_bits >>> 3
     data = <<data::binary, scratch::little-size(flush)-unit(8)>>
     scratch = scratch >>> (flush <<< 3)
     scratch_bits = scratch_bits &&& 7
+    scratch = scratch ||| v <<< scratch_bits
+    scratch_bits = scratch_bits + 10
 
     if value.f6 < -2048 do
       raise ArgumentError, "value.f6 is below the wire minimum"
@@ -608,10 +568,6 @@ defmodule Bench.Bench do
     v = value.f6 + 2048
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 12
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
-    scratch_bits = scratch_bits &&& 7
 
     if value.f7 < 0 do
       raise ArgumentError, "value.f7 is below the wire minimum"
@@ -624,10 +580,6 @@ defmodule Bench.Bench do
     v = value.f7
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 8
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
-    scratch_bits = scratch_bits &&& 7
 
     if value.f8 < -600_000 do
       raise ArgumentError, "value.f8 is below the wire minimum"
@@ -640,10 +592,6 @@ defmodule Bench.Bench do
     v = value.f8 + 600_000
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 21
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
-    scratch_bits = scratch_bits &&& 7
 
     if value.f9 < 0 do
       raise ArgumentError, "value.f9 is below the wire minimum"
@@ -654,6 +602,10 @@ defmodule Bench.Bench do
     end
 
     v = value.f9
+    flush = scratch_bits >>> 3
+    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
+    scratch = scratch >>> (flush <<< 3)
+    scratch_bits = scratch_bits &&& 7
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 7
     flush = scratch_bits >>> 3
@@ -764,60 +716,40 @@ defmodule Bench.Bench do
     v = value.b7 &&& 0x7F
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 7
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
-    scratch_bits = scratch_bits &&& 7
     v = value.b13 &&& 0x1FFF
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 13
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
-    scratch_bits = scratch_bits &&& 7
     v = value.b23 &&& 0x7FFFFF
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 23
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
-    scratch_bits = scratch_bits &&& 7
     v = value.b3 &&& 0x7
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 3
+    v = value.b32 &&& 0xFFFFFFFF
     flush = scratch_bits >>> 3
     data = <<data::binary, scratch::little-size(flush)-unit(8)>>
     scratch = scratch >>> (flush <<< 3)
     scratch_bits = scratch_bits &&& 7
-    v = value.b32 &&& 0xFFFFFFFF
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 32
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
-    scratch_bits = scratch_bits &&& 7
     v = value.b11 &&& 0x7FF
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 11
+    v = value.b19 &&& 0x7FFFF
     flush = scratch_bits >>> 3
     data = <<data::binary, scratch::little-size(flush)-unit(8)>>
     scratch = scratch >>> (flush <<< 3)
     scratch_bits = scratch_bits &&& 7
-    v = value.b19 &&& 0x7FFFF
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 19
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
-    scratch_bits = scratch_bits &&& 7
     v = value.b48 &&& 0xFFFFFFFF
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 32
+    v = value.b48 >>> 32 &&& 0xFFFF
     flush = scratch_bits >>> 3
     data = <<data::binary, scratch::little-size(flush)-unit(8)>>
     scratch = scratch >>> (flush <<< 3)
     scratch_bits = scratch_bits &&& 7
-    v = value.b48 >>> 32 &&& 0xFFFF
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 16
     flush = scratch_bits >>> 3
@@ -999,10 +931,6 @@ defmodule Bench.Bench do
     v = value.entity_id &&& 0xFFF
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 12
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
-    scratch_bits = scratch_bits &&& 7
 
     if value.pos_x < -16383 do
       raise ArgumentError, "value.pos_x is below the wire minimum"
@@ -1015,10 +943,6 @@ defmodule Bench.Bench do
     v = value.pos_x + 16383
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 15
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
-    scratch_bits = scratch_bits &&& 7
 
     if value.pos_y < -16383 do
       raise ArgumentError, "value.pos_y is below the wire minimum"
@@ -1031,10 +955,6 @@ defmodule Bench.Bench do
     v = value.pos_y + 16383
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 15
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
-    scratch_bits = scratch_bits &&& 7
 
     if value.pos_z < -16383 do
       raise ArgumentError, "value.pos_z is below the wire minimum"
@@ -1045,26 +965,18 @@ defmodule Bench.Bench do
     end
 
     v = value.pos_z + 16383
-    scratch = scratch ||| v <<< scratch_bits
-    scratch_bits = scratch_bits + 15
     flush = scratch_bits >>> 3
     data = <<data::binary, scratch::little-size(flush)-unit(8)>>
     scratch = scratch >>> (flush <<< 3)
     scratch_bits = scratch_bits &&& 7
+    scratch = scratch ||| v <<< scratch_bits
+    scratch_bits = scratch_bits + 15
     v = value.yaw &&& 0x1FF
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 9
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
-    scratch_bits = scratch_bits &&& 7
     v = value.pitch &&& 0x1FF
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 9
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
-    scratch_bits = scratch_bits &&& 7
 
     if value.vel_x < -2048 do
       raise ArgumentError, "value.vel_x is below the wire minimum"
@@ -1077,10 +989,6 @@ defmodule Bench.Bench do
     v = value.vel_x + 2048
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 12
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
-    scratch_bits = scratch_bits &&& 7
 
     if value.vel_y < -2048 do
       raise ArgumentError, "value.vel_y is below the wire minimum"
@@ -1091,12 +999,12 @@ defmodule Bench.Bench do
     end
 
     v = value.vel_y + 2048
-    scratch = scratch ||| v <<< scratch_bits
-    scratch_bits = scratch_bits + 12
     flush = scratch_bits >>> 3
     data = <<data::binary, scratch::little-size(flush)-unit(8)>>
     scratch = scratch >>> (flush <<< 3)
     scratch_bits = scratch_bits &&& 7
+    scratch = scratch ||| v <<< scratch_bits
+    scratch_bits = scratch_bits + 12
 
     if value.vel_z < -2048 do
       raise ArgumentError, "value.vel_z is below the wire minimum"
@@ -1109,10 +1017,6 @@ defmodule Bench.Bench do
     v = value.vel_z + 2048
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 12
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
-    scratch_bits = scratch_bits &&& 7
 
     if value.health < 0 do
       raise ArgumentError, "value.health is below the wire minimum"
@@ -1125,10 +1029,6 @@ defmodule Bench.Bench do
     v = value.health
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 10
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
-    scratch_bits = scratch_bits &&& 7
 
     if value.weapon < 0 do
       raise ArgumentError, "value.weapon is below the wire minimum"
@@ -1141,10 +1041,6 @@ defmodule Bench.Bench do
     v = value.weapon
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 4
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
-    scratch_bits = scratch_bits &&& 7
 
     if value.damage >>> 8 != 0 do
       raise ArgumentError, "value.damage holds a mask bit above the 8-bit wire"
@@ -1153,17 +1049,9 @@ defmodule Bench.Bench do
     v = value.damage
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 8
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
-    scratch_bits = scratch_bits &&& 7
     v = if value.moving, do: 1, else: 0
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 1
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
-    scratch_bits = scratch_bits &&& 7
     v = if value.firing, do: 1, else: 0
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 1
@@ -1285,10 +1173,6 @@ defmodule Bench.Bench do
     v = value.stat_id &&& 0xFF
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 8
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
-    scratch_bits = scratch_bits &&& 7
 
     if value.delta < -512 do
       raise ArgumentError, "value.delta is below the wire minimum"
@@ -1360,10 +1244,6 @@ defmodule Bench.Bench do
     v = value.target_id &&& 0xFFF
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 12
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
-    scratch_bits = scratch_bits &&& 7
 
     if value.damage < 0 do
       raise ArgumentError, "value.damage is below the wire minimum"
@@ -1376,10 +1256,6 @@ defmodule Bench.Bench do
     v = value.damage
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 12
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
-    scratch_bits = scratch_bits &&& 7
 
     if value.hit_kind < 0 do
       raise ArgumentError, "value.hit_kind is below the wire minimum"
@@ -1392,10 +1268,6 @@ defmodule Bench.Bench do
     v = value.hit_kind
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 3
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
-    scratch_bits = scratch_bits &&& 7
     v = if value.crit, do: 1, else: 0
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 1
@@ -1478,10 +1350,6 @@ defmodule Bench.Bench do
     v = value.channel
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 2
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
-    scratch_bits = scratch_bits &&& 7
     v = value.speaker &&& 0xFFF
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 12
@@ -1542,10 +1410,6 @@ defmodule Bench.Bench do
     v = value.item_id &&& 0x3FF
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 10
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
-    scratch_bits = scratch_bits &&& 7
 
     if value.amount < 0 do
       raise ArgumentError, "value.amount is below the wire minimum"
@@ -1636,10 +1500,6 @@ defmodule Bench.Bench do
           v = value.hit.target_id &&& 0xFFF
           scratch = scratch ||| v <<< scratch_bits
           scratch_bits = scratch_bits + 12
-          flush = scratch_bits >>> 3
-          data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-          scratch = scratch >>> (flush <<< 3)
-          scratch_bits = scratch_bits &&& 7
 
           if value.hit.damage < 0 do
             raise ArgumentError, "value.hit.damage is below the wire minimum"
@@ -1652,10 +1512,6 @@ defmodule Bench.Bench do
           v = value.hit.damage
           scratch = scratch ||| v <<< scratch_bits
           scratch_bits = scratch_bits + 12
-          flush = scratch_bits >>> 3
-          data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-          scratch = scratch >>> (flush <<< 3)
-          scratch_bits = scratch_bits &&& 7
 
           if value.hit.hit_kind < 0 do
             raise ArgumentError, "value.hit.hit_kind is below the wire minimum"
@@ -1668,10 +1524,6 @@ defmodule Bench.Bench do
           v = value.hit.hit_kind
           scratch = scratch ||| v <<< scratch_bits
           scratch_bits = scratch_bits + 3
-          flush = scratch_bits >>> 3
-          data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-          scratch = scratch >>> (flush <<< 3)
-          scratch_bits = scratch_bits &&& 7
           v = if value.hit.crit, do: 1, else: 0
           scratch = scratch ||| v <<< scratch_bits
           scratch_bits = scratch_bits + 1
@@ -1693,10 +1545,6 @@ defmodule Bench.Bench do
           v = value.chat.channel
           scratch = scratch ||| v <<< scratch_bits
           scratch_bits = scratch_bits + 2
-          flush = scratch_bits >>> 3
-          data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-          scratch = scratch >>> (flush <<< 3)
-          scratch_bits = scratch_bits &&& 7
           v = value.chat.speaker &&& 0xFFF
           scratch = scratch ||| v <<< scratch_bits
           scratch_bits = scratch_bits + 12
@@ -1710,10 +1558,6 @@ defmodule Bench.Bench do
           v = value.pickup.item_id &&& 0x3FF
           scratch = scratch ||| v <<< scratch_bits
           scratch_bits = scratch_bits + 10
-          flush = scratch_bits >>> 3
-          data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-          scratch = scratch >>> (flush <<< 3)
-          scratch_bits = scratch_bits &&& 7
 
           if value.pickup.amount < 0 do
             raise ArgumentError, "value.pickup.amount is below the wire minimum"
@@ -1894,17 +1738,9 @@ defmodule Bench.Bench do
     v = 49374
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 16
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
-    scratch_bits = scratch_bits &&& 7
     v = value.sequence &&& 0xFFFF
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 16
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
-    scratch_bits = scratch_bits &&& 7
 
     if value.ack_sequence < 0 do
       raise ArgumentError, "value.ack_sequence is below the wire minimum"
@@ -1917,38 +1753,34 @@ defmodule Bench.Bench do
     v = value.ack_sequence
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 16
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
-    scratch_bits = scratch_bits &&& 7
     v = value.ack_bits &&& 0xFFFFFFFF
-    scratch = scratch ||| v <<< scratch_bits
-    scratch_bits = scratch_bits + 32
     flush = scratch_bits >>> 3
     data = <<data::binary, scratch::little-size(flush)-unit(8)>>
     scratch = scratch >>> (flush <<< 3)
     scratch_bits = scratch_bits &&& 7
+    scratch = scratch ||| v <<< scratch_bits
+    scratch_bits = scratch_bits + 32
     v = value.session_id &&& 0xFFFFFFFF
-    scratch = scratch ||| v <<< scratch_bits
-    scratch_bits = scratch_bits + 32
     flush = scratch_bits >>> 3
     data = <<data::binary, scratch::little-size(flush)-unit(8)>>
     scratch = scratch >>> (flush <<< 3)
     scratch_bits = scratch_bits &&& 7
+    scratch = scratch ||| v <<< scratch_bits
+    scratch_bits = scratch_bits + 32
     v = value.session_id >>> 32 &&& 0xFFFFFFFF
-    scratch = scratch ||| v <<< scratch_bits
-    scratch_bits = scratch_bits + 32
     flush = scratch_bits >>> 3
     data = <<data::binary, scratch::little-size(flush)-unit(8)>>
     scratch = scratch >>> (flush <<< 3)
     scratch_bits = scratch_bits &&& 7
+    scratch = scratch ||| v <<< scratch_bits
+    scratch_bits = scratch_bits + 32
     v = value.client_id &&& 0xFFFFFFFF
-    scratch = scratch ||| v <<< scratch_bits
-    scratch_bits = scratch_bits + 32
     flush = scratch_bits >>> 3
     data = <<data::binary, scratch::little-size(flush)-unit(8)>>
     scratch = scratch >>> (flush <<< 3)
     scratch_bits = scratch_bits &&& 7
+    scratch = scratch ||| v <<< scratch_bits
+    scratch_bits = scratch_bits + 32
 
     if value.nonce < 0 do
       raise ArgumentError, "value.nonce is below the wire minimum"
@@ -1959,19 +1791,19 @@ defmodule Bench.Bench do
     end
 
     v = value.nonce &&& 0xFFFFFFFF
-    scratch = scratch ||| v <<< scratch_bits
-    scratch_bits = scratch_bits + 32
     flush = scratch_bits >>> 3
     data = <<data::binary, scratch::little-size(flush)-unit(8)>>
     scratch = scratch >>> (flush <<< 3)
     scratch_bits = scratch_bits &&& 7
+    scratch = scratch ||| v <<< scratch_bits
+    scratch_bits = scratch_bits + 32
     v = value.nonce >>> 32
-    scratch = scratch ||| v <<< scratch_bits
-    scratch_bits = scratch_bits + 32
     flush = scratch_bits >>> 3
     data = <<data::binary, scratch::little-size(flush)-unit(8)>>
     scratch = scratch >>> (flush <<< 3)
     scratch_bits = scratch_bits &&& 7
+    scratch = scratch ||| v <<< scratch_bits
+    scratch_bits = scratch_bits + 32
 
     if value.world_time < -1_000_000_000_000 do
       raise ArgumentError, "value.world_time is below the wire minimum"
@@ -1983,33 +1815,25 @@ defmodule Bench.Bench do
 
     w = value.world_time + 1_000_000_000_000
     v = w &&& 0xFFFFFFFF
-    scratch = scratch ||| v <<< scratch_bits
-    scratch_bits = scratch_bits + 32
     flush = scratch_bits >>> 3
     data = <<data::binary, scratch::little-size(flush)-unit(8)>>
     scratch = scratch >>> (flush <<< 3)
     scratch_bits = scratch_bits &&& 7
+    scratch = scratch ||| v <<< scratch_bits
+    scratch_bits = scratch_bits + 32
     v = w >>> 32
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 9
+    v = value.frame_tick &&& 0xFFFFFFFF
     flush = scratch_bits >>> 3
     data = <<data::binary, scratch::little-size(flush)-unit(8)>>
     scratch = scratch >>> (flush <<< 3)
     scratch_bits = scratch_bits &&& 7
-    v = value.frame_tick &&& 0xFFFFFFFF
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 32
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
-    scratch_bits = scratch_bits &&& 7
     v = value.frame_tick >>> 32 &&& 0xFFFF
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 16
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
-    scratch_bits = scratch_bits &&& 7
 
     if value.server_time < 0 do
       raise ArgumentError, "value.server_time is below the wire minimum"
@@ -2020,12 +1844,12 @@ defmodule Bench.Bench do
     end
 
     v = value.server_time
-    scratch = scratch ||| v <<< scratch_bits
-    scratch_bits = scratch_bits + 24
     flush = scratch_bits >>> 3
     data = <<data::binary, scratch::little-size(flush)-unit(8)>>
     scratch = scratch >>> (flush <<< 3)
     scratch_bits = scratch_bits &&& 7
+    scratch = scratch ||| v <<< scratch_bits
+    scratch_bits = scratch_bits + 24
     n = length(value.entities)
 
     if n < 1 do
@@ -2084,10 +1908,6 @@ defmodule Bench.Bench do
           v = value.game_event.hit.target_id &&& 0xFFF
           scratch = scratch ||| v <<< scratch_bits
           scratch_bits = scratch_bits + 12
-          flush = scratch_bits >>> 3
-          data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-          scratch = scratch >>> (flush <<< 3)
-          scratch_bits = scratch_bits &&& 7
 
           if value.game_event.hit.damage < 0 do
             raise ArgumentError, "value.game_event.hit.damage is below the wire minimum"
@@ -2100,10 +1920,6 @@ defmodule Bench.Bench do
           v = value.game_event.hit.damage
           scratch = scratch ||| v <<< scratch_bits
           scratch_bits = scratch_bits + 12
-          flush = scratch_bits >>> 3
-          data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-          scratch = scratch >>> (flush <<< 3)
-          scratch_bits = scratch_bits &&& 7
 
           if value.game_event.hit.hit_kind < 0 do
             raise ArgumentError, "value.game_event.hit.hit_kind is below the wire minimum"
@@ -2116,10 +1932,6 @@ defmodule Bench.Bench do
           v = value.game_event.hit.hit_kind
           scratch = scratch ||| v <<< scratch_bits
           scratch_bits = scratch_bits + 3
-          flush = scratch_bits >>> 3
-          data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-          scratch = scratch >>> (flush <<< 3)
-          scratch_bits = scratch_bits &&& 7
           v = if value.game_event.hit.crit, do: 1, else: 0
           scratch = scratch ||| v <<< scratch_bits
           scratch_bits = scratch_bits + 1
@@ -2141,10 +1953,6 @@ defmodule Bench.Bench do
           v = value.game_event.chat.channel
           scratch = scratch ||| v <<< scratch_bits
           scratch_bits = scratch_bits + 2
-          flush = scratch_bits >>> 3
-          data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-          scratch = scratch >>> (flush <<< 3)
-          scratch_bits = scratch_bits &&& 7
           v = value.game_event.chat.speaker &&& 0xFFF
           scratch = scratch ||| v <<< scratch_bits
           scratch_bits = scratch_bits + 12
@@ -2158,10 +1966,6 @@ defmodule Bench.Bench do
           v = value.game_event.pickup.item_id &&& 0x3FF
           scratch = scratch ||| v <<< scratch_bits
           scratch_bits = scratch_bits + 10
-          flush = scratch_bits >>> 3
-          data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-          scratch = scratch >>> (flush <<< 3)
-          scratch_bits = scratch_bits &&& 7
 
           if value.game_event.pickup.amount < 0 do
             raise ArgumentError, "value.game_event.pickup.amount is below the wire minimum"
@@ -2230,74 +2034,62 @@ defmodule Bench.Bench do
     v = cf_quantize(value.aim_x, -1.0, 2.0, 200)
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 8
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
-    scratch_bits = scratch_bits &&& 7
     v = cf_quantize(value.aim_y, -1.0, 2.0, 200)
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 8
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
-    scratch_bits = scratch_bits &&& 7
     v = cf_quantize(value.aim_z, -1.0, 2.0, 200)
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 8
+    v = f32_bits(value.recoil)
     flush = scratch_bits >>> 3
     data = <<data::binary, scratch::little-size(flush)-unit(8)>>
     scratch = scratch >>> (flush <<< 3)
     scratch_bits = scratch_bits &&& 7
-    v = f32_bits(value.recoil)
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 32
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
-    scratch_bits = scratch_bits &&& 7
     w = f64_bits(value.drift)
     v = w &&& 0xFFFFFFFF
-    scratch = scratch ||| v <<< scratch_bits
-    scratch_bits = scratch_bits + 32
     flush = scratch_bits >>> 3
     data = <<data::binary, scratch::little-size(flush)-unit(8)>>
     scratch = scratch >>> (flush <<< 3)
     scratch_bits = scratch_bits &&& 7
+    scratch = scratch ||| v <<< scratch_bits
+    scratch_bits = scratch_bits + 32
     v = w >>> 32
-    scratch = scratch ||| v <<< scratch_bits
-    scratch_bits = scratch_bits + 32
     flush = scratch_bits >>> 3
     data = <<data::binary, scratch::little-size(flush)-unit(8)>>
     scratch = scratch >>> (flush <<< 3)
     scratch_bits = scratch_bits &&& 7
+    scratch = scratch ||| v <<< scratch_bits
+    scratch_bits = scratch_bits + 32
     v = value.wide_key &&& 0xFFFFFFFF
-    scratch = scratch ||| v <<< scratch_bits
-    scratch_bits = scratch_bits + 32
     flush = scratch_bits >>> 3
     data = <<data::binary, scratch::little-size(flush)-unit(8)>>
     scratch = scratch >>> (flush <<< 3)
     scratch_bits = scratch_bits &&& 7
+    scratch = scratch ||| v <<< scratch_bits
+    scratch_bits = scratch_bits + 32
     v = value.wide_key >>> 32 &&& 0xFFFFFFFF
-    scratch = scratch ||| v <<< scratch_bits
-    scratch_bits = scratch_bits + 32
     flush = scratch_bits >>> 3
     data = <<data::binary, scratch::little-size(flush)-unit(8)>>
     scratch = scratch >>> (flush <<< 3)
     scratch_bits = scratch_bits &&& 7
+    scratch = scratch ||| v <<< scratch_bits
+    scratch_bits = scratch_bits + 32
     v = value.wide_key >>> 64 &&& 0xFFFFFFFF
-    scratch = scratch ||| v <<< scratch_bits
-    scratch_bits = scratch_bits + 32
     flush = scratch_bits >>> 3
     data = <<data::binary, scratch::little-size(flush)-unit(8)>>
     scratch = scratch >>> (flush <<< 3)
     scratch_bits = scratch_bits &&& 7
+    scratch = scratch ||| v <<< scratch_bits
+    scratch_bits = scratch_bits + 32
     v = value.wide_key >>> 96 &&& 0xFFFFFFFF
-    scratch = scratch ||| v <<< scratch_bits
-    scratch_bits = scratch_bits + 32
     flush = scratch_bits >>> 3
     data = <<data::binary, scratch::little-size(flush)-unit(8)>>
     scratch = scratch >>> (flush <<< 3)
     scratch_bits = scratch_bits &&& 7
+    scratch = scratch ||| v <<< scratch_bits
+    scratch_bits = scratch_bits + 32
 
     if value.flux < -1_267_650_600_228_229_401_496_703_205_376 do
       raise ArgumentError, "value.flux is below the wire minimum"
@@ -2309,33 +2101,29 @@ defmodule Bench.Bench do
 
     w = value.flux + 1_267_650_600_228_229_401_496_703_205_376
     v = w &&& 0xFFFFFFFF
-    scratch = scratch ||| v <<< scratch_bits
-    scratch_bits = scratch_bits + 32
     flush = scratch_bits >>> 3
     data = <<data::binary, scratch::little-size(flush)-unit(8)>>
     scratch = scratch >>> (flush <<< 3)
     scratch_bits = scratch_bits &&& 7
+    scratch = scratch ||| v <<< scratch_bits
+    scratch_bits = scratch_bits + 32
     v = w >>> 32 &&& 0xFFFFFFFF
-    scratch = scratch ||| v <<< scratch_bits
-    scratch_bits = scratch_bits + 32
     flush = scratch_bits >>> 3
     data = <<data::binary, scratch::little-size(flush)-unit(8)>>
     scratch = scratch >>> (flush <<< 3)
     scratch_bits = scratch_bits &&& 7
+    scratch = scratch ||| v <<< scratch_bits
+    scratch_bits = scratch_bits + 32
     v = w >>> 64 &&& 0xFFFFFFFF
-    scratch = scratch ||| v <<< scratch_bits
-    scratch_bits = scratch_bits + 32
     flush = scratch_bits >>> 3
     data = <<data::binary, scratch::little-size(flush)-unit(8)>>
     scratch = scratch >>> (flush <<< 3)
     scratch_bits = scratch_bits &&& 7
+    scratch = scratch ||| v <<< scratch_bits
+    scratch_bits = scratch_bits + 32
     v = w >>> 96
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 6
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
-    scratch_bits = scratch_bits &&& 7
 
     if value.ping < 0 do
       raise ArgumentError, "value.ping is below the wire minimum"
@@ -2346,12 +2134,12 @@ defmodule Bench.Bench do
     end
 
     v = value.ping
-    scratch = scratch ||| v <<< scratch_bits
-    scratch_bits = scratch_bits + 16
     flush = scratch_bits >>> 3
     data = <<data::binary, scratch::little-size(flush)-unit(8)>>
     scratch = scratch >>> (flush <<< 3)
     scratch_bits = scratch_bits &&& 7
+    scratch = scratch ||| v <<< scratch_bits
+    scratch_bits = scratch_bits + 16
     # reserved bits ride as zeros (SPEC §4.3)
     v = 0
     scratch = scratch ||| v <<< scratch_bits
@@ -2367,10 +2155,6 @@ defmodule Bench.Bench do
     v = value.crc_hint &&& 0xFFFFFF
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 24
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
-    scratch_bits = scratch_bits &&& 7
     v = if value.has_extra, do: 1, else: 0
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 1
@@ -2830,10 +2614,6 @@ defmodule Bench.Bench do
     v = e.entity_id &&& 0xFFF
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 12
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
-    scratch_bits = scratch_bits &&& 7
 
     if e.pos_x < -16383 do
       raise ArgumentError, "e.pos_x is below the wire minimum"
@@ -2846,10 +2626,6 @@ defmodule Bench.Bench do
     v = e.pos_x + 16383
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 15
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
-    scratch_bits = scratch_bits &&& 7
 
     if e.pos_y < -16383 do
       raise ArgumentError, "e.pos_y is below the wire minimum"
@@ -2862,10 +2638,6 @@ defmodule Bench.Bench do
     v = e.pos_y + 16383
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 15
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
-    scratch_bits = scratch_bits &&& 7
 
     if e.pos_z < -16383 do
       raise ArgumentError, "e.pos_z is below the wire minimum"
@@ -2876,26 +2648,18 @@ defmodule Bench.Bench do
     end
 
     v = e.pos_z + 16383
-    scratch = scratch ||| v <<< scratch_bits
-    scratch_bits = scratch_bits + 15
     flush = scratch_bits >>> 3
     data = <<data::binary, scratch::little-size(flush)-unit(8)>>
     scratch = scratch >>> (flush <<< 3)
     scratch_bits = scratch_bits &&& 7
+    scratch = scratch ||| v <<< scratch_bits
+    scratch_bits = scratch_bits + 15
     v = e.yaw &&& 0x1FF
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 9
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
-    scratch_bits = scratch_bits &&& 7
     v = e.pitch &&& 0x1FF
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 9
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
-    scratch_bits = scratch_bits &&& 7
 
     if e.vel_x < -2048 do
       raise ArgumentError, "e.vel_x is below the wire minimum"
@@ -2908,10 +2672,6 @@ defmodule Bench.Bench do
     v = e.vel_x + 2048
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 12
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
-    scratch_bits = scratch_bits &&& 7
 
     if e.vel_y < -2048 do
       raise ArgumentError, "e.vel_y is below the wire minimum"
@@ -2922,12 +2682,12 @@ defmodule Bench.Bench do
     end
 
     v = e.vel_y + 2048
-    scratch = scratch ||| v <<< scratch_bits
-    scratch_bits = scratch_bits + 12
     flush = scratch_bits >>> 3
     data = <<data::binary, scratch::little-size(flush)-unit(8)>>
     scratch = scratch >>> (flush <<< 3)
     scratch_bits = scratch_bits &&& 7
+    scratch = scratch ||| v <<< scratch_bits
+    scratch_bits = scratch_bits + 12
 
     if e.vel_z < -2048 do
       raise ArgumentError, "e.vel_z is below the wire minimum"
@@ -2940,10 +2700,6 @@ defmodule Bench.Bench do
     v = e.vel_z + 2048
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 12
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
-    scratch_bits = scratch_bits &&& 7
 
     if e.health < 0 do
       raise ArgumentError, "e.health is below the wire minimum"
@@ -2956,10 +2712,6 @@ defmodule Bench.Bench do
     v = e.health
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 10
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
-    scratch_bits = scratch_bits &&& 7
 
     if e.weapon < 0 do
       raise ArgumentError, "e.weapon is below the wire minimum"
@@ -2972,10 +2724,6 @@ defmodule Bench.Bench do
     v = e.weapon
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 4
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
-    scratch_bits = scratch_bits &&& 7
 
     if e.damage >>> 8 != 0 do
       raise ArgumentError, "e.damage holds a mask bit above the 8-bit wire"
@@ -2984,17 +2732,9 @@ defmodule Bench.Bench do
     v = e.damage
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 8
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
-    scratch_bits = scratch_bits &&& 7
     v = if e.moving, do: 1, else: 0
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 1
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
-    scratch_bits = scratch_bits &&& 7
     v = if e.firing, do: 1, else: 0
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 1
@@ -3011,10 +2751,6 @@ defmodule Bench.Bench do
     v = e.stat_id &&& 0xFF
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 8
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
-    scratch_bits = scratch_bits &&& 7
 
     if e.delta < -512 do
       raise ArgumentError, "e.delta is below the wire minimum"

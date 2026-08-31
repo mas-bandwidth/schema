@@ -37,19 +37,48 @@ func maskHex(bits int64) string {
 	return fmt.Sprintf("0x%X", new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), uint(bits)), big.NewInt(1)))
 }
 
-// mergeW merges v (already inside bits) into the scratch and flushes every
-// whole byte — the port's 32-bit-group packing restated at byte granularity,
-// branchless, every statement rebinding ONE variable (an Elixir conditional
-// cannot rebind several without a tuple, and the merge must allocate none).
-// bits in [1, 32]; v < 2^32 and scratch_bits <= 7, so no intermediate
-// reaches 2^40.
+// writeGroupBits is the merge group budget: the most static bits the scratch
+// carries between flushes. The BEAM's fixnum is 60-bit signed, so every
+// intermediate must stay under 2^59 or it costs a heap bignum — measured, a
+// boxed window is slower than the extra flush it saves. A flush leaves at
+// most 7 bits behind, so 7 + 52 = 59 is the whole budget and 52 is the group.
+const writeGroupBits = 52
+
+// mergeW merges v (already inside bits) into the scratch. The whole bytes do
+// NOT leave on every field: the generator knows every width statically, so it
+// carries a group of up to writeGroupBits and flushes once for the group,
+// which is one bs_append BIF call for the group instead of one per field.
+// Every statement rebinds ONE variable (an Elixir conditional cannot rebind
+// several without a tuple, and the merge must allocate none). bits in [1, 32];
+// pendW + bits <= 52 and scratch_bits <= 7 + pendW, so no intermediate reaches
+// 2^59.
 func (g *gen) mergeW(bits int64, ind string) {
+	if g.pendW+bits > writeGroupBits {
+		g.flushW(ind)
+	}
 	g.pf("%sscratch = scratch ||| v <<< scratch_bits\n", ind)
 	g.pf("%sscratch_bits = scratch_bits + %d\n", ind, bits)
+	g.pendW += bits
+}
+
+// flushW sends the group's whole bytes to the output binary and leaves the
+// scratch invariant the group model rests on: scratch_bits in [0, 7] and
+// scratch below 2^scratch_bits. It is a no-op when no group is open, which is
+// what makes a barrier free where one is already closed.
+//
+// EVERY point that observes data or scratch_bits outside the merge — the
+// function tail, an align, the bytes of a string, a loop helper's call and its
+// own tail, and the joins of a branch or a union case — is a barrier and calls
+// this first.
+func (g *gen) flushW(ind string) {
+	if g.pendW == 0 {
+		return
+	}
 	g.pf("%sflush = scratch_bits >>> 3\n", ind)
 	g.pf("%sdata = <<data::binary, scratch::little-size(flush)-unit(8)>>\n", ind)
 	g.pf("%sscratch = scratch >>> (flush <<< 3)\n", ind)
 	g.pf("%sscratch_bits = scratch_bits &&& 7\n", ind)
+	g.pendW = 0
 }
 
 // readR reads bits (in [1,32]) from the 40-bit window at bits_read into v,
@@ -333,7 +362,11 @@ func (g *gen) emitWriteFunction(name string, items []ir.Item) {
 	g.usesImport = true
 	snake := ir.RustSnake(name)
 	g.fn.Reset()
-	g.withOwner(name, func() { g.emitWriteItems(items, "value", "    ") })
+	g.pendW = 0
+	g.withOwner(name, func() {
+		g.emitWriteItems(items, "value", "    ")
+		g.flushW("    ") // the tail is a barrier: the residual is < 8 bits
+	})
 	body := g.fn.String()
 
 	g.bpf("  # write_%s packs value into a fresh binary — the trusted writer; the O(1)\n", snake)
@@ -424,14 +457,20 @@ func (g *gen) emitWriteItems(items []ir.Item, path, ind string) {
 			if item.Neg {
 				cond = "not " + cond
 			}
+			// a branch joins two emission paths, so the group closes
+			// before it and inside each arm: what leaves the if is one
+			// invariant, not one per arm
+			g.flushW(ind)
 			g.pf("\n")
 			g.pf("%s{data, scratch, scratch_bits} =\n", ind)
 			g.pf("%s  if %s do\n", ind, cond)
 			g.emitWriteItems(item.Then, path, ind+"    ")
+			g.flushW(ind + "    ")
 			g.pf("%s    {data, scratch, scratch_bits}\n", ind)
 			g.pf("%s  else\n", ind)
 			if item.Else != nil {
 				g.emitWriteItems(item.Else, path, ind+"    ")
+				g.flushW(ind + "    ")
 			}
 			g.pf("%s    {data, scratch, scratch_bits}\n", ind)
 			g.pf("%s  end\n", ind)
@@ -466,6 +505,7 @@ func (g *gen) emitWriteRaw(value *big.Int, bits int64, isConst bool, ind string)
 // zeros: the partial byte (if any) flushes zero-padded, exactly the byte the
 // merge's own flush would produce.
 func (g *gen) emitWriteAlign(ind string) {
+	g.flushW(ind) // align observes data: the group closes first
 	g.pf("%s# align: zero-pad to the byte boundary (SPEC §4.3)\n", ind)
 	g.pf("%sdata = if scratch_bits != 0, do: <<data::binary, scratch>>, else: data\n", ind)
 	g.pf("%sscratch = 0\n", ind)
@@ -482,6 +522,7 @@ func (g *gen) emitWriteField(f *ir.Field, path, ind string) {
 		g.raiseIf(fmt.Sprintf("length(%s) != %s", name, intLit64(f.ArrayBound)),
 			fmt.Sprintf("%s must hold exactly %d elements", name, f.ArrayBound), ind)
 		helper := g.writeHelper(f)
+		g.flushW(ind) // the helper opens its own group
 		g.callAssign("{data, scratch, scratch_bits}",
 			fmt.Sprintf("%s(%s, data, scratch, scratch_bits)", helper, name), ind)
 	case ir.ArrayCounted:
@@ -495,6 +536,7 @@ func (g *gen) emitWriteField(f *ir.Field, path, ind string) {
 			fmt.Sprintf("%s count is above the wire maximum", name), ind)
 		g.emitWriteOffset("n", big.NewInt(f.ArrayMin), big.NewInt(f.ArrayBound), ind)
 		helper := g.writeHelper(f)
+		g.flushW(ind) // the helper opens its own group
 		g.callAssign("{data, scratch, scratch_bits}",
 			fmt.Sprintf("%s(%s, data, scratch, scratch_bits)", helper, name), ind)
 	default:
@@ -516,7 +558,9 @@ func (g *gen) writeHelper(f *ir.Field) string {
 	}
 	g.helpers[name] = "" // claim before recursing (helpers may nest)
 	saved := g.fn
+	savedPend := g.pendW
 	g.fn = strings.Builder{}
+	g.pendW = 0 // the helper is entered with the caller's group closed
 	base := fmt.Sprintf("  defp %s([], data, scratch, scratch_bits), do: {data, scratch, scratch_bits}", name)
 	if len(base) <= formatWidth {
 		g.pf("%s\n\n", base)
@@ -525,10 +569,12 @@ func (g *gen) writeHelper(f *ir.Field) string {
 	}
 	g.pf("  defp %s([e | rest], data, scratch, scratch_bits) do\n", name)
 	g.emitWriteElem(f, "    ")
+	g.flushW("    ") // the element's tail is a barrier: the next entry is < 8 bits
 	g.pf("    %s(rest, data, scratch, scratch_bits)\n", name)
 	g.pf("  end\n\n")
 	g.helpers[name] = g.fn.String()
 	g.fn = saved
+	g.pendW = savedPend
 	g.helperOrder = append(g.helperOrder, name)
 	return name
 }
@@ -784,6 +830,9 @@ func (g *gen) emitWriteUnion(u *ir.Union, expr, ind string) {
 	bits := ir.BitsRequired(big.NewInt(0), big.NewInt(u.Max))
 	g.pf("%sv = %s.type\n", ind, expr)
 	g.mergeW(bits, ind)
+	// the case joins every arm, so the group closes before it and inside
+	// each arm: what leaves the case is one invariant, not one per arm
+	g.flushW(ind)
 	g.pf("\n")
 	g.pf("%s{data, scratch, scratch_bits} =\n", ind)
 	g.pf("%s  case %s.type do\n", ind, expr)
@@ -794,6 +843,7 @@ func (g *gen) emitWriteUnion(u *ir.Union, expr, ind string) {
 		} else {
 			g.withOwner(vr.Type, func() {
 				g.emitWriteItems(vr.Ref.Items, expr+"."+elixirName(vr.Name), ind+"      ")
+				g.flushW(ind + "      ")
 			})
 		}
 		g.pf("%s      {data, scratch, scratch_bits}\n", ind)
