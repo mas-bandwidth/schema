@@ -742,15 +742,20 @@ comparison costs minutes, not an evening; nothing it prints publishes.
   enacted for the table by #177/#178): the headline section is family
   `gen` — every language's schema-GENERATED code, the native legs included
   since their generated Bench legs landed — and the second labeled section
-  is family `rt`, the serialize runtime API called by hand. Within a
-  section: per-language per-message time `t = (1/w + 1/r) / 2` over the
-  §2.2 headline (max) rates, sorted ascending, fastest = 100%, every other
-  language as its time multiple. Family and `checks` mode print per row
-  (checks is a recorded, NOT equalized property — §3.4), the js blend takes
-  the `codec=flat` tier only (THE js path; `codec=runtime` rows never
-  blend), and a caption above the sections names what is held constant:
-  contract, corpus, machine, sitting, and the equalized full-struct sink
-  discipline (#175).
+  is family `rt`, the serialize runtime API called by hand.
+  **AMENDED 2026-08-31 by §2.9 and the owner's presentation ruling (#184).**
+  The gen section's statistic is the **`round_trip` row**, not the old
+  `t = (1/w + 1/r) / 2` blend — that leg is data-driven in every language
+  now and no longer reports a measured `read`. The rt section keeps the old
+  blend until #196 excises the rt rows. The printed table is exactly **two
+  columns, language and percent**, with generated **C++ = 100% as the
+  DENOMINATOR** (owner, 2026-08-31: "I want nothing but a table with two
+  columns: language, %" / "not fastest-as-100%: a language beating C++
+  prints below 100%"); ns/msg, family, `checks` and spreads live in the CSV
+  only. The js table takes the `codec=flat` tier only (THE js path;
+  `codec=runtime` rows never enter it), and a caption above the sections
+  names what is held constant: contract, corpus, machine, sitting.
+  **A headline section with ZERO rows exits non-zero** — see §2.9's F4.
 - A language whose leg cannot run prints as an **ABSENT row with the
   reason** in the headline section, and an `--only` invocation that
   produced zero data rows **exits non-zero** — a skipped leg is a refusal,
@@ -764,6 +769,78 @@ PROPOSED means: the constants above (3 runs, the reduced elixir count, the
 blended statistic) are working values pending the owner's ruling, marked
 here so a table produced by quick mode can name its contract. Certification
 and every published ratio remain governed by §2.1–§2.7.
+
+### §2.9 The write / round-trip contract — NORMATIVE for the gen family's `bench_mixed` rows
+
+Ratified 2026-08-31 (issue #191, PR #197): proposed by the C++ tracer, and
+binding from the sitting that carried it to all nine legs.
+
+**The contract.** For the `bench_mixed` rows of family `gen` — the data-driven
+leg, in every language — the timed rows are **`write`** and **`round_trip`**:
+
+- **`write`** encodes the 64 pre-decoded instances **round-robin** into a
+  scratch buffer. Rotating pre-decoded instances is what §2.7's per-iteration
+  LCG mutation bought (the encoder never sees the same input twice in a row
+  and cannot precompute scratch words) with none of the per-language mutation
+  code, and with `bytes_per_op` constant **by construction** rather than by
+  assertion.
+- **`round_trip`** decodes a variant buffer and re-encodes what came out.
+- Both sink a **byte fold** of the bytes written.
+- **`read` is DERIVED** — round-trip time minus write time — printed
+  informational on stderr and **never a CSV row**. A derived number in the
+  CSV would be divided as if it had been measured.
+- **The published blend is the `round_trip`.**
+
+The shape knowledge lives in the committed variant DATA
+(`bench/corpus/variants`, `make bench-variants`) and in the generated codec,
+and **in no per-language code**: every leg's driver names zero fields of the
+shape it measures. That is the property the design exists for, and it held in
+all nine languages. Java is the one leg whose driver is deliberately
+monomorphic rather than generic (its own JVM discipline, #156 item 5, is one
+timed loop method per shape and direction) — it still names no field.
+
+**Comparability, stated plainly.** The old blend was `(write + read)/2 ≈
+round_trip/2`, so `round_trip/2` is the successor of the old blended
+statistic **in form only**. In a ratio the factor of two cancels, which is why
+the §2.8 percentages are the same statistic either way. **The old `write` row
+is NOT comparable to the new one** — see F1.
+
+**F1 — harness inflation, recorded.** The old `bench_mixed` write rows charged
+per-language `vary_*` work to the library, INSIDE the timer: about 120 field
+assignments across 8 entities, 80 stats and ~30 header/coverage fields on a
+438-byte shape. Measured on the C++ tracer in one window with the untouched
+`rt` rows as the control: **290.5 ns → 187.1 ns, i.e. 103.4 ns/msg — 35.6% of
+the old write row was harness.** The removal is uniform IN PRINCIPLE (every
+leg carried a vary function) but **not uniform in magnitude**: each language's
+vary cost differed, so cross-language rankings on the write row may move
+across this boundary, and a move there is the honest contract arriving rather
+than a performance change. **Consequence for the absolute ledger (#194): the
+curve steps at this boundary and not because anything got faster.** The
+438-byte era needs a harness **sub-era** boundary — the data-driven sub-era,
+starting with this sitting — or the ledger reads a measurement change as
+absolute progress, which is precisely the churn #194 exists to detect.
+Result CSVs from this sub-era carry `datadriven` in their filename.
+
+**F3 — the residual, named.** The per-variant decode→re-encode→byte-compare
+gate closes §1.5's named residual (the 64 varied buffers were length-checked
+but never value-checked) for every variant, in every leg. It has a residual of
+its own: it is a **codec self-consistency** check, not a **data-integrity**
+check. A flipped bit in a plain VALUE field of variant k>0 decodes to a
+different in-range value and re-encodes to the same bytes — **the gate stays
+green**. Only `corpus_id` catches it, which is why the variant file is
+registered as corpus (§1.6) and hashes into `corpus_id` in all nine legs. Data
+integrity independent of `corpus_id` would need a committed digest or a
+regeneration check in CI; that is named here, not built.
+
+**F4 — the tooling refuses instead of dropping.** `bench/tools` and
+`bench/run.sh` speak this contract: `round_trip` is a first-class value of the
+`path` column (one `paths` list drives `aggregate`, `twingate`, `bands` and the
+absolute table, so a new path can no longer make rows silently vanish), and
+`run.sh --quick`'s **headline section exits non-zero when it has zero rows**.
+The pre-fix behaviour was the defect: with cpp reporting `round_trip`, the
+blender dropped every row it did not recognise and printed an empty section at
+exit 0 — a leg that produced rows looked identical to a leg that produced
+none, which is exactly what #175 legislated against.
 
 ---
 
@@ -1225,6 +1302,7 @@ lang,bench,path,iters,bytes_per_op,runs,median_msgs_per_sec,min_msgs_per_sec,max
 | column | values |
 |---|---|
 | 1–11 | unchanged from v1 |
+| `path` (col 3) | `write` \| `read` \| `round_trip`. `round_trip` was added 2026-08-31 by §2.9 and appears on the gen family's data-driven `bench_mixed` rows, which report `write` + `round_trip` and no measured `read`. Every tool that walks rows walks `relative.go`'s one `paths` list, so a path added to a runner and not to that list REFUSES the aggregation rather than dropping rows. |
 | `corpus_id` | 16 hex digits, §1.6 |
 | `family` | `gen` \| `rt` \| `bits` \| `local` |
 | `linkage` | `hdr` \| `tu` \| `hdr+tu` \| `tu-lto` \| `crate` \| `pkg` \| `asm` (§3.1) |

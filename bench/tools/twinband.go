@@ -35,13 +35,13 @@ import (
 )
 
 // sortedKeys returns the union of both maps' keys in presentation order
-// (langs blocks, corpus order, write before read), then any stragglers.
+// (langs blocks, corpus order, then the §5.1 paths), then any stragglers.
 func sortedKeys(ms ...map[key]row) []key {
 	seen := map[key]bool{}
 	var out []key
 	for _, l := range langs {
 		for _, b := range order {
-			for _, p := range []string{"write", "read"} {
+			for _, p := range paths {
 				for _, c := range codecs {
 					k := key{l.key, b, p, c}
 					for _, m := range ms {

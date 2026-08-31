@@ -138,14 +138,15 @@ func aggregateCmd(paths []string) {
 	fmt.Println("lang,bench,path,iters,bytes_per_op,runs,median_msgs_per_sec,min_msgs_per_sec,max_msgs_per_sec,median_mb_per_sec,spread_pct,corpus_id,family,linkage,checks,opt,inline")
 	// presentation order: language blocks (as run.sh emits), corpus order within.
 	// The order list is presentation, but this loop is also the OUTPUT loop —
-	// a bench missing from the list would silently vanish from the pass, which
-	// is exactly what happened to real_packet on certified-space-1's first
-	// window (added to the runners by #61, never to the list). Printed keys
-	// are counted and any straggler REFUSES the aggregation after the fact.
+	// a bench OR PATH missing from the lists would silently vanish from the
+	// pass, which is exactly what happened to real_packet on certified-space-1's
+	// first window (added to the runners by #61, never to the list) and again
+	// to round_trip when the gen bench_mixed rows went data-driven (#191).
+	// Printed keys are counted and any straggler REFUSES the aggregation.
 	printed := 0
 	for _, l := range langs {
 		for _, b := range order {
-			for _, p := range []string{"write", "read"} {
+			for _, p := range paths {
 				for _, c := range codecs {
 					k := key{l.key, b, p, c}
 					a, ok := acc[k]
@@ -178,7 +179,7 @@ func aggregateCmd(paths []string) {
 	if printed != len(acc) {
 		fmt.Fprintf(os.Stderr, "aggregate: REFUSING: %d row key(s) accumulated but not printed — the order list does not know every bench the rounds measured:\n", len(acc)-printed)
 		for _, k := range keys {
-			if !slices.Contains(order, k.bench) {
+			if !slices.Contains(order, k.bench) || !slices.Contains(paths, k.path) {
 				fmt.Fprintf(os.Stderr, "    %s/%s/%s\n", k.lang, k.bench, k.path)
 			}
 		}
