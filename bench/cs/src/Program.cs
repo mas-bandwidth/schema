@@ -53,7 +53,7 @@ static partial class Program
     // was wrong — there is no NDEBUG-equivalent build of serialize.cs) —
     // opt default (the JIT has no operator-visible optimization levels),
     // inline unknown until the verdict pass (§4.2) backfills it.
-    // family is per ROW now (gen | rt | bits — §5.1); linkage/checks/opt/
+    // family is per ROW now (gen | bits — §5.1); linkage/checks/opt/
     // inline stay per-runner constants
     const string CsvSuffix = "asm,always,default,unknown";
 
@@ -956,13 +956,10 @@ static partial class Program
     // ------------------------------------------------------------------------------------------
     // family gen over the Bench corpus (issue #177): the four Bench.schema
     // shapes measured through the GENERATED code (generated/bench/cs,
-    // namespace Bench) — the gen twins of the rt rows (RtBench.cs), which
-    // serialize the same shapes BY HAND against the runtime API. Same golden
-    // files, same pinned values, same LCG field mappings, same BenchMessage
-    // discipline as every gen row above; the family column carries the
-    // subject, and relative.go refuses gen-vs-rt ratios. Generated best case
-    // per the profiling doctrine (#170): the plain Release build, no PGO
-    // beyond the JIT's own defaults.
+    // namespace Bench) — same golden files, same pinned values, same LCG
+    // field mappings, same BenchMessage discipline as every gen row above.
+    // Generated best case per the profiling doctrine (#170): the plain
+    // Release build, no PGO beyond the JIT's own defaults.
     // ------------------------------------------------------------------------------------------
 
     static Bench.BenchPacket PinGenPacket()
@@ -1133,12 +1130,9 @@ static partial class Program
         {
             // --quick: bench_mixed only, 3 measured runs — the iteration
             // instrument, never the certification instrument. Golden gate
-            // unconditional (BenchRt gates before timing).
-            // The gen row is the schema subject (the blended table's row);
-            // the rt row rides beside it as the hand-written-usage subject.
+            // unconditional (BenchDataDriven gates before timing).
             Console.Error.WriteLine("--quick: iteration instrument, not certification");
             BenchDataDriven<Bench.BenchMixed>("bench_mixed", "bench_mixed", 4000000, Bench.Schema.WriteBenchMixed, Bench.Schema.ReadBenchMixed);
-            BenchRtMixed();
             FlushCsv();
             if (failed)
             {
@@ -1172,21 +1166,14 @@ static partial class Program
         // sized in the C++ reference (§2.1).
         BenchMessage("real_packet", "real_packet", 8000000, new Realworld.RealPacket(), Realworld.Schema.WriteRealPacket, Realworld.Schema.ReadRealPacket, VaryRealPacket);
 
-        // family gen over the Bench corpus (issue #177): the generated twins
-        // of the rt rows below — same shapes, same goldens, same pins, same
-        // vary mappings, same iteration counts (fixed and identical across
-        // all five runners, §2.1); only the subject differs, and the family
-        // column says so.
+        // family gen over the Bench corpus (issue #177): the four
+        // Bench.schema shapes through the generated code — same goldens, same
+        // pins, same vary mappings, same iteration counts (fixed and
+        // identical across all five runners, §2.1).
         BenchMessage("bench_packet", "bench_packet", 32000000, PinGenPacket(), Bench.Schema.WriteBenchPacket, Bench.Schema.ReadBenchPacket, VaryGenPacket);
         BenchMessage("bench_ints", "bench_ints", 40000000, PinGenInts(), Bench.Schema.WriteBenchInts, Bench.Schema.ReadBenchInts, VaryGenInts);
         BenchMessage("bench_bits", "bench_bits", 48000000, PinGenBits(), Bench.Schema.WriteBenchBits, Bench.Schema.ReadBenchBits, VaryGenBits);
         BenchDataDriven<Bench.BenchMixed>("bench_mixed", "bench_mixed", 4000000, Bench.Schema.WriteBenchMixed, Bench.Schema.ReadBenchMixed);
-
-        // family rt (§1.3/§1.5): the runtime API by hand, oracle-gated
-        // against the goldens the generated code pinned. Iteration counts
-        // are fixed and identical across all five runners (§2.1; sized in
-        // the C++ reference).
-        BenchRtAll();
 
         // family bits (§1.4): the one bitpacker workload in the estate
         BenchBitpacker(24576);

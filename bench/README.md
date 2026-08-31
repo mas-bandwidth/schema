@@ -1,19 +1,13 @@
 # bench — cross-language serialize profiling harness
 
-Measures three families per language, every row labelled with its family
+Measures two families per language, every row labelled with its family
 (§1 of the standard):
 
 - **`gen`** — the schema-GENERATED code against its serialize runtime: write
   and read over the pinned corpus instances (the same instances
   `test/main.cpp` pins to `testdata/wire/*.bin`, plus `real_packet` — the
   §1.7 realistic snapshot `test/bench/main.cpp` pins), plus the four
-  Bench-corpus shapes as the generated twins of the `rt` rows (issue #177) —
-  same names, same goldens, distinguished by the family column.
-- **`rt`** — the serialize runtime API called BY HAND: the four
-  `bench/corpus/Bench.schema` shapes as hand-written packets, §1.5
-  oracle-gated against the goldens the GENERATED code pinned
-  (`testdata/wire/bench_*.bin`, produced by `test/bench/main.cpp`). A
-  mismatch refuses the entire run: a failing runner emits NO rows.
+  `bench/corpus/Bench.schema` shapes over their own goldens (issue #177).
 - **`bits`** — the raw bit packer: the §1.4 16-width table (227 bits/group)
   over a 65536-byte buffer, the ONE bitpacker workload in the estate.
 
@@ -36,16 +30,14 @@ same contract (see "The codegen-only legs" below).
     bench/run.sh --debug         # also the Debug pair (matched-pair methodology)
     bench/run.sh --only c|cpp|go|rust|cs|js|java|dart|elixir   # one language leg
     bench/run.sh --quick         # the iteration instrument: bench_mixed only,
-                                 # 3 measured runs per leg, golden gate intact
-                                 # (the native legs run their gen and rt rows
-                                 # both), and the blended tables (per-message
-                                 # time averaged over write+read, fastest =
-                                 # 100%) printed after the CSV — the headline
-                                 # table SINGLE-SUBJECT over family gen with
-                                 # the family printed per row, the rt blend a
-                                 # second labeled section (#177). NEVER a
-                                 # certification run; scaling constants are
-                                 # PROPOSED in BENCH-STANDARD.md §2.8.
+                                 # 3 measured runs per leg, golden gate intact,
+                                 # and the blended table (per-message time
+                                 # averaged over write+read, fastest = 100%)
+                                 # printed after the CSV — SINGLE-SUBJECT over
+                                 # family gen with the family printed per row
+                                 # (#177). NEVER a certification run; scaling
+                                 # constants are PROPOSED in
+                                 # BENCH-STANDARD.md §2.8.
     bench/run.sh --inline        # + the §4 inline verdict pass: writes the
                                  # per-symbol ledger and backfills the inline
                                  # column (rows stay un-ratioable without it)
@@ -142,7 +134,7 @@ non-zero exit rather than printing nothing.
 message (constant per benchmark by construction). The six v2 columns carry
 what the row measured: `corpus_id` (FNV-1a-64 of the goldens the runner
 actually loaded, §1.6 — corpus drift becomes a tool error, not a published
-ratio), `family` (`gen` | `rt` | `bits`, per row), `linkage`/`checks`/`opt` (the recorded
+ratio), `family` (`gen` | `bits`, per row), `linkage`/`checks`/`opt` (the recorded
 conditions, §3), and `inline` (`full` | `partial:N` | `none` | `unknown`,
 §4.2 — filled by the verdict pass, and `unknown` refuses to ratio). The
 per-symbol inline ledger lives beside the CSV as `<name>.inline`. v1 CSVs
@@ -171,15 +163,16 @@ it. Human-readable tables live beside the CSVs in `bench/results/`.
 | testdata          | testdata              | the everything message (floats, strings, arrays)  |
 | real_packet       | real_packet           | the §1.7 realistic snapshot (`bench/corpus/RealWorld.schema`): ~93 riding individually serialized small fields of every scalar kind, 204 B, 0% bulk share by bits; pin = the all-defaults instance |
 
-Family `rt` (hand-written runtime API, oracle-gated per §1.5; iteration
-counts fixed and identical across all six languages) and family `bits`:
+The `bench/corpus/Bench.schema` shapes (family `gen`, oracle-gated per §1.5;
+iteration counts fixed and identical across all six languages) and family
+`bits`:
 
 | bench        | family | pinned to golden | shape                                              |
 |--------------|--------|------------------|----------------------------------------------------|
-| bench_packet | rt     | bench_packet     | the serialize/bench.cpp stream packet (49 B)       |
-| bench_ints   | rt     | bench_ints       | 10 ranged ints (14 B)                              |
-| bench_bits   | rt     | bench_bits       | 8 raw bit fields incl. one 48-bit (20 B)           |
-| bench_mixed  | rt     | bench_mixed      | **THE canonical benchmark** (#184): every construct the schema language expresses, in one representative game message, integers carrying 91.87% of the wire bits (438 B) |
+| bench_packet | gen    | bench_packet     | the serialize/bench.cpp stream packet (49 B)       |
+| bench_ints   | gen    | bench_ints       | 10 ranged ints (14 B)                              |
+| bench_bits   | gen    | bench_bits       | 8 raw bit fields incl. one 48-bit (20 B)           |
+| bench_mixed  | gen    | bench_mixed      | **THE canonical benchmark** (#184): every construct the schema language expresses, in one representative game message, integers carrying 91.87% of the wire bits (438 B) |
 | bitpacker    | bits   | — (read-back verified in setup) | 16-width table over a 64 KiB buffer, 24576 passes/run (§1.4) |
 
 **bench_mixed is THE headline shape** (owner's ruling, issue #184: *"I'd
@@ -194,33 +187,27 @@ schema v1 rather than silently skipped: `serialize_wstring` and
 `serialize_int_relative`, both deferred with their wire already decided
 (SPEC §4.10).
 
-The four Bench shapes ALSO ride as **family `gen`** rows in the five native
-runners (issue #177): the same shapes measured through the GENERATED code
-(`generated/bench/<lang>`), same goldens, same pinned instances, same vary
-mappings, same iteration counts — the generated-best-case twin of each
-hand-written row, per the #170 profiling doctrine. The family column is
-what separates the twins, `relative.go` refuses gen-vs-rt ratios, and the
-deliberate labeled pair per language IS the published compiler-value
-number. Their `inline` column stays `unknown` until the §4 verdict pass
-learns to attribute them (named follow-on on #177).
+The four Bench shapes are measured through the GENERATED code
+(`generated/bench/<lang>`) in every runner, per the #170 profiling doctrine:
+generated best case, the plain optimized build, no PGO. Their `inline`
+column stays `unknown` until the §4 verdict pass learns to attribute them
+(named follow-on on #177).
 
-The `rt` timed loops live in noinline symbols (`rt_bench_*_write_loop` /
-`..._read_loop`, and `bitpacker_*_loop`) so the §4.1 inline verdict counts
-the emitted body of the timed loop directly, and every benched op has
-exactly two call sites (§3.2): its untimed oracle/setup helper and its
-timed loop.
+The `bits` timed loops live in noinline symbols (`bitpacker_*_loop`) so the
+§4.1 inline verdict counts the emitted body of the timed loop directly, and
+every benched op has exactly two call sites (§3.2): its untimed
+oracle/setup helper and its timed loop.
 
-Two further `rt` rows — `bench_string` and `bench_wstring` — are DEFINED in
+Two further rows — `bench_string` and `bench_wstring` — are DEFINED in
 BENCH-STANDARD §1.8 (measure-first, issue #64) and not yet implemented in
 these runners; the definitions land ahead of any further string/wstring
 optimization, and the rows themselves land as their own additive change
 (corpus type, goldens, runner rows, new corpus_id).
 
-The js leg additionally carries the four Bench-corpus shapes through the
-FLAT generated tier (family `gen`, `codec=flat` — THE js path), golden-
-gated and cross-validated against the runtime-call tier by the same oracle
-as the corpus shapes; its family `rt` rows keep the same bench names and
-measure the serialize.js runtime API beside them.
+The js leg carries the four Bench-corpus shapes through the FLAT generated
+tier (family `gen`, `codec=flat` — THE js path), golden-gated and
+cross-validated against the runtime-call tier by the same oracle as the
+corpus shapes.
 
 ## The codegen-only legs (java, dart, elixir)
 
@@ -235,9 +222,7 @@ measured runs (1 under `--round K`), per-iteration LCG variation, 64
 rotating read variants, §1.5 golden gate before any timing, CSV v2 rows
 with `corpus_id` over the goldens loaded.
 
-Their rows carry **family `gen`** — a ratio against another language's
-family `rt` row (the runtime API called by hand) is a subject difference,
-not a language difference, and `relative.go` refuses it. New `linkage`
+Their rows carry **family `gen`**, like every other leg. New `linkage`
 values, same recorded-property rule as `esm`: `class` (Java codec
 classfiles compiled beside the caller into one JVM), `aot` (Dart
 whole-program AOT executable), `beam` (Elixir modules compiled beside the
@@ -307,8 +292,8 @@ A runner is a standalone program in `bench/<lang>/` that:
   measure the FLAT tier (`codec=flat`, §5.1) — THE js path, per-call,
   golden-gated and cross-validated against the runtime tier (bytes, fields,
   verdicts, 64 variants) before any timing; the runtime-call generated rows
-  ride as labeled supplementary rows (`codec=runtime`). The `rt` and `bits`
-  families measure the serialize.js library itself and carry no codec column.
+  ride as labeled supplementary rows (`codec=runtime`). The `bits` family
+  measures the serialize.js bitpacker itself and carries no codec column.
 
 - **java**: `bench/java/Main.java` — compiled with the pinned dist JDK's
   javac (`--release 17 -Xlint:all -Werror`) beside `generated/bench/java`,

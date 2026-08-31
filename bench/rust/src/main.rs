@@ -29,7 +29,7 @@ use example::*;
 use realworldcorpus as realworld;
 use serialize::{ReadStream, Stream, WriteStream};
 
-mod rt;
+mod bits;
 
 const MAX_NUM_RUNS: usize = 7; // median of 7 (N >= 5), after 1 warmup run
 const NUM_VARIANTS: usize = 64; // read-path variant buffers
@@ -45,7 +45,7 @@ const NUM_VARIANTS: usize = 64; // read-path variant buffers
 // range validation and the sticky error check by contract), opt O3 (the cargo
 // release profile, opt-level 3), inline unknown until the verdict pass (§4.2)
 // backfills it.
-// family is per ROW now (gen | rt | bits — §5.1); linkage/checks/inline stay
+// family is per ROW now (gen | bits — §5.1); linkage/checks/inline stay
 // per-runner constants, and OPT IS READ FROM THE BUILD rather than asserted.
 //
 // THE OPT COLUMN USED TO BE THE LITERAL "O3" AND WAS THEREFORE A CLAIM THIS
@@ -930,12 +930,10 @@ fn vary_real_packet(m: &mut realworld::RealPacket, rng: u64) {
 // ------------------------------------------------------------------------------------------
 // family gen over the Bench corpus (issue #177): the four Bench.schema shapes
 // measured through the GENERATED code (generated/bench/rust, crate
-// benchcorpus) — the gen twins of the rt rows (rt.rs), which serialize the
-// same shapes BY HAND against the runtime API. Same golden files, same
-// pinned values, same LCG field mappings, same bench_message discipline as
-// every gen row above; the family column carries the subject, and
-// relative.go refuses gen-vs-rt ratios. Generated best case per the
-// profiling doctrine (#170): the plain cargo release build, no PGO.
+// benchcorpus) — same golden files, same pinned values, same LCG field
+// mappings, same bench_message discipline as every gen row above. Generated
+// best case per the profiling doctrine (#170): the plain cargo release
+// build, no PGO.
 // ------------------------------------------------------------------------------------------
 
 fn pin_gen_packet() -> benchgen::BenchPacket {
@@ -1083,9 +1081,7 @@ fn main() {
     if quick {
         // --quick: bench_mixed only, 3 measured runs — the iteration
         // instrument, never the certification instrument. Golden gate
-        // unconditional (bench_rt gates before timing).
-        // The gen row is the schema subject (the blended table's row); the
-        // rt row rides beside it as the hand-written-usage subject.
+        // unconditional (bench_datadriven gates before timing).
         eprintln!("schema bench (rust, --quick: iteration instrument, not certification)");
         bench_datadriven::<benchgen::BenchMixed, _, _, _, _>(
             &ctx,
@@ -1095,7 +1091,6 @@ fn main() {
             benchgen::write_bench_mixed,
             benchgen::read_bench_mixed,
         );
-        rt::bench_rt_mixed(&ctx);
         ctx.flush_csv();
         if ctx.failed.get() {
             eprintln!("BENCH FAILED (corpus_id {})", ctx.corpus_id());
@@ -1229,10 +1224,10 @@ fn main() {
         vary_real_packet,
     );
 
-    // family gen over the Bench corpus (issue #177): the generated twins of
-    // the rt rows below — same shapes, same goldens, same pins, same vary
+    // family gen over the Bench corpus (issue #177): the four Bench.schema
+    // shapes through the generated code — same goldens, same pins, same vary
     // mappings, same iteration counts (fixed and identical across all five
-    // runners, §2.1); only the subject differs, and the family column says so.
+    // runners, §2.1).
     bench_message(
         &ctx,
         "bench_packet",
@@ -1272,13 +1267,8 @@ fn main() {
         benchgen::read_bench_mixed,
     );
 
-    // family rt (§1.3/§1.5): the runtime API by hand, oracle-gated against
-    // the goldens the generated code pinned. Iteration counts are fixed and
-    // identical across all five runners (§2.1; sized in the C++ reference).
-    rt::bench_rt_all(&ctx);
-
     // family bits (§1.4): the one bitpacker workload in the estate
-    rt::bench_bitpacker(&ctx, 24576);
+    bits::bench_bitpacker(&ctx, 24576);
 
     ctx.flush_csv(); // rows carry the corpus_id of the goldens this run loaded
 

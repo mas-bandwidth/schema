@@ -14,9 +14,8 @@
 # WHAT THE ROWS MEASURE: the generated codec — schema's Elixir backend
 # emits self-contained accumulator-threaded write/read functions with zero
 # runtime dependencies, so the generated code IS the Elixir serialize path.
-# The rows carry family=gen: a ratio against another language's family=rt
-# row (the serialize runtime API called by hand) is a subject difference,
-# not a language difference, and the tools refuse it. Peak-style numbers
+# The rows carry family=gen — the estate's one benchmark subject
+# (schema#196). Peak-style numbers
 # from this runner's earlier serialize-family form (tight loops,
 # best-of-five) are NOT comparable to these rows — different measurement
 # contract, and the statistic alone moves the number.

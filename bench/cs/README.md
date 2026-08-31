@@ -7,9 +7,7 @@ golden + round-trip self-checks before any number is produced (a corpus
 mismatch REFUSES to bench), warmup + 7 runs + median/min/max/spread, CSV
 rows with `lang=cs`. Full contract: `bench/README.md`.
 
-`src/RtBench.cs` adds families rt and bits (BENCH-STANDARD.md §1.3/§1.4):
-the four Bench.schema shapes hand-written over the plain stream Serialize*
-surface, §1.5 oracle-gated against `testdata/wire/bench_*.bin`, plus the
+`src/BitsBench.cs` adds family bits (BENCH-STANDARD.md §1.4): the
 16-width bitpacker workload — timed loops in `[MethodImpl(NoInlining)]`
 methods for the §4.1 JitDisasm verdict.
 

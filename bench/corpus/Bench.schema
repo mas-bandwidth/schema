@@ -1,8 +1,8 @@
-// Bench.schema — the family `rt` corpus (BENCH-STANDARD.md §1.3): the four
-// shapes the bespoke harnesses measure, so all nine languages inherit ONE
-// definition. The generated code produces the testdata/wire/bench_*.bin
-// goldens; hand-written family `rt` runners are gated against those goldens
-// byte-for-byte (§1.5) before any number.
+// Bench.schema — the bench corpus (BENCH-STANDARD.md §1.3): the four shapes
+// every language's bench leg measures, so all nine inherit ONE definition.
+// The generated code produces the testdata/wire/bench_*.bin goldens, and
+// every runner is gated against them byte-for-byte (§1.5) before any
+// number.
 //
 // BenchMixed is THE canonical benchmark (issue #184) — every construct the
 // schema language expresses, in one representative game message, integers

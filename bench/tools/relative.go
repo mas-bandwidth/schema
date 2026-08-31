@@ -49,12 +49,11 @@ var corpus = []string{
 	"testdata", "real_packet",
 }
 
-// family rt (BENCH-STANDARD.md §1.3) and family bits (§1.4) — presentation
-// order only; the family column, not this list, is what the §5.3 refusal
-// rules read. A bench absent from this list would silently vanish from every
-// table and from aggregate, so the list must know every bench the runners
-// emit.
-var rtCorpus = []string{"bench_packet", "bench_ints", "bench_bits", "bench_mixed"}
+// The bench/corpus/Bench.schema shapes — presentation order only; the family
+// column, not this list, is what the §5.3 refusal rules read. A bench absent
+// from this list would silently vanish from every table and from aggregate,
+// so the list must know every bench the runners emit.
+var benchCorpus = []string{"bench_packet", "bench_ints", "bench_bits", "bench_mixed"}
 
 const bitpacker = "bitpacker"
 
@@ -67,7 +66,7 @@ const bitpacker = "bitpacker"
 // exactly what round_trip did between the tracer landing and this fix (F4).
 var paths = []string{"write", "read", "round_trip"}
 
-var order = append(append(append([]string{}, corpus...), rtCorpus...), bitpacker)
+var order = append(append(append([]string{}, corpus...), benchCorpus...), bitpacker)
 
 // langs is the presentation order. c is the reference the relative table is
 // expressed against (Glenn, 2026-08-17: "make C the reference. It is the

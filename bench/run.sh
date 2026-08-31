@@ -16,16 +16,14 @@
 #   --compiler    C++ compiler (default: $CXX, else c++)
 #   --quick       the iteration instrument, never the certification
 #                 instrument: every leg runs bench_mixed ONLY (3 measured
-#                 runs, golden gate intact; the native legs run their gen
-#                 and rt rows both), and the driver prints the blended
-#                 tables — per-message time averaged over write and read,
-#                 fastest language = 100% — after the CSV lands. The
-#                 headline table is SINGLE-SUBJECT: family gen (generated
-#                 code) for every language, family and checks mode printed
-#                 per row under a caption naming what is held constant; the
-#                 rt blend prints as a second labeled section (#177), and a
-#                 leg whose toolchain is missing prints as an ABSENT row
-#                 with the reason (#175).
+#                 runs, golden gate intact), and the driver prints the
+#                 blended table — per-message time averaged over write and
+#                 read, fastest language = 100% — after the CSV lands. The
+#                 table is SINGLE-SUBJECT: family gen (generated code) for
+#                 every language, family and checks mode printed per row
+#                 under a caption naming what is held constant, and a leg
+#                 whose toolchain is missing prints as an ABSENT row with
+#                 the reason (#175).
 #                 Scaling constants are PROPOSED in BENCH-STANDARD.md terms.
 #   --only LANG   run a single language leg (c|cpp|go|rust|cs|js|java|dart|elixir).
 #                 An --only run whose leg is skipped (missing toolchain)
@@ -553,10 +551,7 @@ fi
 # the same statistic either way.
 #
 # SINGLE-SUBJECT (#177): the headline is family gen — every language's
-# schema-GENERATED code. The rt rows (the serialize runtime API called by
-# hand) print as a second labeled section on their own unchanged write+read
-# blend; the two subjects never rank against each other, which is exactly the
-# refusal relative.go enforces on the CSVs.
+# schema-GENERATED code, the estate's one benchmark subject (schema#196).
 #
 # REFUSAL (#175, F4): a headline section with ZERO rows exits non-zero. The
 # old blender dropped every row it did not recognise and printed an empty
@@ -575,8 +570,6 @@ if [ "$QUICK" = 1 ]; then
             # js emits two gen tiers; the flat tier is THE js path (codec
             # column, $18), so codec=runtime rows never enter the table
             $2 == "bench_mixed" && $13 == "gen" && $18 != "runtime" && $3 == "round_trip" { gt[$1] = 1e9 / $9; gs[$1] = $11 }
-            $2 == "bench_mixed" && $13 == "rt" && $3 == "write" { rw[$1] = $9; rws[$1] = $11 }
-            $2 == "bench_mixed" && $13 == "rt" && $3 == "read"  { rr[$1] = $9; rrs[$1] = $11 }
             # ts[] is per-language time per message in ns; cpp is the
             # denominator, so cpp prints 100% and a faster language prints
             # below it.
@@ -635,14 +628,6 @@ if [ "$QUICK" = 1 ]; then
                     print "REFUSED (#175/§2.9): the gen headline section has ZERO rows — no leg reported a bench_mixed family-gen round_trip row. Nothing was measured; printing an empty table at exit 0 is the defect this refusal exists to stop." > "/dev/stderr"
                     exit 3
                 }
-                print ""
-                print "subject: hand-written runtime usage (family rt) — what the serialize libraries deliver by hand; never ranked against gen"
-                for (lang in rw)
-                    if (rr[lang] > 0 && rw[lang] > 0) {
-                        rt[lang] = (1.0 / rw[lang] + 1.0 / rr[lang]) / 2.0 * 1e9
-                        rts[lang] = (rws[lang] > rrs[lang]) ? rws[lang] : rrs[lang]
-                    }
-                render(rt, rts, 0)
             }' "$OUT" || QUICK_STATUS=$?
     } >&2
     if [ "${QUICK_STATUS:-0}" -ne 0 ]; then
