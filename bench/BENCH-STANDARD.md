@@ -192,28 +192,75 @@ type BenchBits {
     b48 bits(48)
 } // = 156 bits, 20 bytes
 
-// serialize/bench.cpp:517-528. 168 bits = 21 wire bytes.
-type BenchMixed {
-    sequence  int32          [min = 0, max = 65535] // 16
-    ack_bits  bits(32) // 32
-    entity_id bits(12) // 12
-    pos_x     int32          [min = -16384, max = 16383] // 15
-    pos_y     int32          [min = -16384, max = 16383] // 15
-    pos_z     int32          [min = -16384, max = 16383] // 15
-    yaw       bits(9) //  9
-    moving    bool //  1
-    firing    bool //  1
-    timestamp bits(48) // 48
-    weapon    int32          [min = 0, max = 15] //  4
-} // = 168 bits, 21 bytes
+// BenchMixed — THE canonical benchmark (issue #184). Full text:
+// schema/bench/corpus/Bench.schema. 3504 bits = 438 wire bytes.
 ```
+
+### §1.3a BenchMixed — THE one benchmark (issue #184)
+
+**DECIDED (Glenn, 2026-08-31, verbatim):** *"Let's extend it to support all
+serialization_* methods"* / *"in such a way that most of the bytes serialized
+are integers, and while we can have strings and wstrings and byte arrays, they
+should be relatively short and should not dominate. If strings and arrays
+dominate, then just put in 10X more of the other types per-message."* / *"I'd
+rather we just have ONE good benchmark we can apply to all serialize and schema
+implementations."*
+
+BenchMixed is **one representative game message reaching every construct the
+schema language expresses**: a header (const magic, bit windows, bare 32/64-bit
+raw integers, a full-unsigned ranged integer, a 64-bit ranged integer, a
+48-bit window, fixed point), a counted array of 8 nested entity updates
+(ranged positions and velocities, bit windows, an enum, a flags mask, bools),
+a counted array of 80 integer-only stat deltas, an event section (a union
+pinned to its integer arm, a fixed byte array, a short string, a short byte
+block), and coverage singles (compressed floats, raw float32/float64, a bare
+`uint128`, an `int128` over a range wider than 64 bits, `ufixed`, `reserved`,
+an explicit `align`, and an `if`/`else` block behind a pinned gate).
+
+**THE WEIGHTING LAW IS A GATE, NOT A HOPE.** Integer-class bits — ranged
+integers of every width, bit windows, bare `intN`/`uintN`, the 128-bit family,
+fixed/ufixed, enums, flags, `const`/`reserved`, and the length and count
+prefixes — **must be at least 90% of the pinned wire**.
+`schema/bench/corpus/budget_test.go` computes the share from the schema itself
+and FAILS the build below the floor, printing the full bit-accounting table;
+its own oracle is that the accounted total, rounded up to bytes, must equal the
+size of `testdata/wire/bench_mixed.bin`. Measured 2026-08-31: **3504 bits =
+438 wire bytes, integer share 91.87%** (bool 0.51%, float 3.42%, bulk 3.65%,
+padding 0.54% — `bool` is deliberately excluded from the numerator, the
+stricter reading). Tune the `stats` pinned count to hold the floor; never
+shrink the string, byte block or floats below realism.
+
+**Not expressible in schema v1, NAMED rather than skipped** (SPEC §4.10, both
+deferred with their wire already decided): `serialize_wstring` and
+`serialize_int_relative`. Wire-identical alternate spellings of covered
+operations, not separate constructs: the `*_compile_time` / `*_runtime_form`
+families and `serialize_compressed_float_precomputed`; `serialize_copy_string`
+/ `serialize_copy_wstring` are buffer helpers, not stream operations.
+
+**The rt legs' one stated deviation.** `string(N)` and `bytes(N)` ride as their
+§4.3 decomposition — the length prefix then the used bytes — in every
+hand-written leg. `serialize_string` is wire-identical, but its C++ form pays
+`strlen` plus UTF-8 validation while the Go and C# ports allocate a string per
+read; the decomposition is what every GENERATED target emits, so gen-vs-rt and
+language-vs-language both stay apples to apples.
+
+**Iteration counts rescaled with the shape.** bench_mixed grew from 21 to 438
+wire bytes (20.9x), so its fixed count drops **40,000,000 → 4,000,000** in
+every leg, and quick mode's reduced elixir count **8,000,000 → 400,000**.
+Measured on the M2, 2026-08-31: at 4,000,000 the fastest row (C `rt` write,
+5.7 M msg/s) takes 0.70 s per measured run — above §2.1's 200 ms floor — and
+at 400,000 elixir's 0.07 M msg/s takes 5.7 s, inside §2.8's one-minute-per-leg
+bound. Rows across this change are not comparable to earlier ones: the corpus
+content moved, and `corpus_id` says so.
 
 The byte sizes above are the standard's claim. **The goldens are the authority.**
 If generation disagrees with the arithmetic, the goldens win and this table is
 corrected — that is what §1.5 is for. Measured 2026-08-14 against the goldens
 produced by the generated C++ (test/bench/main.cpp) and independently by the
-generated C (test/bench/c_main.c): **49, 14, 20, 21 bytes — the table above is
-confirmed.** The only correction §1.5 forced was syntactic: BenchBits is one
+generated C (test/bench/c_main.c): **49, 14, 20 bytes for the three stress
+shapes — the table above is confirmed** (bench_mixed's own byte count moved to
+438 with the #184 redefinition, confirmed the same way on 2026-08-31 by both
+producers). The only correction §1.5 forced was syntactic: BenchBits is one
 field per line because the grammar admits nothing else. The block above is the
 canonical `schema fmt` form of the file as it compiles.
 
@@ -682,10 +729,12 @@ comparison costs minutes, not an evening; nothing it prints publishes.
 
 - Every runner's `--quick` runs `bench_mixed` ONLY: 1 discarded warmup run,
   then **3** measured runs. The §1.5 golden gate stays unconditional.
-- Iteration counts stay the standard 40,000,000 except where a language
-  cannot hold quick mode's one-minute-per-leg bound: elixir runs 8,000,000
-  (the BEAM is ~2 orders behind the native legs). Every count is recorded
-  in the `iters` column as always.
+- Iteration counts are **4,000,000 for bench_mixed** (amended 2026-08-31 with
+  the #184 redefinition — see §1.3a: the shape grew 20.9x, so the count drops
+  10x to keep a measured run above §2.1's 200 ms floor and the leg inside the
+  one-minute bound), except where a language still cannot hold that bound:
+  elixir runs 400,000 (the BEAM is ~2 orders behind the native legs). Every
+  count is recorded in the `iters` column as always.
 - The driver prints **two blended sections, one per subject, never ranked
   against each other** (the profiling doctrine's apples-to-apples rule,
   enacted for the table by #177/#178): the headline section is family
