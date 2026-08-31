@@ -246,43 +246,25 @@ defmodule Example.Wire do
   # compile-out assert). Returns the wire bytes.
   def write_probe_header(value) do
     data = <<>>
-    scratch = 0
-    scratch_bits = 0
     %{version: value_version, probe_id: value_probe_id} = value
     # const(0xAB, 8) rides the wire (SPEC §4.3)
     v = 171
-    scratch = scratch ||| v <<< scratch_bits
-    scratch_bits = scratch_bits + 8
+    scratch = v
     v = value_version &&& 0x7
-    scratch = scratch ||| v <<< scratch_bits
-    scratch_bits = scratch_bits + 3
+    scratch = scratch ||| v <<< 8
     # reserved bits ride as zeros (SPEC §4.3)
     v = 0
-    scratch = scratch ||| v <<< scratch_bits
-    scratch_bits = scratch_bits + 5
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
-    scratch_bits = scratch_bits &&& 7
+    scratch = scratch ||| v <<< 11
+    data = <<data::binary, scratch::little-size(2)-unit(8)>>
     # align: zero-pad to the byte boundary (SPEC §4.3)
-    data = if scratch_bits != 0, do: <<data::binary, scratch>>, else: data
-    scratch = 0
-    scratch_bits = 0
+    # already byte-aligned, and nothing is pending
     v = value_probe_id &&& 0xFFFFFFFF
-    scratch = scratch ||| v <<< scratch_bits
-    scratch_bits = scratch_bits + 32
+    scratch = v
     v = value_probe_id >>> 32 &&& 0xFFFFFFFF
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
-    scratch_bits = scratch_bits &&& 7
-    scratch = scratch ||| v <<< scratch_bits
-    scratch_bits = scratch_bits + 32
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
-    scratch_bits = scratch_bits &&& 7
-    if scratch_bits != 0, do: <<data::binary, scratch>>, else: data
+    data = <<data::binary, scratch::little-size(4)-unit(8)>>
+    scratch = v
+    data = <<data::binary, scratch::little-size(4)-unit(8)>>
+    data
   end
 
   # read_probe_header decodes the first num_bits of data — the family read verdict:
@@ -365,8 +347,6 @@ defmodule Example.Wire do
   # compile-out assert). Returns the wire bytes.
   def write_probe_bits(value) do
     data = <<>>
-    scratch = 0
-    scratch_bits = 0
 
     %{
       small: value_small,
@@ -377,28 +357,19 @@ defmodule Example.Wire do
     } = value
 
     v = value_small &&& 0x1FF
-    scratch = scratch ||| v <<< scratch_bits
-    scratch_bits = scratch_bits + 9
+    scratch = v
     v = value_boundary &&& 0xFFFFFFFF
-    scratch = scratch ||| v <<< scratch_bits
-    scratch_bits = scratch_bits + 32
+    scratch = scratch ||| v <<< 9
     v = value_boundary >>> 32 &&& 0x1
-    scratch = scratch ||| v <<< scratch_bits
-    scratch_bits = scratch_bits + 1
+    scratch = scratch ||| v <<< 41
     v = value_wide &&& 0xFFFFFFFF
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
-    scratch_bits = scratch_bits &&& 7
-    scratch = scratch ||| v <<< scratch_bits
-    scratch_bits = scratch_bits + 32
+    data = <<data::binary, scratch::little-size(5)-unit(8)>>
+    scratch = scratch >>> 40
+    scratch = scratch ||| v <<< 2
     v = value_wide >>> 32 &&& 0xFFFFFFFF
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
-    scratch_bits = scratch_bits &&& 7
-    scratch = scratch ||| v <<< scratch_bits
-    scratch_bits = scratch_bits + 32
+    data = <<data::binary, scratch::little-size(4)-unit(8)>>
+    scratch = scratch >>> 32
+    scratch = scratch ||| v <<< 2
 
     if value_sensor < 0 do
       raise ArgumentError, "value.sensor is below the wire minimum"
@@ -409,12 +380,9 @@ defmodule Example.Wire do
     end
 
     v = value_sensor
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
-    scratch_bits = scratch_bits &&& 7
-    scratch = scratch ||| v <<< scratch_bits
-    scratch_bits = scratch_bits + 32
+    data = <<data::binary, scratch::little-size(4)-unit(8)>>
+    scratch = scratch >>> 32
+    scratch = scratch ||| v <<< 2
 
     if value_nonce < 0 do
       raise ArgumentError, "value.nonce is below the wire minimum"
@@ -425,24 +393,17 @@ defmodule Example.Wire do
     end
 
     v = value_nonce &&& 0xFFFFFFFF
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
-    scratch_bits = scratch_bits &&& 7
-    scratch = scratch ||| v <<< scratch_bits
-    scratch_bits = scratch_bits + 32
+    data = <<data::binary, scratch::little-size(4)-unit(8)>>
+    scratch = scratch >>> 32
+    scratch = scratch ||| v <<< 2
     v = value_nonce >>> 32
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
-    scratch_bits = scratch_bits &&& 7
-    scratch = scratch ||| v <<< scratch_bits
-    scratch_bits = scratch_bits + 32
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
-    scratch_bits = scratch_bits &&& 7
-    if scratch_bits != 0, do: <<data::binary, scratch>>, else: data
+    data = <<data::binary, scratch::little-size(4)-unit(8)>>
+    scratch = scratch >>> 32
+    scratch = scratch ||| v <<< 2
+    data = <<data::binary, scratch::little-size(4)-unit(8)>>
+    scratch = scratch >>> 32
+    # the residual byte, statically known to be there
+    <<data::binary, scratch>>
   end
 
   # read_probe_bits decodes the first num_bits of data — the family read verdict:
@@ -537,8 +498,6 @@ defmodule Example.Wire do
   # compile-out assert). Returns the wire bytes.
   def write_probe_sample(value) do
     data = <<>>
-    scratch = 0
-    scratch_bits = 0
 
     %{
       active: value_active,
@@ -549,32 +508,21 @@ defmodule Example.Wire do
     } = value
 
     v = if value_active, do: 1, else: 0
-    scratch = scratch ||| v <<< scratch_bits
-    scratch_bits = scratch_bits + 1
+    scratch = v
     v = cf_quantize(value_orientation, -180.0, 360.0, 36000, 36000.0)
-    scratch = scratch ||| v <<< scratch_bits
-    scratch_bits = scratch_bits + 16
+    scratch = scratch ||| v <<< 1
     v = value_raw_delta &&& 0xFFFFFFFF
-    scratch = scratch ||| v <<< scratch_bits
-    scratch_bits = scratch_bits + 32
+    scratch = scratch ||| v <<< 17
     v = value_big_delta &&& 0xFFFFFFFF
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
-    scratch_bits = scratch_bits &&& 7
-    scratch = scratch ||| v <<< scratch_bits
-    scratch_bits = scratch_bits + 32
+    data = <<data::binary, scratch::little-size(6)-unit(8)>>
+    scratch = scratch >>> 48
+    scratch = scratch ||| v <<< 1
     v = value_big_delta >>> 32 &&& 0xFFFFFFFF
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
-    scratch_bits = scratch_bits &&& 7
-    scratch = scratch ||| v <<< scratch_bits
-    scratch_bits = scratch_bits + 32
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
-    scratch_bits = scratch_bits &&& 7
+    data = <<data::binary, scratch::little-size(4)-unit(8)>>
+    scratch = scratch >>> 32
+    scratch = scratch ||| v <<< 1
+    data = <<data::binary, scratch::little-size(4)-unit(8)>>
+    scratch = scratch >>> 32
 
     {data, scratch, scratch_bits} =
       if value_active do
@@ -589,39 +537,29 @@ defmodule Example.Wire do
         end
 
         v = value_weapon
-        scratch = scratch ||| v <<< scratch_bits
-        scratch_bits = scratch_bits + 4
+        scratch = scratch ||| v <<< 1
         v = if value_has_target, do: 1, else: 0
-        scratch = scratch ||| v <<< scratch_bits
-        scratch_bits = scratch_bits + 1
-        flush = scratch_bits >>> 3
-        data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-        scratch = scratch >>> (flush <<< 3)
-        scratch_bits = scratch_bits &&& 7
+        scratch = scratch ||| v <<< 5
 
-        {data, scratch, scratch_bits} =
+        {data, scratch} =
           if value_has_target do
             v = value.target_id &&& 0xFFFF
-            scratch = scratch ||| v <<< scratch_bits
-            scratch_bits = scratch_bits + 16
-            flush = scratch_bits >>> 3
-            data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-            scratch = scratch >>> (flush <<< 3)
-            scratch_bits = scratch_bits &&& 7
-            {data, scratch, scratch_bits}
+            scratch = scratch ||| v <<< 6
+            data = <<data::binary, scratch::little-size(2)-unit(8)>>
+            scratch = scratch >>> 16
+            {data, scratch}
           else
-            {data, scratch, scratch_bits}
+            {data, scratch}
           end
 
+        scratch_bits = 6
         {data, scratch, scratch_bits}
       else
         v = value.idle_ticks &&& 0xFFFFFFFF
-        scratch = scratch ||| v <<< scratch_bits
-        scratch_bits = scratch_bits + 32
-        flush = scratch_bits >>> 3
-        data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-        scratch = scratch >>> (flush <<< 3)
-        scratch_bits = scratch_bits &&& 7
+        scratch = scratch ||| v <<< 1
+        data = <<data::binary, scratch::little-size(4)-unit(8)>>
+        scratch = scratch >>> 32
+        scratch_bits = 1
         {data, scratch, scratch_bits}
       end
 
@@ -790,16 +728,10 @@ defmodule Example.Wire do
   # compile-out assert). Returns the wire bytes.
   def write_probe_ring(value) do
     data = <<>>
-    scratch = 0
-    scratch_bits = 0
     v = value.radius &&& 0xFFFF
-    scratch = scratch ||| v <<< scratch_bits
-    scratch_bits = scratch_bits + 16
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
-    scratch_bits = scratch_bits &&& 7
-    if scratch_bits != 0, do: <<data::binary, scratch>>, else: data
+    scratch = v
+    data = <<data::binary, scratch::little-size(2)-unit(8)>>
+    data
   end
 
   # read_probe_ring decodes the first num_bits of data — the family read verdict:
@@ -845,8 +777,6 @@ defmodule Example.Wire do
   # compile-out assert). Returns the wire bytes.
   def write_probe_slab(value) do
     data = <<>>
-    scratch = 0
-    scratch_bits = 0
     %{width: value_width, height: value_height} = value
 
     if value_width < 0 do
@@ -858,16 +788,13 @@ defmodule Example.Wire do
     end
 
     v = value_width
-    scratch = scratch ||| v <<< scratch_bits
-    scratch_bits = scratch_bits + 7
+    scratch = v
     v = value_height &&& 0xFF
-    scratch = scratch ||| v <<< scratch_bits
-    scratch_bits = scratch_bits + 8
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
-    scratch_bits = scratch_bits &&& 7
-    if scratch_bits != 0, do: <<data::binary, scratch>>, else: data
+    scratch = scratch ||| v <<< 7
+    data = <<data::binary, scratch::little-size(1)-unit(8)>>
+    scratch = scratch >>> 8
+    # the residual byte, statically known to be there
+    <<data::binary, scratch>>
   end
 
   # read_probe_slab decodes the first num_bits of data — the family read verdict:
@@ -919,8 +846,6 @@ defmodule Example.Wire do
   # compile-out assert). Returns the wire bytes.
   def write_probe_shape(value) do
     data = <<>>
-    scratch = 0
-    scratch_bits = 0
 
     if value.type < 0 do
       raise ArgumentError, "value.type is below the wire minimum"
@@ -931,23 +856,16 @@ defmodule Example.Wire do
     end
 
     v = value.type
-    scratch = scratch ||| v <<< scratch_bits
-    scratch_bits = scratch_bits + 2
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
-    scratch_bits = scratch_bits &&& 7
+    scratch = v
 
     {data, scratch, scratch_bits} =
       case value.type do
         1 ->
           v = value.ring.radius &&& 0xFFFF
-          scratch = scratch ||| v <<< scratch_bits
-          scratch_bits = scratch_bits + 16
-          flush = scratch_bits >>> 3
-          data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-          scratch = scratch >>> (flush <<< 3)
-          scratch_bits = scratch_bits &&& 7
+          scratch = scratch ||| v <<< 2
+          data = <<data::binary, scratch::little-size(2)-unit(8)>>
+          scratch = scratch >>> 16
+          scratch_bits = 2
           {data, scratch, scratch_bits}
 
         2 ->
@@ -962,19 +880,17 @@ defmodule Example.Wire do
           end
 
           v = value_slab_width
-          scratch = scratch ||| v <<< scratch_bits
-          scratch_bits = scratch_bits + 7
+          scratch = scratch ||| v <<< 2
           v = value_slab_height &&& 0xFF
-          scratch = scratch ||| v <<< scratch_bits
-          scratch_bits = scratch_bits + 8
-          flush = scratch_bits >>> 3
-          data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-          scratch = scratch >>> (flush <<< 3)
-          scratch_bits = scratch_bits &&& 7
+          scratch = scratch ||| v <<< 9
+          data = <<data::binary, scratch::little-size(2)-unit(8)>>
+          scratch = scratch >>> 16
+          scratch_bits = 1
           {data, scratch, scratch_bits}
 
         _ ->
           # None — the tag is the whole wire (SPEC §4.8)
+          scratch_bits = 2
           {data, scratch, scratch_bits}
       end
 
@@ -1082,12 +998,9 @@ defmodule Example.Wire do
   # compile-out assert). Returns the wire bytes.
   def write_probe_collider(value) do
     data = <<>>
-    scratch = 0
-    scratch_bits = 0
     %{armor: value_armor, shape: value_shape, backup: value_backup, extras: value_extras} = value
     v = value_armor &&& 0xFF
-    scratch = scratch ||| v <<< scratch_bits
-    scratch_bits = scratch_bits + 8
+    scratch = v
 
     if value_shape.type < 0 do
       raise ArgumentError, "value.shape.type is below the wire minimum"
@@ -1098,23 +1011,18 @@ defmodule Example.Wire do
     end
 
     v = value_shape.type
-    scratch = scratch ||| v <<< scratch_bits
-    scratch_bits = scratch_bits + 2
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
-    scratch_bits = scratch_bits &&& 7
+    scratch = scratch ||| v <<< 8
+    data = <<data::binary, scratch::little-size(1)-unit(8)>>
+    scratch = scratch >>> 8
 
     {data, scratch, scratch_bits} =
       case value_shape.type do
         1 ->
           v = value_shape.ring.radius &&& 0xFFFF
-          scratch = scratch ||| v <<< scratch_bits
-          scratch_bits = scratch_bits + 16
-          flush = scratch_bits >>> 3
-          data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-          scratch = scratch >>> (flush <<< 3)
-          scratch_bits = scratch_bits &&& 7
+          scratch = scratch ||| v <<< 2
+          data = <<data::binary, scratch::little-size(2)-unit(8)>>
+          scratch = scratch >>> 16
+          scratch_bits = 2
           {data, scratch, scratch_bits}
 
         2 ->
@@ -1129,19 +1037,17 @@ defmodule Example.Wire do
           end
 
           v = value_shape_slab_width
-          scratch = scratch ||| v <<< scratch_bits
-          scratch_bits = scratch_bits + 7
+          scratch = scratch ||| v <<< 2
           v = value_shape_slab_height &&& 0xFF
-          scratch = scratch ||| v <<< scratch_bits
-          scratch_bits = scratch_bits + 8
-          flush = scratch_bits >>> 3
-          data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-          scratch = scratch >>> (flush <<< 3)
-          scratch_bits = scratch_bits &&& 7
+          scratch = scratch ||| v <<< 9
+          data = <<data::binary, scratch::little-size(2)-unit(8)>>
+          scratch = scratch >>> 16
+          scratch_bits = 1
           {data, scratch, scratch_bits}
 
         _ ->
           # None — the tag is the whole wire (SPEC §4.8)
+          scratch_bits = 2
           {data, scratch, scratch_bits}
       end
 
@@ -1403,12 +1309,9 @@ defmodule Example.Wire do
   # compile-out assert). Returns the wire bytes.
   def write_probe_config(value) do
     data = <<>>
-    scratch = 0
-    scratch_bits = 0
     %{retries: value_retries, preferred: value_preferred} = value
     v = value_retries &&& 0xFFFFFFFF
-    scratch = scratch ||| v <<< scratch_bits
-    scratch_bits = scratch_bits + 32
+    scratch = v
 
     if value_preferred < 0 do
       raise ArgumentError, "value.preferred is below the wire minimum"
@@ -1419,13 +1322,11 @@ defmodule Example.Wire do
     end
 
     v = value_preferred
-    scratch = scratch ||| v <<< scratch_bits
-    scratch_bits = scratch_bits + 4
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
-    scratch_bits = scratch_bits &&& 7
-    if scratch_bits != 0, do: <<data::binary, scratch>>, else: data
+    scratch = scratch ||| v <<< 32
+    data = <<data::binary, scratch::little-size(4)-unit(8)>>
+    scratch = scratch >>> 32
+    # the residual byte, statically known to be there
+    <<data::binary, scratch>>
   end
 
   # read_probe_config decodes the first num_bits of data — the family read verdict:
@@ -1479,13 +1380,14 @@ defmodule Example.Wire do
   # compile-out assert). Returns the wire bytes.
   def write_probe_array(value) do
     data = <<>>
-    scratch = 0
-    scratch_bits = 0
     %{samples: value_samples, config: value_config} = value
 
     if length(value_samples) != 2 do
       raise ArgumentError, "value.samples must hold exactly 2 elements"
     end
+
+    scratch_bits = 0
+    scratch = 0
 
     {data, scratch, scratch_bits} =
       w_probe_array_samples(value_samples, data, scratch, scratch_bits)
@@ -1565,10 +1467,8 @@ defmodule Example.Wire do
   # compile-out assert). Returns the wire bytes.
   def write_heartbeat(_value) do
     data = <<>>
-    scratch = 0
-    scratch_bits = 0
     # empty body — presence is the payload (SPEC §4.6)
-    if scratch_bits != 0, do: <<data::binary, scratch>>, else: data
+    data
   end
 
   # read_heartbeat decodes the first num_bits of data — the family read verdict:
@@ -1608,8 +1508,6 @@ defmodule Example.Wire do
   # compile-out assert). Returns the wire bytes.
   def write_test(value) do
     data = <<>>
-    scratch = 0
-    scratch_bits = 0
 
     %{
       test_a: value_test_a,
@@ -1619,8 +1517,7 @@ defmodule Example.Wire do
     } = value
 
     v = value_test_a &&& 0xFFFF
-    scratch = scratch ||| v <<< scratch_bits
-    scratch_bits = scratch_bits + 16
+    scratch = v
 
     if value_test_b < 0 do
       raise ArgumentError, "value.test_b is below the wire minimum"
@@ -1631,8 +1528,7 @@ defmodule Example.Wire do
     end
 
     v = value_test_b
-    scratch = scratch ||| v <<< scratch_bits
-    scratch_bits = scratch_bits + 10
+    scratch = scratch ||| v <<< 16
 
     if value_test_c < 0 do
       raise ArgumentError, "value.test_c is below the wire minimum"
@@ -1643,8 +1539,7 @@ defmodule Example.Wire do
     end
 
     v = value_test_c
-    scratch = scratch ||| v <<< scratch_bits
-    scratch_bits = scratch_bits + 10
+    scratch = scratch ||| v <<< 26
 
     if value_test_d < 0 do
       raise ArgumentError, "value.test_d is below the wire minimum"
@@ -1655,13 +1550,11 @@ defmodule Example.Wire do
     end
 
     v = value_test_d
-    scratch = scratch ||| v <<< scratch_bits
-    scratch_bits = scratch_bits + 10
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
-    scratch_bits = scratch_bits &&& 7
-    if scratch_bits != 0, do: <<data::binary, scratch>>, else: data
+    scratch = scratch ||| v <<< 36
+    data = <<data::binary, scratch::little-size(5)-unit(8)>>
+    scratch = scratch >>> 40
+    # the residual byte, statically known to be there
+    <<data::binary, scratch>>
   end
 
   # read_test decodes the first num_bits of data — the family read verdict:
@@ -1729,27 +1622,20 @@ defmodule Example.Wire do
   # compile-out assert). Returns the wire bytes.
   def write_block(value) do
     data = <<>>
-    scratch = 0
-    scratch_bits = 0
 
     if byte_size(value.data) > 2000 do
       raise ArgumentError, "value.data longer than the declared 2000-byte bound"
     end
 
     v = byte_size(value.data)
-    scratch = scratch ||| v <<< scratch_bits
-    scratch_bits = scratch_bits + 11
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
-    scratch_bits = scratch_bits &&& 7
+    scratch = v
+    data = <<data::binary, scratch::little-size(1)-unit(8)>>
+    scratch = scratch >>> 8
     # align: zero-pad to the byte boundary (SPEC §4.3)
-    data = if scratch_bits != 0, do: <<data::binary, scratch>>, else: data
-    scratch = 0
-    scratch_bits = 0
+    data = <<data::binary, scratch>>
     # the used bytes ride whole — the stream is byte-aligned here
     data = <<data::binary, value.data::binary>>
-    if scratch_bits != 0, do: <<data::binary, scratch>>, else: data
+    data
   end
 
   # read_block decodes the first num_bits of data — the family read verdict:
@@ -1820,27 +1706,20 @@ defmodule Example.Wire do
   # compile-out assert). Returns the wire bytes.
   def write_chat(value) do
     data = <<>>
-    scratch = 0
-    scratch_bits = 0
 
     if byte_size(value.text) > 256 do
       raise ArgumentError, "value.text longer than the declared 256-byte bound"
     end
 
     v = byte_size(value.text)
-    scratch = scratch ||| v <<< scratch_bits
-    scratch_bits = scratch_bits + 9
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
-    scratch_bits = scratch_bits &&& 7
+    scratch = v
+    data = <<data::binary, scratch::little-size(1)-unit(8)>>
+    scratch = scratch >>> 8
     # align: zero-pad to the byte boundary (SPEC §4.3)
-    data = if scratch_bits != 0, do: <<data::binary, scratch>>, else: data
-    scratch = 0
-    scratch_bits = 0
+    data = <<data::binary, scratch>>
     # the used bytes ride whole — the stream is byte-aligned here
     data = <<data::binary, value.text::binary>>
-    if scratch_bits != 0, do: <<data::binary, scratch>>, else: data
+    data
   end
 
   # read_chat decodes the first num_bits of data — the family read verdict:
@@ -1915,47 +1794,31 @@ defmodule Example.Wire do
   # compile-out assert). Returns the wire bytes.
   def write_probe_report(value) do
     data = <<>>
-    scratch = 0
-    scratch_bits = 0
     %{header: value_header, flags: value_flags, echo: value_echo} = value
     %{version: value_header_version, probe_id: value_header_probe_id} = value_header
     # const(0xAB, 8) rides the wire (SPEC §4.3)
     v = 171
-    scratch = scratch ||| v <<< scratch_bits
-    scratch_bits = scratch_bits + 8
+    scratch = v
     v = value_header_version &&& 0x7
-    scratch = scratch ||| v <<< scratch_bits
-    scratch_bits = scratch_bits + 3
+    scratch = scratch ||| v <<< 8
     # reserved bits ride as zeros (SPEC §4.3)
     v = 0
-    scratch = scratch ||| v <<< scratch_bits
-    scratch_bits = scratch_bits + 5
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
-    scratch_bits = scratch_bits &&& 7
+    scratch = scratch ||| v <<< 11
+    data = <<data::binary, scratch::little-size(2)-unit(8)>>
     # align: zero-pad to the byte boundary (SPEC §4.3)
-    data = if scratch_bits != 0, do: <<data::binary, scratch>>, else: data
-    scratch = 0
-    scratch_bits = 0
+    # already byte-aligned, and nothing is pending
     v = value_header_probe_id &&& 0xFFFFFFFF
-    scratch = scratch ||| v <<< scratch_bits
-    scratch_bits = scratch_bits + 32
+    scratch = v
     v = value_header_probe_id >>> 32 &&& 0xFFFFFFFF
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
-    scratch_bits = scratch_bits &&& 7
-    scratch = scratch ||| v <<< scratch_bits
-    scratch_bits = scratch_bits + 32
+    data = <<data::binary, scratch::little-size(4)-unit(8)>>
+    scratch = v
 
     if value_flags >>> 8 != 0 do
       raise ArgumentError, "value.flags holds a mask bit above the 8-bit wire"
     end
 
     v = value_flags
-    scratch = scratch ||| v <<< scratch_bits
-    scratch_bits = scratch_bits + 8
+    scratch = scratch ||| v <<< 32
 
     %{
       test_a: value_echo_test_a,
@@ -1965,12 +1828,8 @@ defmodule Example.Wire do
     } = value_echo
 
     v = value_echo_test_a &&& 0xFFFF
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
-    scratch_bits = scratch_bits &&& 7
-    scratch = scratch ||| v <<< scratch_bits
-    scratch_bits = scratch_bits + 16
+    data = <<data::binary, scratch::little-size(5)-unit(8)>>
+    scratch = v
 
     if value_echo_test_b < 0 do
       raise ArgumentError, "value.echo.test_b is below the wire minimum"
@@ -1981,8 +1840,7 @@ defmodule Example.Wire do
     end
 
     v = value_echo_test_b
-    scratch = scratch ||| v <<< scratch_bits
-    scratch_bits = scratch_bits + 10
+    scratch = scratch ||| v <<< 16
 
     if value_echo_test_c < 0 do
       raise ArgumentError, "value.echo.test_c is below the wire minimum"
@@ -1993,8 +1851,7 @@ defmodule Example.Wire do
     end
 
     v = value_echo_test_c
-    scratch = scratch ||| v <<< scratch_bits
-    scratch_bits = scratch_bits + 10
+    scratch = scratch ||| v <<< 26
 
     if value_echo_test_d < 0 do
       raise ArgumentError, "value.echo.test_d is below the wire minimum"
@@ -2005,13 +1862,11 @@ defmodule Example.Wire do
     end
 
     v = value_echo_test_d
-    scratch = scratch ||| v <<< scratch_bits
-    scratch_bits = scratch_bits + 10
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
-    scratch_bits = scratch_bits &&& 7
-    if scratch_bits != 0, do: <<data::binary, scratch>>, else: data
+    scratch = scratch ||| v <<< 36
+    data = <<data::binary, scratch::little-size(5)-unit(8)>>
+    scratch = scratch >>> 40
+    # the residual byte, statically known to be there
+    <<data::binary, scratch>>
   end
 
   # read_probe_report decodes the first num_bits of data — the family read verdict:
@@ -2151,8 +2006,6 @@ defmodule Example.Wire do
   # compile-out assert). Returns the wire bytes.
   def write_test_data(value) do
     data = <<>>
-    scratch = 0
-    scratch_bits = 0
 
     %{
       a: value_a,
@@ -2187,8 +2040,7 @@ defmodule Example.Wire do
     end
 
     v = value_a + 100
-    scratch = scratch ||| v <<< scratch_bits
-    scratch_bits = scratch_bits + 8
+    scratch = v
 
     if value_b < -100 do
       raise ArgumentError, "value.b is below the wire minimum"
@@ -2199,8 +2051,7 @@ defmodule Example.Wire do
     end
 
     v = value_b + 100
-    scratch = scratch ||| v <<< scratch_bits
-    scratch_bits = scratch_bits + 8
+    scratch = scratch ||| v <<< 8
 
     if value_c < -100 do
       raise ArgumentError, "value.c is below the wire minimum"
@@ -2211,20 +2062,15 @@ defmodule Example.Wire do
     end
 
     v = value_c + 100
-    scratch = scratch ||| v <<< scratch_bits
-    scratch_bits = scratch_bits + 8
+    scratch = scratch ||| v <<< 16
     v = value_d &&& 0xFF
-    scratch = scratch ||| v <<< scratch_bits
-    scratch_bits = scratch_bits + 8
+    scratch = scratch ||| v <<< 24
     v = value_e &&& 0xFF
-    scratch = scratch ||| v <<< scratch_bits
-    scratch_bits = scratch_bits + 8
+    scratch = scratch ||| v <<< 32
     v = value_f &&& 0xFF
-    scratch = scratch ||| v <<< scratch_bits
-    scratch_bits = scratch_bits + 8
+    scratch = scratch ||| v <<< 40
     v = if value_g, do: 1, else: 0
-    scratch = scratch ||| v <<< scratch_bits
-    scratch_bits = scratch_bits + 1
+    scratch = scratch ||| v <<< 48
     n = length(value_items)
 
     if n > 16 do
@@ -2232,16 +2078,10 @@ defmodule Example.Wire do
     end
 
     v = n
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
-    scratch_bits = scratch_bits &&& 7
-    scratch = scratch ||| v <<< scratch_bits
-    scratch_bits = scratch_bits + 5
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
-    scratch_bits = scratch_bits &&& 7
+    data = <<data::binary, scratch::little-size(6)-unit(8)>>
+    scratch = scratch >>> 48
+    scratch = scratch ||| v <<< 1
+    scratch_bits = 6
     {data, scratch, scratch_bits} = w_test_data_items(value_items, data, scratch, scratch_bits)
     v = f32_bits(value_float_value)
     scratch = scratch ||| v <<< scratch_bits
@@ -2341,12 +2181,13 @@ defmodule Example.Wire do
     scratch_bits = scratch_bits &&& 7
     # align: zero-pad to the byte boundary (SPEC §4.3)
     data = if scratch_bits != 0, do: <<data::binary, scratch>>, else: data
-    scratch = 0
-    scratch_bits = 0
 
     if length(value_fixed_bytes) != 17 do
       raise ArgumentError, "value.fixed_bytes must hold exactly 17 elements"
     end
+
+    scratch_bits = 0
+    scratch = 0
 
     {data, scratch, scratch_bits} =
       w_test_data_fixed_bytes(value_fixed_bytes, data, scratch, scratch_bits)
@@ -2364,11 +2205,9 @@ defmodule Example.Wire do
     scratch_bits = scratch_bits &&& 7
     # align: zero-pad to the byte boundary (SPEC §4.3)
     data = if scratch_bits != 0, do: <<data::binary, scratch>>, else: data
-    scratch = 0
-    scratch_bits = 0
     # the used bytes ride whole — the stream is byte-aligned here
     data = <<data::binary, value_text::binary>>
-    if scratch_bits != 0, do: <<data::binary, scratch>>, else: data
+    data
   end
 
   # read_test_data decodes the first num_bits of data — the family read verdict:
@@ -2592,20 +2431,13 @@ defmodule Example.Wire do
   # compile-out assert). Returns the wire bytes.
   def write_compressed_probe(value) do
     data = <<>>
-    scratch = 0
-    scratch_bits = 0
     %{boundary: value_boundary, offset: value_offset} = value
     v = cf_quantize(value_boundary, 0.0, 10.0, 1000, 1000.0)
-    scratch = scratch ||| v <<< scratch_bits
-    scratch_bits = scratch_bits + 10
+    scratch = v
     v = cf_quantize(value_offset, -5.0, 10.0, 10000, 10000.0)
-    scratch = scratch ||| v <<< scratch_bits
-    scratch_bits = scratch_bits + 14
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
-    scratch_bits = scratch_bits &&& 7
-    if scratch_bits != 0, do: <<data::binary, scratch>>, else: data
+    scratch = scratch ||| v <<< 10
+    data = <<data::binary, scratch::little-size(3)-unit(8)>>
+    data
   end
 
   # read_compressed_probe decodes the first num_bits of data — the family read verdict:

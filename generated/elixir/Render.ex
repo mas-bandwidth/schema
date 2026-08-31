@@ -42,8 +42,6 @@ defmodule Example.Render do
   # compile-out assert). Returns the wire bytes.
   def write_render_sprite(value) do
     data = <<>>
-    scratch = 0
-    scratch_bits = 0
 
     %{
       sort_key: value_sort_key,
@@ -54,32 +52,18 @@ defmodule Example.Render do
     } = value
 
     v = value_sort_key &&& 0xFFFFFFFF
-    scratch = scratch ||| v <<< scratch_bits
-    scratch_bits = scratch_bits + 32
+    scratch = v
     v = value_sort_key >>> 32 &&& 0xFFFFFFFF
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
-    scratch_bits = scratch_bits &&& 7
-    scratch = scratch ||| v <<< scratch_bits
-    scratch_bits = scratch_bits + 32
+    data = <<data::binary, scratch::little-size(4)-unit(8)>>
+    scratch = v
     v = value_mesh_id &&& 0xFFFFFFFF
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
-    scratch_bits = scratch_bits &&& 7
-    scratch = scratch ||| v <<< scratch_bits
-    scratch_bits = scratch_bits + 32
+    data = <<data::binary, scratch::little-size(4)-unit(8)>>
+    scratch = v
     v = value_material_id &&& 0xFFFFFFFF
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
-    scratch_bits = scratch_bits &&& 7
-    scratch = scratch ||| v <<< scratch_bits
-    scratch_bits = scratch_bits + 32
+    data = <<data::binary, scratch::little-size(4)-unit(8)>>
+    scratch = v
     v = value_layer &&& 0xFF
-    scratch = scratch ||| v <<< scratch_bits
-    scratch_bits = scratch_bits + 8
+    scratch = scratch ||| v <<< 32
 
     if value_team < 0 do
       raise ArgumentError, "value.team is below the wire minimum"
@@ -90,13 +74,11 @@ defmodule Example.Render do
     end
 
     v = value_team
-    scratch = scratch ||| v <<< scratch_bits
-    scratch_bits = scratch_bits + 2
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
-    scratch_bits = scratch_bits &&& 7
-    if scratch_bits != 0, do: <<data::binary, scratch>>, else: data
+    scratch = scratch ||| v <<< 40
+    data = <<data::binary, scratch::little-size(5)-unit(8)>>
+    scratch = scratch >>> 40
+    # the residual byte, statically known to be there
+    <<data::binary, scratch>>
   end
 
   # read_render_sprite decodes the first num_bits of data — the family read verdict:
@@ -173,8 +155,6 @@ defmodule Example.Render do
   # compile-out assert). Returns the wire bytes.
   def write_render_block(value) do
     data = <<>>
-    scratch = 0
-    scratch_bits = 0
 
     %{
       worker_index: value_worker_index,
@@ -183,15 +163,10 @@ defmodule Example.Render do
     } = value
 
     v = value_worker_index &&& 0xFFFFFFFF
-    scratch = scratch ||| v <<< scratch_bits
-    scratch_bits = scratch_bits + 32
+    scratch = v
     v = value_sprite_count_hint &&& 0xFFFFFFFF
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
-    scratch_bits = scratch_bits &&& 7
-    scratch = scratch ||| v <<< scratch_bits
-    scratch_bits = scratch_bits + 32
+    data = <<data::binary, scratch::little-size(4)-unit(8)>>
+    scratch = v
     n = length(value_sprites)
 
     if n > 64 do
@@ -199,12 +174,10 @@ defmodule Example.Render do
     end
 
     v = n
-    scratch = scratch ||| v <<< scratch_bits
-    scratch_bits = scratch_bits + 7
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
-    scratch_bits = scratch_bits &&& 7
+    scratch = scratch ||| v <<< 32
+    data = <<data::binary, scratch::little-size(4)-unit(8)>>
+    scratch = scratch >>> 32
+    scratch_bits = 7
 
     {data, scratch, scratch_bits} =
       w_render_block_sprites(value_sprites, data, scratch, scratch_bits)

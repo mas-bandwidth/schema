@@ -164,8 +164,6 @@ defmodule Ludicrous.Ludicrous do
   # compile-out assert). Returns the wire bytes.
   def write_fixed_probe(value) do
     data = <<>>
-    scratch = 0
-    scratch_bits = 0
 
     %{
       angle: value_angle,
@@ -184,8 +182,7 @@ defmodule Ludicrous.Ludicrous do
     end
 
     v = value_angle + 11_796_480
-    scratch = scratch ||| v <<< scratch_bits
-    scratch_bits = scratch_bits + 25
+    scratch = v
 
     if value_position < -1_966_080_000 do
       raise ArgumentError, "value.position is below the wire minimum"
@@ -196,12 +193,9 @@ defmodule Ludicrous.Ludicrous do
     end
 
     v = value_position + 1_966_080_000
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
-    scratch_bits = scratch_bits &&& 7
-    scratch = scratch ||| v <<< scratch_bits
-    scratch_bits = scratch_bits + 32
+    data = <<data::binary, scratch::little-size(3)-unit(8)>>
+    scratch = scratch >>> 24
+    scratch = scratch ||| v <<< 1
 
     if value_reach < -65_536_000_000 do
       raise ArgumentError, "value.reach is below the wire minimum"
@@ -213,15 +207,11 @@ defmodule Ludicrous.Ludicrous do
 
     w = value_reach + 65_536_000_000
     v = w &&& 0xFFFFFFFF
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
-    scratch_bits = scratch_bits &&& 7
-    scratch = scratch ||| v <<< scratch_bits
-    scratch_bits = scratch_bits + 32
+    data = <<data::binary, scratch::little-size(4)-unit(8)>>
+    scratch = scratch >>> 32
+    scratch = scratch ||| v <<< 1
     v = w >>> 32
-    scratch = scratch ||| v <<< scratch_bits
-    scratch_bits = scratch_bits + 5
+    scratch = scratch ||| v <<< 33
 
     if value_ticks < 0 do
       raise ArgumentError, "value.ticks is below the wire minimum"
@@ -232,21 +222,17 @@ defmodule Ludicrous.Ludicrous do
     end
 
     v = value_ticks
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
-    scratch_bits = scratch_bits &&& 7
-    scratch = scratch ||| v <<< scratch_bits
-    scratch_bits = scratch_bits + 20
+    data = <<data::binary, scratch::little-size(4)-unit(8)>>
+    scratch = scratch >>> 32
+    scratch = scratch ||| v <<< 6
 
     if length(value_samples) != 2 do
       raise ArgumentError, "value.samples must hold exactly 2 elements"
     end
 
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
-    scratch_bits = scratch_bits &&& 7
+    data = <<data::binary, scratch::little-size(3)-unit(8)>>
+    scratch = scratch >>> 24
+    scratch_bits = 2
 
     {data, scratch, scratch_bits} =
       w_fixed_probe_samples(value_samples, data, scratch, scratch_bits)
@@ -340,8 +326,6 @@ defmodule Ludicrous.Ludicrous do
   # compile-out assert). Returns the wire bytes.
   def write_unsigned_probe(value) do
     data = <<>>
-    scratch = 0
-    scratch_bits = 0
 
     %{
       angle: value_angle,
@@ -362,8 +346,7 @@ defmodule Ludicrous.Ludicrous do
     end
 
     v = value_angle
-    scratch = scratch ||| v <<< scratch_bits
-    scratch_bits = scratch_bits + 25
+    scratch = v
 
     if value_span < 0 do
       raise ArgumentError, "value.span is below the wire minimum"
@@ -374,19 +357,13 @@ defmodule Ludicrous.Ludicrous do
     end
 
     v = value_span &&& 0xFFFFFFFF
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
-    scratch_bits = scratch_bits &&& 7
-    scratch = scratch ||| v <<< scratch_bits
-    scratch_bits = scratch_bits + 32
+    data = <<data::binary, scratch::little-size(3)-unit(8)>>
+    scratch = scratch >>> 24
+    scratch = scratch ||| v <<< 1
     v = value_span >>> 32
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
-    scratch_bits = scratch_bits &&& 7
-    scratch = scratch ||| v <<< scratch_bits
-    scratch_bits = scratch_bits + 32
+    data = <<data::binary, scratch::little-size(4)-unit(8)>>
+    scratch = scratch >>> 32
+    scratch = scratch ||| v <<< 1
 
     if value_reach < 0 do
       raise ArgumentError, "value.reach is below the wire minimum"
@@ -397,15 +374,11 @@ defmodule Ludicrous.Ludicrous do
     end
 
     v = value_reach &&& 0xFFFFFFFF
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
-    scratch_bits = scratch_bits &&& 7
-    scratch = scratch ||| v <<< scratch_bits
-    scratch_bits = scratch_bits + 32
+    data = <<data::binary, scratch::little-size(4)-unit(8)>>
+    scratch = scratch >>> 32
+    scratch = scratch ||| v <<< 1
     v = value_reach >>> 32
-    scratch = scratch ||| v <<< scratch_bits
-    scratch_bits = scratch_bits + 5
+    scratch = scratch ||| v <<< 33
 
     if value_ticks < 0 do
       raise ArgumentError, "value.ticks is below the wire minimum"
@@ -416,21 +389,17 @@ defmodule Ludicrous.Ludicrous do
     end
 
     v = value_ticks
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
-    scratch_bits = scratch_bits &&& 7
-    scratch = scratch ||| v <<< scratch_bits
-    scratch_bits = scratch_bits + 20
+    data = <<data::binary, scratch::little-size(4)-unit(8)>>
+    scratch = scratch >>> 32
+    scratch = scratch ||| v <<< 6
 
     if length(value_samples) != 2 do
       raise ArgumentError, "value.samples must hold exactly 2 elements"
     end
 
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
-    scratch_bits = scratch_bits &&& 7
+    data = <<data::binary, scratch::little-size(3)-unit(8)>>
+    scratch = scratch >>> 24
+    scratch_bits = 2
 
     {data, scratch, scratch_bits} =
       w_unsigned_probe_samples(value_samples, data, scratch, scratch_bits)
@@ -539,8 +508,6 @@ defmodule Ludicrous.Ludicrous do
   # compile-out assert). Returns the wire bytes.
   def write_wide_probe(value) do
     data = <<>>
-    scratch = 0
-    scratch_bits = 0
 
     %{
       entity_id: value_entity_id,
@@ -551,29 +518,16 @@ defmodule Ludicrous.Ludicrous do
     } = value
 
     v = value_entity_id &&& 0xFFFFFFFF
-    scratch = scratch ||| v <<< scratch_bits
-    scratch_bits = scratch_bits + 32
+    scratch = v
     v = value_entity_id >>> 32 &&& 0xFFFFFFFF
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
-    scratch_bits = scratch_bits &&& 7
-    scratch = scratch ||| v <<< scratch_bits
-    scratch_bits = scratch_bits + 32
+    data = <<data::binary, scratch::little-size(4)-unit(8)>>
+    scratch = v
     v = value_entity_id >>> 64 &&& 0xFFFFFFFF
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
-    scratch_bits = scratch_bits &&& 7
-    scratch = scratch ||| v <<< scratch_bits
-    scratch_bits = scratch_bits + 32
+    data = <<data::binary, scratch::little-size(4)-unit(8)>>
+    scratch = v
     v = value_entity_id >>> 96 &&& 0xFFFFFFFF
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
-    scratch_bits = scratch_bits &&& 7
-    scratch = scratch ||| v <<< scratch_bits
-    scratch_bits = scratch_bits + 32
+    data = <<data::binary, scratch::little-size(4)-unit(8)>>
+    scratch = v
 
     if value_energy < -5_000_000_000 do
       raise ArgumentError, "value.energy is below the wire minimum"
@@ -585,15 +539,10 @@ defmodule Ludicrous.Ludicrous do
 
     w = value_energy + 5_000_000_000
     v = w &&& 0xFFFFFFFF
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
-    scratch_bits = scratch_bits &&& 7
-    scratch = scratch ||| v <<< scratch_bits
-    scratch_bits = scratch_bits + 32
+    data = <<data::binary, scratch::little-size(4)-unit(8)>>
+    scratch = v
     v = w >>> 32
-    scratch = scratch ||| v <<< scratch_bits
-    scratch_bits = scratch_bits + 2
+    scratch = scratch ||| v <<< 32
 
     if value_flux < -1_267_650_600_228_229_401_496_703_205_376 do
       raise ArgumentError, "value.flux is below the wire minimum"
@@ -605,29 +554,19 @@ defmodule Ludicrous.Ludicrous do
 
     w = value_flux + 1_267_650_600_228_229_401_496_703_205_376
     v = w &&& 0xFFFFFFFF
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
-    scratch_bits = scratch_bits &&& 7
-    scratch = scratch ||| v <<< scratch_bits
-    scratch_bits = scratch_bits + 32
+    data = <<data::binary, scratch::little-size(4)-unit(8)>>
+    scratch = scratch >>> 32
+    scratch = scratch ||| v <<< 2
     v = w >>> 32 &&& 0xFFFFFFFF
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
-    scratch_bits = scratch_bits &&& 7
-    scratch = scratch ||| v <<< scratch_bits
-    scratch_bits = scratch_bits + 32
+    data = <<data::binary, scratch::little-size(4)-unit(8)>>
+    scratch = scratch >>> 32
+    scratch = scratch ||| v <<< 2
     v = w >>> 64 &&& 0xFFFFFFFF
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
-    scratch_bits = scratch_bits &&& 7
-    scratch = scratch ||| v <<< scratch_bits
-    scratch_bits = scratch_bits + 32
+    data = <<data::binary, scratch::little-size(4)-unit(8)>>
+    scratch = scratch >>> 32
+    scratch = scratch ||| v <<< 2
     v = w >>> 96
-    scratch = scratch ||| v <<< scratch_bits
-    scratch_bits = scratch_bits + 6
+    scratch = scratch ||| v <<< 34
 
     if value_bias < -1000 do
       raise ArgumentError, "value.bias is below the wire minimum"
@@ -638,41 +577,27 @@ defmodule Ludicrous.Ludicrous do
     end
 
     v = value_bias + 1000
-    scratch = scratch ||| v <<< scratch_bits
-    scratch_bits = scratch_bits + 11
+    scratch = scratch ||| v <<< 40
     v = value_seed &&& 0xFFFFFFFF
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
-    scratch_bits = scratch_bits &&& 7
-    scratch = scratch ||| v <<< scratch_bits
-    scratch_bits = scratch_bits + 32
+    data = <<data::binary, scratch::little-size(6)-unit(8)>>
+    scratch = scratch >>> 48
+    scratch = scratch ||| v <<< 3
     v = value_seed >>> 32 &&& 0xFFFFFFFF
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
-    scratch_bits = scratch_bits &&& 7
-    scratch = scratch ||| v <<< scratch_bits
-    scratch_bits = scratch_bits + 32
+    data = <<data::binary, scratch::little-size(4)-unit(8)>>
+    scratch = scratch >>> 32
+    scratch = scratch ||| v <<< 3
     v = value_seed >>> 64 &&& 0xFFFFFFFF
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
-    scratch_bits = scratch_bits &&& 7
-    scratch = scratch ||| v <<< scratch_bits
-    scratch_bits = scratch_bits + 32
+    data = <<data::binary, scratch::little-size(4)-unit(8)>>
+    scratch = scratch >>> 32
+    scratch = scratch ||| v <<< 3
     v = value_seed >>> 96 &&& 0xFFFFFFFF
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
-    scratch_bits = scratch_bits &&& 7
-    scratch = scratch ||| v <<< scratch_bits
-    scratch_bits = scratch_bits + 32
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
-    scratch_bits = scratch_bits &&& 7
-    if scratch_bits != 0, do: <<data::binary, scratch>>, else: data
+    data = <<data::binary, scratch::little-size(4)-unit(8)>>
+    scratch = scratch >>> 32
+    scratch = scratch ||| v <<< 3
+    data = <<data::binary, scratch::little-size(4)-unit(8)>>
+    scratch = scratch >>> 32
+    # the residual byte, statically known to be there
+    <<data::binary, scratch>>
   end
 
   # read_wide_probe decodes the first num_bits of data — the family read verdict:
@@ -798,8 +723,6 @@ defmodule Ludicrous.Ludicrous do
   # compile-out assert). Returns the wire bytes.
   def write_ludicrous_state(value) do
     data = <<>>
-    scratch = 0
-    scratch_bits = 0
 
     %{
       mode: value_mode,
@@ -818,8 +741,7 @@ defmodule Ludicrous.Ludicrous do
     end
 
     v = value_mode
-    scratch = scratch ||| v <<< scratch_bits
-    scratch_bits = scratch_bits + 2
+    scratch = v
 
     %{
       angle: value_probe_angle,
@@ -838,8 +760,7 @@ defmodule Ludicrous.Ludicrous do
     end
 
     v = value_probe_angle + 11_796_480
-    scratch = scratch ||| v <<< scratch_bits
-    scratch_bits = scratch_bits + 25
+    scratch = scratch ||| v <<< 2
 
     if value_probe_position < -1_966_080_000 do
       raise ArgumentError, "value.probe.position is below the wire minimum"
@@ -850,12 +771,9 @@ defmodule Ludicrous.Ludicrous do
     end
 
     v = value_probe_position + 1_966_080_000
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
-    scratch_bits = scratch_bits &&& 7
-    scratch = scratch ||| v <<< scratch_bits
-    scratch_bits = scratch_bits + 32
+    data = <<data::binary, scratch::little-size(3)-unit(8)>>
+    scratch = scratch >>> 24
+    scratch = scratch ||| v <<< 3
 
     if value_probe_reach < -65_536_000_000 do
       raise ArgumentError, "value.probe.reach is below the wire minimum"
@@ -867,15 +785,11 @@ defmodule Ludicrous.Ludicrous do
 
     w = value_probe_reach + 65_536_000_000
     v = w &&& 0xFFFFFFFF
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
-    scratch_bits = scratch_bits &&& 7
-    scratch = scratch ||| v <<< scratch_bits
-    scratch_bits = scratch_bits + 32
+    data = <<data::binary, scratch::little-size(4)-unit(8)>>
+    scratch = scratch >>> 32
+    scratch = scratch ||| v <<< 3
     v = w >>> 32
-    scratch = scratch ||| v <<< scratch_bits
-    scratch_bits = scratch_bits + 5
+    scratch = scratch ||| v <<< 35
 
     if value_probe_ticks < 0 do
       raise ArgumentError, "value.probe.ticks is below the wire minimum"
@@ -886,21 +800,16 @@ defmodule Ludicrous.Ludicrous do
     end
 
     v = value_probe_ticks
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
-    scratch_bits = scratch_bits &&& 7
-    scratch = scratch ||| v <<< scratch_bits
-    scratch_bits = scratch_bits + 20
+    data = <<data::binary, scratch::little-size(5)-unit(8)>>
+    scratch = v
 
     if length(value_probe_samples) != 2 do
       raise ArgumentError, "value.probe.samples must hold exactly 2 elements"
     end
 
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
-    scratch_bits = scratch_bits &&& 7
+    data = <<data::binary, scratch::little-size(2)-unit(8)>>
+    scratch = scratch >>> 16
+    scratch_bits = 4
 
     {data, scratch, scratch_bits} =
       w_fixed_probe_samples(value_probe_samples, data, scratch, scratch_bits)
@@ -1316,8 +1225,6 @@ defmodule Ludicrous.Ludicrous do
   # compile-out assert). Returns the wire bytes.
   def write_degenerate_probe(value) do
     data = <<>>
-    scratch = 0
-    scratch_bits = 0
 
     %{
       locked_fixed: value_locked_fixed,
@@ -1339,13 +1246,9 @@ defmodule Ludicrous.Ludicrous do
     end
 
     v = value_tail &&& 0xFF
-    scratch = scratch ||| v <<< scratch_bits
-    scratch_bits = scratch_bits + 8
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
-    scratch_bits = scratch_bits &&& 7
-    if scratch_bits != 0, do: <<data::binary, scratch>>, else: data
+    scratch = v
+    data = <<data::binary, scratch::little-size(1)-unit(8)>>
+    data
   end
 
   # read_degenerate_probe decodes the first num_bits of data — the family read verdict:
@@ -1401,8 +1304,6 @@ defmodule Ludicrous.Ludicrous do
   # compile-out assert). Returns the wire bytes.
   def write_fixed_vec(value) do
     data = <<>>
-    scratch = 0
-    scratch_bits = 0
     %{x: value_x, y: value_y, z: value_z} = value
 
     if value_x < -6_553_600_000 do
@@ -1415,11 +1316,9 @@ defmodule Ludicrous.Ludicrous do
 
     w = value_x + 6_553_600_000
     v = w &&& 0xFFFFFFFF
-    scratch = scratch ||| v <<< scratch_bits
-    scratch_bits = scratch_bits + 32
+    scratch = v
     v = w >>> 32
-    scratch = scratch ||| v <<< scratch_bits
-    scratch_bits = scratch_bits + 2
+    scratch = scratch ||| v <<< 32
 
     if value_y < -6_553_600_000 do
       raise ArgumentError, "value.y is below the wire minimum"
@@ -1431,15 +1330,11 @@ defmodule Ludicrous.Ludicrous do
 
     w = value_y + 6_553_600_000
     v = w &&& 0xFFFFFFFF
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
-    scratch_bits = scratch_bits &&& 7
-    scratch = scratch ||| v <<< scratch_bits
-    scratch_bits = scratch_bits + 32
+    data = <<data::binary, scratch::little-size(4)-unit(8)>>
+    scratch = scratch >>> 32
+    scratch = scratch ||| v <<< 2
     v = w >>> 32
-    scratch = scratch ||| v <<< scratch_bits
-    scratch_bits = scratch_bits + 2
+    scratch = scratch ||| v <<< 34
 
     if value_z < -6_553_600_000 do
       raise ArgumentError, "value.z is below the wire minimum"
@@ -1451,20 +1346,15 @@ defmodule Ludicrous.Ludicrous do
 
     w = value_z + 6_553_600_000
     v = w &&& 0xFFFFFFFF
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
-    scratch_bits = scratch_bits &&& 7
-    scratch = scratch ||| v <<< scratch_bits
-    scratch_bits = scratch_bits + 32
+    data = <<data::binary, scratch::little-size(4)-unit(8)>>
+    scratch = scratch >>> 32
+    scratch = scratch ||| v <<< 4
     v = w >>> 32
-    scratch = scratch ||| v <<< scratch_bits
-    scratch_bits = scratch_bits + 2
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
-    scratch_bits = scratch_bits &&& 7
-    if scratch_bits != 0, do: <<data::binary, scratch>>, else: data
+    scratch = scratch ||| v <<< 36
+    data = <<data::binary, scratch::little-size(4)-unit(8)>>
+    scratch = scratch >>> 32
+    # the residual byte, statically known to be there
+    <<data::binary, scratch>>
   end
 
   # read_fixed_vec decodes the first num_bits of data — the family read verdict:
@@ -1536,8 +1426,6 @@ defmodule Ludicrous.Ludicrous do
   # compile-out assert). Returns the wire bytes.
   def write_fixed_quat(value) do
     data = <<>>
-    scratch = 0
-    scratch_bits = 0
     %{x: value_x, y: value_y, z: value_z, w: value_w} = value
 
     if value_x < -1_073_741_824 do
@@ -1549,8 +1437,7 @@ defmodule Ludicrous.Ludicrous do
     end
 
     v = value_x + 1_073_741_824
-    scratch = scratch ||| v <<< scratch_bits
-    scratch_bits = scratch_bits + 32
+    scratch = v
 
     if value_y < -1_073_741_824 do
       raise ArgumentError, "value.y is below the wire minimum"
@@ -1561,12 +1448,8 @@ defmodule Ludicrous.Ludicrous do
     end
 
     v = value_y + 1_073_741_824
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
-    scratch_bits = scratch_bits &&& 7
-    scratch = scratch ||| v <<< scratch_bits
-    scratch_bits = scratch_bits + 32
+    data = <<data::binary, scratch::little-size(4)-unit(8)>>
+    scratch = v
 
     if value_z < -1_073_741_824 do
       raise ArgumentError, "value.z is below the wire minimum"
@@ -1577,12 +1460,8 @@ defmodule Ludicrous.Ludicrous do
     end
 
     v = value_z + 1_073_741_824
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
-    scratch_bits = scratch_bits &&& 7
-    scratch = scratch ||| v <<< scratch_bits
-    scratch_bits = scratch_bits + 32
+    data = <<data::binary, scratch::little-size(4)-unit(8)>>
+    scratch = v
 
     if value_w < -1_073_741_824 do
       raise ArgumentError, "value.w is below the wire minimum"
@@ -1593,17 +1472,10 @@ defmodule Ludicrous.Ludicrous do
     end
 
     v = value_w + 1_073_741_824
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
-    scratch_bits = scratch_bits &&& 7
-    scratch = scratch ||| v <<< scratch_bits
-    scratch_bits = scratch_bits + 32
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
-    scratch_bits = scratch_bits &&& 7
-    if scratch_bits != 0, do: <<data::binary, scratch>>, else: data
+    data = <<data::binary, scratch::little-size(4)-unit(8)>>
+    scratch = v
+    data = <<data::binary, scratch::little-size(4)-unit(8)>>
+    data
   end
 
   # read_fixed_quat decodes the first num_bits of data — the family read verdict:

@@ -186,6 +186,25 @@ type gen struct {
 	// close it; mergeW closes it when the next field would pass the budget.
 	pendW int64
 
+	// the scratch's STATIC state, where the emitter knows it. A write
+	// function starts at a known zero and stays known until a value the
+	// wire's own data sizes — a loop helper's call, a branch whose arms
+	// disagree — makes the position depend on the message. While sbKnown
+	// holds, every shift amount and every flush width is a literal and the
+	// scratch_bits variable is not maintained at all; scZero additionally
+	// records that the scratch is empty, so the first merge of a group is a
+	// bind rather than an or.
+	sbKnown bool
+	sbVal   int64
+	scZero  bool
+
+	// whether emitted code has BOUND scratch / scratch_bits yet. A write
+	// surface opens with neither: under static offsets the first merge is a
+	// bind rather than a read, so the zero the surface used to open with is
+	// emitted only where something actually reads it first.
+	scBound bool
+	sbBound bool
+
 	// bindW maps a write-side dotted field access to the local the scope's
 	// one map read bound; bindUsed is the names already taken in the
 	// function being emitted, so a nested scope can never shadow an outer

@@ -56,8 +56,22 @@ func (g *gen) mergeW(bits int64, ind string) {
 	if g.pendW+bits > writeGroupBits {
 		g.flushW(ind)
 	}
-	g.pf("%sscratch = scratch ||| v <<< scratch_bits\n", ind)
-	g.pf("%sscratch_bits = scratch_bits + %d\n", ind, bits)
+	switch {
+	case !g.sbKnown:
+		g.pf("%sscratch = scratch ||| v <<< scratch_bits\n", ind)
+		g.pf("%sscratch_bits = scratch_bits + %d\n", ind, bits)
+	case g.scZero && g.sbVal == 0:
+		// nothing to or against and nothing to shift past: a BIND, so the
+		// surface's opening zero is not needed for this one
+		g.pf("%sscratch = v\n", ind)
+	case g.sbVal == 0:
+		g.pf("%sscratch = scratch ||| v\n", ind)
+	default:
+		g.pf("%sscratch = scratch ||| v <<< %d\n", ind, g.sbVal)
+	}
+	g.sbVal += bits
+	g.scZero = false
+	g.scBound, g.sbBound = true, g.sbBound || !g.sbKnown
 	g.pendW += bits
 }
 
@@ -74,11 +88,160 @@ func (g *gen) flushW(ind string) {
 	if g.pendW == 0 {
 		return
 	}
-	g.pf("%sflush = scratch_bits >>> 3\n", ind)
-	g.pf("%sdata = <<data::binary, scratch::little-size(flush)-unit(8)>>\n", ind)
-	g.pf("%sscratch = scratch >>> (flush <<< 3)\n", ind)
-	g.pf("%sscratch_bits = scratch_bits &&& 7\n", ind)
 	g.pendW = 0
+	if !g.sbKnown {
+		g.pf("%sflush = scratch_bits >>> 3\n", ind)
+		g.pf("%sdata = <<data::binary, scratch::little-size(flush)-unit(8)>>\n", ind)
+		g.pf("%sscratch = scratch >>> (flush <<< 3)\n", ind)
+		g.pf("%sscratch_bits = scratch_bits &&& 7\n", ind)
+		return
+	}
+	// the width is a literal, so the segment's size is a literal and the
+	// three bookkeeping statements are not emitted at all
+	whole, rest := g.sbVal>>3, g.sbVal&7
+	g.sbVal = rest
+	if whole == 0 {
+		return // under a byte: the group carries, nothing leaves
+	}
+	g.scBound = true
+	g.pf("%sdata = <<data::binary, scratch::little-size(%d)-unit(8)>>\n", ind, whole)
+	if rest == 0 {
+		// the scratch held exactly the bytes that left, so its value is now
+		// zero — and it is not WRITTEN here, because the next merge of an
+		// empty group is a bind. ensureScratch materializes the zero at
+		// whatever reads it first, if anything does.
+		g.scZero, g.scBound = true, false
+		return
+	}
+	g.pf("%sscratch = scratch >>> %d\n", ind, whole<<3)
+}
+
+// syncSB materializes scratch_bits where the emitted code is about to read it
+// at runtime — a loop helper's call, the tuple that leaves a branch arm. It
+// is a no-op where the value is already the variable's.
+func (g *gen) syncSB(ind string) {
+	if g.sbKnown {
+		g.pf("%sscratch_bits = %d\n", ind, g.sbVal)
+		g.sbBound = true
+	}
+}
+
+// ensureScratch binds scratch — and scratch_bits with it where asked —
+// immediately before emitted code READS them with nothing having bound them
+// yet. Under static offsets a write surface's first touch is normally a
+// bind, so the zero the surface used to open with unconditionally is emitted
+// here, where something needs it, and nowhere else. At every such point both
+// are provably still zero.
+func (g *gen) ensureScratch(ind string, alsoSB bool) {
+	if !g.scBound {
+		g.pf("%sscratch = 0\n", ind)
+		g.scBound = true
+	}
+	if alsoSB && !g.sbBound {
+		g.pf("%sscratch_bits = 0\n", ind)
+		g.sbBound = true
+	}
+}
+
+// sbState is the static scratch state, saved across an emission that has to
+// be entered more than once (a branch's arms) or entered fresh (a helper).
+type sbState struct {
+	known   bool
+	val     int64
+	zero    bool
+	pend    int64
+	scBound bool
+	sbBound bool
+}
+
+func (g *gen) sbSave() sbState {
+	return sbState{g.sbKnown, g.sbVal, g.scZero, g.pendW, g.scBound, g.sbBound}
+}
+
+// captureArm emits one arm of a branch or a union case into a detached
+// buffer, entered at the state the join was entered in, and reports the
+// state the arm ends in. The arms are captured before the join's shape is
+// chosen, because the shape depends on whether they agree.
+func (g *gen) captureArm(entry sbState, emit func()) (string, sbState) {
+	saved := g.fn
+	g.fn = strings.Builder{}
+	g.sbRestore(entry)
+	emit()
+	text, end := g.fn.String(), g.sbSave()
+	g.fn = saved
+	return text, end
+}
+
+// sbAgree reports the literal offset every arm ends on, when they all end on
+// a known one and it is the same. Then the join has nothing to publish and
+// scratch_bits does not ride the tuple at all.
+func sbAgree(arms []sbState) (int64, bool) {
+	if len(arms) == 0 {
+		return 0, false
+	}
+	for i, a := range arms {
+		if !a.known || (i > 0 && a.val != arms[0].val) {
+			return 0, false
+		}
+	}
+	return arms[0].val, true
+}
+
+func (g *gen) sbRestore(s sbState) {
+	g.sbKnown, g.sbVal, g.scZero, g.pendW = s.known, s.val, s.zero, s.pend
+	g.scBound, g.sbBound = s.scBound, s.sbBound
+}
+
+// joinArm is one captured emission path of a branch or a union case: the
+// clause header that introduces it, the body, the indent its result tuple
+// sits at, and the static state it ends in.
+type joinArm struct {
+	lead    string
+	body    string
+	tupleIn string
+	trail   string
+	end     sbState
+}
+
+// emitWriteJoin prints the multi-path assignment that closes a branch or a
+// union case. What leaves the join is ONE invariant, and its shape is read
+// off the arms: where every arm ends on the same literal offset, the offset
+// stays static past the join and scratch_bits does not ride the tuple at
+// all; otherwise each arm that knew its offset publishes it, and the
+// emitter goes back to maintaining the variable.
+func (g *gen) emitWriteJoin(ind, open, close string, arms []joinArm) {
+	ends := make([]sbState, len(arms))
+	for i, a := range arms {
+		ends[i] = a.end
+	}
+	val, agree := sbAgree(ends)
+	tuple := "{data, scratch, scratch_bits}"
+	if agree {
+		tuple = "{data, scratch}"
+	}
+	g.pf("\n")
+	g.pf("%s%s =\n", ind, tuple)
+	g.pf("%s%s", ind, open)
+	entrySB := g.sbBound
+	for _, a := range arms {
+		g.fn.WriteString(a.lead)
+		g.fn.WriteString(a.body)
+		g.sbRestore(a.end)
+		if !agree && a.end.known {
+			g.pf("%sscratch_bits = %d\n", a.tupleIn, a.end.val)
+			g.sbBound = true
+		}
+		// the tuple READS both, so an arm that bound neither binds here
+		g.ensureScratch(a.tupleIn, !agree)
+		g.pf("%s%s\n", a.tupleIn, tuple)
+		g.pf("%s", a.trail)
+	}
+	g.pf("%s%s", ind, close)
+	g.pf("\n")
+	g.pendW, g.scZero = 0, false
+	g.sbKnown, g.sbVal = agree, val
+	g.scBound = true
+	g.sbBound = entrySB || !agree
 }
 
 // rdWindowBits / rdwWindowBits are the two window decodes' usable widths: a
@@ -421,10 +584,20 @@ func (g *gen) emitWriteFunction(name string, items []ir.Item) {
 	snake := ir.RustSnake(name)
 	g.fn.Reset()
 	g.pendW = 0
+	// the surface starts at a known empty scratch: everything up to the
+	// first length the message's own data decides packs at literal offsets
+	g.sbKnown, g.sbVal, g.scZero = true, 0, true
+	g.scBound, g.sbBound = false, false
 	g.bindW, g.bindDisp, g.bindUsed = nil, nil, map[string]bool{}
 	g.withOwner(name, func() {
 		g.emitWriteItems(items, "value", "    ")
 		g.flushW("    ") // the tail is a barrier: the residual is < 8 bits
+		// the return reads what it is about to test or append
+		if !g.sbKnown {
+			g.ensureScratch("    ", true)
+		} else if g.sbVal != 0 {
+			g.ensureScratch("    ", false)
+		}
 	})
 	body := g.fn.String()
 
@@ -437,13 +610,19 @@ func (g *gen) emitWriteFunction(name string, items []ir.Item) {
 	}
 	g.bpf("  def write_%s(%s) do\n", snake, param)
 	g.bpf("    data = <<>>\n")
-	g.bpf("    scratch = 0\n")
-	g.bpf("    scratch_bits = 0\n")
 	if body == "" {
 		g.bpf("    # empty body — presence is the payload (SPEC §4.6)\n")
 	}
 	g.body.WriteString(body)
-	g.bpf("    if scratch_bits != 0, do: <<data::binary, scratch>>, else: data\n")
+	switch {
+	case !g.sbKnown:
+		g.bpf("    if scratch_bits != 0, do: <<data::binary, scratch>>, else: data\n")
+	case g.sbVal != 0:
+		g.bpf("    # the residual byte, statically known to be there\n")
+		g.bpf("    <<data::binary, scratch>>\n")
+	default:
+		g.bpf("    data\n")
+	}
 	g.bpf("  end\n\n")
 }
 
@@ -625,20 +804,22 @@ func (g *gen) emitWriteItems(items []ir.Item, path, ind string) {
 			// before it and inside each arm: what leaves the if is one
 			// invariant, not one per arm
 			g.flushW(ind)
-			g.pf("\n")
-			g.pf("%s{data, scratch, scratch_bits} =\n", ind)
-			g.pf("%s  if %s do\n", ind, cond)
-			g.emitWriteItems(item.Then, path, ind+"    ")
-			g.flushW(ind + "    ")
-			g.pf("%s    {data, scratch, scratch_bits}\n", ind)
-			g.pf("%s  else\n", ind)
-			if item.Else != nil {
-				g.emitWriteItems(item.Else, path, ind+"    ")
+			entry := g.sbSave()
+			thenText, thenEnd := g.captureArm(entry, func() {
+				g.emitWriteItems(item.Then, path, ind+"    ")
 				g.flushW(ind + "    ")
-			}
-			g.pf("%s    {data, scratch, scratch_bits}\n", ind)
-			g.pf("%s  end\n", ind)
-			g.pf("\n")
+			})
+			elseText, elseEnd := g.captureArm(entry, func() {
+				if item.Else != nil {
+					g.emitWriteItems(item.Else, path, ind+"    ")
+					g.flushW(ind + "    ")
+				}
+			})
+			g.emitWriteJoin(ind, fmt.Sprintf("  if %s do\n", cond), "  end\n",
+				[]joinArm{
+					{lead: "", body: thenText, tupleIn: ind + "    ", end: thenEnd},
+					{lead: ind + "  else\n", body: elseText, tupleIn: ind + "    ", end: elseEnd},
+				})
 		}
 	}
 }
@@ -671,9 +852,23 @@ func (g *gen) emitWriteRaw(value *big.Int, bits int64, isConst bool, ind string)
 func (g *gen) emitWriteAlign(ind string) {
 	g.flushW(ind) // align observes data: the group closes first
 	g.pf("%s# align: zero-pad to the byte boundary (SPEC §4.3)\n", ind)
-	g.pf("%sdata = if scratch_bits != 0, do: <<data::binary, scratch>>, else: data\n", ind)
-	g.pf("%sscratch = 0\n", ind)
-	g.pf("%sscratch_bits = 0\n", ind)
+	switch {
+	case !g.sbKnown:
+		g.ensureScratch(ind, true)
+		g.pf("%sdata = if scratch_bits != 0, do: <<data::binary, scratch>>, else: data\n", ind)
+		// scratch_bits is NOT zeroed here, and neither is scratch: the
+		// offset is static from this point, and whatever reads either of
+		// them next publishes the zero it needs
+	case g.sbVal != 0:
+		g.ensureScratch(ind, false)
+		g.pf("%sdata = <<data::binary, scratch>>\n", ind)
+	default:
+		g.pf("%s# already byte-aligned, and nothing is pending\n", ind)
+	}
+	// an align lands the position on a byte whatever the data did, so the
+	// static offset is KNOWN again here even where it was not before, and
+	// the scratch it leaves behind is empty
+	g.sbKnown, g.sbVal, g.scZero, g.scBound = true, 0, true, false
 }
 
 func (g *gen) emitWriteField(f *ir.Field, path, ind string) {
@@ -687,8 +882,14 @@ func (g *gen) emitWriteField(f *ir.Field, path, ind string) {
 			fmt.Sprintf("%s must hold exactly %d elements", g.dsp(name), f.ArrayBound), ind)
 		helper := g.writeHelper(f)
 		g.flushW(ind) // the helper opens its own group
+		g.syncSB(ind) // and reads the offset the caller was tracking statically
+		g.ensureScratch(ind, true)
 		g.callAssign("{data, scratch, scratch_bits}",
 			fmt.Sprintf("%s(%s, data, scratch, scratch_bits)", helper, name), ind)
+		// how many elements rode is the message's business, so the offset
+		// past the loop is the wire's, not the generator's
+		g.sbKnown, g.scZero = false, false
+		g.scBound, g.sbBound = true, true
 	case ir.ArrayCounted:
 		g.pf("%sn = length(%s)\n", ind, name)
 		// length/1 is never negative, so a zero floor has no violable side
@@ -701,8 +902,14 @@ func (g *gen) emitWriteField(f *ir.Field, path, ind string) {
 		g.emitWriteOffset("n", big.NewInt(f.ArrayMin), big.NewInt(f.ArrayBound), ind)
 		helper := g.writeHelper(f)
 		g.flushW(ind) // the helper opens its own group
+		g.syncSB(ind) // and reads the offset the caller was tracking statically
+		g.ensureScratch(ind, true)
 		g.callAssign("{data, scratch, scratch_bits}",
 			fmt.Sprintf("%s(%s, data, scratch, scratch_bits)", helper, name), ind)
+		// how many elements rode is the message's business, so the offset
+		// past the loop is the wire's, not the generator's
+		g.sbKnown, g.scZero = false, false
+		g.scBound, g.sbBound = true, true
 	default:
 		g.emitWriteScalar(f, name, ind)
 	}
@@ -722,10 +929,14 @@ func (g *gen) writeHelper(f *ir.Field) string {
 	}
 	g.helpers[name] = "" // claim before recursing (helpers may nest)
 	saved := g.fn
-	savedPend := g.pendW
+	savedSB := g.sbSave()
 	savedBind, savedDisp, savedUsed := g.bindW, g.bindDisp, g.bindUsed
 	g.fn = strings.Builder{}
 	g.pendW = 0 // the helper is entered with the caller's group closed
+	// and at an offset the caller's element count decides, so the helper's
+	// body maintains scratch_bits the way it did before the static pass
+	g.sbKnown, g.scZero = false, false
+	g.scBound, g.sbBound = true, true // both arrive as parameters
 	// a helper is its own function: its own locals, its own name space
 	g.bindW, g.bindDisp, g.bindUsed = nil, nil, map[string]bool{}
 	base := fmt.Sprintf("  defp %s([], data, scratch, scratch_bits), do: {data, scratch, scratch_bits}", name)
@@ -737,11 +948,12 @@ func (g *gen) writeHelper(f *ir.Field) string {
 	g.pf("  defp %s([e | rest], data, scratch, scratch_bits) do\n", name)
 	g.emitWriteElem(f, "    ")
 	g.flushW("    ") // the element's tail is a barrier: the next entry is < 8 bits
+	g.syncSB("    ") // an align inside the element can have made it static again
 	g.pf("    %s(rest, data, scratch, scratch_bits)\n", name)
 	g.pf("  end\n\n")
 	g.helpers[name] = g.fn.String()
 	g.fn = saved
-	g.pendW = savedPend
+	g.sbRestore(savedSB)
 	g.bindW, g.bindDisp, g.bindUsed = savedBind, savedDisp, savedUsed
 	g.helperOrder = append(g.helperOrder, name)
 	return name
@@ -1002,27 +1214,29 @@ func (g *gen) emitWriteUnion(u *ir.Union, expr, ind string) {
 	// the case joins every arm, so the group closes before it and inside
 	// each arm: what leaves the case is one invariant, not one per arm
 	g.flushW(ind)
-	g.pf("\n")
-	g.pf("%s{data, scratch, scratch_bits} =\n", ind)
-	g.pf("%s  case %s.type do\n", ind, expr)
+	entry := g.sbSave()
+	var arms []joinArm
 	for i, vr := range u.Variants {
-		g.pf("%s    %d ->\n", ind, i+1)
-		if len(vr.Ref.Items) == 0 {
-			g.pf("%s      # empty arm — presence is the payload (SPEC §4.6)\n", ind)
-		} else {
+		body, end := g.captureArm(entry, func() {
+			if len(vr.Ref.Items) == 0 {
+				g.pf("%s      # empty arm — presence is the payload (SPEC §4.6)\n", ind)
+				return
+			}
 			g.withOwner(vr.Type, func() {
 				g.emitWriteItems(vr.Ref.Items, expr+"."+elixirName(vr.Name), ind+"      ")
 				g.flushW(ind + "      ")
 			})
-		}
-		g.pf("%s      {data, scratch, scratch_bits}\n", ind)
-		g.pf("\n")
+		})
+		arms = append(arms, joinArm{
+			lead: fmt.Sprintf("%s    %d ->\n", ind, i+1), body: body,
+			tupleIn: ind + "      ", trail: "\n", end: end,
+		})
 	}
-	g.pf("%s    _ ->\n", ind)
-	g.pf("%s      # None — the tag is the whole wire (SPEC §4.8)\n", ind)
-	g.pf("%s      {data, scratch, scratch_bits}\n", ind)
-	g.pf("%s  end\n", ind)
-	g.pf("\n")
+	none := fmt.Sprintf("%s      # None — the tag is the whole wire (SPEC §4.8)\n", ind)
+	arms = append(arms, joinArm{
+		lead: ind + "    _ ->\n", body: none, tupleIn: ind + "      ", end: entry,
+	})
+	g.emitWriteJoin(ind, fmt.Sprintf("  case %s.type do\n", expr), "  end\n", arms)
 }
 
 // ---- read emission ----
