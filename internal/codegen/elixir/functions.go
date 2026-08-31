@@ -21,6 +21,7 @@ package elixir
 
 import (
 	"fmt"
+	"maps"
 	"math/big"
 	"strings"
 
@@ -37,27 +38,277 @@ func maskHex(bits int64) string {
 	return fmt.Sprintf("0x%X", new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), uint(bits)), big.NewInt(1)))
 }
 
-// mergeW merges v (already inside bits) into the scratch and flushes every
-// whole byte — the port's 32-bit-group packing restated at byte granularity,
-// branchless, every statement rebinding ONE variable (an Elixir conditional
-// cannot rebind several without a tuple, and the merge must allocate none).
-// bits in [1, 32]; v < 2^32 and scratch_bits <= 7, so no intermediate
-// reaches 2^40.
+// writeGroupBits is the merge group budget: the most static bits the scratch
+// carries between flushes. The BEAM's fixnum is 60-bit signed, so every
+// intermediate must stay under 2^59 or it costs a heap bignum — measured, a
+// boxed window is slower than the extra flush it saves. A flush leaves at
+// most 7 bits behind, so 7 + 52 = 59 is the whole budget and 52 is the group.
+const writeGroupBits = 52
+
+// mergeW merges v (already inside bits) into the scratch. The whole bytes do
+// NOT leave on every field: the generator knows every width statically, so it
+// carries a group of up to writeGroupBits and flushes once for the group,
+// which is one bs_append BIF call for the group instead of one per field.
+// Every statement rebinds ONE variable (an Elixir conditional cannot rebind
+// several without a tuple, and the merge must allocate none). bits in [1, 32];
+// pendW + bits <= 52 and scratch_bits <= 7 + pendW, so no intermediate reaches
+// 2^59.
 func (g *gen) mergeW(bits int64, ind string) {
-	g.pf("%sscratch = scratch ||| v <<< scratch_bits\n", ind)
-	g.pf("%sscratch_bits = scratch_bits + %d\n", ind, bits)
-	g.pf("%sflush = scratch_bits >>> 3\n", ind)
-	g.pf("%sdata = <<data::binary, scratch::little-size(flush)-unit(8)>>\n", ind)
-	g.pf("%sscratch = scratch >>> (flush <<< 3)\n", ind)
-	g.pf("%sscratch_bits = scratch_bits &&& 7\n", ind)
+	if g.pendW+bits > writeGroupBits {
+		g.flushW(ind)
+	}
+	switch {
+	case !g.sbKnown:
+		g.pf("%sscratch = scratch ||| v <<< scratch_bits\n", ind)
+		g.pf("%sscratch_bits = scratch_bits + %d\n", ind, bits)
+	case g.scZero && g.sbVal == 0:
+		// nothing to or against and nothing to shift past: a BIND, so the
+		// surface's opening zero is not needed for this one
+		g.pf("%sscratch = v\n", ind)
+	case g.sbVal == 0:
+		g.pf("%sscratch = scratch ||| v\n", ind)
+	default:
+		g.pf("%sscratch = scratch ||| v <<< %d\n", ind, g.sbVal)
+	}
+	g.sbVal += bits
+	g.scZero = false
+	g.scBound, g.sbBound = true, g.sbBound || !g.sbKnown
+	g.pendW += bits
 }
 
-// readR reads bits (in [1,32]) from the 40-bit window at bits_read into v,
-// masked. The caller has already priced the read inside num_bits.
+// flushW sends the group's whole bytes to the output binary and leaves the
+// scratch invariant the group model rests on: scratch_bits in [0, 7] and
+// scratch below 2^scratch_bits. It is a no-op when no group is open, which is
+// what makes a barrier free where one is already closed.
+//
+// EVERY point that observes data or scratch_bits outside the merge — the
+// function tail, an align, the bytes of a string, a loop helper's call and its
+// own tail, and the joins of a branch or a union case — is a barrier and calls
+// this first.
+func (g *gen) flushW(ind string) {
+	if g.pendW == 0 {
+		return
+	}
+	g.pendW = 0
+	if !g.sbKnown {
+		g.pf("%sflush = scratch_bits >>> 3\n", ind)
+		g.pf("%sdata = <<data::binary, scratch::little-size(flush)-unit(8)>>\n", ind)
+		g.pf("%sscratch = scratch >>> (flush <<< 3)\n", ind)
+		g.pf("%sscratch_bits = scratch_bits &&& 7\n", ind)
+		return
+	}
+	// the width is a literal, so the segment's size is a literal and the
+	// three bookkeeping statements are not emitted at all
+	whole, rest := g.sbVal>>3, g.sbVal&7
+	g.sbVal = rest
+	if whole == 0 {
+		return // under a byte: the group carries, nothing leaves
+	}
+	g.scBound = true
+	g.pf("%sdata = <<data::binary, scratch::little-size(%d)-unit(8)>>\n", ind, whole)
+	if rest == 0 {
+		// the scratch held exactly the bytes that left, so its value is now
+		// zero — and it is not WRITTEN here, because the next merge of an
+		// empty group is a bind. ensureScratch materializes the zero at
+		// whatever reads it first, if anything does.
+		g.scZero, g.scBound = true, false
+		return
+	}
+	g.pf("%sscratch = scratch >>> %d\n", ind, whole<<3)
+}
+
+// syncSB materializes scratch_bits where the emitted code is about to read it
+// at runtime — a loop helper's call, the tuple that leaves a branch arm. It
+// is a no-op where the value is already the variable's.
+func (g *gen) syncSB(ind string) {
+	if g.sbKnown {
+		g.pf("%sscratch_bits = %d\n", ind, g.sbVal)
+		g.sbBound = true
+	}
+}
+
+// ensureScratch binds scratch — and scratch_bits with it where asked —
+// immediately before emitted code READS them with nothing having bound them
+// yet. Under static offsets a write surface's first touch is normally a
+// bind, so the zero the surface used to open with unconditionally is emitted
+// here, where something needs it, and nowhere else. At every such point both
+// are provably still zero.
+func (g *gen) ensureScratch(ind string, alsoSB bool) {
+	if !g.scBound {
+		g.pf("%sscratch = 0\n", ind)
+		g.scBound = true
+	}
+	if alsoSB && !g.sbBound {
+		g.pf("%sscratch_bits = 0\n", ind)
+		g.sbBound = true
+	}
+}
+
+// sbState is the static scratch state, saved across an emission that has to
+// be entered more than once (a branch's arms) or entered fresh (a helper).
+type sbState struct {
+	known   bool
+	val     int64
+	zero    bool
+	pend    int64
+	scBound bool
+	sbBound bool
+}
+
+func (g *gen) sbSave() sbState {
+	return sbState{g.sbKnown, g.sbVal, g.scZero, g.pendW, g.scBound, g.sbBound}
+}
+
+// captureArm emits one arm of a branch or a union case into a detached
+// buffer, entered at the state the join was entered in, and reports the
+// state the arm ends in. The arms are captured before the join's shape is
+// chosen, because the shape depends on whether they agree.
+func (g *gen) captureArm(entry sbState, emit func()) (string, sbState) {
+	saved := g.fn
+	g.fn = strings.Builder{}
+	g.sbRestore(entry)
+	emit()
+	text, end := g.fn.String(), g.sbSave()
+	g.fn = saved
+	return text, end
+}
+
+// sbAgree reports the literal offset every arm ends on, when they all end on
+// a known one and it is the same. Then the join has nothing to publish and
+// scratch_bits does not ride the tuple at all.
+func sbAgree(arms []sbState) (int64, bool) {
+	if len(arms) == 0 {
+		return 0, false
+	}
+	for i, a := range arms {
+		if !a.known || (i > 0 && a.val != arms[0].val) {
+			return 0, false
+		}
+	}
+	return arms[0].val, true
+}
+
+func (g *gen) sbRestore(s sbState) {
+	g.sbKnown, g.sbVal, g.scZero, g.pendW = s.known, s.val, s.zero, s.pend
+	g.scBound, g.sbBound = s.scBound, s.sbBound
+}
+
+// joinArm is one captured emission path of a branch or a union case: the
+// clause header that introduces it, the body, the indent its result tuple
+// sits at, and the static state it ends in.
+type joinArm struct {
+	lead    string
+	body    string
+	tupleIn string
+	trail   string
+	end     sbState
+}
+
+// emitWriteJoin prints the multi-path assignment that closes a branch or a
+// union case. What leaves the join is ONE invariant, and its shape is read
+// off the arms: where every arm ends on the same literal offset, the offset
+// stays static past the join and scratch_bits does not ride the tuple at
+// all; otherwise each arm that knew its offset publishes it, and the
+// emitter goes back to maintaining the variable.
+func (g *gen) emitWriteJoin(ind, open, close string, arms []joinArm) {
+	ends := make([]sbState, len(arms))
+	for i, a := range arms {
+		ends[i] = a.end
+	}
+	val, agree := sbAgree(ends)
+	tuple := "{data, scratch, scratch_bits}"
+	if agree {
+		tuple = "{data, scratch}"
+	}
+	g.pf("\n")
+	g.pf("%s%s =\n", ind, tuple)
+	g.pf("%s%s", ind, open)
+	entrySB := g.sbBound
+	for _, a := range arms {
+		g.fn.WriteString(a.lead)
+		g.fn.WriteString(a.body)
+		g.sbRestore(a.end)
+		if !agree && a.end.known {
+			g.pf("%sscratch_bits = %d\n", a.tupleIn, a.end.val)
+			g.sbBound = true
+		}
+		// the tuple READS both, so an arm that bound neither binds here
+		g.ensureScratch(a.tupleIn, !agree)
+		g.pf("%s%s\n", a.tupleIn, tuple)
+		g.pf("%s", a.trail)
+	}
+	g.pf("%s%s", ind, close)
+	g.pf("\n")
+	g.pendW, g.scZero = 0, false
+	g.sbKnown, g.sbVal = agree, val
+	g.scBound = true
+	g.sbBound = entrySB || !agree
+}
+
+// rdWindowBits / rdwWindowBits are the two window decodes' usable widths: a
+// 40-bit window less the 7-bit worst-case offset is 33, a 56-bit window less
+// the same is 49. Both windows stay under the BEAM's 2^59 fixnum boundary; a
+// 72-bit window does not, and measured on this shape it is SLOWER than the
+// 40-bit one it would replace (29.4 vs 27.6 ns/element) because the box costs
+// more than the reads it saves. 49 is therefore the read group's ceiling.
+const (
+	rdWindowBits  = 33
+	rdwWindowBits = 49
+)
+
+// readR binds v to the next bits (in [1,32]) of the wire. The window decode
+// does NOT open per field: the generator knows every width statically, so it
+// reads a GROUP into rv once and cuts each field out of it with a static
+// shift and mask. rdRun is the fused static run's remaining bits when the
+// caller knows it, so a short run reads the cheap 40-bit window instead of
+// the wide one.
+//
+// Reading a group wider than the fields the caller will use is safe by
+// construction: rd/rdw never raise (the tail falls back to the bytes that
+// exist), and bits past the bounds-checked run are discarded, never observed.
 func (g *gen) readR(bits int64, ind string) {
-	g.needRd = true
-	g.pf("%sv = rd(data, bits_read, %d)\n", ind, bits)
+	if g.rdAvail < bits {
+		w := int64(rdwWindowBits)
+		if g.rdRun > 0 && g.rdRun < w {
+			w = g.rdRun
+		}
+		if w < bits {
+			w = bits
+		}
+		if w <= rdWindowBits {
+			g.needRd = true
+			g.pf("%srv = rd(data, bits_read, %d)\n", ind, w)
+		} else {
+			g.needRdw = true
+			g.pf("%srv = rdw(data, bits_read, %d)\n", ind, w)
+		}
+		g.rdOff, g.rdAvail = 0, w
+	}
+	switch {
+	case g.rdAvail == bits && g.rdOff == 0:
+		g.pf("%sv = rv\n", ind)
+	case g.rdAvail == bits:
+		// the group's top field: rv carries no bits above it
+		g.pf("%sv = rv >>> %d\n", ind, g.rdOff)
+	case g.rdOff == 0:
+		g.pf("%sv = rv &&& %s\n", ind, maskHex(bits))
+	default:
+		g.pf("%sv = rv >>> %d &&& %s\n", ind, g.rdOff, maskHex(bits))
+	}
 	g.pf("%sbits_read = bits_read + %d\n", ind, bits)
+	g.rdOff += bits
+	g.rdAvail -= bits
+	if g.rdRun > 0 {
+		g.rdRun -= bits
+	}
+}
+
+// rdBreak closes the read group. Every point where bits_read moves outside
+// readR, or where emission paths join, is a barrier: the function surface, a
+// loop helper's entry and every call to one, an align, the bytes of a string,
+// and the arms of a branch or a union case.
+func (g *gen) rdBreak() {
+	g.rdOff, g.rdAvail, g.rdRun = 0, 0, 0
 }
 
 // throwIf emits a one-line refusal: `if cond, do: throw(:invalid)`.
@@ -333,7 +584,22 @@ func (g *gen) emitWriteFunction(name string, items []ir.Item) {
 	g.usesImport = true
 	snake := ir.RustSnake(name)
 	g.fn.Reset()
-	g.withOwner(name, func() { g.emitWriteItems(items, "value", "    ") })
+	g.pendW = 0
+	// the surface starts at a known empty scratch: everything up to the
+	// first length the message's own data decides packs at literal offsets
+	g.sbKnown, g.sbVal, g.scZero = true, 0, true
+	g.scBound, g.sbBound = false, false
+	g.bindW, g.bindDisp, g.bindUsed = nil, nil, map[string]bool{}
+	g.withOwner(name, func() {
+		g.emitWriteItems(items, "value", "    ")
+		g.flushW("    ") // the tail is a barrier: the residual is < 8 bits
+		// the return reads what it is about to test or append
+		if !g.sbKnown {
+			g.ensureScratch("    ", true)
+		} else if g.sbVal != 0 {
+			g.ensureScratch("    ", false)
+		}
+	})
 	body := g.fn.String()
 
 	g.bpf("  # write_%s packs value into a fresh binary — the trusted writer; the O(1)\n", snake)
@@ -345,13 +611,19 @@ func (g *gen) emitWriteFunction(name string, items []ir.Item) {
 	}
 	g.bpf("  def write_%s(%s) do\n", snake, param)
 	g.bpf("    data = <<>>\n")
-	g.bpf("    scratch = 0\n")
-	g.bpf("    scratch_bits = 0\n")
 	if body == "" {
 		g.bpf("    # empty body — presence is the payload (SPEC §4.6)\n")
 	}
 	g.body.WriteString(body)
-	g.bpf("    if scratch_bits != 0, do: <<data::binary, scratch>>, else: data\n")
+	switch {
+	case !g.sbKnown:
+		g.bpf("    if scratch_bits != 0, do: <<data::binary, scratch>>, else: data\n")
+	case g.sbVal != 0:
+		g.bpf("    # the residual byte, statically known to be there\n")
+		g.bpf("    <<data::binary, scratch>>\n")
+	default:
+		g.bpf("    data\n")
+	}
 	g.bpf("  end\n\n")
 }
 
@@ -362,6 +634,7 @@ func (g *gen) emitReadFunction(name string, st *ir.Struct, items []ir.Item) {
 	g.usesImport = true
 	snake := ir.RustSnake(name)
 	g.fn.Reset()
+	g.rdBreak()
 	g.withOwner(name, func() { g.emitReadItems(items, "v", "      ", false) })
 	g.pf("      # the final position is unobserved — the verdict and value are the surface\n")
 	g.pf("      _ = bits_read\n")
@@ -408,7 +681,107 @@ func local(pre string, f *ir.Field) string {
 
 // ---- write emission ----
 
+// wref is a write-side field reference: the local the scope's one map read
+// bound, or the plain dotted access when the scope did not bind it.
+func (g *gen) wref(path, field string) string {
+	key := path + "." + elixirName(field)
+	if l, ok := g.bindW[key]; ok {
+		return l
+	}
+	return key
+}
+
+// dsp renders an expression the way the SCHEMA reads it, for the text of a
+// contract raise: a scope local resolves back to the dotted access it stands
+// for, so `%{delta: e_delta} = e` does not turn "e.delta is above the wire
+// maximum" into a message naming a local the caller never wrote.
+func (g *gen) dsp(expr string) string {
+	head, rest := expr, ""
+	if i := strings.Index(expr, "."); i >= 0 {
+		head, rest = expr[:i], expr[i:]
+	}
+	if d, ok := g.bindDisp[head]; ok {
+		return d + rest
+	}
+	return expr
+}
+
+// scopeBinds lists the fields a scope reads UNCONDITIONALLY at its own level:
+// its field items and the conditions of its branches. A branch arm's fields
+// are NOT here — an arm's own scope binds them when the arm is taken, so a
+// value the wire never asks for is never demanded of the caller.
+func scopeBinds(items []ir.Item) []string {
+	var out []string
+	seen := map[string]bool{}
+	add := func(n string) {
+		if n == "" || seen[n] {
+			return
+		}
+		seen[n] = true
+		out = append(out, n)
+	}
+	for _, item := range items {
+		switch item := item.(type) {
+		case *ir.FieldItem:
+			add(elixirName(item.F.Name))
+		case *ir.Branch:
+			add(elixirName(item.Cond))
+		}
+	}
+	return out
+}
+
+// bindScope emits the scope's ONE map read — `%{a: p_a, b: p_b} = path` —
+// and registers the locals. Elixir's `.` is a get_map_elements of its own
+// with its own raise branch per field; one pattern is one instruction for
+// the whole scope. Below two fields it would not pay for itself.
+//
+// The bound locals are unconditional, which is exactly what the dotted
+// accesses they replace were: a struct always carries every key, so the same
+// inputs are refused. A map missing a key raises MatchError here where it
+// raised KeyError before — a raise either way, never a wrong answer.
+func (g *gen) bindScope(items []ir.Item, path, ind string) func() {
+	saved, savedDisp := g.bindW, g.bindDisp
+	names := scopeBinds(items)
+	if len(names) < 2 {
+		return func() {}
+	}
+	g.bindW = make(map[string]string, len(saved)+len(names))
+	maps.Copy(g.bindW, saved)
+	g.bindDisp = make(map[string]string, len(savedDisp)+len(names))
+	maps.Copy(g.bindDisp, savedDisp)
+	base := strings.NewReplacer(".", "_").Replace(path)
+	shown := g.dsp(path)
+	pairs := make([]string, 0, len(names))
+	for _, n := range names {
+		l := base + "_" + n
+		for g.bindUsed[l] {
+			l += "_"
+		}
+		g.bindUsed[l] = true
+		g.bindW[path+"."+n] = l
+		g.bindDisp[l] = shown + "." + n
+		pairs = append(pairs, n+": "+l)
+	}
+	one := ind + "%{" + strings.Join(pairs, ", ") + "} = " + path
+	if len(one) <= formatWidth {
+		g.pf("%s\n", one)
+	} else {
+		g.pf("\n%s%%{\n", ind)
+		for i, pr := range pairs {
+			sep := ","
+			if i == len(pairs)-1 {
+				sep = ""
+			}
+			g.pf("%s  %s%s\n", ind, pr, sep)
+		}
+		g.pf("%s} = %s\n\n", ind, path)
+	}
+	return func() { g.bindW, g.bindDisp = saved, savedDisp }
+}
+
 func (g *gen) emitWriteItems(items []ir.Item, path, ind string) {
+	defer g.bindScope(items, path, ind)()
 	for _, item := range items {
 		switch item := item.(type) {
 		case *ir.FieldItem:
@@ -420,22 +793,30 @@ func (g *gen) emitWriteItems(items []ir.Item, path, ind string) {
 		case *ir.AlignItem:
 			g.emitWriteAlign(ind)
 		case *ir.Branch:
-			cond := path + "." + elixirName(item.Cond)
+			cond := g.wref(path, item.Cond)
 			if item.Neg {
 				cond = "not " + cond
 			}
-			g.pf("\n")
-			g.pf("%s{data, scratch, scratch_bits} =\n", ind)
-			g.pf("%s  if %s do\n", ind, cond)
-			g.emitWriteItems(item.Then, path, ind+"    ")
-			g.pf("%s    {data, scratch, scratch_bits}\n", ind)
-			g.pf("%s  else\n", ind)
-			if item.Else != nil {
-				g.emitWriteItems(item.Else, path, ind+"    ")
-			}
-			g.pf("%s    {data, scratch, scratch_bits}\n", ind)
-			g.pf("%s  end\n", ind)
-			g.pf("\n")
+			// a branch joins two emission paths, so the group closes
+			// before it and inside each arm: what leaves the if is one
+			// invariant, not one per arm
+			g.flushW(ind)
+			entry := g.sbSave()
+			thenText, thenEnd := g.captureArm(entry, func() {
+				g.emitWriteItems(item.Then, path, ind+"    ")
+				g.flushW(ind + "    ")
+			})
+			elseText, elseEnd := g.captureArm(entry, func() {
+				if item.Else != nil {
+					g.emitWriteItems(item.Else, path, ind+"    ")
+					g.flushW(ind + "    ")
+				}
+			})
+			g.emitWriteJoin(ind, fmt.Sprintf("  if %s do\n", cond), "  end\n",
+				[]joinArm{
+					{lead: "", body: thenText, tupleIn: ind + "    ", end: thenEnd},
+					{lead: ind + "  else\n", body: elseText, tupleIn: ind + "    ", end: elseEnd},
+				})
 		}
 	}
 }
@@ -466,37 +847,66 @@ func (g *gen) emitWriteRaw(value *big.Int, bits int64, isConst bool, ind string)
 // zeros: the partial byte (if any) flushes zero-padded, exactly the byte the
 // merge's own flush would produce.
 func (g *gen) emitWriteAlign(ind string) {
+	g.flushW(ind) // align observes data: the group closes first
 	g.pf("%s# align: zero-pad to the byte boundary (SPEC §4.3)\n", ind)
-	g.pf("%sdata = if scratch_bits != 0, do: <<data::binary, scratch>>, else: data\n", ind)
-	g.pf("%sscratch = 0\n", ind)
-	g.pf("%sscratch_bits = 0\n", ind)
+	switch {
+	case !g.sbKnown:
+		g.ensureScratch(ind, true)
+		g.pf("%sdata = if scratch_bits != 0, do: <<data::binary, scratch>>, else: data\n", ind)
+		// scratch_bits is NOT zeroed here, and neither is scratch: the
+		// offset is static from this point, and whatever reads either of
+		// them next publishes the zero it needs
+	case g.sbVal != 0:
+		g.ensureScratch(ind, false)
+		g.pf("%sdata = <<data::binary, scratch>>\n", ind)
+	default:
+		g.pf("%s# already byte-aligned, and nothing is pending\n", ind)
+	}
+	// an align lands the position on a byte whatever the data did, so the
+	// static offset is KNOWN again here even where it was not before, and
+	// the scratch it leaves behind is empty
+	g.sbKnown, g.sbVal, g.scZero, g.scBound = true, 0, true, false
 }
 
 func (g *gen) emitWriteField(f *ir.Field, path, ind string) {
-	name := path + "." + elixirName(f.Name)
+	name := g.wref(path, f.Name)
 	if f.Name == "" {
 		name = path // the standalone union functions' self item
 	}
 	switch f.Array {
 	case ir.ArrayFixed:
 		g.raiseIf(fmt.Sprintf("length(%s) != %s", name, intLit64(f.ArrayBound)),
-			fmt.Sprintf("%s must hold exactly %d elements", name, f.ArrayBound), ind)
+			fmt.Sprintf("%s must hold exactly %d elements", g.dsp(name), f.ArrayBound), ind)
 		helper := g.writeHelper(f)
+		g.flushW(ind) // the helper opens its own group
+		g.syncSB(ind) // and reads the offset the caller was tracking statically
+		g.ensureScratch(ind, true)
 		g.callAssign("{data, scratch, scratch_bits}",
 			fmt.Sprintf("%s(%s, data, scratch, scratch_bits)", helper, name), ind)
+		// how many elements rode is the message's business, so the offset
+		// past the loop is the wire's, not the generator's
+		g.sbKnown, g.scZero = false, false
+		g.scBound, g.sbBound = true, true
 	case ir.ArrayCounted:
 		g.pf("%sn = length(%s)\n", ind, name)
 		// length/1 is never negative, so a zero floor has no violable side
 		if f.ArrayMin > 0 {
 			g.raiseIf(fmt.Sprintf("n < %s", intLit64(f.ArrayMin)),
-				fmt.Sprintf("%s count is below the wire minimum", name), ind)
+				fmt.Sprintf("%s count is below the wire minimum", g.dsp(name)), ind)
 		}
 		g.raiseIf(fmt.Sprintf("n > %s", intLit64(f.ArrayBound)),
-			fmt.Sprintf("%s count is above the wire maximum", name), ind)
+			fmt.Sprintf("%s count is above the wire maximum", g.dsp(name)), ind)
 		g.emitWriteOffset("n", big.NewInt(f.ArrayMin), big.NewInt(f.ArrayBound), ind)
 		helper := g.writeHelper(f)
+		g.flushW(ind) // the helper opens its own group
+		g.syncSB(ind) // and reads the offset the caller was tracking statically
+		g.ensureScratch(ind, true)
 		g.callAssign("{data, scratch, scratch_bits}",
 			fmt.Sprintf("%s(%s, data, scratch, scratch_bits)", helper, name), ind)
+		// how many elements rode is the message's business, so the offset
+		// past the loop is the wire's, not the generator's
+		g.sbKnown, g.scZero = false, false
+		g.scBound, g.sbBound = true, true
 	default:
 		g.emitWriteScalar(f, name, ind)
 	}
@@ -516,36 +926,100 @@ func (g *gen) writeHelper(f *ir.Field) string {
 	}
 	g.helpers[name] = "" // claim before recursing (helpers may nest)
 	saved := g.fn
+	savedSB := g.sbSave()
+	savedBind, savedDisp, savedUsed := g.bindW, g.bindDisp, g.bindUsed
 	g.fn = strings.Builder{}
+	g.pendW = 0 // the helper is entered with the caller's group closed
+	// and at an offset the caller's element count decides, so the helper's
+	// body maintains scratch_bits the way it did before the static pass
+	g.sbKnown, g.scZero = false, false
+	g.scBound, g.sbBound = true, true // both arrive as parameters
+	// a helper is its own function: its own locals, its own name space
+	g.bindW, g.bindDisp, g.bindUsed = nil, nil, map[string]bool{}
 	base := fmt.Sprintf("  defp %s([], data, scratch, scratch_bits), do: {data, scratch, scratch_bits}", name)
 	if len(base) <= formatWidth {
 		g.pf("%s\n\n", base)
 	} else {
 		g.pf("  defp %s([], data, scratch, scratch_bits),\n    do: {data, scratch, scratch_bits}\n\n", name)
 	}
-	g.pf("  defp %s([e | rest], data, scratch, scratch_bits) do\n", name)
-	g.emitWriteElem(f, "    ")
-	g.pf("    %s(rest, data, scratch, scratch_bits)\n", name)
-	g.pf("  end\n\n")
+	// the wide clause first: whole elements share one group and therefore
+	// one append. The single-element clause behind it is the remainder, so
+	// the list length never has to divide anything.
+	if k := g.writeUnroll(f); k > 1 {
+		g.writeClause(f, name, k)
+	}
+	g.writeClause(f, name, 1)
 	g.helpers[name] = g.fn.String()
 	g.fn = saved
+	g.sbRestore(savedSB)
+	g.bindW, g.bindDisp, g.bindUsed = savedBind, savedDisp, savedUsed
 	g.helperOrder = append(g.helperOrder, name)
 	return name
 }
 
-// emitWriteElem writes one array element bound to e.
-func (g *gen) emitWriteElem(f *ir.Field, ind string) {
+// writeUnrollMax bounds the generated code one array field can cost. Past a
+// handful of elements per clause the appends saved are a smaller and smaller
+// share and the clause body is a bigger and bigger one.
+const writeUnrollMax = 4
+
+// writeUnroll is how many elements one clause of the loop writes. Elements
+// of a statically known width share a merge group — and so ONE append —
+// while the group's budget holds; measured, cutting appends is worth about a
+// quarter of a static run, and nothing else about the element changes. An
+// element whose width the wire decides gets one clause per element, as
+// before.
+func (g *gen) writeUnroll(f *ir.Field) int64 {
+	eb, ok := g.staticBitsScalar(f)
+	if !ok || eb <= 0 || eb > writeGroupBits {
+		return 1
+	}
+	return min(writeGroupBits/eb, writeUnrollMax)
+}
+
+// writeClause emits one clause of a write loop, taking k elements off the
+// list. The k element bodies merge into ONE group, so the clause appends
+// once where k separate clauses appended k times.
+func (g *gen) writeClause(f *ir.Field, name string, k int64) {
+	evs := make([]string, k)
+	for i := range evs {
+		evs[i] = "e"
+		if k > 1 {
+			evs[i] = fmt.Sprintf("e%d", i+1)
+		}
+	}
+	// a clause is its own scope: its own locals, and its own group, entered
+	// at an offset the caller's element count decides
+	g.bindW, g.bindDisp, g.bindUsed = nil, map[string]string{}, map[string]bool{}
+	for _, ev := range evs {
+		// the raise text names the ELEMENT, never the clause's slot for it
+		g.bindDisp[ev] = "e"
+	}
+	g.pendW = 0
+	g.sbKnown, g.scZero = false, false
+	g.scBound, g.sbBound = true, true
+	g.pf("  defp %s([%s | rest], data, scratch, scratch_bits) do\n", name, strings.Join(evs, ", "))
+	for _, ev := range evs {
+		g.emitWriteElem(f, ev, "    ")
+	}
+	g.flushW("    ") // the clause's tail is a barrier: the next entry is < 8 bits
+	g.syncSB("    ") // an align inside an element can have made it static again
+	g.pf("    %s(rest, data, scratch, scratch_bits)\n", name)
+	g.pf("  end\n\n")
+}
+
+// emitWriteElem writes one array element bound to ev.
+func (g *gen) emitWriteElem(f *ir.Field, ev, ind string) {
 	if f.Type.Kind == ir.TNamed {
 		switch ref := f.Type.Ref.(type) {
 		case *ir.Struct:
-			g.withOwner(ref.Name, func() { g.emitWriteItems(ref.Items, "e", ind) })
+			g.withOwner(ref.Name, func() { g.emitWriteItems(ref.Items, ev, ind) })
 			return
 		case *ir.Union:
-			g.emitWriteUnion(ref, "e", ind)
+			g.emitWriteUnion(ref, ev, ind)
 			return
 		}
 	}
-	g.emitWriteScalar(f, "e", ind)
+	g.emitWriteScalar(f, ev, ind)
 }
 
 // withOwner runs fn with the helper-naming owner set to typeName (the type
@@ -658,7 +1132,7 @@ func (g *gen) emitWriteScalar(f *ir.Field, name, ind string) {
 	case ir.TNamed:
 		switch ref := f.Type.Ref.(type) {
 		case *ir.Enum:
-			g.emitCheckRange(name, name, big.NewInt(0), big.NewInt(ref.Max), ind)
+			g.emitCheckRange(name, g.dsp(name), big.NewInt(0), big.NewInt(ref.Max), ind)
 			bits := ir.BitsRequired(big.NewInt(0), big.NewInt(ref.Max))
 			if bits == 0 {
 				return // degenerate [0, 0]: zero bits; the check still rides
@@ -670,10 +1144,10 @@ func (g *gen) emitWriteScalar(f *ir.Field, name, ind string) {
 			if wb < 64 {
 				// a mask bit above the wire width cannot ride
 				g.raiseIf(fmt.Sprintf("%s >>> %d != 0", name, wb),
-					fmt.Sprintf("%s holds a mask bit above the %d-bit wire", name, wb), ind)
+					fmt.Sprintf("%s holds a mask bit above the %d-bit wire", g.dsp(name), wb), ind)
 			} else {
 				g.raiseIf(fmt.Sprintf("%s < 0 or %s >>> 64 != 0", name, name),
-					fmt.Sprintf("%s holds a mask bit above the 64-bit wire", name), ind)
+					fmt.Sprintf("%s holds a mask bit above the 64-bit wire", g.dsp(name)), ind)
 			}
 			if wb <= 32 {
 				g.pf("%sv = %s\n", ind, name)
@@ -714,10 +1188,10 @@ func (g *gen) emitWriteFixed(f *ir.Field, name, ind string) {
 	if f.IntMin.Cmp(f.IntMax) == 0 {
 		// degenerate: zero bits — the check is the whole write (SPEC §4.6)
 		g.raiseIf(fmt.Sprintf("%s != %s", name, intLit(rawMin)),
-			fmt.Sprintf("%s must hold the locked value %s", name, rawMin), ind)
+			fmt.Sprintf("%s must hold the locked value %s", g.dsp(name), rawMin), ind)
 		return
 	}
-	g.emitCheckRange(name, name, rawMin, rawMax, ind)
+	g.emitCheckRange(name, g.dsp(name), rawMin, rawMax, ind)
 	g.emitWriteOffset(name, rawMin, rawMax, ind)
 }
 
@@ -727,10 +1201,10 @@ func (g *gen) emitWriteInt(f *ir.Field, name, ind string) {
 		if f.IntMin.Cmp(f.IntMax) == 0 {
 			// degenerate range: ZERO bits — the check is the whole write
 			g.raiseIf(fmt.Sprintf("%s != %s", name, intLit(f.IntMin)),
-				fmt.Sprintf("%s must hold the locked value %s", name, f.IntMin), ind)
+				fmt.Sprintf("%s must hold the locked value %s", g.dsp(name), f.IntMin), ind)
 			return
 		}
-		g.emitCheckRange(name, name, f.IntMin, f.IntMax, ind)
+		g.emitCheckRange(name, g.dsp(name), f.IntMin, f.IntMax, ind)
 		g.emitWriteOffset(name, f.IntMin, f.IntMax, ind)
 		return
 	}
@@ -754,7 +1228,8 @@ func (g *gen) emitWriteCompressedFloat(f *ir.Field, name, ind string) {
 	maxInt, bits := ir.CompressedFloatParams(f.FMin, f.FMax, f.Resolution)
 	minF := float32(f.FMin)
 	deltaF := float32(f.FMax) - minF
-	g.pf("%sv = cf_quantize(%s, %s, %s, %s)\n", ind, name, f32lit(float64(minF)), f32lit(float64(deltaF)), intLitU64(maxInt))
+	g.pf("%sv = cf_quantize(%s, %s, %s, %s, %s)\n", ind, name,
+		f32lit(float64(minF)), f32lit(float64(deltaF)), intLitU64(maxInt), f32lit(float64(maxInt)))
 	g.mergeW(bits, ind)
 }
 
@@ -763,7 +1238,7 @@ func (g *gen) emitWriteCompressedFloat(f *ir.Field, name, ind string) {
 // serialize_string framing, byte-identical to every other target's.
 func (g *gen) emitWriteBytesField(f *ir.Field, name, ind string) {
 	g.raiseIf(fmt.Sprintf("byte_size(%s) > %d", name, f.Type.Size),
-		fmt.Sprintf("%s longer than the declared %d-byte bound", name, f.Type.Size), ind)
+		fmt.Sprintf("%s longer than the declared %d-byte bound", g.dsp(name), f.Type.Size), ind)
 	lenBits := ir.BitsRequired(big.NewInt(0), big.NewInt(f.Type.Size))
 	g.pf("%sv = byte_size(%s)\n", ind, name)
 	g.mergeW(lenBits, ind)
@@ -777,33 +1252,39 @@ func (g *gen) emitWriteBytesField(f *ir.Field, name, ind string) {
 // items — the struct-inlining move, per arm.
 func (g *gen) emitWriteUnion(u *ir.Union, expr, ind string) {
 	// the tag validates BEFORE it rides (SPEC §4.8)
-	g.emitCheckRange(expr+".type", expr+".type", big.NewInt(0), big.NewInt(u.Max), ind)
+	g.emitCheckRange(expr+".type", g.dsp(expr)+".type", big.NewInt(0), big.NewInt(u.Max), ind)
 	if u.Max == 0 {
 		return // an empty union's degenerate tag range [0, 0] costs zero bits
 	}
 	bits := ir.BitsRequired(big.NewInt(0), big.NewInt(u.Max))
 	g.pf("%sv = %s.type\n", ind, expr)
 	g.mergeW(bits, ind)
-	g.pf("\n")
-	g.pf("%s{data, scratch, scratch_bits} =\n", ind)
-	g.pf("%s  case %s.type do\n", ind, expr)
+	// the case joins every arm, so the group closes before it and inside
+	// each arm: what leaves the case is one invariant, not one per arm
+	g.flushW(ind)
+	entry := g.sbSave()
+	var arms []joinArm
 	for i, vr := range u.Variants {
-		g.pf("%s    %d ->\n", ind, i+1)
-		if len(vr.Ref.Items) == 0 {
-			g.pf("%s      # empty arm — presence is the payload (SPEC §4.6)\n", ind)
-		} else {
+		body, end := g.captureArm(entry, func() {
+			if len(vr.Ref.Items) == 0 {
+				g.pf("%s      # empty arm — presence is the payload (SPEC §4.6)\n", ind)
+				return
+			}
 			g.withOwner(vr.Type, func() {
 				g.emitWriteItems(vr.Ref.Items, expr+"."+elixirName(vr.Name), ind+"      ")
+				g.flushW(ind + "      ")
 			})
-		}
-		g.pf("%s      {data, scratch, scratch_bits}\n", ind)
-		g.pf("\n")
+		})
+		arms = append(arms, joinArm{
+			lead: fmt.Sprintf("%s    %d ->\n", ind, i+1), body: body,
+			tupleIn: ind + "      ", trail: "\n", end: end,
+		})
 	}
-	g.pf("%s    _ ->\n", ind)
-	g.pf("%s      # None — the tag is the whole wire (SPEC §4.8)\n", ind)
-	g.pf("%s      {data, scratch, scratch_bits}\n", ind)
-	g.pf("%s  end\n", ind)
-	g.pf("\n")
+	none := fmt.Sprintf("%s      # None — the tag is the whole wire (SPEC §4.8)\n", ind)
+	arms = append(arms, joinArm{
+		lead: ind + "    _ ->\n", body: none, tupleIn: ind + "      ", end: entry,
+	})
+	g.emitWriteJoin(ind, fmt.Sprintf("  case %s.type do\n", expr), "  end\n", arms)
 }
 
 // ---- read emission ----
@@ -828,11 +1309,23 @@ func (g *gen) emitReadItems(items []ir.Item, pre, ind string, bounded bool) {
 			if !bounded && total > 0 {
 				g.throwIf(fmt.Sprintf("bits_read + %s > num_bits", intLit64(total)), "", ind)
 			}
+			// the run's own length sizes the read groups inside it —
+			// unless a WIDER run is already open around this scope, as it
+			// is inside an unrolled loop clause, where one window serves
+			// every element of the clause
+			outer := g.rdRun > 0
+			if !outer {
+				g.rdRun = total
+			}
 			for ; i < j; i++ {
 				g.emitReadItem(items[i], pre, ind, true)
 			}
+			if !outer {
+				g.rdRun = 0
+			}
 			continue
 		}
+		g.rdRun = 0
 		g.emitReadItem(items[i], pre, ind, false)
 		i++
 	}
@@ -867,10 +1360,12 @@ func (g *gen) emitReadBranch(item *ir.Branch, pre, ind string, bounded bool) {
 	g.pf("\n")
 	g.pf("%s%s =\n", ind, tuple)
 	g.pf("%s  if %s do\n", ind, cond)
+	g.rdBreak()
 	g.emitReadItems(item.Then, pre, ind+"    ", bounded)
 	g.emitZeroLocals(item.Else, pre, ind+"    ")
 	g.pf("%s    %s\n", ind, tuple)
 	g.pf("%s  else\n", ind)
+	g.rdBreak()
 	if item.Else != nil {
 		g.emitReadItems(item.Else, pre, ind+"    ", bounded)
 	}
@@ -878,6 +1373,7 @@ func (g *gen) emitReadBranch(item *ir.Branch, pre, ind string, bounded bool) {
 	g.pf("%s    %s\n", ind, tuple)
 	g.pf("%s  end\n", ind)
 	g.pf("\n")
+	g.rdBreak()
 }
 
 // collectLocals lists the locals an item subtree binds, in declaration order.
@@ -926,6 +1422,7 @@ func (g *gen) emitReadAlign(ind string) {
 	g.pf("%send\n", ind)
 	g.pf("\n")
 	g.pf("%sbits_read = bits_read + pad\n", ind)
+	g.rdBreak()
 }
 
 // emitReadRaw reads a const/reserved item and rejects any other value.
@@ -965,6 +1462,7 @@ func (g *gen) emitReadField(f *ir.Field, pre, ind string, bounded bool) {
 	switch f.Array {
 	case ir.ArrayFixed:
 		helper := g.readHelper(f, true)
+		g.rdBreak()
 		g.callAssign(fmt.Sprintf("{bits_read, %s}", lv),
 			fmt.Sprintf("%s(%s, [], data, num_bits, bits_read)", helper, intLit64(f.ArrayBound)), ind)
 	case ir.ArrayCounted:
@@ -996,11 +1494,13 @@ func (g *gen) emitReadCounted(f *ir.Field, lv, ind string) {
 			g.throwIf(fmt.Sprintf("bits_read + n * %s > num_bits", intLit64(elemBits)), "", ind)
 		}
 		helper := g.readHelper(f, true)
+		g.rdBreak()
 		g.callAssign(fmt.Sprintf("{bits_read, %s}", lv),
 			fmt.Sprintf("%s(n, [], data, num_bits, bits_read)", helper), ind)
 		return
 	}
 	helper := g.readHelper(f, false)
+	g.rdBreak()
 	g.callAssign(fmt.Sprintf("{bits_read, %s}", lv),
 		fmt.Sprintf("%s(n, [], data, num_bits, bits_read)", helper), ind)
 }
@@ -1016,7 +1516,9 @@ func (g *gen) readHelper(f *ir.Field, bounded bool) string {
 	}
 	g.helpers[name] = ""
 	saved := g.fn
+	savedOff, savedAvail, savedRun := g.rdOff, g.rdAvail, g.rdRun
 	g.fn = strings.Builder{}
+	g.rdBreak() // the element body opens its own group
 	// the counter is `remaining`, never `n` — a nested counted array's count
 	// local would shadow it
 	base := fmt.Sprintf("  defp %s(0, acc, _data, _num_bits, bits_read), do: {bits_read, Enum.reverse(acc)}", name)
@@ -1025,32 +1527,90 @@ func (g *gen) readHelper(f *ir.Field, bounded bool) string {
 	} else {
 		g.pf("  defp %s(0, acc, _data, _num_bits, bits_read),\n    do: {bits_read, Enum.reverse(acc)}\n\n", name)
 	}
-	g.pf("  defp %s(remaining, acc, data, num_bits, bits_read) do\n", name)
-	g.emitReadElem(f, "    ", bounded)
-	g.pf("    %s(remaining - 1, [e | acc], data, num_bits, bits_read)\n", name)
-	g.pf("  end\n\n")
+	// the wide clause first, guarded on the count; the single-element clause
+	// behind it is the remainder, so the count never has to divide anything
+	if k := g.readUnroll(f); k > 1 {
+		g.readClause(f, name, k, bounded)
+	}
+	g.readClause(f, name, 1, bounded)
 	g.helpers[name] = g.fn.String()
 	g.fn = saved
+	g.rdOff, g.rdAvail, g.rdRun = savedOff, savedAvail, savedRun
 	g.helperOrder = append(g.helperOrder, name)
 	return name
 }
 
-// emitReadElem reads one array element into local e.
-func (g *gen) emitReadElem(f *ir.Field, ind string, bounded bool) {
+// readUnrollMax bounds the generated code one array field can cost, the same
+// way writeUnrollMax does.
+const readUnrollMax = 4
+
+// readUnroll is how many elements one clause of the read loop decodes.
+// Elements of a statically known width share ONE window decode while the
+// wide window's usable width holds — the match context, not the shift and
+// mask, is what a decode costs.
+func (g *gen) readUnroll(f *ir.Field) int64 {
+	eb, ok := g.staticBitsScalar(f)
+	if !ok || eb <= 0 || eb > rdwWindowBits {
+		return 1
+	}
+	return min(rdwWindowBits/eb, readUnrollMax)
+}
+
+// readClause emits one clause of a read loop, decoding k elements under one
+// open window. The wide clause carries a guard on the count; the
+// single-element clause behind it needs none.
+func (g *gen) readClause(f *ir.Field, name string, k int64, bounded bool) {
+	evs := make([]string, k)
+	for i := range evs {
+		evs[i] = "e"
+		if k > 1 {
+			evs[i] = fmt.Sprintf("e%d", i+1)
+		}
+	}
+	g.rdBreak() // a clause opens its own group
+	if k > 1 {
+		g.pf("  defp %s(remaining, acc, data, num_bits, bits_read)\n", name)
+		g.pf("       when remaining >= %d do\n", k)
+	} else {
+		g.pf("  defp %s(remaining, acc, data, num_bits, bits_read) do\n", name)
+	}
+	// a SCALAR element goes straight to the scalar read, which never passes
+	// through the run fuser, and a named element's own scope would size the
+	// window to ONE element. The clause's whole span is the run either way,
+	// and without it a one-byte element opens the wide window for eight bits
+	// and takes that window's longer tail fallback with it.
+	if eb, ok := g.staticBitsScalar(f); ok && eb > 0 {
+		g.rdRun = eb * k
+	}
+	for _, ev := range evs {
+		g.emitReadElem(f, ev, "    ", bounded)
+	}
+	cons := make([]string, k)
+	for i, ev := range evs {
+		cons[int(k)-1-i] = ev // the accumulator is reversed at the end
+	}
+	g.pf("    %s(remaining - %d, [%s | acc], data, num_bits, bits_read)\n",
+		name, k, strings.Join(cons, ", "))
+	g.pf("  end\n\n")
+	g.rdBreak()
+}
+
+// emitReadElem reads one array element into local ev.
+func (g *gen) emitReadElem(f *ir.Field, ev, ind string, bounded bool) {
 	if f.Type.Kind == ir.TNamed {
 		switch ref := f.Type.Ref.(type) {
 		case *ir.Struct:
 			g.withOwner(ref.Name, func() {
-				g.emitReadItems(ref.Items, "e", ind, bounded)
-				g.emitBuildStruct(ref, "e", "e", ind)
+				g.emitReadItems(ref.Items, ev, ind, bounded)
+				g.emitBuildStruct(ref, ev, ev, ind)
 			})
 			return
 		case *ir.Union:
-			g.emitReadUnion(ref, "e", ind, bounded)
+			g.emitReadUnion(ref, ev, ind, bounded)
 			return
 		}
 	}
-	g.emitReadScalar(f, "e", ind, bounded)
+	g.emitReadScalar(f, ev, ind, bounded)
 }
 
 // emitBuildStruct binds lv to the struct literal assembled from the locals
@@ -1137,7 +1697,7 @@ func (g *gen) emitReadCompressedFloat(f *ir.Field, lv, ind string) {
 	if maxInt != (uint64(1)<<bits)-1 {
 		g.throwIf(fmt.Sprintf("v > %s", intLitU64(maxInt)), "headroom above the quantum count is refused", ind)
 	}
-	g.pf("%s%s = cf_decode(v, %s, %s, %s)\n", ind, lv, intLitU64(maxInt), f32lit(float64(deltaF)), f32lit(float64(minF)))
+	g.pf("%s%s = cf_decode(v, %s, %s, %s)\n", ind, lv, f32lit(float64(maxInt)), f32lit(float64(deltaF)), f32lit(float64(minF)))
 }
 
 func (g *gen) emitReadFixed(f *ir.Field, lv, ind string) {
@@ -1222,6 +1782,7 @@ func (g *gen) emitReadBytesField(f *ir.Field, lv, ind string) {
 	g.throwIf("bits_read + len * 8 > num_bits", "", ind)
 	g.pf("%s%s = binary_part(data, bits_read >>> 3, len)\n", ind, lv)
 	g.pf("%sbits_read = bits_read + len * 8\n", ind)
+	g.rdBreak()
 	if f.Type.Kind == ir.TString {
 		g.throwIf(fmt.Sprintf(":binary.match(%s, <<0>>) != :nomatch", lv),
 			"an interior null is content the read refuses (SPEC §4.7)", ind)
@@ -1254,6 +1815,7 @@ func (g *gen) emitReadUnion(u *ir.Union, lv, ind string, bounded bool) {
 		if len(vr.Ref.Items) == 0 {
 			g.pf("%s      # empty arm — presence is the payload (SPEC §4.6)\n", ind)
 		}
+		g.rdBreak() // each arm opens its own group
 		g.withOwner(vr.Type, func() {
 			g.emitReadItems(vr.Ref.Items, arm, ind+"      ", false)
 			g.emitBuildStruct(vr.Ref, arm, arm, ind+"      ")
@@ -1268,6 +1830,7 @@ func (g *gen) emitReadUnion(u *ir.Union, lv, ind string, bounded bool) {
 	g.pf("%s      {bits_read, %%%s{}}\n", ind, g.mod(u.Name))
 	g.pf("%s  end\n", ind)
 	g.pf("\n")
+	g.rdBreak()
 }
 
 // ---- measure emission ----
@@ -1484,6 +2047,21 @@ func (g *gen) emitSupportHelpers() {
 		g.bpf("    window >>> (bits_read &&& 7) &&& (1 <<< bits) - 1\n")
 		g.bpf("  end\n\n")
 	}
+	if g.needRdw {
+		g.bpf("  # The wide window decode: 56 bits, enough for a 7-bit offset plus a\n")
+		g.bpf("  # 49-bit group, and still under the 2^59 fixnum boundary — one match\n")
+		g.bpf("  # context serves a whole group of fields instead of one per field. A\n")
+		g.bpf("  # 64-bit window would box and measures slower than the reads it saves.\n")
+		g.bpf("  defp rdw(data, bits_read, bits) do\n")
+		g.bpf("    i = bits_read >>> 3\n\n")
+		g.bpf("    window =\n")
+		g.bpf("      case data do\n")
+		g.bpf("        <<_::binary-size(^i), w::little-56, _::binary>> -> w\n")
+		g.bpf("        <<_::binary-size(^i), rest::binary>> -> :binary.decode_unsigned(rest, :little)\n")
+		g.bpf("      end\n\n")
+		g.bpf("    window >>> (bits_read &&& 7) &&& (1 <<< bits) - 1\n")
+		g.bpf("  end\n\n")
+	}
 	if g.needF32 {
 		g.bpf("  # The 32-bit IEEE-754 pattern of a float value for the write path — a\n")
 		g.bpf("  # non-finite pattern travels as {:nonfinite, bits}, since no BEAM float\n")
@@ -1542,13 +2120,15 @@ func (g *gen) emitSupportHelpers() {
 		g.bpf("  # rounding is innocuous). Overflow reports :pos_inf / :neg_inf so the\n")
 		g.bpf("  # compressed-float clamps can resolve it the way the reference's float\n")
 		g.bpf("  # arithmetic does.\n")
+		g.bpf("  #\n")
+		g.bpf("  # The refusal IS the test: a float segment does not match a non-finite\n")
+		g.bpf("  # pattern, so the finite path costs one construction and one match and\n")
+		g.bpf("  # never touches the exponent field, while the second clause reads the\n")
+		g.bpf("  # sign of exactly the patterns the first one refused.\n")
 		g.bpf("  defp fr(value) do\n")
-		g.bpf("    <<bits::little-32>> = <<value::float-32-little>>\n\n")
-		g.bpf("    if (bits >>> 23 &&& 0xFF) != 0xFF do\n")
-		g.bpf("      <<rounded::float-32-little>> = <<bits::little-32>>\n")
-		g.bpf("      rounded\n")
-		g.bpf("    else\n")
-		g.bpf("      if bits >>> 31 == 1, do: :neg_inf, else: :pos_inf\n")
+		g.bpf("    case <<value::float-32-little>> do\n")
+		g.bpf("      <<rounded::float-32-little>> -> rounded\n")
+		g.bpf("      <<bits::little-32>> -> if bits >>> 31 == 1, do: :neg_inf, else: :pos_inf\n")
 		g.bpf("    end\n")
 		g.bpf("  end\n\n")
 		g.bpf("  defp cf_clamp01(:pos_inf), do: 1.0\n")
@@ -1560,7 +2140,10 @@ func (g *gen) emitSupportHelpers() {
 		g.bpf("  # own steps: normalize with every step rounding, clamp to [0, 1] (which\n")
 		g.bpf("  # also grounds an overflowed value), scale, round BEFORE the +0.5, floor,\n")
 		g.bpf("  # and the normative integer clamp to the step count.\n")
-		g.bpf("  defp cf_quantize(value, min32, delta, miv) do\n")
+		g.bpf("  # miv32 is the float32 of the step count, folded at generation time: it\n")
+		g.bpf("  # is a declaration constant, and recomputing its rounding per call was\n")
+		g.bpf("  # one of the six float32 steps.\n")
+		g.bpf("  defp cf_quantize(value, min32, delta, miv, miv32) do\n")
 		g.bpf("    if not is_number(value) do\n")
 		g.bpf("      raise ArgumentError, \"a compressed float writes a finite number\"\n")
 		g.bpf("    end\n\n")
@@ -1576,8 +2159,8 @@ func (g *gen) emitSupportHelpers() {
 		g.bpf("        :neg_inf -> 0.0\n")
 		g.bpf("        d -> cf_clamp01(fr(d / delta))\n")
 		g.bpf("      end\n\n")
-		g.bpf("    scaled = fr(normalized * fr(miv * 1.0))\n")
-		g.bpf("    integer = trunc(Float.floor(fr(scaled + 0.5)))\n")
+		g.bpf("    scaled = fr(normalized * miv32)\n")
+		g.bpf("    integer = floor(fr(scaled + 0.5))\n")
 		g.bpf("    min(integer, miv)\n")
 		g.bpf("  end\n\n")
 		g.bpf("  # The reader's arithmetic, pinned the same way: the quotient rounds, the\n")
@@ -1585,8 +2168,8 @@ func (g *gen) emitSupportHelpers() {
 		g.bpf("  # throughout, never fused, never widened. The final add cannot overflow\n")
 		g.bpf("  # for a conforming declaration; the non-finite mapping keeps the\n")
 		g.bpf("  # never-raise reader obligation airtight.\n")
-		g.bpf("  defp cf_decode(integer, miv, delta, min32) do\n")
-		g.bpf("    quotient = fr(fr(integer * 1.0) / fr(miv * 1.0))\n")
+		g.bpf("  defp cf_decode(integer, miv32, delta, min32) do\n")
+		g.bpf("    quotient = fr(fr(integer * 1.0) / miv32)\n")
 		g.bpf("    scaled = fr(quotient * delta)\n\n")
 		g.bpf("    case fr(scaled + min32) do\n")
 		g.bpf("      :pos_inf -> {:nonfinite, 0x7F800000}\n")

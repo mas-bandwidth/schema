@@ -588,6 +588,503 @@ func main() {
 		check(rStraddle == straddle, "TrioStraddle round-trips")
 	}
 
+	// ---- Clauses.schema / Joins.schema: the mid-byte arrangements ----
+	//
+	// Degenerate.schema is every-type-a-whole-number-of-bytes by construction,
+	// so no clause boundary in it lands mid-byte. These two units are chosen
+	// so they do: at 13 bits a write clause takes four elements and a read
+	// clause three, and both boundaries fall inside a byte. Each shape is
+	// written to its OWN stream and flushed, and the golden is those
+	// concatenated — the shapes are not byte-aligned, so a shared stream
+	// would not equal the concatenation every emitter can produce.
+	{
+		var stream []byte
+		emit := func(name string, bits int, w func(*serialize.WriteStream) error) {
+			ws, _ := newWriteStream()
+			checkErr(w(ws), "write "+name)
+			check(ws.BitsProcessed() == int64(bits), name+" rides its declared width")
+			ws.Flush()
+			stream = append(stream, ws.Data()...)
+		}
+		off := 0
+		consume := func(name string, bits int, r func(*serialize.ReadStream) error) {
+			n := (bits + 7) / 8
+			buf := make([]byte, n, n+8) // read allocations extend past the data
+			copy(buf, stream[off:off+n])
+			checkErr(r(serialize.NewReadStream(buf)), "read "+name)
+			off += n
+		}
+
+		// ---- Clauses.schema ----
+
+		w13Counts := []int{0, 1, 3, 4, 5, 7, 12}
+		w13At := func(c int) example.W13 {
+			v := example.W13{ItemsCount: int32(c)}
+			for i := range c {
+				v.Items[i] = uint16(8191 - i*733)
+			}
+			return v
+		}
+		for _, c := range w13Counts {
+			v := w13At(c)
+			emit("W13", 4+13*c, func(ws *serialize.WriteStream) error { return example.WriteW13(ws, &v) })
+		}
+
+		w17Counts := []int{0, 1, 2, 3, 4, 9}
+		w17At := func(c int) example.W17 {
+			v := example.W17{ItemsCount: int32(c)}
+			for i := range c {
+				v.Items[i] = uint32(131071 - i*11117)
+			}
+			return v
+		}
+		for _, c := range w17Counts {
+			v := w17At(c)
+			emit("W17", 4+17*c, func(ws *serialize.WriteStream) error { return example.WriteW17(ws, &v) })
+		}
+
+		w26Counts := []int{0, 1, 2, 3, 6}
+		w26At := func(c int) example.W26 {
+			v := example.W26{ItemsCount: int32(c)}
+			for i := range c {
+				v.Items[i] = uint32(67108863 - i*5555555)
+			}
+			return v
+		}
+		for _, c := range w26Counts {
+			v := w26At(c)
+			emit("W26", 3+26*c, func(ws *serialize.WriteStream) error { return example.WriteW26(ws, &v) })
+		}
+
+		w1Counts := []int{0, 1, 3, 4, 5, 20}
+		w1At := func(c int) example.W1 {
+			v := example.W1{ItemsCount: int32(c)}
+			for i := range c {
+				v.Items[i] = uint8(i % 2)
+			}
+			return v
+		}
+		for _, c := range w1Counts {
+			v := w1At(c)
+			emit("W1", 5+c, func(ws *serialize.WriteStream) error { return example.WriteW1(ws, &v) })
+		}
+
+		w52At := func(c int) example.W52 {
+			v := example.W52{ItemsCount: int32(c)}
+			for i := range c {
+				v.Items[i] = 4503599627370495 - uint64(i)*123456789
+			}
+			return v
+		}
+		for c := 0; c <= 3; c++ {
+			v := w52At(c)
+			emit("W52", 2+52*c, func(ws *serialize.WriteStream) error { return example.WriteW52(ws, &v) })
+		}
+
+		w50At := func(c int) example.W50 {
+			v := example.W50{ItemsCount: int32(c)}
+			for i := range c {
+				v.Items[i] = 1125899906842623 - uint64(i)*987654321
+			}
+			return v
+		}
+		for c := 0; c <= 3; c++ {
+			v := w50At(c)
+			emit("W50", 2+50*c, func(ws *serialize.WriteStream) error { return example.WriteW50(ws, &v) })
+		}
+
+		f13 := example.F13{}
+		for i := range 7 {
+			f13.Items[i] = uint16(8191 - i*911)
+		}
+		emit("F13", 91, func(ws *serialize.WriteStream) error { return example.WriteF13(ws, &f13) })
+
+		triCounts := []int{0, 1, 3, 4, 5, 10}
+		triAt := func(c int) example.ArrTri3 {
+			v := example.ArrTri3{ItemsCount: int32(c)}
+			for i := range c {
+				v.Items[i] = example.Tri3{A: uint32(i % 2), B: uint32(i % 4)}
+			}
+			return v
+		}
+		for _, c := range triCounts {
+			v := triAt(c)
+			emit("ArrTri3", 4+3*c, func(ws *serialize.WriteStream) error { return example.WriteArrTri3(ws, &v) })
+		}
+
+		arrEleven := example.ArrEleven{}
+		for i := range 9 {
+			arrEleven.Items[i] = example.Eleven{A: uint32(i % 8), B: uint32(255 - i*17)}
+		}
+		emit("ArrEleven", 99, func(ws *serialize.WriteStream) error { return example.WriteArrEleven(ws, &arrEleven) })
+
+		// lead 5 + tag 2 + tail 7 — a zero-bit arm behind a tag costs the tag
+		emptyUnions := []example.HoldsEmptyUnion{
+			{Lead: 21, Tail: 99},
+			{Lead: 21, Tail: 99, U: example.EmptyUnion{Type: example.EmptyUnionTypeA}},
+			{Lead: 21, Tail: 99, U: example.EmptyUnion{Type: example.EmptyUnionTypeB}},
+		}
+		for i := range emptyUnions {
+			v := emptyUnions[i]
+			emit("HoldsEmptyUnion", 14, func(ws *serialize.WriteStream) error { return example.WriteHoldsEmptyUnion(ws, &v) })
+		}
+
+		// lead 5 + s_length 4 = 9, the align pads 7 to 16; then 8*s bytes,
+		// b_length 4, an align pad of 4, 8*b bytes and a 3-bit tail. The
+		// 5-bit lead is what puts the align at a non-zero offset.
+		strsEmpty := example.Strs{Lead: 21, Tail: 5}
+		strsFull := example.Strs{Lead: 21, Tail: 5, SLength: 8, BLength: 8}
+		copy(strsFull.S[:], "abcdefgh")
+		for i := range 8 {
+			strsFull.B[i] = uint8(0xF0 + i)
+		}
+		strsPart := example.Strs{Lead: 21, Tail: 5, SLength: 3, BLength: 3}
+		copy(strsPart.S[:], "xyz")
+		for i := range 3 {
+			strsPart.B[i] = uint8(i + 1)
+		}
+		strs := []struct {
+			v    example.Strs
+			bits int
+		}{{strsEmpty, 27}, {strsFull, 155}, {strsPart, 75}}
+		for i := range strs {
+			v := strs[i].v
+			emit("Strs", strs[i].bits, func(ws *serialize.WriteStream) error { return example.WriteStrs(ws, &v) })
+		}
+
+		nestedAt := func(c int) example.ArrNested {
+			v := example.ArrNested{Lead: 21, Tail: 5, ItemsCount: int32(c)}
+			for i := range c {
+				v.Items[i] = example.Eleven{A: uint32(i % 8), B: uint32(200 - i*7)}
+			}
+			return v
+		}
+		for c := 0; c <= 4; c++ {
+			v := nestedAt(c)
+			emit("ArrNested", 11+11*c, func(ws *serialize.WriteStream) error { return example.WriteArrNested(ws, &v) })
+		}
+
+		sole := example.Sole{Only: 5555}
+		emit("Sole", 13, func(ws *serialize.WriteStream) error { return example.WriteSole(ws, &sole) })
+
+		goldenWire("clauses", stream)
+
+		// Read each shape back out of its own slice. A clause that decodes a
+		// different number of elements than the writer encoded shows up here
+		// even where the byte compare above happens to pass.
+		for _, c := range w13Counts {
+			var r example.W13
+			consume("W13", 4+13*c, func(rs *serialize.ReadStream) error { return example.ReadW13(rs, &r) })
+			check(r == w13At(c), "W13 round-trips")
+		}
+		for _, c := range w17Counts {
+			var r example.W17
+			consume("W17", 4+17*c, func(rs *serialize.ReadStream) error { return example.ReadW17(rs, &r) })
+			check(r == w17At(c), "W17 round-trips")
+		}
+		for _, c := range w26Counts {
+			var r example.W26
+			consume("W26", 3+26*c, func(rs *serialize.ReadStream) error { return example.ReadW26(rs, &r) })
+			check(r == w26At(c), "W26 round-trips")
+		}
+		for _, c := range w1Counts {
+			var r example.W1
+			consume("W1", 5+c, func(rs *serialize.ReadStream) error { return example.ReadW1(rs, &r) })
+			check(r == w1At(c), "W1 round-trips")
+		}
+		for c := 0; c <= 3; c++ {
+			var r example.W52
+			consume("W52", 2+52*c, func(rs *serialize.ReadStream) error { return example.ReadW52(rs, &r) })
+			check(r == w52At(c), "W52 round-trips")
+		}
+		for c := 0; c <= 3; c++ {
+			var r example.W50
+			consume("W50", 2+50*c, func(rs *serialize.ReadStream) error { return example.ReadW50(rs, &r) })
+			check(r == w50At(c), "W50 round-trips")
+		}
+		{
+			var r example.F13
+			consume("F13", 91, func(rs *serialize.ReadStream) error { return example.ReadF13(rs, &r) })
+			check(r == f13, "F13 round-trips")
+		}
+		for _, c := range triCounts {
+			var r example.ArrTri3
+			consume("ArrTri3", 4+3*c, func(rs *serialize.ReadStream) error { return example.ReadArrTri3(rs, &r) })
+			check(r == triAt(c), "ArrTri3 round-trips")
+		}
+		{
+			var r example.ArrEleven
+			consume("ArrEleven", 99, func(rs *serialize.ReadStream) error { return example.ReadArrEleven(rs, &r) })
+			check(r == arrEleven, "ArrEleven round-trips")
+		}
+		for i := range emptyUnions {
+			var r example.HoldsEmptyUnion
+			consume("HoldsEmptyUnion", 14, func(rs *serialize.ReadStream) error { return example.ReadHoldsEmptyUnion(rs, &r) })
+			check(r == emptyUnions[i], "HoldsEmptyUnion round-trips")
+		}
+		for i := range strs {
+			var r example.Strs
+			consume("Strs", strs[i].bits, func(rs *serialize.ReadStream) error { return example.ReadStrs(rs, &r) })
+			check(r == strs[i].v, "Strs round-trips")
+		}
+		for c := 0; c <= 4; c++ {
+			var r example.ArrNested
+			consume("ArrNested", 11+11*c, func(rs *serialize.ReadStream) error { return example.ReadArrNested(rs, &r) })
+			check(r == nestedAt(c), "ArrNested round-trips")
+		}
+		{
+			var r example.Sole
+			consume("Sole", 13, func(rs *serialize.ReadStream) error { return example.ReadSole(rs, &r) })
+			check(r == sole, "Sole round-trips")
+		}
+		check(off == len(stream), "the clauses reads consume the whole golden")
+
+		// ---- Joins.schema ----
+		//
+		// Every branch is written on BOTH arms, so no path is pinned by
+		// omission. The expected value after a round trip is not the value
+		// written: the untaken side reads back as zero (SPEC §5).
+
+		stream = nil
+		off = 0
+
+		// pick chooses an arm's width — the two arms of these types differ, so
+		// the expected width is a function of the flag
+		pick := func(f bool, whenTrue, whenFalse int) int {
+			if f {
+				return whenTrue
+			}
+			return whenFalse
+		}
+
+		type joinShape struct {
+			name string
+			bits int
+			w    func(*serialize.WriteStream) error
+			r    func(*serialize.ReadStream) error
+			ok   func() bool
+		}
+		var shapes []joinShape
+
+		for f := range 2 {
+			flag := f != 0
+			// the arms agree on WIDTH but not on value, so a join that keeps
+			// the wrong arm is a value mismatch and not just a width one
+			agree := example.ArmsAgree{Lead: 21, Flag: flag, A: 1234, B: 1500, Tail: 99}
+			var rAgree example.ArmsAgree
+			shapes = append(shapes, joinShape{"ArmsAgree", 24,
+				func(ws *serialize.WriteStream) error { return example.WriteArmsAgree(ws, &agree) },
+				func(rs *serialize.ReadStream) error { return example.ReadArmsAgree(rs, &rAgree) },
+				func() bool {
+					want := example.ArmsAgree{Lead: 21, Flag: flag, Tail: 99}
+					if flag {
+						want.A = 1234
+					} else {
+						want.B = 1500
+					}
+					return rAgree == want
+				}})
+
+			disagree := example.ArmsDisagree{Lead: 21, Flag: flag, A: 1234, B: 5, Tail: 99}
+			var rDisagree example.ArmsDisagree
+			shapes = append(shapes, joinShape{"ArmsDisagree", pick(flag, 24, 16),
+				func(ws *serialize.WriteStream) error { return example.WriteArmsDisagree(ws, &disagree) },
+				func(rs *serialize.ReadStream) error { return example.ReadArmsDisagree(rs, &rDisagree) },
+				func() bool {
+					want := example.ArmsDisagree{Lead: 21, Flag: flag, Tail: 99}
+					if flag {
+						want.A = 1234
+					} else {
+						want.B = 5
+					}
+					return rDisagree == want
+				}})
+
+			armEmpty := example.ArmEmpty{Lead: 21, Flag: flag, A: 456789, Tail: 99}
+			var rArmEmpty example.ArmEmpty
+			shapes = append(shapes, joinShape{"ArmEmpty", pick(flag, 32, 13),
+				func(ws *serialize.WriteStream) error { return example.WriteArmEmpty(ws, &armEmpty) },
+				func(rs *serialize.ReadStream) error { return example.ReadArmEmpty(rs, &rArmEmpty) },
+				func() bool {
+					want := example.ArmEmpty{Lead: 21, Flag: flag, Tail: 99}
+					if flag {
+						want.A = 456789
+					}
+					return rArmEmpty == want
+				}})
+
+			alignStr := example.ArmAlign{Lead: 21, Flag: flag, SLength: 4, B: 1000, Tail: 99}
+			copy(alignStr.S[:], "abcd")
+			var rAlignStr example.ArmAlign
+			shapes = append(shapes, joinShape{"ArmAlign", pick(flag, 55, 23),
+				func(ws *serialize.WriteStream) error { return example.WriteArmAlign(ws, &alignStr) },
+				func(rs *serialize.ReadStream) error { return example.ReadArmAlign(rs, &rAlignStr) },
+				func() bool {
+					want := example.ArmAlign{Lead: 21, Flag: flag, Tail: 99}
+					if flag {
+						want.SLength = 4
+						copy(want.S[:], "abcd")
+					} else {
+						want.B = 1000
+					}
+					return rAlignStr == want
+				}})
+
+			alignEmpty := example.ArmAlign{Lead: 21, Flag: flag, B: 1000, Tail: 99}
+			var rAlignEmpty example.ArmAlign
+			shapes = append(shapes, joinShape{"ArmAlignEmptyStr", 23,
+				func(ws *serialize.WriteStream) error { return example.WriteArmAlign(ws, &alignEmpty) },
+				func(rs *serialize.ReadStream) error { return example.ReadArmAlign(rs, &rAlignEmpty) },
+				func() bool {
+					want := example.ArmAlign{Lead: 21, Flag: flag, Tail: 99}
+					if !flag {
+						want.B = 1000
+					}
+					return rAlignEmpty == want
+				}})
+		}
+
+		for o := range 2 {
+			for i := range 2 {
+				outer, inner := o != 0, i != 0
+				bits := 23
+				if outer {
+					bits = 16
+					if inner {
+						bits = 40
+					}
+				}
+				v := example.ArmsNested{Lead: 5, Outer: outer, Inner: inner, X: 500000000, Y: 17, Z: 4000, Tail: 33}
+				var r example.ArmsNested
+				shapes = append(shapes, joinShape{"ArmsNested", bits,
+					func(ws *serialize.WriteStream) error { return example.WriteArmsNested(ws, &v) },
+					func(rs *serialize.ReadStream) error { return example.ReadArmsNested(rs, &r) },
+					func() bool {
+						want := example.ArmsNested{Lead: 5, Outer: outer, Tail: 33}
+						if outer {
+							want.Inner = inner
+							if inner {
+								want.X = 500000000
+							} else {
+								want.Y = 17
+							}
+						} else {
+							want.Z = 4000
+						}
+						return r == want
+					}})
+			}
+		}
+
+		for f := range 2 {
+			for c := 0; c <= 3; c++ {
+				flag, count := f != 0, c
+				bits := 22
+				if flag {
+					bits = 15 + 13*count
+				}
+				v := example.ArmArray{Lead: 21, Flag: flag, ItemsCount: int32(count), B: 300, Tail: 99}
+				for i := range count {
+					v.Items[i] = uint16(8191 - i*777)
+				}
+				var r example.ArmArray
+				shapes = append(shapes, joinShape{"ArmArray", bits,
+					func(ws *serialize.WriteStream) error { return example.WriteArmArray(ws, &v) },
+					func(rs *serialize.ReadStream) error { return example.ReadArmArray(rs, &r) },
+					func() bool {
+						want := example.ArmArray{Lead: 21, Flag: flag, Tail: 99}
+						if flag {
+							want.ItemsCount = int32(count)
+							for i := range count {
+								want.Items[i] = uint16(8191 - i*777)
+							}
+						} else {
+							want.B = 300
+						}
+						return r == want
+					}})
+			}
+		}
+
+		// lead 5 + tag 2 + arm + tail 11 — the arms are 0, 3 and 37 bits
+		unevens := []struct {
+			v    example.HoldsUneven
+			bits int
+		}{
+			{example.HoldsUneven{Lead: 21, Tail: 1500}, 18},
+			{example.HoldsUneven{Lead: 21, Tail: 1500, U: example.Uneven{Type: example.UnevenTypeNarrow, Narrow: example.Narrow{N: 5}}}, 21},
+			{example.HoldsUneven{Lead: 21, Tail: 1500, U: example.Uneven{Type: example.UnevenTypeWide, Wide: example.Wide{W: 123456789012}}}, 55},
+		}
+		for i := range unevens {
+			v := unevens[i].v
+			var r example.HoldsUneven
+			want := unevens[i].v
+			shapes = append(shapes, joinShape{"HoldsUneven", unevens[i].bits,
+				func(ws *serialize.WriteStream) error { return example.WriteHoldsUneven(ws, &v) },
+				func(rs *serialize.ReadStream) error { return example.ReadHoldsUneven(rs, &r) },
+				func() bool { return r == want }})
+		}
+
+		// alternating arms: item i is Narrow (2 + 3) when even, Wide (2 + 37)
+		unevenItemBits := []int{0, 5, 44, 49}
+		arrUnevenAt := func(c int) example.ArrUneven {
+			v := example.ArrUneven{Lead: 21, Tail: 5, ItemsCount: int32(c)}
+			for i := range c {
+				if i%2 == 0 {
+					v.Items[i] = example.Uneven{Type: example.UnevenTypeNarrow, Narrow: example.Narrow{N: uint32(i % 8)}}
+				} else {
+					v.Items[i] = example.Uneven{Type: example.UnevenTypeWide, Wide: example.Wide{W: 99887766554 + uint64(i)}}
+				}
+			}
+			return v
+		}
+		for c := 0; c <= 3; c++ {
+			count := c
+			v := arrUnevenAt(count)
+			var r example.ArrUneven
+			shapes = append(shapes, joinShape{"ArrUneven", 10 + unevenItemBits[count],
+				func(ws *serialize.WriteStream) error { return example.WriteArrUneven(ws, &v) },
+				func(rs *serialize.ReadStream) error { return example.ReadArrUneven(rs, &r) },
+				func() bool { return r == arrUnevenAt(count) }})
+		}
+
+		// lead 5 + count 2 + 13*c + s_length 3, an align to the byte, 8*s,
+		// then a 32 + 29 + 19 + 4 static run after the align regains it
+		regainAt := func(c, sl int) example.RegainAfterAlign {
+			v := example.RegainAfterAlign{Lead: 21, ItemsCount: int32(c), SLength: int32(sl),
+				P: 0xDEADBEEF, Q: (1 << 29) - 7, R: (1 << 19) - 3, Tail: 9}
+			if sl != 0 {
+				copy(v.S[:], "wxyz")
+			}
+			for i := range c {
+				v.Items[i] = uint16(8191 - i*999)
+			}
+			return v
+		}
+		for c := 0; c <= 3; c++ {
+			for sl := 0; sl <= 4; sl += 4 {
+				count, slen := c, sl
+				v := regainAt(count, slen)
+				var r example.RegainAfterAlign
+				afterAlign := ((5 + 2 + 13*count + 3) + 7) / 8 * 8
+				shapes = append(shapes, joinShape{"RegainAfterAlign", afterAlign + 8*slen + 84,
+					func(ws *serialize.WriteStream) error { return example.WriteRegainAfterAlign(ws, &v) },
+					func(rs *serialize.ReadStream) error { return example.ReadRegainAfterAlign(rs, &r) },
+					func() bool { return r == regainAt(count, slen) }})
+			}
+		}
+
+		for _, s := range shapes {
+			emit(s.name, s.bits, s.w)
+		}
+		goldenWire("joins", stream)
+		for _, s := range shapes {
+			consume(s.name, s.bits, s.r)
+			check(s.ok(), s.name+" round-trips (untaken sides zeroed, SPEC §5)")
+		}
+		check(off == len(stream), "the joins reads consume the whole golden")
+	}
+
 	if failed {
 		os.Exit(1)
 	}

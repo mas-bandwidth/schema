@@ -1,0 +1,157 @@
+// Adversarial arrangements for the Elixir STATIC-OFFSET state machine
+// (lever D) and its join/barrier handling: branches whose arms agree and
+// disagree, unions of unequal arms at mid-byte offsets, aligns that regain
+// staticness, and arrays that give it up.
+
+package example
+
+// arms that AGREE on width: the join should keep the offset static and drop
+// scratch_bits from the tuple entirely.
+type ArmsAgree
+{
+    lead bits(5)
+    flag bool
+    if flag
+    {
+        a bits(11)
+    }
+    else
+    {
+        b bits(11)
+    }
+    tail bits(7)
+}
+
+// arms that DISAGREE: the join must publish scratch_bits and the emitter
+// must go back to maintaining the variable.
+type ArmsDisagree
+{
+    lead bits(5)
+    flag bool
+    if flag
+    {
+        a bits(11)
+    }
+    else
+    {
+        b bits(3)
+    }
+    tail bits(7)
+}
+
+// a branch with NO else arm -- one path writes nothing at all.
+type ArmEmpty
+{
+    lead bits(5)
+    flag bool
+    if flag
+    {
+        a bits(19)
+    }
+    tail bits(7)
+}
+
+// nested branches, the inner one disagreeing inside the outer.
+type ArmsNested
+{
+    lead  bits(3)
+    outer bool
+    if outer
+    {
+        inner bool
+        if inner
+        {
+            x bits(29)
+        }
+        else
+        {
+            y bits(5)
+        }
+    }
+    else
+    {
+        z bits(13)
+    }
+    tail bits(6)
+}
+
+// an ALIGN inside a branch arm: staticness is regained there, and the two
+// arms then reach the join in different states.
+type ArmAlign
+{
+    lead bits(5)
+    flag bool
+    if flag
+    {
+        s string(4)
+    }
+    else
+    {
+        b bits(10)
+    }
+    tail bits(7)
+}
+
+// a counted array inside a branch arm: staticness is given up at the loop
+// call on one path only.
+type ArmArray
+{
+    lead bits(5)
+    flag bool
+    if flag
+    {
+        items [..3]uint16 | min = 0, max = 8191
+    }
+    else
+    {
+        b bits(9)
+    }
+    tail bits(7)
+}
+
+// ---- unions of UNEQUAL arms ---------------------------------------------
+
+type Narrow
+{
+    n bits(3)
+}
+
+type Wide
+{
+    w bits(37)
+}
+
+union Uneven
+{
+    narrow Narrow
+    wide   Wide
+}
+
+// the union sits at a mid-byte offset, and a field follows it.
+type HoldsUneven
+{
+    lead bits(5)
+    u    Uneven
+    tail bits(11)
+}
+
+// a counted array OF unions -- every arm width through the loop clause.
+type ArrUneven
+{
+    lead  bits(5)
+    items [..3]Uneven
+    tail  bits(3)
+}
+
+// staticness given up at an array, then regained at an align, then a long
+// static run after it.
+type RegainAfterAlign
+{
+    lead  bits(5)
+    items [..3]uint16 | min = 0, max = 8191
+    s     string(4)
+    p     bits(32)
+    q     bits(29)
+    r     bits(19)
+    tail  bits(4)
+}

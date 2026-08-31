@@ -2,26 +2,7 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package example — protocol id 0xa89dd9e036603208
-//
-// THE FLAT TIER — the shipped JavaScript wire path: the serialize.js
-// two-lane bitpacker inlined at every field, constant widths and masks,
-// zero function calls. Same generated classes, same bytes as the runtime
-// tier (a standing CI gate); the runtime tier remains the diagnostic and
-// reference surface — re-read a failing buffer through it to learn WHICH
-// operation failed and why.
-//
-// Write<Name>Flat(value, view) -> bytes written, or -1 when the checked
-// writer refuses an out-of-contract value (the production writer trusts
-// the caller — serialize.js src/mode.js's own NODE_ENV fork, frozen at
-// module load). Read<Name>Flat(value, view, numBits) -> bool, the family
-// read verdict; reader obligations ride in every mode.
-//
-// Buffers are caller-owned DataViews. Write buffers: at least <Name>MaxBytes
-// (the constants live in the runtime-tier module). Read buffers: at least
-// FLAT_READ_SLACK = 8 bytes past the payload — 64-bit windows load
-// unconditionally; copy exactly-sized receive buffers into a persistent
-// MaxBytes + 8 scratch first.
+// package example — protocol id 0xdd71ce8b50d78939
 
 // The 8-byte conversion scratch — serialize.js's FLOAT_SCRATCH twin. Module
 // scope is safe: single threaded per realm, consumed in the same op that

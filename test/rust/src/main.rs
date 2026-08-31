@@ -883,6 +883,570 @@ fn main() {
         check(r_straddle == straddle, "TrioStraddle round-trips");
     }
 
+    // ---- Clauses.schema / Joins.schema: the mid-byte arrangements ----
+    //
+    // Degenerate.schema is every-type-a-whole-number-of-bytes by
+    // construction, so no clause boundary in it lands mid-byte. These two
+    // units are chosen so they do. Each shape is written to its OWN stream
+    // and flushed, and the golden is those concatenated — the shapes are not
+    // byte-aligned, so a shared stream would not equal the concatenation
+    // every emitter can produce.
+    {
+        let mut stream: Vec<u8> = Vec::new();
+        macro_rules! emit {
+            ($name:expr, $bits:expr, $write:expr) => {{
+                let mut buffer = [0u8; 64];
+                let mut ws = WriteStream::new(&mut buffer);
+                check_err($write(&mut ws), concat!("write ", $name));
+                check(
+                    ws.bits_processed() == $bits as u64,
+                    concat!($name, " rides its declared width"),
+                );
+                ws.flush();
+                let n = ws.bytes_processed() as usize;
+                stream.extend_from_slice(&buffer[..n]);
+            }};
+        }
+
+        let mut off = 0usize;
+        macro_rules! consume {
+            ($name:expr, $bits:expr, $read:expr) => {{
+                let n = (($bits as usize) + 7) / 8;
+                let mut slice = [0u8; 64]; // read allocations extend past the data
+                slice[..n].copy_from_slice(&stream[off..off + n]);
+                let mut rs = ReadStream::new(&slice, n);
+                check_err($read(&mut rs), concat!("read ", $name));
+                off += n;
+            }};
+        }
+
+        // ---- Clauses.schema ----
+
+        let w13_at = |c: usize| {
+            let mut v = W13::default();
+            v.items_count = c as i32;
+            for i in 0..c {
+                v.items[i] = (8191 - i * 733) as u16;
+            }
+            v
+        };
+        let w13_counts = [0usize, 1, 3, 4, 5, 7, 12];
+        for &c in &w13_counts {
+            let v = w13_at(c);
+            emit!("W13", 4 + 13 * c, |ws: &mut WriteStream<'_>| write_w13(ws, &v));
+        }
+
+        let w17_at = |c: usize| {
+            let mut v = W17::default();
+            v.items_count = c as i32;
+            for i in 0..c {
+                v.items[i] = (131071 - i * 11117) as u32;
+            }
+            v
+        };
+        let w17_counts = [0usize, 1, 2, 3, 4, 9];
+        for &c in &w17_counts {
+            let v = w17_at(c);
+            emit!("W17", 4 + 17 * c, |ws: &mut WriteStream<'_>| write_w17(ws, &v));
+        }
+
+        let w26_at = |c: usize| {
+            let mut v = W26::default();
+            v.items_count = c as i32;
+            for i in 0..c {
+                v.items[i] = (67108863 - i * 5555555) as u32;
+            }
+            v
+        };
+        let w26_counts = [0usize, 1, 2, 3, 6];
+        for &c in &w26_counts {
+            let v = w26_at(c);
+            emit!("W26", 3 + 26 * c, |ws: &mut WriteStream<'_>| write_w26(ws, &v));
+        }
+
+        let w1_at = |c: usize| {
+            let mut v = W1::default();
+            v.items_count = c as i32;
+            for i in 0..c {
+                v.items[i] = (i % 2) as u8;
+            }
+            v
+        };
+        let w1_counts = [0usize, 1, 3, 4, 5, 20];
+        for &c in &w1_counts {
+            let v = w1_at(c);
+            emit!("W1", 5 + c, |ws: &mut WriteStream<'_>| write_w1(ws, &v));
+        }
+
+        let w52_at = |c: usize| {
+            let mut v = W52::default();
+            v.items_count = c as i32;
+            for i in 0..c {
+                v.items[i] = 4503599627370495u64 - (i as u64) * 123456789;
+            }
+            v
+        };
+        for c in 0usize..=3 {
+            let v = w52_at(c);
+            emit!("W52", 2 + 52 * c, |ws: &mut WriteStream<'_>| write_w52(ws, &v));
+        }
+
+        let w50_at = |c: usize| {
+            let mut v = W50::default();
+            v.items_count = c as i32;
+            for i in 0..c {
+                v.items[i] = 1125899906842623u64 - (i as u64) * 987654321;
+            }
+            v
+        };
+        for c in 0usize..=3 {
+            let v = w50_at(c);
+            emit!("W50", 2 + 50 * c, |ws: &mut WriteStream<'_>| write_w50(ws, &v));
+        }
+
+        let mut f13 = F13::default();
+        for i in 0..7 {
+            f13.items[i] = (8191 - i * 911) as u16;
+        }
+        emit!("F13", 91, |ws: &mut WriteStream<'_>| write_f13(ws, &f13));
+
+        let tri_at = |c: usize| {
+            let mut v = ArrTri3::default();
+            v.items_count = c as i32;
+            for i in 0..c {
+                v.items[i] = Tri3 { a: (i % 2) as u32, b: (i % 4) as u32 };
+            }
+            v
+        };
+        let tri_counts = [0usize, 1, 3, 4, 5, 10];
+        for &c in &tri_counts {
+            let v = tri_at(c);
+            emit!("ArrTri3", 4 + 3 * c, |ws: &mut WriteStream<'_>| write_arr_tri3(ws, &v));
+        }
+
+        let mut arr_eleven = ArrEleven::default();
+        for i in 0..9 {
+            arr_eleven.items[i] = Eleven { a: (i % 8) as u32, b: (255 - i * 17) as u32 };
+        }
+        emit!("ArrEleven", 99, |ws: &mut WriteStream<'_>| write_arr_eleven(ws, &arr_eleven));
+
+        // lead 5 + tag 2 + tail 7 — a zero-bit arm behind a tag costs the tag
+        let empty_unions = [
+            HoldsEmptyUnion { lead: 21, u: EmptyUnion::None, tail: 99 },
+            HoldsEmptyUnion { lead: 21, u: EmptyUnion::A(EmptyA::default()), tail: 99 },
+            HoldsEmptyUnion { lead: 21, u: EmptyUnion::B(EmptyB::default()), tail: 99 },
+        ];
+        for v in &empty_unions {
+            emit!("HoldsEmptyUnion", 14, |ws: &mut WriteStream<'_>| write_holds_empty_union(ws, v));
+        }
+
+        // lead 5 + s_length 4 = 9, the align pads 7 to 16; then 8*s bytes,
+        // b_length 4, an align pad of 4, 8*b bytes and a 3-bit tail. The
+        // 5-bit lead is what puts the align at a non-zero offset.
+        let mut strs_empty = Strs::default();
+        strs_empty.lead = 21;
+        strs_empty.tail = 5;
+        let mut strs_full = Strs::default();
+        strs_full.lead = 21;
+        strs_full.tail = 5;
+        strs_full.s.copy_from_slice(b"abcdefgh");
+        strs_full.s_length = 8;
+        for i in 0..8 {
+            strs_full.b[i] = (0xF0 + i) as u8;
+        }
+        strs_full.b_length = 8;
+        let mut strs_part = Strs::default();
+        strs_part.lead = 21;
+        strs_part.tail = 5;
+        strs_part.s[..3].copy_from_slice(b"xyz");
+        strs_part.s_length = 3;
+        for i in 0..3 {
+            strs_part.b[i] = (i + 1) as u8;
+        }
+        strs_part.b_length = 3;
+        let strs = [(strs_empty, 27usize), (strs_full, 155), (strs_part, 75)];
+        for (v, bits) in &strs {
+            emit!("Strs", *bits, |ws: &mut WriteStream<'_>| write_strs(ws, v));
+        }
+
+        let nested_at = |c: usize| {
+            let mut v = ArrNested::default();
+            v.lead = 21;
+            v.tail = 5;
+            v.items_count = c as i32;
+            for i in 0..c {
+                v.items[i] = Eleven { a: (i % 8) as u32, b: (200 - i * 7) as u32 };
+            }
+            v
+        };
+        for c in 0usize..=4 {
+            let v = nested_at(c);
+            emit!("ArrNested", 11 + 11 * c, |ws: &mut WriteStream<'_>| write_arr_nested(ws, &v));
+        }
+
+        let sole = Sole { only: 5555 };
+        emit!("Sole", 13, |ws: &mut WriteStream<'_>| write_sole(ws, &sole));
+
+        golden_wire("clauses", &stream);
+
+        // Read each shape back out of its own slice. A clause that decodes a
+        // different number of elements than the writer encoded shows up here
+        // even where the byte compare above happens to pass.
+        for &c in &w13_counts {
+            let mut r = W13::default();
+            consume!("W13", 4 + 13 * c, |rs: &mut ReadStream<'_>| read_w13(rs, &mut r));
+            check(r == w13_at(c), "W13 round-trips");
+        }
+        for &c in &w17_counts {
+            let mut r = W17::default();
+            consume!("W17", 4 + 17 * c, |rs: &mut ReadStream<'_>| read_w17(rs, &mut r));
+            check(r == w17_at(c), "W17 round-trips");
+        }
+        for &c in &w26_counts {
+            let mut r = W26::default();
+            consume!("W26", 3 + 26 * c, |rs: &mut ReadStream<'_>| read_w26(rs, &mut r));
+            check(r == w26_at(c), "W26 round-trips");
+        }
+        for &c in &w1_counts {
+            let mut r = W1::default();
+            consume!("W1", 5 + c, |rs: &mut ReadStream<'_>| read_w1(rs, &mut r));
+            check(r == w1_at(c), "W1 round-trips");
+        }
+        for c in 0usize..=3 {
+            let mut r = W52::default();
+            consume!("W52", 2 + 52 * c, |rs: &mut ReadStream<'_>| read_w52(rs, &mut r));
+            check(r == w52_at(c), "W52 round-trips");
+        }
+        for c in 0usize..=3 {
+            let mut r = W50::default();
+            consume!("W50", 2 + 50 * c, |rs: &mut ReadStream<'_>| read_w50(rs, &mut r));
+            check(r == w50_at(c), "W50 round-trips");
+        }
+        {
+            let mut r = F13::default();
+            consume!("F13", 91, |rs: &mut ReadStream<'_>| read_f13(rs, &mut r));
+            check(r == f13, "F13 round-trips");
+        }
+        for &c in &tri_counts {
+            let mut r = ArrTri3::default();
+            consume!("ArrTri3", 4 + 3 * c, |rs: &mut ReadStream<'_>| read_arr_tri3(rs, &mut r));
+            check(r == tri_at(c), "ArrTri3 round-trips");
+        }
+        {
+            let mut r = ArrEleven::default();
+            consume!("ArrEleven", 99, |rs: &mut ReadStream<'_>| read_arr_eleven(rs, &mut r));
+            check(r == arr_eleven, "ArrEleven round-trips");
+        }
+        for v in &empty_unions {
+            let mut r = HoldsEmptyUnion::default();
+            consume!("HoldsEmptyUnion", 14, |rs: &mut ReadStream<'_>| read_holds_empty_union(rs, &mut r));
+            check(r == *v, "HoldsEmptyUnion round-trips");
+        }
+        for (v, bits) in &strs {
+            let mut r = Strs::default();
+            consume!("Strs", *bits, |rs: &mut ReadStream<'_>| read_strs(rs, &mut r));
+            check(r == *v, "Strs round-trips");
+        }
+        for c in 0usize..=4 {
+            let mut r = ArrNested::default();
+            consume!("ArrNested", 11 + 11 * c, |rs: &mut ReadStream<'_>| read_arr_nested(rs, &mut r));
+            check(r == nested_at(c), "ArrNested round-trips");
+        }
+        {
+            let mut r = Sole::default();
+            consume!("Sole", 13, |rs: &mut ReadStream<'_>| read_sole(rs, &mut r));
+            check(r == sole, "Sole round-trips");
+        }
+        check(off == stream.len(), "the clauses reads consume the whole golden");
+
+        // ---- Joins.schema ----
+        //
+        // Every branch is written on BOTH arms, so no path is pinned by
+        // omission. The expected value after a round trip is not the value
+        // written: the untaken side reads back as zero (SPEC §5).
+
+        stream.clear();
+        off = 0;
+
+        for f in [false, true] {
+            // the arms agree on WIDTH but not on value, so a join that keeps
+            // the wrong arm is a value mismatch and not just a width one
+            let agree = ArmsAgree { lead: 21, flag: f, a: 1234, b: 1500, tail: 99 };
+            emit!("ArmsAgree", 24usize, |ws: &mut WriteStream<'_>| write_arms_agree(ws, &agree));
+
+            let disagree = ArmsDisagree { lead: 21, flag: f, a: 1234, b: 5, tail: 99 };
+            emit!("ArmsDisagree", if f { 24usize } else { 16 }, |ws: &mut WriteStream<'_>| {
+                write_arms_disagree(ws, &disagree)
+            });
+
+            let arm_empty = ArmEmpty { lead: 21, flag: f, a: 456789, tail: 99 };
+            emit!("ArmEmpty", if f { 32usize } else { 13 }, |ws: &mut WriteStream<'_>| {
+                write_arm_empty(ws, &arm_empty)
+            });
+
+            let mut align_str = ArmAlign::default();
+            align_str.lead = 21;
+            align_str.flag = f;
+            align_str.s.copy_from_slice(b"abcd");
+            align_str.s_length = 4;
+            align_str.b = 1000;
+            align_str.tail = 99;
+            emit!("ArmAlign", if f { 55usize } else { 23 }, |ws: &mut WriteStream<'_>| {
+                write_arm_align(ws, &align_str)
+            });
+
+            let mut align_empty = ArmAlign::default();
+            align_empty.lead = 21;
+            align_empty.flag = f;
+            align_empty.b = 1000;
+            align_empty.tail = 99;
+            emit!("ArmAlignEmptyStr", 23usize, |ws: &mut WriteStream<'_>| {
+                write_arm_align(ws, &align_empty)
+            });
+        }
+
+        let nested_bits = |o: bool, i: bool| if o { if i { 40usize } else { 16 } } else { 23 };
+        for o in [false, true] {
+            for i in [false, true] {
+                let v = ArmsNested {
+                    lead: 5,
+                    outer: o,
+                    inner: i,
+                    x: 500000000,
+                    y: 17,
+                    z: 4000,
+                    tail: 33,
+                };
+                emit!("ArmsNested", nested_bits(o, i), |ws: &mut WriteStream<'_>| {
+                    write_arms_nested(ws, &v)
+                });
+            }
+        }
+
+        let arm_array_at = |f: bool, c: usize| {
+            let mut v = ArmArray::default();
+            v.lead = 21;
+            v.flag = f;
+            v.items_count = c as i32;
+            for i in 0..c {
+                v.items[i] = (8191 - i * 777) as u16;
+            }
+            v.b = 300;
+            v.tail = 99;
+            v
+        };
+        let arm_array_bits = |f: bool, c: usize| if f { 15 + 13 * c } else { 22usize };
+        for f in [false, true] {
+            for c in 0usize..=3 {
+                let v = arm_array_at(f, c);
+                emit!("ArmArray", arm_array_bits(f, c), |ws: &mut WriteStream<'_>| {
+                    write_arm_array(ws, &v)
+                });
+            }
+        }
+
+        // lead 5 + tag 2 + arm + tail 11 — the arms are 0, 3 and 37 bits
+        let unevens = [
+            (HoldsUneven { lead: 21, u: Uneven::None, tail: 1500 }, 18usize),
+            (HoldsUneven { lead: 21, u: Uneven::Narrow(Narrow { n: 5 }), tail: 1500 }, 21),
+            (
+                HoldsUneven { lead: 21, u: Uneven::Wide(Wide { w: 123456789012 }), tail: 1500 },
+                55,
+            ),
+        ];
+        for (v, bits) in &unevens {
+            emit!("HoldsUneven", *bits, |ws: &mut WriteStream<'_>| write_holds_uneven(ws, v));
+        }
+
+        // alternating arms: item i is Narrow (2 + 3) when even, Wide (2 + 37)
+        let uneven_item_bits = [0usize, 5, 44, 49];
+        let arr_uneven_at = |c: usize| {
+            let mut v = ArrUneven::default();
+            v.lead = 21;
+            v.tail = 5;
+            v.items_count = c as i32;
+            for i in 0..c {
+                v.items[i] = if i % 2 == 0 {
+                    Uneven::Narrow(Narrow { n: (i % 8) as u32 })
+                } else {
+                    Uneven::Wide(Wide { w: 99887766554u64 + i as u64 })
+                };
+            }
+            v
+        };
+        for c in 0usize..=3 {
+            let v = arr_uneven_at(c);
+            emit!("ArrUneven", 10 + uneven_item_bits[c], |ws: &mut WriteStream<'_>| {
+                write_arr_uneven(ws, &v)
+            });
+        }
+
+        // lead 5 + count 2 + 13*c + s_length 3, an align to the byte, 8*s,
+        // then a 32 + 29 + 19 + 4 static run after the align regains it
+        let regain_at = |c: usize, sl: usize| {
+            let mut v = RegainAfterAlign::default();
+            v.lead = 21;
+            v.items_count = c as i32;
+            v.s_length = sl as i32;
+            if sl != 0 {
+                v.s.copy_from_slice(b"wxyz");
+            }
+            for i in 0..c {
+                v.items[i] = (8191 - i * 999) as u16;
+            }
+            v.p = 0xDEADBEEF;
+            v.q = (1u32 << 29) - 7;
+            v.r = (1u32 << 19) - 3;
+            v.tail = 9;
+            v
+        };
+        let regain_bits = |c: usize, sl: usize| ((5 + 2 + 13 * c + 3) + 7) / 8 * 8 + 8 * sl + 84;
+        for c in 0usize..=3 {
+            for sl in [0usize, 4] {
+                let v = regain_at(c, sl);
+                emit!("RegainAfterAlign", regain_bits(c, sl), |ws: &mut WriteStream<'_>| {
+                    write_regain_after_align(ws, &v)
+                });
+            }
+        }
+
+        golden_wire("joins", &stream);
+
+        for f in [false, true] {
+            let mut r = ArmsAgree::default();
+            consume!("ArmsAgree", 24usize, |rs: &mut ReadStream<'_>| read_arms_agree(rs, &mut r));
+            let want = ArmsAgree {
+                lead: 21,
+                flag: f,
+                a: if f { 1234 } else { 0 },
+                b: if f { 0 } else { 1500 },
+                tail: 99,
+            };
+            check(r == want, "ArmsAgree round-trips (untaken side zeroed, SPEC §5)");
+
+            let mut r = ArmsDisagree::default();
+            consume!("ArmsDisagree", if f { 24usize } else { 16 }, |rs: &mut ReadStream<'_>| {
+                read_arms_disagree(rs, &mut r)
+            });
+            let want = ArmsDisagree {
+                lead: 21,
+                flag: f,
+                a: if f { 1234 } else { 0 },
+                b: if f { 0 } else { 5 },
+                tail: 99,
+            };
+            check(r == want, "ArmsDisagree round-trips");
+
+            let mut r = ArmEmpty::default();
+            consume!("ArmEmpty", if f { 32usize } else { 13 }, |rs: &mut ReadStream<'_>| {
+                read_arm_empty(rs, &mut r)
+            });
+            let want =
+                ArmEmpty { lead: 21, flag: f, a: if f { 456789 } else { 0 }, tail: 99 };
+            check(r == want, "ArmEmpty round-trips");
+
+            let mut r = ArmAlign::default();
+            consume!("ArmAlign", if f { 55usize } else { 23 }, |rs: &mut ReadStream<'_>| {
+                read_arm_align(rs, &mut r)
+            });
+            let mut want = ArmAlign::default();
+            want.lead = 21;
+            want.flag = f;
+            want.tail = 99;
+            if f {
+                want.s.copy_from_slice(b"abcd");
+                want.s_length = 4;
+            } else {
+                want.b = 1000;
+            }
+            check(r == want, "ArmAlign round-trips");
+
+            let mut r = ArmAlign::default();
+            consume!("ArmAlignEmptyStr", 23usize, |rs: &mut ReadStream<'_>| {
+                read_arm_align(rs, &mut r)
+            });
+            let mut want = ArmAlign::default();
+            want.lead = 21;
+            want.flag = f;
+            want.tail = 99;
+            if !f {
+                want.b = 1000;
+            }
+            check(r == want, "ArmAlign with an empty string round-trips");
+        }
+
+        for o in [false, true] {
+            for i in [false, true] {
+                let mut r = ArmsNested::default();
+                consume!("ArmsNested", nested_bits(o, i), |rs: &mut ReadStream<'_>| {
+                    read_arms_nested(rs, &mut r)
+                });
+                let mut want = ArmsNested::default();
+                want.lead = 5;
+                want.outer = o;
+                want.tail = 33;
+                if o {
+                    want.inner = i;
+                    if i {
+                        want.x = 500000000;
+                    } else {
+                        want.y = 17;
+                    }
+                } else {
+                    want.z = 4000;
+                }
+                check(r == want, "ArmsNested round-trips");
+            }
+        }
+
+        for f in [false, true] {
+            for c in 0usize..=3 {
+                let mut r = ArmArray::default();
+                consume!("ArmArray", arm_array_bits(f, c), |rs: &mut ReadStream<'_>| {
+                    read_arm_array(rs, &mut r)
+                });
+                let mut want = ArmArray::default();
+                want.lead = 21;
+                want.flag = f;
+                want.tail = 99;
+                if f {
+                    want.items_count = c as i32;
+                    for i in 0..c {
+                        want.items[i] = (8191 - i * 777) as u16;
+                    }
+                } else {
+                    want.b = 300;
+                }
+                check(r == want, "ArmArray round-trips");
+            }
+        }
+
+        for (v, bits) in &unevens {
+            let mut r = HoldsUneven::default();
+            consume!("HoldsUneven", *bits, |rs: &mut ReadStream<'_>| read_holds_uneven(rs, &mut r));
+            check(r == *v, "HoldsUneven round-trips");
+        }
+
+        for c in 0usize..=3 {
+            let mut r = ArrUneven::default();
+            consume!("ArrUneven", 10 + uneven_item_bits[c], |rs: &mut ReadStream<'_>| {
+                read_arr_uneven(rs, &mut r)
+            });
+            check(r == arr_uneven_at(c), "ArrUneven round-trips");
+        }
+
+        for c in 0usize..=3 {
+            for sl in [0usize, 4] {
+                let mut r = RegainAfterAlign::default();
+                consume!("RegainAfterAlign", regain_bits(c, sl), |rs: &mut ReadStream<'_>| {
+                    read_regain_after_align(rs, &mut r)
+                });
+                check(r == regain_at(c, sl), "RegainAfterAlign round-trips");
+            }
+        }
+        check(off == stream.len(), "the joins reads consume the whole golden");
+    }
+
     if FAILED.load(Ordering::Relaxed) {
         std::process::exit(1);
     }

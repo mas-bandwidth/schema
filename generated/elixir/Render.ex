@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 # your choice. See the LICENSE exception in the schema compiler; the compiler is
 # AGPL-3.0, its output is not.
-# package example — protocol id 0xa89dd9e036603208
+# package example — protocol id 0xdd71ce8b50d78939
 
 # type RenderSprite
 defmodule Example.RenderSprite do
@@ -22,6 +22,8 @@ defmodule Example.Render do
 
   @compile {:inline, rd: 3}
 
+  @compile {:inline, rdw: 3}
+
   def render_block_max_sprites, do: 64
 
   # render_sprite_max_bits is the longest wire path; align pads at worst case (SPEC §6.1).
@@ -40,60 +42,43 @@ defmodule Example.Render do
   # compile-out assert). Returns the wire bytes.
   def write_render_sprite(value) do
     data = <<>>
-    scratch = 0
-    scratch_bits = 0
-    v = value.sort_key &&& 0xFFFFFFFF
-    scratch = scratch ||| v <<< scratch_bits
-    scratch_bits = scratch_bits + 32
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
-    scratch_bits = scratch_bits &&& 7
-    v = value.sort_key >>> 32 &&& 0xFFFFFFFF
-    scratch = scratch ||| v <<< scratch_bits
-    scratch_bits = scratch_bits + 32
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
-    scratch_bits = scratch_bits &&& 7
-    v = value.mesh_id &&& 0xFFFFFFFF
-    scratch = scratch ||| v <<< scratch_bits
-    scratch_bits = scratch_bits + 32
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
-    scratch_bits = scratch_bits &&& 7
-    v = value.material_id &&& 0xFFFFFFFF
-    scratch = scratch ||| v <<< scratch_bits
-    scratch_bits = scratch_bits + 32
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
-    scratch_bits = scratch_bits &&& 7
-    v = value.layer &&& 0xFF
-    scratch = scratch ||| v <<< scratch_bits
-    scratch_bits = scratch_bits + 8
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
-    scratch_bits = scratch_bits &&& 7
 
-    if value.team < 0 do
+    %{
+      sort_key: value_sort_key,
+      mesh_id: value_mesh_id,
+      material_id: value_material_id,
+      layer: value_layer,
+      team: value_team
+    } = value
+
+    v = value_sort_key &&& 0xFFFFFFFF
+    scratch = v
+    v = value_sort_key >>> 32 &&& 0xFFFFFFFF
+    data = <<data::binary, scratch::little-size(4)-unit(8)>>
+    scratch = v
+    v = value_mesh_id &&& 0xFFFFFFFF
+    data = <<data::binary, scratch::little-size(4)-unit(8)>>
+    scratch = v
+    v = value_material_id &&& 0xFFFFFFFF
+    data = <<data::binary, scratch::little-size(4)-unit(8)>>
+    scratch = v
+    v = value_layer &&& 0xFF
+    scratch = scratch ||| v <<< 32
+
+    if value_team < 0 do
       raise ArgumentError, "value.team is below the wire minimum"
     end
 
-    if value.team > 2 do
+    if value_team > 2 do
       raise ArgumentError, "value.team is above the wire maximum"
     end
 
-    v = value.team
-    scratch = scratch ||| v <<< scratch_bits
-    scratch_bits = scratch_bits + 2
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
-    scratch_bits = scratch_bits &&& 7
-    if scratch_bits != 0, do: <<data::binary, scratch>>, else: data
+    v = value_team
+    scratch = scratch ||| v <<< 40
+    data = <<data::binary, scratch::little-size(5)-unit(8)>>
+    scratch = scratch >>> 40
+    # the residual byte, statically known to be there
+    <<data::binary, scratch>>
   end
 
   # read_render_sprite decodes the first num_bits of data — the family read verdict:
@@ -108,23 +93,27 @@ defmodule Example.Render do
 
       bits_read = 0
       if bits_read + 138 > num_bits, do: throw(:invalid)
-      v = rd(data, bits_read, 32)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0xFFFFFFFF
       bits_read = bits_read + 32
       w = v
-      v = rd(data, bits_read, 32)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0xFFFFFFFF
       bits_read = bits_read + 32
       w = w ||| v <<< 32
       v_sort_key = w
-      v = rd(data, bits_read, 32)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0xFFFFFFFF
       bits_read = bits_read + 32
       v_mesh_id = v
-      v = rd(data, bits_read, 32)
+      rv = rdw(data, bits_read, 42)
+      v = rv &&& 0xFFFFFFFF
       bits_read = bits_read + 32
       v_material_id = v
-      v = rd(data, bits_read, 8)
+      v = rv >>> 32 &&& 0xFF
       bits_read = bits_read + 8
       v_layer = v
-      v = rd(data, bits_read, 2)
+      v = rv >>> 40
       bits_read = bits_read + 2
       # headroom above the wire range is refused
       if v > 2, do: throw(:invalid)
@@ -166,38 +155,32 @@ defmodule Example.Render do
   # compile-out assert). Returns the wire bytes.
   def write_render_block(value) do
     data = <<>>
-    scratch = 0
-    scratch_bits = 0
-    v = value.worker_index &&& 0xFFFFFFFF
-    scratch = scratch ||| v <<< scratch_bits
-    scratch_bits = scratch_bits + 32
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
-    scratch_bits = scratch_bits &&& 7
-    v = value.sprite_count_hint &&& 0xFFFFFFFF
-    scratch = scratch ||| v <<< scratch_bits
-    scratch_bits = scratch_bits + 32
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
-    scratch_bits = scratch_bits &&& 7
-    n = length(value.sprites)
+
+    %{
+      worker_index: value_worker_index,
+      sprite_count_hint: value_sprite_count_hint,
+      sprites: value_sprites
+    } = value
+
+    v = value_worker_index &&& 0xFFFFFFFF
+    scratch = v
+    v = value_sprite_count_hint &&& 0xFFFFFFFF
+    data = <<data::binary, scratch::little-size(4)-unit(8)>>
+    scratch = v
+    n = length(value_sprites)
 
     if n > 64 do
       raise ArgumentError, "value.sprites count is above the wire maximum"
     end
 
     v = n
-    scratch = scratch ||| v <<< scratch_bits
-    scratch_bits = scratch_bits + 7
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
-    scratch_bits = scratch_bits &&& 7
+    scratch = scratch ||| v <<< 32
+    data = <<data::binary, scratch::little-size(4)-unit(8)>>
+    scratch = scratch >>> 32
+    scratch_bits = 7
 
     {data, scratch, scratch_bits} =
-      w_render_block_sprites(value.sprites, data, scratch, scratch_bits)
+      w_render_block_sprites(value_sprites, data, scratch, scratch_bits)
 
     if scratch_bits != 0, do: <<data::binary, scratch>>, else: data
   end
@@ -214,14 +197,17 @@ defmodule Example.Render do
 
       bits_read = 0
       if bits_read + 64 > num_bits, do: throw(:invalid)
-      v = rd(data, bits_read, 32)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0xFFFFFFFF
       bits_read = bits_read + 32
       v_worker_index = v
-      v = rd(data, bits_read, 32)
+      rv = rd(data, bits_read, 32)
+      v = rv
       bits_read = bits_read + 32
       v_sprite_count_hint = v
       if bits_read + 7 > num_bits, do: throw(:invalid)
-      v = rd(data, bits_read, 7)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0x7F
       bits_read = bits_read + 7
       # the count guards the loop — reject, never clamp
       if v > 64, do: throw(:invalid)
@@ -255,51 +241,51 @@ defmodule Example.Render do
   defp w_render_block_sprites([], data, scratch, scratch_bits), do: {data, scratch, scratch_bits}
 
   defp w_render_block_sprites([e | rest], data, scratch, scratch_bits) do
-    v = e.sort_key &&& 0xFFFFFFFF
+    %{
+      sort_key: e_sort_key,
+      mesh_id: e_mesh_id,
+      material_id: e_material_id,
+      layer: e_layer,
+      team: e_team
+    } = e
+
+    v = e_sort_key &&& 0xFFFFFFFF
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 32
+    v = e_sort_key >>> 32 &&& 0xFFFFFFFF
     flush = scratch_bits >>> 3
     data = <<data::binary, scratch::little-size(flush)-unit(8)>>
     scratch = scratch >>> (flush <<< 3)
     scratch_bits = scratch_bits &&& 7
-    v = e.sort_key >>> 32 &&& 0xFFFFFFFF
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 32
+    v = e_mesh_id &&& 0xFFFFFFFF
     flush = scratch_bits >>> 3
     data = <<data::binary, scratch::little-size(flush)-unit(8)>>
     scratch = scratch >>> (flush <<< 3)
     scratch_bits = scratch_bits &&& 7
-    v = e.mesh_id &&& 0xFFFFFFFF
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 32
+    v = e_material_id &&& 0xFFFFFFFF
     flush = scratch_bits >>> 3
     data = <<data::binary, scratch::little-size(flush)-unit(8)>>
     scratch = scratch >>> (flush <<< 3)
     scratch_bits = scratch_bits &&& 7
-    v = e.material_id &&& 0xFFFFFFFF
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 32
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
-    scratch_bits = scratch_bits &&& 7
-    v = e.layer &&& 0xFF
+    v = e_layer &&& 0xFF
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 8
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
-    scratch_bits = scratch_bits &&& 7
 
-    if e.team < 0 do
+    if e_team < 0 do
       raise ArgumentError, "e.team is below the wire minimum"
     end
 
-    if e.team > 2 do
+    if e_team > 2 do
       raise ArgumentError, "e.team is above the wire maximum"
     end
 
-    v = e.team
+    v = e_team
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 2
     flush = scratch_bits >>> 3
@@ -313,23 +299,27 @@ defmodule Example.Render do
     do: {bits_read, Enum.reverse(acc)}
 
   defp r_render_block_sprites(remaining, acc, data, num_bits, bits_read) do
-    v = rd(data, bits_read, 32)
+    rv = rdw(data, bits_read, 49)
+    v = rv &&& 0xFFFFFFFF
     bits_read = bits_read + 32
     w = v
-    v = rd(data, bits_read, 32)
+    rv = rdw(data, bits_read, 49)
+    v = rv &&& 0xFFFFFFFF
     bits_read = bits_read + 32
     w = w ||| v <<< 32
     e_sort_key = w
-    v = rd(data, bits_read, 32)
+    rv = rdw(data, bits_read, 49)
+    v = rv &&& 0xFFFFFFFF
     bits_read = bits_read + 32
     e_mesh_id = v
-    v = rd(data, bits_read, 32)
+    rv = rdw(data, bits_read, 42)
+    v = rv &&& 0xFFFFFFFF
     bits_read = bits_read + 32
     e_material_id = v
-    v = rd(data, bits_read, 8)
+    v = rv >>> 32 &&& 0xFF
     bits_read = bits_read + 8
     e_layer = v
-    v = rd(data, bits_read, 2)
+    v = rv >>> 40
     bits_read = bits_read + 2
     # headroom above the wire range is refused
     if v > 2, do: throw(:invalid)
@@ -356,6 +346,22 @@ defmodule Example.Render do
     window =
       case data do
         <<_::binary-size(^i), w::little-40, _::binary>> -> w
+        <<_::binary-size(^i), rest::binary>> -> :binary.decode_unsigned(rest, :little)
+      end
+
+    window >>> (bits_read &&& 7) &&& (1 <<< bits) - 1
+  end
+
+  # The wide window decode: 56 bits, enough for a 7-bit offset plus a
+  # 49-bit group, and still under the 2^59 fixnum boundary — one match
+  # context serves a whole group of fields instead of one per field. A
+  # 64-bit window would box and measures slower than the reads it saves.
+  defp rdw(data, bits_read, bits) do
+    i = bits_read >>> 3
+
+    window =
+      case data do
+        <<_::binary-size(^i), w::little-56, _::binary>> -> w
         <<_::binary-size(^i), rest::binary>> -> :binary.decode_unsigned(rest, :little)
       end
 

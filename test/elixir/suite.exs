@@ -896,6 +896,286 @@ defmodule SchemaTestElixir do
 
     check(rest == <<>>, "the twelve reads consume the whole golden")
 
+    # ---- Clauses.schema / Joins.schema: the mid-byte arrangements ----
+    #
+    # Degenerate.schema is every-type-a-whole-number-of-bytes by
+    # construction, so no clause boundary in it lands mid-byte and this
+    # emitter's grouped write clause (52-bit budget) and grouped read clause
+    # (49-bit window) always pick the same element count. These two units are
+    # chosen so they do not: at 13 bits the write clause takes four elements
+    # and the read clause three. Each shape is its own message from bit zero
+    # — which is all this emitter can produce — and the golden is those
+    # concatenated, so the leg reproduces the C++ pin exactly.
+    cl = Example.Clauses
+    jn = Example.Joins
+
+    seq = fn c -> if c == 0, do: [], else: Enum.to_list(0..(c - 1)) end
+
+    clause_shapes =
+      Enum.map([0, 1, 3, 4, 5, 7, 12], fn c ->
+        v = %Example.W13{items: Enum.map(seq.(c), &(8191 - &1 * 733))}
+        {"W13/#{c}", 4 + 13 * c, v, &cl.write_w13/1, &cl.read_w13/2, &cl.measure_w13/1, v}
+      end) ++
+        Enum.map([0, 1, 2, 3, 4, 9], fn c ->
+          v = %Example.W17{items: Enum.map(seq.(c), &(131_071 - &1 * 11_117))}
+          {"W17/#{c}", 4 + 17 * c, v, &cl.write_w17/1, &cl.read_w17/2, &cl.measure_w17/1, v}
+        end) ++
+        Enum.map([0, 1, 2, 3, 6], fn c ->
+          v = %Example.W26{items: Enum.map(seq.(c), &(67_108_863 - &1 * 5_555_555))}
+          {"W26/#{c}", 3 + 26 * c, v, &cl.write_w26/1, &cl.read_w26/2, &cl.measure_w26/1, v}
+        end) ++
+        Enum.map([0, 1, 3, 4, 5, 20], fn c ->
+          v = %Example.W1{items: Enum.map(seq.(c), &rem(&1, 2))}
+          {"W1/#{c}", 5 + c, v, &cl.write_w1/1, &cl.read_w1/2, &cl.measure_w1/1, v}
+        end) ++
+        Enum.map(0..3, fn c ->
+          v = %Example.W52{items: Enum.map(seq.(c), &(4_503_599_627_370_495 - &1 * 123_456_789))}
+          {"W52/#{c}", 2 + 52 * c, v, &cl.write_w52/1, &cl.read_w52/2, &cl.measure_w52/1, v}
+        end) ++
+        Enum.map(0..3, fn c ->
+          v = %Example.W50{items: Enum.map(seq.(c), &(1_125_899_906_842_623 - &1 * 987_654_321))}
+          {"W50/#{c}", 2 + 50 * c, v, &cl.write_w50/1, &cl.read_w50/2, &cl.measure_w50/1, v}
+        end) ++
+        [
+          (
+            v = %Example.F13{items: Enum.map(0..6, &(8191 - &1 * 911))}
+            {"F13", 91, v, &cl.write_f13/1, &cl.read_f13/2, &cl.measure_f13/1, v}
+          )
+        ] ++
+        Enum.map([0, 1, 3, 4, 5, 10], fn c ->
+          items = Enum.map(seq.(c), &%Example.Tri3{a: rem(&1, 2), b: rem(&1, 4)})
+          v = %Example.ArrTri3{items: items}
+          {"ArrTri3/#{c}", 4 + 3 * c, v, &cl.write_arr_tri3/1, &cl.read_arr_tri3/2,
+           &cl.measure_arr_tri3/1, v}
+        end) ++
+        [
+          (
+            items = Enum.map(0..8, &%Example.Eleven{a: rem(&1, 8), b: 255 - &1 * 17})
+            v = %Example.ArrEleven{items: items}
+            {"ArrEleven", 99, v, &cl.write_arr_eleven/1, &cl.read_arr_eleven/2,
+             &cl.measure_arr_eleven/1, v}
+          )
+        ] ++
+        # lead 5 + tag 2 + tail 7 — a zero-bit arm behind a tag costs the tag
+        Enum.map(
+          [
+            {"None", %Example.EmptyUnion{type: 0}},
+            {"A", %Example.EmptyUnion{type: 1}},
+            {"B", %Example.EmptyUnion{type: 2}}
+          ],
+          fn {arm, u} ->
+            v = %Example.HoldsEmptyUnion{lead: 21, u: u, tail: 99}
+            {"HoldsEmptyUnion/#{arm}", 14, v, &cl.write_holds_empty_union/1,
+             &cl.read_holds_empty_union/2, &cl.measure_holds_empty_union/1, v}
+          end
+        ) ++
+        # lead 5 + s_length 4 = 9, the align pads 7 to 16; then 8*s bytes,
+        # b_length 4, an align pad of 4, 8*b bytes and a 3-bit tail. The
+        # 5-bit lead is what puts the align at a non-zero offset.
+        Enum.map(
+          [
+            {"empty", 27, <<>>, <<>>},
+            {"full", 155, "abcdefgh", <<0xF0, 0xF1, 0xF2, 0xF3, 0xF4, 0xF5, 0xF6, 0xF7>>},
+            {"part", 75, "xyz", <<1, 2, 3>>}
+          ],
+          fn {tag, bits, s, b} ->
+            v = %Example.Strs{lead: 21, s: s, b: b, tail: 5}
+            {"Strs/#{tag}", bits, v, &cl.write_strs/1, &cl.read_strs/2, &cl.measure_strs/1, v}
+          end
+        ) ++
+        Enum.map(0..4, fn c ->
+          items = Enum.map(seq.(c), &%Example.Eleven{a: rem(&1, 8), b: 200 - &1 * 7})
+          v = %Example.ArrNested{lead: 21, items: items, tail: 5}
+          {"ArrNested/#{c}", 11 + 11 * c, v, &cl.write_arr_nested/1, &cl.read_arr_nested/2,
+           &cl.measure_arr_nested/1, v}
+        end) ++
+        [
+          (
+            v = %Example.Sole{only: 5555}
+            {"Sole", 13, v, &cl.write_sole/1, &cl.read_sole/2, &cl.measure_sole/1, v}
+          )
+        ]
+
+    # Joins.schema. Every branch is written on BOTH arms, so no path is
+    # pinned by omission — and the expected value after a round trip is not
+    # the value written: the untaken side reads back as zero (SPEC §5).
+    join_shapes =
+      Enum.flat_map([false, true], fn f ->
+        [
+          # the arms agree on WIDTH but not on value, so a join that keeps the
+          # wrong arm is a value mismatch and not just a width one
+          {"ArmsAgree/#{f}", 24, %Example.ArmsAgree{lead: 21, flag: f, a: 1234, b: 1500, tail: 99},
+           &jn.write_arms_agree/1, &jn.read_arms_agree/2, &jn.measure_arms_agree/1,
+           if(f,
+             do: %Example.ArmsAgree{lead: 21, flag: true, a: 1234, tail: 99},
+             else: %Example.ArmsAgree{lead: 21, flag: false, b: 1500, tail: 99}
+           )},
+          {"ArmsDisagree/#{f}", if(f, do: 24, else: 16),
+           %Example.ArmsDisagree{lead: 21, flag: f, a: 1234, b: 5, tail: 99},
+           &jn.write_arms_disagree/1, &jn.read_arms_disagree/2, &jn.measure_arms_disagree/1,
+           if(f,
+             do: %Example.ArmsDisagree{lead: 21, flag: true, a: 1234, tail: 99},
+             else: %Example.ArmsDisagree{lead: 21, flag: false, b: 5, tail: 99}
+           )},
+          {"ArmEmpty/#{f}", if(f, do: 32, else: 13),
+           %Example.ArmEmpty{lead: 21, flag: f, a: 456_789, tail: 99}, &jn.write_arm_empty/1,
+           &jn.read_arm_empty/2, &jn.measure_arm_empty/1,
+           %Example.ArmEmpty{lead: 21, flag: f, a: if(f, do: 456_789, else: 0), tail: 99}},
+          {"ArmAlign/#{f}", if(f, do: 55, else: 23),
+           %Example.ArmAlign{lead: 21, flag: f, s: "abcd", b: 1000, tail: 99},
+           &jn.write_arm_align/1, &jn.read_arm_align/2, &jn.measure_arm_align/1,
+           if(f,
+             do: %Example.ArmAlign{lead: 21, flag: true, s: "abcd", tail: 99},
+             else: %Example.ArmAlign{lead: 21, flag: false, b: 1000, tail: 99}
+           )},
+          {"ArmAlignEmptyStr/#{f}", 23,
+           %Example.ArmAlign{lead: 21, flag: f, s: <<>>, b: 1000, tail: 99},
+           &jn.write_arm_align/1, &jn.read_arm_align/2, &jn.measure_arm_align/1,
+           if(f,
+             do: %Example.ArmAlign{lead: 21, flag: true, tail: 99},
+             else: %Example.ArmAlign{lead: 21, flag: false, b: 1000, tail: 99}
+           )}
+        ]
+      end) ++
+        Enum.flat_map([false, true], fn o ->
+          Enum.map([false, true], fn i ->
+            bits = if o, do: if(i, do: 40, else: 16), else: 23
+
+            written = %Example.ArmsNested{
+              lead: 5,
+              outer: o,
+              inner: i,
+              x: 500_000_000,
+              y: 17,
+              z: 4000,
+              tail: 33
+            }
+
+            want =
+              cond do
+                o and i -> %Example.ArmsNested{lead: 5, outer: true, inner: true, x: 500_000_000, tail: 33}
+                o -> %Example.ArmsNested{lead: 5, outer: true, inner: false, y: 17, tail: 33}
+                true -> %Example.ArmsNested{lead: 5, outer: false, z: 4000, tail: 33}
+              end
+
+            {"ArmsNested/#{o}#{i}", bits, written, &jn.write_arms_nested/1,
+             &jn.read_arms_nested/2, &jn.measure_arms_nested/1, want}
+          end)
+        end) ++
+        Enum.flat_map([false, true], fn f ->
+          Enum.map(0..3, fn c ->
+            items = Enum.map(seq.(c), &(8191 - &1 * 777))
+            written = %Example.ArmArray{lead: 21, flag: f, items: items, b: 300, tail: 99}
+
+            want =
+              if f,
+                do: %Example.ArmArray{lead: 21, flag: true, items: items, tail: 99},
+                else: %Example.ArmArray{lead: 21, flag: false, b: 300, tail: 99}
+
+            {"ArmArray/#{f}/#{c}", if(f, do: 15 + 13 * c, else: 22), written,
+             &jn.write_arm_array/1, &jn.read_arm_array/2, &jn.measure_arm_array/1, want}
+          end)
+        end) ++
+        # lead 5 + tag 2 + arm + tail 11 — the arms are 0, 3 and 37 bits
+        Enum.map(
+          [
+            {"None", 18, %Example.Uneven{type: 0}},
+            {"N", 21, %Example.Uneven{type: 1, narrow: %Example.Narrow{n: 5}}},
+            {"W", 55, %Example.Uneven{type: 2, wide: %Example.Wide{w: 123_456_789_012}}}
+          ],
+          fn {arm, bits, u} ->
+            v = %Example.HoldsUneven{lead: 21, u: u, tail: 1500}
+
+            {"HoldsUneven/#{arm}", bits, v, &jn.write_holds_uneven/1, &jn.read_holds_uneven/2,
+             &jn.measure_holds_uneven/1, v}
+          end
+        ) ++
+        # alternating arms: item i is Narrow (2 + 3) when even, Wide (2 + 37)
+        Enum.map(0..3, fn c ->
+          items =
+            Enum.map(seq.(c), fn i ->
+              if rem(i, 2) == 0,
+                do: %Example.Uneven{type: 1, narrow: %Example.Narrow{n: rem(i, 8)}},
+                else: %Example.Uneven{type: 2, wide: %Example.Wide{w: 99_887_766_554 + i}}
+            end)
+
+          v = %Example.ArrUneven{lead: 21, items: items, tail: 5}
+          bits = 10 + Enum.at([0, 5, 44, 49], c)
+
+          {"ArrUneven/#{c}", bits, v, &jn.write_arr_uneven/1, &jn.read_arr_uneven/2,
+           &jn.measure_arr_uneven/1, v}
+        end) ++
+        # lead 5 + count 2 + 13*c + s_length 3, an align to the byte, 8*s,
+        # then a 32 + 29 + 19 + 4 static run after the align regains it
+        Enum.flat_map(0..3, fn c ->
+          Enum.map([0, 4], fn sl ->
+            items = Enum.map(seq.(c), &(8191 - &1 * 999))
+            s = if sl == 0, do: <<>>, else: "wxyz"
+
+            v = %Example.RegainAfterAlign{
+              lead: 21,
+              items: items,
+              s: s,
+              p: 0xDEADBEEF,
+              q: Bitwise.bsl(1, 29) - 7,
+              r: Bitwise.bsl(1, 19) - 3,
+              tail: 9
+            }
+
+            after_align = div(5 + 2 + 13 * c + 3 + 7, 8) * 8
+
+            {"Regain/#{c}/#{sl}", after_align + 8 * sl + 84, v, &jn.write_regain_after_align/1,
+             &jn.read_regain_after_align/2, &jn.measure_regain_after_align/1, v}
+          end)
+        end)
+
+    # write, hold measure to the width, concatenate, byte-compare, read each
+    # shape back out of its own slice
+    pin_arrangements = fn name, shapes ->
+      wire =
+        shapes
+        |> Enum.map(fn {shape, bits, value, write, _read, measure, _want} ->
+          part = write.(value)
+
+          check(
+            measure.(value) == bits,
+            "#{shape}: measure #{measure.(value)}, expected #{bits} bits"
+          )
+
+          check(
+            byte_size(part) == div(bits + 7, 8),
+            "#{shape}: wrote #{byte_size(part)} bytes, expected #{div(bits + 7, 8)}"
+          )
+
+          part
+        end)
+        |> IO.iodata_to_binary()
+
+      check(wire == golden(name), "#{name}: Elixir bytes == the C++-pinned bytes")
+
+      rest =
+        Enum.reduce(shapes, golden(name), fn {shape, bits, _value, _write, read, _measure, want},
+                                             acc ->
+          nbytes = div(bits + 7, 8)
+          <<slice::binary-size(^nbytes), tail::binary>> = acc
+
+          case read.(slice, bits) do
+            {:ok, out} ->
+              check(out == want, "#{shape} round-trips (untaken sides zeroed, SPEC §5)")
+
+            :error ->
+              check(false, "read #{shape}")
+          end
+
+          tail
+        end)
+
+      check(rest == <<>>, "the #{name} reads consume the whole golden")
+    end
+
+    pin_arrangements.("clauses", clause_shapes)
+    pin_arrangements.("joins", join_shapes)
+
     if Process.get(:schema_test_failed, false) do
       System.halt(1)
     end

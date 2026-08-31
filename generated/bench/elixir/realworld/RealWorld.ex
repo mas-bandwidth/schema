@@ -206,6 +206,8 @@ defmodule Realworld.RealWorld do
 
   @compile {:inline, rd: 3}
 
+  @compile {:inline, rdw: 3}
+
   # The unit's protocol id — the hash of its wire shape (SPEC §3.1). Two
   # sides at the same id speak identical bits; there is no other versioning.
   def protocol_id, do: 0x8F7228A19854FBB2
@@ -380,594 +382,475 @@ defmodule Realworld.RealWorld do
   # compile-out assert). Returns the wire bytes.
   def write_real_packet(value) do
     data = <<>>
-    scratch = 0
-    scratch_bits = 0
 
-    if value.f001_int < -805_495 do
+    %{
+      f001_int: value_f001_int,
+      f002f64: value_f002f64,
+      f003_int: value_f003_int,
+      f004_cf32: value_f004_cf32,
+      f005_uint: value_f005_uint,
+      f006_int: value_f006_int,
+      f007f32: value_f007f32,
+      f008u64: value_f008u64,
+      f009_int: value_f009_int,
+      f010f32: value_f010f32,
+      f011_bits: value_f011_bits,
+      f012_bool: value_f012_bool,
+      f018_int: value_f018_int,
+      f019f64: value_f019f64,
+      f020f32: value_f020f32,
+      f021_ufixed: value_f021_ufixed,
+      f022f32: value_f022f32,
+      f023_bits: value_f023_bits,
+      f024f32: value_f024f32,
+      f025_fixed: value_f025_fixed,
+      f026_bits: value_f026_bits,
+      f027_cf32: value_f027_cf32,
+      f028_bits: value_f028_bits,
+      f029i64: value_f029i64,
+      f030f32: value_f030f32,
+      f031_bits: value_f031_bits,
+      f032_int: value_f032_int,
+      f033_uint: value_f033_uint,
+      f034_uint: value_f034_uint,
+      f035_bits: value_f035_bits,
+      f036_enum: value_f036_enum,
+      f037_bool: value_f037_bool,
+      f038_bool: value_f038_bool,
+      f039_bits: value_f039_bits,
+      f040_fixed: value_f040_fixed,
+      f041_int: value_f041_int,
+      f042_bits: value_f042_bits,
+      f043_bool: value_f043_bool,
+      f048f64: value_f048f64,
+      f049_ufixed: value_f049_ufixed,
+      f050_bool: value_f050_bool,
+      f055_bool: value_f055_bool,
+      f056_int: value_f056_int,
+      f057_int: value_f057_int,
+      f058f32: value_f058f32,
+      f059f64: value_f059f64,
+      f060_bits: value_f060_bits,
+      f061_cf32: value_f061_cf32,
+      f062_uint: value_f062_uint,
+      f063i64: value_f063i64,
+      f064_uint: value_f064_uint,
+      f065_cf32: value_f065_cf32,
+      f066_ufixed: value_f066_ufixed,
+      f067_cf32: value_f067_cf32,
+      f068_cf32: value_f068_cf32,
+      f069_bits: value_f069_bits,
+      f070_uint: value_f070_uint,
+      f071_cf32: value_f071_cf32,
+      f072_cf32: value_f072_cf32,
+      f073_int: value_f073_int,
+      f074_bool: value_f074_bool,
+      f080_bool: value_f080_bool,
+      f081_bits: value_f081_bits,
+      f082_bits: value_f082_bits,
+      f083_enum: value_f083_enum,
+      f084_ufixed: value_f084_ufixed,
+      f085_bits: value_f085_bits,
+      f086_uint: value_f086_uint,
+      f087f64: value_f087f64,
+      f088_int: value_f088_int,
+      f089_bits: value_f089_bits,
+      f090_uint: value_f090_uint,
+      f091_flags: value_f091_flags,
+      f092_bool: value_f092_bool,
+      f093_bits: value_f093_bits,
+      f094_bool: value_f094_bool,
+      f095_fixed: value_f095_fixed,
+      f096_bits: value_f096_bits,
+      f097_bits: value_f097_bits
+    } = value
+
+    if value_f001_int < -805_495 do
       raise ArgumentError, "value.f001_int is below the wire minimum"
     end
 
-    if value.f001_int > 805_495 do
+    if value_f001_int > 805_495 do
       raise ArgumentError, "value.f001_int is above the wire maximum"
     end
 
-    v = value.f001_int + 805_495
-    scratch = scratch ||| v <<< scratch_bits
-    scratch_bits = scratch_bits + 21
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
-    scratch_bits = scratch_bits &&& 7
-    w = f64_bits(value.f002f64)
+    v = value_f001_int + 805_495
+    scratch = v
+    w = f64_bits(value_f002f64)
     v = w &&& 0xFFFFFFFF
-    scratch = scratch ||| v <<< scratch_bits
-    scratch_bits = scratch_bits + 32
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
-    scratch_bits = scratch_bits &&& 7
+    data = <<data::binary, scratch::little-size(2)-unit(8)>>
+    scratch = scratch >>> 16
+    scratch = scratch ||| v <<< 5
     v = w >>> 32
-    scratch = scratch ||| v <<< scratch_bits
-    scratch_bits = scratch_bits + 32
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
-    scratch_bits = scratch_bits &&& 7
+    data = <<data::binary, scratch::little-size(4)-unit(8)>>
+    scratch = scratch >>> 32
+    scratch = scratch ||| v <<< 5
 
-    if value.f003_int < -835_897 do
+    if value_f003_int < -835_897 do
       raise ArgumentError, "value.f003_int is below the wire minimum"
     end
 
-    if value.f003_int > 835_897 do
+    if value_f003_int > 835_897 do
       raise ArgumentError, "value.f003_int is above the wire maximum"
     end
 
-    v = value.f003_int + 835_897
-    scratch = scratch ||| v <<< scratch_bits
-    scratch_bits = scratch_bits + 21
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
-    scratch_bits = scratch_bits &&& 7
-    v = cf_quantize(value.f004_cf32, 0.0, 2000.0, 20000)
-    scratch = scratch ||| v <<< scratch_bits
-    scratch_bits = scratch_bits + 15
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
-    scratch_bits = scratch_bits &&& 7
+    v = value_f003_int + 835_897
+    data = <<data::binary, scratch::little-size(4)-unit(8)>>
+    scratch = scratch >>> 32
+    scratch = scratch ||| v <<< 5
+    v = cf_quantize(value_f004_cf32, 0.0, 2000.0, 20000, 20000.0)
+    scratch = scratch ||| v <<< 26
 
-    if value.f005_uint < 0 do
+    if value_f005_uint < 0 do
       raise ArgumentError, "value.f005_uint is below the wire minimum"
     end
 
-    if value.f005_uint > 7316 do
+    if value_f005_uint > 7316 do
       raise ArgumentError, "value.f005_uint is above the wire maximum"
     end
 
-    v = value.f005_uint
-    scratch = scratch ||| v <<< scratch_bits
-    scratch_bits = scratch_bits + 13
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
-    scratch_bits = scratch_bits &&& 7
+    v = value_f005_uint
+    scratch = scratch ||| v <<< 41
 
-    if value.f006_int < -1513 do
+    if value_f006_int < -1513 do
       raise ArgumentError, "value.f006_int is below the wire minimum"
     end
 
-    if value.f006_int > 1513 do
+    if value_f006_int > 1513 do
       raise ArgumentError, "value.f006_int is above the wire maximum"
     end
 
-    v = value.f006_int + 1513
-    scratch = scratch ||| v <<< scratch_bits
-    scratch_bits = scratch_bits + 12
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
-    scratch_bits = scratch_bits &&& 7
-    v = f32_bits(value.f007f32)
-    scratch = scratch ||| v <<< scratch_bits
-    scratch_bits = scratch_bits + 32
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
-    scratch_bits = scratch_bits &&& 7
-    v = value.f008u64 &&& 0xFFFFFFFF
-    scratch = scratch ||| v <<< scratch_bits
-    scratch_bits = scratch_bits + 32
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
-    scratch_bits = scratch_bits &&& 7
-    v = value.f008u64 >>> 32 &&& 0xFFFFFFFF
-    scratch = scratch ||| v <<< scratch_bits
-    scratch_bits = scratch_bits + 32
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
-    scratch_bits = scratch_bits &&& 7
+    v = value_f006_int + 1513
+    data = <<data::binary, scratch::little-size(6)-unit(8)>>
+    scratch = scratch >>> 48
+    scratch = scratch ||| v <<< 6
+    v = f32_bits(value_f007f32)
+    scratch = scratch ||| v <<< 18
+    v = value_f008u64 &&& 0xFFFFFFFF
+    data = <<data::binary, scratch::little-size(6)-unit(8)>>
+    scratch = scratch >>> 48
+    scratch = scratch ||| v <<< 2
+    v = value_f008u64 >>> 32 &&& 0xFFFFFFFF
+    data = <<data::binary, scratch::little-size(4)-unit(8)>>
+    scratch = scratch >>> 32
+    scratch = scratch ||| v <<< 2
 
-    if value.f009_int < -22 do
+    if value_f009_int < -22 do
       raise ArgumentError, "value.f009_int is below the wire minimum"
     end
 
-    if value.f009_int > 22 do
+    if value_f009_int > 22 do
       raise ArgumentError, "value.f009_int is above the wire maximum"
     end
 
-    v = value.f009_int + 22
-    scratch = scratch ||| v <<< scratch_bits
-    scratch_bits = scratch_bits + 6
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
-    scratch_bits = scratch_bits &&& 7
-    v = f32_bits(value.f010f32)
-    scratch = scratch ||| v <<< scratch_bits
-    scratch_bits = scratch_bits + 32
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
-    scratch_bits = scratch_bits &&& 7
-    v = value.f011_bits &&& 0x3FF
-    scratch = scratch ||| v <<< scratch_bits
-    scratch_bits = scratch_bits + 10
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
-    scratch_bits = scratch_bits &&& 7
-    v = if value.f012_bool, do: 1, else: 0
-    scratch = scratch ||| v <<< scratch_bits
-    scratch_bits = scratch_bits + 1
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
-    scratch_bits = scratch_bits &&& 7
+    v = value_f009_int + 22
+    scratch = scratch ||| v <<< 34
+    v = f32_bits(value_f010f32)
+    data = <<data::binary, scratch::little-size(5)-unit(8)>>
+    scratch = v
+    v = value_f011_bits &&& 0x3FF
+    scratch = scratch ||| v <<< 32
+    v = if value_f012_bool, do: 1, else: 0
+    scratch = scratch ||| v <<< 42
+    data = <<data::binary, scratch::little-size(5)-unit(8)>>
+    scratch = scratch >>> 40
 
-    {data, scratch, scratch_bits} =
-      if value.f012_bool do
-        v = f32_bits(value.f013f32)
-        scratch = scratch ||| v <<< scratch_bits
-        scratch_bits = scratch_bits + 32
-        flush = scratch_bits >>> 3
-        data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-        scratch = scratch >>> (flush <<< 3)
-        scratch_bits = scratch_bits &&& 7
+    {data, scratch} =
+      if value_f012_bool do
+        %{
+          f013f32: value_f013f32,
+          f014_uint: value_f014_uint,
+          f015_int: value_f015_int,
+          f016_fixed: value_f016_fixed,
+          f017_uint: value_f017_uint
+        } = value
 
-        if value.f014_uint < 0 do
+        v = f32_bits(value_f013f32)
+        scratch = scratch ||| v <<< 3
+
+        if value_f014_uint < 0 do
           raise ArgumentError, "value.f014_uint is below the wire minimum"
         end
 
-        if value.f014_uint > 775 do
+        if value_f014_uint > 775 do
           raise ArgumentError, "value.f014_uint is above the wire maximum"
         end
 
-        v = value.f014_uint
-        scratch = scratch ||| v <<< scratch_bits
-        scratch_bits = scratch_bits + 10
-        flush = scratch_bits >>> 3
-        data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-        scratch = scratch >>> (flush <<< 3)
-        scratch_bits = scratch_bits &&& 7
+        v = value_f014_uint
+        scratch = scratch ||| v <<< 35
 
-        if value.f015_int < -21 do
+        if value_f015_int < -21 do
           raise ArgumentError, "value.f015_int is below the wire minimum"
         end
 
-        if value.f015_int > 21 do
+        if value_f015_int > 21 do
           raise ArgumentError, "value.f015_int is above the wire maximum"
         end
 
-        v = value.f015_int + 21
-        scratch = scratch ||| v <<< scratch_bits
-        scratch_bits = scratch_bits + 6
-        flush = scratch_bits >>> 3
-        data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-        scratch = scratch >>> (flush <<< 3)
-        scratch_bits = scratch_bits &&& 7
+        v = value_f015_int + 21
+        scratch = scratch ||| v <<< 45
 
-        if value.f016_fixed < -37_748_736 do
+        if value_f016_fixed < -37_748_736 do
           raise ArgumentError, "value.f016_fixed is below the wire minimum"
         end
 
-        if value.f016_fixed > 37_748_736 do
+        if value_f016_fixed > 37_748_736 do
           raise ArgumentError, "value.f016_fixed is above the wire maximum"
         end
 
-        v = value.f016_fixed + 37_748_736
-        scratch = scratch ||| v <<< scratch_bits
-        scratch_bits = scratch_bits + 27
-        flush = scratch_bits >>> 3
-        data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-        scratch = scratch >>> (flush <<< 3)
-        scratch_bits = scratch_bits &&& 7
+        v = value_f016_fixed + 37_748_736
+        data = <<data::binary, scratch::little-size(6)-unit(8)>>
+        scratch = scratch >>> 48
+        scratch = scratch ||| v <<< 3
 
-        if value.f017_uint < 0 do
+        if value_f017_uint < 0 do
           raise ArgumentError, "value.f017_uint is below the wire minimum"
         end
 
-        if value.f017_uint > 4606 do
+        if value_f017_uint > 4606 do
           raise ArgumentError, "value.f017_uint is above the wire maximum"
         end
 
-        v = value.f017_uint
-        scratch = scratch ||| v <<< scratch_bits
-        scratch_bits = scratch_bits + 13
-        flush = scratch_bits >>> 3
-        data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-        scratch = scratch >>> (flush <<< 3)
-        scratch_bits = scratch_bits &&& 7
-        {data, scratch, scratch_bits}
+        v = value_f017_uint
+        scratch = scratch ||| v <<< 30
+        data = <<data::binary, scratch::little-size(5)-unit(8)>>
+        scratch = scratch >>> 40
+        {data, scratch}
       else
-        {data, scratch, scratch_bits}
+        {data, scratch}
       end
 
-    if value.f018_int < -834 do
+    if value_f018_int < -834 do
       raise ArgumentError, "value.f018_int is below the wire minimum"
     end
 
-    if value.f018_int > 834 do
+    if value_f018_int > 834 do
       raise ArgumentError, "value.f018_int is above the wire maximum"
     end
 
-    v = value.f018_int + 834
-    scratch = scratch ||| v <<< scratch_bits
-    scratch_bits = scratch_bits + 11
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
-    scratch_bits = scratch_bits &&& 7
-    w = f64_bits(value.f019f64)
+    v = value_f018_int + 834
+    scratch = scratch ||| v <<< 3
+    w = f64_bits(value_f019f64)
     v = w &&& 0xFFFFFFFF
-    scratch = scratch ||| v <<< scratch_bits
-    scratch_bits = scratch_bits + 32
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
-    scratch_bits = scratch_bits &&& 7
+    scratch = scratch ||| v <<< 14
     v = w >>> 32
-    scratch = scratch ||| v <<< scratch_bits
-    scratch_bits = scratch_bits + 32
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
-    scratch_bits = scratch_bits &&& 7
-    v = f32_bits(value.f020f32)
-    scratch = scratch ||| v <<< scratch_bits
-    scratch_bits = scratch_bits + 32
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
-    scratch_bits = scratch_bits &&& 7
+    data = <<data::binary, scratch::little-size(5)-unit(8)>>
+    scratch = scratch >>> 40
+    scratch = scratch ||| v <<< 6
+    v = f32_bits(value_f020f32)
+    data = <<data::binary, scratch::little-size(4)-unit(8)>>
+    scratch = scratch >>> 32
+    scratch = scratch ||| v <<< 6
 
-    if value.f021_ufixed < 0 do
+    if value_f021_ufixed < 0 do
       raise ArgumentError, "value.f021_ufixed is below the wire minimum"
     end
 
-    if value.f021_ufixed > 102_977_536 do
+    if value_f021_ufixed > 102_977_536 do
       raise ArgumentError, "value.f021_ufixed is above the wire maximum"
     end
 
-    v = value.f021_ufixed
-    scratch = scratch ||| v <<< scratch_bits
-    scratch_bits = scratch_bits + 27
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
-    scratch_bits = scratch_bits &&& 7
-    v = f32_bits(value.f022f32)
-    scratch = scratch ||| v <<< scratch_bits
-    scratch_bits = scratch_bits + 32
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
-    scratch_bits = scratch_bits &&& 7
-    v = value.f023_bits &&& 0x1FFFFFF
-    scratch = scratch ||| v <<< scratch_bits
-    scratch_bits = scratch_bits + 25
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
-    scratch_bits = scratch_bits &&& 7
-    v = f32_bits(value.f024f32)
-    scratch = scratch ||| v <<< scratch_bits
-    scratch_bits = scratch_bits + 32
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
-    scratch_bits = scratch_bits &&& 7
+    v = value_f021_ufixed
+    data = <<data::binary, scratch::little-size(4)-unit(8)>>
+    scratch = scratch >>> 32
+    scratch = scratch ||| v <<< 6
+    v = f32_bits(value_f022f32)
+    data = <<data::binary, scratch::little-size(4)-unit(8)>>
+    scratch = scratch >>> 32
+    scratch = scratch ||| v <<< 1
+    v = value_f023_bits &&& 0x1FFFFFF
+    data = <<data::binary, scratch::little-size(4)-unit(8)>>
+    scratch = scratch >>> 32
+    scratch = scratch ||| v <<< 1
+    v = f32_bits(value_f024f32)
+    data = <<data::binary, scratch::little-size(3)-unit(8)>>
+    scratch = scratch >>> 24
+    scratch = scratch ||| v <<< 2
 
-    if value.f025_fixed < -30464 do
+    if value_f025_fixed < -30464 do
       raise ArgumentError, "value.f025_fixed is below the wire minimum"
     end
 
-    if value.f025_fixed > 30464 do
+    if value_f025_fixed > 30464 do
       raise ArgumentError, "value.f025_fixed is above the wire maximum"
     end
 
-    v = value.f025_fixed + 30464
-    scratch = scratch ||| v <<< scratch_bits
-    scratch_bits = scratch_bits + 16
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
-    scratch_bits = scratch_bits &&& 7
-    v = value.f026_bits &&& 0x1FF
-    scratch = scratch ||| v <<< scratch_bits
-    scratch_bits = scratch_bits + 9
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
-    scratch_bits = scratch_bits &&& 7
-    v = cf_quantize(value.f027_cf32, -2.0, 4.0, 16)
-    scratch = scratch ||| v <<< scratch_bits
-    scratch_bits = scratch_bits + 5
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
-    scratch_bits = scratch_bits &&& 7
-    v = value.f028_bits &&& 0xF
-    scratch = scratch ||| v <<< scratch_bits
-    scratch_bits = scratch_bits + 4
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
-    scratch_bits = scratch_bits &&& 7
-    v = value.f029i64 &&& 0xFFFFFFFF
-    scratch = scratch ||| v <<< scratch_bits
-    scratch_bits = scratch_bits + 32
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
-    scratch_bits = scratch_bits &&& 7
-    v = value.f029i64 >>> 32 &&& 0xFFFFFFFF
-    scratch = scratch ||| v <<< scratch_bits
-    scratch_bits = scratch_bits + 32
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
-    scratch_bits = scratch_bits &&& 7
-    v = f32_bits(value.f030f32)
-    scratch = scratch ||| v <<< scratch_bits
-    scratch_bits = scratch_bits + 32
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
-    scratch_bits = scratch_bits &&& 7
-    v = value.f031_bits &&& 0x1
-    scratch = scratch ||| v <<< scratch_bits
-    scratch_bits = scratch_bits + 1
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
-    scratch_bits = scratch_bits &&& 7
+    v = value_f025_fixed + 30464
+    scratch = scratch ||| v <<< 34
+    v = value_f026_bits &&& 0x1FF
+    data = <<data::binary, scratch::little-size(6)-unit(8)>>
+    scratch = scratch >>> 48
+    scratch = scratch ||| v <<< 2
+    v = cf_quantize(value_f027_cf32, -2.0, 4.0, 16, 16.0)
+    scratch = scratch ||| v <<< 11
+    v = value_f028_bits &&& 0xF
+    scratch = scratch ||| v <<< 16
+    v = value_f029i64 &&& 0xFFFFFFFF
+    scratch = scratch ||| v <<< 20
+    v = value_f029i64 >>> 32 &&& 0xFFFFFFFF
+    data = <<data::binary, scratch::little-size(6)-unit(8)>>
+    scratch = scratch >>> 48
+    scratch = scratch ||| v <<< 4
+    v = f32_bits(value_f030f32)
+    data = <<data::binary, scratch::little-size(4)-unit(8)>>
+    scratch = scratch >>> 32
+    scratch = scratch ||| v <<< 4
+    v = value_f031_bits &&& 0x1
+    scratch = scratch ||| v <<< 36
 
-    if value.f032_int < -3 do
+    if value_f032_int < -3 do
       raise ArgumentError, "value.f032_int is below the wire minimum"
     end
 
-    if value.f032_int > 3 do
+    if value_f032_int > 3 do
       raise ArgumentError, "value.f032_int is above the wire maximum"
     end
 
-    v = value.f032_int + 3
-    scratch = scratch ||| v <<< scratch_bits
-    scratch_bits = scratch_bits + 3
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
-    scratch_bits = scratch_bits &&& 7
+    v = value_f032_int + 3
+    scratch = scratch ||| v <<< 37
 
-    if value.f033_uint < 0 do
+    if value_f033_uint < 0 do
       raise ArgumentError, "value.f033_uint is below the wire minimum"
     end
 
-    if value.f033_uint > 142_780 do
+    if value_f033_uint > 142_780 do
       raise ArgumentError, "value.f033_uint is above the wire maximum"
     end
 
-    v = value.f033_uint
-    scratch = scratch ||| v <<< scratch_bits
-    scratch_bits = scratch_bits + 18
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
-    scratch_bits = scratch_bits &&& 7
+    v = value_f033_uint
+    data = <<data::binary, scratch::little-size(5)-unit(8)>>
+    scratch = v
 
-    if value.f034_uint < 0 do
+    if value_f034_uint < 0 do
       raise ArgumentError, "value.f034_uint is below the wire minimum"
     end
 
-    if value.f034_uint > 14149 do
+    if value_f034_uint > 14149 do
       raise ArgumentError, "value.f034_uint is above the wire maximum"
     end
 
-    v = value.f034_uint
-    scratch = scratch ||| v <<< scratch_bits
-    scratch_bits = scratch_bits + 14
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
-    scratch_bits = scratch_bits &&& 7
-    v = value.f035_bits &&& 0x1FF
-    scratch = scratch ||| v <<< scratch_bits
-    scratch_bits = scratch_bits + 9
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
-    scratch_bits = scratch_bits &&& 7
+    v = value_f034_uint
+    scratch = scratch ||| v <<< 18
+    v = value_f035_bits &&& 0x1FF
+    scratch = scratch ||| v <<< 32
 
-    if value.f036_enum < 0 do
+    if value_f036_enum < 0 do
       raise ArgumentError, "value.f036_enum is below the wire minimum"
     end
 
-    if value.f036_enum > 5 do
+    if value_f036_enum > 5 do
       raise ArgumentError, "value.f036_enum is above the wire maximum"
     end
 
-    v = value.f036_enum
-    scratch = scratch ||| v <<< scratch_bits
-    scratch_bits = scratch_bits + 3
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
-    scratch_bits = scratch_bits &&& 7
-    v = if value.f037_bool, do: 1, else: 0
-    scratch = scratch ||| v <<< scratch_bits
-    scratch_bits = scratch_bits + 1
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
-    scratch_bits = scratch_bits &&& 7
-    v = if value.f038_bool, do: 1, else: 0
-    scratch = scratch ||| v <<< scratch_bits
-    scratch_bits = scratch_bits + 1
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
-    scratch_bits = scratch_bits &&& 7
-    v = value.f039_bits &&& 0x7FFFF
-    scratch = scratch ||| v <<< scratch_bits
-    scratch_bits = scratch_bits + 19
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
-    scratch_bits = scratch_bits &&& 7
+    v = value_f036_enum
+    scratch = scratch ||| v <<< 41
+    v = if value_f037_bool, do: 1, else: 0
+    scratch = scratch ||| v <<< 44
+    v = if value_f038_bool, do: 1, else: 0
+    scratch = scratch ||| v <<< 45
+    v = value_f039_bits &&& 0x7FFFF
+    data = <<data::binary, scratch::little-size(5)-unit(8)>>
+    scratch = scratch >>> 40
+    scratch = scratch ||| v <<< 6
 
-    if value.f040_fixed < -20480 do
+    if value_f040_fixed < -20480 do
       raise ArgumentError, "value.f040_fixed is below the wire minimum"
     end
 
-    if value.f040_fixed > 20480 do
+    if value_f040_fixed > 20480 do
       raise ArgumentError, "value.f040_fixed is above the wire maximum"
     end
 
-    v = value.f040_fixed + 20480
-    scratch = scratch ||| v <<< scratch_bits
-    scratch_bits = scratch_bits + 16
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
-    scratch_bits = scratch_bits &&& 7
+    v = value_f040_fixed + 20480
+    scratch = scratch ||| v <<< 25
 
-    if value.f041_int < -55 do
+    if value_f041_int < -55 do
       raise ArgumentError, "value.f041_int is below the wire minimum"
     end
 
-    if value.f041_int > 55 do
+    if value_f041_int > 55 do
       raise ArgumentError, "value.f041_int is above the wire maximum"
     end
 
-    v = value.f041_int + 55
-    scratch = scratch ||| v <<< scratch_bits
-    scratch_bits = scratch_bits + 7
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
-    scratch_bits = scratch_bits &&& 7
-    v = value.f042_bits &&& 0x3FFFFFFF
-    scratch = scratch ||| v <<< scratch_bits
-    scratch_bits = scratch_bits + 30
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
-    scratch_bits = scratch_bits &&& 7
-    v = if value.f043_bool, do: 1, else: 0
-    scratch = scratch ||| v <<< scratch_bits
-    scratch_bits = scratch_bits + 1
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
-    scratch_bits = scratch_bits &&& 7
+    v = value_f041_int + 55
+    scratch = scratch ||| v <<< 41
+    v = value_f042_bits &&& 0x3FFFFFFF
+    data = <<data::binary, scratch::little-size(6)-unit(8)>>
+    scratch = v
+    v = if value_f043_bool, do: 1, else: 0
+    scratch = scratch ||| v <<< 30
+    data = <<data::binary, scratch::little-size(3)-unit(8)>>
+    scratch = scratch >>> 24
 
     {data, scratch, scratch_bits} =
-      if value.f043_bool do
-        v = f32_bits(value.f044f32)
-        scratch = scratch ||| v <<< scratch_bits
-        scratch_bits = scratch_bits + 32
-        flush = scratch_bits >>> 3
-        data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-        scratch = scratch >>> (flush <<< 3)
-        scratch_bits = scratch_bits &&& 7
-        v = value.f045_bits &&& 0xFFF
-        scratch = scratch ||| v <<< scratch_bits
-        scratch_bits = scratch_bits + 12
-        flush = scratch_bits >>> 3
-        data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-        scratch = scratch >>> (flush <<< 3)
-        scratch_bits = scratch_bits &&& 7
+      if value_f043_bool do
+        %{
+          f044f32: value_f044f32,
+          f045_bits: value_f045_bits,
+          f046_uint: value_f046_uint,
+          f047_int: value_f047_int
+        } = value
 
-        if value.f046_uint < 0 do
+        v = f32_bits(value_f044f32)
+        scratch = scratch ||| v <<< 7
+        v = value_f045_bits &&& 0xFFF
+        scratch = scratch ||| v <<< 39
+
+        if value_f046_uint < 0 do
           raise ArgumentError, "value.f046_uint is below the wire minimum"
         end
 
-        if value.f046_uint > 76063 do
+        if value_f046_uint > 76063 do
           raise ArgumentError, "value.f046_uint is above the wire maximum"
         end
 
-        v = value.f046_uint
-        scratch = scratch ||| v <<< scratch_bits
-        scratch_bits = scratch_bits + 17
-        flush = scratch_bits >>> 3
-        data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-        scratch = scratch >>> (flush <<< 3)
-        scratch_bits = scratch_bits &&& 7
+        v = value_f046_uint
+        data = <<data::binary, scratch::little-size(6)-unit(8)>>
+        scratch = scratch >>> 48
+        scratch = scratch ||| v <<< 3
 
-        if value.f047_int < -430_976 do
+        if value_f047_int < -430_976 do
           raise ArgumentError, "value.f047_int is below the wire minimum"
         end
 
-        if value.f047_int > 430_976 do
+        if value_f047_int > 430_976 do
           raise ArgumentError, "value.f047_int is above the wire maximum"
         end
 
-        v = value.f047_int + 430_976
-        scratch = scratch ||| v <<< scratch_bits
-        scratch_bits = scratch_bits + 20
-        flush = scratch_bits >>> 3
-        data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-        scratch = scratch >>> (flush <<< 3)
-        scratch_bits = scratch_bits &&& 7
+        v = value_f047_int + 430_976
+        scratch = scratch ||| v <<< 20
+        data = <<data::binary, scratch::little-size(5)-unit(8)>>
+        scratch_bits = 0
+        scratch = 0
         {data, scratch, scratch_bits}
       else
+        scratch_bits = 7
         {data, scratch, scratch_bits}
       end
 
-    w = f64_bits(value.f048f64)
+    w = f64_bits(value_f048f64)
     v = w &&& 0xFFFFFFFF
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 32
+    v = w >>> 32
     flush = scratch_bits >>> 3
     data = <<data::binary, scratch::little-size(flush)-unit(8)>>
     scratch = scratch >>> (flush <<< 3)
     scratch_bits = scratch_bits &&& 7
-    v = w >>> 32
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 32
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
-    scratch_bits = scratch_bits &&& 7
 
-    if value.f049_ufixed < 0 do
+    if value_f049_ufixed < 0 do
       raise ArgumentError, "value.f049_ufixed is below the wire minimum"
     end
 
-    if value.f049_ufixed > 49152 do
+    if value_f049_ufixed > 49152 do
       raise ArgumentError, "value.f049_ufixed is above the wire maximum"
     end
 
-    v = value.f049_ufixed
+    v = value_f049_ufixed
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 16
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
-    scratch_bits = scratch_bits &&& 7
-    v = if value.f050_bool, do: 1, else: 0
+    v = if value_f050_bool, do: 1, else: 0
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 1
     flush = scratch_bits >>> 3
@@ -976,47 +859,42 @@ defmodule Realworld.RealWorld do
     scratch_bits = scratch_bits &&& 7
 
     {data, scratch, scratch_bits} =
-      if value.f050_bool do
-        v = if value.f051_bool, do: 1, else: 0
+      if value_f050_bool do
+        %{
+          f051_bool: value_f051_bool,
+          f052_int: value_f052_int,
+          f053f32: value_f053f32,
+          f054_int: value_f054_int
+        } = value
+
+        v = if value_f051_bool, do: 1, else: 0
         scratch = scratch ||| v <<< scratch_bits
         scratch_bits = scratch_bits + 1
-        flush = scratch_bits >>> 3
-        data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-        scratch = scratch >>> (flush <<< 3)
-        scratch_bits = scratch_bits &&& 7
 
-        if value.f052_int < -57 do
+        if value_f052_int < -57 do
           raise ArgumentError, "value.f052_int is below the wire minimum"
         end
 
-        if value.f052_int > 57 do
+        if value_f052_int > 57 do
           raise ArgumentError, "value.f052_int is above the wire maximum"
         end
 
-        v = value.f052_int + 57
+        v = value_f052_int + 57
         scratch = scratch ||| v <<< scratch_bits
         scratch_bits = scratch_bits + 7
-        flush = scratch_bits >>> 3
-        data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-        scratch = scratch >>> (flush <<< 3)
-        scratch_bits = scratch_bits &&& 7
-        v = f32_bits(value.f053f32)
+        v = f32_bits(value_f053f32)
         scratch = scratch ||| v <<< scratch_bits
         scratch_bits = scratch_bits + 32
-        flush = scratch_bits >>> 3
-        data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-        scratch = scratch >>> (flush <<< 3)
-        scratch_bits = scratch_bits &&& 7
 
-        if value.f054_int < -35 do
+        if value_f054_int < -35 do
           raise ArgumentError, "value.f054_int is below the wire minimum"
         end
 
-        if value.f054_int > 35 do
+        if value_f054_int > 35 do
           raise ArgumentError, "value.f054_int is above the wire maximum"
         end
 
-        v = value.f054_int + 35
+        v = value_f054_int + 35
         scratch = scratch ||| v <<< scratch_bits
         scratch_bits = scratch_bits + 7
         flush = scratch_bits >>> 3
@@ -1028,218 +906,158 @@ defmodule Realworld.RealWorld do
         {data, scratch, scratch_bits}
       end
 
-    v = if value.f055_bool, do: 1, else: 0
+    v = if value_f055_bool, do: 1, else: 0
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 1
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
-    scratch_bits = scratch_bits &&& 7
 
-    if value.f056_int < -13 do
+    if value_f056_int < -13 do
       raise ArgumentError, "value.f056_int is below the wire minimum"
     end
 
-    if value.f056_int > 13 do
+    if value_f056_int > 13 do
       raise ArgumentError, "value.f056_int is above the wire maximum"
     end
 
-    v = value.f056_int + 13
+    v = value_f056_int + 13
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 5
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
-    scratch_bits = scratch_bits &&& 7
 
-    if value.f057_int < -15 do
+    if value_f057_int < -15 do
       raise ArgumentError, "value.f057_int is below the wire minimum"
     end
 
-    if value.f057_int > 15 do
+    if value_f057_int > 15 do
       raise ArgumentError, "value.f057_int is above the wire maximum"
     end
 
-    v = value.f057_int + 15
+    v = value_f057_int + 15
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 5
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
-    scratch_bits = scratch_bits &&& 7
-    v = f32_bits(value.f058f32)
+    v = f32_bits(value_f058f32)
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 32
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
-    scratch_bits = scratch_bits &&& 7
-    w = f64_bits(value.f059f64)
+    w = f64_bits(value_f059f64)
     v = w &&& 0xFFFFFFFF
-    scratch = scratch ||| v <<< scratch_bits
-    scratch_bits = scratch_bits + 32
     flush = scratch_bits >>> 3
     data = <<data::binary, scratch::little-size(flush)-unit(8)>>
     scratch = scratch >>> (flush <<< 3)
     scratch_bits = scratch_bits &&& 7
+    scratch = scratch ||| v <<< scratch_bits
+    scratch_bits = scratch_bits + 32
     v = w >>> 32
-    scratch = scratch ||| v <<< scratch_bits
-    scratch_bits = scratch_bits + 32
     flush = scratch_bits >>> 3
     data = <<data::binary, scratch::little-size(flush)-unit(8)>>
     scratch = scratch >>> (flush <<< 3)
     scratch_bits = scratch_bits &&& 7
-    v = value.f060_bits &&& 0xFF
+    scratch = scratch ||| v <<< scratch_bits
+    scratch_bits = scratch_bits + 32
+    v = value_f060_bits &&& 0xFF
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 8
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
-    scratch_bits = scratch_bits &&& 7
-    v = cf_quantize(value.f061_cf32, -90.0, 180.0, 360)
+    v = cf_quantize(value_f061_cf32, -90.0, 180.0, 360, 360.0)
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 9
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
-    scratch_bits = scratch_bits &&& 7
 
-    if value.f062_uint < 0 do
+    if value_f062_uint < 0 do
       raise ArgumentError, "value.f062_uint is below the wire minimum"
     end
 
-    if value.f062_uint > 503 do
+    if value_f062_uint > 503 do
       raise ArgumentError, "value.f062_uint is above the wire maximum"
     end
 
-    v = value.f062_uint
+    v = value_f062_uint
+    flush = scratch_bits >>> 3
+    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
+    scratch = scratch >>> (flush <<< 3)
+    scratch_bits = scratch_bits &&& 7
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 9
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
-    scratch_bits = scratch_bits &&& 7
-    v = value.f063i64 &&& 0xFFFFFFFF
+    v = value_f063i64 &&& 0xFFFFFFFF
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 32
+    v = value_f063i64 >>> 32 &&& 0xFFFFFFFF
     flush = scratch_bits >>> 3
     data = <<data::binary, scratch::little-size(flush)-unit(8)>>
     scratch = scratch >>> (flush <<< 3)
     scratch_bits = scratch_bits &&& 7
-    v = value.f063i64 >>> 32 &&& 0xFFFFFFFF
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 32
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
-    scratch_bits = scratch_bits &&& 7
 
-    if value.f064_uint < 0 do
+    if value_f064_uint < 0 do
       raise ArgumentError, "value.f064_uint is below the wire minimum"
     end
 
-    if value.f064_uint > 299 do
+    if value_f064_uint > 299 do
       raise ArgumentError, "value.f064_uint is above the wire maximum"
     end
 
-    v = value.f064_uint
+    v = value_f064_uint
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 9
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
-    scratch_bits = scratch_bits &&& 7
-    v = cf_quantize(value.f065_cf32, 0.0, 30.0, 60)
+    v = cf_quantize(value_f065_cf32, 0.0, 30.0, 60, 60.0)
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 6
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
-    scratch_bits = scratch_bits &&& 7
 
-    if value.f066_ufixed < 0 do
+    if value_f066_ufixed < 0 do
       raise ArgumentError, "value.f066_ufixed is below the wire minimum"
     end
 
-    if value.f066_ufixed > 32768 do
+    if value_f066_ufixed > 32768 do
       raise ArgumentError, "value.f066_ufixed is above the wire maximum"
     end
 
-    v = value.f066_ufixed
+    v = value_f066_ufixed
+    flush = scratch_bits >>> 3
+    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
+    scratch = scratch >>> (flush <<< 3)
+    scratch_bits = scratch_bits &&& 7
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 16
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
-    scratch_bits = scratch_bits &&& 7
-    v = cf_quantize(value.f067_cf32, -100.0, 200.0, 800)
+    v = cf_quantize(value_f067_cf32, -100.0, 200.0, 800, 800.0)
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 10
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
-    scratch_bits = scratch_bits &&& 7
-    v = cf_quantize(value.f068_cf32, 0.0, 2000.0, 2000)
+    v = cf_quantize(value_f068_cf32, 0.0, 2000.0, 2000, 2000.0)
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 11
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
-    scratch_bits = scratch_bits &&& 7
-    v = value.f069_bits &&& 0x7FF
+    v = value_f069_bits &&& 0x7FF
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 11
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
-    scratch_bits = scratch_bits &&& 7
 
-    if value.f070_uint < 0 do
+    if value_f070_uint < 0 do
       raise ArgumentError, "value.f070_uint is below the wire minimum"
     end
 
-    if value.f070_uint > 2 do
+    if value_f070_uint > 2 do
       raise ArgumentError, "value.f070_uint is above the wire maximum"
     end
 
-    v = value.f070_uint
+    v = value_f070_uint
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 2
+    v = cf_quantize(value_f071_cf32, 0.0, 10.0, 500, 500.0)
     flush = scratch_bits >>> 3
     data = <<data::binary, scratch::little-size(flush)-unit(8)>>
     scratch = scratch >>> (flush <<< 3)
     scratch_bits = scratch_bits &&& 7
-    v = cf_quantize(value.f071_cf32, 0.0, 10.0, 500)
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 9
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
-    scratch_bits = scratch_bits &&& 7
-    v = cf_quantize(value.f072_cf32, 0.0, 100.0, 10000)
+    v = cf_quantize(value_f072_cf32, 0.0, 100.0, 10000, 10000.0)
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 14
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
-    scratch_bits = scratch_bits &&& 7
 
-    if value.f073_int < -4 do
+    if value_f073_int < -4 do
       raise ArgumentError, "value.f073_int is below the wire minimum"
     end
 
-    if value.f073_int > 4 do
+    if value_f073_int > 4 do
       raise ArgumentError, "value.f073_int is above the wire maximum"
     end
 
-    v = value.f073_int + 4
+    v = value_f073_int + 4
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 4
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
-    scratch_bits = scratch_bits &&& 7
-    v = if value.f074_bool, do: 1, else: 0
+    v = if value_f074_bool, do: 1, else: 0
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 1
     flush = scratch_bits >>> 3
@@ -1248,70 +1066,66 @@ defmodule Realworld.RealWorld do
     scratch_bits = scratch_bits &&& 7
 
     {data, scratch, scratch_bits} =
-      if value.f074_bool do
-        v = value.f075u64 &&& 0xFFFFFFFF
-        scratch = scratch ||| v <<< scratch_bits
-        scratch_bits = scratch_bits + 32
-        flush = scratch_bits >>> 3
-        data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-        scratch = scratch >>> (flush <<< 3)
-        scratch_bits = scratch_bits &&& 7
-        v = value.f075u64 >>> 32 &&& 0xFFFFFFFF
-        scratch = scratch ||| v <<< scratch_bits
-        scratch_bits = scratch_bits + 32
-        flush = scratch_bits >>> 3
-        data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-        scratch = scratch >>> (flush <<< 3)
-        scratch_bits = scratch_bits &&& 7
+      if value_f074_bool do
+        %{
+          f075u64: value_f075u64,
+          f076_int: value_f076_int,
+          f077_int: value_f077_int,
+          f078_bits: value_f078_bits,
+          f079_uint: value_f079_uint
+        } = value
 
-        if value.f076_int < -26218 do
+        v = value_f075u64 &&& 0xFFFFFFFF
+        scratch = scratch ||| v <<< scratch_bits
+        scratch_bits = scratch_bits + 32
+        v = value_f075u64 >>> 32 &&& 0xFFFFFFFF
+        flush = scratch_bits >>> 3
+        data = <<data::binary, scratch::little-size(flush)-unit(8)>>
+        scratch = scratch >>> (flush <<< 3)
+        scratch_bits = scratch_bits &&& 7
+        scratch = scratch ||| v <<< scratch_bits
+        scratch_bits = scratch_bits + 32
+
+        if value_f076_int < -26218 do
           raise ArgumentError, "value.f076_int is below the wire minimum"
         end
 
-        if value.f076_int > 26218 do
+        if value_f076_int > 26218 do
           raise ArgumentError, "value.f076_int is above the wire maximum"
         end
 
-        v = value.f076_int + 26218
+        v = value_f076_int + 26218
         scratch = scratch ||| v <<< scratch_bits
         scratch_bits = scratch_bits + 16
-        flush = scratch_bits >>> 3
-        data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-        scratch = scratch >>> (flush <<< 3)
-        scratch_bits = scratch_bits &&& 7
 
-        if value.f077_int < -17 do
+        if value_f077_int < -17 do
           raise ArgumentError, "value.f077_int is below the wire minimum"
         end
 
-        if value.f077_int > 17 do
+        if value_f077_int > 17 do
           raise ArgumentError, "value.f077_int is above the wire maximum"
         end
 
-        v = value.f077_int + 17
+        v = value_f077_int + 17
+        flush = scratch_bits >>> 3
+        data = <<data::binary, scratch::little-size(flush)-unit(8)>>
+        scratch = scratch >>> (flush <<< 3)
+        scratch_bits = scratch_bits &&& 7
         scratch = scratch ||| v <<< scratch_bits
         scratch_bits = scratch_bits + 6
-        flush = scratch_bits >>> 3
-        data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-        scratch = scratch >>> (flush <<< 3)
-        scratch_bits = scratch_bits &&& 7
-        v = value.f078_bits &&& 0x1FF
+        v = value_f078_bits &&& 0x1FF
         scratch = scratch ||| v <<< scratch_bits
         scratch_bits = scratch_bits + 9
-        flush = scratch_bits >>> 3
-        data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-        scratch = scratch >>> (flush <<< 3)
-        scratch_bits = scratch_bits &&& 7
 
-        if value.f079_uint < 0 do
+        if value_f079_uint < 0 do
           raise ArgumentError, "value.f079_uint is below the wire minimum"
         end
 
-        if value.f079_uint > 17 do
+        if value_f079_uint > 17 do
           raise ArgumentError, "value.f079_uint is above the wire maximum"
         end
 
-        v = value.f079_uint
+        v = value_f079_uint
         scratch = scratch ||| v <<< scratch_bits
         scratch_bits = scratch_bits + 5
         flush = scratch_bits >>> 3
@@ -1323,207 +1137,163 @@ defmodule Realworld.RealWorld do
         {data, scratch, scratch_bits}
       end
 
-    v = if value.f080_bool, do: 1, else: 0
+    v = if value_f080_bool, do: 1, else: 0
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 1
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
-    scratch_bits = scratch_bits &&& 7
-    v = value.f081_bits &&& 0x1FFFFFFF
+    v = value_f081_bits &&& 0x1FFFFFFF
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 29
+    v = value_f082_bits &&& 0x1FFFFFF
     flush = scratch_bits >>> 3
     data = <<data::binary, scratch::little-size(flush)-unit(8)>>
     scratch = scratch >>> (flush <<< 3)
     scratch_bits = scratch_bits &&& 7
-    v = value.f082_bits &&& 0x1FFFFFF
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 25
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
-    scratch_bits = scratch_bits &&& 7
 
-    if value.f083_enum < 0 do
+    if value_f083_enum < 0 do
       raise ArgumentError, "value.f083_enum is below the wire minimum"
     end
 
-    if value.f083_enum > 5 do
+    if value_f083_enum > 5 do
       raise ArgumentError, "value.f083_enum is above the wire maximum"
     end
 
-    v = value.f083_enum
+    v = value_f083_enum
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 3
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
-    scratch_bits = scratch_bits &&& 7
 
-    if value.f084_ufixed < 0 do
+    if value_f084_ufixed < 0 do
       raise ArgumentError, "value.f084_ufixed is below the wire minimum"
     end
 
-    if value.f084_ufixed > 128 do
+    if value_f084_ufixed > 128 do
       raise ArgumentError, "value.f084_ufixed is above the wire maximum"
     end
 
-    v = value.f084_ufixed
+    v = value_f084_ufixed
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 8
+    v = value_f085_bits &&& 0x1FFFFF
     flush = scratch_bits >>> 3
     data = <<data::binary, scratch::little-size(flush)-unit(8)>>
     scratch = scratch >>> (flush <<< 3)
     scratch_bits = scratch_bits &&& 7
-    v = value.f085_bits &&& 0x1FFFFF
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 21
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
-    scratch_bits = scratch_bits &&& 7
 
-    if value.f086_uint < 0 do
+    if value_f086_uint < 0 do
       raise ArgumentError, "value.f086_uint is below the wire minimum"
     end
 
-    if value.f086_uint > 399 do
+    if value_f086_uint > 399 do
       raise ArgumentError, "value.f086_uint is above the wire maximum"
     end
 
-    v = value.f086_uint
+    v = value_f086_uint
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 9
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
-    scratch_bits = scratch_bits &&& 7
-    w = f64_bits(value.f087f64)
+    w = f64_bits(value_f087f64)
     v = w &&& 0xFFFFFFFF
-    scratch = scratch ||| v <<< scratch_bits
-    scratch_bits = scratch_bits + 32
     flush = scratch_bits >>> 3
     data = <<data::binary, scratch::little-size(flush)-unit(8)>>
     scratch = scratch >>> (flush <<< 3)
     scratch_bits = scratch_bits &&& 7
+    scratch = scratch ||| v <<< scratch_bits
+    scratch_bits = scratch_bits + 32
     v = w >>> 32
-    scratch = scratch ||| v <<< scratch_bits
-    scratch_bits = scratch_bits + 32
     flush = scratch_bits >>> 3
     data = <<data::binary, scratch::little-size(flush)-unit(8)>>
     scratch = scratch >>> (flush <<< 3)
     scratch_bits = scratch_bits &&& 7
+    scratch = scratch ||| v <<< scratch_bits
+    scratch_bits = scratch_bits + 32
 
-    if value.f088_int < -694 do
+    if value_f088_int < -694 do
       raise ArgumentError, "value.f088_int is below the wire minimum"
     end
 
-    if value.f088_int > 694 do
+    if value_f088_int > 694 do
       raise ArgumentError, "value.f088_int is above the wire maximum"
     end
 
-    v = value.f088_int + 694
+    v = value_f088_int + 694
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 11
+    v = value_f089_bits &&& 0xFFFFFFFF
     flush = scratch_bits >>> 3
     data = <<data::binary, scratch::little-size(flush)-unit(8)>>
     scratch = scratch >>> (flush <<< 3)
     scratch_bits = scratch_bits &&& 7
-    v = value.f089_bits &&& 0xFFFFFFFF
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 32
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
-    scratch_bits = scratch_bits &&& 7
-    v = value.f089_bits >>> 32 &&& 0xFFFF
+    v = value_f089_bits >>> 32 &&& 0xFFFF
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 16
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
-    scratch_bits = scratch_bits &&& 7
 
-    if value.f090_uint < 0 do
+    if value_f090_uint < 0 do
       raise ArgumentError, "value.f090_uint is below the wire minimum"
     end
 
-    if value.f090_uint > 214 do
+    if value_f090_uint > 214 do
       raise ArgumentError, "value.f090_uint is above the wire maximum"
     end
 
-    v = value.f090_uint
-    scratch = scratch ||| v <<< scratch_bits
-    scratch_bits = scratch_bits + 8
+    v = value_f090_uint
     flush = scratch_bits >>> 3
     data = <<data::binary, scratch::little-size(flush)-unit(8)>>
     scratch = scratch >>> (flush <<< 3)
     scratch_bits = scratch_bits &&& 7
+    scratch = scratch ||| v <<< scratch_bits
+    scratch_bits = scratch_bits + 8
 
-    if value.f091_flags >>> 5 != 0 do
+    if value_f091_flags >>> 5 != 0 do
       raise ArgumentError, "value.f091_flags holds a mask bit above the 5-bit wire"
     end
 
-    v = value.f091_flags
+    v = value_f091_flags
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 5
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
-    scratch_bits = scratch_bits &&& 7
-    v = if value.f092_bool, do: 1, else: 0
+    v = if value_f092_bool, do: 1, else: 0
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 1
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
-    scratch_bits = scratch_bits &&& 7
-    v = value.f093_bits &&& 0xFFFFFFFF
+    v = value_f093_bits &&& 0xFFFFFFFF
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 32
+    v = value_f093_bits >>> 32 &&& 0xFFFFFFFF
     flush = scratch_bits >>> 3
     data = <<data::binary, scratch::little-size(flush)-unit(8)>>
     scratch = scratch >>> (flush <<< 3)
     scratch_bits = scratch_bits &&& 7
-    v = value.f093_bits >>> 32 &&& 0xFFFFFFFF
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 32
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
-    scratch_bits = scratch_bits &&& 7
-    v = if value.f094_bool, do: 1, else: 0
+    v = if value_f094_bool, do: 1, else: 0
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 1
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
-    scratch_bits = scratch_bits &&& 7
 
-    if value.f095_fixed < -103_350_272 do
+    if value_f095_fixed < -103_350_272 do
       raise ArgumentError, "value.f095_fixed is below the wire minimum"
     end
 
-    if value.f095_fixed > 103_350_272 do
+    if value_f095_fixed > 103_350_272 do
       raise ArgumentError, "value.f095_fixed is above the wire maximum"
     end
 
-    v = value.f095_fixed + 103_350_272
+    v = value_f095_fixed + 103_350_272
+    flush = scratch_bits >>> 3
+    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
+    scratch = scratch >>> (flush <<< 3)
+    scratch_bits = scratch_bits &&& 7
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 28
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
-    scratch_bits = scratch_bits &&& 7
-    v = value.f096_bits &&& 0x3FFFF
+    v = value_f096_bits &&& 0x3FFFF
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 18
+    v = value_f097_bits &&& 0xFFF
     flush = scratch_bits >>> 3
     data = <<data::binary, scratch::little-size(flush)-unit(8)>>
     scratch = scratch >>> (flush <<< 3)
     scratch_bits = scratch_bits &&& 7
-    v = value.f097_bits &&& 0xFFF
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 12
     flush = scratch_bits >>> 3
@@ -1545,85 +1315,95 @@ defmodule Realworld.RealWorld do
 
       bits_read = 0
       if bits_read + 291 > num_bits, do: throw(:invalid)
-      v = rd(data, bits_read, 21)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0x1FFFFF
       bits_read = bits_read + 21
       # a smuggled offset is refused
       if v > 1_610_990, do: throw(:invalid)
       v_f001_int = v - 805_495
-      v = rd(data, bits_read, 32)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0xFFFFFFFF
       bits_read = bits_read + 32
       w = v
-      v = rd(data, bits_read, 32)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0xFFFFFFFF
       bits_read = bits_read + 32
       w = w ||| v <<< 32
       v_f002f64 = f64_value(w)
-      v = rd(data, bits_read, 21)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0x1FFFFF
       bits_read = bits_read + 21
       # a smuggled offset is refused
       if v > 1_671_794, do: throw(:invalid)
       v_f003_int = v - 835_897
-      v = rd(data, bits_read, 15)
+      v = rv >>> 21 &&& 0x7FFF
       bits_read = bits_read + 15
       # headroom above the quantum count is refused
       if v > 20000, do: throw(:invalid)
-      v_f004_cf32 = cf_decode(v, 20000, 2000.0, 0.0)
-      v = rd(data, bits_read, 13)
+      v_f004_cf32 = cf_decode(v, 20000.0, 2000.0, 0.0)
+      v = rv >>> 36
       bits_read = bits_read + 13
       # a smuggled offset is refused
       if v > 7316, do: throw(:invalid)
       v_f005_uint = v
-      v = rd(data, bits_read, 12)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0xFFF
       bits_read = bits_read + 12
       # a smuggled offset is refused
       if v > 3026, do: throw(:invalid)
       v_f006_int = v - 1513
-      v = rd(data, bits_read, 32)
+      v = rv >>> 12 &&& 0xFFFFFFFF
       bits_read = bits_read + 32
       v_f007f32 = f32_value(v)
-      v = rd(data, bits_read, 32)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0xFFFFFFFF
       bits_read = bits_read + 32
       w = v
-      v = rd(data, bits_read, 32)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0xFFFFFFFF
       bits_read = bits_read + 32
       w = w ||| v <<< 32
       v_f008u64 = w
-      v = rd(data, bits_read, 6)
+      v = rv >>> 32 &&& 0x3F
       bits_read = bits_read + 6
       # a smuggled offset is refused
       if v > 44, do: throw(:invalid)
       v_f009_int = v - 22
-      v = rd(data, bits_read, 32)
+      rv = rdw(data, bits_read, 43)
+      v = rv &&& 0xFFFFFFFF
       bits_read = bits_read + 32
       v_f010f32 = f32_value(v)
-      v = rd(data, bits_read, 10)
+      v = rv >>> 32 &&& 0x3FF
       bits_read = bits_read + 10
       v_f011_bits = v
-      v = rd(data, bits_read, 1)
+      v = rv >>> 42
       bits_read = bits_read + 1
       v_f012_bool = v == 1
 
       {bits_read, v_f013f32, v_f014_uint, v_f015_int, v_f016_fixed, v_f017_uint} =
         if v_f012_bool do
           if bits_read + 88 > num_bits, do: throw(:invalid)
-          v = rd(data, bits_read, 32)
+          rv = rdw(data, bits_read, 49)
+          v = rv &&& 0xFFFFFFFF
           bits_read = bits_read + 32
           v_f013f32 = f32_value(v)
-          v = rd(data, bits_read, 10)
+          v = rv >>> 32 &&& 0x3FF
           bits_read = bits_read + 10
           # a smuggled offset is refused
           if v > 775, do: throw(:invalid)
           v_f014_uint = v
-          v = rd(data, bits_read, 6)
+          v = rv >>> 42 &&& 0x3F
           bits_read = bits_read + 6
           # a smuggled offset is refused
           if v > 42, do: throw(:invalid)
           v_f015_int = v - 21
-          v = rd(data, bits_read, 27)
+          rv = rdw(data, bits_read, 40)
+          v = rv &&& 0x7FFFFFF
           bits_read = bits_read + 27
           # a smuggled offset is refused
           if v > 75_497_472, do: throw(:invalid)
           v_f016_fixed = v - 37_748_736
-          v = rd(data, bits_read, 13)
+          v = rv >>> 27
           bits_read = bits_read + 13
           # a smuggled offset is refused
           if v > 4606, do: throw(:invalid)
@@ -1639,128 +1419,144 @@ defmodule Realworld.RealWorld do
         end
 
       if bits_read + 476 > num_bits, do: throw(:invalid)
-      v = rd(data, bits_read, 11)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0x7FF
       bits_read = bits_read + 11
       # a smuggled offset is refused
       if v > 1668, do: throw(:invalid)
       v_f018_int = v - 834
-      v = rd(data, bits_read, 32)
+      v = rv >>> 11 &&& 0xFFFFFFFF
       bits_read = bits_read + 32
       w = v
-      v = rd(data, bits_read, 32)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0xFFFFFFFF
       bits_read = bits_read + 32
       w = w ||| v <<< 32
       v_f019f64 = f64_value(w)
-      v = rd(data, bits_read, 32)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0xFFFFFFFF
       bits_read = bits_read + 32
       v_f020f32 = f32_value(v)
-      v = rd(data, bits_read, 27)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0x7FFFFFF
       bits_read = bits_read + 27
       # a smuggled offset is refused
       if v > 102_977_536, do: throw(:invalid)
       v_f021_ufixed = v
-      v = rd(data, bits_read, 32)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0xFFFFFFFF
       bits_read = bits_read + 32
       v_f022f32 = f32_value(v)
-      v = rd(data, bits_read, 25)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0x1FFFFFF
       bits_read = bits_read + 25
       v_f023_bits = v
-      v = rd(data, bits_read, 32)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0xFFFFFFFF
       bits_read = bits_read + 32
       v_f024f32 = f32_value(v)
-      v = rd(data, bits_read, 16)
+      v = rv >>> 32 &&& 0xFFFF
       bits_read = bits_read + 16
       # a smuggled offset is refused
       if v > 60928, do: throw(:invalid)
       v_f025_fixed = v - 30464
-      v = rd(data, bits_read, 9)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0x1FF
       bits_read = bits_read + 9
       v_f026_bits = v
-      v = rd(data, bits_read, 5)
+      v = rv >>> 9 &&& 0x1F
       bits_read = bits_read + 5
       # headroom above the quantum count is refused
       if v > 16, do: throw(:invalid)
-      v_f027_cf32 = cf_decode(v, 16, 4.0, -2.0)
-      v = rd(data, bits_read, 4)
+      v_f027_cf32 = cf_decode(v, 16.0, 4.0, -2.0)
+      v = rv >>> 14 &&& 0xF
       bits_read = bits_read + 4
       v_f028_bits = v
-      v = rd(data, bits_read, 32)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0xFFFFFFFF
       bits_read = bits_read + 32
       w = v
-      v = rd(data, bits_read, 32)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0xFFFFFFFF
       bits_read = bits_read + 32
       w = w ||| v <<< 32
       v_f029i64 = if w >= 9_223_372_036_854_775_808, do: w - 18_446_744_073_709_551_616, else: w
-      v = rd(data, bits_read, 32)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0xFFFFFFFF
       bits_read = bits_read + 32
       v_f030f32 = f32_value(v)
-      v = rd(data, bits_read, 1)
+      v = rv >>> 32 &&& 0x1
       bits_read = bits_read + 1
       v_f031_bits = v
-      v = rd(data, bits_read, 3)
+      v = rv >>> 33 &&& 0x7
       bits_read = bits_read + 3
       # a smuggled offset is refused
       if v > 6, do: throw(:invalid)
       v_f032_int = v - 3
-      v = rd(data, bits_read, 18)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0x3FFFF
       bits_read = bits_read + 18
       # a smuggled offset is refused
       if v > 142_780, do: throw(:invalid)
       v_f033_uint = v
-      v = rd(data, bits_read, 14)
+      v = rv >>> 18 &&& 0x3FFF
       bits_read = bits_read + 14
       # a smuggled offset is refused
       if v > 14149, do: throw(:invalid)
       v_f034_uint = v
-      v = rd(data, bits_read, 9)
+      v = rv >>> 32 &&& 0x1FF
       bits_read = bits_read + 9
       v_f035_bits = v
-      v = rd(data, bits_read, 3)
+      v = rv >>> 41 &&& 0x7
       bits_read = bits_read + 3
       # headroom above the wire range is refused
       if v > 5, do: throw(:invalid)
       v_f036_enum = v
-      v = rd(data, bits_read, 1)
+      v = rv >>> 44 &&& 0x1
       bits_read = bits_read + 1
       v_f037_bool = v == 1
-      v = rd(data, bits_read, 1)
+      v = rv >>> 45 &&& 0x1
       bits_read = bits_read + 1
       v_f038_bool = v == 1
-      v = rd(data, bits_read, 19)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0x7FFFF
       bits_read = bits_read + 19
       v_f039_bits = v
-      v = rd(data, bits_read, 16)
+      v = rv >>> 19 &&& 0xFFFF
       bits_read = bits_read + 16
       # a smuggled offset is refused
       if v > 40960, do: throw(:invalid)
       v_f040_fixed = v - 20480
-      v = rd(data, bits_read, 7)
+      v = rv >>> 35 &&& 0x7F
       bits_read = bits_read + 7
       # a smuggled offset is refused
       if v > 110, do: throw(:invalid)
       v_f041_int = v - 55
-      v = rd(data, bits_read, 30)
+      rv = rd(data, bits_read, 31)
+      v = rv &&& 0x3FFFFFFF
       bits_read = bits_read + 30
       v_f042_bits = v
-      v = rd(data, bits_read, 1)
+      v = rv >>> 30
       bits_read = bits_read + 1
       v_f043_bool = v == 1
 
       {bits_read, v_f044f32, v_f045_bits, v_f046_uint, v_f047_int} =
         if v_f043_bool do
           if bits_read + 81 > num_bits, do: throw(:invalid)
-          v = rd(data, bits_read, 32)
+          rv = rdw(data, bits_read, 49)
+          v = rv &&& 0xFFFFFFFF
           bits_read = bits_read + 32
           v_f044f32 = f32_value(v)
-          v = rd(data, bits_read, 12)
+          v = rv >>> 32 &&& 0xFFF
           bits_read = bits_read + 12
           v_f045_bits = v
-          v = rd(data, bits_read, 17)
+          rv = rdw(data, bits_read, 37)
+          v = rv &&& 0x1FFFF
           bits_read = bits_read + 17
           # a smuggled offset is refused
           if v > 76063, do: throw(:invalid)
           v_f046_uint = v
-          v = rd(data, bits_read, 20)
+          v = rv >>> 17
           bits_read = bits_read + 20
           # a smuggled offset is refused
           if v > 861_952, do: throw(:invalid)
@@ -1775,37 +1571,40 @@ defmodule Realworld.RealWorld do
         end
 
       if bits_read + 81 > num_bits, do: throw(:invalid)
-      v = rd(data, bits_read, 32)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0xFFFFFFFF
       bits_read = bits_read + 32
       w = v
-      v = rd(data, bits_read, 32)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0xFFFFFFFF
       bits_read = bits_read + 32
       w = w ||| v <<< 32
       v_f048f64 = f64_value(w)
-      v = rd(data, bits_read, 16)
+      v = rv >>> 32 &&& 0xFFFF
       bits_read = bits_read + 16
       # a smuggled offset is refused
       if v > 49152, do: throw(:invalid)
       v_f049_ufixed = v
-      v = rd(data, bits_read, 1)
+      v = rv >>> 48
       bits_read = bits_read + 1
       v_f050_bool = v == 1
 
       {bits_read, v_f051_bool, v_f052_int, v_f053f32, v_f054_int} =
         if v_f050_bool do
           if bits_read + 47 > num_bits, do: throw(:invalid)
-          v = rd(data, bits_read, 1)
+          rv = rdw(data, bits_read, 47)
+          v = rv &&& 0x1
           bits_read = bits_read + 1
           v_f051_bool = v == 1
-          v = rd(data, bits_read, 7)
+          v = rv >>> 1 &&& 0x7F
           bits_read = bits_read + 7
           # a smuggled offset is refused
           if v > 114, do: throw(:invalid)
           v_f052_int = v - 57
-          v = rd(data, bits_read, 32)
+          v = rv >>> 8 &&& 0xFFFFFFFF
           bits_read = bits_read + 32
           v_f053f32 = f32_value(v)
-          v = rd(data, bits_read, 7)
+          v = rv >>> 40
           bits_read = bits_read + 7
           # a smuggled offset is refused
           if v > 70, do: throw(:invalid)
@@ -1820,125 +1619,135 @@ defmodule Realworld.RealWorld do
         end
 
       if bits_read + 290 > num_bits, do: throw(:invalid)
-      v = rd(data, bits_read, 1)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0x1
       bits_read = bits_read + 1
       v_f055_bool = v == 1
-      v = rd(data, bits_read, 5)
+      v = rv >>> 1 &&& 0x1F
       bits_read = bits_read + 5
       # a smuggled offset is refused
       if v > 26, do: throw(:invalid)
       v_f056_int = v - 13
-      v = rd(data, bits_read, 5)
+      v = rv >>> 6 &&& 0x1F
       bits_read = bits_read + 5
       # a smuggled offset is refused
       if v > 30, do: throw(:invalid)
       v_f057_int = v - 15
-      v = rd(data, bits_read, 32)
+      v = rv >>> 11 &&& 0xFFFFFFFF
       bits_read = bits_read + 32
       v_f058f32 = f32_value(v)
-      v = rd(data, bits_read, 32)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0xFFFFFFFF
       bits_read = bits_read + 32
       w = v
-      v = rd(data, bits_read, 32)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0xFFFFFFFF
       bits_read = bits_read + 32
       w = w ||| v <<< 32
       v_f059f64 = f64_value(w)
-      v = rd(data, bits_read, 8)
+      v = rv >>> 32 &&& 0xFF
       bits_read = bits_read + 8
       v_f060_bits = v
-      v = rd(data, bits_read, 9)
+      v = rv >>> 40
       bits_read = bits_read + 9
       # headroom above the quantum count is refused
       if v > 360, do: throw(:invalid)
-      v_f061_cf32 = cf_decode(v, 360, 180.0, -90.0)
-      v = rd(data, bits_read, 9)
+      v_f061_cf32 = cf_decode(v, 360.0, 180.0, -90.0)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0x1FF
       bits_read = bits_read + 9
       # a smuggled offset is refused
       if v > 503, do: throw(:invalid)
       v_f062_uint = v
-      v = rd(data, bits_read, 32)
+      v = rv >>> 9 &&& 0xFFFFFFFF
       bits_read = bits_read + 32
       w = v
-      v = rd(data, bits_read, 32)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0xFFFFFFFF
       bits_read = bits_read + 32
       w = w ||| v <<< 32
       v_f063i64 = if w >= 9_223_372_036_854_775_808, do: w - 18_446_744_073_709_551_616, else: w
-      v = rd(data, bits_read, 9)
+      v = rv >>> 32 &&& 0x1FF
       bits_read = bits_read + 9
       # a smuggled offset is refused
       if v > 299, do: throw(:invalid)
       v_f064_uint = v
-      v = rd(data, bits_read, 6)
+      v = rv >>> 41 &&& 0x3F
       bits_read = bits_read + 6
       # headroom above the quantum count is refused
       if v > 60, do: throw(:invalid)
-      v_f065_cf32 = cf_decode(v, 60, 30.0, 0.0)
-      v = rd(data, bits_read, 16)
+      v_f065_cf32 = cf_decode(v, 60.0, 30.0, 0.0)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0xFFFF
       bits_read = bits_read + 16
       # a smuggled offset is refused
       if v > 32768, do: throw(:invalid)
       v_f066_ufixed = v
-      v = rd(data, bits_read, 10)
+      v = rv >>> 16 &&& 0x3FF
       bits_read = bits_read + 10
       # headroom above the quantum count is refused
       if v > 800, do: throw(:invalid)
-      v_f067_cf32 = cf_decode(v, 800, 200.0, -100.0)
-      v = rd(data, bits_read, 11)
+      v_f067_cf32 = cf_decode(v, 800.0, 200.0, -100.0)
+      v = rv >>> 26 &&& 0x7FF
       bits_read = bits_read + 11
       # headroom above the quantum count is refused
       if v > 2000, do: throw(:invalid)
-      v_f068_cf32 = cf_decode(v, 2000, 2000.0, 0.0)
-      v = rd(data, bits_read, 11)
+      v_f068_cf32 = cf_decode(v, 2000.0, 2000.0, 0.0)
+      v = rv >>> 37 &&& 0x7FF
       bits_read = bits_read + 11
       v_f069_bits = v
-      v = rd(data, bits_read, 2)
+      rv = rd(data, bits_read, 30)
+      v = rv &&& 0x3
       bits_read = bits_read + 2
       # a smuggled offset is refused
       if v > 2, do: throw(:invalid)
       v_f070_uint = v
-      v = rd(data, bits_read, 9)
+      v = rv >>> 2 &&& 0x1FF
       bits_read = bits_read + 9
       # headroom above the quantum count is refused
       if v > 500, do: throw(:invalid)
-      v_f071_cf32 = cf_decode(v, 500, 10.0, 0.0)
-      v = rd(data, bits_read, 14)
+      v_f071_cf32 = cf_decode(v, 500.0, 10.0, 0.0)
+      v = rv >>> 11 &&& 0x3FFF
       bits_read = bits_read + 14
       # headroom above the quantum count is refused
       if v > 10000, do: throw(:invalid)
-      v_f072_cf32 = cf_decode(v, 10000, 100.0, 0.0)
-      v = rd(data, bits_read, 4)
+      v_f072_cf32 = cf_decode(v, 10000.0, 100.0, 0.0)
+      v = rv >>> 25 &&& 0xF
       bits_read = bits_read + 4
       # a smuggled offset is refused
       if v > 8, do: throw(:invalid)
       v_f073_int = v - 4
-      v = rd(data, bits_read, 1)
+      v = rv >>> 29
       bits_read = bits_read + 1
       v_f074_bool = v == 1
 
       {bits_read, v_f075u64, v_f076_int, v_f077_int, v_f078_bits, v_f079_uint} =
         if v_f074_bool do
           if bits_read + 100 > num_bits, do: throw(:invalid)
-          v = rd(data, bits_read, 32)
+          rv = rdw(data, bits_read, 49)
+          v = rv &&& 0xFFFFFFFF
           bits_read = bits_read + 32
           w = v
-          v = rd(data, bits_read, 32)
+          rv = rdw(data, bits_read, 49)
+          v = rv &&& 0xFFFFFFFF
           bits_read = bits_read + 32
           w = w ||| v <<< 32
           v_f075u64 = w
-          v = rd(data, bits_read, 16)
+          v = rv >>> 32 &&& 0xFFFF
           bits_read = bits_read + 16
           # a smuggled offset is refused
           if v > 52436, do: throw(:invalid)
           v_f076_int = v - 26218
-          v = rd(data, bits_read, 6)
+          rv = rd(data, bits_read, 20)
+          v = rv &&& 0x3F
           bits_read = bits_read + 6
           # a smuggled offset is refused
           if v > 34, do: throw(:invalid)
           v_f077_int = v - 17
-          v = rd(data, bits_read, 9)
+          v = rv >>> 6 &&& 0x1FF
           bits_read = bits_read + 9
           v_f078_bits = v
-          v = rd(data, bits_read, 5)
+          v = rv >>> 15
           bits_read = bits_read + 5
           # a smuggled offset is refused
           if v > 17, do: throw(:invalid)
@@ -1954,82 +1763,92 @@ defmodule Realworld.RealWorld do
         end
 
       if bits_read + 356 > num_bits, do: throw(:invalid)
-      v = rd(data, bits_read, 1)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0x1
       bits_read = bits_read + 1
       v_f080_bool = v == 1
-      v = rd(data, bits_read, 29)
+      v = rv >>> 1 &&& 0x1FFFFFFF
       bits_read = bits_read + 29
       v_f081_bits = v
-      v = rd(data, bits_read, 25)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0x1FFFFFF
       bits_read = bits_read + 25
       v_f082_bits = v
-      v = rd(data, bits_read, 3)
+      v = rv >>> 25 &&& 0x7
       bits_read = bits_read + 3
       # headroom above the wire range is refused
       if v > 5, do: throw(:invalid)
       v_f083_enum = v
-      v = rd(data, bits_read, 8)
+      v = rv >>> 28 &&& 0xFF
       bits_read = bits_read + 8
       # a smuggled offset is refused
       if v > 128, do: throw(:invalid)
       v_f084_ufixed = v
-      v = rd(data, bits_read, 21)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0x1FFFFF
       bits_read = bits_read + 21
       v_f085_bits = v
-      v = rd(data, bits_read, 9)
+      v = rv >>> 21 &&& 0x1FF
       bits_read = bits_read + 9
       # a smuggled offset is refused
       if v > 399, do: throw(:invalid)
       v_f086_uint = v
-      v = rd(data, bits_read, 32)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0xFFFFFFFF
       bits_read = bits_read + 32
       w = v
-      v = rd(data, bits_read, 32)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0xFFFFFFFF
       bits_read = bits_read + 32
       w = w ||| v <<< 32
       v_f087f64 = f64_value(w)
-      v = rd(data, bits_read, 11)
+      v = rv >>> 32 &&& 0x7FF
       bits_read = bits_read + 11
       # a smuggled offset is refused
       if v > 1388, do: throw(:invalid)
       v_f088_int = v - 694
-      v = rd(data, bits_read, 32)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0xFFFFFFFF
       bits_read = bits_read + 32
       w = v
-      v = rd(data, bits_read, 16)
+      v = rv >>> 32 &&& 0xFFFF
       bits_read = bits_read + 16
       w = w ||| v <<< 32
       v_f089_bits = w
-      v = rd(data, bits_read, 8)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0xFF
       bits_read = bits_read + 8
       # a smuggled offset is refused
       if v > 214, do: throw(:invalid)
       v_f090_uint = v
-      v = rd(data, bits_read, 5)
+      v = rv >>> 8 &&& 0x1F
       bits_read = bits_read + 5
       v_f091_flags = v
-      v = rd(data, bits_read, 1)
+      v = rv >>> 13 &&& 0x1
       bits_read = bits_read + 1
       v_f092_bool = v == 1
-      v = rd(data, bits_read, 32)
+      v = rv >>> 14 &&& 0xFFFFFFFF
       bits_read = bits_read + 32
       w = v
-      v = rd(data, bits_read, 32)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0xFFFFFFFF
       bits_read = bits_read + 32
       w = w ||| v <<< 32
       v_f093_bits = w
-      v = rd(data, bits_read, 1)
+      v = rv >>> 32 &&& 0x1
       bits_read = bits_read + 1
       v_f094_bool = v == 1
-      v = rd(data, bits_read, 28)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0xFFFFFFF
       bits_read = bits_read + 28
       # a smuggled offset is refused
       if v > 206_700_544, do: throw(:invalid)
       v_f095_fixed = v - 103_350_272
-      v = rd(data, bits_read, 18)
+      v = rv >>> 28 &&& 0x3FFFF
       bits_read = bits_read + 18
       v_f096_bits = v
-      v = rd(data, bits_read, 12)
+      rv = rd(data, bits_read, 12)
+      v = rv
       bits_read = bits_read + 12
       v_f097_bits = v
       # the final position is unobserved — the verdict and value are the surface
@@ -2200,6 +2019,22 @@ defmodule Realworld.RealWorld do
     window >>> (bits_read &&& 7) &&& (1 <<< bits) - 1
   end
 
+  # The wide window decode: 56 bits, enough for a 7-bit offset plus a
+  # 49-bit group, and still under the 2^59 fixnum boundary — one match
+  # context serves a whole group of fields instead of one per field. A
+  # 64-bit window would box and measures slower than the reads it saves.
+  defp rdw(data, bits_read, bits) do
+    i = bits_read >>> 3
+
+    window =
+      case data do
+        <<_::binary-size(^i), w::little-56, _::binary>> -> w
+        <<_::binary-size(^i), rest::binary>> -> :binary.decode_unsigned(rest, :little)
+      end
+
+    window >>> (bits_read &&& 7) &&& (1 <<< bits) - 1
+  end
+
   # The 32-bit IEEE-754 pattern of a float value for the write path — a
   # non-finite pattern travels as {:nonfinite, bits}, since no BEAM float
   # term can hold it (the serialize.elixir convention). Caller errors raise;
@@ -2263,14 +2098,15 @@ defmodule Realworld.RealWorld do
   # rounding is innocuous). Overflow reports :pos_inf / :neg_inf so the
   # compressed-float clamps can resolve it the way the reference's float
   # arithmetic does.
+  #
+  # The refusal IS the test: a float segment does not match a non-finite
+  # pattern, so the finite path costs one construction and one match and
+  # never touches the exponent field, while the second clause reads the
+  # sign of exactly the patterns the first one refused.
   defp fr(value) do
-    <<bits::little-32>> = <<value::float-32-little>>
-
-    if (bits >>> 23 &&& 0xFF) != 0xFF do
-      <<rounded::float-32-little>> = <<bits::little-32>>
-      rounded
-    else
-      if bits >>> 31 == 1, do: :neg_inf, else: :pos_inf
+    case <<value::float-32-little>> do
+      <<rounded::float-32-little>> -> rounded
+      <<bits::little-32>> -> if bits >>> 31 == 1, do: :neg_inf, else: :pos_inf
     end
   end
 
@@ -2284,7 +2120,10 @@ defmodule Realworld.RealWorld do
   # own steps: normalize with every step rounding, clamp to [0, 1] (which
   # also grounds an overflowed value), scale, round BEFORE the +0.5, floor,
   # and the normative integer clamp to the step count.
-  defp cf_quantize(value, min32, delta, miv) do
+  # miv32 is the float32 of the step count, folded at generation time: it
+  # is a declaration constant, and recomputing its rounding per call was
+  # one of the six float32 steps.
+  defp cf_quantize(value, min32, delta, miv, miv32) do
     if not is_number(value) do
       raise ArgumentError, "a compressed float writes a finite number"
     end
@@ -2303,8 +2142,8 @@ defmodule Realworld.RealWorld do
         d -> cf_clamp01(fr(d / delta))
       end
 
-    scaled = fr(normalized * fr(miv * 1.0))
-    integer = trunc(Float.floor(fr(scaled + 0.5)))
+    scaled = fr(normalized * miv32)
+    integer = floor(fr(scaled + 0.5))
     min(integer, miv)
   end
 
@@ -2313,8 +2152,8 @@ defmodule Realworld.RealWorld do
   # throughout, never fused, never widened. The final add cannot overflow
   # for a conforming declaration; the non-finite mapping keeps the
   # never-raise reader obligation airtight.
-  defp cf_decode(integer, miv, delta, min32) do
-    quotient = fr(fr(integer * 1.0) / fr(miv * 1.0))
+  defp cf_decode(integer, miv32, delta, min32) do
+    quotient = fr(fr(integer * 1.0) / miv32)
     scaled = fr(quotient * delta)
 
     case fr(scaled + min32) do

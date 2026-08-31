@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package example — protocol id 0xa89dd9e036603208
+// package example — protocol id 0xdd71ce8b50d78939
 
 // Two clippy classes are silenced deliberately, crate-wide:
 // - derivable_impls / field_reassign_with_default: Default impls are
@@ -11,12 +11,16 @@
 //   the same way, is the point.
 #![allow(clippy::derivable_impls, clippy::field_reassign_with_default)]
 
+mod clauses;
+pub use clauses::*;
 mod constants;
 pub use constants::*;
 mod degenerate;
 pub use degenerate::*;
 mod enums;
 pub use enums::*;
+mod joins;
+pub use joins::*;
 mod render;
 pub use render::*;
 mod types;
