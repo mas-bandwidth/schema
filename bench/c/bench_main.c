@@ -1,26 +1,23 @@
 /*
     schema bench — the C runner.
 
-    Measures the schema-GENERATED C code (generated/c) against the serialize.c
-    runtime: write path and read path, messages/sec and MB/sec, over the pinned
-    corpus instances (the same instances test/main.cpp pins to the wire goldens
-    in testdata/wire) plus one large synthetic message batch for steady-state
-    dispatch throughput.
+    Measures the schema-GENERATED C code (generated/bench/c) against the
+    serialize.c runtime over THE one benchmark shape, BenchMixed
+    (BENCH-STANDARD.md §1.3a): write path and round-trip path, messages/sec
+    and MB/sec, driven entirely by the committed variant corpus. Plus family
+    bits (§1.4), the raw bitpacker, which is not a shape at all.
 
     This is a port of bench/cpp/bench_main.cpp, the reference runner, per the
-    runner contract in bench/README.md: same benchmark set, same pinned
-    instances, same LCG, same vary-function field mappings, same self-check
-    gate (golden byte-compare + round trip BEFORE any number is produced), same
-    median-of-7-after-a-warmup reporting.
+    runner contract in bench/README.md: same benchmark set, same variant
+    corpus, same self-check gate (golden byte-compare + per-variant round trip
+    BEFORE any number is produced), same median-of-7-after-a-warmup reporting.
 
-    Two shape differences from the C++ reference, both forced by C and neither
-    touching what is measured:
-
-      - the per-message driver is a MACRO that expands one static function per
-        message type, where the reference uses a function template. Same code,
-        same direct (inlinable) calls to the generated writer and reader; a
-        driver over void pointers and function pointers would have inserted an
-        indirect call the reference does not pay.
+    One shape difference from the C++ reference, forced by C and not touching
+    what is measured: the per-message driver is an #include template that
+    expands one static function per message type, where the reference uses a
+    function template. Same code, same direct (inlinable) calls to the
+    generated writer and reader; a driver over void pointers and function
+    pointers would have inserted an indirect call the reference does not pay.
 
     Output: a human table on stderr, and with --csv, CSV rows on stdout in the
     cross-language format (see bench/README.md), with `c` as the lang value.
@@ -34,11 +31,6 @@
 #include <stdint.h>
 #include <time.h>
 
-#include "ConstantsWire.h"
-#include "EnumsWire.h"
-#include "TypesWire.h"
-#include "WireWire.h"
-#include "RealWorldWire.h"      /* generated/bench/c — the §1.7 realistic snapshot (real_packet) */
 #include "BenchWire.h"          /* generated/bench/c — the Bench corpus GENERATED (issue #177) */
 
 static volatile uint64_t g_sink = 0;    /* defeats dead code elimination of computed values */
@@ -357,278 +349,6 @@ static void report( const char * bench, const char * path, long iters, int bytes
 }
 
 /* ------------------------------------------------------------------------------------------
-   the per-message benchmark driver — one expansion per message type, via
-   bench_message.inc (#define BM_* + #include). The include template expands
-   to the exact tokens the old BENCH_MESSAGE macro produced — the measured
-   code is unchanged — but every expansion carries real line numbers, which
-   is what lets bench/tools/inline-verdict.sh attribute a remaining runtime
-   call to a bench's timed write loop, timed read loop, or untimed setup
-   (see the header of bench_message.inc).
-   ------------------------------------------------------------------------------------------ */
-
-/* ------------------------------------------------------------------------------------------
-   vary functions — mutate VALUE fields within wire ranges through the LCG;
-   structure fields (counts, lengths, branch bools) stay fixed so bytes/op is
-   constant. These reproduce bench/cpp/bench_main.cpp's mappings exactly.
-   ------------------------------------------------------------------------------------------ */
-
-static void vary_rigidbody( RigidBody * m, uint64_t rng )
-{
-    m->position.x = (double) ( (int64_t) ( rng >> 8 ) & 0xFFFF ) * 0.25;
-    m->position.y = (double) ( (int64_t) ( rng >> 16 ) & 0xFFFF ) * 0.5;
-    m->position.z = (double) ( (int64_t) ( rng >> 24 ) & 0xFFFF ) * 0.125;
-    m->orientation.x = (double) ( (int64_t) rng & 0xFF ) * 0.001;
-    m->linear_velocity.x = (double) ( (int64_t) ( rng >> 32 ) & 0xFFF ) * 0.25;
-    m->angular_velocity.z = (double) ( (int64_t) ( rng >> 40 ) & 0xFFF ) * 0.125;
-}
-
-/* the at-rest twin varies only the fields its taken branch still writes */
-static void vary_rigidbody_at_rest( RigidBody * m, uint64_t rng )
-{
-    m->position.x = (double) ( (int64_t) ( rng >> 8 ) & 0xFFFF ) * 0.25;
-    m->position.y = (double) ( (int64_t) ( rng >> 16 ) & 0xFFFF ) * 0.5;
-    m->orientation.x = (double) ( (int64_t) rng & 0xFF ) * 0.001;
-}
-
-static void vary_chat( Chat * m, uint64_t rng )
-{
-    int i;
-    for ( i = 0; i < m->text_length; i++ )
-        m->text[i] = (char) ( 'a' + ( ( rng >> ( i & 7 ) ) & 15 ) );    /* never zero */
-}
-
-static void vary_test( Test * m, uint64_t rng )
-{
-    m->test_a = (uint16_t) rng;
-    m->test_b = (int16_t) ( ( rng >> 16 ) & 511 );      /* within [0, 1000] */
-    m->test_c = (int16_t) ( ( rng >> 25 ) & 511 );
-    m->test_d = (int16_t) ( ( rng >> 34 ) & 511 );
-}
-
-static void vary_inputpacket( InputPacket * m, uint64_t rng )
-{
-    m->synchronize_sequence = (uint16_t) rng;
-    m->current_frame = rng;
-    m->start_frame = rng >> 1;
-    m->inputs[0].throttle = (float) ( (uint32_t) rng & 0xFF ) / 256.0f;
-    m->inputs[0].fire = ( rng & 1 ) != 0;
-    m->inputs[1].stick_x = (float) ( (uint32_t) ( rng >> 8 ) & 0xFF ) / 256.0f - 0.5f;
-    m->inputs[1].boost = ( rng & 2 ) != 0;
-}
-
-static void vary_shipcreate( ShipCreate * m, uint64_t rng )
-{
-    m->position.x = (int32_t) ( ( rng >> 8 ) & 0xFFFFF ) - 0x80000;     /* within [-8388608, 8388608] */
-    m->position.y = (int32_t) ( ( rng >> 16 ) & 0xFFFFF ) - 0x80000;
-    m->position.z = (int32_t) ( ( rng >> 24 ) & 0xFFFFF ) - 0x80000;
-    m->rotation.x = (int16_t) ( (int32_t) ( rng & 0x7FF ) - 1024 );     /* within [-1024, 1024] */
-    m->linear_velocity.x = (int32_t) ( ( rng >> 32 ) & 0x3FFFFF ) - 2097152;
-    m->flags = rng & 15;                                                /* 4 wire bits, has_flags stays true */
-    m->health = (int16_t) ( ( rng >> 5 ) & 511 );                       /* within [0, 1000] */
-    m->thrust = (int8_t) ( ( rng >> 14 ) & 63 );                        /* within [0, 100] */
-}
-
-
-static void vary_probe_header( ProbeHeader * m, uint64_t rng )
-{
-    m->version = (uint32_t) rng & 7;        /* 3 wire bits */
-    m->probe_id = rng;
-}
-
-static void vary_probebits( ProbeBits * m, uint64_t rng )
-{
-    m->small = (uint32_t) rng & 511;                        /* 9 bits */
-    m->boundary = rng & ( ( 1ULL << 33 ) - 1 );             /* 33 bits */
-    m->wide = rng * 3;
-    m->sensor = (uint32_t) ( rng >> 16 );
-    m->nonce = rng ^ 0x5555555555555555ULL;
-}
-
-static void vary_probearray( ProbeArray * m, uint64_t rng )
-{
-    m->samples[0].orientation = -180.0f + (float) ( (uint32_t) rng & 0x3FFF ) * 0.02f;
-    m->samples[0].raw_delta = (int32_t) ( (uint32_t) ( rng >> 8 ) );
-    m->samples[0].big_delta = (int64_t) ( rng * 5 );
-    m->samples[0].target_id = (uint16_t) ( rng >> 24 );
-    m->samples[0].samples[0] = (uint16_t) ( rng >> 40 );
-    m->samples[1].orientation = -180.0f + (float) ( (uint32_t) ( rng >> 3 ) & 0x3FFF ) * 0.02f;
-    m->samples[1].idle_ticks = (uint32_t) ( rng >> 32 );
-    m->samples[1].samples[0] = (uint16_t) ( rng >> 4 );
-    m->samples[1].samples[1] = (uint16_t) ( rng >> 12 );
-    m->config.retries = (int32_t) ( (uint32_t) ( rng >> 20 ) );
-}
-
-static void vary_testdata( TestData * m, uint64_t rng )
-{
-    int i;
-    m->a = (int32_t) ( rng & 127 ) - 64;                        /* within [-100, 100] */
-    m->b = (int32_t) ( ( rng >> 7 ) & 127 ) - 64;
-    m->c = (int32_t) ( ( rng >> 14 ) & 127 ) - 64;              /* within [-100, 150] */
-    m->d = (uint32_t) rng & 255;
-    m->e = (uint32_t) ( rng >> 8 ) & 255;
-    m->f = (uint32_t) ( rng >> 16 ) & 255;
-    m->items[0] = (int32_t) ( rng & 255 );                      /* items_count stays 3 */
-    m->items[1] = (int32_t) ( ( rng >> 8 ) & 255 );
-    m->items[2] = (int32_t) ( ( rng >> 16 ) & 255 );
-    m->float_value = (float) ( (uint32_t) rng & 0xFFFF );
-    m->compressed_float_value = (float) ( (uint32_t) rng & 1023 ) * 0.005f;     /* within [0, 10] (max 5.115) */
-    m->double_value = (double) ( (int64_t) ( rng >> 16 ) & 0xFFFFFF ) * 0.5;
-    m->int8_value = (int8_t) rng;
-    m->int16_value = (int16_t) ( rng >> 8 );
-    m->uint8_value = (uint8_t) ( rng >> 16 );
-    m->uint16_value = (uint16_t) ( rng >> 24 );
-    m->uint32_value = (uint32_t) ( rng >> 32 );
-    m->uint64_value = rng * 7;
-    m->int64_full = (int64_t) ( rng * 11 );
-    m->int64_range = (int64_t) ( ( rng >> 24 ) & ( ( 1ULL << 37 ) - 1 ) ) - ( 1LL << 36 );  /* within +/- 1e12 */
-    m->fixed_bytes[0] = (uint8_t) rng;
-    m->fixed_bytes[16] = (uint8_t) ( rng >> 8 );
-    for ( i = 0; i < m->text_length; i++ )
-        m->text[i] = (char) ( 'a' + ( ( rng >> ( i & 7 ) ) & 15 ) );    /* never zero */
-}
-
-/* real_packet — BENCH-STANDARD.md §1.7's realistic snapshot, measured through
-   the GENERATED code (bench/corpus/RealWorld.schema -> generated/bench/c).
-   The pinned instance is the ALL-DEFAULTS instance: new_real_packet()
-   serialized unmodified, 1629 bits = 204 wire bytes, pinned to
-   testdata/wire/real_packet.bin by test/bench/main.cpp. The four branch gates
-   (f012 true, f043 false, f050 true, f074 false) are STRUCTURE (§2.7): they
-   keep their schema defaults here, so the same branch bodies ride every
-   iteration and bytes/op is constant. These mappings reproduce
-   bench/cpp/bench_main.cpp's vary_real_packet exactly — fields under the
-   false gates do not ride and are not varied; every mapping keeps its field
-   inside its declared wire range (comments give the bound it stays within). */
-static void vary_real_packet( RealPacket * m, uint64_t rng )
-{
-    /* ranged ints, assorted widths, signed and unsigned */
-    m->f001_int  = (int32_t) ( ( rng >> 8 ) & 0xFFFFF ) - 0x80000;              /* +/-2^19 within +/-805495 */
-    m->f003_int  = (int32_t) ( ( rng >> 12 ) & 0xFFFFF ) - 0x80000;             /* within +/-835897 */
-    m->f005_uint = (uint16_t) ( ( rng >> 20 ) & 0xFFF );                        /* <=4095 within [0, 7316] */
-    m->f006_int  = (int16_t) ( (int32_t) ( ( rng >> 26 ) & 0x7FF ) - 1024 );    /* +/-1024 within +/-1513 */
-    m->f009_int  = (int8_t) ( (int32_t) ( ( rng >> 33 ) & 31 ) - 16 );          /* +/-16 within +/-22 */
-    m->f033_uint = (uint32_t) ( ( rng >> 37 ) & 0x1FFFF );                      /* <=131071 within [0, 142780] */
-    m->f041_int  = (int8_t) ( (int32_t) ( ( rng >> 42 ) & 63 ) - 32 );          /* +/-32 within +/-55 */
-    m->f062_uint = (uint16_t) ( ( rng >> 47 ) & 255 );                          /* <=255 within [0, 503] */
-    m->f088_int  = (int16_t) ( (int32_t) ( ( rng >> 52 ) & 0x3FF ) - 512 );     /* +/-512 within +/-694 */
-    m->f090_uint = (uint8_t) ( ( rng >> 57 ) & 127 );                           /* <=127 within [0, 214] */
-    /* bits(N), narrow and wide */
-    m->f011_bits = (uint32_t) rng & 0x3FF;                                      /* 10 bits */
-    m->f023_bits = (uint32_t) ( rng >> 5 ) & 0x1FFFFFF;                         /* 25 bits */
-    m->f042_bits = (uint32_t) ( rng >> 3 ) & 0x3FFFFFFF;                        /* 30 bits */
-    m->f081_bits = (uint32_t) ( rng >> 7 ) & 0x1FFFFFFF;                        /* 29 bits */
-    m->f089_bits = rng & 0xFFFFFFFFFFFFULL;                                     /* 48 bits */
-    m->f093_bits = rng ^ 0x5555555555555555ULL;                                 /* 64 bits */
-    m->f097_bits = (uint32_t) ( rng >> 11 ) & 0xFFF;                            /* 12 bits */
-    /* bools (NEVER the four branch gates — those are structure, §2.7) */
-    m->f037_bool = ( rng & 1 ) != 0;
-    m->f055_bool = ( rng & 2 ) != 0;
-    m->f092_bool = ( rng & 4 ) != 0;
-    /* float32 / float64 */
-    m->f007_f32 = (float) ( (uint32_t) rng & 0xFFFF );
-    m->f020_f32 = (float) ( (uint32_t) ( rng >> 16 ) & 0xFFFF ) * 0.5f;
-    m->f058_f32 = (float) ( (uint32_t) ( rng >> 24 ) & 0xFFFF ) * 0.25f;
-    m->f002_f64 = (double) ( (int64_t) ( rng >> 8 ) & 0xFFFFFF ) * 0.5;
-    m->f059_f64 = (double) ( (int64_t) ( rng >> 16 ) & 0xFFFFFF ) * 0.25;
-    m->f087_f64 = (double) ( (int64_t) ( rng >> 24 ) & 0xFFFFFF ) * 0.125;
-    /* compressed floats (in range by construction) */
-    m->f004_cf32 = (float) ( (uint32_t) rng & 0x3FFF ) * 0.1f;                  /* <=1638.3 within [0, 2000] */
-    m->f061_cf32 = -90.0f + (float) ( (uint32_t) ( rng >> 9 ) & 255 ) * 0.5f;   /* within [-90, 90] (max 37.5) */
-    m->f067_cf32 = -100.0f + (float) ( (uint32_t) ( rng >> 18 ) & 511 ) * 0.25f;    /* within [-100, 100] (max 27.75) */
-    m->f072_cf32 = (float) ( (uint32_t) ( rng >> 27 ) & 8191 ) * 0.01f;         /* <=81.91 within [0, 100] */
-    /* fixed / ufixed (raw storage scaled by 2^F; bounds are whole units) */
-    m->f016_fixed  = (int32_t) ( ( rng >> 10 ) & 0x3FFFFFF ) - 0x2000000;       /* +/-2^25 within +/-36*2^20 */
-    m->f025_fixed  = (int16_t) ( (int32_t) ( ( rng >> 18 ) & 0x7FFF ) - 0x4000 );   /* +/-2^14 within +/-119*2^8 */
-    m->f095_fixed  = (int32_t) ( ( rng >> 22 ) & 0x7FFFFFF ) - 0x4000000;       /* +/-2^26 within +/-1577*2^16 */
-    m->f021_ufixed = (uint32_t) ( rng >> 30 ) & 0x3FFFFFF;                      /* <=2^26-1 within 25141*2^12 */
-    m->f049_ufixed = (uint16_t) ( ( rng >> 36 ) & 0x7FFF );                     /* <=32767 within 3*2^14 */
-    m->f084_ufixed = (uint8_t) ( ( rng >> 44 ) & 0x7F );                        /* <=127 within 1*2^7 */
-    /* enum / flags (wire-valid by construction) */
-    m->f036_enum  = (PacketMode) ( (uint32_t) ( rng >> 30 ) & 3 );              /* within wire range [0, 5] */
-    m->f083_enum  = (PacketMode) ( (uint32_t) ( rng >> 34 ) & 3 );
-    m->f091_flags = rng & 31;                                                   /* 5 wire bits */
-    /* full-width 64-bit */
-    m->f008_u64 = rng;
-    m->f029_i64 = (int64_t) ( rng * 3 );
-    m->f063_i64 = (int64_t) ( rng * 5 );
-    /* fields riding inside the TAKEN branches (f012 true, f050 true) */
-    m->f013_f32  = (float) ( (uint32_t) ( rng >> 4 ) & 0xFFFF );
-    m->f014_uint = (uint16_t) ( ( rng >> 21 ) & 511 );                          /* <=511 within [0, 775] */
-    m->f015_int  = (int8_t) ( (int32_t) ( ( rng >> 40 ) & 31 ) - 16 );          /* +/-16 within +/-21 */
-    m->f017_uint = (uint16_t) ( ( rng >> 29 ) & 0xFFF );                        /* <=4095 within [0, 4606] */
-    m->f051_bool = ( rng & 8 ) != 0;
-    m->f052_int  = (int8_t) ( (int32_t) ( ( rng >> 38 ) & 63 ) - 32 );          /* +/-32 within +/-57 */
-    m->f053_f32  = (float) ( (uint32_t) ( rng >> 40 ) & 0xFFFF ) * 0.125f;
-    m->f054_int  = (int8_t) ( (int32_t) ( ( rng >> 45 ) & 63 ) - 32 );          /* +/-32 within +/-35 */
-}
-
-#define BM_SUFFIX rigidbody
-#define BM_TYPE RigidBody
-#define BM_WRITE write_rigid_body
-#define BM_READ read_rigid_body
-#define BM_VARY vary_rigidbody
-#include "bench_message.inc"
-#define BM_SUFFIX rigidbody_at_rest
-#define BM_TYPE RigidBody
-#define BM_WRITE write_rigid_body
-#define BM_READ read_rigid_body
-#define BM_VARY vary_rigidbody_at_rest
-#include "bench_message.inc"
-#define BM_SUFFIX chat
-#define BM_TYPE Chat
-#define BM_WRITE write_chat
-#define BM_READ read_chat
-#define BM_VARY vary_chat
-#include "bench_message.inc"
-#define BM_SUFFIX test
-#define BM_TYPE Test
-#define BM_WRITE write_test
-#define BM_READ read_test
-#define BM_VARY vary_test
-#include "bench_message.inc"
-#define BM_SUFFIX inputpacket
-#define BM_TYPE InputPacket
-#define BM_WRITE write_input_packet
-#define BM_READ read_input_packet
-#define BM_VARY vary_inputpacket
-#include "bench_message.inc"
-#define BM_SUFFIX shipcreate
-#define BM_TYPE ShipCreate
-#define BM_WRITE write_ship_create
-#define BM_READ read_ship_create
-#define BM_VARY vary_shipcreate
-#include "bench_message.inc"
-#define BM_SUFFIX probe_header
-#define BM_TYPE ProbeHeader
-#define BM_WRITE write_probe_header
-#define BM_READ read_probe_header
-#define BM_VARY vary_probe_header
-#include "bench_message.inc"
-#define BM_SUFFIX probebits
-#define BM_TYPE ProbeBits
-#define BM_WRITE write_probe_bits
-#define BM_READ read_probe_bits
-#define BM_VARY vary_probebits
-#include "bench_message.inc"
-#define BM_SUFFIX probearray
-#define BM_TYPE ProbeArray
-#define BM_WRITE write_probe_array
-#define BM_READ read_probe_array
-#define BM_VARY vary_probearray
-#include "bench_message.inc"
-#define BM_SUFFIX testdata
-#define BM_TYPE TestData
-#define BM_WRITE write_test_data
-#define BM_READ read_test_data
-#define BM_VARY vary_testdata
-#include "bench_message.inc"
-#define BM_SUFFIX real_packet
-#define BM_TYPE RealPacket
-#define BM_WRITE write_real_packet
-#define BM_READ read_real_packet
-#define BM_VARY vary_real_packet
-#include "bench_message.inc"
-
-/* ------------------------------------------------------------------------------------------
    family gen over the Bench corpus: BenchMixed measured through the GENERATED
    code (generated/bench/c/BenchWire.h), driven entirely by the committed
    variant corpus — no hand-written pin, vary or sink code participates.
@@ -641,146 +361,6 @@ static void vary_real_packet( RealPacket * m, uint64_t rng )
 #define BM_WRITE write_bench_mixed
 #define BM_READ read_bench_mixed
 #include "bench_datadriven.inc"
-
-/* ------------------------------------------------------------------------------------------
-   pinned corpus instances — the same values test/main.cpp pins to the goldens
-   ------------------------------------------------------------------------------------------ */
-
-static RigidBody pin_rigidbody_moving( void )
-{
-    RigidBody in;
-    memset( &in, 0, sizeof( in ) );
-    in.position.x = 1.5; in.position.y = -2.5; in.position.z = 3.25;
-    in.orientation.x = 0.1; in.orientation.y = 0.2; in.orientation.z = 0.3; in.orientation.w = 0.9;
-    in.at_rest = 0;
-    in.linear_velocity.x = 10.0; in.linear_velocity.y = 20.0; in.linear_velocity.z = -3.0;
-    in.angular_velocity.x = 0.25; in.angular_velocity.y = 0.5; in.angular_velocity.z = 0.75;
-    return in;
-}
-
-static Chat pin_chat( void )
-{
-    Chat in;
-    memset( &in, 0, sizeof( in ) );
-    memcpy( in.text, "wire parity", 11 );
-    in.text_length = 11;
-    return in;
-}
-
-static InputPacket pin_inputpacket( void )
-{
-    InputPacket in;
-    memset( &in, 0, sizeof( in ) );
-    in.synchronize_sequence = 7;
-    in.current_frame = 123456789ULL;
-    in.start_frame = 123456780ULL;
-    in.inputs_count = 2;
-    in.inputs[0].throttle = 0.5f;
-    in.inputs[0].fire = 1;
-    in.inputs[1].stick_x = -0.25f;
-    in.inputs[1].boost = 1;
-    return in;
-}
-
-static ShipCreate pin_shipcreate( void )
-{
-    ShipCreate in;
-    memset( &in, 0, sizeof( in ) );
-    in.ship_type = SHIP_TYPE_BOMBER;
-    in.position.x = 1000; in.position.y = -2000; in.position.z = 3000;
-    in.has_flags = 1;
-    in.flags = SHIP_FLAGS_BOOSTING | SHIP_FLAGS_AIMING;
-    in.team = TEAM_BLUE;
-    in.health = 750;
-    in.thrust = 55;
-    return in;
-}
-
-
-static ProbeHeader pin_probe_header( void )
-{
-    ProbeHeader h;
-    memset( &h, 0, sizeof( h ) );
-    h.version = 5;
-    h.probe_id = 0x1122334455667788ULL;
-    return h;
-}
-
-static ProbeBits pin_probebits( void )
-{
-    ProbeBits in;
-    memset( &in, 0, sizeof( in ) );
-    in.small = 0x1FF;
-    in.boundary = 0x1FFFFFFFFULL;
-    in.wide = 0xFEDCBA9876543210ULL;
-    in.sensor = 4294967295u;
-    in.nonce = 18446744073709551615ULL;
-    return in;
-}
-
-static ProbeArray pin_probearray( void )
-{
-    /* new_probe_array installs the SPECIFIED defaults (active = true,
-       retries = -1, preferred = Railgun) exactly as C++ construction does —
-       the pinned instance overrides only what test/main.cpp overrides */
-    ProbeArray in = new_probe_array();
-    in.samples[0].orientation = 90.0f;
-    in.samples[0].raw_delta = -5;
-    in.samples[0].big_delta = -1234567890123LL;
-    in.samples[0].weapon = WEAPON_LASER;
-    in.samples[0].has_target = 1;
-    in.samples[0].target_id = 777;
-    in.samples[0].samples_count = 1;
-    in.samples[0].samples[0] = 42;
-    in.samples[1].active = 0;
-    in.samples[1].orientation = -45.5f;
-    in.samples[1].raw_delta = 7;
-    in.samples[1].big_delta = 99;
-    in.samples[1].idle_ticks = 1000;
-    in.samples[1].samples_count = 2;
-    in.samples[1].samples[0] = 7;
-    in.samples[1].samples[1] = 8;
-    in.config.retries = 3;
-    in.config.preferred = WEAPON_MISSILE;
-    return in;
-}
-
-static TestData pin_testdata( void )
-{
-    TestData in;
-    int i;
-    memset( &in, 0, sizeof( in ) );
-    in.a = -100;
-    in.b = 100;
-    in.c = 149;
-    in.d = 0x11;
-    in.e = 0x22;
-    in.f = 0x33;
-    in.g = 1;
-    in.items_count = 3;
-    in.items[0] = 0;
-    in.items[1] = 128;
-    in.items[2] = 255;
-    in.float_value = 3.1415926f;
-    in.compressed_float_value = 2.5f;
-    in.double_value = 1.0 / 3.0;
-    in.int8_value = -128;
-    in.int16_value = -32768;
-    in.uint8_value = 255;
-    in.uint16_value = 65535;
-    in.uint32_value = 4294967295u;
-    in.uint64_value = 18446744073709551615ULL;
-    in.int64_full = ( -9223372036854775807LL - 1 );
-    in.int64_range = -999999999999LL;
-    for ( i = 0; i < 17; i++ )
-    {
-        in.fixed_bytes[i] = (uint8_t) ( i * 3 );
-    }
-    memcpy( in.text, "the quick brown fox", 19 );
-    in.text_length = 19;
-    return in;
-}
-
 
 #define BENCH_NOINLINE __attribute__(( noinline ))
 
@@ -969,16 +549,6 @@ static void bench_bitpacker( long base_passes )
 int main( int argc, char ** argv )
 {
     int i;
-    RigidBody moving, at_rest;
-    Chat chat;
-    Test test;
-    InputPacket inputpacket;
-    ShipCreate shipcreate;
-    ProbeHeader probe_header;
-    ProbeBits probebits;
-    ProbeArray probearray;
-    TestData testdata;
-    RealPacket real_packet;
 
     for ( i = 1; i < argc; i++ )
     {
@@ -1024,42 +594,6 @@ int main( int argc, char ** argv )
     if ( g_csv )
         printf( "lang,bench,path,iters,bytes_per_op,runs,median_msgs_per_sec,min_msgs_per_sec,max_msgs_per_sec,median_mb_per_sec,spread_pct,corpus_id,family,linkage,checks,opt,inline\n" );
 
-
-    moving = pin_rigidbody_moving();
-    at_rest = moving;
-    at_rest.at_rest = 1;
-    chat = pin_chat();
-    memset( &test, 0, sizeof( test ) );
-    inputpacket = pin_inputpacket();
-    shipcreate = pin_shipcreate();
-    probe_header = pin_probe_header();
-    probebits = pin_probebits();
-    probearray = pin_probearray();
-    testdata = pin_testdata();
-    /* the §1.7 pin is the ALL-DEFAULTS instance: new_real_packet() installs
-       the SPECIFIED defaults (the four branch gates: f012 true, f043 false,
-       f050 true, f074 false) over zero, exactly as C++ RealPacket{} does */
-    real_packet = new_real_packet();
-
-    if ( !g_quick )
-    {
-        bench_message_rigidbody( "rigidbody_moving", "rigidbody_moving", 24000000L, &moving );
-        bench_message_rigidbody_at_rest( "rigidbody_at_rest", "rigidbody_at_rest", 32000000L, &at_rest );
-        bench_message_chat( "chat", "chat", 48000000L, &chat );
-        bench_message_test( "test", NULL, 192000000L, &test );
-        bench_message_inputpacket( "inputpacket", "inputpacket", 16000000L, &inputpacket );
-        bench_message_shipcreate( "shipcreate", "shipcreate_flags", 32000000L, &shipcreate );
-        bench_message_probe_header( "probe_header", "probe_header", 256000000L, &probe_header );
-        bench_message_probebits( "probebits", "probebits", 128000000L, &probebits );
-        bench_message_probearray( "probearray", "probearray", 20000000L, &probearray );
-        bench_message_testdata( "testdata", "testdata", 8000000L, &testdata );
-
-        /* real_packet (§1.7): the realistic snapshot — ~93 riding individually
-           serialized small fields, 204 wire bytes, 0% bulk share by bits.
-           base_iters sized in the C++ reference (§2.1: 8M puts the 200 ms floor
-           at 40 M msg/s). */
-        bench_message_real_packet( "real_packet", "real_packet", 8000000L, &real_packet );
-    }
 
     /* family gen over the Bench corpus: BenchMixed through the generated code,
        fed by the committed variant corpus — same goldens, same iteration count
