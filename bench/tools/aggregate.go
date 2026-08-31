@@ -139,9 +139,8 @@ func aggregateCmd(paths []string) {
 	// presentation order: language blocks (as run.sh emits), corpus order within.
 	// The order list is presentation, but this loop is also the OUTPUT loop —
 	// a bench OR PATH missing from the lists would silently vanish from the
-	// pass, which is exactly what happened to real_packet on certified-space-1's
-	// first window (added to the runners by #61, never to the list) and again
-	// to round_trip when the gen bench_mixed rows went data-driven (#191).
+	// pass, which is exactly what happened to round_trip when the gen
+	// bench_mixed rows went data-driven (#191).
 	// Printed keys are counted and any straggler REFUSES the aggregation.
 	printed := 0
 	for _, l := range langs {

@@ -181,19 +181,16 @@ ELIXIR_VERSION="$(PATH="$BEAM_PATH:$PATH" elixir --short-version 2>/dev/null | h
 # serialize's own bench: no -ffast-math — the schema repo pins wire
 # determinism with -ffp-contract=off, and the generated quantize paths do
 # real float math. Recorded here so the numbers carry their flags.
-# -Itest: the corpus maps Vec3/Quat onto the hand-written C++ types in
-# test/vec_math.h (SPEC §4.2 native type mapping), so the generated C++ headers
-# include it. C++ only — the C target ignores the mapping.
-# -Igenerated/bench/cpp: the bench-corpus generated code (RealWorldWire.h —
-# the §1.7 realistic snapshot the real_packet rows measure).
-COMMON_FLAGS="-std=c++17 -Wall -Wextra -Werror -ffp-contract=off -fno-rtti -Igenerated/cpp -Igenerated/bench/cpp -Itest -I$SERIALIZE"
+# -Igenerated/bench/cpp: the bench-corpus generated code (BenchWire.h), the
+# only generated unit either runner compiles.
+COMMON_FLAGS="-std=c++17 -Wall -Wextra -Werror -ffp-contract=off -fno-rtti -Igenerated/bench/cpp -I$SERIALIZE"
 
 # g++ (13.3 checked) rejects two things in the GENERATED code that clang never
-# flags: -Wclass-memaccess (branch zeroing memsets non-trivial generated
-# structs, Types.h ReadRigidBody) and -Wtype-limits (read_int64 on a uint32
-# full-range field expands to unsigned < 0, Wire.h ReadProbeBits). Those are
-# emitter findings, not bench findings — tracked for a fix; suppressed here so
-# the bench builds on both compilers with -Werror otherwise live.
+# flags: -Wclass-memaccess (branch zeroing memsets a non-trivial generated
+# struct) and -Wtype-limits (read_int64 on a full-range unsigned field expands
+# to unsigned < 0). Those are emitter findings, not bench findings — tracked
+# for a fix; suppressed here so the bench builds on both compilers with
+# -Werror otherwise live.
 if $CXX_BIN --version 2>/dev/null | head -1 | grep -qi 'g++\|gcc'; then
     COMMON_FLAGS="$COMMON_FLAGS -Wno-class-memaccess -Wno-type-limits"
 fi
@@ -215,9 +212,9 @@ DEBUG_FLAGS="-O0 -g -DSERIALIZE_DEBUG $COMMON_FLAGS"
 # header, so this row carries a call boundary the header-only C++ runtime does
 # not have. That is a property of the runtime's packaging, not of the
 # generated code; bench/README.md says so where the numbers live.
-# -Igenerated/bench/c: the bench-corpus generated code (RealWorldWire.h —
-# the §1.7 realistic snapshot the real_packet rows measure).
-C_COMMON_FLAGS="-std=c99 -Wall -Wextra -Werror -Igenerated/c -Igenerated/bench/c -I$SERIALIZE_C"
+# -Igenerated/bench/c: the bench-corpus generated code (BenchWire.h), the
+# only generated unit this runner compiles.
+C_COMMON_FLAGS="-std=c99 -Wall -Wextra -Werror -Igenerated/bench/c -I$SERIALIZE_C"
 # gcc (13.3 checked) additionally rejects the C runner's bounded strncpy of a
 # golden basename under -Werror (-Wstringop-truncation): the truncation is
 # deliberate (fixed-width name slot, terminator guaranteed by the zeroed
@@ -367,8 +364,8 @@ fi
 
 # ---- C (the fifth target; serialize.c is a compiled TU, not a header) ----
 if [ -z "$ONLY" ] || [ "$ONLY" = c ]; then
-    if [ ! -f generated/c/TypesWire.h ]; then
-        skip_leg c "generated/c is missing — run make first"
+    if [ ! -f generated/bench/c/BenchWire.h ]; then
+        skip_leg c "generated/bench/c is missing — run make first"
     elif [ ! -f "$SERIALIZE_C/serialize.c" ]; then
         skip_leg c "serialize.c not found at $SERIALIZE_C (set SERIALIZE_C)"
     else

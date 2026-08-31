@@ -13,25 +13,20 @@
 # Accepted deliberately (issue #25): the gate also fires on compiler-version
 # changes, and telling a regression from a new compiler apart is manual.
 #
-# The real_packet rows were added 2026-08-21 by issue #104, which taught
-# inline-verdict.sh's map to name a row's generated UNIT: real_packet is the
-# only row of the RealWorld corpus unit, so until that fix it had no map entry
-# in ANY language and carried inline=unknown everywhere — §5.3 rule 7 refused
-# every ratio it appeared in, which is why the Studio pass on PR #84 had to
-# drop four of its rows as un-ratioable. The numbers below are the FIRST
-# honest measurement of these ten legs, not a target: pinned where the
-# instrument found them, on an M-series MacBook Air against the CI-pinned
-# runtime tags. They are the densest per-op numbers in the ledger (~93
-# individually serialized fields per message) and several of them are
-# genuinely large — go's 97 hot calls per op on both paths, C#'s 80 on read.
-# Whether any of them SHOULD be smaller is a separate question from whether
-# the gate can see them, and this ledger only answers the second.
-#
 # Seeded 2026-08-15 from the current-era, zero-unknown studio passes:
 #   O3 + default rows: results/2026-08-15-arm64-studio-postlane-O3-pass.csv (schema 695fde3)
 #   O2 rows:           results/2026-08-15-arm64-studio-O2-pass.csv          (schema c19cdb3)
 # Both post-7db74ef (verdicts trustworthy) — never seed budgets from a
 # pre-7db74ef artifact; see the era headers issue #20 stamped.
+#
+# The §1.2 example-corpus rows left this ledger with the harness code that
+# produced them (2026-08-31): the ruling on #199 leaves ONE bench corpus,
+# Bench.schema, so rigidbody_moving / rigidbody_at_rest / chat / test /
+# inputpacket / shipcreate / probe_header / probebits / probearray /
+# testdata / real_packet no longer exist as rows in any runner. A budget
+# line for a leg that produces no verdict FAILS the gate as a vanished
+# verdict — leaving them would have red-lit CI, exactly as the bench_mixed
+# lines did on #199.
 #
 # bench_mixed carries NO budget line in any language, deliberately (2026-08-31).
 # Its verdicts came from family rt's noinline `rt_bench_mixed_*_loop` symbols;
@@ -46,177 +41,17 @@
 # the gate says so as a WARN, which is the honest state.
 #
 # lang bench path opt max-hot
-cpp rigidbody_moving write O3 0
-cpp rigidbody_moving read O3 0
-cpp rigidbody_at_rest write O3 0
-cpp rigidbody_at_rest read O3 0
-cpp chat write O3 0
-cpp chat read O3 0
-cpp test write O3 0
-cpp test read O3 0
-cpp inputpacket write O3 0
-cpp inputpacket read O3 0
-cpp shipcreate write O3 0
-cpp shipcreate read O3 0
-cpp probe_header write O3 0
-cpp probe_header read O3 0
-cpp probebits write O3 0
-cpp probebits read O3 0
-cpp probearray write O3 0
-cpp probearray read O3 0
-cpp testdata write O3 2
-cpp testdata read O3 0
-cpp real_packet write O3 2
-cpp real_packet read O3 0
 cpp bitpacker write O3 0
 cpp bitpacker read O3 0
-c rigidbody_moving write O3 0
-c rigidbody_moving read O3 0
-c rigidbody_at_rest write O3 0
-c rigidbody_at_rest read O3 0
-c chat write O3 1
-c chat read O3 0
-c test write O3 0
-c test read O3 0
-c inputpacket write O3 0
-c inputpacket read O3 0
-c shipcreate write O3 0
-c shipcreate read O3 0
-c probe_header write O3 0
-c probe_header read O3 0
-c probebits write O3 0
-c probebits read O3 0
-c probearray write O3 0
-c probearray read O3 0
-c testdata write O3 1
-c testdata read O3 0
-c real_packet write O3 0
-c real_packet read O3 0
 c bitpacker write O3 0
 c bitpacker read O3 0
-rust rigidbody_moving write O3 0
-rust rigidbody_moving read O3 0
-rust rigidbody_at_rest write O3 0
-rust rigidbody_at_rest read O3 0
-rust chat write O3 1
-rust chat read O3 2
-rust test write O3 0
-rust test read O3 0
-rust inputpacket write O3 0
-rust inputpacket read O3 0
-rust shipcreate write O3 0
-rust shipcreate read O3 0
-rust probe_header write O3 0
-rust probe_header read O3 0
-rust probebits write O3 0
-rust probebits read O3 0
-rust probearray write O3 0
-rust probearray read O3 0
-rust testdata write O3 3
-rust testdata read O3 2
-rust real_packet write O3 15
-rust real_packet read O3 14
 rust bitpacker write O3 0
 rust bitpacker read O3 0
-cs rigidbody_moving write default 2
-cs rigidbody_moving read default 5
-cs rigidbody_at_rest write default 2
-cs rigidbody_at_rest read default 5
-# cs chat write raised 3 -> 4 on 2026-08-16: serialize.cs 1.3.0 (the wstring
-# UTF-16 code-unit rework + reader refusals, its PR #12) landed between two
-# CI runs with byte-identical generated cs bench code — the pre-1.3.0 run
-# measured 3, the 1.3.0 run measured 4 on the CI runner and locally alike.
-# A runtime-version firing, told apart manually per issue #25, accepted as
-# the new pinned cost; not a schema-side regression.
-cs chat write default 4
-cs chat read default 4
-cs test write default 2
-cs test read default 3
-cs inputpacket write default 3
-cs inputpacket read default 3
-cs shipcreate write default 2
-cs shipcreate read default 3
-cs probe_header write default 2
-cs probe_header read default 3
-cs probebits write default 2
-cs probebits read default 3
-cs probearray write default 3
-cs probearray read default 3
-cs testdata write default 5
-cs testdata read default 5
-cs real_packet write default 1
-cs real_packet read default 80
 cs bitpacker write default 13
 cs bitpacker read default 22
-go rigidbody_moving write default 14
-go rigidbody_moving read default 14
-go rigidbody_at_rest write default 14
-go rigidbody_at_rest read default 14
-go chat write default 2
-go chat read default 2
-go test write default 4
-go test read default 4
-go inputpacket write default 17
-go inputpacket read default 17
-go shipcreate write default 16
-go shipcreate read default 17
-go probe_header write default 5
-go probe_header read default 5
-go probebits write default 5
-go probebits read default 5
-go probearray write default 12
-go probearray read default 12
-go testdata write default 24
-go testdata read default 24
-go real_packet write default 97
-go real_packet read default 97
 go bitpacker write default 1
 go bitpacker read default 1
-cpp rigidbody_moving write O2 0
-cpp rigidbody_moving read O2 0
-cpp rigidbody_at_rest write O2 0
-cpp rigidbody_at_rest read O2 0
-cpp chat write O2 1
-cpp chat read O2 0
-cpp test write O2 0
-cpp test read O2 0
-cpp inputpacket write O2 0
-cpp inputpacket read O2 0
-cpp shipcreate write O2 0
-cpp shipcreate read O2 0
-cpp probe_header write O2 0
-cpp probe_header read O2 0
-cpp probebits write O2 0
-cpp probebits read O2 0
-cpp probearray write O2 0
-cpp probearray read O2 0
-cpp testdata write O2 2
-cpp testdata read O2 0
-cpp real_packet write O2 2
-cpp real_packet read O2 0
 cpp bitpacker write O2 0
 cpp bitpacker read O2 0
-c rigidbody_moving write O2 0
-c rigidbody_moving read O2 0
-c rigidbody_at_rest write O2 0
-c rigidbody_at_rest read O2 0
-c chat write O2 1
-c chat read O2 0
-c test write O2 0
-c test read O2 0
-c inputpacket write O2 0
-c inputpacket read O2 0
-c shipcreate write O2 0
-c shipcreate read O2 0
-c probe_header write O2 0
-c probe_header read O2 0
-c probebits write O2 0
-c probebits read O2 0
-c probearray write O2 0
-c probearray read O2 0
-c testdata write O2 1
-c testdata read O2 0
-c real_packet write O2 0
-c real_packet read O2 0
 c bitpacker write O2 0
 c bitpacker read O2 0
