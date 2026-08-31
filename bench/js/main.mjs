@@ -251,36 +251,6 @@ function sinkOfBenchBitsGen(d) {
   return d.B7 + d.B13 + d.B23 + d.B3 + d.B32 + d.B11 + d.B19 + bigBit(d.B48);
 }
 
-// §2.7 full-struct observation over the canonical shape: every decoded field
-// folds in — array elements one by one over the decoded extent, booleans as
-// 0/1, the string and byte block byte-summed over their used lengths, and the
-// BigInt fields through the allocation-free nonzero comparison this leg's
-// named deviation permits (a BigInt add per field per iteration would measure
-// the allocator).
-function sinkOfBenchMixedGen(d) {
-  let s = d.Sequence + d.AckSequence + d.AckBits + bigBit(d.SessionId) + d.ClientId +
-    bigBit(d.Nonce) + bigBit(d.WorldTime) + bigBit(d.FrameTick) + d.ServerTime +
-    d.EntitiesCount + d.StatsCount + d.GameEvent.Type +
-    d.PlayerNameLength + d.PayloadLength +
-    d.AimX + d.AimY + d.AimZ + d.Recoil + d.Drift +
-    bigBit(d.WideKey) + bigBit(d.Flux) + d.Ping + d.CrcHint +
-    boolBit(d.HasExtra) + d.Extra + d.IdleTicks;
-  for (let i = 0; i < d.EntitiesCount; i++) {
-    const e = d.Entities[i];
-    s += e.EntityId + e.PosX + e.PosY + e.PosZ + e.Yaw + e.Pitch +
-      e.VelX + e.VelY + e.VelZ + e.Health + e.Weapon + bigBit(e.Damage) +
-      boolBit(e.Moving) + boolBit(e.Firing);
-  }
-  for (let i = 0; i < d.StatsCount; i++) {
-    s += d.Stats[i].StatId + d.Stats[i].Delta;
-  }
-  const h = d.GameEvent.Hit;
-  s += h.TargetId + h.Damage + h.HitKind + boolBit(h.Crit);
-  s += sumBytes(d.Loadout, 4);
-  s += sumBytes(d.PlayerName, d.PlayerNameLength);
-  s += sumBytes(d.Payload, d.PayloadLength);
-  return s;
-}
 
 function sinkOfRigidBody(d) {
   return d.Position.X + d.Position.Y + d.Position.Z +
@@ -420,6 +390,7 @@ function sinkOfRtMixed(f) {
 }
 let gCsv = false;
 let gWireDir = "../../testdata/wire";
+let gVariantDir = "../../bench/corpus/variants";
 let failed = false;
 
 // --------------------------------------------------------------------------
@@ -711,6 +682,181 @@ function benchMessageFlat(name, golden, iters, pinned, writeFn, readFn, flatWrit
 
   report(name, "write", iters, bytesPerOp, stats(writeRates), "gen", "flat");
   report(name, "read", iters, bytesPerOp, stats(readRates), "gen", "flat");
+}
+
+// --------------------------------------------------------------------------
+// the DATA-DRIVEN benchmark driver (issue #191)
+// --------------------------------------------------------------------------
+//
+// THE PROPERTY: nothing below names a field of the shape it measures. Shape
+// knowledge lives in the committed variant DATA (bench/corpus/variants,
+// emitted by bench/tools/variantgen) and in the generated codec, and nowhere
+// else — so this driver cannot drift from another language's driver in what
+// it measures, which is the whole reason the design exists. If a change here
+// ever needs a field name, the design has failed and that is the finding.
+//
+// It replaces benchMessageFlat for bench_mixed only. The flat tier stays THE
+// js path (codec=flat); the cross-tier oracle against the runtime tier is
+// kept, because deepEqual walks the decoded objects by their own keys and so
+// names no field either.
+//
+// The §2.7 read-side sink deviation this leg carried — the JS BigInt observed
+// as one bit where java/dart/elixir fold the full value, which made the js
+// read row a FLOOR — has nothing left to deviate on: the round-trip's decode
+// is observed by its own re-encode.
+
+// Loads <variant-dir>/<name>.variants.bin into the NumVariants §2.7-staggered
+// slots and returns the record size, or -1. The records are fixed-width by
+// construction (§2.7 pins every structure field), so the file needs no index:
+// the record size IS file size / NumVariants, and a file that does not divide
+// evenly is a refusal.
+function loadVariants(name) {
+  const path_ = `${gVariantDir}/${name}.variants.bin`;
+  let packed;
+  try {
+    packed = readFileSync(path_);
+  } catch {
+    process.stderr.write(
+      `missing variant data ${path_} — run \`make bench-variants\`, and run the bench from bench/js (or pass --variant-dir)\n`
+    );
+    return -1;
+  }
+  if (packed.length === 0 || packed.length % NumVariants !== 0) {
+    process.stderr.write(
+      `variant data ${path_} is ${packed.length} bytes, not a multiple of ${NumVariants} records — refusing to bench data whose stride is not the record size\n`
+    );
+    return -1;
+  }
+  const record = packed.length / NumVariants;
+  if (record > BufferSize) {
+    process.stderr.write(`variant data ${path_} has ${record}-byte records, over the ${BufferSize}-byte buffer\n`);
+    return -1;
+  }
+  for (let k = 0; k < NumVariants; k++) {
+    gVariants[k].set(packed.subarray(k * record, (k + 1) * record), 0);
+  }
+  // The variant data is corpus (§1.6): it defines the work inside the timed
+  // loops, so it rides in corpus_id exactly as the wire goldens do.
+  gGoldensLoaded.set(`${name}.variants.bin`, packed);
+  return record;
+}
+
+// Ctor — the generated message type — is named once at the call site. A TYPE
+// name is not a field name; the driver knows nothing about the contents.
+function benchDataDrivenFlat(name, golden, iters, Ctor, writeFn, readFn, flatWriteFn, flatReadFn) {
+  const bytesPerOp = loadVariants(name);
+  if (bytesPerOp < 0) {
+    failed = true;
+    return;
+  }
+
+  // gate 1 (§1.5): variant 0 IS the pinned instance, so the whole variant
+  // file is bound to the wire golden by one byte-compare.
+  if (!checkGolden(golden, gVariants[0].subarray(0, bytesPerOp))) {
+    failed = true;
+    return;
+  }
+
+  // gate 2: every variant decodes through the FLAT tier, re-encodes, and
+  // comes back byte-identical at the same length; and the runtime tier
+  // agrees on both verdict and fields. §1.5's named residual (the 64 varied
+  // buffers length-checked but never value-checked) closes here.
+  const variantViews = [];
+  const instances = [];
+  const numBits = bytesPerOp * 8;
+  const gView = new DataView(gBuffer.buffer);
+  const twinView = new DataView(gTwin.buffer);
+  for (let k = 0; k < NumVariants; k++) {
+    // the view spans the whole slot, not just the packet: the flat reader's
+    // 64-bit window loads up to 8 bytes past the last word (§2.7's stride pad)
+    const vview = new DataView(gVariants[k].buffer);
+    const flOut = new Ctor();
+    if (!flatReadFn(flOut, vview, numBits)) {
+      fail(name, "flat decode of a variant failed");
+      return;
+    }
+    const rtOut = new Ctor();
+    if (!readFn(new ReadStream(gVariants[k].subarray(0, bytesPerOp)), rtOut)) {
+      fail(name, "runtime decode of a variant failed");
+      return;
+    }
+    if (!deepEqual(flOut, rtOut)) {
+      fail(name, "flat and runtime reads disagree on a variant's fields");
+      return;
+    }
+    if (flatWriteFn(flOut, twinView) !== bytesPerOp ||
+      !bytesEqual(gTwin.subarray(0, bytesPerOp), gVariants[k].subarray(0, bytesPerOp))) {
+      fail(name, "variant round-trip bytes differ — refusing to bench a codec that does not reproduce the corpus");
+      return;
+    }
+    variantViews.push(vview);
+    instances.push(flOut);
+  }
+
+  const writeRates = new Array(gNumRuns);
+  const roundtripRates = new Array(gNumRuns);
+
+  // WRITE: encode the 64 pre-decoded instances round-robin. Rotating the
+  // instances is what §2.7's per-iteration LCG mutation bought — the encoder
+  // never sees the same input twice in a row and cannot precompute scratch
+  // words — with none of the per-language mutation code, and with bytes/op
+  // constant by construction rather than by assertion.
+  for (let run = -1; run < gNumRuns; run++) {
+    const start = performance.now();
+    for (let i = 0; i < iters; i++) {
+      const n = flatWriteFn(instances[i & (NumVariants - 1)], gView);
+      if (n < 0) {
+        fail(name, "flat write refused in loop");
+        return;
+      }
+      gSink = (gSink + n) >>> 0;
+    }
+    const elapsed = (performance.now() - start) / 1000.0;
+    if (run >= 0) {
+      writeRates[run] = iters / elapsed;
+    }
+  }
+
+  // ROUND-TRIP: decode a variant view, then re-encode what came out. The
+  // decode needs no sink discipline of its own — its output IS the encode's
+  // input, so every decoded field is observed by construction, with no
+  // per-language fold to audit.
+  const outValue = new Ctor();
+  for (let run = -1; run < gNumRuns; run++) {
+    const start = performance.now();
+    for (let i = 0; i < iters; i++) {
+      if (!flatReadFn(outValue, variantViews[i & (NumVariants - 1)], numBits)) {
+        fail(name, "flat read failed in loop");
+        return;
+      }
+      const n = flatWriteFn(outValue, gView);
+      if (n < 0) {
+        fail(name, "flat re-write refused in loop");
+        return;
+      }
+      gSink = (gSink + n) >>> 0;
+    }
+    const elapsed = (performance.now() - start) / 1000.0;
+    if (run >= 0) {
+      roundtripRates[run] = iters / elapsed;
+    }
+  }
+
+  const w = stats(writeRates);
+  const rt = stats(roundtripRates);
+  report(name, "write", iters, bytesPerOp, w, "gen", "flat");
+  report(name, "round_trip", iters, bytesPerOp, rt, "gen", "flat");
+
+  // READ is DERIVED, never measured: round-trip time minus write time. It
+  // prints for continuity with the read rows the rest of the corpus still
+  // reports and is NOT a CSV row — a derived number in the CSV would be
+  // divided as if it had been measured.
+  const readTime = 1.0 / rt.median - 1.0 / w.median;
+  if (readTime > 0) {
+    process.stderr.write(
+      `${name.padEnd(18)} ${"read".padEnd(5)} ${(1e-6 / readTime).toFixed(2).padStart(10)} M msg/s   (DERIVED: round-trip minus write, informational — not a measured row)\n`
+    );
+  }
 }
 
 function benchMessage(name, golden, iters, pinned, writeFn, readFn, varyFn, sinkOf, codec = "runtime") {
@@ -2143,123 +2289,6 @@ function varyBenchBitsGen(f) {
   f.B48 = rngBig() & 0xffffffffffffn;
 }
 
-// BenchMixed — THE canonical benchmark shape (issue #184). The pin is
-// test/bench/main.cpp's, transcribed exactly; STRUCTURE fields (the two array
-// counts, the two used lengths, the union tag, the `if` gate) are set here and
-// never touched by vary*, so bytes/op is constant (§2.7).
-const PLAYER_NAME_PIN = Uint8Array.from([...("Rowan_01")].map((c) => c.charCodeAt(0)));
-const PAYLOAD_PIN = Uint8Array.from([0xde, 0xad, 0xbe, 0xef, 0x01, 0x02, 0x03, 0x04]);
-
-// BigInt allocation is the JS leg's tax (§2.7's named deviation). vary* takes
-// exactly ONE rngBig() and derives the rest from these constant tables, so the
-// per-iteration allocator traffic stays where the codec puts it rather than
-// where the harness does.
-const BIG_BYTE = Array.from({ length: 256 }, (_, i) => BigInt(i));
-const BIG_WORLD = Array.from({ length: 256 }, (_, i) => BigInt(i) * 1000000n - 128000000n);
-const BIG_FLUX = Array.from({ length: 256 }, (_, i) => (BigInt(i) << 40n) + 12345n);
-
-function pinBenchMixedGen() {
-  const f = new bench.BenchMixed();
-  f.Sequence = 52428;
-  f.AckSequence = 12345;
-  f.AckBits = 0xa5a5a5a5;
-  f.SessionId = 0x123456789abcdef0n;
-  f.ClientId = 0xdeadbeef;
-  f.Nonce = 0xfedcba9876543210n;
-  f.WorldTime = -987654321000n;
-  f.FrameTick = 0x123456789abcn;
-  f.ServerTime = 12345678;
-  f.EntitiesCount = 8;
-  for (let i = 0; i < 8; i++) {
-    const e = f.Entities[i];
-    e.EntityId = 2049 + i * 17;
-    e.PosX = -16383 + i * 4096;
-    e.PosY = 16383 - i * 4096;
-    e.PosZ = -1 + i * 2048;
-    e.Yaw = 511 - i * 64;
-    e.Pitch = i * 73;
-    e.VelX = -2048 + i * 512;
-    e.VelY = 2047 - i * 512;
-    e.VelZ = -1024 + i * 256;
-    e.Health = 1000 - i * 100;
-    e.Weapon = 1 + i;
-    e.Damage = BigInt(0x5a + i);
-    e.Moving = i % 2 === 0;
-    e.Firing = i % 3 === 0;
-  }
-  f.StatsCount = 80;
-  for (let i = 0; i < 80; i++) {
-    f.Stats[i].StatId = (i * 3) % 256;
-    f.Stats[i].Delta = -512 + ((i * 13) % 1024);
-  }
-  f.GameEvent.Type = bench.MixedEventType.Hit;
-  f.GameEvent.Hit.TargetId = 4095;
-  f.GameEvent.Hit.Damage = 4095;
-  f.GameEvent.Hit.HitKind = 7;
-  f.GameEvent.Hit.Crit = true;
-  f.Loadout.set([0x11, 0x22, 0x33, 0x44]);
-  f.PlayerName.set(PLAYER_NAME_PIN);
-  f.PlayerNameLength = 8;
-  f.Payload.set(PAYLOAD_PIN);
-  f.PayloadLength = 8;
-  f.AimX = 0.5;
-  f.AimY = -0.25;
-  f.AimZ = 0.75;
-  f.Recoil = 1.5;
-  f.Drift = -3.25;
-  f.WideKey = (0x0123456789abcdefn << 64n) | 0xfedcba9876543210n;
-  f.Flux = (1n << 99n) + 7n;
-  f.Ping = 12345;
-  f.CrcHint = 0xabcdef;
-  f.HasExtra = true;
-  f.Extra = 200;
-  return f;
-}
-
-// The LCG field mapping, identical in every runner. VALUE fields only.
-// All 8 entities vary; the 80 stats vary Delta (StatId stays pinned).
-function varyBenchMixedGen(f) {
-  const big = rngBig();
-  f.Sequence = shr64(8) & 65535;
-  f.AckSequence = shr64(24) & 65535;
-  f.AckBits = shr64(16);
-  f.SessionId = big;
-  f.ClientId = shr64(32);
-  f.Nonce = big;
-  f.WorldTime = BIG_WORLD[shr64(12) & 255];
-  f.FrameTick = big & 0xffffffffffffn;
-  f.ServerTime = shr64(20) & 0x7fffff;
-  for (let i = 0; i < 8; i++) {
-    const e = f.Entities[i];
-    e.EntityId = shr64(i) & 4095;
-    e.PosX = (shr64(i + 4) & 16383) - 8192;
-    e.PosY = (shr64(i + 12) & 16383) - 8192;
-    e.Health = shr64(i + 20) & 511;
-    e.Weapon = shr64(i + 40) & 15;
-    e.Damage = BIG_BYTE[shr64(i + 28) & 255];
-    e.Moving = (shr64(i) & 1) !== 0;
-  }
-  for (let i = 0; i < 80; i++) {
-    f.Stats[i].Delta = (shr64(i & 31) & 1023) - 512;
-  }
-  f.GameEvent.Hit.TargetId = shr64(6) & 4095;
-  f.GameEvent.Hit.Damage = shr64(18) & 4095;
-  f.GameEvent.Hit.HitKind = shr64(30) & 7;
-  f.GameEvent.Hit.Crit = (rng.lo & 4) !== 0;
-  f.Loadout[0] = shr64(56) & 255;
-  f.PlayerName[7] = 65 + (shr64(50) & 15);
-  f.Payload[0] = shr64(48) & 255;
-  f.AimX = (shr64(2) & 255) * (1 / 256) - 0.5;
-  f.AimY = (shr64(10) & 255) * (1 / 256) - 0.5;
-  f.AimZ = (shr64(18) & 255) * (1 / 256) - 0.5;
-  f.Recoil = rng.lo & 0xffff;
-  f.Drift = (shr64(8) & 0xffffff) * 0.5;
-  f.WideKey = big;
-  f.Flux = BIG_FLUX[shr64(16) & 255];
-  f.Ping = shr64(40) & 0x7fff;
-  f.CrcHint = shr64(24) & 0xffffff;
-  f.Extra = shr64(52) & 255;
-}
 
 // --------------------------------------------------------------------------
 
@@ -2270,6 +2299,8 @@ function main() {
       gCsv = true;
     } else if (args[i] === "--wire-dir" && i + 1 < args.length) {
       gWireDir = args[++i];
+    } else if (args[i] === "--variant-dir" && i + 1 < args.length) {
+      gVariantDir = args[++i];
     } else if (args[i] === "--round" && i + 1 < args.length) {
       // §2.4: one warmup + one measured run of every benchmark, then exit.
       // K only identifies the round to the interleaved driver, which
@@ -2283,7 +2314,7 @@ function main() {
     } else if (args[i] === "--quick") {
       gQuick = true;
     } else {
-      process.stderr.write("usage: node main.mjs [--csv] [--round K] [--quick] [--wire-dir <dir>] [--print-runtime]\n");
+      process.stderr.write("usage: node main.mjs [--csv] [--round K] [--quick] [--wire-dir <dir>] [--variant-dir <dir>] [--print-runtime]\n");
       process.exit(1);
     }
   }
@@ -2296,7 +2327,7 @@ function main() {
   if (gQuick) {
     // --quick: the flat bench_mixed leg only (THE js path for the shape),
     // golden-gated and cross-validated like every flat leg
-    benchMessageFlat("bench_mixed", "bench_mixed", QuickMixedIters, pinBenchMixedGen(), bench.WriteBenchMixed, bench.ReadBenchMixed, benchFlat.WriteBenchMixedFlat, benchFlat.ReadBenchMixedFlat, varyBenchMixedGen, sinkOfBenchMixedGen);
+    benchDataDrivenFlat("bench_mixed", "bench_mixed", QuickMixedIters, bench.BenchMixed, bench.WriteBenchMixed, bench.ReadBenchMixed, benchFlat.WriteBenchMixedFlat, benchFlat.ReadBenchMixedFlat);
     flushCsv();
     if (failed) {
       process.stderr.write(`BENCH FAILED (corpus_id ${corpusId()})\n`);
@@ -2359,7 +2390,7 @@ function main() {
   benchMessageFlat("bench_packet", "bench_packet", 32000000, pinBenchPacketGen(), bench.WriteBenchPacket, bench.ReadBenchPacket, benchFlat.WriteBenchPacketFlat, benchFlat.ReadBenchPacketFlat, varyBenchPacketGen, sinkOfBenchPacketGen);
   benchMessageFlat("bench_ints", "bench_ints", 40000000, pinBenchIntsGen(), bench.WriteBenchInts, bench.ReadBenchInts, benchFlat.WriteBenchIntsFlat, benchFlat.ReadBenchIntsFlat, varyBenchIntsGen, sinkOfBenchIntsGen);
   benchMessageFlat("bench_bits", "bench_bits", 48000000, pinBenchBitsGen(), bench.WriteBenchBits, bench.ReadBenchBits, benchFlat.WriteBenchBitsFlat, benchFlat.ReadBenchBitsFlat, varyBenchBitsGen, sinkOfBenchBitsGen);
-  benchMessageFlat("bench_mixed", "bench_mixed", 4000000, pinBenchMixedGen(), bench.WriteBenchMixed, bench.ReadBenchMixed, benchFlat.WriteBenchMixedFlat, benchFlat.ReadBenchMixedFlat, varyBenchMixedGen, sinkOfBenchMixedGen);
+  benchDataDrivenFlat("bench_mixed", "bench_mixed", 4000000, bench.BenchMixed, bench.WriteBenchMixed, bench.ReadBenchMixed, benchFlat.WriteBenchMixedFlat, benchFlat.ReadBenchMixedFlat);
 
   // family rt (§1.3/§1.5): the runtime API by hand, oracle-gated against
   // the goldens the generated code pinned. Iteration counts are fixed and
