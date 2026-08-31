@@ -2,6 +2,7 @@
 //
 //	schema check      [dir|files...]                 parse + typecheck; exit code for CI
 //	schema generate   --lang cpp --out <dir> [dir]   emit generated code
+//	schema bench      --lang go --out <dir> [dir]    emit the bench harness shape code
 //	schema id         [dir|files...]                 print the protocol id
 //	schema projection [dir|files...]                 print the wire shape the id hashes
 //	schema fmt        [dir|files...]                 canonicalize schema files in place
@@ -21,6 +22,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 
 	"github.com/mas-bandwidth/schema/v2/compiler"
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -104,33 +106,85 @@ func main() {
 		if err != nil {
 			fail(err)
 		}
-		if err := os.MkdirAll(*out, 0o755); err != nil {
+		writeFiles(*out, files, verbose)
+	case "bench":
+		// The bench harness's shape-dependent code (issue #191). Separate from
+		// generate on purpose: it takes an input generate does not — the wire
+		// goldens, which ARE the pinned instances — and it emits harness code,
+		// not a serializer.
+		fs := flag.NewFlagSet("bench", flag.ExitOnError)
+		lang := fs.String("lang", "go", "target language ("+strings.Join(compiler.BenchTargets(), ", ")+")")
+		out := fs.String("out", "generated/bench", "output directory")
+		wireDir := fs.String("wire-dir", "testdata/wire", "directory holding the wire goldens the pins are decoded from")
+		fs.BoolVar(&verbose, "verbose", false, "list the files emitted")
+		_ = fs.Parse(os.Args[2:]) // ExitOnError: Parse never returns an error
+		goldens, err := loadGoldens(*wireDir)
+		if err != nil {
 			fatalf("%v", err)
 		}
-		names := make([]string, 0, len(files))
-		for n := range files {
-			names = append(names, n)
+		unit := loadUnit(c, fs.Args())
+		files, err := compiler.Bench(unit, *lang, goldens)
+		if err != nil {
+			fail(err)
 		}
-		sort.Strings(names)
-		for _, n := range names {
-			path := filepath.Join(*out, n)
-			if err := os.WriteFile(path, files[n], 0o644); err != nil {
-				fatalf("%v", err)
-			}
-			if verbose {
-				fmt.Printf("wrote %s\n", path)
-			}
-		}
+		writeFiles(*out, files, verbose)
 	default:
 		usage()
 		os.Exit(2)
 	}
 }
 
+// writeFiles lands an emitter's output under out, one file per name.
+func writeFiles(out string, files map[string][]byte, verbose bool) {
+	if err := os.MkdirAll(out, 0o755); err != nil {
+		fatalf("%v", err)
+	}
+	names := make([]string, 0, len(files))
+	for n := range files {
+		names = append(names, n)
+	}
+	sort.Strings(names)
+	for _, n := range names {
+		path := filepath.Join(out, n)
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			fatalf("%v", err)
+		}
+		if err := os.WriteFile(path, files[n], 0o644); err != nil {
+			fatalf("%v", err)
+		}
+		if verbose {
+			fmt.Printf("wrote %s\n", path)
+		}
+	}
+}
+
+// loadGoldens reads a wire-golden directory: basename without .bin -> bytes.
+// The bench emitter decodes these into the pinned instances, so the goldens are
+// the single source of the pins (BENCH-STANDARD.md §1.5).
+func loadGoldens(dir string) (map[string][]byte, error) {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return nil, err
+	}
+	out := map[string][]byte{}
+	for _, e := range entries {
+		if e.IsDir() || filepath.Ext(e.Name()) != ".bin" {
+			continue
+		}
+		data, err := os.ReadFile(filepath.Join(dir, e.Name()))
+		if err != nil {
+			return nil, err
+		}
+		out[strings.TrimSuffix(e.Name(), ".bin")] = data
+	}
+	return out, nil
+}
+
 func usage() {
 	fmt.Fprintf(os.Stderr, `usage:
   schema check      [--verbose] [dir|files...]
   schema generate   [--lang c|cpp|cs|dart|elixir|go|java|js|rust] [--out generated] [--verbose] [dir|files...]
+  schema bench      [--lang c|cpp|cs|dart|elixir|go|java|js|rust] [--out generated/bench] [--wire-dir testdata/wire] [--verbose] [dir|files...]
   schema id         [dir|files...]
   schema projection [dir|files...]
   schema fmt        [--verbose] [dir|files...]

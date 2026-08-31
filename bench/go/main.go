@@ -642,196 +642,36 @@ func varyRealPacket(m *realworld.RealPacket, rng uint64) {
 // the plain default optimized build, no PGO.
 // ------------------------------------------------------------------------------------------
 
+// The four shapes' pinned instances and LCG mappings are EMITTED (issue #191):
+// `schema bench --lang go` decodes testdata/wire/<shape>.bin — the §1.5 oracle
+// instance itself — into generated/bench/go/BenchHarness.go, and derives the
+// §2.2 vary mapping from the schema's own field types. A shape change is an
+// edit to bench/corpus/Bench.schema and a regen; nothing here transcribes a
+// pinned value or a field mapping any more. What stays hand-written is the
+// shape-INDEPENDENT half: benchMessage's timed loops, the escape barriers, the
+// buffer discipline and the CSV.
 func pinGenPacket() bench.BenchPacket {
 	var in bench.BenchPacket
-	in.A = -37
-	in.B = 12345
-	in.C = 987654
-	in.Bits7 = 97
-	in.Bits13 = 5000
-	in.Bits23 = 1234567
-	in.Flag = true
-	in.X = 1.5
-	in.Y = -3.25
-	in.Z = 100.125
-	in.Big = 0x123456789ABCDEF0
-	for i := 0; i < 17; i++ {
-		in.Blob[i] = uint8(i * 31)
-	}
+	bench.PinBenchPacket(&in)
 	return in
 }
 
 func pinGenInts() bench.BenchInts {
 	var in bench.BenchInts
-	in.F0 = -37
-	in.F1 = 12345
-	in.F2 = 987654
-	in.F3 = 2
-	in.F4 = -15
-	in.F5 = 777
-	in.F6 = -2048
-	in.F7 = 200
-	in.F8 = -543210
-	in.F9 = 99
+	bench.PinBenchInts(&in)
 	return in
 }
 
 func pinGenBits() bench.BenchBits {
 	var in bench.BenchBits
-	in.B7 = 97
-	in.B13 = 5000
-	in.B23 = 1234567
-	in.B3 = 5
-	in.B32 = 0xDEADBEEF
-	in.B11 = 1024
-	in.B19 = 333333
-	in.B48 = 0xFEDCBA987654
+	bench.PinBenchBits(&in)
 	return in
 }
 
-// BenchMixed — THE canonical benchmark shape (issue #184). The pin is
-// test/bench/main.cpp's, transcribed exactly; STRUCTURE fields (the two array
-// counts, the two used lengths, the union tag, the `if` gate) are set here and
-// never touched by vary*, so bytes/op is constant (§2.7).
 func pinGenMixed() bench.BenchMixed {
 	var in bench.BenchMixed
-	in.Sequence = 52428
-	in.AckSequence = 12345
-	in.AckBits = 0xA5A5A5A5
-	in.SessionId = 0x123456789ABCDEF0
-	in.ClientId = 0xDEADBEEF
-	in.Nonce = 0xFEDCBA9876543210
-	in.WorldTime = -987654321000
-	in.FrameTick = 0x123456789ABC
-	in.ServerTime = 12345678
-	in.EntitiesCount = 8
-	for i := 0; i < 8; i++ {
-		e := &in.Entities[i]
-		e.EntityId = uint32(2049 + i*17)
-		e.PosX = int32(-16383 + i*4096)
-		e.PosY = int32(16383 - i*4096)
-		e.PosZ = int32(-1 + i*2048)
-		e.Yaw = uint32(511 - i*64)
-		e.Pitch = uint32(i * 73)
-		e.VelX = int32(-2048 + i*512)
-		e.VelY = int32(2047 - i*512)
-		e.VelZ = int32(-1024 + i*256)
-		e.Health = int32(1000 - i*100)
-		e.Weapon = bench.MixedWeapon(1 + i)
-		e.Damage = bench.MixedDamage(0x5A + i)
-		e.Moving = i%2 == 0
-		e.Firing = i%3 == 0
-	}
-	in.StatsCount = 80
-	for i := 0; i < 80; i++ {
-		in.Stats[i].StatId = uint32((i * 3) % 256)
-		in.Stats[i].Delta = int32(-512 + (i*13)%1024)
-	}
-	in.GameEvent.Type = bench.MixedEventTypeHit
-	in.GameEvent.Hit.TargetId = 4095
-	in.GameEvent.Hit.Damage = 4095
-	in.GameEvent.Hit.HitKind = 7
-	in.GameEvent.Hit.Crit = true
-	copy(in.Loadout[:], []byte{0x11, 0x22, 0x33, 0x44})
-	copy(in.PlayerName[:], "Rowan_01")
-	in.PlayerNameLength = 8
-	copy(in.Payload[:], []byte{0xDE, 0xAD, 0xBE, 0xEF, 0x01, 0x02, 0x03, 0x04})
-	in.PayloadLength = 8
-	in.AimX = 0.5
-	in.AimY = -0.25
-	in.AimZ = 0.75
-	in.Recoil = 1.5
-	in.Drift = -3.25
-	in.WideKey = serialize.Uint128{Lo: 0xFEDCBA9876543210, Hi: 0x0123456789ABCDEF}
-	in.Flux = serialize.Int128{Lo: 7, Hi: 0x800000000} // 2^99 + 7
-	in.Ping = 12345
-	in.CrcHint = 0xABCDEF
-	in.HasExtra = true
-	in.Extra = 200
+	bench.PinBenchMixed(&in)
 	return in
-}
-
-func varyGenPacket(p *bench.BenchPacket, rng uint64) {
-	p.A = int32((rng>>8)&63) - 32
-	p.B = int32(uint32(rng>>16) & 65535)
-	p.C = int32((rng>>24)&0xFFFFF) - 500000
-	p.Bits7 = uint32(rng) & 127
-	p.Bits13 = uint32(rng>>3) & 8191
-	p.Bits23 = uint32(rng>>5) & 8388607
-	p.Flag = (rng & 1) != 0
-	p.X = float32(uint32(rng) & 0xFFFF)
-	p.Big = rng
-	p.Blob[0] = uint8(rng >> 32)
-}
-
-func varyGenInts(f *bench.BenchInts, rng uint64) {
-	f.F0 = int32((rng>>8)&63) - 32
-	f.F1 = int32(uint32(rng>>16) & 65535)
-	f.F2 = int32((rng>>24)&0xFFFFF) - 500000
-	f.F3 = int32(uint32(rng>>2) & 3)
-	f.F4 = int32((rng>>11)&15) - 8
-	f.F5 = int32(uint32(rng>>22) & 511)
-	f.F6 = int32((rng>>33)&2047) - 1024
-	f.F7 = int32(uint32(rng>>40) & 255)
-	f.F8 = int32((rng>>30)&0xFFFFF) - 500000
-	f.F9 = int32(uint32(rng>>57) & 63)
-}
-
-func varyGenBits(f *bench.BenchBits, rng uint64) {
-	f.B7 = uint32(rng) & 127
-	f.B13 = uint32(rng>>3) & 8191
-	f.B23 = uint32(rng>>5) & 8388607
-	f.B3 = uint32(rng>>29) & 7
-	f.B32 = uint32(rng >> 16)
-	f.B11 = uint32(rng>>37) & 2047
-	f.B19 = uint32(rng>>44) & 524287
-	f.B48 = rng & 0xFFFFFFFFFFFF
-}
-
-// The LCG field mapping for BenchMixed, identical in every runner. VALUE
-// fields only: every count, used length, union tag and branch gate is
-// STRUCTURE (§2.7). All 8 entities vary; the 80 stats vary Delta (StatId
-// stays pinned) — the family convention of varying a representative subset.
-func varyGenMixed(f *bench.BenchMixed, rng uint64) {
-	f.Sequence = uint32(rng>>8) & 65535
-	f.AckSequence = int32(uint32(rng>>24) & 65535)
-	f.AckBits = uint32(rng >> 16)
-	f.SessionId = rng
-	f.ClientId = uint32(rng >> 32)
-	f.Nonce = rng ^ 0xA5A5A5A5A5A5A5A5
-	f.WorldTime = int64((rng>>12)&0xFFFFFFFFF) - 34359738368
-	f.FrameTick = rng & 0xFFFFFFFFFFFF
-	f.ServerTime = int32((rng >> 20) & 0x7FFFFF)
-	for i := 0; i < 8; i++ {
-		e := &f.Entities[i]
-		e.EntityId = uint32((rng >> uint(i)) & 4095)
-		e.PosX = int32((rng>>uint(i+4))&16383) - 8192
-		e.PosY = int32((rng>>uint(i+12))&16383) - 8192
-		e.Health = int32((rng >> uint(i+20)) & 511)
-		e.Weapon = bench.MixedWeapon((rng >> uint(i+40)) & 15)
-		e.Damage = bench.MixedDamage((rng >> uint(i+28)) & 255)
-		e.Moving = (rng>>uint(i))&1 != 0
-	}
-	for i := 0; i < 80; i++ {
-		f.Stats[i].Delta = int32((rng>>uint(i&31))&1023) - 512
-	}
-	f.GameEvent.Hit.TargetId = uint32((rng >> 6) & 4095)
-	f.GameEvent.Hit.Damage = int32((rng >> 18) & 4095)
-	f.GameEvent.Hit.HitKind = int32((rng >> 30) & 7)
-	f.GameEvent.Hit.Crit = rng&4 != 0
-	f.Loadout[0] = uint8(rng >> 56)
-	f.PlayerName[7] = byte(65 + ((rng >> 50) & 15))
-	f.Payload[0] = uint8(rng >> 48)
-	f.AimX = float32(uint32(rng>>2)&255)*(1.0/256.0) - 0.5
-	f.AimY = float32(uint32(rng>>10)&255)*(1.0/256.0) - 0.5
-	f.AimZ = float32(uint32(rng>>18)&255)*(1.0/256.0) - 0.5
-	f.Recoil = float32(uint32(rng) & 0xFFFF)
-	f.Drift = float64(int64((rng>>8)&0xFFFFFF)) * 0.5
-	f.WideKey = serialize.Uint128{Lo: rng, Hi: rng >> 1}
-	f.Flux = serialize.Int128From64(int64(rng >> 16))
-	f.Ping = uint16((rng >> 40) & 0x7FFF)
-	f.CrcHint = uint32((rng >> 24) & 0xFFFFFF)
-	f.Extra = int32((rng >> 52) & 255)
 }
 
 // ------------------------------------------------------------------------------------------
@@ -873,7 +713,7 @@ func main() {
 		// The gen row is the schema subject (the blended table's row); the
 		// rt row rides beside it as the hand-written-usage subject.
 		fmt.Fprintf(os.Stderr, "schema bench (go, --quick: iteration instrument, not certification)\n")
-		benchMessage("bench_mixed", "bench_mixed", 4000000, pinGenMixed(), bench.WriteBenchMixed, bench.ReadBenchMixed, varyGenMixed)
+		benchMessage("bench_mixed", "bench_mixed", 4000000, pinGenMixed(), bench.WriteBenchMixed, bench.ReadBenchMixed, bench.VaryBenchMixed)
 		benchRt("bench_mixed", 4000000, pinRtMixed(), rtOnceWriteMixed, rtOnceReadMixed, rtBenchMixedWriteLoop, rtBenchMixedReadLoop, varyRtMixed)
 		flushCsv()
 		if failed {
@@ -912,10 +752,10 @@ func main() {
 	// the rt rows below — same shapes, same goldens, same pins, same vary
 	// mappings, same iteration counts (fixed and identical across all five
 	// runners, §2.1); only the subject differs, and the family column says so.
-	benchMessage("bench_packet", "bench_packet", 32000000, pinGenPacket(), bench.WriteBenchPacket, bench.ReadBenchPacket, varyGenPacket)
-	benchMessage("bench_ints", "bench_ints", 40000000, pinGenInts(), bench.WriteBenchInts, bench.ReadBenchInts, varyGenInts)
-	benchMessage("bench_bits", "bench_bits", 48000000, pinGenBits(), bench.WriteBenchBits, bench.ReadBenchBits, varyGenBits)
-	benchMessage("bench_mixed", "bench_mixed", 4000000, pinGenMixed(), bench.WriteBenchMixed, bench.ReadBenchMixed, varyGenMixed)
+	benchMessage("bench_packet", "bench_packet", 32000000, pinGenPacket(), bench.WriteBenchPacket, bench.ReadBenchPacket, bench.VaryBenchPacket)
+	benchMessage("bench_ints", "bench_ints", 40000000, pinGenInts(), bench.WriteBenchInts, bench.ReadBenchInts, bench.VaryBenchInts)
+	benchMessage("bench_bits", "bench_bits", 48000000, pinGenBits(), bench.WriteBenchBits, bench.ReadBenchBits, bench.VaryBenchBits)
+	benchMessage("bench_mixed", "bench_mixed", 4000000, pinGenMixed(), bench.WriteBenchMixed, bench.ReadBenchMixed, bench.VaryBenchMixed)
 
 	// family rt (§1.3/§1.5): the runtime API by hand, oracle-gated against
 	// the goldens the generated code pinned. Iteration counts are fixed and

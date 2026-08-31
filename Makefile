@@ -66,6 +66,9 @@ GO_SOURCES   := $(shell find cmd internal -name '*.go') go.mod
 SCHEMAS      := $(wildcard examples/*.schema)
 SCHEMAS128   := $(wildcard examples128/*.schema)
 SCHEMAS_BENCH := $(wildcard bench/corpus/*.schema)
+# the pinned instances the bench harness emitter decodes (issue #191): the wire
+# goldens ARE the pins, so a re-pinned golden re-emits every leg's shape code
+WIRE_GOLDENS := $(wildcard testdata/wire/bench_*.bin)
 
 all: test
 
@@ -241,9 +244,10 @@ generated/bench/c/.stamp: bin/schema $(SCHEMAS_BENCH)
 	./bin/schema generate --lang c --out generated/bench/c bench/corpus/RealWorld.schema
 	@touch $@
 
-generated/bench/go/.stamp: bin/schema $(SCHEMAS_BENCH)
+generated/bench/go/.stamp: bin/schema $(SCHEMAS_BENCH) $(WIRE_GOLDENS)
 	./bin/schema generate --lang go --out generated/bench/go bench/corpus/Bench.schema
 	./bin/schema generate --lang go --out generated/bench/go/realworld bench/corpus/RealWorld.schema
+	./bin/schema bench --lang go --out generated/bench/go bench/corpus/Bench.schema
 	@printf 'module bench\n\ngo 1.23\n\nrequire github.com/mas-bandwidth/serialize.go v0.0.0\n\nreplace github.com/mas-bandwidth/serialize.go => ../../../$(SERIALIZE_GO)\n' > generated/bench/go/go.mod
 	@touch $@
 
