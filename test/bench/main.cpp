@@ -234,6 +234,102 @@ static int pin_shape( const char * name, int expected_bytes, const char * where,
     return 0;
 }
 
+
+// ---- refusal vectors on BenchMixed's new constructs (issue #184) ----
+//
+// The redefined shape brought in constructs the bench corpus never carried:
+// a const magic, reserved bits, an explicit align, a union tag, counted
+// arrays, a string and a byte block with length prefixes, and 128-bit and
+// fixed-point ranges. Reads must REFUSE malformed bytes on each — reject,
+// never clamp (SPEC §4.3, §5). The bit offsets come from the accounting
+// table bench/corpus/budget_test.go prints; each vector asserts the bits it
+// is about to doctor still hold the pinned value, so a shape change makes
+// this loud instead of quietly testing the wrong bit.
+static void set_bits( uint8_t * data, int64_t offset, int64_t bits, uint64_t value )
+{
+    for ( int64_t i = 0; i < bits; i++ )
+    {
+        const int64_t at = offset + i;
+        const uint8_t mask = (uint8_t) ( 1u << ( at % 8 ) );
+        if ( ( value >> i ) & 1 )
+            data[at / 8] |= mask;
+        else
+            data[at / 8] = (uint8_t) ( data[at / 8] & ~mask );
+    }
+}
+
+static uint64_t get_bits( const uint8_t * data, int64_t offset, int64_t bits )
+{
+    uint64_t out = 0;
+    for ( int64_t i = 0; i < bits; i++ )
+    {
+        const int64_t at = offset + i;
+        out |= (uint64_t) ( ( data[at / 8] >> ( at % 8 ) ) & 1 ) << i;
+    }
+    return out;
+}
+
+static int refusal_vectors()
+{
+    alignas( 8 ) static uint8_t pinned[512];
+    memset( pinned, 0, sizeof( pinned ) );
+    BenchMixed in = pin_bench_mixed();
+    serialize::WriteStream ws( pinned, sizeof( pinned ) );
+    check( WriteBenchMixed( ws, in ) );
+    ws.Flush();
+    const int64_t bytes = ws.GetBytesProcessed();
+    check( bytes == 438 );
+
+    struct Vector
+    {
+        const char * what;
+        int64_t offset;
+        int64_t bits;
+        uint64_t pinned_value;   // what the pin puts there — asserted before doctoring
+        uint64_t doctored;       // what a read must refuse
+    };
+
+    static const Vector vectors[] = {
+        { "const(0xC0DE, 16) magic",            0, 16, 0xC0DE, 0xC0DF },
+        { "reserved(4) nonzero",             3454,  4,      0,      1 },
+        { "align padding nonzero",           3458,  6,      0,      1 },
+        { "bytes(16) length above the bound", 3016, 5,      8,     17 },
+        { "entity health above its range",    467, 10,   1000,   1001 },
+        { "hit_kind above its range",        2909,  3,      7,      0 },  // in range: expected to PASS, the control below
+    };
+    const int refuse_count = 5;   // the sixth vector is the negative control
+
+    alignas( 8 ) static uint8_t doctored[512];
+    BenchMixed out;
+    for ( int v = 0; v < (int) ( sizeof( vectors ) / sizeof( vectors[0] ) ); v++ )
+    {
+        const Vector & vec = vectors[v];
+        if ( get_bits( pinned, vec.offset, vec.bits ) != vec.pinned_value )
+        {
+            printf( "REFUSAL VECTOR STALE: %s — bits at %lld are not the pinned value; "
+                    "re-derive the offsets from bench/corpus/budget_test.go\n",
+                    vec.what, (long long) vec.offset );
+            return 1;
+        }
+        memcpy( doctored, pinned, (size_t) bytes );
+        set_bits( doctored, vec.offset, vec.bits, vec.doctored );
+        serialize::ReadStream rs( doctored, (int) bytes );
+        const bool accepted = ReadBenchMixed( rs, out );
+        if ( v < refuse_count && accepted )
+        {
+            printf( "REFUSAL VECTOR FAILED: %s was ACCEPTED — reads must reject, never clamp\n", vec.what );
+            return 1;
+        }
+        if ( v >= refuse_count && !accepted )
+        {
+            printf( "REFUSAL CONTROL FAILED: %s is in range and must be accepted\n", vec.what );
+            return 1;
+        }
+    }
+    printf( "%-14s %d refusal vectors + 1 in-range control\n", "bench_mixed", refuse_count );
+    return 0;
+}
+
 int main()
 {
     static_assert( BenchPacketMaxBits == 392, "§1.3: BenchPacket is 392 bits" );
@@ -248,6 +344,8 @@ int main()
     if ( pin_shape( "bench_ints", 14, "BENCH-STANDARD.md §1.3", pin_bench_ints(), WriteBenchInts, ReadBenchInts ) ) return 1;
     if ( pin_shape( "bench_bits", 20, "BENCH-STANDARD.md §1.3", pin_bench_bits(), WriteBenchBits, ReadBenchBits ) ) return 1;
     if ( pin_shape( "bench_mixed", 438, "BENCH-STANDARD.md §1.3", pin_bench_mixed(), WriteBenchMixed, ReadBenchMixed ) ) return 1;
+
+    if ( refusal_vectors() ) return 1;
 
     // §1.7: the realistic snapshot — the all-defaults instance IS the pin
     if ( pin_shape( "real_packet", 204, "RealWorld.schema", realworld::RealPacket{}, realworld::WriteRealPacket, realworld::ReadRealPacket ) ) return 1;
