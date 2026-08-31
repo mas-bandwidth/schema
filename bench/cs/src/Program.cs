@@ -778,20 +778,70 @@ static partial class Program
         return input;
     }
 
+    // BenchMixed — THE canonical benchmark shape (issue #184). The pin is
+    // test/bench/main.cpp's, transcribed exactly; STRUCTURE fields (the two
+    // array counts, the two used lengths, the union tag, the `if` gate) are
+    // set here and never touched by Vary*, so bytes/op is constant (§2.7).
     static Bench.BenchMixed PinGenMixed()
     {
         Bench.BenchMixed input = new Bench.BenchMixed();
         input.Sequence = 52428;
+        input.AckSequence = 12345;
         input.AckBits = 0xA5A5A5A5;
-        input.EntityId = 2049;
-        input.PosX = -16384;
-        input.PosY = 16383;
-        input.PosZ = -1;
-        input.Yaw = 511;
-        input.Moving = true;
-        input.Firing = false;
-        input.Timestamp = 0x123456789ABC;
-        input.Weapon = 15;
+        input.SessionId = 0x123456789ABCDEF0;
+        input.ClientId = 0xDEADBEEF;
+        input.Nonce = 0xFEDCBA9876543210;
+        input.WorldTime = -987654321000L;
+        input.FrameTick = 0x123456789ABC;
+        input.ServerTime = 12345678;
+        input.EntitiesCount = 8;
+        for (int i = 0; i < 8; i++)
+        {
+            Bench.MixedEntity e = input.Entities[i];
+            e.EntityId = (uint)(2049 + i * 17);
+            e.PosX = -16383 + i * 4096;
+            e.PosY = 16383 - i * 4096;
+            e.PosZ = -1 + i * 2048;
+            e.Yaw = (uint)(511 - i * 64);
+            e.Pitch = (uint)(i * 73);
+            e.VelX = -2048 + i * 512;
+            e.VelY = 2047 - i * 512;
+            e.VelZ = -1024 + i * 256;
+            e.Health = 1000 - i * 100;
+            e.Weapon = (Bench.MixedWeapon)(1 + i);
+            e.Damage = (ulong)(0x5A + i);
+            e.Moving = (i % 2) == 0;
+            e.Firing = (i % 3) == 0;
+        }
+        input.StatsCount = 80;
+        for (int i = 0; i < 80; i++)
+        {
+            input.Stats[i].StatId = (uint)((i * 3) % 256);
+            input.Stats[i].Delta = -512 + (i * 13) % 1024;
+        }
+        input.GameEvent.Type = Bench.MixedEventType.Hit;
+        input.GameEvent.Hit.TargetId = 4095;
+        input.GameEvent.Hit.Damage = 4095;
+        input.GameEvent.Hit.HitKind = 7;
+        input.GameEvent.Hit.Crit = true;
+        byte[] loadout = { 0x11, 0x22, 0x33, 0x44 };
+        loadout.CopyTo(input.Loadout, 0);
+        System.Text.Encoding.ASCII.GetBytes("Rowan_01").CopyTo(input.PlayerName, 0);
+        input.PlayerNameLength = 8;
+        byte[] payload = { 0xDE, 0xAD, 0xBE, 0xEF, 0x01, 0x02, 0x03, 0x04 };
+        payload.CopyTo(input.Payload, 0);
+        input.PayloadLength = 8;
+        input.AimX = 0.5f;
+        input.AimY = -0.25f;
+        input.AimZ = 0.75f;
+        input.Recoil = 1.5f;
+        input.Drift = -3.25;
+        input.WideKey = new UInt128Value(0x0123456789ABCDEFul, 0xFEDCBA9876543210ul);
+        input.Flux = new Int128Value(0x800000000ul, 7ul);   // 2^99 + 7
+        input.Ping = 12345;
+        input.CrcHint = 0xABCDEF;
+        input.HasExtra = true;
+        input.Extra = 200;
         return input;
     }
 
@@ -835,19 +885,53 @@ static partial class Program
         f.B48 = rng & 0xFFFFFFFFFFFFul;
     }
 
+    // The LCG field mapping for BenchMixed, identical in every runner. VALUE
+    // fields only: every count, used length, union tag and branch gate is
+    // STRUCTURE (§2.7). All 8 entities vary; the 80 stats vary Delta (StatId
+    // stays pinned) — the family convention of varying a representative subset.
     static void VaryGenMixed(Bench.BenchMixed f, ulong rng)
     {
-        f.Sequence = (int)((uint)(rng >> 8) & 65535);
+        f.Sequence = (uint)(rng >> 8) & 65535;
+        f.AckSequence = (int)((uint)(rng >> 24) & 65535);
         f.AckBits = (uint)(rng >> 16);
-        f.EntityId = (uint)rng & 4095;
-        f.PosX = (int)((rng >> 20) & 32767) - 16384;
-        f.PosY = (int)((rng >> 25) & 32767) - 16384;
-        f.PosZ = (int)((rng >> 30) & 32767) - 16384;
-        f.Yaw = (uint)(rng >> 3) & 511;
-        f.Moving = (rng & 1) != 0;
-        f.Firing = (rng & 2) != 0;
-        f.Timestamp = rng & 0xFFFFFFFFFFFFul;
-        f.Weapon = (int)((uint)(rng >> 60) & 15);
+        f.SessionId = rng;
+        f.ClientId = (uint)(rng >> 32);
+        f.Nonce = rng ^ 0xA5A5A5A5A5A5A5A5ul;
+        f.WorldTime = (long)((rng >> 12) & 0xFFFFFFFFFul) - 34359738368L;
+        f.FrameTick = rng & 0xFFFFFFFFFFFFul;
+        f.ServerTime = (int)((rng >> 20) & 0x7FFFFF);
+        for (int i = 0; i < 8; i++)
+        {
+            Bench.MixedEntity e = f.Entities[i];
+            e.EntityId = (uint)((rng >> i) & 4095);
+            e.PosX = (int)((rng >> (i + 4)) & 16383) - 8192;
+            e.PosY = (int)((rng >> (i + 12)) & 16383) - 8192;
+            e.Health = (int)((rng >> (i + 20)) & 511);
+            e.Weapon = (Bench.MixedWeapon)((rng >> (i + 40)) & 15);
+            e.Damage = (rng >> (i + 28)) & 255;
+            e.Moving = ((rng >> i) & 1) != 0;
+        }
+        for (int i = 0; i < 80; i++)
+        {
+            f.Stats[i].Delta = (int)((rng >> (i & 31)) & 1023) - 512;
+        }
+        f.GameEvent.Hit.TargetId = (uint)((rng >> 6) & 4095);
+        f.GameEvent.Hit.Damage = (int)((rng >> 18) & 4095);
+        f.GameEvent.Hit.HitKind = (int)((rng >> 30) & 7);
+        f.GameEvent.Hit.Crit = (rng & 4) != 0;
+        f.Loadout[0] = (byte)(rng >> 56);
+        f.PlayerName[7] = (byte)(65 + ((rng >> 50) & 15));
+        f.Payload[0] = (byte)(rng >> 48);
+        f.AimX = (float)((uint)(rng >> 2) & 255) * (1.0f / 256.0f) - 0.5f;
+        f.AimY = (float)((uint)(rng >> 10) & 255) * (1.0f / 256.0f) - 0.5f;
+        f.AimZ = (float)((uint)(rng >> 18) & 255) * (1.0f / 256.0f) - 0.5f;
+        f.Recoil = (uint)rng & 0xFFFF;
+        f.Drift = (double)(long)((rng >> 8) & 0xFFFFFF) * 0.5;
+        f.WideKey = new UInt128Value(rng >> 1, rng);
+        f.Flux = new Int128Value(0ul, rng >> 16);
+        f.Ping = (ushort)((rng >> 40) & 0x7FFF);
+        f.CrcHint = (uint)((rng >> 24) & 0xFFFFFF);
+        f.Extra = (int)((rng >> 52) & 255);
     }
 
     static int Main(string[] args)
