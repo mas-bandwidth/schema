@@ -71,6 +71,8 @@ defmodule Example.Degenerate do
 
   @compile {:inline, rd: 3}
 
+  @compile {:inline, rdw: 3}
+
   # vec2_max_bits is the longest wire path; align pads at worst case (SPEC §6.1).
   # vec2_max_bytes is rounded up to the family 8-byte write-buffer granularity.
   def vec2_max_bits, do: 128
@@ -85,39 +87,22 @@ defmodule Example.Degenerate do
   # compile-out assert). Returns the wire bytes.
   def write_vec2(value) do
     data = <<>>
-    scratch = 0
-    scratch_bits = 0
-    w = f64_bits(value.x)
+    %{x: value_x, y: value_y} = value
+    w = f64_bits(value_x)
     v = w &&& 0xFFFFFFFF
-    scratch = scratch ||| v <<< scratch_bits
-    scratch_bits = scratch_bits + 32
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
-    scratch_bits = scratch_bits &&& 7
+    scratch = v
     v = w >>> 32
-    scratch = scratch ||| v <<< scratch_bits
-    scratch_bits = scratch_bits + 32
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
-    scratch_bits = scratch_bits &&& 7
-    w = f64_bits(value.y)
+    data = <<data::binary, scratch::little-size(4)-unit(8)>>
+    scratch = v
+    w = f64_bits(value_y)
     v = w &&& 0xFFFFFFFF
-    scratch = scratch ||| v <<< scratch_bits
-    scratch_bits = scratch_bits + 32
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
-    scratch_bits = scratch_bits &&& 7
+    data = <<data::binary, scratch::little-size(4)-unit(8)>>
+    scratch = v
     v = w >>> 32
-    scratch = scratch ||| v <<< scratch_bits
-    scratch_bits = scratch_bits + 32
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
-    scratch_bits = scratch_bits &&& 7
-    if scratch_bits != 0, do: <<data::binary, scratch>>, else: data
+    data = <<data::binary, scratch::little-size(4)-unit(8)>>
+    scratch = v
+    data = <<data::binary, scratch::little-size(4)-unit(8)>>
+    data
   end
 
   # read_vec2 decodes the first num_bits of data — the family read verdict:
@@ -132,17 +117,21 @@ defmodule Example.Degenerate do
 
       bits_read = 0
       if bits_read + 128 > num_bits, do: throw(:invalid)
-      v = rd(data, bits_read, 32)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0xFFFFFFFF
       bits_read = bits_read + 32
       w = v
-      v = rd(data, bits_read, 32)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0xFFFFFFFF
       bits_read = bits_read + 32
       w = w ||| v <<< 32
       v_x = f64_value(w)
-      v = rd(data, bits_read, 32)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0xFFFFFFFF
       bits_read = bits_read + 32
       w = v
-      v = rd(data, bits_read, 32)
+      rv = rd(data, bits_read, 32)
+      v = rv
       bits_read = bits_read + 32
       w = w ||| v <<< 32
       v_y = f64_value(w)
@@ -173,13 +162,13 @@ defmodule Example.Degenerate do
   # compile-out assert). Returns the wire bytes.
   def write_span_f64(value) do
     data = <<>>
-    scratch = 0
-    scratch_bits = 0
 
     if length(value.values) != 2 do
       raise ArgumentError, "value.values must hold exactly 2 elements"
     end
 
+    scratch_bits = 0
+    scratch = 0
     {data, scratch, scratch_bits} = w_span_f64_values(value.values, data, scratch, scratch_bits)
     if scratch_bits != 0, do: <<data::binary, scratch>>, else: data
   end
@@ -224,13 +213,13 @@ defmodule Example.Degenerate do
   # compile-out assert). Returns the wire bytes.
   def write_span_u64(value) do
     data = <<>>
-    scratch = 0
-    scratch_bits = 0
 
     if length(value.values) != 2 do
       raise ArgumentError, "value.values must hold exactly 2 elements"
     end
 
+    scratch_bits = 0
+    scratch = 0
     {data, scratch, scratch_bits} = w_span_u64_values(value.values, data, scratch, scratch_bits)
     if scratch_bits != 0, do: <<data::binary, scratch>>, else: data
   end
@@ -275,13 +264,13 @@ defmodule Example.Degenerate do
   # compile-out assert). Returns the wire bytes.
   def write_span_i64(value) do
     data = <<>>
-    scratch = 0
-    scratch_bits = 0
 
     if length(value.values) != 2 do
       raise ArgumentError, "value.values must hold exactly 2 elements"
     end
 
+    scratch_bits = 0
+    scratch = 0
     {data, scratch, scratch_bits} = w_span_i64_values(value.values, data, scratch, scratch_bits)
     if scratch_bits != 0, do: <<data::binary, scratch>>, else: data
   end
@@ -326,13 +315,13 @@ defmodule Example.Degenerate do
   # compile-out assert). Returns the wire bytes.
   def write_span_one(value) do
     data = <<>>
-    scratch = 0
-    scratch_bits = 0
 
     if length(value.values) != 1 do
       raise ArgumentError, "value.values must hold exactly 1 elements"
     end
 
+    scratch_bits = 0
+    scratch = 0
     {data, scratch, scratch_bits} = w_span_one_values(value.values, data, scratch, scratch_bits)
     if scratch_bits != 0, do: <<data::binary, scratch>>, else: data
   end
@@ -377,13 +366,13 @@ defmodule Example.Degenerate do
   # compile-out assert). Returns the wire bytes.
   def write_span_chunk(value) do
     data = <<>>
-    scratch = 0
-    scratch_bits = 0
 
     if length(value.values) != 4 do
       raise ArgumentError, "value.values must hold exactly 4 elements"
     end
 
+    scratch_bits = 0
+    scratch = 0
     {data, scratch, scratch_bits} = w_span_chunk_values(value.values, data, scratch, scratch_bits)
     if scratch_bits != 0, do: <<data::binary, scratch>>, else: data
   end
@@ -428,15 +417,16 @@ defmodule Example.Degenerate do
   # compile-out assert). Returns the wire bytes.
   def write_span_tail(value) do
     data = <<>>
-    scratch = 0
-    scratch_bits = 0
+    %{values: value_values, tail: value_tail} = value
 
-    if length(value.values) != 2 do
+    if length(value_values) != 2 do
       raise ArgumentError, "value.values must hold exactly 2 elements"
     end
 
-    {data, scratch, scratch_bits} = w_span_tail_values(value.values, data, scratch, scratch_bits)
-    v = value.tail &&& 0xFFFFFFFF
+    scratch_bits = 0
+    scratch = 0
+    {data, scratch, scratch_bits} = w_span_tail_values(value_values, data, scratch, scratch_bits)
+    v = value_tail &&& 0xFFFFFFFF
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 32
     flush = scratch_bits >>> 3
@@ -459,7 +449,8 @@ defmodule Example.Degenerate do
       bits_read = 0
       if bits_read + 160 > num_bits, do: throw(:invalid)
       {bits_read, v_values} = r_span_tail_values(2, [], data, num_bits, bits_read)
-      v = rd(data, bits_read, 32)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0xFFFFFFFF
       bits_read = bits_read + 32
       v_tail = v
       # the final position is unobserved — the verdict and value are the surface
@@ -491,20 +482,21 @@ defmodule Example.Degenerate do
   # compile-out assert). Returns the wire bytes.
   def write_span_twice(value) do
     data = <<>>
-    scratch = 0
-    scratch_bits = 0
+    %{a: value_a, b: value_b} = value
 
-    if length(value.a) != 2 do
+    if length(value_a) != 2 do
       raise ArgumentError, "value.a must hold exactly 2 elements"
     end
 
-    {data, scratch, scratch_bits} = w_span_twice_a(value.a, data, scratch, scratch_bits)
+    scratch_bits = 0
+    scratch = 0
+    {data, scratch, scratch_bits} = w_span_twice_a(value_a, data, scratch, scratch_bits)
 
-    if length(value.b) != 2 do
+    if length(value_b) != 2 do
       raise ArgumentError, "value.b must hold exactly 2 elements"
     end
 
-    {data, scratch, scratch_bits} = w_span_twice_b(value.b, data, scratch, scratch_bits)
+    {data, scratch, scratch_bits} = w_span_twice_b(value_b, data, scratch, scratch_bits)
     if scratch_bits != 0, do: <<data::binary, scratch>>, else: data
   end
 
@@ -549,30 +541,16 @@ defmodule Example.Degenerate do
   # compile-out assert). Returns the wire bytes.
   def write_trio(value) do
     data = <<>>
-    scratch = 0
-    scratch_bits = 0
-    v = value.a &&& 0xFFFFF
-    scratch = scratch ||| v <<< scratch_bits
-    scratch_bits = scratch_bits + 20
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
-    scratch_bits = scratch_bits &&& 7
-    v = value.b &&& 0xFFFFF
-    scratch = scratch ||| v <<< scratch_bits
-    scratch_bits = scratch_bits + 20
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
-    scratch_bits = scratch_bits &&& 7
-    v = value.c &&& 0xFFFFFF
-    scratch = scratch ||| v <<< scratch_bits
-    scratch_bits = scratch_bits + 24
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
-    scratch_bits = scratch_bits &&& 7
-    if scratch_bits != 0, do: <<data::binary, scratch>>, else: data
+    %{a: value_a, b: value_b, c: value_c} = value
+    v = value_a &&& 0xFFFFF
+    scratch = v
+    v = value_b &&& 0xFFFFF
+    scratch = scratch ||| v <<< 20
+    v = value_c &&& 0xFFFFFF
+    data = <<data::binary, scratch::little-size(5)-unit(8)>>
+    scratch = v
+    data = <<data::binary, scratch::little-size(3)-unit(8)>>
+    data
   end
 
   # read_trio decodes the first num_bits of data — the family read verdict:
@@ -587,13 +565,15 @@ defmodule Example.Degenerate do
 
       bits_read = 0
       if bits_read + 64 > num_bits, do: throw(:invalid)
-      v = rd(data, bits_read, 20)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0xFFFFF
       bits_read = bits_read + 20
       v_a = v
-      v = rd(data, bits_read, 20)
+      v = rv >>> 20 &&& 0xFFFFF
       bits_read = bits_read + 20
       v_b = v
-      v = rd(data, bits_read, 24)
+      rv = rd(data, bits_read, 24)
+      v = rv
       bits_read = bits_read + 24
       v_c = v
       # the final position is unobserved — the verdict and value are the surface
@@ -623,30 +603,16 @@ defmodule Example.Degenerate do
   # compile-out assert). Returns the wire bytes.
   def write_trio_sole(value) do
     data = <<>>
-    scratch = 0
-    scratch_bits = 0
-    v = value.inner.a &&& 0xFFFFF
-    scratch = scratch ||| v <<< scratch_bits
-    scratch_bits = scratch_bits + 20
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
-    scratch_bits = scratch_bits &&& 7
-    v = value.inner.b &&& 0xFFFFF
-    scratch = scratch ||| v <<< scratch_bits
-    scratch_bits = scratch_bits + 20
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
-    scratch_bits = scratch_bits &&& 7
-    v = value.inner.c &&& 0xFFFFFF
-    scratch = scratch ||| v <<< scratch_bits
-    scratch_bits = scratch_bits + 24
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
-    scratch_bits = scratch_bits &&& 7
-    if scratch_bits != 0, do: <<data::binary, scratch>>, else: data
+    %{a: value_inner_a, b: value_inner_b, c: value_inner_c} = value.inner
+    v = value_inner_a &&& 0xFFFFF
+    scratch = v
+    v = value_inner_b &&& 0xFFFFF
+    scratch = scratch ||| v <<< 20
+    v = value_inner_c &&& 0xFFFFFF
+    data = <<data::binary, scratch::little-size(5)-unit(8)>>
+    scratch = v
+    data = <<data::binary, scratch::little-size(3)-unit(8)>>
+    data
   end
 
   # read_trio_sole decodes the first num_bits of data — the family read verdict:
@@ -661,13 +627,15 @@ defmodule Example.Degenerate do
 
       bits_read = 0
       if bits_read + 64 > num_bits, do: throw(:invalid)
-      v = rd(data, bits_read, 20)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0xFFFFF
       bits_read = bits_read + 20
       v_inner_a = v
-      v = rd(data, bits_read, 20)
+      v = rv >>> 20 &&& 0xFFFFF
       bits_read = bits_read + 20
       v_inner_b = v
-      v = rd(data, bits_read, 24)
+      rv = rd(data, bits_read, 24)
+      v = rv
       bits_read = bits_read + 24
       v_inner_c = v
       v_inner = %Example.Trio{a: v_inner_a, b: v_inner_b, c: v_inner_c}
@@ -698,37 +666,19 @@ defmodule Example.Degenerate do
   # compile-out assert). Returns the wire bytes.
   def write_trio_first(value) do
     data = <<>>
-    scratch = 0
-    scratch_bits = 0
-    v = value.inner.a &&& 0xFFFFF
-    scratch = scratch ||| v <<< scratch_bits
-    scratch_bits = scratch_bits + 20
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
-    scratch_bits = scratch_bits &&& 7
-    v = value.inner.b &&& 0xFFFFF
-    scratch = scratch ||| v <<< scratch_bits
-    scratch_bits = scratch_bits + 20
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
-    scratch_bits = scratch_bits &&& 7
-    v = value.inner.c &&& 0xFFFFFF
-    scratch = scratch ||| v <<< scratch_bits
-    scratch_bits = scratch_bits + 24
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
-    scratch_bits = scratch_bits &&& 7
-    v = value.trailer &&& 0xFFFF
-    scratch = scratch ||| v <<< scratch_bits
-    scratch_bits = scratch_bits + 16
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
-    scratch_bits = scratch_bits &&& 7
-    if scratch_bits != 0, do: <<data::binary, scratch>>, else: data
+    %{inner: value_inner, trailer: value_trailer} = value
+    %{a: value_inner_a, b: value_inner_b, c: value_inner_c} = value_inner
+    v = value_inner_a &&& 0xFFFFF
+    scratch = v
+    v = value_inner_b &&& 0xFFFFF
+    scratch = scratch ||| v <<< 20
+    v = value_inner_c &&& 0xFFFFFF
+    data = <<data::binary, scratch::little-size(5)-unit(8)>>
+    scratch = v
+    v = value_trailer &&& 0xFFFF
+    scratch = scratch ||| v <<< 24
+    data = <<data::binary, scratch::little-size(5)-unit(8)>>
+    data
   end
 
   # read_trio_first decodes the first num_bits of data — the family read verdict:
@@ -743,17 +693,19 @@ defmodule Example.Degenerate do
 
       bits_read = 0
       if bits_read + 80 > num_bits, do: throw(:invalid)
-      v = rd(data, bits_read, 20)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0xFFFFF
       bits_read = bits_read + 20
       v_inner_a = v
-      v = rd(data, bits_read, 20)
+      v = rv >>> 20 &&& 0xFFFFF
       bits_read = bits_read + 20
       v_inner_b = v
-      v = rd(data, bits_read, 24)
+      rv = rdw(data, bits_read, 40)
+      v = rv &&& 0xFFFFFF
       bits_read = bits_read + 24
       v_inner_c = v
       v_inner = %Example.Trio{a: v_inner_a, b: v_inner_b, c: v_inner_c}
-      v = rd(data, bits_read, 16)
+      v = rv >>> 24
       bits_read = bits_read + 16
       v_trailer = v
       # the final position is unobserved — the verdict and value are the surface
@@ -793,107 +745,60 @@ defmodule Example.Degenerate do
   # compile-out assert). Returns the wire bytes.
   def write_trio_straddle(value) do
     data = <<>>
-    scratch = 0
-    scratch_bits = 0
-    v = value.pad0 &&& 0xFFFFFFFF
-    scratch = scratch ||| v <<< scratch_bits
-    scratch_bits = scratch_bits + 32
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
-    scratch_bits = scratch_bits &&& 7
-    v = value.pad0 >>> 32 &&& 0xFFFFFFFF
-    scratch = scratch ||| v <<< scratch_bits
-    scratch_bits = scratch_bits + 32
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
-    scratch_bits = scratch_bits &&& 7
-    v = value.pad1 &&& 0xFFFFFFFF
-    scratch = scratch ||| v <<< scratch_bits
-    scratch_bits = scratch_bits + 32
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
-    scratch_bits = scratch_bits &&& 7
-    v = value.pad1 >>> 32 &&& 0xFFFFFFFF
-    scratch = scratch ||| v <<< scratch_bits
-    scratch_bits = scratch_bits + 32
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
-    scratch_bits = scratch_bits &&& 7
-    v = value.pad2 &&& 0xFFFFFFFF
-    scratch = scratch ||| v <<< scratch_bits
-    scratch_bits = scratch_bits + 32
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
-    scratch_bits = scratch_bits &&& 7
-    v = value.pad2 >>> 32 &&& 0xFFFFFFFF
-    scratch = scratch ||| v <<< scratch_bits
-    scratch_bits = scratch_bits + 32
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
-    scratch_bits = scratch_bits &&& 7
-    v = value.pad3 &&& 0xFFFFFFFF
-    scratch = scratch ||| v <<< scratch_bits
-    scratch_bits = scratch_bits + 32
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
-    scratch_bits = scratch_bits &&& 7
-    v = value.pad3 >>> 32 &&& 0xFFFFFFFF
-    scratch = scratch ||| v <<< scratch_bits
-    scratch_bits = scratch_bits + 32
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
-    scratch_bits = scratch_bits &&& 7
-    v = value.pad4 &&& 0xFFFFFFFF
-    scratch = scratch ||| v <<< scratch_bits
-    scratch_bits = scratch_bits + 32
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
-    scratch_bits = scratch_bits &&& 7
-    v = value.pad4 >>> 32 &&& 0xFFFFFFFF
-    scratch = scratch ||| v <<< scratch_bits
-    scratch_bits = scratch_bits + 32
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
-    scratch_bits = scratch_bits &&& 7
-    v = value.pad5 &&& 0xFFFFFF
-    scratch = scratch ||| v <<< scratch_bits
-    scratch_bits = scratch_bits + 24
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
-    scratch_bits = scratch_bits &&& 7
-    v = value.inner.a &&& 0xFFFFF
-    scratch = scratch ||| v <<< scratch_bits
-    scratch_bits = scratch_bits + 20
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
-    scratch_bits = scratch_bits &&& 7
-    v = value.inner.b &&& 0xFFFFF
-    scratch = scratch ||| v <<< scratch_bits
-    scratch_bits = scratch_bits + 20
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
-    scratch_bits = scratch_bits &&& 7
-    v = value.inner.c &&& 0xFFFFFF
-    scratch = scratch ||| v <<< scratch_bits
-    scratch_bits = scratch_bits + 24
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
-    scratch_bits = scratch_bits &&& 7
-    if scratch_bits != 0, do: <<data::binary, scratch>>, else: data
+
+    %{
+      pad0: value_pad0,
+      pad1: value_pad1,
+      pad2: value_pad2,
+      pad3: value_pad3,
+      pad4: value_pad4,
+      pad5: value_pad5,
+      inner: value_inner
+    } = value
+
+    v = value_pad0 &&& 0xFFFFFFFF
+    scratch = v
+    v = value_pad0 >>> 32 &&& 0xFFFFFFFF
+    data = <<data::binary, scratch::little-size(4)-unit(8)>>
+    scratch = v
+    v = value_pad1 &&& 0xFFFFFFFF
+    data = <<data::binary, scratch::little-size(4)-unit(8)>>
+    scratch = v
+    v = value_pad1 >>> 32 &&& 0xFFFFFFFF
+    data = <<data::binary, scratch::little-size(4)-unit(8)>>
+    scratch = v
+    v = value_pad2 &&& 0xFFFFFFFF
+    data = <<data::binary, scratch::little-size(4)-unit(8)>>
+    scratch = v
+    v = value_pad2 >>> 32 &&& 0xFFFFFFFF
+    data = <<data::binary, scratch::little-size(4)-unit(8)>>
+    scratch = v
+    v = value_pad3 &&& 0xFFFFFFFF
+    data = <<data::binary, scratch::little-size(4)-unit(8)>>
+    scratch = v
+    v = value_pad3 >>> 32 &&& 0xFFFFFFFF
+    data = <<data::binary, scratch::little-size(4)-unit(8)>>
+    scratch = v
+    v = value_pad4 &&& 0xFFFFFFFF
+    data = <<data::binary, scratch::little-size(4)-unit(8)>>
+    scratch = v
+    v = value_pad4 >>> 32 &&& 0xFFFFFFFF
+    data = <<data::binary, scratch::little-size(4)-unit(8)>>
+    scratch = v
+    v = value_pad5 &&& 0xFFFFFF
+    data = <<data::binary, scratch::little-size(4)-unit(8)>>
+    scratch = v
+    %{a: value_inner_a, b: value_inner_b, c: value_inner_c} = value_inner
+    v = value_inner_a &&& 0xFFFFF
+    scratch = scratch ||| v <<< 24
+    v = value_inner_b &&& 0xFFFFF
+    data = <<data::binary, scratch::little-size(5)-unit(8)>>
+    scratch = scratch >>> 40
+    scratch = scratch ||| v <<< 4
+    v = value_inner_c &&& 0xFFFFFF
+    scratch = scratch ||| v <<< 24
+    data = <<data::binary, scratch::little-size(6)-unit(8)>>
+    data
   end
 
   # read_trio_straddle decodes the first num_bits of data — the family read verdict:
@@ -908,51 +813,63 @@ defmodule Example.Degenerate do
 
       bits_read = 0
       if bits_read + 408 > num_bits, do: throw(:invalid)
-      v = rd(data, bits_read, 32)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0xFFFFFFFF
       bits_read = bits_read + 32
       w = v
-      v = rd(data, bits_read, 32)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0xFFFFFFFF
       bits_read = bits_read + 32
       w = w ||| v <<< 32
       v_pad0 = w
-      v = rd(data, bits_read, 32)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0xFFFFFFFF
       bits_read = bits_read + 32
       w = v
-      v = rd(data, bits_read, 32)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0xFFFFFFFF
       bits_read = bits_read + 32
       w = w ||| v <<< 32
       v_pad1 = w
-      v = rd(data, bits_read, 32)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0xFFFFFFFF
       bits_read = bits_read + 32
       w = v
-      v = rd(data, bits_read, 32)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0xFFFFFFFF
       bits_read = bits_read + 32
       w = w ||| v <<< 32
       v_pad2 = w
-      v = rd(data, bits_read, 32)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0xFFFFFFFF
       bits_read = bits_read + 32
       w = v
-      v = rd(data, bits_read, 32)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0xFFFFFFFF
       bits_read = bits_read + 32
       w = w ||| v <<< 32
       v_pad3 = w
-      v = rd(data, bits_read, 32)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0xFFFFFFFF
       bits_read = bits_read + 32
       w = v
-      v = rd(data, bits_read, 32)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0xFFFFFFFF
       bits_read = bits_read + 32
       w = w ||| v <<< 32
       v_pad4 = w
-      v = rd(data, bits_read, 24)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0xFFFFFF
       bits_read = bits_read + 24
       v_pad5 = v
-      v = rd(data, bits_read, 20)
+      v = rv >>> 24 &&& 0xFFFFF
       bits_read = bits_read + 20
       v_inner_a = v
-      v = rd(data, bits_read, 20)
+      rv = rdw(data, bits_read, 44)
+      v = rv &&& 0xFFFFF
       bits_read = bits_read + 20
       v_inner_b = v
-      v = rd(data, bits_read, 24)
+      v = rv >>> 20
       bits_read = bits_read + 24
       v_inner_c = v
       v_inner = %Example.Trio{a: v_inner_a, b: v_inner_b, c: v_inner_c}
@@ -986,11 +903,11 @@ defmodule Example.Degenerate do
     v = w &&& 0xFFFFFFFF
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 32
+    v = w >>> 32
     flush = scratch_bits >>> 3
     data = <<data::binary, scratch::little-size(flush)-unit(8)>>
     scratch = scratch >>> (flush <<< 3)
     scratch_bits = scratch_bits &&& 7
-    v = w >>> 32
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 32
     flush = scratch_bits >>> 3
@@ -1003,10 +920,12 @@ defmodule Example.Degenerate do
   defp r_span_f64_values(0, acc, _data, _num_bits, bits_read), do: {bits_read, Enum.reverse(acc)}
 
   defp r_span_f64_values(remaining, acc, data, num_bits, bits_read) do
-    v = rd(data, bits_read, 32)
+    rv = rdw(data, bits_read, 49)
+    v = rv &&& 0xFFFFFFFF
     bits_read = bits_read + 32
     w = v
-    v = rd(data, bits_read, 32)
+    rv = rd(data, bits_read, 32)
+    v = rv
     bits_read = bits_read + 32
     w = w ||| v <<< 32
     e = f64_value(w)
@@ -1019,11 +938,11 @@ defmodule Example.Degenerate do
     v = e &&& 0xFFFFFFFF
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 32
+    v = e >>> 32 &&& 0xFFFFFFFF
     flush = scratch_bits >>> 3
     data = <<data::binary, scratch::little-size(flush)-unit(8)>>
     scratch = scratch >>> (flush <<< 3)
     scratch_bits = scratch_bits &&& 7
-    v = e >>> 32 &&& 0xFFFFFFFF
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 32
     flush = scratch_bits >>> 3
@@ -1036,10 +955,12 @@ defmodule Example.Degenerate do
   defp r_span_u64_values(0, acc, _data, _num_bits, bits_read), do: {bits_read, Enum.reverse(acc)}
 
   defp r_span_u64_values(remaining, acc, data, num_bits, bits_read) do
-    v = rd(data, bits_read, 32)
+    rv = rdw(data, bits_read, 49)
+    v = rv &&& 0xFFFFFFFF
     bits_read = bits_read + 32
     w = v
-    v = rd(data, bits_read, 32)
+    rv = rd(data, bits_read, 32)
+    v = rv
     bits_read = bits_read + 32
     w = w ||| v <<< 32
     e = w
@@ -1052,11 +973,11 @@ defmodule Example.Degenerate do
     v = e &&& 0xFFFFFFFF
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 32
+    v = e >>> 32 &&& 0xFFFFFFFF
     flush = scratch_bits >>> 3
     data = <<data::binary, scratch::little-size(flush)-unit(8)>>
     scratch = scratch >>> (flush <<< 3)
     scratch_bits = scratch_bits &&& 7
-    v = e >>> 32 &&& 0xFFFFFFFF
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 32
     flush = scratch_bits >>> 3
@@ -1069,10 +990,12 @@ defmodule Example.Degenerate do
   defp r_span_i64_values(0, acc, _data, _num_bits, bits_read), do: {bits_read, Enum.reverse(acc)}
 
   defp r_span_i64_values(remaining, acc, data, num_bits, bits_read) do
-    v = rd(data, bits_read, 32)
+    rv = rdw(data, bits_read, 49)
+    v = rv &&& 0xFFFFFFFF
     bits_read = bits_read + 32
     w = v
-    v = rd(data, bits_read, 32)
+    rv = rd(data, bits_read, 32)
+    v = rv
     bits_read = bits_read + 32
     w = w ||| v <<< 32
     e = if w >= 9_223_372_036_854_775_808, do: w - 18_446_744_073_709_551_616, else: w
@@ -1085,11 +1008,11 @@ defmodule Example.Degenerate do
     v = e &&& 0xFFFFFFFF
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 32
+    v = e >>> 32 &&& 0xFFFFFFFF
     flush = scratch_bits >>> 3
     data = <<data::binary, scratch::little-size(flush)-unit(8)>>
     scratch = scratch >>> (flush <<< 3)
     scratch_bits = scratch_bits &&& 7
-    v = e >>> 32 &&& 0xFFFFFFFF
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 32
     flush = scratch_bits >>> 3
@@ -1102,10 +1025,12 @@ defmodule Example.Degenerate do
   defp r_span_one_values(0, acc, _data, _num_bits, bits_read), do: {bits_read, Enum.reverse(acc)}
 
   defp r_span_one_values(remaining, acc, data, num_bits, bits_read) do
-    v = rd(data, bits_read, 32)
+    rv = rdw(data, bits_read, 49)
+    v = rv &&& 0xFFFFFFFF
     bits_read = bits_read + 32
     w = v
-    v = rd(data, bits_read, 32)
+    rv = rd(data, bits_read, 32)
+    v = rv
     bits_read = bits_read + 32
     w = w ||| v <<< 32
     e = w
@@ -1113,6 +1038,23 @@ defmodule Example.Degenerate do
   end
 
   defp w_span_chunk_values([], data, scratch, scratch_bits), do: {data, scratch, scratch_bits}
+
+  defp w_span_chunk_values([e1, e2, e3 | rest], data, scratch, scratch_bits) do
+    v = e1 &&& 0xFFFF
+    scratch = scratch ||| v <<< scratch_bits
+    scratch_bits = scratch_bits + 16
+    v = e2 &&& 0xFFFF
+    scratch = scratch ||| v <<< scratch_bits
+    scratch_bits = scratch_bits + 16
+    v = e3 &&& 0xFFFF
+    scratch = scratch ||| v <<< scratch_bits
+    scratch_bits = scratch_bits + 16
+    flush = scratch_bits >>> 3
+    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
+    scratch = scratch >>> (flush <<< 3)
+    scratch_bits = scratch_bits &&& 7
+    w_span_chunk_values(rest, data, scratch, scratch_bits)
+  end
 
   defp w_span_chunk_values([e | rest], data, scratch, scratch_bits) do
     v = e &&& 0xFFFF
@@ -1128,8 +1070,24 @@ defmodule Example.Degenerate do
   defp r_span_chunk_values(0, acc, _data, _num_bits, bits_read),
     do: {bits_read, Enum.reverse(acc)}
 
+  defp r_span_chunk_values(remaining, acc, data, num_bits, bits_read)
+       when remaining >= 3 do
+    rv = rdw(data, bits_read, 48)
+    v = rv &&& 0xFFFF
+    bits_read = bits_read + 16
+    e1 = v
+    v = rv >>> 16 &&& 0xFFFF
+    bits_read = bits_read + 16
+    e2 = v
+    v = rv >>> 32
+    bits_read = bits_read + 16
+    e3 = v
+    r_span_chunk_values(remaining - 3, [e3, e2, e1 | acc], data, num_bits, bits_read)
+  end
+
   defp r_span_chunk_values(remaining, acc, data, num_bits, bits_read) do
-    v = rd(data, bits_read, 16)
+    rv = rd(data, bits_read, 16)
+    v = rv
     bits_read = bits_read + 16
     e = v
     r_span_chunk_values(remaining - 1, [e | acc], data, num_bits, bits_read)
@@ -1142,11 +1100,11 @@ defmodule Example.Degenerate do
     v = w &&& 0xFFFFFFFF
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 32
+    v = w >>> 32
     flush = scratch_bits >>> 3
     data = <<data::binary, scratch::little-size(flush)-unit(8)>>
     scratch = scratch >>> (flush <<< 3)
     scratch_bits = scratch_bits &&& 7
-    v = w >>> 32
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 32
     flush = scratch_bits >>> 3
@@ -1159,10 +1117,12 @@ defmodule Example.Degenerate do
   defp r_span_tail_values(0, acc, _data, _num_bits, bits_read), do: {bits_read, Enum.reverse(acc)}
 
   defp r_span_tail_values(remaining, acc, data, num_bits, bits_read) do
-    v = rd(data, bits_read, 32)
+    rv = rdw(data, bits_read, 49)
+    v = rv &&& 0xFFFFFFFF
     bits_read = bits_read + 32
     w = v
-    v = rd(data, bits_read, 32)
+    rv = rd(data, bits_read, 32)
+    v = rv
     bits_read = bits_read + 32
     w = w ||| v <<< 32
     e = f64_value(w)
@@ -1176,11 +1136,11 @@ defmodule Example.Degenerate do
     v = w &&& 0xFFFFFFFF
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 32
+    v = w >>> 32
     flush = scratch_bits >>> 3
     data = <<data::binary, scratch::little-size(flush)-unit(8)>>
     scratch = scratch >>> (flush <<< 3)
     scratch_bits = scratch_bits &&& 7
-    v = w >>> 32
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 32
     flush = scratch_bits >>> 3
@@ -1197,11 +1157,11 @@ defmodule Example.Degenerate do
     v = w &&& 0xFFFFFFFF
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 32
+    v = w >>> 32
     flush = scratch_bits >>> 3
     data = <<data::binary, scratch::little-size(flush)-unit(8)>>
     scratch = scratch >>> (flush <<< 3)
     scratch_bits = scratch_bits &&& 7
-    v = w >>> 32
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 32
     flush = scratch_bits >>> 3
@@ -1214,10 +1174,12 @@ defmodule Example.Degenerate do
   defp r_span_twice_a(0, acc, _data, _num_bits, bits_read), do: {bits_read, Enum.reverse(acc)}
 
   defp r_span_twice_a(remaining, acc, data, num_bits, bits_read) do
-    v = rd(data, bits_read, 32)
+    rv = rdw(data, bits_read, 49)
+    v = rv &&& 0xFFFFFFFF
     bits_read = bits_read + 32
     w = v
-    v = rd(data, bits_read, 32)
+    rv = rd(data, bits_read, 32)
+    v = rv
     bits_read = bits_read + 32
     w = w ||| v <<< 32
     e = f64_value(w)
@@ -1227,10 +1189,12 @@ defmodule Example.Degenerate do
   defp r_span_twice_b(0, acc, _data, _num_bits, bits_read), do: {bits_read, Enum.reverse(acc)}
 
   defp r_span_twice_b(remaining, acc, data, num_bits, bits_read) do
-    v = rd(data, bits_read, 32)
+    rv = rdw(data, bits_read, 49)
+    v = rv &&& 0xFFFFFFFF
     bits_read = bits_read + 32
     w = v
-    v = rd(data, bits_read, 32)
+    rv = rd(data, bits_read, 32)
+    v = rv
     bits_read = bits_read + 32
     w = w ||| v <<< 32
     e = f64_value(w)
@@ -1247,6 +1211,22 @@ defmodule Example.Degenerate do
     window =
       case data do
         <<_::binary-size(^i), w::little-40, _::binary>> -> w
+        <<_::binary-size(^i), rest::binary>> -> :binary.decode_unsigned(rest, :little)
+      end
+
+    window >>> (bits_read &&& 7) &&& (1 <<< bits) - 1
+  end
+
+  # The wide window decode: 56 bits, enough for a 7-bit offset plus a
+  # 49-bit group, and still under the 2^59 fixnum boundary — one match
+  # context serves a whole group of fields instead of one per field. A
+  # 64-bit window would box and measures slower than the reads it saves.
+  defp rdw(data, bits_read, bits) do
+    i = bits_read >>> 3
+
+    window =
+      case data do
+        <<_::binary-size(^i), w::little-56, _::binary>> -> w
         <<_::binary-size(^i), rest::binary>> -> :binary.decode_unsigned(rest, :little)
       end
 
