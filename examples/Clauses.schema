@@ -1,0 +1,124 @@
+// Adversarial arrangements for the Elixir grouped-append clauses (K/L).
+// Every element width here is chosen so the write clause (52-bit budget,
+// cap 4) and the read clause (49-bit window, cap 4) pick DIFFERENT k, and
+// so the clause boundary lands mid-byte -- the case examples/Degenerate.schema
+// cannot reach, because every type in that file is a whole number of bytes.
+
+package example
+
+// w13: write k = min(52/13,4) = 4 -> 52 bits/clause; read k = min(49/13,4) = 3
+// -> 39 bits/clause. Both mid-byte, and the two sides disagree.
+type W13
+{
+    items [..12]uint16 | min = 0, max = 8191
+}
+
+// w17: write k = 3 (51 bits); read k = 2 (34 bits).
+type W17
+{
+    items [..9]uint32 | min = 0, max = 131071
+}
+
+// w26: write k = 2 (52 bits, exactly the budget); read k = 1.
+type W26
+{
+    items [..6]uint32 | min = 0, max = 67108863
+}
+
+// w1: write k = 4, read k = 4 -- the narrowest element.
+type W1
+{
+    items [..20]uint8 | min = 0, max = 1
+}
+
+// exactly the budget as ONE element, and one bit over the read window.
+type W52
+{
+    items [..3]uint64 | min = 0, max = 4503599627370495
+}
+
+type W50
+{
+    items [..3]uint64 | min = 0, max = 1125899906842623
+}
+
+// a FIXED array of a mid-byte width: no count bits, clause boundaries only.
+type F13
+{
+    items [7]uint16 | min = 0, max = 8191
+}
+
+// ---- grouping ACROSS a nested struct boundary ---------------------------
+
+// a 3-bit struct: staticBitsScalar reports 3, so writeUnroll picks k = 4 and
+// the append group spans four whole structs.
+type Tri3
+{
+    a bits(1)
+    b bits(2)
+}
+
+type ArrTri3
+{
+    items [..10]Tri3
+}
+
+// an 11-bit struct spanning a clause: write k = 4 (44), read k = 4 (44).
+type Eleven
+{
+    a bits(3)
+    b bits(8)
+}
+
+type ArrEleven
+{
+    items [9]Eleven
+}
+
+// ---- the empty and the maximal ------------------------------------------
+
+// a union whose arms are EMPTY types -- a zero-bit arm behind a tag.
+type EmptyA
+{
+}
+
+type EmptyB
+{
+}
+
+union EmptyUnion
+{
+    a EmptyA
+    b EmptyB
+}
+
+type HoldsEmptyUnion
+{
+    lead bits(5)
+    u    EmptyUnion
+    tail bits(7)
+}
+
+// zero-length string and bytes, and the maximal ones, behind a mid-byte lead
+// so the align inside them is a real barrier at a non-zero offset.
+type Strs
+{
+    lead bits(5)
+    s    string(8)
+    b    bytes(8)
+    tail bits(3)
+}
+
+// a counted array of nested structs, exercised at count 0 and at bound.
+type ArrNested
+{
+    lead  bits(5)
+    items [..4]Eleven
+    tail  bits(3)
+}
+
+// a single field and nothing else.
+type Sole
+{
+    only bits(13)
+}

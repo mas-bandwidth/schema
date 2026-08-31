@@ -11,9 +11,11 @@
 #include <thread>
 #include <new> // placement new — the raw-struct scatter constructs in place
 
+#include "ClausesWire.h"
 #include "ConstantsWire.h"
 #include "DegenerateWire.h"
 #include "EnumsWire.h"
+#include "JoinsWire.h"
 #include "RenderWire.h"
 #include "TypesWire.h"
 #include "WireWire.h"
@@ -860,6 +862,533 @@ int main()
         check( r_straddle.pad0 == 0x0011223344556677ull && r_straddle.pad4 == 0x123456789ABCDEF0ull );
         check( r_straddle.pad5 == 0xABCDEFu );
         check( r_straddle.inner.a == 0x11111 && r_straddle.inner.b == 0x22222 && r_straddle.inner.c == 0x33333 );
+    }
+
+    // ---- Clauses.schema / Joins.schema: the mid-byte arrangements ----
+    //
+    // Degenerate.schema's standing property is that every type in it is a
+    // whole number of bytes. That is load bearing for what it catches, and
+    // it is also a ceiling: no clause boundary inside it ever lands mid-byte,
+    // so an emitter that groups array elements picks the same group size on
+    // the write and the read side of every type in the file. These two units
+    // are chosen so it does not. At 13 bits a write clause takes four
+    // elements (52 bits, the whole group budget) and a read clause three (39,
+    // inside the 49-bit window): the two sides disagree, and both boundaries
+    // fall mid-byte. Joins.schema does the same to the static-offset state
+    // machine — arms that agree and disagree on width, an absent arm, a
+    // branch inside a branch, an align that regains staticness on one path
+    // only, an array that gives it up on one path only, and unions of
+    // unequal arms at mid-byte offsets.
+    //
+    // Unlike Degenerate, these shapes are NOT byte-aligned, so a single
+    // stream would not equal a concatenation of the shapes written alone —
+    // and the Elixir emitter returns each message as its own binary from bit
+    // zero, so it has no way to write a shared stream at all. Every shape is
+    // therefore written to its OWN stream and flushed, and the golden is the
+    // concatenation of those. Every leg can reproduce that, and each shape's
+    // bytes stay individually attributable.
+    //
+    // Each emit states the shape's own width, so a doubled or dropped clause
+    // is named rather than smeared into one total.
+    {
+        alignas( 8 ) uint8_t shape[64];  // one shape's own stream
+        alignas( 8 ) uint8_t stream[1024];
+        int64_t stream_len = 0;
+
+        auto emit = [&]( int64_t expect_bits, auto && fn ) -> bool
+        {
+            serialize::WriteStream ws( shape, sizeof( shape ) );
+            if ( !fn( ws ) ) return false;
+            if ( ws.GetBitsProcessed() != expect_bits ) return false;
+            ws.Flush();
+            const int64_t n = ws.GetBytesProcessed();
+            if ( n != ( expect_bits + 7 ) / 8 ) return false;
+            if ( stream_len + n > (int64_t) sizeof( stream ) ) return false;
+            memcpy( stream + stream_len, shape, (size_t) n );
+            stream_len += n;
+            return true;
+        };
+
+        int64_t read_off = 0;
+        auto consume = [&]( int64_t expect_bits, auto && fn ) -> bool
+        {
+            const int64_t n = ( expect_bits + 7 ) / 8;
+            alignas( 8 ) uint8_t slice[64] = {}; // read allocations extend past the data
+            memcpy( slice, stream + read_off, (size_t) n );
+            serialize::ReadStream rs( slice, n );
+            if ( !fn( rs ) ) return false;
+            read_off += n;
+            return true;
+        };
+
+        // ---- Clauses.schema ----
+
+        const int w13_counts[] = { 0, 1, 3, 4, 5, 7, 12 };
+        for ( int c : w13_counts )
+        {
+            W13 v;
+            v.items_count = c;
+            for ( int i = 0; i < c; i++ ) v.items[i] = (uint16_t) ( 8191 - i * 733 );
+            check( emit( 4 + 13 * c, [&]( serialize::WriteStream & ws ) { return WriteW13( ws, v ); } ) );
+        }
+
+        const int w17_counts[] = { 0, 1, 2, 3, 4, 9 };
+        for ( int c : w17_counts )
+        {
+            W17 v;
+            v.items_count = c;
+            for ( int i = 0; i < c; i++ ) v.items[i] = (uint32_t) ( 131071 - i * 11117 );
+            check( emit( 4 + 17 * c, [&]( serialize::WriteStream & ws ) { return WriteW17( ws, v ); } ) );
+        }
+
+        const int w26_counts[] = { 0, 1, 2, 3, 6 };
+        for ( int c : w26_counts )
+        {
+            W26 v;
+            v.items_count = c;
+            for ( int i = 0; i < c; i++ ) v.items[i] = (uint32_t) ( 67108863 - i * 5555555 );
+            check( emit( 3 + 26 * c, [&]( serialize::WriteStream & ws ) { return WriteW26( ws, v ); } ) );
+        }
+
+        const int w1_counts[] = { 0, 1, 3, 4, 5, 20 };
+        for ( int c : w1_counts )
+        {
+            W1 v;
+            v.items_count = c;
+            for ( int i = 0; i < c; i++ ) v.items[i] = (uint8_t) ( i % 2 );
+            check( emit( 5 + 1 * c, [&]( serialize::WriteStream & ws ) { return WriteW1( ws, v ); } ) );
+        }
+
+        for ( int c = 0; c <= 3; c++ )
+        {
+            W52 v;
+            v.items_count = c;
+            for ( int i = 0; i < c; i++ ) v.items[i] = 4503599627370495ull - (uint64_t) i * 123456789ull;
+            check( emit( 2 + 52 * c, [&]( serialize::WriteStream & ws ) { return WriteW52( ws, v ); } ) );
+        }
+
+        for ( int c = 0; c <= 3; c++ )
+        {
+            W50 v;
+            v.items_count = c;
+            for ( int i = 0; i < c; i++ ) v.items[i] = 1125899906842623ull - (uint64_t) i * 987654321ull;
+            check( emit( 2 + 50 * c, [&]( serialize::WriteStream & ws ) { return WriteW50( ws, v ); } ) );
+        }
+
+        {
+            F13 v;
+            for ( int i = 0; i < 7; i++ ) v.items[i] = (uint16_t) ( 8191 - i * 911 );
+            check( emit( 91, [&]( serialize::WriteStream & ws ) { return WriteF13( ws, v ); } ) );
+        }
+
+        const int tri_counts[] = { 0, 1, 3, 4, 5, 10 };
+        for ( int c : tri_counts )
+        {
+            ArrTri3 v;
+            v.items_count = c;
+            for ( int i = 0; i < c; i++ ) { v.items[i].a = (uint32_t) ( i % 2 ); v.items[i].b = (uint32_t) ( i % 4 ); }
+            check( emit( 4 + 3 * c, [&]( serialize::WriteStream & ws ) { return WriteArrTri3( ws, v ); } ) );
+        }
+
+        {
+            ArrEleven v;
+            for ( int i = 0; i < 9; i++ ) { v.items[i].a = (uint32_t) ( i % 8 ); v.items[i].b = (uint32_t) ( 255 - i * 17 ); }
+            check( emit( 99, [&]( serialize::WriteStream & ws ) { return WriteArrEleven( ws, v ); } ) );
+        }
+
+        // lead 5 + tag 2 + tail 7 — a zero-bit arm behind a tag costs the tag
+        {
+            HoldsEmptyUnion none;
+            none.lead = 21;
+            none.tail = 99;
+            check( emit( 14, [&]( serialize::WriteStream & ws ) { return WriteHoldsEmptyUnion( ws, none ); } ) );
+
+            HoldsEmptyUnion arm_a;
+            arm_a.lead = 21;
+            arm_a.tail = 99;
+            arm_a.u.type = EmptyUnionType::A;
+            arm_a.u.a = EmptyA{};
+            check( emit( 14, [&]( serialize::WriteStream & ws ) { return WriteHoldsEmptyUnion( ws, arm_a ); } ) );
+
+            HoldsEmptyUnion arm_b;
+            arm_b.lead = 21;
+            arm_b.tail = 99;
+            arm_b.u.type = EmptyUnionType::B;
+            arm_b.u.b = EmptyB{};
+            check( emit( 14, [&]( serialize::WriteStream & ws ) { return WriteHoldsEmptyUnion( ws, arm_b ); } ) );
+        }
+
+        // Strs: lead 5 + s_length 4 = 9, the align pads 7 to 16; then 8*s
+        // bytes, b_length 4, an align pad of 4, 8*b bytes and a 3-bit tail.
+        // The 5-bit lead is what puts the align at a non-zero offset.
+        {
+            Strs empty;
+            empty.lead = 21;
+            empty.tail = 5;
+            check( emit( 27, [&]( serialize::WriteStream & ws ) { return WriteStrs( ws, empty ); } ) );
+
+            Strs full;
+            full.lead = 21;
+            full.tail = 5;
+            memcpy( full.s, "abcdefgh", 8 );
+            full.s_length = 8;
+            for ( int i = 0; i < 8; i++ ) full.b[i] = (uint8_t) ( 0xF0 + i );
+            full.b_length = 8;
+            check( emit( 155, [&]( serialize::WriteStream & ws ) { return WriteStrs( ws, full ); } ) );
+
+            Strs part;
+            part.lead = 21;
+            part.tail = 5;
+            memcpy( part.s, "xyz", 3 );
+            part.s_length = 3;
+            for ( int i = 0; i < 3; i++ ) part.b[i] = (uint8_t) ( i + 1 );
+            part.b_length = 3;
+            check( emit( 75, [&]( serialize::WriteStream & ws ) { return WriteStrs( ws, part ); } ) );
+        }
+
+        for ( int c = 0; c <= 4; c++ )
+        {
+            ArrNested v;
+            v.lead = 21;
+            v.tail = 5;
+            v.items_count = c;
+            for ( int i = 0; i < c; i++ ) { v.items[i].a = (uint32_t) ( i % 8 ); v.items[i].b = (uint32_t) ( 200 - i * 7 ); }
+            check( emit( 11 + 11 * c, [&]( serialize::WriteStream & ws ) { return WriteArrNested( ws, v ); } ) );
+        }
+
+        {
+            Sole v;
+            v.only = 5555;
+            check( emit( 13, [&]( serialize::WriteStream & ws ) { return WriteSole( ws, v ); } ) );
+        }
+
+        check( W13MaxBits == 160 && W17MaxBits == 157 && W26MaxBits == 159 && W1MaxBits == 25 );
+        check( W52MaxBits == 158 && W50MaxBits == 152 && F13MaxBits == 91 && ArrTri3MaxBits == 34 );
+        check( ArrElevenMaxBits == 99 && HoldsEmptyUnionMaxBits == 14 && StrsMaxBits == 158 );
+        check( ArrNestedMaxBits == 55 && SoleMaxBits == 13 );
+
+        check( golden_wire( "clauses", stream, stream_len ) );
+
+        // Read each shape back out of its own slice. A clause that decodes a
+        // different number of elements than the writer encoded shows up here
+        // even where the byte compare above happens to pass.
+        for ( int c : w13_counts )
+        {
+            W13 r;
+            check( consume( 4 + 13 * c, [&]( serialize::ReadStream & rs ) { return ReadW13( rs, r ); } ) );
+            check( r.items_count == c );
+            for ( int i = 0; i < c; i++ ) check( r.items[i] == (uint16_t) ( 8191 - i * 733 ) );
+        }
+        for ( int c : w17_counts )
+        {
+            W17 r;
+            check( consume( 4 + 17 * c, [&]( serialize::ReadStream & rs ) { return ReadW17( rs, r ); } ) );
+            check( r.items_count == c );
+            for ( int i = 0; i < c; i++ ) check( r.items[i] == (uint32_t) ( 131071 - i * 11117 ) );
+        }
+        for ( int c : w26_counts )
+        {
+            W26 r;
+            check( consume( 3 + 26 * c, [&]( serialize::ReadStream & rs ) { return ReadW26( rs, r ); } ) );
+            check( r.items_count == c );
+            for ( int i = 0; i < c; i++ ) check( r.items[i] == (uint32_t) ( 67108863 - i * 5555555 ) );
+        }
+        for ( int c : w1_counts )
+        {
+            W1 r;
+            check( consume( 5 + 1 * c, [&]( serialize::ReadStream & rs ) { return ReadW1( rs, r ); } ) );
+            check( r.items_count == c );
+            for ( int i = 0; i < c; i++ ) check( r.items[i] == (uint8_t) ( i % 2 ) );
+        }
+        for ( int c = 0; c <= 3; c++ )
+        {
+            W52 r;
+            check( consume( 2 + 52 * c, [&]( serialize::ReadStream & rs ) { return ReadW52( rs, r ); } ) );
+            check( r.items_count == c );
+            for ( int i = 0; i < c; i++ ) check( r.items[i] == 4503599627370495ull - (uint64_t) i * 123456789ull );
+        }
+        for ( int c = 0; c <= 3; c++ )
+        {
+            W50 r;
+            check( consume( 2 + 50 * c, [&]( serialize::ReadStream & rs ) { return ReadW50( rs, r ); } ) );
+            check( r.items_count == c );
+            for ( int i = 0; i < c; i++ ) check( r.items[i] == 1125899906842623ull - (uint64_t) i * 987654321ull );
+        }
+        {
+            F13 r;
+            check( consume( 91, [&]( serialize::ReadStream & rs ) { return ReadF13( rs, r ); } ) );
+            for ( int i = 0; i < 7; i++ ) check( r.items[i] == (uint16_t) ( 8191 - i * 911 ) );
+        }
+        for ( int c : tri_counts )
+        {
+            ArrTri3 r;
+            check( consume( 4 + 3 * c, [&]( serialize::ReadStream & rs ) { return ReadArrTri3( rs, r ); } ) );
+            check( r.items_count == c );
+            for ( int i = 0; i < c; i++ ) check( r.items[i].a == (uint32_t) ( i % 2 ) && r.items[i].b == (uint32_t) ( i % 4 ) );
+        }
+        {
+            ArrEleven r;
+            check( consume( 99, [&]( serialize::ReadStream & rs ) { return ReadArrEleven( rs, r ); } ) );
+            for ( int i = 0; i < 9; i++ ) check( r.items[i].a == (uint32_t) ( i % 8 ) && r.items[i].b == (uint32_t) ( 255 - i * 17 ) );
+        }
+        {
+            HoldsEmptyUnion r_none, r_a, r_b;
+            check( consume( 14, [&]( serialize::ReadStream & rs ) { return ReadHoldsEmptyUnion( rs, r_none ); } ) );
+            check( consume( 14, [&]( serialize::ReadStream & rs ) { return ReadHoldsEmptyUnion( rs, r_a ); } ) );
+            check( consume( 14, [&]( serialize::ReadStream & rs ) { return ReadHoldsEmptyUnion( rs, r_b ); } ) );
+            check( r_none.u.type == EmptyUnionType::None && r_none.lead == 21 && r_none.tail == 99 );
+            check( r_a.u.type == EmptyUnionType::A && r_b.u.type == EmptyUnionType::B );
+        }
+        {
+            Strs r_empty, r_full, r_part;
+            check( consume( 27, [&]( serialize::ReadStream & rs ) { return ReadStrs( rs, r_empty ); } ) );
+            check( consume( 155, [&]( serialize::ReadStream & rs ) { return ReadStrs( rs, r_full ); } ) );
+            check( consume( 75, [&]( serialize::ReadStream & rs ) { return ReadStrs( rs, r_part ); } ) );
+            check( r_empty.s_length == 0 && r_empty.b_length == 0 && r_empty.lead == 21 && r_empty.tail == 5 );
+            check( r_full.s_length == 8 && strcmp( r_full.s, "abcdefgh" ) == 0 && r_full.b_length == 8 && r_full.b[7] == 0xF7 );
+            check( r_part.s_length == 3 && strcmp( r_part.s, "xyz" ) == 0 && r_part.b_length == 3 && r_part.b[2] == 3 );
+        }
+        for ( int c = 0; c <= 4; c++ )
+        {
+            ArrNested r;
+            check( consume( 11 + 11 * c, [&]( serialize::ReadStream & rs ) { return ReadArrNested( rs, r ); } ) );
+            check( r.items_count == c && r.lead == 21 && r.tail == 5 );
+            for ( int i = 0; i < c; i++ ) check( r.items[i].a == (uint32_t) ( i % 8 ) && r.items[i].b == (uint32_t) ( 200 - i * 7 ) );
+        }
+        {
+            Sole r;
+            check( consume( 13, [&]( serialize::ReadStream & rs ) { return ReadSole( rs, r ); } ) );
+            check( r.only == 5555 );
+        }
+        check( read_off == stream_len ); // the reads consume the whole golden
+
+        // ---- Joins.schema ----
+
+        stream_len = 0;
+        read_off = 0;
+
+        for ( int f = 0; f < 2; f++ )
+        {
+            ArmsAgree v;
+            // the arms agree on WIDTH but not on value, so a join that keeps
+            // the wrong arm is a value mismatch and not just a width one
+            v.lead = 21; v.flag = f != 0; v.a = 1234; v.b = 1500; v.tail = 99;
+            check( emit( 24, [&]( serialize::WriteStream & ws ) { return WriteArmsAgree( ws, v ); } ) );
+
+            ArmsDisagree d;
+            d.lead = 21; d.flag = f != 0; d.a = 1234; d.b = 5; d.tail = 99;
+            check( emit( f ? 24 : 16, [&]( serialize::WriteStream & ws ) { return WriteArmsDisagree( ws, d ); } ) );
+
+            ArmEmpty e;
+            e.lead = 21; e.flag = f != 0; e.a = 456789; e.tail = 99;
+            check( emit( f ? 32 : 13, [&]( serialize::WriteStream & ws ) { return WriteArmEmpty( ws, e ); } ) );
+
+            ArmAlign s;
+            s.lead = 21; s.flag = f != 0; memcpy( s.s, "abcd", 4 ); s.s_length = 4; s.b = 1000; s.tail = 99;
+            check( emit( f ? 55 : 23, [&]( serialize::WriteStream & ws ) { return WriteArmAlign( ws, s ); } ) );
+
+            ArmAlign z;
+            z.lead = 21; z.flag = f != 0; z.s_length = 0; z.b = 1000; z.tail = 99;
+            check( emit( 23, [&]( serialize::WriteStream & ws ) { return WriteArmAlign( ws, z ); } ) );
+        }
+
+        for ( int o = 0; o < 2; o++ )
+        {
+            for ( int i = 0; i < 2; i++ )
+            {
+                ArmsNested v;
+                v.lead = 5; v.outer = o != 0; v.inner = i != 0;
+                v.x = 500000000; v.y = 17; v.z = 4000; v.tail = 33;
+                check( emit( o ? ( i ? 40 : 16 ) : 23, [&]( serialize::WriteStream & ws ) { return WriteArmsNested( ws, v ); } ) );
+            }
+        }
+
+        for ( int f = 0; f < 2; f++ )
+        {
+            for ( int c = 0; c <= 3; c++ )
+            {
+                ArmArray v;
+                v.lead = 21; v.flag = f != 0; v.items_count = c; v.b = 300; v.tail = 99;
+                for ( int i = 0; i < c; i++ ) v.items[i] = (uint16_t) ( 8191 - i * 777 );
+                check( emit( f ? 15 + 13 * c : 22, [&]( serialize::WriteStream & ws ) { return WriteArmArray( ws, v ); } ) );
+            }
+        }
+
+        // lead 5 + tag 2 + arm + tail 11 — the arms are 0, 3 and 37 bits
+        {
+            HoldsUneven none;
+            none.lead = 21; none.tail = 1500;
+            check( emit( 18, [&]( serialize::WriteStream & ws ) { return WriteHoldsUneven( ws, none ); } ) );
+
+            HoldsUneven narrow;
+            narrow.lead = 21; narrow.tail = 1500;
+            narrow.u.type = UnevenType::Narrow;
+            narrow.u.narrow = Narrow{};
+            narrow.u.narrow.n = 5;
+            check( emit( 21, [&]( serialize::WriteStream & ws ) { return WriteHoldsUneven( ws, narrow ); } ) );
+
+            HoldsUneven wide;
+            wide.lead = 21; wide.tail = 1500;
+            wide.u.type = UnevenType::Wide;
+            wide.u.wide = Wide{};
+            wide.u.wide.w = 123456789012ull;
+            check( emit( 55, [&]( serialize::WriteStream & ws ) { return WriteHoldsUneven( ws, wide ); } ) );
+        }
+
+        // alternating arms: item i is Narrow (2 + 3) when even, Wide (2 + 37)
+        const int64_t uneven_item_bits[] = { 0, 5, 44, 49 };
+        for ( int c = 0; c <= 3; c++ )
+        {
+            ArrUneven v;
+            v.lead = 21; v.tail = 5; v.items_count = c;
+            for ( int i = 0; i < c; i++ )
+            {
+                if ( i % 2 == 0 )
+                {
+                    v.items[i].type = UnevenType::Narrow;
+                    v.items[i].narrow = Narrow{};
+                    v.items[i].narrow.n = (uint32_t) ( i % 8 );
+                }
+                else
+                {
+                    v.items[i].type = UnevenType::Wide;
+                    v.items[i].wide = Wide{};
+                    v.items[i].wide.w = 99887766554ull + (uint64_t) i;
+                }
+            }
+            check( emit( 10 + uneven_item_bits[c], [&]( serialize::WriteStream & ws ) { return WriteArrUneven( ws, v ); } ) );
+        }
+
+        // lead 5 + count 2 + 13*c + s_length 3, an align to the byte, 8*s,
+        // then a 32 + 29 + 19 + 4 static run after the align regains it
+        for ( int c = 0; c <= 3; c++ )
+        {
+            for ( int sl = 0; sl <= 4; sl += 4 )
+            {
+                RegainAfterAlign v;
+                v.lead = 21; v.items_count = c; v.s_length = sl;
+                if ( sl ) memcpy( v.s, "wxyz", 4 );
+                for ( int i = 0; i < c; i++ ) v.items[i] = (uint16_t) ( 8191 - i * 999 );
+                v.p = 0xDEADBEEFu; v.q = ( 1u << 29 ) - 7; v.r = ( 1u << 19 ) - 3; v.tail = 9;
+                const int64_t after_align = ( ( 5 + 2 + 13 * c + 3 ) + 7 ) / 8 * 8;
+                check( emit( after_align + 8 * sl + 84, [&]( serialize::WriteStream & ws ) { return WriteRegainAfterAlign( ws, v ); } ) );
+            }
+        }
+
+        check( ArmsAgreeMaxBits == 24 && ArmsDisagreeMaxBits == 24 && ArmEmptyMaxBits == 32 );
+        check( ArmsNestedMaxBits == 40 && ArmAlignMaxBits == 55 && ArmArrayMaxBits == 54 );
+        check( HoldsUnevenMaxBits == 55 && ArrUnevenMaxBits == 127 && RegainAfterAlignMaxBits == 172 );
+
+        check( golden_wire( "joins", stream, stream_len ) );
+
+        for ( int f = 0; f < 2; f++ )
+        {
+            ArmsAgree v;
+            check( consume( 24, [&]( serialize::ReadStream & rs ) { return ReadArmsAgree( rs, v ); } ) );
+            check( v.lead == 21 && v.flag == ( f != 0 ) && v.tail == 99 );
+            // the untaken side reads as zero (SPEC §5)
+            check( f ? ( v.a == 1234 && v.b == 0 ) : ( v.b == 1500 && v.a == 0 ) );
+
+            ArmsDisagree d;
+            check( consume( f ? 24 : 16, [&]( serialize::ReadStream & rs ) { return ReadArmsDisagree( rs, d ); } ) );
+            check( d.lead == 21 && d.tail == 99 );
+            check( f ? ( d.a == 1234 && d.b == 0 ) : ( d.b == 5 && d.a == 0 ) );
+
+            ArmEmpty e;
+            check( consume( f ? 32 : 13, [&]( serialize::ReadStream & rs ) { return ReadArmEmpty( rs, e ); } ) );
+            check( e.lead == 21 && e.tail == 99 );
+            check( e.a == ( f ? 456789u : 0u ) );
+
+            ArmAlign s;
+            check( consume( f ? 55 : 23, [&]( serialize::ReadStream & rs ) { return ReadArmAlign( rs, s ); } ) );
+            check( s.lead == 21 && s.tail == 99 );
+            check( f ? ( s.s_length == 4 && strcmp( s.s, "abcd" ) == 0 && s.b == 0 ) : ( s.b == 1000 && s.s_length == 0 ) );
+
+            ArmAlign z;
+            check( consume( 23, [&]( serialize::ReadStream & rs ) { return ReadArmAlign( rs, z ); } ) );
+            check( z.lead == 21 && z.tail == 99 );
+            check( f ? ( z.s_length == 0 && z.b == 0 ) : ( z.b == 1000 ) );
+        }
+
+        for ( int o = 0; o < 2; o++ )
+        {
+            for ( int i = 0; i < 2; i++ )
+            {
+                ArmsNested v;
+                check( consume( o ? ( i ? 40 : 16 ) : 23, [&]( serialize::ReadStream & rs ) { return ReadArmsNested( rs, v ); } ) );
+                check( v.lead == 5 && v.tail == 33 && v.outer == ( o != 0 ) );
+                if ( o )
+                {
+                    check( v.inner == ( i != 0 ) && v.z == 0 );
+                    check( i ? ( v.x == 500000000u && v.y == 0 ) : ( v.y == 17 && v.x == 0 ) );
+                }
+                else
+                {
+                    check( v.z == 4000 && v.x == 0 && v.y == 0 );
+                }
+            }
+        }
+
+        for ( int f = 0; f < 2; f++ )
+        {
+            for ( int c = 0; c <= 3; c++ )
+            {
+                ArmArray v;
+                check( consume( f ? 15 + 13 * c : 22, [&]( serialize::ReadStream & rs ) { return ReadArmArray( rs, v ); } ) );
+                check( v.lead == 21 && v.tail == 99 );
+                if ( f )
+                {
+                    check( v.items_count == c && v.b == 0 );
+                    for ( int i = 0; i < c; i++ ) check( v.items[i] == (uint16_t) ( 8191 - i * 777 ) );
+                }
+                else
+                {
+                    check( v.b == 300 && v.items_count == 0 );
+                }
+            }
+        }
+
+        {
+            HoldsUneven r_none, r_narrow, r_wide;
+            check( consume( 18, [&]( serialize::ReadStream & rs ) { return ReadHoldsUneven( rs, r_none ); } ) );
+            check( consume( 21, [&]( serialize::ReadStream & rs ) { return ReadHoldsUneven( rs, r_narrow ); } ) );
+            check( consume( 55, [&]( serialize::ReadStream & rs ) { return ReadHoldsUneven( rs, r_wide ); } ) );
+            check( r_none.u.type == UnevenType::None && r_none.lead == 21 && r_none.tail == 1500 );
+            check( r_narrow.u.type == UnevenType::Narrow && r_narrow.u.narrow.n == 5 );
+            check( r_wide.u.type == UnevenType::Wide && r_wide.u.wide.w == 123456789012ull );
+        }
+
+        for ( int c = 0; c <= 3; c++ )
+        {
+            ArrUneven v;
+            check( consume( 10 + uneven_item_bits[c], [&]( serialize::ReadStream & rs ) { return ReadArrUneven( rs, v ); } ) );
+            check( v.items_count == c && v.lead == 21 && v.tail == 5 );
+            for ( int i = 0; i < c; i++ )
+            {
+                if ( i % 2 == 0 )
+                {
+                    check( v.items[i].type == UnevenType::Narrow && v.items[i].narrow.n == (uint32_t) ( i % 8 ) );
+                }
+                else
+                {
+                    check( v.items[i].type == UnevenType::Wide && v.items[i].wide.w == 99887766554ull + (uint64_t) i );
+                }
+            }
+        }
+
+        for ( int c = 0; c <= 3; c++ )
+        {
+            for ( int sl = 0; sl <= 4; sl += 4 )
+            {
+                RegainAfterAlign v;
+                const int64_t after_align = ( ( 5 + 2 + 13 * c + 3 ) + 7 ) / 8 * 8;
+                check( consume( after_align + 8 * sl + 84, [&]( serialize::ReadStream & rs ) { return ReadRegainAfterAlign( rs, v ); } ) );
+                check( v.lead == 21 && v.items_count == c && v.s_length == sl );
+                check( v.p == 0xDEADBEEFu && v.q == ( 1u << 29 ) - 7 && v.r == ( 1u << 19 ) - 3 && v.tail == 9 );
+                for ( int i = 0; i < c; i++ ) check( v.items[i] == (uint16_t) ( 8191 - i * 999 ) );
+            }
+        }
+        check( read_off == stream_len );
     }
 
     // ---- parallel scatter/gather (Render.schema): threads build render

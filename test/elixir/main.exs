@@ -18,7 +18,16 @@
 # AFTER the generated modules exist — suite.exs, required last. Generated
 # files load in dependency order (a defstruct default holding %Other{} needs
 # Other compiled first).
-for f <- ["Constants.ex", "Enums.ex", "Types.ex", "Render.ex", "Wire.ex", "Degenerate.ex"] do
+for f <- [
+      "Constants.ex",
+      "Enums.ex",
+      "Types.ex",
+      "Render.ex",
+      "Wire.ex",
+      "Degenerate.ex",
+      "Clauses.ex",
+      "Joins.ex"
+    ] do
   Code.require_file(f, Path.join(__DIR__, "../../generated/elixir"))
 end
 
