@@ -21,6 +21,7 @@ package elixir
 
 import (
 	"fmt"
+	"maps"
 	"math/big"
 	"strings"
 
@@ -746,13 +747,9 @@ func (g *gen) bindScope(items []ir.Item, path, ind string) func() {
 		return func() {}
 	}
 	g.bindW = make(map[string]string, len(saved)+len(names))
-	for k, v := range saved {
-		g.bindW[k] = v
-	}
+	maps.Copy(g.bindW, saved)
 	g.bindDisp = make(map[string]string, len(savedDisp)+len(names))
-	for k, v := range savedDisp {
-		g.bindDisp[k] = v
-	}
+	maps.Copy(g.bindDisp, savedDisp)
 	base := strings.NewReplacer(".", "_").Replace(path)
 	shown := g.dsp(path)
 	pairs := make([]string, 0, len(names))
@@ -976,11 +973,7 @@ func (g *gen) writeUnroll(f *ir.Field) int64 {
 	if !ok || eb <= 0 || eb > writeGroupBits {
 		return 1
 	}
-	k := writeGroupBits / eb
-	if k > writeUnrollMax {
-		k = writeUnrollMax
-	}
-	return k
+	return min(writeGroupBits/eb, writeUnrollMax)
 }
 
 // writeClause emits one clause of a write loop, taking k elements off the
@@ -1560,11 +1553,7 @@ func (g *gen) readUnroll(f *ir.Field) int64 {
 	if !ok || eb <= 0 || eb > rdwWindowBits {
 		return 1
 	}
-	k := rdwWindowBits / eb
-	if k > readUnrollMax {
-		k = readUnrollMax
-	}
-	return k
+	return min(rdwWindowBits/eb, readUnrollMax)
 }
 
 // readClause emits one clause of a read loop, decoding k elements under one
