@@ -6,6 +6,14 @@
 // functions take &T, so every write goes through a mutable temp — the runtime
 // takes &mut for every value, reads and writes alike. The wire is
 // byte-identical to the C++ target's, construct by construct.
+//
+// Two forms share the emission. Maximal runs of statically-sized pieces take
+// the flat word codec (flat.go): the emitter folds the bit placement itself
+// and the stream sees whole 32-bit chunks. Everything else — align,
+// string/bytes, arrays, branches, nested struct and union calls, and the
+// fixed-point, compressed-float and 128-bit families, whose value arithmetic
+// lives in the runtime — keeps the per-field form below, one item per
+// runtime call family. Both spell the same wire.
 package rust
 
 import (
