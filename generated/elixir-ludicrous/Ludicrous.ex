@@ -1552,8 +1552,8 @@ defmodule Ludicrous.Ludicrous do
     do: {bits_read, Enum.reverse(acc)}
 
   defp r_fixed_probe_samples(remaining, acc, data, num_bits, bits_read) do
-    rv = rdw(data, bits_read, 49)
-    v = rv &&& 0x1FFFFF
+    rv = rd(data, bits_read, 21)
+    v = rv
     bits_read = bits_read + 21
     # a smuggled offset is refused
     if v > 1_048_576, do: throw(:invalid)
@@ -1587,8 +1587,8 @@ defmodule Ludicrous.Ludicrous do
     do: {bits_read, Enum.reverse(acc)}
 
   defp r_unsigned_probe_samples(remaining, acc, data, num_bits, bits_read) do
-    rv = rdw(data, bits_read, 49)
-    v = rv &&& 0x1FFFFF
+    rv = rd(data, bits_read, 21)
+    v = rv
     bits_read = bits_read + 21
     # a smuggled offset is refused
     if v > 1_048_576, do: throw(:invalid)
@@ -1646,8 +1646,8 @@ defmodule Ludicrous.Ludicrous do
     v = rv &&& 0xFFFFFFFF
     bits_read = bits_read + 32
     w = w ||| v <<< 64
-    rv = rdw(data, bits_read, 49)
-    v = rv &&& 0xFFFFFFFF
+    rv = rd(data, bits_read, 32)
+    v = rv
     bits_read = bits_read + 32
     w = w ||| v <<< 96
     e = w

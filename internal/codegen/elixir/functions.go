@@ -1472,6 +1472,13 @@ func (g *gen) readHelper(f *ir.Field, bounded bool) string {
 		g.pf("  defp %s(0, acc, _data, _num_bits, bits_read),\n    do: {bits_read, Enum.reverse(acc)}\n\n", name)
 	}
 	g.pf("  defp %s(remaining, acc, data, num_bits, bits_read) do\n", name)
+	// a SCALAR element goes straight to the scalar read, which never passes
+	// through the run fuser — so the element's own width is the run here, and
+	// without it a one-byte element opens the wide window for eight bits, and
+	// takes the wide window's longer tail fallback with it
+	if elem, ok := g.staticBitsScalar(f); ok && elem > 0 {
+		g.rdRun = elem
+	}
 	g.emitReadElem(f, "    ", bounded)
 	g.pf("    %s(remaining - 1, [e | acc], data, num_bits, bits_read)\n", name)
 	g.pf("  end\n\n")

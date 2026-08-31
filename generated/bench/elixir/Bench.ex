@@ -2550,8 +2550,8 @@ defmodule Bench.Bench do
     do: {bits_read, Enum.reverse(acc)}
 
   defp r_bench_packet_blob(remaining, acc, data, num_bits, bits_read) do
-    rv = rdw(data, bits_read, 49)
-    v = rv &&& 0xFF
+    rv = rd(data, bits_read, 8)
+    v = rv
     bits_read = bits_read + 8
     e = v
     r_bench_packet_blob(remaining - 1, [e | acc], data, num_bits, bits_read)
@@ -2847,8 +2847,8 @@ defmodule Bench.Bench do
     do: {bits_read, Enum.reverse(acc)}
 
   defp r_bench_mixed_loadout(remaining, acc, data, num_bits, bits_read) do
-    rv = rdw(data, bits_read, 49)
-    v = rv &&& 0xFF
+    rv = rd(data, bits_read, 8)
+    v = rv
     bits_read = bits_read + 8
     e = v
     r_bench_mixed_loadout(remaining - 1, [e | acc], data, num_bits, bits_read)

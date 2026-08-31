@@ -2493,8 +2493,8 @@ defmodule Example.Wire do
     do: {bits_read, Enum.reverse(acc)}
 
   defp r_probe_sample_samples(remaining, acc, data, num_bits, bits_read) do
-    rv = rdw(data, bits_read, 49)
-    v = rv &&& 0xFFFF
+    rv = rd(data, bits_read, 16)
+    v = rv
     bits_read = bits_read + 16
     e = v
     r_probe_sample_samples(remaining - 1, [e | acc], data, num_bits, bits_read)
@@ -2888,8 +2888,8 @@ defmodule Example.Wire do
   defp r_test_data_items(0, acc, _data, _num_bits, bits_read), do: {bits_read, Enum.reverse(acc)}
 
   defp r_test_data_items(remaining, acc, data, num_bits, bits_read) do
-    rv = rdw(data, bits_read, 49)
-    v = rv &&& 0xFF
+    rv = rd(data, bits_read, 8)
+    v = rv
     bits_read = bits_read + 8
     e = v
     r_test_data_items(remaining - 1, [e | acc], data, num_bits, bits_read)
@@ -2899,8 +2899,8 @@ defmodule Example.Wire do
     do: {bits_read, Enum.reverse(acc)}
 
   defp r_test_data_fixed_bytes(remaining, acc, data, num_bits, bits_read) do
-    rv = rdw(data, bits_read, 49)
-    v = rv &&& 0xFF
+    rv = rd(data, bits_read, 8)
+    v = rv
     bits_read = bits_read + 8
     e = v
     r_test_data_fixed_bytes(remaining - 1, [e | acc], data, num_bits, bits_read)
