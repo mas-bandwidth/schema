@@ -78,9 +78,38 @@ func WriteBenchPacket(stream *serialize.WriteStream, value *BenchPacket) error {
 }
 
 func ReadBenchPacket(stream *serialize.ReadStream, value *BenchPacket) error {
-	stream.SerializeInt(&value.A, -100, 100)
-	stream.SerializeInt(&value.B, 0, 65535)
-	stream.SerializeInt(&value.C, -1000000, 1000000)
+	{
+		offsetValue := uint32(0)
+		stream.SerializeBits(&offsetValue, 8)
+		if stream.Err() != nil {
+			return stream.Err()
+		}
+		if offsetValue > 200 { // a value smuggled into the bit headroom is refused (SPEC §4.3)
+			return serialize.ErrValueOutOfRange
+		}
+		lowValue := int32(-100)
+		value.A = int32(offsetValue + uint32(lowValue))
+	}
+	{
+		offsetValue := uint32(0)
+		stream.SerializeBits(&offsetValue, 16)
+		if stream.Err() != nil {
+			return stream.Err()
+		}
+		value.B = int32(offsetValue)
+	}
+	{
+		offsetValue := uint32(0)
+		stream.SerializeBits(&offsetValue, 21)
+		if stream.Err() != nil {
+			return stream.Err()
+		}
+		if offsetValue > 2000000 { // a value smuggled into the bit headroom is refused (SPEC §4.3)
+			return serialize.ErrValueOutOfRange
+		}
+		lowValue := int32(-1000000)
+		value.C = int32(offsetValue + uint32(lowValue))
+	}
 	stream.SerializeBits(&value.Bits7, 7)
 	stream.SerializeBits(&value.Bits13, 13)
 	stream.SerializeBits(&value.Bits23, 23)
@@ -188,16 +217,109 @@ func WriteBenchInts(stream *serialize.WriteStream, value *BenchInts) error {
 }
 
 func ReadBenchInts(stream *serialize.ReadStream, value *BenchInts) error {
-	stream.SerializeInt(&value.F0, -100, 100)
-	stream.SerializeInt(&value.F1, 0, 65535)
-	stream.SerializeInt(&value.F2, -1000000, 1000000)
-	stream.SerializeInt(&value.F3, 0, 3)
-	stream.SerializeInt(&value.F4, -15, 15)
-	stream.SerializeInt(&value.F5, 0, 1000)
-	stream.SerializeInt(&value.F6, -2048, 2047)
-	stream.SerializeInt(&value.F7, 0, 255)
-	stream.SerializeInt(&value.F8, -600000, 600000)
-	stream.SerializeInt(&value.F9, 0, 100)
+	{
+		offsetValue := uint32(0)
+		stream.SerializeBits(&offsetValue, 8)
+		if stream.Err() != nil {
+			return stream.Err()
+		}
+		if offsetValue > 200 { // a value smuggled into the bit headroom is refused (SPEC §4.3)
+			return serialize.ErrValueOutOfRange
+		}
+		lowValue := int32(-100)
+		value.F0 = int32(offsetValue + uint32(lowValue))
+	}
+	{
+		offsetValue := uint32(0)
+		stream.SerializeBits(&offsetValue, 16)
+		if stream.Err() != nil {
+			return stream.Err()
+		}
+		value.F1 = int32(offsetValue)
+	}
+	{
+		offsetValue := uint32(0)
+		stream.SerializeBits(&offsetValue, 21)
+		if stream.Err() != nil {
+			return stream.Err()
+		}
+		if offsetValue > 2000000 { // a value smuggled into the bit headroom is refused (SPEC §4.3)
+			return serialize.ErrValueOutOfRange
+		}
+		lowValue := int32(-1000000)
+		value.F2 = int32(offsetValue + uint32(lowValue))
+	}
+	{
+		offsetValue := uint32(0)
+		stream.SerializeBits(&offsetValue, 2)
+		if stream.Err() != nil {
+			return stream.Err()
+		}
+		value.F3 = int32(offsetValue)
+	}
+	{
+		offsetValue := uint32(0)
+		stream.SerializeBits(&offsetValue, 5)
+		if stream.Err() != nil {
+			return stream.Err()
+		}
+		if offsetValue > 30 { // a value smuggled into the bit headroom is refused (SPEC §4.3)
+			return serialize.ErrValueOutOfRange
+		}
+		lowValue := int32(-15)
+		value.F4 = int32(offsetValue + uint32(lowValue))
+	}
+	{
+		offsetValue := uint32(0)
+		stream.SerializeBits(&offsetValue, 10)
+		if stream.Err() != nil {
+			return stream.Err()
+		}
+		if offsetValue > 1000 { // a value smuggled into the bit headroom is refused (SPEC §4.3)
+			return serialize.ErrValueOutOfRange
+		}
+		value.F5 = int32(offsetValue)
+	}
+	{
+		offsetValue := uint32(0)
+		stream.SerializeBits(&offsetValue, 12)
+		if stream.Err() != nil {
+			return stream.Err()
+		}
+		lowValue := int32(-2048)
+		value.F6 = int32(offsetValue + uint32(lowValue))
+	}
+	{
+		offsetValue := uint32(0)
+		stream.SerializeBits(&offsetValue, 8)
+		if stream.Err() != nil {
+			return stream.Err()
+		}
+		value.F7 = int32(offsetValue)
+	}
+	{
+		offsetValue := uint32(0)
+		stream.SerializeBits(&offsetValue, 21)
+		if stream.Err() != nil {
+			return stream.Err()
+		}
+		if offsetValue > 1200000 { // a value smuggled into the bit headroom is refused (SPEC §4.3)
+			return serialize.ErrValueOutOfRange
+		}
+		lowValue := int32(-600000)
+		value.F8 = int32(offsetValue + uint32(lowValue))
+	}
+	{
+		offsetValue := uint32(0)
+		stream.SerializeBits(&offsetValue, 7)
+		if stream.Err() != nil {
+			return stream.Err()
+		}
+		if offsetValue > 100 { // a value smuggled into the bit headroom is refused (SPEC §4.3)
+			return serialize.ErrValueOutOfRange
+		}
+		value.F9 = int32(offsetValue)
+	}
 	return stream.Err()
 }
 
@@ -484,19 +606,89 @@ func WriteMixedEntity(stream *serialize.WriteStream, value *MixedEntity) error {
 
 func ReadMixedEntity(stream *serialize.ReadStream, value *MixedEntity) error {
 	stream.SerializeBits(&value.EntityId, 12)
-	stream.SerializeInt(&value.PosX, -16383, 16383)
-	stream.SerializeInt(&value.PosY, -16383, 16383)
-	stream.SerializeInt(&value.PosZ, -16383, 16383)
+	{
+		offsetValue := uint32(0)
+		stream.SerializeBits(&offsetValue, 15)
+		if stream.Err() != nil {
+			return stream.Err()
+		}
+		if offsetValue > 32766 { // a value smuggled into the bit headroom is refused (SPEC §4.3)
+			return serialize.ErrValueOutOfRange
+		}
+		lowValue := int32(-16383)
+		value.PosX = int32(offsetValue + uint32(lowValue))
+	}
+	{
+		offsetValue := uint32(0)
+		stream.SerializeBits(&offsetValue, 15)
+		if stream.Err() != nil {
+			return stream.Err()
+		}
+		if offsetValue > 32766 { // a value smuggled into the bit headroom is refused (SPEC §4.3)
+			return serialize.ErrValueOutOfRange
+		}
+		lowValue := int32(-16383)
+		value.PosY = int32(offsetValue + uint32(lowValue))
+	}
+	{
+		offsetValue := uint32(0)
+		stream.SerializeBits(&offsetValue, 15)
+		if stream.Err() != nil {
+			return stream.Err()
+		}
+		if offsetValue > 32766 { // a value smuggled into the bit headroom is refused (SPEC §4.3)
+			return serialize.ErrValueOutOfRange
+		}
+		lowValue := int32(-16383)
+		value.PosZ = int32(offsetValue + uint32(lowValue))
+	}
 	stream.SerializeBits(&value.Yaw, 9)
 	stream.SerializeBits(&value.Pitch, 9)
-	stream.SerializeInt(&value.VelX, -2048, 2047)
-	stream.SerializeInt(&value.VelY, -2048, 2047)
-	stream.SerializeInt(&value.VelZ, -2048, 2047)
-	stream.SerializeInt(&value.Health, 0, 1000)
 	{
-		enumValue := int32(0)
-		stream.SerializeInt(&enumValue, 0, 15)
-		value.Weapon = MixedWeapon(enumValue)
+		offsetValue := uint32(0)
+		stream.SerializeBits(&offsetValue, 12)
+		if stream.Err() != nil {
+			return stream.Err()
+		}
+		lowValue := int32(-2048)
+		value.VelX = int32(offsetValue + uint32(lowValue))
+	}
+	{
+		offsetValue := uint32(0)
+		stream.SerializeBits(&offsetValue, 12)
+		if stream.Err() != nil {
+			return stream.Err()
+		}
+		lowValue := int32(-2048)
+		value.VelY = int32(offsetValue + uint32(lowValue))
+	}
+	{
+		offsetValue := uint32(0)
+		stream.SerializeBits(&offsetValue, 12)
+		if stream.Err() != nil {
+			return stream.Err()
+		}
+		lowValue := int32(-2048)
+		value.VelZ = int32(offsetValue + uint32(lowValue))
+	}
+	{
+		offsetValue := uint32(0)
+		stream.SerializeBits(&offsetValue, 10)
+		if stream.Err() != nil {
+			return stream.Err()
+		}
+		if offsetValue > 1000 { // a value smuggled into the bit headroom is refused (SPEC §4.3)
+			return serialize.ErrValueOutOfRange
+		}
+		value.Health = int32(offsetValue)
+	}
+	{
+		offsetValue := uint32(0)
+		stream.SerializeBits(&offsetValue, 4)
+		if stream.Err() != nil {
+			return stream.Err()
+		}
+		value.Weapon = MixedWeapon(int32(offsetValue))
 	}
 	{
 		flagsValue := uint32(0)
@@ -533,7 +725,15 @@ func WriteMixedStat(stream *serialize.WriteStream, value *MixedStat) error {
 
 func ReadMixedStat(stream *serialize.ReadStream, value *MixedStat) error {
 	stream.SerializeBits(&value.StatId, 8)
-	stream.SerializeInt(&value.Delta, -512, 511)
+	{
+		offsetValue := uint32(0)
+		stream.SerializeBits(&offsetValue, 10)
+		if stream.Err() != nil {
+			return stream.Err()
+		}
+		lowValue := int32(-512)
+		value.Delta = int32(offsetValue + uint32(lowValue))
+	}
 	return stream.Err()
 }
 
@@ -572,8 +772,22 @@ func WriteMixedHitEvent(stream *serialize.WriteStream, value *MixedHitEvent) err
 
 func ReadMixedHitEvent(stream *serialize.ReadStream, value *MixedHitEvent) error {
 	stream.SerializeBits(&value.TargetId, 12)
-	stream.SerializeInt(&value.Damage, 0, 4095)
-	stream.SerializeInt(&value.HitKind, 0, 7)
+	{
+		offsetValue := uint32(0)
+		stream.SerializeBits(&offsetValue, 12)
+		if stream.Err() != nil {
+			return stream.Err()
+		}
+		value.Damage = int32(offsetValue)
+	}
+	{
+		offsetValue := uint32(0)
+		stream.SerializeBits(&offsetValue, 3)
+		if stream.Err() != nil {
+			return stream.Err()
+		}
+		value.HitKind = int32(offsetValue)
+	}
 	stream.SerializeBool(&value.Crit)
 	return stream.Err()
 }
@@ -602,7 +816,14 @@ func WriteMixedChatEvent(stream *serialize.WriteStream, value *MixedChatEvent) e
 }
 
 func ReadMixedChatEvent(stream *serialize.ReadStream, value *MixedChatEvent) error {
-	stream.SerializeInt(&value.Channel, 0, 3)
+	{
+		offsetValue := uint32(0)
+		stream.SerializeBits(&offsetValue, 2)
+		if stream.Err() != nil {
+			return stream.Err()
+		}
+		value.Channel = int32(offsetValue)
+	}
 	stream.SerializeBits(&value.Speaker, 12)
 	return stream.Err()
 }
@@ -632,7 +853,14 @@ func WriteMixedPickupEvent(stream *serialize.WriteStream, value *MixedPickupEven
 
 func ReadMixedPickupEvent(stream *serialize.ReadStream, value *MixedPickupEvent) error {
 	stream.SerializeBits(&value.ItemId, 10)
-	stream.SerializeInt(&value.Amount, 0, 255)
+	{
+		offsetValue := uint32(0)
+		stream.SerializeBits(&offsetValue, 8)
+		if stream.Err() != nil {
+			return stream.Err()
+		}
+		value.Amount = int32(offsetValue)
+	}
 	return stream.Err()
 }
 
@@ -684,12 +912,14 @@ func WriteMixedEvent(stream *serialize.WriteStream, value *MixedEvent) error {
 }
 
 func ReadMixedEvent(stream *serialize.ReadStream, value *MixedEvent) error {
-	tagValue := int32(0)
-	stream.SerializeInt(&tagValue, 0, 3) // rejects a tag above the count (SPEC §4.8)
-	if stream.Err() != nil {
-		return stream.Err()
+	{
+		offsetValue := uint32(0)
+		stream.SerializeBits(&offsetValue, 2)
+		if stream.Err() != nil {
+			return stream.Err()
+		}
+		value.Type = MixedEventType(int32(offsetValue))
 	}
-	value.Type = MixedEventType(tagValue)
 	switch value.Type {
 	case MixedEventTypeHit:
 		value.Hit = MixedHitEvent{} // the selected arm starts from the zero form (SPEC §5)
@@ -929,7 +1159,14 @@ func ReadBenchMixed(stream *serialize.ReadStream, value *BenchMixed) error {
 		}
 	}
 	stream.SerializeBits(&value.Sequence, 16)
-	stream.SerializeInt(&value.AckSequence, 0, 65535)
+	{
+		offsetValue := uint32(0)
+		stream.SerializeBits(&offsetValue, 16)
+		if stream.Err() != nil {
+			return stream.Err()
+		}
+		value.AckSequence = int32(offsetValue)
+	}
 	stream.SerializeBits(&value.AckBits, 32)
 	stream.SerializeBits64(&value.SessionId, 64)
 	stream.SerializeBits(&value.ClientId, 32)
@@ -938,25 +1175,48 @@ func ReadBenchMixed(stream *serialize.ReadStream, value *BenchMixed) error {
 		stream.SerializeBits64(&offsetValue, 64)
 		value.Nonce = offsetValue
 	}
-	stream.SerializeInt64(&value.WorldTime, -1000000000000, 1000000000000)
+	{
+		offsetValue := uint64(0)
+		stream.SerializeBits64(&offsetValue, 41)
+		if stream.Err() != nil {
+			return stream.Err()
+		}
+		if offsetValue > 2000000000000 { // a value smuggled into the bit headroom is refused (SPEC §4.3)
+			return serialize.ErrValueOutOfRange
+		}
+		lowValue := int64(-1000000000000)
+		value.WorldTime = int64(offsetValue + uint64(lowValue))
+	}
 	stream.SerializeBits64(&value.FrameTick, 48)
 	{
 		fixedValue := int64(0)
 		stream.SerializeFixed64(&fixedValue, 24, 8, 0, 65535)
 		value.ServerTime = int32(fixedValue)
 	}
-	stream.SerializeInt(&value.EntitiesCount, 1, 8)
-	if stream.Err() != nil { // the count guards the loop (§6.3)
-		return stream.Err()
+	{
+		offsetValue := uint32(0)
+		stream.SerializeBits(&offsetValue, 3)
+		if stream.Err() != nil {
+			return stream.Err()
+		}
+		lowValue := int32(1)
+		value.EntitiesCount = int32(offsetValue + uint32(lowValue))
 	}
 	for i := int32(0); i < value.EntitiesCount; i++ {
 		if err := ReadMixedEntity(stream, &value.Entities[i]); err != nil {
 			return err
 		}
 	}
-	stream.SerializeInt(&value.StatsCount, 0, 80)
-	if stream.Err() != nil { // the count guards the loop (§6.3)
-		return stream.Err()
+	{
+		offsetValue := uint32(0)
+		stream.SerializeBits(&offsetValue, 7)
+		if stream.Err() != nil {
+			return stream.Err()
+		}
+		if offsetValue > 80 { // a value smuggled into the bit headroom is refused (SPEC §4.3)
+			return serialize.ErrValueOutOfRange
+		}
+		value.StatsCount = int32(offsetValue)
 	}
 	for i := int32(0); i < value.StatsCount; i++ {
 		if err := ReadMixedStat(stream, &value.Stats[i]); err != nil {
@@ -973,9 +1233,13 @@ func ReadBenchMixed(stream *serialize.ReadStream, value *BenchMixed) error {
 			value.Loadout[i] = uint8(rawValue)
 		}
 	}
-	stream.SerializeInt(&value.PlayerNameLength, 0, 15)
-	if stream.Err() != nil { // the length guards the slice (§6.3)
-		return stream.Err()
+	{
+		offsetValue := uint32(0)
+		stream.SerializeBits(&offsetValue, 4)
+		if stream.Err() != nil {
+			return stream.Err()
+		}
+		value.PlayerNameLength = int32(offsetValue)
 	}
 	stream.SerializeBytes(value.PlayerName[:value.PlayerNameLength])
 	if stream.Err() != nil {
@@ -986,9 +1250,16 @@ func ReadBenchMixed(stream *serialize.ReadStream, value *BenchMixed) error {
 			return ErrValidation
 		}
 	}
-	stream.SerializeInt(&value.PayloadLength, 0, 16)
-	if stream.Err() != nil { // the length guards the slice (§6.3)
-		return stream.Err()
+	{
+		offsetValue := uint32(0)
+		stream.SerializeBits(&offsetValue, 5)
+		if stream.Err() != nil {
+			return stream.Err()
+		}
+		if offsetValue > 16 { // a value smuggled into the bit headroom is refused (SPEC §4.3)
+			return serialize.ErrValueOutOfRange
+		}
+		value.PayloadLength = int32(offsetValue)
 	}
 	stream.SerializeBytes(value.Payload[:value.PayloadLength])
 	{
@@ -1050,10 +1321,24 @@ func ReadBenchMixed(stream *serialize.ReadStream, value *BenchMixed) error {
 	stream.SerializeBits(&value.CrcHint, 24)
 	stream.SerializeBool(&value.HasExtra)
 	if value.HasExtra {
-		stream.SerializeInt(&value.Extra, 0, 255)
+		{
+			offsetValue := uint32(0)
+			stream.SerializeBits(&offsetValue, 8)
+			if stream.Err() != nil {
+				return stream.Err()
+			}
+			value.Extra = int32(offsetValue)
+		}
 		value.IdleTicks = 0
 	} else {
-		stream.SerializeInt(&value.IdleTicks, 0, 15)
+		{
+			offsetValue := uint32(0)
+			stream.SerializeBits(&offsetValue, 4)
+			if stream.Err() != nil {
+				return stream.Err()
+			}
+			value.IdleTicks = int32(offsetValue)
+		}
 		value.Extra = 0
 	}
 	return stream.Err()

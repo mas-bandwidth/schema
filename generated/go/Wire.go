@@ -189,9 +189,13 @@ func ReadProbeBits(stream *serialize.ReadStream, value *ProbeBits) error {
 	stream.SerializeBits64(&value.Boundary, 33)
 	stream.SerializeBits64(&value.Wide, 64)
 	{
-		rangeValue := int64(0)
-		stream.SerializeInt64(&rangeValue, 0, 4294967295)
-		value.Sensor = uint32(rangeValue)
+		narrowValue := uint32(0)
+		stream.SerializeBits(&narrowValue, 32)
+		offsetValue := uint64(narrowValue)
+		if stream.Err() != nil {
+			return stream.Err()
+		}
+		value.Sensor = uint32(int64(offsetValue))
 	}
 	{
 		offsetValue := uint64(0)
@@ -325,9 +329,12 @@ func ReadProbeSample(stream *serialize.ReadStream, value *ProbeSample) error {
 	}
 	if value.Active {
 		{
-			enumValue := int32(0)
-			stream.SerializeInt(&enumValue, 0, 15)
-			value.Weapon = Weapon(enumValue)
+			offsetValue := uint32(0)
+			stream.SerializeBits(&offsetValue, 4)
+			if stream.Err() != nil {
+				return stream.Err()
+			}
+			value.Weapon = Weapon(int32(offsetValue))
 		}
 		stream.SerializeBool(&value.HasTarget)
 		if value.HasTarget {
@@ -346,9 +353,14 @@ func ReadProbeSample(stream *serialize.ReadStream, value *ProbeSample) error {
 		value.HasTarget = false
 		value.TargetId = 0
 	}
-	stream.SerializeInt(&value.SamplesCount, 1, 8)
-	if stream.Err() != nil { // the count guards the loop (§6.3)
-		return stream.Err()
+	{
+		offsetValue := uint32(0)
+		stream.SerializeBits(&offsetValue, 3)
+		if stream.Err() != nil {
+			return stream.Err()
+		}
+		lowValue := int32(1)
+		value.SamplesCount = int32(offsetValue + uint32(lowValue))
 	}
 	for i := int32(0); i < value.SamplesCount; i++ {
 		{
@@ -418,9 +430,15 @@ func WriteProbeSlab(stream *serialize.WriteStream, value *ProbeSlab) error {
 
 func ReadProbeSlab(stream *serialize.ReadStream, value *ProbeSlab) error {
 	{
-		rangeValue := int32(0)
-		stream.SerializeInt(&rangeValue, 0, 100)
-		value.Width = uint8(rangeValue)
+		offsetValue := uint32(0)
+		stream.SerializeBits(&offsetValue, 7)
+		if stream.Err() != nil {
+			return stream.Err()
+		}
+		if offsetValue > 100 { // a value smuggled into the bit headroom is refused (SPEC §4.3)
+			return serialize.ErrValueOutOfRange
+		}
+		value.Width = uint8(int32(offsetValue))
 	}
 	{
 		rawValue := uint32(0)
@@ -474,12 +492,17 @@ func WriteProbeShape(stream *serialize.WriteStream, value *ProbeShape) error {
 }
 
 func ReadProbeShape(stream *serialize.ReadStream, value *ProbeShape) error {
-	tagValue := int32(0)
-	stream.SerializeInt(&tagValue, 0, 2) // rejects a tag above the count (SPEC §4.8)
-	if stream.Err() != nil {
-		return stream.Err()
+	{
+		offsetValue := uint32(0)
+		stream.SerializeBits(&offsetValue, 2)
+		if stream.Err() != nil {
+			return stream.Err()
+		}
+		if offsetValue > 2 { // a value smuggled into the bit headroom is refused (SPEC §4.3)
+			return serialize.ErrValueOutOfRange
+		}
+		value.Type = ProbeShapeType(int32(offsetValue))
 	}
-	value.Type = ProbeShapeType(tagValue)
 	switch value.Type {
 	case ProbeShapeTypeRing:
 		value.Ring = ProbeRing{} // the selected arm starts from the zero form (SPEC §5)
@@ -546,9 +569,16 @@ func ReadProbeCollider(stream *serialize.ReadStream, value *ProbeCollider) error
 	if err := ReadProbeShape(stream, &value.Backup); err != nil {
 		return err
 	}
-	stream.SerializeInt(&value.ExtrasCount, 0, 2)
-	if stream.Err() != nil { // the count guards the loop (§6.3)
-		return stream.Err()
+	{
+		offsetValue := uint32(0)
+		stream.SerializeBits(&offsetValue, 2)
+		if stream.Err() != nil {
+			return stream.Err()
+		}
+		if offsetValue > 2 { // a value smuggled into the bit headroom is refused (SPEC §4.3)
+			return serialize.ErrValueOutOfRange
+		}
+		value.ExtrasCount = int32(offsetValue)
 	}
 	for i := int32(0); i < value.ExtrasCount; i++ {
 		if err := ReadProbeShape(stream, &value.Extras[i]); err != nil {
@@ -604,9 +634,12 @@ func ReadProbeConfig(stream *serialize.ReadStream, value *ProbeConfig) error {
 		value.Retries = int32(rawValue)
 	}
 	{
-		enumValue := int32(0)
-		stream.SerializeInt(&enumValue, 0, 15)
-		value.Preferred = Weapon(enumValue)
+		offsetValue := uint32(0)
+		stream.SerializeBits(&offsetValue, 4)
+		if stream.Err() != nil {
+			return stream.Err()
+		}
+		value.Preferred = Weapon(int32(offsetValue))
 	}
 	return stream.Err()
 }
@@ -735,19 +768,37 @@ func ReadTest(stream *serialize.ReadStream, value *Test) error {
 		value.TestA = uint16(rawValue)
 	}
 	{
-		rangeValue := int32(0)
-		stream.SerializeInt(&rangeValue, 0, 1000)
-		value.TestB = int16(rangeValue)
+		offsetValue := uint32(0)
+		stream.SerializeBits(&offsetValue, 10)
+		if stream.Err() != nil {
+			return stream.Err()
+		}
+		if offsetValue > 1000 { // a value smuggled into the bit headroom is refused (SPEC §4.3)
+			return serialize.ErrValueOutOfRange
+		}
+		value.TestB = int16(int32(offsetValue))
 	}
 	{
-		rangeValue := int32(0)
-		stream.SerializeInt(&rangeValue, 0, 1000)
-		value.TestC = int16(rangeValue)
+		offsetValue := uint32(0)
+		stream.SerializeBits(&offsetValue, 10)
+		if stream.Err() != nil {
+			return stream.Err()
+		}
+		if offsetValue > 1000 { // a value smuggled into the bit headroom is refused (SPEC §4.3)
+			return serialize.ErrValueOutOfRange
+		}
+		value.TestC = int16(int32(offsetValue))
 	}
 	{
-		rangeValue := int32(0)
-		stream.SerializeInt(&rangeValue, 0, 1000)
-		value.TestD = int16(rangeValue)
+		offsetValue := uint32(0)
+		stream.SerializeBits(&offsetValue, 10)
+		if stream.Err() != nil {
+			return stream.Err()
+		}
+		if offsetValue > 1000 { // a value smuggled into the bit headroom is refused (SPEC §4.3)
+			return serialize.ErrValueOutOfRange
+		}
+		value.TestD = int16(int32(offsetValue))
 	}
 	return stream.Err()
 }
@@ -779,9 +830,16 @@ func WriteBlock(stream *serialize.WriteStream, value *Block) error {
 }
 
 func ReadBlock(stream *serialize.ReadStream, value *Block) error {
-	stream.SerializeInt(&value.DataLength, 0, MaxBlockSize)
-	if stream.Err() != nil { // the length guards the slice (§6.3)
-		return stream.Err()
+	{
+		offsetValue := uint32(0)
+		stream.SerializeBits(&offsetValue, 11)
+		if stream.Err() != nil {
+			return stream.Err()
+		}
+		if offsetValue > 2000 { // a value smuggled into the bit headroom is refused (SPEC §4.3)
+			return serialize.ErrValueOutOfRange
+		}
+		value.DataLength = int32(offsetValue)
 	}
 	stream.SerializeBytes(value.Data[:value.DataLength])
 	return stream.Err()
@@ -814,9 +872,16 @@ func WriteChat(stream *serialize.WriteStream, value *Chat) error {
 }
 
 func ReadChat(stream *serialize.ReadStream, value *Chat) error {
-	stream.SerializeInt(&value.TextLength, 0, MaxChatLength)
-	if stream.Err() != nil { // the length guards the slice (§6.3)
-		return stream.Err()
+	{
+		offsetValue := uint32(0)
+		stream.SerializeBits(&offsetValue, 9)
+		if stream.Err() != nil {
+			return stream.Err()
+		}
+		if offsetValue > 256 { // a value smuggled into the bit headroom is refused (SPEC §4.3)
+			return serialize.ErrValueOutOfRange
+		}
+		value.TextLength = int32(offsetValue)
 	}
 	stream.SerializeBytes(value.Text[:value.TextLength])
 	if stream.Err() != nil {
@@ -1009,19 +1074,66 @@ func WriteTestData(stream *serialize.WriteStream, value *TestData) error {
 }
 
 func ReadTestData(stream *serialize.ReadStream, value *TestData) error {
-	stream.SerializeInt(&value.A, -100, 100)
-	stream.SerializeInt(&value.B, -100, 100)
-	stream.SerializeInt(&value.C, -100, 150)
+	{
+		offsetValue := uint32(0)
+		stream.SerializeBits(&offsetValue, 8)
+		if stream.Err() != nil {
+			return stream.Err()
+		}
+		if offsetValue > 200 { // a value smuggled into the bit headroom is refused (SPEC §4.3)
+			return serialize.ErrValueOutOfRange
+		}
+		lowValue := int32(-100)
+		value.A = int32(offsetValue + uint32(lowValue))
+	}
+	{
+		offsetValue := uint32(0)
+		stream.SerializeBits(&offsetValue, 8)
+		if stream.Err() != nil {
+			return stream.Err()
+		}
+		if offsetValue > 200 { // a value smuggled into the bit headroom is refused (SPEC §4.3)
+			return serialize.ErrValueOutOfRange
+		}
+		lowValue := int32(-100)
+		value.B = int32(offsetValue + uint32(lowValue))
+	}
+	{
+		offsetValue := uint32(0)
+		stream.SerializeBits(&offsetValue, 8)
+		if stream.Err() != nil {
+			return stream.Err()
+		}
+		if offsetValue > 250 { // a value smuggled into the bit headroom is refused (SPEC §4.3)
+			return serialize.ErrValueOutOfRange
+		}
+		lowValue := int32(-100)
+		value.C = int32(offsetValue + uint32(lowValue))
+	}
 	stream.SerializeBits(&value.D, 8)
 	stream.SerializeBits(&value.E, 8)
 	stream.SerializeBits(&value.F, 8)
 	stream.SerializeBool(&value.G)
-	stream.SerializeInt(&value.ItemsCount, 0, 16)
-	if stream.Err() != nil { // the count guards the loop (§6.3)
-		return stream.Err()
+	{
+		offsetValue := uint32(0)
+		stream.SerializeBits(&offsetValue, 5)
+		if stream.Err() != nil {
+			return stream.Err()
+		}
+		if offsetValue > 16 { // a value smuggled into the bit headroom is refused (SPEC §4.3)
+			return serialize.ErrValueOutOfRange
+		}
+		value.ItemsCount = int32(offsetValue)
 	}
 	for i := int32(0); i < value.ItemsCount; i++ {
-		stream.SerializeInt(&value.Items[i], 0, 255)
+		{
+			offsetValue := uint32(0)
+			stream.SerializeBits(&offsetValue, 8)
+			if stream.Err() != nil {
+				return stream.Err()
+			}
+			value.Items[i] = int32(offsetValue)
+		}
 	}
 	stream.SerializeFloat32(&value.FloatValue)
 	{
@@ -1064,12 +1176,27 @@ func ReadTestData(stream *serialize.ReadStream, value *TestData) error {
 		stream.SerializeBits64(&rawValue, 64)
 		value.Int64Full = int64(rawValue)
 	}
-	stream.SerializeInt64(&value.Int64Range, -1000000000000, 1000000000000)
+	{
+		offsetValue := uint64(0)
+		stream.SerializeBits64(&offsetValue, 41)
+		if stream.Err() != nil {
+			return stream.Err()
+		}
+		if offsetValue > 2000000000000 { // a value smuggled into the bit headroom is refused (SPEC §4.3)
+			return serialize.ErrValueOutOfRange
+		}
+		lowValue := int64(-1000000000000)
+		value.Int64Range = int64(offsetValue + uint64(lowValue))
+	}
 	stream.SerializeAlign()                    // rejects nonzero padding (SPEC §4.3)
 	stream.SerializeBytes(value.FixedBytes[:]) // byte-aligned [N]uint8 — bulk copy, wire-identical to the per-byte loop
-	stream.SerializeInt(&value.TextLength, 0, 255)
-	if stream.Err() != nil { // the length guards the slice (§6.3)
-		return stream.Err()
+	{
+		offsetValue := uint32(0)
+		stream.SerializeBits(&offsetValue, 8)
+		if stream.Err() != nil {
+			return stream.Err()
+		}
+		value.TextLength = int32(offsetValue)
 	}
 	stream.SerializeBytes(value.Text[:value.TextLength])
 	if stream.Err() != nil {

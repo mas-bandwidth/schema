@@ -50,10 +50,10 @@ func (g *gen) emitUnionFunctions(d *ir.Union) {
 		g.pf("\treturn stream.Err()\n}\n\n")
 		return
 	}
-	g.pf("\ttagValue := int32(0)\n")
-	g.pf("\tstream.SerializeInt(&tagValue, 0, %d) // rejects a tag above the count (SPEC §4.8)\n", d.Max)
-	g.pf("\tif stream.Err() != nil {\n\t\treturn stream.Err()\n\t}\n")
-	g.pf("\tvalue.Type = %sType(tagValue)\n", d.Name)
+	// rejects a tag above the count (SPEC §4.8)
+	g.emitReadRangedFold32("0", bits, big.NewInt(d.Max), true, "\t", func(ai, expr string) {
+		g.pf("%svalue.Type = %sType(%s)\n", ai, d.Name, expr)
+	})
 	g.pf("\tswitch value.Type {\n")
 	for _, v := range d.Variants {
 		g.pf("\tcase %sType%s:\n", d.Name, ir.GoExportName(v.Name))
@@ -316,6 +316,88 @@ func (g *gen) emitWriteRangedFold64(expr, lo, hi string, bits int64, loZero bool
 	}
 	g.pf("%s{\n%s\toffsetValue := %s\n", ind, ind, offset)
 	g.pf("%s\tstream.SerializeBits64(&offsetValue, %d)\n%s}\n", ind, bits, ind)
+}
+
+// emitReadRangedFold32 reads an int in [lo,hi] as offset-from-lo at a
+// generation-time bit count — SerializeInt's encoding with the declaration
+// folded, the write fold's twin. The runtime derives the bit count from the
+// bounds on every call (a BitsRequired per field) and passes min/max as
+// arguments; both are compile-time constants of the call site, so the folded
+// form reads the same bits with neither. It also drops off the runtime's
+// non-inlinable ranged entry point onto SerializeBits, whose wrapper the Go
+// compiler does inline.
+//
+// The headroom refusal is generated here because the runtime's is bypassed: a
+// value smuggled into the encoding's spare codes must be refused, with
+// ErrValueOutOfRange, exactly as SerializeInt refuses it. It is elided where
+// the range fills its bit width, which leaves no headroom to smuggle into.
+// assign receives the decoded int32-typed expression.
+func (g *gen) emitReadRangedFold32(lo string, bits int64, diff *big.Int, loZero bool, ind string, assign func(ind, expr string)) {
+	if bits == 0 {
+		// degenerate range: ZERO bits — the value is the range (SPEC §4.6)
+		assign(ind, "int32("+lo+")")
+		return
+	}
+	g.pf("%s{\n%s\toffsetValue := uint32(0)\n", ind, ind)
+	g.pf("%s\tstream.SerializeBits(&offsetValue, %d)\n", ind, bits)
+	g.pf("%s\tif stream.Err() != nil {\n%s\t\treturn stream.Err()\n%s\t}\n", ind, ind, ind)
+	if !rangeFillsBits(diff, bits) {
+		g.pf("%s\tif offsetValue > %s { // a value smuggled into the bit headroom is refused (SPEC §4.3)\n", ind, diff.String())
+		g.pf("%s\t\treturn serialize.ErrValueOutOfRange\n%s\t}\n", ind, ind)
+	}
+	decoded := "int32(offsetValue)"
+	if !loZero {
+		// add in the unsigned domain, as the runtime does: the range may be
+		// wider than 2^31. The bound binds to a typed local first: converting a
+		// NEGATIVE typed constant to uint32 is a compile error in Go, while the
+		// same conversion of a variable is the runtime reinterpretation wanted.
+		g.pf("%s\tlowValue := int32(%s)\n", ind, lo)
+		decoded = "int32(offsetValue + uint32(lowValue))"
+	}
+	assign(ind+"\t", decoded)
+	g.pf("%s}\n", ind)
+}
+
+// emitReadRangedFold64 is the int64-family twin: SerializeInt64's encoding
+// (a single dword where the count fits 32 bits, otherwise the low dword then
+// the high remainder — SerializeBits64's own split). assign receives the
+// decoded int64-typed expression.
+func (g *gen) emitReadRangedFold64(lo string, bits int64, diff *big.Int, loZero bool, ind string, assign func(ind, expr string)) {
+	if bits == 0 {
+		assign(ind, "int64("+lo+")")
+		return
+	}
+	g.pf("%s{\n", ind)
+	if bits <= 32 {
+		g.pf("%s\tnarrowValue := uint32(0)\n", ind)
+		g.pf("%s\tstream.SerializeBits(&narrowValue, %d)\n", ind, bits)
+		g.pf("%s\toffsetValue := uint64(narrowValue)\n", ind)
+	} else {
+		g.pf("%s\toffsetValue := uint64(0)\n", ind)
+		g.pf("%s\tstream.SerializeBits64(&offsetValue, %d)\n", ind, bits)
+	}
+	g.pf("%s\tif stream.Err() != nil {\n%s\t\treturn stream.Err()\n%s\t}\n", ind, ind, ind)
+	if !rangeFillsBits(diff, bits) {
+		g.pf("%s\tif offsetValue > %s { // a value smuggled into the bit headroom is refused (SPEC §4.3)\n", ind, diff.String())
+		g.pf("%s\t\treturn serialize.ErrValueOutOfRange\n%s\t}\n", ind, ind)
+	}
+	decoded := "int64(offsetValue)"
+	if !loZero {
+		g.pf("%s\tlowValue := int64(%s)\n", ind, lo)
+		decoded = "int64(offsetValue + uint64(lowValue))"
+	}
+	assign(ind+"\t", decoded)
+	g.pf("%s}\n", ind)
+}
+
+// rangeFillsBits reports whether a span of `diff` covers every value `bits`
+// wire bits can carry, which makes the headroom refusal provably vacuous.
+func rangeFillsBits(diff *big.Int, bits int64) bool {
+	if bits >= 64 {
+		return diff.Cmp(maxUint64) == 0
+	}
+	span := new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), uint(bits)), big.NewInt(1))
+	return diff.Cmp(span) == 0
 }
 
 // emitWriteCompressedFold quantizes a ranged float onto its step count in a
@@ -633,8 +715,12 @@ func (g *gen) emitReadField(f *ir.Field, ind string) {
 			return
 		}
 		if f.Array == ir.ArrayCounted {
-			g.pf("%sstream.SerializeInt(&%sCount, %d, %s)\n", ind, name, f.ArrayMin, bound)
-			g.pf("%sif stream.Err() != nil { // the count guards the loop (§6.3)\n%s\treturn stream.Err()\n%s}\n", ind, ind, ind)
+			g.emitReadRangedFold32(big.NewInt(f.ArrayMin).String(),
+				ir.BitsRequired(big.NewInt(f.ArrayMin), big.NewInt(f.ArrayBound)),
+				new(big.Int).Sub(big.NewInt(f.ArrayBound), big.NewInt(f.ArrayMin)),
+				f.ArrayMin == 0, ind, func(ai, expr string) {
+					g.pf("%s%sCount = %s\n", ai, name, expr)
+				})
 			g.pf("%sfor i := int32(0); i < %sCount; i++ {\n", ind, name)
 		} else {
 			g.pf("%sfor i := 0; i < %s; i++ {\n", ind, bound)
@@ -710,24 +796,28 @@ func (g *gen) emitReadScalar(f *ir.Field, name, ind string) {
 				g.pf("%s%s = %s(%s)\n", ind, name, goInt2(f.Type.Signed, f.Type.Width), g.renderInt(f.IntMinExpr, f.IntMin))
 				return
 			}
-			lo, hi := g.rangeArgs(f)
+			lo, _ := g.rangeArgs(f)
+			diff := new(big.Int).Sub(f.IntMax, f.IntMin)
+			bits := ir.BitsRequired(f.IntMin, f.IntMax)
+			loZero := f.IntMin.Sign() == 0
+			storage := goInt2(f.Type.Signed, f.Type.Width)
 			switch intRangePath(f.IntMin, f.IntMax) {
 			case "int32":
-				if f.Type.Signed && f.Type.Width == 32 {
-					g.pf("%sstream.SerializeInt(&%s, %s, %s)\n", ind, name, lo, hi)
-					return
-				}
-				g.pf("%s{\n%s\trangeValue := int32(0)\n", ind, ind)
-				g.pf("%s\tstream.SerializeInt(&rangeValue, %s, %s)\n", ind, lo, hi)
-				g.pf("%s\t%s = %s(rangeValue)\n%s}\n", ind, name, goInt2(f.Type.Signed, f.Type.Width), ind)
+				g.emitReadRangedFold32(lo, bits, diff, loZero, ind, func(ai, expr string) {
+					if f.Type.Signed && f.Type.Width == 32 {
+						g.pf("%s%s = %s\n", ai, name, expr)
+						return
+					}
+					g.pf("%s%s = %s(%s)\n", ai, name, storage, expr)
+				})
 			case "int64":
-				if f.Type.Signed && f.Type.Width == 64 {
-					g.pf("%sstream.SerializeInt64(&%s, %s, %s)\n", ind, name, lo, hi)
-					return
-				}
-				g.pf("%s{\n%s\trangeValue := int64(0)\n", ind, ind)
-				g.pf("%s\tstream.SerializeInt64(&rangeValue, %s, %s)\n", ind, lo, hi)
-				g.pf("%s\t%s = %s(rangeValue)\n%s}\n", ind, name, goInt2(f.Type.Signed, f.Type.Width), ind)
+				g.emitReadRangedFold64(lo, bits, diff, loZero, ind, func(ai, expr string) {
+					if f.Type.Signed && f.Type.Width == 64 {
+						g.pf("%s%s = %s\n", ai, name, expr)
+						return
+					}
+					g.pf("%s%s = %s(%s)\n", ai, name, storage, expr)
+				})
 			default:
 				diff := new(big.Int).Sub(f.IntMax, f.IntMin)
 				g.pf("%s{\n%s\toffsetValue := uint64(0)\n", ind, ind)
@@ -764,8 +854,10 @@ func (g *gen) emitReadScalar(f *ir.Field, name, ind string) {
 	case ir.TFloat64:
 		g.pf("%sstream.SerializeFloat64(&%s)\n", ind, name)
 	case ir.TString, ir.TBytes:
-		g.pf("%sstream.SerializeInt(&%sLength, 0, %s)\n", ind, name, g.renderInt(f.Type.SizeExpr, big.NewInt(f.Type.Size)))
-		g.pf("%sif stream.Err() != nil { // the length guards the slice (§6.3)\n%s\treturn stream.Err()\n%s}\n", ind, ind, ind)
+		g.emitReadRangedFold32("0", ir.BitsRequired(big.NewInt(0), big.NewInt(f.Type.Size)),
+			big.NewInt(f.Type.Size), true, ind, func(ai, expr string) {
+				g.pf("%s%sLength = %s\n", ai, name, expr)
+			})
 		g.pf("%sstream.SerializeBytes(%s[:%sLength])\n", ind, name, name)
 		if f.Type.Kind == ir.TString {
 			// the interior-null rule is generated-code validation (SPEC §4.7);
@@ -778,9 +870,10 @@ func (g *gen) emitReadScalar(f *ir.Field, name, ind string) {
 	case ir.TNamed:
 		switch ref := f.Type.Ref.(type) {
 		case *ir.Enum:
-			g.pf("%s{\n%s\tenumValue := int32(0)\n", ind, ind)
-			g.pf("%s\tstream.SerializeInt(&enumValue, 0, %d)\n", ind, ref.Max)
-			g.pf("%s\t%s = %s(enumValue)\n%s}\n", ind, name, f.Type.Name, ind)
+			g.emitReadRangedFold32("0", ir.BitsRequired(big.NewInt(0), big.NewInt(ref.Max)),
+				big.NewInt(ref.Max), true, ind, func(ai, expr string) {
+					g.pf("%s%s = %s(%s)\n", ai, name, f.Type.Name, expr)
+				})
 		case *ir.Flags:
 			g.emitReadFlags(name, f.Type.Name, ref.WireBits, ind)
 		case *ir.Struct:

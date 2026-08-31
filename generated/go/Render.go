@@ -57,9 +57,15 @@ func ReadRenderSprite(stream *serialize.ReadStream, value *RenderSprite) error {
 		value.Layer = uint8(rawValue)
 	}
 	{
-		enumValue := int32(0)
-		stream.SerializeInt(&enumValue, 0, 2)
-		value.Team = Team(enumValue)
+		offsetValue := uint32(0)
+		stream.SerializeBits(&offsetValue, 2)
+		if stream.Err() != nil {
+			return stream.Err()
+		}
+		if offsetValue > 2 { // a value smuggled into the bit headroom is refused (SPEC §4.3)
+			return serialize.ErrValueOutOfRange
+		}
+		value.Team = Team(int32(offsetValue))
 	}
 	return stream.Err()
 }
@@ -101,9 +107,16 @@ func WriteRenderBlock(stream *serialize.WriteStream, value *RenderBlock) error {
 func ReadRenderBlock(stream *serialize.ReadStream, value *RenderBlock) error {
 	stream.SerializeBits(&value.WorkerIndex, 32)
 	stream.SerializeBits(&value.SpriteCountHint, 32)
-	stream.SerializeInt(&value.SpritesCount, 0, RenderBlockMaxSprites)
-	if stream.Err() != nil { // the count guards the loop (§6.3)
-		return stream.Err()
+	{
+		offsetValue := uint32(0)
+		stream.SerializeBits(&offsetValue, 7)
+		if stream.Err() != nil {
+			return stream.Err()
+		}
+		if offsetValue > 64 { // a value smuggled into the bit headroom is refused (SPEC §4.3)
+			return serialize.ErrValueOutOfRange
+		}
+		value.SpritesCount = int32(offsetValue)
 	}
 	for i := int32(0); i < value.SpritesCount; i++ {
 		if err := ReadRenderSprite(stream, &value.Sprites[i]); err != nil {

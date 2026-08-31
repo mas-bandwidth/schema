@@ -301,9 +301,12 @@ func WriteLudicrousState(stream *serialize.WriteStream, value *LudicrousState) e
 
 func ReadLudicrousState(stream *serialize.ReadStream, value *LudicrousState) error {
 	{
-		enumValue := int32(0)
-		stream.SerializeInt(&enumValue, 0, 3)
-		value.Mode = DriveMode(enumValue)
+		offsetValue := uint32(0)
+		stream.SerializeBits(&offsetValue, 2)
+		if stream.Err() != nil {
+			return stream.Err()
+		}
+		value.Mode = DriveMode(int32(offsetValue))
 	}
 	if err := ReadFixedProbe(stream, &value.Probe); err != nil {
 		return err
@@ -311,9 +314,16 @@ func ReadLudicrousState(stream *serialize.ReadStream, value *LudicrousState) err
 	if err := ReadWideProbe(stream, &value.Wide); err != nil {
 		return err
 	}
-	stream.SerializeInt(&value.KeysCount, 0, 4)
-	if stream.Err() != nil { // the count guards the loop (§6.3)
-		return stream.Err()
+	{
+		offsetValue := uint32(0)
+		stream.SerializeBits(&offsetValue, 3)
+		if stream.Err() != nil {
+			return stream.Err()
+		}
+		if offsetValue > 4 { // a value smuggled into the bit headroom is refused (SPEC §4.3)
+			return serialize.ErrValueOutOfRange
+		}
+		value.KeysCount = int32(offsetValue)
 	}
 	for i := int32(0); i < value.KeysCount; i++ {
 		stream.SerializeUint128(&value.Keys[i])

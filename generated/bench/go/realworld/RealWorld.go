@@ -737,9 +737,31 @@ func WriteRealPacket(stream *serialize.WriteStream, value *RealPacket) error {
 }
 
 func ReadRealPacket(stream *serialize.ReadStream, value *RealPacket) error {
-	stream.SerializeInt(&value.F001Int, -805495, 805495)
+	{
+		offsetValue := uint32(0)
+		stream.SerializeBits(&offsetValue, 21)
+		if stream.Err() != nil {
+			return stream.Err()
+		}
+		if offsetValue > 1610990 { // a value smuggled into the bit headroom is refused (SPEC §4.3)
+			return serialize.ErrValueOutOfRange
+		}
+		lowValue := int32(-805495)
+		value.F001Int = int32(offsetValue + uint32(lowValue))
+	}
 	stream.SerializeFloat64(&value.F002F64)
-	stream.SerializeInt(&value.F003Int, -835897, 835897)
+	{
+		offsetValue := uint32(0)
+		stream.SerializeBits(&offsetValue, 21)
+		if stream.Err() != nil {
+			return stream.Err()
+		}
+		if offsetValue > 1671794 { // a value smuggled into the bit headroom is refused (SPEC §4.3)
+			return serialize.ErrValueOutOfRange
+		}
+		lowValue := int32(-835897)
+		value.F003Int = int32(offsetValue + uint32(lowValue))
+	}
 	{
 		integerValue := uint32(0)
 		stream.SerializeBits(&integerValue, 15)
@@ -753,21 +775,41 @@ func ReadRealPacket(stream *serialize.ReadStream, value *RealPacket) error {
 		value.F004Cf32 = float32(normalizedValue * 2000.0)
 	}
 	{
-		rangeValue := int32(0)
-		stream.SerializeInt(&rangeValue, 0, 7316)
-		value.F005Uint = uint16(rangeValue)
+		offsetValue := uint32(0)
+		stream.SerializeBits(&offsetValue, 13)
+		if stream.Err() != nil {
+			return stream.Err()
+		}
+		if offsetValue > 7316 { // a value smuggled into the bit headroom is refused (SPEC §4.3)
+			return serialize.ErrValueOutOfRange
+		}
+		value.F005Uint = uint16(int32(offsetValue))
 	}
 	{
-		rangeValue := int32(0)
-		stream.SerializeInt(&rangeValue, -1513, 1513)
-		value.F006Int = int16(rangeValue)
+		offsetValue := uint32(0)
+		stream.SerializeBits(&offsetValue, 12)
+		if stream.Err() != nil {
+			return stream.Err()
+		}
+		if offsetValue > 3026 { // a value smuggled into the bit headroom is refused (SPEC §4.3)
+			return serialize.ErrValueOutOfRange
+		}
+		lowValue := int32(-1513)
+		value.F006Int = int16(int32(offsetValue + uint32(lowValue)))
 	}
 	stream.SerializeFloat32(&value.F007F32)
 	stream.SerializeBits64(&value.F008U64, 64)
 	{
-		rangeValue := int32(0)
-		stream.SerializeInt(&rangeValue, -22, 22)
-		value.F009Int = int8(rangeValue)
+		offsetValue := uint32(0)
+		stream.SerializeBits(&offsetValue, 6)
+		if stream.Err() != nil {
+			return stream.Err()
+		}
+		if offsetValue > 44 { // a value smuggled into the bit headroom is refused (SPEC §4.3)
+			return serialize.ErrValueOutOfRange
+		}
+		lowValue := int32(-22)
+		value.F009Int = int8(int32(offsetValue + uint32(lowValue)))
 	}
 	stream.SerializeFloat32(&value.F010F32)
 	stream.SerializeBits(&value.F011Bits, 10)
@@ -775,14 +817,27 @@ func ReadRealPacket(stream *serialize.ReadStream, value *RealPacket) error {
 	if value.F012Bool {
 		stream.SerializeFloat32(&value.F013F32)
 		{
-			rangeValue := int32(0)
-			stream.SerializeInt(&rangeValue, 0, 775)
-			value.F014Uint = uint16(rangeValue)
+			offsetValue := uint32(0)
+			stream.SerializeBits(&offsetValue, 10)
+			if stream.Err() != nil {
+				return stream.Err()
+			}
+			if offsetValue > 775 { // a value smuggled into the bit headroom is refused (SPEC §4.3)
+				return serialize.ErrValueOutOfRange
+			}
+			value.F014Uint = uint16(int32(offsetValue))
 		}
 		{
-			rangeValue := int32(0)
-			stream.SerializeInt(&rangeValue, -21, 21)
-			value.F015Int = int8(rangeValue)
+			offsetValue := uint32(0)
+			stream.SerializeBits(&offsetValue, 6)
+			if stream.Err() != nil {
+				return stream.Err()
+			}
+			if offsetValue > 42 { // a value smuggled into the bit headroom is refused (SPEC §4.3)
+				return serialize.ErrValueOutOfRange
+			}
+			lowValue := int32(-21)
+			value.F015Int = int8(int32(offsetValue + uint32(lowValue)))
 		}
 		{
 			fixedValue := int64(0)
@@ -790,9 +845,15 @@ func ReadRealPacket(stream *serialize.ReadStream, value *RealPacket) error {
 			value.F016Fixed = int32(fixedValue)
 		}
 		{
-			rangeValue := int32(0)
-			stream.SerializeInt(&rangeValue, 0, 4606)
-			value.F017Uint = uint16(rangeValue)
+			offsetValue := uint32(0)
+			stream.SerializeBits(&offsetValue, 13)
+			if stream.Err() != nil {
+				return stream.Err()
+			}
+			if offsetValue > 4606 { // a value smuggled into the bit headroom is refused (SPEC §4.3)
+				return serialize.ErrValueOutOfRange
+			}
+			value.F017Uint = uint16(int32(offsetValue))
 		}
 	} else {
 		value.F013F32 = 0
@@ -802,9 +863,16 @@ func ReadRealPacket(stream *serialize.ReadStream, value *RealPacket) error {
 		value.F017Uint = 0
 	}
 	{
-		rangeValue := int32(0)
-		stream.SerializeInt(&rangeValue, -834, 834)
-		value.F018Int = int16(rangeValue)
+		offsetValue := uint32(0)
+		stream.SerializeBits(&offsetValue, 11)
+		if stream.Err() != nil {
+			return stream.Err()
+		}
+		if offsetValue > 1668 { // a value smuggled into the bit headroom is refused (SPEC §4.3)
+			return serialize.ErrValueOutOfRange
+		}
+		lowValue := int32(-834)
+		value.F018Int = int16(int32(offsetValue + uint32(lowValue)))
 	}
 	stream.SerializeFloat64(&value.F019F64)
 	stream.SerializeFloat32(&value.F020F32)
@@ -843,25 +911,50 @@ func ReadRealPacket(stream *serialize.ReadStream, value *RealPacket) error {
 	stream.SerializeFloat32(&value.F030F32)
 	stream.SerializeBits(&value.F031Bits, 1)
 	{
-		rangeValue := int32(0)
-		stream.SerializeInt(&rangeValue, -3, 3)
-		value.F032Int = int8(rangeValue)
+		offsetValue := uint32(0)
+		stream.SerializeBits(&offsetValue, 3)
+		if stream.Err() != nil {
+			return stream.Err()
+		}
+		if offsetValue > 6 { // a value smuggled into the bit headroom is refused (SPEC §4.3)
+			return serialize.ErrValueOutOfRange
+		}
+		lowValue := int32(-3)
+		value.F032Int = int8(int32(offsetValue + uint32(lowValue)))
 	}
 	{
-		rangeValue := int32(0)
-		stream.SerializeInt(&rangeValue, 0, 142780)
-		value.F033Uint = uint32(rangeValue)
+		offsetValue := uint32(0)
+		stream.SerializeBits(&offsetValue, 18)
+		if stream.Err() != nil {
+			return stream.Err()
+		}
+		if offsetValue > 142780 { // a value smuggled into the bit headroom is refused (SPEC §4.3)
+			return serialize.ErrValueOutOfRange
+		}
+		value.F033Uint = uint32(int32(offsetValue))
 	}
 	{
-		rangeValue := int32(0)
-		stream.SerializeInt(&rangeValue, 0, 14149)
-		value.F034Uint = uint16(rangeValue)
+		offsetValue := uint32(0)
+		stream.SerializeBits(&offsetValue, 14)
+		if stream.Err() != nil {
+			return stream.Err()
+		}
+		if offsetValue > 14149 { // a value smuggled into the bit headroom is refused (SPEC §4.3)
+			return serialize.ErrValueOutOfRange
+		}
+		value.F034Uint = uint16(int32(offsetValue))
 	}
 	stream.SerializeBits(&value.F035Bits, 9)
 	{
-		enumValue := int32(0)
-		stream.SerializeInt(&enumValue, 0, 5)
-		value.F036Enum = PacketMode(enumValue)
+		offsetValue := uint32(0)
+		stream.SerializeBits(&offsetValue, 3)
+		if stream.Err() != nil {
+			return stream.Err()
+		}
+		if offsetValue > 5 { // a value smuggled into the bit headroom is refused (SPEC §4.3)
+			return serialize.ErrValueOutOfRange
+		}
+		value.F036Enum = PacketMode(int32(offsetValue))
 	}
 	stream.SerializeBool(&value.F037Bool)
 	stream.SerializeBool(&value.F038Bool)
@@ -872,9 +965,16 @@ func ReadRealPacket(stream *serialize.ReadStream, value *RealPacket) error {
 		value.F040Fixed = int16(fixedValue)
 	}
 	{
-		rangeValue := int32(0)
-		stream.SerializeInt(&rangeValue, -55, 55)
-		value.F041Int = int8(rangeValue)
+		offsetValue := uint32(0)
+		stream.SerializeBits(&offsetValue, 7)
+		if stream.Err() != nil {
+			return stream.Err()
+		}
+		if offsetValue > 110 { // a value smuggled into the bit headroom is refused (SPEC §4.3)
+			return serialize.ErrValueOutOfRange
+		}
+		lowValue := int32(-55)
+		value.F041Int = int8(int32(offsetValue + uint32(lowValue)))
 	}
 	stream.SerializeBits(&value.F042Bits, 30)
 	stream.SerializeBool(&value.F043Bool)
@@ -882,11 +982,28 @@ func ReadRealPacket(stream *serialize.ReadStream, value *RealPacket) error {
 		stream.SerializeFloat32(&value.F044F32)
 		stream.SerializeBits(&value.F045Bits, 12)
 		{
-			rangeValue := int32(0)
-			stream.SerializeInt(&rangeValue, 0, 76063)
-			value.F046Uint = uint32(rangeValue)
+			offsetValue := uint32(0)
+			stream.SerializeBits(&offsetValue, 17)
+			if stream.Err() != nil {
+				return stream.Err()
+			}
+			if offsetValue > 76063 { // a value smuggled into the bit headroom is refused (SPEC §4.3)
+				return serialize.ErrValueOutOfRange
+			}
+			value.F046Uint = uint32(int32(offsetValue))
 		}
-		stream.SerializeInt(&value.F047Int, -430976, 430976)
+		{
+			offsetValue := uint32(0)
+			stream.SerializeBits(&offsetValue, 20)
+			if stream.Err() != nil {
+				return stream.Err()
+			}
+			if offsetValue > 861952 { // a value smuggled into the bit headroom is refused (SPEC §4.3)
+				return serialize.ErrValueOutOfRange
+			}
+			lowValue := int32(-430976)
+			value.F047Int = int32(offsetValue + uint32(lowValue))
+		}
 	} else {
 		value.F044F32 = 0
 		value.F045Bits = 0
@@ -903,15 +1020,29 @@ func ReadRealPacket(stream *serialize.ReadStream, value *RealPacket) error {
 	if value.F050Bool {
 		stream.SerializeBool(&value.F051Bool)
 		{
-			rangeValue := int32(0)
-			stream.SerializeInt(&rangeValue, -57, 57)
-			value.F052Int = int8(rangeValue)
+			offsetValue := uint32(0)
+			stream.SerializeBits(&offsetValue, 7)
+			if stream.Err() != nil {
+				return stream.Err()
+			}
+			if offsetValue > 114 { // a value smuggled into the bit headroom is refused (SPEC §4.3)
+				return serialize.ErrValueOutOfRange
+			}
+			lowValue := int32(-57)
+			value.F052Int = int8(int32(offsetValue + uint32(lowValue)))
 		}
 		stream.SerializeFloat32(&value.F053F32)
 		{
-			rangeValue := int32(0)
-			stream.SerializeInt(&rangeValue, -35, 35)
-			value.F054Int = int8(rangeValue)
+			offsetValue := uint32(0)
+			stream.SerializeBits(&offsetValue, 7)
+			if stream.Err() != nil {
+				return stream.Err()
+			}
+			if offsetValue > 70 { // a value smuggled into the bit headroom is refused (SPEC §4.3)
+				return serialize.ErrValueOutOfRange
+			}
+			lowValue := int32(-35)
+			value.F054Int = int8(int32(offsetValue + uint32(lowValue)))
 		}
 	} else {
 		value.F051Bool = false
@@ -921,14 +1052,28 @@ func ReadRealPacket(stream *serialize.ReadStream, value *RealPacket) error {
 	}
 	stream.SerializeBool(&value.F055Bool)
 	{
-		rangeValue := int32(0)
-		stream.SerializeInt(&rangeValue, -13, 13)
-		value.F056Int = int8(rangeValue)
+		offsetValue := uint32(0)
+		stream.SerializeBits(&offsetValue, 5)
+		if stream.Err() != nil {
+			return stream.Err()
+		}
+		if offsetValue > 26 { // a value smuggled into the bit headroom is refused (SPEC §4.3)
+			return serialize.ErrValueOutOfRange
+		}
+		lowValue := int32(-13)
+		value.F056Int = int8(int32(offsetValue + uint32(lowValue)))
 	}
 	{
-		rangeValue := int32(0)
-		stream.SerializeInt(&rangeValue, -15, 15)
-		value.F057Int = int8(rangeValue)
+		offsetValue := uint32(0)
+		stream.SerializeBits(&offsetValue, 5)
+		if stream.Err() != nil {
+			return stream.Err()
+		}
+		if offsetValue > 30 { // a value smuggled into the bit headroom is refused (SPEC §4.3)
+			return serialize.ErrValueOutOfRange
+		}
+		lowValue := int32(-15)
+		value.F057Int = int8(int32(offsetValue + uint32(lowValue)))
 	}
 	stream.SerializeFloat32(&value.F058F32)
 	stream.SerializeFloat64(&value.F059F64)
@@ -946,9 +1091,15 @@ func ReadRealPacket(stream *serialize.ReadStream, value *RealPacket) error {
 		value.F061Cf32 = float32(normalizedValue*180.0) + (-90.0)
 	}
 	{
-		rangeValue := int32(0)
-		stream.SerializeInt(&rangeValue, 0, 503)
-		value.F062Uint = uint16(rangeValue)
+		offsetValue := uint32(0)
+		stream.SerializeBits(&offsetValue, 9)
+		if stream.Err() != nil {
+			return stream.Err()
+		}
+		if offsetValue > 503 { // a value smuggled into the bit headroom is refused (SPEC §4.3)
+			return serialize.ErrValueOutOfRange
+		}
+		value.F062Uint = uint16(int32(offsetValue))
 	}
 	{
 		rawValue := uint64(0)
@@ -956,9 +1107,15 @@ func ReadRealPacket(stream *serialize.ReadStream, value *RealPacket) error {
 		value.F063I64 = int64(rawValue)
 	}
 	{
-		rangeValue := int32(0)
-		stream.SerializeInt(&rangeValue, 0, 299)
-		value.F064Uint = uint16(rangeValue)
+		offsetValue := uint32(0)
+		stream.SerializeBits(&offsetValue, 9)
+		if stream.Err() != nil {
+			return stream.Err()
+		}
+		if offsetValue > 299 { // a value smuggled into the bit headroom is refused (SPEC §4.3)
+			return serialize.ErrValueOutOfRange
+		}
+		value.F064Uint = uint16(int32(offsetValue))
 	}
 	{
 		integerValue := uint32(0)
@@ -1003,9 +1160,15 @@ func ReadRealPacket(stream *serialize.ReadStream, value *RealPacket) error {
 	}
 	stream.SerializeBits(&value.F069Bits, 11)
 	{
-		rangeValue := int32(0)
-		stream.SerializeInt(&rangeValue, 0, 2)
-		value.F070Uint = uint8(rangeValue)
+		offsetValue := uint32(0)
+		stream.SerializeBits(&offsetValue, 2)
+		if stream.Err() != nil {
+			return stream.Err()
+		}
+		if offsetValue > 2 { // a value smuggled into the bit headroom is refused (SPEC §4.3)
+			return serialize.ErrValueOutOfRange
+		}
+		value.F070Uint = uint8(int32(offsetValue))
 	}
 	{
 		integerValue := uint32(0)
@@ -1032,28 +1195,55 @@ func ReadRealPacket(stream *serialize.ReadStream, value *RealPacket) error {
 		value.F072Cf32 = float32(normalizedValue * 100.0)
 	}
 	{
-		rangeValue := int32(0)
-		stream.SerializeInt(&rangeValue, -4, 4)
-		value.F073Int = int8(rangeValue)
+		offsetValue := uint32(0)
+		stream.SerializeBits(&offsetValue, 4)
+		if stream.Err() != nil {
+			return stream.Err()
+		}
+		if offsetValue > 8 { // a value smuggled into the bit headroom is refused (SPEC §4.3)
+			return serialize.ErrValueOutOfRange
+		}
+		lowValue := int32(-4)
+		value.F073Int = int8(int32(offsetValue + uint32(lowValue)))
 	}
 	stream.SerializeBool(&value.F074Bool)
 	if value.F074Bool {
 		stream.SerializeBits64(&value.F075U64, 64)
 		{
-			rangeValue := int32(0)
-			stream.SerializeInt(&rangeValue, -26218, 26218)
-			value.F076Int = int16(rangeValue)
+			offsetValue := uint32(0)
+			stream.SerializeBits(&offsetValue, 16)
+			if stream.Err() != nil {
+				return stream.Err()
+			}
+			if offsetValue > 52436 { // a value smuggled into the bit headroom is refused (SPEC §4.3)
+				return serialize.ErrValueOutOfRange
+			}
+			lowValue := int32(-26218)
+			value.F076Int = int16(int32(offsetValue + uint32(lowValue)))
 		}
 		{
-			rangeValue := int32(0)
-			stream.SerializeInt(&rangeValue, -17, 17)
-			value.F077Int = int8(rangeValue)
+			offsetValue := uint32(0)
+			stream.SerializeBits(&offsetValue, 6)
+			if stream.Err() != nil {
+				return stream.Err()
+			}
+			if offsetValue > 34 { // a value smuggled into the bit headroom is refused (SPEC §4.3)
+				return serialize.ErrValueOutOfRange
+			}
+			lowValue := int32(-17)
+			value.F077Int = int8(int32(offsetValue + uint32(lowValue)))
 		}
 		stream.SerializeBits(&value.F078Bits, 9)
 		{
-			rangeValue := int32(0)
-			stream.SerializeInt(&rangeValue, 0, 17)
-			value.F079Uint = uint8(rangeValue)
+			offsetValue := uint32(0)
+			stream.SerializeBits(&offsetValue, 5)
+			if stream.Err() != nil {
+				return stream.Err()
+			}
+			if offsetValue > 17 { // a value smuggled into the bit headroom is refused (SPEC §4.3)
+				return serialize.ErrValueOutOfRange
+			}
+			value.F079Uint = uint8(int32(offsetValue))
 		}
 	} else {
 		value.F075U64 = 0
@@ -1066,9 +1256,15 @@ func ReadRealPacket(stream *serialize.ReadStream, value *RealPacket) error {
 	stream.SerializeBits(&value.F081Bits, 29)
 	stream.SerializeBits(&value.F082Bits, 25)
 	{
-		enumValue := int32(0)
-		stream.SerializeInt(&enumValue, 0, 5)
-		value.F083Enum = PacketMode(enumValue)
+		offsetValue := uint32(0)
+		stream.SerializeBits(&offsetValue, 3)
+		if stream.Err() != nil {
+			return stream.Err()
+		}
+		if offsetValue > 5 { // a value smuggled into the bit headroom is refused (SPEC §4.3)
+			return serialize.ErrValueOutOfRange
+		}
+		value.F083Enum = PacketMode(int32(offsetValue))
 	}
 	{
 		fixedValue := int64(0)
@@ -1077,21 +1273,40 @@ func ReadRealPacket(stream *serialize.ReadStream, value *RealPacket) error {
 	}
 	stream.SerializeBits(&value.F085Bits, 21)
 	{
-		rangeValue := int32(0)
-		stream.SerializeInt(&rangeValue, 0, 399)
-		value.F086Uint = uint16(rangeValue)
+		offsetValue := uint32(0)
+		stream.SerializeBits(&offsetValue, 9)
+		if stream.Err() != nil {
+			return stream.Err()
+		}
+		if offsetValue > 399 { // a value smuggled into the bit headroom is refused (SPEC §4.3)
+			return serialize.ErrValueOutOfRange
+		}
+		value.F086Uint = uint16(int32(offsetValue))
 	}
 	stream.SerializeFloat64(&value.F087F64)
 	{
-		rangeValue := int32(0)
-		stream.SerializeInt(&rangeValue, -694, 694)
-		value.F088Int = int16(rangeValue)
+		offsetValue := uint32(0)
+		stream.SerializeBits(&offsetValue, 11)
+		if stream.Err() != nil {
+			return stream.Err()
+		}
+		if offsetValue > 1388 { // a value smuggled into the bit headroom is refused (SPEC §4.3)
+			return serialize.ErrValueOutOfRange
+		}
+		lowValue := int32(-694)
+		value.F088Int = int16(int32(offsetValue + uint32(lowValue)))
 	}
 	stream.SerializeBits64(&value.F089Bits, 48)
 	{
-		rangeValue := int32(0)
-		stream.SerializeInt(&rangeValue, 0, 214)
-		value.F090Uint = uint8(rangeValue)
+		offsetValue := uint32(0)
+		stream.SerializeBits(&offsetValue, 8)
+		if stream.Err() != nil {
+			return stream.Err()
+		}
+		if offsetValue > 214 { // a value smuggled into the bit headroom is refused (SPEC §4.3)
+			return serialize.ErrValueOutOfRange
+		}
+		value.F090Uint = uint8(int32(offsetValue))
 	}
 	{
 		flagsValue := uint32(0)
