@@ -28,6 +28,10 @@ import * as realworld from "../../generated/bench/js/realworld/RealWorld.js";
 // bottom of this file
 import * as degenerate from "../../generated/js/Degenerate.js";
 import * as degenerateFlat from "../../generated/js/DegenerateFlat.js";
+import * as clauses from "../../generated/js/Clauses.js";
+import * as clausesFlat from "../../generated/js/ClausesFlat.js";
+import * as joins from "../../generated/js/Joins.js";
+import * as joinsFlat from "../../generated/js/JoinsFlat.js";
 import * as typesFlat from "../../generated/js/TypesFlat.js";
 import * as wireFlat from "../../generated/js/WireFlat.js";
 import * as benchFlat from "../../generated/bench/js/BenchFlat.js";
@@ -1169,6 +1173,307 @@ if (CHECKED_MODE) {
   for (const [name, inp] of shapes) {
     flatCross(`flat ${name.toLowerCase()}`, dg, degenerateFlat, name, inp, null);
   }
+}
+
+// ---- Clauses.schema / Joins.schema: the mid-byte arrangements ----
+//
+// Degenerate.schema is every-type-a-whole-number-of-bytes by construction,
+// so no clause boundary in it lands mid-byte. These two units are chosen so
+// they do. Each shape is written to its OWN stream and flushed, and the
+// golden is those concatenated — the shapes are not byte-aligned, so a
+// shared stream would not equal the concatenation every emitter can produce.
+// Every shape also crosses the flat tier against the runtime tier's bytes.
+{
+  const seq = (n) => Array.from({ length: n }, (_, i) => i);
+
+  // [shapeName, typeName, value, bits, expectedAfterRoundTrip]
+  const cl = clauses;
+  const clauseShapes = [];
+  const w13At = (c) => {
+    const v = new cl.W13();
+    v.ItemsCount = c;
+    for (const i of seq(c)) v.Items[i] = 8191 - i * 733;
+    return v;
+  };
+  for (const c of [0, 1, 3, 4, 5, 7, 12]) clauseShapes.push([`W13/${c}`, "W13", w13At(c), 4 + 13 * c, w13At(c)]);
+
+  const w17At = (c) => {
+    const v = new cl.W17();
+    v.ItemsCount = c;
+    for (const i of seq(c)) v.Items[i] = 131071 - i * 11117;
+    return v;
+  };
+  for (const c of [0, 1, 2, 3, 4, 9]) clauseShapes.push([`W17/${c}`, "W17", w17At(c), 4 + 17 * c, w17At(c)]);
+
+  const w26At = (c) => {
+    const v = new cl.W26();
+    v.ItemsCount = c;
+    for (const i of seq(c)) v.Items[i] = 67108863 - i * 5555555;
+    return v;
+  };
+  for (const c of [0, 1, 2, 3, 6]) clauseShapes.push([`W26/${c}`, "W26", w26At(c), 3 + 26 * c, w26At(c)]);
+
+  const w1At = (c) => {
+    const v = new cl.W1();
+    v.ItemsCount = c;
+    for (const i of seq(c)) v.Items[i] = i % 2;
+    return v;
+  };
+  for (const c of [0, 1, 3, 4, 5, 20]) clauseShapes.push([`W1/${c}`, "W1", w1At(c), 5 + c, w1At(c)]);
+
+  const w52At = (c) => {
+    const v = new cl.W52();
+    v.ItemsCount = c;
+    for (const i of seq(c)) v.Items[i] = 4503599627370495n - BigInt(i) * 123456789n;
+    return v;
+  };
+  for (const c of [0, 1, 2, 3]) clauseShapes.push([`W52/${c}`, "W52", w52At(c), 2 + 52 * c, w52At(c)]);
+
+  const w50At = (c) => {
+    const v = new cl.W50();
+    v.ItemsCount = c;
+    for (const i of seq(c)) v.Items[i] = 1125899906842623n - BigInt(i) * 987654321n;
+    return v;
+  };
+  for (const c of [0, 1, 2, 3]) clauseShapes.push([`W50/${c}`, "W50", w50At(c), 2 + 50 * c, w50At(c)]);
+
+  const f13 = new cl.F13();
+  for (const i of seq(7)) f13.Items[i] = 8191 - i * 911;
+  clauseShapes.push(["F13", "F13", f13, 91, f13]);
+
+  const triAt = (c) => {
+    const v = new cl.ArrTri3();
+    v.ItemsCount = c;
+    for (const i of seq(c)) {
+      v.Items[i].A = i % 2;
+      v.Items[i].B = i % 4;
+    }
+    return v;
+  };
+  for (const c of [0, 1, 3, 4, 5, 10]) clauseShapes.push([`ArrTri3/${c}`, "ArrTri3", triAt(c), 4 + 3 * c, triAt(c)]);
+
+  const arrEleven = new cl.ArrEleven();
+  for (const i of seq(9)) {
+    arrEleven.Items[i].A = i % 8;
+    arrEleven.Items[i].B = 255 - i * 17;
+  }
+  clauseShapes.push(["ArrEleven", "ArrEleven", arrEleven, 99, arrEleven]);
+
+  // lead 5 + tag 2 + tail 7 — a zero-bit arm behind a tag costs the tag
+  for (const [arm, tag] of [["None", cl.EmptyUnionType.None], ["A", cl.EmptyUnionType.A], ["B", cl.EmptyUnionType.B]]) {
+    const v = new cl.HoldsEmptyUnion();
+    v.Lead = 21;
+    v.Tail = 99;
+    v.U.Type = tag;
+    clauseShapes.push([`HoldsEmptyUnion/${arm}`, "HoldsEmptyUnion", v, 14, v]);
+  }
+
+  // lead 5 + s_length 4 = 9, the align pads 7 to 16; then 8*s bytes,
+  // b_length 4, an align pad of 4, 8*b bytes and a 3-bit tail. The 5-bit
+  // lead is what puts the align at a non-zero offset.
+  const strsAt = (s, b) => {
+    const v = new cl.Strs();
+    v.Lead = 21;
+    v.Tail = 5;
+    v.S.set(s);
+    v.SLength = s.length;
+    v.B.set(b);
+    v.BLength = b.length;
+    return v;
+  };
+  const strsSpecs = [
+    ["empty", [], [], 27],
+    ["full", [...Buffer.from("abcdefgh")], [0xf0, 0xf1, 0xf2, 0xf3, 0xf4, 0xf5, 0xf6, 0xf7], 155],
+    ["part", [...Buffer.from("xyz")], [1, 2, 3], 75],
+  ];
+  for (const [tag, s, b, bits] of strsSpecs) {
+    const v = strsAt(s, b);
+    clauseShapes.push([`Strs/${tag}`, "Strs", v, bits, v]);
+  }
+
+  const nestedAt = (c) => {
+    const v = new cl.ArrNested();
+    v.Lead = 21;
+    v.Tail = 5;
+    v.ItemsCount = c;
+    for (const i of seq(c)) {
+      v.Items[i].A = i % 8;
+      v.Items[i].B = 200 - i * 7;
+    }
+    return v;
+  };
+  for (const c of [0, 1, 2, 3, 4]) clauseShapes.push([`ArrNested/${c}`, "ArrNested", nestedAt(c), 11 + 11 * c, nestedAt(c)]);
+
+  const sole = new cl.Sole();
+  sole.Only = 5555;
+  clauseShapes.push(["Sole", "Sole", sole, 13, sole]);
+
+  // Joins.schema. Every branch is written on BOTH arms, so no path is pinned
+  // by omission — and the expected value after a round trip is not the value
+  // written: the untaken side reads back as zero (SPEC §5).
+  const jn = joins;
+  const joinShapes = [];
+  for (const f of [false, true]) {
+    // the arms agree on WIDTH but not on value, so a join that keeps the
+    // wrong arm is a value mismatch and not just a width one
+    const agree = new jn.ArmsAgree();
+    Object.assign(agree, { Lead: 21, Flag: f, A: 1234, B: 1500, Tail: 99 });
+    const agreeWant = new jn.ArmsAgree();
+    Object.assign(agreeWant, { Lead: 21, Flag: f, A: f ? 1234 : 0, B: f ? 0 : 1500, Tail: 99 });
+    joinShapes.push([`ArmsAgree/${f}`, "ArmsAgree", agree, 24, agreeWant]);
+
+    const disagree = new jn.ArmsDisagree();
+    Object.assign(disagree, { Lead: 21, Flag: f, A: 1234, B: 5, Tail: 99 });
+    const disagreeWant = new jn.ArmsDisagree();
+    Object.assign(disagreeWant, { Lead: 21, Flag: f, A: f ? 1234 : 0, B: f ? 0 : 5, Tail: 99 });
+    joinShapes.push([`ArmsDisagree/${f}`, "ArmsDisagree", disagree, f ? 24 : 16, disagreeWant]);
+
+    const armEmpty = new jn.ArmEmpty();
+    Object.assign(armEmpty, { Lead: 21, Flag: f, A: 456789, Tail: 99 });
+    const armEmptyWant = new jn.ArmEmpty();
+    Object.assign(armEmptyWant, { Lead: 21, Flag: f, A: f ? 456789 : 0, Tail: 99 });
+    joinShapes.push([`ArmEmpty/${f}`, "ArmEmpty", armEmpty, f ? 32 : 13, armEmptyWant]);
+
+    const alignStr = new jn.ArmAlign();
+    Object.assign(alignStr, { Lead: 21, Flag: f, SLength: 4, B: 1000, Tail: 99 });
+    alignStr.S.set([...Buffer.from("abcd")]);
+    const alignStrWant = new jn.ArmAlign();
+    Object.assign(alignStrWant, { Lead: 21, Flag: f, Tail: 99 });
+    if (f) {
+      alignStrWant.S.set([...Buffer.from("abcd")]);
+      alignStrWant.SLength = 4;
+    } else {
+      alignStrWant.B = 1000;
+    }
+    joinShapes.push([`ArmAlign/${f}`, "ArmAlign", alignStr, f ? 55 : 23, alignStrWant]);
+
+    const alignEmpty = new jn.ArmAlign();
+    Object.assign(alignEmpty, { Lead: 21, Flag: f, B: 1000, Tail: 99 });
+    const alignEmptyWant = new jn.ArmAlign();
+    Object.assign(alignEmptyWant, { Lead: 21, Flag: f, B: f ? 0 : 1000, Tail: 99 });
+    joinShapes.push([`ArmAlignEmptyStr/${f}`, "ArmAlign", alignEmpty, 23, alignEmptyWant]);
+  }
+
+  for (const o of [false, true]) {
+    for (const i of [false, true]) {
+      const v = new jn.ArmsNested();
+      Object.assign(v, { Lead: 5, Outer: o, Inner: i, X: 500000000, Y: 17, Z: 4000, Tail: 33 });
+      const want = new jn.ArmsNested();
+      Object.assign(want, { Lead: 5, Outer: o, Tail: 33 });
+      if (o) {
+        want.Inner = i;
+        if (i) want.X = 500000000;
+        else want.Y = 17;
+      } else {
+        want.Z = 4000;
+      }
+      joinShapes.push([`ArmsNested/${o}${i}`, "ArmsNested", v, o ? (i ? 40 : 16) : 23, want]);
+    }
+  }
+
+  for (const f of [false, true]) {
+    for (const c of [0, 1, 2, 3]) {
+      const v = new jn.ArmArray();
+      Object.assign(v, { Lead: 21, Flag: f, ItemsCount: c, B: 300, Tail: 99 });
+      for (const i of seq(c)) v.Items[i] = 8191 - i * 777;
+      const want = new jn.ArmArray();
+      Object.assign(want, { Lead: 21, Flag: f, Tail: 99 });
+      if (f) {
+        want.ItemsCount = c;
+        for (const i of seq(c)) want.Items[i] = 8191 - i * 777;
+      } else {
+        want.B = 300;
+      }
+      joinShapes.push([`ArmArray/${f}/${c}`, "ArmArray", v, f ? 15 + 13 * c : 22, want]);
+    }
+  }
+
+  // lead 5 + tag 2 + arm + tail 11 — the arms are 0, 3 and 37 bits
+  for (const [arm, tag, bits] of [["None", jn.UnevenType.None, 18], ["N", jn.UnevenType.Narrow, 21], ["W", jn.UnevenType.Wide, 55]]) {
+    const v = new jn.HoldsUneven();
+    v.Lead = 21;
+    v.Tail = 1500;
+    v.U.Type = tag;
+    if (tag === jn.UnevenType.Narrow) v.U.Narrow.N = 5;
+    if (tag === jn.UnevenType.Wide) v.U.Wide.W = 123456789012n;
+    joinShapes.push([`HoldsUneven/${arm}`, "HoldsUneven", v, bits, v]);
+  }
+
+  // alternating arms: item i is Narrow (2 + 3) when even, Wide (2 + 37)
+  const unevenItemBits = [0, 5, 44, 49];
+  const arrUnevenAt = (c) => {
+    const v = new jn.ArrUneven();
+    v.Lead = 21;
+    v.Tail = 5;
+    v.ItemsCount = c;
+    for (const i of seq(c)) {
+      if (i % 2 === 0) {
+        v.Items[i].Type = jn.UnevenType.Narrow;
+        v.Items[i].Narrow.N = i % 8;
+      } else {
+        v.Items[i].Type = jn.UnevenType.Wide;
+        v.Items[i].Wide.W = 99887766554n + BigInt(i);
+      }
+    }
+    return v;
+  };
+  for (const c of [0, 1, 2, 3]) joinShapes.push([`ArrUneven/${c}`, "ArrUneven", arrUnevenAt(c), 10 + unevenItemBits[c], arrUnevenAt(c)]);
+
+  // lead 5 + count 2 + 13*c + s_length 3, an align to the byte, 8*s, then a
+  // 32 + 29 + 19 + 4 static run after the align regains it
+  const regainAt = (c, sl) => {
+    const v = new jn.RegainAfterAlign();
+    Object.assign(v, { Lead: 21, ItemsCount: c, SLength: sl, P: 0xdeadbeef, Q: (1 << 29) - 7, R: (1 << 19) - 3, Tail: 9 });
+    if (sl) v.S.set([...Buffer.from("wxyz")]);
+    for (const i of seq(c)) v.Items[i] = 8191 - i * 999;
+    return v;
+  };
+  for (const c of [0, 1, 2, 3]) {
+    for (const sl of [0, 4]) {
+      const afterAlign = Math.ceil((5 + 2 + 13 * c + 3) / 8) * 8;
+      joinShapes.push([`Regain/${c}/${sl}`, "RegainAfterAlign", regainAt(c, sl), afterAlign + 8 * sl + 84, regainAt(c, sl)]);
+    }
+  }
+
+  // write each shape on its own stream, concatenate, byte-compare, read each
+  // back out of its own slice, and cross every one through the flat tier
+  const pinArrangements = (goldenName, mod, flatMod, shapes) => {
+    const parts = [];
+    for (const [shapeName, typeName, value, bits] of shapes) {
+      const ws = newWriteStream();
+      check(mod[`Write${typeName}`](ws, value), `write ${shapeName}`);
+      check(ws.bitsProcessed() === bits, `${shapeName} rides its declared width`);
+      ws.flush();
+      const bytes = Uint8Array.from(ws.data());
+      check(bytes.length === Math.ceil(bits / 8), `${shapeName} byte width`);
+      parts.push(bytes);
+    }
+    const total = parts.reduce((n, p) => n + p.length, 0);
+    const stream = new Uint8Array(total);
+    let at = 0;
+    for (const p of parts) {
+      stream.set(p, at);
+      at += p.length;
+    }
+    goldenWire(goldenName, stream);
+
+    let off = 0;
+    for (const [shapeName, typeName, , bits, want] of shapes) {
+      const n = Math.ceil(bits / 8);
+      const out = new mod[typeName]();
+      check(mod[`Read${typeName}`](new ReadStream(stream.subarray(off, off + n)), out), `read ${shapeName}`);
+      check(deepEqual(out, want), `${shapeName} round-trips (untaken sides zeroed, SPEC §5)`);
+      off += n;
+    }
+    check(off === stream.length, `the ${goldenName} reads consume the whole golden`);
+
+    for (const [shapeName, typeName, value] of shapes) {
+      flatCross(`flat ${shapeName}`, mod, flatMod, typeName, value, null);
+    }
+  };
+
+  pinArrangements("clauses", clauses, clausesFlat, clauseShapes);
+  pinArrangements("joins", joins, joinsFlat, joinShapes);
 }
 
 if (failed) {

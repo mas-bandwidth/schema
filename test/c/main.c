@@ -10,7 +10,9 @@
 #include <stdio.h>
 #include <string.h>
 
+#include "ClausesWire.h"
 #include "DegenerateWire.h"
+#include "JoinsWire.h"
 #include "TypesWire.h"
 #include "EnumsWire.h"
 #include "WireWire.h"
@@ -634,6 +636,508 @@ int main( void )
                "TrioStraddle pads round-trip" );
         check( r_straddle.pad5 == 0xABCDEFu && r_straddle.inner.a == 0x11111 && r_straddle.inner.c == 0x33333,
                "TrioStraddle's nested fields round-trip across the boundary" );
+    }
+
+    /* ---- Clauses.schema / Joins.schema: the mid-byte arrangements ----
+
+       Degenerate.schema is every-type-a-whole-number-of-bytes by
+       construction, so no clause boundary in it lands mid-byte. These two
+       units are chosen so they do. Each shape is written to its OWN stream
+       and flushed, and the golden is those concatenated — the shapes are not
+       byte-aligned, so a shared stream would not equal the concatenation
+       every emitter can produce. */
+    {
+        unsigned char arrangement[1024];
+        unsigned char shape[64];
+        unsigned char slice[64];
+        int stream_len = 0;
+        int read_off = 0;
+        int c, i, f, o, in, sl;
+
+        /* write one shape into its own stream, hold it to its declared width,
+           and append the flushed bytes */
+#define EMIT( bits, call )                                                    \
+        do                                                                    \
+        {                                                                     \
+            serialize_write_stream_t ws;                                      \
+            int n;                                                            \
+            serialize_write_stream_init( &ws, shape, (int) sizeof( shape ) ); \
+            check( call, "write " #call );                                    \
+            check( serialize_write_bits_processed( &ws ) == ( bits ),         \
+                   #call " rides its declared width" );                       \
+            serialize_write_flush( &ws );                                     \
+            n = serialize_write_bytes_processed( &ws );                       \
+            check( n == ( ( bits ) + 7 ) / 8, #call " byte width" );          \
+            memcpy( arrangement + stream_len, shape, (size_t) n );            \
+            stream_len += n;                                                  \
+        } while ( 0 )
+
+#define CONSUME( bits, call )                                                 \
+        do                                                                    \
+        {                                                                     \
+            serialize_read_stream_t rs;                                       \
+            int n = ( ( bits ) + 7 ) / 8;                                     \
+            memset( slice, 0, sizeof( slice ) );                              \
+            memcpy( slice, arrangement + read_off, (size_t) n );              \
+            serialize_read_stream_init( &rs, slice, n );                      \
+            check( call, "read " #call );                                     \
+            read_off += n;                                                    \
+        } while ( 0 )
+
+        /* ---- Clauses.schema ---- */
+        {
+            static const int w13_counts[] = { 0, 1, 3, 4, 5, 7, 12 };
+            static const int w17_counts[] = { 0, 1, 2, 3, 4, 9 };
+            static const int w26_counts[] = { 0, 1, 2, 3, 6 };
+            static const int w1_counts[] = { 0, 1, 3, 4, 5, 20 };
+            static const int tri_counts[] = { 0, 1, 3, 4, 5, 10 };
+            static const int strs_bits[] = { 27, 155, 75 };
+            int k;
+
+            W13 w13; W17 w17; W26 w26; W1 w1; W52 w52; W50 w50; F13 f13;
+            ArrTri3 tri; ArrEleven eleven; HoldsEmptyUnion hu; Strs strs;
+            ArrNested nested; Sole sole;
+
+            for ( k = 0; k < 7; k++ )
+            {
+                c = w13_counts[k];
+                memset( &w13, 0, sizeof( w13 ) );
+                w13.items_count = c;
+                for ( i = 0; i < c; i++ ) w13.items[i] = (uint16_t) ( 8191 - i * 733 );
+                EMIT( 4 + 13 * c, write_w13( &ws, &w13 ) );
+            }
+            for ( k = 0; k < 6; k++ )
+            {
+                c = w17_counts[k];
+                memset( &w17, 0, sizeof( w17 ) );
+                w17.items_count = c;
+                for ( i = 0; i < c; i++ ) w17.items[i] = (uint32_t) ( 131071 - i * 11117 );
+                EMIT( 4 + 17 * c, write_w17( &ws, &w17 ) );
+            }
+            for ( k = 0; k < 5; k++ )
+            {
+                c = w26_counts[k];
+                memset( &w26, 0, sizeof( w26 ) );
+                w26.items_count = c;
+                for ( i = 0; i < c; i++ ) w26.items[i] = (uint32_t) ( 67108863 - i * 5555555 );
+                EMIT( 3 + 26 * c, write_w26( &ws, &w26 ) );
+            }
+            for ( k = 0; k < 6; k++ )
+            {
+                c = w1_counts[k];
+                memset( &w1, 0, sizeof( w1 ) );
+                w1.items_count = c;
+                for ( i = 0; i < c; i++ ) w1.items[i] = (uint8_t) ( i % 2 );
+                EMIT( 5 + c, write_w1( &ws, &w1 ) );
+            }
+            for ( c = 0; c <= 3; c++ )
+            {
+                memset( &w52, 0, sizeof( w52 ) );
+                w52.items_count = c;
+                for ( i = 0; i < c; i++ ) w52.items[i] = 4503599627370495ULL - (uint64_t) i * 123456789ULL;
+                EMIT( 2 + 52 * c, write_w52( &ws, &w52 ) );
+            }
+            for ( c = 0; c <= 3; c++ )
+            {
+                memset( &w50, 0, sizeof( w50 ) );
+                w50.items_count = c;
+                for ( i = 0; i < c; i++ ) w50.items[i] = 1125899906842623ULL - (uint64_t) i * 987654321ULL;
+                EMIT( 2 + 50 * c, write_w50( &ws, &w50 ) );
+            }
+            memset( &f13, 0, sizeof( f13 ) );
+            for ( i = 0; i < 7; i++ ) f13.items[i] = (uint16_t) ( 8191 - i * 911 );
+            EMIT( 91, write_f13( &ws, &f13 ) );
+
+            for ( k = 0; k < 6; k++ )
+            {
+                c = tri_counts[k];
+                memset( &tri, 0, sizeof( tri ) );
+                tri.items_count = c;
+                for ( i = 0; i < c; i++ ) { tri.items[i].a = (uint32_t) ( i % 2 ); tri.items[i].b = (uint32_t) ( i % 4 ); }
+                EMIT( 4 + 3 * c, write_arr_tri3( &ws, &tri ) );
+            }
+
+            memset( &eleven, 0, sizeof( eleven ) );
+            for ( i = 0; i < 9; i++ ) { eleven.items[i].a = (uint32_t) ( i % 8 ); eleven.items[i].b = (uint32_t) ( 255 - i * 17 ); }
+            EMIT( 99, write_arr_eleven( &ws, &eleven ) );
+
+            /* lead 5 + tag 2 + tail 7 — a zero-bit arm behind a tag costs the tag */
+            for ( k = 0; k <= 2; k++ )
+            {
+                memset( &hu, 0, sizeof( hu ) );
+                hu.lead = 21;
+                hu.tail = 99;
+                hu.u.type = (EmptyUnionType) k;
+                EMIT( 14, write_holds_empty_union( &ws, &hu ) );
+            }
+
+            /* lead 5 + s_length 4 = 9, the align pads 7 to 16; then 8*s bytes,
+               b_length 4, an align pad of 4, 8*b bytes and a 3-bit tail. The
+               5-bit lead is what puts the align at a non-zero offset. */
+            for ( k = 0; k <= 2; k++ )
+            {
+                memset( &strs, 0, sizeof( strs ) );
+                strs.lead = 21;
+                strs.tail = 5;
+                if ( k == 1 )
+                {
+                    memcpy( strs.s, "abcdefgh", 8 );
+                    strs.s_length = 8;
+                    for ( i = 0; i < 8; i++ ) strs.b[i] = (uint8_t) ( 0xF0 + i );
+                    strs.b_length = 8;
+                }
+                else if ( k == 2 )
+                {
+                    memcpy( strs.s, "xyz", 3 );
+                    strs.s_length = 3;
+                    for ( i = 0; i < 3; i++ ) strs.b[i] = (uint8_t) ( i + 1 );
+                    strs.b_length = 3;
+                }
+                EMIT( strs_bits[k], write_strs( &ws, &strs ) );
+            }
+
+            for ( c = 0; c <= 4; c++ )
+            {
+                memset( &nested, 0, sizeof( nested ) );
+                nested.lead = 21;
+                nested.tail = 5;
+                nested.items_count = c;
+                for ( i = 0; i < c; i++ ) { nested.items[i].a = (uint32_t) ( i % 8 ); nested.items[i].b = (uint32_t) ( 200 - i * 7 ); }
+                EMIT( 11 + 11 * c, write_arr_nested( &ws, &nested ) );
+            }
+
+            memset( &sole, 0, sizeof( sole ) );
+            sole.only = 5555;
+            EMIT( 13, write_sole( &ws, &sole ) );
+
+            golden_wire( "clauses", arrangement, stream_len );
+
+            /* Read each shape back out of its own slice. A clause that decodes
+               a different number of elements than the writer encoded shows up
+               here even where the byte compare above happens to pass. */
+            for ( k = 0; k < 7; k++ )
+            {
+                c = w13_counts[k];
+                memset( &w13, 0xEF, sizeof( w13 ) );
+                CONSUME( 4 + 13 * c, read_w13( &rs, &w13 ) );
+                check( w13.items_count == c, "W13 count round-trips" );
+                for ( i = 0; i < c; i++ ) check( w13.items[i] == (uint16_t) ( 8191 - i * 733 ), "W13 element round-trips" );
+            }
+            for ( k = 0; k < 6; k++ )
+            {
+                c = w17_counts[k];
+                memset( &w17, 0xEF, sizeof( w17 ) );
+                CONSUME( 4 + 17 * c, read_w17( &rs, &w17 ) );
+                check( w17.items_count == c, "W17 count round-trips" );
+                for ( i = 0; i < c; i++ ) check( w17.items[i] == (uint32_t) ( 131071 - i * 11117 ), "W17 element round-trips" );
+            }
+            for ( k = 0; k < 5; k++ )
+            {
+                c = w26_counts[k];
+                memset( &w26, 0xEF, sizeof( w26 ) );
+                CONSUME( 3 + 26 * c, read_w26( &rs, &w26 ) );
+                check( w26.items_count == c, "W26 count round-trips" );
+                for ( i = 0; i < c; i++ ) check( w26.items[i] == (uint32_t) ( 67108863 - i * 5555555 ), "W26 element round-trips" );
+            }
+            for ( k = 0; k < 6; k++ )
+            {
+                c = w1_counts[k];
+                memset( &w1, 0xEF, sizeof( w1 ) );
+                CONSUME( 5 + c, read_w1( &rs, &w1 ) );
+                check( w1.items_count == c, "W1 count round-trips" );
+                for ( i = 0; i < c; i++ ) check( w1.items[i] == (uint8_t) ( i % 2 ), "W1 element round-trips" );
+            }
+            for ( c = 0; c <= 3; c++ )
+            {
+                memset( &w52, 0xEF, sizeof( w52 ) );
+                CONSUME( 2 + 52 * c, read_w52( &rs, &w52 ) );
+                check( w52.items_count == c, "W52 count round-trips" );
+                for ( i = 0; i < c; i++ ) check( w52.items[i] == 4503599627370495ULL - (uint64_t) i * 123456789ULL, "W52 element round-trips" );
+            }
+            for ( c = 0; c <= 3; c++ )
+            {
+                memset( &w50, 0xEF, sizeof( w50 ) );
+                CONSUME( 2 + 50 * c, read_w50( &rs, &w50 ) );
+                check( w50.items_count == c, "W50 count round-trips" );
+                for ( i = 0; i < c; i++ ) check( w50.items[i] == 1125899906842623ULL - (uint64_t) i * 987654321ULL, "W50 element round-trips" );
+            }
+            memset( &f13, 0xEF, sizeof( f13 ) );
+            CONSUME( 91, read_f13( &rs, &f13 ) );
+            for ( i = 0; i < 7; i++ ) check( f13.items[i] == (uint16_t) ( 8191 - i * 911 ), "F13 element round-trips" );
+
+            for ( k = 0; k < 6; k++ )
+            {
+                c = tri_counts[k];
+                memset( &tri, 0xEF, sizeof( tri ) );
+                CONSUME( 4 + 3 * c, read_arr_tri3( &rs, &tri ) );
+                check( tri.items_count == c, "ArrTri3 count round-trips" );
+                for ( i = 0; i < c; i++ )
+                    check( tri.items[i].a == (uint32_t) ( i % 2 ) && tri.items[i].b == (uint32_t) ( i % 4 ), "ArrTri3 element round-trips" );
+            }
+
+            memset( &eleven, 0xEF, sizeof( eleven ) );
+            CONSUME( 99, read_arr_eleven( &rs, &eleven ) );
+            for ( i = 0; i < 9; i++ )
+                check( eleven.items[i].a == (uint32_t) ( i % 8 ) && eleven.items[i].b == (uint32_t) ( 255 - i * 17 ), "ArrEleven element round-trips" );
+
+            for ( k = 0; k <= 2; k++ )
+            {
+                memset( &hu, 0xEF, sizeof( hu ) );
+                CONSUME( 14, read_holds_empty_union( &rs, &hu ) );
+                check( hu.lead == 21 && hu.tail == 99 && hu.u.type == (EmptyUnionType) k, "HoldsEmptyUnion round-trips" );
+            }
+
+            for ( k = 0; k <= 2; k++ )
+            {
+                memset( &strs, 0xEF, sizeof( strs ) );
+                CONSUME( strs_bits[k], read_strs( &rs, &strs ) );
+                check( strs.lead == 21 && strs.tail == 5, "Strs lead and tail round-trip" );
+                if ( k == 0 ) check( strs.s_length == 0 && strs.b_length == 0, "Strs empty round-trips" );
+                if ( k == 1 ) check( strs.s_length == 8 && strcmp( strs.s, "abcdefgh" ) == 0 && strs.b_length == 8 && strs.b[7] == 0xF7, "Strs full round-trips" );
+                if ( k == 2 ) check( strs.s_length == 3 && strcmp( strs.s, "xyz" ) == 0 && strs.b_length == 3 && strs.b[2] == 3, "Strs partial round-trips" );
+            }
+
+            for ( c = 0; c <= 4; c++ )
+            {
+                memset( &nested, 0xEF, sizeof( nested ) );
+                CONSUME( 11 + 11 * c, read_arr_nested( &rs, &nested ) );
+                check( nested.items_count == c && nested.lead == 21 && nested.tail == 5, "ArrNested round-trips" );
+                for ( i = 0; i < c; i++ )
+                    check( nested.items[i].a == (uint32_t) ( i % 8 ) && nested.items[i].b == (uint32_t) ( 200 - i * 7 ), "ArrNested element round-trips" );
+            }
+
+            memset( &sole, 0xEF, sizeof( sole ) );
+            CONSUME( 13, read_sole( &rs, &sole ) );
+            check( sole.only == 5555, "Sole round-trips" );
+            check( read_off == stream_len, "the clauses reads consume the whole golden" );
+        }
+
+        /* ---- Joins.schema ----
+
+           Every branch is written on BOTH arms, so no path is pinned by
+           omission. The expected value after a round trip is not the value
+           written: the untaken side reads back as zero (SPEC §5). */
+        stream_len = 0;
+        read_off = 0;
+        {
+            ArmsAgree agree; ArmsDisagree disagree; ArmEmpty arm_empty;
+            ArmAlign align_str, align_empty; ArmsNested an; ArmArray aa;
+            HoldsUneven hun; ArrUneven au; RegainAfterAlign ra;
+            static const int uneven_item_bits[] = { 0, 5, 44, 49 };
+            static const int uneven_bits[] = { 18, 21, 55 };
+            int k, after_align;
+
+            for ( f = 0; f <= 1; f++ )
+            {
+                /* the arms agree on WIDTH but not on value, so a join that
+                   keeps the wrong arm is a value mismatch, not just a width one */
+                memset( &agree, 0, sizeof( agree ) );
+                agree.lead = 21; agree.flag = f; agree.a = 1234; agree.b = 1500; agree.tail = 99;
+                EMIT( 24, write_arms_agree( &ws, &agree ) );
+
+                memset( &disagree, 0, sizeof( disagree ) );
+                disagree.lead = 21; disagree.flag = f; disagree.a = 1234; disagree.b = 5; disagree.tail = 99;
+                EMIT( f ? 24 : 16, write_arms_disagree( &ws, &disagree ) );
+
+                memset( &arm_empty, 0, sizeof( arm_empty ) );
+                arm_empty.lead = 21; arm_empty.flag = f; arm_empty.a = 456789; arm_empty.tail = 99;
+                EMIT( f ? 32 : 13, write_arm_empty( &ws, &arm_empty ) );
+
+                memset( &align_str, 0, sizeof( align_str ) );
+                align_str.lead = 21; align_str.flag = f; memcpy( align_str.s, "abcd", 4 );
+                align_str.s_length = 4; align_str.b = 1000; align_str.tail = 99;
+                EMIT( f ? 55 : 23, write_arm_align( &ws, &align_str ) );
+
+                memset( &align_empty, 0, sizeof( align_empty ) );
+                align_empty.lead = 21; align_empty.flag = f; align_empty.b = 1000; align_empty.tail = 99;
+                EMIT( 23, write_arm_align( &ws, &align_empty ) );
+            }
+
+            for ( o = 0; o <= 1; o++ )
+            {
+                for ( in = 0; in <= 1; in++ )
+                {
+                    memset( &an, 0, sizeof( an ) );
+                    an.lead = 5; an.outer = o; an.inner = in;
+                    an.x = 500000000; an.y = 17; an.z = 4000; an.tail = 33;
+                    EMIT( o ? ( in ? 40 : 16 ) : 23, write_arms_nested( &ws, &an ) );
+                }
+            }
+
+            for ( f = 0; f <= 1; f++ )
+            {
+                for ( c = 0; c <= 3; c++ )
+                {
+                    memset( &aa, 0, sizeof( aa ) );
+                    aa.lead = 21; aa.flag = f; aa.items_count = c; aa.b = 300; aa.tail = 99;
+                    for ( i = 0; i < c; i++ ) aa.items[i] = (uint16_t) ( 8191 - i * 777 );
+                    EMIT( f ? 15 + 13 * c : 22, write_arm_array( &ws, &aa ) );
+                }
+            }
+
+            /* lead 5 + tag 2 + arm + tail 11 — the arms are 0, 3 and 37 bits */
+            for ( k = 0; k <= 2; k++ )
+            {
+                memset( &hun, 0, sizeof( hun ) );
+                hun.lead = 21; hun.tail = 1500;
+                hun.u.type = (UnevenType) k;
+                if ( k == 1 ) hun.u.as.narrow.n = 5;
+                if ( k == 2 ) hun.u.as.wide.w = 123456789012ULL;
+                EMIT( uneven_bits[k], write_holds_uneven( &ws, &hun ) );
+            }
+
+            /* alternating arms: item i is Narrow (2 + 3) when even, Wide (2 + 37) */
+            for ( c = 0; c <= 3; c++ )
+            {
+                memset( &au, 0, sizeof( au ) );
+                au.lead = 21; au.tail = 5; au.items_count = c;
+                for ( i = 0; i < c; i++ )
+                {
+                    if ( i % 2 == 0 )
+                    {
+                        au.items[i].type = UNEVEN_TYPE_NARROW;
+                        au.items[i].as.narrow.n = (uint32_t) ( i % 8 );
+                    }
+                    else
+                    {
+                        au.items[i].type = UNEVEN_TYPE_WIDE;
+                        au.items[i].as.wide.w = 99887766554ULL + (uint64_t) i;
+                    }
+                }
+                EMIT( 10 + uneven_item_bits[c], write_arr_uneven( &ws, &au ) );
+            }
+
+            /* lead 5 + count 2 + 13*c + s_length 3, an align to the byte, 8*s,
+               then a 32 + 29 + 19 + 4 static run after the align regains it */
+            for ( c = 0; c <= 3; c++ )
+            {
+                for ( sl = 0; sl <= 4; sl += 4 )
+                {
+                    memset( &ra, 0, sizeof( ra ) );
+                    ra.lead = 21; ra.items_count = c; ra.s_length = sl;
+                    if ( sl ) memcpy( ra.s, "wxyz", 4 );
+                    for ( i = 0; i < c; i++ ) ra.items[i] = (uint16_t) ( 8191 - i * 999 );
+                    ra.p = 0xDEADBEEFu; ra.q = ( 1u << 29 ) - 7; ra.r = ( 1u << 19 ) - 3; ra.tail = 9;
+                    after_align = ( ( 5 + 2 + 13 * c + 3 ) + 7 ) / 8 * 8;
+                    EMIT( after_align + 8 * sl + 84, write_regain_after_align( &ws, &ra ) );
+                }
+            }
+
+            golden_wire( "joins", arrangement, stream_len );
+
+            for ( f = 0; f <= 1; f++ )
+            {
+                memset( &agree, 0xEF, sizeof( agree ) );
+                CONSUME( 24, read_arms_agree( &rs, &agree ) );
+                check( agree.lead == 21 && agree.flag == f && agree.tail == 99, "ArmsAgree round-trips" );
+                check( f ? ( agree.a == 1234 && agree.b == 0 ) : ( agree.b == 1500 && agree.a == 0 ),
+                       "ArmsAgree's untaken side reads as zero (SPEC §5)" );
+
+                memset( &disagree, 0xEF, sizeof( disagree ) );
+                CONSUME( f ? 24 : 16, read_arms_disagree( &rs, &disagree ) );
+                check( disagree.lead == 21 && disagree.tail == 99, "ArmsDisagree round-trips" );
+                check( f ? ( disagree.a == 1234 && disagree.b == 0 ) : ( disagree.b == 5 && disagree.a == 0 ),
+                       "ArmsDisagree's untaken side reads as zero" );
+
+                memset( &arm_empty, 0xEF, sizeof( arm_empty ) );
+                CONSUME( f ? 32 : 13, read_arm_empty( &rs, &arm_empty ) );
+                check( arm_empty.lead == 21 && arm_empty.tail == 99, "ArmEmpty round-trips" );
+                check( arm_empty.a == ( f ? 456789u : 0u ), "ArmEmpty's absent arm reads as zero" );
+
+                memset( &align_str, 0xEF, sizeof( align_str ) );
+                CONSUME( f ? 55 : 23, read_arm_align( &rs, &align_str ) );
+                check( align_str.lead == 21 && align_str.tail == 99, "ArmAlign round-trips" );
+                check( f ? ( align_str.s_length == 4 && strcmp( align_str.s, "abcd" ) == 0 && align_str.b == 0 )
+                         : ( align_str.b == 1000 && align_str.s_length == 0 ),
+                       "ArmAlign's untaken side reads as zero" );
+
+                memset( &align_empty, 0xEF, sizeof( align_empty ) );
+                CONSUME( 23, read_arm_align( &rs, &align_empty ) );
+                check( align_empty.lead == 21 && align_empty.tail == 99, "ArmAlign with an empty string round-trips" );
+                check( f ? ( align_empty.s_length == 0 && align_empty.b == 0 ) : ( align_empty.b == 1000 ),
+                       "ArmAlign's empty string round-trips" );
+            }
+
+            for ( o = 0; o <= 1; o++ )
+            {
+                for ( in = 0; in <= 1; in++ )
+                {
+                    memset( &an, 0xEF, sizeof( an ) );
+                    CONSUME( o ? ( in ? 40 : 16 ) : 23, read_arms_nested( &rs, &an ) );
+                    check( an.lead == 5 && an.tail == 33 && an.outer == o, "ArmsNested round-trips" );
+                    if ( o )
+                    {
+                        check( an.inner == in && an.z == 0, "ArmsNested's outer arm round-trips" );
+                        check( in ? ( an.x == 500000000u && an.y == 0 ) : ( an.y == 17 && an.x == 0 ),
+                               "ArmsNested's inner arm round-trips" );
+                    }
+                    else
+                    {
+                        check( an.z == 4000 && an.x == 0 && an.y == 0, "ArmsNested's else arm round-trips" );
+                    }
+                }
+            }
+
+            for ( f = 0; f <= 1; f++ )
+            {
+                for ( c = 0; c <= 3; c++ )
+                {
+                    memset( &aa, 0xEF, sizeof( aa ) );
+                    CONSUME( f ? 15 + 13 * c : 22, read_arm_array( &rs, &aa ) );
+                    check( aa.lead == 21 && aa.tail == 99, "ArmArray round-trips" );
+                    if ( f )
+                    {
+                        check( aa.items_count == c && aa.b == 0, "ArmArray's array arm round-trips" );
+                        for ( i = 0; i < c; i++ ) check( aa.items[i] == (uint16_t) ( 8191 - i * 777 ), "ArmArray element round-trips" );
+                    }
+                    else
+                    {
+                        check( aa.b == 300 && aa.items_count == 0, "ArmArray's scalar arm round-trips" );
+                    }
+                }
+            }
+
+            for ( k = 0; k <= 2; k++ )
+            {
+                memset( &hun, 0xEF, sizeof( hun ) );
+                CONSUME( uneven_bits[k], read_holds_uneven( &rs, &hun ) );
+                check( hun.lead == 21 && hun.tail == 1500 && hun.u.type == (UnevenType) k, "HoldsUneven round-trips" );
+                if ( k == 1 ) check( hun.u.as.narrow.n == 5, "HoldsUneven's narrow arm round-trips" );
+                if ( k == 2 ) check( hun.u.as.wide.w == 123456789012ULL, "HoldsUneven's wide arm round-trips" );
+            }
+
+            for ( c = 0; c <= 3; c++ )
+            {
+                memset( &au, 0xEF, sizeof( au ) );
+                CONSUME( 10 + uneven_item_bits[c], read_arr_uneven( &rs, &au ) );
+                check( au.items_count == c && au.lead == 21 && au.tail == 5, "ArrUneven round-trips" );
+                for ( i = 0; i < c; i++ )
+                {
+                    if ( i % 2 == 0 )
+                        check( au.items[i].type == UNEVEN_TYPE_NARROW && au.items[i].as.narrow.n == (uint32_t) ( i % 8 ), "ArrUneven narrow element round-trips" );
+                    else
+                        check( au.items[i].type == UNEVEN_TYPE_WIDE && au.items[i].as.wide.w == 99887766554ULL + (uint64_t) i, "ArrUneven wide element round-trips" );
+                }
+            }
+
+            for ( c = 0; c <= 3; c++ )
+            {
+                for ( sl = 0; sl <= 4; sl += 4 )
+                {
+                    memset( &ra, 0xEF, sizeof( ra ) );
+                    after_align = ( ( 5 + 2 + 13 * c + 3 ) + 7 ) / 8 * 8;
+                    CONSUME( after_align + 8 * sl + 84, read_regain_after_align( &rs, &ra ) );
+                    check( ra.lead == 21 && ra.items_count == c && ra.s_length == sl, "RegainAfterAlign round-trips" );
+                    check( ra.p == 0xDEADBEEFu && ra.q == ( 1u << 29 ) - 7 && ra.r == ( 1u << 19 ) - 3 && ra.tail == 9,
+                           "RegainAfterAlign's static run after the align round-trips" );
+                    for ( i = 0; i < c; i++ ) check( ra.items[i] == (uint16_t) ( 8191 - i * 999 ), "RegainAfterAlign element round-trips" );
+                }
+            }
+            check( read_off == stream_len, "the joins reads consume the whole golden" );
+        }
+
+#undef EMIT
+#undef CONSUME
     }
 
     if ( failed )
