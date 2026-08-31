@@ -68,21 +68,20 @@ func generateExtremesCorpus(t *testing.T) string {
 }
 
 // TestDoubledMinusAtExtremeFolds pins both sites that render the
-// doubled-minus bound: the write-side fold offset and the read-side
-// serialize_int64 arguments. At the extreme they must fold to the proven
-// plain-INT64_MIN spellings; in range the doubled minus keeps its symbolic,
-// parenthesized form (the pinned rule — a fold here would be a silent
-// retreat from symbolic rendering).
+// doubled-minus bound: the flat run's write offset and its read decode. At
+// the extreme they must fold to the proven plain-INT64_MIN spellings; in
+// range the doubled minus keeps its symbolic, parenthesized form (the pinned
+// rule — a fold here would be a silent retreat from symbolic rendering).
 func TestDoubledMinusAtExtremeFolds(t *testing.T) {
 	rs := generateExtremesCorpus(t)
 	for _, want := range []string{
 		// the write-side fold offset: same spelling as the plain floor_bound
-		"let mut offset_value = (value.doubled_floor as u64).wrapping_sub((-9223372036854775808_i64) as u64);",
-		// the read-side runtime call: same spelling as the plain floor_bound
-		"stream.serialize_int64(&mut value.doubled_floor, -9223372036854775808, 100)?;",
+		"(value.doubled_floor as u64).wrapping_sub((-9223372036854775808_i64) as u64);",
+		// the read-side decode: same spelling as the plain floor_bound
+		"value.doubled_floor = v1.wrapping_add((-9223372036854775808_i64) as u64) as i64;",
 		// the in-range doubled minus stays symbolic and parenthesized, both sides
-		"let mut offset_value = (value.spin_rate as u32).wrapping_sub(((-(-ROTATION_UNITS)) as i32) as u32);",
-		"stream.serialize_int(&mut value.spin_rate, (-(-ROTATION_UNITS)) as i32, (ROTATION_UNITS * 2) as i32)?;",
+		"u64::from((value.spin_rate as u32).wrapping_sub(((-(-ROTATION_UNITS)) as i32) as u32));",
+		"value.spin_rate = (v2 as u32).wrapping_add(((-(-ROTATION_UNITS)) as i32) as u32) as i32;",
 	} {
 		if !strings.Contains(rs, want) {
 			t.Errorf("generated Rust must contain %q:\n%s", want, rs)

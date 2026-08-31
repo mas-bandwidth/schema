@@ -82,65 +82,48 @@ pub fn write_bench_packet(stream: &mut WriteStream<'_>, value: &BenchPacket) -> 
     if value.a < -100 || value.a > 100 {
         return Err(Error::Stream(serialize::Error::ValueOutOfRange));
     }
-    {
-        let mut offset_value = (value.a as u32).wrapping_sub((-100_i32) as u32);
-        stream.serialize_bits(&mut offset_value, 8)?;
-    }
     if value.b < 0 || value.b > 65535 {
         return Err(Error::Stream(serialize::Error::ValueOutOfRange));
-    }
-    {
-        let mut offset_value = value.b as u32;
-        stream.serialize_bits(&mut offset_value, 16)?;
     }
     if value.c < -1000000 || value.c > 1000000 {
         return Err(Error::Stream(serialize::Error::ValueOutOfRange));
     }
-    {
-        let mut offset_value = (value.c as u32).wrapping_sub((-1000000_i32) as u32);
-        stream.serialize_bits(&mut offset_value, 21)?;
-    }
     if value.bits7 >= 1 << 7 {
         return Err(Error::Stream(serialize::Error::ValueOutOfRange));
-    }
-    {
-        let mut raw_value = value.bits7;
-        stream.serialize_bits(&mut raw_value, 7)?;
     }
     if value.bits13 >= 1 << 13 {
         return Err(Error::Stream(serialize::Error::ValueOutOfRange));
     }
-    {
-        let mut raw_value = value.bits13;
-        stream.serialize_bits(&mut raw_value, 13)?;
-    }
     if value.bits23 >= 1 << 23 {
         return Err(Error::Stream(serialize::Error::ValueOutOfRange));
     }
-    {
-        let mut raw_value = value.bits23;
-        stream.serialize_bits(&mut raw_value, 23)?;
-    }
-    {
-        let mut bool_value = value.flag;
-        stream.serialize_bool(&mut bool_value)?;
-    }
-    {
-        let mut float_value = value.x;
-        stream.serialize_f32(&mut float_value)?;
-    }
-    {
-        let mut float_value = value.y;
-        stream.serialize_f32(&mut float_value)?;
-    }
-    {
-        let mut float_value = value.z;
-        stream.serialize_f32(&mut float_value)?;
-    }
-    {
-        let mut raw_value = value.big;
-        stream.serialize_bits64(&mut raw_value, 64)?;
-    }
+    let f0: u64 = u64::from((value.a as u32).wrapping_sub((-100_i32) as u32));
+    let f1: u64 = u64::from(value.b as u32);
+    let f2: u64 = u64::from((value.c as u32).wrapping_sub((-1000000_i32) as u32));
+    let f3: u64 = u64::from(value.bits7);
+    let f4: u64 = u64::from(value.bits13);
+    let f5: u64 = u64::from(value.bits23);
+    let f6: u64 = u64::from(value.flag);
+    let f7: u64 = u64::from(value.x.to_bits());
+    let f8: u64 = u64::from(value.y.to_bits());
+    let f9: u64 = u64::from(value.z.to_bits());
+    let f10: u64 = value.big;
+    let mut w0 = (f0 | (f1 << 8) | (f2 << 24)) as u32;
+    stream.serialize_bits(&mut w0, 32)?;
+    let mut w1 = ((f2 >> 8) | (f3 << 13) | (f4 << 20)) as u32;
+    stream.serialize_bits(&mut w1, 32)?;
+    let mut w2 = ((f4 >> 12) | (f5 << 1) | (f6 << 24) | (f7 << 25)) as u32;
+    stream.serialize_bits(&mut w2, 32)?;
+    let mut w3 = ((f7 >> 7) | (f8 << 25)) as u32;
+    stream.serialize_bits(&mut w3, 32)?;
+    let mut w4 = ((f8 >> 7) | (f9 << 25)) as u32;
+    stream.serialize_bits(&mut w4, 32)?;
+    let mut w5 = ((f9 >> 7) | (f10 << 25)) as u32;
+    stream.serialize_bits(&mut w5, 32)?;
+    let mut w6 = (f10 >> 7) as u32;
+    stream.serialize_bits(&mut w6, 32)?;
+    let mut w7 = (f10 >> 39) as u32;
+    stream.serialize_bits(&mut w7, 25)?;
     stream.serialize_align()?;
     stream.write_bytes(&value.blob); // byte-aligned [N]u8 — bulk copy, wire-identical to the per-byte loop (infallible: returns () in serialize.rs 2.0.0)
     Ok(())
@@ -148,17 +131,51 @@ pub fn write_bench_packet(stream: &mut WriteStream<'_>, value: &BenchPacket) -> 
 
 #[inline]
 pub fn read_bench_packet(stream: &mut ReadStream<'_>, value: &mut BenchPacket) -> Result {
-    stream.serialize_int(&mut value.a, -100, 100)?;
-    stream.serialize_int(&mut value.b, 0, 65535)?;
-    stream.serialize_int(&mut value.c, -1000000, 1000000)?;
-    stream.serialize_bits(&mut value.bits7, 7)?;
-    stream.serialize_bits(&mut value.bits13, 13)?;
-    stream.serialize_bits(&mut value.bits23, 23)?;
-    stream.serialize_bool(&mut value.flag)?;
-    stream.serialize_f32(&mut value.x)?;
-    stream.serialize_f32(&mut value.y)?;
-    stream.serialize_f32(&mut value.z)?;
-    stream.serialize_bits64(&mut value.big, 64)?;
+    let mut c: u32 = 0;
+    stream.serialize_bits(&mut c, 32)?;
+    let c0 = u64::from(c);
+    stream.serialize_bits(&mut c, 32)?;
+    let c1 = u64::from(c);
+    stream.serialize_bits(&mut c, 32)?;
+    let c2 = u64::from(c);
+    stream.serialize_bits(&mut c, 32)?;
+    let c3 = u64::from(c);
+    stream.serialize_bits(&mut c, 32)?;
+    let c4 = u64::from(c);
+    stream.serialize_bits(&mut c, 32)?;
+    let c5 = u64::from(c);
+    stream.serialize_bits(&mut c, 32)?;
+    let c6 = u64::from(c);
+    stream.serialize_bits(&mut c, 25)?;
+    let c7 = u64::from(c);
+    let v0: u64 = c0 & 0xff;
+    if v0 > 200 {
+        return Err(Error::Stream(serialize::Error::ValueOutOfRange));
+    }
+    value.a = (v0 as u32).wrapping_add((-100_i32) as u32) as i32;
+    let v1: u64 = (c0 >> 8) & 0xffff;
+    value.b = v1 as i32;
+    let v2: u64 = ((c0 >> 24) | (c1 << 8)) & 0x1fffff;
+    if v2 > 2000000 {
+        return Err(Error::Stream(serialize::Error::ValueOutOfRange));
+    }
+    value.c = (v2 as u32).wrapping_add((-1000000_i32) as u32) as i32;
+    let v3: u64 = (c1 >> 13) & 0x7f;
+    value.bits7 = v3 as u32;
+    let v4: u64 = ((c1 >> 20) | (c2 << 12)) & 0x1fff;
+    value.bits13 = v4 as u32;
+    let v5: u64 = (c2 >> 1) & 0x7fffff;
+    value.bits23 = v5 as u32;
+    let v6: u64 = (c2 >> 24) & 0x1;
+    value.flag = v6 != 0;
+    let v7: u64 = ((c2 >> 25) | (c3 << 7)) & 0xffffffff;
+    value.x = f32::from_bits(v7 as u32);
+    let v8: u64 = ((c3 >> 25) | (c4 << 7)) & 0xffffffff;
+    value.y = f32::from_bits(v8 as u32);
+    let v9: u64 = ((c4 >> 25) | (c5 << 7)) & 0xffffffff;
+    value.z = f32::from_bits(v9 as u32);
+    let v10: u64 = (c5 >> 25) | (c6 << 7) | (c7 << 39);
+    value.big = v10;
     stream.serialize_align()?; // rejects nonzero padding (SPEC §4.3)
     stream.serialize_bytes(&mut value.blob)?; // byte-aligned [N]u8 — bulk copy, wire-identical to the per-byte loop
     Ok(())
@@ -208,88 +225,103 @@ pub fn write_bench_ints(stream: &mut WriteStream<'_>, value: &BenchInts) -> Resu
     if value.f0 < -100 || value.f0 > 100 {
         return Err(Error::Stream(serialize::Error::ValueOutOfRange));
     }
-    {
-        let mut offset_value = (value.f0 as u32).wrapping_sub((-100_i32) as u32);
-        stream.serialize_bits(&mut offset_value, 8)?;
-    }
     if value.f1 < 0 || value.f1 > 65535 {
         return Err(Error::Stream(serialize::Error::ValueOutOfRange));
-    }
-    {
-        let mut offset_value = value.f1 as u32;
-        stream.serialize_bits(&mut offset_value, 16)?;
     }
     if value.f2 < -1000000 || value.f2 > 1000000 {
         return Err(Error::Stream(serialize::Error::ValueOutOfRange));
     }
-    {
-        let mut offset_value = (value.f2 as u32).wrapping_sub((-1000000_i32) as u32);
-        stream.serialize_bits(&mut offset_value, 21)?;
-    }
     if value.f3 < 0 || value.f3 > 3 {
         return Err(Error::Stream(serialize::Error::ValueOutOfRange));
-    }
-    {
-        let mut offset_value = value.f3 as u32;
-        stream.serialize_bits(&mut offset_value, 2)?;
     }
     if value.f4 < -15 || value.f4 > 15 {
         return Err(Error::Stream(serialize::Error::ValueOutOfRange));
     }
-    {
-        let mut offset_value = (value.f4 as u32).wrapping_sub((-15_i32) as u32);
-        stream.serialize_bits(&mut offset_value, 5)?;
-    }
     if value.f5 < 0 || value.f5 > 1000 {
         return Err(Error::Stream(serialize::Error::ValueOutOfRange));
-    }
-    {
-        let mut offset_value = value.f5 as u32;
-        stream.serialize_bits(&mut offset_value, 10)?;
     }
     if value.f6 < -2048 || value.f6 > 2047 {
         return Err(Error::Stream(serialize::Error::ValueOutOfRange));
     }
-    {
-        let mut offset_value = (value.f6 as u32).wrapping_sub((-2048_i32) as u32);
-        stream.serialize_bits(&mut offset_value, 12)?;
-    }
     if value.f7 < 0 || value.f7 > 255 {
         return Err(Error::Stream(serialize::Error::ValueOutOfRange));
-    }
-    {
-        let mut offset_value = value.f7 as u32;
-        stream.serialize_bits(&mut offset_value, 8)?;
     }
     if value.f8 < -600000 || value.f8 > 600000 {
         return Err(Error::Stream(serialize::Error::ValueOutOfRange));
     }
-    {
-        let mut offset_value = (value.f8 as u32).wrapping_sub((-600000_i32) as u32);
-        stream.serialize_bits(&mut offset_value, 21)?;
-    }
     if value.f9 < 0 || value.f9 > 100 {
         return Err(Error::Stream(serialize::Error::ValueOutOfRange));
     }
-    {
-        let mut offset_value = value.f9 as u32;
-        stream.serialize_bits(&mut offset_value, 7)?;
-    }
+    let f0: u64 = u64::from((value.f0 as u32).wrapping_sub((-100_i32) as u32));
+    let f1: u64 = u64::from(value.f1 as u32);
+    let f2: u64 = u64::from((value.f2 as u32).wrapping_sub((-1000000_i32) as u32));
+    let f3: u64 = u64::from(value.f3 as u32);
+    let f4: u64 = u64::from((value.f4 as u32).wrapping_sub((-15_i32) as u32));
+    let f5: u64 = u64::from(value.f5 as u32);
+    let f6: u64 = u64::from((value.f6 as u32).wrapping_sub((-2048_i32) as u32));
+    let f7: u64 = u64::from(value.f7 as u32);
+    let f8: u64 = u64::from((value.f8 as u32).wrapping_sub((-600000_i32) as u32));
+    let f9: u64 = u64::from(value.f9 as u32);
+    let mut w0 = (f0 | (f1 << 8) | (f2 << 24)) as u32;
+    stream.serialize_bits(&mut w0, 32)?;
+    let mut w1 = ((f2 >> 8) | (f3 << 13) | (f4 << 15) | (f5 << 20) | (f6 << 30)) as u32;
+    stream.serialize_bits(&mut w1, 32)?;
+    let mut w2 = ((f6 >> 2) | (f7 << 10) | (f8 << 18)) as u32;
+    stream.serialize_bits(&mut w2, 32)?;
+    let mut w3 = ((f8 >> 14) | (f9 << 7)) as u32;
+    stream.serialize_bits(&mut w3, 14)?;
     Ok(())
 }
 
 #[inline]
 pub fn read_bench_ints(stream: &mut ReadStream<'_>, value: &mut BenchInts) -> Result {
-    stream.serialize_int(&mut value.f0, -100, 100)?;
-    stream.serialize_int(&mut value.f1, 0, 65535)?;
-    stream.serialize_int(&mut value.f2, -1000000, 1000000)?;
-    stream.serialize_int(&mut value.f3, 0, 3)?;
-    stream.serialize_int(&mut value.f4, -15, 15)?;
-    stream.serialize_int(&mut value.f5, 0, 1000)?;
-    stream.serialize_int(&mut value.f6, -2048, 2047)?;
-    stream.serialize_int(&mut value.f7, 0, 255)?;
-    stream.serialize_int(&mut value.f8, -600000, 600000)?;
-    stream.serialize_int(&mut value.f9, 0, 100)?;
+    let mut c: u32 = 0;
+    stream.serialize_bits(&mut c, 32)?;
+    let c0 = u64::from(c);
+    stream.serialize_bits(&mut c, 32)?;
+    let c1 = u64::from(c);
+    stream.serialize_bits(&mut c, 32)?;
+    let c2 = u64::from(c);
+    stream.serialize_bits(&mut c, 14)?;
+    let c3 = u64::from(c);
+    let v0: u64 = c0 & 0xff;
+    if v0 > 200 {
+        return Err(Error::Stream(serialize::Error::ValueOutOfRange));
+    }
+    value.f0 = (v0 as u32).wrapping_add((-100_i32) as u32) as i32;
+    let v1: u64 = (c0 >> 8) & 0xffff;
+    value.f1 = v1 as i32;
+    let v2: u64 = ((c0 >> 24) | (c1 << 8)) & 0x1fffff;
+    if v2 > 2000000 {
+        return Err(Error::Stream(serialize::Error::ValueOutOfRange));
+    }
+    value.f2 = (v2 as u32).wrapping_add((-1000000_i32) as u32) as i32;
+    let v3: u64 = (c1 >> 13) & 0x3;
+    value.f3 = v3 as i32;
+    let v4: u64 = (c1 >> 15) & 0x1f;
+    if v4 > 30 {
+        return Err(Error::Stream(serialize::Error::ValueOutOfRange));
+    }
+    value.f4 = (v4 as u32).wrapping_add((-15_i32) as u32) as i32;
+    let v5: u64 = (c1 >> 20) & 0x3ff;
+    if v5 > 1000 {
+        return Err(Error::Stream(serialize::Error::ValueOutOfRange));
+    }
+    value.f5 = v5 as i32;
+    let v6: u64 = ((c1 >> 30) | (c2 << 2)) & 0xfff;
+    value.f6 = (v6 as u32).wrapping_add((-2048_i32) as u32) as i32;
+    let v7: u64 = (c2 >> 10) & 0xff;
+    value.f7 = v7 as i32;
+    let v8: u64 = ((c2 >> 18) | (c3 << 14)) & 0x1fffff;
+    if v8 > 1200000 {
+        return Err(Error::Stream(serialize::Error::ValueOutOfRange));
+    }
+    value.f8 = (v8 as u32).wrapping_add((-600000_i32) as u32) as i32;
+    let v9: u64 = (c3 >> 7) & 0x7f;
+    if v9 > 100 {
+        return Err(Error::Stream(serialize::Error::ValueOutOfRange));
+    }
+    value.f9 = v9 as i32;
     Ok(())
 }
 
@@ -333,69 +365,74 @@ pub fn write_bench_bits(stream: &mut WriteStream<'_>, value: &BenchBits) -> Resu
     if value.b7 >= 1 << 7 {
         return Err(Error::Stream(serialize::Error::ValueOutOfRange));
     }
-    {
-        let mut raw_value = value.b7;
-        stream.serialize_bits(&mut raw_value, 7)?;
-    }
     if value.b13 >= 1 << 13 {
         return Err(Error::Stream(serialize::Error::ValueOutOfRange));
-    }
-    {
-        let mut raw_value = value.b13;
-        stream.serialize_bits(&mut raw_value, 13)?;
     }
     if value.b23 >= 1 << 23 {
         return Err(Error::Stream(serialize::Error::ValueOutOfRange));
     }
-    {
-        let mut raw_value = value.b23;
-        stream.serialize_bits(&mut raw_value, 23)?;
-    }
     if value.b3 >= 1 << 3 {
         return Err(Error::Stream(serialize::Error::ValueOutOfRange));
-    }
-    {
-        let mut raw_value = value.b3;
-        stream.serialize_bits(&mut raw_value, 3)?;
-    }
-    {
-        let mut raw_value = value.b32;
-        stream.serialize_bits(&mut raw_value, 32)?;
     }
     if value.b11 >= 1 << 11 {
         return Err(Error::Stream(serialize::Error::ValueOutOfRange));
     }
-    {
-        let mut raw_value = value.b11;
-        stream.serialize_bits(&mut raw_value, 11)?;
-    }
     if value.b19 >= 1 << 19 {
         return Err(Error::Stream(serialize::Error::ValueOutOfRange));
-    }
-    {
-        let mut raw_value = value.b19;
-        stream.serialize_bits(&mut raw_value, 19)?;
     }
     if value.b48 >= 1 << 48 {
         return Err(Error::Stream(serialize::Error::ValueOutOfRange));
     }
-    {
-        let mut raw_value = value.b48;
-        stream.serialize_bits64(&mut raw_value, 48)?;
-    }
+    let f0: u64 = u64::from(value.b7);
+    let f1: u64 = u64::from(value.b13);
+    let f2: u64 = u64::from(value.b23);
+    let f3: u64 = u64::from(value.b3);
+    let f4: u64 = u64::from(value.b32);
+    let f5: u64 = u64::from(value.b11);
+    let f6: u64 = u64::from(value.b19);
+    let f7: u64 = value.b48;
+    let mut w0 = (f0 | (f1 << 7) | (f2 << 20)) as u32;
+    stream.serialize_bits(&mut w0, 32)?;
+    let mut w1 = ((f2 >> 12) | (f3 << 11) | (f4 << 14)) as u32;
+    stream.serialize_bits(&mut w1, 32)?;
+    let mut w2 = ((f4 >> 18) | (f5 << 14) | (f6 << 25)) as u32;
+    stream.serialize_bits(&mut w2, 32)?;
+    let mut w3 = ((f6 >> 7) | (f7 << 12)) as u32;
+    stream.serialize_bits(&mut w3, 32)?;
+    let mut w4 = (f7 >> 20) as u32;
+    stream.serialize_bits(&mut w4, 28)?;
     Ok(())
 }
 
 #[inline]
 pub fn read_bench_bits(stream: &mut ReadStream<'_>, value: &mut BenchBits) -> Result {
-    stream.serialize_bits(&mut value.b7, 7)?;
-    stream.serialize_bits(&mut value.b13, 13)?;
-    stream.serialize_bits(&mut value.b23, 23)?;
-    stream.serialize_bits(&mut value.b3, 3)?;
-    stream.serialize_bits(&mut value.b32, 32)?;
-    stream.serialize_bits(&mut value.b11, 11)?;
-    stream.serialize_bits(&mut value.b19, 19)?;
-    stream.serialize_bits64(&mut value.b48, 48)?;
+    let mut c: u32 = 0;
+    stream.serialize_bits(&mut c, 32)?;
+    let c0 = u64::from(c);
+    stream.serialize_bits(&mut c, 32)?;
+    let c1 = u64::from(c);
+    stream.serialize_bits(&mut c, 32)?;
+    let c2 = u64::from(c);
+    stream.serialize_bits(&mut c, 32)?;
+    let c3 = u64::from(c);
+    stream.serialize_bits(&mut c, 28)?;
+    let c4 = u64::from(c);
+    let v0: u64 = c0 & 0x7f;
+    value.b7 = v0 as u32;
+    let v1: u64 = (c0 >> 7) & 0x1fff;
+    value.b13 = v1 as u32;
+    let v2: u64 = ((c0 >> 20) | (c1 << 12)) & 0x7fffff;
+    value.b23 = v2 as u32;
+    let v3: u64 = (c1 >> 11) & 0x7;
+    value.b3 = v3 as u32;
+    let v4: u64 = ((c1 >> 14) | (c2 << 18)) & 0xffffffff;
+    value.b32 = v4 as u32;
+    let v5: u64 = (c2 >> 14) & 0x7ff;
+    value.b11 = v5 as u32;
+    let v6: u64 = ((c2 >> 25) | (c3 << 7)) & 0x7ffff;
+    value.b19 = v6 as u32;
+    let v7: u64 = ((c3 >> 12) | (c4 << 20)) & 0xffffffffffff;
+    value.b48 = v7;
     Ok(())
 }
 
@@ -445,87 +482,90 @@ pub fn write_bench_mixed(stream: &mut WriteStream<'_>, value: &BenchMixed) -> Re
     if value.sequence < 0 || value.sequence > 65535 {
         return Err(Error::Stream(serialize::Error::ValueOutOfRange));
     }
-    {
-        let mut offset_value = value.sequence as u32;
-        stream.serialize_bits(&mut offset_value, 16)?;
-    }
-    {
-        let mut raw_value = value.ack_bits;
-        stream.serialize_bits(&mut raw_value, 32)?;
-    }
     if value.entity_id >= 1 << 12 {
         return Err(Error::Stream(serialize::Error::ValueOutOfRange));
-    }
-    {
-        let mut raw_value = value.entity_id;
-        stream.serialize_bits(&mut raw_value, 12)?;
     }
     if value.pos_x < -16384 || value.pos_x > 16383 {
         return Err(Error::Stream(serialize::Error::ValueOutOfRange));
     }
-    {
-        let mut offset_value = (value.pos_x as u32).wrapping_sub((-16384_i32) as u32);
-        stream.serialize_bits(&mut offset_value, 15)?;
-    }
     if value.pos_y < -16384 || value.pos_y > 16383 {
         return Err(Error::Stream(serialize::Error::ValueOutOfRange));
-    }
-    {
-        let mut offset_value = (value.pos_y as u32).wrapping_sub((-16384_i32) as u32);
-        stream.serialize_bits(&mut offset_value, 15)?;
     }
     if value.pos_z < -16384 || value.pos_z > 16383 {
         return Err(Error::Stream(serialize::Error::ValueOutOfRange));
     }
-    {
-        let mut offset_value = (value.pos_z as u32).wrapping_sub((-16384_i32) as u32);
-        stream.serialize_bits(&mut offset_value, 15)?;
-    }
     if value.yaw >= 1 << 9 {
         return Err(Error::Stream(serialize::Error::ValueOutOfRange));
-    }
-    {
-        let mut raw_value = value.yaw;
-        stream.serialize_bits(&mut raw_value, 9)?;
-    }
-    {
-        let mut bool_value = value.moving;
-        stream.serialize_bool(&mut bool_value)?;
-    }
-    {
-        let mut bool_value = value.firing;
-        stream.serialize_bool(&mut bool_value)?;
     }
     if value.timestamp >= 1 << 48 {
         return Err(Error::Stream(serialize::Error::ValueOutOfRange));
     }
-    {
-        let mut raw_value = value.timestamp;
-        stream.serialize_bits64(&mut raw_value, 48)?;
-    }
     if value.weapon < 0 || value.weapon > 15 {
         return Err(Error::Stream(serialize::Error::ValueOutOfRange));
     }
-    {
-        let mut offset_value = value.weapon as u32;
-        stream.serialize_bits(&mut offset_value, 4)?;
-    }
+    let f0: u64 = u64::from(value.sequence as u32);
+    let f1: u64 = u64::from(value.ack_bits);
+    let f2: u64 = u64::from(value.entity_id);
+    let f3: u64 = u64::from((value.pos_x as u32).wrapping_sub((-16384_i32) as u32));
+    let f4: u64 = u64::from((value.pos_y as u32).wrapping_sub((-16384_i32) as u32));
+    let f5: u64 = u64::from((value.pos_z as u32).wrapping_sub((-16384_i32) as u32));
+    let f6: u64 = u64::from(value.yaw);
+    let f7: u64 = u64::from(value.moving);
+    let f8: u64 = u64::from(value.firing);
+    let f9: u64 = value.timestamp;
+    let f10: u64 = u64::from(value.weapon as u32);
+    let mut w0 = (f0 | (f1 << 16)) as u32;
+    stream.serialize_bits(&mut w0, 32)?;
+    let mut w1 = ((f1 >> 16) | (f2 << 16) | (f3 << 28)) as u32;
+    stream.serialize_bits(&mut w1, 32)?;
+    let mut w2 = ((f3 >> 4) | (f4 << 11) | (f5 << 26)) as u32;
+    stream.serialize_bits(&mut w2, 32)?;
+    let mut w3 = ((f5 >> 6) | (f6 << 9) | (f7 << 18) | (f8 << 19) | (f9 << 20)) as u32;
+    stream.serialize_bits(&mut w3, 32)?;
+    let mut w4 = (f9 >> 12) as u32;
+    stream.serialize_bits(&mut w4, 32)?;
+    let mut w5 = ((f9 >> 44) | (f10 << 4)) as u32;
+    stream.serialize_bits(&mut w5, 8)?;
     Ok(())
 }
 
 #[inline]
 pub fn read_bench_mixed(stream: &mut ReadStream<'_>, value: &mut BenchMixed) -> Result {
-    stream.serialize_int(&mut value.sequence, 0, 65535)?;
-    stream.serialize_bits(&mut value.ack_bits, 32)?;
-    stream.serialize_bits(&mut value.entity_id, 12)?;
-    stream.serialize_int(&mut value.pos_x, -16384, 16383)?;
-    stream.serialize_int(&mut value.pos_y, -16384, 16383)?;
-    stream.serialize_int(&mut value.pos_z, -16384, 16383)?;
-    stream.serialize_bits(&mut value.yaw, 9)?;
-    stream.serialize_bool(&mut value.moving)?;
-    stream.serialize_bool(&mut value.firing)?;
-    stream.serialize_bits64(&mut value.timestamp, 48)?;
-    stream.serialize_int(&mut value.weapon, 0, 15)?;
+    let mut c: u32 = 0;
+    stream.serialize_bits(&mut c, 32)?;
+    let c0 = u64::from(c);
+    stream.serialize_bits(&mut c, 32)?;
+    let c1 = u64::from(c);
+    stream.serialize_bits(&mut c, 32)?;
+    let c2 = u64::from(c);
+    stream.serialize_bits(&mut c, 32)?;
+    let c3 = u64::from(c);
+    stream.serialize_bits(&mut c, 32)?;
+    let c4 = u64::from(c);
+    stream.serialize_bits(&mut c, 8)?;
+    let c5 = u64::from(c);
+    let v0: u64 = c0 & 0xffff;
+    value.sequence = v0 as i32;
+    let v1: u64 = ((c0 >> 16) | (c1 << 16)) & 0xffffffff;
+    value.ack_bits = v1 as u32;
+    let v2: u64 = (c1 >> 16) & 0xfff;
+    value.entity_id = v2 as u32;
+    let v3: u64 = ((c1 >> 28) | (c2 << 4)) & 0x7fff;
+    value.pos_x = (v3 as u32).wrapping_add((-16384_i32) as u32) as i32;
+    let v4: u64 = (c2 >> 11) & 0x7fff;
+    value.pos_y = (v4 as u32).wrapping_add((-16384_i32) as u32) as i32;
+    let v5: u64 = ((c2 >> 26) | (c3 << 6)) & 0x7fff;
+    value.pos_z = (v5 as u32).wrapping_add((-16384_i32) as u32) as i32;
+    let v6: u64 = (c3 >> 9) & 0x1ff;
+    value.yaw = v6 as u32;
+    let v7: u64 = (c3 >> 18) & 0x1;
+    value.moving = v7 != 0;
+    let v8: u64 = (c3 >> 19) & 0x1;
+    value.firing = v8 != 0;
+    let v9: u64 = ((c3 >> 20) | (c4 << 12) | (c5 << 44)) & 0xffffffffffff;
+    value.timestamp = v9;
+    let v10: u64 = (c5 >> 4) & 0xf;
+    value.weapon = v10 as i32;
     Ok(())
 }
 

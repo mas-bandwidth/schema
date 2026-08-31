@@ -114,62 +114,128 @@ func (g *gen) emitStructFunctions(st *ir.Struct) {
 	g.pf("    Ok(())\n}\n\n")
 }
 
+// emitWriteItems walks the item list, gathering maximal runs of
+// statically-sized pieces into the flat word codec (flat.go) and emitting
+// everything else — align, arrays, strings, branches, nested calls, the
+// runtime-arithmetic families — one item at a time, per-field.
 func (g *gen) emitWriteItems(items []ir.Item, ind string) {
-	for _, item := range items {
-		switch item := item.(type) {
-		case *ir.FieldItem:
-			g.emitWriteField(item.F, ind)
-		case *ir.ConstItem:
-			g.emitConstItem(item, ind, true)
-		case *ir.ReservedItem:
-			g.emitReservedItem(item, ind, true)
-		case *ir.AlignItem:
-			g.needsStreamTrait = true
-			g.pf("%sstream.serialize_align()?;\n", ind)
-		case *ir.Branch:
-			neg := ""
-			if item.Neg {
-				neg = "!"
-			}
-			g.pf("%sif %svalue.%s {\n", ind, neg, item.Cond)
-			g.emitWriteItems(item.Then, ind+"    ")
-			if item.Else != nil {
-				g.pf("%s} else {\n", ind)
-				g.emitWriteItems(item.Else, ind+"    ")
-			}
-			g.pf("%s}\n", ind)
+	var run flatRun
+	flush := func() {
+		if len(run.pieces) == 0 {
+			return
 		}
+		if run.worthFlattening() {
+			g.emitFlatWriteRun(&run, ind)
+		} else {
+			for _, p := range run.pieces {
+				g.emitWriteItem(p.item, ind)
+			}
+		}
+		run = flatRun{}
+	}
+	for _, item := range items {
+		p, ok := g.flatPieceOf(item)
+		if !ok {
+			flush()
+			g.emitWriteItem(item, ind)
+			continue
+		}
+		if run.bits+p.bits > maxRunBits {
+			flush()
+		}
+		run.pieces = append(run.pieces, p)
+		run.bits += p.bits
+	}
+	flush()
+}
+
+// emitWriteItem is the per-field form: one item, one runtime call family.
+func (g *gen) emitWriteItem(item ir.Item, ind string) {
+	switch item := item.(type) {
+	case *ir.FieldItem:
+		g.emitWriteField(item.F, ind)
+	case *ir.ConstItem:
+		g.emitConstItem(item, ind, true)
+	case *ir.ReservedItem:
+		g.emitReservedItem(item, ind, true)
+	case *ir.AlignItem:
+		g.needsStreamTrait = true
+		g.pf("%sstream.serialize_align()?;\n", ind)
+	case *ir.Branch:
+		neg := ""
+		if item.Neg {
+			neg = "!"
+		}
+		g.pf("%sif %svalue.%s {\n", ind, neg, item.Cond)
+		g.emitWriteItems(item.Then, ind+"    ")
+		if item.Else != nil {
+			g.pf("%s} else {\n", ind)
+			g.emitWriteItems(item.Else, ind+"    ")
+		}
+		g.pf("%s}\n", ind)
 	}
 }
 
+// emitReadItems is emitWriteItems' twin: the same maximal runs take the flat
+// word codec, with one bounds check per 32-bit chunk instead of one per field.
 func (g *gen) emitReadItems(items []ir.Item, ind string) {
-	for _, item := range items {
-		switch item := item.(type) {
-		case *ir.FieldItem:
-			g.emitReadField(item.F, ind)
-		case *ir.ConstItem:
-			g.emitConstItem(item, ind, false)
-		case *ir.ReservedItem:
-			g.emitReservedItem(item, ind, false)
-		case *ir.AlignItem:
-			g.needsStreamTrait = true
-			g.pf("%sstream.serialize_align()?; // rejects nonzero padding (SPEC §4.3)\n", ind)
-		case *ir.Branch:
-			neg := ""
-			if item.Neg {
-				neg = "!"
-			}
-			g.pf("%sif %svalue.%s {\n", ind, neg, item.Cond)
-			g.emitReadItems(item.Then, ind+"    ")
-			// the untaken side reads as zero values (SPEC §5)
-			g.emitZeroItems(item.Else, ind+"    ")
-			g.pf("%s} else {\n", ind)
-			if item.Else != nil {
-				g.emitReadItems(item.Else, ind+"    ")
-			}
-			g.emitZeroItems(item.Then, ind+"    ")
-			g.pf("%s}\n", ind)
+	var run flatRun
+	flush := func() {
+		if len(run.pieces) == 0 {
+			return
 		}
+		if run.worthFlattening() {
+			g.emitFlatReadRun(&run, ind)
+		} else {
+			for _, p := range run.pieces {
+				g.emitReadItem(p.item, ind)
+			}
+		}
+		run = flatRun{}
+	}
+	for _, item := range items {
+		p, ok := g.flatPieceOf(item)
+		if !ok {
+			flush()
+			g.emitReadItem(item, ind)
+			continue
+		}
+		if run.bits+p.bits > maxRunBits {
+			flush()
+		}
+		run.pieces = append(run.pieces, p)
+		run.bits += p.bits
+	}
+	flush()
+}
+
+// emitReadItem is the per-field form: one item, one runtime call family.
+func (g *gen) emitReadItem(item ir.Item, ind string) {
+	switch item := item.(type) {
+	case *ir.FieldItem:
+		g.emitReadField(item.F, ind)
+	case *ir.ConstItem:
+		g.emitConstItem(item, ind, false)
+	case *ir.ReservedItem:
+		g.emitReservedItem(item, ind, false)
+	case *ir.AlignItem:
+		g.needsStreamTrait = true
+		g.pf("%sstream.serialize_align()?; // rejects nonzero padding (SPEC §4.3)\n", ind)
+	case *ir.Branch:
+		neg := ""
+		if item.Neg {
+			neg = "!"
+		}
+		g.pf("%sif %svalue.%s {\n", ind, neg, item.Cond)
+		g.emitReadItems(item.Then, ind+"    ")
+		// the untaken side reads as zero values (SPEC §5)
+		g.emitZeroItems(item.Else, ind+"    ")
+		g.pf("%s} else {\n", ind)
+		if item.Else != nil {
+			g.emitReadItems(item.Else, ind+"    ")
+		}
+		g.emitZeroItems(item.Then, ind+"    ")
+		g.pf("%s}\n", ind)
 	}
 }
 

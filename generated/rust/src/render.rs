@@ -40,47 +40,53 @@ pub const RENDER_SPRITE_MAX_BYTES: usize = 24;
 
 #[inline(always)]
 pub fn write_render_sprite(stream: &mut WriteStream<'_>, value: &RenderSprite) -> Result {
-    {
-        let mut raw_value = value.sort_key;
-        stream.serialize_bits64(&mut raw_value, 64)?;
-    }
-    {
-        let mut raw_value = value.mesh_id;
-        stream.serialize_bits(&mut raw_value, 32)?;
-    }
-    {
-        let mut raw_value = value.material_id;
-        stream.serialize_bits(&mut raw_value, 32)?;
-    }
-    {
-        let mut raw_value = value.layer as u32;
-        stream.serialize_bits(&mut raw_value, 8)?;
-    }
     if value.team.0 > 2 {
         return Err(Error::Stream(serialize::Error::ValueOutOfRange));
     }
-    {
-        let mut offset_value = value.team.0 as u32;
-        stream.serialize_bits(&mut offset_value, 2)?;
-    }
+    let f0: u64 = value.sort_key;
+    let f1: u64 = u64::from(value.mesh_id);
+    let f2: u64 = u64::from(value.material_id);
+    let f3: u64 = u64::from(value.layer);
+    let f4: u64 = u64::from(value.team.0);
+    let mut w0 = f0 as u32;
+    stream.serialize_bits(&mut w0, 32)?;
+    let mut w1 = (f0 >> 32) as u32;
+    stream.serialize_bits(&mut w1, 32)?;
+    let mut w2 = f1 as u32;
+    stream.serialize_bits(&mut w2, 32)?;
+    let mut w3 = f2 as u32;
+    stream.serialize_bits(&mut w3, 32)?;
+    let mut w4 = (f3 | (f4 << 8)) as u32;
+    stream.serialize_bits(&mut w4, 10)?;
     Ok(())
 }
 
 #[inline]
 pub fn read_render_sprite(stream: &mut ReadStream<'_>, value: &mut RenderSprite) -> Result {
-    stream.serialize_bits64(&mut value.sort_key, 64)?;
-    stream.serialize_bits(&mut value.mesh_id, 32)?;
-    stream.serialize_bits(&mut value.material_id, 32)?;
-    {
-        let mut raw_value: u32 = 0;
-        stream.serialize_bits(&mut raw_value, 8)?;
-        value.layer = raw_value as u8;
+    let mut c: u32 = 0;
+    stream.serialize_bits(&mut c, 32)?;
+    let c0 = u64::from(c);
+    stream.serialize_bits(&mut c, 32)?;
+    let c1 = u64::from(c);
+    stream.serialize_bits(&mut c, 32)?;
+    let c2 = u64::from(c);
+    stream.serialize_bits(&mut c, 32)?;
+    let c3 = u64::from(c);
+    stream.serialize_bits(&mut c, 10)?;
+    let c4 = u64::from(c);
+    let v0: u64 = c0 | (c1 << 32);
+    value.sort_key = v0;
+    let v1: u64 = c2 & 0xffffffff;
+    value.mesh_id = v1 as u32;
+    let v2: u64 = c3 & 0xffffffff;
+    value.material_id = v2 as u32;
+    let v3: u64 = c4 & 0xff;
+    value.layer = v3 as u8;
+    let v4: u64 = (c4 >> 8) & 0x3;
+    if v4 > 2 {
+        return Err(Error::Stream(serialize::Error::ValueOutOfRange));
     }
-    {
-        let mut enum_value: i32 = 0;
-        stream.serialize_int(&mut enum_value, 0, 2)?;
-        value.team = Team(enum_value as u8);
-    }
+    value.team = Team(v4 as u8);
     Ok(())
 }
 
@@ -113,14 +119,12 @@ pub const RENDER_BLOCK_MAX_BYTES: usize = 1120;
 
 #[inline(always)]
 pub fn write_render_block(stream: &mut WriteStream<'_>, value: &RenderBlock) -> Result {
-    {
-        let mut raw_value = value.worker_index;
-        stream.serialize_bits(&mut raw_value, 32)?;
-    }
-    {
-        let mut raw_value = value.sprite_count_hint;
-        stream.serialize_bits(&mut raw_value, 32)?;
-    }
+    let f0: u64 = u64::from(value.worker_index);
+    let f1: u64 = u64::from(value.sprite_count_hint);
+    let mut w0 = f0 as u32;
+    stream.serialize_bits(&mut w0, 32)?;
+    let mut w1 = f1 as u32;
+    stream.serialize_bits(&mut w1, 32)?;
     if value.sprites_count < 0 || value.sprites_count > 64 {
         return Err(Error::Stream(serialize::Error::ValueOutOfRange));
     }
@@ -136,8 +140,15 @@ pub fn write_render_block(stream: &mut WriteStream<'_>, value: &RenderBlock) -> 
 
 #[inline]
 pub fn read_render_block(stream: &mut ReadStream<'_>, value: &mut RenderBlock) -> Result {
-    stream.serialize_bits(&mut value.worker_index, 32)?;
-    stream.serialize_bits(&mut value.sprite_count_hint, 32)?;
+    let mut c: u32 = 0;
+    stream.serialize_bits(&mut c, 32)?;
+    let c0 = u64::from(c);
+    stream.serialize_bits(&mut c, 32)?;
+    let c1 = u64::from(c);
+    let v0: u64 = c0 & 0xffffffff;
+    value.worker_index = v0 as u32;
+    let v1: u64 = c1 & 0xffffffff;
+    value.sprite_count_hint = v1 as u32;
     stream.serialize_int(&mut value.sprites_count, 0, RENDER_BLOCK_MAX_SPRITES as i32)?; // the count guards the loop (§6.3)
     for i in 0..value.sprites_count as usize {
         read_render_sprite(stream, &mut value.sprites[i])?;
