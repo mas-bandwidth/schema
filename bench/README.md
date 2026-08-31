@@ -250,6 +250,10 @@ A runner is a standalone program in `bench/<lang>/` that:
    the batch builder exactly);
 4. uses the same discipline: escape barriers (or the language's equivalent,
    e.g. `runtime.KeepAlive` / `std::hint::black_box` / `GC.KeepAlive`),
+   the read-side full-struct sink (BENCH-STANDARD §2.7: every read loop
+   observes every decoded field per iteration — a zero-cost memory barrier
+   or opaque call where the language has one, a per-iteration field fold
+   into the sink where it does not),
    warmup, 7 measured runs, median + min/max + spread;
 5. emits CSV v2 rows on stdout (given `--csv`) in the format above with its
    own `lang` value and its recorded `linkage`/`checks`/`opt` constants,

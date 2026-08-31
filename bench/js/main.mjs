@@ -176,6 +176,11 @@ function flushCsv() {
     return;
   }
   const id = corpusId();
+  // the CSV v2 header (§5.1), as every other runner emits — its absence
+  // under --only js was the #175 cosmetic
+  process.stdout.write(
+    "lang,bench,path,iters,bytes_per_op,runs,median_msgs_per_sec,min_msgs_per_sec," +
+    "max_msgs_per_sec,median_mb_per_sec,spread_pct,corpus_id,family,linkage,checks,opt,inline\n");
   for (const r of gCsvRows) {
     // the §5.1 codec column is appended only on rows that carry one (the
     // generated-tier rows: flat is THE js path, runtime is supplementary)
