@@ -24,6 +24,7 @@ import (
 	"bytes"
 	"fmt"
 	"os"
+	"path/filepath"
 	"runtime"
 	"sort"
 	"strconv"
@@ -64,6 +65,7 @@ var gVariants [NumVariants][VariantStride]byte
 var gSink uint64 // defeats dead code elimination of computed values
 var gCsv = false
 var gWireDir = "../../testdata/wire"
+var gVariantDir = "../../bench/corpus/variants"
 var failed = false
 
 // ---- CSV v2 (BENCH-STANDARD.md §5.1) ----
@@ -328,6 +330,209 @@ func benchMessage[T any](name, golden string, iters int64, pinned T,
 	readAllocs := after.Mallocs - before.Mallocs
 	fmt.Fprintf(os.Stderr, "alloc note: %s one pass (%d ops/path): write %d allocs, read %d allocs\n",
 		name, allocOps, writeAllocs, readAllocs)
+}
+
+// ------------------------------------------------------------------------------------------
+// the DATA-DRIVEN benchmark driver (issue #191)
+// ------------------------------------------------------------------------------------------
+//
+// THE PROPERTY: nothing below names a field of the shape it measures. Shape
+// knowledge lives in the committed variant DATA (bench/corpus/variants,
+// emitted by bench/tools/variantgen) and in the generated codec, and nowhere
+// else — so this driver cannot drift from another language's driver in what
+// it measures, which is the whole reason the design exists. If a change here
+// ever needs a field name, the design has failed and that is the finding.
+//
+// It replaces benchMessage for bench_mixed only. benchMessage still drives
+// every shape whose harness code is not yet data-driven.
+
+// loadVariants loads <variant-dir>/<name>.variants.bin into the NumVariants
+// §2.7-staggered slots and returns the record size, or -1. The records are
+// fixed-width by construction (§2.7 pins every structure field), so the file
+// needs no index: the record size IS file size / NumVariants, and a file that
+// does not divide evenly is a refusal.
+func loadVariants(name string) int64 {
+	path := gVariantDir + "/" + name + ".variants.bin"
+	packed, err := os.ReadFile(path)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "missing variant data %s — run `make bench-variants`, and run the bench from bench/go (or pass --variant-dir)\n", path)
+		return -1
+	}
+	if len(packed) == 0 || len(packed)%NumVariants != 0 {
+		fmt.Fprintf(os.Stderr, "variant data %s is %d bytes, not a multiple of %d records — refusing to bench data whose stride is not the record size\n",
+			path, len(packed), NumVariants)
+		return -1
+	}
+	record := len(packed) / NumVariants
+	if record > BufferSize {
+		fmt.Fprintf(os.Stderr, "variant data %s has %d-byte records, over the %d-byte buffer\n", path, record, BufferSize)
+		return -1
+	}
+	for k := 0; k < NumVariants; k++ {
+		copy(gVariants[k][:], packed[k*record:(k+1)*record])
+	}
+	// The variant data is corpus (§1.6): it defines the work inside the timed
+	// loops, so it rides in corpus_id exactly as the wire goldens do. A run
+	// against drifted variant data reports a different id and the tools refuse
+	// the ratio, instead of publishing a number for different work.
+	gGoldensLoaded[filepath.Base(path)] = packed
+	return int64(record)
+}
+
+// T — the generated message type — is named explicitly at the call site, as
+// in the C++ reference. A TYPE name is not a field name; the driver still
+// knows nothing about the shape's contents.
+func benchDataDriven[T any](name, golden string, iters int64,
+	writeFn func(*serialize.WriteStream, *T) error,
+	readFn func(*serialize.ReadStream, *T) error) {
+
+	bytesPerOp := loadVariants(name)
+	if bytesPerOp < 0 {
+		failed = true
+		return
+	}
+
+	// gate 1 (§1.5): variant 0 IS the pinned instance, so the whole variant
+	// file is bound to the wire golden by one byte-compare.
+	if !checkGolden(golden, gVariants[0][:bytesPerOp]) {
+		failed = true
+		return
+	}
+
+	// gate 2: every variant decodes, re-encodes, and comes back byte-identical
+	// at the same length. This is stronger than the pinned-instance-only gate
+	// benchMessage applies — §1.5's named residual (the 64 varied buffers
+	// length-checked but never value-checked) closes here, for every variant.
+	instances := make([]T, NumVariants)
+	for k := 0; k < NumVariants; k++ {
+		rs := serialize.NewReadStream(gVariants[k][:bytesPerOp])
+		if err := readFn(rs, &instances[k]); err != nil {
+			fail(name, "decode of a variant failed")
+			return
+		}
+		ws := serialize.NewWriteStream(gTwin[:])
+		if err := writeFn(ws, &instances[k]); err != nil {
+			fail(name, "re-encode of a decoded variant failed")
+			return
+		}
+		ws.Flush()
+		if int64(ws.BytesProcessed()) != bytesPerOp ||
+			!bytes.Equal(gTwin[:bytesPerOp], gVariants[k][:bytesPerOp]) {
+			fail(name, "variant round-trip bytes differ — refusing to bench a codec that does not reproduce the corpus")
+			return
+		}
+	}
+
+	writeRates := make([]float64, gNumRuns)
+	roundtripRates := make([]float64, gNumRuns)
+
+	// WRITE: encode the 64 pre-decoded instances round-robin. Rotating the
+	// instances is what §2.7's per-iteration LCG mutation bought — the encoder
+	// never sees the same input twice in a row and cannot precompute scratch
+	// words — with none of the per-language mutation code, and with bytes/op
+	// constant by construction rather than by assertion. The sink is the byte
+	// fold: every iteration's result is a value the loop cannot drop. The
+	// stream is reused via Reset, the runtime's documented no-allocation path.
+	ws := serialize.NewWriteStream(gBuffer[:])
+	for run := -1; run < gNumRuns; run++ {
+		start := time.Now()
+		for i := int64(0); i < iters; i++ {
+			ws.Reset(gBuffer[:])
+			if err := writeFn(ws, &instances[i&(NumVariants-1)]); err != nil {
+				fail(name, "write failed in loop")
+				return
+			}
+			ws.Flush()
+			gSink = gSink + uint64(ws.BytesProcessed())
+		}
+		elapsed := time.Since(start).Seconds()
+		if run >= 0 {
+			writeRates[run] = float64(iters) / elapsed
+		}
+	}
+	runtime.KeepAlive(gBuffer[:])
+
+	// ROUND-TRIP: decode a variant buffer, then re-encode what came out. The
+	// decode needs no sink discipline of its own — its output IS the encode's
+	// input, so every decoded field is observed by construction, in every
+	// language, with no per-language fold to audit (§2.7's read-side sink
+	// problem dissolved rather than equalized). The decode target is hoisted
+	// and reused, as everywhere else.
+	var out T
+	rs := serialize.NewReadStream(gVariants[0][:bytesPerOp])
+	for run := -1; run < gNumRuns; run++ {
+		start := time.Now()
+		for i := int64(0); i < iters; i++ {
+			rs.Reset(gVariants[i&(NumVariants-1)][:bytesPerOp])
+			if err := readFn(rs, &out); err != nil {
+				fail(name, "read failed in loop")
+				return
+			}
+			ws.Reset(gBuffer[:])
+			if err := writeFn(ws, &out); err != nil {
+				fail(name, "re-write failed in loop")
+				return
+			}
+			ws.Flush()
+			gSink = gSink + uint64(ws.BytesProcessed())
+		}
+		elapsed := time.Since(start).Seconds()
+		if run >= 0 {
+			roundtripRates[run] = float64(iters) / elapsed
+		}
+	}
+	runtime.KeepAlive(gBuffer[:])
+
+	w := stats(writeRates)
+	rt := stats(roundtripRates)
+	report(name, "write", iters, bytesPerOp, w, "gen")
+	report(name, "round_trip", iters, bytesPerOp, rt, "gen")
+
+	// READ is DERIVED, never measured: round-trip time minus write time. It
+	// prints for continuity with the read rows the rest of the corpus still
+	// reports and is NOT a CSV row — a derived number in the CSV would be
+	// divided as if it had been measured.
+	readTime := 1.0/rt.median - 1.0/w.median
+	if readTime > 0 {
+		fmt.Fprintf(os.Stderr, "%-18s %-5s %10.2f M msg/s   (DERIVED: round-trip minus write, informational — not a measured row)\n",
+			name, "read", 1e-6/readTime)
+	}
+
+	// alloc note (proof of the reuse discipline, not a benchmark): allocs
+	// during one extra untimed pass of each path — must be 0
+	const allocOps = 4 * NumVariants
+	var before, after runtime.MemStats
+	runtime.ReadMemStats(&before)
+	for i := int64(0); i < allocOps; i++ {
+		ws.Reset(gBuffer[:])
+		if err := writeFn(ws, &instances[i&(NumVariants-1)]); err != nil {
+			fail(name, "write failed in alloc pass")
+			return
+		}
+		ws.Flush()
+		gSink = gSink + uint64(ws.BytesProcessed())
+	}
+	runtime.ReadMemStats(&after)
+	writeAllocs := after.Mallocs - before.Mallocs
+	runtime.ReadMemStats(&before)
+	for i := int64(0); i < allocOps; i++ {
+		rs.Reset(gVariants[i&(NumVariants-1)][:bytesPerOp])
+		if err := readFn(rs, &out); err != nil {
+			fail(name, "read failed in alloc pass")
+			return
+		}
+		ws.Reset(gBuffer[:])
+		if err := writeFn(ws, &out); err != nil {
+			fail(name, "re-write failed in alloc pass")
+			return
+		}
+		ws.Flush()
+		gSink = gSink + uint64(ws.BytesProcessed())
+	}
+	runtime.ReadMemStats(&after)
+	roundtripAllocs := after.Mallocs - before.Mallocs
+	fmt.Fprintf(os.Stderr, "alloc note: %s one pass (%d ops/path): write %d allocs, round_trip %d allocs\n",
+		name, allocOps, writeAllocs, roundtripAllocs)
 }
 
 // ------------------------------------------------------------------------------------------
@@ -689,68 +894,6 @@ func pinGenBits() bench.BenchBits {
 	return in
 }
 
-// BenchMixed — THE canonical benchmark shape (issue #184). The pin is
-// test/bench/main.cpp's, transcribed exactly; STRUCTURE fields (the two array
-// counts, the two used lengths, the union tag, the `if` gate) are set here and
-// never touched by vary*, so bytes/op is constant (§2.7).
-func pinGenMixed() bench.BenchMixed {
-	var in bench.BenchMixed
-	in.Sequence = 52428
-	in.AckSequence = 12345
-	in.AckBits = 0xA5A5A5A5
-	in.SessionId = 0x123456789ABCDEF0
-	in.ClientId = 0xDEADBEEF
-	in.Nonce = 0xFEDCBA9876543210
-	in.WorldTime = -987654321000
-	in.FrameTick = 0x123456789ABC
-	in.ServerTime = 12345678
-	in.EntitiesCount = 8
-	for i := 0; i < 8; i++ {
-		e := &in.Entities[i]
-		e.EntityId = uint32(2049 + i*17)
-		e.PosX = int32(-16383 + i*4096)
-		e.PosY = int32(16383 - i*4096)
-		e.PosZ = int32(-1 + i*2048)
-		e.Yaw = uint32(511 - i*64)
-		e.Pitch = uint32(i * 73)
-		e.VelX = int32(-2048 + i*512)
-		e.VelY = int32(2047 - i*512)
-		e.VelZ = int32(-1024 + i*256)
-		e.Health = int32(1000 - i*100)
-		e.Weapon = bench.MixedWeapon(1 + i)
-		e.Damage = bench.MixedDamage(0x5A + i)
-		e.Moving = i%2 == 0
-		e.Firing = i%3 == 0
-	}
-	in.StatsCount = 80
-	for i := 0; i < 80; i++ {
-		in.Stats[i].StatId = uint32((i * 3) % 256)
-		in.Stats[i].Delta = int32(-512 + (i*13)%1024)
-	}
-	in.GameEvent.Type = bench.MixedEventTypeHit
-	in.GameEvent.Hit.TargetId = 4095
-	in.GameEvent.Hit.Damage = 4095
-	in.GameEvent.Hit.HitKind = 7
-	in.GameEvent.Hit.Crit = true
-	copy(in.Loadout[:], []byte{0x11, 0x22, 0x33, 0x44})
-	copy(in.PlayerName[:], "Rowan_01")
-	in.PlayerNameLength = 8
-	copy(in.Payload[:], []byte{0xDE, 0xAD, 0xBE, 0xEF, 0x01, 0x02, 0x03, 0x04})
-	in.PayloadLength = 8
-	in.AimX = 0.5
-	in.AimY = -0.25
-	in.AimZ = 0.75
-	in.Recoil = 1.5
-	in.Drift = -3.25
-	in.WideKey = serialize.Uint128{Lo: 0xFEDCBA9876543210, Hi: 0x0123456789ABCDEF}
-	in.Flux = serialize.Int128{Lo: 7, Hi: 0x800000000} // 2^99 + 7
-	in.Ping = 12345
-	in.CrcHint = 0xABCDEF
-	in.HasExtra = true
-	in.Extra = 200
-	return in
-}
-
 func varyGenPacket(p *bench.BenchPacket, rng uint64) {
 	p.A = int32((rng>>8)&63) - 32
 	p.B = int32(uint32(rng>>16) & 65535)
@@ -788,52 +931,6 @@ func varyGenBits(f *bench.BenchBits, rng uint64) {
 	f.B48 = rng & 0xFFFFFFFFFFFF
 }
 
-// The LCG field mapping for BenchMixed, identical in every runner. VALUE
-// fields only: every count, used length, union tag and branch gate is
-// STRUCTURE (§2.7). All 8 entities vary; the 80 stats vary Delta (StatId
-// stays pinned) — the family convention of varying a representative subset.
-func varyGenMixed(f *bench.BenchMixed, rng uint64) {
-	f.Sequence = uint32(rng>>8) & 65535
-	f.AckSequence = int32(uint32(rng>>24) & 65535)
-	f.AckBits = uint32(rng >> 16)
-	f.SessionId = rng
-	f.ClientId = uint32(rng >> 32)
-	f.Nonce = rng ^ 0xA5A5A5A5A5A5A5A5
-	f.WorldTime = int64((rng>>12)&0xFFFFFFFFF) - 34359738368
-	f.FrameTick = rng & 0xFFFFFFFFFFFF
-	f.ServerTime = int32((rng >> 20) & 0x7FFFFF)
-	for i := 0; i < 8; i++ {
-		e := &f.Entities[i]
-		e.EntityId = uint32((rng >> uint(i)) & 4095)
-		e.PosX = int32((rng>>uint(i+4))&16383) - 8192
-		e.PosY = int32((rng>>uint(i+12))&16383) - 8192
-		e.Health = int32((rng >> uint(i+20)) & 511)
-		e.Weapon = bench.MixedWeapon((rng >> uint(i+40)) & 15)
-		e.Damage = bench.MixedDamage((rng >> uint(i+28)) & 255)
-		e.Moving = (rng>>uint(i))&1 != 0
-	}
-	for i := 0; i < 80; i++ {
-		f.Stats[i].Delta = int32((rng>>uint(i&31))&1023) - 512
-	}
-	f.GameEvent.Hit.TargetId = uint32((rng >> 6) & 4095)
-	f.GameEvent.Hit.Damage = int32((rng >> 18) & 4095)
-	f.GameEvent.Hit.HitKind = int32((rng >> 30) & 7)
-	f.GameEvent.Hit.Crit = rng&4 != 0
-	f.Loadout[0] = uint8(rng >> 56)
-	f.PlayerName[7] = byte(65 + ((rng >> 50) & 15))
-	f.Payload[0] = uint8(rng >> 48)
-	f.AimX = float32(uint32(rng>>2)&255)*(1.0/256.0) - 0.5
-	f.AimY = float32(uint32(rng>>10)&255)*(1.0/256.0) - 0.5
-	f.AimZ = float32(uint32(rng>>18)&255)*(1.0/256.0) - 0.5
-	f.Recoil = float32(uint32(rng) & 0xFFFF)
-	f.Drift = float64(int64((rng>>8)&0xFFFFFF)) * 0.5
-	f.WideKey = serialize.Uint128{Lo: rng, Hi: rng >> 1}
-	f.Flux = serialize.Int128From64(int64(rng >> 16))
-	f.Ping = uint16((rng >> 40) & 0x7FFF)
-	f.CrcHint = uint32((rng >> 24) & 0xFFFFFF)
-	f.Extra = int32((rng >> 52) & 255)
-}
-
 // ------------------------------------------------------------------------------------------
 
 func main() {
@@ -845,6 +942,9 @@ func main() {
 		case args[i] == "--wire-dir" && i+1 < len(args):
 			i++
 			gWireDir = args[i]
+		case args[i] == "--variant-dir" && i+1 < len(args):
+			i++
+			gVariantDir = args[i]
 		case args[i] == "--round" && i+1 < len(args):
 			// §2.4: one warmup + one measured run of every benchmark, then
 			// exit. K only identifies the round to the interleaved driver,
@@ -858,7 +958,7 @@ func main() {
 		case args[i] == "--quick":
 			gQuick = true
 		default:
-			fmt.Fprintf(os.Stderr, "usage: %s [--csv] [--round K] [--quick] [--wire-dir <dir>]\n", os.Args[0])
+			fmt.Fprintf(os.Stderr, "usage: %s [--csv] [--round K] [--quick] [--wire-dir <dir>] [--variant-dir <dir>]\n", os.Args[0])
 			os.Exit(1)
 		}
 	}
@@ -873,7 +973,7 @@ func main() {
 		// The gen row is the schema subject (the blended table's row); the
 		// rt row rides beside it as the hand-written-usage subject.
 		fmt.Fprintf(os.Stderr, "schema bench (go, --quick: iteration instrument, not certification)\n")
-		benchMessage("bench_mixed", "bench_mixed", 4000000, pinGenMixed(), bench.WriteBenchMixed, bench.ReadBenchMixed, varyGenMixed)
+		benchDataDriven[bench.BenchMixed]("bench_mixed", "bench_mixed", 4000000, bench.WriteBenchMixed, bench.ReadBenchMixed)
 		benchRt("bench_mixed", 4000000, pinRtMixed(), rtOnceWriteMixed, rtOnceReadMixed, rtBenchMixedWriteLoop, rtBenchMixedReadLoop, varyRtMixed)
 		flushCsv()
 		if failed {
@@ -915,7 +1015,7 @@ func main() {
 	benchMessage("bench_packet", "bench_packet", 32000000, pinGenPacket(), bench.WriteBenchPacket, bench.ReadBenchPacket, varyGenPacket)
 	benchMessage("bench_ints", "bench_ints", 40000000, pinGenInts(), bench.WriteBenchInts, bench.ReadBenchInts, varyGenInts)
 	benchMessage("bench_bits", "bench_bits", 48000000, pinGenBits(), bench.WriteBenchBits, bench.ReadBenchBits, varyGenBits)
-	benchMessage("bench_mixed", "bench_mixed", 4000000, pinGenMixed(), bench.WriteBenchMixed, bench.ReadBenchMixed, varyGenMixed)
+	benchDataDriven[bench.BenchMixed]("bench_mixed", "bench_mixed", 4000000, bench.WriteBenchMixed, bench.ReadBenchMixed)
 
 	// family rt (§1.3/§1.5): the runtime API by hand, oracle-gated against
 	// the goldens the generated code pinned. Iteration counts are fixed and
