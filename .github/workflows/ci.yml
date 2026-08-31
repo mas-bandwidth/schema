@@ -364,7 +364,10 @@ jobs:
           if [ "$changed" = "bench/LOCK" ]; then
             echo "diff touches only bench/LOCK — the lift act, allowed"; exit 0
           fi
-          prefixes="$(grep -v '^#' bench/LOCK | grep -v '^[[:space:]]*$')"
+          prefixes="$(grep -v '^#' bench/LOCK | grep -v '^[[:space:]]*$' || true)"
+          if [ -z "$prefixes" ]; then
+            echo "bench/LOCK carries no active prefixes (a carve window) — guard inactive"; exit 0
+          fi
           violations=""
           while IFS= read -r f; do
             while IFS= read -r p; do
