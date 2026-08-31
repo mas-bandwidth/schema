@@ -94,32 +94,40 @@ func (g *gen) emitStructFunctions(st *ir.Struct) {
 // emitWriteItems gathers maximal runs of statically-sized pieces and hands
 // each to the flat word codec; everything else keeps the per-field form and
 // breaks the run (see flat.go).
+//
+// The run accumulates whole ITEMS as groups and splits only on item
+// boundaries: a run that turns out not to be worth flattening re-emits its
+// items in the per-field form, and only an item knows the base expression its
+// per-field emitter must name (see flatGroup).
 func (g *gen) emitWriteItems(items []ir.Item, ind string) {
-	run := &flatRun{}
+	seq := &flatSeq{}
 	flush := func() {
-		if run.worthFlattening() {
+		if seq.run().worthFlattening() {
 			// its own block: every run names its locals f0.., w0.., and two
 			// runs in one function would otherwise collide
 			g.pf("%s{\n", ind)
-			g.emitFlatWriteRun(run, ind+"\t")
+			g.emitFlatWriteRun(seq.run(), ind+"\t")
 			g.pf("%s}\n", ind)
 		} else {
-			for _, p := range run.pieces {
-				g.emitWriteItemDirect(p.item, ind)
+			for _, grp := range seq.groups {
+				g.emitWriteItemDirect(grp.item, ind)
 			}
 		}
-		run = &flatRun{}
+		seq = &flatSeq{}
 	}
 	for _, item := range items {
 		if ps, ok := g.flatPiecesOf(item, "value."); ok {
+			bits := int64(0)
 			for _, p := range ps {
-				if run.bits+p.bits > maxRunBits {
-					flush()
-				}
-				run.pieces = append(run.pieces, p)
-				run.bits += p.bits
+				bits += p.bits
 			}
-			continue
+			if seq.bits+bits > maxRunBits {
+				flush()
+			}
+			if bits <= maxRunBits {
+				seq.add(item, ps)
+				continue
+			}
 		}
 		flush()
 		g.emitWriteItemDirect(item, ind)
@@ -154,29 +162,32 @@ func (g *gen) emitWriteItemDirect(item ir.Item, ind string) {
 
 // emitReadItems is the read twin of emitWriteItems.
 func (g *gen) emitReadItems(items []ir.Item, ind string) {
-	run := &flatRun{}
+	seq := &flatSeq{}
 	flush := func() {
-		if run.worthFlattening() {
+		if seq.run().worthFlattening() {
 			g.pf("%s{\n", ind)
-			g.emitFlatReadRun(run, ind+"\t")
+			g.emitFlatReadRun(seq.run(), ind+"\t")
 			g.pf("%s}\n", ind)
 		} else {
-			for _, p := range run.pieces {
-				g.emitReadItemDirect(p.item, ind)
+			for _, grp := range seq.groups {
+				g.emitReadItemDirect(grp.item, ind)
 			}
 		}
-		run = &flatRun{}
+		seq = &flatSeq{}
 	}
 	for _, item := range items {
 		if ps, ok := g.flatPiecesOf(item, "value."); ok {
+			bits := int64(0)
 			for _, p := range ps {
-				if run.bits+p.bits > maxRunBits {
-					flush()
-				}
-				run.pieces = append(run.pieces, p)
-				run.bits += p.bits
+				bits += p.bits
 			}
-			continue
+			if seq.bits+bits > maxRunBits {
+				flush()
+			}
+			if bits <= maxRunBits {
+				seq.add(item, ps)
+				continue
+			}
 		}
 		flush()
 		g.emitReadItemDirect(item, ind)

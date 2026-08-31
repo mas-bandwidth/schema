@@ -90,9 +90,15 @@ const maxRunBits = 384
 const chunkBits = 64
 
 // flatPiece is one statically-sized contribution to a flat run: a scalar
-// field, a const item or a reserved item.
+// field, one element of an unrolled fixed array, a nested struct's field, a
+// const item or a reserved item.
+//
+// A piece deliberately does NOT carry the ir.Item it came from. A piece is a
+// bit-placement recipe closed over an expression that may name a nested
+// struct's field, or one element of an array — expressions no item-level
+// emitter can reproduce. Items are held one level up, by flatGroup, which is
+// the only unit a fallback may re-emit.
 type flatPiece struct {
-	item ir.Item
 	bits int64 // wire width; 0 for a degenerate range, which rides no bits
 
 	// guard emits the write-side range refusal and any typed temp the value
@@ -109,11 +115,54 @@ type flatPiece struct {
 	read func(ind, src string)
 }
 
-// flatRun accumulates consecutive flat pieces and the items they came from,
-// so a run too short to be worth flattening can fall back item by item.
+// flatRun accumulates consecutive flat pieces: the packing unit the chunk
+// arithmetic works over.
 type flatRun struct {
 	pieces []flatPiece
 	bits   int64
+}
+
+// flatGroup is one whole ITEM's contribution to a run — the pieces it
+// classified into, kept beside the item itself.
+//
+// The group is the invariant that makes a run's fallback safe. PR #183's Rust
+// template mapped one item to exactly one piece, so re-emitting a run's pieces
+// WAS re-emitting its items. This emitter's levers made classification 1:N —
+// an unrolled fixed array contributes one piece per element, and a flattened
+// nested struct contributes pieces that name ITS fields against a different
+// base expression. Falling back over pieces therefore emitted an array's loop
+// once per element and named a nested field on the outer type. Falling back
+// over GROUPS re-emits each item exactly once, against the base the item
+// itself owns, which is the property #183 had by construction.
+type flatGroup struct {
+	item   ir.Item
+	pieces []flatPiece
+	bits   int64
+}
+
+// flatSeq accumulates groups across a struct body, so a run splits only on
+// item boundaries and can always fall back to whole items.
+type flatSeq struct {
+	groups []flatGroup
+	bits   int64
+}
+
+func (s *flatSeq) add(item ir.Item, pieces []flatPiece) {
+	g := flatGroup{item: item, pieces: pieces}
+	for _, p := range pieces {
+		g.bits += p.bits
+	}
+	s.groups = append(s.groups, g)
+	s.bits += g.bits
+}
+
+// run flattens the accumulated groups into the packing unit.
+func (s *flatSeq) run() *flatRun {
+	r := &flatRun{bits: s.bits}
+	for _, g := range s.groups {
+		r.pieces = append(r.pieces, g.pieces...)
+	}
+	return r
 }
 
 // worthFlattening is the policy: flatten only where it REDUCES the number of
@@ -322,11 +371,11 @@ func (g *gen) flatPiecesOf(item ir.Item, base string) ([]flatPiece, bool) {
 	if f.Array == ir.ArrayFixed && !g.bulkBytes[f] {
 		// a fixed bound: the element offsets are
 		// generation-time constants like any other field's
-		elem, ok := g.flatFieldPiece(item, f, base)
+		elem, ok := g.flatFieldPiece(f, base)
 		if ok && elem.bits > 0 && f.ArrayBound*elem.bits <= maxUnrollBits {
 			out := make([]flatPiece, 0, f.ArrayBound)
 			for k := int64(0); k < f.ArrayBound; k++ {
-				p, ok := g.flatArrayElemPiece(item, f, fmt.Sprintf("%s[%d]", name, k))
+				p, ok := g.flatArrayElemPiece(f, fmt.Sprintf("%s[%d]", name, k))
 				if !ok {
 					return nil, false
 				}
@@ -504,7 +553,7 @@ func (g *gen) flatPieceOf(item ir.Item, base string) (flatPiece, bool) {
 		if it.F.Array != ir.ArrayNone {
 			return flatPiece{}, false
 		}
-		return g.flatFieldPiece(item, it.F, base)
+		return g.flatFieldPiece(it.F, base)
 	}
 	return flatPiece{}, false
 }
@@ -522,7 +571,6 @@ func (g *gen) constEmit(expr string, bits int64, note string) func(string, int) 
 func (g *gen) flatConstPiece(it *ir.ConstItem) flatPiece {
 	v := it.Value.String()
 	return flatPiece{
-		item:  it,
 		bits:  it.Bits,
 		guard: noGuard,
 		emit: g.constEmit("uint64("+v+")", it.Bits,
@@ -536,7 +584,6 @@ func (g *gen) flatConstPiece(it *ir.ConstItem) flatPiece {
 
 func (g *gen) flatReservedPiece(it *ir.ReservedItem) flatPiece {
 	return flatPiece{
-		item:  it,
 		bits:  it.Bits,
 		guard: noGuard,
 		emit:  g.constEmit("uint64(0)", it.Bits, fmt.Sprintf(" // reserved(%d) — zeros on the wire", it.Bits)),
@@ -552,19 +599,19 @@ func (g *gen) flatReservedPiece(it *ir.ReservedItem) flatPiece {
 // lives in the runtime.
 // flatArrayElemPiece classifies one element of an unrolled fixed array: the
 // same scalar classification, against the element's own expression.
-func (g *gen) flatArrayElemPiece(item ir.Item, f *ir.Field, name string) (flatPiece, bool) {
-	return g.flatScalarPiece(item, f, name)
+func (g *gen) flatArrayElemPiece(f *ir.Field, name string) (flatPiece, bool) {
+	return g.flatScalarPiece(f, name)
 }
 
-func (g *gen) flatFieldPiece(item ir.Item, f *ir.Field, base string) (flatPiece, bool) {
-	return g.flatScalarPiece(item, f, base+ir.GoExportName(f.Name))
+func (g *gen) flatFieldPiece(f *ir.Field, base string) (flatPiece, bool) {
+	return g.flatScalarPiece(f, base+ir.GoExportName(f.Name))
 }
 
-func (g *gen) flatScalarPiece(item ir.Item, f *ir.Field, name string) (flatPiece, bool) {
+func (g *gen) flatScalarPiece(f *ir.Field, name string) (flatPiece, bool) {
 	switch f.Type.Kind {
 	case ir.TBool:
 		return flatPiece{
-			item: item, bits: 1, guard: noGuard,
+			bits: 1, guard: noGuard,
 			emit: func(ind string, idx int) {
 				g.pf("%sf%d := uint64(0)\n", ind, idx)
 				g.pf("%sif %s {\n%s\tf%d = 1\n%s}\n", ind, name, ind, idx, ind)
@@ -578,7 +625,7 @@ func (g *gen) flatScalarPiece(item ir.Item, f *ir.Field, name string) (flatPiece
 		w := int64(f.Type.Width)
 		storage := g.goFieldType(f.Type)
 		return flatPiece{
-			item: item, bits: w, guard: noGuard,
+			bits: w, guard: noGuard,
 			emit: g.constEmit("uint64("+name+")", w, ""),
 			read: func(ind, src string) {
 				if storage == "uint64" {
@@ -589,25 +636,41 @@ func (g *gen) flatScalarPiece(item ir.Item, f *ir.Field, name string) (flatPiece
 			},
 		}, true
 
+	// The float cases are the only classification that reaches the math
+	// package, and they set needsMath from inside their emit/read closures —
+	// at EMISSION, never here. Classification is speculative: flatGroupSize,
+	// flatStructRun and the run accumulators all classify runs that may never
+	// be emitted, and a run that falls back to the per-field form calls
+	// serialize's own float entry points and imports no math. Setting the flag
+	// at classification left an unused "math" import on every file whose float
+	// runs all fell back — a bare Vec2 did not compile.
 	case ir.TFloat32:
 		if f.HasFloatRange {
-			return g.flatCompressedPiece(item, f, name)
+			return g.flatCompressedPiece(f, name)
 		}
-		g.needsMath = true
+		emit := g.constEmit("uint64(math.Float32bits("+name+"))", 32, "")
 		return flatPiece{
-			item: item, bits: 32, guard: noGuard,
-			emit: g.constEmit("uint64(math.Float32bits("+name+"))", 32, ""),
+			bits: 32, guard: noGuard,
+			emit: func(ind string, idx int) {
+				g.needsMath = true
+				emit(ind, idx)
+			},
 			read: func(ind, src string) {
+				g.needsMath = true
 				g.pf("%s%s = math.Float32frombits(uint32(%s))\n", ind, name, src)
 			},
 		}, true
 
 	case ir.TFloat64:
-		g.needsMath = true
+		emit := g.constEmit("math.Float64bits("+name+")", 64, "")
 		return flatPiece{
-			item: item, bits: 64, guard: noGuard,
-			emit: g.constEmit("math.Float64bits("+name+")", 64, ""),
+			bits: 64, guard: noGuard,
+			emit: func(ind string, idx int) {
+				g.needsMath = true
+				emit(ind, idx)
+			},
 			read: func(ind, src string) {
+				g.needsMath = true
 				g.pf("%s%s = math.Float64frombits(%s)\n", ind, name, src)
 			},
 		}, true
@@ -619,7 +682,7 @@ func (g *gen) flatScalarPiece(item ir.Item, f *ir.Field, name string) (flatPiece
 			typeName := f.Type.Name
 			max := ref.Max
 			return flatPiece{
-				item: item, bits: bits,
+				bits: bits,
 				guard: func(ind string, idx int) {
 					g.pf("%senumValue%d := int32(%s)\n", ind, idx, name)
 					g.pf("%sif enumValue%d < 0 || enumValue%d > %d {\n", ind, idx, idx, max)
@@ -643,7 +706,7 @@ func (g *gen) flatScalarPiece(item ir.Item, f *ir.Field, name string) (flatPiece
 			wire := int64(ref.WireBits)
 			typeName := f.Type.Name
 			return flatPiece{
-				item: item, bits: wire,
+				bits: wire,
 				guard: func(ind string, idx int) {
 					if ref.WireBits >= 64 {
 						return
@@ -660,7 +723,7 @@ func (g *gen) flatScalarPiece(item ir.Item, f *ir.Field, name string) (flatPiece
 		return flatPiece{}, false // nested struct or union: its own call
 
 	case ir.TInt:
-		return g.flatIntPiece(item, f, name)
+		return g.flatIntPiece(f, name)
 	}
 	return flatPiece{}, false
 }
@@ -669,12 +732,12 @@ func (g *gen) flatScalarPiece(item ir.Item, f *ir.Field, name string) (flatPiece
 // arithmetic is emitWriteCompressedFold's and emitReadCompressedFold's,
 // statement for statement — including the float32() conversions that force the
 // intermediate rounding, which are load bearing on arm64 (see those functions).
-func (g *gen) flatCompressedPiece(item ir.Item, f *ir.Field, name string) (flatPiece, bool) {
+func (g *gen) flatCompressedPiece(f *ir.Field, name string) (flatPiece, bool) {
 	steps, bits := ir.CompressedFloatParams(f.FMin, f.FMax, f.Resolution)
 	min32 := float32(f.FMin)
 	delta := float32(f.FMax) - min32
 	return flatPiece{
-		item: item, bits: bits, guard: noGuard,
+		bits: bits, guard: noGuard,
 		emit: func(ind string, idx int) {
 			g.pf("%sf%d := uint64(0)\n", ind, idx)
 			g.pf("%s{\n", ind)
@@ -707,7 +770,7 @@ func (g *gen) flatCompressedPiece(item ir.Item, f *ir.Field, name string) (flatP
 // flatIntPiece classifies an integer field across the wire paths the per-field
 // form uses, so the folded offsets and the refusals are the same arithmetic in
 // the same order.
-func (g *gen) flatIntPiece(item ir.Item, f *ir.Field, name string) (flatPiece, bool) {
+func (g *gen) flatIntPiece(f *ir.Field, name string) (flatPiece, bool) {
 	if f.Type.Width == 128 {
 		return flatPiece{}, false // the 128-bit family stays on the runtime path
 	}
@@ -731,7 +794,7 @@ func (g *gen) flatIntPiece(item ir.Item, f *ir.Field, name string) (flatPiece, b
 		}
 		signed, width := f.Type.Signed, f.Type.Width
 		return flatPiece{
-			item: item, bits: w, guard: noGuard,
+			bits: w, guard: noGuard,
 			emit: g.constEmit(value, w, ""),
 			read: func(ind, src string) {
 				switch {
@@ -756,7 +819,7 @@ func (g *gen) flatIntPiece(item ir.Item, f *ir.Field, name string) (flatPiece, b
 	// (SPEC §4.6). The write keeps its refusal; the read materializes.
 	if f.IntMin.Cmp(f.IntMax) == 0 {
 		return flatPiece{
-			item: item, bits: 0,
+			bits: 0,
 			guard: func(ind string, idx int) {
 				g.pf("%sif %s != %s {\n", ind, name, g.renderInt(f.IntMinExpr, f.IntMin))
 				g.pf("%s\treturn serialize.ErrValueOutOfRange\n%s}\n", ind, ind)
@@ -774,7 +837,7 @@ func (g *gen) flatIntPiece(item ir.Item, f *ir.Field, name string) (flatPiece, b
 	case "int32":
 		exprIs32 := f.Type.Signed && f.Type.Width == 32
 		return flatPiece{
-			item: item, bits: bits,
+			bits: bits,
 			guard: func(ind string, idx int) {
 				src := name
 				if !exprIs32 {
@@ -827,7 +890,7 @@ func (g *gen) flatIntPiece(item ir.Item, f *ir.Field, name string) (flatPiece, b
 	case "int64":
 		exprIs64 := f.Type.Signed && f.Type.Width == 64
 		return flatPiece{
-			item: item, bits: bits,
+			bits: bits,
 			guard: func(ind string, idx int) {
 				src := name
 				if !exprIs64 {
@@ -877,7 +940,7 @@ func (g *gen) flatIntPiece(item ir.Item, f *ir.Field, name string) (flatPiece, b
 	loVacuous := f.IntMin.Sign() == 0
 	hiVacuous := f.IntMax.Cmp(maxUint64) == 0
 	return flatPiece{
-		item: item, bits: bits,
+		bits: bits,
 		guard: func(ind string, idx int) {
 			// This path bypasses the runtime's ranged calls, so it supplies
 			// their write-side range refusal; vacuous halves are elided.
