@@ -17,9 +17,13 @@ never wrong — the contracts (and above all the subjects) were unlabeled.
 
 ## Instrument
 
-`decomp.cpp` (beside this file): one binary, bench_packet (49 B), two
-subjects x two contracts, everything else identical — same LCG variation,
-same 64 variant read buffers, same pinned instance, same flags.
+A one-off scratch harness, not retained in the tree: one binary,
+bench_packet (49 B), two subjects x two contracts, everything else
+identical — same LCG variation, same 64 variant read buffers, same pinned
+instance, same flags. It hand-coded its shape and wire size and embedded
+the rt subject verbatim, so it could only ever describe the corpus of the
+day it was run; this write-up is the durable record, and all profiling
+now happens inside the bench.
 
 - subject `gen` = the generated C++ codec (`generated/bench/cpp/BenchWire.h`)
 - subject `rt`  = the hand-written runtime-API packet
@@ -36,12 +40,8 @@ decodes into a hoisted target that is escape-barriered (A) or has a field
 drained into the sink (B); the pinned instance is golden-gated and all 64
 variants length-checked before any timing.
 
-Build and run (caffeinated):
-
-    c++ -O3 -DNDEBUG -DSERIALIZE_RELEASE -std=c++17 -Wall -Wextra \
-        -ffp-contract=off -fno-rtti -I../serialize -Igenerated/bench/cpp \
-        -o decomp decomp.cpp
-    caffeinate -i ./decomp
+Built at -O3 -DNDEBUG -DSERIALIZE_RELEASE -std=c++17 -ffp-contract=off
+-fno-rtti and run caffeinated.
 
 ## Raw output (one sitting, Apple M2, Apple clang 21.0.0, unpinned)
 
