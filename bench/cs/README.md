@@ -1,34 +1,35 @@
 # bench/cs — the C# runner
 
 `src/Program.cs` is the C# port of the C++ reference
-(`bench/cpp/bench_main.cpp`): same pinned corpus instances, same `vary_*`
-field mappings, same LCG (unchecked ulong arithmetic), same batch builder,
-golden + round-trip self-checks before any number is produced (a corpus
-mismatch REFUSES to bench), warmup + 7 runs + median/min/max/spread, CSV
-rows with `lang=cs`. Full contract: `bench/README.md`.
+(`bench/cpp/bench_main.cpp`): the same data-driven driver over the same
+committed variant corpus, golden + per-variant round-trip self-checks before
+any number is produced (a corpus mismatch REFUSES to bench), warmup + 7 runs
++ median/min/max/spread, CSV rows with `lang=cs`. Full contract:
+`bench/README.md`.
 
 `src/BitsBench.cs` adds family bits (BENCH-STANDARD.md §1.4): the
 16-width bitpacker workload — timed loops in `[MethodImpl(NoInlining)]`
 methods for the §4.1 JitDisasm verdict.
 
-Wiring: `schemabench.csproj` compiles `../../generated/cs` and
-`../../generated/bench/cs/realworld` (namespace `Realworld` — the unit the
-`real_packet` row measures, referenced qualified so the two units'
-same-named table types never collide) beside the sibling serialize.cs
-runtime sources, exactly like `test/cs`. `run.sh` runs it as
-`dotnet run -c Release -- --csv` from this directory; the per-path warmup
-run doubles as the JIT warmup. This project is also the realworld unit's
-compile gate in `make test` — its one consumer (the Makefile's bench-corpus
-comment says why).
+Wiring: `schemabench.csproj` compiles `../../generated/bench/cs/Bench.cs` —
+the one unit this runner measures — beside the sibling serialize.cs runtime
+sources. `run.sh` runs it as `dotnet run -c Release -- --csv` from this
+directory; the per-path warmup run doubles as the JIT warmup.
+
+It also compiles `../../generated/bench/cs/realworld` (namespace
+`Realworld`), which **no bench row reads**: C# has no unit-local build file,
+so this project is the only `make test` gate proving that generated unit
+compiles (the Makefile's bench-corpus comment and issue #80 say why). The
+right home for that gate is a cs conformance leg pinning `real_packet` —
+C# is the one backend without one — and it moves there when that leg lands.
 
 Escape barriers: a static sink field accumulates observed bytes/counts and
 `GC.KeepAlive` holds decoded objects. Streams are reused via `Reset` (the
 runtime's documented no-allocation reuse path). The read path decodes into
-one reused instance per bench — the `MessageStorage` discipline, the C#
-stand-in for C++'s free stack temporary (§5 zeroing makes reuse equivalent
-on every field that rides). The driver passes write/read/vary as delegates:
-one indirect call per op that the C++ and Rust drivers don't pay; noted
-with the results.
+one reused instance per bench — the C# stand-in for C++'s free stack
+temporary (§5 zeroing makes reuse equivalent on every field that rides). The driver passes write/read as delegates: one
+indirect call per op that the C++ and Rust drivers don't pay; noted with the
+results.
 
 `checks=always`: serialize.cs keeps its bounds checks, range validation and
 the sticky error latch in **every** build — it has no `Debug.Assert` and no
