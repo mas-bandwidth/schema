@@ -21,11 +21,16 @@
 #                 tables — per-message time averaged over write and read,
 #                 fastest language = 100% — after the CSV lands. The
 #                 headline table is SINGLE-SUBJECT: family gen (generated
-#                 code) for every language, family printed per row; the rt
-#                 blend prints as a second labeled section (#177).
+#                 code) for every language, family and checks mode printed
+#                 per row under a caption naming what is held constant; the
+#                 rt blend prints as a second labeled section (#177), and a
+#                 leg whose toolchain is missing prints as an ABSENT row
+#                 with the reason (#175).
 #                 Scaling constants are PROPOSED in BENCH-STANDARD.md terms.
 #   --only LANG   run a single language leg (c|cpp|go|rust|cs|js|java|dart|elixir).
-#                 For shared boxes
+#                 An --only run whose leg is skipped (missing toolchain)
+#                 exits non-zero with the reason — zero rows is a refusal,
+#                 never a quietly green empty CSV (#175). For shared boxes
 #                 under one-profile-at-a-time discipline: a driver runs the
 #                 legs serially with quiet-window checks between them. Each
 #                 leg's CSV carries the full preamble; measurement code and
@@ -118,6 +123,16 @@ if [ ! -f "$SERIALIZE/serialize.h" ]; then
     exit 1
 fi
 CC_BIN="${CC:-cc}"
+
+# Loud skips (#175): a leg that cannot run is RECORDED, printed as an ABSENT
+# row in the quick tables, and an --only invocation that produced zero rows
+# exits non-zero — never a silently green empty table.
+SKIP_NOTES=""
+skip_leg() {
+    # ";"-joined lang|reason pairs (BWK awk rejects newlines in -v strings)
+    SKIP_NOTES="${SKIP_NOTES}${1}|${2};"
+    echo "SKIP $1: $2" >&2
+}
 
 ARCH="$(uname -m)"
 HOST="$(hostname -s)"
@@ -355,9 +370,9 @@ fi
 # ---- C (the fifth target; serialize.c is a compiled TU, not a header) ----
 if [ -z "$ONLY" ] || [ "$ONLY" = c ]; then
     if [ ! -f generated/c/TypesWire.h ]; then
-        echo "SKIP c: generated/c is missing — run make first" >&2
+        skip_leg c "generated/c is missing — run make first"
     elif [ ! -f "$SERIALIZE_C/serialize.c" ]; then
-        echo "SKIP c: serialize.c not found at $SERIALIZE_C (set SERIALIZE_C)" >&2
+        skip_leg c "serialize.c not found at $SERIALIZE_C (set SERIALIZE_C)"
     else
         if [ "$REUSE" = 1 ] && [ -x build/bench/schema_bench_c ]; then
             echo "== c: reusing build/bench/schema_bench_c ==" >&2
@@ -387,10 +402,10 @@ if [ -z "$ONLY" ] || [ "$ONLY" = go ]; then
             # modfile when SERIALIZE_GO points elsewhere
             ( cd bench/go && $PIN go run $GO_MODFILE_ARG . $RUNNER_ARGS ) >> "$OUT"
         else
-            echo "SKIP go: runner present but no go toolchain" >&2
+            skip_leg go "runner present but no go toolchain"
         fi
     else
-        echo "SKIP go: runner not landed yet (bench/go/main.go — see bench/go/README.md)" >&2
+        skip_leg go "runner not landed yet (bench/go/main.go — see bench/go/README.md)"
     fi
 fi
 
@@ -413,10 +428,10 @@ if [ -z "$ONLY" ] || [ "$ONLY" = rust ]; then
               CARGO_PROFILE_RELEASE_OPT_LEVEL="${OPT_LEVEL#O}" \
               $PIN cargo run --release --quiet $RS_CARGO_ARGS -- $RUNNER_ARGS ) >> "$OUT"
         else
-            echo "SKIP rust: runner present but no cargo" >&2
+            skip_leg rust "runner present but no cargo"
         fi
     else
-        echo "SKIP rust: runner not landed yet (bench/rust/Cargo.toml — see bench/rust/README.md)" >&2
+        skip_leg rust "runner not landed yet (bench/rust/Cargo.toml — see bench/rust/README.md)"
     fi
 fi
 
@@ -429,10 +444,10 @@ if [ -z "$ONLY" ] || [ "$ONLY" = cs ]; then
             # SerializeCsRoot=<abs> (consumed by the csproj includes) otherwise
             ( cd bench/cs && $PIN dotnet run -c Release $CS_PROP_ARGS -- $RUNNER_ARGS ) >> "$OUT"
         else
-            echo "SKIP cs: runner present but no dotnet" >&2
+            skip_leg cs "runner present but no dotnet"
         fi
     else
-        echo "SKIP cs: runner not landed yet (bench/cs/*.csproj — see bench/cs/README.md)" >&2
+        skip_leg cs "runner not landed yet (bench/cs/*.csproj — see bench/cs/README.md)"
     fi
 fi
 
@@ -448,10 +463,10 @@ if [ -z "$ONLY" ] || [ "$ONLY" = js ]; then
             # override otherwise (already verified by the provenance guard).
             ( cd bench/js && $PIN env NODE_ENV=production $JS_ENV node main.mjs $RUNNER_ARGS ) >> "$OUT"
         else
-            echo "SKIP js: runner present but no node" >&2
+            skip_leg js "runner present but no node"
         fi
     else
-        echo "SKIP js: runner not landed yet (bench/js/main.mjs — see bench/README.md)" >&2
+        skip_leg js "runner not landed yet (bench/js/main.mjs — see bench/README.md)"
     fi
 fi
 
@@ -470,10 +485,10 @@ if [ -z "$ONLY" ] || [ "$ONLY" = java ]; then
             echo "== java: run ==" >&2
             ( cd bench/java && $PIN "$JAVA_BIN" -cp ../../build/bench/java Main $RUNNER_ARGS ) >> "$OUT"
         else
-            echo "SKIP java: runner present but no javac at $JAVAC_BIN (populate dist/ per the Makefile, or set JAVA/JAVAC)" >&2
+            skip_leg java "runner present but no javac at $JAVAC_BIN (populate dist/ per the Makefile, or set JAVA/JAVAC)"
         fi
     else
-        echo "SKIP java: runner not landed yet (bench/java/Main.java)" >&2
+        skip_leg java "runner not landed yet (bench/java/Main.java)"
     fi
 fi
 
@@ -490,10 +505,10 @@ if [ -z "$ONLY" ] || [ "$ONLY" = dart ]; then
             echo "== dart: run ==" >&2
             ( cd bench/dart && $PIN ../../build/bench/schema_bench_dart $RUNNER_ARGS ) >> "$OUT"
         else
-            echo "SKIP dart: runner present but no dart at $DART_BIN (populate dist/ per the Makefile, or set DART)" >&2
+            skip_leg dart "runner present but no dart at $DART_BIN (populate dist/ per the Makefile, or set DART)"
         fi
     else
-        echo "SKIP dart: runner not landed yet (bench/dart/main.dart)" >&2
+        skip_leg dart "runner not landed yet (bench/dart/main.dart)"
     fi
 fi
 
@@ -504,10 +519,10 @@ if [ -z "$ONLY" ] || [ "$ONLY" = elixir ]; then
             echo "== elixir: run ==" >&2
             ( cd bench/elixir && $PIN env PATH="$BEAM_PATH:$PATH" elixir main.exs $RUNNER_ARGS ) >> "$OUT"
         else
-            echo "SKIP elixir: runner present but no elixir on $BEAM_PATH (populate dist/ per the Makefile, or set BEAM_PATH)" >&2
+            skip_leg elixir "runner present but no elixir on $BEAM_PATH (populate dist/ per the Makefile, or set BEAM_PATH)"
         fi
     else
-        echo "SKIP elixir: runner not landed yet (bench/elixir/main.exs)" >&2
+        skip_leg elixir "runner not landed yet (bench/elixir/main.exs)"
     fi
 fi
 
@@ -536,14 +551,18 @@ if [ "$QUICK" = 1 ]; then
     {
         echo ""
         echo "quick mode — iteration instrument, not certification (bench_mixed only, blended write+read)"
-        awk -F, '
+        # the caption (#175): every printed comparison names what it holds
+        # constant — the profiling doctrine's apples-to-apples rule
+        echo "held constant: contract (BENCH-STANDARD §2.8 quick — bench_mixed, blended write+read over max rates), corpus (id per CSV row), machine ($HOST, $CPU), one sitting; sink discipline equalized to full-struct observation (#175)"
+        echo "NOT equalized: checks mode — printed per row below; a cross-language checks ruling is deferred to the owner (#175)"
+        awk -F, -v skips="$SKIP_NOTES" '
             # js emits two gen tiers; the flat tier is THE js path (codec
             # column, $18), so codec=runtime rows never blend
-            $2 == "bench_mixed" && $13 == "gen" && $18 != "runtime" && $3 == "write" { gw[$1] = $9 }
-            $2 == "bench_mixed" && $13 == "gen" && $18 != "runtime" && $3 == "read"  { gr[$1] = $9 }
-            $2 == "bench_mixed" && $13 == "rt" && $3 == "write" { rw[$1] = $9 }
-            $2 == "bench_mixed" && $13 == "rt" && $3 == "read"  { rr[$1] = $9 }
-            function render(family, w, r,    n, langs, ts, i, j, t, tt, tl, lang) {
+            $2 == "bench_mixed" && $13 == "gen" && $18 != "runtime" && $3 == "write" { gw[$1] = $9; gc[$1] = $15 }
+            $2 == "bench_mixed" && $13 == "gen" && $18 != "runtime" && $3 == "read"  { gr[$1] = $9; gc[$1] = $15 }
+            $2 == "bench_mixed" && $13 == "rt" && $3 == "write" { rw[$1] = $9; rc[$1] = $15 }
+            $2 == "bench_mixed" && $13 == "rt" && $3 == "read"  { rr[$1] = $9; rc[$1] = $15 }
+            function render(family, w, r, c, absent,    n, langs, ts, i, j, t, tt, tl, lang, m, sk, parts) {
                 n = 0
                 for (lang in w) {
                     if (r[lang] > 0 && w[lang] > 0) {
@@ -551,7 +570,7 @@ if [ "$QUICK" = 1 ]; then
                         n++; langs[n] = lang; ts[n] = t
                     }
                 }
-                if (n == 0) return
+                if (n == 0 && !absent) return
                 # sort ascending by blended time
                 for (i = 1; i <= n; i++)
                     for (j = i + 1; j <= n; j++)
@@ -559,18 +578,37 @@ if [ "$QUICK" = 1 ]; then
                             tt = ts[i]; ts[i] = ts[j]; ts[j] = tt
                             tl = langs[i]; langs[i] = langs[j]; langs[j] = tl
                         }
-                printf "  %-8s %-6s %14s %10s\n", "lang", "family", "ns/msg", "% of best"
+                printf "  %-8s %-6s %-9s %14s %10s\n", "lang", "family", "checks", "ns/msg", "% of best"
                 for (i = 1; i <= n; i++)
-                    printf "  %-8s %-6s %14.2f %9.0f%%\n", langs[i], family, ts[i], ts[i] / ts[1] * 100.0
+                    printf "  %-8s %-6s %-9s %14.2f %9.0f%%\n", langs[i], family, c[langs[i]], ts[i], ts[i] / ts[1] * 100.0
+                # loud skips (#175): a missing leg is an ABSENT row with its
+                # reason, never a silently narrower table
+                if (absent) {
+                    m = split(skips, sk, ";")
+                    for (i = 1; i <= m; i++) {
+                        if (sk[i] == "") continue
+                        split(sk[i], parts, "|")
+                        printf "  %-8s %-6s %-9s %14s   ABSENT — %s\n", parts[1], family, "-", "-", parts[2]
+                    }
+                }
             }
             END {
                 print "subject: schema-GENERATED code (family gen) — what the compiler delivers"
-                render("gen", gw, gr)
+                render("gen", gw, gr, gc, 1)
                 print ""
                 print "subject: hand-written runtime usage (family rt) — what the serialize libraries deliver by hand; never ranked against gen"
-                render("rt", rw, rr)
+                render("rt", rw, rr, rc, 0)
             }' "$OUT"
     } >&2
+fi
+
+# ---- #175: an --only run that produced zero data rows is a failure, not a
+# quietly green empty CSV — the leg was skipped, not measured. Refuse. ----
+DATA_ROWS="$(grep -c -E '^(c|cpp|go|rust|cs|js|java|dart|elixir),' "$OUT" 2>/dev/null || true)"
+if [ -n "$ONLY" ] && [ "${DATA_ROWS:-0}" -eq 0 ]; then
+    echo "REFUSED (#175): --only $ONLY produced ZERO rows — see the SKIP reason above; nothing was measured" >&2
+    echo "results: $OUT (EMPTY — refused)" >&2
+    exit 1
 fi
 
 echo "results: $OUT" >&2
