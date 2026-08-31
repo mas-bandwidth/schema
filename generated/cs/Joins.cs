@@ -224,13 +224,15 @@ namespace Example
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static bool WriteArmsAgreeBatch(ref WriteBatch batch, ArmsAgree value)
         {
-            if (!batch.SerializeBits(ref value.Lead, 5))
             {
-                return false;
-            }
-            if (!batch.SerializeBool(ref value.Flag))
-            {
-                return false;
+                // flat run: 6 bits in 1 chunk(s) — the field placement is folded
+                ulong f0 = ((ulong)value.Lead) & 0x1fUL;
+                ulong f1 = value.Flag ? 1UL : 0UL;
+                uint w0 = (uint)(f0 | (f1 << 5));
+                if (!batch.SerializeBits(ref w0, 6))
+                {
+                    return false;
+                }
             }
             if (value.Flag)
             {
@@ -325,13 +327,15 @@ namespace Example
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static bool WriteArmsDisagreeBatch(ref WriteBatch batch, ArmsDisagree value)
         {
-            if (!batch.SerializeBits(ref value.Lead, 5))
             {
-                return false;
-            }
-            if (!batch.SerializeBool(ref value.Flag))
-            {
-                return false;
+                // flat run: 6 bits in 1 chunk(s) — the field placement is folded
+                ulong f0 = ((ulong)value.Lead) & 0x1fUL;
+                ulong f1 = value.Flag ? 1UL : 0UL;
+                uint w0 = (uint)(f0 | (f1 << 5));
+                if (!batch.SerializeBits(ref w0, 6))
+                {
+                    return false;
+                }
             }
             if (value.Flag)
             {
@@ -425,13 +429,15 @@ namespace Example
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static bool WriteArmEmptyBatch(ref WriteBatch batch, ArmEmpty value)
         {
-            if (!batch.SerializeBits(ref value.Lead, 5))
             {
-                return false;
-            }
-            if (!batch.SerializeBool(ref value.Flag))
-            {
-                return false;
+                // flat run: 6 bits in 1 chunk(s) — the field placement is folded
+                ulong f0 = ((ulong)value.Lead) & 0x1fUL;
+                ulong f1 = value.Flag ? 1UL : 0UL;
+                uint w0 = (uint)(f0 | (f1 << 5));
+                if (!batch.SerializeBits(ref w0, 6))
+                {
+                    return false;
+                }
             }
             if (value.Flag)
             {
@@ -516,13 +522,15 @@ namespace Example
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static bool WriteArmsNestedBatch(ref WriteBatch batch, ArmsNested value)
         {
-            if (!batch.SerializeBits(ref value.Lead, 3))
             {
-                return false;
-            }
-            if (!batch.SerializeBool(ref value.Outer))
-            {
-                return false;
+                // flat run: 4 bits in 1 chunk(s) — the field placement is folded
+                ulong f0 = ((ulong)value.Lead) & 0x7UL;
+                ulong f1 = value.Outer ? 1UL : 0UL;
+                uint w0 = (uint)(f0 | (f1 << 3));
+                if (!batch.SerializeBits(ref w0, 4))
+                {
+                    return false;
+                }
             }
             if (value.Outer)
             {
@@ -638,13 +646,15 @@ namespace Example
 
         public static bool WriteArmAlign(WriteStream stream, ArmAlign value)
         {
-            if (!stream.SerializeBits(ref value.Lead, 5))
             {
-                return false;
-            }
-            if (!stream.SerializeBool(ref value.Flag))
-            {
-                return false;
+                // flat run: 6 bits in 1 chunk(s) — the field placement is folded
+                ulong f0 = ((ulong)value.Lead) & 0x1fUL;
+                ulong f1 = value.Flag ? 1UL : 0UL;
+                uint w0 = (uint)(f0 | (f1 << 5));
+                if (!stream.SerializeBits(ref w0, 6))
+                {
+                    return false;
+                }
             }
             if (value.Flag)
             {
@@ -753,13 +763,15 @@ namespace Example
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static bool WriteArmArrayBatch(ref WriteBatch batch, ArmArray value)
         {
-            if (!batch.SerializeBits(ref value.Lead, 5))
             {
-                return false;
-            }
-            if (!batch.SerializeBool(ref value.Flag))
-            {
-                return false;
+                // flat run: 6 bits in 1 chunk(s) — the field placement is folded
+                ulong f0 = ((ulong)value.Lead) & 0x1fUL;
+                ulong f1 = value.Flag ? 1UL : 0UL;
+                uint w0 = (uint)(f0 | (f1 << 5));
+                if (!batch.SerializeBits(ref w0, 6))
+                {
+                    return false;
+                }
             }
             if (value.Flag)
             {
@@ -1264,21 +1276,22 @@ namespace Example
             {
                 return false;
             }
-            if (!stream.SerializeBits(ref value.P, 32))
             {
-                return false;
-            }
-            if (!stream.SerializeBits(ref value.Q, 29))
-            {
-                return false;
-            }
-            if (!stream.SerializeBits(ref value.R, 19))
-            {
-                return false;
-            }
-            if (!stream.SerializeBits(ref value.Tail, 4))
-            {
-                return false;
+                // flat run: 84 bits in 2 chunk(s) — the field placement is folded
+                ulong f0 = ((ulong)value.P) & 0xffffffffUL;
+                ulong f1 = ((ulong)value.Q) & 0x1fffffffUL;
+                ulong f2 = ((ulong)value.R) & 0x7ffffUL;
+                ulong f3 = ((ulong)value.Tail) & 0xfUL;
+                ulong w0 = f0 | (f1 << 32) | (f2 << 61);
+                if (!stream.SerializeBits64(ref w0, 64))
+                {
+                    return false;
+                }
+                uint w1 = (uint)((f2 >> 3) | (f3 << 16));
+                if (!stream.SerializeBits(ref w1, 20))
+                {
+                    return false;
+                }
             }
             return true;
         }

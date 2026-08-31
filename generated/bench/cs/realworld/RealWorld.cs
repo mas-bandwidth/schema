@@ -391,24 +391,20 @@ namespace Realworld
                     return false;
                 }
             }
-            if (value.F005Uint > 7316)
             {
-                return false;
-            }
-            {
-                uint offsetValue = (uint)(value.F005Uint);
-                if (!batch.SerializeBits(ref offsetValue, 13))
+                // flat run: 25 bits in 1 chunk(s) — the field placement is folded
+                if (value.F005Uint > 7316)
                 {
                     return false;
                 }
-            }
-            if (value.F006Int < -1513 || value.F006Int > 1513)
-            {
-                return false;
-            }
-            {
-                uint offsetValue = (uint)(value.F006Int) - unchecked((uint)(-1513));
-                if (!batch.SerializeBits(ref offsetValue, 12))
+                if (value.F006Int < -1513 || value.F006Int > 1513)
+                {
+                    return false;
+                }
+                ulong f0 = ((ulong)((uint)(value.F005Uint))) & 0x1fffUL;
+                ulong f1 = ((ulong)((uint)(value.F006Int) - unchecked((uint)(-1513)))) & 0xfffUL;
+                uint w0 = (uint)(f0 | (f1 << 13));
+                if (!batch.SerializeBits(ref w0, 25))
                 {
                     return false;
                 }
@@ -436,13 +432,15 @@ namespace Realworld
             {
                 return false;
             }
-            if (!batch.SerializeBits(ref value.F011Bits, 10))
             {
-                return false;
-            }
-            if (!batch.SerializeBool(ref value.F012Bool))
-            {
-                return false;
+                // flat run: 11 bits in 1 chunk(s) — the field placement is folded
+                ulong f0 = ((ulong)value.F011Bits) & 0x3ffUL;
+                ulong f1 = value.F012Bool ? 1UL : 0UL;
+                uint w0 = (uint)(f0 | (f1 << 10));
+                if (!batch.SerializeBits(ref w0, 11))
+                {
+                    return false;
+                }
             }
             if (value.F012Bool)
             {
@@ -450,24 +448,20 @@ namespace Realworld
                 {
                     return false;
                 }
-                if (value.F014Uint > 775)
                 {
-                    return false;
-                }
-                {
-                    uint offsetValue = (uint)(value.F014Uint);
-                    if (!batch.SerializeBits(ref offsetValue, 10))
+                    // flat run: 16 bits in 1 chunk(s) — the field placement is folded
+                    if (value.F014Uint > 775)
                     {
                         return false;
                     }
-                }
-                if (value.F015Int < -21 || value.F015Int > 21)
-                {
-                    return false;
-                }
-                {
-                    uint offsetValue = (uint)(value.F015Int) - unchecked((uint)(-21));
-                    if (!batch.SerializeBits(ref offsetValue, 6))
+                    if (value.F015Int < -21 || value.F015Int > 21)
+                    {
+                        return false;
+                    }
+                    ulong f0 = ((ulong)((uint)(value.F014Uint))) & 0x3ffUL;
+                    ulong f1 = ((ulong)((uint)(value.F015Int) - unchecked((uint)(-21)))) & 0x3fUL;
+                    uint w0 = (uint)(f0 | (f1 << 10));
+                    if (!batch.SerializeBits(ref w0, 16))
                     {
                         return false;
                     }
@@ -553,92 +547,62 @@ namespace Realworld
             {
                 return false;
             }
-            if (!batch.SerializeBits(ref value.F031Bits, 1))
             {
-                return false;
-            }
-            if (value.F032Int < -3 || value.F032Int > 3)
-            {
-                return false;
-            }
-            {
-                uint offsetValue = (uint)(value.F032Int) - unchecked((uint)(-3));
-                if (!batch.SerializeBits(ref offsetValue, 3))
+                // flat run: 69 bits in 2 chunk(s) — the field placement is folded
+                if (value.F032Int < -3 || value.F032Int > 3)
                 {
                     return false;
                 }
-            }
-            if (value.F033Uint > 142780)
-            {
-                return false;
-            }
-            {
-                uint offsetValue = (uint)(value.F033Uint);
-                if (!batch.SerializeBits(ref offsetValue, 18))
+                if (value.F033Uint > 142780)
                 {
                     return false;
                 }
-            }
-            if (value.F034Uint > 14149)
-            {
-                return false;
-            }
-            {
-                uint offsetValue = (uint)(value.F034Uint);
-                if (!batch.SerializeBits(ref offsetValue, 14))
+                if (value.F034Uint > 14149)
                 {
                     return false;
                 }
-            }
-            if (!batch.SerializeBits(ref value.F035Bits, 9))
-            {
-                return false;
-            }
-            {
-                uint enumValue = (uint)value.F036Enum;
-                if (enumValue > 5) // headroom above the wire range cannot ride
+                if ((uint)value.F036Enum > 5) // headroom above the wire range cannot ride
                 {
                     return false;
                 }
-                if (!batch.SerializeBits(ref enumValue, 3))
+                ulong f0 = ((ulong)value.F031Bits) & 0x1UL;
+                ulong f1 = ((ulong)((uint)(value.F032Int) - unchecked((uint)(-3)))) & 0x7UL;
+                ulong f2 = ((ulong)((uint)(value.F033Uint))) & 0x3ffffUL;
+                ulong f3 = ((ulong)((uint)(value.F034Uint))) & 0x3fffUL;
+                ulong f4 = ((ulong)value.F035Bits) & 0x1ffUL;
+                ulong f5 = ((ulong)(uint)value.F036Enum) & 0x7UL;
+                ulong f6 = value.F037Bool ? 1UL : 0UL;
+                ulong f7 = value.F038Bool ? 1UL : 0UL;
+                ulong f8 = ((ulong)value.F039Bits) & 0x7ffffUL;
+                ulong w0 = f0 | (f1 << 1) | (f2 << 4) | (f3 << 22) | (f4 << 36) | (f5 << 45) | (f6 << 48) | (f7 << 49) | (f8 << 50);
+                if (!batch.SerializeBits64(ref w0, 64))
                 {
                     return false;
                 }
-            }
-            if (!batch.SerializeBool(ref value.F037Bool))
-            {
-                return false;
-            }
-            if (!batch.SerializeBool(ref value.F038Bool))
-            {
-                return false;
-            }
-            if (!batch.SerializeBits(ref value.F039Bits, 19))
-            {
-                return false;
+                uint w1 = (uint)((f8 >> 14));
+                if (!batch.SerializeBits(ref w1, 5))
+                {
+                    return false;
+                }
             }
             if (!batch.SerializeFixed(ref value.F040Fixed, 4, 12, -5, 5))
             {
                 return false;
             }
-            if (value.F041Int < -55 || value.F041Int > 55)
             {
-                return false;
-            }
-            {
-                uint offsetValue = (uint)(value.F041Int) - unchecked((uint)(-55));
-                if (!batch.SerializeBits(ref offsetValue, 7))
+                // flat run: 38 bits in 1 chunk(s) — the field placement is folded
+                if (value.F041Int < -55 || value.F041Int > 55)
                 {
                     return false;
                 }
-            }
-            if (!batch.SerializeBits(ref value.F042Bits, 30))
-            {
-                return false;
-            }
-            if (!batch.SerializeBool(ref value.F043Bool))
-            {
-                return false;
+                ulong f0 = ((ulong)((uint)(value.F041Int) - unchecked((uint)(-55)))) & 0x7fUL;
+                ulong f1 = ((ulong)value.F042Bits) & 0x3fffffffUL;
+                ulong f2 = value.F043Bool ? 1UL : 0UL;
+                ulong w0 = f0 | (f1 << 7) | (f2 << 37);
+                if (!batch.SerializeBits64(ref w0, 38))
+                {
+                    return false;
+                }
             }
             if (value.F043Bool)
             {
@@ -646,28 +610,21 @@ namespace Realworld
                 {
                     return false;
                 }
-                if (!batch.SerializeBits(ref value.F045Bits, 12))
                 {
-                    return false;
-                }
-                if (value.F046Uint > 76063)
-                {
-                    return false;
-                }
-                {
-                    uint offsetValue = (uint)(value.F046Uint);
-                    if (!batch.SerializeBits(ref offsetValue, 17))
+                    // flat run: 49 bits in 1 chunk(s) — the field placement is folded
+                    if (value.F046Uint > 76063)
                     {
                         return false;
                     }
-                }
-                if (value.F047Int < -430976 || value.F047Int > 430976)
-                {
-                    return false;
-                }
-                {
-                    uint offsetValue = (uint)(value.F047Int) - unchecked((uint)(-430976));
-                    if (!batch.SerializeBits(ref offsetValue, 20))
+                    if (value.F047Int < -430976 || value.F047Int > 430976)
+                    {
+                        return false;
+                    }
+                    ulong f0 = ((ulong)value.F045Bits) & 0xfffUL;
+                    ulong f1 = ((ulong)((uint)(value.F046Uint))) & 0x1ffffUL;
+                    ulong f2 = ((ulong)((uint)(value.F047Int) - unchecked((uint)(-430976)))) & 0xfffffUL;
+                    ulong w0 = f0 | (f1 << 12) | (f2 << 29);
+                    if (!batch.SerializeBits64(ref w0, 49))
                     {
                         return false;
                     }
@@ -687,17 +644,16 @@ namespace Realworld
             }
             if (value.F050Bool)
             {
-                if (!batch.SerializeBool(ref value.F051Bool))
                 {
-                    return false;
-                }
-                if (value.F052Int < -57 || value.F052Int > 57)
-                {
-                    return false;
-                }
-                {
-                    uint offsetValue = (uint)(value.F052Int) - unchecked((uint)(-57));
-                    if (!batch.SerializeBits(ref offsetValue, 7))
+                    // flat run: 8 bits in 1 chunk(s) — the field placement is folded
+                    if (value.F052Int < -57 || value.F052Int > 57)
+                    {
+                        return false;
+                    }
+                    ulong f0 = value.F051Bool ? 1UL : 0UL;
+                    ulong f1 = ((ulong)((uint)(value.F052Int) - unchecked((uint)(-57)))) & 0x7fUL;
+                    uint w0 = (uint)(f0 | (f1 << 1));
+                    if (!batch.SerializeBits(ref w0, 8))
                     {
                         return false;
                     }
@@ -718,28 +674,21 @@ namespace Realworld
                     }
                 }
             }
-            if (!batch.SerializeBool(ref value.F055Bool))
             {
-                return false;
-            }
-            if (value.F056Int < -13 || value.F056Int > 13)
-            {
-                return false;
-            }
-            {
-                uint offsetValue = (uint)(value.F056Int) - unchecked((uint)(-13));
-                if (!batch.SerializeBits(ref offsetValue, 5))
+                // flat run: 11 bits in 1 chunk(s) — the field placement is folded
+                if (value.F056Int < -13 || value.F056Int > 13)
                 {
                     return false;
                 }
-            }
-            if (value.F057Int < -15 || value.F057Int > 15)
-            {
-                return false;
-            }
-            {
-                uint offsetValue = (uint)(value.F057Int) - unchecked((uint)(-15));
-                if (!batch.SerializeBits(ref offsetValue, 5))
+                if (value.F057Int < -15 || value.F057Int > 15)
+                {
+                    return false;
+                }
+                ulong f0 = value.F055Bool ? 1UL : 0UL;
+                ulong f1 = ((ulong)((uint)(value.F056Int) - unchecked((uint)(-13)))) & 0x1fUL;
+                ulong f2 = ((ulong)((uint)(value.F057Int) - unchecked((uint)(-15)))) & 0x1fUL;
+                uint w0 = (uint)(f0 | (f1 << 1) | (f2 << 6));
+                if (!batch.SerializeBits(ref w0, 11))
                 {
                     return false;
                 }
@@ -763,31 +712,26 @@ namespace Realworld
                     return false;
                 }
             }
-            if (value.F062Uint > 503)
             {
-                return false;
-            }
-            {
-                uint offsetValue = (uint)(value.F062Uint);
-                if (!batch.SerializeBits(ref offsetValue, 9))
+                // flat run: 82 bits in 2 chunk(s) — the field placement is folded
+                if (value.F062Uint > 503)
                 {
                     return false;
                 }
-            }
-            {
-                ulong rawValue = (ulong)value.F063I64;
-                if (!batch.SerializeBits64(ref rawValue, 64))
+                if (value.F064Uint > 299)
                 {
                     return false;
                 }
-            }
-            if (value.F064Uint > 299)
-            {
-                return false;
-            }
-            {
-                uint offsetValue = (uint)(value.F064Uint);
-                if (!batch.SerializeBits(ref offsetValue, 9))
+                ulong f0 = ((ulong)((uint)(value.F062Uint))) & 0x1ffUL;
+                ulong f1 = (ulong)value.F063I64;
+                ulong f2 = ((ulong)((uint)(value.F064Uint))) & 0x1ffUL;
+                ulong w0 = f0 | (f1 << 9);
+                if (!batch.SerializeBits64(ref w0, 64))
+                {
+                    return false;
+                }
+                uint w1 = (uint)((f1 >> 55) | (f2 << 9));
+                if (!batch.SerializeBits(ref w1, 18))
                 {
                     return false;
                 }
@@ -817,17 +761,16 @@ namespace Realworld
                     return false;
                 }
             }
-            if (!batch.SerializeBits(ref value.F069Bits, 11))
             {
-                return false;
-            }
-            if (value.F070Uint > 2)
-            {
-                return false;
-            }
-            {
-                uint offsetValue = (uint)(value.F070Uint);
-                if (!batch.SerializeBits(ref offsetValue, 2))
+                // flat run: 13 bits in 1 chunk(s) — the field placement is folded
+                if (value.F070Uint > 2)
+                {
+                    return false;
+                }
+                ulong f0 = ((ulong)value.F069Bits) & 0x7ffUL;
+                ulong f1 = ((ulong)((uint)(value.F070Uint))) & 0x3UL;
+                uint w0 = (uint)(f0 | (f1 << 11));
+                if (!batch.SerializeBits(ref w0, 13))
                 {
                     return false;
                 }
@@ -846,84 +789,65 @@ namespace Realworld
                     return false;
                 }
             }
-            if (value.F073Int < -4 || value.F073Int > 4)
             {
-                return false;
-            }
-            {
-                uint offsetValue = (uint)(value.F073Int) - unchecked((uint)(-4));
-                if (!batch.SerializeBits(ref offsetValue, 4))
+                // flat run: 5 bits in 1 chunk(s) — the field placement is folded
+                if (value.F073Int < -4 || value.F073Int > 4)
                 {
                     return false;
                 }
-            }
-            if (!batch.SerializeBool(ref value.F074Bool))
-            {
-                return false;
+                ulong f0 = ((ulong)((uint)(value.F073Int) - unchecked((uint)(-4)))) & 0xfUL;
+                ulong f1 = value.F074Bool ? 1UL : 0UL;
+                uint w0 = (uint)(f0 | (f1 << 4));
+                if (!batch.SerializeBits(ref w0, 5))
+                {
+                    return false;
+                }
             }
             if (value.F074Bool)
             {
-                if (!batch.SerializeBits64(ref value.F075U64, 64))
                 {
-                    return false;
-                }
-                if (value.F076Int < -26218 || value.F076Int > 26218)
-                {
-                    return false;
-                }
-                {
-                    uint offsetValue = (uint)(value.F076Int) - unchecked((uint)(-26218));
-                    if (!batch.SerializeBits(ref offsetValue, 16))
+                    // flat run: 100 bits in 2 chunk(s) — the field placement is folded
+                    if (value.F076Int < -26218 || value.F076Int > 26218)
                     {
                         return false;
                     }
-                }
-                if (value.F077Int < -17 || value.F077Int > 17)
-                {
-                    return false;
-                }
-                {
-                    uint offsetValue = (uint)(value.F077Int) - unchecked((uint)(-17));
-                    if (!batch.SerializeBits(ref offsetValue, 6))
+                    if (value.F077Int < -17 || value.F077Int > 17)
                     {
                         return false;
                     }
-                }
-                if (!batch.SerializeBits(ref value.F078Bits, 9))
-                {
-                    return false;
-                }
-                if (value.F079Uint > 17)
-                {
-                    return false;
-                }
-                {
-                    uint offsetValue = (uint)(value.F079Uint);
-                    if (!batch.SerializeBits(ref offsetValue, 5))
+                    if (value.F079Uint > 17)
+                    {
+                        return false;
+                    }
+                    ulong f0 = (ulong)value.F075U64;
+                    ulong f1 = ((ulong)((uint)(value.F076Int) - unchecked((uint)(-26218)))) & 0xffffUL;
+                    ulong f2 = ((ulong)((uint)(value.F077Int) - unchecked((uint)(-17)))) & 0x3fUL;
+                    ulong f3 = ((ulong)value.F078Bits) & 0x1ffUL;
+                    ulong f4 = ((ulong)((uint)(value.F079Uint))) & 0x1fUL;
+                    ulong w0 = f0;
+                    if (!batch.SerializeBits64(ref w0, 64))
+                    {
+                        return false;
+                    }
+                    ulong w1 = f1 | (f2 << 16) | (f3 << 22) | (f4 << 31);
+                    if (!batch.SerializeBits64(ref w1, 36))
                     {
                         return false;
                     }
                 }
             }
-            if (!batch.SerializeBool(ref value.F080Bool))
             {
-                return false;
-            }
-            if (!batch.SerializeBits(ref value.F081Bits, 29))
-            {
-                return false;
-            }
-            if (!batch.SerializeBits(ref value.F082Bits, 25))
-            {
-                return false;
-            }
-            {
-                uint enumValue = (uint)value.F083Enum;
-                if (enumValue > 5) // headroom above the wire range cannot ride
+                // flat run: 58 bits in 1 chunk(s) — the field placement is folded
+                if ((uint)value.F083Enum > 5) // headroom above the wire range cannot ride
                 {
                     return false;
                 }
-                if (!batch.SerializeBits(ref enumValue, 3))
+                ulong f0 = value.F080Bool ? 1UL : 0UL;
+                ulong f1 = ((ulong)value.F081Bits) & 0x1fffffffUL;
+                ulong f2 = ((ulong)value.F082Bits) & 0x1ffffffUL;
+                ulong f3 = ((ulong)(uint)value.F083Enum) & 0x7UL;
+                ulong w0 = f0 | (f1 << 1) | (f2 << 30) | (f3 << 55);
+                if (!batch.SerializeBits64(ref w0, 58))
                 {
                     return false;
                 }
@@ -935,17 +859,16 @@ namespace Realworld
                     return false;
                 }
             }
-            if (!batch.SerializeBits(ref value.F085Bits, 21))
             {
-                return false;
-            }
-            if (value.F086Uint > 399)
-            {
-                return false;
-            }
-            {
-                uint offsetValue = (uint)(value.F086Uint);
-                if (!batch.SerializeBits(ref offsetValue, 9))
+                // flat run: 30 bits in 1 chunk(s) — the field placement is folded
+                if (value.F086Uint > 399)
+                {
+                    return false;
+                }
+                ulong f0 = ((ulong)value.F085Bits) & 0x1fffffUL;
+                ulong f1 = ((ulong)((uint)(value.F086Uint))) & 0x1ffUL;
+                uint w0 = (uint)(f0 | (f1 << 21));
+                if (!batch.SerializeBits(ref w0, 30))
                 {
                     return false;
                 }
@@ -954,66 +877,56 @@ namespace Realworld
             {
                 return false;
             }
-            if (value.F088Int < -694 || value.F088Int > 694)
             {
-                return false;
-            }
-            {
-                uint offsetValue = (uint)(value.F088Int) - unchecked((uint)(-694));
-                if (!batch.SerializeBits(ref offsetValue, 11))
+                // flat run: 138 bits in 3 chunk(s) — the field placement is folded
+                if (value.F088Int < -694 || value.F088Int > 694)
                 {
                     return false;
                 }
-            }
-            if (!batch.SerializeBits64(ref value.F089Bits, 48))
-            {
-                return false;
-            }
-            if (value.F090Uint > 214)
-            {
-                return false;
-            }
-            {
-                uint offsetValue = (uint)(value.F090Uint);
-                if (!batch.SerializeBits(ref offsetValue, 8))
+                if (value.F090Uint > 214)
                 {
                     return false;
                 }
-            }
-            if (value.F091Flags >= 1ul << 5) // a mask bit above the wire width cannot ride
-            {
-                return false;
-            }
-            {
-                uint flagsValue = (uint)value.F091Flags;
-                if (!batch.SerializeBits(ref flagsValue, 5))
+                if (value.F091Flags >= 1ul << 5) // a mask bit above the wire width cannot ride
                 {
                     return false;
                 }
-            }
-            if (!batch.SerializeBool(ref value.F092Bool))
-            {
-                return false;
-            }
-            if (!batch.SerializeBits64(ref value.F093Bits, 64))
-            {
-                return false;
-            }
-            if (!batch.SerializeBool(ref value.F094Bool))
-            {
-                return false;
+                ulong f0 = ((ulong)((uint)(value.F088Int) - unchecked((uint)(-694)))) & 0x7ffUL;
+                ulong f1 = ((ulong)value.F089Bits) & 0xffffffffffffUL;
+                ulong f2 = ((ulong)((uint)(value.F090Uint))) & 0xffUL;
+                ulong f3 = (value.F091Flags) & 0x1fUL;
+                ulong f4 = value.F092Bool ? 1UL : 0UL;
+                ulong f5 = (ulong)value.F093Bits;
+                ulong f6 = value.F094Bool ? 1UL : 0UL;
+                ulong w0 = f0 | (f1 << 11) | (f2 << 59);
+                if (!batch.SerializeBits64(ref w0, 64))
+                {
+                    return false;
+                }
+                ulong w1 = (f2 >> 5) | (f3 << 3) | (f4 << 8) | (f5 << 9);
+                if (!batch.SerializeBits64(ref w1, 64))
+                {
+                    return false;
+                }
+                uint w2 = (uint)((f5 >> 55) | (f6 << 9));
+                if (!batch.SerializeBits(ref w2, 10))
+                {
+                    return false;
+                }
             }
             if (!batch.SerializeFixed(ref value.F095Fixed, 16, 16, -1577, 1577))
             {
                 return false;
             }
-            if (!batch.SerializeBits(ref value.F096Bits, 18))
             {
-                return false;
-            }
-            if (!batch.SerializeBits(ref value.F097Bits, 12))
-            {
-                return false;
+                // flat run: 30 bits in 1 chunk(s) — the field placement is folded
+                ulong f0 = ((ulong)value.F096Bits) & 0x3ffffUL;
+                ulong f1 = ((ulong)value.F097Bits) & 0xfffUL;
+                uint w0 = (uint)(f0 | (f1 << 18));
+                if (!batch.SerializeBits(ref w0, 30))
+                {
+                    return false;
+                }
             }
             return true;
         }

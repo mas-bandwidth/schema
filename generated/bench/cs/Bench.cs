@@ -244,54 +244,37 @@ namespace Bench
 
         public static bool WriteBenchPacket(WriteStream stream, BenchPacket value)
         {
-            if (value.A < -100 || value.A > 100)
             {
-                return false;
-            }
-            {
-                uint offsetValue = (uint)(value.A) - unchecked((uint)(-100));
-                if (!stream.SerializeBits(ref offsetValue, 8))
+                // flat run: 89 bits in 2 chunk(s) — the field placement is folded
+                if (value.A < -100 || value.A > 100)
                 {
                     return false;
                 }
-            }
-            if (value.B < 0 || value.B > 65535)
-            {
-                return false;
-            }
-            {
-                uint offsetValue = (uint)(value.B);
-                if (!stream.SerializeBits(ref offsetValue, 16))
+                if (value.B < 0 || value.B > 65535)
                 {
                     return false;
                 }
-            }
-            if (value.C < -1000000 || value.C > 1000000)
-            {
-                return false;
-            }
-            {
-                uint offsetValue = (uint)(value.C) - unchecked((uint)(-1000000));
-                if (!stream.SerializeBits(ref offsetValue, 21))
+                if (value.C < -1000000 || value.C > 1000000)
                 {
                     return false;
                 }
-            }
-            if (!stream.SerializeBits(ref value.Bits7, 7))
-            {
-                return false;
-            }
-            if (!stream.SerializeBits(ref value.Bits13, 13))
-            {
-                return false;
-            }
-            if (!stream.SerializeBits(ref value.Bits23, 23))
-            {
-                return false;
-            }
-            if (!stream.SerializeBool(ref value.Flag))
-            {
-                return false;
+                ulong f0 = ((ulong)((uint)(value.A) - unchecked((uint)(-100)))) & 0xffUL;
+                ulong f1 = ((ulong)((uint)(value.B))) & 0xffffUL;
+                ulong f2 = ((ulong)((uint)(value.C) - unchecked((uint)(-1000000)))) & 0x1fffffUL;
+                ulong f3 = ((ulong)value.Bits7) & 0x7fUL;
+                ulong f4 = ((ulong)value.Bits13) & 0x1fffUL;
+                ulong f5 = ((ulong)value.Bits23) & 0x7fffffUL;
+                ulong f6 = value.Flag ? 1UL : 0UL;
+                ulong w0 = f0 | (f1 << 8) | (f2 << 24) | (f3 << 45) | (f4 << 52);
+                if (!stream.SerializeBits64(ref w0, 64))
+                {
+                    return false;
+                }
+                uint w1 = (uint)((f4 >> 12) | (f5 << 1) | (f6 << 24));
+                if (!stream.SerializeBits(ref w1, 25))
+                {
+                    return false;
+                }
             }
             if (!stream.SerializeFloat(ref value.X))
             {
@@ -411,112 +394,65 @@ namespace Bench
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static bool WriteBenchIntsBatch(ref WriteBatch batch, BenchInts value)
         {
-            if (value.F0 < -100 || value.F0 > 100)
             {
-                return false;
-            }
-            {
-                uint offsetValue = (uint)(value.F0) - unchecked((uint)(-100));
-                if (!batch.SerializeBits(ref offsetValue, 8))
+                // flat run: 110 bits in 2 chunk(s) — the field placement is folded
+                if (value.F0 < -100 || value.F0 > 100)
                 {
                     return false;
                 }
-            }
-            if (value.F1 < 0 || value.F1 > 65535)
-            {
-                return false;
-            }
-            {
-                uint offsetValue = (uint)(value.F1);
-                if (!batch.SerializeBits(ref offsetValue, 16))
+                if (value.F1 < 0 || value.F1 > 65535)
                 {
                     return false;
                 }
-            }
-            if (value.F2 < -1000000 || value.F2 > 1000000)
-            {
-                return false;
-            }
-            {
-                uint offsetValue = (uint)(value.F2) - unchecked((uint)(-1000000));
-                if (!batch.SerializeBits(ref offsetValue, 21))
+                if (value.F2 < -1000000 || value.F2 > 1000000)
                 {
                     return false;
                 }
-            }
-            if (value.F3 < 0 || value.F3 > 3)
-            {
-                return false;
-            }
-            {
-                uint offsetValue = (uint)(value.F3);
-                if (!batch.SerializeBits(ref offsetValue, 2))
+                if (value.F3 < 0 || value.F3 > 3)
                 {
                     return false;
                 }
-            }
-            if (value.F4 < -15 || value.F4 > 15)
-            {
-                return false;
-            }
-            {
-                uint offsetValue = (uint)(value.F4) - unchecked((uint)(-15));
-                if (!batch.SerializeBits(ref offsetValue, 5))
+                if (value.F4 < -15 || value.F4 > 15)
                 {
                     return false;
                 }
-            }
-            if (value.F5 < 0 || value.F5 > 1000)
-            {
-                return false;
-            }
-            {
-                uint offsetValue = (uint)(value.F5);
-                if (!batch.SerializeBits(ref offsetValue, 10))
+                if (value.F5 < 0 || value.F5 > 1000)
                 {
                     return false;
                 }
-            }
-            if (value.F6 < -2048 || value.F6 > 2047)
-            {
-                return false;
-            }
-            {
-                uint offsetValue = (uint)(value.F6) - unchecked((uint)(-2048));
-                if (!batch.SerializeBits(ref offsetValue, 12))
+                if (value.F6 < -2048 || value.F6 > 2047)
                 {
                     return false;
                 }
-            }
-            if (value.F7 < 0 || value.F7 > 255)
-            {
-                return false;
-            }
-            {
-                uint offsetValue = (uint)(value.F7);
-                if (!batch.SerializeBits(ref offsetValue, 8))
+                if (value.F7 < 0 || value.F7 > 255)
                 {
                     return false;
                 }
-            }
-            if (value.F8 < -600000 || value.F8 > 600000)
-            {
-                return false;
-            }
-            {
-                uint offsetValue = (uint)(value.F8) - unchecked((uint)(-600000));
-                if (!batch.SerializeBits(ref offsetValue, 21))
+                if (value.F8 < -600000 || value.F8 > 600000)
                 {
                     return false;
                 }
-            }
-            if (value.F9 < 0 || value.F9 > 100)
-            {
-                return false;
-            }
-            {
-                uint offsetValue = (uint)(value.F9);
-                if (!batch.SerializeBits(ref offsetValue, 7))
+                if (value.F9 < 0 || value.F9 > 100)
+                {
+                    return false;
+                }
+                ulong f0 = ((ulong)((uint)(value.F0) - unchecked((uint)(-100)))) & 0xffUL;
+                ulong f1 = ((ulong)((uint)(value.F1))) & 0xffffUL;
+                ulong f2 = ((ulong)((uint)(value.F2) - unchecked((uint)(-1000000)))) & 0x1fffffUL;
+                ulong f3 = ((ulong)((uint)(value.F3))) & 0x3UL;
+                ulong f4 = ((ulong)((uint)(value.F4) - unchecked((uint)(-15)))) & 0x1fUL;
+                ulong f5 = ((ulong)((uint)(value.F5))) & 0x3ffUL;
+                ulong f6 = ((ulong)((uint)(value.F6) - unchecked((uint)(-2048)))) & 0xfffUL;
+                ulong f7 = ((ulong)((uint)(value.F7))) & 0xffUL;
+                ulong f8 = ((ulong)((uint)(value.F8) - unchecked((uint)(-600000)))) & 0x1fffffUL;
+                ulong f9 = ((ulong)((uint)(value.F9))) & 0x7fUL;
+                ulong w0 = f0 | (f1 << 8) | (f2 << 24) | (f3 << 45) | (f4 << 47) | (f5 << 52) | (f6 << 62);
+                if (!batch.SerializeBits64(ref w0, 64))
+                {
+                    return false;
+                }
+                ulong w1 = (f6 >> 2) | (f7 << 10) | (f8 << 18) | (f9 << 39);
+                if (!batch.SerializeBits64(ref w1, 46))
                 {
                     return false;
                 }
@@ -611,37 +547,31 @@ namespace Bench
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static bool WriteBenchBitsBatch(ref WriteBatch batch, BenchBits value)
         {
-            if (!batch.SerializeBits(ref value.B7, 7))
             {
-                return false;
-            }
-            if (!batch.SerializeBits(ref value.B13, 13))
-            {
-                return false;
-            }
-            if (!batch.SerializeBits(ref value.B23, 23))
-            {
-                return false;
-            }
-            if (!batch.SerializeBits(ref value.B3, 3))
-            {
-                return false;
-            }
-            if (!batch.SerializeBits(ref value.B32, 32))
-            {
-                return false;
-            }
-            if (!batch.SerializeBits(ref value.B11, 11))
-            {
-                return false;
-            }
-            if (!batch.SerializeBits(ref value.B19, 19))
-            {
-                return false;
-            }
-            if (!batch.SerializeBits64(ref value.B48, 48))
-            {
-                return false;
+                // flat run: 156 bits in 3 chunk(s) — the field placement is folded
+                ulong f0 = ((ulong)value.B7) & 0x7fUL;
+                ulong f1 = ((ulong)value.B13) & 0x1fffUL;
+                ulong f2 = ((ulong)value.B23) & 0x7fffffUL;
+                ulong f3 = ((ulong)value.B3) & 0x7UL;
+                ulong f4 = ((ulong)value.B32) & 0xffffffffUL;
+                ulong f5 = ((ulong)value.B11) & 0x7ffUL;
+                ulong f6 = ((ulong)value.B19) & 0x7ffffUL;
+                ulong f7 = ((ulong)value.B48) & 0xffffffffffffUL;
+                ulong w0 = f0 | (f1 << 7) | (f2 << 20) | (f3 << 43) | (f4 << 46);
+                if (!batch.SerializeBits64(ref w0, 64))
+                {
+                    return false;
+                }
+                ulong w1 = (f4 >> 18) | (f5 << 14) | (f6 << 25) | (f7 << 44);
+                if (!batch.SerializeBits64(ref w1, 64))
+                {
+                    return false;
+                }
+                uint w2 = (uint)((f7 >> 20));
+                if (!batch.SerializeBits(ref w2, 28))
+                {
+                    return false;
+                }
             }
             return true;
         }
@@ -849,124 +779,73 @@ namespace Bench
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static bool WriteMixedEntityBatch(ref WriteBatch batch, MixedEntity value)
         {
-            if (!batch.SerializeBits(ref value.EntityId, 12))
             {
-                return false;
-            }
-            if (value.PosX < -16383 || value.PosX > 16383)
-            {
-                return false;
-            }
-            {
-                uint offsetValue = (uint)(value.PosX) - unchecked((uint)(-16383));
-                if (!batch.SerializeBits(ref offsetValue, 15))
+                // flat run: 135 bits in 3 chunk(s) — the field placement is folded
+                if (value.PosX < -16383 || value.PosX > 16383)
                 {
                     return false;
                 }
-            }
-            if (value.PosY < -16383 || value.PosY > 16383)
-            {
-                return false;
-            }
-            {
-                uint offsetValue = (uint)(value.PosY) - unchecked((uint)(-16383));
-                if (!batch.SerializeBits(ref offsetValue, 15))
+                if (value.PosY < -16383 || value.PosY > 16383)
                 {
                     return false;
                 }
-            }
-            if (value.PosZ < -16383 || value.PosZ > 16383)
-            {
-                return false;
-            }
-            {
-                uint offsetValue = (uint)(value.PosZ) - unchecked((uint)(-16383));
-                if (!batch.SerializeBits(ref offsetValue, 15))
+                if (value.PosZ < -16383 || value.PosZ > 16383)
                 {
                     return false;
                 }
-            }
-            if (!batch.SerializeBits(ref value.Yaw, 9))
-            {
-                return false;
-            }
-            if (!batch.SerializeBits(ref value.Pitch, 9))
-            {
-                return false;
-            }
-            if (value.VelX < -2048 || value.VelX > 2047)
-            {
-                return false;
-            }
-            {
-                uint offsetValue = (uint)(value.VelX) - unchecked((uint)(-2048));
-                if (!batch.SerializeBits(ref offsetValue, 12))
+                if (value.VelX < -2048 || value.VelX > 2047)
                 {
                     return false;
                 }
-            }
-            if (value.VelY < -2048 || value.VelY > 2047)
-            {
-                return false;
-            }
-            {
-                uint offsetValue = (uint)(value.VelY) - unchecked((uint)(-2048));
-                if (!batch.SerializeBits(ref offsetValue, 12))
+                if (value.VelY < -2048 || value.VelY > 2047)
                 {
                     return false;
                 }
-            }
-            if (value.VelZ < -2048 || value.VelZ > 2047)
-            {
-                return false;
-            }
-            {
-                uint offsetValue = (uint)(value.VelZ) - unchecked((uint)(-2048));
-                if (!batch.SerializeBits(ref offsetValue, 12))
+                if (value.VelZ < -2048 || value.VelZ > 2047)
                 {
                     return false;
                 }
-            }
-            if (value.Health < 0 || value.Health > 1000)
-            {
-                return false;
-            }
-            {
-                uint offsetValue = (uint)(value.Health);
-                if (!batch.SerializeBits(ref offsetValue, 10))
+                if (value.Health < 0 || value.Health > 1000)
                 {
                     return false;
                 }
-            }
-            {
-                uint enumValue = (uint)value.Weapon;
-                if (enumValue > 15) // headroom above the wire range cannot ride
+                if ((uint)value.Weapon > 15) // headroom above the wire range cannot ride
                 {
                     return false;
                 }
-                if (!batch.SerializeBits(ref enumValue, 4))
+                if (value.Damage >= 1ul << 8) // a mask bit above the wire width cannot ride
                 {
                     return false;
                 }
-            }
-            if (value.Damage >= 1ul << 8) // a mask bit above the wire width cannot ride
-            {
-                return false;
-            }
-            {
-                uint flagsValue = (uint)value.Damage;
-                if (!batch.SerializeBits(ref flagsValue, 8))
+                ulong f0 = ((ulong)value.EntityId) & 0xfffUL;
+                ulong f1 = ((ulong)((uint)(value.PosX) - unchecked((uint)(-16383)))) & 0x7fffUL;
+                ulong f2 = ((ulong)((uint)(value.PosY) - unchecked((uint)(-16383)))) & 0x7fffUL;
+                ulong f3 = ((ulong)((uint)(value.PosZ) - unchecked((uint)(-16383)))) & 0x7fffUL;
+                ulong f4 = ((ulong)value.Yaw) & 0x1ffUL;
+                ulong f5 = ((ulong)value.Pitch) & 0x1ffUL;
+                ulong f6 = ((ulong)((uint)(value.VelX) - unchecked((uint)(-2048)))) & 0xfffUL;
+                ulong f7 = ((ulong)((uint)(value.VelY) - unchecked((uint)(-2048)))) & 0xfffUL;
+                ulong f8 = ((ulong)((uint)(value.VelZ) - unchecked((uint)(-2048)))) & 0xfffUL;
+                ulong f9 = ((ulong)((uint)(value.Health))) & 0x3ffUL;
+                ulong f10 = ((ulong)(uint)value.Weapon) & 0xfUL;
+                ulong f11 = (value.Damage) & 0xffUL;
+                ulong f12 = value.Moving ? 1UL : 0UL;
+                ulong f13 = value.Firing ? 1UL : 0UL;
+                ulong w0 = f0 | (f1 << 12) | (f2 << 27) | (f3 << 42) | (f4 << 57);
+                if (!batch.SerializeBits64(ref w0, 64))
                 {
                     return false;
                 }
-            }
-            if (!batch.SerializeBool(ref value.Moving))
-            {
-                return false;
-            }
-            if (!batch.SerializeBool(ref value.Firing))
-            {
-                return false;
+                ulong w1 = (f4 >> 7) | (f5 << 2) | (f6 << 11) | (f7 << 23) | (f8 << 35) | (f9 << 47) | (f10 << 57) | (f11 << 61);
+                if (!batch.SerializeBits64(ref w1, 64))
+                {
+                    return false;
+                }
+                uint w2 = (uint)((f11 >> 3) | (f12 << 5) | (f13 << 6));
+                if (!batch.SerializeBits(ref w2, 7))
+                {
+                    return false;
+                }
             }
             return true;
         }
@@ -1076,17 +955,16 @@ namespace Bench
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static bool WriteMixedStatBatch(ref WriteBatch batch, MixedStat value)
         {
-            if (!batch.SerializeBits(ref value.StatId, 8))
             {
-                return false;
-            }
-            if (value.Delta < -512 || value.Delta > 511)
-            {
-                return false;
-            }
-            {
-                uint offsetValue = (uint)(value.Delta) - unchecked((uint)(-512));
-                if (!batch.SerializeBits(ref offsetValue, 10))
+                // flat run: 18 bits in 1 chunk(s) — the field placement is folded
+                if (value.Delta < -512 || value.Delta > 511)
+                {
+                    return false;
+                }
+                ulong f0 = ((ulong)value.StatId) & 0xffUL;
+                ulong f1 = ((ulong)((uint)(value.Delta) - unchecked((uint)(-512)))) & 0x3ffUL;
+                uint w0 = (uint)(f0 | (f1 << 8));
+                if (!batch.SerializeBits(ref w0, 18))
                 {
                     return false;
                 }
@@ -1145,35 +1023,25 @@ namespace Bench
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static bool WriteMixedHitEventBatch(ref WriteBatch batch, MixedHitEvent value)
         {
-            if (!batch.SerializeBits(ref value.TargetId, 12))
             {
-                return false;
-            }
-            if (value.Damage < 0 || value.Damage > 4095)
-            {
-                return false;
-            }
-            {
-                uint offsetValue = (uint)(value.Damage);
-                if (!batch.SerializeBits(ref offsetValue, 12))
+                // flat run: 28 bits in 1 chunk(s) — the field placement is folded
+                if (value.Damage < 0 || value.Damage > 4095)
                 {
                     return false;
                 }
-            }
-            if (value.HitKind < 0 || value.HitKind > 7)
-            {
-                return false;
-            }
-            {
-                uint offsetValue = (uint)(value.HitKind);
-                if (!batch.SerializeBits(ref offsetValue, 3))
+                if (value.HitKind < 0 || value.HitKind > 7)
                 {
                     return false;
                 }
-            }
-            if (!batch.SerializeBool(ref value.Crit))
-            {
-                return false;
+                ulong f0 = ((ulong)value.TargetId) & 0xfffUL;
+                ulong f1 = ((ulong)((uint)(value.Damage))) & 0xfffUL;
+                ulong f2 = ((ulong)((uint)(value.HitKind))) & 0x7UL;
+                ulong f3 = value.Crit ? 1UL : 0UL;
+                uint w0 = (uint)(f0 | (f1 << 12) | (f2 << 24) | (f3 << 27));
+                if (!batch.SerializeBits(ref w0, 28))
+                {
+                    return false;
+                }
             }
             return true;
         }
@@ -1235,20 +1103,19 @@ namespace Bench
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static bool WriteMixedChatEventBatch(ref WriteBatch batch, MixedChatEvent value)
         {
-            if (value.Channel < 0 || value.Channel > 3)
             {
-                return false;
-            }
-            {
-                uint offsetValue = (uint)(value.Channel);
-                if (!batch.SerializeBits(ref offsetValue, 2))
+                // flat run: 14 bits in 1 chunk(s) — the field placement is folded
+                if (value.Channel < 0 || value.Channel > 3)
                 {
                     return false;
                 }
-            }
-            if (!batch.SerializeBits(ref value.Speaker, 12))
-            {
-                return false;
+                ulong f0 = ((ulong)((uint)(value.Channel))) & 0x3UL;
+                ulong f1 = ((ulong)value.Speaker) & 0xfffUL;
+                uint w0 = (uint)(f0 | (f1 << 2));
+                if (!batch.SerializeBits(ref w0, 14))
+                {
+                    return false;
+                }
             }
             return true;
         }
@@ -1302,17 +1169,16 @@ namespace Bench
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static bool WriteMixedPickupEventBatch(ref WriteBatch batch, MixedPickupEvent value)
         {
-            if (!batch.SerializeBits(ref value.ItemId, 10))
             {
-                return false;
-            }
-            if (value.Amount < 0 || value.Amount > 255)
-            {
-                return false;
-            }
-            {
-                uint offsetValue = (uint)(value.Amount);
-                if (!batch.SerializeBits(ref offsetValue, 8))
+                // flat run: 18 bits in 1 chunk(s) — the field placement is folded
+                if (value.Amount < 0 || value.Amount > 255)
+                {
+                    return false;
+                }
+                ulong f0 = ((ulong)value.ItemId) & 0x3ffUL;
+                ulong f1 = ((ulong)((uint)(value.Amount))) & 0xffUL;
+                uint w0 = (uint)(f0 | (f1 << 10));
+                if (!batch.SerializeBits(ref w0, 18))
                 {
                     return false;
                 }
@@ -1474,60 +1340,54 @@ namespace Bench
         public static bool WriteBenchMixed(WriteStream stream, BenchMixed value)
         {
             {
-                uint constValue = 49374;
-                if (!stream.SerializeBits(ref constValue, 16)) // const(49374, 16) — SPEC §4.3
+                // flat run: 329 bits in 6 chunk(s) — the field placement is folded
+                if (value.AckSequence < 0 || value.AckSequence > 65535)
                 {
                     return false;
                 }
-            }
-            if (!stream.SerializeBits(ref value.Sequence, 16))
-            {
-                return false;
-            }
-            if (value.AckSequence < 0 || value.AckSequence > 65535)
-            {
-                return false;
-            }
-            {
-                uint offsetValue = (uint)(value.AckSequence);
-                if (!stream.SerializeBits(ref offsetValue, 16))
+                if (value.WorldTime < -1000000000000 || value.WorldTime > 1000000000000)
                 {
                     return false;
                 }
-            }
-            if (!stream.SerializeBits(ref value.AckBits, 32))
-            {
-                return false;
-            }
-            if (!stream.SerializeBits64(ref value.SessionId, 64))
-            {
-                return false;
-            }
-            if (!stream.SerializeBits(ref value.ClientId, 32))
-            {
-                return false;
-            }
-            {
-                ulong offsetValue = value.Nonce;
-                if (!stream.SerializeBits64(ref offsetValue, 64))
+                ulong f0 = (49374UL) & 0xffffUL;
+                ulong f1 = ((ulong)value.Sequence) & 0xffffUL;
+                ulong f2 = ((ulong)((uint)(value.AckSequence))) & 0xffffUL;
+                ulong f3 = ((ulong)value.AckBits) & 0xffffffffUL;
+                ulong f4 = (ulong)value.SessionId;
+                ulong f5 = ((ulong)(value.ClientId)) & 0xffffffffUL;
+                ulong f6 = (ulong)((ulong)(value.Nonce));
+                ulong f7 = ((ulong)((ulong)(value.WorldTime) - unchecked((ulong)(-1000000000000)))) & 0x1ffffffffffUL;
+                ulong f8 = ((ulong)value.FrameTick) & 0xffffffffffffUL;
+                ulong w0 = f0 | (f1 << 16) | (f2 << 32) | (f3 << 48);
+                if (!stream.SerializeBits64(ref w0, 64))
                 {
                     return false;
                 }
-            }
-            if (value.WorldTime < -1000000000000 || value.WorldTime > 1000000000000)
-            {
-                return false;
-            }
-            {
-                ulong offsetValue = (ulong)(value.WorldTime) - unchecked((ulong)(-1000000000000));
-                if (!stream.SerializeBits64(ref offsetValue, 41))
+                ulong w1 = (f3 >> 16) | (f4 << 16);
+                if (!stream.SerializeBits64(ref w1, 64))
                 {
                     return false;
                 }
-            }
-            if (!stream.SerializeBits64(ref value.FrameTick, 48))
-            {
-                return false;
+                ulong w2 = (f4 >> 48) | (f5 << 16) | (f6 << 48);
+                if (!stream.SerializeBits64(ref w2, 64))
+                {
+                    return false;
+                }
+                ulong w3 = (f6 >> 16) | (f7 << 48);
+                if (!stream.SerializeBits64(ref w3, 64))
+                {
+                    return false;
+                }
+                ulong w4 = (f7 >> 16) | (f8 << 25);
+                if (!stream.SerializeBits64(ref w4, 64))
+                {
+                    return false;
+                }
+                uint w5 = (uint)((f8 >> 39));
+                if (!stream.SerializeBits(ref w5, 9))
+                {
+                    return false;
+                }
             }
             if (!stream.SerializeFixed(ref value.ServerTime, 24, 8, 0, 65535))
             {
@@ -1693,13 +1553,15 @@ namespace Bench
             {
                 return false;
             }
-            if (!stream.SerializeBits(ref value.CrcHint, 24))
             {
-                return false;
-            }
-            if (!stream.SerializeBool(ref value.HasExtra))
-            {
-                return false;
+                // flat run: 25 bits in 1 chunk(s) — the field placement is folded
+                ulong f0 = ((ulong)value.CrcHint) & 0xffffffUL;
+                ulong f1 = value.HasExtra ? 1UL : 0UL;
+                uint w0 = (uint)(f0 | (f1 << 24));
+                if (!stream.SerializeBits(ref w0, 25))
+                {
+                    return false;
+                }
             }
             if (value.HasExtra)
             {

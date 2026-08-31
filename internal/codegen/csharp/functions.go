@@ -206,30 +206,69 @@ func (g *gen) emitZeroFunction(st *ir.Struct) {
 	g.sf("}\n\n")
 }
 
+// emitWriteItems walks a body, accumulating maximal FLAT RUNS of statically
+// sized items (flat.go) and emitting everything else through the per-field
+// path. A run that does not reduce the packer-step count, or that a
+// non-flattenable item interrupts, falls back ITEM BY ITEM — never piece by
+// piece: the item is the only unit the per-field path can re-emit.
 func (g *gen) emitWriteItems(items []ir.Item, ind string) {
+	var run []flatPiece
+	var runBits int64
+	flush := func() {
+		if len(run) == 0 {
+			return
+		}
+		pieces, bits := run, runBits
+		run, runBits = nil, 0
+		if flatWorthwhile(pieces, bits) {
+			g.emitFlatWriteRun(pieces, bits, ind)
+			return
+		}
+		for _, p := range pieces {
+			g.emitWriteItem(p.item, ind)
+		}
+	}
 	for _, item := range items {
-		switch item := item.(type) {
-		case *ir.FieldItem:
-			g.emitWriteField(item.F, ind)
-		case *ir.ConstItem:
-			g.emitConstItem(item, ind, true)
-		case *ir.ReservedItem:
-			g.emitReservedItem(item, ind, true)
-		case *ir.AlignItem:
-			g.call(ind, g.rv()+".SerializeAlign()", "")
-		case *ir.Branch:
-			neg := ""
-			if item.Neg {
-				neg = "!"
-			}
-			g.sf("%sif (%svalue.%s)\n%s{\n", ind, neg, g.m(ir.GoExportName(item.Cond)), ind)
-			g.emitWriteItems(item.Then, ind+"    ")
+		p, ok := g.flatWritePieceOf(item)
+		if ok && runBits+p.bits <= flatMaxRunBits {
+			run = append(run, p)
+			runBits += p.bits
+			continue
+		}
+		flush()
+		if ok {
+			run, runBits = []flatPiece{p}, p.bits
+			continue
+		}
+		g.emitWriteItem(item, ind)
+	}
+	flush()
+}
+
+// emitWriteItem is the per-field path for one item — the run's fallback and
+// the emitter for everything a run cannot hold.
+func (g *gen) emitWriteItem(item ir.Item, ind string) {
+	switch item := item.(type) {
+	case *ir.FieldItem:
+		g.emitWriteField(item.F, ind)
+	case *ir.ConstItem:
+		g.emitConstItem(item, ind, true)
+	case *ir.ReservedItem:
+		g.emitReservedItem(item, ind, true)
+	case *ir.AlignItem:
+		g.call(ind, g.rv()+".SerializeAlign()", "")
+	case *ir.Branch:
+		neg := ""
+		if item.Neg {
+			neg = "!"
+		}
+		g.sf("%sif (%svalue.%s)\n%s{\n", ind, neg, g.m(ir.GoExportName(item.Cond)), ind)
+		g.emitWriteItems(item.Then, ind+"    ")
+		g.sf("%s}\n", ind)
+		if item.Else != nil {
+			g.sf("%selse\n%s{\n", ind, ind)
+			g.emitWriteItems(item.Else, ind+"    ")
 			g.sf("%s}\n", ind)
-			if item.Else != nil {
-				g.sf("%selse\n%s{\n", ind, ind)
-				g.emitWriteItems(item.Else, ind+"    ")
-				g.sf("%s}\n", ind)
-			}
 		}
 	}
 }

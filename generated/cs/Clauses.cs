@@ -777,13 +777,15 @@ namespace Example
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static bool WriteTri3Batch(ref WriteBatch batch, Tri3 value)
         {
-            if (!batch.SerializeBits(ref value.A, 1))
             {
-                return false;
-            }
-            if (!batch.SerializeBits(ref value.B, 2))
-            {
-                return false;
+                // flat run: 3 bits in 1 chunk(s) — the field placement is folded
+                ulong f0 = ((ulong)value.A) & 0x1UL;
+                ulong f1 = ((ulong)value.B) & 0x3UL;
+                uint w0 = (uint)(f0 | (f1 << 1));
+                if (!batch.SerializeBits(ref w0, 3))
+                {
+                    return false;
+                }
             }
             return true;
         }
@@ -913,13 +915,15 @@ namespace Example
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static bool WriteElevenBatch(ref WriteBatch batch, Eleven value)
         {
-            if (!batch.SerializeBits(ref value.A, 3))
             {
-                return false;
-            }
-            if (!batch.SerializeBits(ref value.B, 8))
-            {
-                return false;
+                // flat run: 11 bits in 1 chunk(s) — the field placement is folded
+                ulong f0 = ((ulong)value.A) & 0x7UL;
+                ulong f1 = ((ulong)value.B) & 0xffUL;
+                uint w0 = (uint)(f0 | (f1 << 3));
+                if (!batch.SerializeBits(ref w0, 11))
+                {
+                    return false;
+                }
             }
             return true;
         }
