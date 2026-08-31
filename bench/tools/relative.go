@@ -42,17 +42,11 @@ import (
 	"strings"
 )
 
-// The benchmark corpus, in the order the tables present it.
-var corpus = []string{
-	"rigidbody_moving", "rigidbody_at_rest", "chat", "test", "inputpacket",
-	"shipcreate", "probe_header", "probebits", "probearray",
-	"testdata", "real_packet",
-}
-
-// The bench/corpus/Bench.schema shapes — presentation order only; the family
-// column, not this list, is what the §5.3 refusal rules read. A bench absent
-// from this list would silently vanish from every table and from aggregate,
-// so the list must know every bench the runners emit.
+// The bench/corpus/Bench.schema shapes — ONE, since the ruling on #199 left
+// a single bench corpus. Presentation order only; the family column, not
+// this list, is what the §5.3 refusal rules read. A bench absent from this
+// list would silently vanish from every table and from aggregate, so the
+// list must know every bench the runners emit.
 var benchCorpus = []string{"bench_mixed"}
 
 const bitpacker = "bitpacker"
@@ -66,7 +60,7 @@ const bitpacker = "bitpacker"
 // exactly what round_trip did between the tracer landing and this fix (F4).
 var paths = []string{"write", "read", "round_trip"}
 
-var order = append(append(append([]string{}, corpus...), benchCorpus...), bitpacker)
+var order = append(append([]string{}, benchCorpus...), bitpacker)
 
 // langs is the presentation order. c is the reference the relative table is
 // expressed against (Glenn, 2026-08-17: "make C the reference. It is the
@@ -561,9 +555,11 @@ func median(xs []float64) float64 {
 	return (s[n/2-1] + s[n/2]) / 2
 }
 
-// rel is the median across the corpus of c_rate/lang_rate as a percentage,
-// computed on the §2.2 headline (max_msgs_per_sec). C is the reference
-// (Glenn, 2026-08-17).
+// rel is the median across the family-gen corpus of c_rate/lang_rate as a
+// percentage, computed on the §2.2 headline (max_msgs_per_sec). C is the
+// reference (Glenn, 2026-08-17). The corpus is ONE shape since #199, so the
+// median is that shape's ratio; the loop stays a median because the shape
+// count is a corpus fact, not a table fact.
 //
 // HIGHER IS SLOWER, and this is the one thing to get right about this table.
 // The headline column is a RATE — so dividing C's rate by the language's
@@ -575,7 +571,7 @@ func median(xs []float64) float64 {
 // get here — guardRatio refuses first.
 func rel(ds *dataset, lang, path string) (float64, bool) {
 	var ratios []float64
-	for _, b := range corpus {
+	for _, b := range benchCorpus {
 		kc, kl := key{reference, b, path, ""}, key{lang, b, path, ""}
 		c, okc := ds.rows[kc]
 		l, okl := ds.rows[kl]
@@ -617,7 +613,7 @@ func relativeTable(ds *dataset) string {
 		"<!-- HIGHER IS SLOWER: each cell is C's best rate divided by this",
 		"     language's best rate, so 200% means it takes twice as long.",
 		"     C is the reference (Glenn, 2026-08-17). -->",
-		"| backend | write | read |",
+		"| backend | write | round_trip |",
 		"|---|---:|---:|",
 		"| C | 100% | 100% |",
 	}
@@ -632,8 +628,12 @@ func relativeTable(ds *dataset) string {
 			// js publishes in the absolute table only.
 			continue
 		}
+		// write and round_trip are the gen family's two MEASURED paths
+		// under §2.9; the data-driven driver derives read to stderr and
+		// emits no read row, so ratioing "read" here would print a table
+		// of dashes.
 		w, okw := rel(ds, l.key, "write")
-		r, okr := rel(ds, l.key, "read")
+		r, okr := rel(ds, l.key, "round_trip")
 		if !okw || !okr {
 			out = append(out, fmt.Sprintf("| %s | — | — |", l.name))
 			continue

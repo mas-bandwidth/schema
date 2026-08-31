@@ -96,28 +96,18 @@ fi
 # bench -> generated per-op entry stems, and the generated UNIT they live in:
 #   <bench> <snake for c/rust> <Camel for cpp/go/cs> <unit>
 #
-# The unit column is issue #104. This estate benches TWO generated units and
-# the map used to assume one: `example` (examples/*.schema -> generated/<lang>)
-# carries every row below but the last, and `realworld`
-# (bench/corpus/RealWorld.schema -> generated/bench/<lang>/...) carries
-# real_packet, §1.7's realistic snapshot and the densest compressed-float
-# workload in the suite. The two units' entry points are spelled identically
-# apart from the package / namespace / crate prefix each port's layout puts in
-# front, so a row that cannot name its unit is resolved against whichever
-# unit's spelling was hardcoded — which for real_packet meant no verdict at
-# all, inline=unknown, and §5.3 rule 7 refusing every ratio it appears in.
-# UNIT_MAP below is where each unit's per-language spelling lives.
-BENCH_MAP='rigidbody_moving rigid_body RigidBody example
-rigidbody_at_rest rigid_body RigidBody example
-chat chat Chat example
-test test Test example
-inputpacket input_packet InputPacket example
-shipcreate ship_create ShipCreate example
-probe_header probe_header ProbeHeader example
-probebits probe_bits ProbeBits example
-probearray probe_array ProbeArray example
-testdata test_data TestData example
-real_packet real_packet RealPacket realworld'
+# EMPTY since 2026-08-31, and that is the honest state rather than a gap in
+# this file. Every row this map carried was a §1.2 example-corpus row, and
+# those rows no longer exist in any runner (the ruling on #199: one bench
+# corpus, Bench.schema). The one gen row left — bench_mixed — is driven by
+# the data-driven driver, which has no per-shape entry stem to name, so it
+# carries inline=unknown and is correctly un-ratioable under §5.3 rule 7.
+#
+# The machinery below stays: UNIT_MAP, the per-language symbol spellings and
+# the unit-disambiguation the gate's selftest fixtures attack are what a
+# repopulated map needs. The named follow-on on #177 — teaching the verdict
+# pass to attribute the data-driven loops — is what refills this.
+BENCH_MAP=''
 
 # family bits: bench -> the runner's noinline timed-loop symbol stems
 # (<snake>_write_loop/_read_loop for c/cpp/rust; main.<lowerCamel>WriteLoop for
@@ -663,379 +653,39 @@ c|cpp)
     } >> "$LEDGER"
 
     : > "$VD/verdicts.txt"
-    if [ "$LANG_ARG" = c ]; then
-        # C per-row verdicts by walking the -g shadow's inline stacks — the
-        # same technique as the cpp branch below, live for C since
-        # bench/c/bench_message.inc gave every expansion real line numbers
-        # (the old BENCH_MESSAGE macro put every statement of every expansion
-        # on one line, which is why chat/test/batch rows used to go unknown
-        # whenever their entry symbols inlined away). Each bench has its own
-        # bench_message_<suffix> function, so the frame NAME carries the
-        # bench and the .inc line carries timed-write / timed-read / untimed.
-        [ -x "$VD/shadow" ] || { echo "shadow build failed — cannot attribute c verdicts (see $REMARKS)" >&2; exit 1; }
-        otool -tv "$VD/shadow" > "$VD/shadow-disasm.txt"
-        count_calls "$RT" "$HELPER" "$COLD_SPLIT" < "$VD/shadow-disasm.txt" > "$VD/shadow-counts.txt"
-        selftest_join "$VD/shadow-disasm.txt" "$VD/shadow-counts.txt" "$HELPER" || exit 1
-
-        # every remaining runtime/helper call site in the shadow text —
-        # tail-branch b sites included (issue #86), under the same guards
-        # count_calls applies: raw-address, own-entry, and own-split-chunk
-        # b forms are control flow, not call sites
-        awk -v RTPAT="$RT" -v HELPER="$HELPER" '
-            /^[^ \t].*:$/ { sym = substr($0, 1, length($0) - 1); next }
-            $2 == "bl" && ($3 ~ RTPAT || $3 ~ HELPER) { print $1, $3 }
-            $2 == "b" && $3 !~ /^0x/ && $3 != sym && \
-                index($3, sym ".") != 1 && index(sym, $3 ".") != 1 && \
-                ($3 ~ RTPAT || $3 ~ HELPER) { print $1, $3 }
-        ' "$VD/shadow-disasm.txt" > "$VD/addrs.txt"
-
-        # drift guard, as cpp: hot+cold totals must match the measured binary
-        M_TOTAL="$(awk '$1 == "SYM" { s += $4 + $7 } END { print s + 0 }' "$VD/counts.txt")"
-        S_TOTAL="$(awk '$1 == "SYM" { s += $4 + $7 } END { print s + 0 }' "$VD/shadow-counts.txt")"
-        if [ "$M_TOTAL" != "$S_TOTAL" ]; then
-            echo "note: SHADOW DRIFT: measured binary has $M_TOTAL transitive runtime calls (hot+cold), -g shadow has $S_TOTAL — verdicts below describe the shadow" >> "$LEDGER"
-        fi
-
-        # timed-loop line ranges: write/read loops inside the include template
-        INC=bench/c/bench_message.inc
-        SRC=bench/c/bench_main.c
-        # tail -1: the markers are the ones in CODE — a doc line quoting them
-        # higher up must not win (it did once: every timed site went untimed
-        # and the gen rows published full; the range sanity check below is
-        # the guard that turns that bug into a refusal)
-        W1=$(grep -n 'write path: 1 warmup' "$INC" | cut -d: -f1 | tail -1)
-        W2=$(grep -n 'read path: 1 warmup' "$INC" | cut -d: -f1 | tail -1)
-        RE=$(grep -n 'report( name, "write"' "$INC" | cut -d: -f1 | tail -1)
-        if [ -z "$W1" ] || [ -z "$W2" ] || [ -z "$RE" ] || [ "$W1" -ge "$W2" ] || [ "$W2" -ge "$RE" ]; then
-            echo "c attribution: timed-range markers missing or out of order (W1=$W1 W2=$W2 RE=$RE) — inline stays unknown" >&2
-            echo "note: c attribution marker failure (W1=$W1 W2=$W2 RE=$RE) — all c gen rows left unknown" >> "$LEDGER"
-            exit 1
-        fi
-
-        # inline stacks for every call site, batched through atos
-        : > "$VD/stacks.txt"
-        cut -d' ' -f1 "$VD/addrs.txt" | sed 's/^/0x/' | {
-            batch=()
-            while read -r a; do
-                batch+=("$a")
-                if [ "${#batch[@]}" -eq 200 ]; then
-                    atos -o "$VD/shadow" -i "${batch[@]}" >> "$VD/stacks.txt"; echo "" >> "$VD/stacks.txt"
-                    batch=()
-                fi
-            done
-            [ "${#batch[@]}" -gt 0 ] && { atos -o "$VD/shadow" -i "${batch[@]}" >> "$VD/stacks.txt"; echo "" >> "$VD/stacks.txt"; }
-            true
-        }
-
-        awk -v RTPAT="$RT" -v COLD="$COLD_SPLIT" -v addrsf="$VD/addrs.txt" -v countsf="$VD/shadow-counts.txt" \
-            -v W1="$W1" -v W2="$W2" -v RE="$RE" '
-            BEGIN {
-                while ((getline line < addrsf) > 0) { na++; split(line, a, " "); target[na] = a[2] }
-                while ((getline line < countsf) > 0) { split(line, a, " "); if (a[1] == "SYM") { tot[a[2]] = a[4]; ctot[a[2]] = a[7] } }
-                # bench_message_<suffix> -> CSV bench name
-                bmap["rigidbody"] = "rigidbody_moving"
-                bmap["rigidbody_at_rest"] = "rigidbody_at_rest"
-                bmap["chat"] = "chat"; bmap["test"] = "test"
-                bmap["inputpacket"] = "inputpacket"; bmap["shipcreate"] = "shipcreate"
-                bmap["probe_header"] = "probe_header"
-                bmap["probebits"] = "probebits"; bmap["probearray"] = "probearray"
-                bmap["testdata"] = "testdata"
-                # the realworld unit (issue #104): BM_SUFFIX real_packet, so
-                # the frame name is bench_message_real_packet like every row
-                # above — C puts both generated units in one flat namespace
-                bmap["real_packet"] = "real_packet"
-                g = 0
-            }
-            function flush_group(    i, f, bench, path, L, sfx, t) {
-                if (nf == 0) return
-                g++
-                bench = ""; path = ""
-                for (i = 1; i <= nf; i++) {
-                    f = frames[i]
-                    if (match(f, /bench_message_[a-z_]+/)) {
-                        sfx = substr(f, RSTART + 14, RLENGTH - 14)
-                        if (match(f, /bench_message\.inc:[0-9]+/)) {
-                            L = substr(f, RSTART + 18, RLENGTH - 18) + 0
-                            if (L >= W1 && L < W2) path = "write"
-                            else if (L >= W2 && L < RE) path = "read"
-                            else { untimed++; nf = 0; return }
-                            bench = bmap[sfx]
-                        }
-                        break
-                    }
-                }
-                if (bench == "" || path == "") { if (i <= nf) unattributed++; else untimed++; nf = 0; return }
-                t = target[g]
-                seen[bench "," path] = 1
-                # §4.2 unroll analog for attribution: an unrolled timed loop
-                # repeats each source-level call site once per unrolled copy,
-                # and every copy carries the SAME inline stack and target —
-                # so distinct (stack, target) signatures are the per-op
-                # sites, and repeats are unroll copies, counted once. (The C
-                # read loops measure unrolled 4x; raw counting published
-                # partial:36 where the per-op truth is 9.)
-                sig = t
-                for (i = 1; i <= nf; i++) sig = sig SUBSEP frames[i]
-                if (sig in sigseen) { dedup++; nf = 0; return }
-                sigseen[sig] = 1
-                # §4.2 hot/cold, exactly as cpp: split cold chunks count
-                # cold once; hot runtime targets count hot; hot helpers
-                # contribute their own hot and cold transitive counts
-                if (t ~ COLD) {
-                    c[bench "," path] += 1
-                } else if (t ~ RTPAT) {
-                    n[bench "," path] += 1
-                } else {
-                    n[bench "," path] += tot[t] + 0
-                    c[bench "," path] += ctot[t] + 0
-                }
-                nf = 0
-            }
-            NF == 0 { flush_group(); next }
-            { frames[++nf] = $0 }
-            END {
-                flush_group()
-                for (k in seen) { split(k, a, ","); printf "N %s %s %d %d\n", a[1], a[2], n[k] + 0, c[k] + 0 }
-                printf "STATS groups %d untimed %d unattributed %d unroll-dedup %d\n", g, untimed, unattributed, dedup
-            }' "$VD/stacks.txt" > "$VD/attribution.txt"
-
-        # the attribution must PROVE it ran — same gates as cpp: a missing
-        # STATS line or an incomplete walk would default rows to 0 and fake
-        # a full; refuse instead, rows stay unknown.
-        if ! grep -q '^STATS groups' "$VD/attribution.txt"; then
-            echo "c attribution failed (no STATS line in $VD/attribution.txt) — inline stays unknown" >&2
-            echo "note: c attribution FAILED — all c gen rows left unknown" >> "$LEDGER"
-            exit 1
-        fi
-        NADDR="$(wc -l < "$VD/addrs.txt" | tr -d ' ')"
-        NACC="$(awk '/^STATS/ { print $3 + 0 }' "$VD/attribution.txt")"
-        if [ "$NADDR" != "$NACC" ]; then
-            echo "c attribution incomplete: $NACC of $NADDR call sites walked — inline stays unknown" >&2
-            echo "note: c attribution INCOMPLETE ($NACC of $NADDR call sites) — all c gen rows left unknown" >> "$LEDGER"
-            exit 1
-        fi
-
-        {
-            echo "# c per-row attribution (atos inline stacks over the -g shadow;"
-            echo "# untimed = call sites in setup/self-check/variant code, excluded):"
-            sed 's/^/attr /' "$VD/attribution.txt"
-        } >> "$LEDGER"
-
-        echo "$BENCH_MAP" | while read -r bench snake camel unit; do
-            for path in write read; do
-                set -- $(awk -v b="$bench" -v p="$path" '$1 == "N" && $2 == b && $3 == p { print $4, $5; f = 1; exit } END { if (!f) print 0, 0 }' "$VD/attribution.txt")
-                echo "$bench $path $(verdict_of "$1") $1 $2" >> "$VD/verdicts.txt"
-            done
-        done
-        # family bits: the noinline timed-loop symbols ARE the §4.1
-        # ground truth, counted PER OP (perop_for divides loop unrolling back
-        # out); a loop symbol that vanished stays unknown, honestly.
-        echo "$BITS_MAP" | while read -r bench snake lower camel; do
-            for path in write read; do
+    # family bits: the noinline timed-loop symbols in the MEASURED binary are
+    # the §4.1 ground truth — counted PER OP (perop_for divides loop unrolling
+    # back out); a loop symbol that vanished stays unknown, honestly.
+    #
+    # The gen family has NO verdict source in c or cpp today. It had one until
+    # 2026-08-31: an atos inline-stack walk over a -g shadow build, which
+    # named each remaining call site's bench_message instantiation (cpp) or
+    # bench_message_<suffix> expansion and bench_message.inc line (c). Both
+    # keys were properties of the hand-written per-shape driver, and the §1.2
+    # rows that driver measured are retired — the driver with them. The one
+    # gen row left, bench_mixed, is data-driven and offers neither key, so it
+    # carries inline=unknown and is correctly un-ratioable under §5.3 rule 7.
+    # Teaching the pass to attribute the data-driven loops is the named
+    # follow-on on #177; the shadow build above still runs, because its
+    # missed-inline remarks are what the ledger section prints.
+    echo "$BITS_MAP" | while read -r bench snake lower camel; do
+        for path in write read; do
+            if [ "$LANG_ARG" = c ]; then
                 n="$(perop_for "^_?${snake}_${path}_loop\$")"
                 cold="$(perop_cold_for "^_?${snake}_${path}_loop\$")"
-                if [ "$n" -ge 0 ]; then
-                    echo "$bench $path $(verdict_of "$n") $n $cold" >> "$VD/verdicts.txt"
-                elif [ "$n" -eq -2 ]; then
-                    echo "note: c $bench $path: loop body count does not divide by its unroll factor — inline stays unknown" >> "$LEDGER"
-                else
-                    echo "note: c $bench $path: ${snake}_${path}_loop not found in otool — inline stays unknown" >> "$LEDGER"
-                fi
-            done
-        done
-    else
-        # C++ per-row verdicts by walking the -g shadow's inline stacks.
-        # clang is deterministic: same compiler + flags + source means the
-        # same inlining; -g adds only metadata. atos -i then names, for every
-        # remaining call, which bench_message instantiation and which timed
-        # loop it sits in — and setup/self-check/variant code is EXCLUDED
-        # rather than miscounted.
-        [ -x "$VD/shadow" ] || { echo "shadow build failed — cannot attribute cpp verdicts (see $REMARKS)" >&2; exit 1; }
-        otool -tv "$VD/shadow" > "$VD/shadow-disasm.txt"
-        count_calls "$RT" "$HELPER" "$COLD_SPLIT" < "$VD/shadow-disasm.txt" > "$VD/shadow-counts.txt"
-        selftest_join "$VD/shadow-disasm.txt" "$VD/shadow-counts.txt" "$HELPER" || exit 1
-
-        # every remaining runtime/helper call site in the shadow text —
-        # tail-branch b sites included (issue #86), under the same guards
-        # count_calls applies: raw-address, own-entry, and own-split-chunk
-        # b forms are control flow, not call sites
-        awk -v RTPAT="$RT" -v HELPER="$HELPER" '
-            /^[^ \t].*:$/ { sym = substr($0, 1, length($0) - 1); next }
-            $2 == "bl" && ($3 ~ RTPAT || $3 ~ HELPER) { print $1, $3 }
-            $2 == "b" && $3 !~ /^0x/ && $3 != sym && \
-                index($3, sym ".") != 1 && index(sym, $3 ".") != 1 && \
-                ($3 ~ RTPAT || $3 ~ HELPER) { print $1, $3 }
-        ' "$VD/shadow-disasm.txt" > "$VD/addrs.txt"
-
-        # drift guard: the shadow must have the same call structure as the
-        # measured binary, or the attribution below describes the wrong code
-        # (hot + cold compared together: a call that changed temperature
-        # between the builds is drift too)
-        M_TOTAL="$(awk '$1 == "SYM" { s += $4 + $7 } END { print s + 0 }' "$VD/counts.txt")"
-        S_TOTAL="$(awk '$1 == "SYM" { s += $4 + $7 } END { print s + 0 }' "$VD/shadow-counts.txt")"
-        if [ "$M_TOTAL" != "$S_TOTAL" ]; then
-            echo "note: SHADOW DRIFT: measured binary has $M_TOTAL transitive runtime calls (hot+cold), -g shadow has $S_TOTAL — verdicts below describe the shadow" >> "$LEDGER"
-        fi
-
-        # source maps: which main line calls which bench, and the timed-loop
-        # line ranges inside bench_message
-        SRC=bench/cpp/bench_main.cpp
-        grep -n 'bench_message( "' "$SRC" | sed -E 's/^([0-9]+):.*bench_message\( "([a-z_]+)".*/\1 \2/' > "$VD/benchlines.txt"
-        W1=$(grep -n 'write path: 1 warmup' "$SRC" | cut -d: -f1 | head -1)
-        W2=$(grep -n 'read path: 1 warmup' "$SRC" | cut -d: -f1 | head -1)
-        RE=$(grep -n 'report( name, "write"' "$SRC" | cut -d: -f1 | head -1)
-        # marker sanity (same guard as the c branch): a missing or reordered
-        # marker silently reclassifies timed sites as untimed and publishes
-        # false fulls — refuse instead
-        if [ -z "$W1" ] || [ -z "$W2" ] || [ -z "$RE" ] || [ "$W1" -ge "$W2" ] || [ "$W2" -ge "$RE" ]; then
-            echo "cpp attribution: timed-range markers missing or out of order in $SRC (W1=$W1 W2=$W2 RE=$RE) — inline stays unknown" >&2
-            echo "note: cpp attribution marker failure — all cpp rows left unknown" >> "$LEDGER"
-            exit 1
-        fi
-
-        # inline stacks for every call site, batched through atos (blank line
-        # separates address groups; an explicit separator guards the batch seam)
-        : > "$VD/stacks.txt"
-        cut -d' ' -f1 "$VD/addrs.txt" | sed 's/^/0x/' | {
-            batch=()
-            while read -r a; do
-                batch+=("$a")
-                if [ "${#batch[@]}" -eq 200 ]; then
-                    atos -o "$VD/shadow" -i "${batch[@]}" >> "$VD/stacks.txt"; echo "" >> "$VD/stacks.txt"
-                    batch=()
-                fi
-            done
-            [ "${#batch[@]}" -gt 0 ] && { atos -o "$VD/shadow" -i "${batch[@]}" >> "$VD/stacks.txt"; echo "" >> "$VD/stacks.txt"; }
-            true
-        }
-
-        awk -v RTPAT="$RT" -v COLD="$COLD_SPLIT" -v addrsf="$VD/addrs.txt" -v countsf="$VD/shadow-counts.txt" \
-            -v benchf="$VD/benchlines.txt" \
-            -v W1="$W1" -v W2="$W2" -v RE="$RE" '
-            BEGIN {
-                while ((getline line < addrsf) > 0) { na++; split(line, a, " "); target[na] = a[2] }
-                while ((getline line < countsf) > 0) { split(line, a, " "); if (a[1] == "SYM") { tot[a[2]] = a[4]; ctot[a[2]] = a[7] } }
-                while ((getline line < benchf) > 0) { split(line, a, " "); benchof[a[1]] = a[2] }
-                tmap["RigidBody"] = "rigidbody_moving"; tmap["Chat"] = "chat"
-                tmap["Test"] = "test"; tmap["InputPacket"] = "inputpacket"
-                tmap["ShipCreate"] = "shipcreate"
-                tmap["ProbeHeader"] = "probe_header"; tmap["ProbeBits"] = "probebits"
-                tmap["ProbeArray"] = "probearray"; tmap["TestData"] = "testdata"
-                tmap["RealPacket"] = "real_packet"      # the realworld unit (issue #104)
-                g = 0
-            }
-            function flush_group(    i, f, bench, path, L, contrib, t, tn) {
-                if (nf == 0) return
-                g++
-                bench = ""; path = ""
-                for (i = 1; i <= nf; i++) {
-                    f = frames[i]
-                    if (f ~ /bench_message</ && match(f, /bench_main\.cpp:[0-9]+/)) {
-                        L = substr(f, RSTART + 15, RLENGTH - 15) + 0
-                        if (L >= W1 && L < W2) path = "write"
-                        else if (L >= W2 && L < RE) path = "read"
-                        else { untimed++; nf = 0; return }
-                        # bench from the main frame call line, else from <T>
-                        for (j = i + 1; j <= nf; j++) {
-                            if (frames[j] ~ /^main / && match(frames[j], /bench_main\.cpp:[0-9]+/)) {
-                                ml = substr(frames[j], RSTART + 15, RLENGTH - 15) + 0
-                                if (ml in benchof) bench = benchof[ml]
-                            }
-                        }
-                        if (bench == "") {
-                            # the template argument names the type, whichever
-                            # generated NAMESPACE it lives in (issue #104:
-                            # example:: and realworld:: both appear here, and
-                            # a fixed character offset past "example::" would
-                            # simply miss the second one)
-                            if (match(f, /bench_message<[A-Za-z_]+::[A-Za-z_]+/)) {
-                                tn = substr(f, RSTART, RLENGTH)
-                                sub(/^bench_message<[A-Za-z_]+::/, "", tn)
-                                if (tn in tmap) bench = tmap[tn]
-                                if (bench == "rigidbody_moving" && f ~ /\$_/) bench = "rigidbody_at_rest"
-                            }
-                        }
-                        break
-                    }
-                }
-                if (bench == "" || path == "") { if (i <= nf) unattributed++; else untimed++; nf = 0; return }
-                t = target[g]
-                seen[bench "," path] = 1
-                # §4.2 unroll analog for attribution (same rule as the c
-                # branch): distinct (stack, target) signatures are the
-                # per-op sites; identical repeats are unrolled copies of one
-                # source-level site and count once
-                sig = t
-                for (i = 1; i <= nf; i++) sig = sig SUBSEP frames[i]
-                if (sig in sigseen) { dedup++; nf = 0; return }
-                sigseen[sig] = 1
-                # §4.2 hot/cold: a split cold-path target counts cold, once;
-                # a hot runtime target counts hot; a hot helper contributes
-                # its own hot and cold transitive counts separately
-                if (t ~ COLD) {
-                    c[bench "," path] += 1
-                } else if (t ~ RTPAT) {
-                    n[bench "," path] += 1
-                } else {
-                    n[bench "," path] += tot[t] + 0
-                    c[bench "," path] += ctot[t] + 0
-                }
-                nf = 0
-            }
-            NF == 0 { flush_group(); next }
-            { frames[++nf] = $0 }
-            END {
-                flush_group()
-                for (k in seen) { split(k, a, ","); printf "N %s %s %d %d\n", a[1], a[2], n[k] + 0, c[k] + 0 }
-                printf "STATS groups %d untimed %d unattributed %d unroll-dedup %d\n", g, untimed, unattributed, dedup
-            }' "$VD/stacks.txt" > "$VD/attribution.txt"
-
-        # the attribution must PROVE it ran: without the STATS line (or with
-        # every group unattributed) a parser failure would default every row
-        # to 0 and fake a full — refuse instead, rows stay unknown.
-        if ! grep -q '^STATS groups' "$VD/attribution.txt"; then
-            echo "cpp attribution failed (no STATS line in $VD/attribution.txt) — inline stays unknown" >&2
-            echo "note: cpp attribution FAILED — all cpp rows left unknown" >> "$LEDGER"
-            exit 1
-        fi
-        NADDR="$(wc -l < "$VD/addrs.txt" | tr -d ' ')"
-        NACC="$(awk '/^STATS/ { print $3 + 0 }' "$VD/attribution.txt")"
-        if [ "$NADDR" != "$NACC" ]; then
-            echo "cpp attribution incomplete: $NACC of $NADDR call sites walked — inline stays unknown" >&2
-            echo "note: cpp attribution INCOMPLETE ($NACC of $NADDR call sites) — all cpp rows left unknown" >> "$LEDGER"
-            exit 1
-        fi
-
-        {
-            echo "# cpp per-row attribution (atos inline stacks over the -g shadow;"
-            echo "# untimed = call sites in setup/self-check/variant code, excluded):"
-            sed 's/^/attr /' "$VD/attribution.txt"
-        } >> "$LEDGER"
-
-        echo "$BENCH_MAP" | while read -r bench snake camel unit; do
-            for path in write read; do
-                set -- $(awk -v b="$bench" -v p="$path" '$1 == "N" && $2 == b && $3 == p { print $4, $5; f = 1; exit } END { if (!f) print 0, 0 }' "$VD/attribution.txt")
-                echo "$bench $path $(verdict_of "$1") $1 $2" >> "$VD/verdicts.txt"
-            done
-        done
-        # families rt and bits: the noinline timed-loop symbols in the
-        # MEASURED binary are the §4.1 ground truth — counted PER OP
-        # (perop_for divides loop unrolling back out), no atos needed
-        # (their call sites show up as untimed in the atos walk).
-        echo "$BITS_MAP" | while read -r bench snake lower camel; do
-            for path in write read; do
+            else
                 n="$(perop_for "${snake}_${path}_loop")"
                 cold="$(perop_cold_for "${snake}_${path}_loop")"
-                if [ "$n" -ge 0 ]; then
-                    echo "$bench $path $(verdict_of "$n") $n $cold" >> "$VD/verdicts.txt"
-                elif [ "$n" -eq -2 ]; then
-                    echo "note: cpp $bench $path: loop body count does not divide by its unroll factor — inline stays unknown" >> "$LEDGER"
-                else
-                    echo "note: cpp $bench $path: ${snake}_${path}_loop not found in otool — inline stays unknown" >> "$LEDGER"
-                fi
-            done
+            fi
+            if [ "$n" -ge 0 ]; then
+                echo "$bench $path $(verdict_of "$n") $n $cold" >> "$VD/verdicts.txt"
+            elif [ "$n" -eq -2 ]; then
+                echo "note: $LANG_ARG $bench $path: loop body count does not divide by its unroll factor — inline stays unknown" >> "$LEDGER"
+            else
+                echo "note: $LANG_ARG $bench $path: ${snake}_${path}_loop not found in otool — inline stays unknown" >> "$LEDGER"
+            fi
         done
-    fi
+    done
     emit_rows
     backfill
     ;;
@@ -1091,6 +741,7 @@ go)
 
     : > "$VD/verdicts.txt"
     echo "$BENCH_MAP" | while read -r bench snake camel unit; do
+        [ -n "$bench" ] || continue
         for path in write read; do
             Cap="$(echo "$path" | awk '{print toupper(substr($0,1,1)) substr($0,2)}')"
             pat="$(unit_go_sym "$unit" "$Cap" "$camel")" || { echo "inline-verdict: $LANG_ARG $bench $path: BENCH_MAP names generated unit '$unit', which UNIT_MAP does not carry — refusing rather than guessing a prefix" >&2; exit 1; }
@@ -1165,6 +816,7 @@ rust)
 
     : > "$VD/verdicts.txt"
     echo "$BENCH_MAP" | while read -r bench snake camel unit; do
+        [ -n "$bench" ] || continue
         for path in write read; do
             name="${path}_${snake}"
             pat="$(unit_rust_sym "$unit" "$name")" || { echo "inline-verdict: $LANG_ARG $bench $path: BENCH_MAP names generated unit '$unit', which UNIT_MAP does not carry — refusing rather than guessing a prefix" >&2; exit 1; }
@@ -1250,6 +902,7 @@ cs)
 
     : > "$VD/verdicts.txt"
     echo "$BENCH_MAP" | while read -r bench snake camel unit; do
+        [ -n "$bench" ] || continue
         for path in write read; do
             Cap="$(echo "$path" | awk '{print toupper(substr($0,1,1)) substr($0,2)}')"
             pat="$(unit_cs_sym "$unit" "$Cap" "$camel")" || { echo "inline-verdict: $LANG_ARG $bench $path: BENCH_MAP names generated unit '$unit', which UNIT_MAP does not carry — refusing rather than guessing a prefix" >&2; exit 1; }

@@ -1,21 +1,22 @@
 # bench/rust — the Rust runner
 
 `src/main.rs` is the Rust port of the C++ reference
-(`bench/cpp/bench_main.cpp`): same pinned corpus instances, same `vary_*`
-field mappings, same LCG (wrapping mul/add), same batch builder, golden +
-round-trip self-checks before any number is produced (a corpus mismatch
-REFUSES to bench), warmup + 7 runs + median/min/max/spread, CSV rows with
-`lang=rust`. Full contract: `bench/README.md`.
+(`bench/cpp/bench_main.cpp`): the same data-driven driver over the same
+committed variant corpus, golden + per-variant round-trip self-checks before
+any number is produced (a corpus mismatch REFUSES to bench), warmup + 7 runs
++ median/min/max/spread, CSV rows with `lang=rust`. Full contract:
+`bench/README.md`.
 
 `src/bits.rs` adds family bits (BENCH-STANDARD.md §1.4): the 16-width
 bitpacker workload — timed loops in `#[inline(never)]` symbols for the
 §4.1 verdict.
 
-Wiring: `Cargo.toml` path-depends on `../../generated/rust`,
-`../../generated/bench/rust-realworld` (the realworld crate the
-`real_packet` row measures), and the sibling serialize.rs checkout, exactly
-like `test/rust`. `run.sh` runs it as `cargo run --release -- --csv` from
-this directory (default release profile: opt-level 3, no LTO).
+Wiring: `Cargo.toml` path-depends on `../../generated/bench/rust` and the
+sibling serialize.rs checkout. One generated crate, the one this runner
+measures; `generated/bench/rust-realworld` keeps its own `make test` compile
+gate (`cargo build` in the crate directory). `run.sh` runs it as
+`cargo run --release -- --csv` from this directory (default release profile:
+opt-level 3, no LTO).
 
 The default profile is a measured choice, not an omission: six
 `[profile.release]` variants (thin/fat LTO x codegen-units, paired
@@ -42,10 +43,3 @@ legs never see that regime. Rebuilding this leg with
 `RUSTFLAGS="-C llvm-args=--inline-threshold=5000"` — a diagnostic, not a
 shipped flag — moves the generated rows 2.3x on the same binary. Equalizing that discipline is a named open item on
 issue #170; until it is ruled, every rust row here is measured out of line.
-The batch read hoists ONE reused
-`Message` and fills it through `read_message_into` — the Rust shape of the
-go/cs runners' hoisted `MessageStorage` and the C++ runner's reused
-`Message` (`read_message`'s by-value return copies the ~2 KB enum out of
-the call per message; measured 2.6x apart on the M2, schema#5). The
-self-check byte-verifies BOTH dispatch read surfaces against the
-`message_stream` golden before any number is produced.

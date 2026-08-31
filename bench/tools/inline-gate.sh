@@ -546,10 +546,13 @@ EOF
     fi
 
     # ---- 12. the GENERATED UNIT the map resolves against (issue #104) ----
-    # The estate benches two generated units: `example` (examples/*.schema ->
+    # UNIT_MAP carries two generated units: `example` (examples/*.schema ->
     # generated/<lang>) and `realworld` (bench/corpus/RealWorld.schema ->
-    # generated/bench/<lang>/..., the unit the real_packet row measures). The
-    # two units' entry points are spelled IDENTICALLY apart from the package /
+    # generated/bench/<lang>/...). No bench row names either one today —
+    # BENCH_MAP is empty since the §1.2 rows retired — so these fixtures are
+    # the only thing keeping the unit-disambiguation honest until the #177
+    # follow-on repopulates it. The two units' entry points are spelled
+    # IDENTICALLY apart from the package /
     # namespace / crate prefix each port's layout puts in front — so a map that
     # cannot name a row's unit has two ways to be wrong, and each fixture below
     # attacks one of them:

@@ -4,10 +4,8 @@ Measures two families per language, every row labelled with its family
 (§1 of the standard):
 
 - **`gen`** — the schema-GENERATED code against its serialize runtime: write
-  and read over the pinned corpus instances (the same instances
-  `test/main.cpp` pins to `testdata/wire/*.bin`, plus `real_packet` — the
-  §1.7 realistic snapshot `test/bench/main.cpp` pins), plus the four
-  `bench/corpus/Bench.schema` shapes over their own goldens (issue #177).
+  and round-trip over `bench/corpus/Bench.schema`'s ONE measured shape,
+  `BenchMixed`, driven by the committed variant corpus (issue #177, #191).
 - **`bits`** — the raw bit packer: the §1.4 16-width table (227 bits/group)
   over a 65536-byte buffer, the ONE bitpacker workload in the estate.
 
@@ -21,8 +19,8 @@ collects everything into one CSV under `bench/results/`. The C++ runner
 rust, cs and js runners (`bench/c`, `bench/go`, `bench/rust`, `bench/cs`,
 `bench/js`) are its ports, wired per the contract below. Three further
 legs — `bench/java`, `bench/dart`, `bench/elixir` — measure those
-backends' GENERATED codecs over the four Bench-corpus shapes under the
-same contract (see "The codegen-only legs" below).
+backends' GENERATED codecs over the same shape under the same contract
+(see "The codegen-only legs" below).
 
 ## Running
 
@@ -149,23 +147,8 @@ it. Human-readable tables live beside the CSVs in `bench/results/`.
 
 ## The benchmark set
 
-| bench             | pinned to golden      | shape                                             |
-|-------------------|-----------------------|---------------------------------------------------|
-| rigidbody_moving  | rigidbody_moving      | 13 doubles + branch bool (105 B)                  |
-| rigidbody_at_rest | rigidbody_at_rest     | the untaken branch (57 B)                         |
-| chat              | chat                  | string framing, 11 chars                          |
-| test              | —                     | tiny: 16 raw bits + 3 ranged ints                 |
-| inputpacket       | inputpacket           | counted array of nested Input                     |
-| shipcreate        | shipcreate_flags      | quantized composites + bool-gated flags           |
-| probe_header      | probe_header          | wire const + reserved + align + 64 bits           |
-| probebits         | probebits             | odd bit widths (9/33/64) + full-range ints        |
-| probearray        | probearray            | nested samples, both branch arms, counted arrays  |
-| testdata          | testdata              | the everything message (floats, strings, arrays)  |
-| real_packet       | real_packet           | the §1.7 realistic snapshot (`bench/corpus/RealWorld.schema`): ~93 riding individually serialized small fields of every scalar kind, 204 B, 0% bulk share by bits; pin = the all-defaults instance |
-
-The `bench/corpus/Bench.schema` shape (family `gen`, oracle-gated per §1.5;
-iteration count fixed and identical across all nine languages) and family
-`bits`:
+One shape, plus the raw bitpacker. Family `gen` is oracle-gated per §1.5;
+its iteration count is fixed and identical across all nine languages.
 
 | bench        | family | pinned to golden | shape                                              |
 |--------------|--------|------------------|----------------------------------------------------|
@@ -177,11 +160,18 @@ rather we just have ONE good benchmark we can apply to all serialize and
 schema implementations"*, and the 2026-08-31 ruling that there be *"only a
 single schema bench: Bench.schema"*). The three diagnostic stress shapes that
 used to ride beside it — `bench_packet`, `bench_ints`, `bench_bits` — are
-**retired from measurement**: they were the last hand-written pin/vary/sink
-code in the Bench-corpus leg, and every runner now measures BenchMixed and
-nothing else there. Their type declarations and `testdata/wire` goldens
-survive as CONFORMANCE fixtures (`test/bench/main.cpp`, `test/bench/c_main.c`
-and the six port suites gate on them under `make test`); no bench reads them.
+**retired from measurement**, and so is the whole §1.2 example corpus that
+used to ride the full sweep: `rigidbody_moving`, `rigidbody_at_rest`, `chat`,
+`test`, `inputpacket`, `shipcreate`, `probe_header`, `probebits`,
+`probearray`, `testdata` and `real_packet`. Between them they were every
+hand-written pin/vary/sink/driver line in the harness, and every runner now
+measures BenchMixed and nothing else in family `gen`.
+
+Their type declarations and `testdata/wire` goldens survive as CONFORMANCE
+fixtures — `test/main.cpp`, `test/c/main.c`, `test/bench/main.cpp`,
+`test/bench/c_main.c` and the port suites gate on every one of them under
+`make test`, in up to nine languages — and `examples/*.schema` is untouched.
+No bench reads them.
 
 bench_mixed's definition is `bench/corpus/Bench.schema`, and its weighting
 law — integers carry at least 90% of the wire bits — is a GATE:
@@ -207,10 +197,9 @@ these runners; the definitions land ahead of any further string/wstring
 optimization, and the rows themselves land as their own additive change
 (corpus type, goldens, runner rows, new corpus_id).
 
-The js leg carries the four Bench-corpus shapes through the FLAT generated
-tier (family `gen`, `codec=flat` — THE js path), golden-gated and
-cross-validated against the runtime-call tier by the same oracle as the
-corpus shapes.
+The js leg carries the Bench-corpus shape through the FLAT generated tier
+(family `gen`, `codec=flat` — THE js path), golden-gated and cross-validated
+against the runtime-call tier by the same oracle.
 
 ## The codegen-only legs (java, dart, elixir)
 
@@ -218,11 +207,10 @@ schema's Java, Dart and Elixir backends emit SELF-CONTAINED monomorphic
 codecs — no runtime library exists for these languages, so the generated
 code IS their serialize path. Their runners
 (`bench/java/Main.java`, `bench/dart/main.dart`, `bench/elixir/main.exs` +
-`runner.exs`) measure the generated codecs over the four Bench-corpus
-shapes under the full BENCH-STANDARD contract: fixed iteration counts
-identical to the six runners' rows for these benches, 1 warmup + 7
-measured runs (1 under `--round K`), per-iteration LCG variation, 64
-rotating read variants, §1.5 golden gate before any timing, CSV v2 rows
+`runner.exs`) measure the generated codecs over the Bench-corpus shape
+under the full BENCH-STANDARD contract: the iteration count identical to
+the six runners', 1 warmup + 7 measured runs (1 under `--round K`), the
+committed variant corpus, §1.5 golden gate before any timing, CSV v2 rows
 with `corpus_id` over the goldens loaded.
 
 Their rows carry **family `gen`**, like every other leg. New `linkage`
@@ -248,19 +236,18 @@ A runner is a standalone program in `bench/<lang>/` that:
 
 1. builds against that language's generated code (`generated/<lang>`) and its
    serialize port runtime (sibling checkout paths, same as the Makefile);
-2. self-checks the pinned corpus instances against `testdata/wire/*.bin`
-   byte-for-byte and round-trips them before benching — refuse on mismatch;
-3. implements the same benchmark set, the same pinned instances, the same
-   LCG, and the same vary-function field mappings as the C++ reference
-   (`bench/cpp/bench_main.cpp` — port the `pin_*` and `vary_*` functions and
-   the batch builder exactly);
+2. self-checks variant 0 against `testdata/wire/bench_mixed.bin`
+   byte-for-byte and round-trips EVERY variant (decode, re-encode, same
+   length, same bytes) before benching — refuse on mismatch;
+3. implements the same benchmark set over the same committed variant corpus
+   as the C++ reference (`bench/cpp/bench_main.cpp` — port `bench_datadriven`
+   exactly). It names no field of the shape it measures: shape knowledge
+   lives in the variant data and in the generated codec, nowhere else;
 4. uses the same discipline: escape barriers (or the language's equivalent,
    e.g. `runtime.KeepAlive` / `std::hint::black_box` / `GC.KeepAlive`),
-   the read-side full-struct sink (BENCH-STANDARD §2.7: every read loop
-   observes every decoded field per iteration — a zero-cost memory barrier
-   or opaque call where the language has one, a per-iteration field fold
-   into the sink where it does not),
-   warmup, 7 measured runs, median + min/max + spread;
+   warmup, 7 measured runs, median + min/max + spread. The read-side sink
+   problem §2.7 named is dissolved rather than equalized: the round-trip
+   path's decode is observed by its own re-encode, in every language;
 5. emits CSV v2 rows on stdout (given `--csv`) in the format above with its
    own `lang` value and its recorded `linkage`/`checks`/`opt` constants,
    computing `corpus_id` from the goldens it loaded; human table on stderr;
@@ -287,16 +274,14 @@ A runner is a standalone program in `bench/<lang>/` that:
   stay; checked = `always`). `linkage=esm` (ES modules in one isolate, the
   runtime's packaging), `opt=default`, and `inline` stays `unknown` — the
   §4 verdict pass has no js branch because a JIT leg has no AOT artifact to
-  attribute, so js rows never ratio against inline-filled rows. Carries the
-  full C/C++ row set including `real_packet` (`generated/bench/js/realworld`
-  already rides `make test`). No alloc note: Node exposes no per-thread
+  attribute, so js rows never ratio against inline-filled rows. No alloc
+  note: Node exposes no per-thread
   allocation counter, so the reuse discipline is structural (persistent
   holders, stream `reset()`, pre-bounded variant views). The gen-family rows
   measure the FLAT tier (`codec=flat`, §5.1) — THE js path, per-call,
   golden-gated and cross-validated against the runtime tier (bytes, fields,
-  verdicts, 64 variants) before any timing; the runtime-call generated rows
-  ride as labeled supplementary rows (`codec=runtime`). The `bits` family
-  measures the serialize.js bitpacker itself and carries no codec column.
+  verdicts, 64 variants) before any timing. The `bits` family measures the
+  serialize.js bitpacker itself and carries no codec column.
 
 - **java**: `bench/java/Main.java` — compiled with the pinned dist JDK's
   javac (`--release 17 -Xlint:all -Werror`) beside `generated/bench/java`,

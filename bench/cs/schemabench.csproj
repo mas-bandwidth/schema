@@ -24,13 +24,18 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <Compile Include="../../generated/cs/*.cs" />
     <!-- the Bench corpus unit (namespace Bench): the Bench.schema shapes
-         GENERATED (issue #177) -->
+         GENERATED (issue #177). The ONE unit this runner measures. -->
     <Compile Include="../../generated/bench/cs/Bench.cs" />
-    <!-- the bench-corpus realworld unit (namespace Realworld, so no
-         basename/type collision with the Example unit above): RealPacket,
-         the §1.7 realistic snapshot the real_packet rows measure -->
+    <!-- COMPILE GATE ONLY — no bench row reads this unit. `make test` runs
+         `cd bench/cs && dotnet build`, and C# has no unit-local build file,
+         so this Compile item is the only thing that proves the generated
+         realworld unit COMPILES. Issue #80's lesson: that unit once shipped
+         uncompilable (SerializeFixed had no 8-bit overload) while every
+         other gate stayed green. It belongs in a cs conformance leg for
+         real_packet — C# is the one backend with no such leg, while java,
+         js, dart and elixir all pin the golden — and moves there when that
+         leg lands. -->
     <Compile Include="../../generated/bench/cs/realworld/*.cs" />
     <Compile Include="$(SerializeCsRoot)/src/Serialize.cs" />
     <!-- the emulated 128-bit pair (Int128Value/UInt128Value) lives beside

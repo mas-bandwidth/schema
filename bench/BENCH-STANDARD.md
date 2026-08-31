@@ -75,16 +75,15 @@ follow. schema exists precisely to emit the same types in five languages; this i
 that capability pointed at the benchmark.
 
 ```
-schema/bench/corpus/Bench.schema      <- the Bench-corpus shapes
-schema/examples/*.schema              <- the example-corpus shapes
-schema/testdata/wire/*.bin            <- byte goldens for both
+schema/bench/corpus/Bench.schema      <- the ONE bench corpus
+schema/testdata/wire/*.bin            <- byte goldens
 ```
 
 Two families. Every row in every CSV belongs to exactly one.
 
 | family | subject | corpus source | binding |
 |---|---|---|---|
-| `gen` | generated code + runtime | `schema/examples/*.schema`, `schema/bench/corpus/Bench.schema` | generated types, per-language |
+| `gen` | generated code + runtime | `schema/bench/corpus/Bench.schema` | generated types, per-language |
 | `bits` | the raw bit packer | this document, §1.4 | hand-written, width table normative |
 
 **Family `rt` — the runtime API called by hand — is RETIRED** (owner ruling,
@@ -94,54 +93,36 @@ serialize repo's in-repo bench. If the generated-vs-hand-written pair is ever
 wanted again it is remeasured deliberately from scratch, never revived from
 dormant code.
 
-### §1.2 Family `gen` — shapes unchanged, iteration counts rescaled
+### §1.2 The example corpus — RETIRED
 
-The 10 corpus benchmarks: 10 pinned corpus shapes. Shapes and pinned
-instances are identical across the runners and gated against
-`testdata/wire/*.bin`; iteration counts are identical across the runners.
-They keep their names and their `bytes_per_op`: 105, 57, 13, 6, 61, 28,
-10, 26, 47, 92. (Rows over the retired protocol constructs — the object
-view `ship_shallow` and the dispatch `message_batch` — retired with them;
-their historical CSVs and the dated audit records below read as what they
-are.)
+**No runner measures `schema/examples/*.schema`.** The eleven rows this
+section defined — `rigidbody_moving`, `rigidbody_at_rest`, `chat`, `test`,
+`inputpacket`, `shipcreate`, `probe_header`, `probebits`, `probearray`,
+`testdata` and `real_packet` (the §1.7 realistic snapshot, over
+`bench/corpus/RealWorld.schema`) — are gone from the c, cpp, go, rust, cs
+and js runners, together with the hand-written pins, vary mappings, field
+checks and per-shape drivers that fed them. They were the last hand-coded
+shape code in any runner.
 
-This section originally froze the iteration counts too. Measured on the M2 on
-2026-08-14, those counts finished the fastest legs in 7.5–44 ms — every gen
-(bench, path) leg, in every language, sat under §2.1's 200 ms floor (cpp probebits
-read: ~8 ms), and the 80–165% spreads seen on a loaded machine are the direct
-consequence of timing legs the clock and scheduler dominate. **§2.1 wins over this
-section's freeze**: the floor is a methodology invariant, the counts are only its
-instrument. Rescaled so every gen leg exceeds 200 ms in every language on the M2
-(sized against the fastest measured leg per bench, with margin), identical across
-all five runners, carried in the `iters` column:
+The owner ruling of 2026-08-31 reaches them directly: *"there should be only
+a single schema bench: Bench.schema, it generates per-language stuff that is
+how we measure how efficient serialize and schema is per-language."* A second
+corpus with a second body of hand-written measurement code is precisely what
+that ruling forbids. `BenchMixed` (§1.3a) is the one measured shape.
 
-| bench | old iters | new iters | × |
-|---|---:|---:|---:|
-| rigidbody_moving | 2,000,000 | 24,000,000 | 12 |
-| rigidbody_at_rest | 4,000,000 | 32,000,000 | 8 |
-| chat | 4,000,000 | 48,000,000 | 12 |
-| test | 16,000,000 | 192,000,000 | 12 |
-| inputpacket | 2,000,000 | 16,000,000 | 8 |
-| shipcreate | 4,000,000 | 32,000,000 | 8 |
-| probe_header | 16,000,000 | 256,000,000 | 16 |
-| probebits | 4,000,000 | 128,000,000 | 32 |
-| probearray | 2,000,000 | 20,000,000 | 10 |
-| testdata | 1,000,000 | 8,000,000 | 8 |
+**What stays, and why the ruling does not reach it.** `examples/*.schema`,
+their generated code and their `testdata/wire/*.bin` goldens are all
+load-bearing OUTSIDE the bench: the cross-language conformance suite pins
+every one of these instances byte-for-byte in `test/main.cpp`, `test/c/main.c`
+and the go / rust / cs / js / java / dart / elixir port suites, and
+`make test` gates on them. `real_packet` is pinned the same way by
+`test/bench/main.cpp`, `test/bench/c_main.c` and the java / js / dart /
+elixir suites. They are conformance fixtures, and nothing in this document is
+normative about them as bench rows.
 
-Historical CSVs carry the old counts in their `iters` column and are readable as
-what they are: legs measured under §2.1's floor, whose spreads say so. This is
-the same correction §1.4 already records for the bitpacker, whose inherited
-4096 passes violated the same floor and were rescaled to 24576 for the same
-reason.
-
-The same correction fired a third time on 2026-08-23: the §1.7 batch
-rebalance (issue #64) cut the batch's wire bytes 2.6x, and the smaller
-messages raised its msgs/s enough that all four C/C++ batch legs measured
-80–121 ms at 6,400 passes on the Studio (M3 Ultra, quiet) — under the floor
-again. Passes rescale **6,400 → 25,600** (26,214,400 → 104,857,600 msgs),
-sized against the fastest measured leg (cpp read, 328.5 M msgs/s → 319 ms)
-with margin, identical in all six runners, recorded in the `iters` column
-like both corrections before it.
+Their iteration counts, bulk shares and rescaling receipts are in this
+document's history and in the CSVs under `bench/results/`, which read as what
+they are: rows from a corpus no runner measures.
 
 ### §1.3 The Bench corpus
 
@@ -323,7 +304,8 @@ makes drift impossible to publish:
 > round-trip write → read → re-write → memcmp. On any mismatch it MUST print
 > the failure and exit non-zero without emitting rows.
 
-The reference implementation is `bench/cpp/bench_main.cpp:165-203`. It gives the
+The reference implementation is `bench_datadriven` in
+`bench/cpp/bench_main.cpp`. It gives the
 estate a mechanical proof that every language's leg measures the same work,
 rather than a header comment asserting it.
 
@@ -425,6 +407,17 @@ law carries the before/after.
 4. **Any future corpus addition states its bulk share by bits** in its definition
    comment, so this audit never has to be re-derived from variation code.
 
+**Where rule 1 is discharged today: `BenchMixed` (§1.3a).** It is the corpus's
+realistic snapshot — 3504 wire bits, dominated by individually serialized
+fields, with strings, wstrings and byte arrays deliberately short and
+non-dominant on Glenn's own instruction. The row that used to discharge it,
+`real_packet` over `bench/corpus/RealWorld.schema`, retired with the rest of
+§1.2's rows; its schema, its generated code and `testdata/wire/real_packet.bin`
+stay as conformance fixtures, pinned by `test/bench/main.cpp` and the java /
+js / dart / elixir suites. The audit table above and the batch enactment below
+are dated records of rows no runner measures, kept because the law they
+produced still binds.
+
 **The batch rebalance — enacted 2026-08-23 (issue #64; the RealPacket
 campaign's chunk 7, under rule 3's latitude).** The audit's worst offender
 was the pair of rows the C-vs-C++ read campaign was fought over: the
@@ -452,10 +445,10 @@ is the era mark: the tool refuses every ratio across the rebalance (§5.3
 rule 2), which is exactly the loud re-pricing rule 3 demands. The smaller
 messages raised the row's msgs/s enough to put every measured batch leg
 under §2.1's 200 ms floor at the old pass count, so `BatchPasses` rescaled
-6,400 → 25,600 in the same change — measured first, then rescaled, per
-§1.2's own precedent (the receipt is in §1.2).
+6,400 → 25,600 in the same change — measured first, then rescaled, the same
+correction §1.4 records for the bitpacker's inherited 4096.
 
-### §1.8 The string and wstring rows — defined measure-first (added 2026-08-23, issue #64)
+### §1.8 The string row — defined measure-first (added 2026-08-23, issue #64)
 
 **DECIDED (Glenn, 2026-08-17, verbatim): "You can't improve what you don't
 measure."** Said the morning the estate's first string-body fix (serialize.c
@@ -464,9 +457,17 @@ see it move. Enacted as an ORDERING rule, not a sentiment: a measurement row
 lands BEFORE or WITH the optimization it would measure, never after — and a
 row-landing change carries NO runtime, emitter, or generated-code serialize
 changes, because a row that arrives fused to a fix has measured nothing. The
-rows this section defines are pure instruments; the remaining string and
-wstring work (the wstring/bytes sweep, the C++ WriteBytes candidate, every
-port's equivalents) lands against them, never ahead of them.
+row this section defines is a pure instrument; the remaining string work (the
+bytes sweep, the C++ WriteBytes candidate, every port's equivalents) lands
+against it, never ahead of it.
+
+**A wstring row was defined here and is DELETED (2026-08-31).** It was
+suspended by schema#196 because schema defers wide strings (SPEC §4.10), so
+no schema type, no generated codec and no golden could carry it, and the
+family that would have — hand-written `rt` — is retired. A suspended row for
+a construct the language cannot express is fossil, not a record. Growing the
+language is issue #188's; when schema expresses wstring, the row is defined
+then, against what the language actually emits.
 
 **The string row — `bench_string`, family `gen`.** Transcribed from the
 reference implementation's own string row (`serialize/bench.cpp`, landed
@@ -500,49 +501,14 @@ goldens are the authority (§1.3's rule).
   generated C++, independently confirmed by the generated C, every runner
   byte-compares and round-trips before emitting rows.
 
-**The wstring row — `bench_wstring`, corpus source: this document.
-SUSPENDED by schema#196.** schema defers wide strings (SPEC §4.10), so no
-schema type and no generated golden can exist, and the family that would
-have carried it — hand-written `rt` — is retired. The definition below
-stands as the record; the row lands only when schema expresses wstring and
-a generated codec can carry it. Like §1.4's bitpacker, the shape is
-specified here directly:
-
-```
-buffer   = 64 UTF-16 code units  -> 6-bit length field
-payload  = 24 code units, pinned, BMP only (each code point one unit,
-           so the wire size is deterministic), no surrogates, no NUL
-wire     = 6-bit length, then one unaligned 32-bit group per code unit
-         = 6 + 24 x 32 = 774 bits = 97 bytes
-```
-
-What a conforming row measures: the per-unit group dispatch plus the read
-side's contract validation (group range, surrogate pairing, interior NUL).
-
-- **Bulk share by bits: 0%, stated per rule 4 — the opposite pole from the
-  string row.** The wstring wire is one individual 32-bit dispatch per code
-  unit, not a bulk byte copy, so this row is NOT a bulk instrument and may
-  ride headline tables like any 0%-bulk row.
-- Content varies per iteration through the standard LCG at pinned length,
-  values pinned inside one BMP block so validation cost is uniform across
-  variants. Astral and unpaired-surrogate handling is correctness territory
-  owned by the conformance suites, never exercised by this row.
-- Golden: produced by the C++ reference runtime and byte-confirmed by the
-  serialize.c twin before first check-in — §1.3's two-independent-producers
-  confirmation pattern with the runtimes standing in for the generated code —
-  then every runner byte-compares and round-trips per §1.5's mechanics.
-- **A runtime with no wstring path emits NO row.** An honest null, never an
-  emulation; the row's absence is itself the record that the port lacks the
-  path.
-
-Mechanics both rows share when they land in the schema runners: additive
-under rule 3 (new names, new `corpus_id`, era-marked), iteration counts
-sized at landing per §2.1 (every leg over 200 ms, identical across
-languages, recorded in `iters`), timed loops in noinline symbols with §3.2's
-two call sites, like every other row. This section is the definition
-only — the schema/bench implementation (corpus type, goldens, six runner
-rows) lands as its own additive change, and the runtime repos' in-repo
-benches carry their own local rows under the same measure-first rule.
+Mechanics the row carries when it lands in the schema runners: additive under
+rule 3 (new name, new `corpus_id`, era-marked), iteration count sized at
+landing per §2.1 (every leg over 200 ms, identical across languages, recorded
+in `iters`), timed loops in noinline symbols with §3.2's two call sites, like
+every other row. This section is the definition only — the schema/bench
+implementation (corpus type, goldens, runner rows) lands as its own additive
+change, and the runtime repos' in-repo benches carry their own local rows
+under the same measure-first rule.
 
 ---
 
@@ -588,9 +554,9 @@ current CSV. The change is which column `relative.go` reads, plus §2.4.
 | > 15%, ≤ 40% | row is marked `noisy`; excluded from corpus-median tables; may still be published individually with the mark |
 | > 40% | **row is invalid**; the tool refuses to use it in any ratio and prints it as a failure |
 
-Today `cpp,inputpacket,read` publishes at **53.4% spread** in
-`results/2026-08-14-arm64-macbook.csv:26`, beside a row at 0.85%, with equal weight.
-Under this clause that row does not publish.
+The receipt this clause was written against: `cpp,inputpacket,read` published
+at **53.4% spread** in `results/2026-08-14-arm64-macbook.csv:26`, beside a row
+at 0.85%, with equal weight. Under this clause that row does not publish.
 
 ### §2.4 Interleaving — every leg sees the same load
 
