@@ -22,6 +22,8 @@ defmodule Example.Render do
 
   @compile {:inline, rd: 3}
 
+  @compile {:inline, rdw: 3}
+
   def render_block_max_sprites, do: 64
 
   # render_sprite_max_bits is the longest wire path; align pads at worst case (SPEC §6.1).
@@ -100,23 +102,27 @@ defmodule Example.Render do
 
       bits_read = 0
       if bits_read + 138 > num_bits, do: throw(:invalid)
-      v = rd(data, bits_read, 32)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0xFFFFFFFF
       bits_read = bits_read + 32
       w = v
-      v = rd(data, bits_read, 32)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0xFFFFFFFF
       bits_read = bits_read + 32
       w = w ||| v <<< 32
       v_sort_key = w
-      v = rd(data, bits_read, 32)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0xFFFFFFFF
       bits_read = bits_read + 32
       v_mesh_id = v
-      v = rd(data, bits_read, 32)
+      rv = rdw(data, bits_read, 42)
+      v = rv &&& 0xFFFFFFFF
       bits_read = bits_read + 32
       v_material_id = v
-      v = rd(data, bits_read, 8)
+      v = rv >>> 32 &&& 0xFF
       bits_read = bits_read + 8
       v_layer = v
-      v = rd(data, bits_read, 2)
+      v = rv >>> 40
       bits_read = bits_read + 2
       # headroom above the wire range is refused
       if v > 2, do: throw(:invalid)
@@ -202,14 +208,17 @@ defmodule Example.Render do
 
       bits_read = 0
       if bits_read + 64 > num_bits, do: throw(:invalid)
-      v = rd(data, bits_read, 32)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0xFFFFFFFF
       bits_read = bits_read + 32
       v_worker_index = v
-      v = rd(data, bits_read, 32)
+      rv = rd(data, bits_read, 32)
+      v = rv
       bits_read = bits_read + 32
       v_sprite_count_hint = v
       if bits_read + 7 > num_bits, do: throw(:invalid)
-      v = rd(data, bits_read, 7)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0x7F
       bits_read = bits_read + 7
       # the count guards the loop — reject, never clamp
       if v > 64, do: throw(:invalid)
@@ -293,23 +302,27 @@ defmodule Example.Render do
     do: {bits_read, Enum.reverse(acc)}
 
   defp r_render_block_sprites(remaining, acc, data, num_bits, bits_read) do
-    v = rd(data, bits_read, 32)
+    rv = rdw(data, bits_read, 49)
+    v = rv &&& 0xFFFFFFFF
     bits_read = bits_read + 32
     w = v
-    v = rd(data, bits_read, 32)
+    rv = rdw(data, bits_read, 49)
+    v = rv &&& 0xFFFFFFFF
     bits_read = bits_read + 32
     w = w ||| v <<< 32
     e_sort_key = w
-    v = rd(data, bits_read, 32)
+    rv = rdw(data, bits_read, 49)
+    v = rv &&& 0xFFFFFFFF
     bits_read = bits_read + 32
     e_mesh_id = v
-    v = rd(data, bits_read, 32)
+    rv = rdw(data, bits_read, 42)
+    v = rv &&& 0xFFFFFFFF
     bits_read = bits_read + 32
     e_material_id = v
-    v = rd(data, bits_read, 8)
+    v = rv >>> 32 &&& 0xFF
     bits_read = bits_read + 8
     e_layer = v
-    v = rd(data, bits_read, 2)
+    v = rv >>> 40
     bits_read = bits_read + 2
     # headroom above the wire range is refused
     if v > 2, do: throw(:invalid)
@@ -336,6 +349,22 @@ defmodule Example.Render do
     window =
       case data do
         <<_::binary-size(^i), w::little-40, _::binary>> -> w
+        <<_::binary-size(^i), rest::binary>> -> :binary.decode_unsigned(rest, :little)
+      end
+
+    window >>> (bits_read &&& 7) &&& (1 <<< bits) - 1
+  end
+
+  # The wide window decode: 56 bits, enough for a 7-bit offset plus a
+  # 49-bit group, and still under the 2^59 fixnum boundary — one match
+  # context serves a whole group of fields instead of one per field. A
+  # 64-bit window would box and measures slower than the reads it saves.
+  defp rdw(data, bits_read, bits) do
+    i = bits_read >>> 3
+
+    window =
+      case data do
+        <<_::binary-size(^i), w::little-56, _::binary>> -> w
         <<_::binary-size(^i), rest::binary>> -> :binary.decode_unsigned(rest, :little)
       end
 

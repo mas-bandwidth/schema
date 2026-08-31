@@ -186,6 +186,11 @@ type gen struct {
 	// close it; mergeW closes it when the next field would pass the budget.
 	pendW int64
 
+	// the read group open at this point of read emission: rv carries
+	// rdOff + rdAvail bits, of which rdOff are already cut out; rdRun is
+	// the fused static run's remaining bits, or 0 when unknown
+	rdOff, rdAvail, rdRun int64
+
 	// helperOwner names the type whose items are being inlined — array loop
 	// helpers key on (owner, field), so a nested type's loops emit once per
 	// file however many callers inline it
@@ -193,6 +198,7 @@ type gen struct {
 
 	// per-file helper needs
 	needRd     bool // rd/3 — the 40-bit window decode
+	needRdw    bool // rdw/3 — the 56-bit window decode, for groups past 33 bits
 	needF32    bool // f32_bits/1 + f32_value/1
 	needF64    bool // f64_bits/1 + f64_value/1
 	needCf     bool // cf_quantize/4 + cf_decode/4 (and their fr/1)
@@ -568,6 +574,9 @@ func (g *gen) emitFileModule(order []ir.Decl) {
 		// inlined by the compiler, so the literal widths at every call site
 		// reach the mask arithmetic as constants
 		g.bpf("  @compile {:inline, rd: 3}\n\n")
+	}
+	if g.needRdw {
+		g.bpf("  @compile {:inline, rdw: 3}\n\n")
 	}
 	g.body.WriteString(inner)
 	g.bpf("\nend\n")

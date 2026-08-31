@@ -221,6 +221,8 @@ defmodule Bench.Bench do
 
   @compile {:inline, rd: 3}
 
+  @compile {:inline, rdw: 3}
+
   # The unit's protocol id — the hash of its wire shape (SPEC §3.1). Two
   # sides at the same id speak identical bits; there is no other versioning.
   def protocol_id, do: 0xAE3B1E28B96E4586
@@ -372,44 +374,51 @@ defmodule Bench.Bench do
 
       bits_read = 0
       if bits_read + 249 > num_bits, do: throw(:invalid)
-      v = rd(data, bits_read, 8)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0xFF
       bits_read = bits_read + 8
       # a smuggled offset is refused
       if v > 200, do: throw(:invalid)
       v_a = v - 100
-      v = rd(data, bits_read, 16)
+      v = rv >>> 8 &&& 0xFFFF
       bits_read = bits_read + 16
       v_b = v
-      v = rd(data, bits_read, 21)
+      v = rv >>> 24 &&& 0x1FFFFF
       bits_read = bits_read + 21
       # a smuggled offset is refused
       if v > 2_000_000, do: throw(:invalid)
       v_c = v - 1_000_000
-      v = rd(data, bits_read, 7)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0x7F
       bits_read = bits_read + 7
       v_bits7 = v
-      v = rd(data, bits_read, 13)
+      v = rv >>> 7 &&& 0x1FFF
       bits_read = bits_read + 13
       v_bits13 = v
-      v = rd(data, bits_read, 23)
+      v = rv >>> 20 &&& 0x7FFFFF
       bits_read = bits_read + 23
       v_bits23 = v
-      v = rd(data, bits_read, 1)
+      v = rv >>> 43 &&& 0x1
       bits_read = bits_read + 1
       v_flag = v == 1
-      v = rd(data, bits_read, 32)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0xFFFFFFFF
       bits_read = bits_read + 32
       v_x = f32_value(v)
-      v = rd(data, bits_read, 32)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0xFFFFFFFF
       bits_read = bits_read + 32
       v_y = f32_value(v)
-      v = rd(data, bits_read, 32)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0xFFFFFFFF
       bits_read = bits_read + 32
       v_z = f32_value(v)
-      v = rd(data, bits_read, 32)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0xFFFFFFFF
       bits_read = bits_read + 32
       w = v
-      v = rd(data, bits_read, 32)
+      rv = rd(data, bits_read, 32)
+      v = rv
       bits_read = bits_read + 32
       w = w ||| v <<< 32
       v_big = w
@@ -627,44 +636,47 @@ defmodule Bench.Bench do
 
       bits_read = 0
       if bits_read + 110 > num_bits, do: throw(:invalid)
-      v = rd(data, bits_read, 8)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0xFF
       bits_read = bits_read + 8
       # a smuggled offset is refused
       if v > 200, do: throw(:invalid)
       v_f0 = v - 100
-      v = rd(data, bits_read, 16)
+      v = rv >>> 8 &&& 0xFFFF
       bits_read = bits_read + 16
       v_f1 = v
-      v = rd(data, bits_read, 21)
+      v = rv >>> 24 &&& 0x1FFFFF
       bits_read = bits_read + 21
       # a smuggled offset is refused
       if v > 2_000_000, do: throw(:invalid)
       v_f2 = v - 1_000_000
-      v = rd(data, bits_read, 2)
+      v = rv >>> 45 &&& 0x3
       bits_read = bits_read + 2
       v_f3 = v
-      v = rd(data, bits_read, 5)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0x1F
       bits_read = bits_read + 5
       # a smuggled offset is refused
       if v > 30, do: throw(:invalid)
       v_f4 = v - 15
-      v = rd(data, bits_read, 10)
+      v = rv >>> 5 &&& 0x3FF
       bits_read = bits_read + 10
       # a smuggled offset is refused
       if v > 1000, do: throw(:invalid)
       v_f5 = v
-      v = rd(data, bits_read, 12)
+      v = rv >>> 15 &&& 0xFFF
       bits_read = bits_read + 12
       v_f6 = v - 2048
-      v = rd(data, bits_read, 8)
+      v = rv >>> 27 &&& 0xFF
       bits_read = bits_read + 8
       v_f7 = v
-      v = rd(data, bits_read, 21)
+      rv = rd(data, bits_read, 28)
+      v = rv &&& 0x1FFFFF
       bits_read = bits_read + 21
       # a smuggled offset is refused
       if v > 1_200_000, do: throw(:invalid)
       v_f8 = v - 600_000
-      v = rd(data, bits_read, 7)
+      v = rv >>> 21
       bits_read = bits_read + 7
       # a smuggled offset is refused
       if v > 100, do: throw(:invalid)
@@ -771,31 +783,35 @@ defmodule Bench.Bench do
 
       bits_read = 0
       if bits_read + 156 > num_bits, do: throw(:invalid)
-      v = rd(data, bits_read, 7)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0x7F
       bits_read = bits_read + 7
       v_b7 = v
-      v = rd(data, bits_read, 13)
+      v = rv >>> 7 &&& 0x1FFF
       bits_read = bits_read + 13
       v_b13 = v
-      v = rd(data, bits_read, 23)
+      v = rv >>> 20 &&& 0x7FFFFF
       bits_read = bits_read + 23
       v_b23 = v
-      v = rd(data, bits_read, 3)
+      v = rv >>> 43 &&& 0x7
       bits_read = bits_read + 3
       v_b3 = v
-      v = rd(data, bits_read, 32)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0xFFFFFFFF
       bits_read = bits_read + 32
       v_b32 = v
-      v = rd(data, bits_read, 11)
+      v = rv >>> 32 &&& 0x7FF
       bits_read = bits_read + 11
       v_b11 = v
-      v = rd(data, bits_read, 19)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0x7FFFF
       bits_read = bits_read + 19
       v_b19 = v
-      v = rd(data, bits_read, 32)
+      rv = rdw(data, bits_read, 48)
+      v = rv &&& 0xFFFFFFFF
       bits_read = bits_read + 32
       w = v
-      v = rd(data, bits_read, 16)
+      v = rv >>> 32
       bits_read = bits_read + 16
       w = w ||| v <<< 32
       v_b48 = w
@@ -1074,54 +1090,57 @@ defmodule Bench.Bench do
 
       bits_read = 0
       if bits_read + 135 > num_bits, do: throw(:invalid)
-      v = rd(data, bits_read, 12)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0xFFF
       bits_read = bits_read + 12
       v_entity_id = v
-      v = rd(data, bits_read, 15)
+      v = rv >>> 12 &&& 0x7FFF
       bits_read = bits_read + 15
       # a smuggled offset is refused
       if v > 32766, do: throw(:invalid)
       v_pos_x = v - 16383
-      v = rd(data, bits_read, 15)
+      v = rv >>> 27 &&& 0x7FFF
       bits_read = bits_read + 15
       # a smuggled offset is refused
       if v > 32766, do: throw(:invalid)
       v_pos_y = v - 16383
-      v = rd(data, bits_read, 15)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0x7FFF
       bits_read = bits_read + 15
       # a smuggled offset is refused
       if v > 32766, do: throw(:invalid)
       v_pos_z = v - 16383
-      v = rd(data, bits_read, 9)
+      v = rv >>> 15 &&& 0x1FF
       bits_read = bits_read + 9
       v_yaw = v
-      v = rd(data, bits_read, 9)
+      v = rv >>> 24 &&& 0x1FF
       bits_read = bits_read + 9
       v_pitch = v
-      v = rd(data, bits_read, 12)
+      v = rv >>> 33 &&& 0xFFF
       bits_read = bits_read + 12
       v_vel_x = v - 2048
-      v = rd(data, bits_read, 12)
+      rv = rdw(data, bits_read, 48)
+      v = rv &&& 0xFFF
       bits_read = bits_read + 12
       v_vel_y = v - 2048
-      v = rd(data, bits_read, 12)
+      v = rv >>> 12 &&& 0xFFF
       bits_read = bits_read + 12
       v_vel_z = v - 2048
-      v = rd(data, bits_read, 10)
+      v = rv >>> 24 &&& 0x3FF
       bits_read = bits_read + 10
       # a smuggled offset is refused
       if v > 1000, do: throw(:invalid)
       v_health = v
-      v = rd(data, bits_read, 4)
+      v = rv >>> 34 &&& 0xF
       bits_read = bits_read + 4
       v_weapon = v
-      v = rd(data, bits_read, 8)
+      v = rv >>> 38 &&& 0xFF
       bits_read = bits_read + 8
       v_damage = v
-      v = rd(data, bits_read, 1)
+      v = rv >>> 46 &&& 0x1
       bits_read = bits_read + 1
       v_moving = v == 1
-      v = rd(data, bits_read, 1)
+      v = rv >>> 47
       bits_read = bits_read + 1
       v_firing = v == 1
       # the final position is unobserved — the verdict and value are the surface
@@ -1204,10 +1223,11 @@ defmodule Bench.Bench do
 
       bits_read = 0
       if bits_read + 18 > num_bits, do: throw(:invalid)
-      v = rd(data, bits_read, 8)
+      rv = rd(data, bits_read, 18)
+      v = rv &&& 0xFF
       bits_read = bits_read + 8
       v_stat_id = v
-      v = rd(data, bits_read, 10)
+      v = rv >>> 8
       bits_read = bits_read + 10
       v_delta = v - 512
       # the final position is unobserved — the verdict and value are the surface
@@ -1290,16 +1310,17 @@ defmodule Bench.Bench do
 
       bits_read = 0
       if bits_read + 28 > num_bits, do: throw(:invalid)
-      v = rd(data, bits_read, 12)
+      rv = rd(data, bits_read, 28)
+      v = rv &&& 0xFFF
       bits_read = bits_read + 12
       v_target_id = v
-      v = rd(data, bits_read, 12)
+      v = rv >>> 12 &&& 0xFFF
       bits_read = bits_read + 12
       v_damage = v
-      v = rd(data, bits_read, 3)
+      v = rv >>> 24 &&& 0x7
       bits_read = bits_read + 3
       v_hit_kind = v
-      v = rd(data, bits_read, 1)
+      v = rv >>> 27
       bits_read = bits_read + 1
       v_crit = v == 1
       # the final position is unobserved — the verdict and value are the surface
@@ -1372,10 +1393,11 @@ defmodule Bench.Bench do
 
       bits_read = 0
       if bits_read + 14 > num_bits, do: throw(:invalid)
-      v = rd(data, bits_read, 2)
+      rv = rd(data, bits_read, 14)
+      v = rv &&& 0x3
       bits_read = bits_read + 2
       v_channel = v
-      v = rd(data, bits_read, 12)
+      v = rv >>> 2
       bits_read = bits_read + 12
       v_speaker = v
       # the final position is unobserved — the verdict and value are the surface
@@ -1441,10 +1463,11 @@ defmodule Bench.Bench do
 
       bits_read = 0
       if bits_read + 18 > num_bits, do: throw(:invalid)
-      v = rd(data, bits_read, 10)
+      rv = rd(data, bits_read, 18)
+      v = rv &&& 0x3FF
       bits_read = bits_read + 10
       v_item_id = v
-      v = rd(data, bits_read, 8)
+      v = rv >>> 10
       bits_read = bits_read + 8
       v_amount = v
       # the final position is unobserved — the verdict and value are the surface
@@ -1596,23 +1619,25 @@ defmodule Bench.Bench do
 
       bits_read = 0
       if bits_read + 2 > num_bits, do: throw(:invalid)
-      v = rd(data, bits_read, 2)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0x3
       bits_read = bits_read + 2
 
       {bits_read, v} =
         case v do
           1 ->
             if bits_read + 28 > num_bits, do: throw(:invalid)
-            v = rd(data, bits_read, 12)
+            rv = rd(data, bits_read, 28)
+            v = rv &&& 0xFFF
             bits_read = bits_read + 12
             v_hit_target_id = v
-            v = rd(data, bits_read, 12)
+            v = rv >>> 12 &&& 0xFFF
             bits_read = bits_read + 12
             v_hit_damage = v
-            v = rd(data, bits_read, 3)
+            v = rv >>> 24 &&& 0x7
             bits_read = bits_read + 3
             v_hit_hit_kind = v
-            v = rd(data, bits_read, 1)
+            v = rv >>> 27
             bits_read = bits_read + 1
             v_hit_crit = v == 1
 
@@ -1628,10 +1653,11 @@ defmodule Bench.Bench do
 
           2 ->
             if bits_read + 14 > num_bits, do: throw(:invalid)
-            v = rd(data, bits_read, 2)
+            rv = rd(data, bits_read, 14)
+            v = rv &&& 0x3
             bits_read = bits_read + 2
             v_chat_channel = v
-            v = rd(data, bits_read, 12)
+            v = rv >>> 2
             bits_read = bits_read + 12
             v_chat_speaker = v
             v_chat = %Bench.MixedChatEvent{channel: v_chat_channel, speaker: v_chat_speaker}
@@ -1640,10 +1666,11 @@ defmodule Bench.Bench do
 
           3 ->
             if bits_read + 18 > num_bits, do: throw(:invalid)
-            v = rd(data, bits_read, 10)
+            rv = rd(data, bits_read, 18)
+            v = rv &&& 0x3FF
             bits_read = bits_read + 10
             v_pickup_item_id = v
-            v = rd(data, bits_read, 8)
+            v = rv >>> 10
             bits_read = bits_read + 8
             v_pickup_amount = v
             v_pickup = %Bench.MixedPickupEvent{item_id: v_pickup_item_id, amount: v_pickup_amount}
@@ -2215,65 +2242,77 @@ defmodule Bench.Bench do
 
       bits_read = 0
       if bits_read + 353 > num_bits, do: throw(:invalid)
-      v = rd(data, bits_read, 16)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0xFFFF
       bits_read = bits_read + 16
       # a read rejects any other value (SPEC §4.3)
       if v != 49374, do: throw(:invalid)
-      v = rd(data, bits_read, 16)
+      v = rv >>> 16 &&& 0xFFFF
       bits_read = bits_read + 16
       v_sequence = v
-      v = rd(data, bits_read, 16)
+      v = rv >>> 32 &&& 0xFFFF
       bits_read = bits_read + 16
       v_ack_sequence = v
-      v = rd(data, bits_read, 32)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0xFFFFFFFF
       bits_read = bits_read + 32
       v_ack_bits = v
-      v = rd(data, bits_read, 32)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0xFFFFFFFF
       bits_read = bits_read + 32
       w = v
-      v = rd(data, bits_read, 32)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0xFFFFFFFF
       bits_read = bits_read + 32
       w = w ||| v <<< 32
       v_session_id = w
-      v = rd(data, bits_read, 32)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0xFFFFFFFF
       bits_read = bits_read + 32
       v_client_id = v
-      v = rd(data, bits_read, 32)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0xFFFFFFFF
       bits_read = bits_read + 32
       w = v
-      v = rd(data, bits_read, 32)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0xFFFFFFFF
       bits_read = bits_read + 32
       w = w ||| v <<< 32
       v_nonce = w
-      v = rd(data, bits_read, 32)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0xFFFFFFFF
       bits_read = bits_read + 32
       w = v
-      v = rd(data, bits_read, 9)
+      v = rv >>> 32 &&& 0x1FF
       bits_read = bits_read + 9
       w = w ||| v <<< 32
       # a smuggled offset is refused
       if w > 2_000_000_000_000, do: throw(:invalid)
       v_world_time = w - 1_000_000_000_000
-      v = rd(data, bits_read, 32)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0xFFFFFFFF
       bits_read = bits_read + 32
       w = v
-      v = rd(data, bits_read, 16)
+      v = rv >>> 32 &&& 0xFFFF
       bits_read = bits_read + 16
       w = w ||| v <<< 32
       v_frame_tick = w
-      v = rd(data, bits_read, 24)
+      rv = rd(data, bits_read, 24)
+      v = rv
       bits_read = bits_read + 24
       # a smuggled offset is refused
       if v > 16_776_960, do: throw(:invalid)
       v_server_time = v
       if bits_read + 3 > num_bits, do: throw(:invalid)
-      v = rd(data, bits_read, 3)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0x7
       bits_read = bits_read + 3
       n = v + 1
       if bits_read + n * 135 > num_bits, do: throw(:invalid)
       {bits_read, v_entities} = r_bench_mixed_entities(n, [], data, num_bits, bits_read)
       if bits_read + 7 > num_bits, do: throw(:invalid)
-      v = rd(data, bits_read, 7)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0x7F
       bits_read = bits_read + 7
       # the count guards the loop — reject, never clamp
       if v > 80, do: throw(:invalid)
@@ -2281,23 +2320,25 @@ defmodule Bench.Bench do
       if bits_read + n * 18 > num_bits, do: throw(:invalid)
       {bits_read, v_stats} = r_bench_mixed_stats(n, [], data, num_bits, bits_read)
       if bits_read + 2 > num_bits, do: throw(:invalid)
-      v = rd(data, bits_read, 2)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0x3
       bits_read = bits_read + 2
 
       {bits_read, v_game_event} =
         case v do
           1 ->
             if bits_read + 28 > num_bits, do: throw(:invalid)
-            v = rd(data, bits_read, 12)
+            rv = rd(data, bits_read, 28)
+            v = rv &&& 0xFFF
             bits_read = bits_read + 12
             v_game_event_hit_target_id = v
-            v = rd(data, bits_read, 12)
+            v = rv >>> 12 &&& 0xFFF
             bits_read = bits_read + 12
             v_game_event_hit_damage = v
-            v = rd(data, bits_read, 3)
+            v = rv >>> 24 &&& 0x7
             bits_read = bits_read + 3
             v_game_event_hit_hit_kind = v
-            v = rd(data, bits_read, 1)
+            v = rv >>> 27
             bits_read = bits_read + 1
             v_game_event_hit_crit = v == 1
 
@@ -2313,10 +2354,11 @@ defmodule Bench.Bench do
 
           2 ->
             if bits_read + 14 > num_bits, do: throw(:invalid)
-            v = rd(data, bits_read, 2)
+            rv = rd(data, bits_read, 14)
+            v = rv &&& 0x3
             bits_read = bits_read + 2
             v_game_event_chat_channel = v
-            v = rd(data, bits_read, 12)
+            v = rv >>> 2
             bits_read = bits_read + 12
             v_game_event_chat_speaker = v
 
@@ -2330,10 +2372,11 @@ defmodule Bench.Bench do
 
           3 ->
             if bits_read + 18 > num_bits, do: throw(:invalid)
-            v = rd(data, bits_read, 10)
+            rv = rd(data, bits_read, 18)
+            v = rv &&& 0x3FF
             bits_read = bits_read + 10
             v_game_event_pickup_item_id = v
-            v = rd(data, bits_read, 8)
+            v = rv >>> 10
             bits_read = bits_read + 8
             v_game_event_pickup_amount = v
 
@@ -2353,7 +2396,8 @@ defmodule Bench.Bench do
       if bits_read + 32 > num_bits, do: throw(:invalid)
       {bits_read, v_loadout} = r_bench_mixed_loadout(4, [], data, num_bits, bits_read)
       if bits_read + 4 > num_bits, do: throw(:invalid)
-      v = rd(data, bits_read, 4)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0xF
       bits_read = bits_read + 4
       len = v
       pad = 8 - (bits_read &&& 7) &&& 7
@@ -2376,7 +2420,8 @@ defmodule Bench.Bench do
       # an interior null is content the read refuses (SPEC §4.7)
       if :binary.match(v_player_name, <<0>>) != :nomatch, do: throw(:invalid)
       if bits_read + 5 > num_bits, do: throw(:invalid)
-      v = rd(data, bits_read, 5)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0x1F
       bits_read = bits_read + 5
       # the length guards the slice — reject, never clamp
       if v > 16, do: throw(:invalid)
@@ -2399,65 +2444,77 @@ defmodule Bench.Bench do
       v_payload = binary_part(data, bits_read >>> 3, len)
       bits_read = bits_read + len * 8
       if bits_read + 370 > num_bits, do: throw(:invalid)
-      v = rd(data, bits_read, 8)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0xFF
       bits_read = bits_read + 8
       # headroom above the quantum count is refused
       if v > 200, do: throw(:invalid)
       v_aim_x = cf_decode(v, 200, 2.0, -1.0)
-      v = rd(data, bits_read, 8)
+      v = rv >>> 8 &&& 0xFF
       bits_read = bits_read + 8
       # headroom above the quantum count is refused
       if v > 200, do: throw(:invalid)
       v_aim_y = cf_decode(v, 200, 2.0, -1.0)
-      v = rd(data, bits_read, 8)
+      v = rv >>> 16 &&& 0xFF
       bits_read = bits_read + 8
       # headroom above the quantum count is refused
       if v > 200, do: throw(:invalid)
       v_aim_z = cf_decode(v, 200, 2.0, -1.0)
-      v = rd(data, bits_read, 32)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0xFFFFFFFF
       bits_read = bits_read + 32
       v_recoil = f32_value(v)
-      v = rd(data, bits_read, 32)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0xFFFFFFFF
       bits_read = bits_read + 32
       w = v
-      v = rd(data, bits_read, 32)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0xFFFFFFFF
       bits_read = bits_read + 32
       w = w ||| v <<< 32
       v_drift = f64_value(w)
-      v = rd(data, bits_read, 32)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0xFFFFFFFF
       bits_read = bits_read + 32
       w = v
-      v = rd(data, bits_read, 32)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0xFFFFFFFF
       bits_read = bits_read + 32
       w = w ||| v <<< 32
-      v = rd(data, bits_read, 32)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0xFFFFFFFF
       bits_read = bits_read + 32
       w = w ||| v <<< 64
-      v = rd(data, bits_read, 32)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0xFFFFFFFF
       bits_read = bits_read + 32
       w = w ||| v <<< 96
       v_wide_key = w
-      v = rd(data, bits_read, 32)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0xFFFFFFFF
       bits_read = bits_read + 32
       w = v
-      v = rd(data, bits_read, 32)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0xFFFFFFFF
       bits_read = bits_read + 32
       w = w ||| v <<< 32
-      v = rd(data, bits_read, 32)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0xFFFFFFFF
       bits_read = bits_read + 32
       w = w ||| v <<< 64
-      v = rd(data, bits_read, 6)
+      v = rv >>> 32 &&& 0x3F
       bits_read = bits_read + 6
       w = w ||| v <<< 96
       # a smuggled offset is refused
       if w > 2_535_301_200_456_458_802_993_406_410_752, do: throw(:invalid)
       v_flux = w - 1_267_650_600_228_229_401_496_703_205_376
-      v = rd(data, bits_read, 16)
+      rv = rd(data, bits_read, 20)
+      v = rv &&& 0xFFFF
       bits_read = bits_read + 16
       # a smuggled offset is refused
       if v > 64000, do: throw(:invalid)
       v_ping = v
-      v = rd(data, bits_read, 4)
+      v = rv >>> 16
       bits_read = bits_read + 4
       # reserved bits must read zero (SPEC §4.3)
       if v != 0, do: throw(:invalid)
@@ -2476,24 +2533,27 @@ defmodule Bench.Bench do
 
       bits_read = bits_read + pad
       if bits_read + 25 > num_bits, do: throw(:invalid)
-      v = rd(data, bits_read, 24)
+      rv = rd(data, bits_read, 25)
+      v = rv &&& 0xFFFFFF
       bits_read = bits_read + 24
       v_crc_hint = v
-      v = rd(data, bits_read, 1)
+      v = rv >>> 24
       bits_read = bits_read + 1
       v_has_extra = v == 1
 
       {bits_read, v_extra, v_idle_ticks} =
         if v_has_extra do
           if bits_read + 8 > num_bits, do: throw(:invalid)
-          v = rd(data, bits_read, 8)
+          rv = rd(data, bits_read, 8)
+          v = rv
           bits_read = bits_read + 8
           v_extra = v
           v_idle_ticks = 0
           {bits_read, v_extra, v_idle_ticks}
         else
           if bits_read + 4 > num_bits, do: throw(:invalid)
-          v = rd(data, bits_read, 4)
+          rv = rd(data, bits_read, 4)
+          v = rv
           bits_read = bits_read + 4
           v_idle_ticks = v
           v_extra = 0
@@ -2602,7 +2662,8 @@ defmodule Bench.Bench do
     do: {bits_read, Enum.reverse(acc)}
 
   defp r_bench_packet_blob(remaining, acc, data, num_bits, bits_read) do
-    v = rd(data, bits_read, 8)
+    rv = rdw(data, bits_read, 49)
+    v = rv &&& 0xFF
     bits_read = bits_read + 8
     e = v
     r_bench_packet_blob(remaining - 1, [e | acc], data, num_bits, bits_read)
@@ -2787,54 +2848,57 @@ defmodule Bench.Bench do
     do: {bits_read, Enum.reverse(acc)}
 
   defp r_bench_mixed_entities(remaining, acc, data, num_bits, bits_read) do
-    v = rd(data, bits_read, 12)
+    rv = rdw(data, bits_read, 49)
+    v = rv &&& 0xFFF
     bits_read = bits_read + 12
     e_entity_id = v
-    v = rd(data, bits_read, 15)
+    v = rv >>> 12 &&& 0x7FFF
     bits_read = bits_read + 15
     # a smuggled offset is refused
     if v > 32766, do: throw(:invalid)
     e_pos_x = v - 16383
-    v = rd(data, bits_read, 15)
+    v = rv >>> 27 &&& 0x7FFF
     bits_read = bits_read + 15
     # a smuggled offset is refused
     if v > 32766, do: throw(:invalid)
     e_pos_y = v - 16383
-    v = rd(data, bits_read, 15)
+    rv = rdw(data, bits_read, 49)
+    v = rv &&& 0x7FFF
     bits_read = bits_read + 15
     # a smuggled offset is refused
     if v > 32766, do: throw(:invalid)
     e_pos_z = v - 16383
-    v = rd(data, bits_read, 9)
+    v = rv >>> 15 &&& 0x1FF
     bits_read = bits_read + 9
     e_yaw = v
-    v = rd(data, bits_read, 9)
+    v = rv >>> 24 &&& 0x1FF
     bits_read = bits_read + 9
     e_pitch = v
-    v = rd(data, bits_read, 12)
+    v = rv >>> 33 &&& 0xFFF
     bits_read = bits_read + 12
     e_vel_x = v - 2048
-    v = rd(data, bits_read, 12)
+    rv = rdw(data, bits_read, 48)
+    v = rv &&& 0xFFF
     bits_read = bits_read + 12
     e_vel_y = v - 2048
-    v = rd(data, bits_read, 12)
+    v = rv >>> 12 &&& 0xFFF
     bits_read = bits_read + 12
     e_vel_z = v - 2048
-    v = rd(data, bits_read, 10)
+    v = rv >>> 24 &&& 0x3FF
     bits_read = bits_read + 10
     # a smuggled offset is refused
     if v > 1000, do: throw(:invalid)
     e_health = v
-    v = rd(data, bits_read, 4)
+    v = rv >>> 34 &&& 0xF
     bits_read = bits_read + 4
     e_weapon = v
-    v = rd(data, bits_read, 8)
+    v = rv >>> 38 &&& 0xFF
     bits_read = bits_read + 8
     e_damage = v
-    v = rd(data, bits_read, 1)
+    v = rv >>> 46 &&& 0x1
     bits_read = bits_read + 1
     e_moving = v == 1
-    v = rd(data, bits_read, 1)
+    v = rv >>> 47
     bits_read = bits_read + 1
     e_firing = v == 1
 
@@ -2862,10 +2926,11 @@ defmodule Bench.Bench do
     do: {bits_read, Enum.reverse(acc)}
 
   defp r_bench_mixed_stats(remaining, acc, data, num_bits, bits_read) do
-    v = rd(data, bits_read, 8)
+    rv = rd(data, bits_read, 18)
+    v = rv &&& 0xFF
     bits_read = bits_read + 8
     e_stat_id = v
-    v = rd(data, bits_read, 10)
+    v = rv >>> 8
     bits_read = bits_read + 10
     e_delta = v - 512
     e = %Bench.MixedStat{stat_id: e_stat_id, delta: e_delta}
@@ -2876,7 +2941,8 @@ defmodule Bench.Bench do
     do: {bits_read, Enum.reverse(acc)}
 
   defp r_bench_mixed_loadout(remaining, acc, data, num_bits, bits_read) do
-    v = rd(data, bits_read, 8)
+    rv = rdw(data, bits_read, 49)
+    v = rv &&& 0xFF
     bits_read = bits_read + 8
     e = v
     r_bench_mixed_loadout(remaining - 1, [e | acc], data, num_bits, bits_read)
@@ -2892,6 +2958,22 @@ defmodule Bench.Bench do
     window =
       case data do
         <<_::binary-size(^i), w::little-40, _::binary>> -> w
+        <<_::binary-size(^i), rest::binary>> -> :binary.decode_unsigned(rest, :little)
+      end
+
+    window >>> (bits_read &&& 7) &&& (1 <<< bits) - 1
+  end
+
+  # The wide window decode: 56 bits, enough for a 7-bit offset plus a
+  # 49-bit group, and still under the 2^59 fixnum boundary — one match
+  # context serves a whole group of fields instead of one per field. A
+  # 64-bit window would box and measures slower than the reads it saves.
+  defp rdw(data, bits_read, bits) do
+    i = bits_read >>> 3
+
+    window =
+      case data do
+        <<_::binary-size(^i), w::little-56, _::binary>> -> w
         <<_::binary-size(^i), rest::binary>> -> :binary.decode_unsigned(rest, :little)
       end
 

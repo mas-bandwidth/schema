@@ -122,6 +122,8 @@ defmodule Ludicrous.Ludicrous do
 
   @compile {:inline, rd: 3}
 
+  @compile {:inline, rdw: 3}
+
   # The unit's protocol id — the hash of its wire shape (SPEC §3.1). Two
   # sides at the same id speak identical bits; there is no other versioning.
   def protocol_id, do: 0xA388F75DDC741965
@@ -256,26 +258,30 @@ defmodule Ludicrous.Ludicrous do
 
       bits_read = 0
       if bits_read + 156 > num_bits, do: throw(:invalid)
-      v = rd(data, bits_read, 25)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0x1FFFFFF
       bits_read = bits_read + 25
       # a smuggled offset is refused
       if v > 23_592_960, do: throw(:invalid)
       v_angle = v - 11_796_480
-      v = rd(data, bits_read, 32)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0xFFFFFFFF
       bits_read = bits_read + 32
       # a smuggled offset is refused
       if v > 3_932_160_000, do: throw(:invalid)
       v_position = v - 1_966_080_000
-      v = rd(data, bits_read, 32)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0xFFFFFFFF
       bits_read = bits_read + 32
       w = v
-      v = rd(data, bits_read, 5)
+      v = rv >>> 32 &&& 0x1F
       bits_read = bits_read + 5
       w = w ||| v <<< 32
       # a smuggled offset is refused
       if w > 131_072_000_000, do: throw(:invalid)
       v_reach = w - 65_536_000_000
-      v = rd(data, bits_read, 20)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0xFFFFF
       bits_read = bits_read + 20
       # a smuggled offset is refused
       if v > 1_000_000, do: throw(:invalid)
@@ -437,37 +443,43 @@ defmodule Ludicrous.Ludicrous do
 
       bits_read = 0
       if bits_read + 196 > num_bits, do: throw(:invalid)
-      v = rd(data, bits_read, 25)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0x1FFFFFF
       bits_read = bits_read + 25
       # a smuggled offset is refused
       if v > 23_592_960, do: throw(:invalid)
       v_angle = v
-      v = rd(data, bits_read, 32)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0xFFFFFFFF
       bits_read = bits_read + 32
       w = v
-      v = rd(data, bits_read, 32)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0xFFFFFFFF
       bits_read = bits_read + 32
       w = w ||| v <<< 32
       # a smuggled offset is refused
       if w > 18_446_744_073_709_486_080, do: throw(:invalid)
       v_span = w
-      v = rd(data, bits_read, 32)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0xFFFFFFFF
       bits_read = bits_read + 32
       w = v
-      v = rd(data, bits_read, 5)
+      v = rv >>> 32 &&& 0x1F
       bits_read = bits_read + 5
       w = w ||| v <<< 32
       # a smuggled offset is refused
       if w > 131_072_000_000, do: throw(:invalid)
       v_reach = w
-      v = rd(data, bits_read, 20)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0xFFFFF
       bits_read = bits_read + 20
       # a smuggled offset is refused
       if v > 1_000_000, do: throw(:invalid)
       v_ticks = v
       {bits_read, v_samples} = r_unsigned_probe_samples(2, [], data, num_bits, bits_read)
       v_locked = 196_608
-      v = rd(data, bits_read, 8)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0xFF
       bits_read = bits_read + 8
       v_tail = v
       # the final position is unobserved — the verdict and value are the surface
@@ -648,58 +660,70 @@ defmodule Ludicrous.Ludicrous do
 
       bits_read = 0
       if bits_read + 403 > num_bits, do: throw(:invalid)
-      v = rd(data, bits_read, 32)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0xFFFFFFFF
       bits_read = bits_read + 32
       w = v
-      v = rd(data, bits_read, 32)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0xFFFFFFFF
       bits_read = bits_read + 32
       w = w ||| v <<< 32
-      v = rd(data, bits_read, 32)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0xFFFFFFFF
       bits_read = bits_read + 32
       w = w ||| v <<< 64
-      v = rd(data, bits_read, 32)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0xFFFFFFFF
       bits_read = bits_read + 32
       w = w ||| v <<< 96
       v_entity_id = w
-      v = rd(data, bits_read, 32)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0xFFFFFFFF
       bits_read = bits_read + 32
       w = v
-      v = rd(data, bits_read, 2)
+      v = rv >>> 32 &&& 0x3
       bits_read = bits_read + 2
       w = w ||| v <<< 32
       # a smuggled offset is refused
       if w > 10_000_000_000, do: throw(:invalid)
       v_energy = w - 5_000_000_000
-      v = rd(data, bits_read, 32)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0xFFFFFFFF
       bits_read = bits_read + 32
       w = v
-      v = rd(data, bits_read, 32)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0xFFFFFFFF
       bits_read = bits_read + 32
       w = w ||| v <<< 32
-      v = rd(data, bits_read, 32)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0xFFFFFFFF
       bits_read = bits_read + 32
       w = w ||| v <<< 64
-      v = rd(data, bits_read, 6)
+      v = rv >>> 32 &&& 0x3F
       bits_read = bits_read + 6
       w = w ||| v <<< 96
       # a smuggled offset is refused
       if w > 2_535_301_200_456_458_802_993_406_410_752, do: throw(:invalid)
       v_flux = w - 1_267_650_600_228_229_401_496_703_205_376
-      v = rd(data, bits_read, 11)
+      v = rv >>> 38
       bits_read = bits_read + 11
       # a smuggled offset is refused
       if v > 2000, do: throw(:invalid)
       v_bias = v - 1000
-      v = rd(data, bits_read, 32)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0xFFFFFFFF
       bits_read = bits_read + 32
       w = v
-      v = rd(data, bits_read, 32)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0xFFFFFFFF
       bits_read = bits_read + 32
       w = w ||| v <<< 32
-      v = rd(data, bits_read, 32)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0xFFFFFFFF
       bits_read = bits_read + 32
       w = w ||| v <<< 64
-      v = rd(data, bits_read, 32)
+      rv = rd(data, bits_read, 32)
+      v = rv
       bits_read = bits_read + 32
       w = w ||| v <<< 96
       v_seed = w
@@ -1031,29 +1055,33 @@ defmodule Ludicrous.Ludicrous do
 
       bits_read = 0
       if bits_read + 561 > num_bits, do: throw(:invalid)
-      v = rd(data, bits_read, 2)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0x3
       bits_read = bits_read + 2
       v_mode = v
-      v = rd(data, bits_read, 25)
+      v = rv >>> 2 &&& 0x1FFFFFF
       bits_read = bits_read + 25
       # a smuggled offset is refused
       if v > 23_592_960, do: throw(:invalid)
       v_probe_angle = v - 11_796_480
-      v = rd(data, bits_read, 32)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0xFFFFFFFF
       bits_read = bits_read + 32
       # a smuggled offset is refused
       if v > 3_932_160_000, do: throw(:invalid)
       v_probe_position = v - 1_966_080_000
-      v = rd(data, bits_read, 32)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0xFFFFFFFF
       bits_read = bits_read + 32
       w = v
-      v = rd(data, bits_read, 5)
+      v = rv >>> 32 &&& 0x1F
       bits_read = bits_read + 5
       w = w ||| v <<< 32
       # a smuggled offset is refused
       if w > 131_072_000_000, do: throw(:invalid)
       v_probe_reach = w - 65_536_000_000
-      v = rd(data, bits_read, 20)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0xFFFFF
       bits_read = bits_read + 20
       # a smuggled offset is refused
       if v > 1_000_000, do: throw(:invalid)
@@ -1068,58 +1096,70 @@ defmodule Ludicrous.Ludicrous do
         samples: v_probe_samples
       }
 
-      v = rd(data, bits_read, 32)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0xFFFFFFFF
       bits_read = bits_read + 32
       w = v
-      v = rd(data, bits_read, 32)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0xFFFFFFFF
       bits_read = bits_read + 32
       w = w ||| v <<< 32
-      v = rd(data, bits_read, 32)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0xFFFFFFFF
       bits_read = bits_read + 32
       w = w ||| v <<< 64
-      v = rd(data, bits_read, 32)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0xFFFFFFFF
       bits_read = bits_read + 32
       w = w ||| v <<< 96
       v_wide_entity_id = w
-      v = rd(data, bits_read, 32)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0xFFFFFFFF
       bits_read = bits_read + 32
       w = v
-      v = rd(data, bits_read, 2)
+      v = rv >>> 32 &&& 0x3
       bits_read = bits_read + 2
       w = w ||| v <<< 32
       # a smuggled offset is refused
       if w > 10_000_000_000, do: throw(:invalid)
       v_wide_energy = w - 5_000_000_000
-      v = rd(data, bits_read, 32)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0xFFFFFFFF
       bits_read = bits_read + 32
       w = v
-      v = rd(data, bits_read, 32)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0xFFFFFFFF
       bits_read = bits_read + 32
       w = w ||| v <<< 32
-      v = rd(data, bits_read, 32)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0xFFFFFFFF
       bits_read = bits_read + 32
       w = w ||| v <<< 64
-      v = rd(data, bits_read, 6)
+      v = rv >>> 32 &&& 0x3F
       bits_read = bits_read + 6
       w = w ||| v <<< 96
       # a smuggled offset is refused
       if w > 2_535_301_200_456_458_802_993_406_410_752, do: throw(:invalid)
       v_wide_flux = w - 1_267_650_600_228_229_401_496_703_205_376
-      v = rd(data, bits_read, 11)
+      v = rv >>> 38
       bits_read = bits_read + 11
       # a smuggled offset is refused
       if v > 2000, do: throw(:invalid)
       v_wide_bias = v - 1000
-      v = rd(data, bits_read, 32)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0xFFFFFFFF
       bits_read = bits_read + 32
       w = v
-      v = rd(data, bits_read, 32)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0xFFFFFFFF
       bits_read = bits_read + 32
       w = w ||| v <<< 32
-      v = rd(data, bits_read, 32)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0xFFFFFFFF
       bits_read = bits_read + 32
       w = w ||| v <<< 64
-      v = rd(data, bits_read, 32)
+      rv = rd(data, bits_read, 32)
+      v = rv
       bits_read = bits_read + 32
       w = w ||| v <<< 96
       v_wide_seed = w
@@ -1133,7 +1173,8 @@ defmodule Ludicrous.Ludicrous do
       }
 
       if bits_read + 3 > num_bits, do: throw(:invalid)
-      v = rd(data, bits_read, 3)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0x7
       bits_read = bits_read + 3
       # the count guards the loop — reject, never clamp
       if v > 4, do: throw(:invalid)
@@ -1141,23 +1182,28 @@ defmodule Ludicrous.Ludicrous do
       if bits_read + n * 128 > num_bits, do: throw(:invalid)
       {bits_read, v_keys} = r_ludicrous_state_keys(n, [], data, num_bits, bits_read)
       if bits_read + 1 > num_bits, do: throw(:invalid)
-      v = rd(data, bits_read, 1)
+      rv = rd(data, bits_read, 1)
+      v = rv
       bits_read = bits_read + 1
       v_has_target = v == 1
 
       {bits_read, v_target_id} =
         if v_has_target do
           if bits_read + 128 > num_bits, do: throw(:invalid)
-          v = rd(data, bits_read, 32)
+          rv = rdw(data, bits_read, 49)
+          v = rv &&& 0xFFFFFFFF
           bits_read = bits_read + 32
           w = v
-          v = rd(data, bits_read, 32)
+          rv = rdw(data, bits_read, 49)
+          v = rv &&& 0xFFFFFFFF
           bits_read = bits_read + 32
           w = w ||| v <<< 32
-          v = rd(data, bits_read, 32)
+          rv = rdw(data, bits_read, 49)
+          v = rv &&& 0xFFFFFFFF
           bits_read = bits_read + 32
           w = w ||| v <<< 64
-          v = rd(data, bits_read, 32)
+          rv = rd(data, bits_read, 32)
+          v = rv
           bits_read = bits_read + 32
           w = w ||| v <<< 96
           v_target_id = w
@@ -1259,7 +1305,8 @@ defmodule Ludicrous.Ludicrous do
       v_locked_fixed = -196_608
       v_locked_int = 7
       v_locked_wide = -12_345_678_901_234
-      v = rd(data, bits_read, 8)
+      rv = rd(data, bits_read, 8)
+      v = rv
       bits_read = bits_read + 8
       v_tail = v
       # the final position is unobserved — the verdict and value are the surface
@@ -1373,28 +1420,31 @@ defmodule Ludicrous.Ludicrous do
 
       bits_read = 0
       if bits_read + 102 > num_bits, do: throw(:invalid)
-      v = rd(data, bits_read, 32)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0xFFFFFFFF
       bits_read = bits_read + 32
       w = v
-      v = rd(data, bits_read, 2)
+      v = rv >>> 32 &&& 0x3
       bits_read = bits_read + 2
       w = w ||| v <<< 32
       # a smuggled offset is refused
       if w > 13_107_200_000, do: throw(:invalid)
       v_x = w - 6_553_600_000
-      v = rd(data, bits_read, 32)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0xFFFFFFFF
       bits_read = bits_read + 32
       w = v
-      v = rd(data, bits_read, 2)
+      v = rv >>> 32 &&& 0x3
       bits_read = bits_read + 2
       w = w ||| v <<< 32
       # a smuggled offset is refused
       if w > 13_107_200_000, do: throw(:invalid)
       v_y = w - 6_553_600_000
-      v = rd(data, bits_read, 32)
+      rv = rdw(data, bits_read, 34)
+      v = rv &&& 0xFFFFFFFF
       bits_read = bits_read + 32
       w = v
-      v = rd(data, bits_read, 2)
+      v = rv >>> 32
       bits_read = bits_read + 2
       w = w ||| v <<< 32
       # a smuggled offset is refused
@@ -1508,22 +1558,26 @@ defmodule Ludicrous.Ludicrous do
 
       bits_read = 0
       if bits_read + 128 > num_bits, do: throw(:invalid)
-      v = rd(data, bits_read, 32)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0xFFFFFFFF
       bits_read = bits_read + 32
       # a smuggled offset is refused
       if v > 2_147_483_648, do: throw(:invalid)
       v_x = v - 1_073_741_824
-      v = rd(data, bits_read, 32)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0xFFFFFFFF
       bits_read = bits_read + 32
       # a smuggled offset is refused
       if v > 2_147_483_648, do: throw(:invalid)
       v_y = v - 1_073_741_824
-      v = rd(data, bits_read, 32)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0xFFFFFFFF
       bits_read = bits_read + 32
       # a smuggled offset is refused
       if v > 2_147_483_648, do: throw(:invalid)
       v_z = v - 1_073_741_824
-      v = rd(data, bits_read, 32)
+      rv = rd(data, bits_read, 32)
+      v = rv
       bits_read = bits_read + 32
       # a smuggled offset is refused
       if v > 2_147_483_648, do: throw(:invalid)
@@ -1566,7 +1620,8 @@ defmodule Ludicrous.Ludicrous do
     do: {bits_read, Enum.reverse(acc)}
 
   defp r_fixed_probe_samples(remaining, acc, data, num_bits, bits_read) do
-    v = rd(data, bits_read, 21)
+    rv = rdw(data, bits_read, 49)
+    v = rv &&& 0x1FFFFF
     bits_read = bits_read + 21
     # a smuggled offset is refused
     if v > 1_048_576, do: throw(:invalid)
@@ -1600,7 +1655,8 @@ defmodule Ludicrous.Ludicrous do
     do: {bits_read, Enum.reverse(acc)}
 
   defp r_unsigned_probe_samples(remaining, acc, data, num_bits, bits_read) do
-    v = rd(data, bits_read, 21)
+    rv = rdw(data, bits_read, 49)
+    v = rv &&& 0x1FFFFF
     bits_read = bits_read + 21
     # a smuggled offset is refused
     if v > 1_048_576, do: throw(:invalid)
@@ -1646,16 +1702,20 @@ defmodule Ludicrous.Ludicrous do
     do: {bits_read, Enum.reverse(acc)}
 
   defp r_ludicrous_state_keys(remaining, acc, data, num_bits, bits_read) do
-    v = rd(data, bits_read, 32)
+    rv = rdw(data, bits_read, 49)
+    v = rv &&& 0xFFFFFFFF
     bits_read = bits_read + 32
     w = v
-    v = rd(data, bits_read, 32)
+    rv = rdw(data, bits_read, 49)
+    v = rv &&& 0xFFFFFFFF
     bits_read = bits_read + 32
     w = w ||| v <<< 32
-    v = rd(data, bits_read, 32)
+    rv = rdw(data, bits_read, 49)
+    v = rv &&& 0xFFFFFFFF
     bits_read = bits_read + 32
     w = w ||| v <<< 64
-    v = rd(data, bits_read, 32)
+    rv = rdw(data, bits_read, 49)
+    v = rv &&& 0xFFFFFFFF
     bits_read = bits_read + 32
     w = w ||| v <<< 96
     e = w
@@ -1672,6 +1732,22 @@ defmodule Ludicrous.Ludicrous do
     window =
       case data do
         <<_::binary-size(^i), w::little-40, _::binary>> -> w
+        <<_::binary-size(^i), rest::binary>> -> :binary.decode_unsigned(rest, :little)
+      end
+
+    window >>> (bits_read &&& 7) &&& (1 <<< bits) - 1
+  end
+
+  # The wide window decode: 56 bits, enough for a 7-bit offset plus a
+  # 49-bit group, and still under the 2^59 fixnum boundary — one match
+  # context serves a whole group of fields instead of one per field. A
+  # 64-bit window would box and measures slower than the reads it saves.
+  defp rdw(data, bits_read, bits) do
+    i = bits_read >>> 3
+
+    window =
+      case data do
+        <<_::binary-size(^i), w::little-56, _::binary>> -> w
         <<_::binary-size(^i), rest::binary>> -> :binary.decode_unsigned(rest, :little)
       end
 

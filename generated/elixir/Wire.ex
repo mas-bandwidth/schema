@@ -172,6 +172,8 @@ defmodule Example.Wire do
 
   @compile {:inline, rd: 3}
 
+  @compile {:inline, rdw: 3}
+
   def probe_id, do: 244_837_814_094_590
 
   def half_turn, do: 180.0
@@ -294,14 +296,15 @@ defmodule Example.Wire do
 
       bits_read = 0
       if bits_read + 16 > num_bits, do: throw(:invalid)
-      v = rd(data, bits_read, 8)
+      rv = rd(data, bits_read, 16)
+      v = rv &&& 0xFF
       bits_read = bits_read + 8
       # a read rejects any other value (SPEC §4.3)
       if v != 171, do: throw(:invalid)
-      v = rd(data, bits_read, 3)
+      v = rv >>> 8 &&& 0x7
       bits_read = bits_read + 3
       v_version = v
-      v = rd(data, bits_read, 5)
+      v = rv >>> 11
       bits_read = bits_read + 5
       # reserved bits must read zero (SPEC §4.3)
       if v != 0, do: throw(:invalid)
@@ -320,10 +323,12 @@ defmodule Example.Wire do
 
       bits_read = bits_read + pad
       if bits_read + 64 > num_bits, do: throw(:invalid)
-      v = rd(data, bits_read, 32)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0xFFFFFFFF
       bits_read = bits_read + 32
       w = v
-      v = rd(data, bits_read, 32)
+      rv = rd(data, bits_read, 32)
+      v = rv
       bits_read = bits_read + 32
       w = w ||| v <<< 32
       v_probe_id = w
@@ -442,30 +447,36 @@ defmodule Example.Wire do
 
       bits_read = 0
       if bits_read + 202 > num_bits, do: throw(:invalid)
-      v = rd(data, bits_read, 9)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0x1FF
       bits_read = bits_read + 9
       v_small = v
-      v = rd(data, bits_read, 32)
+      v = rv >>> 9 &&& 0xFFFFFFFF
       bits_read = bits_read + 32
       w = v
-      v = rd(data, bits_read, 1)
+      v = rv >>> 41 &&& 0x1
       bits_read = bits_read + 1
       w = w ||| v <<< 32
       v_boundary = w
-      v = rd(data, bits_read, 32)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0xFFFFFFFF
       bits_read = bits_read + 32
       w = v
-      v = rd(data, bits_read, 32)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0xFFFFFFFF
       bits_read = bits_read + 32
       w = w ||| v <<< 32
       v_wide = w
-      v = rd(data, bits_read, 32)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0xFFFFFFFF
       bits_read = bits_read + 32
       v_sensor = v
-      v = rd(data, bits_read, 32)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0xFFFFFFFF
       bits_read = bits_read + 32
       w = v
-      v = rd(data, bits_read, 32)
+      rv = rd(data, bits_read, 32)
+      v = rv
       bits_read = bits_read + 32
       w = w ||| v <<< 32
       v_nonce = w
@@ -629,21 +640,24 @@ defmodule Example.Wire do
 
       bits_read = 0
       if bits_read + 113 > num_bits, do: throw(:invalid)
-      v = rd(data, bits_read, 1)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0x1
       bits_read = bits_read + 1
       v_active = v == 1
-      v = rd(data, bits_read, 16)
+      v = rv >>> 1 &&& 0xFFFF
       bits_read = bits_read + 16
       # headroom above the quantum count is refused
       if v > 36000, do: throw(:invalid)
       v_orientation = cf_decode(v, 36000, 360.0, -180.0)
-      v = rd(data, bits_read, 32)
+      v = rv >>> 17
       bits_read = bits_read + 32
       v_raw_delta = if v >= 2_147_483_648, do: v - 4_294_967_296, else: v
-      v = rd(data, bits_read, 32)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0xFFFFFFFF
       bits_read = bits_read + 32
       w = v
-      v = rd(data, bits_read, 32)
+      rv = rd(data, bits_read, 32)
+      v = rv
       bits_read = bits_read + 32
       w = w ||| v <<< 32
       v_big_delta = if w >= 9_223_372_036_854_775_808, do: w - 18_446_744_073_709_551_616, else: w
@@ -651,17 +665,19 @@ defmodule Example.Wire do
       {bits_read, v_weapon, v_has_target, v_target_id, v_idle_ticks} =
         if v_active do
           if bits_read + 5 > num_bits, do: throw(:invalid)
-          v = rd(data, bits_read, 4)
+          rv = rd(data, bits_read, 5)
+          v = rv &&& 0xF
           bits_read = bits_read + 4
           v_weapon = v
-          v = rd(data, bits_read, 1)
+          v = rv >>> 4
           bits_read = bits_read + 1
           v_has_target = v == 1
 
           {bits_read, v_target_id} =
             if v_has_target do
               if bits_read + 16 > num_bits, do: throw(:invalid)
-              v = rd(data, bits_read, 16)
+              rv = rd(data, bits_read, 16)
+              v = rv
               bits_read = bits_read + 16
               v_target_id = v
               {bits_read, v_target_id}
@@ -674,7 +690,8 @@ defmodule Example.Wire do
           {bits_read, v_weapon, v_has_target, v_target_id, v_idle_ticks}
         else
           if bits_read + 32 > num_bits, do: throw(:invalid)
-          v = rd(data, bits_read, 32)
+          rv = rd(data, bits_read, 32)
+          v = rv
           bits_read = bits_read + 32
           v_idle_ticks = v
           v_weapon = 0
@@ -684,7 +701,8 @@ defmodule Example.Wire do
         end
 
       if bits_read + 3 > num_bits, do: throw(:invalid)
-      v = rd(data, bits_read, 3)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0x7
       bits_read = bits_read + 3
       n = v + 1
       if bits_read + n * 16 > num_bits, do: throw(:invalid)
@@ -775,7 +793,8 @@ defmodule Example.Wire do
 
       bits_read = 0
       if bits_read + 16 > num_bits, do: throw(:invalid)
-      v = rd(data, bits_read, 16)
+      rv = rd(data, bits_read, 16)
+      v = rv
       bits_read = bits_read + 16
       v_radius = v
       # the final position is unobserved — the verdict and value are the surface
@@ -841,12 +860,13 @@ defmodule Example.Wire do
 
       bits_read = 0
       if bits_read + 15 > num_bits, do: throw(:invalid)
-      v = rd(data, bits_read, 7)
+      rv = rd(data, bits_read, 15)
+      v = rv &&& 0x7F
       bits_read = bits_read + 7
       # a smuggled offset is refused
       if v > 100, do: throw(:invalid)
       v_width = v
-      v = rd(data, bits_read, 8)
+      v = rv >>> 7
       bits_read = bits_read + 8
       v_height = v
       # the final position is unobserved — the verdict and value are the surface
@@ -949,7 +969,8 @@ defmodule Example.Wire do
 
       bits_read = 0
       if bits_read + 2 > num_bits, do: throw(:invalid)
-      v = rd(data, bits_read, 2)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0x3
       bits_read = bits_read + 2
       # not a wire-legal tag (SPEC §4.8)
       if v > 2, do: throw(:invalid)
@@ -958,7 +979,8 @@ defmodule Example.Wire do
         case v do
           1 ->
             if bits_read + 16 > num_bits, do: throw(:invalid)
-            v = rd(data, bits_read, 16)
+            rv = rd(data, bits_read, 16)
+            v = rv
             bits_read = bits_read + 16
             v_ring_radius = v
             v_ring = %Example.ProbeRing{radius: v_ring_radius}
@@ -967,12 +989,13 @@ defmodule Example.Wire do
 
           2 ->
             if bits_read + 15 > num_bits, do: throw(:invalid)
-            v = rd(data, bits_read, 7)
+            rv = rd(data, bits_read, 15)
+            v = rv &&& 0x7F
             bits_read = bits_read + 7
             # a smuggled offset is refused
             if v > 100, do: throw(:invalid)
             v_slab_width = v
-            v = rd(data, bits_read, 8)
+            v = rv >>> 7
             bits_read = bits_read + 8
             v_slab_height = v
             v_slab = %Example.ProbeSlab{width: v_slab_width, height: v_slab_height}
@@ -1181,11 +1204,13 @@ defmodule Example.Wire do
 
       bits_read = 0
       if bits_read + 8 > num_bits, do: throw(:invalid)
-      v = rd(data, bits_read, 8)
+      rv = rd(data, bits_read, 8)
+      v = rv
       bits_read = bits_read + 8
       v_armor = v
       if bits_read + 2 > num_bits, do: throw(:invalid)
-      v = rd(data, bits_read, 2)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0x3
       bits_read = bits_read + 2
       # not a wire-legal tag (SPEC §4.8)
       if v > 2, do: throw(:invalid)
@@ -1194,7 +1219,8 @@ defmodule Example.Wire do
         case v do
           1 ->
             if bits_read + 16 > num_bits, do: throw(:invalid)
-            v = rd(data, bits_read, 16)
+            rv = rd(data, bits_read, 16)
+            v = rv
             bits_read = bits_read + 16
             v_shape_ring_radius = v
             v_shape_ring = %Example.ProbeRing{radius: v_shape_ring_radius}
@@ -1203,12 +1229,13 @@ defmodule Example.Wire do
 
           2 ->
             if bits_read + 15 > num_bits, do: throw(:invalid)
-            v = rd(data, bits_read, 7)
+            rv = rd(data, bits_read, 15)
+            v = rv &&& 0x7F
             bits_read = bits_read + 7
             # a smuggled offset is refused
             if v > 100, do: throw(:invalid)
             v_shape_slab_width = v
-            v = rd(data, bits_read, 8)
+            v = rv >>> 7
             bits_read = bits_read + 8
             v_shape_slab_height = v
 
@@ -1226,7 +1253,8 @@ defmodule Example.Wire do
         end
 
       if bits_read + 2 > num_bits, do: throw(:invalid)
-      v = rd(data, bits_read, 2)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0x3
       bits_read = bits_read + 2
       # not a wire-legal tag (SPEC §4.8)
       if v > 2, do: throw(:invalid)
@@ -1235,7 +1263,8 @@ defmodule Example.Wire do
         case v do
           1 ->
             if bits_read + 16 > num_bits, do: throw(:invalid)
-            v = rd(data, bits_read, 16)
+            rv = rd(data, bits_read, 16)
+            v = rv
             bits_read = bits_read + 16
             v_backup_ring_radius = v
             v_backup_ring = %Example.ProbeRing{radius: v_backup_ring_radius}
@@ -1244,12 +1273,13 @@ defmodule Example.Wire do
 
           2 ->
             if bits_read + 15 > num_bits, do: throw(:invalid)
-            v = rd(data, bits_read, 7)
+            rv = rd(data, bits_read, 15)
+            v = rv &&& 0x7F
             bits_read = bits_read + 7
             # a smuggled offset is refused
             if v > 100, do: throw(:invalid)
             v_backup_slab_width = v
-            v = rd(data, bits_read, 8)
+            v = rv >>> 7
             bits_read = bits_read + 8
             v_backup_slab_height = v
 
@@ -1267,7 +1297,8 @@ defmodule Example.Wire do
         end
 
       if bits_read + 2 > num_bits, do: throw(:invalid)
-      v = rd(data, bits_read, 2)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0x3
       bits_read = bits_read + 2
       # the count guards the loop — reject, never clamp
       if v > 2, do: throw(:invalid)
@@ -1379,10 +1410,11 @@ defmodule Example.Wire do
 
       bits_read = 0
       if bits_read + 36 > num_bits, do: throw(:invalid)
-      v = rd(data, bits_read, 32)
+      rv = rdw(data, bits_read, 36)
+      v = rv &&& 0xFFFFFFFF
       bits_read = bits_read + 32
       v_retries = if v >= 2_147_483_648, do: v - 4_294_967_296, else: v
-      v = rd(data, bits_read, 4)
+      v = rv >>> 32
       bits_read = bits_read + 4
       v_preferred = v
       # the final position is unobserved — the verdict and value are the surface
@@ -1462,10 +1494,11 @@ defmodule Example.Wire do
       bits_read = 0
       {bits_read, v_samples} = r_probe_array_samples(2, [], data, num_bits, bits_read)
       if bits_read + 36 > num_bits, do: throw(:invalid)
-      v = rd(data, bits_read, 32)
+      rv = rdw(data, bits_read, 36)
+      v = rv &&& 0xFFFFFFFF
       bits_read = bits_read + 32
       v_config_retries = if v >= 2_147_483_648, do: v - 4_294_967_296, else: v
-      v = rd(data, bits_read, 4)
+      v = rv >>> 32
       bits_read = bits_read + 4
       v_config_preferred = v
       v_config = %Example.ProbeConfig{retries: v_config_retries, preferred: v_config_preferred}
@@ -1603,20 +1636,21 @@ defmodule Example.Wire do
 
       bits_read = 0
       if bits_read + 46 > num_bits, do: throw(:invalid)
-      v = rd(data, bits_read, 16)
+      rv = rdw(data, bits_read, 46)
+      v = rv &&& 0xFFFF
       bits_read = bits_read + 16
       v_test_a = v
-      v = rd(data, bits_read, 10)
+      v = rv >>> 16 &&& 0x3FF
       bits_read = bits_read + 10
       # a smuggled offset is refused
       if v > 1000, do: throw(:invalid)
       v_test_b = v
-      v = rd(data, bits_read, 10)
+      v = rv >>> 26 &&& 0x3FF
       bits_read = bits_read + 10
       # a smuggled offset is refused
       if v > 1000, do: throw(:invalid)
       v_test_c = v
-      v = rd(data, bits_read, 10)
+      v = rv >>> 36
       bits_read = bits_read + 10
       # a smuggled offset is refused
       if v > 1000, do: throw(:invalid)
@@ -1690,7 +1724,8 @@ defmodule Example.Wire do
 
       bits_read = 0
       if bits_read + 11 > num_bits, do: throw(:invalid)
-      v = rd(data, bits_read, 11)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0x7FF
       bits_read = bits_read + 11
       # the length guards the slice — reject, never clamp
       if v > 2000, do: throw(:invalid)
@@ -1780,7 +1815,8 @@ defmodule Example.Wire do
 
       bits_read = 0
       if bits_read + 9 > num_bits, do: throw(:invalid)
-      v = rd(data, bits_read, 9)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0x1FF
       bits_read = bits_read + 9
       # the length guards the slice — reject, never clamp
       if v > 256, do: throw(:invalid)
@@ -1940,14 +1976,15 @@ defmodule Example.Wire do
 
       bits_read = 0
       if bits_read + 16 > num_bits, do: throw(:invalid)
-      v = rd(data, bits_read, 8)
+      rv = rd(data, bits_read, 16)
+      v = rv &&& 0xFF
       bits_read = bits_read + 8
       # a read rejects any other value (SPEC §4.3)
       if v != 171, do: throw(:invalid)
-      v = rd(data, bits_read, 3)
+      v = rv >>> 8 &&& 0x7
       bits_read = bits_read + 3
       v_header_version = v
-      v = rd(data, bits_read, 5)
+      v = rv >>> 11
       bits_read = bits_read + 5
       # reserved bits must read zero (SPEC §4.3)
       if v != 0, do: throw(:invalid)
@@ -1966,32 +2003,36 @@ defmodule Example.Wire do
 
       bits_read = bits_read + pad
       if bits_read + 64 > num_bits, do: throw(:invalid)
-      v = rd(data, bits_read, 32)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0xFFFFFFFF
       bits_read = bits_read + 32
       w = v
-      v = rd(data, bits_read, 32)
+      rv = rd(data, bits_read, 32)
+      v = rv
       bits_read = bits_read + 32
       w = w ||| v <<< 32
       v_header_probe_id = w
       v_header = %Example.ProbeHeader{version: v_header_version, probe_id: v_header_probe_id}
       if bits_read + 54 > num_bits, do: throw(:invalid)
-      v = rd(data, bits_read, 8)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0xFF
       bits_read = bits_read + 8
       v_flags = v
-      v = rd(data, bits_read, 16)
+      v = rv >>> 8 &&& 0xFFFF
       bits_read = bits_read + 16
       v_echo_test_a = v
-      v = rd(data, bits_read, 10)
+      v = rv >>> 24 &&& 0x3FF
       bits_read = bits_read + 10
       # a smuggled offset is refused
       if v > 1000, do: throw(:invalid)
       v_echo_test_b = v
-      v = rd(data, bits_read, 10)
+      v = rv >>> 34 &&& 0x3FF
       bits_read = bits_read + 10
       # a smuggled offset is refused
       if v > 1000, do: throw(:invalid)
       v_echo_test_c = v
-      v = rd(data, bits_read, 10)
+      rv = rd(data, bits_read, 10)
+      v = rv
       bits_read = bits_read + 10
       # a smuggled offset is refused
       if v > 1000, do: throw(:invalid)
@@ -2268,35 +2309,37 @@ defmodule Example.Wire do
 
       bits_read = 0
       if bits_read + 49 > num_bits, do: throw(:invalid)
-      v = rd(data, bits_read, 8)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0xFF
       bits_read = bits_read + 8
       # a smuggled offset is refused
       if v > 200, do: throw(:invalid)
       v_a = v - 100
-      v = rd(data, bits_read, 8)
+      v = rv >>> 8 &&& 0xFF
       bits_read = bits_read + 8
       # a smuggled offset is refused
       if v > 200, do: throw(:invalid)
       v_b = v - 100
-      v = rd(data, bits_read, 8)
+      v = rv >>> 16 &&& 0xFF
       bits_read = bits_read + 8
       # a smuggled offset is refused
       if v > 250, do: throw(:invalid)
       v_c = v - 100
-      v = rd(data, bits_read, 8)
+      v = rv >>> 24 &&& 0xFF
       bits_read = bits_read + 8
       v_d = v
-      v = rd(data, bits_read, 8)
+      v = rv >>> 32 &&& 0xFF
       bits_read = bits_read + 8
       v_e = v
-      v = rd(data, bits_read, 8)
+      v = rv >>> 40 &&& 0xFF
       bits_read = bits_read + 8
       v_f = v
-      v = rd(data, bits_read, 1)
+      v = rv >>> 48
       bits_read = bits_read + 1
       v_g = v == 1
       if bits_read + 5 > num_bits, do: throw(:invalid)
-      v = rd(data, bits_read, 5)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0x1F
       bits_read = bits_read + 5
       # the count guards the loop — reject, never clamp
       if v > 16, do: throw(:invalid)
@@ -2304,47 +2347,56 @@ defmodule Example.Wire do
       if bits_read + n * 8 > num_bits, do: throw(:invalid)
       {bits_read, v_items} = r_test_data_items(n, [], data, num_bits, bits_read)
       if bits_read + 355 > num_bits, do: throw(:invalid)
-      v = rd(data, bits_read, 32)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0xFFFFFFFF
       bits_read = bits_read + 32
       v_float_value = f32_value(v)
-      v = rd(data, bits_read, 10)
+      v = rv >>> 32 &&& 0x3FF
       bits_read = bits_read + 10
       # headroom above the quantum count is refused
       if v > 1000, do: throw(:invalid)
       v_compressed_float_value = cf_decode(v, 1000, 10.0, 0.0)
-      v = rd(data, bits_read, 32)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0xFFFFFFFF
       bits_read = bits_read + 32
       w = v
-      v = rd(data, bits_read, 32)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0xFFFFFFFF
       bits_read = bits_read + 32
       w = w ||| v <<< 32
       v_double_value = f64_value(w)
-      v = rd(data, bits_read, 8)
+      v = rv >>> 32 &&& 0xFF
       bits_read = bits_read + 8
       v_int8_value = if v >= 128, do: v - 256, else: v
-      v = rd(data, bits_read, 16)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0xFFFF
       bits_read = bits_read + 16
       v_int16_value = if v >= 32768, do: v - 65536, else: v
-      v = rd(data, bits_read, 8)
+      v = rv >>> 16 &&& 0xFF
       bits_read = bits_read + 8
       v_uint8_value = v
-      v = rd(data, bits_read, 16)
+      v = rv >>> 24 &&& 0xFFFF
       bits_read = bits_read + 16
       v_uint16_value = v
-      v = rd(data, bits_read, 32)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0xFFFFFFFF
       bits_read = bits_read + 32
       v_uint32_value = v
-      v = rd(data, bits_read, 32)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0xFFFFFFFF
       bits_read = bits_read + 32
       w = v
-      v = rd(data, bits_read, 32)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0xFFFFFFFF
       bits_read = bits_read + 32
       w = w ||| v <<< 32
       v_uint64_value = w
-      v = rd(data, bits_read, 32)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0xFFFFFFFF
       bits_read = bits_read + 32
       w = v
-      v = rd(data, bits_read, 32)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0xFFFFFFFF
       bits_read = bits_read + 32
       w = w ||| v <<< 32
 
@@ -2355,10 +2407,11 @@ defmodule Example.Wire do
           w
         end
 
-      v = rd(data, bits_read, 32)
+      rv = rdw(data, bits_read, 41)
+      v = rv &&& 0xFFFFFFFF
       bits_read = bits_read + 32
       w = v
-      v = rd(data, bits_read, 9)
+      v = rv >>> 32
       bits_read = bits_read + 9
       w = w ||| v <<< 32
       # a smuggled offset is refused
@@ -2381,7 +2434,8 @@ defmodule Example.Wire do
       if bits_read + 136 > num_bits, do: throw(:invalid)
       {bits_read, v_fixed_bytes} = r_test_data_fixed_bytes(17, [], data, num_bits, bits_read)
       if bits_read + 8 > num_bits, do: throw(:invalid)
-      v = rd(data, bits_read, 8)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0xFF
       bits_read = bits_read + 8
       len = v
       pad = 8 - (bits_read &&& 7) &&& 7
@@ -2491,12 +2545,13 @@ defmodule Example.Wire do
 
       bits_read = 0
       if bits_read + 24 > num_bits, do: throw(:invalid)
-      v = rd(data, bits_read, 10)
+      rv = rd(data, bits_read, 24)
+      v = rv &&& 0x3FF
       bits_read = bits_read + 10
       # headroom above the quantum count is refused
       if v > 1000, do: throw(:invalid)
       v_boundary = cf_decode(v, 1000, 10.0, 0.0)
-      v = rd(data, bits_read, 14)
+      v = rv >>> 10
       bits_read = bits_read + 14
       # headroom above the quantum count is refused
       if v > 10000, do: throw(:invalid)
@@ -2531,7 +2586,8 @@ defmodule Example.Wire do
     do: {bits_read, Enum.reverse(acc)}
 
   defp r_probe_sample_samples(remaining, acc, data, num_bits, bits_read) do
-    v = rd(data, bits_read, 16)
+    rv = rdw(data, bits_read, 49)
+    v = rv &&& 0xFFFF
     bits_read = bits_read + 16
     e = v
     r_probe_sample_samples(remaining - 1, [e | acc], data, num_bits, bits_read)
@@ -2602,7 +2658,8 @@ defmodule Example.Wire do
 
   defp r_probe_collider_extras(remaining, acc, data, num_bits, bits_read) do
     if bits_read + 2 > num_bits, do: throw(:invalid)
-    v = rd(data, bits_read, 2)
+    rv = rdw(data, bits_read, 49)
+    v = rv &&& 0x3
     bits_read = bits_read + 2
     # not a wire-legal tag (SPEC §4.8)
     if v > 2, do: throw(:invalid)
@@ -2611,7 +2668,8 @@ defmodule Example.Wire do
       case v do
         1 ->
           if bits_read + 16 > num_bits, do: throw(:invalid)
-          v = rd(data, bits_read, 16)
+          rv = rd(data, bits_read, 16)
+          v = rv
           bits_read = bits_read + 16
           e_ring_radius = v
           e_ring = %Example.ProbeRing{radius: e_ring_radius}
@@ -2620,12 +2678,13 @@ defmodule Example.Wire do
 
         2 ->
           if bits_read + 15 > num_bits, do: throw(:invalid)
-          v = rd(data, bits_read, 7)
+          rv = rd(data, bits_read, 15)
+          v = rv &&& 0x7F
           bits_read = bits_read + 7
           # a smuggled offset is refused
           if v > 100, do: throw(:invalid)
           e_slab_width = v
-          v = rd(data, bits_read, 8)
+          v = rv >>> 7
           bits_read = bits_read + 8
           e_slab_height = v
           e_slab = %Example.ProbeSlab{width: e_slab_width, height: e_slab_height}
@@ -2764,21 +2823,24 @@ defmodule Example.Wire do
     do: {bits_read, Enum.reverse(acc)}
 
   defp r_probe_array_samples(remaining, acc, data, num_bits, bits_read) do
-    v = rd(data, bits_read, 1)
+    rv = rdw(data, bits_read, 49)
+    v = rv &&& 0x1
     bits_read = bits_read + 1
     e_active = v == 1
-    v = rd(data, bits_read, 16)
+    v = rv >>> 1 &&& 0xFFFF
     bits_read = bits_read + 16
     # headroom above the quantum count is refused
     if v > 36000, do: throw(:invalid)
     e_orientation = cf_decode(v, 36000, 360.0, -180.0)
-    v = rd(data, bits_read, 32)
+    v = rv >>> 17
     bits_read = bits_read + 32
     e_raw_delta = if v >= 2_147_483_648, do: v - 4_294_967_296, else: v
-    v = rd(data, bits_read, 32)
+    rv = rdw(data, bits_read, 49)
+    v = rv &&& 0xFFFFFFFF
     bits_read = bits_read + 32
     w = v
-    v = rd(data, bits_read, 32)
+    rv = rd(data, bits_read, 32)
+    v = rv
     bits_read = bits_read + 32
     w = w ||| v <<< 32
     e_big_delta = if w >= 9_223_372_036_854_775_808, do: w - 18_446_744_073_709_551_616, else: w
@@ -2786,17 +2848,19 @@ defmodule Example.Wire do
     {bits_read, e_weapon, e_has_target, e_target_id, e_idle_ticks} =
       if e_active do
         if bits_read + 5 > num_bits, do: throw(:invalid)
-        v = rd(data, bits_read, 4)
+        rv = rd(data, bits_read, 5)
+        v = rv &&& 0xF
         bits_read = bits_read + 4
         e_weapon = v
-        v = rd(data, bits_read, 1)
+        v = rv >>> 4
         bits_read = bits_read + 1
         e_has_target = v == 1
 
         {bits_read, e_target_id} =
           if e_has_target do
             if bits_read + 16 > num_bits, do: throw(:invalid)
-            v = rd(data, bits_read, 16)
+            rv = rd(data, bits_read, 16)
+            v = rv
             bits_read = bits_read + 16
             e_target_id = v
             {bits_read, e_target_id}
@@ -2809,7 +2873,8 @@ defmodule Example.Wire do
         {bits_read, e_weapon, e_has_target, e_target_id, e_idle_ticks}
       else
         if bits_read + 32 > num_bits, do: throw(:invalid)
-        v = rd(data, bits_read, 32)
+        rv = rd(data, bits_read, 32)
+        v = rv
         bits_read = bits_read + 32
         e_idle_ticks = v
         e_weapon = 0
@@ -2819,7 +2884,8 @@ defmodule Example.Wire do
       end
 
     if bits_read + 3 > num_bits, do: throw(:invalid)
-    v = rd(data, bits_read, 3)
+    rv = rdw(data, bits_read, 49)
+    v = rv &&& 0x7
     bits_read = bits_read + 3
     n = v + 1
     if bits_read + n * 16 > num_bits, do: throw(:invalid)
@@ -2903,7 +2969,8 @@ defmodule Example.Wire do
   defp r_test_data_items(0, acc, _data, _num_bits, bits_read), do: {bits_read, Enum.reverse(acc)}
 
   defp r_test_data_items(remaining, acc, data, num_bits, bits_read) do
-    v = rd(data, bits_read, 8)
+    rv = rdw(data, bits_read, 49)
+    v = rv &&& 0xFF
     bits_read = bits_read + 8
     e = v
     r_test_data_items(remaining - 1, [e | acc], data, num_bits, bits_read)
@@ -2913,7 +2980,8 @@ defmodule Example.Wire do
     do: {bits_read, Enum.reverse(acc)}
 
   defp r_test_data_fixed_bytes(remaining, acc, data, num_bits, bits_read) do
-    v = rd(data, bits_read, 8)
+    rv = rdw(data, bits_read, 49)
+    v = rv &&& 0xFF
     bits_read = bits_read + 8
     e = v
     r_test_data_fixed_bytes(remaining - 1, [e | acc], data, num_bits, bits_read)
@@ -2929,6 +2997,22 @@ defmodule Example.Wire do
     window =
       case data do
         <<_::binary-size(^i), w::little-40, _::binary>> -> w
+        <<_::binary-size(^i), rest::binary>> -> :binary.decode_unsigned(rest, :little)
+      end
+
+    window >>> (bits_read &&& 7) &&& (1 <<< bits) - 1
+  end
+
+  # The wide window decode: 56 bits, enough for a 7-bit offset plus a
+  # 49-bit group, and still under the 2^59 fixnum boundary — one match
+  # context serves a whole group of fields instead of one per field. A
+  # 64-bit window would box and measures slower than the reads it saves.
+  defp rdw(data, bits_read, bits) do
+    i = bits_read >>> 3
+
+    window =
+      case data do
+        <<_::binary-size(^i), w::little-56, _::binary>> -> w
         <<_::binary-size(^i), rest::binary>> -> :binary.decode_unsigned(rest, :little)
       end
 

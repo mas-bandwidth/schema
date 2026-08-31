@@ -206,6 +206,8 @@ defmodule Realworld.RealWorld do
 
   @compile {:inline, rd: 3}
 
+  @compile {:inline, rdw: 3}
+
   # The unit's protocol id — the hash of its wire shape (SPEC §3.1). Two
   # sides at the same id speak identical bits; there is no other versioning.
   def protocol_id, do: 0x8F7228A19854FBB2
@@ -1305,85 +1307,95 @@ defmodule Realworld.RealWorld do
 
       bits_read = 0
       if bits_read + 291 > num_bits, do: throw(:invalid)
-      v = rd(data, bits_read, 21)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0x1FFFFF
       bits_read = bits_read + 21
       # a smuggled offset is refused
       if v > 1_610_990, do: throw(:invalid)
       v_f001_int = v - 805_495
-      v = rd(data, bits_read, 32)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0xFFFFFFFF
       bits_read = bits_read + 32
       w = v
-      v = rd(data, bits_read, 32)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0xFFFFFFFF
       bits_read = bits_read + 32
       w = w ||| v <<< 32
       v_f002f64 = f64_value(w)
-      v = rd(data, bits_read, 21)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0x1FFFFF
       bits_read = bits_read + 21
       # a smuggled offset is refused
       if v > 1_671_794, do: throw(:invalid)
       v_f003_int = v - 835_897
-      v = rd(data, bits_read, 15)
+      v = rv >>> 21 &&& 0x7FFF
       bits_read = bits_read + 15
       # headroom above the quantum count is refused
       if v > 20000, do: throw(:invalid)
       v_f004_cf32 = cf_decode(v, 20000, 2000.0, 0.0)
-      v = rd(data, bits_read, 13)
+      v = rv >>> 36
       bits_read = bits_read + 13
       # a smuggled offset is refused
       if v > 7316, do: throw(:invalid)
       v_f005_uint = v
-      v = rd(data, bits_read, 12)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0xFFF
       bits_read = bits_read + 12
       # a smuggled offset is refused
       if v > 3026, do: throw(:invalid)
       v_f006_int = v - 1513
-      v = rd(data, bits_read, 32)
+      v = rv >>> 12 &&& 0xFFFFFFFF
       bits_read = bits_read + 32
       v_f007f32 = f32_value(v)
-      v = rd(data, bits_read, 32)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0xFFFFFFFF
       bits_read = bits_read + 32
       w = v
-      v = rd(data, bits_read, 32)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0xFFFFFFFF
       bits_read = bits_read + 32
       w = w ||| v <<< 32
       v_f008u64 = w
-      v = rd(data, bits_read, 6)
+      v = rv >>> 32 &&& 0x3F
       bits_read = bits_read + 6
       # a smuggled offset is refused
       if v > 44, do: throw(:invalid)
       v_f009_int = v - 22
-      v = rd(data, bits_read, 32)
+      rv = rdw(data, bits_read, 43)
+      v = rv &&& 0xFFFFFFFF
       bits_read = bits_read + 32
       v_f010f32 = f32_value(v)
-      v = rd(data, bits_read, 10)
+      v = rv >>> 32 &&& 0x3FF
       bits_read = bits_read + 10
       v_f011_bits = v
-      v = rd(data, bits_read, 1)
+      v = rv >>> 42
       bits_read = bits_read + 1
       v_f012_bool = v == 1
 
       {bits_read, v_f013f32, v_f014_uint, v_f015_int, v_f016_fixed, v_f017_uint} =
         if v_f012_bool do
           if bits_read + 88 > num_bits, do: throw(:invalid)
-          v = rd(data, bits_read, 32)
+          rv = rdw(data, bits_read, 49)
+          v = rv &&& 0xFFFFFFFF
           bits_read = bits_read + 32
           v_f013f32 = f32_value(v)
-          v = rd(data, bits_read, 10)
+          v = rv >>> 32 &&& 0x3FF
           bits_read = bits_read + 10
           # a smuggled offset is refused
           if v > 775, do: throw(:invalid)
           v_f014_uint = v
-          v = rd(data, bits_read, 6)
+          v = rv >>> 42 &&& 0x3F
           bits_read = bits_read + 6
           # a smuggled offset is refused
           if v > 42, do: throw(:invalid)
           v_f015_int = v - 21
-          v = rd(data, bits_read, 27)
+          rv = rdw(data, bits_read, 40)
+          v = rv &&& 0x7FFFFFF
           bits_read = bits_read + 27
           # a smuggled offset is refused
           if v > 75_497_472, do: throw(:invalid)
           v_f016_fixed = v - 37_748_736
-          v = rd(data, bits_read, 13)
+          v = rv >>> 27
           bits_read = bits_read + 13
           # a smuggled offset is refused
           if v > 4606, do: throw(:invalid)
@@ -1399,128 +1411,144 @@ defmodule Realworld.RealWorld do
         end
 
       if bits_read + 476 > num_bits, do: throw(:invalid)
-      v = rd(data, bits_read, 11)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0x7FF
       bits_read = bits_read + 11
       # a smuggled offset is refused
       if v > 1668, do: throw(:invalid)
       v_f018_int = v - 834
-      v = rd(data, bits_read, 32)
+      v = rv >>> 11 &&& 0xFFFFFFFF
       bits_read = bits_read + 32
       w = v
-      v = rd(data, bits_read, 32)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0xFFFFFFFF
       bits_read = bits_read + 32
       w = w ||| v <<< 32
       v_f019f64 = f64_value(w)
-      v = rd(data, bits_read, 32)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0xFFFFFFFF
       bits_read = bits_read + 32
       v_f020f32 = f32_value(v)
-      v = rd(data, bits_read, 27)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0x7FFFFFF
       bits_read = bits_read + 27
       # a smuggled offset is refused
       if v > 102_977_536, do: throw(:invalid)
       v_f021_ufixed = v
-      v = rd(data, bits_read, 32)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0xFFFFFFFF
       bits_read = bits_read + 32
       v_f022f32 = f32_value(v)
-      v = rd(data, bits_read, 25)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0x1FFFFFF
       bits_read = bits_read + 25
       v_f023_bits = v
-      v = rd(data, bits_read, 32)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0xFFFFFFFF
       bits_read = bits_read + 32
       v_f024f32 = f32_value(v)
-      v = rd(data, bits_read, 16)
+      v = rv >>> 32 &&& 0xFFFF
       bits_read = bits_read + 16
       # a smuggled offset is refused
       if v > 60928, do: throw(:invalid)
       v_f025_fixed = v - 30464
-      v = rd(data, bits_read, 9)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0x1FF
       bits_read = bits_read + 9
       v_f026_bits = v
-      v = rd(data, bits_read, 5)
+      v = rv >>> 9 &&& 0x1F
       bits_read = bits_read + 5
       # headroom above the quantum count is refused
       if v > 16, do: throw(:invalid)
       v_f027_cf32 = cf_decode(v, 16, 4.0, -2.0)
-      v = rd(data, bits_read, 4)
+      v = rv >>> 14 &&& 0xF
       bits_read = bits_read + 4
       v_f028_bits = v
-      v = rd(data, bits_read, 32)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0xFFFFFFFF
       bits_read = bits_read + 32
       w = v
-      v = rd(data, bits_read, 32)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0xFFFFFFFF
       bits_read = bits_read + 32
       w = w ||| v <<< 32
       v_f029i64 = if w >= 9_223_372_036_854_775_808, do: w - 18_446_744_073_709_551_616, else: w
-      v = rd(data, bits_read, 32)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0xFFFFFFFF
       bits_read = bits_read + 32
       v_f030f32 = f32_value(v)
-      v = rd(data, bits_read, 1)
+      v = rv >>> 32 &&& 0x1
       bits_read = bits_read + 1
       v_f031_bits = v
-      v = rd(data, bits_read, 3)
+      v = rv >>> 33 &&& 0x7
       bits_read = bits_read + 3
       # a smuggled offset is refused
       if v > 6, do: throw(:invalid)
       v_f032_int = v - 3
-      v = rd(data, bits_read, 18)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0x3FFFF
       bits_read = bits_read + 18
       # a smuggled offset is refused
       if v > 142_780, do: throw(:invalid)
       v_f033_uint = v
-      v = rd(data, bits_read, 14)
+      v = rv >>> 18 &&& 0x3FFF
       bits_read = bits_read + 14
       # a smuggled offset is refused
       if v > 14149, do: throw(:invalid)
       v_f034_uint = v
-      v = rd(data, bits_read, 9)
+      v = rv >>> 32 &&& 0x1FF
       bits_read = bits_read + 9
       v_f035_bits = v
-      v = rd(data, bits_read, 3)
+      v = rv >>> 41 &&& 0x7
       bits_read = bits_read + 3
       # headroom above the wire range is refused
       if v > 5, do: throw(:invalid)
       v_f036_enum = v
-      v = rd(data, bits_read, 1)
+      v = rv >>> 44 &&& 0x1
       bits_read = bits_read + 1
       v_f037_bool = v == 1
-      v = rd(data, bits_read, 1)
+      v = rv >>> 45 &&& 0x1
       bits_read = bits_read + 1
       v_f038_bool = v == 1
-      v = rd(data, bits_read, 19)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0x7FFFF
       bits_read = bits_read + 19
       v_f039_bits = v
-      v = rd(data, bits_read, 16)
+      v = rv >>> 19 &&& 0xFFFF
       bits_read = bits_read + 16
       # a smuggled offset is refused
       if v > 40960, do: throw(:invalid)
       v_f040_fixed = v - 20480
-      v = rd(data, bits_read, 7)
+      v = rv >>> 35 &&& 0x7F
       bits_read = bits_read + 7
       # a smuggled offset is refused
       if v > 110, do: throw(:invalid)
       v_f041_int = v - 55
-      v = rd(data, bits_read, 30)
+      rv = rd(data, bits_read, 31)
+      v = rv &&& 0x3FFFFFFF
       bits_read = bits_read + 30
       v_f042_bits = v
-      v = rd(data, bits_read, 1)
+      v = rv >>> 30
       bits_read = bits_read + 1
       v_f043_bool = v == 1
 
       {bits_read, v_f044f32, v_f045_bits, v_f046_uint, v_f047_int} =
         if v_f043_bool do
           if bits_read + 81 > num_bits, do: throw(:invalid)
-          v = rd(data, bits_read, 32)
+          rv = rdw(data, bits_read, 49)
+          v = rv &&& 0xFFFFFFFF
           bits_read = bits_read + 32
           v_f044f32 = f32_value(v)
-          v = rd(data, bits_read, 12)
+          v = rv >>> 32 &&& 0xFFF
           bits_read = bits_read + 12
           v_f045_bits = v
-          v = rd(data, bits_read, 17)
+          rv = rdw(data, bits_read, 37)
+          v = rv &&& 0x1FFFF
           bits_read = bits_read + 17
           # a smuggled offset is refused
           if v > 76063, do: throw(:invalid)
           v_f046_uint = v
-          v = rd(data, bits_read, 20)
+          v = rv >>> 17
           bits_read = bits_read + 20
           # a smuggled offset is refused
           if v > 861_952, do: throw(:invalid)
@@ -1535,37 +1563,40 @@ defmodule Realworld.RealWorld do
         end
 
       if bits_read + 81 > num_bits, do: throw(:invalid)
-      v = rd(data, bits_read, 32)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0xFFFFFFFF
       bits_read = bits_read + 32
       w = v
-      v = rd(data, bits_read, 32)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0xFFFFFFFF
       bits_read = bits_read + 32
       w = w ||| v <<< 32
       v_f048f64 = f64_value(w)
-      v = rd(data, bits_read, 16)
+      v = rv >>> 32 &&& 0xFFFF
       bits_read = bits_read + 16
       # a smuggled offset is refused
       if v > 49152, do: throw(:invalid)
       v_f049_ufixed = v
-      v = rd(data, bits_read, 1)
+      v = rv >>> 48
       bits_read = bits_read + 1
       v_f050_bool = v == 1
 
       {bits_read, v_f051_bool, v_f052_int, v_f053f32, v_f054_int} =
         if v_f050_bool do
           if bits_read + 47 > num_bits, do: throw(:invalid)
-          v = rd(data, bits_read, 1)
+          rv = rdw(data, bits_read, 47)
+          v = rv &&& 0x1
           bits_read = bits_read + 1
           v_f051_bool = v == 1
-          v = rd(data, bits_read, 7)
+          v = rv >>> 1 &&& 0x7F
           bits_read = bits_read + 7
           # a smuggled offset is refused
           if v > 114, do: throw(:invalid)
           v_f052_int = v - 57
-          v = rd(data, bits_read, 32)
+          v = rv >>> 8 &&& 0xFFFFFFFF
           bits_read = bits_read + 32
           v_f053f32 = f32_value(v)
-          v = rd(data, bits_read, 7)
+          v = rv >>> 40
           bits_read = bits_read + 7
           # a smuggled offset is refused
           if v > 70, do: throw(:invalid)
@@ -1580,125 +1611,135 @@ defmodule Realworld.RealWorld do
         end
 
       if bits_read + 290 > num_bits, do: throw(:invalid)
-      v = rd(data, bits_read, 1)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0x1
       bits_read = bits_read + 1
       v_f055_bool = v == 1
-      v = rd(data, bits_read, 5)
+      v = rv >>> 1 &&& 0x1F
       bits_read = bits_read + 5
       # a smuggled offset is refused
       if v > 26, do: throw(:invalid)
       v_f056_int = v - 13
-      v = rd(data, bits_read, 5)
+      v = rv >>> 6 &&& 0x1F
       bits_read = bits_read + 5
       # a smuggled offset is refused
       if v > 30, do: throw(:invalid)
       v_f057_int = v - 15
-      v = rd(data, bits_read, 32)
+      v = rv >>> 11 &&& 0xFFFFFFFF
       bits_read = bits_read + 32
       v_f058f32 = f32_value(v)
-      v = rd(data, bits_read, 32)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0xFFFFFFFF
       bits_read = bits_read + 32
       w = v
-      v = rd(data, bits_read, 32)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0xFFFFFFFF
       bits_read = bits_read + 32
       w = w ||| v <<< 32
       v_f059f64 = f64_value(w)
-      v = rd(data, bits_read, 8)
+      v = rv >>> 32 &&& 0xFF
       bits_read = bits_read + 8
       v_f060_bits = v
-      v = rd(data, bits_read, 9)
+      v = rv >>> 40
       bits_read = bits_read + 9
       # headroom above the quantum count is refused
       if v > 360, do: throw(:invalid)
       v_f061_cf32 = cf_decode(v, 360, 180.0, -90.0)
-      v = rd(data, bits_read, 9)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0x1FF
       bits_read = bits_read + 9
       # a smuggled offset is refused
       if v > 503, do: throw(:invalid)
       v_f062_uint = v
-      v = rd(data, bits_read, 32)
+      v = rv >>> 9 &&& 0xFFFFFFFF
       bits_read = bits_read + 32
       w = v
-      v = rd(data, bits_read, 32)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0xFFFFFFFF
       bits_read = bits_read + 32
       w = w ||| v <<< 32
       v_f063i64 = if w >= 9_223_372_036_854_775_808, do: w - 18_446_744_073_709_551_616, else: w
-      v = rd(data, bits_read, 9)
+      v = rv >>> 32 &&& 0x1FF
       bits_read = bits_read + 9
       # a smuggled offset is refused
       if v > 299, do: throw(:invalid)
       v_f064_uint = v
-      v = rd(data, bits_read, 6)
+      v = rv >>> 41 &&& 0x3F
       bits_read = bits_read + 6
       # headroom above the quantum count is refused
       if v > 60, do: throw(:invalid)
       v_f065_cf32 = cf_decode(v, 60, 30.0, 0.0)
-      v = rd(data, bits_read, 16)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0xFFFF
       bits_read = bits_read + 16
       # a smuggled offset is refused
       if v > 32768, do: throw(:invalid)
       v_f066_ufixed = v
-      v = rd(data, bits_read, 10)
+      v = rv >>> 16 &&& 0x3FF
       bits_read = bits_read + 10
       # headroom above the quantum count is refused
       if v > 800, do: throw(:invalid)
       v_f067_cf32 = cf_decode(v, 800, 200.0, -100.0)
-      v = rd(data, bits_read, 11)
+      v = rv >>> 26 &&& 0x7FF
       bits_read = bits_read + 11
       # headroom above the quantum count is refused
       if v > 2000, do: throw(:invalid)
       v_f068_cf32 = cf_decode(v, 2000, 2000.0, 0.0)
-      v = rd(data, bits_read, 11)
+      v = rv >>> 37 &&& 0x7FF
       bits_read = bits_read + 11
       v_f069_bits = v
-      v = rd(data, bits_read, 2)
+      rv = rd(data, bits_read, 30)
+      v = rv &&& 0x3
       bits_read = bits_read + 2
       # a smuggled offset is refused
       if v > 2, do: throw(:invalid)
       v_f070_uint = v
-      v = rd(data, bits_read, 9)
+      v = rv >>> 2 &&& 0x1FF
       bits_read = bits_read + 9
       # headroom above the quantum count is refused
       if v > 500, do: throw(:invalid)
       v_f071_cf32 = cf_decode(v, 500, 10.0, 0.0)
-      v = rd(data, bits_read, 14)
+      v = rv >>> 11 &&& 0x3FFF
       bits_read = bits_read + 14
       # headroom above the quantum count is refused
       if v > 10000, do: throw(:invalid)
       v_f072_cf32 = cf_decode(v, 10000, 100.0, 0.0)
-      v = rd(data, bits_read, 4)
+      v = rv >>> 25 &&& 0xF
       bits_read = bits_read + 4
       # a smuggled offset is refused
       if v > 8, do: throw(:invalid)
       v_f073_int = v - 4
-      v = rd(data, bits_read, 1)
+      v = rv >>> 29
       bits_read = bits_read + 1
       v_f074_bool = v == 1
 
       {bits_read, v_f075u64, v_f076_int, v_f077_int, v_f078_bits, v_f079_uint} =
         if v_f074_bool do
           if bits_read + 100 > num_bits, do: throw(:invalid)
-          v = rd(data, bits_read, 32)
+          rv = rdw(data, bits_read, 49)
+          v = rv &&& 0xFFFFFFFF
           bits_read = bits_read + 32
           w = v
-          v = rd(data, bits_read, 32)
+          rv = rdw(data, bits_read, 49)
+          v = rv &&& 0xFFFFFFFF
           bits_read = bits_read + 32
           w = w ||| v <<< 32
           v_f075u64 = w
-          v = rd(data, bits_read, 16)
+          v = rv >>> 32 &&& 0xFFFF
           bits_read = bits_read + 16
           # a smuggled offset is refused
           if v > 52436, do: throw(:invalid)
           v_f076_int = v - 26218
-          v = rd(data, bits_read, 6)
+          rv = rd(data, bits_read, 20)
+          v = rv &&& 0x3F
           bits_read = bits_read + 6
           # a smuggled offset is refused
           if v > 34, do: throw(:invalid)
           v_f077_int = v - 17
-          v = rd(data, bits_read, 9)
+          v = rv >>> 6 &&& 0x1FF
           bits_read = bits_read + 9
           v_f078_bits = v
-          v = rd(data, bits_read, 5)
+          v = rv >>> 15
           bits_read = bits_read + 5
           # a smuggled offset is refused
           if v > 17, do: throw(:invalid)
@@ -1714,82 +1755,92 @@ defmodule Realworld.RealWorld do
         end
 
       if bits_read + 356 > num_bits, do: throw(:invalid)
-      v = rd(data, bits_read, 1)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0x1
       bits_read = bits_read + 1
       v_f080_bool = v == 1
-      v = rd(data, bits_read, 29)
+      v = rv >>> 1 &&& 0x1FFFFFFF
       bits_read = bits_read + 29
       v_f081_bits = v
-      v = rd(data, bits_read, 25)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0x1FFFFFF
       bits_read = bits_read + 25
       v_f082_bits = v
-      v = rd(data, bits_read, 3)
+      v = rv >>> 25 &&& 0x7
       bits_read = bits_read + 3
       # headroom above the wire range is refused
       if v > 5, do: throw(:invalid)
       v_f083_enum = v
-      v = rd(data, bits_read, 8)
+      v = rv >>> 28 &&& 0xFF
       bits_read = bits_read + 8
       # a smuggled offset is refused
       if v > 128, do: throw(:invalid)
       v_f084_ufixed = v
-      v = rd(data, bits_read, 21)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0x1FFFFF
       bits_read = bits_read + 21
       v_f085_bits = v
-      v = rd(data, bits_read, 9)
+      v = rv >>> 21 &&& 0x1FF
       bits_read = bits_read + 9
       # a smuggled offset is refused
       if v > 399, do: throw(:invalid)
       v_f086_uint = v
-      v = rd(data, bits_read, 32)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0xFFFFFFFF
       bits_read = bits_read + 32
       w = v
-      v = rd(data, bits_read, 32)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0xFFFFFFFF
       bits_read = bits_read + 32
       w = w ||| v <<< 32
       v_f087f64 = f64_value(w)
-      v = rd(data, bits_read, 11)
+      v = rv >>> 32 &&& 0x7FF
       bits_read = bits_read + 11
       # a smuggled offset is refused
       if v > 1388, do: throw(:invalid)
       v_f088_int = v - 694
-      v = rd(data, bits_read, 32)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0xFFFFFFFF
       bits_read = bits_read + 32
       w = v
-      v = rd(data, bits_read, 16)
+      v = rv >>> 32 &&& 0xFFFF
       bits_read = bits_read + 16
       w = w ||| v <<< 32
       v_f089_bits = w
-      v = rd(data, bits_read, 8)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0xFF
       bits_read = bits_read + 8
       # a smuggled offset is refused
       if v > 214, do: throw(:invalid)
       v_f090_uint = v
-      v = rd(data, bits_read, 5)
+      v = rv >>> 8 &&& 0x1F
       bits_read = bits_read + 5
       v_f091_flags = v
-      v = rd(data, bits_read, 1)
+      v = rv >>> 13 &&& 0x1
       bits_read = bits_read + 1
       v_f092_bool = v == 1
-      v = rd(data, bits_read, 32)
+      v = rv >>> 14 &&& 0xFFFFFFFF
       bits_read = bits_read + 32
       w = v
-      v = rd(data, bits_read, 32)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0xFFFFFFFF
       bits_read = bits_read + 32
       w = w ||| v <<< 32
       v_f093_bits = w
-      v = rd(data, bits_read, 1)
+      v = rv >>> 32 &&& 0x1
       bits_read = bits_read + 1
       v_f094_bool = v == 1
-      v = rd(data, bits_read, 28)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0xFFFFFFF
       bits_read = bits_read + 28
       # a smuggled offset is refused
       if v > 206_700_544, do: throw(:invalid)
       v_f095_fixed = v - 103_350_272
-      v = rd(data, bits_read, 18)
+      v = rv >>> 28 &&& 0x3FFFF
       bits_read = bits_read + 18
       v_f096_bits = v
-      v = rd(data, bits_read, 12)
+      rv = rd(data, bits_read, 12)
+      v = rv
       bits_read = bits_read + 12
       v_f097_bits = v
       # the final position is unobserved — the verdict and value are the surface
@@ -1954,6 +2005,22 @@ defmodule Realworld.RealWorld do
     window =
       case data do
         <<_::binary-size(^i), w::little-40, _::binary>> -> w
+        <<_::binary-size(^i), rest::binary>> -> :binary.decode_unsigned(rest, :little)
+      end
+
+    window >>> (bits_read &&& 7) &&& (1 <<< bits) - 1
+  end
+
+  # The wide window decode: 56 bits, enough for a 7-bit offset plus a
+  # 49-bit group, and still under the 2^59 fixnum boundary — one match
+  # context serves a whole group of fields instead of one per field. A
+  # 64-bit window would box and measures slower than the reads it saves.
+  defp rdw(data, bits_read, bits) do
+    i = bits_read >>> 3
+
+    window =
+      case data do
+        <<_::binary-size(^i), w::little-56, _::binary>> -> w
         <<_::binary-size(^i), rest::binary>> -> :binary.decode_unsigned(rest, :little)
       end
 

@@ -81,12 +81,70 @@ func (g *gen) flushW(ind string) {
 	g.pendW = 0
 }
 
-// readR reads bits (in [1,32]) from the 40-bit window at bits_read into v,
-// masked. The caller has already priced the read inside num_bits.
+// rdWindowBits / rdwWindowBits are the two window decodes' usable widths: a
+// 40-bit window less the 7-bit worst-case offset is 33, a 56-bit window less
+// the same is 49. Both windows stay under the BEAM's 2^59 fixnum boundary; a
+// 72-bit window does not, and measured on this shape it is SLOWER than the
+// 40-bit one it would replace (29.4 vs 27.6 ns/element) because the box costs
+// more than the reads it saves. 49 is therefore the read group's ceiling.
+const (
+	rdWindowBits  = 33
+	rdwWindowBits = 49
+)
+
+// readR binds v to the next bits (in [1,32]) of the wire. The window decode
+// does NOT open per field: the generator knows every width statically, so it
+// reads a GROUP into rv once and cuts each field out of it with a static
+// shift and mask. rdRun is the fused static run's remaining bits when the
+// caller knows it, so a short run reads the cheap 40-bit window instead of
+// the wide one.
+//
+// Reading a group wider than the fields the caller will use is safe by
+// construction: rd/rdw never raise (the tail falls back to the bytes that
+// exist), and bits past the bounds-checked run are discarded, never observed.
 func (g *gen) readR(bits int64, ind string) {
-	g.needRd = true
-	g.pf("%sv = rd(data, bits_read, %d)\n", ind, bits)
+	if g.rdAvail < bits {
+		w := int64(rdwWindowBits)
+		if g.rdRun > 0 && g.rdRun < w {
+			w = g.rdRun
+		}
+		if w < bits {
+			w = bits
+		}
+		if w <= rdWindowBits {
+			g.needRd = true
+			g.pf("%srv = rd(data, bits_read, %d)\n", ind, w)
+		} else {
+			g.needRdw = true
+			g.pf("%srv = rdw(data, bits_read, %d)\n", ind, w)
+		}
+		g.rdOff, g.rdAvail = 0, w
+	}
+	switch {
+	case g.rdAvail == bits && g.rdOff == 0:
+		g.pf("%sv = rv\n", ind)
+	case g.rdAvail == bits:
+		// the group's top field: rv carries no bits above it
+		g.pf("%sv = rv >>> %d\n", ind, g.rdOff)
+	case g.rdOff == 0:
+		g.pf("%sv = rv &&& %s\n", ind, maskHex(bits))
+	default:
+		g.pf("%sv = rv >>> %d &&& %s\n", ind, g.rdOff, maskHex(bits))
+	}
 	g.pf("%sbits_read = bits_read + %d\n", ind, bits)
+	g.rdOff += bits
+	g.rdAvail -= bits
+	if g.rdRun > 0 {
+		g.rdRun -= bits
+	}
+}
+
+// rdBreak closes the read group. Every point where bits_read moves outside
+// readR, or where emission paths join, is a barrier: the function surface, a
+// loop helper's entry and every call to one, an align, the bytes of a string,
+// and the arms of a branch or a union case.
+func (g *gen) rdBreak() {
+	g.rdOff, g.rdAvail, g.rdRun = 0, 0, 0
 }
 
 // throwIf emits a one-line refusal: `if cond, do: throw(:invalid)`.
@@ -395,6 +453,7 @@ func (g *gen) emitReadFunction(name string, st *ir.Struct, items []ir.Item) {
 	g.usesImport = true
 	snake := ir.RustSnake(name)
 	g.fn.Reset()
+	g.rdBreak()
 	g.withOwner(name, func() { g.emitReadItems(items, "v", "      ", false) })
 	g.pf("      # the final position is unobserved — the verdict and value are the surface\n")
 	g.pf("      _ = bits_read\n")
@@ -878,11 +937,15 @@ func (g *gen) emitReadItems(items []ir.Item, pre, ind string, bounded bool) {
 			if !bounded && total > 0 {
 				g.throwIf(fmt.Sprintf("bits_read + %s > num_bits", intLit64(total)), "", ind)
 			}
+			// the run's own length sizes the read groups inside it
+			g.rdRun = total
 			for ; i < j; i++ {
 				g.emitReadItem(items[i], pre, ind, true)
 			}
+			g.rdRun = 0
 			continue
 		}
+		g.rdRun = 0
 		g.emitReadItem(items[i], pre, ind, false)
 		i++
 	}
@@ -917,10 +980,12 @@ func (g *gen) emitReadBranch(item *ir.Branch, pre, ind string, bounded bool) {
 	g.pf("\n")
 	g.pf("%s%s =\n", ind, tuple)
 	g.pf("%s  if %s do\n", ind, cond)
+	g.rdBreak()
 	g.emitReadItems(item.Then, pre, ind+"    ", bounded)
 	g.emitZeroLocals(item.Else, pre, ind+"    ")
 	g.pf("%s    %s\n", ind, tuple)
 	g.pf("%s  else\n", ind)
+	g.rdBreak()
 	if item.Else != nil {
 		g.emitReadItems(item.Else, pre, ind+"    ", bounded)
 	}
@@ -928,6 +993,7 @@ func (g *gen) emitReadBranch(item *ir.Branch, pre, ind string, bounded bool) {
 	g.pf("%s    %s\n", ind, tuple)
 	g.pf("%s  end\n", ind)
 	g.pf("\n")
+	g.rdBreak()
 }
 
 // collectLocals lists the locals an item subtree binds, in declaration order.
@@ -976,6 +1042,7 @@ func (g *gen) emitReadAlign(ind string) {
 	g.pf("%send\n", ind)
 	g.pf("\n")
 	g.pf("%sbits_read = bits_read + pad\n", ind)
+	g.rdBreak()
 }
 
 // emitReadRaw reads a const/reserved item and rejects any other value.
@@ -1015,6 +1082,7 @@ func (g *gen) emitReadField(f *ir.Field, pre, ind string, bounded bool) {
 	switch f.Array {
 	case ir.ArrayFixed:
 		helper := g.readHelper(f, true)
+		g.rdBreak()
 		g.callAssign(fmt.Sprintf("{bits_read, %s}", lv),
 			fmt.Sprintf("%s(%s, [], data, num_bits, bits_read)", helper, intLit64(f.ArrayBound)), ind)
 	case ir.ArrayCounted:
@@ -1046,11 +1114,13 @@ func (g *gen) emitReadCounted(f *ir.Field, lv, ind string) {
 			g.throwIf(fmt.Sprintf("bits_read + n * %s > num_bits", intLit64(elemBits)), "", ind)
 		}
 		helper := g.readHelper(f, true)
+		g.rdBreak()
 		g.callAssign(fmt.Sprintf("{bits_read, %s}", lv),
 			fmt.Sprintf("%s(n, [], data, num_bits, bits_read)", helper), ind)
 		return
 	}
 	helper := g.readHelper(f, false)
+	g.rdBreak()
 	g.callAssign(fmt.Sprintf("{bits_read, %s}", lv),
 		fmt.Sprintf("%s(n, [], data, num_bits, bits_read)", helper), ind)
 }
@@ -1066,7 +1136,9 @@ func (g *gen) readHelper(f *ir.Field, bounded bool) string {
 	}
 	g.helpers[name] = ""
 	saved := g.fn
+	savedOff, savedAvail, savedRun := g.rdOff, g.rdAvail, g.rdRun
 	g.fn = strings.Builder{}
+	g.rdBreak() // the element body opens its own group
 	// the counter is `remaining`, never `n` — a nested counted array's count
 	// local would shadow it
 	base := fmt.Sprintf("  defp %s(0, acc, _data, _num_bits, bits_read), do: {bits_read, Enum.reverse(acc)}", name)
@@ -1081,6 +1153,7 @@ func (g *gen) readHelper(f *ir.Field, bounded bool) string {
 	g.pf("  end\n\n")
 	g.helpers[name] = g.fn.String()
 	g.fn = saved
+	g.rdOff, g.rdAvail, g.rdRun = savedOff, savedAvail, savedRun
 	g.helperOrder = append(g.helperOrder, name)
 	return name
 }
@@ -1272,6 +1345,7 @@ func (g *gen) emitReadBytesField(f *ir.Field, lv, ind string) {
 	g.throwIf("bits_read + len * 8 > num_bits", "", ind)
 	g.pf("%s%s = binary_part(data, bits_read >>> 3, len)\n", ind, lv)
 	g.pf("%sbits_read = bits_read + len * 8\n", ind)
+	g.rdBreak()
 	if f.Type.Kind == ir.TString {
 		g.throwIf(fmt.Sprintf(":binary.match(%s, <<0>>) != :nomatch", lv),
 			"an interior null is content the read refuses (SPEC §4.7)", ind)
@@ -1304,6 +1378,7 @@ func (g *gen) emitReadUnion(u *ir.Union, lv, ind string, bounded bool) {
 		if len(vr.Ref.Items) == 0 {
 			g.pf("%s      # empty arm — presence is the payload (SPEC §4.6)\n", ind)
 		}
+		g.rdBreak() // each arm opens its own group
 		g.withOwner(vr.Type, func() {
 			g.emitReadItems(vr.Ref.Items, arm, ind+"      ", false)
 			g.emitBuildStruct(vr.Ref, arm, arm, ind+"      ")
@@ -1318,6 +1393,7 @@ func (g *gen) emitReadUnion(u *ir.Union, lv, ind string, bounded bool) {
 	g.pf("%s      {bits_read, %%%s{}}\n", ind, g.mod(u.Name))
 	g.pf("%s  end\n", ind)
 	g.pf("\n")
+	g.rdBreak()
 }
 
 // ---- measure emission ----
@@ -1529,6 +1605,21 @@ func (g *gen) emitSupportHelpers() {
 		g.bpf("    window =\n")
 		g.bpf("      case data do\n")
 		g.bpf("        <<_::binary-size(^i), w::little-40, _::binary>> -> w\n")
+		g.bpf("        <<_::binary-size(^i), rest::binary>> -> :binary.decode_unsigned(rest, :little)\n")
+		g.bpf("      end\n\n")
+		g.bpf("    window >>> (bits_read &&& 7) &&& (1 <<< bits) - 1\n")
+		g.bpf("  end\n\n")
+	}
+	if g.needRdw {
+		g.bpf("  # The wide window decode: 56 bits, enough for a 7-bit offset plus a\n")
+		g.bpf("  # 49-bit group, and still under the 2^59 fixnum boundary — one match\n")
+		g.bpf("  # context serves a whole group of fields instead of one per field. A\n")
+		g.bpf("  # 64-bit window would box and measures slower than the reads it saves.\n")
+		g.bpf("  defp rdw(data, bits_read, bits) do\n")
+		g.bpf("    i = bits_read >>> 3\n\n")
+		g.bpf("    window =\n")
+		g.bpf("      case data do\n")
+		g.bpf("        <<_::binary-size(^i), w::little-56, _::binary>> -> w\n")
 		g.bpf("        <<_::binary-size(^i), rest::binary>> -> :binary.decode_unsigned(rest, :little)\n")
 		g.bpf("      end\n\n")
 		g.bpf("    window >>> (bits_read &&& 7) &&& (1 <<< bits) - 1\n")

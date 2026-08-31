@@ -136,6 +136,8 @@ defmodule Example.Types do
 
   @compile {:inline, rd: 3}
 
+  @compile {:inline, rdw: 3}
+
   # vec3_max_bits is the longest wire path; align pads at worst case (SPEC §6.1).
   # vec3_max_bytes is rounded up to the family 8-byte write-buffer granularity.
   def vec3_max_bits, do: 192
@@ -212,24 +214,30 @@ defmodule Example.Types do
 
       bits_read = 0
       if bits_read + 192 > num_bits, do: throw(:invalid)
-      v = rd(data, bits_read, 32)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0xFFFFFFFF
       bits_read = bits_read + 32
       w = v
-      v = rd(data, bits_read, 32)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0xFFFFFFFF
       bits_read = bits_read + 32
       w = w ||| v <<< 32
       v_x = f64_value(w)
-      v = rd(data, bits_read, 32)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0xFFFFFFFF
       bits_read = bits_read + 32
       w = v
-      v = rd(data, bits_read, 32)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0xFFFFFFFF
       bits_read = bits_read + 32
       w = w ||| v <<< 32
       v_y = f64_value(w)
-      v = rd(data, bits_read, 32)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0xFFFFFFFF
       bits_read = bits_read + 32
       w = v
-      v = rd(data, bits_read, 32)
+      rv = rd(data, bits_read, 32)
+      v = rv
       bits_read = bits_read + 32
       w = w ||| v <<< 32
       v_z = f64_value(w)
@@ -337,31 +345,39 @@ defmodule Example.Types do
 
       bits_read = 0
       if bits_read + 256 > num_bits, do: throw(:invalid)
-      v = rd(data, bits_read, 32)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0xFFFFFFFF
       bits_read = bits_read + 32
       w = v
-      v = rd(data, bits_read, 32)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0xFFFFFFFF
       bits_read = bits_read + 32
       w = w ||| v <<< 32
       v_x = f64_value(w)
-      v = rd(data, bits_read, 32)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0xFFFFFFFF
       bits_read = bits_read + 32
       w = v
-      v = rd(data, bits_read, 32)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0xFFFFFFFF
       bits_read = bits_read + 32
       w = w ||| v <<< 32
       v_y = f64_value(w)
-      v = rd(data, bits_read, 32)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0xFFFFFFFF
       bits_read = bits_read + 32
       w = v
-      v = rd(data, bits_read, 32)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0xFFFFFFFF
       bits_read = bits_read + 32
       w = w ||| v <<< 32
       v_z = f64_value(w)
-      v = rd(data, bits_read, 32)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0xFFFFFFFF
       bits_read = bits_read + 32
       w = v
-      v = rd(data, bits_read, 32)
+      rv = rd(data, bits_read, 32)
+      v = rv
       bits_read = bits_read + 32
       w = w ||| v <<< 32
       v_w = f64_value(w)
@@ -428,12 +444,13 @@ defmodule Example.Types do
 
       bits_read = 0
       if bits_read + 22 > num_bits, do: throw(:invalid)
-      v = rd(data, bits_read, 14)
+      rv = rd(data, bits_read, 22)
+      v = rv &&& 0x3FFF
       bits_read = bits_read + 14
       # a smuggled offset is refused
       if v > 9999, do: throw(:invalid)
       v_object_id = v
-      v = rd(data, bits_read, 8)
+      v = rv >>> 14
       bits_read = bits_read + 8
       v_object_sequence = v
       # the final position is unobserved — the verdict and value are the surface
@@ -524,17 +541,20 @@ defmodule Example.Types do
 
       bits_read = 0
       if bits_read + 75 > num_bits, do: throw(:invalid)
-      v = rd(data, bits_read, 25)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0x1FFFFFF
       bits_read = bits_read + 25
       # a smuggled offset is refused
       if v > 16_777_216, do: throw(:invalid)
       v_x = v - 8_388_608
-      v = rd(data, bits_read, 25)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0x1FFFFFF
       bits_read = bits_read + 25
       # a smuggled offset is refused
       if v > 16_777_216, do: throw(:invalid)
       v_y = v - 8_388_608
-      v = rd(data, bits_read, 25)
+      rv = rd(data, bits_read, 25)
+      v = rv
       bits_read = bits_read + 25
       # a smuggled offset is refused
       if v > 16_777_216, do: throw(:invalid)
@@ -627,17 +647,19 @@ defmodule Example.Types do
 
       bits_read = 0
       if bits_read + 69 > num_bits, do: throw(:invalid)
-      v = rd(data, bits_read, 23)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0x7FFFFF
       bits_read = bits_read + 23
       # a smuggled offset is refused
       if v > 4_194_304, do: throw(:invalid)
       v_x = v - 2_097_152
-      v = rd(data, bits_read, 23)
+      v = rv >>> 23 &&& 0x7FFFFF
       bits_read = bits_read + 23
       # a smuggled offset is refused
       if v > 4_194_304, do: throw(:invalid)
       v_y = v - 2_097_152
-      v = rd(data, bits_read, 23)
+      rv = rd(data, bits_read, 23)
+      v = rv
       bits_read = bits_read + 23
       # a smuggled offset is refused
       if v > 4_194_304, do: throw(:invalid)
@@ -738,22 +760,23 @@ defmodule Example.Types do
 
       bits_read = 0
       if bits_read + 48 > num_bits, do: throw(:invalid)
-      v = rd(data, bits_read, 12)
+      rv = rdw(data, bits_read, 48)
+      v = rv &&& 0xFFF
       bits_read = bits_read + 12
       # a smuggled offset is refused
       if v > 2048, do: throw(:invalid)
       v_x = v - 1024
-      v = rd(data, bits_read, 12)
+      v = rv >>> 12 &&& 0xFFF
       bits_read = bits_read + 12
       # a smuggled offset is refused
       if v > 2048, do: throw(:invalid)
       v_y = v - 1024
-      v = rd(data, bits_read, 12)
+      v = rv >>> 24 &&& 0xFFF
       bits_read = bits_read + 12
       # a smuggled offset is refused
       if v > 2048, do: throw(:invalid)
       v_z = v - 1024
-      v = rd(data, bits_read, 12)
+      v = rv >>> 36
       bits_read = bits_read + 12
       # a smuggled offset is refused
       if v > 2048, do: throw(:invalid)
@@ -1016,53 +1039,67 @@ defmodule Example.Types do
 
       bits_read = 0
       if bits_read + 449 > num_bits, do: throw(:invalid)
-      v = rd(data, bits_read, 32)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0xFFFFFFFF
       bits_read = bits_read + 32
       w = v
-      v = rd(data, bits_read, 32)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0xFFFFFFFF
       bits_read = bits_read + 32
       w = w ||| v <<< 32
       v_position_x = f64_value(w)
-      v = rd(data, bits_read, 32)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0xFFFFFFFF
       bits_read = bits_read + 32
       w = v
-      v = rd(data, bits_read, 32)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0xFFFFFFFF
       bits_read = bits_read + 32
       w = w ||| v <<< 32
       v_position_y = f64_value(w)
-      v = rd(data, bits_read, 32)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0xFFFFFFFF
       bits_read = bits_read + 32
       w = v
-      v = rd(data, bits_read, 32)
+      rv = rd(data, bits_read, 32)
+      v = rv
       bits_read = bits_read + 32
       w = w ||| v <<< 32
       v_position_z = f64_value(w)
       v_position = %Example.Vec3{x: v_position_x, y: v_position_y, z: v_position_z}
-      v = rd(data, bits_read, 32)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0xFFFFFFFF
       bits_read = bits_read + 32
       w = v
-      v = rd(data, bits_read, 32)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0xFFFFFFFF
       bits_read = bits_read + 32
       w = w ||| v <<< 32
       v_orientation_x = f64_value(w)
-      v = rd(data, bits_read, 32)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0xFFFFFFFF
       bits_read = bits_read + 32
       w = v
-      v = rd(data, bits_read, 32)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0xFFFFFFFF
       bits_read = bits_read + 32
       w = w ||| v <<< 32
       v_orientation_y = f64_value(w)
-      v = rd(data, bits_read, 32)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0xFFFFFFFF
       bits_read = bits_read + 32
       w = v
-      v = rd(data, bits_read, 32)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0xFFFFFFFF
       bits_read = bits_read + 32
       w = w ||| v <<< 32
       v_orientation_z = f64_value(w)
-      v = rd(data, bits_read, 32)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0xFFFFFFFF
       bits_read = bits_read + 32
       w = v
-      v = rd(data, bits_read, 32)
+      rv = rd(data, bits_read, 32)
+      v = rv
       bits_read = bits_read + 32
       w = w ||| v <<< 32
       v_orientation_w = f64_value(w)
@@ -1074,31 +1111,38 @@ defmodule Example.Types do
         w: v_orientation_w
       }
 
-      v = rd(data, bits_read, 1)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0x1
       bits_read = bits_read + 1
       v_at_rest = v == 1
 
       {bits_read, v_linear_velocity, v_angular_velocity} =
         if not v_at_rest do
           if bits_read + 384 > num_bits, do: throw(:invalid)
-          v = rd(data, bits_read, 32)
+          rv = rdw(data, bits_read, 49)
+          v = rv &&& 0xFFFFFFFF
           bits_read = bits_read + 32
           w = v
-          v = rd(data, bits_read, 32)
+          rv = rdw(data, bits_read, 49)
+          v = rv &&& 0xFFFFFFFF
           bits_read = bits_read + 32
           w = w ||| v <<< 32
           v_linear_velocity_x = f64_value(w)
-          v = rd(data, bits_read, 32)
+          rv = rdw(data, bits_read, 49)
+          v = rv &&& 0xFFFFFFFF
           bits_read = bits_read + 32
           w = v
-          v = rd(data, bits_read, 32)
+          rv = rdw(data, bits_read, 49)
+          v = rv &&& 0xFFFFFFFF
           bits_read = bits_read + 32
           w = w ||| v <<< 32
           v_linear_velocity_y = f64_value(w)
-          v = rd(data, bits_read, 32)
+          rv = rdw(data, bits_read, 49)
+          v = rv &&& 0xFFFFFFFF
           bits_read = bits_read + 32
           w = v
-          v = rd(data, bits_read, 32)
+          rv = rd(data, bits_read, 32)
+          v = rv
           bits_read = bits_read + 32
           w = w ||| v <<< 32
           v_linear_velocity_z = f64_value(w)
@@ -1109,24 +1153,30 @@ defmodule Example.Types do
             z: v_linear_velocity_z
           }
 
-          v = rd(data, bits_read, 32)
+          rv = rdw(data, bits_read, 49)
+          v = rv &&& 0xFFFFFFFF
           bits_read = bits_read + 32
           w = v
-          v = rd(data, bits_read, 32)
+          rv = rdw(data, bits_read, 49)
+          v = rv &&& 0xFFFFFFFF
           bits_read = bits_read + 32
           w = w ||| v <<< 32
           v_angular_velocity_x = f64_value(w)
-          v = rd(data, bits_read, 32)
+          rv = rdw(data, bits_read, 49)
+          v = rv &&& 0xFFFFFFFF
           bits_read = bits_read + 32
           w = v
-          v = rd(data, bits_read, 32)
+          rv = rdw(data, bits_read, 49)
+          v = rv &&& 0xFFFFFFFF
           bits_read = bits_read + 32
           w = w ||| v <<< 32
           v_angular_velocity_y = f64_value(w)
-          v = rd(data, bits_read, 32)
+          rv = rdw(data, bits_read, 49)
+          v = rv &&& 0xFFFFFFFF
           bits_read = bits_read + 32
           w = v
-          v = rd(data, bits_read, 32)
+          rv = rd(data, bits_read, 32)
+          v = rv
           bits_read = bits_read + 32
           w = w ||| v <<< 32
           v_angular_velocity_z = f64_value(w)
@@ -1283,43 +1333,48 @@ defmodule Example.Types do
 
       bits_read = 0
       if bits_read + 168 > num_bits, do: throw(:invalid)
-      v = rd(data, bits_read, 32)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0xFFFFFFFF
       bits_read = bits_read + 32
       v_stick_x = f32_value(v)
-      v = rd(data, bits_read, 32)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0xFFFFFFFF
       bits_read = bits_read + 32
       v_stick_y = f32_value(v)
-      v = rd(data, bits_read, 32)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0xFFFFFFFF
       bits_read = bits_read + 32
       v_throttle = f32_value(v)
-      v = rd(data, bits_read, 32)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0xFFFFFFFF
       bits_read = bits_read + 32
       v_yaw = f32_value(v)
-      v = rd(data, bits_read, 32)
+      rv = rdw(data, bits_read, 40)
+      v = rv &&& 0xFFFFFFFF
       bits_read = bits_read + 32
       v_pitch = f32_value(v)
-      v = rd(data, bits_read, 1)
+      v = rv >>> 32 &&& 0x1
       bits_read = bits_read + 1
       v_fire = v == 1
-      v = rd(data, bits_read, 1)
+      v = rv >>> 33 &&& 0x1
       bits_read = bits_read + 1
       v_alt_fire = v == 1
-      v = rd(data, bits_read, 1)
+      v = rv >>> 34 &&& 0x1
       bits_read = bits_read + 1
       v_boost = v == 1
-      v = rd(data, bits_read, 1)
+      v = rv >>> 35 &&& 0x1
       bits_read = bits_read + 1
       v_brake = v == 1
-      v = rd(data, bits_read, 1)
+      v = rv >>> 36 &&& 0x1
       bits_read = bits_read + 1
       v_aim = v == 1
-      v = rd(data, bits_read, 1)
+      v = rv >>> 37 &&& 0x1
       bits_read = bits_read + 1
       v_lock_on = v == 1
-      v = rd(data, bits_read, 1)
+      v = rv >>> 38 &&& 0x1
       bits_read = bits_read + 1
       v_zoom = v == 1
-      v = rd(data, bits_read, 1)
+      v = rv >>> 39
       bits_read = bits_read + 1
       v_ping = v == 1
       # the final position is unobserved — the verdict and value are the surface
@@ -1428,25 +1483,30 @@ defmodule Example.Types do
 
       bits_read = 0
       if bits_read + 144 > num_bits, do: throw(:invalid)
-      v = rd(data, bits_read, 16)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0xFFFF
       bits_read = bits_read + 16
       v_synchronize_sequence = v
-      v = rd(data, bits_read, 32)
+      v = rv >>> 16 &&& 0xFFFFFFFF
       bits_read = bits_read + 32
       w = v
-      v = rd(data, bits_read, 32)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0xFFFFFFFF
       bits_read = bits_read + 32
       w = w ||| v <<< 32
       v_current_frame = w
-      v = rd(data, bits_read, 32)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0xFFFFFFFF
       bits_read = bits_read + 32
       w = v
-      v = rd(data, bits_read, 32)
+      rv = rd(data, bits_read, 32)
+      v = rv
       bits_read = bits_read + 32
       w = w ||| v <<< 32
       v_start_frame = w
       if bits_read + 5 > num_bits, do: throw(:invalid)
-      v = rd(data, bits_read, 5)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0x1F
       bits_read = bits_read + 5
       # the count guards the loop — reject, never clamp
       if v > 16, do: throw(:invalid)
@@ -1744,43 +1804,47 @@ defmodule Example.Types do
 
       bits_read = 0
       if bits_read + 196 > num_bits, do: throw(:invalid)
-      v = rd(data, bits_read, 3)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0x7
       bits_read = bits_read + 3
       # headroom above the wire range is refused
       if v > 5, do: throw(:invalid)
       v_ship_type = v
-      v = rd(data, bits_read, 25)
+      v = rv >>> 3 &&& 0x1FFFFFF
       bits_read = bits_read + 25
       # a smuggled offset is refused
       if v > 16_777_216, do: throw(:invalid)
       v_position_x = v - 8_388_608
-      v = rd(data, bits_read, 25)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0x1FFFFFF
       bits_read = bits_read + 25
       # a smuggled offset is refused
       if v > 16_777_216, do: throw(:invalid)
       v_position_y = v - 8_388_608
-      v = rd(data, bits_read, 25)
+      rv = rd(data, bits_read, 25)
+      v = rv
       bits_read = bits_read + 25
       # a smuggled offset is refused
       if v > 16_777_216, do: throw(:invalid)
       v_position_z = v - 8_388_608
       v_position = %Example.QuantizedPosition{x: v_position_x, y: v_position_y, z: v_position_z}
-      v = rd(data, bits_read, 12)
+      rv = rdw(data, bits_read, 48)
+      v = rv &&& 0xFFF
       bits_read = bits_read + 12
       # a smuggled offset is refused
       if v > 2048, do: throw(:invalid)
       v_rotation_x = v - 1024
-      v = rd(data, bits_read, 12)
+      v = rv >>> 12 &&& 0xFFF
       bits_read = bits_read + 12
       # a smuggled offset is refused
       if v > 2048, do: throw(:invalid)
       v_rotation_y = v - 1024
-      v = rd(data, bits_read, 12)
+      v = rv >>> 24 &&& 0xFFF
       bits_read = bits_read + 12
       # a smuggled offset is refused
       if v > 2048, do: throw(:invalid)
       v_rotation_z = v - 1024
-      v = rd(data, bits_read, 12)
+      v = rv >>> 36
       bits_read = bits_read + 12
       # a smuggled offset is refused
       if v > 2048, do: throw(:invalid)
@@ -1793,17 +1857,19 @@ defmodule Example.Types do
         w: v_rotation_w
       }
 
-      v = rd(data, bits_read, 23)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0x7FFFFF
       bits_read = bits_read + 23
       # a smuggled offset is refused
       if v > 4_194_304, do: throw(:invalid)
       v_linear_velocity_x = v - 2_097_152
-      v = rd(data, bits_read, 23)
+      v = rv >>> 23 &&& 0x7FFFFF
       bits_read = bits_read + 23
       # a smuggled offset is refused
       if v > 4_194_304, do: throw(:invalid)
       v_linear_velocity_y = v - 2_097_152
-      v = rd(data, bits_read, 23)
+      rv = rd(data, bits_read, 23)
+      v = rv
       bits_read = bits_read + 23
       # a smuggled offset is refused
       if v > 4_194_304, do: throw(:invalid)
@@ -1815,14 +1881,16 @@ defmodule Example.Types do
         z: v_linear_velocity_z
       }
 
-      v = rd(data, bits_read, 1)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0x1
       bits_read = bits_read + 1
       v_has_flags = v == 1
 
       {bits_read, v_flags} =
         if v_has_flags do
           if bits_read + 4 > num_bits, do: throw(:invalid)
-          v = rd(data, bits_read, 4)
+          rv = rd(data, bits_read, 4)
+          v = rv
           bits_read = bits_read + 4
           v_flags = v
           {bits_read, v_flags}
@@ -1832,17 +1900,18 @@ defmodule Example.Types do
         end
 
       if bits_read + 19 > num_bits, do: throw(:invalid)
-      v = rd(data, bits_read, 2)
+      rv = rd(data, bits_read, 19)
+      v = rv &&& 0x3
       bits_read = bits_read + 2
       # headroom above the wire range is refused
       if v > 2, do: throw(:invalid)
       v_team = v
-      v = rd(data, bits_read, 10)
+      v = rv >>> 2 &&& 0x3FF
       bits_read = bits_read + 10
       # a smuggled offset is refused
       if v > 1000, do: throw(:invalid)
       v_health = v
-      v = rd(data, bits_read, 7)
+      v = rv >>> 12
       bits_read = bits_read + 7
       # a smuggled offset is refused
       if v > 100, do: throw(:invalid)
@@ -1945,10 +2014,11 @@ defmodule Example.Types do
 
       bits_read = 0
       if bits_read + 16 > num_bits, do: throw(:invalid)
-      v = rd(data, bits_read, 5)
+      rv = rd(data, bits_read, 16)
+      v = rv &&& 0x1F
       bits_read = bits_read + 5
       v_hardpoint_index = v
-      v = rd(data, bits_read, 11)
+      v = rv >>> 5
       bits_read = bits_read + 11
       # a smuggled offset is refused
       if v > 1024, do: throw(:invalid)
@@ -2109,37 +2179,45 @@ defmodule Example.Types do
 
       bits_read = 0
       if bits_read + 320 > num_bits, do: throw(:invalid)
-      v = rd(data, bits_read, 32)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0xFFFFFFFF
       bits_read = bits_read + 32
       w = v
-      v = rd(data, bits_read, 32)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0xFFFFFFFF
       bits_read = bits_read + 32
       w = w ||| v <<< 32
       # a smuggled offset is refused
       if w > 9_223_372_036_854_775_908, do: throw(:invalid)
       v_floor_bound = w - 9_223_372_036_854_775_808
-      v = rd(data, bits_read, 32)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0xFFFFFFFF
       bits_read = bits_read + 32
       w = v
-      v = rd(data, bits_read, 32)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0xFFFFFFFF
       bits_read = bits_read + 32
       w = w ||| v <<< 32
       # a smuggled offset is refused
       if w > 9_223_372_036_854_775_908, do: throw(:invalid)
       v_doubled_floor = w - 9_223_372_036_854_775_808
-      v = rd(data, bits_read, 32)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0xFFFFFFFF
       bits_read = bits_read + 32
       w = v
-      v = rd(data, bits_read, 32)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0xFFFFFFFF
       bits_read = bits_read + 32
       w = w ||| v <<< 32
       # a smuggled offset is refused
       if w > 18_446_744_073_709_551_614, do: throw(:invalid)
       v_ceiling_range = w + 1
-      v = rd(data, bits_read, 32)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0xFFFFFFFF
       bits_read = bits_read + 32
       w = v
-      v = rd(data, bits_read, 32)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0xFFFFFFFF
       bits_read = bits_read + 32
       w = w ||| v <<< 32
 
@@ -2150,10 +2228,12 @@ defmodule Example.Types do
           w
         end
 
-      v = rd(data, bits_read, 32)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0xFFFFFFFF
       bits_read = bits_read + 32
       w = v
-      v = rd(data, bits_read, 32)
+      rv = rd(data, bits_read, 32)
+      v = rv
       bits_read = bits_read + 32
       w = w ||| v <<< 32
       v_ceiling_default = w
@@ -2287,35 +2367,43 @@ defmodule Example.Types do
 
       bits_read = 0
       if bits_read + 256 > num_bits, do: throw(:invalid)
-      v = rd(data, bits_read, 32)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0xFFFFFFFF
       bits_read = bits_read + 32
       w = v
-      v = rd(data, bits_read, 32)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0xFFFFFFFF
       bits_read = bits_read + 32
       w = w ||| v <<< 32
       # a smuggled offset is refused
       if w > 9_223_372_036_854_775_908, do: throw(:invalid)
       v_clamped_floor = w - 9_223_372_036_854_775_808
-      v = rd(data, bits_read, 32)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0xFFFFFFFF
       bits_read = bits_read + 32
       w = v
-      v = rd(data, bits_read, 32)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0xFFFFFFFF
       bits_read = bits_read + 32
       w = w ||| v <<< 32
       # a smuggled offset is refused
       if w > 18_446_744_073_709_551_613, do: throw(:invalid)
       v_clamped_ceiling = w + 1
-      v = rd(data, bits_read, 32)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0xFFFFFFFF
       bits_read = bits_read + 32
       w = v
-      v = rd(data, bits_read, 32)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0xFFFFFFFF
       bits_read = bits_read + 32
       w = w ||| v <<< 32
       v_floor_def = if w >= 9_223_372_036_854_775_808, do: w - 18_446_744_073_709_551_616, else: w
-      v = rd(data, bits_read, 32)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0xFFFFFFFF
       bits_read = bits_read + 32
       w = v
-      v = rd(data, bits_read, 32)
+      rv = rd(data, bits_read, 32)
+      v = rv
       bits_read = bits_read + 32
       w = w ||| v <<< 32
       v_ceiling_def = w
@@ -2408,43 +2496,48 @@ defmodule Example.Types do
     do: {bits_read, Enum.reverse(acc)}
 
   defp r_input_packet_inputs(remaining, acc, data, num_bits, bits_read) do
-    v = rd(data, bits_read, 32)
+    rv = rdw(data, bits_read, 49)
+    v = rv &&& 0xFFFFFFFF
     bits_read = bits_read + 32
     e_stick_x = f32_value(v)
-    v = rd(data, bits_read, 32)
+    rv = rdw(data, bits_read, 49)
+    v = rv &&& 0xFFFFFFFF
     bits_read = bits_read + 32
     e_stick_y = f32_value(v)
-    v = rd(data, bits_read, 32)
+    rv = rdw(data, bits_read, 49)
+    v = rv &&& 0xFFFFFFFF
     bits_read = bits_read + 32
     e_throttle = f32_value(v)
-    v = rd(data, bits_read, 32)
+    rv = rdw(data, bits_read, 49)
+    v = rv &&& 0xFFFFFFFF
     bits_read = bits_read + 32
     e_yaw = f32_value(v)
-    v = rd(data, bits_read, 32)
+    rv = rdw(data, bits_read, 40)
+    v = rv &&& 0xFFFFFFFF
     bits_read = bits_read + 32
     e_pitch = f32_value(v)
-    v = rd(data, bits_read, 1)
+    v = rv >>> 32 &&& 0x1
     bits_read = bits_read + 1
     e_fire = v == 1
-    v = rd(data, bits_read, 1)
+    v = rv >>> 33 &&& 0x1
     bits_read = bits_read + 1
     e_alt_fire = v == 1
-    v = rd(data, bits_read, 1)
+    v = rv >>> 34 &&& 0x1
     bits_read = bits_read + 1
     e_boost = v == 1
-    v = rd(data, bits_read, 1)
+    v = rv >>> 35 &&& 0x1
     bits_read = bits_read + 1
     e_brake = v == 1
-    v = rd(data, bits_read, 1)
+    v = rv >>> 36 &&& 0x1
     bits_read = bits_read + 1
     e_aim = v == 1
-    v = rd(data, bits_read, 1)
+    v = rv >>> 37 &&& 0x1
     bits_read = bits_read + 1
     e_lock_on = v == 1
-    v = rd(data, bits_read, 1)
+    v = rv >>> 38 &&& 0x1
     bits_read = bits_read + 1
     e_zoom = v == 1
-    v = rd(data, bits_read, 1)
+    v = rv >>> 39
     bits_read = bits_read + 1
     e_ping = v == 1
 
@@ -2477,6 +2570,22 @@ defmodule Example.Types do
     window =
       case data do
         <<_::binary-size(^i), w::little-40, _::binary>> -> w
+        <<_::binary-size(^i), rest::binary>> -> :binary.decode_unsigned(rest, :little)
+      end
+
+    window >>> (bits_read &&& 7) &&& (1 <<< bits) - 1
+  end
+
+  # The wide window decode: 56 bits, enough for a 7-bit offset plus a
+  # 49-bit group, and still under the 2^59 fixnum boundary — one match
+  # context serves a whole group of fields instead of one per field. A
+  # 64-bit window would box and measures slower than the reads it saves.
+  defp rdw(data, bits_read, bits) do
+    i = bits_read >>> 3
+
+    window =
+      case data do
+        <<_::binary-size(^i), w::little-56, _::binary>> -> w
         <<_::binary-size(^i), rest::binary>> -> :binary.decode_unsigned(rest, :little)
       end
 
