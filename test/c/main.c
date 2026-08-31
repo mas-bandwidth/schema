@@ -589,6 +589,21 @@ int main( void )
         serialize_write_flush( &w );
         golden_wire( "degenerate", buffer, serialize_write_bytes_processed( &w ) );
 
+        /* dirty every read target: a read that skips a field must be caught,
+           and gcc's -Wmaybe-uninitialized wants the definite store */
+        memset( &r_vec2, 0xEF, sizeof( r_vec2 ) );
+        memset( &r_span_f64, 0xEF, sizeof( r_span_f64 ) );
+        memset( &r_span_u64, 0xEF, sizeof( r_span_u64 ) );
+        memset( &r_span_i64, 0xEF, sizeof( r_span_i64 ) );
+        memset( &r_span_one, 0xEF, sizeof( r_span_one ) );
+        memset( &r_span_chunk, 0xEF, sizeof( r_span_chunk ) );
+        memset( &r_span_tail, 0xEF, sizeof( r_span_tail ) );
+        memset( &r_span_twice, 0xEF, sizeof( r_span_twice ) );
+        memset( &r_trio, 0xEF, sizeof( r_trio ) );
+        memset( &r_trio_sole, 0xEF, sizeof( r_trio_sole ) );
+        memset( &r_trio_first, 0xEF, sizeof( r_trio_first ) );
+        memset( &r_straddle, 0xEF, sizeof( r_straddle ) );
+
         serialize_read_stream_init( &r, buffer, serialize_write_bytes_processed( &w ) );
         check( read_vec2( &r, &r_vec2 ), "read Vec2" );
         check( read_span_f64( &r, &r_span_f64 ), "read SpanF64" );
