@@ -116,9 +116,9 @@ load-bearing OUTSIDE the bench: the cross-language conformance suite pins
 every one of these instances byte-for-byte in `test/main.cpp`, `test/c/main.c`
 and the go / rust / cs / js / java / dart / elixir port suites, and
 `make test` gates on them. `real_packet` is pinned the same way by
-`test/bench/main.cpp` and the java / js / dart / elixir suites. They are
-conformance fixtures, and nothing in this document is normative about them
-as bench rows.
+`test/bench/main.cpp`, `test/bench/c_main.c` and the java / js / dart /
+elixir suites. They are conformance fixtures, and nothing in this document is
+normative about them as bench rows.
 
 Their iteration counts, bulk shares and rescaling receipts are in this
 document's history and in the CSVs under `bench/results/`, which read as what

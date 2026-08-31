@@ -12,8 +12,9 @@ verdict.
 
 Wiring: `go.mod` (module `benchgo`) replaces `bench` →
 `../../generated/bench/go` and `github.com/mas-bandwidth/serialize.go` → the
-sibling port checkout. One generated unit, the one this runner measures. `run.sh` runs it as `go run . --csv` from this
-directory (optimized by default — Go has no debug/release split).
+sibling port checkout. One generated unit, the one this runner measures.
+`run.sh` runs it as `go run . --csv` from this directory (optimized by
+default — Go has no debug/release split).
 
 Escape barriers: a package-level sink accumulator plus `runtime.KeepAlive`
 on decoded values. Streams are reused via `Reset` (the runtime's documented

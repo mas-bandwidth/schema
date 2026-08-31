@@ -14,8 +14,9 @@ bitpacker workload — timed loops in `#[inline(never)]` symbols for the
 Wiring: `Cargo.toml` path-depends on `../../generated/bench/rust` and the
 sibling serialize.rs checkout. One generated crate, the one this runner
 measures; `generated/bench/rust-realworld` keeps its own `make test` compile
-gate (`cargo build` in the crate directory). `run.sh` runs it as `cargo run --release -- --csv` from
-this directory (default release profile: opt-level 3, no LTO).
+gate (`cargo build` in the crate directory). `run.sh` runs it as
+`cargo run --release -- --csv` from this directory (default release profile:
+opt-level 3, no LTO).
 
 The default profile is a measured choice, not an omission: six
 `[profile.release]` variants (thin/fat LTO x codegen-units, paired

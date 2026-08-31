@@ -27,9 +27,9 @@ Escape barriers: a static sink field accumulates observed bytes/counts and
 `GC.KeepAlive` holds decoded objects. Streams are reused via `Reset` (the
 runtime's documented no-allocation reuse path). The read path decodes into
 one reused instance per bench — the C# stand-in for C++'s free stack
-temporary (§5 zeroing makes reuse equivalent on every field that rides). The driver passes write/read as delegates: one
-indirect call per op that the C++ and Rust drivers don't pay; noted with the
-results.
+temporary (§5 zeroing makes reuse equivalent on every field that rides). The
+driver passes write/read as delegates: one indirect call per op that the C++
+and Rust drivers don't pay; noted with the results.
 
 `checks=always`: serialize.cs keeps its bounds checks, range validation and
 the sticky error latch in **every** build — it has no `Debug.Assert` and no
