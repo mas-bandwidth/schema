@@ -2509,6 +2509,21 @@ defmodule Example.Wire do
   defp r_probe_sample_samples(0, acc, _data, _num_bits, bits_read),
     do: {bits_read, Enum.reverse(acc)}
 
+  defp r_probe_sample_samples(remaining, acc, data, num_bits, bits_read)
+       when remaining >= 3 do
+    rv = rdw(data, bits_read, 48)
+    v = rv &&& 0xFFFF
+    bits_read = bits_read + 16
+    e1 = v
+    v = rv >>> 16 &&& 0xFFFF
+    bits_read = bits_read + 16
+    e2 = v
+    v = rv >>> 32
+    bits_read = bits_read + 16
+    e3 = v
+    r_probe_sample_samples(remaining - 3, [e3, e2, e1 | acc], data, num_bits, bits_read)
+  end
+
   defp r_probe_sample_samples(remaining, acc, data, num_bits, bits_read) do
     rv = rd(data, bits_read, 16)
     v = rv
@@ -2979,6 +2994,24 @@ defmodule Example.Wire do
 
   defp r_test_data_items(0, acc, _data, _num_bits, bits_read), do: {bits_read, Enum.reverse(acc)}
 
+  defp r_test_data_items(remaining, acc, data, num_bits, bits_read)
+       when remaining >= 4 do
+    rv = rd(data, bits_read, 32)
+    v = rv &&& 0xFF
+    bits_read = bits_read + 8
+    e1 = v
+    v = rv >>> 8 &&& 0xFF
+    bits_read = bits_read + 8
+    e2 = v
+    v = rv >>> 16 &&& 0xFF
+    bits_read = bits_read + 8
+    e3 = v
+    v = rv >>> 24
+    bits_read = bits_read + 8
+    e4 = v
+    r_test_data_items(remaining - 4, [e4, e3, e2, e1 | acc], data, num_bits, bits_read)
+  end
+
   defp r_test_data_items(remaining, acc, data, num_bits, bits_read) do
     rv = rd(data, bits_read, 8)
     v = rv
@@ -2989,6 +3022,24 @@ defmodule Example.Wire do
 
   defp r_test_data_fixed_bytes(0, acc, _data, _num_bits, bits_read),
     do: {bits_read, Enum.reverse(acc)}
+
+  defp r_test_data_fixed_bytes(remaining, acc, data, num_bits, bits_read)
+       when remaining >= 4 do
+    rv = rd(data, bits_read, 32)
+    v = rv &&& 0xFF
+    bits_read = bits_read + 8
+    e1 = v
+    v = rv >>> 8 &&& 0xFF
+    bits_read = bits_read + 8
+    e2 = v
+    v = rv >>> 16 &&& 0xFF
+    bits_read = bits_read + 8
+    e3 = v
+    v = rv >>> 24
+    bits_read = bits_read + 8
+    e4 = v
+    r_test_data_fixed_bytes(remaining - 4, [e4, e3, e2, e1 | acc], data, num_bits, bits_read)
+  end
 
   defp r_test_data_fixed_bytes(remaining, acc, data, num_bits, bits_read) do
     rv = rd(data, bits_read, 8)

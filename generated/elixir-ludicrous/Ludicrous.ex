@@ -1582,6 +1582,22 @@ defmodule Ludicrous.Ludicrous do
   defp r_fixed_probe_samples(0, acc, _data, _num_bits, bits_read),
     do: {bits_read, Enum.reverse(acc)}
 
+  defp r_fixed_probe_samples(remaining, acc, data, num_bits, bits_read)
+       when remaining >= 2 do
+    rv = rdw(data, bits_read, 42)
+    v = rv &&& 0x1FFFFF
+    bits_read = bits_read + 21
+    # a smuggled offset is refused
+    if v > 1_048_576, do: throw(:invalid)
+    e1 = v - 524_288
+    v = rv >>> 21
+    bits_read = bits_read + 21
+    # a smuggled offset is refused
+    if v > 1_048_576, do: throw(:invalid)
+    e2 = v - 524_288
+    r_fixed_probe_samples(remaining - 2, [e2, e1 | acc], data, num_bits, bits_read)
+  end
+
   defp r_fixed_probe_samples(remaining, acc, data, num_bits, bits_read) do
     rv = rd(data, bits_read, 21)
     v = rv
@@ -1647,6 +1663,22 @@ defmodule Ludicrous.Ludicrous do
 
   defp r_unsigned_probe_samples(0, acc, _data, _num_bits, bits_read),
     do: {bits_read, Enum.reverse(acc)}
+
+  defp r_unsigned_probe_samples(remaining, acc, data, num_bits, bits_read)
+       when remaining >= 2 do
+    rv = rdw(data, bits_read, 42)
+    v = rv &&& 0x1FFFFF
+    bits_read = bits_read + 21
+    # a smuggled offset is refused
+    if v > 1_048_576, do: throw(:invalid)
+    e1 = v
+    v = rv >>> 21
+    bits_read = bits_read + 21
+    # a smuggled offset is refused
+    if v > 1_048_576, do: throw(:invalid)
+    e2 = v
+    r_unsigned_probe_samples(remaining - 2, [e2, e1 | acc], data, num_bits, bits_read)
+  end
 
   defp r_unsigned_probe_samples(remaining, acc, data, num_bits, bits_read) do
     rv = rd(data, bits_read, 21)

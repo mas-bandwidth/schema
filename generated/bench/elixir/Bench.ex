@@ -2569,6 +2569,24 @@ defmodule Bench.Bench do
   defp r_bench_packet_blob(0, acc, _data, _num_bits, bits_read),
     do: {bits_read, Enum.reverse(acc)}
 
+  defp r_bench_packet_blob(remaining, acc, data, num_bits, bits_read)
+       when remaining >= 4 do
+    rv = rd(data, bits_read, 32)
+    v = rv &&& 0xFF
+    bits_read = bits_read + 8
+    e1 = v
+    v = rv >>> 8 &&& 0xFF
+    bits_read = bits_read + 8
+    e2 = v
+    v = rv >>> 16 &&& 0xFF
+    bits_read = bits_read + 8
+    e3 = v
+    v = rv >>> 24
+    bits_read = bits_read + 8
+    e4 = v
+    r_bench_packet_blob(remaining - 4, [e4, e3, e2, e1 | acc], data, num_bits, bits_read)
+  end
+
   defp r_bench_packet_blob(remaining, acc, data, num_bits, bits_read) do
     rv = rd(data, bits_read, 8)
     v = rv
@@ -2911,6 +2929,26 @@ defmodule Bench.Bench do
   defp r_bench_mixed_stats(0, acc, _data, _num_bits, bits_read),
     do: {bits_read, Enum.reverse(acc)}
 
+  defp r_bench_mixed_stats(remaining, acc, data, num_bits, bits_read)
+       when remaining >= 2 do
+    rv = rdw(data, bits_read, 36)
+    v = rv &&& 0xFF
+    bits_read = bits_read + 8
+    e1_stat_id = v
+    v = rv >>> 8 &&& 0x3FF
+    bits_read = bits_read + 10
+    e1_delta = v - 512
+    e1 = %Bench.MixedStat{stat_id: e1_stat_id, delta: e1_delta}
+    v = rv >>> 18 &&& 0xFF
+    bits_read = bits_read + 8
+    e2_stat_id = v
+    v = rv >>> 26
+    bits_read = bits_read + 10
+    e2_delta = v - 512
+    e2 = %Bench.MixedStat{stat_id: e2_stat_id, delta: e2_delta}
+    r_bench_mixed_stats(remaining - 2, [e2, e1 | acc], data, num_bits, bits_read)
+  end
+
   defp r_bench_mixed_stats(remaining, acc, data, num_bits, bits_read) do
     rv = rd(data, bits_read, 18)
     v = rv &&& 0xFF
@@ -2925,6 +2963,24 @@ defmodule Bench.Bench do
 
   defp r_bench_mixed_loadout(0, acc, _data, _num_bits, bits_read),
     do: {bits_read, Enum.reverse(acc)}
+
+  defp r_bench_mixed_loadout(remaining, acc, data, num_bits, bits_read)
+       when remaining >= 4 do
+    rv = rd(data, bits_read, 32)
+    v = rv &&& 0xFF
+    bits_read = bits_read + 8
+    e1 = v
+    v = rv >>> 8 &&& 0xFF
+    bits_read = bits_read + 8
+    e2 = v
+    v = rv >>> 16 &&& 0xFF
+    bits_read = bits_read + 8
+    e3 = v
+    v = rv >>> 24
+    bits_read = bits_read + 8
+    e4 = v
+    r_bench_mixed_loadout(remaining - 4, [e4, e3, e2, e1 | acc], data, num_bits, bits_read)
+  end
 
   defp r_bench_mixed_loadout(remaining, acc, data, num_bits, bits_read) do
     rv = rd(data, bits_read, 8)

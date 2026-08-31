@@ -912,8 +912,8 @@ defmodule Example.Types do
       v = rv &&& 0xFFFFFFFF
       bits_read = bits_read + 32
       w = v
-      rv = rd(data, bits_read, 32)
-      v = rv
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0xFFFFFFFF
       bits_read = bits_read + 32
       w = w ||| v <<< 32
       v_position_z = f64_value(w)
@@ -949,8 +949,8 @@ defmodule Example.Types do
       v = rv &&& 0xFFFFFFFF
       bits_read = bits_read + 32
       w = v
-      rv = rd(data, bits_read, 32)
-      v = rv
+      rv = rd(data, bits_read, 33)
+      v = rv &&& 0xFFFFFFFF
       bits_read = bits_read + 32
       w = w ||| v <<< 32
       v_orientation_w = f64_value(w)
@@ -962,8 +962,7 @@ defmodule Example.Types do
         w: v_orientation_w
       }
 
-      rv = rdw(data, bits_read, 49)
-      v = rv &&& 0x1
+      v = rv >>> 32
       bits_read = bits_read + 1
       v_at_rest = v == 1
 
@@ -992,8 +991,8 @@ defmodule Example.Types do
           v = rv &&& 0xFFFFFFFF
           bits_read = bits_read + 32
           w = v
-          rv = rd(data, bits_read, 32)
-          v = rv
+          rv = rdw(data, bits_read, 49)
+          v = rv &&& 0xFFFFFFFF
           bits_read = bits_read + 32
           w = w ||| v <<< 32
           v_linear_velocity_z = f64_value(w)
@@ -1650,30 +1649,30 @@ defmodule Example.Types do
       # a smuggled offset is refused
       if v > 16_777_216, do: throw(:invalid)
       v_position_y = v - 8_388_608
-      rv = rd(data, bits_read, 25)
-      v = rv
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0x1FFFFFF
       bits_read = bits_read + 25
       # a smuggled offset is refused
       if v > 16_777_216, do: throw(:invalid)
       v_position_z = v - 8_388_608
       v_position = %Example.QuantizedPosition{x: v_position_x, y: v_position_y, z: v_position_z}
-      rv = rdw(data, bits_read, 48)
-      v = rv &&& 0xFFF
+      v = rv >>> 25 &&& 0xFFF
       bits_read = bits_read + 12
       # a smuggled offset is refused
       if v > 2048, do: throw(:invalid)
       v_rotation_x = v - 1024
-      v = rv >>> 12 &&& 0xFFF
+      v = rv >>> 37
       bits_read = bits_read + 12
       # a smuggled offset is refused
       if v > 2048, do: throw(:invalid)
       v_rotation_y = v - 1024
-      v = rv >>> 24 &&& 0xFFF
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0xFFF
       bits_read = bits_read + 12
       # a smuggled offset is refused
       if v > 2048, do: throw(:invalid)
       v_rotation_z = v - 1024
-      v = rv >>> 36
+      v = rv >>> 12 &&& 0xFFF
       bits_read = bits_read + 12
       # a smuggled offset is refused
       if v > 2048, do: throw(:invalid)
@@ -1686,19 +1685,18 @@ defmodule Example.Types do
         w: v_rotation_w
       }
 
-      rv = rdw(data, bits_read, 49)
-      v = rv &&& 0x7FFFFF
+      v = rv >>> 24 &&& 0x7FFFFF
       bits_read = bits_read + 23
       # a smuggled offset is refused
       if v > 4_194_304, do: throw(:invalid)
       v_linear_velocity_x = v - 2_097_152
-      v = rv >>> 23 &&& 0x7FFFFF
+      rv = rdw(data, bits_read, 47)
+      v = rv &&& 0x7FFFFF
       bits_read = bits_read + 23
       # a smuggled offset is refused
       if v > 4_194_304, do: throw(:invalid)
       v_linear_velocity_y = v - 2_097_152
-      rv = rd(data, bits_read, 23)
-      v = rv
+      v = rv >>> 23 &&& 0x7FFFFF
       bits_read = bits_read + 23
       # a smuggled offset is refused
       if v > 4_194_304, do: throw(:invalid)
@@ -1710,8 +1708,7 @@ defmodule Example.Types do
         z: v_linear_velocity_z
       }
 
-      rv = rdw(data, bits_read, 49)
-      v = rv &&& 0x1
+      v = rv >>> 46
       bits_read = bits_read + 1
       v_has_flags = v == 1
 

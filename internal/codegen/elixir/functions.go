@@ -1316,12 +1316,20 @@ func (g *gen) emitReadItems(items []ir.Item, pre, ind string, bounded bool) {
 			if !bounded && total > 0 {
 				g.throwIf(fmt.Sprintf("bits_read + %s > num_bits", intLit64(total)), "", ind)
 			}
-			// the run's own length sizes the read groups inside it
-			g.rdRun = total
+			// the run's own length sizes the read groups inside it —
+			// unless a WIDER run is already open around this scope, as it
+			// is inside an unrolled loop clause, where one window serves
+			// every element of the clause
+			outer := g.rdRun > 0
+			if !outer {
+				g.rdRun = total
+			}
 			for ; i < j; i++ {
 				g.emitReadItem(items[i], pre, ind, true)
 			}
-			g.rdRun = 0
+			if !outer {
+				g.rdRun = 0
+			}
 			continue
 		}
 		g.rdRun = 0
@@ -1526,17 +1534,12 @@ func (g *gen) readHelper(f *ir.Field, bounded bool) string {
 	} else {
 		g.pf("  defp %s(0, acc, _data, _num_bits, bits_read),\n    do: {bits_read, Enum.reverse(acc)}\n\n", name)
 	}
-	g.pf("  defp %s(remaining, acc, data, num_bits, bits_read) do\n", name)
-	// a SCALAR element goes straight to the scalar read, which never passes
-	// through the run fuser — so the element's own width is the run here, and
-	// without it a one-byte element opens the wide window for eight bits, and
-	// takes the wide window's longer tail fallback with it
-	if elem, ok := g.staticBitsScalar(f); ok && elem > 0 {
-		g.rdRun = elem
+	// the wide clause first, guarded on the count; the single-element clause
+	// behind it is the remainder, so the count never has to divide anything
+	if k := g.readUnroll(f); k > 1 {
+		g.readClause(f, name, k, bounded)
 	}
-	g.emitReadElem(f, "    ", bounded)
-	g.pf("    %s(remaining - 1, [e | acc], data, num_bits, bits_read)\n", name)
-	g.pf("  end\n\n")
+	g.readClause(f, name, 1, bounded)
 	g.helpers[name] = g.fn.String()
 	g.fn = saved
 	g.rdOff, g.rdAvail, g.rdRun = savedOff, savedAvail, savedRun
@@ -1544,22 +1547,81 @@ func (g *gen) readHelper(f *ir.Field, bounded bool) string {
 	return name
 }
 
-// emitReadElem reads one array element into local e.
-func (g *gen) emitReadElem(f *ir.Field, ind string, bounded bool) {
+// readUnrollMax bounds the generated code one array field can cost, the same
+// way writeUnrollMax does.
+const readUnrollMax = 4
+
+// readUnroll is how many elements one clause of the read loop decodes.
+// Elements of a statically known width share ONE window decode while the
+// wide window's usable width holds — the match context, not the shift and
+// mask, is what a decode costs.
+func (g *gen) readUnroll(f *ir.Field) int64 {
+	eb, ok := g.staticBitsScalar(f)
+	if !ok || eb <= 0 || eb > rdwWindowBits {
+		return 1
+	}
+	k := rdwWindowBits / eb
+	if k > readUnrollMax {
+		k = readUnrollMax
+	}
+	return k
+}
+
+// readClause emits one clause of a read loop, decoding k elements under one
+// open window. The wide clause carries a guard on the count; the
+// single-element clause behind it needs none.
+func (g *gen) readClause(f *ir.Field, name string, k int64, bounded bool) {
+	evs := make([]string, k)
+	for i := range evs {
+		evs[i] = "e"
+		if k > 1 {
+			evs[i] = fmt.Sprintf("e%d", i+1)
+		}
+	}
+	g.rdBreak() // a clause opens its own group
+	if k > 1 {
+		g.pf("  defp %s(remaining, acc, data, num_bits, bits_read)\n", name)
+		g.pf("       when remaining >= %d do\n", k)
+	} else {
+		g.pf("  defp %s(remaining, acc, data, num_bits, bits_read) do\n", name)
+	}
+	// a SCALAR element goes straight to the scalar read, which never passes
+	// through the run fuser, and a named element's own scope would size the
+	// window to ONE element. The clause's whole span is the run either way,
+	// and without it a one-byte element opens the wide window for eight bits
+	// and takes that window's longer tail fallback with it.
+	if eb, ok := g.staticBitsScalar(f); ok && eb > 0 {
+		g.rdRun = eb * k
+	}
+	for _, ev := range evs {
+		g.emitReadElem(f, ev, "    ", bounded)
+	}
+	cons := make([]string, k)
+	for i, ev := range evs {
+		cons[int(k)-1-i] = ev // the accumulator is reversed at the end
+	}
+	g.pf("    %s(remaining - %d, [%s | acc], data, num_bits, bits_read)\n",
+		name, k, strings.Join(cons, ", "))
+	g.pf("  end\n\n")
+	g.rdBreak()
+}
+
+// emitReadElem reads one array element into local ev.
+func (g *gen) emitReadElem(f *ir.Field, ev, ind string, bounded bool) {
 	if f.Type.Kind == ir.TNamed {
 		switch ref := f.Type.Ref.(type) {
 		case *ir.Struct:
 			g.withOwner(ref.Name, func() {
-				g.emitReadItems(ref.Items, "e", ind, bounded)
-				g.emitBuildStruct(ref, "e", "e", ind)
+				g.emitReadItems(ref.Items, ev, ind, bounded)
+				g.emitBuildStruct(ref, ev, ev, ind)
 			})
 			return
 		case *ir.Union:
-			g.emitReadUnion(ref, "e", ind, bounded)
+			g.emitReadUnion(ref, ev, ind, bounded)
 			return
 		}
 	}
-	g.emitReadScalar(f, "e", ind, bounded)
+	g.emitReadScalar(f, ev, ind, bounded)
 }
 
 // emitBuildStruct binds lv to the struct literal assembled from the locals
