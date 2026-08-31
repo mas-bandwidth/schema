@@ -12,6 +12,7 @@
 #include <new> // placement new — the raw-struct scatter constructs in place
 
 #include "ConstantsWire.h"
+#include "DegenerateWire.h"
 #include "EnumsWire.h"
 #include "RenderWire.h"
 #include "TypesWire.h"
@@ -715,6 +716,150 @@ int main()
         check( strcmp( FlagNamesShipFlags( 0, buffer, sizeof( buffer ) ), "0" ) == 0 );
         check( strcmp( FlagNamesShipFlags( ShipFlags_FiringLaser | ShipFlags_Braking, buffer, sizeof( buffer ) ), "FiringLaser|Braking" ) == 0 );
         check( strcmp( FlagNamesShipFlags( ShipFlags_Aiming | ( 1ull << 63 ), buffer, sizeof( buffer ) ), "Aiming|0x8000000000000000" ) == 0 );
+    }
+
+    // ---- Degenerate.schema: the degenerate arrangements (issue #203) ----
+    //
+    // Twelve shapes the corpus's realistic types cannot reach, written back
+    // to back into ONE stream and pinned as one golden. One stream because
+    // the point of these types is what an emitter does with a whole message
+    // body of a given arrangement, not how they compose: twelve one-message
+    // goldens would be twelve times the harness in nine languages for the
+    // same bytes. The read-back below gives per-type attribution when the
+    // byte compare fails.
+    {
+        Vec2 vec2;
+        vec2.x = 1.5;
+        vec2.y = -2.25;
+
+        SpanF64 span_f64;
+        span_f64.values[0] = 3.5;
+        span_f64.values[1] = -4.75;
+
+        SpanU64 span_u64;
+        span_u64.values[0] = 0xDEADBEEFCAFEBABEull;
+        span_u64.values[1] = 1;
+
+        SpanI64 span_i64;
+        span_i64.values[0] = -1234567890123ll;
+        span_i64.values[1] = 42;
+
+        SpanOne span_one;
+        span_one.values[0] = 0x0123456789ABCDEFull;
+
+        SpanChunk span_chunk;
+        span_chunk.values[0] = 0x1111;
+        span_chunk.values[1] = 0x2222;
+        span_chunk.values[2] = 0x3333;
+        span_chunk.values[3] = 0x4444;
+
+        SpanTail span_tail;
+        span_tail.values[0] = 6.125;
+        span_tail.values[1] = -7.0;
+        span_tail.tail = 0xFEEDFACEu;
+
+        SpanTwice span_twice;
+        span_twice.a[0] = 8.5;
+        span_twice.a[1] = 9.5;
+        span_twice.b[0] = -10.5;
+        span_twice.b[1] = -11.5;
+
+        Trio trio;
+        trio.a = 0xABCDE;
+        trio.b = 0x12345;
+        trio.c = 0xFFFFF;
+
+        TrioSole trio_sole;
+        trio_sole.inner.a = 1;
+        trio_sole.inner.b = 2;
+        trio_sole.inner.c = 3;
+
+        TrioFirst trio_first;
+        trio_first.inner.a = 0xAAAAA;
+        trio_first.inner.b = 0x55555;
+        trio_first.inner.c = 0xF0F0F;
+        trio_first.trailer = 0xBEEF;
+
+        TrioStraddle straddle;
+        straddle.pad0 = 0x0011223344556677ull;
+        straddle.pad1 = 0x8899AABBCCDDEEFFull;
+        straddle.pad2 = 0xFFFFFFFFFFFFFFFFull;
+        straddle.pad3 = 0;
+        straddle.pad4 = 0x123456789ABCDEF0ull;
+        straddle.pad5 = 0xABCDEFu;
+        straddle.inner.a = 0x11111;
+        straddle.inner.b = 0x22222;
+        straddle.inner.c = 0x33333;
+
+        serialize::WriteStream ws( buffer, sizeof( buffer ) );
+        check( WriteVec2( ws, vec2 ) );
+        check( WriteSpanF64( ws, span_f64 ) );
+        check( WriteSpanU64( ws, span_u64 ) );
+        check( WriteSpanI64( ws, span_i64 ) );
+        check( WriteSpanOne( ws, span_one ) );
+        check( WriteSpanChunk( ws, span_chunk ) );
+        check( WriteSpanTail( ws, span_tail ) );
+        check( WriteSpanTwice( ws, span_twice ) );
+        check( WriteTrio( ws, trio ) );
+        check( WriteTrioSole( ws, trio_sole ) );
+        check( WriteTrioFirst( ws, trio_first ) );
+        check( WriteTrioStraddle( ws, straddle ) );
+
+        // Each shape's own width, stated so a doubled or dropped element is
+        // named rather than smeared across one total. A fixed scalar array
+        // emitted twice is exactly the defect these types exist to catch, and
+        // the total is taken BEFORE Flush so no padding hides it.
+        check( Vec2MaxBits == 128 && SpanF64MaxBits == 128 && SpanU64MaxBits == 128 );
+        check( SpanI64MaxBits == 128 && SpanOneMaxBits == 64 && SpanChunkMaxBits == 64 );
+        check( SpanTailMaxBits == 160 && SpanTwiceMaxBits == 256 && TrioMaxBits == 64 );
+        check( TrioSoleMaxBits == 64 && TrioFirstMaxBits == 80 && TrioStraddleMaxBits == 408 );
+        check( ws.GetBitsProcessed() == 128 + 128 + 128 + 128 + 64 + 64 + 160 + 256 + 64 + 64 + 80 + 408 );
+
+        ws.Flush();
+        check( golden_wire( "degenerate", buffer, ws.GetBytesProcessed() ) );
+
+        Vec2 r_vec2;
+        SpanF64 r_span_f64;
+        SpanU64 r_span_u64;
+        SpanI64 r_span_i64;
+        SpanOne r_span_one;
+        SpanChunk r_span_chunk;
+        SpanTail r_span_tail;
+        SpanTwice r_span_twice;
+        Trio r_trio;
+        TrioSole r_trio_sole;
+        TrioFirst r_trio_first;
+        TrioStraddle r_straddle;
+
+        serialize::ReadStream rs( buffer, ws.GetBytesProcessed() );
+        check( ReadVec2( rs, r_vec2 ) );
+        check( ReadSpanF64( rs, r_span_f64 ) );
+        check( ReadSpanU64( rs, r_span_u64 ) );
+        check( ReadSpanI64( rs, r_span_i64 ) );
+        check( ReadSpanOne( rs, r_span_one ) );
+        check( ReadSpanChunk( rs, r_span_chunk ) );
+        check( ReadSpanTail( rs, r_span_tail ) );
+        check( ReadSpanTwice( rs, r_span_twice ) );
+        check( ReadTrio( rs, r_trio ) );
+        check( ReadTrioSole( rs, r_trio_sole ) );
+        check( ReadTrioFirst( rs, r_trio_first ) );
+        check( ReadTrioStraddle( rs, r_straddle ) );
+
+        check( r_vec2.x == 1.5 && r_vec2.y == -2.25 );
+        check( r_span_f64.values[0] == 3.5 && r_span_f64.values[1] == -4.75 );
+        check( r_span_u64.values[0] == 0xDEADBEEFCAFEBABEull && r_span_u64.values[1] == 1 );
+        check( r_span_i64.values[0] == -1234567890123ll && r_span_i64.values[1] == 42 );
+        check( r_span_one.values[0] == 0x0123456789ABCDEFull );
+        check( r_span_chunk.values[0] == 0x1111 && r_span_chunk.values[3] == 0x4444 );
+        check( r_span_tail.values[0] == 6.125 && r_span_tail.values[1] == -7.0 && r_span_tail.tail == 0xFEEDFACEu );
+        check( r_span_twice.a[0] == 8.5 && r_span_twice.a[1] == 9.5 );
+        check( r_span_twice.b[0] == -10.5 && r_span_twice.b[1] == -11.5 );
+        check( r_trio.a == 0xABCDE && r_trio.b == 0x12345 && r_trio.c == 0xFFFFF );
+        check( r_trio_sole.inner.a == 1 && r_trio_sole.inner.b == 2 && r_trio_sole.inner.c == 3 );
+        check( r_trio_first.inner.a == 0xAAAAA && r_trio_first.inner.c == 0xF0F0F && r_trio_first.trailer == 0xBEEF );
+        check( r_straddle.pad0 == 0x0011223344556677ull && r_straddle.pad4 == 0x123456789ABCDEF0ull );
+        check( r_straddle.pad5 == 0xABCDEFu );
+        check( r_straddle.inner.a == 0x11111 && r_straddle.inner.b == 0x22222 && r_straddle.inner.c == 0x33333 );
     }
 
     // ---- parallel scatter/gather (Render.schema): threads build render

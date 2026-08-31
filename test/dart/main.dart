@@ -19,6 +19,7 @@ import 'dart:typed_data';
 import '../../generated/bench/dart/Bench.dart' as bench;
 import '../../generated/bench/dart/Int128.dart';
 import '../../generated/bench/dart/realworld/RealWorld.dart' as rw;
+import '../../generated/dart/Degenerate.dart';
 import '../../generated/dart/Enums.dart';
 import '../../generated/dart/Types.dart';
 import '../../generated/dart/Wire.dart';
@@ -909,6 +910,174 @@ void main() {
       rw.measureRealPacket,
     );
     check(rw.measureRealPacket(real) == 1629, 'RealPacket is 1629 bits');
+  }
+
+  // ---- Degenerate.schema: the degenerate arrangements (issue #203) ----
+  //
+  // Twelve shapes in the C++ test's order against the one C++-pinned golden.
+  // This emitter writes a whole message into a buffer rather than appending
+  // to a bit stream, so the leg CONCATENATES its twelve buffers — which
+  // equals what the stream legs write because every type in that file is a
+  // whole number of bytes wide. A fixed scalar array whose elements an
+  // emitter places TWICE is invisible to a same-language round trip; only
+  // this compare against another language's bytes names it.
+  {
+    final vec2 = Vec2()
+      ..x = 1.5
+      ..y = -2.25;
+
+    final spanF64 = SpanF64();
+    spanF64.values[0] = 3.5;
+    spanF64.values[1] = -4.75;
+
+    final spanU64 = SpanU64();
+    spanU64.values[0] = 0xdeadbeefcafebabe;
+    spanU64.values[1] = 1;
+
+    final spanI64 = SpanI64();
+    spanI64.values[0] = -1234567890123;
+    spanI64.values[1] = 42;
+
+    final spanOne = SpanOne();
+    spanOne.values[0] = 0x0123456789abcdef;
+
+    final spanChunk = SpanChunk();
+    spanChunk.values[0] = 0x1111;
+    spanChunk.values[1] = 0x2222;
+    spanChunk.values[2] = 0x3333;
+    spanChunk.values[3] = 0x4444;
+
+    final spanTail = SpanTail()..tail = 0xfeedface;
+    spanTail.values[0] = 6.125;
+    spanTail.values[1] = -7.0;
+
+    final spanTwice = SpanTwice();
+    spanTwice.a[0] = 8.5;
+    spanTwice.a[1] = 9.5;
+    spanTwice.b[0] = -10.5;
+    spanTwice.b[1] = -11.5;
+
+    final trio = Trio()
+      ..a = 0xabcde
+      ..b = 0x12345
+      ..c = 0xfffff;
+
+    final trioSole = TrioSole();
+    trioSole.inner
+      ..a = 1
+      ..b = 2
+      ..c = 3;
+
+    final trioFirst = TrioFirst()..trailer = 0xbeef;
+    trioFirst.inner
+      ..a = 0xaaaaa
+      ..b = 0x55555
+      ..c = 0xf0f0f;
+
+    final straddle = TrioStraddle()
+      ..pad0 = 0x0011223344556677
+      ..pad1 = 0x8899aabbccddeeff
+      ..pad2 = 0xffffffffffffffff
+      ..pad3 = 0
+      ..pad4 = 0x123456789abcdef0
+      ..pad5 = 0xabcdef;
+    straddle.inner
+      ..a = 0x11111
+      ..b = 0x22222
+      ..c = 0x33333;
+
+    // write each message into its own buffer, then concatenate
+    final parts = <Uint8List>[];
+    int emit<T>(T value, int Function(T, ByteData) write, int Function(T) measure, String name) {
+      final buf = Uint8List(256);
+      final n = write(value, ByteData.sublistView(buf));
+      check((measure(value) + 7) >>> 3 == n, '$name: measure vs bytes written');
+      parts.add(Uint8List.sublistView(buf, 0, n));
+      return n;
+    }
+
+    var total = 0;
+    total += emit(vec2, writeVec2, measureVec2, 'Vec2');
+    total += emit(spanF64, writeSpanF64, measureSpanF64, 'SpanF64');
+    total += emit(spanU64, writeSpanU64, measureSpanU64, 'SpanU64');
+    total += emit(spanI64, writeSpanI64, measureSpanI64, 'SpanI64');
+    total += emit(spanOne, writeSpanOne, measureSpanOne, 'SpanOne');
+    total += emit(spanChunk, writeSpanChunk, measureSpanChunk, 'SpanChunk');
+    total += emit(spanTail, writeSpanTail, measureSpanTail, 'SpanTail');
+    total += emit(spanTwice, writeSpanTwice, measureSpanTwice, 'SpanTwice');
+    total += emit(trio, writeTrio, measureTrio, 'Trio');
+    total += emit(trioSole, writeTrioSole, measureTrioSole, 'TrioSole');
+    total += emit(trioFirst, writeTrioFirst, measureTrioFirst, 'TrioFirst');
+    total += emit(straddle, writeTrioStraddle, measureTrioStraddle, 'TrioStraddle');
+    check(
+      total * 8 == 128 + 128 + 128 + 128 + 64 + 64 + 160 + 256 + 64 + 64 + 80 + 408,
+      'the twelve degenerate shapes ride their declared widths and nothing more',
+    );
+
+    final joined = Uint8List(total);
+    var at = 0;
+    for (final part in parts) {
+      joined.setRange(at, at + part.length, part);
+      at += part.length;
+    }
+    final g = golden('degenerate');
+    check(joined.length == g.length, 'degenerate: wrote ${joined.length} bytes, golden has ${g.length}');
+    check(bytesEqual(joined, g), 'degenerate: Dart bytes == the C++-pinned bytes');
+
+    // and each shape reads back out of its own slice of the golden
+    at = 0;
+    bool back<T>(T out, int bytes, bool Function(T, ByteData, int) read) {
+      final slice = Uint8List(bytes + 8); // read slack
+      slice.setRange(0, bytes, g, at);
+      at += bytes;
+      return read(out, ByteData.sublistView(slice), bytes * 8);
+    }
+
+    final rVec2 = Vec2();
+    final rSpanF64 = SpanF64();
+    final rSpanU64 = SpanU64();
+    final rSpanI64 = SpanI64();
+    final rSpanOne = SpanOne();
+    final rSpanChunk = SpanChunk();
+    final rSpanTail = SpanTail();
+    final rSpanTwice = SpanTwice();
+    final rTrio = Trio();
+    final rTrioSole = TrioSole();
+    final rTrioFirst = TrioFirst();
+    final rStraddle = TrioStraddle();
+
+    check(back(rVec2, 16, readVec2), 'read Vec2');
+    check(back(rSpanF64, 16, readSpanF64), 'read SpanF64');
+    check(back(rSpanU64, 16, readSpanU64), 'read SpanU64');
+    check(back(rSpanI64, 16, readSpanI64), 'read SpanI64');
+    check(back(rSpanOne, 8, readSpanOne), 'read SpanOne');
+    check(back(rSpanChunk, 8, readSpanChunk), 'read SpanChunk');
+    check(back(rSpanTail, 20, readSpanTail), 'read SpanTail');
+    check(back(rSpanTwice, 32, readSpanTwice), 'read SpanTwice');
+    check(back(rTrio, 8, readTrio), 'read Trio');
+    check(back(rTrioSole, 8, readTrioSole), 'read TrioSole');
+    check(back(rTrioFirst, 10, readTrioFirst), 'read TrioFirst');
+    check(back(rStraddle, 51, readTrioStraddle), 'read TrioStraddle');
+
+    check(rVec2.x == 1.5 && rVec2.y == -2.25, 'Vec2 round-trips');
+    check(rSpanF64.values[0] == 3.5 && rSpanF64.values[1] == -4.75, 'SpanF64 round-trips');
+    check(rSpanU64.values[0] == 0xdeadbeefcafebabe && rSpanU64.values[1] == 1, 'SpanU64 round-trips');
+    check(rSpanI64.values[0] == -1234567890123 && rSpanI64.values[1] == 42, 'SpanI64 round-trips');
+    check(rSpanOne.values[0] == 0x0123456789abcdef, 'SpanOne round-trips');
+    check(rSpanChunk.values[0] == 0x1111 && rSpanChunk.values[3] == 0x4444, 'SpanChunk round-trips');
+    check(
+      rSpanTail.values[0] == 6.125 && rSpanTail.values[1] == -7.0 && rSpanTail.tail == 0xfeedface,
+      'SpanTail round-trips',
+    );
+    check(rSpanTwice.a[0] == 8.5 && rSpanTwice.b[1] == -11.5, 'SpanTwice round-trips');
+    check(rTrio.a == 0xabcde && rTrio.b == 0x12345 && rTrio.c == 0xfffff, 'Trio round-trips');
+    check(rTrioSole.inner.a == 1 && rTrioSole.inner.c == 3, 'TrioSole round-trips');
+    check(rTrioFirst.inner.a == 0xaaaaa && rTrioFirst.trailer == 0xbeef, 'TrioFirst round-trips');
+    check(rStraddle.pad0 == 0x0011223344556677 && rStraddle.pad4 == 0x123456789abcdef0, 'TrioStraddle pads round-trip');
+    check(
+      rStraddle.pad5 == 0xabcdef && rStraddle.inner.a == 0x11111 && rStraddle.inner.c == 0x33333,
+      "TrioStraddle's nested fields round-trip across the boundary",
+    );
   }
 
   if (failed) {

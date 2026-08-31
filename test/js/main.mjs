@@ -26,6 +26,8 @@ import * as realworld from "../../generated/bench/js/realworld/RealWorld.js";
 // the flat tier — the shipped JS wire path, held byte-identical to the
 // runtime tier and to the same C++-pinned goldens in the section at the
 // bottom of this file
+import * as degenerate from "../../generated/js/Degenerate.js";
+import * as degenerateFlat from "../../generated/js/DegenerateFlat.js";
 import * as typesFlat from "../../generated/js/TypesFlat.js";
 import * as wireFlat from "../../generated/js/WireFlat.js";
 import * as benchFlat from "../../generated/bench/js/BenchFlat.js";
@@ -1057,6 +1059,116 @@ if (CHECKED_MODE) {
     "FlagNames renders the set bits");
   check(ex.FlagNamesShipFlags(ex.ShipFlagsAiming | (1n << 63n)) === "Aiming|0x8000000000000000",
     "FlagNames renders unknown high bits as hex");
+}
+
+// ---- Degenerate.schema: the degenerate arrangements (issue #203) ----
+//
+// Twelve shapes written back to back into ONE runtime-tier stream against
+// the one C++-pinned golden, in the C++ test's order, then each shape
+// crossed through the flat tier. A fixed scalar array whose elements an
+// emitter places TWICE is invisible to a same-language round trip; only the
+// byte compare against another language's bytes names it.
+{
+  const dg = degenerate;
+
+  const vec2 = new dg.Vec2();
+  vec2.X = 1.5;
+  vec2.Y = -2.25;
+
+  const spanF64 = new dg.SpanF64();
+  spanF64.Values[0] = 3.5;
+  spanF64.Values[1] = -4.75;
+
+  const spanU64 = new dg.SpanU64();
+  spanU64.Values[0] = 0xdeadbeefcafebaben;
+  spanU64.Values[1] = 1n;
+
+  const spanI64 = new dg.SpanI64();
+  spanI64.Values[0] = -1234567890123n;
+  spanI64.Values[1] = 42n;
+
+  const spanOne = new dg.SpanOne();
+  spanOne.Values[0] = 0x0123456789abcdefn;
+
+  const spanChunk = new dg.SpanChunk();
+  spanChunk.Values[0] = 0x1111;
+  spanChunk.Values[1] = 0x2222;
+  spanChunk.Values[2] = 0x3333;
+  spanChunk.Values[3] = 0x4444;
+
+  const spanTail = new dg.SpanTail();
+  spanTail.Values[0] = 6.125;
+  spanTail.Values[1] = -7.0;
+  spanTail.Tail = 0xfeedface;
+
+  const spanTwice = new dg.SpanTwice();
+  spanTwice.A[0] = 8.5;
+  spanTwice.A[1] = 9.5;
+  spanTwice.B[0] = -10.5;
+  spanTwice.B[1] = -11.5;
+
+  const trio = new dg.Trio();
+  trio.A = 0xabcde;
+  trio.B = 0x12345;
+  trio.C = 0xfffff;
+
+  const trioSole = new dg.TrioSole();
+  trioSole.Inner.A = 1;
+  trioSole.Inner.B = 2;
+  trioSole.Inner.C = 3;
+
+  const trioFirst = new dg.TrioFirst();
+  trioFirst.Inner.A = 0xaaaaa;
+  trioFirst.Inner.B = 0x55555;
+  trioFirst.Inner.C = 0xf0f0f;
+  trioFirst.Trailer = 0xbeef;
+
+  const straddle = new dg.TrioStraddle();
+  straddle.Pad0 = 0x0011223344556677n;
+  straddle.Pad1 = 0x8899aabbccddeeffn;
+  straddle.Pad2 = 0xffffffffffffffffn;
+  straddle.Pad3 = 0n;
+  straddle.Pad4 = 0x123456789abcdef0n;
+  straddle.Pad5 = 0xabcdef;
+  straddle.Inner.A = 0x11111;
+  straddle.Inner.B = 0x22222;
+  straddle.Inner.C = 0x33333;
+
+  const shapes = [
+    ["Vec2", vec2],
+    ["SpanF64", spanF64],
+    ["SpanU64", spanU64],
+    ["SpanI64", spanI64],
+    ["SpanOne", spanOne],
+    ["SpanChunk", spanChunk],
+    ["SpanTail", spanTail],
+    ["SpanTwice", spanTwice],
+    ["Trio", trio],
+    ["TrioSole", trioSole],
+    ["TrioFirst", trioFirst],
+    ["TrioStraddle", straddle],
+  ];
+
+  const ws = newWriteStream();
+  for (const [name, inp] of shapes) {
+    check(dg[`Write${name}`](ws, inp), `write ${name}`);
+  }
+  check(ws.bitsProcessed() === 128 + 128 + 128 + 128 + 64 + 64 + 160 + 256 + 64 + 64 + 80 + 408,
+    "the twelve degenerate shapes ride their declared widths and nothing more");
+  ws.flush();
+  goldenWire("degenerate", ws.data());
+
+  const rs = new ReadStream(ws.data());
+  for (const [name, inp] of shapes) {
+    const out = new dg[name]();
+    check(dg[`Read${name}`](rs, out), `read ${name}`);
+    check(deepEqual(out, inp), `${name} round-trips`);
+  }
+
+  // and every shape through the flat tier, held to the runtime tier's bytes
+  for (const [name, inp] of shapes) {
+    flatCross(`flat ${name.toLowerCase()}`, dg, degenerateFlat, name, inp, null);
+  }
 }
 
 if (failed) {

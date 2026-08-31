@@ -804,6 +804,98 @@ defmodule SchemaTestElixir do
 
     check(Realworld.RealWorld.measure_real_packet(real) == 1629, "RealPacket is 1629 bits")
 
+    # ---- Degenerate.schema: the degenerate arrangements (issue #203) ----
+    #
+    # Twelve shapes in the C++ test's order against the one C++-pinned
+    # golden. This emitter returns a whole message as a binary rather than
+    # appending to a bit stream, so the leg CONCATENATES its twelve binaries
+    # — which equals what the stream legs write because every type in that
+    # file is a whole number of bytes wide. A fixed scalar array whose
+    # elements an emitter places TWICE is invisible to a same-language round
+    # trip; only this compare against another language's bytes names it.
+    dg = Example.Degenerate
+
+    degenerate_shapes = [
+      {"Vec2", %Example.Vec2{x: 1.5, y: -2.25}, 16, &dg.write_vec2/1, &dg.read_vec2/2,
+       &dg.measure_vec2/1},
+      {"SpanF64", %Example.SpanF64{values: [3.5, -4.75]}, 16, &dg.write_span_f64/1,
+       &dg.read_span_f64/2, &dg.measure_span_f64/1},
+      {"SpanU64", %Example.SpanU64{values: [0xDEADBEEFCAFEBABE, 1]}, 16, &dg.write_span_u64/1,
+       &dg.read_span_u64/2, &dg.measure_span_u64/1},
+      {"SpanI64", %Example.SpanI64{values: [-1_234_567_890_123, 42]}, 16, &dg.write_span_i64/1,
+       &dg.read_span_i64/2, &dg.measure_span_i64/1},
+      {"SpanOne", %Example.SpanOne{values: [0x0123456789ABCDEF]}, 8, &dg.write_span_one/1,
+       &dg.read_span_one/2, &dg.measure_span_one/1},
+      {"SpanChunk", %Example.SpanChunk{values: [0x1111, 0x2222, 0x3333, 0x4444]}, 8,
+       &dg.write_span_chunk/1, &dg.read_span_chunk/2, &dg.measure_span_chunk/1},
+      {"SpanTail", %Example.SpanTail{values: [6.125, -7.0], tail: 0xFEEDFACE}, 20,
+       &dg.write_span_tail/1, &dg.read_span_tail/2, &dg.measure_span_tail/1},
+      {"SpanTwice", %Example.SpanTwice{a: [8.5, 9.5], b: [-10.5, -11.5]}, 32,
+       &dg.write_span_twice/1, &dg.read_span_twice/2, &dg.measure_span_twice/1},
+      {"Trio", %Example.Trio{a: 0xABCDE, b: 0x12345, c: 0xFFFFF}, 8, &dg.write_trio/1,
+       &dg.read_trio/2, &dg.measure_trio/1},
+      {"TrioSole", %Example.TrioSole{inner: %Example.Trio{a: 1, b: 2, c: 3}}, 8,
+       &dg.write_trio_sole/1, &dg.read_trio_sole/2, &dg.measure_trio_sole/1},
+      {"TrioFirst",
+       %Example.TrioFirst{
+         inner: %Example.Trio{a: 0xAAAAA, b: 0x55555, c: 0xF0F0F},
+         trailer: 0xBEEF
+       }, 10, &dg.write_trio_first/1, &dg.read_trio_first/2, &dg.measure_trio_first/1},
+      {"TrioStraddle",
+       %Example.TrioStraddle{
+         pad0: 0x0011223344556677,
+         pad1: 0x8899AABBCCDDEEFF,
+         pad2: 0xFFFFFFFFFFFFFFFF,
+         pad3: 0,
+         pad4: 0x123456789ABCDEF0,
+         pad5: 0xABCDEF,
+         inner: %Example.Trio{a: 0x11111, b: 0x22222, c: 0x33333}
+       }, 51, &dg.write_trio_straddle/1, &dg.read_trio_straddle/2, &dg.measure_trio_straddle/1}
+    ]
+
+    degenerate_wire =
+      degenerate_shapes
+      |> Enum.map(fn {name, value, bytes, write, _read, measure} ->
+        part = write.(value)
+
+        check(
+          byte_size(part) == bytes,
+          "#{name}: wrote #{byte_size(part)} bytes, expected #{bytes}"
+        )
+
+        check(div(measure.(value) + 7, 8) == byte_size(part), "#{name}: measure vs bytes written")
+        part
+      end)
+      |> IO.iodata_to_binary()
+
+    check(
+      byte_size(degenerate_wire) * 8 ==
+        128 + 128 + 128 + 128 + 64 + 64 + 160 + 256 + 64 + 64 + 80 + 408,
+      "the twelve degenerate shapes ride their declared widths and nothing more"
+    )
+
+    check(
+      degenerate_wire == golden("degenerate"),
+      "degenerate: Elixir bytes == the C++-pinned bytes"
+    )
+
+    # and each shape reads back out of its own slice of the golden
+    rest =
+      Enum.reduce(degenerate_shapes, golden("degenerate"), fn {name, value, bytes, _write, read,
+                                                               _measure},
+                                                              acc ->
+        <<slice::binary-size(^bytes), tail::binary>> = acc
+
+        case read.(slice, bytes * 8) do
+          {:ok, out} -> check(out == value, "#{name} round-trips")
+          :error -> check(false, "read #{name}")
+        end
+
+        tail
+      end)
+
+    check(rest == <<>>, "the twelve reads consume the whole golden")
+
     if Process.get(:schema_test_failed, false) do
       System.halt(1)
     end

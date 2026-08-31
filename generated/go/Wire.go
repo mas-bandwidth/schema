@@ -2,11 +2,12 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package example — protocol id 0x0bde7acdd36abc6a
+// package example — protocol id 0xa89dd9e036603208
 
 package example
 
 import (
+	"math"
 	"strconv"
 
 	"github.com/mas-bandwidth/serialize.go"
@@ -109,13 +110,11 @@ const ProbeHeaderMaxBytes = 16
 
 func WriteProbeHeader(stream *serialize.WriteStream, value *ProbeHeader) error {
 	{
-		constValue := uint32(171)
-		stream.SerializeBits(&constValue, 8) // const(171, 8) — SPEC §4.3
-	}
-	stream.SerializeBits(&value.Version, 3)
-	{
-		reservedValue := uint32(0)
-		stream.SerializeBits(&reservedValue, 5) // reserved(5) — zeros on the wire
+		f0 := (uint64(171)) & 0xff // const(171, 8) — SPEC §4.3
+		f1 := (uint64(value.Version)) & 0x7
+		f2 := (uint64(0)) & 0x1f // reserved(5) — zeros on the wire
+		w0 := uint32(f0 | (f1 << 8) | (f2 << 11))
+		stream.SerializeBits(&w0, 16)
 	}
 	stream.SerializeAlign()
 	stream.SerializeBits64(&value.ProbeId, 64)
@@ -124,23 +123,20 @@ func WriteProbeHeader(stream *serialize.WriteStream, value *ProbeHeader) error {
 
 func ReadProbeHeader(stream *serialize.ReadStream, value *ProbeHeader) error {
 	{
-		constValue := uint32(0)
-		stream.SerializeBits(&constValue, 8)
+		n0 := uint32(0)
+		stream.SerializeBits(&n0, 16)
+		c0 := uint64(n0)
 		if stream.Err() != nil {
 			return stream.Err()
 		}
-		if constValue != 171 { // const(171, 8): a read rejects any other value (SPEC §4.3)
+		v0 := c0 & 0xff
+		if v0 != 171 { // const(171, 8): a read rejects any other value (SPEC §4.3)
 			return ErrValidation
 		}
-	}
-	stream.SerializeBits(&value.Version, 3)
-	{
-		reservedValue := uint32(0)
-		stream.SerializeBits(&reservedValue, 5)
-		if stream.Err() != nil {
-			return stream.Err()
-		}
-		if reservedValue != 0 { // reserved(5): a read rejects nonzero (SPEC §4.3)
+		v1 := (c0 >> 8) & 0x7
+		value.Version = uint32(v1)
+		v2 := (c0 >> 11) & 0x1f
+		if v2 != 0 { // reserved(5): a read rejects nonzero (SPEC §4.3)
 			return ErrValidation
 		}
 	}
@@ -164,39 +160,52 @@ const ProbeBitsMaxBits = 202
 const ProbeBitsMaxBytes = 32
 
 func WriteProbeBits(stream *serialize.WriteStream, value *ProbeBits) error {
-	stream.SerializeBits(&value.Small, 9)
-	stream.SerializeBits64(&value.Boundary, 33)
-	stream.SerializeBits64(&value.Wide, 64)
 	{
-		rangeValue := int64(value.Sensor)
-		if rangeValue < 0 || rangeValue > 4294967295 {
+		rangeValue3 := int64(value.Sensor)
+		if rangeValue3 < 0 || rangeValue3 > 4294967295 {
 			return serialize.ErrValueOutOfRange
 		}
-		{
-			offsetValue := uint32(uint64(rangeValue))
-			stream.SerializeBits(&offsetValue, 32)
-		}
-	}
-	{
-		offsetValue := value.Nonce
-		stream.SerializeBits64(&offsetValue, 64)
+		f0 := (uint64(value.Small)) & 0x1ff
+		f1 := (uint64(value.Boundary)) & 0x1ffffffff
+		f2 := uint64(value.Wide)
+		f3 := (uint64(rangeValue3)) & 0xffffffff
+		f4 := value.Nonce
+		w0 := f0 | (f1 << 9) | (f2 << 42)
+		stream.SerializeBits64(&w0, 64)
+		w1 := (f2 >> 22) | (f3 << 42)
+		stream.SerializeBits64(&w1, 64)
+		w2 := (f3 >> 22) | (f4 << 10)
+		stream.SerializeBits64(&w2, 64)
+		w3 := uint32((f4 >> 54))
+		stream.SerializeBits(&w3, 10)
 	}
 	return stream.Err()
 }
 
 func ReadProbeBits(stream *serialize.ReadStream, value *ProbeBits) error {
-	stream.SerializeBits(&value.Small, 9)
-	stream.SerializeBits64(&value.Boundary, 33)
-	stream.SerializeBits64(&value.Wide, 64)
 	{
-		rangeValue := int64(0)
-		stream.SerializeInt64(&rangeValue, 0, 4294967295)
-		value.Sensor = uint32(rangeValue)
-	}
-	{
-		offsetValue := uint64(0)
-		stream.SerializeBits64(&offsetValue, 64)
-		value.Nonce = offsetValue
+		c0 := uint64(0)
+		stream.SerializeBits64(&c0, 64)
+		c1 := uint64(0)
+		stream.SerializeBits64(&c1, 64)
+		c2 := uint64(0)
+		stream.SerializeBits64(&c2, 64)
+		n3 := uint32(0)
+		stream.SerializeBits(&n3, 10)
+		c3 := uint64(n3)
+		if stream.Err() != nil {
+			return stream.Err()
+		}
+		v0 := c0 & 0x1ff
+		value.Small = uint32(v0)
+		v1 := (c0 >> 9) & 0x1ffffffff
+		value.Boundary = v1
+		v2 := (c0 >> 42) | (c1 << 22)
+		value.Wide = v2
+		v3 := ((c1 >> 42) | (c2 << 22)) & 0xffffffff
+		value.Sensor = uint32(int64(v3))
+		v4 := (c2 >> 10) | (c3 << 54)
+		value.Nonce = v4
 	}
 	return stream.Err()
 }
@@ -240,37 +249,42 @@ const ProbeSampleMaxBits = 276
 const ProbeSampleMaxBytes = 40
 
 func WriteProbeSample(stream *serialize.WriteStream, value *ProbeSample) error {
-	stream.SerializeBool(&value.Active)
 	{
-		normalizedValue := (value.Orientation - (-180.0)) / 360.0
-		if !(normalizedValue >= 0) { // the runtime's clamp form — it forces NaN into range too
-			normalizedValue = 0
-		} else if !(normalizedValue <= 1) {
-			normalizedValue = 1
+		f0 := uint64(0)
+		if value.Active {
+			f0 = 1
 		}
-		integerValue := uint32(float32(normalizedValue*36000.0) + 0.5)
-		stream.SerializeBits(&integerValue, 16)
-	}
-	{
-		rawValue := uint32(value.RawDelta)
-		stream.SerializeBits(&rawValue, 32)
-	}
-	{
-		rawValue := uint64(value.BigDelta)
-		stream.SerializeBits64(&rawValue, 64)
+		f1 := uint64(0)
+		{
+			normalizedValue := (value.Orientation - (-180.0)) / 360.0
+			if !(normalizedValue >= 0) { // the runtime's clamp form — it forces NaN into range too
+				normalizedValue = 0
+			} else if !(normalizedValue <= 1) {
+				normalizedValue = 1
+			}
+			f1 = (uint64(uint32(float32(normalizedValue*36000.0) + 0.5))) & 0xffff
+		}
+		f2 := (uint64(uint32(value.RawDelta))) & 0xffffffff
+		f3 := uint64(value.BigDelta)
+		w0 := f0 | (f1 << 1) | (f2 << 17) | (f3 << 49)
+		stream.SerializeBits64(&w0, 64)
+		w1 := (f3 >> 15)
+		stream.SerializeBits64(&w1, 49)
 	}
 	if value.Active {
 		{
-			enumValue := int32(value.Weapon)
-			if enumValue < 0 || enumValue > 15 {
+			enumValue0 := int32(value.Weapon)
+			if enumValue0 < 0 || enumValue0 > 15 {
 				return serialize.ErrValueOutOfRange
 			}
-			{
-				offsetValue := uint32(enumValue)
-				stream.SerializeBits(&offsetValue, 4)
+			f0 := (uint64(uint32(enumValue0))) & 0xf
+			f1 := uint64(0)
+			if value.HasTarget {
+				f1 = 1
 			}
+			w0 := uint32(f0 | (f1 << 4))
+			stream.SerializeBits(&w0, 5)
 		}
-		stream.SerializeBool(&value.HasTarget)
 		if value.HasTarget {
 			{
 				rawValue := uint32(value.TargetId)
@@ -300,36 +314,42 @@ func WriteProbeSample(stream *serialize.WriteStream, value *ProbeSample) error {
 }
 
 func ReadProbeSample(stream *serialize.ReadStream, value *ProbeSample) error {
-	stream.SerializeBool(&value.Active)
 	{
-		integerValue := uint32(0)
-		stream.SerializeBits(&integerValue, 16)
+		c0 := uint64(0)
+		stream.SerializeBits64(&c0, 64)
+		c1 := uint64(0)
+		stream.SerializeBits64(&c1, 49)
 		if stream.Err() != nil {
 			return stream.Err()
 		}
-		if integerValue > 36000 { // a value smuggled into the bit headroom is refused (SPEC §4.3)
+		v0 := c0 & 0x1
+		value.Active = v0 != 0
+		v1 := (c0 >> 1) & 0xffff
+		if v1 > 36000 { // a value smuggled into the bit headroom is refused (SPEC §4.3)
 			return ErrValidation
 		}
-		normalizedValue := float32(integerValue) / 36000.0
-		value.Orientation = float32(normalizedValue*360.0) + (-180.0)
-	}
-	{
-		rawValue := uint32(0)
-		stream.SerializeBits(&rawValue, 32)
-		value.RawDelta = int32(rawValue)
-	}
-	{
-		rawValue := uint64(0)
-		stream.SerializeBits64(&rawValue, 64)
-		value.BigDelta = int64(rawValue)
+		{
+			normalizedValue := float32(v1) / 36000.0
+			value.Orientation = float32(normalizedValue*360.0) + (-180.0)
+		}
+		v2 := (c0 >> 17) & 0xffffffff
+		value.RawDelta = int32(v2)
+		v3 := (c0 >> 49) | (c1 << 15)
+		value.BigDelta = int64(v3)
 	}
 	if value.Active {
 		{
-			enumValue := int32(0)
-			stream.SerializeInt(&enumValue, 0, 15)
-			value.Weapon = Weapon(enumValue)
+			n0 := uint32(0)
+			stream.SerializeBits(&n0, 5)
+			c0 := uint64(n0)
+			if stream.Err() != nil {
+				return stream.Err()
+			}
+			v0 := c0 & 0xf
+			value.Weapon = Weapon(int32(v0))
+			v1 := (c0 >> 4) & 0x1
+			value.HasTarget = v1 != 0
 		}
-		stream.SerializeBool(&value.HasTarget)
 		if value.HasTarget {
 			{
 				rawValue := uint32(0)
@@ -346,9 +366,14 @@ func ReadProbeSample(stream *serialize.ReadStream, value *ProbeSample) error {
 		value.HasTarget = false
 		value.TargetId = 0
 	}
-	stream.SerializeInt(&value.SamplesCount, 1, 8)
-	if stream.Err() != nil { // the count guards the loop (§6.3)
-		return stream.Err()
+	{
+		offsetValue := uint32(0)
+		stream.SerializeBits(&offsetValue, 3)
+		if stream.Err() != nil {
+			return stream.Err()
+		}
+		lowValue := int32(1)
+		value.SamplesCount = int32(offsetValue + uint32(lowValue))
 	}
 	for i := int32(0); i < value.SamplesCount; i++ {
 		{
@@ -400,32 +425,33 @@ const ProbeSlabMaxBytes = 8
 
 func WriteProbeSlab(stream *serialize.WriteStream, value *ProbeSlab) error {
 	{
-		rangeValue := int32(value.Width)
-		if rangeValue < 0 || rangeValue > 100 {
+		rangeValue0 := int32(value.Width)
+		if rangeValue0 < 0 || rangeValue0 > 100 {
 			return serialize.ErrValueOutOfRange
 		}
-		{
-			offsetValue := uint32(rangeValue)
-			stream.SerializeBits(&offsetValue, 7)
-		}
-	}
-	{
-		rawValue := uint32(value.Height)
-		stream.SerializeBits(&rawValue, 8)
+		f0 := (uint64(uint32(rangeValue0))) & 0x7f
+		f1 := (uint64(value.Height)) & 0xff
+		w0 := uint32(f0 | (f1 << 7))
+		stream.SerializeBits(&w0, 15)
 	}
 	return stream.Err()
 }
 
 func ReadProbeSlab(stream *serialize.ReadStream, value *ProbeSlab) error {
 	{
-		rangeValue := int32(0)
-		stream.SerializeInt(&rangeValue, 0, 100)
-		value.Width = uint8(rangeValue)
-	}
-	{
-		rawValue := uint32(0)
-		stream.SerializeBits(&rawValue, 8)
-		value.Height = uint8(rawValue)
+		n0 := uint32(0)
+		stream.SerializeBits(&n0, 15)
+		c0 := uint64(n0)
+		if stream.Err() != nil {
+			return stream.Err()
+		}
+		v0 := c0 & 0x7f
+		if v0 > 100 { // a value smuggled into the bit headroom is refused (SPEC §4.3)
+			return serialize.ErrValueOutOfRange
+		}
+		value.Width = uint8(int32(v0))
+		v1 := (c0 >> 7) & 0xff
+		value.Height = uint8(v1)
 	}
 	return stream.Err()
 }
@@ -474,12 +500,17 @@ func WriteProbeShape(stream *serialize.WriteStream, value *ProbeShape) error {
 }
 
 func ReadProbeShape(stream *serialize.ReadStream, value *ProbeShape) error {
-	tagValue := int32(0)
-	stream.SerializeInt(&tagValue, 0, 2) // rejects a tag above the count (SPEC §4.8)
-	if stream.Err() != nil {
-		return stream.Err()
+	{
+		offsetValue := uint32(0)
+		stream.SerializeBits(&offsetValue, 2)
+		if stream.Err() != nil {
+			return stream.Err()
+		}
+		if offsetValue > 2 { // a value smuggled into the bit headroom is refused (SPEC §4.3)
+			return serialize.ErrValueOutOfRange
+		}
+		value.Type = ProbeShapeType(int32(offsetValue))
 	}
-	value.Type = ProbeShapeType(tagValue)
 	switch value.Type {
 	case ProbeShapeTypeRing:
 		value.Ring = ProbeRing{} // the selected arm starts from the zero form (SPEC §5)
@@ -546,9 +577,16 @@ func ReadProbeCollider(stream *serialize.ReadStream, value *ProbeCollider) error
 	if err := ReadProbeShape(stream, &value.Backup); err != nil {
 		return err
 	}
-	stream.SerializeInt(&value.ExtrasCount, 0, 2)
-	if stream.Err() != nil { // the count guards the loop (§6.3)
-		return stream.Err()
+	{
+		offsetValue := uint32(0)
+		stream.SerializeBits(&offsetValue, 2)
+		if stream.Err() != nil {
+			return stream.Err()
+		}
+		if offsetValue > 2 { // a value smuggled into the bit headroom is refused (SPEC §4.3)
+			return serialize.ErrValueOutOfRange
+		}
+		value.ExtrasCount = int32(offsetValue)
 	}
 	for i := int32(0); i < value.ExtrasCount; i++ {
 		if err := ReadProbeShape(stream, &value.Extras[i]); err != nil {
@@ -581,32 +619,29 @@ const ProbeConfigMaxBytes = 8
 
 func WriteProbeConfig(stream *serialize.WriteStream, value *ProbeConfig) error {
 	{
-		rawValue := uint32(value.Retries)
-		stream.SerializeBits(&rawValue, 32)
-	}
-	{
-		enumValue := int32(value.Preferred)
-		if enumValue < 0 || enumValue > 15 {
+		enumValue1 := int32(value.Preferred)
+		if enumValue1 < 0 || enumValue1 > 15 {
 			return serialize.ErrValueOutOfRange
 		}
-		{
-			offsetValue := uint32(enumValue)
-			stream.SerializeBits(&offsetValue, 4)
-		}
+		f0 := (uint64(uint32(value.Retries))) & 0xffffffff
+		f1 := (uint64(uint32(enumValue1))) & 0xf
+		w0 := f0 | (f1 << 32)
+		stream.SerializeBits64(&w0, 36)
 	}
 	return stream.Err()
 }
 
 func ReadProbeConfig(stream *serialize.ReadStream, value *ProbeConfig) error {
 	{
-		rawValue := uint32(0)
-		stream.SerializeBits(&rawValue, 32)
-		value.Retries = int32(rawValue)
-	}
-	{
-		enumValue := int32(0)
-		stream.SerializeInt(&enumValue, 0, 15)
-		value.Preferred = Weapon(enumValue)
+		c0 := uint64(0)
+		stream.SerializeBits64(&c0, 36)
+		if stream.Err() != nil {
+			return stream.Err()
+		}
+		v0 := c0 & 0xffffffff
+		value.Retries = int32(v0)
+		v1 := (c0 >> 32) & 0xf
+		value.Preferred = Weapon(int32(v1))
 	}
 	return stream.Err()
 }
@@ -635,25 +670,40 @@ const ProbeArrayMaxBits = 588
 const ProbeArrayMaxBytes = 80
 
 func WriteProbeArray(stream *serialize.WriteStream, value *ProbeArray) error {
-	for i := 0; i < 2; i++ {
+	for i := int(0); i < 2; i++ {
 		if err := WriteProbeSample(stream, &value.Samples[i]); err != nil {
 			return err
 		}
 	}
-	if err := WriteProbeConfig(stream, &value.Config); err != nil {
-		return err
+	{
+		enumValue1 := int32(value.Config.Preferred)
+		if enumValue1 < 0 || enumValue1 > 15 {
+			return serialize.ErrValueOutOfRange
+		}
+		f0 := (uint64(uint32(value.Config.Retries))) & 0xffffffff
+		f1 := (uint64(uint32(enumValue1))) & 0xf
+		w0 := f0 | (f1 << 32)
+		stream.SerializeBits64(&w0, 36)
 	}
 	return stream.Err()
 }
 
 func ReadProbeArray(stream *serialize.ReadStream, value *ProbeArray) error {
-	for i := 0; i < 2; i++ {
+	for i := int(0); i < 2; i++ {
 		if err := ReadProbeSample(stream, &value.Samples[i]); err != nil {
 			return err
 		}
 	}
-	if err := ReadProbeConfig(stream, &value.Config); err != nil {
-		return err
+	{
+		c0 := uint64(0)
+		stream.SerializeBits64(&c0, 36)
+		if stream.Err() != nil {
+			return stream.Err()
+		}
+		v0 := c0 & 0xffffffff
+		value.Config.Retries = int32(v0)
+		v1 := (c0 >> 32) & 0xf
+		value.Config.Preferred = Weapon(int32(v1))
 	}
 	return stream.Err()
 }
@@ -692,62 +742,52 @@ const TestMaxBytes = 8
 
 func WriteTest(stream *serialize.WriteStream, value *Test) error {
 	{
-		rawValue := uint32(value.TestA)
-		stream.SerializeBits(&rawValue, 16)
-	}
-	{
-		rangeValue := int32(value.TestB)
-		if rangeValue < 0 || rangeValue > 1000 {
+		rangeValue1 := int32(value.TestB)
+		if rangeValue1 < 0 || rangeValue1 > 1000 {
 			return serialize.ErrValueOutOfRange
 		}
-		{
-			offsetValue := uint32(rangeValue)
-			stream.SerializeBits(&offsetValue, 10)
-		}
-	}
-	{
-		rangeValue := int32(value.TestC)
-		if rangeValue < 0 || rangeValue > 1000 {
+		rangeValue2 := int32(value.TestC)
+		if rangeValue2 < 0 || rangeValue2 > 1000 {
 			return serialize.ErrValueOutOfRange
 		}
-		{
-			offsetValue := uint32(rangeValue)
-			stream.SerializeBits(&offsetValue, 10)
-		}
-	}
-	{
-		rangeValue := int32(value.TestD)
-		if rangeValue < 0 || rangeValue > 1000 {
+		rangeValue3 := int32(value.TestD)
+		if rangeValue3 < 0 || rangeValue3 > 1000 {
 			return serialize.ErrValueOutOfRange
 		}
-		{
-			offsetValue := uint32(rangeValue)
-			stream.SerializeBits(&offsetValue, 10)
-		}
+		f0 := (uint64(value.TestA)) & 0xffff
+		f1 := (uint64(uint32(rangeValue1))) & 0x3ff
+		f2 := (uint64(uint32(rangeValue2))) & 0x3ff
+		f3 := (uint64(uint32(rangeValue3))) & 0x3ff
+		w0 := f0 | (f1 << 16) | (f2 << 26) | (f3 << 36)
+		stream.SerializeBits64(&w0, 46)
 	}
 	return stream.Err()
 }
 
 func ReadTest(stream *serialize.ReadStream, value *Test) error {
 	{
-		rawValue := uint32(0)
-		stream.SerializeBits(&rawValue, 16)
-		value.TestA = uint16(rawValue)
-	}
-	{
-		rangeValue := int32(0)
-		stream.SerializeInt(&rangeValue, 0, 1000)
-		value.TestB = int16(rangeValue)
-	}
-	{
-		rangeValue := int32(0)
-		stream.SerializeInt(&rangeValue, 0, 1000)
-		value.TestC = int16(rangeValue)
-	}
-	{
-		rangeValue := int32(0)
-		stream.SerializeInt(&rangeValue, 0, 1000)
-		value.TestD = int16(rangeValue)
+		c0 := uint64(0)
+		stream.SerializeBits64(&c0, 46)
+		if stream.Err() != nil {
+			return stream.Err()
+		}
+		v0 := c0 & 0xffff
+		value.TestA = uint16(v0)
+		v1 := (c0 >> 16) & 0x3ff
+		if v1 > 1000 { // a value smuggled into the bit headroom is refused (SPEC §4.3)
+			return serialize.ErrValueOutOfRange
+		}
+		value.TestB = int16(int32(v1))
+		v2 := (c0 >> 26) & 0x3ff
+		if v2 > 1000 { // a value smuggled into the bit headroom is refused (SPEC §4.3)
+			return serialize.ErrValueOutOfRange
+		}
+		value.TestC = int16(int32(v2))
+		v3 := (c0 >> 36) & 0x3ff
+		if v3 > 1000 { // a value smuggled into the bit headroom is refused (SPEC §4.3)
+			return serialize.ErrValueOutOfRange
+		}
+		value.TestD = int16(int32(v3))
 	}
 	return stream.Err()
 }
@@ -779,9 +819,16 @@ func WriteBlock(stream *serialize.WriteStream, value *Block) error {
 }
 
 func ReadBlock(stream *serialize.ReadStream, value *Block) error {
-	stream.SerializeInt(&value.DataLength, 0, MaxBlockSize)
-	if stream.Err() != nil { // the length guards the slice (§6.3)
-		return stream.Err()
+	{
+		offsetValue := uint32(0)
+		stream.SerializeBits(&offsetValue, 11)
+		if stream.Err() != nil {
+			return stream.Err()
+		}
+		if offsetValue > 2000 { // a value smuggled into the bit headroom is refused (SPEC §4.3)
+			return serialize.ErrValueOutOfRange
+		}
+		value.DataLength = int32(offsetValue)
 	}
 	stream.SerializeBytes(value.Data[:value.DataLength])
 	return stream.Err()
@@ -814,9 +861,16 @@ func WriteChat(stream *serialize.WriteStream, value *Chat) error {
 }
 
 func ReadChat(stream *serialize.ReadStream, value *Chat) error {
-	stream.SerializeInt(&value.TextLength, 0, MaxChatLength)
-	if stream.Err() != nil { // the length guards the slice (§6.3)
-		return stream.Err()
+	{
+		offsetValue := uint32(0)
+		stream.SerializeBits(&offsetValue, 9)
+		if stream.Err() != nil {
+			return stream.Err()
+		}
+		if offsetValue > 256 { // a value smuggled into the bit headroom is refused (SPEC §4.3)
+			return serialize.ErrValueOutOfRange
+		}
+		value.TextLength = int32(offsetValue)
 	}
 	stream.SerializeBytes(value.Text[:value.TextLength])
 	if stream.Err() != nil {
@@ -846,15 +900,29 @@ func WriteProbeReport(stream *serialize.WriteStream, value *ProbeReport) error {
 	if err := WriteProbeHeader(stream, &value.Header); err != nil {
 		return err
 	}
-	if value.Flags >= 1<<8 { // a mask bit above the wire width cannot ride
-		return serialize.ErrValueOutOfRange
-	}
 	{
-		flagsValue := uint32(value.Flags)
-		stream.SerializeBits(&flagsValue, 8)
-	}
-	if err := WriteTest(stream, &value.Echo); err != nil {
-		return err
+		if value.Flags >= 1<<8 { // a mask bit above the wire width cannot ride
+			return serialize.ErrValueOutOfRange
+		}
+		rangeValue2 := int32(value.Echo.TestB)
+		if rangeValue2 < 0 || rangeValue2 > 1000 {
+			return serialize.ErrValueOutOfRange
+		}
+		rangeValue3 := int32(value.Echo.TestC)
+		if rangeValue3 < 0 || rangeValue3 > 1000 {
+			return serialize.ErrValueOutOfRange
+		}
+		rangeValue4 := int32(value.Echo.TestD)
+		if rangeValue4 < 0 || rangeValue4 > 1000 {
+			return serialize.ErrValueOutOfRange
+		}
+		f0 := (uint64(value.Flags)) & 0xff
+		f1 := (uint64(value.Echo.TestA)) & 0xffff
+		f2 := (uint64(uint32(rangeValue2))) & 0x3ff
+		f3 := (uint64(uint32(rangeValue3))) & 0x3ff
+		f4 := (uint64(uint32(rangeValue4))) & 0x3ff
+		w0 := f0 | (f1 << 8) | (f2 << 24) | (f3 << 34) | (f4 << 44)
+		stream.SerializeBits64(&w0, 54)
 	}
 	return stream.Err()
 }
@@ -864,12 +932,30 @@ func ReadProbeReport(stream *serialize.ReadStream, value *ProbeReport) error {
 		return err
 	}
 	{
-		flagsValue := uint32(0)
-		stream.SerializeBits(&flagsValue, 8)
-		value.Flags = ProbeFlags(flagsValue)
-	}
-	if err := ReadTest(stream, &value.Echo); err != nil {
-		return err
+		c0 := uint64(0)
+		stream.SerializeBits64(&c0, 54)
+		if stream.Err() != nil {
+			return stream.Err()
+		}
+		v0 := c0 & 0xff
+		value.Flags = ProbeFlags(v0)
+		v1 := (c0 >> 8) & 0xffff
+		value.Echo.TestA = uint16(v1)
+		v2 := (c0 >> 24) & 0x3ff
+		if v2 > 1000 { // a value smuggled into the bit headroom is refused (SPEC §4.3)
+			return serialize.ErrValueOutOfRange
+		}
+		value.Echo.TestB = int16(int32(v2))
+		v3 := (c0 >> 34) & 0x3ff
+		if v3 > 1000 { // a value smuggled into the bit headroom is refused (SPEC §4.3)
+			return serialize.ErrValueOutOfRange
+		}
+		value.Echo.TestC = int16(int32(v3))
+		v4 := (c0 >> 44) & 0x3ff
+		if v4 > 1000 { // a value smuggled into the bit headroom is refused (SPEC §4.3)
+			return serialize.ErrValueOutOfRange
+		}
+		value.Echo.TestD = int16(int32(v4))
 	}
 	return stream.Err()
 }
@@ -907,31 +993,29 @@ const TestDataMaxBits = 2735
 const TestDataMaxBytes = 344
 
 func WriteTestData(stream *serialize.WriteStream, value *TestData) error {
-	if value.A < -100 || value.A > 100 {
-		return serialize.ErrValueOutOfRange
-	}
 	{
-		offsetValue := uint32(value.A - (-100))
-		stream.SerializeBits(&offsetValue, 8)
+		if value.A < -100 || value.A > 100 {
+			return serialize.ErrValueOutOfRange
+		}
+		if value.B < -100 || value.B > 100 {
+			return serialize.ErrValueOutOfRange
+		}
+		if value.C < -100 || value.C > 150 {
+			return serialize.ErrValueOutOfRange
+		}
+		f0 := (uint64(uint32(value.A - (-100)))) & 0xff
+		f1 := (uint64(uint32(value.B - (-100)))) & 0xff
+		f2 := (uint64(uint32(value.C - (-100)))) & 0xff
+		f3 := (uint64(value.D)) & 0xff
+		f4 := (uint64(value.E)) & 0xff
+		f5 := (uint64(value.F)) & 0xff
+		f6 := uint64(0)
+		if value.G {
+			f6 = 1
+		}
+		w0 := f0 | (f1 << 8) | (f2 << 16) | (f3 << 24) | (f4 << 32) | (f5 << 40) | (f6 << 48)
+		stream.SerializeBits64(&w0, 49)
 	}
-	if value.B < -100 || value.B > 100 {
-		return serialize.ErrValueOutOfRange
-	}
-	{
-		offsetValue := uint32(value.B - (-100))
-		stream.SerializeBits(&offsetValue, 8)
-	}
-	if value.C < -100 || value.C > 150 {
-		return serialize.ErrValueOutOfRange
-	}
-	{
-		offsetValue := uint32(value.C - (-100))
-		stream.SerializeBits(&offsetValue, 8)
-	}
-	stream.SerializeBits(&value.D, 8)
-	stream.SerializeBits(&value.E, 8)
-	stream.SerializeBits(&value.F, 8)
-	stream.SerializeBool(&value.G)
 	if value.ItemsCount < 0 || value.ItemsCount > 16 {
 		return serialize.ErrValueOutOfRange
 	}
@@ -951,46 +1035,42 @@ func WriteTestData(stream *serialize.WriteStream, value *TestData) error {
 			stream.SerializeBits(&offsetValue, 8)
 		}
 	}
-	stream.SerializeFloat32(&value.FloatValue)
 	{
-		normalizedValue := value.CompressedFloatValue / 10.0
-		if !(normalizedValue >= 0) { // the runtime's clamp form — it forces NaN into range too
-			normalizedValue = 0
-		} else if !(normalizedValue <= 1) {
-			normalizedValue = 1
+		if value.Int64Range < -1000000000000 || value.Int64Range > 1000000000000 {
+			return serialize.ErrValueOutOfRange
 		}
-		integerValue := uint32(float32(normalizedValue*1000.0) + 0.5)
-		stream.SerializeBits(&integerValue, 10)
-	}
-	stream.SerializeFloat64(&value.DoubleValue)
-	{
-		rawValue := uint32(uint8(value.Int8Value))
-		stream.SerializeBits(&rawValue, 8)
-	}
-	{
-		rawValue := uint32(uint16(value.Int16Value))
-		stream.SerializeBits(&rawValue, 16)
-	}
-	{
-		rawValue := uint32(value.Uint8Value)
-		stream.SerializeBits(&rawValue, 8)
-	}
-	{
-		rawValue := uint32(value.Uint16Value)
-		stream.SerializeBits(&rawValue, 16)
-	}
-	stream.SerializeBits(&value.Uint32Value, 32)
-	stream.SerializeBits64(&value.Uint64Value, 64)
-	{
-		rawValue := uint64(value.Int64Full)
-		stream.SerializeBits64(&rawValue, 64)
-	}
-	if value.Int64Range < -1000000000000 || value.Int64Range > 1000000000000 {
-		return serialize.ErrValueOutOfRange
-	}
-	{
-		offsetValue := uint64(value.Int64Range - (-1000000000000))
-		stream.SerializeBits64(&offsetValue, 41)
+		f0 := (uint64(math.Float32bits(value.FloatValue))) & 0xffffffff
+		f1 := uint64(0)
+		{
+			normalizedValue := value.CompressedFloatValue / 10.0
+			if !(normalizedValue >= 0) { // the runtime's clamp form — it forces NaN into range too
+				normalizedValue = 0
+			} else if !(normalizedValue <= 1) {
+				normalizedValue = 1
+			}
+			f1 = (uint64(uint32(float32(normalizedValue*1000.0) + 0.5))) & 0x3ff
+		}
+		f2 := math.Float64bits(value.DoubleValue)
+		f3 := (uint64(uint8(value.Int8Value))) & 0xff
+		f4 := (uint64(uint16(value.Int16Value))) & 0xffff
+		f5 := (uint64(value.Uint8Value)) & 0xff
+		f6 := (uint64(value.Uint16Value)) & 0xffff
+		f7 := (uint64(value.Uint32Value)) & 0xffffffff
+		f8 := value.Uint64Value
+		f9 := uint64(value.Int64Full)
+		f10 := (uint64(value.Int64Range - (-1000000000000))) & 0x1ffffffffff
+		w0 := f0 | (f1 << 32) | (f2 << 42)
+		stream.SerializeBits64(&w0, 64)
+		w1 := (f2 >> 22) | (f3 << 42) | (f4 << 50)
+		stream.SerializeBits64(&w1, 64)
+		w2 := (f4 >> 14) | (f5 << 2) | (f6 << 10) | (f7 << 26) | (f8 << 58)
+		stream.SerializeBits64(&w2, 64)
+		w3 := (f8 >> 6) | (f9 << 58)
+		stream.SerializeBits64(&w3, 64)
+		w4 := (f9 >> 6) | (f10 << 58)
+		stream.SerializeBits64(&w4, 64)
+		w5 := (f10 >> 6)
+		stream.SerializeBits64(&w5, 35)
 	}
 	stream.SerializeAlign()
 	stream.SerializeBytes(value.FixedBytes[:]) // byte-aligned [N]uint8 — bulk copy, wire-identical to the per-byte loop
@@ -1009,67 +1089,126 @@ func WriteTestData(stream *serialize.WriteStream, value *TestData) error {
 }
 
 func ReadTestData(stream *serialize.ReadStream, value *TestData) error {
-	stream.SerializeInt(&value.A, -100, 100)
-	stream.SerializeInt(&value.B, -100, 100)
-	stream.SerializeInt(&value.C, -100, 150)
-	stream.SerializeBits(&value.D, 8)
-	stream.SerializeBits(&value.E, 8)
-	stream.SerializeBits(&value.F, 8)
-	stream.SerializeBool(&value.G)
-	stream.SerializeInt(&value.ItemsCount, 0, 16)
-	if stream.Err() != nil { // the count guards the loop (§6.3)
-		return stream.Err()
-	}
-	for i := int32(0); i < value.ItemsCount; i++ {
-		stream.SerializeInt(&value.Items[i], 0, 255)
-	}
-	stream.SerializeFloat32(&value.FloatValue)
 	{
-		integerValue := uint32(0)
-		stream.SerializeBits(&integerValue, 10)
+		c0 := uint64(0)
+		stream.SerializeBits64(&c0, 49)
 		if stream.Err() != nil {
 			return stream.Err()
 		}
-		if integerValue > 1000 { // a value smuggled into the bit headroom is refused (SPEC §4.3)
+		v0 := c0 & 0xff
+		if v0 > 200 { // a value smuggled into the bit headroom is refused (SPEC §4.3)
+			return serialize.ErrValueOutOfRange
+		}
+		{
+			lowValue := int32(-100)
+			value.A = int32(uint32(v0) + uint32(lowValue))
+		}
+		v1 := (c0 >> 8) & 0xff
+		if v1 > 200 { // a value smuggled into the bit headroom is refused (SPEC §4.3)
+			return serialize.ErrValueOutOfRange
+		}
+		{
+			lowValue := int32(-100)
+			value.B = int32(uint32(v1) + uint32(lowValue))
+		}
+		v2 := (c0 >> 16) & 0xff
+		if v2 > 250 { // a value smuggled into the bit headroom is refused (SPEC §4.3)
+			return serialize.ErrValueOutOfRange
+		}
+		{
+			lowValue := int32(-100)
+			value.C = int32(uint32(v2) + uint32(lowValue))
+		}
+		v3 := (c0 >> 24) & 0xff
+		value.D = uint32(v3)
+		v4 := (c0 >> 32) & 0xff
+		value.E = uint32(v4)
+		v5 := (c0 >> 40) & 0xff
+		value.F = uint32(v5)
+		v6 := (c0 >> 48) & 0x1
+		value.G = v6 != 0
+	}
+	{
+		offsetValue := uint32(0)
+		stream.SerializeBits(&offsetValue, 5)
+		if stream.Err() != nil {
+			return stream.Err()
+		}
+		if offsetValue > 16 { // a value smuggled into the bit headroom is refused (SPEC §4.3)
+			return serialize.ErrValueOutOfRange
+		}
+		value.ItemsCount = int32(offsetValue)
+	}
+	for i := int32(0); i < value.ItemsCount; i++ {
+		{
+			offsetValue := uint32(0)
+			stream.SerializeBits(&offsetValue, 8)
+			if stream.Err() != nil {
+				return stream.Err()
+			}
+			value.Items[i] = int32(offsetValue)
+		}
+	}
+	{
+		c0 := uint64(0)
+		stream.SerializeBits64(&c0, 64)
+		c1 := uint64(0)
+		stream.SerializeBits64(&c1, 64)
+		c2 := uint64(0)
+		stream.SerializeBits64(&c2, 64)
+		c3 := uint64(0)
+		stream.SerializeBits64(&c3, 64)
+		c4 := uint64(0)
+		stream.SerializeBits64(&c4, 64)
+		c5 := uint64(0)
+		stream.SerializeBits64(&c5, 35)
+		if stream.Err() != nil {
+			return stream.Err()
+		}
+		v0 := c0 & 0xffffffff
+		value.FloatValue = math.Float32frombits(uint32(v0))
+		v1 := (c0 >> 32) & 0x3ff
+		if v1 > 1000 { // a value smuggled into the bit headroom is refused (SPEC §4.3)
 			return ErrValidation
 		}
-		normalizedValue := float32(integerValue) / 1000.0
-		value.CompressedFloatValue = float32(normalizedValue * 10.0)
+		{
+			normalizedValue := float32(v1) / 1000.0
+			value.CompressedFloatValue = float32(normalizedValue * 10.0)
+		}
+		v2 := (c0 >> 42) | (c1 << 22)
+		value.DoubleValue = math.Float64frombits(v2)
+		v3 := (c1 >> 42) & 0xff
+		value.Int8Value = int8(uint8(v3))
+		v4 := ((c1 >> 50) | (c2 << 14)) & 0xffff
+		value.Int16Value = int16(uint16(v4))
+		v5 := (c2 >> 2) & 0xff
+		value.Uint8Value = uint8(v5)
+		v6 := (c2 >> 10) & 0xffff
+		value.Uint16Value = uint16(v6)
+		v7 := (c2 >> 26) & 0xffffffff
+		value.Uint32Value = uint32(v7)
+		v8 := (c2 >> 58) | (c3 << 6)
+		value.Uint64Value = v8
+		v9 := (c3 >> 58) | (c4 << 6)
+		value.Int64Full = int64(v9)
+		v10 := ((c4 >> 58) | (c5 << 6)) & 0x1ffffffffff
+		if v10 > 2000000000000 { // a value smuggled into the bit headroom is refused (SPEC §4.3)
+			return serialize.ErrValueOutOfRange
+		}
+		{
+			lowValue := int64(-1000000000000)
+			value.Int64Range = int64(v10 + uint64(lowValue))
+		}
 	}
-	stream.SerializeFloat64(&value.DoubleValue)
-	{
-		rawValue := uint32(0)
-		stream.SerializeBits(&rawValue, 8)
-		value.Int8Value = int8(uint8(rawValue))
-	}
-	{
-		rawValue := uint32(0)
-		stream.SerializeBits(&rawValue, 16)
-		value.Int16Value = int16(uint16(rawValue))
-	}
-	{
-		rawValue := uint32(0)
-		stream.SerializeBits(&rawValue, 8)
-		value.Uint8Value = uint8(rawValue)
-	}
-	{
-		rawValue := uint32(0)
-		stream.SerializeBits(&rawValue, 16)
-		value.Uint16Value = uint16(rawValue)
-	}
-	stream.SerializeBits(&value.Uint32Value, 32)
-	stream.SerializeBits64(&value.Uint64Value, 64)
-	{
-		rawValue := uint64(0)
-		stream.SerializeBits64(&rawValue, 64)
-		value.Int64Full = int64(rawValue)
-	}
-	stream.SerializeInt64(&value.Int64Range, -1000000000000, 1000000000000)
 	stream.SerializeAlign()                    // rejects nonzero padding (SPEC §4.3)
 	stream.SerializeBytes(value.FixedBytes[:]) // byte-aligned [N]uint8 — bulk copy, wire-identical to the per-byte loop
-	stream.SerializeInt(&value.TextLength, 0, 255)
-	if stream.Err() != nil { // the length guards the slice (§6.3)
-		return stream.Err()
+	{
+		offsetValue := uint32(0)
+		stream.SerializeBits(&offsetValue, 8)
+		if stream.Err() != nil {
+			return stream.Err()
+		}
+		value.TextLength = int32(offsetValue)
 	}
 	stream.SerializeBytes(value.Text[:value.TextLength])
 	if stream.Err() != nil {
@@ -1096,52 +1235,56 @@ const CompressedProbeMaxBytes = 8
 
 func WriteCompressedProbe(stream *serialize.WriteStream, value *CompressedProbe) error {
 	{
-		normalizedValue := value.Boundary / 10.0
-		if !(normalizedValue >= 0) { // the runtime's clamp form — it forces NaN into range too
-			normalizedValue = 0
-		} else if !(normalizedValue <= 1) {
-			normalizedValue = 1
+		f0 := uint64(0)
+		{
+			normalizedValue := value.Boundary / 10.0
+			if !(normalizedValue >= 0) { // the runtime's clamp form — it forces NaN into range too
+				normalizedValue = 0
+			} else if !(normalizedValue <= 1) {
+				normalizedValue = 1
+			}
+			f0 = (uint64(uint32(float32(normalizedValue*1000.0) + 0.5))) & 0x3ff
 		}
-		integerValue := uint32(float32(normalizedValue*1000.0) + 0.5)
-		stream.SerializeBits(&integerValue, 10)
-	}
-	{
-		normalizedValue := (value.Offset - (-5.0)) / 10.0
-		if !(normalizedValue >= 0) { // the runtime's clamp form — it forces NaN into range too
-			normalizedValue = 0
-		} else if !(normalizedValue <= 1) {
-			normalizedValue = 1
+		f1 := uint64(0)
+		{
+			normalizedValue := (value.Offset - (-5.0)) / 10.0
+			if !(normalizedValue >= 0) { // the runtime's clamp form — it forces NaN into range too
+				normalizedValue = 0
+			} else if !(normalizedValue <= 1) {
+				normalizedValue = 1
+			}
+			f1 = (uint64(uint32(float32(normalizedValue*10000.0) + 0.5))) & 0x3fff
 		}
-		integerValue := uint32(float32(normalizedValue*10000.0) + 0.5)
-		stream.SerializeBits(&integerValue, 14)
+		w0 := uint32(f0 | (f1 << 10))
+		stream.SerializeBits(&w0, 24)
 	}
 	return stream.Err()
 }
 
 func ReadCompressedProbe(stream *serialize.ReadStream, value *CompressedProbe) error {
 	{
-		integerValue := uint32(0)
-		stream.SerializeBits(&integerValue, 10)
+		n0 := uint32(0)
+		stream.SerializeBits(&n0, 24)
+		c0 := uint64(n0)
 		if stream.Err() != nil {
 			return stream.Err()
 		}
-		if integerValue > 1000 { // a value smuggled into the bit headroom is refused (SPEC §4.3)
+		v0 := c0 & 0x3ff
+		if v0 > 1000 { // a value smuggled into the bit headroom is refused (SPEC §4.3)
 			return ErrValidation
 		}
-		normalizedValue := float32(integerValue) / 1000.0
-		value.Boundary = float32(normalizedValue * 10.0)
-	}
-	{
-		integerValue := uint32(0)
-		stream.SerializeBits(&integerValue, 14)
-		if stream.Err() != nil {
-			return stream.Err()
+		{
+			normalizedValue := float32(v0) / 1000.0
+			value.Boundary = float32(normalizedValue * 10.0)
 		}
-		if integerValue > 10000 { // a value smuggled into the bit headroom is refused (SPEC §4.3)
+		v1 := (c0 >> 10) & 0x3fff
+		if v1 > 10000 { // a value smuggled into the bit headroom is refused (SPEC §4.3)
 			return ErrValidation
 		}
-		normalizedValue := float32(integerValue) / 10000.0
-		value.Offset = float32(normalizedValue*10.0) + (-5.0)
+		{
+			normalizedValue := float32(v1) / 10000.0
+			value.Offset = float32(normalizedValue*10.0) + (-5.0)
+		}
 	}
 	return stream.Err()
 }

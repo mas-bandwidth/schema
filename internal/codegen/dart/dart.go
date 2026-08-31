@@ -331,12 +331,22 @@ func (g *gen) writeImport(h *strings.Builder, base string, syms []string) {
 // emitHelpers writes the per-file private helpers the emitted bodies used.
 func (g *gen) emitHelpers(h *strings.Builder) {
 	if g.needScratch {
+		// One view per conversion actually emitted: `dart analyze` refuses an
+		// unreferenced private declaration, so a file that converts only
+		// float64 must not carry the float32 view (and the corpus had no such
+		// file until Degenerate.schema). _f32 owns the buffer, so it is
+		// referenced whenever any view is.
 		h.WriteString("// One 8-byte conversion scratch under overlaid typed-data views — single\n")
 		h.WriteString("// threaded per isolate, always consumed in the same operation that fills it.\n")
 		h.WriteString("final Float32List _f32 = Float32List(2);\n")
-		h.WriteString("final Uint32List _u32 = _f32.buffer.asUint32List();\n")
-		h.WriteString("final Float64List _f64 = _f32.buffer.asFloat64List();\n")
-		h.WriteString("final Uint64List _u64 = _f32.buffer.asUint64List();\n\n")
+		if g.needF32Conv {
+			h.WriteString("final Uint32List _u32 = _f32.buffer.asUint32List();\n")
+		}
+		if g.needF32Conv || g.needF64Conv {
+			h.WriteString("final Float64List _f64 = _f32.buffer.asFloat64List();\n")
+			h.WriteString("final Uint64List _u64 = _f32.buffer.asUint64List();\n")
+		}
+		h.WriteString("\n")
 	}
 	if g.needFround {
 		h.WriteString("// value rounded to the nearest float32, as a double: the float32 rounding\n")

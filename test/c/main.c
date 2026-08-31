@@ -10,6 +10,7 @@
 #include <stdio.h>
 #include <string.h>
 
+#include "DegenerateWire.h"
 #include "TypesWire.h"
 #include "EnumsWire.h"
 #include "WireWire.h"
@@ -506,6 +507,133 @@ int main( void )
         check( strcmp( flag_names_ship_flags( 0, buffer, sizeof( buffer ) ), "0" ) == 0, "flag_names renders the empty set as 0" );
         check( strcmp( flag_names_ship_flags( SHIP_FLAGS_FIRING_LASER | SHIP_FLAGS_BRAKING, buffer, sizeof( buffer ) ), "FiringLaser|Braking" ) == 0, "flag_names renders the set bits" );
         check( strcmp( flag_names_ship_flags( SHIP_FLAGS_AIMING | ( 1ULL << 63 ), buffer, sizeof( buffer ) ), "Aiming|0x8000000000000000" ) == 0, "flag_names renders unknown high bits as hex" );
+    }
+
+    /* ---- Degenerate.schema: the degenerate arrangements (issue #203) ----
+
+       Twelve shapes written back to back into ONE stream against the one
+       C++-pinned golden, in the C++ test's order. A fixed scalar array whose
+       elements an emitter places TWICE is invisible to a same-language round
+       trip; only the byte compare against another language's bytes names it. */
+    {
+        Vec2 vec2; SpanF64 span_f64; SpanU64 span_u64; SpanI64 span_i64;
+        SpanOne span_one; SpanChunk span_chunk; SpanTail span_tail;
+        SpanTwice span_twice; Trio trio; TrioSole trio_sole;
+        TrioFirst trio_first; TrioStraddle straddle;
+        Vec2 r_vec2; SpanF64 r_span_f64; SpanU64 r_span_u64; SpanI64 r_span_i64;
+        SpanOne r_span_one; SpanChunk r_span_chunk; SpanTail r_span_tail;
+        SpanTwice r_span_twice; Trio r_trio; TrioSole r_trio_sole;
+        TrioFirst r_trio_first; TrioStraddle r_straddle;
+
+        memset( &vec2, 0, sizeof( vec2 ) );
+        vec2.x = 1.5; vec2.y = -2.25;
+
+        memset( &span_f64, 0, sizeof( span_f64 ) );
+        span_f64.values[0] = 3.5; span_f64.values[1] = -4.75;
+
+        memset( &span_u64, 0, sizeof( span_u64 ) );
+        span_u64.values[0] = 0xDEADBEEFCAFEBABEULL; span_u64.values[1] = 1;
+
+        memset( &span_i64, 0, sizeof( span_i64 ) );
+        span_i64.values[0] = -1234567890123LL; span_i64.values[1] = 42;
+
+        memset( &span_one, 0, sizeof( span_one ) );
+        span_one.values[0] = 0x0123456789ABCDEFULL;
+
+        memset( &span_chunk, 0, sizeof( span_chunk ) );
+        span_chunk.values[0] = 0x1111; span_chunk.values[1] = 0x2222;
+        span_chunk.values[2] = 0x3333; span_chunk.values[3] = 0x4444;
+
+        memset( &span_tail, 0, sizeof( span_tail ) );
+        span_tail.values[0] = 6.125; span_tail.values[1] = -7.0;
+        span_tail.tail = 0xFEEDFACEu;
+
+        memset( &span_twice, 0, sizeof( span_twice ) );
+        span_twice.a[0] = 8.5; span_twice.a[1] = 9.5;
+        span_twice.b[0] = -10.5; span_twice.b[1] = -11.5;
+
+        memset( &trio, 0, sizeof( trio ) );
+        trio.a = 0xABCDE; trio.b = 0x12345; trio.c = 0xFFFFF;
+
+        memset( &trio_sole, 0, sizeof( trio_sole ) );
+        trio_sole.inner.a = 1; trio_sole.inner.b = 2; trio_sole.inner.c = 3;
+
+        memset( &trio_first, 0, sizeof( trio_first ) );
+        trio_first.inner.a = 0xAAAAA; trio_first.inner.b = 0x55555;
+        trio_first.inner.c = 0xF0F0F; trio_first.trailer = 0xBEEF;
+
+        memset( &straddle, 0, sizeof( straddle ) );
+        straddle.pad0 = 0x0011223344556677ULL;
+        straddle.pad1 = 0x8899AABBCCDDEEFFULL;
+        straddle.pad2 = 0xFFFFFFFFFFFFFFFFULL;
+        straddle.pad3 = 0;
+        straddle.pad4 = 0x123456789ABCDEF0ULL;
+        straddle.pad5 = 0xABCDEFu;
+        straddle.inner.a = 0x11111; straddle.inner.b = 0x22222; straddle.inner.c = 0x33333;
+
+        serialize_write_stream_init( &w, buffer, sizeof( buffer ) );
+        check( write_vec2( &w, &vec2 ), "write Vec2" );
+        check( write_span_f64( &w, &span_f64 ), "write SpanF64" );
+        check( write_span_u64( &w, &span_u64 ), "write SpanU64" );
+        check( write_span_i64( &w, &span_i64 ), "write SpanI64" );
+        check( write_span_one( &w, &span_one ), "write SpanOne" );
+        check( write_span_chunk( &w, &span_chunk ), "write SpanChunk" );
+        check( write_span_tail( &w, &span_tail ), "write SpanTail" );
+        check( write_span_twice( &w, &span_twice ), "write SpanTwice" );
+        check( write_trio( &w, &trio ), "write Trio" );
+        check( write_trio_sole( &w, &trio_sole ), "write TrioSole" );
+        check( write_trio_first( &w, &trio_first ), "write TrioFirst" );
+        check( write_trio_straddle( &w, &straddle ), "write TrioStraddle" );
+        check( serialize_write_bits_processed( &w ) == 128 + 128 + 128 + 128 + 64 + 64 + 160 + 256 + 64 + 64 + 80 + 408,
+               "the twelve degenerate shapes ride their declared widths and nothing more" );
+        serialize_write_flush( &w );
+        golden_wire( "degenerate", buffer, serialize_write_bytes_processed( &w ) );
+
+        /* dirty every read target: a read that skips a field must be caught,
+           and gcc's -Wmaybe-uninitialized wants the definite store */
+        memset( &r_vec2, 0xEF, sizeof( r_vec2 ) );
+        memset( &r_span_f64, 0xEF, sizeof( r_span_f64 ) );
+        memset( &r_span_u64, 0xEF, sizeof( r_span_u64 ) );
+        memset( &r_span_i64, 0xEF, sizeof( r_span_i64 ) );
+        memset( &r_span_one, 0xEF, sizeof( r_span_one ) );
+        memset( &r_span_chunk, 0xEF, sizeof( r_span_chunk ) );
+        memset( &r_span_tail, 0xEF, sizeof( r_span_tail ) );
+        memset( &r_span_twice, 0xEF, sizeof( r_span_twice ) );
+        memset( &r_trio, 0xEF, sizeof( r_trio ) );
+        memset( &r_trio_sole, 0xEF, sizeof( r_trio_sole ) );
+        memset( &r_trio_first, 0xEF, sizeof( r_trio_first ) );
+        memset( &r_straddle, 0xEF, sizeof( r_straddle ) );
+
+        serialize_read_stream_init( &r, buffer, serialize_write_bytes_processed( &w ) );
+        check( read_vec2( &r, &r_vec2 ), "read Vec2" );
+        check( read_span_f64( &r, &r_span_f64 ), "read SpanF64" );
+        check( read_span_u64( &r, &r_span_u64 ), "read SpanU64" );
+        check( read_span_i64( &r, &r_span_i64 ), "read SpanI64" );
+        check( read_span_one( &r, &r_span_one ), "read SpanOne" );
+        check( read_span_chunk( &r, &r_span_chunk ), "read SpanChunk" );
+        check( read_span_tail( &r, &r_span_tail ), "read SpanTail" );
+        check( read_span_twice( &r, &r_span_twice ), "read SpanTwice" );
+        check( read_trio( &r, &r_trio ), "read Trio" );
+        check( read_trio_sole( &r, &r_trio_sole ), "read TrioSole" );
+        check( read_trio_first( &r, &r_trio_first ), "read TrioFirst" );
+        check( read_trio_straddle( &r, &r_straddle ), "read TrioStraddle" );
+
+        check( r_vec2.x == 1.5 && r_vec2.y == -2.25, "Vec2 round-trips" );
+        check( r_span_f64.values[0] == 3.5 && r_span_f64.values[1] == -4.75, "SpanF64 round-trips" );
+        check( r_span_u64.values[0] == 0xDEADBEEFCAFEBABEULL && r_span_u64.values[1] == 1, "SpanU64 round-trips" );
+        check( r_span_i64.values[0] == -1234567890123LL && r_span_i64.values[1] == 42, "SpanI64 round-trips" );
+        check( r_span_one.values[0] == 0x0123456789ABCDEFULL, "SpanOne round-trips" );
+        check( r_span_chunk.values[0] == 0x1111 && r_span_chunk.values[3] == 0x4444, "SpanChunk round-trips" );
+        check( r_span_tail.values[0] == 6.125 && r_span_tail.values[1] == -7.0 && r_span_tail.tail == 0xFEEDFACEu,
+               "SpanTail round-trips" );
+        check( r_span_twice.a[0] == 8.5 && r_span_twice.b[1] == -11.5, "SpanTwice round-trips" );
+        check( r_trio.a == 0xABCDE && r_trio.b == 0x12345 && r_trio.c == 0xFFFFF, "Trio round-trips" );
+        check( r_trio_sole.inner.a == 1 && r_trio_sole.inner.c == 3, "TrioSole round-trips" );
+        check( r_trio_first.inner.a == 0xAAAAA && r_trio_first.trailer == 0xBEEF, "TrioFirst round-trips" );
+        check( r_straddle.pad0 == 0x0011223344556677ULL && r_straddle.pad4 == 0x123456789ABCDEF0ULL,
+               "TrioStraddle pads round-trip" );
+        check( r_straddle.pad5 == 0xABCDEFu && r_straddle.inner.a == 0x11111 && r_straddle.inner.c == 0x33333,
+               "TrioStraddle's nested fields round-trip across the boundary" );
     }
 
     if ( failed )

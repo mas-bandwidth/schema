@@ -26,6 +26,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"runtime/pprof"
 	"sort"
 	"strconv"
 	"time"
@@ -408,8 +409,25 @@ func main() {
 			gNumRuns = 1
 		case args[i] == "--quick":
 			gQuick = true
+		case args[i] == "--cpuprofile" && i+1 < len(args):
+			// The iteration instrument, never a published one: it changes
+			// nothing about what is measured, and no timed row is taken
+			// under it. It is how the Go codec's ~86%-in-the-runtime
+			// conviction was obtained, so it lives beside the leg it
+			// profiles rather than in a scratch fork of it.
+			i++
+			pf, perr := os.Create(args[i])
+			if perr != nil {
+				fmt.Fprintf(os.Stderr, "--cpuprofile: %v\n", perr)
+				os.Exit(1)
+			}
+			if perr := pprof.StartCPUProfile(pf); perr != nil {
+				fmt.Fprintf(os.Stderr, "--cpuprofile: %v\n", perr)
+				os.Exit(1)
+			}
+			defer pprof.StopCPUProfile()
 		default:
-			fmt.Fprintf(os.Stderr, "usage: %s [--csv] [--round K] [--quick] [--wire-dir <dir>] [--variant-dir <dir>]\n", os.Args[0])
+			fmt.Fprintf(os.Stderr, "usage: %s [--csv] [--round K] [--quick] [--wire-dir <dir>] [--variant-dir <dir>] [--cpuprofile <file>]\n", os.Args[0])
 			os.Exit(1)
 		}
 	}

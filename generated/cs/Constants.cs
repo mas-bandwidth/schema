@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package example — protocol id 0x0bde7acdd36abc6a
+// package example — protocol id 0xa89dd9e036603208
 //
 // Wire functions return bool — the C++-style early-out. A schema validation
 // failure (a wrong wire constant, nonzero reserved bits, an interior null)
@@ -20,7 +20,7 @@ namespace Example
     {
         // The unit's protocol id — the hash of its wire shape (SPEC §3.1). Two
         // sides at the same id speak identical bits; there is no other versioning.
-        public const ulong ProtocolId = 0x0bde7acdd36abc6a;
+        public const ulong ProtocolId = 0xa89dd9e036603208;
 
         public const long PositionUnits = 1024;
 

@@ -500,6 +500,94 @@ func main() {
 		check(out == in, "the moving branch round-trips with velocities intact")
 	}
 
+	// ---- Degenerate.schema: the degenerate arrangements (issue #203) ----
+	//
+	// Twelve shapes written back to back into ONE stream against the one
+	// C++-pinned golden, in the C++ test's order. A fixed scalar array whose
+	// elements this emitter placed TWICE is the defect these types exist to
+	// catch, and it is invisible to a Go-to-Go round trip: only the byte
+	// compare against another language's bytes names it.
+	{
+		vec2 := example.Vec2{X: 1.5, Y: -2.25}
+		spanF64 := example.SpanF64{Values: [2]float64{3.5, -4.75}}
+		spanU64 := example.SpanU64{Values: [2]uint64{0xDEADBEEFCAFEBABE, 1}}
+		spanI64 := example.SpanI64{Values: [2]int64{-1234567890123, 42}}
+		spanOne := example.SpanOne{Values: [1]uint64{0x0123456789ABCDEF}}
+		spanChunk := example.SpanChunk{Values: [4]uint16{0x1111, 0x2222, 0x3333, 0x4444}}
+		spanTail := example.SpanTail{Values: [2]float64{6.125, -7.0}, Tail: 0xFEEDFACE}
+		spanTwice := example.SpanTwice{A: [2]float64{8.5, 9.5}, B: [2]float64{-10.5, -11.5}}
+		trio := example.Trio{A: 0xABCDE, B: 0x12345, C: 0xFFFFF}
+		trioSole := example.TrioSole{Inner: example.Trio{A: 1, B: 2, C: 3}}
+		trioFirst := example.TrioFirst{Inner: example.Trio{A: 0xAAAAA, B: 0x55555, C: 0xF0F0F}, Trailer: 0xBEEF}
+		straddle := example.TrioStraddle{
+			Pad0:  0x0011223344556677,
+			Pad1:  0x8899AABBCCDDEEFF,
+			Pad2:  0xFFFFFFFFFFFFFFFF,
+			Pad3:  0,
+			Pad4:  0x123456789ABCDEF0,
+			Pad5:  0xABCDEF,
+			Inner: example.Trio{A: 0x11111, B: 0x22222, C: 0x33333},
+		}
+
+		ws, _ := newWriteStream()
+		checkErr(example.WriteVec2(ws, &vec2), "write Vec2")
+		checkErr(example.WriteSpanF64(ws, &spanF64), "write SpanF64")
+		checkErr(example.WriteSpanU64(ws, &spanU64), "write SpanU64")
+		checkErr(example.WriteSpanI64(ws, &spanI64), "write SpanI64")
+		checkErr(example.WriteSpanOne(ws, &spanOne), "write SpanOne")
+		checkErr(example.WriteSpanChunk(ws, &spanChunk), "write SpanChunk")
+		checkErr(example.WriteSpanTail(ws, &spanTail), "write SpanTail")
+		checkErr(example.WriteSpanTwice(ws, &spanTwice), "write SpanTwice")
+		checkErr(example.WriteTrio(ws, &trio), "write Trio")
+		checkErr(example.WriteTrioSole(ws, &trioSole), "write TrioSole")
+		checkErr(example.WriteTrioFirst(ws, &trioFirst), "write TrioFirst")
+		checkErr(example.WriteTrioStraddle(ws, &straddle), "write TrioStraddle")
+		check(ws.BitsProcessed() == 128+128+128+128+64+64+160+256+64+64+80+408,
+			"the twelve degenerate shapes ride their declared widths and nothing more")
+		ws.Flush()
+		goldenWire("degenerate", ws.Data())
+
+		var rVec2 example.Vec2
+		var rSpanF64 example.SpanF64
+		var rSpanU64 example.SpanU64
+		var rSpanI64 example.SpanI64
+		var rSpanOne example.SpanOne
+		var rSpanChunk example.SpanChunk
+		var rSpanTail example.SpanTail
+		var rSpanTwice example.SpanTwice
+		var rTrio example.Trio
+		var rTrioSole example.TrioSole
+		var rTrioFirst example.TrioFirst
+		var rStraddle example.TrioStraddle
+
+		rs := serialize.NewReadStream(ws.Data())
+		checkErr(example.ReadVec2(rs, &rVec2), "read Vec2")
+		checkErr(example.ReadSpanF64(rs, &rSpanF64), "read SpanF64")
+		checkErr(example.ReadSpanU64(rs, &rSpanU64), "read SpanU64")
+		checkErr(example.ReadSpanI64(rs, &rSpanI64), "read SpanI64")
+		checkErr(example.ReadSpanOne(rs, &rSpanOne), "read SpanOne")
+		checkErr(example.ReadSpanChunk(rs, &rSpanChunk), "read SpanChunk")
+		checkErr(example.ReadSpanTail(rs, &rSpanTail), "read SpanTail")
+		checkErr(example.ReadSpanTwice(rs, &rSpanTwice), "read SpanTwice")
+		checkErr(example.ReadTrio(rs, &rTrio), "read Trio")
+		checkErr(example.ReadTrioSole(rs, &rTrioSole), "read TrioSole")
+		checkErr(example.ReadTrioFirst(rs, &rTrioFirst), "read TrioFirst")
+		checkErr(example.ReadTrioStraddle(rs, &rStraddle), "read TrioStraddle")
+
+		check(rVec2 == vec2, "Vec2 round-trips")
+		check(rSpanF64 == spanF64, "SpanF64 round-trips")
+		check(rSpanU64 == spanU64, "SpanU64 round-trips")
+		check(rSpanI64 == spanI64, "SpanI64 round-trips")
+		check(rSpanOne == spanOne, "SpanOne round-trips")
+		check(rSpanChunk == spanChunk, "SpanChunk round-trips")
+		check(rSpanTail == spanTail, "SpanTail round-trips")
+		check(rSpanTwice == spanTwice, "SpanTwice round-trips")
+		check(rTrio == trio, "Trio round-trips")
+		check(rTrioSole == trioSole, "TrioSole round-trips")
+		check(rTrioFirst == trioFirst, "TrioFirst round-trips")
+		check(rStraddle == straddle, "TrioStraddle round-trips")
+	}
+
 	if failed {
 		os.Exit(1)
 	}

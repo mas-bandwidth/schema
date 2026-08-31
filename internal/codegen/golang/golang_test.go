@@ -1,6 +1,7 @@
 package golang
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 
@@ -310,5 +311,109 @@ func TestFlagsCountAndWireBits(t *testing.T) {
 				t.Errorf("%s: %q emitted %d times, want %d — flags spend exactly Count wire bits and export Count (SPEC §4.2)", tgt.name, e.needle, got, e.count)
 			}
 		}
+	}
+}
+
+// generateGo compiles one in-test schema through the public door and returns
+// the emitted Go, so a property can be stated against a shape the corpus does
+// not carry.
+func generateGo(t *testing.T, name, src string) map[string][]byte {
+	t.Helper()
+	f, perrs := parser.Parse(name+".schema", []byte(src))
+	if len(perrs) > 0 {
+		t.Fatalf("parse: %v", perrs[0])
+	}
+	u, cerrs := check.Unit([]check.SourceFile{{
+		Path: name + ".schema", Name: name + ".schema", Base: name,
+		Bytes: []byte(src), AST: f,
+	}})
+	if len(cerrs) > 0 {
+		t.Fatalf("check: %v", cerrs[0])
+	}
+	files, err := Generate(u)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return files
+}
+
+// funcBody returns the text of the named generated function, so a property
+// about one type's body is not confused by another type's own functions.
+func funcBody(t *testing.T, files map[string][]byte, decl string) string {
+	t.Helper()
+	for _, src := range files {
+		text := string(src)
+		start := strings.Index(text, decl)
+		if start < 0 {
+			continue
+		}
+		end := strings.Index(text[start:], "\n}\n")
+		if end < 0 {
+			t.Fatalf("%s is not terminated", decl)
+		}
+		return text[start : start+end]
+	}
+	t.Fatalf("%s was not emitted", decl)
+	return ""
+}
+
+// The flat word codec classifies one item into 1..N pieces, so a run that
+// falls back to the per-field form must re-emit its ITEMS, never its pieces:
+// an unrolled fixed array's pieces are one item, and a flattened nested
+// struct's pieces name fields of ANOTHER type at another base expression.
+// Emitting pieces produced silent wire corruption (a `[2]float64` written
+// twice), generated Go that did not compile (a nested field named on the
+// outer type), and — with a name collision — would have serialized the wrong
+// field silently. Degenerate.schema carries these shapes into the
+// cross-language wire gate; this test states the property directly, against
+// maxRunBits itself, so re-tuning that constant cannot quietly retire it.
+func TestFlatFallbackReEmitsItemsNotPieces(t *testing.T) {
+	// A fixed scalar array whose elements each fill a whole chunk: flattening
+	// removes no stream call, so the run falls back — over ONE item.
+	files := generateGo(t, "Span", "package t\n\ntype Pair { values [2]float64 }\n")
+	if got := countAcross(files, "for i := int(0); i < 2; i++ {"); got != 2 {
+		t.Errorf("[2]float64 emitted %d element loops, want 2 (one write, one read) — "+
+			"a fallback over pieces emits the loop once per element and doubles the wire", got)
+	}
+
+	// The nested-struct case, calibrated to the run cap at test time: a
+	// prefix that leaves room for part of a nested struct's fields, so the
+	// run splits with the nested type's pieces on both sides.
+	var src strings.Builder
+	src.WriteString("package t\n\ntype Inner\n{\n    a bits(20)\n    b bits(20)\n    c bits(24)\n}\n\ntype Outer {\n")
+	const innerBits = 64
+	prefix := maxRunBits - innerBits + 20 // the split lands inside Inner
+	for w := prefix; w > 0; {
+		n := min(w, 64)
+		fmt.Fprintf(&src, "    pad%d bits(%d)\n", w, n)
+		w -= n
+	}
+	src.WriteString("    inner Inner\n}\n")
+	files = generateGo(t, "Straddle", src.String())
+	for _, fn := range []string{"func WriteOuter(", "func ReadOuter("} {
+		body := funcBody(t, files, fn)
+		for _, forbidden := range []string{"value.A", "value.B", "value.C"} {
+			if strings.Contains(body, forbidden) {
+				t.Errorf("a nested struct split by the %d-bit run cap named %q on the OUTER type in %s — "+
+					"Inner's fields are reachable only through value.Inner, so the fallback must "+
+					"re-emit the ITEM against its own base", maxRunBits, forbidden, fn)
+			}
+		}
+		if !strings.Contains(body, "value.Inner") {
+			t.Errorf("%s places none of Inner's fields — the shape under test did not arise", fn)
+		}
+	}
+
+	// A file whose every float run falls back imports no math: needsMath is
+	// set at emission, not during the speculative classification every run
+	// accumulator performs.
+	files = generateGo(t, "Vec", "package t\n\ntype Vec2\n{\n    x float64\n    y float64\n}\n")
+	if got := countAcross(files, `"math"`); got != 0 {
+		t.Errorf("a bare two-float unit imported math %d times — nothing in it reaches "+
+			"math, so the import does not compile", got)
+	}
+	if got := countAcross(files, "math."); got != 0 {
+		t.Errorf("a bare two-float unit referenced math %d times — its runs fall back "+
+			"to serialize's own float calls", got)
 	}
 }

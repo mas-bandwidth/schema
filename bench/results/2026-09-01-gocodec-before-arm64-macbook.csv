@@ -1,0 +1,49 @@
+# schema bench results
+# date: 2026-08-31T14:05:45Z
+# host: macbook  arch: arm64  os: Darwin 25.6.0
+# cpu: Apple M2
+# build: Release
+# cpp compiler: Apple clang version 21.0.0 (clang-2100.1.1.101)
+# cpp flags: -O3 -DNDEBUG -DSERIALIZE_RELEASE -DBENCH_OPT="O3" -std=c++17 -Wall -Wextra -Werror -ffp-contract=off -fno-rtti -Igenerated/bench/cpp -I../serialize
+# c compiler: Apple clang version 21.0.0 (clang-2100.1.1.101)
+# c flags: -O3 -DNDEBUG -DBENCH_OPT="O3" -std=c99 -Wall -Wextra -Werror -Igenerated/bench/c -I../serialize.c (serialize.c compiled in, no LTO)
+# go: go version go1.27.0 darwin/arm64 (go run, default optimized build)
+# rust: cargo 1.97.1 (c980f4866 2026-06-30); rustc 1.97.1 (8bab26f4f 2026-07-14) (cargo run --release at opt-level 3, no LTO)
+# dotnet: 10.0.400 (dotnet run -c Release, workstation GC)
+# node: v26.7.0 (NODE_ENV=production — serialize.js's caller-trust release mode; the runner records the mode that ran in its checks column)
+# java: openjdk 21.0.12.1 2026-08-18 LTS (generated codecs, zero runtime dependency; default JVM flags, no -ea)
+# dart: Dart SDK version: 3.13.2 (stable) (Tue Aug 25 01:01:12 2026 -0700) on "macos_arm64" (generated codecs, zero runtime dependency; AOT executable)
+# elixir: 1.20.4 (generated codecs, zero runtime dependency; pinned BEAM toolchain)
+# pinning: none
+# noise: NOISY: shared fanless M2 Air, other Claude sessions live; load avg ~3.1 at start (uptime pasted in the PR). --quick is the iteration instrument, never certification (§2.8). BEFORE half of a paired same-sitting go-emitter A/B: main's Go emitter output in generated/bench/go, everything else identical to the AFTER half. Every other leg is the in-sitting control.
+# schema commit: 0a0b86c
+# serialize commit: cebaed2 (main) [build-verified: /Users/glenn/rowan-working/serialize]
+# serialize.c commit: 37db942 (main) [build-verified: /Users/glenn/rowan-working/serialize.c]
+# serialize.go commit: ae730d5 (main) [build-verified: /Users/glenn/rowan-working/serialize.go]
+# serialize.rs commit: 6b52aa6 (main) [build-verified: /Users/glenn/rowan-working/serialize.rs]
+# serialize.cs commit: f08327e (main) [build-verified: /Users/glenn/rowan-working/serialize.cs]
+# serialize.js commit: e391f1e (main) [build-verified: /Users/glenn/rowan-working/serialize.js]
+lang,bench,path,iters,bytes_per_op,runs,median_msgs_per_sec,min_msgs_per_sec,max_msgs_per_sec,median_mb_per_sec,spread_pct,corpus_id,family,linkage,checks,opt,inline
+cpp,bench_mixed,write,4000000,438,3,7217183,7112652,7268510,3014.68,2.16,6b213fbfa1a03a99,gen,hdr,removed,O3,unknown
+cpp,bench_mixed,round_trip,4000000,438,3,3473257,3472950,3488441,1450.81,0.45,6b213fbfa1a03a99,gen,hdr,removed,O3,unknown
+lang,bench,path,iters,bytes_per_op,runs,median_msgs_per_sec,min_msgs_per_sec,max_msgs_per_sec,median_mb_per_sec,spread_pct,corpus_id,family,linkage,checks,opt,inline
+c,bench_mixed,write,4000000,438,3,7068424,7066863,7099147,2952.55,0.46,6b213fbfa1a03a99,gen,hdr,removed,O3,unknown
+c,bench_mixed,round_trip,4000000,438,3,3506745,3500711,3566432,1464.80,1.87,6b213fbfa1a03a99,gen,hdr,removed,O3,unknown
+go,bench_mixed,write,4000000,438,3,1347798,1341457,1349667,562.99,0.61,6b213fbfa1a03a99,gen,pkg,always,default,unknown
+go,bench_mixed,round_trip,4000000,438,3,596927,596212,598357,249.34,0.36,6b213fbfa1a03a99,gen,pkg,always,default,unknown
+rust,bench_mixed,write,4000000,438,3,5908255,5886467,5920996,2467.93,0.58,6b213fbfa1a03a99,gen,crate,always,O3,unknown
+rust,bench_mixed,round_trip,4000000,438,3,2221653,2207510,2252817,928.01,2.04,6b213fbfa1a03a99,gen,crate,always,O3,unknown
+cs,bench_mixed,write,4000000,438,3,2040750,2037463,2045262,852.44,0.38,6b213fbfa1a03a99,gen,asm,always,default,unknown
+cs,bench_mixed,round_trip,4000000,438,3,952610,934683,955491,397.91,2.18,6b213fbfa1a03a99,gen,asm,always,default,unknown
+lang,bench,path,iters,bytes_per_op,runs,median_msgs_per_sec,min_msgs_per_sec,max_msgs_per_sec,median_mb_per_sec,spread_pct,corpus_id,family,linkage,checks,opt,inline
+js,bench_mixed,write,4000000,438,3,1299790,1294352,1301733,542.93,0.57,6b213fbfa1a03a99,gen,esm,contract,default,unknown,flat
+js,bench_mixed,round_trip,4000000,438,3,701076,681285,711631,292.85,4.33,6b213fbfa1a03a99,gen,esm,contract,default,unknown,flat
+lang,bench,path,iters,bytes_per_op,runs,median_msgs_per_sec,min_msgs_per_sec,max_msgs_per_sec,median_mb_per_sec,spread_pct,corpus_id,family,linkage,checks,opt,inline
+java,bench_mixed,write,4000000,438,3,5338396,5021217,5472503,2229.90,8.45,6b213fbfa1a03a99,gen,class,contract,default,unknown
+java,bench_mixed,round_trip,4000000,438,3,2363976,2158203,2379185,987.46,9.35,6b213fbfa1a03a99,gen,class,contract,default,unknown
+lang,bench,path,iters,bytes_per_op,runs,median_msgs_per_sec,min_msgs_per_sec,max_msgs_per_sec,median_mb_per_sec,spread_pct,corpus_id,family,linkage,checks,opt,inline
+dart,bench_mixed,write,4000000,438,3,1812437,1796376,1832849,757.07,2.01,6b213fbfa1a03a99,gen,aot,contract,default,unknown
+dart,bench_mixed,round_trip,4000000,438,3,925050,890751,926565,386.40,3.87,6b213fbfa1a03a99,gen,aot,contract,default,unknown
+lang,bench,path,iters,bytes_per_op,runs,median_msgs_per_sec,min_msgs_per_sec,max_msgs_per_sec,median_mb_per_sec,spread_pct,corpus_id,family,linkage,checks,opt,inline
+elixir,bench_mixed,write,400000,438,3,131800,127780,132039,55.05,3.23,6b213fbfa1a03a99,gen,beam,contract,default,unknown
+elixir,bench_mixed,round_trip,400000,438,3,92421,91891,93024,38.61,1.23,6b213fbfa1a03a99,gen,beam,contract,default,unknown

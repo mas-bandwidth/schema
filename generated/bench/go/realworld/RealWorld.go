@@ -8,6 +8,7 @@ package realworld
 
 import (
 	"errors"
+	"math"
 	"strconv"
 
 	"github.com/mas-bandwidth/serialize.go"
@@ -250,87 +251,75 @@ const RealPacketMaxBits = 1810
 const RealPacketMaxBytes = 232
 
 func WriteRealPacket(stream *serialize.WriteStream, value *RealPacket) error {
-	if value.F001Int < -805495 || value.F001Int > 805495 {
-		return serialize.ErrValueOutOfRange
-	}
 	{
-		offsetValue := uint32(value.F001Int - (-805495))
-		stream.SerializeBits(&offsetValue, 21)
-	}
-	stream.SerializeFloat64(&value.F002F64)
-	if value.F003Int < -835897 || value.F003Int > 835897 {
-		return serialize.ErrValueOutOfRange
-	}
-	{
-		offsetValue := uint32(value.F003Int - (-835897))
-		stream.SerializeBits(&offsetValue, 21)
-	}
-	{
-		normalizedValue := value.F004Cf32 / 2000.0
-		if !(normalizedValue >= 0) { // the runtime's clamp form — it forces NaN into range too
-			normalizedValue = 0
-		} else if !(normalizedValue <= 1) {
-			normalizedValue = 1
-		}
-		integerValue := uint32(float32(normalizedValue*20000.0) + 0.5)
-		stream.SerializeBits(&integerValue, 15)
-	}
-	{
-		rangeValue := int32(value.F005Uint)
-		if rangeValue < 0 || rangeValue > 7316 {
+		if value.F001Int < -805495 || value.F001Int > 805495 {
 			return serialize.ErrValueOutOfRange
 		}
-		{
-			offsetValue := uint32(rangeValue)
-			stream.SerializeBits(&offsetValue, 13)
-		}
-	}
-	{
-		rangeValue := int32(value.F006Int)
-		if rangeValue < -1513 || rangeValue > 1513 {
+		if value.F003Int < -835897 || value.F003Int > 835897 {
 			return serialize.ErrValueOutOfRange
 		}
-		{
-			offsetValue := uint32(rangeValue - (-1513))
-			stream.SerializeBits(&offsetValue, 12)
-		}
-	}
-	stream.SerializeFloat32(&value.F007F32)
-	stream.SerializeBits64(&value.F008U64, 64)
-	{
-		rangeValue := int32(value.F009Int)
-		if rangeValue < -22 || rangeValue > 22 {
+		rangeValue4 := int32(value.F005Uint)
+		if rangeValue4 < 0 || rangeValue4 > 7316 {
 			return serialize.ErrValueOutOfRange
 		}
-		{
-			offsetValue := uint32(rangeValue - (-22))
-			stream.SerializeBits(&offsetValue, 6)
+		rangeValue5 := int32(value.F006Int)
+		if rangeValue5 < -1513 || rangeValue5 > 1513 {
+			return serialize.ErrValueOutOfRange
 		}
+		rangeValue8 := int32(value.F009Int)
+		if rangeValue8 < -22 || rangeValue8 > 22 {
+			return serialize.ErrValueOutOfRange
+		}
+		f0 := (uint64(uint32(value.F001Int - (-805495)))) & 0x1fffff
+		f1 := math.Float64bits(value.F002F64)
+		f2 := (uint64(uint32(value.F003Int - (-835897)))) & 0x1fffff
+		f3 := uint64(0)
+		{
+			normalizedValue := value.F004Cf32 / 2000.0
+			if !(normalizedValue >= 0) { // the runtime's clamp form — it forces NaN into range too
+				normalizedValue = 0
+			} else if !(normalizedValue <= 1) {
+				normalizedValue = 1
+			}
+			f3 = (uint64(uint32(float32(normalizedValue*20000.0) + 0.5))) & 0x7fff
+		}
+		f4 := (uint64(uint32(rangeValue4))) & 0x1fff
+		f5 := (uint64(uint32(rangeValue5 - (-1513)))) & 0xfff
+		f6 := (uint64(math.Float32bits(value.F007F32))) & 0xffffffff
+		f7 := value.F008U64
+		f8 := (uint64(uint32(rangeValue8 - (-22)))) & 0x3f
+		f9 := (uint64(math.Float32bits(value.F010F32))) & 0xffffffff
+		f10 := (uint64(value.F011Bits)) & 0x3ff
+		f11 := uint64(0)
+		if value.F012Bool {
+			f11 = 1
+		}
+		w0 := f0 | (f1 << 21)
+		stream.SerializeBits64(&w0, 64)
+		w1 := (f1 >> 43) | (f2 << 21) | (f3 << 42) | (f4 << 57)
+		stream.SerializeBits64(&w1, 64)
+		w2 := (f4 >> 7) | (f5 << 6) | (f6 << 18) | (f7 << 50)
+		stream.SerializeBits64(&w2, 64)
+		w3 := (f7 >> 14) | (f8 << 50) | (f9 << 56)
+		stream.SerializeBits64(&w3, 64)
+		w4 := (f9 >> 8) | (f10 << 24) | (f11 << 34)
+		stream.SerializeBits64(&w4, 35)
 	}
-	stream.SerializeFloat32(&value.F010F32)
-	stream.SerializeBits(&value.F011Bits, 10)
-	stream.SerializeBool(&value.F012Bool)
 	if value.F012Bool {
-		stream.SerializeFloat32(&value.F013F32)
 		{
-			rangeValue := int32(value.F014Uint)
-			if rangeValue < 0 || rangeValue > 775 {
+			rangeValue1 := int32(value.F014Uint)
+			if rangeValue1 < 0 || rangeValue1 > 775 {
 				return serialize.ErrValueOutOfRange
 			}
-			{
-				offsetValue := uint32(rangeValue)
-				stream.SerializeBits(&offsetValue, 10)
-			}
-		}
-		{
-			rangeValue := int32(value.F015Int)
-			if rangeValue < -21 || rangeValue > 21 {
+			rangeValue2 := int32(value.F015Int)
+			if rangeValue2 < -21 || rangeValue2 > 21 {
 				return serialize.ErrValueOutOfRange
 			}
-			{
-				offsetValue := uint32(rangeValue - (-21))
-				stream.SerializeBits(&offsetValue, 6)
-			}
+			f0 := (uint64(math.Float32bits(value.F013F32))) & 0xffffffff
+			f1 := (uint64(uint32(rangeValue1))) & 0x3ff
+			f2 := (uint64(uint32(rangeValue2 - (-21)))) & 0x3f
+			w0 := f0 | (f1 << 32) | (f2 << 42)
+			stream.SerializeBits64(&w0, 48)
 		}
 		{
 			fixedValue := int64(value.F016Fixed)
@@ -348,125 +337,123 @@ func WriteRealPacket(stream *serialize.WriteStream, value *RealPacket) error {
 		}
 	}
 	{
-		rangeValue := int32(value.F018Int)
-		if rangeValue < -834 || rangeValue > 834 {
+		rangeValue0 := int32(value.F018Int)
+		if rangeValue0 < -834 || rangeValue0 > 834 {
 			return serialize.ErrValueOutOfRange
 		}
-		{
-			offsetValue := uint32(rangeValue - (-834))
-			stream.SerializeBits(&offsetValue, 11)
-		}
+		f0 := (uint64(uint32(rangeValue0 - (-834)))) & 0x7ff
+		f1 := math.Float64bits(value.F019F64)
+		f2 := (uint64(math.Float32bits(value.F020F32))) & 0xffffffff
+		w0 := f0 | (f1 << 11)
+		stream.SerializeBits64(&w0, 64)
+		w1 := (f1 >> 53) | (f2 << 11)
+		stream.SerializeBits64(&w1, 43)
 	}
-	stream.SerializeFloat64(&value.F019F64)
-	stream.SerializeFloat32(&value.F020F32)
 	{
 		fixedValue := int64(value.F021Ufixed)
 		stream.SerializeFixed64(&fixedValue, 20, 12, 0, 25141)
 	}
-	stream.SerializeFloat32(&value.F022F32)
-	stream.SerializeBits(&value.F023Bits, 25)
-	stream.SerializeFloat32(&value.F024F32)
+	{
+		f0 := (uint64(math.Float32bits(value.F022F32))) & 0xffffffff
+		f1 := (uint64(value.F023Bits)) & 0x1ffffff
+		f2 := (uint64(math.Float32bits(value.F024F32))) & 0xffffffff
+		w0 := f0 | (f1 << 32) | (f2 << 57)
+		stream.SerializeBits64(&w0, 64)
+		w1 := uint32((f2 >> 7))
+		stream.SerializeBits(&w1, 25)
+	}
 	{
 		fixedValue := int64(value.F025Fixed)
 		stream.SerializeFixed64(&fixedValue, 8, 8, -119, 119)
 	}
-	stream.SerializeBits(&value.F026Bits, 9)
 	{
-		normalizedValue := (value.F027Cf32 - (-2.0)) / 4.0
-		if !(normalizedValue >= 0) { // the runtime's clamp form — it forces NaN into range too
-			normalizedValue = 0
-		} else if !(normalizedValue <= 1) {
-			normalizedValue = 1
-		}
-		integerValue := uint32(float32(normalizedValue*16.0) + 0.5)
-		stream.SerializeBits(&integerValue, 5)
-	}
-	stream.SerializeBits(&value.F028Bits, 4)
-	{
-		rawValue := uint64(value.F029I64)
-		stream.SerializeBits64(&rawValue, 64)
-	}
-	stream.SerializeFloat32(&value.F030F32)
-	stream.SerializeBits(&value.F031Bits, 1)
-	{
-		rangeValue := int32(value.F032Int)
-		if rangeValue < -3 || rangeValue > 3 {
+		rangeValue6 := int32(value.F032Int)
+		if rangeValue6 < -3 || rangeValue6 > 3 {
 			return serialize.ErrValueOutOfRange
 		}
-		{
-			offsetValue := uint32(rangeValue - (-3))
-			stream.SerializeBits(&offsetValue, 3)
-		}
-	}
-	{
-		rangeValue := int32(value.F033Uint)
-		if rangeValue < 0 || rangeValue > 142780 {
+		rangeValue7 := int32(value.F033Uint)
+		if rangeValue7 < 0 || rangeValue7 > 142780 {
 			return serialize.ErrValueOutOfRange
 		}
-		{
-			offsetValue := uint32(rangeValue)
-			stream.SerializeBits(&offsetValue, 18)
-		}
-	}
-	{
-		rangeValue := int32(value.F034Uint)
-		if rangeValue < 0 || rangeValue > 14149 {
+		rangeValue8 := int32(value.F034Uint)
+		if rangeValue8 < 0 || rangeValue8 > 14149 {
 			return serialize.ErrValueOutOfRange
 		}
-		{
-			offsetValue := uint32(rangeValue)
-			stream.SerializeBits(&offsetValue, 14)
-		}
-	}
-	stream.SerializeBits(&value.F035Bits, 9)
-	{
-		enumValue := int32(value.F036Enum)
-		if enumValue < 0 || enumValue > 5 {
+		enumValue10 := int32(value.F036Enum)
+		if enumValue10 < 0 || enumValue10 > 5 {
 			return serialize.ErrValueOutOfRange
 		}
+		f0 := (uint64(value.F026Bits)) & 0x1ff
+		f1 := uint64(0)
 		{
-			offsetValue := uint32(enumValue)
-			stream.SerializeBits(&offsetValue, 3)
+			normalizedValue := (value.F027Cf32 - (-2.0)) / 4.0
+			if !(normalizedValue >= 0) { // the runtime's clamp form — it forces NaN into range too
+				normalizedValue = 0
+			} else if !(normalizedValue <= 1) {
+				normalizedValue = 1
+			}
+			f1 = (uint64(uint32(float32(normalizedValue*16.0) + 0.5))) & 0x1f
 		}
+		f2 := (uint64(value.F028Bits)) & 0xf
+		f3 := uint64(value.F029I64)
+		f4 := (uint64(math.Float32bits(value.F030F32))) & 0xffffffff
+		f5 := (uint64(value.F031Bits)) & 0x1
+		f6 := (uint64(uint32(rangeValue6 - (-3)))) & 0x7
+		f7 := (uint64(uint32(rangeValue7))) & 0x3ffff
+		f8 := (uint64(uint32(rangeValue8))) & 0x3fff
+		f9 := (uint64(value.F035Bits)) & 0x1ff
+		f10 := (uint64(uint32(enumValue10))) & 0x7
+		f11 := uint64(0)
+		if value.F037Bool {
+			f11 = 1
+		}
+		f12 := uint64(0)
+		if value.F038Bool {
+			f12 = 1
+		}
+		f13 := (uint64(value.F039Bits)) & 0x7ffff
+		w0 := f0 | (f1 << 9) | (f2 << 14) | (f3 << 18)
+		stream.SerializeBits64(&w0, 64)
+		w1 := (f3 >> 46) | (f4 << 18) | (f5 << 50) | (f6 << 51) | (f7 << 54)
+		stream.SerializeBits64(&w1, 64)
+		w2 := (f7 >> 10) | (f8 << 8) | (f9 << 22) | (f10 << 31) | (f11 << 34) | (f12 << 35) | (f13 << 36)
+		stream.SerializeBits64(&w2, 55)
 	}
-	stream.SerializeBool(&value.F037Bool)
-	stream.SerializeBool(&value.F038Bool)
-	stream.SerializeBits(&value.F039Bits, 19)
 	{
 		fixedValue := int64(value.F040Fixed)
 		stream.SerializeFixed64(&fixedValue, 4, 12, -5, 5)
 	}
 	{
-		rangeValue := int32(value.F041Int)
-		if rangeValue < -55 || rangeValue > 55 {
+		rangeValue0 := int32(value.F041Int)
+		if rangeValue0 < -55 || rangeValue0 > 55 {
 			return serialize.ErrValueOutOfRange
 		}
-		{
-			offsetValue := uint32(rangeValue - (-55))
-			stream.SerializeBits(&offsetValue, 7)
+		f0 := (uint64(uint32(rangeValue0 - (-55)))) & 0x7f
+		f1 := (uint64(value.F042Bits)) & 0x3fffffff
+		f2 := uint64(0)
+		if value.F043Bool {
+			f2 = 1
 		}
+		w0 := f0 | (f1 << 7) | (f2 << 37)
+		stream.SerializeBits64(&w0, 38)
 	}
-	stream.SerializeBits(&value.F042Bits, 30)
-	stream.SerializeBool(&value.F043Bool)
 	if value.F043Bool {
-		stream.SerializeFloat32(&value.F044F32)
-		stream.SerializeBits(&value.F045Bits, 12)
 		{
-			rangeValue := int32(value.F046Uint)
-			if rangeValue < 0 || rangeValue > 76063 {
+			rangeValue2 := int32(value.F046Uint)
+			if rangeValue2 < 0 || rangeValue2 > 76063 {
 				return serialize.ErrValueOutOfRange
 			}
-			{
-				offsetValue := uint32(rangeValue)
-				stream.SerializeBits(&offsetValue, 17)
+			if value.F047Int < -430976 || value.F047Int > 430976 {
+				return serialize.ErrValueOutOfRange
 			}
-		}
-		if value.F047Int < -430976 || value.F047Int > 430976 {
-			return serialize.ErrValueOutOfRange
-		}
-		{
-			offsetValue := uint32(value.F047Int - (-430976))
-			stream.SerializeBits(&offsetValue, 20)
+			f0 := (uint64(math.Float32bits(value.F044F32))) & 0xffffffff
+			f1 := (uint64(value.F045Bits)) & 0xfff
+			f2 := (uint64(uint32(rangeValue2))) & 0x1ffff
+			f3 := (uint64(uint32(value.F047Int - (-430976)))) & 0xfffff
+			w0 := f0 | (f1 << 32) | (f2 << 44) | (f3 << 61)
+			stream.SerializeBits64(&w0, 64)
+			w1 := uint32((f3 >> 3))
+			stream.SerializeBits(&w1, 17)
 		}
 	}
 	stream.SerializeFloat64(&value.F048F64)
@@ -476,313 +463,340 @@ func WriteRealPacket(stream *serialize.WriteStream, value *RealPacket) error {
 	}
 	stream.SerializeBool(&value.F050Bool)
 	if value.F050Bool {
-		stream.SerializeBool(&value.F051Bool)
 		{
-			rangeValue := int32(value.F052Int)
-			if rangeValue < -57 || rangeValue > 57 {
+			rangeValue1 := int32(value.F052Int)
+			if rangeValue1 < -57 || rangeValue1 > 57 {
 				return serialize.ErrValueOutOfRange
 			}
-			{
-				offsetValue := uint32(rangeValue - (-57))
-				stream.SerializeBits(&offsetValue, 7)
-			}
-		}
-		stream.SerializeFloat32(&value.F053F32)
-		{
-			rangeValue := int32(value.F054Int)
-			if rangeValue < -35 || rangeValue > 35 {
+			rangeValue3 := int32(value.F054Int)
+			if rangeValue3 < -35 || rangeValue3 > 35 {
 				return serialize.ErrValueOutOfRange
 			}
-			{
-				offsetValue := uint32(rangeValue - (-35))
-				stream.SerializeBits(&offsetValue, 7)
+			f0 := uint64(0)
+			if value.F051Bool {
+				f0 = 1
 			}
+			f1 := (uint64(uint32(rangeValue1 - (-57)))) & 0x7f
+			f2 := (uint64(math.Float32bits(value.F053F32))) & 0xffffffff
+			f3 := (uint64(uint32(rangeValue3 - (-35)))) & 0x7f
+			w0 := f0 | (f1 << 1) | (f2 << 8) | (f3 << 40)
+			stream.SerializeBits64(&w0, 47)
 		}
 	}
-	stream.SerializeBool(&value.F055Bool)
 	{
-		rangeValue := int32(value.F056Int)
-		if rangeValue < -13 || rangeValue > 13 {
+		rangeValue1 := int32(value.F056Int)
+		if rangeValue1 < -13 || rangeValue1 > 13 {
 			return serialize.ErrValueOutOfRange
 		}
-		{
-			offsetValue := uint32(rangeValue - (-13))
-			stream.SerializeBits(&offsetValue, 5)
-		}
-	}
-	{
-		rangeValue := int32(value.F057Int)
-		if rangeValue < -15 || rangeValue > 15 {
+		rangeValue2 := int32(value.F057Int)
+		if rangeValue2 < -15 || rangeValue2 > 15 {
 			return serialize.ErrValueOutOfRange
 		}
-		{
-			offsetValue := uint32(rangeValue - (-15))
-			stream.SerializeBits(&offsetValue, 5)
-		}
-	}
-	stream.SerializeFloat32(&value.F058F32)
-	stream.SerializeFloat64(&value.F059F64)
-	stream.SerializeBits(&value.F060Bits, 8)
-	{
-		normalizedValue := (value.F061Cf32 - (-90.0)) / 180.0
-		if !(normalizedValue >= 0) { // the runtime's clamp form — it forces NaN into range too
-			normalizedValue = 0
-		} else if !(normalizedValue <= 1) {
-			normalizedValue = 1
-		}
-		integerValue := uint32(float32(normalizedValue*360.0) + 0.5)
-		stream.SerializeBits(&integerValue, 9)
-	}
-	{
-		rangeValue := int32(value.F062Uint)
-		if rangeValue < 0 || rangeValue > 503 {
+		rangeValue7 := int32(value.F062Uint)
+		if rangeValue7 < 0 || rangeValue7 > 503 {
 			return serialize.ErrValueOutOfRange
 		}
-		{
-			offsetValue := uint32(rangeValue)
-			stream.SerializeBits(&offsetValue, 9)
-		}
-	}
-	{
-		rawValue := uint64(value.F063I64)
-		stream.SerializeBits64(&rawValue, 64)
-	}
-	{
-		rangeValue := int32(value.F064Uint)
-		if rangeValue < 0 || rangeValue > 299 {
+		rangeValue9 := int32(value.F064Uint)
+		if rangeValue9 < 0 || rangeValue9 > 299 {
 			return serialize.ErrValueOutOfRange
 		}
+		f0 := uint64(0)
+		if value.F055Bool {
+			f0 = 1
+		}
+		f1 := (uint64(uint32(rangeValue1 - (-13)))) & 0x1f
+		f2 := (uint64(uint32(rangeValue2 - (-15)))) & 0x1f
+		f3 := (uint64(math.Float32bits(value.F058F32))) & 0xffffffff
+		f4 := math.Float64bits(value.F059F64)
+		f5 := (uint64(value.F060Bits)) & 0xff
+		f6 := uint64(0)
 		{
-			offsetValue := uint32(rangeValue)
-			stream.SerializeBits(&offsetValue, 9)
+			normalizedValue := (value.F061Cf32 - (-90.0)) / 180.0
+			if !(normalizedValue >= 0) { // the runtime's clamp form — it forces NaN into range too
+				normalizedValue = 0
+			} else if !(normalizedValue <= 1) {
+				normalizedValue = 1
+			}
+			f6 = (uint64(uint32(float32(normalizedValue*360.0) + 0.5))) & 0x1ff
 		}
-	}
-	{
-		normalizedValue := value.F065Cf32 / 30.0
-		if !(normalizedValue >= 0) { // the runtime's clamp form — it forces NaN into range too
-			normalizedValue = 0
-		} else if !(normalizedValue <= 1) {
-			normalizedValue = 1
+		f7 := (uint64(uint32(rangeValue7))) & 0x1ff
+		f8 := uint64(value.F063I64)
+		f9 := (uint64(uint32(rangeValue9))) & 0x1ff
+		f10 := uint64(0)
+		{
+			normalizedValue := value.F065Cf32 / 30.0
+			if !(normalizedValue >= 0) { // the runtime's clamp form — it forces NaN into range too
+				normalizedValue = 0
+			} else if !(normalizedValue <= 1) {
+				normalizedValue = 1
+			}
+			f10 = (uint64(uint32(float32(normalizedValue*60.0) + 0.5))) & 0x3f
 		}
-		integerValue := uint32(float32(normalizedValue*60.0) + 0.5)
-		stream.SerializeBits(&integerValue, 6)
+		w0 := f0 | (f1 << 1) | (f2 << 6) | (f3 << 11) | (f4 << 43)
+		stream.SerializeBits64(&w0, 64)
+		w1 := (f4 >> 21) | (f5 << 43) | (f6 << 51) | (f7 << 60)
+		stream.SerializeBits64(&w1, 64)
+		w2 := (f7 >> 4) | (f8 << 5)
+		stream.SerializeBits64(&w2, 64)
+		w3 := uint32((f8 >> 59) | (f9 << 5) | (f10 << 14))
+		stream.SerializeBits(&w3, 20)
 	}
 	{
 		fixedValue := int64(value.F066Ufixed)
 		stream.SerializeFixed64(&fixedValue, 2, 14, 0, 2)
 	}
 	{
-		normalizedValue := (value.F067Cf32 - (-100.0)) / 200.0
-		if !(normalizedValue >= 0) { // the runtime's clamp form — it forces NaN into range too
-			normalizedValue = 0
-		} else if !(normalizedValue <= 1) {
-			normalizedValue = 1
-		}
-		integerValue := uint32(float32(normalizedValue*800.0) + 0.5)
-		stream.SerializeBits(&integerValue, 10)
-	}
-	{
-		normalizedValue := value.F068Cf32 / 2000.0
-		if !(normalizedValue >= 0) { // the runtime's clamp form — it forces NaN into range too
-			normalizedValue = 0
-		} else if !(normalizedValue <= 1) {
-			normalizedValue = 1
-		}
-		integerValue := uint32(float32(normalizedValue*2000.0) + 0.5)
-		stream.SerializeBits(&integerValue, 11)
-	}
-	stream.SerializeBits(&value.F069Bits, 11)
-	{
-		rangeValue := int32(value.F070Uint)
-		if rangeValue < 0 || rangeValue > 2 {
+		rangeValue3 := int32(value.F070Uint)
+		if rangeValue3 < 0 || rangeValue3 > 2 {
 			return serialize.ErrValueOutOfRange
 		}
-		{
-			offsetValue := uint32(rangeValue)
-			stream.SerializeBits(&offsetValue, 2)
-		}
-	}
-	{
-		normalizedValue := value.F071Cf32 / 10.0
-		if !(normalizedValue >= 0) { // the runtime's clamp form — it forces NaN into range too
-			normalizedValue = 0
-		} else if !(normalizedValue <= 1) {
-			normalizedValue = 1
-		}
-		integerValue := uint32(float32(normalizedValue*500.0) + 0.5)
-		stream.SerializeBits(&integerValue, 9)
-	}
-	{
-		normalizedValue := value.F072Cf32 / 100.0
-		if !(normalizedValue >= 0) { // the runtime's clamp form — it forces NaN into range too
-			normalizedValue = 0
-		} else if !(normalizedValue <= 1) {
-			normalizedValue = 1
-		}
-		integerValue := uint32(float32(normalizedValue*10000.0) + 0.5)
-		stream.SerializeBits(&integerValue, 14)
-	}
-	{
-		rangeValue := int32(value.F073Int)
-		if rangeValue < -4 || rangeValue > 4 {
+		rangeValue6 := int32(value.F073Int)
+		if rangeValue6 < -4 || rangeValue6 > 4 {
 			return serialize.ErrValueOutOfRange
 		}
+		f0 := uint64(0)
 		{
-			offsetValue := uint32(rangeValue - (-4))
-			stream.SerializeBits(&offsetValue, 4)
+			normalizedValue := (value.F067Cf32 - (-100.0)) / 200.0
+			if !(normalizedValue >= 0) { // the runtime's clamp form — it forces NaN into range too
+				normalizedValue = 0
+			} else if !(normalizedValue <= 1) {
+				normalizedValue = 1
+			}
+			f0 = (uint64(uint32(float32(normalizedValue*800.0) + 0.5))) & 0x3ff
 		}
+		f1 := uint64(0)
+		{
+			normalizedValue := value.F068Cf32 / 2000.0
+			if !(normalizedValue >= 0) { // the runtime's clamp form — it forces NaN into range too
+				normalizedValue = 0
+			} else if !(normalizedValue <= 1) {
+				normalizedValue = 1
+			}
+			f1 = (uint64(uint32(float32(normalizedValue*2000.0) + 0.5))) & 0x7ff
+		}
+		f2 := (uint64(value.F069Bits)) & 0x7ff
+		f3 := (uint64(uint32(rangeValue3))) & 0x3
+		f4 := uint64(0)
+		{
+			normalizedValue := value.F071Cf32 / 10.0
+			if !(normalizedValue >= 0) { // the runtime's clamp form — it forces NaN into range too
+				normalizedValue = 0
+			} else if !(normalizedValue <= 1) {
+				normalizedValue = 1
+			}
+			f4 = (uint64(uint32(float32(normalizedValue*500.0) + 0.5))) & 0x1ff
+		}
+		f5 := uint64(0)
+		{
+			normalizedValue := value.F072Cf32 / 100.0
+			if !(normalizedValue >= 0) { // the runtime's clamp form — it forces NaN into range too
+				normalizedValue = 0
+			} else if !(normalizedValue <= 1) {
+				normalizedValue = 1
+			}
+			f5 = (uint64(uint32(float32(normalizedValue*10000.0) + 0.5))) & 0x3fff
+		}
+		f6 := (uint64(uint32(rangeValue6 - (-4)))) & 0xf
+		f7 := uint64(0)
+		if value.F074Bool {
+			f7 = 1
+		}
+		w0 := f0 | (f1 << 10) | (f2 << 21) | (f3 << 32) | (f4 << 34) | (f5 << 43) | (f6 << 57) | (f7 << 61)
+		stream.SerializeBits64(&w0, 62)
 	}
-	stream.SerializeBool(&value.F074Bool)
 	if value.F074Bool {
-		stream.SerializeBits64(&value.F075U64, 64)
 		{
-			rangeValue := int32(value.F076Int)
-			if rangeValue < -26218 || rangeValue > 26218 {
+			rangeValue1 := int32(value.F076Int)
+			if rangeValue1 < -26218 || rangeValue1 > 26218 {
 				return serialize.ErrValueOutOfRange
 			}
-			{
-				offsetValue := uint32(rangeValue - (-26218))
-				stream.SerializeBits(&offsetValue, 16)
-			}
-		}
-		{
-			rangeValue := int32(value.F077Int)
-			if rangeValue < -17 || rangeValue > 17 {
+			rangeValue2 := int32(value.F077Int)
+			if rangeValue2 < -17 || rangeValue2 > 17 {
 				return serialize.ErrValueOutOfRange
 			}
-			{
-				offsetValue := uint32(rangeValue - (-17))
-				stream.SerializeBits(&offsetValue, 6)
-			}
-		}
-		stream.SerializeBits(&value.F078Bits, 9)
-		{
-			rangeValue := int32(value.F079Uint)
-			if rangeValue < 0 || rangeValue > 17 {
+			rangeValue4 := int32(value.F079Uint)
+			if rangeValue4 < 0 || rangeValue4 > 17 {
 				return serialize.ErrValueOutOfRange
 			}
-			{
-				offsetValue := uint32(rangeValue)
-				stream.SerializeBits(&offsetValue, 5)
-			}
+			f0 := value.F075U64
+			f1 := (uint64(uint32(rangeValue1 - (-26218)))) & 0xffff
+			f2 := (uint64(uint32(rangeValue2 - (-17)))) & 0x3f
+			f3 := (uint64(value.F078Bits)) & 0x1ff
+			f4 := (uint64(uint32(rangeValue4))) & 0x1f
+			w0 := f0
+			stream.SerializeBits64(&w0, 64)
+			w1 := f1 | (f2 << 16) | (f3 << 22) | (f4 << 31)
+			stream.SerializeBits64(&w1, 36)
 		}
 	}
-	stream.SerializeBool(&value.F080Bool)
-	stream.SerializeBits(&value.F081Bits, 29)
-	stream.SerializeBits(&value.F082Bits, 25)
 	{
-		enumValue := int32(value.F083Enum)
-		if enumValue < 0 || enumValue > 5 {
+		enumValue3 := int32(value.F083Enum)
+		if enumValue3 < 0 || enumValue3 > 5 {
 			return serialize.ErrValueOutOfRange
 		}
-		{
-			offsetValue := uint32(enumValue)
-			stream.SerializeBits(&offsetValue, 3)
+		f0 := uint64(0)
+		if value.F080Bool {
+			f0 = 1
 		}
+		f1 := (uint64(value.F081Bits)) & 0x1fffffff
+		f2 := (uint64(value.F082Bits)) & 0x1ffffff
+		f3 := (uint64(uint32(enumValue3))) & 0x7
+		w0 := f0 | (f1 << 1) | (f2 << 30) | (f3 << 55)
+		stream.SerializeBits64(&w0, 58)
 	}
 	{
 		fixedValue := int64(value.F084Ufixed)
 		stream.SerializeFixed64(&fixedValue, 1, 7, 0, 1)
 	}
-	stream.SerializeBits(&value.F085Bits, 21)
 	{
-		rangeValue := int32(value.F086Uint)
-		if rangeValue < 0 || rangeValue > 399 {
+		rangeValue1 := int32(value.F086Uint)
+		if rangeValue1 < 0 || rangeValue1 > 399 {
 			return serialize.ErrValueOutOfRange
 		}
-		{
-			offsetValue := uint32(rangeValue)
-			stream.SerializeBits(&offsetValue, 9)
-		}
-	}
-	stream.SerializeFloat64(&value.F087F64)
-	{
-		rangeValue := int32(value.F088Int)
-		if rangeValue < -694 || rangeValue > 694 {
+		rangeValue3 := int32(value.F088Int)
+		if rangeValue3 < -694 || rangeValue3 > 694 {
 			return serialize.ErrValueOutOfRange
 		}
-		{
-			offsetValue := uint32(rangeValue - (-694))
-			stream.SerializeBits(&offsetValue, 11)
-		}
-	}
-	stream.SerializeBits64(&value.F089Bits, 48)
-	{
-		rangeValue := int32(value.F090Uint)
-		if rangeValue < 0 || rangeValue > 214 {
+		rangeValue5 := int32(value.F090Uint)
+		if rangeValue5 < 0 || rangeValue5 > 214 {
 			return serialize.ErrValueOutOfRange
 		}
-		{
-			offsetValue := uint32(rangeValue)
-			stream.SerializeBits(&offsetValue, 8)
+		if value.F091Flags >= 1<<5 { // a mask bit above the wire width cannot ride
+			return serialize.ErrValueOutOfRange
 		}
+		f0 := (uint64(value.F085Bits)) & 0x1fffff
+		f1 := (uint64(uint32(rangeValue1))) & 0x1ff
+		f2 := math.Float64bits(value.F087F64)
+		f3 := (uint64(uint32(rangeValue3 - (-694)))) & 0x7ff
+		f4 := (uint64(value.F089Bits)) & 0xffffffffffff
+		f5 := (uint64(uint32(rangeValue5))) & 0xff
+		f6 := (uint64(value.F091Flags)) & 0x1f
+		f7 := uint64(0)
+		if value.F092Bool {
+			f7 = 1
+		}
+		f8 := uint64(value.F093Bits)
+		f9 := uint64(0)
+		if value.F094Bool {
+			f9 = 1
+		}
+		w0 := f0 | (f1 << 21) | (f2 << 30)
+		stream.SerializeBits64(&w0, 64)
+		w1 := (f2 >> 34) | (f3 << 30) | (f4 << 41)
+		stream.SerializeBits64(&w1, 64)
+		w2 := (f4 >> 23) | (f5 << 25) | (f6 << 33) | (f7 << 38) | (f8 << 39)
+		stream.SerializeBits64(&w2, 64)
+		w3 := (f8 >> 25) | (f9 << 39)
+		stream.SerializeBits64(&w3, 40)
 	}
-	if value.F091Flags >= 1<<5 { // a mask bit above the wire width cannot ride
-		return serialize.ErrValueOutOfRange
-	}
-	{
-		flagsValue := uint32(value.F091Flags)
-		stream.SerializeBits(&flagsValue, 5)
-	}
-	stream.SerializeBool(&value.F092Bool)
-	stream.SerializeBits64(&value.F093Bits, 64)
-	stream.SerializeBool(&value.F094Bool)
 	{
 		fixedValue := int64(value.F095Fixed)
 		stream.SerializeFixed64(&fixedValue, 16, 16, -1577, 1577)
 	}
-	stream.SerializeBits(&value.F096Bits, 18)
-	stream.SerializeBits(&value.F097Bits, 12)
+	{
+		f0 := (uint64(value.F096Bits)) & 0x3ffff
+		f1 := (uint64(value.F097Bits)) & 0xfff
+		w0 := uint32(f0 | (f1 << 18))
+		stream.SerializeBits(&w0, 30)
+	}
 	return stream.Err()
 }
 
 func ReadRealPacket(stream *serialize.ReadStream, value *RealPacket) error {
-	stream.SerializeInt(&value.F001Int, -805495, 805495)
-	stream.SerializeFloat64(&value.F002F64)
-	stream.SerializeInt(&value.F003Int, -835897, 835897)
 	{
-		integerValue := uint32(0)
-		stream.SerializeBits(&integerValue, 15)
+		c0 := uint64(0)
+		stream.SerializeBits64(&c0, 64)
+		c1 := uint64(0)
+		stream.SerializeBits64(&c1, 64)
+		c2 := uint64(0)
+		stream.SerializeBits64(&c2, 64)
+		c3 := uint64(0)
+		stream.SerializeBits64(&c3, 64)
+		c4 := uint64(0)
+		stream.SerializeBits64(&c4, 35)
 		if stream.Err() != nil {
 			return stream.Err()
 		}
-		if integerValue > 20000 { // a value smuggled into the bit headroom is refused (SPEC §4.3)
+		v0 := c0 & 0x1fffff
+		if v0 > 1610990 { // a value smuggled into the bit headroom is refused (SPEC §4.3)
+			return serialize.ErrValueOutOfRange
+		}
+		{
+			lowValue := int32(-805495)
+			value.F001Int = int32(uint32(v0) + uint32(lowValue))
+		}
+		v1 := (c0 >> 21) | (c1 << 43)
+		value.F002F64 = math.Float64frombits(v1)
+		v2 := (c1 >> 21) & 0x1fffff
+		if v2 > 1671794 { // a value smuggled into the bit headroom is refused (SPEC §4.3)
+			return serialize.ErrValueOutOfRange
+		}
+		{
+			lowValue := int32(-835897)
+			value.F003Int = int32(uint32(v2) + uint32(lowValue))
+		}
+		v3 := (c1 >> 42) & 0x7fff
+		if v3 > 20000 { // a value smuggled into the bit headroom is refused (SPEC §4.3)
 			return ErrValidation
 		}
-		normalizedValue := float32(integerValue) / 20000.0
-		value.F004Cf32 = float32(normalizedValue * 2000.0)
-	}
-	{
-		rangeValue := int32(0)
-		stream.SerializeInt(&rangeValue, 0, 7316)
-		value.F005Uint = uint16(rangeValue)
-	}
-	{
-		rangeValue := int32(0)
-		stream.SerializeInt(&rangeValue, -1513, 1513)
-		value.F006Int = int16(rangeValue)
-	}
-	stream.SerializeFloat32(&value.F007F32)
-	stream.SerializeBits64(&value.F008U64, 64)
-	{
-		rangeValue := int32(0)
-		stream.SerializeInt(&rangeValue, -22, 22)
-		value.F009Int = int8(rangeValue)
-	}
-	stream.SerializeFloat32(&value.F010F32)
-	stream.SerializeBits(&value.F011Bits, 10)
-	stream.SerializeBool(&value.F012Bool)
-	if value.F012Bool {
-		stream.SerializeFloat32(&value.F013F32)
 		{
-			rangeValue := int32(0)
-			stream.SerializeInt(&rangeValue, 0, 775)
-			value.F014Uint = uint16(rangeValue)
+			normalizedValue := float32(v3) / 20000.0
+			value.F004Cf32 = float32(normalizedValue * 2000.0)
+		}
+		v4 := ((c1 >> 57) | (c2 << 7)) & 0x1fff
+		if v4 > 7316 { // a value smuggled into the bit headroom is refused (SPEC §4.3)
+			return serialize.ErrValueOutOfRange
+		}
+		value.F005Uint = uint16(int32(v4))
+		v5 := (c2 >> 6) & 0xfff
+		if v5 > 3026 { // a value smuggled into the bit headroom is refused (SPEC §4.3)
+			return serialize.ErrValueOutOfRange
 		}
 		{
-			rangeValue := int32(0)
-			stream.SerializeInt(&rangeValue, -21, 21)
-			value.F015Int = int8(rangeValue)
+			lowValue := int32(-1513)
+			value.F006Int = int16(int32(uint32(v5) + uint32(lowValue)))
+		}
+		v6 := (c2 >> 18) & 0xffffffff
+		value.F007F32 = math.Float32frombits(uint32(v6))
+		v7 := (c2 >> 50) | (c3 << 14)
+		value.F008U64 = v7
+		v8 := (c3 >> 50) & 0x3f
+		if v8 > 44 { // a value smuggled into the bit headroom is refused (SPEC §4.3)
+			return serialize.ErrValueOutOfRange
+		}
+		{
+			lowValue := int32(-22)
+			value.F009Int = int8(int32(uint32(v8) + uint32(lowValue)))
+		}
+		v9 := ((c3 >> 56) | (c4 << 8)) & 0xffffffff
+		value.F010F32 = math.Float32frombits(uint32(v9))
+		v10 := (c4 >> 24) & 0x3ff
+		value.F011Bits = uint32(v10)
+		v11 := (c4 >> 34) & 0x1
+		value.F012Bool = v11 != 0
+	}
+	if value.F012Bool {
+		{
+			c0 := uint64(0)
+			stream.SerializeBits64(&c0, 48)
+			if stream.Err() != nil {
+				return stream.Err()
+			}
+			v0 := c0 & 0xffffffff
+			value.F013F32 = math.Float32frombits(uint32(v0))
+			v1 := (c0 >> 32) & 0x3ff
+			if v1 > 775 { // a value smuggled into the bit headroom is refused (SPEC §4.3)
+				return serialize.ErrValueOutOfRange
+			}
+			value.F014Uint = uint16(int32(v1))
+			v2 := (c0 >> 42) & 0x3f
+			if v2 > 42 { // a value smuggled into the bit headroom is refused (SPEC §4.3)
+				return serialize.ErrValueOutOfRange
+			}
+			{
+				lowValue := int32(-21)
+				value.F015Int = int8(int32(uint32(v2) + uint32(lowValue)))
+			}
 		}
 		{
 			fixedValue := int64(0)
@@ -790,9 +804,15 @@ func ReadRealPacket(stream *serialize.ReadStream, value *RealPacket) error {
 			value.F016Fixed = int32(fixedValue)
 		}
 		{
-			rangeValue := int32(0)
-			stream.SerializeInt(&rangeValue, 0, 4606)
-			value.F017Uint = uint16(rangeValue)
+			offsetValue := uint32(0)
+			stream.SerializeBits(&offsetValue, 13)
+			if stream.Err() != nil {
+				return stream.Err()
+			}
+			if offsetValue > 4606 { // a value smuggled into the bit headroom is refused (SPEC §4.3)
+				return serialize.ErrValueOutOfRange
+			}
+			value.F017Uint = uint16(int32(offsetValue))
 		}
 	} else {
 		value.F013F32 = 0
@@ -802,91 +822,164 @@ func ReadRealPacket(stream *serialize.ReadStream, value *RealPacket) error {
 		value.F017Uint = 0
 	}
 	{
-		rangeValue := int32(0)
-		stream.SerializeInt(&rangeValue, -834, 834)
-		value.F018Int = int16(rangeValue)
+		c0 := uint64(0)
+		stream.SerializeBits64(&c0, 64)
+		c1 := uint64(0)
+		stream.SerializeBits64(&c1, 43)
+		if stream.Err() != nil {
+			return stream.Err()
+		}
+		v0 := c0 & 0x7ff
+		if v0 > 1668 { // a value smuggled into the bit headroom is refused (SPEC §4.3)
+			return serialize.ErrValueOutOfRange
+		}
+		{
+			lowValue := int32(-834)
+			value.F018Int = int16(int32(uint32(v0) + uint32(lowValue)))
+		}
+		v1 := (c0 >> 11) | (c1 << 53)
+		value.F019F64 = math.Float64frombits(v1)
+		v2 := (c1 >> 11) & 0xffffffff
+		value.F020F32 = math.Float32frombits(uint32(v2))
 	}
-	stream.SerializeFloat64(&value.F019F64)
-	stream.SerializeFloat32(&value.F020F32)
 	{
 		fixedValue := int64(0)
 		stream.SerializeFixed64(&fixedValue, 20, 12, 0, 25141)
 		value.F021Ufixed = uint32(fixedValue)
 	}
-	stream.SerializeFloat32(&value.F022F32)
-	stream.SerializeBits(&value.F023Bits, 25)
-	stream.SerializeFloat32(&value.F024F32)
+	{
+		c0 := uint64(0)
+		stream.SerializeBits64(&c0, 64)
+		n1 := uint32(0)
+		stream.SerializeBits(&n1, 25)
+		c1 := uint64(n1)
+		if stream.Err() != nil {
+			return stream.Err()
+		}
+		v0 := c0 & 0xffffffff
+		value.F022F32 = math.Float32frombits(uint32(v0))
+		v1 := (c0 >> 32) & 0x1ffffff
+		value.F023Bits = uint32(v1)
+		v2 := ((c0 >> 57) | (c1 << 7)) & 0xffffffff
+		value.F024F32 = math.Float32frombits(uint32(v2))
+	}
 	{
 		fixedValue := int64(0)
 		stream.SerializeFixed64(&fixedValue, 8, 8, -119, 119)
 		value.F025Fixed = int16(fixedValue)
 	}
-	stream.SerializeBits(&value.F026Bits, 9)
 	{
-		integerValue := uint32(0)
-		stream.SerializeBits(&integerValue, 5)
+		c0 := uint64(0)
+		stream.SerializeBits64(&c0, 64)
+		c1 := uint64(0)
+		stream.SerializeBits64(&c1, 64)
+		c2 := uint64(0)
+		stream.SerializeBits64(&c2, 55)
 		if stream.Err() != nil {
 			return stream.Err()
 		}
-		if integerValue > 16 { // a value smuggled into the bit headroom is refused (SPEC §4.3)
+		v0 := c0 & 0x1ff
+		value.F026Bits = uint32(v0)
+		v1 := (c0 >> 9) & 0x1f
+		if v1 > 16 { // a value smuggled into the bit headroom is refused (SPEC §4.3)
 			return ErrValidation
 		}
-		normalizedValue := float32(integerValue) / 16.0
-		value.F027Cf32 = float32(normalizedValue*4.0) + (-2.0)
+		{
+			normalizedValue := float32(v1) / 16.0
+			value.F027Cf32 = float32(normalizedValue*4.0) + (-2.0)
+		}
+		v2 := (c0 >> 14) & 0xf
+		value.F028Bits = uint32(v2)
+		v3 := (c0 >> 18) | (c1 << 46)
+		value.F029I64 = int64(v3)
+		v4 := (c1 >> 18) & 0xffffffff
+		value.F030F32 = math.Float32frombits(uint32(v4))
+		v5 := (c1 >> 50) & 0x1
+		value.F031Bits = uint32(v5)
+		v6 := (c1 >> 51) & 0x7
+		if v6 > 6 { // a value smuggled into the bit headroom is refused (SPEC §4.3)
+			return serialize.ErrValueOutOfRange
+		}
+		{
+			lowValue := int32(-3)
+			value.F032Int = int8(int32(uint32(v6) + uint32(lowValue)))
+		}
+		v7 := ((c1 >> 54) | (c2 << 10)) & 0x3ffff
+		if v7 > 142780 { // a value smuggled into the bit headroom is refused (SPEC §4.3)
+			return serialize.ErrValueOutOfRange
+		}
+		value.F033Uint = uint32(int32(v7))
+		v8 := (c2 >> 8) & 0x3fff
+		if v8 > 14149 { // a value smuggled into the bit headroom is refused (SPEC §4.3)
+			return serialize.ErrValueOutOfRange
+		}
+		value.F034Uint = uint16(int32(v8))
+		v9 := (c2 >> 22) & 0x1ff
+		value.F035Bits = uint32(v9)
+		v10 := (c2 >> 31) & 0x7
+		if v10 > 5 {
+			return serialize.ErrValueOutOfRange
+		}
+		value.F036Enum = PacketMode(int32(v10))
+		v11 := (c2 >> 34) & 0x1
+		value.F037Bool = v11 != 0
+		v12 := (c2 >> 35) & 0x1
+		value.F038Bool = v12 != 0
+		v13 := (c2 >> 36) & 0x7ffff
+		value.F039Bits = uint32(v13)
 	}
-	stream.SerializeBits(&value.F028Bits, 4)
-	{
-		rawValue := uint64(0)
-		stream.SerializeBits64(&rawValue, 64)
-		value.F029I64 = int64(rawValue)
-	}
-	stream.SerializeFloat32(&value.F030F32)
-	stream.SerializeBits(&value.F031Bits, 1)
-	{
-		rangeValue := int32(0)
-		stream.SerializeInt(&rangeValue, -3, 3)
-		value.F032Int = int8(rangeValue)
-	}
-	{
-		rangeValue := int32(0)
-		stream.SerializeInt(&rangeValue, 0, 142780)
-		value.F033Uint = uint32(rangeValue)
-	}
-	{
-		rangeValue := int32(0)
-		stream.SerializeInt(&rangeValue, 0, 14149)
-		value.F034Uint = uint16(rangeValue)
-	}
-	stream.SerializeBits(&value.F035Bits, 9)
-	{
-		enumValue := int32(0)
-		stream.SerializeInt(&enumValue, 0, 5)
-		value.F036Enum = PacketMode(enumValue)
-	}
-	stream.SerializeBool(&value.F037Bool)
-	stream.SerializeBool(&value.F038Bool)
-	stream.SerializeBits(&value.F039Bits, 19)
 	{
 		fixedValue := int64(0)
 		stream.SerializeFixed64(&fixedValue, 4, 12, -5, 5)
 		value.F040Fixed = int16(fixedValue)
 	}
 	{
-		rangeValue := int32(0)
-		stream.SerializeInt(&rangeValue, -55, 55)
-		value.F041Int = int8(rangeValue)
-	}
-	stream.SerializeBits(&value.F042Bits, 30)
-	stream.SerializeBool(&value.F043Bool)
-	if value.F043Bool {
-		stream.SerializeFloat32(&value.F044F32)
-		stream.SerializeBits(&value.F045Bits, 12)
-		{
-			rangeValue := int32(0)
-			stream.SerializeInt(&rangeValue, 0, 76063)
-			value.F046Uint = uint32(rangeValue)
+		c0 := uint64(0)
+		stream.SerializeBits64(&c0, 38)
+		if stream.Err() != nil {
+			return stream.Err()
 		}
-		stream.SerializeInt(&value.F047Int, -430976, 430976)
+		v0 := c0 & 0x7f
+		if v0 > 110 { // a value smuggled into the bit headroom is refused (SPEC §4.3)
+			return serialize.ErrValueOutOfRange
+		}
+		{
+			lowValue := int32(-55)
+			value.F041Int = int8(int32(uint32(v0) + uint32(lowValue)))
+		}
+		v1 := (c0 >> 7) & 0x3fffffff
+		value.F042Bits = uint32(v1)
+		v2 := (c0 >> 37) & 0x1
+		value.F043Bool = v2 != 0
+	}
+	if value.F043Bool {
+		{
+			c0 := uint64(0)
+			stream.SerializeBits64(&c0, 64)
+			n1 := uint32(0)
+			stream.SerializeBits(&n1, 17)
+			c1 := uint64(n1)
+			if stream.Err() != nil {
+				return stream.Err()
+			}
+			v0 := c0 & 0xffffffff
+			value.F044F32 = math.Float32frombits(uint32(v0))
+			v1 := (c0 >> 32) & 0xfff
+			value.F045Bits = uint32(v1)
+			v2 := (c0 >> 44) & 0x1ffff
+			if v2 > 76063 { // a value smuggled into the bit headroom is refused (SPEC §4.3)
+				return serialize.ErrValueOutOfRange
+			}
+			value.F046Uint = uint32(int32(v2))
+			v3 := ((c0 >> 61) | (c1 << 3)) & 0xfffff
+			if v3 > 861952 { // a value smuggled into the bit headroom is refused (SPEC §4.3)
+				return serialize.ErrValueOutOfRange
+			}
+			{
+				lowValue := int32(-430976)
+				value.F047Int = int32(uint32(v3) + uint32(lowValue))
+			}
+		}
 	} else {
 		value.F044F32 = 0
 		value.F045Bits = 0
@@ -901,17 +994,32 @@ func ReadRealPacket(stream *serialize.ReadStream, value *RealPacket) error {
 	}
 	stream.SerializeBool(&value.F050Bool)
 	if value.F050Bool {
-		stream.SerializeBool(&value.F051Bool)
 		{
-			rangeValue := int32(0)
-			stream.SerializeInt(&rangeValue, -57, 57)
-			value.F052Int = int8(rangeValue)
-		}
-		stream.SerializeFloat32(&value.F053F32)
-		{
-			rangeValue := int32(0)
-			stream.SerializeInt(&rangeValue, -35, 35)
-			value.F054Int = int8(rangeValue)
+			c0 := uint64(0)
+			stream.SerializeBits64(&c0, 47)
+			if stream.Err() != nil {
+				return stream.Err()
+			}
+			v0 := c0 & 0x1
+			value.F051Bool = v0 != 0
+			v1 := (c0 >> 1) & 0x7f
+			if v1 > 114 { // a value smuggled into the bit headroom is refused (SPEC §4.3)
+				return serialize.ErrValueOutOfRange
+			}
+			{
+				lowValue := int32(-57)
+				value.F052Int = int8(int32(uint32(v1) + uint32(lowValue)))
+			}
+			v2 := (c0 >> 8) & 0xffffffff
+			value.F053F32 = math.Float32frombits(uint32(v2))
+			v3 := (c0 >> 40) & 0x7f
+			if v3 > 70 { // a value smuggled into the bit headroom is refused (SPEC §4.3)
+				return serialize.ErrValueOutOfRange
+			}
+			{
+				lowValue := int32(-35)
+				value.F054Int = int8(int32(uint32(v3) + uint32(lowValue)))
+			}
 		}
 	} else {
 		value.F051Bool = false
@@ -919,58 +1027,71 @@ func ReadRealPacket(stream *serialize.ReadStream, value *RealPacket) error {
 		value.F053F32 = 0
 		value.F054Int = 0
 	}
-	stream.SerializeBool(&value.F055Bool)
 	{
-		rangeValue := int32(0)
-		stream.SerializeInt(&rangeValue, -13, 13)
-		value.F056Int = int8(rangeValue)
-	}
-	{
-		rangeValue := int32(0)
-		stream.SerializeInt(&rangeValue, -15, 15)
-		value.F057Int = int8(rangeValue)
-	}
-	stream.SerializeFloat32(&value.F058F32)
-	stream.SerializeFloat64(&value.F059F64)
-	stream.SerializeBits(&value.F060Bits, 8)
-	{
-		integerValue := uint32(0)
-		stream.SerializeBits(&integerValue, 9)
+		c0 := uint64(0)
+		stream.SerializeBits64(&c0, 64)
+		c1 := uint64(0)
+		stream.SerializeBits64(&c1, 64)
+		c2 := uint64(0)
+		stream.SerializeBits64(&c2, 64)
+		n3 := uint32(0)
+		stream.SerializeBits(&n3, 20)
+		c3 := uint64(n3)
 		if stream.Err() != nil {
 			return stream.Err()
 		}
-		if integerValue > 360 { // a value smuggled into the bit headroom is refused (SPEC §4.3)
+		v0 := c0 & 0x1
+		value.F055Bool = v0 != 0
+		v1 := (c0 >> 1) & 0x1f
+		if v1 > 26 { // a value smuggled into the bit headroom is refused (SPEC §4.3)
+			return serialize.ErrValueOutOfRange
+		}
+		{
+			lowValue := int32(-13)
+			value.F056Int = int8(int32(uint32(v1) + uint32(lowValue)))
+		}
+		v2 := (c0 >> 6) & 0x1f
+		if v2 > 30 { // a value smuggled into the bit headroom is refused (SPEC §4.3)
+			return serialize.ErrValueOutOfRange
+		}
+		{
+			lowValue := int32(-15)
+			value.F057Int = int8(int32(uint32(v2) + uint32(lowValue)))
+		}
+		v3 := (c0 >> 11) & 0xffffffff
+		value.F058F32 = math.Float32frombits(uint32(v3))
+		v4 := (c0 >> 43) | (c1 << 21)
+		value.F059F64 = math.Float64frombits(v4)
+		v5 := (c1 >> 43) & 0xff
+		value.F060Bits = uint32(v5)
+		v6 := (c1 >> 51) & 0x1ff
+		if v6 > 360 { // a value smuggled into the bit headroom is refused (SPEC §4.3)
 			return ErrValidation
 		}
-		normalizedValue := float32(integerValue) / 360.0
-		value.F061Cf32 = float32(normalizedValue*180.0) + (-90.0)
-	}
-	{
-		rangeValue := int32(0)
-		stream.SerializeInt(&rangeValue, 0, 503)
-		value.F062Uint = uint16(rangeValue)
-	}
-	{
-		rawValue := uint64(0)
-		stream.SerializeBits64(&rawValue, 64)
-		value.F063I64 = int64(rawValue)
-	}
-	{
-		rangeValue := int32(0)
-		stream.SerializeInt(&rangeValue, 0, 299)
-		value.F064Uint = uint16(rangeValue)
-	}
-	{
-		integerValue := uint32(0)
-		stream.SerializeBits(&integerValue, 6)
-		if stream.Err() != nil {
-			return stream.Err()
+		{
+			normalizedValue := float32(v6) / 360.0
+			value.F061Cf32 = float32(normalizedValue*180.0) + (-90.0)
 		}
-		if integerValue > 60 { // a value smuggled into the bit headroom is refused (SPEC §4.3)
+		v7 := ((c1 >> 60) | (c2 << 4)) & 0x1ff
+		if v7 > 503 { // a value smuggled into the bit headroom is refused (SPEC §4.3)
+			return serialize.ErrValueOutOfRange
+		}
+		value.F062Uint = uint16(int32(v7))
+		v8 := (c2 >> 5) | (c3 << 59)
+		value.F063I64 = int64(v8)
+		v9 := (c3 >> 5) & 0x1ff
+		if v9 > 299 { // a value smuggled into the bit headroom is refused (SPEC §4.3)
+			return serialize.ErrValueOutOfRange
+		}
+		value.F064Uint = uint16(int32(v9))
+		v10 := (c3 >> 14) & 0x3f
+		if v10 > 60 { // a value smuggled into the bit headroom is refused (SPEC §4.3)
 			return ErrValidation
 		}
-		normalizedValue := float32(integerValue) / 60.0
-		value.F065Cf32 = float32(normalizedValue * 30.0)
+		{
+			normalizedValue := float32(v10) / 60.0
+			value.F065Cf32 = float32(normalizedValue * 30.0)
+		}
 	}
 	{
 		fixedValue := int64(0)
@@ -978,82 +1099,95 @@ func ReadRealPacket(stream *serialize.ReadStream, value *RealPacket) error {
 		value.F066Ufixed = uint16(fixedValue)
 	}
 	{
-		integerValue := uint32(0)
-		stream.SerializeBits(&integerValue, 10)
+		c0 := uint64(0)
+		stream.SerializeBits64(&c0, 62)
 		if stream.Err() != nil {
 			return stream.Err()
 		}
-		if integerValue > 800 { // a value smuggled into the bit headroom is refused (SPEC §4.3)
+		v0 := c0 & 0x3ff
+		if v0 > 800 { // a value smuggled into the bit headroom is refused (SPEC §4.3)
 			return ErrValidation
 		}
-		normalizedValue := float32(integerValue) / 800.0
-		value.F067Cf32 = float32(normalizedValue*200.0) + (-100.0)
-	}
-	{
-		integerValue := uint32(0)
-		stream.SerializeBits(&integerValue, 11)
-		if stream.Err() != nil {
-			return stream.Err()
+		{
+			normalizedValue := float32(v0) / 800.0
+			value.F067Cf32 = float32(normalizedValue*200.0) + (-100.0)
 		}
-		if integerValue > 2000 { // a value smuggled into the bit headroom is refused (SPEC §4.3)
+		v1 := (c0 >> 10) & 0x7ff
+		if v1 > 2000 { // a value smuggled into the bit headroom is refused (SPEC §4.3)
 			return ErrValidation
 		}
-		normalizedValue := float32(integerValue) / 2000.0
-		value.F068Cf32 = float32(normalizedValue * 2000.0)
-	}
-	stream.SerializeBits(&value.F069Bits, 11)
-	{
-		rangeValue := int32(0)
-		stream.SerializeInt(&rangeValue, 0, 2)
-		value.F070Uint = uint8(rangeValue)
-	}
-	{
-		integerValue := uint32(0)
-		stream.SerializeBits(&integerValue, 9)
-		if stream.Err() != nil {
-			return stream.Err()
+		{
+			normalizedValue := float32(v1) / 2000.0
+			value.F068Cf32 = float32(normalizedValue * 2000.0)
 		}
-		if integerValue > 500 { // a value smuggled into the bit headroom is refused (SPEC §4.3)
+		v2 := (c0 >> 21) & 0x7ff
+		value.F069Bits = uint32(v2)
+		v3 := (c0 >> 32) & 0x3
+		if v3 > 2 { // a value smuggled into the bit headroom is refused (SPEC §4.3)
+			return serialize.ErrValueOutOfRange
+		}
+		value.F070Uint = uint8(int32(v3))
+		v4 := (c0 >> 34) & 0x1ff
+		if v4 > 500 { // a value smuggled into the bit headroom is refused (SPEC §4.3)
 			return ErrValidation
 		}
-		normalizedValue := float32(integerValue) / 500.0
-		value.F071Cf32 = float32(normalizedValue * 10.0)
-	}
-	{
-		integerValue := uint32(0)
-		stream.SerializeBits(&integerValue, 14)
-		if stream.Err() != nil {
-			return stream.Err()
+		{
+			normalizedValue := float32(v4) / 500.0
+			value.F071Cf32 = float32(normalizedValue * 10.0)
 		}
-		if integerValue > 10000 { // a value smuggled into the bit headroom is refused (SPEC §4.3)
+		v5 := (c0 >> 43) & 0x3fff
+		if v5 > 10000 { // a value smuggled into the bit headroom is refused (SPEC §4.3)
 			return ErrValidation
 		}
-		normalizedValue := float32(integerValue) / 10000.0
-		value.F072Cf32 = float32(normalizedValue * 100.0)
+		{
+			normalizedValue := float32(v5) / 10000.0
+			value.F072Cf32 = float32(normalizedValue * 100.0)
+		}
+		v6 := (c0 >> 57) & 0xf
+		if v6 > 8 { // a value smuggled into the bit headroom is refused (SPEC §4.3)
+			return serialize.ErrValueOutOfRange
+		}
+		{
+			lowValue := int32(-4)
+			value.F073Int = int8(int32(uint32(v6) + uint32(lowValue)))
+		}
+		v7 := (c0 >> 61) & 0x1
+		value.F074Bool = v7 != 0
 	}
-	{
-		rangeValue := int32(0)
-		stream.SerializeInt(&rangeValue, -4, 4)
-		value.F073Int = int8(rangeValue)
-	}
-	stream.SerializeBool(&value.F074Bool)
 	if value.F074Bool {
-		stream.SerializeBits64(&value.F075U64, 64)
 		{
-			rangeValue := int32(0)
-			stream.SerializeInt(&rangeValue, -26218, 26218)
-			value.F076Int = int16(rangeValue)
-		}
-		{
-			rangeValue := int32(0)
-			stream.SerializeInt(&rangeValue, -17, 17)
-			value.F077Int = int8(rangeValue)
-		}
-		stream.SerializeBits(&value.F078Bits, 9)
-		{
-			rangeValue := int32(0)
-			stream.SerializeInt(&rangeValue, 0, 17)
-			value.F079Uint = uint8(rangeValue)
+			c0 := uint64(0)
+			stream.SerializeBits64(&c0, 64)
+			c1 := uint64(0)
+			stream.SerializeBits64(&c1, 36)
+			if stream.Err() != nil {
+				return stream.Err()
+			}
+			v0 := c0
+			value.F075U64 = v0
+			v1 := c1 & 0xffff
+			if v1 > 52436 { // a value smuggled into the bit headroom is refused (SPEC §4.3)
+				return serialize.ErrValueOutOfRange
+			}
+			{
+				lowValue := int32(-26218)
+				value.F076Int = int16(int32(uint32(v1) + uint32(lowValue)))
+			}
+			v2 := (c1 >> 16) & 0x3f
+			if v2 > 34 { // a value smuggled into the bit headroom is refused (SPEC §4.3)
+				return serialize.ErrValueOutOfRange
+			}
+			{
+				lowValue := int32(-17)
+				value.F077Int = int8(int32(uint32(v2) + uint32(lowValue)))
+			}
+			v3 := (c1 >> 22) & 0x1ff
+			value.F078Bits = uint32(v3)
+			v4 := (c1 >> 31) & 0x1f
+			if v4 > 17 { // a value smuggled into the bit headroom is refused (SPEC §4.3)
+				return serialize.ErrValueOutOfRange
+			}
+			value.F079Uint = uint8(int32(v4))
 		}
 	} else {
 		value.F075U64 = 0
@@ -1062,51 +1196,90 @@ func ReadRealPacket(stream *serialize.ReadStream, value *RealPacket) error {
 		value.F078Bits = 0
 		value.F079Uint = 0
 	}
-	stream.SerializeBool(&value.F080Bool)
-	stream.SerializeBits(&value.F081Bits, 29)
-	stream.SerializeBits(&value.F082Bits, 25)
 	{
-		enumValue := int32(0)
-		stream.SerializeInt(&enumValue, 0, 5)
-		value.F083Enum = PacketMode(enumValue)
+		c0 := uint64(0)
+		stream.SerializeBits64(&c0, 58)
+		if stream.Err() != nil {
+			return stream.Err()
+		}
+		v0 := c0 & 0x1
+		value.F080Bool = v0 != 0
+		v1 := (c0 >> 1) & 0x1fffffff
+		value.F081Bits = uint32(v1)
+		v2 := (c0 >> 30) & 0x1ffffff
+		value.F082Bits = uint32(v2)
+		v3 := (c0 >> 55) & 0x7
+		if v3 > 5 {
+			return serialize.ErrValueOutOfRange
+		}
+		value.F083Enum = PacketMode(int32(v3))
 	}
 	{
 		fixedValue := int64(0)
 		stream.SerializeFixed64(&fixedValue, 1, 7, 0, 1)
 		value.F084Ufixed = uint8(fixedValue)
 	}
-	stream.SerializeBits(&value.F085Bits, 21)
 	{
-		rangeValue := int32(0)
-		stream.SerializeInt(&rangeValue, 0, 399)
-		value.F086Uint = uint16(rangeValue)
+		c0 := uint64(0)
+		stream.SerializeBits64(&c0, 64)
+		c1 := uint64(0)
+		stream.SerializeBits64(&c1, 64)
+		c2 := uint64(0)
+		stream.SerializeBits64(&c2, 64)
+		c3 := uint64(0)
+		stream.SerializeBits64(&c3, 40)
+		if stream.Err() != nil {
+			return stream.Err()
+		}
+		v0 := c0 & 0x1fffff
+		value.F085Bits = uint32(v0)
+		v1 := (c0 >> 21) & 0x1ff
+		if v1 > 399 { // a value smuggled into the bit headroom is refused (SPEC §4.3)
+			return serialize.ErrValueOutOfRange
+		}
+		value.F086Uint = uint16(int32(v1))
+		v2 := (c0 >> 30) | (c1 << 34)
+		value.F087F64 = math.Float64frombits(v2)
+		v3 := (c1 >> 30) & 0x7ff
+		if v3 > 1388 { // a value smuggled into the bit headroom is refused (SPEC §4.3)
+			return serialize.ErrValueOutOfRange
+		}
+		{
+			lowValue := int32(-694)
+			value.F088Int = int16(int32(uint32(v3) + uint32(lowValue)))
+		}
+		v4 := ((c1 >> 41) | (c2 << 23)) & 0xffffffffffff
+		value.F089Bits = v4
+		v5 := (c2 >> 25) & 0xff
+		if v5 > 214 { // a value smuggled into the bit headroom is refused (SPEC §4.3)
+			return serialize.ErrValueOutOfRange
+		}
+		value.F090Uint = uint8(int32(v5))
+		v6 := (c2 >> 33) & 0x1f
+		value.F091Flags = PacketFlags(v6)
+		v7 := (c2 >> 38) & 0x1
+		value.F092Bool = v7 != 0
+		v8 := (c2 >> 39) | (c3 << 25)
+		value.F093Bits = v8
+		v9 := (c3 >> 39) & 0x1
+		value.F094Bool = v9 != 0
 	}
-	stream.SerializeFloat64(&value.F087F64)
-	{
-		rangeValue := int32(0)
-		stream.SerializeInt(&rangeValue, -694, 694)
-		value.F088Int = int16(rangeValue)
-	}
-	stream.SerializeBits64(&value.F089Bits, 48)
-	{
-		rangeValue := int32(0)
-		stream.SerializeInt(&rangeValue, 0, 214)
-		value.F090Uint = uint8(rangeValue)
-	}
-	{
-		flagsValue := uint32(0)
-		stream.SerializeBits(&flagsValue, 5)
-		value.F091Flags = PacketFlags(flagsValue)
-	}
-	stream.SerializeBool(&value.F092Bool)
-	stream.SerializeBits64(&value.F093Bits, 64)
-	stream.SerializeBool(&value.F094Bool)
 	{
 		fixedValue := int64(0)
 		stream.SerializeFixed64(&fixedValue, 16, 16, -1577, 1577)
 		value.F095Fixed = int32(fixedValue)
 	}
-	stream.SerializeBits(&value.F096Bits, 18)
-	stream.SerializeBits(&value.F097Bits, 12)
+	{
+		n0 := uint32(0)
+		stream.SerializeBits(&n0, 30)
+		c0 := uint64(n0)
+		if stream.Err() != nil {
+			return stream.Err()
+		}
+		v0 := c0 & 0x3ffff
+		value.F096Bits = uint32(v0)
+		v1 := (c0 >> 18) & 0xfff
+		value.F097Bits = uint32(v1)
+	}
 	return stream.Err()
 }

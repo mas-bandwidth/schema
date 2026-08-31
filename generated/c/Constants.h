@@ -2,7 +2,7 @@
    SPDX-License-Identifier: NONE — this generated output is yours, under terms of
    your choice. See the LICENSE exception in the schema compiler; the compiler is
    AGPL-3.0, its output is not.
-   package example — protocol id 0x0bde7acdd36abc6a */
+   package example — protocol id 0xa89dd9e036603208 */
 
 #ifndef SCHEMA_EXAMPLE_CONSTANTS_H
 #define SCHEMA_EXAMPLE_CONSTANTS_H
@@ -15,7 +15,7 @@ extern "C" {
 
 /* The unit's protocol id — the hash of its wire shape (SPEC §3.1). Two
    sides at the same id speak identical bits; there is no other versioning. */
-#define EXAMPLE_PROTOCOL_ID 0x0bde7acdd36abc6aULL
+#define EXAMPLE_PROTOCOL_ID 0xa89dd9e036603208ULL
 
 #define POSITION_UNITS (1024)
 #define VELOCITY_UNITS (1024)
