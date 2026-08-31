@@ -420,7 +420,7 @@ func (g *gen) flatGroupRun(f *ir.Field, name, idx string, k int64) (*flatRun, bo
 		return nil, false
 	}
 	run := &flatRun{}
-	for e := int64(0); e < k; e++ {
+	for e := range k {
 		at := fmt.Sprintf("%s[%s]", name, idx)
 		if e > 0 {
 			at = fmt.Sprintf("%s[%s+%d]", name, idx, e)
