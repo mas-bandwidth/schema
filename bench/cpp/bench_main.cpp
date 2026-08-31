@@ -46,9 +46,9 @@
 // schema_interior_null are emitted INSIDE each unit's namespace but guarded by
 // a translation-unit-wide #define, so the second unit's namespace never gets
 // them and its string reads do not compile. Clearing the guards makes the
-// bench unit emit its own copies. LEG-LOCAL by necessity: the C++ emitter is
-// mechanically locked (bench/LOCK), and the guard-vs-namespace mismatch is a
-// standing emitter defect reported with issue #184, not fixed here.
+// bench unit emit its own copies. LEG-LOCAL by necessity: the emitters stay
+// byte-unchanged in this PR. The guard-vs-namespace mismatch is an emitter
+// defect owned by issue #189; REMOVE THIS WORKAROUND when #189 lands.
 #undef SCHEMA_UTF8_VALID_DEFINED
 #undef SCHEMA_INTERIOR_NULL_DEFINED
 #include "BenchWire.h"          // generated/bench/cpp — the Bench corpus GENERATED (the gen twins of the rt rows, issue #177)

@@ -626,19 +626,52 @@ static void vary_gen_bits( BenchBits * f, uint64_t rng )
     f->b48 = rng & 0xFFFFFFFFFFFFULL;
 }
 
+/* The LCG field mapping for BenchMixed, identical in every runner. VALUE
+   fields only: array counts, used lengths, the union tag and the branch gate
+   are STRUCTURE and stay where the pin put them (§2.7). Every entity varies;
+   the 80 stats vary `delta` (stat_id stays pinned). */
 static void vary_gen_mixed( BenchMixed * f, uint64_t rng )
 {
-    f->sequence = (int32_t) ( (uint32_t) ( rng >> 8 ) & 65535 );
-    f->ack_bits = (uint32_t) ( rng >> 16 );
-    f->entity_id = (uint32_t) rng & 4095;
-    f->pos_x = (int32_t) ( ( rng >> 20 ) & 32767 ) - 16384;
-    f->pos_y = (int32_t) ( ( rng >> 25 ) & 32767 ) - 16384;
-    f->pos_z = (int32_t) ( ( rng >> 30 ) & 32767 ) - 16384;
-    f->yaw = (uint32_t) ( rng >> 3 ) & 511;
-    f->moving = ( rng & 1 ) != 0;
-    f->firing = ( rng & 2 ) != 0;
-    f->timestamp = rng & 0xFFFFFFFFFFFFULL;
-    f->weapon = (int32_t) ( (uint32_t) ( rng >> 60 ) & 15 );
+    int i;
+    f->sequence = (serialize_uint32_t) ( rng >> 8 ) & 65535;
+    f->ack_sequence = (serialize_int32_t) ( (serialize_uint32_t) ( rng >> 24 ) & 65535 );
+    f->ack_bits = (serialize_uint32_t) ( rng >> 16 );
+    f->session_id = rng;
+    f->client_id = (serialize_uint32_t) ( rng >> 32 );
+    f->nonce = rng ^ 0xA5A5A5A5A5A5A5A5ULL;
+    f->world_time = (serialize_int64_t) ( ( rng >> 12 ) & 0xFFFFFFFFFULL ) - 34359738368LL;
+    f->frame_tick = rng & 0xFFFFFFFFFFFFULL;
+    f->server_time = (serialize_int32_t) ( ( rng >> 20 ) & 0x7FFFFF );
+    for ( i = 0; i < 8; i++ )
+    {
+        MixedEntity * e = &f->entities[i];
+        e->entity_id = (serialize_uint32_t) ( ( rng >> i ) & 4095 );
+        e->pos_x = (serialize_int32_t) ( ( rng >> ( i + 4 ) ) & 16383 ) - 8192;
+        e->pos_y = (serialize_int32_t) ( ( rng >> ( i + 12 ) ) & 16383 ) - 8192;
+        e->health = (serialize_int32_t) ( ( rng >> ( i + 20 ) ) & 511 );
+        e->weapon = (MixedWeapon) ( ( rng >> ( i + 40 ) ) & 15 );
+        e->damage = (MixedDamage) ( ( rng >> ( i + 28 ) ) & 255 );
+        e->moving = ( ( rng >> i ) & 1 ) != 0;
+    }
+    for ( i = 0; i < 80; i++ )
+        f->stats[i].delta = (serialize_int32_t) ( ( rng >> ( i & 31 ) ) & 1023 ) - 512;
+    f->game_event.as.hit.target_id = (serialize_uint32_t) ( ( rng >> 6 ) & 4095 );
+    f->game_event.as.hit.damage = (serialize_int32_t) ( ( rng >> 18 ) & 4095 );
+    f->game_event.as.hit.hit_kind = (serialize_int32_t) ( ( rng >> 30 ) & 7 );
+    f->game_event.as.hit.crit = ( rng & 4 ) != 0;
+    f->loadout[0] = (serialize_uint8_t) ( rng >> 56 );
+    f->player_name[7] = (char) ( 65 + ( ( rng >> 50 ) & 15 ) );
+    f->payload[0] = (serialize_uint8_t) ( rng >> 48 );
+    f->aim_x = (float) ( (serialize_uint32_t) ( rng >> 2 ) & 255 ) * ( 1.0f / 256.0f ) - 0.5f;
+    f->aim_y = (float) ( (serialize_uint32_t) ( rng >> 10 ) & 255 ) * ( 1.0f / 256.0f ) - 0.5f;
+    f->aim_z = (float) ( (serialize_uint32_t) ( rng >> 18 ) & 255 ) * ( 1.0f / 256.0f ) - 0.5f;
+    f->recoil = (float) ( (serialize_uint32_t) rng & 0xFFFF );
+    f->drift = (double) ( (serialize_int64_t) ( ( rng >> 8 ) & 0xFFFFFF ) ) * 0.5;
+    f->wide_key = serialize_uint128_make( rng >> 1, rng );
+    f->flux = serialize_int128_from_int64( (serialize_int64_t) ( rng >> 16 ) );
+    f->ping = (serialize_uint16_t) ( ( rng >> 40 ) & 0x7FFF );
+    f->crc_hint = (serialize_uint32_t) ( ( rng >> 24 ) & 0xFFFFFF );
+    f->extra = (serialize_int32_t) ( ( rng >> 52 ) & 255 );
 }
 
 #define BM_SUFFIX gen_bench_packet
@@ -935,50 +968,288 @@ static int rt_read_bench_bits( serialize_read_stream_t * stream, RtBenchBits * f
     return 1;
 }
 
+/* BenchMixed by hand (issue #184): every serialize_* stream operation the
+   schema language expresses, in the order write_bench_mixed emits them. The
+   §1.5 oracle gate byte-compares this against the generated code's golden. */
+typedef struct RtMixedEntity
+{
+    serialize_uint32_t entity_id;
+    serialize_int32_t pos_x, pos_y, pos_z;
+    serialize_uint32_t yaw, pitch;
+    serialize_int32_t vel_x, vel_y, vel_z;
+    serialize_int32_t health;
+    serialize_int32_t weapon;      /* the enum wire */
+    serialize_uint32_t damage;     /* the flags wire, 8 bits */
+    int moving, firing;
+} RtMixedEntity;
+
+typedef struct RtMixedStat
+{
+    serialize_uint32_t stat_id;
+    serialize_int32_t delta;
+} RtMixedStat;
+
+typedef struct RtMixedHitEvent
+{
+    serialize_uint32_t target_id;
+    serialize_int32_t damage, hit_kind;
+    int crit;
+} RtMixedHitEvent;
+
+typedef struct RtMixedChatEvent
+{
+    serialize_int32_t channel;
+    serialize_uint32_t speaker;
+} RtMixedChatEvent;
+
+typedef struct RtMixedPickupEvent
+{
+    serialize_uint32_t item_id;
+    serialize_int32_t amount;
+} RtMixedPickupEvent;
+
 typedef struct RtBenchMixed
 {
-    serialize_int32_t sequence;
-    serialize_uint32_t ack_bits, entity_id;
-    serialize_int32_t pos_x, pos_y, pos_z;
-    serialize_uint32_t yaw;
-    int moving, firing;
-    serialize_uint64_t timestamp;
-    serialize_int32_t weapon;
+    serialize_uint32_t magic;
+    serialize_uint32_t sequence;
+    serialize_int32_t ack_sequence;
+    serialize_uint32_t ack_bits;
+    serialize_uint64_t session_id;
+    serialize_uint32_t client_id;
+    serialize_uint64_t nonce;
+    serialize_int64_t world_time;
+    serialize_uint64_t frame_tick;
+    serialize_int32_t server_time;          /* raw Q24.8 */
+    serialize_int32_t entities_count;
+    RtMixedEntity entities[8];
+    serialize_int32_t stats_count;
+    RtMixedStat stats[80];
+    serialize_int32_t event_type;           /* the union tag: 0 = None */
+    RtMixedHitEvent hit;
+    RtMixedChatEvent chat;
+    RtMixedPickupEvent pickup;
+    serialize_uint8_t loadout[4];
+    char player_name[16];                   /* string(15): buffer N + 1 */
+    serialize_int32_t payload_length;
+    serialize_uint8_t payload[16];
+    float aim_x, aim_y, aim_z;
+    float recoil;
+    double drift;
+    serialize_uint128_t wide_key;
+    serialize_int128_t flux;
+    serialize_uint16_t ping;                /* raw UQ8.8 */
+    serialize_uint32_t reserved_bits;
+    serialize_uint32_t crc_hint;
+    int has_extra;
+    serialize_int32_t extra, idle_ticks;
 } RtBenchMixed;
+
+/* the +/-2^100 band flux rides in, composed the way serialize.c spells 128-bit
+   constants (no C literal exists) */
+#define RT_FLUX_MIN serialize_int128_make( 18446744004990074880ULL, 0ULL )
+#define RT_FLUX_MAX serialize_int128_make( 68719476736ULL, 0ULL )
+
+static int rt_write_mixed_entity( serialize_write_stream_t * stream, const RtMixedEntity * e )
+{
+    if ( !serialize_write_bits( stream, e->entity_id, 12 ) ) { return 0; }
+    if ( !serialize_write_int( stream, e->pos_x, -16383, +16383 ) ) { return 0; }
+    if ( !serialize_write_int( stream, e->pos_y, -16383, +16383 ) ) { return 0; }
+    if ( !serialize_write_int( stream, e->pos_z, -16383, +16383 ) ) { return 0; }
+    if ( !serialize_write_bits( stream, e->yaw, 9 ) ) { return 0; }
+    if ( !serialize_write_bits( stream, e->pitch, 9 ) ) { return 0; }
+    if ( !serialize_write_int( stream, e->vel_x, -2048, +2047 ) ) { return 0; }
+    if ( !serialize_write_int( stream, e->vel_y, -2048, +2047 ) ) { return 0; }
+    if ( !serialize_write_int( stream, e->vel_z, -2048, +2047 ) ) { return 0; }
+    if ( !serialize_write_int( stream, e->health, 0, 1000 ) ) { return 0; }
+    if ( !serialize_write_int( stream, e->weapon, 0, 15 ) ) { return 0; }
+    if ( !serialize_write_bits( stream, e->damage, 8 ) ) { return 0; }
+    if ( !serialize_write_bool( stream, e->moving ) ) { return 0; }
+    if ( !serialize_write_bool( stream, e->firing ) ) { return 0; }
+    return 1;
+}
+
+static int rt_read_mixed_entity( serialize_read_stream_t * stream, RtMixedEntity * e )
+{
+    if ( !serialize_read_bits( stream, &e->entity_id, 12 ) ) { return 0; }
+    if ( !serialize_read_int( stream, &e->pos_x, -16383, +16383 ) ) { return 0; }
+    if ( !serialize_read_int( stream, &e->pos_y, -16383, +16383 ) ) { return 0; }
+    if ( !serialize_read_int( stream, &e->pos_z, -16383, +16383 ) ) { return 0; }
+    if ( !serialize_read_bits( stream, &e->yaw, 9 ) ) { return 0; }
+    if ( !serialize_read_bits( stream, &e->pitch, 9 ) ) { return 0; }
+    if ( !serialize_read_int( stream, &e->vel_x, -2048, +2047 ) ) { return 0; }
+    if ( !serialize_read_int( stream, &e->vel_y, -2048, +2047 ) ) { return 0; }
+    if ( !serialize_read_int( stream, &e->vel_z, -2048, +2047 ) ) { return 0; }
+    if ( !serialize_read_int( stream, &e->health, 0, 1000 ) ) { return 0; }
+    if ( !serialize_read_int( stream, &e->weapon, 0, 15 ) ) { return 0; }
+    if ( !serialize_read_bits( stream, &e->damage, 8 ) ) { return 0; }
+    if ( !serialize_read_bool( stream, &e->moving ) ) { return 0; }
+    if ( !serialize_read_bool( stream, &e->firing ) ) { return 0; }
+    return 1;
+}
 
 static int rt_write_bench_mixed( serialize_write_stream_t * stream, const RtBenchMixed * f )
 {
-    if ( !serialize_write_int( stream, f->sequence, 0, 65535 ) ) { return 0; }
+    int i;
+    serialize_int64_t ping_fixed;
+    if ( !serialize_write_bits( stream, f->magic, 16 ) ) { return 0; }
+    if ( !serialize_write_bits( stream, f->sequence, 16 ) ) { return 0; }
+    if ( !serialize_write_int( stream, f->ack_sequence, 0, 65535 ) ) { return 0; }
     if ( !serialize_write_bits( stream, f->ack_bits, 32 ) ) { return 0; }
-    if ( !serialize_write_bits( stream, f->entity_id, 12 ) ) { return 0; }
-    if ( !serialize_write_int( stream, f->pos_x, -16384, +16383 ) ) { return 0; }
-    if ( !serialize_write_int( stream, f->pos_y, -16384, +16383 ) ) { return 0; }
-    if ( !serialize_write_int( stream, f->pos_z, -16384, +16383 ) ) { return 0; }
-    if ( !serialize_write_bits( stream, f->yaw, 9 ) ) { return 0; }
-    if ( !serialize_write_bool( stream, f->moving ) ) { return 0; }
-    if ( !serialize_write_bool( stream, f->firing ) ) { return 0; }
-    if ( !serialize_write_bits( stream, (serialize_uint32_t) ( f->timestamp & 0xFFFFFFFFu ), 32 ) ) { return 0; }
-    if ( !serialize_write_bits( stream, (serialize_uint32_t) ( f->timestamp >> 32 ), 16 ) ) { return 0; }
-    if ( !serialize_write_int( stream, f->weapon, 0, 15 ) ) { return 0; }
+    if ( !serialize_write_uint64( stream, f->session_id ) ) { return 0; }
+    if ( !serialize_write_uint32( stream, f->client_id ) ) { return 0; }
+    /* the full-unsigned ranged path is width-computed raw bits, low 32 first */
+    if ( !serialize_write_bits( stream, (serialize_uint32_t) ( f->nonce & 0xFFFFFFFFu ), 32 ) ) { return 0; }
+    if ( !serialize_write_bits( stream, (serialize_uint32_t) ( f->nonce >> 32 ), 32 ) ) { return 0; }
+    if ( !serialize_write_int64( stream, f->world_time, -1000000000000LL, 1000000000000LL ) ) { return 0; }
+    if ( !serialize_write_bits( stream, (serialize_uint32_t) ( f->frame_tick & 0xFFFFFFFFu ), 32 ) ) { return 0; }
+    if ( !serialize_write_bits( stream, (serialize_uint32_t) ( f->frame_tick >> 32 ), 16 ) ) { return 0; }
+    if ( !serialize_write_fixed32( stream, f->server_time, 24, 8, 0, 65535 ) ) { return 0; }
+
+    if ( !serialize_write_int( stream, f->entities_count, 1, 8 ) ) { return 0; }
+    for ( i = 0; i < f->entities_count; i++ )
+        if ( !rt_write_mixed_entity( stream, &f->entities[i] ) ) { return 0; }
+
+    if ( !serialize_write_int( stream, f->stats_count, 0, 80 ) ) { return 0; }
+    for ( i = 0; i < f->stats_count; i++ )
+    {
+        if ( !serialize_write_bits( stream, f->stats[i].stat_id, 8 ) ) { return 0; }
+        if ( !serialize_write_int( stream, f->stats[i].delta, -512, +511 ) ) { return 0; }
+    }
+
+    if ( !serialize_write_int( stream, f->event_type, 0, 3 ) ) { return 0; }
+    if ( f->event_type == 1 )
+    {
+        if ( !serialize_write_bits( stream, f->hit.target_id, 12 ) ) { return 0; }
+        if ( !serialize_write_int( stream, f->hit.damage, 0, 4095 ) ) { return 0; }
+        if ( !serialize_write_int( stream, f->hit.hit_kind, 0, 7 ) ) { return 0; }
+        if ( !serialize_write_bool( stream, f->hit.crit ) ) { return 0; }
+    }
+    else if ( f->event_type == 2 )
+    {
+        if ( !serialize_write_int( stream, f->chat.channel, 0, 3 ) ) { return 0; }
+        if ( !serialize_write_bits( stream, f->chat.speaker, 12 ) ) { return 0; }
+    }
+    else if ( f->event_type == 3 )
+    {
+        if ( !serialize_write_bits( stream, f->pickup.item_id, 10 ) ) { return 0; }
+        if ( !serialize_write_int( stream, f->pickup.amount, 0, 255 ) ) { return 0; }
+    }
+
+    for ( i = 0; i < 4; i++ )
+        if ( !serialize_write_uint8( stream, f->loadout[i] ) ) { return 0; }
+
+    if ( !serialize_write_string( stream, f->player_name, (int) sizeof( f->player_name ) ) ) { return 0; }
+
+    if ( !serialize_write_int( stream, f->payload_length, 0, 16 ) ) { return 0; }
+    if ( !serialize_write_bytes( stream, f->payload, (int) f->payload_length ) ) { return 0; }
+
+    if ( !serialize_write_compressed_float( stream, f->aim_x, -1.0f, 1.0f, 0.01f ) ) { return 0; }
+    if ( !serialize_write_compressed_float( stream, f->aim_y, -1.0f, 1.0f, 0.01f ) ) { return 0; }
+    if ( !serialize_write_compressed_float( stream, f->aim_z, -1.0f, 1.0f, 0.01f ) ) { return 0; }
+    if ( !serialize_write_float( stream, f->recoil ) ) { return 0; }
+    if ( !serialize_write_double( stream, f->drift ) ) { return 0; }
+    if ( !serialize_write_uint128( stream, f->wide_key ) ) { return 0; }
+    if ( !serialize_write_int128( stream, f->flux, RT_FLUX_MIN, RT_FLUX_MAX ) ) { return 0; }
+    ping_fixed = (serialize_int64_t) f->ping;
+    if ( !serialize_write_fixed64( stream, ping_fixed, 8, 8, 0, 250 ) ) { return 0; }
+
+    if ( !serialize_write_bits( stream, f->reserved_bits, 4 ) ) { return 0; }
+    if ( !serialize_write_align( stream ) ) { return 0; }
+    if ( !serialize_write_bits( stream, f->crc_hint, 24 ) ) { return 0; }
+    if ( !serialize_write_bool( stream, f->has_extra ) ) { return 0; }
+    if ( f->has_extra )
+    {
+        if ( !serialize_write_int( stream, f->extra, 0, 255 ) ) { return 0; }
+    }
+    else
+    {
+        if ( !serialize_write_int( stream, f->idle_ticks, 0, 15 ) ) { return 0; }
+    }
     return 1;
 }
 
 static int rt_read_bench_mixed( serialize_read_stream_t * stream, RtBenchMixed * f )
 {
+    int i;
     serialize_uint32_t lo, hi;
-    if ( !serialize_read_int( stream, &f->sequence, 0, 65535 ) ) { return 0; }
+    serialize_int64_t ping_fixed;
+    if ( !serialize_read_bits( stream, &f->magic, 16 ) ) { return 0; }
+    if ( f->magic != 0xC0DE ) { return 0; }   /* const(0xC0DE, 16): a read REJECTS any other value */
+    if ( !serialize_read_bits( stream, &f->sequence, 16 ) ) { return 0; }
+    if ( !serialize_read_int( stream, &f->ack_sequence, 0, 65535 ) ) { return 0; }
     if ( !serialize_read_bits( stream, &f->ack_bits, 32 ) ) { return 0; }
-    if ( !serialize_read_bits( stream, &f->entity_id, 12 ) ) { return 0; }
-    if ( !serialize_read_int( stream, &f->pos_x, -16384, +16383 ) ) { return 0; }
-    if ( !serialize_read_int( stream, &f->pos_y, -16384, +16383 ) ) { return 0; }
-    if ( !serialize_read_int( stream, &f->pos_z, -16384, +16383 ) ) { return 0; }
-    if ( !serialize_read_bits( stream, &f->yaw, 9 ) ) { return 0; }
-    if ( !serialize_read_bool( stream, &f->moving ) ) { return 0; }
-    if ( !serialize_read_bool( stream, &f->firing ) ) { return 0; }
+    if ( !serialize_read_uint64( stream, &f->session_id ) ) { return 0; }
+    if ( !serialize_read_uint32( stream, &f->client_id ) ) { return 0; }
+    if ( !serialize_read_bits( stream, &lo, 32 ) ) { return 0; }
+    if ( !serialize_read_bits( stream, &hi, 32 ) ) { return 0; }
+    f->nonce = (serialize_uint64_t) lo | ( (serialize_uint64_t) hi << 32 );
+    if ( !serialize_read_int64( stream, &f->world_time, -1000000000000LL, 1000000000000LL ) ) { return 0; }
     if ( !serialize_read_bits( stream, &lo, 32 ) ) { return 0; }
     if ( !serialize_read_bits( stream, &hi, 16 ) ) { return 0; }
-    f->timestamp = (serialize_uint64_t) lo | ( (serialize_uint64_t) hi << 32 );
-    if ( !serialize_read_int( stream, &f->weapon, 0, 15 ) ) { return 0; }
+    f->frame_tick = (serialize_uint64_t) lo | ( (serialize_uint64_t) hi << 32 );
+    if ( !serialize_read_fixed32( stream, &f->server_time, 24, 8, 0, 65535 ) ) { return 0; }
+
+    if ( !serialize_read_int( stream, &f->entities_count, 1, 8 ) ) { return 0; }
+    for ( i = 0; i < f->entities_count; i++ )
+        if ( !rt_read_mixed_entity( stream, &f->entities[i] ) ) { return 0; }
+
+    if ( !serialize_read_int( stream, &f->stats_count, 0, 80 ) ) { return 0; }
+    for ( i = 0; i < f->stats_count; i++ )
+    {
+        if ( !serialize_read_bits( stream, &f->stats[i].stat_id, 8 ) ) { return 0; }
+        if ( !serialize_read_int( stream, &f->stats[i].delta, -512, +511 ) ) { return 0; }
+    }
+
+    if ( !serialize_read_int( stream, &f->event_type, 0, 3 ) ) { return 0; }
+    if ( f->event_type == 1 )
+    {
+        if ( !serialize_read_bits( stream, &f->hit.target_id, 12 ) ) { return 0; }
+        if ( !serialize_read_int( stream, &f->hit.damage, 0, 4095 ) ) { return 0; }
+        if ( !serialize_read_int( stream, &f->hit.hit_kind, 0, 7 ) ) { return 0; }
+        if ( !serialize_read_bool( stream, &f->hit.crit ) ) { return 0; }
+    }
+    else if ( f->event_type == 2 )
+    {
+        if ( !serialize_read_int( stream, &f->chat.channel, 0, 3 ) ) { return 0; }
+        if ( !serialize_read_bits( stream, &f->chat.speaker, 12 ) ) { return 0; }
+    }
+    else if ( f->event_type == 3 )
+    {
+        if ( !serialize_read_bits( stream, &f->pickup.item_id, 10 ) ) { return 0; }
+        if ( !serialize_read_int( stream, &f->pickup.amount, 0, 255 ) ) { return 0; }
+    }
+
+    for ( i = 0; i < 4; i++ )
+        if ( !serialize_read_uint8( stream, &f->loadout[i] ) ) { return 0; }
+
+    if ( !serialize_read_string( stream, f->player_name, (int) sizeof( f->player_name ) ) ) { return 0; }
+
+    if ( !serialize_read_int( stream, &f->payload_length, 0, 16 ) ) { return 0; }
+    if ( !serialize_read_bytes( stream, f->payload, (int) f->payload_length ) ) { return 0; }
+
+    if ( !serialize_read_compressed_float( stream, &f->aim_x, -1.0f, 1.0f, 0.01f ) ) { return 0; }
+    if ( !serialize_read_compressed_float( stream, &f->aim_y, -1.0f, 1.0f, 0.01f ) ) { return 0; }
+    if ( !serialize_read_compressed_float( stream, &f->aim_z, -1.0f, 1.0f, 0.01f ) ) { return 0; }
+    if ( !serialize_read_float( stream, &f->recoil ) ) { return 0; }
+    if ( !serialize_read_double( stream, &f->drift ) ) { return 0; }
+    if ( !serialize_read_uint128( stream, &f->wide_key ) ) { return 0; }
+    if ( !serialize_read_int128( stream, &f->flux, RT_FLUX_MIN, RT_FLUX_MAX ) ) { return 0; }
+    if ( !serialize_read_fixed64( stream, &ping_fixed, 8, 8, 0, 250 ) ) { return 0; }
+    f->ping = (serialize_uint16_t) ping_fixed;
+
+    if ( !serialize_read_bits( stream, &f->reserved_bits, 4 ) ) { return 0; }
+    if ( f->reserved_bits != 0 ) { return 0; }   /* reserved(4): a read rejects nonzero */
+    if ( !serialize_read_align( stream ) ) { return 0; }
+    if ( !serialize_read_bits( stream, &f->crc_hint, 24 ) ) { return 0; }
+    if ( !serialize_read_bool( stream, &f->has_extra ) ) { return 0; }
+    if ( f->has_extra )
+    {
+        if ( !serialize_read_int( stream, &f->extra, 0, 255 ) ) { return 0; }
+    }
+    else
+    {
+        if ( !serialize_read_int( stream, &f->idle_ticks, 0, 15 ) ) { return 0; }
+    }
     return 1;
 }
 
@@ -1026,17 +1297,46 @@ static void vary_rt_bits( RtBenchBits * f, uint64_t rng )
 
 static void vary_rt_mixed( RtBenchMixed * f, uint64_t rng )
 {
-    f->sequence = (serialize_int32_t) ( (serialize_uint32_t) ( rng >> 8 ) & 65535 );
+    int i;
+    f->sequence = (serialize_uint32_t) ( rng >> 8 ) & 65535;
+    f->ack_sequence = (serialize_int32_t) ( (serialize_uint32_t) ( rng >> 24 ) & 65535 );
     f->ack_bits = (serialize_uint32_t) ( rng >> 16 );
-    f->entity_id = (serialize_uint32_t) rng & 4095;
-    f->pos_x = (serialize_int32_t) ( ( rng >> 20 ) & 32767 ) - 16384;
-    f->pos_y = (serialize_int32_t) ( ( rng >> 25 ) & 32767 ) - 16384;
-    f->pos_z = (serialize_int32_t) ( ( rng >> 30 ) & 32767 ) - 16384;
-    f->yaw = (serialize_uint32_t) ( rng >> 3 ) & 511;
-    f->moving = ( rng & 1 ) != 0;
-    f->firing = ( rng & 2 ) != 0;
-    f->timestamp = rng & 0xFFFFFFFFFFFFULL;
-    f->weapon = (serialize_int32_t) ( (serialize_uint32_t) ( rng >> 60 ) & 15 );
+    f->session_id = rng;
+    f->client_id = (serialize_uint32_t) ( rng >> 32 );
+    f->nonce = rng ^ 0xA5A5A5A5A5A5A5A5ULL;
+    f->world_time = (serialize_int64_t) ( ( rng >> 12 ) & 0xFFFFFFFFFULL ) - 34359738368LL;
+    f->frame_tick = rng & 0xFFFFFFFFFFFFULL;
+    f->server_time = (serialize_int32_t) ( ( rng >> 20 ) & 0x7FFFFF );
+    for ( i = 0; i < 8; i++ )
+    {
+        RtMixedEntity * e = &f->entities[i];
+        e->entity_id = (serialize_uint32_t) ( ( rng >> i ) & 4095 );
+        e->pos_x = (serialize_int32_t) ( ( rng >> ( i + 4 ) ) & 16383 ) - 8192;
+        e->pos_y = (serialize_int32_t) ( ( rng >> ( i + 12 ) ) & 16383 ) - 8192;
+        e->health = (serialize_int32_t) ( ( rng >> ( i + 20 ) ) & 511 );
+        e->weapon = (serialize_int32_t) ( ( rng >> ( i + 40 ) ) & 15 );
+        e->damage = (serialize_uint32_t) ( ( rng >> ( i + 28 ) ) & 255 );
+        e->moving = ( ( rng >> i ) & 1 ) != 0;
+    }
+    for ( i = 0; i < 80; i++ )
+        f->stats[i].delta = (serialize_int32_t) ( ( rng >> ( i & 31 ) ) & 1023 ) - 512;
+    f->hit.target_id = (serialize_uint32_t) ( ( rng >> 6 ) & 4095 );
+    f->hit.damage = (serialize_int32_t) ( ( rng >> 18 ) & 4095 );
+    f->hit.hit_kind = (serialize_int32_t) ( ( rng >> 30 ) & 7 );
+    f->hit.crit = ( rng & 4 ) != 0;
+    f->loadout[0] = (serialize_uint8_t) ( rng >> 56 );
+    f->player_name[7] = (char) ( 65 + ( ( rng >> 50 ) & 15 ) );
+    f->payload[0] = (serialize_uint8_t) ( rng >> 48 );
+    f->aim_x = (float) ( (serialize_uint32_t) ( rng >> 2 ) & 255 ) * ( 1.0f / 256.0f ) - 0.5f;
+    f->aim_y = (float) ( (serialize_uint32_t) ( rng >> 10 ) & 255 ) * ( 1.0f / 256.0f ) - 0.5f;
+    f->aim_z = (float) ( (serialize_uint32_t) ( rng >> 18 ) & 255 ) * ( 1.0f / 256.0f ) - 0.5f;
+    f->recoil = (float) ( (serialize_uint32_t) rng & 0xFFFF );
+    f->drift = (double) ( (serialize_int64_t) ( ( rng >> 8 ) & 0xFFFFFF ) ) * 0.5;
+    f->wide_key = serialize_uint128_make( rng >> 1, rng );
+    f->flux = serialize_int128_from_int64( (serialize_int64_t) ( rng >> 16 ) );
+    f->ping = (serialize_uint16_t) ( ( rng >> 40 ) & 0x7FFF );
+    f->crc_hint = (serialize_uint32_t) ( ( rng >> 24 ) & 0xFFFFFF );
+    f->extra = (serialize_int32_t) ( ( rng >> 52 ) & 255 );
 }
 
 /* ---- the rt driver: once-helpers carry the single untimed call site per op
@@ -1483,11 +1783,51 @@ int main( int argc, char ** argv )
         gen_bits.b32 = 0xDEADBEEFu; gen_bits.b11 = 1024; gen_bits.b19 = 333333;
         gen_bits.b48 = 0xFEDCBA987654ULL;
 
+        /* BenchMixed — THE canonical shape (#184); test/bench/main.cpp's pin */
         memset( &gen_mixed, 0, sizeof( gen_mixed ) );
-        gen_mixed.sequence = 52428; gen_mixed.ack_bits = 0xA5A5A5A5u; gen_mixed.entity_id = 2049;
-        gen_mixed.pos_x = -16384; gen_mixed.pos_y = 16383; gen_mixed.pos_z = -1;
-        gen_mixed.yaw = 511; gen_mixed.moving = 1; gen_mixed.firing = 0;
-        gen_mixed.timestamp = 0x123456789ABCULL; gen_mixed.weapon = 15;
+        gen_mixed.sequence = 52428; gen_mixed.ack_sequence = 12345; gen_mixed.ack_bits = 0xA5A5A5A5u;
+        gen_mixed.session_id = 0x123456789ABCDEF0ULL; gen_mixed.client_id = 0xDEADBEEFu;
+        gen_mixed.nonce = 0xFEDCBA9876543210ULL; gen_mixed.world_time = -987654321000LL;
+        gen_mixed.frame_tick = 0x123456789ABCULL; gen_mixed.server_time = 12345678;
+        gen_mixed.entities_count = 8;
+        for ( i = 0; i < 8; i++ )
+        {
+            gen_mixed.entities[i].entity_id = (serialize_uint32_t) ( 2049 + i * 17 );
+            gen_mixed.entities[i].pos_x = -16383 + i * 4096;
+            gen_mixed.entities[i].pos_y = 16383 - i * 4096;
+            gen_mixed.entities[i].pos_z = -1 + i * 2048;
+            gen_mixed.entities[i].yaw = (serialize_uint32_t) ( 511 - i * 64 );
+            gen_mixed.entities[i].pitch = (serialize_uint32_t) ( i * 73 );
+            gen_mixed.entities[i].vel_x = -2048 + i * 512;
+            gen_mixed.entities[i].vel_y = 2047 - i * 512;
+            gen_mixed.entities[i].vel_z = -1024 + i * 256;
+            gen_mixed.entities[i].health = 1000 - i * 100;
+            gen_mixed.entities[i].weapon = (MixedWeapon) ( 1 + i );
+            gen_mixed.entities[i].damage = (MixedDamage) ( 0x5A + i );
+            gen_mixed.entities[i].moving = ( i % 2 ) == 0;
+            gen_mixed.entities[i].firing = ( i % 3 ) == 0;
+        }
+        gen_mixed.stats_count = 80;
+        for ( i = 0; i < 80; i++ )
+        {
+            gen_mixed.stats[i].stat_id = (serialize_uint32_t) ( ( i * 3 ) % 256 );
+            gen_mixed.stats[i].delta = -512 + ( i * 13 ) % 1024;
+        }
+        gen_mixed.game_event.type = MIXED_EVENT_TYPE_HIT;
+        gen_mixed.game_event.as.hit.target_id = 4095;
+        gen_mixed.game_event.as.hit.damage = 4095;
+        gen_mixed.game_event.as.hit.hit_kind = 7;
+        gen_mixed.game_event.as.hit.crit = 1;
+        gen_mixed.loadout[0] = 0x11; gen_mixed.loadout[1] = 0x22;
+        gen_mixed.loadout[2] = 0x33; gen_mixed.loadout[3] = 0x44;
+        memcpy( gen_mixed.player_name, "Rowan_01", 8 ); gen_mixed.player_name_length = 8;
+        memcpy( gen_mixed.payload, "\xDE\xAD\xBE\xEF\x01\x02\x03\x04", 8 ); gen_mixed.payload_length = 8;
+        gen_mixed.aim_x = 0.5f; gen_mixed.aim_y = -0.25f; gen_mixed.aim_z = 0.75f;
+        gen_mixed.recoil = 1.5f; gen_mixed.drift = -3.25;
+        gen_mixed.wide_key = serialize_uint128_make( 0x0123456789ABCDEFULL, 0xFEDCBA9876543210ULL );
+        gen_mixed.flux = serialize_int128_make( 0x800000000ULL, 7ULL );   /* 2^99 + 7 */
+        gen_mixed.ping = 12345; gen_mixed.crc_hint = 0xABCDEFu;
+        gen_mixed.has_extra = 1; gen_mixed.extra = 200;
 
         if ( !g_quick )
         {
@@ -1527,10 +1867,48 @@ int main( int argc, char ** argv )
         rt_bits.b48 = 0xFEDCBA987654ULL;
 
         memset( &rt_mixed, 0, sizeof( rt_mixed ) );
-        rt_mixed.sequence = 52428; rt_mixed.ack_bits = 0xA5A5A5A5u; rt_mixed.entity_id = 2049;
-        rt_mixed.pos_x = -16384; rt_mixed.pos_y = 16383; rt_mixed.pos_z = -1;
-        rt_mixed.yaw = 511; rt_mixed.moving = 1; rt_mixed.firing = 0;
-        rt_mixed.timestamp = 0x123456789ABCULL; rt_mixed.weapon = 15;
+        rt_mixed.magic = 0xC0DE;
+        rt_mixed.sequence = 52428; rt_mixed.ack_sequence = 12345; rt_mixed.ack_bits = 0xA5A5A5A5u;
+        rt_mixed.session_id = 0x123456789ABCDEF0ULL; rt_mixed.client_id = 0xDEADBEEFu;
+        rt_mixed.nonce = 0xFEDCBA9876543210ULL; rt_mixed.world_time = -987654321000LL;
+        rt_mixed.frame_tick = 0x123456789ABCULL; rt_mixed.server_time = 12345678;
+        rt_mixed.entities_count = 8;
+        for ( i = 0; i < 8; i++ )
+        {
+            rt_mixed.entities[i].entity_id = (serialize_uint32_t) ( 2049 + i * 17 );
+            rt_mixed.entities[i].pos_x = -16383 + i * 4096;
+            rt_mixed.entities[i].pos_y = 16383 - i * 4096;
+            rt_mixed.entities[i].pos_z = -1 + i * 2048;
+            rt_mixed.entities[i].yaw = (serialize_uint32_t) ( 511 - i * 64 );
+            rt_mixed.entities[i].pitch = (serialize_uint32_t) ( i * 73 );
+            rt_mixed.entities[i].vel_x = -2048 + i * 512;
+            rt_mixed.entities[i].vel_y = 2047 - i * 512;
+            rt_mixed.entities[i].vel_z = -1024 + i * 256;
+            rt_mixed.entities[i].health = 1000 - i * 100;
+            rt_mixed.entities[i].weapon = 1 + i;
+            rt_mixed.entities[i].damage = (serialize_uint32_t) ( 0x5A + i );
+            rt_mixed.entities[i].moving = ( i % 2 ) == 0;
+            rt_mixed.entities[i].firing = ( i % 3 ) == 0;
+        }
+        rt_mixed.stats_count = 80;
+        for ( i = 0; i < 80; i++ )
+        {
+            rt_mixed.stats[i].stat_id = (serialize_uint32_t) ( ( i * 3 ) % 256 );
+            rt_mixed.stats[i].delta = -512 + ( i * 13 ) % 1024;
+        }
+        rt_mixed.event_type = 1;   /* Hit */
+        rt_mixed.hit.target_id = 4095; rt_mixed.hit.damage = 4095;
+        rt_mixed.hit.hit_kind = 7; rt_mixed.hit.crit = 1;
+        rt_mixed.loadout[0] = 0x11; rt_mixed.loadout[1] = 0x22;
+        rt_mixed.loadout[2] = 0x33; rt_mixed.loadout[3] = 0x44;
+        memcpy( rt_mixed.player_name, "Rowan_01", 9 );   /* + the terminator serialize_string reads the length from */
+        memcpy( rt_mixed.payload, "\xDE\xAD\xBE\xEF\x01\x02\x03\x04", 8 ); rt_mixed.payload_length = 8;
+        rt_mixed.aim_x = 0.5f; rt_mixed.aim_y = -0.25f; rt_mixed.aim_z = 0.75f;
+        rt_mixed.recoil = 1.5f; rt_mixed.drift = -3.25;
+        rt_mixed.wide_key = serialize_uint128_make( 0x0123456789ABCDEFULL, 0xFEDCBA9876543210ULL );
+        rt_mixed.flux = serialize_int128_make( 0x800000000ULL, 7ULL );   /* 2^99 + 7 */
+        rt_mixed.ping = 12345; rt_mixed.crc_hint = 0xABCDEFu;
+        rt_mixed.has_extra = 1; rt_mixed.extra = 200;
 
         if ( !g_quick )
         {
