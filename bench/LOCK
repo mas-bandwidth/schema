@@ -1,0 +1,26 @@
+# The C/C++ reference lock — owner ruling, 2026-08-31, on issue #170:
+#
+#   "Please lock and do not make further changes to C/C++ during optimization
+#    and profiling."
+#
+# While this file exists, CI's cpp-lock job REFUSES any pull request that
+# modifies a path under the prefixes below. The C and C++ generated legs,
+# bench code, and emitters are the frozen reference for the laggard round —
+# any movement in the C/C++ rows is an alarm, never a breakthrough.
+#
+# Lifting the lock is deliberate and visible: a PR whose diff touches ONLY
+# this file (deleting it) passes the guard by construction and says what it
+# is doing in the open. The lift condition is the round closing, on the
+# owner's word (issue #170).
+#
+# Locked prefixes, one per line (matched against changed paths):
+internal/codegen/c/
+internal/codegen/cpp/
+bench/c/
+bench/cpp/
+generated/c/
+generated/cpp/
+generated/c-ludicrous/
+generated/cpp-ludicrous/
+generated/bench/c/
+generated/bench/cpp/
