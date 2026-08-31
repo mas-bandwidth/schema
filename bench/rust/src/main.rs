@@ -161,7 +161,15 @@ impl Ctx {
         }
     }
 
-    fn report(&self, bench: &str, path: &str, iters: i64, bytes_per_op: i64, s: &RunStats, family: &'static str) {
+    fn report(
+        &self,
+        bench: &str,
+        path: &str,
+        iters: i64,
+        bytes_per_op: i64,
+        s: &RunStats,
+        family: &'static str,
+    ) {
         let mbps = s.median * bytes_per_op as f64 / (1024.0 * 1024.0);
         eprintln!(
             "{:<18} {:<5} {:>10.2} M msg/s {:>10.1} MB/s   (min {:.2}, max {:.2}, spread {:.1}%)",
@@ -351,10 +359,8 @@ fn bench_message<T, W, R, V, EW, ER>(
     for run in 0..(ctx.num_runs + 1) {
         let start = Instant::now();
         for i in 0..iters {
-            let mut rs = ReadStream::new(
-                &variants[(i as usize) & (NUM_VARIANTS - 1)],
-                bytes_per_op,
-            );
+            let mut rs =
+                ReadStream::new(&variants[(i as usize) & (NUM_VARIANTS - 1)], bytes_per_op);
             if read_fn(&mut rs, &mut out).is_err() {
                 ctx.fail(name, "read failed in loop");
                 return;
@@ -453,7 +459,6 @@ fn pin_shipcreate() -> ShipCreate {
     input.thrust = 55;
     input
 }
-
 
 fn pin_probe_header() -> ProbeHeader {
     ProbeHeader {
@@ -583,7 +588,6 @@ fn vary_shipcreate(m: &mut ShipCreate, rng: u64) {
     m.thrust = ((rng >> 14) & 63) as i8; // within [0, 100]
 }
 
-
 fn vary_probe_header(m: &mut ProbeHeader, rng: u64) {
     m.version = (rng as u32) & 7; // 3 wire bits
     m.probe_id = rng;
@@ -712,7 +716,6 @@ fn vary_real_packet(m: &mut realworld::RealPacket, rng: u64) {
     m.f054_int = ((((rng >> 45) & 63) as i32) - 32) as i8; // +/-32 within +/-35
 }
 
-
 // ------------------------------------------------------------------------------------------
 // family gen over the Bench corpus (issue #177): the four Bench.schema shapes
 // measured through the GENERATED code (generated/bench/rust, crate
@@ -771,19 +774,66 @@ fn pin_gen_bits() -> benchgen::BenchBits {
     input
 }
 
+// BenchMixed — THE canonical benchmark shape (issue #184). The pin is
+// test/bench/main.cpp's, transcribed exactly; STRUCTURE fields (the two array
+// counts, the two used lengths, the union tag, the `if` gate) are set here and
+// never touched by vary_*, so bytes/op is constant (§2.7).
 fn pin_gen_mixed() -> benchgen::BenchMixed {
     let mut input = benchgen::BenchMixed::default();
     input.sequence = 52428;
+    input.ack_sequence = 12345;
     input.ack_bits = 0xA5A5A5A5;
-    input.entity_id = 2049;
-    input.pos_x = -16384;
-    input.pos_y = 16383;
-    input.pos_z = -1;
-    input.yaw = 511;
-    input.moving = true;
-    input.firing = false;
-    input.timestamp = 0x123456789ABC;
-    input.weapon = 15;
+    input.session_id = 0x123456789ABCDEF0;
+    input.client_id = 0xDEADBEEF;
+    input.nonce = 0xFEDCBA9876543210;
+    input.world_time = -987654321000;
+    input.frame_tick = 0x123456789ABC;
+    input.server_time = 12345678;
+    input.entities_count = 8;
+    for i in 0..8usize {
+        let e = &mut input.entities[i];
+        e.entity_id = (2049 + i * 17) as u32;
+        e.pos_x = -16383 + (i as i32) * 4096;
+        e.pos_y = 16383 - (i as i32) * 4096;
+        e.pos_z = -1 + (i as i32) * 2048;
+        e.yaw = (511 - i * 64) as u32;
+        e.pitch = (i * 73) as u32;
+        e.vel_x = -2048 + (i as i32) * 512;
+        e.vel_y = 2047 - (i as i32) * 512;
+        e.vel_z = -1024 + (i as i32) * 256;
+        e.health = 1000 - (i as i32) * 100;
+        e.weapon = benchgen::MixedWeapon((1 + i) as u8);
+        e.damage = (0x5A + i) as benchgen::MixedDamage;
+        e.moving = i % 2 == 0;
+        e.firing = i % 3 == 0;
+    }
+    input.stats_count = 80;
+    for i in 0..80usize {
+        input.stats[i].stat_id = ((i * 3) % 256) as u32;
+        input.stats[i].delta = -512 + ((i * 13) % 1024) as i32;
+    }
+    input.game_event = benchgen::MixedEvent::Hit(benchgen::MixedHitEvent {
+        target_id: 4095,
+        damage: 4095,
+        hit_kind: 7,
+        crit: true,
+    });
+    input.loadout = [0x11, 0x22, 0x33, 0x44];
+    input.player_name[..8].copy_from_slice(b"Rowan_01");
+    input.player_name_length = 8;
+    input.payload[..8].copy_from_slice(&[0xDE, 0xAD, 0xBE, 0xEF, 0x01, 0x02, 0x03, 0x04]);
+    input.payload_length = 8;
+    input.aim_x = 0.5;
+    input.aim_y = -0.25;
+    input.aim_z = 0.75;
+    input.recoil = 1.5;
+    input.drift = -3.25;
+    input.wide_key = (0x0123456789ABCDEFu128 << 64) | 0xFEDCBA9876543210u128;
+    input.flux = (1i128 << 99) + 7;
+    input.ping = 12345;
+    input.crc_hint = 0xABCDEF;
+    input.has_extra = true;
+    input.extra = 200;
     input
 }
 
@@ -824,22 +874,55 @@ fn vary_gen_bits(f: &mut benchgen::BenchBits, rng: u64) {
     f.b48 = rng & 0xFFFF_FFFF_FFFF;
 }
 
+// The LCG field mapping for BenchMixed, identical in every runner. VALUE
+// fields only: every count, used length, union tag and branch gate is
+// STRUCTURE (§2.7). All 8 entities vary; the 80 stats vary `delta` (stat_id
+// stays pinned) — the family convention of varying a representative subset.
 fn vary_gen_mixed(f: &mut benchgen::BenchMixed, rng: u64) {
-    f.sequence = ((rng >> 8) as u32 & 65535) as i32;
+    f.sequence = (rng >> 8) as u32 & 65535;
+    f.ack_sequence = ((rng >> 24) as u32 & 65535) as i32;
     f.ack_bits = (rng >> 16) as u32;
-    f.entity_id = (rng as u32) & 4095;
-    f.pos_x = (((rng >> 20) & 32767) as i32) - 16384;
-    f.pos_y = (((rng >> 25) & 32767) as i32) - 16384;
-    f.pos_z = (((rng >> 30) & 32767) as i32) - 16384;
-    f.yaw = ((rng >> 3) as u32) & 511;
-    f.moving = (rng & 1) != 0;
-    f.firing = (rng & 2) != 0;
-    f.timestamp = rng & 0xFFFF_FFFF_FFFF;
-    f.weapon = ((rng >> 60) as u32 & 15) as i32;
+    f.session_id = rng;
+    f.client_id = (rng >> 32) as u32;
+    f.nonce = rng ^ 0xA5A5_A5A5_A5A5_A5A5;
+    f.world_time = (((rng >> 12) & 0xF_FFFF_FFFF) as i64) - 34359738368;
+    f.frame_tick = rng & 0xFFFF_FFFF_FFFF;
+    f.server_time = ((rng >> 20) & 0x7F_FFFF) as i32;
+    for i in 0..8usize {
+        let e = &mut f.entities[i];
+        e.entity_id = ((rng >> i) & 4095) as u32;
+        e.pos_x = (((rng >> (i + 4)) & 16383) as i32) - 8192;
+        e.pos_y = (((rng >> (i + 12)) & 16383) as i32) - 8192;
+        e.health = ((rng >> (i + 20)) & 511) as i32;
+        e.weapon = benchgen::MixedWeapon(((rng >> (i + 40)) & 15) as u8);
+        e.damage = ((rng >> (i + 28)) & 255) as benchgen::MixedDamage;
+        e.moving = (rng >> i) & 1 != 0;
+    }
+    for i in 0..80usize {
+        f.stats[i].delta = (((rng >> (i & 31)) & 1023) as i32) - 512;
+    }
+    if let benchgen::MixedEvent::Hit(hit) = &mut f.game_event {
+        hit.target_id = ((rng >> 6) & 4095) as u32;
+        hit.damage = ((rng >> 18) & 4095) as i32;
+        hit.hit_kind = ((rng >> 30) & 7) as i32;
+        hit.crit = rng & 4 != 0;
+    }
+    f.loadout[0] = (rng >> 56) as u8;
+    f.player_name[7] = (65 + ((rng >> 50) & 15)) as u8;
+    f.payload[0] = (rng >> 48) as u8;
+    f.aim_x = ((rng >> 2) as u32 & 255) as f32 * (1.0 / 256.0) - 0.5;
+    f.aim_y = ((rng >> 10) as u32 & 255) as f32 * (1.0 / 256.0) - 0.5;
+    f.aim_z = ((rng >> 18) as u32 & 255) as f32 * (1.0 / 256.0) - 0.5;
+    f.recoil = (rng as u32 & 0xFFFF) as f32;
+    f.drift = (((rng >> 8) & 0xFF_FFFF) as i64) as f64 * 0.5;
+    f.wide_key = ((rng >> 1) as u128) << 64 | (rng as u128);
+    f.flux = (rng >> 16) as i128;
+    f.ping = ((rng >> 40) & 0x7FFF) as u16;
+    f.crc_hint = ((rng >> 24) & 0xFF_FFFF) as u32;
+    f.extra = ((rng >> 52) & 255) as i32;
 }
 
 // ------------------------------------------------------------------------------------------
-
 
 fn main() {
     let mut csv = false;
@@ -868,7 +951,10 @@ fn main() {
             }
             "--quick" => quick = true,
             _ => {
-                eprintln!("usage: {} [--csv] [--round K] [--quick] [--wire-dir <dir>]", args[0]);
+                eprintln!(
+                    "usage: {} [--csv] [--round K] [--quick] [--wire-dir <dir>]",
+                    args[0]
+                );
                 std::process::exit(1);
             }
         }
@@ -895,7 +981,16 @@ fn main() {
         // The gen row is the schema subject (the blended table's row); the
         // rt row rides beside it as the hand-written-usage subject.
         eprintln!("schema bench (rust, --quick: iteration instrument, not certification)");
-        bench_message(&ctx, "bench_mixed", Some("bench_mixed"), 40000000, pin_gen_mixed(), benchgen::write_bench_mixed, benchgen::read_bench_mixed, vary_gen_mixed);
+        bench_message(
+            &ctx,
+            "bench_mixed",
+            Some("bench_mixed"),
+            4000000,
+            pin_gen_mixed(),
+            benchgen::write_bench_mixed,
+            benchgen::read_bench_mixed,
+            vary_gen_mixed,
+        );
         rt::bench_rt_mixed(&ctx);
         ctx.flush_csv();
         if ctx.failed.get() {
@@ -909,37 +1004,171 @@ fn main() {
 
     eprintln!("schema bench (rust)");
 
-
     // rigidbody_at_rest: the pinned at-rest twin of rigidbody_moving
     let mut at_rest = pin_rigidbody_moving();
     at_rest.at_rest = true;
 
-    bench_message(&ctx, "rigidbody_moving", Some("rigidbody_moving"), 24000000, pin_rigidbody_moving(), write_rigid_body, read_rigid_body, vary_rigidbody);
-    bench_message(&ctx, "rigidbody_at_rest", Some("rigidbody_at_rest"), 32000000, at_rest, write_rigid_body, read_rigid_body, vary_rigidbody_at_rest);
-    bench_message(&ctx, "chat", Some("chat"), 48000000, pin_chat(), write_chat, read_chat, vary_chat);
-    bench_message(&ctx, "test", None, 192000000, Test::default(), write_test, read_test, vary_test);
-    bench_message(&ctx, "inputpacket", Some("inputpacket"), 16000000, pin_inputpacket(), write_input_packet, read_input_packet, vary_inputpacket);
-    bench_message(&ctx, "shipcreate", Some("shipcreate_flags"), 32000000, pin_shipcreate(), write_ship_create, read_ship_create, vary_shipcreate);
-    bench_message(&ctx, "probe_header", Some("probe_header"), 256000000, pin_probe_header(), write_probe_header, read_probe_header, vary_probe_header);
-    bench_message(&ctx, "probebits", Some("probebits"), 128000000, pin_probebits(), write_probe_bits, read_probe_bits, vary_probebits);
-    bench_message(&ctx, "probearray", Some("probearray"), 20000000, pin_probearray(), write_probe_array, read_probe_array, vary_probearray);
-    bench_message(&ctx, "testdata", Some("testdata"), 8000000, pin_testdata(), write_test_data, read_test_data, vary_testdata);
+    bench_message(
+        &ctx,
+        "rigidbody_moving",
+        Some("rigidbody_moving"),
+        24000000,
+        pin_rigidbody_moving(),
+        write_rigid_body,
+        read_rigid_body,
+        vary_rigidbody,
+    );
+    bench_message(
+        &ctx,
+        "rigidbody_at_rest",
+        Some("rigidbody_at_rest"),
+        32000000,
+        at_rest,
+        write_rigid_body,
+        read_rigid_body,
+        vary_rigidbody_at_rest,
+    );
+    bench_message(
+        &ctx,
+        "chat",
+        Some("chat"),
+        48000000,
+        pin_chat(),
+        write_chat,
+        read_chat,
+        vary_chat,
+    );
+    bench_message(
+        &ctx,
+        "test",
+        None,
+        192000000,
+        Test::default(),
+        write_test,
+        read_test,
+        vary_test,
+    );
+    bench_message(
+        &ctx,
+        "inputpacket",
+        Some("inputpacket"),
+        16000000,
+        pin_inputpacket(),
+        write_input_packet,
+        read_input_packet,
+        vary_inputpacket,
+    );
+    bench_message(
+        &ctx,
+        "shipcreate",
+        Some("shipcreate_flags"),
+        32000000,
+        pin_shipcreate(),
+        write_ship_create,
+        read_ship_create,
+        vary_shipcreate,
+    );
+    bench_message(
+        &ctx,
+        "probe_header",
+        Some("probe_header"),
+        256000000,
+        pin_probe_header(),
+        write_probe_header,
+        read_probe_header,
+        vary_probe_header,
+    );
+    bench_message(
+        &ctx,
+        "probebits",
+        Some("probebits"),
+        128000000,
+        pin_probebits(),
+        write_probe_bits,
+        read_probe_bits,
+        vary_probebits,
+    );
+    bench_message(
+        &ctx,
+        "probearray",
+        Some("probearray"),
+        20000000,
+        pin_probearray(),
+        write_probe_array,
+        read_probe_array,
+        vary_probearray,
+    );
+    bench_message(
+        &ctx,
+        "testdata",
+        Some("testdata"),
+        8000000,
+        pin_testdata(),
+        write_test_data,
+        read_test_data,
+        vary_testdata,
+    );
 
     // real_packet (§1.7): the realistic snapshot — ~93 riding individually
     // serialized small fields, 204 wire bytes, 0% bulk share by bits. The pin
     // is the ALL-DEFAULTS instance (RealPacket::new() — the C++ RealPacket{}),
     // golden-gated like every row above. Iteration count sized in the C++
     // reference (§2.1).
-    bench_message(&ctx, "real_packet", Some("real_packet"), 8000000, realworld::RealPacket::new(), realworld::write_real_packet, realworld::read_real_packet, vary_real_packet);
+    bench_message(
+        &ctx,
+        "real_packet",
+        Some("real_packet"),
+        8000000,
+        realworld::RealPacket::new(),
+        realworld::write_real_packet,
+        realworld::read_real_packet,
+        vary_real_packet,
+    );
 
     // family gen over the Bench corpus (issue #177): the generated twins of
     // the rt rows below — same shapes, same goldens, same pins, same vary
     // mappings, same iteration counts (fixed and identical across all five
     // runners, §2.1); only the subject differs, and the family column says so.
-    bench_message(&ctx, "bench_packet", Some("bench_packet"), 32000000, pin_gen_packet(), benchgen::write_bench_packet, benchgen::read_bench_packet, vary_gen_packet);
-    bench_message(&ctx, "bench_ints", Some("bench_ints"), 40000000, pin_gen_ints(), benchgen::write_bench_ints, benchgen::read_bench_ints, vary_gen_ints);
-    bench_message(&ctx, "bench_bits", Some("bench_bits"), 48000000, pin_gen_bits(), benchgen::write_bench_bits, benchgen::read_bench_bits, vary_gen_bits);
-    bench_message(&ctx, "bench_mixed", Some("bench_mixed"), 40000000, pin_gen_mixed(), benchgen::write_bench_mixed, benchgen::read_bench_mixed, vary_gen_mixed);
+    bench_message(
+        &ctx,
+        "bench_packet",
+        Some("bench_packet"),
+        32000000,
+        pin_gen_packet(),
+        benchgen::write_bench_packet,
+        benchgen::read_bench_packet,
+        vary_gen_packet,
+    );
+    bench_message(
+        &ctx,
+        "bench_ints",
+        Some("bench_ints"),
+        40000000,
+        pin_gen_ints(),
+        benchgen::write_bench_ints,
+        benchgen::read_bench_ints,
+        vary_gen_ints,
+    );
+    bench_message(
+        &ctx,
+        "bench_bits",
+        Some("bench_bits"),
+        48000000,
+        pin_gen_bits(),
+        benchgen::write_bench_bits,
+        benchgen::read_bench_bits,
+        vary_gen_bits,
+    );
+    bench_message(
+        &ctx,
+        "bench_mixed",
+        Some("bench_mixed"),
+        4000000,
+        pin_gen_mixed(),
+        benchgen::write_bench_mixed,
+        benchgen::read_bench_mixed,
+        vary_gen_mixed,
+    );
 
     // family rt (§1.3/§1.5): the runtime API by hand, oracle-gated against
     // the goldens the generated code pinned. Iteration counts are fixed and

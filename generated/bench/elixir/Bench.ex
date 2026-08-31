@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 # your choice. See the LICENSE exception in the schema compiler; the compiler is
 # AGPL-3.0, its output is not.
-# package bench — protocol id 0x694f261d887abaa5
+# package bench — protocol id 0xae3b1e28b96e4586
 #
 # The shipped Elixir wire path (issue #167): the serialize.elixir port's
 # measured shapes — byte-granular 32-bit-group packing and 40-bit read
@@ -68,24 +68,150 @@ defmodule Bench.BenchBits do
   defstruct b7: 0, b13: 0, b23: 0, b3: 0, b32: 0, b11: 0, b19: 0, b48: 0
 end
 
-# type BenchMixed
-defmodule Bench.BenchMixed do
-  # sequence: wire [0, 65535]
-  # pos_x: wire [-16384, 16383]
-  # pos_y: wire [-16384, 16383]
-  # pos_z: wire [-16384, 16383]
-  # weapon: wire [0, 15]
-  defstruct sequence: 0,
-            ack_bits: 0,
-            entity_id: 0,
+# MixedWeapon — None = 0 implicit, variants dense from 1, wire range [0, 15] (SPEC §4.2);
+# an integer-constant namespace — the Elixir translation of the family's
+# integer-backed enums: storage must hold every wire-legal value, and
+# | max = ... headroom values have no richer Elixir value to be
+defmodule Bench.MixedWeapon do
+  def none, do: 0
+  def fists, do: 1
+  def pistol, do: 2
+  def shotgun, do: 3
+  def rifle, do: 4
+  def sniper, do: 5
+  def smg, do: 6
+  def rocket, do: 7
+  def grenade, do: 8
+  def plasma, do: 9
+  def railgun, do: 10
+  def flamer, do: 11
+  def mine, do: 12
+  def turret, do: 13
+  def drone, do: 14
+  def repair, do: 15
+  # the exported extent (SPEC §4.2)
+  def max, do: 15
+end
+
+# type MixedEntity
+defmodule Bench.MixedEntity do
+  # pos_x: wire [-16383, 16383]
+  # pos_y: wire [-16383, 16383]
+  # pos_z: wire [-16383, 16383]
+  # vel_x: wire [-2048, 2047]
+  # vel_y: wire [-2048, 2047]
+  # vel_z: wire [-2048, 2047]
+  # health: wire [0, 1000]
+  # damage: MixedDamage — consumed as masks, uint64 storage (SPEC §4.2)
+  defstruct entity_id: 0,
             pos_x: 0,
             pos_y: 0,
             pos_z: 0,
             yaw: 0,
+            pitch: 0,
+            vel_x: 0,
+            vel_y: 0,
+            vel_z: 0,
+            health: 0,
+            weapon: 0,
+            damage: 0,
             moving: false,
-            firing: false,
-            timestamp: 0,
-            weapon: 0
+            firing: false
+end
+
+# type MixedStat
+defmodule Bench.MixedStat do
+  # delta: wire [-512, 511]
+  defstruct stat_id: 0, delta: 0
+end
+
+# type MixedHitEvent
+defmodule Bench.MixedHitEvent do
+  # damage: wire [0, 4095]
+  # hit_kind: wire [0, 7]
+  defstruct target_id: 0, damage: 0, hit_kind: 0, crit: false
+end
+
+# type MixedChatEvent
+defmodule Bench.MixedChatEvent do
+  # channel: wire [0, 3]
+  defstruct channel: 0, speaker: 0
+end
+
+# type MixedPickupEvent
+defmodule Bench.MixedPickupEvent do
+  # amount: wire [0, 255]
+  defstruct item_id: 0, amount: 0
+end
+
+# MixedEventType: union MixedEvent's tag — None = 0, then each variant in declared order (SPEC §4.8)
+defmodule Bench.MixedEventType do
+  def none, do: 0
+  def hit, do: 1
+  def chat, do: 2
+  def pickup, do: 3
+  # the exported extent (SPEC §4.2)
+  def max, do: 3
+end
+
+# MixedEvent — at most one of the arms; type says which. Construction is the empty
+# union (None). A read builds the selected arm from the wire; unselected
+# arms hold their construction form (SPEC §4.8 leaves them unspecified).
+# Consumers read the selected arm only.
+defmodule Bench.MixedEvent do
+  defstruct type: 0,
+            hit: %Bench.MixedHitEvent{},
+            chat: %Bench.MixedChatEvent{},
+            pickup: %Bench.MixedPickupEvent{}
+end
+
+# type BenchMixed
+defmodule Bench.BenchMixed do
+  # ack_sequence: wire [0, 65535]
+  # nonce: wire [0, 18446744073709551615]
+  # world_time: wire [-1000000000000, 1000000000000]
+  # server_time: fixed point Q24.8 — the raw scaled integer; wire [0, 65535]
+  # entities: counted array — a list of up to 8 elements
+  # stats: counted array — a list of up to 80 elements
+  # player_name: string(15) — a UTF-8 binary; byte_size is the used length (SPEC §4.7)
+  # payload: bytes(16) — a binary; byte_size is the used length (SPEC §4.7)
+  # aim_x: compressed float [-1.0, 1.0] @ 0.01
+  # aim_y: compressed float [-1.0, 1.0] @ 0.01
+  # aim_z: compressed float [-1.0, 1.0] @ 0.01
+  # flux: wire [-1267650600228229401496703205376, 1267650600228229401496703205376]
+  # ping: fixed point Q8.8 — the raw scaled integer; wire [0, 250]
+  # has_extra: specified default at construction; zero_* gives the §5 zero form
+  # if has_extra — wire branch; storage holds both sides, a read zeroes the untaken side (SPEC §5):
+  # extra: wire [0, 255]
+  # if has_extra else — wire branch; storage holds both sides, a read zeroes the untaken side (SPEC §5):
+  # idle_ticks: wire [0, 15]
+  defstruct sequence: 0,
+            ack_sequence: 0,
+            ack_bits: 0,
+            session_id: 0,
+            client_id: 0,
+            nonce: 0,
+            world_time: 0,
+            frame_tick: 0,
+            server_time: 0,
+            entities: [],
+            stats: [],
+            game_event: %Bench.MixedEvent{},
+            loadout: List.duplicate(0, 4),
+            player_name: <<>>,
+            payload: <<>>,
+            aim_x: 0.0,
+            aim_y: 0.0,
+            aim_z: 0.0,
+            recoil: 0.0,
+            drift: 0.0,
+            wide_key: 0,
+            flux: 0,
+            ping: 0,
+            crc_hint: 0,
+            has_extra: true,
+            extra: 0,
+            idle_ticks: 0
 end
 
 # The file-scope surface: constants, flags masks, name helpers and the
@@ -97,7 +223,7 @@ defmodule Bench.Bench do
 
   # The unit's protocol id — the hash of its wire shape (SPEC §3.1). Two
   # sides at the same id speak identical bits; there is no other versioning.
-  def protocol_id, do: 0x694F261D887ABAA5
+  def protocol_id, do: 0xAE3B1E28B96E4586
 
   # bench_packet_max_bits is the longest wire path; align pads at worst case (SPEC §6.1).
   # bench_packet_max_bytes is rounded up to the family 8-byte write-buffer granularity.
@@ -765,59 +891,111 @@ defmodule Bench.Bench do
   # trusted like the writer; static runs fold to literals at generation time.
   def measure_bench_bits(_value), do: 156
 
-  # bench_mixed_max_bits is the longest wire path; align pads at worst case (SPEC §6.1).
-  # bench_mixed_max_bytes is rounded up to the family 8-byte write-buffer granularity.
-  def bench_mixed_max_bits, do: 168
-  def bench_mixed_max_bytes, do: 24
+  # enum_name_mixed_weapon: debug/log/tooling name for any MixedWeapon wire value —
+  # out-of-set values (wire-legal up to the declared max) name as "???"
+  def enum_name_mixed_weapon(value) do
+    case value do
+      0 -> "None"
+      1 -> "Fists"
+      2 -> "Pistol"
+      3 -> "Shotgun"
+      4 -> "Rifle"
+      5 -> "Sniper"
+      6 -> "Smg"
+      7 -> "Rocket"
+      8 -> "Grenade"
+      9 -> "Plasma"
+      10 -> "Railgun"
+      11 -> "Flamer"
+      12 -> "Mine"
+      13 -> "Turret"
+      14 -> "Drone"
+      15 -> "Repair"
+      _ -> "???"
+    end
+  end
+
+  # MixedDamage — one bit per variant, consumed as masks; flags-typed fields store
+  # the uint64 mask pattern in every target — a plain integer here — wire
+  # 8 bits (SPEC §4.2). Mask names are the family's flat spelling.
+  def mixed_damage_bleeding, do: 1 <<< 0
+  def mixed_damage_burning, do: 1 <<< 1
+  def mixed_damage_stunned, do: 1 <<< 2
+  def mixed_damage_slowed, do: 1 <<< 3
+  def mixed_damage_poisoned, do: 1 <<< 4
+  def mixed_damage_shielded, do: 1 <<< 5
+  def mixed_damage_airborne, do: 1 <<< 6
+  def mixed_damage_downed, do: 1 <<< 7
+  # the declared variant count (SPEC §4.2)
+  def mixed_damage_count, do: 8
+
+  # flag_name_mixed_damage: debug/log/tooling name for bit i of MixedDamage —
+  # out-of-range bits name as "???"
+  def flag_name_mixed_damage(bit) do
+    case bit do
+      0 -> "Bleeding"
+      1 -> "Burning"
+      2 -> "Stunned"
+      3 -> "Slowed"
+      4 -> "Poisoned"
+      5 -> "Shielded"
+      6 -> "Airborne"
+      7 -> "Downed"
+      _ -> "???"
+    end
+  end
+
+  # flag_names_mixed_damage renders the set bits of value as "A|B" — "0" for the
+  # empty set, bits past the declared variants as hex
+  def flag_names_mixed_damage(value) do
+    names =
+      Enum.filter(0..7, fn bit -> (value >>> bit &&& 1) != 0 end)
+      |> Enum.map(&flag_name_mixed_damage/1)
+
+    names =
+      if value >>> 8 != 0 do
+        hex = String.downcase(Integer.to_string((value >>> 8) <<< 8, 16))
+        names ++ ["0x" <> hex]
+      else
+        names
+      end
+
+    if names == [], do: "0", else: Enum.join(names, "|")
+  end
+
+  # mixed_entity_max_bits is the longest wire path; align pads at worst case (SPEC §6.1).
+  # mixed_entity_max_bytes is rounded up to the family 8-byte write-buffer granularity.
+  def mixed_entity_max_bits, do: 135
+  def mixed_entity_max_bytes, do: 24
 
   # The §5 zero form: all-zero storage; specified defaults live only in
-  # construction (%Bench.BenchMixed{}).
-  def zero_bench_mixed do
-    %Bench.BenchMixed{
-      sequence: 0,
-      ack_bits: 0,
+  # construction (%Bench.MixedEntity{}).
+  def zero_mixed_entity do
+    %Bench.MixedEntity{
       entity_id: 0,
       pos_x: 0,
       pos_y: 0,
       pos_z: 0,
       yaw: 0,
+      pitch: 0,
+      vel_x: 0,
+      vel_y: 0,
+      vel_z: 0,
+      health: 0,
+      weapon: 0,
+      damage: 0,
       moving: false,
-      firing: false,
-      timestamp: 0,
-      weapon: 0
+      firing: false
     }
   end
 
-  # write_bench_mixed packs value into a fresh binary — the trusted writer; the O(1)
+  # write_mixed_entity packs value into a fresh binary — the trusted writer; the O(1)
   # contract checks raise ArgumentError, always on (the BEAM has no
   # compile-out assert). Returns the wire bytes.
-  def write_bench_mixed(value) do
+  def write_mixed_entity(value) do
     data = <<>>
     scratch = 0
     scratch_bits = 0
-
-    if value.sequence < 0 do
-      raise ArgumentError, "value.sequence is below the wire minimum"
-    end
-
-    if value.sequence > 65535 do
-      raise ArgumentError, "value.sequence is above the wire maximum"
-    end
-
-    v = value.sequence
-    scratch = scratch ||| v <<< scratch_bits
-    scratch_bits = scratch_bits + 16
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
-    scratch_bits = scratch_bits &&& 7
-    v = value.ack_bits &&& 0xFFFFFFFF
-    scratch = scratch ||| v <<< scratch_bits
-    scratch_bits = scratch_bits + 32
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
-    scratch_bits = scratch_bits &&& 7
     v = value.entity_id &&& 0xFFF
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 12
@@ -826,7 +1004,7 @@ defmodule Bench.Bench do
     scratch = scratch >>> (flush <<< 3)
     scratch_bits = scratch_bits &&& 7
 
-    if value.pos_x < -16384 do
+    if value.pos_x < -16383 do
       raise ArgumentError, "value.pos_x is below the wire minimum"
     end
 
@@ -834,7 +1012,7 @@ defmodule Bench.Bench do
       raise ArgumentError, "value.pos_x is above the wire maximum"
     end
 
-    v = value.pos_x + 16384
+    v = value.pos_x + 16383
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 15
     flush = scratch_bits >>> 3
@@ -842,7 +1020,7 @@ defmodule Bench.Bench do
     scratch = scratch >>> (flush <<< 3)
     scratch_bits = scratch_bits &&& 7
 
-    if value.pos_y < -16384 do
+    if value.pos_y < -16383 do
       raise ArgumentError, "value.pos_y is below the wire minimum"
     end
 
@@ -850,7 +1028,7 @@ defmodule Bench.Bench do
       raise ArgumentError, "value.pos_y is above the wire maximum"
     end
 
-    v = value.pos_y + 16384
+    v = value.pos_y + 16383
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 15
     flush = scratch_bits >>> 3
@@ -858,7 +1036,7 @@ defmodule Bench.Bench do
     scratch = scratch >>> (flush <<< 3)
     scratch_bits = scratch_bits &&& 7
 
-    if value.pos_z < -16384 do
+    if value.pos_z < -16383 do
       raise ArgumentError, "value.pos_z is below the wire minimum"
     end
 
@@ -866,7 +1044,7 @@ defmodule Bench.Bench do
       raise ArgumentError, "value.pos_z is above the wire maximum"
     end
 
-    v = value.pos_z + 16384
+    v = value.pos_z + 16383
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 15
     flush = scratch_bits >>> 3
@@ -880,30 +1058,73 @@ defmodule Bench.Bench do
     data = <<data::binary, scratch::little-size(flush)-unit(8)>>
     scratch = scratch >>> (flush <<< 3)
     scratch_bits = scratch_bits &&& 7
-    v = if value.moving, do: 1, else: 0
+    v = value.pitch &&& 0x1FF
     scratch = scratch ||| v <<< scratch_bits
-    scratch_bits = scratch_bits + 1
+    scratch_bits = scratch_bits + 9
     flush = scratch_bits >>> 3
     data = <<data::binary, scratch::little-size(flush)-unit(8)>>
     scratch = scratch >>> (flush <<< 3)
     scratch_bits = scratch_bits &&& 7
-    v = if value.firing, do: 1, else: 0
+
+    if value.vel_x < -2048 do
+      raise ArgumentError, "value.vel_x is below the wire minimum"
+    end
+
+    if value.vel_x > 2047 do
+      raise ArgumentError, "value.vel_x is above the wire maximum"
+    end
+
+    v = value.vel_x + 2048
     scratch = scratch ||| v <<< scratch_bits
-    scratch_bits = scratch_bits + 1
+    scratch_bits = scratch_bits + 12
     flush = scratch_bits >>> 3
     data = <<data::binary, scratch::little-size(flush)-unit(8)>>
     scratch = scratch >>> (flush <<< 3)
     scratch_bits = scratch_bits &&& 7
-    v = value.timestamp &&& 0xFFFFFFFF
+
+    if value.vel_y < -2048 do
+      raise ArgumentError, "value.vel_y is below the wire minimum"
+    end
+
+    if value.vel_y > 2047 do
+      raise ArgumentError, "value.vel_y is above the wire maximum"
+    end
+
+    v = value.vel_y + 2048
     scratch = scratch ||| v <<< scratch_bits
-    scratch_bits = scratch_bits + 32
+    scratch_bits = scratch_bits + 12
     flush = scratch_bits >>> 3
     data = <<data::binary, scratch::little-size(flush)-unit(8)>>
     scratch = scratch >>> (flush <<< 3)
     scratch_bits = scratch_bits &&& 7
-    v = value.timestamp >>> 32 &&& 0xFFFF
+
+    if value.vel_z < -2048 do
+      raise ArgumentError, "value.vel_z is below the wire minimum"
+    end
+
+    if value.vel_z > 2047 do
+      raise ArgumentError, "value.vel_z is above the wire maximum"
+    end
+
+    v = value.vel_z + 2048
     scratch = scratch ||| v <<< scratch_bits
-    scratch_bits = scratch_bits + 16
+    scratch_bits = scratch_bits + 12
+    flush = scratch_bits >>> 3
+    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
+    scratch = scratch >>> (flush <<< 3)
+    scratch_bits = scratch_bits &&& 7
+
+    if value.health < 0 do
+      raise ArgumentError, "value.health is below the wire minimum"
+    end
+
+    if value.health > 1000 do
+      raise ArgumentError, "value.health is above the wire maximum"
+    end
+
+    v = value.health
+    scratch = scratch ||| v <<< scratch_bits
+    scratch_bits = scratch_bits + 10
     flush = scratch_bits >>> 3
     data = <<data::binary, scratch::little-size(flush)-unit(8)>>
     scratch = scratch >>> (flush <<< 3)
@@ -924,6 +1145,1277 @@ defmodule Bench.Bench do
     data = <<data::binary, scratch::little-size(flush)-unit(8)>>
     scratch = scratch >>> (flush <<< 3)
     scratch_bits = scratch_bits &&& 7
+
+    if value.damage >>> 8 != 0 do
+      raise ArgumentError, "value.damage holds a mask bit above the 8-bit wire"
+    end
+
+    v = value.damage
+    scratch = scratch ||| v <<< scratch_bits
+    scratch_bits = scratch_bits + 8
+    flush = scratch_bits >>> 3
+    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
+    scratch = scratch >>> (flush <<< 3)
+    scratch_bits = scratch_bits &&& 7
+    v = if value.moving, do: 1, else: 0
+    scratch = scratch ||| v <<< scratch_bits
+    scratch_bits = scratch_bits + 1
+    flush = scratch_bits >>> 3
+    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
+    scratch = scratch >>> (flush <<< 3)
+    scratch_bits = scratch_bits &&& 7
+    v = if value.firing, do: 1, else: 0
+    scratch = scratch ||| v <<< scratch_bits
+    scratch_bits = scratch_bits + 1
+    flush = scratch_bits >>> 3
+    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
+    scratch = scratch >>> (flush <<< 3)
+    scratch_bits = scratch_bits &&& 7
+    if scratch_bits != 0, do: <<data::binary, scratch>>, else: data
+  end
+
+  # read_mixed_entity decodes the first num_bits of data — the family read verdict:
+  # :error rejects the wire (bounds, ranges, wire constants, padding);
+  # hostile bytes never raise. No slack past the payload is required.
+  def read_mixed_entity(data, num_bits) when is_binary(data) and is_integer(num_bits) do
+    try do
+      if num_bits > byte_size(data) * 8 do
+        # the payload cannot exceed the buffer behind it
+        throw(:invalid)
+      end
+
+      bits_read = 0
+      if bits_read + 135 > num_bits, do: throw(:invalid)
+      v = rd(data, bits_read, 12)
+      bits_read = bits_read + 12
+      v_entity_id = v
+      v = rd(data, bits_read, 15)
+      bits_read = bits_read + 15
+      # a smuggled offset is refused
+      if v > 32766, do: throw(:invalid)
+      v_pos_x = v - 16383
+      v = rd(data, bits_read, 15)
+      bits_read = bits_read + 15
+      # a smuggled offset is refused
+      if v > 32766, do: throw(:invalid)
+      v_pos_y = v - 16383
+      v = rd(data, bits_read, 15)
+      bits_read = bits_read + 15
+      # a smuggled offset is refused
+      if v > 32766, do: throw(:invalid)
+      v_pos_z = v - 16383
+      v = rd(data, bits_read, 9)
+      bits_read = bits_read + 9
+      v_yaw = v
+      v = rd(data, bits_read, 9)
+      bits_read = bits_read + 9
+      v_pitch = v
+      v = rd(data, bits_read, 12)
+      bits_read = bits_read + 12
+      v_vel_x = v - 2048
+      v = rd(data, bits_read, 12)
+      bits_read = bits_read + 12
+      v_vel_y = v - 2048
+      v = rd(data, bits_read, 12)
+      bits_read = bits_read + 12
+      v_vel_z = v - 2048
+      v = rd(data, bits_read, 10)
+      bits_read = bits_read + 10
+      # a smuggled offset is refused
+      if v > 1000, do: throw(:invalid)
+      v_health = v
+      v = rd(data, bits_read, 4)
+      bits_read = bits_read + 4
+      v_weapon = v
+      v = rd(data, bits_read, 8)
+      bits_read = bits_read + 8
+      v_damage = v
+      v = rd(data, bits_read, 1)
+      bits_read = bits_read + 1
+      v_moving = v == 1
+      v = rd(data, bits_read, 1)
+      bits_read = bits_read + 1
+      v_firing = v == 1
+      # the final position is unobserved — the verdict and value are the surface
+      _ = bits_read
+
+      value = %Bench.MixedEntity{
+        entity_id: v_entity_id,
+        pos_x: v_pos_x,
+        pos_y: v_pos_y,
+        pos_z: v_pos_z,
+        yaw: v_yaw,
+        pitch: v_pitch,
+        vel_x: v_vel_x,
+        vel_y: v_vel_y,
+        vel_z: v_vel_z,
+        health: v_health,
+        weapon: v_weapon,
+        damage: v_damage,
+        moving: v_moving,
+        firing: v_firing
+      }
+
+      {:ok, value}
+    catch
+      :invalid -> :error
+    end
+  end
+
+  # measure_mixed_entity is the exact wire bits write_mixed_entity would produce for value —
+  # trusted like the writer; static runs fold to literals at generation time.
+  def measure_mixed_entity(_value), do: 135
+
+  # mixed_stat_max_bits is the longest wire path; align pads at worst case (SPEC §6.1).
+  # mixed_stat_max_bytes is rounded up to the family 8-byte write-buffer granularity.
+  def mixed_stat_max_bits, do: 18
+  def mixed_stat_max_bytes, do: 8
+
+  # The §5 zero form: all-zero storage; specified defaults live only in
+  # construction (%Bench.MixedStat{}).
+  def zero_mixed_stat, do: %Bench.MixedStat{stat_id: 0, delta: 0}
+
+  # write_mixed_stat packs value into a fresh binary — the trusted writer; the O(1)
+  # contract checks raise ArgumentError, always on (the BEAM has no
+  # compile-out assert). Returns the wire bytes.
+  def write_mixed_stat(value) do
+    data = <<>>
+    scratch = 0
+    scratch_bits = 0
+    v = value.stat_id &&& 0xFF
+    scratch = scratch ||| v <<< scratch_bits
+    scratch_bits = scratch_bits + 8
+    flush = scratch_bits >>> 3
+    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
+    scratch = scratch >>> (flush <<< 3)
+    scratch_bits = scratch_bits &&& 7
+
+    if value.delta < -512 do
+      raise ArgumentError, "value.delta is below the wire minimum"
+    end
+
+    if value.delta > 511 do
+      raise ArgumentError, "value.delta is above the wire maximum"
+    end
+
+    v = value.delta + 512
+    scratch = scratch ||| v <<< scratch_bits
+    scratch_bits = scratch_bits + 10
+    flush = scratch_bits >>> 3
+    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
+    scratch = scratch >>> (flush <<< 3)
+    scratch_bits = scratch_bits &&& 7
+    if scratch_bits != 0, do: <<data::binary, scratch>>, else: data
+  end
+
+  # read_mixed_stat decodes the first num_bits of data — the family read verdict:
+  # :error rejects the wire (bounds, ranges, wire constants, padding);
+  # hostile bytes never raise. No slack past the payload is required.
+  def read_mixed_stat(data, num_bits) when is_binary(data) and is_integer(num_bits) do
+    try do
+      if num_bits > byte_size(data) * 8 do
+        # the payload cannot exceed the buffer behind it
+        throw(:invalid)
+      end
+
+      bits_read = 0
+      if bits_read + 18 > num_bits, do: throw(:invalid)
+      v = rd(data, bits_read, 8)
+      bits_read = bits_read + 8
+      v_stat_id = v
+      v = rd(data, bits_read, 10)
+      bits_read = bits_read + 10
+      v_delta = v - 512
+      # the final position is unobserved — the verdict and value are the surface
+      _ = bits_read
+      value = %Bench.MixedStat{stat_id: v_stat_id, delta: v_delta}
+      {:ok, value}
+    catch
+      :invalid -> :error
+    end
+  end
+
+  # measure_mixed_stat is the exact wire bits write_mixed_stat would produce for value —
+  # trusted like the writer; static runs fold to literals at generation time.
+  def measure_mixed_stat(_value), do: 18
+
+  # mixed_hit_event_max_bits is the longest wire path; align pads at worst case (SPEC §6.1).
+  # mixed_hit_event_max_bytes is rounded up to the family 8-byte write-buffer granularity.
+  def mixed_hit_event_max_bits, do: 28
+  def mixed_hit_event_max_bytes, do: 8
+
+  # The §5 zero form: all-zero storage; specified defaults live only in
+  # construction (%Bench.MixedHitEvent{}).
+  def zero_mixed_hit_event do
+    %Bench.MixedHitEvent{target_id: 0, damage: 0, hit_kind: 0, crit: false}
+  end
+
+  # write_mixed_hit_event packs value into a fresh binary — the trusted writer; the O(1)
+  # contract checks raise ArgumentError, always on (the BEAM has no
+  # compile-out assert). Returns the wire bytes.
+  def write_mixed_hit_event(value) do
+    data = <<>>
+    scratch = 0
+    scratch_bits = 0
+    v = value.target_id &&& 0xFFF
+    scratch = scratch ||| v <<< scratch_bits
+    scratch_bits = scratch_bits + 12
+    flush = scratch_bits >>> 3
+    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
+    scratch = scratch >>> (flush <<< 3)
+    scratch_bits = scratch_bits &&& 7
+
+    if value.damage < 0 do
+      raise ArgumentError, "value.damage is below the wire minimum"
+    end
+
+    if value.damage > 4095 do
+      raise ArgumentError, "value.damage is above the wire maximum"
+    end
+
+    v = value.damage
+    scratch = scratch ||| v <<< scratch_bits
+    scratch_bits = scratch_bits + 12
+    flush = scratch_bits >>> 3
+    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
+    scratch = scratch >>> (flush <<< 3)
+    scratch_bits = scratch_bits &&& 7
+
+    if value.hit_kind < 0 do
+      raise ArgumentError, "value.hit_kind is below the wire minimum"
+    end
+
+    if value.hit_kind > 7 do
+      raise ArgumentError, "value.hit_kind is above the wire maximum"
+    end
+
+    v = value.hit_kind
+    scratch = scratch ||| v <<< scratch_bits
+    scratch_bits = scratch_bits + 3
+    flush = scratch_bits >>> 3
+    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
+    scratch = scratch >>> (flush <<< 3)
+    scratch_bits = scratch_bits &&& 7
+    v = if value.crit, do: 1, else: 0
+    scratch = scratch ||| v <<< scratch_bits
+    scratch_bits = scratch_bits + 1
+    flush = scratch_bits >>> 3
+    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
+    scratch = scratch >>> (flush <<< 3)
+    scratch_bits = scratch_bits &&& 7
+    if scratch_bits != 0, do: <<data::binary, scratch>>, else: data
+  end
+
+  # read_mixed_hit_event decodes the first num_bits of data — the family read verdict:
+  # :error rejects the wire (bounds, ranges, wire constants, padding);
+  # hostile bytes never raise. No slack past the payload is required.
+  def read_mixed_hit_event(data, num_bits) when is_binary(data) and is_integer(num_bits) do
+    try do
+      if num_bits > byte_size(data) * 8 do
+        # the payload cannot exceed the buffer behind it
+        throw(:invalid)
+      end
+
+      bits_read = 0
+      if bits_read + 28 > num_bits, do: throw(:invalid)
+      v = rd(data, bits_read, 12)
+      bits_read = bits_read + 12
+      v_target_id = v
+      v = rd(data, bits_read, 12)
+      bits_read = bits_read + 12
+      v_damage = v
+      v = rd(data, bits_read, 3)
+      bits_read = bits_read + 3
+      v_hit_kind = v
+      v = rd(data, bits_read, 1)
+      bits_read = bits_read + 1
+      v_crit = v == 1
+      # the final position is unobserved — the verdict and value are the surface
+      _ = bits_read
+
+      value = %Bench.MixedHitEvent{
+        target_id: v_target_id,
+        damage: v_damage,
+        hit_kind: v_hit_kind,
+        crit: v_crit
+      }
+
+      {:ok, value}
+    catch
+      :invalid -> :error
+    end
+  end
+
+  # measure_mixed_hit_event is the exact wire bits write_mixed_hit_event would produce for value —
+  # trusted like the writer; static runs fold to literals at generation time.
+  def measure_mixed_hit_event(_value), do: 28
+
+  # mixed_chat_event_max_bits is the longest wire path; align pads at worst case (SPEC §6.1).
+  # mixed_chat_event_max_bytes is rounded up to the family 8-byte write-buffer granularity.
+  def mixed_chat_event_max_bits, do: 14
+  def mixed_chat_event_max_bytes, do: 8
+
+  # The §5 zero form: all-zero storage; specified defaults live only in
+  # construction (%Bench.MixedChatEvent{}).
+  def zero_mixed_chat_event, do: %Bench.MixedChatEvent{channel: 0, speaker: 0}
+
+  # write_mixed_chat_event packs value into a fresh binary — the trusted writer; the O(1)
+  # contract checks raise ArgumentError, always on (the BEAM has no
+  # compile-out assert). Returns the wire bytes.
+  def write_mixed_chat_event(value) do
+    data = <<>>
+    scratch = 0
+    scratch_bits = 0
+
+    if value.channel < 0 do
+      raise ArgumentError, "value.channel is below the wire minimum"
+    end
+
+    if value.channel > 3 do
+      raise ArgumentError, "value.channel is above the wire maximum"
+    end
+
+    v = value.channel
+    scratch = scratch ||| v <<< scratch_bits
+    scratch_bits = scratch_bits + 2
+    flush = scratch_bits >>> 3
+    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
+    scratch = scratch >>> (flush <<< 3)
+    scratch_bits = scratch_bits &&& 7
+    v = value.speaker &&& 0xFFF
+    scratch = scratch ||| v <<< scratch_bits
+    scratch_bits = scratch_bits + 12
+    flush = scratch_bits >>> 3
+    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
+    scratch = scratch >>> (flush <<< 3)
+    scratch_bits = scratch_bits &&& 7
+    if scratch_bits != 0, do: <<data::binary, scratch>>, else: data
+  end
+
+  # read_mixed_chat_event decodes the first num_bits of data — the family read verdict:
+  # :error rejects the wire (bounds, ranges, wire constants, padding);
+  # hostile bytes never raise. No slack past the payload is required.
+  def read_mixed_chat_event(data, num_bits) when is_binary(data) and is_integer(num_bits) do
+    try do
+      if num_bits > byte_size(data) * 8 do
+        # the payload cannot exceed the buffer behind it
+        throw(:invalid)
+      end
+
+      bits_read = 0
+      if bits_read + 14 > num_bits, do: throw(:invalid)
+      v = rd(data, bits_read, 2)
+      bits_read = bits_read + 2
+      v_channel = v
+      v = rd(data, bits_read, 12)
+      bits_read = bits_read + 12
+      v_speaker = v
+      # the final position is unobserved — the verdict and value are the surface
+      _ = bits_read
+      value = %Bench.MixedChatEvent{channel: v_channel, speaker: v_speaker}
+      {:ok, value}
+    catch
+      :invalid -> :error
+    end
+  end
+
+  # measure_mixed_chat_event is the exact wire bits write_mixed_chat_event would produce for value —
+  # trusted like the writer; static runs fold to literals at generation time.
+  def measure_mixed_chat_event(_value), do: 14
+
+  # mixed_pickup_event_max_bits is the longest wire path; align pads at worst case (SPEC §6.1).
+  # mixed_pickup_event_max_bytes is rounded up to the family 8-byte write-buffer granularity.
+  def mixed_pickup_event_max_bits, do: 18
+  def mixed_pickup_event_max_bytes, do: 8
+
+  # The §5 zero form: all-zero storage; specified defaults live only in
+  # construction (%Bench.MixedPickupEvent{}).
+  def zero_mixed_pickup_event, do: %Bench.MixedPickupEvent{item_id: 0, amount: 0}
+
+  # write_mixed_pickup_event packs value into a fresh binary — the trusted writer; the O(1)
+  # contract checks raise ArgumentError, always on (the BEAM has no
+  # compile-out assert). Returns the wire bytes.
+  def write_mixed_pickup_event(value) do
+    data = <<>>
+    scratch = 0
+    scratch_bits = 0
+    v = value.item_id &&& 0x3FF
+    scratch = scratch ||| v <<< scratch_bits
+    scratch_bits = scratch_bits + 10
+    flush = scratch_bits >>> 3
+    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
+    scratch = scratch >>> (flush <<< 3)
+    scratch_bits = scratch_bits &&& 7
+
+    if value.amount < 0 do
+      raise ArgumentError, "value.amount is below the wire minimum"
+    end
+
+    if value.amount > 255 do
+      raise ArgumentError, "value.amount is above the wire maximum"
+    end
+
+    v = value.amount
+    scratch = scratch ||| v <<< scratch_bits
+    scratch_bits = scratch_bits + 8
+    flush = scratch_bits >>> 3
+    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
+    scratch = scratch >>> (flush <<< 3)
+    scratch_bits = scratch_bits &&& 7
+    if scratch_bits != 0, do: <<data::binary, scratch>>, else: data
+  end
+
+  # read_mixed_pickup_event decodes the first num_bits of data — the family read verdict:
+  # :error rejects the wire (bounds, ranges, wire constants, padding);
+  # hostile bytes never raise. No slack past the payload is required.
+  def read_mixed_pickup_event(data, num_bits) when is_binary(data) and is_integer(num_bits) do
+    try do
+      if num_bits > byte_size(data) * 8 do
+        # the payload cannot exceed the buffer behind it
+        throw(:invalid)
+      end
+
+      bits_read = 0
+      if bits_read + 18 > num_bits, do: throw(:invalid)
+      v = rd(data, bits_read, 10)
+      bits_read = bits_read + 10
+      v_item_id = v
+      v = rd(data, bits_read, 8)
+      bits_read = bits_read + 8
+      v_amount = v
+      # the final position is unobserved — the verdict and value are the surface
+      _ = bits_read
+      value = %Bench.MixedPickupEvent{item_id: v_item_id, amount: v_amount}
+      {:ok, value}
+    catch
+      :invalid -> :error
+    end
+  end
+
+  # measure_mixed_pickup_event is the exact wire bits write_mixed_pickup_event would produce for value —
+  # trusted like the writer; static runs fold to literals at generation time.
+  def measure_mixed_pickup_event(_value), do: 18
+
+  # mixed_event_max_bits is the tag plus the largest arm; None costs the tag only (SPEC §4.8).
+  # mixed_event_max_bytes is rounded up to the family 8-byte write-buffer granularity.
+  def mixed_event_max_bits, do: 30
+  def mixed_event_max_bytes, do: 8
+
+  # The §5 zero form — the empty union (None). Arms hold their construction
+  # form: every arm is unselected at None, and unselected arms are
+  # unspecified by rule (SPEC §4.8).
+  def zero_mixed_event, do: %Bench.MixedEvent{}
+
+  # write_mixed_event packs value into a fresh binary — the trusted writer; the O(1)
+  # contract checks raise ArgumentError, always on (the BEAM has no
+  # compile-out assert). Returns the wire bytes.
+  def write_mixed_event(value) do
+    data = <<>>
+    scratch = 0
+    scratch_bits = 0
+
+    if value.type < 0 do
+      raise ArgumentError, "value.type is below the wire minimum"
+    end
+
+    if value.type > 3 do
+      raise ArgumentError, "value.type is above the wire maximum"
+    end
+
+    v = value.type
+    scratch = scratch ||| v <<< scratch_bits
+    scratch_bits = scratch_bits + 2
+    flush = scratch_bits >>> 3
+    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
+    scratch = scratch >>> (flush <<< 3)
+    scratch_bits = scratch_bits &&& 7
+
+    {data, scratch, scratch_bits} =
+      case value.type do
+        1 ->
+          v = value.hit.target_id &&& 0xFFF
+          scratch = scratch ||| v <<< scratch_bits
+          scratch_bits = scratch_bits + 12
+          flush = scratch_bits >>> 3
+          data = <<data::binary, scratch::little-size(flush)-unit(8)>>
+          scratch = scratch >>> (flush <<< 3)
+          scratch_bits = scratch_bits &&& 7
+
+          if value.hit.damage < 0 do
+            raise ArgumentError, "value.hit.damage is below the wire minimum"
+          end
+
+          if value.hit.damage > 4095 do
+            raise ArgumentError, "value.hit.damage is above the wire maximum"
+          end
+
+          v = value.hit.damage
+          scratch = scratch ||| v <<< scratch_bits
+          scratch_bits = scratch_bits + 12
+          flush = scratch_bits >>> 3
+          data = <<data::binary, scratch::little-size(flush)-unit(8)>>
+          scratch = scratch >>> (flush <<< 3)
+          scratch_bits = scratch_bits &&& 7
+
+          if value.hit.hit_kind < 0 do
+            raise ArgumentError, "value.hit.hit_kind is below the wire minimum"
+          end
+
+          if value.hit.hit_kind > 7 do
+            raise ArgumentError, "value.hit.hit_kind is above the wire maximum"
+          end
+
+          v = value.hit.hit_kind
+          scratch = scratch ||| v <<< scratch_bits
+          scratch_bits = scratch_bits + 3
+          flush = scratch_bits >>> 3
+          data = <<data::binary, scratch::little-size(flush)-unit(8)>>
+          scratch = scratch >>> (flush <<< 3)
+          scratch_bits = scratch_bits &&& 7
+          v = if value.hit.crit, do: 1, else: 0
+          scratch = scratch ||| v <<< scratch_bits
+          scratch_bits = scratch_bits + 1
+          flush = scratch_bits >>> 3
+          data = <<data::binary, scratch::little-size(flush)-unit(8)>>
+          scratch = scratch >>> (flush <<< 3)
+          scratch_bits = scratch_bits &&& 7
+          {data, scratch, scratch_bits}
+
+        2 ->
+          if value.chat.channel < 0 do
+            raise ArgumentError, "value.chat.channel is below the wire minimum"
+          end
+
+          if value.chat.channel > 3 do
+            raise ArgumentError, "value.chat.channel is above the wire maximum"
+          end
+
+          v = value.chat.channel
+          scratch = scratch ||| v <<< scratch_bits
+          scratch_bits = scratch_bits + 2
+          flush = scratch_bits >>> 3
+          data = <<data::binary, scratch::little-size(flush)-unit(8)>>
+          scratch = scratch >>> (flush <<< 3)
+          scratch_bits = scratch_bits &&& 7
+          v = value.chat.speaker &&& 0xFFF
+          scratch = scratch ||| v <<< scratch_bits
+          scratch_bits = scratch_bits + 12
+          flush = scratch_bits >>> 3
+          data = <<data::binary, scratch::little-size(flush)-unit(8)>>
+          scratch = scratch >>> (flush <<< 3)
+          scratch_bits = scratch_bits &&& 7
+          {data, scratch, scratch_bits}
+
+        3 ->
+          v = value.pickup.item_id &&& 0x3FF
+          scratch = scratch ||| v <<< scratch_bits
+          scratch_bits = scratch_bits + 10
+          flush = scratch_bits >>> 3
+          data = <<data::binary, scratch::little-size(flush)-unit(8)>>
+          scratch = scratch >>> (flush <<< 3)
+          scratch_bits = scratch_bits &&& 7
+
+          if value.pickup.amount < 0 do
+            raise ArgumentError, "value.pickup.amount is below the wire minimum"
+          end
+
+          if value.pickup.amount > 255 do
+            raise ArgumentError, "value.pickup.amount is above the wire maximum"
+          end
+
+          v = value.pickup.amount
+          scratch = scratch ||| v <<< scratch_bits
+          scratch_bits = scratch_bits + 8
+          flush = scratch_bits >>> 3
+          data = <<data::binary, scratch::little-size(flush)-unit(8)>>
+          scratch = scratch >>> (flush <<< 3)
+          scratch_bits = scratch_bits &&& 7
+          {data, scratch, scratch_bits}
+
+        _ ->
+          # None — the tag is the whole wire (SPEC §4.8)
+          {data, scratch, scratch_bits}
+      end
+
+    if scratch_bits != 0, do: <<data::binary, scratch>>, else: data
+  end
+
+  # read_mixed_event decodes the first num_bits of data — the family read verdict:
+  # :error rejects the wire (bounds, ranges, wire constants, padding);
+  # hostile bytes never raise. No slack past the payload is required.
+  def read_mixed_event(data, num_bits) when is_binary(data) and is_integer(num_bits) do
+    try do
+      if num_bits > byte_size(data) * 8 do
+        # the payload cannot exceed the buffer behind it
+        throw(:invalid)
+      end
+
+      bits_read = 0
+      if bits_read + 2 > num_bits, do: throw(:invalid)
+      v = rd(data, bits_read, 2)
+      bits_read = bits_read + 2
+
+      {bits_read, v} =
+        case v do
+          1 ->
+            if bits_read + 28 > num_bits, do: throw(:invalid)
+            v = rd(data, bits_read, 12)
+            bits_read = bits_read + 12
+            v_hit_target_id = v
+            v = rd(data, bits_read, 12)
+            bits_read = bits_read + 12
+            v_hit_damage = v
+            v = rd(data, bits_read, 3)
+            bits_read = bits_read + 3
+            v_hit_hit_kind = v
+            v = rd(data, bits_read, 1)
+            bits_read = bits_read + 1
+            v_hit_crit = v == 1
+
+            v_hit = %Bench.MixedHitEvent{
+              target_id: v_hit_target_id,
+              damage: v_hit_damage,
+              hit_kind: v_hit_hit_kind,
+              crit: v_hit_crit
+            }
+
+            u = %Bench.MixedEvent{type: 1, hit: v_hit}
+            {bits_read, u}
+
+          2 ->
+            if bits_read + 14 > num_bits, do: throw(:invalid)
+            v = rd(data, bits_read, 2)
+            bits_read = bits_read + 2
+            v_chat_channel = v
+            v = rd(data, bits_read, 12)
+            bits_read = bits_read + 12
+            v_chat_speaker = v
+            v_chat = %Bench.MixedChatEvent{channel: v_chat_channel, speaker: v_chat_speaker}
+            u = %Bench.MixedEvent{type: 2, chat: v_chat}
+            {bits_read, u}
+
+          3 ->
+            if bits_read + 18 > num_bits, do: throw(:invalid)
+            v = rd(data, bits_read, 10)
+            bits_read = bits_read + 10
+            v_pickup_item_id = v
+            v = rd(data, bits_read, 8)
+            bits_read = bits_read + 8
+            v_pickup_amount = v
+            v_pickup = %Bench.MixedPickupEvent{item_id: v_pickup_item_id, amount: v_pickup_amount}
+            u = %Bench.MixedEvent{type: 3, pickup: v_pickup}
+            {bits_read, u}
+
+          _ ->
+            # None — the tag is the whole wire (SPEC §4.8)
+            {bits_read, %Bench.MixedEvent{}}
+        end
+
+      # the final position is unobserved — the verdict and value are the surface
+      _ = bits_read
+      {:ok, v}
+    catch
+      :invalid -> :error
+    end
+  end
+
+  # measure_mixed_event is the exact wire bits write_mixed_event would produce for value —
+  # trusted like the writer; static runs fold to literals at generation time.
+  def measure_mixed_event(value) do
+    bits = 0
+    bits = bits + 2
+
+    bits =
+      case value.type do
+        1 ->
+          bits + 28
+
+        2 ->
+          bits + 14
+
+        3 ->
+          bits + 18
+
+        _ ->
+          # None — the tag is the whole wire (SPEC §4.8)
+          bits
+      end
+
+    bits
+  end
+
+  # bench_mixed_max_bits is the longest wire path; align pads at worst case (SPEC §6.1).
+  # bench_mixed_max_bytes is rounded up to the family 8-byte write-buffer granularity.
+  def bench_mixed_max_bits, do: 3626
+  def bench_mixed_max_bytes, do: 456
+
+  # The §5 zero form: all-zero storage; specified defaults live only in
+  # construction (%Bench.BenchMixed{}).
+  def zero_bench_mixed do
+    %Bench.BenchMixed{
+      sequence: 0,
+      ack_sequence: 0,
+      ack_bits: 0,
+      session_id: 0,
+      client_id: 0,
+      nonce: 0,
+      world_time: 0,
+      frame_tick: 0,
+      server_time: 0,
+      entities: [],
+      stats: [],
+      game_event: %Bench.MixedEvent{},
+      loadout: List.duplicate(0, 4),
+      player_name: <<>>,
+      payload: <<>>,
+      aim_x: 0.0,
+      aim_y: 0.0,
+      aim_z: 0.0,
+      recoil: 0.0,
+      drift: 0.0,
+      wide_key: 0,
+      flux: 0,
+      ping: 0,
+      crc_hint: 0,
+      has_extra: false,
+      extra: 0,
+      idle_ticks: 0
+    }
+  end
+
+  # write_bench_mixed packs value into a fresh binary — the trusted writer; the O(1)
+  # contract checks raise ArgumentError, always on (the BEAM has no
+  # compile-out assert). Returns the wire bytes.
+  def write_bench_mixed(value) do
+    data = <<>>
+    scratch = 0
+    scratch_bits = 0
+    # const(0xC0DE, 16) rides the wire (SPEC §4.3)
+    v = 49374
+    scratch = scratch ||| v <<< scratch_bits
+    scratch_bits = scratch_bits + 16
+    flush = scratch_bits >>> 3
+    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
+    scratch = scratch >>> (flush <<< 3)
+    scratch_bits = scratch_bits &&& 7
+    v = value.sequence &&& 0xFFFF
+    scratch = scratch ||| v <<< scratch_bits
+    scratch_bits = scratch_bits + 16
+    flush = scratch_bits >>> 3
+    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
+    scratch = scratch >>> (flush <<< 3)
+    scratch_bits = scratch_bits &&& 7
+
+    if value.ack_sequence < 0 do
+      raise ArgumentError, "value.ack_sequence is below the wire minimum"
+    end
+
+    if value.ack_sequence > 65535 do
+      raise ArgumentError, "value.ack_sequence is above the wire maximum"
+    end
+
+    v = value.ack_sequence
+    scratch = scratch ||| v <<< scratch_bits
+    scratch_bits = scratch_bits + 16
+    flush = scratch_bits >>> 3
+    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
+    scratch = scratch >>> (flush <<< 3)
+    scratch_bits = scratch_bits &&& 7
+    v = value.ack_bits &&& 0xFFFFFFFF
+    scratch = scratch ||| v <<< scratch_bits
+    scratch_bits = scratch_bits + 32
+    flush = scratch_bits >>> 3
+    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
+    scratch = scratch >>> (flush <<< 3)
+    scratch_bits = scratch_bits &&& 7
+    v = value.session_id &&& 0xFFFFFFFF
+    scratch = scratch ||| v <<< scratch_bits
+    scratch_bits = scratch_bits + 32
+    flush = scratch_bits >>> 3
+    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
+    scratch = scratch >>> (flush <<< 3)
+    scratch_bits = scratch_bits &&& 7
+    v = value.session_id >>> 32 &&& 0xFFFFFFFF
+    scratch = scratch ||| v <<< scratch_bits
+    scratch_bits = scratch_bits + 32
+    flush = scratch_bits >>> 3
+    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
+    scratch = scratch >>> (flush <<< 3)
+    scratch_bits = scratch_bits &&& 7
+    v = value.client_id &&& 0xFFFFFFFF
+    scratch = scratch ||| v <<< scratch_bits
+    scratch_bits = scratch_bits + 32
+    flush = scratch_bits >>> 3
+    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
+    scratch = scratch >>> (flush <<< 3)
+    scratch_bits = scratch_bits &&& 7
+
+    if value.nonce < 0 do
+      raise ArgumentError, "value.nonce is below the wire minimum"
+    end
+
+    if value.nonce > 18_446_744_073_709_551_615 do
+      raise ArgumentError, "value.nonce is above the wire maximum"
+    end
+
+    v = value.nonce &&& 0xFFFFFFFF
+    scratch = scratch ||| v <<< scratch_bits
+    scratch_bits = scratch_bits + 32
+    flush = scratch_bits >>> 3
+    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
+    scratch = scratch >>> (flush <<< 3)
+    scratch_bits = scratch_bits &&& 7
+    v = value.nonce >>> 32
+    scratch = scratch ||| v <<< scratch_bits
+    scratch_bits = scratch_bits + 32
+    flush = scratch_bits >>> 3
+    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
+    scratch = scratch >>> (flush <<< 3)
+    scratch_bits = scratch_bits &&& 7
+
+    if value.world_time < -1_000_000_000_000 do
+      raise ArgumentError, "value.world_time is below the wire minimum"
+    end
+
+    if value.world_time > 1_000_000_000_000 do
+      raise ArgumentError, "value.world_time is above the wire maximum"
+    end
+
+    w = value.world_time + 1_000_000_000_000
+    v = w &&& 0xFFFFFFFF
+    scratch = scratch ||| v <<< scratch_bits
+    scratch_bits = scratch_bits + 32
+    flush = scratch_bits >>> 3
+    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
+    scratch = scratch >>> (flush <<< 3)
+    scratch_bits = scratch_bits &&& 7
+    v = w >>> 32
+    scratch = scratch ||| v <<< scratch_bits
+    scratch_bits = scratch_bits + 9
+    flush = scratch_bits >>> 3
+    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
+    scratch = scratch >>> (flush <<< 3)
+    scratch_bits = scratch_bits &&& 7
+    v = value.frame_tick &&& 0xFFFFFFFF
+    scratch = scratch ||| v <<< scratch_bits
+    scratch_bits = scratch_bits + 32
+    flush = scratch_bits >>> 3
+    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
+    scratch = scratch >>> (flush <<< 3)
+    scratch_bits = scratch_bits &&& 7
+    v = value.frame_tick >>> 32 &&& 0xFFFF
+    scratch = scratch ||| v <<< scratch_bits
+    scratch_bits = scratch_bits + 16
+    flush = scratch_bits >>> 3
+    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
+    scratch = scratch >>> (flush <<< 3)
+    scratch_bits = scratch_bits &&& 7
+
+    if value.server_time < 0 do
+      raise ArgumentError, "value.server_time is below the wire minimum"
+    end
+
+    if value.server_time > 16_776_960 do
+      raise ArgumentError, "value.server_time is above the wire maximum"
+    end
+
+    v = value.server_time
+    scratch = scratch ||| v <<< scratch_bits
+    scratch_bits = scratch_bits + 24
+    flush = scratch_bits >>> 3
+    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
+    scratch = scratch >>> (flush <<< 3)
+    scratch_bits = scratch_bits &&& 7
+    n = length(value.entities)
+
+    if n < 1 do
+      raise ArgumentError, "value.entities count is below the wire minimum"
+    end
+
+    if n > 8 do
+      raise ArgumentError, "value.entities count is above the wire maximum"
+    end
+
+    v = n - 1
+    scratch = scratch ||| v <<< scratch_bits
+    scratch_bits = scratch_bits + 3
+    flush = scratch_bits >>> 3
+    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
+    scratch = scratch >>> (flush <<< 3)
+    scratch_bits = scratch_bits &&& 7
+
+    {data, scratch, scratch_bits} =
+      w_bench_mixed_entities(value.entities, data, scratch, scratch_bits)
+
+    n = length(value.stats)
+
+    if n > 80 do
+      raise ArgumentError, "value.stats count is above the wire maximum"
+    end
+
+    v = n
+    scratch = scratch ||| v <<< scratch_bits
+    scratch_bits = scratch_bits + 7
+    flush = scratch_bits >>> 3
+    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
+    scratch = scratch >>> (flush <<< 3)
+    scratch_bits = scratch_bits &&& 7
+    {data, scratch, scratch_bits} = w_bench_mixed_stats(value.stats, data, scratch, scratch_bits)
+
+    if value.game_event.type < 0 do
+      raise ArgumentError, "value.game_event.type is below the wire minimum"
+    end
+
+    if value.game_event.type > 3 do
+      raise ArgumentError, "value.game_event.type is above the wire maximum"
+    end
+
+    v = value.game_event.type
+    scratch = scratch ||| v <<< scratch_bits
+    scratch_bits = scratch_bits + 2
+    flush = scratch_bits >>> 3
+    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
+    scratch = scratch >>> (flush <<< 3)
+    scratch_bits = scratch_bits &&& 7
+
+    {data, scratch, scratch_bits} =
+      case value.game_event.type do
+        1 ->
+          v = value.game_event.hit.target_id &&& 0xFFF
+          scratch = scratch ||| v <<< scratch_bits
+          scratch_bits = scratch_bits + 12
+          flush = scratch_bits >>> 3
+          data = <<data::binary, scratch::little-size(flush)-unit(8)>>
+          scratch = scratch >>> (flush <<< 3)
+          scratch_bits = scratch_bits &&& 7
+
+          if value.game_event.hit.damage < 0 do
+            raise ArgumentError, "value.game_event.hit.damage is below the wire minimum"
+          end
+
+          if value.game_event.hit.damage > 4095 do
+            raise ArgumentError, "value.game_event.hit.damage is above the wire maximum"
+          end
+
+          v = value.game_event.hit.damage
+          scratch = scratch ||| v <<< scratch_bits
+          scratch_bits = scratch_bits + 12
+          flush = scratch_bits >>> 3
+          data = <<data::binary, scratch::little-size(flush)-unit(8)>>
+          scratch = scratch >>> (flush <<< 3)
+          scratch_bits = scratch_bits &&& 7
+
+          if value.game_event.hit.hit_kind < 0 do
+            raise ArgumentError, "value.game_event.hit.hit_kind is below the wire minimum"
+          end
+
+          if value.game_event.hit.hit_kind > 7 do
+            raise ArgumentError, "value.game_event.hit.hit_kind is above the wire maximum"
+          end
+
+          v = value.game_event.hit.hit_kind
+          scratch = scratch ||| v <<< scratch_bits
+          scratch_bits = scratch_bits + 3
+          flush = scratch_bits >>> 3
+          data = <<data::binary, scratch::little-size(flush)-unit(8)>>
+          scratch = scratch >>> (flush <<< 3)
+          scratch_bits = scratch_bits &&& 7
+          v = if value.game_event.hit.crit, do: 1, else: 0
+          scratch = scratch ||| v <<< scratch_bits
+          scratch_bits = scratch_bits + 1
+          flush = scratch_bits >>> 3
+          data = <<data::binary, scratch::little-size(flush)-unit(8)>>
+          scratch = scratch >>> (flush <<< 3)
+          scratch_bits = scratch_bits &&& 7
+          {data, scratch, scratch_bits}
+
+        2 ->
+          if value.game_event.chat.channel < 0 do
+            raise ArgumentError, "value.game_event.chat.channel is below the wire minimum"
+          end
+
+          if value.game_event.chat.channel > 3 do
+            raise ArgumentError, "value.game_event.chat.channel is above the wire maximum"
+          end
+
+          v = value.game_event.chat.channel
+          scratch = scratch ||| v <<< scratch_bits
+          scratch_bits = scratch_bits + 2
+          flush = scratch_bits >>> 3
+          data = <<data::binary, scratch::little-size(flush)-unit(8)>>
+          scratch = scratch >>> (flush <<< 3)
+          scratch_bits = scratch_bits &&& 7
+          v = value.game_event.chat.speaker &&& 0xFFF
+          scratch = scratch ||| v <<< scratch_bits
+          scratch_bits = scratch_bits + 12
+          flush = scratch_bits >>> 3
+          data = <<data::binary, scratch::little-size(flush)-unit(8)>>
+          scratch = scratch >>> (flush <<< 3)
+          scratch_bits = scratch_bits &&& 7
+          {data, scratch, scratch_bits}
+
+        3 ->
+          v = value.game_event.pickup.item_id &&& 0x3FF
+          scratch = scratch ||| v <<< scratch_bits
+          scratch_bits = scratch_bits + 10
+          flush = scratch_bits >>> 3
+          data = <<data::binary, scratch::little-size(flush)-unit(8)>>
+          scratch = scratch >>> (flush <<< 3)
+          scratch_bits = scratch_bits &&& 7
+
+          if value.game_event.pickup.amount < 0 do
+            raise ArgumentError, "value.game_event.pickup.amount is below the wire minimum"
+          end
+
+          if value.game_event.pickup.amount > 255 do
+            raise ArgumentError, "value.game_event.pickup.amount is above the wire maximum"
+          end
+
+          v = value.game_event.pickup.amount
+          scratch = scratch ||| v <<< scratch_bits
+          scratch_bits = scratch_bits + 8
+          flush = scratch_bits >>> 3
+          data = <<data::binary, scratch::little-size(flush)-unit(8)>>
+          scratch = scratch >>> (flush <<< 3)
+          scratch_bits = scratch_bits &&& 7
+          {data, scratch, scratch_bits}
+
+        _ ->
+          # None — the tag is the whole wire (SPEC §4.8)
+          {data, scratch, scratch_bits}
+      end
+
+    if length(value.loadout) != 4 do
+      raise ArgumentError, "value.loadout must hold exactly 4 elements"
+    end
+
+    {data, scratch, scratch_bits} =
+      w_bench_mixed_loadout(value.loadout, data, scratch, scratch_bits)
+
+    if byte_size(value.player_name) > 15 do
+      raise ArgumentError, "value.player_name longer than the declared 15-byte bound"
+    end
+
+    v = byte_size(value.player_name)
+    scratch = scratch ||| v <<< scratch_bits
+    scratch_bits = scratch_bits + 4
+    flush = scratch_bits >>> 3
+    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
+    scratch = scratch >>> (flush <<< 3)
+    scratch_bits = scratch_bits &&& 7
+    # align: zero-pad to the byte boundary (SPEC §4.3)
+    data = if scratch_bits != 0, do: <<data::binary, scratch>>, else: data
+    scratch = 0
+    scratch_bits = 0
+    # the used bytes ride whole — the stream is byte-aligned here
+    data = <<data::binary, value.player_name::binary>>
+
+    if byte_size(value.payload) > 16 do
+      raise ArgumentError, "value.payload longer than the declared 16-byte bound"
+    end
+
+    v = byte_size(value.payload)
+    scratch = scratch ||| v <<< scratch_bits
+    scratch_bits = scratch_bits + 5
+    flush = scratch_bits >>> 3
+    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
+    scratch = scratch >>> (flush <<< 3)
+    scratch_bits = scratch_bits &&& 7
+    # align: zero-pad to the byte boundary (SPEC §4.3)
+    data = if scratch_bits != 0, do: <<data::binary, scratch>>, else: data
+    scratch = 0
+    scratch_bits = 0
+    # the used bytes ride whole — the stream is byte-aligned here
+    data = <<data::binary, value.payload::binary>>
+    v = cf_quantize(value.aim_x, -1.0, 2.0, 200)
+    scratch = scratch ||| v <<< scratch_bits
+    scratch_bits = scratch_bits + 8
+    flush = scratch_bits >>> 3
+    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
+    scratch = scratch >>> (flush <<< 3)
+    scratch_bits = scratch_bits &&& 7
+    v = cf_quantize(value.aim_y, -1.0, 2.0, 200)
+    scratch = scratch ||| v <<< scratch_bits
+    scratch_bits = scratch_bits + 8
+    flush = scratch_bits >>> 3
+    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
+    scratch = scratch >>> (flush <<< 3)
+    scratch_bits = scratch_bits &&& 7
+    v = cf_quantize(value.aim_z, -1.0, 2.0, 200)
+    scratch = scratch ||| v <<< scratch_bits
+    scratch_bits = scratch_bits + 8
+    flush = scratch_bits >>> 3
+    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
+    scratch = scratch >>> (flush <<< 3)
+    scratch_bits = scratch_bits &&& 7
+    v = f32_bits(value.recoil)
+    scratch = scratch ||| v <<< scratch_bits
+    scratch_bits = scratch_bits + 32
+    flush = scratch_bits >>> 3
+    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
+    scratch = scratch >>> (flush <<< 3)
+    scratch_bits = scratch_bits &&& 7
+    w = f64_bits(value.drift)
+    v = w &&& 0xFFFFFFFF
+    scratch = scratch ||| v <<< scratch_bits
+    scratch_bits = scratch_bits + 32
+    flush = scratch_bits >>> 3
+    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
+    scratch = scratch >>> (flush <<< 3)
+    scratch_bits = scratch_bits &&& 7
+    v = w >>> 32
+    scratch = scratch ||| v <<< scratch_bits
+    scratch_bits = scratch_bits + 32
+    flush = scratch_bits >>> 3
+    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
+    scratch = scratch >>> (flush <<< 3)
+    scratch_bits = scratch_bits &&& 7
+    v = value.wide_key &&& 0xFFFFFFFF
+    scratch = scratch ||| v <<< scratch_bits
+    scratch_bits = scratch_bits + 32
+    flush = scratch_bits >>> 3
+    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
+    scratch = scratch >>> (flush <<< 3)
+    scratch_bits = scratch_bits &&& 7
+    v = value.wide_key >>> 32 &&& 0xFFFFFFFF
+    scratch = scratch ||| v <<< scratch_bits
+    scratch_bits = scratch_bits + 32
+    flush = scratch_bits >>> 3
+    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
+    scratch = scratch >>> (flush <<< 3)
+    scratch_bits = scratch_bits &&& 7
+    v = value.wide_key >>> 64 &&& 0xFFFFFFFF
+    scratch = scratch ||| v <<< scratch_bits
+    scratch_bits = scratch_bits + 32
+    flush = scratch_bits >>> 3
+    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
+    scratch = scratch >>> (flush <<< 3)
+    scratch_bits = scratch_bits &&& 7
+    v = value.wide_key >>> 96 &&& 0xFFFFFFFF
+    scratch = scratch ||| v <<< scratch_bits
+    scratch_bits = scratch_bits + 32
+    flush = scratch_bits >>> 3
+    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
+    scratch = scratch >>> (flush <<< 3)
+    scratch_bits = scratch_bits &&& 7
+
+    if value.flux < -1_267_650_600_228_229_401_496_703_205_376 do
+      raise ArgumentError, "value.flux is below the wire minimum"
+    end
+
+    if value.flux > 1_267_650_600_228_229_401_496_703_205_376 do
+      raise ArgumentError, "value.flux is above the wire maximum"
+    end
+
+    w = value.flux + 1_267_650_600_228_229_401_496_703_205_376
+    v = w &&& 0xFFFFFFFF
+    scratch = scratch ||| v <<< scratch_bits
+    scratch_bits = scratch_bits + 32
+    flush = scratch_bits >>> 3
+    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
+    scratch = scratch >>> (flush <<< 3)
+    scratch_bits = scratch_bits &&& 7
+    v = w >>> 32 &&& 0xFFFFFFFF
+    scratch = scratch ||| v <<< scratch_bits
+    scratch_bits = scratch_bits + 32
+    flush = scratch_bits >>> 3
+    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
+    scratch = scratch >>> (flush <<< 3)
+    scratch_bits = scratch_bits &&& 7
+    v = w >>> 64 &&& 0xFFFFFFFF
+    scratch = scratch ||| v <<< scratch_bits
+    scratch_bits = scratch_bits + 32
+    flush = scratch_bits >>> 3
+    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
+    scratch = scratch >>> (flush <<< 3)
+    scratch_bits = scratch_bits &&& 7
+    v = w >>> 96
+    scratch = scratch ||| v <<< scratch_bits
+    scratch_bits = scratch_bits + 6
+    flush = scratch_bits >>> 3
+    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
+    scratch = scratch >>> (flush <<< 3)
+    scratch_bits = scratch_bits &&& 7
+
+    if value.ping < 0 do
+      raise ArgumentError, "value.ping is below the wire minimum"
+    end
+
+    if value.ping > 64000 do
+      raise ArgumentError, "value.ping is above the wire maximum"
+    end
+
+    v = value.ping
+    scratch = scratch ||| v <<< scratch_bits
+    scratch_bits = scratch_bits + 16
+    flush = scratch_bits >>> 3
+    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
+    scratch = scratch >>> (flush <<< 3)
+    scratch_bits = scratch_bits &&& 7
+    # reserved bits ride as zeros (SPEC §4.3)
+    v = 0
+    scratch = scratch ||| v <<< scratch_bits
+    scratch_bits = scratch_bits + 4
+    flush = scratch_bits >>> 3
+    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
+    scratch = scratch >>> (flush <<< 3)
+    scratch_bits = scratch_bits &&& 7
+    # align: zero-pad to the byte boundary (SPEC §4.3)
+    data = if scratch_bits != 0, do: <<data::binary, scratch>>, else: data
+    scratch = 0
+    scratch_bits = 0
+    v = value.crc_hint &&& 0xFFFFFF
+    scratch = scratch ||| v <<< scratch_bits
+    scratch_bits = scratch_bits + 24
+    flush = scratch_bits >>> 3
+    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
+    scratch = scratch >>> (flush <<< 3)
+    scratch_bits = scratch_bits &&& 7
+    v = if value.has_extra, do: 1, else: 0
+    scratch = scratch ||| v <<< scratch_bits
+    scratch_bits = scratch_bits + 1
+    flush = scratch_bits >>> 3
+    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
+    scratch = scratch >>> (flush <<< 3)
+    scratch_bits = scratch_bits &&& 7
+
+    {data, scratch, scratch_bits} =
+      if value.has_extra do
+        if value.extra < 0 do
+          raise ArgumentError, "value.extra is below the wire minimum"
+        end
+
+        if value.extra > 255 do
+          raise ArgumentError, "value.extra is above the wire maximum"
+        end
+
+        v = value.extra
+        scratch = scratch ||| v <<< scratch_bits
+        scratch_bits = scratch_bits + 8
+        flush = scratch_bits >>> 3
+        data = <<data::binary, scratch::little-size(flush)-unit(8)>>
+        scratch = scratch >>> (flush <<< 3)
+        scratch_bits = scratch_bits &&& 7
+        {data, scratch, scratch_bits}
+      else
+        if value.idle_ticks < 0 do
+          raise ArgumentError, "value.idle_ticks is below the wire minimum"
+        end
+
+        if value.idle_ticks > 15 do
+          raise ArgumentError, "value.idle_ticks is above the wire maximum"
+        end
+
+        v = value.idle_ticks
+        scratch = scratch ||| v <<< scratch_bits
+        scratch_bits = scratch_bits + 4
+        flush = scratch_bits >>> 3
+        data = <<data::binary, scratch::little-size(flush)-unit(8)>>
+        scratch = scratch >>> (flush <<< 3)
+        scratch_bits = scratch_bits &&& 7
+        {data, scratch, scratch_bits}
+      end
+
     if scratch_bits != 0, do: <<data::binary, scratch>>, else: data
   end
 
@@ -938,59 +2430,323 @@ defmodule Bench.Bench do
       end
 
       bits_read = 0
-      if bits_read + 168 > num_bits, do: throw(:invalid)
+      if bits_read + 353 > num_bits, do: throw(:invalid)
+      v = rd(data, bits_read, 16)
+      bits_read = bits_read + 16
+      # a read rejects any other value (SPEC §4.3)
+      if v != 49374, do: throw(:invalid)
       v = rd(data, bits_read, 16)
       bits_read = bits_read + 16
       v_sequence = v
+      v = rd(data, bits_read, 16)
+      bits_read = bits_read + 16
+      v_ack_sequence = v
       v = rd(data, bits_read, 32)
       bits_read = bits_read + 32
       v_ack_bits = v
-      v = rd(data, bits_read, 12)
-      bits_read = bits_read + 12
-      v_entity_id = v
-      v = rd(data, bits_read, 15)
-      bits_read = bits_read + 15
-      v_pos_x = v - 16384
-      v = rd(data, bits_read, 15)
-      bits_read = bits_read + 15
-      v_pos_y = v - 16384
-      v = rd(data, bits_read, 15)
-      bits_read = bits_read + 15
-      v_pos_z = v - 16384
+      v = rd(data, bits_read, 32)
+      bits_read = bits_read + 32
+      w = v
+      v = rd(data, bits_read, 32)
+      bits_read = bits_read + 32
+      w = w ||| v <<< 32
+      v_session_id = w
+      v = rd(data, bits_read, 32)
+      bits_read = bits_read + 32
+      v_client_id = v
+      v = rd(data, bits_read, 32)
+      bits_read = bits_read + 32
+      w = v
+      v = rd(data, bits_read, 32)
+      bits_read = bits_read + 32
+      w = w ||| v <<< 32
+      v_nonce = w
+      v = rd(data, bits_read, 32)
+      bits_read = bits_read + 32
+      w = v
       v = rd(data, bits_read, 9)
       bits_read = bits_read + 9
-      v_yaw = v
-      v = rd(data, bits_read, 1)
-      bits_read = bits_read + 1
-      v_moving = v == 1
-      v = rd(data, bits_read, 1)
-      bits_read = bits_read + 1
-      v_firing = v == 1
+      w = w ||| v <<< 32
+      # a smuggled offset is refused
+      if w > 2_000_000_000_000, do: throw(:invalid)
+      v_world_time = w - 1_000_000_000_000
       v = rd(data, bits_read, 32)
       bits_read = bits_read + 32
       w = v
       v = rd(data, bits_read, 16)
       bits_read = bits_read + 16
       w = w ||| v <<< 32
-      v_timestamp = w
+      v_frame_tick = w
+      v = rd(data, bits_read, 24)
+      bits_read = bits_read + 24
+      # a smuggled offset is refused
+      if v > 16_776_960, do: throw(:invalid)
+      v_server_time = v
+      if bits_read + 3 > num_bits, do: throw(:invalid)
+      v = rd(data, bits_read, 3)
+      bits_read = bits_read + 3
+      n = v + 1
+      if bits_read + n * 135 > num_bits, do: throw(:invalid)
+      {bits_read, v_entities} = r_bench_mixed_entities(n, [], data, num_bits, bits_read)
+      if bits_read + 7 > num_bits, do: throw(:invalid)
+      v = rd(data, bits_read, 7)
+      bits_read = bits_read + 7
+      # the count guards the loop — reject, never clamp
+      if v > 80, do: throw(:invalid)
+      n = v
+      if bits_read + n * 18 > num_bits, do: throw(:invalid)
+      {bits_read, v_stats} = r_bench_mixed_stats(n, [], data, num_bits, bits_read)
+      if bits_read + 2 > num_bits, do: throw(:invalid)
+      v = rd(data, bits_read, 2)
+      bits_read = bits_read + 2
+
+      {bits_read, v_game_event} =
+        case v do
+          1 ->
+            if bits_read + 28 > num_bits, do: throw(:invalid)
+            v = rd(data, bits_read, 12)
+            bits_read = bits_read + 12
+            v_game_event_hit_target_id = v
+            v = rd(data, bits_read, 12)
+            bits_read = bits_read + 12
+            v_game_event_hit_damage = v
+            v = rd(data, bits_read, 3)
+            bits_read = bits_read + 3
+            v_game_event_hit_hit_kind = v
+            v = rd(data, bits_read, 1)
+            bits_read = bits_read + 1
+            v_game_event_hit_crit = v == 1
+
+            v_game_event_hit = %Bench.MixedHitEvent{
+              target_id: v_game_event_hit_target_id,
+              damage: v_game_event_hit_damage,
+              hit_kind: v_game_event_hit_hit_kind,
+              crit: v_game_event_hit_crit
+            }
+
+            u = %Bench.MixedEvent{type: 1, hit: v_game_event_hit}
+            {bits_read, u}
+
+          2 ->
+            if bits_read + 14 > num_bits, do: throw(:invalid)
+            v = rd(data, bits_read, 2)
+            bits_read = bits_read + 2
+            v_game_event_chat_channel = v
+            v = rd(data, bits_read, 12)
+            bits_read = bits_read + 12
+            v_game_event_chat_speaker = v
+
+            v_game_event_chat = %Bench.MixedChatEvent{
+              channel: v_game_event_chat_channel,
+              speaker: v_game_event_chat_speaker
+            }
+
+            u = %Bench.MixedEvent{type: 2, chat: v_game_event_chat}
+            {bits_read, u}
+
+          3 ->
+            if bits_read + 18 > num_bits, do: throw(:invalid)
+            v = rd(data, bits_read, 10)
+            bits_read = bits_read + 10
+            v_game_event_pickup_item_id = v
+            v = rd(data, bits_read, 8)
+            bits_read = bits_read + 8
+            v_game_event_pickup_amount = v
+
+            v_game_event_pickup = %Bench.MixedPickupEvent{
+              item_id: v_game_event_pickup_item_id,
+              amount: v_game_event_pickup_amount
+            }
+
+            u = %Bench.MixedEvent{type: 3, pickup: v_game_event_pickup}
+            {bits_read, u}
+
+          _ ->
+            # None — the tag is the whole wire (SPEC §4.8)
+            {bits_read, %Bench.MixedEvent{}}
+        end
+
+      if bits_read + 32 > num_bits, do: throw(:invalid)
+      {bits_read, v_loadout} = r_bench_mixed_loadout(4, [], data, num_bits, bits_read)
+      if bits_read + 4 > num_bits, do: throw(:invalid)
       v = rd(data, bits_read, 4)
       bits_read = bits_read + 4
-      v_weapon = v
+      len = v
+      pad = 8 - (bits_read &&& 7) &&& 7
+
+      if pad != 0 do
+        if bits_read + pad > num_bits do
+          throw(:invalid)
+        end
+
+        if rd(data, bits_read, pad) != 0 do
+          # nonzero padding is refused (SPEC §4.3)
+          throw(:invalid)
+        end
+      end
+
+      bits_read = bits_read + pad
+      if bits_read + len * 8 > num_bits, do: throw(:invalid)
+      v_player_name = binary_part(data, bits_read >>> 3, len)
+      bits_read = bits_read + len * 8
+      # an interior null is content the read refuses (SPEC §4.7)
+      if :binary.match(v_player_name, <<0>>) != :nomatch, do: throw(:invalid)
+      if bits_read + 5 > num_bits, do: throw(:invalid)
+      v = rd(data, bits_read, 5)
+      bits_read = bits_read + 5
+      # the length guards the slice — reject, never clamp
+      if v > 16, do: throw(:invalid)
+      len = v
+      pad = 8 - (bits_read &&& 7) &&& 7
+
+      if pad != 0 do
+        if bits_read + pad > num_bits do
+          throw(:invalid)
+        end
+
+        if rd(data, bits_read, pad) != 0 do
+          # nonzero padding is refused (SPEC §4.3)
+          throw(:invalid)
+        end
+      end
+
+      bits_read = bits_read + pad
+      if bits_read + len * 8 > num_bits, do: throw(:invalid)
+      v_payload = binary_part(data, bits_read >>> 3, len)
+      bits_read = bits_read + len * 8
+      if bits_read + 370 > num_bits, do: throw(:invalid)
+      v = rd(data, bits_read, 8)
+      bits_read = bits_read + 8
+      # headroom above the quantum count is refused
+      if v > 200, do: throw(:invalid)
+      v_aim_x = cf_decode(v, 200, 2.0, -1.0)
+      v = rd(data, bits_read, 8)
+      bits_read = bits_read + 8
+      # headroom above the quantum count is refused
+      if v > 200, do: throw(:invalid)
+      v_aim_y = cf_decode(v, 200, 2.0, -1.0)
+      v = rd(data, bits_read, 8)
+      bits_read = bits_read + 8
+      # headroom above the quantum count is refused
+      if v > 200, do: throw(:invalid)
+      v_aim_z = cf_decode(v, 200, 2.0, -1.0)
+      v = rd(data, bits_read, 32)
+      bits_read = bits_read + 32
+      v_recoil = f32_value(v)
+      v = rd(data, bits_read, 32)
+      bits_read = bits_read + 32
+      w = v
+      v = rd(data, bits_read, 32)
+      bits_read = bits_read + 32
+      w = w ||| v <<< 32
+      v_drift = f64_value(w)
+      v = rd(data, bits_read, 32)
+      bits_read = bits_read + 32
+      w = v
+      v = rd(data, bits_read, 32)
+      bits_read = bits_read + 32
+      w = w ||| v <<< 32
+      v = rd(data, bits_read, 32)
+      bits_read = bits_read + 32
+      w = w ||| v <<< 64
+      v = rd(data, bits_read, 32)
+      bits_read = bits_read + 32
+      w = w ||| v <<< 96
+      v_wide_key = w
+      v = rd(data, bits_read, 32)
+      bits_read = bits_read + 32
+      w = v
+      v = rd(data, bits_read, 32)
+      bits_read = bits_read + 32
+      w = w ||| v <<< 32
+      v = rd(data, bits_read, 32)
+      bits_read = bits_read + 32
+      w = w ||| v <<< 64
+      v = rd(data, bits_read, 6)
+      bits_read = bits_read + 6
+      w = w ||| v <<< 96
+      # a smuggled offset is refused
+      if w > 2_535_301_200_456_458_802_993_406_410_752, do: throw(:invalid)
+      v_flux = w - 1_267_650_600_228_229_401_496_703_205_376
+      v = rd(data, bits_read, 16)
+      bits_read = bits_read + 16
+      # a smuggled offset is refused
+      if v > 64000, do: throw(:invalid)
+      v_ping = v
+      v = rd(data, bits_read, 4)
+      bits_read = bits_read + 4
+      # reserved bits must read zero (SPEC §4.3)
+      if v != 0, do: throw(:invalid)
+      pad = 8 - (bits_read &&& 7) &&& 7
+
+      if pad != 0 do
+        if bits_read + pad > num_bits do
+          throw(:invalid)
+        end
+
+        if rd(data, bits_read, pad) != 0 do
+          # nonzero padding is refused (SPEC §4.3)
+          throw(:invalid)
+        end
+      end
+
+      bits_read = bits_read + pad
+      if bits_read + 25 > num_bits, do: throw(:invalid)
+      v = rd(data, bits_read, 24)
+      bits_read = bits_read + 24
+      v_crc_hint = v
+      v = rd(data, bits_read, 1)
+      bits_read = bits_read + 1
+      v_has_extra = v == 1
+
+      {bits_read, v_extra, v_idle_ticks} =
+        if v_has_extra do
+          if bits_read + 8 > num_bits, do: throw(:invalid)
+          v = rd(data, bits_read, 8)
+          bits_read = bits_read + 8
+          v_extra = v
+          v_idle_ticks = 0
+          {bits_read, v_extra, v_idle_ticks}
+        else
+          if bits_read + 4 > num_bits, do: throw(:invalid)
+          v = rd(data, bits_read, 4)
+          bits_read = bits_read + 4
+          v_idle_ticks = v
+          v_extra = 0
+          {bits_read, v_extra, v_idle_ticks}
+        end
+
       # the final position is unobserved — the verdict and value are the surface
       _ = bits_read
 
       value = %Bench.BenchMixed{
         sequence: v_sequence,
+        ack_sequence: v_ack_sequence,
         ack_bits: v_ack_bits,
-        entity_id: v_entity_id,
-        pos_x: v_pos_x,
-        pos_y: v_pos_y,
-        pos_z: v_pos_z,
-        yaw: v_yaw,
-        moving: v_moving,
-        firing: v_firing,
-        timestamp: v_timestamp,
-        weapon: v_weapon
+        session_id: v_session_id,
+        client_id: v_client_id,
+        nonce: v_nonce,
+        world_time: v_world_time,
+        frame_tick: v_frame_tick,
+        server_time: v_server_time,
+        entities: v_entities,
+        stats: v_stats,
+        game_event: v_game_event,
+        loadout: v_loadout,
+        player_name: v_player_name,
+        payload: v_payload,
+        aim_x: v_aim_x,
+        aim_y: v_aim_y,
+        aim_z: v_aim_z,
+        recoil: v_recoil,
+        drift: v_drift,
+        wide_key: v_wide_key,
+        flux: v_flux,
+        ping: v_ping,
+        crc_hint: v_crc_hint,
+        has_extra: v_has_extra,
+        extra: v_extra,
+        idle_ticks: v_idle_ticks
       }
 
       {:ok, value}
@@ -1001,7 +2757,49 @@ defmodule Bench.Bench do
 
   # measure_bench_mixed is the exact wire bits write_bench_mixed would produce for value —
   # trusted like the writer; static runs fold to literals at generation time.
-  def measure_bench_mixed(_value), do: 168
+  def measure_bench_mixed(value) do
+    bits = 0
+    bits = bits + 356
+    bits = bits + length(value.entities) * 135
+    bits = bits + 7
+    bits = bits + length(value.stats) * 18
+    bits = bits + 2
+
+    bits =
+      case value.game_event.type do
+        1 ->
+          bits + 28
+
+        2 ->
+          bits + 14
+
+        3 ->
+          bits + 18
+
+        _ ->
+          # None — the tag is the whole wire (SPEC §4.8)
+          bits
+      end
+
+    bits = bits + 36
+    bits = bits + (8 - (bits &&& 7) &&& 7)
+    bits = bits + byte_size(value.player_name) * 8
+    bits = bits + 5
+    bits = bits + (8 - (bits &&& 7) &&& 7)
+    bits = bits + byte_size(value.payload) * 8
+    bits = bits + 370
+    bits = bits + (8 - (bits &&& 7) &&& 7)
+    bits = bits + 25
+
+    bits =
+      if value.has_extra do
+        bits + 8
+      else
+        bits + 4
+      end
+
+    bits
+  end
 
   defp w_bench_packet_blob([], data, scratch, scratch_bits), do: {data, scratch, scratch_bits}
 
@@ -1024,6 +2822,328 @@ defmodule Bench.Bench do
     bits_read = bits_read + 8
     e = v
     r_bench_packet_blob(remaining - 1, [e | acc], data, num_bits, bits_read)
+  end
+
+  defp w_bench_mixed_entities([], data, scratch, scratch_bits), do: {data, scratch, scratch_bits}
+
+  defp w_bench_mixed_entities([e | rest], data, scratch, scratch_bits) do
+    v = e.entity_id &&& 0xFFF
+    scratch = scratch ||| v <<< scratch_bits
+    scratch_bits = scratch_bits + 12
+    flush = scratch_bits >>> 3
+    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
+    scratch = scratch >>> (flush <<< 3)
+    scratch_bits = scratch_bits &&& 7
+
+    if e.pos_x < -16383 do
+      raise ArgumentError, "e.pos_x is below the wire minimum"
+    end
+
+    if e.pos_x > 16383 do
+      raise ArgumentError, "e.pos_x is above the wire maximum"
+    end
+
+    v = e.pos_x + 16383
+    scratch = scratch ||| v <<< scratch_bits
+    scratch_bits = scratch_bits + 15
+    flush = scratch_bits >>> 3
+    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
+    scratch = scratch >>> (flush <<< 3)
+    scratch_bits = scratch_bits &&& 7
+
+    if e.pos_y < -16383 do
+      raise ArgumentError, "e.pos_y is below the wire minimum"
+    end
+
+    if e.pos_y > 16383 do
+      raise ArgumentError, "e.pos_y is above the wire maximum"
+    end
+
+    v = e.pos_y + 16383
+    scratch = scratch ||| v <<< scratch_bits
+    scratch_bits = scratch_bits + 15
+    flush = scratch_bits >>> 3
+    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
+    scratch = scratch >>> (flush <<< 3)
+    scratch_bits = scratch_bits &&& 7
+
+    if e.pos_z < -16383 do
+      raise ArgumentError, "e.pos_z is below the wire minimum"
+    end
+
+    if e.pos_z > 16383 do
+      raise ArgumentError, "e.pos_z is above the wire maximum"
+    end
+
+    v = e.pos_z + 16383
+    scratch = scratch ||| v <<< scratch_bits
+    scratch_bits = scratch_bits + 15
+    flush = scratch_bits >>> 3
+    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
+    scratch = scratch >>> (flush <<< 3)
+    scratch_bits = scratch_bits &&& 7
+    v = e.yaw &&& 0x1FF
+    scratch = scratch ||| v <<< scratch_bits
+    scratch_bits = scratch_bits + 9
+    flush = scratch_bits >>> 3
+    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
+    scratch = scratch >>> (flush <<< 3)
+    scratch_bits = scratch_bits &&& 7
+    v = e.pitch &&& 0x1FF
+    scratch = scratch ||| v <<< scratch_bits
+    scratch_bits = scratch_bits + 9
+    flush = scratch_bits >>> 3
+    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
+    scratch = scratch >>> (flush <<< 3)
+    scratch_bits = scratch_bits &&& 7
+
+    if e.vel_x < -2048 do
+      raise ArgumentError, "e.vel_x is below the wire minimum"
+    end
+
+    if e.vel_x > 2047 do
+      raise ArgumentError, "e.vel_x is above the wire maximum"
+    end
+
+    v = e.vel_x + 2048
+    scratch = scratch ||| v <<< scratch_bits
+    scratch_bits = scratch_bits + 12
+    flush = scratch_bits >>> 3
+    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
+    scratch = scratch >>> (flush <<< 3)
+    scratch_bits = scratch_bits &&& 7
+
+    if e.vel_y < -2048 do
+      raise ArgumentError, "e.vel_y is below the wire minimum"
+    end
+
+    if e.vel_y > 2047 do
+      raise ArgumentError, "e.vel_y is above the wire maximum"
+    end
+
+    v = e.vel_y + 2048
+    scratch = scratch ||| v <<< scratch_bits
+    scratch_bits = scratch_bits + 12
+    flush = scratch_bits >>> 3
+    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
+    scratch = scratch >>> (flush <<< 3)
+    scratch_bits = scratch_bits &&& 7
+
+    if e.vel_z < -2048 do
+      raise ArgumentError, "e.vel_z is below the wire minimum"
+    end
+
+    if e.vel_z > 2047 do
+      raise ArgumentError, "e.vel_z is above the wire maximum"
+    end
+
+    v = e.vel_z + 2048
+    scratch = scratch ||| v <<< scratch_bits
+    scratch_bits = scratch_bits + 12
+    flush = scratch_bits >>> 3
+    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
+    scratch = scratch >>> (flush <<< 3)
+    scratch_bits = scratch_bits &&& 7
+
+    if e.health < 0 do
+      raise ArgumentError, "e.health is below the wire minimum"
+    end
+
+    if e.health > 1000 do
+      raise ArgumentError, "e.health is above the wire maximum"
+    end
+
+    v = e.health
+    scratch = scratch ||| v <<< scratch_bits
+    scratch_bits = scratch_bits + 10
+    flush = scratch_bits >>> 3
+    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
+    scratch = scratch >>> (flush <<< 3)
+    scratch_bits = scratch_bits &&& 7
+
+    if e.weapon < 0 do
+      raise ArgumentError, "e.weapon is below the wire minimum"
+    end
+
+    if e.weapon > 15 do
+      raise ArgumentError, "e.weapon is above the wire maximum"
+    end
+
+    v = e.weapon
+    scratch = scratch ||| v <<< scratch_bits
+    scratch_bits = scratch_bits + 4
+    flush = scratch_bits >>> 3
+    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
+    scratch = scratch >>> (flush <<< 3)
+    scratch_bits = scratch_bits &&& 7
+
+    if e.damage >>> 8 != 0 do
+      raise ArgumentError, "e.damage holds a mask bit above the 8-bit wire"
+    end
+
+    v = e.damage
+    scratch = scratch ||| v <<< scratch_bits
+    scratch_bits = scratch_bits + 8
+    flush = scratch_bits >>> 3
+    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
+    scratch = scratch >>> (flush <<< 3)
+    scratch_bits = scratch_bits &&& 7
+    v = if e.moving, do: 1, else: 0
+    scratch = scratch ||| v <<< scratch_bits
+    scratch_bits = scratch_bits + 1
+    flush = scratch_bits >>> 3
+    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
+    scratch = scratch >>> (flush <<< 3)
+    scratch_bits = scratch_bits &&& 7
+    v = if e.firing, do: 1, else: 0
+    scratch = scratch ||| v <<< scratch_bits
+    scratch_bits = scratch_bits + 1
+    flush = scratch_bits >>> 3
+    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
+    scratch = scratch >>> (flush <<< 3)
+    scratch_bits = scratch_bits &&& 7
+    w_bench_mixed_entities(rest, data, scratch, scratch_bits)
+  end
+
+  defp w_bench_mixed_stats([], data, scratch, scratch_bits), do: {data, scratch, scratch_bits}
+
+  defp w_bench_mixed_stats([e | rest], data, scratch, scratch_bits) do
+    v = e.stat_id &&& 0xFF
+    scratch = scratch ||| v <<< scratch_bits
+    scratch_bits = scratch_bits + 8
+    flush = scratch_bits >>> 3
+    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
+    scratch = scratch >>> (flush <<< 3)
+    scratch_bits = scratch_bits &&& 7
+
+    if e.delta < -512 do
+      raise ArgumentError, "e.delta is below the wire minimum"
+    end
+
+    if e.delta > 511 do
+      raise ArgumentError, "e.delta is above the wire maximum"
+    end
+
+    v = e.delta + 512
+    scratch = scratch ||| v <<< scratch_bits
+    scratch_bits = scratch_bits + 10
+    flush = scratch_bits >>> 3
+    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
+    scratch = scratch >>> (flush <<< 3)
+    scratch_bits = scratch_bits &&& 7
+    w_bench_mixed_stats(rest, data, scratch, scratch_bits)
+  end
+
+  defp w_bench_mixed_loadout([], data, scratch, scratch_bits), do: {data, scratch, scratch_bits}
+
+  defp w_bench_mixed_loadout([e | rest], data, scratch, scratch_bits) do
+    v = e &&& 0xFF
+    scratch = scratch ||| v <<< scratch_bits
+    scratch_bits = scratch_bits + 8
+    flush = scratch_bits >>> 3
+    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
+    scratch = scratch >>> (flush <<< 3)
+    scratch_bits = scratch_bits &&& 7
+    w_bench_mixed_loadout(rest, data, scratch, scratch_bits)
+  end
+
+  defp r_bench_mixed_entities(0, acc, _data, _num_bits, bits_read),
+    do: {bits_read, Enum.reverse(acc)}
+
+  defp r_bench_mixed_entities(remaining, acc, data, num_bits, bits_read) do
+    v = rd(data, bits_read, 12)
+    bits_read = bits_read + 12
+    e_entity_id = v
+    v = rd(data, bits_read, 15)
+    bits_read = bits_read + 15
+    # a smuggled offset is refused
+    if v > 32766, do: throw(:invalid)
+    e_pos_x = v - 16383
+    v = rd(data, bits_read, 15)
+    bits_read = bits_read + 15
+    # a smuggled offset is refused
+    if v > 32766, do: throw(:invalid)
+    e_pos_y = v - 16383
+    v = rd(data, bits_read, 15)
+    bits_read = bits_read + 15
+    # a smuggled offset is refused
+    if v > 32766, do: throw(:invalid)
+    e_pos_z = v - 16383
+    v = rd(data, bits_read, 9)
+    bits_read = bits_read + 9
+    e_yaw = v
+    v = rd(data, bits_read, 9)
+    bits_read = bits_read + 9
+    e_pitch = v
+    v = rd(data, bits_read, 12)
+    bits_read = bits_read + 12
+    e_vel_x = v - 2048
+    v = rd(data, bits_read, 12)
+    bits_read = bits_read + 12
+    e_vel_y = v - 2048
+    v = rd(data, bits_read, 12)
+    bits_read = bits_read + 12
+    e_vel_z = v - 2048
+    v = rd(data, bits_read, 10)
+    bits_read = bits_read + 10
+    # a smuggled offset is refused
+    if v > 1000, do: throw(:invalid)
+    e_health = v
+    v = rd(data, bits_read, 4)
+    bits_read = bits_read + 4
+    e_weapon = v
+    v = rd(data, bits_read, 8)
+    bits_read = bits_read + 8
+    e_damage = v
+    v = rd(data, bits_read, 1)
+    bits_read = bits_read + 1
+    e_moving = v == 1
+    v = rd(data, bits_read, 1)
+    bits_read = bits_read + 1
+    e_firing = v == 1
+
+    e = %Bench.MixedEntity{
+      entity_id: e_entity_id,
+      pos_x: e_pos_x,
+      pos_y: e_pos_y,
+      pos_z: e_pos_z,
+      yaw: e_yaw,
+      pitch: e_pitch,
+      vel_x: e_vel_x,
+      vel_y: e_vel_y,
+      vel_z: e_vel_z,
+      health: e_health,
+      weapon: e_weapon,
+      damage: e_damage,
+      moving: e_moving,
+      firing: e_firing
+    }
+
+    r_bench_mixed_entities(remaining - 1, [e | acc], data, num_bits, bits_read)
+  end
+
+  defp r_bench_mixed_stats(0, acc, _data, _num_bits, bits_read),
+    do: {bits_read, Enum.reverse(acc)}
+
+  defp r_bench_mixed_stats(remaining, acc, data, num_bits, bits_read) do
+    v = rd(data, bits_read, 8)
+    bits_read = bits_read + 8
+    e_stat_id = v
+    v = rd(data, bits_read, 10)
+    bits_read = bits_read + 10
+    e_delta = v - 512
+    e = %Bench.MixedStat{stat_id: e_stat_id, delta: e_delta}
+    r_bench_mixed_stats(remaining - 1, [e | acc], data, num_bits, bits_read)
+  end
+
+  defp r_bench_mixed_loadout(0, acc, _data, _num_bits, bits_read),
+    do: {bits_read, Enum.reverse(acc)}
+
+  defp r_bench_mixed_loadout(remaining, acc, data, num_bits, bits_read) do
+    v = rd(data, bits_read, 8)
+    bits_read = bits_read + 8
+    e = v
+    r_bench_mixed_loadout(remaining - 1, [e | acc], data, num_bits, bits_read)
   end
 
   # The port's 40-bit window decode (issue #167): enough for a 7-bit offset
@@ -1073,6 +3193,96 @@ defmodule Bench.Bench do
       value
     else
       {:nonfinite, bits}
+    end
+  end
+
+  # The 64-bit IEEE-754 pattern of a double value and its inverse — the
+  # same bit-transparent contract as f32, at width 64.
+  defp f64_bits(value) when is_float(value) do
+    <<bits::little-64>> = <<value::float-64-little>>
+    bits
+  end
+
+  defp f64_bits({:nonfinite, bits}) when bits >= 0 and bits <= 0xFFFFFFFFFFFFFFFF do
+    if (bits >>> 52 &&& 0x7FF) != 0x7FF do
+      raise ArgumentError, "{:nonfinite, bits} carries a finite float64 pattern; write the float"
+    end
+
+    bits
+  end
+
+  defp f64_value(bits) do
+    if (bits >>> 52 &&& 0x7FF) != 0x7FF do
+      <<value::float-64-little>> = <<bits::little-64>>
+      value
+    else
+      {:nonfinite, bits}
+    end
+  end
+
+  # A number rounded to its nearest float32 — one emulated float32 step
+  # (exact: the double result carries 2x24+2 significant bits, so the second
+  # rounding is innocuous). Overflow reports :pos_inf / :neg_inf so the
+  # compressed-float clamps can resolve it the way the reference's float
+  # arithmetic does.
+  defp fr(value) do
+    <<bits::little-32>> = <<value::float-32-little>>
+
+    if (bits >>> 23 &&& 0xFF) != 0xFF do
+      <<rounded::float-32-little>> = <<bits::little-32>>
+      rounded
+    else
+      if bits >>> 31 == 1, do: :neg_inf, else: :pos_inf
+    end
+  end
+
+  defp cf_clamp01(:pos_inf), do: 1.0
+  defp cf_clamp01(:neg_inf), do: 0.0
+  defp cf_clamp01(n) when n < 0.0, do: 0.0
+  defp cf_clamp01(n) when n > 1.0, do: 1.0
+  defp cf_clamp01(n), do: n
+
+  # The family's two-rounding float32 quantization (SPEC §4.3), the port's
+  # own steps: normalize with every step rounding, clamp to [0, 1] (which
+  # also grounds an overflowed value), scale, round BEFORE the +0.5, floor,
+  # and the normative integer clamp to the step count.
+  defp cf_quantize(value, min32, delta, miv) do
+    if not is_number(value) do
+      raise ArgumentError, "a compressed float writes a finite number"
+    end
+
+    difference =
+      case fr(value * 1.0) do
+        :pos_inf -> :pos_inf
+        :neg_inf -> :neg_inf
+        v32 -> fr(v32 - min32)
+      end
+
+    normalized =
+      case difference do
+        :pos_inf -> 1.0
+        :neg_inf -> 0.0
+        d -> cf_clamp01(fr(d / delta))
+      end
+
+    scaled = fr(normalized * fr(miv * 1.0))
+    integer = trunc(Float.floor(fr(scaled + 0.5)))
+    min(integer, miv)
+  end
+
+  # The reader's arithmetic, pinned the same way: the quotient rounds, the
+  # product rounds BEFORE min is added, and the sum rounds — float32
+  # throughout, never fused, never widened. The final add cannot overflow
+  # for a conforming declaration; the non-finite mapping keeps the
+  # never-raise reader obligation airtight.
+  defp cf_decode(integer, miv, delta, min32) do
+    quotient = fr(fr(integer * 1.0) / fr(miv * 1.0))
+    scaled = fr(quotient * delta)
+
+    case fr(scaled + min32) do
+      :pos_inf -> {:nonfinite, 0x7F800000}
+      :neg_inf -> {:nonfinite, 0xFF800000}
+      value -> value
     end
   end
 end

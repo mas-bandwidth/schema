@@ -591,18 +591,67 @@ public final class Main {
         pin("bench_bits", bits, new bench.Bench.BenchBits(),
                 bench.Bench::writeBenchBits, bench.Bench::readBenchBits, bench.Bench::measureBenchBits);
 
+        // BenchMixed — THE canonical benchmark shape (#184); the pin is
+        // test/bench/main.cpp's, transcribed exactly
         final bench.Bench.BenchMixed mixed = new bench.Bench.BenchMixed();
         mixed.sequence = 52428;
+        mixed.ackSequence = 12345;
         mixed.ackBits = 0xa5a5a5a5;
-        mixed.entityId = 2049;
-        mixed.posX = -16384;
-        mixed.posY = 16383;
-        mixed.posZ = -1;
-        mixed.yaw = 511;
-        mixed.moving = true;
-        mixed.firing = false;
-        mixed.timestamp = 0x123456789abcL;
-        mixed.weapon = 15;
+        mixed.sessionId = 0x123456789abcdef0L;
+        mixed.clientId = 0xdeadbeef;
+        mixed.nonce = 0xfedcba9876543210L;
+        mixed.worldTime = -987654321000L;
+        mixed.frameTick = 0x123456789abcL;
+        mixed.serverTime = 12345678;
+        mixed.entitiesCount = 8;
+        for (int i = 0; i < 8; i++) {
+            final bench.Bench.MixedEntity e = mixed.entities[i];
+            e.entityId = 2049 + i * 17;
+            e.posX = -16383 + i * 4096;
+            e.posY = 16383 - i * 4096;
+            e.posZ = -1 + i * 2048;
+            e.yaw = 511 - i * 64;
+            e.pitch = i * 73;
+            e.velX = -2048 + i * 512;
+            e.velY = 2047 - i * 512;
+            e.velZ = -1024 + i * 256;
+            e.health = 1000 - i * 100;
+            e.weapon = (byte) (1 + i);
+            e.damage = 0x5a + i;
+            e.moving = (i % 2) == 0;
+            e.firing = (i % 3) == 0;
+        }
+        mixed.statsCount = 80;
+        for (int i = 0; i < 80; i++) {
+            mixed.stats[i].statId = (i * 3) % 256;
+            mixed.stats[i].delta = -512 + (i * 13) % 1024;
+        }
+        mixed.gameEvent.type = bench.Bench.MixedEventType.hit;
+        mixed.gameEvent.hit.targetId = 4095;
+        mixed.gameEvent.hit.damage = 4095;
+        mixed.gameEvent.hit.hitKind = 7;
+        mixed.gameEvent.hit.crit = true;
+        mixed.loadout[0] = 0x11;
+        mixed.loadout[1] = 0x22;
+        mixed.loadout[2] = 0x33;
+        mixed.loadout[3] = 0x44;
+        System.arraycopy("Rowan_01".getBytes(java.nio.charset.StandardCharsets.UTF_8), 0,
+                mixed.playerName, 0, 8);
+        final byte[] payloadBytes = { (byte) 0xde, (byte) 0xad, (byte) 0xbe, (byte) 0xef, 1, 2, 3, 4 };
+        System.arraycopy(payloadBytes, 0, mixed.payload, 0, 8);
+        mixed.playerNameLength = 8;
+        mixed.payloadLength = 8;
+        mixed.aimX = 0.5f;
+        mixed.aimY = -0.25f;
+        mixed.aimZ = 0.75f;
+        mixed.recoil = 1.5f;
+        mixed.drift = -3.25;
+        mixed.wideKey = new bench.UInt128(0x0123456789abcdefL, 0xfedcba9876543210L);
+        mixed.flux = new bench.Int128(0x800000000L, 7L);  // 2^99 + 7
+        mixed.ping = 12345;
+        mixed.crcHint = 0xabcdef;
+        mixed.hasExtra = true;
+        mixed.extra = 200;
         pin("bench_mixed", mixed, new bench.Bench.BenchMixed(),
                 bench.Bench::writeBenchMixed, bench.Bench::readBenchMixed, bench.Bench::measureBenchMixed);
 

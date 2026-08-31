@@ -23,6 +23,8 @@ generated/**/.stamp
 /bench/rust/Cargo.lock
 /bench/cs/bin/
 /bench/cs/obj/
+# a `go build` in bench/go drops the leg's binary beside its source
+/bench/go/benchgo
 
 # bench-local scratch/verification debris — never repo content
 tending/

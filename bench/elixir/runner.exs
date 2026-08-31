@@ -47,9 +47,9 @@ defmodule SchemaBenchElixir do
   @packet_iters 32_000_000
   @ints_iters 40_000_000
   @bits_iters 48_000_000
-  @mixed_iters 40_000_000
+  @mixed_iters 4_000_000
   # --quick only (PROPOSED, BENCH-STANDARD quick-mode scaling)
-  @quick_mixed_iters 8_000_000
+  @quick_mixed_iters 400_000
 
   # CSV v2 (§5.1) per-runner constants: family gen (the rows measure
   # generated code), linkage beam (codec modules compiled beside the caller
@@ -174,42 +174,145 @@ defmodule SchemaBenchElixir do
     }
   end
 
+  # BenchMixed — THE canonical benchmark shape (issue #184). The pin is
+  # test/bench/main.cpp's, transcribed exactly; STRUCTURE fields (the two
+  # array counts, the two used lengths, the union tag, the `if` gate) are set
+  # here and never touched by vary_bench_mixed, so bytes/op is constant (§2.7).
   defp init_bench_mixed do
+    entities =
+      for i <- 0..7 do
+        %Bench.MixedEntity{
+          entity_id: 2049 + i * 17,
+          pos_x: -16_383 + i * 4096,
+          pos_y: 16_383 - i * 4096,
+          pos_z: -1 + i * 2048,
+          yaw: 511 - i * 64,
+          pitch: i * 73,
+          vel_x: -2048 + i * 512,
+          vel_y: 2047 - i * 512,
+          vel_z: -1024 + i * 256,
+          health: 1000 - i * 100,
+          weapon: 1 + i,
+          damage: 0x5A + i,
+          moving: rem(i, 2) == 0,
+          firing: rem(i, 3) == 0
+        }
+      end
+
+    stats =
+      for i <- 0..79 do
+        %Bench.MixedStat{stat_id: rem(i * 3, 256), delta: -512 + rem(i * 13, 1024)}
+      end
+
     %Bench.BenchMixed{
       sequence: 52_428,
+      ack_sequence: 12_345,
       ack_bits: 0xA5A5A5A5,
-      entity_id: 2049,
-      pos_x: -16_384,
-      pos_y: 16_383,
-      pos_z: -1,
-      yaw: 511,
-      moving: true,
-      firing: false,
-      timestamp: 0x123456789ABC,
-      weapon: 15
+      session_id: 0x123456789ABCDEF0,
+      client_id: 0xDEADBEEF,
+      nonce: 0xFEDCBA9876543210,
+      world_time: -987_654_321_000,
+      frame_tick: 0x123456789ABC,
+      server_time: 12_345_678,
+      entities: entities,
+      stats: stats,
+      game_event: %Bench.MixedEvent{
+        type: Bench.MixedEventType.hit(),
+        hit: %Bench.MixedHitEvent{target_id: 4095, damage: 4095, hit_kind: 7, crit: true}
+      },
+      loadout: [0x11, 0x22, 0x33, 0x44],
+      player_name: "Rowan_01",
+      payload: <<0xDE, 0xAD, 0xBE, 0xEF, 0x01, 0x02, 0x03, 0x04>>,
+      aim_x: 0.5,
+      aim_y: -0.25,
+      aim_z: 0.75,
+      recoil: 1.5,
+      drift: -3.25,
+      wide_key: 0x0123456789ABCDEF_FEDCBA9876543210,
+      # 2^99 + 7
+      flux: (1 <<< 99) |> Kernel.+(7),
+      ping: 12_345,
+      crc_hint: 0xABCDEF,
+      has_extra: true,
+      extra: 200
     }
   end
 
+  # The LCG field mapping, identical in every runner. VALUE fields only: every
+  # count, used length, union tag and branch gate is STRUCTURE (§2.7). All 8
+  # entities vary; the 80 stats vary delta (stat_id stays pinned).
   defp vary_bench_mixed(p, rng) do
+    entities =
+      for {e, i} <- Enum.with_index(p.entities) do
+        %{
+          e
+          | entity_id: shr(rng, i) &&& 4095,
+            pos_x: (shr(rng, i + 4) &&& 16_383) - 8192,
+            pos_y: (shr(rng, i + 12) &&& 16_383) - 8192,
+            health: shr(rng, i + 20) &&& 511,
+            weapon: shr(rng, i + 40) &&& 15,
+            damage: shr(rng, i + 28) &&& 255,
+            moving: (shr(rng, i) &&& 1) != 0
+        }
+      end
+
+    stats =
+      for {st, i} <- Enum.with_index(p.stats) do
+        %{st | delta: (shr(rng, Bitwise.band(i, 31)) &&& 1023) - 512}
+      end
+
+    hit = %{
+      p.game_event.hit
+      | target_id: shr(rng, 6) &&& 4095,
+        damage: shr(rng, 18) &&& 4095,
+        hit_kind: shr(rng, 30) &&& 7,
+        crit: (rng &&& 4) != 0
+    }
+
+    <<_::8, loadout_tail::binary>> = :binary.list_to_bin(p.loadout)
+    name = <<"Rowan_0", 65 + (shr(rng, 50) &&& 15)>>
+    <<_::8, payload_tail::binary>> = p.payload
+
     %{
       p
       | sequence: shr(rng, 8) &&& 65_535,
+        ack_sequence: shr(rng, 24) &&& 65_535,
         ack_bits: shr(rng, 16),
-        entity_id: rng &&& 4095,
-        pos_x: (shr(rng, 20) &&& 32_767) - 16_384,
-        pos_y: (shr(rng, 25) &&& 32_767) - 16_384,
-        pos_z: (shr(rng, 30) &&& 32_767) - 16_384,
-        yaw: shr(rng, 3) &&& 511,
-        moving: (rng &&& 1) != 0,
-        firing: (rng &&& 2) != 0,
-        timestamp: (rng &&& 0xFFFFFFFF) ||| (shr(rng, 32) &&& 0xFFFF) <<< 32,
-        weapon: shr(rng, 60) &&& 15
+        session_id: rng,
+        client_id: shr(rng, 32),
+        nonce: Bitwise.bxor(rng, 0xA5A5A5A5A5A5A5A5),
+        world_time: (shr(rng, 12) &&& 0xFFFFFFFFF) - 34_359_738_368,
+        frame_tick: rng &&& 0xFFFFFFFFFFFF,
+        server_time: shr(rng, 20) &&& 0x7FFFFF,
+        entities: entities,
+        stats: stats,
+        game_event: %{p.game_event | hit: hit},
+        loadout: :binary.bin_to_list(<<shr(rng, 56) &&& 255>> <> loadout_tail),
+        player_name: name,
+        payload: <<shr(rng, 48) &&& 255>> <> payload_tail,
+        aim_x: (shr(rng, 2) &&& 255) / 256 - 0.5,
+        aim_y: (shr(rng, 10) &&& 255) / 256 - 0.5,
+        aim_z: (shr(rng, 18) &&& 255) / 256 - 0.5,
+        recoil: (rng &&& 0xFFFF) * 1.0,
+        drift: (shr(rng, 8) &&& 0xFFFFFF) * 0.5,
+        wide_key: rng,
+        flux: shr(rng, 16),
+        ping: shr(rng, 40) &&& 0x7FFF,
+        crc_hint: shr(rng, 24) &&& 0xFFFFFF,
+        extra: shr(rng, 52) &&& 255
     }
   end
 
   # ------------------------------------------------------------------
   # harness
   # ------------------------------------------------------------------
+
+  # COMPRESSED floats do not round-trip to the value that was written (the wire
+  # carries a quantized step, SPEC §4.3), so they are excluded from the variant
+  # field comparison. Their bytes are pinned by the golden and their width is
+  # fixed, which is what the §1.5 gate needs.
+  defp strip_lossy(%Bench.BenchMixed{} = m), do: %{m | aim_x: 0.0, aim_y: 0.0, aim_z: 0.0}
+  defp strip_lossy(other), do: other
 
   defp gate_fail(row, what) do
     IO.write(:stderr, "GOLDEN GATE FAILED: #{row} #{what}\nreporting nothing.\n")
@@ -292,7 +395,7 @@ defmodule SchemaBenchElixir do
 
         case read.(variant, bytes_per_packet * 8) do
           {:ok, decoded} ->
-            if decoded != p do
+            if strip_lossy(decoded) != strip_lossy(p) do
               gate_fail(row, "variant #{k} field mismatch")
             end
 
@@ -387,21 +490,33 @@ defmodule SchemaBenchElixir do
     b7 + b13 + b23 + b3 + b32 + b11 + b19 + b48
   end
 
-  defp sink_of_bench_mixed(%Bench.BenchMixed{
-         sequence: sequence,
-         ack_bits: ack_bits,
-         entity_id: entity_id,
-         pos_x: pos_x,
-         pos_y: pos_y,
-         pos_z: pos_z,
-         yaw: yaw,
-         moving: moving,
-         firing: firing,
-         timestamp: timestamp,
-         weapon: weapon
-       }) do
-    sequence + ack_bits + entity_id + pos_x + pos_y + pos_z +
-      yaw + bool_bit(moving) + bool_bit(firing) + timestamp + weapon
+  # §2.7 full-struct observation over the canonical shape: every decoded field
+  # folds in — list elements one by one, booleans as 0/1, floats truncated,
+  # the string and byte block byte-summed over their used lengths.
+  defp sink_of_bench_mixed(%Bench.BenchMixed{} = d) do
+    entity_sum =
+      Enum.reduce(d.entities, 0, fn e, acc ->
+        acc + e.entity_id + e.pos_x + e.pos_y + e.pos_z + e.yaw + e.pitch +
+          e.vel_x + e.vel_y + e.vel_z + e.health + e.weapon + e.damage +
+          bool_bit(e.moving) + bool_bit(e.firing)
+      end)
+
+    stat_sum = Enum.reduce(d.stats, 0, fn st, acc -> acc + st.stat_id + st.delta end)
+    h = d.game_event.hit
+
+    d.sequence + d.ack_sequence + d.ack_bits + d.session_id + d.client_id +
+      d.nonce + d.world_time + d.frame_tick + d.server_time +
+      length(d.entities) + length(d.stats) + d.game_event.type +
+      byte_size(d.player_name) + byte_size(d.payload) +
+      trunc(d.aim_x) + trunc(d.aim_y) + trunc(d.aim_z) +
+      trunc(d.recoil) + trunc(d.drift) +
+      d.wide_key + d.flux + d.ping + d.crc_hint +
+      bool_bit(d.has_extra) + d.extra + d.idle_ticks +
+      entity_sum + stat_sum +
+      h.target_id + h.damage + h.hit_kind + bool_bit(h.crit) +
+      Enum.sum(d.loadout) +
+      Enum.sum(:binary.bin_to_list(d.player_name)) +
+      Enum.sum(:binary.bin_to_list(d.payload))
   end
 
   # per (bench, path): 1 discarded warmup run then num_runs measured runs;

@@ -2,12 +2,13 @@
    SPDX-License-Identifier: NONE — this generated output is yours, under terms of
    your choice. See the LICENSE exception in the schema compiler; the compiler is
    AGPL-3.0, its output is not.
-   package bench — protocol id 0x694f261d887abaa5 */
+   package bench — protocol id 0xae3b1e28b96e4586 */
 
 #ifndef SCHEMA_BENCH_BENCHWIRE_H
 #define SCHEMA_BENCH_BENCHWIRE_H
 
 #include "Bench.h"
+#include <string.h>   /* memset, strlen */
 #include "serialize.h"
 
 #ifndef SCHEMA_UNUSED
@@ -49,6 +50,118 @@ extern "C" {
 #define SCHEMA_C_WRITE_INLINE
 #endif
 #endif /* SCHEMA_C_SPINE_INLINE_DEFINED */
+
+#ifndef SCHEMA_UTF8_VALID_DEFINED
+#define SCHEMA_UTF8_VALID_DEFINED
+/* string(N) payloads are well-formed UTF-8 BY CONTRACT (SPEC §4.7): the
+   write path debug-asserts with this validator and the release path costs
+   nothing. Rejects truncated sequences, bare continuations, overlongs,
+   surrogates and code points past U+10FFFF. */
+static SCHEMA_UNUSED int schema_utf8_valid_( const serialize_uint8_t * bytes, int32_t length )
+{
+    int32_t i = 0;
+    while ( i < length )
+    {
+        serialize_uint8_t lead = bytes[i];
+        int32_t continuations;
+        serialize_uint32_t code_point;
+        int32_t k;
+        if ( lead < 0x80 )
+        {
+            i++;
+            continue;
+        }
+        else if ( ( lead & 0xE0 ) == 0xC0 )
+        {
+            continuations = 1;
+            code_point = lead & 0x1F;
+        }
+        else if ( ( lead & 0xF0 ) == 0xE0 )
+        {
+            continuations = 2;
+            code_point = lead & 0x0F;
+        }
+        else if ( ( lead & 0xF8 ) == 0xF0 )
+        {
+            continuations = 3;
+            code_point = lead & 0x07;
+        }
+        else
+        {
+            return 0;
+        }
+        if ( i + continuations >= length )
+        {
+            return 0;
+        }
+        for ( k = 1; k <= continuations; k++ )
+        {
+            if ( ( bytes[i + k] & 0xC0 ) != 0x80 )
+            {
+                return 0;
+            }
+            code_point = ( code_point << 6 ) | (serialize_uint32_t) ( bytes[i + k] & 0x3F );
+        }
+        if ( continuations == 1 && code_point < 0x80 )
+        {
+            return 0;
+        }
+        if ( continuations == 2 && ( code_point < 0x800 || ( code_point >= 0xD800 && code_point <= 0xDFFF ) ) )
+        {
+            return 0;
+        }
+        if ( continuations == 3 && ( code_point < 0x10000 || code_point > 0x10FFFF ) )
+        {
+            return 0;
+        }
+        i += 1 + continuations;
+    }
+    return 1;
+}
+#endif /* SCHEMA_UTF8_VALID_DEFINED */
+
+#ifndef SCHEMA_INTERIOR_NULL_DEFINED
+#define SCHEMA_INTERIOR_NULL_DEFINED
+/* string(N) carries bytes excluding 0x00: an interior null is content every
+   generated reader refuses (SPEC §4.7) — generated-code validation; no
+   serialize primitive performs it. The scan is word-wise: eight bytes per
+   step under the zero-byte idiom, and a payload of eight bytes or more
+   re-tests its final eight bytes as one whole (overlapping) word, so every
+   load stays inside the payload the stream already delivered. */
+static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int schema_interior_null_( const serialize_uint8_t * bytes, int32_t length )
+{
+    serialize_uint64_t word;
+    int32_t i = 0;
+    if ( length >= 8 )
+    {
+        for ( ; i + 8 <= length; i += 8 )
+        {
+            memcpy( &word, bytes + i, 8 );
+            if ( ( ( word - 0x0101010101010101ULL ) & ~word & 0x8080808080808080ULL ) != 0 )
+            {
+                return 1;
+            }
+        }
+        if ( i < length )
+        {
+            memcpy( &word, bytes + length - 8, 8 );
+            if ( ( ( word - 0x0101010101010101ULL ) & ~word & 0x8080808080808080ULL ) != 0 )
+            {
+                return 1;
+            }
+        }
+        return 0;
+    }
+    for ( ; i < length; i++ )
+    {
+        if ( bytes[i] == 0 )
+        {
+            return 1;
+        }
+    }
+    return 0;
+}
+#endif /* SCHEMA_INTERIOR_NULL_DEFINED */
 
 /* Writes BenchPacket. */
 static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_bench_packet( serialize_write_stream_t * stream, const BenchPacket * value )
@@ -576,50 +689,86 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_bench_bits( serialize_read_st
     return 1;
 }
 
-/* Writes BenchMixed. */
-static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_bench_mixed( serialize_write_stream_t * stream, const BenchMixed * value )
+/* Writes MixedEntity. */
+static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_mixed_entity( serialize_write_stream_t * stream, const MixedEntity * value )
 {
-    if ( (serialize_int64_t) value->sequence < 0 || (serialize_int64_t) value->sequence > 65535 )
-    {
-        return 0;
-    }
-    if ( !serialize_write_bits( stream, (serialize_uint32_t) ( value->sequence ), 16 ) )
-    {
-        return 0;
-    }
-    if ( !serialize_write_bits( stream, (serialize_uint32_t) value->ack_bits, 32 ) )
-    {
-        return 0;
-    }
     if ( !serialize_write_bits( stream, (serialize_uint32_t) value->entity_id, 12 ) )
     {
         return 0;
     }
-    if ( (serialize_int64_t) value->pos_x < -16384 || (serialize_int64_t) value->pos_x > 16383 )
+    if ( (serialize_int64_t) value->pos_x < -16383 || (serialize_int64_t) value->pos_x > 16383 )
     {
         return 0;
     }
-    if ( !serialize_write_bits( stream, (serialize_uint32_t) ( (value->pos_x) - (-16384) ), 15 ) )
+    if ( !serialize_write_bits( stream, (serialize_uint32_t) ( (value->pos_x) - (-16383) ), 15 ) )
     {
         return 0;
     }
-    if ( (serialize_int64_t) value->pos_y < -16384 || (serialize_int64_t) value->pos_y > 16383 )
+    if ( (serialize_int64_t) value->pos_y < -16383 || (serialize_int64_t) value->pos_y > 16383 )
     {
         return 0;
     }
-    if ( !serialize_write_bits( stream, (serialize_uint32_t) ( (value->pos_y) - (-16384) ), 15 ) )
+    if ( !serialize_write_bits( stream, (serialize_uint32_t) ( (value->pos_y) - (-16383) ), 15 ) )
     {
         return 0;
     }
-    if ( (serialize_int64_t) value->pos_z < -16384 || (serialize_int64_t) value->pos_z > 16383 )
+    if ( (serialize_int64_t) value->pos_z < -16383 || (serialize_int64_t) value->pos_z > 16383 )
     {
         return 0;
     }
-    if ( !serialize_write_bits( stream, (serialize_uint32_t) ( (value->pos_z) - (-16384) ), 15 ) )
+    if ( !serialize_write_bits( stream, (serialize_uint32_t) ( (value->pos_z) - (-16383) ), 15 ) )
     {
         return 0;
     }
     if ( !serialize_write_bits( stream, (serialize_uint32_t) value->yaw, 9 ) )
+    {
+        return 0;
+    }
+    if ( !serialize_write_bits( stream, (serialize_uint32_t) value->pitch, 9 ) )
+    {
+        return 0;
+    }
+    if ( (serialize_int64_t) value->vel_x < -2048 || (serialize_int64_t) value->vel_x > 2047 )
+    {
+        return 0;
+    }
+    if ( !serialize_write_bits( stream, (serialize_uint32_t) ( (value->vel_x) - (-2048) ), 12 ) )
+    {
+        return 0;
+    }
+    if ( (serialize_int64_t) value->vel_y < -2048 || (serialize_int64_t) value->vel_y > 2047 )
+    {
+        return 0;
+    }
+    if ( !serialize_write_bits( stream, (serialize_uint32_t) ( (value->vel_y) - (-2048) ), 12 ) )
+    {
+        return 0;
+    }
+    if ( (serialize_int64_t) value->vel_z < -2048 || (serialize_int64_t) value->vel_z > 2047 )
+    {
+        return 0;
+    }
+    if ( !serialize_write_bits( stream, (serialize_uint32_t) ( (value->vel_z) - (-2048) ), 12 ) )
+    {
+        return 0;
+    }
+    if ( (serialize_int64_t) value->health < 0 || (serialize_int64_t) value->health > 1000 )
+    {
+        return 0;
+    }
+    if ( !serialize_write_bits( stream, (serialize_uint32_t) ( value->health ), 10 ) )
+    {
+        return 0;
+    }
+    if ( value->weapon > 15 )
+    {
+        return 0; /* headroom above the wire range cannot ride */
+    }
+    if ( !serialize_write_bits( stream, (serialize_uint32_t) value->weapon, 4 ) )
+    {
+        return 0;
+    }
+    if ( !serialize_write_bits( stream, (serialize_uint32_t) value->damage, 8 ) )
     {
         return 0;
     }
@@ -631,53 +780,12 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_bench_mixed( serialize_writ
     {
         return 0;
     }
-    {
-        serialize_uint64_t bits_value = (serialize_uint64_t) value->timestamp;
-        if ( !serialize_write_bits( stream, (serialize_uint32_t) ( bits_value & 0xFFFFFFFFu ), 32 ) )
-        {
-            return 0;
-        }
-        if ( !serialize_write_bits( stream, (serialize_uint32_t) ( bits_value >> 32 ), 16 ) )
-        {
-            return 0;
-        }
-    }
-    if ( (serialize_int64_t) value->weapon < 0 || (serialize_int64_t) value->weapon > 15 )
-    {
-        return 0;
-    }
-    if ( !serialize_write_bits( stream, (serialize_uint32_t) ( value->weapon ), 4 ) )
-    {
-        return 0;
-    }
     return 1;
 }
 
-/* Reads BenchMixed. */
-static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_bench_mixed( serialize_read_stream_t * stream, BenchMixed * value )
+/* Reads MixedEntity. */
+static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_mixed_entity( serialize_read_stream_t * stream, MixedEntity * value )
 {
-    {
-        serialize_uint64_t offset_value = 0;
-        serialize_uint32_t raw = 0;
-        if ( !serialize_read_bits( stream, &raw, 16 ) )
-        {
-            return 0;
-        }
-        offset_value = raw;
-        if ( offset_value > 65535ULL )
-        {
-            return 0;
-        }
-        value->sequence = (int32_t) offset_value;
-    }
-    {
-        serialize_uint32_t raw = 0;
-        if ( !serialize_read_bits( stream, &raw, 32 ) )
-        {
-            return 0;
-        }
-        value->ack_bits = (uint32_t) raw;
-    }
     {
         serialize_uint32_t raw = 0;
         if ( !serialize_read_bits( stream, &raw, 12 ) )
@@ -694,11 +802,11 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_bench_mixed( serialize_read_s
             return 0;
         }
         offset_value = raw;
-        if ( offset_value > 32767ULL )
+        if ( offset_value > 32766ULL )
         {
             return 0;
         }
-        value->pos_x = (int32_t) ( offset_value + (-16384) );
+        value->pos_x = (int32_t) ( offset_value + (-16383) );
     }
     {
         serialize_uint64_t offset_value = 0;
@@ -708,11 +816,11 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_bench_mixed( serialize_read_s
             return 0;
         }
         offset_value = raw;
-        if ( offset_value > 32767ULL )
+        if ( offset_value > 32766ULL )
         {
             return 0;
         }
-        value->pos_y = (int32_t) ( offset_value + (-16384) );
+        value->pos_y = (int32_t) ( offset_value + (-16383) );
     }
     {
         serialize_uint64_t offset_value = 0;
@@ -722,11 +830,11 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_bench_mixed( serialize_read_s
             return 0;
         }
         offset_value = raw;
-        if ( offset_value > 32767ULL )
+        if ( offset_value > 32766ULL )
         {
             return 0;
         }
-        value->pos_z = (int32_t) ( offset_value + (-16384) );
+        value->pos_z = (int32_t) ( offset_value + (-16383) );
     }
     {
         serialize_uint32_t raw = 0;
@@ -736,6 +844,90 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_bench_mixed( serialize_read_s
         }
         value->yaw = (uint32_t) raw;
     }
+    {
+        serialize_uint32_t raw = 0;
+        if ( !serialize_read_bits( stream, &raw, 9 ) )
+        {
+            return 0;
+        }
+        value->pitch = (uint32_t) raw;
+    }
+    {
+        serialize_uint64_t offset_value = 0;
+        serialize_uint32_t raw = 0;
+        if ( !serialize_read_bits( stream, &raw, 12 ) )
+        {
+            return 0;
+        }
+        offset_value = raw;
+        if ( offset_value > 4095ULL )
+        {
+            return 0;
+        }
+        value->vel_x = (int32_t) ( offset_value + (-2048) );
+    }
+    {
+        serialize_uint64_t offset_value = 0;
+        serialize_uint32_t raw = 0;
+        if ( !serialize_read_bits( stream, &raw, 12 ) )
+        {
+            return 0;
+        }
+        offset_value = raw;
+        if ( offset_value > 4095ULL )
+        {
+            return 0;
+        }
+        value->vel_y = (int32_t) ( offset_value + (-2048) );
+    }
+    {
+        serialize_uint64_t offset_value = 0;
+        serialize_uint32_t raw = 0;
+        if ( !serialize_read_bits( stream, &raw, 12 ) )
+        {
+            return 0;
+        }
+        offset_value = raw;
+        if ( offset_value > 4095ULL )
+        {
+            return 0;
+        }
+        value->vel_z = (int32_t) ( offset_value + (-2048) );
+    }
+    {
+        serialize_uint64_t offset_value = 0;
+        serialize_uint32_t raw = 0;
+        if ( !serialize_read_bits( stream, &raw, 10 ) )
+        {
+            return 0;
+        }
+        offset_value = raw;
+        if ( offset_value > 1000ULL )
+        {
+            return 0;
+        }
+        value->health = (int32_t) offset_value;
+    }
+    {
+        serialize_uint32_t enum_value = 0;
+        if ( !serialize_read_bits( stream, &enum_value, 4 ) )
+        {
+            return 0;
+        }
+        if ( enum_value > 15 )
+        {
+            return 0; /* not a wire-legal value */
+        }
+        value->weapon = (MixedWeapon) enum_value;
+    }
+    {
+        serialize_uint32_t flags_value = 0;
+        if ( !serialize_read_bits( stream, &flags_value, 8 ) )
+        {
+            return 0;
+        }
+        value->damage = (MixedDamage) flags_value;
+    }
     if ( !serialize_read_bool( stream, &value->moving ) )
     {
         return 0;
@@ -743,6 +935,582 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_bench_mixed( serialize_read_s
     if ( !serialize_read_bool( stream, &value->firing ) )
     {
         return 0;
+    }
+    return 1;
+}
+
+/* Writes MixedStat. */
+static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_mixed_stat( serialize_write_stream_t * stream, const MixedStat * value )
+{
+    if ( !serialize_write_bits( stream, (serialize_uint32_t) value->stat_id, 8 ) )
+    {
+        return 0;
+    }
+    if ( (serialize_int64_t) value->delta < -512 || (serialize_int64_t) value->delta > 511 )
+    {
+        return 0;
+    }
+    if ( !serialize_write_bits( stream, (serialize_uint32_t) ( (value->delta) - (-512) ), 10 ) )
+    {
+        return 0;
+    }
+    return 1;
+}
+
+/* Reads MixedStat. */
+static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_mixed_stat( serialize_read_stream_t * stream, MixedStat * value )
+{
+    {
+        serialize_uint32_t raw = 0;
+        if ( !serialize_read_bits( stream, &raw, 8 ) )
+        {
+            return 0;
+        }
+        value->stat_id = (uint32_t) raw;
+    }
+    {
+        serialize_uint64_t offset_value = 0;
+        serialize_uint32_t raw = 0;
+        if ( !serialize_read_bits( stream, &raw, 10 ) )
+        {
+            return 0;
+        }
+        offset_value = raw;
+        if ( offset_value > 1023ULL )
+        {
+            return 0;
+        }
+        value->delta = (int32_t) ( offset_value + (-512) );
+    }
+    return 1;
+}
+
+/* Writes MixedHitEvent. */
+static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_mixed_hit_event( serialize_write_stream_t * stream, const MixedHitEvent * value )
+{
+    if ( !serialize_write_bits( stream, (serialize_uint32_t) value->target_id, 12 ) )
+    {
+        return 0;
+    }
+    if ( (serialize_int64_t) value->damage < 0 || (serialize_int64_t) value->damage > 4095 )
+    {
+        return 0;
+    }
+    if ( !serialize_write_bits( stream, (serialize_uint32_t) ( value->damage ), 12 ) )
+    {
+        return 0;
+    }
+    if ( (serialize_int64_t) value->hit_kind < 0 || (serialize_int64_t) value->hit_kind > 7 )
+    {
+        return 0;
+    }
+    if ( !serialize_write_bits( stream, (serialize_uint32_t) ( value->hit_kind ), 3 ) )
+    {
+        return 0;
+    }
+    if ( !serialize_write_bool( stream, value->crit ) )
+    {
+        return 0;
+    }
+    return 1;
+}
+
+/* Reads MixedHitEvent. */
+static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_mixed_hit_event( serialize_read_stream_t * stream, MixedHitEvent * value )
+{
+    {
+        serialize_uint32_t raw = 0;
+        if ( !serialize_read_bits( stream, &raw, 12 ) )
+        {
+            return 0;
+        }
+        value->target_id = (uint32_t) raw;
+    }
+    {
+        serialize_uint64_t offset_value = 0;
+        serialize_uint32_t raw = 0;
+        if ( !serialize_read_bits( stream, &raw, 12 ) )
+        {
+            return 0;
+        }
+        offset_value = raw;
+        if ( offset_value > 4095ULL )
+        {
+            return 0;
+        }
+        value->damage = (int32_t) offset_value;
+    }
+    {
+        serialize_uint64_t offset_value = 0;
+        serialize_uint32_t raw = 0;
+        if ( !serialize_read_bits( stream, &raw, 3 ) )
+        {
+            return 0;
+        }
+        offset_value = raw;
+        if ( offset_value > 7ULL )
+        {
+            return 0;
+        }
+        value->hit_kind = (int32_t) offset_value;
+    }
+    if ( !serialize_read_bool( stream, &value->crit ) )
+    {
+        return 0;
+    }
+    return 1;
+}
+
+/* Writes MixedChatEvent. */
+static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_mixed_chat_event( serialize_write_stream_t * stream, const MixedChatEvent * value )
+{
+    if ( (serialize_int64_t) value->channel < 0 || (serialize_int64_t) value->channel > 3 )
+    {
+        return 0;
+    }
+    if ( !serialize_write_bits( stream, (serialize_uint32_t) ( value->channel ), 2 ) )
+    {
+        return 0;
+    }
+    if ( !serialize_write_bits( stream, (serialize_uint32_t) value->speaker, 12 ) )
+    {
+        return 0;
+    }
+    return 1;
+}
+
+/* Reads MixedChatEvent. */
+static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_mixed_chat_event( serialize_read_stream_t * stream, MixedChatEvent * value )
+{
+    {
+        serialize_uint64_t offset_value = 0;
+        serialize_uint32_t raw = 0;
+        if ( !serialize_read_bits( stream, &raw, 2 ) )
+        {
+            return 0;
+        }
+        offset_value = raw;
+        if ( offset_value > 3ULL )
+        {
+            return 0;
+        }
+        value->channel = (int32_t) offset_value;
+    }
+    {
+        serialize_uint32_t raw = 0;
+        if ( !serialize_read_bits( stream, &raw, 12 ) )
+        {
+            return 0;
+        }
+        value->speaker = (uint32_t) raw;
+    }
+    return 1;
+}
+
+/* Writes MixedPickupEvent. */
+static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_mixed_pickup_event( serialize_write_stream_t * stream, const MixedPickupEvent * value )
+{
+    if ( !serialize_write_bits( stream, (serialize_uint32_t) value->item_id, 10 ) )
+    {
+        return 0;
+    }
+    if ( (serialize_int64_t) value->amount < 0 || (serialize_int64_t) value->amount > 255 )
+    {
+        return 0;
+    }
+    if ( !serialize_write_bits( stream, (serialize_uint32_t) ( value->amount ), 8 ) )
+    {
+        return 0;
+    }
+    return 1;
+}
+
+/* Reads MixedPickupEvent. */
+static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_mixed_pickup_event( serialize_read_stream_t * stream, MixedPickupEvent * value )
+{
+    {
+        serialize_uint32_t raw = 0;
+        if ( !serialize_read_bits( stream, &raw, 10 ) )
+        {
+            return 0;
+        }
+        value->item_id = (uint32_t) raw;
+    }
+    {
+        serialize_uint64_t offset_value = 0;
+        serialize_uint32_t raw = 0;
+        if ( !serialize_read_bits( stream, &raw, 8 ) )
+        {
+            return 0;
+        }
+        offset_value = raw;
+        if ( offset_value > 255ULL )
+        {
+            return 0;
+        }
+        value->amount = (int32_t) offset_value;
+    }
+    return 1;
+}
+
+/* Writes MixedEvent. */
+static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_mixed_event( serialize_write_stream_t * stream, const MixedEvent * value )
+{
+    if ( value->type > MIXED_EVENT_TYPE_MAX )
+    {
+        return 0; /* not a MixedEventType value; nothing was written */
+    }
+    if ( !serialize_write_bits( stream, (serialize_uint32_t) value->type, 2 ) )
+    {
+        return 0;
+    }
+    switch ( value->type )
+    {
+        case 1:
+            return write_mixed_hit_event( stream, &value->as.hit );
+        case 2:
+            return write_mixed_chat_event( stream, &value->as.chat );
+        case 3:
+            return write_mixed_pickup_event( stream, &value->as.pickup );
+        default:
+            return 1; /* None — the tag is the whole wire (SPEC §4.8) */
+    }
+}
+
+/* Reads MixedEvent. */
+static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_mixed_event( serialize_read_stream_t * stream, MixedEvent * value )
+{
+    {
+        serialize_uint32_t tag_value = 0;
+        if ( !serialize_read_bits( stream, &tag_value, 2 ) )
+        {
+            return 0;
+        }
+        if ( tag_value > MIXED_EVENT_TYPE_MAX )
+        {
+            return 0; /* not a wire-legal tag */
+        }
+        value->type = (MixedEventType) tag_value;
+    }
+    switch ( value->type )
+    {
+        case 1:
+            memset( &value->as.hit, 0, sizeof( value->as.hit ) );
+            return read_mixed_hit_event( stream, &value->as.hit );
+        case 2:
+            memset( &value->as.chat, 0, sizeof( value->as.chat ) );
+            return read_mixed_chat_event( stream, &value->as.chat );
+        case 3:
+            memset( &value->as.pickup, 0, sizeof( value->as.pickup ) );
+            return read_mixed_pickup_event( stream, &value->as.pickup );
+        default:
+            return 1; /* None */
+    }
+}
+
+/* Writes BenchMixed. */
+static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_bench_mixed( serialize_write_stream_t * stream, const BenchMixed * value )
+{
+    if ( !serialize_write_bits( stream, (serialize_uint32_t) 49374ULL, 16 ) /* const(49374, 16) — SPEC §4.3 */ )
+    {
+        return 0;
+    }
+    if ( !serialize_write_bits( stream, (serialize_uint32_t) value->sequence, 16 ) )
+    {
+        return 0;
+    }
+    if ( (serialize_int64_t) value->ack_sequence < 0 || (serialize_int64_t) value->ack_sequence > 65535 )
+    {
+        return 0;
+    }
+    if ( !serialize_write_bits( stream, (serialize_uint32_t) ( value->ack_sequence ), 16 ) )
+    {
+        return 0;
+    }
+    if ( !serialize_write_bits( stream, (serialize_uint32_t) value->ack_bits, 32 ) )
+    {
+        return 0;
+    }
+    if ( !serialize_write_uint64( stream, (serialize_uint64_t) value->session_id ) )
+    {
+        return 0;
+    }
+    if ( !serialize_write_bits( stream, (serialize_uint32_t) value->client_id, 32 ) )
+    {
+        return 0;
+    }
+    {
+        serialize_uint64_t offset_value = (serialize_uint64_t) ( value->nonce );
+        if ( !serialize_write_bits( stream, (serialize_uint32_t) ( offset_value & 0xFFFFFFFFu ), 32 ) )
+        {
+            return 0;
+        }
+        if ( !serialize_write_bits( stream, (serialize_uint32_t) ( offset_value >> 32 ), 32 ) )
+        {
+            return 0;
+        }
+    }
+    if ( (serialize_int64_t) value->world_time < -1000000000000 || (serialize_int64_t) value->world_time > 1000000000000 )
+    {
+        return 0;
+    }
+    {
+        serialize_uint64_t offset_value = (serialize_uint64_t) ( (value->world_time) - (-1000000000000) );
+        if ( !serialize_write_bits( stream, (serialize_uint32_t) ( offset_value & 0xFFFFFFFFu ), 32 ) )
+        {
+            return 0;
+        }
+        if ( !serialize_write_bits( stream, (serialize_uint32_t) ( offset_value >> 32 ), 9 ) )
+        {
+            return 0;
+        }
+    }
+    {
+        serialize_uint64_t bits_value = (serialize_uint64_t) value->frame_tick;
+        if ( !serialize_write_bits( stream, (serialize_uint32_t) ( bits_value & 0xFFFFFFFFu ), 32 ) )
+        {
+            return 0;
+        }
+        if ( !serialize_write_bits( stream, (serialize_uint32_t) ( bits_value >> 32 ), 16 ) )
+        {
+            return 0;
+        }
+    }
+    {
+        serialize_int32_t fixed_value = value->server_time;
+        if ( !serialize_write_fixed32( stream, fixed_value, 24, 8, 0, 65535 ) )
+        {
+            return 0;
+        }
+    }
+    if ( !serialize_write_int( stream, value->entities_count, 1, 8 ) )
+    {
+        return 0;
+    }
+    {
+        int32_t i;
+        for ( i = 0; i < value->entities_count; i++ )
+        {
+            if ( !write_mixed_entity( stream, &value->entities[i] ) )
+            {
+                return 0;
+            }
+        }
+    }
+    if ( !serialize_write_int( stream, value->stats_count, 0, 80 ) )
+    {
+        return 0;
+    }
+    {
+        int32_t i;
+        for ( i = 0; i < value->stats_count; i++ )
+        {
+            if ( !write_mixed_stat( stream, &value->stats[i] ) )
+            {
+                return 0;
+            }
+        }
+    }
+    if ( !write_mixed_event( stream, &value->game_event ) )
+    {
+        return 0;
+    }
+    {
+        int32_t i;
+        for ( i = 0; i < 4; i++ )
+        {
+            if ( !serialize_write_bits( stream, (serialize_uint32_t) value->loadout[i], 8 ) )
+            {
+                return 0;
+            }
+        }
+    }
+    serialize_assert( schema_utf8_valid_( (const serialize_uint8_t *) value->player_name, value->player_name_length ) );
+    if ( !serialize_write_int( stream, value->player_name_length, 0, 15 ) )
+    {
+        return 0;
+    }
+    if ( !serialize_write_bytes( stream, (const serialize_uint8_t *) value->player_name, (int) value->player_name_length ) )
+    {
+        return 0;
+    }
+    if ( !serialize_write_int( stream, value->payload_length, 0, 16 ) )
+    {
+        return 0;
+    }
+    if ( !serialize_write_bytes( stream, value->payload, (int) value->payload_length ) )
+    {
+        return 0;
+    }
+    if ( !serialize_write_compressed_float_precomputed( stream, value->aim_x, 200u, 8, 2.0f, -1.0f ) )
+    {
+        return 0;
+    }
+    if ( !serialize_write_compressed_float_precomputed( stream, value->aim_y, 200u, 8, 2.0f, -1.0f ) )
+    {
+        return 0;
+    }
+    if ( !serialize_write_compressed_float_precomputed( stream, value->aim_z, 200u, 8, 2.0f, -1.0f ) )
+    {
+        return 0;
+    }
+    if ( !serialize_write_float( stream, value->recoil ) )
+    {
+        return 0;
+    }
+    if ( !serialize_write_double( stream, value->drift ) )
+    {
+        return 0;
+    }
+    if ( !serialize_write_uint128( stream, value->wide_key ) )
+    {
+        return 0;
+    }
+    if ( !serialize_write_int128( stream, value->flux, serialize_int128_make( 18446744004990074880ULL, 0ULL ), serialize_int128_make( 68719476736ULL, 0ULL ) ) )
+    {
+        return 0;
+    }
+    {
+        serialize_int64_t fixed_value = (serialize_int64_t) value->ping;
+        if ( !serialize_write_fixed64( stream, fixed_value, 8, 8, 0, 250 ) )
+        {
+            return 0;
+        }
+    }
+    if ( !serialize_write_bits( stream, 0, 4 ) /* reserved(4) — zeros on the wire */ )
+    {
+        return 0;
+    }
+    if ( !serialize_write_align( stream ) )
+    {
+        return 0;
+    }
+    if ( !serialize_write_bits( stream, (serialize_uint32_t) value->crc_hint, 24 ) )
+    {
+        return 0;
+    }
+    if ( !serialize_write_bool( stream, value->has_extra ) )
+    {
+        return 0;
+    }
+    if ( value->has_extra )
+    {
+        if ( (serialize_int64_t) value->extra < 0 || (serialize_int64_t) value->extra > 255 )
+        {
+            return 0;
+        }
+        if ( !serialize_write_bits( stream, (serialize_uint32_t) ( value->extra ), 8 ) )
+        {
+            return 0;
+        }
+    }
+    else
+    {
+        if ( (serialize_int64_t) value->idle_ticks < 0 || (serialize_int64_t) value->idle_ticks > 15 )
+        {
+            return 0;
+        }
+        if ( !serialize_write_bits( stream, (serialize_uint32_t) ( value->idle_ticks ), 4 ) )
+        {
+            return 0;
+        }
+    }
+    return 1;
+}
+
+/* Reads BenchMixed. */
+static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_bench_mixed( serialize_read_stream_t * stream, BenchMixed * value )
+{
+    {
+        serialize_uint32_t const_value = 0;
+        if ( !serialize_read_bits( stream, &const_value, 16 ) )
+        {
+            return 0;
+        }
+        if ( const_value != (serialize_uint32_t) 49374ULL )
+        {
+            return 0;
+        }
+    }
+    {
+        serialize_uint32_t raw = 0;
+        if ( !serialize_read_bits( stream, &raw, 16 ) )
+        {
+            return 0;
+        }
+        value->sequence = (uint32_t) raw;
+    }
+    {
+        serialize_uint64_t offset_value = 0;
+        serialize_uint32_t raw = 0;
+        if ( !serialize_read_bits( stream, &raw, 16 ) )
+        {
+            return 0;
+        }
+        offset_value = raw;
+        if ( offset_value > 65535ULL )
+        {
+            return 0;
+        }
+        value->ack_sequence = (int32_t) offset_value;
+    }
+    {
+        serialize_uint32_t raw = 0;
+        if ( !serialize_read_bits( stream, &raw, 32 ) )
+        {
+            return 0;
+        }
+        value->ack_bits = (uint32_t) raw;
+    }
+    {
+        serialize_uint64_t raw = 0;
+        if ( !serialize_read_uint64( stream, &raw ) )
+        {
+            return 0;
+        }
+        value->session_id = (uint64_t) raw;
+    }
+    {
+        serialize_uint32_t raw = 0;
+        if ( !serialize_read_bits( stream, &raw, 32 ) )
+        {
+            return 0;
+        }
+        value->client_id = (uint32_t) raw;
+    }
+    {
+        serialize_uint64_t offset_value = 0;
+        serialize_uint32_t lo = 0;
+        serialize_uint32_t hi = 0;
+        if ( !serialize_read_bits( stream, &lo, 32 ) )
+        {
+            return 0;
+        }
+        if ( !serialize_read_bits( stream, &hi, 32 ) )
+        {
+            return 0;
+        }
+        offset_value = (serialize_uint64_t) lo | ( ( (serialize_uint64_t) hi ) << 32 );
+        value->nonce = (uint64_t) offset_value;
+    }
+    {
+        serialize_uint64_t offset_value = 0;
+        serialize_uint32_t lo = 0;
+        serialize_uint32_t hi = 0;
+        if ( !serialize_read_bits( stream, &lo, 32 ) )
+        {
+            return 0;
+        }
+        if ( !serialize_read_bits( stream, &hi, 9 ) )
+        {
+            return 0;
+        }
+        offset_value = (serialize_uint64_t) lo | ( ( (serialize_uint64_t) hi ) << 32 );
+        if ( offset_value > 2000000000000ULL )
+        {
+            return 0;
+        }
+        value->world_time = (int64_t) ( offset_value + (-1000000000000) );
     }
     {
         serialize_uint32_t lo = 0;
@@ -755,21 +1523,182 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_bench_mixed( serialize_read_s
         {
             return 0;
         }
-        value->timestamp = (uint64_t) ( (serialize_uint64_t) lo | ( ( (serialize_uint64_t) hi ) << 32 ) );
+        value->frame_tick = (uint64_t) ( (serialize_uint64_t) lo | ( ( (serialize_uint64_t) hi ) << 32 ) );
     }
     {
-        serialize_uint64_t offset_value = 0;
+        serialize_int32_t fixed_value;
+        fixed_value = 0;
+        if ( !serialize_read_fixed32( stream, &fixed_value, 24, 8, 0, 65535 ) )
+        {
+            return 0;
+        }
+        value->server_time = (int32_t) fixed_value;
+    }
+    if ( !serialize_read_int( stream, &value->entities_count, 1, 8 ) )
+    {
+        return 0;
+    }
+    {
+        int32_t i;
+        for ( i = 0; i < value->entities_count; i++ )
+        {
+            if ( !read_mixed_entity( stream, &value->entities[i] ) )
+            {
+                return 0;
+            }
+        }
+    }
+    if ( !serialize_read_int( stream, &value->stats_count, 0, 80 ) )
+    {
+        return 0;
+    }
+    {
+        int32_t i;
+        for ( i = 0; i < value->stats_count; i++ )
+        {
+            if ( !read_mixed_stat( stream, &value->stats[i] ) )
+            {
+                return 0;
+            }
+        }
+    }
+    if ( !read_mixed_event( stream, &value->game_event ) )
+    {
+        return 0;
+    }
+    {
+        int32_t i;
+        for ( i = 0; i < 4; i++ )
+        {
+            {
+                serialize_uint32_t raw = 0;
+                if ( !serialize_read_bits( stream, &raw, 8 ) )
+                {
+                    return 0;
+                }
+                value->loadout[i] = (uint8_t) raw;
+            }
+        }
+    }
+    if ( !serialize_read_int( stream, &value->player_name_length, 0, 15 ) )
+    {
+        return 0;
+    }
+    if ( !serialize_read_bytes( stream, (serialize_uint8_t *) value->player_name, (int) value->player_name_length ) )
+    {
+        return 0;
+    }
+    if ( schema_interior_null_( (const serialize_uint8_t *) value->player_name, value->player_name_length ) )
+    {
+        return 0; /* an interior null is content the read refuses (SPEC §4.7) */
+    }
+    value->player_name[value->player_name_length] = 0;
+    if ( !serialize_read_int( stream, &value->payload_length, 0, 16 ) )
+    {
+        return 0;
+    }
+    if ( !serialize_read_bytes( stream, value->payload, (int) value->payload_length ) )
+    {
+        return 0;
+    }
+    if ( !serialize_read_compressed_float_precomputed( stream, &value->aim_x, 200u, 8, 2.0f, -1.0f ) )
+    {
+        return 0;
+    }
+    if ( !serialize_read_compressed_float_precomputed( stream, &value->aim_y, 200u, 8, 2.0f, -1.0f ) )
+    {
+        return 0;
+    }
+    if ( !serialize_read_compressed_float_precomputed( stream, &value->aim_z, 200u, 8, 2.0f, -1.0f ) )
+    {
+        return 0;
+    }
+    if ( !serialize_read_float( stream, &value->recoil ) )
+    {
+        return 0;
+    }
+    if ( !serialize_read_double( stream, &value->drift ) )
+    {
+        return 0;
+    }
+    if ( !serialize_read_uint128( stream, &value->wide_key ) )
+    {
+        return 0;
+    }
+    if ( !serialize_read_int128( stream, &value->flux, serialize_int128_make( 18446744004990074880ULL, 0ULL ), serialize_int128_make( 68719476736ULL, 0ULL ) ) )
+    {
+        return 0;
+    }
+    {
+        serialize_int64_t fixed_value = 0;
+        if ( !serialize_read_fixed64( stream, &fixed_value, 8, 8, 0, 250 ) )
+        {
+            return 0;
+        }
+        value->ping = (uint16_t) fixed_value;
+    }
+    {
+        serialize_uint32_t reserved_value = 0;
+        if ( !serialize_read_bits( stream, &reserved_value, 4 ) )
+        {
+            return 0;
+        }
+        if ( reserved_value != 0 )
+        {
+            return 0;
+        }
+    }
+    if ( !serialize_read_align( stream ) )
+    {
+        return 0;
+    }
+    {
         serialize_uint32_t raw = 0;
-        if ( !serialize_read_bits( stream, &raw, 4 ) )
+        if ( !serialize_read_bits( stream, &raw, 24 ) )
         {
             return 0;
         }
-        offset_value = raw;
-        if ( offset_value > 15ULL )
+        value->crc_hint = (uint32_t) raw;
+    }
+    if ( !serialize_read_bool( stream, &value->has_extra ) )
+    {
+        return 0;
+    }
+    if ( value->has_extra )
+    {
         {
-            return 0;
+            serialize_uint64_t offset_value = 0;
+            serialize_uint32_t raw = 0;
+            if ( !serialize_read_bits( stream, &raw, 8 ) )
+            {
+                return 0;
+            }
+            offset_value = raw;
+            if ( offset_value > 255ULL )
+            {
+                return 0;
+            }
+            value->extra = (int32_t) offset_value;
         }
-        value->weapon = (int32_t) offset_value;
+        value->idle_ticks = 0;
+    }
+    else
+    {
+        {
+            serialize_uint64_t offset_value = 0;
+            serialize_uint32_t raw = 0;
+            if ( !serialize_read_bits( stream, &raw, 4 ) )
+            {
+                return 0;
+            }
+            offset_value = raw;
+            if ( offset_value > 15ULL )
+            {
+                return 0;
+            }
+            value->idle_ticks = (int32_t) offset_value;
+        }
+        value->extra = 0;
     }
     return 1;
 }

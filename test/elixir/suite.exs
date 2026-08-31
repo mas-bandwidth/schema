@@ -722,18 +722,64 @@ defmodule SchemaTestElixir do
       &Bench.Bench.measure_bench_bits/1
     )
 
+    # BenchMixed — THE canonical benchmark shape (#184); the pin is
+    # test/bench/main.cpp's, transcribed exactly
+    entities =
+      for i <- 0..7 do
+        %Bench.MixedEntity{
+          entity_id: 2049 + i * 17,
+          pos_x: -16383 + i * 4096,
+          pos_y: 16383 - i * 4096,
+          pos_z: -1 + i * 2048,
+          yaw: 511 - i * 64,
+          pitch: i * 73,
+          vel_x: -2048 + i * 512,
+          vel_y: 2047 - i * 512,
+          vel_z: -1024 + i * 256,
+          health: 1000 - i * 100,
+          weapon: 1 + i,
+          damage: 0x5A + i,
+          moving: rem(i, 2) == 0,
+          firing: rem(i, 3) == 0
+        }
+      end
+
+    stats =
+      for i <- 0..79 do
+        %Bench.MixedStat{stat_id: rem(i * 3, 256), delta: -512 + rem(i * 13, 1024)}
+      end
+
     mixed = %Bench.BenchMixed{
       sequence: 52428,
+      ack_sequence: 12345,
       ack_bits: 0xA5A5A5A5,
-      entity_id: 2049,
-      pos_x: -16384,
-      pos_y: 16383,
-      pos_z: -1,
-      yaw: 511,
-      moving: true,
-      firing: false,
-      timestamp: 0x123456789ABC,
-      weapon: 15
+      session_id: 0x123456789ABCDEF0,
+      client_id: 0xDEADBEEF,
+      nonce: 0xFEDCBA9876543210,
+      world_time: -987_654_321_000,
+      frame_tick: 0x123456789ABC,
+      server_time: 12_345_678,
+      entities: entities,
+      stats: stats,
+      game_event: %Bench.MixedEvent{
+        type: Bench.MixedEventType.hit(),
+        hit: %Bench.MixedHitEvent{target_id: 4095, damage: 4095, hit_kind: 7, crit: true}
+      },
+      loadout: [0x11, 0x22, 0x33, 0x44],
+      player_name: "Rowan_01",
+      payload: <<0xDE, 0xAD, 0xBE, 0xEF, 0x01, 0x02, 0x03, 0x04>>,
+      aim_x: 0.5,
+      aim_y: -0.25,
+      aim_z: 0.75,
+      recoil: 1.5,
+      drift: -3.25,
+      wide_key: 0x0123456789ABCDEF_FEDCBA9876543210,
+      # 2^99 + 7
+      flux: Bitwise.bsl(1, 99) + 7,
+      ping: 12345,
+      crc_hint: 0xABCDEF,
+      has_extra: true,
+      extra: 200
     }
 
     pin(

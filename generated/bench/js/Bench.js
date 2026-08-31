@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package bench — protocol id 0x694f261d887abaa5
+// package bench — protocol id 0xae3b1e28b96e4586
 //
 // Wire functions return bool — the C++-style early-out. A schema validation
 // failure (a wrong wire constant, nonzero reserved bits, an out-of-contract
@@ -22,7 +22,7 @@ const BOOL_SCRATCH = { value: false };
 
 // The unit's protocol id — the hash of its wire shape (SPEC §3.1). Two
 // sides at the same id speak identical bits; there is no other versioning.
-export const ProtocolId = 0x694f261d887abaa5n;
+export const ProtocolId = 0xae3b1e28b96e4586n;
 
 // type BenchPacket
 export class BenchPacket {
@@ -436,83 +436,255 @@ export function ReadBenchBits(stream, value) {
   return true;
 }
 
-// type BenchMixed
-export class BenchMixed {
-  constructor() {
-    this.Sequence = 0; // wire [0, 65535]
-    this.AckBits = 0;
-    this.EntityId = 0;
-    this.PosX = 0; // wire [-16384, 16383]
-    this.PosY = 0; // wire [-16384, 16383]
-    this.PosZ = 0; // wire [-16384, 16383]
-    this.Yaw = 0;
-    this.Moving = false;
-    this.Firing = false;
-    this.Timestamp = 0n;
-    this.Weapon = 0; // wire [0, 15]
+// MixedWeapon — None = 0 implicit, variants dense from 1, wire range [0, 15] (SPEC §4.2);
+// a frozen object of Number values — the JS translation of the family's
+// integer-backed enums; | max = ... headroom values are plain Numbers
+export const MixedWeapon = Object.freeze({
+  None: 0,
+  Fists: 1,
+  Pistol: 2,
+  Shotgun: 3,
+  Rifle: 4,
+  Sniper: 5,
+  Smg: 6,
+  Rocket: 7,
+  Grenade: 8,
+  Plasma: 9,
+  Railgun: 10,
+  Flamer: 11,
+  Mine: 12,
+  Turret: 13,
+  Drone: 14,
+  Repair: 15,
+  Max: 15, // the exported extent (SPEC §4.2)
+});
+
+// EnumNameMixedWeapon: debug/log/tooling name for any MixedWeapon wire value —
+// out-of-set values (wire-legal up to the declared max) name as "???"
+export function EnumNameMixedWeapon(value) {
+  switch (value) {
+    case MixedWeapon.None:
+      return "None";
+    case MixedWeapon.Fists:
+      return "Fists";
+    case MixedWeapon.Pistol:
+      return "Pistol";
+    case MixedWeapon.Shotgun:
+      return "Shotgun";
+    case MixedWeapon.Rifle:
+      return "Rifle";
+    case MixedWeapon.Sniper:
+      return "Sniper";
+    case MixedWeapon.Smg:
+      return "Smg";
+    case MixedWeapon.Rocket:
+      return "Rocket";
+    case MixedWeapon.Grenade:
+      return "Grenade";
+    case MixedWeapon.Plasma:
+      return "Plasma";
+    case MixedWeapon.Railgun:
+      return "Railgun";
+    case MixedWeapon.Flamer:
+      return "Flamer";
+    case MixedWeapon.Mine:
+      return "Mine";
+    case MixedWeapon.Turret:
+      return "Turret";
+    case MixedWeapon.Drone:
+      return "Drone";
+    case MixedWeapon.Repair:
+      return "Repair";
+    default:
+      return "???";
   }
 }
 
-// BenchMixedMaxBits is the longest wire path; align pads at worst case (SPEC §6.1).
-// BenchMixedMaxBytes is rounded up to the 8-byte write-buffer granularity.
-export const BenchMixedMaxBits = 168;
-export const BenchMixedMaxBytes = 24;
+// MixedDamage — one bit per variant, consumed as masks; flags-typed fields store
+// uint64 in every target, so BigInt here, wire 8 bits (SPEC §4.2). Masks
+// are flat PascalCase — the Go target's spelling exactly, so the checker's
+// existing claims cover them.
+export const MixedDamageBleeding = 1n << 0n;
+export const MixedDamageBurning = 1n << 1n;
+export const MixedDamageStunned = 1n << 2n;
+export const MixedDamageSlowed = 1n << 3n;
+export const MixedDamagePoisoned = 1n << 4n;
+export const MixedDamageShielded = 1n << 5n;
+export const MixedDamageAirborne = 1n << 6n;
+export const MixedDamageDowned = 1n << 7n;
+export const MixedDamageCount = 8; // the declared variant count (SPEC §4.2)
+
+// FlagNameMixedDamage: debug/log/tooling name for bit i of MixedDamage —
+// out-of-range bits name as "???"
+export function FlagNameMixedDamage(bit) {
+  switch (bit) {
+    case 0: return "Bleeding";
+    case 1: return "Burning";
+    case 2: return "Stunned";
+    case 3: return "Slowed";
+    case 4: return "Poisoned";
+    case 5: return "Shielded";
+    case 6: return "Airborne";
+    case 7: return "Downed";
+    default: return "???";
+  }
+}
+
+// FlagNamesMixedDamage renders the set bits of value (BigInt) as "A|B" — "0" for
+// the empty set, bits past the declared variants as hex
+export function FlagNamesMixedDamage(value) {
+  const names = [];
+  if (value & (1n << 0n)) {
+    names.push("Bleeding");
+  }
+  if (value & (1n << 1n)) {
+    names.push("Burning");
+  }
+  if (value & (1n << 2n)) {
+    names.push("Stunned");
+  }
+  if (value & (1n << 3n)) {
+    names.push("Slowed");
+  }
+  if (value & (1n << 4n)) {
+    names.push("Poisoned");
+  }
+  if (value & (1n << 5n)) {
+    names.push("Shielded");
+  }
+  if (value & (1n << 6n)) {
+    names.push("Airborne");
+  }
+  if (value & (1n << 7n)) {
+    names.push("Downed");
+  }
+  if (value >> 8n) {
+    names.push("0x" + ((value >> 8n) << 8n).toString(16));
+  }
+  return names.length === 0 ? "0" : names.join("|");
+}
+
+// type MixedEntity
+export class MixedEntity {
+  constructor() {
+    this.EntityId = 0;
+    this.PosX = 0; // wire [-16383, 16383]
+    this.PosY = 0; // wire [-16383, 16383]
+    this.PosZ = 0; // wire [-16383, 16383]
+    this.Yaw = 0;
+    this.Pitch = 0;
+    this.VelX = 0; // wire [-2048, 2047]
+    this.VelY = 0; // wire [-2048, 2047]
+    this.VelZ = 0; // wire [-2048, 2047]
+    this.Health = 0; // wire [0, 1000]
+    this.Weapon = MixedWeapon.None;
+    this.Damage = 0n; // MixedDamage — consumed as masks, BigInt (uint64) storage (SPEC §4.2)
+    this.Moving = false;
+    this.Firing = false;
+  }
+}
+
+// MixedEntityMaxBits is the longest wire path; align pads at worst case (SPEC §6.1).
+// MixedEntityMaxBytes is rounded up to the 8-byte write-buffer granularity.
+export const MixedEntityMaxBits = 135;
+export const MixedEntityMaxBytes = 24;
 
 // The §5 zero form: all-zero storage; specified defaults live only in construction.
-export function ZeroBenchMixed(value) {
-  value.Sequence = 0;
-  value.AckBits = 0;
+export function ZeroMixedEntity(value) {
   value.EntityId = 0;
   value.PosX = 0;
   value.PosY = 0;
   value.PosZ = 0;
   value.Yaw = 0;
+  value.Pitch = 0;
+  value.VelX = 0;
+  value.VelY = 0;
+  value.VelZ = 0;
+  value.Health = 0;
+  value.Weapon = MixedWeapon.None;
+  value.Damage = 0n;
   value.Moving = false;
   value.Firing = false;
-  value.Timestamp = 0n;
-  value.Weapon = 0;
 }
 
-export function WriteBenchMixed(stream, value) {
-  if (!Number.isInteger(value.Sequence) || value.Sequence < 0 || value.Sequence > 65535) {
-    return false;
-  }
-  NUMBER_SCRATCH.value = value.Sequence;
-  if (!stream.serializeBits(NUMBER_SCRATCH, 16)) {
-    return false;
-  }
-  NUMBER_SCRATCH.value = value.AckBits;
-  if (!stream.serializeBits(NUMBER_SCRATCH, 32)) {
-    return false;
-  }
+export function WriteMixedEntity(stream, value) {
   NUMBER_SCRATCH.value = value.EntityId;
   if (!stream.serializeBits(NUMBER_SCRATCH, 12)) {
     return false;
   }
-  if (!Number.isInteger(value.PosX) || value.PosX < -16384 || value.PosX > 16383) {
+  if (!Number.isInteger(value.PosX) || value.PosX < -16383 || value.PosX > 16383) {
     return false;
   }
-  NUMBER_SCRATCH.value = ((value.PosX >>> 0) - (-16384 >>> 0)) >>> 0;
+  NUMBER_SCRATCH.value = ((value.PosX >>> 0) - (-16383 >>> 0)) >>> 0;
   if (!stream.serializeBits(NUMBER_SCRATCH, 15)) {
     return false;
   }
-  if (!Number.isInteger(value.PosY) || value.PosY < -16384 || value.PosY > 16383) {
+  if (!Number.isInteger(value.PosY) || value.PosY < -16383 || value.PosY > 16383) {
     return false;
   }
-  NUMBER_SCRATCH.value = ((value.PosY >>> 0) - (-16384 >>> 0)) >>> 0;
+  NUMBER_SCRATCH.value = ((value.PosY >>> 0) - (-16383 >>> 0)) >>> 0;
   if (!stream.serializeBits(NUMBER_SCRATCH, 15)) {
     return false;
   }
-  if (!Number.isInteger(value.PosZ) || value.PosZ < -16384 || value.PosZ > 16383) {
+  if (!Number.isInteger(value.PosZ) || value.PosZ < -16383 || value.PosZ > 16383) {
     return false;
   }
-  NUMBER_SCRATCH.value = ((value.PosZ >>> 0) - (-16384 >>> 0)) >>> 0;
+  NUMBER_SCRATCH.value = ((value.PosZ >>> 0) - (-16383 >>> 0)) >>> 0;
   if (!stream.serializeBits(NUMBER_SCRATCH, 15)) {
     return false;
   }
   NUMBER_SCRATCH.value = value.Yaw;
   if (!stream.serializeBits(NUMBER_SCRATCH, 9)) {
     return false;
+  }
+  NUMBER_SCRATCH.value = value.Pitch;
+  if (!stream.serializeBits(NUMBER_SCRATCH, 9)) {
+    return false;
+  }
+  if (!Number.isInteger(value.VelX) || value.VelX < -2048 || value.VelX > 2047) {
+    return false;
+  }
+  NUMBER_SCRATCH.value = ((value.VelX >>> 0) - (-2048 >>> 0)) >>> 0;
+  if (!stream.serializeBits(NUMBER_SCRATCH, 12)) {
+    return false;
+  }
+  if (!Number.isInteger(value.VelY) || value.VelY < -2048 || value.VelY > 2047) {
+    return false;
+  }
+  NUMBER_SCRATCH.value = ((value.VelY >>> 0) - (-2048 >>> 0)) >>> 0;
+  if (!stream.serializeBits(NUMBER_SCRATCH, 12)) {
+    return false;
+  }
+  if (!Number.isInteger(value.VelZ) || value.VelZ < -2048 || value.VelZ > 2047) {
+    return false;
+  }
+  NUMBER_SCRATCH.value = ((value.VelZ >>> 0) - (-2048 >>> 0)) >>> 0;
+  if (!stream.serializeBits(NUMBER_SCRATCH, 12)) {
+    return false;
+  }
+  if (!Number.isInteger(value.Health) || value.Health < 0 || value.Health > 1000) {
+    return false;
+  }
+  NUMBER_SCRATCH.value = value.Health;
+  if (!stream.serializeBits(NUMBER_SCRATCH, 10)) {
+    return false;
+  }
+  if (!Number.isInteger(value.Weapon) || value.Weapon < 0 || value.Weapon > 15) { // headroom above the wire range cannot ride
+    return false;
+  }
+  NUMBER_SCRATCH.value = value.Weapon;
+  if (!stream.serializeBits(NUMBER_SCRATCH, 4)) {
+    return false;
+  }
+  {
+    const flagsValue = BigInt.asUintN(64, value.Damage);
+    if (flagsValue >= 1n << 8n) { // a mask bit above the wire width cannot ride
+      return false;
+    }
+    NUMBER_SCRATCH.value = Number(flagsValue);
+    if (!stream.serializeBits(NUMBER_SCRATCH, 8)) {
+      return false;
+    }
   }
   BOOL_SCRATCH.value = value.Moving;
   if (!stream.serializeBool(BOOL_SCRATCH)) {
@@ -522,42 +694,23 @@ export function WriteBenchMixed(stream, value) {
   if (!stream.serializeBool(BOOL_SCRATCH)) {
     return false;
   }
-  BIGINT_SCRATCH.value = value.Timestamp;
-  if (!stream.serializeBits64(BIGINT_SCRATCH, 48)) {
-    return false;
-  }
-  if (!Number.isInteger(value.Weapon) || value.Weapon < 0 || value.Weapon > 15) {
-    return false;
-  }
-  NUMBER_SCRATCH.value = value.Weapon;
-  if (!stream.serializeBits(NUMBER_SCRATCH, 4)) {
-    return false;
-  }
   return true;
 }
 
-export function ReadBenchMixed(stream, value) {
-  if (!stream.serializeInt(NUMBER_SCRATCH, 0, 65535)) {
-    return false;
-  }
-  value.Sequence = NUMBER_SCRATCH.value;
-  if (!stream.serializeBits(NUMBER_SCRATCH, 32)) {
-    return false;
-  }
-  value.AckBits = NUMBER_SCRATCH.value;
+export function ReadMixedEntity(stream, value) {
   if (!stream.serializeBits(NUMBER_SCRATCH, 12)) {
     return false;
   }
   value.EntityId = NUMBER_SCRATCH.value;
-  if (!stream.serializeInt(NUMBER_SCRATCH, -16384, 16383)) {
+  if (!stream.serializeInt(NUMBER_SCRATCH, -16383, 16383)) {
     return false;
   }
   value.PosX = NUMBER_SCRATCH.value;
-  if (!stream.serializeInt(NUMBER_SCRATCH, -16384, 16383)) {
+  if (!stream.serializeInt(NUMBER_SCRATCH, -16383, 16383)) {
     return false;
   }
   value.PosY = NUMBER_SCRATCH.value;
-  if (!stream.serializeInt(NUMBER_SCRATCH, -16384, 16383)) {
+  if (!stream.serializeInt(NUMBER_SCRATCH, -16383, 16383)) {
     return false;
   }
   value.PosZ = NUMBER_SCRATCH.value;
@@ -565,6 +718,34 @@ export function ReadBenchMixed(stream, value) {
     return false;
   }
   value.Yaw = NUMBER_SCRATCH.value;
+  if (!stream.serializeBits(NUMBER_SCRATCH, 9)) {
+    return false;
+  }
+  value.Pitch = NUMBER_SCRATCH.value;
+  if (!stream.serializeInt(NUMBER_SCRATCH, -2048, 2047)) {
+    return false;
+  }
+  value.VelX = NUMBER_SCRATCH.value;
+  if (!stream.serializeInt(NUMBER_SCRATCH, -2048, 2047)) {
+    return false;
+  }
+  value.VelY = NUMBER_SCRATCH.value;
+  if (!stream.serializeInt(NUMBER_SCRATCH, -2048, 2047)) {
+    return false;
+  }
+  value.VelZ = NUMBER_SCRATCH.value;
+  if (!stream.serializeInt(NUMBER_SCRATCH, 0, 1000)) {
+    return false;
+  }
+  value.Health = NUMBER_SCRATCH.value;
+  if (!stream.serializeInt(NUMBER_SCRATCH, 0, 15)) {
+    return false;
+  }
+  value.Weapon = NUMBER_SCRATCH.value;
+  if (!stream.serializeBits(NUMBER_SCRATCH, 8)) {
+    return false;
+  }
+  value.Damage = BigInt(NUMBER_SCRATCH.value);
   if (!stream.serializeBool(BOOL_SCRATCH)) {
     return false;
   }
@@ -573,14 +754,693 @@ export function ReadBenchMixed(stream, value) {
     return false;
   }
   value.Firing = BOOL_SCRATCH.value;
+  return true;
+}
+
+// type MixedStat
+export class MixedStat {
+  constructor() {
+    this.StatId = 0;
+    this.Delta = 0; // wire [-512, 511]
+  }
+}
+
+// MixedStatMaxBits is the longest wire path; align pads at worst case (SPEC §6.1).
+// MixedStatMaxBytes is rounded up to the 8-byte write-buffer granularity.
+export const MixedStatMaxBits = 18;
+export const MixedStatMaxBytes = 8;
+
+// The §5 zero form: all-zero storage; specified defaults live only in construction.
+export function ZeroMixedStat(value) {
+  value.StatId = 0;
+  value.Delta = 0;
+}
+
+export function WriteMixedStat(stream, value) {
+  NUMBER_SCRATCH.value = value.StatId;
+  if (!stream.serializeBits(NUMBER_SCRATCH, 8)) {
+    return false;
+  }
+  if (!Number.isInteger(value.Delta) || value.Delta < -512 || value.Delta > 511) {
+    return false;
+  }
+  NUMBER_SCRATCH.value = ((value.Delta >>> 0) - (-512 >>> 0)) >>> 0;
+  if (!stream.serializeBits(NUMBER_SCRATCH, 10)) {
+    return false;
+  }
+  return true;
+}
+
+export function ReadMixedStat(stream, value) {
+  if (!stream.serializeBits(NUMBER_SCRATCH, 8)) {
+    return false;
+  }
+  value.StatId = NUMBER_SCRATCH.value;
+  if (!stream.serializeInt(NUMBER_SCRATCH, -512, 511)) {
+    return false;
+  }
+  value.Delta = NUMBER_SCRATCH.value;
+  return true;
+}
+
+// type MixedHitEvent
+export class MixedHitEvent {
+  constructor() {
+    this.TargetId = 0;
+    this.Damage = 0; // wire [0, 4095]
+    this.HitKind = 0; // wire [0, 7]
+    this.Crit = false;
+  }
+}
+
+// MixedHitEventMaxBits is the longest wire path; align pads at worst case (SPEC §6.1).
+// MixedHitEventMaxBytes is rounded up to the 8-byte write-buffer granularity.
+export const MixedHitEventMaxBits = 28;
+export const MixedHitEventMaxBytes = 8;
+
+// The §5 zero form: all-zero storage; specified defaults live only in construction.
+export function ZeroMixedHitEvent(value) {
+  value.TargetId = 0;
+  value.Damage = 0;
+  value.HitKind = 0;
+  value.Crit = false;
+}
+
+export function WriteMixedHitEvent(stream, value) {
+  NUMBER_SCRATCH.value = value.TargetId;
+  if (!stream.serializeBits(NUMBER_SCRATCH, 12)) {
+    return false;
+  }
+  if (!Number.isInteger(value.Damage) || value.Damage < 0 || value.Damage > 4095) {
+    return false;
+  }
+  NUMBER_SCRATCH.value = value.Damage;
+  if (!stream.serializeBits(NUMBER_SCRATCH, 12)) {
+    return false;
+  }
+  if (!Number.isInteger(value.HitKind) || value.HitKind < 0 || value.HitKind > 7) {
+    return false;
+  }
+  NUMBER_SCRATCH.value = value.HitKind;
+  if (!stream.serializeBits(NUMBER_SCRATCH, 3)) {
+    return false;
+  }
+  BOOL_SCRATCH.value = value.Crit;
+  if (!stream.serializeBool(BOOL_SCRATCH)) {
+    return false;
+  }
+  return true;
+}
+
+export function ReadMixedHitEvent(stream, value) {
+  if (!stream.serializeBits(NUMBER_SCRATCH, 12)) {
+    return false;
+  }
+  value.TargetId = NUMBER_SCRATCH.value;
+  if (!stream.serializeInt(NUMBER_SCRATCH, 0, 4095)) {
+    return false;
+  }
+  value.Damage = NUMBER_SCRATCH.value;
+  if (!stream.serializeInt(NUMBER_SCRATCH, 0, 7)) {
+    return false;
+  }
+  value.HitKind = NUMBER_SCRATCH.value;
+  if (!stream.serializeBool(BOOL_SCRATCH)) {
+    return false;
+  }
+  value.Crit = BOOL_SCRATCH.value;
+  return true;
+}
+
+// type MixedChatEvent
+export class MixedChatEvent {
+  constructor() {
+    this.Channel = 0; // wire [0, 3]
+    this.Speaker = 0;
+  }
+}
+
+// MixedChatEventMaxBits is the longest wire path; align pads at worst case (SPEC §6.1).
+// MixedChatEventMaxBytes is rounded up to the 8-byte write-buffer granularity.
+export const MixedChatEventMaxBits = 14;
+export const MixedChatEventMaxBytes = 8;
+
+// The §5 zero form: all-zero storage; specified defaults live only in construction.
+export function ZeroMixedChatEvent(value) {
+  value.Channel = 0;
+  value.Speaker = 0;
+}
+
+export function WriteMixedChatEvent(stream, value) {
+  if (!Number.isInteger(value.Channel) || value.Channel < 0 || value.Channel > 3) {
+    return false;
+  }
+  NUMBER_SCRATCH.value = value.Channel;
+  if (!stream.serializeBits(NUMBER_SCRATCH, 2)) {
+    return false;
+  }
+  NUMBER_SCRATCH.value = value.Speaker;
+  if (!stream.serializeBits(NUMBER_SCRATCH, 12)) {
+    return false;
+  }
+  return true;
+}
+
+export function ReadMixedChatEvent(stream, value) {
+  if (!stream.serializeInt(NUMBER_SCRATCH, 0, 3)) {
+    return false;
+  }
+  value.Channel = NUMBER_SCRATCH.value;
+  if (!stream.serializeBits(NUMBER_SCRATCH, 12)) {
+    return false;
+  }
+  value.Speaker = NUMBER_SCRATCH.value;
+  return true;
+}
+
+// type MixedPickupEvent
+export class MixedPickupEvent {
+  constructor() {
+    this.ItemId = 0;
+    this.Amount = 0; // wire [0, 255]
+  }
+}
+
+// MixedPickupEventMaxBits is the longest wire path; align pads at worst case (SPEC §6.1).
+// MixedPickupEventMaxBytes is rounded up to the 8-byte write-buffer granularity.
+export const MixedPickupEventMaxBits = 18;
+export const MixedPickupEventMaxBytes = 8;
+
+// The §5 zero form: all-zero storage; specified defaults live only in construction.
+export function ZeroMixedPickupEvent(value) {
+  value.ItemId = 0;
+  value.Amount = 0;
+}
+
+export function WriteMixedPickupEvent(stream, value) {
+  NUMBER_SCRATCH.value = value.ItemId;
+  if (!stream.serializeBits(NUMBER_SCRATCH, 10)) {
+    return false;
+  }
+  if (!Number.isInteger(value.Amount) || value.Amount < 0 || value.Amount > 255) {
+    return false;
+  }
+  NUMBER_SCRATCH.value = value.Amount;
+  if (!stream.serializeBits(NUMBER_SCRATCH, 8)) {
+    return false;
+  }
+  return true;
+}
+
+export function ReadMixedPickupEvent(stream, value) {
+  if (!stream.serializeBits(NUMBER_SCRATCH, 10)) {
+    return false;
+  }
+  value.ItemId = NUMBER_SCRATCH.value;
+  if (!stream.serializeInt(NUMBER_SCRATCH, 0, 255)) {
+    return false;
+  }
+  value.Amount = NUMBER_SCRATCH.value;
+  return true;
+}
+
+// MixedEventType: union MixedEvent's tag — None = 0, then each variant in declared order (SPEC §4.8)
+export const MixedEventType = Object.freeze({
+  None: 0,
+  Hit: 1,
+  Chat: 2,
+  Pickup: 3,
+  Max: 3, // the exported extent (SPEC §4.2)
+});
+
+// MixedEvent — at most one of the arms; Type says which. Construction is the empty
+// union (None). A read zero-establishes exactly the selected arm before
+// decoding it (SPEC §5); unselected arms keep what they last held — the
+// reused-storage discipline. Consumers read the selected arm only.
+export class MixedEvent {
+  constructor() {
+    this.Type = MixedEventType.None;
+    this.Hit = new MixedHitEvent();
+    this.Chat = new MixedChatEvent();
+    this.Pickup = new MixedPickupEvent();
+  }
+}
+
+// MixedEventMaxBits is the tag plus the largest arm; None costs the tag only (SPEC §4.8).
+// MixedEventMaxBytes is rounded up to the 8-byte write-buffer granularity.
+export const MixedEventMaxBits = 30;
+export const MixedEventMaxBytes = 8;
+
+// ZeroMixedEvent resets value to the §5 zero form — the empty union. The tag alone
+// resets: unselected arms are unspecified by rule (SPEC §4.8), and every arm
+// is unselected at None; an arm re-zeroes at its next selection.
+export function ZeroMixedEvent(value) {
+  value.Type = MixedEventType.None;
+}
+
+export function WriteMixedEvent(stream, value) {
+  if (!Number.isInteger(value.Type) || value.Type < 0 || value.Type > 3) {
+    return false; // the tag validates BEFORE it rides (SPEC §4.8)
+  }
+  NUMBER_SCRATCH.value = value.Type;
+  if (!stream.serializeBits(NUMBER_SCRATCH, 2)) {
+    return false;
+  }
+  switch (value.Type) {
+    case MixedEventType.Hit:
+      return WriteMixedHitEvent(stream, value.Hit);
+    case MixedEventType.Chat:
+      return WriteMixedChatEvent(stream, value.Chat);
+    case MixedEventType.Pickup:
+      return WriteMixedPickupEvent(stream, value.Pickup);
+  }
+  return true; // None — the tag is the whole wire (SPEC §4.8)
+}
+
+export function ReadMixedEvent(stream, value) {
+  if (!stream.serializeInt(NUMBER_SCRATCH, 0, 3)) { // rejects a tag above the count (SPEC §4.8)
+    return false;
+  }
+  value.Type = NUMBER_SCRATCH.value;
+  switch (value.Type) {
+    case MixedEventType.Hit:
+      ZeroMixedHitEvent(value.Hit); // the selected arm starts from the zero form (SPEC §5)
+      return ReadMixedHitEvent(stream, value.Hit);
+    case MixedEventType.Chat:
+      ZeroMixedChatEvent(value.Chat); // the selected arm starts from the zero form (SPEC §5)
+      return ReadMixedChatEvent(stream, value.Chat);
+    case MixedEventType.Pickup:
+      ZeroMixedPickupEvent(value.Pickup); // the selected arm starts from the zero form (SPEC §5)
+      return ReadMixedPickupEvent(stream, value.Pickup);
+  }
+  return true; // None
+}
+
+// type BenchMixed
+export class BenchMixed {
+  constructor() {
+    this.Sequence = 0;
+    this.AckSequence = 0; // wire [0, 65535]
+    this.AckBits = 0;
+    this.SessionId = 0n;
+    this.ClientId = 0;
+    this.Nonce = 0n; // wire [0, 18446744073709551615]
+    this.WorldTime = 0n; // wire [-1000000000000, 1000000000000]
+    this.FrameTick = 0n;
+    this.ServerTime = 0; // wire [0, 65535]
+    this.Entities = Array.from({ length: 8 }, () => new MixedEntity());
+    this.EntitiesCount = 0;
+    this.Stats = Array.from({ length: 80 }, () => new MixedStat());
+    this.StatsCount = 0;
+    this.GameEvent = new MixedEvent();
+    this.Loadout = new Uint8Array(4);
+    this.PlayerName = new Uint8Array(15); // string(15): max length, used length beside it (SPEC §4.7)
+    this.PlayerNameLength = 0;
+    this.Payload = new Uint8Array(16); // bytes(16): fixed buffer, used length beside it (SPEC §4.7)
+    this.PayloadLength = 0;
+    this.AimX = 0; // compressed float [-1.0, 1.0] @ 0.01
+    this.AimY = 0; // compressed float [-1.0, 1.0] @ 0.01
+    this.AimZ = 0; // compressed float [-1.0, 1.0] @ 0.01
+    this.Recoil = 0;
+    this.Drift = 0;
+    this.WideKey = 0n;
+    this.Flux = 0n; // wire [-1267650600228229401496703205376, 1267650600228229401496703205376]
+    this.Ping = 0; // wire [0, 250]
+    this.CrcHint = 0;
+    this.HasExtra = true; // specified default at construction; Zero* gives the §5 zero form
+
+    // if has_extra — wire branch; storage holds both sides, a read zeroes the
+    // untaken side (SPEC §5)
+    this.Extra = 0; // wire [0, 255]
+
+    // if has_extra else — wire branch; storage holds both sides, a read zeroes the
+    // untaken side (SPEC §5)
+    this.IdleTicks = 0; // wire [0, 15]
+  }
+}
+
+// BenchMixedMaxBits is the longest wire path; align pads at worst case (SPEC §6.1).
+// BenchMixedMaxBytes is rounded up to the 8-byte write-buffer granularity.
+export const BenchMixedMaxBits = 3626;
+export const BenchMixedMaxBytes = 456;
+
+// The §5 zero form: all-zero storage; specified defaults live only in construction.
+export function ZeroBenchMixed(value) {
+  value.Sequence = 0;
+  value.AckSequence = 0;
+  value.AckBits = 0;
+  value.SessionId = 0n;
+  value.ClientId = 0;
+  value.Nonce = 0n;
+  value.WorldTime = 0n;
+  value.FrameTick = 0n;
+  value.ServerTime = 0;
+  for (let i = 0; i < 8; i++) {
+    ZeroMixedEntity(value.Entities[i]);
+  }
+  value.EntitiesCount = 0;
+  for (let i = 0; i < 80; i++) {
+    ZeroMixedStat(value.Stats[i]);
+  }
+  value.StatsCount = 0;
+  ZeroMixedEvent(value.GameEvent);
+  value.Loadout.fill(0);
+  value.PlayerName.fill(0);
+  value.PlayerNameLength = 0;
+  value.Payload.fill(0);
+  value.PayloadLength = 0;
+  value.AimX = 0;
+  value.AimY = 0;
+  value.AimZ = 0;
+  value.Recoil = 0;
+  value.Drift = 0;
+  value.WideKey = 0n;
+  value.Flux = 0n;
+  value.Ping = 0;
+  value.CrcHint = 0;
+  value.HasExtra = false;
+  value.Extra = 0;
+  value.IdleTicks = 0;
+}
+
+export function WriteBenchMixed(stream, value) {
+  NUMBER_SCRATCH.value = 49374;
+  if (!stream.serializeBits(NUMBER_SCRATCH, 16)) { // const(49374, 16) — SPEC §4.3
+    return false;
+  }
+  NUMBER_SCRATCH.value = value.Sequence;
+  if (!stream.serializeBits(NUMBER_SCRATCH, 16)) {
+    return false;
+  }
+  if (!Number.isInteger(value.AckSequence) || value.AckSequence < 0 || value.AckSequence > 65535) {
+    return false;
+  }
+  NUMBER_SCRATCH.value = value.AckSequence;
+  if (!stream.serializeBits(NUMBER_SCRATCH, 16)) {
+    return false;
+  }
+  NUMBER_SCRATCH.value = value.AckBits;
+  if (!stream.serializeBits(NUMBER_SCRATCH, 32)) {
+    return false;
+  }
+  BIGINT_SCRATCH.value = value.SessionId;
+  if (!stream.serializeBits64(BIGINT_SCRATCH, 64)) {
+    return false;
+  }
+  NUMBER_SCRATCH.value = value.ClientId;
+  if (!stream.serializeBits(NUMBER_SCRATCH, 32)) {
+    return false;
+  }
+  BIGINT_SCRATCH.value = BigInt.asUintN(64, value.Nonce);
+  if (!stream.serializeBits64(BIGINT_SCRATCH, 64)) {
+    return false;
+  }
+  if (value.WorldTime < -1000000000000n || value.WorldTime > 1000000000000n) {
+    return false;
+  }
+  BIGINT_SCRATCH.value = BigInt.asUintN(64, value.WorldTime - -1000000000000n);
+  if (!stream.serializeBits64(BIGINT_SCRATCH, 41)) {
+    return false;
+  }
+  BIGINT_SCRATCH.value = value.FrameTick;
   if (!stream.serializeBits64(BIGINT_SCRATCH, 48)) {
     return false;
   }
-  value.Timestamp = BIGINT_SCRATCH.value;
-  if (!stream.serializeInt(NUMBER_SCRATCH, 0, 15)) {
+  NUMBER_SCRATCH.value = value.ServerTime;
+  if (!stream.serializeFixed(NUMBER_SCRATCH, 24, 8, 0, 65535)) {
     return false;
   }
-  value.Weapon = NUMBER_SCRATCH.value;
+  if (!Number.isInteger(value.EntitiesCount) || value.EntitiesCount < 1 || value.EntitiesCount > 8) { // the count guards the loop (§6.3)
+    return false;
+  }
+  NUMBER_SCRATCH.value = ((value.EntitiesCount >>> 0) - (1 >>> 0)) >>> 0;
+  if (!stream.serializeBits(NUMBER_SCRATCH, 3)) {
+    return false;
+  }
+  for (let i = 0; i < value.EntitiesCount; i++) {
+    if (!WriteMixedEntity(stream, value.Entities[i])) {
+      return false;
+    }
+  }
+  if (!Number.isInteger(value.StatsCount) || value.StatsCount < 0 || value.StatsCount > 80) { // the count guards the loop (§6.3)
+    return false;
+  }
+  NUMBER_SCRATCH.value = value.StatsCount;
+  if (!stream.serializeBits(NUMBER_SCRATCH, 7)) {
+    return false;
+  }
+  for (let i = 0; i < value.StatsCount; i++) {
+    if (!WriteMixedStat(stream, value.Stats[i])) {
+      return false;
+    }
+  }
+  if (!WriteMixedEvent(stream, value.GameEvent)) {
+    return false;
+  }
+  for (let i = 0; i < 4; i++) {
+    NUMBER_SCRATCH.value = value.Loadout[i];
+    if (!stream.serializeBits(NUMBER_SCRATCH, 8)) {
+      return false;
+    }
+  }
+  if (!Number.isInteger(value.PlayerNameLength) || value.PlayerNameLength < 0 || value.PlayerNameLength > 15) { // the length guards the slice (§6.3); out-of-contract writes are refused
+    return false;
+  }
+  NUMBER_SCRATCH.value = value.PlayerNameLength;
+  if (!stream.serializeBits(NUMBER_SCRATCH, 4)) {
+    return false;
+  }
+  if (!stream.serializeBytes(value.PlayerName.subarray(0, value.PlayerNameLength))) {
+    return false;
+  }
+  if (!Number.isInteger(value.PayloadLength) || value.PayloadLength < 0 || value.PayloadLength > 16) { // the length guards the slice (§6.3); out-of-contract writes are refused
+    return false;
+  }
+  NUMBER_SCRATCH.value = value.PayloadLength;
+  if (!stream.serializeBits(NUMBER_SCRATCH, 5)) {
+    return false;
+  }
+  if (!stream.serializeBytes(value.Payload.subarray(0, value.PayloadLength))) {
+    return false;
+  }
+  NUMBER_SCRATCH.value = value.AimX;
+  if (!stream.serializeCompressedFloat(NUMBER_SCRATCH, -1.0, 1.0, 0.01)) {
+    return false;
+  }
+  NUMBER_SCRATCH.value = value.AimY;
+  if (!stream.serializeCompressedFloat(NUMBER_SCRATCH, -1.0, 1.0, 0.01)) {
+    return false;
+  }
+  NUMBER_SCRATCH.value = value.AimZ;
+  if (!stream.serializeCompressedFloat(NUMBER_SCRATCH, -1.0, 1.0, 0.01)) {
+    return false;
+  }
+  NUMBER_SCRATCH.value = value.Recoil;
+  if (!stream.serializeFloat(NUMBER_SCRATCH)) {
+    return false;
+  }
+  NUMBER_SCRATCH.value = value.Drift;
+  if (!stream.serializeDouble(NUMBER_SCRATCH)) {
+    return false;
+  }
+  BIGINT_SCRATCH.value = value.WideKey;
+  if (!stream.serializeUint128(BIGINT_SCRATCH)) {
+    return false;
+  }
+  BIGINT_SCRATCH.value = value.Flux;
+  if (!stream.serializeInt128(BIGINT_SCRATCH, -1267650600228229401496703205376n, 1267650600228229401496703205376n)) {
+    return false;
+  }
+  NUMBER_SCRATCH.value = value.Ping;
+  if (!stream.serializeFixed(NUMBER_SCRATCH, 8, 8, 0, 250)) {
+    return false;
+  }
+  NUMBER_SCRATCH.value = 0;
+  if (!stream.serializeBits(NUMBER_SCRATCH, 4)) { // reserved(4) — zeros on the wire
+    return false;
+  }
+  if (!stream.serializeAlign()) {
+    return false;
+  }
+  NUMBER_SCRATCH.value = value.CrcHint;
+  if (!stream.serializeBits(NUMBER_SCRATCH, 24)) {
+    return false;
+  }
+  BOOL_SCRATCH.value = value.HasExtra;
+  if (!stream.serializeBool(BOOL_SCRATCH)) {
+    return false;
+  }
+  if (value.HasExtra) {
+    if (!Number.isInteger(value.Extra) || value.Extra < 0 || value.Extra > 255) {
+      return false;
+    }
+    NUMBER_SCRATCH.value = value.Extra;
+    if (!stream.serializeBits(NUMBER_SCRATCH, 8)) {
+      return false;
+    }
+  } else {
+    if (!Number.isInteger(value.IdleTicks) || value.IdleTicks < 0 || value.IdleTicks > 15) {
+      return false;
+    }
+    NUMBER_SCRATCH.value = value.IdleTicks;
+    if (!stream.serializeBits(NUMBER_SCRATCH, 4)) {
+      return false;
+    }
+  }
+  return true;
+}
+
+export function ReadBenchMixed(stream, value) {
+  if (!stream.serializeBits(NUMBER_SCRATCH, 16)) {
+    return false;
+  }
+  if (NUMBER_SCRATCH.value !== 49374) { // const(49374, 16): a read rejects any other value (SPEC §4.3)
+    return false;
+  }
+  if (!stream.serializeBits(NUMBER_SCRATCH, 16)) {
+    return false;
+  }
+  value.Sequence = NUMBER_SCRATCH.value;
+  if (!stream.serializeInt(NUMBER_SCRATCH, 0, 65535)) {
+    return false;
+  }
+  value.AckSequence = NUMBER_SCRATCH.value;
+  if (!stream.serializeBits(NUMBER_SCRATCH, 32)) {
+    return false;
+  }
+  value.AckBits = NUMBER_SCRATCH.value;
+  if (!stream.serializeBits64(BIGINT_SCRATCH, 64)) {
+    return false;
+  }
+  value.SessionId = BIGINT_SCRATCH.value;
+  if (!stream.serializeBits(NUMBER_SCRATCH, 32)) {
+    return false;
+  }
+  value.ClientId = NUMBER_SCRATCH.value;
+  if (!stream.serializeBits64(BIGINT_SCRATCH, 64)) {
+    return false;
+  }
+  value.Nonce = BIGINT_SCRATCH.value;
+  if (!stream.serializeInt64(BIGINT_SCRATCH, -1000000000000n, 1000000000000n)) {
+    return false;
+  }
+  value.WorldTime = BIGINT_SCRATCH.value;
+  if (!stream.serializeBits64(BIGINT_SCRATCH, 48)) {
+    return false;
+  }
+  value.FrameTick = BIGINT_SCRATCH.value;
+  if (!stream.serializeFixed(NUMBER_SCRATCH, 24, 8, 0, 65535)) {
+    return false;
+  }
+  value.ServerTime = NUMBER_SCRATCH.value;
+  if (!stream.serializeInt(NUMBER_SCRATCH, 1, 8)) { // the count guards the loop (§6.3)
+    return false;
+  }
+  value.EntitiesCount = NUMBER_SCRATCH.value;
+  for (let i = 0; i < value.EntitiesCount; i++) {
+    if (!ReadMixedEntity(stream, value.Entities[i])) {
+      return false;
+    }
+  }
+  if (!stream.serializeInt(NUMBER_SCRATCH, 0, 80)) { // the count guards the loop (§6.3)
+    return false;
+  }
+  value.StatsCount = NUMBER_SCRATCH.value;
+  for (let i = 0; i < value.StatsCount; i++) {
+    if (!ReadMixedStat(stream, value.Stats[i])) {
+      return false;
+    }
+  }
+  if (!ReadMixedEvent(stream, value.GameEvent)) {
+    return false;
+  }
+  for (let i = 0; i < 4; i++) {
+    if (!stream.serializeBits(NUMBER_SCRATCH, 8)) {
+      return false;
+    }
+    value.Loadout[i] = NUMBER_SCRATCH.value;
+  }
+  if (!stream.serializeInt(NUMBER_SCRATCH, 0, 15)) { // the length guards the slice (§6.3)
+    return false;
+  }
+  value.PlayerNameLength = NUMBER_SCRATCH.value;
+  if (!stream.serializeBytes(value.PlayerName.subarray(0, value.PlayerNameLength))) {
+    return false;
+  }
+  for (let i = 0; i < value.PlayerNameLength; i++) {
+    if (value.PlayerName[i] === 0) { // an interior null is content the read refuses (SPEC §4.7)
+      return false;
+    }
+  }
+  if (!stream.serializeInt(NUMBER_SCRATCH, 0, 16)) { // the length guards the slice (§6.3)
+    return false;
+  }
+  value.PayloadLength = NUMBER_SCRATCH.value;
+  if (!stream.serializeBytes(value.Payload.subarray(0, value.PayloadLength))) {
+    return false;
+  }
+  if (!stream.serializeCompressedFloat(NUMBER_SCRATCH, -1.0, 1.0, 0.01)) {
+    return false;
+  }
+  value.AimX = NUMBER_SCRATCH.value;
+  if (!stream.serializeCompressedFloat(NUMBER_SCRATCH, -1.0, 1.0, 0.01)) {
+    return false;
+  }
+  value.AimY = NUMBER_SCRATCH.value;
+  if (!stream.serializeCompressedFloat(NUMBER_SCRATCH, -1.0, 1.0, 0.01)) {
+    return false;
+  }
+  value.AimZ = NUMBER_SCRATCH.value;
+  if (!stream.serializeFloat(NUMBER_SCRATCH)) {
+    return false;
+  }
+  value.Recoil = NUMBER_SCRATCH.value;
+  if (!stream.serializeDouble(NUMBER_SCRATCH)) {
+    return false;
+  }
+  value.Drift = NUMBER_SCRATCH.value;
+  if (!stream.serializeUint128(BIGINT_SCRATCH)) {
+    return false;
+  }
+  value.WideKey = BIGINT_SCRATCH.value;
+  if (!stream.serializeInt128(BIGINT_SCRATCH, -1267650600228229401496703205376n, 1267650600228229401496703205376n)) {
+    return false;
+  }
+  value.Flux = BIGINT_SCRATCH.value;
+  if (!stream.serializeFixed(NUMBER_SCRATCH, 8, 8, 0, 250)) {
+    return false;
+  }
+  value.Ping = NUMBER_SCRATCH.value;
+  if (!stream.serializeBits(NUMBER_SCRATCH, 4)) {
+    return false;
+  }
+  if (NUMBER_SCRATCH.value !== 0) { // reserved(4): a read rejects nonzero (SPEC §4.3)
+    return false;
+  }
+  if (!stream.serializeAlign()) { // rejects nonzero padding (SPEC §4.3)
+    return false;
+  }
+  if (!stream.serializeBits(NUMBER_SCRATCH, 24)) {
+    return false;
+  }
+  value.CrcHint = NUMBER_SCRATCH.value;
+  if (!stream.serializeBool(BOOL_SCRATCH)) {
+    return false;
+  }
+  value.HasExtra = BOOL_SCRATCH.value;
+  if (value.HasExtra) {
+    if (!stream.serializeInt(NUMBER_SCRATCH, 0, 255)) {
+      return false;
+    }
+    value.Extra = NUMBER_SCRATCH.value;
+    value.IdleTicks = 0;
+  } else {
+    if (!stream.serializeInt(NUMBER_SCRATCH, 0, 15)) {
+      return false;
+    }
+    value.IdleTicks = NUMBER_SCRATCH.value;
+    value.Extra = 0;
+  }
   return true;
 }
 

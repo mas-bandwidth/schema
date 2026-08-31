@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package bench — protocol id 0x694f261d887abaa5
+// package bench — protocol id 0xae3b1e28b96e4586
 //
 // The shipped Dart wire path (issue #155): the serialize.dart bitpacker
 // inlined at every field, literal constant widths and masks, monomorphic
@@ -24,12 +24,22 @@
 
 import 'dart:typed_data';
 
+import 'Int128.dart' show Int128, UInt128;
+
 // One 8-byte conversion scratch under overlaid typed-data views — single
 // threaded per isolate, always consumed in the same operation that fills it.
 final Float32List _f32 = Float32List(2);
 final Uint32List _u32 = _f32.buffer.asUint32List();
 final Float64List _f64 = _f32.buffer.asFloat64List();
 final Uint64List _u64 = _f32.buffer.asUint64List();
+
+// value rounded to the nearest float32, as a double: the float32 rounding
+// boundary the compressed-float arithmetic is pinned to (SPEC §4.3).
+@pragma('vm:prefer-inline')
+double _fround(double value) {
+  _f32[0] = value;
+  return _f32[0];
+}
 
 // The 32 bits of the IEEE-754 single representation of value. Non-NaN goes
 // through the hardware conversion; a NaN narrows in software — sign kept,
@@ -65,9 +75,30 @@ double _doubleFromFloat32Bits(int bits) {
   return _f32[0];
 }
 
+// The 64 bits of the IEEE-754 double representation of value — exactly the
+// bits of the Dart double — and the inverse.
+@pragma('vm:prefer-inline')
+int _float64BitsFromDouble(double value) {
+  _f64[0] = value;
+  return _u64[0];
+}
+
+@pragma('vm:prefer-inline')
+double _doubleFromFloat64Bits(int bits) {
+  _u64[0] = bits;
+  return _f64[0];
+}
+
+// Hex of a uint64 bit pattern held in a signed int (toRadixString would
+// render the sign, not the pattern).
+String _hex64(int value) => value < 0
+    ? (value >>> 32).toRadixString(16) +
+          (value & 0xffffffff).toRadixString(16).padLeft(8, '0')
+    : value.toRadixString(16);
+
 // The unit's protocol id — the hash of its wire shape (SPEC §3.1). Two
 // sides at the same id speak identical bits; there is no other versioning.
-const int protocolId = 0x694f261d887abaa5;
+const int protocolId = 0xae3b1e28b96e4586;
 
 // type BenchPacket
 final class BenchPacket {
@@ -1030,77 +1061,204 @@ bool readBenchBits(BenchBits value, ByteData view, int numBits) {
 // trusted like the writer; static runs fold to literals at generation time.
 int measureBenchBits(BenchBits value) => 156;
 
-// type BenchMixed
-final class BenchMixed {
-  // wire [0, 65535]
-  int sequence = 0;
-  int ackBits = 0;
-  int entityId = 0;
-  // wire [-16384, 16383]
-  int posX = 0;
-  // wire [-16384, 16383]
-  int posY = 0;
-  // wire [-16384, 16383]
-  int posZ = 0;
-  int yaw = 0;
-  bool moving = false;
-  bool firing = false;
-  int timestamp = 0;
-  // wire [0, 15]
-  int weapon = 0;
+// MixedWeapon — None = 0 implicit, variants dense from 1, wire range [0, 15] (SPEC §4.2);
+// an int-constant namespace — the Dart translation of the family's integer-
+// backed enums: storage must hold every wire-legal value, and | max = ...
+// headroom values have no Dart enum member to be
+abstract final class MixedWeapon {
+  static const int none = 0;
+  static const int fists = 1;
+  static const int pistol = 2;
+  static const int shotgun = 3;
+  static const int rifle = 4;
+  static const int sniper = 5;
+  static const int smg = 6;
+  static const int rocket = 7;
+  static const int grenade = 8;
+  static const int plasma = 9;
+  static const int railgun = 10;
+  static const int flamer = 11;
+  static const int mine = 12;
+  static const int turret = 13;
+  static const int drone = 14;
+  static const int repair = 15;
+  static const int max = 15; // the exported extent (SPEC §4.2)
 }
 
-// benchMixedMaxBits is the longest wire path; align pads at worst case (SPEC §6.1).
-// benchMixedMaxBytes is rounded up to the 8-byte write-buffer granularity.
-const int benchMixedMaxBits = 168;
-const int benchMixedMaxBytes = 24;
+// enumNameMixedWeapon: debug/log/tooling name for any MixedWeapon wire value —
+// out-of-set values (wire-legal up to the declared max) name as '???'
+String enumNameMixedWeapon(int value) {
+  switch (value) {
+    case MixedWeapon.none:
+      return 'None';
+    case MixedWeapon.fists:
+      return 'Fists';
+    case MixedWeapon.pistol:
+      return 'Pistol';
+    case MixedWeapon.shotgun:
+      return 'Shotgun';
+    case MixedWeapon.rifle:
+      return 'Rifle';
+    case MixedWeapon.sniper:
+      return 'Sniper';
+    case MixedWeapon.smg:
+      return 'Smg';
+    case MixedWeapon.rocket:
+      return 'Rocket';
+    case MixedWeapon.grenade:
+      return 'Grenade';
+    case MixedWeapon.plasma:
+      return 'Plasma';
+    case MixedWeapon.railgun:
+      return 'Railgun';
+    case MixedWeapon.flamer:
+      return 'Flamer';
+    case MixedWeapon.mine:
+      return 'Mine';
+    case MixedWeapon.turret:
+      return 'Turret';
+    case MixedWeapon.drone:
+      return 'Drone';
+    case MixedWeapon.repair:
+      return 'Repair';
+    default:
+      return '???';
+  }
+}
+
+// MixedDamage — one bit per variant, consumed as masks; flags-typed fields store
+// uint64 in every target — a bit-transparent int here — wire 8 bits
+// (SPEC §4.2). Mask names are the family's flat spelling, lowerCamel.
+const int mixedDamageBleeding = 1 << 0;
+const int mixedDamageBurning = 1 << 1;
+const int mixedDamageStunned = 1 << 2;
+const int mixedDamageSlowed = 1 << 3;
+const int mixedDamagePoisoned = 1 << 4;
+const int mixedDamageShielded = 1 << 5;
+const int mixedDamageAirborne = 1 << 6;
+const int mixedDamageDowned = 1 << 7;
+// the declared variant count (SPEC §4.2)
+const int mixedDamageCount = 8;
+
+// flagNameMixedDamage: debug/log/tooling name for bit i of MixedDamage —
+// out-of-range bits name as '???'
+String flagNameMixedDamage(int bit) {
+  switch (bit) {
+    case 0:
+      return 'Bleeding';
+    case 1:
+      return 'Burning';
+    case 2:
+      return 'Stunned';
+    case 3:
+      return 'Slowed';
+    case 4:
+      return 'Poisoned';
+    case 5:
+      return 'Shielded';
+    case 6:
+      return 'Airborne';
+    case 7:
+      return 'Downed';
+    default:
+      return '???';
+  }
+}
+
+// flagNamesMixedDamage renders the set bits of value as 'A|B' — '0' for the
+// empty set, bits past the declared variants as hex
+String flagNamesMixedDamage(int value) {
+  final names = <String>[];
+  if (value & (1 << 0) != 0) {
+    names.add('Bleeding');
+  }
+  if (value & (1 << 1) != 0) {
+    names.add('Burning');
+  }
+  if (value & (1 << 2) != 0) {
+    names.add('Stunned');
+  }
+  if (value & (1 << 3) != 0) {
+    names.add('Slowed');
+  }
+  if (value & (1 << 4) != 0) {
+    names.add('Poisoned');
+  }
+  if (value & (1 << 5) != 0) {
+    names.add('Shielded');
+  }
+  if (value & (1 << 6) != 0) {
+    names.add('Airborne');
+  }
+  if (value & (1 << 7) != 0) {
+    names.add('Downed');
+  }
+  if (value >>> 8 != 0) {
+    names.add('0x${_hex64((value >>> 8) << 8)}');
+  }
+  return names.isEmpty ? '0' : names.join('|');
+}
+
+// type MixedEntity
+final class MixedEntity {
+  int entityId = 0;
+  // wire [-16383, 16383]
+  int posX = 0;
+  // wire [-16383, 16383]
+  int posY = 0;
+  // wire [-16383, 16383]
+  int posZ = 0;
+  int yaw = 0;
+  int pitch = 0;
+  // wire [-2048, 2047]
+  int velX = 0;
+  // wire [-2048, 2047]
+  int velY = 0;
+  // wire [-2048, 2047]
+  int velZ = 0;
+  // wire [0, 1000]
+  int health = 0;
+  int weapon = MixedWeapon.none;
+  // MixedDamage — consumed as masks, uint64 storage (SPEC §4.2)
+  int damage = 0;
+  bool moving = false;
+  bool firing = false;
+}
+
+// mixedEntityMaxBits is the longest wire path; align pads at worst case (SPEC §6.1).
+// mixedEntityMaxBytes is rounded up to the 8-byte write-buffer granularity.
+const int mixedEntityMaxBits = 135;
+const int mixedEntityMaxBytes = 24;
 
 // The §5 zero form: all-zero storage; specified defaults live only in
 // construction.
-void zeroBenchMixed(BenchMixed value) {
-  value.sequence = 0;
-  value.ackBits = 0;
+void zeroMixedEntity(MixedEntity value) {
   value.entityId = 0;
   value.posX = 0;
   value.posY = 0;
   value.posZ = 0;
   value.yaw = 0;
+  value.pitch = 0;
+  value.velX = 0;
+  value.velY = 0;
+  value.velZ = 0;
+  value.health = 0;
+  value.weapon = 0;
+  value.damage = 0;
   value.moving = false;
   value.firing = false;
-  value.timestamp = 0;
-  value.weapon = 0;
 }
 
-// writeBenchMixed packs value into view — the trusted writer (contracts asserted,
+// writeMixedEntity packs value into view — the trusted writer (contracts asserted,
 // compiled out without --enable-asserts). The buffer behind view must hold
-// benchMixedMaxBytes. Returns the bytes written.
-int writeBenchMixed(BenchMixed value, ByteData view) {
+// mixedEntityMaxBytes. Returns the bytes written.
+int writeMixedEntity(MixedEntity value, ByteData view) {
   assert(view.lengthInBytes % 8 == 0);
-  assert(view.lengthInBytes >= benchMixedMaxBytes);
+  assert(view.lengthInBytes >= mixedEntityMaxBytes);
   var scratch = 0;
   var scratchBits = 0;
   var wordIndex = 0;
   var v = 0;
-  assert(value.sequence >= 0);
-  assert(value.sequence <= 65535);
-  v = (value.sequence) & 0xffff;
-  scratch |= v << scratchBits;
-  scratchBits += 16;
-  if (scratchBits >= 64) {
-    view.setUint64(wordIndex * 8, scratch, Endian.little);
-    wordIndex++;
-    scratchBits -= 64;
-    scratch = v >>> (16 - scratchBits);
-  }
-  v = value.ackBits & 0xffffffff;
-  scratch |= v << scratchBits;
-  scratchBits += 32;
-  if (scratchBits >= 64) {
-    view.setUint64(wordIndex * 8, scratch, Endian.little);
-    wordIndex++;
-    scratchBits -= 64;
-    scratch = v >>> (32 - scratchBits);
-  }
   v = value.entityId & 0xfff;
   scratch |= v << scratchBits;
   scratchBits += 12;
@@ -1110,9 +1268,9 @@ int writeBenchMixed(BenchMixed value, ByteData view) {
     scratchBits -= 64;
     scratch = v >>> (12 - scratchBits);
   }
-  assert(value.posX >= -16384);
+  assert(value.posX >= -16383);
   assert(value.posX <= 16383);
-  v = (value.posX + 16384) & 0x7fff;
+  v = (value.posX + 16383) & 0x7fff;
   scratch |= v << scratchBits;
   scratchBits += 15;
   if (scratchBits >= 64) {
@@ -1121,9 +1279,9 @@ int writeBenchMixed(BenchMixed value, ByteData view) {
     scratchBits -= 64;
     scratch = v >>> (15 - scratchBits);
   }
-  assert(value.posY >= -16384);
+  assert(value.posY >= -16383);
   assert(value.posY <= 16383);
-  v = (value.posY + 16384) & 0x7fff;
+  v = (value.posY + 16383) & 0x7fff;
   scratch |= v << scratchBits;
   scratchBits += 15;
   if (scratchBits >= 64) {
@@ -1132,9 +1290,9 @@ int writeBenchMixed(BenchMixed value, ByteData view) {
     scratchBits -= 64;
     scratch = v >>> (15 - scratchBits);
   }
-  assert(value.posZ >= -16384);
+  assert(value.posZ >= -16383);
   assert(value.posZ <= 16383);
-  v = (value.posZ + 16384) & 0x7fff;
+  v = (value.posZ + 16383) & 0x7fff;
   scratch |= v << scratchBits;
   scratchBits += 15;
   if (scratchBits >= 64) {
@@ -1151,6 +1309,80 @@ int writeBenchMixed(BenchMixed value, ByteData view) {
     wordIndex++;
     scratchBits -= 64;
     scratch = v >>> (9 - scratchBits);
+  }
+  v = value.pitch & 0x1ff;
+  scratch |= v << scratchBits;
+  scratchBits += 9;
+  if (scratchBits >= 64) {
+    view.setUint64(wordIndex * 8, scratch, Endian.little);
+    wordIndex++;
+    scratchBits -= 64;
+    scratch = v >>> (9 - scratchBits);
+  }
+  assert(value.velX >= -2048);
+  assert(value.velX <= 2047);
+  v = (value.velX + 2048) & 0xfff;
+  scratch |= v << scratchBits;
+  scratchBits += 12;
+  if (scratchBits >= 64) {
+    view.setUint64(wordIndex * 8, scratch, Endian.little);
+    wordIndex++;
+    scratchBits -= 64;
+    scratch = v >>> (12 - scratchBits);
+  }
+  assert(value.velY >= -2048);
+  assert(value.velY <= 2047);
+  v = (value.velY + 2048) & 0xfff;
+  scratch |= v << scratchBits;
+  scratchBits += 12;
+  if (scratchBits >= 64) {
+    view.setUint64(wordIndex * 8, scratch, Endian.little);
+    wordIndex++;
+    scratchBits -= 64;
+    scratch = v >>> (12 - scratchBits);
+  }
+  assert(value.velZ >= -2048);
+  assert(value.velZ <= 2047);
+  v = (value.velZ + 2048) & 0xfff;
+  scratch |= v << scratchBits;
+  scratchBits += 12;
+  if (scratchBits >= 64) {
+    view.setUint64(wordIndex * 8, scratch, Endian.little);
+    wordIndex++;
+    scratchBits -= 64;
+    scratch = v >>> (12 - scratchBits);
+  }
+  assert(value.health >= 0);
+  assert(value.health <= 1000);
+  v = (value.health) & 0x3ff;
+  scratch |= v << scratchBits;
+  scratchBits += 10;
+  if (scratchBits >= 64) {
+    view.setUint64(wordIndex * 8, scratch, Endian.little);
+    wordIndex++;
+    scratchBits -= 64;
+    scratch = v >>> (10 - scratchBits);
+  }
+  assert(value.weapon >= 0);
+  assert(value.weapon <= 15);
+  v = value.weapon & 0xf;
+  scratch |= v << scratchBits;
+  scratchBits += 4;
+  if (scratchBits >= 64) {
+    view.setUint64(wordIndex * 8, scratch, Endian.little);
+    wordIndex++;
+    scratchBits -= 64;
+    scratch = v >>> (4 - scratchBits);
+  }
+  assert(value.damage >>> 8 == 0);
+  v = value.damage & 0xff;
+  scratch |= v << scratchBits;
+  scratchBits += 8;
+  if (scratchBits >= 64) {
+    view.setUint64(wordIndex * 8, scratch, Endian.little);
+    wordIndex++;
+    scratchBits -= 64;
+    scratch = v >>> (8 - scratchBits);
   }
   v = value.moving ? 1 : 0;
   scratch |= v << scratchBits;
@@ -1170,16 +1402,1086 @@ int writeBenchMixed(BenchMixed value, ByteData view) {
     scratchBits -= 64;
     scratch = v >>> (1 - scratchBits);
   }
-  v = value.timestamp & 0xffffffff;
+  if (scratchBits != 0) {
+    view.setUint64(wordIndex * 8, scratch, Endian.little);
+  }
+  return wordIndex * 8 + ((scratchBits + 7) >>> 3);
+}
+
+// readMixedEntity decodes value from the first numBits of view — the family read
+// verdict: false rejects the wire (bounds, ranges, wire constants, padding);
+// hostile bytes never throw. No slack past the payload is required.
+bool readMixedEntity(MixedEntity value, ByteData view, int numBits) {
+  if (numBits > view.lengthInBytes * 8) {
+    return false; // the payload cannot exceed the buffer behind view
+  }
+  // the final 64-bit window, assembled once so every load stays inside
+  // the buffer (serialize.dart's own no-slack reader stance)
+  var tailBase = view.lengthInBytes - 8;
+  var tailWord = 0;
+  if (tailBase >= 0) {
+    tailWord = view.getUint64(tailBase, Endian.little);
+  } else {
+    tailBase = 0;
+    for (var i = view.lengthInBytes - 1; i >= 0; i--) {
+      tailWord = (tailWord << 8) | view.getUint8(i);
+    }
+  }
+  var bitsRead = 0;
+  var window = 0;
+  var shift = 0;
+  var v = 0;
+  if (bitsRead + 135 > numBits) {
+    return false;
+  }
+  if (bitsRead >>> 3 < tailBase) {
+    window = view.getUint64(bitsRead >>> 3, Endian.little);
+    shift = bitsRead & 7;
+  } else {
+    window = tailWord;
+    shift = bitsRead - tailBase * 8;
+  }
+  v = (window >>> shift) & 0xfff;
+  bitsRead += 12;
+  value.entityId = v;
+  if (bitsRead >>> 3 < tailBase) {
+    window = view.getUint64(bitsRead >>> 3, Endian.little);
+    shift = bitsRead & 7;
+  } else {
+    window = tailWord;
+    shift = bitsRead - tailBase * 8;
+  }
+  v = (window >>> shift) & 0x7fff;
+  bitsRead += 15;
+  if (v > 32766) {
+    return false; // a smuggled offset is refused
+  }
+  value.posX = -16383 + v;
+  if (bitsRead >>> 3 < tailBase) {
+    window = view.getUint64(bitsRead >>> 3, Endian.little);
+    shift = bitsRead & 7;
+  } else {
+    window = tailWord;
+    shift = bitsRead - tailBase * 8;
+  }
+  v = (window >>> shift) & 0x7fff;
+  bitsRead += 15;
+  if (v > 32766) {
+    return false; // a smuggled offset is refused
+  }
+  value.posY = -16383 + v;
+  if (bitsRead >>> 3 < tailBase) {
+    window = view.getUint64(bitsRead >>> 3, Endian.little);
+    shift = bitsRead & 7;
+  } else {
+    window = tailWord;
+    shift = bitsRead - tailBase * 8;
+  }
+  v = (window >>> shift) & 0x7fff;
+  bitsRead += 15;
+  if (v > 32766) {
+    return false; // a smuggled offset is refused
+  }
+  value.posZ = -16383 + v;
+  if (bitsRead >>> 3 < tailBase) {
+    window = view.getUint64(bitsRead >>> 3, Endian.little);
+    shift = bitsRead & 7;
+  } else {
+    window = tailWord;
+    shift = bitsRead - tailBase * 8;
+  }
+  v = (window >>> shift) & 0x1ff;
+  bitsRead += 9;
+  value.yaw = v;
+  if (bitsRead >>> 3 < tailBase) {
+    window = view.getUint64(bitsRead >>> 3, Endian.little);
+    shift = bitsRead & 7;
+  } else {
+    window = tailWord;
+    shift = bitsRead - tailBase * 8;
+  }
+  v = (window >>> shift) & 0x1ff;
+  bitsRead += 9;
+  value.pitch = v;
+  if (bitsRead >>> 3 < tailBase) {
+    window = view.getUint64(bitsRead >>> 3, Endian.little);
+    shift = bitsRead & 7;
+  } else {
+    window = tailWord;
+    shift = bitsRead - tailBase * 8;
+  }
+  v = (window >>> shift) & 0xfff;
+  bitsRead += 12;
+  value.velX = -2048 + v;
+  if (bitsRead >>> 3 < tailBase) {
+    window = view.getUint64(bitsRead >>> 3, Endian.little);
+    shift = bitsRead & 7;
+  } else {
+    window = tailWord;
+    shift = bitsRead - tailBase * 8;
+  }
+  v = (window >>> shift) & 0xfff;
+  bitsRead += 12;
+  value.velY = -2048 + v;
+  if (bitsRead >>> 3 < tailBase) {
+    window = view.getUint64(bitsRead >>> 3, Endian.little);
+    shift = bitsRead & 7;
+  } else {
+    window = tailWord;
+    shift = bitsRead - tailBase * 8;
+  }
+  v = (window >>> shift) & 0xfff;
+  bitsRead += 12;
+  value.velZ = -2048 + v;
+  if (bitsRead >>> 3 < tailBase) {
+    window = view.getUint64(bitsRead >>> 3, Endian.little);
+    shift = bitsRead & 7;
+  } else {
+    window = tailWord;
+    shift = bitsRead - tailBase * 8;
+  }
+  v = (window >>> shift) & 0x3ff;
+  bitsRead += 10;
+  if (v > 1000) {
+    return false; // a smuggled offset is refused
+  }
+  value.health = v;
+  if (bitsRead >>> 3 < tailBase) {
+    window = view.getUint64(bitsRead >>> 3, Endian.little);
+    shift = bitsRead & 7;
+  } else {
+    window = tailWord;
+    shift = bitsRead - tailBase * 8;
+  }
+  v = (window >>> shift) & 0xf;
+  bitsRead += 4;
+  value.weapon = v;
+  if (bitsRead >>> 3 < tailBase) {
+    window = view.getUint64(bitsRead >>> 3, Endian.little);
+    shift = bitsRead & 7;
+  } else {
+    window = tailWord;
+    shift = bitsRead - tailBase * 8;
+  }
+  v = (window >>> shift) & 0xff;
+  bitsRead += 8;
+  value.damage = v;
+  if (bitsRead >>> 3 < tailBase) {
+    window = view.getUint64(bitsRead >>> 3, Endian.little);
+    shift = bitsRead & 7;
+  } else {
+    window = tailWord;
+    shift = bitsRead - tailBase * 8;
+  }
+  v = (window >>> shift) & 0x1;
+  bitsRead += 1;
+  value.moving = v != 0;
+  if (bitsRead >>> 3 < tailBase) {
+    window = view.getUint64(bitsRead >>> 3, Endian.little);
+    shift = bitsRead & 7;
+  } else {
+    window = tailWord;
+    shift = bitsRead - tailBase * 8;
+  }
+  v = (window >>> shift) & 0x1;
+  bitsRead += 1;
+  value.firing = v != 0;
+  return true;
+}
+
+// measureMixedEntity is the exact wire bits writeMixedEntity would produce for value —
+// trusted like the writer; static runs fold to literals at generation time.
+int measureMixedEntity(MixedEntity value) => 135;
+
+// type MixedStat
+final class MixedStat {
+  int statId = 0;
+  // wire [-512, 511]
+  int delta = 0;
+}
+
+// mixedStatMaxBits is the longest wire path; align pads at worst case (SPEC §6.1).
+// mixedStatMaxBytes is rounded up to the 8-byte write-buffer granularity.
+const int mixedStatMaxBits = 18;
+const int mixedStatMaxBytes = 8;
+
+// The §5 zero form: all-zero storage; specified defaults live only in
+// construction.
+void zeroMixedStat(MixedStat value) {
+  value.statId = 0;
+  value.delta = 0;
+}
+
+// writeMixedStat packs value into view — the trusted writer (contracts asserted,
+// compiled out without --enable-asserts). The buffer behind view must hold
+// mixedStatMaxBytes. Returns the bytes written.
+int writeMixedStat(MixedStat value, ByteData view) {
+  assert(view.lengthInBytes % 8 == 0);
+  assert(view.lengthInBytes >= mixedStatMaxBytes);
+  var scratch = 0;
+  var scratchBits = 0;
+  var wordIndex = 0;
+  var v = 0;
+  v = value.statId & 0xff;
   scratch |= v << scratchBits;
-  scratchBits += 32;
+  scratchBits += 8;
   if (scratchBits >= 64) {
     view.setUint64(wordIndex * 8, scratch, Endian.little);
     wordIndex++;
     scratchBits -= 64;
-    scratch = v >>> (32 - scratchBits);
+    scratch = v >>> (8 - scratchBits);
   }
-  v = (value.timestamp >>> 32) & 0xffff;
+  assert(value.delta >= -512);
+  assert(value.delta <= 511);
+  v = (value.delta + 512) & 0x3ff;
+  scratch |= v << scratchBits;
+  scratchBits += 10;
+  if (scratchBits >= 64) {
+    view.setUint64(wordIndex * 8, scratch, Endian.little);
+    wordIndex++;
+    scratchBits -= 64;
+    scratch = v >>> (10 - scratchBits);
+  }
+  if (scratchBits != 0) {
+    view.setUint64(wordIndex * 8, scratch, Endian.little);
+  }
+  return wordIndex * 8 + ((scratchBits + 7) >>> 3);
+}
+
+// readMixedStat decodes value from the first numBits of view — the family read
+// verdict: false rejects the wire (bounds, ranges, wire constants, padding);
+// hostile bytes never throw. No slack past the payload is required.
+bool readMixedStat(MixedStat value, ByteData view, int numBits) {
+  if (numBits > view.lengthInBytes * 8) {
+    return false; // the payload cannot exceed the buffer behind view
+  }
+  // the final 64-bit window, assembled once so every load stays inside
+  // the buffer (serialize.dart's own no-slack reader stance)
+  var tailBase = view.lengthInBytes - 8;
+  var tailWord = 0;
+  if (tailBase >= 0) {
+    tailWord = view.getUint64(tailBase, Endian.little);
+  } else {
+    tailBase = 0;
+    for (var i = view.lengthInBytes - 1; i >= 0; i--) {
+      tailWord = (tailWord << 8) | view.getUint8(i);
+    }
+  }
+  var bitsRead = 0;
+  var window = 0;
+  var shift = 0;
+  var v = 0;
+  if (bitsRead + 18 > numBits) {
+    return false;
+  }
+  if (bitsRead >>> 3 < tailBase) {
+    window = view.getUint64(bitsRead >>> 3, Endian.little);
+    shift = bitsRead & 7;
+  } else {
+    window = tailWord;
+    shift = bitsRead - tailBase * 8;
+  }
+  v = (window >>> shift) & 0xff;
+  bitsRead += 8;
+  value.statId = v;
+  if (bitsRead >>> 3 < tailBase) {
+    window = view.getUint64(bitsRead >>> 3, Endian.little);
+    shift = bitsRead & 7;
+  } else {
+    window = tailWord;
+    shift = bitsRead - tailBase * 8;
+  }
+  v = (window >>> shift) & 0x3ff;
+  bitsRead += 10;
+  value.delta = -512 + v;
+  return true;
+}
+
+// measureMixedStat is the exact wire bits writeMixedStat would produce for value —
+// trusted like the writer; static runs fold to literals at generation time.
+int measureMixedStat(MixedStat value) => 18;
+
+// type MixedHitEvent
+final class MixedHitEvent {
+  int targetId = 0;
+  // wire [0, 4095]
+  int damage = 0;
+  // wire [0, 7]
+  int hitKind = 0;
+  bool crit = false;
+}
+
+// mixedHitEventMaxBits is the longest wire path; align pads at worst case (SPEC §6.1).
+// mixedHitEventMaxBytes is rounded up to the 8-byte write-buffer granularity.
+const int mixedHitEventMaxBits = 28;
+const int mixedHitEventMaxBytes = 8;
+
+// The §5 zero form: all-zero storage; specified defaults live only in
+// construction.
+void zeroMixedHitEvent(MixedHitEvent value) {
+  value.targetId = 0;
+  value.damage = 0;
+  value.hitKind = 0;
+  value.crit = false;
+}
+
+// writeMixedHitEvent packs value into view — the trusted writer (contracts asserted,
+// compiled out without --enable-asserts). The buffer behind view must hold
+// mixedHitEventMaxBytes. Returns the bytes written.
+int writeMixedHitEvent(MixedHitEvent value, ByteData view) {
+  assert(view.lengthInBytes % 8 == 0);
+  assert(view.lengthInBytes >= mixedHitEventMaxBytes);
+  var scratch = 0;
+  var scratchBits = 0;
+  var wordIndex = 0;
+  var v = 0;
+  v = value.targetId & 0xfff;
+  scratch |= v << scratchBits;
+  scratchBits += 12;
+  if (scratchBits >= 64) {
+    view.setUint64(wordIndex * 8, scratch, Endian.little);
+    wordIndex++;
+    scratchBits -= 64;
+    scratch = v >>> (12 - scratchBits);
+  }
+  assert(value.damage >= 0);
+  assert(value.damage <= 4095);
+  v = (value.damage) & 0xfff;
+  scratch |= v << scratchBits;
+  scratchBits += 12;
+  if (scratchBits >= 64) {
+    view.setUint64(wordIndex * 8, scratch, Endian.little);
+    wordIndex++;
+    scratchBits -= 64;
+    scratch = v >>> (12 - scratchBits);
+  }
+  assert(value.hitKind >= 0);
+  assert(value.hitKind <= 7);
+  v = (value.hitKind) & 0x7;
+  scratch |= v << scratchBits;
+  scratchBits += 3;
+  if (scratchBits >= 64) {
+    view.setUint64(wordIndex * 8, scratch, Endian.little);
+    wordIndex++;
+    scratchBits -= 64;
+    scratch = v >>> (3 - scratchBits);
+  }
+  v = value.crit ? 1 : 0;
+  scratch |= v << scratchBits;
+  scratchBits += 1;
+  if (scratchBits >= 64) {
+    view.setUint64(wordIndex * 8, scratch, Endian.little);
+    wordIndex++;
+    scratchBits -= 64;
+    scratch = v >>> (1 - scratchBits);
+  }
+  if (scratchBits != 0) {
+    view.setUint64(wordIndex * 8, scratch, Endian.little);
+  }
+  return wordIndex * 8 + ((scratchBits + 7) >>> 3);
+}
+
+// readMixedHitEvent decodes value from the first numBits of view — the family read
+// verdict: false rejects the wire (bounds, ranges, wire constants, padding);
+// hostile bytes never throw. No slack past the payload is required.
+bool readMixedHitEvent(MixedHitEvent value, ByteData view, int numBits) {
+  if (numBits > view.lengthInBytes * 8) {
+    return false; // the payload cannot exceed the buffer behind view
+  }
+  // the final 64-bit window, assembled once so every load stays inside
+  // the buffer (serialize.dart's own no-slack reader stance)
+  var tailBase = view.lengthInBytes - 8;
+  var tailWord = 0;
+  if (tailBase >= 0) {
+    tailWord = view.getUint64(tailBase, Endian.little);
+  } else {
+    tailBase = 0;
+    for (var i = view.lengthInBytes - 1; i >= 0; i--) {
+      tailWord = (tailWord << 8) | view.getUint8(i);
+    }
+  }
+  var bitsRead = 0;
+  var window = 0;
+  var shift = 0;
+  var v = 0;
+  if (bitsRead + 28 > numBits) {
+    return false;
+  }
+  if (bitsRead >>> 3 < tailBase) {
+    window = view.getUint64(bitsRead >>> 3, Endian.little);
+    shift = bitsRead & 7;
+  } else {
+    window = tailWord;
+    shift = bitsRead - tailBase * 8;
+  }
+  v = (window >>> shift) & 0xfff;
+  bitsRead += 12;
+  value.targetId = v;
+  if (bitsRead >>> 3 < tailBase) {
+    window = view.getUint64(bitsRead >>> 3, Endian.little);
+    shift = bitsRead & 7;
+  } else {
+    window = tailWord;
+    shift = bitsRead - tailBase * 8;
+  }
+  v = (window >>> shift) & 0xfff;
+  bitsRead += 12;
+  value.damage = v;
+  if (bitsRead >>> 3 < tailBase) {
+    window = view.getUint64(bitsRead >>> 3, Endian.little);
+    shift = bitsRead & 7;
+  } else {
+    window = tailWord;
+    shift = bitsRead - tailBase * 8;
+  }
+  v = (window >>> shift) & 0x7;
+  bitsRead += 3;
+  value.hitKind = v;
+  if (bitsRead >>> 3 < tailBase) {
+    window = view.getUint64(bitsRead >>> 3, Endian.little);
+    shift = bitsRead & 7;
+  } else {
+    window = tailWord;
+    shift = bitsRead - tailBase * 8;
+  }
+  v = (window >>> shift) & 0x1;
+  bitsRead += 1;
+  value.crit = v != 0;
+  return true;
+}
+
+// measureMixedHitEvent is the exact wire bits writeMixedHitEvent would produce for value —
+// trusted like the writer; static runs fold to literals at generation time.
+int measureMixedHitEvent(MixedHitEvent value) => 28;
+
+// type MixedChatEvent
+final class MixedChatEvent {
+  // wire [0, 3]
+  int channel = 0;
+  int speaker = 0;
+}
+
+// mixedChatEventMaxBits is the longest wire path; align pads at worst case (SPEC §6.1).
+// mixedChatEventMaxBytes is rounded up to the 8-byte write-buffer granularity.
+const int mixedChatEventMaxBits = 14;
+const int mixedChatEventMaxBytes = 8;
+
+// The §5 zero form: all-zero storage; specified defaults live only in
+// construction.
+void zeroMixedChatEvent(MixedChatEvent value) {
+  value.channel = 0;
+  value.speaker = 0;
+}
+
+// writeMixedChatEvent packs value into view — the trusted writer (contracts asserted,
+// compiled out without --enable-asserts). The buffer behind view must hold
+// mixedChatEventMaxBytes. Returns the bytes written.
+int writeMixedChatEvent(MixedChatEvent value, ByteData view) {
+  assert(view.lengthInBytes % 8 == 0);
+  assert(view.lengthInBytes >= mixedChatEventMaxBytes);
+  var scratch = 0;
+  var scratchBits = 0;
+  var wordIndex = 0;
+  var v = 0;
+  assert(value.channel >= 0);
+  assert(value.channel <= 3);
+  v = (value.channel) & 0x3;
+  scratch |= v << scratchBits;
+  scratchBits += 2;
+  if (scratchBits >= 64) {
+    view.setUint64(wordIndex * 8, scratch, Endian.little);
+    wordIndex++;
+    scratchBits -= 64;
+    scratch = v >>> (2 - scratchBits);
+  }
+  v = value.speaker & 0xfff;
+  scratch |= v << scratchBits;
+  scratchBits += 12;
+  if (scratchBits >= 64) {
+    view.setUint64(wordIndex * 8, scratch, Endian.little);
+    wordIndex++;
+    scratchBits -= 64;
+    scratch = v >>> (12 - scratchBits);
+  }
+  if (scratchBits != 0) {
+    view.setUint64(wordIndex * 8, scratch, Endian.little);
+  }
+  return wordIndex * 8 + ((scratchBits + 7) >>> 3);
+}
+
+// readMixedChatEvent decodes value from the first numBits of view — the family read
+// verdict: false rejects the wire (bounds, ranges, wire constants, padding);
+// hostile bytes never throw. No slack past the payload is required.
+bool readMixedChatEvent(MixedChatEvent value, ByteData view, int numBits) {
+  if (numBits > view.lengthInBytes * 8) {
+    return false; // the payload cannot exceed the buffer behind view
+  }
+  // the final 64-bit window, assembled once so every load stays inside
+  // the buffer (serialize.dart's own no-slack reader stance)
+  var tailBase = view.lengthInBytes - 8;
+  var tailWord = 0;
+  if (tailBase >= 0) {
+    tailWord = view.getUint64(tailBase, Endian.little);
+  } else {
+    tailBase = 0;
+    for (var i = view.lengthInBytes - 1; i >= 0; i--) {
+      tailWord = (tailWord << 8) | view.getUint8(i);
+    }
+  }
+  var bitsRead = 0;
+  var window = 0;
+  var shift = 0;
+  var v = 0;
+  if (bitsRead + 14 > numBits) {
+    return false;
+  }
+  if (bitsRead >>> 3 < tailBase) {
+    window = view.getUint64(bitsRead >>> 3, Endian.little);
+    shift = bitsRead & 7;
+  } else {
+    window = tailWord;
+    shift = bitsRead - tailBase * 8;
+  }
+  v = (window >>> shift) & 0x3;
+  bitsRead += 2;
+  value.channel = v;
+  if (bitsRead >>> 3 < tailBase) {
+    window = view.getUint64(bitsRead >>> 3, Endian.little);
+    shift = bitsRead & 7;
+  } else {
+    window = tailWord;
+    shift = bitsRead - tailBase * 8;
+  }
+  v = (window >>> shift) & 0xfff;
+  bitsRead += 12;
+  value.speaker = v;
+  return true;
+}
+
+// measureMixedChatEvent is the exact wire bits writeMixedChatEvent would produce for value —
+// trusted like the writer; static runs fold to literals at generation time.
+int measureMixedChatEvent(MixedChatEvent value) => 14;
+
+// type MixedPickupEvent
+final class MixedPickupEvent {
+  int itemId = 0;
+  // wire [0, 255]
+  int amount = 0;
+}
+
+// mixedPickupEventMaxBits is the longest wire path; align pads at worst case (SPEC §6.1).
+// mixedPickupEventMaxBytes is rounded up to the 8-byte write-buffer granularity.
+const int mixedPickupEventMaxBits = 18;
+const int mixedPickupEventMaxBytes = 8;
+
+// The §5 zero form: all-zero storage; specified defaults live only in
+// construction.
+void zeroMixedPickupEvent(MixedPickupEvent value) {
+  value.itemId = 0;
+  value.amount = 0;
+}
+
+// writeMixedPickupEvent packs value into view — the trusted writer (contracts asserted,
+// compiled out without --enable-asserts). The buffer behind view must hold
+// mixedPickupEventMaxBytes. Returns the bytes written.
+int writeMixedPickupEvent(MixedPickupEvent value, ByteData view) {
+  assert(view.lengthInBytes % 8 == 0);
+  assert(view.lengthInBytes >= mixedPickupEventMaxBytes);
+  var scratch = 0;
+  var scratchBits = 0;
+  var wordIndex = 0;
+  var v = 0;
+  v = value.itemId & 0x3ff;
+  scratch |= v << scratchBits;
+  scratchBits += 10;
+  if (scratchBits >= 64) {
+    view.setUint64(wordIndex * 8, scratch, Endian.little);
+    wordIndex++;
+    scratchBits -= 64;
+    scratch = v >>> (10 - scratchBits);
+  }
+  assert(value.amount >= 0);
+  assert(value.amount <= 255);
+  v = (value.amount) & 0xff;
+  scratch |= v << scratchBits;
+  scratchBits += 8;
+  if (scratchBits >= 64) {
+    view.setUint64(wordIndex * 8, scratch, Endian.little);
+    wordIndex++;
+    scratchBits -= 64;
+    scratch = v >>> (8 - scratchBits);
+  }
+  if (scratchBits != 0) {
+    view.setUint64(wordIndex * 8, scratch, Endian.little);
+  }
+  return wordIndex * 8 + ((scratchBits + 7) >>> 3);
+}
+
+// readMixedPickupEvent decodes value from the first numBits of view — the family read
+// verdict: false rejects the wire (bounds, ranges, wire constants, padding);
+// hostile bytes never throw. No slack past the payload is required.
+bool readMixedPickupEvent(MixedPickupEvent value, ByteData view, int numBits) {
+  if (numBits > view.lengthInBytes * 8) {
+    return false; // the payload cannot exceed the buffer behind view
+  }
+  // the final 64-bit window, assembled once so every load stays inside
+  // the buffer (serialize.dart's own no-slack reader stance)
+  var tailBase = view.lengthInBytes - 8;
+  var tailWord = 0;
+  if (tailBase >= 0) {
+    tailWord = view.getUint64(tailBase, Endian.little);
+  } else {
+    tailBase = 0;
+    for (var i = view.lengthInBytes - 1; i >= 0; i--) {
+      tailWord = (tailWord << 8) | view.getUint8(i);
+    }
+  }
+  var bitsRead = 0;
+  var window = 0;
+  var shift = 0;
+  var v = 0;
+  if (bitsRead + 18 > numBits) {
+    return false;
+  }
+  if (bitsRead >>> 3 < tailBase) {
+    window = view.getUint64(bitsRead >>> 3, Endian.little);
+    shift = bitsRead & 7;
+  } else {
+    window = tailWord;
+    shift = bitsRead - tailBase * 8;
+  }
+  v = (window >>> shift) & 0x3ff;
+  bitsRead += 10;
+  value.itemId = v;
+  if (bitsRead >>> 3 < tailBase) {
+    window = view.getUint64(bitsRead >>> 3, Endian.little);
+    shift = bitsRead & 7;
+  } else {
+    window = tailWord;
+    shift = bitsRead - tailBase * 8;
+  }
+  v = (window >>> shift) & 0xff;
+  bitsRead += 8;
+  value.amount = v;
+  return true;
+}
+
+// measureMixedPickupEvent is the exact wire bits writeMixedPickupEvent would produce for value —
+// trusted like the writer; static runs fold to literals at generation time.
+int measureMixedPickupEvent(MixedPickupEvent value) => 18;
+
+// MixedEventType: union MixedEvent's tag — None = 0, then each variant in declared order (SPEC §4.8)
+abstract final class MixedEventType {
+  static const int none = 0;
+  static const int hit = 1;
+  static const int chat = 2;
+  static const int pickup = 3;
+  static const int max = 3; // the exported extent (SPEC §4.2)
+}
+
+// MixedEvent — at most one of the arms; type says which. Construction is the empty
+// union (None). A read zero-establishes exactly the selected arm before
+// decoding it (SPEC §5); unselected arms keep what they last held — the
+// reused-storage discipline. Consumers read the selected arm only.
+final class MixedEvent {
+  int type = MixedEventType.none;
+  final MixedHitEvent hit = MixedHitEvent();
+  final MixedChatEvent chat = MixedChatEvent();
+  final MixedPickupEvent pickup = MixedPickupEvent();
+}
+
+// mixedEventMaxBits is the tag plus the largest arm; None costs the tag only (SPEC §4.8).
+// mixedEventMaxBytes is rounded up to the 8-byte write-buffer granularity.
+const int mixedEventMaxBits = 30;
+const int mixedEventMaxBytes = 8;
+
+// zeroMixedEvent resets value to the §5 zero form — the empty union. The tag alone
+// resets: unselected arms are unspecified by rule (SPEC §4.8), and every arm
+// is unselected at None; an arm re-zeroes at its next selection.
+void zeroMixedEvent(MixedEvent value) {
+  value.type = MixedEventType.none;
+}
+
+// writeMixedEvent packs value into view — the trusted writer (contracts asserted,
+// compiled out without --enable-asserts). The buffer behind view must hold
+// mixedEventMaxBytes. Returns the bytes written.
+int writeMixedEvent(MixedEvent value, ByteData view) {
+  assert(view.lengthInBytes % 8 == 0);
+  assert(view.lengthInBytes >= mixedEventMaxBytes);
+  var scratch = 0;
+  var scratchBits = 0;
+  var wordIndex = 0;
+  var v = 0;
+  assert(value.type >= 0);
+  assert(value.type <= 3);
+  v = value.type & 0x3;
+  scratch |= v << scratchBits;
+  scratchBits += 2;
+  if (scratchBits >= 64) {
+    view.setUint64(wordIndex * 8, scratch, Endian.little);
+    wordIndex++;
+    scratchBits -= 64;
+    scratch = v >>> (2 - scratchBits);
+  }
+  switch (value.type) {
+    case 1:
+      v = value.hit.targetId & 0xfff;
+      scratch |= v << scratchBits;
+      scratchBits += 12;
+      if (scratchBits >= 64) {
+        view.setUint64(wordIndex * 8, scratch, Endian.little);
+        wordIndex++;
+        scratchBits -= 64;
+        scratch = v >>> (12 - scratchBits);
+      }
+      assert(value.hit.damage >= 0);
+      assert(value.hit.damage <= 4095);
+      v = (value.hit.damage) & 0xfff;
+      scratch |= v << scratchBits;
+      scratchBits += 12;
+      if (scratchBits >= 64) {
+        view.setUint64(wordIndex * 8, scratch, Endian.little);
+        wordIndex++;
+        scratchBits -= 64;
+        scratch = v >>> (12 - scratchBits);
+      }
+      assert(value.hit.hitKind >= 0);
+      assert(value.hit.hitKind <= 7);
+      v = (value.hit.hitKind) & 0x7;
+      scratch |= v << scratchBits;
+      scratchBits += 3;
+      if (scratchBits >= 64) {
+        view.setUint64(wordIndex * 8, scratch, Endian.little);
+        wordIndex++;
+        scratchBits -= 64;
+        scratch = v >>> (3 - scratchBits);
+      }
+      v = value.hit.crit ? 1 : 0;
+      scratch |= v << scratchBits;
+      scratchBits += 1;
+      if (scratchBits >= 64) {
+        view.setUint64(wordIndex * 8, scratch, Endian.little);
+        wordIndex++;
+        scratchBits -= 64;
+        scratch = v >>> (1 - scratchBits);
+      }
+    case 2:
+      assert(value.chat.channel >= 0);
+      assert(value.chat.channel <= 3);
+      v = (value.chat.channel) & 0x3;
+      scratch |= v << scratchBits;
+      scratchBits += 2;
+      if (scratchBits >= 64) {
+        view.setUint64(wordIndex * 8, scratch, Endian.little);
+        wordIndex++;
+        scratchBits -= 64;
+        scratch = v >>> (2 - scratchBits);
+      }
+      v = value.chat.speaker & 0xfff;
+      scratch |= v << scratchBits;
+      scratchBits += 12;
+      if (scratchBits >= 64) {
+        view.setUint64(wordIndex * 8, scratch, Endian.little);
+        wordIndex++;
+        scratchBits -= 64;
+        scratch = v >>> (12 - scratchBits);
+      }
+    case 3:
+      v = value.pickup.itemId & 0x3ff;
+      scratch |= v << scratchBits;
+      scratchBits += 10;
+      if (scratchBits >= 64) {
+        view.setUint64(wordIndex * 8, scratch, Endian.little);
+        wordIndex++;
+        scratchBits -= 64;
+        scratch = v >>> (10 - scratchBits);
+      }
+      assert(value.pickup.amount >= 0);
+      assert(value.pickup.amount <= 255);
+      v = (value.pickup.amount) & 0xff;
+      scratch |= v << scratchBits;
+      scratchBits += 8;
+      if (scratchBits >= 64) {
+        view.setUint64(wordIndex * 8, scratch, Endian.little);
+        wordIndex++;
+        scratchBits -= 64;
+        scratch = v >>> (8 - scratchBits);
+      }
+  }
+  if (scratchBits != 0) {
+    view.setUint64(wordIndex * 8, scratch, Endian.little);
+  }
+  return wordIndex * 8 + ((scratchBits + 7) >>> 3);
+}
+
+// readMixedEvent decodes value from the first numBits of view — the family read
+// verdict: false rejects the wire (bounds, ranges, wire constants, padding);
+// hostile bytes never throw. No slack past the payload is required.
+bool readMixedEvent(MixedEvent value, ByteData view, int numBits) {
+  if (numBits > view.lengthInBytes * 8) {
+    return false; // the payload cannot exceed the buffer behind view
+  }
+  // the final 64-bit window, assembled once so every load stays inside
+  // the buffer (serialize.dart's own no-slack reader stance)
+  var tailBase = view.lengthInBytes - 8;
+  var tailWord = 0;
+  if (tailBase >= 0) {
+    tailWord = view.getUint64(tailBase, Endian.little);
+  } else {
+    tailBase = 0;
+    for (var i = view.lengthInBytes - 1; i >= 0; i--) {
+      tailWord = (tailWord << 8) | view.getUint8(i);
+    }
+  }
+  var bitsRead = 0;
+  var window = 0;
+  var shift = 0;
+  var v = 0;
+  if (bitsRead + 2 > numBits) {
+    return false;
+  }
+  if (bitsRead >>> 3 < tailBase) {
+    window = view.getUint64(bitsRead >>> 3, Endian.little);
+    shift = bitsRead & 7;
+  } else {
+    window = tailWord;
+    shift = bitsRead - tailBase * 8;
+  }
+  v = (window >>> shift) & 0x3;
+  bitsRead += 2;
+  value.type = v;
+  switch (value.type) {
+    case 1:
+      value.hit.targetId = 0;
+      value.hit.damage = 0;
+      value.hit.hitKind = 0;
+      value.hit.crit = false;
+      if (bitsRead + 28 > numBits) {
+        return false;
+      }
+      if (bitsRead >>> 3 < tailBase) {
+        window = view.getUint64(bitsRead >>> 3, Endian.little);
+        shift = bitsRead & 7;
+      } else {
+        window = tailWord;
+        shift = bitsRead - tailBase * 8;
+      }
+      v = (window >>> shift) & 0xfff;
+      bitsRead += 12;
+      value.hit.targetId = v;
+      if (bitsRead >>> 3 < tailBase) {
+        window = view.getUint64(bitsRead >>> 3, Endian.little);
+        shift = bitsRead & 7;
+      } else {
+        window = tailWord;
+        shift = bitsRead - tailBase * 8;
+      }
+      v = (window >>> shift) & 0xfff;
+      bitsRead += 12;
+      value.hit.damage = v;
+      if (bitsRead >>> 3 < tailBase) {
+        window = view.getUint64(bitsRead >>> 3, Endian.little);
+        shift = bitsRead & 7;
+      } else {
+        window = tailWord;
+        shift = bitsRead - tailBase * 8;
+      }
+      v = (window >>> shift) & 0x7;
+      bitsRead += 3;
+      value.hit.hitKind = v;
+      if (bitsRead >>> 3 < tailBase) {
+        window = view.getUint64(bitsRead >>> 3, Endian.little);
+        shift = bitsRead & 7;
+      } else {
+        window = tailWord;
+        shift = bitsRead - tailBase * 8;
+      }
+      v = (window >>> shift) & 0x1;
+      bitsRead += 1;
+      value.hit.crit = v != 0;
+    case 2:
+      value.chat.channel = 0;
+      value.chat.speaker = 0;
+      if (bitsRead + 14 > numBits) {
+        return false;
+      }
+      if (bitsRead >>> 3 < tailBase) {
+        window = view.getUint64(bitsRead >>> 3, Endian.little);
+        shift = bitsRead & 7;
+      } else {
+        window = tailWord;
+        shift = bitsRead - tailBase * 8;
+      }
+      v = (window >>> shift) & 0x3;
+      bitsRead += 2;
+      value.chat.channel = v;
+      if (bitsRead >>> 3 < tailBase) {
+        window = view.getUint64(bitsRead >>> 3, Endian.little);
+        shift = bitsRead & 7;
+      } else {
+        window = tailWord;
+        shift = bitsRead - tailBase * 8;
+      }
+      v = (window >>> shift) & 0xfff;
+      bitsRead += 12;
+      value.chat.speaker = v;
+    case 3:
+      value.pickup.itemId = 0;
+      value.pickup.amount = 0;
+      if (bitsRead + 18 > numBits) {
+        return false;
+      }
+      if (bitsRead >>> 3 < tailBase) {
+        window = view.getUint64(bitsRead >>> 3, Endian.little);
+        shift = bitsRead & 7;
+      } else {
+        window = tailWord;
+        shift = bitsRead - tailBase * 8;
+      }
+      v = (window >>> shift) & 0x3ff;
+      bitsRead += 10;
+      value.pickup.itemId = v;
+      if (bitsRead >>> 3 < tailBase) {
+        window = view.getUint64(bitsRead >>> 3, Endian.little);
+        shift = bitsRead & 7;
+      } else {
+        window = tailWord;
+        shift = bitsRead - tailBase * 8;
+      }
+      v = (window >>> shift) & 0xff;
+      bitsRead += 8;
+      value.pickup.amount = v;
+  }
+  return true;
+}
+
+// measureMixedEvent is the exact wire bits writeMixedEvent would produce for value —
+// trusted like the writer; static runs fold to literals at generation time.
+int measureMixedEvent(MixedEvent value) {
+  var bits = 0;
+  bits += 2;
+  switch (value.type) {
+    case 1:
+      bits += 28;
+    case 2:
+      bits += 14;
+    case 3:
+      bits += 18;
+  }
+  return bits;
+}
+
+// type BenchMixed
+final class BenchMixed {
+  int sequence = 0;
+  // wire [0, 65535]
+  int ackSequence = 0;
+  int ackBits = 0;
+  int sessionId = 0;
+  int clientId = 0;
+  // wire [0, 18446744073709551615]
+  int nonce = 0;
+  // wire [-1000000000000, 1000000000000]
+  int worldTime = 0;
+  int frameTick = 0;
+  // wire [0, 65535]
+  int serverTime = 0;
+  final List<MixedEntity> entities = List.generate(8, (_) => MixedEntity());
+  int entitiesCount = 0;
+  final List<MixedStat> stats = List.generate(80, (_) => MixedStat());
+  int statsCount = 0;
+  final MixedEvent gameEvent = MixedEvent();
+  final Uint8List loadout = Uint8List(4);
+  // string(15): max length, used length beside it (SPEC §4.7)
+  final Uint8List playerName = Uint8List(15);
+  int playerNameLength = 0;
+  // bytes(16): fixed buffer, used length beside it (SPEC §4.7)
+  final Uint8List payload = Uint8List(16);
+  int payloadLength = 0;
+  // compressed float [-1.0, 1.0] @ 0.01
+  double aimX = 0.0;
+  // compressed float [-1.0, 1.0] @ 0.01
+  double aimY = 0.0;
+  // compressed float [-1.0, 1.0] @ 0.01
+  double aimZ = 0.0;
+  double recoil = 0.0;
+  double drift = 0.0;
+  UInt128 wideKey = UInt128.zero;
+  // wire [-1267650600228229401496703205376, 1267650600228229401496703205376]
+  Int128 flux = Int128.zero;
+  // wire [0, 250]
+  int ping = 0;
+  int crcHint = 0;
+  // specified default at construction; zero* gives the §5 zero form
+  bool hasExtra = true;
+
+  // if has_extra — wire branch; storage holds both sides, a read zeroes the
+  // untaken side (SPEC §5)
+  // wire [0, 255]
+  int extra = 0;
+
+  // if has_extra else — wire branch; storage holds both sides, a read zeroes the
+  // untaken side (SPEC §5)
+  // wire [0, 15]
+  int idleTicks = 0;
+}
+
+// benchMixedMaxBits is the longest wire path; align pads at worst case (SPEC §6.1).
+// benchMixedMaxBytes is rounded up to the 8-byte write-buffer granularity.
+const int benchMixedMaxBits = 3626;
+const int benchMixedMaxBytes = 456;
+
+// The §5 zero form: all-zero storage; specified defaults live only in
+// construction.
+void zeroBenchMixed(BenchMixed value) {
+  value.sequence = 0;
+  value.ackSequence = 0;
+  value.ackBits = 0;
+  value.sessionId = 0;
+  value.clientId = 0;
+  value.nonce = 0;
+  value.worldTime = 0;
+  value.frameTick = 0;
+  value.serverTime = 0;
+  for (var i0 = 0; i0 < 8; i0++) {
+    zeroMixedEntity(value.entities[i0]);
+  }
+  value.entitiesCount = 0;
+  for (var i0 = 0; i0 < 80; i0++) {
+    zeroMixedStat(value.stats[i0]);
+  }
+  value.statsCount = 0;
+  value.gameEvent.type = 0;
+  value.loadout.fillRange(0, value.loadout.length, 0);
+  value.playerName.fillRange(0, value.playerName.length, 0);
+  value.playerNameLength = 0;
+  value.payload.fillRange(0, value.payload.length, 0);
+  value.payloadLength = 0;
+  value.aimX = 0.0;
+  value.aimY = 0.0;
+  value.aimZ = 0.0;
+  value.recoil = 0.0;
+  value.drift = 0.0;
+  value.wideKey = UInt128.zero;
+  value.flux = Int128.zero;
+  value.ping = 0;
+  value.crcHint = 0;
+  value.hasExtra = false;
+  value.extra = 0;
+  value.idleTicks = 0;
+}
+
+// writeBenchMixed packs value into view — the trusted writer (contracts asserted,
+// compiled out without --enable-asserts). The buffer behind view must hold
+// benchMixedMaxBytes. Returns the bytes written.
+int writeBenchMixed(BenchMixed value, ByteData view) {
+  assert(view.lengthInBytes % 8 == 0);
+  assert(view.lengthInBytes >= benchMixedMaxBytes);
+  var scratch = 0;
+  var scratchBits = 0;
+  var wordIndex = 0;
+  var v = 0;
+  v = 49374;
   scratch |= v << scratchBits;
   scratchBits += 16;
   if (scratchBits >= 64) {
@@ -1188,9 +2490,433 @@ int writeBenchMixed(BenchMixed value, ByteData view) {
     scratchBits -= 64;
     scratch = v >>> (16 - scratchBits);
   }
-  assert(value.weapon >= 0);
-  assert(value.weapon <= 15);
-  v = (value.weapon) & 0xf;
+  v = value.sequence & 0xffff;
+  scratch |= v << scratchBits;
+  scratchBits += 16;
+  if (scratchBits >= 64) {
+    view.setUint64(wordIndex * 8, scratch, Endian.little);
+    wordIndex++;
+    scratchBits -= 64;
+    scratch = v >>> (16 - scratchBits);
+  }
+  assert(value.ackSequence >= 0);
+  assert(value.ackSequence <= 65535);
+  v = (value.ackSequence) & 0xffff;
+  scratch |= v << scratchBits;
+  scratchBits += 16;
+  if (scratchBits >= 64) {
+    view.setUint64(wordIndex * 8, scratch, Endian.little);
+    wordIndex++;
+    scratchBits -= 64;
+    scratch = v >>> (16 - scratchBits);
+  }
+  v = value.ackBits & 0xffffffff;
+  scratch |= v << scratchBits;
+  scratchBits += 32;
+  if (scratchBits >= 64) {
+    view.setUint64(wordIndex * 8, scratch, Endian.little);
+    wordIndex++;
+    scratchBits -= 64;
+    scratch = v >>> (32 - scratchBits);
+  }
+  v = value.sessionId & 0xffffffff;
+  scratch |= v << scratchBits;
+  scratchBits += 32;
+  if (scratchBits >= 64) {
+    view.setUint64(wordIndex * 8, scratch, Endian.little);
+    wordIndex++;
+    scratchBits -= 64;
+    scratch = v >>> (32 - scratchBits);
+  }
+  v = (value.sessionId >>> 32) & 0xffffffff;
+  scratch |= v << scratchBits;
+  scratchBits += 32;
+  if (scratchBits >= 64) {
+    view.setUint64(wordIndex * 8, scratch, Endian.little);
+    wordIndex++;
+    scratchBits -= 64;
+    scratch = v >>> (32 - scratchBits);
+  }
+  v = value.clientId & 0xffffffff;
+  scratch |= v << scratchBits;
+  scratchBits += 32;
+  if (scratchBits >= 64) {
+    view.setUint64(wordIndex * 8, scratch, Endian.little);
+    wordIndex++;
+    scratchBits -= 64;
+    scratch = v >>> (32 - scratchBits);
+  }
+  v = value.nonce & 0xffffffff;
+  scratch |= v << scratchBits;
+  scratchBits += 32;
+  if (scratchBits >= 64) {
+    view.setUint64(wordIndex * 8, scratch, Endian.little);
+    wordIndex++;
+    scratchBits -= 64;
+    scratch = v >>> (32 - scratchBits);
+  }
+  v = (value.nonce >>> 32) & 0xffffffff;
+  scratch |= v << scratchBits;
+  scratchBits += 32;
+  if (scratchBits >= 64) {
+    view.setUint64(wordIndex * 8, scratch, Endian.little);
+    wordIndex++;
+    scratchBits -= 64;
+    scratch = v >>> (32 - scratchBits);
+  }
+  assert(value.worldTime >= -1000000000000);
+  assert(value.worldTime <= 1000000000000);
+  {
+    final off = value.worldTime + 1000000000000;
+    v = off & 0xffffffff;
+    scratch |= v << scratchBits;
+    scratchBits += 32;
+    if (scratchBits >= 64) {
+      view.setUint64(wordIndex * 8, scratch, Endian.little);
+      wordIndex++;
+      scratchBits -= 64;
+      scratch = v >>> (32 - scratchBits);
+    }
+    v = (off >>> 32) & 0x1ff;
+    scratch |= v << scratchBits;
+    scratchBits += 9;
+    if (scratchBits >= 64) {
+      view.setUint64(wordIndex * 8, scratch, Endian.little);
+      wordIndex++;
+      scratchBits -= 64;
+      scratch = v >>> (9 - scratchBits);
+    }
+  }
+  v = value.frameTick & 0xffffffff;
+  scratch |= v << scratchBits;
+  scratchBits += 32;
+  if (scratchBits >= 64) {
+    view.setUint64(wordIndex * 8, scratch, Endian.little);
+    wordIndex++;
+    scratchBits -= 64;
+    scratch = v >>> (32 - scratchBits);
+  }
+  v = (value.frameTick >>> 32) & 0xffff;
+  scratch |= v << scratchBits;
+  scratchBits += 16;
+  if (scratchBits >= 64) {
+    view.setUint64(wordIndex * 8, scratch, Endian.little);
+    wordIndex++;
+    scratchBits -= 64;
+    scratch = v >>> (16 - scratchBits);
+  }
+  assert(value.serverTime >= 0);
+  assert(value.serverTime <= 16776960);
+  v = (value.serverTime) & 0xffffff;
+  scratch |= v << scratchBits;
+  scratchBits += 24;
+  if (scratchBits >= 64) {
+    view.setUint64(wordIndex * 8, scratch, Endian.little);
+    wordIndex++;
+    scratchBits -= 64;
+    scratch = v >>> (24 - scratchBits);
+  }
+  assert(value.entitiesCount >= 1);
+  assert(value.entitiesCount <= 8);
+  v = (value.entitiesCount - 1) & 0x7;
+  scratch |= v << scratchBits;
+  scratchBits += 3;
+  if (scratchBits >= 64) {
+    view.setUint64(wordIndex * 8, scratch, Endian.little);
+    wordIndex++;
+    scratchBits -= 64;
+    scratch = v >>> (3 - scratchBits);
+  }
+  for (var i0 = 0; i0 < value.entitiesCount; i0++) {
+    final e0 = value.entities[i0];
+    v = e0.entityId & 0xfff;
+    scratch |= v << scratchBits;
+    scratchBits += 12;
+    if (scratchBits >= 64) {
+      view.setUint64(wordIndex * 8, scratch, Endian.little);
+      wordIndex++;
+      scratchBits -= 64;
+      scratch = v >>> (12 - scratchBits);
+    }
+    assert(e0.posX >= -16383);
+    assert(e0.posX <= 16383);
+    v = (e0.posX + 16383) & 0x7fff;
+    scratch |= v << scratchBits;
+    scratchBits += 15;
+    if (scratchBits >= 64) {
+      view.setUint64(wordIndex * 8, scratch, Endian.little);
+      wordIndex++;
+      scratchBits -= 64;
+      scratch = v >>> (15 - scratchBits);
+    }
+    assert(e0.posY >= -16383);
+    assert(e0.posY <= 16383);
+    v = (e0.posY + 16383) & 0x7fff;
+    scratch |= v << scratchBits;
+    scratchBits += 15;
+    if (scratchBits >= 64) {
+      view.setUint64(wordIndex * 8, scratch, Endian.little);
+      wordIndex++;
+      scratchBits -= 64;
+      scratch = v >>> (15 - scratchBits);
+    }
+    assert(e0.posZ >= -16383);
+    assert(e0.posZ <= 16383);
+    v = (e0.posZ + 16383) & 0x7fff;
+    scratch |= v << scratchBits;
+    scratchBits += 15;
+    if (scratchBits >= 64) {
+      view.setUint64(wordIndex * 8, scratch, Endian.little);
+      wordIndex++;
+      scratchBits -= 64;
+      scratch = v >>> (15 - scratchBits);
+    }
+    v = e0.yaw & 0x1ff;
+    scratch |= v << scratchBits;
+    scratchBits += 9;
+    if (scratchBits >= 64) {
+      view.setUint64(wordIndex * 8, scratch, Endian.little);
+      wordIndex++;
+      scratchBits -= 64;
+      scratch = v >>> (9 - scratchBits);
+    }
+    v = e0.pitch & 0x1ff;
+    scratch |= v << scratchBits;
+    scratchBits += 9;
+    if (scratchBits >= 64) {
+      view.setUint64(wordIndex * 8, scratch, Endian.little);
+      wordIndex++;
+      scratchBits -= 64;
+      scratch = v >>> (9 - scratchBits);
+    }
+    assert(e0.velX >= -2048);
+    assert(e0.velX <= 2047);
+    v = (e0.velX + 2048) & 0xfff;
+    scratch |= v << scratchBits;
+    scratchBits += 12;
+    if (scratchBits >= 64) {
+      view.setUint64(wordIndex * 8, scratch, Endian.little);
+      wordIndex++;
+      scratchBits -= 64;
+      scratch = v >>> (12 - scratchBits);
+    }
+    assert(e0.velY >= -2048);
+    assert(e0.velY <= 2047);
+    v = (e0.velY + 2048) & 0xfff;
+    scratch |= v << scratchBits;
+    scratchBits += 12;
+    if (scratchBits >= 64) {
+      view.setUint64(wordIndex * 8, scratch, Endian.little);
+      wordIndex++;
+      scratchBits -= 64;
+      scratch = v >>> (12 - scratchBits);
+    }
+    assert(e0.velZ >= -2048);
+    assert(e0.velZ <= 2047);
+    v = (e0.velZ + 2048) & 0xfff;
+    scratch |= v << scratchBits;
+    scratchBits += 12;
+    if (scratchBits >= 64) {
+      view.setUint64(wordIndex * 8, scratch, Endian.little);
+      wordIndex++;
+      scratchBits -= 64;
+      scratch = v >>> (12 - scratchBits);
+    }
+    assert(e0.health >= 0);
+    assert(e0.health <= 1000);
+    v = (e0.health) & 0x3ff;
+    scratch |= v << scratchBits;
+    scratchBits += 10;
+    if (scratchBits >= 64) {
+      view.setUint64(wordIndex * 8, scratch, Endian.little);
+      wordIndex++;
+      scratchBits -= 64;
+      scratch = v >>> (10 - scratchBits);
+    }
+    assert(e0.weapon >= 0);
+    assert(e0.weapon <= 15);
+    v = e0.weapon & 0xf;
+    scratch |= v << scratchBits;
+    scratchBits += 4;
+    if (scratchBits >= 64) {
+      view.setUint64(wordIndex * 8, scratch, Endian.little);
+      wordIndex++;
+      scratchBits -= 64;
+      scratch = v >>> (4 - scratchBits);
+    }
+    assert(e0.damage >>> 8 == 0);
+    v = e0.damage & 0xff;
+    scratch |= v << scratchBits;
+    scratchBits += 8;
+    if (scratchBits >= 64) {
+      view.setUint64(wordIndex * 8, scratch, Endian.little);
+      wordIndex++;
+      scratchBits -= 64;
+      scratch = v >>> (8 - scratchBits);
+    }
+    v = e0.moving ? 1 : 0;
+    scratch |= v << scratchBits;
+    scratchBits += 1;
+    if (scratchBits >= 64) {
+      view.setUint64(wordIndex * 8, scratch, Endian.little);
+      wordIndex++;
+      scratchBits -= 64;
+      scratch = v >>> (1 - scratchBits);
+    }
+    v = e0.firing ? 1 : 0;
+    scratch |= v << scratchBits;
+    scratchBits += 1;
+    if (scratchBits >= 64) {
+      view.setUint64(wordIndex * 8, scratch, Endian.little);
+      wordIndex++;
+      scratchBits -= 64;
+      scratch = v >>> (1 - scratchBits);
+    }
+  }
+  assert(value.statsCount >= 0);
+  assert(value.statsCount <= 80);
+  v = (value.statsCount) & 0x7f;
+  scratch |= v << scratchBits;
+  scratchBits += 7;
+  if (scratchBits >= 64) {
+    view.setUint64(wordIndex * 8, scratch, Endian.little);
+    wordIndex++;
+    scratchBits -= 64;
+    scratch = v >>> (7 - scratchBits);
+  }
+  for (var i0 = 0; i0 < value.statsCount; i0++) {
+    final e0 = value.stats[i0];
+    v = e0.statId & 0xff;
+    scratch |= v << scratchBits;
+    scratchBits += 8;
+    if (scratchBits >= 64) {
+      view.setUint64(wordIndex * 8, scratch, Endian.little);
+      wordIndex++;
+      scratchBits -= 64;
+      scratch = v >>> (8 - scratchBits);
+    }
+    assert(e0.delta >= -512);
+    assert(e0.delta <= 511);
+    v = (e0.delta + 512) & 0x3ff;
+    scratch |= v << scratchBits;
+    scratchBits += 10;
+    if (scratchBits >= 64) {
+      view.setUint64(wordIndex * 8, scratch, Endian.little);
+      wordIndex++;
+      scratchBits -= 64;
+      scratch = v >>> (10 - scratchBits);
+    }
+  }
+  assert(value.gameEvent.type >= 0);
+  assert(value.gameEvent.type <= 3);
+  v = value.gameEvent.type & 0x3;
+  scratch |= v << scratchBits;
+  scratchBits += 2;
+  if (scratchBits >= 64) {
+    view.setUint64(wordIndex * 8, scratch, Endian.little);
+    wordIndex++;
+    scratchBits -= 64;
+    scratch = v >>> (2 - scratchBits);
+  }
+  switch (value.gameEvent.type) {
+    case 1:
+      v = value.gameEvent.hit.targetId & 0xfff;
+      scratch |= v << scratchBits;
+      scratchBits += 12;
+      if (scratchBits >= 64) {
+        view.setUint64(wordIndex * 8, scratch, Endian.little);
+        wordIndex++;
+        scratchBits -= 64;
+        scratch = v >>> (12 - scratchBits);
+      }
+      assert(value.gameEvent.hit.damage >= 0);
+      assert(value.gameEvent.hit.damage <= 4095);
+      v = (value.gameEvent.hit.damage) & 0xfff;
+      scratch |= v << scratchBits;
+      scratchBits += 12;
+      if (scratchBits >= 64) {
+        view.setUint64(wordIndex * 8, scratch, Endian.little);
+        wordIndex++;
+        scratchBits -= 64;
+        scratch = v >>> (12 - scratchBits);
+      }
+      assert(value.gameEvent.hit.hitKind >= 0);
+      assert(value.gameEvent.hit.hitKind <= 7);
+      v = (value.gameEvent.hit.hitKind) & 0x7;
+      scratch |= v << scratchBits;
+      scratchBits += 3;
+      if (scratchBits >= 64) {
+        view.setUint64(wordIndex * 8, scratch, Endian.little);
+        wordIndex++;
+        scratchBits -= 64;
+        scratch = v >>> (3 - scratchBits);
+      }
+      v = value.gameEvent.hit.crit ? 1 : 0;
+      scratch |= v << scratchBits;
+      scratchBits += 1;
+      if (scratchBits >= 64) {
+        view.setUint64(wordIndex * 8, scratch, Endian.little);
+        wordIndex++;
+        scratchBits -= 64;
+        scratch = v >>> (1 - scratchBits);
+      }
+    case 2:
+      assert(value.gameEvent.chat.channel >= 0);
+      assert(value.gameEvent.chat.channel <= 3);
+      v = (value.gameEvent.chat.channel) & 0x3;
+      scratch |= v << scratchBits;
+      scratchBits += 2;
+      if (scratchBits >= 64) {
+        view.setUint64(wordIndex * 8, scratch, Endian.little);
+        wordIndex++;
+        scratchBits -= 64;
+        scratch = v >>> (2 - scratchBits);
+      }
+      v = value.gameEvent.chat.speaker & 0xfff;
+      scratch |= v << scratchBits;
+      scratchBits += 12;
+      if (scratchBits >= 64) {
+        view.setUint64(wordIndex * 8, scratch, Endian.little);
+        wordIndex++;
+        scratchBits -= 64;
+        scratch = v >>> (12 - scratchBits);
+      }
+    case 3:
+      v = value.gameEvent.pickup.itemId & 0x3ff;
+      scratch |= v << scratchBits;
+      scratchBits += 10;
+      if (scratchBits >= 64) {
+        view.setUint64(wordIndex * 8, scratch, Endian.little);
+        wordIndex++;
+        scratchBits -= 64;
+        scratch = v >>> (10 - scratchBits);
+      }
+      assert(value.gameEvent.pickup.amount >= 0);
+      assert(value.gameEvent.pickup.amount <= 255);
+      v = (value.gameEvent.pickup.amount) & 0xff;
+      scratch |= v << scratchBits;
+      scratchBits += 8;
+      if (scratchBits >= 64) {
+        view.setUint64(wordIndex * 8, scratch, Endian.little);
+        wordIndex++;
+        scratchBits -= 64;
+        scratch = v >>> (8 - scratchBits);
+      }
+  }
+  for (var i0 = 0; i0 < 4; i0++) {
+    v = value.loadout[i0] & 0xff;
+    scratch |= v << scratchBits;
+    scratchBits += 8;
+    if (scratchBits >= 64) {
+      view.setUint64(wordIndex * 8, scratch, Endian.little);
+      wordIndex++;
+      scratchBits -= 64;
+      scratch = v >>> (8 - scratchBits);
+    }
+  }
+  assert(value.playerNameLength >= 0);
+  assert(value.playerNameLength <= 15);
+  v = (value.playerNameLength) & 0xf;
   scratch |= v << scratchBits;
   scratchBits += 4;
   if (scratchBits >= 64) {
@@ -1198,6 +2924,304 @@ int writeBenchMixed(BenchMixed value, ByteData view) {
     wordIndex++;
     scratchBits -= 64;
     scratch = v >>> (4 - scratchBits);
+  }
+  {
+    final pad = scratchBits & 7;
+    if (pad != 0) {
+      scratchBits += 8 - pad;
+      if (scratchBits >= 64) {
+        view.setUint64(wordIndex * 8, scratch, Endian.little);
+        wordIndex++;
+        scratchBits -= 64;
+        scratch = 0;
+      }
+    }
+  }
+  for (var i0 = 0; i0 < value.playerNameLength; i0++) {
+    v = value.playerName[i0];
+    scratch |= v << scratchBits;
+    scratchBits += 8;
+    if (scratchBits >= 64) {
+      view.setUint64(wordIndex * 8, scratch, Endian.little);
+      wordIndex++;
+      scratchBits -= 64;
+      scratch = v >>> (8 - scratchBits);
+    }
+  }
+  assert(value.payloadLength >= 0);
+  assert(value.payloadLength <= 16);
+  v = (value.payloadLength) & 0x1f;
+  scratch |= v << scratchBits;
+  scratchBits += 5;
+  if (scratchBits >= 64) {
+    view.setUint64(wordIndex * 8, scratch, Endian.little);
+    wordIndex++;
+    scratchBits -= 64;
+    scratch = v >>> (5 - scratchBits);
+  }
+  {
+    final pad = scratchBits & 7;
+    if (pad != 0) {
+      scratchBits += 8 - pad;
+      if (scratchBits >= 64) {
+        view.setUint64(wordIndex * 8, scratch, Endian.little);
+        wordIndex++;
+        scratchBits -= 64;
+        scratch = 0;
+      }
+    }
+  }
+  for (var i0 = 0; i0 < value.payloadLength; i0++) {
+    v = value.payload[i0];
+    scratch |= v << scratchBits;
+    scratchBits += 8;
+    if (scratchBits >= 64) {
+      view.setUint64(wordIndex * 8, scratch, Endian.little);
+      wordIndex++;
+      scratchBits -= 64;
+      scratch = v >>> (8 - scratchBits);
+    }
+  }
+  {
+    final x = _fround(value.aimX);
+    assert(x.isFinite);
+    var n = _fround(_fround(x - -1.0) / 2.0);
+    if (!(n >= 0.0)) {
+      n = 0.0;
+    } else if (!(n <= 1.0)) {
+      n = 1.0;
+    }
+    v = _fround(_fround(n * 200.0) + 0.5).floor();
+  }
+  scratch |= v << scratchBits;
+  scratchBits += 8;
+  if (scratchBits >= 64) {
+    view.setUint64(wordIndex * 8, scratch, Endian.little);
+    wordIndex++;
+    scratchBits -= 64;
+    scratch = v >>> (8 - scratchBits);
+  }
+  {
+    final x = _fround(value.aimY);
+    assert(x.isFinite);
+    var n = _fround(_fround(x - -1.0) / 2.0);
+    if (!(n >= 0.0)) {
+      n = 0.0;
+    } else if (!(n <= 1.0)) {
+      n = 1.0;
+    }
+    v = _fround(_fround(n * 200.0) + 0.5).floor();
+  }
+  scratch |= v << scratchBits;
+  scratchBits += 8;
+  if (scratchBits >= 64) {
+    view.setUint64(wordIndex * 8, scratch, Endian.little);
+    wordIndex++;
+    scratchBits -= 64;
+    scratch = v >>> (8 - scratchBits);
+  }
+  {
+    final x = _fround(value.aimZ);
+    assert(x.isFinite);
+    var n = _fround(_fround(x - -1.0) / 2.0);
+    if (!(n >= 0.0)) {
+      n = 0.0;
+    } else if (!(n <= 1.0)) {
+      n = 1.0;
+    }
+    v = _fround(_fround(n * 200.0) + 0.5).floor();
+  }
+  scratch |= v << scratchBits;
+  scratchBits += 8;
+  if (scratchBits >= 64) {
+    view.setUint64(wordIndex * 8, scratch, Endian.little);
+    wordIndex++;
+    scratchBits -= 64;
+    scratch = v >>> (8 - scratchBits);
+  }
+  v = _float32BitsFromDouble(value.recoil);
+  scratch |= v << scratchBits;
+  scratchBits += 32;
+  if (scratchBits >= 64) {
+    view.setUint64(wordIndex * 8, scratch, Endian.little);
+    wordIndex++;
+    scratchBits -= 64;
+    scratch = v >>> (32 - scratchBits);
+  }
+  {
+    final b = _float64BitsFromDouble(value.drift);
+    v = b & 0xffffffff;
+    scratch |= v << scratchBits;
+    scratchBits += 32;
+    if (scratchBits >= 64) {
+      view.setUint64(wordIndex * 8, scratch, Endian.little);
+      wordIndex++;
+      scratchBits -= 64;
+      scratch = v >>> (32 - scratchBits);
+    }
+    v = (b >>> 32) & 0xffffffff;
+    scratch |= v << scratchBits;
+    scratchBits += 32;
+    if (scratchBits >= 64) {
+      view.setUint64(wordIndex * 8, scratch, Endian.little);
+      wordIndex++;
+      scratchBits -= 64;
+      scratch = v >>> (32 - scratchBits);
+    }
+  }
+  v = value.wideKey.lo & 0xffffffff;
+  scratch |= v << scratchBits;
+  scratchBits += 32;
+  if (scratchBits >= 64) {
+    view.setUint64(wordIndex * 8, scratch, Endian.little);
+    wordIndex++;
+    scratchBits -= 64;
+    scratch = v >>> (32 - scratchBits);
+  }
+  v = (value.wideKey.lo >>> 32) & 0xffffffff;
+  scratch |= v << scratchBits;
+  scratchBits += 32;
+  if (scratchBits >= 64) {
+    view.setUint64(wordIndex * 8, scratch, Endian.little);
+    wordIndex++;
+    scratchBits -= 64;
+    scratch = v >>> (32 - scratchBits);
+  }
+  v = value.wideKey.hi & 0xffffffff;
+  scratch |= v << scratchBits;
+  scratchBits += 32;
+  if (scratchBits >= 64) {
+    view.setUint64(wordIndex * 8, scratch, Endian.little);
+    wordIndex++;
+    scratchBits -= 64;
+    scratch = v >>> (32 - scratchBits);
+  }
+  v = (value.wideKey.hi >>> 32) & 0xffffffff;
+  scratch |= v << scratchBits;
+  scratchBits += 32;
+  if (scratchBits >= 64) {
+    view.setUint64(wordIndex * 8, scratch, Endian.little);
+    wordIndex++;
+    scratchBits -= 64;
+    scratch = v >>> (32 - scratchBits);
+  }
+  {
+    const min = Int128(0xfffffff000000000, 0);
+    const max = Int128(68719476736, 0);
+    assert(value.flux >= min);
+    assert(value.flux <= max);
+    final off = (value.flux - min).toUnsigned();
+    v = off.lo & 0xffffffff;
+    scratch |= v << scratchBits;
+    scratchBits += 32;
+    if (scratchBits >= 64) {
+      view.setUint64(wordIndex * 8, scratch, Endian.little);
+      wordIndex++;
+      scratchBits -= 64;
+      scratch = v >>> (32 - scratchBits);
+    }
+    v = (off.lo >>> 32) & 0xffffffff;
+    scratch |= v << scratchBits;
+    scratchBits += 32;
+    if (scratchBits >= 64) {
+      view.setUint64(wordIndex * 8, scratch, Endian.little);
+      wordIndex++;
+      scratchBits -= 64;
+      scratch = v >>> (32 - scratchBits);
+    }
+    v = off.hi & 0xffffffff;
+    scratch |= v << scratchBits;
+    scratchBits += 32;
+    if (scratchBits >= 64) {
+      view.setUint64(wordIndex * 8, scratch, Endian.little);
+      wordIndex++;
+      scratchBits -= 64;
+      scratch = v >>> (32 - scratchBits);
+    }
+    v = (off.hi >>> 32) & 0x3f;
+    scratch |= v << scratchBits;
+    scratchBits += 6;
+    if (scratchBits >= 64) {
+      view.setUint64(wordIndex * 8, scratch, Endian.little);
+      wordIndex++;
+      scratchBits -= 64;
+      scratch = v >>> (6 - scratchBits);
+    }
+  }
+  assert(value.ping >= 0);
+  assert(value.ping <= 64000);
+  v = (value.ping) & 0xffff;
+  scratch |= v << scratchBits;
+  scratchBits += 16;
+  if (scratchBits >= 64) {
+    view.setUint64(wordIndex * 8, scratch, Endian.little);
+    wordIndex++;
+    scratchBits -= 64;
+    scratch = v >>> (16 - scratchBits);
+  }
+  v = 0;
+  scratch |= v << scratchBits;
+  scratchBits += 4;
+  if (scratchBits >= 64) {
+    view.setUint64(wordIndex * 8, scratch, Endian.little);
+    wordIndex++;
+    scratchBits -= 64;
+    scratch = v >>> (4 - scratchBits);
+  }
+  {
+    final pad = scratchBits & 7;
+    if (pad != 0) {
+      scratchBits += 8 - pad;
+      if (scratchBits >= 64) {
+        view.setUint64(wordIndex * 8, scratch, Endian.little);
+        wordIndex++;
+        scratchBits -= 64;
+        scratch = 0;
+      }
+    }
+  }
+  v = value.crcHint & 0xffffff;
+  scratch |= v << scratchBits;
+  scratchBits += 24;
+  if (scratchBits >= 64) {
+    view.setUint64(wordIndex * 8, scratch, Endian.little);
+    wordIndex++;
+    scratchBits -= 64;
+    scratch = v >>> (24 - scratchBits);
+  }
+  v = value.hasExtra ? 1 : 0;
+  scratch |= v << scratchBits;
+  scratchBits += 1;
+  if (scratchBits >= 64) {
+    view.setUint64(wordIndex * 8, scratch, Endian.little);
+    wordIndex++;
+    scratchBits -= 64;
+    scratch = v >>> (1 - scratchBits);
+  }
+  if (value.hasExtra) {
+    assert(value.extra >= 0);
+    assert(value.extra <= 255);
+    v = (value.extra) & 0xff;
+    scratch |= v << scratchBits;
+    scratchBits += 8;
+    if (scratchBits >= 64) {
+      view.setUint64(wordIndex * 8, scratch, Endian.little);
+      wordIndex++;
+      scratchBits -= 64;
+      scratch = v >>> (8 - scratchBits);
+    }
+  } else {
+    assert(value.idleTicks >= 0);
+    assert(value.idleTicks <= 15);
+    v = (value.idleTicks) & 0xf;
+    scratch |= v << scratchBits;
+    scratchBits += 4;
+    if (scratchBits >= 64) {
+      view.setUint64(wordIndex * 8, scratch, Endian.little);
+      wordIndex++;
+      scratchBits -= 64;
+      scratch = v >>> (4 - scratchBits);
+    }
   }
   if (scratchBits != 0) {
     view.setUint64(wordIndex * 8, scratch, Endian.little);
@@ -1229,8 +3253,21 @@ bool readBenchMixed(BenchMixed value, ByteData view, int numBits) {
   var shift = 0;
   var v = 0;
   var lo = 0;
-  if (bitsRead + 168 > numBits) {
+  var hi = 0;
+  if (bitsRead + 353 > numBits) {
     return false;
+  }
+  if (bitsRead >>> 3 < tailBase) {
+    window = view.getUint64(bitsRead >>> 3, Endian.little);
+    shift = bitsRead & 7;
+  } else {
+    window = tailWord;
+    shift = bitsRead - tailBase * 8;
+  }
+  v = (window >>> shift) & 0xffff;
+  bitsRead += 16;
+  if (v != 49374) {
+    return false; // a read rejects any other value (SPEC §4.3)
   }
   if (bitsRead >>> 3 < tailBase) {
     window = view.getUint64(bitsRead >>> 3, Endian.little);
@@ -1249,6 +3286,16 @@ bool readBenchMixed(BenchMixed value, ByteData view, int numBits) {
     window = tailWord;
     shift = bitsRead - tailBase * 8;
   }
+  v = (window >>> shift) & 0xffff;
+  bitsRead += 16;
+  value.ackSequence = v;
+  if (bitsRead >>> 3 < tailBase) {
+    window = view.getUint64(bitsRead >>> 3, Endian.little);
+    shift = bitsRead & 7;
+  } else {
+    window = tailWord;
+    shift = bitsRead - tailBase * 8;
+  }
   v = (window >>> shift) & 0xffffffff;
   bitsRead += 32;
   value.ackBits = v;
@@ -1259,9 +3306,9 @@ bool readBenchMixed(BenchMixed value, ByteData view, int numBits) {
     window = tailWord;
     shift = bitsRead - tailBase * 8;
   }
-  v = (window >>> shift) & 0xfff;
-  bitsRead += 12;
-  value.entityId = v;
+  v = (window >>> shift) & 0xffffffff;
+  bitsRead += 32;
+  lo = v;
   if (bitsRead >>> 3 < tailBase) {
     window = view.getUint64(bitsRead >>> 3, Endian.little);
     shift = bitsRead & 7;
@@ -1269,9 +3316,10 @@ bool readBenchMixed(BenchMixed value, ByteData view, int numBits) {
     window = tailWord;
     shift = bitsRead - tailBase * 8;
   }
-  v = (window >>> shift) & 0x7fff;
-  bitsRead += 15;
-  value.posX = -16384 + v;
+  v = (window >>> shift) & 0xffffffff;
+  bitsRead += 32;
+  lo |= v << 32;
+  value.sessionId = lo;
   if (bitsRead >>> 3 < tailBase) {
     window = view.getUint64(bitsRead >>> 3, Endian.little);
     shift = bitsRead & 7;
@@ -1279,9 +3327,9 @@ bool readBenchMixed(BenchMixed value, ByteData view, int numBits) {
     window = tailWord;
     shift = bitsRead - tailBase * 8;
   }
-  v = (window >>> shift) & 0x7fff;
-  bitsRead += 15;
-  value.posY = -16384 + v;
+  v = (window >>> shift) & 0xffffffff;
+  bitsRead += 32;
+  value.clientId = v;
   if (bitsRead >>> 3 < tailBase) {
     window = view.getUint64(bitsRead >>> 3, Endian.little);
     shift = bitsRead & 7;
@@ -1289,9 +3337,30 @@ bool readBenchMixed(BenchMixed value, ByteData view, int numBits) {
     window = tailWord;
     shift = bitsRead - tailBase * 8;
   }
-  v = (window >>> shift) & 0x7fff;
-  bitsRead += 15;
-  value.posZ = -16384 + v;
+  v = (window >>> shift) & 0xffffffff;
+  bitsRead += 32;
+  lo = v;
+  if (bitsRead >>> 3 < tailBase) {
+    window = view.getUint64(bitsRead >>> 3, Endian.little);
+    shift = bitsRead & 7;
+  } else {
+    window = tailWord;
+    shift = bitsRead - tailBase * 8;
+  }
+  v = (window >>> shift) & 0xffffffff;
+  bitsRead += 32;
+  lo |= v << 32;
+  value.nonce = lo;
+  if (bitsRead >>> 3 < tailBase) {
+    window = view.getUint64(bitsRead >>> 3, Endian.little);
+    shift = bitsRead & 7;
+  } else {
+    window = tailWord;
+    shift = bitsRead - tailBase * 8;
+  }
+  v = (window >>> shift) & 0xffffffff;
+  bitsRead += 32;
+  lo = v;
   if (bitsRead >>> 3 < tailBase) {
     window = view.getUint64(bitsRead >>> 3, Endian.little);
     shift = bitsRead & 7;
@@ -1301,27 +3370,11 @@ bool readBenchMixed(BenchMixed value, ByteData view, int numBits) {
   }
   v = (window >>> shift) & 0x1ff;
   bitsRead += 9;
-  value.yaw = v;
-  if (bitsRead >>> 3 < tailBase) {
-    window = view.getUint64(bitsRead >>> 3, Endian.little);
-    shift = bitsRead & 7;
-  } else {
-    window = tailWord;
-    shift = bitsRead - tailBase * 8;
+  lo |= v << 32;
+  if (lo > 2000000000000) {
+    return false; // a smuggled offset is refused
   }
-  v = (window >>> shift) & 0x1;
-  bitsRead += 1;
-  value.moving = v != 0;
-  if (bitsRead >>> 3 < tailBase) {
-    window = view.getUint64(bitsRead >>> 3, Endian.little);
-    shift = bitsRead & 7;
-  } else {
-    window = tailWord;
-    shift = bitsRead - tailBase * 8;
-  }
-  v = (window >>> shift) & 0x1;
-  bitsRead += 1;
-  value.firing = v != 0;
+  value.worldTime = -1000000000000 + lo;
   if (bitsRead >>> 3 < tailBase) {
     window = view.getUint64(bitsRead >>> 3, Endian.little);
     shift = bitsRead & 7;
@@ -1342,7 +3395,366 @@ bool readBenchMixed(BenchMixed value, ByteData view, int numBits) {
   v = (window >>> shift) & 0xffff;
   bitsRead += 16;
   lo |= v << 32;
-  value.timestamp = lo;
+  value.frameTick = lo;
+  if (bitsRead >>> 3 < tailBase) {
+    window = view.getUint64(bitsRead >>> 3, Endian.little);
+    shift = bitsRead & 7;
+  } else {
+    window = tailWord;
+    shift = bitsRead - tailBase * 8;
+  }
+  v = (window >>> shift) & 0xffffff;
+  bitsRead += 24;
+  if (v > 16776960) {
+    return false; // a smuggled offset is refused
+  }
+  value.serverTime = v;
+  if (bitsRead + 3 > numBits) {
+    return false;
+  }
+  if (bitsRead >>> 3 < tailBase) {
+    window = view.getUint64(bitsRead >>> 3, Endian.little);
+    shift = bitsRead & 7;
+  } else {
+    window = tailWord;
+    shift = bitsRead - tailBase * 8;
+  }
+  v = (window >>> shift) & 0x7;
+  bitsRead += 3;
+  value.entitiesCount = v + 1;
+  if (bitsRead + value.entitiesCount * 135 > numBits) {
+    return false;
+  }
+  for (var i0 = 0; i0 < value.entitiesCount; i0++) {
+    final e0 = value.entities[i0];
+    if (bitsRead >>> 3 < tailBase) {
+      window = view.getUint64(bitsRead >>> 3, Endian.little);
+      shift = bitsRead & 7;
+    } else {
+      window = tailWord;
+      shift = bitsRead - tailBase * 8;
+    }
+    v = (window >>> shift) & 0xfff;
+    bitsRead += 12;
+    e0.entityId = v;
+    if (bitsRead >>> 3 < tailBase) {
+      window = view.getUint64(bitsRead >>> 3, Endian.little);
+      shift = bitsRead & 7;
+    } else {
+      window = tailWord;
+      shift = bitsRead - tailBase * 8;
+    }
+    v = (window >>> shift) & 0x7fff;
+    bitsRead += 15;
+    if (v > 32766) {
+      return false; // a smuggled offset is refused
+    }
+    e0.posX = -16383 + v;
+    if (bitsRead >>> 3 < tailBase) {
+      window = view.getUint64(bitsRead >>> 3, Endian.little);
+      shift = bitsRead & 7;
+    } else {
+      window = tailWord;
+      shift = bitsRead - tailBase * 8;
+    }
+    v = (window >>> shift) & 0x7fff;
+    bitsRead += 15;
+    if (v > 32766) {
+      return false; // a smuggled offset is refused
+    }
+    e0.posY = -16383 + v;
+    if (bitsRead >>> 3 < tailBase) {
+      window = view.getUint64(bitsRead >>> 3, Endian.little);
+      shift = bitsRead & 7;
+    } else {
+      window = tailWord;
+      shift = bitsRead - tailBase * 8;
+    }
+    v = (window >>> shift) & 0x7fff;
+    bitsRead += 15;
+    if (v > 32766) {
+      return false; // a smuggled offset is refused
+    }
+    e0.posZ = -16383 + v;
+    if (bitsRead >>> 3 < tailBase) {
+      window = view.getUint64(bitsRead >>> 3, Endian.little);
+      shift = bitsRead & 7;
+    } else {
+      window = tailWord;
+      shift = bitsRead - tailBase * 8;
+    }
+    v = (window >>> shift) & 0x1ff;
+    bitsRead += 9;
+    e0.yaw = v;
+    if (bitsRead >>> 3 < tailBase) {
+      window = view.getUint64(bitsRead >>> 3, Endian.little);
+      shift = bitsRead & 7;
+    } else {
+      window = tailWord;
+      shift = bitsRead - tailBase * 8;
+    }
+    v = (window >>> shift) & 0x1ff;
+    bitsRead += 9;
+    e0.pitch = v;
+    if (bitsRead >>> 3 < tailBase) {
+      window = view.getUint64(bitsRead >>> 3, Endian.little);
+      shift = bitsRead & 7;
+    } else {
+      window = tailWord;
+      shift = bitsRead - tailBase * 8;
+    }
+    v = (window >>> shift) & 0xfff;
+    bitsRead += 12;
+    e0.velX = -2048 + v;
+    if (bitsRead >>> 3 < tailBase) {
+      window = view.getUint64(bitsRead >>> 3, Endian.little);
+      shift = bitsRead & 7;
+    } else {
+      window = tailWord;
+      shift = bitsRead - tailBase * 8;
+    }
+    v = (window >>> shift) & 0xfff;
+    bitsRead += 12;
+    e0.velY = -2048 + v;
+    if (bitsRead >>> 3 < tailBase) {
+      window = view.getUint64(bitsRead >>> 3, Endian.little);
+      shift = bitsRead & 7;
+    } else {
+      window = tailWord;
+      shift = bitsRead - tailBase * 8;
+    }
+    v = (window >>> shift) & 0xfff;
+    bitsRead += 12;
+    e0.velZ = -2048 + v;
+    if (bitsRead >>> 3 < tailBase) {
+      window = view.getUint64(bitsRead >>> 3, Endian.little);
+      shift = bitsRead & 7;
+    } else {
+      window = tailWord;
+      shift = bitsRead - tailBase * 8;
+    }
+    v = (window >>> shift) & 0x3ff;
+    bitsRead += 10;
+    if (v > 1000) {
+      return false; // a smuggled offset is refused
+    }
+    e0.health = v;
+    if (bitsRead >>> 3 < tailBase) {
+      window = view.getUint64(bitsRead >>> 3, Endian.little);
+      shift = bitsRead & 7;
+    } else {
+      window = tailWord;
+      shift = bitsRead - tailBase * 8;
+    }
+    v = (window >>> shift) & 0xf;
+    bitsRead += 4;
+    e0.weapon = v;
+    if (bitsRead >>> 3 < tailBase) {
+      window = view.getUint64(bitsRead >>> 3, Endian.little);
+      shift = bitsRead & 7;
+    } else {
+      window = tailWord;
+      shift = bitsRead - tailBase * 8;
+    }
+    v = (window >>> shift) & 0xff;
+    bitsRead += 8;
+    e0.damage = v;
+    if (bitsRead >>> 3 < tailBase) {
+      window = view.getUint64(bitsRead >>> 3, Endian.little);
+      shift = bitsRead & 7;
+    } else {
+      window = tailWord;
+      shift = bitsRead - tailBase * 8;
+    }
+    v = (window >>> shift) & 0x1;
+    bitsRead += 1;
+    e0.moving = v != 0;
+    if (bitsRead >>> 3 < tailBase) {
+      window = view.getUint64(bitsRead >>> 3, Endian.little);
+      shift = bitsRead & 7;
+    } else {
+      window = tailWord;
+      shift = bitsRead - tailBase * 8;
+    }
+    v = (window >>> shift) & 0x1;
+    bitsRead += 1;
+    e0.firing = v != 0;
+  }
+  if (bitsRead + 7 > numBits) {
+    return false;
+  }
+  if (bitsRead >>> 3 < tailBase) {
+    window = view.getUint64(bitsRead >>> 3, Endian.little);
+    shift = bitsRead & 7;
+  } else {
+    window = tailWord;
+    shift = bitsRead - tailBase * 8;
+  }
+  v = (window >>> shift) & 0x7f;
+  bitsRead += 7;
+  if (v > 80) {
+    return false; // the count guards the loop — reject, never clamp
+  }
+  value.statsCount = v;
+  if (bitsRead + value.statsCount * 18 > numBits) {
+    return false;
+  }
+  for (var i0 = 0; i0 < value.statsCount; i0++) {
+    final e0 = value.stats[i0];
+    if (bitsRead >>> 3 < tailBase) {
+      window = view.getUint64(bitsRead >>> 3, Endian.little);
+      shift = bitsRead & 7;
+    } else {
+      window = tailWord;
+      shift = bitsRead - tailBase * 8;
+    }
+    v = (window >>> shift) & 0xff;
+    bitsRead += 8;
+    e0.statId = v;
+    if (bitsRead >>> 3 < tailBase) {
+      window = view.getUint64(bitsRead >>> 3, Endian.little);
+      shift = bitsRead & 7;
+    } else {
+      window = tailWord;
+      shift = bitsRead - tailBase * 8;
+    }
+    v = (window >>> shift) & 0x3ff;
+    bitsRead += 10;
+    e0.delta = -512 + v;
+  }
+  if (bitsRead + 2 > numBits) {
+    return false;
+  }
+  if (bitsRead >>> 3 < tailBase) {
+    window = view.getUint64(bitsRead >>> 3, Endian.little);
+    shift = bitsRead & 7;
+  } else {
+    window = tailWord;
+    shift = bitsRead - tailBase * 8;
+  }
+  v = (window >>> shift) & 0x3;
+  bitsRead += 2;
+  value.gameEvent.type = v;
+  switch (value.gameEvent.type) {
+    case 1:
+      value.gameEvent.hit.targetId = 0;
+      value.gameEvent.hit.damage = 0;
+      value.gameEvent.hit.hitKind = 0;
+      value.gameEvent.hit.crit = false;
+      if (bitsRead + 28 > numBits) {
+        return false;
+      }
+      if (bitsRead >>> 3 < tailBase) {
+        window = view.getUint64(bitsRead >>> 3, Endian.little);
+        shift = bitsRead & 7;
+      } else {
+        window = tailWord;
+        shift = bitsRead - tailBase * 8;
+      }
+      v = (window >>> shift) & 0xfff;
+      bitsRead += 12;
+      value.gameEvent.hit.targetId = v;
+      if (bitsRead >>> 3 < tailBase) {
+        window = view.getUint64(bitsRead >>> 3, Endian.little);
+        shift = bitsRead & 7;
+      } else {
+        window = tailWord;
+        shift = bitsRead - tailBase * 8;
+      }
+      v = (window >>> shift) & 0xfff;
+      bitsRead += 12;
+      value.gameEvent.hit.damage = v;
+      if (bitsRead >>> 3 < tailBase) {
+        window = view.getUint64(bitsRead >>> 3, Endian.little);
+        shift = bitsRead & 7;
+      } else {
+        window = tailWord;
+        shift = bitsRead - tailBase * 8;
+      }
+      v = (window >>> shift) & 0x7;
+      bitsRead += 3;
+      value.gameEvent.hit.hitKind = v;
+      if (bitsRead >>> 3 < tailBase) {
+        window = view.getUint64(bitsRead >>> 3, Endian.little);
+        shift = bitsRead & 7;
+      } else {
+        window = tailWord;
+        shift = bitsRead - tailBase * 8;
+      }
+      v = (window >>> shift) & 0x1;
+      bitsRead += 1;
+      value.gameEvent.hit.crit = v != 0;
+    case 2:
+      value.gameEvent.chat.channel = 0;
+      value.gameEvent.chat.speaker = 0;
+      if (bitsRead + 14 > numBits) {
+        return false;
+      }
+      if (bitsRead >>> 3 < tailBase) {
+        window = view.getUint64(bitsRead >>> 3, Endian.little);
+        shift = bitsRead & 7;
+      } else {
+        window = tailWord;
+        shift = bitsRead - tailBase * 8;
+      }
+      v = (window >>> shift) & 0x3;
+      bitsRead += 2;
+      value.gameEvent.chat.channel = v;
+      if (bitsRead >>> 3 < tailBase) {
+        window = view.getUint64(bitsRead >>> 3, Endian.little);
+        shift = bitsRead & 7;
+      } else {
+        window = tailWord;
+        shift = bitsRead - tailBase * 8;
+      }
+      v = (window >>> shift) & 0xfff;
+      bitsRead += 12;
+      value.gameEvent.chat.speaker = v;
+    case 3:
+      value.gameEvent.pickup.itemId = 0;
+      value.gameEvent.pickup.amount = 0;
+      if (bitsRead + 18 > numBits) {
+        return false;
+      }
+      if (bitsRead >>> 3 < tailBase) {
+        window = view.getUint64(bitsRead >>> 3, Endian.little);
+        shift = bitsRead & 7;
+      } else {
+        window = tailWord;
+        shift = bitsRead - tailBase * 8;
+      }
+      v = (window >>> shift) & 0x3ff;
+      bitsRead += 10;
+      value.gameEvent.pickup.itemId = v;
+      if (bitsRead >>> 3 < tailBase) {
+        window = view.getUint64(bitsRead >>> 3, Endian.little);
+        shift = bitsRead & 7;
+      } else {
+        window = tailWord;
+        shift = bitsRead - tailBase * 8;
+      }
+      v = (window >>> shift) & 0xff;
+      bitsRead += 8;
+      value.gameEvent.pickup.amount = v;
+  }
+  if (bitsRead + 32 > numBits) {
+    return false;
+  }
+  for (var i0 = 0; i0 < 4; i0++) {
+    if (bitsRead >>> 3 < tailBase) {
+      window = view.getUint64(bitsRead >>> 3, Endian.little);
+      shift = bitsRead & 7;
+    } else {
+      window = tailWord;
+      shift = bitsRead - tailBase * 8;
+    }
+    v = (window >>> shift) & 0xff;
+    bitsRead += 8;
+    value.loadout[i0] = v;
+  }
+  if (bitsRead + 4 > numBits) {
+    return false;
+  }
   if (bitsRead >>> 3 < tailBase) {
     window = view.getUint64(bitsRead >>> 3, Endian.little);
     shift = bitsRead & 7;
@@ -1352,10 +3764,366 @@ bool readBenchMixed(BenchMixed value, ByteData view, int numBits) {
   }
   v = (window >>> shift) & 0xf;
   bitsRead += 4;
-  value.weapon = v;
+  value.playerNameLength = v;
+  {
+    final pad = bitsRead & 7;
+    if (pad != 0) {
+      if (bitsRead + (8 - pad) > numBits) {
+        return false;
+      }
+      if (view.getUint8(bitsRead >>> 3) >>> pad != 0) {
+        return false; // nonzero padding is refused (SPEC §4.3)
+      }
+      bitsRead += 8 - pad;
+    }
+  }
+  if (bitsRead + value.playerNameLength * 8 > numBits) {
+    return false;
+  }
+  {
+    final base = bitsRead >>> 3;
+    for (var i0 = 0; i0 < value.playerNameLength; i0++) {
+      value.playerName[i0] = view.getUint8(base + i0);
+    }
+  }
+  bitsRead += value.playerNameLength * 8;
+  for (var i0 = 0; i0 < value.playerNameLength; i0++) {
+    if (value.playerName[i0] == 0) {
+      return false; // an interior null is content the read refuses (SPEC §4.7)
+    }
+  }
+  if (bitsRead + 5 > numBits) {
+    return false;
+  }
+  if (bitsRead >>> 3 < tailBase) {
+    window = view.getUint64(bitsRead >>> 3, Endian.little);
+    shift = bitsRead & 7;
+  } else {
+    window = tailWord;
+    shift = bitsRead - tailBase * 8;
+  }
+  v = (window >>> shift) & 0x1f;
+  bitsRead += 5;
+  if (v > 16) {
+    return false; // the length guards the slice — reject, never clamp
+  }
+  value.payloadLength = v;
+  {
+    final pad = bitsRead & 7;
+    if (pad != 0) {
+      if (bitsRead + (8 - pad) > numBits) {
+        return false;
+      }
+      if (view.getUint8(bitsRead >>> 3) >>> pad != 0) {
+        return false; // nonzero padding is refused (SPEC §4.3)
+      }
+      bitsRead += 8 - pad;
+    }
+  }
+  if (bitsRead + value.payloadLength * 8 > numBits) {
+    return false;
+  }
+  {
+    final base = bitsRead >>> 3;
+    for (var i0 = 0; i0 < value.payloadLength; i0++) {
+      value.payload[i0] = view.getUint8(base + i0);
+    }
+  }
+  bitsRead += value.payloadLength * 8;
+  if (bitsRead + 370 > numBits) {
+    return false;
+  }
+  if (bitsRead >>> 3 < tailBase) {
+    window = view.getUint64(bitsRead >>> 3, Endian.little);
+    shift = bitsRead & 7;
+  } else {
+    window = tailWord;
+    shift = bitsRead - tailBase * 8;
+  }
+  v = (window >>> shift) & 0xff;
+  bitsRead += 8;
+  if (v > 200) {
+    return false; // headroom above the quantum count is refused
+  }
+  value.aimX = _fround(
+    _fround(_fround(_fround(v.toDouble()) / 200.0) * 2.0) + -1.0,
+  );
+  if (bitsRead >>> 3 < tailBase) {
+    window = view.getUint64(bitsRead >>> 3, Endian.little);
+    shift = bitsRead & 7;
+  } else {
+    window = tailWord;
+    shift = bitsRead - tailBase * 8;
+  }
+  v = (window >>> shift) & 0xff;
+  bitsRead += 8;
+  if (v > 200) {
+    return false; // headroom above the quantum count is refused
+  }
+  value.aimY = _fround(
+    _fround(_fround(_fround(v.toDouble()) / 200.0) * 2.0) + -1.0,
+  );
+  if (bitsRead >>> 3 < tailBase) {
+    window = view.getUint64(bitsRead >>> 3, Endian.little);
+    shift = bitsRead & 7;
+  } else {
+    window = tailWord;
+    shift = bitsRead - tailBase * 8;
+  }
+  v = (window >>> shift) & 0xff;
+  bitsRead += 8;
+  if (v > 200) {
+    return false; // headroom above the quantum count is refused
+  }
+  value.aimZ = _fround(
+    _fround(_fround(_fround(v.toDouble()) / 200.0) * 2.0) + -1.0,
+  );
+  if (bitsRead >>> 3 < tailBase) {
+    window = view.getUint64(bitsRead >>> 3, Endian.little);
+    shift = bitsRead & 7;
+  } else {
+    window = tailWord;
+    shift = bitsRead - tailBase * 8;
+  }
+  v = (window >>> shift) & 0xffffffff;
+  bitsRead += 32;
+  value.recoil = _doubleFromFloat32Bits(v);
+  if (bitsRead >>> 3 < tailBase) {
+    window = view.getUint64(bitsRead >>> 3, Endian.little);
+    shift = bitsRead & 7;
+  } else {
+    window = tailWord;
+    shift = bitsRead - tailBase * 8;
+  }
+  v = (window >>> shift) & 0xffffffff;
+  bitsRead += 32;
+  lo = v;
+  if (bitsRead >>> 3 < tailBase) {
+    window = view.getUint64(bitsRead >>> 3, Endian.little);
+    shift = bitsRead & 7;
+  } else {
+    window = tailWord;
+    shift = bitsRead - tailBase * 8;
+  }
+  v = (window >>> shift) & 0xffffffff;
+  bitsRead += 32;
+  lo |= v << 32;
+  value.drift = _doubleFromFloat64Bits(lo);
+  if (bitsRead >>> 3 < tailBase) {
+    window = view.getUint64(bitsRead >>> 3, Endian.little);
+    shift = bitsRead & 7;
+  } else {
+    window = tailWord;
+    shift = bitsRead - tailBase * 8;
+  }
+  v = (window >>> shift) & 0xffffffff;
+  bitsRead += 32;
+  lo = v;
+  if (bitsRead >>> 3 < tailBase) {
+    window = view.getUint64(bitsRead >>> 3, Endian.little);
+    shift = bitsRead & 7;
+  } else {
+    window = tailWord;
+    shift = bitsRead - tailBase * 8;
+  }
+  v = (window >>> shift) & 0xffffffff;
+  bitsRead += 32;
+  lo |= v << 32;
+  if (bitsRead >>> 3 < tailBase) {
+    window = view.getUint64(bitsRead >>> 3, Endian.little);
+    shift = bitsRead & 7;
+  } else {
+    window = tailWord;
+    shift = bitsRead - tailBase * 8;
+  }
+  v = (window >>> shift) & 0xffffffff;
+  bitsRead += 32;
+  hi = v;
+  if (bitsRead >>> 3 < tailBase) {
+    window = view.getUint64(bitsRead >>> 3, Endian.little);
+    shift = bitsRead & 7;
+  } else {
+    window = tailWord;
+    shift = bitsRead - tailBase * 8;
+  }
+  v = (window >>> shift) & 0xffffffff;
+  bitsRead += 32;
+  hi |= v << 32;
+  value.wideKey = UInt128(hi, lo);
+  if (bitsRead >>> 3 < tailBase) {
+    window = view.getUint64(bitsRead >>> 3, Endian.little);
+    shift = bitsRead & 7;
+  } else {
+    window = tailWord;
+    shift = bitsRead - tailBase * 8;
+  }
+  v = (window >>> shift) & 0xffffffff;
+  bitsRead += 32;
+  lo = v;
+  if (bitsRead >>> 3 < tailBase) {
+    window = view.getUint64(bitsRead >>> 3, Endian.little);
+    shift = bitsRead & 7;
+  } else {
+    window = tailWord;
+    shift = bitsRead - tailBase * 8;
+  }
+  v = (window >>> shift) & 0xffffffff;
+  bitsRead += 32;
+  lo |= v << 32;
+  if (bitsRead >>> 3 < tailBase) {
+    window = view.getUint64(bitsRead >>> 3, Endian.little);
+    shift = bitsRead & 7;
+  } else {
+    window = tailWord;
+    shift = bitsRead - tailBase * 8;
+  }
+  v = (window >>> shift) & 0xffffffff;
+  bitsRead += 32;
+  hi = v;
+  if (bitsRead >>> 3 < tailBase) {
+    window = view.getUint64(bitsRead >>> 3, Endian.little);
+    shift = bitsRead & 7;
+  } else {
+    window = tailWord;
+    shift = bitsRead - tailBase * 8;
+  }
+  v = (window >>> shift) & 0x3f;
+  bitsRead += 6;
+  hi |= v << 32;
+  {
+    const diff = UInt128(137438953472, 0);
+    if (diff < UInt128(hi, lo)) {
+      return false; // a smuggled offset is refused
+    }
+  }
+  {
+    const min = UInt128(0xfffffff000000000, 0);
+    value.flux = (min + UInt128(hi, lo)).toSigned();
+  }
+  if (bitsRead >>> 3 < tailBase) {
+    window = view.getUint64(bitsRead >>> 3, Endian.little);
+    shift = bitsRead & 7;
+  } else {
+    window = tailWord;
+    shift = bitsRead - tailBase * 8;
+  }
+  v = (window >>> shift) & 0xffff;
+  bitsRead += 16;
+  if (v > 64000) {
+    return false; // a smuggled offset is refused
+  }
+  value.ping = v;
+  if (bitsRead >>> 3 < tailBase) {
+    window = view.getUint64(bitsRead >>> 3, Endian.little);
+    shift = bitsRead & 7;
+  } else {
+    window = tailWord;
+    shift = bitsRead - tailBase * 8;
+  }
+  v = (window >>> shift) & 0xf;
+  bitsRead += 4;
+  if (v != 0) {
+    return false; // reserved bits must read zero (SPEC §4.3)
+  }
+  {
+    final pad = bitsRead & 7;
+    if (pad != 0) {
+      if (bitsRead + (8 - pad) > numBits) {
+        return false;
+      }
+      if (view.getUint8(bitsRead >>> 3) >>> pad != 0) {
+        return false; // nonzero padding is refused (SPEC §4.3)
+      }
+      bitsRead += 8 - pad;
+    }
+  }
+  if (bitsRead + 25 > numBits) {
+    return false;
+  }
+  if (bitsRead >>> 3 < tailBase) {
+    window = view.getUint64(bitsRead >>> 3, Endian.little);
+    shift = bitsRead & 7;
+  } else {
+    window = tailWord;
+    shift = bitsRead - tailBase * 8;
+  }
+  v = (window >>> shift) & 0xffffff;
+  bitsRead += 24;
+  value.crcHint = v;
+  if (bitsRead >>> 3 < tailBase) {
+    window = view.getUint64(bitsRead >>> 3, Endian.little);
+    shift = bitsRead & 7;
+  } else {
+    window = tailWord;
+    shift = bitsRead - tailBase * 8;
+  }
+  v = (window >>> shift) & 0x1;
+  bitsRead += 1;
+  value.hasExtra = v != 0;
+  if (value.hasExtra) {
+    if (bitsRead + 8 > numBits) {
+      return false;
+    }
+    if (bitsRead >>> 3 < tailBase) {
+      window = view.getUint64(bitsRead >>> 3, Endian.little);
+      shift = bitsRead & 7;
+    } else {
+      window = tailWord;
+      shift = bitsRead - tailBase * 8;
+    }
+    v = (window >>> shift) & 0xff;
+    bitsRead += 8;
+    value.extra = v;
+    value.idleTicks = 0;
+  } else {
+    if (bitsRead + 4 > numBits) {
+      return false;
+    }
+    if (bitsRead >>> 3 < tailBase) {
+      window = view.getUint64(bitsRead >>> 3, Endian.little);
+      shift = bitsRead & 7;
+    } else {
+      window = tailWord;
+      shift = bitsRead - tailBase * 8;
+    }
+    v = (window >>> shift) & 0xf;
+    bitsRead += 4;
+    value.idleTicks = v;
+    value.extra = 0;
+  }
   return true;
 }
 
 // measureBenchMixed is the exact wire bits writeBenchMixed would produce for value —
 // trusted like the writer; static runs fold to literals at generation time.
-int measureBenchMixed(BenchMixed value) => 168;
+int measureBenchMixed(BenchMixed value) {
+  var bits = 0;
+  bits += 356;
+  bits += value.entitiesCount * 135;
+  bits += 7;
+  bits += value.statsCount * 18;
+  bits += 2;
+  switch (value.gameEvent.type) {
+    case 1:
+      bits += 28;
+    case 2:
+      bits += 14;
+    case 3:
+      bits += 18;
+  }
+  bits += 36;
+  bits += (8 - (bits & 7)) & 7;
+  bits += value.playerNameLength * 8;
+  bits += 5;
+  bits += (8 - (bits & 7)) & 7;
+  bits += value.payloadLength * 8;
+  bits += 370;
+  bits += (8 - (bits & 7)) & 7;
+  bits += 25;
+  if (value.hasExtra) {
+    bits += 8;
+  } else {
+    bits += 4;
+  }
+  return bits;
+}

@@ -173,8 +173,20 @@ counts fixed and identical across all six languages) and family `bits`:
 | bench_packet | rt     | bench_packet     | the serialize/bench.cpp stream packet (49 B)       |
 | bench_ints   | rt     | bench_ints       | 10 ranged ints (14 B)                              |
 | bench_bits   | rt     | bench_bits       | 8 raw bit fields incl. one 48-bit (20 B)           |
-| bench_mixed  | rt     | bench_mixed      | a generated-looking packet, hand-written (21 B)    |
+| bench_mixed  | rt     | bench_mixed      | **THE canonical benchmark** (#184): every construct the schema language expresses, in one representative game message, integers carrying 91.87% of the wire bits (438 B) |
 | bitpacker    | bits   | — (read-back verified in setup) | 16-width table over a 64 KiB buffer, 24576 passes/run (§1.4) |
+
+**bench_mixed is THE headline shape** (owner's ruling, issue #184: *"I'd
+rather we just have ONE good benchmark we can apply to all serialize and
+schema implementations"*). bench_packet / bench_ints / bits stay as full-sweep
+diagnostic stress rows and are out of the headline story. Its definition is
+`bench/corpus/Bench.schema`, and its weighting law — integers carry at least
+90% of the wire bits — is a GATE: `bench/corpus/budget_test.go` computes the
+share from the schema and fails the build below the floor, printing the full
+bit accounting. Two serialize.h operations are named as NOT expressible in
+schema v1 rather than silently skipped: `serialize_wstring` and
+`serialize_int_relative`, both deferred with their wire already decided
+(SPEC §4.10).
 
 The four Bench shapes ALSO ride as **family `gen`** rows in the five native
 runners (issue #177): the same shapes measured through the GENERATED code

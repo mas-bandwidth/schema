@@ -138,46 +138,276 @@ static partial class Program
         return true;
     }
 
+    // BenchMixed by hand (issue #184): every serialize runtime operation the
+    // schema language expresses, in the order the generated code emits them.
+    // The §1.5 oracle gate byte-compares this against the generated golden.
+    internal sealed class RtMixedEntity
+    {
+        public uint EntityId;
+        public int PosX, PosY, PosZ;
+        public uint Yaw, Pitch;
+        public int VelX, VelY, VelZ;
+        public int Health;
+        public int Weapon;   // the enum wire
+        public uint Damage;  // the flags wire, 8 bits
+        public bool Moving, Firing;
+    }
+
+    internal sealed class RtMixedStat
+    {
+        public uint StatId;
+        public int Delta;
+    }
+
     internal sealed class RtBenchMixed
     {
-        public int Sequence;
-        public uint AckBits, EntityId;
-        public int PosX, PosY, PosZ;
-        public uint Yaw;
-        public bool Moving, Firing;
-        public ulong Timestamp;
-        public int Weapon;
+        public uint Magic = 0xC0DE;
+        public uint Sequence;
+        public int AckSequence;
+        public uint AckBits;
+        public ulong SessionId;
+        public uint ClientId;
+        public ulong Nonce;
+        public long WorldTime;
+        public ulong FrameTick;
+        public int ServerTime;          // raw Q24.8
+        public int EntitiesCount;
+        public readonly RtMixedEntity[] Entities = NewEntities();
+        public int StatsCount;
+        public readonly RtMixedStat[] Stats = NewStats();
+        public int EventType;           // the union tag: 0 = None
+        public uint HitTargetId;
+        public int HitDamage, HitKind;
+        public bool HitCrit;
+        public int ChatChannel;
+        public uint ChatSpeaker;
+        public uint PickupItemId;
+        public int PickupAmount;
+        public readonly byte[] Loadout = new byte[4];
+        public int PlayerNameLength;
+        public readonly byte[] PlayerName = new byte[15];
+        public int PayloadLength;
+        public readonly byte[] Payload = new byte[16];
+        public float AimX, AimY, AimZ;
+        public float Recoil;
+        public double Drift;
+        public UInt128Value WideKey;
+        public Int128Value Flux;
+        public ushort Ping;             // raw UQ8.8
+        public uint ReservedBits;
+        public uint CrcHint;
+        public bool HasExtra = true;
+        public int Extra, IdleTicks;
+
+        static RtMixedEntity[] NewEntities()
+        {
+            RtMixedEntity[] a = new RtMixedEntity[8];
+            for (int i = 0; i < 8; i++) { a[i] = new RtMixedEntity(); }
+            return a;
+        }
+
+        static RtMixedStat[] NewStats()
+        {
+            RtMixedStat[] a = new RtMixedStat[80];
+            for (int i = 0; i < 80; i++) { a[i] = new RtMixedStat(); }
+            return a;
+        }
     }
+
+    // the ±2^100 band flux rides in, spelled the way the generated C# spells it
+    static readonly Int128Value RtFluxMin = new Int128Value(0xfffffff000000000ul, 0x0ul);
+    static readonly Int128Value RtFluxMax = new Int128Value(0x1000000000ul, 0x0ul);
 
     static bool WriteRtMixed(WriteStream s, RtBenchMixed f)
     {
-        if (!s.SerializeInt(ref f.Sequence, 0, 65535)) { return false; }
+        if (!s.SerializeBits(ref f.Magic, 16)) { return false; }
+        if (!s.SerializeBits(ref f.Sequence, 16)) { return false; }
+        if (!s.SerializeInt(ref f.AckSequence, 0, 65535)) { return false; }
         if (!s.SerializeBits(ref f.AckBits, 32)) { return false; }
-        if (!s.SerializeBits(ref f.EntityId, 12)) { return false; }
-        if (!s.SerializeInt(ref f.PosX, -16384, 16383)) { return false; }
-        if (!s.SerializeInt(ref f.PosY, -16384, 16383)) { return false; }
-        if (!s.SerializeInt(ref f.PosZ, -16384, 16383)) { return false; }
-        if (!s.SerializeBits(ref f.Yaw, 9)) { return false; }
-        if (!s.SerializeBool(ref f.Moving)) { return false; }
-        if (!s.SerializeBool(ref f.Firing)) { return false; }
-        if (!s.SerializeBits64(ref f.Timestamp, 48)) { return false; }
-        if (!s.SerializeInt(ref f.Weapon, 0, 15)) { return false; }
+        if (!s.SerializeUInt64(ref f.SessionId)) { return false; }
+        if (!s.SerializeUInt32(ref f.ClientId)) { return false; }
+        // the full-unsigned ranged path is width-computed raw bits
+        if (!s.SerializeBits64(ref f.Nonce, 64)) { return false; }
+        if (!s.SerializeInt64(ref f.WorldTime, -1000000000000L, 1000000000000L)) { return false; }
+        if (!s.SerializeBits64(ref f.FrameTick, 48)) { return false; }
+        if (!s.SerializeFixed(ref f.ServerTime, 24, 8, 0, 65535)) { return false; }
+
+        if (!s.SerializeInt(ref f.EntitiesCount, 1, 8)) { return false; }
+        for (int i = 0; i < f.EntitiesCount; i++)
+        {
+            RtMixedEntity e = f.Entities[i];
+            if (!s.SerializeBits(ref e.EntityId, 12)) { return false; }
+            if (!s.SerializeInt(ref e.PosX, -16383, 16383)) { return false; }
+            if (!s.SerializeInt(ref e.PosY, -16383, 16383)) { return false; }
+            if (!s.SerializeInt(ref e.PosZ, -16383, 16383)) { return false; }
+            if (!s.SerializeBits(ref e.Yaw, 9)) { return false; }
+            if (!s.SerializeBits(ref e.Pitch, 9)) { return false; }
+            if (!s.SerializeInt(ref e.VelX, -2048, 2047)) { return false; }
+            if (!s.SerializeInt(ref e.VelY, -2048, 2047)) { return false; }
+            if (!s.SerializeInt(ref e.VelZ, -2048, 2047)) { return false; }
+            if (!s.SerializeInt(ref e.Health, 0, 1000)) { return false; }
+            if (!s.SerializeInt(ref e.Weapon, 0, 15)) { return false; }
+            if (!s.SerializeBits(ref e.Damage, 8)) { return false; }
+            if (!s.SerializeBool(ref e.Moving)) { return false; }
+            if (!s.SerializeBool(ref e.Firing)) { return false; }
+        }
+
+        if (!s.SerializeInt(ref f.StatsCount, 0, 80)) { return false; }
+        for (int i = 0; i < f.StatsCount; i++)
+        {
+            RtMixedStat st = f.Stats[i];
+            if (!s.SerializeBits(ref st.StatId, 8)) { return false; }
+            if (!s.SerializeInt(ref st.Delta, -512, 511)) { return false; }
+        }
+
+        if (!s.SerializeInt(ref f.EventType, 0, 3)) { return false; }
+        if (f.EventType == 1)
+        {
+            if (!s.SerializeBits(ref f.HitTargetId, 12)) { return false; }
+            if (!s.SerializeInt(ref f.HitDamage, 0, 4095)) { return false; }
+            if (!s.SerializeInt(ref f.HitKind, 0, 7)) { return false; }
+            if (!s.SerializeBool(ref f.HitCrit)) { return false; }
+        }
+        else if (f.EventType == 2)
+        {
+            if (!s.SerializeInt(ref f.ChatChannel, 0, 3)) { return false; }
+            if (!s.SerializeBits(ref f.ChatSpeaker, 12)) { return false; }
+        }
+        else if (f.EventType == 3)
+        {
+            if (!s.SerializeBits(ref f.PickupItemId, 10)) { return false; }
+            if (!s.SerializeInt(ref f.PickupAmount, 0, 255)) { return false; }
+        }
+
+        for (int i = 0; i < 4; i++)
+        {
+            if (!s.SerializeByte(ref f.Loadout[i])) { return false; }
+        }
+
+        // string(15) and bytes(16) ride as their §4.3 decomposition in every rt
+        // leg — see bench/cpp/bench_main.cpp for the reasoning
+        if (!s.SerializeInt(ref f.PlayerNameLength, 0, 15)) { return false; }
+        if (!s.SerializeBytes(f.PlayerName.AsSpan(0, f.PlayerNameLength))) { return false; }
+        if (!s.SerializeInt(ref f.PayloadLength, 0, 16)) { return false; }
+        if (!s.SerializeBytes(f.Payload.AsSpan(0, f.PayloadLength))) { return false; }
+
+        if (!s.SerializeCompressedFloat(ref f.AimX, -1.0f, 1.0f, 0.01f)) { return false; }
+        if (!s.SerializeCompressedFloat(ref f.AimY, -1.0f, 1.0f, 0.01f)) { return false; }
+        if (!s.SerializeCompressedFloat(ref f.AimZ, -1.0f, 1.0f, 0.01f)) { return false; }
+        if (!s.SerializeFloat(ref f.Recoil)) { return false; }
+        if (!s.SerializeDouble(ref f.Drift)) { return false; }
+        if (!s.SerializeUInt128(ref f.WideKey)) { return false; }
+        if (!s.SerializeInt128(ref f.Flux, RtFluxMin, RtFluxMax)) { return false; }
+        if (!s.SerializeFixed(ref f.Ping, 8, 8, 0, 250)) { return false; }
+
+        if (!s.SerializeBits(ref f.ReservedBits, 4)) { return false; }
+        if (!s.SerializeAlign()) { return false; }
+        if (!s.SerializeBits(ref f.CrcHint, 24)) { return false; }
+        if (!s.SerializeBool(ref f.HasExtra)) { return false; }
+        if (f.HasExtra)
+        {
+            if (!s.SerializeInt(ref f.Extra, 0, 255)) { return false; }
+        }
+        else
+        {
+            if (!s.SerializeInt(ref f.IdleTicks, 0, 15)) { return false; }
+        }
         return true;
     }
 
     static bool ReadRtMixed(ReadStream s, RtBenchMixed f)
     {
-        if (!s.SerializeInt(ref f.Sequence, 0, 65535)) { return false; }
+        if (!s.SerializeBits(ref f.Magic, 16)) { return false; }
+        if (f.Magic != 0xC0DE) { return false; }   // const(0xC0DE, 16): a read REJECTS any other value
+        if (!s.SerializeBits(ref f.Sequence, 16)) { return false; }
+        if (!s.SerializeInt(ref f.AckSequence, 0, 65535)) { return false; }
         if (!s.SerializeBits(ref f.AckBits, 32)) { return false; }
-        if (!s.SerializeBits(ref f.EntityId, 12)) { return false; }
-        if (!s.SerializeInt(ref f.PosX, -16384, 16383)) { return false; }
-        if (!s.SerializeInt(ref f.PosY, -16384, 16383)) { return false; }
-        if (!s.SerializeInt(ref f.PosZ, -16384, 16383)) { return false; }
-        if (!s.SerializeBits(ref f.Yaw, 9)) { return false; }
-        if (!s.SerializeBool(ref f.Moving)) { return false; }
-        if (!s.SerializeBool(ref f.Firing)) { return false; }
-        if (!s.SerializeBits64(ref f.Timestamp, 48)) { return false; }
-        if (!s.SerializeInt(ref f.Weapon, 0, 15)) { return false; }
+        if (!s.SerializeUInt64(ref f.SessionId)) { return false; }
+        if (!s.SerializeUInt32(ref f.ClientId)) { return false; }
+        if (!s.SerializeBits64(ref f.Nonce, 64)) { return false; }
+        if (!s.SerializeInt64(ref f.WorldTime, -1000000000000L, 1000000000000L)) { return false; }
+        if (!s.SerializeBits64(ref f.FrameTick, 48)) { return false; }
+        if (!s.SerializeFixed(ref f.ServerTime, 24, 8, 0, 65535)) { return false; }
+
+        if (!s.SerializeInt(ref f.EntitiesCount, 1, 8)) { return false; }
+        for (int i = 0; i < f.EntitiesCount; i++)
+        {
+            RtMixedEntity e = f.Entities[i];
+            if (!s.SerializeBits(ref e.EntityId, 12)) { return false; }
+            if (!s.SerializeInt(ref e.PosX, -16383, 16383)) { return false; }
+            if (!s.SerializeInt(ref e.PosY, -16383, 16383)) { return false; }
+            if (!s.SerializeInt(ref e.PosZ, -16383, 16383)) { return false; }
+            if (!s.SerializeBits(ref e.Yaw, 9)) { return false; }
+            if (!s.SerializeBits(ref e.Pitch, 9)) { return false; }
+            if (!s.SerializeInt(ref e.VelX, -2048, 2047)) { return false; }
+            if (!s.SerializeInt(ref e.VelY, -2048, 2047)) { return false; }
+            if (!s.SerializeInt(ref e.VelZ, -2048, 2047)) { return false; }
+            if (!s.SerializeInt(ref e.Health, 0, 1000)) { return false; }
+            if (!s.SerializeInt(ref e.Weapon, 0, 15)) { return false; }
+            if (!s.SerializeBits(ref e.Damage, 8)) { return false; }
+            if (!s.SerializeBool(ref e.Moving)) { return false; }
+            if (!s.SerializeBool(ref e.Firing)) { return false; }
+        }
+
+        if (!s.SerializeInt(ref f.StatsCount, 0, 80)) { return false; }
+        for (int i = 0; i < f.StatsCount; i++)
+        {
+            RtMixedStat st = f.Stats[i];
+            if (!s.SerializeBits(ref st.StatId, 8)) { return false; }
+            if (!s.SerializeInt(ref st.Delta, -512, 511)) { return false; }
+        }
+
+        if (!s.SerializeInt(ref f.EventType, 0, 3)) { return false; }
+        if (f.EventType == 1)
+        {
+            if (!s.SerializeBits(ref f.HitTargetId, 12)) { return false; }
+            if (!s.SerializeInt(ref f.HitDamage, 0, 4095)) { return false; }
+            if (!s.SerializeInt(ref f.HitKind, 0, 7)) { return false; }
+            if (!s.SerializeBool(ref f.HitCrit)) { return false; }
+        }
+        else if (f.EventType == 2)
+        {
+            if (!s.SerializeInt(ref f.ChatChannel, 0, 3)) { return false; }
+            if (!s.SerializeBits(ref f.ChatSpeaker, 12)) { return false; }
+        }
+        else if (f.EventType == 3)
+        {
+            if (!s.SerializeBits(ref f.PickupItemId, 10)) { return false; }
+            if (!s.SerializeInt(ref f.PickupAmount, 0, 255)) { return false; }
+        }
+
+        for (int i = 0; i < 4; i++)
+        {
+            if (!s.SerializeByte(ref f.Loadout[i])) { return false; }
+        }
+
+        if (!s.SerializeInt(ref f.PlayerNameLength, 0, 15)) { return false; }
+        if (!s.SerializeBytes(f.PlayerName.AsSpan(0, f.PlayerNameLength))) { return false; }
+        if (!s.SerializeInt(ref f.PayloadLength, 0, 16)) { return false; }
+        if (!s.SerializeBytes(f.Payload.AsSpan(0, f.PayloadLength))) { return false; }
+
+        if (!s.SerializeCompressedFloat(ref f.AimX, -1.0f, 1.0f, 0.01f)) { return false; }
+        if (!s.SerializeCompressedFloat(ref f.AimY, -1.0f, 1.0f, 0.01f)) { return false; }
+        if (!s.SerializeCompressedFloat(ref f.AimZ, -1.0f, 1.0f, 0.01f)) { return false; }
+        if (!s.SerializeFloat(ref f.Recoil)) { return false; }
+        if (!s.SerializeDouble(ref f.Drift)) { return false; }
+        if (!s.SerializeUInt128(ref f.WideKey)) { return false; }
+        if (!s.SerializeInt128(ref f.Flux, RtFluxMin, RtFluxMax)) { return false; }
+        if (!s.SerializeFixed(ref f.Ping, 8, 8, 0, 250)) { return false; }
+
+        if (!s.SerializeBits(ref f.ReservedBits, 4)) { return false; }
+        if (f.ReservedBits != 0) { return false; }   // reserved(4): a read rejects nonzero
+        if (!s.SerializeAlign()) { return false; }
+        if (!s.SerializeBits(ref f.CrcHint, 24)) { return false; }
+        if (!s.SerializeBool(ref f.HasExtra)) { return false; }
+        if (f.HasExtra)
+        {
+            if (!s.SerializeInt(ref f.Extra, 0, 255)) { return false; }
+        }
+        else
+        {
+            if (!s.SerializeInt(ref f.IdleTicks, 0, 15)) { return false; }
+        }
         return true;
     }
 
@@ -212,13 +442,56 @@ static partial class Program
         B32 = 0xDEADBEEF, B11 = 1024, B19 = 333333, B48 = 0xFEDCBA987654,
     };
 
-    static RtBenchMixed PinRtMixed() => new RtBenchMixed
+    static RtBenchMixed PinRtMixed()
     {
-        Sequence = 52428, AckBits = 0xA5A5A5A5, EntityId = 2049,
-        PosX = -16384, PosY = 16383, PosZ = -1,
-        Yaw = 511, Moving = true, Firing = false,
-        Timestamp = 0x123456789ABC, Weapon = 15,
-    };
+        RtBenchMixed m = new RtBenchMixed
+        {
+            Magic = 0xC0DE,
+            Sequence = 52428, AckSequence = 12345, AckBits = 0xA5A5A5A5,
+            SessionId = 0x123456789ABCDEF0, ClientId = 0xDEADBEEF,
+            Nonce = 0xFEDCBA9876543210, WorldTime = -987654321000L,
+            FrameTick = 0x123456789ABC, ServerTime = 12345678,
+            EntitiesCount = 8, StatsCount = 80,
+            EventType = 1,   // Hit
+            HitTargetId = 4095, HitDamage = 4095, HitKind = 7, HitCrit = true,
+            PlayerNameLength = 8, PayloadLength = 8,
+            AimX = 0.5f, AimY = -0.25f, AimZ = 0.75f,
+            Recoil = 1.5f, Drift = -3.25,
+            WideKey = new UInt128Value(0x0123456789ABCDEFul, 0xFEDCBA9876543210ul),
+            Flux = new Int128Value(0x800000000ul, 7ul),   // 2^99 + 7
+            Ping = 12345, CrcHint = 0xABCDEF,
+            HasExtra = true, Extra = 200,
+        };
+        for (int i = 0; i < 8; i++)
+        {
+            RtMixedEntity e = m.Entities[i];
+            e.EntityId = (uint)(2049 + i * 17);
+            e.PosX = -16383 + i * 4096;
+            e.PosY = 16383 - i * 4096;
+            e.PosZ = -1 + i * 2048;
+            e.Yaw = (uint)(511 - i * 64);
+            e.Pitch = (uint)(i * 73);
+            e.VelX = -2048 + i * 512;
+            e.VelY = 2047 - i * 512;
+            e.VelZ = -1024 + i * 256;
+            e.Health = 1000 - i * 100;
+            e.Weapon = 1 + i;
+            e.Damage = (uint)(0x5A + i);
+            e.Moving = (i % 2) == 0;
+            e.Firing = (i % 3) == 0;
+        }
+        for (int i = 0; i < 80; i++)
+        {
+            m.Stats[i].StatId = (uint)((i * 3) % 256);
+            m.Stats[i].Delta = -512 + (i * 13) % 1024;
+        }
+        byte[] loadout = { 0x11, 0x22, 0x33, 0x44 };
+        loadout.CopyTo(m.Loadout, 0);
+        System.Text.Encoding.ASCII.GetBytes("Rowan_01").CopyTo(m.PlayerName, 0);
+        byte[] payload = { 0xDE, 0xAD, 0xBE, 0xEF, 0x01, 0x02, 0x03, 0x04 };
+        payload.CopyTo(m.Payload, 0);
+        return m;
+    }
 
     // ---- vary functions: bench/cpp/bench_main.cpp's rt mappings exactly ----
 
@@ -264,17 +537,47 @@ static partial class Program
 
     static void VaryRtMixed(RtBenchMixed f, ulong rng)
     {
-        f.Sequence = (int)((uint)(rng >> 8) & 65535);
+        f.Sequence = (uint)(rng >> 8) & 65535;
+        f.AckSequence = (int)((uint)(rng >> 24) & 65535);
         f.AckBits = (uint)(rng >> 16);
-        f.EntityId = (uint)rng & 4095;
-        f.PosX = (int)((rng >> 20) & 32767) - 16384;
-        f.PosY = (int)((rng >> 25) & 32767) - 16384;
-        f.PosZ = (int)((rng >> 30) & 32767) - 16384;
-        f.Yaw = (uint)(rng >> 3) & 511;
-        f.Moving = (rng & 1) != 0;
-        f.Firing = (rng & 2) != 0;
-        f.Timestamp = rng & 0xFFFFFFFFFFFF;
-        f.Weapon = (int)((uint)(rng >> 60) & 15);
+        f.SessionId = rng;
+        f.ClientId = (uint)(rng >> 32);
+        f.Nonce = rng ^ 0xA5A5A5A5A5A5A5A5ul;
+        f.WorldTime = (long)((rng >> 12) & 0xFFFFFFFFF) - 34359738368L;
+        f.FrameTick = rng & 0xFFFFFFFFFFFF;
+        f.ServerTime = (int)((rng >> 20) & 0x7FFFFF);
+        for (int i = 0; i < 8; i++)
+        {
+            RtMixedEntity e = f.Entities[i];
+            e.EntityId = (uint)((rng >> i) & 4095);
+            e.PosX = (int)((rng >> (i + 4)) & 16383) - 8192;
+            e.PosY = (int)((rng >> (i + 12)) & 16383) - 8192;
+            e.Health = (int)((rng >> (i + 20)) & 511);
+            e.Weapon = (int)((rng >> (i + 40)) & 15);
+            e.Damage = (uint)((rng >> (i + 28)) & 255);
+            e.Moving = ((rng >> i) & 1) != 0;
+        }
+        for (int i = 0; i < 80; i++)
+        {
+            f.Stats[i].Delta = (int)((rng >> (i & 31)) & 1023) - 512;
+        }
+        f.HitTargetId = (uint)((rng >> 6) & 4095);
+        f.HitDamage = (int)((rng >> 18) & 4095);
+        f.HitKind = (int)((rng >> 30) & 7);
+        f.HitCrit = (rng & 4) != 0;
+        f.Loadout[0] = (byte)(rng >> 56);
+        f.PlayerName[7] = (byte)(65 + ((rng >> 50) & 15));
+        f.Payload[0] = (byte)(rng >> 48);
+        f.AimX = (float)((uint)(rng >> 2) & 255) * (1.0f / 256.0f) - 0.5f;
+        f.AimY = (float)((uint)(rng >> 10) & 255) * (1.0f / 256.0f) - 0.5f;
+        f.AimZ = (float)((uint)(rng >> 18) & 255) * (1.0f / 256.0f) - 0.5f;
+        f.Recoil = (uint)rng & 0xFFFF;
+        f.Drift = (double)(long)((rng >> 8) & 0xFFFFFF) * 0.5;
+        f.WideKey = new UInt128Value(rng >> 1, rng);
+        f.Flux = new Int128Value(0ul, rng >> 16);
+        f.Ping = (ushort)((rng >> 40) & 0x7FFF);
+        f.CrcHint = (uint)((rng >> 24) & 0xFFFFFF);
+        f.Extra = (int)((rng >> 52) & 255);
     }
 
     // ---- the single untimed call sites (§3.2), one pair per shape ----
@@ -560,7 +863,7 @@ static partial class Program
     // the --quick leg: bench_mixed alone (golden-gated by BenchRt like every leg)
     static void BenchRtMixed()
     {
-        BenchRt("bench_mixed", 40000000, PinRtMixed(), RtOnceWriteMixed, RtOnceReadMixed, RtBenchMixedWriteLoop, RtBenchMixedReadLoop, VaryRtMixed);
+        BenchRt("bench_mixed", 4000000, PinRtMixed(), RtOnceWriteMixed, RtOnceReadMixed, RtBenchMixedWriteLoop, RtBenchMixedReadLoop, VaryRtMixed);
     }
 
     // ------------------------------------------------------------------------------------------

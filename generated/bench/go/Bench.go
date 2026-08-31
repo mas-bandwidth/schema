@@ -2,19 +2,20 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package bench — protocol id 0x694f261d887abaa5
+// package bench — protocol id 0xae3b1e28b96e4586
 
 package bench
 
 import (
 	"errors"
+	"strconv"
 
 	"github.com/mas-bandwidth/serialize.go"
 )
 
 // The unit's protocol id — the hash of its wire shape (SPEC §3.1). Two
 // sides at the same id speak identical bits; there is no other versioning.
-const ProtocolId uint64 = 0x694f261d887abaa5
+const ProtocolId uint64 = 0xae3b1e28b96e4586
 
 // ErrValidation is returned when a read rejects the wire: a wrong constant,
 // nonzero reserved bits, or an interior null in a string (SPEC §4.3, §4.7).
@@ -241,82 +242,819 @@ func ReadBenchBits(stream *serialize.ReadStream, value *BenchBits) error {
 	return stream.Err()
 }
 
+// MixedWeapon — None = 0 implicit, variants dense from 1, wire range [0, 15] (SPEC §4.2)
+type MixedWeapon uint8
+
+const (
+	MixedWeaponNone    MixedWeapon = 0
+	MixedWeaponFists   MixedWeapon = 1
+	MixedWeaponPistol  MixedWeapon = 2
+	MixedWeaponShotgun MixedWeapon = 3
+	MixedWeaponRifle   MixedWeapon = 4
+	MixedWeaponSniper  MixedWeapon = 5
+	MixedWeaponSmg     MixedWeapon = 6
+	MixedWeaponRocket  MixedWeapon = 7
+	MixedWeaponGrenade MixedWeapon = 8
+	MixedWeaponPlasma  MixedWeapon = 9
+	MixedWeaponRailgun MixedWeapon = 10
+	MixedWeaponFlamer  MixedWeapon = 11
+	MixedWeaponMine    MixedWeapon = 12
+	MixedWeaponTurret  MixedWeapon = 13
+	MixedWeaponDrone   MixedWeapon = 14
+	MixedWeaponRepair  MixedWeapon = 15
+	MixedWeaponMax     MixedWeapon = 15 // the exported extent (SPEC §4.2)
+)
+
+// EnumNameMixedWeapon: debug/log/tooling name for any MixedWeapon wire value —
+// out-of-set values (wire-legal up to the declared max) name as "???"
+func EnumNameMixedWeapon(value uint64) string {
+	switch value {
+	case uint64(MixedWeaponNone):
+		return "None"
+	case uint64(MixedWeaponFists):
+		return "Fists"
+	case uint64(MixedWeaponPistol):
+		return "Pistol"
+	case uint64(MixedWeaponShotgun):
+		return "Shotgun"
+	case uint64(MixedWeaponRifle):
+		return "Rifle"
+	case uint64(MixedWeaponSniper):
+		return "Sniper"
+	case uint64(MixedWeaponSmg):
+		return "Smg"
+	case uint64(MixedWeaponRocket):
+		return "Rocket"
+	case uint64(MixedWeaponGrenade):
+		return "Grenade"
+	case uint64(MixedWeaponPlasma):
+		return "Plasma"
+	case uint64(MixedWeaponRailgun):
+		return "Railgun"
+	case uint64(MixedWeaponFlamer):
+		return "Flamer"
+	case uint64(MixedWeaponMine):
+		return "Mine"
+	case uint64(MixedWeaponTurret):
+		return "Turret"
+	case uint64(MixedWeaponDrone):
+		return "Drone"
+	case uint64(MixedWeaponRepair):
+		return "Repair"
+	}
+	return "???"
+}
+
+// MixedDamage — one bit per variant, consumed as masks; storage uint64 in every
+// target, wire 8 bits (SPEC §4.2)
+type MixedDamage uint64
+
+const (
+	MixedDamageBleeding MixedDamage = 1 << 0
+	MixedDamageBurning  MixedDamage = 1 << 1
+	MixedDamageStunned  MixedDamage = 1 << 2
+	MixedDamageSlowed   MixedDamage = 1 << 3
+	MixedDamagePoisoned MixedDamage = 1 << 4
+	MixedDamageShielded MixedDamage = 1 << 5
+	MixedDamageAirborne MixedDamage = 1 << 6
+	MixedDamageDowned   MixedDamage = 1 << 7
+)
+
+// MixedDamageCount is the declared variant count (SPEC §4.2).
+const MixedDamageCount = 8
+
+// FlagNameMixedDamage: debug/log/tooling name for bit i of MixedDamage —
+// out-of-range bits name as "???"
+func FlagNameMixedDamage(bit int) string {
+	switch bit {
+	case 0:
+		return "Bleeding"
+	case 1:
+		return "Burning"
+	case 2:
+		return "Stunned"
+	case 3:
+		return "Slowed"
+	case 4:
+		return "Poisoned"
+	case 5:
+		return "Shielded"
+	case 6:
+		return "Airborne"
+	case 7:
+		return "Downed"
+	}
+	return "???"
+}
+
+// FlagNamesMixedDamage renders the set bits of value as "A|B" — "0" for the
+// empty set, bits past the declared variants as hex
+func FlagNamesMixedDamage(value uint64) string {
+	names := ""
+	if value&(1<<0) != 0 {
+		names += "|Bleeding"
+	}
+	if value&(1<<1) != 0 {
+		names += "|Burning"
+	}
+	if value&(1<<2) != 0 {
+		names += "|Stunned"
+	}
+	if value&(1<<3) != 0 {
+		names += "|Slowed"
+	}
+	if value&(1<<4) != 0 {
+		names += "|Poisoned"
+	}
+	if value&(1<<5) != 0 {
+		names += "|Shielded"
+	}
+	if value&(1<<6) != 0 {
+		names += "|Airborne"
+	}
+	if value&(1<<7) != 0 {
+		names += "|Downed"
+	}
+	if rest := value >> 8; rest != 0 {
+		names += "|0x" + strconv.FormatUint(rest<<8, 16)
+	}
+	if names == "" {
+		return "0"
+	}
+	return names[1:]
+}
+
+// type MixedEntity
+type MixedEntity struct {
+	EntityId uint32
+	PosX     int32 // wire [-16383, 16383]
+	PosY     int32 // wire [-16383, 16383]
+	PosZ     int32 // wire [-16383, 16383]
+	Yaw      uint32
+	Pitch    uint32
+	VelX     int32 // wire [-2048, 2047]
+	VelY     int32 // wire [-2048, 2047]
+	VelZ     int32 // wire [-2048, 2047]
+	Health   int32 // wire [0, 1000]
+	Weapon   MixedWeapon
+	Damage   MixedDamage
+	Moving   bool
+	Firing   bool
+}
+
+// MixedEntityMaxBits is the longest wire path; align pads at worst case (SPEC §6.1).
+// MixedEntityMaxBytes is rounded up to the 8-byte write-buffer granularity.
+const MixedEntityMaxBits = 135
+const MixedEntityMaxBytes = 24
+
+func WriteMixedEntity(stream *serialize.WriteStream, value *MixedEntity) error {
+	stream.SerializeBits(&value.EntityId, 12)
+	if value.PosX < -16383 || value.PosX > 16383 {
+		return serialize.ErrValueOutOfRange
+	}
+	{
+		offsetValue := uint32(value.PosX - (-16383))
+		stream.SerializeBits(&offsetValue, 15)
+	}
+	if value.PosY < -16383 || value.PosY > 16383 {
+		return serialize.ErrValueOutOfRange
+	}
+	{
+		offsetValue := uint32(value.PosY - (-16383))
+		stream.SerializeBits(&offsetValue, 15)
+	}
+	if value.PosZ < -16383 || value.PosZ > 16383 {
+		return serialize.ErrValueOutOfRange
+	}
+	{
+		offsetValue := uint32(value.PosZ - (-16383))
+		stream.SerializeBits(&offsetValue, 15)
+	}
+	stream.SerializeBits(&value.Yaw, 9)
+	stream.SerializeBits(&value.Pitch, 9)
+	if value.VelX < -2048 || value.VelX > 2047 {
+		return serialize.ErrValueOutOfRange
+	}
+	{
+		offsetValue := uint32(value.VelX - (-2048))
+		stream.SerializeBits(&offsetValue, 12)
+	}
+	if value.VelY < -2048 || value.VelY > 2047 {
+		return serialize.ErrValueOutOfRange
+	}
+	{
+		offsetValue := uint32(value.VelY - (-2048))
+		stream.SerializeBits(&offsetValue, 12)
+	}
+	if value.VelZ < -2048 || value.VelZ > 2047 {
+		return serialize.ErrValueOutOfRange
+	}
+	{
+		offsetValue := uint32(value.VelZ - (-2048))
+		stream.SerializeBits(&offsetValue, 12)
+	}
+	if value.Health < 0 || value.Health > 1000 {
+		return serialize.ErrValueOutOfRange
+	}
+	{
+		offsetValue := uint32(value.Health)
+		stream.SerializeBits(&offsetValue, 10)
+	}
+	{
+		enumValue := int32(value.Weapon)
+		if enumValue < 0 || enumValue > 15 {
+			return serialize.ErrValueOutOfRange
+		}
+		{
+			offsetValue := uint32(enumValue)
+			stream.SerializeBits(&offsetValue, 4)
+		}
+	}
+	if value.Damage >= 1<<8 { // a mask bit above the wire width cannot ride
+		return serialize.ErrValueOutOfRange
+	}
+	{
+		flagsValue := uint32(value.Damage)
+		stream.SerializeBits(&flagsValue, 8)
+	}
+	stream.SerializeBool(&value.Moving)
+	stream.SerializeBool(&value.Firing)
+	return stream.Err()
+}
+
+func ReadMixedEntity(stream *serialize.ReadStream, value *MixedEntity) error {
+	stream.SerializeBits(&value.EntityId, 12)
+	stream.SerializeInt(&value.PosX, -16383, 16383)
+	stream.SerializeInt(&value.PosY, -16383, 16383)
+	stream.SerializeInt(&value.PosZ, -16383, 16383)
+	stream.SerializeBits(&value.Yaw, 9)
+	stream.SerializeBits(&value.Pitch, 9)
+	stream.SerializeInt(&value.VelX, -2048, 2047)
+	stream.SerializeInt(&value.VelY, -2048, 2047)
+	stream.SerializeInt(&value.VelZ, -2048, 2047)
+	stream.SerializeInt(&value.Health, 0, 1000)
+	{
+		enumValue := int32(0)
+		stream.SerializeInt(&enumValue, 0, 15)
+		value.Weapon = MixedWeapon(enumValue)
+	}
+	{
+		flagsValue := uint32(0)
+		stream.SerializeBits(&flagsValue, 8)
+		value.Damage = MixedDamage(flagsValue)
+	}
+	stream.SerializeBool(&value.Moving)
+	stream.SerializeBool(&value.Firing)
+	return stream.Err()
+}
+
+// type MixedStat
+type MixedStat struct {
+	StatId uint32
+	Delta  int32 // wire [-512, 511]
+}
+
+// MixedStatMaxBits is the longest wire path; align pads at worst case (SPEC §6.1).
+// MixedStatMaxBytes is rounded up to the 8-byte write-buffer granularity.
+const MixedStatMaxBits = 18
+const MixedStatMaxBytes = 8
+
+func WriteMixedStat(stream *serialize.WriteStream, value *MixedStat) error {
+	stream.SerializeBits(&value.StatId, 8)
+	if value.Delta < -512 || value.Delta > 511 {
+		return serialize.ErrValueOutOfRange
+	}
+	{
+		offsetValue := uint32(value.Delta - (-512))
+		stream.SerializeBits(&offsetValue, 10)
+	}
+	return stream.Err()
+}
+
+func ReadMixedStat(stream *serialize.ReadStream, value *MixedStat) error {
+	stream.SerializeBits(&value.StatId, 8)
+	stream.SerializeInt(&value.Delta, -512, 511)
+	return stream.Err()
+}
+
+// type MixedHitEvent
+type MixedHitEvent struct {
+	TargetId uint32
+	Damage   int32 // wire [0, 4095]
+	HitKind  int32 // wire [0, 7]
+	Crit     bool
+}
+
+// MixedHitEventMaxBits is the longest wire path; align pads at worst case (SPEC §6.1).
+// MixedHitEventMaxBytes is rounded up to the 8-byte write-buffer granularity.
+const MixedHitEventMaxBits = 28
+const MixedHitEventMaxBytes = 8
+
+func WriteMixedHitEvent(stream *serialize.WriteStream, value *MixedHitEvent) error {
+	stream.SerializeBits(&value.TargetId, 12)
+	if value.Damage < 0 || value.Damage > 4095 {
+		return serialize.ErrValueOutOfRange
+	}
+	{
+		offsetValue := uint32(value.Damage)
+		stream.SerializeBits(&offsetValue, 12)
+	}
+	if value.HitKind < 0 || value.HitKind > 7 {
+		return serialize.ErrValueOutOfRange
+	}
+	{
+		offsetValue := uint32(value.HitKind)
+		stream.SerializeBits(&offsetValue, 3)
+	}
+	stream.SerializeBool(&value.Crit)
+	return stream.Err()
+}
+
+func ReadMixedHitEvent(stream *serialize.ReadStream, value *MixedHitEvent) error {
+	stream.SerializeBits(&value.TargetId, 12)
+	stream.SerializeInt(&value.Damage, 0, 4095)
+	stream.SerializeInt(&value.HitKind, 0, 7)
+	stream.SerializeBool(&value.Crit)
+	return stream.Err()
+}
+
+// type MixedChatEvent
+type MixedChatEvent struct {
+	Channel int32 // wire [0, 3]
+	Speaker uint32
+}
+
+// MixedChatEventMaxBits is the longest wire path; align pads at worst case (SPEC §6.1).
+// MixedChatEventMaxBytes is rounded up to the 8-byte write-buffer granularity.
+const MixedChatEventMaxBits = 14
+const MixedChatEventMaxBytes = 8
+
+func WriteMixedChatEvent(stream *serialize.WriteStream, value *MixedChatEvent) error {
+	if value.Channel < 0 || value.Channel > 3 {
+		return serialize.ErrValueOutOfRange
+	}
+	{
+		offsetValue := uint32(value.Channel)
+		stream.SerializeBits(&offsetValue, 2)
+	}
+	stream.SerializeBits(&value.Speaker, 12)
+	return stream.Err()
+}
+
+func ReadMixedChatEvent(stream *serialize.ReadStream, value *MixedChatEvent) error {
+	stream.SerializeInt(&value.Channel, 0, 3)
+	stream.SerializeBits(&value.Speaker, 12)
+	return stream.Err()
+}
+
+// type MixedPickupEvent
+type MixedPickupEvent struct {
+	ItemId uint32
+	Amount int32 // wire [0, 255]
+}
+
+// MixedPickupEventMaxBits is the longest wire path; align pads at worst case (SPEC §6.1).
+// MixedPickupEventMaxBytes is rounded up to the 8-byte write-buffer granularity.
+const MixedPickupEventMaxBits = 18
+const MixedPickupEventMaxBytes = 8
+
+func WriteMixedPickupEvent(stream *serialize.WriteStream, value *MixedPickupEvent) error {
+	stream.SerializeBits(&value.ItemId, 10)
+	if value.Amount < 0 || value.Amount > 255 {
+		return serialize.ErrValueOutOfRange
+	}
+	{
+		offsetValue := uint32(value.Amount)
+		stream.SerializeBits(&offsetValue, 8)
+	}
+	return stream.Err()
+}
+
+func ReadMixedPickupEvent(stream *serialize.ReadStream, value *MixedPickupEvent) error {
+	stream.SerializeBits(&value.ItemId, 10)
+	stream.SerializeInt(&value.Amount, 0, 255)
+	return stream.Err()
+}
+
+// MixedEventType: union MixedEvent's tag — None = 0, then each variant in declared order (SPEC §4.8)
+type MixedEventType uint8
+
+const (
+	MixedEventTypeNone   MixedEventType = 0
+	MixedEventTypeHit    MixedEventType = 1
+	MixedEventTypeChat   MixedEventType = 2
+	MixedEventTypePickup MixedEventType = 3
+	MixedEventTypeMax    MixedEventType = 3 // the exported extent (SPEC §4.2)
+)
+
+// MixedEvent — at most one of the arms; Type says which. The zero value is the
+// empty union (None). A read zero-establishes exactly the selected arm before
+// decoding it (SPEC §5); unselected arms keep what they last held — the
+// reused-storage discipline. Consumers read the selected arm only.
+type MixedEvent struct {
+	Type   MixedEventType
+	Hit    MixedHitEvent
+	Chat   MixedChatEvent
+	Pickup MixedPickupEvent
+}
+
+// MixedEventMaxBits is the tag plus the largest arm; None costs the tag only (SPEC §4.8).
+// MixedEventMaxBytes is rounded up to the 8-byte write-buffer granularity.
+const MixedEventMaxBits = 30
+const MixedEventMaxBytes = 8
+
+func WriteMixedEvent(stream *serialize.WriteStream, value *MixedEvent) error {
+	tagValue := int32(value.Type)
+	if tagValue < 0 || tagValue > 3 { // the tag validates BEFORE it rides (SPEC §4.8)
+		return serialize.ErrValueOutOfRange
+	}
+	{
+		offsetValue := uint32(tagValue)
+		stream.SerializeBits(&offsetValue, 2)
+	}
+	switch value.Type {
+	case MixedEventTypeHit:
+		return WriteMixedHitEvent(stream, &value.Hit)
+	case MixedEventTypeChat:
+		return WriteMixedChatEvent(stream, &value.Chat)
+	case MixedEventTypePickup:
+		return WriteMixedPickupEvent(stream, &value.Pickup)
+	}
+	return stream.Err() // None — the tag is the whole wire (SPEC §4.8)
+}
+
+func ReadMixedEvent(stream *serialize.ReadStream, value *MixedEvent) error {
+	tagValue := int32(0)
+	stream.SerializeInt(&tagValue, 0, 3) // rejects a tag above the count (SPEC §4.8)
+	if stream.Err() != nil {
+		return stream.Err()
+	}
+	value.Type = MixedEventType(tagValue)
+	switch value.Type {
+	case MixedEventTypeHit:
+		value.Hit = MixedHitEvent{} // the selected arm starts from the zero form (SPEC §5)
+		return ReadMixedHitEvent(stream, &value.Hit)
+	case MixedEventTypeChat:
+		value.Chat = MixedChatEvent{} // the selected arm starts from the zero form (SPEC §5)
+		return ReadMixedChatEvent(stream, &value.Chat)
+	case MixedEventTypePickup:
+		value.Pickup = MixedPickupEvent{} // the selected arm starts from the zero form (SPEC §5)
+		return ReadMixedPickupEvent(stream, &value.Pickup)
+	}
+	return stream.Err() // None
+}
+
 // type BenchMixed
 type BenchMixed struct {
-	Sequence  int32 // wire [0, 65535]
-	AckBits   uint32
-	EntityId  uint32
-	PosX      int32 // wire [-16384, 16383]
-	PosY      int32 // wire [-16384, 16383]
-	PosZ      int32 // wire [-16384, 16383]
-	Yaw       uint32
-	Moving    bool
-	Firing    bool
-	Timestamp uint64
-	Weapon    int32 // wire [0, 15]
+	Sequence         uint32
+	AckSequence      int32 // wire [0, 65535]
+	AckBits          uint32
+	SessionId        uint64
+	ClientId         uint32
+	Nonce            uint64 // wire [0, 18446744073709551615]
+	WorldTime        int64  // wire [-1000000000000, 1000000000000]
+	FrameTick        uint64
+	ServerTime       int32          // wire [0, 65535]
+	Entities         [8]MixedEntity // used count beside it; wire count in [1, 8]
+	EntitiesCount    int32
+	Stats            [80]MixedStat // used count beside it; wire count in [0, 80]
+	StatsCount       int32
+	GameEvent        MixedEvent
+	Loadout          [4]uint8
+	PlayerName       [15]byte // string(15): max length, used length beside it (SPEC §4.7)
+	PlayerNameLength int32
+	Payload          [16]byte // bytes(16): fixed buffer, used length beside it (SPEC §4.7)
+	PayloadLength    int32
+	AimX             float32 // compressed float [-1.0, 1.0] @ 0.01
+	AimY             float32 // compressed float [-1.0, 1.0] @ 0.01
+	AimZ             float32 // compressed float [-1.0, 1.0] @ 0.01
+	Recoil           float32
+	Drift            float64
+	WideKey          serialize.Uint128
+	Flux             serialize.Int128 // wire [-1267650600228229401496703205376, 1267650600228229401496703205376]
+	Ping             uint16           // wire [0, 250]
+	CrcHint          uint32
+	HasExtra         bool // = true in New* (zero value otherwise)
+
+	// if has_extra — wire branch; storage holds both sides, a read zeroes the
+	// untaken side (SPEC §5)
+	Extra int32 // wire [0, 255]
+
+	// if has_extra else — wire branch; storage holds both sides, a read zeroes the
+	// untaken side (SPEC §5)
+	IdleTicks int32 // wire [0, 15]
+}
+
+// NewBenchMixed returns a BenchMixed with its specified defaults applied; the plain zero
+// value is the all-zero form (SPEC §4.2: zero initialization unless a
+// specified default overrides it).
+func NewBenchMixed() BenchMixed {
+	var value BenchMixed
+	value.HasExtra = true
+	return value
 }
 
 // BenchMixedMaxBits is the longest wire path; align pads at worst case (SPEC §6.1).
 // BenchMixedMaxBytes is rounded up to the 8-byte write-buffer granularity.
-const BenchMixedMaxBits = 168
-const BenchMixedMaxBytes = 24
+const BenchMixedMaxBits = 3626
+const BenchMixedMaxBytes = 456
 
 func WriteBenchMixed(stream *serialize.WriteStream, value *BenchMixed) error {
-	if value.Sequence < 0 || value.Sequence > 65535 {
+	{
+		constValue := uint32(49374)
+		stream.SerializeBits(&constValue, 16) // const(49374, 16) — SPEC §4.3
+	}
+	stream.SerializeBits(&value.Sequence, 16)
+	if value.AckSequence < 0 || value.AckSequence > 65535 {
 		return serialize.ErrValueOutOfRange
 	}
 	{
-		offsetValue := uint32(value.Sequence)
+		offsetValue := uint32(value.AckSequence)
 		stream.SerializeBits(&offsetValue, 16)
 	}
 	stream.SerializeBits(&value.AckBits, 32)
-	stream.SerializeBits(&value.EntityId, 12)
-	if value.PosX < -16384 || value.PosX > 16383 {
+	stream.SerializeBits64(&value.SessionId, 64)
+	stream.SerializeBits(&value.ClientId, 32)
+	{
+		offsetValue := value.Nonce
+		stream.SerializeBits64(&offsetValue, 64)
+	}
+	if value.WorldTime < -1000000000000 || value.WorldTime > 1000000000000 {
 		return serialize.ErrValueOutOfRange
 	}
 	{
-		offsetValue := uint32(value.PosX - (-16384))
-		stream.SerializeBits(&offsetValue, 15)
+		offsetValue := uint64(value.WorldTime - (-1000000000000))
+		stream.SerializeBits64(&offsetValue, 41)
 	}
-	if value.PosY < -16384 || value.PosY > 16383 {
+	stream.SerializeBits64(&value.FrameTick, 48)
+	{
+		fixedValue := int64(value.ServerTime)
+		stream.SerializeFixed64(&fixedValue, 24, 8, 0, 65535)
+	}
+	if value.EntitiesCount < 1 || value.EntitiesCount > 8 {
 		return serialize.ErrValueOutOfRange
 	}
 	{
-		offsetValue := uint32(value.PosY - (-16384))
-		stream.SerializeBits(&offsetValue, 15)
+		offsetValue := uint32(value.EntitiesCount - (1))
+		stream.SerializeBits(&offsetValue, 3)
 	}
-	if value.PosZ < -16384 || value.PosZ > 16383 {
+	if stream.Err() != nil { // the count guards the loop (§6.3)
+		return stream.Err()
+	}
+	for i := int32(0); i < value.EntitiesCount; i++ {
+		if err := WriteMixedEntity(stream, &value.Entities[i]); err != nil {
+			return err
+		}
+	}
+	if value.StatsCount < 0 || value.StatsCount > 80 {
 		return serialize.ErrValueOutOfRange
 	}
 	{
-		offsetValue := uint32(value.PosZ - (-16384))
-		stream.SerializeBits(&offsetValue, 15)
+		offsetValue := uint32(value.StatsCount)
+		stream.SerializeBits(&offsetValue, 7)
 	}
-	stream.SerializeBits(&value.Yaw, 9)
-	stream.SerializeBool(&value.Moving)
-	stream.SerializeBool(&value.Firing)
-	stream.SerializeBits64(&value.Timestamp, 48)
-	if value.Weapon < 0 || value.Weapon > 15 {
+	if stream.Err() != nil { // the count guards the loop (§6.3)
+		return stream.Err()
+	}
+	for i := int32(0); i < value.StatsCount; i++ {
+		if err := WriteMixedStat(stream, &value.Stats[i]); err != nil {
+			return err
+		}
+	}
+	if err := WriteMixedEvent(stream, &value.GameEvent); err != nil {
+		return err
+	}
+	for i := 0; i < 4; i++ {
+		{
+			rawValue := uint32(value.Loadout[i])
+			stream.SerializeBits(&rawValue, 8)
+		}
+	}
+	if value.PlayerNameLength < 0 || value.PlayerNameLength > 15 {
 		return serialize.ErrValueOutOfRange
 	}
 	{
-		offsetValue := uint32(value.Weapon)
+		offsetValue := uint32(value.PlayerNameLength)
 		stream.SerializeBits(&offsetValue, 4)
+	}
+	if stream.Err() != nil { // the length guards the slice (§6.3)
+		return stream.Err()
+	}
+	stream.SerializeBytes(value.PlayerName[:value.PlayerNameLength])
+	if value.PayloadLength < 0 || value.PayloadLength > 16 {
+		return serialize.ErrValueOutOfRange
+	}
+	{
+		offsetValue := uint32(value.PayloadLength)
+		stream.SerializeBits(&offsetValue, 5)
+	}
+	if stream.Err() != nil { // the length guards the slice (§6.3)
+		return stream.Err()
+	}
+	stream.SerializeBytes(value.Payload[:value.PayloadLength])
+	{
+		normalizedValue := (value.AimX - (-1.0)) / 2.0
+		if !(normalizedValue >= 0) { // the runtime's clamp form — it forces NaN into range too
+			normalizedValue = 0
+		} else if !(normalizedValue <= 1) {
+			normalizedValue = 1
+		}
+		integerValue := uint32(float32(normalizedValue*200.0) + 0.5)
+		stream.SerializeBits(&integerValue, 8)
+	}
+	{
+		normalizedValue := (value.AimY - (-1.0)) / 2.0
+		if !(normalizedValue >= 0) { // the runtime's clamp form — it forces NaN into range too
+			normalizedValue = 0
+		} else if !(normalizedValue <= 1) {
+			normalizedValue = 1
+		}
+		integerValue := uint32(float32(normalizedValue*200.0) + 0.5)
+		stream.SerializeBits(&integerValue, 8)
+	}
+	{
+		normalizedValue := (value.AimZ - (-1.0)) / 2.0
+		if !(normalizedValue >= 0) { // the runtime's clamp form — it forces NaN into range too
+			normalizedValue = 0
+		} else if !(normalizedValue <= 1) {
+			normalizedValue = 1
+		}
+		integerValue := uint32(float32(normalizedValue*200.0) + 0.5)
+		stream.SerializeBits(&integerValue, 8)
+	}
+	stream.SerializeFloat32(&value.Recoil)
+	stream.SerializeFloat64(&value.Drift)
+	stream.SerializeUint128(&value.WideKey)
+	stream.SerializeInt128(&value.Flux, serialize.Int128{Lo: 0x0, Hi: 0xfffffff000000000}, serialize.Int128{Lo: 0x0, Hi: 0x1000000000})
+	{
+		fixedValue := int64(value.Ping)
+		stream.SerializeFixed64(&fixedValue, 8, 8, 0, 250)
+	}
+	{
+		reservedValue := uint32(0)
+		stream.SerializeBits(&reservedValue, 4) // reserved(4) — zeros on the wire
+	}
+	stream.SerializeAlign()
+	stream.SerializeBits(&value.CrcHint, 24)
+	stream.SerializeBool(&value.HasExtra)
+	if value.HasExtra {
+		if value.Extra < 0 || value.Extra > 255 {
+			return serialize.ErrValueOutOfRange
+		}
+		{
+			offsetValue := uint32(value.Extra)
+			stream.SerializeBits(&offsetValue, 8)
+		}
+	} else {
+		if value.IdleTicks < 0 || value.IdleTicks > 15 {
+			return serialize.ErrValueOutOfRange
+		}
+		{
+			offsetValue := uint32(value.IdleTicks)
+			stream.SerializeBits(&offsetValue, 4)
+		}
 	}
 	return stream.Err()
 }
 
 func ReadBenchMixed(stream *serialize.ReadStream, value *BenchMixed) error {
-	stream.SerializeInt(&value.Sequence, 0, 65535)
+	{
+		constValue := uint32(0)
+		stream.SerializeBits(&constValue, 16)
+		if stream.Err() != nil {
+			return stream.Err()
+		}
+		if constValue != 49374 { // const(49374, 16): a read rejects any other value (SPEC §4.3)
+			return ErrValidation
+		}
+	}
+	stream.SerializeBits(&value.Sequence, 16)
+	stream.SerializeInt(&value.AckSequence, 0, 65535)
 	stream.SerializeBits(&value.AckBits, 32)
-	stream.SerializeBits(&value.EntityId, 12)
-	stream.SerializeInt(&value.PosX, -16384, 16383)
-	stream.SerializeInt(&value.PosY, -16384, 16383)
-	stream.SerializeInt(&value.PosZ, -16384, 16383)
-	stream.SerializeBits(&value.Yaw, 9)
-	stream.SerializeBool(&value.Moving)
-	stream.SerializeBool(&value.Firing)
-	stream.SerializeBits64(&value.Timestamp, 48)
-	stream.SerializeInt(&value.Weapon, 0, 15)
+	stream.SerializeBits64(&value.SessionId, 64)
+	stream.SerializeBits(&value.ClientId, 32)
+	{
+		offsetValue := uint64(0)
+		stream.SerializeBits64(&offsetValue, 64)
+		value.Nonce = offsetValue
+	}
+	stream.SerializeInt64(&value.WorldTime, -1000000000000, 1000000000000)
+	stream.SerializeBits64(&value.FrameTick, 48)
+	{
+		fixedValue := int64(0)
+		stream.SerializeFixed64(&fixedValue, 24, 8, 0, 65535)
+		value.ServerTime = int32(fixedValue)
+	}
+	stream.SerializeInt(&value.EntitiesCount, 1, 8)
+	if stream.Err() != nil { // the count guards the loop (§6.3)
+		return stream.Err()
+	}
+	for i := int32(0); i < value.EntitiesCount; i++ {
+		if err := ReadMixedEntity(stream, &value.Entities[i]); err != nil {
+			return err
+		}
+	}
+	stream.SerializeInt(&value.StatsCount, 0, 80)
+	if stream.Err() != nil { // the count guards the loop (§6.3)
+		return stream.Err()
+	}
+	for i := int32(0); i < value.StatsCount; i++ {
+		if err := ReadMixedStat(stream, &value.Stats[i]); err != nil {
+			return err
+		}
+	}
+	if err := ReadMixedEvent(stream, &value.GameEvent); err != nil {
+		return err
+	}
+	for i := 0; i < 4; i++ {
+		{
+			rawValue := uint32(0)
+			stream.SerializeBits(&rawValue, 8)
+			value.Loadout[i] = uint8(rawValue)
+		}
+	}
+	stream.SerializeInt(&value.PlayerNameLength, 0, 15)
+	if stream.Err() != nil { // the length guards the slice (§6.3)
+		return stream.Err()
+	}
+	stream.SerializeBytes(value.PlayerName[:value.PlayerNameLength])
+	if stream.Err() != nil {
+		return stream.Err()
+	}
+	for i := int32(0); i < value.PlayerNameLength; i++ {
+		if value.PlayerName[i] == 0 {
+			return ErrValidation
+		}
+	}
+	stream.SerializeInt(&value.PayloadLength, 0, 16)
+	if stream.Err() != nil { // the length guards the slice (§6.3)
+		return stream.Err()
+	}
+	stream.SerializeBytes(value.Payload[:value.PayloadLength])
+	{
+		integerValue := uint32(0)
+		stream.SerializeBits(&integerValue, 8)
+		if stream.Err() != nil {
+			return stream.Err()
+		}
+		if integerValue > 200 { // a value smuggled into the bit headroom is refused (SPEC §4.3)
+			return ErrValidation
+		}
+		normalizedValue := float32(integerValue) / 200.0
+		value.AimX = float32(normalizedValue*2.0) + (-1.0)
+	}
+	{
+		integerValue := uint32(0)
+		stream.SerializeBits(&integerValue, 8)
+		if stream.Err() != nil {
+			return stream.Err()
+		}
+		if integerValue > 200 { // a value smuggled into the bit headroom is refused (SPEC §4.3)
+			return ErrValidation
+		}
+		normalizedValue := float32(integerValue) / 200.0
+		value.AimY = float32(normalizedValue*2.0) + (-1.0)
+	}
+	{
+		integerValue := uint32(0)
+		stream.SerializeBits(&integerValue, 8)
+		if stream.Err() != nil {
+			return stream.Err()
+		}
+		if integerValue > 200 { // a value smuggled into the bit headroom is refused (SPEC §4.3)
+			return ErrValidation
+		}
+		normalizedValue := float32(integerValue) / 200.0
+		value.AimZ = float32(normalizedValue*2.0) + (-1.0)
+	}
+	stream.SerializeFloat32(&value.Recoil)
+	stream.SerializeFloat64(&value.Drift)
+	stream.SerializeUint128(&value.WideKey)
+	stream.SerializeInt128(&value.Flux, serialize.Int128{Lo: 0x0, Hi: 0xfffffff000000000}, serialize.Int128{Lo: 0x0, Hi: 0x1000000000})
+	{
+		fixedValue := int64(0)
+		stream.SerializeFixed64(&fixedValue, 8, 8, 0, 250)
+		value.Ping = uint16(fixedValue)
+	}
+	{
+		reservedValue := uint32(0)
+		stream.SerializeBits(&reservedValue, 4)
+		if stream.Err() != nil {
+			return stream.Err()
+		}
+		if reservedValue != 0 { // reserved(4): a read rejects nonzero (SPEC §4.3)
+			return ErrValidation
+		}
+	}
+	stream.SerializeAlign() // rejects nonzero padding (SPEC §4.3)
+	stream.SerializeBits(&value.CrcHint, 24)
+	stream.SerializeBool(&value.HasExtra)
+	if value.HasExtra {
+		stream.SerializeInt(&value.Extra, 0, 255)
+		value.IdleTicks = 0
+	} else {
+		stream.SerializeInt(&value.IdleTicks, 0, 15)
+		value.Extra = 0
+	}
 	return stream.Err()
 }

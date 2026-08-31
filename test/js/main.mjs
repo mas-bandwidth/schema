@@ -31,6 +31,68 @@ import * as wireFlat from "../../generated/js/WireFlat.js";
 import * as benchFlat from "../../generated/bench/js/BenchFlat.js";
 import * as realworldFlat from "../../generated/bench/js/realworld/RealWorldFlat.js";
 
+// BenchMixed — THE canonical benchmark shape (#184). The pin is
+// test/bench/main.cpp's, transcribed exactly; it is built here once and used
+// by both the runtime-tier and flat-tier gates.
+function makeBenchMixedPin() {
+  const mixed = new bench.BenchMixed();
+  mixed.Sequence = 52428;
+  mixed.AckSequence = 12345;
+  mixed.AckBits = 0xa5a5a5a5;
+  mixed.SessionId = 0x123456789abcdef0n;
+  mixed.ClientId = 0xdeadbeef;
+  mixed.Nonce = 0xfedcba9876543210n;
+  mixed.WorldTime = -987654321000n;
+  mixed.FrameTick = 0x123456789abcn;
+  mixed.ServerTime = 12345678;
+  mixed.EntitiesCount = 8;
+  for (let i = 0; i < 8; i++) {
+    const e = mixed.Entities[i];
+    e.EntityId = 2049 + i * 17;
+    e.PosX = -16383 + i * 4096;
+    e.PosY = 16383 - i * 4096;
+    e.PosZ = -1 + i * 2048;
+    e.Yaw = 511 - i * 64;
+    e.Pitch = i * 73;
+    e.VelX = -2048 + i * 512;
+    e.VelY = 2047 - i * 512;
+    e.VelZ = -1024 + i * 256;
+    e.Health = 1000 - i * 100;
+    e.Weapon = 1 + i;
+    e.Damage = BigInt(0x5a + i);
+    e.Moving = i % 2 === 0;
+    e.Firing = i % 3 === 0;
+  }
+  mixed.StatsCount = 80;
+  for (let i = 0; i < 80; i++) {
+    mixed.Stats[i].StatId = (i * 3) % 256;
+    mixed.Stats[i].Delta = -512 + ((i * 13) % 1024);
+  }
+  mixed.GameEvent.Type = bench.MixedEventType.Hit;
+  mixed.GameEvent.Hit.TargetId = 4095;
+  mixed.GameEvent.Hit.Damage = 4095;
+  mixed.GameEvent.Hit.HitKind = 7;
+  mixed.GameEvent.Hit.Crit = true;
+  mixed.Loadout.set([0x11, 0x22, 0x33, 0x44]);
+  mixed.PlayerName.set([..."Rowan_01"].map((c) => c.charCodeAt(0)));
+  mixed.PlayerNameLength = 8;
+  mixed.Payload.set([0xde, 0xad, 0xbe, 0xef, 0x01, 0x02, 0x03, 0x04]);
+  mixed.PayloadLength = 8;
+  mixed.AimX = 0.5;
+  mixed.AimY = -0.25;
+  mixed.AimZ = 0.75;
+  mixed.Recoil = 1.5;
+  mixed.Drift = -3.25;
+  mixed.WideKey = (0x0123456789abcdefn << 64n) | 0xfedcba9876543210n;
+  mixed.Flux = (1n << 99n) + 7n; // 2^99 + 7
+  mixed.Ping = 12345;
+  mixed.CrcHint = 0xabcdef;
+  mixed.HasExtra = true;
+  mixed.Extra = 200;
+  return mixed;
+}
+
+
 // one namespace over the unit, the way Go sees package example — the checker
 // guarantees unit-wide name uniqueness, so the merge cannot collide
 const ex = { ...enums, ...types, ...wire };
@@ -662,19 +724,8 @@ function pinShape(name, expectedBytes, mod, shape, inp) {
   bits.B48 = 0xfedcba987654n;
   pinShape("bench_bits", 20, bench, "BenchBits", bits);
 
-  const mixed = new bench.BenchMixed();
-  mixed.Sequence = 52428;
-  mixed.AckBits = 0xa5a5a5a5;
-  mixed.EntityId = 2049;
-  mixed.PosX = -16384;
-  mixed.PosY = 16383;
-  mixed.PosZ = -1;
-  mixed.Yaw = 511;
-  mixed.Moving = true;
-  mixed.Firing = false;
-  mixed.Timestamp = 0x123456789abcn;
-  mixed.Weapon = 15;
-  pinShape("bench_mixed", 21, bench, "BenchMixed", mixed);
+  const mixed = makeBenchMixedPin();
+  pinShape("bench_mixed", 438, bench, "BenchMixed", mixed);
 
   // RealPacket pins the ALL-DEFAULTS instance: constructed and serialized
   // unmodified, every field at its declared default — 1629 bits = 204 bytes
@@ -912,18 +963,7 @@ flatCross("flat testdata", ex, exFlat, "TestData", testDataInstance(), "testdata
   bits.B48 = 0xfedcba987654n;
   flatCross("flat bench_bits", bench, benchFlat, "BenchBits", bits, "bench_bits");
 
-  const mixed = new bench.BenchMixed();
-  mixed.Sequence = 52428;
-  mixed.AckBits = 0xa5a5a5a5;
-  mixed.EntityId = 2049;
-  mixed.PosX = -16384;
-  mixed.PosY = 16383;
-  mixed.PosZ = -1;
-  mixed.Yaw = 511;
-  mixed.Moving = true;
-  mixed.Firing = false;
-  mixed.Timestamp = 0x123456789abcn;
-  mixed.Weapon = 15;
+  const mixed = makeBenchMixedPin();
   flatCross("flat bench_mixed", bench, benchFlat, "BenchMixed", mixed, "bench_mixed");
 
   flatCross("flat real_packet", realworld, realworldFlat, "RealPacket", new realworld.RealPacket(), "real_packet");
