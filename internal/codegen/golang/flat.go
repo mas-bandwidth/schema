@@ -594,19 +594,20 @@ func (g *gen) flatReservedPiece(it *ir.ReservedItem) flatPiece {
 	}
 }
 
-// flatFieldPiece classifies a scalar field. Fixed point and the 128-bit
-// family stay on the per-field path and break the run: their value arithmetic
-// lives in the runtime.
-// flatArrayElemPiece classifies one element of an unrolled fixed array: the
-// same scalar classification, against the element's own expression.
+// flatArrayElemPiece classifies one element of an unrolled fixed array,
+// against the element's own expression.
 func (g *gen) flatArrayElemPiece(f *ir.Field, name string) (flatPiece, bool) {
 	return g.flatScalarPiece(f, name)
 }
 
+// flatFieldPiece classifies a scalar field against its base expression.
 func (g *gen) flatFieldPiece(f *ir.Field, base string) (flatPiece, bool) {
 	return g.flatScalarPiece(f, base+ir.GoExportName(f.Name))
 }
 
+// flatScalarPiece is the classification both reach. Fixed point and the
+// 128-bit family stay on the per-field path and break the run: their value
+// arithmetic lives in the runtime.
 func (g *gen) flatScalarPiece(f *ir.Field, name string) (flatPiece, bool) {
 	switch f.Type.Kind {
 	case ir.TBool:

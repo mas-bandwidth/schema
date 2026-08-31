@@ -102,11 +102,12 @@ func (g *gen) emitStructFunctions(st *ir.Struct) {
 func (g *gen) emitWriteItems(items []ir.Item, ind string) {
 	seq := &flatSeq{}
 	flush := func() {
-		if seq.run().worthFlattening() {
+		run := seq.run()
+		if run.worthFlattening() {
 			// its own block: every run names its locals f0.., w0.., and two
 			// runs in one function would otherwise collide
 			g.pf("%s{\n", ind)
-			g.emitFlatWriteRun(seq.run(), ind+"\t")
+			g.emitFlatWriteRun(run, ind+"\t")
 			g.pf("%s}\n", ind)
 		} else {
 			for _, grp := range seq.groups {
@@ -124,6 +125,10 @@ func (g *gen) emitWriteItems(items []ir.Item, ind string) {
 			if seq.bits+bits > maxRunBits {
 				flush()
 			}
+			// A group wider than the cap on its own cannot join any run —
+			// no classifier produces one today (a nested struct's run is
+			// capped, an unrolled array by maxUnrollBits), and if one ever
+			// does it takes the per-field form rather than looping forever.
 			if bits <= maxRunBits {
 				seq.add(item, ps)
 				continue
@@ -164,9 +169,10 @@ func (g *gen) emitWriteItemDirect(item ir.Item, ind string) {
 func (g *gen) emitReadItems(items []ir.Item, ind string) {
 	seq := &flatSeq{}
 	flush := func() {
-		if seq.run().worthFlattening() {
+		run := seq.run()
+		if run.worthFlattening() {
 			g.pf("%s{\n", ind)
-			g.emitFlatReadRun(seq.run(), ind+"\t")
+			g.emitFlatReadRun(run, ind+"\t")
 			g.pf("%s}\n", ind)
 		} else {
 			for _, grp := range seq.groups {
@@ -184,6 +190,10 @@ func (g *gen) emitReadItems(items []ir.Item, ind string) {
 			if seq.bits+bits > maxRunBits {
 				flush()
 			}
+			// A group wider than the cap on its own cannot join any run —
+			// no classifier produces one today (a nested struct's run is
+			// capped, an unrolled array by maxUnrollBits), and if one ever
+			// does it takes the per-field form rather than looping forever.
 			if bits <= maxRunBits {
 				seq.add(item, ps)
 				continue
