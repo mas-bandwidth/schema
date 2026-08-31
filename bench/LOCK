@@ -13,9 +13,17 @@
 # those; any change there means an emitter or example moved). The harness
 # legs and generated/bench/{c,cpp} leave the mechanical lock under TWO
 # procedural controls, enforced at review: (1) emitters byte-unchanged in
-# any PR touching them (git shows it), and (2) the unchanged shapes'
-# c/cpp rows (bench_packet/ints/bits) must reproduce in-sitting in any PR
-# that touches the c/cpp legs.
+# any PR touching them (git shows it), and (2) the c/cpp rows must reproduce
+# in-sitting in any PR that touches the c/cpp legs.
+#
+# AMENDED 2026-08-31: control 2 named bench_packet / bench_ints / bench_bits
+# as the reproduction rows. Those rows no longer exist — the ruling on #196
+# left ONE bench corpus and #199 retired the three hand-coded shapes with it,
+# so a control naming them is a control that cannot be run. **The
+# reproduction rows are bench_mixed (family gen: write and round_trip) and
+# bitpacker (family bits).** bitpacker earns its place by being the negative
+# control: its source is byte-identical across every harness change, so
+# whatever it does is what the translation unit's layout did.
 #
 # While this file exists, CI's cpp-lock job REFUSES any pull request that
 # modifies a path under the prefixes below. Lifting or amending the lock is
