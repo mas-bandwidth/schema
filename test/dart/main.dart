@@ -17,6 +17,7 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import '../../generated/bench/dart/Bench.dart' as bench;
+import '../../generated/bench/dart/Int128.dart';
 import '../../generated/bench/dart/realworld/RealWorld.dart' as rw;
 import '../../generated/dart/Enums.dart';
 import '../../generated/dart/Types.dart';
@@ -831,18 +832,62 @@ void main() {
       bench.measureBenchBits,
     );
 
+    // BenchMixed — THE canonical benchmark shape (#184); the pin is
+    // test/bench/main.cpp's, transcribed exactly
     final mixed = bench.BenchMixed();
     mixed.sequence = 52428;
+    mixed.ackSequence = 12345;
     mixed.ackBits = 0xa5a5a5a5;
-    mixed.entityId = 2049;
-    mixed.posX = -16384;
-    mixed.posY = 16383;
-    mixed.posZ = -1;
-    mixed.yaw = 511;
-    mixed.moving = true;
-    mixed.firing = false;
-    mixed.timestamp = 0x123456789abc;
-    mixed.weapon = 15;
+    mixed.sessionId = 0x123456789abcdef0;
+    mixed.clientId = 0xdeadbeef;
+    mixed.nonce = 0xfedcba9876543210;
+    mixed.worldTime = -987654321000;
+    mixed.frameTick = 0x123456789abc;
+    mixed.serverTime = 12345678;
+    mixed.entitiesCount = 8;
+    for (var i = 0; i < 8; i++) {
+      final e = mixed.entities[i];
+      e.entityId = 2049 + i * 17;
+      e.posX = -16383 + i * 4096;
+      e.posY = 16383 - i * 4096;
+      e.posZ = -1 + i * 2048;
+      e.yaw = 511 - i * 64;
+      e.pitch = i * 73;
+      e.velX = -2048 + i * 512;
+      e.velY = 2047 - i * 512;
+      e.velZ = -1024 + i * 256;
+      e.health = 1000 - i * 100;
+      e.weapon = 1 + i;
+      e.damage = 0x5a + i;
+      e.moving = (i % 2) == 0;
+      e.firing = (i % 3) == 0;
+    }
+    mixed.statsCount = 80;
+    for (var i = 0; i < 80; i++) {
+      mixed.stats[i].statId = (i * 3) % 256;
+      mixed.stats[i].delta = -512 + (i * 13) % 1024;
+    }
+    mixed.gameEvent.type = bench.MixedEventType.hit;
+    mixed.gameEvent.hit.targetId = 4095;
+    mixed.gameEvent.hit.damage = 4095;
+    mixed.gameEvent.hit.hitKind = 7;
+    mixed.gameEvent.hit.crit = true;
+    mixed.loadout.setAll(0, [0x11, 0x22, 0x33, 0x44]);
+    mixed.playerName.setAll(0, 'Rowan_01'.codeUnits);
+    mixed.playerNameLength = 8;
+    mixed.payload.setAll(0, [0xde, 0xad, 0xbe, 0xef, 0x01, 0x02, 0x03, 0x04]);
+    mixed.payloadLength = 8;
+    mixed.aimX = 0.5;
+    mixed.aimY = -0.25;
+    mixed.aimZ = 0.75;
+    mixed.recoil = 1.5;
+    mixed.drift = -3.25;
+    mixed.wideKey = const UInt128(0x0123456789abcdef, 0xfedcba9876543210);
+    mixed.flux = const Int128(0x800000000, 7); // 2^99 + 7
+    mixed.ping = 12345;
+    mixed.crcHint = 0xabcdef;
+    mixed.hasExtra = true;
+    mixed.extra = 200;
     pin(
       'bench_mixed',
       mixed,
