@@ -132,12 +132,12 @@ corpus_id and the window verdict), then CSV v2 rows (§5.1):
 
     lang,bench,path,iters,bytes_per_op,runs,median_msgs_per_sec,min_msgs_per_sec,max_msgs_per_sec,median_mb_per_sec,spread_pct,corpus_id,family,linkage,checks,opt,inline
 
-`path` is `write` or `read`, and — for the data-driven `bench_mixed` rows of
-the C++ leg (issue #191) — `write` or `round_trip`; that leg's `read` is
-derived from the two and prints to stderr only, never as a row. The
-write/round_trip pair is PROPOSED as §2.9 and not yet ratified:
-`bench/tools/relative.go` still blends `write` and `read`, so a `--quick`
-run's `gen` section is empty for a leg that reports `round_trip`.
+`path` is `write` or `read`, and — for the data-driven `bench_mixed` rows,
+which is every language's `gen` family (issue #191) — `write` or
+`round_trip`; the derived `read` prints to stderr only, never as a row. The
+write/round_trip pair is RATIFIED as §2.9: the tools blend `round_trip`, and
+a `--quick` run whose headline section would be empty REFUSES with a
+non-zero exit rather than printing nothing.
 `bytes_per_op` is the actual wire bytes per
 message (constant per benchmark by construction). The six v2 columns carry
 what the row measured: `corpus_id` (FNV-1a-64 of the goldens the runner
