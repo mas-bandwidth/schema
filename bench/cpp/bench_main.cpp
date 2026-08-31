@@ -16,6 +16,12 @@
 //   - before benching, every pinned instance is byte-compared against its
 //     wire golden (testdata/wire/<name>.bin) and round-tripped write→read→
 //     re-write→memcmp; a mismatch refuses to bench
+//
+// bench_mixed — THE canonical benchmark (§1.3a) — is DATA-DRIVEN instead
+// (issue #191): its 64 instances come from the committed variant data
+// (bench/corpus/variants, `make bench-variants`), its rows are write and
+// round-trip, and its driver names no field of the shape. See
+// bench_datadriven below for what that buys and what it costs.
 //   - fixed iteration counts, one warmup run per path, then NumRuns measured
 //     runs; the report is the MEDIAN rate with min/max and spread
 //   - MB/s means MiB/s (1024*1024), following serialize bench.cpp
@@ -95,6 +101,7 @@ const long IterScale = 8;       // Debug: fixed counts / 8 (recorded in the iter
 
 static bool g_csv = false;
 static const char * g_wire_dir = "testdata/wire";
+static const char * g_variant_dir = "bench/corpus/variants";
 
 // ---- CSV v2 (BENCH-STANDARD.md §5.1) ----
 // Rows are buffered and emitted at exit so every row carries the corpus_id
@@ -362,6 +369,203 @@ static void bench_message( const char * name, const char * golden, long base_ite
 
     report( name, "write", iters, bytes_per_op, run_stats( write_rates, g_num_runs ) );
     report( name, "read", iters, bytes_per_op, run_stats( read_rates, g_num_runs ) );
+}
+
+// ------------------------------------------------------------------------------------------
+// the DATA-DRIVEN benchmark driver (issue #191)
+// ------------------------------------------------------------------------------------------
+//
+// THE PROPERTY: nothing below names a field of the shape it measures. Shape
+// knowledge lives in the committed variant DATA (bench/corpus/variants,
+// emitted by bench/tools/variantgen) and in the generated codec, and nowhere
+// else — so this driver cannot drift from another language's driver in what
+// it measures, which is the whole reason the design exists. If a change here
+// ever needs a field name, the design has failed and that is the finding.
+//
+// It replaces bench_message for bench_mixed only. bench_message still drives
+// every shape whose harness code is not yet data-driven.
+
+static bool read_file( const char * path, std::vector<uint8_t> & out )
+{
+    FILE * f = fopen( path, "rb" );
+    if ( !f )
+        return false;
+    uint8_t chunk[65536];
+    size_t n;
+    while ( ( n = fread( chunk, 1, sizeof( chunk ), f ) ) > 0 )
+        out.insert( out.end(), chunk, chunk + n );
+    fclose( f );
+    return true;
+}
+
+// Loads <variant-dir>/<name>.variants.bin into the NumVariants §2.7-staggered
+// slots and returns the record size, or -1. The records are fixed-width by
+// construction (§2.7 pins every structure field), so the file needs no index:
+// the record size IS file size / NumVariants, and a file that does not divide
+// evenly is a refusal.
+static int64_t load_variants( const char * name )
+{
+    char path[512];
+    snprintf( path, sizeof( path ), "%s/%s.variants.bin", g_variant_dir, name );
+    std::vector<uint8_t> packed;
+    if ( !read_file( path, packed ) )
+    {
+        fprintf( stderr, "missing variant data %s — run `make bench-variants`, and run the bench from the schema repo root (or pass --variant-dir)\n", path );
+        return -1;
+    }
+    if ( packed.size() == 0 || packed.size() % NumVariants != 0 )
+    {
+        fprintf( stderr, "variant data %s is %zu bytes, not a multiple of %d records — refusing to bench data whose stride is not the record size\n",
+                 path, packed.size(), NumVariants );
+        return -1;
+    }
+    const size_t record = packed.size() / NumVariants;
+    if ( record > (size_t) BufferSize )
+    {
+        fprintf( stderr, "variant data %s has %zu-byte records, over the %d-byte buffer\n", path, record, BufferSize );
+        return -1;
+    }
+    for ( int k = 0; k < NumVariants; k++ )
+        memcpy( g_variants[k], packed.data() + k * record, record );
+
+    // The variant data is corpus (§1.6): it defines the work inside the timed
+    // loops, so it rides in corpus_id exactly as the wire goldens do. A run
+    // against drifted variant data reports a different id and the tools refuse
+    // the ratio, instead of publishing a number for different work.
+    const char * base = strrchr( path, '/' );
+    g_goldens_loaded[std::string( base ? base + 1 : path )] = packed;
+    return (int64_t) record;
+}
+
+// T — the generated message type — is explicit at the call site: it appears
+// only inside the body, so there is nothing to deduce it from. A TYPE name is
+// not a field name; the driver still knows nothing about the shape's contents.
+template <typename T, typename WriteFn, typename ReadFn>
+static void bench_datadriven( const char * name, const char * golden, long base_iters,
+                              WriteFn write_fn, ReadFn read_fn )
+{
+    const long iters = base_iters / IterScale;
+
+    const int64_t bytes_per_op = load_variants( name );
+    if ( bytes_per_op < 0 )
+    {
+        failed = true;
+        return;
+    }
+
+    // gate 1 (§1.5): variant 0 IS the pinned instance, so the whole variant
+    // file is bound to the wire golden by one byte-compare.
+    if ( !check_golden( golden, g_variants[0], bytes_per_op ) )
+    {
+        failed = true;
+        return;
+    }
+
+    // gate 2: every variant decodes, re-encodes, and comes back byte-identical
+    // at the same length. This is stronger than the pinned-instance-only gate
+    // bench_message applies — §1.5's named residual (the 64 varied buffers
+    // length-checked but never value-checked) closes here, for every variant.
+    static T instances[NumVariants];
+    for ( int k = 0; k < NumVariants; k++ )
+    {
+        serialize::ReadStream rs( g_variants[k], (int) bytes_per_op );
+        if ( !read_fn( rs, instances[k] ) )
+        {
+            fail( name, "decode of a variant failed" );
+            return;
+        }
+        serialize::WriteStream ws( g_twin, BufferSize );
+        if ( !write_fn( ws, instances[k] ) )
+        {
+            fail( name, "re-encode of a decoded variant failed" );
+            return;
+        }
+        ws.Flush();
+        if ( ws.GetBytesProcessed() != bytes_per_op ||
+             memcmp( g_twin, g_variants[k], (size_t) bytes_per_op ) != 0 )
+        {
+            fail( name, "variant round-trip bytes differ — refusing to bench a codec that does not reproduce the corpus" );
+            return;
+        }
+    }
+
+    double write_rates[MaxNumRuns];
+    double roundtrip_rates[MaxNumRuns];
+
+    // WRITE: encode the 64 pre-decoded instances round-robin. Rotating the
+    // instances is what §2.7's per-iteration LCG mutation bought — the
+    // encoder never sees the same input twice in a row and cannot precompute
+    // scratch words — with none of the per-language mutation code, and with
+    // bytes/op constant by construction rather than by assertion. The sink is
+    // the byte fold: every iteration's result is a value the loop cannot drop.
+    for ( int run = -1; run < g_num_runs; run++ )
+    {
+        double start = time_now();
+        for ( long i = 0; i < iters; i++ )
+        {
+            serialize::WriteStream stream( g_buffer, BufferSize );
+            if ( !write_fn( stream, instances[i & ( NumVariants - 1 )] ) )
+            {
+                fail( name, "write failed in loop" );
+                return;
+            }
+            stream.Flush();
+            bench_escape( g_buffer );
+            g_sink = g_sink + (uint64_t) stream.GetBytesProcessed();
+        }
+        double time = time_now() - start;
+        if ( run >= 0 )
+            write_rates[run] = double( iters ) / time;
+    }
+
+    // ROUND-TRIP: decode a variant buffer, then re-encode what came out. The
+    // decode needs no sink discipline of its own — its output IS the encode's
+    // input, so every decoded field is observed by construction, in every
+    // language, with no per-language fold to audit (§2.7's read-side sink
+    // problem dissolved rather than equalized). The decode target is hoisted
+    // and reused, as everywhere else.
+    T out;
+    for ( int run = -1; run < g_num_runs; run++ )
+    {
+        double start = time_now();
+        for ( long i = 0; i < iters; i++ )
+        {
+            serialize::ReadStream rs( g_variants[i & ( NumVariants - 1 )], (int) bytes_per_op );
+            if ( !read_fn( rs, out ) )
+            {
+                fail( name, "read failed in loop" );
+                return;
+            }
+            serialize::WriteStream ws( g_buffer, BufferSize );
+            if ( !write_fn( ws, out ) )
+            {
+                fail( name, "re-write failed in loop" );
+                return;
+            }
+            ws.Flush();
+            bench_escape( g_buffer );
+            g_sink = g_sink + (uint64_t) ws.GetBytesProcessed();
+        }
+        double time = time_now() - start;
+        if ( run >= 0 )
+            roundtrip_rates[run] = double( iters ) / time;
+    }
+
+    const RunStats w = run_stats( write_rates, g_num_runs );
+    const RunStats rt = run_stats( roundtrip_rates, g_num_runs );
+    report( name, "write", iters, bytes_per_op, w );
+    report( name, "round_trip", iters, bytes_per_op, rt );
+
+    // READ is DERIVED, never measured: round-trip time minus write time. It
+    // prints for continuity with the read rows the rest of the corpus still
+    // reports and is NOT a CSV row — a derived number in the CSV would be
+    // divided as if it had been measured.
+    const double read_time = 1.0 / rt.median_rate - 1.0 / w.median_rate;
+    if ( read_time > 0 )
+    {
+        fprintf( stderr, "%-18s %-5s %10.2f M msg/s   (DERIVED: round-trip minus write, informational — not a measured row)\n",
+                 name, "read", 1e-6 / read_time );
+    }
 }
 
 // ------------------------------------------------------------------------------------------
@@ -724,52 +928,6 @@ static bench::BenchBits pin_gen_bits()
     return in;
 }
 
-// BenchMixed — THE canonical benchmark shape (issue #184). The pin is
-// test/bench/main.cpp's, transcribed exactly; STRUCTURE fields (the two
-// array counts, the two used lengths, the union tag, the `if` gate) are set
-// here and never touched by vary_*, so bytes/op is constant (§2.7).
-static bench::BenchMixed pin_gen_mixed()
-{
-    bench::BenchMixed in;
-    in.sequence = 52428; in.ack_sequence = 12345; in.ack_bits = 0xA5A5A5A5u;
-    in.session_id = 0x123456789ABCDEF0ull; in.client_id = 0xDEADBEEFu;
-    in.nonce = 0xFEDCBA9876543210ull; in.world_time = -987654321000ll;
-    in.frame_tick = 0x123456789ABCull; in.server_time = 12345678;
-    in.entities_count = 8;
-    for ( int i = 0; i < 8; i++ )
-    {
-        bench::MixedEntity & e = in.entities[i];
-        e.entity_id = (uint32_t) ( 2049 + i * 17 );
-        e.pos_x = -16383 + i * 4096; e.pos_y = 16383 - i * 4096; e.pos_z = -1 + i * 2048;
-        e.yaw = (uint32_t) ( 511 - i * 64 ); e.pitch = (uint32_t) ( i * 73 );
-        e.vel_x = -2048 + i * 512; e.vel_y = 2047 - i * 512; e.vel_z = -1024 + i * 256;
-        e.health = 1000 - i * 100;
-        e.weapon = bench::MixedWeapon( 1 + i );
-        e.damage = (bench::MixedDamage) ( 0x5A + i );
-        e.moving = ( i % 2 ) == 0; e.firing = ( i % 3 ) == 0;
-    }
-    in.stats_count = 80;
-    for ( int i = 0; i < 80; i++ )
-    {
-        in.stats[i].stat_id = (uint32_t) ( ( i * 3 ) % 256 );
-        in.stats[i].delta = -512 + ( i * 13 ) % 1024;
-    }
-    in.game_event.type = bench::MixedEventType::Hit;
-    in.game_event.hit.target_id = 4095; in.game_event.hit.damage = 4095;
-    in.game_event.hit.hit_kind = 7; in.game_event.hit.crit = true;
-    in.loadout[0] = 0x11; in.loadout[1] = 0x22; in.loadout[2] = 0x33; in.loadout[3] = 0x44;
-    memcpy( in.player_name, "Rowan_01", 8 ); in.player_name_length = 8;
-    static const uint8_t pinned_payload[8] = { 0xDE, 0xAD, 0xBE, 0xEF, 0x01, 0x02, 0x03, 0x04 };
-    memcpy( in.payload, pinned_payload, 8 ); in.payload_length = 8;
-    in.aim_x = 0.5f; in.aim_y = -0.25f; in.aim_z = 0.75f;
-    in.recoil = 1.5f; in.drift = -3.25;
-    in.wide_key = ( serialize::uint128_t( 0x0123456789ABCDEFull ) << 64 ) | serialize::uint128_t( 0xFEDCBA9876543210ull );
-    in.flux = ( serialize::int128_t( 1 ) << 99 ) + serialize::int128_t( 7 );
-    in.ping = 12345; in.crc_hint = 0xABCDEFu;
-    in.has_extra = true; in.extra = 200;
-    return in;
-}
-
 static void vary_gen_packet( bench::BenchPacket & p, uint64_t rng )
 {
     p.a = int32_t( ( rng >> 8 ) & 63 ) - 32;
@@ -808,54 +966,6 @@ static void vary_gen_bits( bench::BenchBits & f, uint64_t rng )
     f.b11 = uint32_t( rng >> 37 ) & 2047;
     f.b19 = uint32_t( rng >> 44 ) & 524287;
     f.b48 = rng & 0xFFFFFFFFFFFFull;
-}
-
-// The LCG field mapping for BenchMixed, reproduced in every runner. VALUE
-// fields only: every array count, used length, union tag and branch gate is
-// STRUCTURE and stays where pin_* put it (§2.7). Every entity element varies;
-// the 80 stats vary their `delta` (stat_id stays pinned) — the family
-// convention of varying a representative subset, stated out loud.
-static void vary_gen_mixed( bench::BenchMixed & f, uint64_t rng )
-{
-    f.sequence = uint32_t( rng >> 8 ) & 65535;
-    f.ack_sequence = int32_t( uint32_t( rng >> 24 ) & 65535 );
-    f.ack_bits = uint32_t( rng >> 16 );
-    f.session_id = rng;
-    f.client_id = uint32_t( rng >> 32 );
-    f.nonce = rng ^ 0xA5A5A5A5A5A5A5A5ull;
-    f.world_time = int64_t( ( rng >> 12 ) & 0xFFFFFFFFFull ) - 34359738368ll;   // within +/-1e12
-    f.frame_tick = rng & 0xFFFFFFFFFFFFull;
-    f.server_time = int32_t( ( rng >> 20 ) & 0x7FFFFF );                        // raw Q24.8 <= 65535 << 8
-    for ( int i = 0; i < 8; i++ )
-    {
-        bench::MixedEntity & e = f.entities[i];
-        e.entity_id = uint32_t( ( rng >> i ) & 4095 );
-        e.pos_x = int32_t( ( rng >> ( i + 4 ) ) & 16383 ) - 8192;
-        e.pos_y = int32_t( ( rng >> ( i + 12 ) ) & 16383 ) - 8192;
-        e.health = int32_t( ( rng >> ( i + 20 ) ) & 511 );                      // within [0, 1000]
-        e.weapon = bench::MixedWeapon( ( rng >> ( i + 40 ) ) & 15 );
-        e.damage = (bench::MixedDamage) ( ( rng >> ( i + 28 ) ) & 255 );
-        e.moving = ( ( rng >> i ) & 1 ) != 0;
-    }
-    for ( int i = 0; i < 80; i++ )
-        f.stats[i].delta = int32_t( ( rng >> ( i & 31 ) ) & 1023 ) - 512;
-    f.game_event.hit.target_id = uint32_t( ( rng >> 6 ) & 4095 );
-    f.game_event.hit.damage = int32_t( ( rng >> 18 ) & 4095 );
-    f.game_event.hit.hit_kind = int32_t( ( rng >> 30 ) & 7 );
-    f.game_event.hit.crit = ( rng & 4 ) != 0;
-    f.loadout[0] = uint8_t( rng >> 56 );
-    f.player_name[7] = char( 65 + ( ( rng >> 50 ) & 15 ) );                     // stays ASCII, never NUL
-    f.payload[0] = uint8_t( rng >> 48 );
-    f.aim_x = float( uint32_t( rng >> 2 ) & 255 ) * ( 1.0f / 256.0f ) - 0.5f;   // within [-1, 1]
-    f.aim_y = float( uint32_t( rng >> 10 ) & 255 ) * ( 1.0f / 256.0f ) - 0.5f;
-    f.aim_z = float( uint32_t( rng >> 18 ) & 255 ) * ( 1.0f / 256.0f ) - 0.5f;
-    f.recoil = float( uint32_t( rng ) & 0xFFFF );
-    f.drift = double( int64_t( ( rng >> 8 ) & 0xFFFFFF ) ) * 0.5;
-    f.wide_key = ( serialize::uint128_t( rng >> 1 ) << 64 ) | serialize::uint128_t( rng );
-    f.flux = serialize::int128_t( int64_t( rng >> 16 ) );                       // well within +/-2^100
-    f.ping = uint16_t( ( rng >> 40 ) & 0x7FFF );                                // raw UQ8.8 <= 250 << 8
-    f.crc_hint = uint32_t( ( rng >> 24 ) & 0xFFFFFF );
-    f.extra = int32_t( ( rng >> 52 ) & 255 );
 }
 
 // ------------------------------------------------------------------------------------------
@@ -1609,6 +1719,8 @@ int main( int argc, char ** argv )
             g_csv = true;
         else if ( strcmp( argv[i], "--wire-dir" ) == 0 && i + 1 < argc )
             g_wire_dir = argv[++i];
+        else if ( strcmp( argv[i], "--variant-dir" ) == 0 && i + 1 < argc )
+            g_variant_dir = argv[++i];
         else if ( strcmp( argv[i], "--round" ) == 0 && i + 1 < argc )
         {
             // §2.4: one warmup + one measured run of every benchmark, then
@@ -1627,7 +1739,7 @@ int main( int argc, char ** argv )
             g_quick = true;
         else
         {
-            fprintf( stderr, "usage: %s [--csv] [--round K] [--quick] [--wire-dir <dir>]\n", argv[0] );
+            fprintf( stderr, "usage: %s [--csv] [--round K] [--quick] [--wire-dir <dir>] [--variant-dir <dir>]\n", argv[0] );
             return 1;
         }
     }
@@ -1651,7 +1763,7 @@ int main( int argc, char ** argv )
         // schema subject (the blended table's row); the rt row rides beside
         // it as the hand-written-usage subject.
         fprintf( stderr, "--quick: iteration instrument, not certification\n" );
-        bench_message( "bench_mixed", "bench_mixed", 4000000L, pin_gen_mixed(), bench::WriteBenchMixed, bench::ReadBenchMixed, vary_gen_mixed );
+        bench_datadriven<bench::BenchMixed>( "bench_mixed", "bench_mixed", 4000000L, bench::WriteBenchMixed, bench::ReadBenchMixed );
         bench_rt( "bench_mixed", 4000000L, pin_rt_mixed(), rt_bench_mixed_write_loop, rt_bench_mixed_read_loop, vary_rt_mixed );
         flush_csv();
         if ( failed )
@@ -1702,7 +1814,7 @@ int main( int argc, char ** argv )
     bench_message( "bench_packet", "bench_packet", 32000000L, pin_gen_packet(), bench::WriteBenchPacket, bench::ReadBenchPacket, vary_gen_packet );
     bench_message( "bench_ints", "bench_ints", 40000000L, pin_gen_ints(), bench::WriteBenchInts, bench::ReadBenchInts, vary_gen_ints );
     bench_message( "bench_bits", "bench_bits", 48000000L, pin_gen_bits(), bench::WriteBenchBits, bench::ReadBenchBits, vary_gen_bits );
-    bench_message( "bench_mixed", "bench_mixed", 4000000L, pin_gen_mixed(), bench::WriteBenchMixed, bench::ReadBenchMixed, vary_gen_mixed );
+    bench_datadriven<bench::BenchMixed>( "bench_mixed", "bench_mixed", 4000000L, bench::WriteBenchMixed, bench::ReadBenchMixed );
 
     // family rt (§1.3/§1.5): the runtime API by hand, oracle-gated against
     // the goldens the generated code pinned. Iteration counts are fixed and
