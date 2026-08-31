@@ -56,7 +56,7 @@ public final class Main {
     static final int PACKET_ITERS = 32000000;
     static final int INTS_ITERS = 40000000;
     static final int BITS_ITERS = 48000000;
-    static final int MIXED_ITERS = 40000000;
+    static final int MIXED_ITERS = 4000000;
 
     static boolean csv = false;
     static boolean quick = false;

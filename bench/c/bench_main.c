@@ -1841,7 +1841,7 @@ int main( int argc, char ** argv )
             bench_message_gen_bench_bits( "bench_bits", "bench_bits", 48000000L, &gen_bits );
         }
         /* --quick runs exactly this gen leg beside the rt one below */
-        bench_message_gen_bench_mixed( "bench_mixed", "bench_mixed", 40000000L, &gen_mixed );
+        bench_message_gen_bench_mixed( "bench_mixed", "bench_mixed", 4000000L, &gen_mixed );
     }
 
     /* family rt (§1.3/§1.5): the runtime API by hand, oracle-gated against
@@ -1922,7 +1922,7 @@ int main( int argc, char ** argv )
             bench_rt_bench_bits( "bench_bits", 48000000L, &rt_bits );
         }
         /* --quick runs exactly this leg: bench_mixed, golden gate intact */
-        bench_rt_bench_mixed( "bench_mixed", 40000000L, &rt_mixed );
+        bench_rt_bench_mixed( "bench_mixed", 4000000L, &rt_mixed );
     }
 
     /* family bits (§1.4): the one bitpacker workload in the estate */

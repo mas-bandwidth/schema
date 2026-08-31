@@ -1003,7 +1003,7 @@ static partial class Program
             // The gen row is the schema subject (the blended table's row);
             // the rt row rides beside it as the hand-written-usage subject.
             Console.Error.WriteLine("--quick: iteration instrument, not certification");
-            BenchMessage("bench_mixed", "bench_mixed", 40000000, PinGenMixed(), Bench.Schema.WriteBenchMixed, Bench.Schema.ReadBenchMixed, VaryGenMixed);
+            BenchMessage("bench_mixed", "bench_mixed", 4000000, PinGenMixed(), Bench.Schema.WriteBenchMixed, Bench.Schema.ReadBenchMixed, VaryGenMixed);
             BenchRtMixed();
             FlushCsv();
             if (failed)
@@ -1046,7 +1046,7 @@ static partial class Program
         BenchMessage("bench_packet", "bench_packet", 32000000, PinGenPacket(), Bench.Schema.WriteBenchPacket, Bench.Schema.ReadBenchPacket, VaryGenPacket);
         BenchMessage("bench_ints", "bench_ints", 40000000, PinGenInts(), Bench.Schema.WriteBenchInts, Bench.Schema.ReadBenchInts, VaryGenInts);
         BenchMessage("bench_bits", "bench_bits", 48000000, PinGenBits(), Bench.Schema.WriteBenchBits, Bench.Schema.ReadBenchBits, VaryGenBits);
-        BenchMessage("bench_mixed", "bench_mixed", 40000000, PinGenMixed(), Bench.Schema.WriteBenchMixed, Bench.Schema.ReadBenchMixed, VaryGenMixed);
+        BenchMessage("bench_mixed", "bench_mixed", 4000000, PinGenMixed(), Bench.Schema.WriteBenchMixed, Bench.Schema.ReadBenchMixed, VaryGenMixed);
 
         // family rt (§1.3/§1.5): the runtime API by hand, oracle-gated
         // against the goldens the generated code pinned. Iteration counts

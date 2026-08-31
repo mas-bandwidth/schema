@@ -1651,8 +1651,8 @@ int main( int argc, char ** argv )
         // schema subject (the blended table's row); the rt row rides beside
         // it as the hand-written-usage subject.
         fprintf( stderr, "--quick: iteration instrument, not certification\n" );
-        bench_message( "bench_mixed", "bench_mixed", 40000000L, pin_gen_mixed(), bench::WriteBenchMixed, bench::ReadBenchMixed, vary_gen_mixed );
-        bench_rt( "bench_mixed", 40000000L, pin_rt_mixed(), rt_bench_mixed_write_loop, rt_bench_mixed_read_loop, vary_rt_mixed );
+        bench_message( "bench_mixed", "bench_mixed", 4000000L, pin_gen_mixed(), bench::WriteBenchMixed, bench::ReadBenchMixed, vary_gen_mixed );
+        bench_rt( "bench_mixed", 4000000L, pin_rt_mixed(), rt_bench_mixed_write_loop, rt_bench_mixed_read_loop, vary_rt_mixed );
         flush_csv();
         if ( failed )
         {
@@ -1702,7 +1702,7 @@ int main( int argc, char ** argv )
     bench_message( "bench_packet", "bench_packet", 32000000L, pin_gen_packet(), bench::WriteBenchPacket, bench::ReadBenchPacket, vary_gen_packet );
     bench_message( "bench_ints", "bench_ints", 40000000L, pin_gen_ints(), bench::WriteBenchInts, bench::ReadBenchInts, vary_gen_ints );
     bench_message( "bench_bits", "bench_bits", 48000000L, pin_gen_bits(), bench::WriteBenchBits, bench::ReadBenchBits, vary_gen_bits );
-    bench_message( "bench_mixed", "bench_mixed", 40000000L, pin_gen_mixed(), bench::WriteBenchMixed, bench::ReadBenchMixed, vary_gen_mixed );
+    bench_message( "bench_mixed", "bench_mixed", 4000000L, pin_gen_mixed(), bench::WriteBenchMixed, bench::ReadBenchMixed, vary_gen_mixed );
 
     // family rt (§1.3/§1.5): the runtime API by hand, oracle-gated against
     // the goldens the generated code pinned. Iteration counts are fixed and
@@ -1712,7 +1712,7 @@ int main( int argc, char ** argv )
     bench_rt( "bench_packet", 32000000L, pin_rt_packet(), rt_bench_packet_write_loop, rt_bench_packet_read_loop, vary_rt_packet );
     bench_rt( "bench_ints", 40000000L, pin_rt_ints(), rt_bench_ints_write_loop, rt_bench_ints_read_loop, vary_rt_ints );
     bench_rt( "bench_bits", 48000000L, pin_rt_bits(), rt_bench_bits_write_loop, rt_bench_bits_read_loop, vary_rt_bits );
-    bench_rt( "bench_mixed", 40000000L, pin_rt_mixed(), rt_bench_mixed_write_loop, rt_bench_mixed_read_loop, vary_rt_mixed );
+    bench_rt( "bench_mixed", 4000000L, pin_rt_mixed(), rt_bench_mixed_write_loop, rt_bench_mixed_read_loop, vary_rt_mixed );
 
     // family bits (§1.4): the one bitpacker workload in the estate. 24576
     // passes, not the historical 4096 — at 4096 the C++ read leg finishes in

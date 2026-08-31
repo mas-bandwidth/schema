@@ -873,8 +873,8 @@ func main() {
 		// The gen row is the schema subject (the blended table's row); the
 		// rt row rides beside it as the hand-written-usage subject.
 		fmt.Fprintf(os.Stderr, "schema bench (go, --quick: iteration instrument, not certification)\n")
-		benchMessage("bench_mixed", "bench_mixed", 40000000, pinGenMixed(), bench.WriteBenchMixed, bench.ReadBenchMixed, varyGenMixed)
-		benchRt("bench_mixed", 40000000, pinRtMixed(), rtOnceWriteMixed, rtOnceReadMixed, rtBenchMixedWriteLoop, rtBenchMixedReadLoop, varyRtMixed)
+		benchMessage("bench_mixed", "bench_mixed", 4000000, pinGenMixed(), bench.WriteBenchMixed, bench.ReadBenchMixed, varyGenMixed)
+		benchRt("bench_mixed", 4000000, pinRtMixed(), rtOnceWriteMixed, rtOnceReadMixed, rtBenchMixedWriteLoop, rtBenchMixedReadLoop, varyRtMixed)
 		flushCsv()
 		if failed {
 			fmt.Fprintf(os.Stderr, "BENCH FAILED (corpus_id %s)\n", corpusID())
@@ -915,7 +915,7 @@ func main() {
 	benchMessage("bench_packet", "bench_packet", 32000000, pinGenPacket(), bench.WriteBenchPacket, bench.ReadBenchPacket, varyGenPacket)
 	benchMessage("bench_ints", "bench_ints", 40000000, pinGenInts(), bench.WriteBenchInts, bench.ReadBenchInts, varyGenInts)
 	benchMessage("bench_bits", "bench_bits", 48000000, pinGenBits(), bench.WriteBenchBits, bench.ReadBenchBits, varyGenBits)
-	benchMessage("bench_mixed", "bench_mixed", 40000000, pinGenMixed(), bench.WriteBenchMixed, bench.ReadBenchMixed, varyGenMixed)
+	benchMessage("bench_mixed", "bench_mixed", 4000000, pinGenMixed(), bench.WriteBenchMixed, bench.ReadBenchMixed, varyGenMixed)
 
 	// family rt (§1.3/§1.5): the runtime API by hand, oracle-gated against
 	// the goldens the generated code pinned. Iteration counts are fixed and
@@ -923,7 +923,7 @@ func main() {
 	benchRt("bench_packet", 32000000, pinRtPacket(), rtOnceWritePacket, rtOnceReadPacket, rtBenchPacketWriteLoop, rtBenchPacketReadLoop, varyRtPacket)
 	benchRt("bench_ints", 40000000, pinRtInts(), rtOnceWriteInts, rtOnceReadInts, rtBenchIntsWriteLoop, rtBenchIntsReadLoop, varyRtInts)
 	benchRt("bench_bits", 48000000, pinRtBits(), rtOnceWriteBits, rtOnceReadBits, rtBenchBitsWriteLoop, rtBenchBitsReadLoop, varyRtBits)
-	benchRt("bench_mixed", 40000000, pinRtMixed(), rtOnceWriteMixed, rtOnceReadMixed, rtBenchMixedWriteLoop, rtBenchMixedReadLoop, varyRtMixed)
+	benchRt("bench_mixed", 4000000, pinRtMixed(), rtOnceWriteMixed, rtOnceReadMixed, rtBenchMixedWriteLoop, rtBenchMixedReadLoop, varyRtMixed)
 
 	// family bits (§1.4): the one bitpacker workload in the estate
 	benchBitpacker(24576)

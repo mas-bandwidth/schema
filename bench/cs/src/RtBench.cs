@@ -863,7 +863,7 @@ static partial class Program
     // the --quick leg: bench_mixed alone (golden-gated by BenchRt like every leg)
     static void BenchRtMixed()
     {
-        BenchRt("bench_mixed", 40000000, PinRtMixed(), RtOnceWriteMixed, RtOnceReadMixed, RtBenchMixedWriteLoop, RtBenchMixedReadLoop, VaryRtMixed);
+        BenchRt("bench_mixed", 4000000, PinRtMixed(), RtOnceWriteMixed, RtOnceReadMixed, RtBenchMixedWriteLoop, RtBenchMixedReadLoop, VaryRtMixed);
     }
 
     // ------------------------------------------------------------------------------------------

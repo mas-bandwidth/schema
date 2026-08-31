@@ -124,7 +124,7 @@ const { PRODUCTION } = await import(new URL("src/mode.js", runtimeRoot).href);
 const MaxNumRuns = 7; // median of 7 (N >= 5), after 1 warmup run
 let gQuick = false; // --quick: flat bench_mixed only, 3 measured runs —
 // the iteration instrument, never the certification instrument
-const QuickMixedIters = 40000000;
+const QuickMixedIters = 4000000;
 let gNumRuns = MaxNumRuns; // --round K drops this to 1 (§2.4: one warmup +
 // one measured run per round; the driver aggregates across rounds)
 const NumVariants = 64; // read-path variant buffers
@@ -251,9 +251,35 @@ function sinkOfBenchBitsGen(d) {
   return d.B7 + d.B13 + d.B23 + d.B3 + d.B32 + d.B11 + d.B19 + bigBit(d.B48);
 }
 
+// §2.7 full-struct observation over the canonical shape: every decoded field
+// folds in — array elements one by one over the decoded extent, booleans as
+// 0/1, the string and byte block byte-summed over their used lengths, and the
+// BigInt fields through the allocation-free nonzero comparison this leg's
+// named deviation permits (a BigInt add per field per iteration would measure
+// the allocator).
 function sinkOfBenchMixedGen(d) {
-  return d.Sequence + d.AckBits + d.EntityId + d.PosX + d.PosY + d.PosZ +
-    d.Yaw + boolBit(d.Moving) + boolBit(d.Firing) + bigBit(d.Timestamp) + d.Weapon;
+  let s = d.Sequence + d.AckSequence + d.AckBits + bigBit(d.SessionId) + d.ClientId +
+    bigBit(d.Nonce) + bigBit(d.WorldTime) + bigBit(d.FrameTick) + d.ServerTime +
+    d.EntitiesCount + d.StatsCount + d.GameEvent.Type +
+    d.PlayerNameLength + d.PayloadLength +
+    d.AimX + d.AimY + d.AimZ + d.Recoil + d.Drift +
+    bigBit(d.WideKey) + bigBit(d.Flux) + d.Ping + d.CrcHint +
+    boolBit(d.HasExtra) + d.Extra + d.IdleTicks;
+  for (let i = 0; i < d.EntitiesCount; i++) {
+    const e = d.Entities[i];
+    s += e.EntityId + e.PosX + e.PosY + e.PosZ + e.Yaw + e.Pitch +
+      e.VelX + e.VelY + e.VelZ + e.Health + e.Weapon + bigBit(e.Damage) +
+      boolBit(e.Moving) + boolBit(e.Firing);
+  }
+  for (let i = 0; i < d.StatsCount; i++) {
+    s += d.Stats[i].StatId + d.Stats[i].Delta;
+  }
+  const h = d.GameEvent.Hit;
+  s += h.TargetId + h.Damage + h.HitKind + boolBit(h.Crit);
+  s += sumBytes(d.Loadout, 4);
+  s += sumBytes(d.PlayerName, d.PlayerNameLength);
+  s += sumBytes(d.Payload, d.PayloadLength);
+  return s;
 }
 
 function sinkOfRigidBody(d) {
@@ -365,10 +391,32 @@ function sinkOfRtBits(f) {
     f.b11.value + f.b19.value + bigBit(f.b48.value);
 }
 
+// §2.7 full-struct observation over the hand-written shape — the gen sink's twin
 function sinkOfRtMixed(f) {
-  return f.sequence.value + f.ackBits.value + f.entityId.value + f.posX.value +
-    f.posY.value + f.posZ.value + f.yaw.value + boolBit(f.moving.value) +
-    boolBit(f.firing.value) + bigBit(f.timestamp.value) + f.weapon.value;
+  let s = f.magic.value + f.sequence.value + f.ackSequence.value + f.ackBits.value +
+    bigBit(f.sessionId.value) + f.clientId.value + bigBit(f.nonce.value) +
+    bigBit(f.worldTime.value) + bigBit(f.frameTick.value) + f.serverTime.value +
+    f.entitiesCount.value + f.statsCount.value + f.eventType.value +
+    f.playerNameLength.value + f.payloadLength.value +
+    f.aimX.value + f.aimY.value + f.aimZ.value + f.recoil.value + f.drift.value +
+    bigBit(f.wideKey.value) + bigBit(f.flux.value) + f.ping.value +
+    f.reservedBits.value + f.crcHint.value + boolBit(f.hasExtra.value) +
+    f.extra.value + f.idleTicks.value;
+  for (let i = 0; i < f.entitiesCount.value; i++) {
+    const e = f.entities[i];
+    s += e.entityId.value + e.posX.value + e.posY.value + e.posZ.value +
+      e.yaw.value + e.pitch.value + e.velX.value + e.velY.value + e.velZ.value +
+      e.health.value + e.weapon.value + e.damage.value +
+      boolBit(e.moving.value) + boolBit(e.firing.value);
+  }
+  for (let i = 0; i < f.statsCount.value; i++) {
+    s += f.stats[i].statId.value + f.stats[i].delta.value;
+  }
+  s += f.hitTargetId.value + f.hitDamage.value + f.hitKind.value + boolBit(f.hitCrit.value);
+  s += sumBytes(f.loadout, 4);
+  s += sumBytes(f.playerName, f.playerNameLength.value);
+  s += sumBytes(f.payload, f.payloadLength.value);
+  return s;
 }
 let gCsv = false;
 let gWireDir = "../../testdata/wire";
@@ -1245,52 +1293,182 @@ function readRtBits(s, f) {
   );
 }
 
-function makeRtMixed() {
+// BenchMixed by hand (issue #184): every serialize runtime operation the
+// schema language expresses, in the order the generated code emits them.
+// The §1.5 oracle gate byte-compares this against the generated golden.
+const RT_FLUX_MIN = -(1n << 100n);
+const RT_FLUX_MAX = 1n << 100n;
+
+function makeRtMixedEntity() {
   return {
-    sequence: { value: 0 },
-    ackBits: { value: 0 },
     entityId: { value: 0 },
     posX: { value: 0 },
     posY: { value: 0 },
     posZ: { value: 0 },
     yaw: { value: 0 },
+    pitch: { value: 0 },
+    velX: { value: 0 },
+    velY: { value: 0 },
+    velZ: { value: 0 },
+    health: { value: 0 },
+    weapon: { value: 0 },
+    damage: { value: 0 },
     moving: { value: false },
     firing: { value: false },
-    timestamp: { value: 0n },
-    weapon: { value: 0 },
   };
 }
 
+function makeRtMixed() {
+  const playerName = new Uint8Array(15);
+  const payload = new Uint8Array(16);
+  return {
+    magic: { value: 0xc0de },
+    sequence: { value: 0 },
+    ackSequence: { value: 0 },
+    ackBits: { value: 0 },
+    sessionId: { value: 0n },
+    clientId: { value: 0 },
+    nonce: { value: 0n },
+    worldTime: { value: 0n },
+    frameTick: { value: 0n },
+    serverTime: { value: 0 },
+    entitiesCount: { value: 0 },
+    entities: Array.from({ length: 8 }, makeRtMixedEntity),
+    statsCount: { value: 0 },
+    stats: Array.from({ length: 80 }, () => ({ statId: { value: 0 }, delta: { value: 0 } })),
+    eventType: { value: 0 },
+    hitTargetId: { value: 0 },
+    hitDamage: { value: 0 },
+    hitKind: { value: 0 },
+    hitCrit: { value: false },
+    chatChannel: { value: 0 },
+    chatSpeaker: { value: 0 },
+    pickupItemId: { value: 0 },
+    pickupAmount: { value: 0 },
+    loadout: new Uint8Array(4),
+    playerNameLength: { value: 0 },
+    playerName,
+    // the used lengths are STRUCTURE, so the subarray views are built ONCE
+    // here rather than per call (serializeBytes takes a Uint8Array)
+    playerNameUsed: playerName.subarray(0, 8),
+    payloadLength: { value: 0 },
+    payload,
+    payloadUsed: payload.subarray(0, 8),
+    aimX: { value: 0 },
+    aimY: { value: 0 },
+    aimZ: { value: 0 },
+    recoil: { value: 0 },
+    drift: { value: 0 },
+    wideKey: { value: 0n },
+    flux: { value: 0n },
+    ping: { value: 0 },
+    reservedBits: { value: 0 },
+    crcHint: { value: 0 },
+    hasExtra: { value: true },
+    extra: { value: 0 },
+    idleTicks: { value: 0 },
+  };
+}
+
+function serializeRtMixed(s, f) {
+  if (!s.serializeBits(f.magic, 16)) return false;
+  if (!s.serializeBits(f.sequence, 16)) return false;
+  if (!s.serializeInt(f.ackSequence, 0, 65535)) return false;
+  if (!s.serializeBits(f.ackBits, 32)) return false;
+  if (!s.serializeUint64(f.sessionId)) return false;
+  if (!s.serializeUint32(f.clientId)) return false;
+  // the full-unsigned ranged path is width-computed raw bits
+  if (!s.serializeBits64(f.nonce, 64)) return false;
+  if (!s.serializeInt64(f.worldTime, -1000000000000n, 1000000000000n)) return false;
+  if (!s.serializeBits64(f.frameTick, 48)) return false;
+  if (!s.serializeFixed(f.serverTime, 24, 8, 0, 65535)) return false;
+
+  if (!s.serializeInt(f.entitiesCount, 1, 8)) return false;
+  for (let i = 0; i < f.entitiesCount.value; i++) {
+    const e = f.entities[i];
+    if (!s.serializeBits(e.entityId, 12)) return false;
+    if (!s.serializeInt(e.posX, -16383, 16383)) return false;
+    if (!s.serializeInt(e.posY, -16383, 16383)) return false;
+    if (!s.serializeInt(e.posZ, -16383, 16383)) return false;
+    if (!s.serializeBits(e.yaw, 9)) return false;
+    if (!s.serializeBits(e.pitch, 9)) return false;
+    if (!s.serializeInt(e.velX, -2048, 2047)) return false;
+    if (!s.serializeInt(e.velY, -2048, 2047)) return false;
+    if (!s.serializeInt(e.velZ, -2048, 2047)) return false;
+    if (!s.serializeInt(e.health, 0, 1000)) return false;
+    if (!s.serializeInt(e.weapon, 0, 15)) return false;
+    if (!s.serializeBits(e.damage, 8)) return false;
+    if (!s.serializeBool(e.moving)) return false;
+    if (!s.serializeBool(e.firing)) return false;
+  }
+
+  if (!s.serializeInt(f.statsCount, 0, 80)) return false;
+  for (let i = 0; i < f.statsCount.value; i++) {
+    if (!s.serializeBits(f.stats[i].statId, 8)) return false;
+    if (!s.serializeInt(f.stats[i].delta, -512, 511)) return false;
+  }
+
+  if (!s.serializeInt(f.eventType, 0, 3)) return false;
+  if (f.eventType.value === 1) {
+    if (!s.serializeBits(f.hitTargetId, 12)) return false;
+    if (!s.serializeInt(f.hitDamage, 0, 4095)) return false;
+    if (!s.serializeInt(f.hitKind, 0, 7)) return false;
+    if (!s.serializeBool(f.hitCrit)) return false;
+  } else if (f.eventType.value === 2) {
+    if (!s.serializeInt(f.chatChannel, 0, 3)) return false;
+    if (!s.serializeBits(f.chatSpeaker, 12)) return false;
+  } else if (f.eventType.value === 3) {
+    if (!s.serializeBits(f.pickupItemId, 10)) return false;
+    if (!s.serializeInt(f.pickupAmount, 0, 255)) return false;
+  }
+
+  for (let i = 0; i < 4; i++) {
+    RT_BYTE.value = f.loadout[i];
+    if (!s.serializeUint8(RT_BYTE)) return false;
+    f.loadout[i] = RT_BYTE.value;
+  }
+
+  // string(15) and bytes(16) ride as their §4.3 decomposition in every rt
+  // leg — see bench/cpp/bench_main.cpp for the reasoning
+  if (!s.serializeInt(f.playerNameLength, 0, 15)) return false;
+  if (!s.serializeBytes(f.playerNameUsed)) return false;
+  if (!s.serializeInt(f.payloadLength, 0, 16)) return false;
+  if (!s.serializeBytes(f.payloadUsed)) return false;
+
+  if (!s.serializeCompressedFloat(f.aimX, -1.0, 1.0, 0.01)) return false;
+  if (!s.serializeCompressedFloat(f.aimY, -1.0, 1.0, 0.01)) return false;
+  if (!s.serializeCompressedFloat(f.aimZ, -1.0, 1.0, 0.01)) return false;
+  if (!s.serializeFloat(f.recoil)) return false;
+  if (!s.serializeDouble(f.drift)) return false;
+  if (!s.serializeUint128(f.wideKey)) return false;
+  if (!s.serializeInt128(f.flux, RT_FLUX_MIN, RT_FLUX_MAX)) return false;
+  if (!s.serializeFixed(f.ping, 8, 8, 0, 250)) return false;
+
+  if (!s.serializeBits(f.reservedBits, 4)) return false;
+  if (!s.serializeAlign()) return false;
+  if (!s.serializeBits(f.crcHint, 24)) return false;
+  if (!s.serializeBool(f.hasExtra)) return false;
+  if (f.hasExtra.value) {
+    if (!s.serializeInt(f.extra, 0, 255)) return false;
+  } else {
+    if (!s.serializeInt(f.idleTicks, 0, 15)) return false;
+  }
+  return true;
+}
+
+// serializeUint8 takes a ref, and the loadout lives in a Uint8Array; one
+// shared scratch ref keeps the loop allocation-free
+const RT_BYTE = { value: 0 };
+
 function writeRtMixed(s, f) {
-  return (
-    s.serializeInt(f.sequence, 0, 65535) &&
-    s.serializeBits(f.ackBits, 32) &&
-    s.serializeBits(f.entityId, 12) &&
-    s.serializeInt(f.posX, -16384, 16383) &&
-    s.serializeInt(f.posY, -16384, 16383) &&
-    s.serializeInt(f.posZ, -16384, 16383) &&
-    s.serializeBits(f.yaw, 9) &&
-    s.serializeBool(f.moving) &&
-    s.serializeBool(f.firing) &&
-    s.serializeBits64(f.timestamp, 48) &&
-    s.serializeInt(f.weapon, 0, 15)
-  );
+  return serializeRtMixed(s, f);
 }
 
 function readRtMixed(s, f) {
-  return (
-    s.serializeInt(f.sequence, 0, 65535) &&
-    s.serializeBits(f.ackBits, 32) &&
-    s.serializeBits(f.entityId, 12) &&
-    s.serializeInt(f.posX, -16384, 16383) &&
-    s.serializeInt(f.posY, -16384, 16383) &&
-    s.serializeInt(f.posZ, -16384, 16383) &&
-    s.serializeBits(f.yaw, 9) &&
-    s.serializeBool(f.moving) &&
-    s.serializeBool(f.firing) &&
-    s.serializeBits64(f.timestamp, 48) &&
-    s.serializeInt(f.weapon, 0, 15)
-  );
+  if (!serializeRtMixed(s, f)) return false;
+  // const(0xC0DE, 16) and reserved(4) are contract fields the runtime API
+  // does not check for you; the generated reader refuses the same bytes
+  return f.magic.value === 0xc0de && f.reservedBits.value === 0;
 }
 
 // ---- pinned instances: test/bench/main.cpp (the golden producer), verbatim ----
@@ -1344,17 +1522,60 @@ function pinRtBits() {
 
 function pinRtMixed() {
   const f = makeRtMixed();
+  f.magic.value = 0xc0de;
   f.sequence.value = 52428;
+  f.ackSequence.value = 12345;
   f.ackBits.value = 0xa5a5a5a5;
-  f.entityId.value = 2049;
-  f.posX.value = -16384;
-  f.posY.value = 16383;
-  f.posZ.value = -1;
-  f.yaw.value = 511;
-  f.moving.value = true;
-  f.firing.value = false;
-  f.timestamp.value = 0x123456789abcn;
-  f.weapon.value = 15;
+  f.sessionId.value = 0x123456789abcdef0n;
+  f.clientId.value = 0xdeadbeef;
+  f.nonce.value = 0xfedcba9876543210n;
+  f.worldTime.value = -987654321000n;
+  f.frameTick.value = 0x123456789abcn;
+  f.serverTime.value = 12345678;
+  f.entitiesCount.value = 8;
+  for (let i = 0; i < 8; i++) {
+    const e = f.entities[i];
+    e.entityId.value = 2049 + i * 17;
+    e.posX.value = -16383 + i * 4096;
+    e.posY.value = 16383 - i * 4096;
+    e.posZ.value = -1 + i * 2048;
+    e.yaw.value = 511 - i * 64;
+    e.pitch.value = i * 73;
+    e.velX.value = -2048 + i * 512;
+    e.velY.value = 2047 - i * 512;
+    e.velZ.value = -1024 + i * 256;
+    e.health.value = 1000 - i * 100;
+    e.weapon.value = 1 + i;
+    e.damage.value = 0x5a + i;
+    e.moving.value = i % 2 === 0;
+    e.firing.value = i % 3 === 0;
+  }
+  f.statsCount.value = 80;
+  for (let i = 0; i < 80; i++) {
+    f.stats[i].statId.value = (i * 3) % 256;
+    f.stats[i].delta.value = -512 + ((i * 13) % 1024);
+  }
+  f.eventType.value = 1; // Hit
+  f.hitTargetId.value = 4095;
+  f.hitDamage.value = 4095;
+  f.hitKind.value = 7;
+  f.hitCrit.value = true;
+  f.loadout.set([0x11, 0x22, 0x33, 0x44]);
+  f.playerName.set(PLAYER_NAME_PIN);
+  f.playerNameLength.value = 8;
+  f.payload.set(PAYLOAD_PIN);
+  f.payloadLength.value = 8;
+  f.aimX.value = 0.5;
+  f.aimY.value = -0.25;
+  f.aimZ.value = 0.75;
+  f.recoil.value = 1.5;
+  f.drift.value = -3.25;
+  f.wideKey.value = (0x0123456789abcdefn << 64n) | 0xfedcba9876543210n;
+  f.flux.value = (1n << 99n) + 7n;
+  f.ping.value = 12345;
+  f.crcHint.value = 0xabcdef;
+  f.hasExtra.value = true;
+  f.extra.value = 200;
   return f;
 }
 
@@ -1398,17 +1619,46 @@ function varyRtBits(f) {
 }
 
 function varyRtMixed(f) {
+  const big = rngBig();
   f.sequence.value = shr64(8) & 65535;
+  f.ackSequence.value = shr64(24) & 65535;
   f.ackBits.value = shr64(16);
-  f.entityId.value = rng.lo & 4095;
-  f.posX.value = (shr64(20) & 32767) - 16384;
-  f.posY.value = (shr64(25) & 32767) - 16384;
-  f.posZ.value = (shr64(30) & 32767) - 16384;
-  f.yaw.value = shr64(3) & 511;
-  f.moving.value = (rng.lo & 1) !== 0;
-  f.firing.value = (rng.lo & 2) !== 0;
-  f.timestamp.value = rngBig() & 0xffffffffffffn;
-  f.weapon.value = shr64(60) & 15;
+  f.sessionId.value = big;
+  f.clientId.value = shr64(32);
+  f.nonce.value = big;
+  f.worldTime.value = BIG_WORLD[shr64(12) & 255];
+  f.frameTick.value = big & 0xffffffffffffn;
+  f.serverTime.value = shr64(20) & 0x7fffff;
+  for (let i = 0; i < 8; i++) {
+    const e = f.entities[i];
+    e.entityId.value = shr64(i) & 4095;
+    e.posX.value = (shr64(i + 4) & 16383) - 8192;
+    e.posY.value = (shr64(i + 12) & 16383) - 8192;
+    e.health.value = shr64(i + 20) & 511;
+    e.weapon.value = shr64(i + 40) & 15;
+    e.damage.value = shr64(i + 28) & 255;
+    e.moving.value = (shr64(i) & 1) !== 0;
+  }
+  for (let i = 0; i < 80; i++) {
+    f.stats[i].delta.value = (shr64(i & 31) & 1023) - 512;
+  }
+  f.hitTargetId.value = shr64(6) & 4095;
+  f.hitDamage.value = shr64(18) & 4095;
+  f.hitKind.value = shr64(30) & 7;
+  f.hitCrit.value = (rng.lo & 4) !== 0;
+  f.loadout[0] = shr64(56) & 255;
+  f.playerName[7] = 65 + (shr64(50) & 15);
+  f.payload[0] = shr64(48) & 255;
+  f.aimX.value = (shr64(2) & 255) * (1 / 256) - 0.5;
+  f.aimY.value = (shr64(10) & 255) * (1 / 256) - 0.5;
+  f.aimZ.value = (shr64(18) & 255) * (1 / 256) - 0.5;
+  f.recoil.value = rng.lo & 0xffff;
+  f.drift.value = (shr64(8) & 0xffffff) * 0.5;
+  f.wideKey.value = big;
+  f.flux.value = BIG_FLUX[shr64(16) & 255];
+  f.ping.value = shr64(40) & 0x7fff;
+  f.crcHint.value = shr64(24) & 0xffffff;
+  f.extra.value = shr64(52) & 255;
 }
 
 // ---- the single untimed call sites (§3.2), one pair per shape ----
@@ -1893,34 +2143,122 @@ function varyBenchBitsGen(f) {
   f.B48 = rngBig() & 0xffffffffffffn;
 }
 
+// BenchMixed — THE canonical benchmark shape (issue #184). The pin is
+// test/bench/main.cpp's, transcribed exactly; STRUCTURE fields (the two array
+// counts, the two used lengths, the union tag, the `if` gate) are set here and
+// never touched by vary*, so bytes/op is constant (§2.7).
+const PLAYER_NAME_PIN = Uint8Array.from([...("Rowan_01")].map((c) => c.charCodeAt(0)));
+const PAYLOAD_PIN = Uint8Array.from([0xde, 0xad, 0xbe, 0xef, 0x01, 0x02, 0x03, 0x04]);
+
+// BigInt allocation is the JS leg's tax (§2.7's named deviation). vary* takes
+// exactly ONE rngBig() and derives the rest from these constant tables, so the
+// per-iteration allocator traffic stays where the codec puts it rather than
+// where the harness does.
+const BIG_BYTE = Array.from({ length: 256 }, (_, i) => BigInt(i));
+const BIG_WORLD = Array.from({ length: 256 }, (_, i) => BigInt(i) * 1000000n - 128000000n);
+const BIG_FLUX = Array.from({ length: 256 }, (_, i) => (BigInt(i) << 40n) + 12345n);
+
 function pinBenchMixedGen() {
   const f = new bench.BenchMixed();
   f.Sequence = 52428;
+  f.AckSequence = 12345;
   f.AckBits = 0xa5a5a5a5;
-  f.EntityId = 2049;
-  f.PosX = -16384;
-  f.PosY = 16383;
-  f.PosZ = -1;
-  f.Yaw = 511;
-  f.Moving = true;
-  f.Firing = false;
-  f.Timestamp = 0x123456789abcn;
-  f.Weapon = 15;
+  f.SessionId = 0x123456789abcdef0n;
+  f.ClientId = 0xdeadbeef;
+  f.Nonce = 0xfedcba9876543210n;
+  f.WorldTime = -987654321000n;
+  f.FrameTick = 0x123456789abcn;
+  f.ServerTime = 12345678;
+  f.EntitiesCount = 8;
+  for (let i = 0; i < 8; i++) {
+    const e = f.Entities[i];
+    e.EntityId = 2049 + i * 17;
+    e.PosX = -16383 + i * 4096;
+    e.PosY = 16383 - i * 4096;
+    e.PosZ = -1 + i * 2048;
+    e.Yaw = 511 - i * 64;
+    e.Pitch = i * 73;
+    e.VelX = -2048 + i * 512;
+    e.VelY = 2047 - i * 512;
+    e.VelZ = -1024 + i * 256;
+    e.Health = 1000 - i * 100;
+    e.Weapon = 1 + i;
+    e.Damage = BigInt(0x5a + i);
+    e.Moving = i % 2 === 0;
+    e.Firing = i % 3 === 0;
+  }
+  f.StatsCount = 80;
+  for (let i = 0; i < 80; i++) {
+    f.Stats[i].StatId = (i * 3) % 256;
+    f.Stats[i].Delta = -512 + ((i * 13) % 1024);
+  }
+  f.GameEvent.Type = bench.MixedEventType.Hit;
+  f.GameEvent.Hit.TargetId = 4095;
+  f.GameEvent.Hit.Damage = 4095;
+  f.GameEvent.Hit.HitKind = 7;
+  f.GameEvent.Hit.Crit = true;
+  f.Loadout.set([0x11, 0x22, 0x33, 0x44]);
+  f.PlayerName.set(PLAYER_NAME_PIN);
+  f.PlayerNameLength = 8;
+  f.Payload.set(PAYLOAD_PIN);
+  f.PayloadLength = 8;
+  f.AimX = 0.5;
+  f.AimY = -0.25;
+  f.AimZ = 0.75;
+  f.Recoil = 1.5;
+  f.Drift = -3.25;
+  f.WideKey = (0x0123456789abcdefn << 64n) | 0xfedcba9876543210n;
+  f.Flux = (1n << 99n) + 7n;
+  f.Ping = 12345;
+  f.CrcHint = 0xabcdef;
+  f.HasExtra = true;
+  f.Extra = 200;
   return f;
 }
 
+// The LCG field mapping, identical in every runner. VALUE fields only.
+// All 8 entities vary; the 80 stats vary Delta (StatId stays pinned).
 function varyBenchMixedGen(f) {
+  const big = rngBig();
   f.Sequence = shr64(8) & 65535;
+  f.AckSequence = shr64(24) & 65535;
   f.AckBits = shr64(16);
-  f.EntityId = rng.lo & 4095;
-  f.PosX = (shr64(20) & 32767) - 16384;
-  f.PosY = (shr64(25) & 32767) - 16384;
-  f.PosZ = (shr64(30) & 32767) - 16384;
-  f.Yaw = shr64(3) & 511;
-  f.Moving = (rng.lo & 1) !== 0;
-  f.Firing = (rng.lo & 2) !== 0;
-  f.Timestamp = rngBig() & 0xffffffffffffn;
-  f.Weapon = shr64(60) & 15;
+  f.SessionId = big;
+  f.ClientId = shr64(32);
+  f.Nonce = big;
+  f.WorldTime = BIG_WORLD[shr64(12) & 255];
+  f.FrameTick = big & 0xffffffffffffn;
+  f.ServerTime = shr64(20) & 0x7fffff;
+  for (let i = 0; i < 8; i++) {
+    const e = f.Entities[i];
+    e.EntityId = shr64(i) & 4095;
+    e.PosX = (shr64(i + 4) & 16383) - 8192;
+    e.PosY = (shr64(i + 12) & 16383) - 8192;
+    e.Health = shr64(i + 20) & 511;
+    e.Weapon = shr64(i + 40) & 15;
+    e.Damage = BIG_BYTE[shr64(i + 28) & 255];
+    e.Moving = (shr64(i) & 1) !== 0;
+  }
+  for (let i = 0; i < 80; i++) {
+    f.Stats[i].Delta = (shr64(i & 31) & 1023) - 512;
+  }
+  f.GameEvent.Hit.TargetId = shr64(6) & 4095;
+  f.GameEvent.Hit.Damage = shr64(18) & 4095;
+  f.GameEvent.Hit.HitKind = shr64(30) & 7;
+  f.GameEvent.Hit.Crit = (rng.lo & 4) !== 0;
+  f.Loadout[0] = shr64(56) & 255;
+  f.PlayerName[7] = 65 + (shr64(50) & 15);
+  f.Payload[0] = shr64(48) & 255;
+  f.AimX = (shr64(2) & 255) * (1 / 256) - 0.5;
+  f.AimY = (shr64(10) & 255) * (1 / 256) - 0.5;
+  f.AimZ = (shr64(18) & 255) * (1 / 256) - 0.5;
+  f.Recoil = rng.lo & 0xffff;
+  f.Drift = (shr64(8) & 0xffffff) * 0.5;
+  f.WideKey = big;
+  f.Flux = BIG_FLUX[shr64(16) & 255];
+  f.Ping = shr64(40) & 0x7fff;
+  f.CrcHint = shr64(24) & 0xffffff;
+  f.Extra = shr64(52) & 255;
 }
 
 // --------------------------------------------------------------------------
@@ -2021,7 +2359,7 @@ function main() {
   benchMessageFlat("bench_packet", "bench_packet", 32000000, pinBenchPacketGen(), bench.WriteBenchPacket, bench.ReadBenchPacket, benchFlat.WriteBenchPacketFlat, benchFlat.ReadBenchPacketFlat, varyBenchPacketGen, sinkOfBenchPacketGen);
   benchMessageFlat("bench_ints", "bench_ints", 40000000, pinBenchIntsGen(), bench.WriteBenchInts, bench.ReadBenchInts, benchFlat.WriteBenchIntsFlat, benchFlat.ReadBenchIntsFlat, varyBenchIntsGen, sinkOfBenchIntsGen);
   benchMessageFlat("bench_bits", "bench_bits", 48000000, pinBenchBitsGen(), bench.WriteBenchBits, bench.ReadBenchBits, benchFlat.WriteBenchBitsFlat, benchFlat.ReadBenchBitsFlat, varyBenchBitsGen, sinkOfBenchBitsGen);
-  benchMessageFlat("bench_mixed", "bench_mixed", 40000000, pinBenchMixedGen(), bench.WriteBenchMixed, bench.ReadBenchMixed, benchFlat.WriteBenchMixedFlat, benchFlat.ReadBenchMixedFlat, varyBenchMixedGen, sinkOfBenchMixedGen);
+  benchMessageFlat("bench_mixed", "bench_mixed", 4000000, pinBenchMixedGen(), bench.WriteBenchMixed, bench.ReadBenchMixed, benchFlat.WriteBenchMixedFlat, benchFlat.ReadBenchMixedFlat, varyBenchMixedGen, sinkOfBenchMixedGen);
 
   // family rt (§1.3/§1.5): the runtime API by hand, oracle-gated against
   // the goldens the generated code pinned. Iteration counts are fixed and
@@ -2029,7 +2367,7 @@ function main() {
   benchRt("bench_packet", 32000000, pinRtPacket(), makeRtPacket(), rtOnceWritePacket, rtOnceReadPacket, rtBenchPacketWriteLoop, rtBenchPacketReadLoop, varyRtPacket, sinkOfRtPacket);
   benchRt("bench_ints", 40000000, pinRtInts(), makeRtInts(), rtOnceWriteInts, rtOnceReadInts, rtBenchIntsWriteLoop, rtBenchIntsReadLoop, varyRtInts, sinkOfRtInts);
   benchRt("bench_bits", 48000000, pinRtBits(), makeRtBits(), rtOnceWriteBits, rtOnceReadBits, rtBenchBitsWriteLoop, rtBenchBitsReadLoop, varyRtBits, sinkOfRtBits);
-  benchRt("bench_mixed", 40000000, pinRtMixed(), makeRtMixed(), rtOnceWriteMixed, rtOnceReadMixed, rtBenchMixedWriteLoop, rtBenchMixedReadLoop, varyRtMixed, sinkOfRtMixed);
+  benchRt("bench_mixed", 4000000, pinRtMixed(), makeRtMixed(), rtOnceWriteMixed, rtOnceReadMixed, rtBenchMixedWriteLoop, rtBenchMixedReadLoop, varyRtMixed, sinkOfRtMixed);
 
   // family bits (§1.4): the one bitpacker workload in the estate
   benchBitpacker(24576);

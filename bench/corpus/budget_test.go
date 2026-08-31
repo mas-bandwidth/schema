@@ -80,6 +80,7 @@ func (c class) String() string {
 type row struct {
 	path  string
 	what  string
+	at    int64 // wire bit offset — exact, every structure field being pinned
 	bits  int64
 	class class
 }
@@ -91,7 +92,7 @@ type walker struct {
 }
 
 func (w *walker) emit(path, what string, bits int64, c class) {
-	w.rows = append(w.rows, row{path, what, bits, c})
+	w.rows = append(w.rows, row{path, what, w.pos, bits, c})
 	w.pos += bits
 }
 
@@ -247,19 +248,19 @@ func TestBenchMixedIntegerBudget(t *testing.T) {
 
 	var b strings.Builder
 	fmt.Fprintf(&b, "\nBenchMixed bit accounting — %d bits, %d wire bytes\n\n", total, wireBytes)
-	fmt.Fprintf(&b, "%-34s %-28s %6s  %s\n", "field", "construct", "bits", "class")
-	fmt.Fprintf(&b, "%s\n", strings.Repeat("-", 80))
+	fmt.Fprintf(&b, "%-34s %-28s %7s %6s  %s\n", "field", "construct", "at bit", "bits", "class")
+	fmt.Fprintf(&b, "%s\n", strings.Repeat("-", 88))
 	for _, r := range w.rows {
 		if r.bits == 0 {
 			continue
 		}
-		fmt.Fprintf(&b, "%-34s %-28s %6d  %s\n", r.path, r.what, r.bits, r.class)
+		fmt.Fprintf(&b, "%-34s %-28s %7d %6d  %s\n", r.path, r.what, r.at, r.bits, r.class)
 	}
-	fmt.Fprintf(&b, "%s\n", strings.Repeat("-", 80))
+	fmt.Fprintf(&b, "%s\n", strings.Repeat("-", 88))
 	for _, c := range []class{classInt, classBool, classFloat, classBulk, classPad} {
-		fmt.Fprintf(&b, "%-63s %6d  %5.2f%%\n", c.String(), totals[c], float64(totals[c])/float64(total)*100)
+		fmt.Fprintf(&b, "%-71s %6d  %5.2f%%\n", c.String(), totals[c], float64(totals[c])/float64(total)*100)
 	}
-	fmt.Fprintf(&b, "%-63s %6d  %5.2f%%\n", "TOTAL", total, 100.0)
+	fmt.Fprintf(&b, "%-71s %6d  %5.2f%%\n", "TOTAL", total, 100.0)
 	fmt.Fprintf(&b, "\ninteger share = %.2f%% (floor %.0f%%)\n", share, integerShareFloor)
 	t.Log(b.String())
 

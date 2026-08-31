@@ -821,7 +821,7 @@ pub fn bench_rt_mixed(ctx: &Ctx) {
     bench_rt(
         ctx,
         "bench_mixed",
-        40000000,
+        4000000,
         pin_rt_mixed(),
         rt_once_write_mixed,
         rt_once_read_mixed,
