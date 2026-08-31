@@ -113,6 +113,11 @@ public final class Main {
         final double max = sorted[sorted.length - 1];
         final double spread = (max - min) / median * 100.0;
         final double mbps = median * bytesPerOp / (1024.0 * 1024.0);
+        if ("write".equals(path)) {
+            lastWriteMedian = median;
+        } else if ("round_trip".equals(path)) {
+            lastRoundTripMedian = median;
+        }
         System.err.printf("%-18s %-5s %10.2f M msg/s %10.1f MB/s   (min %.2f, max %.2f, spread %.1f%%)%n",
                 bench, path, median / 1e6, mbps, min / 1e6, max / 1e6, spread);
         if (csv) {
@@ -272,176 +277,6 @@ public final class Main {
                 && e.b32 == d.b32 && e.b11 == d.b11 && e.b19 == d.b19 && e.b48 == d.b48;
     }
 
-    // BenchMixed — THE canonical benchmark shape (issue #184). The pin is
-    // test/bench/main.cpp's, transcribed exactly; STRUCTURE fields (the two
-    // array counts, the two used lengths, the union tag, the `if` gate) are
-    // set here and never touched by varyBenchMixed, so bytes/op is constant.
-    static void initBenchMixed(Bench.BenchMixed p) {
-        p.sequence = 52428;
-        p.ackSequence = 12345;
-        p.ackBits = 0xa5a5a5a5;
-        p.sessionId = 0x123456789abcdef0L;
-        p.clientId = 0xdeadbeef;
-        p.nonce = 0xfedcba9876543210L;
-        p.worldTime = -987654321000L;
-        p.frameTick = 0x123456789abcL;
-        p.serverTime = 12345678;
-        p.entitiesCount = 8;
-        for (int i = 0; i < 8; i++) {
-            final Bench.MixedEntity e = p.entities[i];
-            e.entityId = 2049 + i * 17;
-            e.posX = -16383 + i * 4096;
-            e.posY = 16383 - i * 4096;
-            e.posZ = -1 + i * 2048;
-            e.yaw = 511 - i * 64;
-            e.pitch = i * 73;
-            e.velX = -2048 + i * 512;
-            e.velY = 2047 - i * 512;
-            e.velZ = -1024 + i * 256;
-            e.health = 1000 - i * 100;
-            e.weapon = (byte) (1 + i);
-            e.damage = 0x5a + i;
-            e.moving = (i % 2) == 0;
-            e.firing = (i % 3) == 0;
-        }
-        p.statsCount = 80;
-        for (int i = 0; i < 80; i++) {
-            p.stats[i].statId = (i * 3) % 256;
-            p.stats[i].delta = -512 + (i * 13) % 1024;
-        }
-        p.gameEvent.type = Bench.MixedEventType.hit;
-        p.gameEvent.hit.targetId = 4095;
-        p.gameEvent.hit.damage = 4095;
-        p.gameEvent.hit.hitKind = 7;
-        p.gameEvent.hit.crit = true;
-        p.loadout[0] = 0x11;
-        p.loadout[1] = 0x22;
-        p.loadout[2] = 0x33;
-        p.loadout[3] = 0x44;
-        System.arraycopy(PLAYER_NAME_PIN, 0, p.playerName, 0, 8);
-        p.playerNameLength = 8;
-        System.arraycopy(PAYLOAD_PIN, 0, p.payload, 0, 8);
-        p.payloadLength = 8;
-        p.aimX = 0.5f;
-        p.aimY = -0.25f;
-        p.aimZ = 0.75f;
-        p.recoil = 1.5f;
-        p.drift = -3.25;
-        p.wideKey = new bench.UInt128(0x0123456789abcdefL, 0xfedcba9876543210L);
-        p.flux = new bench.Int128(0x800000000L, 7L); // 2^99 + 7
-        p.ping = 12345;
-        p.crcHint = 0xabcdef;
-        p.hasExtra = true;
-        p.extra = 200;
-    }
-
-    static final byte[] PLAYER_NAME_PIN =
-            "Rowan_01".getBytes(java.nio.charset.StandardCharsets.UTF_8);
-    static final byte[] PAYLOAD_PIN = { (byte) 0xde, (byte) 0xad, (byte) 0xbe, (byte) 0xef, 1, 2, 3, 4 };
-
-    // The LCG field mapping, identical in every runner. VALUE fields only:
-    // every count, used length, union tag and branch gate is STRUCTURE (§2.7).
-    // All 8 entities vary; the 80 stats vary delta (statId stays pinned).
-    static void varyBenchMixed(Bench.BenchMixed f) {
-        lcgStep();
-        f.sequence = (int) ((rng >>> 8) & 65535);
-        f.ackSequence = (int) ((rng >>> 24) & 65535);
-        f.ackBits = (int) (rng >>> 16);
-        f.sessionId = rng;
-        f.clientId = (int) (rng >>> 32);
-        f.nonce = rng ^ 0xa5a5a5a5a5a5a5a5L;
-        f.worldTime = ((rng >>> 12) & 0xfffffffffL) - 34359738368L;
-        f.frameTick = rng & 0xffffffffffffL;
-        f.serverTime = (int) ((rng >>> 20) & 0x7fffff);
-        for (int i = 0; i < 8; i++) {
-            final Bench.MixedEntity e = f.entities[i];
-            e.entityId = (int) ((rng >>> i) & 4095);
-            e.posX = (int) ((rng >>> (i + 4)) & 16383) - 8192;
-            e.posY = (int) ((rng >>> (i + 12)) & 16383) - 8192;
-            e.health = (int) ((rng >>> (i + 20)) & 511);
-            e.weapon = (byte) ((rng >>> (i + 40)) & 15);
-            e.damage = (rng >>> (i + 28)) & 255;
-            e.moving = ((rng >>> i) & 1) != 0;
-        }
-        for (int i = 0; i < 80; i++) {
-            f.stats[i].delta = (int) ((rng >>> (i & 31)) & 1023) - 512;
-        }
-        f.gameEvent.hit.targetId = (int) ((rng >>> 6) & 4095);
-        f.gameEvent.hit.damage = (int) ((rng >>> 18) & 4095);
-        f.gameEvent.hit.hitKind = (int) ((rng >>> 30) & 7);
-        f.gameEvent.hit.crit = (rng & 4) != 0;
-        f.loadout[0] = (byte) (rng >>> 56);
-        f.playerName[7] = (byte) (65 + ((rng >>> 50) & 15));
-        f.payload[0] = (byte) (rng >>> 48);
-        f.aimX = ((rng >>> 2) & 255) * (1.0f / 256.0f) - 0.5f;
-        f.aimY = ((rng >>> 10) & 255) * (1.0f / 256.0f) - 0.5f;
-        f.aimZ = ((rng >>> 18) & 255) * (1.0f / 256.0f) - 0.5f;
-        f.recoil = rng & 0xffffL;
-        f.drift = ((rng >>> 8) & 0xffffffL) * 0.5;
-        f.wideKey = new bench.UInt128(rng >>> 1, rng);
-        f.flux = new bench.Int128(0L, rng >>> 16);
-        f.ping = (short) ((rng >>> 40) & 0x7fff);
-        f.crcHint = (int) ((rng >>> 24) & 0xffffff);
-        f.extra = (int) ((rng >>> 52) & 255);
-    }
-
-    static boolean checkBenchMixed(Bench.BenchMixed e, Bench.BenchMixed d) {
-        if (e.sequence != d.sequence || e.ackSequence != d.ackSequence || e.ackBits != d.ackBits
-                || e.sessionId != d.sessionId || e.clientId != d.clientId || e.nonce != d.nonce
-                || e.worldTime != d.worldTime || e.frameTick != d.frameTick
-                || e.serverTime != d.serverTime || e.entitiesCount != d.entitiesCount
-                || e.statsCount != d.statsCount || e.gameEvent.type != d.gameEvent.type
-                || e.playerNameLength != d.playerNameLength || e.payloadLength != d.payloadLength
-                || e.recoil != d.recoil || e.drift != d.drift
-                || e.wideKey.hi != d.wideKey.hi || e.wideKey.lo != d.wideKey.lo
-                || e.flux.hi != d.flux.hi || e.flux.lo != d.flux.lo
-                || e.ping != d.ping || e.crcHint != d.crcHint
-                || e.hasExtra != d.hasExtra || e.extra != d.extra) {
-            return false;
-        }
-        for (int i = 0; i < e.entitiesCount; i++) {
-            final Bench.MixedEntity a = e.entities[i];
-            final Bench.MixedEntity b = d.entities[i];
-            if (a.entityId != b.entityId || a.posX != b.posX || a.posY != b.posY || a.posZ != b.posZ
-                    || a.yaw != b.yaw || a.pitch != b.pitch || a.velX != b.velX || a.velY != b.velY
-                    || a.velZ != b.velZ || a.health != b.health || a.weapon != b.weapon
-                    || a.damage != b.damage || a.moving != b.moving || a.firing != b.firing) {
-                return false;
-            }
-        }
-        for (int i = 0; i < e.statsCount; i++) {
-            if (e.stats[i].statId != d.stats[i].statId || e.stats[i].delta != d.stats[i].delta) {
-                return false;
-            }
-        }
-        if (e.gameEvent.hit.targetId != d.gameEvent.hit.targetId
-                || e.gameEvent.hit.damage != d.gameEvent.hit.damage
-                || e.gameEvent.hit.hitKind != d.gameEvent.hit.hitKind
-                || e.gameEvent.hit.crit != d.gameEvent.hit.crit) {
-            return false;
-        }
-        for (int i = 0; i < 4; i++) {
-            if (e.loadout[i] != d.loadout[i]) {
-                return false;
-            }
-        }
-        for (int i = 0; i < e.playerNameLength; i++) {
-            if (e.playerName[i] != d.playerName[i]) {
-                return false;
-            }
-        }
-        for (int i = 0; i < e.payloadLength; i++) {
-            if (e.payload[i] != d.payload[i]) {
-                return false;
-            }
-        }
-        // aimX/Y/Z are COMPRESSED floats: the wire carries a quantized step,
-        // so the decoded value is not the value that was written and no
-        // equality check applies here. Their bytes are pinned by the golden
-        // and their width is fixed, which is what the gate needs.
-        return true;
-    }
-
     /* ----------------------------------------------------------------------
        the golden gate (§1.5), per shape: the PINNED instance's bytes must
        equal the C++-pinned testdata/wire golden, and all 64 variant buffers
@@ -486,7 +321,11 @@ public final class Main {
     static final byte[][] bitsVariants = new byte[NUM_VARIANTS][];
     static int bitsBytes;
 
-    static final Bench.BenchMixed mixed = new Bench.BenchMixed();
+    // bench_mixed is DATA-DRIVEN (issue #191): its variants are the committed
+    // wire records, its 64 instances are what those records decode to, and no
+    // pinned initializer, vary function, field check or sink fold exists for
+    // it anywhere in this file.
+    static final Bench.BenchMixed[] mixedInstances = new Bench.BenchMixed[NUM_VARIANTS];
     static final Bench.BenchMixed mixedDecoded = new Bench.BenchMixed();
     static final byte[][] mixedVariants = new byte[NUM_VARIANTS][];
     static int mixedBytes;
@@ -580,31 +419,92 @@ public final class Main {
         }
     }
 
-    static void gateMixed() {
-        initBenchMixed(mixed);
-        final int n = Bench.writeBenchMixed(mixed, writeBuf);
-        gatePinned("bench_mixed", writeBuf, n, "bench_mixed");
-        initBenchMixed(mixed);
-        lcgSeed();
-        for (int v = 0; v < NUM_VARIANTS; v++) {
-            varyBenchMixed(mixed);
-            final int nv = Bench.writeBenchMixed(mixed, writeBuf);
-            if (v == 0) {
-                mixedBytes = nv;
-            } else if (nv != mixedBytes) {
-                gateFail("bench_mixed", "variant " + v + " size " + nv + " != " + mixedBytes);
-            }
-            mixedVariants[v] = java.util.Arrays.copyOf(writeBuf, nv);
+    /* ----------------------------------------------------------------------
+       the DATA-DRIVEN driver for bench_mixed (issue #191).
+
+       THE PROPERTY: nothing below names a field of the shape it measures.
+       Shape knowledge lives in the committed variant DATA
+       (bench/corpus/variants, emitted by bench/tools/variantgen) and in the
+       generated codec, and nowhere else — so this leg cannot drift from
+       another language's driver in what it measures. The generated TYPE is
+       named (Java has no way to hold 64 instances without it, and a TYPE name
+       is not a field name); no field, no initializer, no vary mapping, no
+       equality check and no sink fold for this shape exists in this file.
+
+       It is deliberately MONOMORPHIC rather than generic over the shape: this
+       leg's own JVM discipline (issue #156 item 5) is one timed loop method
+       per shape and direction, because a shared generic loop pools its type
+       profile across shapes and turns the timings bimodal. A second
+       data-driven shape gets its own copy of these ~40 lines, which is still
+       O(1) in shape CHANGES — the thing the design buys — because a shape
+       change regenerates data and touches no driver.
+       ---------------------------------------------------------------------- */
+
+    // Loads bench/corpus/variants/<name>.variants.bin into the NUM_VARIANTS
+    // slots and returns the record size. The records are fixed-width by
+    // construction (§2.7 pins every structure field), so the file needs no
+    // index: the record size IS file size / NUM_VARIANTS, and a file that does
+    // not divide evenly is a refusal.
+    static int loadVariants(String name, byte[][] slots) {
+        final String path = "../../bench/corpus/variants/" + name + ".variants.bin";
+        byte[] packed;
+        try {
+            packed = java.nio.file.Files.readAllBytes(java.nio.file.Path.of(path));
+        } catch (java.io.IOException e) {
+            System.err.println("missing variant data " + path
+                    + " — run `make bench-variants`, and run the bench from bench/java");
+            System.exit(1);
+            throw new IllegalStateException("unreachable");
         }
-        initBenchMixed(mixed);
-        lcgSeed();
+        if (packed.length == 0 || packed.length % NUM_VARIANTS != 0) {
+            gateFail(name, "variant data " + path + " is " + packed.length
+                    + " bytes, not a multiple of " + NUM_VARIANTS
+                    + " records — refusing to bench data whose stride is not the record size");
+        }
+        final int record = packed.length / NUM_VARIANTS;
+        if (record > writeBuf.length) {
+            gateFail(name, "variant data " + path + " has " + record
+                    + "-byte records, over the " + writeBuf.length + "-byte buffer");
+        }
+        for (int k = 0; k < NUM_VARIANTS; k++) {
+            slots[k] = java.util.Arrays.copyOfRange(packed, k * record, (k + 1) * record);
+        }
+        // The variant data is corpus (§1.6): it defines the work inside the
+        // timed loops, so it rides in corpus_id exactly as the wire goldens
+        // do. A run against drifted variant data reports a different id and
+        // the tools refuse the ratio, instead of publishing a number for
+        // different work.
+        goldensLoaded.put(name + ".variants.bin", packed);
+        return record;
+    }
+
+    static void gateMixed() {
+        mixedBytes = loadVariants("bench_mixed", mixedVariants);
+
+        // gate 1 (§1.5): variant 0 IS the pinned instance, so the whole
+        // variant file is bound to the wire golden by one byte-compare.
+        final byte[] g = golden("bench_mixed");
+        if (mixedBytes != g.length
+                || !java.util.Arrays.equals(mixedVariants[0], 0, mixedBytes, g, 0, g.length)) {
+            gateFail("bench_mixed", "variant 0 vs testdata/wire/bench_mixed.bin");
+        }
+
+        // gate 2: every variant decodes, re-encodes, and comes back
+        // byte-identical at the same length. This is stronger than the
+        // pinned-instance gate the other shapes apply — §1.5's named residual
+        // (the 64 varied buffers length-checked but never value-checked)
+        // closes here, for every variant.
+        final int numBits = mixedBytes * 8;
         for (int v = 0; v < NUM_VARIANTS; v++) {
-            varyBenchMixed(mixed);
-            if (!Bench.readBenchMixed(mixedDecoded, mixedVariants[v], mixedBytes * 8)) {
-                gateFail("bench_mixed", "variant " + v + " read verdict");
+            mixedInstances[v] = new Bench.BenchMixed();
+            if (!Bench.readBenchMixed(mixedInstances[v], mixedVariants[v], numBits)) {
+                gateFail("bench_mixed", "decode of variant " + v + " failed");
             }
-            if (!checkBenchMixed(mixed, mixedDecoded)) {
-                gateFail("bench_mixed", "variant " + v + " field mismatch");
+            final int n = Bench.writeBenchMixed(mixedInstances[v], writeBuf);
+            if (n != mixedBytes
+                    || !java.util.Arrays.equals(writeBuf, 0, n, mixedVariants[v], 0, mixedBytes)) {
+                gateFail("bench_mixed", "variant " + v
+                        + " round-trip bytes differ — refusing to bench a codec that does not reproduce the corpus");
             }
         }
     }
@@ -644,45 +544,6 @@ public final class Main {
 
     static long sinkOfBenchBits(Bench.BenchBits d) {
         return (long) d.b7 + d.b13 + d.b23 + d.b3 + d.b32 + d.b11 + d.b19 + d.b48;
-    }
-
-    // §2.7 full-struct observation: every decoded field of the canonical shape
-    // folds into the sink each iteration — array elements one by one over the
-    // decoded extent, booleans as 0/1, floats bitcast, the 128-bit values as
-    // both halves, the string and byte block byte-summed over their used
-    // lengths. Java has no free memory barrier here (the decode call inlines),
-    // so this fold IS the observation, and the read row carries its cost.
-    static long sinkOfBenchMixed(Bench.BenchMixed d) {
-        long s = (long) d.sequence + d.ackSequence + d.ackBits + d.sessionId + d.clientId
-                + d.nonce + d.worldTime + d.frameTick + d.serverTime
-                + d.entitiesCount + d.statsCount + d.gameEvent.type
-                + d.playerNameLength + d.payloadLength
-                + Float.floatToRawIntBits(d.aimX) + Float.floatToRawIntBits(d.aimY)
-                + Float.floatToRawIntBits(d.aimZ) + Float.floatToRawIntBits(d.recoil)
-                + Double.doubleToRawLongBits(d.drift)
-                + d.wideKey.hi + d.wideKey.lo + d.flux.hi + d.flux.lo
-                + d.ping + d.crcHint + (d.hasExtra ? 1 : 0) + d.extra + d.idleTicks;
-        for (int i = 0; i < d.entitiesCount; i++) {
-            final Bench.MixedEntity e = d.entities[i];
-            s += (long) e.entityId + e.posX + e.posY + e.posZ + e.yaw + e.pitch
-                    + e.velX + e.velY + e.velZ + e.health + e.weapon + e.damage
-                    + (e.moving ? 1 : 0) + (e.firing ? 1 : 0);
-        }
-        for (int i = 0; i < d.statsCount; i++) {
-            s += (long) d.stats[i].statId + d.stats[i].delta;
-        }
-        final Bench.MixedHitEvent h = d.gameEvent.hit;
-        s += (long) h.targetId + h.damage + h.hitKind + (h.crit ? 1 : 0);
-        for (int i = 0; i < 4; i++) {
-            s += d.loadout[i];
-        }
-        for (int i = 0; i < d.playerNameLength; i++) {
-            s += d.playerName[i];
-        }
-        for (int i = 0; i < d.payloadLength; i++) {
-            s += d.payload[i];
-        }
-        return s;
     }
 
     static double timePacketWrite(int iters) {
@@ -748,23 +609,34 @@ public final class Main {
         return now() - start;
     }
 
+    // WRITE: encode the 64 pre-decoded instances round-robin. Rotating the
+    // instances is what §2.7's per-iteration LCG mutation bought — the encoder
+    // never sees the same input twice in a row and cannot precompute scratch
+    // words — with none of the per-language mutation code, and with bytes/op
+    // constant by construction rather than by assertion. The sink is the byte
+    // fold: every iteration's result is a value the loop cannot drop.
     static double timeMixedWrite(int iters) {
         final double start = now();
         for (int i = 0; i < iters; i++) {
-            varyBenchMixed(mixed);
-            sink += Bench.writeBenchMixed(mixed, writeBuf);
+            sink += Bench.writeBenchMixed(mixedInstances[i & (NUM_VARIANTS - 1)], writeBuf);
         }
         return now() - start;
     }
 
-    static double timeMixedRead(int iters) {
+    // ROUND-TRIP: decode a variant buffer, then re-encode what came out. The
+    // decode needs no sink discipline of its own — its output IS the encode's
+    // input, so every decoded field is observed by construction, with no
+    // per-language fold to audit. This is where §2.7's read-side sink problem
+    // dissolves for the JIT legs rather than being equalized: the -23% fold
+    // cost the java read row used to carry is gone, along with the fold.
+    static double timeMixedRoundTrip(int iters) {
         final int numBits = mixedBytes * 8;
         final double start = now();
         for (int i = 0; i < iters; i++) {
             if (!Bench.readBenchMixed(mixedDecoded, mixedVariants[i & (NUM_VARIANTS - 1)], numBits)) {
                 System.exit(1);
             }
-            sink += sinkOfBenchMixed(mixedDecoded); // full-struct observation (#175)
+            sink += Bench.writeBenchMixed(mixedDecoded, writeBuf);
         }
         return now() - start;
     }
@@ -789,6 +661,28 @@ public final class Main {
             }
         }
         report(bench, path, iters, bytesPerOp, rates);
+    }
+
+    // the medians the last write / round_trip rows reported, for the derived
+    // read line below — keyed by nothing, because exactly one shape is
+    // data-driven and it reports its pair back to back
+    static double lastWriteMedian;
+    static double lastRoundTripMedian;
+
+    // READ is DERIVED, never measured: round-trip time minus write time. It
+    // prints for continuity with the read rows the rest of the corpus still
+    // reports and is NOT a CSV row — a derived number in the CSV would be
+    // divided as if it had been measured.
+    static void reportDerivedRead(String bench) {
+        if (lastWriteMedian <= 0 || lastRoundTripMedian <= 0) {
+            return;
+        }
+        final double readTime = 1.0 / lastRoundTripMedian - 1.0 / lastWriteMedian;
+        if (readTime > 0) {
+            System.err.printf(
+                    "%-18s %-5s %10.2f M msg/s   (DERIVED: round-trip minus write, informational — not a measured row)%n",
+                    bench, "read", 1e-6 / readTime);
+        }
     }
 
     public static void main(String[] args) {
@@ -822,7 +716,8 @@ public final class Main {
         if (quick) {
             gateMixed();
             benchLeg("bench_mixed", "write", MIXED_ITERS, mixedBytes, Main::timeMixedWrite);
-            benchLeg("bench_mixed", "read", MIXED_ITERS, mixedBytes, Main::timeMixedRead);
+            benchLeg("bench_mixed", "round_trip", MIXED_ITERS, mixedBytes, Main::timeMixedRoundTrip);
+            reportDerivedRead("bench_mixed");
         } else {
             gatePacket();
             gateInts();
@@ -835,7 +730,8 @@ public final class Main {
             benchLeg("bench_bits", "write", BITS_ITERS, bitsBytes, Main::timeBitsWrite);
             benchLeg("bench_bits", "read", BITS_ITERS, bitsBytes, Main::timeBitsRead);
             benchLeg("bench_mixed", "write", MIXED_ITERS, mixedBytes, Main::timeMixedWrite);
-            benchLeg("bench_mixed", "read", MIXED_ITERS, mixedBytes, Main::timeMixedRead);
+            benchLeg("bench_mixed", "round_trip", MIXED_ITERS, mixedBytes, Main::timeMixedRoundTrip);
+            reportDerivedRead("bench_mixed");
         }
 
         flushCsv();
