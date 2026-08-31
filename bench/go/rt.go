@@ -18,11 +18,17 @@ package main
 
 import (
 	"bytes"
+	"errors"
 	"runtime"
 	"time"
 
 	"github.com/mas-bandwidth/serialize.go"
 )
+
+// errRtContract is the hand-written path's refusal for the two contract
+// constructs the runtime API does not check for you: const(V, N) and
+// reserved(N). The generated readers refuse the same bytes (SPEC §4.3).
+var errRtContract = errors.New("rt: contract field mismatch")
 
 // ---- the four shapes, hand-written (Bench.schema §1.3) ----
 
@@ -128,43 +134,269 @@ func readRtBits(s *serialize.ReadStream, f *rtBenchBits) error {
 	return s.Err()
 }
 
-type rtBenchMixed struct {
-	sequence          int32
-	ackBits, entityID uint32
-	posX, posY, posZ  int32
-	yaw               uint32
-	moving, firing    bool
-	timestamp         uint64
-	weapon            int32
+// BenchMixed by hand (issue #184): every serialize runtime operation the
+// schema language expresses, in the order the generated code emits them. The
+// §1.5 oracle gate byte-compares this against the generated code's golden.
+type rtMixedEntity struct {
+	entityID         uint32
+	posX, posY, posZ int32
+	yaw, pitch       uint32
+	velX, velY, velZ int32
+	health           int32
+	weapon           int32  // the enum wire
+	damage           uint32 // the flags wire, 8 bits
+	moving, firing   bool
 }
 
+type rtMixedStat struct {
+	statID uint32
+	delta  int32
+}
+
+type rtMixedHitEvent struct {
+	targetID        uint32
+	damage, hitKind int32
+	crit            bool
+}
+
+type rtMixedChatEvent struct {
+	channel int32
+	speaker uint32
+}
+
+type rtMixedPickupEvent struct {
+	itemID uint32
+	amount int32
+}
+
+type rtBenchMixed struct {
+	magic            uint32
+	sequence         uint32
+	ackSequence      int32
+	ackBits          uint32
+	sessionID        uint64
+	clientID         uint32
+	nonce            uint64
+	worldTime        int64
+	frameTick        uint64
+	serverTime       int64 // raw Q24.8 (serialize.go's fixed API is 64-bit)
+	entitiesCount    int32
+	entities         [8]rtMixedEntity
+	statsCount       int32
+	stats            [80]rtMixedStat
+	eventType        int32 // the union tag: 0 = None
+	hit              rtMixedHitEvent
+	chat             rtMixedChatEvent
+	pickup           rtMixedPickupEvent
+	loadout          [4]uint8
+	playerNameLength int32
+	playerName       [15]byte
+	payloadLength    int32
+	payload          [16]byte
+	aimX, aimY, aimZ float32
+	recoil           float32
+	drift            float64
+	wideKey          serialize.Uint128
+	flux             serialize.Int128
+	ping             int64 // raw UQ8.8
+	reservedBits     uint32
+	crcHint          uint32
+	hasExtra         bool
+	extra            int32
+	idleTicks        int32
+}
+
+// the ±2^100 band flux rides in
+var rtFluxMin = serialize.Int128{Lo: 0, Hi: 0xFFFFFFF000000000}
+var rtFluxMax = serialize.Int128{Lo: 0, Hi: 0x1000000000}
+
 func writeRtMixed(s *serialize.WriteStream, f *rtBenchMixed) error {
-	s.SerializeInt(&f.sequence, 0, 65535)
+	s.SerializeBits(&f.magic, 16)
+	s.SerializeBits(&f.sequence, 16)
+	s.SerializeInt(&f.ackSequence, 0, 65535)
 	s.SerializeBits(&f.ackBits, 32)
-	s.SerializeBits(&f.entityID, 12)
-	s.SerializeInt(&f.posX, -16384, 16383)
-	s.SerializeInt(&f.posY, -16384, 16383)
-	s.SerializeInt(&f.posZ, -16384, 16383)
-	s.SerializeBits(&f.yaw, 9)
-	s.SerializeBool(&f.moving)
-	s.SerializeBool(&f.firing)
-	s.SerializeBits64(&f.timestamp, 48)
-	s.SerializeInt(&f.weapon, 0, 15)
+	s.SerializeUint64(&f.sessionID)
+	s.SerializeUint32(&f.clientID)
+	s.SerializeBits64(&f.nonce, 64) // the full-unsigned ranged path is width-computed bits
+	s.SerializeInt64(&f.worldTime, -1000000000000, 1000000000000)
+	s.SerializeBits64(&f.frameTick, 48)
+	s.SerializeFixed64(&f.serverTime, 24, 8, 0, 65535)
+
+	s.SerializeInt(&f.entitiesCount, 1, 8)
+	for i := int32(0); i < f.entitiesCount; i++ {
+		e := &f.entities[i]
+		s.SerializeBits(&e.entityID, 12)
+		s.SerializeInt(&e.posX, -16383, 16383)
+		s.SerializeInt(&e.posY, -16383, 16383)
+		s.SerializeInt(&e.posZ, -16383, 16383)
+		s.SerializeBits(&e.yaw, 9)
+		s.SerializeBits(&e.pitch, 9)
+		s.SerializeInt(&e.velX, -2048, 2047)
+		s.SerializeInt(&e.velY, -2048, 2047)
+		s.SerializeInt(&e.velZ, -2048, 2047)
+		s.SerializeInt(&e.health, 0, 1000)
+		s.SerializeInt(&e.weapon, 0, 15)
+		s.SerializeBits(&e.damage, 8)
+		s.SerializeBool(&e.moving)
+		s.SerializeBool(&e.firing)
+	}
+
+	s.SerializeInt(&f.statsCount, 0, 80)
+	for i := int32(0); i < f.statsCount; i++ {
+		s.SerializeBits(&f.stats[i].statID, 8)
+		s.SerializeInt(&f.stats[i].delta, -512, 511)
+	}
+
+	s.SerializeInt(&f.eventType, 0, 3)
+	switch f.eventType {
+	case 1:
+		s.SerializeBits(&f.hit.targetID, 12)
+		s.SerializeInt(&f.hit.damage, 0, 4095)
+		s.SerializeInt(&f.hit.hitKind, 0, 7)
+		s.SerializeBool(&f.hit.crit)
+	case 2:
+		s.SerializeInt(&f.chat.channel, 0, 3)
+		s.SerializeBits(&f.chat.speaker, 12)
+	case 3:
+		s.SerializeBits(&f.pickup.itemID, 10)
+		s.SerializeInt(&f.pickup.amount, 0, 255)
+	}
+
+	for i := 0; i < 4; i++ {
+		s.SerializeUint8(&f.loadout[i])
+	}
+
+	// string(15) and bytes(16) ride as their §4.3 decomposition in every rt
+	// leg — see bench/cpp/bench_main.cpp for the reasoning
+	s.SerializeInt(&f.playerNameLength, 0, 15)
+	s.SerializeBytes(f.playerName[:f.playerNameLength])
+	s.SerializeInt(&f.payloadLength, 0, 16)
+	s.SerializeBytes(f.payload[:f.payloadLength])
+
+	s.SerializeCompressedFloat32(&f.aimX, -1.0, 1.0, 0.01)
+	s.SerializeCompressedFloat32(&f.aimY, -1.0, 1.0, 0.01)
+	s.SerializeCompressedFloat32(&f.aimZ, -1.0, 1.0, 0.01)
+	s.SerializeFloat32(&f.recoil)
+	s.SerializeFloat64(&f.drift)
+	s.SerializeUint128(&f.wideKey)
+	s.SerializeInt128(&f.flux, rtFluxMin, rtFluxMax)
+	s.SerializeFixed64(&f.ping, 8, 8, 0, 250)
+
+	s.SerializeBits(&f.reservedBits, 4)
+	s.SerializeAlign()
+	s.SerializeBits(&f.crcHint, 24)
+	s.SerializeBool(&f.hasExtra)
+	if f.hasExtra {
+		s.SerializeInt(&f.extra, 0, 255)
+	} else {
+		s.SerializeInt(&f.idleTicks, 0, 15)
+	}
 	return s.Err()
 }
 
 func readRtMixed(s *serialize.ReadStream, f *rtBenchMixed) error {
-	s.SerializeInt(&f.sequence, 0, 65535)
+	s.SerializeBits(&f.magic, 16)
+	if f.magic != 0xC0DE {
+		return errRtContract // const(0xC0DE, 16): a read REJECTS any other value
+	}
+	s.SerializeBits(&f.sequence, 16)
+	s.SerializeInt(&f.ackSequence, 0, 65535)
 	s.SerializeBits(&f.ackBits, 32)
-	s.SerializeBits(&f.entityID, 12)
-	s.SerializeInt(&f.posX, -16384, 16383)
-	s.SerializeInt(&f.posY, -16384, 16383)
-	s.SerializeInt(&f.posZ, -16384, 16383)
-	s.SerializeBits(&f.yaw, 9)
-	s.SerializeBool(&f.moving)
-	s.SerializeBool(&f.firing)
-	s.SerializeBits64(&f.timestamp, 48)
-	s.SerializeInt(&f.weapon, 0, 15)
+	s.SerializeUint64(&f.sessionID)
+	s.SerializeUint32(&f.clientID)
+	s.SerializeBits64(&f.nonce, 64)
+	s.SerializeInt64(&f.worldTime, -1000000000000, 1000000000000)
+	s.SerializeBits64(&f.frameTick, 48)
+	s.SerializeFixed64(&f.serverTime, 24, 8, 0, 65535)
+
+	s.SerializeInt(&f.entitiesCount, 1, 8)
+	if s.Err() != nil {
+		return s.Err()
+	}
+	for i := int32(0); i < f.entitiesCount; i++ {
+		e := &f.entities[i]
+		s.SerializeBits(&e.entityID, 12)
+		s.SerializeInt(&e.posX, -16383, 16383)
+		s.SerializeInt(&e.posY, -16383, 16383)
+		s.SerializeInt(&e.posZ, -16383, 16383)
+		s.SerializeBits(&e.yaw, 9)
+		s.SerializeBits(&e.pitch, 9)
+		s.SerializeInt(&e.velX, -2048, 2047)
+		s.SerializeInt(&e.velY, -2048, 2047)
+		s.SerializeInt(&e.velZ, -2048, 2047)
+		s.SerializeInt(&e.health, 0, 1000)
+		s.SerializeInt(&e.weapon, 0, 15)
+		s.SerializeBits(&e.damage, 8)
+		s.SerializeBool(&e.moving)
+		s.SerializeBool(&e.firing)
+	}
+
+	s.SerializeInt(&f.statsCount, 0, 80)
+	if s.Err() != nil {
+		return s.Err()
+	}
+	for i := int32(0); i < f.statsCount; i++ {
+		s.SerializeBits(&f.stats[i].statID, 8)
+		s.SerializeInt(&f.stats[i].delta, -512, 511)
+	}
+
+	s.SerializeInt(&f.eventType, 0, 3)
+	if s.Err() != nil {
+		return s.Err()
+	}
+	switch f.eventType {
+	case 1:
+		s.SerializeBits(&f.hit.targetID, 12)
+		s.SerializeInt(&f.hit.damage, 0, 4095)
+		s.SerializeInt(&f.hit.hitKind, 0, 7)
+		s.SerializeBool(&f.hit.crit)
+	case 2:
+		s.SerializeInt(&f.chat.channel, 0, 3)
+		s.SerializeBits(&f.chat.speaker, 12)
+	case 3:
+		s.SerializeBits(&f.pickup.itemID, 10)
+		s.SerializeInt(&f.pickup.amount, 0, 255)
+	}
+
+	for i := 0; i < 4; i++ {
+		s.SerializeUint8(&f.loadout[i])
+	}
+
+	s.SerializeInt(&f.playerNameLength, 0, 15)
+	if s.Err() != nil {
+		return s.Err()
+	}
+	s.SerializeBytes(f.playerName[:f.playerNameLength])
+	s.SerializeInt(&f.payloadLength, 0, 16)
+	if s.Err() != nil {
+		return s.Err()
+	}
+	s.SerializeBytes(f.payload[:f.payloadLength])
+
+	s.SerializeCompressedFloat32(&f.aimX, -1.0, 1.0, 0.01)
+	s.SerializeCompressedFloat32(&f.aimY, -1.0, 1.0, 0.01)
+	s.SerializeCompressedFloat32(&f.aimZ, -1.0, 1.0, 0.01)
+	s.SerializeFloat32(&f.recoil)
+	s.SerializeFloat64(&f.drift)
+	s.SerializeUint128(&f.wideKey)
+	s.SerializeInt128(&f.flux, rtFluxMin, rtFluxMax)
+	s.SerializeFixed64(&f.ping, 8, 8, 0, 250)
+
+	s.SerializeBits(&f.reservedBits, 4)
+	if f.reservedBits != 0 {
+		return errRtContract // reserved(4): a read rejects nonzero
+	}
+	s.SerializeAlign()
+	s.SerializeBits(&f.crcHint, 24)
+	s.SerializeBool(&f.hasExtra)
+	if s.Err() != nil {
+		return s.Err()
+	}
+	if f.hasExtra {
+		s.SerializeInt(&f.extra, 0, 255)
+	} else {
+		s.SerializeInt(&f.idleTicks, 0, 15)
+	}
 	return s.Err()
 }
 
@@ -195,10 +427,62 @@ func pinRtBits() rtBenchBits {
 }
 
 func pinRtMixed() rtBenchMixed {
-	return rtBenchMixed{sequence: 52428, ackBits: 0xA5A5A5A5, entityID: 2049,
-		posX: -16384, posY: 16383, posZ: -1,
-		yaw: 511, moving: true, firing: false,
-		timestamp: 0x123456789ABC, weapon: 15}
+	var in rtBenchMixed
+	in.magic = 0xC0DE
+	in.sequence = 52428
+	in.ackSequence = 12345
+	in.ackBits = 0xA5A5A5A5
+	in.sessionID = 0x123456789ABCDEF0
+	in.clientID = 0xDEADBEEF
+	in.nonce = 0xFEDCBA9876543210
+	in.worldTime = -987654321000
+	in.frameTick = 0x123456789ABC
+	in.serverTime = 12345678
+	in.entitiesCount = 8
+	for i := 0; i < 8; i++ {
+		e := &in.entities[i]
+		e.entityID = uint32(2049 + i*17)
+		e.posX = int32(-16383 + i*4096)
+		e.posY = int32(16383 - i*4096)
+		e.posZ = int32(-1 + i*2048)
+		e.yaw = uint32(511 - i*64)
+		e.pitch = uint32(i * 73)
+		e.velX = int32(-2048 + i*512)
+		e.velY = int32(2047 - i*512)
+		e.velZ = int32(-1024 + i*256)
+		e.health = int32(1000 - i*100)
+		e.weapon = int32(1 + i)
+		e.damage = uint32(0x5A + i)
+		e.moving = i%2 == 0
+		e.firing = i%3 == 0
+	}
+	in.statsCount = 80
+	for i := 0; i < 80; i++ {
+		in.stats[i].statID = uint32((i * 3) % 256)
+		in.stats[i].delta = int32(-512 + (i*13)%1024)
+	}
+	in.eventType = 1 // Hit
+	in.hit.targetID = 4095
+	in.hit.damage = 4095
+	in.hit.hitKind = 7
+	in.hit.crit = true
+	copy(in.loadout[:], []byte{0x11, 0x22, 0x33, 0x44})
+	copy(in.playerName[:], "Rowan_01")
+	in.playerNameLength = 8
+	copy(in.payload[:], []byte{0xDE, 0xAD, 0xBE, 0xEF, 0x01, 0x02, 0x03, 0x04})
+	in.payloadLength = 8
+	in.aimX = 0.5
+	in.aimY = -0.25
+	in.aimZ = 0.75
+	in.recoil = 1.5
+	in.drift = -3.25
+	in.wideKey = serialize.Uint128{Lo: 0xFEDCBA9876543210, Hi: 0x0123456789ABCDEF}
+	in.flux = serialize.Int128{Lo: 7, Hi: 0x800000000} // 2^99 + 7
+	in.ping = 12345
+	in.crcHint = 0xABCDEF
+	in.hasExtra = true
+	in.extra = 200
+	return in
 }
 
 // ---- vary functions: bench/cpp/bench_main.cpp's rt mappings exactly ----
@@ -241,17 +525,45 @@ func varyRtBits(f *rtBenchBits, rng uint64) {
 }
 
 func varyRtMixed(f *rtBenchMixed, rng uint64) {
-	f.sequence = int32(uint32(rng>>8) & 65535)
+	f.sequence = uint32(rng>>8) & 65535
+	f.ackSequence = int32(uint32(rng>>24) & 65535)
 	f.ackBits = uint32(rng >> 16)
-	f.entityID = uint32(rng) & 4095
-	f.posX = int32((rng>>20)&32767) - 16384
-	f.posY = int32((rng>>25)&32767) - 16384
-	f.posZ = int32((rng>>30)&32767) - 16384
-	f.yaw = uint32(rng>>3) & 511
-	f.moving = (rng & 1) != 0
-	f.firing = (rng & 2) != 0
-	f.timestamp = rng & 0xFFFFFFFFFFFF
-	f.weapon = int32(uint32(rng>>60) & 15)
+	f.sessionID = rng
+	f.clientID = uint32(rng >> 32)
+	f.nonce = rng ^ 0xA5A5A5A5A5A5A5A5
+	f.worldTime = int64((rng>>12)&0xFFFFFFFFF) - 34359738368
+	f.frameTick = rng & 0xFFFFFFFFFFFF
+	f.serverTime = int64((rng >> 20) & 0x7FFFFF)
+	for i := 0; i < 8; i++ {
+		e := &f.entities[i]
+		e.entityID = uint32((rng >> uint(i)) & 4095)
+		e.posX = int32((rng>>uint(i+4))&16383) - 8192
+		e.posY = int32((rng>>uint(i+12))&16383) - 8192
+		e.health = int32((rng >> uint(i+20)) & 511)
+		e.weapon = int32((rng >> uint(i+40)) & 15)
+		e.damage = uint32((rng >> uint(i+28)) & 255)
+		e.moving = (rng>>uint(i))&1 != 0
+	}
+	for i := 0; i < 80; i++ {
+		f.stats[i].delta = int32((rng>>uint(i&31))&1023) - 512
+	}
+	f.hit.targetID = uint32((rng >> 6) & 4095)
+	f.hit.damage = int32((rng >> 18) & 4095)
+	f.hit.hitKind = int32((rng >> 30) & 7)
+	f.hit.crit = rng&4 != 0
+	f.loadout[0] = uint8(rng >> 56)
+	f.playerName[7] = byte(65 + ((rng >> 50) & 15))
+	f.payload[0] = uint8(rng >> 48)
+	f.aimX = float32(uint32(rng>>2)&255)*(1.0/256.0) - 0.5
+	f.aimY = float32(uint32(rng>>10)&255)*(1.0/256.0) - 0.5
+	f.aimZ = float32(uint32(rng>>18)&255)*(1.0/256.0) - 0.5
+	f.recoil = float32(uint32(rng) & 0xFFFF)
+	f.drift = float64(int64((rng>>8)&0xFFFFFF)) * 0.5
+	f.wideKey = serialize.Uint128{Lo: rng, Hi: rng >> 1}
+	f.flux = serialize.Int128From64(int64(rng >> 16))
+	f.ping = int64((rng >> 40) & 0x7FFF)
+	f.crcHint = uint32((rng >> 24) & 0xFFFFFF)
+	f.extra = int32((rng >> 52) & 255)
 }
 
 // ---- the single untimed call sites (§3.2), one pair per shape ----

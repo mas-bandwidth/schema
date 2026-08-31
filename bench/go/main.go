@@ -689,19 +689,65 @@ func pinGenBits() bench.BenchBits {
 	return in
 }
 
+// BenchMixed — THE canonical benchmark shape (issue #184). The pin is
+// test/bench/main.cpp's, transcribed exactly; STRUCTURE fields (the two array
+// counts, the two used lengths, the union tag, the `if` gate) are set here and
+// never touched by vary*, so bytes/op is constant (§2.7).
 func pinGenMixed() bench.BenchMixed {
 	var in bench.BenchMixed
 	in.Sequence = 52428
+	in.AckSequence = 12345
 	in.AckBits = 0xA5A5A5A5
-	in.EntityId = 2049
-	in.PosX = -16384
-	in.PosY = 16383
-	in.PosZ = -1
-	in.Yaw = 511
-	in.Moving = true
-	in.Firing = false
-	in.Timestamp = 0x123456789ABC
-	in.Weapon = 15
+	in.SessionId = 0x123456789ABCDEF0
+	in.ClientId = 0xDEADBEEF
+	in.Nonce = 0xFEDCBA9876543210
+	in.WorldTime = -987654321000
+	in.FrameTick = 0x123456789ABC
+	in.ServerTime = 12345678
+	in.EntitiesCount = 8
+	for i := 0; i < 8; i++ {
+		e := &in.Entities[i]
+		e.EntityId = uint32(2049 + i*17)
+		e.PosX = int32(-16383 + i*4096)
+		e.PosY = int32(16383 - i*4096)
+		e.PosZ = int32(-1 + i*2048)
+		e.Yaw = uint32(511 - i*64)
+		e.Pitch = uint32(i * 73)
+		e.VelX = int32(-2048 + i*512)
+		e.VelY = int32(2047 - i*512)
+		e.VelZ = int32(-1024 + i*256)
+		e.Health = int32(1000 - i*100)
+		e.Weapon = bench.MixedWeapon(1 + i)
+		e.Damage = bench.MixedDamage(0x5A + i)
+		e.Moving = i%2 == 0
+		e.Firing = i%3 == 0
+	}
+	in.StatsCount = 80
+	for i := 0; i < 80; i++ {
+		in.Stats[i].StatId = uint32((i * 3) % 256)
+		in.Stats[i].Delta = int32(-512 + (i*13)%1024)
+	}
+	in.GameEvent.Type = bench.MixedEventTypeHit
+	in.GameEvent.Hit.TargetId = 4095
+	in.GameEvent.Hit.Damage = 4095
+	in.GameEvent.Hit.HitKind = 7
+	in.GameEvent.Hit.Crit = true
+	copy(in.Loadout[:], []byte{0x11, 0x22, 0x33, 0x44})
+	copy(in.PlayerName[:], "Rowan_01")
+	in.PlayerNameLength = 8
+	copy(in.Payload[:], []byte{0xDE, 0xAD, 0xBE, 0xEF, 0x01, 0x02, 0x03, 0x04})
+	in.PayloadLength = 8
+	in.AimX = 0.5
+	in.AimY = -0.25
+	in.AimZ = 0.75
+	in.Recoil = 1.5
+	in.Drift = -3.25
+	in.WideKey = serialize.Uint128{Lo: 0xFEDCBA9876543210, Hi: 0x0123456789ABCDEF}
+	in.Flux = serialize.Int128{Lo: 7, Hi: 0x800000000} // 2^99 + 7
+	in.Ping = 12345
+	in.CrcHint = 0xABCDEF
+	in.HasExtra = true
+	in.Extra = 200
 	return in
 }
 
@@ -742,18 +788,50 @@ func varyGenBits(f *bench.BenchBits, rng uint64) {
 	f.B48 = rng & 0xFFFFFFFFFFFF
 }
 
+// The LCG field mapping for BenchMixed, identical in every runner. VALUE
+// fields only: every count, used length, union tag and branch gate is
+// STRUCTURE (§2.7). All 8 entities vary; the 80 stats vary Delta (StatId
+// stays pinned) — the family convention of varying a representative subset.
 func varyGenMixed(f *bench.BenchMixed, rng uint64) {
-	f.Sequence = int32(uint32(rng>>8) & 65535)
+	f.Sequence = uint32(rng>>8) & 65535
+	f.AckSequence = int32(uint32(rng>>24) & 65535)
 	f.AckBits = uint32(rng >> 16)
-	f.EntityId = uint32(rng) & 4095
-	f.PosX = int32((rng>>20)&32767) - 16384
-	f.PosY = int32((rng>>25)&32767) - 16384
-	f.PosZ = int32((rng>>30)&32767) - 16384
-	f.Yaw = uint32(rng>>3) & 511
-	f.Moving = (rng & 1) != 0
-	f.Firing = (rng & 2) != 0
-	f.Timestamp = rng & 0xFFFFFFFFFFFF
-	f.Weapon = int32(uint32(rng>>60) & 15)
+	f.SessionId = rng
+	f.ClientId = uint32(rng >> 32)
+	f.Nonce = rng ^ 0xA5A5A5A5A5A5A5A5
+	f.WorldTime = int64((rng>>12)&0xFFFFFFFFF) - 34359738368
+	f.FrameTick = rng & 0xFFFFFFFFFFFF
+	f.ServerTime = int32((rng >> 20) & 0x7FFFFF)
+	for i := 0; i < 8; i++ {
+		e := &f.Entities[i]
+		e.EntityId = uint32((rng >> uint(i)) & 4095)
+		e.PosX = int32((rng>>uint(i+4))&16383) - 8192
+		e.PosY = int32((rng>>uint(i+12))&16383) - 8192
+		e.Health = int32((rng >> uint(i+20)) & 511)
+		e.Weapon = bench.MixedWeapon((rng >> uint(i+40)) & 15)
+		e.Damage = bench.MixedDamage((rng >> uint(i+28)) & 255)
+		e.Moving = (rng>>uint(i))&1 != 0
+	}
+	for i := 0; i < 80; i++ {
+		f.Stats[i].Delta = int32((rng>>uint(i&31))&1023) - 512
+	}
+	f.GameEvent.Hit.TargetId = uint32((rng >> 6) & 4095)
+	f.GameEvent.Hit.Damage = int32((rng >> 18) & 4095)
+	f.GameEvent.Hit.HitKind = int32((rng >> 30) & 7)
+	f.GameEvent.Hit.Crit = rng&4 != 0
+	f.Loadout[0] = uint8(rng >> 56)
+	f.PlayerName[7] = byte(65 + ((rng >> 50) & 15))
+	f.Payload[0] = uint8(rng >> 48)
+	f.AimX = float32(uint32(rng>>2)&255)*(1.0/256.0) - 0.5
+	f.AimY = float32(uint32(rng>>10)&255)*(1.0/256.0) - 0.5
+	f.AimZ = float32(uint32(rng>>18)&255)*(1.0/256.0) - 0.5
+	f.Recoil = float32(uint32(rng) & 0xFFFF)
+	f.Drift = float64(int64((rng>>8)&0xFFFFFF)) * 0.5
+	f.WideKey = serialize.Uint128{Lo: rng, Hi: rng >> 1}
+	f.Flux = serialize.Int128From64(int64(rng >> 16))
+	f.Ping = uint16((rng >> 40) & 0x7FFF)
+	f.CrcHint = uint32((rng >> 24) & 0xFFFFFF)
+	f.Extra = int32((rng >> 52) & 255)
 }
 
 // ------------------------------------------------------------------------------------------
