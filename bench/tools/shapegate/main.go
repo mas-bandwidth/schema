@@ -194,9 +194,12 @@ func vocabulary(root string) (map[string]string, []string, error) {
 				}
 			}
 		}
-		fh.Close()
+		cerr := fh.Close()
 		if err := sc.Err(); err != nil {
 			return nil, nil, err
+		}
+		if cerr != nil {
+			return nil, nil, cerr
 		}
 	}
 	if len(guarded) == 0 {
@@ -332,7 +335,7 @@ func readLedger(root string) ([]ledgerEntry, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	var out []ledgerEntry
 	sc := bufio.NewScanner(f)
@@ -387,7 +390,7 @@ func main() {
 		root = a
 	}
 	if err := run(root); err != nil {
-		fmt.Fprintf(os.Stderr, "\nSHAPE GATE REFUSAL\n\n%v\n", err)
+		fmt.Fprintf(os.Stderr, "\nSHAPE GATE REFUSAL\n\n%v\n\n%s\n", err, theRule)
 		os.Exit(1)
 	}
 }
@@ -596,9 +599,15 @@ func reconcile(found map[string]map[string]*finding, ledger []ledgerEntry) error
 		fmt.Printf("clean — %d file(s) carry shape knowledge, every one on the ledger\n", total)
 		return nil
 	}
-	return fmt.Errorf("%s\n\nThe estate has ONE benchmark: this repo's data-driven bench (bench/README.md).\nHand-written runners are fine. Hand-written MEASUREMENT of a schema shape is not.\nIf a refusal above is a deliberate, owner-ruled exception, add it to %s\nwith its exact count and the reason.",
-		strings.Join(refusals, "\n\n"), ledgerPath)
+	return fmt.Errorf("%s", strings.Join(refusals, "\n\n"))
 }
+
+// theRule — printed under every refusal, so the reader does not have to go
+// find out what the gate is for before deciding what to do about it.
+const theRule = `The estate has ONE benchmark: this repo's data-driven bench (bench/README.md).
+Hand-written runners are fine. Hand-written MEASUREMENT of a schema shape is not.
+If a refusal above is a deliberate, owner-ruled exception, add it to ` + ledgerPath + `
+with its exact count and the reason.`
 
 // ------------------------------------------------------------------------------------------
 
