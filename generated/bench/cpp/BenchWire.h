@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package bench — protocol id 0x694f261d887abaa5
+// package bench — protocol id 0xae3b1e28b96e4586
 
 #pragma once
 
@@ -51,6 +51,117 @@ namespace bench {
 #define SCHEMA_READ_INLINE inline
 #endif
 #endif // SCHEMA_READ_INLINE_DEFINED
+
+#ifndef SCHEMA_UTF8_VALID_DEFINED
+#define SCHEMA_UTF8_VALID_DEFINED
+// string(N) payloads are well-formed UTF-8 BY CONTRACT (SPEC §4.7): the
+// write path debug-asserts with this validator and the release path costs
+// nothing. Rejects truncated sequences, bare continuations, overlongs,
+// surrogates and code points past U+10FFFF.
+inline bool schema_utf8_valid( const uint8_t * bytes, int32_t length )
+{
+    int32_t i = 0;
+    while ( i < length )
+    {
+        uint8_t lead = bytes[i];
+        int32_t continuations;
+        uint32_t code_point;
+        if ( lead < 0x80 )
+        {
+            i++;
+            continue;
+        }
+        else if ( ( lead & 0xE0 ) == 0xC0 )
+        {
+            continuations = 1;
+            code_point = lead & 0x1F;
+        }
+        else if ( ( lead & 0xF0 ) == 0xE0 )
+        {
+            continuations = 2;
+            code_point = lead & 0x0F;
+        }
+        else if ( ( lead & 0xF8 ) == 0xF0 )
+        {
+            continuations = 3;
+            code_point = lead & 0x07;
+        }
+        else
+        {
+            return false;
+        }
+        if ( i + continuations >= length )
+        {
+            return false;
+        }
+        for ( int32_t k = 1; k <= continuations; k++ )
+        {
+            if ( ( bytes[i + k] & 0xC0 ) != 0x80 )
+            {
+                return false;
+            }
+            code_point = ( code_point << 6 ) | uint32_t( bytes[i + k] & 0x3F );
+        }
+        if ( continuations == 1 && code_point < 0x80 )
+        {
+            return false;
+        }
+        if ( continuations == 2 && ( code_point < 0x800 || ( code_point >= 0xD800 && code_point <= 0xDFFF ) ) )
+        {
+            return false;
+        }
+        if ( continuations == 3 && ( code_point < 0x10000 || code_point > 0x10FFFF ) )
+        {
+            return false;
+        }
+        i += 1 + continuations;
+    }
+    return true;
+}
+#endif // SCHEMA_UTF8_VALID_DEFINED
+
+#ifndef SCHEMA_INTERIOR_NULL_DEFINED
+#define SCHEMA_INTERIOR_NULL_DEFINED
+// string(N) carries bytes excluding 0x00: an interior null is content every
+// generated reader refuses (SPEC §4.7) — generated-code validation; no
+// serialize primitive performs it. The scan is word-wise: eight bytes per
+// step under the zero-byte idiom, and a payload of eight bytes or more
+// re-tests its final eight bytes as one whole (overlapping) word, so every
+// load stays inside the payload the stream already delivered.
+SCHEMA_READ_INLINE bool schema_interior_null( const uint8_t * bytes, int32_t length )
+{
+    uint64_t word;
+    int32_t i = 0;
+    if ( length >= 8 )
+    {
+        for ( ; i + 8 <= length; i += 8 )
+        {
+            memcpy( &word, bytes + i, 8 );
+            if ( ( ( word - 0x0101010101010101ull ) & ~word & 0x8080808080808080ull ) != 0 )
+            {
+                return true;
+            }
+        }
+        if ( i < length )
+        {
+            memcpy( &word, bytes + length - 8, 8 );
+            if ( ( ( word - 0x0101010101010101ull ) & ~word & 0x8080808080808080ull ) != 0 )
+            {
+                return true;
+            }
+        }
+        return false;
+    }
+    for ( ; i < length; i++ )
+    {
+        if ( bytes[i] == 0 )
+        {
+            return true;
+        }
+    }
+    return false;
+}
+#endif // SCHEMA_INTERIOR_NULL_DEFINED
 
 SCHEMA_WRITE_INLINE bool WriteBenchPacket( serialize::WriteStream & stream, const BenchPacket & value )
 {
@@ -157,40 +268,346 @@ SCHEMA_READ_INLINE bool ReadBenchBits( serialize::ReadStream & stream, BenchBits
     return true;
 }
 
-SCHEMA_WRITE_INLINE bool WriteBenchMixed( serialize::WriteStream & stream, const BenchMixed & value )
+SCHEMA_WRITE_INLINE bool WriteMixedEntity( serialize::WriteStream & stream, const MixedEntity & value )
 {
-    serialize_assert( int32_t( value.sequence ) >= int32_t( 0 ) && int32_t( value.sequence ) <= int32_t( 65535 ) );
-    write_bits( stream, uint32_t( value.sequence ), 16 );
-    write_bits( stream, value.ack_bits, 32 );
     write_bits( stream, value.entity_id, 12 );
-    serialize_assert( int32_t( value.pos_x ) >= int32_t( -16384 ) && int32_t( value.pos_x ) <= int32_t( 16383 ) );
-    write_bits( stream, uint32_t( value.pos_x ) - uint32_t( -16384 ), 15 );
-    serialize_assert( int32_t( value.pos_y ) >= int32_t( -16384 ) && int32_t( value.pos_y ) <= int32_t( 16383 ) );
-    write_bits( stream, uint32_t( value.pos_y ) - uint32_t( -16384 ), 15 );
-    serialize_assert( int32_t( value.pos_z ) >= int32_t( -16384 ) && int32_t( value.pos_z ) <= int32_t( 16383 ) );
-    write_bits( stream, uint32_t( value.pos_z ) - uint32_t( -16384 ), 15 );
+    serialize_assert( int32_t( value.pos_x ) >= int32_t( -16383 ) && int32_t( value.pos_x ) <= int32_t( 16383 ) );
+    write_bits( stream, uint32_t( value.pos_x ) - uint32_t( -16383 ), 15 );
+    serialize_assert( int32_t( value.pos_y ) >= int32_t( -16383 ) && int32_t( value.pos_y ) <= int32_t( 16383 ) );
+    write_bits( stream, uint32_t( value.pos_y ) - uint32_t( -16383 ), 15 );
+    serialize_assert( int32_t( value.pos_z ) >= int32_t( -16383 ) && int32_t( value.pos_z ) <= int32_t( 16383 ) );
+    write_bits( stream, uint32_t( value.pos_z ) - uint32_t( -16383 ), 15 );
     write_bits( stream, value.yaw, 9 );
-    write_bool( stream, value.moving );
-    write_bool( stream, value.firing );
-    write_bits( stream, value.timestamp, 48 );
+    write_bits( stream, value.pitch, 9 );
+    serialize_assert( int32_t( value.vel_x ) >= int32_t( -2048 ) && int32_t( value.vel_x ) <= int32_t( 2047 ) );
+    write_bits( stream, uint32_t( value.vel_x ) - uint32_t( -2048 ), 12 );
+    serialize_assert( int32_t( value.vel_y ) >= int32_t( -2048 ) && int32_t( value.vel_y ) <= int32_t( 2047 ) );
+    write_bits( stream, uint32_t( value.vel_y ) - uint32_t( -2048 ), 12 );
+    serialize_assert( int32_t( value.vel_z ) >= int32_t( -2048 ) && int32_t( value.vel_z ) <= int32_t( 2047 ) );
+    write_bits( stream, uint32_t( value.vel_z ) - uint32_t( -2048 ), 12 );
+    serialize_assert( int32_t( value.health ) >= int32_t( 0 ) && int32_t( value.health ) <= int32_t( 1000 ) );
+    write_bits( stream, uint32_t( value.health ), 10 );
     serialize_assert( int32_t( value.weapon ) >= int32_t( 0 ) && int32_t( value.weapon ) <= int32_t( 15 ) );
     write_bits( stream, uint32_t( value.weapon ), 4 );
+    serialize_assert( value.damage < ( 1ull << 8 ) );
+    write_bits( stream, value.damage, 8 );
+    write_bool( stream, value.moving );
+    write_bool( stream, value.firing );
+    return true;
+}
+
+SCHEMA_READ_INLINE bool ReadMixedEntity( serialize::ReadStream & stream, MixedEntity & value )
+{
+    read_bits( stream, value.entity_id, 12 );
+    read_int( stream, value.pos_x, -16383, 16383 );
+    read_int( stream, value.pos_y, -16383, 16383 );
+    read_int( stream, value.pos_z, -16383, 16383 );
+    read_bits( stream, value.yaw, 9 );
+    read_bits( stream, value.pitch, 9 );
+    read_int( stream, value.vel_x, -2048, 2047 );
+    read_int( stream, value.vel_y, -2048, 2047 );
+    read_int( stream, value.vel_z, -2048, 2047 );
+    read_int( stream, value.health, 0, 1000 );
+    {
+        int32_t enum_value = 0;
+        read_int( stream, enum_value, 0, 15 );
+        value.weapon = MixedWeapon( enum_value );
+    }
+    read_bits( stream, value.damage, 8 );
+    read_bool( stream, value.moving );
+    read_bool( stream, value.firing );
+    return true;
+}
+
+SCHEMA_WRITE_INLINE bool WriteMixedStat( serialize::WriteStream & stream, const MixedStat & value )
+{
+    write_bits( stream, value.stat_id, 8 );
+    serialize_assert( int32_t( value.delta ) >= int32_t( -512 ) && int32_t( value.delta ) <= int32_t( 511 ) );
+    write_bits( stream, uint32_t( value.delta ) - uint32_t( -512 ), 10 );
+    return true;
+}
+
+SCHEMA_READ_INLINE bool ReadMixedStat( serialize::ReadStream & stream, MixedStat & value )
+{
+    read_bits( stream, value.stat_id, 8 );
+    read_int( stream, value.delta, -512, 511 );
+    return true;
+}
+
+SCHEMA_WRITE_INLINE bool WriteMixedHitEvent( serialize::WriteStream & stream, const MixedHitEvent & value )
+{
+    write_bits( stream, value.target_id, 12 );
+    serialize_assert( int32_t( value.damage ) >= int32_t( 0 ) && int32_t( value.damage ) <= int32_t( 4095 ) );
+    write_bits( stream, uint32_t( value.damage ), 12 );
+    serialize_assert( int32_t( value.hit_kind ) >= int32_t( 0 ) && int32_t( value.hit_kind ) <= int32_t( 7 ) );
+    write_bits( stream, uint32_t( value.hit_kind ), 3 );
+    write_bool( stream, value.crit );
+    return true;
+}
+
+SCHEMA_READ_INLINE bool ReadMixedHitEvent( serialize::ReadStream & stream, MixedHitEvent & value )
+{
+    read_bits( stream, value.target_id, 12 );
+    read_int( stream, value.damage, 0, 4095 );
+    read_int( stream, value.hit_kind, 0, 7 );
+    read_bool( stream, value.crit );
+    return true;
+}
+
+SCHEMA_WRITE_INLINE bool WriteMixedChatEvent( serialize::WriteStream & stream, const MixedChatEvent & value )
+{
+    serialize_assert( int32_t( value.channel ) >= int32_t( 0 ) && int32_t( value.channel ) <= int32_t( 3 ) );
+    write_bits( stream, uint32_t( value.channel ), 2 );
+    write_bits( stream, value.speaker, 12 );
+    return true;
+}
+
+SCHEMA_READ_INLINE bool ReadMixedChatEvent( serialize::ReadStream & stream, MixedChatEvent & value )
+{
+    read_int( stream, value.channel, 0, 3 );
+    read_bits( stream, value.speaker, 12 );
+    return true;
+}
+
+SCHEMA_WRITE_INLINE bool WriteMixedPickupEvent( serialize::WriteStream & stream, const MixedPickupEvent & value )
+{
+    write_bits( stream, value.item_id, 10 );
+    serialize_assert( int32_t( value.amount ) >= int32_t( 0 ) && int32_t( value.amount ) <= int32_t( 255 ) );
+    write_bits( stream, uint32_t( value.amount ), 8 );
+    return true;
+}
+
+SCHEMA_READ_INLINE bool ReadMixedPickupEvent( serialize::ReadStream & stream, MixedPickupEvent & value )
+{
+    read_bits( stream, value.item_id, 10 );
+    read_int( stream, value.amount, 0, 255 );
+    return true;
+}
+
+SCHEMA_WRITE_INLINE bool WriteMixedEvent( serialize::WriteStream & stream, const MixedEvent & value )
+{
+    switch ( value.type )
+    {
+        case MixedEventType::None:
+            write_bits( stream, 0u, 2 );
+            return true; // no payload — the tag is the whole wire (SPEC §4.8)
+        case MixedEventType::Hit:
+            write_bits( stream, 1u, 2 );
+            return WriteMixedHitEvent( stream, value.hit );
+        case MixedEventType::Chat:
+            write_bits( stream, 2u, 2 );
+            return WriteMixedChatEvent( stream, value.chat );
+        case MixedEventType::Pickup:
+            write_bits( stream, 3u, 2 );
+            return WriteMixedPickupEvent( stream, value.pickup );
+        default:
+            break;
+    }
+    return false; // not a MixedEventType value; nothing was written (SPEC §4.8)
+}
+
+SCHEMA_READ_INLINE bool ReadMixedEvent( serialize::ReadStream & stream, MixedEvent & value )
+{
+    int32_t tag_value = 0;
+    read_int( stream, tag_value, 0, 3 ); // rejects a tag above the count (SPEC §4.8)
+    value.type = MixedEventType( tag_value );
+    switch ( value.type )
+    {
+        case MixedEventType::None:
+            return true;
+        case MixedEventType::Hit:
+            value.hit = MixedHitEvent{};
+            return ReadMixedHitEvent( stream, value.hit );
+        case MixedEventType::Chat:
+            value.chat = MixedChatEvent{};
+            return ReadMixedChatEvent( stream, value.chat );
+        case MixedEventType::Pickup:
+            value.pickup = MixedPickupEvent{};
+            return ReadMixedPickupEvent( stream, value.pickup );
+    }
+    return false;
+}
+
+SCHEMA_WRITE_INLINE bool WriteBenchMixed( serialize::WriteStream & stream, const BenchMixed & value )
+{
+    write_bits( stream, 49374ull, 16 ); // const(49374, 16) — SPEC §4.3
+    write_bits( stream, value.sequence, 16 );
+    serialize_assert( int32_t( value.ack_sequence ) >= int32_t( 0 ) && int32_t( value.ack_sequence ) <= int32_t( 65535 ) );
+    write_bits( stream, uint32_t( value.ack_sequence ), 16 );
+    write_bits( stream, value.ack_bits, 32 );
+    write_bits( stream, value.session_id, 64 );
+    write_bits( stream, value.client_id, 32 );
+    write_bits( stream, value.nonce, 64 );
+    serialize_assert( int64_t( value.world_time ) >= int64_t( -1000000000000 ) && int64_t( value.world_time ) <= int64_t( 1000000000000 ) );
+    write_bits( stream, uint64_t( value.world_time ) - uint64_t( -1000000000000 ), 41 );
+    write_bits( stream, value.frame_tick, 48 );
+    {
+        int32_t fixed_value = value.server_time;
+        write_fixed( stream, fixed_value, 24, 8, 0, 65535 );
+    }
+    serialize_assert( int32_t( value.entities_count ) >= int32_t( 1 ) && int32_t( value.entities_count ) <= int32_t( 8 ) );
+    write_bits( stream, uint32_t( value.entities_count ) - uint32_t( 1 ), 3 );
+    for ( int32_t i = 0; i < value.entities_count; i++ )
+    {
+        if ( !WriteMixedEntity( stream, value.entities[i] ) )
+        {
+            return false;
+        }
+    }
+    serialize_assert( int32_t( value.stats_count ) >= int32_t( 0 ) && int32_t( value.stats_count ) <= int32_t( 80 ) );
+    write_bits( stream, uint32_t( value.stats_count ), 7 );
+    for ( int32_t i = 0; i < value.stats_count; i++ )
+    {
+        if ( !WriteMixedStat( stream, value.stats[i] ) )
+        {
+            return false;
+        }
+    }
+    if ( !WriteMixedEvent( stream, value.game_event ) )
+    {
+        return false;
+    }
+    for ( int32_t i = 0; i < 4; i++ )
+    {
+        write_bits( stream, value.loadout[i], 8 );
+    }
+    for ( int32_t i = 0; i < value.player_name_length; i++ )
+    {
+        serialize_assert( value.player_name[i] != 0 );
+    }
+    serialize_assert( schema_utf8_valid( reinterpret_cast<const uint8_t *>( value.player_name ), value.player_name_length ) );
+    serialize_assert( int32_t( value.player_name_length ) >= int32_t( 0 ) && int32_t( value.player_name_length ) <= int32_t( 15 ) );
+    write_bits( stream, uint32_t( value.player_name_length ), 4 );
+    write_bytes( stream, value.player_name, value.player_name_length );
+    serialize_assert( int32_t( value.payload_length ) >= int32_t( 0 ) && int32_t( value.payload_length ) <= int32_t( 16 ) );
+    write_bits( stream, uint32_t( value.payload_length ), 5 );
+    write_bytes( stream, value.payload, value.payload_length );
+    {
+        float compressed_value = value.aim_x;
+        serialize_compressed_float_precomputed( stream, compressed_value, 200u, 8, 2.0f, -1.0f );
+    }
+    {
+        float compressed_value = value.aim_y;
+        serialize_compressed_float_precomputed( stream, compressed_value, 200u, 8, 2.0f, -1.0f );
+    }
+    {
+        float compressed_value = value.aim_z;
+        serialize_compressed_float_precomputed( stream, compressed_value, 200u, 8, 2.0f, -1.0f );
+    }
+    write_float( stream, value.recoil );
+    write_double( stream, value.drift );
+    write_uint128( stream, value.wide_key );
+    write_int128( stream, value.flux, serialize::int128_t( ( serialize::uint128_t( 18446744004990074880ull ) << 64 ) | serialize::uint128_t( 0ull ) ), serialize::int128_t( ( serialize::uint128_t( 68719476736ull ) << 64 ) | serialize::uint128_t( 0ull ) ) );
+    {
+        uint16_t fixed_value = value.ping;
+        write_fixed( stream, fixed_value, 8, 8, 0, 250 );
+    }
+    write_bits( stream, 0ull, 4 ); // reserved(4) — zeros on the wire
+    write_align( stream );
+    write_bits( stream, value.crc_hint, 24 );
+    write_bool( stream, value.has_extra );
+    if ( value.has_extra )
+    {
+        serialize_assert( int32_t( value.extra ) >= int32_t( 0 ) && int32_t( value.extra ) <= int32_t( 255 ) );
+        write_bits( stream, uint32_t( value.extra ), 8 );
+    }
+    else
+    {
+        serialize_assert( int32_t( value.idle_ticks ) >= int32_t( 0 ) && int32_t( value.idle_ticks ) <= int32_t( 15 ) );
+        write_bits( stream, uint32_t( value.idle_ticks ), 4 );
+    }
     return true;
 }
 
 SCHEMA_READ_INLINE bool ReadBenchMixed( serialize::ReadStream & stream, BenchMixed & value )
 {
-    read_int( stream, value.sequence, 0, 65535 );
+    {
+        uint64_t const_value = 0;
+        read_bits( stream, const_value, 16 );
+        if ( const_value != 49374ull ) // const(49374, 16): a read rejects any other value (SPEC §4.3)
+        {
+            return false;
+        }
+    }
+    read_bits( stream, value.sequence, 16 );
+    read_int( stream, value.ack_sequence, 0, 65535 );
     read_bits( stream, value.ack_bits, 32 );
-    read_bits( stream, value.entity_id, 12 );
-    read_int( stream, value.pos_x, -16384, 16383 );
-    read_int( stream, value.pos_y, -16384, 16383 );
-    read_int( stream, value.pos_z, -16384, 16383 );
-    read_bits( stream, value.yaw, 9 );
-    read_bool( stream, value.moving );
-    read_bool( stream, value.firing );
-    read_bits( stream, value.timestamp, 48 );
-    read_int( stream, value.weapon, 0, 15 );
+    read_bits( stream, value.session_id, 64 );
+    read_bits( stream, value.client_id, 32 );
+    {
+        uint64_t offset_value = 0;
+        read_bits( stream, offset_value, 64 );
+        value.nonce = offset_value;
+    }
+    read_int64( stream, value.world_time, -1000000000000, 1000000000000 );
+    read_bits( stream, value.frame_tick, 48 );
+    read_fixed( stream, value.server_time, 24, 8, 0, 65535 );
+    read_int( stream, value.entities_count, 1, 8 );
+    for ( int32_t i = 0; i < value.entities_count; i++ )
+    {
+        if ( !ReadMixedEntity( stream, value.entities[i] ) )
+        {
+            return false;
+        }
+    }
+    read_int( stream, value.stats_count, 0, 80 );
+    for ( int32_t i = 0; i < value.stats_count; i++ )
+    {
+        if ( !ReadMixedStat( stream, value.stats[i] ) )
+        {
+            return false;
+        }
+    }
+    if ( !ReadMixedEvent( stream, value.game_event ) )
+    {
+        return false;
+    }
+    for ( int32_t i = 0; i < 4; i++ )
+    {
+        {
+            uint32_t raw_value = 0;
+            read_bits( stream, raw_value, 8 );
+            value.loadout[i] = uint8_t( raw_value );
+        }
+    }
+    read_int( stream, value.player_name_length, 0, 15 );
+    read_bytes( stream, value.player_name, value.player_name_length );
+    if ( schema_interior_null( reinterpret_cast<const uint8_t *>( value.player_name ), value.player_name_length ) )
+    {
+        return false; // an interior null is content the read refuses (SPEC §4.7)
+    }
+    value.player_name[value.player_name_length] = 0;
+    read_int( stream, value.payload_length, 0, 16 );
+    read_bytes( stream, value.payload, value.payload_length );
+    serialize_compressed_float_precomputed( stream, value.aim_x, 200u, 8, 2.0f, -1.0f );
+    serialize_compressed_float_precomputed( stream, value.aim_y, 200u, 8, 2.0f, -1.0f );
+    serialize_compressed_float_precomputed( stream, value.aim_z, 200u, 8, 2.0f, -1.0f );
+    read_float( stream, value.recoil );
+    read_double( stream, value.drift );
+    read_uint128( stream, value.wide_key );
+    read_int128( stream, value.flux, serialize::int128_t( ( serialize::uint128_t( 18446744004990074880ull ) << 64 ) | serialize::uint128_t( 0ull ) ), serialize::int128_t( ( serialize::uint128_t( 68719476736ull ) << 64 ) | serialize::uint128_t( 0ull ) ) );
+    read_fixed( stream, value.ping, 8, 8, 0, 250 );
+    {
+        uint64_t reserved_value = 0;
+        read_bits( stream, reserved_value, 4 );
+        if ( reserved_value != 0 ) // reserved(4): a read rejects nonzero (SPEC §4.3)
+        {
+            return false;
+        }
+    }
+    read_align( stream ); // rejects nonzero padding (SPEC §4.3)
+    read_bits( stream, value.crc_hint, 24 );
+    read_bool( stream, value.has_extra );
+    if ( value.has_extra )
+    {
+        read_int( stream, value.extra, 0, 255 );
+        value.idle_ticks = 0;
+    }
+    else
+    {
+        read_int( stream, value.idle_ticks, 0, 15 );
+        value.extra = 0;
+    }
     return true;
 }
 

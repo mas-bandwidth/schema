@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package bench — protocol id 0x694f261d887abaa5
+// package bench — protocol id 0xae3b1e28b96e4586
 //
 // Wire functions return bool — the C++-style early-out. A schema validation
 // failure (a wrong wire constant, nonzero reserved bits, an interior null)
@@ -62,20 +62,153 @@ namespace Bench
         public ulong B48;
     }
 
+    // MixedWeapon — None = 0 implicit, variants dense from 1, wire range [0, 15] (SPEC §4.2);
+    // a native enum with unsigned backing — | max = ... headroom values are
+    // representable because C# enums are open over their backing type (SPEC §6.1)
+    public enum MixedWeapon : byte
+    {
+        None = 0,
+        Fists = 1,
+        Pistol = 2,
+        Shotgun = 3,
+        Rifle = 4,
+        Sniper = 5,
+        Smg = 6,
+        Rocket = 7,
+        Grenade = 8,
+        Plasma = 9,
+        Railgun = 10,
+        Flamer = 11,
+        Mine = 12,
+        Turret = 13,
+        Drone = 14,
+        Repair = 15,
+        Max = 15, // the exported extent (SPEC §4.2)
+    }
+
+    // type MixedEntity
+    public sealed class MixedEntity
+    {
+        public uint EntityId;
+        public int PosX; // wire [-16383, 16383]
+        public int PosY; // wire [-16383, 16383]
+        public int PosZ; // wire [-16383, 16383]
+        public uint Yaw;
+        public uint Pitch;
+        public int VelX; // wire [-2048, 2047]
+        public int VelY; // wire [-2048, 2047]
+        public int VelZ; // wire [-2048, 2047]
+        public int Health; // wire [0, 1000]
+        public MixedWeapon Weapon;
+        public ulong Damage; // MixedDamage — consumed as masks, ulong storage (SPEC §4.2)
+        public bool Moving;
+        public bool Firing;
+    }
+
+    // type MixedStat
+    public sealed class MixedStat
+    {
+        public uint StatId;
+        public int Delta; // wire [-512, 511]
+    }
+
+    // type MixedHitEvent
+    public sealed class MixedHitEvent
+    {
+        public uint TargetId;
+        public int Damage; // wire [0, 4095]
+        public int HitKind; // wire [0, 7]
+        public bool Crit;
+    }
+
+    // type MixedChatEvent
+    public sealed class MixedChatEvent
+    {
+        public int Channel; // wire [0, 3]
+        public uint Speaker;
+    }
+
+    // type MixedPickupEvent
+    public sealed class MixedPickupEvent
+    {
+        public uint ItemId;
+        public int Amount; // wire [0, 255]
+    }
+
+    // MixedEventType: union MixedEvent's tag — None = 0, then each variant in declared order (SPEC §4.8)
+    public enum MixedEventType : byte
+    {
+        None = 0,
+        Hit = 1,
+        Chat = 2,
+        Pickup = 3,
+        Max = 3, // the exported extent (SPEC §4.2)
+    }
+
+    // MixedEvent — at most one of the arms; Type says which. Construction is the empty
+    // union (None). A read zero-establishes exactly the selected arm before
+    // decoding it (SPEC §5); unselected arms keep what they last held — the
+    // MessageStorage reuse discipline. Consumers read the selected arm only.
+    public sealed class MixedEvent
+    {
+        public MixedEventType Type;
+        public MixedHitEvent Hit = new MixedHitEvent();
+        public MixedChatEvent Chat = new MixedChatEvent();
+        public MixedPickupEvent Pickup = new MixedPickupEvent();
+    }
+
     // type BenchMixed
     public sealed class BenchMixed
     {
-        public int Sequence; // wire [0, 65535]
+        public uint Sequence;
+        public int AckSequence; // wire [0, 65535]
         public uint AckBits;
-        public uint EntityId;
-        public int PosX; // wire [-16384, 16383]
-        public int PosY; // wire [-16384, 16383]
-        public int PosZ; // wire [-16384, 16383]
-        public uint Yaw;
-        public bool Moving;
-        public bool Firing;
-        public ulong Timestamp;
-        public int Weapon; // wire [0, 15]
+        public ulong SessionId;
+        public uint ClientId;
+        public ulong Nonce; // wire [0, 18446744073709551615]
+        public long WorldTime; // wire [-1000000000000, 1000000000000]
+        public ulong FrameTick;
+        public int ServerTime; // wire [0, 65535]
+        public MixedEntity[] Entities = new MixedEntity[8]; // used count beside it; wire count in [1, 8]
+        public int EntitiesCount;
+        public MixedStat[] Stats = new MixedStat[80]; // used count beside it; wire count in [0, 80]
+        public int StatsCount;
+        public MixedEvent GameEvent = new MixedEvent();
+        public byte[] Loadout = new byte[4];
+        public byte[] PlayerName = new byte[15]; // string(15): max length, used length beside it (SPEC §4.7)
+        public int PlayerNameLength;
+        public byte[] Payload = new byte[16]; // bytes(16): fixed buffer, used length beside it (SPEC §4.7)
+        public int PayloadLength;
+        public float AimX; // compressed float [-1.0, 1.0] @ 0.01
+        public float AimY; // compressed float [-1.0, 1.0] @ 0.01
+        public float AimZ; // compressed float [-1.0, 1.0] @ 0.01
+        public float Recoil;
+        public double Drift;
+        public UInt128Value WideKey;
+        public Int128Value Flux; // wire [-1267650600228229401496703205376, 1267650600228229401496703205376]
+        public ushort Ping; // wire [0, 250]
+        public uint CrcHint;
+        public bool HasExtra = true; // specified default at construction; Zero* gives the §5 zero form
+
+        // if has_extra — wire branch; storage holds both sides, a read zeroes the
+        // untaken side (SPEC §5)
+        public int Extra; // wire [0, 255]
+
+        // if has_extra else — wire branch; storage holds both sides, a read zeroes the
+        // untaken side (SPEC §5)
+        public int IdleTicks; // wire [0, 15]
+
+        public BenchMixed()
+        {
+            for (int i = 0; i < Entities.Length; i++)
+            {
+                Entities[i] = new MixedEntity();
+            }
+            for (int i = 0; i < Stats.Length; i++)
+            {
+                Stats[i] = new MixedStat();
+            }
+        }
     }
 
     // Schema carries every generated function and constant of the unit — C# has
@@ -85,7 +218,7 @@ namespace Bench
     {
         // The unit's protocol id — the hash of its wire shape (SPEC §3.1). Two
         // sides at the same id speak identical bits; there is no other versioning.
-        public const ulong ProtocolId = 0x694f261d887abaa5;
+        public const ulong ProtocolId = 0xae3b1e28b96e4586;
 
         // BenchPacketMaxBits is the longest wire path; align pads at worst case (SPEC §6.1).
         // BenchPacketMaxBytes is rounded up to the 8-byte write-buffer granularity.
@@ -582,88 +715,194 @@ namespace Bench
             return true;
         }
 
-        // BenchMixedMaxBits is the longest wire path; align pads at worst case (SPEC §6.1).
-        // BenchMixedMaxBytes is rounded up to the 8-byte write-buffer granularity.
-        public const long BenchMixedMaxBits = 168;
-        public const long BenchMixedMaxBytes = 24;
+        // EnumNameMixedWeapon: debug/log/tooling name for any MixedWeapon wire value —
+        // out-of-set values (wire-legal up to the declared max) name as "???"
+        public static string EnumNameMixedWeapon(ulong value)
+        {
+            switch (value)
+            {
+                case (ulong)MixedWeapon.None:
+                    return "None";
+                case (ulong)MixedWeapon.Fists:
+                    return "Fists";
+                case (ulong)MixedWeapon.Pistol:
+                    return "Pistol";
+                case (ulong)MixedWeapon.Shotgun:
+                    return "Shotgun";
+                case (ulong)MixedWeapon.Rifle:
+                    return "Rifle";
+                case (ulong)MixedWeapon.Sniper:
+                    return "Sniper";
+                case (ulong)MixedWeapon.Smg:
+                    return "Smg";
+                case (ulong)MixedWeapon.Rocket:
+                    return "Rocket";
+                case (ulong)MixedWeapon.Grenade:
+                    return "Grenade";
+                case (ulong)MixedWeapon.Plasma:
+                    return "Plasma";
+                case (ulong)MixedWeapon.Railgun:
+                    return "Railgun";
+                case (ulong)MixedWeapon.Flamer:
+                    return "Flamer";
+                case (ulong)MixedWeapon.Mine:
+                    return "Mine";
+                case (ulong)MixedWeapon.Turret:
+                    return "Turret";
+                case (ulong)MixedWeapon.Drone:
+                    return "Drone";
+                case (ulong)MixedWeapon.Repair:
+                    return "Repair";
+                default:
+                    return "???";
+            }
+        }
+
+        // MixedDamage — one bit per variant, consumed as masks; flags-typed fields store a
+        // plain ulong, wire 8 bits (SPEC §4.2). Masks are flat PascalCase — the Go
+        // target's spelling exactly, so the checker's existing claims cover them.
+        public const ulong MixedDamageBleeding = 1ul << 0;
+        public const ulong MixedDamageBurning = 1ul << 1;
+        public const ulong MixedDamageStunned = 1ul << 2;
+        public const ulong MixedDamageSlowed = 1ul << 3;
+        public const ulong MixedDamagePoisoned = 1ul << 4;
+        public const ulong MixedDamageShielded = 1ul << 5;
+        public const ulong MixedDamageAirborne = 1ul << 6;
+        public const ulong MixedDamageDowned = 1ul << 7;
+        public const long MixedDamageCount = 8; // the declared variant count (SPEC §4.2)
+
+        // FlagNameMixedDamage: debug/log/tooling name for bit i of MixedDamage —
+        // out-of-range bits name as "???"
+        public static string FlagNameMixedDamage(int bit)
+        {
+            switch (bit)
+            {
+                case 0: return "Bleeding";
+                case 1: return "Burning";
+                case 2: return "Stunned";
+                case 3: return "Slowed";
+                case 4: return "Poisoned";
+                case 5: return "Shielded";
+                case 6: return "Airborne";
+                case 7: return "Downed";
+                default: return "???";
+            }
+        }
+
+        // FlagNamesMixedDamage renders the set bits of value as "A|B" — "0" for the
+        // empty set, bits past the declared variants as hex
+        public static string FlagNamesMixedDamage(ulong value)
+        {
+            string names = "";
+            if ((value & (1ul << 0)) != 0)
+            {
+                names += "|Bleeding";
+            }
+            if ((value & (1ul << 1)) != 0)
+            {
+                names += "|Burning";
+            }
+            if ((value & (1ul << 2)) != 0)
+            {
+                names += "|Stunned";
+            }
+            if ((value & (1ul << 3)) != 0)
+            {
+                names += "|Slowed";
+            }
+            if ((value & (1ul << 4)) != 0)
+            {
+                names += "|Poisoned";
+            }
+            if ((value & (1ul << 5)) != 0)
+            {
+                names += "|Shielded";
+            }
+            if ((value & (1ul << 6)) != 0)
+            {
+                names += "|Airborne";
+            }
+            if ((value & (1ul << 7)) != 0)
+            {
+                names += "|Downed";
+            }
+            if ((value >> 8) != 0)
+            {
+                names += "|0x" + ((value >> 8) << 8).ToString("x");
+            }
+            return names.Length == 0 ? "0" : names.Substring(1);
+        }
+
+        // MixedEntityMaxBits is the longest wire path; align pads at worst case (SPEC §6.1).
+        // MixedEntityMaxBytes is rounded up to the 8-byte write-buffer granularity.
+        public const long MixedEntityMaxBits = 135;
+        public const long MixedEntityMaxBytes = 24;
 
         // The §5 zero form: all-zero storage; specified defaults live only in construction.
-        public static void ZeroBenchMixed(BenchMixed value)
+        public static void ZeroMixedEntity(MixedEntity value)
         {
-            value.Sequence = 0;
-            value.AckBits = 0;
             value.EntityId = 0;
             value.PosX = 0;
             value.PosY = 0;
             value.PosZ = 0;
             value.Yaw = 0;
+            value.Pitch = 0;
+            value.VelX = 0;
+            value.VelY = 0;
+            value.VelZ = 0;
+            value.Health = 0;
+            value.Weapon = MixedWeapon.None;
+            value.Damage = 0;
             value.Moving = false;
             value.Firing = false;
-            value.Timestamp = 0;
-            value.Weapon = 0;
         }
 
         // batch form: stream state stays in registers across the body and End
         // publishes it — same wire bytes, same validation, same error model.
-        public static bool WriteBenchMixed(WriteStream stream, BenchMixed value)
+        public static bool WriteMixedEntity(WriteStream stream, MixedEntity value)
         {
             WriteBatch batch = stream.BeginBatch();
-            bool result = WriteBenchMixedBatch(ref batch, value);
+            bool result = WriteMixedEntityBatch(ref batch, value);
             batch.End();
             return result;
         }
 
         // inline-only batch core — a real call would address-expose the batch
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static bool WriteBenchMixedBatch(ref WriteBatch batch, BenchMixed value)
+        private static bool WriteMixedEntityBatch(ref WriteBatch batch, MixedEntity value)
         {
-            if (value.Sequence < 0 || value.Sequence > 65535)
-            {
-                return false;
-            }
-            {
-                uint offsetValue = (uint)(value.Sequence);
-                if (!batch.SerializeBits(ref offsetValue, 16))
-                {
-                    return false;
-                }
-            }
-            if (!batch.SerializeBits(ref value.AckBits, 32))
-            {
-                return false;
-            }
             if (!batch.SerializeBits(ref value.EntityId, 12))
             {
                 return false;
             }
-            if (value.PosX < -16384 || value.PosX > 16383)
+            if (value.PosX < -16383 || value.PosX > 16383)
             {
                 return false;
             }
             {
-                uint offsetValue = (uint)(value.PosX) - unchecked((uint)(-16384));
+                uint offsetValue = (uint)(value.PosX) - unchecked((uint)(-16383));
                 if (!batch.SerializeBits(ref offsetValue, 15))
                 {
                     return false;
                 }
             }
-            if (value.PosY < -16384 || value.PosY > 16383)
+            if (value.PosY < -16383 || value.PosY > 16383)
             {
                 return false;
             }
             {
-                uint offsetValue = (uint)(value.PosY) - unchecked((uint)(-16384));
+                uint offsetValue = (uint)(value.PosY) - unchecked((uint)(-16383));
                 if (!batch.SerializeBits(ref offsetValue, 15))
                 {
                     return false;
                 }
             }
-            if (value.PosZ < -16384 || value.PosZ > 16383)
+            if (value.PosZ < -16383 || value.PosZ > 16383)
             {
                 return false;
             }
             {
-                uint offsetValue = (uint)(value.PosZ) - unchecked((uint)(-16384));
+                uint offsetValue = (uint)(value.PosZ) - unchecked((uint)(-16383));
                 if (!batch.SerializeBits(ref offsetValue, 15))
                 {
                     return false;
@@ -673,6 +912,76 @@ namespace Bench
             {
                 return false;
             }
+            if (!batch.SerializeBits(ref value.Pitch, 9))
+            {
+                return false;
+            }
+            if (value.VelX < -2048 || value.VelX > 2047)
+            {
+                return false;
+            }
+            {
+                uint offsetValue = (uint)(value.VelX) - unchecked((uint)(-2048));
+                if (!batch.SerializeBits(ref offsetValue, 12))
+                {
+                    return false;
+                }
+            }
+            if (value.VelY < -2048 || value.VelY > 2047)
+            {
+                return false;
+            }
+            {
+                uint offsetValue = (uint)(value.VelY) - unchecked((uint)(-2048));
+                if (!batch.SerializeBits(ref offsetValue, 12))
+                {
+                    return false;
+                }
+            }
+            if (value.VelZ < -2048 || value.VelZ > 2047)
+            {
+                return false;
+            }
+            {
+                uint offsetValue = (uint)(value.VelZ) - unchecked((uint)(-2048));
+                if (!batch.SerializeBits(ref offsetValue, 12))
+                {
+                    return false;
+                }
+            }
+            if (value.Health < 0 || value.Health > 1000)
+            {
+                return false;
+            }
+            {
+                uint offsetValue = (uint)(value.Health);
+                if (!batch.SerializeBits(ref offsetValue, 10))
+                {
+                    return false;
+                }
+            }
+            {
+                uint enumValue = (uint)value.Weapon;
+                if (enumValue > 15) // headroom above the wire range cannot ride
+                {
+                    return false;
+                }
+                if (!batch.SerializeBits(ref enumValue, 4))
+                {
+                    return false;
+                }
+            }
+            if (value.Damage >= 1ul << 8) // a mask bit above the wire width cannot ride
+            {
+                return false;
+            }
+            {
+                uint flagsValue = (uint)value.Damage;
+                if (!batch.SerializeBits(ref flagsValue, 8))
+                {
+                    return false;
+                }
+            }
             if (!batch.SerializeBool(ref value.Moving))
             {
                 return false;
@@ -681,17 +990,125 @@ namespace Bench
             {
                 return false;
             }
-            if (!batch.SerializeBits64(ref value.Timestamp, 48))
+            return true;
+        }
+
+        public static bool ReadMixedEntity(ReadStream stream, MixedEntity value)
+        {
+            ReadBatch batch = stream.BeginBatch();
+            bool result = ReadMixedEntityBatch(ref batch, value);
+            batch.End();
+            return result;
+        }
+
+        // inline-only batch core — a real call would address-expose the batch
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static bool ReadMixedEntityBatch(ref ReadBatch batch, MixedEntity value)
+        {
+            if (!batch.SerializeBits(ref value.EntityId, 12))
             {
                 return false;
             }
-            if (value.Weapon < 0 || value.Weapon > 15)
+            if (!batch.SerializeInt(ref value.PosX, -16383, 16383))
+            {
+                return false;
+            }
+            if (!batch.SerializeInt(ref value.PosY, -16383, 16383))
+            {
+                return false;
+            }
+            if (!batch.SerializeInt(ref value.PosZ, -16383, 16383))
+            {
+                return false;
+            }
+            if (!batch.SerializeBits(ref value.Yaw, 9))
+            {
+                return false;
+            }
+            if (!batch.SerializeBits(ref value.Pitch, 9))
+            {
+                return false;
+            }
+            if (!batch.SerializeInt(ref value.VelX, -2048, 2047))
+            {
+                return false;
+            }
+            if (!batch.SerializeInt(ref value.VelY, -2048, 2047))
+            {
+                return false;
+            }
+            if (!batch.SerializeInt(ref value.VelZ, -2048, 2047))
+            {
+                return false;
+            }
+            if (!batch.SerializeInt(ref value.Health, 0, 1000))
             {
                 return false;
             }
             {
-                uint offsetValue = (uint)(value.Weapon);
-                if (!batch.SerializeBits(ref offsetValue, 4))
+                int enumValue = 0;
+                if (!batch.SerializeInt(ref enumValue, 0, 15))
+                {
+                    return false;
+                }
+                value.Weapon = (MixedWeapon)enumValue;
+            }
+            {
+                uint flagsValue = 0;
+                if (!batch.SerializeBits(ref flagsValue, 8))
+                {
+                    return false;
+                }
+                value.Damage = flagsValue;
+            }
+            if (!batch.SerializeBool(ref value.Moving))
+            {
+                return false;
+            }
+            if (!batch.SerializeBool(ref value.Firing))
+            {
+                return false;
+            }
+            return true;
+        }
+
+        // MixedStatMaxBits is the longest wire path; align pads at worst case (SPEC §6.1).
+        // MixedStatMaxBytes is rounded up to the 8-byte write-buffer granularity.
+        public const long MixedStatMaxBits = 18;
+        public const long MixedStatMaxBytes = 8;
+
+        // The §5 zero form: all-zero storage; specified defaults live only in construction.
+        public static void ZeroMixedStat(MixedStat value)
+        {
+            value.StatId = 0;
+            value.Delta = 0;
+        }
+
+        // batch form: stream state stays in registers across the body and End
+        // publishes it — same wire bytes, same validation, same error model.
+        public static bool WriteMixedStat(WriteStream stream, MixedStat value)
+        {
+            WriteBatch batch = stream.BeginBatch();
+            bool result = WriteMixedStatBatch(ref batch, value);
+            batch.End();
+            return result;
+        }
+
+        // inline-only batch core — a real call would address-expose the batch
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static bool WriteMixedStatBatch(ref WriteBatch batch, MixedStat value)
+        {
+            if (!batch.SerializeBits(ref value.StatId, 8))
+            {
+                return false;
+            }
+            if (value.Delta < -512 || value.Delta > 511)
+            {
+                return false;
+            }
+            {
+                uint offsetValue = (uint)(value.Delta) - unchecked((uint)(-512));
+                if (!batch.SerializeBits(ref offsetValue, 10))
                 {
                     return false;
                 }
@@ -699,61 +1116,777 @@ namespace Bench
             return true;
         }
 
-        public static bool ReadBenchMixed(ReadStream stream, BenchMixed value)
+        public static bool ReadMixedStat(ReadStream stream, MixedStat value)
         {
             ReadBatch batch = stream.BeginBatch();
-            bool result = ReadBenchMixedBatch(ref batch, value);
+            bool result = ReadMixedStatBatch(ref batch, value);
             batch.End();
             return result;
         }
 
         // inline-only batch core — a real call would address-expose the batch
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static bool ReadBenchMixedBatch(ref ReadBatch batch, BenchMixed value)
+        private static bool ReadMixedStatBatch(ref ReadBatch batch, MixedStat value)
         {
-            if (!batch.SerializeInt(ref value.Sequence, 0, 65535))
+            if (!batch.SerializeBits(ref value.StatId, 8))
             {
                 return false;
             }
-            if (!batch.SerializeBits(ref value.AckBits, 32))
+            if (!batch.SerializeInt(ref value.Delta, -512, 511))
             {
                 return false;
             }
-            if (!batch.SerializeBits(ref value.EntityId, 12))
+            return true;
+        }
+
+        // MixedHitEventMaxBits is the longest wire path; align pads at worst case (SPEC §6.1).
+        // MixedHitEventMaxBytes is rounded up to the 8-byte write-buffer granularity.
+        public const long MixedHitEventMaxBits = 28;
+        public const long MixedHitEventMaxBytes = 8;
+
+        // The §5 zero form: all-zero storage; specified defaults live only in construction.
+        public static void ZeroMixedHitEvent(MixedHitEvent value)
+        {
+            value.TargetId = 0;
+            value.Damage = 0;
+            value.HitKind = 0;
+            value.Crit = false;
+        }
+
+        // batch form: stream state stays in registers across the body and End
+        // publishes it — same wire bytes, same validation, same error model.
+        public static bool WriteMixedHitEvent(WriteStream stream, MixedHitEvent value)
+        {
+            WriteBatch batch = stream.BeginBatch();
+            bool result = WriteMixedHitEventBatch(ref batch, value);
+            batch.End();
+            return result;
+        }
+
+        // inline-only batch core — a real call would address-expose the batch
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static bool WriteMixedHitEventBatch(ref WriteBatch batch, MixedHitEvent value)
+        {
+            if (!batch.SerializeBits(ref value.TargetId, 12))
             {
                 return false;
             }
-            if (!batch.SerializeInt(ref value.PosX, -16384, 16383))
+            if (value.Damage < 0 || value.Damage > 4095)
             {
                 return false;
             }
-            if (!batch.SerializeInt(ref value.PosY, -16384, 16383))
+            {
+                uint offsetValue = (uint)(value.Damage);
+                if (!batch.SerializeBits(ref offsetValue, 12))
+                {
+                    return false;
+                }
+            }
+            if (value.HitKind < 0 || value.HitKind > 7)
             {
                 return false;
             }
-            if (!batch.SerializeInt(ref value.PosZ, -16384, 16383))
+            {
+                uint offsetValue = (uint)(value.HitKind);
+                if (!batch.SerializeBits(ref offsetValue, 3))
+                {
+                    return false;
+                }
+            }
+            if (!batch.SerializeBool(ref value.Crit))
             {
                 return false;
             }
-            if (!batch.SerializeBits(ref value.Yaw, 9))
+            return true;
+        }
+
+        public static bool ReadMixedHitEvent(ReadStream stream, MixedHitEvent value)
+        {
+            ReadBatch batch = stream.BeginBatch();
+            bool result = ReadMixedHitEventBatch(ref batch, value);
+            batch.End();
+            return result;
+        }
+
+        // inline-only batch core — a real call would address-expose the batch
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static bool ReadMixedHitEventBatch(ref ReadBatch batch, MixedHitEvent value)
+        {
+            if (!batch.SerializeBits(ref value.TargetId, 12))
             {
                 return false;
             }
-            if (!batch.SerializeBool(ref value.Moving))
+            if (!batch.SerializeInt(ref value.Damage, 0, 4095))
             {
                 return false;
             }
-            if (!batch.SerializeBool(ref value.Firing))
+            if (!batch.SerializeInt(ref value.HitKind, 0, 7))
             {
                 return false;
             }
-            if (!batch.SerializeBits64(ref value.Timestamp, 48))
+            if (!batch.SerializeBool(ref value.Crit))
             {
                 return false;
             }
-            if (!batch.SerializeInt(ref value.Weapon, 0, 15))
+            return true;
+        }
+
+        // MixedChatEventMaxBits is the longest wire path; align pads at worst case (SPEC §6.1).
+        // MixedChatEventMaxBytes is rounded up to the 8-byte write-buffer granularity.
+        public const long MixedChatEventMaxBits = 14;
+        public const long MixedChatEventMaxBytes = 8;
+
+        // The §5 zero form: all-zero storage; specified defaults live only in construction.
+        public static void ZeroMixedChatEvent(MixedChatEvent value)
+        {
+            value.Channel = 0;
+            value.Speaker = 0;
+        }
+
+        // batch form: stream state stays in registers across the body and End
+        // publishes it — same wire bytes, same validation, same error model.
+        public static bool WriteMixedChatEvent(WriteStream stream, MixedChatEvent value)
+        {
+            WriteBatch batch = stream.BeginBatch();
+            bool result = WriteMixedChatEventBatch(ref batch, value);
+            batch.End();
+            return result;
+        }
+
+        // inline-only batch core — a real call would address-expose the batch
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static bool WriteMixedChatEventBatch(ref WriteBatch batch, MixedChatEvent value)
+        {
+            if (value.Channel < 0 || value.Channel > 3)
             {
                 return false;
+            }
+            {
+                uint offsetValue = (uint)(value.Channel);
+                if (!batch.SerializeBits(ref offsetValue, 2))
+                {
+                    return false;
+                }
+            }
+            if (!batch.SerializeBits(ref value.Speaker, 12))
+            {
+                return false;
+            }
+            return true;
+        }
+
+        public static bool ReadMixedChatEvent(ReadStream stream, MixedChatEvent value)
+        {
+            ReadBatch batch = stream.BeginBatch();
+            bool result = ReadMixedChatEventBatch(ref batch, value);
+            batch.End();
+            return result;
+        }
+
+        // inline-only batch core — a real call would address-expose the batch
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static bool ReadMixedChatEventBatch(ref ReadBatch batch, MixedChatEvent value)
+        {
+            if (!batch.SerializeInt(ref value.Channel, 0, 3))
+            {
+                return false;
+            }
+            if (!batch.SerializeBits(ref value.Speaker, 12))
+            {
+                return false;
+            }
+            return true;
+        }
+
+        // MixedPickupEventMaxBits is the longest wire path; align pads at worst case (SPEC §6.1).
+        // MixedPickupEventMaxBytes is rounded up to the 8-byte write-buffer granularity.
+        public const long MixedPickupEventMaxBits = 18;
+        public const long MixedPickupEventMaxBytes = 8;
+
+        // The §5 zero form: all-zero storage; specified defaults live only in construction.
+        public static void ZeroMixedPickupEvent(MixedPickupEvent value)
+        {
+            value.ItemId = 0;
+            value.Amount = 0;
+        }
+
+        // batch form: stream state stays in registers across the body and End
+        // publishes it — same wire bytes, same validation, same error model.
+        public static bool WriteMixedPickupEvent(WriteStream stream, MixedPickupEvent value)
+        {
+            WriteBatch batch = stream.BeginBatch();
+            bool result = WriteMixedPickupEventBatch(ref batch, value);
+            batch.End();
+            return result;
+        }
+
+        // inline-only batch core — a real call would address-expose the batch
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static bool WriteMixedPickupEventBatch(ref WriteBatch batch, MixedPickupEvent value)
+        {
+            if (!batch.SerializeBits(ref value.ItemId, 10))
+            {
+                return false;
+            }
+            if (value.Amount < 0 || value.Amount > 255)
+            {
+                return false;
+            }
+            {
+                uint offsetValue = (uint)(value.Amount);
+                if (!batch.SerializeBits(ref offsetValue, 8))
+                {
+                    return false;
+                }
+            }
+            return true;
+        }
+
+        public static bool ReadMixedPickupEvent(ReadStream stream, MixedPickupEvent value)
+        {
+            ReadBatch batch = stream.BeginBatch();
+            bool result = ReadMixedPickupEventBatch(ref batch, value);
+            batch.End();
+            return result;
+        }
+
+        // inline-only batch core — a real call would address-expose the batch
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static bool ReadMixedPickupEventBatch(ref ReadBatch batch, MixedPickupEvent value)
+        {
+            if (!batch.SerializeBits(ref value.ItemId, 10))
+            {
+                return false;
+            }
+            if (!batch.SerializeInt(ref value.Amount, 0, 255))
+            {
+                return false;
+            }
+            return true;
+        }
+
+        // MixedEventMaxBits is the tag plus the largest arm; None costs the tag only (SPEC §4.8).
+        // MixedEventMaxBytes is rounded up to the 8-byte write-buffer granularity.
+        public const long MixedEventMaxBits = 30;
+        public const long MixedEventMaxBytes = 8;
+
+        // ZeroMixedEvent resets value to the §5 zero form — the empty union. The tag alone
+        // resets: unselected arms are unspecified by rule (SPEC §4.8), and every arm
+        // is unselected at None; an arm re-zeroes at its next selection.
+        public static void ZeroMixedEvent(MixedEvent value)
+        {
+            value.Type = MixedEventType.None;
+        }
+
+        public static bool WriteMixedEvent(WriteStream stream, MixedEvent value)
+        {
+            uint tagValue = (uint)value.Type;
+            if (tagValue > 3) // the tag validates BEFORE it rides (SPEC §4.8)
+            {
+                return false;
+            }
+            if (!stream.SerializeBits(ref tagValue, 2))
+            {
+                return false;
+            }
+            switch (value.Type)
+            {
+                case MixedEventType.Hit:
+                    return WriteMixedHitEvent(stream, value.Hit);
+                case MixedEventType.Chat:
+                    return WriteMixedChatEvent(stream, value.Chat);
+                case MixedEventType.Pickup:
+                    return WriteMixedPickupEvent(stream, value.Pickup);
+            }
+            return true; // None — the tag is the whole wire (SPEC §4.8)
+        }
+
+        public static bool ReadMixedEvent(ReadStream stream, MixedEvent value)
+        {
+            int tagValue = 0;
+            if (!stream.SerializeInt(ref tagValue, 0, 3)) // rejects a tag above the count (SPEC §4.8)
+            {
+                return false;
+            }
+            value.Type = (MixedEventType)tagValue;
+            switch (value.Type)
+            {
+                case MixedEventType.Hit:
+                    ZeroMixedHitEvent(value.Hit); // the selected arm starts from the zero form (SPEC §5)
+                    return ReadMixedHitEvent(stream, value.Hit);
+                case MixedEventType.Chat:
+                    ZeroMixedChatEvent(value.Chat); // the selected arm starts from the zero form (SPEC §5)
+                    return ReadMixedChatEvent(stream, value.Chat);
+                case MixedEventType.Pickup:
+                    ZeroMixedPickupEvent(value.Pickup); // the selected arm starts from the zero form (SPEC §5)
+                    return ReadMixedPickupEvent(stream, value.Pickup);
+            }
+            return true; // None
+        }
+
+        // BenchMixedMaxBits is the longest wire path; align pads at worst case (SPEC §6.1).
+        // BenchMixedMaxBytes is rounded up to the 8-byte write-buffer granularity.
+        public const long BenchMixedMaxBits = 3626;
+        public const long BenchMixedMaxBytes = 456;
+
+        // The §5 zero form: all-zero storage; specified defaults live only in construction.
+        public static void ZeroBenchMixed(BenchMixed value)
+        {
+            value.Sequence = 0;
+            value.AckSequence = 0;
+            value.AckBits = 0;
+            value.SessionId = 0;
+            value.ClientId = 0;
+            value.Nonce = 0;
+            value.WorldTime = 0;
+            value.FrameTick = 0;
+            value.ServerTime = 0;
+            for (int i = 0; i < 8; i++)
+            {
+                ZeroMixedEntity(value.Entities[i]);
+            }
+            value.EntitiesCount = 0;
+            for (int i = 0; i < 80; i++)
+            {
+                ZeroMixedStat(value.Stats[i]);
+            }
+            value.StatsCount = 0;
+            ZeroMixedEvent(value.GameEvent);
+            Array.Clear(value.Loadout, 0, 4);
+            Array.Clear(value.PlayerName, 0, 15);
+            value.PlayerNameLength = 0;
+            Array.Clear(value.Payload, 0, 16);
+            value.PayloadLength = 0;
+            value.AimX = 0.0f;
+            value.AimY = 0.0f;
+            value.AimZ = 0.0f;
+            value.Recoil = 0.0f;
+            value.Drift = 0.0;
+            value.WideKey = 0;
+            value.Flux = 0;
+            value.Ping = 0;
+            value.CrcHint = 0;
+            value.HasExtra = false;
+            value.Extra = 0;
+            value.IdleTicks = 0;
+        }
+
+        public static bool WriteBenchMixed(WriteStream stream, BenchMixed value)
+        {
+            {
+                uint constValue = 49374;
+                if (!stream.SerializeBits(ref constValue, 16)) // const(49374, 16) — SPEC §4.3
+                {
+                    return false;
+                }
+            }
+            if (!stream.SerializeBits(ref value.Sequence, 16))
+            {
+                return false;
+            }
+            if (value.AckSequence < 0 || value.AckSequence > 65535)
+            {
+                return false;
+            }
+            {
+                uint offsetValue = (uint)(value.AckSequence);
+                if (!stream.SerializeBits(ref offsetValue, 16))
+                {
+                    return false;
+                }
+            }
+            if (!stream.SerializeBits(ref value.AckBits, 32))
+            {
+                return false;
+            }
+            if (!stream.SerializeBits64(ref value.SessionId, 64))
+            {
+                return false;
+            }
+            if (!stream.SerializeBits(ref value.ClientId, 32))
+            {
+                return false;
+            }
+            {
+                ulong offsetValue = value.Nonce;
+                if (!stream.SerializeBits64(ref offsetValue, 64))
+                {
+                    return false;
+                }
+            }
+            if (value.WorldTime < -1000000000000 || value.WorldTime > 1000000000000)
+            {
+                return false;
+            }
+            {
+                ulong offsetValue = (ulong)(value.WorldTime) - unchecked((ulong)(-1000000000000));
+                if (!stream.SerializeBits64(ref offsetValue, 41))
+                {
+                    return false;
+                }
+            }
+            if (!stream.SerializeBits64(ref value.FrameTick, 48))
+            {
+                return false;
+            }
+            if (!stream.SerializeFixed(ref value.ServerTime, 24, 8, 0, 65535))
+            {
+                return false;
+            }
+            if (value.EntitiesCount < 1 || value.EntitiesCount > 8) // the count guards the loop (§6.3); out-of-contract writes are refused
+            {
+                return false;
+            }
+            {
+                uint offsetValue = (uint)(value.EntitiesCount) - (uint)(1);
+                if (!stream.SerializeBits(ref offsetValue, 3))
+                {
+                    return false;
+                }
+            }
+            for (int i = 0; i < value.EntitiesCount; i++)
+            {
+                if (!WriteMixedEntity(stream, value.Entities[i]))
+                {
+                    return false;
+                }
+            }
+            if (value.StatsCount < 0 || value.StatsCount > 80) // the count guards the loop (§6.3); out-of-contract writes are refused
+            {
+                return false;
+            }
+            {
+                uint offsetValue = (uint)(value.StatsCount);
+                if (!stream.SerializeBits(ref offsetValue, 7))
+                {
+                    return false;
+                }
+            }
+            for (int i = 0; i < value.StatsCount; i++)
+            {
+                if (!WriteMixedStat(stream, value.Stats[i]))
+                {
+                    return false;
+                }
+            }
+            if (!WriteMixedEvent(stream, value.GameEvent))
+            {
+                return false;
+            }
+            for (int i = 0; i < 4; i++)
+            {
+                {
+                    uint rawValue = value.Loadout[i];
+                    if (!stream.SerializeBits(ref rawValue, 8))
+                    {
+                        return false;
+                    }
+                }
+            }
+            if (value.PlayerNameLength < 0 || value.PlayerNameLength > 15) // the length guards the slice (§6.3); out-of-contract writes are refused
+            {
+                return false;
+            }
+            {
+                uint offsetValue = (uint)(value.PlayerNameLength);
+                if (!stream.SerializeBits(ref offsetValue, 4))
+                {
+                    return false;
+                }
+            }
+            if (!stream.SerializeBytes(value.PlayerName.AsSpan(0, value.PlayerNameLength)))
+            {
+                return false;
+            }
+            if (value.PayloadLength < 0 || value.PayloadLength > 16) // the length guards the slice (§6.3); out-of-contract writes are refused
+            {
+                return false;
+            }
+            {
+                uint offsetValue = (uint)(value.PayloadLength);
+                if (!stream.SerializeBits(ref offsetValue, 5))
+                {
+                    return false;
+                }
+            }
+            if (!stream.SerializeBytes(value.Payload.AsSpan(0, value.PayloadLength)))
+            {
+                return false;
+            }
+            {
+                float compressedValue = value.AimX;
+                if (!stream.SerializeCompressedFloatPrecomputed(ref compressedValue, 200u, 8, 2.0f, -1.0f))
+                {
+                    return false;
+                }
+            }
+            {
+                float compressedValue = value.AimY;
+                if (!stream.SerializeCompressedFloatPrecomputed(ref compressedValue, 200u, 8, 2.0f, -1.0f))
+                {
+                    return false;
+                }
+            }
+            {
+                float compressedValue = value.AimZ;
+                if (!stream.SerializeCompressedFloatPrecomputed(ref compressedValue, 200u, 8, 2.0f, -1.0f))
+                {
+                    return false;
+                }
+            }
+            if (!stream.SerializeFloat(ref value.Recoil))
+            {
+                return false;
+            }
+            if (!stream.SerializeDouble(ref value.Drift))
+            {
+                return false;
+            }
+            if (!stream.SerializeUInt128(ref value.WideKey))
+            {
+                return false;
+            }
+            if (!stream.SerializeInt128(ref value.Flux, new Int128Value(0xfffffff000000000ul, 0x0ul), new Int128Value(0x1000000000ul, 0x0ul)))
+            {
+                return false;
+            }
+            if (!stream.SerializeFixed(ref value.Ping, 8, 8, 0, 250))
+            {
+                return false;
+            }
+            {
+                uint reservedValue = 0;
+                if (!stream.SerializeBits(ref reservedValue, 4)) // reserved(4) — zeros on the wire
+                {
+                    return false;
+                }
+            }
+            if (!stream.SerializeAlign())
+            {
+                return false;
+            }
+            if (!stream.SerializeBits(ref value.CrcHint, 24))
+            {
+                return false;
+            }
+            if (!stream.SerializeBool(ref value.HasExtra))
+            {
+                return false;
+            }
+            if (value.HasExtra)
+            {
+                if (value.Extra < 0 || value.Extra > 255)
+                {
+                    return false;
+                }
+                {
+                    uint offsetValue = (uint)(value.Extra);
+                    if (!stream.SerializeBits(ref offsetValue, 8))
+                    {
+                        return false;
+                    }
+                }
+            }
+            else
+            {
+                if (value.IdleTicks < 0 || value.IdleTicks > 15)
+                {
+                    return false;
+                }
+                {
+                    uint offsetValue = (uint)(value.IdleTicks);
+                    if (!stream.SerializeBits(ref offsetValue, 4))
+                    {
+                        return false;
+                    }
+                }
+            }
+            return true;
+        }
+
+        public static bool ReadBenchMixed(ReadStream stream, BenchMixed value)
+        {
+            {
+                uint constValue = 0;
+                if (!stream.SerializeBits(ref constValue, 16))
+                {
+                    return false;
+                }
+                if (constValue != 49374) // const(49374, 16): a read rejects any other value (SPEC §4.3)
+                {
+                    return false;
+                }
+            }
+            if (!stream.SerializeBits(ref value.Sequence, 16))
+            {
+                return false;
+            }
+            if (!stream.SerializeInt(ref value.AckSequence, 0, 65535))
+            {
+                return false;
+            }
+            if (!stream.SerializeBits(ref value.AckBits, 32))
+            {
+                return false;
+            }
+            if (!stream.SerializeBits64(ref value.SessionId, 64))
+            {
+                return false;
+            }
+            if (!stream.SerializeBits(ref value.ClientId, 32))
+            {
+                return false;
+            }
+            {
+                ulong offsetValue = 0;
+                if (!stream.SerializeBits64(ref offsetValue, 64))
+                {
+                    return false;
+                }
+                value.Nonce = offsetValue;
+            }
+            if (!stream.SerializeInt64(ref value.WorldTime, -1000000000000, 1000000000000))
+            {
+                return false;
+            }
+            if (!stream.SerializeBits64(ref value.FrameTick, 48))
+            {
+                return false;
+            }
+            if (!stream.SerializeFixed(ref value.ServerTime, 24, 8, 0, 65535))
+            {
+                return false;
+            }
+            if (!stream.SerializeInt(ref value.EntitiesCount, 1, 8)) // the count guards the loop (§6.3)
+            {
+                return false;
+            }
+            for (int i = 0; i < value.EntitiesCount; i++)
+            {
+                if (!ReadMixedEntity(stream, value.Entities[i]))
+                {
+                    return false;
+                }
+            }
+            if (!stream.SerializeInt(ref value.StatsCount, 0, 80)) // the count guards the loop (§6.3)
+            {
+                return false;
+            }
+            for (int i = 0; i < value.StatsCount; i++)
+            {
+                if (!ReadMixedStat(stream, value.Stats[i]))
+                {
+                    return false;
+                }
+            }
+            if (!ReadMixedEvent(stream, value.GameEvent))
+            {
+                return false;
+            }
+            for (int i = 0; i < 4; i++)
+            {
+                {
+                    uint rawValue = 0;
+                    if (!stream.SerializeBits(ref rawValue, 8))
+                    {
+                        return false;
+                    }
+                    value.Loadout[i] = (byte)rawValue;
+                }
+            }
+            if (!stream.SerializeInt(ref value.PlayerNameLength, 0, 15)) // the length guards the slice (§6.3)
+            {
+                return false;
+            }
+            if (!stream.SerializeBytes(value.PlayerName.AsSpan(0, value.PlayerNameLength)))
+            {
+                return false;
+            }
+            for (int i = 0; i < value.PlayerNameLength; i++)
+            {
+                if (value.PlayerName[i] == 0) // an interior null is content the read refuses (SPEC §4.7)
+                {
+                    return false;
+                }
+            }
+            if (!stream.SerializeInt(ref value.PayloadLength, 0, 16)) // the length guards the slice (§6.3)
+            {
+                return false;
+            }
+            if (!stream.SerializeBytes(value.Payload.AsSpan(0, value.PayloadLength)))
+            {
+                return false;
+            }
+            if (!stream.SerializeCompressedFloatPrecomputed(ref value.AimX, 200u, 8, 2.0f, -1.0f))
+            {
+                return false;
+            }
+            if (!stream.SerializeCompressedFloatPrecomputed(ref value.AimY, 200u, 8, 2.0f, -1.0f))
+            {
+                return false;
+            }
+            if (!stream.SerializeCompressedFloatPrecomputed(ref value.AimZ, 200u, 8, 2.0f, -1.0f))
+            {
+                return false;
+            }
+            if (!stream.SerializeFloat(ref value.Recoil))
+            {
+                return false;
+            }
+            if (!stream.SerializeDouble(ref value.Drift))
+            {
+                return false;
+            }
+            if (!stream.SerializeUInt128(ref value.WideKey))
+            {
+                return false;
+            }
+            if (!stream.SerializeInt128(ref value.Flux, new Int128Value(0xfffffff000000000ul, 0x0ul), new Int128Value(0x1000000000ul, 0x0ul)))
+            {
+                return false;
+            }
+            if (!stream.SerializeFixed(ref value.Ping, 8, 8, 0, 250))
+            {
+                return false;
+            }
+            {
+                uint reservedValue = 0;
+                if (!stream.SerializeBits(ref reservedValue, 4))
+                {
+                    return false;
+                }
+                if (reservedValue != 0) // reserved(4): a read rejects nonzero (SPEC §4.3)
+                {
+                    return false;
+                }
+            }
+            if (!stream.SerializeAlign()) // rejects nonzero padding (SPEC §4.3)
+            {
+                return false;
+            }
+            if (!stream.SerializeBits(ref value.CrcHint, 24))
+            {
+                return false;
+            }
+            if (!stream.SerializeBool(ref value.HasExtra))
+            {
+                return false;
+            }
+            if (value.HasExtra)
+            {
+                if (!stream.SerializeInt(ref value.Extra, 0, 255))
+                {
+                    return false;
+                }
+                value.IdleTicks = 0;
+            }
+            else
+            {
+                if (!stream.SerializeInt(ref value.IdleTicks, 0, 15))
+                {
+                    return false;
+                }
+                value.Extra = 0;
             }
             return true;
         }

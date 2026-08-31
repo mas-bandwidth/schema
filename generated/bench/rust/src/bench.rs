@@ -2,13 +2,13 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package bench — protocol id 0x694f261d887abaa5
+// package bench — protocol id 0xae3b1e28b96e4586
 
 use serialize::{ReadStream, Stream, WriteStream};
 
 // The unit's protocol id — the hash of its wire shape (SPEC §3.1). Two
 // sides at the same id speak identical bits; there is no other versioning.
-pub const PROTOCOL_ID: u64 = 0x694f261d887abaa5;
+pub const PROTOCOL_ID: u64 = 0xae3b1e28b96e4586;
 
 /// The generated crate's error: the runtime's own errors pass through;
 /// Validation is a read rejecting the wire (SPEC §4.3, §4.7).
@@ -436,21 +436,649 @@ pub fn read_bench_bits(stream: &mut ReadStream<'_>, value: &mut BenchBits) -> Re
     Ok(())
 }
 
+// MixedWeapon — None = 0 implicit, variants dense from 1, wire range [0, 15] (SPEC §4.2);
+// a newtype because | max = ... headroom makes non-variant values wire-legal
+#[repr(transparent)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
+pub struct MixedWeapon(pub u8);
+
+impl MixedWeapon {
+    pub const NONE: MixedWeapon = MixedWeapon(0);
+    pub const FISTS: MixedWeapon = MixedWeapon(1);
+    pub const PISTOL: MixedWeapon = MixedWeapon(2);
+    pub const SHOTGUN: MixedWeapon = MixedWeapon(3);
+    pub const RIFLE: MixedWeapon = MixedWeapon(4);
+    pub const SNIPER: MixedWeapon = MixedWeapon(5);
+    pub const SMG: MixedWeapon = MixedWeapon(6);
+    pub const ROCKET: MixedWeapon = MixedWeapon(7);
+    pub const GRENADE: MixedWeapon = MixedWeapon(8);
+    pub const PLASMA: MixedWeapon = MixedWeapon(9);
+    pub const RAILGUN: MixedWeapon = MixedWeapon(10);
+    pub const FLAMER: MixedWeapon = MixedWeapon(11);
+    pub const MINE: MixedWeapon = MixedWeapon(12);
+    pub const TURRET: MixedWeapon = MixedWeapon(13);
+    pub const DRONE: MixedWeapon = MixedWeapon(14);
+    pub const REPAIR: MixedWeapon = MixedWeapon(15);
+    pub const MAX: MixedWeapon = MixedWeapon(15); // the exported extent (SPEC §4.2)
+}
+
+/// Debug/log name for any `MixedWeapon` value, out-of-set included.
+pub fn enum_name_mixed_weapon(value: MixedWeapon) -> &'static str {
+    match value.0 {
+        0 => "None",
+        1 => "Fists",
+        2 => "Pistol",
+        3 => "Shotgun",
+        4 => "Rifle",
+        5 => "Sniper",
+        6 => "Smg",
+        7 => "Rocket",
+        8 => "Grenade",
+        9 => "Plasma",
+        10 => "Railgun",
+        11 => "Flamer",
+        12 => "Mine",
+        13 => "Turret",
+        14 => "Drone",
+        15 => "Repair",
+        _ => "???",
+    }
+}
+
+// MixedDamage — one bit per variant, consumed as masks; storage u64 in every
+// target, wire 8 bits (SPEC §4.2)
+pub type MixedDamage = u64;
+
+pub const MIXED_DAMAGE_BLEEDING: MixedDamage = 1 << 0;
+pub const MIXED_DAMAGE_BURNING: MixedDamage = 1 << 1;
+pub const MIXED_DAMAGE_STUNNED: MixedDamage = 1 << 2;
+pub const MIXED_DAMAGE_SLOWED: MixedDamage = 1 << 3;
+pub const MIXED_DAMAGE_POISONED: MixedDamage = 1 << 4;
+pub const MIXED_DAMAGE_SHIELDED: MixedDamage = 1 << 5;
+pub const MIXED_DAMAGE_AIRBORNE: MixedDamage = 1 << 6;
+pub const MIXED_DAMAGE_DOWNED: MixedDamage = 1 << 7;
+pub const MIXED_DAMAGE_COUNT: i64 = 8; // the declared variant count (SPEC §4.2)
+
+/// Debug/log name for bit `i` of `MixedDamage` — out-of-range bits name as `"???"`.
+pub fn flag_name_mixed_damage(bit: u32) -> &'static str {
+    match bit {
+        0 => "Bleeding",
+        1 => "Burning",
+        2 => "Stunned",
+        3 => "Slowed",
+        4 => "Poisoned",
+        5 => "Shielded",
+        6 => "Airborne",
+        7 => "Downed",
+        _ => "???",
+    }
+}
+
+/// Renders the set bits of `value` as `"A|B"` — `"0"` for the empty set,
+/// bits past the declared variants as hex.
+pub fn flag_names_mixed_damage(value: MixedDamage) -> String {
+    let mut names = String::new();
+    if value & (1 << 0) != 0 {
+        if !names.is_empty() {
+            names.push('|');
+        }
+        names.push_str(flag_name_mixed_damage(0));
+    }
+    if value & (1 << 1) != 0 {
+        if !names.is_empty() {
+            names.push('|');
+        }
+        names.push_str(flag_name_mixed_damage(1));
+    }
+    if value & (1 << 2) != 0 {
+        if !names.is_empty() {
+            names.push('|');
+        }
+        names.push_str(flag_name_mixed_damage(2));
+    }
+    if value & (1 << 3) != 0 {
+        if !names.is_empty() {
+            names.push('|');
+        }
+        names.push_str(flag_name_mixed_damage(3));
+    }
+    if value & (1 << 4) != 0 {
+        if !names.is_empty() {
+            names.push('|');
+        }
+        names.push_str(flag_name_mixed_damage(4));
+    }
+    if value & (1 << 5) != 0 {
+        if !names.is_empty() {
+            names.push('|');
+        }
+        names.push_str(flag_name_mixed_damage(5));
+    }
+    if value & (1 << 6) != 0 {
+        if !names.is_empty() {
+            names.push('|');
+        }
+        names.push_str(flag_name_mixed_damage(6));
+    }
+    if value & (1 << 7) != 0 {
+        if !names.is_empty() {
+            names.push('|');
+        }
+        names.push_str(flag_name_mixed_damage(7));
+    }
+    if value >> 8 != 0 {
+        if !names.is_empty() {
+            names.push('|');
+        }
+        names.push_str(&format!("{:#x}", (value >> 8) << 8));
+    }
+    if names.is_empty() {
+        names.push('0');
+    }
+    names
+}
+
+// type MixedEntity
+#[repr(C)]
+#[derive(Clone, Copy, PartialEq, Debug)]
+pub struct MixedEntity {
+    pub entity_id: u32,
+    pub pos_x: i32, // wire [-16383, 16383]
+    pub pos_y: i32, // wire [-16383, 16383]
+    pub pos_z: i32, // wire [-16383, 16383]
+    pub yaw: u32,
+    pub pitch: u32,
+    pub vel_x: i32, // wire [-2048, 2047]
+    pub vel_y: i32, // wire [-2048, 2047]
+    pub vel_z: i32, // wire [-2048, 2047]
+    pub health: i32, // wire [0, 1000]
+    pub weapon: MixedWeapon,
+    pub damage: MixedDamage,
+    pub moving: bool,
+    pub firing: bool,
+}
+
+// The zero form (SPEC §5): specified defaults live only in new(), never here.
+impl Default for MixedEntity {
+    fn default() -> Self {
+        MixedEntity {
+            entity_id: 0,
+            pos_x: 0,
+            pos_y: 0,
+            pos_z: 0,
+            yaw: 0,
+            pitch: 0,
+            vel_x: 0,
+            vel_y: 0,
+            vel_z: 0,
+            health: 0,
+            weapon: MixedWeapon::NONE,
+            damage: 0,
+            moving: false,
+            firing: false,
+        }
+    }
+}
+
+// MIXED_ENTITY_MAX_BITS is the longest wire path; align pads at worst case (SPEC §6.1).
+// MIXED_ENTITY_MAX_BYTES is rounded up to the 8-byte write-buffer granularity.
+pub const MIXED_ENTITY_MAX_BITS: u64 = 135;
+pub const MIXED_ENTITY_MAX_BYTES: usize = 24;
+
+#[inline(always)]
+pub fn write_mixed_entity(stream: &mut WriteStream<'_>, value: &MixedEntity) -> Result {
+    if value.entity_id >= 1 << 12 {
+        return Err(Error::Stream(serialize::Error::ValueOutOfRange));
+    }
+    if value.pos_x < -16383 || value.pos_x > 16383 {
+        return Err(Error::Stream(serialize::Error::ValueOutOfRange));
+    }
+    if value.pos_y < -16383 || value.pos_y > 16383 {
+        return Err(Error::Stream(serialize::Error::ValueOutOfRange));
+    }
+    if value.pos_z < -16383 || value.pos_z > 16383 {
+        return Err(Error::Stream(serialize::Error::ValueOutOfRange));
+    }
+    if value.yaw >= 1 << 9 {
+        return Err(Error::Stream(serialize::Error::ValueOutOfRange));
+    }
+    if value.pitch >= 1 << 9 {
+        return Err(Error::Stream(serialize::Error::ValueOutOfRange));
+    }
+    if value.vel_x < -2048 || value.vel_x > 2047 {
+        return Err(Error::Stream(serialize::Error::ValueOutOfRange));
+    }
+    if value.vel_y < -2048 || value.vel_y > 2047 {
+        return Err(Error::Stream(serialize::Error::ValueOutOfRange));
+    }
+    if value.vel_z < -2048 || value.vel_z > 2047 {
+        return Err(Error::Stream(serialize::Error::ValueOutOfRange));
+    }
+    if value.health < 0 || value.health > 1000 {
+        return Err(Error::Stream(serialize::Error::ValueOutOfRange));
+    }
+    if value.weapon.0 > 15 {
+        return Err(Error::Stream(serialize::Error::ValueOutOfRange));
+    }
+    if value.damage >= 1 << 8 {
+        // a mask bit above the wire width cannot ride
+        return Err(Error::Stream(serialize::Error::ValueOutOfRange));
+    }
+    let f0: u64 = u64::from(value.entity_id);
+    let f1: u64 = u64::from((value.pos_x as u32).wrapping_sub((-16383_i32) as u32));
+    let f2: u64 = u64::from((value.pos_y as u32).wrapping_sub((-16383_i32) as u32));
+    let f3: u64 = u64::from((value.pos_z as u32).wrapping_sub((-16383_i32) as u32));
+    let f4: u64 = u64::from(value.yaw);
+    let f5: u64 = u64::from(value.pitch);
+    let f6: u64 = u64::from((value.vel_x as u32).wrapping_sub((-2048_i32) as u32));
+    let f7: u64 = u64::from((value.vel_y as u32).wrapping_sub((-2048_i32) as u32));
+    let f8: u64 = u64::from((value.vel_z as u32).wrapping_sub((-2048_i32) as u32));
+    let f9: u64 = u64::from(value.health as u32);
+    let f10: u64 = u64::from(value.weapon.0);
+    let f11: u64 = value.damage;
+    let f12: u64 = u64::from(value.moving);
+    let f13: u64 = u64::from(value.firing);
+    let mut w0 = (f0 | (f1 << 12) | (f2 << 27)) as u32;
+    stream.serialize_bits(&mut w0, 32)?;
+    let mut w1 = ((f2 >> 5) | (f3 << 10) | (f4 << 25)) as u32;
+    stream.serialize_bits(&mut w1, 32)?;
+    let mut w2 = ((f4 >> 7) | (f5 << 2) | (f6 << 11) | (f7 << 23)) as u32;
+    stream.serialize_bits(&mut w2, 32)?;
+    let mut w3 = ((f7 >> 9) | (f8 << 3) | (f9 << 15) | (f10 << 25) | (f11 << 29)) as u32;
+    stream.serialize_bits(&mut w3, 32)?;
+    let mut w4 = ((f11 >> 3) | (f12 << 5) | (f13 << 6)) as u32;
+    stream.serialize_bits(&mut w4, 7)?;
+    Ok(())
+}
+
+#[inline]
+pub fn read_mixed_entity(stream: &mut ReadStream<'_>, value: &mut MixedEntity) -> Result {
+    let mut c: u32 = 0;
+    stream.serialize_bits(&mut c, 32)?;
+    let c0 = u64::from(c);
+    stream.serialize_bits(&mut c, 32)?;
+    let c1 = u64::from(c);
+    stream.serialize_bits(&mut c, 32)?;
+    let c2 = u64::from(c);
+    stream.serialize_bits(&mut c, 32)?;
+    let c3 = u64::from(c);
+    stream.serialize_bits(&mut c, 7)?;
+    let c4 = u64::from(c);
+    let v0: u64 = c0 & 0xfff;
+    value.entity_id = v0 as u32;
+    let v1: u64 = (c0 >> 12) & 0x7fff;
+    if v1 > 32766 {
+        return Err(Error::Stream(serialize::Error::ValueOutOfRange));
+    }
+    value.pos_x = (v1 as u32).wrapping_add((-16383_i32) as u32) as i32;
+    let v2: u64 = ((c0 >> 27) | (c1 << 5)) & 0x7fff;
+    if v2 > 32766 {
+        return Err(Error::Stream(serialize::Error::ValueOutOfRange));
+    }
+    value.pos_y = (v2 as u32).wrapping_add((-16383_i32) as u32) as i32;
+    let v3: u64 = (c1 >> 10) & 0x7fff;
+    if v3 > 32766 {
+        return Err(Error::Stream(serialize::Error::ValueOutOfRange));
+    }
+    value.pos_z = (v3 as u32).wrapping_add((-16383_i32) as u32) as i32;
+    let v4: u64 = ((c1 >> 25) | (c2 << 7)) & 0x1ff;
+    value.yaw = v4 as u32;
+    let v5: u64 = (c2 >> 2) & 0x1ff;
+    value.pitch = v5 as u32;
+    let v6: u64 = (c2 >> 11) & 0xfff;
+    value.vel_x = (v6 as u32).wrapping_add((-2048_i32) as u32) as i32;
+    let v7: u64 = ((c2 >> 23) | (c3 << 9)) & 0xfff;
+    value.vel_y = (v7 as u32).wrapping_add((-2048_i32) as u32) as i32;
+    let v8: u64 = (c3 >> 3) & 0xfff;
+    value.vel_z = (v8 as u32).wrapping_add((-2048_i32) as u32) as i32;
+    let v9: u64 = (c3 >> 15) & 0x3ff;
+    if v9 > 1000 {
+        return Err(Error::Stream(serialize::Error::ValueOutOfRange));
+    }
+    value.health = v9 as i32;
+    let v10: u64 = (c3 >> 25) & 0xf;
+    value.weapon = MixedWeapon(v10 as u8);
+    let v11: u64 = ((c3 >> 29) | (c4 << 3)) & 0xff;
+    value.damage = v11;
+    let v12: u64 = (c4 >> 5) & 0x1;
+    value.moving = v12 != 0;
+    let v13: u64 = (c4 >> 6) & 0x1;
+    value.firing = v13 != 0;
+    Ok(())
+}
+
+// type MixedStat
+#[repr(C)]
+#[derive(Clone, Copy, PartialEq, Debug)]
+pub struct MixedStat {
+    pub stat_id: u32,
+    pub delta: i32, // wire [-512, 511]
+}
+
+// The zero form (SPEC §5): specified defaults live only in new(), never here.
+impl Default for MixedStat {
+    fn default() -> Self {
+        MixedStat {
+            stat_id: 0,
+            delta: 0,
+        }
+    }
+}
+
+// MIXED_STAT_MAX_BITS is the longest wire path; align pads at worst case (SPEC §6.1).
+// MIXED_STAT_MAX_BYTES is rounded up to the 8-byte write-buffer granularity.
+pub const MIXED_STAT_MAX_BITS: u64 = 18;
+pub const MIXED_STAT_MAX_BYTES: usize = 8;
+
+#[inline(always)]
+pub fn write_mixed_stat(stream: &mut WriteStream<'_>, value: &MixedStat) -> Result {
+    if value.stat_id >= 1 << 8 {
+        return Err(Error::Stream(serialize::Error::ValueOutOfRange));
+    }
+    if value.delta < -512 || value.delta > 511 {
+        return Err(Error::Stream(serialize::Error::ValueOutOfRange));
+    }
+    let f0: u64 = u64::from(value.stat_id);
+    let f1: u64 = u64::from((value.delta as u32).wrapping_sub((-512_i32) as u32));
+    let mut w0 = (f0 | (f1 << 8)) as u32;
+    stream.serialize_bits(&mut w0, 18)?;
+    Ok(())
+}
+
+#[inline]
+pub fn read_mixed_stat(stream: &mut ReadStream<'_>, value: &mut MixedStat) -> Result {
+    let mut c: u32 = 0;
+    stream.serialize_bits(&mut c, 18)?;
+    let c0 = u64::from(c);
+    let v0: u64 = c0 & 0xff;
+    value.stat_id = v0 as u32;
+    let v1: u64 = (c0 >> 8) & 0x3ff;
+    value.delta = (v1 as u32).wrapping_add((-512_i32) as u32) as i32;
+    Ok(())
+}
+
+// type MixedHitEvent
+#[repr(C)]
+#[derive(Clone, Copy, PartialEq, Debug)]
+pub struct MixedHitEvent {
+    pub target_id: u32,
+    pub damage: i32, // wire [0, 4095]
+    pub hit_kind: i32, // wire [0, 7]
+    pub crit: bool,
+}
+
+// The zero form (SPEC §5): specified defaults live only in new(), never here.
+impl Default for MixedHitEvent {
+    fn default() -> Self {
+        MixedHitEvent {
+            target_id: 0,
+            damage: 0,
+            hit_kind: 0,
+            crit: false,
+        }
+    }
+}
+
+// MIXED_HIT_EVENT_MAX_BITS is the longest wire path; align pads at worst case (SPEC §6.1).
+// MIXED_HIT_EVENT_MAX_BYTES is rounded up to the 8-byte write-buffer granularity.
+pub const MIXED_HIT_EVENT_MAX_BITS: u64 = 28;
+pub const MIXED_HIT_EVENT_MAX_BYTES: usize = 8;
+
+#[inline(always)]
+pub fn write_mixed_hit_event(stream: &mut WriteStream<'_>, value: &MixedHitEvent) -> Result {
+    if value.target_id >= 1 << 12 {
+        return Err(Error::Stream(serialize::Error::ValueOutOfRange));
+    }
+    if value.damage < 0 || value.damage > 4095 {
+        return Err(Error::Stream(serialize::Error::ValueOutOfRange));
+    }
+    if value.hit_kind < 0 || value.hit_kind > 7 {
+        return Err(Error::Stream(serialize::Error::ValueOutOfRange));
+    }
+    let f0: u64 = u64::from(value.target_id);
+    let f1: u64 = u64::from(value.damage as u32);
+    let f2: u64 = u64::from(value.hit_kind as u32);
+    let f3: u64 = u64::from(value.crit);
+    let mut w0 = (f0 | (f1 << 12) | (f2 << 24) | (f3 << 27)) as u32;
+    stream.serialize_bits(&mut w0, 28)?;
+    Ok(())
+}
+
+#[inline]
+pub fn read_mixed_hit_event(stream: &mut ReadStream<'_>, value: &mut MixedHitEvent) -> Result {
+    let mut c: u32 = 0;
+    stream.serialize_bits(&mut c, 28)?;
+    let c0 = u64::from(c);
+    let v0: u64 = c0 & 0xfff;
+    value.target_id = v0 as u32;
+    let v1: u64 = (c0 >> 12) & 0xfff;
+    value.damage = v1 as i32;
+    let v2: u64 = (c0 >> 24) & 0x7;
+    value.hit_kind = v2 as i32;
+    let v3: u64 = (c0 >> 27) & 0x1;
+    value.crit = v3 != 0;
+    Ok(())
+}
+
+// type MixedChatEvent
+#[repr(C)]
+#[derive(Clone, Copy, PartialEq, Debug)]
+pub struct MixedChatEvent {
+    pub channel: i32, // wire [0, 3]
+    pub speaker: u32,
+}
+
+// The zero form (SPEC §5): specified defaults live only in new(), never here.
+impl Default for MixedChatEvent {
+    fn default() -> Self {
+        MixedChatEvent {
+            channel: 0,
+            speaker: 0,
+        }
+    }
+}
+
+// MIXED_CHAT_EVENT_MAX_BITS is the longest wire path; align pads at worst case (SPEC §6.1).
+// MIXED_CHAT_EVENT_MAX_BYTES is rounded up to the 8-byte write-buffer granularity.
+pub const MIXED_CHAT_EVENT_MAX_BITS: u64 = 14;
+pub const MIXED_CHAT_EVENT_MAX_BYTES: usize = 8;
+
+#[inline(always)]
+pub fn write_mixed_chat_event(stream: &mut WriteStream<'_>, value: &MixedChatEvent) -> Result {
+    if value.channel < 0 || value.channel > 3 {
+        return Err(Error::Stream(serialize::Error::ValueOutOfRange));
+    }
+    if value.speaker >= 1 << 12 {
+        return Err(Error::Stream(serialize::Error::ValueOutOfRange));
+    }
+    let f0: u64 = u64::from(value.channel as u32);
+    let f1: u64 = u64::from(value.speaker);
+    let mut w0 = (f0 | (f1 << 2)) as u32;
+    stream.serialize_bits(&mut w0, 14)?;
+    Ok(())
+}
+
+#[inline]
+pub fn read_mixed_chat_event(stream: &mut ReadStream<'_>, value: &mut MixedChatEvent) -> Result {
+    let mut c: u32 = 0;
+    stream.serialize_bits(&mut c, 14)?;
+    let c0 = u64::from(c);
+    let v0: u64 = c0 & 0x3;
+    value.channel = v0 as i32;
+    let v1: u64 = (c0 >> 2) & 0xfff;
+    value.speaker = v1 as u32;
+    Ok(())
+}
+
+// type MixedPickupEvent
+#[repr(C)]
+#[derive(Clone, Copy, PartialEq, Debug)]
+pub struct MixedPickupEvent {
+    pub item_id: u32,
+    pub amount: i32, // wire [0, 255]
+}
+
+// The zero form (SPEC §5): specified defaults live only in new(), never here.
+impl Default for MixedPickupEvent {
+    fn default() -> Self {
+        MixedPickupEvent {
+            item_id: 0,
+            amount: 0,
+        }
+    }
+}
+
+// MIXED_PICKUP_EVENT_MAX_BITS is the longest wire path; align pads at worst case (SPEC §6.1).
+// MIXED_PICKUP_EVENT_MAX_BYTES is rounded up to the 8-byte write-buffer granularity.
+pub const MIXED_PICKUP_EVENT_MAX_BITS: u64 = 18;
+pub const MIXED_PICKUP_EVENT_MAX_BYTES: usize = 8;
+
+#[inline(always)]
+pub fn write_mixed_pickup_event(stream: &mut WriteStream<'_>, value: &MixedPickupEvent) -> Result {
+    if value.item_id >= 1 << 10 {
+        return Err(Error::Stream(serialize::Error::ValueOutOfRange));
+    }
+    if value.amount < 0 || value.amount > 255 {
+        return Err(Error::Stream(serialize::Error::ValueOutOfRange));
+    }
+    let f0: u64 = u64::from(value.item_id);
+    let f1: u64 = u64::from(value.amount as u32);
+    let mut w0 = (f0 | (f1 << 10)) as u32;
+    stream.serialize_bits(&mut w0, 18)?;
+    Ok(())
+}
+
+#[inline]
+pub fn read_mixed_pickup_event(stream: &mut ReadStream<'_>, value: &mut MixedPickupEvent) -> Result {
+    let mut c: u32 = 0;
+    stream.serialize_bits(&mut c, 18)?;
+    let c0 = u64::from(c);
+    let v0: u64 = c0 & 0x3ff;
+    value.item_id = v0 as u32;
+    let v1: u64 = (c0 >> 10) & 0xff;
+    value.amount = v1 as i32;
+    Ok(())
+}
+
+// MixedEventType: union MixedEvent's tag — None = 0, then each variant in declared order (SPEC §4.8)
+#[repr(transparent)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
+pub struct MixedEventType(pub u8);
+
+impl MixedEventType {
+    pub const NONE: MixedEventType = MixedEventType(0);
+    pub const HIT: MixedEventType = MixedEventType(1);
+    pub const CHAT: MixedEventType = MixedEventType(2);
+    pub const PICKUP: MixedEventType = MixedEventType(3);
+    pub const MAX: MixedEventType = MixedEventType(3); // the exported extent (SPEC §4.2)
+}
+
+// MixedEvent — at most one of the arms. The default is None (the empty union);
+// a read replaces the whole value, so stale-arm semantics cannot arise here.
+#[derive(Clone, Copy, PartialEq, Debug, Default)]
+pub enum MixedEvent {
+    #[default]
+    None,
+    Hit(MixedHitEvent),
+    Chat(MixedChatEvent),
+    Pickup(MixedPickupEvent),
+}
+
+// MIXED_EVENT_MAX_BITS is the tag plus the largest arm; None costs the tag only (SPEC §4.8).
+// MIXED_EVENT_MAX_BYTES is rounded up to the 8-byte write-buffer granularity.
+pub const MIXED_EVENT_MAX_BITS: u64 = 30;
+pub const MIXED_EVENT_MAX_BYTES: usize = 8;
+
+pub fn write_mixed_event(stream: &mut WriteStream<'_>, value: &MixedEvent) -> Result {
+    match value {
+        MixedEvent::None => {
+            let mut offset_value: u32 = 0;
+            stream.serialize_bits(&mut offset_value, 2)?;
+            Ok(()) // no payload — the tag is the whole wire (SPEC §4.8)
+        }
+        MixedEvent::Hit(arm) => {
+            let mut offset_value: u32 = 1;
+            stream.serialize_bits(&mut offset_value, 2)?;
+            write_mixed_hit_event(stream, arm)
+        }
+        MixedEvent::Chat(arm) => {
+            let mut offset_value: u32 = 2;
+            stream.serialize_bits(&mut offset_value, 2)?;
+            write_mixed_chat_event(stream, arm)
+        }
+        MixedEvent::Pickup(arm) => {
+            let mut offset_value: u32 = 3;
+            stream.serialize_bits(&mut offset_value, 2)?;
+            write_mixed_pickup_event(stream, arm)
+        }
+    }
+}
+
+pub fn read_mixed_event(stream: &mut ReadStream<'_>, value: &mut MixedEvent) -> Result {
+    let mut tag_value: i32 = 0;
+    stream.serialize_int(&mut tag_value, 0, 3)?; // rejects a tag above the count (SPEC §4.8)
+    match tag_value {
+        1 => {
+            let mut arm = MixedHitEvent::default();
+            read_mixed_hit_event(stream, &mut arm)?;
+            *value = MixedEvent::Hit(arm);
+        }
+        2 => {
+            let mut arm = MixedChatEvent::default();
+            read_mixed_chat_event(stream, &mut arm)?;
+            *value = MixedEvent::Chat(arm);
+        }
+        3 => {
+            let mut arm = MixedPickupEvent::default();
+            read_mixed_pickup_event(stream, &mut arm)?;
+            *value = MixedEvent::Pickup(arm);
+        }
+        _ => *value = MixedEvent::None,
+    }
+    Ok(())
+}
+
 // type BenchMixed
 #[repr(C)]
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub struct BenchMixed {
-    pub sequence: i32, // wire [0, 65535]
+    pub sequence: u32,
+    pub ack_sequence: i32, // wire [0, 65535]
     pub ack_bits: u32,
-    pub entity_id: u32,
-    pub pos_x: i32, // wire [-16384, 16383]
-    pub pos_y: i32, // wire [-16384, 16383]
-    pub pos_z: i32, // wire [-16384, 16383]
-    pub yaw: u32,
-    pub moving: bool,
-    pub firing: bool,
-    pub timestamp: u64,
-    pub weapon: i32, // wire [0, 15]
+    pub session_id: u64,
+    pub client_id: u32,
+    pub nonce: u64, // wire [0, 18446744073709551615]
+    pub world_time: i64, // wire [-1000000000000, 1000000000000]
+    pub frame_tick: u64,
+    pub server_time: i32, // wire [0, 65535]
+    pub entities: [MixedEntity; 8], // used count beside it; wire count in [1, 8]
+    pub entities_count: i32,
+    pub stats: [MixedStat; 80], // used count beside it; wire count in [0, 80]
+    pub stats_count: i32,
+    pub game_event: MixedEvent,
+    pub loadout: [u8; 4],
+    pub player_name: [u8; 15], // string(15): max length, used length beside it (SPEC §4.7)
+    pub player_name_length: i32,
+    pub payload: [u8; 16], // bytes(16): fixed buffer, used length beside it (SPEC §4.7)
+    pub payload_length: i32,
+    pub aim_x: f32, // compressed float [-1.0, 1.0] @ 0.01
+    pub aim_y: f32, // compressed float [-1.0, 1.0] @ 0.01
+    pub aim_z: f32, // compressed float [-1.0, 1.0] @ 0.01
+    pub recoil: f32,
+    pub drift: f64,
+    pub wide_key: u128,
+    pub flux: i128, // wire [-1267650600228229401496703205376, 1267650600228229401496703205376]
+    pub ping: u16, // wire [0, 250]
+    pub crc_hint: u32,
+    pub has_extra: bool, // = true in new() (zero value otherwise)
+
+    // if has_extra — wire branch; storage holds both sides, a read zeroes the
+    // untaken side (SPEC §5)
+    pub extra: i32, // wire [0, 255]
+
+    // if has_extra else — wire branch; storage holds both sides, a read zeroes the
+    // untaken side (SPEC §5)
+    pub idle_ticks: i32, // wire [0, 15]
 }
 
 // The zero form (SPEC §5): specified defaults live only in new(), never here.
@@ -458,74 +1086,222 @@ impl Default for BenchMixed {
     fn default() -> Self {
         BenchMixed {
             sequence: 0,
+            ack_sequence: 0,
             ack_bits: 0,
-            entity_id: 0,
-            pos_x: 0,
-            pos_y: 0,
-            pos_z: 0,
-            yaw: 0,
-            moving: false,
-            firing: false,
-            timestamp: 0,
-            weapon: 0,
+            session_id: 0,
+            client_id: 0,
+            nonce: 0,
+            world_time: 0,
+            frame_tick: 0,
+            server_time: 0,
+            entities: [MixedEntity::default(); 8],
+            entities_count: 0,
+            stats: [MixedStat::default(); 80],
+            stats_count: 0,
+            game_event: MixedEvent::None,
+            loadout: [0; 4],
+            player_name: [0; 15],
+            player_name_length: 0,
+            payload: [0; 16],
+            payload_length: 0,
+            aim_x: 0.0,
+            aim_y: 0.0,
+            aim_z: 0.0,
+            recoil: 0.0,
+            drift: 0.0,
+            wide_key: 0,
+            flux: 0,
+            ping: 0,
+            crc_hint: 0,
+            has_extra: false,
+            extra: 0,
+            idle_ticks: 0,
         }
+    }
+}
+
+impl BenchMixed {
+    // new returns a BenchMixed with its specified defaults applied; the plain
+    // Default::default() is the all-zero form (SPEC §4.2: zero initialization
+    // unless a specified default overrides it).
+    pub fn new() -> Self {
+        let mut value = BenchMixed::default();
+        value.has_extra = true;
+        value
     }
 }
 
 // BENCH_MIXED_MAX_BITS is the longest wire path; align pads at worst case (SPEC §6.1).
 // BENCH_MIXED_MAX_BYTES is rounded up to the 8-byte write-buffer granularity.
-pub const BENCH_MIXED_MAX_BITS: u64 = 168;
-pub const BENCH_MIXED_MAX_BYTES: usize = 24;
+pub const BENCH_MIXED_MAX_BITS: u64 = 3626;
+pub const BENCH_MIXED_MAX_BYTES: usize = 456;
 
 #[inline(always)]
 pub fn write_bench_mixed(stream: &mut WriteStream<'_>, value: &BenchMixed) -> Result {
-    if value.sequence < 0 || value.sequence > 65535 {
+    if value.sequence >= 1 << 16 {
         return Err(Error::Stream(serialize::Error::ValueOutOfRange));
     }
-    if value.entity_id >= 1 << 12 {
+    if value.ack_sequence < 0 || value.ack_sequence > 65535 {
         return Err(Error::Stream(serialize::Error::ValueOutOfRange));
     }
-    if value.pos_x < -16384 || value.pos_x > 16383 {
-        return Err(Error::Stream(serialize::Error::ValueOutOfRange));
-    }
-    if value.pos_y < -16384 || value.pos_y > 16383 {
-        return Err(Error::Stream(serialize::Error::ValueOutOfRange));
-    }
-    if value.pos_z < -16384 || value.pos_z > 16383 {
-        return Err(Error::Stream(serialize::Error::ValueOutOfRange));
-    }
-    if value.yaw >= 1 << 9 {
-        return Err(Error::Stream(serialize::Error::ValueOutOfRange));
-    }
-    if value.timestamp >= 1 << 48 {
-        return Err(Error::Stream(serialize::Error::ValueOutOfRange));
-    }
-    if value.weapon < 0 || value.weapon > 15 {
-        return Err(Error::Stream(serialize::Error::ValueOutOfRange));
-    }
-    let f0: u64 = u64::from(value.sequence as u32);
-    let f1: u64 = u64::from(value.ack_bits);
-    let f2: u64 = u64::from(value.entity_id);
-    let f3: u64 = u64::from((value.pos_x as u32).wrapping_sub((-16384_i32) as u32));
-    let f4: u64 = u64::from((value.pos_y as u32).wrapping_sub((-16384_i32) as u32));
-    let f5: u64 = u64::from((value.pos_z as u32).wrapping_sub((-16384_i32) as u32));
-    let f6: u64 = u64::from(value.yaw);
-    let f7: u64 = u64::from(value.moving);
-    let f8: u64 = u64::from(value.firing);
-    let f9: u64 = value.timestamp;
-    let f10: u64 = u64::from(value.weapon as u32);
+    let f0: u64 = 49374_u64; // const(49374, 16) — SPEC §4.3
+    let f1: u64 = u64::from(value.sequence);
+    let f2: u64 = u64::from(value.ack_sequence as u32);
+    let f3: u64 = u64::from(value.ack_bits);
+    let f4: u64 = value.session_id;
+    let f5: u64 = u64::from(value.client_id);
+    let f6: u64 = value.nonce;
     let mut w0 = (f0 | (f1 << 16)) as u32;
     stream.serialize_bits(&mut w0, 32)?;
-    let mut w1 = ((f1 >> 16) | (f2 << 16) | (f3 << 28)) as u32;
+    let mut w1 = (f2 | (f3 << 16)) as u32;
     stream.serialize_bits(&mut w1, 32)?;
-    let mut w2 = ((f3 >> 4) | (f4 << 11) | (f5 << 26)) as u32;
+    let mut w2 = ((f3 >> 16) | (f4 << 16)) as u32;
     stream.serialize_bits(&mut w2, 32)?;
-    let mut w3 = ((f5 >> 6) | (f6 << 9) | (f7 << 18) | (f8 << 19) | (f9 << 20)) as u32;
+    let mut w3 = (f4 >> 16) as u32;
     stream.serialize_bits(&mut w3, 32)?;
-    let mut w4 = (f9 >> 12) as u32;
+    let mut w4 = ((f4 >> 48) | (f5 << 16)) as u32;
     stream.serialize_bits(&mut w4, 32)?;
-    let mut w5 = ((f9 >> 44) | (f10 << 4)) as u32;
-    stream.serialize_bits(&mut w5, 8)?;
+    let mut w5 = ((f5 >> 16) | (f6 << 16)) as u32;
+    stream.serialize_bits(&mut w5, 32)?;
+    let mut w6 = (f6 >> 16) as u32;
+    stream.serialize_bits(&mut w6, 32)?;
+    let mut w7 = (f6 >> 48) as u32;
+    stream.serialize_bits(&mut w7, 16)?;
+    if value.world_time < -1000000000000 || value.world_time > 1000000000000 {
+        return Err(Error::Stream(serialize::Error::ValueOutOfRange));
+    }
+    if value.frame_tick >= 1 << 48 {
+        return Err(Error::Stream(serialize::Error::ValueOutOfRange));
+    }
+    let f0: u64 = (value.world_time as u64).wrapping_sub((-1000000000000_i64) as u64);
+    let f1: u64 = value.frame_tick;
+    let mut w0 = f0 as u32;
+    stream.serialize_bits(&mut w0, 32)?;
+    let mut w1 = ((f0 >> 32) | (f1 << 9)) as u32;
+    stream.serialize_bits(&mut w1, 32)?;
+    let mut w2 = (f1 >> 23) as u32;
+    stream.serialize_bits(&mut w2, 25)?;
+    if value.server_time < 0 || value.server_time > 16776960 {
+        return Err(Error::Stream(serialize::Error::ValueOutOfRange));
+    }
+    {
+        let mut fixed_value = value.server_time;
+        stream.serialize_fixed(&mut fixed_value, 24, 8, 0, 65535)?;
+    }
+    if value.entities_count < 1 || value.entities_count > 8 {
+        return Err(Error::Stream(serialize::Error::ValueOutOfRange));
+    }
+    {
+        let mut offset_value = (value.entities_count as u32).wrapping_sub((1_i32) as u32);
+        stream.serialize_bits(&mut offset_value, 3)?; // the count guards the loop (§6.3)
+    }
+    for i in 0..value.entities_count as usize {
+        write_mixed_entity(stream, &value.entities[i])?;
+    }
+    if value.stats_count < 0 || value.stats_count > 80 {
+        return Err(Error::Stream(serialize::Error::ValueOutOfRange));
+    }
+    {
+        let mut offset_value = value.stats_count as u32;
+        stream.serialize_bits(&mut offset_value, 7)?; // the count guards the loop (§6.3)
+    }
+    for i in 0..value.stats_count as usize {
+        write_mixed_stat(stream, &value.stats[i])?;
+    }
+    write_mixed_event(stream, &value.game_event)?;
+    for i in 0..4 {
+        {
+            let mut raw_value = value.loadout[i] as u32;
+            stream.serialize_bits(&mut raw_value, 8)?;
+        }
+    }
+    if value.player_name_length < 0 || value.player_name_length > 15 {
+        return Err(Error::Stream(serialize::Error::ValueOutOfRange));
+    }
+    debug_assert!(
+        std::str::from_utf8(&value.player_name[..value.player_name_length as usize]).is_ok(),
+        "string(N) payloads are well-formed UTF-8 by contract (SPEC 4.7)"
+    );
+    {
+        let mut offset_value = value.player_name_length as u32;
+        stream.serialize_bits(&mut offset_value, 4)?; // the length guards the slice (§6.3)
+    }
+    stream.write_bytes(&value.player_name[..value.player_name_length as usize]); // borrowed in place: the write side never mutates (infallible: returns () in serialize.rs 2.0.0)
+    if value.payload_length < 0 || value.payload_length > 16 {
+        return Err(Error::Stream(serialize::Error::ValueOutOfRange));
+    }
+    {
+        let mut offset_value = value.payload_length as u32;
+        stream.serialize_bits(&mut offset_value, 5)?; // the length guards the slice (§6.3)
+    }
+    stream.write_bytes(&value.payload[..value.payload_length as usize]); // borrowed in place: the write side never mutates (infallible: returns () in serialize.rs 2.0.0)
+    {
+        let mut compressed_value = value.aim_x;
+        stream.serialize_compressed_float_precomputed(&mut compressed_value, 200, 8, 2.0_f32, -1.0_f32)?; // compressed float [-1.0, 1.0] @ 0.01, constants folded at generation
+    }
+    {
+        let mut compressed_value = value.aim_y;
+        stream.serialize_compressed_float_precomputed(&mut compressed_value, 200, 8, 2.0_f32, -1.0_f32)?; // compressed float [-1.0, 1.0] @ 0.01, constants folded at generation
+    }
+    {
+        let mut compressed_value = value.aim_z;
+        stream.serialize_compressed_float_precomputed(&mut compressed_value, 200, 8, 2.0_f32, -1.0_f32)?; // compressed float [-1.0, 1.0] @ 0.01, constants folded at generation
+    }
+    let f0: u64 = u64::from(value.recoil.to_bits());
+    let f1: u64 = value.drift.to_bits();
+    let mut w0 = f0 as u32;
+    stream.serialize_bits(&mut w0, 32)?;
+    let mut w1 = f1 as u32;
+    stream.serialize_bits(&mut w1, 32)?;
+    let mut w2 = (f1 >> 32) as u32;
+    stream.serialize_bits(&mut w2, 32)?;
+    {
+        let mut raw_value = value.wide_key;
+        stream.serialize_u128(&mut raw_value)?;
+    }
+    if value.flux < -1267650600228229401496703205376 || value.flux > 1267650600228229401496703205376 {
+        return Err(Error::Stream(serialize::Error::ValueOutOfRange));
+    }
+    {
+        let mut range_value = value.flux;
+        stream.serialize_int128(&mut range_value, -1267650600228229401496703205376, 1267650600228229401496703205376)?;
+    }
+    if value.ping > 64000 {
+        return Err(Error::Stream(serialize::Error::ValueOutOfRange));
+    }
+    {
+        let mut fixed_value = value.ping;
+        stream.serialize_fixed(&mut fixed_value, 8, 8, 0, 250)?;
+    }
+    {
+        let mut reserved_value: u32 = 0;
+        stream.serialize_bits(&mut reserved_value, 4)?; // reserved(4) — zeros on the wire
+    }
+    stream.serialize_align()?;
+    if value.crc_hint >= 1 << 24 {
+        return Err(Error::Stream(serialize::Error::ValueOutOfRange));
+    }
+    let f0: u64 = u64::from(value.crc_hint);
+    let f1: u64 = u64::from(value.has_extra);
+    let mut w0 = (f0 | (f1 << 24)) as u32;
+    stream.serialize_bits(&mut w0, 25)?;
+    if value.has_extra {
+        if value.extra < 0 || value.extra > 255 {
+            return Err(Error::Stream(serialize::Error::ValueOutOfRange));
+        }
+        {
+            let mut offset_value = value.extra as u32;
+            stream.serialize_bits(&mut offset_value, 8)?;
+        }
+    } else {
+        if value.idle_ticks < 0 || value.idle_ticks > 15 {
+            return Err(Error::Stream(serialize::Error::ValueOutOfRange));
+        }
+        {
+            let mut offset_value = value.idle_ticks as u32;
+            stream.serialize_bits(&mut offset_value, 4)?;
+        }
+    }
     Ok(())
 }
 
@@ -542,30 +1318,109 @@ pub fn read_bench_mixed(stream: &mut ReadStream<'_>, value: &mut BenchMixed) -> 
     let c3 = u64::from(c);
     stream.serialize_bits(&mut c, 32)?;
     let c4 = u64::from(c);
-    stream.serialize_bits(&mut c, 8)?;
+    stream.serialize_bits(&mut c, 32)?;
     let c5 = u64::from(c);
+    stream.serialize_bits(&mut c, 32)?;
+    let c6 = u64::from(c);
+    stream.serialize_bits(&mut c, 16)?;
+    let c7 = u64::from(c);
     let v0: u64 = c0 & 0xffff;
-    value.sequence = v0 as i32;
-    let v1: u64 = ((c0 >> 16) | (c1 << 16)) & 0xffffffff;
-    value.ack_bits = v1 as u32;
-    let v2: u64 = (c1 >> 16) & 0xfff;
-    value.entity_id = v2 as u32;
-    let v3: u64 = ((c1 >> 28) | (c2 << 4)) & 0x7fff;
-    value.pos_x = (v3 as u32).wrapping_add((-16384_i32) as u32) as i32;
-    let v4: u64 = (c2 >> 11) & 0x7fff;
-    value.pos_y = (v4 as u32).wrapping_add((-16384_i32) as u32) as i32;
-    let v5: u64 = ((c2 >> 26) | (c3 << 6)) & 0x7fff;
-    value.pos_z = (v5 as u32).wrapping_add((-16384_i32) as u32) as i32;
-    let v6: u64 = (c3 >> 9) & 0x1ff;
-    value.yaw = v6 as u32;
-    let v7: u64 = (c3 >> 18) & 0x1;
-    value.moving = v7 != 0;
-    let v8: u64 = (c3 >> 19) & 0x1;
-    value.firing = v8 != 0;
-    let v9: u64 = ((c3 >> 20) | (c4 << 12) | (c5 << 44)) & 0xffffffffffff;
-    value.timestamp = v9;
-    let v10: u64 = (c5 >> 4) & 0xf;
-    value.weapon = v10 as i32;
+    if v0 != 49374 {
+        // const(49374, 16): a read rejects any other value (SPEC §4.3)
+        return Err(Error::Validation);
+    }
+    let v1: u64 = (c0 >> 16) & 0xffff;
+    value.sequence = v1 as u32;
+    let v2: u64 = c1 & 0xffff;
+    value.ack_sequence = v2 as i32;
+    let v3: u64 = ((c1 >> 16) | (c2 << 16)) & 0xffffffff;
+    value.ack_bits = v3 as u32;
+    let v4: u64 = (c2 >> 16) | (c3 << 16) | (c4 << 48);
+    value.session_id = v4;
+    let v5: u64 = ((c4 >> 16) | (c5 << 16)) & 0xffffffff;
+    value.client_id = v5 as u32;
+    let v6: u64 = (c5 >> 16) | (c6 << 16) | (c7 << 48);
+    value.nonce = v6;
+    let mut c: u32 = 0;
+    stream.serialize_bits(&mut c, 32)?;
+    let c0 = u64::from(c);
+    stream.serialize_bits(&mut c, 32)?;
+    let c1 = u64::from(c);
+    stream.serialize_bits(&mut c, 25)?;
+    let c2 = u64::from(c);
+    let v0: u64 = (c0 | (c1 << 32)) & 0x1ffffffffff;
+    if v0 > 2000000000000 {
+        return Err(Error::Stream(serialize::Error::ValueOutOfRange));
+    }
+    value.world_time = v0.wrapping_add((-1000000000000_i64) as u64) as i64;
+    let v1: u64 = ((c1 >> 9) | (c2 << 23)) & 0xffffffffffff;
+    value.frame_tick = v1;
+    stream.serialize_fixed(&mut value.server_time, 24, 8, 0, 65535)?;
+    stream.serialize_int(&mut value.entities_count, 1, 8)?; // the count guards the loop (§6.3)
+    for i in 0..value.entities_count as usize {
+        read_mixed_entity(stream, &mut value.entities[i])?;
+    }
+    stream.serialize_int(&mut value.stats_count, 0, 80)?; // the count guards the loop (§6.3)
+    for i in 0..value.stats_count as usize {
+        read_mixed_stat(stream, &mut value.stats[i])?;
+    }
+    read_mixed_event(stream, &mut value.game_event)?;
+    for i in 0..4 {
+        {
+            let mut raw_value: u32 = 0;
+            stream.serialize_bits(&mut raw_value, 8)?;
+            value.loadout[i] = raw_value as u8;
+        }
+    }
+    stream.serialize_int(&mut value.player_name_length, 0, 15)?; // the length guards the slice (§6.3)
+    stream.serialize_bytes(&mut value.player_name[..value.player_name_length as usize])?;
+    for i in 0..value.player_name_length as usize {
+        if value.player_name[i] == 0 {
+            return Err(Error::Validation);
+        }
+    }
+    stream.serialize_int(&mut value.payload_length, 0, 16)?; // the length guards the slice (§6.3)
+    stream.serialize_bytes(&mut value.payload[..value.payload_length as usize])?;
+    stream.serialize_compressed_float_precomputed(&mut value.aim_x, 200, 8, 2.0_f32, -1.0_f32)?; // compressed float [-1.0, 1.0] @ 0.01, constants folded at generation
+    stream.serialize_compressed_float_precomputed(&mut value.aim_y, 200, 8, 2.0_f32, -1.0_f32)?; // compressed float [-1.0, 1.0] @ 0.01, constants folded at generation
+    stream.serialize_compressed_float_precomputed(&mut value.aim_z, 200, 8, 2.0_f32, -1.0_f32)?; // compressed float [-1.0, 1.0] @ 0.01, constants folded at generation
+    let mut c: u32 = 0;
+    stream.serialize_bits(&mut c, 32)?;
+    let c0 = u64::from(c);
+    stream.serialize_bits(&mut c, 32)?;
+    let c1 = u64::from(c);
+    stream.serialize_bits(&mut c, 32)?;
+    let c2 = u64::from(c);
+    let v0: u64 = c0 & 0xffffffff;
+    value.recoil = f32::from_bits(v0 as u32);
+    let v1: u64 = c1 | (c2 << 32);
+    value.drift = f64::from_bits(v1);
+    stream.serialize_u128(&mut value.wide_key)?;
+    stream.serialize_int128(&mut value.flux, -1267650600228229401496703205376, 1267650600228229401496703205376)?;
+    stream.serialize_fixed(&mut value.ping, 8, 8, 0, 250)?;
+    {
+        let mut reserved_value: u32 = 0;
+        stream.serialize_bits(&mut reserved_value, 4)?;
+        if reserved_value != 0 {
+            // reserved(4): a read rejects nonzero (SPEC §4.3)
+            return Err(Error::Validation);
+        }
+    }
+    stream.serialize_align()?; // rejects nonzero padding (SPEC §4.3)
+    let mut c: u32 = 0;
+    stream.serialize_bits(&mut c, 25)?;
+    let c0 = u64::from(c);
+    let v0: u64 = c0 & 0xffffff;
+    value.crc_hint = v0 as u32;
+    let v1: u64 = (c0 >> 24) & 0x1;
+    value.has_extra = v1 != 0;
+    if value.has_extra {
+        stream.serialize_int(&mut value.extra, 0, 255)?;
+        value.idle_ticks = 0;
+    } else {
+        stream.serialize_int(&mut value.idle_ticks, 0, 15)?;
+        value.extra = 0;
+    }
     Ok(())
 }
 

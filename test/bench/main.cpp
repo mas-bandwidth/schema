@@ -12,8 +12,9 @@
 // quiet re-pin.
 //
 // The pinned values are transcribed from serialize/bench.cpp BenchPacket::
-// Init() for BenchPacket; the other three rt shapes pin nonzero, in-range,
-// boundary-flavored values chosen here. RealPacket (bench/corpus/
+// Init() for BenchPacket; BenchInts and BenchBits pin nonzero, in-range,
+// boundary-flavored values chosen here, and BenchMixed — THE canonical
+// benchmark since issue #184 — pins the values below. RealPacket (bench/corpus/
 // RealWorld.schema, the §1.7 realistic snapshot) pins the ALL-DEFAULTS
 // instance: a RealPacket constructed and serialized unmodified, every field
 // at its declared default — the four branch gates carry theirs in the schema
@@ -125,20 +126,79 @@ static BenchBits pin_bench_bits()
     return in;
 }
 
+// BenchMixed — THE canonical benchmark shape (issue #184). This pin is the
+// definition every one of the nine bench legs transcribes; the golden keeps
+// the transcriptions honest. Structure fields (the two array counts, the two
+// used lengths, the union tag, the `if` gate) are pinned here and held FIXED
+// under §2.7 variation in every leg, so bytes/op never moves.
 static BenchMixed pin_bench_mixed()
 {
     BenchMixed in;
     in.sequence = 52428;
+    in.ack_sequence = 12345;
     in.ack_bits = 0xA5A5A5A5u;
-    in.entity_id = 2049;
-    in.pos_x = -16384;
-    in.pos_y = 16383;
-    in.pos_z = -1;
-    in.yaw = 511;
-    in.moving = true;
-    in.firing = false;
-    in.timestamp = 0x123456789ABCull;
-    in.weapon = 15;
+    in.session_id = 0x123456789ABCDEF0ull;
+    in.client_id = 0xDEADBEEFu;
+    in.nonce = 0xFEDCBA9876543210ull;
+    in.world_time = -987654321000ll;
+    in.frame_tick = 0x123456789ABCull;
+    in.server_time = 12345678;   // raw Q24.8 (48225.30 whole units), <= 65535 << 8
+
+    in.entities_count = 8;
+    for ( int i = 0; i < 8; i++ )
+    {
+        MixedEntity & e = in.entities[i];
+        e.entity_id = (uint32_t) ( 2049 + i * 17 );
+        e.pos_x = -16383 + i * 4096;
+        e.pos_y = 16383 - i * 4096;
+        e.pos_z = -1 + i * 2048;
+        e.yaw = (uint32_t) ( 511 - i * 64 );
+        e.pitch = (uint32_t) ( i * 73 );
+        e.vel_x = -2048 + i * 512;
+        e.vel_y = 2047 - i * 512;
+        e.vel_z = -1024 + i * 256;
+        e.health = 1000 - i * 100;
+        e.weapon = MixedWeapon( 1 + i );
+        e.damage = (MixedDamage) ( 0x5A + i );
+        e.moving = ( i % 2 ) == 0;
+        e.firing = ( i % 3 ) == 0;
+    }
+
+    in.stats_count = 80;
+    for ( int i = 0; i < 80; i++ )
+    {
+        in.stats[i].stat_id = (uint32_t) ( ( i * 3 ) % 256 );
+        in.stats[i].delta = -512 + ( i * 13 ) % 1024;
+    }
+
+    in.game_event.type = MixedEventType::Hit;
+    in.game_event.hit.target_id = 4095;
+    in.game_event.hit.damage = 4095;
+    in.game_event.hit.hit_kind = 7;
+    in.game_event.hit.crit = true;
+
+    in.loadout[0] = 0x11; in.loadout[1] = 0x22; in.loadout[2] = 0x33; in.loadout[3] = 0x44;
+
+    memcpy( in.player_name, "Rowan_01", 8 );
+    in.player_name_length = 8;
+
+    static const uint8_t payload[8] = { 0xDE, 0xAD, 0xBE, 0xEF, 0x01, 0x02, 0x03, 0x04 };
+    memcpy( in.payload, payload, 8 );
+    in.payload_length = 8;
+
+    in.aim_x = 0.5f;
+    in.aim_y = -0.25f;
+    in.aim_z = 0.75f;
+    in.recoil = 1.5f;
+    in.drift = -3.25;
+
+    in.wide_key = ( serialize::uint128_t( 0x0123456789ABCDEFull ) << 64 )
+                | serialize::uint128_t( 0xFEDCBA9876543210ull );
+    in.flux = ( serialize::int128_t( 1 ) << 99 ) + serialize::int128_t( 7 );
+    in.ping = 12345;             // raw UQ8.8 (48.22 whole units), <= 250 << 8
+    in.crc_hint = 0xABCDEFu;
+    in.has_extra = true;
+    in.extra = 200;
     return in;
 }
 
@@ -148,8 +208,8 @@ static BenchMixed pin_bench_mixed()
 template <typename T, typename WriteFn, typename ReadFn>
 static int pin_shape( const char * name, int expected_bytes, const char * where, const T & pinned, WriteFn write_fn, ReadFn read_fn )
 {
-    alignas( 8 ) static uint8_t buffer[256 + 8];  // + 8: read buffer allocations extend 8 bytes past the data
-    alignas( 8 ) static uint8_t twin[256];       // write-only twin: no read slack needed
+    alignas( 8 ) static uint8_t buffer[512 + 8];  // + 8: read buffer allocations extend 8 bytes past the data
+    alignas( 8 ) static uint8_t twin[512];       // write-only twin: no read slack needed
     memset( buffer, 0, sizeof( buffer ) );
     memset( twin, 0, sizeof( twin ) );
 
@@ -179,7 +239,7 @@ int main()
     static_assert( BenchPacketMaxBits == 392, "§1.3: BenchPacket is 392 bits" );
     static_assert( BenchIntsMaxBits == 110, "§1.3: BenchInts is 110 bits" );
     static_assert( BenchBitsMaxBits == 156, "§1.3: BenchBits is 156 bits" );
-    static_assert( BenchMixedMaxBits == 168, "§1.3: BenchMixed is 168 bits" );
+    static_assert( BenchMixedMaxBits == 3626, "§1.3: BenchMixed's worst case is 3626 bits (the pinned wire is 3504 = 438 bytes)" );
     // worst case includes the 181 bits of untaken branch bodies; the pinned
     // all-defaults wire is 1629 bits = 204 bytes (RealWorld.schema header)
     static_assert( realworld::RealPacketMaxBits == 1810, "RealWorld.schema: RealPacket worst case is 1810 bits" );
@@ -187,7 +247,7 @@ int main()
     if ( pin_shape( "bench_packet", 49, "BENCH-STANDARD.md §1.3", pin_bench_packet(), WriteBenchPacket, ReadBenchPacket ) ) return 1;
     if ( pin_shape( "bench_ints", 14, "BENCH-STANDARD.md §1.3", pin_bench_ints(), WriteBenchInts, ReadBenchInts ) ) return 1;
     if ( pin_shape( "bench_bits", 20, "BENCH-STANDARD.md §1.3", pin_bench_bits(), WriteBenchBits, ReadBenchBits ) ) return 1;
-    if ( pin_shape( "bench_mixed", 21, "BENCH-STANDARD.md §1.3", pin_bench_mixed(), WriteBenchMixed, ReadBenchMixed ) ) return 1;
+    if ( pin_shape( "bench_mixed", 438, "BENCH-STANDARD.md §1.3", pin_bench_mixed(), WriteBenchMixed, ReadBenchMixed ) ) return 1;
 
     // §1.7: the realistic snapshot — the all-defaults instance IS the pin
     if ( pin_shape( "real_packet", 204, "RealWorld.schema", realworld::RealPacket{}, realworld::WriteRealPacket, realworld::ReadRealPacket ) ) return 1;

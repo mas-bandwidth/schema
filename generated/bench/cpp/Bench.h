@@ -2,17 +2,19 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package bench — protocol id 0x694f261d887abaa5
+// package bench — protocol id 0xae3b1e28b96e4586
 
 #pragma once
 
 #include <cstdint>
 
+#include "serialize.h"
+
 namespace bench {
 
 // The unit's protocol id — the hash of its wire shape (SPEC §3.1). Two
 // sides at the same id speak identical bits; there is no other versioning.
-inline constexpr uint64_t ProtocolId = 0x694f261d887abaa5ull;
+inline constexpr uint64_t ProtocolId = 0xae3b1e28b96e4586ull;
 
 // type BenchPacket
 struct BenchPacket {
@@ -65,22 +67,301 @@ struct BenchBits {
 inline constexpr int64_t BenchBitsMaxBits = 156; // longest wire path; align pads at worst case (SPEC §6.1)
 inline constexpr int64_t BenchBitsMaxBytes = 24; // 8-byte write granularity; read slack per the contract above
 
-// type BenchMixed
-struct BenchMixed {
-    int32_t sequence = 0; // wire [0, 65535]
-    uint32_t ack_bits = 0;
-    uint32_t entity_id = 0;
-    int32_t pos_x = 0; // wire [-16384, 16383]
-    int32_t pos_y = 0; // wire [-16384, 16383]
-    int32_t pos_z = 0; // wire [-16384, 16383]
-    uint32_t yaw = 0;
-    bool moving = false;
-    bool firing = false;
-    uint64_t timestamp = 0;
-    int32_t weapon = 0; // wire [0, 15]
+// enum MixedWeapon — None = 0 implicit, variants dense from 1, wire range [0, 15] (SPEC §4.2)
+enum class MixedWeapon : uint8_t {
+    None = 0,
+    Fists = 1,
+    Pistol = 2,
+    Shotgun = 3,
+    Rifle = 4,
+    Sniper = 5,
+    Smg = 6,
+    Rocket = 7,
+    Grenade = 8,
+    Plasma = 9,
+    Railgun = 10,
+    Flamer = 11,
+    Mine = 12,
+    Turret = 13,
+    Drone = 14,
+    Repair = 15,
+    Max = 15, // the exported extent (SPEC §4.2)
 };
 
-inline constexpr int64_t BenchMixedMaxBits = 168; // longest wire path; align pads at worst case (SPEC §6.1)
-inline constexpr int64_t BenchMixedMaxBytes = 24; // 8-byte write granularity; read slack per the contract above
+// EnumName: debug/log name for any MixedWeapon value, out-of-set included
+inline const char * EnumName( MixedWeapon value )
+{
+    switch ( value )
+    {
+        case MixedWeapon::None: return "None";
+        case MixedWeapon::Fists: return "Fists";
+        case MixedWeapon::Pistol: return "Pistol";
+        case MixedWeapon::Shotgun: return "Shotgun";
+        case MixedWeapon::Rifle: return "Rifle";
+        case MixedWeapon::Sniper: return "Sniper";
+        case MixedWeapon::Smg: return "Smg";
+        case MixedWeapon::Rocket: return "Rocket";
+        case MixedWeapon::Grenade: return "Grenade";
+        case MixedWeapon::Plasma: return "Plasma";
+        case MixedWeapon::Railgun: return "Railgun";
+        case MixedWeapon::Flamer: return "Flamer";
+        case MixedWeapon::Mine: return "Mine";
+        case MixedWeapon::Turret: return "Turret";
+        case MixedWeapon::Drone: return "Drone";
+        case MixedWeapon::Repair: return "Repair";
+        default: return "???";
+    }
+}
+
+// flags MixedDamage — one bit per variant, consumed as masks; storage uint64 in every
+// target, wire 8 bits (SPEC §4.2)
+using MixedDamage = uint64_t;
+inline constexpr MixedDamage MixedDamage_Bleeding = 1ull << 0;
+inline constexpr MixedDamage MixedDamage_Burning = 1ull << 1;
+inline constexpr MixedDamage MixedDamage_Stunned = 1ull << 2;
+inline constexpr MixedDamage MixedDamage_Slowed = 1ull << 3;
+inline constexpr MixedDamage MixedDamage_Poisoned = 1ull << 4;
+inline constexpr MixedDamage MixedDamage_Shielded = 1ull << 5;
+inline constexpr MixedDamage MixedDamage_Airborne = 1ull << 6;
+inline constexpr MixedDamage MixedDamage_Downed = 1ull << 7;
+inline constexpr int64_t MixedDamageCount = 8; // the declared variant count (SPEC §4.2)
+
+// FlagNameMixedDamage: debug/log name for bit i of MixedDamage — out-of-range bits name as "???"
+inline const char * FlagNameMixedDamage( int bit )
+{
+    switch ( bit )
+    {
+        case 0: return "Bleeding";
+        case 1: return "Burning";
+        case 2: return "Stunned";
+        case 3: return "Slowed";
+        case 4: return "Poisoned";
+        case 5: return "Shielded";
+        case 6: return "Airborne";
+        case 7: return "Downed";
+        default: return "???";
+    }
+}
+
+#ifndef SCHEMA_BENCH_FLAG_APPEND_DEFINED
+#define SCHEMA_BENCH_FLAG_APPEND_DEFINED
+inline int SchemaFlagAppend_( char * buffer, int bufferSize, int position, const char * name )
+{
+    if ( position > 0 && position < bufferSize - 1 )
+    {
+        buffer[position++] = '|';
+    }
+    while ( *name && position < bufferSize - 1 )
+    {
+        buffer[position++] = *name++;
+    }
+    return position;
+}
+
+inline int SchemaFlagAppendHex_( char * buffer, int bufferSize, int position, uint64_t bits )
+{
+    position = SchemaFlagAppend_( buffer, bufferSize, position, "0x" );
+    int shift = 60;
+    while ( shift > 0 && ( ( bits >> shift ) & 0xf ) == 0 )
+    {
+        shift -= 4;
+    }
+    for ( ; shift >= 0; shift -= 4 )
+    {
+        if ( position < bufferSize - 1 )
+        {
+            buffer[position++] = "0123456789abcdef"[( bits >> shift ) & 0xf];
+        }
+    }
+    return position;
+}
+#endif // SCHEMA_BENCH_FLAG_APPEND_DEFINED
+
+// FlagNamesMixedDamage renders the set bits of value into buffer as "A|B" — "0" for
+// the empty set, bits past the declared variants as hex — NUL-terminates and
+// returns buffer; MixedDamageNamesMax bytes always suffice
+inline constexpr int MixedDamageNamesMax = 86;
+inline const char * FlagNamesMixedDamage( uint64_t value, char * buffer, int bufferSize )
+{
+    int position = 0;
+    if ( value & ( 1ull << 0 ) )
+    {
+        position = SchemaFlagAppend_( buffer, bufferSize, position, FlagNameMixedDamage( 0 ) );
+    }
+    if ( value & ( 1ull << 1 ) )
+    {
+        position = SchemaFlagAppend_( buffer, bufferSize, position, FlagNameMixedDamage( 1 ) );
+    }
+    if ( value & ( 1ull << 2 ) )
+    {
+        position = SchemaFlagAppend_( buffer, bufferSize, position, FlagNameMixedDamage( 2 ) );
+    }
+    if ( value & ( 1ull << 3 ) )
+    {
+        position = SchemaFlagAppend_( buffer, bufferSize, position, FlagNameMixedDamage( 3 ) );
+    }
+    if ( value & ( 1ull << 4 ) )
+    {
+        position = SchemaFlagAppend_( buffer, bufferSize, position, FlagNameMixedDamage( 4 ) );
+    }
+    if ( value & ( 1ull << 5 ) )
+    {
+        position = SchemaFlagAppend_( buffer, bufferSize, position, FlagNameMixedDamage( 5 ) );
+    }
+    if ( value & ( 1ull << 6 ) )
+    {
+        position = SchemaFlagAppend_( buffer, bufferSize, position, FlagNameMixedDamage( 6 ) );
+    }
+    if ( value & ( 1ull << 7 ) )
+    {
+        position = SchemaFlagAppend_( buffer, bufferSize, position, FlagNameMixedDamage( 7 ) );
+    }
+    if ( value >> 8 )
+    {
+        position = SchemaFlagAppendHex_( buffer, bufferSize, position, ( value >> 8 ) << 8 );
+    }
+    if ( position == 0 )
+    {
+        position = SchemaFlagAppend_( buffer, bufferSize, position, "0" );
+    }
+    if ( position < bufferSize )
+    {
+        buffer[position] = '\0';
+    }
+    return buffer;
+}
+
+// type MixedEntity
+struct MixedEntity {
+    uint32_t entity_id = 0;
+    int32_t pos_x = 0; // wire [-16383, 16383]
+    int32_t pos_y = 0; // wire [-16383, 16383]
+    int32_t pos_z = 0; // wire [-16383, 16383]
+    uint32_t yaw = 0;
+    uint32_t pitch = 0;
+    int32_t vel_x = 0; // wire [-2048, 2047]
+    int32_t vel_y = 0; // wire [-2048, 2047]
+    int32_t vel_z = 0; // wire [-2048, 2047]
+    int32_t health = 0; // wire [0, 1000]
+    MixedWeapon weapon = MixedWeapon::None;
+    MixedDamage damage = 0;
+    bool moving = false;
+    bool firing = false;
+};
+
+inline constexpr int64_t MixedEntityMaxBits = 135; // longest wire path; align pads at worst case (SPEC §6.1)
+inline constexpr int64_t MixedEntityMaxBytes = 24; // 8-byte write granularity; read slack per the contract above
+
+// type MixedStat
+struct MixedStat {
+    uint32_t stat_id = 0;
+    int32_t delta = 0; // wire [-512, 511]
+};
+
+inline constexpr int64_t MixedStatMaxBits = 18; // longest wire path; align pads at worst case (SPEC §6.1)
+inline constexpr int64_t MixedStatMaxBytes = 8; // 8-byte write granularity; read slack per the contract above
+
+// type MixedHitEvent
+struct MixedHitEvent {
+    uint32_t target_id = 0;
+    int32_t damage = 0; // wire [0, 4095]
+    int32_t hit_kind = 0; // wire [0, 7]
+    bool crit = false;
+};
+
+inline constexpr int64_t MixedHitEventMaxBits = 28; // longest wire path; align pads at worst case (SPEC §6.1)
+inline constexpr int64_t MixedHitEventMaxBytes = 8; // 8-byte write granularity; read slack per the contract above
+
+// type MixedChatEvent
+struct MixedChatEvent {
+    int32_t channel = 0; // wire [0, 3]
+    uint32_t speaker = 0;
+};
+
+inline constexpr int64_t MixedChatEventMaxBits = 14; // longest wire path; align pads at worst case (SPEC §6.1)
+inline constexpr int64_t MixedChatEventMaxBytes = 8; // 8-byte write granularity; read slack per the contract above
+
+// type MixedPickupEvent
+struct MixedPickupEvent {
+    uint32_t item_id = 0;
+    int32_t amount = 0; // wire [0, 255]
+};
+
+inline constexpr int64_t MixedPickupEventMaxBits = 18; // longest wire path; align pads at worst case (SPEC §6.1)
+inline constexpr int64_t MixedPickupEventMaxBytes = 8; // 8-byte write granularity; read slack per the contract above
+
+// MixedEventType: union MixedEvent's tag — None = 0, then each variant in declared order (SPEC §4.8)
+enum class MixedEventType : uint8_t {
+    None = 0,
+    Hit = 1,
+    Chat = 2,
+    Pickup = 3,
+    Max = 3, // the exported extent (SPEC §4.2)
+};
+
+// union MixedEvent — at most one of the arms; the tag says which. Construction is
+// None: the tag alone is initialized; an arm's storage is established ZEROED
+// when the arm is selected — by ReadMixedEvent before it decodes (SPEC §5), or by
+// assigning it: value.hit = MixedHitEvent{}. Bytes of unselected arms are indeterminate.
+struct MixedEvent
+{
+    MixedEventType type;
+
+    union
+    {
+        MixedHitEvent hit;
+        MixedChatEvent chat;
+        MixedPickupEvent pickup;
+    };
+
+    MixedEvent() : type( MixedEventType::None ) {} // the tag only — arms are zero-established at selection
+};
+
+inline constexpr int64_t MixedEventMaxBits = 30; // tag + the largest arm; None costs the tag only (SPEC §4.8)
+inline constexpr int64_t MixedEventMaxBytes = 8; // 8-byte write granularity; read slack per the contract above
+
+// type BenchMixed
+struct BenchMixed {
+    uint32_t sequence = 0;
+    int32_t ack_sequence = 0; // wire [0, 65535]
+    uint32_t ack_bits = 0;
+    uint64_t session_id = 0;
+    uint32_t client_id = 0;
+    uint64_t nonce = 0; // wire [0, 18446744073709551615]
+    int64_t world_time = 0; // wire [-1000000000000, 1000000000000]
+    uint64_t frame_tick = 0;
+    int32_t server_time = 0; // fixed(24, 8) — Q24.8, raw value scaled by 2^8; bounds in whole units; wire [0, 65535]
+    MixedEntity entities[8] = {}; // used count beside it; wire count in [1, 8]
+    int32_t entities_count = 0;
+    MixedStat stats[80] = {}; // used count beside it; wire count in [0, 80]
+    int32_t stats_count = 0;
+    MixedEvent game_event;
+    uint8_t loadout[4] = {};
+    char player_name[15 + 1] = {}; // string(15): max length, used length beside it (SPEC §4.7)
+    int32_t player_name_length = 0;
+    uint8_t payload[16] = {}; // bytes(16): fixed buffer, used length beside it (SPEC §4.7)
+    int32_t payload_length = 0;
+    float aim_x = 0.0f; // compressed float [-1, 1] @ 0.01
+    float aim_y = 0.0f; // compressed float [-1, 1] @ 0.01
+    float aim_z = 0.0f; // compressed float [-1, 1] @ 0.01
+    float recoil = 0.0f;
+    double drift = 0.0;
+    serialize::uint128_t wide_key = 0;
+    serialize::int128_t flux = 0; // wire [-1267650600228229401496703205376, 1267650600228229401496703205376]
+    uint16_t ping = 0; // ufixed(8, 8) — UQ8.8, raw value scaled by 2^8; bounds in whole units; wire [0, 250]
+    uint32_t crc_hint = 0;
+    bool has_extra = true;
+
+    // if has_extra — wire branch; storage holds both sides, a read zeroes the
+    // untaken side (SPEC §5)
+    int32_t extra = 0; // wire [0, 255]
+
+    // if has_extra else — wire branch; storage holds both sides, a read zeroes the
+    // untaken side (SPEC §5)
+    int32_t idle_ticks = 0; // wire [0, 15]
+};
+
+inline constexpr int64_t BenchMixedMaxBits = 3626; // longest wire path; align pads at worst case (SPEC §6.1)
+inline constexpr int64_t BenchMixedMaxBytes = 456; // 8-byte write granularity; read slack per the contract above
 
 } // namespace bench

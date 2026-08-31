@@ -1,8 +1,14 @@
 // Bench.schema — the family `rt` corpus (BENCH-STANDARD.md §1.3): the four
-// shapes the bespoke harnesses measure, transcribed from serialize/bench.cpp
-// so all five languages inherit ONE definition. The generated code produces
-// the testdata/wire/bench_*.bin goldens; hand-written family `rt` runners are
-// gated against those goldens byte-for-byte (§1.5) before any number.
+// shapes the bespoke harnesses measure, so all nine languages inherit ONE
+// definition. The generated code produces the testdata/wire/bench_*.bin
+// goldens; hand-written family `rt` runners are gated against those goldens
+// byte-for-byte (§1.5) before any number.
+//
+// BenchMixed is THE canonical benchmark (issue #184) — every construct the
+// schema language expresses, in one representative game message, integers
+// carrying the bytes. The other three shapes are transcribed from
+// serialize/bench.cpp and are diagnostic stress rows: BenchPacket a stream
+// packet, BenchInts ranged integers only, BenchBits bit windows only.
 
 package bench
 
@@ -55,18 +61,161 @@ type BenchBits
     b48 bits(48)
 } // = 156 bits, 20 bytes
 
-// serialize/bench.cpp:517-528. 168 bits = 21 wire bytes.
-type BenchMixed
+// ---------------------------------------------------------------------------
+// BenchMixed — THE canonical benchmark shape (issue #184).
+//
+// One representative game message that reaches EVERY construct the schema
+// language expresses, weighted so integers carry the bytes: 91.87% of the
+// 3504 pinned wire bits are integer-class (ranged ints, bit windows, raw
+// intN/uintN, the 128-bit family, fixed/ufixed, enum, flags, const/reserved,
+// and the length and count prefixes). Strings and byte arrays are SHORT —
+// not the common content of game packets — and the integer mass block
+// (`stats`) is the owner's own "10X more of the other types per-message"
+// rule made mechanical. bench/corpus/budget_test.go computes the share from
+// this file and FAILS the build below 90%, printing the full accounting.
+//
+// NOT EXPRESSIBLE IN SCHEMA v1 — named here rather than silently skipped
+// (SPEC §4.10, both deferred with their wire already decided):
+//   * serialize_wstring — wide strings. Deferred; no wstring field exists.
+//   * serialize_int_relative — relative integers. Deferred to the delta pass;
+//     the classic use (previous element feeding the next across an array)
+//     is not something the back-reference rule can express.
+// Wire-identical alternate SPELLINGS of covered operations, not separate
+// constructs: serialize_*_compile_time / serialize_int64_runtime_form (the
+// emitter picks the form; same bytes) and serialize_compressed_float_
+// precomputed. serialize_copy_string / serialize_copy_wstring are buffer
+// helpers, not stream operations.
+//
+// Structure fields — the array counts, the string/bytes used lengths, the
+// union tag and the `if` gate — are STRUCTURE (§2.7): pinned in every
+// runner and held fixed under variation, so bytes/op never moves and the
+// §1.5 gate's "fixed-width shape" residual continues to hold.
+// ---------------------------------------------------------------------------
+
+// 15 declared variants + the implicit None = 16 wire values, range [0, 15],
+// 4 bits (SPEC §4.2 sentinel-zero).
+enum MixedWeapon
 {
-    sequence  int32          | min = 0, max = 65535 // 16
-    ack_bits  bits(32) // 32
+    Fists,  Pistol, Shotgun, Rifle, Sniper,
+    Smg,    Rocket, Grenade, Plasma, Railgun,
+    Flamer, Mine, Turret, Drone, Repair
+}
+
+// 8 named bits, every pattern legal — 8 raw wire bits (SPEC §4.3).
+flags MixedDamage
+{
+    Bleeding, Burning, Stunned, Slowed,
+    Poisoned, Shielded, Airborne, Downed
+}
+
+// The per-entity update: the nested type carrying the bulk of the message.
+// Velocities are RANGED INTEGERS, not compressed floats — games quantize
+// velocity to integers, and the weighting law puts the bytes there.
+// 133 integer bits + 2 bool = 135 bits.
+type MixedEntity
+{
     entity_id bits(12) // 12
-    pos_x     int32          | min = -16384, max = 16383 // 15
-    pos_y     int32          | min = -16384, max = 16383 // 15
-    pos_z     int32          | min = -16384, max = 16383 // 15
+    pos_x     int32             | min = -16383, max = 16383 // 15
+    pos_y     int32             | min = -16383, max = 16383 // 15
+    pos_z     int32             | min = -16383, max = 16383 // 15
     yaw       bits(9) //  9
+    pitch     bits(9) //  9
+    vel_x     int32             | min = -2048, max = 2047 // 12
+    vel_y     int32             | min = -2048, max = 2047 // 12
+    vel_z     int32             | min = -2048, max = 2047 // 12
+    health    int32             | min = 0, max = 1000 // 10
+    weapon    MixedWeapon //  4
+    damage    MixedDamage //  8
     moving    bool //  1
     firing    bool //  1
-    timestamp bits(48) // 48
-    weapon    int32          | min = 0, max = 15 //  4
-} // = 168 bits, 21 bytes
+} // = 135 bits
+
+// The integer mass element: the smallest useful integer-only nested type,
+// arrayed to carry the weighting law. 18 bits.
+type MixedStat
+{
+    stat_id bits(8) //  8
+    delta   int32         | min = -512, max = 511 // 10
+} // = 18 bits
+
+// The three union payloads. `hit` is the pinned arm (all-integer payload)
+// and also the largest, so the pinned wire IS the union's worst case.
+type MixedHitEvent
+{
+    target_id bits(12) // 12
+    damage    int32          | min = 0, max = 4095 // 12
+    hit_kind  int32          | min = 0, max = 7 //  3
+    crit      bool //  1
+} // = 28 bits
+
+type MixedChatEvent
+{
+    channel int32          | min = 0, max = 3 //  2
+    speaker bits(12) // 12
+} // = 14 bits
+
+type MixedPickupEvent
+{
+    item_id bits(10) // 10
+    amount  int32          | min = 0, max = 255 //  8
+} // = 18 bits
+
+// 3 variants + implicit None: tag in minimal bits for [0, 3] = 2 bits, then
+// the selected arm only (SPEC §4.8).
+union MixedEvent
+{
+    hit    MixedHitEvent
+    chat   MixedChatEvent
+    pickup MixedPickupEvent
+}
+
+// The message. Pinned wire: 3504 bits = 438 bytes (the goldens are the
+// authority — testdata/wire/bench_mixed.bin).
+type BenchMixed
+{
+    // ---- header ----
+    const(0xC0DE, 16) // 16 — magic; a read REJECTS any other value
+    sequence      bits(16) // 16
+    ack_sequence  int32                                                                       | min = 0, max = 65535 // 16
+    ack_bits      bits(32) // 32
+    session_id    uint64 // 64 — bare 64-bit raw
+    client_id     uint32 // 32 — bare 32-bit raw
+    nonce         uint64                                                                      | min = 0, max = 18446744073709551615 // 64 — the full-unsigned ranged path
+    world_time    int64                                                                       | min = -1000000000000, max = 1000000000000 // 41 — the 64-bit ranged path
+    frame_tick    bits(48) // 48 — the >32-bit bits path (low 32 first, then the remainder)
+    server_time   fixed(24, 8)                                                                | min = 0, max = 65535 // 24 — Q24.8, 32-bit storage
+
+    // ---- entity block: the counted array of nested updates ----
+    entities [1..8]MixedEntity // 3 (count) + 8 x 135 = 1083, pinned at 8
+
+    // ---- integer mass: the weighting law, mechanical ----
+    stats [..80]MixedStat // 7 (count) + 80 x 18 = 1447, pinned at 80
+
+    // ---- event section: short, never dominating ----
+    game_event  MixedEvent // 2 (tag) + 28 (hit) = 30, pinned to `hit`
+    loadout     [4]uint8 // 32 — per-element raw uint8 (not statically aligned, so not the bulk path)
+    player_name string(15) // 4 (length) + align + 8 used bytes
+    payload     bytes(16) // 5 (length) + align + 8 used bytes
+
+    // ---- coverage singles ----
+    aim_x    float32                                 | min = -1, max = 1, resolution = 0.01 //  8 — compressed float
+    aim_y    float32                                 | min = -1, max = 1, resolution = 0.01 //  8
+    aim_z    float32                                 | min = -1, max = 1, resolution = 0.01 //  8
+    recoil   float32 // 32 — raw
+    drift    float64 // 64 — raw, low dword first
+    wide_key uint128 // 128 — bare, low half first
+    flux     int128                                  | min = -1267650600228229401496703205376, max = 1267650600228229401496703205376 // 102 — a range only 128 bits holds
+    ping     ufixed(8, 8)                            | min = 0, max = 250 // 16 — UQ8.8, 16-bit storage
+    reserved(4) //  4 — zeros; a read rejects nonzero
+    align //  pad to the next byte boundary
+    crc_hint  bits(24) // 24
+    has_extra bool = true //  1 — branch gate: STRUCTURE, pinned true
+    if has_extra
+    {
+        extra int32 | min = 0, max = 255 //  8
+    }
+    else
+    {
+        idle_ticks int32 | min = 0, max = 15 // (does not ride: gate pinned true)
+    }
+} // = 3504 bits, 438 bytes
