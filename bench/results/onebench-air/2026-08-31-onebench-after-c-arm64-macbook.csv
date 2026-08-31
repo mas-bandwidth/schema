@@ -1,0 +1,52 @@
+# schema bench results
+# date: 2026-08-31T12:06:42Z
+# host: macbook  arch: arm64  os: Darwin 25.6.0
+# cpu: Apple M2
+# build: Release
+# cpp compiler: Apple clang version 21.0.0 (clang-2100.1.1.101)
+# cpp flags: -O3 -DNDEBUG -DSERIALIZE_RELEASE -DBENCH_OPT="O3" -std=c++17 -Wall -Wextra -Werror -ffp-contract=off -fno-rtti -Igenerated/cpp -Igenerated/bench/cpp -Itest -I../serialize
+# c compiler: Apple clang version 21.0.0 (clang-2100.1.1.101)
+# c flags: -O3 -DNDEBUG -DBENCH_OPT="O3" -std=c99 -Wall -Wextra -Werror -Igenerated/c -Igenerated/bench/c -I../serialize.c (serialize.c compiled in, no LTO)
+# go: go version go1.27.0 darwin/arm64 (go run, default optimized build)
+# rust: cargo 1.98.0 (797e8a9bc 2026-08-05) (Homebrew); rustc 1.98.0 (88d9e12ae 2026-08-18) (Homebrew) (cargo run --release at opt-level 3, no LTO)
+# dotnet: 10.0.400 (dotnet run -c Release, workstation GC)
+# node: v26.7.0 (NODE_ENV=production — serialize.js's caller-trust release mode; the runner records the mode that ran in its checks column)
+# java: openjdk 21.0.12.1 2026-08-18 LTS (generated codecs, zero runtime dependency; default JVM flags, no -ea)
+# dart: Dart SDK version: 3.13.2 (stable) (Tue Aug 25 01:01:12 2026 -0700) on "macos_arm64" (generated codecs, zero runtime dependency; AOT executable)
+# elixir: 1.20.4 (generated codecs, zero runtime dependency; pinned BEAM toolchain)
+# pinning: none
+# noise: unlabelled
+# schema commit: df5756e
+# serialize commit: cebaed2 (main) [build-verified: /Users/glenn/rowan-working/serialize]
+# serialize.c commit: 37db942 (main) [build-verified: /Users/glenn/rowan-working/serialize.c]
+# serialize.go commit: ecfb3c9 (main) [build-verified: /Users/glenn/rowan-working/serialize.go]
+# serialize.rs commit: 6b52aa6 (main) [build-verified: /Users/glenn/rowan-working/serialize.rs]
+# serialize.cs commit: f08327e (main) [build-verified: /Users/glenn/rowan-working/serialize.cs]
+# serialize.js commit: e391f1e (main) [build-verified: /Users/glenn/rowan-working/serialize.js]
+lang,bench,path,iters,bytes_per_op,runs,median_msgs_per_sec,min_msgs_per_sec,max_msgs_per_sec,median_mb_per_sec,spread_pct,corpus_id,family,linkage,checks,opt,inline
+c,rigidbody_moving,write,24000000,105,7,601533911,575139591,608287923,60235.08,5.51,a4bc52bae5343e60,gen,hdr,removed,O3,unknown
+c,rigidbody_moving,read,24000000,105,7,448338346,446046909,456109010,44894.72,2.24,a4bc52bae5343e60,gen,hdr,removed,O3,unknown
+c,rigidbody_at_rest,write,32000000,57,7,801924619,760347859,814498066,43592.17,6.75,a4bc52bae5343e60,gen,hdr,removed,O3,unknown
+c,rigidbody_at_rest,read,32000000,57,7,475031174,466867030,477077898,25822.43,2.15,a4bc52bae5343e60,gen,hdr,removed,O3,unknown
+c,chat,write,48000000,13,7,127094073,125897677,127549665,1575.68,1.30,a4bc52bae5343e60,gen,hdr,removed,O3,unknown
+c,chat,read,48000000,13,7,220226926,209479835,222393135,2730.32,5.86,a4bc52bae5343e60,gen,hdr,removed,O3,unknown
+c,test,write,192000000,6,7,702560687,626777093,726469208,4020.08,14.19,a4bc52bae5343e60,gen,hdr,removed,O3,unknown
+c,test,read,192000000,6,7,1010021305,987029811,1015443199,5779.39,2.81,a4bc52bae5343e60,gen,hdr,removed,O3,unknown
+c,inputpacket,write,16000000,61,7,98462144,97370983,99883261,5727.95,2.55,a4bc52bae5343e60,gen,hdr,removed,O3,unknown
+c,inputpacket,read,16000000,61,7,237272552,234243467,238261880,13803.13,1.69,a4bc52bae5343e60,gen,hdr,removed,O3,unknown
+c,shipcreate,write,32000000,28,7,435646799,417689135,438440249,11633.02,4.76,a4bc52bae5343e60,gen,hdr,removed,O3,unknown
+c,shipcreate,read,32000000,28,7,248551411,241465697,251926847,6637.04,4.21,a4bc52bae5343e60,gen,hdr,removed,O3,unknown
+c,probe_header,write,256000000,10,7,1008855068,996248502,1025776645,9621.19,2.93,a4bc52bae5343e60,gen,hdr,removed,O3,unknown
+c,probe_header,read,256000000,10,7,1397601149,1365304207,1401549369,13328.56,2.59,a4bc52bae5343e60,gen,hdr,removed,O3,unknown
+c,probebits,write,128000000,26,7,568368516,563757443,571420919,14093.00,1.35,a4bc52bae5343e60,gen,hdr,removed,O3,unknown
+c,probebits,read,128000000,26,7,764452938,758720844,774954441,18955.02,2.12,a4bc52bae5343e60,gen,hdr,removed,O3,unknown
+c,probearray,write,20000000,47,7,75549814,74890940,75927838,3386.35,1.37,a4bc52bae5343e60,gen,hdr,removed,O3,unknown
+c,probearray,read,20000000,47,7,131159582,128691019,131559906,5878.93,2.19,a4bc52bae5343e60,gen,hdr,removed,O3,unknown
+c,testdata,write,8000000,92,7,43126685,42653927,43652872,3783.85,2.32,a4bc52bae5343e60,gen,hdr,removed,O3,unknown
+c,testdata,read,8000000,92,7,71492404,62003007,71783000,6272.60,13.68,a4bc52bae5343e60,gen,hdr,removed,O3,unknown
+c,real_packet,write,8000000,204,7,24162979,23373224,24353491,4700.90,4.06,a4bc52bae5343e60,gen,hdr,removed,O3,unknown
+c,real_packet,read,8000000,204,7,28535454,28378858,28701714,5551.56,1.13,a4bc52bae5343e60,gen,hdr,removed,O3,unknown
+c,bench_mixed,write,4000000,438,7,6504678,6471937,6593044,2717.07,1.86,a4bc52bae5343e60,gen,hdr,removed,O3,unknown
+c,bench_mixed,round_trip,4000000,438,7,3599848,3406119,3629313,1503.69,6.20,a4bc52bae5343e60,gen,hdr,removed,O3,unknown
+c,bitpacker,write,24576,65518,7,59122,58777,59300,3694.09,0.88,a4bc52bae5343e60,bits,hdr,removed,O3,unknown
+c,bitpacker,read,24576,65518,7,55112,54880,55772,3443.55,1.62,a4bc52bae5343e60,bits,hdr,removed,O3,unknown
