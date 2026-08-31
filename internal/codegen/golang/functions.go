@@ -111,12 +111,14 @@ func (g *gen) emitWriteItems(items []ir.Item, ind string) {
 		run = &flatRun{}
 	}
 	for _, item := range items {
-		if p, ok := g.flatPieceOf(item, "value."); ok {
-			if run.bits+p.bits > maxRunBits {
-				flush()
+		if ps, ok := g.flatPiecesOf(item, "value."); ok {
+			for _, p := range ps {
+				if run.bits+p.bits > maxRunBits {
+					flush()
+				}
+				run.pieces = append(run.pieces, p)
+				run.bits += p.bits
 			}
-			run.pieces = append(run.pieces, p)
-			run.bits += p.bits
 			continue
 		}
 		flush()
@@ -166,12 +168,14 @@ func (g *gen) emitReadItems(items []ir.Item, ind string) {
 		run = &flatRun{}
 	}
 	for _, item := range items {
-		if p, ok := g.flatPieceOf(item, "value."); ok {
-			if run.bits+p.bits > maxRunBits {
-				flush()
+		if ps, ok := g.flatPiecesOf(item, "value."); ok {
+			for _, p := range ps {
+				if run.bits+p.bits > maxRunBits {
+					flush()
+				}
+				run.pieces = append(run.pieces, p)
+				run.bits += p.bits
 			}
-			run.pieces = append(run.pieces, p)
-			run.bits += p.bits
 			continue
 		}
 		flush()

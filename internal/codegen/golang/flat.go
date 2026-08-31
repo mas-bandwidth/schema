@@ -282,6 +282,61 @@ func (g *gen) emitFlatReadRun(r *flatRun, ind string) {
 	}
 }
 
+// maxUnrollBits caps the fixed scalar array a run will absorb. A small array
+// of scalars is a static run of bound*width bits like any other; past this it
+// is left to its loop, which keeps generated code proportional to the schema.
+const maxUnrollBits = 128
+
+// flatPiecesOf classifies one item into the pieces it contributes to a run.
+// Most items are one piece. A nested struct that flattens whole contributes
+// its fields, so the parent packs them into ITS chunks rather than paying a
+// call; a small fixed array of scalars contributes one piece per element.
+func (g *gen) flatPiecesOf(item ir.Item, base string) ([]flatPiece, bool) {
+	it, isField := item.(*ir.FieldItem)
+	if !isField {
+		p, ok := g.flatPieceOf(item, base)
+		if !ok {
+			return nil, false
+		}
+		return []flatPiece{p}, true
+	}
+	f := it.F
+	name := base + ir.GoExportName(f.Name)
+
+	if f.Array == ir.ArrayFixed && !g.bulkBytes[f] {
+		// a fixed bound: the element offsets are
+		// generation-time constants like any other field's
+		elem, ok := g.flatFieldPiece(item, f, base)
+		if ok && elem.bits > 0 && f.ArrayBound*elem.bits <= maxUnrollBits {
+			out := make([]flatPiece, 0, f.ArrayBound)
+			for k := int64(0); k < f.ArrayBound; k++ {
+				p, ok := g.flatArrayElemPiece(item, f, fmt.Sprintf("%s[%d]", name, k))
+				if !ok {
+					return nil, false
+				}
+				out = append(out, p)
+			}
+			return out, true
+		}
+	}
+
+	if f.Array == ir.ArrayNone && f.Type.Kind == ir.TNamed {
+		if st, ok := f.Type.Ref.(*ir.Struct); ok {
+			run, ok := g.flatStructRun(st, name+".")
+			if !ok {
+				return nil, false
+			}
+			return run.pieces, true
+		}
+	}
+
+	p, ok := g.flatPieceOf(item, base)
+	if !ok {
+		return nil, false
+	}
+	return []flatPiece{p}, true
+}
+
 // flatStructRun builds the whole-body run for a nested struct against a base
 // expression, or reports false if any of its items breaks a run. It is what
 // lets a nested struct's fields be placed by the ENCLOSING function instead of
@@ -297,12 +352,14 @@ func (g *gen) flatStructRun(st *ir.Struct, base string) (*flatRun, bool) {
 	}
 	run := &flatRun{}
 	for _, item := range st.Items {
-		p, ok := g.flatPieceOf(item, base)
+		ps, ok := g.flatPiecesOf(item, base)
 		if !ok {
 			return nil, false
 		}
-		run.pieces = append(run.pieces, p)
-		run.bits += p.bits
+		for _, p := range ps {
+			run.pieces = append(run.pieces, p)
+			run.bits += p.bits
+		}
 	}
 	if run.bits > maxRunBits || !run.worthFlattening() {
 		return nil, false
@@ -385,9 +442,17 @@ func (g *gen) flatReservedPiece(it *ir.ReservedItem) flatPiece {
 // flatFieldPiece classifies a scalar field. Fixed point and the 128-bit
 // family stay on the per-field path and break the run: their value arithmetic
 // lives in the runtime.
-func (g *gen) flatFieldPiece(item ir.Item, f *ir.Field, base string) (flatPiece, bool) {
-	name := base + ir.GoExportName(f.Name)
+// flatArrayElemPiece classifies one element of an unrolled fixed array: the
+// same scalar classification, against the element's own expression.
+func (g *gen) flatArrayElemPiece(item ir.Item, f *ir.Field, name string) (flatPiece, bool) {
+	return g.flatScalarPiece(item, f, name)
+}
 
+func (g *gen) flatFieldPiece(item ir.Item, f *ir.Field, base string) (flatPiece, bool) {
+	return g.flatScalarPiece(item, f, base+ir.GoExportName(f.Name))
+}
+
+func (g *gen) flatScalarPiece(item ir.Item, f *ir.Field, name string) (flatPiece, bool) {
 	switch f.Type.Kind {
 	case ir.TBool:
 		return flatPiece{

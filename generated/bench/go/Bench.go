@@ -1064,11 +1064,13 @@ func WriteBenchMixed(stream *serialize.WriteStream, value *BenchMixed) error {
 	if err := WriteMixedEvent(stream, &value.GameEvent); err != nil {
 		return err
 	}
-	for i := 0; i < 4; i++ {
-		{
-			rawValue := uint32(value.Loadout[i])
-			stream.SerializeBits(&rawValue, 8)
-		}
+	{
+		f0 := (uint64(value.Loadout[0])) & 0xff
+		f1 := (uint64(value.Loadout[1])) & 0xff
+		f2 := (uint64(value.Loadout[2])) & 0xff
+		f3 := (uint64(value.Loadout[3])) & 0xff
+		w0 := uint32(f0 | (f1 << 8) | (f2 << 16) | (f3 << 24))
+		stream.SerializeBits(&w0, 32)
 	}
 	if value.PlayerNameLength < 0 || value.PlayerNameLength > 15 {
 		return serialize.ErrValueOutOfRange
@@ -1333,12 +1335,21 @@ func ReadBenchMixed(stream *serialize.ReadStream, value *BenchMixed) error {
 	if err := ReadMixedEvent(stream, &value.GameEvent); err != nil {
 		return err
 	}
-	for i := 0; i < 4; i++ {
-		{
-			rawValue := uint32(0)
-			stream.SerializeBits(&rawValue, 8)
-			value.Loadout[i] = uint8(rawValue)
+	{
+		n0 := uint32(0)
+		stream.SerializeBits(&n0, 32)
+		c0 := uint64(n0)
+		if stream.Err() != nil {
+			return stream.Err()
 		}
+		v0 := c0 & 0xff
+		value.Loadout[0] = uint8(v0)
+		v1 := (c0 >> 8) & 0xff
+		value.Loadout[1] = uint8(v1)
+		v2 := (c0 >> 16) & 0xff
+		value.Loadout[2] = uint8(v2)
+		v3 := (c0 >> 24) & 0xff
+		value.Loadout[3] = uint8(v3)
 	}
 	{
 		offsetValue := uint32(0)

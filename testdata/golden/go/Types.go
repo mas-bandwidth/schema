@@ -405,38 +405,142 @@ const RigidBodyMaxBits = 833
 const RigidBodyMaxBytes = 112
 
 func WriteRigidBody(stream *serialize.WriteStream, value *RigidBody) error {
-	if err := WriteVec3(stream, &value.Position); err != nil {
-		return err
+	{
+		f0 := math.Float64bits(value.Position.X)
+		f1 := math.Float64bits(value.Position.Y)
+		f2 := math.Float64bits(value.Position.Z)
+		f3 := math.Float64bits(value.Orientation.X)
+		w0 := f0
+		stream.SerializeBits64(&w0, 64)
+		w1 := f1
+		stream.SerializeBits64(&w1, 64)
+		w2 := f2
+		stream.SerializeBits64(&w2, 64)
+		w3 := f3
+		stream.SerializeBits64(&w3, 64)
 	}
-	if err := WriteQuat(stream, &value.Orientation); err != nil {
-		return err
-	}
-	stream.SerializeBool(&value.AtRest)
-	if !value.AtRest {
-		if err := WriteVec3(stream, &value.LinearVelocity); err != nil {
-			return err
+	{
+		f0 := math.Float64bits(value.Orientation.Y)
+		f1 := math.Float64bits(value.Orientation.Z)
+		f2 := math.Float64bits(value.Orientation.W)
+		f3 := uint64(0)
+		if value.AtRest {
+			f3 = 1
 		}
-		if err := WriteVec3(stream, &value.AngularVelocity); err != nil {
-			return err
+		w0 := f0
+		stream.SerializeBits64(&w0, 64)
+		w1 := f1
+		stream.SerializeBits64(&w1, 64)
+		w2 := f2
+		stream.SerializeBits64(&w2, 64)
+		w3 := uint32(f3)
+		stream.SerializeBits(&w3, 1)
+	}
+	if !value.AtRest {
+		{
+			f0 := math.Float64bits(value.LinearVelocity.X)
+			f1 := math.Float64bits(value.LinearVelocity.Y)
+			f2 := math.Float64bits(value.LinearVelocity.Z)
+			f3 := math.Float64bits(value.AngularVelocity.X)
+			w0 := f0
+			stream.SerializeBits64(&w0, 64)
+			w1 := f1
+			stream.SerializeBits64(&w1, 64)
+			w2 := f2
+			stream.SerializeBits64(&w2, 64)
+			w3 := f3
+			stream.SerializeBits64(&w3, 64)
+		}
+		{
+			f0 := math.Float64bits(value.AngularVelocity.Y)
+			f1 := math.Float64bits(value.AngularVelocity.Z)
+			w0 := f0
+			stream.SerializeBits64(&w0, 64)
+			w1 := f1
+			stream.SerializeBits64(&w1, 64)
 		}
 	}
 	return stream.Err()
 }
 
 func ReadRigidBody(stream *serialize.ReadStream, value *RigidBody) error {
-	if err := ReadVec3(stream, &value.Position); err != nil {
-		return err
-	}
-	if err := ReadQuat(stream, &value.Orientation); err != nil {
-		return err
-	}
-	stream.SerializeBool(&value.AtRest)
-	if !value.AtRest {
-		if err := ReadVec3(stream, &value.LinearVelocity); err != nil {
-			return err
+	{
+		c0 := uint64(0)
+		stream.SerializeBits64(&c0, 64)
+		c1 := uint64(0)
+		stream.SerializeBits64(&c1, 64)
+		c2 := uint64(0)
+		stream.SerializeBits64(&c2, 64)
+		c3 := uint64(0)
+		stream.SerializeBits64(&c3, 64)
+		if stream.Err() != nil {
+			return stream.Err()
 		}
-		if err := ReadVec3(stream, &value.AngularVelocity); err != nil {
-			return err
+		v0 := c0
+		value.Position.X = math.Float64frombits(v0)
+		v1 := c1
+		value.Position.Y = math.Float64frombits(v1)
+		v2 := c2
+		value.Position.Z = math.Float64frombits(v2)
+		v3 := c3
+		value.Orientation.X = math.Float64frombits(v3)
+	}
+	{
+		c0 := uint64(0)
+		stream.SerializeBits64(&c0, 64)
+		c1 := uint64(0)
+		stream.SerializeBits64(&c1, 64)
+		c2 := uint64(0)
+		stream.SerializeBits64(&c2, 64)
+		n3 := uint32(0)
+		stream.SerializeBits(&n3, 1)
+		c3 := uint64(n3)
+		if stream.Err() != nil {
+			return stream.Err()
+		}
+		v0 := c0
+		value.Orientation.Y = math.Float64frombits(v0)
+		v1 := c1
+		value.Orientation.Z = math.Float64frombits(v1)
+		v2 := c2
+		value.Orientation.W = math.Float64frombits(v2)
+		v3 := c3 & 0x1
+		value.AtRest = v3 != 0
+	}
+	if !value.AtRest {
+		{
+			c0 := uint64(0)
+			stream.SerializeBits64(&c0, 64)
+			c1 := uint64(0)
+			stream.SerializeBits64(&c1, 64)
+			c2 := uint64(0)
+			stream.SerializeBits64(&c2, 64)
+			c3 := uint64(0)
+			stream.SerializeBits64(&c3, 64)
+			if stream.Err() != nil {
+				return stream.Err()
+			}
+			v0 := c0
+			value.LinearVelocity.X = math.Float64frombits(v0)
+			v1 := c1
+			value.LinearVelocity.Y = math.Float64frombits(v1)
+			v2 := c2
+			value.LinearVelocity.Z = math.Float64frombits(v2)
+			v3 := c3
+			value.AngularVelocity.X = math.Float64frombits(v3)
+		}
+		{
+			c0 := uint64(0)
+			stream.SerializeBits64(&c0, 64)
+			c1 := uint64(0)
+			stream.SerializeBits64(&c1, 64)
+			if stream.Err() != nil {
+				return stream.Err()
+			}
+			v0 := c0
+			value.AngularVelocity.Y = math.Float64frombits(v0)
+			v1 := c1
+			value.AngularVelocity.Z = math.Float64frombits(v1)
 		}
 	} else {
 		value.LinearVelocity = Vec3{}
@@ -736,25 +840,68 @@ const ShipCreateMaxBytes = 32
 
 func WriteShipCreate(stream *serialize.WriteStream, value *ShipCreate) error {
 	{
-		enumValue := int32(value.ShipType)
-		if enumValue < 0 || enumValue > 5 {
+		enumValue0 := int32(value.ShipType)
+		if enumValue0 < 0 || enumValue0 > 5 {
 			return serialize.ErrValueOutOfRange
 		}
-		{
-			offsetValue := uint32(enumValue)
-			stream.SerializeBits(&offsetValue, 3)
+		if value.Position.X < -MaxPositionUnits || value.Position.X > MaxPositionUnits {
+			return serialize.ErrValueOutOfRange
 		}
+		if value.Position.Y < -MaxPositionUnits || value.Position.Y > MaxPositionUnits {
+			return serialize.ErrValueOutOfRange
+		}
+		if value.Position.Z < -MaxPositionUnits || value.Position.Z > MaxPositionUnits {
+			return serialize.ErrValueOutOfRange
+		}
+		rangeValue4 := int32(value.Rotation.X)
+		if rangeValue4 < -RotationUnits || rangeValue4 > RotationUnits {
+			return serialize.ErrValueOutOfRange
+		}
+		rangeValue5 := int32(value.Rotation.Y)
+		if rangeValue5 < -RotationUnits || rangeValue5 > RotationUnits {
+			return serialize.ErrValueOutOfRange
+		}
+		rangeValue6 := int32(value.Rotation.Z)
+		if rangeValue6 < -RotationUnits || rangeValue6 > RotationUnits {
+			return serialize.ErrValueOutOfRange
+		}
+		rangeValue7 := int32(value.Rotation.W)
+		if rangeValue7 < -RotationUnits || rangeValue7 > RotationUnits {
+			return serialize.ErrValueOutOfRange
+		}
+		if value.LinearVelocity.X < -MaxVelocityUnits || value.LinearVelocity.X > MaxVelocityUnits {
+			return serialize.ErrValueOutOfRange
+		}
+		if value.LinearVelocity.Y < -MaxVelocityUnits || value.LinearVelocity.Y > MaxVelocityUnits {
+			return serialize.ErrValueOutOfRange
+		}
+		if value.LinearVelocity.Z < -MaxVelocityUnits || value.LinearVelocity.Z > MaxVelocityUnits {
+			return serialize.ErrValueOutOfRange
+		}
+		f0 := (uint64(uint32(enumValue0))) & 0x7
+		f1 := (uint64(uint32(value.Position.X - (-MaxPositionUnits)))) & 0x1ffffff
+		f2 := (uint64(uint32(value.Position.Y - (-MaxPositionUnits)))) & 0x1ffffff
+		f3 := (uint64(uint32(value.Position.Z - (-MaxPositionUnits)))) & 0x1ffffff
+		f4 := (uint64(uint32(rangeValue4 - (-RotationUnits)))) & 0xfff
+		f5 := (uint64(uint32(rangeValue5 - (-RotationUnits)))) & 0xfff
+		f6 := (uint64(uint32(rangeValue6 - (-RotationUnits)))) & 0xfff
+		f7 := (uint64(uint32(rangeValue7 - (-RotationUnits)))) & 0xfff
+		f8 := (uint64(uint32(value.LinearVelocity.X - (-MaxVelocityUnits)))) & 0x7fffff
+		f9 := (uint64(uint32(value.LinearVelocity.Y - (-MaxVelocityUnits)))) & 0x7fffff
+		f10 := (uint64(uint32(value.LinearVelocity.Z - (-MaxVelocityUnits)))) & 0x7fffff
+		f11 := uint64(0)
+		if value.HasFlags {
+			f11 = 1
+		}
+		w0 := f0 | (f1 << 3) | (f2 << 28) | (f3 << 53)
+		stream.SerializeBits64(&w0, 64)
+		w1 := (f3 >> 11) | (f4 << 14) | (f5 << 26) | (f6 << 38) | (f7 << 50) | (f8 << 62)
+		stream.SerializeBits64(&w1, 64)
+		w2 := (f8 >> 2) | (f9 << 21) | (f10 << 44)
+		stream.SerializeBits64(&w2, 64)
+		w3 := uint32((f10 >> 20) | (f11 << 3))
+		stream.SerializeBits(&w3, 4)
 	}
-	if err := WriteQuantizedPosition(stream, &value.Position); err != nil {
-		return err
-	}
-	if err := WriteQuantizedRotation(stream, &value.Rotation); err != nil {
-		return err
-	}
-	if err := WriteQuantizedVelocity(stream, &value.LinearVelocity); err != nil {
-		return err
-	}
-	stream.SerializeBool(&value.HasFlags)
 	if value.HasFlags {
 		if value.Flags >= 1<<4 { // a mask bit above the wire width cannot ride
 			return serialize.ErrValueOutOfRange
@@ -792,26 +939,106 @@ func WriteShipCreate(stream *serialize.WriteStream, value *ShipCreate) error {
 
 func ReadShipCreate(stream *serialize.ReadStream, value *ShipCreate) error {
 	{
-		offsetValue := uint32(0)
-		stream.SerializeBits(&offsetValue, 3)
+		c0 := uint64(0)
+		stream.SerializeBits64(&c0, 64)
+		c1 := uint64(0)
+		stream.SerializeBits64(&c1, 64)
+		c2 := uint64(0)
+		stream.SerializeBits64(&c2, 64)
+		n3 := uint32(0)
+		stream.SerializeBits(&n3, 4)
+		c3 := uint64(n3)
 		if stream.Err() != nil {
 			return stream.Err()
 		}
-		if offsetValue > 5 { // a value smuggled into the bit headroom is refused (SPEC §4.3)
+		v0 := c0 & 0x7
+		if v0 > 5 {
 			return serialize.ErrValueOutOfRange
 		}
-		value.ShipType = ShipType(int32(offsetValue))
+		value.ShipType = ShipType(int32(v0))
+		v1 := (c0 >> 3) & 0x1ffffff
+		if v1 > 16777216 { // a value smuggled into the bit headroom is refused (SPEC §4.3)
+			return serialize.ErrValueOutOfRange
+		}
+		{
+			lowValue := int32(-MaxPositionUnits)
+			value.Position.X = int32(uint32(v1) + uint32(lowValue))
+		}
+		v2 := (c0 >> 28) & 0x1ffffff
+		if v2 > 16777216 { // a value smuggled into the bit headroom is refused (SPEC §4.3)
+			return serialize.ErrValueOutOfRange
+		}
+		{
+			lowValue := int32(-MaxPositionUnits)
+			value.Position.Y = int32(uint32(v2) + uint32(lowValue))
+		}
+		v3 := ((c0 >> 53) | (c1 << 11)) & 0x1ffffff
+		if v3 > 16777216 { // a value smuggled into the bit headroom is refused (SPEC §4.3)
+			return serialize.ErrValueOutOfRange
+		}
+		{
+			lowValue := int32(-MaxPositionUnits)
+			value.Position.Z = int32(uint32(v3) + uint32(lowValue))
+		}
+		v4 := (c1 >> 14) & 0xfff
+		if v4 > 2048 { // a value smuggled into the bit headroom is refused (SPEC §4.3)
+			return serialize.ErrValueOutOfRange
+		}
+		{
+			lowValue := int32(-RotationUnits)
+			value.Rotation.X = int16(int32(uint32(v4) + uint32(lowValue)))
+		}
+		v5 := (c1 >> 26) & 0xfff
+		if v5 > 2048 { // a value smuggled into the bit headroom is refused (SPEC §4.3)
+			return serialize.ErrValueOutOfRange
+		}
+		{
+			lowValue := int32(-RotationUnits)
+			value.Rotation.Y = int16(int32(uint32(v5) + uint32(lowValue)))
+		}
+		v6 := (c1 >> 38) & 0xfff
+		if v6 > 2048 { // a value smuggled into the bit headroom is refused (SPEC §4.3)
+			return serialize.ErrValueOutOfRange
+		}
+		{
+			lowValue := int32(-RotationUnits)
+			value.Rotation.Z = int16(int32(uint32(v6) + uint32(lowValue)))
+		}
+		v7 := (c1 >> 50) & 0xfff
+		if v7 > 2048 { // a value smuggled into the bit headroom is refused (SPEC §4.3)
+			return serialize.ErrValueOutOfRange
+		}
+		{
+			lowValue := int32(-RotationUnits)
+			value.Rotation.W = int16(int32(uint32(v7) + uint32(lowValue)))
+		}
+		v8 := ((c1 >> 62) | (c2 << 2)) & 0x7fffff
+		if v8 > 4194304 { // a value smuggled into the bit headroom is refused (SPEC §4.3)
+			return serialize.ErrValueOutOfRange
+		}
+		{
+			lowValue := int32(-MaxVelocityUnits)
+			value.LinearVelocity.X = int32(uint32(v8) + uint32(lowValue))
+		}
+		v9 := (c2 >> 21) & 0x7fffff
+		if v9 > 4194304 { // a value smuggled into the bit headroom is refused (SPEC §4.3)
+			return serialize.ErrValueOutOfRange
+		}
+		{
+			lowValue := int32(-MaxVelocityUnits)
+			value.LinearVelocity.Y = int32(uint32(v9) + uint32(lowValue))
+		}
+		v10 := ((c2 >> 44) | (c3 << 20)) & 0x7fffff
+		if v10 > 4194304 { // a value smuggled into the bit headroom is refused (SPEC §4.3)
+			return serialize.ErrValueOutOfRange
+		}
+		{
+			lowValue := int32(-MaxVelocityUnits)
+			value.LinearVelocity.Z = int32(uint32(v10) + uint32(lowValue))
+		}
+		v11 := (c3 >> 3) & 0x1
+		value.HasFlags = v11 != 0
 	}
-	if err := ReadQuantizedPosition(stream, &value.Position); err != nil {
-		return err
-	}
-	if err := ReadQuantizedRotation(stream, &value.Rotation); err != nil {
-		return err
-	}
-	if err := ReadQuantizedVelocity(stream, &value.LinearVelocity); err != nil {
-		return err
-	}
-	stream.SerializeBool(&value.HasFlags)
 	if value.HasFlags {
 		{
 			flagsValue := uint32(0)
