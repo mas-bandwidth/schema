@@ -961,17 +961,14 @@ func WriteBenchMixed(stream *serialize.WriteStream, value *BenchMixed) error {
 		w3 := (f6 >> 16)
 		stream.SerializeBits64(&w3, 48)
 	}
-	{
-		if value.WorldTime < -1000000000000 || value.WorldTime > 1000000000000 {
-			return serialize.ErrValueOutOfRange
-		}
-		f0 := (uint64(value.WorldTime - (-1000000000000))) & 0x1ffffffffff
-		f1 := (uint64(value.FrameTick)) & 0xffffffffffff
-		w0 := f0 | (f1 << 41)
-		stream.SerializeBits64(&w0, 64)
-		w1 := uint32((f1 >> 23))
-		stream.SerializeBits(&w1, 25)
+	if value.WorldTime < -1000000000000 || value.WorldTime > 1000000000000 {
+		return serialize.ErrValueOutOfRange
 	}
+	{
+		offsetValue := uint64(value.WorldTime - (-1000000000000))
+		stream.SerializeBits64(&offsetValue, 41)
+	}
+	stream.SerializeBits64(&value.FrameTick, 48)
 	{
 		fixedValue := int64(value.ServerTime)
 		stream.SerializeFixed64(&fixedValue, 24, 8, 0, 65535)
@@ -1203,25 +1200,18 @@ func ReadBenchMixed(stream *serialize.ReadStream, value *BenchMixed) error {
 		value.Nonce = v6
 	}
 	{
-		c0 := uint64(0)
-		stream.SerializeBits64(&c0, 64)
-		n1 := uint32(0)
-		stream.SerializeBits(&n1, 25)
-		c1 := uint64(n1)
+		offsetValue := uint64(0)
+		stream.SerializeBits64(&offsetValue, 41)
 		if stream.Err() != nil {
 			return stream.Err()
 		}
-		v0 := c0 & 0x1ffffffffff
-		if v0 > 2000000000000 { // a value smuggled into the bit headroom is refused (SPEC §4.3)
+		if offsetValue > 2000000000000 { // a value smuggled into the bit headroom is refused (SPEC §4.3)
 			return serialize.ErrValueOutOfRange
 		}
-		{
-			lowValue := int64(-1000000000000)
-			value.WorldTime = int64(v0 + uint64(lowValue))
-		}
-		v1 := ((c0 >> 41) | (c1 << 23)) & 0xffffffffffff
-		value.FrameTick = v1
+		lowValue := int64(-1000000000000)
+		value.WorldTime = int64(offsetValue + uint64(lowValue))
 	}
+	stream.SerializeBits64(&value.FrameTick, 48)
 	{
 		fixedValue := int64(0)
 		stream.SerializeFixed64(&fixedValue, 24, 8, 0, 65535)

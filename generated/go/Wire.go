@@ -1064,15 +1064,15 @@ func WriteTestData(stream *serialize.WriteStream, value *TestData) error {
 		stream.SerializeBits64(&w3, 58)
 	}
 	{
-		if value.Int64Range < -1000000000000 || value.Int64Range > 1000000000000 {
-			return serialize.ErrValueOutOfRange
-		}
-		f0 := uint64(value.Int64Full)
-		f1 := (uint64(value.Int64Range - (-1000000000000))) & 0x1ffffffffff
-		w0 := f0
-		stream.SerializeBits64(&w0, 64)
-		w1 := f1
-		stream.SerializeBits64(&w1, 41)
+		rawValue := uint64(value.Int64Full)
+		stream.SerializeBits64(&rawValue, 64)
+	}
+	if value.Int64Range < -1000000000000 || value.Int64Range > 1000000000000 {
+		return serialize.ErrValueOutOfRange
+	}
+	{
+		offsetValue := uint64(value.Int64Range - (-1000000000000))
+		stream.SerializeBits64(&offsetValue, 41)
 	}
 	stream.SerializeAlign()
 	stream.SerializeBytes(value.FixedBytes[:]) // byte-aligned [N]uint8 — bulk copy, wire-identical to the per-byte loop
@@ -1189,23 +1189,21 @@ func ReadTestData(stream *serialize.ReadStream, value *TestData) error {
 		value.Uint64Value = v8
 	}
 	{
-		c0 := uint64(0)
-		stream.SerializeBits64(&c0, 64)
-		c1 := uint64(0)
-		stream.SerializeBits64(&c1, 41)
+		rawValue := uint64(0)
+		stream.SerializeBits64(&rawValue, 64)
+		value.Int64Full = int64(rawValue)
+	}
+	{
+		offsetValue := uint64(0)
+		stream.SerializeBits64(&offsetValue, 41)
 		if stream.Err() != nil {
 			return stream.Err()
 		}
-		v0 := c0
-		value.Int64Full = int64(v0)
-		v1 := c1 & 0x1ffffffffff
-		if v1 > 2000000000000 { // a value smuggled into the bit headroom is refused (SPEC §4.3)
+		if offsetValue > 2000000000000 { // a value smuggled into the bit headroom is refused (SPEC §4.3)
 			return serialize.ErrValueOutOfRange
 		}
-		{
-			lowValue := int64(-1000000000000)
-			value.Int64Range = int64(v1 + uint64(lowValue))
-		}
+		lowValue := int64(-1000000000000)
+		value.Int64Range = int64(offsetValue + uint64(lowValue))
 	}
 	stream.SerializeAlign()                    // rejects nonzero padding (SPEC §4.3)
 	stream.SerializeBytes(value.FixedBytes[:]) // byte-aligned [N]uint8 — bulk copy, wire-identical to the per-byte loop

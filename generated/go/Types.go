@@ -25,38 +25,16 @@ const Vec3MaxBits = 192
 const Vec3MaxBytes = 24
 
 func WriteVec3(stream *serialize.WriteStream, value *Vec3) error {
-	{
-		f0 := math.Float64bits(value.X)
-		f1 := math.Float64bits(value.Y)
-		f2 := math.Float64bits(value.Z)
-		w0 := f0
-		stream.SerializeBits64(&w0, 64)
-		w1 := f1
-		stream.SerializeBits64(&w1, 64)
-		w2 := f2
-		stream.SerializeBits64(&w2, 64)
-	}
+	stream.SerializeFloat64(&value.X)
+	stream.SerializeFloat64(&value.Y)
+	stream.SerializeFloat64(&value.Z)
 	return stream.Err()
 }
 
 func ReadVec3(stream *serialize.ReadStream, value *Vec3) error {
-	{
-		c0 := uint64(0)
-		stream.SerializeBits64(&c0, 64)
-		c1 := uint64(0)
-		stream.SerializeBits64(&c1, 64)
-		c2 := uint64(0)
-		stream.SerializeBits64(&c2, 64)
-		if stream.Err() != nil {
-			return stream.Err()
-		}
-		v0 := c0
-		value.X = math.Float64frombits(v0)
-		v1 := c1
-		value.Y = math.Float64frombits(v1)
-		v2 := c2
-		value.Z = math.Float64frombits(v2)
-	}
+	stream.SerializeFloat64(&value.X)
+	stream.SerializeFloat64(&value.Y)
+	stream.SerializeFloat64(&value.Z)
 	return stream.Err()
 }
 
@@ -74,45 +52,18 @@ const QuatMaxBits = 256
 const QuatMaxBytes = 32
 
 func WriteQuat(stream *serialize.WriteStream, value *Quat) error {
-	{
-		f0 := math.Float64bits(value.X)
-		f1 := math.Float64bits(value.Y)
-		f2 := math.Float64bits(value.Z)
-		f3 := math.Float64bits(value.W)
-		w0 := f0
-		stream.SerializeBits64(&w0, 64)
-		w1 := f1
-		stream.SerializeBits64(&w1, 64)
-		w2 := f2
-		stream.SerializeBits64(&w2, 64)
-		w3 := f3
-		stream.SerializeBits64(&w3, 64)
-	}
+	stream.SerializeFloat64(&value.X)
+	stream.SerializeFloat64(&value.Y)
+	stream.SerializeFloat64(&value.Z)
+	stream.SerializeFloat64(&value.W)
 	return stream.Err()
 }
 
 func ReadQuat(stream *serialize.ReadStream, value *Quat) error {
-	{
-		c0 := uint64(0)
-		stream.SerializeBits64(&c0, 64)
-		c1 := uint64(0)
-		stream.SerializeBits64(&c1, 64)
-		c2 := uint64(0)
-		stream.SerializeBits64(&c2, 64)
-		c3 := uint64(0)
-		stream.SerializeBits64(&c3, 64)
-		if stream.Err() != nil {
-			return stream.Err()
-		}
-		v0 := c0
-		value.X = math.Float64frombits(v0)
-		v1 := c1
-		value.Y = math.Float64frombits(v1)
-		v2 := c2
-		value.Z = math.Float64frombits(v2)
-		v3 := c3
-		value.W = math.Float64frombits(v3)
-	}
+	stream.SerializeFloat64(&value.X)
+	stream.SerializeFloat64(&value.Y)
+	stream.SerializeFloat64(&value.Z)
+	stream.SerializeFloat64(&value.W)
 	return stream.Err()
 }
 
@@ -405,142 +356,38 @@ const RigidBodyMaxBits = 833
 const RigidBodyMaxBytes = 112
 
 func WriteRigidBody(stream *serialize.WriteStream, value *RigidBody) error {
-	{
-		f0 := math.Float64bits(value.Position.X)
-		f1 := math.Float64bits(value.Position.Y)
-		f2 := math.Float64bits(value.Position.Z)
-		f3 := math.Float64bits(value.Orientation.X)
-		w0 := f0
-		stream.SerializeBits64(&w0, 64)
-		w1 := f1
-		stream.SerializeBits64(&w1, 64)
-		w2 := f2
-		stream.SerializeBits64(&w2, 64)
-		w3 := f3
-		stream.SerializeBits64(&w3, 64)
+	if err := WriteVec3(stream, &value.Position); err != nil {
+		return err
 	}
-	{
-		f0 := math.Float64bits(value.Orientation.Y)
-		f1 := math.Float64bits(value.Orientation.Z)
-		f2 := math.Float64bits(value.Orientation.W)
-		f3 := uint64(0)
-		if value.AtRest {
-			f3 = 1
-		}
-		w0 := f0
-		stream.SerializeBits64(&w0, 64)
-		w1 := f1
-		stream.SerializeBits64(&w1, 64)
-		w2 := f2
-		stream.SerializeBits64(&w2, 64)
-		w3 := uint32(f3)
-		stream.SerializeBits(&w3, 1)
+	if err := WriteQuat(stream, &value.Orientation); err != nil {
+		return err
 	}
+	stream.SerializeBool(&value.AtRest)
 	if !value.AtRest {
-		{
-			f0 := math.Float64bits(value.LinearVelocity.X)
-			f1 := math.Float64bits(value.LinearVelocity.Y)
-			f2 := math.Float64bits(value.LinearVelocity.Z)
-			f3 := math.Float64bits(value.AngularVelocity.X)
-			w0 := f0
-			stream.SerializeBits64(&w0, 64)
-			w1 := f1
-			stream.SerializeBits64(&w1, 64)
-			w2 := f2
-			stream.SerializeBits64(&w2, 64)
-			w3 := f3
-			stream.SerializeBits64(&w3, 64)
+		if err := WriteVec3(stream, &value.LinearVelocity); err != nil {
+			return err
 		}
-		{
-			f0 := math.Float64bits(value.AngularVelocity.Y)
-			f1 := math.Float64bits(value.AngularVelocity.Z)
-			w0 := f0
-			stream.SerializeBits64(&w0, 64)
-			w1 := f1
-			stream.SerializeBits64(&w1, 64)
+		if err := WriteVec3(stream, &value.AngularVelocity); err != nil {
+			return err
 		}
 	}
 	return stream.Err()
 }
 
 func ReadRigidBody(stream *serialize.ReadStream, value *RigidBody) error {
-	{
-		c0 := uint64(0)
-		stream.SerializeBits64(&c0, 64)
-		c1 := uint64(0)
-		stream.SerializeBits64(&c1, 64)
-		c2 := uint64(0)
-		stream.SerializeBits64(&c2, 64)
-		c3 := uint64(0)
-		stream.SerializeBits64(&c3, 64)
-		if stream.Err() != nil {
-			return stream.Err()
-		}
-		v0 := c0
-		value.Position.X = math.Float64frombits(v0)
-		v1 := c1
-		value.Position.Y = math.Float64frombits(v1)
-		v2 := c2
-		value.Position.Z = math.Float64frombits(v2)
-		v3 := c3
-		value.Orientation.X = math.Float64frombits(v3)
+	if err := ReadVec3(stream, &value.Position); err != nil {
+		return err
 	}
-	{
-		c0 := uint64(0)
-		stream.SerializeBits64(&c0, 64)
-		c1 := uint64(0)
-		stream.SerializeBits64(&c1, 64)
-		c2 := uint64(0)
-		stream.SerializeBits64(&c2, 64)
-		n3 := uint32(0)
-		stream.SerializeBits(&n3, 1)
-		c3 := uint64(n3)
-		if stream.Err() != nil {
-			return stream.Err()
-		}
-		v0 := c0
-		value.Orientation.Y = math.Float64frombits(v0)
-		v1 := c1
-		value.Orientation.Z = math.Float64frombits(v1)
-		v2 := c2
-		value.Orientation.W = math.Float64frombits(v2)
-		v3 := c3 & 0x1
-		value.AtRest = v3 != 0
+	if err := ReadQuat(stream, &value.Orientation); err != nil {
+		return err
 	}
+	stream.SerializeBool(&value.AtRest)
 	if !value.AtRest {
-		{
-			c0 := uint64(0)
-			stream.SerializeBits64(&c0, 64)
-			c1 := uint64(0)
-			stream.SerializeBits64(&c1, 64)
-			c2 := uint64(0)
-			stream.SerializeBits64(&c2, 64)
-			c3 := uint64(0)
-			stream.SerializeBits64(&c3, 64)
-			if stream.Err() != nil {
-				return stream.Err()
-			}
-			v0 := c0
-			value.LinearVelocity.X = math.Float64frombits(v0)
-			v1 := c1
-			value.LinearVelocity.Y = math.Float64frombits(v1)
-			v2 := c2
-			value.LinearVelocity.Z = math.Float64frombits(v2)
-			v3 := c3
-			value.AngularVelocity.X = math.Float64frombits(v3)
+		if err := ReadVec3(stream, &value.LinearVelocity); err != nil {
+			return err
 		}
-		{
-			c0 := uint64(0)
-			stream.SerializeBits64(&c0, 64)
-			c1 := uint64(0)
-			stream.SerializeBits64(&c1, 64)
-			if stream.Err() != nil {
-				return stream.Err()
-			}
-			v0 := c0
-			value.AngularVelocity.Y = math.Float64frombits(v0)
-			v1 := c1
-			value.AngularVelocity.Z = math.Float64frombits(v1)
+		if err := ReadVec3(stream, &value.AngularVelocity); err != nil {
+			return err
 		}
 	} else {
 		value.LinearVelocity = Vec3{}
@@ -677,16 +524,11 @@ const InputPacketMaxBytes = 360
 
 func WriteInputPacket(stream *serialize.WriteStream, value *InputPacket) error {
 	{
-		f0 := (uint64(value.SynchronizeSequence)) & 0xffff
-		f1 := value.CurrentFrame
-		f2 := value.StartFrame
-		w0 := f0 | (f1 << 16)
-		stream.SerializeBits64(&w0, 64)
-		w1 := (f1 >> 48) | (f2 << 16)
-		stream.SerializeBits64(&w1, 64)
-		w2 := uint32((f2 >> 48))
-		stream.SerializeBits(&w2, 16)
+		rawValue := uint32(value.SynchronizeSequence)
+		stream.SerializeBits(&rawValue, 16)
 	}
+	stream.SerializeBits64(&value.CurrentFrame, 64)
+	stream.SerializeBits64(&value.StartFrame, 64)
 	if value.InputsCount < 0 || value.InputsCount > MaxInputsPerPacket {
 		return serialize.ErrValueOutOfRange
 	}
@@ -747,23 +589,12 @@ func WriteInputPacket(stream *serialize.WriteStream, value *InputPacket) error {
 
 func ReadInputPacket(stream *serialize.ReadStream, value *InputPacket) error {
 	{
-		c0 := uint64(0)
-		stream.SerializeBits64(&c0, 64)
-		c1 := uint64(0)
-		stream.SerializeBits64(&c1, 64)
-		n2 := uint32(0)
-		stream.SerializeBits(&n2, 16)
-		c2 := uint64(n2)
-		if stream.Err() != nil {
-			return stream.Err()
-		}
-		v0 := c0 & 0xffff
-		value.SynchronizeSequence = uint16(v0)
-		v1 := (c0 >> 16) | (c1 << 48)
-		value.CurrentFrame = v1
-		v2 := (c1 >> 16) | (c2 << 48)
-		value.StartFrame = v2
+		rawValue := uint32(0)
+		stream.SerializeBits(&rawValue, 16)
+		value.SynchronizeSequence = uint16(rawValue)
 	}
+	stream.SerializeBits64(&value.CurrentFrame, 64)
+	stream.SerializeBits64(&value.StartFrame, 64)
 	{
 		offsetValue := uint32(0)
 		stream.SerializeBits(&offsetValue, 5)
@@ -1153,28 +984,30 @@ const ExtremeProbeMaxBits = 320
 const ExtremeProbeMaxBytes = 40
 
 func WriteExtremeProbe(stream *serialize.WriteStream, value *ExtremeProbe) error {
+	if value.FloorBound < -9223372036854775808 || value.FloorBound > 100 {
+		return serialize.ErrValueOutOfRange
+	}
 	{
-		if value.FloorBound < -9223372036854775808 || value.FloorBound > 100 {
-			return serialize.ErrValueOutOfRange
-		}
-		if value.DoubledFloor < -(-FloorLimit) || value.DoubledFloor > 100 {
-			return serialize.ErrValueOutOfRange
-		}
-		if value.CeilingRange < 1 {
-			return serialize.ErrValueOutOfRange
-		}
-		f0 := uint64(value.FloorBound - (-9223372036854775808))
-		f1 := uint64(value.DoubledFloor - (-(-FloorLimit)))
-		f2 := value.CeilingRange - 1
-		f3 := uint64(value.FloorDefault)
-		w0 := f0
-		stream.SerializeBits64(&w0, 64)
-		w1 := f1
-		stream.SerializeBits64(&w1, 64)
-		w2 := f2
-		stream.SerializeBits64(&w2, 64)
-		w3 := f3
-		stream.SerializeBits64(&w3, 64)
+		offsetValue := uint64(value.FloorBound - (-9223372036854775808))
+		stream.SerializeBits64(&offsetValue, 64)
+	}
+	if value.DoubledFloor < -(-FloorLimit) || value.DoubledFloor > 100 {
+		return serialize.ErrValueOutOfRange
+	}
+	{
+		offsetValue := uint64(value.DoubledFloor - (-(-FloorLimit)))
+		stream.SerializeBits64(&offsetValue, 64)
+	}
+	if value.CeilingRange < 1 {
+		return serialize.ErrValueOutOfRange
+	}
+	{
+		offsetValue := value.CeilingRange - 1
+		stream.SerializeBits64(&offsetValue, 64)
+	}
+	{
+		rawValue := uint64(value.FloorDefault)
+		stream.SerializeBits64(&rawValue, 64)
 	}
 	stream.SerializeBits64(&value.CeilingDefault, 64)
 	return stream.Err()
@@ -1182,40 +1015,44 @@ func WriteExtremeProbe(stream *serialize.WriteStream, value *ExtremeProbe) error
 
 func ReadExtremeProbe(stream *serialize.ReadStream, value *ExtremeProbe) error {
 	{
-		c0 := uint64(0)
-		stream.SerializeBits64(&c0, 64)
-		c1 := uint64(0)
-		stream.SerializeBits64(&c1, 64)
-		c2 := uint64(0)
-		stream.SerializeBits64(&c2, 64)
-		c3 := uint64(0)
-		stream.SerializeBits64(&c3, 64)
+		offsetValue := uint64(0)
+		stream.SerializeBits64(&offsetValue, 64)
 		if stream.Err() != nil {
 			return stream.Err()
 		}
-		v0 := c0
-		if v0 > 9223372036854775908 { // a value smuggled into the bit headroom is refused (SPEC §4.3)
+		if offsetValue > 9223372036854775908 { // a value smuggled into the bit headroom is refused (SPEC §4.3)
 			return serialize.ErrValueOutOfRange
 		}
-		{
-			lowValue := int64(-9223372036854775808)
-			value.FloorBound = int64(v0 + uint64(lowValue))
+		lowValue := int64(-9223372036854775808)
+		value.FloorBound = int64(offsetValue + uint64(lowValue))
+	}
+	{
+		offsetValue := uint64(0)
+		stream.SerializeBits64(&offsetValue, 64)
+		if stream.Err() != nil {
+			return stream.Err()
 		}
-		v1 := c1
-		if v1 > 9223372036854775908 { // a value smuggled into the bit headroom is refused (SPEC §4.3)
+		if offsetValue > 9223372036854775908 { // a value smuggled into the bit headroom is refused (SPEC §4.3)
 			return serialize.ErrValueOutOfRange
 		}
-		{
-			lowValue := int64(-(-FloorLimit))
-			value.DoubledFloor = int64(v1 + uint64(lowValue))
+		lowValue := int64(-(-FloorLimit))
+		value.DoubledFloor = int64(offsetValue + uint64(lowValue))
+	}
+	{
+		offsetValue := uint64(0)
+		stream.SerializeBits64(&offsetValue, 64)
+		if stream.Err() != nil {
+			return stream.Err()
 		}
-		v2 := c2
-		if v2 > 18446744073709551614 { // a read rejects out-of-range (SPEC §5)
+		if offsetValue > 18446744073709551614 { // a read rejects out-of-range (SPEC §5)
 			return ErrValidation
 		}
-		value.CeilingRange = v2 + 1
-		v3 := c3
-		value.FloorDefault = int64(v3)
+		value.CeilingRange = offsetValue + 1
+	}
+	{
+		rawValue := uint64(0)
+		stream.SerializeBits64(&rawValue, 64)
+		value.FloorDefault = int64(rawValue)
 	}
 	stream.SerializeBits64(&value.CeilingDefault, 64)
 	return stream.Err()
@@ -1245,59 +1082,57 @@ const ExtremeRowMaxBits = 256
 const ExtremeRowMaxBytes = 32
 
 func WriteExtremeRow(stream *serialize.WriteStream, value *ExtremeRow) error {
-	{
-		if value.ClampedFloor < -9223372036854775808 || value.ClampedFloor > 100 {
-			return serialize.ErrValueOutOfRange
-		}
-		if value.ClampedCeiling < 1 || value.ClampedCeiling > 18446744073709551614 {
-			return serialize.ErrValueOutOfRange
-		}
-		f0 := uint64(value.ClampedFloor - (-9223372036854775808))
-		f1 := value.ClampedCeiling - 1
-		f2 := uint64(value.FloorDef)
-		f3 := value.CeilingDef
-		w0 := f0
-		stream.SerializeBits64(&w0, 64)
-		w1 := f1
-		stream.SerializeBits64(&w1, 64)
-		w2 := f2
-		stream.SerializeBits64(&w2, 64)
-		w3 := f3
-		stream.SerializeBits64(&w3, 64)
+	if value.ClampedFloor < -9223372036854775808 || value.ClampedFloor > 100 {
+		return serialize.ErrValueOutOfRange
 	}
+	{
+		offsetValue := uint64(value.ClampedFloor - (-9223372036854775808))
+		stream.SerializeBits64(&offsetValue, 64)
+	}
+	if value.ClampedCeiling < 1 || value.ClampedCeiling > 18446744073709551614 {
+		return serialize.ErrValueOutOfRange
+	}
+	{
+		offsetValue := value.ClampedCeiling - 1
+		stream.SerializeBits64(&offsetValue, 64)
+	}
+	{
+		rawValue := uint64(value.FloorDef)
+		stream.SerializeBits64(&rawValue, 64)
+	}
+	stream.SerializeBits64(&value.CeilingDef, 64)
 	return stream.Err()
 }
 
 func ReadExtremeRow(stream *serialize.ReadStream, value *ExtremeRow) error {
 	{
-		c0 := uint64(0)
-		stream.SerializeBits64(&c0, 64)
-		c1 := uint64(0)
-		stream.SerializeBits64(&c1, 64)
-		c2 := uint64(0)
-		stream.SerializeBits64(&c2, 64)
-		c3 := uint64(0)
-		stream.SerializeBits64(&c3, 64)
+		offsetValue := uint64(0)
+		stream.SerializeBits64(&offsetValue, 64)
 		if stream.Err() != nil {
 			return stream.Err()
 		}
-		v0 := c0
-		if v0 > 9223372036854775908 { // a value smuggled into the bit headroom is refused (SPEC §4.3)
+		if offsetValue > 9223372036854775908 { // a value smuggled into the bit headroom is refused (SPEC §4.3)
 			return serialize.ErrValueOutOfRange
 		}
-		{
-			lowValue := int64(-9223372036854775808)
-			value.ClampedFloor = int64(v0 + uint64(lowValue))
+		lowValue := int64(-9223372036854775808)
+		value.ClampedFloor = int64(offsetValue + uint64(lowValue))
+	}
+	{
+		offsetValue := uint64(0)
+		stream.SerializeBits64(&offsetValue, 64)
+		if stream.Err() != nil {
+			return stream.Err()
 		}
-		v1 := c1
-		if v1 > 18446744073709551613 { // a read rejects out-of-range (SPEC §5)
+		if offsetValue > 18446744073709551613 { // a read rejects out-of-range (SPEC §5)
 			return ErrValidation
 		}
-		value.ClampedCeiling = v1 + 1
-		v2 := c2
-		value.FloorDef = int64(v2)
-		v3 := c3
-		value.CeilingDef = v3
+		value.ClampedCeiling = offsetValue + 1
 	}
+	{
+		rawValue := uint64(0)
+		stream.SerializeBits64(&rawValue, 64)
+		value.FloorDef = int64(rawValue)
+	}
+	stream.SerializeBits64(&value.CeilingDef, 64)
 	return stream.Err()
 }

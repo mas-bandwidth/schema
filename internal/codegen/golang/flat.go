@@ -110,16 +110,26 @@ type flatRun struct {
 	bits   int64
 }
 
-// worthFlattening is the policy: two or more bit-carrying pieces. One piece
-// packs and unpacks to exactly what the per-field form already emits.
+// worthFlattening is the policy: flatten only where it REDUCES the number of
+// stream calls, which is the entire cost the form exists to remove.
+//
+// The count-based rule matters. A run whose pieces are each exactly one whole
+// chunk — a struct of float64s, say — packs into as many chunks as it has
+// fields, so flattening removes no call and instead ADDS one materialized
+// local per field plus an address-taken chunk local, where the per-field form
+// simply passed the struct field's own address. Measured, that cost the
+// rigidbody shapes 9% on write before this rule was in place.
 func (r *flatRun) worthFlattening() bool {
-	n := 0
+	n := int64(0)
 	for _, p := range r.pieces {
 		if p.bits > 0 {
 			n++
 		}
 	}
-	return n >= 2
+	if n < 2 {
+		return false
+	}
+	return int64(len(chunkWidths(r.bits))) < n
 }
 
 // chunkWidths splits a run of `bits` wire bits into the chunks the stream
