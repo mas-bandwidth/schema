@@ -1049,7 +1049,49 @@ func WriteBenchMixed(stream *serialize.WriteStream, value *BenchMixed) error {
 	if stream.Err() != nil { // the count guards the loop (§6.3)
 		return stream.Err()
 	}
-	for i := int32(0); i < value.StatsCount; i++ {
+	i := int32(0)
+	for ; i+7 <= value.StatsCount; i += 7 {
+		if value.Stats[i].Delta < -512 || value.Stats[i].Delta > 511 {
+			return serialize.ErrValueOutOfRange
+		}
+		if value.Stats[i+1].Delta < -512 || value.Stats[i+1].Delta > 511 {
+			return serialize.ErrValueOutOfRange
+		}
+		if value.Stats[i+2].Delta < -512 || value.Stats[i+2].Delta > 511 {
+			return serialize.ErrValueOutOfRange
+		}
+		if value.Stats[i+3].Delta < -512 || value.Stats[i+3].Delta > 511 {
+			return serialize.ErrValueOutOfRange
+		}
+		if value.Stats[i+4].Delta < -512 || value.Stats[i+4].Delta > 511 {
+			return serialize.ErrValueOutOfRange
+		}
+		if value.Stats[i+5].Delta < -512 || value.Stats[i+5].Delta > 511 {
+			return serialize.ErrValueOutOfRange
+		}
+		if value.Stats[i+6].Delta < -512 || value.Stats[i+6].Delta > 511 {
+			return serialize.ErrValueOutOfRange
+		}
+		f0 := (uint64(value.Stats[i].StatId)) & 0xff
+		f1 := (uint64(uint32(value.Stats[i].Delta - (-512)))) & 0x3ff
+		f2 := (uint64(value.Stats[i+1].StatId)) & 0xff
+		f3 := (uint64(uint32(value.Stats[i+1].Delta - (-512)))) & 0x3ff
+		f4 := (uint64(value.Stats[i+2].StatId)) & 0xff
+		f5 := (uint64(uint32(value.Stats[i+2].Delta - (-512)))) & 0x3ff
+		f6 := (uint64(value.Stats[i+3].StatId)) & 0xff
+		f7 := (uint64(uint32(value.Stats[i+3].Delta - (-512)))) & 0x3ff
+		f8 := (uint64(value.Stats[i+4].StatId)) & 0xff
+		f9 := (uint64(uint32(value.Stats[i+4].Delta - (-512)))) & 0x3ff
+		f10 := (uint64(value.Stats[i+5].StatId)) & 0xff
+		f11 := (uint64(uint32(value.Stats[i+5].Delta - (-512)))) & 0x3ff
+		f12 := (uint64(value.Stats[i+6].StatId)) & 0xff
+		f13 := (uint64(uint32(value.Stats[i+6].Delta - (-512)))) & 0x3ff
+		w0 := f0 | (f1 << 8) | (f2 << 18) | (f3 << 26) | (f4 << 36) | (f5 << 44) | (f6 << 54) | (f7 << 62)
+		stream.SerializeBits64(&w0, 64)
+		w1 := (f7 >> 2) | (f8 << 8) | (f9 << 16) | (f10 << 26) | (f11 << 34) | (f12 << 44) | (f13 << 52)
+		stream.SerializeBits64(&w1, 62)
+	}
+	for ; i < value.StatsCount; i++ {
 		if value.Stats[i].Delta < -512 || value.Stats[i].Delta > 511 {
 			return serialize.ErrValueOutOfRange
 		}
@@ -1307,7 +1349,66 @@ func ReadBenchMixed(stream *serialize.ReadStream, value *BenchMixed) error {
 		}
 		value.StatsCount = int32(offsetValue)
 	}
-	for i := int32(0); i < value.StatsCount; i++ {
+	i := int32(0)
+	for ; i+7 <= value.StatsCount; i += 7 {
+		c0 := uint64(0)
+		stream.SerializeBits64(&c0, 64)
+		c1 := uint64(0)
+		stream.SerializeBits64(&c1, 62)
+		if stream.Err() != nil {
+			return stream.Err()
+		}
+		v0 := c0 & 0xff
+		value.Stats[i].StatId = uint32(v0)
+		v1 := (c0 >> 8) & 0x3ff
+		{
+			lowValue := int32(-512)
+			value.Stats[i].Delta = int32(uint32(v1) + uint32(lowValue))
+		}
+		v2 := (c0 >> 18) & 0xff
+		value.Stats[i+1].StatId = uint32(v2)
+		v3 := (c0 >> 26) & 0x3ff
+		{
+			lowValue := int32(-512)
+			value.Stats[i+1].Delta = int32(uint32(v3) + uint32(lowValue))
+		}
+		v4 := (c0 >> 36) & 0xff
+		value.Stats[i+2].StatId = uint32(v4)
+		v5 := (c0 >> 44) & 0x3ff
+		{
+			lowValue := int32(-512)
+			value.Stats[i+2].Delta = int32(uint32(v5) + uint32(lowValue))
+		}
+		v6 := (c0 >> 54) & 0xff
+		value.Stats[i+3].StatId = uint32(v6)
+		v7 := ((c0 >> 62) | (c1 << 2)) & 0x3ff
+		{
+			lowValue := int32(-512)
+			value.Stats[i+3].Delta = int32(uint32(v7) + uint32(lowValue))
+		}
+		v8 := (c1 >> 8) & 0xff
+		value.Stats[i+4].StatId = uint32(v8)
+		v9 := (c1 >> 16) & 0x3ff
+		{
+			lowValue := int32(-512)
+			value.Stats[i+4].Delta = int32(uint32(v9) + uint32(lowValue))
+		}
+		v10 := (c1 >> 26) & 0xff
+		value.Stats[i+5].StatId = uint32(v10)
+		v11 := (c1 >> 34) & 0x3ff
+		{
+			lowValue := int32(-512)
+			value.Stats[i+5].Delta = int32(uint32(v11) + uint32(lowValue))
+		}
+		v12 := (c1 >> 44) & 0xff
+		value.Stats[i+6].StatId = uint32(v12)
+		v13 := (c1 >> 52) & 0x3ff
+		{
+			lowValue := int32(-512)
+			value.Stats[i+6].Delta = int32(uint32(v13) + uint32(lowValue))
+		}
+	}
+	for ; i < value.StatsCount; i++ {
 		n0 := uint32(0)
 		stream.SerializeBits(&n0, 18)
 		c0 := uint64(n0)

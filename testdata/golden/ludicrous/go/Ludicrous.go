@@ -74,7 +74,7 @@ func WriteFixedProbe(stream *serialize.WriteStream, value *FixedProbe) error {
 		fixedValue := int64(value.Ticks)
 		stream.SerializeFixed64(&fixedValue, 32, 0, 0, 1000000)
 	}
-	for i := 0; i < 2; i++ {
+	for i := int(0); i < 2; i++ {
 		{
 			fixedValue := int64(value.Samples[i])
 			stream.SerializeFixed64(&fixedValue, 16, 16, -8, 8)
@@ -96,7 +96,7 @@ func ReadFixedProbe(stream *serialize.ReadStream, value *FixedProbe) error {
 		stream.SerializeFixed64(&fixedValue, 32, 0, 0, 1000000)
 		value.Ticks = int32(fixedValue)
 	}
-	for i := 0; i < 2; i++ {
+	for i := int(0); i < 2; i++ {
 		{
 			fixedValue := int64(0)
 			stream.SerializeFixed64(&fixedValue, 16, 16, -8, 8)
@@ -139,7 +139,7 @@ func WriteUnsignedProbe(stream *serialize.WriteStream, value *UnsignedProbe) err
 		fixedValue := int64(value.Ticks)
 		stream.SerializeFixed64(&fixedValue, 32, 0, 0, 1000000)
 	}
-	for i := 0; i < 2; i++ {
+	for i := int(0); i < 2; i++ {
 		{
 			fixedValue := int64(value.Samples[i])
 			stream.SerializeFixed64(&fixedValue, 16, 16, 0, 16)
@@ -176,7 +176,7 @@ func ReadUnsignedProbe(stream *serialize.ReadStream, value *UnsignedProbe) error
 		stream.SerializeFixed64(&fixedValue, 32, 0, 0, 1000000)
 		value.Ticks = uint32(fixedValue)
 	}
-	for i := 0; i < 2; i++ {
+	for i := int(0); i < 2; i++ {
 		{
 			fixedValue := int64(0)
 			stream.SerializeFixed64(&fixedValue, 16, 16, 0, 16)

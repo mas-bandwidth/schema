@@ -670,7 +670,7 @@ const ProbeArrayMaxBits = 588
 const ProbeArrayMaxBytes = 80
 
 func WriteProbeArray(stream *serialize.WriteStream, value *ProbeArray) error {
-	for i := 0; i < 2; i++ {
+	for i := int(0); i < 2; i++ {
 		if err := WriteProbeSample(stream, &value.Samples[i]); err != nil {
 			return err
 		}
@@ -689,7 +689,7 @@ func WriteProbeArray(stream *serialize.WriteStream, value *ProbeArray) error {
 }
 
 func ReadProbeArray(stream *serialize.ReadStream, value *ProbeArray) error {
-	for i := 0; i < 2; i++ {
+	for i := int(0); i < 2; i++ {
 		if err := ReadProbeSample(stream, &value.Samples[i]); err != nil {
 			return err
 		}

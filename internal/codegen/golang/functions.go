@@ -553,6 +553,39 @@ func intRangePath(min, max *big.Int) string {
 	return "bits64" // full-range unsigned: width-computed raw bits over value - min
 }
 
+// emitArrayLoop emits the loop over an array's elements. Where consecutive
+// elements can share chunks it emits the grouped form — a K-at-a-time loop
+// followed by a remainder loop — because one small element wastes most of the
+// word it is placed in: eighty 18-bit elements otherwise cost eighty stream
+// calls that each carry 18 of a possible 64 bits.
+func (g *gen) emitArrayLoop(f *ir.Field, name, limit, idxType, ind string,
+	flat func(*flatRun, string), scalar func(elem, eind string)) {
+	if k := g.flatGroupSize(f); k > 1 {
+		if run, ok := g.flatGroupRun(f, name, "i", k); ok {
+			g.pf("%si := %s(0)\n", ind, idxType)
+			g.pf("%sfor ; i+%d <= %s; i += %d {\n", ind, k, limit, k)
+			flat(run, ind+"\t")
+			g.pf("%s}\n", ind)
+			g.pf("%sfor ; i < %s; i++ {\n", ind, limit)
+			g.emitArrayElem(f, name, ind, flat, scalar)
+			g.pf("%s}\n", ind)
+			return
+		}
+	}
+	g.pf("%sfor i := %s(0); i < %s; i++ {\n", ind, idxType, limit)
+	g.emitArrayElem(f, name, ind, flat, scalar)
+	g.pf("%s}\n", ind)
+}
+
+func (g *gen) emitArrayElem(f *ir.Field, name, ind string,
+	flat func(*flatRun, string), scalar func(elem, eind string)) {
+	if run, ok := g.flatElementRun(f, name); ok {
+		flat(run, ind+"\t")
+		return
+	}
+	scalar(name+"[i]", ind+"\t")
+}
+
 func (g *gen) emitWriteField(f *ir.Field, ind string) {
 	name := "value." + ir.GoExportName(f.Name)
 	if f.Array != ir.ArrayNone {
@@ -564,20 +597,16 @@ func (g *gen) emitWriteField(f *ir.Field, ind string) {
 			g.pf("%sstream.SerializeBytes(%s[:]) // byte-aligned [N]uint8 — bulk copy, wire-identical to the per-byte loop\n", ind, name)
 			return
 		}
+		limit, idxType := bound, "int"
 		if f.Array == ir.ArrayCounted {
 			g.emitWriteRangedFold32(name+"Count", big.NewInt(f.ArrayMin).String(), bound,
 				ir.BitsRequired(big.NewInt(f.ArrayMin), big.NewInt(f.ArrayBound)), f.ArrayMin == 0, ind)
 			g.pf("%sif stream.Err() != nil { // the count guards the loop (§6.3)\n%s\treturn stream.Err()\n%s}\n", ind, ind, ind)
-			g.pf("%sfor i := int32(0); i < %sCount; i++ {\n", ind, name)
-		} else {
-			g.pf("%sfor i := 0; i < %s; i++ {\n", ind, bound)
+			limit, idxType = name+"Count", "int32"
 		}
-		if run, ok := g.flatElementRun(f, name); ok {
-			g.emitFlatWriteRun(run, ind+"\t")
-		} else {
-			g.emitWriteScalar(f, name+"[i]", ind+"\t")
-		}
-		g.pf("%s}\n", ind)
+		g.emitArrayLoop(f, name, limit, idxType, ind, g.emitFlatWriteRun, func(elem, eind string) {
+			g.emitWriteScalar(f, elem, eind)
+		})
 		return
 	}
 	g.emitWriteScalar(f, name, ind)
@@ -782,6 +811,7 @@ func (g *gen) emitReadField(f *ir.Field, ind string) {
 			g.pf("%sstream.SerializeBytes(%s[:]) // byte-aligned [N]uint8 — bulk copy, wire-identical to the per-byte loop\n", ind, name)
 			return
 		}
+		limit, idxType := bound, "int"
 		if f.Array == ir.ArrayCounted {
 			g.emitReadRangedFold32(big.NewInt(f.ArrayMin).String(),
 				ir.BitsRequired(big.NewInt(f.ArrayMin), big.NewInt(f.ArrayBound)),
@@ -789,16 +819,11 @@ func (g *gen) emitReadField(f *ir.Field, ind string) {
 				f.ArrayMin == 0, ind, func(ai, expr string) {
 					g.pf("%s%sCount = %s\n", ai, name, expr)
 				})
-			g.pf("%sfor i := int32(0); i < %sCount; i++ {\n", ind, name)
-		} else {
-			g.pf("%sfor i := 0; i < %s; i++ {\n", ind, bound)
+			limit, idxType = name+"Count", "int32"
 		}
-		if run, ok := g.flatElementRun(f, name); ok {
-			g.emitFlatReadRun(run, ind+"\t")
-		} else {
-			g.emitReadScalar(f, name+"[i]", ind+"\t")
-		}
-		g.pf("%s}\n", ind)
+		g.emitArrayLoop(f, name, limit, idxType, ind, g.emitFlatReadRun, func(elem, eind string) {
+			g.emitReadScalar(f, elem, eind)
+		})
 		return
 	}
 	g.emitReadScalar(f, name, ind)

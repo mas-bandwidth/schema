@@ -377,6 +377,98 @@ func (g *gen) flatStructRun(st *ir.Struct, base string) (*flatRun, bool) {
 	return run, true
 }
 
+// flatStructRunRaw is flatStructRun without the call-count gate: a group of
+// elements is judged as a whole, so one element that would not pay on its own
+// can still pay when three of them share a word.
+func (g *gen) flatStructRunRaw(st *ir.Struct, base string) (*flatRun, bool) {
+	if len(st.Items) == 0 {
+		return nil, false
+	}
+	run := &flatRun{}
+	for _, item := range st.Items {
+		ps, ok := g.flatPiecesOf(item, base)
+		if !ok {
+			return nil, false
+		}
+		for _, p := range ps {
+			run.pieces = append(run.pieces, p)
+			run.bits += p.bits
+		}
+	}
+	return run, true
+}
+
+// maxGroupElems caps how many array elements one run absorbs. The group is
+// unrolled in the generated source, so this trades code size for stream calls
+// and eight is where the corpus stops gaining.
+const maxGroupElems = 8
+
+// flatGroupRun builds one run spanning K consecutive elements of an array of
+// nested structs, indexed off idx. A single small element wastes most of the
+// word it is placed in — eighty 18-bit stats cost eighty calls that each carry
+// 18 of a possible 64 bits — so consecutive elements share chunks and the call
+// count falls by roughly K.
+func (g *gen) flatGroupRun(f *ir.Field, name, idx string, k int64) (*flatRun, bool) {
+	st, ok := flatElemStruct(f)
+	if !ok {
+		return nil, false
+	}
+	run := &flatRun{}
+	for e := int64(0); e < k; e++ {
+		at := fmt.Sprintf("%s[%s]", name, idx)
+		if e > 0 {
+			at = fmt.Sprintf("%s[%s+%d]", name, idx, e)
+		}
+		sub, ok := g.flatStructRunRaw(st, at+".")
+		if !ok {
+			return nil, false
+		}
+		run.pieces = append(run.pieces, sub.pieces...)
+		run.bits += sub.bits
+	}
+	if run.bits > maxRunBits {
+		return nil, false
+	}
+	return run, true
+}
+
+// flatGroupSize picks K for an array of nested structs: the most elements
+// whose combined run still fits maxRunBits and the unroll cap, and only where
+// grouping actually reduces the call count against one element at a time.
+func (g *gen) flatGroupSize(f *ir.Field) int64 {
+	st, ok := flatElemStruct(f)
+	if !ok {
+		return 1
+	}
+	one, ok := g.flatStructRunRaw(st, "x.")
+	if !ok || one.bits <= 0 {
+		return 1
+	}
+	best := int64(1)
+	perElem := float64(len(chunkWidths(one.bits)))
+	for k := int64(2); k <= maxGroupElems; k++ {
+		if k*one.bits > maxRunBits {
+			break
+		}
+		if f.ArrayBound < k {
+			break
+		}
+		if float64(len(chunkWidths(k*one.bits)))/float64(k) < perElem {
+			best = k
+			perElem = float64(len(chunkWidths(k*one.bits))) / float64(k)
+		}
+	}
+	return best
+}
+
+func flatElemStruct(f *ir.Field) (*ir.Struct, bool) {
+	if f.Type.Kind != ir.TNamed {
+		return nil, false
+	}
+	st, ok := f.Type.Ref.(*ir.Struct)
+	return st, ok
+}
+
 // flatElementRun builds the run for one element of an array of nested structs,
 // so the loop body places the element's fields directly instead of calling the
 // element's own wire function once per iteration.
