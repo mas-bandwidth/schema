@@ -2,6 +2,7 @@
 // link step proves the headers define no duplicate symbols across TUs.
 
 #include "ConstantsWire.h"
+#include "DegenerateWire.h"
 #include "EnumsWire.h"
 #include "RenderWire.h"
 #include "TypesWire.h"

@@ -15,6 +15,7 @@
 // and the goldens prove it.
 
 import example.Constants;
+import example.Degenerate;
 import example.Enums;
 import example.Types;
 import example.Wire;
@@ -693,10 +694,168 @@ public final class Main {
         testWriterContracts();
         testNames();
         testBenchCorpus();
+        testDegenerate();
 
         if (failed) {
             System.exit(1);
         }
         System.out.println("OK");
     }
+
+    // ---- Degenerate.schema: the degenerate arrangements (issue #203) ----
+    //
+    // Twelve shapes in the C++ test's order against the one C++-pinned
+    // golden. This emitter writes a whole message into a buffer rather than
+    // appending to a bit stream, so the leg CONCATENATES its twelve buffers
+    // — which equals what the stream legs write because every type in that
+    // file is a whole number of bytes wide. A fixed scalar array whose
+    // elements an emitter places TWICE is invisible to a same-language round
+    // trip; only this compare against another language's bytes names it.
+    static void testDegenerate() {
+        final Degenerate.Vec2 vec2 = new Degenerate.Vec2();
+        vec2.x = 1.5;
+        vec2.y = -2.25;
+
+        final Degenerate.SpanF64 spanF64 = new Degenerate.SpanF64();
+        spanF64.values[0] = 3.5;
+        spanF64.values[1] = -4.75;
+
+        final Degenerate.SpanU64 spanU64 = new Degenerate.SpanU64();
+        spanU64.values[0] = 0xDEADBEEFCAFEBABEL;
+        spanU64.values[1] = 1;
+
+        final Degenerate.SpanI64 spanI64 = new Degenerate.SpanI64();
+        spanI64.values[0] = -1234567890123L;
+        spanI64.values[1] = 42;
+
+        final Degenerate.SpanOne spanOne = new Degenerate.SpanOne();
+        spanOne.values[0] = 0x0123456789ABCDEFL;
+
+        final Degenerate.SpanChunk spanChunk = new Degenerate.SpanChunk();
+        spanChunk.values[0] = 0x1111;
+        spanChunk.values[1] = 0x2222;
+        spanChunk.values[2] = 0x3333;
+        spanChunk.values[3] = 0x4444;
+
+        final Degenerate.SpanTail spanTail = new Degenerate.SpanTail();
+        spanTail.values[0] = 6.125;
+        spanTail.values[1] = -7.0;
+        spanTail.tail = 0xFEEDFACE;
+
+        final Degenerate.SpanTwice spanTwice = new Degenerate.SpanTwice();
+        spanTwice.a[0] = 8.5;
+        spanTwice.a[1] = 9.5;
+        spanTwice.b[0] = -10.5;
+        spanTwice.b[1] = -11.5;
+
+        final Degenerate.Trio trio = new Degenerate.Trio();
+        trio.a = 0xABCDE;
+        trio.b = 0x12345;
+        trio.c = 0xFFFFF;
+
+        final Degenerate.TrioSole trioSole = new Degenerate.TrioSole();
+        trioSole.inner.a = 1;
+        trioSole.inner.b = 2;
+        trioSole.inner.c = 3;
+
+        final Degenerate.TrioFirst trioFirst = new Degenerate.TrioFirst();
+        trioFirst.inner.a = 0xAAAAA;
+        trioFirst.inner.b = 0x55555;
+        trioFirst.inner.c = 0xF0F0F;
+        trioFirst.trailer = 0xBEEF;
+
+        final Degenerate.TrioStraddle straddle = new Degenerate.TrioStraddle();
+        straddle.pad0 = 0x0011223344556677L;
+        straddle.pad1 = 0x8899AABBCCDDEEFFL;
+        straddle.pad2 = 0xFFFFFFFFFFFFFFFFL;
+        straddle.pad3 = 0;
+        straddle.pad4 = 0x123456789ABCDEF0L;
+        straddle.pad5 = 0xABCDEF;
+        straddle.inner.a = 0x11111;
+        straddle.inner.b = 0x22222;
+        straddle.inner.c = 0x33333;
+
+        final byte[] g = golden("degenerate");
+        final byte[] joined = new byte[g.length];
+        int at = 0;
+        at = emitDegenerate(joined, at, vec2, Degenerate::writeVec2, Degenerate::measureVec2, "Vec2");
+        at = emitDegenerate(joined, at, spanF64, Degenerate::writeSpanF64, Degenerate::measureSpanF64, "SpanF64");
+        at = emitDegenerate(joined, at, spanU64, Degenerate::writeSpanU64, Degenerate::measureSpanU64, "SpanU64");
+        at = emitDegenerate(joined, at, spanI64, Degenerate::writeSpanI64, Degenerate::measureSpanI64, "SpanI64");
+        at = emitDegenerate(joined, at, spanOne, Degenerate::writeSpanOne, Degenerate::measureSpanOne, "SpanOne");
+        at = emitDegenerate(joined, at, spanChunk, Degenerate::writeSpanChunk, Degenerate::measureSpanChunk, "SpanChunk");
+        at = emitDegenerate(joined, at, spanTail, Degenerate::writeSpanTail, Degenerate::measureSpanTail, "SpanTail");
+        at = emitDegenerate(joined, at, spanTwice, Degenerate::writeSpanTwice, Degenerate::measureSpanTwice, "SpanTwice");
+        at = emitDegenerate(joined, at, trio, Degenerate::writeTrio, Degenerate::measureTrio, "Trio");
+        at = emitDegenerate(joined, at, trioSole, Degenerate::writeTrioSole, Degenerate::measureTrioSole, "TrioSole");
+        at = emitDegenerate(joined, at, trioFirst, Degenerate::writeTrioFirst, Degenerate::measureTrioFirst, "TrioFirst");
+        at = emitDegenerate(joined, at, straddle, Degenerate::writeTrioStraddle, Degenerate::measureTrioStraddle,
+                "TrioStraddle");
+
+        check(at * 8 == 128 + 128 + 128 + 128 + 64 + 64 + 160 + 256 + 64 + 64 + 80 + 408,
+                "the twelve degenerate shapes ride their declared widths and nothing more");
+        check(at == g.length, "degenerate: wrote " + at + " bytes, golden has " + g.length);
+        check(java.util.Arrays.equals(joined, g), "degenerate: Java bytes == the C++-pinned bytes");
+
+        // and each shape reads back out of its own slice of the golden
+        final Degenerate.Vec2 rVec2 = new Degenerate.Vec2();
+        final Degenerate.SpanF64 rSpanF64 = new Degenerate.SpanF64();
+        final Degenerate.SpanU64 rSpanU64 = new Degenerate.SpanU64();
+        final Degenerate.SpanI64 rSpanI64 = new Degenerate.SpanI64();
+        final Degenerate.SpanOne rSpanOne = new Degenerate.SpanOne();
+        final Degenerate.SpanChunk rSpanChunk = new Degenerate.SpanChunk();
+        final Degenerate.SpanTail rSpanTail = new Degenerate.SpanTail();
+        final Degenerate.SpanTwice rSpanTwice = new Degenerate.SpanTwice();
+        final Degenerate.Trio rTrio = new Degenerate.Trio();
+        final Degenerate.TrioSole rTrioSole = new Degenerate.TrioSole();
+        final Degenerate.TrioFirst rTrioFirst = new Degenerate.TrioFirst();
+        final Degenerate.TrioStraddle rStraddle = new Degenerate.TrioStraddle();
+
+        int off = 0;
+        off = readDegenerate(g, off, 16, rVec2, Degenerate::readVec2, "Vec2");
+        off = readDegenerate(g, off, 16, rSpanF64, Degenerate::readSpanF64, "SpanF64");
+        off = readDegenerate(g, off, 16, rSpanU64, Degenerate::readSpanU64, "SpanU64");
+        off = readDegenerate(g, off, 16, rSpanI64, Degenerate::readSpanI64, "SpanI64");
+        off = readDegenerate(g, off, 8, rSpanOne, Degenerate::readSpanOne, "SpanOne");
+        off = readDegenerate(g, off, 8, rSpanChunk, Degenerate::readSpanChunk, "SpanChunk");
+        off = readDegenerate(g, off, 20, rSpanTail, Degenerate::readSpanTail, "SpanTail");
+        off = readDegenerate(g, off, 32, rSpanTwice, Degenerate::readSpanTwice, "SpanTwice");
+        off = readDegenerate(g, off, 8, rTrio, Degenerate::readTrio, "Trio");
+        off = readDegenerate(g, off, 8, rTrioSole, Degenerate::readTrioSole, "TrioSole");
+        off = readDegenerate(g, off, 10, rTrioFirst, Degenerate::readTrioFirst, "TrioFirst");
+        off = readDegenerate(g, off, 51, rStraddle, Degenerate::readTrioStraddle, "TrioStraddle");
+        check(off == g.length, "the twelve reads consume the whole golden");
+
+        check(rVec2.x == 1.5 && rVec2.y == -2.25, "Vec2 round-trips");
+        check(rSpanF64.values[0] == 3.5 && rSpanF64.values[1] == -4.75, "SpanF64 round-trips");
+        check(rSpanU64.values[0] == 0xDEADBEEFCAFEBABEL && rSpanU64.values[1] == 1, "SpanU64 round-trips");
+        check(rSpanI64.values[0] == -1234567890123L && rSpanI64.values[1] == 42, "SpanI64 round-trips");
+        check(rSpanOne.values[0] == 0x0123456789ABCDEFL, "SpanOne round-trips");
+        check(rSpanChunk.values[0] == 0x1111 && rSpanChunk.values[3] == 0x4444, "SpanChunk round-trips");
+        check(rSpanTail.values[0] == 6.125 && rSpanTail.values[1] == -7.0 && rSpanTail.tail == 0xFEEDFACE,
+                "SpanTail round-trips");
+        check(rSpanTwice.a[0] == 8.5 && rSpanTwice.b[1] == -11.5, "SpanTwice round-trips");
+        check(rTrio.a == 0xABCDE && rTrio.b == 0x12345 && rTrio.c == 0xFFFFF, "Trio round-trips");
+        check(rTrioSole.inner.a == 1 && rTrioSole.inner.c == 3, "TrioSole round-trips");
+        check(rTrioFirst.inner.a == 0xAAAAA && rTrioFirst.trailer == 0xBEEF, "TrioFirst round-trips");
+        check(rStraddle.pad0 == 0x0011223344556677L && rStraddle.pad4 == 0x123456789ABCDEF0L,
+                "TrioStraddle pads round-trip");
+        check(rStraddle.pad5 == 0xABCDEF && rStraddle.inner.a == 0x11111 && rStraddle.inner.c == 0x33333,
+                "TrioStraddle's nested fields round-trip across the boundary");
+    }
+
+    static <T> int emitDegenerate(byte[] joined, int at, T value, Writer<T> write, Measurer<T> measure, String name) {
+        final int n = write.run(value, writeBuf);
+        check((measure.run(value) + 7) >>> 3 == n, name + ": measure vs bytes written");
+        System.arraycopy(writeBuf, 0, joined, at, n);
+        return at + n;
+    }
+
+    static <T> int readDegenerate(byte[] g, int off, int bytes, T out, Reader<T> read, String name) {
+        final byte[] slice = new byte[bytes + 8]; // read slack
+        System.arraycopy(g, off, slice, 0, bytes);
+        check(read.run(out, slice, bytes * 8), "read " + name);
+        return off + bytes;
+    }
+
 }

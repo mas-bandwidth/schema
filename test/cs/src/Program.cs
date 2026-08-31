@@ -760,6 +760,121 @@ static class Program
             Check(FlagNamesShipFlags(ShipFlagsAiming | (1ul << 63)) == "Aiming|0x8000000000000000", "FlagNames renders unknown high bits as hex");
         }
 
+        // ---- Degenerate.schema: the degenerate arrangements (issue #203) ----
+        //
+        // Twelve shapes written back to back into ONE stream against the one
+        // C++-pinned golden, in the C++ test's order. A fixed scalar array
+        // whose elements an emitter places TWICE is invisible to a
+        // same-language round trip; only the byte compare against another
+        // language's bytes names it.
+        {
+            Vec2 vec2 = new Vec2 { X = 1.5, Y = -2.25 };
+
+            SpanF64 spanF64 = new SpanF64();
+            spanF64.Values[0] = 3.5; spanF64.Values[1] = -4.75;
+
+            SpanU64 spanU64 = new SpanU64();
+            spanU64.Values[0] = 0xDEADBEEFCAFEBABE; spanU64.Values[1] = 1;
+
+            SpanI64 spanI64 = new SpanI64();
+            spanI64.Values[0] = -1234567890123; spanI64.Values[1] = 42;
+
+            SpanOne spanOne = new SpanOne();
+            spanOne.Values[0] = 0x0123456789ABCDEF;
+
+            SpanChunk spanChunk = new SpanChunk();
+            spanChunk.Values[0] = 0x1111; spanChunk.Values[1] = 0x2222;
+            spanChunk.Values[2] = 0x3333; spanChunk.Values[3] = 0x4444;
+
+            SpanTail spanTail = new SpanTail();
+            spanTail.Values[0] = 6.125; spanTail.Values[1] = -7.0;
+            spanTail.Tail = 0xFEEDFACE;
+
+            SpanTwice spanTwice = new SpanTwice();
+            spanTwice.A[0] = 8.5; spanTwice.A[1] = 9.5;
+            spanTwice.B[0] = -10.5; spanTwice.B[1] = -11.5;
+
+            Trio trio = new Trio { A = 0xABCDE, B = 0x12345, C = 0xFFFFF };
+
+            TrioSole trioSole = new TrioSole();
+            trioSole.Inner.A = 1; trioSole.Inner.B = 2; trioSole.Inner.C = 3;
+
+            TrioFirst trioFirst = new TrioFirst();
+            trioFirst.Inner.A = 0xAAAAA; trioFirst.Inner.B = 0x55555;
+            trioFirst.Inner.C = 0xF0F0F; trioFirst.Trailer = 0xBEEF;
+
+            TrioStraddle straddle = new TrioStraddle();
+            straddle.Pad0 = 0x0011223344556677;
+            straddle.Pad1 = 0x8899AABBCCDDEEFF;
+            straddle.Pad2 = 0xFFFFFFFFFFFFFFFF;
+            straddle.Pad3 = 0;
+            straddle.Pad4 = 0x123456789ABCDEF0;
+            straddle.Pad5 = 0xABCDEF;
+            straddle.Inner.A = 0x11111; straddle.Inner.B = 0x22222; straddle.Inner.C = 0x33333;
+
+            WriteStream ws = NewWriteStream();
+            Check(WriteVec2(ws, vec2), "write Vec2");
+            Check(WriteSpanF64(ws, spanF64), "write SpanF64");
+            Check(WriteSpanU64(ws, spanU64), "write SpanU64");
+            Check(WriteSpanI64(ws, spanI64), "write SpanI64");
+            Check(WriteSpanOne(ws, spanOne), "write SpanOne");
+            Check(WriteSpanChunk(ws, spanChunk), "write SpanChunk");
+            Check(WriteSpanTail(ws, spanTail), "write SpanTail");
+            Check(WriteSpanTwice(ws, spanTwice), "write SpanTwice");
+            Check(WriteTrio(ws, trio), "write Trio");
+            Check(WriteTrioSole(ws, trioSole), "write TrioSole");
+            Check(WriteTrioFirst(ws, trioFirst), "write TrioFirst");
+            Check(WriteTrioStraddle(ws, straddle), "write TrioStraddle");
+            Check(ws.BitsProcessed == 128 + 128 + 128 + 128 + 64 + 64 + 160 + 256 + 64 + 64 + 80 + 408,
+                "the twelve degenerate shapes ride their declared widths and nothing more");
+            byte[] wire = Data(ws);
+            GoldenWire("degenerate", wire);
+
+            Vec2 rVec2 = new Vec2();
+            SpanF64 rSpanF64 = new SpanF64();
+            SpanU64 rSpanU64 = new SpanU64();
+            SpanI64 rSpanI64 = new SpanI64();
+            SpanOne rSpanOne = new SpanOne();
+            SpanChunk rSpanChunk = new SpanChunk();
+            SpanTail rSpanTail = new SpanTail();
+            SpanTwice rSpanTwice = new SpanTwice();
+            Trio rTrio = new Trio();
+            TrioSole rTrioSole = new TrioSole();
+            TrioFirst rTrioFirst = new TrioFirst();
+            TrioStraddle rStraddle = new TrioStraddle();
+
+            ReadStream rs = new ReadStream(wire);
+            Check(ReadVec2(rs, rVec2), "read Vec2");
+            Check(ReadSpanF64(rs, rSpanF64), "read SpanF64");
+            Check(ReadSpanU64(rs, rSpanU64), "read SpanU64");
+            Check(ReadSpanI64(rs, rSpanI64), "read SpanI64");
+            Check(ReadSpanOne(rs, rSpanOne), "read SpanOne");
+            Check(ReadSpanChunk(rs, rSpanChunk), "read SpanChunk");
+            Check(ReadSpanTail(rs, rSpanTail), "read SpanTail");
+            Check(ReadSpanTwice(rs, rSpanTwice), "read SpanTwice");
+            Check(ReadTrio(rs, rTrio), "read Trio");
+            Check(ReadTrioSole(rs, rTrioSole), "read TrioSole");
+            Check(ReadTrioFirst(rs, rTrioFirst), "read TrioFirst");
+            Check(ReadTrioStraddle(rs, rStraddle), "read TrioStraddle");
+
+            Check(rVec2.X == 1.5 && rVec2.Y == -2.25, "Vec2 round-trips");
+            Check(rSpanF64.Values[0] == 3.5 && rSpanF64.Values[1] == -4.75, "SpanF64 round-trips");
+            Check(rSpanU64.Values[0] == 0xDEADBEEFCAFEBABE && rSpanU64.Values[1] == 1, "SpanU64 round-trips");
+            Check(rSpanI64.Values[0] == -1234567890123 && rSpanI64.Values[1] == 42, "SpanI64 round-trips");
+            Check(rSpanOne.Values[0] == 0x0123456789ABCDEF, "SpanOne round-trips");
+            Check(rSpanChunk.Values[0] == 0x1111 && rSpanChunk.Values[3] == 0x4444, "SpanChunk round-trips");
+            Check(rSpanTail.Values[0] == 6.125 && rSpanTail.Values[1] == -7.0 && rSpanTail.Tail == 0xFEEDFACE,
+                "SpanTail round-trips");
+            Check(rSpanTwice.A[0] == 8.5 && rSpanTwice.B[1] == -11.5, "SpanTwice round-trips");
+            Check(rTrio.A == 0xABCDE && rTrio.B == 0x12345 && rTrio.C == 0xFFFFF, "Trio round-trips");
+            Check(rTrioSole.Inner.A == 1 && rTrioSole.Inner.C == 3, "TrioSole round-trips");
+            Check(rTrioFirst.Inner.A == 0xAAAAA && rTrioFirst.Trailer == 0xBEEF, "TrioFirst round-trips");
+            Check(rStraddle.Pad0 == 0x0011223344556677 && rStraddle.Pad4 == 0x123456789ABCDEF0,
+                "TrioStraddle pads round-trip");
+            Check(rStraddle.Pad5 == 0xABCDEF && rStraddle.Inner.A == 0x11111 && rStraddle.Inner.C == 0x33333,
+                "TrioStraddle's nested fields round-trip across the boundary");
+        }
+
         if (failed)
         {
             return 1;

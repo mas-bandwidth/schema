@@ -765,6 +765,124 @@ fn main() {
         );
     }
 
+    // ---- Degenerate.schema: the degenerate arrangements (issue #203) ----
+    //
+    // Twelve shapes written back to back into ONE stream against the one
+    // C++-pinned golden, in the C++ test's order. A fixed scalar array whose
+    // elements an emitter places TWICE is invisible to a same-language round
+    // trip; only the byte compare against another language's bytes names it.
+    {
+        let mut vec2 = Vec2::default();
+        vec2.x = 1.5;
+        vec2.y = -2.25;
+
+        let mut span_f64 = SpanF64::default();
+        span_f64.values = [3.5, -4.75];
+
+        let mut span_u64 = SpanU64::default();
+        span_u64.values = [0xDEADBEEFCAFEBABE, 1];
+
+        let mut span_i64 = SpanI64::default();
+        span_i64.values = [-1234567890123, 42];
+
+        let mut span_one = SpanOne::default();
+        span_one.values = [0x0123456789ABCDEF];
+
+        let mut span_chunk = SpanChunk::default();
+        span_chunk.values = [0x1111, 0x2222, 0x3333, 0x4444];
+
+        let mut span_tail = SpanTail::default();
+        span_tail.values = [6.125, -7.0];
+        span_tail.tail = 0xFEEDFACE;
+
+        let mut span_twice = SpanTwice::default();
+        span_twice.a = [8.5, 9.5];
+        span_twice.b = [-10.5, -11.5];
+
+        let mut trio = Trio::default();
+        trio.a = 0xABCDE;
+        trio.b = 0x12345;
+        trio.c = 0xFFFFF;
+
+        let mut trio_sole = TrioSole::default();
+        trio_sole.inner = Trio { a: 1, b: 2, c: 3 };
+
+        let mut trio_first = TrioFirst::default();
+        trio_first.inner = Trio { a: 0xAAAAA, b: 0x55555, c: 0xF0F0F };
+        trio_first.trailer = 0xBEEF;
+
+        let mut straddle = TrioStraddle::default();
+        straddle.pad0 = 0x0011223344556677;
+        straddle.pad1 = 0x8899AABBCCDDEEFF;
+        straddle.pad2 = 0xFFFFFFFFFFFFFFFF;
+        straddle.pad3 = 0;
+        straddle.pad4 = 0x123456789ABCDEF0;
+        straddle.pad5 = 0xABCDEF;
+        straddle.inner = Trio { a: 0x11111, b: 0x22222, c: 0x33333 };
+
+        let mut buffer = [0u8; 2048];
+        let mut ws = WriteStream::new(&mut buffer);
+        check_err(write_vec2(&mut ws, &vec2), "write Vec2");
+        check_err(write_span_f64(&mut ws, &span_f64), "write SpanF64");
+        check_err(write_span_u64(&mut ws, &span_u64), "write SpanU64");
+        check_err(write_span_i64(&mut ws, &span_i64), "write SpanI64");
+        check_err(write_span_one(&mut ws, &span_one), "write SpanOne");
+        check_err(write_span_chunk(&mut ws, &span_chunk), "write SpanChunk");
+        check_err(write_span_tail(&mut ws, &span_tail), "write SpanTail");
+        check_err(write_span_twice(&mut ws, &span_twice), "write SpanTwice");
+        check_err(write_trio(&mut ws, &trio), "write Trio");
+        check_err(write_trio_sole(&mut ws, &trio_sole), "write TrioSole");
+        check_err(write_trio_first(&mut ws, &trio_first), "write TrioFirst");
+        check_err(write_trio_straddle(&mut ws, &straddle), "write TrioStraddle");
+        check(
+            ws.bits_processed() == 128 + 128 + 128 + 128 + 64 + 64 + 160 + 256 + 64 + 64 + 80 + 408,
+            "the twelve degenerate shapes ride their declared widths and nothing more",
+        );
+        ws.flush();
+        let n = ws.bytes_processed() as usize;
+        golden_wire("degenerate", &buffer[..n]);
+
+        let mut r_vec2 = Vec2::default();
+        let mut r_span_f64 = SpanF64::default();
+        let mut r_span_u64 = SpanU64::default();
+        let mut r_span_i64 = SpanI64::default();
+        let mut r_span_one = SpanOne::default();
+        let mut r_span_chunk = SpanChunk::default();
+        let mut r_span_tail = SpanTail::default();
+        let mut r_span_twice = SpanTwice::default();
+        let mut r_trio = Trio::default();
+        let mut r_trio_sole = TrioSole::default();
+        let mut r_trio_first = TrioFirst::default();
+        let mut r_straddle = TrioStraddle::default();
+
+        let mut rs = ReadStream::new(&buffer, n);
+        check_err(read_vec2(&mut rs, &mut r_vec2), "read Vec2");
+        check_err(read_span_f64(&mut rs, &mut r_span_f64), "read SpanF64");
+        check_err(read_span_u64(&mut rs, &mut r_span_u64), "read SpanU64");
+        check_err(read_span_i64(&mut rs, &mut r_span_i64), "read SpanI64");
+        check_err(read_span_one(&mut rs, &mut r_span_one), "read SpanOne");
+        check_err(read_span_chunk(&mut rs, &mut r_span_chunk), "read SpanChunk");
+        check_err(read_span_tail(&mut rs, &mut r_span_tail), "read SpanTail");
+        check_err(read_span_twice(&mut rs, &mut r_span_twice), "read SpanTwice");
+        check_err(read_trio(&mut rs, &mut r_trio), "read Trio");
+        check_err(read_trio_sole(&mut rs, &mut r_trio_sole), "read TrioSole");
+        check_err(read_trio_first(&mut rs, &mut r_trio_first), "read TrioFirst");
+        check_err(read_trio_straddle(&mut rs, &mut r_straddle), "read TrioStraddle");
+
+        check(r_vec2 == vec2, "Vec2 round-trips");
+        check(r_span_f64 == span_f64, "SpanF64 round-trips");
+        check(r_span_u64 == span_u64, "SpanU64 round-trips");
+        check(r_span_i64 == span_i64, "SpanI64 round-trips");
+        check(r_span_one == span_one, "SpanOne round-trips");
+        check(r_span_chunk == span_chunk, "SpanChunk round-trips");
+        check(r_span_tail == span_tail, "SpanTail round-trips");
+        check(r_span_twice == span_twice, "SpanTwice round-trips");
+        check(r_trio == trio, "Trio round-trips");
+        check(r_trio_sole == trio_sole, "TrioSole round-trips");
+        check(r_trio_first == trio_first, "TrioFirst round-trips");
+        check(r_straddle == straddle, "TrioStraddle round-trips");
+    }
+
     if FAILED.load(Ordering::Relaxed) {
         std::process::exit(1);
     }
