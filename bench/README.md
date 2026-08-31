@@ -6,7 +6,9 @@ Measures three families per language, every row labelled with its family
 - **`gen`** — the schema-GENERATED code against its serialize runtime: write
   and read over the pinned corpus instances (the same instances
   `test/main.cpp` pins to `testdata/wire/*.bin`, plus `real_packet` — the
-  §1.7 realistic snapshot `test/bench/main.cpp` pins).
+  §1.7 realistic snapshot `test/bench/main.cpp` pins), plus the four
+  Bench-corpus shapes as the generated twins of the `rt` rows (issue #177) —
+  same names, same goldens, distinguished by the family column.
 - **`rt`** — the serialize runtime API called BY HAND: the four
   `bench/corpus/Bench.schema` shapes as hand-written packets, §1.5
   oracle-gated against the goldens the GENERATED code pinned
@@ -34,10 +36,14 @@ same contract (see "The codegen-only legs" below).
     bench/run.sh --debug         # also the Debug pair (matched-pair methodology)
     bench/run.sh --only c|cpp|go|rust|cs|js|java|dart|elixir   # one language leg
     bench/run.sh --quick         # the iteration instrument: bench_mixed only,
-                                 # 3 measured runs per leg, golden gate intact,
-                                 # and the blended table (per-message time
-                                 # averaged over write+read, fastest = 100%)
-                                 # printed after the CSV. NEVER a
+                                 # 3 measured runs per leg, golden gate intact
+                                 # (the native legs run their gen and rt rows
+                                 # both), and the blended tables (per-message
+                                 # time averaged over write+read, fastest =
+                                 # 100%) printed after the CSV — the headline
+                                 # table SINGLE-SUBJECT over family gen with
+                                 # the family printed per row, the rt blend a
+                                 # second labeled section (#177). NEVER a
                                  # certification run; scaling constants are
                                  # PROPOSED in BENCH-STANDARD.md §2.8.
     bench/run.sh --inline        # + the §4 inline verdict pass: writes the
@@ -169,6 +175,16 @@ counts fixed and identical across all six languages) and family `bits`:
 | bench_bits   | rt     | bench_bits       | 8 raw bit fields incl. one 48-bit (20 B)           |
 | bench_mixed  | rt     | bench_mixed      | a generated-looking packet, hand-written (21 B)    |
 | bitpacker    | bits   | — (read-back verified in setup) | 16-width table over a 64 KiB buffer, 24576 passes/run (§1.4) |
+
+The four Bench shapes ALSO ride as **family `gen`** rows in the five native
+runners (issue #177): the same shapes measured through the GENERATED code
+(`generated/bench/<lang>`), same goldens, same pinned instances, same vary
+mappings, same iteration counts — the generated-best-case twin of each
+hand-written row, per the #170 profiling doctrine. The family column is
+what separates the twins, `relative.go` refuses gen-vs-rt ratios, and the
+deliberate labeled pair per language IS the published compiler-value
+number. Their `inline` column stays `unknown` until the §4 verdict pass
+learns to attribute them (named follow-on on #177).
 
 The `rt` timed loops live in noinline symbols (`rt_bench_*_write_loop` /
 `..._read_loop`, and `bitpacker_*_loop`) so the §4.1 inline verdict counts

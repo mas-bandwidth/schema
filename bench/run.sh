@@ -16,9 +16,13 @@
 #   --compiler    C++ compiler (default: $CXX, else c++)
 #   --quick       the iteration instrument, never the certification
 #                 instrument: every leg runs bench_mixed ONLY (3 measured
-#                 runs, golden gate intact), and the driver prints the
-#                 blended table — per-message time averaged over write and
-#                 read, fastest language = 100% — after the CSV lands.
+#                 runs, golden gate intact; the native legs run their gen
+#                 and rt rows both), and the driver prints the blended
+#                 tables — per-message time averaged over write and read,
+#                 fastest language = 100% — after the CSV lands. The
+#                 headline table is SINGLE-SUBJECT: family gen (generated
+#                 code) for every language, family printed per row; the rt
+#                 blend prints as a second labeled section (#177).
 #                 Scaling constants are PROPOSED in BENCH-STANDARD.md terms.
 #   --only LANG   run a single language leg (c|cpp|go|rust|cs|js|java|dart|elixir).
 #                 For shared boxes
@@ -520,17 +524,26 @@ if [ "$INLINE" = 1 ]; then
     done
 fi
 
-# ---- --quick: the blended table — one row per language over bench_mixed,
+# ---- --quick: the blended tables — one row per language over bench_mixed,
 # per-message time averaged across write and read on the §2.2 headline
-# (max) rate, fastest language = 100%, every other as its time multiple ----
+# (max) rate, fastest language = 100%, every other as its time multiple.
+# SINGLE-SUBJECT (#177): the headline table ranks family gen only — every
+# language's schema-GENERATED code — with the family printed per row
+# (#175). The rt rows (the serialize runtime API called by hand) blend
+# into a second labeled section; the two subjects never rank against each
+# other, which is exactly the refusal relative.go enforces on the CSVs. ----
 if [ "$QUICK" = 1 ]; then
     {
         echo ""
         echo "quick mode — iteration instrument, not certification (bench_mixed only, blended write+read)"
         awk -F, '
-            $2 == "bench_mixed" && $3 == "write" { w[$1] = $9 }
-            $2 == "bench_mixed" && $3 == "read"  { r[$1] = $9 }
-            END {
+            # js emits two gen tiers; the flat tier is THE js path (codec
+            # column, $18), so codec=runtime rows never blend
+            $2 == "bench_mixed" && $13 == "gen" && $18 != "runtime" && $3 == "write" { gw[$1] = $9 }
+            $2 == "bench_mixed" && $13 == "gen" && $18 != "runtime" && $3 == "read"  { gr[$1] = $9 }
+            $2 == "bench_mixed" && $13 == "rt" && $3 == "write" { rw[$1] = $9 }
+            $2 == "bench_mixed" && $13 == "rt" && $3 == "read"  { rr[$1] = $9 }
+            function render(family, w, r,    n, langs, ts, i, j, t, tt, tl, lang) {
                 n = 0
                 for (lang in w) {
                     if (r[lang] > 0 && w[lang] > 0) {
@@ -538,6 +551,7 @@ if [ "$QUICK" = 1 ]; then
                         n++; langs[n] = lang; ts[n] = t
                     }
                 }
+                if (n == 0) return
                 # sort ascending by blended time
                 for (i = 1; i <= n; i++)
                     for (j = i + 1; j <= n; j++)
@@ -545,9 +559,16 @@ if [ "$QUICK" = 1 ]; then
                             tt = ts[i]; ts[i] = ts[j]; ts[j] = tt
                             tl = langs[i]; langs[i] = langs[j]; langs[j] = tl
                         }
-                printf "  %-8s %14s %10s\n", "lang", "ns/msg", "% of best"
+                printf "  %-8s %-6s %14s %10s\n", "lang", "family", "ns/msg", "% of best"
                 for (i = 1; i <= n; i++)
-                    printf "  %-8s %14.2f %9.0f%%\n", langs[i], ts[i], ts[i] / ts[1] * 100.0
+                    printf "  %-8s %-6s %14.2f %9.0f%%\n", langs[i], family, ts[i], ts[i] / ts[1] * 100.0
+            }
+            END {
+                print "subject: schema-GENERATED code (family gen) — what the compiler delivers"
+                render("gen", gw, gr)
+                print ""
+                print "subject: hand-written runtime usage (family rt) — what the serialize libraries deliver by hand; never ranked against gen"
+                render("rt", rw, rr)
             }' "$OUT"
     } >&2
 fi

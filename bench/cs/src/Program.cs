@@ -715,6 +715,141 @@ static partial class Program
 
 
 
+    // ------------------------------------------------------------------------------------------
+    // family gen over the Bench corpus (issue #177): the four Bench.schema
+    // shapes measured through the GENERATED code (generated/bench/cs,
+    // namespace Bench) — the gen twins of the rt rows (RtBench.cs), which
+    // serialize the same shapes BY HAND against the runtime API. Same golden
+    // files, same pinned values, same LCG field mappings, same BenchMessage
+    // discipline as every gen row above; the family column carries the
+    // subject, and relative.go refuses gen-vs-rt ratios. Generated best case
+    // per the profiling doctrine (#170): the plain Release build, no PGO
+    // beyond the JIT's own defaults.
+    // ------------------------------------------------------------------------------------------
+
+    static Bench.BenchPacket PinGenPacket()
+    {
+        Bench.BenchPacket input = new Bench.BenchPacket();
+        input.A = -37;
+        input.B = 12345;
+        input.C = 987654;
+        input.Bits7 = 97;
+        input.Bits13 = 5000;
+        input.Bits23 = 1234567;
+        input.Flag = true;
+        input.X = 1.5f;
+        input.Y = -3.25f;
+        input.Z = 100.125f;
+        input.Big = 0x123456789ABCDEF0;
+        for (int i = 0; i < 17; i++)
+        {
+            input.Blob[i] = (byte)(i * 31);
+        }
+        return input;
+    }
+
+    static Bench.BenchInts PinGenInts()
+    {
+        Bench.BenchInts input = new Bench.BenchInts();
+        input.F0 = -37;
+        input.F1 = 12345;
+        input.F2 = 987654;
+        input.F3 = 2;
+        input.F4 = -15;
+        input.F5 = 777;
+        input.F6 = -2048;
+        input.F7 = 200;
+        input.F8 = -543210;
+        input.F9 = 99;
+        return input;
+    }
+
+    static Bench.BenchBits PinGenBits()
+    {
+        Bench.BenchBits input = new Bench.BenchBits();
+        input.B7 = 97;
+        input.B13 = 5000;
+        input.B23 = 1234567;
+        input.B3 = 5;
+        input.B32 = 0xDEADBEEF;
+        input.B11 = 1024;
+        input.B19 = 333333;
+        input.B48 = 0xFEDCBA987654;
+        return input;
+    }
+
+    static Bench.BenchMixed PinGenMixed()
+    {
+        Bench.BenchMixed input = new Bench.BenchMixed();
+        input.Sequence = 52428;
+        input.AckBits = 0xA5A5A5A5;
+        input.EntityId = 2049;
+        input.PosX = -16384;
+        input.PosY = 16383;
+        input.PosZ = -1;
+        input.Yaw = 511;
+        input.Moving = true;
+        input.Firing = false;
+        input.Timestamp = 0x123456789ABC;
+        input.Weapon = 15;
+        return input;
+    }
+
+    static void VaryGenPacket(Bench.BenchPacket p, ulong rng)
+    {
+        p.A = (int)((rng >> 8) & 63) - 32;
+        p.B = (int)((uint)(rng >> 16) & 65535);
+        p.C = (int)((rng >> 24) & 0xFFFFF) - 500000;
+        p.Bits7 = (uint)rng & 127;
+        p.Bits13 = (uint)(rng >> 3) & 8191;
+        p.Bits23 = (uint)(rng >> 5) & 8388607;
+        p.Flag = (rng & 1) != 0;
+        p.X = (uint)rng & 0xFFFF;
+        p.Big = rng;
+        p.Blob[0] = (byte)(rng >> 32);
+    }
+
+    static void VaryGenInts(Bench.BenchInts f, ulong rng)
+    {
+        f.F0 = (int)((rng >> 8) & 63) - 32;
+        f.F1 = (int)((uint)(rng >> 16) & 65535);
+        f.F2 = (int)((rng >> 24) & 0xFFFFF) - 500000;
+        f.F3 = (int)((uint)(rng >> 2) & 3);
+        f.F4 = (int)((rng >> 11) & 15) - 8;
+        f.F5 = (int)((uint)(rng >> 22) & 511);
+        f.F6 = (int)((rng >> 33) & 2047) - 1024;
+        f.F7 = (int)((uint)(rng >> 40) & 255);
+        f.F8 = (int)((rng >> 30) & 0xFFFFF) - 500000;
+        f.F9 = (int)((uint)(rng >> 57) & 63);
+    }
+
+    static void VaryGenBits(Bench.BenchBits f, ulong rng)
+    {
+        f.B7 = (uint)rng & 127;
+        f.B13 = (uint)(rng >> 3) & 8191;
+        f.B23 = (uint)(rng >> 5) & 8388607;
+        f.B3 = (uint)(rng >> 29) & 7;
+        f.B32 = (uint)(rng >> 16);
+        f.B11 = (uint)(rng >> 37) & 2047;
+        f.B19 = (uint)(rng >> 44) & 524287;
+        f.B48 = rng & 0xFFFFFFFFFFFFul;
+    }
+
+    static void VaryGenMixed(Bench.BenchMixed f, ulong rng)
+    {
+        f.Sequence = (int)((uint)(rng >> 8) & 65535);
+        f.AckBits = (uint)(rng >> 16);
+        f.EntityId = (uint)rng & 4095;
+        f.PosX = (int)((rng >> 20) & 32767) - 16384;
+        f.PosY = (int)((rng >> 25) & 32767) - 16384;
+        f.PosZ = (int)((rng >> 30) & 32767) - 16384;
+        f.Yaw = (uint)(rng >> 3) & 511;
+        f.Moving = (rng & 1) != 0;
+        f.Firing = (rng & 2) != 0;
+        f.Timestamp = rng & 0xFFFFFFFFFFFFul;
+        f.Weapon = (int)((uint)(rng >> 60) & 15);
+    }
+
     static int Main(string[] args)
     {
         CultureInfo.DefaultThreadCurrentCulture = CultureInfo.InvariantCulture;
@@ -781,7 +916,10 @@ static partial class Program
             // --quick: bench_mixed only, 3 measured runs — the iteration
             // instrument, never the certification instrument. Golden gate
             // unconditional (BenchRt gates before timing).
+            // The gen row is the schema subject (the blended table's row);
+            // the rt row rides beside it as the hand-written-usage subject.
             Console.Error.WriteLine("--quick: iteration instrument, not certification");
+            BenchMessage("bench_mixed", "bench_mixed", 40000000, PinGenMixed(), Bench.Schema.WriteBenchMixed, Bench.Schema.ReadBenchMixed, VaryGenMixed);
             BenchRtMixed();
             FlushCsv();
             if (failed)
@@ -816,6 +954,15 @@ static partial class Program
         // sized in the C++ reference (§2.1).
         BenchMessage("real_packet", "real_packet", 8000000, new Realworld.RealPacket(), Realworld.Schema.WriteRealPacket, Realworld.Schema.ReadRealPacket, VaryRealPacket);
 
+        // family gen over the Bench corpus (issue #177): the generated twins
+        // of the rt rows below — same shapes, same goldens, same pins, same
+        // vary mappings, same iteration counts (fixed and identical across
+        // all five runners, §2.1); only the subject differs, and the family
+        // column says so.
+        BenchMessage("bench_packet", "bench_packet", 32000000, PinGenPacket(), Bench.Schema.WriteBenchPacket, Bench.Schema.ReadBenchPacket, VaryGenPacket);
+        BenchMessage("bench_ints", "bench_ints", 40000000, PinGenInts(), Bench.Schema.WriteBenchInts, Bench.Schema.ReadBenchInts, VaryGenInts);
+        BenchMessage("bench_bits", "bench_bits", 48000000, PinGenBits(), Bench.Schema.WriteBenchBits, Bench.Schema.ReadBenchBits, VaryGenBits);
+        BenchMessage("bench_mixed", "bench_mixed", 40000000, PinGenMixed(), Bench.Schema.WriteBenchMixed, Bench.Schema.ReadBenchMixed, VaryGenMixed);
 
         // family rt (§1.3/§1.5): the runtime API by hand, oracle-gated
         // against the goldens the generated code pinned. Iteration counts
