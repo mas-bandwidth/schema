@@ -344,6 +344,25 @@ jobs:
       - run: go vet ./...
       - run: go build ./...
 
+  # The one-benchmark rule, made mechanical. The estate has exactly one
+  # sanctioned benchmark — this repo's data-driven bench — and shape knowledge
+  # belongs in bench/corpus and the generated code. This job refuses a commit
+  # that hand-codes measurement of a schema shape anywhere else. Every current
+  # exception is named in bench/SHAPE-GATE.allow with an exact count that can
+  # only shrink. Runs on push AND pull_request: unlike the cpp-lock this is a
+  # standing property of the tree, not a review-window freeze.
+  shape-gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version: '1.26'
+          cache: false
+      - name: refuse hand-coded shape measurement
+        run: go run ./bench/tools/shapegate
+
   # The C/C++ reference lock (owner ruling 2026-08-31, issue #170): while
   # bench/LOCK exists, a PR touching any locked prefix refuses. The lift is
   # a PR whose whole diff is bench/LOCK itself — visible by construction.

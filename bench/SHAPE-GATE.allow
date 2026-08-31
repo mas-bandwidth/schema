@@ -1,0 +1,101 @@
+# SHAPE-GATE.allow — the complete register of hand-coded shape knowledge.
+#
+# The estate has ONE benchmark: this repo's data-driven bench. Shape knowledge
+# belongs in bench/corpus/*.schema and in the code the compiler generates from
+# it — nowhere else. bench/tools/shapegate enforces that mechanically, and
+# every place that does not yet comply is listed HERE, by name, with a count
+# and a reason. Nothing is exempt silently.
+#
+# FORMAT, one per line:
+#
+#     <check> <path> <count> <reason>
+#
+#     check   names | timing | paths | consts
+#     count   the EXACT number of hits the gate finds today
+#
+# THE COUNT IS A RATCHET. More hits than the count is a refusal: the debt grew.
+# FEWER hits is also a refusal, and the gate prints the new number to write:
+# the debt shrank and the ledger has to say so. An entry matching no file is a
+# refusal too. So the register cannot rot, and it only moves one way.
+#
+# Regenerate the lines after paying debt down:
+#
+#     go run ./bench/tools/shapegate -ledger
+#
+# ---------------------------------------------------------------------------
+# THE DEBT IS PAID. Read this before reading the lines.
+#
+# When this gate was first written on main@6e1002b the register carried 2080
+# name hits across twelve runner files, because every one of the nine legs
+# hand-wrote the four corpus shapes: a family `rt` transcription against the
+# runtime API, and a family `gen` pinned initializer plus LCG vary mapping per
+# shape per language. That was the drift the owner named on 2026-08-31.
+#
+# #199 deleted family rt and the §1.3 hand-coded shapes. #204 retired the §1.2
+# example-corpus rows from every runner. #201 deleted the decomp.cpp scratch
+# harness. What is left is 29 name hits, and NOT ONE OF THEM IS HAND-CODED
+# SHAPE MEASUREMENT. Every remaining line below is one of exactly three kinds,
+# and each line says which:
+#
+#   (comment) the shape's NAME written in a prose comment. The gate is lexical
+#             and does not strip comments — deliberately, since a comment is
+#             where a hand-coded bench announces itself.
+#   (callsite) the GENERATED type or symbol named at the point the shape-blind
+#             driver instantiates it and hands it to generated Write/Read. The
+#             driver has to name the generated symbol to call it; it writes no
+#             field and pins no value. This is the design, not the debt.
+#   (prose)   an ENGLISH word that is also a corpus field name — `extra`,
+#             `sequence` — caught in a comment about something else. A known
+#             false-positive class, named in the package doc's stoplist note.
+#
+# The nine legs are shape-blind. The gate now guards a clean tree, and the
+# ratchet holds it there: any leg that grows one hand-written field, pin or
+# wire size fails this gate on the next push.
+# ---------------------------------------------------------------------------
+
+names bench/c/bench_main.c 4 shape-blind leg: 3 comments naming the shape + `#define BM_TYPE BenchMixed`, the generated type handed to the data-driven driver (callsite)
+names bench/cpp/bench_main.cpp 3 shape-blind leg: 2 comments + `bench::BenchMixed` as the template argument to bench_datadriven (callsite)
+names bench/cs/src/Program.cs 3 shape-blind leg: 1 comment + `Bench.BenchMixed` as the BenchDataDriven type argument (callsite), + `extra` in "one extra untimed pass" (prose)
+names bench/dart/main.dart 3 shape-blind leg: 1 comment + `BenchMixed` as the gateDataDriven type argument and `BenchMixed.new` constructor tear-off (callsite)
+names bench/elixir/main.exs 1 shape-blind leg: the header comment naming the shape this leg measures (comment)
+names bench/elixir/runner.exs 2 shape-blind leg: 1 header comment (comment) + `sequence` in "replaying one sequence the branch predictor could memorize" (prose)
+names bench/go/main.go 3 shape-blind leg: 1 comment + `bench.BenchMixed` as the benchDataDriven type argument (callsite), + `extra` in "one extra untimed pass" (prose)
+names bench/java/Main.java 6 shape-blind leg: 1 comment + 5 `Bench.BenchMixed` callsites — the instance array, the decode target, and the generated read/write calls. Java has no generics over the generated type, so the driver names it inline instead of once (callsite)
+names bench/js/main.mjs 2 shape-blind leg: 1 comment + `bench.BenchMixed` passed to benchDataDrivenFlat (callsite)
+names bench/rust/src/main.rs 2 shape-blind leg: 1 comment + `benchgen::BenchMixed` as the bench_datadriven type parameter (callsite)
+
+consts bench/c/bench_main.c 1 a comment stating the variant file is 64 x 438 bytes; no 438 in code (comment)
+consts bench/java/Main.java 3 three references to GitHub issue #156, which collides with the declared 156-bit total of a corpus shape. A pure false positive of the numeric check, kept visible rather than special-cased (prose)
+
+# ---------------------------------------------------------------------------
+# THE CORPUS TOOLING — shape knowledge in ONE place, deliberately.
+#
+# variantgen holds the BenchMixed pin and vary mapping so the nine legs do not
+# have to: it commits the variant corpus every leg then reads blind. That is
+# the design, not the debt — one copy replacing nine. It is listed anyway,
+# because "one deliberate copy" is a claim that should be checkable rather
+# than remembered. #195's emitter supersedes it.
+#
+# realpacket-gen is the same bargain for the §1.7 RealWorld snapshot.
+# inline-gate names shapes only as SYMBOL NAMES in its budget symbol map and
+# its test fixtures — no serialization, no timing.
+# ---------------------------------------------------------------------------
+
+names bench/tools/variantgen/main.go 94 the single deliberate copy of BenchMixed shape code; emits the corpus the nine legs read blind (superseded by #195)
+names bench/tools/realpacket-gen/main.go 11 the single deliberate copy of the RealWorld snapshot shape code (§1.7)
+names bench/tools/realpacket-gen/pin_test.go 3 pins the generator above against its golden
+names bench/tools/inline-gate.sh 9 shape names inside the inline-budget symbol map and its disassembly test fixtures — row labels, no serialization, no clock
+consts bench/tools/variantgen/main.go 3 three comments stating the 438-byte golden size this tool is the authority for (comment)
+
+# ---------------------------------------------------------------------------
+# THE §1.5 GOLDEN PINNER — correctness, not measurement.
+#
+# test/bench/ writes the pinned instances through the GENERATED code and
+# byte-checks them against testdata/wire/. It is the oracle every runner is
+# gated against before it is allowed to report a number. It names shapes, as a
+# conformance suite must, and it contains no clock — which is exactly the line
+# this gate draws. Only its bench-shaped PATH trips a check.
+# ---------------------------------------------------------------------------
+
+paths test/bench/c_main.c 1 the §1.5 golden pinner: correctness code, no timing
+paths test/bench/main.cpp 1 the §1.5 golden pinner: correctness code, no timing

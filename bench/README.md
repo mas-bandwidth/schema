@@ -294,3 +294,23 @@ A runner is a standalone program in `bench/<lang>/` that:
 
 If a runner or its toolchain is missing, `run.sh` prints `SKIP <lang>`
 with the reason.
+
+## The shape gate
+
+`make shape-gate` (CI job `shape-gate`, `bench/tools/shapegate`) enforces the
+one-benchmark rule mechanically. The estate has exactly one sanctioned
+benchmark — this bench — and shape knowledge belongs in `bench/corpus/*.schema`
+and the code the compiler generates from it. Hand-written RUNNERS are fine and
+are the design; hand-written MEASUREMENT of a schema shape is not, anywhere.
+
+The gate extracts the shape vocabulary from the corpus itself, so it tracks a
+rename in the same commit, and refuses: a corpus identifier named under
+`bench/`, a timing primitive anywhere outside the runner and tool directories,
+a bench-shaped source path outside them, or a shape's wire size written down as
+a literal.
+
+Every place that does not yet comply is named in `bench/SHAPE-GATE.allow` with
+an exact count. The count is a ratchet: growing it fails, and so does leaving it
+too high once the debt is paid. `go run ./bench/tools/shapegate -ledger`
+regenerates the lines. What the gate cannot see is stated at the top of
+`bench/tools/shapegate/main.go` — read it before trusting it.
