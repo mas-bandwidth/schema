@@ -33,6 +33,18 @@
 # Both post-7db74ef (verdicts trustworthy) — never seed budgets from a
 # pre-7db74ef artifact; see the era headers issue #20 stamped.
 #
+# bench_mixed carries NO budget line in any language, deliberately (2026-08-31).
+# Its verdicts came from family rt's noinline `rt_bench_mixed_*_loop` symbols;
+# rt is retired (schema#196) and the data-driven driver that replaced it has no
+# noinline loop symbol and no BENCH_MAP attribution, so the verdict pass emits
+# nothing for it and the row carries inline=unknown — correctly un-ratioable
+# under §5.3 rule 7. A budget line for a leg with no verdict source is exactly
+# the shrug this gate refuses: it fails as "a vanished verdict", which is a
+# false alarm about the fence rather than about the code. bench_mixed becomes
+# guarded again when the verdict pass learns to attribute the data-driven
+# loops (the named follow-on on #177); until then it is an UNGUARDED leg and
+# the gate says so as a WARN, which is the honest state.
+#
 # lang bench path opt max-hot
 cpp rigidbody_moving write O3 0
 cpp rigidbody_moving read O3 0
@@ -56,8 +68,6 @@ cpp testdata write O3 2
 cpp testdata read O3 0
 cpp real_packet write O3 2
 cpp real_packet read O3 0
-cpp bench_mixed write O3 0
-cpp bench_mixed read O3 0
 cpp bitpacker write O3 0
 cpp bitpacker read O3 0
 c rigidbody_moving write O3 0
@@ -82,8 +92,6 @@ c testdata write O3 1
 c testdata read O3 0
 c real_packet write O3 0
 c real_packet read O3 0
-c bench_mixed write O3 0
-c bench_mixed read O3 0
 c bitpacker write O3 0
 c bitpacker read O3 0
 rust rigidbody_moving write O3 0
@@ -108,8 +116,6 @@ rust testdata write O3 3
 rust testdata read O3 2
 rust real_packet write O3 15
 rust real_packet read O3 14
-rust bench_mixed write O3 0
-rust bench_mixed read O3 0
 rust bitpacker write O3 0
 rust bitpacker read O3 0
 cs rigidbody_moving write default 2
@@ -140,8 +146,6 @@ cs testdata write default 5
 cs testdata read default 5
 cs real_packet write default 1
 cs real_packet read default 80
-cs bench_mixed write default 9
-cs bench_mixed read default 17
 cs bitpacker write default 13
 cs bitpacker read default 22
 go rigidbody_moving write default 14
@@ -166,8 +170,6 @@ go testdata write default 24
 go testdata read default 24
 go real_packet write default 97
 go real_packet read default 97
-go bench_mixed write default 11
-go bench_mixed read default 11
 go bitpacker write default 1
 go bitpacker read default 1
 cpp rigidbody_moving write O2 0
@@ -192,8 +194,6 @@ cpp testdata write O2 2
 cpp testdata read O2 0
 cpp real_packet write O2 2
 cpp real_packet read O2 0
-cpp bench_mixed write O2 0
-cpp bench_mixed read O2 0
 cpp bitpacker write O2 0
 cpp bitpacker read O2 0
 c rigidbody_moving write O2 0
@@ -218,7 +218,5 @@ c testdata write O2 1
 c testdata read O2 0
 c real_packet write O2 0
 c real_packet read O2 0
-c bench_mixed write O2 0
-c bench_mixed read O2 0
 c bitpacker write O2 0
 c bitpacker read O2 0
