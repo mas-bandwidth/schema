@@ -857,37 +857,31 @@ namespace Example
             {
                 return false;
             }
-            if (!batch.SerializeBool(ref value.Fire))
             {
-                return false;
-            }
-            if (!batch.SerializeBool(ref value.AltFire))
-            {
-                return false;
-            }
-            if (!batch.SerializeBool(ref value.Boost))
-            {
-                return false;
-            }
-            if (!batch.SerializeBool(ref value.Brake))
-            {
-                return false;
-            }
-            if (!batch.SerializeBool(ref value.Aim))
-            {
-                return false;
-            }
-            if (!batch.SerializeBool(ref value.LockOn))
-            {
-                return false;
-            }
-            if (!batch.SerializeBool(ref value.Zoom))
-            {
-                return false;
-            }
-            if (!batch.SerializeBool(ref value.Ping))
-            {
-                return false;
+                // flat run: 8 bits in 1 chunk(s) — one bounds check per chunk,
+                // one sticky-error test for the whole run
+                ulong c0 = 0;
+                batch.SerializeBits64(ref c0, 8);
+                if (!batch.Ok)
+                {
+                    return false;
+                }
+                ulong v0 = c0 & 0x1UL;
+                value.Fire = v0 != 0UL;
+                ulong v1 = (c0 >> 1) & 0x1UL;
+                value.AltFire = v1 != 0UL;
+                ulong v2 = (c0 >> 2) & 0x1UL;
+                value.Boost = v2 != 0UL;
+                ulong v3 = (c0 >> 3) & 0x1UL;
+                value.Brake = v3 != 0UL;
+                ulong v4 = (c0 >> 4) & 0x1UL;
+                value.Aim = v4 != 0UL;
+                ulong v5 = (c0 >> 5) & 0x1UL;
+                value.LockOn = v5 != 0UL;
+                ulong v6 = (c0 >> 6) & 0x1UL;
+                value.Zoom = v6 != 0UL;
+                ulong v7 = (c0 >> 7) & 0x1UL;
+                value.Ping = v7 != 0UL;
             }
             return true;
         }

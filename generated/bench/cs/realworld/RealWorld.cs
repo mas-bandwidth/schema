@@ -995,13 +995,19 @@ namespace Realworld
             {
                 return false;
             }
-            if (!batch.SerializeBits(ref value.F011Bits, 10))
             {
-                return false;
-            }
-            if (!batch.SerializeBool(ref value.F012Bool))
-            {
-                return false;
+                // flat run: 11 bits in 1 chunk(s) — one bounds check per chunk,
+                // one sticky-error test for the whole run
+                ulong c0 = 0;
+                batch.SerializeBits64(ref c0, 11);
+                if (!batch.Ok)
+                {
+                    return false;
+                }
+                ulong v0 = c0 & 0x3ffUL;
+                value.F011Bits = (uint)v0;
+                ulong v1 = (c0 >> 10) & 0x1UL;
+                value.F012Bool = v1 != 0UL;
             }
             if (value.F012Bool)
             {
@@ -1146,17 +1152,21 @@ namespace Realworld
                 }
                 value.F036Enum = (PacketMode)enumValue;
             }
-            if (!batch.SerializeBool(ref value.F037Bool))
             {
-                return false;
-            }
-            if (!batch.SerializeBool(ref value.F038Bool))
-            {
-                return false;
-            }
-            if (!batch.SerializeBits(ref value.F039Bits, 19))
-            {
-                return false;
+                // flat run: 21 bits in 1 chunk(s) — one bounds check per chunk,
+                // one sticky-error test for the whole run
+                ulong c0 = 0;
+                batch.SerializeBits64(ref c0, 21);
+                if (!batch.Ok)
+                {
+                    return false;
+                }
+                ulong v0 = c0 & 0x1UL;
+                value.F037Bool = v0 != 0UL;
+                ulong v1 = (c0 >> 1) & 0x1UL;
+                value.F038Bool = v1 != 0UL;
+                ulong v2 = (c0 >> 2) & 0x7ffffUL;
+                value.F039Bits = (uint)v2;
             }
             if (!batch.SerializeFixed(ref value.F040Fixed, 4, 12, -5, 5))
             {
@@ -1170,13 +1180,19 @@ namespace Realworld
                 }
                 value.F041Int = (sbyte)rangeValue;
             }
-            if (!batch.SerializeBits(ref value.F042Bits, 30))
             {
-                return false;
-            }
-            if (!batch.SerializeBool(ref value.F043Bool))
-            {
-                return false;
+                // flat run: 31 bits in 1 chunk(s) — one bounds check per chunk,
+                // one sticky-error test for the whole run
+                ulong c0 = 0;
+                batch.SerializeBits64(ref c0, 31);
+                if (!batch.Ok)
+                {
+                    return false;
+                }
+                ulong v0 = c0 & 0x3fffffffUL;
+                value.F042Bits = (uint)v0;
+                ulong v1 = (c0 >> 30) & 0x1UL;
+                value.F043Bool = v1 != 0UL;
             }
             if (value.F043Bool)
             {
@@ -1405,17 +1421,21 @@ namespace Realworld
                 value.F078Bits = 0;
                 value.F079Uint = 0;
             }
-            if (!batch.SerializeBool(ref value.F080Bool))
             {
-                return false;
-            }
-            if (!batch.SerializeBits(ref value.F081Bits, 29))
-            {
-                return false;
-            }
-            if (!batch.SerializeBits(ref value.F082Bits, 25))
-            {
-                return false;
+                // flat run: 55 bits in 1 chunk(s) — one bounds check per chunk,
+                // one sticky-error test for the whole run
+                ulong c0 = 0;
+                batch.SerializeBits64(ref c0, 55);
+                if (!batch.Ok)
+                {
+                    return false;
+                }
+                ulong v0 = c0 & 0x1UL;
+                value.F080Bool = v0 != 0UL;
+                ulong v1 = (c0 >> 1) & 0x1fffffffUL;
+                value.F081Bits = (uint)v1;
+                ulong v2 = (c0 >> 30) & 0x1ffffffUL;
+                value.F082Bits = (uint)v2;
             }
             {
                 int enumValue = 0;
@@ -1470,36 +1490,42 @@ namespace Realworld
                 value.F090Uint = (byte)rangeValue;
             }
             {
-                uint flagsValue = 0;
-                if (!batch.SerializeBits(ref flagsValue, 5))
+                // flat run: 71 bits in 2 chunk(s) — one bounds check per chunk,
+                // one sticky-error test for the whole run
+                ulong c0 = 0;
+                batch.SerializeBits64(ref c0, 64);
+                ulong c1 = 0;
+                batch.SerializeBits64(ref c1, 7);
+                if (!batch.Ok)
                 {
                     return false;
                 }
-                value.F091Flags = flagsValue;
-            }
-            if (!batch.SerializeBool(ref value.F092Bool))
-            {
-                return false;
-            }
-            if (!batch.SerializeBits64(ref value.F093Bits, 64))
-            {
-                return false;
-            }
-            if (!batch.SerializeBool(ref value.F094Bool))
-            {
-                return false;
+                ulong v0 = c0 & 0x1fUL;
+                value.F091Flags = v0;
+                ulong v1 = (c0 >> 5) & 0x1UL;
+                value.F092Bool = v1 != 0UL;
+                ulong v2 = ((c0 >> 6) | (c1 << 58));
+                value.F093Bits = v2;
+                ulong v3 = (c1 >> 6) & 0x1UL;
+                value.F094Bool = v3 != 0UL;
             }
             if (!batch.SerializeFixed(ref value.F095Fixed, 16, 16, -1577, 1577))
             {
                 return false;
             }
-            if (!batch.SerializeBits(ref value.F096Bits, 18))
             {
-                return false;
-            }
-            if (!batch.SerializeBits(ref value.F097Bits, 12))
-            {
-                return false;
+                // flat run: 30 bits in 1 chunk(s) — one bounds check per chunk,
+                // one sticky-error test for the whole run
+                ulong c0 = 0;
+                batch.SerializeBits64(ref c0, 30);
+                if (!batch.Ok)
+                {
+                    return false;
+                }
+                ulong v0 = c0 & 0x3ffffUL;
+                value.F096Bits = (uint)v0;
+                ulong v1 = (c0 >> 18) & 0xfffUL;
+                value.F097Bits = (uint)v1;
             }
             return true;
         }

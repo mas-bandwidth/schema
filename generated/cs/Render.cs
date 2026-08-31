@@ -115,25 +115,27 @@ namespace Example
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static bool ReadRenderSpriteBatch(ref ReadBatch batch, RenderSprite value)
         {
-            if (!batch.SerializeBits64(ref value.SortKey, 64))
             {
-                return false;
-            }
-            if (!batch.SerializeBits(ref value.MeshId, 32))
-            {
-                return false;
-            }
-            if (!batch.SerializeBits(ref value.MaterialId, 32))
-            {
-                return false;
-            }
-            {
-                uint rawValue = 0;
-                if (!batch.SerializeBits(ref rawValue, 8))
+                // flat run: 136 bits in 3 chunk(s) — one bounds check per chunk,
+                // one sticky-error test for the whole run
+                ulong c0 = 0;
+                batch.SerializeBits64(ref c0, 64);
+                ulong c1 = 0;
+                batch.SerializeBits64(ref c1, 64);
+                ulong c2 = 0;
+                batch.SerializeBits64(ref c2, 8);
+                if (!batch.Ok)
                 {
                     return false;
                 }
-                value.Layer = (byte)rawValue;
+                ulong v0 = c0;
+                value.SortKey = v0;
+                ulong v1 = c1 & 0xffffffffUL;
+                value.MeshId = (uint)(uint)v1;
+                ulong v2 = (c1 >> 32) & 0xffffffffUL;
+                value.MaterialId = (uint)(uint)v2;
+                ulong v3 = c2 & 0xffUL;
+                value.Layer = (byte)(uint)v3;
             }
             {
                 int enumValue = 0;
@@ -220,13 +222,19 @@ namespace Example
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static bool ReadRenderBlockBatch(ref ReadBatch batch, RenderBlock value)
         {
-            if (!batch.SerializeBits(ref value.WorkerIndex, 32))
             {
-                return false;
-            }
-            if (!batch.SerializeBits(ref value.SpriteCountHint, 32))
-            {
-                return false;
+                // flat run: 64 bits in 1 chunk(s) — one bounds check per chunk,
+                // one sticky-error test for the whole run
+                ulong c0 = 0;
+                batch.SerializeBits64(ref c0, 64);
+                if (!batch.Ok)
+                {
+                    return false;
+                }
+                ulong v0 = c0 & 0xffffffffUL;
+                value.WorkerIndex = (uint)(uint)v0;
+                ulong v1 = (c0 >> 32) & 0xffffffffUL;
+                value.SpriteCountHint = (uint)(uint)v1;
             }
             if (!batch.SerializeInt(ref value.SpritesCount, 0, (int)RenderBlockMaxSprites)) // the count guards the loop (§6.3)
             {

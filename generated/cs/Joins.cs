@@ -267,13 +267,19 @@ namespace Example
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static bool ReadArmsAgreeBatch(ref ReadBatch batch, ArmsAgree value)
         {
-            if (!batch.SerializeBits(ref value.Lead, 5))
             {
-                return false;
-            }
-            if (!batch.SerializeBool(ref value.Flag))
-            {
-                return false;
+                // flat run: 6 bits in 1 chunk(s) — one bounds check per chunk,
+                // one sticky-error test for the whole run
+                ulong c0 = 0;
+                batch.SerializeBits64(ref c0, 6);
+                if (!batch.Ok)
+                {
+                    return false;
+                }
+                ulong v0 = c0 & 0x1fUL;
+                value.Lead = (uint)v0;
+                ulong v1 = (c0 >> 5) & 0x1UL;
+                value.Flag = v1 != 0UL;
             }
             if (value.Flag)
             {
@@ -370,13 +376,19 @@ namespace Example
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static bool ReadArmsDisagreeBatch(ref ReadBatch batch, ArmsDisagree value)
         {
-            if (!batch.SerializeBits(ref value.Lead, 5))
             {
-                return false;
-            }
-            if (!batch.SerializeBool(ref value.Flag))
-            {
-                return false;
+                // flat run: 6 bits in 1 chunk(s) — one bounds check per chunk,
+                // one sticky-error test for the whole run
+                ulong c0 = 0;
+                batch.SerializeBits64(ref c0, 6);
+                if (!batch.Ok)
+                {
+                    return false;
+                }
+                ulong v0 = c0 & 0x1fUL;
+                value.Lead = (uint)v0;
+                ulong v1 = (c0 >> 5) & 0x1UL;
+                value.Flag = v1 != 0UL;
             }
             if (value.Flag)
             {
@@ -465,13 +477,19 @@ namespace Example
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static bool ReadArmEmptyBatch(ref ReadBatch batch, ArmEmpty value)
         {
-            if (!batch.SerializeBits(ref value.Lead, 5))
             {
-                return false;
-            }
-            if (!batch.SerializeBool(ref value.Flag))
-            {
-                return false;
+                // flat run: 6 bits in 1 chunk(s) — one bounds check per chunk,
+                // one sticky-error test for the whole run
+                ulong c0 = 0;
+                batch.SerializeBits64(ref c0, 6);
+                if (!batch.Ok)
+                {
+                    return false;
+                }
+                ulong v0 = c0 & 0x1fUL;
+                value.Lead = (uint)v0;
+                ulong v1 = (c0 >> 5) & 0x1UL;
+                value.Flag = v1 != 0UL;
             }
             if (value.Flag)
             {
@@ -579,13 +597,19 @@ namespace Example
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static bool ReadArmsNestedBatch(ref ReadBatch batch, ArmsNested value)
         {
-            if (!batch.SerializeBits(ref value.Lead, 3))
             {
-                return false;
-            }
-            if (!batch.SerializeBool(ref value.Outer))
-            {
-                return false;
+                // flat run: 4 bits in 1 chunk(s) — one bounds check per chunk,
+                // one sticky-error test for the whole run
+                ulong c0 = 0;
+                batch.SerializeBits64(ref c0, 4);
+                if (!batch.Ok)
+                {
+                    return false;
+                }
+                ulong v0 = c0 & 0x7UL;
+                value.Lead = (uint)v0;
+                ulong v1 = (c0 >> 3) & 0x1UL;
+                value.Outer = v1 != 0UL;
             }
             if (value.Outer)
             {
@@ -690,13 +714,19 @@ namespace Example
 
         public static bool ReadArmAlign(ReadStream stream, ArmAlign value)
         {
-            if (!stream.SerializeBits(ref value.Lead, 5))
             {
-                return false;
-            }
-            if (!stream.SerializeBool(ref value.Flag))
-            {
-                return false;
+                // flat run: 6 bits in 1 chunk(s) — one bounds check per chunk,
+                // one sticky-error test for the whole run
+                ulong c0 = 0;
+                stream.SerializeBits64(ref c0, 6);
+                if (!stream.Ok)
+                {
+                    return false;
+                }
+                ulong v0 = c0 & 0x1fUL;
+                value.Lead = (uint)v0;
+                ulong v1 = (c0 >> 5) & 0x1UL;
+                value.Flag = v1 != 0UL;
             }
             if (value.Flag)
             {
@@ -827,13 +857,19 @@ namespace Example
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static bool ReadArmArrayBatch(ref ReadBatch batch, ArmArray value)
         {
-            if (!batch.SerializeBits(ref value.Lead, 5))
             {
-                return false;
-            }
-            if (!batch.SerializeBool(ref value.Flag))
-            {
-                return false;
+                // flat run: 6 bits in 1 chunk(s) — one bounds check per chunk,
+                // one sticky-error test for the whole run
+                ulong c0 = 0;
+                batch.SerializeBits64(ref c0, 6);
+                if (!batch.Ok)
+                {
+                    return false;
+                }
+                ulong v0 = c0 & 0x1fUL;
+                value.Lead = (uint)v0;
+                ulong v1 = (c0 >> 5) & 0x1UL;
+                value.Flag = v1 != 0UL;
             }
             if (value.Flag)
             {
@@ -1332,21 +1368,25 @@ namespace Example
                     return false;
                 }
             }
-            if (!stream.SerializeBits(ref value.P, 32))
             {
-                return false;
-            }
-            if (!stream.SerializeBits(ref value.Q, 29))
-            {
-                return false;
-            }
-            if (!stream.SerializeBits(ref value.R, 19))
-            {
-                return false;
-            }
-            if (!stream.SerializeBits(ref value.Tail, 4))
-            {
-                return false;
+                // flat run: 84 bits in 2 chunk(s) — one bounds check per chunk,
+                // one sticky-error test for the whole run
+                ulong c0 = 0;
+                stream.SerializeBits64(ref c0, 64);
+                ulong c1 = 0;
+                stream.SerializeBits64(ref c1, 20);
+                if (!stream.Ok)
+                {
+                    return false;
+                }
+                ulong v0 = c0 & 0xffffffffUL;
+                value.P = (uint)v0;
+                ulong v1 = (c0 >> 32) & 0x1fffffffUL;
+                value.Q = (uint)v1;
+                ulong v2 = ((c0 >> 61) | (c1 << 3)) & 0x7ffffUL;
+                value.R = (uint)v2;
+                ulong v3 = (c1 >> 16) & 0xfUL;
+                value.Tail = (uint)v3;
             }
             return true;
         }

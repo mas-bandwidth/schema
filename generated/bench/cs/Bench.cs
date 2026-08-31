@@ -317,21 +317,23 @@ namespace Bench
             {
                 return false;
             }
-            if (!stream.SerializeBits(ref value.Bits7, 7))
             {
-                return false;
-            }
-            if (!stream.SerializeBits(ref value.Bits13, 13))
-            {
-                return false;
-            }
-            if (!stream.SerializeBits(ref value.Bits23, 23))
-            {
-                return false;
-            }
-            if (!stream.SerializeBool(ref value.Flag))
-            {
-                return false;
+                // flat run: 44 bits in 1 chunk(s) — one bounds check per chunk,
+                // one sticky-error test for the whole run
+                ulong c0 = 0;
+                stream.SerializeBits64(ref c0, 44);
+                if (!stream.Ok)
+                {
+                    return false;
+                }
+                ulong v0 = c0 & 0x7fUL;
+                value.Bits7 = (uint)v0;
+                ulong v1 = (c0 >> 7) & 0x1fffUL;
+                value.Bits13 = (uint)v1;
+                ulong v2 = (c0 >> 20) & 0x7fffffUL;
+                value.Bits23 = (uint)v2;
+                ulong v3 = (c0 >> 43) & 0x1UL;
+                value.Flag = v3 != 0UL;
             }
             if (!stream.SerializeFloat(ref value.X))
             {
@@ -496,13 +498,19 @@ namespace Bench
             {
                 return false;
             }
-            if (!batch.SerializeInt(ref value.F6, -2048, 2047))
             {
-                return false;
-            }
-            if (!batch.SerializeInt(ref value.F7, 0, 255))
-            {
-                return false;
+                // flat run: 20 bits in 1 chunk(s) — one bounds check per chunk,
+                // one sticky-error test for the whole run
+                ulong c0 = 0;
+                batch.SerializeBits64(ref c0, 20);
+                if (!batch.Ok)
+                {
+                    return false;
+                }
+                ulong v0 = c0 & 0xfffUL;
+                value.F6 = (int)((int)((uint)v0 + unchecked((uint)(-2048))));
+                ulong v1 = (c0 >> 12) & 0xffUL;
+                value.F7 = (int)((int)(uint)v1);
             }
             if (!batch.SerializeInt(ref value.F8, -600000, 600000))
             {
@@ -588,37 +596,35 @@ namespace Bench
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static bool ReadBenchBitsBatch(ref ReadBatch batch, BenchBits value)
         {
-            if (!batch.SerializeBits(ref value.B7, 7))
             {
-                return false;
-            }
-            if (!batch.SerializeBits(ref value.B13, 13))
-            {
-                return false;
-            }
-            if (!batch.SerializeBits(ref value.B23, 23))
-            {
-                return false;
-            }
-            if (!batch.SerializeBits(ref value.B3, 3))
-            {
-                return false;
-            }
-            if (!batch.SerializeBits(ref value.B32, 32))
-            {
-                return false;
-            }
-            if (!batch.SerializeBits(ref value.B11, 11))
-            {
-                return false;
-            }
-            if (!batch.SerializeBits(ref value.B19, 19))
-            {
-                return false;
-            }
-            if (!batch.SerializeBits64(ref value.B48, 48))
-            {
-                return false;
+                // flat run: 156 bits in 3 chunk(s) — one bounds check per chunk,
+                // one sticky-error test for the whole run
+                ulong c0 = 0;
+                batch.SerializeBits64(ref c0, 64);
+                ulong c1 = 0;
+                batch.SerializeBits64(ref c1, 64);
+                ulong c2 = 0;
+                batch.SerializeBits64(ref c2, 28);
+                if (!batch.Ok)
+                {
+                    return false;
+                }
+                ulong v0 = c0 & 0x7fUL;
+                value.B7 = (uint)v0;
+                ulong v1 = (c0 >> 7) & 0x1fffUL;
+                value.B13 = (uint)v1;
+                ulong v2 = (c0 >> 20) & 0x7fffffUL;
+                value.B23 = (uint)v2;
+                ulong v3 = (c0 >> 43) & 0x7UL;
+                value.B3 = (uint)v3;
+                ulong v4 = ((c0 >> 46) | (c1 << 18)) & 0xffffffffUL;
+                value.B32 = (uint)v4;
+                ulong v5 = (c1 >> 14) & 0x7ffUL;
+                value.B11 = (uint)v5;
+                ulong v6 = (c1 >> 25) & 0x7ffffUL;
+                value.B19 = (uint)v6;
+                ulong v7 = ((c1 >> 44) | (c2 << 20)) & 0xffffffffffffUL;
+                value.B48 = v7;
             }
             return true;
         }
@@ -878,53 +884,47 @@ namespace Bench
             {
                 return false;
             }
-            if (!batch.SerializeBits(ref value.Yaw, 9))
             {
-                return false;
-            }
-            if (!batch.SerializeBits(ref value.Pitch, 9))
-            {
-                return false;
-            }
-            if (!batch.SerializeInt(ref value.VelX, -2048, 2047))
-            {
-                return false;
-            }
-            if (!batch.SerializeInt(ref value.VelY, -2048, 2047))
-            {
-                return false;
-            }
-            if (!batch.SerializeInt(ref value.VelZ, -2048, 2047))
-            {
-                return false;
+                // flat run: 54 bits in 1 chunk(s) — one bounds check per chunk,
+                // one sticky-error test for the whole run
+                ulong c0 = 0;
+                batch.SerializeBits64(ref c0, 54);
+                if (!batch.Ok)
+                {
+                    return false;
+                }
+                ulong v0 = c0 & 0x1ffUL;
+                value.Yaw = (uint)v0;
+                ulong v1 = (c0 >> 9) & 0x1ffUL;
+                value.Pitch = (uint)v1;
+                ulong v2 = (c0 >> 18) & 0xfffUL;
+                value.VelX = (int)((int)((uint)v2 + unchecked((uint)(-2048))));
+                ulong v3 = (c0 >> 30) & 0xfffUL;
+                value.VelY = (int)((int)((uint)v3 + unchecked((uint)(-2048))));
+                ulong v4 = (c0 >> 42) & 0xfffUL;
+                value.VelZ = (int)((int)((uint)v4 + unchecked((uint)(-2048))));
             }
             if (!batch.SerializeInt(ref value.Health, 0, 1000))
             {
                 return false;
             }
             {
-                int enumValue = 0;
-                if (!batch.SerializeInt(ref enumValue, 0, 15))
+                // flat run: 14 bits in 1 chunk(s) — one bounds check per chunk,
+                // one sticky-error test for the whole run
+                ulong c0 = 0;
+                batch.SerializeBits64(ref c0, 14);
+                if (!batch.Ok)
                 {
                     return false;
                 }
-                value.Weapon = (MixedWeapon)enumValue;
-            }
-            {
-                uint flagsValue = 0;
-                if (!batch.SerializeBits(ref flagsValue, 8))
-                {
-                    return false;
-                }
-                value.Damage = flagsValue;
-            }
-            if (!batch.SerializeBool(ref value.Moving))
-            {
-                return false;
-            }
-            if (!batch.SerializeBool(ref value.Firing))
-            {
-                return false;
+                ulong v0 = c0 & 0xfUL;
+                value.Weapon = (MixedWeapon)(int)v0;
+                ulong v1 = (c0 >> 4) & 0xffUL;
+                value.Damage = v1;
+                ulong v2 = (c0 >> 12) & 0x1UL;
+                value.Moving = v2 != 0UL;
+                ulong v3 = (c0 >> 13) & 0x1UL;
+                value.Firing = v3 != 0UL;
             }
             return true;
         }
@@ -984,13 +984,19 @@ namespace Bench
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static bool ReadMixedStatBatch(ref ReadBatch batch, MixedStat value)
         {
-            if (!batch.SerializeBits(ref value.StatId, 8))
             {
-                return false;
-            }
-            if (!batch.SerializeInt(ref value.Delta, -512, 511))
-            {
-                return false;
+                // flat run: 18 bits in 1 chunk(s) — one bounds check per chunk,
+                // one sticky-error test for the whole run
+                ulong c0 = 0;
+                batch.SerializeBits64(ref c0, 18);
+                if (!batch.Ok)
+                {
+                    return false;
+                }
+                ulong v0 = c0 & 0xffUL;
+                value.StatId = (uint)v0;
+                ulong v1 = (c0 >> 8) & 0x3ffUL;
+                value.Delta = (int)((int)((uint)v1 + unchecked((uint)(-512))));
             }
             return true;
         }
@@ -1058,21 +1064,23 @@ namespace Bench
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static bool ReadMixedHitEventBatch(ref ReadBatch batch, MixedHitEvent value)
         {
-            if (!batch.SerializeBits(ref value.TargetId, 12))
             {
-                return false;
-            }
-            if (!batch.SerializeInt(ref value.Damage, 0, 4095))
-            {
-                return false;
-            }
-            if (!batch.SerializeInt(ref value.HitKind, 0, 7))
-            {
-                return false;
-            }
-            if (!batch.SerializeBool(ref value.Crit))
-            {
-                return false;
+                // flat run: 28 bits in 1 chunk(s) — one bounds check per chunk,
+                // one sticky-error test for the whole run
+                ulong c0 = 0;
+                batch.SerializeBits64(ref c0, 28);
+                if (!batch.Ok)
+                {
+                    return false;
+                }
+                ulong v0 = c0 & 0xfffUL;
+                value.TargetId = (uint)v0;
+                ulong v1 = (c0 >> 12) & 0xfffUL;
+                value.Damage = (int)((int)(uint)v1);
+                ulong v2 = (c0 >> 24) & 0x7UL;
+                value.HitKind = (int)((int)(uint)v2);
+                ulong v3 = (c0 >> 27) & 0x1UL;
+                value.Crit = v3 != 0UL;
             }
             return true;
         }
@@ -1132,13 +1140,19 @@ namespace Bench
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static bool ReadMixedChatEventBatch(ref ReadBatch batch, MixedChatEvent value)
         {
-            if (!batch.SerializeInt(ref value.Channel, 0, 3))
             {
-                return false;
-            }
-            if (!batch.SerializeBits(ref value.Speaker, 12))
-            {
-                return false;
+                // flat run: 14 bits in 1 chunk(s) — one bounds check per chunk,
+                // one sticky-error test for the whole run
+                ulong c0 = 0;
+                batch.SerializeBits64(ref c0, 14);
+                if (!batch.Ok)
+                {
+                    return false;
+                }
+                ulong v0 = c0 & 0x3UL;
+                value.Channel = (int)((int)(uint)v0);
+                ulong v1 = (c0 >> 2) & 0xfffUL;
+                value.Speaker = (uint)v1;
             }
             return true;
         }
@@ -1198,13 +1212,19 @@ namespace Bench
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static bool ReadMixedPickupEventBatch(ref ReadBatch batch, MixedPickupEvent value)
         {
-            if (!batch.SerializeBits(ref value.ItemId, 10))
             {
-                return false;
-            }
-            if (!batch.SerializeInt(ref value.Amount, 0, 255))
-            {
-                return false;
+                // flat run: 18 bits in 1 chunk(s) — one bounds check per chunk,
+                // one sticky-error test for the whole run
+                ulong c0 = 0;
+                batch.SerializeBits64(ref c0, 18);
+                if (!batch.Ok)
+                {
+                    return false;
+                }
+                ulong v0 = c0 & 0x3ffUL;
+                value.ItemId = (uint)v0;
+                ulong v1 = (c0 >> 10) & 0xffUL;
+                value.Amount = (int)((int)(uint)v1);
             }
             return true;
         }
@@ -1597,43 +1617,37 @@ namespace Bench
         public static bool ReadBenchMixed(ReadStream stream, BenchMixed value)
         {
             {
-                uint constValue = 0;
-                if (!stream.SerializeBits(ref constValue, 16))
+                // flat run: 240 bits in 4 chunk(s) — one bounds check per chunk,
+                // one sticky-error test for the whole run
+                ulong c0 = 0;
+                stream.SerializeBits64(ref c0, 64);
+                ulong c1 = 0;
+                stream.SerializeBits64(ref c1, 64);
+                ulong c2 = 0;
+                stream.SerializeBits64(ref c2, 64);
+                ulong c3 = 0;
+                stream.SerializeBits64(ref c3, 48);
+                if (!stream.Ok)
                 {
                     return false;
                 }
-                if (constValue != 49374) // const(49374, 16): a read rejects any other value (SPEC §4.3)
+                ulong v0 = c0 & 0xffffUL;
+                if (v0 != 49374UL) // const(49374, 16): a read rejects any other value (SPEC §4.3)
                 {
                     return false;
                 }
-            }
-            if (!stream.SerializeBits(ref value.Sequence, 16))
-            {
-                return false;
-            }
-            if (!stream.SerializeInt(ref value.AckSequence, 0, 65535))
-            {
-                return false;
-            }
-            if (!stream.SerializeBits(ref value.AckBits, 32))
-            {
-                return false;
-            }
-            if (!stream.SerializeBits64(ref value.SessionId, 64))
-            {
-                return false;
-            }
-            if (!stream.SerializeBits(ref value.ClientId, 32))
-            {
-                return false;
-            }
-            {
-                ulong offsetValue = 0;
-                if (!stream.SerializeBits64(ref offsetValue, 64))
-                {
-                    return false;
-                }
-                value.Nonce = offsetValue;
+                ulong v1 = (c0 >> 16) & 0xffffUL;
+                value.Sequence = (uint)v1;
+                ulong v2 = (c0 >> 32) & 0xffffUL;
+                value.AckSequence = (int)((int)(uint)v2);
+                ulong v3 = ((c0 >> 48) | (c1 << 16)) & 0xffffffffUL;
+                value.AckBits = (uint)v3;
+                ulong v4 = ((c1 >> 16) | (c2 << 48));
+                value.SessionId = v4;
+                ulong v5 = (c2 >> 16) & 0xffffffffUL;
+                value.ClientId = (uint)(uint)v5;
+                ulong v6 = ((c2 >> 48) | (c3 << 16));
+                value.Nonce = v6;
             }
             if (!stream.SerializeInt64(ref value.WorldTime, -1000000000000, 1000000000000))
             {
@@ -1782,13 +1796,19 @@ namespace Bench
             {
                 return false;
             }
-            if (!stream.SerializeBits(ref value.CrcHint, 24))
             {
-                return false;
-            }
-            if (!stream.SerializeBool(ref value.HasExtra))
-            {
-                return false;
+                // flat run: 25 bits in 1 chunk(s) — one bounds check per chunk,
+                // one sticky-error test for the whole run
+                ulong c0 = 0;
+                stream.SerializeBits64(ref c0, 25);
+                if (!stream.Ok)
+                {
+                    return false;
+                }
+                ulong v0 = c0 & 0xffffffUL;
+                value.CrcHint = (uint)v0;
+                ulong v1 = (c0 >> 24) & 0x1UL;
+                value.HasExtra = v1 != 0UL;
             }
             if (value.HasExtra)
             {

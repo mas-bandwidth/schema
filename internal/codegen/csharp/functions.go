@@ -273,33 +273,70 @@ func (g *gen) emitWriteItem(item ir.Item, ind string) {
 	}
 }
 
+// emitReadItems is emitWriteItems' twin over read runs — same accumulation,
+// same item-by-item fallback, a stricter classifier (flat.go's read half
+// names what it will not absorb and why).
 func (g *gen) emitReadItems(items []ir.Item, ind string) {
-	for _, item := range items {
-		switch item := item.(type) {
-		case *ir.FieldItem:
-			g.emitReadField(item.F, ind)
-		case *ir.ConstItem:
-			g.emitConstItem(item, ind, false)
-		case *ir.ReservedItem:
-			g.emitReservedItem(item, ind, false)
-		case *ir.AlignItem:
-			g.call(ind, g.rv()+".SerializeAlign()", " // rejects nonzero padding (SPEC §4.3)")
-		case *ir.Branch:
-			neg := ""
-			if item.Neg {
-				neg = "!"
-			}
-			g.sf("%sif (%svalue.%s)\n%s{\n", ind, neg, g.m(ir.GoExportName(item.Cond)), ind)
-			g.emitReadItems(item.Then, ind+"    ")
-			// the untaken side reads as zero values (SPEC §5)
-			g.emitZeroItems(item.Else, ind+"    ")
-			g.sf("%s}\n%selse\n%s{\n", ind, ind, ind)
-			if item.Else != nil {
-				g.emitReadItems(item.Else, ind+"    ")
-			}
-			g.emitZeroItems(item.Then, ind+"    ")
-			g.sf("%s}\n", ind)
+	var run []flatPiece
+	var runBits int64
+	flush := func() {
+		if len(run) == 0 {
+			return
 		}
+		pieces, bits := run, runBits
+		run, runBits = nil, 0
+		if flatWorthwhile(pieces, bits) {
+			g.emitFlatReadRun(pieces, bits, ind)
+			return
+		}
+		for _, p := range pieces {
+			g.emitReadItem(p.item, ind)
+		}
+	}
+	for _, item := range items {
+		p, ok := g.flatReadPieceOf(item)
+		if ok && runBits+p.bits <= flatMaxRunBits {
+			run = append(run, p)
+			runBits += p.bits
+			continue
+		}
+		flush()
+		if ok {
+			run, runBits = []flatPiece{p}, p.bits
+			continue
+		}
+		g.emitReadItem(item, ind)
+	}
+	flush()
+}
+
+// emitReadItem is the per-field path for one item — the run's fallback and
+// the emitter for everything a run cannot hold.
+func (g *gen) emitReadItem(item ir.Item, ind string) {
+	switch item := item.(type) {
+	case *ir.FieldItem:
+		g.emitReadField(item.F, ind)
+	case *ir.ConstItem:
+		g.emitConstItem(item, ind, false)
+	case *ir.ReservedItem:
+		g.emitReservedItem(item, ind, false)
+	case *ir.AlignItem:
+		g.call(ind, g.rv()+".SerializeAlign()", " // rejects nonzero padding (SPEC §4.3)")
+	case *ir.Branch:
+		neg := ""
+		if item.Neg {
+			neg = "!"
+		}
+		g.sf("%sif (%svalue.%s)\n%s{\n", ind, neg, g.m(ir.GoExportName(item.Cond)), ind)
+		g.emitReadItems(item.Then, ind+"    ")
+		// the untaken side reads as zero values (SPEC §5)
+		g.emitZeroItems(item.Else, ind+"    ")
+		g.sf("%s}\n%selse\n%s{\n", ind, ind, ind)
+		if item.Else != nil {
+			g.emitReadItems(item.Else, ind+"    ")
+		}
+		g.emitZeroItems(item.Then, ind+"    ")
+		g.sf("%s}\n", ind)
 	}
 }
 

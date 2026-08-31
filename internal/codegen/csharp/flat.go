@@ -1,4 +1,4 @@
-// The flat word codec, write half: the C# target's chunked wire form.
+// The flat word codec: the C# target's chunked wire form.
 //
 // The per-field form asks the stream to place one field at a time. In C# the
 // call itself is free — the JitDisasm audit of the bench shape found ZERO
@@ -56,14 +56,9 @@
 // it has fields, so flattening would add a materialized local per field and
 // remove nothing.
 //
-// THE READ HALF IS NOT HERE. Folding a ranged read means replacing
-// SerializeInt with a generated comparison, and serialize.cs's ranged read
-// LATCHES SerializeError.ValueOutOfRange on refusal where a generated guard
-// returns false without latching. serialize.cs publishes checks=always and
-// test/cs pins that latch, so the read fold waits on a public refusal-latch
-// on ReadStream/ReadBatch — a serialize.cs change, tracked separately. The
-// write path has no such dependence: its folded range refusals already
-// return false without latching (see emitWriteFoldedRange).
+// The read half follows the write half in this file, with its own header:
+// what it fuses, the two consequences that fusion always has, and the one
+// class of item it will NOT absorb.
 package csharp
 
 import (
@@ -100,6 +95,11 @@ type flatPiece struct {
 	bits  int64
 	guard func(ind string) // write-side refusals and headroom guards; may be nil
 	expr  string           // ulong-valued, already masked to bits; "" when bits == 0
+
+	// read emits the read-side validation and field store. src names the ulong
+	// local holding the extracted bits; a zero-bit piece is handed the literal
+	// "0UL", the only value its range can carry (SPEC §4.6).
+	read func(ind, src string)
 }
 
 // flatChunkWidths splits a run of `bits` wire bits into the chunks the stream
@@ -395,4 +395,270 @@ func (g *gen) flatWriteEnumPiece(item *ir.FieldItem, ref *ir.Enum, name string) 
 	}
 	return flatPiece{item: item, bits: bits, guard: guard,
 		expr: flatMasked(fmt.Sprintf("(ulong)(%s)%s", typ, name), bits)}, true
+}
+
+// ---- the read half ---------------------------------------------------------
+//
+// The read run fuses what the per-field form paid per field: ONE bounds check
+// per chunk instead of one per field, and ONE sticky-error test for the whole
+// run. Reading every chunk before the error test is safe and is the point — a
+// failed chunk latches the stream's error and every later chunk read returns
+// on it immediately, leaving its destination at zero.
+//
+// TWO CONSEQUENCES, both named rather than discovered later:
+//
+//   - A stream that is BOTH truncated inside a run AND carries an
+//     out-of-range value before the truncation now surfaces the stream's
+//     overflow error where the per-field form surfaced the range refusal.
+//     Both refuse the packet; the set of ACCEPTED streams is unchanged, which
+//     is the property that matters at the trust boundary. Java, Dart, JS-flat,
+//     Rust and Go already carry this consequence.
+//
+//   - A failed run leaves the destination object untouched where the
+//     per-field form left the fields before the failure updated. Both are
+//     partial states a failed read gives no contract over (SPEC §5).
+//
+// WHAT A READ RUN WILL NOT ABSORB, and why. A ranged read whose range check
+// can actually fire goes through serialize.cs's SerializeInt/SerializeInt64,
+// which LATCH SerializeError.ValueOutOfRange; a generated comparison returns
+// false without latching, and cs publishes checks=always with test/cs pinning
+// that latch. So a ranged piece joins a read run only where its check is
+// VACUOUS — max - min is exactly 2^bits - 1, so no value the bits can hold is
+// out of range — or where the emitter's own read path ALREADY refuses without
+// latching (the full-range unsigned bits64 path, which has always carried a
+// generated refusal). Everything else closes the run and keeps the runtime
+// call. Folding the rest waits on a public refusal-latch on
+// ReadStream/ReadBatch — a serialize.cs change.
+
+// flatVacuousRange reports whether a ranged read's refusal can never fire:
+// the offset domain [0, max-min] fills the bit width exactly.
+func flatVacuousRange(min, max *big.Int) bool {
+	bits := ir.BitsRequired(min, max)
+	if bits == 0 {
+		return true // a degenerate range rides no bits and reads no value
+	}
+	diff := new(big.Int).Sub(max, min)
+	full := new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), uint(bits)), big.NewInt(1))
+	return diff.Cmp(full) == 0
+}
+
+// emitFlatReadRun reads the run's chunks, tests the latch once, then unpacks,
+// validates and stores each value with literal shifts and masks.
+func (g *gen) emitFlatReadRun(pieces []flatPiece, bits int64, ind string) {
+	g.sf("%s{\n", ind)
+	inner := ind + "    "
+	widths := flatChunkWidths(bits)
+	g.sf("%s// flat run: %d bits in %d chunk(s) — one bounds check per chunk,\n", inner, bits, len(widths))
+	g.sf("%s// one sticky-error test for the whole run\n", inner)
+	for j, width := range widths {
+		g.sf("%sulong c%d = 0;\n", inner, j)
+		g.sf("%s%s.SerializeBits64(ref c%d, %d);\n", inner, g.rv(), j, width)
+	}
+	g.sf("%sif (!%s.Ok)\n%s{\n%s    return false;\n%s}\n", inner, g.rv(), inner, inner, inner)
+
+	var at int64
+	for i, p := range pieces {
+		if p.bits == 0 {
+			p.read(inner, "0UL")
+			continue
+		}
+		o := at
+		at += p.bits
+		first := o / flatChunkBits
+		last := (o + p.bits - 1) / flatChunkBits
+		var terms []string
+		for j := first; j <= last; j++ {
+			lo := j * flatChunkBits
+			if lo <= o {
+				terms = append(terms, flatShiftRight(fmt.Sprintf("c%d", j), o-lo))
+			} else {
+				terms = append(terms, fmt.Sprintf("(c%d << %d)", j, lo-o))
+			}
+		}
+		expr := strings.Join(terms, " | ")
+		if len(terms) > 1 {
+			expr = "(" + expr + ")"
+		}
+		if m := flatMaskLit(p.bits); m != "" {
+			expr = expr + " & " + m
+		}
+		g.sf("%sulong v%d = %s;\n", inner, i, expr)
+		p.read(inner, fmt.Sprintf("v%d", i))
+	}
+	g.sf("%s}\n", ind)
+}
+
+// flatReadPieceOf classifies one item into its contribution to a read run, or
+// reports false — which closes the run and sends the item down the per-field
+// path.
+func (g *gen) flatReadPieceOf(item ir.Item) (flatPiece, bool) {
+	switch item := item.(type) {
+	case *ir.ConstItem:
+		if item.Bits < 1 || item.Bits > 64 {
+			return flatPiece{}, false
+		}
+		lit := item.Value.String() + "UL"
+		return flatPiece{item: item, bits: item.Bits, read: func(ind, src string) {
+			g.sf("%sif (%s != %s) // const(%s, %d): a read rejects any other value (SPEC §4.3)\n",
+				ind, src, lit, item.Value.String(), item.Bits)
+			g.sf("%s{\n%s    return false;\n%s}\n", ind, ind, ind)
+		}}, true
+	case *ir.ReservedItem:
+		if item.Bits < 1 || item.Bits > 64 {
+			return flatPiece{}, false
+		}
+		return flatPiece{item: item, bits: item.Bits, read: func(ind, src string) {
+			g.sf("%sif (%s != 0UL) // reserved(%d): a read rejects nonzero\n", ind, src, item.Bits)
+			g.sf("%s{\n%s    return false;\n%s}\n", ind, ind, ind)
+		}}, true
+	case *ir.FieldItem:
+		return g.flatReadFieldPiece(item)
+	}
+	return flatPiece{}, false
+}
+
+func (g *gen) flatReadFieldPiece(item *ir.FieldItem) (flatPiece, bool) {
+	f := item.F
+	if f.Array != ir.ArrayNone {
+		return flatPiece{}, false
+	}
+	name := "value." + g.fieldBase(f)
+	switch f.Type.Kind {
+	case ir.TBool:
+		return flatPiece{item: item, bits: 1, read: func(ind, src string) {
+			g.sf("%s%s = %s != 0UL;\n", ind, name, src)
+		}}, true
+
+	case ir.TBits:
+		w := int64(f.Type.Width)
+		if w < 1 || w > 64 {
+			return flatPiece{}, false
+		}
+		return flatPiece{item: item, bits: w, read: func(ind, src string) {
+			if w <= 32 {
+				g.sf("%s%s = (uint)%s;\n", ind, name, src)
+				return
+			}
+			g.sf("%s%s = %s;\n", ind, name, src)
+		}}, true
+
+	case ir.TInt:
+		if f.Type.Width > 64 {
+			return flatPiece{}, false
+		}
+		if !f.HasIntRange {
+			return g.flatReadBarePiece(item, name)
+		}
+		return g.flatReadRangedPiece(item, name)
+
+	case ir.TNamed:
+		switch ref := f.Type.Ref.(type) {
+		case *ir.Enum:
+			bits := ir.BitsRequired(big.NewInt(0), big.NewInt(ref.Max))
+			// the runtime's ranged read is the refuser for a non-vacuous enum
+			// range, and it latches; leave those on the call
+			if bits < 1 || bits > 64 ||
+				big.NewInt(ref.Max).Cmp(new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), uint(bits)), big.NewInt(1))) != 0 {
+				return flatPiece{}, false
+			}
+			return flatPiece{item: item, bits: bits, read: func(ind, src string) {
+				g.sf("%s%s = (%s)(int)%s;\n", ind, name, f.Type.Name, src)
+			}}, true
+		case *ir.Flags:
+			w := int64(ref.WireBits)
+			if w < 1 || w > 64 {
+				return flatPiece{}, false
+			}
+			return flatPiece{item: item, bits: w, read: func(ind, src string) {
+				g.sf("%s%s = %s;\n", ind, name, src)
+			}}, true
+		}
+	}
+	return flatPiece{}, false
+}
+
+func (g *gen) flatReadBarePiece(item *ir.FieldItem, name string) (flatPiece, bool) {
+	f := item.F
+	w := int64(f.Type.Width)
+	if w < 1 || w > 64 {
+		return flatPiece{}, false
+	}
+	typ := g.csFieldType(f.Type)
+	return flatPiece{item: item, bits: w, read: func(ind, src string) {
+		switch {
+		case w == 64 && f.Type.Signed:
+			g.sf("%s%s = (long)%s;\n", ind, name, src)
+		case w == 64:
+			g.sf("%s%s = %s;\n", ind, name, src)
+		case f.Type.Signed && w < 32:
+			// back through the same-width unsigned so the sign bit lands right
+			g.sf("%s%s = (%s)(%s)(uint)%s;\n", ind, name, csInt(f.Type.Width), csUint(f.Type.Width), src)
+		default:
+			g.sf("%s%s = (%s)(uint)%s;\n", ind, name, typ, src)
+		}
+	}}, true
+}
+
+// flatReadRangedPiece folds a ranged read into the run only where the refusal
+// cannot fire, or where the emitter's own read path already refuses without
+// latching — see the read half's header.
+func (g *gen) flatReadRangedPiece(item *ir.FieldItem, name string) (flatPiece, bool) {
+	f := item.F
+	bits := ir.BitsRequired(f.IntMin, f.IntMax)
+	if bits > 64 {
+		return flatPiece{}, false
+	}
+	typ := g.csFieldType(f.Type)
+	if f.IntMin.Cmp(f.IntMax) == 0 {
+		// degenerate range: zero bits — the value is the range (SPEC §4.6)
+		lit := f.IntMin.String() + "L"
+		if !f.Type.Signed && !f.IntMin.IsInt64() {
+			lit = f.IntMin.String() + "UL"
+		}
+		return flatPiece{item: item, bits: 0, read: func(ind, src string) {
+			g.sf("%s%s = unchecked((%s)(%s));\n", ind, name, typ, lit)
+		}}, true
+	}
+	switch intRangePath(f.IntMin, f.IntMax) {
+	case "int32":
+		if !flatVacuousRange(f.IntMin, f.IntMax) {
+			return flatPiece{}, false // the runtime is the refuser, and it latches
+		}
+		lo, _ := g.rangeArgs(f, "int")
+		return flatPiece{item: item, bits: bits, read: func(ind, src string) {
+			expr := fmt.Sprintf("(int)(uint)%s", src)
+			if f.IntMin.Sign() != 0 {
+				expr = fmt.Sprintf("(int)((uint)%s + unchecked((uint)(%s)))", src, lo)
+			}
+			g.sf("%s%s = (%s)(%s);\n", ind, name, typ, expr)
+		}}, true
+	case "int64":
+		if !flatVacuousRange(f.IntMin, f.IntMax) {
+			return flatPiece{}, false
+		}
+		lo, _ := g.rangeArgs(f, "long")
+		return flatPiece{item: item, bits: bits, read: func(ind, src string) {
+			expr := fmt.Sprintf("(long)%s", src)
+			if f.IntMin.Sign() != 0 {
+				expr = fmt.Sprintf("(long)(%s + unchecked((ulong)(%s)))", src, lo)
+			}
+			g.sf("%s%s = (%s)(%s);\n", ind, name, typ, expr)
+		}}, true
+	default:
+		// full-range unsigned: the emitter's own read path already refuses
+		// out-of-range WITHOUT latching, so the fold changes nothing
+		lo, _ := g.rangeArgs(f, "ulong")
+		diff := new(big.Int).Sub(f.IntMax, f.IntMin)
+		return flatPiece{item: item, bits: bits, read: func(ind, src string) {
+			if diff.Cmp(maxUint64) != 0 {
+				g.sf("%sif (%s > %s) // a read rejects out-of-range (SPEC §5) — not latched\n", ind, src, diff.String())
+				g.sf("%s{\n%s    return false;\n%s}\n", ind, ind, ind)
+			}
+			if f.IntMin.Sign() == 0 {
+				g.sf("%s%s = %s;\n", ind, name, src)
+				return
+			}
+			g.sf("%s%s = %s + %s;\n", ind, name, src, lo)
+		}}, true
+	}
 }

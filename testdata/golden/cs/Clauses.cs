@@ -802,13 +802,19 @@ namespace Example
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static bool ReadTri3Batch(ref ReadBatch batch, Tri3 value)
         {
-            if (!batch.SerializeBits(ref value.A, 1))
             {
-                return false;
-            }
-            if (!batch.SerializeBits(ref value.B, 2))
-            {
-                return false;
+                // flat run: 3 bits in 1 chunk(s) — one bounds check per chunk,
+                // one sticky-error test for the whole run
+                ulong c0 = 0;
+                batch.SerializeBits64(ref c0, 3);
+                if (!batch.Ok)
+                {
+                    return false;
+                }
+                ulong v0 = c0 & 0x1UL;
+                value.A = (uint)v0;
+                ulong v1 = (c0 >> 1) & 0x3UL;
+                value.B = (uint)v1;
             }
             return true;
         }
@@ -940,13 +946,19 @@ namespace Example
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static bool ReadElevenBatch(ref ReadBatch batch, Eleven value)
         {
-            if (!batch.SerializeBits(ref value.A, 3))
             {
-                return false;
-            }
-            if (!batch.SerializeBits(ref value.B, 8))
-            {
-                return false;
+                // flat run: 11 bits in 1 chunk(s) — one bounds check per chunk,
+                // one sticky-error test for the whole run
+                ulong c0 = 0;
+                batch.SerializeBits64(ref c0, 11);
+                if (!batch.Ok)
+                {
+                    return false;
+                }
+                ulong v0 = c0 & 0x7UL;
+                value.A = (uint)v0;
+                ulong v1 = (c0 >> 3) & 0xffUL;
+                value.B = (uint)v1;
             }
             return true;
         }
