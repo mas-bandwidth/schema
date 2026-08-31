@@ -574,13 +574,17 @@ if [ "$QUICK" = 1 ]; then
         awk -F, -v skips="$SKIP_NOTES" '
             # js emits two gen tiers; the flat tier is THE js path (codec
             # column, $18), so codec=runtime rows never enter the table
-            $2 == "bench_mixed" && $13 == "gen" && $18 != "runtime" && $3 == "round_trip" { gt[$1] = 1e9 / $9 }
-            $2 == "bench_mixed" && $13 == "rt" && $3 == "write" { rw[$1] = $9 }
-            $2 == "bench_mixed" && $13 == "rt" && $3 == "read"  { rr[$1] = $9 }
+            $2 == "bench_mixed" && $13 == "gen" && $18 != "runtime" && $3 == "round_trip" { gt[$1] = 1e9 / $9; gs[$1] = $11 }
+            $2 == "bench_mixed" && $13 == "rt" && $3 == "write" { rw[$1] = $9; rws[$1] = $11 }
+            $2 == "bench_mixed" && $13 == "rt" && $3 == "read"  { rr[$1] = $9; rrs[$1] = $11 }
             # ts[] is per-language time per message in ns; cpp is the
             # denominator, so cpp prints 100% and a faster language prints
             # below it.
-            function render(ts, n, absent,    i, j, tt, tl, langs, m, sk, parts, ref) {
+            # §2.3 spread policy, enforced without adding a column (the owner
+            # ruled the table to exactly two): a row over the INVALID
+            # threshold prints no number at all, and every noisy row is named
+            # in a note BELOW the table. spread_pct rides in the CSV as always.
+            function render(ts, sp, absent,    i, j, n, tt, tl, langs, m, sk, parts, ref, notes) {
                 i = 0
                 for (lang in ts) { i++; langs[i] = lang }
                 n = i
@@ -595,14 +599,24 @@ if [ "$QUICK" = 1 ]; then
                     return 0
                 }
                 printf "  %-10s %6s\n", "language", "%"
+                notes = ""
                 for (i = 1; i <= n; i++) {
-                    if (ref > 0)
-                        printf "  %-10s %5.0f%%\n", langs[i], ts[langs[i]] / ref * 100.0
-                    else
-                        printf "  %-10s %6s\n", langs[i], "—"
+                    lang = langs[i]
+                    if (sp[lang] > 40.0) {
+                        printf "  %-10s %6s\n", lang, "—"
+                        notes = notes sprintf("  §2.3 INVALID: %s spread %.1f%% > 40%% — the row does not publish as a number\n", lang, sp[lang])
+                    } else if (ref > 0) {
+                        printf "  %-10s %5.0f%%\n", lang, ts[lang] / ref * 100.0
+                        if (sp[lang] > 15.0)
+                            notes = notes sprintf("  §2.3 NOISY: %s spread %.1f%% > 15%% — judge this row against the noise, not the digit\n", lang, sp[lang])
+                    } else {
+                        printf "  %-10s %6s\n", lang, "—"
+                    }
                 }
                 if (ref <= 0 && n > 0)
                     print "  (no cpp row in this run: cpp is the 100% DENOMINATOR, so no percentage is defined — CSV carries the rates)"
+                if (notes != "")
+                    printf "%s", notes
                 # loud skips (#175): a missing leg is an ABSENT row with its
                 # reason, never a silently narrower table
                 if (absent) {
@@ -617,16 +631,18 @@ if [ "$QUICK" = 1 ]; then
             }
             END {
                 print "subject: schema-GENERATED code (family gen) — what the compiler delivers; C++ = 100%"
-                if (render(gt, 0, 1) == 0) {
+                if (render(gt, gs, 1) == 0) {
                     print "REFUSED (#175/§2.9): the gen headline section has ZERO rows — no leg reported a bench_mixed family-gen round_trip row. Nothing was measured; printing an empty table at exit 0 is the defect this refusal exists to stop." > "/dev/stderr"
                     exit 3
                 }
                 print ""
                 print "subject: hand-written runtime usage (family rt) — what the serialize libraries deliver by hand; never ranked against gen"
                 for (lang in rw)
-                    if (rr[lang] > 0 && rw[lang] > 0)
+                    if (rr[lang] > 0 && rw[lang] > 0) {
                         rt[lang] = (1.0 / rw[lang] + 1.0 / rr[lang]) / 2.0 * 1e9
-                render(rt, 0, 0)
+                        rts[lang] = (rws[lang] > rrs[lang]) ? rws[lang] : rrs[lang]
+                    }
+                render(rt, rts, 0)
             }' "$OUT" || QUICK_STATUS=$?
     } >&2
     if [ "${QUICK_STATUS:-0}" -ne 0 ]; then

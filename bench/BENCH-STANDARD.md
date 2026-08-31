@@ -755,6 +755,9 @@ comparison costs minutes, not an evening; nothing it prints publishes.
   only. The js table takes the `codec=flat` tier only (THE js path;
   `codec=runtime` rows never enter it), and a caption above the sections
   names what is held constant: contract, corpus, machine, sitting.
+  **§2.3 is enforced without adding a column**: a row over the INVALID
+  threshold (40%) prints no number, and every NOISY row (>15%) is named in a
+  note BELOW the table. `spread_pct` rides in the CSV as always.
   **A headline section with ZERO rows exits non-zero** — see §2.9's F4.
 - A language whose leg cannot run prints as an **ABSENT row with the
   reason** in the headline section, and an `--only` invocation that
