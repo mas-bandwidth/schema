@@ -1056,7 +1056,8 @@ struct RtBenchMixed
     RtMixedPickupEvent pickup;
 
     uint8_t loadout[4] = {};
-    char player_name[16] = {};             // string(15): serialize_string with buffer N + 1
+    int32_t player_name_length = 0;
+    char player_name[16] = {};
     int32_t payload_length = 0;
     uint8_t payload[16] = {};
 
@@ -1106,7 +1107,14 @@ struct RtBenchMixed
         for ( int i = 0; i < 4; i++ )
             serialize_uint8( stream, loadout[i] );
 
-        serialize_string( stream, player_name, (int) sizeof( player_name ) );
+        // string(15) and bytes(16) ride as their §4.3 decomposition — the
+        // length prefix then the used bytes — in EVERY rt leg. serialize_string
+        // exists and is wire-identical, but its C++ form pays strlen + UTF-8
+        // validation while the Go and C# ports allocate a string per read; the
+        // decomposition is what every GENERATED target emits, so gen-vs-rt and
+        // language-vs-language both stay apples to apples (§2.7).
+        serialize_int( stream, player_name_length, 0, 15 );
+        serialize_bytes( stream, (uint8_t *) player_name, player_name_length );
 
         serialize_int( stream, payload_length, 0, 16 );
         serialize_bytes( stream, payload, payload_length );
@@ -1197,7 +1205,7 @@ RtBenchMixed pin_rt_mixed()
     in.event_type = 1;   // Hit
     in.hit.target_id = 4095; in.hit.damage = 4095; in.hit.hit_kind = 7; in.hit.crit = true;
     in.loadout[0] = 0x11; in.loadout[1] = 0x22; in.loadout[2] = 0x33; in.loadout[3] = 0x44;
-    memcpy( in.player_name, "Rowan_01", 9 );   // + the terminator serialize_string reads the length from
+    memcpy( in.player_name, "Rowan_01", 8 ); in.player_name_length = 8;
     static const uint8_t pinned_payload[8] = { 0xDE, 0xAD, 0xBE, 0xEF, 0x01, 0x02, 0x03, 0x04 };
     memcpy( in.payload, pinned_payload, 8 ); in.payload_length = 8;
     in.aim_x = 0.5f; in.aim_y = -0.25f; in.aim_z = 0.75f;

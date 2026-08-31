@@ -1029,7 +1029,8 @@ typedef struct RtBenchMixed
     RtMixedChatEvent chat;
     RtMixedPickupEvent pickup;
     serialize_uint8_t loadout[4];
-    char player_name[16];                   /* string(15): buffer N + 1 */
+    serialize_int32_t player_name_length;
+    char player_name[16];
     serialize_int32_t payload_length;
     serialize_uint8_t payload[16];
     float aim_x, aim_y, aim_z;
@@ -1138,7 +1139,10 @@ static int rt_write_bench_mixed( serialize_write_stream_t * stream, const RtBenc
     for ( i = 0; i < 4; i++ )
         if ( !serialize_write_uint8( stream, f->loadout[i] ) ) { return 0; }
 
-    if ( !serialize_write_string( stream, f->player_name, (int) sizeof( f->player_name ) ) ) { return 0; }
+    /* string(15) and bytes(16) ride as their §4.3 decomposition in every rt
+       leg — see bench/cpp/bench_main.cpp for the reasoning */
+    if ( !serialize_write_int( stream, f->player_name_length, 0, 15 ) ) { return 0; }
+    if ( !serialize_write_bytes( stream, (const serialize_uint8_t *) f->player_name, (int) f->player_name_length ) ) { return 0; }
 
     if ( !serialize_write_int( stream, f->payload_length, 0, 16 ) ) { return 0; }
     if ( !serialize_write_bytes( stream, f->payload, (int) f->payload_length ) ) { return 0; }
@@ -1222,7 +1226,8 @@ static int rt_read_bench_mixed( serialize_read_stream_t * stream, RtBenchMixed *
     for ( i = 0; i < 4; i++ )
         if ( !serialize_read_uint8( stream, &f->loadout[i] ) ) { return 0; }
 
-    if ( !serialize_read_string( stream, f->player_name, (int) sizeof( f->player_name ) ) ) { return 0; }
+    if ( !serialize_read_int( stream, &f->player_name_length, 0, 15 ) ) { return 0; }
+    if ( !serialize_read_bytes( stream, (serialize_uint8_t *) f->player_name, (int) f->player_name_length ) ) { return 0; }
 
     if ( !serialize_read_int( stream, &f->payload_length, 0, 16 ) ) { return 0; }
     if ( !serialize_read_bytes( stream, f->payload, (int) f->payload_length ) ) { return 0; }
@@ -1901,7 +1906,7 @@ int main( int argc, char ** argv )
         rt_mixed.hit.hit_kind = 7; rt_mixed.hit.crit = 1;
         rt_mixed.loadout[0] = 0x11; rt_mixed.loadout[1] = 0x22;
         rt_mixed.loadout[2] = 0x33; rt_mixed.loadout[3] = 0x44;
-        memcpy( rt_mixed.player_name, "Rowan_01", 9 );   /* + the terminator serialize_string reads the length from */
+        memcpy( rt_mixed.player_name, "Rowan_01", 8 ); rt_mixed.player_name_length = 8;
         memcpy( rt_mixed.payload, "\xDE\xAD\xBE\xEF\x01\x02\x03\x04", 8 ); rt_mixed.payload_length = 8;
         rt_mixed.aim_x = 0.5f; rt_mixed.aim_y = -0.25f; rt_mixed.aim_z = 0.75f;
         rt_mixed.recoil = 1.5f; rt_mixed.drift = -3.25;
