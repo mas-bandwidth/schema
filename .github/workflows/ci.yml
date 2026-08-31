@@ -343,3 +343,37 @@ jobs:
           cache: false
       - run: go vet ./...
       - run: go build ./...
+
+  # The C/C++ reference lock (owner ruling 2026-08-31, issue #170): while
+  # bench/LOCK exists, a PR touching any locked prefix refuses. The lift is
+  # a PR whose whole diff is bench/LOCK itself — visible by construction.
+  cpp-lock:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - name: refuse locked-path changes
+        run: |
+          [ -f bench/LOCK ] || { echo "no bench/LOCK — guard inactive"; exit 0; }
+          base="origin/${{ github.base_ref }}"
+          changed="$(git diff --name-only "$base"...HEAD)"
+          echo "changed files vs $base:"; echo "$changed"
+          if [ "$changed" = "bench/LOCK" ]; then
+            echo "diff touches only bench/LOCK — the lift act, allowed"; exit 0
+          fi
+          prefixes="$(grep -v '^#' bench/LOCK | grep -v '^[[:space:]]*$')"
+          violations=""
+          while IFS= read -r f; do
+            while IFS= read -r p; do
+              case "$f" in "$p"*) violations="$violations$f (locked: $p)"$'\n';; esac
+            done <<< "$prefixes"
+          done <<< "$changed"
+          if [ -n "$violations" ]; then
+            echo "C/C++ LOCK REFUSAL — these paths are frozen while bench/LOCK stands (issue #170):"
+            printf '%s' "$violations"
+            exit 1
+          fi
+          echo "no locked paths touched — clean"
