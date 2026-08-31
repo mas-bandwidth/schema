@@ -224,7 +224,9 @@ prefixes — **must be at least 90% of the pinned wire**.
 `schema/bench/corpus/budget_test.go` computes the share from the schema itself
 and FAILS the build below the floor, printing the full bit-accounting table;
 its own oracle is that the accounted total, rounded up to bytes, must equal the
-size of `testdata/wire/bench_mixed.bin`. Measured 2026-08-31: **3504 bits =
+size of `testdata/wire/bench_mixed.bin` — byte-granular, so it catches every
+undercount and every overcount of a byte or more, while an overcount of one to
+seven bits hides in the final flush padding. Measured 2026-08-31: **3504 bits =
 438 wire bytes, integer share 91.87%** (bool 0.51%, float 3.42%, bulk 3.65%,
 padding 0.54% — `bool` is deliberately excluded from the numerator, the
 stricter reading). Tune the `stats` pinned count to hold the floor; never

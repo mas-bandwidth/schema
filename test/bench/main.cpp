@@ -237,14 +237,30 @@ static int pin_shape( const char * name, int expected_bytes, const char * where,
 
 // ---- refusal vectors on BenchMixed's new constructs (issue #184) ----
 //
-// The redefined shape brought in constructs the bench corpus never carried:
-// a const magic, reserved bits, an explicit align, a union tag, counted
-// arrays, a string and a byte block with length prefixes, and 128-bit and
-// fixed-point ranges. Reads must REFUSE malformed bytes on each — reject,
-// never clamp (SPEC §4.3, §5). The bit offsets come from the accounting
-// table bench/corpus/budget_test.go prints; each vector asserts the bits it
-// is about to doctor still hold the pinned value, so a shape change makes
-// this loud instead of quietly testing the wrong bit.
+// The redefined shape brought in constructs the bench corpus never carried.
+// Reads must REJECT malformed bytes, never clamp (SPEC §4.3, §5). The bit
+// offsets come from the accounting table bench/corpus/budget_test.go prints;
+// each vector asserts the bits it is about to doctor still hold the pinned
+// value, so a shape change makes this loud instead of quietly testing the
+// wrong bit, and each carries its own verdict so the set can be reordered
+// or extended without an index cutoff to keep in step.
+//
+// COVERED here: the const magic, reserved bits, the explicit align padding,
+// a bytes(N) length above its bound, a counted-array count above its bound,
+// and a ranged integer above its range.
+//
+// NOT COVERED, and why — these constructs have no refusable encoding on this
+// shape, so there is nothing to doctor:
+//   * the entities count. [1..8] encodes count − 1 in 3 bits, and all eight
+//     3-bit values are in range. (stats [..80] IS refusable — 7 bits carry
+//     0..127 against a bound of 80 — and is a vector below.)
+//   * the union tag. 3 variants + implicit None is [0, 3] in 2 bits, and all
+//     four values are legal.
+//   * the string(15) length prefix. [0, 15] in 4 bits — every value legal.
+//     bytes(16) is the refusable twin: [0, 16] needs 5 bits, so 17..31 are
+//     encodable and must be refused.
+// A wider shape would make the first three refusable; if one ever does, the
+// vector belongs here.
 static void set_bits( uint8_t * data, int64_t offset, int64_t bits, uint64_t value )
 {
     for ( int64_t i = 0; i < bits; i++ )
@@ -286,18 +302,20 @@ static int refusal_vectors()
         int64_t offset;
         int64_t bits;
         uint64_t pinned_value;   // what the pin puts there — asserted before doctoring
-        uint64_t doctored;       // what a read must refuse
+        uint64_t doctored;       // what is written over it
+        bool must_refuse;        // false = an in-range control that must be ACCEPTED
     };
 
     static const Vector vectors[] = {
-        { "const(0xC0DE, 16) magic",            0, 16, 0xC0DE, 0xC0DF },
-        { "reserved(4) nonzero",             3454,  4,      0,      1 },
-        { "align padding nonzero",           3458,  6,      0,      1 },
-        { "bytes(16) length above the bound", 3016, 5,      8,     17 },
-        { "entity health above its range",    467, 10,   1000,   1001 },
-        { "hit_kind above its range",        2909,  3,      7,      0 },  // in range: expected to PASS, the control below
+        { "const(0xC0DE, 16) magic doctored",          0, 16, 0xC0DE, 0xC0DF, true },
+        { "reserved(4) nonzero",                    3454,  4,      0,      1, true },
+        { "align padding nonzero",                  3458,  6,      0,      1, true },
+        { "bytes(16) length above its bound",       3016,  5,      8,     17, true },
+        { "stats count above its bound",            1436,  7,     80,    127, true },
+        { "entity health above its range",           467, 10,   1000,   1001, true },
+        { "CONTROL: hit_kind rewritten IN range",   2909,  3,      7,      0, false },
     };
-    const int refuse_count = 5;   // the sixth vector is the negative control
+    int refuse_count = 0;
 
     alignas( 8 ) static uint8_t doctored[512];
     BenchMixed out;
@@ -315,12 +333,16 @@ static int refusal_vectors()
         set_bits( doctored, vec.offset, vec.bits, vec.doctored );
         serialize::ReadStream rs( doctored, (int) bytes );
         const bool accepted = ReadBenchMixed( rs, out );
-        if ( v < refuse_count && accepted )
+        if ( vec.must_refuse )
         {
-            printf( "REFUSAL VECTOR FAILED: %s was ACCEPTED — reads must reject, never clamp\n", vec.what );
-            return 1;
+            refuse_count++;
+            if ( accepted )
+            {
+                printf( "REFUSAL VECTOR FAILED: %s was ACCEPTED — reads must reject, never clamp\n", vec.what );
+                return 1;
+            }
         }
-        if ( v >= refuse_count && !accepted )
+        else if ( !accepted )
         {
             printf( "REFUSAL CONTROL FAILED: %s is in range and must be accepted\n", vec.what );
             return 1;

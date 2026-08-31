@@ -12,8 +12,12 @@
 // The table is computed from the schema itself, not typed in. Its own
 // correctness check is that the accounted bit total, rounded up to bytes,
 // must equal the size of testdata/wire/bench_mixed.bin — the golden the
-// generated C++ produced. A wrong pin or a mis-walked construct cannot
-// agree with the golden by accident.
+// generated C++ produced. That oracle is BYTE-GRANULAR, so state its reach
+// honestly: it catches any error that moves the byte count — every
+// undercount, and every overcount of a byte or more — but an overcount of
+// one to seven bits hides inside the final flush padding. It is a strong
+// check on a wrong pin or a mis-walked construct, not a proof of the
+// accounting bit for bit.
 package corpus
 
 import (
@@ -134,7 +138,7 @@ func (w *walker) field(prefix string, f *ir.Field) {
 			w.emit(name, fmt.Sprintf("[%d]uint8 (bulk path)", f.ArrayBound), f.ArrayBound*8, classBulk)
 			return
 		}
-		for i := int64(0); i < f.ArrayBound; i++ {
+		for i := range f.ArrayBound {
 			w.scalar(fmt.Sprintf("%s[%d]", name, i), f)
 		}
 	case ir.ArrayCounted:
@@ -144,7 +148,7 @@ func (w *walker) field(prefix string, f *ir.Field) {
 		}
 		w.emit(name+".count", fmt.Sprintf("count prefix [%d..%d]", f.ArrayMin, f.ArrayBound),
 			ir.BitsRequired(big.NewInt(f.ArrayMin), big.NewInt(f.ArrayBound)), classInt)
-		for i := int64(0); i < n; i++ {
+		for i := range n {
 			w.scalar(fmt.Sprintf("%s[%d]", name, i), f)
 		}
 	default:
