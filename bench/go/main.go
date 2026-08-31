@@ -78,7 +78,7 @@ var failed = false
 // runtime keeps bounds checks, range validation and the sticky error check
 // in every build by design), opt default (Go has no optimization levels),
 // inline unknown until the verdict pass (§4.2) backfills it.
-// family is per ROW now (gen | rt | bits — §5.1); linkage/checks/opt/inline
+// family is per ROW now (gen | bits — §5.1); linkage/checks/opt/inline
 // stay per-runner constants
 const csvSuffix = "pkg,always,default,unknown"
 
@@ -837,101 +837,6 @@ func varyRealPacket(m *realworld.RealPacket, rng uint64) {
 }
 
 // ------------------------------------------------------------------------------------------
-// family gen over the Bench corpus (issue #177): the four Bench.schema shapes
-// measured through the GENERATED code (generated/bench/go, module bench) —
-// the gen twins of the rt rows, which serialize the same shapes BY HAND
-// against the runtime API (rt.go). Same golden files, same pinned values,
-// same LCG field mappings, same benchMessage discipline as every gen row
-// above; the family column carries the subject, and relative.go refuses
-// gen-vs-rt ratios. Generated best case per the profiling doctrine (#170):
-// the plain default optimized build, no PGO.
-// ------------------------------------------------------------------------------------------
-
-func pinGenPacket() bench.BenchPacket {
-	var in bench.BenchPacket
-	in.A = -37
-	in.B = 12345
-	in.C = 987654
-	in.Bits7 = 97
-	in.Bits13 = 5000
-	in.Bits23 = 1234567
-	in.Flag = true
-	in.X = 1.5
-	in.Y = -3.25
-	in.Z = 100.125
-	in.Big = 0x123456789ABCDEF0
-	for i := 0; i < 17; i++ {
-		in.Blob[i] = uint8(i * 31)
-	}
-	return in
-}
-
-func pinGenInts() bench.BenchInts {
-	var in bench.BenchInts
-	in.F0 = -37
-	in.F1 = 12345
-	in.F2 = 987654
-	in.F3 = 2
-	in.F4 = -15
-	in.F5 = 777
-	in.F6 = -2048
-	in.F7 = 200
-	in.F8 = -543210
-	in.F9 = 99
-	return in
-}
-
-func pinGenBits() bench.BenchBits {
-	var in bench.BenchBits
-	in.B7 = 97
-	in.B13 = 5000
-	in.B23 = 1234567
-	in.B3 = 5
-	in.B32 = 0xDEADBEEF
-	in.B11 = 1024
-	in.B19 = 333333
-	in.B48 = 0xFEDCBA987654
-	return in
-}
-
-func varyGenPacket(p *bench.BenchPacket, rng uint64) {
-	p.A = int32((rng>>8)&63) - 32
-	p.B = int32(uint32(rng>>16) & 65535)
-	p.C = int32((rng>>24)&0xFFFFF) - 500000
-	p.Bits7 = uint32(rng) & 127
-	p.Bits13 = uint32(rng>>3) & 8191
-	p.Bits23 = uint32(rng>>5) & 8388607
-	p.Flag = (rng & 1) != 0
-	p.X = float32(uint32(rng) & 0xFFFF)
-	p.Big = rng
-	p.Blob[0] = uint8(rng >> 32)
-}
-
-func varyGenInts(f *bench.BenchInts, rng uint64) {
-	f.F0 = int32((rng>>8)&63) - 32
-	f.F1 = int32(uint32(rng>>16) & 65535)
-	f.F2 = int32((rng>>24)&0xFFFFF) - 500000
-	f.F3 = int32(uint32(rng>>2) & 3)
-	f.F4 = int32((rng>>11)&15) - 8
-	f.F5 = int32(uint32(rng>>22) & 511)
-	f.F6 = int32((rng>>33)&2047) - 1024
-	f.F7 = int32(uint32(rng>>40) & 255)
-	f.F8 = int32((rng>>30)&0xFFFFF) - 500000
-	f.F9 = int32(uint32(rng>>57) & 63)
-}
-
-func varyGenBits(f *bench.BenchBits, rng uint64) {
-	f.B7 = uint32(rng) & 127
-	f.B13 = uint32(rng>>3) & 8191
-	f.B23 = uint32(rng>>5) & 8388607
-	f.B3 = uint32(rng>>29) & 7
-	f.B32 = uint32(rng >> 16)
-	f.B11 = uint32(rng>>37) & 2047
-	f.B19 = uint32(rng>>44) & 524287
-	f.B48 = rng & 0xFFFFFFFFFFFF
-}
-
-// ------------------------------------------------------------------------------------------
 
 func main() {
 	args := os.Args[1:]
@@ -969,12 +874,9 @@ func main() {
 	if gQuick {
 		// --quick: bench_mixed only, 3 measured runs — the iteration
 		// instrument, never the certification instrument. Golden gate
-		// unconditional (benchRt gates before timing).
-		// The gen row is the schema subject (the blended table's row); the
-		// rt row rides beside it as the hand-written-usage subject.
+		// unconditional (benchDataDriven gates before timing).
 		fmt.Fprintf(os.Stderr, "schema bench (go, --quick: iteration instrument, not certification)\n")
 		benchDataDriven[bench.BenchMixed]("bench_mixed", "bench_mixed", 4000000, bench.WriteBenchMixed, bench.ReadBenchMixed)
-		benchRt("bench_mixed", 4000000, pinRtMixed(), rtOnceWriteMixed, rtOnceReadMixed, rtBenchMixedWriteLoop, rtBenchMixedReadLoop, varyRtMixed)
 		flushCsv()
 		if failed {
 			fmt.Fprintf(os.Stderr, "BENCH FAILED (corpus_id %s)\n", corpusID())
@@ -1008,22 +910,11 @@ func main() {
 	// reference (§2.1).
 	benchMessage("real_packet", "real_packet", 8000000, realworld.NewRealPacket(), realworld.WriteRealPacket, realworld.ReadRealPacket, varyRealPacket)
 
-	// family gen over the Bench corpus (issue #177): the generated twins of
-	// the rt rows below — same shapes, same goldens, same pins, same vary
-	// mappings, same iteration counts (fixed and identical across all five
-	// runners, §2.1); only the subject differs, and the family column says so.
-	benchMessage("bench_packet", "bench_packet", 32000000, pinGenPacket(), bench.WriteBenchPacket, bench.ReadBenchPacket, varyGenPacket)
-	benchMessage("bench_ints", "bench_ints", 40000000, pinGenInts(), bench.WriteBenchInts, bench.ReadBenchInts, varyGenInts)
-	benchMessage("bench_bits", "bench_bits", 48000000, pinGenBits(), bench.WriteBenchBits, bench.ReadBenchBits, varyGenBits)
+	// family gen over the Bench corpus: BenchMixed through the generated code,
+	// fed by the committed variant corpus — same goldens, same iteration count
+	// in every runner (§2.1). No hand-written pin, vary or sink code
+	// participates in this leg.
 	benchDataDriven[bench.BenchMixed]("bench_mixed", "bench_mixed", 4000000, bench.WriteBenchMixed, bench.ReadBenchMixed)
-
-	// family rt (§1.3/§1.5): the runtime API by hand, oracle-gated against
-	// the goldens the generated code pinned. Iteration counts are fixed and
-	// identical across all five runners (§2.1; sized in the C++ reference).
-	benchRt("bench_packet", 32000000, pinRtPacket(), rtOnceWritePacket, rtOnceReadPacket, rtBenchPacketWriteLoop, rtBenchPacketReadLoop, varyRtPacket)
-	benchRt("bench_ints", 40000000, pinRtInts(), rtOnceWriteInts, rtOnceReadInts, rtBenchIntsWriteLoop, rtBenchIntsReadLoop, varyRtInts)
-	benchRt("bench_bits", 48000000, pinRtBits(), rtOnceWriteBits, rtOnceReadBits, rtBenchBitsWriteLoop, rtBenchBitsReadLoop, varyRtBits)
-	benchRt("bench_mixed", 4000000, pinRtMixed(), rtOnceWriteMixed, rtOnceReadMixed, rtBenchMixedWriteLoop, rtBenchMixedReadLoop, varyRtMixed)
 
 	// family bits (§1.4): the one bitpacker workload in the estate
 	benchBitpacker(24576)

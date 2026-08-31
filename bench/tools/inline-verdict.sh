@@ -119,16 +119,12 @@ probearray probe_array ProbeArray example
 testdata test_data TestData example
 real_packet real_packet RealPacket realworld'
 
-# families rt and bits: bench -> the runner's noinline timed-loop symbol stems
+# family bits: bench -> the runner's noinline timed-loop symbol stems
 # (<snake>_write_loop/_read_loop for c/cpp/rust; main.<lowerCamel>WriteLoop for
 # go; Program:<Camel>WriteLoop for cs). The loop bodies ARE §4.1's "emitted
 # body of the timed loop", so the verdict is a direct transitive count — no
 # atos attribution needed for these rows in any language.
-RT_MAP='bench_packet rt_bench_packet rtBenchPacket RtBenchPacket
-bench_ints rt_bench_ints rtBenchInts RtBenchInts
-bench_bits rt_bench_bits rtBenchBits RtBenchBits
-bench_mixed rt_bench_mixed rtBenchMixed RtBenchMixed
-bitpacker bitpacker bitpacker Bitpacker'
+BITS_MAP='bitpacker bitpacker bitpacker Bitpacker'
 
 # ---- per-symbol transitive runtime-call counting ----
 # stdin: "sym:" header lines and "addr <bl|blr|b> target" instruction lines
@@ -497,7 +493,7 @@ cold_for() {
 # PER-OP transitive count for a timed-loop symbol (§4.2: partial:N means N
 # runtime calls PER OP, never N call sites in the emitted loop body). An
 # unrolled loop repeats its per-op calls once per unrolled iteration — clang
-# unrolled the C rt_bench_packet_read_loop 4x and the raw body count
+# unrolled a retired hand-written read loop 4x and the raw body count
 # published partial:12 where the per-op truth is 3. §3.2 makes every
 # out-of-line helper called from a timed loop a once-per-op call in source,
 # so the smallest per-helper emitted edge count out of the loop body IS the
@@ -591,25 +587,21 @@ nonzero_symbols() {
 
 # ---- backfill: rewrite this language's rows' inline column ----
 # verdicts.txt lines: "<bench> <path> <verdict>"
-# Family-guarded (issue #177): the four Bench shapes now carry BOTH a gen row
-# (generated code) and an rt row (hand-written runtime usage) under one bench
-# name. A verdict computed from the rt noinline loop symbols (RT_MAP) stamps
-# only rt/bits rows, and the corpus attributions (BENCH_MAP) stamp only gen
-# rows — without the guard the rt verdict would stamp the gen twin, a false
-# claim about a different binary path. The native gen Bench-shape rows have
-# no verdict source yet and stay inline=unknown (correctly un-ratioable)
-# until the verdict pass learns to attribute them (named follow-on on #177).
+# Family-guarded (issue #177): a verdict computed from the noinline loop
+# symbols (BITS_MAP) stamps only bits rows, and the corpus attributions
+# (BENCH_MAP) stamp only gen rows. The native gen Bench-shape rows have no
+# verdict source yet and stay inline=unknown (correctly un-ratioable) until
+# the verdict pass learns to attribute them (named follow-on on #177).
 backfill() {
     awk -F, -v OFS=, -v lang="$LANG_ARG" -v vf="$VD/verdicts.txt" '
         BEGIN {
             while ((getline line < vf) > 0) { split(line, a, " "); v[a[1] "," a[2]] = a[3] }
-            rtfam["bench_packet"] = rtfam["bench_ints"] = rtfam["bench_bits"] = 1
-            rtfam["bench_mixed"] = rtfam["bitpacker"] = 1
+            loopfam["bench_mixed"] = loopfam["bitpacker"] = 1
         }
         $1 == lang && NF == 17 {
             key = $2 "," $3
             if (key in v) {
-                if ($2 in rtfam) { if ($13 == "rt" || $13 == "bits") $17 = v[key] }
+                if ($2 in loopfam) { if ($13 == "bits") $17 = v[key] }
                 else if ($13 == "gen") $17 = v[key]
             }
         }
@@ -835,10 +827,10 @@ c|cpp)
                 echo "$bench $path $(verdict_of "$1") $1 $2" >> "$VD/verdicts.txt"
             done
         done
-        # families rt and bits: the noinline timed-loop symbols ARE the §4.1
+        # family bits: the noinline timed-loop symbols ARE the §4.1
         # ground truth, counted PER OP (perop_for divides loop unrolling back
         # out); a loop symbol that vanished stays unknown, honestly.
-        echo "$RT_MAP" | while read -r bench snake lower camel; do
+        echo "$BITS_MAP" | while read -r bench snake lower camel; do
             for path in write read; do
                 n="$(perop_for "^_?${snake}_${path}_loop\$")"
                 cold="$(perop_cold_for "^_?${snake}_${path}_loop\$")"
@@ -1030,7 +1022,7 @@ c|cpp)
         # MEASURED binary are the §4.1 ground truth — counted PER OP
         # (perop_for divides loop unrolling back out), no atos needed
         # (their call sites show up as untimed in the atos walk).
-        echo "$RT_MAP" | while read -r bench snake lower camel; do
+        echo "$BITS_MAP" | while read -r bench snake lower camel; do
             for path in write read; do
                 n="$(perop_for "${snake}_${path}_loop")"
                 cold="$(perop_cold_for "${snake}_${path}_loop")"
@@ -1112,7 +1104,7 @@ go)
     done
     # families rt and bits: the //go:noinline timed-loop symbols (§4.1),
     # counted PER OP (perop_for; gc does not unroll today, so k stays 1)
-    echo "$RT_MAP" | while read -r bench snake lower camel; do
+    echo "$BITS_MAP" | while read -r bench snake lower camel; do
         for path in write read; do
             Cap="$(echo "$path" | awk '{print toupper(substr($0,1,1)) substr($0,2)}')"
             n="$(perop_for "^main[.]${lower}${Cap}Loop\$")"
@@ -1189,7 +1181,7 @@ rust)
     done
     # families rt and bits: the #[inline(never)] timed-loop symbols (§4.1),
     # counted PER OP (perop_for divides loop unrolling back out)
-    echo "$RT_MAP" | while read -r bench snake lower camel; do
+    echo "$BITS_MAP" | while read -r bench snake lower camel; do
         for path in write read; do
             name="${snake}_${path}_loop"
             n="$(perop_for "${#name}${name}")"
@@ -1272,7 +1264,7 @@ cs)
     # families rt and bits: the [MethodImpl(NoInlining)] timed-loop methods
     # (§4.1; bl+blr counted, per the C# rule above; PER OP via perop_for —
     # the JIT does not unroll these loops today, so k stays 1)
-    echo "$RT_MAP" | while read -r bench snake lower camel; do
+    echo "$BITS_MAP" | while read -r bench snake lower camel; do
         for path in write read; do
             Cap="$(echo "$path" | awk '{print toupper(substr($0,1,1)) substr($0,2)}')"
             n="$(perop_for "^Program:${camel}${Cap}Loop\$")"

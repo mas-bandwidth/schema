@@ -7,9 +7,7 @@ round-trip self-checks before any number is produced (a corpus mismatch
 REFUSES to bench), warmup + 7 runs + median/min/max/spread, CSV rows with
 `lang=rust`. Full contract: `bench/README.md`.
 
-`src/rt.rs` adds families rt and bits (BENCH-STANDARD.md §1.3/§1.4): the
-four Bench.schema shapes hand-written over the Stream trait, §1.5
-oracle-gated against `testdata/wire/bench_*.bin`, plus the 16-width
+`src/bits.rs` adds family bits (BENCH-STANDARD.md §1.4): the 16-width
 bitpacker workload — timed loops in `#[inline(never)]` symbols for the
 §4.1 verdict.
 
@@ -42,8 +40,7 @@ in a timed loop is an out-of-line call entered with an unknown stream
 position. clang honours `always_inline` unconditionally, so the C and C++
 legs never see that regime. Rebuilding this leg with
 `RUSTFLAGS="-C llvm-args=--inline-threshold=5000"` — a diagnostic, not a
-shipped flag — moves the generated rows 2.3x and the hand-written `rt` rows
-4.5x on the same binary. Equalizing that discipline is a named open item on
+shipped flag — moves the generated rows 2.3x on the same binary. Equalizing that discipline is a named open item on
 issue #170; until it is ruled, every rust row here is measured out of line.
 The batch read hoists ONE reused
 `Message` and fills it through `read_message_into` — the Rust shape of the

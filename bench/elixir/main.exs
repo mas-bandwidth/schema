@@ -1,10 +1,10 @@
 # schema bench — the Elixir runner's entry point. The generated monomorphic
-# codecs over the four bench/corpus/Bench.schema shapes, measured under the
+# codecs over bench/corpus/Bench.schema's BenchMixed, measured under the
 # BENCH-STANDARD contract: fixed iteration counts identical to every other
 # runner's rows, 1 discarded warmup run then 7 measured runs per
-# (bench, path) (--round K: one measured run; --quick: bench_mixed only,
-# 3 runs at a reduced count), per-iteration LCG variation, 64 rotating
-# variant read buffers, CSV v2 rows on stdout under --csv. The contract,
+# (bench, path) (--round K: one measured run; --quick: 3 runs at a reduced
+# count), 64 rotating variant buffers on both paths, CSV v2 rows on stdout
+# under --csv. The contract,
 # the golden gate, and the full-struct read sink live in runner.exs — this
 # file only loads, because an .exs compiles as a whole before it runs, so
 # the struct literals must live in a file required after the generated

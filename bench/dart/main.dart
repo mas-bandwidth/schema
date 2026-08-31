@@ -1,29 +1,28 @@
 // schema bench — the Dart runner: a conforming run.sh leg per
 // bench/README.md's runner contract, measuring the generated monomorphic
-// Dart codecs over the four bench/corpus/Bench.schema shapes.
+// Dart codecs over bench/corpus/Bench.schema's BenchMixed.
 //
 // CONTRACT (BENCH-STANDARD.md): fixed iteration counts identical to every
 // other runner's rows for these benches; 1 discarded warmup run then 7
 // measured runs per (bench, path) — or exactly one measured run under
 // --round K, where the interleaved driver aggregates across rounds (§2.4);
-// per-iteration LCG variation on the write path; 64 rotating variant read
-// buffers; median/min/max/spread over the measured runs; CSV v2 rows on
-// stdout under --csv, human table on stderr.
+// 64 rotating variant buffers on both paths; median/min/max/spread over
+// the measured runs; CSV v2 rows on stdout under --csv, human table on
+// stderr.
 //
 // WHAT THE ROWS MEASURE: the generated codec — schema's Dart backend emits
 // self-contained monomorphic write/read functions with the bitpacker
 // inlined and zero runtime dependencies, so the generated code IS the Dart
-// serialize path. The rows carry family=gen: a ratio against another
-// language's family=rt row (the serialize runtime API called by hand) is a
-// subject difference, not a language difference, and the tools refuse it.
+// serialize path. The rows carry family=gen — the estate's one benchmark
+// subject (schema#196).
 // Peak-style numbers from this runner's earlier serialize-family form
 // (tight per-shape loops, best-of-five) are NOT comparable to these rows —
 // different measurement contract, and the statistic alone moves the number.
 //
-// GOLDEN GATED (§1.5): before any timing, every measured shape's pinned
-// instance is written and byte-compared against the C++-pinned
-// testdata/wire golden, and all 64 LCG variant buffers are decoded back
-// with every field verified. A runner that mismatches REFUSES to bench.
+// GOLDEN GATED (§1.5): before any timing, variant 0 of the committed
+// variant corpus is byte-compared against the C++-pinned testdata/wire
+// golden, and every variant is decoded and re-encoded byte-identically.
+// A runner that mismatches REFUSES to bench.
 // corpus_id is FNV-1a-64 over the goldens this run actually loaded (§1.6).
 //
 // The timed form is the AOT executable (run.sh builds it) — the number
@@ -32,8 +31,9 @@
 //   dart compile exe bench/dart/main.dart -o build/schema_bench_dart
 //   cd bench/dart && ../../build/schema_bench_dart [--csv] [--round K] [--quick]
 //
-// --quick: bench_mixed only, 3 measured runs — run.sh's iteration
-// instrument, never the certification instrument.
+// --quick: 3 measured runs instead of 7 — run.sh's iteration instrument,
+// never the certification instrument. bench_mixed is the whole leg either
+// way.
 import 'dart:io';
 import 'dart:typed_data';
 
@@ -43,9 +43,6 @@ const int numVariants = 64;
 
 // §1.2/§2.1: fixed per-benchmark iteration counts, identical across every
 // language's rows for these benches, recorded in the iters column
-const int packetIters = 32000000;
-const int intsIters = 40000000;
-const int bitsIters = 48000000;
 const int mixedIters = 4000000;
 
 bool csv = false;
@@ -71,31 +68,6 @@ int sink = 0;
    languages do not pay; the published number is an upper bound on the
    observation cost.
    -------------------------------------------------------------------------- */
-
-int sinkOfBenchPacket(BenchPacket d) {
-  var s = d.a +
-      d.b +
-      d.c +
-      d.bits7 +
-      d.bits13 +
-      d.bits23 +
-      (d.flag ? 1 : 0) +
-      d.x.toInt() +
-      d.y.toInt() +
-      d.z.toInt() +
-      d.big;
-  for (var i = 0; i < 17; i++) {
-    s += d.blob[i];
-  }
-  return s;
-}
-
-int sinkOfBenchInts(BenchInts d) =>
-    d.f0 + d.f1 + d.f2 + d.f3 + d.f4 + d.f5 + d.f6 + d.f7 + d.f8 + d.f9;
-
-int sinkOfBenchBits(BenchBits d) =>
-    d.b7 + d.b13 + d.b23 + d.b3 + d.b32 + d.b11 + d.b19 + d.b48;
-
 
 Never gateFail(String row, String what) {
   stderr.write('GOLDEN GATE FAILED: $row $what\nreporting nothing.\n');
@@ -183,155 +155,6 @@ void flushCsv() {
    complement, which IS arithmetic mod 2^64
    -------------------------------------------------------------------------- */
 
-const int lcgMul = 0x5851F42D4C957F2D;
-const int lcgAdd = 0x14057B7EF767814F;
-
-int rng = 1;
-
-void lcgSeed() {
-  rng = 1;
-}
-
-void lcgStep() {
-  rng = rng * lcgMul + lcgAdd;
-}
-
-// the low 32 bits of (rng >> s), for s in [0,63]
-int shr(int s) => (rng >>> s) & 0xffffffff;
-
-/* --------------------------------------------------------------------------
-   pinned instances and vary functions — the §1.3 shapes, field mappings
-   verbatim from the family benches
-   -------------------------------------------------------------------------- */
-
-void initBenchPacket(BenchPacket p) {
-  p.a = -37;
-  p.b = 12345;
-  p.c = 987654;
-  p.bits7 = 97;
-  p.bits13 = 5000;
-  p.bits23 = 1234567;
-  p.flag = true;
-  p.x = 1.5;
-  p.y = -3.25;
-  p.z = 100.125;
-  p.big = 0x123456789abcdef0;
-  for (var i = 0; i < 17; i++) {
-    p.blob[i] = (i * 31) & 0xff;
-  }
-}
-
-void varyBenchPacket(BenchPacket p) {
-  lcgStep();
-  p.a = (shr(8) & 63) - 32;
-  p.b = shr(16) & 65535;
-  p.c = (shr(24) & 0xfffff) - 500000;
-  p.bits7 = rng & 127;
-  p.bits13 = shr(3) & 8191;
-  p.bits23 = shr(5) & 8388607;
-  p.flag = (rng & 1) != 0;
-  p.x = (rng & 0xffff).toDouble(); // exact in float32
-  p.big = rng; // the full 64 bits, direct
-  p.blob[0] = shr(32) & 0xff;
-}
-
-bool checkBenchPacket(BenchPacket e, BenchPacket d) {
-  if (e.a != d.a ||
-      e.b != d.b ||
-      e.c != d.c ||
-      e.bits7 != d.bits7 ||
-      e.bits13 != d.bits13 ||
-      e.bits23 != d.bits23 ||
-      e.flag != d.flag ||
-      e.x != d.x ||
-      e.y != d.y ||
-      e.z != d.z ||
-      e.big != d.big) {
-    return false;
-  }
-  for (var i = 0; i < 17; i++) {
-    if (e.blob[i] != d.blob[i]) {
-      return false;
-    }
-  }
-  return true;
-}
-
-void initBenchInts(BenchInts p) {
-  p.f0 = -37;
-  p.f1 = 12345;
-  p.f2 = 987654;
-  p.f3 = 2;
-  p.f4 = -15;
-  p.f5 = 777;
-  p.f6 = -2048;
-  p.f7 = 200;
-  p.f8 = -543210;
-  p.f9 = 99;
-}
-
-void varyBenchInts(BenchInts f) {
-  lcgStep();
-  f.f0 = (shr(8) & 63) - 32;
-  f.f1 = shr(16) & 65535;
-  f.f2 = (shr(24) & 0xfffff) - 500000;
-  f.f3 = shr(2) & 3;
-  f.f4 = (shr(11) & 15) - 8;
-  f.f5 = shr(22) & 511;
-  f.f6 = (shr(33) & 2047) - 1024;
-  f.f7 = shr(40) & 255;
-  f.f8 = (shr(30) & 0xfffff) - 500000;
-  f.f9 = shr(57) & 63;
-}
-
-bool checkBenchInts(BenchInts e, BenchInts d) =>
-    e.f0 == d.f0 &&
-    e.f1 == d.f1 &&
-    e.f2 == d.f2 &&
-    e.f3 == d.f3 &&
-    e.f4 == d.f4 &&
-    e.f5 == d.f5 &&
-    e.f6 == d.f6 &&
-    e.f7 == d.f7 &&
-    e.f8 == d.f8 &&
-    e.f9 == d.f9;
-
-void initBenchBits(BenchBits p) {
-  p.b7 = 97;
-  p.b13 = 5000;
-  p.b23 = 1234567;
-  p.b3 = 5;
-  p.b32 = 0xdeadbeef;
-  p.b11 = 1024;
-  p.b19 = 333333;
-  p.b48 = 0xfedcba987654;
-}
-
-void varyBenchBits(BenchBits f) {
-  lcgStep();
-  f.b7 = rng & 127;
-  f.b13 = shr(3) & 8191;
-  f.b23 = shr(5) & 8388607;
-  f.b3 = shr(29) & 7;
-  f.b32 = shr(16);
-  f.b11 = shr(37) & 2047;
-  f.b19 = shr(44) & 524287;
-  // the 48-bit field: low dword + 16-bit remainder, composed — the same
-  // bits the family benches send as two lanes
-  f.b48 = (rng & 0xffffffff) | ((shr(32) & 0xffff) << 32);
-}
-
-bool checkBenchBits(BenchBits e, BenchBits d) =>
-    e.b7 == d.b7 &&
-    e.b13 == d.b13 &&
-    e.b23 == d.b23 &&
-    e.b3 == d.b3 &&
-    e.b32 == d.b32 &&
-    e.b11 == d.b11 &&
-    e.b19 == d.b19 &&
-    e.b48 == d.b48;
-
-
 /* --------------------------------------------------------------------------
    the golden gate (§1.5), shared by every shape: the PINNED instance's
    bytes must equal the C++-pinned testdata/wire golden, and all 64 variant
@@ -350,74 +173,6 @@ bool bytesEqual(Uint8List a, Uint8List b) {
   return true;
 }
 
-final class _GatedShape<P> {
-  final P packet;
-  final P decoded;
-  final List<ByteData> variants;
-  final int bytesPerPacket;
-  _GatedShape(this.packet, this.decoded, this.variants, this.bytesPerPacket);
-}
-
-_GatedShape<P> gateShape<P>(
-  String row,
-  String goldenName,
-  P packet,
-  P decoded,
-  void Function(P) init,
-  void Function(P) vary,
-  int Function(P, ByteData) write,
-  bool Function(P, ByteData, int) read,
-  bool Function(P, P) checkFields,
-) {
-  // the pinned corpus instance against the C++-pinned golden
-  final buffer = Uint8List(512);
-  final view = ByteData.sublistView(buffer);
-  init(packet);
-  final n = write(packet, view);
-  final goldenFile = File('../../testdata/wire/$goldenName.bin');
-  if (!goldenFile.existsSync()) {
-    stderr.write(
-      'missing wire golden testdata/wire/$goldenName.bin — run from bench/dart\n',
-    );
-    exit(1);
-  }
-  final goldenBytes = goldenFile.readAsBytesSync();
-  goldensLoaded['$goldenName.bin'] = goldenBytes;
-  if (!bytesEqual(Uint8List.sublistView(buffer, 0, n), goldenBytes)) {
-    gateFail(row, 'pinned instance vs testdata/wire/$goldenName.bin');
-  }
-
-  // 64 LCG variants, written with the same sequence the write loop uses,
-  // each decoded back and field-verified
-  init(packet);
-  lcgSeed();
-  final variants = <ByteData>[];
-  var bytesPerPacket = -1;
-  for (var v = 0; v < numVariants; v++) {
-    vary(packet);
-    final vbuf = Uint8List(512);
-    final nv = write(packet, ByteData.sublistView(vbuf));
-    if (bytesPerPacket == -1) {
-      bytesPerPacket = nv;
-    } else if (nv != bytesPerPacket) {
-      gateFail(row, 'variant $v size $nv != $bytesPerPacket');
-    }
-    variants.add(ByteData.sublistView(vbuf, 0, nv));
-  }
-  init(packet);
-  lcgSeed();
-  for (var v = 0; v < numVariants; v++) {
-    vary(packet);
-    if (!read(decoded, variants[v], bytesPerPacket * 8)) {
-      gateFail(row, 'variant $v read verdict');
-    }
-    if (!checkFields(packet, decoded)) {
-      gateFail(row, 'variant $v field mismatch');
-    }
-  }
-  return _GatedShape(packet, decoded, variants, bytesPerPacket);
-}
-
 /* --------------------------------------------------------------------------
    the DATA-DRIVEN driver for bench_mixed (issue #191).
 
@@ -428,8 +183,8 @@ _GatedShape<P> gateShape<P>(
    it measures, which is the whole reason the design exists. If a change here
    ever needs a field name, the design has failed and that is the finding.
 
-   It replaces gateShape/benchShape for bench_mixed only; both still drive
-   every shape whose harness code is not yet data-driven.
+   It is the ONLY driver in this runner: bench_mixed is the whole leg, and
+   no hand-written pin, vary, field-check or sink function survives here.
    -------------------------------------------------------------------------- */
 
 final class _DataDrivenShape<P> {
@@ -504,7 +259,8 @@ _DataDrivenShape<P> gateDataDriven<P>(
 
   // gate 2: every variant decodes, re-encodes, and comes back byte-identical
   // at the same length. This is stronger than the pinned-instance-only gate
-  // gateShape applies — §1.5's named residual (the 64 varied buffers
+  // the retired hand-written shapes applied — §1.5's named residual (the 64
+  // varied buffers
   // length-checked but never value-checked) closes here, for every variant.
   final twin = Uint8List(512);
   final twinView = ByteData.sublistView(twin);
@@ -603,61 +359,6 @@ void benchDataDriven<P>(
   }
 }
 
-/* --------------------------------------------------------------------------
-   the timed rows: per (bench, path), 1 discarded warmup run then numRuns
-   measured runs — the write loop varies every packet through the LCG, the
-   read loop rotates the 64 gated variant buffers, and every loop's work
-   flows into the sink.
-   -------------------------------------------------------------------------- */
-
-void benchShape<P>(
-  String row,
-  _GatedShape<P> gated,
-  int iters,
-  void Function(P) vary,
-  int Function(P, ByteData) write,
-  bool Function(P, ByteData, int) read,
-  int Function(P) sinkOf,
-) {
-  final packet = gated.packet;
-  final decoded = gated.decoded;
-  final variants = gated.variants;
-  final numBits = gated.bytesPerPacket * 8;
-  final buffer = Uint8List(512);
-  final view = ByteData.sublistView(buffer);
-
-  final writeRates = <double>[];
-  for (var run = -1; run < numRuns; run++) {
-    final start = now();
-    for (var i = 0; i < iters; i++) {
-      vary(packet);
-      sink = (sink + write(packet, view)) & 0xffffffff;
-    }
-    final elapsed = now() - start;
-    if (run >= 0) {
-      writeRates.add(iters / elapsed);
-    }
-  }
-
-  final readRates = <double>[];
-  for (var run = -1; run < numRuns; run++) {
-    final start = now();
-    for (var i = 0; i < iters; i++) {
-      if (!read(decoded, variants[i & (numVariants - 1)], numBits)) {
-        exit(1);
-      }
-      sink = (sink + sinkOf(decoded)) & 0xffffffff;
-    }
-    final elapsed = now() - start;
-    if (run >= 0) {
-      readRates.add(iters / elapsed);
-    }
-  }
-
-  report(row, 'write', iters, gated.bytesPerPacket, writeRates);
-  report(row, 'read', iters, gated.bytesPerPacket, readRates);
-}
-
 /* ------------------------------------------------------------------------- */
 
 void main(List<String> arguments) {
@@ -698,84 +399,13 @@ void main(List<String> arguments) {
     readBenchMixed,
   );
 
-  if (quick) {
-    benchDataDriven(
-      'bench_mixed',
-      gatedMixed,
-      mixedIters,
-      writeBenchMixed,
-      readBenchMixed,
-    );
-  } else {
-    final gatedPacket = gateShape(
-      'bench_packet',
-      'bench_packet',
-      BenchPacket(),
-      BenchPacket(),
-      initBenchPacket,
-      varyBenchPacket,
-      writeBenchPacket,
-      readBenchPacket,
-      checkBenchPacket,
-    );
-    final gatedInts = gateShape(
-      'bench_ints',
-      'bench_ints',
-      BenchInts(),
-      BenchInts(),
-      initBenchInts,
-      varyBenchInts,
-      writeBenchInts,
-      readBenchInts,
-      checkBenchInts,
-    );
-    final gatedBits = gateShape(
-      'bench_bits',
-      'bench_bits',
-      BenchBits(),
-      BenchBits(),
-      initBenchBits,
-      varyBenchBits,
-      writeBenchBits,
-      readBenchBits,
-      checkBenchBits,
-    );
-
-    benchShape(
-      'bench_packet',
-      gatedPacket,
-      packetIters,
-      varyBenchPacket,
-      writeBenchPacket,
-      readBenchPacket,
-      sinkOfBenchPacket, // full-struct observation (#175)
-    );
-    benchShape(
-      'bench_ints',
-      gatedInts,
-      intsIters,
-      varyBenchInts,
-      writeBenchInts,
-      readBenchInts,
-      sinkOfBenchInts, // full-struct observation (#175)
-    );
-    benchShape(
-      'bench_bits',
-      gatedBits,
-      bitsIters,
-      varyBenchBits,
-      writeBenchBits,
-      readBenchBits,
-      sinkOfBenchBits, // full-struct observation (#175)
-    );
-    benchDataDriven(
-      'bench_mixed',
-      gatedMixed,
-      mixedIters,
-      writeBenchMixed,
-      readBenchMixed,
-    );
-  }
+  benchDataDriven(
+    'bench_mixed',
+    gatedMixed,
+    mixedIters,
+    writeBenchMixed,
+    readBenchMixed,
+  );
 
   flushCsv();
   stderr.write('OK (corpus_id ${corpusId()})\n');

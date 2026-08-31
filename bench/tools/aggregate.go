@@ -20,7 +20,7 @@
 //
 // controlmedian prints the corpus-median headline rate (max_msgs_per_sec
 // over the control leg's family gen cpp rows — §2.6 names the family-gen
-// corpus median, and the rt/bits rows the same runner also emits are not
+// corpus median, and the bits rows the same runner also emits are not
 // part of the window gate) of a control-leg CSV: a pass is VALID only if
 // its start and end control legs agree within 5%.
 package main
@@ -199,7 +199,7 @@ func controlMedianCmd(paths []string) {
 	var rates []float64
 	for k, r := range rows {
 		// §2.6 names the family-gen corpus median: the control leg is "the
-		// C++ family gen runner", and the rt/bits rows the same binary also
+		// C++ family gen runner", and the bits rows the same binary also
 		// emits are not part of the window gate.
 		if k.lang == "cpp" && r.family == "gen" {
 			rates = append(rates, r.mx)

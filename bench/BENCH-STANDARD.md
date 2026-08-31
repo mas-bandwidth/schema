@@ -75,18 +75,24 @@ follow. schema exists precisely to emit the same types in five languages; this i
 that capability pointed at the benchmark.
 
 ```
-schema/bench/corpus/Bench.schema      <- the runtime-API shapes (family B), new
-schema/examples/*.schema              <- the generated-code shapes (family A), exists
-schema/testdata/wire/*.bin            <- byte goldens for both, exists
+schema/bench/corpus/Bench.schema      <- the Bench-corpus shapes
+schema/examples/*.schema              <- the example-corpus shapes
+schema/testdata/wire/*.bin            <- byte goldens for both
 ```
 
-Three families. Every row in every CSV belongs to exactly one.
+Two families. Every row in every CSV belongs to exactly one.
 
 | family | subject | corpus source | binding |
 |---|---|---|---|
-| `gen` | generated code + runtime | `schema/examples/*.schema` | generated types, per-language |
-| `rt` | the runtime API called by hand | `schema/bench/corpus/Bench.schema` | hand-written, **oracle-gated** |
+| `gen` | generated code + runtime | `schema/examples/*.schema`, `schema/bench/corpus/Bench.schema` | generated types, per-language |
 | `bits` | the raw bit packer | this document, §1.4 | hand-written, width table normative |
+
+**Family `rt` — the runtime API called by hand — is RETIRED** (owner ruling,
+2026-08-31, schema#196). The generated subject is the estate's only benchmark
+subject; the hand-written-experience product is gone, along with every
+serialize repo's in-repo bench. If the generated-vs-hand-written pair is ever
+wanted again it is remeasured deliberately from scratch, never revived from
+dormant code.
 
 ### §1.2 Family `gen` — shapes unchanged, iteration counts rescaled
 
@@ -137,10 +143,28 @@ sized against the fastest measured leg (cpp read, 328.5 M msgs/s → 319 ms)
 with margin, identical in all six runners, recorded in the `iters` column
 like both corrections before it.
 
-### §1.3 Family `rt` — new, and the reason the bespoke harnesses can be retired
+### §1.3 The Bench corpus
 
-The four shapes the bespoke harnesses already measure, transcribed from
-`serialize/bench.cpp` into schema so all five languages inherit one definition.
+**The Bench corpus is ONE measured shape: `BenchMixed` (§1.3a).** Owner
+ruling, 2026-08-31, verbatim: *"there should be only a single schema bench:
+Bench.schema, it generates per-language stuff that is how we measure how
+efficient serialize and schema is per-language."*
+
+`bench/corpus/Bench.schema` also declares `BenchPacket`, `BenchInts` and
+`BenchBits` — the three stress shapes the retired bespoke harnesses measured,
+transcribed from `serialize/bench.cpp`. **They are no longer measured by any
+runner.** They were the last hand-written pin / vary / field-check / sink code
+in the Bench-corpus leg, and that code is deleted in every one of the nine
+runners; the only measurement left there is the data-driven BenchMixed driver
+reading the committed variant corpus through the generated codecs.
+
+The three declarations and their `testdata/wire/bench_{packet,ints,bits}.bin`
+goldens **stay**, because they are load-bearing OUTSIDE the bench: the
+cross-language conformance suite pins them (`test/bench/main.cpp`,
+`test/bench/c_main.c`, and the java / js / dart / elixir port suites) and
+`make test` gates on those goldens byte-for-byte. They are conformance
+fixtures now, and nothing in this document is normative about them as bench
+rows. Their text is reproduced below as the record of what the fixtures are.
 
 ```
 // schema/bench/corpus/Bench.schema
@@ -239,17 +263,10 @@ operations, not separate constructs: the `*_compile_time` / `*_runtime_form`
 families and `serialize_compressed_float_precomputed`; `serialize_copy_string`
 / `serialize_copy_wstring` are buffer helpers, not stream operations.
 
-**The rt legs' one stated deviation.** `string(N)` and `bytes(N)` ride as their
-§4.3 decomposition — the length prefix then the used bytes — in every
-hand-written leg. `serialize_string` is wire-identical, but its C++ form pays
-`strlen` plus UTF-8 validation while the Go and C# ports allocate a string per
-read; the decomposition is what every GENERATED target emits, so gen-vs-rt and
-language-vs-language both stay apples to apples.
-
 **Iteration counts rescaled with the shape.** bench_mixed grew from 21 to 438
 wire bytes (20.9x), so its fixed count drops **40,000,000 → 4,000,000** in
 every leg, and quick mode's reduced elixir count **8,000,000 → 400,000**.
-Measured on the M2, 2026-08-31: at 4,000,000 the fastest row (C `rt` write,
+Measured on the M2, 2026-08-31: at 4,000,000 the fastest row (C write,
 5.7 M msg/s) takes 0.70 s per measured run — above §2.1's 200 ms floor — and
 at 400,000 elixir's 0.07 M msg/s takes 5.7 s, inside §2.8's one-minute-per-leg
 bound. Rows across this change are not comparable to earlier ones: the corpus
@@ -295,33 +312,34 @@ table and the 65536-byte buffer — is unchanged.
 `read_bits_group` row are **removed** from cross-language reporting. They may survive
 as in-repo diagnostics under a `local` family, which the tool never ratios.
 
-### §1.5 The oracle gate — how a hand-written harness binds to the corpus
+### §1.5 The oracle gate — how a runner binds to the corpus
 
-Family `rt` is measured by hand-written code, because measuring the runtime API is
-the point. Hand-written code drifts. The gate makes drift impossible to publish:
+A runner that measures the wrong bytes reports nothing worth having. The gate
+makes drift impossible to publish:
 
-> A family `rt` runner MUST, before producing any number, write each pinned corpus
-> instance through its hand-written path and byte-compare the result against
-> `testdata/wire/bench_*.bin` — the goldens produced by the *generated* code for the
-> same schema types. It MUST then round-trip write → read → re-write → memcmp. On any
-> mismatch it MUST print the failure and exit non-zero without emitting rows.
+> A runner MUST, before producing any number, write each pinned corpus instance
+> and byte-compare the result against `testdata/wire/*.bin` — the goldens
+> produced by the *generated* code for the same schema types. It MUST then
+> round-trip write → read → re-write → memcmp. On any mismatch it MUST print
+> the failure and exit non-zero without emitting rows.
 
-This is the existing family `gen` gate (`bench/cpp/bench_main.cpp:165-203`) pointed at
-a second target. It gives the estate something it has never had: a mechanical proof
-that `serialize.c/bench.c` and `serialize.rs/throughput.rs` measure the same work,
+The reference implementation is `bench/cpp/bench_main.cpp:165-203`. It gives the
+estate a mechanical proof that every language's leg measures the same work,
 rather than a header comment asserting it.
 
-The pinned instances are defined in `test/bench/main.cpp` (the golden producer;
-BenchPacket's pin is `serialize/bench.cpp` `Init()` verbatim, the other three are
-pinned there) and transcribed into every runner. The goldens keep the
-transcriptions honest — a wrong transcription cannot pass the gate.
+The pinned instance is defined in `test/bench/main.cpp` (the golden producer)
+and reaches every runner as DATA: `bench/corpus/variants/bench_mixed.variants.bin`
+is the committed variant corpus, whose record 0 IS the pinned instance. No
+runner transcribes a pin, so there is no transcription left to keep honest —
+variant 0 is byte-compared to the golden, and every other variant must decode
+and re-encode byte-identically at the same length.
 
-The gate's residual, named: the 64 varied read buffers are length-checked
-(bytes_per_op must not move under variation) but not value-checked — safe while
-every rt shape is branch-free and fixed-width, because a wrong decode of such a
-shape cannot change which fields ride without changing the byte count. A future
-branchy or variable-width rt shape needs value checks on the variant decodes,
-not only on the pinned instance.
+The gate's residual is CLOSED for the measured shape. It was named when the
+hand-written shapes rode here: the 64 varied read buffers were length-checked
+(bytes_per_op must not move under variation) but not value-checked, which was
+safe only while a shape was branch-free and fixed-width. The data-driven gate
+value-checks every variant by re-encoding it, so a branchy, variable-width
+shape — BenchMixed is both — is covered.
 
 ### §1.6 `corpus_id`
 
@@ -450,7 +468,7 @@ rows this section defines are pure instruments; the remaining string and
 wstring work (the wstring/bytes sweep, the C++ WriteBytes candidate, every
 port's equivalents) lands against them, never ahead of them.
 
-**The string row — `bench_string`, family `rt`.** Transcribed from the
+**The string row — `bench_string`, family `gen`.** Transcribed from the
 reference implementation's own string row (`serialize/bench.cpp`, landed
 under this issue) the same way §1.3 transcribed the four original shapes:
 
@@ -482,10 +500,13 @@ goldens are the authority (§1.3's rule).
   generated C++, independently confirmed by the generated C, every runner
   byte-compares and round-trips before emitting rows.
 
-**The wstring row — `bench_wstring`, family `rt`, corpus source: this
-document.** schema defers wide strings (SPEC §4.10), so no schema type and
-no generated golden can exist; like §1.4's bitpacker, the shape is specified
-here directly:
+**The wstring row — `bench_wstring`, corpus source: this document.
+SUSPENDED by schema#196.** schema defers wide strings (SPEC §4.10), so no
+schema type and no generated golden can exist, and the family that would
+have carried it — hand-written `rt` — is retired. The definition below
+stands as the record; the row lands only when schema expresses wstring and
+a generated codec can carry it. Like §1.4's bitpacker, the shape is
+specified here directly:
 
 ```
 buffer   = 64 UTF-16 code units  -> 6-bit length field
@@ -518,7 +539,7 @@ Mechanics both rows share when they land in the schema runners: additive
 under rule 3 (new names, new `corpus_id`, era-marked), iteration counts
 sized at landing per §2.1 (every leg over 200 ms, identical across
 languages, recorded in `iters`), timed loops in noinline symbols with §3.2's
-two call sites, like every other `rt` row. This section is the definition
+two call sites, like every other row. This section is the definition
 only — the schema/bench implementation (corpus type, goldens, six runner
 rows) lands as its own additive change, and the runtime repos' in-repo
 benches carry their own local rows under the same measure-first rule.
@@ -737,17 +758,13 @@ comparison costs minutes, not an evening; nothing it prints publishes.
   one-minute bound), except where a language still cannot hold that bound:
   elixir runs 400,000 (the BEAM is ~2 orders behind the native legs). Every
   count is recorded in the `iters` column as always.
-- The driver prints **two blended sections, one per subject, never ranked
-  against each other** (the profiling doctrine's apples-to-apples rule,
-  enacted for the table by #177/#178): the headline section is family
-  `gen` — every language's schema-GENERATED code, the native legs included
-  since their generated Bench legs landed — and the second labeled section
-  is family `rt`, the serialize runtime API called by hand.
-  **AMENDED 2026-08-31 by §2.9 and the owner's presentation ruling (#184).**
-  The gen section's statistic is the **`round_trip` row**, not the old
-  `t = (1/w + 1/r) / 2` blend — that leg is data-driven in every language
-  now and no longer reports a measured `read`. The rt section keeps the old
-  blend until #196 excises the rt rows. The printed table is exactly **two
+- The driver prints **one blended section** — family `gen`, every language's
+  schema-GENERATED code, the estate's only benchmark subject since schema#196
+  retired family `rt`. **AMENDED 2026-08-31 by §2.9 and the owner's
+  presentation ruling (#184).** Its statistic is the **`round_trip` row**,
+  not the old `t = (1/w + 1/r) / 2` blend — that leg is data-driven in every
+  language now and no longer reports a measured `read`. The printed table is
+  exactly **two
   columns, language and percent**, with generated **C++ = 100% as the
   DENOMINATOR** (owner, 2026-08-31: "I want nothing but a table with two
   columns: language, %" / "not fastest-as-100%: a language beating C++
@@ -1256,7 +1273,7 @@ Ledger format — one line per guarded symbol, `#` comments allowed:
 ```
 
 For C, C++, Rust and C# the metric is `loop-calls` — the call count from §4.1's
-universal fallback, measured over the family `rt` timed loop:
+universal fallback, measured over the timed loop:
 
 ```
 # serialize.c/tending/inline-budget.txt
@@ -1307,12 +1324,12 @@ lang,bench,path,iters,bytes_per_op,runs,median_msgs_per_sec,min_msgs_per_sec,max
 | 1–11 | unchanged from v1 |
 | `path` (col 3) | `write` \| `read` \| `round_trip`. `round_trip` was added 2026-08-31 by §2.9 and appears on the gen family's data-driven `bench_mixed` rows, which report `write` + `round_trip` and no measured `read`. Every tool that walks rows walks `relative.go`'s one `paths` list, so a path added to a runner and not to that list REFUSES the aggregation rather than dropping rows. |
 | `corpus_id` | 16 hex digits, §1.6 |
-| `family` | `gen` \| `rt` \| `bits` \| `local` |
+| `family` | `gen` \| `bits` \| `local` |
 | `linkage` | `hdr` \| `tu` \| `hdr+tu` \| `tu-lto` \| `crate` \| `pkg` \| `asm` (§3.1) |
 | `checks` | `removed` \| `always` \| `contract` (§3.4) |
 | `opt` | `O2` \| `O3` \| `default` |
 | `inline` | `full` \| `partial:N` \| `none` \| `unknown` |
-| `codec` | `flat` \| `runtime` — appended (2026-08-18) only on rows of a language that ships more than one generated codec. Today that is JavaScript: `flat` marks the flat tier, THE js path under the ruling ("whichever correct implementation is fastest is the one we use for JavaScript"), and `runtime` marks the runtime-call generated tier riding as labeled supplementary rows. Rows without the column (the five AOT languages, and the js `rt`/`bits` families, which measure the runtime library itself) stay 17 fields — append-only holds. |
+| `codec` | `flat` \| `runtime` — appended (2026-08-18) only on rows of a language that ships more than one generated codec. Today that is JavaScript: `flat` marks the flat tier, THE js path under the ruling ("whichever correct implementation is fastest is the one we use for JavaScript"), and `runtime` marks the runtime-call generated tier riding as labeled supplementary rows. Rows without the column (the five AOT languages, and the js `bits` family, which measures the runtime bitpacker itself) stay 17 fields — append-only holds. |
 
 The **headline rate is `max_msgs_per_sec`** (§2.2). `median_mb_per_sec` keeps its name
 and its MiB/s meaning; a `max_mb_per_sec` is not added because it is
@@ -1435,7 +1452,7 @@ Order matters — go first, because Go is on the cliff today:
 
 1. `serialize.go` — `make inline-gate`, ledger from §4.3's measured values, wired into
    `.github/workflows/ci.yml`. Guards `SerializeBits` and `tryReadBits` at 80/80.
-2. `serialize` (C++) — `loop-calls` gate over the family `rt` loop.
+2. `serialize` (C++) — `loop-calls` gate over the timed loop.
 3. `serialize.c` — same, and it finally makes the two-call-site asymmetry visible.
 4. `serialize.rs` — same, via `-Cremark=inline` plus `objdump`.
 5. `serialize.cs` — same, via `JitDisasm`. This repo has no benchmark at all today, so
@@ -1456,48 +1473,43 @@ macOS pinning stays absent — there is no `taskset` equivalent worth trusting �
 preamble keeps saying so. The M2 legs are unpinned by construction and the standard
 does not pretend otherwise.
 
-### Step 6 — family `rt`: the schema corpus and the oracle
-*The step that lets the bespoke harnesses be retired.*
+### Step 6 — the Bench corpus and the oracle
+*The step that let the bespoke harnesses be retired.*
 
 1. Add `schema/bench/corpus/Bench.schema` (§1.3) and wire it into `SCHEMAS`.
-2. Generate into all five languages; generate `testdata/wire/bench_*.bin` goldens.
-3. Add family `rt` benchmarks to the five schema runners, measuring the runtime API by
-   hand, gated by §1.5 against those goldens.
-4. Verify the byte sizes: 49, 14, 20, 21. If generation disagrees with §1.3's
-   arithmetic, the goldens win and §1.3 is corrected.
+2. Generate into all nine languages; generate `testdata/wire/bench_*.bin` goldens.
+3. Bench `BenchMixed` through each language's generated code, gated by §1.5
+   against its golden and its committed variant corpus. (The three stress
+   shapes were benched here too until 2026-08-31; they are conformance
+   fixtures now — §1.3.)
+4. Verify the byte sizes: 438 for BenchMixed, 49/14/20 for the fixtures. If
+   generation disagrees with §1.3's arithmetic, the goldens win and §1.3 is
+   corrected.
 
-### Step 7 — retire the six harnesses
-*In this order, each once its replacement is measuring.*
+### Step 7 — retire the bespoke harnesses
 
-| harness | disposition |
-|---|---|
-| `serialize.go/bench/cpp/bench.cpp` | **DELETE.** It pins `serialize.h` v1.4.3, does not vendor it, serializes constant data, re-reads one buffer, and emits decimal MB/s. Family `rt` replaces it entirely. Its published table goes with it. |
-| `serialize/bench.cpp` | Becomes the C++ family `rt` runner under the contract. Keeps its compile-time-vs-runtime matched pairs as a `local` family — that is a genuine C++-only question and nothing else can answer it. Drops `-ffast-math`. |
-| `serialize.c/bench.c` | Becomes the C family `rt` runner. Its header comment is the best statement of intent in the estate and should survive nearly verbatim. Gains the oracle gate, which is what it has always been asserting by hand. |
-| `serialize.rs/throughput.rs` | Becomes the Rust family `rt` runner. Loses the orphan `read_bits_group` row from cross-language reporting. Gains the goldens — and note that its 410 M packets/s stream read is ~2.4 ns for a 12-field decode, which nothing currently verifies actually happened. |
-| `serialize.go/bench_test.go` | **Keeps** its `go test` rows, because `allocs/op` is a real and unique signal and `go test` is the right tool for it. **Loses** its cross-language table. Fixes its `SetBytes` denominators (`bench_test.go:17` vs `:125` vs `:293`, and `:368`/`:394` which have none). Marked `family=local`. |
-| `serialize.cs` | Gains its first benchmark, as a family `rt` runner. |
-| `schema/bench` | Becomes the standard. |
-
-Then **un-publish what the standard cannot back**: the Go-vs-C++ table in
-`serialize.go/docs/performance.md`, and the C++ column in
-`serialize.rs/README.md:146-152` whose build is recorded nowhere and whose three
-candidate builds are mutually incompatible. Replace both with a pointer to a dated
-pass under this standard, or with nothing. Nothing is better than wrong.
+**Done, 2026-08-31 (owner ruling, schema#196).** Every in-repo bench in the
+serialize family is deleted — `serialize/bench.cpp`, `serialize.c/bench.c`,
+`serialize.go/bench_test.go` and `bench/cpp`, `serialize.rs/benches`,
+`serialize.cs/bench`, `serialize.js/bench`, `serialize.dart/bench`,
+`serialize.java/bench`, `serialize.elixir/bench` — together with their CI legs,
+build targets and published tables. `schema/bench` is the standard and the
+estate's only benchmark, over the generated subject. Deletion, not archival: a
+dormant bench re-activates and drifts, and git history is the archive.
 
 ### Honest cost
 
-Five wire-compatible libraries means five implementations of everything. Steps 2, 4, 6
-and 7 are each five-times work. Roughly:
+Nine wire-compatible libraries means nine implementations of everything. Steps 2,
+4 and 6 are each many-times work. Roughly:
 
 - Steps 1 + 3: hours, one repo each. **Do these regardless.**
 - Step 2: an afternoon.
 - Step 5: a day, one script.
 - Step 4: a day per repo, five repos.
-- Steps 6 + 7: several days, mostly in the four runtime repos.
+- Step 6: several days, mostly in the runtime repos.
 
 Steps 1–3 alone deliver: no more wrong ratios, and the inline verdict. That is the
-majority of the value for a small fraction of the cost. Steps 4–7 are what make it a
+majority of the value for a small fraction of the cost. Steps 4–6 are what make it a
 standard instead of a fix.
 
 ---
@@ -1547,7 +1559,7 @@ EPYC box's and always will.
 steps, that sentence still is not measurable. What becomes measurable is: *"on this
 machine, in this window, at `-O3`, with `checks=removed` for C and `checks=always` for
 Go, with C linking `serialize.c` as a separate TU without LTO, over corpus
-`3f8a1c22b90de471`, with C fully inlined and Go partially, Go's family `rt` write is
+`3f8a1c22b90de471`, with C fully inlined and Go partially, Go's family `gen` write is
 N× C's."* That is a longer sentence and a smaller claim. It is also the only one that
 has ever been true.
 

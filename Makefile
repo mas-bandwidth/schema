@@ -213,7 +213,7 @@ generated/c-ludicrous/.stamp: bin/schema $(SCHEMAS128)
 # the bench corpus — TWO units sharing one directory (SPEC §3.2: one package
 # per unit, so every corpus command below names its unit's file, never the
 # directory):
-#   bench/corpus/Bench.schema      package bench      — the family `rt` shapes
+#   bench/corpus/Bench.schema      package bench      — the bench-corpus shapes
 #     (BENCH-STANDARD.md §1.3); goldens testdata/wire/bench_*.bin
 #   bench/corpus/RealWorld.schema  package realworld  — the §1.7 realistic
 #     snapshot (RealPacket); golden testdata/wire/real_packet.bin

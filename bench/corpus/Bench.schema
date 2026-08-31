@@ -1,14 +1,21 @@
-// Bench.schema — the family `rt` corpus (BENCH-STANDARD.md §1.3): the four
-// shapes the bespoke harnesses measure, so all nine languages inherit ONE
-// definition. The generated code produces the testdata/wire/bench_*.bin
-// goldens; hand-written family `rt` runners are gated against those goldens
-// byte-for-byte (§1.5) before any number.
+// Bench.schema — the bench corpus (BENCH-STANDARD.md §1.3). The generated
+// code produces the testdata/wire/bench_*.bin goldens, and every runner is
+// gated against them byte-for-byte (§1.5) before any number.
 //
-// BenchMixed is THE canonical benchmark (issue #184) — every construct the
-// schema language expresses, in one representative game message, integers
-// carrying the bytes. The other three shapes are transcribed from
-// serialize/bench.cpp and are diagnostic stress rows: BenchPacket a stream
-// packet, BenchInts ranged integers only, BenchBits bit windows only.
+// BenchMixed is THE benchmark, and the only shape here any bench measures
+// (issue #184, and the 2026-08-31 ruling that there be "only a single schema
+// bench: Bench.schema") — every construct the schema language expresses, in
+// one representative game message, integers carrying the bytes. All nine
+// runners measure it through their generated code, driven entirely by the
+// committed variant corpus.
+//
+// BenchPacket, BenchInts and BenchBits are CONFORMANCE FIXTURES, not bench
+// shapes. Transcribed from serialize/bench.cpp, they were diagnostic stress
+// rows until 2026-08-31; the hand-written harness code that measured them is
+// deleted from every runner and no bench reads them now. They stay because
+// the cross-language conformance suite pins all three against their goldens
+// under `make test` (test/bench/main.cpp, test/bench/c_main.c, and the java /
+// js / dart / elixir port suites).
 
 package bench
 
