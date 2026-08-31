@@ -1529,6 +1529,37 @@ defmodule Ludicrous.Ludicrous do
 
   defp w_fixed_probe_samples([], data, scratch, scratch_bits), do: {data, scratch, scratch_bits}
 
+  defp w_fixed_probe_samples([e1, e2 | rest], data, scratch, scratch_bits) do
+    if e1 < -524_288 do
+      raise ArgumentError, "e is below the wire minimum"
+    end
+
+    if e1 > 524_288 do
+      raise ArgumentError, "e is above the wire maximum"
+    end
+
+    v = e1 + 524_288
+    scratch = scratch ||| v <<< scratch_bits
+    scratch_bits = scratch_bits + 21
+
+    if e2 < -524_288 do
+      raise ArgumentError, "e is below the wire minimum"
+    end
+
+    if e2 > 524_288 do
+      raise ArgumentError, "e is above the wire maximum"
+    end
+
+    v = e2 + 524_288
+    scratch = scratch ||| v <<< scratch_bits
+    scratch_bits = scratch_bits + 21
+    flush = scratch_bits >>> 3
+    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
+    scratch = scratch >>> (flush <<< 3)
+    scratch_bits = scratch_bits &&& 7
+    w_fixed_probe_samples(rest, data, scratch, scratch_bits)
+  end
+
   defp w_fixed_probe_samples([e | rest], data, scratch, scratch_bits) do
     if e < -524_288 do
       raise ArgumentError, "e is below the wire minimum"
@@ -1563,6 +1594,37 @@ defmodule Ludicrous.Ludicrous do
 
   defp w_unsigned_probe_samples([], data, scratch, scratch_bits),
     do: {data, scratch, scratch_bits}
+
+  defp w_unsigned_probe_samples([e1, e2 | rest], data, scratch, scratch_bits) do
+    if e1 < 0 do
+      raise ArgumentError, "e is below the wire minimum"
+    end
+
+    if e1 > 1_048_576 do
+      raise ArgumentError, "e is above the wire maximum"
+    end
+
+    v = e1
+    scratch = scratch ||| v <<< scratch_bits
+    scratch_bits = scratch_bits + 21
+
+    if e2 < 0 do
+      raise ArgumentError, "e is below the wire minimum"
+    end
+
+    if e2 > 1_048_576 do
+      raise ArgumentError, "e is above the wire maximum"
+    end
+
+    v = e2
+    scratch = scratch ||| v <<< scratch_bits
+    scratch_bits = scratch_bits + 21
+    flush = scratch_bits >>> 3
+    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
+    scratch = scratch >>> (flush <<< 3)
+    scratch_bits = scratch_bits &&& 7
+    w_unsigned_probe_samples(rest, data, scratch, scratch_bits)
+  end
 
   defp w_unsigned_probe_samples([e | rest], data, scratch, scratch_bits) do
     if e < 0 do

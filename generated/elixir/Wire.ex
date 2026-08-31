@@ -2478,6 +2478,23 @@ defmodule Example.Wire do
 
   defp w_probe_sample_samples([], data, scratch, scratch_bits), do: {data, scratch, scratch_bits}
 
+  defp w_probe_sample_samples([e1, e2, e3 | rest], data, scratch, scratch_bits) do
+    v = e1 &&& 0xFFFF
+    scratch = scratch ||| v <<< scratch_bits
+    scratch_bits = scratch_bits + 16
+    v = e2 &&& 0xFFFF
+    scratch = scratch ||| v <<< scratch_bits
+    scratch_bits = scratch_bits + 16
+    v = e3 &&& 0xFFFF
+    scratch = scratch ||| v <<< scratch_bits
+    scratch_bits = scratch_bits + 16
+    flush = scratch_bits >>> 3
+    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
+    scratch = scratch >>> (flush <<< 3)
+    scratch_bits = scratch_bits &&& 7
+    w_probe_sample_samples(rest, data, scratch, scratch_bits)
+  end
+
   defp w_probe_sample_samples([e | rest], data, scratch, scratch_bits) do
     v = e &&& 0xFFFF
     scratch = scratch ||| v <<< scratch_bits
@@ -2853,6 +2870,61 @@ defmodule Example.Wire do
 
   defp w_test_data_items([], data, scratch, scratch_bits), do: {data, scratch, scratch_bits}
 
+  defp w_test_data_items([e1, e2, e3, e4 | rest], data, scratch, scratch_bits) do
+    if e1 < 0 do
+      raise ArgumentError, "e is below the wire minimum"
+    end
+
+    if e1 > 255 do
+      raise ArgumentError, "e is above the wire maximum"
+    end
+
+    v = e1
+    scratch = scratch ||| v <<< scratch_bits
+    scratch_bits = scratch_bits + 8
+
+    if e2 < 0 do
+      raise ArgumentError, "e is below the wire minimum"
+    end
+
+    if e2 > 255 do
+      raise ArgumentError, "e is above the wire maximum"
+    end
+
+    v = e2
+    scratch = scratch ||| v <<< scratch_bits
+    scratch_bits = scratch_bits + 8
+
+    if e3 < 0 do
+      raise ArgumentError, "e is below the wire minimum"
+    end
+
+    if e3 > 255 do
+      raise ArgumentError, "e is above the wire maximum"
+    end
+
+    v = e3
+    scratch = scratch ||| v <<< scratch_bits
+    scratch_bits = scratch_bits + 8
+
+    if e4 < 0 do
+      raise ArgumentError, "e is below the wire minimum"
+    end
+
+    if e4 > 255 do
+      raise ArgumentError, "e is above the wire maximum"
+    end
+
+    v = e4
+    scratch = scratch ||| v <<< scratch_bits
+    scratch_bits = scratch_bits + 8
+    flush = scratch_bits >>> 3
+    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
+    scratch = scratch >>> (flush <<< 3)
+    scratch_bits = scratch_bits &&& 7
+    w_test_data_items(rest, data, scratch, scratch_bits)
+  end
+
   defp w_test_data_items([e | rest], data, scratch, scratch_bits) do
     if e < 0 do
       raise ArgumentError, "e is below the wire minimum"
@@ -2873,6 +2945,26 @@ defmodule Example.Wire do
   end
 
   defp w_test_data_fixed_bytes([], data, scratch, scratch_bits), do: {data, scratch, scratch_bits}
+
+  defp w_test_data_fixed_bytes([e1, e2, e3, e4 | rest], data, scratch, scratch_bits) do
+    v = e1 &&& 0xFF
+    scratch = scratch ||| v <<< scratch_bits
+    scratch_bits = scratch_bits + 8
+    v = e2 &&& 0xFF
+    scratch = scratch ||| v <<< scratch_bits
+    scratch_bits = scratch_bits + 8
+    v = e3 &&& 0xFF
+    scratch = scratch ||| v <<< scratch_bits
+    scratch_bits = scratch_bits + 8
+    v = e4 &&& 0xFF
+    scratch = scratch ||| v <<< scratch_bits
+    scratch_bits = scratch_bits + 8
+    flush = scratch_bits >>> 3
+    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
+    scratch = scratch >>> (flush <<< 3)
+    scratch_bits = scratch_bits &&& 7
+    w_test_data_fixed_bytes(rest, data, scratch, scratch_bits)
+  end
 
   defp w_test_data_fixed_bytes([e | rest], data, scratch, scratch_bits) do
     v = e &&& 0xFF

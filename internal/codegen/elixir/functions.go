@@ -945,12 +945,13 @@ func (g *gen) writeHelper(f *ir.Field) string {
 	} else {
 		g.pf("  defp %s([], data, scratch, scratch_bits),\n    do: {data, scratch, scratch_bits}\n\n", name)
 	}
-	g.pf("  defp %s([e | rest], data, scratch, scratch_bits) do\n", name)
-	g.emitWriteElem(f, "    ")
-	g.flushW("    ") // the element's tail is a barrier: the next entry is < 8 bits
-	g.syncSB("    ") // an align inside the element can have made it static again
-	g.pf("    %s(rest, data, scratch, scratch_bits)\n", name)
-	g.pf("  end\n\n")
+	// the wide clause first: whole elements share one group and therefore
+	// one append. The single-element clause behind it is the remainder, so
+	// the list length never has to divide anything.
+	if k := g.writeUnroll(f); k > 1 {
+		g.writeClause(f, name, k)
+	}
+	g.writeClause(f, name, 1)
 	g.helpers[name] = g.fn.String()
 	g.fn = saved
 	g.sbRestore(savedSB)
@@ -959,19 +960,73 @@ func (g *gen) writeHelper(f *ir.Field) string {
 	return name
 }
 
-// emitWriteElem writes one array element bound to e.
-func (g *gen) emitWriteElem(f *ir.Field, ind string) {
+// writeUnrollMax bounds the generated code one array field can cost. Past a
+// handful of elements per clause the appends saved are a smaller and smaller
+// share and the clause body is a bigger and bigger one.
+const writeUnrollMax = 4
+
+// writeUnroll is how many elements one clause of the loop writes. Elements
+// of a statically known width share a merge group — and so ONE append —
+// while the group's budget holds; measured, cutting appends is worth about a
+// quarter of a static run, and nothing else about the element changes. An
+// element whose width the wire decides gets one clause per element, as
+// before.
+func (g *gen) writeUnroll(f *ir.Field) int64 {
+	eb, ok := g.staticBitsScalar(f)
+	if !ok || eb <= 0 || eb > writeGroupBits {
+		return 1
+	}
+	k := writeGroupBits / eb
+	if k > writeUnrollMax {
+		k = writeUnrollMax
+	}
+	return k
+}
+
+// writeClause emits one clause of a write loop, taking k elements off the
+// list. The k element bodies merge into ONE group, so the clause appends
+// once where k separate clauses appended k times.
+func (g *gen) writeClause(f *ir.Field, name string, k int64) {
+	evs := make([]string, k)
+	for i := range evs {
+		evs[i] = "e"
+		if k > 1 {
+			evs[i] = fmt.Sprintf("e%d", i+1)
+		}
+	}
+	// a clause is its own scope: its own locals, and its own group, entered
+	// at an offset the caller's element count decides
+	g.bindW, g.bindDisp, g.bindUsed = nil, map[string]string{}, map[string]bool{}
+	for _, ev := range evs {
+		// the raise text names the ELEMENT, never the clause's slot for it
+		g.bindDisp[ev] = "e"
+	}
+	g.pendW = 0
+	g.sbKnown, g.scZero = false, false
+	g.scBound, g.sbBound = true, true
+	g.pf("  defp %s([%s | rest], data, scratch, scratch_bits) do\n", name, strings.Join(evs, ", "))
+	for _, ev := range evs {
+		g.emitWriteElem(f, ev, "    ")
+	}
+	g.flushW("    ") // the clause's tail is a barrier: the next entry is < 8 bits
+	g.syncSB("    ") // an align inside an element can have made it static again
+	g.pf("    %s(rest, data, scratch, scratch_bits)\n", name)
+	g.pf("  end\n\n")
+}
+
+// emitWriteElem writes one array element bound to ev.
+func (g *gen) emitWriteElem(f *ir.Field, ev, ind string) {
 	if f.Type.Kind == ir.TNamed {
 		switch ref := f.Type.Ref.(type) {
 		case *ir.Struct:
-			g.withOwner(ref.Name, func() { g.emitWriteItems(ref.Items, "e", ind) })
+			g.withOwner(ref.Name, func() { g.emitWriteItems(ref.Items, ev, ind) })
 			return
 		case *ir.Union:
-			g.emitWriteUnion(ref, "e", ind)
+			g.emitWriteUnion(ref, ev, ind)
 			return
 		}
 	}
-	g.emitWriteScalar(f, "e", ind)
+	g.emitWriteScalar(f, ev, ind)
 }
 
 // withOwner runs fn with the helper-naming owner set to typeName (the type

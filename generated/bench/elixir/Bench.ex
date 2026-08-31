@@ -2535,6 +2535,26 @@ defmodule Bench.Bench do
 
   defp w_bench_packet_blob([], data, scratch, scratch_bits), do: {data, scratch, scratch_bits}
 
+  defp w_bench_packet_blob([e1, e2, e3, e4 | rest], data, scratch, scratch_bits) do
+    v = e1 &&& 0xFF
+    scratch = scratch ||| v <<< scratch_bits
+    scratch_bits = scratch_bits + 8
+    v = e2 &&& 0xFF
+    scratch = scratch ||| v <<< scratch_bits
+    scratch_bits = scratch_bits + 8
+    v = e3 &&& 0xFF
+    scratch = scratch ||| v <<< scratch_bits
+    scratch_bits = scratch_bits + 8
+    v = e4 &&& 0xFF
+    scratch = scratch ||| v <<< scratch_bits
+    scratch_bits = scratch_bits + 8
+    flush = scratch_bits >>> 3
+    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
+    scratch = scratch >>> (flush <<< 3)
+    scratch_bits = scratch_bits &&& 7
+    w_bench_packet_blob(rest, data, scratch, scratch_bits)
+  end
+
   defp w_bench_packet_blob([e | rest], data, scratch, scratch_bits) do
     v = e &&& 0xFF
     scratch = scratch ||| v <<< scratch_bits
@@ -2713,6 +2733,46 @@ defmodule Bench.Bench do
 
   defp w_bench_mixed_stats([], data, scratch, scratch_bits), do: {data, scratch, scratch_bits}
 
+  defp w_bench_mixed_stats([e1, e2 | rest], data, scratch, scratch_bits) do
+    %{stat_id: e1_stat_id, delta: e1_delta} = e1
+    v = e1_stat_id &&& 0xFF
+    scratch = scratch ||| v <<< scratch_bits
+    scratch_bits = scratch_bits + 8
+
+    if e1_delta < -512 do
+      raise ArgumentError, "e.delta is below the wire minimum"
+    end
+
+    if e1_delta > 511 do
+      raise ArgumentError, "e.delta is above the wire maximum"
+    end
+
+    v = e1_delta + 512
+    scratch = scratch ||| v <<< scratch_bits
+    scratch_bits = scratch_bits + 10
+    %{stat_id: e2_stat_id, delta: e2_delta} = e2
+    v = e2_stat_id &&& 0xFF
+    scratch = scratch ||| v <<< scratch_bits
+    scratch_bits = scratch_bits + 8
+
+    if e2_delta < -512 do
+      raise ArgumentError, "e.delta is below the wire minimum"
+    end
+
+    if e2_delta > 511 do
+      raise ArgumentError, "e.delta is above the wire maximum"
+    end
+
+    v = e2_delta + 512
+    scratch = scratch ||| v <<< scratch_bits
+    scratch_bits = scratch_bits + 10
+    flush = scratch_bits >>> 3
+    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
+    scratch = scratch >>> (flush <<< 3)
+    scratch_bits = scratch_bits &&& 7
+    w_bench_mixed_stats(rest, data, scratch, scratch_bits)
+  end
+
   defp w_bench_mixed_stats([e | rest], data, scratch, scratch_bits) do
     %{stat_id: e_stat_id, delta: e_delta} = e
     v = e_stat_id &&& 0xFF
@@ -2738,6 +2798,26 @@ defmodule Bench.Bench do
   end
 
   defp w_bench_mixed_loadout([], data, scratch, scratch_bits), do: {data, scratch, scratch_bits}
+
+  defp w_bench_mixed_loadout([e1, e2, e3, e4 | rest], data, scratch, scratch_bits) do
+    v = e1 &&& 0xFF
+    scratch = scratch ||| v <<< scratch_bits
+    scratch_bits = scratch_bits + 8
+    v = e2 &&& 0xFF
+    scratch = scratch ||| v <<< scratch_bits
+    scratch_bits = scratch_bits + 8
+    v = e3 &&& 0xFF
+    scratch = scratch ||| v <<< scratch_bits
+    scratch_bits = scratch_bits + 8
+    v = e4 &&& 0xFF
+    scratch = scratch ||| v <<< scratch_bits
+    scratch_bits = scratch_bits + 8
+    flush = scratch_bits >>> 3
+    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
+    scratch = scratch >>> (flush <<< 3)
+    scratch_bits = scratch_bits &&& 7
+    w_bench_mixed_loadout(rest, data, scratch, scratch_bits)
+  end
 
   defp w_bench_mixed_loadout([e | rest], data, scratch, scratch_bits) do
     v = e &&& 0xFF
