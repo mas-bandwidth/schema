@@ -428,7 +428,12 @@ fmt: bin/schema
 	./bin/schema fmt bench/corpus/Bench.schema
 	./bin/schema fmt bench/corpus/RealWorld.schema
 
+# The one-benchmark rule, made mechanical: no hand-coded measurement of a
+# schema shape anywhere in this repo except what bench/SHAPE-GATE.allow names.
+shape-gate:
+	go run ./bench/tools/shapegate
+
 clean:
 	rm -rf bin build generated
 
-.PHONY: all test check id fmt clean update-goldens bench bench-variants generated-current
+.PHONY: all test check id fmt clean update-goldens bench bench-variants generated-current shape-gate

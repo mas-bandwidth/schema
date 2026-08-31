@@ -1,0 +1,113 @@
+# SHAPE-GATE.allow — the complete register of hand-coded shape knowledge.
+#
+# The estate has ONE benchmark: this repo's data-driven bench. Shape knowledge
+# belongs in bench/corpus/*.schema and in the code the compiler generates from
+# it — nowhere else. bench/tools/shapegate enforces that mechanically, and
+# every place that does not yet comply is listed HERE, by name, with a count
+# and a reason. Nothing is exempt silently.
+#
+# FORMAT, one per line:
+#
+#     <check> <path> <count> <reason>
+#
+#     check   names | timing | paths | consts
+#     count   the EXACT number of hits the gate finds today
+#
+# THE COUNT IS A RATCHET. More hits than the count is a refusal: the debt grew.
+# FEWER hits is also a refusal, and the gate prints the new number to write:
+# the debt shrank and the ledger has to say so. An entry matching no file is a
+# refusal too. So the register cannot rot, and it only moves one way.
+#
+# Regenerate the lines after paying debt down:
+#
+#     go run ./bench/tools/shapegate -ledger
+#
+# ---------------------------------------------------------------------------
+# THE NINE RUNNER LEGS — the debt this gate exists to retire.
+#
+# The runners are hand-written, which is fine and stays. What is NOT fine is
+# that they currently hand-write the SHAPES too: a pinned initializer, an LCG
+# vary mapping and a sink fold per shape per language. That is nine hand-
+# written approximations of one benchmark, and it is the drift the owner named
+# on 2026-08-31.
+#
+# Two open PRs retire it. #199 deletes family `rt` — the hand-written runtime-
+# API shape code — from every leg. #195 emits the family `gen` pin/vary/sink
+# from the corpus, so the legs stop transcribing it. As each lands, these
+# counts fall and the gate demands the smaller number; when a leg reaches zero
+# its line is deleted. The bench_mixed row is already there: it runs through
+# the committed variant corpus and names nothing.
+# ---------------------------------------------------------------------------
+
+names bench/c/bench_main.c 332 nine-leg shape debt: family rt (deleted by #199) plus the gen pin/vary for the three non-mixed shapes (emitted by #195)
+names bench/cpp/bench_main.cpp 263 nine-leg shape debt: family rt (#199) plus gen pin/vary (#195)
+names bench/cs/src/Program.cs 88 nine-leg shape debt: gen pin/vary for the three non-mixed shapes (#195)
+names bench/cs/src/RtBench.cs 203 family rt, hand-written runtime-API shape code — deleted whole by #199
+names bench/dart/main.dart 39 nine-leg shape debt: gen pin/vary (#195)
+names bench/elixir/runner.exs 17 nine-leg shape debt: gen pin/vary (#195)
+names bench/go/main.go 81 nine-leg shape debt: gen pin/vary (#195); the go leg is the first on the emitter
+names bench/go/rt.go 204 family rt, hand-written runtime-API shape code — deleted whole by #199
+names bench/java/Main.java 47 nine-leg shape debt: gen pin/vary (#195)
+names bench/js/main.mjs 384 nine-leg shape debt: family rt (#199) plus gen pin/vary (#195)
+names bench/rust/src/main.rs 83 nine-leg shape debt: gen pin/vary (#195)
+names bench/rust/src/rt.rs 205 family rt, hand-written runtime-API shape code — deleted whole by #199
+
+consts bench/c/bench_main.c 1 a shape wire size written down, inside the rt/gen shape code above
+consts bench/cpp/bench_main.cpp 1 a shape wire size written down, inside the rt/gen shape code above
+consts bench/java/Main.java 3 shape wire sizes written down, inside the gen shape code above
+
+# ---------------------------------------------------------------------------
+# THE CORPUS TOOLING — shape knowledge in ONE place, deliberately.
+#
+# variantgen holds the BenchMixed pin and vary mapping so the nine legs do not
+# have to: it commits the variant corpus every leg then reads blind. That is
+# the design, not the debt — one copy replacing nine. It is listed anyway,
+# because "one deliberate copy" is a claim that should be checkable rather
+# than remembered. #195's emitter supersedes it.
+#
+# realpacket-gen is the same bargain for the §1.7 RealWorld snapshot.
+# inline-gate and inline-verdict name shapes only as ROW LABELS in their
+# symbol maps and test fixtures — no serialization, no timing.
+# ---------------------------------------------------------------------------
+
+names bench/tools/variantgen/main.go 94 the single deliberate copy of BenchMixed shape code; emits the corpus the nine legs read blind (superseded by #195)
+names bench/tools/realpacket-gen/main.go 11 the single deliberate copy of the RealWorld snapshot shape code (§1.7)
+names bench/tools/realpacket-gen/pin_test.go 3 pins the generator above against its golden
+names bench/tools/inline-gate.sh 9 shape names as row labels in the inline-budget symbol map and its test fixtures
+names bench/tools/inline-verdict.sh 2 shape names as row labels in the symbol map
+consts bench/tools/variantgen/main.go 3 the variant corpus stride and record size, which this tool is the authority for
+
+# ---------------------------------------------------------------------------
+# THE §1.5 GOLDEN PINNER — correctness, not measurement.
+#
+# test/bench/ writes the pinned instances through the GENERATED code and
+# byte-checks them against testdata/wire/. It is the oracle every runner is
+# gated against before it is allowed to report a number. It names shapes, as a
+# conformance suite must, and it contains no clock — which is exactly the line
+# this gate draws. Only its bench-shaped PATH trips a check.
+# ---------------------------------------------------------------------------
+
+paths test/bench/c_main.c 1 the §1.5 golden pinner: correctness code, no timing
+paths test/bench/main.cpp 1 the §1.5 golden pinner: correctness code, no timing
+
+# ---------------------------------------------------------------------------
+# A DELETION CANDIDATE, held here so it cannot be forgotten.
+#
+# bench/results/harness-contract-air/decomp.cpp is a 294-line hand-coded
+# benchmark committed into the results tree on 2026-08-30 as #170 forensics.
+# It hand-codes a shape and its wire size, embeds the hand-written runtime-API
+# subject verbatim, and reads a clock. It is a live harness parked where live
+# harnesses are not supposed to exist, and nothing regenerates or re-verifies
+# it — run it after a corpus change and it will report confidently on a shape
+# that no longer exists.
+#
+# Its findings are already written up next to it in
+# 2026-08-30-harness-contract-decomposition.md, which is the durable record.
+# RECOMMENDED: delete the .cpp, keep the .md. Owner's call; until then it sits
+# here under all three checks so it stays visible.
+# ---------------------------------------------------------------------------
+
+names bench/results/harness-contract-air/decomp.cpp 15 DELETION CANDIDATE — hand-coded shape measurement committed to the results tree (#170 forensics)
+timing bench/results/harness-contract-air/decomp.cpp 1 DELETION CANDIDATE — a live timed loop outside every sanctioned runner directory
+consts bench/results/harness-contract-air/decomp.cpp 1 DELETION CANDIDATE — a shape wire size written down by hand
+paths bench/results/harness-contract-air/decomp.cpp 1 DELETION CANDIDATE — benchmark source in the results tree
