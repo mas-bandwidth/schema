@@ -509,7 +509,7 @@ defmodule Realworld.RealWorld do
     scratch_bits = scratch_bits &&& 7
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 21
-    v = cf_quantize(value_f004_cf32, 0.0, 2000.0, 20000)
+    v = cf_quantize(value_f004_cf32, 0.0, 2000.0, 20000, 20000.0)
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 15
 
@@ -746,7 +746,7 @@ defmodule Realworld.RealWorld do
     scratch_bits = scratch_bits &&& 7
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 9
-    v = cf_quantize(value_f027_cf32, -2.0, 4.0, 16)
+    v = cf_quantize(value_f027_cf32, -2.0, 4.0, 16, 16.0)
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 5
     v = value_f028_bits &&& 0xF
@@ -1058,7 +1058,7 @@ defmodule Realworld.RealWorld do
     v = value_f060_bits &&& 0xFF
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 8
-    v = cf_quantize(value_f061_cf32, -90.0, 180.0, 360)
+    v = cf_quantize(value_f061_cf32, -90.0, 180.0, 360, 360.0)
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 9
 
@@ -1099,7 +1099,7 @@ defmodule Realworld.RealWorld do
     v = value_f064_uint
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 9
-    v = cf_quantize(value_f065_cf32, 0.0, 30.0, 60)
+    v = cf_quantize(value_f065_cf32, 0.0, 30.0, 60, 60.0)
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 6
 
@@ -1118,10 +1118,10 @@ defmodule Realworld.RealWorld do
     scratch_bits = scratch_bits &&& 7
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 16
-    v = cf_quantize(value_f067_cf32, -100.0, 200.0, 800)
+    v = cf_quantize(value_f067_cf32, -100.0, 200.0, 800, 800.0)
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 10
-    v = cf_quantize(value_f068_cf32, 0.0, 2000.0, 2000)
+    v = cf_quantize(value_f068_cf32, 0.0, 2000.0, 2000, 2000.0)
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 11
     v = value_f069_bits &&& 0x7FF
@@ -1139,14 +1139,14 @@ defmodule Realworld.RealWorld do
     v = value_f070_uint
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 2
-    v = cf_quantize(value_f071_cf32, 0.0, 10.0, 500)
+    v = cf_quantize(value_f071_cf32, 0.0, 10.0, 500, 500.0)
     flush = scratch_bits >>> 3
     data = <<data::binary, scratch::little-size(flush)-unit(8)>>
     scratch = scratch >>> (flush <<< 3)
     scratch_bits = scratch_bits &&& 7
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 9
-    v = cf_quantize(value_f072_cf32, 0.0, 100.0, 10000)
+    v = cf_quantize(value_f072_cf32, 0.0, 100.0, 10000, 10000.0)
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 14
 
@@ -1444,7 +1444,7 @@ defmodule Realworld.RealWorld do
       bits_read = bits_read + 15
       # headroom above the quantum count is refused
       if v > 20000, do: throw(:invalid)
-      v_f004_cf32 = cf_decode(v, 20000, 2000.0, 0.0)
+      v_f004_cf32 = cf_decode(v, 20000.0, 2000.0, 0.0)
       v = rv >>> 36
       bits_read = bits_read + 13
       # a smuggled offset is refused
@@ -1572,7 +1572,7 @@ defmodule Realworld.RealWorld do
       bits_read = bits_read + 5
       # headroom above the quantum count is refused
       if v > 16, do: throw(:invalid)
-      v_f027_cf32 = cf_decode(v, 16, 4.0, -2.0)
+      v_f027_cf32 = cf_decode(v, 16.0, 4.0, -2.0)
       v = rv >>> 14 &&& 0xF
       bits_read = bits_read + 4
       v_f028_bits = v
@@ -1756,7 +1756,7 @@ defmodule Realworld.RealWorld do
       bits_read = bits_read + 9
       # headroom above the quantum count is refused
       if v > 360, do: throw(:invalid)
-      v_f061_cf32 = cf_decode(v, 360, 180.0, -90.0)
+      v_f061_cf32 = cf_decode(v, 360.0, 180.0, -90.0)
       rv = rdw(data, bits_read, 49)
       v = rv &&& 0x1FF
       bits_read = bits_read + 9
@@ -1780,7 +1780,7 @@ defmodule Realworld.RealWorld do
       bits_read = bits_read + 6
       # headroom above the quantum count is refused
       if v > 60, do: throw(:invalid)
-      v_f065_cf32 = cf_decode(v, 60, 30.0, 0.0)
+      v_f065_cf32 = cf_decode(v, 60.0, 30.0, 0.0)
       rv = rdw(data, bits_read, 49)
       v = rv &&& 0xFFFF
       bits_read = bits_read + 16
@@ -1791,12 +1791,12 @@ defmodule Realworld.RealWorld do
       bits_read = bits_read + 10
       # headroom above the quantum count is refused
       if v > 800, do: throw(:invalid)
-      v_f067_cf32 = cf_decode(v, 800, 200.0, -100.0)
+      v_f067_cf32 = cf_decode(v, 800.0, 200.0, -100.0)
       v = rv >>> 26 &&& 0x7FF
       bits_read = bits_read + 11
       # headroom above the quantum count is refused
       if v > 2000, do: throw(:invalid)
-      v_f068_cf32 = cf_decode(v, 2000, 2000.0, 0.0)
+      v_f068_cf32 = cf_decode(v, 2000.0, 2000.0, 0.0)
       v = rv >>> 37 &&& 0x7FF
       bits_read = bits_read + 11
       v_f069_bits = v
@@ -1810,12 +1810,12 @@ defmodule Realworld.RealWorld do
       bits_read = bits_read + 9
       # headroom above the quantum count is refused
       if v > 500, do: throw(:invalid)
-      v_f071_cf32 = cf_decode(v, 500, 10.0, 0.0)
+      v_f071_cf32 = cf_decode(v, 500.0, 10.0, 0.0)
       v = rv >>> 11 &&& 0x3FFF
       bits_read = bits_read + 14
       # headroom above the quantum count is refused
       if v > 10000, do: throw(:invalid)
-      v_f072_cf32 = cf_decode(v, 10000, 100.0, 0.0)
+      v_f072_cf32 = cf_decode(v, 10000.0, 100.0, 0.0)
       v = rv >>> 25 &&& 0xF
       bits_read = bits_read + 4
       # a smuggled offset is refused
@@ -2202,14 +2202,15 @@ defmodule Realworld.RealWorld do
   # rounding is innocuous). Overflow reports :pos_inf / :neg_inf so the
   # compressed-float clamps can resolve it the way the reference's float
   # arithmetic does.
+  #
+  # The refusal IS the test: a float segment does not match a non-finite
+  # pattern, so the finite path costs one construction and one match and
+  # never touches the exponent field, while the second clause reads the
+  # sign of exactly the patterns the first one refused.
   defp fr(value) do
-    <<bits::little-32>> = <<value::float-32-little>>
-
-    if (bits >>> 23 &&& 0xFF) != 0xFF do
-      <<rounded::float-32-little>> = <<bits::little-32>>
-      rounded
-    else
-      if bits >>> 31 == 1, do: :neg_inf, else: :pos_inf
+    case <<value::float-32-little>> do
+      <<rounded::float-32-little>> -> rounded
+      <<bits::little-32>> -> if bits >>> 31 == 1, do: :neg_inf, else: :pos_inf
     end
   end
 
@@ -2223,7 +2224,10 @@ defmodule Realworld.RealWorld do
   # own steps: normalize with every step rounding, clamp to [0, 1] (which
   # also grounds an overflowed value), scale, round BEFORE the +0.5, floor,
   # and the normative integer clamp to the step count.
-  defp cf_quantize(value, min32, delta, miv) do
+  # miv32 is the float32 of the step count, folded at generation time: it
+  # is a declaration constant, and recomputing its rounding per call was
+  # one of the six float32 steps.
+  defp cf_quantize(value, min32, delta, miv, miv32) do
     if not is_number(value) do
       raise ArgumentError, "a compressed float writes a finite number"
     end
@@ -2242,8 +2246,8 @@ defmodule Realworld.RealWorld do
         d -> cf_clamp01(fr(d / delta))
       end
 
-    scaled = fr(normalized * fr(miv * 1.0))
-    integer = trunc(Float.floor(fr(scaled + 0.5)))
+    scaled = fr(normalized * miv32)
+    integer = floor(fr(scaled + 0.5))
     min(integer, miv)
   end
 
@@ -2252,8 +2256,8 @@ defmodule Realworld.RealWorld do
   # throughout, never fused, never widened. The final add cannot overflow
   # for a conforming declaration; the non-finite mapping keeps the
   # never-raise reader obligation airtight.
-  defp cf_decode(integer, miv, delta, min32) do
-    quotient = fr(fr(integer * 1.0) / fr(miv * 1.0))
+  defp cf_decode(integer, miv32, delta, min32) do
+    quotient = fr(fr(integer * 1.0) / miv32)
     scaled = fr(quotient * delta)
 
     case fr(scaled + min32) do

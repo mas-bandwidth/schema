@@ -551,7 +551,7 @@ defmodule Example.Wire do
     v = if value_active, do: 1, else: 0
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 1
-    v = cf_quantize(value_orientation, -180.0, 360.0, 36000)
+    v = cf_quantize(value_orientation, -180.0, 360.0, 36000, 36000.0)
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 16
     v = value_raw_delta &&& 0xFFFFFFFF
@@ -669,7 +669,7 @@ defmodule Example.Wire do
       bits_read = bits_read + 16
       # headroom above the quantum count is refused
       if v > 36000, do: throw(:invalid)
-      v_orientation = cf_decode(v, 36000, 360.0, -180.0)
+      v_orientation = cf_decode(v, 36000.0, 360.0, -180.0)
       v = rv >>> 17
       bits_read = bits_read + 32
       v_raw_delta = if v >= 2_147_483_648, do: v - 4_294_967_296, else: v
@@ -2246,7 +2246,7 @@ defmodule Example.Wire do
     v = f32_bits(value_float_value)
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 32
-    v = cf_quantize(value_compressed_float_value, 0.0, 10.0, 1000)
+    v = cf_quantize(value_compressed_float_value, 0.0, 10.0, 1000, 1000.0)
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 10
     w = f64_bits(value_double_value)
@@ -2429,7 +2429,7 @@ defmodule Example.Wire do
       bits_read = bits_read + 10
       # headroom above the quantum count is refused
       if v > 1000, do: throw(:invalid)
-      v_compressed_float_value = cf_decode(v, 1000, 10.0, 0.0)
+      v_compressed_float_value = cf_decode(v, 1000.0, 10.0, 0.0)
       rv = rdw(data, bits_read, 49)
       v = rv &&& 0xFFFFFFFF
       bits_read = bits_read + 32
@@ -2595,10 +2595,10 @@ defmodule Example.Wire do
     scratch = 0
     scratch_bits = 0
     %{boundary: value_boundary, offset: value_offset} = value
-    v = cf_quantize(value_boundary, 0.0, 10.0, 1000)
+    v = cf_quantize(value_boundary, 0.0, 10.0, 1000, 1000.0)
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 10
-    v = cf_quantize(value_offset, -5.0, 10.0, 10000)
+    v = cf_quantize(value_offset, -5.0, 10.0, 10000, 10000.0)
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 14
     flush = scratch_bits >>> 3
@@ -2625,12 +2625,12 @@ defmodule Example.Wire do
       bits_read = bits_read + 10
       # headroom above the quantum count is refused
       if v > 1000, do: throw(:invalid)
-      v_boundary = cf_decode(v, 1000, 10.0, 0.0)
+      v_boundary = cf_decode(v, 1000.0, 10.0, 0.0)
       v = rv >>> 10
       bits_read = bits_read + 14
       # headroom above the quantum count is refused
       if v > 10000, do: throw(:invalid)
-      v_offset = cf_decode(v, 10000, 10.0, -5.0)
+      v_offset = cf_decode(v, 10000.0, 10.0, -5.0)
       # the final position is unobserved — the verdict and value are the surface
       _ = bits_read
       value = %Example.CompressedProbe{boundary: v_boundary, offset: v_offset}
@@ -2811,7 +2811,7 @@ defmodule Example.Wire do
     v = if e_active, do: 1, else: 0
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 1
-    v = cf_quantize(e_orientation, -180.0, 360.0, 36000)
+    v = cf_quantize(e_orientation, -180.0, 360.0, 36000, 36000.0)
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 16
     v = e_raw_delta &&& 0xFFFFFFFF
@@ -2918,7 +2918,7 @@ defmodule Example.Wire do
     bits_read = bits_read + 16
     # headroom above the quantum count is refused
     if v > 36000, do: throw(:invalid)
-    e_orientation = cf_decode(v, 36000, 360.0, -180.0)
+    e_orientation = cf_decode(v, 36000.0, 360.0, -180.0)
     v = rv >>> 17
     bits_read = bits_read + 32
     e_raw_delta = if v >= 2_147_483_648, do: v - 4_294_967_296, else: v
@@ -3169,14 +3169,15 @@ defmodule Example.Wire do
   # rounding is innocuous). Overflow reports :pos_inf / :neg_inf so the
   # compressed-float clamps can resolve it the way the reference's float
   # arithmetic does.
+  #
+  # The refusal IS the test: a float segment does not match a non-finite
+  # pattern, so the finite path costs one construction and one match and
+  # never touches the exponent field, while the second clause reads the
+  # sign of exactly the patterns the first one refused.
   defp fr(value) do
-    <<bits::little-32>> = <<value::float-32-little>>
-
-    if (bits >>> 23 &&& 0xFF) != 0xFF do
-      <<rounded::float-32-little>> = <<bits::little-32>>
-      rounded
-    else
-      if bits >>> 31 == 1, do: :neg_inf, else: :pos_inf
+    case <<value::float-32-little>> do
+      <<rounded::float-32-little>> -> rounded
+      <<bits::little-32>> -> if bits >>> 31 == 1, do: :neg_inf, else: :pos_inf
     end
   end
 
@@ -3190,7 +3191,10 @@ defmodule Example.Wire do
   # own steps: normalize with every step rounding, clamp to [0, 1] (which
   # also grounds an overflowed value), scale, round BEFORE the +0.5, floor,
   # and the normative integer clamp to the step count.
-  defp cf_quantize(value, min32, delta, miv) do
+  # miv32 is the float32 of the step count, folded at generation time: it
+  # is a declaration constant, and recomputing its rounding per call was
+  # one of the six float32 steps.
+  defp cf_quantize(value, min32, delta, miv, miv32) do
     if not is_number(value) do
       raise ArgumentError, "a compressed float writes a finite number"
     end
@@ -3209,8 +3213,8 @@ defmodule Example.Wire do
         d -> cf_clamp01(fr(d / delta))
       end
 
-    scaled = fr(normalized * fr(miv * 1.0))
-    integer = trunc(Float.floor(fr(scaled + 0.5)))
+    scaled = fr(normalized * miv32)
+    integer = floor(fr(scaled + 0.5))
     min(integer, miv)
   end
 
@@ -3219,8 +3223,8 @@ defmodule Example.Wire do
   # throughout, never fused, never widened. The final add cannot overflow
   # for a conforming declaration; the non-finite mapping keeps the
   # never-raise reader obligation airtight.
-  defp cf_decode(integer, miv, delta, min32) do
-    quotient = fr(fr(integer * 1.0) / fr(miv * 1.0))
+  defp cf_decode(integer, miv32, delta, min32) do
+    quotient = fr(fr(integer * 1.0) / miv32)
     scaled = fr(quotient * delta)
 
     case fr(scaled + min32) do

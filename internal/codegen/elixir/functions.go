@@ -968,7 +968,8 @@ func (g *gen) emitWriteCompressedFloat(f *ir.Field, name, ind string) {
 	maxInt, bits := ir.CompressedFloatParams(f.FMin, f.FMax, f.Resolution)
 	minF := float32(f.FMin)
 	deltaF := float32(f.FMax) - minF
-	g.pf("%sv = cf_quantize(%s, %s, %s, %s)\n", ind, name, f32lit(float64(minF)), f32lit(float64(deltaF)), intLitU64(maxInt))
+	g.pf("%sv = cf_quantize(%s, %s, %s, %s, %s)\n", ind, name,
+		f32lit(float64(minF)), f32lit(float64(deltaF)), intLitU64(maxInt), f32lit(float64(maxInt)))
 	g.mergeW(bits, ind)
 }
 
@@ -1369,7 +1370,7 @@ func (g *gen) emitReadCompressedFloat(f *ir.Field, lv, ind string) {
 	if maxInt != (uint64(1)<<bits)-1 {
 		g.throwIf(fmt.Sprintf("v > %s", intLitU64(maxInt)), "headroom above the quantum count is refused", ind)
 	}
-	g.pf("%s%s = cf_decode(v, %s, %s, %s)\n", ind, lv, intLitU64(maxInt), f32lit(float64(deltaF)), f32lit(float64(minF)))
+	g.pf("%s%s = cf_decode(v, %s, %s, %s)\n", ind, lv, f32lit(float64(maxInt)), f32lit(float64(deltaF)), f32lit(float64(minF)))
 }
 
 func (g *gen) emitReadFixed(f *ir.Field, lv, ind string) {
@@ -1792,13 +1793,15 @@ func (g *gen) emitSupportHelpers() {
 		g.bpf("  # rounding is innocuous). Overflow reports :pos_inf / :neg_inf so the\n")
 		g.bpf("  # compressed-float clamps can resolve it the way the reference's float\n")
 		g.bpf("  # arithmetic does.\n")
+		g.bpf("  #\n")
+		g.bpf("  # The refusal IS the test: a float segment does not match a non-finite\n")
+		g.bpf("  # pattern, so the finite path costs one construction and one match and\n")
+		g.bpf("  # never touches the exponent field, while the second clause reads the\n")
+		g.bpf("  # sign of exactly the patterns the first one refused.\n")
 		g.bpf("  defp fr(value) do\n")
-		g.bpf("    <<bits::little-32>> = <<value::float-32-little>>\n\n")
-		g.bpf("    if (bits >>> 23 &&& 0xFF) != 0xFF do\n")
-		g.bpf("      <<rounded::float-32-little>> = <<bits::little-32>>\n")
-		g.bpf("      rounded\n")
-		g.bpf("    else\n")
-		g.bpf("      if bits >>> 31 == 1, do: :neg_inf, else: :pos_inf\n")
+		g.bpf("    case <<value::float-32-little>> do\n")
+		g.bpf("      <<rounded::float-32-little>> -> rounded\n")
+		g.bpf("      <<bits::little-32>> -> if bits >>> 31 == 1, do: :neg_inf, else: :pos_inf\n")
 		g.bpf("    end\n")
 		g.bpf("  end\n\n")
 		g.bpf("  defp cf_clamp01(:pos_inf), do: 1.0\n")
@@ -1810,7 +1813,10 @@ func (g *gen) emitSupportHelpers() {
 		g.bpf("  # own steps: normalize with every step rounding, clamp to [0, 1] (which\n")
 		g.bpf("  # also grounds an overflowed value), scale, round BEFORE the +0.5, floor,\n")
 		g.bpf("  # and the normative integer clamp to the step count.\n")
-		g.bpf("  defp cf_quantize(value, min32, delta, miv) do\n")
+		g.bpf("  # miv32 is the float32 of the step count, folded at generation time: it\n")
+		g.bpf("  # is a declaration constant, and recomputing its rounding per call was\n")
+		g.bpf("  # one of the six float32 steps.\n")
+		g.bpf("  defp cf_quantize(value, min32, delta, miv, miv32) do\n")
 		g.bpf("    if not is_number(value) do\n")
 		g.bpf("      raise ArgumentError, \"a compressed float writes a finite number\"\n")
 		g.bpf("    end\n\n")
@@ -1826,8 +1832,8 @@ func (g *gen) emitSupportHelpers() {
 		g.bpf("        :neg_inf -> 0.0\n")
 		g.bpf("        d -> cf_clamp01(fr(d / delta))\n")
 		g.bpf("      end\n\n")
-		g.bpf("    scaled = fr(normalized * fr(miv * 1.0))\n")
-		g.bpf("    integer = trunc(Float.floor(fr(scaled + 0.5)))\n")
+		g.bpf("    scaled = fr(normalized * miv32)\n")
+		g.bpf("    integer = floor(fr(scaled + 0.5))\n")
 		g.bpf("    min(integer, miv)\n")
 		g.bpf("  end\n\n")
 		g.bpf("  # The reader's arithmetic, pinned the same way: the quotient rounds, the\n")
@@ -1835,8 +1841,8 @@ func (g *gen) emitSupportHelpers() {
 		g.bpf("  # throughout, never fused, never widened. The final add cannot overflow\n")
 		g.bpf("  # for a conforming declaration; the non-finite mapping keeps the\n")
 		g.bpf("  # never-raise reader obligation airtight.\n")
-		g.bpf("  defp cf_decode(integer, miv, delta, min32) do\n")
-		g.bpf("    quotient = fr(fr(integer * 1.0) / fr(miv * 1.0))\n")
+		g.bpf("  defp cf_decode(integer, miv32, delta, min32) do\n")
+		g.bpf("    quotient = fr(fr(integer * 1.0) / miv32)\n")
 		g.bpf("    scaled = fr(quotient * delta)\n\n")
 		g.bpf("    case fr(scaled + min32) do\n")
 		g.bpf("      :pos_inf -> {:nonfinite, 0x7F800000}\n")

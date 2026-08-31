@@ -2183,13 +2183,13 @@ defmodule Bench.Bench do
     scratch_bits = 0
     # the used bytes ride whole — the stream is byte-aligned here
     data = <<data::binary, value_payload::binary>>
-    v = cf_quantize(value_aim_x, -1.0, 2.0, 200)
+    v = cf_quantize(value_aim_x, -1.0, 2.0, 200, 200.0)
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 8
-    v = cf_quantize(value_aim_y, -1.0, 2.0, 200)
+    v = cf_quantize(value_aim_y, -1.0, 2.0, 200, 200.0)
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 8
-    v = cf_quantize(value_aim_z, -1.0, 2.0, 200)
+    v = cf_quantize(value_aim_z, -1.0, 2.0, 200, 200.0)
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 8
     v = f32_bits(value_recoil)
@@ -2574,17 +2574,17 @@ defmodule Bench.Bench do
       bits_read = bits_read + 8
       # headroom above the quantum count is refused
       if v > 200, do: throw(:invalid)
-      v_aim_x = cf_decode(v, 200, 2.0, -1.0)
+      v_aim_x = cf_decode(v, 200.0, 2.0, -1.0)
       v = rv >>> 8 &&& 0xFF
       bits_read = bits_read + 8
       # headroom above the quantum count is refused
       if v > 200, do: throw(:invalid)
-      v_aim_y = cf_decode(v, 200, 2.0, -1.0)
+      v_aim_y = cf_decode(v, 200.0, 2.0, -1.0)
       v = rv >>> 16 &&& 0xFF
       bits_read = bits_read + 8
       # headroom above the quantum count is refused
       if v > 200, do: throw(:invalid)
-      v_aim_z = cf_decode(v, 200, 2.0, -1.0)
+      v_aim_z = cf_decode(v, 200.0, 2.0, -1.0)
       rv = rdw(data, bits_read, 49)
       v = rv &&& 0xFFFFFFFF
       bits_read = bits_read + 32
@@ -3186,14 +3186,15 @@ defmodule Bench.Bench do
   # rounding is innocuous). Overflow reports :pos_inf / :neg_inf so the
   # compressed-float clamps can resolve it the way the reference's float
   # arithmetic does.
+  #
+  # The refusal IS the test: a float segment does not match a non-finite
+  # pattern, so the finite path costs one construction and one match and
+  # never touches the exponent field, while the second clause reads the
+  # sign of exactly the patterns the first one refused.
   defp fr(value) do
-    <<bits::little-32>> = <<value::float-32-little>>
-
-    if (bits >>> 23 &&& 0xFF) != 0xFF do
-      <<rounded::float-32-little>> = <<bits::little-32>>
-      rounded
-    else
-      if bits >>> 31 == 1, do: :neg_inf, else: :pos_inf
+    case <<value::float-32-little>> do
+      <<rounded::float-32-little>> -> rounded
+      <<bits::little-32>> -> if bits >>> 31 == 1, do: :neg_inf, else: :pos_inf
     end
   end
 
@@ -3207,7 +3208,10 @@ defmodule Bench.Bench do
   # own steps: normalize with every step rounding, clamp to [0, 1] (which
   # also grounds an overflowed value), scale, round BEFORE the +0.5, floor,
   # and the normative integer clamp to the step count.
-  defp cf_quantize(value, min32, delta, miv) do
+  # miv32 is the float32 of the step count, folded at generation time: it
+  # is a declaration constant, and recomputing its rounding per call was
+  # one of the six float32 steps.
+  defp cf_quantize(value, min32, delta, miv, miv32) do
     if not is_number(value) do
       raise ArgumentError, "a compressed float writes a finite number"
     end
@@ -3226,8 +3230,8 @@ defmodule Bench.Bench do
         d -> cf_clamp01(fr(d / delta))
       end
 
-    scaled = fr(normalized * fr(miv * 1.0))
-    integer = trunc(Float.floor(fr(scaled + 0.5)))
+    scaled = fr(normalized * miv32)
+    integer = floor(fr(scaled + 0.5))
     min(integer, miv)
   end
 
@@ -3236,8 +3240,8 @@ defmodule Bench.Bench do
   # throughout, never fused, never widened. The final add cannot overflow
   # for a conforming declaration; the non-finite mapping keeps the
   # never-raise reader obligation airtight.
-  defp cf_decode(integer, miv, delta, min32) do
-    quotient = fr(fr(integer * 1.0) / fr(miv * 1.0))
+  defp cf_decode(integer, miv32, delta, min32) do
+    quotient = fr(fr(integer * 1.0) / miv32)
     scaled = fr(quotient * delta)
 
     case fr(scaled + min32) do
