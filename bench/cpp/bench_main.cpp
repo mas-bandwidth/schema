@@ -40,6 +40,17 @@
 #include "TypesWire.h"
 #include "WireWire.h"
 #include "RealWorldWire.h"      // generated/bench/cpp — the §1.7 realistic snapshot (real_packet)
+
+// TWO schema UNITS ride in this one translation unit (package example above,
+// package bench below). The generated string helpers schema_utf8_valid and
+// schema_interior_null are emitted INSIDE each unit's namespace but guarded by
+// a translation-unit-wide #define, so the second unit's namespace never gets
+// them and its string reads do not compile. Clearing the guards makes the
+// bench unit emit its own copies. LEG-LOCAL by necessity: the C++ emitter is
+// mechanically locked (bench/LOCK), and the guard-vs-namespace mismatch is a
+// standing emitter defect reported with issue #184, not fixed here.
+#undef SCHEMA_UTF8_VALID_DEFINED
+#undef SCHEMA_INTERIOR_NULL_DEFINED
 #include "BenchWire.h"          // generated/bench/cpp — the Bench corpus GENERATED (the gen twins of the rt rows, issue #177)
 
 static volatile uint64_t g_sink = 0;    // defeats dead code elimination of computed values
@@ -713,13 +724,49 @@ static bench::BenchBits pin_gen_bits()
     return in;
 }
 
+// BenchMixed — THE canonical benchmark shape (issue #184). The pin is
+// test/bench/main.cpp's, transcribed exactly; STRUCTURE fields (the two
+// array counts, the two used lengths, the union tag, the `if` gate) are set
+// here and never touched by vary_*, so bytes/op is constant (§2.7).
 static bench::BenchMixed pin_gen_mixed()
 {
     bench::BenchMixed in;
-    in.sequence = 52428; in.ack_bits = 0xA5A5A5A5u; in.entity_id = 2049;
-    in.pos_x = -16384; in.pos_y = 16383; in.pos_z = -1;
-    in.yaw = 511; in.moving = true; in.firing = false;
-    in.timestamp = 0x123456789ABCull; in.weapon = 15;
+    in.sequence = 52428; in.ack_sequence = 12345; in.ack_bits = 0xA5A5A5A5u;
+    in.session_id = 0x123456789ABCDEF0ull; in.client_id = 0xDEADBEEFu;
+    in.nonce = 0xFEDCBA9876543210ull; in.world_time = -987654321000ll;
+    in.frame_tick = 0x123456789ABCull; in.server_time = 12345678;
+    in.entities_count = 8;
+    for ( int i = 0; i < 8; i++ )
+    {
+        bench::MixedEntity & e = in.entities[i];
+        e.entity_id = (uint32_t) ( 2049 + i * 17 );
+        e.pos_x = -16383 + i * 4096; e.pos_y = 16383 - i * 4096; e.pos_z = -1 + i * 2048;
+        e.yaw = (uint32_t) ( 511 - i * 64 ); e.pitch = (uint32_t) ( i * 73 );
+        e.vel_x = -2048 + i * 512; e.vel_y = 2047 - i * 512; e.vel_z = -1024 + i * 256;
+        e.health = 1000 - i * 100;
+        e.weapon = bench::MixedWeapon( 1 + i );
+        e.damage = (bench::MixedDamage) ( 0x5A + i );
+        e.moving = ( i % 2 ) == 0; e.firing = ( i % 3 ) == 0;
+    }
+    in.stats_count = 80;
+    for ( int i = 0; i < 80; i++ )
+    {
+        in.stats[i].stat_id = (uint32_t) ( ( i * 3 ) % 256 );
+        in.stats[i].delta = -512 + ( i * 13 ) % 1024;
+    }
+    in.game_event.type = bench::MixedEventType::Hit;
+    in.game_event.hit.target_id = 4095; in.game_event.hit.damage = 4095;
+    in.game_event.hit.hit_kind = 7; in.game_event.hit.crit = true;
+    in.loadout[0] = 0x11; in.loadout[1] = 0x22; in.loadout[2] = 0x33; in.loadout[3] = 0x44;
+    memcpy( in.player_name, "Rowan_01", 8 ); in.player_name_length = 8;
+    static const uint8_t pinned_payload[8] = { 0xDE, 0xAD, 0xBE, 0xEF, 0x01, 0x02, 0x03, 0x04 };
+    memcpy( in.payload, pinned_payload, 8 ); in.payload_length = 8;
+    in.aim_x = 0.5f; in.aim_y = -0.25f; in.aim_z = 0.75f;
+    in.recoil = 1.5f; in.drift = -3.25;
+    in.wide_key = ( serialize::uint128_t( 0x0123456789ABCDEFull ) << 64 ) | serialize::uint128_t( 0xFEDCBA9876543210ull );
+    in.flux = ( serialize::int128_t( 1 ) << 99 ) + serialize::int128_t( 7 );
+    in.ping = 12345; in.crc_hint = 0xABCDEFu;
+    in.has_extra = true; in.extra = 200;
     return in;
 }
 
@@ -763,19 +810,52 @@ static void vary_gen_bits( bench::BenchBits & f, uint64_t rng )
     f.b48 = rng & 0xFFFFFFFFFFFFull;
 }
 
+// The LCG field mapping for BenchMixed, reproduced in every runner. VALUE
+// fields only: every array count, used length, union tag and branch gate is
+// STRUCTURE and stays where pin_* put it (§2.7). Every entity element varies;
+// the 80 stats vary their `delta` (stat_id stays pinned) — the family
+// convention of varying a representative subset, stated out loud.
 static void vary_gen_mixed( bench::BenchMixed & f, uint64_t rng )
 {
-    f.sequence = int32_t( uint32_t( rng >> 8 ) & 65535 );
+    f.sequence = uint32_t( rng >> 8 ) & 65535;
+    f.ack_sequence = int32_t( uint32_t( rng >> 24 ) & 65535 );
     f.ack_bits = uint32_t( rng >> 16 );
-    f.entity_id = uint32_t( rng ) & 4095;
-    f.pos_x = int32_t( ( rng >> 20 ) & 32767 ) - 16384;
-    f.pos_y = int32_t( ( rng >> 25 ) & 32767 ) - 16384;
-    f.pos_z = int32_t( ( rng >> 30 ) & 32767 ) - 16384;
-    f.yaw = uint32_t( rng >> 3 ) & 511;
-    f.moving = ( rng & 1 ) != 0;
-    f.firing = ( rng & 2 ) != 0;
-    f.timestamp = rng & 0xFFFFFFFFFFFFull;
-    f.weapon = int32_t( uint32_t( rng >> 60 ) & 15 );
+    f.session_id = rng;
+    f.client_id = uint32_t( rng >> 32 );
+    f.nonce = rng ^ 0xA5A5A5A5A5A5A5A5ull;
+    f.world_time = int64_t( ( rng >> 12 ) & 0xFFFFFFFFFull ) - 34359738368ll;   // within +/-1e12
+    f.frame_tick = rng & 0xFFFFFFFFFFFFull;
+    f.server_time = int32_t( ( rng >> 20 ) & 0x7FFFFF );                        // raw Q24.8 <= 65535 << 8
+    for ( int i = 0; i < 8; i++ )
+    {
+        bench::MixedEntity & e = f.entities[i];
+        e.entity_id = uint32_t( ( rng >> i ) & 4095 );
+        e.pos_x = int32_t( ( rng >> ( i + 4 ) ) & 16383 ) - 8192;
+        e.pos_y = int32_t( ( rng >> ( i + 12 ) ) & 16383 ) - 8192;
+        e.health = int32_t( ( rng >> ( i + 20 ) ) & 511 );                      // within [0, 1000]
+        e.weapon = bench::MixedWeapon( ( rng >> ( i + 40 ) ) & 15 );
+        e.damage = (bench::MixedDamage) ( ( rng >> ( i + 28 ) ) & 255 );
+        e.moving = ( ( rng >> i ) & 1 ) != 0;
+    }
+    for ( int i = 0; i < 80; i++ )
+        f.stats[i].delta = int32_t( ( rng >> ( i & 31 ) ) & 1023 ) - 512;
+    f.game_event.hit.target_id = uint32_t( ( rng >> 6 ) & 4095 );
+    f.game_event.hit.damage = int32_t( ( rng >> 18 ) & 4095 );
+    f.game_event.hit.hit_kind = int32_t( ( rng >> 30 ) & 7 );
+    f.game_event.hit.crit = ( rng & 4 ) != 0;
+    f.loadout[0] = uint8_t( rng >> 56 );
+    f.player_name[7] = char( 65 + ( ( rng >> 50 ) & 15 ) );                     // stays ASCII, never NUL
+    f.payload[0] = uint8_t( rng >> 48 );
+    f.aim_x = float( uint32_t( rng >> 2 ) & 255 ) * ( 1.0f / 256.0f ) - 0.5f;   // within [-1, 1]
+    f.aim_y = float( uint32_t( rng >> 10 ) & 255 ) * ( 1.0f / 256.0f ) - 0.5f;
+    f.aim_z = float( uint32_t( rng >> 18 ) & 255 ) * ( 1.0f / 256.0f ) - 0.5f;
+    f.recoil = float( uint32_t( rng ) & 0xFFFF );
+    f.drift = double( int64_t( ( rng >> 8 ) & 0xFFFFFF ) ) * 0.5;
+    f.wide_key = ( serialize::uint128_t( rng >> 1 ) << 64 ) | serialize::uint128_t( rng );
+    f.flux = serialize::int128_t( int64_t( rng >> 16 ) );                       // well within +/-2^100
+    f.ping = uint16_t( ( rng >> 40 ) & 0x7FFF );                                // raw UQ8.8 <= 250 << 8
+    f.crc_hint = uint32_t( ( rng >> 24 ) & 0xFFFFFF );
+    f.extra = int32_t( ( rng >> 52 ) & 255 );
 }
 
 // ------------------------------------------------------------------------------------------
@@ -863,29 +943,195 @@ struct RtBenchBits
     }
 };
 
-struct RtBenchMixed
+// BenchMixed by hand (issue #184). Every serialize_* stream operation the
+// schema language expresses, in the order BenchWire.h emits them; the §1.5
+// oracle gate byte-compares this against the generated code's golden.
+struct RtMixedEntity
 {
-    int32_t sequence = 0;
-    uint32_t ack_bits = 0, entity_id = 0;
+    uint32_t entity_id = 0;
     int32_t pos_x = 0, pos_y = 0, pos_z = 0;
-    uint32_t yaw = 0;
+    uint32_t yaw = 0, pitch = 0;
+    int32_t vel_x = 0, vel_y = 0, vel_z = 0;
+    int32_t health = 0;
+    int32_t weapon = 0;      // the enum wire: serialize_int over [0, Max]
+    uint64_t damage = 0;     // the flags wire: raw bits, one per variant
     bool moving = false, firing = false;
-    uint64_t timestamp = 0;
-    int32_t weapon = 0;
 
     template <typename Stream> bool Serialize( Stream & stream )
     {
-        serialize_int( stream, sequence, 0, 65535 );
-        serialize_bits( stream, ack_bits, 32 );
         serialize_bits( stream, entity_id, 12 );
-        serialize_int( stream, pos_x, -16384, +16383 );
-        serialize_int( stream, pos_y, -16384, +16383 );
-        serialize_int( stream, pos_z, -16384, +16383 );
+        serialize_int( stream, pos_x, -16383, +16383 );
+        serialize_int( stream, pos_y, -16383, +16383 );
+        serialize_int( stream, pos_z, -16383, +16383 );
         serialize_bits( stream, yaw, 9 );
+        serialize_bits( stream, pitch, 9 );
+        serialize_int( stream, vel_x, -2048, +2047 );
+        serialize_int( stream, vel_y, -2048, +2047 );
+        serialize_int( stream, vel_z, -2048, +2047 );
+        serialize_int( stream, health, 0, 1000 );
+        serialize_int( stream, weapon, 0, 15 );
+        serialize_bits( stream, damage, 8 );
         serialize_bool( stream, moving );
         serialize_bool( stream, firing );
-        serialize_bits( stream, timestamp, 48 );
-        serialize_int( stream, weapon, 0, 15 );
+        return true;
+    }
+};
+
+struct RtMixedStat
+{
+    uint32_t stat_id = 0;
+    int32_t delta = 0;
+
+    template <typename Stream> bool Serialize( Stream & stream )
+    {
+        serialize_bits( stream, stat_id, 8 );
+        serialize_int( stream, delta, -512, +511 );
+        return true;
+    }
+};
+
+struct RtMixedHitEvent
+{
+    uint32_t target_id = 0;
+    int32_t damage = 0, hit_kind = 0;
+    bool crit = false;
+
+    template <typename Stream> bool Serialize( Stream & stream )
+    {
+        serialize_bits( stream, target_id, 12 );
+        serialize_int( stream, damage, 0, 4095 );
+        serialize_int( stream, hit_kind, 0, 7 );
+        serialize_bool( stream, crit );
+        return true;
+    }
+};
+
+struct RtMixedChatEvent
+{
+    int32_t channel = 0;
+    uint32_t speaker = 0;
+
+    template <typename Stream> bool Serialize( Stream & stream )
+    {
+        serialize_int( stream, channel, 0, 3 );
+        serialize_bits( stream, speaker, 12 );
+        return true;
+    }
+};
+
+struct RtMixedPickupEvent
+{
+    uint32_t item_id = 0;
+    int32_t amount = 0;
+
+    template <typename Stream> bool Serialize( Stream & stream )
+    {
+        serialize_bits( stream, item_id, 10 );
+        serialize_int( stream, amount, 0, 255 );
+        return true;
+    }
+};
+
+struct RtBenchMixed
+{
+    uint32_t magic = 0xC0DE;
+    uint32_t sequence = 0;
+    int32_t ack_sequence = 0;
+    uint32_t ack_bits = 0;
+    uint64_t session_id = 0;
+    uint32_t client_id = 0;
+    uint64_t nonce = 0;
+    int64_t world_time = 0;
+    uint64_t frame_tick = 0;
+    int32_t server_time = 0;              // raw Q24.8
+
+    int32_t entities_count = 0;
+    RtMixedEntity entities[8];
+    int32_t stats_count = 0;
+    RtMixedStat stats[80];
+
+    int32_t event_type = 0;               // the union tag: 0 = None
+    RtMixedHitEvent hit;
+    RtMixedChatEvent chat;
+    RtMixedPickupEvent pickup;
+
+    uint8_t loadout[4] = {};
+    char player_name[16] = {};             // string(15): serialize_string with buffer N + 1
+    int32_t payload_length = 0;
+    uint8_t payload[16] = {};
+
+    float aim_x = 0, aim_y = 0, aim_z = 0;
+    float recoil = 0;
+    double drift = 0;
+    serialize::uint128_t wide_key = 0;
+    serialize::int128_t flux = 0;
+    uint16_t ping = 0;                     // raw UQ8.8
+    uint32_t reserved_bits = 0;
+    uint32_t crc_hint = 0;
+    bool has_extra = true;
+    int32_t extra = 0, idle_ticks = 0;
+
+    template <typename Stream> bool Serialize( Stream & stream )
+    {
+        serialize_bits( stream, magic, 16 );
+        if ( magic != 0xC0DE )
+            return false;                  // const(0xC0DE, 16): a read REJECTS any other value
+        serialize_bits( stream, sequence, 16 );
+        serialize_int( stream, ack_sequence, 0, 65535 );
+        serialize_bits( stream, ack_bits, 32 );
+        serialize_uint64( stream, session_id );
+        serialize_uint32( stream, client_id );
+        serialize_bits( stream, nonce, 64 );   // the full-unsigned ranged path is width-computed bits
+        serialize_int64( stream, world_time, -1000000000000ll, 1000000000000ll );
+        serialize_bits( stream, frame_tick, 48 );
+        serialize_fixed( stream, server_time, 24, 8, 0, 65535 );
+
+        serialize_int( stream, entities_count, 1, 8 );
+        for ( int i = 0; i < entities_count; i++ )
+            serialize_object( stream, entities[i] );
+
+        serialize_int( stream, stats_count, 0, 80 );
+        for ( int i = 0; i < stats_count; i++ )
+            serialize_object( stream, stats[i] );
+
+        serialize_int( stream, event_type, 0, 3 );
+        switch ( event_type )
+        {
+            case 1: serialize_object( stream, hit ); break;
+            case 2: serialize_object( stream, chat ); break;
+            case 3: serialize_object( stream, pickup ); break;
+            default: break;                // None: the tag only
+        }
+
+        for ( int i = 0; i < 4; i++ )
+            serialize_uint8( stream, loadout[i] );
+
+        serialize_string( stream, player_name, (int) sizeof( player_name ) );
+
+        serialize_int( stream, payload_length, 0, 16 );
+        serialize_bytes( stream, payload, payload_length );
+
+        serialize_compressed_float( stream, aim_x, -1.0f, 1.0f, 0.01f );
+        serialize_compressed_float( stream, aim_y, -1.0f, 1.0f, 0.01f );
+        serialize_compressed_float( stream, aim_z, -1.0f, 1.0f, 0.01f );
+        serialize_float( stream, recoil );
+        serialize_double( stream, drift );
+        serialize_uint128( stream, wide_key );
+        serialize_int128( stream, flux,
+                          -( ( serialize::int128_t( 1 ) << 100 ) ),
+                          ( serialize::int128_t( 1 ) << 100 ) );
+        serialize_fixed( stream, ping, 8, 8, 0, 250 );
+
+        serialize_bits( stream, reserved_bits, 4 );
+        if ( reserved_bits != 0 )
+            return false;                  // reserved(4): a read rejects nonzero
+        serialize_align( stream );
+        serialize_bits( stream, crc_hint, 24 );
+        serialize_bool( stream, has_extra );
+        if ( has_extra )
+            serialize_int( stream, extra, 0, 255 );
+        else
+            serialize_int( stream, idle_ticks, 0, 15 );
         return true;
     }
 };
@@ -925,10 +1171,41 @@ RtBenchBits pin_rt_bits()
 RtBenchMixed pin_rt_mixed()
 {
     RtBenchMixed in;
-    in.sequence = 52428; in.ack_bits = 0xA5A5A5A5u; in.entity_id = 2049;
-    in.pos_x = -16384; in.pos_y = 16383; in.pos_z = -1;
-    in.yaw = 511; in.moving = true; in.firing = false;
-    in.timestamp = 0x123456789ABCull; in.weapon = 15;
+    in.sequence = 52428; in.ack_sequence = 12345; in.ack_bits = 0xA5A5A5A5u;
+    in.session_id = 0x123456789ABCDEF0ull; in.client_id = 0xDEADBEEFu;
+    in.nonce = 0xFEDCBA9876543210ull; in.world_time = -987654321000ll;
+    in.frame_tick = 0x123456789ABCull; in.server_time = 12345678;
+    in.entities_count = 8;
+    for ( int i = 0; i < 8; i++ )
+    {
+        RtMixedEntity & e = in.entities[i];
+        e.entity_id = (uint32_t) ( 2049 + i * 17 );
+        e.pos_x = -16383 + i * 4096; e.pos_y = 16383 - i * 4096; e.pos_z = -1 + i * 2048;
+        e.yaw = (uint32_t) ( 511 - i * 64 ); e.pitch = (uint32_t) ( i * 73 );
+        e.vel_x = -2048 + i * 512; e.vel_y = 2047 - i * 512; e.vel_z = -1024 + i * 256;
+        e.health = 1000 - i * 100;
+        e.weapon = 1 + i;
+        e.damage = (uint64_t) ( 0x5A + i );
+        e.moving = ( i % 2 ) == 0; e.firing = ( i % 3 ) == 0;
+    }
+    in.stats_count = 80;
+    for ( int i = 0; i < 80; i++ )
+    {
+        in.stats[i].stat_id = (uint32_t) ( ( i * 3 ) % 256 );
+        in.stats[i].delta = -512 + ( i * 13 ) % 1024;
+    }
+    in.event_type = 1;   // Hit
+    in.hit.target_id = 4095; in.hit.damage = 4095; in.hit.hit_kind = 7; in.hit.crit = true;
+    in.loadout[0] = 0x11; in.loadout[1] = 0x22; in.loadout[2] = 0x33; in.loadout[3] = 0x44;
+    memcpy( in.player_name, "Rowan_01", 9 );   // + the terminator serialize_string reads the length from
+    static const uint8_t pinned_payload[8] = { 0xDE, 0xAD, 0xBE, 0xEF, 0x01, 0x02, 0x03, 0x04 };
+    memcpy( in.payload, pinned_payload, 8 ); in.payload_length = 8;
+    in.aim_x = 0.5f; in.aim_y = -0.25f; in.aim_z = 0.75f;
+    in.recoil = 1.5f; in.drift = -3.25;
+    in.wide_key = ( serialize::uint128_t( 0x0123456789ABCDEFull ) << 64 ) | serialize::uint128_t( 0xFEDCBA9876543210ull );
+    in.flux = ( serialize::int128_t( 1 ) << 99 ) + serialize::int128_t( 7 );
+    in.ping = 12345; in.crc_hint = 0xABCDEFu;
+    in.has_extra = true; in.extra = 200;
     return in;
 }
 
@@ -977,17 +1254,45 @@ void vary_rt_bits( RtBenchBits & f, uint64_t rng )
 
 void vary_rt_mixed( RtBenchMixed & f, uint64_t rng )
 {
-    f.sequence = int32_t( uint32_t( rng >> 8 ) & 65535 );
+    f.sequence = uint32_t( rng >> 8 ) & 65535;
+    f.ack_sequence = int32_t( uint32_t( rng >> 24 ) & 65535 );
     f.ack_bits = uint32_t( rng >> 16 );
-    f.entity_id = uint32_t( rng ) & 4095;
-    f.pos_x = int32_t( ( rng >> 20 ) & 32767 ) - 16384;
-    f.pos_y = int32_t( ( rng >> 25 ) & 32767 ) - 16384;
-    f.pos_z = int32_t( ( rng >> 30 ) & 32767 ) - 16384;
-    f.yaw = uint32_t( rng >> 3 ) & 511;
-    f.moving = ( rng & 1 ) != 0;
-    f.firing = ( rng & 2 ) != 0;
-    f.timestamp = rng & 0xFFFFFFFFFFFFull;
-    f.weapon = int32_t( uint32_t( rng >> 60 ) & 15 );
+    f.session_id = rng;
+    f.client_id = uint32_t( rng >> 32 );
+    f.nonce = rng ^ 0xA5A5A5A5A5A5A5A5ull;
+    f.world_time = int64_t( ( rng >> 12 ) & 0xFFFFFFFFFull ) - 34359738368ll;
+    f.frame_tick = rng & 0xFFFFFFFFFFFFull;
+    f.server_time = int32_t( ( rng >> 20 ) & 0x7FFFFF );
+    for ( int i = 0; i < 8; i++ )
+    {
+        RtMixedEntity & e = f.entities[i];
+        e.entity_id = uint32_t( ( rng >> i ) & 4095 );
+        e.pos_x = int32_t( ( rng >> ( i + 4 ) ) & 16383 ) - 8192;
+        e.pos_y = int32_t( ( rng >> ( i + 12 ) ) & 16383 ) - 8192;
+        e.health = int32_t( ( rng >> ( i + 20 ) ) & 511 );
+        e.weapon = int32_t( ( rng >> ( i + 40 ) ) & 15 );
+        e.damage = ( rng >> ( i + 28 ) ) & 255;
+        e.moving = ( ( rng >> i ) & 1 ) != 0;
+    }
+    for ( int i = 0; i < 80; i++ )
+        f.stats[i].delta = int32_t( ( rng >> ( i & 31 ) ) & 1023 ) - 512;
+    f.hit.target_id = uint32_t( ( rng >> 6 ) & 4095 );
+    f.hit.damage = int32_t( ( rng >> 18 ) & 4095 );
+    f.hit.hit_kind = int32_t( ( rng >> 30 ) & 7 );
+    f.hit.crit = ( rng & 4 ) != 0;
+    f.loadout[0] = uint8_t( rng >> 56 );
+    f.player_name[7] = char( 65 + ( ( rng >> 50 ) & 15 ) );
+    f.payload[0] = uint8_t( rng >> 48 );
+    f.aim_x = float( uint32_t( rng >> 2 ) & 255 ) * ( 1.0f / 256.0f ) - 0.5f;
+    f.aim_y = float( uint32_t( rng >> 10 ) & 255 ) * ( 1.0f / 256.0f ) - 0.5f;
+    f.aim_z = float( uint32_t( rng >> 18 ) & 255 ) * ( 1.0f / 256.0f ) - 0.5f;
+    f.recoil = float( uint32_t( rng ) & 0xFFFF );
+    f.drift = double( int64_t( ( rng >> 8 ) & 0xFFFFFF ) ) * 0.5;
+    f.wide_key = ( serialize::uint128_t( rng >> 1 ) << 64 ) | serialize::uint128_t( rng );
+    f.flux = serialize::int128_t( int64_t( rng >> 16 ) );
+    f.ping = uint16_t( ( rng >> 40 ) & 0x7FFF );
+    f.crc_hint = uint32_t( ( rng >> 24 ) & 0xFFFFFF );
+    f.extra = int32_t( ( rng >> 52 ) & 255 );
 }
 
 // ---- the single untimed call sites (§3.2): every write outside the timed
