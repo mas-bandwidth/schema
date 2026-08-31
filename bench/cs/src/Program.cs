@@ -2,8 +2,7 @@
 //
 // A port of bench/cpp/bench_main.cpp (the reference implementation) against
 // the generated C# and the serialize.cs runtime: same benchmark set, same
-// pinned corpus instances, same LCG (unchecked ulong arithmetic) and
-// vary-function field mappings, same golden + round-trip self-checks (a
+// variant corpus, same golden + per-variant round-trip self-checks (a
 // mismatch REFUSES to bench), same warmup + 7 measured runs +
 // median/min/max/spread, same CSV row format with lang=cs. See
 // bench/README.md for the runner contract.
@@ -16,8 +15,8 @@
 //     reuse path); the read path decodes into ONE reused instance per bench
 //     (the reused-storage discipline — the C# stand-in for C++'s free stack
 //     temporary; §5 zeroing makes reuse equivalent on every field that rides)
-//   - the driver passes write/read/vary as delegates (one indirect call per
-//     op; Rust and C++ get this inlined via generics — noted in the results)
+//   - the driver passes write/read as delegates (one indirect call per op;
+//     Rust and C++ get this inlined via generics — noted in the results)
 //   - the warmup run per path doubles as the JIT warmup
 
 using System;
@@ -26,9 +25,7 @@ using System.Diagnostics;
 using System.Globalization;
 using System.IO;
 using System.Runtime;
-using Example;
 using Serialize;
-using static Example.Schema;
 
 static partial class Program
 {
@@ -208,163 +205,6 @@ static partial class Program
     }
 
     // ------------------------------------------------------------------------------------------
-    // the per-message benchmark driver
-    // ------------------------------------------------------------------------------------------
-
-    static void BenchMessage<T>(string name, string golden, long iters, T pinned,
-        Func<WriteStream, T, bool> writeFn, Func<ReadStream, T, bool> readFn, Action<T, ulong> varyFn)
-        where T : class, new()
-    {
-        // self-check 1: the pinned instance matches its wire golden byte-for-byte
-        T baseValue = pinned;
-        WriteStream ws = new WriteStream(gBuffer);
-        if (!writeFn(ws, baseValue))
-        {
-            Fail(name, "write of pinned instance failed");
-            return;
-        }
-        ws.Flush();
-        long bytesPerOp = ws.BytesProcessed;
-        if (golden != null && !CheckGolden(golden, gBuffer.AsSpan(0, (int)bytesPerOp)))
-        {
-            failed = true;
-            return;
-        }
-
-        // self-check 2: round-trip write -> read -> re-write -> identical bytes
-        {
-            T output = new T();
-            ReadStream checkRs = new ReadStream(gBuffer, (int)bytesPerOp);
-            if (!readFn(checkRs, output))
-            {
-                Fail(name, "read of pinned instance failed");
-                return;
-            }
-            WriteStream tws = new WriteStream(gTwin);
-            if (!writeFn(tws, output))
-            {
-                Fail(name, "re-write of decoded instance failed");
-                return;
-            }
-            tws.Flush();
-            if (tws.BytesProcessed != bytesPerOp
-                || !gTwin.AsSpan(0, (int)bytesPerOp).SequenceEqual(gBuffer.AsSpan(0, (int)bytesPerOp)))
-            {
-                Fail(name, "round-trip bytes differ");
-                return;
-            }
-        }
-
-        // variant buffers for the read path (and proof that variation keeps bytes/op constant)
-        ulong rng = 1;
-        for (int k = 0; k < NumVariants; k++)
-        {
-            rng = BenchRng(rng);
-            varyFn(baseValue, rng);
-            WriteStream vs = new WriteStream(gVariants[k]);
-            if (!writeFn(vs, baseValue))
-            {
-                Fail(name, "write of varied instance failed");
-                return;
-            }
-            vs.Flush();
-            if (vs.BytesProcessed != bytesPerOp)
-            {
-                Fail(name, "variation changed bytes/op — vary must keep structure fields fixed");
-                return;
-            }
-        }
-
-        double[] writeRates = new double[gNumRuns];
-        double[] readRates = new double[gNumRuns];
-
-        // write path: 1 warmup (also the JIT warmup) + NumRuns measured
-        for (int run = -1; run < gNumRuns; run++)
-        {
-            Stopwatch sw = Stopwatch.StartNew();
-            for (long i = 0; i < iters; i++)
-            {
-                rng = BenchRng(rng);
-                varyFn(baseValue, rng);
-                ws.Reset(gBuffer);
-                if (!writeFn(ws, baseValue))
-                {
-                    Fail(name, "write failed in loop");
-                    return;
-                }
-                ws.Flush();
-                gSink = gSink + (ulong)ws.BytesProcessed;
-            }
-            double time = sw.Elapsed.TotalSeconds;
-            if (run >= 0)
-            {
-                writeRates[run] = iters / time;
-            }
-        }
-
-        // read path: 1 warmup + NumRuns measured; ONE reused decode instance
-        // (the reused-storage discipline — see the file header)
-        T outValue = new T();
-        ReadStream rs = new ReadStream(gVariants[0], (int)bytesPerOp);
-        for (int run = -1; run < gNumRuns; run++)
-        {
-            Stopwatch sw = Stopwatch.StartNew();
-            for (long i = 0; i < iters; i++)
-            {
-                rs.Reset(gVariants[i & (NumVariants - 1)], (int)bytesPerOp);
-                if (!readFn(rs, outValue))
-                {
-                    Fail(name, "read failed in loop");
-                    return;
-                }
-                gSink = gSink + 1;
-            }
-            double time = sw.Elapsed.TotalSeconds;
-            if (run >= 0)
-            {
-                readRates[run] = iters / time;
-            }
-        }
-        GC.KeepAlive(outValue); // every decoded field is observed
-
-        Report(name, "write", iters, bytesPerOp, Stats(writeRates), "gen");
-        Report(name, "read", iters, bytesPerOp, Stats(readRates), "gen");
-
-        // alloc note (proof of the reuse discipline, not a benchmark): bytes
-        // allocated during one extra untimed pass of each path — must be 0
-        const int allocOps = 4 * NumVariants;
-        long allocBefore = GC.GetAllocatedBytesForCurrentThread();
-        for (int i = 0; i < allocOps; i++)
-        {
-            rng = BenchRng(rng);
-            varyFn(baseValue, rng);
-            ws.Reset(gBuffer);
-            if (!writeFn(ws, baseValue))
-            {
-                Fail(name, "write failed in alloc pass");
-                return;
-            }
-            ws.Flush();
-            gSink = gSink + (ulong)ws.BytesProcessed;
-        }
-        long writeAlloc = GC.GetAllocatedBytesForCurrentThread() - allocBefore;
-        allocBefore = GC.GetAllocatedBytesForCurrentThread();
-        for (int i = 0; i < allocOps; i++)
-        {
-            rs.Reset(gVariants[i & (NumVariants - 1)], (int)bytesPerOp);
-            if (!readFn(rs, outValue))
-            {
-                Fail(name, "read failed in alloc pass");
-                return;
-            }
-            gSink = gSink + 1;
-        }
-        long readAlloc = GC.GetAllocatedBytesForCurrentThread() - allocBefore;
-        Console.Error.WriteLine(
-            $"alloc note: {name} one pass ({allocOps} ops/path): write {writeAlloc} bytes, read {readAlloc} bytes");
-    }
-
-    // ------------------------------------------------------------------------------------------
     // the DATA-DRIVEN benchmark driver (issue #191)
     // ------------------------------------------------------------------------------------------
     //
@@ -375,9 +215,6 @@ static partial class Program
     // another language's driver in what it measures, which is the whole
     // reason the design exists. If a change here ever needs a field name, the
     // design has failed and that is the finding.
-    //
-    // It replaces BenchMessage for bench_mixed only. BenchMessage still
-    // drives every shape whose harness code is not yet data-driven.
 
     // Loads <variant-dir>/<name>.variants.bin into the NumVariants
     // §2.7-staggered slots and returns the record size, or -1. The records are
@@ -448,10 +285,10 @@ static partial class Program
         }
 
         // gate 2: every variant decodes, re-encodes, and comes back
-        // byte-identical at the same length. This is stronger than the
-        // pinned-instance-only gate BenchMessage applies — §1.5's named
-        // residual (the 64 varied buffers length-checked but never
-        // value-checked) closes here, for every variant.
+        // byte-identical at the same length. This is stronger than a
+        // pinned-instance-only gate — §1.5's named residual (the 64 varied
+        // buffers length-checked but never value-checked) closes here, for
+        // every variant.
         T[] instances = new T[NumVariants];
         for (int k = 0; k < NumVariants; k++)
         {
@@ -601,358 +438,6 @@ static partial class Program
             $"alloc note: {name} one pass ({allocOps} ops/path): write {writeAlloc} bytes, round_trip {roundtripAlloc} bytes");
     }
 
-    // ------------------------------------------------------------------------------------------
-    // pinned corpus instances — the C++ reference's pin_* functions exactly
-    // (the same instances test/cs/src/Program.cs pins to the wire goldens)
-    // ------------------------------------------------------------------------------------------
-
-    static RigidBody PinRigidBodyMoving()
-    {
-        RigidBody input = new RigidBody();
-        input.Position.X = 1.5;
-        input.Position.Y = -2.5;
-        input.Position.Z = 3.25;
-        input.Orientation.X = 0.1;
-        input.Orientation.Y = 0.2;
-        input.Orientation.Z = 0.3;
-        input.Orientation.W = 0.9;
-        input.AtRest = false;
-        input.LinearVelocity.X = 10.0;
-        input.LinearVelocity.Y = 20.0;
-        input.LinearVelocity.Z = -3.0;
-        input.AngularVelocity.X = 0.25;
-        input.AngularVelocity.Y = 0.5;
-        input.AngularVelocity.Z = 0.75;
-        return input;
-    }
-
-    static void SetText(byte[] buffer, string text)
-    {
-        for (int i = 0; i < text.Length; i++)
-        {
-            buffer[i] = (byte)text[i];
-        }
-    }
-
-    static Chat PinChat()
-    {
-        Chat input = new Chat();
-        SetText(input.Text, "wire parity");
-        input.TextLength = 11;
-        return input;
-    }
-
-    static InputPacket PinInputPacket()
-    {
-        InputPacket input = new InputPacket();
-        input.SynchronizeSequence = 7;
-        input.CurrentFrame = 123456789;
-        input.StartFrame = 123456780;
-        input.InputsCount = 2;
-        input.Inputs[0].Throttle = 0.5f;
-        input.Inputs[0].Fire = true;
-        input.Inputs[1].StickX = -0.25f;
-        input.Inputs[1].Boost = true;
-        return input;
-    }
-
-    static ShipCreate PinShipCreate()
-    {
-        ShipCreate input = new ShipCreate();
-        input.ShipType = ShipType.Bomber;
-        input.Position.X = 1000;
-        input.Position.Y = -2000;
-        input.Position.Z = 3000;
-        input.HasFlags = true;
-        input.Flags = ShipFlagsBoosting | ShipFlagsAiming;
-        input.Team = Team.Blue;
-        input.Health = 750;
-        input.Thrust = 55;
-        return input;
-    }
-
-
-
-    static ProbeHeader PinProbeHeader()
-    {
-        ProbeHeader h = new ProbeHeader();
-        h.Version = 5;
-        h.ProbeId = 0x1122334455667788;
-        return h;
-    }
-
-    static ProbeBits PinProbeBits()
-    {
-        ProbeBits input = new ProbeBits();
-        input.Small = 0x1FF;
-        input.Boundary = 0x1FFFFFFFF;
-        input.Wide = 0xFEDCBA9876543210;
-        input.Sensor = 4294967295;
-        input.Nonce = 18446744073709551615;
-        return input;
-    }
-
-    static ProbeArray PinProbeArray()
-    {
-        ProbeArray input = new ProbeArray(); // construction carries the defaults — as the C++ default ctor
-        input.Samples[0].Orientation = 90.0f;
-        input.Samples[0].RawDelta = -5;
-        input.Samples[0].BigDelta = -1234567890123;
-        input.Samples[0].Weapon = Weapon.Laser;
-        input.Samples[0].HasTarget = true;
-        input.Samples[0].TargetId = 777;
-        input.Samples[0].SamplesCount = 1;
-        input.Samples[0].Samples[0] = 42;
-        input.Samples[1].Active = false;
-        input.Samples[1].Orientation = -45.5f;
-        input.Samples[1].RawDelta = 7;
-        input.Samples[1].BigDelta = 99;
-        input.Samples[1].IdleTicks = 1000;
-        input.Samples[1].SamplesCount = 2;
-        input.Samples[1].Samples[0] = 7;
-        input.Samples[1].Samples[1] = 8;
-        input.Config.Retries = 3;
-        input.Config.Preferred = Weapon.Missile;
-        return input;
-    }
-
-    static TestData PinTestData()
-    {
-        TestData input = new TestData();
-        input.A = -100;
-        input.B = 100;
-        input.C = 149;
-        input.D = 0x11;
-        input.E = 0x22;
-        input.F = 0x33;
-        input.G = true;
-        input.ItemsCount = 3;
-        input.Items[0] = 0;
-        input.Items[1] = 128;
-        input.Items[2] = 255;
-        input.FloatValue = 3.1415926f;
-        input.CompressedFloatValue = 2.5f;
-        input.DoubleValue = 1.0 / 3.0;
-        input.Int8Value = -128;
-        input.Int16Value = -32768;
-        input.Uint8Value = 255;
-        input.Uint16Value = 65535;
-        input.Uint32Value = 4294967295;
-        input.Uint64Value = 18446744073709551615;
-        input.Int64Full = long.MinValue;
-        input.Int64Range = -999999999999;
-        for (int i = 0; i < 17; i++)
-        {
-            input.FixedBytes[i] = (byte)(i * 3);
-        }
-        SetText(input.Text, "the quick brown fox");
-        input.TextLength = 19;
-        return input;
-    }
-
-    // ------------------------------------------------------------------------------------------
-    // vary functions — the C++ reference's vary_* field mappings exactly:
-    // VALUE fields mutate within wire ranges through the LCG; structure
-    // fields (counts, lengths, branch bools) stay fixed so bytes/op is
-    // constant.
-    // ------------------------------------------------------------------------------------------
-
-    static void VaryRigidBody(RigidBody m, ulong rng)
-    {
-        m.Position.X = (double)((long)(rng >> 8) & 0xFFFF) * 0.25;
-        m.Position.Y = (double)((long)(rng >> 16) & 0xFFFF) * 0.5;
-        m.Position.Z = (double)((long)(rng >> 24) & 0xFFFF) * 0.125;
-        m.Orientation.X = (double)((long)rng & 0xFF) * 0.001;
-        m.LinearVelocity.X = (double)((long)(rng >> 32) & 0xFFF) * 0.25;
-        m.AngularVelocity.Z = (double)((long)(rng >> 40) & 0xFFF) * 0.125;
-    }
-
-    static void VaryRigidBodyAtRest(RigidBody m, ulong rng)
-    {
-        m.Position.X = (double)((long)(rng >> 8) & 0xFFFF) * 0.25;
-        m.Position.Y = (double)((long)(rng >> 16) & 0xFFFF) * 0.5;
-        m.Orientation.X = (double)((long)rng & 0xFF) * 0.001;
-    }
-
-    static void VaryChat(Chat m, ulong rng)
-    {
-        for (int i = 0; i < m.TextLength; i++)
-        {
-            m.Text[i] = (byte)('a' + (int)((rng >> (i & 7)) & 15)); // never zero
-        }
-    }
-
-    static void VaryTest(Test m, ulong rng)
-    {
-        m.TestA = (ushort)rng;
-        m.TestB = (short)((rng >> 16) & 511); // within [0, 1000]
-        m.TestC = (short)((rng >> 25) & 511);
-        m.TestD = (short)((rng >> 34) & 511);
-    }
-
-    static void VaryInputPacket(InputPacket m, ulong rng)
-    {
-        m.SynchronizeSequence = (ushort)rng;
-        m.CurrentFrame = rng;
-        m.StartFrame = rng >> 1;
-        m.Inputs[0].Throttle = ((uint)rng & 0xFF) / 256.0f;
-        m.Inputs[0].Fire = (rng & 1) != 0;
-        m.Inputs[1].StickX = ((uint)(rng >> 8) & 0xFF) / 256.0f - 0.5f;
-        m.Inputs[1].Boost = (rng & 2) != 0;
-    }
-
-    static void VaryShipCreate(ShipCreate m, ulong rng)
-    {
-        m.Position.X = (int)((rng >> 8) & 0xFFFFF) - 0x80000; // within [-8388608, 8388608]
-        m.Position.Y = (int)((rng >> 16) & 0xFFFFF) - 0x80000;
-        m.Position.Z = (int)((rng >> 24) & 0xFFFFF) - 0x80000;
-        m.Rotation.X = (short)((int)(rng & 0x7FF) - 1024); // within [-1024, 1024]
-        m.LinearVelocity.X = (int)((rng >> 32) & 0x3FFFFF) - 2097152;
-        m.Flags = rng & 15; // 4 wire bits, has_flags stays true
-        m.Health = (short)((rng >> 5) & 511); // within [0, 1000]
-        m.Thrust = (sbyte)((rng >> 14) & 63); // within [0, 100]
-    }
-
-
-
-    static void VaryProbeHeader(ProbeHeader m, ulong rng)
-    {
-        m.Version = (uint)rng & 7; // 3 wire bits
-        m.ProbeId = rng;
-    }
-
-    static void VaryProbeBits(ProbeBits m, ulong rng)
-    {
-        m.Small = (uint)rng & 511; // 9 bits
-        m.Boundary = rng & ((1ul << 33) - 1); // 33 bits
-        m.Wide = rng * 3;
-        m.Sensor = (uint)(rng >> 16);
-        m.Nonce = rng ^ 0x5555555555555555ul;
-    }
-
-    static void VaryProbeArray(ProbeArray m, ulong rng)
-    {
-        m.Samples[0].Orientation = -180.0f + ((uint)rng & 0x3FFF) * 0.02f;
-        m.Samples[0].RawDelta = (int)(uint)(rng >> 8);
-        m.Samples[0].BigDelta = (long)(rng * 5);
-        m.Samples[0].TargetId = (ushort)(rng >> 24);
-        m.Samples[0].Samples[0] = (ushort)(rng >> 40);
-        m.Samples[1].Orientation = -180.0f + ((uint)(rng >> 3) & 0x3FFF) * 0.02f;
-        m.Samples[1].IdleTicks = (uint)(rng >> 32);
-        m.Samples[1].Samples[0] = (ushort)(rng >> 4);
-        m.Samples[1].Samples[1] = (ushort)(rng >> 12);
-        m.Config.Retries = (int)(uint)(rng >> 20);
-    }
-
-    static void VaryTestData(TestData m, ulong rng)
-    {
-        m.A = (int)(rng & 127) - 64; // within [-100, 100]
-        m.B = (int)((rng >> 7) & 127) - 64;
-        m.C = (int)((rng >> 14) & 127) - 64; // within [-100, 150]
-        m.D = (uint)rng & 255;
-        m.E = (uint)(rng >> 8) & 255;
-        m.F = (uint)(rng >> 16) & 255;
-        m.Items[0] = (int)(rng & 255); // items_count stays 3
-        m.Items[1] = (int)((rng >> 8) & 255);
-        m.Items[2] = (int)((rng >> 16) & 255);
-        m.FloatValue = (uint)rng & 0xFFFF;
-        m.CompressedFloatValue = ((uint)rng & 1023) * 0.005f; // within [0, 10] (max 5.115)
-        m.DoubleValue = (double)((long)(rng >> 16) & 0xFFFFFF) * 0.5;
-        m.Int8Value = (sbyte)rng;
-        m.Int16Value = (short)(rng >> 8);
-        m.Uint8Value = (byte)(rng >> 16);
-        m.Uint16Value = (ushort)(rng >> 24);
-        m.Uint32Value = (uint)(rng >> 32);
-        m.Uint64Value = rng * 7;
-        m.Int64Full = (long)(rng * 11);
-        m.Int64Range = (long)((rng >> 24) & ((1ul << 37) - 1)) - (1L << 36); // within +/- 1e12
-        m.FixedBytes[0] = (byte)rng;
-        m.FixedBytes[16] = (byte)(rng >> 8);
-        for (int i = 0; i < m.TextLength; i++)
-        {
-            m.Text[i] = (byte)('a' + (int)((rng >> (i & 7)) & 15)); // never zero
-        }
-    }
-
-    // real_packet — BENCH-STANDARD.md §1.7's realistic snapshot, measured
-    // through the GENERATED code (bench/corpus/RealWorld.schema ->
-    // generated/bench/cs/realworld, namespace Realworld — referenced
-    // qualified so the two units' same-named table types never collide).
-    // The pinned instance is the ALL-DEFAULTS instance: new RealPacket()
-    // serialized unmodified (field initializers carry the schema defaults),
-    // 1629 bits = 204 wire bytes, pinned to testdata/wire/real_packet.bin by
-    // test/bench/main.cpp. The four branch gates (f012 true, f043 false,
-    // f050 true, f074 false) are STRUCTURE (§2.7): they keep their schema
-    // defaults here, so the same branch bodies ride every iteration and
-    // bytes/op is constant. The field mappings are bench/cpp/bench_main.cpp's
-    // vary_real_packet exactly — fields under the false gates do not ride
-    // and are not varied; every mapping keeps its field inside its declared
-    // wire range (comments give the bound it stays within).
-    static void VaryRealPacket(Realworld.RealPacket m, ulong rng)
-    {
-        // ranged ints, assorted widths, signed and unsigned
-        m.F001Int = (int)((rng >> 8) & 0xFFFFF) - 0x80000; // +/-2^19 within +/-805495
-        m.F003Int = (int)((rng >> 12) & 0xFFFFF) - 0x80000; // within +/-835897
-        m.F005Uint = (ushort)((rng >> 20) & 0xFFF); // <=4095 within [0, 7316]
-        m.F006Int = (short)((int)((rng >> 26) & 0x7FF) - 1024); // +/-1024 within +/-1513
-        m.F009Int = (sbyte)((int)((rng >> 33) & 31) - 16); // +/-16 within +/-22
-        m.F033Uint = (uint)((rng >> 37) & 0x1FFFF); // <=131071 within [0, 142780]
-        m.F041Int = (sbyte)((int)((rng >> 42) & 63) - 32); // +/-32 within +/-55
-        m.F062Uint = (ushort)((rng >> 47) & 255); // <=255 within [0, 503]
-        m.F088Int = (short)((int)((rng >> 52) & 0x3FF) - 512); // +/-512 within +/-694
-        m.F090Uint = (byte)((rng >> 57) & 127); // <=127 within [0, 214]
-        // bits(N), narrow and wide
-        m.F011Bits = (uint)rng & 0x3FF; // 10 bits
-        m.F023Bits = (uint)(rng >> 5) & 0x1FFFFFF; // 25 bits
-        m.F042Bits = (uint)(rng >> 3) & 0x3FFFFFFF; // 30 bits
-        m.F081Bits = (uint)(rng >> 7) & 0x1FFFFFFF; // 29 bits
-        m.F089Bits = rng & 0xFFFFFFFFFFFFul; // 48 bits
-        m.F093Bits = rng ^ 0x5555555555555555ul; // 64 bits
-        m.F097Bits = (uint)(rng >> 11) & 0xFFF; // 12 bits
-        // bools (NEVER the four branch gates — those are structure, §2.7)
-        m.F037Bool = (rng & 1) != 0;
-        m.F055Bool = (rng & 2) != 0;
-        m.F092Bool = (rng & 4) != 0;
-        // float32 / float64
-        m.F007F32 = (uint)rng & 0xFFFF;
-        m.F020F32 = ((uint)(rng >> 16) & 0xFFFF) * 0.5f;
-        m.F058F32 = ((uint)(rng >> 24) & 0xFFFF) * 0.25f;
-        m.F002F64 = (double)((long)(rng >> 8) & 0xFFFFFF) * 0.5;
-        m.F059F64 = (double)((long)(rng >> 16) & 0xFFFFFF) * 0.25;
-        m.F087F64 = (double)((long)(rng >> 24) & 0xFFFFFF) * 0.125;
-        // compressed floats (in range by construction)
-        m.F004Cf32 = ((uint)rng & 0x3FFF) * 0.1f; // <=1638.3 within [0, 2000]
-        m.F061Cf32 = -90.0f + ((uint)(rng >> 9) & 255) * 0.5f; // within [-90, 90] (max 37.5)
-        m.F067Cf32 = -100.0f + ((uint)(rng >> 18) & 511) * 0.25f; // within [-100, 100] (max 27.75)
-        m.F072Cf32 = ((uint)(rng >> 27) & 8191) * 0.01f; // <=81.91 within [0, 100]
-        // fixed / ufixed (raw storage scaled by 2^F; bounds are whole units)
-        m.F016Fixed = (int)((rng >> 10) & 0x3FFFFFF) - 0x2000000; // +/-2^25 within +/-36*2^20
-        m.F025Fixed = (short)((int)((rng >> 18) & 0x7FFF) - 0x4000); // +/-2^14 within +/-119*2^8
-        m.F095Fixed = (int)((rng >> 22) & 0x7FFFFFF) - 0x4000000; // +/-2^26 within +/-1577*2^16
-        m.F021Ufixed = (uint)(rng >> 30) & 0x3FFFFFF; // <=2^26-1 within 25141*2^12
-        m.F049Ufixed = (ushort)((rng >> 36) & 0x7FFF); // <=32767 within 3*2^14
-        m.F084Ufixed = (byte)((rng >> 44) & 0x7F); // <=127 within 1*2^7
-        // enum / flags (wire-valid by construction)
-        m.F036Enum = (Realworld.PacketMode)((uint)(rng >> 30) & 3); // within wire range [0, 5]
-        m.F083Enum = (Realworld.PacketMode)((uint)(rng >> 34) & 3);
-        m.F091Flags = rng & 31; // 5 wire bits
-        // full-width 64-bit
-        m.F008U64 = rng;
-        m.F029I64 = (long)(rng * 3);
-        m.F063I64 = (long)(rng * 5);
-        // fields riding inside the TAKEN branches (f012 true, f050 true)
-        m.F013F32 = (uint)(rng >> 4) & 0xFFFF;
-        m.F014Uint = (ushort)((rng >> 21) & 511); // <=511 within [0, 775]
-        m.F015Int = (sbyte)((int)((rng >> 40) & 31) - 16); // +/-16 within +/-21
-        m.F017Uint = (ushort)((rng >> 29) & 0xFFF); // <=4095 within [0, 4606]
-        m.F051Bool = (rng & 8) != 0;
-        m.F052Int = (sbyte)((int)((rng >> 38) & 63) - 32); // +/-32 within +/-57
-        m.F053F32 = ((uint)(rng >> 40) & 0xFFFF) * 0.125f;
-        m.F054Int = (sbyte)((int)((rng >> 45) & 63) - 32); // +/-32 within +/-35
-    }
-
-
-
     static int Main(string[] args)
     {
         CultureInfo.DefaultThreadCurrentCulture = CultureInfo.InvariantCulture;
@@ -1028,43 +513,10 @@ static partial class Program
 
         if (gQuick)
         {
-            // --quick: bench_mixed only, 3 measured runs — the iteration
-            // instrument, never the certification instrument. Golden gate
-            // unconditional (BenchDataDriven gates before timing).
+            // --quick: the iteration instrument, never the certification
+            // instrument — bench_mixed only, 3 measured runs.
             Console.Error.WriteLine("--quick: iteration instrument, not certification");
-            BenchDataDriven<Bench.BenchMixed>("bench_mixed", "bench_mixed", 4000000, Bench.Schema.WriteBenchMixed, Bench.Schema.ReadBenchMixed);
-            FlushCsv();
-            if (failed)
-            {
-                Console.Error.WriteLine($"BENCH FAILED (corpus_id {CorpusId()})");
-                return 1;
-            }
-            Console.Error.WriteLine($"OK (corpus_id {CorpusId()})");
-            GC.KeepAlive(gSink);
-            return 0;
         }
-
-        // rigidbody_at_rest: the pinned at-rest twin of rigidbody_moving
-        RigidBody atRest = PinRigidBodyMoving();
-        atRest.AtRest = true;
-
-        BenchMessage("rigidbody_moving", "rigidbody_moving", 24000000, PinRigidBodyMoving(), WriteRigidBody, ReadRigidBody, VaryRigidBody);
-        BenchMessage("rigidbody_at_rest", "rigidbody_at_rest", 32000000, atRest, WriteRigidBody, ReadRigidBody, VaryRigidBodyAtRest);
-        BenchMessage("chat", "chat", 48000000, PinChat(), WriteChat, ReadChat, VaryChat);
-        BenchMessage("test", null, 192000000, new Test(), WriteTest, ReadTest, VaryTest);
-        BenchMessage("inputpacket", "inputpacket", 16000000, PinInputPacket(), WriteInputPacket, ReadInputPacket, VaryInputPacket);
-        BenchMessage("shipcreate", "shipcreate_flags", 32000000, PinShipCreate(), WriteShipCreate, ReadShipCreate, VaryShipCreate);
-        BenchMessage("probe_header", "probe_header", 256000000, PinProbeHeader(), WriteProbeHeader, ReadProbeHeader, VaryProbeHeader);
-        BenchMessage("probebits", "probebits", 128000000, PinProbeBits(), WriteProbeBits, ReadProbeBits, VaryProbeBits);
-        BenchMessage("probearray", "probearray", 20000000, PinProbeArray(), WriteProbeArray, ReadProbeArray, VaryProbeArray);
-        BenchMessage("testdata", "testdata", 8000000, PinTestData(), WriteTestData, ReadTestData, VaryTestData);
-
-        // real_packet (§1.7): the realistic snapshot — ~93 riding individually
-        // serialized small fields, 204 wire bytes, 0% bulk share by bits. The
-        // pin is the ALL-DEFAULTS instance (new RealPacket() — the C++
-        // RealPacket{}), golden-gated like every row above. Iteration count
-        // sized in the C++ reference (§2.1).
-        BenchMessage("real_packet", "real_packet", 8000000, new Realworld.RealPacket(), Realworld.Schema.WriteRealPacket, Realworld.Schema.ReadRealPacket, VaryRealPacket);
 
         // family gen over the Bench corpus: BenchMixed through the generated
         // code, fed by the committed variant corpus — same goldens, same
@@ -1073,7 +525,10 @@ static partial class Program
         BenchDataDriven<Bench.BenchMixed>("bench_mixed", "bench_mixed", 4000000, Bench.Schema.WriteBenchMixed, Bench.Schema.ReadBenchMixed);
 
         // family bits (§1.4): the one bitpacker workload in the estate
-        BenchBitpacker(24576);
+        if (!gQuick)
+        {
+            BenchBitpacker(24576);
+        }
 
         FlushCsv(); // rows carry the corpus_id of the goldens this run loaded
 

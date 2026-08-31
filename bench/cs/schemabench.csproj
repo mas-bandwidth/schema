@@ -24,14 +24,9 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <Compile Include="../../generated/cs/*.cs" />
     <!-- the Bench corpus unit (namespace Bench): the Bench.schema shapes
          GENERATED (issue #177) -->
     <Compile Include="../../generated/bench/cs/Bench.cs" />
-    <!-- the bench-corpus realworld unit (namespace Realworld, so no
-         basename/type collision with the Example unit above): RealPacket,
-         the §1.7 realistic snapshot the real_packet rows measure -->
-    <Compile Include="../../generated/bench/cs/realworld/*.cs" />
     <Compile Include="$(SerializeCsRoot)/src/Serialize.cs" />
     <!-- the emulated 128-bit pair (Int128Value/UInt128Value) lives beside
          Serialize.cs and Serialize.cs references it on every TFM — the same
