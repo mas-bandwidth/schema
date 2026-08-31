@@ -480,7 +480,42 @@ public final class Main {
        item 5 — a shared generic loop pools its type profile across shapes
        and turns the timings bimodal), each a normally-compiled method body
        calling the generated statics directly.
+
+       Read-side sink discipline (#175, equalized to the cpp/c reference):
+       every read loop observes the FULL decoded struct per iteration. The
+       C/C++ legs get this for free from an empty-asm memory clobber over
+       the whole struct; Java has no zero-cost clobber, so the leg's idiom
+       is a per-iteration sum of every decoded field into the static sink —
+       floats via floatToRawIntBits (a bitcast, not a conversion), booleans
+       as 0/1, byte arrays element-by-element. The sink adds are real work
+       the clobber languages do not pay; the published number is therefore
+       an upper bound on the observation cost (the PR #178 review measured
+       the widening at -23% read on bench_mixed for exactly this loop).
        ---------------------------------------------------------------------- */
+
+    static long sinkOfBenchPacket(Bench.BenchPacket d) {
+        long s = d.a + d.b + d.c + d.bits7 + d.bits13 + d.bits23
+                + (d.flag ? 1 : 0)
+                + Float.floatToRawIntBits(d.x) + Float.floatToRawIntBits(d.y)
+                + Float.floatToRawIntBits(d.z) + d.big;
+        for (int i = 0; i < 17; i++) {
+            s += d.blob[i];
+        }
+        return s;
+    }
+
+    static long sinkOfBenchInts(Bench.BenchInts d) {
+        return (long) d.f0 + d.f1 + d.f2 + d.f3 + d.f4 + d.f5 + d.f6 + d.f7 + d.f8 + d.f9;
+    }
+
+    static long sinkOfBenchBits(Bench.BenchBits d) {
+        return (long) d.b7 + d.b13 + d.b23 + d.b3 + d.b32 + d.b11 + d.b19 + d.b48;
+    }
+
+    static long sinkOfBenchMixed(Bench.BenchMixed d) {
+        return (long) d.sequence + d.ackBits + d.entityId + d.posX + d.posY + d.posZ
+                + d.yaw + (d.moving ? 1 : 0) + (d.firing ? 1 : 0) + d.timestamp + d.weapon;
+    }
 
     static double timePacketWrite(int iters) {
         final double start = now();
@@ -498,7 +533,7 @@ public final class Main {
             if (!Bench.readBenchPacket(packetDecoded, packetVariants[i & (NUM_VARIANTS - 1)], numBits)) {
                 System.exit(1);
             }
-            sink += packetDecoded.b;
+            sink += sinkOfBenchPacket(packetDecoded); // full-struct observation (#175)
         }
         return now() - start;
     }
@@ -519,7 +554,7 @@ public final class Main {
             if (!Bench.readBenchInts(intsDecoded, intsVariants[i & (NUM_VARIANTS - 1)], numBits)) {
                 System.exit(1);
             }
-            sink += intsDecoded.f0;
+            sink += sinkOfBenchInts(intsDecoded); // full-struct observation (#175)
         }
         return now() - start;
     }
@@ -540,7 +575,7 @@ public final class Main {
             if (!Bench.readBenchBits(bitsDecoded, bitsVariants[i & (NUM_VARIANTS - 1)], numBits)) {
                 System.exit(1);
             }
-            sink += bitsDecoded.b7;
+            sink += sinkOfBenchBits(bitsDecoded); // full-struct observation (#175)
         }
         return now() - start;
     }
@@ -561,7 +596,7 @@ public final class Main {
             if (!Bench.readBenchMixed(mixedDecoded, mixedVariants[i & (NUM_VARIANTS - 1)], numBits)) {
                 System.exit(1);
             }
-            sink += mixedDecoded.sequence;
+            sink += sinkOfBenchMixed(mixedDecoded); // full-struct observation (#175)
         }
         return now() - start;
     }

@@ -329,6 +329,81 @@ defmodule SchemaBenchElixir do
     read_loop(n - 1, i + 1, variants, read, num_bits, sink_of, acc + sink_of.(decoded))
   end
 
+  # read-side sink discipline (#175, equalized to the cpp/c reference): every
+  # read loop observes the FULL decoded struct per iteration. The C/C++ legs
+  # get this for free from an empty-asm memory clobber over the whole struct;
+  # the BEAM has no zero-cost clobber, so the leg's idiom is a per-iteration
+  # sum of every decoded field — floats truncated, booleans as 0/1, the blob
+  # list element-by-element. The sink adds are real work the clobber
+  # languages do not pay; the published number is an upper bound on the
+  # observation cost.
+
+  defp bool_bit(true), do: 1
+  defp bool_bit(false), do: 0
+
+  defp sink_of_bench_packet(%Bench.BenchPacket{
+         a: a,
+         b: b,
+         c: c,
+         bits7: b7,
+         bits13: b13,
+         bits23: b23,
+         flag: flag,
+         x: x,
+         y: y,
+         z: z,
+         big: big,
+         blob: blob
+       }) do
+    a + b + c + b7 + b13 + b23 + bool_bit(flag) +
+      trunc(x) + trunc(y) + trunc(z) + big + Enum.sum(blob)
+  end
+
+  defp sink_of_bench_ints(%Bench.BenchInts{
+         f0: f0,
+         f1: f1,
+         f2: f2,
+         f3: f3,
+         f4: f4,
+         f5: f5,
+         f6: f6,
+         f7: f7,
+         f8: f8,
+         f9: f9
+       }) do
+    f0 + f1 + f2 + f3 + f4 + f5 + f6 + f7 + f8 + f9
+  end
+
+  defp sink_of_bench_bits(%Bench.BenchBits{
+         b7: b7,
+         b13: b13,
+         b23: b23,
+         b3: b3,
+         b32: b32,
+         b11: b11,
+         b19: b19,
+         b48: b48
+       }) do
+    b7 + b13 + b23 + b3 + b32 + b11 + b19 + b48
+  end
+
+  defp sink_of_bench_mixed(%Bench.BenchMixed{
+         sequence: sequence,
+         ack_bits: ack_bits,
+         entity_id: entity_id,
+         pos_x: pos_x,
+         pos_y: pos_y,
+         pos_z: pos_z,
+         yaw: yaw,
+         moving: moving,
+         firing: firing,
+         timestamp: timestamp,
+         weapon: weapon
+       }) do
+    sequence + ack_bits + entity_id + pos_x + pos_y + pos_z +
+      yaw + bool_bit(moving) + bool_bit(firing) + timestamp + weapon
+  end
+
   # per (bench, path): 1 discarded warmup run then num_runs measured runs;
   # the rng threads across runs (the write stream keeps varying, never
   # replaying one sequence the branch predictor could memorize)
@@ -446,7 +521,8 @@ defmodule SchemaBenchElixir do
       vary: &vary_bench_mixed/2,
       write: &Bench.Bench.write_bench_mixed/1,
       read: &Bench.Bench.read_bench_mixed/2,
-      sink_of: & &1.sequence
+      # full-struct observation (#175)
+      sink_of: &sink_of_bench_mixed/1
     ]
 
     {rows, goldens} =
@@ -497,21 +573,21 @@ defmodule SchemaBenchElixir do
             vary: &vary_bench_packet/2,
             write: &Bench.Bench.write_bench_packet/1,
             read: &Bench.Bench.read_bench_packet/2,
-            sink_of: & &1.b
+            sink_of: &sink_of_bench_packet/1
           ) ++
             bench_shape("bench_ints", gated_ints, @ints_iters, num_runs,
               init: &init_bench_ints/0,
               vary: &vary_bench_ints/2,
               write: &Bench.Bench.write_bench_ints/1,
               read: &Bench.Bench.read_bench_ints/2,
-              sink_of: & &1.f0
+              sink_of: &sink_of_bench_ints/1
             ) ++
             bench_shape("bench_bits", gated_bits, @bits_iters, num_runs,
               init: &init_bench_bits/0,
               vary: &vary_bench_bits/2,
               write: &Bench.Bench.write_bench_bits/1,
               read: &Bench.Bench.read_bench_bits/2,
-              sink_of: & &1.b7
+              sink_of: &sink_of_bench_bits/1
             ) ++
             bench_shape("bench_mixed", gated_mixed, @mixed_iters, num_runs, mixed_opts)
 

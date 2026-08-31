@@ -207,6 +207,164 @@ for (let k = 0; k < NumVariants; k++) {
 }
 
 let gSink = 0; // defeats dead code elimination of computed values
+
+/* --------------------------------------------------------------------------
+   read-side sink discipline (#175, equalized to the cpp/c reference): every
+   read loop observes the FULL decoded struct per iteration. The C/C++ legs
+   get this for free from an empty-asm memory clobber over the whole struct;
+   JS has no clobber, so the leg's idiom is a per-iteration fold of every
+   decoded field into gSink — numbers added, booleans as 0/1, byte/number
+   arrays element-by-element over the decoded extent, and BigInt fields
+   observed through an allocation-free comparison (a BigInt add would
+   allocate per iteration and measure the allocator, not the observation).
+   The folds are real work the clobber languages do not pay; the published
+   number is an upper bound on the observation cost. Each sinkOf is checked
+   finite at the gate, so a typo'd field name (undefined -> NaN) refuses to
+   bench instead of silently poisoning the sink.
+   -------------------------------------------------------------------------- */
+
+const boolBit = (b) => (b ? 1 : 0);
+const bigBit = (x) => (x !== 0n ? 1 : 0);
+function sumBytes(a, n) {
+  let s = 0;
+  for (let i = 0; i < n; i++) {
+    s += a[i];
+  }
+  return s;
+}
+
+function sinkOfBenchPacketGen(d) {
+  return d.A + d.B + d.C + d.Bits7 + d.Bits13 + d.Bits23 + boolBit(d.Flag) +
+    d.X + d.Y + d.Z + bigBit(d.Big) + sumBytes(d.Blob, 17);
+}
+
+function sinkOfBenchIntsGen(d) {
+  return d.F0 + d.F1 + d.F2 + d.F3 + d.F4 + d.F5 + d.F6 + d.F7 + d.F8 + d.F9;
+}
+
+function sinkOfBenchBitsGen(d) {
+  return d.B7 + d.B13 + d.B23 + d.B3 + d.B32 + d.B11 + d.B19 + bigBit(d.B48);
+}
+
+function sinkOfBenchMixedGen(d) {
+  return d.Sequence + d.AckBits + d.EntityId + d.PosX + d.PosY + d.PosZ +
+    d.Yaw + boolBit(d.Moving) + boolBit(d.Firing) + bigBit(d.Timestamp) + d.Weapon;
+}
+
+function sinkOfRigidBody(d) {
+  return d.Position.X + d.Position.Y + d.Position.Z +
+    d.Orientation.X + d.Orientation.Y + d.Orientation.Z + d.Orientation.W +
+    boolBit(d.AtRest) +
+    d.LinearVelocity.X + d.LinearVelocity.Y + d.LinearVelocity.Z +
+    d.AngularVelocity.X + d.AngularVelocity.Y + d.AngularVelocity.Z;
+}
+
+function sinkOfChat(d) {
+  return d.TextLength + sumBytes(d.Text, d.TextLength);
+}
+
+function sinkOfTest(d) {
+  return d.TestA + d.TestB + d.TestC + d.TestD;
+}
+
+function sinkOfInputPacket(d) {
+  let s = d.SynchronizeSequence + bigBit(d.CurrentFrame) + bigBit(d.StartFrame) + d.InputsCount;
+  for (let i = 0; i < d.InputsCount; i++) {
+    const inp = d.Inputs[i];
+    s += inp.StickX + inp.StickY + inp.Throttle + inp.Yaw + inp.Pitch +
+      boolBit(inp.Fire) + boolBit(inp.AltFire) + boolBit(inp.Boost) + boolBit(inp.Brake) +
+      boolBit(inp.Aim) + boolBit(inp.LockOn) + boolBit(inp.Zoom) + boolBit(inp.Ping);
+  }
+  return s;
+}
+
+function sinkOfShipCreate(d) {
+  return d.ShipType +
+    d.Position.X + d.Position.Y + d.Position.Z +
+    d.Rotation.X + d.Rotation.Y + d.Rotation.Z + d.Rotation.W +
+    d.LinearVelocity.X + d.LinearVelocity.Y + d.LinearVelocity.Z +
+    boolBit(d.HasFlags) + bigBit(d.Flags) + d.Team + d.Health + d.Thrust + d.Pending;
+}
+
+function sinkOfProbeHeader(d) {
+  return d.Version + bigBit(d.ProbeId);
+}
+
+function sinkOfProbeBits(d) {
+  return d.Small + bigBit(d.Boundary) + bigBit(d.Wide) + d.Sensor + bigBit(d.Nonce);
+}
+
+function sinkOfProbeSample(s) {
+  let v = boolBit(s.Active) + s.Orientation + s.RawDelta + bigBit(s.BigDelta) +
+    s.Weapon + boolBit(s.HasTarget) + s.TargetId + s.IdleTicks + s.SamplesCount;
+  for (let i = 0; i < s.SamplesCount; i++) {
+    v += s.Samples[i];
+  }
+  return v;
+}
+
+function sinkOfProbeArray(d) {
+  return sinkOfProbeSample(d.Samples[0]) + sinkOfProbeSample(d.Samples[1]) +
+    d.Config.Retries + d.Config.Preferred;
+}
+
+function sinkOfTestData(d) {
+  let s = d.A + d.B + d.C + d.D + d.E + d.F + boolBit(d.G) + d.ItemsCount;
+  for (let i = 0; i < d.ItemsCount; i++) {
+    s += d.Items[i];
+  }
+  s += d.FloatValue + d.CompressedFloatValue + d.DoubleValue +
+    d.Int8Value + d.Int16Value + d.Uint8Value + d.Uint16Value + d.Uint32Value +
+    bigBit(d.Uint64Value) + bigBit(d.Int64Full) + bigBit(d.Int64Range) +
+    sumBytes(d.FixedBytes, 17) + d.TextLength + sumBytes(d.Text, d.TextLength);
+  return s;
+}
+
+function sinkOfRealPacket(d) {
+  return d.F001Int + d.F002F64 + d.F003Int + d.F004Cf32 + d.F005Uint +
+    d.F006Int + d.F007F32 + bigBit(d.F008U64) + d.F009Int + d.F010F32 +
+    d.F011Bits + boolBit(d.F012Bool) + d.F013F32 + d.F014Uint + d.F015Int +
+    d.F016Fixed + d.F017Uint + d.F018Int + d.F019F64 + d.F020F32 +
+    d.F021Ufixed + d.F022F32 + d.F023Bits + d.F024F32 + d.F025Fixed +
+    d.F026Bits + d.F027Cf32 + d.F028Bits + bigBit(d.F029I64) + d.F030F32 +
+    d.F031Bits + d.F032Int + d.F033Uint + d.F034Uint + d.F035Bits +
+    d.F036Enum + boolBit(d.F037Bool) + boolBit(d.F038Bool) + d.F039Bits + d.F040Fixed +
+    d.F041Int + d.F042Bits + boolBit(d.F043Bool) + d.F044F32 + d.F045Bits +
+    d.F046Uint + d.F047Int + d.F048F64 + d.F049Ufixed + boolBit(d.F050Bool) +
+    boolBit(d.F051Bool) + d.F052Int + d.F053F32 + d.F054Int + boolBit(d.F055Bool) +
+    d.F056Int + d.F057Int + d.F058F32 + d.F059F64 + d.F060Bits +
+    d.F061Cf32 + d.F062Uint + bigBit(d.F063I64) + d.F064Uint + d.F065Cf32 +
+    d.F066Ufixed + d.F067Cf32 + d.F068Cf32 + d.F069Bits + d.F070Uint +
+    d.F071Cf32 + d.F072Cf32 + d.F073Int + boolBit(d.F074Bool) + bigBit(d.F075U64) +
+    d.F076Int + d.F077Int + d.F078Bits + d.F079Uint + boolBit(d.F080Bool) +
+    d.F081Bits + d.F082Bits + d.F083Enum + d.F084Ufixed + d.F085Bits +
+    d.F086Uint + d.F087F64 + d.F088Int + bigBit(d.F089Bits) + d.F090Uint +
+    bigBit(d.F091Flags) + boolBit(d.F092Bool) + bigBit(d.F093Bits) + boolBit(d.F094Bool) + d.F095Fixed +
+    d.F096Bits + d.F097Bits;
+}
+
+// family rt: the holder-object shapes (see makeRt*)
+function sinkOfRtPacket(f) {
+  return f.a.value + f.b.value + f.c.value + f.bits7.value + f.bits13.value +
+    f.bits23.value + boolBit(f.flag.value) + f.x.value + f.y.value + f.z.value +
+    bigBit(f.big.value) + sumBytes(f.blob, 17);
+}
+
+function sinkOfRtInts(f) {
+  return f.f0.value + f.f1.value + f.f2.value + f.f3.value + f.f4.value +
+    f.f5.value + f.f6.value + f.f7.value + f.f8.value + f.f9.value;
+}
+
+function sinkOfRtBits(f) {
+  return f.b7.value + f.b13.value + f.b23.value + f.b3.value + f.b32.value +
+    f.b11.value + f.b19.value + bigBit(f.b48.value);
+}
+
+function sinkOfRtMixed(f) {
+  return f.sequence.value + f.ackBits.value + f.entityId.value + f.posX.value +
+    f.posY.value + f.posZ.value + f.yaw.value + boolBit(f.moving.value) +
+    boolBit(f.firing.value) + bigBit(f.timestamp.value) + f.weapon.value;
+}
 let gCsv = false;
 let gWireDir = "../../testdata/wire";
 let failed = false;
@@ -364,7 +522,7 @@ function deepEqual(a, b) {
 // bytes, fields and verdicts, pinned instance plus all 64 variants) before
 // any timing. Timed loops are per-call flat functions — §3.2's comparable
 // call shape — over caller-owned DataViews, no stream object at all.
-function benchMessageFlat(name, golden, iters, pinned, writeFn, readFn, flatWriteFn, flatReadFn, varyFn) {
+function benchMessageFlat(name, golden, iters, pinned, writeFn, readFn, flatWriteFn, flatReadFn, varyFn, sinkOf) {
   const base = pinned;
   const gView = new DataView(gBuffer.buffer);
 
@@ -408,6 +566,10 @@ function benchMessageFlat(name, golden, iters, pinned, writeFn, readFn, flatWrit
     }
     if (!deepEqual(flOut, rtOut)) {
       fail(name, "flat and runtime reads disagree on fields");
+      return;
+    }
+    if (!Number.isFinite(sinkOf(flOut))) {
+      fail(name, "sinkOf not finite on the decoded pinned instance (typo'd field?)");
       return;
     }
     if (flatWriteFn(flOut, new DataView(gTwin.buffer)) !== bytesPerOp ||
@@ -486,7 +648,7 @@ function benchMessageFlat(name, golden, iters, pinned, writeFn, readFn, flatWrit
         fail(name, "flat read failed in loop");
         return;
       }
-      gSink = (gSink + 1) >>> 0;
+      gSink = (gSink + sinkOf(outValue)) >>> 0; // full-struct observation (#175)
     }
     const elapsed = (performance.now() - start) / 1000.0;
     if (run >= 0) {
@@ -498,7 +660,7 @@ function benchMessageFlat(name, golden, iters, pinned, writeFn, readFn, flatWrit
   report(name, "read", iters, bytesPerOp, stats(readRates), "gen", "flat");
 }
 
-function benchMessage(name, golden, iters, pinned, writeFn, readFn, varyFn, codec = "runtime") {
+function benchMessage(name, golden, iters, pinned, writeFn, readFn, varyFn, sinkOf, codec = "runtime") {
   // self-check 1: the pinned instance matches its wire golden byte-for-byte
   const base = pinned;
   const ws = new WriteStream(gBuffer);
@@ -519,6 +681,10 @@ function benchMessage(name, golden, iters, pinned, writeFn, readFn, varyFn, code
     const checkRs = new ReadStream(gBuffer.subarray(0, bytesPerOp));
     if (!readFn(checkRs, output)) {
       fail(name, "read of pinned instance failed");
+      return;
+    }
+    if (!Number.isFinite(sinkOf(output))) {
+      fail(name, "sinkOf not finite on the decoded pinned instance (typo'd field?)");
       return;
     }
     const tws = new WriteStream(gTwin);
@@ -589,7 +755,7 @@ function benchMessage(name, golden, iters, pinned, writeFn, readFn, varyFn, code
         fail(name, "read failed in loop");
         return;
       }
-      gSink = (gSink + 1) >>> 0;
+      gSink = (gSink + sinkOf(outValue)) >>> 0; // full-struct observation (#175)
     }
     const elapsed = (performance.now() - start) / 1000.0;
     if (run >= 0) {
@@ -1324,7 +1490,7 @@ function rtBenchPacketReadLoop(outValue, iters, views) {
     if (!readRtPacket(rs, outValue)) {
       return false;
     }
-    gSink = (gSink + 1) >>> 0;
+    gSink = (gSink + sinkOfRtPacket(outValue)) >>> 0; // full-struct observation (#175)
   }
   return true;
 }
@@ -1351,7 +1517,7 @@ function rtBenchIntsReadLoop(outValue, iters, views) {
     if (!readRtInts(rs, outValue)) {
       return false;
     }
-    gSink = (gSink + 1) >>> 0;
+    gSink = (gSink + sinkOfRtInts(outValue)) >>> 0; // full-struct observation (#175)
   }
   return true;
 }
@@ -1378,7 +1544,7 @@ function rtBenchBitsReadLoop(outValue, iters, views) {
     if (!readRtBits(rs, outValue)) {
       return false;
     }
-    gSink = (gSink + 1) >>> 0;
+    gSink = (gSink + sinkOfRtBits(outValue)) >>> 0; // full-struct observation (#175)
   }
   return true;
 }
@@ -1405,14 +1571,14 @@ function rtBenchMixedReadLoop(outValue, iters, views) {
     if (!readRtMixed(rs, outValue)) {
       return false;
     }
-    gSink = (gSink + 1) >>> 0;
+    gSink = (gSink + sinkOfRtMixed(outValue)) >>> 0; // full-struct observation (#175)
   }
   return true;
 }
 
 // ---- the family rt driver: §1.5 oracle gate, then the timed loops ----
 
-function benchRt(name, iters, base, outValue, onceWrite, onceRead, writeLoop, readLoop, vary) {
+function benchRt(name, iters, base, outValue, onceWrite, onceRead, writeLoop, readLoop, vary, sinkOf) {
   // oracle 1: the hand-written wire must equal the generated-code golden
   const bytesPerOp = onceWrite(base, gBuffer);
   if (bytesPerOp < 0) {
@@ -1431,6 +1597,10 @@ function benchRt(name, iters, base, outValue, onceWrite, onceRead, writeLoop, re
   }
   if (onceWrite(outValue, gTwin) !== bytesPerOp || !bytesEqual(gTwin.subarray(0, bytesPerOp), gBuffer.subarray(0, bytesPerOp))) {
     fail(name, "round-trip bytes differ");
+    return;
+  }
+  if (!Number.isFinite(sinkOf(outValue))) {
+    fail(name, "sinkOf not finite on the decoded pinned instance (typo'd field?)");
     return;
   }
 
@@ -1783,7 +1953,7 @@ function main() {
   if (gQuick) {
     // --quick: the flat bench_mixed leg only (THE js path for the shape),
     // golden-gated and cross-validated like every flat leg
-    benchMessageFlat("bench_mixed", "bench_mixed", QuickMixedIters, pinBenchMixedGen(), bench.WriteBenchMixed, bench.ReadBenchMixed, benchFlat.WriteBenchMixedFlat, benchFlat.ReadBenchMixedFlat, varyBenchMixedGen);
+    benchMessageFlat("bench_mixed", "bench_mixed", QuickMixedIters, pinBenchMixedGen(), bench.WriteBenchMixed, bench.ReadBenchMixed, benchFlat.WriteBenchMixedFlat, benchFlat.ReadBenchMixedFlat, varyBenchMixedGen, sinkOfBenchMixedGen);
     flushCsv();
     if (failed) {
       process.stderr.write(`BENCH FAILED (corpus_id ${corpusId()})\n`);
@@ -1801,16 +1971,16 @@ function main() {
   // THE js rows: the flat tier, per-call (§3.2's comparable shape), each
   // leg bound to the corpus pins AND cross-validated against the runtime
   // tier (bytes/fields/verdicts, 64 variants) before any timing
-  benchMessageFlat("rigidbody_moving", "rigidbody_moving", 24000000, pinRigidBodyMoving(), ex.WriteRigidBody, ex.ReadRigidBody, exFlat.WriteRigidBodyFlat, exFlat.ReadRigidBodyFlat, varyRigidBody);
-  benchMessageFlat("rigidbody_at_rest", "rigidbody_at_rest", 32000000, atRest, ex.WriteRigidBody, ex.ReadRigidBody, exFlat.WriteRigidBodyFlat, exFlat.ReadRigidBodyFlat, varyRigidBodyAtRest);
-  benchMessageFlat("chat", "chat", 48000000, pinChat(), ex.WriteChat, ex.ReadChat, exFlat.WriteChatFlat, exFlat.ReadChatFlat, varyChat);
-  benchMessageFlat("test", null, 192000000, new ex.Test(), ex.WriteTest, ex.ReadTest, exFlat.WriteTestFlat, exFlat.ReadTestFlat, varyTest);
-  benchMessageFlat("inputpacket", "inputpacket", 16000000, pinInputPacket(), ex.WriteInputPacket, ex.ReadInputPacket, exFlat.WriteInputPacketFlat, exFlat.ReadInputPacketFlat, varyInputPacket);
-  benchMessageFlat("shipcreate", "shipcreate_flags", 32000000, pinShipCreate(), ex.WriteShipCreate, ex.ReadShipCreate, exFlat.WriteShipCreateFlat, exFlat.ReadShipCreateFlat, varyShipCreate);
-  benchMessageFlat("probe_header", "probe_header", 256000000, pinProbeHeader(), ex.WriteProbeHeader, ex.ReadProbeHeader, exFlat.WriteProbeHeaderFlat, exFlat.ReadProbeHeaderFlat, varyProbeHeader);
-  benchMessageFlat("probebits", "probebits", 128000000, pinProbeBits(), ex.WriteProbeBits, ex.ReadProbeBits, exFlat.WriteProbeBitsFlat, exFlat.ReadProbeBitsFlat, varyProbeBits);
-  benchMessageFlat("probearray", "probearray", 20000000, pinProbeArray(), ex.WriteProbeArray, ex.ReadProbeArray, exFlat.WriteProbeArrayFlat, exFlat.ReadProbeArrayFlat, varyProbeArray);
-  benchMessageFlat("testdata", "testdata", 8000000, pinTestData(), ex.WriteTestData, ex.ReadTestData, exFlat.WriteTestDataFlat, exFlat.ReadTestDataFlat, varyTestData);
+  benchMessageFlat("rigidbody_moving", "rigidbody_moving", 24000000, pinRigidBodyMoving(), ex.WriteRigidBody, ex.ReadRigidBody, exFlat.WriteRigidBodyFlat, exFlat.ReadRigidBodyFlat, varyRigidBody, sinkOfRigidBody);
+  benchMessageFlat("rigidbody_at_rest", "rigidbody_at_rest", 32000000, atRest, ex.WriteRigidBody, ex.ReadRigidBody, exFlat.WriteRigidBodyFlat, exFlat.ReadRigidBodyFlat, varyRigidBodyAtRest, sinkOfRigidBody);
+  benchMessageFlat("chat", "chat", 48000000, pinChat(), ex.WriteChat, ex.ReadChat, exFlat.WriteChatFlat, exFlat.ReadChatFlat, varyChat, sinkOfChat);
+  benchMessageFlat("test", null, 192000000, new ex.Test(), ex.WriteTest, ex.ReadTest, exFlat.WriteTestFlat, exFlat.ReadTestFlat, varyTest, sinkOfTest);
+  benchMessageFlat("inputpacket", "inputpacket", 16000000, pinInputPacket(), ex.WriteInputPacket, ex.ReadInputPacket, exFlat.WriteInputPacketFlat, exFlat.ReadInputPacketFlat, varyInputPacket, sinkOfInputPacket);
+  benchMessageFlat("shipcreate", "shipcreate_flags", 32000000, pinShipCreate(), ex.WriteShipCreate, ex.ReadShipCreate, exFlat.WriteShipCreateFlat, exFlat.ReadShipCreateFlat, varyShipCreate, sinkOfShipCreate);
+  benchMessageFlat("probe_header", "probe_header", 256000000, pinProbeHeader(), ex.WriteProbeHeader, ex.ReadProbeHeader, exFlat.WriteProbeHeaderFlat, exFlat.ReadProbeHeaderFlat, varyProbeHeader, sinkOfProbeHeader);
+  benchMessageFlat("probebits", "probebits", 128000000, pinProbeBits(), ex.WriteProbeBits, ex.ReadProbeBits, exFlat.WriteProbeBitsFlat, exFlat.ReadProbeBitsFlat, varyProbeBits, sinkOfProbeBits);
+  benchMessageFlat("probearray", "probearray", 20000000, pinProbeArray(), ex.WriteProbeArray, ex.ReadProbeArray, exFlat.WriteProbeArrayFlat, exFlat.ReadProbeArrayFlat, varyProbeArray, sinkOfProbeArray);
+  benchMessageFlat("testdata", "testdata", 8000000, pinTestData(), ex.WriteTestData, ex.ReadTestData, exFlat.WriteTestDataFlat, exFlat.ReadTestDataFlat, varyTestData, sinkOfTestData);
 
   // real_packet (§1.7): the realistic snapshot — ~93 riding individually
   // serialized small fields, 204 wire bytes, 0% bulk share by bits. The
@@ -1818,24 +1988,24 @@ function main() {
   // defaults (the four branch gates: f012 true, f043 false, f050 true,
   // f074 false) exactly as C++ RealPacket{} does. base_iters sized in the
   // C++ reference (§2.1).
-  benchMessageFlat("real_packet", "real_packet", 8000000, new realworld.RealPacket(), realworld.WriteRealPacket, realworld.ReadRealPacket, realworldFlat.WriteRealPacketFlat, realworldFlat.ReadRealPacketFlat, varyRealPacket);
+  benchMessageFlat("real_packet", "real_packet", 8000000, new realworld.RealPacket(), realworld.WriteRealPacket, realworld.ReadRealPacket, realworldFlat.WriteRealPacketFlat, realworldFlat.ReadRealPacketFlat, varyRealPacket, sinkOfRealPacket);
 
   // the runtime-call generated tier: labeled supplementary rows
   // (codec=runtime) so the compat tier's regressions stay visible — never
   // the js number
   const atRestRt = pinRigidBodyMoving(); // fresh pin — the flat leg's vary mutated atRest
   atRestRt.AtRest = true;
-  benchMessage("rigidbody_moving", "rigidbody_moving", 24000000, pinRigidBodyMoving(), ex.WriteRigidBody, ex.ReadRigidBody, varyRigidBody);
-  benchMessage("rigidbody_at_rest", "rigidbody_at_rest", 32000000, atRestRt, ex.WriteRigidBody, ex.ReadRigidBody, varyRigidBodyAtRest);
-  benchMessage("chat", "chat", 48000000, pinChat(), ex.WriteChat, ex.ReadChat, varyChat);
-  benchMessage("test", null, 192000000, new ex.Test(), ex.WriteTest, ex.ReadTest, varyTest);
-  benchMessage("inputpacket", "inputpacket", 16000000, pinInputPacket(), ex.WriteInputPacket, ex.ReadInputPacket, varyInputPacket);
-  benchMessage("shipcreate", "shipcreate_flags", 32000000, pinShipCreate(), ex.WriteShipCreate, ex.ReadShipCreate, varyShipCreate);
-  benchMessage("probe_header", "probe_header", 256000000, pinProbeHeader(), ex.WriteProbeHeader, ex.ReadProbeHeader, varyProbeHeader);
-  benchMessage("probebits", "probebits", 128000000, pinProbeBits(), ex.WriteProbeBits, ex.ReadProbeBits, varyProbeBits);
-  benchMessage("probearray", "probearray", 20000000, pinProbeArray(), ex.WriteProbeArray, ex.ReadProbeArray, varyProbeArray);
-  benchMessage("testdata", "testdata", 8000000, pinTestData(), ex.WriteTestData, ex.ReadTestData, varyTestData);
-  benchMessage("real_packet", "real_packet", 8000000, new realworld.RealPacket(), realworld.WriteRealPacket, realworld.ReadRealPacket, varyRealPacket);
+  benchMessage("rigidbody_moving", "rigidbody_moving", 24000000, pinRigidBodyMoving(), ex.WriteRigidBody, ex.ReadRigidBody, varyRigidBody, sinkOfRigidBody);
+  benchMessage("rigidbody_at_rest", "rigidbody_at_rest", 32000000, atRestRt, ex.WriteRigidBody, ex.ReadRigidBody, varyRigidBodyAtRest, sinkOfRigidBody);
+  benchMessage("chat", "chat", 48000000, pinChat(), ex.WriteChat, ex.ReadChat, varyChat, sinkOfChat);
+  benchMessage("test", null, 192000000, new ex.Test(), ex.WriteTest, ex.ReadTest, varyTest, sinkOfTest);
+  benchMessage("inputpacket", "inputpacket", 16000000, pinInputPacket(), ex.WriteInputPacket, ex.ReadInputPacket, varyInputPacket, sinkOfInputPacket);
+  benchMessage("shipcreate", "shipcreate_flags", 32000000, pinShipCreate(), ex.WriteShipCreate, ex.ReadShipCreate, varyShipCreate, sinkOfShipCreate);
+  benchMessage("probe_header", "probe_header", 256000000, pinProbeHeader(), ex.WriteProbeHeader, ex.ReadProbeHeader, varyProbeHeader, sinkOfProbeHeader);
+  benchMessage("probebits", "probebits", 128000000, pinProbeBits(), ex.WriteProbeBits, ex.ReadProbeBits, varyProbeBits, sinkOfProbeBits);
+  benchMessage("probearray", "probearray", 20000000, pinProbeArray(), ex.WriteProbeArray, ex.ReadProbeArray, varyProbeArray, sinkOfProbeArray);
+  benchMessage("testdata", "testdata", 8000000, pinTestData(), ex.WriteTestData, ex.ReadTestData, varyTestData, sinkOfTestData);
+  benchMessage("real_packet", "real_packet", 8000000, new realworld.RealPacket(), realworld.WriteRealPacket, realworld.ReadRealPacket, varyRealPacket, sinkOfRealPacket);
 
   // the four Bench.schema shapes as GENERATED code — the flat tier is THE
   // js entry for these shapes in any cross-language comparison, exactly as
@@ -1843,18 +2013,18 @@ function main() {
   // against the runtime-call tier by the same oracle. The family rt rows
   // below keep the same bench names and measure the serialize.js runtime
   // API instead — honest library-context data, never the js number.
-  benchMessageFlat("bench_packet", "bench_packet", 32000000, pinBenchPacketGen(), bench.WriteBenchPacket, bench.ReadBenchPacket, benchFlat.WriteBenchPacketFlat, benchFlat.ReadBenchPacketFlat, varyBenchPacketGen);
-  benchMessageFlat("bench_ints", "bench_ints", 40000000, pinBenchIntsGen(), bench.WriteBenchInts, bench.ReadBenchInts, benchFlat.WriteBenchIntsFlat, benchFlat.ReadBenchIntsFlat, varyBenchIntsGen);
-  benchMessageFlat("bench_bits", "bench_bits", 48000000, pinBenchBitsGen(), bench.WriteBenchBits, bench.ReadBenchBits, benchFlat.WriteBenchBitsFlat, benchFlat.ReadBenchBitsFlat, varyBenchBitsGen);
-  benchMessageFlat("bench_mixed", "bench_mixed", 40000000, pinBenchMixedGen(), bench.WriteBenchMixed, bench.ReadBenchMixed, benchFlat.WriteBenchMixedFlat, benchFlat.ReadBenchMixedFlat, varyBenchMixedGen);
+  benchMessageFlat("bench_packet", "bench_packet", 32000000, pinBenchPacketGen(), bench.WriteBenchPacket, bench.ReadBenchPacket, benchFlat.WriteBenchPacketFlat, benchFlat.ReadBenchPacketFlat, varyBenchPacketGen, sinkOfBenchPacketGen);
+  benchMessageFlat("bench_ints", "bench_ints", 40000000, pinBenchIntsGen(), bench.WriteBenchInts, bench.ReadBenchInts, benchFlat.WriteBenchIntsFlat, benchFlat.ReadBenchIntsFlat, varyBenchIntsGen, sinkOfBenchIntsGen);
+  benchMessageFlat("bench_bits", "bench_bits", 48000000, pinBenchBitsGen(), bench.WriteBenchBits, bench.ReadBenchBits, benchFlat.WriteBenchBitsFlat, benchFlat.ReadBenchBitsFlat, varyBenchBitsGen, sinkOfBenchBitsGen);
+  benchMessageFlat("bench_mixed", "bench_mixed", 40000000, pinBenchMixedGen(), bench.WriteBenchMixed, bench.ReadBenchMixed, benchFlat.WriteBenchMixedFlat, benchFlat.ReadBenchMixedFlat, varyBenchMixedGen, sinkOfBenchMixedGen);
 
   // family rt (§1.3/§1.5): the runtime API by hand, oracle-gated against
   // the goldens the generated code pinned. Iteration counts are fixed and
   // identical across all six runners (§2.1; sized in the C++ reference).
-  benchRt("bench_packet", 32000000, pinRtPacket(), makeRtPacket(), rtOnceWritePacket, rtOnceReadPacket, rtBenchPacketWriteLoop, rtBenchPacketReadLoop, varyRtPacket);
-  benchRt("bench_ints", 40000000, pinRtInts(), makeRtInts(), rtOnceWriteInts, rtOnceReadInts, rtBenchIntsWriteLoop, rtBenchIntsReadLoop, varyRtInts);
-  benchRt("bench_bits", 48000000, pinRtBits(), makeRtBits(), rtOnceWriteBits, rtOnceReadBits, rtBenchBitsWriteLoop, rtBenchBitsReadLoop, varyRtBits);
-  benchRt("bench_mixed", 40000000, pinRtMixed(), makeRtMixed(), rtOnceWriteMixed, rtOnceReadMixed, rtBenchMixedWriteLoop, rtBenchMixedReadLoop, varyRtMixed);
+  benchRt("bench_packet", 32000000, pinRtPacket(), makeRtPacket(), rtOnceWritePacket, rtOnceReadPacket, rtBenchPacketWriteLoop, rtBenchPacketReadLoop, varyRtPacket, sinkOfRtPacket);
+  benchRt("bench_ints", 40000000, pinRtInts(), makeRtInts(), rtOnceWriteInts, rtOnceReadInts, rtBenchIntsWriteLoop, rtBenchIntsReadLoop, varyRtInts, sinkOfRtInts);
+  benchRt("bench_bits", 48000000, pinRtBits(), makeRtBits(), rtOnceWriteBits, rtOnceReadBits, rtBenchBitsWriteLoop, rtBenchBitsReadLoop, varyRtBits, sinkOfRtBits);
+  benchRt("bench_mixed", 40000000, pinRtMixed(), makeRtMixed(), rtOnceWriteMixed, rtOnceReadMixed, rtBenchMixedWriteLoop, rtBenchMixedReadLoop, varyRtMixed, sinkOfRtMixed);
 
   // family bits (§1.4): the one bitpacker workload in the estate
   benchBitpacker(24576);
