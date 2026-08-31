@@ -344,9 +344,6 @@ jobs:
       - run: go vet ./...
       - run: go build ./...
 
-  # The C/C++ reference lock (owner ruling 2026-08-31, issue #170): while
-  # bench/LOCK exists, a PR touching any locked prefix refuses. The lift is
-  # a PR whose whole diff is bench/LOCK itself — visible by construction.
   # The one-benchmark rule, made mechanical. The estate has exactly one
   # sanctioned benchmark — this repo's data-driven bench — and shape knowledge
   # belongs in bench/corpus and the generated code. This job refuses a commit
@@ -366,6 +363,9 @@ jobs:
       - name: refuse hand-coded shape measurement
         run: go run ./bench/tools/shapegate
 
+  # The C/C++ reference lock (owner ruling 2026-08-31, issue #170): while
+  # bench/LOCK exists, a PR touching any locked prefix refuses. The lift is
+  # a PR whose whole diff is bench/LOCK itself — visible by construction.
   cpp-lock:
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
