@@ -61,7 +61,7 @@ func TestBenchMixedVariants(t *testing.T) {
 	}
 
 	seen := make(map[string]int, numVariants)
-	for k := 0; k < numVariants; k++ {
+	for k := range numVariants {
 		record := data[k*len(golden) : (k+1)*len(golden)]
 		if prev, dup := seen[string(record)]; dup {
 			t.Errorf("variant %d is byte-identical to variant %d — the 64 rotating buffers must differ (§2.7)", k, prev)
