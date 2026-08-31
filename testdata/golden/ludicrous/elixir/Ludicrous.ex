@@ -122,6 +122,8 @@ defmodule Ludicrous.Ludicrous do
 
   @compile {:inline, rd: 3}
 
+  @compile {:inline, rdw: 3}
+
   # The unit's protocol id — the hash of its wire shape (SPEC §3.1). Two
   # sides at the same id speak identical bits; there is no other versioning.
   def protocol_id, do: 0xA388F75DDC741965
@@ -165,84 +167,89 @@ defmodule Ludicrous.Ludicrous do
     scratch = 0
     scratch_bits = 0
 
-    if value.angle < -11_796_480 do
+    %{
+      angle: value_angle,
+      position: value_position,
+      reach: value_reach,
+      ticks: value_ticks,
+      samples: value_samples
+    } = value
+
+    if value_angle < -11_796_480 do
       raise ArgumentError, "value.angle is below the wire minimum"
     end
 
-    if value.angle > 11_796_480 do
+    if value_angle > 11_796_480 do
       raise ArgumentError, "value.angle is above the wire maximum"
     end
 
-    v = value.angle + 11_796_480
+    v = value_angle + 11_796_480
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 25
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
-    scratch_bits = scratch_bits &&& 7
 
-    if value.position < -1_966_080_000 do
+    if value_position < -1_966_080_000 do
       raise ArgumentError, "value.position is below the wire minimum"
     end
 
-    if value.position > 1_966_080_000 do
+    if value_position > 1_966_080_000 do
       raise ArgumentError, "value.position is above the wire maximum"
     end
 
-    v = value.position + 1_966_080_000
-    scratch = scratch ||| v <<< scratch_bits
-    scratch_bits = scratch_bits + 32
+    v = value_position + 1_966_080_000
     flush = scratch_bits >>> 3
     data = <<data::binary, scratch::little-size(flush)-unit(8)>>
     scratch = scratch >>> (flush <<< 3)
     scratch_bits = scratch_bits &&& 7
+    scratch = scratch ||| v <<< scratch_bits
+    scratch_bits = scratch_bits + 32
 
-    if value.reach < -65_536_000_000 do
+    if value_reach < -65_536_000_000 do
       raise ArgumentError, "value.reach is below the wire minimum"
     end
 
-    if value.reach > 65_536_000_000 do
+    if value_reach > 65_536_000_000 do
       raise ArgumentError, "value.reach is above the wire maximum"
     end
 
-    w = value.reach + 65_536_000_000
+    w = value_reach + 65_536_000_000
     v = w &&& 0xFFFFFFFF
-    scratch = scratch ||| v <<< scratch_bits
-    scratch_bits = scratch_bits + 32
     flush = scratch_bits >>> 3
     data = <<data::binary, scratch::little-size(flush)-unit(8)>>
     scratch = scratch >>> (flush <<< 3)
     scratch_bits = scratch_bits &&& 7
+    scratch = scratch ||| v <<< scratch_bits
+    scratch_bits = scratch_bits + 32
     v = w >>> 32
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 5
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
-    scratch_bits = scratch_bits &&& 7
 
-    if value.ticks < 0 do
+    if value_ticks < 0 do
       raise ArgumentError, "value.ticks is below the wire minimum"
     end
 
-    if value.ticks > 1_000_000 do
+    if value_ticks > 1_000_000 do
       raise ArgumentError, "value.ticks is above the wire maximum"
     end
 
-    v = value.ticks
+    v = value_ticks
+    flush = scratch_bits >>> 3
+    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
+    scratch = scratch >>> (flush <<< 3)
+    scratch_bits = scratch_bits &&& 7
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 20
+
+    if length(value_samples) != 2 do
+      raise ArgumentError, "value.samples must hold exactly 2 elements"
+    end
+
     flush = scratch_bits >>> 3
     data = <<data::binary, scratch::little-size(flush)-unit(8)>>
     scratch = scratch >>> (flush <<< 3)
     scratch_bits = scratch_bits &&& 7
 
-    if length(value.samples) != 2 do
-      raise ArgumentError, "value.samples must hold exactly 2 elements"
-    end
-
     {data, scratch, scratch_bits} =
-      w_fixed_probe_samples(value.samples, data, scratch, scratch_bits)
+      w_fixed_probe_samples(value_samples, data, scratch, scratch_bits)
 
     if scratch_bits != 0, do: <<data::binary, scratch>>, else: data
   end
@@ -259,26 +266,30 @@ defmodule Ludicrous.Ludicrous do
 
       bits_read = 0
       if bits_read + 156 > num_bits, do: throw(:invalid)
-      v = rd(data, bits_read, 25)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0x1FFFFFF
       bits_read = bits_read + 25
       # a smuggled offset is refused
       if v > 23_592_960, do: throw(:invalid)
       v_angle = v - 11_796_480
-      v = rd(data, bits_read, 32)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0xFFFFFFFF
       bits_read = bits_read + 32
       # a smuggled offset is refused
       if v > 3_932_160_000, do: throw(:invalid)
       v_position = v - 1_966_080_000
-      v = rd(data, bits_read, 32)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0xFFFFFFFF
       bits_read = bits_read + 32
       w = v
-      v = rd(data, bits_read, 5)
+      v = rv >>> 32 &&& 0x1F
       bits_read = bits_read + 5
       w = w ||| v <<< 32
       # a smuggled offset is refused
       if w > 131_072_000_000, do: throw(:invalid)
       v_reach = w - 65_536_000_000
-      v = rd(data, bits_read, 20)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0xFFFFF
       bits_read = bits_read + 20
       # a smuggled offset is refused
       if v > 1_000_000, do: throw(:invalid)
@@ -332,96 +343,103 @@ defmodule Ludicrous.Ludicrous do
     scratch = 0
     scratch_bits = 0
 
-    if value.angle < 0 do
+    %{
+      angle: value_angle,
+      span: value_span,
+      reach: value_reach,
+      ticks: value_ticks,
+      samples: value_samples,
+      locked: value_locked,
+      tail: value_tail
+    } = value
+
+    if value_angle < 0 do
       raise ArgumentError, "value.angle is below the wire minimum"
     end
 
-    if value.angle > 23_592_960 do
+    if value_angle > 23_592_960 do
       raise ArgumentError, "value.angle is above the wire maximum"
     end
 
-    v = value.angle
+    v = value_angle
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 25
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
-    scratch_bits = scratch_bits &&& 7
 
-    if value.span < 0 do
+    if value_span < 0 do
       raise ArgumentError, "value.span is below the wire minimum"
     end
 
-    if value.span > 18_446_744_073_709_486_080 do
+    if value_span > 18_446_744_073_709_486_080 do
       raise ArgumentError, "value.span is above the wire maximum"
     end
 
-    v = value.span &&& 0xFFFFFFFF
-    scratch = scratch ||| v <<< scratch_bits
-    scratch_bits = scratch_bits + 32
+    v = value_span &&& 0xFFFFFFFF
     flush = scratch_bits >>> 3
     data = <<data::binary, scratch::little-size(flush)-unit(8)>>
     scratch = scratch >>> (flush <<< 3)
     scratch_bits = scratch_bits &&& 7
-    v = value.span >>> 32
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 32
+    v = value_span >>> 32
     flush = scratch_bits >>> 3
     data = <<data::binary, scratch::little-size(flush)-unit(8)>>
     scratch = scratch >>> (flush <<< 3)
     scratch_bits = scratch_bits &&& 7
+    scratch = scratch ||| v <<< scratch_bits
+    scratch_bits = scratch_bits + 32
 
-    if value.reach < 0 do
+    if value_reach < 0 do
       raise ArgumentError, "value.reach is below the wire minimum"
     end
 
-    if value.reach > 131_072_000_000 do
+    if value_reach > 131_072_000_000 do
       raise ArgumentError, "value.reach is above the wire maximum"
     end
 
-    v = value.reach &&& 0xFFFFFFFF
+    v = value_reach &&& 0xFFFFFFFF
+    flush = scratch_bits >>> 3
+    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
+    scratch = scratch >>> (flush <<< 3)
+    scratch_bits = scratch_bits &&& 7
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 32
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
-    scratch_bits = scratch_bits &&& 7
-    v = value.reach >>> 32
+    v = value_reach >>> 32
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 5
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
-    scratch_bits = scratch_bits &&& 7
 
-    if value.ticks < 0 do
+    if value_ticks < 0 do
       raise ArgumentError, "value.ticks is below the wire minimum"
     end
 
-    if value.ticks > 1_000_000 do
+    if value_ticks > 1_000_000 do
       raise ArgumentError, "value.ticks is above the wire maximum"
     end
 
-    v = value.ticks
+    v = value_ticks
+    flush = scratch_bits >>> 3
+    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
+    scratch = scratch >>> (flush <<< 3)
+    scratch_bits = scratch_bits &&& 7
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 20
+
+    if length(value_samples) != 2 do
+      raise ArgumentError, "value.samples must hold exactly 2 elements"
+    end
+
     flush = scratch_bits >>> 3
     data = <<data::binary, scratch::little-size(flush)-unit(8)>>
     scratch = scratch >>> (flush <<< 3)
     scratch_bits = scratch_bits &&& 7
 
-    if length(value.samples) != 2 do
-      raise ArgumentError, "value.samples must hold exactly 2 elements"
-    end
-
     {data, scratch, scratch_bits} =
-      w_unsigned_probe_samples(value.samples, data, scratch, scratch_bits)
+      w_unsigned_probe_samples(value_samples, data, scratch, scratch_bits)
 
-    if value.locked != 196_608 do
+    if value_locked != 196_608 do
       raise ArgumentError, "value.locked must hold the locked value 196608"
     end
 
-    v = value.tail &&& 0xFF
+    v = value_tail &&& 0xFF
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 8
     flush = scratch_bits >>> 3
@@ -443,37 +461,43 @@ defmodule Ludicrous.Ludicrous do
 
       bits_read = 0
       if bits_read + 196 > num_bits, do: throw(:invalid)
-      v = rd(data, bits_read, 25)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0x1FFFFFF
       bits_read = bits_read + 25
       # a smuggled offset is refused
       if v > 23_592_960, do: throw(:invalid)
       v_angle = v
-      v = rd(data, bits_read, 32)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0xFFFFFFFF
       bits_read = bits_read + 32
       w = v
-      v = rd(data, bits_read, 32)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0xFFFFFFFF
       bits_read = bits_read + 32
       w = w ||| v <<< 32
       # a smuggled offset is refused
       if w > 18_446_744_073_709_486_080, do: throw(:invalid)
       v_span = w
-      v = rd(data, bits_read, 32)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0xFFFFFFFF
       bits_read = bits_read + 32
       w = v
-      v = rd(data, bits_read, 5)
+      v = rv >>> 32 &&& 0x1F
       bits_read = bits_read + 5
       w = w ||| v <<< 32
       # a smuggled offset is refused
       if w > 131_072_000_000, do: throw(:invalid)
       v_reach = w
-      v = rd(data, bits_read, 20)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0xFFFFF
       bits_read = bits_read + 20
       # a smuggled offset is refused
       if v > 1_000_000, do: throw(:invalid)
       v_ticks = v
       {bits_read, v_samples} = r_unsigned_probe_samples(2, [], data, num_bits, bits_read)
       v_locked = 196_608
-      v = rd(data, bits_read, 8)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0xFF
       bits_read = bits_read + 8
       v_tail = v
       # the final position is unobserved — the verdict and value are the surface
@@ -517,134 +541,131 @@ defmodule Ludicrous.Ludicrous do
     data = <<>>
     scratch = 0
     scratch_bits = 0
-    v = value.entity_id &&& 0xFFFFFFFF
-    scratch = scratch ||| v <<< scratch_bits
-    scratch_bits = scratch_bits + 32
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
-    scratch_bits = scratch_bits &&& 7
-    v = value.entity_id >>> 32 &&& 0xFFFFFFFF
-    scratch = scratch ||| v <<< scratch_bits
-    scratch_bits = scratch_bits + 32
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
-    scratch_bits = scratch_bits &&& 7
-    v = value.entity_id >>> 64 &&& 0xFFFFFFFF
-    scratch = scratch ||| v <<< scratch_bits
-    scratch_bits = scratch_bits + 32
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
-    scratch_bits = scratch_bits &&& 7
-    v = value.entity_id >>> 96 &&& 0xFFFFFFFF
-    scratch = scratch ||| v <<< scratch_bits
-    scratch_bits = scratch_bits + 32
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
-    scratch_bits = scratch_bits &&& 7
 
-    if value.energy < -5_000_000_000 do
+    %{
+      entity_id: value_entity_id,
+      energy: value_energy,
+      flux: value_flux,
+      bias: value_bias,
+      seed: value_seed
+    } = value
+
+    v = value_entity_id &&& 0xFFFFFFFF
+    scratch = scratch ||| v <<< scratch_bits
+    scratch_bits = scratch_bits + 32
+    v = value_entity_id >>> 32 &&& 0xFFFFFFFF
+    flush = scratch_bits >>> 3
+    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
+    scratch = scratch >>> (flush <<< 3)
+    scratch_bits = scratch_bits &&& 7
+    scratch = scratch ||| v <<< scratch_bits
+    scratch_bits = scratch_bits + 32
+    v = value_entity_id >>> 64 &&& 0xFFFFFFFF
+    flush = scratch_bits >>> 3
+    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
+    scratch = scratch >>> (flush <<< 3)
+    scratch_bits = scratch_bits &&& 7
+    scratch = scratch ||| v <<< scratch_bits
+    scratch_bits = scratch_bits + 32
+    v = value_entity_id >>> 96 &&& 0xFFFFFFFF
+    flush = scratch_bits >>> 3
+    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
+    scratch = scratch >>> (flush <<< 3)
+    scratch_bits = scratch_bits &&& 7
+    scratch = scratch ||| v <<< scratch_bits
+    scratch_bits = scratch_bits + 32
+
+    if value_energy < -5_000_000_000 do
       raise ArgumentError, "value.energy is below the wire minimum"
     end
 
-    if value.energy > 5_000_000_000 do
+    if value_energy > 5_000_000_000 do
       raise ArgumentError, "value.energy is above the wire maximum"
     end
 
-    w = value.energy + 5_000_000_000
+    w = value_energy + 5_000_000_000
     v = w &&& 0xFFFFFFFF
-    scratch = scratch ||| v <<< scratch_bits
-    scratch_bits = scratch_bits + 32
     flush = scratch_bits >>> 3
     data = <<data::binary, scratch::little-size(flush)-unit(8)>>
     scratch = scratch >>> (flush <<< 3)
     scratch_bits = scratch_bits &&& 7
+    scratch = scratch ||| v <<< scratch_bits
+    scratch_bits = scratch_bits + 32
     v = w >>> 32
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 2
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
-    scratch_bits = scratch_bits &&& 7
 
-    if value.flux < -1_267_650_600_228_229_401_496_703_205_376 do
+    if value_flux < -1_267_650_600_228_229_401_496_703_205_376 do
       raise ArgumentError, "value.flux is below the wire minimum"
     end
 
-    if value.flux > 1_267_650_600_228_229_401_496_703_205_376 do
+    if value_flux > 1_267_650_600_228_229_401_496_703_205_376 do
       raise ArgumentError, "value.flux is above the wire maximum"
     end
 
-    w = value.flux + 1_267_650_600_228_229_401_496_703_205_376
+    w = value_flux + 1_267_650_600_228_229_401_496_703_205_376
     v = w &&& 0xFFFFFFFF
-    scratch = scratch ||| v <<< scratch_bits
-    scratch_bits = scratch_bits + 32
     flush = scratch_bits >>> 3
     data = <<data::binary, scratch::little-size(flush)-unit(8)>>
     scratch = scratch >>> (flush <<< 3)
     scratch_bits = scratch_bits &&& 7
+    scratch = scratch ||| v <<< scratch_bits
+    scratch_bits = scratch_bits + 32
     v = w >>> 32 &&& 0xFFFFFFFF
-    scratch = scratch ||| v <<< scratch_bits
-    scratch_bits = scratch_bits + 32
     flush = scratch_bits >>> 3
     data = <<data::binary, scratch::little-size(flush)-unit(8)>>
     scratch = scratch >>> (flush <<< 3)
     scratch_bits = scratch_bits &&& 7
+    scratch = scratch ||| v <<< scratch_bits
+    scratch_bits = scratch_bits + 32
     v = w >>> 64 &&& 0xFFFFFFFF
-    scratch = scratch ||| v <<< scratch_bits
-    scratch_bits = scratch_bits + 32
     flush = scratch_bits >>> 3
     data = <<data::binary, scratch::little-size(flush)-unit(8)>>
     scratch = scratch >>> (flush <<< 3)
     scratch_bits = scratch_bits &&& 7
+    scratch = scratch ||| v <<< scratch_bits
+    scratch_bits = scratch_bits + 32
     v = w >>> 96
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 6
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
-    scratch_bits = scratch_bits &&& 7
 
-    if value.bias < -1000 do
+    if value_bias < -1000 do
       raise ArgumentError, "value.bias is below the wire minimum"
     end
 
-    if value.bias > 1000 do
+    if value_bias > 1000 do
       raise ArgumentError, "value.bias is above the wire maximum"
     end
 
-    v = value.bias + 1000
+    v = value_bias + 1000
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 11
+    v = value_seed &&& 0xFFFFFFFF
     flush = scratch_bits >>> 3
     data = <<data::binary, scratch::little-size(flush)-unit(8)>>
     scratch = scratch >>> (flush <<< 3)
     scratch_bits = scratch_bits &&& 7
-    v = value.seed &&& 0xFFFFFFFF
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 32
+    v = value_seed >>> 32 &&& 0xFFFFFFFF
     flush = scratch_bits >>> 3
     data = <<data::binary, scratch::little-size(flush)-unit(8)>>
     scratch = scratch >>> (flush <<< 3)
     scratch_bits = scratch_bits &&& 7
-    v = value.seed >>> 32 &&& 0xFFFFFFFF
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 32
+    v = value_seed >>> 64 &&& 0xFFFFFFFF
     flush = scratch_bits >>> 3
     data = <<data::binary, scratch::little-size(flush)-unit(8)>>
     scratch = scratch >>> (flush <<< 3)
     scratch_bits = scratch_bits &&& 7
-    v = value.seed >>> 64 &&& 0xFFFFFFFF
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 32
+    v = value_seed >>> 96 &&& 0xFFFFFFFF
     flush = scratch_bits >>> 3
     data = <<data::binary, scratch::little-size(flush)-unit(8)>>
     scratch = scratch >>> (flush <<< 3)
     scratch_bits = scratch_bits &&& 7
-    v = value.seed >>> 96 &&& 0xFFFFFFFF
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 32
     flush = scratch_bits >>> 3
@@ -666,58 +687,70 @@ defmodule Ludicrous.Ludicrous do
 
       bits_read = 0
       if bits_read + 403 > num_bits, do: throw(:invalid)
-      v = rd(data, bits_read, 32)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0xFFFFFFFF
       bits_read = bits_read + 32
       w = v
-      v = rd(data, bits_read, 32)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0xFFFFFFFF
       bits_read = bits_read + 32
       w = w ||| v <<< 32
-      v = rd(data, bits_read, 32)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0xFFFFFFFF
       bits_read = bits_read + 32
       w = w ||| v <<< 64
-      v = rd(data, bits_read, 32)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0xFFFFFFFF
       bits_read = bits_read + 32
       w = w ||| v <<< 96
       v_entity_id = w
-      v = rd(data, bits_read, 32)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0xFFFFFFFF
       bits_read = bits_read + 32
       w = v
-      v = rd(data, bits_read, 2)
+      v = rv >>> 32 &&& 0x3
       bits_read = bits_read + 2
       w = w ||| v <<< 32
       # a smuggled offset is refused
       if w > 10_000_000_000, do: throw(:invalid)
       v_energy = w - 5_000_000_000
-      v = rd(data, bits_read, 32)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0xFFFFFFFF
       bits_read = bits_read + 32
       w = v
-      v = rd(data, bits_read, 32)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0xFFFFFFFF
       bits_read = bits_read + 32
       w = w ||| v <<< 32
-      v = rd(data, bits_read, 32)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0xFFFFFFFF
       bits_read = bits_read + 32
       w = w ||| v <<< 64
-      v = rd(data, bits_read, 6)
+      v = rv >>> 32 &&& 0x3F
       bits_read = bits_read + 6
       w = w ||| v <<< 96
       # a smuggled offset is refused
       if w > 2_535_301_200_456_458_802_993_406_410_752, do: throw(:invalid)
       v_flux = w - 1_267_650_600_228_229_401_496_703_205_376
-      v = rd(data, bits_read, 11)
+      v = rv >>> 38
       bits_read = bits_read + 11
       # a smuggled offset is refused
       if v > 2000, do: throw(:invalid)
       v_bias = v - 1000
-      v = rd(data, bits_read, 32)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0xFFFFFFFF
       bits_read = bits_read + 32
       w = v
-      v = rd(data, bits_read, 32)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0xFFFFFFFF
       bits_read = bits_read + 32
       w = w ||| v <<< 32
-      v = rd(data, bits_read, 32)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0xFFFFFFFF
       bits_read = bits_read + 32
       w = w ||| v <<< 64
-      v = rd(data, bits_read, 32)
+      rv = rd(data, bits_read, 32)
+      v = rv
       bits_read = bits_read + 32
       w = w ||| v <<< 96
       v_seed = w
@@ -768,236 +801,237 @@ defmodule Ludicrous.Ludicrous do
     scratch = 0
     scratch_bits = 0
 
-    if value.mode < 0 do
+    %{
+      mode: value_mode,
+      probe: value_probe,
+      wide: value_wide,
+      keys: value_keys,
+      has_target: value_has_target
+    } = value
+
+    if value_mode < 0 do
       raise ArgumentError, "value.mode is below the wire minimum"
     end
 
-    if value.mode > 3 do
+    if value_mode > 3 do
       raise ArgumentError, "value.mode is above the wire maximum"
     end
 
-    v = value.mode
+    v = value_mode
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 2
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
-    scratch_bits = scratch_bits &&& 7
 
-    if value.probe.angle < -11_796_480 do
+    %{
+      angle: value_probe_angle,
+      position: value_probe_position,
+      reach: value_probe_reach,
+      ticks: value_probe_ticks,
+      samples: value_probe_samples
+    } = value_probe
+
+    if value_probe_angle < -11_796_480 do
       raise ArgumentError, "value.probe.angle is below the wire minimum"
     end
 
-    if value.probe.angle > 11_796_480 do
+    if value_probe_angle > 11_796_480 do
       raise ArgumentError, "value.probe.angle is above the wire maximum"
     end
 
-    v = value.probe.angle + 11_796_480
+    v = value_probe_angle + 11_796_480
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 25
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
-    scratch_bits = scratch_bits &&& 7
 
-    if value.probe.position < -1_966_080_000 do
+    if value_probe_position < -1_966_080_000 do
       raise ArgumentError, "value.probe.position is below the wire minimum"
     end
 
-    if value.probe.position > 1_966_080_000 do
+    if value_probe_position > 1_966_080_000 do
       raise ArgumentError, "value.probe.position is above the wire maximum"
     end
 
-    v = value.probe.position + 1_966_080_000
-    scratch = scratch ||| v <<< scratch_bits
-    scratch_bits = scratch_bits + 32
+    v = value_probe_position + 1_966_080_000
     flush = scratch_bits >>> 3
     data = <<data::binary, scratch::little-size(flush)-unit(8)>>
     scratch = scratch >>> (flush <<< 3)
     scratch_bits = scratch_bits &&& 7
+    scratch = scratch ||| v <<< scratch_bits
+    scratch_bits = scratch_bits + 32
 
-    if value.probe.reach < -65_536_000_000 do
+    if value_probe_reach < -65_536_000_000 do
       raise ArgumentError, "value.probe.reach is below the wire minimum"
     end
 
-    if value.probe.reach > 65_536_000_000 do
+    if value_probe_reach > 65_536_000_000 do
       raise ArgumentError, "value.probe.reach is above the wire maximum"
     end
 
-    w = value.probe.reach + 65_536_000_000
+    w = value_probe_reach + 65_536_000_000
     v = w &&& 0xFFFFFFFF
-    scratch = scratch ||| v <<< scratch_bits
-    scratch_bits = scratch_bits + 32
     flush = scratch_bits >>> 3
     data = <<data::binary, scratch::little-size(flush)-unit(8)>>
     scratch = scratch >>> (flush <<< 3)
     scratch_bits = scratch_bits &&& 7
+    scratch = scratch ||| v <<< scratch_bits
+    scratch_bits = scratch_bits + 32
     v = w >>> 32
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 5
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
-    scratch_bits = scratch_bits &&& 7
 
-    if value.probe.ticks < 0 do
+    if value_probe_ticks < 0 do
       raise ArgumentError, "value.probe.ticks is below the wire minimum"
     end
 
-    if value.probe.ticks > 1_000_000 do
+    if value_probe_ticks > 1_000_000 do
       raise ArgumentError, "value.probe.ticks is above the wire maximum"
     end
 
-    v = value.probe.ticks
-    scratch = scratch ||| v <<< scratch_bits
-    scratch_bits = scratch_bits + 20
+    v = value_probe_ticks
     flush = scratch_bits >>> 3
     data = <<data::binary, scratch::little-size(flush)-unit(8)>>
     scratch = scratch >>> (flush <<< 3)
     scratch_bits = scratch_bits &&& 7
+    scratch = scratch ||| v <<< scratch_bits
+    scratch_bits = scratch_bits + 20
 
-    if length(value.probe.samples) != 2 do
+    if length(value_probe_samples) != 2 do
       raise ArgumentError, "value.probe.samples must hold exactly 2 elements"
     end
 
+    flush = scratch_bits >>> 3
+    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
+    scratch = scratch >>> (flush <<< 3)
+    scratch_bits = scratch_bits &&& 7
+
     {data, scratch, scratch_bits} =
-      w_fixed_probe_samples(value.probe.samples, data, scratch, scratch_bits)
+      w_fixed_probe_samples(value_probe_samples, data, scratch, scratch_bits)
 
-    v = value.wide.entity_id &&& 0xFFFFFFFF
-    scratch = scratch ||| v <<< scratch_bits
-    scratch_bits = scratch_bits + 32
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
-    scratch_bits = scratch_bits &&& 7
-    v = value.wide.entity_id >>> 32 &&& 0xFFFFFFFF
-    scratch = scratch ||| v <<< scratch_bits
-    scratch_bits = scratch_bits + 32
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
-    scratch_bits = scratch_bits &&& 7
-    v = value.wide.entity_id >>> 64 &&& 0xFFFFFFFF
-    scratch = scratch ||| v <<< scratch_bits
-    scratch_bits = scratch_bits + 32
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
-    scratch_bits = scratch_bits &&& 7
-    v = value.wide.entity_id >>> 96 &&& 0xFFFFFFFF
-    scratch = scratch ||| v <<< scratch_bits
-    scratch_bits = scratch_bits + 32
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
-    scratch_bits = scratch_bits &&& 7
+    %{
+      entity_id: value_wide_entity_id,
+      energy: value_wide_energy,
+      flux: value_wide_flux,
+      bias: value_wide_bias,
+      seed: value_wide_seed
+    } = value_wide
 
-    if value.wide.energy < -5_000_000_000 do
+    v = value_wide_entity_id &&& 0xFFFFFFFF
+    scratch = scratch ||| v <<< scratch_bits
+    scratch_bits = scratch_bits + 32
+    v = value_wide_entity_id >>> 32 &&& 0xFFFFFFFF
+    flush = scratch_bits >>> 3
+    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
+    scratch = scratch >>> (flush <<< 3)
+    scratch_bits = scratch_bits &&& 7
+    scratch = scratch ||| v <<< scratch_bits
+    scratch_bits = scratch_bits + 32
+    v = value_wide_entity_id >>> 64 &&& 0xFFFFFFFF
+    flush = scratch_bits >>> 3
+    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
+    scratch = scratch >>> (flush <<< 3)
+    scratch_bits = scratch_bits &&& 7
+    scratch = scratch ||| v <<< scratch_bits
+    scratch_bits = scratch_bits + 32
+    v = value_wide_entity_id >>> 96 &&& 0xFFFFFFFF
+    flush = scratch_bits >>> 3
+    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
+    scratch = scratch >>> (flush <<< 3)
+    scratch_bits = scratch_bits &&& 7
+    scratch = scratch ||| v <<< scratch_bits
+    scratch_bits = scratch_bits + 32
+
+    if value_wide_energy < -5_000_000_000 do
       raise ArgumentError, "value.wide.energy is below the wire minimum"
     end
 
-    if value.wide.energy > 5_000_000_000 do
+    if value_wide_energy > 5_000_000_000 do
       raise ArgumentError, "value.wide.energy is above the wire maximum"
     end
 
-    w = value.wide.energy + 5_000_000_000
+    w = value_wide_energy + 5_000_000_000
     v = w &&& 0xFFFFFFFF
-    scratch = scratch ||| v <<< scratch_bits
-    scratch_bits = scratch_bits + 32
     flush = scratch_bits >>> 3
     data = <<data::binary, scratch::little-size(flush)-unit(8)>>
     scratch = scratch >>> (flush <<< 3)
     scratch_bits = scratch_bits &&& 7
+    scratch = scratch ||| v <<< scratch_bits
+    scratch_bits = scratch_bits + 32
     v = w >>> 32
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 2
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
-    scratch_bits = scratch_bits &&& 7
 
-    if value.wide.flux < -1_267_650_600_228_229_401_496_703_205_376 do
+    if value_wide_flux < -1_267_650_600_228_229_401_496_703_205_376 do
       raise ArgumentError, "value.wide.flux is below the wire minimum"
     end
 
-    if value.wide.flux > 1_267_650_600_228_229_401_496_703_205_376 do
+    if value_wide_flux > 1_267_650_600_228_229_401_496_703_205_376 do
       raise ArgumentError, "value.wide.flux is above the wire maximum"
     end
 
-    w = value.wide.flux + 1_267_650_600_228_229_401_496_703_205_376
+    w = value_wide_flux + 1_267_650_600_228_229_401_496_703_205_376
     v = w &&& 0xFFFFFFFF
-    scratch = scratch ||| v <<< scratch_bits
-    scratch_bits = scratch_bits + 32
     flush = scratch_bits >>> 3
     data = <<data::binary, scratch::little-size(flush)-unit(8)>>
     scratch = scratch >>> (flush <<< 3)
     scratch_bits = scratch_bits &&& 7
+    scratch = scratch ||| v <<< scratch_bits
+    scratch_bits = scratch_bits + 32
     v = w >>> 32 &&& 0xFFFFFFFF
-    scratch = scratch ||| v <<< scratch_bits
-    scratch_bits = scratch_bits + 32
     flush = scratch_bits >>> 3
     data = <<data::binary, scratch::little-size(flush)-unit(8)>>
     scratch = scratch >>> (flush <<< 3)
     scratch_bits = scratch_bits &&& 7
+    scratch = scratch ||| v <<< scratch_bits
+    scratch_bits = scratch_bits + 32
     v = w >>> 64 &&& 0xFFFFFFFF
-    scratch = scratch ||| v <<< scratch_bits
-    scratch_bits = scratch_bits + 32
     flush = scratch_bits >>> 3
     data = <<data::binary, scratch::little-size(flush)-unit(8)>>
     scratch = scratch >>> (flush <<< 3)
     scratch_bits = scratch_bits &&& 7
+    scratch = scratch ||| v <<< scratch_bits
+    scratch_bits = scratch_bits + 32
     v = w >>> 96
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 6
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
-    scratch_bits = scratch_bits &&& 7
 
-    if value.wide.bias < -1000 do
+    if value_wide_bias < -1000 do
       raise ArgumentError, "value.wide.bias is below the wire minimum"
     end
 
-    if value.wide.bias > 1000 do
+    if value_wide_bias > 1000 do
       raise ArgumentError, "value.wide.bias is above the wire maximum"
     end
 
-    v = value.wide.bias + 1000
+    v = value_wide_bias + 1000
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 11
+    v = value_wide_seed &&& 0xFFFFFFFF
     flush = scratch_bits >>> 3
     data = <<data::binary, scratch::little-size(flush)-unit(8)>>
     scratch = scratch >>> (flush <<< 3)
     scratch_bits = scratch_bits &&& 7
-    v = value.wide.seed &&& 0xFFFFFFFF
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 32
+    v = value_wide_seed >>> 32 &&& 0xFFFFFFFF
     flush = scratch_bits >>> 3
     data = <<data::binary, scratch::little-size(flush)-unit(8)>>
     scratch = scratch >>> (flush <<< 3)
     scratch_bits = scratch_bits &&& 7
-    v = value.wide.seed >>> 32 &&& 0xFFFFFFFF
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 32
+    v = value_wide_seed >>> 64 &&& 0xFFFFFFFF
     flush = scratch_bits >>> 3
     data = <<data::binary, scratch::little-size(flush)-unit(8)>>
     scratch = scratch >>> (flush <<< 3)
     scratch_bits = scratch_bits &&& 7
-    v = value.wide.seed >>> 64 &&& 0xFFFFFFFF
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 32
+    v = value_wide_seed >>> 96 &&& 0xFFFFFFFF
     flush = scratch_bits >>> 3
     data = <<data::binary, scratch::little-size(flush)-unit(8)>>
     scratch = scratch >>> (flush <<< 3)
     scratch_bits = scratch_bits &&& 7
-    v = value.wide.seed >>> 96 &&& 0xFFFFFFFF
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 32
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
-    scratch_bits = scratch_bits &&& 7
-    n = length(value.keys)
+    n = length(value_keys)
 
     if n > 4 do
       raise ArgumentError, "value.keys count is above the wire maximum"
@@ -1012,9 +1046,9 @@ defmodule Ludicrous.Ludicrous do
     scratch_bits = scratch_bits &&& 7
 
     {data, scratch, scratch_bits} =
-      w_ludicrous_state_keys(value.keys, data, scratch, scratch_bits)
+      w_ludicrous_state_keys(value_keys, data, scratch, scratch_bits)
 
-    v = if value.has_target, do: 1, else: 0
+    v = if value_has_target, do: 1, else: 0
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 1
     flush = scratch_bits >>> 3
@@ -1023,29 +1057,29 @@ defmodule Ludicrous.Ludicrous do
     scratch_bits = scratch_bits &&& 7
 
     {data, scratch, scratch_bits} =
-      if value.has_target do
+      if value_has_target do
         v = value.target_id &&& 0xFFFFFFFF
         scratch = scratch ||| v <<< scratch_bits
         scratch_bits = scratch_bits + 32
-        flush = scratch_bits >>> 3
-        data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-        scratch = scratch >>> (flush <<< 3)
-        scratch_bits = scratch_bits &&& 7
         v = value.target_id >>> 32 &&& 0xFFFFFFFF
-        scratch = scratch ||| v <<< scratch_bits
-        scratch_bits = scratch_bits + 32
         flush = scratch_bits >>> 3
         data = <<data::binary, scratch::little-size(flush)-unit(8)>>
         scratch = scratch >>> (flush <<< 3)
         scratch_bits = scratch_bits &&& 7
+        scratch = scratch ||| v <<< scratch_bits
+        scratch_bits = scratch_bits + 32
         v = value.target_id >>> 64 &&& 0xFFFFFFFF
-        scratch = scratch ||| v <<< scratch_bits
-        scratch_bits = scratch_bits + 32
         flush = scratch_bits >>> 3
         data = <<data::binary, scratch::little-size(flush)-unit(8)>>
         scratch = scratch >>> (flush <<< 3)
         scratch_bits = scratch_bits &&& 7
+        scratch = scratch ||| v <<< scratch_bits
+        scratch_bits = scratch_bits + 32
         v = value.target_id >>> 96 &&& 0xFFFFFFFF
+        flush = scratch_bits >>> 3
+        data = <<data::binary, scratch::little-size(flush)-unit(8)>>
+        scratch = scratch >>> (flush <<< 3)
+        scratch_bits = scratch_bits &&& 7
         scratch = scratch ||| v <<< scratch_bits
         scratch_bits = scratch_bits + 32
         flush = scratch_bits >>> 3
@@ -1072,29 +1106,33 @@ defmodule Ludicrous.Ludicrous do
 
       bits_read = 0
       if bits_read + 561 > num_bits, do: throw(:invalid)
-      v = rd(data, bits_read, 2)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0x3
       bits_read = bits_read + 2
       v_mode = v
-      v = rd(data, bits_read, 25)
+      v = rv >>> 2 &&& 0x1FFFFFF
       bits_read = bits_read + 25
       # a smuggled offset is refused
       if v > 23_592_960, do: throw(:invalid)
       v_probe_angle = v - 11_796_480
-      v = rd(data, bits_read, 32)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0xFFFFFFFF
       bits_read = bits_read + 32
       # a smuggled offset is refused
       if v > 3_932_160_000, do: throw(:invalid)
       v_probe_position = v - 1_966_080_000
-      v = rd(data, bits_read, 32)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0xFFFFFFFF
       bits_read = bits_read + 32
       w = v
-      v = rd(data, bits_read, 5)
+      v = rv >>> 32 &&& 0x1F
       bits_read = bits_read + 5
       w = w ||| v <<< 32
       # a smuggled offset is refused
       if w > 131_072_000_000, do: throw(:invalid)
       v_probe_reach = w - 65_536_000_000
-      v = rd(data, bits_read, 20)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0xFFFFF
       bits_read = bits_read + 20
       # a smuggled offset is refused
       if v > 1_000_000, do: throw(:invalid)
@@ -1109,58 +1147,70 @@ defmodule Ludicrous.Ludicrous do
         samples: v_probe_samples
       }
 
-      v = rd(data, bits_read, 32)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0xFFFFFFFF
       bits_read = bits_read + 32
       w = v
-      v = rd(data, bits_read, 32)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0xFFFFFFFF
       bits_read = bits_read + 32
       w = w ||| v <<< 32
-      v = rd(data, bits_read, 32)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0xFFFFFFFF
       bits_read = bits_read + 32
       w = w ||| v <<< 64
-      v = rd(data, bits_read, 32)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0xFFFFFFFF
       bits_read = bits_read + 32
       w = w ||| v <<< 96
       v_wide_entity_id = w
-      v = rd(data, bits_read, 32)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0xFFFFFFFF
       bits_read = bits_read + 32
       w = v
-      v = rd(data, bits_read, 2)
+      v = rv >>> 32 &&& 0x3
       bits_read = bits_read + 2
       w = w ||| v <<< 32
       # a smuggled offset is refused
       if w > 10_000_000_000, do: throw(:invalid)
       v_wide_energy = w - 5_000_000_000
-      v = rd(data, bits_read, 32)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0xFFFFFFFF
       bits_read = bits_read + 32
       w = v
-      v = rd(data, bits_read, 32)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0xFFFFFFFF
       bits_read = bits_read + 32
       w = w ||| v <<< 32
-      v = rd(data, bits_read, 32)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0xFFFFFFFF
       bits_read = bits_read + 32
       w = w ||| v <<< 64
-      v = rd(data, bits_read, 6)
+      v = rv >>> 32 &&& 0x3F
       bits_read = bits_read + 6
       w = w ||| v <<< 96
       # a smuggled offset is refused
       if w > 2_535_301_200_456_458_802_993_406_410_752, do: throw(:invalid)
       v_wide_flux = w - 1_267_650_600_228_229_401_496_703_205_376
-      v = rd(data, bits_read, 11)
+      v = rv >>> 38
       bits_read = bits_read + 11
       # a smuggled offset is refused
       if v > 2000, do: throw(:invalid)
       v_wide_bias = v - 1000
-      v = rd(data, bits_read, 32)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0xFFFFFFFF
       bits_read = bits_read + 32
       w = v
-      v = rd(data, bits_read, 32)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0xFFFFFFFF
       bits_read = bits_read + 32
       w = w ||| v <<< 32
-      v = rd(data, bits_read, 32)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0xFFFFFFFF
       bits_read = bits_read + 32
       w = w ||| v <<< 64
-      v = rd(data, bits_read, 32)
+      rv = rd(data, bits_read, 32)
+      v = rv
       bits_read = bits_read + 32
       w = w ||| v <<< 96
       v_wide_seed = w
@@ -1174,7 +1224,8 @@ defmodule Ludicrous.Ludicrous do
       }
 
       if bits_read + 3 > num_bits, do: throw(:invalid)
-      v = rd(data, bits_read, 3)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0x7
       bits_read = bits_read + 3
       # the count guards the loop — reject, never clamp
       if v > 4, do: throw(:invalid)
@@ -1182,23 +1233,28 @@ defmodule Ludicrous.Ludicrous do
       if bits_read + n * 128 > num_bits, do: throw(:invalid)
       {bits_read, v_keys} = r_ludicrous_state_keys(n, [], data, num_bits, bits_read)
       if bits_read + 1 > num_bits, do: throw(:invalid)
-      v = rd(data, bits_read, 1)
+      rv = rd(data, bits_read, 1)
+      v = rv
       bits_read = bits_read + 1
       v_has_target = v == 1
 
       {bits_read, v_target_id} =
         if v_has_target do
           if bits_read + 128 > num_bits, do: throw(:invalid)
-          v = rd(data, bits_read, 32)
+          rv = rdw(data, bits_read, 49)
+          v = rv &&& 0xFFFFFFFF
           bits_read = bits_read + 32
           w = v
-          v = rd(data, bits_read, 32)
+          rv = rdw(data, bits_read, 49)
+          v = rv &&& 0xFFFFFFFF
           bits_read = bits_read + 32
           w = w ||| v <<< 32
-          v = rd(data, bits_read, 32)
+          rv = rdw(data, bits_read, 49)
+          v = rv &&& 0xFFFFFFFF
           bits_read = bits_read + 32
           w = w ||| v <<< 64
-          v = rd(data, bits_read, 32)
+          rv = rd(data, bits_read, 32)
+          v = rv
           bits_read = bits_read + 32
           w = w ||| v <<< 96
           v_target_id = w
@@ -1263,19 +1319,26 @@ defmodule Ludicrous.Ludicrous do
     scratch = 0
     scratch_bits = 0
 
-    if value.locked_fixed != -196_608 do
+    %{
+      locked_fixed: value_locked_fixed,
+      locked_int: value_locked_int,
+      locked_wide: value_locked_wide,
+      tail: value_tail
+    } = value
+
+    if value_locked_fixed != -196_608 do
       raise ArgumentError, "value.locked_fixed must hold the locked value -196608"
     end
 
-    if value.locked_int != 7 do
+    if value_locked_int != 7 do
       raise ArgumentError, "value.locked_int must hold the locked value 7"
     end
 
-    if value.locked_wide != -12_345_678_901_234 do
+    if value_locked_wide != -12_345_678_901_234 do
       raise ArgumentError, "value.locked_wide must hold the locked value -12345678901234"
     end
 
-    v = value.tail &&& 0xFF
+    v = value_tail &&& 0xFF
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 8
     flush = scratch_bits >>> 3
@@ -1300,7 +1363,8 @@ defmodule Ludicrous.Ludicrous do
       v_locked_fixed = -196_608
       v_locked_int = 7
       v_locked_wide = -12_345_678_901_234
-      v = rd(data, bits_read, 8)
+      rv = rd(data, bits_read, 8)
+      v = rv
       bits_read = bits_read + 8
       v_tail = v
       # the final position is unobserved — the verdict and value are the surface
@@ -1339,71 +1403,60 @@ defmodule Ludicrous.Ludicrous do
     data = <<>>
     scratch = 0
     scratch_bits = 0
+    %{x: value_x, y: value_y, z: value_z} = value
 
-    if value.x < -6_553_600_000 do
+    if value_x < -6_553_600_000 do
       raise ArgumentError, "value.x is below the wire minimum"
     end
 
-    if value.x > 6_553_600_000 do
+    if value_x > 6_553_600_000 do
       raise ArgumentError, "value.x is above the wire maximum"
     end
 
-    w = value.x + 6_553_600_000
+    w = value_x + 6_553_600_000
     v = w &&& 0xFFFFFFFF
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 32
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
-    scratch_bits = scratch_bits &&& 7
     v = w >>> 32
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 2
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
-    scratch_bits = scratch_bits &&& 7
 
-    if value.y < -6_553_600_000 do
+    if value_y < -6_553_600_000 do
       raise ArgumentError, "value.y is below the wire minimum"
     end
 
-    if value.y > 6_553_600_000 do
+    if value_y > 6_553_600_000 do
       raise ArgumentError, "value.y is above the wire maximum"
     end
 
-    w = value.y + 6_553_600_000
+    w = value_y + 6_553_600_000
     v = w &&& 0xFFFFFFFF
-    scratch = scratch ||| v <<< scratch_bits
-    scratch_bits = scratch_bits + 32
     flush = scratch_bits >>> 3
     data = <<data::binary, scratch::little-size(flush)-unit(8)>>
     scratch = scratch >>> (flush <<< 3)
     scratch_bits = scratch_bits &&& 7
+    scratch = scratch ||| v <<< scratch_bits
+    scratch_bits = scratch_bits + 32
     v = w >>> 32
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 2
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
-    scratch_bits = scratch_bits &&& 7
 
-    if value.z < -6_553_600_000 do
+    if value_z < -6_553_600_000 do
       raise ArgumentError, "value.z is below the wire minimum"
     end
 
-    if value.z > 6_553_600_000 do
+    if value_z > 6_553_600_000 do
       raise ArgumentError, "value.z is above the wire maximum"
     end
 
-    w = value.z + 6_553_600_000
+    w = value_z + 6_553_600_000
     v = w &&& 0xFFFFFFFF
-    scratch = scratch ||| v <<< scratch_bits
-    scratch_bits = scratch_bits + 32
     flush = scratch_bits >>> 3
     data = <<data::binary, scratch::little-size(flush)-unit(8)>>
     scratch = scratch >>> (flush <<< 3)
     scratch_bits = scratch_bits &&& 7
+    scratch = scratch ||| v <<< scratch_bits
+    scratch_bits = scratch_bits + 32
     v = w >>> 32
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 2
@@ -1426,28 +1479,31 @@ defmodule Ludicrous.Ludicrous do
 
       bits_read = 0
       if bits_read + 102 > num_bits, do: throw(:invalid)
-      v = rd(data, bits_read, 32)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0xFFFFFFFF
       bits_read = bits_read + 32
       w = v
-      v = rd(data, bits_read, 2)
+      v = rv >>> 32 &&& 0x3
       bits_read = bits_read + 2
       w = w ||| v <<< 32
       # a smuggled offset is refused
       if w > 13_107_200_000, do: throw(:invalid)
       v_x = w - 6_553_600_000
-      v = rd(data, bits_read, 32)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0xFFFFFFFF
       bits_read = bits_read + 32
       w = v
-      v = rd(data, bits_read, 2)
+      v = rv >>> 32 &&& 0x3
       bits_read = bits_read + 2
       w = w ||| v <<< 32
       # a smuggled offset is refused
       if w > 13_107_200_000, do: throw(:invalid)
       v_y = w - 6_553_600_000
-      v = rd(data, bits_read, 32)
+      rv = rdw(data, bits_read, 34)
+      v = rv &&& 0xFFFFFFFF
       bits_read = bits_read + 32
       w = v
-      v = rd(data, bits_read, 2)
+      v = rv >>> 32
       bits_read = bits_read + 2
       w = w ||| v <<< 32
       # a smuggled offset is refused
@@ -1482,64 +1538,65 @@ defmodule Ludicrous.Ludicrous do
     data = <<>>
     scratch = 0
     scratch_bits = 0
+    %{x: value_x, y: value_y, z: value_z, w: value_w} = value
 
-    if value.x < -1_073_741_824 do
+    if value_x < -1_073_741_824 do
       raise ArgumentError, "value.x is below the wire minimum"
     end
 
-    if value.x > 1_073_741_824 do
+    if value_x > 1_073_741_824 do
       raise ArgumentError, "value.x is above the wire maximum"
     end
 
-    v = value.x + 1_073_741_824
+    v = value_x + 1_073_741_824
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 32
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
-    scratch_bits = scratch_bits &&& 7
 
-    if value.y < -1_073_741_824 do
+    if value_y < -1_073_741_824 do
       raise ArgumentError, "value.y is below the wire minimum"
     end
 
-    if value.y > 1_073_741_824 do
+    if value_y > 1_073_741_824 do
       raise ArgumentError, "value.y is above the wire maximum"
     end
 
-    v = value.y + 1_073_741_824
-    scratch = scratch ||| v <<< scratch_bits
-    scratch_bits = scratch_bits + 32
+    v = value_y + 1_073_741_824
     flush = scratch_bits >>> 3
     data = <<data::binary, scratch::little-size(flush)-unit(8)>>
     scratch = scratch >>> (flush <<< 3)
     scratch_bits = scratch_bits &&& 7
+    scratch = scratch ||| v <<< scratch_bits
+    scratch_bits = scratch_bits + 32
 
-    if value.z < -1_073_741_824 do
+    if value_z < -1_073_741_824 do
       raise ArgumentError, "value.z is below the wire minimum"
     end
 
-    if value.z > 1_073_741_824 do
+    if value_z > 1_073_741_824 do
       raise ArgumentError, "value.z is above the wire maximum"
     end
 
-    v = value.z + 1_073_741_824
-    scratch = scratch ||| v <<< scratch_bits
-    scratch_bits = scratch_bits + 32
+    v = value_z + 1_073_741_824
     flush = scratch_bits >>> 3
     data = <<data::binary, scratch::little-size(flush)-unit(8)>>
     scratch = scratch >>> (flush <<< 3)
     scratch_bits = scratch_bits &&& 7
+    scratch = scratch ||| v <<< scratch_bits
+    scratch_bits = scratch_bits + 32
 
-    if value.w < -1_073_741_824 do
+    if value_w < -1_073_741_824 do
       raise ArgumentError, "value.w is below the wire minimum"
     end
 
-    if value.w > 1_073_741_824 do
+    if value_w > 1_073_741_824 do
       raise ArgumentError, "value.w is above the wire maximum"
     end
 
-    v = value.w + 1_073_741_824
+    v = value_w + 1_073_741_824
+    flush = scratch_bits >>> 3
+    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
+    scratch = scratch >>> (flush <<< 3)
+    scratch_bits = scratch_bits &&& 7
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 32
     flush = scratch_bits >>> 3
@@ -1561,22 +1618,26 @@ defmodule Ludicrous.Ludicrous do
 
       bits_read = 0
       if bits_read + 128 > num_bits, do: throw(:invalid)
-      v = rd(data, bits_read, 32)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0xFFFFFFFF
       bits_read = bits_read + 32
       # a smuggled offset is refused
       if v > 2_147_483_648, do: throw(:invalid)
       v_x = v - 1_073_741_824
-      v = rd(data, bits_read, 32)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0xFFFFFFFF
       bits_read = bits_read + 32
       # a smuggled offset is refused
       if v > 2_147_483_648, do: throw(:invalid)
       v_y = v - 1_073_741_824
-      v = rd(data, bits_read, 32)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0xFFFFFFFF
       bits_read = bits_read + 32
       # a smuggled offset is refused
       if v > 2_147_483_648, do: throw(:invalid)
       v_z = v - 1_073_741_824
-      v = rd(data, bits_read, 32)
+      rv = rd(data, bits_read, 32)
+      v = rv
       bits_read = bits_read + 32
       # a smuggled offset is refused
       if v > 2_147_483_648, do: throw(:invalid)
@@ -1619,7 +1680,8 @@ defmodule Ludicrous.Ludicrous do
     do: {bits_read, Enum.reverse(acc)}
 
   defp r_fixed_probe_samples(remaining, acc, data, num_bits, bits_read) do
-    v = rd(data, bits_read, 21)
+    rv = rdw(data, bits_read, 49)
+    v = rv &&& 0x1FFFFF
     bits_read = bits_read + 21
     # a smuggled offset is refused
     if v > 1_048_576, do: throw(:invalid)
@@ -1653,7 +1715,8 @@ defmodule Ludicrous.Ludicrous do
     do: {bits_read, Enum.reverse(acc)}
 
   defp r_unsigned_probe_samples(remaining, acc, data, num_bits, bits_read) do
-    v = rd(data, bits_read, 21)
+    rv = rdw(data, bits_read, 49)
+    v = rv &&& 0x1FFFFF
     bits_read = bits_read + 21
     # a smuggled offset is refused
     if v > 1_048_576, do: throw(:invalid)
@@ -1667,25 +1730,25 @@ defmodule Ludicrous.Ludicrous do
     v = e &&& 0xFFFFFFFF
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 32
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
-    scratch_bits = scratch_bits &&& 7
     v = e >>> 32 &&& 0xFFFFFFFF
-    scratch = scratch ||| v <<< scratch_bits
-    scratch_bits = scratch_bits + 32
     flush = scratch_bits >>> 3
     data = <<data::binary, scratch::little-size(flush)-unit(8)>>
     scratch = scratch >>> (flush <<< 3)
     scratch_bits = scratch_bits &&& 7
+    scratch = scratch ||| v <<< scratch_bits
+    scratch_bits = scratch_bits + 32
     v = e >>> 64 &&& 0xFFFFFFFF
-    scratch = scratch ||| v <<< scratch_bits
-    scratch_bits = scratch_bits + 32
     flush = scratch_bits >>> 3
     data = <<data::binary, scratch::little-size(flush)-unit(8)>>
     scratch = scratch >>> (flush <<< 3)
     scratch_bits = scratch_bits &&& 7
+    scratch = scratch ||| v <<< scratch_bits
+    scratch_bits = scratch_bits + 32
     v = e >>> 96 &&& 0xFFFFFFFF
+    flush = scratch_bits >>> 3
+    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
+    scratch = scratch >>> (flush <<< 3)
+    scratch_bits = scratch_bits &&& 7
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 32
     flush = scratch_bits >>> 3
@@ -1699,16 +1762,20 @@ defmodule Ludicrous.Ludicrous do
     do: {bits_read, Enum.reverse(acc)}
 
   defp r_ludicrous_state_keys(remaining, acc, data, num_bits, bits_read) do
-    v = rd(data, bits_read, 32)
+    rv = rdw(data, bits_read, 49)
+    v = rv &&& 0xFFFFFFFF
     bits_read = bits_read + 32
     w = v
-    v = rd(data, bits_read, 32)
+    rv = rdw(data, bits_read, 49)
+    v = rv &&& 0xFFFFFFFF
     bits_read = bits_read + 32
     w = w ||| v <<< 32
-    v = rd(data, bits_read, 32)
+    rv = rdw(data, bits_read, 49)
+    v = rv &&& 0xFFFFFFFF
     bits_read = bits_read + 32
     w = w ||| v <<< 64
-    v = rd(data, bits_read, 32)
+    rv = rdw(data, bits_read, 49)
+    v = rv &&& 0xFFFFFFFF
     bits_read = bits_read + 32
     w = w ||| v <<< 96
     e = w
@@ -1725,6 +1792,22 @@ defmodule Ludicrous.Ludicrous do
     window =
       case data do
         <<_::binary-size(^i), w::little-40, _::binary>> -> w
+        <<_::binary-size(^i), rest::binary>> -> :binary.decode_unsigned(rest, :little)
+      end
+
+    window >>> (bits_read &&& 7) &&& (1 <<< bits) - 1
+  end
+
+  # The wide window decode: 56 bits, enough for a 7-bit offset plus a
+  # 49-bit group, and still under the 2^59 fixnum boundary — one match
+  # context serves a whole group of fields instead of one per field. A
+  # 64-bit window would box and measures slower than the reads it saves.
+  defp rdw(data, bits_read, bits) do
+    i = bits_read >>> 3
+
+    window =
+      case data do
+        <<_::binary-size(^i), w::little-56, _::binary>> -> w
         <<_::binary-size(^i), rest::binary>> -> :binary.decode_unsigned(rest, :little)
       end
 
