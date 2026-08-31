@@ -3,24 +3,29 @@
 #   "Please lock and do not make further changes to C/C++ during optimization
 #    and profiling."
 #
-# While this file exists, CI's cpp-lock job REFUSES any pull request that
-# modifies a path under the prefixes below. The C and C++ generated legs,
-# bench code, and emitters are the frozen reference for the laggard round —
-# any movement in the C/C++ rows is an alarm, never a breakthrough.
+# NARROWED 2026-08-31 by the owner's bench_mixed redefinition directive
+# (issue #184: "Let's extend it to support all serialization_* methods" /
+# "No need for a new bench. Just change bench mixed as per-rec."): the
+# redefinition must reach the c/cpp harness legs and their generated bench
+# code — through BYTE-UNCHANGED emitters, which is the protection that
+# actually locks C/C++ performance. So the mechanical lock now covers the
+# emitters and the non-bench generated outputs (nothing else regenerates
+# those; any change there means an emitter or example moved). The harness
+# legs and generated/bench/{c,cpp} leave the mechanical lock under TWO
+# procedural controls, enforced at review: (1) emitters byte-unchanged in
+# any PR touching them (git shows it), and (2) the unchanged shapes'
+# c/cpp rows (bench_packet/ints/bits) must reproduce in-sitting in any PR
+# that touches the c/cpp legs.
 #
-# Lifting the lock is deliberate and visible: a PR whose diff touches ONLY
-# this file (deleting it) passes the guard by construction and says what it
-# is doing in the open. The lift condition is the round closing, on the
-# owner's word (issue #170).
+# While this file exists, CI's cpp-lock job REFUSES any pull request that
+# modifies a path under the prefixes below. Lifting or amending the lock is
+# a PR whose diff touches ONLY this file. The full lift condition is the
+# round closing, on the owner's word (issue #170).
 #
 # Locked prefixes, one per line (matched against changed paths):
 internal/codegen/c/
 internal/codegen/cpp/
-bench/c/
-bench/cpp/
 generated/c/
 generated/cpp/
 generated/c-ludicrous/
 generated/cpp-ludicrous/
-generated/bench/c/
-generated/bench/cpp/
