@@ -58,13 +58,13 @@ Cost to serialize a representative game packet, relative to generated C++ at 100
 |---|---:|
 | C | 100% |
 | C++ | 100% |
-| Java | 148% |
 | Rust | 153% |
-| Go | 208% |
-| C# | 221% |
-| Dart | 363% |
-| JavaScript | 461% |
-| Elixir | 1348% |
+| Java | 156% |
+| Go | 209% |
+| C# | 224% |
+| Dart | 225% |
+| JavaScript | 318% |
+| Elixir | 1364% |
 
 Measured by [the benchmark](bench/): the real generated code in every language, over the same
 wire corpus — a 438-byte packet exercising every construct, with integers carrying 92% of the
