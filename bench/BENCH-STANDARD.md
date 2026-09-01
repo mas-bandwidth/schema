@@ -998,6 +998,13 @@ benchmarks two different versions of the same C++ library and publishes both.
 > `msbuild -getItem:Compile`) before it is printed — **and a leg that cannot
 > prove its runtime path REFUSES (no rows) rather than reporting.**
 
+**Every commit line records a `-dirty` suffix when the tree differs from
+HEAD** (added 2026-09-01, closing #186): a sweep of uncommitted work must say
+so in its own preamble, or the archaeology of an experiment run reconstructs
+the wrong configuration from a clean-looking sha — which is exactly what the
+2026-08-15 rust-read CSVs did, recording a commit while measuring work that
+never shipped as that commit.
+
 **The schema commit records its BRANCH too** (added 2026-09-01, alongside the
 runtime lines that already did). The failure it closes is the twin of the one
 below: a sweep that silently measured the wrong tree, and a CSV that could not
