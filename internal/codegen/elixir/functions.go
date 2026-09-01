@@ -1781,7 +1781,7 @@ const (
 	// readUnrollMax bounds the scalar clauses.
 	fastFeedMaxUnroll = 16
 	// fastFeedMaxReg is the fixnum budget left for `leftover + segment` after
-	// the runtime carry's up-to-7 bits
+	// the runtime carry's up-to-7 bits.
 	fastFeedMaxReg = 52
 )
 
