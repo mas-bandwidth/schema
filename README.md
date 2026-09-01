@@ -109,7 +109,7 @@ would have hand-written, not an interpreter walking a schema at runtime.
 ## How do I use it?
 
 ```
-go build -o /usr/local/bin/schema ./cmd/schema
+make            # builds the compiler at bin/schema — needs only Go
 
 schema check    <dir of .schema files>
 schema generate --lang c|cpp|cs|dart|elixir|go|java|js|rust --out <outdir> <dir>
