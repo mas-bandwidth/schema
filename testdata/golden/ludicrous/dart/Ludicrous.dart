@@ -2120,7 +2120,7 @@ final class FixedQuat {
   // wire [-1, 1]
   int z = 0;
   // specified default at construction; zero* gives the §5 zero form; wire [-1, 1]
-  int w = 1152921504606846976;
+  int w = 1073741824;
 }
 
 // fixedQuatMaxBits is the longest wire path; align pads at worst case (SPEC §6.1).
