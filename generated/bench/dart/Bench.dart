@@ -1980,18 +1980,47 @@ int writeBenchMixed(BenchMixed value, ByteData view) {
     scratchBits -= 64;
     scratch = v >>> (7 - scratchBits);
   }
-  for (var i0 = 0; i0 < value.statsCount; i0++) {
-    final e0 = value.stats[i0];
-    assert(e0.delta >= -512);
-    assert(e0.delta <= 511);
-    v = ((e0.statId) & 0xff) | (((e0.delta + 512) & 0x3ff) << 8);
-    scratch |= v << scratchBits;
-    scratchBits += 18;
-    if (scratchBits >= 64) {
-      view.setUint64(wordIndex * 8, scratch, Endian.little);
-      wordIndex++;
-      scratchBits -= 64;
-      scratch = v >>> (18 - scratchBits);
+  {
+    var i0 = 0;
+    for (; i0 + 3 <= value.statsCount; i0 += 3) {
+      final e0 = value.stats[i0];
+      assert(e0.delta >= -512);
+      assert(e0.delta <= 511);
+      final e0g1 = value.stats[i0 + 1];
+      assert(e0g1.delta >= -512);
+      assert(e0g1.delta <= 511);
+      final e0g2 = value.stats[i0 + 2];
+      assert(e0g2.delta >= -512);
+      assert(e0g2.delta <= 511);
+      v =
+          ((e0.statId) & 0xff) |
+          (((e0.delta + 512) & 0x3ff) << 8) |
+          (((e0g1.statId) & 0xff) << 18) |
+          (((e0g1.delta + 512) & 0x3ff) << 26) |
+          (((e0g2.statId) & 0xff) << 36) |
+          (((e0g2.delta + 512) & 0x3ff) << 44);
+      scratch |= v << scratchBits;
+      scratchBits += 54;
+      if (scratchBits >= 64) {
+        view.setUint64(wordIndex * 8, scratch, Endian.little);
+        wordIndex++;
+        scratchBits -= 64;
+        scratch = v >>> (54 - scratchBits);
+      }
+    }
+    for (; i0 < value.statsCount; i0++) {
+      final e0 = value.stats[i0];
+      assert(e0.delta >= -512);
+      assert(e0.delta <= 511);
+      v = ((e0.statId) & 0xff) | (((e0.delta + 512) & 0x3ff) << 8);
+      scratch |= v << scratchBits;
+      scratchBits += 18;
+      if (scratchBits >= 64) {
+        view.setUint64(wordIndex * 8, scratch, Endian.little);
+        wordIndex++;
+        scratchBits -= 64;
+        scratch = v >>> (18 - scratchBits);
+      }
     }
   }
   assert(value.gameEvent.type >= 0);
@@ -2564,19 +2593,52 @@ bool readBenchMixed(BenchMixed value, ByteData view, int numBits) {
   if (bitsRead + value.statsCount * 18 > numBits) {
     return false;
   }
-  for (var i0 = 0; i0 < value.statsCount; i0++) {
-    final e0 = value.stats[i0];
-    if (bitsRead >>> 3 < tailBase) {
-      window = view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
-    } else {
-      window = tailWord >>> (bitsRead - tailBase * 8);
+  {
+    var i0 = 0;
+    for (; i0 + 3 <= value.statsCount; i0 += 3) {
+      final e0 = value.stats[i0];
+      if (bitsRead >>> 3 < tailBase) {
+        window =
+            view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
+      } else {
+        window = tailWord >>> (bitsRead - tailBase * 8);
+      }
+      v = window & 0xff;
+      bitsRead += 8;
+      e0.statId = v;
+      v = (window >>> 8) & 0x3ff;
+      bitsRead += 10;
+      e0.delta = -512 + v;
+      final e0g1 = value.stats[i0 + 1];
+      v = (window >>> 18) & 0xff;
+      bitsRead += 8;
+      e0g1.statId = v;
+      v = (window >>> 26) & 0x3ff;
+      bitsRead += 10;
+      e0g1.delta = -512 + v;
+      final e0g2 = value.stats[i0 + 2];
+      v = (window >>> 36) & 0xff;
+      bitsRead += 8;
+      e0g2.statId = v;
+      v = (window >>> 44) & 0x3ff;
+      bitsRead += 10;
+      e0g2.delta = -512 + v;
     }
-    v = window & 0xff;
-    bitsRead += 8;
-    e0.statId = v;
-    v = (window >>> 8) & 0x3ff;
-    bitsRead += 10;
-    e0.delta = -512 + v;
+    for (; i0 < value.statsCount; i0++) {
+      final e0 = value.stats[i0];
+      if (bitsRead >>> 3 < tailBase) {
+        window =
+            view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
+      } else {
+        window = tailWord >>> (bitsRead - tailBase * 8);
+      }
+      v = window & 0xff;
+      bitsRead += 8;
+      e0.statId = v;
+      v = (window >>> 8) & 0x3ff;
+      bitsRead += 10;
+      e0.delta = -512 + v;
+    }
   }
   if (bitsRead + 2 > numBits) {
     return false;

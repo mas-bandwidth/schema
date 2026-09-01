@@ -1054,17 +1054,43 @@ int writeArmArray(ArmArray value, ByteData view) {
       scratchBits -= 64;
       scratch = v >>> (2 - scratchBits);
     }
-    for (var i0 = 0; i0 < value.itemsCount; i0++) {
-      assert(value.items[i0] >= 0);
-      assert(value.items[i0] <= 8191);
-      v = ((value.items[i0]) & 0x1fff);
-      scratch |= v << scratchBits;
-      scratchBits += 13;
-      if (scratchBits >= 64) {
-        view.setUint64(wordIndex * 8, scratch, Endian.little);
-        wordIndex++;
-        scratchBits -= 64;
-        scratch = v >>> (13 - scratchBits);
+    {
+      var i0 = 0;
+      for (; i0 + 4 <= value.itemsCount; i0 += 4) {
+        assert(value.items[i0] >= 0);
+        assert(value.items[i0] <= 8191);
+        assert(value.items[i0 + 1] >= 0);
+        assert(value.items[i0 + 1] <= 8191);
+        assert(value.items[i0 + 2] >= 0);
+        assert(value.items[i0 + 2] <= 8191);
+        assert(value.items[i0 + 3] >= 0);
+        assert(value.items[i0 + 3] <= 8191);
+        v =
+            ((value.items[i0]) & 0x1fff) |
+            (((value.items[i0 + 1]) & 0x1fff) << 13) |
+            (((value.items[i0 + 2]) & 0x1fff) << 26) |
+            (((value.items[i0 + 3]) & 0x1fff) << 39);
+        scratch |= v << scratchBits;
+        scratchBits += 52;
+        if (scratchBits >= 64) {
+          view.setUint64(wordIndex * 8, scratch, Endian.little);
+          wordIndex++;
+          scratchBits -= 64;
+          scratch = v >>> (52 - scratchBits);
+        }
+      }
+      for (; i0 < value.itemsCount; i0++) {
+        assert(value.items[i0] >= 0);
+        assert(value.items[i0] <= 8191);
+        v = ((value.items[i0]) & 0x1fff);
+        scratch |= v << scratchBits;
+        scratchBits += 13;
+        if (scratchBits >= 64) {
+          view.setUint64(wordIndex * 8, scratch, Endian.little);
+          wordIndex++;
+          scratchBits -= 64;
+          scratch = v >>> (13 - scratchBits);
+        }
       }
     }
   } else {
@@ -1144,16 +1170,39 @@ bool readArmArray(ArmArray value, ByteData view, int numBits) {
     if (bitsRead + value.itemsCount * 13 > numBits) {
       return false;
     }
-    for (var i0 = 0; i0 < value.itemsCount; i0++) {
-      if (bitsRead >>> 3 < tailBase) {
-        window =
-            view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
-      } else {
-        window = tailWord >>> (bitsRead - tailBase * 8);
+    {
+      var i0 = 0;
+      for (; i0 + 4 <= value.itemsCount; i0 += 4) {
+        if (bitsRead >>> 3 < tailBase) {
+          window =
+              view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
+        } else {
+          window = tailWord >>> (bitsRead - tailBase * 8);
+        }
+        v = window & 0x1fff;
+        bitsRead += 13;
+        value.items[i0] = v;
+        v = (window >>> 13) & 0x1fff;
+        bitsRead += 13;
+        value.items[i0 + 1] = v;
+        v = (window >>> 26) & 0x1fff;
+        bitsRead += 13;
+        value.items[i0 + 2] = v;
+        v = (window >>> 39) & 0x1fff;
+        bitsRead += 13;
+        value.items[i0 + 3] = v;
       }
-      v = window & 0x1fff;
-      bitsRead += 13;
-      value.items[i0] = v;
+      for (; i0 < value.itemsCount; i0++) {
+        if (bitsRead >>> 3 < tailBase) {
+          window =
+              view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
+        } else {
+          window = tailWord >>> (bitsRead - tailBase * 8);
+        }
+        v = window & 0x1fff;
+        bitsRead += 13;
+        value.items[i0] = v;
+      }
     }
     value.b = 0;
   } else {
@@ -1977,17 +2026,43 @@ int writeRegainAfterAlign(RegainAfterAlign value, ByteData view) {
     scratchBits -= 64;
     scratch = v >>> (7 - scratchBits);
   }
-  for (var i0 = 0; i0 < value.itemsCount; i0++) {
-    assert(value.items[i0] >= 0);
-    assert(value.items[i0] <= 8191);
-    v = ((value.items[i0]) & 0x1fff);
-    scratch |= v << scratchBits;
-    scratchBits += 13;
-    if (scratchBits >= 64) {
-      view.setUint64(wordIndex * 8, scratch, Endian.little);
-      wordIndex++;
-      scratchBits -= 64;
-      scratch = v >>> (13 - scratchBits);
+  {
+    var i0 = 0;
+    for (; i0 + 4 <= value.itemsCount; i0 += 4) {
+      assert(value.items[i0] >= 0);
+      assert(value.items[i0] <= 8191);
+      assert(value.items[i0 + 1] >= 0);
+      assert(value.items[i0 + 1] <= 8191);
+      assert(value.items[i0 + 2] >= 0);
+      assert(value.items[i0 + 2] <= 8191);
+      assert(value.items[i0 + 3] >= 0);
+      assert(value.items[i0 + 3] <= 8191);
+      v =
+          ((value.items[i0]) & 0x1fff) |
+          (((value.items[i0 + 1]) & 0x1fff) << 13) |
+          (((value.items[i0 + 2]) & 0x1fff) << 26) |
+          (((value.items[i0 + 3]) & 0x1fff) << 39);
+      scratch |= v << scratchBits;
+      scratchBits += 52;
+      if (scratchBits >= 64) {
+        view.setUint64(wordIndex * 8, scratch, Endian.little);
+        wordIndex++;
+        scratchBits -= 64;
+        scratch = v >>> (52 - scratchBits);
+      }
+    }
+    for (; i0 < value.itemsCount; i0++) {
+      assert(value.items[i0] >= 0);
+      assert(value.items[i0] <= 8191);
+      v = ((value.items[i0]) & 0x1fff);
+      scratch |= v << scratchBits;
+      scratchBits += 13;
+      if (scratchBits >= 64) {
+        view.setUint64(wordIndex * 8, scratch, Endian.little);
+        wordIndex++;
+        scratchBits -= 64;
+        scratch = v >>> (13 - scratchBits);
+      }
     }
   }
   assert(value.sLength >= 0);
@@ -2108,15 +2183,39 @@ bool readRegainAfterAlign(RegainAfterAlign value, ByteData view, int numBits) {
   if (bitsRead + value.itemsCount * 13 > numBits) {
     return false;
   }
-  for (var i0 = 0; i0 < value.itemsCount; i0++) {
-    if (bitsRead >>> 3 < tailBase) {
-      window = view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
-    } else {
-      window = tailWord >>> (bitsRead - tailBase * 8);
+  {
+    var i0 = 0;
+    for (; i0 + 4 <= value.itemsCount; i0 += 4) {
+      if (bitsRead >>> 3 < tailBase) {
+        window =
+            view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
+      } else {
+        window = tailWord >>> (bitsRead - tailBase * 8);
+      }
+      v = window & 0x1fff;
+      bitsRead += 13;
+      value.items[i0] = v;
+      v = (window >>> 13) & 0x1fff;
+      bitsRead += 13;
+      value.items[i0 + 1] = v;
+      v = (window >>> 26) & 0x1fff;
+      bitsRead += 13;
+      value.items[i0 + 2] = v;
+      v = (window >>> 39) & 0x1fff;
+      bitsRead += 13;
+      value.items[i0 + 3] = v;
     }
-    v = window & 0x1fff;
-    bitsRead += 13;
-    value.items[i0] = v;
+    for (; i0 < value.itemsCount; i0++) {
+      if (bitsRead >>> 3 < tailBase) {
+        window =
+            view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
+      } else {
+        window = tailWord >>> (bitsRead - tailBase * 8);
+      }
+      v = window & 0x1fff;
+      bitsRead += 13;
+      value.items[i0] = v;
+    }
   }
   if (bitsRead + 3 > numBits) {
     return false;

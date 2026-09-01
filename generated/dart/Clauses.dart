@@ -46,17 +46,43 @@ int writeW13(W13 value, ByteData view) {
     scratchBits -= 64;
     scratch = v >>> (4 - scratchBits);
   }
-  for (var i0 = 0; i0 < value.itemsCount; i0++) {
-    assert(value.items[i0] >= 0);
-    assert(value.items[i0] <= 8191);
-    v = ((value.items[i0]) & 0x1fff);
-    scratch |= v << scratchBits;
-    scratchBits += 13;
-    if (scratchBits >= 64) {
-      view.setUint64(wordIndex * 8, scratch, Endian.little);
-      wordIndex++;
-      scratchBits -= 64;
-      scratch = v >>> (13 - scratchBits);
+  {
+    var i0 = 0;
+    for (; i0 + 4 <= value.itemsCount; i0 += 4) {
+      assert(value.items[i0] >= 0);
+      assert(value.items[i0] <= 8191);
+      assert(value.items[i0 + 1] >= 0);
+      assert(value.items[i0 + 1] <= 8191);
+      assert(value.items[i0 + 2] >= 0);
+      assert(value.items[i0 + 2] <= 8191);
+      assert(value.items[i0 + 3] >= 0);
+      assert(value.items[i0 + 3] <= 8191);
+      v =
+          ((value.items[i0]) & 0x1fff) |
+          (((value.items[i0 + 1]) & 0x1fff) << 13) |
+          (((value.items[i0 + 2]) & 0x1fff) << 26) |
+          (((value.items[i0 + 3]) & 0x1fff) << 39);
+      scratch |= v << scratchBits;
+      scratchBits += 52;
+      if (scratchBits >= 64) {
+        view.setUint64(wordIndex * 8, scratch, Endian.little);
+        wordIndex++;
+        scratchBits -= 64;
+        scratch = v >>> (52 - scratchBits);
+      }
+    }
+    for (; i0 < value.itemsCount; i0++) {
+      assert(value.items[i0] >= 0);
+      assert(value.items[i0] <= 8191);
+      v = ((value.items[i0]) & 0x1fff);
+      scratch |= v << scratchBits;
+      scratchBits += 13;
+      if (scratchBits >= 64) {
+        view.setUint64(wordIndex * 8, scratch, Endian.little);
+        wordIndex++;
+        scratchBits -= 64;
+        scratch = v >>> (13 - scratchBits);
+      }
     }
   }
   if (scratchBits != 0) {
@@ -104,15 +130,39 @@ bool readW13(W13 value, ByteData view, int numBits) {
   if (bitsRead + value.itemsCount * 13 > numBits) {
     return false;
   }
-  for (var i0 = 0; i0 < value.itemsCount; i0++) {
-    if (bitsRead >>> 3 < tailBase) {
-      window = view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
-    } else {
-      window = tailWord >>> (bitsRead - tailBase * 8);
+  {
+    var i0 = 0;
+    for (; i0 + 4 <= value.itemsCount; i0 += 4) {
+      if (bitsRead >>> 3 < tailBase) {
+        window =
+            view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
+      } else {
+        window = tailWord >>> (bitsRead - tailBase * 8);
+      }
+      v = window & 0x1fff;
+      bitsRead += 13;
+      value.items[i0] = v;
+      v = (window >>> 13) & 0x1fff;
+      bitsRead += 13;
+      value.items[i0 + 1] = v;
+      v = (window >>> 26) & 0x1fff;
+      bitsRead += 13;
+      value.items[i0 + 2] = v;
+      v = (window >>> 39) & 0x1fff;
+      bitsRead += 13;
+      value.items[i0 + 3] = v;
     }
-    v = window & 0x1fff;
-    bitsRead += 13;
-    value.items[i0] = v;
+    for (; i0 < value.itemsCount; i0++) {
+      if (bitsRead >>> 3 < tailBase) {
+        window =
+            view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
+      } else {
+        window = tailWord >>> (bitsRead - tailBase * 8);
+      }
+      v = window & 0x1fff;
+      bitsRead += 13;
+      value.items[i0] = v;
+    }
   }
   return true;
 }
@@ -166,17 +216,40 @@ int writeW17(W17 value, ByteData view) {
     scratchBits -= 64;
     scratch = v >>> (4 - scratchBits);
   }
-  for (var i0 = 0; i0 < value.itemsCount; i0++) {
-    assert(value.items[i0] >= 0);
-    assert(value.items[i0] <= 131071);
-    v = ((value.items[i0]) & 0x1ffff);
-    scratch |= v << scratchBits;
-    scratchBits += 17;
-    if (scratchBits >= 64) {
-      view.setUint64(wordIndex * 8, scratch, Endian.little);
-      wordIndex++;
-      scratchBits -= 64;
-      scratch = v >>> (17 - scratchBits);
+  {
+    var i0 = 0;
+    for (; i0 + 3 <= value.itemsCount; i0 += 3) {
+      assert(value.items[i0] >= 0);
+      assert(value.items[i0] <= 131071);
+      assert(value.items[i0 + 1] >= 0);
+      assert(value.items[i0 + 1] <= 131071);
+      assert(value.items[i0 + 2] >= 0);
+      assert(value.items[i0 + 2] <= 131071);
+      v =
+          ((value.items[i0]) & 0x1ffff) |
+          (((value.items[i0 + 1]) & 0x1ffff) << 17) |
+          (((value.items[i0 + 2]) & 0x1ffff) << 34);
+      scratch |= v << scratchBits;
+      scratchBits += 51;
+      if (scratchBits >= 64) {
+        view.setUint64(wordIndex * 8, scratch, Endian.little);
+        wordIndex++;
+        scratchBits -= 64;
+        scratch = v >>> (51 - scratchBits);
+      }
+    }
+    for (; i0 < value.itemsCount; i0++) {
+      assert(value.items[i0] >= 0);
+      assert(value.items[i0] <= 131071);
+      v = ((value.items[i0]) & 0x1ffff);
+      scratch |= v << scratchBits;
+      scratchBits += 17;
+      if (scratchBits >= 64) {
+        view.setUint64(wordIndex * 8, scratch, Endian.little);
+        wordIndex++;
+        scratchBits -= 64;
+        scratch = v >>> (17 - scratchBits);
+      }
     }
   }
   if (scratchBits != 0) {
@@ -224,15 +297,36 @@ bool readW17(W17 value, ByteData view, int numBits) {
   if (bitsRead + value.itemsCount * 17 > numBits) {
     return false;
   }
-  for (var i0 = 0; i0 < value.itemsCount; i0++) {
-    if (bitsRead >>> 3 < tailBase) {
-      window = view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
-    } else {
-      window = tailWord >>> (bitsRead - tailBase * 8);
+  {
+    var i0 = 0;
+    for (; i0 + 3 <= value.itemsCount; i0 += 3) {
+      if (bitsRead >>> 3 < tailBase) {
+        window =
+            view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
+      } else {
+        window = tailWord >>> (bitsRead - tailBase * 8);
+      }
+      v = window & 0x1ffff;
+      bitsRead += 17;
+      value.items[i0] = v;
+      v = (window >>> 17) & 0x1ffff;
+      bitsRead += 17;
+      value.items[i0 + 1] = v;
+      v = (window >>> 34) & 0x1ffff;
+      bitsRead += 17;
+      value.items[i0 + 2] = v;
     }
-    v = window & 0x1ffff;
-    bitsRead += 17;
-    value.items[i0] = v;
+    for (; i0 < value.itemsCount; i0++) {
+      if (bitsRead >>> 3 < tailBase) {
+        window =
+            view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
+      } else {
+        window = tailWord >>> (bitsRead - tailBase * 8);
+      }
+      v = window & 0x1ffff;
+      bitsRead += 17;
+      value.items[i0] = v;
+    }
   }
   return true;
 }
@@ -286,17 +380,37 @@ int writeW26(W26 value, ByteData view) {
     scratchBits -= 64;
     scratch = v >>> (3 - scratchBits);
   }
-  for (var i0 = 0; i0 < value.itemsCount; i0++) {
-    assert(value.items[i0] >= 0);
-    assert(value.items[i0] <= 67108863);
-    v = ((value.items[i0]) & 0x3ffffff);
-    scratch |= v << scratchBits;
-    scratchBits += 26;
-    if (scratchBits >= 64) {
-      view.setUint64(wordIndex * 8, scratch, Endian.little);
-      wordIndex++;
-      scratchBits -= 64;
-      scratch = v >>> (26 - scratchBits);
+  {
+    var i0 = 0;
+    for (; i0 + 2 <= value.itemsCount; i0 += 2) {
+      assert(value.items[i0] >= 0);
+      assert(value.items[i0] <= 67108863);
+      assert(value.items[i0 + 1] >= 0);
+      assert(value.items[i0 + 1] <= 67108863);
+      v =
+          ((value.items[i0]) & 0x3ffffff) |
+          (((value.items[i0 + 1]) & 0x3ffffff) << 26);
+      scratch |= v << scratchBits;
+      scratchBits += 52;
+      if (scratchBits >= 64) {
+        view.setUint64(wordIndex * 8, scratch, Endian.little);
+        wordIndex++;
+        scratchBits -= 64;
+        scratch = v >>> (52 - scratchBits);
+      }
+    }
+    for (; i0 < value.itemsCount; i0++) {
+      assert(value.items[i0] >= 0);
+      assert(value.items[i0] <= 67108863);
+      v = ((value.items[i0]) & 0x3ffffff);
+      scratch |= v << scratchBits;
+      scratchBits += 26;
+      if (scratchBits >= 64) {
+        view.setUint64(wordIndex * 8, scratch, Endian.little);
+        wordIndex++;
+        scratchBits -= 64;
+        scratch = v >>> (26 - scratchBits);
+      }
     }
   }
   if (scratchBits != 0) {
@@ -344,15 +458,33 @@ bool readW26(W26 value, ByteData view, int numBits) {
   if (bitsRead + value.itemsCount * 26 > numBits) {
     return false;
   }
-  for (var i0 = 0; i0 < value.itemsCount; i0++) {
-    if (bitsRead >>> 3 < tailBase) {
-      window = view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
-    } else {
-      window = tailWord >>> (bitsRead - tailBase * 8);
+  {
+    var i0 = 0;
+    for (; i0 + 2 <= value.itemsCount; i0 += 2) {
+      if (bitsRead >>> 3 < tailBase) {
+        window =
+            view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
+      } else {
+        window = tailWord >>> (bitsRead - tailBase * 8);
+      }
+      v = window & 0x3ffffff;
+      bitsRead += 26;
+      value.items[i0] = v;
+      v = (window >>> 26) & 0x3ffffff;
+      bitsRead += 26;
+      value.items[i0 + 1] = v;
     }
-    v = window & 0x3ffffff;
-    bitsRead += 26;
-    value.items[i0] = v;
+    for (; i0 < value.itemsCount; i0++) {
+      if (bitsRead >>> 3 < tailBase) {
+        window =
+            view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
+      } else {
+        window = tailWord >>> (bitsRead - tailBase * 8);
+      }
+      v = window & 0x3ffffff;
+      bitsRead += 26;
+      value.items[i0] = v;
+    }
   }
   return true;
 }
@@ -406,17 +538,223 @@ int writeW1(W1 value, ByteData view) {
     scratchBits -= 64;
     scratch = v >>> (5 - scratchBits);
   }
-  for (var i0 = 0; i0 < value.itemsCount; i0++) {
-    assert(value.items[i0] >= 0);
-    assert(value.items[i0] <= 1);
-    v = ((value.items[i0]) & 0x1);
-    scratch |= v << scratchBits;
-    scratchBits += 1;
-    if (scratchBits >= 64) {
-      view.setUint64(wordIndex * 8, scratch, Endian.little);
-      wordIndex++;
-      scratchBits -= 64;
-      scratch = v >>> (1 - scratchBits);
+  {
+    var i0 = 0;
+    for (; i0 + 64 <= value.itemsCount; i0 += 64) {
+      assert(value.items[i0] >= 0);
+      assert(value.items[i0] <= 1);
+      assert(value.items[i0 + 1] >= 0);
+      assert(value.items[i0 + 1] <= 1);
+      assert(value.items[i0 + 2] >= 0);
+      assert(value.items[i0 + 2] <= 1);
+      assert(value.items[i0 + 3] >= 0);
+      assert(value.items[i0 + 3] <= 1);
+      assert(value.items[i0 + 4] >= 0);
+      assert(value.items[i0 + 4] <= 1);
+      assert(value.items[i0 + 5] >= 0);
+      assert(value.items[i0 + 5] <= 1);
+      assert(value.items[i0 + 6] >= 0);
+      assert(value.items[i0 + 6] <= 1);
+      assert(value.items[i0 + 7] >= 0);
+      assert(value.items[i0 + 7] <= 1);
+      assert(value.items[i0 + 8] >= 0);
+      assert(value.items[i0 + 8] <= 1);
+      assert(value.items[i0 + 9] >= 0);
+      assert(value.items[i0 + 9] <= 1);
+      assert(value.items[i0 + 10] >= 0);
+      assert(value.items[i0 + 10] <= 1);
+      assert(value.items[i0 + 11] >= 0);
+      assert(value.items[i0 + 11] <= 1);
+      assert(value.items[i0 + 12] >= 0);
+      assert(value.items[i0 + 12] <= 1);
+      assert(value.items[i0 + 13] >= 0);
+      assert(value.items[i0 + 13] <= 1);
+      assert(value.items[i0 + 14] >= 0);
+      assert(value.items[i0 + 14] <= 1);
+      assert(value.items[i0 + 15] >= 0);
+      assert(value.items[i0 + 15] <= 1);
+      assert(value.items[i0 + 16] >= 0);
+      assert(value.items[i0 + 16] <= 1);
+      assert(value.items[i0 + 17] >= 0);
+      assert(value.items[i0 + 17] <= 1);
+      assert(value.items[i0 + 18] >= 0);
+      assert(value.items[i0 + 18] <= 1);
+      assert(value.items[i0 + 19] >= 0);
+      assert(value.items[i0 + 19] <= 1);
+      assert(value.items[i0 + 20] >= 0);
+      assert(value.items[i0 + 20] <= 1);
+      assert(value.items[i0 + 21] >= 0);
+      assert(value.items[i0 + 21] <= 1);
+      assert(value.items[i0 + 22] >= 0);
+      assert(value.items[i0 + 22] <= 1);
+      assert(value.items[i0 + 23] >= 0);
+      assert(value.items[i0 + 23] <= 1);
+      assert(value.items[i0 + 24] >= 0);
+      assert(value.items[i0 + 24] <= 1);
+      assert(value.items[i0 + 25] >= 0);
+      assert(value.items[i0 + 25] <= 1);
+      assert(value.items[i0 + 26] >= 0);
+      assert(value.items[i0 + 26] <= 1);
+      assert(value.items[i0 + 27] >= 0);
+      assert(value.items[i0 + 27] <= 1);
+      assert(value.items[i0 + 28] >= 0);
+      assert(value.items[i0 + 28] <= 1);
+      assert(value.items[i0 + 29] >= 0);
+      assert(value.items[i0 + 29] <= 1);
+      assert(value.items[i0 + 30] >= 0);
+      assert(value.items[i0 + 30] <= 1);
+      assert(value.items[i0 + 31] >= 0);
+      assert(value.items[i0 + 31] <= 1);
+      assert(value.items[i0 + 32] >= 0);
+      assert(value.items[i0 + 32] <= 1);
+      assert(value.items[i0 + 33] >= 0);
+      assert(value.items[i0 + 33] <= 1);
+      assert(value.items[i0 + 34] >= 0);
+      assert(value.items[i0 + 34] <= 1);
+      assert(value.items[i0 + 35] >= 0);
+      assert(value.items[i0 + 35] <= 1);
+      assert(value.items[i0 + 36] >= 0);
+      assert(value.items[i0 + 36] <= 1);
+      assert(value.items[i0 + 37] >= 0);
+      assert(value.items[i0 + 37] <= 1);
+      assert(value.items[i0 + 38] >= 0);
+      assert(value.items[i0 + 38] <= 1);
+      assert(value.items[i0 + 39] >= 0);
+      assert(value.items[i0 + 39] <= 1);
+      assert(value.items[i0 + 40] >= 0);
+      assert(value.items[i0 + 40] <= 1);
+      assert(value.items[i0 + 41] >= 0);
+      assert(value.items[i0 + 41] <= 1);
+      assert(value.items[i0 + 42] >= 0);
+      assert(value.items[i0 + 42] <= 1);
+      assert(value.items[i0 + 43] >= 0);
+      assert(value.items[i0 + 43] <= 1);
+      assert(value.items[i0 + 44] >= 0);
+      assert(value.items[i0 + 44] <= 1);
+      assert(value.items[i0 + 45] >= 0);
+      assert(value.items[i0 + 45] <= 1);
+      assert(value.items[i0 + 46] >= 0);
+      assert(value.items[i0 + 46] <= 1);
+      assert(value.items[i0 + 47] >= 0);
+      assert(value.items[i0 + 47] <= 1);
+      assert(value.items[i0 + 48] >= 0);
+      assert(value.items[i0 + 48] <= 1);
+      assert(value.items[i0 + 49] >= 0);
+      assert(value.items[i0 + 49] <= 1);
+      assert(value.items[i0 + 50] >= 0);
+      assert(value.items[i0 + 50] <= 1);
+      assert(value.items[i0 + 51] >= 0);
+      assert(value.items[i0 + 51] <= 1);
+      assert(value.items[i0 + 52] >= 0);
+      assert(value.items[i0 + 52] <= 1);
+      assert(value.items[i0 + 53] >= 0);
+      assert(value.items[i0 + 53] <= 1);
+      assert(value.items[i0 + 54] >= 0);
+      assert(value.items[i0 + 54] <= 1);
+      assert(value.items[i0 + 55] >= 0);
+      assert(value.items[i0 + 55] <= 1);
+      assert(value.items[i0 + 56] >= 0);
+      assert(value.items[i0 + 56] <= 1);
+      assert(value.items[i0 + 57] >= 0);
+      assert(value.items[i0 + 57] <= 1);
+      assert(value.items[i0 + 58] >= 0);
+      assert(value.items[i0 + 58] <= 1);
+      assert(value.items[i0 + 59] >= 0);
+      assert(value.items[i0 + 59] <= 1);
+      assert(value.items[i0 + 60] >= 0);
+      assert(value.items[i0 + 60] <= 1);
+      assert(value.items[i0 + 61] >= 0);
+      assert(value.items[i0 + 61] <= 1);
+      assert(value.items[i0 + 62] >= 0);
+      assert(value.items[i0 + 62] <= 1);
+      assert(value.items[i0 + 63] >= 0);
+      assert(value.items[i0 + 63] <= 1);
+      v =
+          ((value.items[i0]) & 0x1) |
+          (((value.items[i0 + 1]) & 0x1) << 1) |
+          (((value.items[i0 + 2]) & 0x1) << 2) |
+          (((value.items[i0 + 3]) & 0x1) << 3) |
+          (((value.items[i0 + 4]) & 0x1) << 4) |
+          (((value.items[i0 + 5]) & 0x1) << 5) |
+          (((value.items[i0 + 6]) & 0x1) << 6) |
+          (((value.items[i0 + 7]) & 0x1) << 7) |
+          (((value.items[i0 + 8]) & 0x1) << 8) |
+          (((value.items[i0 + 9]) & 0x1) << 9) |
+          (((value.items[i0 + 10]) & 0x1) << 10) |
+          (((value.items[i0 + 11]) & 0x1) << 11) |
+          (((value.items[i0 + 12]) & 0x1) << 12) |
+          (((value.items[i0 + 13]) & 0x1) << 13) |
+          (((value.items[i0 + 14]) & 0x1) << 14) |
+          (((value.items[i0 + 15]) & 0x1) << 15) |
+          (((value.items[i0 + 16]) & 0x1) << 16) |
+          (((value.items[i0 + 17]) & 0x1) << 17) |
+          (((value.items[i0 + 18]) & 0x1) << 18) |
+          (((value.items[i0 + 19]) & 0x1) << 19) |
+          (((value.items[i0 + 20]) & 0x1) << 20) |
+          (((value.items[i0 + 21]) & 0x1) << 21) |
+          (((value.items[i0 + 22]) & 0x1) << 22) |
+          (((value.items[i0 + 23]) & 0x1) << 23) |
+          (((value.items[i0 + 24]) & 0x1) << 24) |
+          (((value.items[i0 + 25]) & 0x1) << 25) |
+          (((value.items[i0 + 26]) & 0x1) << 26) |
+          (((value.items[i0 + 27]) & 0x1) << 27) |
+          (((value.items[i0 + 28]) & 0x1) << 28) |
+          (((value.items[i0 + 29]) & 0x1) << 29) |
+          (((value.items[i0 + 30]) & 0x1) << 30) |
+          (((value.items[i0 + 31]) & 0x1) << 31) |
+          (((value.items[i0 + 32]) & 0x1) << 32) |
+          (((value.items[i0 + 33]) & 0x1) << 33) |
+          (((value.items[i0 + 34]) & 0x1) << 34) |
+          (((value.items[i0 + 35]) & 0x1) << 35) |
+          (((value.items[i0 + 36]) & 0x1) << 36) |
+          (((value.items[i0 + 37]) & 0x1) << 37) |
+          (((value.items[i0 + 38]) & 0x1) << 38) |
+          (((value.items[i0 + 39]) & 0x1) << 39) |
+          (((value.items[i0 + 40]) & 0x1) << 40) |
+          (((value.items[i0 + 41]) & 0x1) << 41) |
+          (((value.items[i0 + 42]) & 0x1) << 42) |
+          (((value.items[i0 + 43]) & 0x1) << 43) |
+          (((value.items[i0 + 44]) & 0x1) << 44) |
+          (((value.items[i0 + 45]) & 0x1) << 45) |
+          (((value.items[i0 + 46]) & 0x1) << 46) |
+          (((value.items[i0 + 47]) & 0x1) << 47) |
+          (((value.items[i0 + 48]) & 0x1) << 48) |
+          (((value.items[i0 + 49]) & 0x1) << 49) |
+          (((value.items[i0 + 50]) & 0x1) << 50) |
+          (((value.items[i0 + 51]) & 0x1) << 51) |
+          (((value.items[i0 + 52]) & 0x1) << 52) |
+          (((value.items[i0 + 53]) & 0x1) << 53) |
+          (((value.items[i0 + 54]) & 0x1) << 54) |
+          (((value.items[i0 + 55]) & 0x1) << 55) |
+          (((value.items[i0 + 56]) & 0x1) << 56) |
+          (((value.items[i0 + 57]) & 0x1) << 57) |
+          (((value.items[i0 + 58]) & 0x1) << 58) |
+          (((value.items[i0 + 59]) & 0x1) << 59) |
+          (((value.items[i0 + 60]) & 0x1) << 60) |
+          (((value.items[i0 + 61]) & 0x1) << 61) |
+          (((value.items[i0 + 62]) & 0x1) << 62) |
+          (((value.items[i0 + 63]) & 0x1) << 63);
+      scratch |= v << scratchBits;
+      scratchBits += 64;
+      if (scratchBits >= 64) {
+        view.setUint64(wordIndex * 8, scratch, Endian.little);
+        wordIndex++;
+        scratchBits -= 64;
+        scratch = v >>> (64 - scratchBits);
+      }
+    }
+    for (; i0 < value.itemsCount; i0++) {
+      assert(value.items[i0] >= 0);
+      assert(value.items[i0] <= 1);
+      v = ((value.items[i0]) & 0x1);
+      scratch |= v << scratchBits;
+      scratchBits += 1;
+      if (scratchBits >= 64) {
+        view.setUint64(wordIndex * 8, scratch, Endian.little);
+        wordIndex++;
+        scratchBits -= 64;
+        scratch = v >>> (1 - scratchBits);
+      }
     }
   }
   if (scratchBits != 0) {
@@ -464,15 +802,198 @@ bool readW1(W1 value, ByteData view, int numBits) {
   if (bitsRead + value.itemsCount * 1 > numBits) {
     return false;
   }
-  for (var i0 = 0; i0 < value.itemsCount; i0++) {
-    if (bitsRead >>> 3 < tailBase) {
-      window = view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
-    } else {
-      window = tailWord >>> (bitsRead - tailBase * 8);
+  {
+    var i0 = 0;
+    for (; i0 + 57 <= value.itemsCount; i0 += 57) {
+      if (bitsRead >>> 3 < tailBase) {
+        window =
+            view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
+      } else {
+        window = tailWord >>> (bitsRead - tailBase * 8);
+      }
+      v = window & 0x1;
+      bitsRead += 1;
+      value.items[i0] = v;
+      v = (window >>> 1) & 0x1;
+      bitsRead += 1;
+      value.items[i0 + 1] = v;
+      v = (window >>> 2) & 0x1;
+      bitsRead += 1;
+      value.items[i0 + 2] = v;
+      v = (window >>> 3) & 0x1;
+      bitsRead += 1;
+      value.items[i0 + 3] = v;
+      v = (window >>> 4) & 0x1;
+      bitsRead += 1;
+      value.items[i0 + 4] = v;
+      v = (window >>> 5) & 0x1;
+      bitsRead += 1;
+      value.items[i0 + 5] = v;
+      v = (window >>> 6) & 0x1;
+      bitsRead += 1;
+      value.items[i0 + 6] = v;
+      v = (window >>> 7) & 0x1;
+      bitsRead += 1;
+      value.items[i0 + 7] = v;
+      v = (window >>> 8) & 0x1;
+      bitsRead += 1;
+      value.items[i0 + 8] = v;
+      v = (window >>> 9) & 0x1;
+      bitsRead += 1;
+      value.items[i0 + 9] = v;
+      v = (window >>> 10) & 0x1;
+      bitsRead += 1;
+      value.items[i0 + 10] = v;
+      v = (window >>> 11) & 0x1;
+      bitsRead += 1;
+      value.items[i0 + 11] = v;
+      v = (window >>> 12) & 0x1;
+      bitsRead += 1;
+      value.items[i0 + 12] = v;
+      v = (window >>> 13) & 0x1;
+      bitsRead += 1;
+      value.items[i0 + 13] = v;
+      v = (window >>> 14) & 0x1;
+      bitsRead += 1;
+      value.items[i0 + 14] = v;
+      v = (window >>> 15) & 0x1;
+      bitsRead += 1;
+      value.items[i0 + 15] = v;
+      v = (window >>> 16) & 0x1;
+      bitsRead += 1;
+      value.items[i0 + 16] = v;
+      v = (window >>> 17) & 0x1;
+      bitsRead += 1;
+      value.items[i0 + 17] = v;
+      v = (window >>> 18) & 0x1;
+      bitsRead += 1;
+      value.items[i0 + 18] = v;
+      v = (window >>> 19) & 0x1;
+      bitsRead += 1;
+      value.items[i0 + 19] = v;
+      v = (window >>> 20) & 0x1;
+      bitsRead += 1;
+      value.items[i0 + 20] = v;
+      v = (window >>> 21) & 0x1;
+      bitsRead += 1;
+      value.items[i0 + 21] = v;
+      v = (window >>> 22) & 0x1;
+      bitsRead += 1;
+      value.items[i0 + 22] = v;
+      v = (window >>> 23) & 0x1;
+      bitsRead += 1;
+      value.items[i0 + 23] = v;
+      v = (window >>> 24) & 0x1;
+      bitsRead += 1;
+      value.items[i0 + 24] = v;
+      v = (window >>> 25) & 0x1;
+      bitsRead += 1;
+      value.items[i0 + 25] = v;
+      v = (window >>> 26) & 0x1;
+      bitsRead += 1;
+      value.items[i0 + 26] = v;
+      v = (window >>> 27) & 0x1;
+      bitsRead += 1;
+      value.items[i0 + 27] = v;
+      v = (window >>> 28) & 0x1;
+      bitsRead += 1;
+      value.items[i0 + 28] = v;
+      v = (window >>> 29) & 0x1;
+      bitsRead += 1;
+      value.items[i0 + 29] = v;
+      v = (window >>> 30) & 0x1;
+      bitsRead += 1;
+      value.items[i0 + 30] = v;
+      v = (window >>> 31) & 0x1;
+      bitsRead += 1;
+      value.items[i0 + 31] = v;
+      v = (window >>> 32) & 0x1;
+      bitsRead += 1;
+      value.items[i0 + 32] = v;
+      v = (window >>> 33) & 0x1;
+      bitsRead += 1;
+      value.items[i0 + 33] = v;
+      v = (window >>> 34) & 0x1;
+      bitsRead += 1;
+      value.items[i0 + 34] = v;
+      v = (window >>> 35) & 0x1;
+      bitsRead += 1;
+      value.items[i0 + 35] = v;
+      v = (window >>> 36) & 0x1;
+      bitsRead += 1;
+      value.items[i0 + 36] = v;
+      v = (window >>> 37) & 0x1;
+      bitsRead += 1;
+      value.items[i0 + 37] = v;
+      v = (window >>> 38) & 0x1;
+      bitsRead += 1;
+      value.items[i0 + 38] = v;
+      v = (window >>> 39) & 0x1;
+      bitsRead += 1;
+      value.items[i0 + 39] = v;
+      v = (window >>> 40) & 0x1;
+      bitsRead += 1;
+      value.items[i0 + 40] = v;
+      v = (window >>> 41) & 0x1;
+      bitsRead += 1;
+      value.items[i0 + 41] = v;
+      v = (window >>> 42) & 0x1;
+      bitsRead += 1;
+      value.items[i0 + 42] = v;
+      v = (window >>> 43) & 0x1;
+      bitsRead += 1;
+      value.items[i0 + 43] = v;
+      v = (window >>> 44) & 0x1;
+      bitsRead += 1;
+      value.items[i0 + 44] = v;
+      v = (window >>> 45) & 0x1;
+      bitsRead += 1;
+      value.items[i0 + 45] = v;
+      v = (window >>> 46) & 0x1;
+      bitsRead += 1;
+      value.items[i0 + 46] = v;
+      v = (window >>> 47) & 0x1;
+      bitsRead += 1;
+      value.items[i0 + 47] = v;
+      v = (window >>> 48) & 0x1;
+      bitsRead += 1;
+      value.items[i0 + 48] = v;
+      v = (window >>> 49) & 0x1;
+      bitsRead += 1;
+      value.items[i0 + 49] = v;
+      v = (window >>> 50) & 0x1;
+      bitsRead += 1;
+      value.items[i0 + 50] = v;
+      v = (window >>> 51) & 0x1;
+      bitsRead += 1;
+      value.items[i0 + 51] = v;
+      v = (window >>> 52) & 0x1;
+      bitsRead += 1;
+      value.items[i0 + 52] = v;
+      v = (window >>> 53) & 0x1;
+      bitsRead += 1;
+      value.items[i0 + 53] = v;
+      v = (window >>> 54) & 0x1;
+      bitsRead += 1;
+      value.items[i0 + 54] = v;
+      v = (window >>> 55) & 0x1;
+      bitsRead += 1;
+      value.items[i0 + 55] = v;
+      v = (window >>> 56) & 0x1;
+      bitsRead += 1;
+      value.items[i0 + 56] = v;
     }
-    v = window & 0x1;
-    bitsRead += 1;
-    value.items[i0] = v;
+    for (; i0 < value.itemsCount; i0++) {
+      if (bitsRead >>> 3 < tailBase) {
+        window =
+            view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
+      } else {
+        window = tailWord >>> (bitsRead - tailBase * 8);
+      }
+      v = window & 0x1;
+      bitsRead += 1;
+      value.items[i0] = v;
+    }
   }
   return true;
 }
@@ -937,16 +1458,93 @@ int writeArrTri3(ArrTri3 value, ByteData view) {
     scratchBits -= 64;
     scratch = v >>> (4 - scratchBits);
   }
-  for (var i0 = 0; i0 < value.itemsCount; i0++) {
-    final e0 = value.items[i0];
-    v = ((e0.a) & 0x1) | (((e0.b) & 0x3) << 1);
-    scratch |= v << scratchBits;
-    scratchBits += 3;
-    if (scratchBits >= 64) {
-      view.setUint64(wordIndex * 8, scratch, Endian.little);
-      wordIndex++;
-      scratchBits -= 64;
-      scratch = v >>> (3 - scratchBits);
+  {
+    var i0 = 0;
+    for (; i0 + 21 <= value.itemsCount; i0 += 21) {
+      final e0 = value.items[i0];
+      final e0g1 = value.items[i0 + 1];
+      final e0g2 = value.items[i0 + 2];
+      final e0g3 = value.items[i0 + 3];
+      final e0g4 = value.items[i0 + 4];
+      final e0g5 = value.items[i0 + 5];
+      final e0g6 = value.items[i0 + 6];
+      final e0g7 = value.items[i0 + 7];
+      final e0g8 = value.items[i0 + 8];
+      final e0g9 = value.items[i0 + 9];
+      final e0g10 = value.items[i0 + 10];
+      final e0g11 = value.items[i0 + 11];
+      final e0g12 = value.items[i0 + 12];
+      final e0g13 = value.items[i0 + 13];
+      final e0g14 = value.items[i0 + 14];
+      final e0g15 = value.items[i0 + 15];
+      final e0g16 = value.items[i0 + 16];
+      final e0g17 = value.items[i0 + 17];
+      final e0g18 = value.items[i0 + 18];
+      final e0g19 = value.items[i0 + 19];
+      final e0g20 = value.items[i0 + 20];
+      v =
+          ((e0.a) & 0x1) |
+          (((e0.b) & 0x3) << 1) |
+          (((e0g1.a) & 0x1) << 3) |
+          (((e0g1.b) & 0x3) << 4) |
+          (((e0g2.a) & 0x1) << 6) |
+          (((e0g2.b) & 0x3) << 7) |
+          (((e0g3.a) & 0x1) << 9) |
+          (((e0g3.b) & 0x3) << 10) |
+          (((e0g4.a) & 0x1) << 12) |
+          (((e0g4.b) & 0x3) << 13) |
+          (((e0g5.a) & 0x1) << 15) |
+          (((e0g5.b) & 0x3) << 16) |
+          (((e0g6.a) & 0x1) << 18) |
+          (((e0g6.b) & 0x3) << 19) |
+          (((e0g7.a) & 0x1) << 21) |
+          (((e0g7.b) & 0x3) << 22) |
+          (((e0g8.a) & 0x1) << 24) |
+          (((e0g8.b) & 0x3) << 25) |
+          (((e0g9.a) & 0x1) << 27) |
+          (((e0g9.b) & 0x3) << 28) |
+          (((e0g10.a) & 0x1) << 30) |
+          (((e0g10.b) & 0x3) << 31) |
+          (((e0g11.a) & 0x1) << 33) |
+          (((e0g11.b) & 0x3) << 34) |
+          (((e0g12.a) & 0x1) << 36) |
+          (((e0g12.b) & 0x3) << 37) |
+          (((e0g13.a) & 0x1) << 39) |
+          (((e0g13.b) & 0x3) << 40) |
+          (((e0g14.a) & 0x1) << 42) |
+          (((e0g14.b) & 0x3) << 43) |
+          (((e0g15.a) & 0x1) << 45) |
+          (((e0g15.b) & 0x3) << 46) |
+          (((e0g16.a) & 0x1) << 48) |
+          (((e0g16.b) & 0x3) << 49) |
+          (((e0g17.a) & 0x1) << 51) |
+          (((e0g17.b) & 0x3) << 52) |
+          (((e0g18.a) & 0x1) << 54) |
+          (((e0g18.b) & 0x3) << 55) |
+          (((e0g19.a) & 0x1) << 57) |
+          (((e0g19.b) & 0x3) << 58) |
+          (((e0g20.a) & 0x1) << 60) |
+          (((e0g20.b) & 0x3) << 61);
+      scratch |= v << scratchBits;
+      scratchBits += 63;
+      if (scratchBits >= 64) {
+        view.setUint64(wordIndex * 8, scratch, Endian.little);
+        wordIndex++;
+        scratchBits -= 64;
+        scratch = v >>> (63 - scratchBits);
+      }
+    }
+    for (; i0 < value.itemsCount; i0++) {
+      final e0 = value.items[i0];
+      v = ((e0.a) & 0x1) | (((e0.b) & 0x3) << 1);
+      scratch |= v << scratchBits;
+      scratchBits += 3;
+      if (scratchBits >= 64) {
+        view.setUint64(wordIndex * 8, scratch, Endian.little);
+        wordIndex++;
+        scratchBits -= 64;
+        scratch = v >>> (3 - scratchBits);
+      }
     }
   }
   if (scratchBits != 0) {
@@ -994,19 +1592,164 @@ bool readArrTri3(ArrTri3 value, ByteData view, int numBits) {
   if (bitsRead + value.itemsCount * 3 > numBits) {
     return false;
   }
-  for (var i0 = 0; i0 < value.itemsCount; i0++) {
-    final e0 = value.items[i0];
-    if (bitsRead >>> 3 < tailBase) {
-      window = view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
-    } else {
-      window = tailWord >>> (bitsRead - tailBase * 8);
+  {
+    var i0 = 0;
+    for (; i0 + 19 <= value.itemsCount; i0 += 19) {
+      final e0 = value.items[i0];
+      if (bitsRead >>> 3 < tailBase) {
+        window =
+            view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
+      } else {
+        window = tailWord >>> (bitsRead - tailBase * 8);
+      }
+      v = window & 0x1;
+      bitsRead += 1;
+      e0.a = v;
+      v = (window >>> 1) & 0x3;
+      bitsRead += 2;
+      e0.b = v;
+      final e0g1 = value.items[i0 + 1];
+      v = (window >>> 3) & 0x1;
+      bitsRead += 1;
+      e0g1.a = v;
+      v = (window >>> 4) & 0x3;
+      bitsRead += 2;
+      e0g1.b = v;
+      final e0g2 = value.items[i0 + 2];
+      v = (window >>> 6) & 0x1;
+      bitsRead += 1;
+      e0g2.a = v;
+      v = (window >>> 7) & 0x3;
+      bitsRead += 2;
+      e0g2.b = v;
+      final e0g3 = value.items[i0 + 3];
+      v = (window >>> 9) & 0x1;
+      bitsRead += 1;
+      e0g3.a = v;
+      v = (window >>> 10) & 0x3;
+      bitsRead += 2;
+      e0g3.b = v;
+      final e0g4 = value.items[i0 + 4];
+      v = (window >>> 12) & 0x1;
+      bitsRead += 1;
+      e0g4.a = v;
+      v = (window >>> 13) & 0x3;
+      bitsRead += 2;
+      e0g4.b = v;
+      final e0g5 = value.items[i0 + 5];
+      v = (window >>> 15) & 0x1;
+      bitsRead += 1;
+      e0g5.a = v;
+      v = (window >>> 16) & 0x3;
+      bitsRead += 2;
+      e0g5.b = v;
+      final e0g6 = value.items[i0 + 6];
+      v = (window >>> 18) & 0x1;
+      bitsRead += 1;
+      e0g6.a = v;
+      v = (window >>> 19) & 0x3;
+      bitsRead += 2;
+      e0g6.b = v;
+      final e0g7 = value.items[i0 + 7];
+      v = (window >>> 21) & 0x1;
+      bitsRead += 1;
+      e0g7.a = v;
+      v = (window >>> 22) & 0x3;
+      bitsRead += 2;
+      e0g7.b = v;
+      final e0g8 = value.items[i0 + 8];
+      v = (window >>> 24) & 0x1;
+      bitsRead += 1;
+      e0g8.a = v;
+      v = (window >>> 25) & 0x3;
+      bitsRead += 2;
+      e0g8.b = v;
+      final e0g9 = value.items[i0 + 9];
+      v = (window >>> 27) & 0x1;
+      bitsRead += 1;
+      e0g9.a = v;
+      v = (window >>> 28) & 0x3;
+      bitsRead += 2;
+      e0g9.b = v;
+      final e0g10 = value.items[i0 + 10];
+      v = (window >>> 30) & 0x1;
+      bitsRead += 1;
+      e0g10.a = v;
+      v = (window >>> 31) & 0x3;
+      bitsRead += 2;
+      e0g10.b = v;
+      final e0g11 = value.items[i0 + 11];
+      v = (window >>> 33) & 0x1;
+      bitsRead += 1;
+      e0g11.a = v;
+      v = (window >>> 34) & 0x3;
+      bitsRead += 2;
+      e0g11.b = v;
+      final e0g12 = value.items[i0 + 12];
+      v = (window >>> 36) & 0x1;
+      bitsRead += 1;
+      e0g12.a = v;
+      v = (window >>> 37) & 0x3;
+      bitsRead += 2;
+      e0g12.b = v;
+      final e0g13 = value.items[i0 + 13];
+      v = (window >>> 39) & 0x1;
+      bitsRead += 1;
+      e0g13.a = v;
+      v = (window >>> 40) & 0x3;
+      bitsRead += 2;
+      e0g13.b = v;
+      final e0g14 = value.items[i0 + 14];
+      v = (window >>> 42) & 0x1;
+      bitsRead += 1;
+      e0g14.a = v;
+      v = (window >>> 43) & 0x3;
+      bitsRead += 2;
+      e0g14.b = v;
+      final e0g15 = value.items[i0 + 15];
+      v = (window >>> 45) & 0x1;
+      bitsRead += 1;
+      e0g15.a = v;
+      v = (window >>> 46) & 0x3;
+      bitsRead += 2;
+      e0g15.b = v;
+      final e0g16 = value.items[i0 + 16];
+      v = (window >>> 48) & 0x1;
+      bitsRead += 1;
+      e0g16.a = v;
+      v = (window >>> 49) & 0x3;
+      bitsRead += 2;
+      e0g16.b = v;
+      final e0g17 = value.items[i0 + 17];
+      v = (window >>> 51) & 0x1;
+      bitsRead += 1;
+      e0g17.a = v;
+      v = (window >>> 52) & 0x3;
+      bitsRead += 2;
+      e0g17.b = v;
+      final e0g18 = value.items[i0 + 18];
+      v = (window >>> 54) & 0x1;
+      bitsRead += 1;
+      e0g18.a = v;
+      v = (window >>> 55) & 0x3;
+      bitsRead += 2;
+      e0g18.b = v;
     }
-    v = window & 0x1;
-    bitsRead += 1;
-    e0.a = v;
-    v = (window >>> 1) & 0x3;
-    bitsRead += 2;
-    e0.b = v;
+    for (; i0 < value.itemsCount; i0++) {
+      final e0 = value.items[i0];
+      if (bitsRead >>> 3 < tailBase) {
+        window =
+            view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
+      } else {
+        window = tailWord >>> (bitsRead - tailBase * 8);
+      }
+      v = window & 0x1;
+      bitsRead += 1;
+      e0.a = v;
+      v = (window >>> 1) & 0x3;
+      bitsRead += 2;
+      e0.b = v;
+    }
   }
   return true;
 }
@@ -1881,16 +2624,45 @@ int writeArrNested(ArrNested value, ByteData view) {
     scratchBits -= 64;
     scratch = v >>> (8 - scratchBits);
   }
-  for (var i0 = 0; i0 < value.itemsCount; i0++) {
-    final e0 = value.items[i0];
-    v = ((e0.a) & 0x7) | (((e0.b) & 0xff) << 3);
-    scratch |= v << scratchBits;
-    scratchBits += 11;
-    if (scratchBits >= 64) {
-      view.setUint64(wordIndex * 8, scratch, Endian.little);
-      wordIndex++;
-      scratchBits -= 64;
-      scratch = v >>> (11 - scratchBits);
+  {
+    var i0 = 0;
+    for (; i0 + 5 <= value.itemsCount; i0 += 5) {
+      final e0 = value.items[i0];
+      final e0g1 = value.items[i0 + 1];
+      final e0g2 = value.items[i0 + 2];
+      final e0g3 = value.items[i0 + 3];
+      final e0g4 = value.items[i0 + 4];
+      v =
+          ((e0.a) & 0x7) |
+          (((e0.b) & 0xff) << 3) |
+          (((e0g1.a) & 0x7) << 11) |
+          (((e0g1.b) & 0xff) << 14) |
+          (((e0g2.a) & 0x7) << 22) |
+          (((e0g2.b) & 0xff) << 25) |
+          (((e0g3.a) & 0x7) << 33) |
+          (((e0g3.b) & 0xff) << 36) |
+          (((e0g4.a) & 0x7) << 44) |
+          (((e0g4.b) & 0xff) << 47);
+      scratch |= v << scratchBits;
+      scratchBits += 55;
+      if (scratchBits >= 64) {
+        view.setUint64(wordIndex * 8, scratch, Endian.little);
+        wordIndex++;
+        scratchBits -= 64;
+        scratch = v >>> (55 - scratchBits);
+      }
+    }
+    for (; i0 < value.itemsCount; i0++) {
+      final e0 = value.items[i0];
+      v = ((e0.a) & 0x7) | (((e0.b) & 0xff) << 3);
+      scratch |= v << scratchBits;
+      scratchBits += 11;
+      if (scratchBits >= 64) {
+        view.setUint64(wordIndex * 8, scratch, Endian.little);
+        wordIndex++;
+        scratchBits -= 64;
+        scratch = v >>> (11 - scratchBits);
+      }
     }
   }
   v = ((value.tail) & 0x7);
@@ -1953,19 +2725,66 @@ bool readArrNested(ArrNested value, ByteData view, int numBits) {
   if (bitsRead + value.itemsCount * 11 > numBits) {
     return false;
   }
-  for (var i0 = 0; i0 < value.itemsCount; i0++) {
-    final e0 = value.items[i0];
-    if (bitsRead >>> 3 < tailBase) {
-      window = view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
-    } else {
-      window = tailWord >>> (bitsRead - tailBase * 8);
+  {
+    var i0 = 0;
+    for (; i0 + 5 <= value.itemsCount; i0 += 5) {
+      final e0 = value.items[i0];
+      if (bitsRead >>> 3 < tailBase) {
+        window =
+            view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
+      } else {
+        window = tailWord >>> (bitsRead - tailBase * 8);
+      }
+      v = window & 0x7;
+      bitsRead += 3;
+      e0.a = v;
+      v = (window >>> 3) & 0xff;
+      bitsRead += 8;
+      e0.b = v;
+      final e0g1 = value.items[i0 + 1];
+      v = (window >>> 11) & 0x7;
+      bitsRead += 3;
+      e0g1.a = v;
+      v = (window >>> 14) & 0xff;
+      bitsRead += 8;
+      e0g1.b = v;
+      final e0g2 = value.items[i0 + 2];
+      v = (window >>> 22) & 0x7;
+      bitsRead += 3;
+      e0g2.a = v;
+      v = (window >>> 25) & 0xff;
+      bitsRead += 8;
+      e0g2.b = v;
+      final e0g3 = value.items[i0 + 3];
+      v = (window >>> 33) & 0x7;
+      bitsRead += 3;
+      e0g3.a = v;
+      v = (window >>> 36) & 0xff;
+      bitsRead += 8;
+      e0g3.b = v;
+      final e0g4 = value.items[i0 + 4];
+      v = (window >>> 44) & 0x7;
+      bitsRead += 3;
+      e0g4.a = v;
+      v = (window >>> 47) & 0xff;
+      bitsRead += 8;
+      e0g4.b = v;
     }
-    v = window & 0x7;
-    bitsRead += 3;
-    e0.a = v;
-    v = (window >>> 3) & 0xff;
-    bitsRead += 8;
-    e0.b = v;
+    for (; i0 < value.itemsCount; i0++) {
+      final e0 = value.items[i0];
+      if (bitsRead >>> 3 < tailBase) {
+        window =
+            view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
+      } else {
+        window = tailWord >>> (bitsRead - tailBase * 8);
+      }
+      v = window & 0x7;
+      bitsRead += 3;
+      e0.a = v;
+      v = (window >>> 3) & 0xff;
+      bitsRead += 8;
+      e0.b = v;
+    }
   }
   if (bitsRead + 3 > numBits) {
     return false;

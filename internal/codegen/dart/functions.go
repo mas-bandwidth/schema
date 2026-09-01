@@ -509,6 +509,26 @@ func (g *gen) emitWriteField(f *ir.Field, path, ind string) {
 		g.emitWriteOffset(count, big.NewInt(f.ArrayMin), big.NewInt(f.ArrayBound), ind)
 		iv := fmt.Sprintf("i%d", g.loopDepth)
 		g.loopDepth++
+		if k := groupK(g.staticBitsScalarOK(f), 64); k >= 2 {
+			// grouped: k elements per iteration share the chunk lanes, so
+			// short elements merge together instead of one merge each
+			g.chunkFlush(ind)
+			g.pf("%s{\n", ind)
+			g.pf("%s  var %s = 0;\n", ind, iv)
+			g.pf("%s  for (; %s + %d <= %s; %s += %d) {\n", ind, iv, k, count, iv, k)
+			for j := int64(0); j < k; j++ {
+				g.emitWriteElemNamed(f, name, groupIdx(iv, j), groupEv(g.loopDepth-1, j), ind+"    ")
+			}
+			g.chunkFlush(ind + "    ")
+			g.pf("%s  }\n", ind)
+			g.pf("%s  for (; %s < %s; %s++) {\n", ind, iv, count, iv)
+			g.emitWriteElem(f, name, iv, ind+"    ")
+			g.chunkFlush(ind + "    ")
+			g.pf("%s  }\n", ind)
+			g.pf("%s}\n", ind)
+			g.loopDepth--
+			return
+		}
 		g.chunkFlush(ind)
 		g.pf("%sfor (var %s = 0; %s < %s; %s++) {\n", ind, iv, iv, count, iv)
 		g.emitWriteElem(f, name, iv, ind+"  ")
@@ -520,23 +540,64 @@ func (g *gen) emitWriteField(f *ir.Field, path, ind string) {
 	}
 }
 
+// staticBitsScalarOK is staticBitsScalar with the miss folded to zero bits.
+func (g *gen) staticBitsScalarOK(f *ir.Field) int64 {
+	if bits, ok := g.staticBitsScalar(f); ok {
+		return bits
+	}
+	return 0
+}
+
+// groupK is the element count per grouped loop iteration: how many
+// elemBits-sized elements share one staged lane of laneBits (64 on the
+// write side, 57 on the read side). Zero-bit and lane-filling elements
+// group as 1 — the plain loop.
+func groupK(elemBits, laneBits int64) int64 {
+	if elemBits <= 0 {
+		return 1
+	}
+	return laneBits / elemBits
+}
+
+// groupIdx renders the j-th element index of a grouped loop iteration.
+func groupIdx(iv string, j int64) string {
+	if j == 0 {
+		return iv
+	}
+	return fmt.Sprintf("%s + %d", iv, j)
+}
+
+// groupEv names the j-th hoisted element ref of a grouped loop iteration —
+// e0 keeps its plain-loop name, later elements suffix it (e0g1, e0g2) so
+// the unrolled hoists coexist in one scope.
+func groupEv(depth int, j int64) string {
+	if j == 0 {
+		return fmt.Sprintf("e%d", depth)
+	}
+	return fmt.Sprintf("e%dg%d", depth, j)
+}
+
 // emitWriteElem writes one array element; class elements hoist a final ref.
 func (g *gen) emitWriteElem(f *ir.Field, name, iv, ind string) {
+	g.emitWriteElemNamed(f, name, iv, fmt.Sprintf("e%d", g.loopDepth-1), ind)
+}
+
+// emitWriteElemNamed is emitWriteElem with the hoisted ref name chosen by
+// the caller — the grouped loops unroll several elements into one scope.
+func (g *gen) emitWriteElemNamed(f *ir.Field, name, idx, ev, ind string) {
 	if f.Type.Kind == ir.TNamed {
 		switch ref := f.Type.Ref.(type) {
 		case *ir.Struct:
-			ev := fmt.Sprintf("e%d", g.loopDepth-1)
-			g.pf("%sfinal %s = %s[%s];\n", ind, ev, name, iv)
+			g.pf("%sfinal %s = %s[%s];\n", ind, ev, name, idx)
 			g.emitWriteItems(ref.Items, ev, ind)
 			return
 		case *ir.Union:
-			ev := fmt.Sprintf("e%d", g.loopDepth-1)
-			g.pf("%sfinal %s = %s[%s];\n", ind, ev, name, iv)
+			g.pf("%sfinal %s = %s[%s];\n", ind, ev, name, idx)
 			g.emitWriteUnion(ref, ev, ind)
 			return
 		}
 	}
-	g.emitWriteScalar(f, fmt.Sprintf("%s[%s]", name, iv), ind)
+	g.emitWriteScalar(f, fmt.Sprintf("%s[%s]", name, idx), ind)
 }
 
 // assertRange emits the write-contract asserts for an integer path in
@@ -1044,25 +1105,29 @@ func (g *gen) emitReadStaticField(f *ir.Field, path, ind string) {
 }
 
 func (g *gen) emitReadElem(f *ir.Field, name, iv, ind string, bounded bool) {
+	g.emitReadElemNamed(f, name, iv, fmt.Sprintf("e%d", g.loopDepth-1), ind, bounded)
+}
+
+// emitReadElemNamed is emitReadElem with the hoisted ref name chosen by
+// the caller — the grouped loops unroll several elements into one scope.
+func (g *gen) emitReadElemNamed(f *ir.Field, name, idx, ev, ind string, bounded bool) {
 	if f.Type.Kind == ir.TNamed {
 		switch ref := f.Type.Ref.(type) {
 		case *ir.Struct:
-			ev := fmt.Sprintf("e%d", g.loopDepth-1)
-			g.pf("%sfinal %s = %s[%s];\n", ind, ev, name, iv)
+			g.pf("%sfinal %s = %s[%s];\n", ind, ev, name, idx)
 			g.emitReadItems(ref.Items, ev, ind, bounded)
 			return
 		case *ir.Union:
-			ev := fmt.Sprintf("e%d", g.loopDepth-1)
-			g.pf("%sfinal %s = %s[%s];\n", ind, ev, name, iv)
+			g.pf("%sfinal %s = %s[%s];\n", ind, ev, name, idx)
 			g.emitReadUnion(ref, ev, ind, bounded)
 			return
 		}
 	}
 	if is128(f.Type) {
-		g.emitRead128Scalar(f, fmt.Sprintf("%s[%s] = ", name, iv), ind)
+		g.emitRead128Scalar(f, fmt.Sprintf("%s[%s] = ", name, idx), ind)
 		return
 	}
-	g.emitReadScalar(f, fmt.Sprintf("%s[%s]", name, iv), ind, bounded)
+	g.emitReadScalar(f, fmt.Sprintf("%s[%s]", name, idx), ind, bounded)
 }
 
 func (g *gen) emitReadDynamicField(f *ir.Field, path, ind string) {
@@ -1097,6 +1162,24 @@ func (g *gen) emitReadDynamicField(f *ir.Field, path, ind string) {
 		if elemBits, ok := g.staticBitsScalar(f); ok {
 			if elemBits > 0 {
 				g.pf("%sif (bitsRead + %s * %d > numBits) {\n%s  return false;\n%s}\n", ind, count, elemBits, ind, ind)
+			}
+			if k := groupK(elemBits, 57); k >= 2 {
+				// grouped: k elements per iteration share one window load
+				g.pf("%s{\n", ind)
+				g.pf("%s  var %s = 0;\n", ind, iv)
+				g.pf("%s  for (; %s + %d <= %s; %s += %d) {\n", ind, iv, k, count, iv, k)
+				for j := int64(0); j < k; j++ {
+					g.emitReadElemNamed(f, name, groupIdx(iv, j), groupEv(g.loopDepth-1, j), ind+"    ", true)
+				}
+				g.invalidateWindow()
+				g.pf("%s  }\n", ind)
+				g.pf("%s  for (; %s < %s; %s++) {\n", ind, iv, count, iv)
+				g.emitReadElem(f, name, iv, ind+"    ", true)
+				g.invalidateWindow()
+				g.pf("%s  }\n", ind)
+				g.pf("%s}\n", ind)
+				g.loopDepth--
+				return
 			}
 			g.pf("%sfor (var %s = 0; %s < %s; %s++) {\n", ind, iv, iv, count, iv)
 			g.emitReadElem(f, name, iv, ind+"  ", true)
