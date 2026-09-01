@@ -15,6 +15,8 @@
 #include "V1Table.h"
 #include "V2Table.h"
 #include "GraphTable.h"
+#include "PartsTable.h"
+#include "MarksTable.h"
 #include "P1Table.h"
 #include "P2Table.h"
 
@@ -1525,6 +1527,114 @@ static void test_descriptors_are_constant()
     for ( auto & reader : readers ) { reader.join(); }
 }
 
+
+// ---- R1: a multi-file pointered unit, across every kind of member ----
+//
+// The gap that let the defect through: `Album` nests a plain TYPE and a FIXED
+// table declared in Parts.schema — a file that declares no variable table and
+// owns no pointer target — plus a VARIABLE table from Marks.schema. The Open
+// walk for each lives in its DECLARING file's header, so a file-scoped
+// emission rule leaves Parts's two undefined and the referencing header will
+// not compile. Colour is native-mapped as well, so the walk is reached through
+// a derived-to-base conversion.
+
+static void test_cross_file_pointer_unit()
+{
+    graphdemo::AlbumBuilder builder;
+    graphdemo::Album * album = builder.GetRoot();
+    set_string( album->name, album->name_length, "cross" );
+
+    // a native-mapped TYPE from another file: the storage speaks ::ColourMath
+    album->tint = ColourMath( 10, 20, 30 );
+    CHECK( album->tint.packed() == 0x0A141Eu );
+
+    // a FIXED table from a file with no variable table of its own
+    set_string( album->stamp.tag, album->stamp.tag_length, "s1" );
+    album->stamp.seq = 42;
+
+    // a VARIABLE table from a third file, nested by value AND pointed at
+    set_string( album->marker.label, album->marker.label_length, "by-val" );
+    graphdemo::TableSlot<graphdemo::Tally> tally = builder.Alloc<graphdemo::Tally>();
+    tally->hits = 7;
+    album->marker.note = tally;
+
+    graphdemo::TableSlot<graphdemo::Marker> pinned = builder.Alloc<graphdemo::Marker>();
+    set_string( pinned->label, pinned->label_length, "pinned" );
+    graphdemo::TableSlot<graphdemo::Tally> pinned_tally = builder.Alloc<graphdemo::Tally>();
+    pinned_tally->hits = 9;
+    pinned->note = pinned_tally;
+    album->pin = pinned;
+
+    graphdemo::TableSlot<graphdemo::ListNode> head = builder.Alloc<graphdemo::ListNode>();
+    head->value = 5;
+    album->head = head;
+
+    // the wire, exactly measured
+    int64_t need = graphdemo::AlbumMeasure( builder );
+    CHECK( need > 0 );
+    uint8_t wire[2048];
+    CHECK( graphdemo::AlbumSave( builder, wire, sizeof( wire ) ) == need );
+    CHECK( graphdemo::AlbumSave( builder, wire, need ) == need );
+    CHECK( graphdemo::AlbumSave( builder, wire, need - 1 ) == -1 );
+
+    CHECK( builder.Lock() );
+    const graphdemo::Album * locked = builder.AsConst();
+    CHECK( locked != NULL );
+
+    // every cross-file member survives the compaction
+    CHECK( strcmp( locked->name, "cross" ) == 0 );
+    CHECK( locked->tint.r == 10 && locked->tint.g == 20 && locked->tint.b == 30 );
+    CHECK( locked->tint.packed() == 0x0A141Eu ); // the native behaviour still rides
+    CHECK( strcmp( locked->stamp.tag, "s1" ) == 0 && locked->stamp.seq == 42 );
+    CHECK( strcmp( locked->marker.label, "by-val" ) == 0 );
+    CHECK( graphdemo::TallyAt( locked->marker.note )->hits == 7 );
+    CHECK( strcmp( graphdemo::MarkerAt( locked->pin )->label, "pinned" ) == 0 );
+    CHECK( graphdemo::TallyAt( graphdemo::MarkerAt( locked->pin )->note )->hits == 9 );
+    CHECK( graphdemo::ListNodeAt( locked->head )->value == 5 );
+
+    // and the round trip through the wire
+    int64_t region_need = graphdemo::AlbumLoadMeasure( wire, need );
+    CHECK( region_need == builder.RegionBytes() );
+    uint8_t * region = (uint8_t *) malloc( (size_t) region_need );
+    graphdemo::TableReport report;
+    const graphdemo::Album * loaded = graphdemo::AlbumLoad( region, region_need, wire, need, &report );
+    CHECK( loaded != NULL );
+    CHECK( report.unknown == 0 && report.kind_mismatch == 0 && report.clamped == 0 && !report.malformed );
+    CHECK( loaded->tint.b == 30 && loaded->stamp.seq == 42 );
+    CHECK( graphdemo::TallyAt( loaded->marker.note )->hits == 7 );
+    CHECK( graphdemo::TallyAt( graphdemo::MarkerAt( loaded->pin )->note )->hits == 9 );
+    free( region );
+
+    // ---- and Open bounds the CROSS-FILE members' companions ----
+    int64_t cook_need = graphdemo::AlbumCookMeasure( builder );
+    uint8_t * file = (uint8_t *) malloc( (size_t) cook_need );
+    CHECK( graphdemo::AlbumCook( builder, file, cook_need ) == cook_need );
+    CHECK( graphdemo::AlbumOpen( file, cook_need ) != NULL );
+
+    graphdemo::Album * forged = (graphdemo::Album *) ( file + graphdemo::kTableCookedHeaderBytes );
+
+    // a FIXED table declared in a file with no variable table at all
+    int32_t good_tag = forged->stamp.tag_length;
+    forged->stamp.tag_length = 30000;
+    CHECK( graphdemo::AlbumOpen( file, cook_need ) == NULL );
+    forged->stamp.tag_length = good_tag;
+
+    // a VARIABLE table declared in a third file, nested by value
+    int32_t good_label = forged->marker.label_length;
+    forged->marker.label_length = -4;
+    CHECK( graphdemo::AlbumOpen( file, cook_need ) == NULL );
+    forged->marker.label_length = good_label;
+
+    // its pointer, out of the region
+    uint32_t good_note = forged->marker.note.value;
+    forged->marker.note.value = 0x7FFFFFF0u;
+    CHECK( graphdemo::AlbumOpen( file, cook_need ) == NULL );
+    forged->marker.note.value = good_note;
+
+    CHECK( graphdemo::AlbumOpen( file, cook_need ) != NULL ); // nothing else broke
+    free( file );
+}
+
 int main()
 {
     test_round_trip();
@@ -1561,6 +1671,7 @@ int main()
     test_open_bounds_nested_fixed_companions();
     test_open_refuses_dirty_reserved();
     test_descriptors_are_constant();
+    test_cross_file_pointer_unit();
 
     if ( failures > 0 )
     {

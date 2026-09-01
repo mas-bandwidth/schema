@@ -141,10 +141,18 @@ func (g *tableGen) emitCodecDeclarations(members []*ir.Struct) {
 			g.pf("template <typename Ctx> inline bool %sPack( const Ctx & ctx, const %s & src, %s & dst, uint8_t * base, int64_t capacity, int64_t & used, int32_t depth );\n", st.Name, st.Name, st.Name)
 			g.pf("inline int64_t %sLoadMeasureBody( TableReader & r, int32_t depth );\n", st.Name)
 		}
-		// EVERY closure member gets an Open walk, not only the ones pointers
-		// reach: a fixed table or a plain type nested by value carries count
-		// companions, and an unbounded one is an over-read waiting for the first
-		// reflection walker (SPEC-TABLES.md §7)
+		g.pf("\n")
+	}
+	// EVERY closure member this file DECLARES gets an Open walk — not only the
+	// ones pointers reach, and not only in files that declare a variable table.
+	// A fixed table or a plain type nested by value carries count companions,
+	// and an unbounded one is an over-read waiting for the first reflection
+	// walker (SPEC-TABLES.md §7). The DECLARING file is the single home for
+	// each walk, so a file that references one across the unit picks it up
+	// through the Table header it already includes — which is why this is
+	// keyed on the UNIT having pointers, never on this file having them.
+	if g.anyVariable && len(members) > 0 {
+		g.pf("// ---- the cooked form's bounds walks (SPEC-TABLES.md §7) ----\n\n")
 		for _, st := range members {
 			g.pf("inline bool %sOpenWalk( const %s * node, const uint8_t * base, int64_t bytes, int64_t & watermark, int32_t depth );\n", st.Name, st.Name)
 		}
@@ -187,15 +195,16 @@ func (g *tableGen) emitPointerTargetSurface(st *ir.Struct) {
 // ---- the walkers and the public variable-length surface ----
 
 func (g *tableGen) emitVariableSurface(members []*ir.Struct) {
-	vars := g.varMembers(members)
-	if len(vars) == 0 {
+	if !g.anyVariable {
 		return
 	}
-	for _, st := range vars {
+	for _, st := range g.varMembers(members) {
 		g.emitPackMeasure(st)
 		g.emitPack(st)
 		g.emitLoadMeasureBody(st)
 	}
+	// every member THIS FILE declares, whether or not this file declares a
+	// variable table: a sibling file's table may nest one of these by value
 	for _, st := range members {
 		g.emitOpenWalk(st)
 	}
@@ -448,19 +457,29 @@ func unionFields(st *ir.Struct) []*ir.Field {
 // PACK AND THIS WALK MUST KEEP THE SAME ORDER. Neither may be reordered
 // without the other; the invariant is stated at both sites for that reason.
 func (g *tableGen) emitOpenWalk(st *ir.Struct) {
+	ptrs := pointerFields(st)
 	g.pf("// %sOpenWalk: validate the REFERENCE GRAPH and the counts that bound a\n", st.Name)
 	g.pf("// traversal of it — no field value is read, no payload is decoded.\n")
 	g.pf("//\n")
-	g.pf("// The watermark is the termination proof. %sPack lays nodes out in PRE-ORDER\n", st.Name)
-	g.pf("// by bump allocation and this walk visits them in the SAME ORDER, so a\n")
-	g.pf("// genuine region always satisfies `at >= watermark`. Requiring it makes the\n")
-	g.pf("// walk consume region bytes monotonically: linear in the region, immune to a\n")
-	g.pf("// forged file whose references alias forward (which without it costs 2^n),\n")
-	g.pf("// and closed to mid-node overlaps a range check alone would admit.\n")
-	g.pf("// NEITHER THIS ORDER NOR PACK'S MAY CHANGE ALONE.\n")
+	if len(ptrs) > 0 {
+		g.pf("// The watermark is the termination proof. %sPack lays nodes out in PRE-ORDER\n", st.Name)
+		g.pf("// by bump allocation and this walk visits them in the SAME ORDER, so a\n")
+		g.pf("// genuine region always satisfies `at >= watermark`. Requiring it makes the\n")
+		g.pf("// walk consume region bytes monotonically: linear in the region, immune to a\n")
+		g.pf("// forged file whose references alias forward (which without it costs 2^n),\n")
+		g.pf("// and closed to mid-node overlaps a range check alone would admit.\n")
+		g.pf("// NEITHER THIS ORDER NOR PACK'S MAY CHANGE ALONE.\n")
+	} else {
+		g.pf("// %s holds no reference of its own, so it neither reads the watermark nor\n", st.Name)
+		g.pf("// advances it: its placement in the region is decided entirely by the pack\n")
+		g.pf("// of whatever variable table nests it, and the mark passes through here\n")
+		g.pf("// untouched. What this walk owes is the COUNT COMPANIONS — a member nested\n")
+		g.pf("// by value carries bounds that any traversal trusts, and an unbounded one\n")
+		g.pf("// is the over-read. That is why it is emitted even for a table nothing\n")
+		g.pf("// points at, in a file that declares no variable table at all.\n")
+	}
 	g.pf("inline bool %sOpenWalk( const %s * node, const uint8_t * base, int64_t bytes, int64_t & watermark, int32_t depth )\n{\n", st.Name, st.Name)
 	g.pf("    if ( node == NULL || depth > kTableMaxDepth ) { return false; }\n")
-	ptrs := pointerFields(st)
 	nested := byValueStructFields(st)
 	unions := unionFields(st)
 	counted := countedCompanions(st)

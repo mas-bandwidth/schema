@@ -241,3 +241,44 @@ RE-RUN MATRIX: make test exit 0 (nine legs + tables, 0 warnings); tables leg
 shape-gate clean; reviewer adv battery 240126 checks, the single remaining
 "failure" being their own CHECK that garbage in the header's reserved words
 still opens — now refused, which was minor 3.
+
+## Delta round (one new blocker, introduced by the C2 repair)
+
+- R1 FIXED — C2 widened Open's descend-set to ALL by-value structs, but the
+  walks were emitted per FILE and `emitVariableSurface` early-returned when a
+  file had no varMembers. A multi-file pointered unit whose second file
+  declares neither a variable table NOR a pointer target then referenced walks
+  that existed nowhere: the header did not compile. Fix taken is the second of
+  the two sketched — the OpenWalk half is keyed on the UNIT being pointered,
+  never on the file, so each walk is emitted exactly once by its DECLARING
+  file and the referencing file picks it up through the include it already
+  has. Emitting per referencing file instead would have defined each twice.
+  Value-only UNITS stay at zero cost because the key is `anyVariable`; the
+  byte-identity proof against 974ff0f was re-run post-fix and is clean.
+- MANDATORY CORPUS added: `tables/pointers` is now a genuinely multi-file
+  pointered unit. `Parts.schema` declares a native-mapped TYPE (Colour) and a
+  FIXED table (Stamp) and is deliberately BOTH pointer-free AND pointer-target
+  free — the first corpus attempt missed the bug because Stamp was a pointer
+  target, which put it in varMembers and papered over the gap. `Marks.schema`
+  declares the cross-file VARIABLE member (Marker, pointing at Tally).
+  `Graph.schema`'s new `Album` nests all three across file boundaries and
+  points at Marker. `test/tables/graph_colour.h` supplies the native type, so
+  the cross-file cpp_native case is covered too: the Open walk reaches
+  ::ColourMath through a derived-to-base conversion.
+  `test_cross_file_pointer_unit` round-trips Album through measure/save/exact
+  capacity/Lock/cook/open/load and forges three cross-file corruptions — the
+  fixed table's count, the variable member's count, and its pointer.
+  NEGATIVE CONTROLS: restoring the file-scoped emission makes GraphTable.h fail
+  to compile with ColourOpenWalk/StampOpenWalk undefined; narrowing the
+  descend-set back to variable members turns three assertions red, one of them
+  the cross-file one.
+- COSMETICS: the generated OpenWalk comment no longer cites `<X>Pack` for a
+  member that has none — a reference-free member gets a comment saying its
+  placement is decided by whatever variable table nests it, that the watermark
+  passes through untouched, and that its count companions are what the walk
+  owes. The PR body's layout-id bullet now says per-field offsetof, matching
+  C4 and the spec.
+
+RE-RUN MATRIX (post-fix): make test exit 0 (nine legs + tables, 0 warnings);
+tables leg 20 cases; zero-cost byte-identity against 974ff0f clean; grep gate
+clean; gofmt/vet/golangci-lint(0)/modernize/shape-gate clean.

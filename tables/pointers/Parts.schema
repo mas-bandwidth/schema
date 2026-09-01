@@ -1,0 +1,28 @@
+// Parts.schema — a VALUE-ONLY file inside a POINTERED unit (SPEC-TABLES.md
+// §7). Nothing here declares a pointer, and that is the whole point of the
+// file: the cooked form's bounds walk for a member lives in the member's
+// DECLARING file, so a file with no variable table of its own must still emit
+// walks for what sibling files nest by value. A file-scoped emission rule
+// misses exactly this shape, and the generated header of the file that
+// REFERENCES these members then names walks that exist nowhere.
+package graphdemo
+
+// native-mapped, and referenced from another file: the storage there spells
+// ::ColourMath, so every generated call on it — the codecs and the Open walk
+// alike — goes through a derived-to-base conversion
+type Colour | cpp_native = ColourMath, cpp_include = "graph_colour.h"
+{
+    r uint8
+    g uint8
+    b uint8
+}
+
+// a FIXED table that nothing points at: it is only ever nested BY VALUE, so
+// neither the variable set nor the pointer-target set names it — which is
+// exactly why a file-scoped emission rule forgets it. Its count companion
+// still bounds any traversal of tag, so it still needs an Open walk.
+table Stamp
+{
+    tag string(8)
+    seq int32 = 0 | min = 0, max = 1000
+}

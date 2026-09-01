@@ -230,7 +230,7 @@ tables-zero-cost: build/tables-generated/.stamp
 build/schema_test_tables: build/tables-generated/.stamp test/tables/main.cpp
 	@mkdir -p build
 	$(CXX) -std=c++17 -Wall -Wextra -Werror -ffp-contract=off -pthread \
-		-Ibuild/tables-generated/examples -Ibuild/tables-generated/pointers \
+		-Ibuild/tables-generated/examples -Ibuild/tables-generated/pointers -Itest/tables \
 		-Ibuild/tables-generated/v1 -Ibuild/tables-generated/v2 \
 		-Ibuild/tables-generated/p1 -Ibuild/tables-generated/p2 \
 		test/tables/main.cpp -o $@

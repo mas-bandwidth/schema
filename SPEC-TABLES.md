@@ -451,6 +451,14 @@ const Scene * scene = SceneOpen( bytes, size ); // point at it, or NULL
   do. It reads no field value and decodes no payload; that is the
   distinction between validating before pointing and parsing the whole
   thing. There is no trust-mode bypass.
+- **A member's walk lives in the file that DECLARES it.** A variable table
+  may nest a plain type, a fixed table or another variable table declared
+  anywhere in the unit, and the walk for each is emitted once, by its
+  declaring file — including by a file that declares no variable table of
+  its own, and for a member nothing points at. The referencing file picks it
+  up through the header it already includes. Emitting per referencing file
+  would define each walk twice; emitting only where pointers are declared
+  leaves the by-value members of a value-only file undefined.
 - **The walk is LINEAR IN THE REGION, and that takes a proof.** Bounds
   and forwardness alone do not give it: a forged file whose references
   alias forward — every node's second pointer aimed at its first child —

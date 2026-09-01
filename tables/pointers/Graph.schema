@@ -63,3 +63,20 @@ table Scene
     layers   [..MaxLayers]Layer
     meta     Meta
 }
+
+// CROSS-FILE, and all three kinds at once: a plain type and a FIXED table
+// from Parts.schema — a file that declares NO variable table — plus a VARIABLE
+// table from Marks.schema, nested by value and pointed at from here. The Open
+// walk for each lives in the member's DECLARING file, which this one already
+// includes; emitting them in the referencing file instead would define each
+// twice, and emitting them only in files that declare a variable table leaves
+// Parts's two undefined.
+table Album
+{
+    name   string(16)
+    tint   Colour
+    stamp  Stamp
+    marker Marker
+    pin    *Marker
+    head   *ListNode
+}
