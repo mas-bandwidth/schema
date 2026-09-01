@@ -406,9 +406,10 @@ func (g *gen) flatWriteEnumPiece(item *ir.FieldItem, ref *ir.Enum, name string) 
 //
 // TWO CONSEQUENCES, both named rather than discovered later:
 //
-//   - A stream that is BOTH truncated inside a run AND carries an
-//     out-of-range value before the truncation now surfaces the stream's
-//     overflow error where the per-field form surfaced the range refusal.
+//   - A stream that is BOTH truncated inside a run AND carries, before the
+//     truncation, a value the run's own validation refuses — a wrong const,
+//     a nonzero reserved, an out-of-range value — now surfaces the stream's
+//     overflow error where the per-field form surfaced that refusal.
 //     Both refuse the packet; the set of ACCEPTED streams is unchanged, which
 //     is the property that matters at the trust boundary. Java, Dart, JS-flat,
 //     Rust and Go already carry this consequence.
@@ -507,7 +508,7 @@ func (g *gen) flatReadPieceOf(item ir.Item) (flatPiece, bool) {
 			return flatPiece{}, false
 		}
 		return flatPiece{item: item, bits: item.Bits, read: func(ind, src string) {
-			g.sf("%sif (%s != 0UL) // reserved(%d): a read rejects nonzero\n", ind, src, item.Bits)
+			g.sf("%sif (%s != 0UL) // reserved(%d): a read rejects nonzero (SPEC §4.3)\n", ind, src, item.Bits)
 			g.sf("%s{\n%s    return false;\n%s}\n", ind, ind, ind)
 		}}, true
 	case *ir.FieldItem:

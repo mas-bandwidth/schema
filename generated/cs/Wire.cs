@@ -363,7 +363,7 @@ namespace Example
                 ulong v1 = (c0 >> 8) & 0x7UL;
                 value.Version = (uint)v1;
                 ulong v2 = (c0 >> 11) & 0x1fUL;
-                if (v2 != 0UL) // reserved(5): a read rejects nonzero
+                if (v2 != 0UL) // reserved(5): a read rejects nonzero (SPEC §4.3)
                 {
                     return false;
                 }
