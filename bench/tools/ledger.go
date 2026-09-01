@@ -111,7 +111,7 @@ func parse(file string) []point {
 	}
 	date, host, arch := "", "", ""
 	var pts []point
-	for _, line := range strings.Split(string(data), "\n") {
+	for line := range strings.SplitSeq(string(data), "\n") {
 		if after, ok := strings.CutPrefix(line, "# date: "); ok {
 			date = strings.TrimSpace(after)
 			continue
