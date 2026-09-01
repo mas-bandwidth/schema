@@ -351,70 +351,52 @@ export function ReadBenchPacketFlat(value, view, numBits) {
   whi = view.getUint32(bi + 4, true);
   s2 = br & 7;
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  br += 8;
   v = (out & 0xff) >>> 0;
   if (v > 200) { // a smuggled offset is refused
     return false;
   }
   value.A = (v + 4294967196) | 0;
-  bi = br >>> 3;
-  wlo = view.getUint32(bi, true);
-  whi = view.getUint32(bi + 4, true);
-  s2 = br & 7;
-  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  br += 16;
-  v = (out & 0xffff) >>> 0;
+  v = (out >>> 8) & 0xffff;
   value.B = v | 0;
+  br += 24;
   bi = br >>> 3;
   wlo = view.getUint32(bi, true);
   whi = view.getUint32(bi + 4, true);
   s2 = br & 7;
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  br += 21;
   v = (out & 0x1fffff) >>> 0;
   if (v > 2000000) { // a smuggled offset is refused
     return false;
   }
   value.C = (v + 4293967296) | 0;
-  bi = br >>> 3;
-  wlo = view.getUint32(bi, true);
-  whi = view.getUint32(bi + 4, true);
-  s2 = br & 7;
-  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  br += 7;
-  v = (out & 0x7f) >>> 0;
+  v = (out >>> 21) & 0x7f;
   value.Bits7 = v;
+  br += 28;
   bi = br >>> 3;
   wlo = view.getUint32(bi, true);
   whi = view.getUint32(bi + 4, true);
   s2 = br & 7;
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  br += 13;
   v = (out & 0x1fff) >>> 0;
   value.Bits13 = v;
+  br += 13;
   bi = br >>> 3;
   wlo = view.getUint32(bi, true);
   whi = view.getUint32(bi + 4, true);
   s2 = br & 7;
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  br += 23;
   v = (out & 0x7fffff) >>> 0;
   value.Bits23 = v;
-  bi = br >>> 3;
-  wlo = view.getUint32(bi, true);
-  whi = view.getUint32(bi + 4, true);
-  s2 = br & 7;
-  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  br += 1;
-  v = (out & 0x1) >>> 0;
+  v = (out >>> 23) & 0x1;
   value.Flag = v !== 0;
+  br += 24;
   bi = br >>> 3;
   wlo = view.getUint32(bi, true);
   whi = view.getUint32(bi + 4, true);
   s2 = br & 7;
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  br += 32;
   v = out >>> 0;
+  br += 32;
   if ((v & 0x7f800000) === 0x7f800000 && (v & 0x7fffff) !== 0) {
     SC.setBigUint64(0, (BigInt(v >>> 31) << 63n) | 0x7ff0000000000000n | (BigInt(v & 0x7fffff) << 29n), true);
     value.X = SC.getFloat64(0, true);
@@ -427,8 +409,8 @@ export function ReadBenchPacketFlat(value, view, numBits) {
   whi = view.getUint32(bi + 4, true);
   s2 = br & 7;
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  br += 32;
   v = out >>> 0;
+  br += 32;
   if ((v & 0x7f800000) === 0x7f800000 && (v & 0x7fffff) !== 0) {
     SC.setBigUint64(0, (BigInt(v >>> 31) << 63n) | 0x7ff0000000000000n | (BigInt(v & 0x7fffff) << 29n), true);
     value.Y = SC.getFloat64(0, true);
@@ -441,8 +423,8 @@ export function ReadBenchPacketFlat(value, view, numBits) {
   whi = view.getUint32(bi + 4, true);
   s2 = br & 7;
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  br += 32;
   v = out >>> 0;
+  br += 32;
   if ((v & 0x7f800000) === 0x7f800000 && (v & 0x7fffff) !== 0) {
     SC.setBigUint64(0, (BigInt(v >>> 31) << 63n) | 0x7ff0000000000000n | (BigInt(v & 0x7fffff) << 29n), true);
     value.Z = SC.getFloat64(0, true);
@@ -455,19 +437,19 @@ export function ReadBenchPacketFlat(value, view, numBits) {
   whi = view.getUint32(bi + 4, true);
   s2 = br & 7;
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  br += 32;
   v = out >>> 0;
   SC.setUint32(0, v, true);
+  br += 32;
   bi = br >>> 3;
   wlo = view.getUint32(bi, true);
   whi = view.getUint32(bi + 4, true);
   s2 = br & 7;
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  br += 32;
   v = out >>> 0;
   SC.setUint32(4, v, true);
   bg = SC.getBigUint64(0, true);
   value.Big = bg;
+  br += 32;
   s2 = br & 7;
   if (s2 !== 0) {
     if (br + (8 - s2) > numBits) {
@@ -487,9 +469,9 @@ export function ReadBenchPacketFlat(value, view, numBits) {
     whi = view.getUint32(bi + 4, true);
     s2 = br & 7;
     out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-    br += 8;
     v = (out & 0xff) >>> 0;
     value.Blob[i0] = v;
+    br += 8;
   }
   return true;
 }
@@ -633,95 +615,58 @@ export function ReadBenchIntsFlat(value, view, numBits) {
   whi = view.getUint32(bi + 4, true);
   s2 = br & 7;
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  br += 8;
   v = (out & 0xff) >>> 0;
   if (v > 200) { // a smuggled offset is refused
     return false;
   }
   value.F0 = (v + 4294967196) | 0;
-  bi = br >>> 3;
-  wlo = view.getUint32(bi, true);
-  whi = view.getUint32(bi + 4, true);
-  s2 = br & 7;
-  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  br += 16;
-  v = (out & 0xffff) >>> 0;
+  v = (out >>> 8) & 0xffff;
   value.F1 = v | 0;
+  br += 24;
   bi = br >>> 3;
   wlo = view.getUint32(bi, true);
   whi = view.getUint32(bi + 4, true);
   s2 = br & 7;
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  br += 21;
   v = (out & 0x1fffff) >>> 0;
   if (v > 2000000) { // a smuggled offset is refused
     return false;
   }
   value.F2 = (v + 4293967296) | 0;
-  bi = br >>> 3;
-  wlo = view.getUint32(bi, true);
-  whi = view.getUint32(bi + 4, true);
-  s2 = br & 7;
-  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  br += 2;
-  v = (out & 0x3) >>> 0;
+  v = (out >>> 21) & 0x3;
   value.F3 = v | 0;
-  bi = br >>> 3;
-  wlo = view.getUint32(bi, true);
-  whi = view.getUint32(bi + 4, true);
-  s2 = br & 7;
-  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  br += 5;
-  v = (out & 0x1f) >>> 0;
+  v = (out >>> 23) & 0x1f;
   if (v > 30) { // a smuggled offset is refused
     return false;
   }
   value.F4 = (v + 4294967281) | 0;
+  br += 28;
   bi = br >>> 3;
   wlo = view.getUint32(bi, true);
   whi = view.getUint32(bi + 4, true);
   s2 = br & 7;
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  br += 10;
   v = (out & 0x3ff) >>> 0;
   if (v > 1000) { // a smuggled offset is refused
     return false;
   }
   value.F5 = v | 0;
-  bi = br >>> 3;
-  wlo = view.getUint32(bi, true);
-  whi = view.getUint32(bi + 4, true);
-  s2 = br & 7;
-  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  br += 12;
-  v = (out & 0xfff) >>> 0;
+  v = (out >>> 10) & 0xfff;
   value.F6 = (v + 4294965248) | 0;
-  bi = br >>> 3;
-  wlo = view.getUint32(bi, true);
-  whi = view.getUint32(bi + 4, true);
-  s2 = br & 7;
-  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  br += 8;
-  v = (out & 0xff) >>> 0;
+  v = (out >>> 22) & 0xff;
   value.F7 = v | 0;
+  br += 30;
   bi = br >>> 3;
   wlo = view.getUint32(bi, true);
   whi = view.getUint32(bi + 4, true);
   s2 = br & 7;
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  br += 21;
   v = (out & 0x1fffff) >>> 0;
   if (v > 1200000) { // a smuggled offset is refused
     return false;
   }
   value.F8 = (v + 4294367296) | 0;
-  bi = br >>> 3;
-  wlo = view.getUint32(bi, true);
-  whi = view.getUint32(bi + 4, true);
-  s2 = br & 7;
-  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  br += 7;
-  v = (out & 0x7f) >>> 0;
+  v = (out >>> 21) & 0x7f;
   if (v > 100) { // a smuggled offset is refused
     return false;
   }
@@ -877,71 +822,52 @@ export function ReadBenchBitsFlat(value, view, numBits) {
   whi = view.getUint32(bi + 4, true);
   s2 = br & 7;
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  br += 7;
   v = (out & 0x7f) >>> 0;
   value.B7 = v;
-  bi = br >>> 3;
-  wlo = view.getUint32(bi, true);
-  whi = view.getUint32(bi + 4, true);
-  s2 = br & 7;
-  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  br += 13;
-  v = (out & 0x1fff) >>> 0;
+  v = (out >>> 7) & 0x1fff;
   value.B13 = v;
+  br += 20;
   bi = br >>> 3;
   wlo = view.getUint32(bi, true);
   whi = view.getUint32(bi + 4, true);
   s2 = br & 7;
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  br += 23;
   v = (out & 0x7fffff) >>> 0;
   value.B23 = v;
-  bi = br >>> 3;
-  wlo = view.getUint32(bi, true);
-  whi = view.getUint32(bi + 4, true);
-  s2 = br & 7;
-  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  br += 3;
-  v = (out & 0x7) >>> 0;
+  v = (out >>> 23) & 0x7;
   value.B3 = v;
+  br += 26;
   bi = br >>> 3;
   wlo = view.getUint32(bi, true);
   whi = view.getUint32(bi + 4, true);
   s2 = br & 7;
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  br += 32;
   v = out >>> 0;
   value.B32 = v;
+  br += 32;
   bi = br >>> 3;
   wlo = view.getUint32(bi, true);
   whi = view.getUint32(bi + 4, true);
   s2 = br & 7;
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  br += 11;
   v = (out & 0x7ff) >>> 0;
   value.B11 = v;
-  bi = br >>> 3;
-  wlo = view.getUint32(bi, true);
-  whi = view.getUint32(bi + 4, true);
-  s2 = br & 7;
-  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  br += 19;
-  v = (out & 0x7ffff) >>> 0;
+  v = (out >>> 11) & 0x7ffff;
   value.B19 = v;
+  br += 30;
   bi = br >>> 3;
   wlo = view.getUint32(bi, true);
   whi = view.getUint32(bi + 4, true);
   s2 = br & 7;
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  br += 32;
   v = out >>> 0;
   SC.setUint32(0, v, true);
+  br += 32;
   bi = br >>> 3;
   wlo = view.getUint32(bi, true);
   whi = view.getUint32(bi + 4, true);
   s2 = br & 7;
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  br += 16;
   v = (out & 0xffff) >>> 0;
   SC.setUint32(4, v, true);
   bg = SC.getBigUint64(0, true);
@@ -1141,124 +1067,69 @@ export function ReadMixedEntityFlat(value, view, numBits) {
   whi = view.getUint32(bi + 4, true);
   s2 = br & 7;
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  br += 12;
   v = (out & 0xfff) >>> 0;
   value.EntityId = v;
-  bi = br >>> 3;
-  wlo = view.getUint32(bi, true);
-  whi = view.getUint32(bi + 4, true);
-  s2 = br & 7;
-  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  br += 15;
-  v = (out & 0x7fff) >>> 0;
+  v = (out >>> 12) & 0x7fff;
   if (v > 32766) { // a smuggled offset is refused
     return false;
   }
   value.PosX = (v + 4294950913) | 0;
+  br += 27;
   bi = br >>> 3;
   wlo = view.getUint32(bi, true);
   whi = view.getUint32(bi + 4, true);
   s2 = br & 7;
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  br += 15;
   v = (out & 0x7fff) >>> 0;
   if (v > 32766) { // a smuggled offset is refused
     return false;
   }
   value.PosY = (v + 4294950913) | 0;
-  bi = br >>> 3;
-  wlo = view.getUint32(bi, true);
-  whi = view.getUint32(bi + 4, true);
-  s2 = br & 7;
-  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  br += 15;
-  v = (out & 0x7fff) >>> 0;
+  v = (out >>> 15) & 0x7fff;
   if (v > 32766) { // a smuggled offset is refused
     return false;
   }
   value.PosZ = (v + 4294950913) | 0;
+  br += 30;
   bi = br >>> 3;
   wlo = view.getUint32(bi, true);
   whi = view.getUint32(bi + 4, true);
   s2 = br & 7;
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  br += 9;
   v = (out & 0x1ff) >>> 0;
   value.Yaw = v;
-  bi = br >>> 3;
-  wlo = view.getUint32(bi, true);
-  whi = view.getUint32(bi + 4, true);
-  s2 = br & 7;
-  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  br += 9;
-  v = (out & 0x1ff) >>> 0;
+  v = (out >>> 9) & 0x1ff;
   value.Pitch = v;
-  bi = br >>> 3;
-  wlo = view.getUint32(bi, true);
-  whi = view.getUint32(bi + 4, true);
-  s2 = br & 7;
-  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  br += 12;
-  v = (out & 0xfff) >>> 0;
+  v = (out >>> 18) & 0xfff;
   value.VelX = (v + 4294965248) | 0;
+  br += 30;
   bi = br >>> 3;
   wlo = view.getUint32(bi, true);
   whi = view.getUint32(bi + 4, true);
   s2 = br & 7;
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  br += 12;
   v = (out & 0xfff) >>> 0;
   value.VelY = (v + 4294965248) | 0;
-  bi = br >>> 3;
-  wlo = view.getUint32(bi, true);
-  whi = view.getUint32(bi + 4, true);
-  s2 = br & 7;
-  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  br += 12;
-  v = (out & 0xfff) >>> 0;
+  v = (out >>> 12) & 0xfff;
   value.VelZ = (v + 4294965248) | 0;
+  br += 24;
   bi = br >>> 3;
   wlo = view.getUint32(bi, true);
   whi = view.getUint32(bi + 4, true);
   s2 = br & 7;
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  br += 10;
   v = (out & 0x3ff) >>> 0;
   if (v > 1000) { // a smuggled offset is refused
     return false;
   }
   value.Health = v | 0;
-  bi = br >>> 3;
-  wlo = view.getUint32(bi, true);
-  whi = view.getUint32(bi + 4, true);
-  s2 = br & 7;
-  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  br += 4;
-  v = (out & 0xf) >>> 0;
+  v = (out >>> 10) & 0xf;
   value.Weapon = v;
-  bi = br >>> 3;
-  wlo = view.getUint32(bi, true);
-  whi = view.getUint32(bi + 4, true);
-  s2 = br & 7;
-  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  br += 8;
-  v = (out & 0xff) >>> 0;
+  v = (out >>> 14) & 0xff;
   value.Damage = BigInt(v);
-  bi = br >>> 3;
-  wlo = view.getUint32(bi, true);
-  whi = view.getUint32(bi + 4, true);
-  s2 = br & 7;
-  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  br += 1;
-  v = (out & 0x1) >>> 0;
+  v = (out >>> 22) & 0x1;
   value.Moving = v !== 0;
-  bi = br >>> 3;
-  wlo = view.getUint32(bi, true);
-  whi = view.getUint32(bi + 4, true);
-  s2 = br & 7;
-  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  br += 1;
-  v = (out & 0x1) >>> 0;
+  v = (out >>> 23) & 0x1;
   value.Firing = v !== 0;
   return true;
 }
@@ -1321,16 +1192,9 @@ export function ReadMixedStatFlat(value, view, numBits) {
   whi = view.getUint32(bi + 4, true);
   s2 = br & 7;
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  br += 8;
   v = (out & 0xff) >>> 0;
   value.StatId = v;
-  bi = br >>> 3;
-  wlo = view.getUint32(bi, true);
-  whi = view.getUint32(bi + 4, true);
-  s2 = br & 7;
-  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  br += 10;
-  v = (out & 0x3ff) >>> 0;
+  v = (out >>> 8) & 0x3ff;
   value.Delta = (v + 4294966784) | 0;
   return true;
 }
@@ -1396,32 +1260,13 @@ export function ReadMixedHitEventFlat(value, view, numBits) {
   whi = view.getUint32(bi + 4, true);
   s2 = br & 7;
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  br += 12;
   v = (out & 0xfff) >>> 0;
   value.TargetId = v;
-  bi = br >>> 3;
-  wlo = view.getUint32(bi, true);
-  whi = view.getUint32(bi + 4, true);
-  s2 = br & 7;
-  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  br += 12;
-  v = (out & 0xfff) >>> 0;
+  v = (out >>> 12) & 0xfff;
   value.Damage = v | 0;
-  bi = br >>> 3;
-  wlo = view.getUint32(bi, true);
-  whi = view.getUint32(bi + 4, true);
-  s2 = br & 7;
-  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  br += 3;
-  v = (out & 0x7) >>> 0;
+  v = (out >>> 24) & 0x7;
   value.HitKind = v | 0;
-  bi = br >>> 3;
-  wlo = view.getUint32(bi, true);
-  whi = view.getUint32(bi + 4, true);
-  s2 = br & 7;
-  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  br += 1;
-  v = (out & 0x1) >>> 0;
+  v = (out >>> 27) & 0x1;
   value.Crit = v !== 0;
   return true;
 }
@@ -1484,16 +1329,9 @@ export function ReadMixedChatEventFlat(value, view, numBits) {
   whi = view.getUint32(bi + 4, true);
   s2 = br & 7;
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  br += 2;
   v = (out & 0x3) >>> 0;
   value.Channel = v | 0;
-  bi = br >>> 3;
-  wlo = view.getUint32(bi, true);
-  whi = view.getUint32(bi + 4, true);
-  s2 = br & 7;
-  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  br += 12;
-  v = (out & 0xfff) >>> 0;
+  v = (out >>> 2) & 0xfff;
   value.Speaker = v;
   return true;
 }
@@ -1556,16 +1394,9 @@ export function ReadMixedPickupEventFlat(value, view, numBits) {
   whi = view.getUint32(bi + 4, true);
   s2 = br & 7;
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  br += 10;
   v = (out & 0x3ff) >>> 0;
   value.ItemId = v;
-  bi = br >>> 3;
-  wlo = view.getUint32(bi, true);
-  whi = view.getUint32(bi + 4, true);
-  s2 = br & 7;
-  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  br += 8;
-  v = (out & 0xff) >>> 0;
+  v = (out >>> 10) & 0xff;
   value.Amount = v | 0;
   return true;
 }
@@ -2793,93 +2624,86 @@ export function ReadBenchMixedFlat(value, view, numBits) {
   whi = view.getUint32(bi + 4, true);
   s2 = br & 7;
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  br += 16;
   v = (out & 0xffff) >>> 0;
   if (v !== 49374) { // a read rejects any other value
     return false;
   }
-  bi = br >>> 3;
-  wlo = view.getUint32(bi, true);
-  whi = view.getUint32(bi + 4, true);
-  s2 = br & 7;
-  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  br += 16;
-  v = (out & 0xffff) >>> 0;
+  v = (out >>> 16) & 0xffff;
   value.Sequence = v;
+  br += 32;
   bi = br >>> 3;
   wlo = view.getUint32(bi, true);
   whi = view.getUint32(bi + 4, true);
   s2 = br & 7;
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  br += 16;
   v = (out & 0xffff) >>> 0;
   value.AckSequence = v | 0;
+  br += 16;
   bi = br >>> 3;
   wlo = view.getUint32(bi, true);
   whi = view.getUint32(bi + 4, true);
   s2 = br & 7;
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  br += 32;
   v = out >>> 0;
   value.AckBits = v;
+  br += 32;
   bi = br >>> 3;
   wlo = view.getUint32(bi, true);
   whi = view.getUint32(bi + 4, true);
   s2 = br & 7;
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  br += 32;
   v = out >>> 0;
   SC.setUint32(0, v, true);
+  br += 32;
   bi = br >>> 3;
   wlo = view.getUint32(bi, true);
   whi = view.getUint32(bi + 4, true);
   s2 = br & 7;
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  br += 32;
   v = out >>> 0;
   SC.setUint32(4, v, true);
   bg = SC.getBigUint64(0, true);
   value.SessionId = bg;
+  br += 32;
   bi = br >>> 3;
   wlo = view.getUint32(bi, true);
   whi = view.getUint32(bi + 4, true);
   s2 = br & 7;
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  br += 32;
   v = out >>> 0;
   value.ClientId = v;
+  br += 32;
   bi = br >>> 3;
   wlo = view.getUint32(bi, true);
   whi = view.getUint32(bi + 4, true);
   s2 = br & 7;
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  br += 32;
   v = out >>> 0;
   SC.setUint32(0, v, true);
+  br += 32;
   bi = br >>> 3;
   wlo = view.getUint32(bi, true);
   whi = view.getUint32(bi + 4, true);
   s2 = br & 7;
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  br += 32;
   v = out >>> 0;
   SC.setUint32(4, v, true);
   bg = SC.getBigUint64(0, true);
   value.Nonce = bg;
+  br += 32;
   bi = br >>> 3;
   wlo = view.getUint32(bi, true);
   whi = view.getUint32(bi + 4, true);
   s2 = br & 7;
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  br += 32;
   v = out >>> 0;
   SC.setUint32(0, v, true);
+  br += 32;
   bi = br >>> 3;
   wlo = view.getUint32(bi, true);
   whi = view.getUint32(bi + 4, true);
   s2 = br & 7;
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  br += 9;
   v = (out & 0x1ff) >>> 0;
   SC.setUint32(4, v, true);
   bg = SC.getBigUint64(0, true);
@@ -2887,35 +2711,36 @@ export function ReadBenchMixedFlat(value, view, numBits) {
     return false;
   }
   value.WorldTime = -1000000000000n + bg;
+  br += 9;
   bi = br >>> 3;
   wlo = view.getUint32(bi, true);
   whi = view.getUint32(bi + 4, true);
   s2 = br & 7;
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  br += 32;
   v = out >>> 0;
   SC.setUint32(0, v, true);
+  br += 32;
   bi = br >>> 3;
   wlo = view.getUint32(bi, true);
   whi = view.getUint32(bi + 4, true);
   s2 = br & 7;
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  br += 16;
   v = (out & 0xffff) >>> 0;
   SC.setUint32(4, v, true);
   bg = SC.getBigUint64(0, true);
   value.FrameTick = bg;
+  br += 16;
   bi = br >>> 3;
   wlo = view.getUint32(bi, true);
   whi = view.getUint32(bi + 4, true);
   s2 = br & 7;
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  br += 24;
   v = (out & 0xffffff) >>> 0;
   if (v > 16776960) { // a smuggled raw offset is refused
     return false;
   }
   value.ServerTime = v;
+  br += 24;
   if (br + 3 > numBits) {
     return false;
   }
@@ -2924,9 +2749,9 @@ export function ReadBenchMixedFlat(value, view, numBits) {
   whi = view.getUint32(bi + 4, true);
   s2 = br & 7;
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  br += 3;
   v = (out & 0x7) >>> 0;
   value.EntitiesCount = v + 1;
+  br += 3;
   if (br + value.EntitiesCount * 135 > numBits) {
     return false;
   }
@@ -2937,125 +2762,71 @@ export function ReadBenchMixedFlat(value, view, numBits) {
     whi = view.getUint32(bi + 4, true);
     s2 = br & 7;
     out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-    br += 12;
     v = (out & 0xfff) >>> 0;
     e0.EntityId = v;
-    bi = br >>> 3;
-    wlo = view.getUint32(bi, true);
-    whi = view.getUint32(bi + 4, true);
-    s2 = br & 7;
-    out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-    br += 15;
-    v = (out & 0x7fff) >>> 0;
+    v = (out >>> 12) & 0x7fff;
     if (v > 32766) { // a smuggled offset is refused
       return false;
     }
     e0.PosX = (v + 4294950913) | 0;
+    br += 27;
     bi = br >>> 3;
     wlo = view.getUint32(bi, true);
     whi = view.getUint32(bi + 4, true);
     s2 = br & 7;
     out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-    br += 15;
     v = (out & 0x7fff) >>> 0;
     if (v > 32766) { // a smuggled offset is refused
       return false;
     }
     e0.PosY = (v + 4294950913) | 0;
-    bi = br >>> 3;
-    wlo = view.getUint32(bi, true);
-    whi = view.getUint32(bi + 4, true);
-    s2 = br & 7;
-    out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-    br += 15;
-    v = (out & 0x7fff) >>> 0;
+    v = (out >>> 15) & 0x7fff;
     if (v > 32766) { // a smuggled offset is refused
       return false;
     }
     e0.PosZ = (v + 4294950913) | 0;
+    br += 30;
     bi = br >>> 3;
     wlo = view.getUint32(bi, true);
     whi = view.getUint32(bi + 4, true);
     s2 = br & 7;
     out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-    br += 9;
     v = (out & 0x1ff) >>> 0;
     e0.Yaw = v;
-    bi = br >>> 3;
-    wlo = view.getUint32(bi, true);
-    whi = view.getUint32(bi + 4, true);
-    s2 = br & 7;
-    out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-    br += 9;
-    v = (out & 0x1ff) >>> 0;
+    v = (out >>> 9) & 0x1ff;
     e0.Pitch = v;
-    bi = br >>> 3;
-    wlo = view.getUint32(bi, true);
-    whi = view.getUint32(bi + 4, true);
-    s2 = br & 7;
-    out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-    br += 12;
-    v = (out & 0xfff) >>> 0;
+    v = (out >>> 18) & 0xfff;
     e0.VelX = (v + 4294965248) | 0;
+    br += 30;
     bi = br >>> 3;
     wlo = view.getUint32(bi, true);
     whi = view.getUint32(bi + 4, true);
     s2 = br & 7;
     out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-    br += 12;
     v = (out & 0xfff) >>> 0;
     e0.VelY = (v + 4294965248) | 0;
-    bi = br >>> 3;
-    wlo = view.getUint32(bi, true);
-    whi = view.getUint32(bi + 4, true);
-    s2 = br & 7;
-    out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-    br += 12;
-    v = (out & 0xfff) >>> 0;
+    v = (out >>> 12) & 0xfff;
     e0.VelZ = (v + 4294965248) | 0;
+    br += 24;
     bi = br >>> 3;
     wlo = view.getUint32(bi, true);
     whi = view.getUint32(bi + 4, true);
     s2 = br & 7;
     out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-    br += 10;
     v = (out & 0x3ff) >>> 0;
     if (v > 1000) { // a smuggled offset is refused
       return false;
     }
     e0.Health = v | 0;
-    bi = br >>> 3;
-    wlo = view.getUint32(bi, true);
-    whi = view.getUint32(bi + 4, true);
-    s2 = br & 7;
-    out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-    br += 4;
-    v = (out & 0xf) >>> 0;
+    v = (out >>> 10) & 0xf;
     e0.Weapon = v;
-    bi = br >>> 3;
-    wlo = view.getUint32(bi, true);
-    whi = view.getUint32(bi + 4, true);
-    s2 = br & 7;
-    out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-    br += 8;
-    v = (out & 0xff) >>> 0;
+    v = (out >>> 14) & 0xff;
     e0.Damage = BigInt(v);
-    bi = br >>> 3;
-    wlo = view.getUint32(bi, true);
-    whi = view.getUint32(bi + 4, true);
-    s2 = br & 7;
-    out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-    br += 1;
-    v = (out & 0x1) >>> 0;
+    v = (out >>> 22) & 0x1;
     e0.Moving = v !== 0;
-    bi = br >>> 3;
-    wlo = view.getUint32(bi, true);
-    whi = view.getUint32(bi + 4, true);
-    s2 = br & 7;
-    out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-    br += 1;
-    v = (out & 0x1) >>> 0;
+    v = (out >>> 23) & 0x1;
     e0.Firing = v !== 0;
+    br += 24;
   }
   if (br + 7 > numBits) {
     return false;
@@ -3065,12 +2836,12 @@ export function ReadBenchMixedFlat(value, view, numBits) {
   whi = view.getUint32(bi + 4, true);
   s2 = br & 7;
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  br += 7;
   v = (out & 0x7f) >>> 0;
   if (v > 80) { // the count guards the loop — reject, never clamp
     return false;
   }
   value.StatsCount = v;
+  br += 7;
   if (br + value.StatsCount * 18 > numBits) {
     return false;
   }
@@ -3081,17 +2852,11 @@ export function ReadBenchMixedFlat(value, view, numBits) {
     whi = view.getUint32(bi + 4, true);
     s2 = br & 7;
     out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-    br += 8;
     v = (out & 0xff) >>> 0;
     e0.StatId = v;
-    bi = br >>> 3;
-    wlo = view.getUint32(bi, true);
-    whi = view.getUint32(bi + 4, true);
-    s2 = br & 7;
-    out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-    br += 10;
-    v = (out & 0x3ff) >>> 0;
+    v = (out >>> 8) & 0x3ff;
     e0.Delta = (v + 4294966784) | 0;
+    br += 18;
   }
   if (br + 2 > numBits) {
     return false;
@@ -3101,9 +2866,9 @@ export function ReadBenchMixedFlat(value, view, numBits) {
   whi = view.getUint32(bi + 4, true);
   s2 = br & 7;
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  br += 2;
   v = (out & 0x3) >>> 0;
   value.GameEvent.Type = v;
+  br += 2;
   switch (value.GameEvent.Type) {
     case 1: {
       value.GameEvent.Hit.TargetId = 0;
@@ -3118,33 +2883,15 @@ export function ReadBenchMixedFlat(value, view, numBits) {
       whi = view.getUint32(bi + 4, true);
       s2 = br & 7;
       out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-      br += 12;
       v = (out & 0xfff) >>> 0;
       value.GameEvent.Hit.TargetId = v;
-      bi = br >>> 3;
-      wlo = view.getUint32(bi, true);
-      whi = view.getUint32(bi + 4, true);
-      s2 = br & 7;
-      out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-      br += 12;
-      v = (out & 0xfff) >>> 0;
+      v = (out >>> 12) & 0xfff;
       value.GameEvent.Hit.Damage = v | 0;
-      bi = br >>> 3;
-      wlo = view.getUint32(bi, true);
-      whi = view.getUint32(bi + 4, true);
-      s2 = br & 7;
-      out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-      br += 3;
-      v = (out & 0x7) >>> 0;
+      v = (out >>> 24) & 0x7;
       value.GameEvent.Hit.HitKind = v | 0;
-      bi = br >>> 3;
-      wlo = view.getUint32(bi, true);
-      whi = view.getUint32(bi + 4, true);
-      s2 = br & 7;
-      out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-      br += 1;
-      v = (out & 0x1) >>> 0;
+      v = (out >>> 27) & 0x1;
       value.GameEvent.Hit.Crit = v !== 0;
+      br += 28;
       break;
     }
     case 2: {
@@ -3158,17 +2905,11 @@ export function ReadBenchMixedFlat(value, view, numBits) {
       whi = view.getUint32(bi + 4, true);
       s2 = br & 7;
       out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-      br += 2;
       v = (out & 0x3) >>> 0;
       value.GameEvent.Chat.Channel = v | 0;
-      bi = br >>> 3;
-      wlo = view.getUint32(bi, true);
-      whi = view.getUint32(bi + 4, true);
-      s2 = br & 7;
-      out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-      br += 12;
-      v = (out & 0xfff) >>> 0;
+      v = (out >>> 2) & 0xfff;
       value.GameEvent.Chat.Speaker = v;
+      br += 14;
       break;
     }
     case 3: {
@@ -3182,17 +2923,11 @@ export function ReadBenchMixedFlat(value, view, numBits) {
       whi = view.getUint32(bi + 4, true);
       s2 = br & 7;
       out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-      br += 10;
       v = (out & 0x3ff) >>> 0;
       value.GameEvent.Pickup.ItemId = v;
-      bi = br >>> 3;
-      wlo = view.getUint32(bi, true);
-      whi = view.getUint32(bi + 4, true);
-      s2 = br & 7;
-      out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-      br += 8;
-      v = (out & 0xff) >>> 0;
+      v = (out >>> 10) & 0xff;
       value.GameEvent.Pickup.Amount = v | 0;
+      br += 18;
       break;
     }
   }
@@ -3205,9 +2940,9 @@ export function ReadBenchMixedFlat(value, view, numBits) {
     whi = view.getUint32(bi + 4, true);
     s2 = br & 7;
     out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-    br += 8;
     v = (out & 0xff) >>> 0;
     value.Loadout[i0] = v;
+    br += 8;
   }
   if (br + 4 > numBits) {
     return false;
@@ -3217,9 +2952,9 @@ export function ReadBenchMixedFlat(value, view, numBits) {
   whi = view.getUint32(bi + 4, true);
   s2 = br & 7;
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  br += 4;
   v = (out & 0xf) >>> 0;
   value.PlayerNameLength = v;
+  br += 4;
   s2 = br & 7;
   if (s2 !== 0) {
     if (br + (8 - s2) > numBits) {
@@ -3251,12 +2986,12 @@ export function ReadBenchMixedFlat(value, view, numBits) {
   whi = view.getUint32(bi + 4, true);
   s2 = br & 7;
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  br += 5;
   v = (out & 0x1f) >>> 0;
   if (v > 16) { // the length guards the slice — reject, never clamp
     return false;
   }
   value.PayloadLength = v;
+  br += 5;
   s2 = br & 7;
   if (s2 !== 0) {
     if (br + (8 - s2) > numBits) {
@@ -3283,41 +3018,29 @@ export function ReadBenchMixedFlat(value, view, numBits) {
   whi = view.getUint32(bi + 4, true);
   s2 = br & 7;
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  br += 8;
   v = (out & 0xff) >>> 0;
   if (v > 200) { // headroom above the quantum count is refused
     return false;
   }
   value.AimX = Math.fround(Math.fround(Math.fround(Math.fround(v) / 200.0) * 2.0) + -1.0);
-  bi = br >>> 3;
-  wlo = view.getUint32(bi, true);
-  whi = view.getUint32(bi + 4, true);
-  s2 = br & 7;
-  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  br += 8;
-  v = (out & 0xff) >>> 0;
+  v = (out >>> 8) & 0xff;
   if (v > 200) { // headroom above the quantum count is refused
     return false;
   }
   value.AimY = Math.fround(Math.fround(Math.fround(Math.fround(v) / 200.0) * 2.0) + -1.0);
-  bi = br >>> 3;
-  wlo = view.getUint32(bi, true);
-  whi = view.getUint32(bi + 4, true);
-  s2 = br & 7;
-  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  br += 8;
-  v = (out & 0xff) >>> 0;
+  v = (out >>> 16) & 0xff;
   if (v > 200) { // headroom above the quantum count is refused
     return false;
   }
   value.AimZ = Math.fround(Math.fround(Math.fround(Math.fround(v) / 200.0) * 2.0) + -1.0);
+  br += 24;
   bi = br >>> 3;
   wlo = view.getUint32(bi, true);
   whi = view.getUint32(bi + 4, true);
   s2 = br & 7;
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  br += 32;
   v = out >>> 0;
+  br += 32;
   if ((v & 0x7f800000) === 0x7f800000 && (v & 0x7fffff) !== 0) {
     SC.setBigUint64(0, (BigInt(v >>> 31) << 63n) | 0x7ff0000000000000n | (BigInt(v & 0x7fffff) << 29n), true);
     value.Recoil = SC.getFloat64(0, true);
@@ -3330,84 +3053,83 @@ export function ReadBenchMixedFlat(value, view, numBits) {
   whi = view.getUint32(bi + 4, true);
   s2 = br & 7;
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  br += 32;
   v = out >>> 0;
   SC.setUint32(0, v, true);
+  br += 32;
   bi = br >>> 3;
   wlo = view.getUint32(bi, true);
   whi = view.getUint32(bi + 4, true);
   s2 = br & 7;
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  br += 32;
   v = out >>> 0;
   SC.setUint32(4, v, true);
   value.Drift = SC.getFloat64(0, true);
+  br += 32;
   bi = br >>> 3;
   wlo = view.getUint32(bi, true);
   whi = view.getUint32(bi + 4, true);
   s2 = br & 7;
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  br += 32;
   v = out >>> 0;
   SC.setUint32(0, v, true);
+  br += 32;
   bi = br >>> 3;
   wlo = view.getUint32(bi, true);
   whi = view.getUint32(bi + 4, true);
   s2 = br & 7;
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  br += 32;
   v = out >>> 0;
   SC.setUint32(4, v, true);
   bg = SC.getBigUint64(0, true);
+  br += 32;
   bi = br >>> 3;
   wlo = view.getUint32(bi, true);
   whi = view.getUint32(bi + 4, true);
   s2 = br & 7;
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  br += 32;
   v = out >>> 0;
   SC.setUint32(0, v, true);
+  br += 32;
   bi = br >>> 3;
   wlo = view.getUint32(bi, true);
   whi = view.getUint32(bi + 4, true);
   s2 = br & 7;
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  br += 32;
   v = out >>> 0;
   SC.setUint32(4, v, true);
   bg |= SC.getBigUint64(0, true) << 64n;
   value.WideKey = bg;
+  br += 32;
   bi = br >>> 3;
   wlo = view.getUint32(bi, true);
   whi = view.getUint32(bi + 4, true);
   s2 = br & 7;
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  br += 32;
   v = out >>> 0;
   SC.setUint32(0, v, true);
+  br += 32;
   bi = br >>> 3;
   wlo = view.getUint32(bi, true);
   whi = view.getUint32(bi + 4, true);
   s2 = br & 7;
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  br += 32;
   v = out >>> 0;
   SC.setUint32(4, v, true);
   bg = SC.getBigUint64(0, true);
+  br += 32;
   bi = br >>> 3;
   wlo = view.getUint32(bi, true);
   whi = view.getUint32(bi + 4, true);
   s2 = br & 7;
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  br += 32;
   v = out >>> 0;
   SC.setUint32(0, v, true);
+  br += 32;
   bi = br >>> 3;
   wlo = view.getUint32(bi, true);
   whi = view.getUint32(bi + 4, true);
   s2 = br & 7;
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  br += 6;
   v = (out & 0x3f) >>> 0;
   SC.setUint32(4, v, true);
   bg |= SC.getBigUint64(0, true) << 64n;
@@ -3415,27 +3137,16 @@ export function ReadBenchMixedFlat(value, view, numBits) {
     return false;
   }
   value.Flux = -1267650600228229401496703205376n + bg;
-  bi = br >>> 3;
-  wlo = view.getUint32(bi, true);
-  whi = view.getUint32(bi + 4, true);
-  s2 = br & 7;
-  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  br += 16;
-  v = (out & 0xffff) >>> 0;
+  v = (out >>> 6) & 0xffff;
   if (v > 64000) { // a smuggled raw offset is refused
     return false;
   }
   value.Ping = v;
-  bi = br >>> 3;
-  wlo = view.getUint32(bi, true);
-  whi = view.getUint32(bi + 4, true);
-  s2 = br & 7;
-  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  br += 4;
-  v = (out & 0xf) >>> 0;
+  v = (out >>> 22) & 0xf;
   if (v !== 0) { // reserved bits must read zero
     return false;
   }
+  br += 26;
   s2 = br & 7;
   if (s2 !== 0) {
     if (br + (8 - s2) > numBits) {
@@ -3454,17 +3165,11 @@ export function ReadBenchMixedFlat(value, view, numBits) {
   whi = view.getUint32(bi + 4, true);
   s2 = br & 7;
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  br += 24;
   v = (out & 0xffffff) >>> 0;
   value.CrcHint = v;
-  bi = br >>> 3;
-  wlo = view.getUint32(bi, true);
-  whi = view.getUint32(bi + 4, true);
-  s2 = br & 7;
-  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  br += 1;
-  v = (out & 0x1) >>> 0;
+  v = (out >>> 24) & 0x1;
   value.HasExtra = v !== 0;
+  br += 25;
   if (value.HasExtra) {
     if (br + 8 > numBits) {
       return false;
@@ -3474,10 +3179,10 @@ export function ReadBenchMixedFlat(value, view, numBits) {
     whi = view.getUint32(bi + 4, true);
     s2 = br & 7;
     out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-    br += 8;
     v = (out & 0xff) >>> 0;
     value.Extra = v | 0;
     value.IdleTicks = 0;
+    br += 8;
   } else {
     if (br + 4 > numBits) {
       return false;
@@ -3487,10 +3192,10 @@ export function ReadBenchMixedFlat(value, view, numBits) {
     whi = view.getUint32(bi + 4, true);
     s2 = br & 7;
     out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-    br += 4;
     v = (out & 0xf) >>> 0;
     value.IdleTicks = v | 0;
     value.Extra = 0;
+    br += 4;
   }
   return true;
 }

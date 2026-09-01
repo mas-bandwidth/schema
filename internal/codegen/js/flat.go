@@ -51,6 +51,7 @@ import (
 	"fmt"
 	"math"
 	"math/big"
+	"regexp"
 	"sort"
 	"strings"
 
@@ -83,6 +84,18 @@ type fgen struct {
 	// dynamic (loop bodies), which is what makes this reach the hot arrays.
 	chunk     []chunkPiece
 	chunkBits int64
+
+	// the read-side window, the write chunker's mirror: one 64-bit pair load
+	// carries 32 valid bits from the cursor, so consecutive fields whose
+	// widths sum to 32 or less all extract from the SAME `out` at literal
+	// relative shifts — static even where the absolute cursor is dynamic,
+	// which is what reaches the loop bodies. rwUsed is the cursor's pending
+	// advance: while a window is open `br` LAGS the true position by it, so
+	// every emission that names br, and every scope boundary, closes first
+	// (pf does this by inspection — see closesReadWindow).
+	rwOpen bool
+	rwUsed int64
+	rwInd  string
 }
 
 // chunkPiece is one field's contribution to a pending write chunk: a pure,
@@ -160,7 +173,33 @@ func generateFlat(u *ir.Unit) map[string][]byte {
 	return out
 }
 
+// brToken matches a bare `br` identifier — the read cursor — anywhere in a
+// line of emitted JavaScript.
+var brToken = regexp.MustCompile(`\bbr\b`)
+
+// closesReadWindow reports whether emitting this text must first settle the
+// open read window. Two things force it and nothing else can: naming the
+// cursor (the emission would see a br that still lags by rwUsed) and opening
+// or closing a scope (a window may not outlive the block it was loaded in).
+// The value-refusal guards are the deliberate exception — they carry braces
+// but only ever test v or bg and only ever `return false`, so they neither
+// read the cursor nor let control fall past them with the window stale; they
+// emit through rawf and keep the chunk alive across a checked field.
+func closesReadWindow(s string) bool {
+	return strings.ContainsAny(s, "{}") || brToken.MatchString(s)
+}
+
 func (g *fgen) pf(format string, args ...any) {
+	s := fmt.Sprintf(format, args...)
+	if g.rwOpen && closesReadWindow(s) {
+		g.readClose()
+	}
+	g.fn.WriteString(s)
+}
+
+// rawf emits without the read-window inspection: for the window's own lines
+// and for the value-refusal guards.
+func (g *fgen) rawf(format string, args ...any) {
 	fmt.Fprintf(&g.fn, format, args...)
 }
 
@@ -270,19 +309,73 @@ func (g *fgen) mergeW(bits int64, ind string) {
 	g.pf("%s}\n", ind)
 }
 
-// readR reads bits (in [1,32]) from the 64-bit window at br into v, masked.
+// readR reads bits (in [1,32]) into v, from the open read window when the
+// field still fits inside its 32 valid bits and from a fresh window when it
+// does not. A field at relative offset r > 0 costs one shift and one mask
+// where it used to cost two loads, a shift-or and a mask; r > 0 implies
+// bits <= 31, so the mask is at most 0x7fffffff and the extraction stays
+// non-negative without a further `>>> 0`.
 func (g *fgen) readR(bits int64, ind string) {
-	g.pf("%sbi = br >>> 3;\n", ind)
-	g.pf("%swlo = view.getUint32(bi, true);\n", ind)
-	g.pf("%swhi = view.getUint32(bi + 4, true);\n", ind)
-	g.pf("%ss2 = br & 7;\n", ind)
-	g.pf("%sout = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));\n", ind)
-	g.pf("%sbr += %d;\n", ind, bits)
-	if bits == 32 {
-		g.pf("%sv = out >>> 0;\n", ind)
-	} else {
-		g.pf("%sv = (out & %s) >>> 0;\n", ind, maskHex(bits))
+	rel := g.readWin(bits, ind)
+	switch {
+	case rel > 0:
+		g.rawf("%sv = (out >>> %d) & %s;\n", ind, rel, maskHex(bits))
+	case bits == 32:
+		g.rawf("%sv = out >>> 0;\n", ind)
+	default:
+		g.rawf("%sv = (out & %s) >>> 0;\n", ind, maskHex(bits))
 	}
+}
+
+// readWin returns the relative bit offset this field occupies in the open
+// window, loading a new one first when the field cannot join. The indent
+// test is the second lock on the scope rule: a window never spans a block
+// even if some future emission forgets to name a brace.
+func (g *fgen) readWin(bits int64, ind string) int64 {
+	if g.rwOpen && g.rwInd == ind && g.rwUsed+bits <= 32 {
+		rel := g.rwUsed
+		g.rwUsed += bits
+		return rel
+	}
+	g.readClose()
+	g.rawf("%sbi = br >>> 3;\n", ind)
+	g.rawf("%swlo = view.getUint32(bi, true);\n", ind)
+	g.rawf("%swhi = view.getUint32(bi + 4, true);\n", ind)
+	g.rawf("%ss2 = br & 7;\n", ind)
+	g.rawf("%sout = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));\n", ind)
+	g.rwOpen, g.rwUsed, g.rwInd = true, bits, ind
+	return 0
+}
+
+// readClose settles the window: the cursor advances by everything the window
+// served, at the window's own indent, before whatever forced the close.
+func (g *fgen) readClose() {
+	if !g.rwOpen {
+		return
+	}
+	used, ind := g.rwUsed, g.rwInd
+	g.rwOpen, g.rwUsed, g.rwInd = false, 0, ""
+	if used > 0 {
+		g.rawf("%sbr += %d;\n", ind, used)
+	}
+}
+
+// readDrop abandons a window's pending advance instead of emitting it. Legal
+// at exactly one place — the end of a read function, where the only
+// statement left is `return true`: the flat reader answers a verdict, not a
+// length, so nothing downstream can observe the cursor.
+func (g *fgen) readDrop() {
+	g.rwOpen, g.rwUsed, g.rwInd = false, 0, ""
+}
+
+// readRefuse emits a value-refusal guard without settling the read window.
+// cond must test decoded values (v, bg) and never the cursor — the read
+// window's whole safety argument rests on it.
+func (g *fgen) readRefuse(cond, comment, ind string) {
+	if brToken.MatchString(cond) {
+		panic("readRefuse: condition names the read cursor: " + cond)
+	}
+	g.rawf("%sif (%s) {%s\n%s  return false;\n%s}\n", ind, cond, comment, ind, ind)
 }
 
 // guard emits a checked-writer refusal; a no-op in the production variant.
@@ -402,6 +495,7 @@ func (g *fgen) resetNeeds() {
 	g.loopDepth = 0
 	g.chunk = g.chunk[:0]
 	g.chunkBits = 0
+	g.rwOpen, g.rwUsed, g.rwInd = false, 0, ""
 }
 
 // writeLocals renders the write-side local declarations the body needs.
@@ -470,6 +564,8 @@ func (g *fgen) emitReadFlat(st *ir.Struct) {
 	g.fn.Reset()
 	g.resetNeeds()
 	g.emitReadItems(st.Items, "value", "  ", false)
+	// the last window's advance is dead: `return true` is all that follows
+	g.readDrop()
 	body := g.fn.String()
 	g.fn.Reset()
 
@@ -1100,7 +1196,7 @@ func (g *fgen) emitReadRaw(value *big.Int, bits int64, isConst bool, ind string)
 	if bits <= 32 {
 		lo := new(big.Int).And(value, new(big.Int).SetUint64((uint64(1)<<uint(bits))-1))
 		g.readR(bits, ind)
-		g.pf("%sif (v !== %s) { // %s\n%s  return false;\n%s}\n", ind, lo.String(), what, ind, ind)
+		g.readRefuse(fmt.Sprintf("v !== %s", lo.String()), " // "+what, ind)
 		return
 	}
 	g.needBg = true
@@ -1110,7 +1206,7 @@ func (g *fgen) emitReadRaw(value *big.Int, bits int64, isConst bool, ind string)
 	g.pf("%sSC.setUint32(4, v, true);\n", ind)
 	g.pf("%sbg = SC.getBigUint64(0, true);\n", ind)
 	masked := new(big.Int).And(value, new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), uint(bits)), big.NewInt(1)))
-	g.pf("%sif (bg !== %sn) { // %s\n%s  return false;\n%s}\n", ind, masked.String(), what, ind, ind)
+	g.readRefuse(fmt.Sprintf("bg !== %sn", masked.String()), " // "+what, ind)
 }
 
 func (g *fgen) emitReadStaticField(f *ir.Field, path, ind string) {
@@ -1158,7 +1254,7 @@ func (g *fgen) emitReadDynamicField(f *ir.Field, path, ind string) {
 			g.readR(countBits, ind)
 			diff := f.ArrayBound - f.ArrayMin
 			if diff != (int64(1)<<countBits)-1 {
-				g.pf("%sif (v > %d) { // the count guards the loop — reject, never clamp\n%s  return false;\n%s}\n", ind, diff, ind, ind)
+				g.readRefuse(fmt.Sprintf("v > %d", diff), " // the count guards the loop — reject, never clamp", ind)
 			}
 			if f.ArrayMin == 0 {
 				g.pf("%s%s = v;\n", ind, count)
@@ -1212,7 +1308,7 @@ func (g *fgen) emitReadBytesField(f *ir.Field, name, ind string) {
 	g.pf("%sif (br + %d > numBits) {\n%s  return false;\n%s}\n", ind, lenBits, ind, ind)
 	g.readR(lenBits, ind)
 	if f.Type.Size != (int64(1)<<lenBits)-1 {
-		g.pf("%sif (v > %d) { // the length guards the slice — reject, never clamp\n%s  return false;\n%s}\n", ind, f.Type.Size, ind, ind)
+		g.readRefuse(fmt.Sprintf("v > %d", f.Type.Size), " // the length guards the slice — reject, never clamp", ind)
 	}
 	g.pf("%s%s = v;\n", ind, length)
 	g.emitReadAlign(ind)
@@ -1324,7 +1420,7 @@ func (g *fgen) emitReadScalar(f *ir.Field, name, ind string, bounded bool) {
 			}
 			g.readR(bits, ind)
 			if ref.Max != (int64(1)<<bits)-1 {
-				g.pf("%sif (v > %d) { // headroom above the wire range is refused\n%s  return false;\n%s}\n", ind, ref.Max, ind, ind)
+				g.readRefuse(fmt.Sprintf("v > %d", ref.Max), " // headroom above the wire range is refused", ind)
 			}
 			g.pf("%s%s = v;\n", ind, name)
 		case *ir.Flags:
@@ -1351,7 +1447,7 @@ func (g *fgen) emitReadCompressedFloat(f *ir.Field, name, ind string) {
 	mivF := float32(maxInt)
 	g.readR(bits, ind)
 	if maxInt != (uint64(1)<<bits)-1 {
-		g.pf("%sif (v > %d) { // headroom above the quantum count is refused\n%s  return false;\n%s}\n", ind, maxInt, ind, ind)
+		g.readRefuse(fmt.Sprintf("v > %d", maxInt), " // headroom above the quantum count is refused", ind)
 	}
 	g.pf("%s%s = Math.fround(Math.fround(Math.fround(Math.fround(v) / %s) * %s) + %s);\n",
 		ind, name, f32lit(float64(mivF)), f32lit(float64(deltaF)), f32lit(float64(minF)))
@@ -1381,7 +1477,7 @@ func (g *fgen) emitReadFixed(f *ir.Field, name, ind string) {
 		g.readR(bits, ind)
 		full := new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), uint(bits)), big.NewInt(1))
 		if rawRange.Cmp(full) != 0 {
-			g.pf("%sif (v > %s) { // a smuggled raw offset is refused\n%s  return false;\n%s}\n", ind, rawRange.String(), ind, ind)
+			g.readRefuse(fmt.Sprintf("v > %s", rawRange.String()), " // a smuggled raw offset is refused", ind)
 		}
 		if rawMin.Sign() == 0 {
 			g.pf("%s%s = v;\n", ind, name)
@@ -1393,7 +1489,7 @@ func (g *fgen) emitReadFixed(f *ir.Field, name, ind string) {
 	g.emitReadWide(bits, ind)
 	full := new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), uint(bits)), big.NewInt(1))
 	if rawRange.Cmp(full) != 0 {
-		g.pf("%sif (bg > %sn) { // a smuggled raw offset is refused\n%s  return false;\n%s}\n", ind, rawRange.String(), ind, ind)
+		g.readRefuse(fmt.Sprintf("bg > %sn", rawRange.String()), " // a smuggled raw offset is refused", ind)
 	}
 	if rawMin.Sign() == 0 {
 		g.pf("%s%s = bg;\n", ind, name)
@@ -1415,7 +1511,7 @@ func (g *fgen) emitReadInt(f *ir.Field, name, ind string) {
 			g.emitReadWide(bits, ind)
 			full := new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), uint(bits)), big.NewInt(1))
 			if diff.Cmp(full) != 0 {
-				g.pf("%sif (bg > %sn) { // a smuggled offset is refused\n%s  return false;\n%s}\n", ind, diff.String(), ind, ind)
+				g.readRefuse(fmt.Sprintf("bg > %sn", diff.String()), " // a smuggled offset is refused", ind)
 			}
 			if f.IntMin.Sign() == 0 {
 				g.pf("%s%s = bg;\n", ind, name)
@@ -1444,9 +1540,9 @@ func (g *fgen) emitReadInt(f *ir.Field, name, ind string) {
 			urange := uint32(int32(f.IntMax.Int64())) - umin
 			g.readR(bits, ind)
 			if bits < 32 && int64(urange) != (int64(1)<<bits)-1 {
-				g.pf("%sif (v > %d) { // a smuggled offset is refused\n%s  return false;\n%s}\n", ind, urange, ind, ind)
+				g.readRefuse(fmt.Sprintf("v > %d", urange), " // a smuggled offset is refused", ind)
 			} else if bits == 32 && urange != math.MaxUint32 {
-				g.pf("%sif (v > %d) { // a smuggled offset is refused\n%s  return false;\n%s}\n", ind, urange, ind, ind)
+				g.readRefuse(fmt.Sprintf("v > %d", urange), " // a smuggled offset is refused", ind)
 			}
 			var decoded string
 			if umin == 0 {
@@ -1467,7 +1563,7 @@ func (g *fgen) emitReadInt(f *ir.Field, name, ind string) {
 				g.readR(bits, ind)
 				full := new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), uint(bits)), big.NewInt(1))
 				if urange.Cmp(full) != 0 {
-					g.pf("%sif (v > %s) { // a smuggled offset is refused\n%s  return false;\n%s}\n", ind, urange.String(), ind, ind)
+					g.readRefuse(fmt.Sprintf("v > %s", urange.String()), " // a smuggled offset is refused", ind)
 				}
 				if min == 0 {
 					g.pf("%s%s = v;\n", ind, name)
@@ -1514,7 +1610,7 @@ func (g *fgen) emitReadRangedBig(f *ir.Field, name string, bits int64, ind strin
 	if bits <= 32 {
 		g.readR(bits, ind)
 		if diff.Cmp(full) != 0 {
-			g.pf("%sif (v > %s) { // a smuggled offset is refused\n%s  return false;\n%s}\n", ind, diff.String(), ind, ind)
+			g.readRefuse(fmt.Sprintf("v > %s", diff.String()), " // a smuggled offset is refused", ind)
 		}
 		if f.IntMin.Sign() == 0 {
 			g.pf("%s%s = BigInt(v);\n", ind, name)
@@ -1525,7 +1621,7 @@ func (g *fgen) emitReadRangedBig(f *ir.Field, name string, bits int64, ind strin
 	}
 	g.emitReadWide(bits, ind)
 	if diff.Cmp(full) != 0 {
-		g.pf("%sif (bg > %sn) { // a smuggled offset is refused\n%s  return false;\n%s}\n", ind, diff.String(), ind, ind)
+		g.readRefuse(fmt.Sprintf("bg > %sn", diff.String()), " // a smuggled offset is refused", ind)
 	}
 	if f.IntMin.Sign() == 0 {
 		g.pf("%s%s = bg;\n", ind, name)
@@ -1574,7 +1670,7 @@ func (g *fgen) emitReadUnionFlat(u *ir.Union, expr, ind string, bounded bool) {
 	}
 	g.readR(bits, ind)
 	if u.Max != (int64(1)<<bits)-1 {
-		g.pf("%sif (v > %d) { // not a wire-legal tag (SPEC §4.8)\n%s  return false;\n%s}\n", ind, u.Max, ind, ind)
+		g.readRefuse(fmt.Sprintf("v > %d", u.Max), " // not a wire-legal tag (SPEC §4.8)", ind)
 	}
 	g.pf("%s%s.Type = v;\n", ind, expr)
 	g.pf("%sswitch (%s.Type) {\n", ind, expr)

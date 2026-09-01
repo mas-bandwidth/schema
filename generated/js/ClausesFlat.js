@@ -119,12 +119,12 @@ export function ReadW13Flat(value, view, numBits) {
   whi = view.getUint32(bi + 4, true);
   s2 = br & 7;
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  br += 4;
   v = (out & 0xf) >>> 0;
   if (v > 12) { // the count guards the loop — reject, never clamp
     return false;
   }
   value.ItemsCount = v;
+  br += 4;
   if (br + value.ItemsCount * 13 > numBits) {
     return false;
   }
@@ -134,9 +134,9 @@ export function ReadW13Flat(value, view, numBits) {
     whi = view.getUint32(bi + 4, true);
     s2 = br & 7;
     out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-    br += 13;
     v = (out & 0x1fff) >>> 0;
     value.Items[i0] = v | 0;
+    br += 13;
   }
   return true;
 }
@@ -224,12 +224,12 @@ export function ReadW17Flat(value, view, numBits) {
   whi = view.getUint32(bi + 4, true);
   s2 = br & 7;
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  br += 4;
   v = (out & 0xf) >>> 0;
   if (v > 9) { // the count guards the loop — reject, never clamp
     return false;
   }
   value.ItemsCount = v;
+  br += 4;
   if (br + value.ItemsCount * 17 > numBits) {
     return false;
   }
@@ -239,9 +239,9 @@ export function ReadW17Flat(value, view, numBits) {
     whi = view.getUint32(bi + 4, true);
     s2 = br & 7;
     out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-    br += 17;
     v = (out & 0x1ffff) >>> 0;
     value.Items[i0] = v | 0;
+    br += 17;
   }
   return true;
 }
@@ -329,12 +329,12 @@ export function ReadW26Flat(value, view, numBits) {
   whi = view.getUint32(bi + 4, true);
   s2 = br & 7;
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  br += 3;
   v = (out & 0x7) >>> 0;
   if (v > 6) { // the count guards the loop — reject, never clamp
     return false;
   }
   value.ItemsCount = v;
+  br += 3;
   if (br + value.ItemsCount * 26 > numBits) {
     return false;
   }
@@ -344,9 +344,9 @@ export function ReadW26Flat(value, view, numBits) {
     whi = view.getUint32(bi + 4, true);
     s2 = br & 7;
     out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-    br += 26;
     v = (out & 0x3ffffff) >>> 0;
     value.Items[i0] = v | 0;
+    br += 26;
   }
   return true;
 }
@@ -434,12 +434,12 @@ export function ReadW1Flat(value, view, numBits) {
   whi = view.getUint32(bi + 4, true);
   s2 = br & 7;
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  br += 5;
   v = (out & 0x1f) >>> 0;
   if (v > 20) { // the count guards the loop — reject, never clamp
     return false;
   }
   value.ItemsCount = v;
+  br += 5;
   if (br + value.ItemsCount * 1 > numBits) {
     return false;
   }
@@ -449,9 +449,9 @@ export function ReadW1Flat(value, view, numBits) {
     whi = view.getUint32(bi + 4, true);
     s2 = br & 7;
     out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-    br += 1;
     v = (out & 0x1) >>> 0;
     value.Items[i0] = v | 0;
+    br += 1;
   }
   return true;
 }
@@ -560,9 +560,9 @@ export function ReadW52Flat(value, view, numBits) {
   whi = view.getUint32(bi + 4, true);
   s2 = br & 7;
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  br += 2;
   v = (out & 0x3) >>> 0;
   value.ItemsCount = v;
+  br += 2;
   if (br + value.ItemsCount * 52 > numBits) {
     return false;
   }
@@ -572,19 +572,19 @@ export function ReadW52Flat(value, view, numBits) {
     whi = view.getUint32(bi + 4, true);
     s2 = br & 7;
     out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-    br += 32;
     v = out >>> 0;
     SC.setUint32(0, v, true);
+    br += 32;
     bi = br >>> 3;
     wlo = view.getUint32(bi, true);
     whi = view.getUint32(bi + 4, true);
     s2 = br & 7;
     out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-    br += 20;
     v = (out & 0xfffff) >>> 0;
     SC.setUint32(4, v, true);
     bg = SC.getBigUint64(0, true);
     value.Items[i0] = bg;
+    br += 20;
   }
   return true;
 }
@@ -693,9 +693,9 @@ export function ReadW50Flat(value, view, numBits) {
   whi = view.getUint32(bi + 4, true);
   s2 = br & 7;
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  br += 2;
   v = (out & 0x3) >>> 0;
   value.ItemsCount = v;
+  br += 2;
   if (br + value.ItemsCount * 50 > numBits) {
     return false;
   }
@@ -705,19 +705,19 @@ export function ReadW50Flat(value, view, numBits) {
     whi = view.getUint32(bi + 4, true);
     s2 = br & 7;
     out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-    br += 32;
     v = out >>> 0;
     SC.setUint32(0, v, true);
+    br += 32;
     bi = br >>> 3;
     wlo = view.getUint32(bi, true);
     whi = view.getUint32(bi + 4, true);
     s2 = br & 7;
     out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-    br += 18;
     v = (out & 0x3ffff) >>> 0;
     SC.setUint32(4, v, true);
     bg = SC.getBigUint64(0, true);
     value.Items[i0] = bg;
+    br += 18;
   }
   return true;
 }
@@ -785,9 +785,9 @@ export function ReadF13Flat(value, view, numBits) {
     whi = view.getUint32(bi + 4, true);
     s2 = br & 7;
     out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-    br += 13;
     v = (out & 0x1fff) >>> 0;
     value.Items[i0] = v | 0;
+    br += 13;
   }
   return true;
 }
@@ -847,16 +847,9 @@ export function ReadTri3Flat(value, view, numBits) {
   whi = view.getUint32(bi + 4, true);
   s2 = br & 7;
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  br += 1;
   v = (out & 0x1) >>> 0;
   value.A = v;
-  bi = br >>> 3;
-  wlo = view.getUint32(bi, true);
-  whi = view.getUint32(bi + 4, true);
-  s2 = br & 7;
-  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  br += 2;
-  v = (out & 0x3) >>> 0;
+  v = (out >>> 1) & 0x3;
   value.B = v;
   return true;
 }
@@ -943,12 +936,12 @@ export function ReadArrTri3Flat(value, view, numBits) {
   whi = view.getUint32(bi + 4, true);
   s2 = br & 7;
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  br += 4;
   v = (out & 0xf) >>> 0;
   if (v > 10) { // the count guards the loop — reject, never clamp
     return false;
   }
   value.ItemsCount = v;
+  br += 4;
   if (br + value.ItemsCount * 3 > numBits) {
     return false;
   }
@@ -959,17 +952,11 @@ export function ReadArrTri3Flat(value, view, numBits) {
     whi = view.getUint32(bi + 4, true);
     s2 = br & 7;
     out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-    br += 1;
     v = (out & 0x1) >>> 0;
     e0.A = v;
-    bi = br >>> 3;
-    wlo = view.getUint32(bi, true);
-    whi = view.getUint32(bi + 4, true);
-    s2 = br & 7;
-    out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-    br += 2;
-    v = (out & 0x3) >>> 0;
+    v = (out >>> 1) & 0x3;
     e0.B = v;
+    br += 3;
   }
   return true;
 }
@@ -1029,16 +1016,9 @@ export function ReadElevenFlat(value, view, numBits) {
   whi = view.getUint32(bi + 4, true);
   s2 = br & 7;
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  br += 3;
   v = (out & 0x7) >>> 0;
   value.A = v;
-  bi = br >>> 3;
-  wlo = view.getUint32(bi, true);
-  whi = view.getUint32(bi + 4, true);
-  s2 = br & 7;
-  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  br += 8;
-  v = (out & 0xff) >>> 0;
+  v = (out >>> 3) & 0xff;
   value.B = v;
   return true;
 }
@@ -1106,17 +1086,11 @@ export function ReadArrElevenFlat(value, view, numBits) {
     whi = view.getUint32(bi + 4, true);
     s2 = br & 7;
     out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-    br += 3;
     v = (out & 0x7) >>> 0;
     e0.A = v;
-    bi = br >>> 3;
-    wlo = view.getUint32(bi, true);
-    whi = view.getUint32(bi + 4, true);
-    s2 = br & 7;
-    out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-    br += 8;
-    v = (out & 0xff) >>> 0;
+    v = (out >>> 3) & 0xff;
     e0.B = v;
+    br += 11;
   }
   return true;
 }
@@ -1277,9 +1251,9 @@ export function ReadHoldsEmptyUnionFlat(value, view, numBits) {
   whi = view.getUint32(bi + 4, true);
   s2 = br & 7;
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  br += 5;
   v = (out & 0x1f) >>> 0;
   value.Lead = v;
+  br += 5;
   if (br + 2 > numBits) {
     return false;
   }
@@ -1288,12 +1262,12 @@ export function ReadHoldsEmptyUnionFlat(value, view, numBits) {
   whi = view.getUint32(bi + 4, true);
   s2 = br & 7;
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  br += 2;
   v = (out & 0x3) >>> 0;
   if (v > 2) { // not a wire-legal tag (SPEC §4.8)
     return false;
   }
   value.U.Type = v;
+  br += 2;
   switch (value.U.Type) {
     case 1: {
       break;
@@ -1310,7 +1284,6 @@ export function ReadHoldsEmptyUnionFlat(value, view, numBits) {
   whi = view.getUint32(bi + 4, true);
   s2 = br & 7;
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  br += 7;
   v = (out & 0x7f) >>> 0;
   value.Tail = v;
   return true;
@@ -1541,9 +1514,9 @@ export function ReadStrsFlat(value, view, numBits) {
   whi = view.getUint32(bi + 4, true);
   s2 = br & 7;
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  br += 5;
   v = (out & 0x1f) >>> 0;
   value.Lead = v;
+  br += 5;
   if (br + 4 > numBits) {
     return false;
   }
@@ -1552,12 +1525,12 @@ export function ReadStrsFlat(value, view, numBits) {
   whi = view.getUint32(bi + 4, true);
   s2 = br & 7;
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  br += 4;
   v = (out & 0xf) >>> 0;
   if (v > 8) { // the length guards the slice — reject, never clamp
     return false;
   }
   value.SLength = v;
+  br += 4;
   s2 = br & 7;
   if (s2 !== 0) {
     if (br + (8 - s2) > numBits) {
@@ -1589,12 +1562,12 @@ export function ReadStrsFlat(value, view, numBits) {
   whi = view.getUint32(bi + 4, true);
   s2 = br & 7;
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  br += 4;
   v = (out & 0xf) >>> 0;
   if (v > 8) { // the length guards the slice — reject, never clamp
     return false;
   }
   value.BLength = v;
+  br += 4;
   s2 = br & 7;
   if (s2 !== 0) {
     if (br + (8 - s2) > numBits) {
@@ -1621,7 +1594,6 @@ export function ReadStrsFlat(value, view, numBits) {
   whi = view.getUint32(bi + 4, true);
   s2 = br & 7;
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  br += 3;
   v = (out & 0x7) >>> 0;
   value.Tail = v;
   return true;
@@ -1727,9 +1699,9 @@ export function ReadArrNestedFlat(value, view, numBits) {
   whi = view.getUint32(bi + 4, true);
   s2 = br & 7;
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  br += 5;
   v = (out & 0x1f) >>> 0;
   value.Lead = v;
+  br += 5;
   if (br + 3 > numBits) {
     return false;
   }
@@ -1738,12 +1710,12 @@ export function ReadArrNestedFlat(value, view, numBits) {
   whi = view.getUint32(bi + 4, true);
   s2 = br & 7;
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  br += 3;
   v = (out & 0x7) >>> 0;
   if (v > 4) { // the count guards the loop — reject, never clamp
     return false;
   }
   value.ItemsCount = v;
+  br += 3;
   if (br + value.ItemsCount * 11 > numBits) {
     return false;
   }
@@ -1754,17 +1726,11 @@ export function ReadArrNestedFlat(value, view, numBits) {
     whi = view.getUint32(bi + 4, true);
     s2 = br & 7;
     out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-    br += 3;
     v = (out & 0x7) >>> 0;
     e0.A = v;
-    bi = br >>> 3;
-    wlo = view.getUint32(bi, true);
-    whi = view.getUint32(bi + 4, true);
-    s2 = br & 7;
-    out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-    br += 8;
-    v = (out & 0xff) >>> 0;
+    v = (out >>> 3) & 0xff;
     e0.B = v;
+    br += 11;
   }
   if (br + 3 > numBits) {
     return false;
@@ -1774,7 +1740,6 @@ export function ReadArrNestedFlat(value, view, numBits) {
   whi = view.getUint32(bi + 4, true);
   s2 = br & 7;
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  br += 3;
   v = (out & 0x7) >>> 0;
   value.Tail = v;
   return true;
@@ -1835,7 +1800,6 @@ export function ReadSoleFlat(value, view, numBits) {
   whi = view.getUint32(bi + 4, true);
   s2 = br & 7;
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  br += 13;
   v = (out & 0x1fff) >>> 0;
   value.Only = v;
   return true;
