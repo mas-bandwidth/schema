@@ -315,6 +315,18 @@ jobs:
           version: v2.12.2
       - name: modernize
         run: go run golang.org/x/tools/gopls/internal/analysis/modernize/cmd/modernize@latest ./...
+      - name: bench scripts parse
+        run: bash -n bench/run.sh
+      - name: render smoke — the headline table renders from a committed CSV
+        run: |
+          # newest committed sweep: older CSVs predate the round_trip contract
+          # and the render REFUSES them by design (#175)
+          csv=$(ls bench/results/*.csv | tail -1)
+          out=$(./bench/run.sh --render "$csv" 2>&1)
+          echo "$out"
+          echo "$out" | grep -q "language        %" || { echo "::error::render printed no table header"; exit 1; }
+          rows=$(echo "$out" | grep -cE "^  (c|cpp|go|rust|cs|js|java|dart|elixir) ")
+          [ "$rows" -ge 1 ] || { echo "::error::render printed zero language rows"; exit 1; }
 
   vuln:
     runs-on: ubuntu-latest

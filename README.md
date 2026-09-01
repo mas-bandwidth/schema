@@ -50,6 +50,28 @@ type ShipState
 This declaration compiles to C, C++, C#, Go, Java, Rust, JavaScript, Dart and Elixir code that 
 reads and writes your data types and agrees on every bit. Now your native plugin, your Unity client, your Go backend, your browser client, and your tooling all speak the same language.
 
+## Performance
+
+Cost to serialize a representative game packet, relative to generated C++ at 100% — lower is faster:
+
+| Language | % |
+|---|---:|
+| C | 100% |
+| C++ | 100% |
+| Java | 148% |
+| Rust | 153% |
+| Go | 208% |
+| C# | 221% |
+| Dart | 363% |
+| JavaScript | 461% |
+| Elixir | 1348% |
+
+Measured by [the benchmark](bench/): the real generated code in every language, over the same
+wire corpus — a 438-byte packet exercising every construct, with integers carrying 92% of the
+bytes, because that is what game packets look like. No hand-written stand-ins. C and C++ report
+as a statistical tie. Raw sweeps are committed under [bench/results](bench/results/); reproduce
+with `./bench/run.sh` and render any sweep's table with `./bench/run.sh --render <csv>`.
+
 ## Why it exists
 
 Multiplayer games serialize the same data in several languages at once — an
