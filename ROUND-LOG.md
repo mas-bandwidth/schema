@@ -87,3 +87,12 @@ reads the round's state from this file plus the branch commits alone.
   Prototype: read 1638.3 -> 1431.9 ns (1.144x), rt 1.069x. Emitter form:
   read 1652.6 -> 1446.6 (1.142x), rt 1.070x. Tables: Bench 1 (aim, 201
   entries), RealWorld 5, Wire 1. cf_decode stays the shipped path past 1024.
+- LEVER cfq (per-declaration cf_quantize specialization, constants folded)
+  REFUSED: write 2449.1 vs 2453.2 ns (0.2%, noise) — BEAM argument passing
+  and literal loading are already free; the quantize cost is the float chain
+  itself, which the wire contract pins step-for-step.
+- CONSIDERED, NOT BUILT: direct float segments in barrier appends (skip
+  f32/f64_bits construct/match, ~1.8% of write) — refused by reasoning: the
+  {:nonfinite, bits} write form makes every float segment conditional, which
+  breaks the one-construction-per-barrier shape lever M bought; revisit only
+  if a nonfinite-free declaration class ever exists.
