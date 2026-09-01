@@ -2409,15 +2409,33 @@ int writeBlock(Block value, ByteData view) {
       }
     }
   }
-  for (var i0 = 0; i0 < value.dataLength; i0++) {
-    v = value.data[i0];
-    scratch |= v << scratchBits;
-    scratchBits += 8;
-    if (scratchBits >= 64) {
-      view.setUint64(wordIndex * 8, scratch, Endian.little);
-      wordIndex++;
-      scratchBits -= 64;
-      scratch = v >>> (8 - scratchBits);
+  {
+    var i0 = 0;
+    for (; i0 + 4 <= value.dataLength; i0 += 4) {
+      v =
+          value.data[i0] |
+          (value.data[i0 + 1] << 8) |
+          (value.data[i0 + 2] << 16) |
+          (value.data[i0 + 3] << 24);
+      scratch |= v << scratchBits;
+      scratchBits += 32;
+      if (scratchBits >= 64) {
+        view.setUint64(wordIndex * 8, scratch, Endian.little);
+        wordIndex++;
+        scratchBits -= 64;
+        scratch = v >>> (32 - scratchBits);
+      }
+    }
+    for (; i0 < value.dataLength; i0++) {
+      v = value.data[i0];
+      scratch |= v << scratchBits;
+      scratchBits += 8;
+      if (scratchBits >= 64) {
+        view.setUint64(wordIndex * 8, scratch, Endian.little);
+        wordIndex++;
+        scratchBits -= 64;
+        scratch = v >>> (8 - scratchBits);
+      }
     }
   }
   if (scratchBits != 0) {
@@ -2552,15 +2570,33 @@ int writeChat(Chat value, ByteData view) {
       }
     }
   }
-  for (var i0 = 0; i0 < value.textLength; i0++) {
-    v = value.text[i0];
-    scratch |= v << scratchBits;
-    scratchBits += 8;
-    if (scratchBits >= 64) {
-      view.setUint64(wordIndex * 8, scratch, Endian.little);
-      wordIndex++;
-      scratchBits -= 64;
-      scratch = v >>> (8 - scratchBits);
+  {
+    var i0 = 0;
+    for (; i0 + 4 <= value.textLength; i0 += 4) {
+      v =
+          value.text[i0] |
+          (value.text[i0 + 1] << 8) |
+          (value.text[i0 + 2] << 16) |
+          (value.text[i0 + 3] << 24);
+      scratch |= v << scratchBits;
+      scratchBits += 32;
+      if (scratchBits >= 64) {
+        view.setUint64(wordIndex * 8, scratch, Endian.little);
+        wordIndex++;
+        scratchBits -= 64;
+        scratch = v >>> (32 - scratchBits);
+      }
+    }
+    for (; i0 < value.textLength; i0++) {
+      v = value.text[i0];
+      scratch |= v << scratchBits;
+      scratchBits += 8;
+      if (scratchBits >= 64) {
+        view.setUint64(wordIndex * 8, scratch, Endian.little);
+        wordIndex++;
+        scratchBits -= 64;
+        scratch = v >>> (8 - scratchBits);
+      }
     }
   }
   if (scratchBits != 0) {
@@ -3123,27 +3159,34 @@ int writeTestData(TestData value, ByteData view) {
       }
     }
   }
-  for (var i0 = 0; i0 < 17; i0++) {
-    v = ((value.fixedBytes[i0]) & 0xff);
-    scratch |= v << scratchBits;
-    scratchBits += 8;
-    if (scratchBits >= 64) {
-      view.setUint64(wordIndex * 8, scratch, Endian.little);
-      wordIndex++;
-      scratchBits -= 64;
-      scratch = v >>> (8 - scratchBits);
+  {
+    var i0 = 0;
+    for (; i0 + 4 <= 17; i0 += 4) {
+      v =
+          value.fixedBytes[i0] |
+          (value.fixedBytes[i0 + 1] << 8) |
+          (value.fixedBytes[i0 + 2] << 16) |
+          (value.fixedBytes[i0 + 3] << 24);
+      scratch |= v << scratchBits;
+      scratchBits += 32;
+      if (scratchBits >= 64) {
+        view.setUint64(wordIndex * 8, scratch, Endian.little);
+        wordIndex++;
+        scratchBits -= 64;
+        scratch = v >>> (32 - scratchBits);
+      }
     }
   }
   assert(value.textLength >= 0);
   assert(value.textLength <= 255);
-  v = ((value.textLength) & 0xff);
+  v = value.fixedBytes[16] | (((value.textLength) & 0xff) << 8);
   scratch |= v << scratchBits;
-  scratchBits += 8;
+  scratchBits += 16;
   if (scratchBits >= 64) {
     view.setUint64(wordIndex * 8, scratch, Endian.little);
     wordIndex++;
     scratchBits -= 64;
-    scratch = v >>> (8 - scratchBits);
+    scratch = v >>> (16 - scratchBits);
   }
   {
     final pad = scratchBits & 7;
@@ -3157,15 +3200,33 @@ int writeTestData(TestData value, ByteData view) {
       }
     }
   }
-  for (var i0 = 0; i0 < value.textLength; i0++) {
-    v = value.text[i0];
-    scratch |= v << scratchBits;
-    scratchBits += 8;
-    if (scratchBits >= 64) {
-      view.setUint64(wordIndex * 8, scratch, Endian.little);
-      wordIndex++;
-      scratchBits -= 64;
-      scratch = v >>> (8 - scratchBits);
+  {
+    var i0 = 0;
+    for (; i0 + 4 <= value.textLength; i0 += 4) {
+      v =
+          value.text[i0] |
+          (value.text[i0 + 1] << 8) |
+          (value.text[i0 + 2] << 16) |
+          (value.text[i0 + 3] << 24);
+      scratch |= v << scratchBits;
+      scratchBits += 32;
+      if (scratchBits >= 64) {
+        view.setUint64(wordIndex * 8, scratch, Endian.little);
+        wordIndex++;
+        scratchBits -= 64;
+        scratch = v >>> (32 - scratchBits);
+      }
+    }
+    for (; i0 < value.textLength; i0++) {
+      v = value.text[i0];
+      scratch |= v << scratchBits;
+      scratchBits += 8;
+      if (scratchBits >= 64) {
+        view.setUint64(wordIndex * 8, scratch, Endian.little);
+        wordIndex++;
+        scratchBits -= 64;
+        scratch = v >>> (8 - scratchBits);
+      }
     }
   }
   if (scratchBits != 0) {

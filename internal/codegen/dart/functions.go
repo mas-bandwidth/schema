@@ -458,6 +458,10 @@ func (g *gen) emitWriteField(f *ir.Field, path, ind string) {
 	}
 	switch f.Array {
 	case ir.ArrayFixed:
+		if isBareByte(f) {
+			g.emitWriteByteRun(f, name, fmt.Sprintf("%d", f.ArrayBound), f.ArrayBound, true, ind)
+			return
+		}
 		iv := fmt.Sprintf("i%d", g.loopDepth)
 		g.loopDepth++
 		g.chunkFlush(ind)
@@ -763,18 +767,72 @@ func (g *gen) emitWriteFlags(ref *ir.Flags, name, ind string) {
 // emitWriteBytesField writes string(N)/bytes(N): folded ranged length,
 // align (zero pad), then the used bytes through the packer — the classic
 // serialize_string framing composed from primitives, byte-identical to
-// every other target's.
+// every other target's. The body rides the bulk-bytes path (#165).
 func (g *gen) emitWriteBytesField(f *ir.Field, name, ind string) {
 	length := name + "Length"
 	g.assertRange(length, big.NewInt(0), big.NewInt(f.Type.Size), true, ind)
 	g.emitWriteOffset(length, big.NewInt(0), big.NewInt(f.Type.Size), ind)
 	g.emitWriteAlign(ind)
+	g.emitWriteByteRun(f, name, length, f.Type.Size, false, ind)
+}
+
+// isBareByte reports a field whose elements are raw uint8/int8 wire bytes —
+// the bulk-bytes shape (#165): each element is exactly one wire byte, so
+// runs group into 32-bit merges instead of paying the merge per byte. The
+// grouping needs no alignment: LSB-first merging of the 4-byte concatenation
+// equals merging the bytes in sequence at ANY bit position.
+func isBareByte(f *ir.Field) bool {
+	return f.Type.Kind == ir.TInt && f.Type.Width == 8 && !f.HasIntRange
+}
+
+// byteAt renders one source byte as a chunk piece expression; int8 storage
+// masks to the wire byte, uint8 storage loads pre-masked.
+func (g *gen) byteAt(f *ir.Field, name, idx string) string {
+	if f.Type.Signed {
+		return fmt.Sprintf("(%s[%s] & 0xff)", name, idx)
+	}
+	return fmt.Sprintf("%s[%s]", name, idx)
+}
+
+// emitWriteByteRun writes `count` raw bytes of a byte-element list (a
+// string/bytes body or a bare [N]uint8 array) through the bulk path:
+// a static run of 8 or fewer bytes queues as chunk pieces (it can join
+// neighboring fields in one merge); longer or dynamic runs take 4 bytes per
+// merge with a byte tail. isStatic says count renders the literal
+// staticCount (a fixed array); a dynamic count (a string/bytes length)
+// keeps its byte-tail loop.
+func (g *gen) emitWriteByteRun(f *ir.Field, name, count string, staticCount int64, isStatic bool, ind string) {
+	if isStatic && staticCount <= 8 {
+		for k := int64(0); k < staticCount; k++ {
+			g.chunkAdd(g.byteAt(f, name, fmt.Sprintf("%d", k)), 8, ind)
+		}
+		return
+	}
 	iv := fmt.Sprintf("i%d", g.loopDepth)
 	g.loopDepth++
-	g.pf("%sfor (var %s = 0; %s < %s; %s++) {\n", ind, iv, iv, length, iv)
-	g.pf("%s  v = %s[%s];\n", ind, name, iv)
-	g.mergeW(8, ind+"  ")
+	g.chunkFlush(ind)
+	g.pf("%s{\n", ind)
+	g.pf("%s  var %s = 0;\n", ind, iv)
+	g.pf("%s  for (; %s + 4 <= %s; %s += 4) {\n", ind, iv, count, iv)
+	g.chunkAdd(g.byteAt(f, name, iv), 8, ind+"    ")
+	g.chunkAdd(g.byteAt(f, name, iv+" + 1"), 8, ind+"    ")
+	g.chunkAdd(g.byteAt(f, name, iv+" + 2"), 8, ind+"    ")
+	g.chunkAdd(g.byteAt(f, name, iv+" + 3"), 8, ind+"    ")
+	g.chunkFlush(ind + "    ")
+	g.pf("%s  }\n", ind)
+	if !isStatic {
+		g.pf("%s  for (; %s < %s; %s++) {\n", ind, iv, count, iv)
+		g.chunkAdd(g.byteAt(f, name, iv), 8, ind+"    ")
+		g.chunkFlush(ind + "    ")
+		g.pf("%s  }\n", ind)
+	}
 	g.pf("%s}\n", ind)
+	if isStatic {
+		// the tail indices are literals: it queues into the neighbor chunks
+		for k := staticCount - staticCount%4; k < staticCount; k++ {
+			g.chunkAdd(g.byteAt(f, name, fmt.Sprintf("%d", k)), 8, ind)
+		}
+	}
 	g.loopDepth--
 }
 

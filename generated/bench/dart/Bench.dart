@@ -221,16 +221,32 @@ int writeBenchPacket(BenchPacket value, ByteData view) {
       }
     }
   }
-  for (var i0 = 0; i0 < 17; i0++) {
-    v = ((value.blob[i0]) & 0xff);
-    scratch |= v << scratchBits;
-    scratchBits += 8;
-    if (scratchBits >= 64) {
-      view.setUint64(wordIndex * 8, scratch, Endian.little);
-      wordIndex++;
-      scratchBits -= 64;
-      scratch = v >>> (8 - scratchBits);
+  {
+    var i0 = 0;
+    for (; i0 + 4 <= 17; i0 += 4) {
+      v =
+          value.blob[i0] |
+          (value.blob[i0 + 1] << 8) |
+          (value.blob[i0 + 2] << 16) |
+          (value.blob[i0 + 3] << 24);
+      scratch |= v << scratchBits;
+      scratchBits += 32;
+      if (scratchBits >= 64) {
+        view.setUint64(wordIndex * 8, scratch, Endian.little);
+        wordIndex++;
+        scratchBits -= 64;
+        scratch = v >>> (32 - scratchBits);
+      }
     }
+  }
+  v = value.blob[16];
+  scratch |= v << scratchBits;
+  scratchBits += 8;
+  if (scratchBits >= 64) {
+    view.setUint64(wordIndex * 8, scratch, Endian.little);
+    wordIndex++;
+    scratchBits -= 64;
+    scratch = v >>> (8 - scratchBits);
   }
   if (scratchBits != 0) {
     view.setUint64(wordIndex * 8, scratch, Endian.little);
@@ -2372,27 +2388,21 @@ int writeBenchMixed(BenchMixed value, ByteData view) {
         scratch = v >>> (18 - scratchBits);
       }
   }
-  for (var i0 = 0; i0 < 4; i0++) {
-    v = ((value.loadout[i0]) & 0xff);
-    scratch |= v << scratchBits;
-    scratchBits += 8;
-    if (scratchBits >= 64) {
-      view.setUint64(wordIndex * 8, scratch, Endian.little);
-      wordIndex++;
-      scratchBits -= 64;
-      scratch = v >>> (8 - scratchBits);
-    }
-  }
   assert(value.playerNameLength >= 0);
   assert(value.playerNameLength <= 15);
-  v = ((value.playerNameLength) & 0xf);
+  v =
+      value.loadout[0] |
+      (value.loadout[1] << 8) |
+      (value.loadout[2] << 16) |
+      (value.loadout[3] << 24) |
+      (((value.playerNameLength) & 0xf) << 32);
   scratch |= v << scratchBits;
-  scratchBits += 4;
+  scratchBits += 36;
   if (scratchBits >= 64) {
     view.setUint64(wordIndex * 8, scratch, Endian.little);
     wordIndex++;
     scratchBits -= 64;
-    scratch = v >>> (4 - scratchBits);
+    scratch = v >>> (36 - scratchBits);
   }
   {
     final pad = scratchBits & 7;
@@ -2406,15 +2416,33 @@ int writeBenchMixed(BenchMixed value, ByteData view) {
       }
     }
   }
-  for (var i0 = 0; i0 < value.playerNameLength; i0++) {
-    v = value.playerName[i0];
-    scratch |= v << scratchBits;
-    scratchBits += 8;
-    if (scratchBits >= 64) {
-      view.setUint64(wordIndex * 8, scratch, Endian.little);
-      wordIndex++;
-      scratchBits -= 64;
-      scratch = v >>> (8 - scratchBits);
+  {
+    var i0 = 0;
+    for (; i0 + 4 <= value.playerNameLength; i0 += 4) {
+      v =
+          value.playerName[i0] |
+          (value.playerName[i0 + 1] << 8) |
+          (value.playerName[i0 + 2] << 16) |
+          (value.playerName[i0 + 3] << 24);
+      scratch |= v << scratchBits;
+      scratchBits += 32;
+      if (scratchBits >= 64) {
+        view.setUint64(wordIndex * 8, scratch, Endian.little);
+        wordIndex++;
+        scratchBits -= 64;
+        scratch = v >>> (32 - scratchBits);
+      }
+    }
+    for (; i0 < value.playerNameLength; i0++) {
+      v = value.playerName[i0];
+      scratch |= v << scratchBits;
+      scratchBits += 8;
+      if (scratchBits >= 64) {
+        view.setUint64(wordIndex * 8, scratch, Endian.little);
+        wordIndex++;
+        scratchBits -= 64;
+        scratch = v >>> (8 - scratchBits);
+      }
     }
   }
   assert(value.payloadLength >= 0);
@@ -2440,15 +2468,33 @@ int writeBenchMixed(BenchMixed value, ByteData view) {
       }
     }
   }
-  for (var i0 = 0; i0 < value.payloadLength; i0++) {
-    v = value.payload[i0];
-    scratch |= v << scratchBits;
-    scratchBits += 8;
-    if (scratchBits >= 64) {
-      view.setUint64(wordIndex * 8, scratch, Endian.little);
-      wordIndex++;
-      scratchBits -= 64;
-      scratch = v >>> (8 - scratchBits);
+  {
+    var i0 = 0;
+    for (; i0 + 4 <= value.payloadLength; i0 += 4) {
+      v =
+          value.payload[i0] |
+          (value.payload[i0 + 1] << 8) |
+          (value.payload[i0 + 2] << 16) |
+          (value.payload[i0 + 3] << 24);
+      scratch |= v << scratchBits;
+      scratchBits += 32;
+      if (scratchBits >= 64) {
+        view.setUint64(wordIndex * 8, scratch, Endian.little);
+        wordIndex++;
+        scratchBits -= 64;
+        scratch = v >>> (32 - scratchBits);
+      }
+    }
+    for (; i0 < value.payloadLength; i0++) {
+      v = value.payload[i0];
+      scratch |= v << scratchBits;
+      scratchBits += 8;
+      if (scratchBits >= 64) {
+        view.setUint64(wordIndex * 8, scratch, Endian.little);
+        wordIndex++;
+        scratchBits -= 64;
+        scratch = v >>> (8 - scratchBits);
+      }
     }
   }
   {
