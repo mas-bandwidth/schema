@@ -738,6 +738,7 @@ func usage() {
   relative controlmedian control.csv                    corpus-median headline of a control leg (§2.6)
   relative twingate      twin-a.csv twin-b.csv          §2.6.1 A/A twin-leg gate (state-suspect rows exit 4)
   relative bands         current.csv prior.csv [...]    §2.6.1 per-row historical bands (band-break rows exit 5)
+  relative ledger [--check] [--dir DIR]                 the absolute ledger series (#194); --check reds a cpp regression
 
 flags (the only escapes; each prints its §3.4/§3.1 caption with the ratio):
   --label-checks    allow ratios across differing checks columns, captioned
@@ -766,6 +767,8 @@ func main() {
 		usage()
 	}
 	switch args[0] {
+	case "ledger":
+		ledger(args[1:])
 	case "rel":
 		if len(args) < 2 {
 			usage()

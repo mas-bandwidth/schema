@@ -317,6 +317,8 @@ jobs:
         run: go run golang.org/x/tools/gopls/internal/analysis/modernize/cmd/modernize@latest ./...
       - name: bench scripts parse
         run: bash -n bench/run.sh
+      - name: absolute ledger — the cpp curve holds or goes red
+        run: go run ./bench/tools ledger --check > /dev/null
       - name: render smoke — the headline table renders from a committed CSV
         run: |
           # newest committed sweep: older CSVs predate the round_trip contract
