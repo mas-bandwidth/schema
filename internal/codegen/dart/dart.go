@@ -155,6 +155,29 @@ func checkNames(u *ir.Unit) error {
 			return err
 		}
 	}
+	// declaration names emit verbatim as class/extension names, so they are
+	// exactly the surface the shadow-hazard entries (String, List, Object,
+	// Endian, ByteData) exist for — a `type List` would shadow dart:core
+	for _, e := range u.Enums {
+		if err := check("enum", "", e.Name, e.Name); err != nil {
+			return err
+		}
+	}
+	for _, fl := range u.Flags {
+		if err := check("flags", "", fl.Name, fl.Name); err != nil {
+			return err
+		}
+	}
+	for _, st := range u.Structs {
+		if err := check("type", "", st.Name, st.Name); err != nil {
+			return err
+		}
+	}
+	for _, un := range u.Unions {
+		if err := check("union", "", un.Name, un.Name); err != nil {
+			return err
+		}
+	}
 	for _, e := range u.Enums {
 		for _, v := range e.Variants {
 			if err := check("variant", e.Name, v, dartName(v)); err != nil {
