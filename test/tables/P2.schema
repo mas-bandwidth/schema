@@ -1,0 +1,18 @@
+// P2.schema — the POINTERED side of the evolution pair: `link` became a
+// pointer and Link gained `next`, so P2 can express a chain P1 cannot.
+// Old reader x new data: P1 decodes the first Link and counts `next` unknown.
+// New reader x old data: P2 allocates one node from the by-value body.
+package tblp2
+
+table Link
+{
+    value int32 = 0 | min = 0, max = 1000
+    tag   string(8)
+    next  *Link
+}
+
+table Chain
+{
+    name string(16)
+    link *Link
+}

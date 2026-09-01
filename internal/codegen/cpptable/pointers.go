@@ -143,6 +143,11 @@ func (g *tableGen) emitPointerTargetSurface(st *ir.Struct) {
 	g.pf("inline const %s * %sAt( const TableRegionCtx &, const TableRef & ref ) { return %sAt( ref ); }\n", n, n, n)
 	g.pf("inline const %s * %sAt( const TableArenaCtx & ctx, const TableRef & ref )\n{\n", n, n)
 	g.pf("    return ref.value != 0 ? (const %s *) TableArenaAt( *ctx.arena, ref.value ) : NULL;\n}\n", n)
+	g.pf("// while the builder is mutable, resolve against the arena itself\n")
+	g.pf("inline %s * %sAt( TableArena & arena, const TableRef & ref )\n{\n", n, n)
+	g.pf("    return ref.value != 0 ? (%s *) TableArenaAt( arena, ref.value ) : NULL;\n}\n", n)
+	g.pf("inline const %s * %sAt( const TableArena & arena, const TableRef & ref )\n{\n", n, n)
+	g.pf("    return ref.value != 0 ? (const %s *) TableArenaAt( arena, ref.value ) : NULL;\n}\n", n)
 	g.pf("// bump one %s into the caller's exact region; the slot comes out self-relative\n", n)
 	g.pf("inline %s * %sEmplace( TableRegionSink & sink, TableRef & slot )\n{\n", n, n)
 	g.pf("    int64_t at = TableAlignUp64( sink.used );\n")
@@ -386,10 +391,10 @@ func (g *tableGen) emitOpenWalk(st *ir.Struct) {
 	ptrs := pointerFields(st)
 	nested := g.byValueVariableFields(st)
 	counted := countedCompanions(st)
-	if len(ptrs) == 0 && len(nested) == 0 && len(counted) == 0 {
-		g.pf("    (void) node; (void) base; (void) bytes; // no references and no counts to bound\n")
-		g.pf("    return true;\n}\n\n")
-		return
+	if len(ptrs) == 0 && len(nested) == 0 {
+		// nothing here addresses the region: only the count companions bound a
+		// traversal, and those are read out of the node itself
+		g.pf("    (void) base; (void) bytes;\n")
 	}
 	for _, c := range counted {
 		g.pf("    if ( node->%s < 0 || node->%s > %d ) { return false; } // %s\n", c.companion, c.companion, c.bound, c.field)

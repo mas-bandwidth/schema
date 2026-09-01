@@ -98,3 +98,37 @@ no rebase debt).
   and closed to get there: the descriptor's `is_pointer` column, TableTypeInfo's
   `variable` column, and a reworded relocatability comment are now emitted only
   in a unit that actually has pointers.
+
+- UNIT 4 — corpus, tests, gates. The pointer corpus lives in its OWN unit
+  (`tables/pointers/Graph.schema`, package graphdemo) so `tables/examples`
+  stays pointer-free and keeps proving the zero-cost gate. Graph carries a
+  value-only table (Meta), a value-only POINTER TARGET (Settings), a
+  self-recursive list (ListNode), a tree (TreeNode), a variable table nested by
+  value (Layer) and a bounded array of them — the derived mode has to get all
+  six right in one file. The evolution pair `test/tables/P1|P2.schema` turns one
+  field from a by-value nesting into a pointer and gives its target a pointer of
+  its own: both directions read, because a pointer's framing IS a by-value
+  nesting's.
+  Battery (12 new cases, all in test/tables/main.cpp): lifecycle
+  (build/measure/save/lock/relocate-by-memcpy/load/re-save byte-identical),
+  exact-capacity across a pointer graph, Lock layout determinism (two builds
+  memcmp equal; two cooks byte-identical), aliasing (two references, two nodes,
+  in the packed form AND across the wire), the data-cycle refusal (measure,
+  save, cook and Lock all refuse; nothing recurses away), the depth cap at and
+  past kTableMaxDepth, arena growth across 200k allocations with a pointer held
+  the whole time, four workers single-threaded plus a real four-thread
+  concurrent build joined before Lock, the cooked form (cook/open/point,
+  cook-open-cook stable) with a nine-case refusal battery (magic, layout id,
+  truncation, sub-header size, unaligned base, out-of-region reference, BACKWARD
+  reference, misaligned reference, out-of-bound count companion), evolution both
+  directions including load-into-builder, the null-vs-empty-pointee distinction,
+  and reflection (derived mode surfaced, is_pointer, the target descriptor,
+  a self-referential pointer resolving to its own type).
+  NEGATIVE CONTROL run: inverting the aliasing assertion turns the leg red at
+  the expected line and exit 1 — the battery is wired in, not decorative.
+  Standing gates: `make tables-zero-cost` greps the pointer-free corpus's
+  generated headers for every pointer-machinery symbol and fails the build on a
+  hit; it runs inside `make test`. Go-side: TestZeroCostForValueOnlyTables,
+  TestPointerSurfaceEmitted (per-TABLE, not per-file: a value-only table sharing
+  a pointered unit still gets no builder), TestPointerGenerationDeterministic,
+  TestLayoutIdMovesWithTheSchema.

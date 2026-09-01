@@ -7,10 +7,16 @@
 #include <cstdlib>
 #include <cstring>
 
+#include <thread>
+#include <vector>
+
 #include "TablesTable.h"
 #include "NestedTable.h"
 #include "V1Table.h"
 #include "V2Table.h"
+#include "GraphTable.h"
+#include "P1Table.h"
+#include "P2Table.h"
 
 static int failures = 0;
 
@@ -633,6 +639,626 @@ static void test_parallel_shape()
     }
 }
 
+
+// ============================================================================
+// POINTER SEMANTICS (SPEC-TABLES.md §2, §6). Types remain value semantics;
+// tables allow pointer semantics — and everything below is a consequence.
+// ============================================================================
+
+static const graphdemo::TableFieldInfo * graph_field( const graphdemo::TableTypeInfo * type, const char * name )
+{
+    for ( int32_t i = 0; i < type->num_fields; i++ )
+        if ( strcmp( type->fields[i].name, name ) == 0 )
+            return &type->fields[i];
+    return NULL;
+}
+
+// build_scene populates a builder with a list, a tree, an optional subtable, a
+// by-value nested variable table and an array of them. Returns the number of
+// list nodes on the chain.
+static int build_scene( graphdemo::SceneBuilder & builder )
+{
+    graphdemo::Scene * root = builder.Root();
+    set_string( root->name, root->name_length, "graph" );
+    root->version = 7;
+    root->meta.build = 42;
+    set_string( root->meta.tag, root->meta.tag_length, "m" );
+
+    graphdemo::TableSlot<graphdemo::Settings> settings = builder.Alloc<graphdemo::Settings>();
+    settings->quality = 4;
+    set_string( settings->label, settings->label_length, "high" );
+    root->settings = settings;
+
+    graphdemo::TableSlot<graphdemo::ListNode> n0 = builder.Alloc<graphdemo::ListNode>();
+    graphdemo::TableSlot<graphdemo::ListNode> n1 = builder.Alloc<graphdemo::ListNode>();
+    graphdemo::TableSlot<graphdemo::ListNode> n2 = builder.Alloc<graphdemo::ListNode>();
+    n0->value = 10; set_string( n0->name, n0->name_length, "a" );
+    n1->value = 20; set_string( n1->name, n1->name_length, "b" );
+    n2->value = 30;
+    n0->next = n1;
+    n1->next = n2;
+    root->head = n0;
+
+    graphdemo::TableSlot<graphdemo::TreeNode> t = builder.Alloc<graphdemo::TreeNode>();
+    graphdemo::TableSlot<graphdemo::TreeNode> tl = builder.Alloc<graphdemo::TreeNode>();
+    graphdemo::TableSlot<graphdemo::TreeNode> tr = builder.Alloc<graphdemo::TreeNode>();
+    set_string( t->label, t->label_length, "root" );
+    set_string( tl->label, tl->label_length, "left" );
+    set_string( tr->label, tr->label_length, "right" );
+    t->left = tl;
+    t->right = tr;
+    root->tree = t;
+
+    // a variable table nested BY VALUE, with a pointer of its own
+    root->ground.depth = 3;
+    graphdemo::TableSlot<graphdemo::ListNode> g0 = builder.Alloc<graphdemo::ListNode>();
+    g0->value = 99;
+    root->ground.head = g0;
+
+    // a bounded array of variable tables
+    root->layers_count = 2;
+    root->layers[0].depth = 1;
+    root->layers[1].depth = 2;
+    graphdemo::TableSlot<graphdemo::ListNode> l1 = builder.Alloc<graphdemo::ListNode>();
+    l1->value = 55;
+    root->layers[1].head = l1;
+
+    return 3;
+}
+
+// check_scene reads a scene through a CONST root — the only way a
+// pointer-bearing table is ever read: a region and a root view, never a value.
+static void check_scene( const graphdemo::Scene * scene )
+{
+    CHECK( scene != NULL );
+    if ( scene == NULL ) return;
+    CHECK( strcmp( scene->name, "graph" ) == 0 );
+    CHECK( scene->version == 7 );
+    CHECK( scene->meta.build == 42 );
+
+    const graphdemo::ListNode * a = graphdemo::ListNodeAt( scene->head );
+    CHECK( a != NULL && a->value == 10 && strcmp( a->name, "a" ) == 0 );
+    const graphdemo::ListNode * b = graphdemo::ListNodeAt( a->next );
+    CHECK( b != NULL && b->value == 20 );
+    const graphdemo::ListNode * c = graphdemo::ListNodeAt( b->next );
+    CHECK( c != NULL && c->value == 30 );
+    CHECK( graphdemo::ListNodeAt( c->next ) == NULL ); // the chain ends in null
+
+    const graphdemo::TreeNode * t = graphdemo::TreeNodeAt( scene->tree );
+    CHECK( t != NULL && strcmp( t->label, "root" ) == 0 );
+    CHECK( strcmp( graphdemo::TreeNodeAt( t->left )->label, "left" ) == 0 );
+    CHECK( strcmp( graphdemo::TreeNodeAt( t->right )->label, "right" ) == 0 );
+    CHECK( graphdemo::TreeNodeAt( graphdemo::TreeNodeAt( t->left )->left ) == NULL );
+
+    const graphdemo::Settings * settings = graphdemo::SettingsAt( scene->settings );
+    CHECK( settings != NULL && settings->quality == 4 && strcmp( settings->label, "high" ) == 0 );
+
+    CHECK( scene->ground.depth == 3 );
+    CHECK( graphdemo::ListNodeAt( scene->ground.head )->value == 99 );
+    CHECK( scene->layers_count == 2 );
+    CHECK( scene->layers[0].depth == 1 );
+    CHECK( graphdemo::ListNodeAt( scene->layers[0].head ) == NULL ); // never set: null
+    CHECK( graphdemo::ListNodeAt( scene->layers[1].head )->value == 55 );
+}
+
+// ---- the lifecycle: build -> Lock -> the region; wire out and back ----
+
+static void test_pointer_lifecycle()
+{
+    graphdemo::SceneBuilder builder;
+    build_scene( builder );
+
+    // measure/save straight out of the MUTABLE arena
+    int64_t need = graphdemo::SceneMeasure( builder );
+    CHECK( need > 0 );
+    static uint8_t wire[8192];
+    int64_t wrote = graphdemo::SceneSave( builder, wire, sizeof( wire ) );
+    CHECK( wrote == need );
+
+    // the exact-capacity guarantee, across a pointer graph
+    static uint8_t exact[8192];
+    CHECK( graphdemo::SceneSave( builder, exact, need ) == need );
+    CHECK( memcmp( wire, exact, (size_t) need ) == 0 );
+    CHECK( graphdemo::SceneSave( builder, exact, need - 1 ) == -1 );
+
+    // Lock: one way, and it IS the compaction
+    CHECK( builder.Lock() );
+    CHECK( builder.Locked() );
+    CHECK( builder.Root() == NULL );      // the mutable life is over
+    CHECK( builder.Alloc<graphdemo::ListNode>().null() ); // and Alloc refuses
+    CHECK( builder.Lock() );              // idempotent, never a second compaction
+
+    const graphdemo::Scene * locked = builder.Const();
+    check_scene( locked );
+
+    // the packed region has zero slack and every node is 8-aligned
+    CHECK( builder.RegionBytes() > 0 );
+    CHECK( ( builder.RegionBytes() % 8 ) == 0 );
+
+    // saving from the locked region gives byte-identical wire to saving from
+    // the arena: one structure, two representations, one meaning
+    static uint8_t after_lock[8192];
+    int64_t wrote2 = graphdemo::SceneSave( locked, after_lock, sizeof( after_lock ) );
+    CHECK( wrote2 == wrote );
+    CHECK( memcmp( wire, after_lock, (size_t) wrote ) == 0 );
+
+    // the region relocates by PURE MEMCPY: self-relative references need no
+    // fix-up, so a copy at a different address reads the same
+    uint8_t * moved = (uint8_t *) malloc( (size_t) builder.RegionBytes() );
+    memcpy( moved, builder.Region(), (size_t) builder.RegionBytes() );
+    check_scene( (const graphdemo::Scene *) moved );
+    free( moved );
+
+    // wire -> const region, sized EXACTLY by the pre-pass
+    int64_t region_need = graphdemo::SceneLoadMeasure( wire, wrote );
+    CHECK( region_need == builder.RegionBytes() ); // the two forms agree
+    uint8_t * region = (uint8_t *) malloc( (size_t) region_need );
+    graphdemo::TableReport report;
+    const graphdemo::Scene * loaded = graphdemo::SceneLoad( region, region_need, wire, wrote, &report );
+    CHECK( loaded != NULL );
+    CHECK( report.unknown == 0 && report.kind_mismatch == 0 && report.clamped == 0 && !report.malformed );
+    check_scene( loaded );
+
+    // a loaded region re-saves to the same bytes
+    static uint8_t again[8192];
+    CHECK( graphdemo::SceneSave( loaded, again, sizeof( again ) ) == wrote );
+    CHECK( memcmp( wire, again, (size_t) wrote ) == 0 );
+
+    // a region one byte short refuses rather than overrunning
+    uint8_t * tight = (uint8_t *) malloc( (size_t) region_need );
+    graphdemo::TableReport short_report;
+    const graphdemo::Scene * partial = graphdemo::SceneLoad( tight, region_need - 8, wire, wrote, &short_report );
+    CHECK( partial != NULL && short_report.malformed ); // partial result, flagged
+    free( tight );
+
+    free( region );
+}
+
+// ---- Lock's byte layout is deterministic: same input, same region ----
+
+static void test_lock_layout_stable()
+{
+    graphdemo::SceneBuilder first;
+    build_scene( first );
+    CHECK( first.Lock() );
+
+    graphdemo::SceneBuilder second;
+    build_scene( second );
+    CHECK( second.Lock() );
+
+    CHECK( first.RegionBytes() == second.RegionBytes() );
+    CHECK( memcmp( first.Region(), second.Region(), (size_t) first.RegionBytes() ) == 0 );
+
+    // and cooking twice gives identical files
+    int64_t need = graphdemo::SceneCookMeasure( first );
+    uint8_t * a = (uint8_t *) malloc( (size_t) need );
+    uint8_t * b = (uint8_t *) malloc( (size_t) need );
+    CHECK( graphdemo::SceneCook( first, a, need ) == need );
+    CHECK( graphdemo::SceneCook( second, b, need ) == need );
+    CHECK( memcmp( a, b, (size_t) need ) == 0 );
+    free( a );
+    free( b );
+}
+
+// ---- aliasing: two pointers to one node are TWO nodes, everywhere ----
+
+static void test_pointer_alias()
+{
+    graphdemo::SceneBuilder builder;
+    graphdemo::Scene * root = builder.Root();
+    graphdemo::TableSlot<graphdemo::ListNode> shared = builder.Alloc<graphdemo::ListNode>();
+    shared->value = 1234;
+    root->head = shared;
+    root->alias = shared; // the SAME node named twice
+
+    CHECK( builder.Lock() );
+    const graphdemo::Scene * locked = builder.Const();
+    const graphdemo::ListNode * viaHead = graphdemo::ListNodeAt( locked->head );
+    const graphdemo::ListNode * viaAlias = graphdemo::ListNodeAt( locked->alias );
+    CHECK( viaHead != NULL && viaAlias != NULL );
+    CHECK( viaHead->value == 1234 && viaAlias->value == 1234 );
+    // wire v1 is a TREE: identity is NOT preserved, and the packed form says so
+    // in the same voice — two references, two nodes (SPEC-TABLES.md §3)
+    CHECK( viaHead != viaAlias );
+
+    static uint8_t wire[1024];
+    int64_t wrote = graphdemo::SceneSave( locked, wire, sizeof( wire ) );
+    CHECK( wrote > 0 );
+    int64_t region_need = graphdemo::SceneLoadMeasure( wire, wrote );
+    uint8_t * region = (uint8_t *) malloc( (size_t) region_need );
+    graphdemo::TableReport report;
+    const graphdemo::Scene * loaded = graphdemo::SceneLoad( region, region_need, wire, wrote, &report );
+    CHECK( loaded != NULL && !report.malformed );
+    CHECK( graphdemo::ListNodeAt( loaded->head )->value == 1234 );
+    CHECK( graphdemo::ListNodeAt( loaded->alias )->value == 1234 );
+    CHECK( graphdemo::ListNodeAt( loaded->head ) != graphdemo::ListNodeAt( loaded->alias ) );
+    free( region );
+}
+
+// ---- a data cycle is an ERROR, never a hang ----
+
+static void test_pointer_cycle_refused()
+{
+    graphdemo::SceneBuilder builder;
+    graphdemo::Scene * root = builder.Root();
+    graphdemo::TableSlot<graphdemo::ListNode> loop = builder.Alloc<graphdemo::ListNode>();
+    loop->value = 1;
+    loop->next = loop;   // a node pointing at itself
+    root->head = loop;
+
+    static uint8_t buffer[4096];
+    CHECK( graphdemo::SceneMeasure( builder ) == -1 );
+    CHECK( graphdemo::SceneSave( builder, buffer, sizeof( buffer ) ) == -1 );
+    CHECK( graphdemo::SceneCookMeasure( builder ) == -1 );
+    CHECK( !builder.Lock() ); // the compaction refuses too
+}
+
+// ---- the depth cap: a chain past it refuses, and the wire stops at it ----
+
+static void test_pointer_depth_cap()
+{
+    // a chain exactly AT the cap saves; the cap counts nesting levels, and the
+    // root is level 1
+    {
+        graphdemo::SceneBuilder builder;
+        graphdemo::Scene * root = builder.Root();
+        graphdemo::TableSlot<graphdemo::ListNode> head = builder.Alloc<graphdemo::ListNode>();
+        head->value = 0;
+        root->head = head;
+        graphdemo::ListNode * tail = head;
+        for ( int i = 1; i < graphdemo::kTableMaxDepth - 1; i++ )
+        {
+            graphdemo::TableSlot<graphdemo::ListNode> node = builder.Alloc<graphdemo::ListNode>();
+            node->value = i;
+            tail->next = node;
+            tail = node;
+        }
+        CHECK( graphdemo::SceneMeasure( builder ) > 0 );
+    }
+    // one link past it refuses instead of recursing away
+    {
+        graphdemo::SceneBuilder builder;
+        graphdemo::Scene * root = builder.Root();
+        graphdemo::TableSlot<graphdemo::ListNode> head = builder.Alloc<graphdemo::ListNode>();
+        root->head = head;
+        graphdemo::ListNode * tail = head;
+        for ( int i = 1; i < graphdemo::kTableMaxDepth + 8; i++ )
+        {
+            graphdemo::TableSlot<graphdemo::ListNode> node = builder.Alloc<graphdemo::ListNode>();
+            node->value = i;
+            tail->next = node;
+            tail = node;
+        }
+        static uint8_t buffer[65536];
+        CHECK( graphdemo::SceneMeasure( builder ) == -1 );
+        CHECK( graphdemo::SceneSave( builder, buffer, sizeof( buffer ) ) == -1 );
+        CHECK( !builder.Lock() );
+    }
+}
+
+// ---- the arena grows without invalidating anything ----
+
+static void test_builder_grow()
+{
+    graphdemo::SceneBuilder builder;
+    graphdemo::Scene * root = builder.Root();
+
+    // enough nodes to cross many 64 KiB slabs and more than one 4 MiB segment
+    const int count = 200000;
+    graphdemo::TableSlot<graphdemo::ListNode> first = builder.Alloc<graphdemo::ListNode>();
+    first->value = 1;
+    graphdemo::ListNode * held = first;          // a pointer held ACROSS all the growth
+    graphdemo::TableSlot<graphdemo::ListNode> middle;
+    for ( int i = 1; i < count; i++ )
+    {
+        graphdemo::TableSlot<graphdemo::ListNode> node = builder.Alloc<graphdemo::ListNode>();
+        CHECK( !node.null() || i == 0 );
+        node->value = i + 1;
+        if ( i == count / 2 ) { middle = node; }
+    }
+    // segments never move: the pointer taken before 200k allocations is still
+    // the same node, and the root the builder handed out is still valid
+    CHECK( held->value == 1 );
+    CHECK( middle.ptr != NULL && middle->value == count / 2 + 1 );
+    CHECK( builder.Root() == root );
+
+    root->head = first;
+    CHECK( graphdemo::SceneMeasure( builder ) > 0 );
+}
+
+// ---- many workers, one arena: allocation is lock-free by ownership ----
+
+static void test_builder_workers()
+{
+    // deterministic first: four workers, interleaved, single-threaded
+    graphdemo::SceneBuilder builder;
+    graphdemo::Scene * root = builder.Root();
+    graphdemo::TableWorker workers[4];
+    for ( int i = 0; i < 4; i++ ) { workers[i] = builder.Worker(); }
+
+    graphdemo::TableSlot<graphdemo::ListNode> head = workers[0].Alloc<graphdemo::ListNode>();
+    head->value = 0;
+    root->head = head;
+    graphdemo::ListNode * tail = head;
+    for ( int i = 1; i < 64; i++ )
+    {
+        // each link allocated by a DIFFERENT worker: a cross-worker reference
+        // is an ordinary reference, because offsets are arena-global
+        graphdemo::TableSlot<graphdemo::ListNode> node = workers[i % 4].Alloc<graphdemo::ListNode>();
+        node->value = i;
+        tail->next = node;
+        tail = node;
+    }
+    CHECK( builder.Lock() );
+    const graphdemo::ListNode * walk = graphdemo::ListNodeAt( builder.Const()->head );
+    for ( int i = 0; i < 64; i++ )
+    {
+        CHECK( walk != NULL && walk->value == i );
+        if ( walk == NULL ) break;
+        walk = graphdemo::ListNodeAt( walk->next );
+    }
+    CHECK( walk == NULL );
+
+    // then the real thing: four threads allocating concurrently on their own
+    // workers. Each thread owns its nodes; nothing is shared, nothing is locked.
+    graphdemo::SceneBuilder threaded;
+    const int per_thread = 20000;
+    std::vector<graphdemo::TableRef> heads( 4 );
+    std::vector<std::thread> threads;
+    for ( int t = 0; t < 4; t++ )
+    {
+        threads.emplace_back( [&threaded, &heads, t]() {
+            graphdemo::TableWorker worker = threaded.Worker();
+            graphdemo::TableSlot<graphdemo::ListNode> first = worker.Alloc<graphdemo::ListNode>();
+            first->value = t;
+            graphdemo::ListNode * tail = first;
+            for ( int i = 1; i < per_thread; i++ )
+            {
+                graphdemo::TableSlot<graphdemo::ListNode> node = worker.Alloc<graphdemo::ListNode>();
+                node->value = t * 1000000 + i;
+                tail->next = node;
+                tail = node;
+            }
+            heads[t] = first.ref;
+        } );
+    }
+    for ( auto & thread : threads ) { thread.join(); }
+    // the join is the barrier; everything below is single-threaded
+    graphdemo::Scene * threaded_root = threaded.Root();
+    threaded_root->layers_count = 4;
+    for ( int t = 0; t < 4; t++ )
+    {
+        threaded_root->layers[t].depth = t;
+        threaded_root->layers[t].head = heads[t];
+        const graphdemo::ListNode * node = graphdemo::ListNodeAt( threaded.arena, heads[t] );
+        CHECK( node != NULL && node->value == t );
+    }
+}
+
+// ---- the cooked form: point at it, or refuse loudly ----
+
+static void test_cooked_form()
+{
+    graphdemo::SceneBuilder builder;
+    build_scene( builder );
+    CHECK( builder.Lock() );
+
+    int64_t need = graphdemo::SceneCookMeasure( builder );
+    CHECK( need == graphdemo::kTableCookedHeaderBytes + builder.RegionBytes() );
+    uint8_t * cooked = (uint8_t *) malloc( (size_t) need );
+    CHECK( graphdemo::SceneCook( builder, cooked, need ) == need );
+    CHECK( graphdemo::SceneCook( builder, cooked, need - 1 ) == -1 ); // short buffer refuses
+
+    // open by POINTING: no copy, no decode
+    const graphdemo::Scene * opened = graphdemo::SceneOpen( cooked, need );
+    CHECK( opened != NULL );
+    CHECK( (const uint8_t *) opened == cooked + graphdemo::kTableCookedHeaderBytes );
+    check_scene( opened );
+
+    // cook -> open -> cook is stable
+    uint8_t * again = (uint8_t *) malloc( (size_t) need );
+    CHECK( graphdemo::SceneCook( opened, again, need ) == need );
+    CHECK( memcmp( cooked, again, (size_t) need ) == 0 );
+    free( again );
+
+    // the wire still reads out of a cooked root: the two forms agree
+    static uint8_t wire[8192];
+    int64_t wrote = graphdemo::SceneSave( opened, wire, sizeof( wire ) );
+    CHECK( wrote == graphdemo::SceneMeasure( builder ) );
+
+    // ---- the refusal battery ----
+    uint8_t * broken = (uint8_t *) malloc( (size_t) need );
+
+    memcpy( broken, cooked, (size_t) need );
+    broken[0] ^= 0xFF; // magic: wrong form, or a foreign byte order
+    CHECK( graphdemo::SceneOpen( broken, need ) == NULL );
+
+    memcpy( broken, cooked, (size_t) need );
+    broken[4] ^= 0xFF; // layout id: the schema or the ABI moved
+    CHECK( graphdemo::SceneOpen( broken, need ) == NULL );
+
+    memcpy( broken, cooked, (size_t) need );
+    CHECK( graphdemo::SceneOpen( broken, need - 1 ) == NULL ); // truncated region
+
+    memcpy( broken, cooked, (size_t) need );
+    CHECK( graphdemo::SceneOpen( broken, 4 ) == NULL ); // shorter than the header
+
+    memcpy( broken, cooked, (size_t) need );
+    CHECK( graphdemo::SceneOpen( broken + 1, need - 1 ) == NULL ); // unaligned base
+
+    // an offset graph that leaves the region: the bounds walk catches it
+    memcpy( broken, cooked, (size_t) need );
+    {
+        graphdemo::Scene * root = (graphdemo::Scene *) ( broken + graphdemo::kTableCookedHeaderBytes );
+        root->head.value = 0x7FFFFFF0u; // far past the end
+        CHECK( graphdemo::SceneOpen( broken, need ) == NULL );
+    }
+    // a BACKWARD reference: impossible in a packed region, so it is corruption
+    memcpy( broken, cooked, (size_t) need );
+    {
+        graphdemo::Scene * root = (graphdemo::Scene *) ( broken + graphdemo::kTableCookedHeaderBytes );
+        root->head.value = 0xFFFFFFF8u; // -8 as an int32
+        CHECK( graphdemo::SceneOpen( broken, need ) == NULL );
+    }
+    // a misaligned reference
+    memcpy( broken, cooked, (size_t) need );
+    {
+        graphdemo::Scene * root = (graphdemo::Scene *) ( broken + graphdemo::kTableCookedHeaderBytes );
+        root->head.value += 1;
+        CHECK( graphdemo::SceneOpen( broken, need ) == NULL );
+    }
+    // a count companion outside its declared bound
+    memcpy( broken, cooked, (size_t) need );
+    {
+        graphdemo::Scene * root = (graphdemo::Scene *) ( broken + graphdemo::kTableCookedHeaderBytes );
+        root->layers_count = 99;
+        CHECK( graphdemo::SceneOpen( broken, need ) == NULL );
+    }
+    // and the untouched file still opens: the battery broke nothing else
+    CHECK( graphdemo::SceneOpen( cooked, need ) != NULL );
+
+    free( broken );
+    free( cooked );
+}
+
+// ---- evolution across a pointer field, both directions ----
+
+static void test_pointer_evolution_old_reader_new_data()
+{
+    // P2 writes a chain of two Links through a POINTER field
+    tblp2::ChainBuilder builder;
+    tblp2::Chain * root = builder.Root();
+    set_string( root->name, root->name_length, "chain" );
+    tblp2::TableSlot<tblp2::Link> first = builder.Alloc<tblp2::Link>();
+    tblp2::TableSlot<tblp2::Link> second = builder.Alloc<tblp2::Link>();
+    first->value = 11;
+    set_string( first->tag, first->tag_length, "one" );
+    second->value = 22;
+    first->next = second;
+    root->link = first;
+
+    uint8_t wire[512];
+    int64_t wrote = tblp2::ChainSave( builder, wire, sizeof( wire ) );
+    CHECK( wrote > 0 );
+
+    // P1 has `link` as a BY-VALUE nesting and no `next` at all. A pointer rides
+    // with a by-value nesting's framing, so the first Link decodes cleanly and
+    // the chain's tail lands as one unknown field.
+    tblp1::Chain out;
+    tblp1::TableReport report;
+    CHECK( tblp1::ChainLoad( out, wire, wrote, &report ) );
+    CHECK( !report.malformed );
+    CHECK( report.unknown == 1 ); // Link.next, which P1 cannot name
+    CHECK( strcmp( out.name, "chain" ) == 0 );
+    CHECK( out.link.value == 11 );
+    CHECK( strcmp( out.link.tag, "one" ) == 0 );
+}
+
+static void test_pointer_evolution_new_reader_old_data()
+{
+    // P1 writes a by-value nesting
+    tblp1::Chain v1;
+    set_string( v1.name, v1.name_length, "aged" );
+    v1.link.value = 77;
+    set_string( v1.link.tag, v1.link.tag_length, "old" );
+
+    uint8_t wire[512];
+    int64_t wrote = tblp1::ChainSave( v1, wire, sizeof( wire ) );
+    CHECK( wrote > 0 && wrote == tblp1::ChainMeasure( v1 ) );
+
+    // P2 has `link` as a POINTER: the same body allocates one node
+    int64_t region_need = tblp2::ChainLoadMeasure( wire, wrote );
+    uint8_t * region = (uint8_t *) malloc( (size_t) region_need );
+    tblp2::TableReport report;
+    const tblp2::Chain * out = tblp2::ChainLoad( region, region_need, wire, wrote, &report );
+    CHECK( out != NULL );
+    CHECK( !report.malformed && report.unknown == 0 && report.kind_mismatch == 0 );
+    CHECK( strcmp( out->name, "aged" ) == 0 );
+    const tblp2::Link * link = tblp2::LinkAt( out->link );
+    CHECK( link != NULL && link->value == 77 && strcmp( link->tag, "old" ) == 0 );
+    CHECK( tblp2::LinkAt( link->next ) == NULL ); // a field old data never wrote is null
+    free( region );
+
+    // and into a BUILDER — the tool's path: load, edit, lock again
+    tblp2::ChainBuilder builder;
+    tblp2::TableReport builder_report;
+    CHECK( tblp2::ChainLoadBuilder( builder, wire, wrote, &builder_report ) );
+    CHECK( !builder_report.malformed );
+    tblp2::Link * loaded = tblp2::LinkAt( builder.arena, builder.Root()->link );
+    CHECK( loaded != NULL && loaded->value == 77 );
+    tblp2::TableSlot<tblp2::Link> added = builder.Alloc<tblp2::Link>();
+    added->value = 88;
+    loaded->next = added;
+    CHECK( builder.Lock() );
+    CHECK( tblp2::LinkAt( tblp2::LinkAt( builder.Const()->link )->next )->value == 88 );
+}
+
+// ---- a null pointer elides; a non-null one rides even when all-default ----
+
+static void test_pointer_null_and_empty()
+{
+    graphdemo::SceneBuilder empty;
+    int64_t bare = graphdemo::SceneMeasure( empty );
+    CHECK( bare == 2 ); // every pointer null, everything else default: nothing rides
+
+    graphdemo::SceneBuilder one;
+    graphdemo::TableSlot<graphdemo::ListNode> node = one.Alloc<graphdemo::ListNode>();
+    one.Root()->head = node; // an ALL-DEFAULT pointee behind a non-null pointer
+    int64_t with_empty = graphdemo::SceneMeasure( one );
+    CHECK( with_empty == 2 + 3 + 4 + 2 ); // id + kind + length + the empty body
+
+    uint8_t wire[64];
+    int64_t wrote = graphdemo::SceneSave( one, wire, sizeof( wire ) );
+    CHECK( wrote == with_empty );
+    int64_t region_need = graphdemo::SceneLoadMeasure( wire, wrote );
+    uint8_t * region = (uint8_t *) malloc( (size_t) region_need );
+    graphdemo::TableReport report;
+    const graphdemo::Scene * loaded = graphdemo::SceneLoad( region, region_need, wire, wrote, &report );
+    // the distinction survives: an empty pointee is NOT null
+    CHECK( loaded != NULL && graphdemo::ListNodeAt( loaded->head ) != NULL );
+    CHECK( graphdemo::ListNodeAt( loaded->head )->value == 0 );
+    free( region );
+}
+
+// ---- reflection: the derived mode and the pointer kind are visible ----
+
+static void test_pointer_reflection()
+{
+    const graphdemo::TableTypeInfo * scene = graphdemo::SceneTableType();
+    const graphdemo::TableTypeInfo * meta = graphdemo::MetaTableType();
+    const graphdemo::TableTypeInfo * list = graphdemo::ListNodeTableType();
+
+    // the MODE is derived and surfaced: nobody declared either of these
+    CHECK( scene->variable );
+    CHECK( list->variable );
+    CHECK( !meta->variable );
+    CHECK( !graphdemo::SettingsTableType()->variable ); // pointed at, still fixed
+    CHECK( graphdemo::LayerTableType()->variable );     // a pointer of its own
+
+    const graphdemo::TableFieldInfo * head = graph_field( scene, "head" );
+    CHECK( head != NULL && head->is_pointer );
+    CHECK( head->kind == 13 ); // a pointer rides as a nested table body
+    CHECK( head->elem_size == sizeof( graphdemo::TableRef ) );
+    CHECK( head->table == graphdemo::ListNodeTableType() ); // the TARGET's descriptor
+    CHECK( !head->is_array && !head->counted );
+
+    // a self-referential pointer resolves to its own type's descriptor
+    const graphdemo::TableFieldInfo * next = graph_field( list, "next" );
+    CHECK( next != NULL && next->is_pointer && next->table == list );
+
+    // a by-value nesting is not a pointer
+    const graphdemo::TableFieldInfo * ground = graph_field( scene, "ground" );
+    CHECK( ground != NULL && !ground->is_pointer && ground->kind == 13 );
+    const graphdemo::TableFieldInfo * meta_field = graph_field( scene, "meta" );
+    CHECK( meta_field != NULL && !meta_field->is_pointer );
+
+    // a pointer field's id is its name's hash, exactly as any other field's
+    CHECK( head->id == field_id( "head" ) );
+
+    // relocatability holds with pointers in the struct: the slot is four bytes
+    CHECK( sizeof( graphdemo::TableRef ) == 4 );
+}
+
 int main()
 {
     test_round_trip();
@@ -648,6 +1274,19 @@ int main()
     test_reflection();
     test_cross_file();
     test_parallel_shape();
+
+    test_pointer_lifecycle();
+    test_lock_layout_stable();
+    test_pointer_alias();
+    test_pointer_cycle_refused();
+    test_pointer_depth_cap();
+    test_builder_grow();
+    test_builder_workers();
+    test_cooked_form();
+    test_pointer_evolution_old_reader_new_data();
+    test_pointer_evolution_new_reader_old_data();
+    test_pointer_null_and_empty();
+    test_pointer_reflection();
 
     if ( failures > 0 )
     {
