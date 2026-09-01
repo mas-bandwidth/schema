@@ -145,6 +145,9 @@ func tableGet(width int) string { return fmt.Sprintf("get%d", width*8) }
 type tableGen struct {
 	unit           *ir.Unit
 	file           *ir.File
+	anyVariable    bool            // the unit declares at least one variable-length table
+	variable       map[string]bool // the derived VARIABLE-LENGTH members (ir.VariableTables)
+	targets        map[string]bool // tables some pointer targets (ir.PointerTargets)
 	body           strings.Builder
 	includes       map[string]bool // referenced files -> #include "<base>Table.h"
 	nativeIncludes map[string]bool // cpp_include headers of mapped types
@@ -193,8 +196,19 @@ func formatFloat(v float64, single bool) string {
 // tablePrimitives is the shared runtime, emitted into every Table.h behind a
 // per-package guard — one definition per TU whatever the include order, and a
 // lone Table.h works standalone.
-func tablePrimitives(pkg string) string {
+func tablePrimitives(pkg string, anyVariable bool) string {
 	guard := strings.ToUpper(pkg) + "_SCHEMA_TABLE_PRIMITIVES"
+	// the two pointer-era descriptor members exist only in a unit that HAS
+	// pointers: a unit of value-only tables emits the descriptor surface it
+	// always emitted, to the byte (SPEC-TABLES.md §2, the zero-cost gate)
+	pointerFieldMember, pointerTypeMember := "", ""
+	if anyVariable {
+		pointerFieldMember = "\n    bool is_pointer;        // a *T pointer field: storage is a 4-byte TableRef; the target is a table"
+		pointerTypeMember = "\n    // the DERIVED mode (SPEC-TABLES.md): false = fixed-size, a plain\n" +
+			"    // relocatable struct; true = variable-length, built through a Builder\n" +
+			"    // and read through a region root. Nobody declares it; the compiler\n" +
+			"    // works it out.\n    bool variable;"
+	}
 	return `#ifndef ` + guard + `
 #define ` + guard + `
 
@@ -225,7 +239,7 @@ struct TableFieldInfo
     const char * type_name; // schema type name, e.g. "float32", "Grade"
     uint16_t id;            // table-wire field id (name hash; the was alias's hash after a rename)
     uint8_t kind;           // table-wire kind; for arrays/strings/bytes, the ELEMENT kind
-    bool is_array;          // fixed or counted array (bytes included)
+    bool is_array;          // fixed or counted array (bytes included)` + pointerFieldMember + `
     bool counted;           // a _count/_length int32 companion exists (counted arrays, strings, bytes)
     int32_t array_bound;    // array capacity / string max length; 0 for plain scalars
     uint32_t offset;        // offsetof the storage member
@@ -245,7 +259,7 @@ struct TableTypeInfo
     const char * name;   // schema type name
     uint32_t size;       // sizeof the storage struct
     int32_t num_fields;
-    const TableFieldInfo * fields;
+    const TableFieldInfo * fields;` + pointerTypeMember + `
 };
 
 struct TableWriter
@@ -346,22 +360,14 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 	if err := checkIncludeCycle(u); err != nil {
 		return nil, err
 	}
-	// the variable-length emission (arena, builder, cooked form) lands in the
-	// next unit of this round; the LANGUAGE accepts `*T` already, so refuse
-	// generation loudly rather than emitting a struct with a missing member
-	for _, name := range sortedKeys(ir.VariableTables(u)) {
-		if st := u.Tables[name]; st != nil {
-			for _, f := range st.Fields {
-				if f.Type.Pointer {
-					return nil, fmt.Errorf("table %s: pointer field %s *%s — the variable-length table backend is not emitted yet (SPEC-TABLES.md)", name, f.Name, f.Type.Name)
-				}
-			}
-		}
-	}
 	closure := ir.TableClosure(u)
+	variable := ir.VariableTables(u)
+	targets := ir.PointerTargets(u)
+	anyVariable := len(variable) > 0
 	out := map[string][]byte{}
 	for _, f := range u.Files {
-		g := &tableGen{unit: u, file: f, includes: map[string]bool{}, nativeIncludes: map[string]bool{}}
+		g := &tableGen{unit: u, file: f, anyVariable: anyVariable, variable: variable, targets: targets,
+			includes: map[string]bool{}, nativeIncludes: map[string]bool{}}
 		var members []*ir.Struct
 		members = append(members, orderTables(f.Tables)...)
 		for _, d := range f.Decls {
@@ -375,25 +381,15 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 					g.emitTableStruct(st)
 				}
 			}
-			g.pf("// ---- codecs: measure/save/load per closure member ----\n\n")
-			for _, st := range members {
-				g.pf("inline int64_t %sMeasure( const %s & value );\n", st.Name, st.Name)
-				g.pf("inline bool %sSaveBody( TableWriter & w, const %s & value );\n", st.Name, st.Name)
-				g.pf("inline bool %sLoadBody( TableReader & r, %s & value );\n", st.Name, st.Name)
-			}
-			g.pf("\n")
+			g.emitCodecDeclarations(members)
 			for _, st := range members {
 				g.emitTableMeasure(st)
 				g.emitTableWrite(st)
 				g.emitTableSave(st)
 				g.emitTableRead(st)
 			}
-			g.pf("// ---- relocatability, enforced: the wire is a pure length-prefixed\n")
-			g.pf("// stream AND the decoded storage is pointer-free — every closure type\n")
-			g.pf("// must stay trivially copyable and standard-layout, so instances can be\n")
-			g.pf("// memcpy'd, mmap'd, shared across processes, and walked through\n")
-			g.pf("// descriptor offsets. A failure here means a pointer, virtual or\n")
-			g.pf("// non-trivial member crept into generated storage.\n")
+			g.emitVariableSurface(members)
+			g.emitRelocatabilityPreamble()
 			for _, st := range members {
 				g.pf("static_assert( std::is_trivially_copyable<%s>::value, \"%s must stay relocatable\" );\n", st.Name, st.Name)
 				g.pf("static_assert( std::is_standard_layout<%s>::value, \"%s must stay standard-layout for offsetof\" );\n", st.Name, st.Name)
@@ -417,6 +413,12 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 		h.WriteString("// The TABLE wire (evolution-tolerant, SPEC-TABLES.md): no serialize\n")
 		h.WriteString("// dependency — includable from any TU.\n\n")
 		h.WriteString("#pragma once\n\n#include <cstdint>\n#include <cstring>\n#include <cstddef> // offsetof, for the reflection descriptors\n#include <new> // in-place prefill (placement new): no giant stack temporaries\n#include <type_traits> // the enforced relocatability asserts\n")
+		if anyVariable {
+			// VARIABLE-LENGTH tables only: a unit of pointer-free tables pays
+			// for neither header (SPEC-TABLES.md §2, the zero-cost gate)
+			h.WriteString("#include <cstdlib> // the arena's segments (the AUTHORING path may allocate)\n")
+			h.WriteString("#include <atomic> // one atomic per slab: the arena is lock-free by ownership\n")
+		}
 		fmt.Fprintf(&h, "\n#include \"%s.h\"\n", f.Base)
 		names := make([]string, 0, len(g.includes))
 		for n := range g.includes {
@@ -435,7 +437,11 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 			fmt.Fprintf(&h, "#include \"%s\"\n", n)
 		}
 		h.WriteString("\n")
-		h.WriteString(tablePrimitives(u.Package))
+		h.WriteString(tablePrimitives(u.Package, anyVariable))
+		if anyVariable {
+			h.WriteString("\n")
+			h.WriteString(tableArenaRuntime(u.Package))
+		}
 		fmt.Fprintf(&h, "\nnamespace %s {\n\n", u.Package)
 		h.WriteString(g.body.String())
 		fmt.Fprintf(&h, "} // namespace %s\n", u.Package)

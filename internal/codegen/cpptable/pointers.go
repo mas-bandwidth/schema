@@ -1,0 +1,747 @@
+// The per-table VARIABLE-LENGTH surface (SPEC-TABLES.md §2, §7): the
+// allocation accessors, the pack walkers behind Lock and Cook, the wire
+// sizing pre-pass behind Load, the cooked form's bounds walk behind Open, and
+// the Builder itself.
+//
+// Nothing here is emitted for a FIXED-SIZE table. A table whose by-value
+// closure holds no pointer gets its struct and its three free functions —
+// <Name>Measure, <Name>Save, <Name>Load — and not one byte more, which is the
+// point of deriving the mode instead of declaring it.
+package cpptable
+
+import (
+	"fmt"
+	"strings"
+
+	"github.com/mas-bandwidth/schema/v2/ir"
+)
+
+// ---- mode helpers: what a call site must pass ----
+
+func (g *tableGen) isVar(name string) bool { return g.variable[name] }
+
+// measureCall renders a nested MEASURE call on a closure member: a variable
+// member takes the resolution context and the depth, a fixed one takes
+// neither — so a fixed table's codec is character-for-character what it was
+// before pointers existed.
+func (g *tableGen) measureCall(name, expr string) string {
+	if g.isVar(name) {
+		return fmt.Sprintf("%sMeasureBody( ctx, %s, depth + 1 )", name, expr)
+	}
+	return fmt.Sprintf("%sMeasure( %s )", name, expr)
+}
+
+func (g *tableGen) saveCall(name, expr string) string {
+	if g.isVar(name) {
+		return fmt.Sprintf("%sSaveBody( ctx, w, %s, depth + 1 )", name, expr)
+	}
+	return fmt.Sprintf("%sSaveBody( w, %s )", name, expr)
+}
+
+func (g *tableGen) loadCall(name, reader, expr string) string {
+	if g.isVar(name) {
+		return fmt.Sprintf("%sLoadBody( %s, sink, %s, depth + 1 )", name, reader, expr)
+	}
+	return fmt.Sprintf("%sLoadBody( %s, %s )", name, reader, expr)
+}
+
+// walker returns true when a member needs the pointer-graph walkers: every
+// variable member, plus every table some pointer targets (a pointed-at table
+// may itself be pointer-free, and still needs to be allocated, packed,
+// measured and bounds-walked).
+func (g *tableGen) needsWalkers(name string) bool { return g.variable[name] || g.targets[name] }
+
+// varMembers filters a file's closure members down to those needing the
+// variable-length surface, in emission order.
+func (g *tableGen) varMembers(members []*ir.Struct) []*ir.Struct {
+	var out []*ir.Struct
+	for _, st := range members {
+		if g.needsWalkers(st.Name) {
+			out = append(out, st)
+		}
+	}
+	return out
+}
+
+// pointerFields returns a member's pointer fields, in declaration order.
+func pointerFields(st *ir.Struct) []*ir.Field {
+	var out []*ir.Field
+	for _, f := range st.Fields {
+		if f.Type.Pointer {
+			out = append(out, f)
+		}
+	}
+	return out
+}
+
+// byValueVariableFields returns the fields that nest a VARIABLE table by
+// value — directly or as a bounded array. Their pointer slots live inside the
+// owner's storage, so every walk has to descend into them.
+func (g *tableGen) byValueVariableFields(st *ir.Struct) []*ir.Field {
+	var out []*ir.Field
+	for _, f := range st.Fields {
+		if f.Type.Pointer || f.Type.Kind != ir.TNamed {
+			continue
+		}
+		if ref, ok := f.Type.Ref.(*ir.Struct); ok && g.isVar(ref.Name) {
+			out = append(out, f)
+		}
+	}
+	return out
+}
+
+// ---- declarations ----
+
+func (g *tableGen) emitCodecDeclarations(members []*ir.Struct) {
+	if vars := g.varMembers(members); len(vars) > 0 {
+		g.pf("// ---- pointer targets: allocation and resolution (SPEC-TABLES.md §2) ----\n")
+		g.pf("//\n")
+		g.pf("// A reference resolves differently in the two forms, and the CONTEXT says\n")
+		g.pf("// which: in the arena it is an offset; in a region it is a self-relative\n")
+		g.pf("// delta, so the const deref below is one add and needs no base pointer.\n\n")
+		for _, st := range members {
+			if !g.targets[st.Name] {
+				continue
+			}
+			g.emitPointerTargetSurface(st)
+		}
+	}
+	g.pf("// ---- codecs: measure/save/load per closure member ----\n\n")
+	for _, st := range members {
+		if g.isVar(st.Name) {
+			g.pf("template <typename Ctx> inline int64_t %sMeasureBody( const Ctx & ctx, const %s & value, int32_t depth );\n", st.Name, st.Name)
+			g.pf("template <typename Ctx> inline bool %sSaveBody( const Ctx & ctx, TableWriter & w, const %s & value, int32_t depth );\n", st.Name, st.Name)
+			g.pf("template <typename Sink> inline bool %sLoadBody( TableReader & r, Sink & sink, %s & value, int32_t depth );\n", st.Name, st.Name)
+			continue
+		}
+		g.pf("inline int64_t %sMeasure( const %s & value );\n", st.Name, st.Name)
+		g.pf("inline bool %sSaveBody( TableWriter & w, const %s & value );\n", st.Name, st.Name)
+		g.pf("inline bool %sLoadBody( TableReader & r, %s & value );\n", st.Name, st.Name)
+	}
+	g.pf("\n")
+	if vars := g.varMembers(members); len(vars) > 0 {
+		g.pf("// ---- pointer-graph walkers: pack (Lock/Cook), size (Load), bound (Open) ----\n\n")
+		for _, st := range vars {
+			g.pf("template <typename Ctx> inline int64_t %sPackMeasure( const Ctx & ctx, const %s & value, int32_t depth );\n", st.Name, st.Name)
+			g.pf("template <typename Ctx> inline bool %sPack( const Ctx & ctx, const %s & src, %s & dst, uint8_t * base, int64_t capacity, int64_t & used, int32_t depth );\n", st.Name, st.Name, st.Name)
+			g.pf("inline int64_t %sLoadMeasureBody( TableReader & r, int32_t depth );\n", st.Name)
+			g.pf("inline bool %sOpenWalk( const %s * node, const uint8_t * base, int64_t bytes, int32_t depth );\n", st.Name, st.Name)
+		}
+		g.pf("\n")
+	}
+}
+
+// emitPointerTargetSurface emits one pointed-at table's resolution and
+// allocation entries.
+func (g *tableGen) emitPointerTargetSurface(st *ir.Struct) {
+	n := st.Name
+	g.pf("// %s is a pointer target.\n", n)
+	g.pf("inline const %s * %sAt( const TableRef & ref ) // the const form's hot path: one add, no base\n{\n", n, n)
+	g.pf("    return ref.value != 0 ? (const %s *) ( (const uint8_t *) &ref + (int32_t) ref.value ) : NULL;\n}\n", n)
+	g.pf("inline %s * %sAt( TableRef & ref )\n{\n", n, n)
+	g.pf("    return ref.value != 0 ? (%s *) ( (uint8_t *) &ref + (int32_t) ref.value ) : NULL;\n}\n", n)
+	g.pf("inline const %s * %sAt( const TableRegionCtx &, const TableRef & ref ) { return %sAt( ref ); }\n", n, n, n)
+	g.pf("inline const %s * %sAt( const TableArenaCtx & ctx, const TableRef & ref )\n{\n", n, n)
+	g.pf("    return ref.value != 0 ? (const %s *) TableArenaAt( *ctx.arena, ref.value ) : NULL;\n}\n", n)
+	g.pf("// bump one %s into the caller's exact region; the slot comes out self-relative\n", n)
+	g.pf("inline %s * %sEmplace( TableRegionSink & sink, TableRef & slot )\n{\n", n, n)
+	g.pf("    int64_t at = TableAlignUp64( sink.used );\n")
+	g.pf("    if ( at + (int64_t) sizeof( %s ) > sink.capacity ) { return NULL; }\n", n)
+	g.pf("    sink.used = at + TableAlignUp64( (int64_t) sizeof( %s ) );\n", n)
+	g.pf("    %s * node = new ( sink.base + at ) %s{};\n", n, n)
+	g.pf("    slot.value = (uint32_t) ( ( sink.base + at ) - (uint8_t *) &slot );\n")
+	g.pf("    return node;\n}\n")
+	g.pf("// allocate one %s in the arena; the slot holds the arena offset\n", n)
+	g.pf("inline %s * %sEmplace( TableWorker & worker, TableRef & slot )\n{\n", n, n)
+	g.pf("    TableSlot<%s> allocated = worker.Alloc<%s>();\n", n, n)
+	g.pf("    slot = allocated.ref;\n")
+	g.pf("    return allocated.ptr;\n}\n\n")
+}
+
+// ---- the walkers and the public variable-length surface ----
+
+func (g *tableGen) emitVariableSurface(members []*ir.Struct) {
+	vars := g.varMembers(members)
+	if len(vars) == 0 {
+		return
+	}
+	for _, st := range vars {
+		g.emitPackMeasure(st)
+		g.emitPack(st)
+		g.emitLoadMeasureBody(st)
+		g.emitOpenWalk(st)
+	}
+	for _, st := range members {
+		if g.isVar(st.Name) {
+			g.emitBuilderAndPublicSurface(st)
+		}
+	}
+}
+
+// emitPackMeasure emits the exact byte count of a value's DESCENDANT nodes in
+// the packed form — Lock's and Cook's sizing half.
+func (g *tableGen) emitPackMeasure(st *ir.Struct) {
+	g.pf("// %sPackMeasure: the packed region bytes of everything %s POINTS AT.\n", st.Name, st.Name)
+	g.pf("// Aliasing is not preserved: two pointers to one node pack as two nodes,\n")
+	g.pf("// exactly as they ride the wire as two bodies (SPEC-TABLES.md §3).\n")
+	g.pf("template <typename Ctx>\ninline int64_t %sPackMeasure( const Ctx & ctx, const %s & value, int32_t depth )\n{\n", st.Name, st.Name)
+	g.pf("    if ( depth > kTableMaxDepth ) { return -1; } // a data cycle, or a chain past the cap\n")
+	g.pf("    int64_t bytes = 0;\n")
+	if len(pointerFields(st)) == 0 && len(g.byValueVariableFields(st)) == 0 {
+		g.pf("    (void) ctx; (void) value; // no pointers below this node\n")
+	}
+	for _, f := range pointerFields(st) {
+		t := f.Type.Name
+		g.pf("    {\n")
+		g.pf("        const %s * pointee = %sAt( ctx, value.%s ); // %s\n", t, t, f.Name, f.Name)
+		g.pf("        if ( pointee != NULL )\n        {\n")
+		if g.needsWalkers(t) {
+			g.pf("            int64_t inner = %sPackMeasure( ctx, *pointee, depth + 1 );\n", t)
+			g.pf("            if ( inner < 0 ) { return -1; }\n")
+			g.pf("            bytes += TableAlignUp64( (int64_t) sizeof( %s ) ) + inner;\n", t)
+		} else {
+			g.pf("            bytes += TableAlignUp64( (int64_t) sizeof( %s ) );\n", t)
+		}
+		g.pf("        }\n    }\n")
+	}
+	for _, f := range g.byValueVariableFields(st) {
+		g.emitVariableByValueWalk(f, func(expr string) {
+			g.pf("        int64_t inner = %sPackMeasure( ctx, %s, depth );\n", f.Type.Name, expr)
+			g.pf("        if ( inner < 0 ) { return -1; }\n")
+			g.pf("        bytes += inner;\n")
+		})
+	}
+	g.pf("    return bytes;\n}\n\n")
+}
+
+// emitVariableByValueWalk emits the loop shape for descending into a by-value
+// nested variable table, scalar or array, and calls body with the element
+// expression.
+func (g *tableGen) emitVariableByValueWalk(f *ir.Field, body func(expr string)) {
+	switch f.Array {
+	case ir.ArrayNone:
+		g.pf("    { // %s (nested by value)\n", f.Name)
+		body("value." + f.Name)
+		g.pf("    }\n")
+	case ir.ArrayCounted:
+		g.pf("    for ( int32_t i = 0; i < value.%s_count && i < %d; i++ ) // %s\n    {\n", f.Name, f.ArrayBound, f.Name)
+		body(fmt.Sprintf("value.%s[i]", f.Name))
+		g.pf("    }\n")
+	default:
+		g.pf("    for ( int32_t i = 0; i < %d; i++ ) // %s\n    {\n", f.ArrayBound, f.Name)
+		body(fmt.Sprintf("value.%s[i]", f.Name))
+		g.pf("    }\n")
+	}
+}
+
+// emitPack copies one node into the packed region and lays its pointees out
+// depth-first behind it, rewriting every reference into the region's
+// self-relative encoding.
+func (g *tableGen) emitPack(st *ir.Struct) {
+	g.pf("// %sPack: copy src into dst (already placed), then lay every pointee out\n", st.Name)
+	g.pf("// depth-first behind it. A child always lands AFTER the slot naming it, so\n")
+	g.pf("// region deltas are strictly positive and a packed region cannot contain a\n")
+	g.pf("// cycle — which is what makes %sOpenWalk cycle-free without a visited set.\n", st.Name)
+	g.pf("template <typename Ctx>\ninline bool %sPack( const Ctx & ctx, const %s & src, %s & dst, uint8_t * base, int64_t capacity, int64_t & used, int32_t depth )\n{\n", st.Name, st.Name, st.Name)
+	g.pf("    if ( depth > kTableMaxDepth ) { return false; }\n")
+	g.pf("    memcpy( (void *) &dst, (const void *) &src, sizeof( %s ) ); // trivially copyable, by construction\n", st.Name)
+	if len(pointerFields(st)) == 0 && len(g.byValueVariableFields(st)) == 0 {
+		g.pf("    (void) ctx; (void) base; (void) capacity; (void) used;\n")
+	}
+	for _, f := range pointerFields(st) {
+		t := f.Type.Name
+		g.pf("    {\n")
+		g.pf("        dst.%s.value = 0; // %s\n", f.Name, f.Name)
+		g.pf("        const %s * pointee = %sAt( ctx, src.%s );\n", t, t, f.Name)
+		g.pf("        if ( pointee != NULL )\n        {\n")
+		g.pf("            int64_t at = TableAlignUp64( used );\n")
+		g.pf("            if ( at + (int64_t) sizeof( %s ) > capacity ) { return false; }\n", t)
+		g.pf("            used = at + TableAlignUp64( (int64_t) sizeof( %s ) );\n", t)
+		g.pf("            %s * child = new ( base + at ) %s{};\n", t, t)
+		g.pf("            dst.%s.value = (uint32_t) ( ( base + at ) - (const uint8_t *) &dst.%s );\n", f.Name, f.Name)
+		if g.needsWalkers(t) {
+			g.pf("            if ( !%sPack( ctx, *pointee, *child, base, capacity, used, depth + 1 ) ) { return false; }\n", t)
+		} else {
+			g.pf("            memcpy( (void *) child, (const void *) pointee, sizeof( %s ) );\n", t)
+		}
+		g.pf("        }\n    }\n")
+	}
+	for _, f := range g.byValueVariableFields(st) {
+		g.emitVariableByValueWalkPack(f)
+	}
+	g.pf("    return true;\n}\n\n")
+}
+
+func (g *tableGen) emitVariableByValueWalkPack(f *ir.Field) {
+	t := f.Type.Name
+	call := func(srcExpr, dstExpr string) {
+		g.pf("        if ( !%sPack( ctx, %s, %s, base, capacity, used, depth ) ) { return false; }\n", t, srcExpr, dstExpr)
+	}
+	switch f.Array {
+	case ir.ArrayNone:
+		g.pf("    { // %s (nested by value)\n", f.Name)
+		call("src."+f.Name, "dst."+f.Name)
+		g.pf("    }\n")
+	case ir.ArrayCounted:
+		g.pf("    for ( int32_t i = 0; i < src.%s_count && i < %d; i++ ) // %s\n    {\n", f.Name, f.ArrayBound, f.Name)
+		call(fmt.Sprintf("src.%s[i]", f.Name), fmt.Sprintf("dst.%s[i]", f.Name))
+		g.pf("    }\n")
+	default:
+		g.pf("    for ( int32_t i = 0; i < %d; i++ ) // %s\n    {\n", f.ArrayBound, f.Name)
+		call(fmt.Sprintf("src.%s[i]", f.Name), fmt.Sprintf("dst.%s[i]", f.Name))
+		g.pf("    }\n")
+	}
+}
+
+// emitLoadMeasureBody emits the wire sizing pre-pass: how many region bytes
+// the nodes BELOW this body will need. Skip-based — it reads framing and
+// nothing else, which is what lets a caller own the allocation (SPEC §7).
+func (g *tableGen) emitLoadMeasureBody(st *ir.Struct) {
+	ptrs := pointerFields(st)
+	nested := g.byValueVariableFields(st)
+	g.pf("// %sLoadMeasureBody: region bytes for the nodes under this wire body.\n", st.Name)
+	g.pf("// Framing only — no field value is decoded, so a caller can size its\n")
+	g.pf("// buffer before a single byte is placed.\n")
+	g.pf("inline int64_t %sLoadMeasureBody( TableReader & r, int32_t depth )\n{\n", st.Name)
+	g.pf("    int64_t bytes = 0;\n")
+	if len(ptrs) == 0 && len(nested) == 0 {
+		g.pf("    (void) r; (void) depth; // nothing below this body allocates\n")
+		g.pf("    return bytes;\n}\n\n")
+		return
+	}
+	g.pf("    for ( ;; )\n    {\n")
+	g.pf("        if ( !r.has( 2 ) ) { return bytes; }\n")
+	g.pf("        uint16_t field_id = r.get16();\n")
+	g.pf("        if ( field_id == 0 ) { return bytes; }\n")
+	g.pf("        if ( !r.has( 1 ) ) { return bytes; }\n")
+	g.pf("        uint8_t kind = r.get8();\n")
+	g.pf("        switch ( field_id )\n        {\n")
+	for _, f := range ptrs {
+		t := f.Type.Name
+		g.pf("            case 0x%04x: // %s (*%s)\n            {\n", ir.TableFieldId(f), f.Name, t)
+		g.pf("                if ( kind != %d ) { if ( !r.skip( kind ) ) { return bytes; } break; }\n", tkTable)
+		g.pf("                if ( !r.has( 4 ) ) { return bytes; }\n")
+		g.pf("                uint32_t body_len = r.get32();\n")
+		g.pf("                if ( !r.has( body_len ) ) { return bytes; }\n")
+		g.pf("                if ( depth < kTableMaxDepth )\n                {\n")
+		g.pf("                    bytes += TableAlignUp64( (int64_t) sizeof( %s ) );\n", t)
+		if g.needsWalkers(t) {
+			g.pf("                    TableReader sub( r.buffer + r.offset, body_len, r.report );\n")
+			g.pf("                    bytes += %sLoadMeasureBody( sub, depth + 1 );\n", t)
+		}
+		g.pf("                }\n")
+		g.pf("                r.offset += body_len;\n")
+		g.pf("                break;\n            }\n")
+	}
+	for _, f := range nested {
+		t := f.Type.Name
+		wireKind := tkTable
+		if f.Array != ir.ArrayNone {
+			wireKind = tkArray
+		}
+		g.pf("            case 0x%04x: // %s (%s nested by value)\n            {\n", ir.TableFieldId(f), f.Name, t)
+		g.pf("                if ( kind != %d ) { if ( !r.skip( kind ) ) { return bytes; } break; }\n", wireKind)
+		g.pf("                if ( !r.has( 4 ) ) { return bytes; }\n")
+		g.pf("                uint32_t body_len = r.get32();\n")
+		g.pf("                if ( !r.has( body_len ) ) { return bytes; }\n")
+		g.pf("                int64_t body_end = r.offset + body_len;\n")
+		if f.Array == ir.ArrayNone {
+			g.pf("                {\n")
+			g.pf("                    TableReader sub( r.buffer + r.offset, body_len, r.report );\n")
+			g.pf("                    bytes += %sLoadMeasureBody( sub, depth );\n", t)
+			g.pf("                }\n")
+		} else {
+			g.pf("                if ( body_len >= 3 )\n                {\n")
+			g.pf("                    r.get8(); // element kind\n")
+			g.pf("                    uint16_t count = r.get16();\n")
+			g.pf("                    TableReader elems( r.buffer + r.offset, body_end - r.offset, r.report );\n")
+			g.pf("                    for ( uint16_t i = 0; i < count && i < %d; i++ )\n                    {\n", f.ArrayBound)
+			g.pf("                        if ( !elems.has( 4 ) ) { break; }\n")
+			g.pf("                        uint32_t elem_len = elems.get32();\n")
+			g.pf("                        if ( !elems.has( elem_len ) ) { break; }\n")
+			g.pf("                        TableReader elem( elems.buffer + elems.offset, elem_len, r.report );\n")
+			g.pf("                        bytes += %sLoadMeasureBody( elem, depth );\n", t)
+			g.pf("                        elems.offset += elem_len;\n")
+			g.pf("                    }\n")
+			g.pf("                }\n")
+		}
+		g.pf("                r.offset = body_end;\n")
+		g.pf("                break;\n            }\n")
+	}
+	g.pf("            default:\n            {\n")
+	g.pf("                if ( !r.skip( kind ) ) { return bytes; }\n")
+	g.pf("                break;\n            }\n")
+	g.pf("        }\n    }\n}\n\n")
+}
+
+// emitOpenWalk emits the cooked form's bounds walk: reads-validate-always,
+// applied to the only thing a cooked region can lie about — its offset graph.
+func (g *tableGen) emitOpenWalk(st *ir.Struct) {
+	g.pf("// %sOpenWalk: the cooked form's validation. It visits the REFERENCE GRAPH —\n", st.Name)
+	g.pf("// every pointer slot and the count companions that bound a traversal — and\n")
+	g.pf("// nothing else: no field value is read, no payload is decoded. That is what\n")
+	g.pf("// separates \"validate before pointing\" from \"parse the whole thing\".\n")
+	g.pf("inline bool %sOpenWalk( const %s * node, const uint8_t * base, int64_t bytes, int32_t depth )\n{\n", st.Name, st.Name)
+	g.pf("    if ( node == NULL || depth > kTableMaxDepth ) { return false; }\n")
+	ptrs := pointerFields(st)
+	nested := g.byValueVariableFields(st)
+	counted := countedCompanions(st)
+	if len(ptrs) == 0 && len(nested) == 0 && len(counted) == 0 {
+		g.pf("    (void) node; (void) base; (void) bytes; // no references and no counts to bound\n")
+		g.pf("    return true;\n}\n\n")
+		return
+	}
+	for _, c := range counted {
+		g.pf("    if ( node->%s < 0 || node->%s > %d ) { return false; } // %s\n", c.companion, c.companion, c.bound, c.field)
+	}
+	for _, f := range ptrs {
+		t := f.Type.Name
+		g.pf("    {\n")
+		g.pf("        uint32_t delta = node->%s.value; // %s\n", f.Name, f.Name)
+		g.pf("        if ( delta != 0 )\n        {\n")
+		g.pf("            if ( (int32_t) delta <= 0 ) { return false; } // a packed reference is strictly forward\n")
+		g.pf("            int64_t at = ( (const uint8_t *) &node->%s - base ) + (int64_t) delta;\n", f.Name)
+		g.pf("            if ( at < 0 || ( at & ( kTableAlign - 1 ) ) != 0 ) { return false; }\n")
+		g.pf("            if ( at + (int64_t) sizeof( %s ) > bytes ) { return false; }\n", t)
+		if g.needsWalkers(t) {
+			g.pf("            if ( !%sOpenWalk( (const %s *) ( base + at ), base, bytes, depth + 1 ) ) { return false; }\n", t, t)
+		}
+		g.pf("        }\n    }\n")
+	}
+	for _, f := range nested {
+		t := f.Type.Name
+		switch f.Array {
+		case ir.ArrayNone:
+			g.pf("    if ( !%sOpenWalk( &node->%s, base, bytes, depth ) ) { return false; }\n", t, f.Name)
+		case ir.ArrayCounted:
+			g.pf("    for ( int32_t i = 0; i < node->%s_count && i < %d; i++ )\n", f.Name, f.ArrayBound)
+			g.pf("    {\n        if ( !%sOpenWalk( &node->%s[i], base, bytes, depth ) ) { return false; }\n    }\n", t, f.Name)
+		default:
+			g.pf("    for ( int32_t i = 0; i < %d; i++ )\n", f.ArrayBound)
+			g.pf("    {\n        if ( !%sOpenWalk( &node->%s[i], base, bytes, depth ) ) { return false; }\n    }\n", t, f.Name)
+		}
+	}
+	g.pf("    return true;\n}\n\n")
+}
+
+type companion struct {
+	field     string
+	companion string
+	bound     int64
+}
+
+// countedCompanions lists a member's _count/_length companions and their
+// declared bounds — the values a traversal trusts, so the values Open checks.
+func countedCompanions(st *ir.Struct) []companion {
+	var out []companion
+	for _, f := range st.Fields {
+		switch {
+		case f.Type.Kind == ir.TString, f.Type.Kind == ir.TBytes:
+			out = append(out, companion{f.Name, f.Name + "_length", f.Type.Size})
+		case f.Array == ir.ArrayCounted:
+			out = append(out, companion{f.Name, f.Name + "_count", f.ArrayBound})
+		}
+	}
+	return out
+}
+
+// ---- the builder and the public surface ----
+
+func (g *tableGen) emitBuilderAndPublicSurface(st *ir.Struct) {
+	n := st.Name
+	g.pf("// ---- %s: the variable-length life (SPEC-TABLES.md §2, §7) ----\n", n)
+	g.pf("//\n")
+	g.pf("// MUTABLE: %sBuilder — allocate nodes, wire them together, then Lock.\n", n)
+	g.pf("// CONST:   one packed region, root at its base. Lock produces it and Load\n")
+	g.pf("//          produces it, so a locked structure and a loaded one are the\n")
+	g.pf("//          SAME representation with one view API. There is no unlock:\n")
+	g.pf("//          re-editing means loading the const form into a fresh builder.\n")
+	g.pf("// %s is never held by value — a file-format-scale structure is a region\n", n)
+	g.pf("// and a root pointer, not a struct you copy.\n\n")
+
+	g.pf("// The cooked form's build lock: the schema's packed-layout facts mixed with\n")
+	g.pf("// this build's own sizeof for every type in the closure, so schema drift AND\n")
+	g.pf("// ABI drift both refuse at Open.\n")
+	g.pf("inline constexpr uint32_t %sLayoutId =\n    0x%08xu", n, g.layoutSchemaHash(st))
+	for i, dep := range g.layoutClosure(st) {
+		g.pf("\n    ^ ( (uint32_t) sizeof( %s ) * 0x%08xu )", dep, layoutMixer(i))
+	}
+	g.pf(";\n\n")
+
+	g.pf("struct %sBuilder\n{\n", n)
+	g.pf("    TableArena arena;\n")
+	g.pf("    TableWorker main;      // the calling thread's allocation front\n")
+	g.pf("    TableRef root_ref;\n")
+	g.pf("    uint8_t * region = NULL; // the packed const form, produced by Lock()\n")
+	g.pf("    int64_t region_bytes = 0;\n\n")
+	g.pf("    %sBuilder()\n    {\n", n)
+	g.pf("        TableArenaInit( arena );\n")
+	g.pf("        main.arena = &arena;\n")
+	g.pf("        TableSlot<%s> slot = main.Alloc<%s>();\n", n, n)
+	g.pf("        root_ref = slot.ref;\n")
+	g.pf("    }\n")
+	g.pf("    ~%sBuilder() { TableArenaShutdown( arena ); free( region ); }\n", n)
+	g.pf("    %sBuilder( const %sBuilder & ) = delete;\n", n, n)
+	g.pf("    %sBuilder & operator=( const %sBuilder & ) = delete;\n\n", n, n)
+	g.pf("    // Alloc a node in THIS thread's slab: no lock, no atomic per node.\n")
+	g.pf("    // The result is usable both as the node pointer and as the reference\n")
+	g.pf("    // to store in a pointer field.\n")
+	g.pf("    template <typename T> TableSlot<T> Alloc() { return main.Alloc<T>(); }\n")
+	g.pf("    // one worker per thread; allocate on your own, and synchronize your own\n")
+	g.pf("    // writes to nodes another worker allocated\n")
+	g.pf("    TableWorker Worker() { TableWorker worker; worker.arena = &arena; return worker; }\n\n")
+	g.pf("    %s * Root() { return arena.locked ? NULL : (%s *) TableArenaAt( arena, root_ref.value ); }\n", n, n)
+	g.pf("    bool Locked() const { return arena.locked; }\n")
+	g.pf("    const %s * Const() const { return (const %s *) region; }\n", n, n)
+	g.pf("    const uint8_t * Region() const { return region; }\n")
+	g.pf("    int64_t RegionBytes() const { return region_bytes; }\n\n")
+	g.pf("    // Lock is ONE WAY and it is the compaction: the segmented arena becomes\n")
+	g.pf("    // one exact-packed region with zero slack, references rewritten\n")
+	g.pf("    // self-relative, and the mutable life released. Single-threaded: call\n")
+	g.pf("    // it after the workers have joined.\n")
+	g.pf("    bool Lock();\n")
+	g.pf("};\n\n")
+
+	g.pf("inline bool %sBuilder::Lock()\n{\n", n)
+	g.pf("    if ( arena.locked ) { return region != NULL; }\n")
+	g.pf("    if ( root_ref.null() ) { return false; }\n")
+	g.pf("    TableArenaCtx ctx = { &arena };\n")
+	g.pf("    const %s & root = *(const %s *) TableArenaAt( arena, root_ref.value );\n", n, n)
+	g.pf("    int64_t below = %sPackMeasure( ctx, root, 1 );\n", n)
+	g.pf("    if ( below < 0 ) { return false; } // a data cycle, or a chain past kTableMaxDepth\n")
+	g.pf("    int64_t total = TableAlignUp64( (int64_t) sizeof( %s ) ) + below;\n", n)
+	g.pf("    uint8_t * packed = (uint8_t *) malloc( (size_t) total ); // the AUTHORING path may allocate\n")
+	g.pf("    if ( packed == NULL ) { return false; }\n")
+	g.pf("    memset( packed, 0, (size_t) total );\n")
+	g.pf("    int64_t used = TableAlignUp64( (int64_t) sizeof( %s ) );\n", n)
+	g.pf("    %s * destination = new ( packed ) %s{};\n", n, n)
+	g.pf("    if ( !%sPack( ctx, root, *destination, packed, total, used, 1 ) || used != total )\n    {\n", n)
+	g.pf("        free( packed );\n        return false;\n    }\n")
+	g.pf("    region = packed;\n")
+	g.pf("    region_bytes = total;\n")
+	g.pf("    arena.locked = true; // MONOTONIC: there is no unlock\n")
+	g.pf("    TableArenaShutdown( arena );\n")
+	g.pf("    return true;\n}\n\n")
+
+	// wire out
+	g.pf("// ---- %s on the wire: the generic, tolerant form (SPEC-TABLES.md §3) ----\n\n", n)
+	g.pf("inline int64_t %sMeasure( const %s * root )\n{\n", n, n)
+	g.pf("    TableRegionCtx ctx;\n")
+	g.pf("    return root != NULL ? %sMeasureBody( ctx, *root, 1 ) : -1;\n}\n\n", n)
+	g.pf("inline int64_t %sSave( const %s * root, uint8_t * buffer, int64_t capacity )\n{\n", n, n)
+	g.pf("    if ( root == NULL ) { return -1; }\n")
+	g.pf("    TableRegionCtx ctx;\n")
+	g.pf("    TableWriter w( buffer, capacity );\n")
+	g.pf("    if ( !%sSaveBody( ctx, w, *root, 1 ) ) { return -1; }\n", n)
+	g.pf("    return w.offset; // == %sMeasure( root )\n}\n\n", n)
+	g.pf("inline int64_t %sMeasure( const %sBuilder & builder )\n{\n", n, n)
+	g.pf("    if ( builder.region != NULL ) { return %sMeasure( builder.Const() ); }\n", n)
+	g.pf("    TableArenaCtx ctx = { &builder.arena };\n")
+	g.pf("    return %sMeasureBody( ctx, *(const %s *) TableArenaAt( builder.arena, builder.root_ref.value ), 1 );\n}\n\n", n, n)
+	g.pf("inline int64_t %sSave( const %sBuilder & builder, uint8_t * buffer, int64_t capacity )\n{\n", n, n)
+	g.pf("    if ( builder.region != NULL ) { return %sSave( builder.Const(), buffer, capacity ); }\n", n)
+	g.pf("    TableArenaCtx ctx = { &builder.arena };\n")
+	g.pf("    TableWriter w( buffer, capacity );\n")
+	g.pf("    if ( !%sSaveBody( ctx, w, *(const %s *) TableArenaAt( builder.arena, builder.root_ref.value ), 1 ) ) { return -1; }\n", n, n)
+	g.pf("    return w.offset;\n}\n\n")
+
+	// load
+	g.pf("// %sLoadMeasure: the exact region bytes a wire buffer will need. The\n", n)
+	g.pf("// caller owns the allocation — generated load code allocates nothing.\n")
+	g.pf("inline int64_t %sLoadMeasure( const uint8_t * wire, int64_t wire_bytes )\n{\n", n)
+	g.pf("    TableReport ignored;\n")
+	g.pf("    TableReader r( wire, wire_bytes, &ignored );\n")
+	g.pf("    int64_t below = %sLoadMeasureBody( r, 1 );\n", n)
+	g.pf("    if ( below < 0 ) { below = 0; }\n")
+	g.pf("    return TableAlignUp64( (int64_t) sizeof( %s ) ) + below;\n}\n\n", n)
+	g.pf("// %sLoad: decode the tolerant wire into the caller's exact-sized region and\n", n)
+	g.pf("// return the root. Partial results are kept, as everywhere on this wire —\n")
+	g.pf("// the report says what happened. NULL means the CALLER's buffer was wrong.\n")
+	g.pf("inline const %s * %sLoad( uint8_t * region, int64_t region_bytes, const uint8_t * wire, int64_t wire_bytes, TableReport * report )\n{\n", n, n)
+	g.pf("    TableReport ignored;\n")
+	g.pf("    TableReport * out = report != NULL ? report : &ignored;\n")
+	g.pf("    if ( region == NULL || region_bytes < (int64_t) sizeof( %s ) ) { out->malformed = true; return NULL; }\n", n)
+	g.pf("    if ( ( ( (uintptr_t) region ) & ( kTableAlign - 1 ) ) != 0 ) { out->malformed = true; return NULL; }\n")
+	g.pf("    memset( region, 0, (size_t) region_bytes );\n")
+	g.pf("    TableRegionSink sink;\n")
+	g.pf("    sink.base = region;\n")
+	g.pf("    sink.capacity = region_bytes;\n")
+	g.pf("    sink.used = TableAlignUp64( (int64_t) sizeof( %s ) );\n", n)
+	g.pf("    %s * root = new ( region ) %s{};\n", n, n)
+	g.pf("    TableReader r( wire, wire_bytes, out );\n")
+	g.pf("    %sLoadBody( r, sink, *root, 1 );\n", n)
+	g.pf("    return root;\n}\n\n")
+	g.pf("// %sLoadBuilder: the TOOL's path — the same tolerant decode into a fresh\n", n)
+	g.pf("// builder, so loaded data can be edited and locked again.\n")
+	g.pf("inline bool %sLoadBuilder( %sBuilder & builder, const uint8_t * wire, int64_t wire_bytes, TableReport * report )\n{\n", n, n)
+	g.pf("    TableReport ignored;\n")
+	g.pf("    TableReport * out = report != NULL ? report : &ignored;\n")
+	g.pf("    %s * root = builder.Root();\n", n)
+	g.pf("    if ( root == NULL ) { out->malformed = true; return false; }\n")
+	g.pf("    TableReader r( wire, wire_bytes, out );\n")
+	g.pf("    return %sLoadBody( r, builder.main, *root, 1 );\n}\n\n", n)
+
+	// cooked form
+	g.pf("// ---- %s cooked: the region form (SPEC-TABLES.md §6) ----\n", n)
+	g.pf("//\n")
+	g.pf("// One requirement: load a big file, point at its root, without copying it\n")
+	g.pf("// and without parsing it. The cooked form is the structure laid out exactly\n")
+	g.pf("// as the runtime reads it, behind a header that build-locks it. It is an\n")
+	g.pf("// ACCELERATOR, regenerated whenever the schema moves; the tolerant wire is\n")
+	g.pf("// the format of record, and a cooked file is never an archive.\n\n")
+	g.pf("inline int64_t %sCookMeasure( const %s * root )\n{\n", n, n)
+	g.pf("    if ( root == NULL ) { return -1; }\n")
+	g.pf("    TableRegionCtx ctx;\n")
+	g.pf("    int64_t below = %sPackMeasure( ctx, *root, 1 );\n", n)
+	g.pf("    if ( below < 0 ) { return -1; }\n")
+	g.pf("    return kTableCookedHeaderBytes + TableAlignUp64( (int64_t) sizeof( %s ) ) + below;\n}\n\n", n)
+	g.pf("inline int64_t %sCookMeasure( const %sBuilder & builder )\n{\n", n, n)
+	g.pf("    if ( builder.region != NULL ) { return kTableCookedHeaderBytes + builder.region_bytes; }\n")
+	g.pf("    TableArenaCtx ctx = { &builder.arena };\n")
+	g.pf("    int64_t below = %sPackMeasure( ctx, *(const %s *) TableArenaAt( builder.arena, builder.root_ref.value ), 1 );\n", n, n)
+	g.pf("    if ( below < 0 ) { return -1; }\n")
+	g.pf("    return kTableCookedHeaderBytes + TableAlignUp64( (int64_t) sizeof( %s ) ) + below;\n}\n\n", n)
+	g.pf("inline int64_t %sCook( const %s * root, uint8_t * buffer, int64_t capacity )\n{\n", n, n)
+	g.pf("    if ( root == NULL || buffer == NULL ) { return -1; }\n")
+	g.pf("    if ( ( ( (uintptr_t) buffer ) & ( kTableAlign - 1 ) ) != 0 ) { return -1; }\n")
+	g.pf("    TableRegionCtx ctx;\n")
+	g.pf("    int64_t below = %sPackMeasure( ctx, *root, 1 );\n", n)
+	g.pf("    if ( below < 0 ) { return -1; }\n")
+	g.pf("    int64_t region_bytes = TableAlignUp64( (int64_t) sizeof( %s ) ) + below;\n", n)
+	g.pf("    if ( kTableCookedHeaderBytes + region_bytes > capacity ) { return -1; }\n")
+	g.pf("    uint8_t * base = buffer + kTableCookedHeaderBytes;\n")
+	g.pf("    memset( base, 0, (size_t) region_bytes );\n")
+	g.pf("    int64_t used = TableAlignUp64( (int64_t) sizeof( %s ) );\n", n)
+	g.pf("    %s * destination = new ( base ) %s{};\n", n, n)
+	g.pf("    if ( !%sPack( ctx, *root, *destination, base, region_bytes, used, 1 ) || used != region_bytes ) { return -1; }\n", n)
+	g.pf("    TableCookedHeaderWrite( buffer, %sLayoutId, (uint32_t) region_bytes );\n", n)
+	g.pf("    return kTableCookedHeaderBytes + region_bytes;\n}\n\n")
+	g.pf("inline int64_t %sCook( const %sBuilder & builder, uint8_t * buffer, int64_t capacity )\n{\n", n, n)
+	g.pf("    if ( builder.region != NULL )\n    {\n")
+	g.pf("        // already packed by Lock: the cooked file IS those bytes\n")
+	g.pf("        if ( buffer == NULL || kTableCookedHeaderBytes + builder.region_bytes > capacity ) { return -1; }\n")
+	g.pf("        if ( ( ( (uintptr_t) buffer ) & ( kTableAlign - 1 ) ) != 0 ) { return -1; }\n")
+	g.pf("        memcpy( buffer + kTableCookedHeaderBytes, builder.region, (size_t) builder.region_bytes );\n")
+	g.pf("        TableCookedHeaderWrite( buffer, %sLayoutId, (uint32_t) builder.region_bytes );\n", n)
+	g.pf("        return kTableCookedHeaderBytes + builder.region_bytes;\n    }\n")
+	g.pf("    TableArenaCtx ctx = { &builder.arena };\n")
+	g.pf("    const %s & root = *(const %s *) TableArenaAt( builder.arena, builder.root_ref.value );\n", n, n)
+	g.pf("    int64_t below = %sPackMeasure( ctx, root, 1 );\n", n)
+	g.pf("    if ( below < 0 || buffer == NULL ) { return -1; }\n")
+	g.pf("    if ( ( ( (uintptr_t) buffer ) & ( kTableAlign - 1 ) ) != 0 ) { return -1; }\n")
+	g.pf("    int64_t region_bytes = TableAlignUp64( (int64_t) sizeof( %s ) ) + below;\n", n)
+	g.pf("    if ( kTableCookedHeaderBytes + region_bytes > capacity ) { return -1; }\n")
+	g.pf("    uint8_t * base = buffer + kTableCookedHeaderBytes;\n")
+	g.pf("    memset( base, 0, (size_t) region_bytes );\n")
+	g.pf("    int64_t used = TableAlignUp64( (int64_t) sizeof( %s ) );\n", n)
+	g.pf("    %s * destination = new ( base ) %s{};\n", n, n)
+	g.pf("    if ( !%sPack( ctx, root, *destination, base, region_bytes, used, 1 ) || used != region_bytes ) { return -1; }\n", n)
+	g.pf("    TableCookedHeaderWrite( buffer, %sLayoutId, (uint32_t) region_bytes );\n", n)
+	g.pf("    return kTableCookedHeaderBytes + region_bytes;\n}\n\n")
+	g.pf("// %sOpen: point at a cooked file's root. Every refusal is loud and the\n", n)
+	g.pf("// caller's fallback is a real wire Load: wrong form or byte order, a layout\n")
+	g.pf("// id this build did not produce, a truncated region, an unaligned base, or\n")
+	g.pf("// an offset graph that leaves the region.\n")
+	g.pf("inline const %s * %sOpen( const uint8_t * bytes, int64_t size )\n{\n", n, n)
+	g.pf("    int64_t region_bytes = 0;\n")
+	g.pf("    if ( !TableCookedHeaderCheck( bytes, size, %sLayoutId, &region_bytes ) ) { return NULL; }\n", n)
+	g.pf("    if ( region_bytes < (int64_t) sizeof( %s ) ) { return NULL; }\n", n)
+	g.pf("    const uint8_t * base = bytes + kTableCookedHeaderBytes;\n")
+	g.pf("    const %s * root = (const %s *) base;\n", n, n)
+	g.pf("    if ( !%sOpenWalk( root, base, region_bytes, 1 ) ) { return NULL; }\n", n)
+	g.pf("    return root;\n}\n\n")
+}
+
+// layoutClosure returns, in stable order, every closure type whose sizeof
+// participates in a root's layout id.
+func (g *tableGen) layoutClosure(root *ir.Struct) []string {
+	seen := map[string]bool{}
+	var order []string
+	var walk func(st *ir.Struct)
+	walk = func(st *ir.Struct) {
+		if st == nil || seen[st.Name] {
+			return
+		}
+		seen[st.Name] = true
+		order = append(order, st.Name)
+		for _, f := range st.Fields {
+			if f.Type.Kind != ir.TNamed {
+				continue
+			}
+			switch ref := f.Type.Ref.(type) {
+			case *ir.Struct:
+				walk(ref)
+			case *ir.Union:
+				for _, v := range ref.Variants {
+					if next, ok := g.unit.Structs[v.Type]; ok {
+						walk(next)
+					}
+				}
+			}
+		}
+	}
+	walk(root)
+	return order
+}
+
+// layoutSchemaHash digests the SCHEMA-side facts that decide a packed
+// layout: every closure member's fields in order, with the shape that moves
+// bytes. It is the region form's twin of the protocol id — a cooked file
+// whose schema moved refuses instead of being misread.
+func (g *tableGen) layoutSchemaHash(root *ir.Struct) uint32 {
+	var b strings.Builder
+	b.WriteString("schema-table-cooked-v1\n")
+	for _, name := range g.layoutClosure(root) {
+		st := g.unit.Tables[name]
+		if st == nil {
+			st = g.unit.Structs[name]
+		}
+		if st == nil {
+			continue
+		}
+		fmt.Fprintf(&b, "type %s\n", name)
+		for _, f := range st.Fields {
+			fmt.Fprintf(&b, "  %s kind=%d ptr=%v array=%d bound=%d size=%d width=%d signed=%v guard=%q\n",
+				f.Name, f.Type.Kind, f.Type.Pointer, f.Array, f.ArrayBound,
+				f.Type.Size, f.Type.Width, f.Type.Signed, f.Guard)
+		}
+	}
+	h := uint64(0xCBF29CE484222325)
+	for _, c := range []byte(b.String()) {
+		h ^= uint64(c)
+		h *= 0x100000001B3
+	}
+	return uint32(h) ^ uint32(h>>32)
+}
+
+// layoutMixer gives each closure position its own odd multiplier, so a
+// permutation of the same sizes digests differently.
+func layoutMixer(i int) uint32 {
+	return 0x9E3779B1 + uint32(i)*0x85EBCA6B | 1
+}
+
+// emitRelocatabilityPreamble writes the comment above the static asserts,
+// which now covers both forms.
+func (g *tableGen) emitRelocatabilityPreamble() {
+	g.pf("// ---- relocatability, enforced: the wire is a pure length-prefixed\n")
+	g.pf("// stream AND the decoded storage is pointer-free — every closure type\n")
+	g.pf("// must stay trivially copyable and standard-layout, so instances can be\n")
+	g.pf("// memcpy'd, mmap'd, shared across processes, and walked through\n")
+	g.pf("// descriptor offsets. A failure here means a pointer, virtual or\n")
+	g.pf("// non-trivial member crept into generated storage.\n")
+	if g.anyVariable {
+		g.pf("// A pointer FIELD is a TableRef — four bytes and no address — so the\n")
+		g.pf("// property holds in BOTH forms: a fixed-size table is one relocatable\n")
+		g.pf("// struct, and a packed region is one relocatable block whose references\n")
+		g.pf("// are self-relative and therefore survive a plain memcpy.\n")
+	}
+}
+
+// modeColumn renders the descriptor's derived-mode column, present only in a
+// unit that has pointers (the zero-cost gate).
+func (g *tableGen) modeColumn(st *ir.Struct) string {
+	if !g.anyVariable {
+		return ""
+	}
+	return fmt.Sprintf(", %v", g.isVar(st.Name))
+}

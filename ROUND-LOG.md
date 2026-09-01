@@ -64,3 +64,37 @@ no rebase debt).
   multiplication keeps its spaces (`max = K * 2`) — type position at index 1
   is what tells them apart. The C++ emitter REFUSES a pointer-bearing unit for
   now, loudly, so the tree stays green until unit 3 emits the backend.
+
+- UNIT 3 — the C++ variable-length backend (rulings 4, 5, 6, 7, 9, 11). The
+  MUTABLE form is a segmented slab arena: equal-size 4 MiB segments whose count
+  saturates the u32 reference space exactly (1024 -> 4 GiB), handed to workers
+  in 64 KiB slabs with ONE compare-exchange per slab and zero atomics per node.
+  Nodes are born at final offsets and segments never move, so a `T*` from Alloc
+  stays valid while other workers allocate and while the arena grows. The
+  REJECTED model is named in the emitted comment: one buffer under a lock grown
+  by realloc, whose realloc moves memory under a mid-write worker. Slack: one
+  slab tail per worker plus one per segment (<2% + threads x 64 KiB).
+  `Lock()` is one-way and IS the compaction: the arena packs into one exact
+  region, root at base, references rewritten SELF-RELATIVE — so a deref is one
+  add with no base pointer and a region relocates by pure memcpy with zero
+  fix-up. Lock's output and Load's output are the SAME representation, one view
+  API. Aliasing is not preserved anywhere (two pointers to one node pack and
+  ride as two), stated in the emitted comments and the spec.
+  Wire: a pointer rides as a nested table body — framing IDENTICAL to a
+  by-value nesting, so a field can change between the two without moving a
+  byte. Null elides; a non-null pointer rides even when the pointee is
+  all-default, or null and empty would be one value. Depth cap kTableMaxDepth
+  = 128 on every walk (save, load, cook, open): a data cycle is an ERROR, never
+  a hang. Cooked form: 32-byte header carrying magic (which is also the
+  byte-order check), a layout id digesting the schema's packed-layout facts
+  mixed with this build's own sizeof for every closure type, and the region
+  length; `<Name>Open` runs a bounds walk over the REFERENCE GRAPH only —
+  pointer slots and the count companions that bound a traversal — before
+  handing out the root. Packed references are strictly forward, so that walk is
+  cycle-free with no visited set.
+  ZERO-COST GATE, PROVEN: the whole pointer-free corpus (tables/examples,
+  test/tables/V1, test/tables/V2) regenerates BYTE-IDENTICAL to the
+  rename-applied baseline at 974ff0f — `diff -r` clean. Three leaks were found
+  and closed to get there: the descriptor's `is_pointer` column, TableTypeInfo's
+  `variable` column, and a reworded relocatability comment are now emitted only
+  in a unit that actually has pointers.
