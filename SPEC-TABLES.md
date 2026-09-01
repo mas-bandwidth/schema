@@ -159,11 +159,13 @@ two, bind a property grid — with no RTTI and no schema files at runtime.
 Two properties are load-bearing for real content pipelines, and both are
 held by construction:
 
-- **Relocatable.** Generated table structs are trivially copyable and
-  standard-layout — nesting by value, bounded arrays inline with their
-  count companions, no pointers anywhere. A loaded value is one
-  memcpy-able region. The generated header enforces this with static
-  asserts, so a change that breaks relocatability breaks the build.
+- **Relocatable, where possible.** Generated table structs are trivially
+  copyable and standard-layout — nesting by value, bounded arrays inline
+  with their count companions, no pointers anywhere. A loaded value is
+  one memcpy-able region, and the generated header enforces it with
+  static asserts. The owner's ruling holds this as a goal, not an
+  absolute: a construct that genuinely cannot be relocatable is flagged
+  and decided, never contorted around.
 - **Parallel generation.** Encoding splits into **measure** and **save**:
   measure computes a value's exact encoded size writing nothing; save
   writes into a caller-provided buffer. Because nested tables are
@@ -219,6 +221,15 @@ draft this document previously carried is dead; these replace it.
   id). The difference is that when building data structures with tables
   they must be able to go wide (multithreaded) in generating the data
   structure, and must be relocatable."
+- **The governing statement**: "The end goal is to provide opinion free
+  (as much as possible) options to let people author simple version safe
+  tables, or even whole data structures loaded from tools into the game
+  and vice versa. Schema is to be an un-opinionated library … able to
+  express the data structures that we create … for Config.bin and
+  Assets.bin as a requirement, but not enforce any packing structure, or
+  our design calls in those bin files … no hard-enforced opinions,
+  except what is needed to make versioning safe, multi-threaded generate
+  work, and relocatability work (if possible)."
 
 ## 12. Named follow-ons
 
@@ -227,3 +238,6 @@ draft this document previously carried is dead; these replace it.
 - Keyed lookup conveniences over loaded collections (library-side, never
   stored semantics).
 - 128-bit table-wire kinds, if a need ever materializes.
+- A field-level name-mapping attribute for text-format tooling (the
+  JSON-authoring surface real pipelines pair with binary tables) —
+  tool-side, never wire.
