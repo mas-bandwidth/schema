@@ -132,6 +132,14 @@ func (g *tableGen) emitTableStruct(st *ir.Struct) {
 }
 
 func (g *tableGen) emitTableStorageField(f *ir.Field) {
+	if f.Type.Pointer {
+		// a pointer is FOUR BYTES and no address: an arena offset while the
+		// builder is mutable, a self-relative delta once packed. That is what
+		// keeps a pointer-bearing table relocatable in both forms.
+		g.noteRef(f.Type.Name)
+		g.pf("    TableRef %s; // *%s — null until assigned\n", f.Name, f.Type.Name)
+		return
+	}
 	typ, selfInit := g.cppFieldType(f.Type)
 	switch {
 	case f.Type.Kind == ir.TString:
@@ -203,17 +211,25 @@ func guardWalk(st *ir.Struct, prefix string) map[string]string {
 
 // ---- measure ----
 
-// emitTableMeasure emits TableMeasure<X>: the EXACT encoded size of a value,
+// emitTableMeasure emits <X>Measure (<X>MeasureBody where pointers reach): the
+// EXACT encoded size of a value,
 // no writing — the parallel-generation lever. Every nested table on the wire
 // is length-prefixed, so a caller can measure subtables in parallel,
 // prefix-sum offsets, and scatter-write disjoint ranges from N workers.
 // Mirrors TableWrite's elision decisions branch for branch: for any value,
-// TableSave writes exactly this many bytes into a buffer of exactly this
-// size. A value violating its storage invariants (a count or length outside
+// Save writes exactly this many bytes into a buffer of exactly this size. A value violating its storage invariants (a count or length outside
 // its bound, an out-of-range union tag) measures as -1, exactly as the
 // write side refuses it.
 func (g *tableGen) emitTableMeasure(st *ir.Struct) {
-	g.pf("inline int64_t TableMeasure%s( const %s & value )\n{\n", st.Name, st.Name)
+	if g.isVar(st.Name) {
+		g.pf("template <typename Ctx>\ninline int64_t %sMeasureBody( const Ctx & ctx, const %s & value, int32_t depth )\n{\n", st.Name, st.Name)
+		g.pf("    if ( depth > kTableMaxDepth ) { return -1; } // a data cycle, or a chain past the cap\n")
+		if len(pointerFields(st)) == 0 && len(g.byValueVariableFields(st)) == 0 {
+			g.pf("    (void) ctx;\n")
+		}
+	} else {
+		g.pf("inline int64_t %sMeasure( const %s & value )\n{\n", st.Name, st.Name)
+	}
 	if len(st.Fields) == 0 {
 		g.pf("    (void) value; // empty type: presence is the payload\n")
 	}
@@ -237,6 +253,17 @@ func (g *tableGen) emitTableMeasureField(f *ir.Field) {
 	kind := tableScalarKind(f)
 	width := tableKindWidth(kind)
 	switch {
+	case f.Type.Pointer:
+		t := f.Type.Name
+		g.pf("    {\n")
+		g.pf("        const %s * pointee_%s = %sAt( ctx, value.%s ); // *%s\n", t, f.Name, t, f.Name, t)
+		g.pf("        if ( pointee_%s != NULL )\n        {\n", f.Name)
+		g.pf("            int64_t body_%s = %s;\n", f.Name, g.measureCall(t, "*pointee_"+f.Name, depthDown))
+		g.pf("            if ( body_%s < 0 ) { return -1; }\n", f.Name)
+		g.pf("            // a pointer's PRESENCE is the payload: it rides even when the\n")
+		g.pf("            // pointee is all-default, or null and non-null would be one\n")
+		g.pf("            bytes += 3 + 4 + body_%s;\n", f.Name)
+		g.pf("        }\n    }\n")
 	case f.Type.Kind == ir.TString:
 		g.pf("    if ( value.%s_length < 0 || value.%s_length > %d ) { return -1; } // storage invariant\n", f.Name, f.Name, f.Type.Size)
 		g.pf("    if ( value.%s_length > 0 ) { bytes += 3 + 2 + value.%s_length; } // %s\n", f.Name, f.Name, f.Name)
@@ -248,7 +275,7 @@ func (g *tableGen) emitTableMeasureField(f *ir.Field) {
 		g.pf("    if ( value.%s_count > 0 )\n    {\n", f.Name)
 		g.pf("        bytes += 3 + 4 + 3; // %s\n", f.Name)
 		g.pf("        for ( int32_t i = 0; i < value.%s_count; i++ )\n        {\n", f.Name)
-		g.pf("            int64_t elem_%s = TableMeasure%s( value.%s[i] );\n", f.Name, f.Type.Name, f.Name)
+		g.pf("            int64_t elem_%s = %s;\n", f.Name, g.measureCall(f.Type.Name, fmt.Sprintf("value.%s[i]", f.Name), depthSame))
 		g.pf("            if ( elem_%s < 0 ) { return -1; }\n", f.Name)
 		g.pf("            bytes += 4 + elem_%s;\n", f.Name)
 		g.pf("        }\n    }\n")
@@ -259,7 +286,7 @@ func (g *tableGen) emitTableMeasureField(f *ir.Field) {
 		g.pf("    {\n")
 		g.pf("        bytes += 3 + 4 + 3; // %s (fixed [%d])\n", f.Name, f.ArrayBound)
 		g.pf("        for ( int32_t i = 0; i < %d; i++ )\n        {\n", f.ArrayBound)
-		g.pf("            int64_t elem_%s = TableMeasure%s( value.%s[i] );\n", f.Name, f.Type.Name, f.Name)
+		g.pf("            int64_t elem_%s = %s;\n", f.Name, g.measureCall(f.Type.Name, fmt.Sprintf("value.%s[i]", f.Name), depthSame))
 		g.pf("            if ( elem_%s < 0 ) { return -1; }\n", f.Name)
 		g.pf("            bytes += 4 + elem_%s;\n", f.Name)
 		g.pf("        }\n    }\n")
@@ -276,7 +303,7 @@ func (g *tableGen) emitTableMeasureField(f *ir.Field) {
 		g.pf("        case %sType::None: break; // None elides — TLV absence is the None\n", un.Name)
 		for _, v := range un.Variants {
 			g.pf("        case %sType::%s:\n        {\n", un.Name, ir.GoExportName(v.Name))
-			g.pf("            int64_t arm_%s = TableMeasure%s( value.%s.%s );\n", f.Name, v.Type, f.Name, v.Name)
+			g.pf("            int64_t arm_%s = %s;\n", f.Name, g.measureCall(v.Type, fmt.Sprintf("value.%s.%s", f.Name, v.Name), depthSame))
 			g.pf("            if ( arm_%s < 0 ) { return -1; }\n", f.Name)
 			g.pf("            bytes += 3 + 1 + 4 + arm_%s;\n            break;\n        }\n", f.Name)
 		}
@@ -284,7 +311,7 @@ func (g *tableGen) emitTableMeasureField(f *ir.Field) {
 		g.pf("    }\n")
 	case kind == tkTable:
 		g.pf("    {\n")
-		g.pf("        int64_t body_%s = TableMeasure%s( value.%s );\n", f.Name, f.Type.Name, f.Name)
+		g.pf("        int64_t body_%s = %s;\n", f.Name, g.measureCall(f.Type.Name, "value."+f.Name, depthSame))
 		g.pf("        if ( body_%s < 0 ) { return -1; }\n", f.Name)
 		g.pf("        if ( body_%s > 2 ) { bytes += 3 + 4 + body_%s; } // %s: all-default nested elides\n", f.Name, f.Name, f.Name)
 		g.pf("    }\n")
@@ -296,7 +323,15 @@ func (g *tableGen) emitTableMeasureField(f *ir.Field) {
 // ---- write / save ----
 
 func (g *tableGen) emitTableWrite(st *ir.Struct) {
-	g.pf("inline bool TableWrite%s( TableWriter & w, const %s & value )\n{\n", st.Name, st.Name)
+	if g.isVar(st.Name) {
+		g.pf("template <typename Ctx>\ninline bool %sSaveBody( const Ctx & ctx, TableWriter & w, const %s & value, int32_t depth )\n{\n", st.Name, st.Name)
+		g.pf("    if ( depth > kTableMaxDepth ) { return false; } // a data cycle, or a chain past the cap\n")
+		if len(pointerFields(st)) == 0 && len(g.byValueVariableFields(st)) == 0 {
+			g.pf("    (void) ctx;\n")
+		}
+	} else {
+		g.pf("inline bool %sSaveBody( TableWriter & w, const %s & value )\n{\n", st.Name, st.Name)
+	}
 	if len(st.Fields) == 0 {
 		g.pf("    (void) value; // empty type: presence is the payload\n")
 	}
@@ -317,14 +352,16 @@ func (g *tableGen) emitTableWrite(st *ir.Struct) {
 }
 
 // emitTableSave emits the buffer-level entry of the measure/save pair:
-// TableSave writes into a caller-provided buffer and returns the bytes
-// written — exactly TableMeasure's answer — or -1 when the buffer is too
-// small. No allocation anywhere: the caller owns the buffer.
+// <X>Save writes into a caller-provided buffer and returns the bytes written —
+// exactly <X>Measure's answer — or -1 when the buffer is too small. No allocation anywhere: the caller owns the buffer.
 func (g *tableGen) emitTableSave(st *ir.Struct) {
-	g.pf("inline int64_t TableSave%s( const %s & value, uint8_t * buffer, int64_t capacity )\n{\n", st.Name, st.Name)
+	if g.isVar(st.Name) {
+		return // a variable-length table's Save takes a builder or a region root
+	}
+	g.pf("inline int64_t %sSave( const %s & value, uint8_t * buffer, int64_t capacity )\n{\n", st.Name, st.Name)
 	g.pf("    TableWriter w( buffer, capacity );\n")
-	g.pf("    if ( !TableWrite%s( w, value ) ) { return -1; }\n", st.Name)
-	g.pf("    return w.offset; // == TableMeasure%s( value )\n}\n\n", st.Name)
+	g.pf("    if ( !%sSaveBody( w, value ) ) { return -1; }\n", st.Name)
+	g.pf("    return w.offset; // == %sMeasure( value )\n}\n\n", st.Name)
 }
 
 func (g *tableGen) emitTableWriteField(f *ir.Field) {
@@ -334,6 +371,17 @@ func (g *tableGen) emitTableWriteField(f *ir.Field) {
 		g.noteRef(f.Type.Name)
 	}
 	switch {
+	case f.Type.Pointer:
+		t := f.Type.Name
+		g.pf("    {\n")
+		g.pf("        const %s * pointee_%s = %sAt( ctx, value.%s ); // *%s\n", t, f.Name, t, f.Name, t)
+		g.pf("        if ( pointee_%s != NULL )\n        {\n", f.Name)
+		g.pf("            int64_t body_%s = %s;\n", f.Name, g.measureCall(t, "*pointee_"+f.Name, depthDown))
+		g.pf("            if ( body_%s < 0 ) { return false; }\n", f.Name)
+		g.pf("            w.put16( 0x%04x ); w.put8( %d ); // %s — the pointee rides as a nested body\n", id, tkTable, f.Name)
+		g.pf("            w.put32( uint32_t( body_%s ) );\n", f.Name)
+		g.pf("            if ( !%s ) { return false; }\n", g.saveCall(t, "*pointee_"+f.Name, depthDown))
+		g.pf("        }\n    }\n")
 	case f.Type.Kind == ir.TString:
 		g.pf("    if ( value.%s_length < 0 || value.%s_length > %d ) { return false; } // storage invariant\n", f.Name, f.Name, f.Type.Size)
 		g.pf("    if ( value.%s_length > 0 )\n    {\n", f.Name)
@@ -394,8 +442,8 @@ func (g *tableGen) emitTableWriteField(f *ir.Field) {
 		g.pf("        int64_t len_at_%s = w.offset; w.put32( 0 );\n", f.Name)
 		g.pf("        switch ( value.%s.type )\n        {\n", f.Name)
 		for _, v := range un.Variants {
-			g.pf("            case %sType::%s: if ( !TableWrite%s( w, value.%s.%s ) ) return false; break;\n",
-				un.Name, ir.GoExportName(v.Name), v.Type, f.Name, v.Name)
+			g.pf("            case %sType::%s: if ( !%s ) return false; break;\n",
+				un.Name, ir.GoExportName(v.Name), g.saveCall(v.Type, fmt.Sprintf("value.%s.%s", f.Name, v.Name), depthSame))
 		}
 		g.pf("            default: return false; // write validates the tag before it rides\n")
 		g.pf("        }\n")
@@ -406,12 +454,12 @@ func (g *tableGen) emitTableWriteField(f *ir.Field) {
 		// so saving into a buffer of exactly TableMeasure's size never
 		// trips overflow on transient header bytes
 		g.pf("    {\n")
-		g.pf("        int64_t body_%s = TableMeasure%s( value.%s );\n", f.Name, f.Type.Name, f.Name)
+		g.pf("        int64_t body_%s = %s;\n", f.Name, g.measureCall(f.Type.Name, "value."+f.Name, depthSame))
 		g.pf("        if ( body_%s < 0 ) return false; // storage invariant, refused as measure refuses it\n", f.Name)
 		g.pf("        if ( body_%s > 2 ) // all-default nested elides\n        {\n", f.Name)
 		g.pf("            w.put16( 0x%04x ); w.put8( %d ); // %s\n", id, tkTable, f.Name)
 		g.pf("            w.put32( uint32_t( body_%s ) );\n", f.Name)
-		g.pf("            if ( !TableWrite%s( w, value.%s ) ) return false;\n", f.Type.Name, f.Name)
+		g.pf("            if ( !%s ) return false;\n", g.saveCall(f.Type.Name, "value."+f.Name, depthSame))
 		g.pf("        }\n    }\n")
 	default:
 		g.pf("    if ( value.%s != %s )\n    {\n", f.Name, g.fieldDefaultExpr(f))
@@ -431,7 +479,7 @@ func (g *tableGen) emitTableWriteElement(f *ir.Field, kind int, expr, ind string
 		g.pf("%sw.put64( table_double_to_bits( %s ) );\n", ind, expr)
 	case tkTable:
 		g.pf("%s{\n%s    int64_t elem_len_at = w.offset; w.put32( 0 );\n", ind, ind)
-		g.pf("%s    if ( !TableWrite%s( w, %s ) ) return false;\n", ind, f.Type.Name, expr)
+		g.pf("%s    if ( !%s ) return false;\n", ind, g.saveCall(f.Type.Name, expr, depthSame))
 		g.pf("%s    w.patch32( elem_len_at, uint32_t( w.offset - elem_len_at - 4 ) );\n%s}\n", ind, ind)
 	default:
 		width := tableKindWidth(kind)
@@ -443,7 +491,14 @@ func (g *tableGen) emitTableWriteElement(f *ir.Field, kind int, expr, ind string
 // ---- read ----
 
 func (g *tableGen) emitTableRead(st *ir.Struct) {
-	g.pf("inline bool TableRead%s( TableReader & r, %s & value )\n{\n", st.Name, st.Name)
+	if g.isVar(st.Name) {
+		g.pf("template <typename Sink>\ninline bool %sLoadBody( TableReader & r, Sink & sink, %s & value, int32_t depth )\n{\n", st.Name, st.Name)
+		if len(pointerFields(st)) == 0 && len(g.byValueVariableFields(st)) == 0 {
+			g.pf("    (void) sink; (void) depth;\n")
+		}
+	} else {
+		g.pf("inline bool %sLoadBody( TableReader & r, %s & value )\n{\n", st.Name, st.Name)
+	}
 	// placement new, NOT `value = T{}`: assignment materializes a temporary,
 	// and generated types can be large — a stack bomb on worker threads.
 	// In-place value-init applies the same NSDMI defaults with no temporary.
@@ -460,6 +515,12 @@ func (g *tableGen) emitTableRead(st *ir.Struct) {
 			id := ir.TableFieldId(f)
 			kind := tableScalarKind(f)
 			wireKind := kind
+			if f.Type.Pointer {
+				// a pointer rides as a nested table body — framing identical to
+				// a by-value nesting, which is why a field can change between
+				// the two without moving a byte (SPEC-TABLES.md §3)
+				kind, wireKind = tkTable, tkTable
+			}
 			if f.Array != ir.ArrayNone || f.Type.Kind == ir.TBytes {
 				wireKind = tkArray
 			}
@@ -485,15 +546,39 @@ func (g *tableGen) emitTableRead(st *ir.Struct) {
 		g.pf("    }\n}\n\n")
 	}
 
-	// buffer-level convenience entry
-	g.pf("inline bool TableRead%s( const uint8_t * buffer, int64_t bytes, %s & value, TableReport & report )\n{\n", st.Name, st.Name)
-	g.pf("    TableReader r( buffer, bytes, &report );\n")
-	g.pf("    return TableRead%s( r, value );\n}\n\n", st.Name)
+	// buffer-level convenience entry. A VARIABLE-LENGTH table has none: it is
+	// never held by value, so its Load takes the caller's region and hands back
+	// the root instead (SPEC-TABLES.md §2).
+	if g.isVar(st.Name) {
+		return
+	}
+	g.pf("inline bool %sLoad( %s & value, const uint8_t * buffer, int64_t bytes, TableReport * report )\n{\n", st.Name, st.Name)
+	g.pf("    TableReport ignored;\n")
+	g.pf("    TableReader r( buffer, bytes, report != NULL ? report : &ignored );\n")
+	g.pf("    return %sLoadBody( r, value );\n}\n\n", st.Name)
 }
 
 func (g *tableGen) emitTableReadField(f *ir.Field, kind int) {
 	ind := "                "
 	switch {
+	case f.Type.Pointer:
+		t := f.Type.Name
+		g.pf("%sif ( !r.has( 4 ) ) { r.report->malformed = true; return false; }\n", ind)
+		g.pf("%suint32_t body_len = r.get32();\n", ind)
+		g.pf("%sif ( !r.has( body_len ) ) { r.report->malformed = true; return false; }\n", ind)
+		g.pf("%sif ( depth >= kTableMaxDepth )\n%s{\n", ind, ind)
+		g.pf("%s    // past the nesting cap: the subtree is refused, the pointer stays\n", ind)
+		g.pf("%s    // null, and the parent reads on (SPEC-TABLES.md §4)\n", ind)
+		g.pf("%s    r.report->malformed = true;\n", ind)
+		g.pf("%s    r.offset += body_len;\n%s    break;\n%s}\n", ind, ind, ind)
+		g.pf("%s{\n%s    %s * pointee = %sEmplace( sink, value.%s );\n", ind, ind, t, t, f.Name)
+		g.pf("%s    if ( pointee == NULL )\n%s    {\n", ind, ind)
+		g.pf("%s        r.report->malformed = true; // the caller's region was short\n", ind)
+		g.pf("%s        r.offset += body_len;\n%s        break;\n%s    }\n", ind, ind, ind)
+		g.pf("%s    TableReader sub( r.buffer + r.offset, body_len, r.report );\n", ind)
+		g.pf("%s    %s;\n", ind, g.loadCall(t, "sub", "*pointee", depthDown))
+		g.pf("%s}\n", ind)
+		g.pf("%sr.offset += body_len;\n", ind)
 	case f.Type.Kind == ir.TString:
 		g.pf("%sif ( !r.has( 2 ) ) { r.report->malformed = true; return false; }\n", ind)
 		g.pf("%suint16_t len = r.get16();\n", ind)
@@ -554,8 +639,8 @@ func (g *tableGen) emitTableReadField(f *ir.Field, kind int) {
 		g.pf("%s{\n%s    TableReader sub( r.buffer + r.offset, body_len, r.report );\n", ind, ind)
 		g.pf("%s    switch ( value.%s.type )\n%s    {\n", ind, f.Name, ind)
 		for _, v := range un.Variants {
-			g.pf("%s        case %sType::%s: TableRead%s( sub, value.%s.%s ); break;\n",
-				ind, un.Name, ir.GoExportName(v.Name), v.Type, f.Name, v.Name)
+			g.pf("%s        case %sType::%s: %s; break;\n",
+				ind, un.Name, ir.GoExportName(v.Name), g.loadCall(v.Type, "sub", fmt.Sprintf("value.%s.%s", f.Name, v.Name), depthSame))
 		}
 		g.pf("%s        default: break; // unreachable: the tag was ranged above\n", ind)
 		g.pf("%s    }\n%s}\n", ind, ind)
@@ -565,7 +650,7 @@ func (g *tableGen) emitTableReadField(f *ir.Field, kind int) {
 		g.pf("%suint32_t body_len = r.get32();\n", ind)
 		g.pf("%sif ( !r.has( body_len ) ) { r.report->malformed = true; return false; }\n", ind)
 		g.pf("%s{\n%s    TableReader sub( r.buffer + r.offset, body_len, r.report );\n", ind, ind)
-		g.pf("%s    TableRead%s( sub, value.%s );\n", ind, f.Type.Name, f.Name)
+		g.pf("%s    %s;\n", ind, g.loadCall(f.Type.Name, "sub", "value."+f.Name, depthSame))
 		g.pf("%s}\n", ind)
 		g.pf("%sr.offset += body_len;\n", ind)
 	default:
@@ -584,7 +669,7 @@ func (g *tableGen) emitTableReadElement(f *ir.Field, kind int, ind string) {
 		g.pf("%suint32_t elem_len = sub.get32();\n", ind)
 		g.pf("%sif ( !sub.has( elem_len ) ) { r.report->malformed = true; break; }\n", ind)
 		g.pf("%s{\n%s    TableReader elem( sub.buffer + sub.offset, elem_len, r.report );\n", ind, ind)
-		g.pf("%s    TableRead%s( elem, value.%s[i] );\n", ind, f.Type.Name, f.Name)
+		g.pf("%s    %s;\n", ind, g.loadCall(f.Type.Name, "elem", fmt.Sprintf("value.%s[i]", f.Name), depthSame))
 		g.pf("%s}\n", ind)
 		g.pf("%ssub.offset += elem_len;\n", ind)
 	default:
@@ -683,9 +768,33 @@ func bigToDouble(v *big.Int) string {
 // functions), built once on first use.
 func (g *tableGen) emitTableDescriptor(st *ir.Struct) {
 	guards := tableGuardStrings(st)
-	g.pf("inline const TableTypeInfo * TableType%s()\n{\n", st.Name)
-	if len(st.Fields) > 0 {
-		g.pf("    static const TableFieldInfo fields[] = {\n")
+	// In a unit with pointers the descriptors are CONSTANT-INITIALISED data at
+	// namespace scope, and a field's target is the ADDRESS of another
+	// descriptor rather than a call. That is what makes a self- or
+	// mutually-referential graph expressible at all: a lazy link cannot
+	// describe Node -> *Node without re-entering its own initialisation, and
+	// the read-modify-write it needed to try was a data race on first use. As
+	// constant data the whole reflection surface is immutable and readable from
+	// any thread at any time with no synchronisation.
+	//
+	// A pointer-free unit keeps the function-local statics it always had, to
+	// the byte (SPEC-TABLES.md §2.2, the zero-cost gate).
+	hoisted := g.anyVariable
+	indent := "    "
+	if hoisted {
+		indent = ""
+	} else {
+		g.pf("inline const TableTypeInfo * %sTableType()\n{\n", st.Name)
+	}
+	qualifier := "static const"
+	infoQualifier := "static const"
+	switch {
+	case len(st.Fields) > 0:
+		if hoisted {
+			g.pf("inline const TableFieldInfo %sTableFields[] = {\n", st.Name)
+		} else {
+			g.pf("    %s TableFieldInfo fields[] = {\n", qualifier)
+		}
 		for _, f := range st.Fields {
 			id := ir.TableFieldId(f)
 			kind := tableScalarKind(f)
@@ -693,6 +802,9 @@ func (g *tableGen) emitTableDescriptor(st *ir.Struct) {
 				kind = tkU8
 			}
 			isArray := f.Array != ir.ArrayNone || f.Type.Kind == ir.TBytes
+			if f.Type.Pointer {
+				kind = tkTable
+			}
 			counted := f.Array == ir.ArrayCounted || f.Type.Kind == ir.TBytes || f.Type.Kind == ir.TString
 
 			bound := int64(0)
@@ -717,9 +829,27 @@ func (g *tableGen) emitTableDescriptor(st *ir.Struct) {
 				countOffset = fmt.Sprintf("(uint32_t) offsetof( %s, %s )", st.Name, companion)
 			}
 
+			elemSizeOverride := ""
+			if f.Type.Pointer {
+				// a pointer's storage IS the reference slot: offset names it,
+				// elem_size is the slot's width, and there is no companion
+				elemSizeOverride = "(uint32_t) sizeof( TableRef )"
+				counted = false
+				bound = 0
+			}
+			if elemSizeOverride != "" {
+				elemSize = elemSizeOverride
+				countOffset = "0xffffffffu"
+			}
 			table := "NULL"
 			if _, isStruct := f.Type.Ref.(*ir.Struct); f.Type.Kind == ir.TNamed && isStruct {
-				table = fmt.Sprintf("TableType%s()", f.Type.Name)
+				if hoisted {
+					// an ADDRESS, not a call: constant-initialisable, so a
+					// self-reference (Node -> *Node) is simply &NodeTableInfo
+					table = "&" + f.Type.Name + "TableInfo"
+				} else {
+					table = fmt.Sprintf("%sTableType()", f.Type.Name)
+				}
 				g.noteRef(f.Type.Name)
 			}
 
@@ -740,17 +870,34 @@ func (g *tableGen) emitTableDescriptor(st *ir.Struct) {
 				enumName = fmt.Sprintf("+[]( uint64_t v ) { return EnumName( %s( v ) ); }", f.Type.Name)
 			}
 
-			g.pf("        { \"%s\", \"%s\", 0x%04x, %d, %v, %v, %d, (uint32_t) offsetof( %s, %s ), %s, %s, %s, %s, %s, %s, %s, %s, \"%s\" },\n",
-				f.Name, tableFieldTypeName(f), id, kind, isArray, counted, bound,
+			pointerColumn := ""
+			if g.anyVariable {
+				pointerColumn = fmt.Sprintf("%v, ", f.Type.Pointer)
+			}
+			g.pf("%s    { \"%s\", \"%s\", 0x%04x, %d, %v, %s%v, %d, (uint32_t) offsetof( %s, %s ), %s, %s, %s, %s, %s, %s, %s, %s, \"%s\" },\n",
+				indent, f.Name, tableFieldTypeName(f), id, kind, isArray, pointerColumn, counted, bound,
 				st.Name, f.Name, elemSize, countOffset, table,
 				hasRange, rangeMin, rangeMax, enumMax, enumName, guards[f.Name])
 		}
-		g.pf("    };\n")
-		g.pf("    static const TableTypeInfo info = { \"%s\", (uint32_t) sizeof( %s ), %d, fields };\n",
-			st.Name, st.Name, len(st.Fields))
-	} else {
-		g.pf("    static const TableTypeInfo info = { \"%s\", (uint32_t) sizeof( %s ), 0, NULL };\n",
-			st.Name, st.Name)
+		if hoisted {
+			g.pf("};\n")
+			g.pf("inline const TableTypeInfo %sTableInfo = { \"%s\", (uint32_t) sizeof( %s ), %d, %sTableFields%s };\n",
+				st.Name, st.Name, st.Name, len(st.Fields), st.Name, g.modeColumn(st))
+		} else {
+			g.pf("    };\n")
+			g.pf("    %s TableTypeInfo info = { \"%s\", (uint32_t) sizeof( %s ), %d, fields%s };\n",
+				infoQualifier, st.Name, st.Name, len(st.Fields), g.modeColumn(st))
+		}
+	case hoisted:
+		g.pf("inline const TableTypeInfo %sTableInfo = { \"%s\", (uint32_t) sizeof( %s ), 0, NULL%s };\n",
+			st.Name, st.Name, st.Name, g.modeColumn(st))
+	default:
+		g.pf("    %s TableTypeInfo info = { \"%s\", (uint32_t) sizeof( %s ), 0, NULL%s };\n",
+			infoQualifier, st.Name, st.Name, g.modeColumn(st))
+	}
+	if hoisted {
+		g.pf("inline const TableTypeInfo * %sTableType() { return &%sTableInfo; }\n\n", st.Name, st.Name)
+		return
 	}
 	g.pf("    return &info;\n}\n\n")
 }

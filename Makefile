@@ -69,6 +69,7 @@ SCHEMAS      := $(wildcard examples/*.schema)
 SCHEMAS128   := $(wildcard examples128/*.schema)
 SCHEMAS_BENCH := $(wildcard bench/corpus/*.schema)
 SCHEMAS_TABLES := $(wildcard tables/examples/*.schema)
+SCHEMAS_TABLES_POINTERS := $(wildcard tables/pointers/*.schema)
 
 all: bin/schema
 
@@ -198,19 +199,40 @@ build/schema_test_guard: build/guard-generated/.stamp test/guard/main.cpp
 # The tables corpus (SPEC-TABLES.md): the tabledemo unit plus the
 # two-generation evolution pair (tblv1/tblv2), generated at build time into
 # build/ — test-only, never part of the committed generated/ tree.
-build/tables-generated/.stamp: bin/schema $(SCHEMAS_TABLES) test/tables/V1.schema test/tables/V2.schema
+build/tables-generated/.stamp: bin/schema $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) test/tables/V1.schema test/tables/V2.schema test/tables/P1.schema test/tables/P2.schema
 	@mkdir -p build/tables-generated
 	./bin/schema generate --lang cpp --out build/tables-generated/examples tables/examples
+	./bin/schema generate --lang cpp --out build/tables-generated/pointers tables/pointers
 	./bin/schema generate --lang cpp --out build/tables-generated/v1 test/tables/V1.schema
 	./bin/schema generate --lang cpp --out build/tables-generated/v2 test/tables/V2.schema
+	./bin/schema generate --lang cpp --out build/tables-generated/p1 test/tables/P1.schema
+	./bin/schema generate --lang cpp --out build/tables-generated/p2 test/tables/P2.schema
 	@touch $@
+
+# The ZERO-COST GATE (SPEC-TABLES.md): a table with no pointer in its by-value
+# closure must pay NOTHING for the pointer machinery — no builder, no arena, no
+# handles, no lifecycle surface, no extra descriptor columns. The pointer-free
+# corpus's generated headers must not contain one symbol of it. (The stronger
+# one-time proof — byte-identical emission against the pre-pointer baseline —
+# is recorded in the round log; this is the standing gate.)
+.PHONY: tables-zero-cost
+tables-zero-cost: build/tables-generated/.stamp
+	@for f in build/tables-generated/examples/*Table.h build/tables-generated/v1/*Table.h \
+	          build/tables-generated/v2/*Table.h build/tables-generated/p1/*Table.h; do \
+		if grep -nE "TableArena|TableSlot|TableWorker|TableRef|TableRegion|kTableSegment|kTableSlab|kTableMaxDepth|is_pointer|Builder|LayoutId|OpenWalk|PackMeasure|LoadMeasure|Cook|Open\\(" $$f; then \
+			echo "ZERO-COST GATE FAILED: pointer machinery leaked into $$f"; exit 1; \
+		fi; \
+	done
+	@echo "tables zero-cost gate: value-only tables carry no pointer machinery"
 
 # Deliberately compiled WITHOUT -I$(SERIALIZE): the generated Table headers
 # carry no serialize dependency, and this build proves it stays that way.
 build/schema_test_tables: build/tables-generated/.stamp test/tables/main.cpp
 	@mkdir -p build
-	$(CXX) -std=c++17 -Wall -Wextra -Werror -ffp-contract=off \
-		-Ibuild/tables-generated/examples -Ibuild/tables-generated/v1 -Ibuild/tables-generated/v2 \
+	$(CXX) -std=c++17 -Wall -Wextra -Werror -ffp-contract=off -pthread \
+		-Ibuild/tables-generated/examples -Ibuild/tables-generated/pointers -Itest/tables \
+		-Ibuild/tables-generated/v1 -Ibuild/tables-generated/v2 \
+		-Ibuild/tables-generated/p1 -Ibuild/tables-generated/p2 \
 		test/tables/main.cpp -o $@
 
 build/schema_test_random: generated/cpp/.stamp test/random_main.cpp
@@ -365,6 +387,7 @@ test: build/schema_test build/schema_test_guard build/schema_test_tables build/s
 	./build/schema_test
 	./build/schema_test_guard
 	./build/schema_test_tables
+	$(MAKE) tables-zero-cost
 	./build/schema_test_random
 	./build/schema_test_ludicrous
 	cd test/c && ../../build/schema_test_c
@@ -451,8 +474,11 @@ check: bin/schema
 	./bin/schema check examples
 	./bin/schema check examples128
 	./bin/schema check tables/examples
+	./bin/schema check tables/pointers
 	./bin/schema check test/tables/V1.schema
 	./bin/schema check test/tables/V2.schema
+	./bin/schema check test/tables/P1.schema
+	./bin/schema check test/tables/P2.schema
 	./bin/schema check bench/corpus/Bench.schema
 	./bin/schema check bench/corpus/RealWorld.schema
 
@@ -466,8 +492,11 @@ fmt: bin/schema
 	./bin/schema fmt examples
 	./bin/schema fmt examples128
 	./bin/schema fmt tables/examples
+	./bin/schema fmt tables/pointers
 	./bin/schema fmt test/tables/V1.schema
 	./bin/schema fmt test/tables/V2.schema
+	./bin/schema fmt test/tables/P1.schema
+	./bin/schema fmt test/tables/P2.schema
 	./bin/schema fmt bench/corpus/Bench.schema
 	./bin/schema fmt bench/corpus/RealWorld.schema
 

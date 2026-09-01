@@ -251,6 +251,13 @@ type FieldType struct {
 	SizeExpr Expr   // TString/TBytes: the declared N expression
 	Name     string // TNamed
 	Ref      Decl   // TNamed: *Struct, *Enum, *Flags or *Union
+
+	// Pointer marks a `*T` field: a POINTER to a table, not a by-value
+	// nesting (SPEC-TABLES.md). Only ever set on a TNamed field whose Ref is
+	// a table, declared inside a table body — the checker refuses every other
+	// spelling by name. A pointer's presence is what makes its owner a
+	// VARIABLE-LENGTH table (ir.VariableTables).
+	Pointer bool
 }
 
 // GoExportName is the one true mapping from a schema field name to its

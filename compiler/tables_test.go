@@ -152,8 +152,8 @@ func TestGeneratedTableCodeAllocatesNothing(t *testing.T) {
 	}
 	// the load-bearing surfaces are present
 	for _, want := range []string{
-		"TableMeasureConfig", "TableSaveConfig", "TableReadConfig", "TableWriteConfig",
-		"TableTypeConfig", "struct TableReport",
+		"ConfigMeasure", "ConfigSave", "ConfigLoad", "ConfigSaveBody", "ConfigLoadBody",
+		"ConfigTableType", "struct TableReport",
 		"static_assert( std::is_trivially_copyable<Config>::value",
 		"static_assert( std::is_standard_layout<Config>::value",
 	} {
@@ -168,4 +168,259 @@ func TestGeneratedTableCodeAllocatesNothing(t *testing.T) {
 			t.Errorf("generated table header contains %q — it must stand alone", banned)
 		}
 	}
+}
+
+const pointerSrc = packetSrc + `
+table Leaf
+{
+    quality int32 = 2 | min = 0, max = 4
+}
+
+table Node
+{
+    value int32
+    next  *Node
+}
+
+table Plain
+{
+    scale float32 = 1.0
+}
+
+table Root
+{
+    head *Node
+    leaf *Leaf
+    meta Plain
+}
+`
+
+// tableHeader returns the generated Table header's text.
+func tableHeader(t *testing.T, src string) string {
+	t.Helper()
+	files, err := New().Generate(unitFromSource(t, src), "cpp", Options{})
+	if err != nil {
+		t.Fatalf("generate: %v", err)
+	}
+	for name, body := range files {
+		if strings.HasSuffix(name, "Table.h") {
+			return string(body)
+		}
+	}
+	t.Fatal("no Table header generated")
+	return ""
+}
+
+// TestZeroCostForValueOnlyTables is the mode's whole justification, at the
+// grain the property actually holds: a UNIT whose tables are all fixed-size
+// emits none of the pointer machinery — no builder, no arena, no reference
+// type, no lifecycle surface, not one extra descriptor column, not one extra
+// include (SPEC-TABLES.md §2.2). Per TABLE the guarantee is narrower and
+// TestPointerSurfaceEmitted states it exactly.
+func TestZeroCostForValueOnlyTables(t *testing.T) {
+	header := tableHeader(t, tableSrc)
+	for _, leak := range []string{
+		"TableArena", "TableSlot", "TableWorker", "TableRef", "TableRegion",
+		"kTableSegment", "kTableSlab", "kTableMaxDepth", "is_pointer", "variable",
+		"Builder", "LayoutId", "OpenWalk", "PackMeasure", "LoadMeasure",
+		"Cook", "Open", "<atomic>", "<cstdlib>", "template",
+	} {
+		if strings.Contains(header, leak) {
+			t.Errorf("pointer machinery leaked into a value-only unit: %q", leak)
+		}
+	}
+	// what a value-only table DOES get: the struct and the three free functions
+	for _, want := range []string{
+		"struct Config", "ConfigMeasure", "ConfigSave", "ConfigLoad",
+	} {
+		if !strings.Contains(header, want) {
+			t.Errorf("value-only table lost its surface: %q missing", want)
+		}
+	}
+}
+
+// TestPointerSurfaceEmitted: the variable-length surface appears exactly where
+// a pointer does, and the value-only table SHARING THE UNIT still gets none of
+// it — the mode is per table, not per file.
+func TestPointerSurfaceEmitted(t *testing.T) {
+	header := tableHeader(t, pointerSrc)
+	for _, want := range []string{
+		"struct TableArena", "struct TableRef", "struct TableSlot",
+		"struct RootBuilder", "struct NodeBuilder",
+		"RootLayoutId", "RootCook", "RootOpen", "RootLoadMeasure", "RootOpenWalk",
+		"NodeAt(", "NodeEmplace(", "TableRef next;", "TableRef head;",
+		"#include <atomic>",
+	} {
+		if !strings.Contains(header, want) {
+			t.Errorf("the pointer surface is missing %q", want)
+		}
+	}
+	// ---- the PER-TABLE property, stated exactly ----
+	//
+	// A value-only table sharing a unit with pointered ones gets: no Builder,
+	// no pointer-graph walkers, and codecs identical to the ones it would have
+	// had in a pointer-free unit — no ctx parameter, no depth parameter, no
+	// template. What it DOES share with the unit are the per-UNIT facts: the
+	// arena runtime and the two extra descriptor columns, which are emitted
+	// once per header and belong to the unit, not to any table in it.
+	for _, absent := range []string{
+		"struct PlainBuilder", "PlainPackMeasure", "PlainPack(",
+		"PlainLoadMeasureBody", "PlainEmplace", "PlainCook", "PlainOpen(",
+		"PlainLayoutId", "PlainLoadBuilder",
+	} {
+		if strings.Contains(header, absent) {
+			t.Errorf("a value-only table in a pointered unit grew %q", absent)
+		}
+	}
+	// its codecs are the by-value ones, character for character
+	for _, want := range []string{
+		"inline int64_t PlainMeasure( const Plain & value )",
+		"inline bool PlainSaveBody( TableWriter & w, const Plain & value )",
+		"inline bool PlainLoadBody( TableReader & r, Plain & value )",
+		"inline bool PlainLoad( Plain & value, const uint8_t * buffer, int64_t bytes, TableReport * report )",
+	} {
+		if !strings.Contains(header, want) {
+			t.Errorf("a value-only table in a pointered unit lost its by-value codec: %q", want)
+		}
+	}
+	// it DOES get an Open walk: Open bounds the count companions of every
+	// by-value nested member, and a fixed table nested in a variable root is
+	// exactly such a member
+	if !strings.Contains(header, "PlainOpenWalk") {
+		t.Error("a value-only table lost its Open bounds walk — its companions would go unchecked")
+	}
+	// Leaf is POINTED AT but pointer-free: it needs allocation and resolution,
+	// and still no builder
+	if strings.Contains(header, "struct LeafBuilder") {
+		t.Error("a pointed-at but pointer-free table grew a Builder")
+	}
+	if !strings.Contains(header, "LeafEmplace(") {
+		t.Error("a pointed-at table lost its allocation entry")
+	}
+	// a variable-length table is never held by value: no by-value Load
+	if strings.Contains(header, "inline bool RootLoad( Root & value") {
+		t.Error("a pointer-bearing table emitted a by-value Load")
+	}
+}
+
+// TestPointerGenerationDeterministic: regeneration is byte-stable, pointer
+// graphs and layout ids included.
+func TestPointerGenerationDeterministic(t *testing.T) {
+	first := tableHeader(t, pointerSrc)
+	for range 3 {
+		if again := tableHeader(t, pointerSrc); again != first {
+			t.Fatal("regeneration is not byte-stable across runs")
+		}
+	}
+}
+
+// TestLayoutIdMovesWithTheSchema: the cooked form's build lock. The rule is
+// exact — it MOVES when the packed layout moves, and HOLDS when it does not,
+// because a false alarm invalidates every cooked file in existence.
+func TestLayoutIdMovesWithTheSchema(t *testing.T) {
+	base := layoutIdOf(t, tableHeader(t, pointerSrc))
+
+	moves := []struct {
+		name string
+		src  string
+	}{
+		{"widening a field", strings.Replace(pointerSrc, "value int32", "value int64", 1)},
+		{"renaming a field without was", strings.Replace(pointerSrc, "meta Plain", "info Plain", 1)},
+		{"reordering two fields", strings.Replace(pointerSrc,
+			"    head *Node\n    leaf *Leaf", "    leaf *Leaf\n    head *Node", 1)},
+		{"adding a field", strings.Replace(pointerSrc, "    meta Plain", "    extra int32\n    meta Plain", 1)},
+		{"turning a by-value nesting into a pointer", strings.Replace(pointerSrc, "meta Plain", "meta *Plain", 1)},
+	}
+	for _, tc := range moves {
+		if layoutIdOf(t, tableHeader(t, tc.src)) == base {
+			t.Errorf("%s did not move the layout id — a stale cooked file would be pointed at", tc.name)
+		}
+	}
+	_ = base
+
+	// HOLDS: a `was` rename moves no byte. The field keeps its wire id, keeps
+	// its offset, and every cooked file in the world stays valid — so the id
+	// must not budge. This is why the digest keys fields by WIRE ID and not by
+	// source name.
+	// The id's VALUE is the schema digest xor'd with this build's sizeof and
+	// offsetof terms. A `was` rename cannot change any of those values — same
+	// type, same field order, same offsets — so identity of the digest plus
+	// identity of the term structure IS identity of the value. The field's
+	// spelling inside offsetof() is the only thing allowed to differ, and
+	// normalising it is what separates "the value held" from "the text held".
+	renamedWithWas := strings.Replace(pointerSrc, "    meta Plain", "    facts Plain | was = \"meta\"", 1)
+	renamedExpr := layoutIdOf(t, tableHeader(t, renamedWithWas))
+	if layoutDigestOf(t, renamedExpr) != layoutDigestOf(t, base) {
+		t.Error("a `was` rename moved the layout id's schema digest — it moves no byte, and invalidating every cooked file for it is a false alarm")
+	}
+	if normalizeOffsets(renamedExpr) != normalizeOffsets(base) {
+		t.Error("a `was` rename changed the layout id's sizeof/offsetof terms — a rename moves no member, so every term must be value-identical")
+	}
+}
+
+// layoutDigestOf returns the schema-side digest constant that opens a layout
+// id expression.
+func layoutDigestOf(t *testing.T, expr string) string {
+	t.Helper()
+	i := strings.Index(expr, "0x")
+	if i < 0 {
+		t.Fatalf("no digest constant in %q", expr)
+	}
+	end := strings.IndexByte(expr[i:], '\n')
+	if end < 0 {
+		t.Fatalf("no digest constant in %q", expr)
+	}
+	return strings.TrimSpace(expr[i : i+end])
+}
+
+// normalizeOffsets rewrites `offsetof( T, field )` to `offsetof( T, ? )`, so
+// two expressions compare on the terms' VALUES rather than on the spelling of
+// a field that was renamed.
+func normalizeOffsets(expr string) string {
+	var b strings.Builder
+	for {
+		i := strings.Index(expr, "offsetof( ")
+		if i < 0 {
+			b.WriteString(expr)
+			return b.String()
+		}
+		comma := strings.Index(expr[i:], ", ")
+		close := strings.Index(expr[i:], " )")
+		if comma < 0 || close < 0 {
+			b.WriteString(expr)
+			return b.String()
+		}
+		b.WriteString(expr[:i+comma])
+		b.WriteString(", ? ")
+		expr = expr[i+close+2:]
+	}
+}
+
+// TestLayoutIdCarriesTheABI: the digest is not schema-only. Field offsets ride
+// in it as compile-time terms, so a padding or ABI difference that shifts a
+// member refuses the cooked file instead of misreading it — a fact no
+// schema-side test can produce, and one the emitted expression must show.
+func TestLayoutIdCarriesTheABI(t *testing.T) {
+	expr := layoutIdOf(t, tableHeader(t, pointerSrc))
+	if !strings.Contains(expr, "sizeof( Root )") {
+		t.Error("the layout id does not mix this build's sizeof")
+	}
+	for _, want := range []string{
+		"offsetof( Root, head )", "offsetof( Root, leaf )", "offsetof( Root, meta )",
+		"offsetof( Node, next )", "offsetof( Leaf, quality )",
+	} {
+		if !strings.Contains(expr, want) {
+			t.Errorf("the layout id does not mix %s — a member that moved would not refuse", want)
+		}
+	}
+}
+
+func layoutIdOf(t *testing.T, header string) string {
+	t.Helper()
+	i := strings.Index(header, "inline constexpr uint32_t RootLayoutId =")
+	if i < 0 {
+		t.Fatal("no RootLayoutId in the generated header")
+	}
+	end := strings.Index(header[i:], ";")
+	return header[i : i+end]
 }

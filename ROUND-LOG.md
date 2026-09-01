@@ -1,188 +1,284 @@
-# elixir round two — ROUND-LOG
+# tables POINTER SEMANTICS — ROUND-LOG
 
-One line per milestone: lever name, paired numbers, decision. A future resume
-reads the round's state from this file plus the branch commits alone.
+One line per unit: what landed, the ruling it serves, the decision taken. A
+future resume reads the round's state from this file plus the branch commits.
 
-- RESUME 2026-09-01: process death mid-round; branch had 2e71846 (fr fast path,
-  Veltkamp/Dekker) only. Its profile findings died with the worker — re-profiling.
-  Standing: elixir 1364% (bench/results/2026-09-01-sitting3-arm64-macbook.csv:
-  write 449772 msg/s MEDIAN, round_trip 262329 msg/s MEDIAN — the same row's
-  round_trip MAX is 262385, which is the number the §2.9 statistic and the
-  certification bullet below both quote; the two figures are the same sitting
-  read off different columns, not a disagreement). Board home: issue #174.
-- PROFILE (fresh, branch head, eprof 30k + tprof 200k iters, write and rt
-  separately, outputs in session scratch): WRITE — w_bench_mixed_stats 26.7%,
-  write_bench_mixed own 21.8%, w_bench_mixed_entities 16.0%, cf_quantize 14.8%
-  (0.27us own/call), fr 13.0% (15 calls/msg), cf_clamp01 2.4%, f32/f64_bits 1.8%.
-  RT — r_bench_mixed_stats 29.6% (0.09us/call, 41 calls/msg), w_stats 11.6%,
-  fr 10.1% (27/msg), write_bm 7.7%, read_bm own 7.5%, w_entities 6.9%,
-  cf_quantize 6.2%, r_entities 5.0%, cf_decode 4.5%, Enum.reverse+lists:reverse
-  3.7%, binary:match 1.2%. The profile names: (1) stats read clause, (2) float
-  pipeline (fr/cf_quantize), (3) reverse elimination, (4) write barrier appends.
-  rd/rdw are compiler-inlined (absent from traces) — their cost rides the callers.
-- HARNESS-VS-CODEC SPLIT (owner question, eprof by module): nothing was
-  filtered from the profile summaries — the only non-codec entries eprof
-  recorded inside the timed region are the driver loop frames themselves:
-  write 1.58% (Prof.write_loop, the elem/&&&/byte_size/acc frame mirroring
-  the runner's dd_write_loop), rt 1.03% (Prof.rt_loop); erlang:apply +
-  compiler shims 0.00%. Everything else, including binary:decode_unsigned
-  (rd/rdw tail fallback), binary:match (the reader's player_name NUL check,
-  Bench.ex:2339), and lists:reverse/Enum.reverse (element-loop terminals), is
-  the generated codec + emitted helpers: codec share 98.4% of write, 99.0% of
-  rt. The certification runner's golden gates run OUTSIDE its timed region and
-  its per-run sink is one Process.put per run, not per iteration. Harness is
-  immaterial (<2% both paths, well under the 5% bar) — no harness-parity
-  exclusion applies; lever math stands on codec time alone.
-- INSTRUMENT FINDING: a paired run that measures write then rt in ONE VM
-  poisons the rt comparison (heap state from the write loop; rt read 4500-4800
-  ns/msg vs 3826 clean, matching certification's 262k msg/s). Lever decisions
-  now use single-path pair runs. Between-invocation write deltas can flip sign
-  (+4.8/-3.4%) — decisions use repeated invocations + max statistic.
-- INSTRUMENT CALIBRATION (A/A null, and the correction it forces): the pair
-  instrument timed arm A then arm B every round, with no rotation. It now
-  ALTERNATES arm order by round parity. The A/A null — both arms the same
-  module, a pure rename, wire gate 64/64 — is what says whether a ratio
-  means anything, and it was run on all three paths at 400k iters x 7 rounds:
-    read  B/A 0.998, 1.003        -> +/-0.3%, trustworthy
-    rt    B/A 1.012, 0.995        -> +/-1.2%, trustworthy well above that
-    write B/A 1.045, 0.959, 1.057 -> +/-5%,   NOT trustworthy at lever scale
-  Rotation did not rescue the write path. The bias there is not a slot effect:
-  within one invocation every round of one arm is faster than every round of
-  the other, and which arm that is flips between invocations — a whole-VM
-  layout/GC-regime effect the max statistic cannot average out. So the write
-  path's null band is the size of every write lever this round decided, and
-  the honest statement is that this instrument DOES NOT RESOLVE write-time
-  differences of a few percent, in either direction.
-  Allocation is the axis that survives: across every null run the two arms'
-  words reclaimed agree to under 0.001% on write (794760324 vs 794763984) and
-  under 0.02% on read and rt. Word counts are what the write-path decisions
-  below now rest on. The read and rt TIMES stand on their own: read gains of
-  11-14% sit ~40x above a 0.3% null, and rt gains of 7-8% sit ~6x above a
-  1.2% null.
-- LEVER fr (2e71846, inherited from dead worker): KEEP, ON ALLOCATION.
-  Decisive metric — GC words reclaimed on the write loop 1021.8M -> 601.3M,
-  -41% (the same -41% the round first measured at its own smaller scale,
-  167M vs 284M): the JIT keeps the Veltkamp/Dekker temporaries unboxed, so
-  the arithmetic path allocates one float where construct/match allocated a
-  binary plus a float. That axis is deterministic and the A/A null puts the
-  two arms within 0.001% of each other, so a 41% gap is real.
-  Supporting: micros cf_decode 89.2->62.3 ns (1.43x), cf_quantize 108.9->83.4
-  (1.31x).
-  WITHDRAWN: the full-bench write timing (best-vs-best 2222 vs 2329 ns,
-  1.048x, faster in 6/7 invocations) is INSIDE the write null's +/-5% band and
-  is UNRESOLVED BY THE INSTRUMENT — it is not evidence for or against the
-  lever. rt 1.0002x and read 1.003x were reported as neutral and remain so;
-  both sit inside their own (much tighter) nulls, which is what "neutral"
-  should mean.
-- LEVER B (single-match-context stats read), PROTOTYPE VERDICT: build. Design:
-  4 stats per 9-byte head-match (<<w1::little-40, w2::little-32, rest::binary>>,
-  constant carry c = (8 - start_phase) mod 8; lo = carry ||| w1 <<< c up to 47
-  bits, hi = lo >>> 36 ||| w2 <<< (c+4) up to 43 bits — fixnum envelope holds),
-  body-recursive so the list builds IN ORDER on unwind (no Enum.reverse for the
-  fast portion); scalar rd() path kept as entry fallback, tail (<4), and
-  truncated-buffer fallback. +bin_opt_info: "OPTIMIZED: match context reused"
-  at all three fast-loop sites. Paired vs head: read 1833.8 -> 1647.7 ns
-  (1.113x), rt 3916.1 -> 3743.9 ns (1.046x); GC words down ~7%. Tail-call acc
-  variant alone was read 1.071x/rt 1.03x; body-recursion added 1.036x/1.011x.
-- LEVER B LANDED (emitter form): fastReadClauses in internal/codegen/elixir/
-  functions.go — aligning entry + body-recursive single-match-context clause
-  behind every qualifying array read loop (static element width <= 20 bits,
-  plain fields only — no branches/unions/strings/arrays; m elements per
-  iteration with m*eb = 0 mod 8, capped 72 bits/16 elems/ArrayBound). Feeds
-  the existing element emission through readFeed (chained fixnum registers,
-  runtime carry only ever `c + literal`). Emitter-form paired vs pre-lever
-  head: read 1746.8 -> 1571.7 ns (1.111x, matching the 1.113x prototype), rt
-  4173.0 -> 3867.8 best (1.079x best-vs-best on a thermally noisy sitting;
-  prototype said 1.046x), write neutral (1.016x, noise). Wire gate 64/64
-  byte-identical; test/elixir + test/elixir-ludicrous OK; mix format clean;
-  goldens re-pinned (text only — wire bytes untouched). Also fires for
-  bench_packet blob (9x8-bit) and examples arrays (Wire/Clauses/Degenerate).
-- HYPOTHESIS A (iolist emission) REFUTED. Writers building [data | <<segs>>]
-  trees with one :erlang.iolist_to_binary at return, wire gate 64/64 green.
-  RE-MEASURED with the rotating instrument at 400k iters x 7 rounds:
-  write 2596.3 -> 2943.7 ns/msg (1.134x SLOWER), rt 4051.2 -> 4359.5 (1.076x
-  SLOWER), words reclaimed on the write loop 794.6M -> 1019.4M (1.283x MORE).
-  The refusal stands on the timing, which is the one place a write-time claim
-  survives the null: 13.4% is well outside the +/-5% band, and the direction
-  reproduced in every arm order tried.
-  CORRECTED: the first write-up said words 267M -> 582M (2.2x). That figure
-  does not reproduce; the allocation penalty is 1.28x, not 2.2x. Direction
-  unchanged, magnitude overstated.
-  Mechanism: bs_append grows a writable binary in place (the segment copy is
-  paid either way), while the iolist pays a fresh heap binary + cons per
-  barrier AND the final flatten traversal+copy. Zero-intermediate-append
-  emission is a loss on the BEAM; the lever-M multi-segment barrier append
-  stands as the floor's write shape.
-- LEVER u8 (write unroll 4->8) REFUSED: write 2462.4 vs 2496.8 ns (1.4%
-  AGAINST), rt 0.99x noise — the append count per stat was already amortized
-  at 4-wide; the fixnum cap bounds what wider grouping can remove (#202's law
-  reconfirmed at the next scale).
-- LEVER rc (combined range check, masked one-branch form) REFUSED: write
-  2349.0 vs 2363.4 ns (0.6% against, noise) — predicted branches were free.
-- LEVER C (cf decode tables) LANDED: a compressed-float read whose quantum
-  count is <= 1024 decodes through a module-attribute tuple (elem/2) computed
-  at GENERATED-module compile time by literally the cf_decode chain (full fr
-  with guard + fr_slow + nonfinite mapping) — equality by construction, and
-  verified: 201-entry domain === cf_decode on all values, wire gate 64/64.
-  Prototype: read 1638.3 -> 1431.9 ns (1.144x), rt 1.069x. Emitter form:
-  read 1652.6 -> 1446.6 (1.142x), rt 1.070x. Tables: Bench 1 (aim, 201
-  entries), RealWorld 5, Wire 1. cf_decode stays the shipped path past 1024.
-- LEVER cfq (per-declaration cf_quantize specialization, constants folded)
-  REFUSED: write 2449.1 vs 2453.2 ns (0.2%, noise) — BEAM argument passing
-  and literal loading are already free; the quantize cost is the float chain
-  itself, which the wire contract pins step-for-step.
-- REFUSALS UNDER THE NULL (u8, rc, cfq): all three are write-path deltas of
-  0.2-1.4%, so all three sit deep inside the +/-5% write null and none of them
-  was ever resolved by the instrument either. They STAND, unchanged, and the
-  null makes them MORE secure rather than less: each was refused on a number
-  pointing slightly AGAINST the candidate, and a bias that can manufacture a
-  few percent in either direction cannot manufacture evidence for refusing —
-  the worst it can do is hide a small win, and a win this instrument cannot
-  see is not one worth carrying the complexity for. Each refusal also has a
-  mechanism behind it (fixnum cap, free predicted branches, free literal
-  loading), which is what the decision actually rests on.
-- CONSIDERED, NOT BUILT: direct float segments in barrier appends (skip
-  f32/f64_bits construct/match, ~1.8% of write) — refused by reasoning: the
-  {:nonfinite, bits} write form makes every float segment conditional, which
-  breaks the one-construction-per-barrier shape lever M bought; revisit only
-  if a nonfinite-free declaration class ever exists.
-- CERTIFICATION PAIR (quick legs, one sitting, --out scratch; §2.9 statistic
-  is round_trip over MAX rates): before (clean worktree at origin/main
-  b63c22e): write 427700 max / 426651 median, rt 253090 max / 242109 median
-  (warm sitting — spreads 2.3/4.7%). after (branch head): write 449568 max /
-  449244 median, rt 275088 max / 274908 median (spreads 0.1%). In-sitting rt:
-  1.087x on max (medians 1.135x — the before rt max is a single cool-run
-  outlier). The rt gain is the one that stands: it is corroborated by the
-  paired instrument, whose rt null is +/-1.2%, and by the adversarial
-  reviewer's independent re-run.
-  WITHDRAWN: the in-sitting WRITE figure (1.051x on max, 1.053x on median) is
-  the size of this round's demonstrated write-path measurement uncertainty and
-  is UNRESOLVED. The certification runner is not the pair instrument, but the
-  before leg's own write spread was 2.3% and the A/A null puts the pair
-  instrument's write band at +/-5%; nothing this round measured can separate a
-  5% write move from the noise. No write-time improvement is claimed. What the
-  branch does claim on the write path is allocation: -41% words on the fr
-  lever (above), an axis that reproduces to 0.001%.
-  Against the standing sitting3 ledger point (rt max 262385, cpp rt max
-  3579797, = 1364%): after rt max 275088
-  puts elixir at ~1301% of generated C++ — cross-sitting projection, a full
-  sitting re-certifies. CSVs: scratchpad/prof/cert-before-quick.csv,
-  cert-after-quick.csv (session scratch, never bench/results/).
-- GATES: make test green (nine legs), shape-gate clean (19 exemptions, all
-  on ledger), generated-current green (tree clean post-test), mix format
-  clean, gofmt/vet/modernize clean, ZERO warnings from every generated Elixir
-  module (each required standalone; the whole generated tree, not just the
-  legs make test compiles).
-- DRAFT PR: https://github.com/mas-bandwidth/schema/pull/240 — round closed;
-  left in draft per the round brief (never marked ready, never merged).
-- ADVERSARIAL REVIEW, repaired: (1) cf_decode/4 was emitted dead in Bench.ex —
-  needCf gated quantize and decode together and the write path set it, so a
-  module whose every compressed-float read went through a table still carried
-  the function, and the compiler said so. Split into needCfQ/needCfD; fr/1 and
-  fr_slow/1 back both halves. Bench.ex is the only module affected, 16 lines
-  removed, wire bytes untouched. (2) the pair instrument's missing rotation and
-  the A/A null it hid — instrument fixed, null published above, every write-time
-  claim in this log restated as unresolved. (3) the iolist allocation figure
-  re-measured and corrected, 2.2x -> 1.28x. (4) the feed exclusion invariant
-  and the fast clause's ceil(n/m) frame depth written into the emitter.
-  (5) the sitting-3 median/max pair annotated at the RESUME line.
+Base: origin/main @ 5e11117 (the tables-framing PR #241 had already merged, so
+no rebase debt).
+
+## Owner rulings this round (the design's authority)
+
+1. "types can remain value semantics. tables should ALLOW pointer semantics" —
+   "we can't be a generic system if we don't have pointers to tables."
+2. Spelling: "literally same C++-like syntax for pointers is fine" → `next *Node`.
+   Table-to-table only; pointer-to-`type` refused by name.
+3. Modes are COMPILER-DERIVED, never declared: "i wouldn't want to manually have
+   to specify this… the compiler can work it out and go, oh it's the variable
+   table mode."
+4. "i think variable tables need to live in a growable array."
+5. Const vs mutable is a LIFECYCLE: "maybe you 'lock' a table and it is constant
+   from that point forward… since how else will you construct Assets.bin."
+6. "mutable vs. non-mutable tables may be different at runtime."
+7. "the builder needs to be able to be multithreaded" ("That's very flatbuffers");
+   then "I prefer lockless if possible."
+8. Naming: `<Name><Verb>` — `ChatMessageSave`, `ChatMessageLoad`,
+   `ChatMessageMeasure`, `ChatMessageBuilder` with `Alloc<T>()`/`Lock()` methods.
+   Shared symbol table ratified: "do tables and types share the same symbol
+   table then, I vote yes."
+9. Zero-cost gate: "Make sure we don't pay this cost when we have nice, small
+   messages… when the table is inferred to be value types only."
+10. "Let's assume larger types will probably have pointers to things."
+11. File-format-scale tables "can't be a struct" — pointer-bearing tables are
+    never held by value; their const surface is region + root view.
+12. "you don't need to recreate sizeof" — no generated size constants of any
+    kind. `sizeof(X)` is the memory answer, `XMeasure(value)` the wire answer.
+
+## Units
+
+- UNIT 1 — the name-first rename (ruling 8). `TableMeasureX` → `XMeasure`,
+  `TableSaveX` → `XSave`, `TableWriteX` → `XSaveBody`, `TableReadX(reader)` →
+  `XLoadBody`, `TableReadX(buffer)` → `XLoad( value, buffer, bytes, &report )`
+  (value first, report by pointer, per the owner's approved snippet),
+  `TableTypeX` → `XTableType`. The claimed-name registry grew the full
+  name-first suffix set for EVERY closure member — including the mutable-life
+  suffixes a value-only table does not emit — so a table gaining pointers later
+  never turns a legal declaration into a collision. Deliberate asymmetry
+  recorded: the TYPE wire stays verb-first (`WriteX`/`ReadX`), tables are
+  name-first; the verb position tells a reader which wire the call site is on.
+  Nine legs + tables green after the rename.
+
+- UNIT 2 — the language: `next *Node` (rulings 1, 2, 3). Scanner already had
+  `Star`; the parser accepts it in type position and the CHECKER owns every
+  rule, so a bad pointer names the real problem instead of "expected a field
+  type". Refused by name: pointer to a `type`/enum/flags/union (the founding
+  line — types remain value semantics), a pointer outside a table body, an
+  array of pointers (§12 follow-on), a specified default on a pointer (null is
+  the only value one could name). The by-value composition-cycle refusal now
+  EXEMPTS pointer edges — `table Node { next *Node }` is legal and finite,
+  while `table Node { self Node }` still refuses. Mode derivation lives in
+  `ir.VariableTables` as a least-fixed-point over BY-VALUE edges only:
+  FIXED-SIZE = no pointer in the by-value closure; VARIABLE-LENGTH = a pointer
+  anywhere in it, propagating up through by-value nesting and bounded arrays.
+  `ir.PointerTargets` names the tables that need an allocation surface.
+  Formatter: the pointer star binds tight to its target (`next *Node`) while
+  multiplication keeps its spaces (`max = K * 2`) — type position at index 1
+  is what tells them apart. The C++ emitter REFUSES a pointer-bearing unit for
+  now, loudly, so the tree stays green until unit 3 emits the backend.
+
+- UNIT 3 — the C++ variable-length backend (rulings 4, 5, 6, 7, 9, 11). The
+  MUTABLE form is a segmented slab arena: equal-size 4 MiB segments whose count
+  saturates the u32 reference space exactly (1024 -> 4 GiB), handed to workers
+  in 64 KiB slabs with ONE compare-exchange per slab and zero atomics per node.
+  Nodes are born at final offsets and segments never move, so a `T*` from Alloc
+  stays valid while other workers allocate and while the arena grows. The
+  REJECTED model is named in the emitted comment: one buffer under a lock grown
+  by realloc, whose realloc moves memory under a mid-write worker. Slack: one
+  slab tail per worker plus one per segment (<2% + threads x 64 KiB).
+  `Lock()` is one-way and IS the compaction: the arena packs into one exact
+  region, root at base, references rewritten SELF-RELATIVE — so a deref is one
+  add with no base pointer and a region relocates by pure memcpy with zero
+  fix-up. Lock's output and Load's output are the SAME representation, one view
+  API. Aliasing is not preserved anywhere (two pointers to one node pack and
+  ride as two), stated in the emitted comments and the spec.
+  Wire: a pointer rides as a nested table body — framing IDENTICAL to a
+  by-value nesting, so a field can change between the two without moving a
+  byte. Null elides; a non-null pointer rides even when the pointee is
+  all-default, or null and empty would be one value. Depth cap kTableMaxDepth
+  = 128 on every walk (save, load, cook, open): a data cycle is an ERROR, never
+  a hang. Cooked form: 32-byte header carrying magic (which is also the
+  byte-order check), a layout id digesting the schema's packed-layout facts
+  mixed with this build's own sizeof for every closure type, and the region
+  length; `<Name>Open` runs a bounds walk over the REFERENCE GRAPH only —
+  pointer slots and the count companions that bound a traversal — before
+  handing out the root. Packed references are strictly forward, so that walk is
+  cycle-free with no visited set.
+  ZERO-COST GATE, PROVEN: the whole pointer-free corpus (tables/examples,
+  test/tables/V1, test/tables/V2) regenerates BYTE-IDENTICAL to the
+  rename-applied baseline at 974ff0f — `diff -r` clean. Three leaks were found
+  and closed to get there: the descriptor's `is_pointer` column, TableTypeInfo's
+  `variable` column, and a reworded relocatability comment are now emitted only
+  in a unit that actually has pointers.
+
+- UNIT 4 — corpus, tests, gates. The pointer corpus lives in its OWN unit
+  (`tables/pointers/Graph.schema`, package graphdemo) so `tables/examples`
+  stays pointer-free and keeps proving the zero-cost gate. Graph carries a
+  value-only table (Meta), a value-only POINTER TARGET (Settings), a
+  self-recursive list (ListNode), a tree (TreeNode), a variable table nested by
+  value (Layer) and a bounded array of them — the derived mode has to get all
+  six right in one file. The evolution pair `test/tables/P1|P2.schema` turns one
+  field from a by-value nesting into a pointer and gives its target a pointer of
+  its own: both directions read, because a pointer's framing IS a by-value
+  nesting's.
+  Battery (12 new cases, all in test/tables/main.cpp): lifecycle
+  (build/measure/save/lock/relocate-by-memcpy/load/re-save byte-identical),
+  exact-capacity across a pointer graph, Lock layout determinism (two builds
+  memcmp equal; two cooks byte-identical), aliasing (two references, two nodes,
+  in the packed form AND across the wire), the data-cycle refusal (measure,
+  save, cook and Lock all refuse; nothing recurses away), the depth cap at and
+  past kTableMaxDepth, arena growth across 200k allocations with a pointer held
+  the whole time, four workers single-threaded plus a real four-thread
+  concurrent build joined before Lock, the cooked form (cook/open/point,
+  cook-open-cook stable) with a nine-case refusal battery (magic, layout id,
+  truncation, sub-header size, unaligned base, out-of-region reference, BACKWARD
+  reference, misaligned reference, out-of-bound count companion), evolution both
+  directions including load-into-builder, the null-vs-empty-pointee distinction,
+  and reflection (derived mode surfaced, is_pointer, the target descriptor,
+  a self-referential pointer resolving to its own type).
+  NEGATIVE CONTROL run: inverting the aliasing assertion turns the leg red at
+  the expected line and exit 1 — the battery is wired in, not decorative.
+  Standing gates: `make tables-zero-cost` greps the pointer-free corpus's
+  generated headers for every pointer-machinery symbol and fails the build on a
+  hit; it runs inside `make test`. Go-side: TestZeroCostForValueOnlyTables,
+  TestPointerSurfaceEmitted (per-TABLE, not per-file: a value-only table sharing
+  a pointered unit still gets no builder), TestPointerGenerationDeterministic,
+  TestLayoutIdMovesWithTheSchema.
+
+- UNIT 5 — SPEC-TABLES.md, USAGE.md, README. Spec gained §2.1 (pointers, with
+  every refusal named), §2.2 (the mode derived as a least-fixed-point over
+  by-value edges, the zero-cost gate stated as a gate, and the stated
+  assumption that size and mode correlate), §3.1 (the pointer wire: tree
+  semantics loud, null elides, a non-null pointer always rides, pointer and
+  by-value nesting wire-identical, the depth cap and what it costs), a NEW §6
+  (the two lives: value surface vs Builder→Lock→region, the two reference
+  encodings, the threading contract, both load paths, the authoring-vs-reading
+  allocation split), a NEW §7 (the cooked form — accelerator not archive,
+  layout id, the bounds walk as reads-validate-always, every refusal, alignment,
+  endianness refusing in v1). §8 reflection gained the pointer kind and the
+  derived mode; §9 relocatability now covers both forms and states measure==save
+  at exact capacity as a hard invariant; §11 grew the pointer, cycle, depth-cap
+  and cooked-file refusals; §13.1 records the rulings verbatim; a NEW §14
+  weighs all four builder-storage models with lock+realloc REJECTED and the
+  moved-node hazard named; §15 grew graph/DAG identity, arrays of pointers,
+  lifting the depth cap, cross-endian Open, the fallback loader, and the generic
+  JSON walk over the descriptors. Sections 6..15 renumbered; every code citation
+  updated to match. USAGE gained the pointer, builder/threading and cooked-form
+  sections; README gained the pointers bullet.
+
+- UNIT 6 — gates, all local, all green. `gofmt -l` clean; `go vet ./...` clean;
+  `golangci-lint run` clean (one real finding fixed: a helper left unused after
+  the language unit's temporary refusal came out); `modernize` clean (one
+  finding fixed: range-over-int); `make shape-gate` clean (19 ledgered files,
+  no new shape knowledge); `make test` EXIT 0 across all nine backend legs plus
+  the tables leg, with the zero-cost gate running inside it, and ZERO warnings
+  from the generated modules. The clone needed the read-only serialize siblings
+  and the pinned dist toolchains symlinked in to run the full matrix; nothing in
+  ~/rowan-working was written.
+
+## Adversarial review round (verdict: MERGE-WITH-CONDITIONS)
+
+Reviewer batteries at scratchpad/adv/ (adv/det/evo/tsan). Disposition per
+finding, and the re-run matrix, below.
+
+- B1 FIXED — Open's bounds walk was exponential on a forged aliased-forward
+  DAG (reviewer measured 26 nodes = 312 ms, ~60 = never). Fix is the ruled
+  high-water mark: `at >= watermark`, then `watermark = at + aligned sizeof`.
+  The invariant it rests on — Pack is pre-order bump allocation, OpenWalk
+  visits in the SAME order — is now stated at BOTH sites with "neither may
+  change alone". It also closes mid-node overlaps the alignment check caught
+  only by luck. Regression `test_open_walk_is_linear` ports the repro at
+  n = 16/26/40/64 (n = 64 would not return unbounded) plus
+  `test_open_refuses_overlap`. NEGATIVE CONTROL: with the mark disabled the
+  forged file is ACCEPTED again at n = 16 and 24.
+- B2 FIXED — Lock/Cook memcpy'd uninitialised arena padding into regions and
+  cooked FILES; the old determinism test passed on fresh-mmap luck. Segments
+  are calloc'd now. `test_lock_deterministic_on_dirty_heap` dirties the heap
+  with 0xA5 then 0x5C between builds and asserts identical regions AND
+  identical cooked files, plus zero padding bytes. NEGATIVE CONTROL: restoring
+  malloc turns it red on both assertions. The reviewer's own det.cpp now
+  reports IDENTICAL on a dirtied heap and zero padding on disk.
+- B3 FIXED — (a) `table Root`/`table Const` emitted non-compiling headers
+  because a member function hides the type name it shares. The METHODS moved
+  (Root -> GetRoot, Const -> AsConst) since Root is the spec's own canonical
+  root-table name; every remaining builder member name is now REFUSED as a
+  table name, so the door is shut rather than narrowed. `table Root` and
+  `table Const` verified compiling and running end to end. (b) Emplace, Pack,
+  PackMeasure, LoadMeasureBody, LoadBuilder, OpenWalk — plus TableInfo and
+  TableFields from the C3 fix — added to the claimed-name registry, with a
+  refusal test each.
+- C1 FIXED — by-value nesting charged depth on measure/save/load but not on
+  pack/cook/open, so a structure could Lock and Cook but not Save. Ruled fix
+  taken: ONLY POINTER EDGES CHARGE DEPTH, one rule expressed once
+  (depthSame/depthDown) and applied in all four walks.
+  `test_depth_agrees_through_by_value_nesting` builds the 127-chain through
+  Scene::ground and round-trips it through measure, save, Lock, Cook, Open and
+  Load.
+- C2 FIXED — Open never bounded count companions of by-value nested FIXED
+  tables (meta.tag_length = 30000 survived). Every closure member now gets an
+  Open walk, unions bound their tag before the arm is walked, and
+  `test_open_bounds_nested_fixed_companions` covers both a by-value nested
+  fixed table and one reached through a pointer. The reviewer's D4.2 note
+  flipped to "ok".
+- C3 FIXED — TSAN race on the descriptors' lazy link (a plain bool RMW). A
+  magic static could not have fixed it either: a self-reference re-enters its
+  own initialisation. Descriptors in a pointered unit are now
+  CONSTANT-INITIALISED namespace data with addresses for targets — verified
+  landing in __DATA,__const with no __cxx_global_var_init, and verified
+  linking across two TUs. tsan.cpp is clean; the alloc path was already clean
+  and stays so. `test_descriptors_are_constant` reads the surface from four
+  threads.
+- C4 FIXED — the layout id digested field NAMES (a `was` rename invalidated
+  every cooked file) and carried only sizeof (blind to a member that moved
+  inside an unchanged total). It now keys fields by WIRE ID — the identity
+  `was` preserves — and mixes per-field offsetof. Matrix re-run:
+  MOVES on widen / bare rename / reorder / add / by-value-to-pointer; HOLDS on
+  a `was` rename (asserted at value level: identical digest, and terms
+  identical once the renamed field's spelling inside offsetof is normalised,
+  which is value identity because a rename moves no member).
+- MINORS all done: zero-cost gate covers P1; stale TableMeasure/TableSave
+  names in comments; the cooked header's reserved words must be zero (with a
+  regression sweeping all 20 bytes); null-root guards on Measure/Save/Cook
+  from a builder; dead walker-less arms deleted; USAGE states
+  sizeof(<Name>Builder) is ~8 KB (measured 8240, arena 8200).
+- CLAIMS corrected: the PR body's zero-cost section now states the per-TABLE
+  property exactly (no Builder, no walkers, unchanged codecs) and the
+  per-UNIT one separately; TestPointerSurfaceEmitted asserts exactly that,
+  including that a value-only table DOES get an Open walk. "O(references)"
+  replaced with the linearity argument. The pointer-to-type refusal relabelled
+  COORDINATOR-DESIGNED. The Scene.base "forced rename" note dropped.
+
+RE-RUN MATRIX: make test exit 0 (nine legs + tables, 0 warnings); tables leg
+19 cases; tables-zero-cost clean; gofmt/vet/golangci-lint(0)/modernize/
+shape-gate clean; reviewer adv battery 240126 checks, the single remaining
+"failure" being their own CHECK that garbage in the header's reserved words
+still opens — now refused, which was minor 3.
+
+## Delta round (one new blocker, introduced by the C2 repair)
+
+- R1 FIXED — C2 widened Open's descend-set to ALL by-value structs, but the
+  walks were emitted per FILE and `emitVariableSurface` early-returned when a
+  file had no varMembers. A multi-file pointered unit whose second file
+  declares neither a variable table NOR a pointer target then referenced walks
+  that existed nowhere: the header did not compile. Fix taken is the second of
+  the two sketched — the OpenWalk half is keyed on the UNIT being pointered,
+  never on the file, so each walk is emitted exactly once by its DECLARING
+  file and the referencing file picks it up through the include it already
+  has. Emitting per referencing file instead would have defined each twice.
+  Value-only UNITS stay at zero cost because the key is `anyVariable`; the
+  byte-identity proof against 974ff0f was re-run post-fix and is clean.
+- MANDATORY CORPUS added: `tables/pointers` is now a genuinely multi-file
+  pointered unit. `Parts.schema` declares a native-mapped TYPE (Colour) and a
+  FIXED table (Stamp) and is deliberately BOTH pointer-free AND pointer-target
+  free — the first corpus attempt missed the bug because Stamp was a pointer
+  target, which put it in varMembers and papered over the gap. `Marks.schema`
+  declares the cross-file VARIABLE member (Marker, pointing at Tally).
+  `Graph.schema`'s new `Album` nests all three across file boundaries and
+  points at Marker. `test/tables/graph_colour.h` supplies the native type, so
+  the cross-file cpp_native case is covered too: the Open walk reaches
+  ::ColourMath through a derived-to-base conversion.
+  `test_cross_file_pointer_unit` round-trips Album through measure/save/exact
+  capacity/Lock/cook/open/load and forges three cross-file corruptions — the
+  fixed table's count, the variable member's count, and its pointer.
+  NEGATIVE CONTROLS: restoring the file-scoped emission makes GraphTable.h fail
+  to compile with ColourOpenWalk/StampOpenWalk undefined; narrowing the
+  descend-set back to variable members turns three assertions red, one of them
+  the cross-file one.
+- COSMETICS: the generated OpenWalk comment no longer cites `<X>Pack` for a
+  member that has none — a reference-free member gets a comment saying its
+  placement is decided by whatever variable table nests it, that the watermark
+  passes through untouched, and that its count companions are what the walk
+  owes. The PR body's layout-id bullet now says per-field offsetof, matching
+  C4 and the spec.
+
+RE-RUN MATRIX (post-fix): make test exit 0 (nine legs + tables, 0 warnings);
+tables leg 20 cases; zero-cost byte-identity against 974ff0f clean; grep gate
+clean; gofmt/vet/golangci-lint(0)/modernize/shape-gate clean.

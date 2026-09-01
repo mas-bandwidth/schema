@@ -117,6 +117,15 @@ would have hand-written, not an interpreter walking a schema at runtime.
   schema's take on the protobufs/flatbuffers class, beside the bitpacked
   wire rather than replacing it. The two version independently — a table
   never moves the protocol id.
+- **Pointers, where they belong.** Types stay value semantics; TABLES may
+  point at tables (`next *Node`), so linked lists, trees and optional
+  subtables are expressible. The compiler DERIVES the consequence and you
+  never declare it: a table with no pointer in its by-value closure is a
+  plain struct that pays nothing for any of this, and a table with one is
+  built through a lock-free arena, locked once into a single packed region,
+  and read through a root pointer. That region also cooks: write it verbatim
+  behind a build-locked header and a later run points at its root — no copy,
+  no parse — while the tolerant wire stays the format of record.
 - **Zero allocation, no runtime reflection** — straight-line code reading and
   writing your own buffers.
 - **Reads validate, always — in every language.** Out-of-range values are

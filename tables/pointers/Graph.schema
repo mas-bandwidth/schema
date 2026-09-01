@@ -1,0 +1,82 @@
+// Graph.schema — the POINTER corpus (SPEC-TABLES.md §2). Types remain value
+// semantics; tables allow pointer semantics, and this unit exercises every
+// consequence: recursion through a pointer edge, a tree, an optional
+// subtable, aliasing, a variable table nested by value, a bounded array of
+// variable tables — and, deliberately, a value-only table living beside them
+// all so the derived mode can be seen doing its job.
+//
+// Kept in its OWN unit, apart from tables/examples: the pointer-free corpus
+// must stay able to prove, byte for byte, that it pays nothing for any of this.
+package graphdemo
+
+const MaxLayers = 4
+
+// value-only: no pointer anywhere in its by-value closure, so it derives
+// FIXED-SIZE and gets a plain struct plus Measure/Save/Load — nothing else
+table Meta
+{
+    build int32 = 1 | min = 0, max = 1000
+    tag   string(8)
+}
+
+// value-only too, but POINTED AT: it gains the allocation and resolution
+// entries a pointer target needs, and still no builder of its own
+table Settings
+{
+    quality int32 = 2  | min = 0, max = 4
+    label   string(16)
+}
+
+// recursion through a pointer edge — the freedom the by-value cycle rule
+// could never allow
+table ListNode
+{
+    value int32
+    name  string(12)
+    next  *ListNode
+}
+
+table TreeNode
+{
+    label string(12)
+    left  *TreeNode
+    right *TreeNode
+}
+
+// a VARIABLE table that Scene nests BY VALUE: the mode propagates up through
+// by-value nesting, and every walk descends into it
+table Layer
+{
+    depth int32 = 0 | min = 0, max = 64
+    head  *ListNode
+}
+
+table Scene
+{
+    name     string(24)
+    version  int32 = 1          | min = 0, max = 99
+    head     *ListNode
+    tree     *TreeNode
+    settings *Settings
+    alias    *ListNode
+    ground   Layer
+    layers   [..MaxLayers]Layer
+    meta     Meta
+}
+
+// CROSS-FILE, and all three kinds at once: a plain type and a FIXED table
+// from Parts.schema — a file that declares NO variable table — plus a VARIABLE
+// table from Marks.schema, nested by value and pointed at from here. The Open
+// walk for each lives in the member's DECLARING file, which this one already
+// includes; emitting them in the referencing file instead would define each
+// twice, and emitting them only in files that declare a variable table leaves
+// Parts's two undefined.
+table Album
+{
+    name   string(16)
+    tint   Colour
+    stamp  Stamp
+    marker Marker
+    pin    *Marker
+    head   *ListNode
+}

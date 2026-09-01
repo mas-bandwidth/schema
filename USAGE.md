@@ -589,16 +589,16 @@ The encode surface is a measure/save split, and the caller owns every buffer
 ShipConfig ship;
 ship.health = 250.0f;
 
-int64_t size = TableMeasureShipConfig( ship );     // exact, writes nothing
+int64_t size = ShipConfigMeasure( ship );     // exact, writes nothing
 std::vector<uint8_t> buffer( size );               // or any storage you own
-TableSaveShipConfig( ship, buffer.data(), size );  // returns size — a buffer
-// of exactly TableMeasure's answer always suffices; -1 means the buffer is
+ShipConfigSave( ship, buffer.data(), size );  // returns size — a buffer
+// of exactly Measure's answer always suffices; -1 means the buffer is
 // too small, or the value violates a storage bound (a _count or _length
 // outside its declared range — measure returns -1 for those too)
 
 TableReport report;
 ShipConfig loaded;
-if ( !TableReadShipConfig( buffer.data(), size, loaded, report ) )
+if ( !ShipConfigLoad( loaded, buffer.data(), size, &report ) )
 {
     // framing damage: report.malformed is set, the good prefix is kept
 }
@@ -635,11 +635,130 @@ table GameConfig
 ```
 
 Whatever envelope you want around it — a magic, a content hash, several roots
-in one file — is a few lines of your code on top of `TableSave`/`TableRead`.
+in one file — is a few lines of your code on top of `<Name>Save`/`<Name>Load`.
 schema deliberately does not prescribe one. Tables may also reference plain
 `type`s, enums and flags; everything a table reaches gets table codecs too.
 A `type` cannot reference a table (packets stay exact-match), and a table
 cannot nest itself.
+
+### Pointers: `next *Node`
+
+Types are value semantics. Tables ALLOW pointer semantics, because a generic
+system needs pointers to tables:
+
+```
+table Node
+{
+    value int32
+    next  *Node          // recursion through a pointer is legal
+}
+
+table Scene
+{
+    head     *Node
+    settings *Settings   // an optional subtable: null when absent
+}
+```
+
+A pointer targets a `table`, never a `type` — and lives in a table body,
+never a type body. Arrays of pointers, and a specified default on a pointer,
+are refused by name.
+
+**The compiler derives the mode; you never declare it.** A table with no
+pointer anywhere in its by-value closure is FIXED-SIZE — a plain struct with
+the three functions above, and it pays nothing at all for what follows. A
+table with a pointer in that closure is VARIABLE-LENGTH, and it is never held
+by value: you build it, lock it, and read it through a root pointer.
+
+```cpp
+SceneBuilder builder;                       // MUTABLE
+Scene * root = builder.GetRoot();
+Node * first = builder.Alloc<Node>();
+first->value = 10;
+root->head = builder.Alloc<Node>();         // the slot is both node and reference
+
+builder.Lock();                             // ONE WAY, and it compacts
+const Scene * scene = builder.AsConst();      // CONST: one packed region
+const Node * head = NodeAt( scene->head );  // one add; NULL when null
+```
+
+`Lock()` walks the arena, measures it exactly and lays every node back to
+back into one region with the root at its base — zero slack, references
+rewritten self-relative, so the whole region relocates by plain `memcpy`.
+There is no unlock: to edit again, load the const form into a fresh builder.
+
+Building goes wide with no lock and no per-node atomic — one worker per
+thread, each allocating on its own front:
+
+```cpp
+SceneBuilder builder;
+std::thread workers[4];
+for ( int t = 0; t < 4; t++ )
+    workers[t] = std::thread( [&]{
+        TableWorker worker = builder.Worker();     // one per THREAD
+        Node * n = worker.Alloc<Node>();           // no lock, no atomic per node
+        ...
+    } );
+for ( auto & w : workers ) w.join();               // join, THEN lock
+builder.Lock();
+```
+
+Allocating on your own worker is safe concurrently. Writing fields of a node
+another worker allocated is your own synchronization. `Lock`, `Save`, `Cook`
+and `Open` are single-threaded. The reflection descriptors are immutable
+constant data, so reading them needs no synchronization at all.
+
+A `<Name>Builder` is about 8 KB (it carries the arena's segment table inline),
+which is fine on the stack and fine as a member; it is not something to put in
+an array of thousands.
+
+Reading from the wire, the caller owns the allocation as always:
+
+```cpp
+int64_t need = SceneLoadMeasure( wire, wire_size ); // exact, reads no values
+uint8_t * region = your_allocator( need );
+TableReport report;
+const Scene * scene = SceneLoad( region, need, wire, wire_size, &report );
+```
+
+On the wire a pointer rides as its pointee's table body — framing identical
+to a by-value nesting, so a field may change between the two and no byte
+moves. Null pointers are simply absent. **Wire v1 is a tree**: two pointers
+to one node write two bodies and load as two nodes.
+
+### The cooked form: point at a file instead of parsing it
+
+The wire is generic — it allocates, walks and parses, and any build reads any
+data. When you want a big file to start instantly, cook it: the locked region
+written verbatim behind a small header, laid out exactly as the runtime reads
+it.
+
+```cpp
+int64_t size = SceneCookMeasure( builder );
+SceneCook( builder, buffer, size );                  // write Scene.bin
+
+// later, in the game — mmap it or read it, then just point:
+const Scene * scene = SceneOpen( bytes, size );
+if ( scene == NULL )
+{
+    // wrong build, corrupt, or foreign byte order: fall back to the wire
+}
+```
+
+A cooked file is an ACCELERATOR, not an archive: it is build-locked by a
+layout id that mixes the schema's packed-layout facts with this build's own
+`sizeof`s, so it refuses the moment either moves, and you regenerate it. The
+tolerant wire stays the format of record.
+
+`Open` validates before it points — a bounds walk over the reference graph and
+the counts that bound a traversal of it, never a field value. It is linear in
+the region and cannot be driven exponentially by a forged file: packing lays
+nodes out in pre-order and the walk follows that order behind a high-water
+mark, so it consumes region bytes monotonically and visits each byte at most
+once. A walk, not a parse.
+
+Value-only tables get no `Cook`/`Open` of their own: they are structs, and
+`sizeof` plus `memcpy` already is their region form.
 
 ### Renaming a field: `was`
 
@@ -668,7 +787,7 @@ and scatter-write disjoint ranges — no worker touches another's bytes.
 int64_t sizes[kProfiles], total = 0;
 for ( int i = 0; i < kProfiles; i++ )
 {
-    sizes[i] = TableMeasureProfileConfig( profiles[i] ); // parallel-safe: read-only
+    sizes[i] = ProfileConfigMeasure( profiles[i] ); // parallel-safe: read-only
     total += sizes[i];
 }
 uint8_t * buffer = arena_alloc( total );
@@ -676,7 +795,7 @@ int64_t offsets[kProfiles], at = 0;
 for ( int i = 0; i < kProfiles; i++ ) { offsets[i] = at; at += sizes[i]; }
 for ( int i = 0; i < kProfiles; i++ ) // each iteration is an independent job
 {
-    TableSaveProfileConfig( profiles[i], buffer + offsets[i], sizes[i] );
+    ProfileConfigSave( profiles[i], buffer + offsets[i], sizes[i] );
 }
 ```
 
@@ -691,7 +810,7 @@ name functions, branch guards — enough to write a generic editor, printer or
 differ with no RTTI and no schema files at runtime:
 
 ```cpp
-const TableTypeInfo * type = TableTypeShipConfig();
+const TableTypeInfo * type = ShipConfigTableType();
 for ( int32_t i = 0; i < type->num_fields; i++ )
 {
     const TableFieldInfo & field = type->fields[i];

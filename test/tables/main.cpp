@@ -7,10 +7,18 @@
 #include <cstdlib>
 #include <cstring>
 
+#include <thread>
+#include <vector>
+
 #include "TablesTable.h"
 #include "NestedTable.h"
 #include "V1Table.h"
 #include "V2Table.h"
+#include "GraphTable.h"
+#include "PartsTable.h"
+#include "MarksTable.h"
+#include "P1Table.h"
+#include "P2Table.h"
 
 static int failures = 0;
 
@@ -64,8 +72,8 @@ static void set_string( char * dest, int32_t & length, const char * s )
 static void le16( uint8_t * p, uint16_t v ) { p[0] = (uint8_t) v; p[1] = (uint8_t) ( v >> 8 ); }
 static void le32( uint8_t * p, uint32_t v ) { p[0] = (uint8_t) v; p[1] = (uint8_t) ( v >> 8 ); p[2] = (uint8_t) ( v >> 16 ); p[3] = (uint8_t) ( v >> 24 ); }
 
-// check_exact_capacity is the go-wide guarantee: TableSave into a buffer of
-// EXACTLY TableMeasure's size succeeds and byte-matches a roomy save — a
+// check_exact_capacity is the go-wide guarantee: <X>Save into a buffer of
+// EXACTLY <X>Measure's size succeeds and byte-matches a roomy save — a
 // scatter-writing worker gets exactly sizes[i] and nothing more.
 template <typename T>
 static void check_exact_capacity( const T & value,
@@ -124,14 +132,14 @@ static void test_round_trip()
     p.loadout.attachments[0].power = 2.0f;
 
     uint8_t buffer[16384];
-    int64_t need = tabledemo::TableMeasureRootConfig( root );
-    int64_t wrote = tabledemo::TableSaveRootConfig( root, buffer, sizeof( buffer ) );
+    int64_t need = tabledemo::RootConfigMeasure( root );
+    int64_t wrote = tabledemo::RootConfigSave( root, buffer, sizeof( buffer ) );
     CHECK( wrote > 0 );
     CHECK( need == wrote ); // measure/save split: measure is EXACT
 
     tabledemo::TableReport report;
     tabledemo::RootConfig out;
-    CHECK( tabledemo::TableReadRootConfig( buffer, wrote, out, report ) );
+    CHECK( tabledemo::RootConfigLoad( out, buffer, wrote, &report ) );
     CHECK( report.unknown == 0 && report.kind_mismatch == 0 && report.clamped == 0 && !report.malformed );
 
     CHECK( strcmp( out.version_note, "v-one" ) == 0 && out.version_note_length == 5 );
@@ -173,10 +181,10 @@ static void test_round_trip()
 
     // a too-small buffer refuses instead of truncating
     uint8_t tiny[8];
-    CHECK( tabledemo::TableSaveRootConfig( root, tiny, sizeof( tiny ) ) == -1 );
+    CHECK( tabledemo::RootConfigSave( root, tiny, sizeof( tiny ) ) == -1 );
 
     // the exact-capacity guarantee holds for the fully-populated root
-    check_exact_capacity( root, tabledemo::TableMeasureRootConfig, tabledemo::TableSaveRootConfig );
+    check_exact_capacity( root, tabledemo::RootConfigMeasure, tabledemo::RootConfigSave );
 }
 
 // ---- exact capacity: measure's answer IS the buffer size, corpus-wide ----
@@ -191,36 +199,36 @@ static void test_exact_capacity()
     cfg.b = 8.5f;
     set_string( cfg.name, cfg.name_length, "exact" );
     // cfg.inner stays all-default: elides
-    check_exact_capacity( cfg, tblv1::TableMeasureCfg, tblv1::TableSaveCfg );
+    check_exact_capacity( cfg, tblv1::CfgMeasure, tblv1::CfgSave );
 
     // all-default everything (2 bytes)
     tblv1::Cfg empty;
-    check_exact_capacity( empty, tblv1::TableMeasureCfg, tblv1::TableSaveCfg );
+    check_exact_capacity( empty, tblv1::CfgMeasure, tblv1::CfgSave );
     tabledemo::WeaponConfig weapon;
-    check_exact_capacity( weapon, tabledemo::TableMeasureWeaponConfig, tabledemo::TableSaveWeaponConfig );
+    check_exact_capacity( weapon, tabledemo::WeaponConfigMeasure, tabledemo::WeaponConfigSave );
 
     // an elided nested table inside a GUARDED group
     tabledemo::ProfileConfig profile;
     profile.experience = 1;
     profile.has_loadout = true; // loadout itself stays all-default: elides
-    check_exact_capacity( profile, tabledemo::TableMeasureProfileConfig, tabledemo::TableSaveProfileConfig );
+    check_exact_capacity( profile, tabledemo::ProfileConfigMeasure, tabledemo::ProfileConfigSave );
 
     // nested tables of nested tables, some elided, some riding
     static tabledemo::ArchiveConfig archive;
     archive.count = 9;
     archive.root.weapons_count = 1; // weapons[0] all-default: rides as an element, its nested union elides
-    check_exact_capacity( archive, tabledemo::TableMeasureArchiveConfig, tabledemo::TableSaveArchiveConfig );
+    check_exact_capacity( archive, tabledemo::ArchiveConfigMeasure, tabledemo::ArchiveConfigSave );
 
     // loadout: fixed array of tables (always rides) around all-default elements
     tabledemo::LoadoutConfig loadout;
     loadout.grade = tabledemo::Grade::Gold;
-    check_exact_capacity( loadout, tabledemo::TableMeasureLoadoutConfig, tabledemo::TableSaveLoadoutConfig );
+    check_exact_capacity( loadout, tabledemo::LoadoutConfigMeasure, tabledemo::LoadoutConfigSave );
 
     // the v2 evolution shape
     tblv2::Cfg v2;
     v2.a = 1.0f;
     v2.inner.gain = 2.0f;
-    check_exact_capacity( v2, tblv2::TableMeasureCfg, tblv2::TableSaveCfg );
+    check_exact_capacity( v2, tblv2::CfgMeasure, tblv2::CfgSave );
 }
 
 // ---- storage invariants: the write side validates what it reads ----
@@ -232,33 +240,33 @@ static void test_storage_invariants()
     // a count above the bound must not read out of the array into the wire
     tabledemo::RootConfig root;
     root.weapons_count = 9; // bound is 8
-    CHECK( tabledemo::TableMeasureRootConfig( root ) == -1 );
-    CHECK( tabledemo::TableSaveRootConfig( root, buffer, sizeof( buffer ) ) == -1 );
+    CHECK( tabledemo::RootConfigMeasure( root ) == -1 );
+    CHECK( tabledemo::RootConfigSave( root, buffer, sizeof( buffer ) ) == -1 );
 
     // a negative length must not memcpy a huge size_t
     tblv1::Cfg cfg;
     cfg.name_length = -1;
-    CHECK( tblv1::TableMeasureCfg( cfg ) == -1 );
-    CHECK( tblv1::TableSaveCfg( cfg, buffer, sizeof( buffer ) ) == -1 );
+    CHECK( tblv1::CfgMeasure( cfg ) == -1 );
+    CHECK( tblv1::CfgSave( cfg, buffer, sizeof( buffer ) ) == -1 );
 
     // a negative count refuses too
     tblv1::Cfg cfg2;
     cfg2.items_count = -3;
-    CHECK( tblv1::TableMeasureCfg( cfg2 ) == -1 );
-    CHECK( tblv1::TableSaveCfg( cfg2, buffer, sizeof( buffer ) ) == -1 );
+    CHECK( tblv1::CfgMeasure( cfg2 ) == -1 );
+    CHECK( tblv1::CfgSave( cfg2, buffer, sizeof( buffer ) ) == -1 );
 
     // a violation deep inside a nested, guarded table propagates up
     tabledemo::ProfileConfig profile;
     profile.has_loadout = true;
     profile.loadout.attachments_count = -5;
-    CHECK( tabledemo::TableMeasureProfileConfig( profile ) == -1 );
-    CHECK( tabledemo::TableSaveProfileConfig( profile, buffer, sizeof( buffer ) ) == -1 );
+    CHECK( tabledemo::ProfileConfigMeasure( profile ) == -1 );
+    CHECK( tabledemo::ProfileConfigSave( profile, buffer, sizeof( buffer ) ) == -1 );
 
     // an out-of-range union tag refuses in measure exactly as in write
     tabledemo::WeaponConfig weapon;
     weapon.effect.type = (tabledemo::EffectType) 9;
-    CHECK( tabledemo::TableMeasureWeaponConfig( weapon ) == -1 );
-    CHECK( tabledemo::TableSaveWeaponConfig( weapon, buffer, sizeof( buffer ) ) == -1 );
+    CHECK( tabledemo::WeaponConfigMeasure( weapon ) == -1 );
+    CHECK( tabledemo::WeaponConfigSave( weapon, buffer, sizeof( buffer ) ) == -1 );
 }
 
 // ---- bounded elements: a count the body length cannot cover never reads
@@ -266,8 +274,8 @@ static void test_storage_invariants()
 
 static void test_bounded_elements()
 {
-    const tblv1::TableFieldInfo * items = v1_field( tblv1::TableTypeCfg(), "items" );
-    const tblv1::TableFieldInfo * a = v1_field( tblv1::TableTypeCfg(), "a" );
+    const tblv1::TableFieldInfo * items = v1_field( tblv1::CfgTableType(), "items" );
+    const tblv1::TableFieldInfo * a = v1_field( tblv1::CfgTableType(), "a" );
     CHECK( items != NULL && a != NULL );
 
     // body_len = 3 covers only elem_kind + count; count claims 2 elements —
@@ -287,7 +295,7 @@ static void test_bounded_elements()
 
     tblv1::TableReport report;
     tblv1::Cfg out;
-    CHECK( tblv1::TableReadCfg( wire, n, out, report ) );
+    CHECK( tblv1::CfgLoad( out, wire, n, &report ) );
     CHECK( report.malformed );        // the lie is framing damage, flagged
     CHECK( out.items_count == 0 );    // no fabricated elements
     CHECK( out.a == 42 );             // the parent continued at the next field
@@ -308,7 +316,7 @@ static void test_bounded_elements()
 
     tblv1::TableReport report2;
     tblv1::Cfg out2;
-    CHECK( tblv1::TableReadCfg( wire, n, out2, report2 ) );
+    CHECK( tblv1::CfgLoad( out2, wire, n, &report2 ) );
     CHECK( report2.malformed );
     CHECK( out2.items_count == 1 && out2.items[0] == 10 ); // bounded prefix
     CHECK( out2.a == 42 );
@@ -320,14 +328,14 @@ static void test_all_default()
 {
     tabledemo::WeaponConfig weapon;
     uint8_t buffer[64];
-    int64_t wrote = tabledemo::TableSaveWeaponConfig( weapon, buffer, sizeof( buffer ) );
+    int64_t wrote = tabledemo::WeaponConfigSave( weapon, buffer, sizeof( buffer ) );
     CHECK( wrote == 2 ); // bare terminator
-    CHECK( tabledemo::TableMeasureWeaponConfig( weapon ) == 2 );
+    CHECK( tabledemo::WeaponConfigMeasure( weapon ) == 2 );
 
     tabledemo::TableReport report;
     tabledemo::WeaponConfig out;
     out.damage = -1.0f; // garbage that the prefill must erase
-    CHECK( tabledemo::TableReadWeaponConfig( buffer, wrote, out, report ) );
+    CHECK( tabledemo::WeaponConfigLoad( out, buffer, wrote, &report ) );
     CHECK( out.damage == 21.0f && out.speed == 500.0f && out.penetration == 1 );
     CHECK( !report.malformed && report.unknown == 0 );
 }
@@ -341,13 +349,13 @@ static void test_guard()
     p.loadout.grade = tabledemo::Grade::Gold; // junk behind an untaken guard
 
     uint8_t buffer[512];
-    int64_t wrote = tabledemo::TableSaveProfileConfig( p, buffer, sizeof( buffer ) );
+    int64_t wrote = tabledemo::ProfileConfigSave( p, buffer, sizeof( buffer ) );
     CHECK( wrote == 2 ); // guard false + everything else default: all elides
-    CHECK( tabledemo::TableMeasureProfileConfig( p ) == wrote );
+    CHECK( tabledemo::ProfileConfigMeasure( p ) == wrote );
 
     tabledemo::TableReport report;
     tabledemo::ProfileConfig out;
-    CHECK( tabledemo::TableReadProfileConfig( buffer, wrote, out, report ) );
+    CHECK( tabledemo::ProfileConfigLoad( out, buffer, wrote, &report ) );
     CHECK( out.loadout.grade == tabledemo::Grade::Silver ); // untaken side decodes to defaults
 }
 
@@ -366,12 +374,12 @@ static void test_evolution_old_reader_new_data()
     v2.items_count = 1;
 
     uint8_t wire[1024];
-    int64_t bytes = tblv2::TableSaveCfg( v2, wire, sizeof( wire ) );
-    CHECK( bytes > 0 && bytes == tblv2::TableMeasureCfg( v2 ) );
+    int64_t bytes = tblv2::CfgSave( v2, wire, sizeof( wire ) );
+    CHECK( bytes > 0 && bytes == tblv2::CfgMeasure( v2 ) );
 
     tblv1::TableReport report;
     tblv1::Cfg out;
-    CHECK( tblv1::TableReadCfg( wire, bytes, out, report ) );
+    CHECK( tblv1::CfgLoad( out, wire, bytes, &report ) );
     CHECK( !report.malformed );
     CHECK( report.unknown == 2 );       // c (top level) + gain (nested)
     CHECK( report.kind_mismatch == 1 ); // a: f32 wire vs v1's i32 expectation
@@ -392,12 +400,12 @@ static void test_evolution_new_reader_old_data()
     v1.inner.factor = 1.25f;
 
     uint8_t wire[1024];
-    int64_t bytes = tblv1::TableSaveCfg( v1, wire, sizeof( wire ) );
-    CHECK( bytes > 0 && bytes == tblv1::TableMeasureCfg( v1 ) );
+    int64_t bytes = tblv1::CfgSave( v1, wire, sizeof( wire ) );
+    CHECK( bytes > 0 && bytes == tblv1::CfgMeasure( v1 ) );
 
     tblv2::TableReport report;
     tblv2::Cfg out;
-    CHECK( tblv2::TableReadCfg( wire, bytes, out, report ) );
+    CHECK( tblv2::CfgLoad( out, wire, bytes, &report ) );
     CHECK( !report.malformed );
     CHECK( report.unknown == 1 );       // b, removed in v2
     CHECK( report.kind_mismatch == 1 ); // a: i32 wire vs v2's f32 expectation
@@ -415,7 +423,7 @@ static void test_clamping()
 {
     // a wider writer sent a = 2000; v1's a is [0, 1000] — crafted from the
     // descriptor's own id so the bytes are exactly what such a writer emits
-    const tblv1::TableFieldInfo * a = v1_field( tblv1::TableTypeCfg(), "a" );
+    const tblv1::TableFieldInfo * a = v1_field( tblv1::CfgTableType(), "a" );
     CHECK( a != NULL && a->kind == 4 && a->has_range && a->range_max == 1000.0 );
 
     uint8_t wire[16];
@@ -427,11 +435,11 @@ static void test_clamping()
 
     tblv1::TableReport report;
     tblv1::Cfg out;
-    CHECK( tblv1::TableReadCfg( wire, n, out, report ) );
+    CHECK( tblv1::CfgLoad( out, wire, n, &report ) );
     CHECK( report.clamped == 1 && out.a == 1000 );
 
     // bits(6) width clamp: a u8 payload of 200 clamps to 63
-    const tabledemo::TableFieldInfo * ch = demo_field( tabledemo::TableTypeWeaponConfig(), "channel" );
+    const tabledemo::TableFieldInfo * ch = demo_field( tabledemo::WeaponConfigTableType(), "channel" );
     CHECK( ch != NULL && ch->kind == 6 );
     uint8_t wire2[8];
     n = 0;
@@ -442,12 +450,12 @@ static void test_clamping()
 
     tabledemo::TableReport report2;
     tabledemo::WeaponConfig weapon;
-    CHECK( tabledemo::TableReadWeaponConfig( wire2, n, weapon, report2 ) );
+    CHECK( tabledemo::WeaponConfigLoad( weapon, wire2, n, &report2 ) );
     CHECK( report2.clamped == 1 && weapon.channel == 63 );
 
     // an over-long string — a future schema widened string(32) — clamps to
     // capacity, stays NUL-terminated, and counts
-    const tblv1::TableFieldInfo * nameInfo = v1_field( tblv1::TableTypeCfg(), "name" );
+    const tblv1::TableFieldInfo * nameInfo = v1_field( tblv1::CfgTableType(), "name" );
     uint8_t wire4[64];
     n = 0;
     le16( wire4 + n, nameInfo->id ); n += 2;
@@ -458,7 +466,7 @@ static void test_clamping()
 
     tblv1::TableReport report4;
     tblv1::Cfg out4;
-    CHECK( tblv1::TableReadCfg( wire4, n, out4, report4 ) );
+    CHECK( tblv1::CfgLoad( out4, wire4, n, &report4 ) );
     CHECK( report4.clamped == 1 && out4.name_length == 32 && out4.name[32] == 0 );
 }
 
@@ -470,29 +478,29 @@ static void test_malformed()
     tblv1::Cfg out;
 
     uint8_t one_byte[1] = { 0x34 };
-    CHECK( !tblv1::TableReadCfg( one_byte, 1, out, report ) );
+    CHECK( !tblv1::CfgLoad( out, one_byte, 1, &report ) );
     CHECK( report.malformed );
 
     // a valid field id whose payload is truncated mid-scalar
-    const tblv1::TableFieldInfo * a = v1_field( tblv1::TableTypeCfg(), "a" );
+    const tblv1::TableFieldInfo * a = v1_field( tblv1::CfgTableType(), "a" );
     uint8_t truncated[5];
     le16( truncated, a->id );
     truncated[2] = 4;  // kI32 wants 4 payload bytes; only 2 follow
     truncated[3] = 0;
     truncated[4] = 0;
     tblv1::TableReport report2;
-    CHECK( !tblv1::TableReadCfg( truncated, 5, out, report2 ) );
+    CHECK( !tblv1::CfgLoad( out, truncated, 5, &report2 ) );
     CHECK( report2.malformed );
 
     // damage after good fields: the good prefix survives (partial result)
     tblv1::Cfg src;
     src.a = 42;
     uint8_t wire[256];
-    int64_t bytes = tblv1::TableSaveCfg( src, wire, sizeof( wire ) );
+    int64_t bytes = tblv1::CfgSave( src, wire, sizeof( wire ) );
     CHECK( bytes > 0 );
     tblv1::TableReport report3;
     tblv1::Cfg out3;
-    CHECK( !tblv1::TableReadCfg( wire, bytes - 2, out3, report3 ) ); // terminator cut off
+    CHECK( !tblv1::CfgLoad( out3, wire, bytes - 2, &report3 ) ); // terminator cut off
     CHECK( report3.malformed && out3.a == 42 );
 }
 
@@ -500,7 +508,7 @@ static void test_malformed()
 
 static void test_reflection()
 {
-    const tabledemo::TableTypeInfo * weapon = tabledemo::TableTypeWeaponConfig();
+    const tabledemo::TableTypeInfo * weapon = tabledemo::WeaponConfigTableType();
     CHECK( strcmp( weapon->name, "WeaponConfig" ) == 0 );
     CHECK( weapon->size == sizeof( tabledemo::WeaponConfig ) );
 
@@ -519,27 +527,27 @@ static void test_reflection()
     CHECK( pen != NULL && pen->has_range && pen->range_min == 0.0 && pen->range_max == 10.0 );
 
     // enum name function: value -> name, out-of-set included
-    const tabledemo::TableFieldInfo * grade = demo_field( tabledemo::TableTypeLoadoutConfig(), "grade" );
+    const tabledemo::TableFieldInfo * grade = demo_field( tabledemo::LoadoutConfigTableType(), "grade" );
     CHECK( grade != NULL && grade->enum_max == 3 && grade->enum_name != NULL );
     CHECK( strcmp( grade->enum_name( 3 ), "Gold" ) == 0 );
     CHECK( strcmp( grade->enum_name( 9 ), "???" ) == 0 );
 
     // nested-table descriptors chain, arrays carry bounds and companions
-    const tabledemo::TableTypeInfo * rootType = tabledemo::TableTypeRootConfig();
+    const tabledemo::TableTypeInfo * rootType = tabledemo::RootConfigTableType();
     const tabledemo::TableFieldInfo * profiles = demo_field( rootType, "profiles" );
     CHECK( profiles != NULL && profiles->kind == 13 && profiles->is_array && profiles->counted );
     CHECK( profiles->array_bound == 4 );
-    CHECK( profiles->table == tabledemo::TableTypeProfileConfig() );
+    CHECK( profiles->table == tabledemo::ProfileConfigTableType() );
 
     // guards surface machine-usable
-    const tabledemo::TableFieldInfo * loadout = demo_field( tabledemo::TableTypeProfileConfig(), "loadout" );
+    const tabledemo::TableFieldInfo * loadout = demo_field( tabledemo::ProfileConfigTableType(), "loadout" );
     CHECK( loadout != NULL && strcmp( loadout->guard, "has_loadout" ) == 0 );
 
     // every one of the 15 wire kinds rides somewhere in the corpus battery;
     // the scalar kinds pin here by descriptor (containers pinned above and
     // in the round trip: 12 string, 13 table, 14 array, 15 union; 1 bool on
     // homing, 10 f32 on damage)
-    const tabledemo::TableTypeInfo * profileType = tabledemo::TableTypeProfileConfig();
+    const tabledemo::TableTypeInfo * profileType = tabledemo::ProfileConfigTableType();
     struct { const char * field; uint8_t kind; } scalar_kinds[] = {
         { "tilt", 2 },       // i8
         { "heading", 3 },    // i16
@@ -565,7 +573,7 @@ static void test_reflection()
     // generic field access through offset — an editor walking properties
     tabledemo::ProfileConfig p;
     p.experience = 777;
-    const tabledemo::TableFieldInfo * exp = demo_field( tabledemo::TableTypeProfileConfig(), "experience" );
+    const tabledemo::TableFieldInfo * exp = demo_field( tabledemo::ProfileConfigTableType(), "experience" );
     CHECK( exp != NULL );
     uint32_t read_back;
     memcpy( &read_back, (const uint8_t *) &p + exp->offset, sizeof( read_back ) );
@@ -583,12 +591,12 @@ static void test_cross_file()
     archive.count = 5;
 
     static uint8_t buffer[16384];
-    int64_t wrote = tabledemo::TableSaveArchiveConfig( archive, buffer, sizeof( buffer ) );
-    CHECK( wrote > 0 && wrote == tabledemo::TableMeasureArchiveConfig( archive ) );
+    int64_t wrote = tabledemo::ArchiveConfigSave( archive, buffer, sizeof( buffer ) );
+    CHECK( wrote > 0 && wrote == tabledemo::ArchiveConfigMeasure( archive ) );
 
     tabledemo::TableReport report;
     static tabledemo::ArchiveConfig out;
-    CHECK( tabledemo::TableReadArchiveConfig( buffer, wrote, out, report ) );
+    CHECK( tabledemo::ArchiveConfigLoad( out, buffer, wrote, &report ) );
     CHECK( strcmp( out.root.version_note, "deep" ) == 0 );
     CHECK( out.root.weapons_count == 1 && out.root.weapons[0].homing );
     CHECK( out.count == 5 );
@@ -610,14 +618,14 @@ static void test_parallel_shape()
     int64_t total = 0;
     for ( int i = 0; i < 3; i++ )
     {
-        sizes[i] = tabledemo::TableMeasureProfileConfig( profiles[i] );
+        sizes[i] = tabledemo::ProfileConfigMeasure( profiles[i] );
         total += sizes[i];
     }
     static uint8_t buffer[4096];
     int64_t offset = 0;
     for ( int i = 0; i < 3; i++ ) // each iteration is independent: a worker
     {
-        int64_t wrote = tabledemo::TableSaveProfileConfig( profiles[i], buffer + offset, sizes[i] );
+        int64_t wrote = tabledemo::ProfileConfigSave( profiles[i], buffer + offset, sizes[i] );
         CHECK( wrote == sizes[i] );
         offset += wrote;
     }
@@ -627,10 +635,1004 @@ static void test_parallel_shape()
     {
         tabledemo::TableReport report;
         tabledemo::ProfileConfig out;
-        CHECK( tabledemo::TableReadProfileConfig( buffer + offset, sizes[i], out, report ) );
+        CHECK( tabledemo::ProfileConfigLoad( out, buffer + offset, sizes[i], &report ) );
         CHECK( out.experience == (uint32_t) ( 100 + i ) );
         offset += sizes[i];
     }
+}
+
+
+// ============================================================================
+// POINTER SEMANTICS (SPEC-TABLES.md §2, §6). Types remain value semantics;
+// tables allow pointer semantics — and everything below is a consequence.
+// ============================================================================
+
+static const graphdemo::TableFieldInfo * graph_field( const graphdemo::TableTypeInfo * type, const char * name )
+{
+    for ( int32_t i = 0; i < type->num_fields; i++ )
+        if ( strcmp( type->fields[i].name, name ) == 0 )
+            return &type->fields[i];
+    return NULL;
+}
+
+// build_scene populates a builder with a list, a tree, an optional subtable, a
+// by-value nested variable table and an array of them. Returns the number of
+// list nodes on the chain.
+static int build_scene( graphdemo::SceneBuilder & builder )
+{
+    graphdemo::Scene * root = builder.GetRoot();
+    set_string( root->name, root->name_length, "graph" );
+    root->version = 7;
+    root->meta.build = 42;
+    set_string( root->meta.tag, root->meta.tag_length, "m" );
+
+    graphdemo::TableSlot<graphdemo::Settings> settings = builder.Alloc<graphdemo::Settings>();
+    settings->quality = 4;
+    set_string( settings->label, settings->label_length, "high" );
+    root->settings = settings;
+
+    graphdemo::TableSlot<graphdemo::ListNode> n0 = builder.Alloc<graphdemo::ListNode>();
+    graphdemo::TableSlot<graphdemo::ListNode> n1 = builder.Alloc<graphdemo::ListNode>();
+    graphdemo::TableSlot<graphdemo::ListNode> n2 = builder.Alloc<graphdemo::ListNode>();
+    n0->value = 10; set_string( n0->name, n0->name_length, "a" );
+    n1->value = 20; set_string( n1->name, n1->name_length, "b" );
+    n2->value = 30;
+    n0->next = n1;
+    n1->next = n2;
+    root->head = n0;
+
+    graphdemo::TableSlot<graphdemo::TreeNode> t = builder.Alloc<graphdemo::TreeNode>();
+    graphdemo::TableSlot<graphdemo::TreeNode> tl = builder.Alloc<graphdemo::TreeNode>();
+    graphdemo::TableSlot<graphdemo::TreeNode> tr = builder.Alloc<graphdemo::TreeNode>();
+    set_string( t->label, t->label_length, "root" );
+    set_string( tl->label, tl->label_length, "left" );
+    set_string( tr->label, tr->label_length, "right" );
+    t->left = tl;
+    t->right = tr;
+    root->tree = t;
+
+    // a variable table nested BY VALUE, with a pointer of its own
+    root->ground.depth = 3;
+    graphdemo::TableSlot<graphdemo::ListNode> g0 = builder.Alloc<graphdemo::ListNode>();
+    g0->value = 99;
+    root->ground.head = g0;
+
+    // a bounded array of variable tables
+    root->layers_count = 2;
+    root->layers[0].depth = 1;
+    root->layers[1].depth = 2;
+    graphdemo::TableSlot<graphdemo::ListNode> l1 = builder.Alloc<graphdemo::ListNode>();
+    l1->value = 55;
+    root->layers[1].head = l1;
+
+    return 3;
+}
+
+// check_scene reads a scene through a CONST root — the only way a
+// pointer-bearing table is ever read: a region and a root view, never a value.
+static void check_scene( const graphdemo::Scene * scene )
+{
+    CHECK( scene != NULL );
+    if ( scene == NULL ) return;
+    CHECK( strcmp( scene->name, "graph" ) == 0 );
+    CHECK( scene->version == 7 );
+    CHECK( scene->meta.build == 42 );
+
+    const graphdemo::ListNode * a = graphdemo::ListNodeAt( scene->head );
+    CHECK( a != NULL && a->value == 10 && strcmp( a->name, "a" ) == 0 );
+    const graphdemo::ListNode * b = graphdemo::ListNodeAt( a->next );
+    CHECK( b != NULL && b->value == 20 );
+    const graphdemo::ListNode * c = graphdemo::ListNodeAt( b->next );
+    CHECK( c != NULL && c->value == 30 );
+    CHECK( graphdemo::ListNodeAt( c->next ) == NULL ); // the chain ends in null
+
+    const graphdemo::TreeNode * t = graphdemo::TreeNodeAt( scene->tree );
+    CHECK( t != NULL && strcmp( t->label, "root" ) == 0 );
+    CHECK( strcmp( graphdemo::TreeNodeAt( t->left )->label, "left" ) == 0 );
+    CHECK( strcmp( graphdemo::TreeNodeAt( t->right )->label, "right" ) == 0 );
+    CHECK( graphdemo::TreeNodeAt( graphdemo::TreeNodeAt( t->left )->left ) == NULL );
+
+    const graphdemo::Settings * settings = graphdemo::SettingsAt( scene->settings );
+    CHECK( settings != NULL && settings->quality == 4 && strcmp( settings->label, "high" ) == 0 );
+
+    CHECK( scene->ground.depth == 3 );
+    CHECK( graphdemo::ListNodeAt( scene->ground.head )->value == 99 );
+    CHECK( scene->layers_count == 2 );
+    CHECK( scene->layers[0].depth == 1 );
+    CHECK( graphdemo::ListNodeAt( scene->layers[0].head ) == NULL ); // never set: null
+    CHECK( graphdemo::ListNodeAt( scene->layers[1].head )->value == 55 );
+}
+
+// ---- the lifecycle: build -> Lock -> the region; wire out and back ----
+
+static void test_pointer_lifecycle()
+{
+    graphdemo::SceneBuilder builder;
+    build_scene( builder );
+
+    // measure/save straight out of the MUTABLE arena
+    int64_t need = graphdemo::SceneMeasure( builder );
+    CHECK( need > 0 );
+    static uint8_t wire[8192];
+    int64_t wrote = graphdemo::SceneSave( builder, wire, sizeof( wire ) );
+    CHECK( wrote == need );
+
+    // the exact-capacity guarantee, across a pointer graph
+    static uint8_t exact[8192];
+    CHECK( graphdemo::SceneSave( builder, exact, need ) == need );
+    CHECK( memcmp( wire, exact, (size_t) need ) == 0 );
+    CHECK( graphdemo::SceneSave( builder, exact, need - 1 ) == -1 );
+
+    // Lock: one way, and it IS the compaction
+    CHECK( builder.Lock() );
+    CHECK( builder.Locked() );
+    CHECK( builder.GetRoot() == NULL );      // the mutable life is over
+    CHECK( builder.Alloc<graphdemo::ListNode>().null() ); // and Alloc refuses
+    CHECK( builder.Lock() );              // idempotent, never a second compaction
+
+    const graphdemo::Scene * locked = builder.AsConst();
+    check_scene( locked );
+
+    // the packed region has zero slack and every node is 8-aligned
+    CHECK( builder.RegionBytes() > 0 );
+    CHECK( ( builder.RegionBytes() % 8 ) == 0 );
+
+    // saving from the locked region gives byte-identical wire to saving from
+    // the arena: one structure, two representations, one meaning
+    static uint8_t after_lock[8192];
+    int64_t wrote2 = graphdemo::SceneSave( locked, after_lock, sizeof( after_lock ) );
+    CHECK( wrote2 == wrote );
+    CHECK( memcmp( wire, after_lock, (size_t) wrote ) == 0 );
+
+    // the region relocates by PURE MEMCPY: self-relative references need no
+    // fix-up, so a copy at a different address reads the same
+    uint8_t * moved = (uint8_t *) malloc( (size_t) builder.RegionBytes() );
+    memcpy( moved, builder.Region(), (size_t) builder.RegionBytes() );
+    check_scene( (const graphdemo::Scene *) moved );
+    free( moved );
+
+    // wire -> const region, sized EXACTLY by the pre-pass
+    int64_t region_need = graphdemo::SceneLoadMeasure( wire, wrote );
+    CHECK( region_need == builder.RegionBytes() ); // the two forms agree
+    uint8_t * region = (uint8_t *) malloc( (size_t) region_need );
+    graphdemo::TableReport report;
+    const graphdemo::Scene * loaded = graphdemo::SceneLoad( region, region_need, wire, wrote, &report );
+    CHECK( loaded != NULL );
+    CHECK( report.unknown == 0 && report.kind_mismatch == 0 && report.clamped == 0 && !report.malformed );
+    check_scene( loaded );
+
+    // a loaded region re-saves to the same bytes
+    static uint8_t again[8192];
+    CHECK( graphdemo::SceneSave( loaded, again, sizeof( again ) ) == wrote );
+    CHECK( memcmp( wire, again, (size_t) wrote ) == 0 );
+
+    // a region one byte short refuses rather than overrunning
+    uint8_t * tight = (uint8_t *) malloc( (size_t) region_need );
+    graphdemo::TableReport short_report;
+    const graphdemo::Scene * partial = graphdemo::SceneLoad( tight, region_need - 8, wire, wrote, &short_report );
+    CHECK( partial != NULL && short_report.malformed ); // partial result, flagged
+    free( tight );
+
+    free( region );
+}
+
+// ---- Lock's byte layout is deterministic: same input, same region ----
+
+static void test_lock_layout_stable()
+{
+    graphdemo::SceneBuilder first;
+    build_scene( first );
+    CHECK( first.Lock() );
+
+    graphdemo::SceneBuilder second;
+    build_scene( second );
+    CHECK( second.Lock() );
+
+    CHECK( first.RegionBytes() == second.RegionBytes() );
+    CHECK( memcmp( first.Region(), second.Region(), (size_t) first.RegionBytes() ) == 0 );
+
+    // and cooking twice gives identical files
+    int64_t need = graphdemo::SceneCookMeasure( first );
+    uint8_t * a = (uint8_t *) malloc( (size_t) need );
+    uint8_t * b = (uint8_t *) malloc( (size_t) need );
+    CHECK( graphdemo::SceneCook( first, a, need ) == need );
+    CHECK( graphdemo::SceneCook( second, b, need ) == need );
+    CHECK( memcmp( a, b, (size_t) need ) == 0 );
+    free( a );
+    free( b );
+}
+
+// ---- aliasing: two pointers to one node are TWO nodes, everywhere ----
+
+static void test_pointer_alias()
+{
+    graphdemo::SceneBuilder builder;
+    graphdemo::Scene * root = builder.GetRoot();
+    graphdemo::TableSlot<graphdemo::ListNode> shared = builder.Alloc<graphdemo::ListNode>();
+    shared->value = 1234;
+    root->head = shared;
+    root->alias = shared; // the SAME node named twice
+
+    CHECK( builder.Lock() );
+    const graphdemo::Scene * locked = builder.AsConst();
+    const graphdemo::ListNode * viaHead = graphdemo::ListNodeAt( locked->head );
+    const graphdemo::ListNode * viaAlias = graphdemo::ListNodeAt( locked->alias );
+    CHECK( viaHead != NULL && viaAlias != NULL );
+    CHECK( viaHead->value == 1234 && viaAlias->value == 1234 );
+    // wire v1 is a TREE: identity is NOT preserved, and the packed form says so
+    // in the same voice — two references, two nodes (SPEC-TABLES.md §3)
+    CHECK( viaHead != viaAlias );
+
+    static uint8_t wire[1024];
+    int64_t wrote = graphdemo::SceneSave( locked, wire, sizeof( wire ) );
+    CHECK( wrote > 0 );
+    int64_t region_need = graphdemo::SceneLoadMeasure( wire, wrote );
+    uint8_t * region = (uint8_t *) malloc( (size_t) region_need );
+    graphdemo::TableReport report;
+    const graphdemo::Scene * loaded = graphdemo::SceneLoad( region, region_need, wire, wrote, &report );
+    CHECK( loaded != NULL && !report.malformed );
+    CHECK( graphdemo::ListNodeAt( loaded->head )->value == 1234 );
+    CHECK( graphdemo::ListNodeAt( loaded->alias )->value == 1234 );
+    CHECK( graphdemo::ListNodeAt( loaded->head ) != graphdemo::ListNodeAt( loaded->alias ) );
+    free( region );
+}
+
+// ---- a data cycle is an ERROR, never a hang ----
+
+static void test_pointer_cycle_refused()
+{
+    graphdemo::SceneBuilder builder;
+    graphdemo::Scene * root = builder.GetRoot();
+    graphdemo::TableSlot<graphdemo::ListNode> loop = builder.Alloc<graphdemo::ListNode>();
+    loop->value = 1;
+    loop->next = loop;   // a node pointing at itself
+    root->head = loop;
+
+    static uint8_t buffer[4096];
+    CHECK( graphdemo::SceneMeasure( builder ) == -1 );
+    CHECK( graphdemo::SceneSave( builder, buffer, sizeof( buffer ) ) == -1 );
+    CHECK( graphdemo::SceneCookMeasure( builder ) == -1 );
+    CHECK( !builder.Lock() ); // the compaction refuses too
+}
+
+// ---- the depth cap: a chain past it refuses, and the wire stops at it ----
+
+static void test_pointer_depth_cap()
+{
+    // a chain exactly AT the cap saves; the cap counts nesting levels, and the
+    // root is level 1
+    {
+        graphdemo::SceneBuilder builder;
+        graphdemo::Scene * root = builder.GetRoot();
+        graphdemo::TableSlot<graphdemo::ListNode> head = builder.Alloc<graphdemo::ListNode>();
+        head->value = 0;
+        root->head = head;
+        graphdemo::ListNode * tail = head;
+        for ( int i = 1; i < graphdemo::kTableMaxDepth - 1; i++ )
+        {
+            graphdemo::TableSlot<graphdemo::ListNode> node = builder.Alloc<graphdemo::ListNode>();
+            node->value = i;
+            tail->next = node;
+            tail = node;
+        }
+        CHECK( graphdemo::SceneMeasure( builder ) > 0 );
+    }
+    // one link past it refuses instead of recursing away
+    {
+        graphdemo::SceneBuilder builder;
+        graphdemo::Scene * root = builder.GetRoot();
+        graphdemo::TableSlot<graphdemo::ListNode> head = builder.Alloc<graphdemo::ListNode>();
+        root->head = head;
+        graphdemo::ListNode * tail = head;
+        for ( int i = 1; i < graphdemo::kTableMaxDepth + 8; i++ )
+        {
+            graphdemo::TableSlot<graphdemo::ListNode> node = builder.Alloc<graphdemo::ListNode>();
+            node->value = i;
+            tail->next = node;
+            tail = node;
+        }
+        static uint8_t buffer[65536];
+        CHECK( graphdemo::SceneMeasure( builder ) == -1 );
+        CHECK( graphdemo::SceneSave( builder, buffer, sizeof( buffer ) ) == -1 );
+        CHECK( !builder.Lock() );
+    }
+}
+
+// ---- the arena grows without invalidating anything ----
+
+static void test_builder_grow()
+{
+    graphdemo::SceneBuilder builder;
+    graphdemo::Scene * root = builder.GetRoot();
+
+    // enough nodes to cross many 64 KiB slabs and more than one 4 MiB segment
+    const int count = 200000;
+    graphdemo::TableSlot<graphdemo::ListNode> first = builder.Alloc<graphdemo::ListNode>();
+    first->value = 1;
+    graphdemo::ListNode * held = first;          // a pointer held ACROSS all the growth
+    graphdemo::TableSlot<graphdemo::ListNode> middle;
+    for ( int i = 1; i < count; i++ )
+    {
+        graphdemo::TableSlot<graphdemo::ListNode> node = builder.Alloc<graphdemo::ListNode>();
+        CHECK( !node.null() || i == 0 );
+        node->value = i + 1;
+        if ( i == count / 2 ) { middle = node; }
+    }
+    // segments never move: the pointer taken before 200k allocations is still
+    // the same node, and the root the builder handed out is still valid
+    CHECK( held->value == 1 );
+    CHECK( middle.ptr != NULL && middle->value == count / 2 + 1 );
+    CHECK( builder.GetRoot() == root );
+
+    root->head = first;
+    CHECK( graphdemo::SceneMeasure( builder ) > 0 );
+}
+
+// ---- many workers, one arena: allocation is lock-free by ownership ----
+
+static void test_builder_workers()
+{
+    // deterministic first: four workers, interleaved, single-threaded
+    graphdemo::SceneBuilder builder;
+    graphdemo::Scene * root = builder.GetRoot();
+    graphdemo::TableWorker workers[4];
+    for ( int i = 0; i < 4; i++ ) { workers[i] = builder.Worker(); }
+
+    graphdemo::TableSlot<graphdemo::ListNode> head = workers[0].Alloc<graphdemo::ListNode>();
+    head->value = 0;
+    root->head = head;
+    graphdemo::ListNode * tail = head;
+    for ( int i = 1; i < 64; i++ )
+    {
+        // each link allocated by a DIFFERENT worker: a cross-worker reference
+        // is an ordinary reference, because offsets are arena-global
+        graphdemo::TableSlot<graphdemo::ListNode> node = workers[i % 4].Alloc<graphdemo::ListNode>();
+        node->value = i;
+        tail->next = node;
+        tail = node;
+    }
+    CHECK( builder.Lock() );
+    const graphdemo::ListNode * walk = graphdemo::ListNodeAt( builder.AsConst()->head );
+    for ( int i = 0; i < 64; i++ )
+    {
+        CHECK( walk != NULL && walk->value == i );
+        if ( walk == NULL ) break;
+        walk = graphdemo::ListNodeAt( walk->next );
+    }
+    CHECK( walk == NULL );
+
+    // then the real thing: four threads allocating concurrently on their own
+    // workers. Each thread owns its nodes; nothing is shared, nothing is locked.
+    graphdemo::SceneBuilder threaded;
+    const int per_thread = 20000;
+    std::vector<graphdemo::TableRef> heads( 4 );
+    std::vector<std::thread> threads;
+    for ( int t = 0; t < 4; t++ )
+    {
+        threads.emplace_back( [&threaded, &heads, t]() {
+            graphdemo::TableWorker worker = threaded.Worker();
+            graphdemo::TableSlot<graphdemo::ListNode> first = worker.Alloc<graphdemo::ListNode>();
+            first->value = t;
+            graphdemo::ListNode * tail = first;
+            for ( int i = 1; i < per_thread; i++ )
+            {
+                graphdemo::TableSlot<graphdemo::ListNode> node = worker.Alloc<graphdemo::ListNode>();
+                node->value = t * 1000000 + i;
+                tail->next = node;
+                tail = node;
+            }
+            heads[t] = first.ref;
+        } );
+    }
+    for ( auto & thread : threads ) { thread.join(); }
+    // the join is the barrier; everything below is single-threaded
+    graphdemo::Scene * threaded_root = threaded.GetRoot();
+    threaded_root->layers_count = 4;
+    for ( int t = 0; t < 4; t++ )
+    {
+        threaded_root->layers[t].depth = t;
+        threaded_root->layers[t].head = heads[t];
+        const graphdemo::ListNode * node = graphdemo::ListNodeAt( threaded.arena, heads[t] );
+        CHECK( node != NULL && node->value == t );
+    }
+}
+
+// ---- the cooked form: point at it, or refuse loudly ----
+
+static void test_cooked_form()
+{
+    graphdemo::SceneBuilder builder;
+    build_scene( builder );
+    CHECK( builder.Lock() );
+
+    int64_t need = graphdemo::SceneCookMeasure( builder );
+    CHECK( need == graphdemo::kTableCookedHeaderBytes + builder.RegionBytes() );
+    uint8_t * cooked = (uint8_t *) malloc( (size_t) need );
+    CHECK( graphdemo::SceneCook( builder, cooked, need ) == need );
+    CHECK( graphdemo::SceneCook( builder, cooked, need - 1 ) == -1 ); // short buffer refuses
+
+    // open by POINTING: no copy, no decode
+    const graphdemo::Scene * opened = graphdemo::SceneOpen( cooked, need );
+    CHECK( opened != NULL );
+    CHECK( (const uint8_t *) opened == cooked + graphdemo::kTableCookedHeaderBytes );
+    check_scene( opened );
+
+    // cook -> open -> cook is stable
+    uint8_t * again = (uint8_t *) malloc( (size_t) need );
+    CHECK( graphdemo::SceneCook( opened, again, need ) == need );
+    CHECK( memcmp( cooked, again, (size_t) need ) == 0 );
+    free( again );
+
+    // the wire still reads out of a cooked root: the two forms agree
+    static uint8_t wire[8192];
+    int64_t wrote = graphdemo::SceneSave( opened, wire, sizeof( wire ) );
+    CHECK( wrote == graphdemo::SceneMeasure( builder ) );
+
+    // ---- the refusal battery ----
+    uint8_t * broken = (uint8_t *) malloc( (size_t) need );
+
+    memcpy( broken, cooked, (size_t) need );
+    broken[0] ^= 0xFF; // magic: wrong form, or a foreign byte order
+    CHECK( graphdemo::SceneOpen( broken, need ) == NULL );
+
+    memcpy( broken, cooked, (size_t) need );
+    broken[4] ^= 0xFF; // layout id: the schema or the ABI moved
+    CHECK( graphdemo::SceneOpen( broken, need ) == NULL );
+
+    memcpy( broken, cooked, (size_t) need );
+    CHECK( graphdemo::SceneOpen( broken, need - 1 ) == NULL ); // truncated region
+
+    memcpy( broken, cooked, (size_t) need );
+    CHECK( graphdemo::SceneOpen( broken, 4 ) == NULL ); // shorter than the header
+
+    memcpy( broken, cooked, (size_t) need );
+    CHECK( graphdemo::SceneOpen( broken + 1, need - 1 ) == NULL ); // unaligned base
+
+    // an offset graph that leaves the region: the bounds walk catches it
+    memcpy( broken, cooked, (size_t) need );
+    {
+        graphdemo::Scene * root = (graphdemo::Scene *) ( broken + graphdemo::kTableCookedHeaderBytes );
+        root->head.value = 0x7FFFFFF0u; // far past the end
+        CHECK( graphdemo::SceneOpen( broken, need ) == NULL );
+    }
+    // a BACKWARD reference: impossible in a packed region, so it is corruption
+    memcpy( broken, cooked, (size_t) need );
+    {
+        graphdemo::Scene * root = (graphdemo::Scene *) ( broken + graphdemo::kTableCookedHeaderBytes );
+        root->head.value = 0xFFFFFFF8u; // -8 as an int32
+        CHECK( graphdemo::SceneOpen( broken, need ) == NULL );
+    }
+    // a misaligned reference
+    memcpy( broken, cooked, (size_t) need );
+    {
+        graphdemo::Scene * root = (graphdemo::Scene *) ( broken + graphdemo::kTableCookedHeaderBytes );
+        root->head.value += 1;
+        CHECK( graphdemo::SceneOpen( broken, need ) == NULL );
+    }
+    // a count companion outside its declared bound
+    memcpy( broken, cooked, (size_t) need );
+    {
+        graphdemo::Scene * root = (graphdemo::Scene *) ( broken + graphdemo::kTableCookedHeaderBytes );
+        root->layers_count = 99;
+        CHECK( graphdemo::SceneOpen( broken, need ) == NULL );
+    }
+    // and the untouched file still opens: the battery broke nothing else
+    CHECK( graphdemo::SceneOpen( cooked, need ) != NULL );
+
+    free( broken );
+    free( cooked );
+}
+
+// ---- evolution across a pointer field, both directions ----
+
+static void test_pointer_evolution_old_reader_new_data()
+{
+    // P2 writes a chain of two Links through a POINTER field
+    tblp2::ChainBuilder builder;
+    tblp2::Chain * root = builder.GetRoot();
+    set_string( root->name, root->name_length, "chain" );
+    tblp2::TableSlot<tblp2::Link> first = builder.Alloc<tblp2::Link>();
+    tblp2::TableSlot<tblp2::Link> second = builder.Alloc<tblp2::Link>();
+    first->value = 11;
+    set_string( first->tag, first->tag_length, "one" );
+    second->value = 22;
+    first->next = second;
+    root->link = first;
+
+    uint8_t wire[512];
+    int64_t wrote = tblp2::ChainSave( builder, wire, sizeof( wire ) );
+    CHECK( wrote > 0 );
+
+    // P1 has `link` as a BY-VALUE nesting and no `next` at all. A pointer rides
+    // with a by-value nesting's framing, so the first Link decodes cleanly and
+    // the chain's tail lands as one unknown field.
+    tblp1::Chain out;
+    tblp1::TableReport report;
+    CHECK( tblp1::ChainLoad( out, wire, wrote, &report ) );
+    CHECK( !report.malformed );
+    CHECK( report.unknown == 1 ); // Link.next, which P1 cannot name
+    CHECK( strcmp( out.name, "chain" ) == 0 );
+    CHECK( out.link.value == 11 );
+    CHECK( strcmp( out.link.tag, "one" ) == 0 );
+}
+
+static void test_pointer_evolution_new_reader_old_data()
+{
+    // P1 writes a by-value nesting
+    tblp1::Chain v1;
+    set_string( v1.name, v1.name_length, "aged" );
+    v1.link.value = 77;
+    set_string( v1.link.tag, v1.link.tag_length, "old" );
+
+    uint8_t wire[512];
+    int64_t wrote = tblp1::ChainSave( v1, wire, sizeof( wire ) );
+    CHECK( wrote > 0 && wrote == tblp1::ChainMeasure( v1 ) );
+
+    // P2 has `link` as a POINTER: the same body allocates one node
+    int64_t region_need = tblp2::ChainLoadMeasure( wire, wrote );
+    uint8_t * region = (uint8_t *) malloc( (size_t) region_need );
+    tblp2::TableReport report;
+    const tblp2::Chain * out = tblp2::ChainLoad( region, region_need, wire, wrote, &report );
+    CHECK( out != NULL );
+    CHECK( !report.malformed && report.unknown == 0 && report.kind_mismatch == 0 );
+    CHECK( strcmp( out->name, "aged" ) == 0 );
+    const tblp2::Link * link = tblp2::LinkAt( out->link );
+    CHECK( link != NULL && link->value == 77 && strcmp( link->tag, "old" ) == 0 );
+    CHECK( tblp2::LinkAt( link->next ) == NULL ); // a field old data never wrote is null
+    free( region );
+
+    // and into a BUILDER — the tool's path: load, edit, lock again
+    tblp2::ChainBuilder builder;
+    tblp2::TableReport builder_report;
+    CHECK( tblp2::ChainLoadBuilder( builder, wire, wrote, &builder_report ) );
+    CHECK( !builder_report.malformed );
+    tblp2::Link * loaded = tblp2::LinkAt( builder.arena, builder.GetRoot()->link );
+    CHECK( loaded != NULL && loaded->value == 77 );
+    tblp2::TableSlot<tblp2::Link> added = builder.Alloc<tblp2::Link>();
+    added->value = 88;
+    loaded->next = added;
+    CHECK( builder.Lock() );
+    CHECK( tblp2::LinkAt( tblp2::LinkAt( builder.AsConst()->link )->next )->value == 88 );
+}
+
+// ---- a null pointer elides; a non-null one rides even when all-default ----
+
+static void test_pointer_null_and_empty()
+{
+    graphdemo::SceneBuilder empty;
+    int64_t bare = graphdemo::SceneMeasure( empty );
+    CHECK( bare == 2 ); // every pointer null, everything else default: nothing rides
+
+    graphdemo::SceneBuilder one;
+    graphdemo::TableSlot<graphdemo::ListNode> node = one.Alloc<graphdemo::ListNode>();
+    one.GetRoot()->head = node; // an ALL-DEFAULT pointee behind a non-null pointer
+    int64_t with_empty = graphdemo::SceneMeasure( one );
+    CHECK( with_empty == 2 + 3 + 4 + 2 ); // id + kind + length + the empty body
+
+    uint8_t wire[64];
+    int64_t wrote = graphdemo::SceneSave( one, wire, sizeof( wire ) );
+    CHECK( wrote == with_empty );
+    int64_t region_need = graphdemo::SceneLoadMeasure( wire, wrote );
+    uint8_t * region = (uint8_t *) malloc( (size_t) region_need );
+    graphdemo::TableReport report;
+    const graphdemo::Scene * loaded = graphdemo::SceneLoad( region, region_need, wire, wrote, &report );
+    // the distinction survives: an empty pointee is NOT null
+    CHECK( loaded != NULL && graphdemo::ListNodeAt( loaded->head ) != NULL );
+    CHECK( graphdemo::ListNodeAt( loaded->head )->value == 0 );
+    free( region );
+}
+
+// ---- reflection: the derived mode and the pointer kind are visible ----
+
+static void test_pointer_reflection()
+{
+    const graphdemo::TableTypeInfo * scene = graphdemo::SceneTableType();
+    const graphdemo::TableTypeInfo * meta = graphdemo::MetaTableType();
+    const graphdemo::TableTypeInfo * list = graphdemo::ListNodeTableType();
+
+    // the MODE is derived and surfaced: nobody declared either of these
+    CHECK( scene->variable );
+    CHECK( list->variable );
+    CHECK( !meta->variable );
+    CHECK( !graphdemo::SettingsTableType()->variable ); // pointed at, still fixed
+    CHECK( graphdemo::LayerTableType()->variable );     // a pointer of its own
+
+    const graphdemo::TableFieldInfo * head = graph_field( scene, "head" );
+    CHECK( head != NULL && head->is_pointer );
+    CHECK( head->kind == 13 ); // a pointer rides as a nested table body
+    CHECK( head->elem_size == sizeof( graphdemo::TableRef ) );
+    CHECK( head->table == graphdemo::ListNodeTableType() ); // the TARGET's descriptor
+    CHECK( !head->is_array && !head->counted );
+
+    // a self-referential pointer resolves to its own type's descriptor
+    const graphdemo::TableFieldInfo * next = graph_field( list, "next" );
+    CHECK( next != NULL && next->is_pointer && next->table == list );
+
+    // a by-value nesting is not a pointer
+    const graphdemo::TableFieldInfo * ground = graph_field( scene, "ground" );
+    CHECK( ground != NULL && !ground->is_pointer && ground->kind == 13 );
+    const graphdemo::TableFieldInfo * meta_field = graph_field( scene, "meta" );
+    CHECK( meta_field != NULL && !meta_field->is_pointer );
+
+    // a pointer field's id is its name's hash, exactly as any other field's
+    CHECK( head->id == field_id( "head" ) );
+
+    // relocatability holds with pointers in the struct: the slot is four bytes
+    CHECK( sizeof( graphdemo::TableRef ) == 4 );
+}
+
+
+// ============================================================================
+// REGRESSIONS from the adversarial review. Each is the reviewer's own repro,
+// reduced to an assertion that goes red if the defect returns.
+// ============================================================================
+
+// ---- B1: Open's walk is LINEAR, not exponential ----
+//
+// The repro: a legal cooked file whose TreeNode chain runs down `left`, then
+// forged so every node's `right` ALIASES its `left`. Every reference stays
+// forward, in range and aligned, so a walk with no order state explores 2^n
+// paths — 26 nodes took 312 ms and ~60 nodes never returned. The high-water
+// mark refuses the second (aliasing) reference outright, in linear time.
+static void test_open_walk_is_linear()
+{
+    for ( int n : { 16, 26, 40, 64 } )
+    {
+        graphdemo::SceneBuilder builder;
+        graphdemo::TableRef * slot = &builder.GetRoot()->tree;
+        for ( int i = 0; i < n; i++ )
+        {
+            graphdemo::TableSlot<graphdemo::TreeNode> node = builder.Alloc<graphdemo::TreeNode>();
+            *slot = node.ref;
+            slot = &node.ptr->left;
+        }
+        CHECK( builder.Lock() );
+        int64_t need = graphdemo::SceneCookMeasure( builder );
+        uint8_t * file = (uint8_t *) malloc( (size_t) need );
+        CHECK( graphdemo::SceneCook( builder, file, need ) == need );
+        CHECK( graphdemo::SceneOpen( file, need ) != NULL ); // the genuine file opens
+
+        // forge: every node's right aliases its left — forward, in range, aligned
+        uint8_t * base = file + graphdemo::kTableCookedHeaderBytes;
+        int64_t region = need - graphdemo::kTableCookedHeaderBytes;
+        graphdemo::Scene * root = (graphdemo::Scene *) base;
+        int64_t at = ( (uint8_t *) &root->tree - base ) + (int64_t) root->tree.value;
+        int patched = 0;
+        while ( at + (int64_t) sizeof( graphdemo::TreeNode ) <= region )
+        {
+            graphdemo::TreeNode * node = (graphdemo::TreeNode *) ( base + at );
+            if ( node->left.value == 0 ) { break; }
+            int64_t next_at = ( (uint8_t *) &node->left - base ) + (int64_t) node->left.value;
+            node->right.value = (uint32_t) ( ( base + next_at ) - (uint8_t *) &node->right );
+            patched++;
+            at = next_at;
+        }
+        CHECK( patched == n - 1 );
+        // REFUSED, and refused in linear time: the mark makes each accepted
+        // reference consume region bytes, so the walk cannot revisit a node.
+        // At n = 64 an unbounded walk would not return in the age of the
+        // universe; this returns before the next line runs.
+        CHECK( graphdemo::SceneOpen( file, need ) == NULL );
+        free( file );
+    }
+}
+
+// ---- B1's companion: the mark also closes mid-node overlap ----
+
+static void test_open_refuses_overlap()
+{
+    graphdemo::SceneBuilder builder;
+    graphdemo::TableSlot<graphdemo::ListNode> a = builder.Alloc<graphdemo::ListNode>();
+    graphdemo::TableSlot<graphdemo::ListNode> b = builder.Alloc<graphdemo::ListNode>();
+    a->value = 1;
+    b->value = 2;
+    a->next = b;
+    builder.GetRoot()->head = a;
+    CHECK( builder.Lock() );
+    int64_t need = graphdemo::SceneCookMeasure( builder );
+    uint8_t * file = (uint8_t *) malloc( (size_t) need );
+    CHECK( graphdemo::SceneCook( builder, file, need ) == need );
+    CHECK( graphdemo::SceneOpen( file, need ) != NULL );
+
+    // point head at a node-sized window that STARTS inside the first node:
+    // in range, aligned, forward — and an overlap the mark refuses
+    uint8_t * base = file + graphdemo::kTableCookedHeaderBytes;
+    graphdemo::Scene * root = (graphdemo::Scene *) base;
+    root->head.value += 8;
+    CHECK( graphdemo::SceneOpen( file, need ) == NULL );
+    free( file );
+}
+
+// ---- B2: Lock and Cook are deterministic on a DIRTIED heap ----
+//
+// Lock and Cook memcpy whole nodes, struct PADDING included. Value-initialising
+// a node zeroes its members and not its padding, so before the arena's segments
+// were zeroed this test passed only when the allocator happened to hand back
+// fresh zero pages — and a cooked FILE carried heap bytes to disk.
+
+static void dirty_the_heap( int pattern )
+{
+    void * blocks[6];
+    for ( int i = 0; i < 6; i++ )
+    {
+        blocks[i] = malloc( 4u << 20 );
+        memset( blocks[i], pattern, 4u << 20 );
+    }
+    for ( int i = 0; i < 6; i++ ) { free( blocks[i] ); }
+}
+
+static void test_lock_deterministic_on_dirty_heap()
+{
+    dirty_the_heap( 0xA5 );
+    graphdemo::SceneBuilder first;
+    build_scene( first );
+    CHECK( first.Lock() );
+    int64_t bytes = first.RegionBytes();
+    uint8_t * saved = (uint8_t *) malloc( (size_t) bytes );
+    memcpy( saved, first.Region(), (size_t) bytes );
+    int64_t cook_bytes = graphdemo::SceneCookMeasure( first );
+    uint8_t * cooked_first = (uint8_t *) malloc( (size_t) cook_bytes );
+    CHECK( graphdemo::SceneCook( first, cooked_first, cook_bytes ) == cook_bytes );
+
+    dirty_the_heap( 0x5C ); // a DIFFERENT pattern, so any leak shows as a diff
+    graphdemo::SceneBuilder second;
+    build_scene( second );
+    CHECK( second.Lock() );
+    CHECK( second.RegionBytes() == bytes );
+    CHECK( memcmp( saved, second.Region(), (size_t) bytes ) == 0 );
+
+    uint8_t * cooked_second = (uint8_t *) malloc( (size_t) cook_bytes );
+    CHECK( graphdemo::SceneCook( second, cooked_second, cook_bytes ) == cook_bytes );
+    CHECK( memcmp( cooked_first, cooked_second, (size_t) cook_bytes ) == 0 );
+
+    // and no padding byte carries heap content: the region's tail padding of
+    // the root's string is zero, whatever the allocator handed back
+    const uint8_t * region = second.Region();
+    for ( int64_t i = (int64_t) offsetof( graphdemo::Scene, name ) + 6;
+          i < (int64_t) offsetof( graphdemo::Scene, name ) + 24; i++ )
+    {
+        CHECK( region[i] == 0 );
+    }
+    free( saved );
+    free( cooked_first );
+    free( cooked_second );
+}
+
+// ---- C1: the four walks agree about what depth costs ----
+//
+// By-value nesting charges depth in NEITHER walk, so a chain that Locks and
+// Cooks is a chain the wire accepts. Before the fix, measure/save/load charged
+// a by-value nesting and pack/cook/open did not, and a structure reachable
+// through Scene::ground was lockable and cookable but unsaveable.
+
+static void test_depth_agrees_through_by_value_nesting()
+{
+    graphdemo::SceneBuilder builder;
+    // the chain hangs off `ground`, a VARIABLE table nested BY VALUE
+    graphdemo::TableSlot<graphdemo::ListNode> head = builder.Alloc<graphdemo::ListNode>();
+    head->value = 0;
+    builder.GetRoot()->ground.head = head;
+    graphdemo::ListNode * tail = head;
+    for ( int i = 1; i < graphdemo::kTableMaxDepth - 1; i++ ) // 127 nodes
+    {
+        graphdemo::TableSlot<graphdemo::ListNode> node = builder.Alloc<graphdemo::ListNode>();
+        node->value = i;
+        tail->next = node;
+        tail = node;
+    }
+
+    // every walk accepts it: measure, save, pack (Lock), cook, open, load
+    int64_t need = graphdemo::SceneMeasure( builder );
+    CHECK( need > 0 );
+    uint8_t * wire = (uint8_t *) malloc( (size_t) need );
+    CHECK( graphdemo::SceneSave( builder, wire, need ) == need );
+    CHECK( builder.Lock() );
+    int64_t cook_bytes = graphdemo::SceneCookMeasure( builder );
+    CHECK( cook_bytes > 0 );
+    uint8_t * cooked = (uint8_t *) malloc( (size_t) cook_bytes );
+    CHECK( graphdemo::SceneCook( builder, cooked, cook_bytes ) == cook_bytes );
+    CHECK( graphdemo::SceneOpen( cooked, cook_bytes ) != NULL );
+
+    int64_t region_need = graphdemo::SceneLoadMeasure( wire, need );
+    uint8_t * region = (uint8_t *) malloc( (size_t) region_need );
+    graphdemo::TableReport report;
+    const graphdemo::Scene * loaded = graphdemo::SceneLoad( region, region_need, wire, need, &report );
+    CHECK( loaded != NULL && !report.malformed ); // the wire agrees with Lock
+    int walked = 0;
+    for ( const graphdemo::ListNode * node = graphdemo::ListNodeAt( loaded->ground.head );
+          node != NULL; node = graphdemo::ListNodeAt( node->next ) )
+    {
+        CHECK( node->value == walked );
+        walked++;
+    }
+    CHECK( walked == graphdemo::kTableMaxDepth - 1 );
+    free( wire );
+    free( cooked );
+    free( region );
+}
+
+// ---- C2: Open bounds the companions of by-value nested FIXED tables ----
+
+static void test_open_bounds_nested_fixed_companions()
+{
+    graphdemo::SceneBuilder builder;
+    build_scene( builder );
+    CHECK( builder.Lock() );
+    int64_t need = graphdemo::SceneCookMeasure( builder );
+    uint8_t * file = (uint8_t *) malloc( (size_t) need );
+    CHECK( graphdemo::SceneCook( builder, file, need ) == need );
+    CHECK( graphdemo::SceneOpen( file, need ) != NULL );
+
+    // Meta is FIXED-SIZE and nested BY VALUE in Scene. Its tag_length bounds
+    // any walk of tag[8]; an unbounded one is the over-read.
+    graphdemo::Scene * root = (graphdemo::Scene *) ( file + graphdemo::kTableCookedHeaderBytes );
+    int32_t good = root->meta.tag_length;
+    root->meta.tag_length = 30000;
+    CHECK( graphdemo::SceneOpen( file, need ) == NULL );
+    root->meta.tag_length = -1;
+    CHECK( graphdemo::SceneOpen( file, need ) == NULL );
+    root->meta.tag_length = good;
+    CHECK( graphdemo::SceneOpen( file, need ) != NULL );
+
+    // the same for a fixed table reached through a POINTER
+    graphdemo::Settings * settings = (graphdemo::Settings *) graphdemo::SettingsAt( root->settings );
+    CHECK( settings != NULL );
+    settings->label_length = 9999;
+    CHECK( graphdemo::SceneOpen( file, need ) == NULL );
+    free( file );
+}
+
+// ---- the cooked header's reserved words are reserved ----
+
+static void test_open_refuses_dirty_reserved()
+{
+    graphdemo::SceneBuilder builder;
+    build_scene( builder );
+    CHECK( builder.Lock() );
+    int64_t need = graphdemo::SceneCookMeasure( builder );
+    uint8_t * file = (uint8_t *) malloc( (size_t) need );
+    CHECK( graphdemo::SceneCook( builder, file, need ) == need );
+    CHECK( graphdemo::SceneOpen( file, need ) != NULL );
+    for ( int64_t at = 12; at < graphdemo::kTableCookedHeaderBytes; at++ )
+    {
+        file[at] = 0x7F; // a writer that used a reserved word
+        CHECK( graphdemo::SceneOpen( file, need ) == NULL );
+        file[at] = 0;
+    }
+    CHECK( graphdemo::SceneOpen( file, need ) != NULL );
+    free( file );
+}
+
+// ---- C3: the reflection surface is immutable constant data ----
+
+static void test_descriptors_are_constant()
+{
+    // no lazy link, so a self-referential target is already resolved on the
+    // first read from any thread — the descriptors carry no mutable state
+    const graphdemo::TableTypeInfo * list = graphdemo::ListNodeTableType();
+    CHECK( graph_field( list, "next" )->table == list );
+    CHECK( graphdemo::ListNodeTableType() == list ); // one instance, always
+    // reading from several threads at once is a plain read of constant data
+    std::vector<std::thread> readers;
+    for ( int t = 0; t < 4; t++ )
+    {
+        readers.emplace_back( [list]() {
+            for ( int i = 0; i < 2000; i++ )
+            {
+                CHECK( graphdemo::ListNodeTableType() == list );
+                CHECK( graphdemo::SceneTableType()->variable );
+            }
+        } );
+    }
+    for ( auto & reader : readers ) { reader.join(); }
+}
+
+
+// ---- R1: a multi-file pointered unit, across every kind of member ----
+//
+// The gap that let the defect through: `Album` nests a plain TYPE and a FIXED
+// table declared in Parts.schema — a file that declares no variable table and
+// owns no pointer target — plus a VARIABLE table from Marks.schema. The Open
+// walk for each lives in its DECLARING file's header, so a file-scoped
+// emission rule leaves Parts's two undefined and the referencing header will
+// not compile. Colour is native-mapped as well, so the walk is reached through
+// a derived-to-base conversion.
+
+static void test_cross_file_pointer_unit()
+{
+    graphdemo::AlbumBuilder builder;
+    graphdemo::Album * album = builder.GetRoot();
+    set_string( album->name, album->name_length, "cross" );
+
+    // a native-mapped TYPE from another file: the storage speaks ::ColourMath
+    album->tint = ColourMath( 10, 20, 30 );
+    CHECK( album->tint.packed() == 0x0A141Eu );
+
+    // a FIXED table from a file with no variable table of its own
+    set_string( album->stamp.tag, album->stamp.tag_length, "s1" );
+    album->stamp.seq = 42;
+
+    // a VARIABLE table from a third file, nested by value AND pointed at
+    set_string( album->marker.label, album->marker.label_length, "by-val" );
+    graphdemo::TableSlot<graphdemo::Tally> tally = builder.Alloc<graphdemo::Tally>();
+    tally->hits = 7;
+    album->marker.note = tally;
+
+    graphdemo::TableSlot<graphdemo::Marker> pinned = builder.Alloc<graphdemo::Marker>();
+    set_string( pinned->label, pinned->label_length, "pinned" );
+    graphdemo::TableSlot<graphdemo::Tally> pinned_tally = builder.Alloc<graphdemo::Tally>();
+    pinned_tally->hits = 9;
+    pinned->note = pinned_tally;
+    album->pin = pinned;
+
+    graphdemo::TableSlot<graphdemo::ListNode> head = builder.Alloc<graphdemo::ListNode>();
+    head->value = 5;
+    album->head = head;
+
+    // the wire, exactly measured
+    int64_t need = graphdemo::AlbumMeasure( builder );
+    CHECK( need > 0 );
+    uint8_t wire[2048];
+    CHECK( graphdemo::AlbumSave( builder, wire, sizeof( wire ) ) == need );
+    CHECK( graphdemo::AlbumSave( builder, wire, need ) == need );
+    CHECK( graphdemo::AlbumSave( builder, wire, need - 1 ) == -1 );
+
+    CHECK( builder.Lock() );
+    const graphdemo::Album * locked = builder.AsConst();
+    CHECK( locked != NULL );
+
+    // every cross-file member survives the compaction
+    CHECK( strcmp( locked->name, "cross" ) == 0 );
+    CHECK( locked->tint.r == 10 && locked->tint.g == 20 && locked->tint.b == 30 );
+    CHECK( locked->tint.packed() == 0x0A141Eu ); // the native behaviour still rides
+    CHECK( strcmp( locked->stamp.tag, "s1" ) == 0 && locked->stamp.seq == 42 );
+    CHECK( strcmp( locked->marker.label, "by-val" ) == 0 );
+    CHECK( graphdemo::TallyAt( locked->marker.note )->hits == 7 );
+    CHECK( strcmp( graphdemo::MarkerAt( locked->pin )->label, "pinned" ) == 0 );
+    CHECK( graphdemo::TallyAt( graphdemo::MarkerAt( locked->pin )->note )->hits == 9 );
+    CHECK( graphdemo::ListNodeAt( locked->head )->value == 5 );
+
+    // and the round trip through the wire
+    int64_t region_need = graphdemo::AlbumLoadMeasure( wire, need );
+    CHECK( region_need == builder.RegionBytes() );
+    uint8_t * region = (uint8_t *) malloc( (size_t) region_need );
+    graphdemo::TableReport report;
+    const graphdemo::Album * loaded = graphdemo::AlbumLoad( region, region_need, wire, need, &report );
+    CHECK( loaded != NULL );
+    CHECK( report.unknown == 0 && report.kind_mismatch == 0 && report.clamped == 0 && !report.malformed );
+    CHECK( loaded->tint.b == 30 && loaded->stamp.seq == 42 );
+    CHECK( graphdemo::TallyAt( loaded->marker.note )->hits == 7 );
+    CHECK( graphdemo::TallyAt( graphdemo::MarkerAt( loaded->pin )->note )->hits == 9 );
+    free( region );
+
+    // ---- and Open bounds the CROSS-FILE members' companions ----
+    int64_t cook_need = graphdemo::AlbumCookMeasure( builder );
+    uint8_t * file = (uint8_t *) malloc( (size_t) cook_need );
+    CHECK( graphdemo::AlbumCook( builder, file, cook_need ) == cook_need );
+    CHECK( graphdemo::AlbumOpen( file, cook_need ) != NULL );
+
+    graphdemo::Album * forged = (graphdemo::Album *) ( file + graphdemo::kTableCookedHeaderBytes );
+
+    // a FIXED table declared in a file with no variable table at all
+    int32_t good_tag = forged->stamp.tag_length;
+    forged->stamp.tag_length = 30000;
+    CHECK( graphdemo::AlbumOpen( file, cook_need ) == NULL );
+    forged->stamp.tag_length = good_tag;
+
+    // a VARIABLE table declared in a third file, nested by value
+    int32_t good_label = forged->marker.label_length;
+    forged->marker.label_length = -4;
+    CHECK( graphdemo::AlbumOpen( file, cook_need ) == NULL );
+    forged->marker.label_length = good_label;
+
+    // its pointer, out of the region
+    uint32_t good_note = forged->marker.note.value;
+    forged->marker.note.value = 0x7FFFFFF0u;
+    CHECK( graphdemo::AlbumOpen( file, cook_need ) == NULL );
+    forged->marker.note.value = good_note;
+
+    CHECK( graphdemo::AlbumOpen( file, cook_need ) != NULL ); // nothing else broke
+    free( file );
 }
 
 int main()
@@ -648,6 +1650,28 @@ int main()
     test_reflection();
     test_cross_file();
     test_parallel_shape();
+
+    test_pointer_lifecycle();
+    test_lock_layout_stable();
+    test_pointer_alias();
+    test_pointer_cycle_refused();
+    test_pointer_depth_cap();
+    test_builder_grow();
+    test_builder_workers();
+    test_cooked_form();
+    test_pointer_evolution_old_reader_new_data();
+    test_pointer_evolution_new_reader_old_data();
+    test_pointer_null_and_empty();
+    test_pointer_reflection();
+
+    test_open_walk_is_linear();
+    test_open_refuses_overlap();
+    test_lock_deterministic_on_dirty_heap();
+    test_depth_agrees_through_by_value_nesting();
+    test_open_bounds_nested_fixed_companions();
+    test_open_refuses_dirty_reserved();
+    test_descriptors_are_constant();
+    test_cross_file_pointer_unit();
 
     if ( failures > 0 )
     {

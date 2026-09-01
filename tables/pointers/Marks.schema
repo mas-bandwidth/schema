@@ -1,0 +1,16 @@
+// Marks.schema — a VARIABLE table declared in its own file, nested by value
+// and pointed at from a third (Graph). The cross-file variable member: its
+// pack walkers and its Open walk both live here, and the file that nests it
+// picks them up through the include it already has.
+package graphdemo
+
+table Tally
+{
+    hits int32 = 0 | min = 0, max = 10000
+}
+
+table Marker
+{
+    label string(8)
+    note  *Tally
+}

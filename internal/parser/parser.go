@@ -569,6 +569,15 @@ func (p *parser) parseScalar() ast.ScalarType {
 	case scanner.Ident:
 		p.advance()
 		return ast.ScalarType{Kind: ast.ScalarNamed, Name: t.Text, Pos: t.Pos}
+	case scanner.Star:
+		// `next *Node` — a POINTER to a table (SPEC-TABLES.md). The C-like
+		// spelling is deliberate: it reads as what it is. What may sit on the
+		// right of the star is the CHECKER's business (a table, inside a table
+		// body); the grammar accepts any name so the diagnostic names the real
+		// problem instead of "expected a field type".
+		p.advance()
+		name := p.expect(scanner.Ident, "the table a pointer targets")
+		return ast.ScalarType{Kind: ast.ScalarNamed, Pointer: true, Name: name.Text, Pos: t.Pos}
 	default:
 		p.errf(t.Pos, "expected a field type, found %q", describe(t))
 		return ast.ScalarType{Kind: ast.ScalarNamed, Name: "<error>", Pos: t.Pos}
