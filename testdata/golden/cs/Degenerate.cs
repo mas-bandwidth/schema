@@ -602,17 +602,16 @@ namespace Example
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static bool WriteTrioBatch(ref WriteBatch batch, Trio value)
         {
-            if (!batch.SerializeBits(ref value.A, 20))
             {
-                return false;
-            }
-            if (!batch.SerializeBits(ref value.B, 20))
-            {
-                return false;
-            }
-            if (!batch.SerializeBits(ref value.C, 24))
-            {
-                return false;
+                // flat run: 64 bits in 1 chunk(s) — the field placement is folded
+                ulong f0 = ((ulong)value.A) & 0xfffffUL;
+                ulong f1 = ((ulong)value.B) & 0xfffffUL;
+                ulong f2 = ((ulong)value.C) & 0xffffffUL;
+                ulong w0 = f0 | (f1 << 20) | (f2 << 40);
+                if (!batch.SerializeBits64(ref w0, 64))
+                {
+                    return false;
+                }
             }
             return true;
         }
@@ -629,17 +628,21 @@ namespace Example
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static bool ReadTrioBatch(ref ReadBatch batch, Trio value)
         {
-            if (!batch.SerializeBits(ref value.A, 20))
             {
-                return false;
-            }
-            if (!batch.SerializeBits(ref value.B, 20))
-            {
-                return false;
-            }
-            if (!batch.SerializeBits(ref value.C, 24))
-            {
-                return false;
+                // flat run: 64 bits in 1 chunk(s) — one bounds check per chunk,
+                // one sticky-error test for the whole run
+                ulong c0 = 0;
+                batch.SerializeBits64(ref c0, 64);
+                if (!batch.Ok)
+                {
+                    return false;
+                }
+                ulong v0 = c0 & 0xfffffUL;
+                value.A = (uint)v0;
+                ulong v1 = (c0 >> 20) & 0xfffffUL;
+                value.B = (uint)v1;
+                ulong v2 = (c0 >> 40) & 0xffffffUL;
+                value.C = (uint)v2;
             }
             return true;
         }

@@ -73,32 +73,29 @@ namespace Example
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static bool WriteRenderSpriteBatch(ref WriteBatch batch, RenderSprite value)
         {
-            if (!batch.SerializeBits64(ref value.SortKey, 64))
             {
-                return false;
-            }
-            if (!batch.SerializeBits(ref value.MeshId, 32))
-            {
-                return false;
-            }
-            if (!batch.SerializeBits(ref value.MaterialId, 32))
-            {
-                return false;
-            }
-            {
-                uint rawValue = value.Layer;
-                if (!batch.SerializeBits(ref rawValue, 8))
+                // flat run: 138 bits in 3 chunk(s) — the field placement is folded
+                if ((uint)value.Team > 2) // headroom above the wire range cannot ride
                 {
                     return false;
                 }
-            }
-            {
-                uint enumValue = (uint)value.Team;
-                if (enumValue > 2) // headroom above the wire range cannot ride
+                ulong f0 = (ulong)value.SortKey;
+                ulong f1 = ((ulong)(value.MeshId)) & 0xffffffffUL;
+                ulong f2 = ((ulong)(value.MaterialId)) & 0xffffffffUL;
+                ulong f3 = ((ulong)(value.Layer)) & 0xffUL;
+                ulong f4 = ((ulong)(uint)value.Team) & 0x3UL;
+                ulong w0 = f0;
+                if (!batch.SerializeBits64(ref w0, 64))
                 {
                     return false;
                 }
-                if (!batch.SerializeBits(ref enumValue, 2))
+                ulong w1 = f1 | (f2 << 32);
+                if (!batch.SerializeBits64(ref w1, 64))
+                {
+                    return false;
+                }
+                uint w2 = (uint)(f3 | (f4 << 8));
+                if (!batch.SerializeBits(ref w2, 10))
                 {
                     return false;
                 }
@@ -118,25 +115,27 @@ namespace Example
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static bool ReadRenderSpriteBatch(ref ReadBatch batch, RenderSprite value)
         {
-            if (!batch.SerializeBits64(ref value.SortKey, 64))
             {
-                return false;
-            }
-            if (!batch.SerializeBits(ref value.MeshId, 32))
-            {
-                return false;
-            }
-            if (!batch.SerializeBits(ref value.MaterialId, 32))
-            {
-                return false;
-            }
-            {
-                uint rawValue = 0;
-                if (!batch.SerializeBits(ref rawValue, 8))
+                // flat run: 136 bits in 3 chunk(s) — one bounds check per chunk,
+                // one sticky-error test for the whole run
+                ulong c0 = 0;
+                batch.SerializeBits64(ref c0, 64);
+                ulong c1 = 0;
+                batch.SerializeBits64(ref c1, 64);
+                ulong c2 = 0;
+                batch.SerializeBits64(ref c2, 8);
+                if (!batch.Ok)
                 {
                     return false;
                 }
-                value.Layer = (byte)rawValue;
+                ulong v0 = c0;
+                value.SortKey = v0;
+                ulong v1 = c1 & 0xffffffffUL;
+                value.MeshId = (uint)(uint)v1;
+                ulong v2 = (c1 >> 32) & 0xffffffffUL;
+                value.MaterialId = (uint)(uint)v2;
+                ulong v3 = c2 & 0xffUL;
+                value.Layer = (byte)(uint)v3;
             }
             {
                 int enumValue = 0;
@@ -180,13 +179,15 @@ namespace Example
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static bool WriteRenderBlockBatch(ref WriteBatch batch, RenderBlock value)
         {
-            if (!batch.SerializeBits(ref value.WorkerIndex, 32))
             {
-                return false;
-            }
-            if (!batch.SerializeBits(ref value.SpriteCountHint, 32))
-            {
-                return false;
+                // flat run: 64 bits in 1 chunk(s) — the field placement is folded
+                ulong f0 = ((ulong)(value.WorkerIndex)) & 0xffffffffUL;
+                ulong f1 = ((ulong)(value.SpriteCountHint)) & 0xffffffffUL;
+                ulong w0 = f0 | (f1 << 32);
+                if (!batch.SerializeBits64(ref w0, 64))
+                {
+                    return false;
+                }
             }
             if (value.SpritesCount < 0 || value.SpritesCount > (int)RenderBlockMaxSprites) // the count guards the loop (§6.3); out-of-contract writes are refused
             {
@@ -221,13 +222,19 @@ namespace Example
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static bool ReadRenderBlockBatch(ref ReadBatch batch, RenderBlock value)
         {
-            if (!batch.SerializeBits(ref value.WorkerIndex, 32))
             {
-                return false;
-            }
-            if (!batch.SerializeBits(ref value.SpriteCountHint, 32))
-            {
-                return false;
+                // flat run: 64 bits in 1 chunk(s) — one bounds check per chunk,
+                // one sticky-error test for the whole run
+                ulong c0 = 0;
+                batch.SerializeBits64(ref c0, 64);
+                if (!batch.Ok)
+                {
+                    return false;
+                }
+                ulong v0 = c0 & 0xffffffffUL;
+                value.WorkerIndex = (uint)(uint)v0;
+                ulong v1 = (c0 >> 32) & 0xffffffffUL;
+                value.SpriteCountHint = (uint)(uint)v1;
             }
             if (!batch.SerializeInt(ref value.SpritesCount, 0, (int)RenderBlockMaxSprites)) // the count guards the loop (§6.3)
             {

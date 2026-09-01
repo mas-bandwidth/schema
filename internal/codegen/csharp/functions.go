@@ -118,6 +118,77 @@ func (g *gen) emitCoreAttr() {
 	g.sf("[MethodImpl(MethodImplOptions.AggressiveInlining)]\n")
 }
 
+// batchScopeChild names the nested pair a composition site calls into when
+// that call earns a SCOPED BATCH — a batch opened and ended around the
+// composition site alone, inside a body that is otherwise on the stream.
+// Returns "" when the site does not earn one.
+//
+// The site earns one when the child carries a core AND passed the density
+// rule as a pair of its own: reaching that core by ref costs one capture and
+// one restore for the WHOLE site — an array's entire loop included — where
+// the child's stream entry costs one capture and one restore PER ELEMENT,
+// plus a real call the JIT will not inline through. On the bench shape that
+// is 88 capture/restore round trips (8 entities + 80 stats) traded for 3.
+//
+// A body already inside a core needs no scope: it reaches its children
+// core-to-core by ref already.
+func (g *gen) batchScopeChild(f *ir.Field) string {
+	if g.inBatch || f.Type.Kind != ir.TNamed {
+		return ""
+	}
+	switch f.Type.Ref.(type) {
+	case *ir.Struct, *ir.Union:
+	default:
+		return "" // enums and flags are scalars, not composition
+	}
+	name := f.Type.Name
+	if !g.needCore[name] || !g.batched[name] {
+		return ""
+	}
+	return name
+}
+
+// emitBatchScope emits one scoped batch around a composition site. ONLY the
+// composition call — or the loop of them — rides inside the scope: an array's
+// count site stays on the stream ahead of it, so the scope's body has exactly
+// one way to fail and End always runs before the refusal leaves the function.
+func (g *gen) emitBatchScope(writing bool, f *ir.Field, child, ind string) {
+	base := g.fieldBase(f)
+	name := "value." + base
+	dir, batchType := "Read", "ReadBatch"
+	if writing {
+		dir, batchType = "Write", "WriteBatch"
+	}
+	bound := g.renderArg(f.ArrayExpr, big.NewInt(f.ArrayBound), "int", false)
+	count := bound
+	if f.Array == ir.ArrayCounted {
+		count = "value." + g.m(base+"Count")
+		if writing {
+			g.emitWriteFoldedRange(count, fmt.Sprintf("%d", f.ArrayMin), bound,
+				big.NewInt(f.ArrayMin), big.NewInt(f.ArrayBound), false, true, true,
+				" // the count guards the loop (§6.3); out-of-contract writes are refused", ind)
+		} else {
+			g.call(ind, fmt.Sprintf("stream.SerializeInt(ref %s, %d, %s)", count, f.ArrayMin, bound),
+				" // the count guards the loop (§6.3)")
+		}
+	}
+	g.sf("%s{\n", ind)
+	g.sf("%s    // scoped batch: one capture and one restore for the whole site\n", ind)
+	g.sf("%s    %s batch = stream.BeginBatch();\n", ind, batchType)
+	if f.Array == ir.ArrayNone {
+		g.sf("%s    bool batchOk = %s%sBatch(ref batch, %s);\n", ind, dir, child, name)
+	} else {
+		g.sf("%s    bool batchOk = true;\n", ind)
+		g.sf("%s    for (int i = 0; i < %s; i++)\n%s    {\n", ind, count, ind)
+		g.sf("%s        if (!%s%sBatch(ref batch, %s[i]))\n%s        {\n", ind, dir, child, name, ind)
+		g.sf("%s            batchOk = false;\n%s            break;\n%s        }\n", ind, ind, ind)
+		g.sf("%s    }\n", ind)
+	}
+	g.sf("%s    batch.End();\n", ind)
+	g.sf("%s    if (!batchOk)\n%s    {\n%s        return false;\n%s    }\n", ind, ind, ind, ind)
+	g.sf("%s}\n", ind)
+}
+
 // emitZeroFunction emits the §5 ZERO form for a class — all-zero storage,
 // specified defaults NOT reapplied (those live in construction only; the wire
 // contract stays a pure function of the encodings). It is the C# twin of the
@@ -135,71 +206,148 @@ func (g *gen) emitZeroFunction(st *ir.Struct) {
 	g.sf("}\n\n")
 }
 
+// emitWriteItems walks a body, accumulating maximal FLAT RUNS of statically
+// sized items (flat.go) and emitting everything else through the per-field
+// path. A run that does not reduce the packer-step count, or that a
+// non-flattenable item interrupts, falls back ITEM BY ITEM — never piece by
+// piece: the item is the only unit the per-field path can re-emit.
 func (g *gen) emitWriteItems(items []ir.Item, ind string) {
+	var run []flatPiece
+	var runBits int64
+	flush := func() {
+		if len(run) == 0 {
+			return
+		}
+		pieces, bits := run, runBits
+		run, runBits = nil, 0
+		if flatWorthwhile(pieces, bits) {
+			g.emitFlatWriteRun(pieces, bits, ind)
+			return
+		}
+		for _, p := range pieces {
+			g.emitWriteItem(p.item, ind)
+		}
+	}
 	for _, item := range items {
-		switch item := item.(type) {
-		case *ir.FieldItem:
-			g.emitWriteField(item.F, ind)
-		case *ir.ConstItem:
-			g.emitConstItem(item, ind, true)
-		case *ir.ReservedItem:
-			g.emitReservedItem(item, ind, true)
-		case *ir.AlignItem:
-			g.call(ind, g.rv()+".SerializeAlign()", "")
-		case *ir.Branch:
-			neg := ""
-			if item.Neg {
-				neg = "!"
-			}
-			g.sf("%sif (%svalue.%s)\n%s{\n", ind, neg, g.m(ir.GoExportName(item.Cond)), ind)
-			g.emitWriteItems(item.Then, ind+"    ")
+		p, ok := g.flatWritePieceOf(item)
+		if ok && runBits+p.bits <= flatMaxRunBits {
+			run = append(run, p)
+			runBits += p.bits
+			continue
+		}
+		flush()
+		if ok {
+			run, runBits = []flatPiece{p}, p.bits
+			continue
+		}
+		g.emitWriteItem(item, ind)
+	}
+	flush()
+}
+
+// emitWriteItem is the per-field path for one item — the run's fallback and
+// the emitter for everything a run cannot hold.
+func (g *gen) emitWriteItem(item ir.Item, ind string) {
+	switch item := item.(type) {
+	case *ir.FieldItem:
+		g.emitWriteField(item.F, ind)
+	case *ir.ConstItem:
+		g.emitConstItem(item, ind, true)
+	case *ir.ReservedItem:
+		g.emitReservedItem(item, ind, true)
+	case *ir.AlignItem:
+		g.call(ind, g.rv()+".SerializeAlign()", "")
+	case *ir.Branch:
+		neg := ""
+		if item.Neg {
+			neg = "!"
+		}
+		g.sf("%sif (%svalue.%s)\n%s{\n", ind, neg, g.m(ir.GoExportName(item.Cond)), ind)
+		g.emitWriteItems(item.Then, ind+"    ")
+		g.sf("%s}\n", ind)
+		if item.Else != nil {
+			g.sf("%selse\n%s{\n", ind, ind)
+			g.emitWriteItems(item.Else, ind+"    ")
 			g.sf("%s}\n", ind)
-			if item.Else != nil {
-				g.sf("%selse\n%s{\n", ind, ind)
-				g.emitWriteItems(item.Else, ind+"    ")
-				g.sf("%s}\n", ind)
-			}
 		}
 	}
 }
 
+// emitReadItems is emitWriteItems' twin over read runs — same accumulation,
+// same item-by-item fallback, a stricter classifier (flat.go's read half
+// names what it will not absorb and why).
 func (g *gen) emitReadItems(items []ir.Item, ind string) {
-	for _, item := range items {
-		switch item := item.(type) {
-		case *ir.FieldItem:
-			g.emitReadField(item.F, ind)
-		case *ir.ConstItem:
-			g.emitConstItem(item, ind, false)
-		case *ir.ReservedItem:
-			g.emitReservedItem(item, ind, false)
-		case *ir.AlignItem:
-			g.call(ind, g.rv()+".SerializeAlign()", " // rejects nonzero padding (SPEC §4.3)")
-		case *ir.Branch:
-			neg := ""
-			if item.Neg {
-				neg = "!"
-			}
-			g.sf("%sif (%svalue.%s)\n%s{\n", ind, neg, g.m(ir.GoExportName(item.Cond)), ind)
-			g.emitReadItems(item.Then, ind+"    ")
-			// the untaken side reads as zero values (SPEC §5)
-			g.emitZeroItems(item.Else, ind+"    ")
-			g.sf("%s}\n%selse\n%s{\n", ind, ind, ind)
-			if item.Else != nil {
-				g.emitReadItems(item.Else, ind+"    ")
-			}
-			g.emitZeroItems(item.Then, ind+"    ")
-			g.sf("%s}\n", ind)
+	var run []flatPiece
+	var runBits int64
+	flush := func() {
+		if len(run) == 0 {
+			return
 		}
+		pieces, bits := run, runBits
+		run, runBits = nil, 0
+		if flatWorthwhile(pieces, bits) {
+			g.emitFlatReadRun(pieces, bits, ind)
+			return
+		}
+		for _, p := range pieces {
+			g.emitReadItem(p.item, ind)
+		}
+	}
+	for _, item := range items {
+		p, ok := g.flatReadPieceOf(item)
+		if ok && runBits+p.bits <= flatMaxRunBits {
+			run = append(run, p)
+			runBits += p.bits
+			continue
+		}
+		flush()
+		if ok {
+			run, runBits = []flatPiece{p}, p.bits
+			continue
+		}
+		g.emitReadItem(item, ind)
+	}
+	flush()
+}
+
+// emitReadItem is the per-field path for one item — the run's fallback and
+// the emitter for everything a run cannot hold.
+func (g *gen) emitReadItem(item ir.Item, ind string) {
+	switch item := item.(type) {
+	case *ir.FieldItem:
+		g.emitReadField(item.F, ind)
+	case *ir.ConstItem:
+		g.emitConstItem(item, ind, false)
+	case *ir.ReservedItem:
+		g.emitReservedItem(item, ind, false)
+	case *ir.AlignItem:
+		g.call(ind, g.rv()+".SerializeAlign()", " // rejects nonzero padding (SPEC §4.3)")
+	case *ir.Branch:
+		neg := ""
+		if item.Neg {
+			neg = "!"
+		}
+		g.sf("%sif (%svalue.%s)\n%s{\n", ind, neg, g.m(ir.GoExportName(item.Cond)), ind)
+		g.emitReadItems(item.Then, ind+"    ")
+		// the untaken side reads as zero values (SPEC §5)
+		g.emitZeroItems(item.Else, ind+"    ")
+		g.sf("%s}\n%selse\n%s{\n", ind, ind, ind)
+		if item.Else != nil {
+			g.emitReadItems(item.Else, ind+"    ")
+		}
+		g.emitZeroItems(item.Then, ind+"    ")
+		g.sf("%s}\n", ind)
 	}
 }
 
 // call emits the C++-style bool early-out around one serialize call; comment
 // (leading " // ...") rides the if line.
-// emitUnionFunctions emits the union's bounds and wire pair (SPEC §4.8):
-// plain stream functions — a union never batches (batchPlan excludes any
-// type that reaches one), so no *Batch core exists. The write validates the
-// tag BEFORE it rides; the read rejects a tag above
-// the count and zero-establishes exactly the selected arm.
+// emitUnionFunctions emits the union's bounds and wire pair (SPEC §4.8),
+// under the same batch plan every other pair obeys: the entry keeps its
+// stream signature, and a *Batch core is emitted whenever the union is
+// batched or composed under something that is. The write validates the tag
+// BEFORE it rides; the read rejects a tag above the count and
+// zero-establishes exactly the selected arm.
 func (g *gen) emitUnionFunctions(d *ir.Union) {
 	g.needsSerialize = true
 	g.owner = d.Name
@@ -216,40 +364,52 @@ func (g *gen) emitUnionFunctions(d *ir.Union) {
 	g.sf("    value.Type = %sType.None;\n}\n\n", d.Name)
 
 	bits := ir.BitsRequired(big.NewInt(0), big.NewInt(d.Max))
-	g.sf("public static bool Write%s(WriteStream stream, %s value)\n{\n", d.Name, d.Name)
-	if d.Max == 0 {
-		g.sf("    // an empty union holds only None; its degenerate tag range [0, 0]\n")
-		g.sf("    // costs zero bits (SPEC §4.8)\n")
-		g.sf("    return value.Type == %sType.None;\n}\n\n", d.Name)
-	} else {
-		g.sf("    uint tagValue = (uint)value.Type;\n")
-		g.sf("    if (tagValue > %d) // the tag validates BEFORE it rides (SPEC §4.8)\n", d.Max)
-		g.sf("    {\n        return false;\n    }\n")
-		g.call("    ", fmt.Sprintf("stream.SerializeBits(ref tagValue, %d)", bits), "")
-		g.sf("    switch (value.Type)\n    {\n")
-		for _, v := range d.Variants {
-			g.sf("        case %sType.%s:\n            return Write%s(stream, value.%s);\n",
-				d.Name, ir.GoExportName(v.Name), v.Type, ir.GoExportName(v.Name))
-		}
-		g.sf("    }\n    return true; // None — the tag is the whole wire (SPEC §4.8)\n}\n\n")
-	}
+	g.emitPair(d.Name, d.Name,
+		func() {
+			if d.Max == 0 {
+				g.sf("    // an empty union holds only None; its degenerate tag range [0, 0]\n")
+				g.sf("    // costs zero bits (SPEC §4.8)\n")
+				g.sf("    return value.Type == %sType.None;\n", d.Name)
+				return
+			}
+			g.sf("    uint tagValue = (uint)value.Type;\n")
+			g.sf("    if (tagValue > %d) // the tag validates BEFORE it rides (SPEC §4.8)\n", d.Max)
+			g.sf("    {\n        return false;\n    }\n")
+			g.call("    ", fmt.Sprintf("%s.SerializeBits(ref tagValue, %d)", g.rv(), bits), "")
+			g.sf("    switch (value.Type)\n    {\n")
+			for _, v := range d.Variants {
+				g.sf("        case %sType.%s:\n            return %s;\n",
+					d.Name, ir.GoExportName(v.Name), g.armCall("Write", v))
+			}
+			g.sf("    }\n    return true; // None — the tag is the whole wire (SPEC §4.8)\n")
+		},
+		func() {
+			if d.Max == 0 {
+				g.sf("    value.Type = %sType.None; // zero wire bits — only None exists (SPEC §4.8)\n", d.Name)
+				g.sf("    return true;\n")
+				return
+			}
+			g.sf("    int tagValue = 0;\n")
+			g.call("    ", fmt.Sprintf("%s.SerializeInt(ref tagValue, 0, %d)", g.rv(), d.Max), " // rejects a tag above the count (SPEC §4.8)")
+			g.sf("    value.Type = (%sType)tagValue;\n", d.Name)
+			g.sf("    switch (value.Type)\n    {\n")
+			for _, v := range d.Variants {
+				g.sf("        case %sType.%s:\n", d.Name, ir.GoExportName(v.Name))
+				g.sf("            Zero%s(value.%s); // the selected arm starts from the zero form (SPEC §5)\n", v.Type, ir.GoExportName(v.Name))
+				g.sf("            return %s;\n", g.armCall("Read", v))
+			}
+			g.sf("    }\n    return true; // None\n")
+		})
+}
 
-	g.sf("public static bool Read%s(ReadStream stream, %s value)\n{\n", d.Name, d.Name)
-	if d.Max == 0 {
-		g.sf("    value.Type = %sType.None; // zero wire bits — only None exists (SPEC §4.8)\n", d.Name)
-		g.sf("    return true;\n}\n\n")
-		return
+// armCall renders the call to one union arm's wire function: core-to-core by
+// ref inside a batch core (rule 1 — the arm dispatch composes exactly like a
+// nested struct field), the plain stream entry otherwise.
+func (g *gen) armCall(dir string, v ir.UnionVariant) string {
+	if g.inBatch {
+		return fmt.Sprintf("%s%sBatch(ref batch, value.%s)", dir, v.Type, ir.GoExportName(v.Name))
 	}
-	g.sf("    int tagValue = 0;\n")
-	g.call("    ", fmt.Sprintf("stream.SerializeInt(ref tagValue, 0, %d)", d.Max), " // rejects a tag above the count (SPEC §4.8)")
-	g.sf("    value.Type = (%sType)tagValue;\n", d.Name)
-	g.sf("    switch (value.Type)\n    {\n")
-	for _, v := range d.Variants {
-		g.sf("        case %sType.%s:\n", d.Name, ir.GoExportName(v.Name))
-		g.sf("            Zero%s(value.%s); // the selected arm starts from the zero form (SPEC §5)\n", v.Type, ir.GoExportName(v.Name))
-		g.sf("            return Read%s(stream, value.%s);\n", v.Type, ir.GoExportName(v.Name))
-	}
-	g.sf("    }\n    return true; // None\n}\n\n")
+	return fmt.Sprintf("%s%s(stream, value.%s)", dir, v.Type, ir.GoExportName(v.Name))
 }
 
 func (g *gen) call(ind, expr, comment string) {
@@ -482,6 +642,10 @@ func intRangePath(min, max *big.Int) string {
 func (g *gen) emitWriteField(f *ir.Field, ind string) {
 	base := g.fieldBase(f)
 	name := "value." + base
+	if child := g.batchScopeChild(f); child != "" {
+		g.emitBatchScope(true, f, child, ind)
+		return
+	}
 	if f.Array != ir.ArrayNone {
 		bound := g.renderArg(f.ArrayExpr, big.NewInt(f.ArrayBound), "int", false)
 		if g.bulkBytes[f] {
@@ -657,9 +821,11 @@ func (g *gen) emitWriteScalar(f *ir.Field, name, ind string) {
 				g.call(ind, fmt.Sprintf("Write%s(stream, %s)", f.Type.Name, name), "")
 			}
 		case *ir.Union:
-			// never inside a batch core: batchPlan excludes any pair that
-			// reaches a union (batch.go, reachesUnion)
-			g.call(ind, fmt.Sprintf("Write%s(stream, %s)", f.Type.Name, name), "")
+			if g.inBatch {
+				g.call(ind, fmt.Sprintf("Write%sBatch(ref batch, %s)", f.Type.Name, name), "")
+			} else {
+				g.call(ind, fmt.Sprintf("Write%s(stream, %s)", f.Type.Name, name), "")
+			}
 		}
 	}
 }
@@ -738,6 +904,10 @@ func csFixed8Temp(f *ir.Field) string {
 func (g *gen) emitReadField(f *ir.Field, ind string) {
 	base := g.fieldBase(f)
 	name := "value." + base
+	if child := g.batchScopeChild(f); child != "" {
+		g.emitBatchScope(false, f, child, ind)
+		return
+	}
 	if f.Array != ir.ArrayNone {
 		bound := g.renderArg(f.ArrayExpr, big.NewInt(f.ArrayBound), "int", false)
 		if g.bulkBytes[f] {
@@ -916,9 +1086,11 @@ func (g *gen) emitReadScalar(f *ir.Field, name, ind string) {
 				g.call(ind, fmt.Sprintf("Read%s(stream, %s)", f.Type.Name, name), "")
 			}
 		case *ir.Union:
-			// never inside a batch core: batchPlan excludes any pair that
-			// reaches a union (batch.go, reachesUnion)
-			g.call(ind, fmt.Sprintf("Read%s(stream, %s)", f.Type.Name, name), "")
+			if g.inBatch {
+				g.call(ind, fmt.Sprintf("Read%sBatch(ref batch, %s)", f.Type.Name, name), "")
+			} else {
+				g.call(ind, fmt.Sprintf("Read%s(stream, %s)", f.Type.Name, name), "")
+			}
 		}
 	}
 }

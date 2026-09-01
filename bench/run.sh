@@ -249,7 +249,11 @@ emit_preamble() {
         echo "# elixir: ${ELIXIR_VERSION:-not present} (generated codecs, zero runtime dependency; pinned BEAM toolchain)"
         echo "# pinning: $PIN_DESC"
         echo "# noise: ${BENCH_NOISE:-unlabelled}"
-        echo "# schema commit: $(git rev-parse --short HEAD 2>/dev/null || echo unknown)"
+        # the schema commit carries its BRANCH, exactly as every runtime line
+        # below does. A sweep that silently measured the wrong tree is a
+        # failure mode this repo has already had, and a CSV that records only
+        # a SHA cannot say which tree produced it once the SHA is rebased away.
+        echo "# schema commit: $(commit_of .)"
         # §3.5 / §5.2: the runtime commit for EVERY language, with its branch —
         # the serialize checkouts ride PR branches during review, and a number
         # measured against a branch must say so. Each line carries its
