@@ -29,7 +29,9 @@ import (
 	cgen "github.com/mas-bandwidth/schema/v2/internal/codegen/c"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/cpp"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/csharp"
+	"github.com/mas-bandwidth/schema/v2/internal/codegen/dart"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/golang"
+	"github.com/mas-bandwidth/schema/v2/internal/codegen/js"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/rust"
 	"github.com/mas-bandwidth/schema/v2/internal/parser"
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -46,6 +48,12 @@ var backends = []struct {
 	{"golang", golang.Generate},
 	{"rust", rust.Generate},
 	{"c", cgen.Generate},
+	// the refusal-capable emitters (#164): js and dart may return
+	// generate-time refusals on checked units (reserved-word collisions and
+	// similar) — drive already tolerates a reported error; the panic and the
+	// malformed-output cases below are the bugs.
+	{"js", js.Generate},
+	{"dart", dart.Generate},
 }
 
 // unitOf runs parse+check over the named sources. A parse or check failure is

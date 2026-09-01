@@ -75,11 +75,11 @@ what the language specifies, in a way that weakens a check.
 
 ## What we do to find these ourselves
 
-- A native Go fuzz harness drives parse → check → generate across the C, C++, C#, Go and Rust
+- A native Go fuzz harness drives parse → check → generate across the C, C++, C#, Dart, Go, JavaScript and Rust
   backends. Every crasher ever found is committed as a permanent regression
   input and re-run on every push.
-- The cross-language corpus generates the same schemas in C, C++, C#, Dart, Go,
-  Java, JavaScript and Rust
+- The cross-language corpus generates the same schemas in C, C++, C#, Dart,
+  Elixir, Go, Java, JavaScript and Rust
   and compares emitted wire bit for bit against pinned goldens, on Linux and
   macOS, on every push. Divergence between languages fails CI.
 - Generated readers are exercised against hand-crafted hostile bytes.
