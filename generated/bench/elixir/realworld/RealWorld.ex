@@ -2129,11 +2129,30 @@ defmodule Realworld.RealWorld do
   # compressed-float clamps can resolve it the way the reference's float
   # arithmetic does.
   #
-  # The refusal IS the test: a float segment does not match a non-finite
-  # pattern, so the finite path costs one construction and one match and
-  # never touches the exponent field, while the second clause reads the
-  # sign of exactly the patterns the first one refused.
+  # The fast path is arithmetic (Veltkamp/Dekker splitting, C = 2^29 + 1):
+  # for a double whose magnitude is in [2^-126, 2^128 - 2^103) — the
+  # float32 normal range, below the smallest magnitude that rounds to
+  # infinity — y = value * C; y - (y - value) IS the value rounded to 24
+  # significant bits, round-to-nearest-even, in three flops with nothing
+  # allocated beyond the result. Outside that range (the subnormal grid,
+  # overflow to the atoms, zero with its sign) fr_slow keeps the exact
+  # semantics the construct/match pair defines.
   defp fr(value) do
+    ax = abs(value)
+
+    if ax >= 1.1754943508222875e-38 and ax < 3.4028235677973366e38 do
+      y = value * 536_870_913.0
+      y - (y - value)
+    else
+      fr_slow(value)
+    end
+  end
+
+  # The slow path's refusal IS the test: a float segment does not match a
+  # non-finite pattern, so a finite value costs one construction and one
+  # match and never touches the exponent field, while the second clause
+  # reads the sign of exactly the patterns the first one refused.
+  defp fr_slow(value) do
     case <<value::float-32-little>> do
       <<rounded::float-32-little>> -> rounded
       <<bits::little-32>> -> if bits >>> 31 == 1, do: :neg_inf, else: :pos_inf
