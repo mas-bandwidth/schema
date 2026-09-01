@@ -12,7 +12,9 @@
 #   --debug       also build and run the Debug pair (matched-pair methodology;
 #                 only Release numbers are meaningful, Debug is recorded so
 #                 pathological debug regressions are visible)
-#   --out FILE    results CSV (default bench/results/<date>-<arch>-<host>.csv)
+#   --out FILE    results CSV (default bench/results/<date>-<arch>-<host>.csv;
+#                 an inherited OUT env var is honored the same way). A FILE
+#                 that already exists is REFUSED — never silently overwritten
 #   --compiler    C++ compiler (default: $CXX, else c++)
 #   --quick       the iteration instrument, never the certification
 #                 instrument: every leg runs bench_mixed ONLY (3 measured
@@ -79,7 +81,7 @@ set -e
 cd "$(dirname "$0")/.."     # repo root
 
 DEBUG=0
-OUT=""
+OUT="${OUT:-}"      # an inherited OUT env var is honored, same as --out
 ONLY=""
 ROUND=""
 BARE=0
@@ -157,6 +159,17 @@ skip_leg() {
 ARCH="$(uname -m)"
 HOST="$(hostname -s)"
 OUT="${OUT:-bench/results/$(date +%F)-$ARCH-$HOST.csv}"
+
+# Refuse to overwrite an existing results file. The dated default makes
+# same-day collisions silent, and a committed ledger CSV overwritten by a
+# later sitting is exactly how a ledger lies — both boxes hit this on
+# 2026-09-01 (#219). No override flag: pick a distinct --out, or remove
+# the file deliberately.
+if [ -e "$OUT" ]; then
+    echo "refusing to overwrite existing results file: $OUT" >&2
+    echo "pick a distinct --out (e.g. add a sitting tag), or remove the file first if the overwrite is deliberate" >&2
+    exit 1
+fi
 mkdir -p bench/results build/bench
 
 # cpu pinning: taskset where it exists (linux); none on macOS
