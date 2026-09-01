@@ -1330,9 +1330,8 @@ export function ReadNarrowFlat(value, view, numBits) {
 
 function writeWideFlatProduction(value, view) {
   let v = 0;
-  let bg = 0n;
   let lo = 0, sb = 0, wi = 0;
-  SC.setBigUint64(0, BigInt.asUintN(37, value.W), true);
+  SC.setBigUint64(0, value.W, true);
   v = SC.getUint32(0, true);
   lo = (lo | (v << sb)) >>> 0;
   sb += 32;
@@ -1359,9 +1358,8 @@ function writeWideFlatProduction(value, view) {
 
 function writeWideFlatChecked(value, view) {
   let v = 0;
-  let bg = 0n;
   let lo = 0, sb = 0, wi = 0;
-  SC.setBigUint64(0, BigInt.asUintN(37, value.W), true);
+  SC.setBigUint64(0, value.W, true);
   v = SC.getUint32(0, true);
   lo = (lo | (v << sb)) >>> 0;
   sb += 32;
@@ -1424,7 +1422,6 @@ export function ReadWideFlat(value, view, numBits) {
 
 function writeHoldsUnevenFlatProduction(value, view) {
   let v = 0;
-  let bg = 0n;
   let lo = 0, sb = 0, wi = 0;
   v = (value.Lead & 0x1f) >>> 0;
   lo = (lo | (v << sb)) >>> 0;
@@ -1458,7 +1455,7 @@ function writeHoldsUnevenFlatProduction(value, view) {
       break;
     }
     case 2: {
-      SC.setBigUint64(0, BigInt.asUintN(37, value.U.Wide.W), true);
+      SC.setBigUint64(0, value.U.Wide.W, true);
       v = SC.getUint32(0, true);
       lo = (lo | (v << sb)) >>> 0;
       sb += 32;
@@ -1497,7 +1494,6 @@ function writeHoldsUnevenFlatProduction(value, view) {
 
 function writeHoldsUnevenFlatChecked(value, view) {
   let v = 0;
-  let bg = 0n;
   let lo = 0, sb = 0, wi = 0;
   v = (value.Lead & 0x1f) >>> 0;
   lo = (lo | (v << sb)) >>> 0;
@@ -1534,7 +1530,7 @@ function writeHoldsUnevenFlatChecked(value, view) {
       break;
     }
     case 2: {
-      SC.setBigUint64(0, BigInt.asUintN(37, value.U.Wide.W), true);
+      SC.setBigUint64(0, value.U.Wide.W, true);
       v = SC.getUint32(0, true);
       lo = (lo | (v << sb)) >>> 0;
       sb += 32;
@@ -1666,7 +1662,6 @@ export function ReadHoldsUnevenFlat(value, view, numBits) {
 
 function writeArrUnevenFlatProduction(value, view) {
   let v = 0;
-  let bg = 0n;
   let lo = 0, sb = 0, wi = 0;
   v = (value.Lead & 0x1f) >>> 0;
   lo = (lo | (v << sb)) >>> 0;
@@ -1711,7 +1706,7 @@ function writeArrUnevenFlatProduction(value, view) {
         break;
       }
       case 2: {
-        SC.setBigUint64(0, BigInt.asUintN(37, e0.Wide.W), true);
+        SC.setBigUint64(0, e0.Wide.W, true);
         v = SC.getUint32(0, true);
         lo = (lo | (v << sb)) >>> 0;
         sb += 32;
@@ -1751,7 +1746,6 @@ function writeArrUnevenFlatProduction(value, view) {
 
 function writeArrUnevenFlatChecked(value, view) {
   let v = 0;
-  let bg = 0n;
   let lo = 0, sb = 0, wi = 0;
   v = (value.Lead & 0x1f) >>> 0;
   lo = (lo | (v << sb)) >>> 0;
@@ -1802,7 +1796,7 @@ function writeArrUnevenFlatChecked(value, view) {
         break;
       }
       case 2: {
-        SC.setBigUint64(0, BigInt.asUintN(37, e0.Wide.W), true);
+        SC.setBigUint64(0, e0.Wide.W, true);
         v = SC.getUint32(0, true);
         lo = (lo | (v << sb)) >>> 0;
         sb += 32;

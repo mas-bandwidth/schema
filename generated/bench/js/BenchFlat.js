@@ -165,7 +165,7 @@ function writeBenchPacketFlatProduction(value, view) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (32 - sb);
   }
-  SC.setBigUint64(0, BigInt.asUintN(64, value.Big), true);
+  SC.setBigUint64(0, value.Big, true);
   v = SC.getUint32(0, true);
   lo = (lo | (v << sb)) >>> 0;
   sb += 32;
@@ -344,7 +344,7 @@ function writeBenchPacketFlatChecked(value, view) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (32 - sb);
   }
-  SC.setBigUint64(0, BigInt.asUintN(64, value.Big), true);
+  SC.setBigUint64(0, value.Big, true);
   v = SC.getUint32(0, true);
   lo = (lo | (v << sb)) >>> 0;
   sb += 32;
@@ -895,7 +895,6 @@ export function ReadBenchIntsFlat(value, view, numBits) {
 
 function writeBenchBitsFlatProduction(value, view) {
   let v = 0;
-  let bg = 0n;
   let lo = 0, sb = 0, wi = 0;
   v = (value.B7 & 0x7f) >>> 0;
   lo = (lo | (v << sb)) >>> 0;
@@ -960,7 +959,7 @@ function writeBenchBitsFlatProduction(value, view) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (19 - sb);
   }
-  SC.setBigUint64(0, BigInt.asUintN(48, value.B48), true);
+  SC.setBigUint64(0, value.B48, true);
   v = SC.getUint32(0, true);
   lo = (lo | (v << sb)) >>> 0;
   sb += 32;
@@ -987,7 +986,6 @@ function writeBenchBitsFlatProduction(value, view) {
 
 function writeBenchBitsFlatChecked(value, view) {
   let v = 0;
-  let bg = 0n;
   let lo = 0, sb = 0, wi = 0;
   v = (value.B7 & 0x7f) >>> 0;
   lo = (lo | (v << sb)) >>> 0;
@@ -1052,7 +1050,7 @@ function writeBenchBitsFlatChecked(value, view) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (19 - sb);
   }
-  SC.setBigUint64(0, BigInt.asUintN(48, value.B48), true);
+  SC.setBigUint64(0, value.B48, true);
   v = SC.getUint32(0, true);
   lo = (lo | (v << sb)) >>> 0;
   sb += 32;
@@ -1271,7 +1269,8 @@ function writeMixedEntityFlatProduction(value, view) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (4 - sb);
   }
-  v = (Number(BigInt.asUintN(8, value.Damage)) & 0xff) >>> 0;
+  SC.setBigUint64(0, value.Damage, true);
+  v = SC.getUint32(0, true) & 0xff;
   lo = (lo | (v << sb)) >>> 0;
   sb += 8;
   if (sb >= 32) {
@@ -1433,7 +1432,8 @@ function writeMixedEntityFlatChecked(value, view) {
   if (BigInt.asUintN(64, value.Damage) >= 256n) { // a mask bit above the wire width cannot ride
     return -1;
   }
-  v = (Number(BigInt.asUintN(8, value.Damage)) & 0xff) >>> 0;
+  SC.setBigUint64(0, value.Damage, true);
+  v = SC.getUint32(0, true) & 0xff;
   lo = (lo | (v << sb)) >>> 0;
   sb += 8;
   if (sb >= 32) {
@@ -2062,7 +2062,7 @@ function writeBenchMixedFlatProduction(value, view) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (32 - sb);
   }
-  SC.setBigUint64(0, BigInt.asUintN(64, value.SessionId), true);
+  SC.setBigUint64(0, value.SessionId, true);
   v = SC.getUint32(0, true);
   lo = (lo | (v << sb)) >>> 0;
   sb += 32;
@@ -2090,7 +2090,7 @@ function writeBenchMixedFlatProduction(value, view) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (32 - sb);
   }
-  SC.setBigUint64(0, BigInt.asUintN(64, value.Nonce), true);
+  SC.setBigUint64(0, value.Nonce, true);
   v = SC.getUint32(0, true);
   lo = (lo | (v << sb)) >>> 0;
   sb += 32;
@@ -2109,7 +2109,7 @@ function writeBenchMixedFlatProduction(value, view) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (32 - sb);
   }
-  SC.setBigUint64(0, BigInt.asUintN(64, value.WorldTime - -1000000000000n), true);
+  SC.setBigUint64(0, value.WorldTime - -1000000000000n, true);
   v = SC.getUint32(0, true);
   lo = (lo | (v << sb)) >>> 0;
   sb += 32;
@@ -2128,7 +2128,7 @@ function writeBenchMixedFlatProduction(value, view) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (9 - sb);
   }
-  SC.setBigUint64(0, BigInt.asUintN(48, value.FrameTick), true);
+  SC.setBigUint64(0, value.FrameTick, true);
   v = SC.getUint32(0, true);
   lo = (lo | (v << sb)) >>> 0;
   sb += 32;
@@ -2266,7 +2266,8 @@ function writeBenchMixedFlatProduction(value, view) {
       sb -= 32;
       lo = sb === 0 ? 0 : v >>> (4 - sb);
     }
-    v = (Number(BigInt.asUintN(8, e0.Damage)) & 0xff) >>> 0;
+    SC.setBigUint64(0, e0.Damage, true);
+    v = SC.getUint32(0, true) & 0xff;
     lo = (lo | (v << sb)) >>> 0;
     sb += 8;
     if (sb >= 32) {
@@ -2556,8 +2557,9 @@ function writeBenchMixedFlatProduction(value, view) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (32 - sb);
   }
-  bg = BigInt.asUintN(128, value.WideKey);
-  v = Number(bg & 0xffffffffn);
+  bg = value.WideKey;
+  SC.setBigUint64(0, bg, true);
+  v = SC.getUint32(0, true);
   lo = (lo | (v << sb)) >>> 0;
   sb += 32;
   if (sb >= 32) {
@@ -2566,7 +2568,7 @@ function writeBenchMixedFlatProduction(value, view) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (32 - sb);
   }
-  v = Number((bg >> 32n) & 0xffffffffn);
+  v = SC.getUint32(4, true);
   lo = (lo | (v << sb)) >>> 0;
   sb += 32;
   if (sb >= 32) {
@@ -2575,7 +2577,8 @@ function writeBenchMixedFlatProduction(value, view) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (32 - sb);
   }
-  v = Number((bg >> 64n) & 0xffffffffn);
+  SC.setBigUint64(0, bg >> 64n, true);
+  v = SC.getUint32(0, true);
   lo = (lo | (v << sb)) >>> 0;
   sb += 32;
   if (sb >= 32) {
@@ -2584,7 +2587,7 @@ function writeBenchMixedFlatProduction(value, view) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (32 - sb);
   }
-  v = Number(bg >> 96n);
+  v = SC.getUint32(4, true);
   lo = (lo | (v << sb)) >>> 0;
   sb += 32;
   if (sb >= 32) {
@@ -2593,8 +2596,9 @@ function writeBenchMixedFlatProduction(value, view) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (32 - sb);
   }
-  bg = BigInt.asUintN(128, value.Flux - -1267650600228229401496703205376n);
-  v = Number(bg & 0xffffffffn);
+  bg = value.Flux - -1267650600228229401496703205376n;
+  SC.setBigUint64(0, bg, true);
+  v = SC.getUint32(0, true);
   lo = (lo | (v << sb)) >>> 0;
   sb += 32;
   if (sb >= 32) {
@@ -2603,7 +2607,7 @@ function writeBenchMixedFlatProduction(value, view) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (32 - sb);
   }
-  v = Number((bg >> 32n) & 0xffffffffn);
+  v = SC.getUint32(4, true);
   lo = (lo | (v << sb)) >>> 0;
   sb += 32;
   if (sb >= 32) {
@@ -2612,7 +2616,8 @@ function writeBenchMixedFlatProduction(value, view) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (32 - sb);
   }
-  v = Number((bg >> 64n) & 0xffffffffn);
+  SC.setBigUint64(0, bg >> 64n, true);
+  v = SC.getUint32(0, true);
   lo = (lo | (v << sb)) >>> 0;
   sb += 32;
   if (sb >= 32) {
@@ -2621,7 +2626,7 @@ function writeBenchMixedFlatProduction(value, view) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (32 - sb);
   }
-  v = Number(bg >> 96n);
+  v = SC.getUint32(4, true) & 0x3f;
   lo = (lo | (v << sb)) >>> 0;
   sb += 6;
   if (sb >= 32) {
@@ -2743,7 +2748,7 @@ function writeBenchMixedFlatChecked(value, view) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (32 - sb);
   }
-  SC.setBigUint64(0, BigInt.asUintN(64, value.SessionId), true);
+  SC.setBigUint64(0, value.SessionId, true);
   v = SC.getUint32(0, true);
   lo = (lo | (v << sb)) >>> 0;
   sb += 32;
@@ -2771,7 +2776,7 @@ function writeBenchMixedFlatChecked(value, view) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (32 - sb);
   }
-  SC.setBigUint64(0, BigInt.asUintN(64, value.Nonce), true);
+  SC.setBigUint64(0, value.Nonce, true);
   v = SC.getUint32(0, true);
   lo = (lo | (v << sb)) >>> 0;
   sb += 32;
@@ -2793,7 +2798,7 @@ function writeBenchMixedFlatChecked(value, view) {
   if (value.WorldTime < -1000000000000n || value.WorldTime > 1000000000000n) {
     return -1;
   }
-  SC.setBigUint64(0, BigInt.asUintN(64, value.WorldTime - -1000000000000n), true);
+  SC.setBigUint64(0, value.WorldTime - -1000000000000n, true);
   v = SC.getUint32(0, true);
   lo = (lo | (v << sb)) >>> 0;
   sb += 32;
@@ -2812,7 +2817,7 @@ function writeBenchMixedFlatChecked(value, view) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (9 - sb);
   }
-  SC.setBigUint64(0, BigInt.asUintN(48, value.FrameTick), true);
+  SC.setBigUint64(0, value.FrameTick, true);
   v = SC.getUint32(0, true);
   lo = (lo | (v << sb)) >>> 0;
   sb += 32;
@@ -2983,7 +2988,8 @@ function writeBenchMixedFlatChecked(value, view) {
     if (BigInt.asUintN(64, e0.Damage) >= 256n) { // a mask bit above the wire width cannot ride
       return -1;
     }
-    v = (Number(BigInt.asUintN(8, e0.Damage)) & 0xff) >>> 0;
+    SC.setBigUint64(0, e0.Damage, true);
+    v = SC.getUint32(0, true) & 0xff;
     lo = (lo | (v << sb)) >>> 0;
     sb += 8;
     if (sb >= 32) {
@@ -3309,8 +3315,9 @@ function writeBenchMixedFlatChecked(value, view) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (32 - sb);
   }
-  bg = BigInt.asUintN(128, value.WideKey);
-  v = Number(bg & 0xffffffffn);
+  bg = value.WideKey;
+  SC.setBigUint64(0, bg, true);
+  v = SC.getUint32(0, true);
   lo = (lo | (v << sb)) >>> 0;
   sb += 32;
   if (sb >= 32) {
@@ -3319,7 +3326,7 @@ function writeBenchMixedFlatChecked(value, view) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (32 - sb);
   }
-  v = Number((bg >> 32n) & 0xffffffffn);
+  v = SC.getUint32(4, true);
   lo = (lo | (v << sb)) >>> 0;
   sb += 32;
   if (sb >= 32) {
@@ -3328,7 +3335,8 @@ function writeBenchMixedFlatChecked(value, view) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (32 - sb);
   }
-  v = Number((bg >> 64n) & 0xffffffffn);
+  SC.setBigUint64(0, bg >> 64n, true);
+  v = SC.getUint32(0, true);
   lo = (lo | (v << sb)) >>> 0;
   sb += 32;
   if (sb >= 32) {
@@ -3337,7 +3345,7 @@ function writeBenchMixedFlatChecked(value, view) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (32 - sb);
   }
-  v = Number(bg >> 96n);
+  v = SC.getUint32(4, true);
   lo = (lo | (v << sb)) >>> 0;
   sb += 32;
   if (sb >= 32) {
@@ -3349,8 +3357,9 @@ function writeBenchMixedFlatChecked(value, view) {
   if (value.Flux < -1267650600228229401496703205376n || value.Flux > 1267650600228229401496703205376n) {
     return -1;
   }
-  bg = BigInt.asUintN(128, value.Flux - -1267650600228229401496703205376n);
-  v = Number(bg & 0xffffffffn);
+  bg = value.Flux - -1267650600228229401496703205376n;
+  SC.setBigUint64(0, bg, true);
+  v = SC.getUint32(0, true);
   lo = (lo | (v << sb)) >>> 0;
   sb += 32;
   if (sb >= 32) {
@@ -3359,7 +3368,7 @@ function writeBenchMixedFlatChecked(value, view) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (32 - sb);
   }
-  v = Number((bg >> 32n) & 0xffffffffn);
+  v = SC.getUint32(4, true);
   lo = (lo | (v << sb)) >>> 0;
   sb += 32;
   if (sb >= 32) {
@@ -3368,7 +3377,8 @@ function writeBenchMixedFlatChecked(value, view) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (32 - sb);
   }
-  v = Number((bg >> 64n) & 0xffffffffn);
+  SC.setBigUint64(0, bg >> 64n, true);
+  v = SC.getUint32(0, true);
   lo = (lo | (v << sb)) >>> 0;
   sb += 32;
   if (sb >= 32) {
@@ -3377,7 +3387,7 @@ function writeBenchMixedFlatChecked(value, view) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (32 - sb);
   }
-  v = Number(bg >> 96n);
+  v = SC.getUint32(4, true) & 0x3f;
   lo = (lo | (v << sb)) >>> 0;
   sb += 6;
   if (sb >= 32) {

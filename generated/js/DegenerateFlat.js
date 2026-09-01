@@ -262,10 +262,9 @@ export function ReadSpanF64Flat(value, view, numBits) {
 
 function writeSpanU64FlatProduction(value, view) {
   let v = 0;
-  let bg = 0n;
   let lo = 0, sb = 0, wi = 0;
   for (let i0 = 0; i0 < 2; i0++) {
-    SC.setBigUint64(0, BigInt.asUintN(64, value.Values[i0]), true);
+    SC.setBigUint64(0, value.Values[i0], true);
     v = SC.getUint32(0, true);
     lo = (lo | (v << sb)) >>> 0;
     sb += 32;
@@ -293,10 +292,9 @@ function writeSpanU64FlatProduction(value, view) {
 
 function writeSpanU64FlatChecked(value, view) {
   let v = 0;
-  let bg = 0n;
   let lo = 0, sb = 0, wi = 0;
   for (let i0 = 0; i0 < 2; i0++) {
-    SC.setBigUint64(0, BigInt.asUintN(64, value.Values[i0]), true);
+    SC.setBigUint64(0, value.Values[i0], true);
     v = SC.getUint32(0, true);
     lo = (lo | (v << sb)) >>> 0;
     sb += 32;
@@ -362,10 +360,9 @@ export function ReadSpanU64Flat(value, view, numBits) {
 
 function writeSpanI64FlatProduction(value, view) {
   let v = 0;
-  let bg = 0n;
   let lo = 0, sb = 0, wi = 0;
   for (let i0 = 0; i0 < 2; i0++) {
-    SC.setBigUint64(0, BigInt.asUintN(64, value.Values[i0]), true);
+    SC.setBigUint64(0, value.Values[i0], true);
     v = SC.getUint32(0, true);
     lo = (lo | (v << sb)) >>> 0;
     sb += 32;
@@ -393,10 +390,9 @@ function writeSpanI64FlatProduction(value, view) {
 
 function writeSpanI64FlatChecked(value, view) {
   let v = 0;
-  let bg = 0n;
   let lo = 0, sb = 0, wi = 0;
   for (let i0 = 0; i0 < 2; i0++) {
-    SC.setBigUint64(0, BigInt.asUintN(64, value.Values[i0]), true);
+    SC.setBigUint64(0, value.Values[i0], true);
     v = SC.getUint32(0, true);
     lo = (lo | (v << sb)) >>> 0;
     sb += 32;
@@ -462,10 +458,9 @@ export function ReadSpanI64Flat(value, view, numBits) {
 
 function writeSpanOneFlatProduction(value, view) {
   let v = 0;
-  let bg = 0n;
   let lo = 0, sb = 0, wi = 0;
   for (let i0 = 0; i0 < 1; i0++) {
-    SC.setBigUint64(0, BigInt.asUintN(64, value.Values[i0]), true);
+    SC.setBigUint64(0, value.Values[i0], true);
     v = SC.getUint32(0, true);
     lo = (lo | (v << sb)) >>> 0;
     sb += 32;
@@ -493,10 +488,9 @@ function writeSpanOneFlatProduction(value, view) {
 
 function writeSpanOneFlatChecked(value, view) {
   let v = 0;
-  let bg = 0n;
   let lo = 0, sb = 0, wi = 0;
   for (let i0 = 0; i0 < 1; i0++) {
-    SC.setBigUint64(0, BigInt.asUintN(64, value.Values[i0]), true);
+    SC.setBigUint64(0, value.Values[i0], true);
     v = SC.getUint32(0, true);
     lo = (lo | (v << sb)) >>> 0;
     sb += 32;
@@ -1273,9 +1267,8 @@ export function ReadTrioFirstFlat(value, view, numBits) {
 
 function writeTrioStraddleFlatProduction(value, view) {
   let v = 0;
-  let bg = 0n;
   let lo = 0, sb = 0, wi = 0;
-  SC.setBigUint64(0, BigInt.asUintN(64, value.Pad0), true);
+  SC.setBigUint64(0, value.Pad0, true);
   v = SC.getUint32(0, true);
   lo = (lo | (v << sb)) >>> 0;
   sb += 32;
@@ -1294,7 +1287,7 @@ function writeTrioStraddleFlatProduction(value, view) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (32 - sb);
   }
-  SC.setBigUint64(0, BigInt.asUintN(64, value.Pad1), true);
+  SC.setBigUint64(0, value.Pad1, true);
   v = SC.getUint32(0, true);
   lo = (lo | (v << sb)) >>> 0;
   sb += 32;
@@ -1313,7 +1306,7 @@ function writeTrioStraddleFlatProduction(value, view) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (32 - sb);
   }
-  SC.setBigUint64(0, BigInt.asUintN(64, value.Pad2), true);
+  SC.setBigUint64(0, value.Pad2, true);
   v = SC.getUint32(0, true);
   lo = (lo | (v << sb)) >>> 0;
   sb += 32;
@@ -1332,7 +1325,7 @@ function writeTrioStraddleFlatProduction(value, view) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (32 - sb);
   }
-  SC.setBigUint64(0, BigInt.asUintN(64, value.Pad3), true);
+  SC.setBigUint64(0, value.Pad3, true);
   v = SC.getUint32(0, true);
   lo = (lo | (v << sb)) >>> 0;
   sb += 32;
@@ -1351,7 +1344,7 @@ function writeTrioStraddleFlatProduction(value, view) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (32 - sb);
   }
-  SC.setBigUint64(0, BigInt.asUintN(64, value.Pad4), true);
+  SC.setBigUint64(0, value.Pad4, true);
   v = SC.getUint32(0, true);
   lo = (lo | (v << sb)) >>> 0;
   sb += 32;
@@ -1414,9 +1407,8 @@ function writeTrioStraddleFlatProduction(value, view) {
 
 function writeTrioStraddleFlatChecked(value, view) {
   let v = 0;
-  let bg = 0n;
   let lo = 0, sb = 0, wi = 0;
-  SC.setBigUint64(0, BigInt.asUintN(64, value.Pad0), true);
+  SC.setBigUint64(0, value.Pad0, true);
   v = SC.getUint32(0, true);
   lo = (lo | (v << sb)) >>> 0;
   sb += 32;
@@ -1435,7 +1427,7 @@ function writeTrioStraddleFlatChecked(value, view) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (32 - sb);
   }
-  SC.setBigUint64(0, BigInt.asUintN(64, value.Pad1), true);
+  SC.setBigUint64(0, value.Pad1, true);
   v = SC.getUint32(0, true);
   lo = (lo | (v << sb)) >>> 0;
   sb += 32;
@@ -1454,7 +1446,7 @@ function writeTrioStraddleFlatChecked(value, view) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (32 - sb);
   }
-  SC.setBigUint64(0, BigInt.asUintN(64, value.Pad2), true);
+  SC.setBigUint64(0, value.Pad2, true);
   v = SC.getUint32(0, true);
   lo = (lo | (v << sb)) >>> 0;
   sb += 32;
@@ -1473,7 +1465,7 @@ function writeTrioStraddleFlatChecked(value, view) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (32 - sb);
   }
-  SC.setBigUint64(0, BigInt.asUintN(64, value.Pad3), true);
+  SC.setBigUint64(0, value.Pad3, true);
   v = SC.getUint32(0, true);
   lo = (lo | (v << sb)) >>> 0;
   sb += 32;
@@ -1492,7 +1484,7 @@ function writeTrioStraddleFlatChecked(value, view) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (32 - sb);
   }
-  SC.setBigUint64(0, BigInt.asUintN(64, value.Pad4), true);
+  SC.setBigUint64(0, value.Pad4, true);
   v = SC.getUint32(0, true);
   lo = (lo | (v << sb)) >>> 0;
   sb += 32;

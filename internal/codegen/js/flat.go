@@ -563,17 +563,27 @@ func (g *fgen) emitWriteRangedNum(expr string, min, max int64, ind string) {
 }
 
 // emitWriteWideOffset merges an unsigned BigInt offset expression of the
-// given bit count: single group through 32 bits, the scratch lane pair
-// through 64, 32-bit groups least significant first past that — the
-// serialize.js group structure exactly.
-func (g *fgen) emitWriteWideOffset(offExpr string, bits int64, ind string) {
-	g.needBg = true
+// given bit count: 32-bit groups least significant first — the serialize.js
+// group structure exactly. rawExpr is the UNREDUCED BigInt offset:
+// setBigUint64's own ToBigUint64 wrap is the asUintN(64) reduction, and for
+// the >64 groups `>> 64n` before the wrap equals the asUintN(128) high half
+// (floor(x/2^64) mod 2^64 is shift-then-wrap and wrap-then-shift alike). The
+// scratch route is the measured discipline: DataView BigInt stores consume
+// the value without allocating, where each BigInt `&`/`>>`/Number() step
+// allocates and runs an order of magnitude slower (node 26, M2: 5.6x on the
+// 128-bit split, 6.1x on a sub-32-bit truncation).
+func (g *fgen) emitWriteWideOffset(rawExpr string, bits int64, ind string) {
 	switch {
 	case bits <= 32:
-		g.pf("%sv = Number(%s);\n", ind, offExpr)
+		g.pf("%sSC.setBigUint64(0, %s, true);\n", ind, rawExpr)
+		if bits == 32 {
+			g.pf("%sv = SC.getUint32(0, true);\n", ind)
+		} else {
+			g.pf("%sv = SC.getUint32(0, true) & %s;\n", ind, maskHex(bits))
+		}
 		g.mergeW(bits, ind)
 	case bits <= 64:
-		g.pf("%sSC.setBigUint64(0, %s, true);\n", ind, offExpr)
+		g.pf("%sSC.setBigUint64(0, %s, true);\n", ind, rawExpr)
 		g.pf("%sv = SC.getUint32(0, true);\n", ind)
 		g.mergeW(32, ind)
 		if bits == 64 {
@@ -582,23 +592,31 @@ func (g *fgen) emitWriteWideOffset(offExpr string, bits int64, ind string) {
 			g.pf("%sv = SC.getUint32(4, true) & %s;\n", ind, maskHex(bits-32))
 		}
 		g.mergeW(bits-32, ind)
-	case bits <= 96:
-		g.pf("%sbg = %s;\n", ind, offExpr)
-		g.pf("%sv = Number(bg & 0xffffffffn);\n", ind)
-		g.mergeW(32, ind)
-		g.pf("%sv = Number((bg >> 32n) & 0xffffffffn);\n", ind)
-		g.mergeW(32, ind)
-		g.pf("%sv = Number(bg >> 64n);\n", ind)
-		g.mergeW(bits-64, ind)
 	default:
-		g.pf("%sbg = %s;\n", ind, offExpr)
-		g.pf("%sv = Number(bg & 0xffffffffn);\n", ind)
+		g.needBg = true
+		g.pf("%sbg = %s;\n", ind, rawExpr)
+		g.pf("%sSC.setBigUint64(0, bg, true);\n", ind)
+		g.pf("%sv = SC.getUint32(0, true);\n", ind)
 		g.mergeW(32, ind)
-		g.pf("%sv = Number((bg >> 32n) & 0xffffffffn);\n", ind)
+		g.pf("%sv = SC.getUint32(4, true);\n", ind)
 		g.mergeW(32, ind)
-		g.pf("%sv = Number((bg >> 64n) & 0xffffffffn);\n", ind)
+		g.pf("%sSC.setBigUint64(0, bg >> 64n, true);\n", ind)
+		if bits <= 96 {
+			if bits == 96 {
+				g.pf("%sv = SC.getUint32(0, true);\n", ind)
+			} else {
+				g.pf("%sv = SC.getUint32(0, true) & %s;\n", ind, maskHex(bits-64))
+			}
+			g.mergeW(bits-64, ind)
+			return
+		}
+		g.pf("%sv = SC.getUint32(0, true);\n", ind)
 		g.mergeW(32, ind)
-		g.pf("%sv = Number(bg >> 96n);\n", ind)
+		if bits == 128 {
+			g.pf("%sv = SC.getUint32(4, true);\n", ind)
+		} else {
+			g.pf("%sv = SC.getUint32(4, true) & %s;\n", ind, maskHex(bits-96))
+		}
 		g.mergeW(bits-96, ind)
 	}
 }
@@ -620,8 +638,7 @@ func (g *fgen) emitWriteScalar(f *ir.Field, name, ind string) {
 			g.mergeW(w, ind)
 			return
 		}
-		g.needBg = true
-		g.emitWriteWideOffset(fmt.Sprintf("BigInt.asUintN(%d, %s)", w, name), w, ind)
+		g.emitWriteWideOffset(name, w, ind)
 	case ir.TBool:
 		g.pf("%sv = %s ? 1 : 0;\n", ind, name)
 		g.mergeW(1, ind)
@@ -739,21 +756,11 @@ func (g *fgen) emitWriteFixed(f *ir.Field, name, ind string) {
 	}
 	// wide lane: BigInt raw storage, offset in 32-bit groups
 	g.guard(fmt.Sprintf("%s < %sn || %s > %sn", name, rawMin.String(), name, rawMax.String()), "", ind)
-	off := fmt.Sprintf("BigInt.asUintN(%d, %s - %sn)", wideOffsetWidth(bits), name, rawMin.String())
+	off := fmt.Sprintf("%s - %sn", name, rawMin.String())
 	if rawMin.Sign() == 0 {
-		off = fmt.Sprintf("BigInt.asUintN(%d, %s)", wideOffsetWidth(bits), name)
+		off = name
 	}
 	g.emitWriteWideOffset(off, bits, ind)
-}
-
-// wideOffsetWidth picks the asUintN reduction width for a wide offset: the
-// smallest of 64/128 that covers the bit count (asUintN takes fixed widths
-// efficiently and the merge lanes mask the rest).
-func wideOffsetWidth(bits int64) int64 {
-	if bits <= 64 {
-		return 64
-	}
-	return 128
 }
 
 func (g *fgen) emitWriteInt(f *ir.Field, name, ind string) {
@@ -766,15 +773,15 @@ func (g *fgen) emitWriteInt(f *ir.Field, name, ind string) {
 			}
 			bits := ir.BitsRequired(f.IntMin, f.IntMax)
 			g.guard(fmt.Sprintf("%s < %sn || %s > %sn", name, f.IntMin.String(), name, f.IntMax.String()), "", ind)
-			off := fmt.Sprintf("BigInt.asUintN(%d, %s - %sn)", wideOffsetWidth(bits), name, f.IntMin.String())
+			off := fmt.Sprintf("%s - %sn", name, f.IntMin.String())
 			if f.IntMin.Sign() == 0 {
-				off = fmt.Sprintf("BigInt.asUintN(%d, %s)", wideOffsetWidth(bits), name)
+				off = name
 			}
 			g.emitWriteWideOffset(off, bits, ind)
 			return
 		}
 		// uint128 raw: full 128 bits, 32-bit groups least significant first
-		g.emitWriteWideOffset(fmt.Sprintf("BigInt.asUintN(128, %s)", name), 128, ind)
+		g.emitWriteWideOffset(name, 128, ind)
 		return
 	}
 	if f.HasIntRange {
@@ -793,7 +800,8 @@ func (g *fgen) emitWriteInt(f *ir.Field, name, ind string) {
 				// family's domain first (the C# (int) cast's twin), then the
 				// Number-domain offset
 				g.needN = true
-				g.pf("%sn = Number(BigInt.asIntN(32, %s));\n", ind, name)
+				g.pf("%sSC.setBigUint64(0, %s, true);\n", ind, name)
+				g.pf("%sn = SC.getInt32(0, true);\n", ind)
 				g.guard(fmt.Sprintf("n < %s || n > %s", f.IntMin.String(), f.IntMax.String()), "", ind)
 				g.emitWriteRangedNum("n", f.IntMin.Int64(), f.IntMax.Int64(), ind)
 				return
@@ -818,7 +826,7 @@ func (g *fgen) emitWriteInt(f *ir.Field, name, ind string) {
 	}
 	// bare integer at storage width
 	if w == 64 {
-		g.emitWriteWideOffset(fmt.Sprintf("BigInt.asUintN(64, %s)", name), 64, ind)
+		g.emitWriteWideOffset(name, 64, ind)
 		return
 	}
 	cast := name
@@ -856,9 +864,9 @@ func (g *fgen) emitWriteRangedBig(f *ir.Field, name, ind string) {
 	case guardHi:
 		g.guard(fmt.Sprintf("%s > %sn", name, f.IntMax.String()), "", ind)
 	}
-	off := fmt.Sprintf("BigInt.asUintN(64, %s - %sn)", name, f.IntMin.String())
+	off := fmt.Sprintf("%s - %sn", name, f.IntMin.String())
 	if f.IntMin.Sign() == 0 {
-		off = fmt.Sprintf("BigInt.asUintN(64, %s)", name)
+		off = name
 	}
 	g.emitWriteWideOffset(off, bits, ind)
 }
@@ -882,11 +890,16 @@ func (g *fgen) emitWriteFlags(ref *ir.Flags, name, ind string) {
 			" // a mask bit above the wire width cannot ride", ind)
 	}
 	if wb <= 32 {
-		g.pf("%sv = (Number(BigInt.asUintN(%d, %s)) & %s) >>> 0;\n", ind, wb, name, maskHex(wb))
+		g.pf("%sSC.setBigUint64(0, %s, true);\n", ind, name)
+		if wb == 32 {
+			g.pf("%sv = SC.getUint32(0, true);\n", ind)
+		} else {
+			g.pf("%sv = SC.getUint32(0, true) & %s;\n", ind, maskHex(wb))
+		}
 		g.mergeW(wb, ind)
 		return
 	}
-	g.emitWriteWideOffset(fmt.Sprintf("BigInt.asUintN(%d, %s)", wb, name), wb, ind)
+	g.emitWriteWideOffset(name, wb, ind)
 }
 
 // emitWriteBytesField writes string(N)/bytes(N): folded ranged length,

@@ -21,9 +21,8 @@ export const FLAT_READ_SLACK = 8;
 
 function writeRenderSpriteFlatProduction(value, view) {
   let v = 0;
-  let bg = 0n;
   let lo = 0, sb = 0, wi = 0;
-  SC.setBigUint64(0, BigInt.asUintN(64, value.SortKey), true);
+  SC.setBigUint64(0, value.SortKey, true);
   v = SC.getUint32(0, true);
   lo = (lo | (v << sb)) >>> 0;
   sb += 32;
@@ -86,9 +85,8 @@ function writeRenderSpriteFlatProduction(value, view) {
 
 function writeRenderSpriteFlatChecked(value, view) {
   let v = 0;
-  let bg = 0n;
   let lo = 0, sb = 0, wi = 0;
-  SC.setBigUint64(0, BigInt.asUintN(64, value.SortKey), true);
+  SC.setBigUint64(0, value.SortKey, true);
   v = SC.getUint32(0, true);
   lo = (lo | (v << sb)) >>> 0;
   sb += 32;
@@ -225,7 +223,6 @@ export function ReadRenderSpriteFlat(value, view, numBits) {
 
 function writeRenderBlockFlatProduction(value, view) {
   let v = 0;
-  let bg = 0n;
   let lo = 0, sb = 0, wi = 0;
   v = (value.WorkerIndex) >>> 0;
   lo = (lo | (v << sb)) >>> 0;
@@ -256,7 +253,7 @@ function writeRenderBlockFlatProduction(value, view) {
   }
   for (let i0 = 0; i0 < value.SpritesCount; i0++) {
     const e0 = value.Sprites[i0];
-    SC.setBigUint64(0, BigInt.asUintN(64, e0.SortKey), true);
+    SC.setBigUint64(0, e0.SortKey, true);
     v = SC.getUint32(0, true);
     lo = (lo | (v << sb)) >>> 0;
     sb += 32;
@@ -320,7 +317,6 @@ function writeRenderBlockFlatProduction(value, view) {
 
 function writeRenderBlockFlatChecked(value, view) {
   let v = 0;
-  let bg = 0n;
   let lo = 0, sb = 0, wi = 0;
   v = (value.WorkerIndex) >>> 0;
   lo = (lo | (v << sb)) >>> 0;
@@ -354,7 +350,7 @@ function writeRenderBlockFlatChecked(value, view) {
   }
   for (let i0 = 0; i0 < value.SpritesCount; i0++) {
     const e0 = value.Sprites[i0];
-    SC.setBigUint64(0, BigInt.asUintN(64, e0.SortKey), true);
+    SC.setBigUint64(0, e0.SortKey, true);
     v = SC.getUint32(0, true);
     lo = (lo | (v << sb)) >>> 0;
     sb += 32;

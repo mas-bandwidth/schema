@@ -460,7 +460,6 @@ export function ReadW1Flat(value, view, numBits) {
 
 function writeW52FlatProduction(value, view) {
   let v = 0;
-  let bg = 0n;
   let lo = 0, sb = 0, wi = 0;
   v = ((value.ItemsCount) & 0x3) >>> 0;
   lo = (lo | (v << sb)) >>> 0;
@@ -472,7 +471,7 @@ function writeW52FlatProduction(value, view) {
     lo = sb === 0 ? 0 : v >>> (2 - sb);
   }
   for (let i0 = 0; i0 < value.ItemsCount; i0++) {
-    SC.setBigUint64(0, BigInt.asUintN(64, value.Items[i0]), true);
+    SC.setBigUint64(0, value.Items[i0], true);
     v = SC.getUint32(0, true);
     lo = (lo | (v << sb)) >>> 0;
     sb += 32;
@@ -500,7 +499,6 @@ function writeW52FlatProduction(value, view) {
 
 function writeW52FlatChecked(value, view) {
   let v = 0;
-  let bg = 0n;
   let lo = 0, sb = 0, wi = 0;
   if (!Number.isInteger(value.ItemsCount) || value.ItemsCount < 0 || value.ItemsCount > 3) { // the count guards the loop; out-of-contract writes are refused
     return -1;
@@ -518,7 +516,7 @@ function writeW52FlatChecked(value, view) {
     if (value.Items[i0] > 4503599627370495n) {
       return -1;
     }
-    SC.setBigUint64(0, BigInt.asUintN(64, value.Items[i0]), true);
+    SC.setBigUint64(0, value.Items[i0], true);
     v = SC.getUint32(0, true);
     lo = (lo | (v << sb)) >>> 0;
     sb += 32;
@@ -595,7 +593,6 @@ export function ReadW52Flat(value, view, numBits) {
 
 function writeW50FlatProduction(value, view) {
   let v = 0;
-  let bg = 0n;
   let lo = 0, sb = 0, wi = 0;
   v = ((value.ItemsCount) & 0x3) >>> 0;
   lo = (lo | (v << sb)) >>> 0;
@@ -607,7 +604,7 @@ function writeW50FlatProduction(value, view) {
     lo = sb === 0 ? 0 : v >>> (2 - sb);
   }
   for (let i0 = 0; i0 < value.ItemsCount; i0++) {
-    SC.setBigUint64(0, BigInt.asUintN(64, value.Items[i0]), true);
+    SC.setBigUint64(0, value.Items[i0], true);
     v = SC.getUint32(0, true);
     lo = (lo | (v << sb)) >>> 0;
     sb += 32;
@@ -635,7 +632,6 @@ function writeW50FlatProduction(value, view) {
 
 function writeW50FlatChecked(value, view) {
   let v = 0;
-  let bg = 0n;
   let lo = 0, sb = 0, wi = 0;
   if (!Number.isInteger(value.ItemsCount) || value.ItemsCount < 0 || value.ItemsCount > 3) { // the count guards the loop; out-of-contract writes are refused
     return -1;
@@ -653,7 +649,7 @@ function writeW50FlatChecked(value, view) {
     if (value.Items[i0] > 1125899906842623n) {
       return -1;
     }
-    SC.setBigUint64(0, BigInt.asUintN(64, value.Items[i0]), true);
+    SC.setBigUint64(0, value.Items[i0], true);
     v = SC.getUint32(0, true);
     lo = (lo | (v << sb)) >>> 0;
     sb += 32;

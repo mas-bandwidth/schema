@@ -40,7 +40,6 @@ export const FLAT_READ_SLACK = 8;
 
 function writeFixedProbeFlatProduction(value, view) {
   let v = 0;
-  let bg = 0n;
   let lo = 0, sb = 0, wi = 0;
   v = ((((value.Angle >>> 0) - 4283170816) >>> 0) & 0x1ffffff) >>> 0;
   lo = (lo | (v << sb)) >>> 0;
@@ -51,7 +50,8 @@ function writeFixedProbeFlatProduction(value, view) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (25 - sb);
   }
-  v = Number(BigInt.asUintN(64, value.Position - -1966080000n));
+  SC.setBigUint64(0, value.Position - -1966080000n, true);
+  v = SC.getUint32(0, true);
   lo = (lo | (v << sb)) >>> 0;
   sb += 32;
   if (sb >= 32) {
@@ -60,7 +60,7 @@ function writeFixedProbeFlatProduction(value, view) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (32 - sb);
   }
-  SC.setBigUint64(0, BigInt.asUintN(64, value.Reach - -65536000000n), true);
+  SC.setBigUint64(0, value.Reach - -65536000000n, true);
   v = SC.getUint32(0, true);
   lo = (lo | (v << sb)) >>> 0;
   sb += 32;
@@ -107,7 +107,6 @@ function writeFixedProbeFlatProduction(value, view) {
 
 function writeFixedProbeFlatChecked(value, view) {
   let v = 0;
-  let bg = 0n;
   let lo = 0, sb = 0, wi = 0;
   if (!Number.isInteger(value.Angle) || value.Angle < -11796480 || value.Angle > 11796480) {
     return -1;
@@ -124,7 +123,8 @@ function writeFixedProbeFlatChecked(value, view) {
   if (value.Position < -1966080000n || value.Position > 1966080000n) {
     return -1;
   }
-  v = Number(BigInt.asUintN(64, value.Position - -1966080000n));
+  SC.setBigUint64(0, value.Position - -1966080000n, true);
+  v = SC.getUint32(0, true);
   lo = (lo | (v << sb)) >>> 0;
   sb += 32;
   if (sb >= 32) {
@@ -136,7 +136,7 @@ function writeFixedProbeFlatChecked(value, view) {
   if (value.Reach < -65536000000n || value.Reach > 65536000000n) {
     return -1;
   }
-  SC.setBigUint64(0, BigInt.asUintN(64, value.Reach - -65536000000n), true);
+  SC.setBigUint64(0, value.Reach - -65536000000n, true);
   v = SC.getUint32(0, true);
   lo = (lo | (v << sb)) >>> 0;
   sb += 32;
@@ -275,7 +275,6 @@ export function ReadFixedProbeFlat(value, view, numBits) {
 
 function writeUnsignedProbeFlatProduction(value, view) {
   let v = 0;
-  let bg = 0n;
   let lo = 0, sb = 0, wi = 0;
   v = ((value.Angle) & 0x1ffffff) >>> 0;
   lo = (lo | (v << sb)) >>> 0;
@@ -286,7 +285,7 @@ function writeUnsignedProbeFlatProduction(value, view) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (25 - sb);
   }
-  SC.setBigUint64(0, BigInt.asUintN(64, value.Span), true);
+  SC.setBigUint64(0, value.Span, true);
   v = SC.getUint32(0, true);
   lo = (lo | (v << sb)) >>> 0;
   sb += 32;
@@ -305,7 +304,7 @@ function writeUnsignedProbeFlatProduction(value, view) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (32 - sb);
   }
-  SC.setBigUint64(0, BigInt.asUintN(64, value.Reach), true);
+  SC.setBigUint64(0, value.Reach, true);
   v = SC.getUint32(0, true);
   lo = (lo | (v << sb)) >>> 0;
   sb += 32;
@@ -361,7 +360,6 @@ function writeUnsignedProbeFlatProduction(value, view) {
 
 function writeUnsignedProbeFlatChecked(value, view) {
   let v = 0;
-  let bg = 0n;
   let lo = 0, sb = 0, wi = 0;
   if (!Number.isInteger(value.Angle) || value.Angle < 0 || value.Angle > 23592960) {
     return -1;
@@ -378,7 +376,7 @@ function writeUnsignedProbeFlatChecked(value, view) {
   if (value.Span < 0n || value.Span > 18446744073709486080n) {
     return -1;
   }
-  SC.setBigUint64(0, BigInt.asUintN(64, value.Span), true);
+  SC.setBigUint64(0, value.Span, true);
   v = SC.getUint32(0, true);
   lo = (lo | (v << sb)) >>> 0;
   sb += 32;
@@ -400,7 +398,7 @@ function writeUnsignedProbeFlatChecked(value, view) {
   if (value.Reach < 0n || value.Reach > 131072000000n) {
     return -1;
   }
-  SC.setBigUint64(0, BigInt.asUintN(64, value.Reach), true);
+  SC.setBigUint64(0, value.Reach, true);
   v = SC.getUint32(0, true);
   lo = (lo | (v << sb)) >>> 0;
   sb += 32;
@@ -571,8 +569,9 @@ function writeWideProbeFlatProduction(value, view) {
   let v = 0;
   let bg = 0n;
   let lo = 0, sb = 0, wi = 0;
-  bg = BigInt.asUintN(128, value.EntityId);
-  v = Number(bg & 0xffffffffn);
+  bg = value.EntityId;
+  SC.setBigUint64(0, bg, true);
+  v = SC.getUint32(0, true);
   lo = (lo | (v << sb)) >>> 0;
   sb += 32;
   if (sb >= 32) {
@@ -581,7 +580,7 @@ function writeWideProbeFlatProduction(value, view) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (32 - sb);
   }
-  v = Number((bg >> 32n) & 0xffffffffn);
+  v = SC.getUint32(4, true);
   lo = (lo | (v << sb)) >>> 0;
   sb += 32;
   if (sb >= 32) {
@@ -590,7 +589,8 @@ function writeWideProbeFlatProduction(value, view) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (32 - sb);
   }
-  v = Number((bg >> 64n) & 0xffffffffn);
+  SC.setBigUint64(0, bg >> 64n, true);
+  v = SC.getUint32(0, true);
   lo = (lo | (v << sb)) >>> 0;
   sb += 32;
   if (sb >= 32) {
@@ -599,7 +599,7 @@ function writeWideProbeFlatProduction(value, view) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (32 - sb);
   }
-  v = Number(bg >> 96n);
+  v = SC.getUint32(4, true);
   lo = (lo | (v << sb)) >>> 0;
   sb += 32;
   if (sb >= 32) {
@@ -608,7 +608,7 @@ function writeWideProbeFlatProduction(value, view) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (32 - sb);
   }
-  SC.setBigUint64(0, BigInt.asUintN(64, value.Energy - -5000000000n), true);
+  SC.setBigUint64(0, value.Energy - -5000000000n, true);
   v = SC.getUint32(0, true);
   lo = (lo | (v << sb)) >>> 0;
   sb += 32;
@@ -627,8 +627,9 @@ function writeWideProbeFlatProduction(value, view) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (2 - sb);
   }
-  bg = BigInt.asUintN(128, value.Flux - -1267650600228229401496703205376n);
-  v = Number(bg & 0xffffffffn);
+  bg = value.Flux - -1267650600228229401496703205376n;
+  SC.setBigUint64(0, bg, true);
+  v = SC.getUint32(0, true);
   lo = (lo | (v << sb)) >>> 0;
   sb += 32;
   if (sb >= 32) {
@@ -637,7 +638,7 @@ function writeWideProbeFlatProduction(value, view) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (32 - sb);
   }
-  v = Number((bg >> 32n) & 0xffffffffn);
+  v = SC.getUint32(4, true);
   lo = (lo | (v << sb)) >>> 0;
   sb += 32;
   if (sb >= 32) {
@@ -646,7 +647,8 @@ function writeWideProbeFlatProduction(value, view) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (32 - sb);
   }
-  v = Number((bg >> 64n) & 0xffffffffn);
+  SC.setBigUint64(0, bg >> 64n, true);
+  v = SC.getUint32(0, true);
   lo = (lo | (v << sb)) >>> 0;
   sb += 32;
   if (sb >= 32) {
@@ -655,7 +657,7 @@ function writeWideProbeFlatProduction(value, view) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (32 - sb);
   }
-  v = Number(bg >> 96n);
+  v = SC.getUint32(4, true) & 0x3f;
   lo = (lo | (v << sb)) >>> 0;
   sb += 6;
   if (sb >= 32) {
@@ -664,7 +666,8 @@ function writeWideProbeFlatProduction(value, view) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (6 - sb);
   }
-  v = Number(BigInt.asUintN(64, value.Bias - -1000n));
+  SC.setBigUint64(0, value.Bias - -1000n, true);
+  v = SC.getUint32(0, true) & 0x7ff;
   lo = (lo | (v << sb)) >>> 0;
   sb += 11;
   if (sb >= 32) {
@@ -673,8 +676,9 @@ function writeWideProbeFlatProduction(value, view) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (11 - sb);
   }
-  bg = BigInt.asUintN(128, value.Seed);
-  v = Number(bg & 0xffffffffn);
+  bg = value.Seed;
+  SC.setBigUint64(0, bg, true);
+  v = SC.getUint32(0, true);
   lo = (lo | (v << sb)) >>> 0;
   sb += 32;
   if (sb >= 32) {
@@ -683,7 +687,7 @@ function writeWideProbeFlatProduction(value, view) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (32 - sb);
   }
-  v = Number((bg >> 32n) & 0xffffffffn);
+  v = SC.getUint32(4, true);
   lo = (lo | (v << sb)) >>> 0;
   sb += 32;
   if (sb >= 32) {
@@ -692,7 +696,8 @@ function writeWideProbeFlatProduction(value, view) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (32 - sb);
   }
-  v = Number((bg >> 64n) & 0xffffffffn);
+  SC.setBigUint64(0, bg >> 64n, true);
+  v = SC.getUint32(0, true);
   lo = (lo | (v << sb)) >>> 0;
   sb += 32;
   if (sb >= 32) {
@@ -701,7 +706,7 @@ function writeWideProbeFlatProduction(value, view) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (32 - sb);
   }
-  v = Number(bg >> 96n);
+  v = SC.getUint32(4, true);
   lo = (lo | (v << sb)) >>> 0;
   sb += 32;
   if (sb >= 32) {
@@ -720,8 +725,9 @@ function writeWideProbeFlatChecked(value, view) {
   let v = 0;
   let bg = 0n;
   let lo = 0, sb = 0, wi = 0;
-  bg = BigInt.asUintN(128, value.EntityId);
-  v = Number(bg & 0xffffffffn);
+  bg = value.EntityId;
+  SC.setBigUint64(0, bg, true);
+  v = SC.getUint32(0, true);
   lo = (lo | (v << sb)) >>> 0;
   sb += 32;
   if (sb >= 32) {
@@ -730,7 +736,7 @@ function writeWideProbeFlatChecked(value, view) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (32 - sb);
   }
-  v = Number((bg >> 32n) & 0xffffffffn);
+  v = SC.getUint32(4, true);
   lo = (lo | (v << sb)) >>> 0;
   sb += 32;
   if (sb >= 32) {
@@ -739,7 +745,8 @@ function writeWideProbeFlatChecked(value, view) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (32 - sb);
   }
-  v = Number((bg >> 64n) & 0xffffffffn);
+  SC.setBigUint64(0, bg >> 64n, true);
+  v = SC.getUint32(0, true);
   lo = (lo | (v << sb)) >>> 0;
   sb += 32;
   if (sb >= 32) {
@@ -748,7 +755,7 @@ function writeWideProbeFlatChecked(value, view) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (32 - sb);
   }
-  v = Number(bg >> 96n);
+  v = SC.getUint32(4, true);
   lo = (lo | (v << sb)) >>> 0;
   sb += 32;
   if (sb >= 32) {
@@ -760,7 +767,7 @@ function writeWideProbeFlatChecked(value, view) {
   if (value.Energy < -5000000000n || value.Energy > 5000000000n) {
     return -1;
   }
-  SC.setBigUint64(0, BigInt.asUintN(64, value.Energy - -5000000000n), true);
+  SC.setBigUint64(0, value.Energy - -5000000000n, true);
   v = SC.getUint32(0, true);
   lo = (lo | (v << sb)) >>> 0;
   sb += 32;
@@ -782,8 +789,9 @@ function writeWideProbeFlatChecked(value, view) {
   if (value.Flux < -1267650600228229401496703205376n || value.Flux > 1267650600228229401496703205376n) {
     return -1;
   }
-  bg = BigInt.asUintN(128, value.Flux - -1267650600228229401496703205376n);
-  v = Number(bg & 0xffffffffn);
+  bg = value.Flux - -1267650600228229401496703205376n;
+  SC.setBigUint64(0, bg, true);
+  v = SC.getUint32(0, true);
   lo = (lo | (v << sb)) >>> 0;
   sb += 32;
   if (sb >= 32) {
@@ -792,7 +800,7 @@ function writeWideProbeFlatChecked(value, view) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (32 - sb);
   }
-  v = Number((bg >> 32n) & 0xffffffffn);
+  v = SC.getUint32(4, true);
   lo = (lo | (v << sb)) >>> 0;
   sb += 32;
   if (sb >= 32) {
@@ -801,7 +809,8 @@ function writeWideProbeFlatChecked(value, view) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (32 - sb);
   }
-  v = Number((bg >> 64n) & 0xffffffffn);
+  SC.setBigUint64(0, bg >> 64n, true);
+  v = SC.getUint32(0, true);
   lo = (lo | (v << sb)) >>> 0;
   sb += 32;
   if (sb >= 32) {
@@ -810,7 +819,7 @@ function writeWideProbeFlatChecked(value, view) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (32 - sb);
   }
-  v = Number(bg >> 96n);
+  v = SC.getUint32(4, true) & 0x3f;
   lo = (lo | (v << sb)) >>> 0;
   sb += 6;
   if (sb >= 32) {
@@ -822,7 +831,8 @@ function writeWideProbeFlatChecked(value, view) {
   if (value.Bias < -1000n || value.Bias > 1000n) {
     return -1;
   }
-  v = Number(BigInt.asUintN(64, value.Bias - -1000n));
+  SC.setBigUint64(0, value.Bias - -1000n, true);
+  v = SC.getUint32(0, true) & 0x7ff;
   lo = (lo | (v << sb)) >>> 0;
   sb += 11;
   if (sb >= 32) {
@@ -831,8 +841,9 @@ function writeWideProbeFlatChecked(value, view) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (11 - sb);
   }
-  bg = BigInt.asUintN(128, value.Seed);
-  v = Number(bg & 0xffffffffn);
+  bg = value.Seed;
+  SC.setBigUint64(0, bg, true);
+  v = SC.getUint32(0, true);
   lo = (lo | (v << sb)) >>> 0;
   sb += 32;
   if (sb >= 32) {
@@ -841,7 +852,7 @@ function writeWideProbeFlatChecked(value, view) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (32 - sb);
   }
-  v = Number((bg >> 32n) & 0xffffffffn);
+  v = SC.getUint32(4, true);
   lo = (lo | (v << sb)) >>> 0;
   sb += 32;
   if (sb >= 32) {
@@ -850,7 +861,8 @@ function writeWideProbeFlatChecked(value, view) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (32 - sb);
   }
-  v = Number((bg >> 64n) & 0xffffffffn);
+  SC.setBigUint64(0, bg >> 64n, true);
+  v = SC.getUint32(0, true);
   lo = (lo | (v << sb)) >>> 0;
   sb += 32;
   if (sb >= 32) {
@@ -859,7 +871,7 @@ function writeWideProbeFlatChecked(value, view) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (32 - sb);
   }
-  v = Number(bg >> 96n);
+  v = SC.getUint32(4, true);
   lo = (lo | (v << sb)) >>> 0;
   sb += 32;
   if (sb >= 32) {
@@ -1049,7 +1061,8 @@ function writeLudicrousStateFlatProduction(value, view) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (25 - sb);
   }
-  v = Number(BigInt.asUintN(64, value.Probe.Position - -1966080000n));
+  SC.setBigUint64(0, value.Probe.Position - -1966080000n, true);
+  v = SC.getUint32(0, true);
   lo = (lo | (v << sb)) >>> 0;
   sb += 32;
   if (sb >= 32) {
@@ -1058,7 +1071,7 @@ function writeLudicrousStateFlatProduction(value, view) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (32 - sb);
   }
-  SC.setBigUint64(0, BigInt.asUintN(64, value.Probe.Reach - -65536000000n), true);
+  SC.setBigUint64(0, value.Probe.Reach - -65536000000n, true);
   v = SC.getUint32(0, true);
   lo = (lo | (v << sb)) >>> 0;
   sb += 32;
@@ -1097,8 +1110,9 @@ function writeLudicrousStateFlatProduction(value, view) {
       lo = sb === 0 ? 0 : v >>> (21 - sb);
     }
   }
-  bg = BigInt.asUintN(128, value.Wide.EntityId);
-  v = Number(bg & 0xffffffffn);
+  bg = value.Wide.EntityId;
+  SC.setBigUint64(0, bg, true);
+  v = SC.getUint32(0, true);
   lo = (lo | (v << sb)) >>> 0;
   sb += 32;
   if (sb >= 32) {
@@ -1107,7 +1121,7 @@ function writeLudicrousStateFlatProduction(value, view) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (32 - sb);
   }
-  v = Number((bg >> 32n) & 0xffffffffn);
+  v = SC.getUint32(4, true);
   lo = (lo | (v << sb)) >>> 0;
   sb += 32;
   if (sb >= 32) {
@@ -1116,7 +1130,8 @@ function writeLudicrousStateFlatProduction(value, view) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (32 - sb);
   }
-  v = Number((bg >> 64n) & 0xffffffffn);
+  SC.setBigUint64(0, bg >> 64n, true);
+  v = SC.getUint32(0, true);
   lo = (lo | (v << sb)) >>> 0;
   sb += 32;
   if (sb >= 32) {
@@ -1125,7 +1140,7 @@ function writeLudicrousStateFlatProduction(value, view) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (32 - sb);
   }
-  v = Number(bg >> 96n);
+  v = SC.getUint32(4, true);
   lo = (lo | (v << sb)) >>> 0;
   sb += 32;
   if (sb >= 32) {
@@ -1134,7 +1149,7 @@ function writeLudicrousStateFlatProduction(value, view) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (32 - sb);
   }
-  SC.setBigUint64(0, BigInt.asUintN(64, value.Wide.Energy - -5000000000n), true);
+  SC.setBigUint64(0, value.Wide.Energy - -5000000000n, true);
   v = SC.getUint32(0, true);
   lo = (lo | (v << sb)) >>> 0;
   sb += 32;
@@ -1153,8 +1168,9 @@ function writeLudicrousStateFlatProduction(value, view) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (2 - sb);
   }
-  bg = BigInt.asUintN(128, value.Wide.Flux - -1267650600228229401496703205376n);
-  v = Number(bg & 0xffffffffn);
+  bg = value.Wide.Flux - -1267650600228229401496703205376n;
+  SC.setBigUint64(0, bg, true);
+  v = SC.getUint32(0, true);
   lo = (lo | (v << sb)) >>> 0;
   sb += 32;
   if (sb >= 32) {
@@ -1163,7 +1179,7 @@ function writeLudicrousStateFlatProduction(value, view) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (32 - sb);
   }
-  v = Number((bg >> 32n) & 0xffffffffn);
+  v = SC.getUint32(4, true);
   lo = (lo | (v << sb)) >>> 0;
   sb += 32;
   if (sb >= 32) {
@@ -1172,7 +1188,8 @@ function writeLudicrousStateFlatProduction(value, view) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (32 - sb);
   }
-  v = Number((bg >> 64n) & 0xffffffffn);
+  SC.setBigUint64(0, bg >> 64n, true);
+  v = SC.getUint32(0, true);
   lo = (lo | (v << sb)) >>> 0;
   sb += 32;
   if (sb >= 32) {
@@ -1181,7 +1198,7 @@ function writeLudicrousStateFlatProduction(value, view) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (32 - sb);
   }
-  v = Number(bg >> 96n);
+  v = SC.getUint32(4, true) & 0x3f;
   lo = (lo | (v << sb)) >>> 0;
   sb += 6;
   if (sb >= 32) {
@@ -1190,7 +1207,8 @@ function writeLudicrousStateFlatProduction(value, view) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (6 - sb);
   }
-  v = Number(BigInt.asUintN(64, value.Wide.Bias - -1000n));
+  SC.setBigUint64(0, value.Wide.Bias - -1000n, true);
+  v = SC.getUint32(0, true) & 0x7ff;
   lo = (lo | (v << sb)) >>> 0;
   sb += 11;
   if (sb >= 32) {
@@ -1199,8 +1217,9 @@ function writeLudicrousStateFlatProduction(value, view) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (11 - sb);
   }
-  bg = BigInt.asUintN(128, value.Wide.Seed);
-  v = Number(bg & 0xffffffffn);
+  bg = value.Wide.Seed;
+  SC.setBigUint64(0, bg, true);
+  v = SC.getUint32(0, true);
   lo = (lo | (v << sb)) >>> 0;
   sb += 32;
   if (sb >= 32) {
@@ -1209,7 +1228,7 @@ function writeLudicrousStateFlatProduction(value, view) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (32 - sb);
   }
-  v = Number((bg >> 32n) & 0xffffffffn);
+  v = SC.getUint32(4, true);
   lo = (lo | (v << sb)) >>> 0;
   sb += 32;
   if (sb >= 32) {
@@ -1218,7 +1237,8 @@ function writeLudicrousStateFlatProduction(value, view) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (32 - sb);
   }
-  v = Number((bg >> 64n) & 0xffffffffn);
+  SC.setBigUint64(0, bg >> 64n, true);
+  v = SC.getUint32(0, true);
   lo = (lo | (v << sb)) >>> 0;
   sb += 32;
   if (sb >= 32) {
@@ -1227,7 +1247,7 @@ function writeLudicrousStateFlatProduction(value, view) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (32 - sb);
   }
-  v = Number(bg >> 96n);
+  v = SC.getUint32(4, true);
   lo = (lo | (v << sb)) >>> 0;
   sb += 32;
   if (sb >= 32) {
@@ -1246,8 +1266,9 @@ function writeLudicrousStateFlatProduction(value, view) {
     lo = sb === 0 ? 0 : v >>> (3 - sb);
   }
   for (let i0 = 0; i0 < value.KeysCount; i0++) {
-    bg = BigInt.asUintN(128, value.Keys[i0]);
-    v = Number(bg & 0xffffffffn);
+    bg = value.Keys[i0];
+    SC.setBigUint64(0, bg, true);
+    v = SC.getUint32(0, true);
     lo = (lo | (v << sb)) >>> 0;
     sb += 32;
     if (sb >= 32) {
@@ -1256,7 +1277,7 @@ function writeLudicrousStateFlatProduction(value, view) {
       sb -= 32;
       lo = sb === 0 ? 0 : v >>> (32 - sb);
     }
-    v = Number((bg >> 32n) & 0xffffffffn);
+    v = SC.getUint32(4, true);
     lo = (lo | (v << sb)) >>> 0;
     sb += 32;
     if (sb >= 32) {
@@ -1265,7 +1286,8 @@ function writeLudicrousStateFlatProduction(value, view) {
       sb -= 32;
       lo = sb === 0 ? 0 : v >>> (32 - sb);
     }
-    v = Number((bg >> 64n) & 0xffffffffn);
+    SC.setBigUint64(0, bg >> 64n, true);
+    v = SC.getUint32(0, true);
     lo = (lo | (v << sb)) >>> 0;
     sb += 32;
     if (sb >= 32) {
@@ -1274,7 +1296,7 @@ function writeLudicrousStateFlatProduction(value, view) {
       sb -= 32;
       lo = sb === 0 ? 0 : v >>> (32 - sb);
     }
-    v = Number(bg >> 96n);
+    v = SC.getUint32(4, true);
     lo = (lo | (v << sb)) >>> 0;
     sb += 32;
     if (sb >= 32) {
@@ -1294,8 +1316,9 @@ function writeLudicrousStateFlatProduction(value, view) {
     lo = sb === 0 ? 0 : v >>> (1 - sb);
   }
   if (value.HasTarget) {
-    bg = BigInt.asUintN(128, value.TargetId);
-    v = Number(bg & 0xffffffffn);
+    bg = value.TargetId;
+    SC.setBigUint64(0, bg, true);
+    v = SC.getUint32(0, true);
     lo = (lo | (v << sb)) >>> 0;
     sb += 32;
     if (sb >= 32) {
@@ -1304,7 +1327,7 @@ function writeLudicrousStateFlatProduction(value, view) {
       sb -= 32;
       lo = sb === 0 ? 0 : v >>> (32 - sb);
     }
-    v = Number((bg >> 32n) & 0xffffffffn);
+    v = SC.getUint32(4, true);
     lo = (lo | (v << sb)) >>> 0;
     sb += 32;
     if (sb >= 32) {
@@ -1313,7 +1336,8 @@ function writeLudicrousStateFlatProduction(value, view) {
       sb -= 32;
       lo = sb === 0 ? 0 : v >>> (32 - sb);
     }
-    v = Number((bg >> 64n) & 0xffffffffn);
+    SC.setBigUint64(0, bg >> 64n, true);
+    v = SC.getUint32(0, true);
     lo = (lo | (v << sb)) >>> 0;
     sb += 32;
     if (sb >= 32) {
@@ -1322,7 +1346,7 @@ function writeLudicrousStateFlatProduction(value, view) {
       sb -= 32;
       lo = sb === 0 ? 0 : v >>> (32 - sb);
     }
-    v = Number(bg >> 96n);
+    v = SC.getUint32(4, true);
     lo = (lo | (v << sb)) >>> 0;
     sb += 32;
     if (sb >= 32) {
@@ -1369,7 +1393,8 @@ function writeLudicrousStateFlatChecked(value, view) {
   if (value.Probe.Position < -1966080000n || value.Probe.Position > 1966080000n) {
     return -1;
   }
-  v = Number(BigInt.asUintN(64, value.Probe.Position - -1966080000n));
+  SC.setBigUint64(0, value.Probe.Position - -1966080000n, true);
+  v = SC.getUint32(0, true);
   lo = (lo | (v << sb)) >>> 0;
   sb += 32;
   if (sb >= 32) {
@@ -1381,7 +1406,7 @@ function writeLudicrousStateFlatChecked(value, view) {
   if (value.Probe.Reach < -65536000000n || value.Probe.Reach > 65536000000n) {
     return -1;
   }
-  SC.setBigUint64(0, BigInt.asUintN(64, value.Probe.Reach - -65536000000n), true);
+  SC.setBigUint64(0, value.Probe.Reach - -65536000000n, true);
   v = SC.getUint32(0, true);
   lo = (lo | (v << sb)) >>> 0;
   sb += 32;
@@ -1426,8 +1451,9 @@ function writeLudicrousStateFlatChecked(value, view) {
       lo = sb === 0 ? 0 : v >>> (21 - sb);
     }
   }
-  bg = BigInt.asUintN(128, value.Wide.EntityId);
-  v = Number(bg & 0xffffffffn);
+  bg = value.Wide.EntityId;
+  SC.setBigUint64(0, bg, true);
+  v = SC.getUint32(0, true);
   lo = (lo | (v << sb)) >>> 0;
   sb += 32;
   if (sb >= 32) {
@@ -1436,7 +1462,7 @@ function writeLudicrousStateFlatChecked(value, view) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (32 - sb);
   }
-  v = Number((bg >> 32n) & 0xffffffffn);
+  v = SC.getUint32(4, true);
   lo = (lo | (v << sb)) >>> 0;
   sb += 32;
   if (sb >= 32) {
@@ -1445,7 +1471,8 @@ function writeLudicrousStateFlatChecked(value, view) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (32 - sb);
   }
-  v = Number((bg >> 64n) & 0xffffffffn);
+  SC.setBigUint64(0, bg >> 64n, true);
+  v = SC.getUint32(0, true);
   lo = (lo | (v << sb)) >>> 0;
   sb += 32;
   if (sb >= 32) {
@@ -1454,7 +1481,7 @@ function writeLudicrousStateFlatChecked(value, view) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (32 - sb);
   }
-  v = Number(bg >> 96n);
+  v = SC.getUint32(4, true);
   lo = (lo | (v << sb)) >>> 0;
   sb += 32;
   if (sb >= 32) {
@@ -1466,7 +1493,7 @@ function writeLudicrousStateFlatChecked(value, view) {
   if (value.Wide.Energy < -5000000000n || value.Wide.Energy > 5000000000n) {
     return -1;
   }
-  SC.setBigUint64(0, BigInt.asUintN(64, value.Wide.Energy - -5000000000n), true);
+  SC.setBigUint64(0, value.Wide.Energy - -5000000000n, true);
   v = SC.getUint32(0, true);
   lo = (lo | (v << sb)) >>> 0;
   sb += 32;
@@ -1488,8 +1515,9 @@ function writeLudicrousStateFlatChecked(value, view) {
   if (value.Wide.Flux < -1267650600228229401496703205376n || value.Wide.Flux > 1267650600228229401496703205376n) {
     return -1;
   }
-  bg = BigInt.asUintN(128, value.Wide.Flux - -1267650600228229401496703205376n);
-  v = Number(bg & 0xffffffffn);
+  bg = value.Wide.Flux - -1267650600228229401496703205376n;
+  SC.setBigUint64(0, bg, true);
+  v = SC.getUint32(0, true);
   lo = (lo | (v << sb)) >>> 0;
   sb += 32;
   if (sb >= 32) {
@@ -1498,7 +1526,7 @@ function writeLudicrousStateFlatChecked(value, view) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (32 - sb);
   }
-  v = Number((bg >> 32n) & 0xffffffffn);
+  v = SC.getUint32(4, true);
   lo = (lo | (v << sb)) >>> 0;
   sb += 32;
   if (sb >= 32) {
@@ -1507,7 +1535,8 @@ function writeLudicrousStateFlatChecked(value, view) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (32 - sb);
   }
-  v = Number((bg >> 64n) & 0xffffffffn);
+  SC.setBigUint64(0, bg >> 64n, true);
+  v = SC.getUint32(0, true);
   lo = (lo | (v << sb)) >>> 0;
   sb += 32;
   if (sb >= 32) {
@@ -1516,7 +1545,7 @@ function writeLudicrousStateFlatChecked(value, view) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (32 - sb);
   }
-  v = Number(bg >> 96n);
+  v = SC.getUint32(4, true) & 0x3f;
   lo = (lo | (v << sb)) >>> 0;
   sb += 6;
   if (sb >= 32) {
@@ -1528,7 +1557,8 @@ function writeLudicrousStateFlatChecked(value, view) {
   if (value.Wide.Bias < -1000n || value.Wide.Bias > 1000n) {
     return -1;
   }
-  v = Number(BigInt.asUintN(64, value.Wide.Bias - -1000n));
+  SC.setBigUint64(0, value.Wide.Bias - -1000n, true);
+  v = SC.getUint32(0, true) & 0x7ff;
   lo = (lo | (v << sb)) >>> 0;
   sb += 11;
   if (sb >= 32) {
@@ -1537,8 +1567,9 @@ function writeLudicrousStateFlatChecked(value, view) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (11 - sb);
   }
-  bg = BigInt.asUintN(128, value.Wide.Seed);
-  v = Number(bg & 0xffffffffn);
+  bg = value.Wide.Seed;
+  SC.setBigUint64(0, bg, true);
+  v = SC.getUint32(0, true);
   lo = (lo | (v << sb)) >>> 0;
   sb += 32;
   if (sb >= 32) {
@@ -1547,7 +1578,7 @@ function writeLudicrousStateFlatChecked(value, view) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (32 - sb);
   }
-  v = Number((bg >> 32n) & 0xffffffffn);
+  v = SC.getUint32(4, true);
   lo = (lo | (v << sb)) >>> 0;
   sb += 32;
   if (sb >= 32) {
@@ -1556,7 +1587,8 @@ function writeLudicrousStateFlatChecked(value, view) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (32 - sb);
   }
-  v = Number((bg >> 64n) & 0xffffffffn);
+  SC.setBigUint64(0, bg >> 64n, true);
+  v = SC.getUint32(0, true);
   lo = (lo | (v << sb)) >>> 0;
   sb += 32;
   if (sb >= 32) {
@@ -1565,7 +1597,7 @@ function writeLudicrousStateFlatChecked(value, view) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (32 - sb);
   }
-  v = Number(bg >> 96n);
+  v = SC.getUint32(4, true);
   lo = (lo | (v << sb)) >>> 0;
   sb += 32;
   if (sb >= 32) {
@@ -1587,8 +1619,9 @@ function writeLudicrousStateFlatChecked(value, view) {
     lo = sb === 0 ? 0 : v >>> (3 - sb);
   }
   for (let i0 = 0; i0 < value.KeysCount; i0++) {
-    bg = BigInt.asUintN(128, value.Keys[i0]);
-    v = Number(bg & 0xffffffffn);
+    bg = value.Keys[i0];
+    SC.setBigUint64(0, bg, true);
+    v = SC.getUint32(0, true);
     lo = (lo | (v << sb)) >>> 0;
     sb += 32;
     if (sb >= 32) {
@@ -1597,7 +1630,7 @@ function writeLudicrousStateFlatChecked(value, view) {
       sb -= 32;
       lo = sb === 0 ? 0 : v >>> (32 - sb);
     }
-    v = Number((bg >> 32n) & 0xffffffffn);
+    v = SC.getUint32(4, true);
     lo = (lo | (v << sb)) >>> 0;
     sb += 32;
     if (sb >= 32) {
@@ -1606,7 +1639,8 @@ function writeLudicrousStateFlatChecked(value, view) {
       sb -= 32;
       lo = sb === 0 ? 0 : v >>> (32 - sb);
     }
-    v = Number((bg >> 64n) & 0xffffffffn);
+    SC.setBigUint64(0, bg >> 64n, true);
+    v = SC.getUint32(0, true);
     lo = (lo | (v << sb)) >>> 0;
     sb += 32;
     if (sb >= 32) {
@@ -1615,7 +1649,7 @@ function writeLudicrousStateFlatChecked(value, view) {
       sb -= 32;
       lo = sb === 0 ? 0 : v >>> (32 - sb);
     }
-    v = Number(bg >> 96n);
+    v = SC.getUint32(4, true);
     lo = (lo | (v << sb)) >>> 0;
     sb += 32;
     if (sb >= 32) {
@@ -1635,8 +1669,9 @@ function writeLudicrousStateFlatChecked(value, view) {
     lo = sb === 0 ? 0 : v >>> (1 - sb);
   }
   if (value.HasTarget) {
-    bg = BigInt.asUintN(128, value.TargetId);
-    v = Number(bg & 0xffffffffn);
+    bg = value.TargetId;
+    SC.setBigUint64(0, bg, true);
+    v = SC.getUint32(0, true);
     lo = (lo | (v << sb)) >>> 0;
     sb += 32;
     if (sb >= 32) {
@@ -1645,7 +1680,7 @@ function writeLudicrousStateFlatChecked(value, view) {
       sb -= 32;
       lo = sb === 0 ? 0 : v >>> (32 - sb);
     }
-    v = Number((bg >> 32n) & 0xffffffffn);
+    v = SC.getUint32(4, true);
     lo = (lo | (v << sb)) >>> 0;
     sb += 32;
     if (sb >= 32) {
@@ -1654,7 +1689,8 @@ function writeLudicrousStateFlatChecked(value, view) {
       sb -= 32;
       lo = sb === 0 ? 0 : v >>> (32 - sb);
     }
-    v = Number((bg >> 64n) & 0xffffffffn);
+    SC.setBigUint64(0, bg >> 64n, true);
+    v = SC.getUint32(0, true);
     lo = (lo | (v << sb)) >>> 0;
     sb += 32;
     if (sb >= 32) {
@@ -1663,7 +1699,7 @@ function writeLudicrousStateFlatChecked(value, view) {
       sb -= 32;
       lo = sb === 0 ? 0 : v >>> (32 - sb);
     }
-    v = Number(bg >> 96n);
+    v = SC.getUint32(4, true);
     lo = (lo | (v << sb)) >>> 0;
     sb += 32;
     if (sb >= 32) {
@@ -2086,9 +2122,8 @@ export function ReadDegenerateProbeFlat(value, view, numBits) {
 
 function writeFixedVecFlatProduction(value, view) {
   let v = 0;
-  let bg = 0n;
   let lo = 0, sb = 0, wi = 0;
-  SC.setBigUint64(0, BigInt.asUintN(64, value.X - -6553600000n), true);
+  SC.setBigUint64(0, value.X - -6553600000n, true);
   v = SC.getUint32(0, true);
   lo = (lo | (v << sb)) >>> 0;
   sb += 32;
@@ -2107,7 +2142,7 @@ function writeFixedVecFlatProduction(value, view) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (2 - sb);
   }
-  SC.setBigUint64(0, BigInt.asUintN(64, value.Y - -6553600000n), true);
+  SC.setBigUint64(0, value.Y - -6553600000n, true);
   v = SC.getUint32(0, true);
   lo = (lo | (v << sb)) >>> 0;
   sb += 32;
@@ -2126,7 +2161,7 @@ function writeFixedVecFlatProduction(value, view) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (2 - sb);
   }
-  SC.setBigUint64(0, BigInt.asUintN(64, value.Z - -6553600000n), true);
+  SC.setBigUint64(0, value.Z - -6553600000n, true);
   v = SC.getUint32(0, true);
   lo = (lo | (v << sb)) >>> 0;
   sb += 32;
@@ -2153,12 +2188,11 @@ function writeFixedVecFlatProduction(value, view) {
 
 function writeFixedVecFlatChecked(value, view) {
   let v = 0;
-  let bg = 0n;
   let lo = 0, sb = 0, wi = 0;
   if (value.X < -6553600000n || value.X > 6553600000n) {
     return -1;
   }
-  SC.setBigUint64(0, BigInt.asUintN(64, value.X - -6553600000n), true);
+  SC.setBigUint64(0, value.X - -6553600000n, true);
   v = SC.getUint32(0, true);
   lo = (lo | (v << sb)) >>> 0;
   sb += 32;
@@ -2180,7 +2214,7 @@ function writeFixedVecFlatChecked(value, view) {
   if (value.Y < -6553600000n || value.Y > 6553600000n) {
     return -1;
   }
-  SC.setBigUint64(0, BigInt.asUintN(64, value.Y - -6553600000n), true);
+  SC.setBigUint64(0, value.Y - -6553600000n, true);
   v = SC.getUint32(0, true);
   lo = (lo | (v << sb)) >>> 0;
   sb += 32;
@@ -2202,7 +2236,7 @@ function writeFixedVecFlatChecked(value, view) {
   if (value.Z < -6553600000n || value.Z > 6553600000n) {
     return -1;
   }
-  SC.setBigUint64(0, BigInt.asUintN(64, value.Z - -6553600000n), true);
+  SC.setBigUint64(0, value.Z - -6553600000n, true);
   v = SC.getUint32(0, true);
   lo = (lo | (v << sb)) >>> 0;
   sb += 32;

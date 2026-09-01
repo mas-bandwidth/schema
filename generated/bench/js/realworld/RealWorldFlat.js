@@ -129,7 +129,7 @@ function writeRealPacketFlatProduction(value, view) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (32 - sb);
   }
-  SC.setBigUint64(0, BigInt.asUintN(64, value.F008U64), true);
+  SC.setBigUint64(0, value.F008U64, true);
   v = SC.getUint32(0, true);
   lo = (lo | (v << sb)) >>> 0;
   sb += 32;
@@ -398,7 +398,7 @@ function writeRealPacketFlatProduction(value, view) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (4 - sb);
   }
-  SC.setBigUint64(0, BigInt.asUintN(64, value.F029I64), true);
+  SC.setBigUint64(0, value.F029I64, true);
   v = SC.getUint32(0, true);
   lo = (lo | (v << sb)) >>> 0;
   sb += 32;
@@ -785,7 +785,7 @@ function writeRealPacketFlatProduction(value, view) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (9 - sb);
   }
-  SC.setBigUint64(0, BigInt.asUintN(64, value.F063I64), true);
+  SC.setBigUint64(0, value.F063I64, true);
   v = SC.getUint32(0, true);
   lo = (lo | (v << sb)) >>> 0;
   sb += 32;
@@ -919,7 +919,7 @@ function writeRealPacketFlatProduction(value, view) {
     lo = sb === 0 ? 0 : v >>> (1 - sb);
   }
   if (value.F074Bool) {
-    SC.setBigUint64(0, BigInt.asUintN(64, value.F075U64), true);
+    SC.setBigUint64(0, value.F075U64, true);
     v = SC.getUint32(0, true);
     lo = (lo | (v << sb)) >>> 0;
     sb += 32;
@@ -1066,7 +1066,7 @@ function writeRealPacketFlatProduction(value, view) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (11 - sb);
   }
-  SC.setBigUint64(0, BigInt.asUintN(48, value.F089Bits), true);
+  SC.setBigUint64(0, value.F089Bits, true);
   v = SC.getUint32(0, true);
   lo = (lo | (v << sb)) >>> 0;
   sb += 32;
@@ -1094,7 +1094,8 @@ function writeRealPacketFlatProduction(value, view) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (8 - sb);
   }
-  v = (Number(BigInt.asUintN(5, value.F091Flags)) & 0x1f) >>> 0;
+  SC.setBigUint64(0, value.F091Flags, true);
+  v = SC.getUint32(0, true) & 0x1f;
   lo = (lo | (v << sb)) >>> 0;
   sb += 5;
   if (sb >= 32) {
@@ -1112,7 +1113,7 @@ function writeRealPacketFlatProduction(value, view) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (1 - sb);
   }
-  SC.setBigUint64(0, BigInt.asUintN(64, value.F093Bits), true);
+  SC.setBigUint64(0, value.F093Bits, true);
   v = SC.getUint32(0, true);
   lo = (lo | (v << sb)) >>> 0;
   sb += 32;
@@ -1279,7 +1280,7 @@ function writeRealPacketFlatChecked(value, view) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (32 - sb);
   }
-  SC.setBigUint64(0, BigInt.asUintN(64, value.F008U64), true);
+  SC.setBigUint64(0, value.F008U64, true);
   v = SC.getUint32(0, true);
   lo = (lo | (v << sb)) >>> 0;
   sb += 32;
@@ -1575,7 +1576,7 @@ function writeRealPacketFlatChecked(value, view) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (4 - sb);
   }
-  SC.setBigUint64(0, BigInt.asUintN(64, value.F029I64), true);
+  SC.setBigUint64(0, value.F029I64, true);
   v = SC.getUint32(0, true);
   lo = (lo | (v << sb)) >>> 0;
   sb += 32;
@@ -2007,7 +2008,7 @@ function writeRealPacketFlatChecked(value, view) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (9 - sb);
   }
-  SC.setBigUint64(0, BigInt.asUintN(64, value.F063I64), true);
+  SC.setBigUint64(0, value.F063I64, true);
   v = SC.getUint32(0, true);
   lo = (lo | (v << sb)) >>> 0;
   sb += 32;
@@ -2168,7 +2169,7 @@ function writeRealPacketFlatChecked(value, view) {
     lo = sb === 0 ? 0 : v >>> (1 - sb);
   }
   if (value.F074Bool) {
-    SC.setBigUint64(0, BigInt.asUintN(64, value.F075U64), true);
+    SC.setBigUint64(0, value.F075U64, true);
     v = SC.getUint32(0, true);
     lo = (lo | (v << sb)) >>> 0;
     sb += 32;
@@ -2336,7 +2337,7 @@ function writeRealPacketFlatChecked(value, view) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (11 - sb);
   }
-  SC.setBigUint64(0, BigInt.asUintN(48, value.F089Bits), true);
+  SC.setBigUint64(0, value.F089Bits, true);
   v = SC.getUint32(0, true);
   lo = (lo | (v << sb)) >>> 0;
   sb += 32;
@@ -2370,7 +2371,8 @@ function writeRealPacketFlatChecked(value, view) {
   if (BigInt.asUintN(64, value.F091Flags) >= 32n) { // a mask bit above the wire width cannot ride
     return -1;
   }
-  v = (Number(BigInt.asUintN(5, value.F091Flags)) & 0x1f) >>> 0;
+  SC.setBigUint64(0, value.F091Flags, true);
+  v = SC.getUint32(0, true) & 0x1f;
   lo = (lo | (v << sb)) >>> 0;
   sb += 5;
   if (sb >= 32) {
@@ -2388,7 +2390,7 @@ function writeRealPacketFlatChecked(value, view) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (1 - sb);
   }
-  SC.setBigUint64(0, BigInt.asUintN(64, value.F093Bits), true);
+  SC.setBigUint64(0, value.F093Bits, true);
   v = SC.getUint32(0, true);
   lo = (lo | (v << sb)) >>> 0;
   sb += 32;

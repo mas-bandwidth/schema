@@ -21,7 +21,6 @@ export const FLAT_READ_SLACK = 8;
 
 function writeProbeHeaderFlatProduction(value, view) {
   let v = 0;
-  let bg = 0n;
   let lo = 0, sb = 0, wi = 0;
   v = 171;
   lo = (lo | (v << sb)) >>> 0;
@@ -57,7 +56,7 @@ function writeProbeHeaderFlatProduction(value, view) {
     lo = 0;
     sb = 0;
   }
-  SC.setBigUint64(0, BigInt.asUintN(64, value.ProbeId), true);
+  SC.setBigUint64(0, value.ProbeId, true);
   v = SC.getUint32(0, true);
   lo = (lo | (v << sb)) >>> 0;
   sb += 32;
@@ -84,7 +83,6 @@ function writeProbeHeaderFlatProduction(value, view) {
 
 function writeProbeHeaderFlatChecked(value, view) {
   let v = 0;
-  let bg = 0n;
   let lo = 0, sb = 0, wi = 0;
   v = 171;
   lo = (lo | (v << sb)) >>> 0;
@@ -120,7 +118,7 @@ function writeProbeHeaderFlatChecked(value, view) {
     lo = 0;
     sb = 0;
   }
-  SC.setBigUint64(0, BigInt.asUintN(64, value.ProbeId), true);
+  SC.setBigUint64(0, value.ProbeId, true);
   v = SC.getUint32(0, true);
   lo = (lo | (v << sb)) >>> 0;
   sb += 32;
@@ -224,7 +222,6 @@ export function ReadProbeHeaderFlat(value, view, numBits) {
 
 function writeProbeBitsFlatProduction(value, view) {
   let v = 0;
-  let bg = 0n;
   let lo = 0, sb = 0, wi = 0;
   v = (value.Small & 0x1ff) >>> 0;
   lo = (lo | (v << sb)) >>> 0;
@@ -235,7 +232,7 @@ function writeProbeBitsFlatProduction(value, view) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (9 - sb);
   }
-  SC.setBigUint64(0, BigInt.asUintN(33, value.Boundary), true);
+  SC.setBigUint64(0, value.Boundary, true);
   v = SC.getUint32(0, true);
   lo = (lo | (v << sb)) >>> 0;
   sb += 32;
@@ -254,7 +251,7 @@ function writeProbeBitsFlatProduction(value, view) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (1 - sb);
   }
-  SC.setBigUint64(0, BigInt.asUintN(64, value.Wide), true);
+  SC.setBigUint64(0, value.Wide, true);
   v = SC.getUint32(0, true);
   lo = (lo | (v << sb)) >>> 0;
   sb += 32;
@@ -282,7 +279,7 @@ function writeProbeBitsFlatProduction(value, view) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (32 - sb);
   }
-  SC.setBigUint64(0, BigInt.asUintN(64, value.Nonce), true);
+  SC.setBigUint64(0, value.Nonce, true);
   v = SC.getUint32(0, true);
   lo = (lo | (v << sb)) >>> 0;
   sb += 32;
@@ -309,7 +306,6 @@ function writeProbeBitsFlatProduction(value, view) {
 
 function writeProbeBitsFlatChecked(value, view) {
   let v = 0;
-  let bg = 0n;
   let lo = 0, sb = 0, wi = 0;
   v = (value.Small & 0x1ff) >>> 0;
   lo = (lo | (v << sb)) >>> 0;
@@ -320,7 +316,7 @@ function writeProbeBitsFlatChecked(value, view) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (9 - sb);
   }
-  SC.setBigUint64(0, BigInt.asUintN(33, value.Boundary), true);
+  SC.setBigUint64(0, value.Boundary, true);
   v = SC.getUint32(0, true);
   lo = (lo | (v << sb)) >>> 0;
   sb += 32;
@@ -339,7 +335,7 @@ function writeProbeBitsFlatChecked(value, view) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (1 - sb);
   }
-  SC.setBigUint64(0, BigInt.asUintN(64, value.Wide), true);
+  SC.setBigUint64(0, value.Wide, true);
   v = SC.getUint32(0, true);
   lo = (lo | (v << sb)) >>> 0;
   sb += 32;
@@ -370,7 +366,7 @@ function writeProbeBitsFlatChecked(value, view) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (32 - sb);
   }
-  SC.setBigUint64(0, BigInt.asUintN(64, value.Nonce), true);
+  SC.setBigUint64(0, value.Nonce, true);
   v = SC.getUint32(0, true);
   lo = (lo | (v << sb)) >>> 0;
   sb += 32;
@@ -485,7 +481,6 @@ export function ReadProbeBitsFlat(value, view, numBits) {
 
 function writeProbeSampleFlatProduction(value, view) {
   let v = 0, x = 0, n = 0;
-  let bg = 0n;
   let lo = 0, sb = 0, wi = 0;
   v = value.Active ? 1 : 0;
   lo = (lo | (v << sb)) >>> 0;
@@ -517,7 +512,7 @@ function writeProbeSampleFlatProduction(value, view) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (32 - sb);
   }
-  SC.setBigUint64(0, BigInt.asUintN(64, value.BigDelta), true);
+  SC.setBigUint64(0, value.BigDelta, true);
   v = SC.getUint32(0, true);
   lo = (lo | (v << sb)) >>> 0;
   sb += 32;
@@ -605,7 +600,6 @@ function writeProbeSampleFlatProduction(value, view) {
 
 function writeProbeSampleFlatChecked(value, view) {
   let v = 0, x = 0, n = 0;
-  let bg = 0n;
   let lo = 0, sb = 0, wi = 0;
   v = value.Active ? 1 : 0;
   lo = (lo | (v << sb)) >>> 0;
@@ -640,7 +634,7 @@ function writeProbeSampleFlatChecked(value, view) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (32 - sb);
   }
-  SC.setBigUint64(0, BigInt.asUintN(64, value.BigDelta), true);
+  SC.setBigUint64(0, value.BigDelta, true);
   v = SC.getUint32(0, true);
   lo = (lo | (v << sb)) >>> 0;
   sb += 32;
@@ -1678,7 +1672,6 @@ export function ReadProbeConfigFlat(value, view, numBits) {
 
 function writeProbeArrayFlatProduction(value, view) {
   let v = 0, x = 0, n = 0;
-  let bg = 0n;
   let lo = 0, sb = 0, wi = 0;
   for (let i0 = 0; i0 < 2; i0++) {
     const e0 = value.Samples[i0];
@@ -1712,7 +1705,7 @@ function writeProbeArrayFlatProduction(value, view) {
       sb -= 32;
       lo = sb === 0 ? 0 : v >>> (32 - sb);
     }
-    SC.setBigUint64(0, BigInt.asUintN(64, e0.BigDelta), true);
+    SC.setBigUint64(0, e0.BigDelta, true);
     v = SC.getUint32(0, true);
     lo = (lo | (v << sb)) >>> 0;
     sb += 32;
@@ -1819,7 +1812,6 @@ function writeProbeArrayFlatProduction(value, view) {
 
 function writeProbeArrayFlatChecked(value, view) {
   let v = 0, x = 0, n = 0;
-  let bg = 0n;
   let lo = 0, sb = 0, wi = 0;
   for (let i0 = 0; i0 < 2; i0++) {
     const e0 = value.Samples[i0];
@@ -1856,7 +1848,7 @@ function writeProbeArrayFlatChecked(value, view) {
       sb -= 32;
       lo = sb === 0 ? 0 : v >>> (32 - sb);
     }
-    SC.setBigUint64(0, BigInt.asUintN(64, e0.BigDelta), true);
+    SC.setBigUint64(0, e0.BigDelta, true);
     v = SC.getUint32(0, true);
     lo = (lo | (v << sb)) >>> 0;
     sb += 32;
@@ -2569,7 +2561,6 @@ export function ReadChatFlat(value, view, numBits) {
 
 function writeProbeReportFlatProduction(value, view) {
   let v = 0;
-  let bg = 0n;
   let lo = 0, sb = 0, wi = 0;
   v = 171;
   lo = (lo | (v << sb)) >>> 0;
@@ -2605,7 +2596,7 @@ function writeProbeReportFlatProduction(value, view) {
     lo = 0;
     sb = 0;
   }
-  SC.setBigUint64(0, BigInt.asUintN(64, value.Header.ProbeId), true);
+  SC.setBigUint64(0, value.Header.ProbeId, true);
   v = SC.getUint32(0, true);
   lo = (lo | (v << sb)) >>> 0;
   sb += 32;
@@ -2624,7 +2615,8 @@ function writeProbeReportFlatProduction(value, view) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (32 - sb);
   }
-  v = (Number(BigInt.asUintN(8, value.Flags)) & 0xff) >>> 0;
+  SC.setBigUint64(0, value.Flags, true);
+  v = SC.getUint32(0, true) & 0xff;
   lo = (lo | (v << sb)) >>> 0;
   sb += 8;
   if (sb >= 32) {
@@ -2677,7 +2669,6 @@ function writeProbeReportFlatProduction(value, view) {
 
 function writeProbeReportFlatChecked(value, view) {
   let v = 0;
-  let bg = 0n;
   let lo = 0, sb = 0, wi = 0;
   v = 171;
   lo = (lo | (v << sb)) >>> 0;
@@ -2713,7 +2704,7 @@ function writeProbeReportFlatChecked(value, view) {
     lo = 0;
     sb = 0;
   }
-  SC.setBigUint64(0, BigInt.asUintN(64, value.Header.ProbeId), true);
+  SC.setBigUint64(0, value.Header.ProbeId, true);
   v = SC.getUint32(0, true);
   lo = (lo | (v << sb)) >>> 0;
   sb += 32;
@@ -2735,7 +2726,8 @@ function writeProbeReportFlatChecked(value, view) {
   if (BigInt.asUintN(64, value.Flags) >= 256n) { // a mask bit above the wire width cannot ride
     return -1;
   }
-  v = (Number(BigInt.asUintN(8, value.Flags)) & 0xff) >>> 0;
+  SC.setBigUint64(0, value.Flags, true);
+  v = SC.getUint32(0, true) & 0xff;
   lo = (lo | (v << sb)) >>> 0;
   sb += 8;
   if (sb >= 32) {
@@ -3107,7 +3099,7 @@ function writeTestDataFlatProduction(value, view) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (32 - sb);
   }
-  SC.setBigUint64(0, BigInt.asUintN(64, value.Uint64Value), true);
+  SC.setBigUint64(0, value.Uint64Value, true);
   v = SC.getUint32(0, true);
   lo = (lo | (v << sb)) >>> 0;
   sb += 32;
@@ -3126,7 +3118,7 @@ function writeTestDataFlatProduction(value, view) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (32 - sb);
   }
-  SC.setBigUint64(0, BigInt.asUintN(64, value.Int64Full), true);
+  SC.setBigUint64(0, value.Int64Full, true);
   v = SC.getUint32(0, true);
   lo = (lo | (v << sb)) >>> 0;
   sb += 32;
@@ -3145,7 +3137,7 @@ function writeTestDataFlatProduction(value, view) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (32 - sb);
   }
-  SC.setBigUint64(0, BigInt.asUintN(64, value.Int64Range - -1000000000000n), true);
+  SC.setBigUint64(0, value.Int64Range - -1000000000000n, true);
   v = SC.getUint32(0, true);
   lo = (lo | (v << sb)) >>> 0;
   sb += 32;
@@ -3416,7 +3408,7 @@ function writeTestDataFlatChecked(value, view) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (32 - sb);
   }
-  SC.setBigUint64(0, BigInt.asUintN(64, value.Uint64Value), true);
+  SC.setBigUint64(0, value.Uint64Value, true);
   v = SC.getUint32(0, true);
   lo = (lo | (v << sb)) >>> 0;
   sb += 32;
@@ -3435,7 +3427,7 @@ function writeTestDataFlatChecked(value, view) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (32 - sb);
   }
-  SC.setBigUint64(0, BigInt.asUintN(64, value.Int64Full), true);
+  SC.setBigUint64(0, value.Int64Full, true);
   v = SC.getUint32(0, true);
   lo = (lo | (v << sb)) >>> 0;
   sb += 32;
@@ -3457,7 +3449,7 @@ function writeTestDataFlatChecked(value, view) {
   if (value.Int64Range < -1000000000000n || value.Int64Range > 1000000000000n) {
     return -1;
   }
-  SC.setBigUint64(0, BigInt.asUintN(64, value.Int64Range - -1000000000000n), true);
+  SC.setBigUint64(0, value.Int64Range - -1000000000000n, true);
   v = SC.getUint32(0, true);
   lo = (lo | (v << sb)) >>> 0;
   sb += 32;

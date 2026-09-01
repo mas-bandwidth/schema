@@ -2312,7 +2312,7 @@ function writeInputPacketFlatProduction(value, view) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (16 - sb);
   }
-  SC.setBigUint64(0, BigInt.asUintN(64, value.CurrentFrame), true);
+  SC.setBigUint64(0, value.CurrentFrame, true);
   v = SC.getUint32(0, true);
   lo = (lo | (v << sb)) >>> 0;
   sb += 32;
@@ -2331,7 +2331,7 @@ function writeInputPacketFlatProduction(value, view) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (32 - sb);
   }
-  SC.setBigUint64(0, BigInt.asUintN(64, value.StartFrame), true);
+  SC.setBigUint64(0, value.StartFrame, true);
   v = SC.getUint32(0, true);
   lo = (lo | (v << sb)) >>> 0;
   sb += 32;
@@ -2553,7 +2553,7 @@ function writeInputPacketFlatChecked(value, view) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (16 - sb);
   }
-  SC.setBigUint64(0, BigInt.asUintN(64, value.CurrentFrame), true);
+  SC.setBigUint64(0, value.CurrentFrame, true);
   v = SC.getUint32(0, true);
   lo = (lo | (v << sb)) >>> 0;
   sb += 32;
@@ -2572,7 +2572,7 @@ function writeInputPacketFlatChecked(value, view) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (32 - sb);
   }
-  SC.setBigUint64(0, BigInt.asUintN(64, value.StartFrame), true);
+  SC.setBigUint64(0, value.StartFrame, true);
   v = SC.getUint32(0, true);
   lo = (lo | (v << sb)) >>> 0;
   sb += 32;
@@ -3112,7 +3112,8 @@ function writeShipCreateFlatProduction(value, view) {
     lo = sb === 0 ? 0 : v >>> (1 - sb);
   }
   if (value.HasFlags) {
-    v = (Number(BigInt.asUintN(4, value.Flags)) & 0xf) >>> 0;
+    SC.setBigUint64(0, value.Flags, true);
+    v = SC.getUint32(0, true) & 0xf;
     lo = (lo | (v << sb)) >>> 0;
     sb += 4;
     if (sb >= 32) {
@@ -3303,7 +3304,8 @@ function writeShipCreateFlatChecked(value, view) {
     if (BigInt.asUintN(64, value.Flags) >= 16n) { // a mask bit above the wire width cannot ride
       return -1;
     }
-    v = (Number(BigInt.asUintN(4, value.Flags)) & 0xf) >>> 0;
+    SC.setBigUint64(0, value.Flags, true);
+    v = SC.getUint32(0, true) & 0xf;
     lo = (lo | (v << sb)) >>> 0;
     sb += 4;
     if (sb >= 32) {
@@ -3654,9 +3656,8 @@ export function ReadExpressionProbeFlat(value, view, numBits) {
 
 function writeExtremeProbeFlatProduction(value, view) {
   let v = 0;
-  let bg = 0n;
   let lo = 0, sb = 0, wi = 0;
-  SC.setBigUint64(0, BigInt.asUintN(64, value.FloorBound - -9223372036854775808n), true);
+  SC.setBigUint64(0, value.FloorBound - -9223372036854775808n, true);
   v = SC.getUint32(0, true);
   lo = (lo | (v << sb)) >>> 0;
   sb += 32;
@@ -3675,7 +3676,7 @@ function writeExtremeProbeFlatProduction(value, view) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (32 - sb);
   }
-  SC.setBigUint64(0, BigInt.asUintN(64, value.DoubledFloor - -9223372036854775808n), true);
+  SC.setBigUint64(0, value.DoubledFloor - -9223372036854775808n, true);
   v = SC.getUint32(0, true);
   lo = (lo | (v << sb)) >>> 0;
   sb += 32;
@@ -3694,7 +3695,7 @@ function writeExtremeProbeFlatProduction(value, view) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (32 - sb);
   }
-  SC.setBigUint64(0, BigInt.asUintN(64, value.CeilingRange - 1n), true);
+  SC.setBigUint64(0, value.CeilingRange - 1n, true);
   v = SC.getUint32(0, true);
   lo = (lo | (v << sb)) >>> 0;
   sb += 32;
@@ -3713,7 +3714,7 @@ function writeExtremeProbeFlatProduction(value, view) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (32 - sb);
   }
-  SC.setBigUint64(0, BigInt.asUintN(64, value.FloorDefault), true);
+  SC.setBigUint64(0, value.FloorDefault, true);
   v = SC.getUint32(0, true);
   lo = (lo | (v << sb)) >>> 0;
   sb += 32;
@@ -3732,7 +3733,7 @@ function writeExtremeProbeFlatProduction(value, view) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (32 - sb);
   }
-  SC.setBigUint64(0, BigInt.asUintN(64, value.CeilingDefault), true);
+  SC.setBigUint64(0, value.CeilingDefault, true);
   v = SC.getUint32(0, true);
   lo = (lo | (v << sb)) >>> 0;
   sb += 32;
@@ -3759,12 +3760,11 @@ function writeExtremeProbeFlatProduction(value, view) {
 
 function writeExtremeProbeFlatChecked(value, view) {
   let v = 0;
-  let bg = 0n;
   let lo = 0, sb = 0, wi = 0;
   if (value.FloorBound > 100n) {
     return -1;
   }
-  SC.setBigUint64(0, BigInt.asUintN(64, value.FloorBound - -9223372036854775808n), true);
+  SC.setBigUint64(0, value.FloorBound - -9223372036854775808n, true);
   v = SC.getUint32(0, true);
   lo = (lo | (v << sb)) >>> 0;
   sb += 32;
@@ -3786,7 +3786,7 @@ function writeExtremeProbeFlatChecked(value, view) {
   if (value.DoubledFloor > 100n) {
     return -1;
   }
-  SC.setBigUint64(0, BigInt.asUintN(64, value.DoubledFloor - -9223372036854775808n), true);
+  SC.setBigUint64(0, value.DoubledFloor - -9223372036854775808n, true);
   v = SC.getUint32(0, true);
   lo = (lo | (v << sb)) >>> 0;
   sb += 32;
@@ -3808,7 +3808,7 @@ function writeExtremeProbeFlatChecked(value, view) {
   if (value.CeilingRange < 1n) {
     return -1;
   }
-  SC.setBigUint64(0, BigInt.asUintN(64, value.CeilingRange - 1n), true);
+  SC.setBigUint64(0, value.CeilingRange - 1n, true);
   v = SC.getUint32(0, true);
   lo = (lo | (v << sb)) >>> 0;
   sb += 32;
@@ -3827,7 +3827,7 @@ function writeExtremeProbeFlatChecked(value, view) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (32 - sb);
   }
-  SC.setBigUint64(0, BigInt.asUintN(64, value.FloorDefault), true);
+  SC.setBigUint64(0, value.FloorDefault, true);
   v = SC.getUint32(0, true);
   lo = (lo | (v << sb)) >>> 0;
   sb += 32;
@@ -3846,7 +3846,7 @@ function writeExtremeProbeFlatChecked(value, view) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (32 - sb);
   }
-  SC.setBigUint64(0, BigInt.asUintN(64, value.CeilingDefault), true);
+  SC.setBigUint64(0, value.CeilingDefault, true);
   v = SC.getUint32(0, true);
   lo = (lo | (v << sb)) >>> 0;
   sb += 32;
@@ -3990,9 +3990,8 @@ export function ReadExtremeProbeFlat(value, view, numBits) {
 
 function writeExtremeRowFlatProduction(value, view) {
   let v = 0;
-  let bg = 0n;
   let lo = 0, sb = 0, wi = 0;
-  SC.setBigUint64(0, BigInt.asUintN(64, value.ClampedFloor - -9223372036854775808n), true);
+  SC.setBigUint64(0, value.ClampedFloor - -9223372036854775808n, true);
   v = SC.getUint32(0, true);
   lo = (lo | (v << sb)) >>> 0;
   sb += 32;
@@ -4011,7 +4010,7 @@ function writeExtremeRowFlatProduction(value, view) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (32 - sb);
   }
-  SC.setBigUint64(0, BigInt.asUintN(64, value.ClampedCeiling - 1n), true);
+  SC.setBigUint64(0, value.ClampedCeiling - 1n, true);
   v = SC.getUint32(0, true);
   lo = (lo | (v << sb)) >>> 0;
   sb += 32;
@@ -4030,7 +4029,7 @@ function writeExtremeRowFlatProduction(value, view) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (32 - sb);
   }
-  SC.setBigUint64(0, BigInt.asUintN(64, value.FloorDef), true);
+  SC.setBigUint64(0, value.FloorDef, true);
   v = SC.getUint32(0, true);
   lo = (lo | (v << sb)) >>> 0;
   sb += 32;
@@ -4049,7 +4048,7 @@ function writeExtremeRowFlatProduction(value, view) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (32 - sb);
   }
-  SC.setBigUint64(0, BigInt.asUintN(64, value.CeilingDef), true);
+  SC.setBigUint64(0, value.CeilingDef, true);
   v = SC.getUint32(0, true);
   lo = (lo | (v << sb)) >>> 0;
   sb += 32;
@@ -4076,12 +4075,11 @@ function writeExtremeRowFlatProduction(value, view) {
 
 function writeExtremeRowFlatChecked(value, view) {
   let v = 0;
-  let bg = 0n;
   let lo = 0, sb = 0, wi = 0;
   if (value.ClampedFloor > 100n) {
     return -1;
   }
-  SC.setBigUint64(0, BigInt.asUintN(64, value.ClampedFloor - -9223372036854775808n), true);
+  SC.setBigUint64(0, value.ClampedFloor - -9223372036854775808n, true);
   v = SC.getUint32(0, true);
   lo = (lo | (v << sb)) >>> 0;
   sb += 32;
@@ -4103,7 +4101,7 @@ function writeExtremeRowFlatChecked(value, view) {
   if (value.ClampedCeiling < 1n || value.ClampedCeiling > 18446744073709551614n) {
     return -1;
   }
-  SC.setBigUint64(0, BigInt.asUintN(64, value.ClampedCeiling - 1n), true);
+  SC.setBigUint64(0, value.ClampedCeiling - 1n, true);
   v = SC.getUint32(0, true);
   lo = (lo | (v << sb)) >>> 0;
   sb += 32;
@@ -4122,7 +4120,7 @@ function writeExtremeRowFlatChecked(value, view) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (32 - sb);
   }
-  SC.setBigUint64(0, BigInt.asUintN(64, value.FloorDef), true);
+  SC.setBigUint64(0, value.FloorDef, true);
   v = SC.getUint32(0, true);
   lo = (lo | (v << sb)) >>> 0;
   sb += 32;
@@ -4141,7 +4139,7 @@ function writeExtremeRowFlatChecked(value, view) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (32 - sb);
   }
-  SC.setBigUint64(0, BigInt.asUintN(64, value.CeilingDef), true);
+  SC.setBigUint64(0, value.CeilingDef, true);
   v = SC.getUint32(0, true);
   lo = (lo | (v << sb)) >>> 0;
   sb += 32;
