@@ -231,6 +231,12 @@ type gen struct {
 	// opening rd/rdw windows (functions.go, readFeed)
 	feed *feedState
 
+	// compressed-float decode tables (functions.go, cfTable): one module
+	// attribute per distinct small declaration, computed at Elixir compile
+	// time by the same arithmetic cf_decode runs, deduplicated by parameters
+	cfTabs   map[string]int
+	cfTabDef []string
+
 	// helperOwner names the type whose items are being inlined — array loop
 	// helpers key on (owner, field), so a nested type's loops emit once per
 	// file however many callers inline it
@@ -609,6 +615,9 @@ func (g *gen) emitFileModule(order []ir.Decl) {
 	g.body = saved
 	if g.usesImport {
 		g.bpf("  import Bitwise\n\n")
+	}
+	for _, def := range g.cfTabDef {
+		g.body.WriteString(def)
 	}
 	if g.needRd {
 		// inlined by the compiler, so the literal widths at every call site

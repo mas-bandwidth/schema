@@ -219,6 +219,35 @@ end
 defmodule Bench.Bench do
   import Bitwise
 
+  @cf_tab_0 (fn ->
+               fr = fn value ->
+                 ax = abs(value)
+
+                 if ax >= 1.1754943508222875e-38 and ax < 3.4028235677973366e38 do
+                   y = value * 536_870_913.0
+                   y - (y - value)
+                 else
+                   case <<value::float-32-little>> do
+                     <<rounded::float-32-little>> -> rounded
+                     <<bits::little-32>> -> if bits >>> 31 == 1, do: :neg_inf, else: :pos_inf
+                   end
+                 end
+               end
+
+               List.to_tuple(
+                 for integer <- 0..200 do
+                   quotient = fr.(fr.(integer * 1.0) / 200.0)
+                   scaled = fr.(quotient * 2.0)
+
+                   case fr.(scaled + -1.0) do
+                     :pos_inf -> {:nonfinite, 0x7F800000}
+                     :neg_inf -> {:nonfinite, 0xFF800000}
+                     value -> value
+                   end
+                 end
+               )
+             end).()
+
   @compile {:inline, rd: 3}
 
   @compile {:inline, rdw: 3}
@@ -2367,17 +2396,17 @@ defmodule Bench.Bench do
       bits_read = bits_read + 8
       # headroom above the quantum count is refused
       if v > 200, do: throw(:invalid)
-      v_aim_x = cf_decode(v, 200.0, 2.0, -1.0)
+      v_aim_x = elem(@cf_tab_0, v)
       v = rv >>> 8 &&& 0xFF
       bits_read = bits_read + 8
       # headroom above the quantum count is refused
       if v > 200, do: throw(:invalid)
-      v_aim_y = cf_decode(v, 200.0, 2.0, -1.0)
+      v_aim_y = elem(@cf_tab_0, v)
       v = rv >>> 16 &&& 0xFF
       bits_read = bits_read + 8
       # headroom above the quantum count is refused
       if v > 200, do: throw(:invalid)
-      v_aim_z = cf_decode(v, 200.0, 2.0, -1.0)
+      v_aim_z = elem(@cf_tab_0, v)
       rv = rdw(data, bits_read, 49)
       v = rv &&& 0xFFFFFFFF
       bits_read = bits_read + 32

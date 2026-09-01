@@ -73,3 +73,17 @@ reads the round's state from this file plus the branch commits alone.
   iolist pays a fresh heap binary + cons per barrier AND the final flatten
   traversal+copy. Zero-intermediate-append emission is a loss on the BEAM;
   the lever-M multi-segment barrier append stands as the floor's write shape.
+- LEVER u8 (write unroll 4->8) REFUSED: write 2462.4 vs 2496.8 ns (1.4%
+  AGAINST), rt 0.99x noise — the append count per stat was already amortized
+  at 4-wide; the fixnum cap bounds what wider grouping can remove (#202's law
+  reconfirmed at the next scale).
+- LEVER rc (combined range check, masked one-branch form) REFUSED: write
+  2349.0 vs 2363.4 ns (0.6% against, noise) — predicted branches were free.
+- LEVER C (cf decode tables) LANDED: a compressed-float read whose quantum
+  count is <= 1024 decodes through a module-attribute tuple (elem/2) computed
+  at GENERATED-module compile time by literally the cf_decode chain (full fr
+  with guard + fr_slow + nonfinite mapping) — equality by construction, and
+  verified: 201-entry domain === cf_decode on all values, wire gate 64/64.
+  Prototype: read 1638.3 -> 1431.9 ns (1.144x), rt 1.069x. Emitter form:
+  read 1652.6 -> 1446.6 (1.142x), rt 1.070x. Tables: Bench 1 (aim, 201
+  entries), RealWorld 5, Wire 1. cf_decode stays the shipped path past 1024.

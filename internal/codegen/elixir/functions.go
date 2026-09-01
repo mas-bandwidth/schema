@@ -2113,7 +2113,6 @@ func (g *gen) emitReadScalar(f *ir.Field, lv, ind string, bounded bool) {
 }
 
 func (g *gen) emitReadCompressedFloat(f *ir.Field, lv, ind string) {
-	g.needCf = true
 	maxInt, bits := ir.CompressedFloatParams(f.FMin, f.FMax, f.Resolution)
 	minF := float32(f.FMin)
 	deltaF := float32(f.FMax) - minF
@@ -2121,7 +2120,73 @@ func (g *gen) emitReadCompressedFloat(f *ir.Field, lv, ind string) {
 	if maxInt != (uint64(1)<<bits)-1 {
 		g.throwIf(fmt.Sprintf("v > %s", intLitU64(maxInt)), "headroom above the quantum count is refused", ind)
 	}
+	if maxInt <= cfTableMax {
+		// the quantum index is already range-checked, so the decode is a
+		// total function of a small integer domain: a compile-time table
+		// lookup replaces the whole float32 chain (cfTable)
+		g.pf("%s%s = elem(@cf_tab_%d, v)\n", ind, lv,
+			g.cfTable(maxInt, f32lit(float64(maxInt)), f32lit(float64(deltaF)), f32lit(float64(minF))))
+		return
+	}
+	g.needCf = true
 	g.pf("%s%s = cf_decode(v, %s, %s, %s)\n", ind, lv, f32lit(float64(maxInt)), f32lit(float64(deltaF)), f32lit(float64(minF)))
+}
+
+// cfTableMax bounds the quantum count a compressed-float read decodes through
+// a compile-time table: past it, the table's memory outgrows what the decode
+// chain costs, and cf_decode stays the shipped path.
+const cfTableMax = 1024
+
+// cfTable returns the index of the module attribute holding the decode table
+// for one compressed-float declaration, materializing it on first need. The
+// table is computed when the GENERATED module compiles, by literally the
+// arithmetic cf_decode runs — fr's fast path, fr_slow's construct/match
+// refusal, the non-finite mapping — so equality with the shipped chain is by
+// construction, for every index the range check admits.
+func (g *gen) cfTable(maxInt uint64, miv32, delta, min32 string) int {
+	key := fmt.Sprintf("%d/%s/%s/%s", maxInt, miv32, delta, min32)
+	if g.cfTabs == nil {
+		g.cfTabs = map[string]int{}
+	}
+	if idx, ok := g.cfTabs[key]; ok {
+		return idx
+	}
+	idx := len(g.cfTabDef)
+	g.cfTabs[key] = idx
+	g.usesImport = true // the table builder's fr_slow arm shifts sign bits
+	var b strings.Builder
+	w := func(format string, args ...any) { fmt.Fprintf(&b, format, args...) }
+	w("  @cf_tab_%d (fn ->\n", idx)
+	w("               fr = fn value ->\n")
+	w("                 ax = abs(value)\n")
+	w("\n")
+	w("                 if ax >= 1.1754943508222875e-38 and ax < 3.4028235677973366e38 do\n")
+	w("                   y = value * 536_870_913.0\n")
+	w("                   y - (y - value)\n")
+	w("                 else\n")
+	w("                   case <<value::float-32-little>> do\n")
+	w("                     <<rounded::float-32-little>> -> rounded\n")
+	w("                     <<bits::little-32>> -> if bits >>> 31 == 1, do: :neg_inf, else: :pos_inf\n")
+	w("                   end\n")
+	w("                 end\n")
+	w("               end\n")
+	w("\n")
+	w("               List.to_tuple(\n")
+	w("                 for integer <- 0..%d do\n", maxInt)
+	w("                   quotient = fr.(fr.(integer * 1.0) / %s)\n", miv32)
+	w("                   scaled = fr.(quotient * %s)\n", delta)
+	w("\n")
+	w("                   case fr.(scaled + %s) do\n", min32)
+	w("                     :pos_inf -> {:nonfinite, 0x7F800000}\n")
+	w("                     :neg_inf -> {:nonfinite, 0xFF800000}\n")
+	w("                     value -> value\n")
+	w("                   end\n")
+	w("                 end\n")
+	w("               )\n")
+	w("             end).()\n")
+	w("\n")
+	g.cfTabDef = append(g.cfTabDef, b.String())
+	return idx
 }
 
 func (g *gen) emitReadFixed(f *ir.Field, lv, ind string) {
