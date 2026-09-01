@@ -516,7 +516,7 @@ func (g *gen) emitWriteField(f *ir.Field, path, ind string) {
 			g.pf("%s{\n", ind)
 			g.pf("%s  var %s = 0;\n", ind, iv)
 			g.pf("%s  for (; %s + %d <= %s; %s += %d) {\n", ind, iv, k, count, iv, k)
-			for j := int64(0); j < k; j++ {
+			for j := range k {
 				g.emitWriteElemNamed(f, name, groupIdx(iv, j), groupEv(g.loopDepth-1, j), ind+"    ")
 			}
 			g.chunkFlush(ind + "    ")
@@ -897,7 +897,7 @@ func (g *gen) byteAt(f *ir.Field, name, idx string) string {
 // keeps its byte-tail loop.
 func (g *gen) emitWriteByteRun(f *ir.Field, name, count string, staticCount int64, isStatic bool, ind string) {
 	if isStatic && staticCount <= 8 {
-		for k := int64(0); k < staticCount; k++ {
+		for k := range staticCount {
 			g.chunkAdd(g.byteAt(f, name, fmt.Sprintf("%d", k)), 8, ind)
 		}
 		return
@@ -1168,7 +1168,7 @@ func (g *gen) emitReadDynamicField(f *ir.Field, path, ind string) {
 				g.pf("%s{\n", ind)
 				g.pf("%s  var %s = 0;\n", ind, iv)
 				g.pf("%s  for (; %s + %d <= %s; %s += %d) {\n", ind, iv, k, count, iv, k)
-				for j := int64(0); j < k; j++ {
+				for j := range k {
 					g.emitReadElemNamed(f, name, groupIdx(iv, j), groupEv(g.loopDepth-1, j), ind+"    ", true)
 				}
 				g.invalidateWindow()
