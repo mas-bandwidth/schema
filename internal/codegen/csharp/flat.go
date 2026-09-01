@@ -303,12 +303,11 @@ func (g *gen) flatWriteBarePiece(item *ir.FieldItem, name string) (flatPiece, bo
 	if w < 1 || w > 64 {
 		return flatPiece{}, false
 	}
-	var expr string
-	switch {
-	case w == 64:
+	// at 64 the storage IS the chunk word's type, so no narrowing cast and no
+	// mask; below it the value narrows through fmt32Cast and masks to width
+	expr := flatMasked("(ulong)("+fmt32Cast(f, name)+")", w)
+	if w == 64 {
 		expr = "(ulong)" + name
-	default:
-		expr = flatMasked("(ulong)("+fmt32Cast(f, name)+")", w)
 	}
 	return flatPiece{item: item, bits: w, expr: expr}, true
 }
