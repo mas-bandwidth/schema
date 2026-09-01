@@ -399,8 +399,9 @@ static partial class Program
                 name, "read", 1e-6 / readTime));
         }
 
-        // alloc note (proof of the reuse discipline, not a benchmark): bytes
-        // allocated during one extra untimed pass of each path — must be 0
+        // alloc gate (proof of the reuse discipline, not a benchmark): bytes
+        // allocated during one extra untimed pass of each path — nonzero
+        // FAILS the leg, so a future allocation goes red in the sweep
         const int allocOps = 4 * NumVariants;
         long allocBefore = GC.GetAllocatedBytesForCurrentThread();
         for (int i = 0; i < allocOps; i++)
@@ -436,6 +437,10 @@ static partial class Program
         long roundtripAlloc = GC.GetAllocatedBytesForCurrentThread() - allocBefore;
         Console.Error.WriteLine(
             $"alloc note: {name} one pass ({allocOps} ops/path): write {writeAlloc} bytes, round_trip {roundtripAlloc} bytes");
+        if (writeAlloc != 0 || roundtripAlloc != 0)
+        {
+            Fail(name, $"allocation in generated code: write {writeAlloc} bytes, round_trip {roundtripAlloc} bytes (the contract is 0)");
+        }
     }
 
     static int Main(string[] args)
