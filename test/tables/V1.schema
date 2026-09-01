@@ -1,0 +1,23 @@
+// V1.schema — the OLD side of the both-directions evolution test
+// (SPEC-TABLES.md): V2 adds c, removes b, changes a's kind, renames name to
+// title (with was), and grows Inner. Distinct packages so both generations
+// compile into ONE test binary; the wire does not care — table identity is
+// the field-name hash, not the package or the protocol id.
+package tblv1
+
+enum Mode { Alpha, Beta }
+
+type Inner
+{
+    factor float32 = 2.5
+}
+
+table Cfg
+{
+    a     int32 = 5     | min = 0, max = 1000
+    b     float32 = 1.5
+    mode  Mode = Beta
+    name  string(32)
+    inner Inner
+    items [..8]int32    | min = 0, max = 255
+}

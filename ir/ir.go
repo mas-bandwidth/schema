@@ -37,6 +37,13 @@ type Unit struct {
 	Flags    map[string]*Flags
 	Structs  map[string]*Struct
 	Unions   map[string]*Union
+
+	// Tables holds the unit's `table` declarations (SPEC-TABLES.md), keyed by
+	// name. Tables live on the evolution-tolerant TABLE wire, not the packet
+	// wire: they are deliberately absent from Structs, from File.Decls and
+	// from the wire projection, so the packet backends and the protocol id
+	// never see them — packets and tables version independently.
+	Tables map[string]*Struct
 }
 
 // File is one schema file's declarations, in declaration order.
@@ -44,6 +51,11 @@ type File struct {
 	Base  string // "Constants"
 	Path  string // as given, e.g. "examples/Constants.schema"
 	Decls []Decl
+
+	// Tables is the file's `table` declarations in declaration order — kept
+	// beside Decls, not inside, so the packet backends' traversals never
+	// meet one (SPEC-TABLES.md).
+	Tables []*Struct
 }
 
 // Decl is one top-level declaration.
@@ -95,10 +107,13 @@ type UnionVariant struct {
 	Ref  *Struct // the payload
 }
 
-// Struct is a `type` declaration.
+// Struct is a `type` declaration — or, when IsTable is set, a `table`
+// declaration (SPEC-TABLES.md), which shares the resolved body shape but
+// lives in Unit.Tables/File.Tables instead of the packet decl stream.
 type Struct struct {
-	Name string
-	Tags []string // inert in v1 (SPEC §4.2)
+	Name    string
+	IsTable bool     // declared with `table`: a table-wire root
+	Tags    []string // inert in v1 (SPEC §4.2)
 	// C++ native type mapping (SPEC §4.2, Native type mapping): when set,
 	// generated C++ declares fields of this type as ::CppNative (a hand type
 	// deriving from the generated basis struct — same layout, plus behavior)
@@ -172,6 +187,11 @@ const (
 type Field struct {
 	Name  string
 	Guard string // "" or "if !at_rest" — branch context, kept as a comment
+
+	// WasName is the `was = "old_name"` rename alias (SPEC-TABLES.md): the
+	// field's TABLE-wire id derives from this name instead of Name, so wire
+	// identity survives a rename. Table fields only; "" when unset.
+	WasName string
 
 	Array      ArrayKind
 	ArrayBound int64

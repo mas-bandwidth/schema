@@ -51,6 +51,15 @@ type TypeDecl struct {
 	Body  *Block
 }
 
+// TableDecl is a `table` declaration: a data type on the evolution-tolerant
+// TABLE wire (SPEC-TABLES.md) rather than the packet wire. The body grammar
+// is the type body's; a table declaration takes no qualification.
+type TableDecl struct {
+	Name string
+	Pos  Pos
+	Body *Block
+}
+
 // UnionDecl is a first-class one-of type (SPEC §4.8): an implicit None row,
 // then each variant naming its payload type. The tag enum <Name>Type is
 // generated, never declared.
@@ -71,12 +80,14 @@ func (d *ConstDecl) DeclName() string { return d.Name }
 func (d *EnumDecl) DeclName() string  { return d.Name }
 func (d *FlagsDecl) DeclName() string { return d.Name }
 func (d *TypeDecl) DeclName() string  { return d.Name }
+func (d *TableDecl) DeclName() string { return d.Name }
 func (d *UnionDecl) DeclName() string { return d.Name }
 
 func (d *ConstDecl) DeclPos() Pos { return d.Pos }
 func (d *EnumDecl) DeclPos() Pos  { return d.Pos }
 func (d *FlagsDecl) DeclPos() Pos { return d.Pos }
 func (d *TypeDecl) DeclPos() Pos  { return d.Pos }
+func (d *TableDecl) DeclPos() Pos { return d.Pos }
 func (d *UnionDecl) DeclPos() Pos { return d.Pos }
 
 type Name struct {

@@ -1,8 +1,12 @@
 package compiler
 
 import (
+	"fmt"
+	"sort"
+
 	cgen "github.com/mas-bandwidth/schema/v2/internal/codegen/c"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/cpp"
+	"github.com/mas-bandwidth/schema/v2/internal/codegen/cpptable"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/csharp"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/dart"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/elixir"
@@ -12,6 +16,23 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/rust"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
+
+// refuseTables is the named refusal every non-C++ target gives a unit that
+// declares tables (SPEC-TABLES.md): tables are C++-only today, and each
+// per-language table backend is a named follow-on — refused loudly here
+// rather than silently emitting a unit with the tables missing.
+func refuseTables(u *ir.Unit, target string) error {
+	if len(u.Tables) == 0 {
+		return nil
+	}
+	names := make([]string, 0, len(u.Tables))
+	for name := range u.Tables {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	return fmt.Errorf("unit declares tables (%s) — tables are C++-only today, and the %s table backend is a named follow-on; generate with --lang cpp, or move the tables to their own unit (SPEC-TABLES.md)",
+		englishList(names), target)
+}
 
 // builtins is the set [New] registers. The per-language emitters stay
 // internal — they are implementations, not API, and freezing eight emitter
@@ -39,6 +60,9 @@ type dartTarget struct{}
 func (dartTarget) Names() []string { return []string{"dart"} }
 
 func (dartTarget) Generate(u *ir.Unit, _ Options) (map[string][]byte, error) {
+	if err := refuseTables(u, "dart"); err != nil {
+		return nil, err
+	}
 	return dart.Generate(u)
 }
 
@@ -48,6 +72,9 @@ type elixirTarget struct{}
 func (elixirTarget) Names() []string { return []string{"elixir"} }
 
 func (elixirTarget) Generate(u *ir.Unit, _ Options) (map[string][]byte, error) {
+	if err := refuseTables(u, "elixir"); err != nil {
+		return nil, err
+	}
 	return elixir.Generate(u)
 }
 
@@ -57,6 +84,9 @@ type cTarget struct{}
 func (cTarget) Names() []string { return []string{"c"} }
 
 func (cTarget) Generate(u *ir.Unit, _ Options) (map[string][]byte, error) {
+	if err := refuseTables(u, "c"); err != nil {
+		return nil, err
+	}
 	return cgen.Generate(u)
 }
 
@@ -66,7 +96,24 @@ type cppTarget struct{}
 func (cppTarget) Names() []string { return []string{"cpp"} }
 
 func (cppTarget) Generate(u *ir.Unit, _ Options) (map[string][]byte, error) {
-	return cpp.Generate(u)
+	files, err := cpp.Generate(u)
+	if err != nil {
+		return nil, err
+	}
+	// units that declare tables ALSO get <Base>Table.h per file — the
+	// TABLE-wire codecs (SPEC-TABLES.md); a table-free unit's output is
+	// byte-identical to what the packet emitter alone produces
+	tables, err := cpptable.Generate(u)
+	if err != nil {
+		return nil, err
+	}
+	for name, data := range tables {
+		if _, dup := files[name]; dup {
+			return nil, fmt.Errorf("generated file %s is claimed twice — a schema file named <X>.schema beside <X minus Table>.schema with tables collides on the Table header; rename one file (SPEC-TABLES.md)", name)
+		}
+		files[name] = data
+	}
+	return files, nil
 }
 
 // csTarget emits C#.
@@ -75,6 +122,9 @@ type csTarget struct{}
 func (csTarget) Names() []string { return []string{"cs", "csharp"} }
 
 func (csTarget) Generate(u *ir.Unit, _ Options) (map[string][]byte, error) {
+	if err := refuseTables(u, "cs"); err != nil {
+		return nil, err
+	}
 	return csharp.Generate(u)
 }
 
@@ -84,6 +134,9 @@ type goTarget struct{}
 func (goTarget) Names() []string { return []string{"go"} }
 
 func (goTarget) Generate(u *ir.Unit, _ Options) (map[string][]byte, error) {
+	if err := refuseTables(u, "go"); err != nil {
+		return nil, err
+	}
 	return golang.Generate(u)
 }
 
@@ -93,6 +146,9 @@ type javaTarget struct{}
 func (javaTarget) Names() []string { return []string{"java"} }
 
 func (javaTarget) Generate(u *ir.Unit, _ Options) (map[string][]byte, error) {
+	if err := refuseTables(u, "java"); err != nil {
+		return nil, err
+	}
 	return java.Generate(u)
 }
 
@@ -102,6 +158,9 @@ type jsTarget struct{}
 func (jsTarget) Names() []string { return []string{"js", "javascript"} }
 
 func (jsTarget) Generate(u *ir.Unit, _ Options) (map[string][]byte, error) {
+	if err := refuseTables(u, "js"); err != nil {
+		return nil, err
+	}
 	return js.Generate(u)
 }
 
@@ -111,5 +170,8 @@ type rustTarget struct{}
 func (rustTarget) Names() []string { return []string{"rust"} }
 
 func (rustTarget) Generate(u *ir.Unit, _ Options) (map[string][]byte, error) {
+	if err := refuseTables(u, "rust"); err != nil {
+		return nil, err
+	}
 	return rust.Generate(u)
 }

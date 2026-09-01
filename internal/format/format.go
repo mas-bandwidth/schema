@@ -525,6 +525,9 @@ func fpDecl(b *strings.Builder, d ast.Decl) {
 	case *ast.TypeDecl:
 		fmt.Fprintf(b, "type %s %s\n", d.Name, fpAttrs(d.Attrs))
 		fpBlock(b, d.Body)
+	case *ast.TableDecl:
+		fmt.Fprintf(b, "table %s\n", d.Name)
+		fpBlock(b, d.Body)
 	case *ast.UnionDecl:
 		fmt.Fprintf(b, "union %s\n{\n", d.Name)
 		for _, v := range d.Variants {

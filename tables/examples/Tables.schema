@@ -1,0 +1,84 @@
+// Tables.schema — the tables corpus (SPEC-TABLES.md): a config-like root
+// table whose closure exercises every table-wire kind. A root table with
+// nested subtables IS a format: this file is the shape of a game's
+// config/assets bin, spelled with generic names. The envelope around it
+// (magic, content hash) stays a few lines of user code by design.
+package tabledemo
+
+const MaxLoadoutSlots = 8
+const MaxProfileName  = 32
+
+enum Grade { Bronze, Silver, Gold }
+
+flags Perks { Shielded, Cloaked, Turbo }
+
+// a plain type in the closure: it gets table codecs too
+type Attachment
+{
+    slot  int32 = 0     | min = 0, max = MaxLoadoutSlots - 1
+    power float32 = 1.0
+}
+
+type Buff
+{
+    multiplier float32 = 1.0
+}
+
+type Debuff
+{
+    amount int32 = 0 | min = 0, max = 100
+}
+
+union Effect
+{
+    buff   Buff
+    debuff Debuff
+}
+
+// declared FIRST, references tables declared below: schema references are
+// order-free, and the emitter orders the generated structs
+table RootConfig
+{
+    version_note string(16)
+    weapons      [..8]WeaponConfig
+    profiles     [..4]ProfileConfig
+}
+
+table WeaponConfig
+{
+    damage      float32 = 21.0
+    speed       float32 = 500.0 | was = "velocity"
+    penetration int32 = 1       | min = 0, max = 10
+    channel     bits(6)
+    homing      bool
+    effect      Effect
+}
+
+table LoadoutConfig
+{
+    grade       Grade = Silver
+    perks       Perks
+    primary     WeaponConfig
+    backups     [2]WeaponConfig
+    attachments [..MaxLoadoutSlots]Attachment
+}
+
+table ProfileConfig
+{
+    name        string(MaxProfileName)
+    icon        bytes(16)
+    experience  uint32 = 0
+    tilt        int8
+    heading     int16
+    timestamp   int64
+    badge       uint8
+    port        uint16
+    epoch       uint64
+    precision   float64
+    ratings     [4]float32
+    has_loadout bool
+    if has_loadout
+    {
+        loadout LoadoutConfig
+    }
+}
