@@ -1,9 +1,11 @@
 # schema — tables
 
-**Schema has two wires: types and tables.** Types are serialized
-bitpacked, versioned by the protocol id — the hardcoded, same-build wire.
-Tables are more flexible structures with in-wire versioning — data
-structures, if you will. This document specifies the second.
+**Schema has two wires: types and tables — and the types wire leads.**
+Types are serialized bitpacked, versioned by the protocol id: the
+hardcoded, same-build wire that is the key feature of the library. Tables
+are for when you need things that version — more flexible structures with
+in-wire versioning; data structures, if you will. This document specifies
+the second.
 
 Tables are schema's declarations for **data that crosses builds**: config
 files, asset archives, tool output, editor state — and just as much,

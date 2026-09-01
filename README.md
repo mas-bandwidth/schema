@@ -106,9 +106,10 @@ would have hand-written, not an interpreter walking a schema at runtime.
   sibling `ufixed(48, 16)` are declared like any other field, and the compiler
   owns both the storage and the wire for them.
 - **128-bit integers**, ranged like any other, in every target language.
-- **Two wires: types and tables.** Types are bitpacked with protocol-id
-  versioning; tables are flexible data structures with in-wire versioning
-  (C++ today): unknown fields skip, absent fields default, renames survive
+- **A second wire for things that version: tables.** The bitpacked
+  `type` wire above is the key feature of the library; `table` is its
+  companion for data that must cross builds — flexible data structures
+  with in-wire versioning (C++ today): unknown fields skip, absent fields default, renames survive
   via `was = "old_name"`, and every table ships with reflection
   descriptors for tools that walk fields by name. Use tables as files,
   blobs, or messages — a config a tool saves, an archive a build bakes, or
