@@ -37,7 +37,7 @@ int writeW13(W13 value, ByteData view) {
   var v = 0;
   assert(value.itemsCount >= 0);
   assert(value.itemsCount <= 12);
-  v = (value.itemsCount) & 0xf;
+  v = ((value.itemsCount) & 0xf);
   scratch |= v << scratchBits;
   scratchBits += 4;
   if (scratchBits >= 64) {
@@ -49,7 +49,7 @@ int writeW13(W13 value, ByteData view) {
   for (var i0 = 0; i0 < value.itemsCount; i0++) {
     assert(value.items[i0] >= 0);
     assert(value.items[i0] <= 8191);
-    v = (value.items[i0]) & 0x1fff;
+    v = ((value.items[i0]) & 0x1fff);
     scratch |= v << scratchBits;
     scratchBits += 13;
     if (scratchBits >= 64) {
@@ -162,7 +162,7 @@ int writeW17(W17 value, ByteData view) {
   var v = 0;
   assert(value.itemsCount >= 0);
   assert(value.itemsCount <= 9);
-  v = (value.itemsCount) & 0xf;
+  v = ((value.itemsCount) & 0xf);
   scratch |= v << scratchBits;
   scratchBits += 4;
   if (scratchBits >= 64) {
@@ -174,7 +174,7 @@ int writeW17(W17 value, ByteData view) {
   for (var i0 = 0; i0 < value.itemsCount; i0++) {
     assert(value.items[i0] >= 0);
     assert(value.items[i0] <= 131071);
-    v = (value.items[i0]) & 0x1ffff;
+    v = ((value.items[i0]) & 0x1ffff);
     scratch |= v << scratchBits;
     scratchBits += 17;
     if (scratchBits >= 64) {
@@ -287,7 +287,7 @@ int writeW26(W26 value, ByteData view) {
   var v = 0;
   assert(value.itemsCount >= 0);
   assert(value.itemsCount <= 6);
-  v = (value.itemsCount) & 0x7;
+  v = ((value.itemsCount) & 0x7);
   scratch |= v << scratchBits;
   scratchBits += 3;
   if (scratchBits >= 64) {
@@ -299,7 +299,7 @@ int writeW26(W26 value, ByteData view) {
   for (var i0 = 0; i0 < value.itemsCount; i0++) {
     assert(value.items[i0] >= 0);
     assert(value.items[i0] <= 67108863);
-    v = (value.items[i0]) & 0x3ffffff;
+    v = ((value.items[i0]) & 0x3ffffff);
     scratch |= v << scratchBits;
     scratchBits += 26;
     if (scratchBits >= 64) {
@@ -412,7 +412,7 @@ int writeW1(W1 value, ByteData view) {
   var v = 0;
   assert(value.itemsCount >= 0);
   assert(value.itemsCount <= 20);
-  v = (value.itemsCount) & 0x1f;
+  v = ((value.itemsCount) & 0x1f);
   scratch |= v << scratchBits;
   scratchBits += 5;
   if (scratchBits >= 64) {
@@ -424,7 +424,7 @@ int writeW1(W1 value, ByteData view) {
   for (var i0 = 0; i0 < value.itemsCount; i0++) {
     assert(value.items[i0] >= 0);
     assert(value.items[i0] <= 1);
-    v = (value.items[i0]) & 0x1;
+    v = ((value.items[i0]) & 0x1);
     scratch |= v << scratchBits;
     scratchBits += 1;
     if (scratchBits >= 64) {
@@ -537,7 +537,7 @@ int writeW52(W52 value, ByteData view) {
   var v = 0;
   assert(value.itemsCount >= 0);
   assert(value.itemsCount <= 3);
-  v = (value.itemsCount) & 0x3;
+  v = ((value.itemsCount) & 0x3);
   scratch |= v << scratchBits;
   scratchBits += 2;
   if (scratchBits >= 64) {
@@ -549,23 +549,14 @@ int writeW52(W52 value, ByteData view) {
   for (var i0 = 0; i0 < value.itemsCount; i0++) {
     assert(value.items[i0] >= 0);
     assert(value.items[i0] <= 4503599627370495);
-    v = value.items[i0] & 0xffffffff;
+    v = ((value.items[i0]) & 0xfffffffffffff);
     scratch |= v << scratchBits;
-    scratchBits += 32;
+    scratchBits += 52;
     if (scratchBits >= 64) {
       view.setUint64(wordIndex * 8, scratch, Endian.little);
       wordIndex++;
       scratchBits -= 64;
-      scratch = v >>> (32 - scratchBits);
-    }
-    v = (value.items[i0] >>> 32) & 0xfffff;
-    scratch |= v << scratchBits;
-    scratchBits += 20;
-    if (scratchBits >= 64) {
-      view.setUint64(wordIndex * 8, scratch, Endian.little);
-      wordIndex++;
-      scratchBits -= 64;
-      scratch = v >>> (20 - scratchBits);
+      scratch = v >>> (52 - scratchBits);
     }
   }
   if (scratchBits != 0) {
@@ -680,7 +671,7 @@ int writeW50(W50 value, ByteData view) {
   var v = 0;
   assert(value.itemsCount >= 0);
   assert(value.itemsCount <= 3);
-  v = (value.itemsCount) & 0x3;
+  v = ((value.itemsCount) & 0x3);
   scratch |= v << scratchBits;
   scratchBits += 2;
   if (scratchBits >= 64) {
@@ -692,23 +683,14 @@ int writeW50(W50 value, ByteData view) {
   for (var i0 = 0; i0 < value.itemsCount; i0++) {
     assert(value.items[i0] >= 0);
     assert(value.items[i0] <= 1125899906842623);
-    v = value.items[i0] & 0xffffffff;
+    v = ((value.items[i0]) & 0x3ffffffffffff);
     scratch |= v << scratchBits;
-    scratchBits += 32;
+    scratchBits += 50;
     if (scratchBits >= 64) {
       view.setUint64(wordIndex * 8, scratch, Endian.little);
       wordIndex++;
       scratchBits -= 64;
-      scratch = v >>> (32 - scratchBits);
-    }
-    v = (value.items[i0] >>> 32) & 0x3ffff;
-    scratch |= v << scratchBits;
-    scratchBits += 18;
-    if (scratchBits >= 64) {
-      view.setUint64(wordIndex * 8, scratch, Endian.little);
-      wordIndex++;
-      scratchBits -= 64;
-      scratch = v >>> (18 - scratchBits);
+      scratch = v >>> (50 - scratchBits);
     }
   }
   if (scratchBits != 0) {
@@ -822,7 +804,7 @@ int writeF13(F13 value, ByteData view) {
   for (var i0 = 0; i0 < 7; i0++) {
     assert(value.items[i0] >= 0);
     assert(value.items[i0] <= 8191);
-    v = (value.items[i0]) & 0x1fff;
+    v = ((value.items[i0]) & 0x1fff);
     scratch |= v << scratchBits;
     scratchBits += 13;
     if (scratchBits >= 64) {
@@ -911,23 +893,14 @@ int writeTri3(Tri3 value, ByteData view) {
   var scratchBits = 0;
   var wordIndex = 0;
   var v = 0;
-  v = value.a & 0x1;
+  v = ((value.a) & 0x1) | (((value.b) & 0x3) << 1);
   scratch |= v << scratchBits;
-  scratchBits += 1;
+  scratchBits += 3;
   if (scratchBits >= 64) {
     view.setUint64(wordIndex * 8, scratch, Endian.little);
     wordIndex++;
     scratchBits -= 64;
-    scratch = v >>> (1 - scratchBits);
-  }
-  v = value.b & 0x3;
-  scratch |= v << scratchBits;
-  scratchBits += 2;
-  if (scratchBits >= 64) {
-    view.setUint64(wordIndex * 8, scratch, Endian.little);
-    wordIndex++;
-    scratchBits -= 64;
-    scratch = v >>> (2 - scratchBits);
+    scratch = v >>> (3 - scratchBits);
   }
   if (scratchBits != 0) {
     view.setUint64(wordIndex * 8, scratch, Endian.little);
@@ -1020,7 +993,7 @@ int writeArrTri3(ArrTri3 value, ByteData view) {
   var v = 0;
   assert(value.itemsCount >= 0);
   assert(value.itemsCount <= 10);
-  v = (value.itemsCount) & 0xf;
+  v = ((value.itemsCount) & 0xf);
   scratch |= v << scratchBits;
   scratchBits += 4;
   if (scratchBits >= 64) {
@@ -1031,23 +1004,14 @@ int writeArrTri3(ArrTri3 value, ByteData view) {
   }
   for (var i0 = 0; i0 < value.itemsCount; i0++) {
     final e0 = value.items[i0];
-    v = e0.a & 0x1;
+    v = ((e0.a) & 0x1) | (((e0.b) & 0x3) << 1);
     scratch |= v << scratchBits;
-    scratchBits += 1;
+    scratchBits += 3;
     if (scratchBits >= 64) {
       view.setUint64(wordIndex * 8, scratch, Endian.little);
       wordIndex++;
       scratchBits -= 64;
-      scratch = v >>> (1 - scratchBits);
-    }
-    v = e0.b & 0x3;
-    scratch |= v << scratchBits;
-    scratchBits += 2;
-    if (scratchBits >= 64) {
-      view.setUint64(wordIndex * 8, scratch, Endian.little);
-      wordIndex++;
-      scratchBits -= 64;
-      scratch = v >>> (2 - scratchBits);
+      scratch = v >>> (3 - scratchBits);
     }
   }
   if (scratchBits != 0) {
@@ -1161,23 +1125,14 @@ int writeEleven(Eleven value, ByteData view) {
   var scratchBits = 0;
   var wordIndex = 0;
   var v = 0;
-  v = value.a & 0x7;
+  v = ((value.a) & 0x7) | (((value.b) & 0xff) << 3);
   scratch |= v << scratchBits;
-  scratchBits += 3;
+  scratchBits += 11;
   if (scratchBits >= 64) {
     view.setUint64(wordIndex * 8, scratch, Endian.little);
     wordIndex++;
     scratchBits -= 64;
-    scratch = v >>> (3 - scratchBits);
-  }
-  v = value.b & 0xff;
-  scratch |= v << scratchBits;
-  scratchBits += 8;
-  if (scratchBits >= 64) {
-    view.setUint64(wordIndex * 8, scratch, Endian.little);
-    wordIndex++;
-    scratchBits -= 64;
-    scratch = v >>> (8 - scratchBits);
+    scratch = v >>> (11 - scratchBits);
   }
   if (scratchBits != 0) {
     view.setUint64(wordIndex * 8, scratch, Endian.little);
@@ -1268,23 +1223,14 @@ int writeArrEleven(ArrEleven value, ByteData view) {
   var v = 0;
   for (var i0 = 0; i0 < 9; i0++) {
     final e0 = value.items[i0];
-    v = e0.a & 0x7;
+    v = ((e0.a) & 0x7) | (((e0.b) & 0xff) << 3);
     scratch |= v << scratchBits;
-    scratchBits += 3;
+    scratchBits += 11;
     if (scratchBits >= 64) {
       view.setUint64(wordIndex * 8, scratch, Endian.little);
       wordIndex++;
       scratchBits -= 64;
-      scratch = v >>> (3 - scratchBits);
-    }
-    v = e0.b & 0xff;
-    scratch |= v << scratchBits;
-    scratchBits += 8;
-    if (scratchBits >= 64) {
-      view.setUint64(wordIndex * 8, scratch, Endian.little);
-      wordIndex++;
-      scratchBits -= 64;
-      scratch = v >>> (8 - scratchBits);
+      scratch = v >>> (11 - scratchBits);
     }
   }
   if (scratchBits != 0) {
@@ -1477,7 +1423,7 @@ int writeEmptyUnion(EmptyUnion value, ByteData view) {
   var v = 0;
   assert(value.type >= 0);
   assert(value.type <= 2);
-  v = value.type & 0x3;
+  v = ((value.type) & 0x3);
   scratch |= v << scratchBits;
   scratchBits += 2;
   if (scratchBits >= 64) {
@@ -1590,25 +1536,16 @@ int writeHoldsEmptyUnion(HoldsEmptyUnion value, ByteData view) {
   var scratchBits = 0;
   var wordIndex = 0;
   var v = 0;
-  v = value.lead & 0x1f;
-  scratch |= v << scratchBits;
-  scratchBits += 5;
-  if (scratchBits >= 64) {
-    view.setUint64(wordIndex * 8, scratch, Endian.little);
-    wordIndex++;
-    scratchBits -= 64;
-    scratch = v >>> (5 - scratchBits);
-  }
   assert(value.u.type >= 0);
   assert(value.u.type <= 2);
-  v = value.u.type & 0x3;
+  v = ((value.lead) & 0x1f) | (((value.u.type) & 0x3) << 5);
   scratch |= v << scratchBits;
-  scratchBits += 2;
+  scratchBits += 7;
   if (scratchBits >= 64) {
     view.setUint64(wordIndex * 8, scratch, Endian.little);
     wordIndex++;
     scratchBits -= 64;
-    scratch = v >>> (2 - scratchBits);
+    scratch = v >>> (7 - scratchBits);
   }
   switch (value.u.type) {
     case 1:
@@ -1616,7 +1553,7 @@ int writeHoldsEmptyUnion(HoldsEmptyUnion value, ByteData view) {
     case 2:
       break; // empty arm — presence is the payload (SPEC §4.6)
   }
-  v = value.tail & 0x7f;
+  v = ((value.tail) & 0x7f);
   scratch |= v << scratchBits;
   scratchBits += 7;
   if (scratchBits >= 64) {
@@ -1759,25 +1696,16 @@ int writeStrs(Strs value, ByteData view) {
   var scratchBits = 0;
   var wordIndex = 0;
   var v = 0;
-  v = value.lead & 0x1f;
-  scratch |= v << scratchBits;
-  scratchBits += 5;
-  if (scratchBits >= 64) {
-    view.setUint64(wordIndex * 8, scratch, Endian.little);
-    wordIndex++;
-    scratchBits -= 64;
-    scratch = v >>> (5 - scratchBits);
-  }
   assert(value.sLength >= 0);
   assert(value.sLength <= 8);
-  v = (value.sLength) & 0xf;
+  v = ((value.lead) & 0x1f) | (((value.sLength) & 0xf) << 5);
   scratch |= v << scratchBits;
-  scratchBits += 4;
+  scratchBits += 9;
   if (scratchBits >= 64) {
     view.setUint64(wordIndex * 8, scratch, Endian.little);
     wordIndex++;
     scratchBits -= 64;
-    scratch = v >>> (4 - scratchBits);
+    scratch = v >>> (9 - scratchBits);
   }
   {
     final pad = scratchBits & 7;
@@ -1804,7 +1732,7 @@ int writeStrs(Strs value, ByteData view) {
   }
   assert(value.bLength >= 0);
   assert(value.bLength <= 8);
-  v = (value.bLength) & 0xf;
+  v = ((value.bLength) & 0xf);
   scratch |= v << scratchBits;
   scratchBits += 4;
   if (scratchBits >= 64) {
@@ -1836,7 +1764,7 @@ int writeStrs(Strs value, ByteData view) {
       scratch = v >>> (8 - scratchBits);
     }
   }
-  v = value.tail & 0x7;
+  v = ((value.tail) & 0x7);
   scratch |= v << scratchBits;
   scratchBits += 3;
   if (scratchBits >= 64) {
@@ -2032,48 +1960,30 @@ int writeArrNested(ArrNested value, ByteData view) {
   var scratchBits = 0;
   var wordIndex = 0;
   var v = 0;
-  v = value.lead & 0x1f;
-  scratch |= v << scratchBits;
-  scratchBits += 5;
-  if (scratchBits >= 64) {
-    view.setUint64(wordIndex * 8, scratch, Endian.little);
-    wordIndex++;
-    scratchBits -= 64;
-    scratch = v >>> (5 - scratchBits);
-  }
   assert(value.itemsCount >= 0);
   assert(value.itemsCount <= 4);
-  v = (value.itemsCount) & 0x7;
+  v = ((value.lead) & 0x1f) | (((value.itemsCount) & 0x7) << 5);
   scratch |= v << scratchBits;
-  scratchBits += 3;
+  scratchBits += 8;
   if (scratchBits >= 64) {
     view.setUint64(wordIndex * 8, scratch, Endian.little);
     wordIndex++;
     scratchBits -= 64;
-    scratch = v >>> (3 - scratchBits);
+    scratch = v >>> (8 - scratchBits);
   }
   for (var i0 = 0; i0 < value.itemsCount; i0++) {
     final e0 = value.items[i0];
-    v = e0.a & 0x7;
+    v = ((e0.a) & 0x7) | (((e0.b) & 0xff) << 3);
     scratch |= v << scratchBits;
-    scratchBits += 3;
+    scratchBits += 11;
     if (scratchBits >= 64) {
       view.setUint64(wordIndex * 8, scratch, Endian.little);
       wordIndex++;
       scratchBits -= 64;
-      scratch = v >>> (3 - scratchBits);
-    }
-    v = e0.b & 0xff;
-    scratch |= v << scratchBits;
-    scratchBits += 8;
-    if (scratchBits >= 64) {
-      view.setUint64(wordIndex * 8, scratch, Endian.little);
-      wordIndex++;
-      scratchBits -= 64;
-      scratch = v >>> (8 - scratchBits);
+      scratch = v >>> (11 - scratchBits);
     }
   }
-  v = value.tail & 0x7;
+  v = ((value.tail) & 0x7);
   scratch |= v << scratchBits;
   scratchBits += 3;
   if (scratchBits >= 64) {
@@ -2218,7 +2128,7 @@ int writeSole(Sole value, ByteData view) {
   var scratchBits = 0;
   var wordIndex = 0;
   var v = 0;
-  v = value.only & 0x1fff;
+  v = ((value.only) & 0x1fff);
   scratch |= v << scratchBits;
   scratchBits += 13;
   if (scratchBits >= 64) {

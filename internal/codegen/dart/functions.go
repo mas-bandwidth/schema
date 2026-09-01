@@ -50,7 +50,9 @@ func maskHex(bits int64) string {
 }
 
 // mergeW merges v (already masked to bits) into the write scratch —
-// serialize.dart BitWriter.writeBits inlined, constant width. bits in [1,32].
+// serialize.dart BitWriter.writeBits inlined, constant width. bits in
+// [1,64]: the restore shift `bits - scratchBits` stays in [1,64], and a
+// Dart `>>>` by 64 is a defined zero, which is exactly the full-word case.
 func (g *gen) mergeW(bits int64, ind string) {
 	g.needV = true
 	g.pf("%sscratch |= v << scratchBits;\n", ind)
@@ -61,6 +63,75 @@ func (g *gen) mergeW(bits int64, ind string) {
 	g.pf("%s  scratchBits -= 64;\n", ind)
 	g.pf("%s  scratch = v >>> (%d - scratchBits);\n", ind, bits)
 	g.pf("%s}\n", ind)
+}
+
+// chunkPiece is one field's contribution to a pending write chunk: a pure,
+// parenthesized Dart int expression already masked to bits (a 64-bit piece
+// may ride unmasked — it stands alone in its chunk with a zero shift).
+type chunkPiece struct {
+	expr string
+	bits int64
+}
+
+// chunkAdd registers a pure value expression of the given width, flushing
+// first when it cannot join the pending chunk. Every caller's expression
+// must stay valid until the flush point: field paths, hoisted element refs
+// and literals qualify; v-style temps and block-scoped consts never do (a
+// temp-based merge flushes around itself instead).
+func (g *gen) chunkAdd(expr string, bits int64, ind string) {
+	if bits == 0 {
+		return
+	}
+	if g.chunkBits+bits > 64 {
+		g.chunkFlush(ind)
+	}
+	g.chunk = append(g.chunk, chunkPiece{expr: expr, bits: bits})
+	g.chunkBits += bits
+}
+
+// chunkFlush merges the pending chunk as one staged word. A scope boundary
+// (loop, branch, switch, function end) and every statement-form merge MUST
+// flush first — wire order is emission order.
+func (g *gen) chunkFlush(ind string) {
+	if len(g.chunk) == 0 {
+		return
+	}
+	parts := make([]string, len(g.chunk))
+	shift := int64(0)
+	for i, p := range g.chunk {
+		if shift == 0 {
+			parts[i] = p.expr
+		} else {
+			parts[i] = fmt.Sprintf("(%s << %d)", p.expr, shift)
+		}
+		shift += p.bits
+	}
+	one := fmt.Sprintf("%sv = %s;", ind, strings.Join(parts, " | "))
+	if len(one) <= 80 {
+		g.pf("%s\n", one)
+	} else {
+		// the formatter's tall assignment: `v =`, one operand per line
+		g.pf("%sv =\n", ind)
+		for i, p := range parts {
+			if i < len(parts)-1 {
+				g.pf("%s    %s |\n", ind, p)
+			} else {
+				g.pf("%s    %s;\n", ind, p)
+			}
+		}
+	}
+	g.mergeW(g.chunkBits, ind)
+	g.chunk = g.chunk[:0]
+	g.chunkBits = 0
+}
+
+// maskedPiece renders a chunk piece masked to bits; a full 64-bit piece
+// needs no mask (it stands alone at shift zero and the merge keeps 64 bits).
+func maskedPiece(expr string, bits int64) string {
+	if bits == 64 {
+		return fmt.Sprintf("(%s)", expr)
+	}
+	return fmt.Sprintf("((%s) & %s)", expr, maskHex(bits))
 }
 
 // readR reads bits (in [1,32]) from the 64-bit window at bitsRead into v,
@@ -223,12 +294,16 @@ func (g *gen) resetFn() {
 	g.fn.Reset()
 	g.loopDepth = 0
 	g.needV, g.needLo, g.needHi, g.usesRead = false, false, false, false
+	g.chunk = g.chunk[:0]
+	g.chunkBits = 0
+	g.windowAvail, g.windowRel = 0, 0
 }
 
 func (g *gen) emitWriteFunction(name, low string, items []ir.Item) {
 	g.usesTypeData = true
 	g.resetFn()
 	g.emitWriteItems(items, "value", "  ")
+	g.chunkFlush("  ")
 	body := g.fn.String()
 
 	g.bpf("// write%s packs value into view — the trusted writer (contracts asserted,\n", name)
@@ -334,38 +409,34 @@ func (g *gen) emitWriteItems(items []ir.Item, path, ind string) {
 			if item.Neg {
 				neg = "!"
 			}
+			g.chunkFlush(ind)
 			g.pf("%sif (%s%s.%s) {\n", ind, neg, path, dartName(item.Cond))
 			g.emitWriteItems(item.Then, path, ind+"  ")
+			g.chunkFlush(ind + "  ")
 			if item.Else != nil {
 				g.pf("%s} else {\n", ind)
 				g.emitWriteItems(item.Else, path, ind+"  ")
+				g.chunkFlush(ind + "  ")
 			}
 			g.pf("%s}\n", ind)
 		}
 	}
 }
 
-// emitWriteRaw merges a compile-time constant (const/reserved items) of up
-// to 64 bits, split low dword first past 32 (the serialize group rule).
+// emitWriteRaw queues a compile-time constant (const/reserved items) of up
+// to 64 bits as one chunk piece — the wire is the same 32-bit groups low
+// dword first, because LSB-first merging of a concatenation equals merging
+// the groups in sequence.
 func (g *gen) emitWriteRaw(value *big.Int, bits int64, ind string) {
 	masked := new(big.Int).And(value, new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), uint(bits)), big.NewInt(1)))
-	if bits <= 32 {
-		g.pf("%sv = %s;\n", ind, dartIntLit(masked))
-		g.mergeW(bits, ind)
-		return
-	}
-	lo := new(big.Int).And(masked, new(big.Int).SetUint64(0xffffffff))
-	hi := new(big.Int).Rsh(masked, 32)
-	g.pf("%sv = %s;\n", ind, dartIntLit(lo))
-	g.mergeW(32, ind)
-	g.pf("%sv = %s;\n", ind, dartIntLit(hi))
-	g.mergeW(bits-32, ind)
+	g.chunkAdd(dartIntLit(masked), bits, ind)
 }
 
 // emitWriteAlign pads the write position to the next byte boundary with
 // zeros (nothing merges, so only the counter moves — with the flush kept,
 // exactly as the merge would keep it).
 func (g *gen) emitWriteAlign(ind string) {
+	g.chunkFlush(ind)
 	g.pf("%s{\n", ind)
 	g.pf("%s  final pad = scratchBits & 7;\n", ind)
 	g.pf("%s  if (pad != 0) {\n", ind)
@@ -389,8 +460,10 @@ func (g *gen) emitWriteField(f *ir.Field, path, ind string) {
 	case ir.ArrayFixed:
 		iv := fmt.Sprintf("i%d", g.loopDepth)
 		g.loopDepth++
+		g.chunkFlush(ind)
 		g.pf("%sfor (var %s = 0; %s < %d; %s++) {\n", ind, iv, iv, f.ArrayBound, iv)
 		g.emitWriteElem(f, name, iv, ind+"  ")
+		g.chunkFlush(ind + "  ")
 		g.pf("%s}\n", ind)
 		g.loopDepth--
 	case ir.ArrayCounted:
@@ -399,8 +472,10 @@ func (g *gen) emitWriteField(f *ir.Field, path, ind string) {
 		g.emitWriteOffset(count, big.NewInt(f.ArrayMin), big.NewInt(f.ArrayBound), ind)
 		iv := fmt.Sprintf("i%d", g.loopDepth)
 		g.loopDepth++
+		g.chunkFlush(ind)
 		g.pf("%sfor (var %s = 0; %s < %s; %s++) {\n", ind, iv, iv, count, iv)
 		g.emitWriteElem(f, name, iv, ind+"  ")
+		g.chunkFlush(ind + "  ")
 		g.pf("%s}\n", ind)
 		g.loopDepth--
 	default:
@@ -451,11 +526,11 @@ func (g *gen) assertRange(expr string, min, max *big.Int, signedDomain bool, ind
 	}
 }
 
-// emitWriteOffset merges (expr - min) in the folded bit count for a range
-// inside the 64-bit domain: single group through 32 bits, two groups (low
-// dword first) past it — the serialize group structure exactly. Offsets wrap
-// two's complement, which is the unsigned-domain subtraction every family
-// port performs.
+// emitWriteOffset queues (expr - min) in the folded bit count for a range
+// inside the 64-bit domain as ONE chunk piece — a 33..64-bit field's bits
+// are contiguous on the wire, so the single merge emits the identical bytes
+// the old two-group form did. Offsets wrap two's complement, which is the
+// unsigned-domain subtraction every family port performs.
 func (g *gen) emitWriteOffset(expr string, min, max *big.Int, ind string) {
 	bits := ir.BitsRequired(min, max)
 	if bits == 0 {
@@ -473,46 +548,26 @@ func (g *gen) emitWriteOffset(expr string, min, max *big.Int, ind string) {
 			off = fmt.Sprintf("%s - %s", expr, dartIntLit(min)) // int64 min, a hex literal
 		}
 	}
-	if bits <= 32 {
-		g.pf("%sv = (%s) & %s;\n", ind, off, maskHex(bits))
-		g.mergeW(bits, ind)
-		return
-	}
-	if min.Sign() != 0 {
-		g.pf("%s{\n", ind)
-		g.pf("%s  final off = %s;\n", ind, off)
-		g.emitWriteWide64("off", bits, ind+"  ")
-		g.pf("%s}\n", ind)
-		return
-	}
-	g.emitWriteWide64(expr, bits, ind)
+	g.chunkAdd(maskedPiece(off, bits), bits, ind)
 }
 
-// emitWriteWide64 merges the low `bits` bits (33..64) of an int expression
-// as two groups, low dword first.
+// emitWriteWide64 queues the low `bits` bits (33..64) of an int expression
+// as one chunk piece — one merge where the two-group form paid two.
 func (g *gen) emitWriteWide64(expr string, bits int64, ind string) {
-	g.pf("%sv = %s & 0xffffffff;\n", ind, expr)
-	g.mergeW(32, ind)
-	g.pf("%sv = (%s >>> 32) & %s;\n", ind, expr, maskHex(bits-32))
-	g.mergeW(bits-32, ind)
+	g.chunkAdd(maskedPiece(expr, bits), bits, ind)
 }
 
-// emitWriteWide128 merges the low `bits` bits (1..128) of a (hi, lo) pair
-// expression, 32-bit groups least significant first.
+// emitWriteWide128 queues the low `bits` bits (1..128) of a (hi, lo) pair
+// expression: the lo lane, then the hi remainder — 32-bit groups least
+// significant first on the wire, exactly as before, because each lane's
+// bits are contiguous.
 func (g *gen) emitWriteWide128(loExpr, hiExpr string, bits int64, ind string) {
 	switch {
-	case bits <= 32:
-		g.pf("%sv = %s & %s;\n", ind, loExpr, maskHex(bits))
-		g.mergeW(bits, ind)
 	case bits <= 64:
-		g.emitWriteWide64(loExpr, bits, ind)
-	case bits <= 96:
-		g.emitWriteWide64(loExpr, 64, ind)
-		g.pf("%sv = %s & %s;\n", ind, hiExpr, maskHex(bits-64))
-		g.mergeW(bits-64, ind)
+		g.chunkAdd(maskedPiece(loExpr, bits), bits, ind)
 	default:
-		g.emitWriteWide64(loExpr, 64, ind)
-		g.emitWriteWide64(hiExpr, bits-64, ind)
+		g.chunkAdd(maskedPiece(loExpr, 64), 64, ind)
+		g.chunkAdd(maskedPiece(hiExpr, bits-64), bits-64, ind)
 	}
 }
 
@@ -523,30 +578,19 @@ func (g *gen) emitWriteScalar(f *ir.Field, name, ind string) {
 	case ir.TInt:
 		g.emitWriteInt(f, name, ind)
 	case ir.TBits:
-		w := int64(f.Type.Width)
-		if w <= 32 {
-			g.pf("%sv = %s & %s;\n", ind, name, maskHex(w))
-			g.mergeW(w, ind)
-			return
-		}
-		g.emitWriteWide64(name, w, ind)
+		g.emitWriteWide64(name, int64(f.Type.Width), ind)
 	case ir.TBool:
-		g.pf("%sv = %s ? 1 : 0;\n", ind, name)
-		g.mergeW(1, ind)
+		g.chunkAdd(fmt.Sprintf("(%s ? 1 : 0)", name), 1, ind)
 	case ir.TFloat32:
 		if f.HasFloatRange {
 			g.emitWriteCompressedFloat(f, name, ind)
 			return
 		}
 		g.needScratch, g.needF32Conv = true, true
-		g.pf("%sv = _float32BitsFromDouble(%s);\n", ind, name)
-		g.mergeW(32, ind)
+		g.chunkAdd(fmt.Sprintf("_float32BitsFromDouble(%s)", name), 32, ind)
 	case ir.TFloat64:
 		g.needScratch, g.needF64Conv = true, true
-		g.pf("%s{\n", ind)
-		g.pf("%s  final b = _float64BitsFromDouble(%s);\n", ind, name)
-		g.emitWriteWide64("b", 64, ind+"  ")
-		g.pf("%s}\n", ind)
+		g.chunkAdd(fmt.Sprintf("_float64BitsFromDouble(%s)", name), 64, ind)
 	case ir.TString, ir.TBytes:
 		g.emitWriteBytesField(f, name, ind)
 	case ir.TNamed:
@@ -573,6 +617,7 @@ func f32lit(v float64) string {
 // with the declaration folded: round to float32, normalize, clamp (which
 // also grounds NaN), quantize — every step through _fround (SPEC §4.3).
 func (g *gen) emitWriteCompressedFloat(f *ir.Field, name, ind string) {
+	g.chunkFlush(ind) // statement-form merge: v is computed in a block
 	g.needScratch, g.needFround = true, true
 	maxInt, bits := ir.CompressedFloatParams(f.FMin, f.FMax, f.Resolution)
 	minF := float32(f.FMin)
@@ -642,12 +687,7 @@ func (g *gen) emitWriteInt(f *ir.Field, name, ind string) {
 	// bare integer at storage width; signed values mask to the same-width
 	// unsigned pattern (the sign smear a wider merge would spread corrupts
 	// neighboring wire data, exactly as in C++)
-	if w == 64 {
-		g.emitWriteWide64(name, 64, ind)
-		return
-	}
-	g.pf("%sv = %s & %s;\n", ind, name, maskHex(w))
-	g.mergeW(w, ind)
+	g.emitWriteWide64(name, w, ind)
 }
 
 // emitWrite128Ranged writes a ranged 128-bit-storage value (int128/uint128,
@@ -673,6 +713,7 @@ func (g *gen) emitWrite128Ranged(signed bool, name string, min, max *big.Int, bi
 	guardLo := min.Cmp(loDomain) > 0
 	guardHi := max.Cmp(hiDomain) < 0
 	needMin := guardLo || min.Sign() != 0
+	g.chunkFlush(ind) // the pieces below may reference block-scoped consts
 	g.pf("%s{\n", ind)
 	if needMin {
 		g.pf("%s  const min = %s;\n", ind, g.pairCtor(signed, min))
@@ -696,6 +737,7 @@ func (g *gen) emitWrite128Ranged(signed bool, name string, min, max *big.Int, bi
 		g.pf("%s  final off = (%s - min)%s;\n", ind, name, u)
 		g.emitWriteWide128("off.lo", "off.hi", bits, ind+"  ")
 	}
+	g.chunkFlush(ind + "  ") // off/min are block-scoped: no piece may outlive them
 	g.pf("%s}\n", ind)
 }
 
@@ -706,8 +748,7 @@ func (g *gen) emitWriteEnum(ref *ir.Enum, name, ind string) {
 	if bits == 0 {
 		return // degenerate [0, 0]: zero bits; the assert still rides
 	}
-	g.pf("%sv = %s & %s;\n", ind, name, maskHex(bits))
-	g.mergeW(bits, ind)
+	g.chunkAdd(maskedPiece(name, bits), bits, ind)
 }
 
 func (g *gen) emitWriteFlags(ref *ir.Flags, name, ind string) {
@@ -715,11 +756,6 @@ func (g *gen) emitWriteFlags(ref *ir.Flags, name, ind string) {
 	if wb < 64 {
 		// a mask bit above the wire width cannot ride
 		g.pf("%sassert(%s >>> %d == 0);\n", ind, name, wb)
-	}
-	if wb <= 32 {
-		g.pf("%sv = %s & %s;\n", ind, name, maskHex(wb))
-		g.mergeW(wb, ind)
-		return
 	}
 	g.emitWriteWide64(name, wb, ind)
 }
@@ -752,13 +788,15 @@ func (g *gen) emitWriteUnion(u *ir.Union, expr, ind string) {
 		return // an empty union's degenerate tag range [0, 0] costs zero bits
 	}
 	bits := ir.BitsRequired(big.NewInt(0), big.NewInt(u.Max))
-	g.pf("%sv = %s.type & %s;\n", ind, expr, maskHex(bits))
-	g.mergeW(bits, ind)
+	g.chunkAdd(maskedPiece(expr+".type", bits), bits, ind)
+	g.chunkFlush(ind) // the arms diverge: the tag merges before the switch
 	g.pf("%sswitch (%s.type) {\n", ind, expr)
 	for i, vr := range u.Variants {
 		g.pf("%s  case %d:\n", ind, i+1)
+		before := g.fn.Len()
 		g.emitWriteItems(vr.Ref.Items, expr+"."+dartName(vr.Name), ind+"    ")
-		if len(vr.Ref.Items) == 0 {
+		g.chunkFlush(ind + "    ")
+		if g.fn.Len() == before {
 			g.pf("%s    break; // empty arm — presence is the payload (SPEC §4.6)\n", ind)
 		}
 	}

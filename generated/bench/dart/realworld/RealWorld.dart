@@ -474,7 +474,7 @@ int writeRealPacket(RealPacket value, ByteData view) {
   var v = 0;
   assert(value.f001Int >= -805495);
   assert(value.f001Int <= 805495);
-  v = (value.f001Int + 805495) & 0x1fffff;
+  v = ((value.f001Int + 805495) & 0x1fffff);
   scratch |= v << scratchBits;
   scratchBits += 21;
   if (scratchBits >= 64) {
@@ -483,30 +483,18 @@ int writeRealPacket(RealPacket value, ByteData view) {
     scratchBits -= 64;
     scratch = v >>> (21 - scratchBits);
   }
-  {
-    final b = _float64BitsFromDouble(value.f002F64);
-    v = b & 0xffffffff;
-    scratch |= v << scratchBits;
-    scratchBits += 32;
-    if (scratchBits >= 64) {
-      view.setUint64(wordIndex * 8, scratch, Endian.little);
-      wordIndex++;
-      scratchBits -= 64;
-      scratch = v >>> (32 - scratchBits);
-    }
-    v = (b >>> 32) & 0xffffffff;
-    scratch |= v << scratchBits;
-    scratchBits += 32;
-    if (scratchBits >= 64) {
-      view.setUint64(wordIndex * 8, scratch, Endian.little);
-      wordIndex++;
-      scratchBits -= 64;
-      scratch = v >>> (32 - scratchBits);
-    }
-  }
   assert(value.f003Int >= -835897);
   assert(value.f003Int <= 835897);
-  v = (value.f003Int + 835897) & 0x1fffff;
+  v = _float64BitsFromDouble(value.f002F64);
+  scratch |= v << scratchBits;
+  scratchBits += 64;
+  if (scratchBits >= 64) {
+    view.setUint64(wordIndex * 8, scratch, Endian.little);
+    wordIndex++;
+    scratchBits -= 64;
+    scratch = v >>> (64 - scratchBits);
+  }
+  v = ((value.f003Int + 835897) & 0x1fffff);
   scratch |= v << scratchBits;
   scratchBits += 21;
   if (scratchBits >= 64) {
@@ -536,149 +524,80 @@ int writeRealPacket(RealPacket value, ByteData view) {
   }
   assert(value.f005Uint >= 0);
   assert(value.f005Uint <= 7316);
-  v = (value.f005Uint) & 0x1fff;
-  scratch |= v << scratchBits;
-  scratchBits += 13;
-  if (scratchBits >= 64) {
-    view.setUint64(wordIndex * 8, scratch, Endian.little);
-    wordIndex++;
-    scratchBits -= 64;
-    scratch = v >>> (13 - scratchBits);
-  }
   assert(value.f006Int >= -1513);
   assert(value.f006Int <= 1513);
-  v = (value.f006Int + 1513) & 0xfff;
+  v =
+      ((value.f005Uint) & 0x1fff) |
+      (((value.f006Int + 1513) & 0xfff) << 13) |
+      (_float32BitsFromDouble(value.f007F32) << 25);
   scratch |= v << scratchBits;
-  scratchBits += 12;
+  scratchBits += 57;
   if (scratchBits >= 64) {
     view.setUint64(wordIndex * 8, scratch, Endian.little);
     wordIndex++;
     scratchBits -= 64;
-    scratch = v >>> (12 - scratchBits);
-  }
-  v = _float32BitsFromDouble(value.f007F32);
-  scratch |= v << scratchBits;
-  scratchBits += 32;
-  if (scratchBits >= 64) {
-    view.setUint64(wordIndex * 8, scratch, Endian.little);
-    wordIndex++;
-    scratchBits -= 64;
-    scratch = v >>> (32 - scratchBits);
-  }
-  v = value.f008U64 & 0xffffffff;
-  scratch |= v << scratchBits;
-  scratchBits += 32;
-  if (scratchBits >= 64) {
-    view.setUint64(wordIndex * 8, scratch, Endian.little);
-    wordIndex++;
-    scratchBits -= 64;
-    scratch = v >>> (32 - scratchBits);
-  }
-  v = (value.f008U64 >>> 32) & 0xffffffff;
-  scratch |= v << scratchBits;
-  scratchBits += 32;
-  if (scratchBits >= 64) {
-    view.setUint64(wordIndex * 8, scratch, Endian.little);
-    wordIndex++;
-    scratchBits -= 64;
-    scratch = v >>> (32 - scratchBits);
+    scratch = v >>> (57 - scratchBits);
   }
   assert(value.f009Int >= -22);
   assert(value.f009Int <= 22);
-  v = (value.f009Int + 22) & 0x3f;
+  v = (value.f008U64);
   scratch |= v << scratchBits;
-  scratchBits += 6;
+  scratchBits += 64;
   if (scratchBits >= 64) {
     view.setUint64(wordIndex * 8, scratch, Endian.little);
     wordIndex++;
     scratchBits -= 64;
-    scratch = v >>> (6 - scratchBits);
+    scratch = v >>> (64 - scratchBits);
   }
-  v = _float32BitsFromDouble(value.f010F32);
+  v =
+      ((value.f009Int + 22) & 0x3f) |
+      (_float32BitsFromDouble(value.f010F32) << 6) |
+      (((value.f011Bits) & 0x3ff) << 38) |
+      ((value.f012Bool ? 1 : 0) << 48);
   scratch |= v << scratchBits;
-  scratchBits += 32;
+  scratchBits += 49;
   if (scratchBits >= 64) {
     view.setUint64(wordIndex * 8, scratch, Endian.little);
     wordIndex++;
     scratchBits -= 64;
-    scratch = v >>> (32 - scratchBits);
-  }
-  v = value.f011Bits & 0x3ff;
-  scratch |= v << scratchBits;
-  scratchBits += 10;
-  if (scratchBits >= 64) {
-    view.setUint64(wordIndex * 8, scratch, Endian.little);
-    wordIndex++;
-    scratchBits -= 64;
-    scratch = v >>> (10 - scratchBits);
-  }
-  v = value.f012Bool ? 1 : 0;
-  scratch |= v << scratchBits;
-  scratchBits += 1;
-  if (scratchBits >= 64) {
-    view.setUint64(wordIndex * 8, scratch, Endian.little);
-    wordIndex++;
-    scratchBits -= 64;
-    scratch = v >>> (1 - scratchBits);
+    scratch = v >>> (49 - scratchBits);
   }
   if (value.f012Bool) {
-    v = _float32BitsFromDouble(value.f013F32);
-    scratch |= v << scratchBits;
-    scratchBits += 32;
-    if (scratchBits >= 64) {
-      view.setUint64(wordIndex * 8, scratch, Endian.little);
-      wordIndex++;
-      scratchBits -= 64;
-      scratch = v >>> (32 - scratchBits);
-    }
     assert(value.f014Uint >= 0);
     assert(value.f014Uint <= 775);
-    v = (value.f014Uint) & 0x3ff;
-    scratch |= v << scratchBits;
-    scratchBits += 10;
-    if (scratchBits >= 64) {
-      view.setUint64(wordIndex * 8, scratch, Endian.little);
-      wordIndex++;
-      scratchBits -= 64;
-      scratch = v >>> (10 - scratchBits);
-    }
     assert(value.f015Int >= -21);
     assert(value.f015Int <= 21);
-    v = (value.f015Int + 21) & 0x3f;
-    scratch |= v << scratchBits;
-    scratchBits += 6;
-    if (scratchBits >= 64) {
-      view.setUint64(wordIndex * 8, scratch, Endian.little);
-      wordIndex++;
-      scratchBits -= 64;
-      scratch = v >>> (6 - scratchBits);
-    }
     assert(value.f016Fixed >= -37748736);
     assert(value.f016Fixed <= 37748736);
-    v = (value.f016Fixed + 37748736) & 0x7ffffff;
+    v =
+        _float32BitsFromDouble(value.f013F32) |
+        (((value.f014Uint) & 0x3ff) << 32) |
+        (((value.f015Int + 21) & 0x3f) << 42);
     scratch |= v << scratchBits;
-    scratchBits += 27;
+    scratchBits += 48;
     if (scratchBits >= 64) {
       view.setUint64(wordIndex * 8, scratch, Endian.little);
       wordIndex++;
       scratchBits -= 64;
-      scratch = v >>> (27 - scratchBits);
+      scratch = v >>> (48 - scratchBits);
     }
     assert(value.f017Uint >= 0);
     assert(value.f017Uint <= 4606);
-    v = (value.f017Uint) & 0x1fff;
+    v =
+        ((value.f016Fixed + 37748736) & 0x7ffffff) |
+        (((value.f017Uint) & 0x1fff) << 27);
     scratch |= v << scratchBits;
-    scratchBits += 13;
+    scratchBits += 40;
     if (scratchBits >= 64) {
       view.setUint64(wordIndex * 8, scratch, Endian.little);
       wordIndex++;
       scratchBits -= 64;
-      scratch = v >>> (13 - scratchBits);
+      scratch = v >>> (40 - scratchBits);
     }
   }
   assert(value.f018Int >= -834);
   assert(value.f018Int <= 834);
-  v = (value.f018Int + 834) & 0x7ff;
+  v = ((value.f018Int + 834) & 0x7ff);
   scratch |= v << scratchBits;
   scratchBits += 11;
   if (scratchBits >= 64) {
@@ -687,93 +606,52 @@ int writeRealPacket(RealPacket value, ByteData view) {
     scratchBits -= 64;
     scratch = v >>> (11 - scratchBits);
   }
-  {
-    final b = _float64BitsFromDouble(value.f019F64);
-    v = b & 0xffffffff;
-    scratch |= v << scratchBits;
-    scratchBits += 32;
-    if (scratchBits >= 64) {
-      view.setUint64(wordIndex * 8, scratch, Endian.little);
-      wordIndex++;
-      scratchBits -= 64;
-      scratch = v >>> (32 - scratchBits);
-    }
-    v = (b >>> 32) & 0xffffffff;
-    scratch |= v << scratchBits;
-    scratchBits += 32;
-    if (scratchBits >= 64) {
-      view.setUint64(wordIndex * 8, scratch, Endian.little);
-      wordIndex++;
-      scratchBits -= 64;
-      scratch = v >>> (32 - scratchBits);
-    }
-  }
-  v = _float32BitsFromDouble(value.f020F32);
+  v = _float64BitsFromDouble(value.f019F64);
   scratch |= v << scratchBits;
-  scratchBits += 32;
+  scratchBits += 64;
   if (scratchBits >= 64) {
     view.setUint64(wordIndex * 8, scratch, Endian.little);
     wordIndex++;
     scratchBits -= 64;
-    scratch = v >>> (32 - scratchBits);
+    scratch = v >>> (64 - scratchBits);
   }
   assert(value.f021Ufixed >= 0);
   assert(value.f021Ufixed <= 102977536);
-  v = (value.f021Ufixed) & 0x7ffffff;
+  v =
+      _float32BitsFromDouble(value.f020F32) |
+      (((value.f021Ufixed) & 0x7ffffff) << 32);
   scratch |= v << scratchBits;
-  scratchBits += 27;
+  scratchBits += 59;
   if (scratchBits >= 64) {
     view.setUint64(wordIndex * 8, scratch, Endian.little);
     wordIndex++;
     scratchBits -= 64;
-    scratch = v >>> (27 - scratchBits);
+    scratch = v >>> (59 - scratchBits);
   }
-  v = _float32BitsFromDouble(value.f022F32);
+  v =
+      _float32BitsFromDouble(value.f022F32) |
+      (((value.f023Bits) & 0x1ffffff) << 32);
   scratch |= v << scratchBits;
-  scratchBits += 32;
+  scratchBits += 57;
   if (scratchBits >= 64) {
     view.setUint64(wordIndex * 8, scratch, Endian.little);
     wordIndex++;
     scratchBits -= 64;
-    scratch = v >>> (32 - scratchBits);
-  }
-  v = value.f023Bits & 0x1ffffff;
-  scratch |= v << scratchBits;
-  scratchBits += 25;
-  if (scratchBits >= 64) {
-    view.setUint64(wordIndex * 8, scratch, Endian.little);
-    wordIndex++;
-    scratchBits -= 64;
-    scratch = v >>> (25 - scratchBits);
-  }
-  v = _float32BitsFromDouble(value.f024F32);
-  scratch |= v << scratchBits;
-  scratchBits += 32;
-  if (scratchBits >= 64) {
-    view.setUint64(wordIndex * 8, scratch, Endian.little);
-    wordIndex++;
-    scratchBits -= 64;
-    scratch = v >>> (32 - scratchBits);
+    scratch = v >>> (57 - scratchBits);
   }
   assert(value.f025Fixed >= -30464);
   assert(value.f025Fixed <= 30464);
-  v = (value.f025Fixed + 30464) & 0xffff;
+  v =
+      _float32BitsFromDouble(value.f024F32) |
+      (((value.f025Fixed + 30464) & 0xffff) << 32) |
+      (((value.f026Bits) & 0x1ff) << 48);
   scratch |= v << scratchBits;
-  scratchBits += 16;
+  scratchBits += 57;
   if (scratchBits >= 64) {
     view.setUint64(wordIndex * 8, scratch, Endian.little);
     wordIndex++;
     scratchBits -= 64;
-    scratch = v >>> (16 - scratchBits);
-  }
-  v = value.f026Bits & 0x1ff;
-  scratch |= v << scratchBits;
-  scratchBits += 9;
-  if (scratchBits >= 64) {
-    view.setUint64(wordIndex * 8, scratch, Endian.little);
-    wordIndex++;
-    scratchBits -= 64;
-    scratch = v >>> (9 - scratchBits);
+    scratch = v >>> (57 - scratchBits);
   }
   {
     final x = _fround(value.f027Cf32);
@@ -794,7 +672,7 @@ int writeRealPacket(RealPacket value, ByteData view) {
     scratchBits -= 64;
     scratch = v >>> (5 - scratchBits);
   }
-  v = value.f028Bits & 0xf;
+  v = ((value.f028Bits) & 0xf);
   scratch |= v << scratchBits;
   scratchBits += 4;
   if (scratchBits >= 64) {
@@ -803,195 +681,86 @@ int writeRealPacket(RealPacket value, ByteData view) {
     scratchBits -= 64;
     scratch = v >>> (4 - scratchBits);
   }
-  v = value.f029I64 & 0xffffffff;
+  v = (value.f029I64);
   scratch |= v << scratchBits;
-  scratchBits += 32;
+  scratchBits += 64;
   if (scratchBits >= 64) {
     view.setUint64(wordIndex * 8, scratch, Endian.little);
     wordIndex++;
     scratchBits -= 64;
-    scratch = v >>> (32 - scratchBits);
-  }
-  v = (value.f029I64 >>> 32) & 0xffffffff;
-  scratch |= v << scratchBits;
-  scratchBits += 32;
-  if (scratchBits >= 64) {
-    view.setUint64(wordIndex * 8, scratch, Endian.little);
-    wordIndex++;
-    scratchBits -= 64;
-    scratch = v >>> (32 - scratchBits);
-  }
-  v = _float32BitsFromDouble(value.f030F32);
-  scratch |= v << scratchBits;
-  scratchBits += 32;
-  if (scratchBits >= 64) {
-    view.setUint64(wordIndex * 8, scratch, Endian.little);
-    wordIndex++;
-    scratchBits -= 64;
-    scratch = v >>> (32 - scratchBits);
-  }
-  v = value.f031Bits & 0x1;
-  scratch |= v << scratchBits;
-  scratchBits += 1;
-  if (scratchBits >= 64) {
-    view.setUint64(wordIndex * 8, scratch, Endian.little);
-    wordIndex++;
-    scratchBits -= 64;
-    scratch = v >>> (1 - scratchBits);
+    scratch = v >>> (64 - scratchBits);
   }
   assert(value.f032Int >= -3);
   assert(value.f032Int <= 3);
-  v = (value.f032Int + 3) & 0x7;
-  scratch |= v << scratchBits;
-  scratchBits += 3;
-  if (scratchBits >= 64) {
-    view.setUint64(wordIndex * 8, scratch, Endian.little);
-    wordIndex++;
-    scratchBits -= 64;
-    scratch = v >>> (3 - scratchBits);
-  }
   assert(value.f033Uint >= 0);
   assert(value.f033Uint <= 142780);
-  v = (value.f033Uint) & 0x3ffff;
-  scratch |= v << scratchBits;
-  scratchBits += 18;
-  if (scratchBits >= 64) {
-    view.setUint64(wordIndex * 8, scratch, Endian.little);
-    wordIndex++;
-    scratchBits -= 64;
-    scratch = v >>> (18 - scratchBits);
-  }
   assert(value.f034Uint >= 0);
   assert(value.f034Uint <= 14149);
-  v = (value.f034Uint) & 0x3fff;
+  v =
+      _float32BitsFromDouble(value.f030F32) |
+      (((value.f031Bits) & 0x1) << 32) |
+      (((value.f032Int + 3) & 0x7) << 33) |
+      (((value.f033Uint) & 0x3ffff) << 36);
   scratch |= v << scratchBits;
-  scratchBits += 14;
+  scratchBits += 54;
   if (scratchBits >= 64) {
     view.setUint64(wordIndex * 8, scratch, Endian.little);
     wordIndex++;
     scratchBits -= 64;
-    scratch = v >>> (14 - scratchBits);
-  }
-  v = value.f035Bits & 0x1ff;
-  scratch |= v << scratchBits;
-  scratchBits += 9;
-  if (scratchBits >= 64) {
-    view.setUint64(wordIndex * 8, scratch, Endian.little);
-    wordIndex++;
-    scratchBits -= 64;
-    scratch = v >>> (9 - scratchBits);
+    scratch = v >>> (54 - scratchBits);
   }
   assert(value.f036Enum >= 0);
   assert(value.f036Enum <= 5);
-  v = value.f036Enum & 0x7;
-  scratch |= v << scratchBits;
-  scratchBits += 3;
-  if (scratchBits >= 64) {
-    view.setUint64(wordIndex * 8, scratch, Endian.little);
-    wordIndex++;
-    scratchBits -= 64;
-    scratch = v >>> (3 - scratchBits);
-  }
-  v = value.f037Bool ? 1 : 0;
-  scratch |= v << scratchBits;
-  scratchBits += 1;
-  if (scratchBits >= 64) {
-    view.setUint64(wordIndex * 8, scratch, Endian.little);
-    wordIndex++;
-    scratchBits -= 64;
-    scratch = v >>> (1 - scratchBits);
-  }
-  v = value.f038Bool ? 1 : 0;
-  scratch |= v << scratchBits;
-  scratchBits += 1;
-  if (scratchBits >= 64) {
-    view.setUint64(wordIndex * 8, scratch, Endian.little);
-    wordIndex++;
-    scratchBits -= 64;
-    scratch = v >>> (1 - scratchBits);
-  }
-  v = value.f039Bits & 0x7ffff;
-  scratch |= v << scratchBits;
-  scratchBits += 19;
-  if (scratchBits >= 64) {
-    view.setUint64(wordIndex * 8, scratch, Endian.little);
-    wordIndex++;
-    scratchBits -= 64;
-    scratch = v >>> (19 - scratchBits);
-  }
   assert(value.f040Fixed >= -20480);
   assert(value.f040Fixed <= 20480);
-  v = (value.f040Fixed + 20480) & 0xffff;
-  scratch |= v << scratchBits;
-  scratchBits += 16;
-  if (scratchBits >= 64) {
-    view.setUint64(wordIndex * 8, scratch, Endian.little);
-    wordIndex++;
-    scratchBits -= 64;
-    scratch = v >>> (16 - scratchBits);
-  }
   assert(value.f041Int >= -55);
   assert(value.f041Int <= 55);
-  v = (value.f041Int + 55) & 0x7f;
+  v =
+      ((value.f034Uint) & 0x3fff) |
+      (((value.f035Bits) & 0x1ff) << 14) |
+      (((value.f036Enum) & 0x7) << 23) |
+      ((value.f037Bool ? 1 : 0) << 26) |
+      ((value.f038Bool ? 1 : 0) << 27) |
+      (((value.f039Bits) & 0x7ffff) << 28) |
+      (((value.f040Fixed + 20480) & 0xffff) << 47);
   scratch |= v << scratchBits;
-  scratchBits += 7;
+  scratchBits += 63;
   if (scratchBits >= 64) {
     view.setUint64(wordIndex * 8, scratch, Endian.little);
     wordIndex++;
     scratchBits -= 64;
-    scratch = v >>> (7 - scratchBits);
+    scratch = v >>> (63 - scratchBits);
   }
-  v = value.f042Bits & 0x3fffffff;
+  v =
+      ((value.f041Int + 55) & 0x7f) |
+      (((value.f042Bits) & 0x3fffffff) << 7) |
+      ((value.f043Bool ? 1 : 0) << 37);
   scratch |= v << scratchBits;
-  scratchBits += 30;
+  scratchBits += 38;
   if (scratchBits >= 64) {
     view.setUint64(wordIndex * 8, scratch, Endian.little);
     wordIndex++;
     scratchBits -= 64;
-    scratch = v >>> (30 - scratchBits);
-  }
-  v = value.f043Bool ? 1 : 0;
-  scratch |= v << scratchBits;
-  scratchBits += 1;
-  if (scratchBits >= 64) {
-    view.setUint64(wordIndex * 8, scratch, Endian.little);
-    wordIndex++;
-    scratchBits -= 64;
-    scratch = v >>> (1 - scratchBits);
+    scratch = v >>> (38 - scratchBits);
   }
   if (value.f043Bool) {
-    v = _float32BitsFromDouble(value.f044F32);
-    scratch |= v << scratchBits;
-    scratchBits += 32;
-    if (scratchBits >= 64) {
-      view.setUint64(wordIndex * 8, scratch, Endian.little);
-      wordIndex++;
-      scratchBits -= 64;
-      scratch = v >>> (32 - scratchBits);
-    }
-    v = value.f045Bits & 0xfff;
-    scratch |= v << scratchBits;
-    scratchBits += 12;
-    if (scratchBits >= 64) {
-      view.setUint64(wordIndex * 8, scratch, Endian.little);
-      wordIndex++;
-      scratchBits -= 64;
-      scratch = v >>> (12 - scratchBits);
-    }
     assert(value.f046Uint >= 0);
     assert(value.f046Uint <= 76063);
-    v = (value.f046Uint) & 0x1ffff;
+    assert(value.f047Int >= -430976);
+    assert(value.f047Int <= 430976);
+    v =
+        _float32BitsFromDouble(value.f044F32) |
+        (((value.f045Bits) & 0xfff) << 32) |
+        (((value.f046Uint) & 0x1ffff) << 44);
     scratch |= v << scratchBits;
-    scratchBits += 17;
+    scratchBits += 61;
     if (scratchBits >= 64) {
       view.setUint64(wordIndex * 8, scratch, Endian.little);
       wordIndex++;
       scratchBits -= 64;
-      scratch = v >>> (17 - scratchBits);
+      scratch = v >>> (61 - scratchBits);
     }
-    assert(value.f047Int >= -430976);
-    assert(value.f047Int <= 430976);
-    v = (value.f047Int + 430976) & 0xfffff;
+    v = ((value.f047Int + 430976) & 0xfffff);
     scratch |= v << scratchBits;
     scratchBits += 20;
     if (scratchBits >= 64) {
@@ -1001,151 +770,72 @@ int writeRealPacket(RealPacket value, ByteData view) {
       scratch = v >>> (20 - scratchBits);
     }
   }
-  {
-    final b = _float64BitsFromDouble(value.f048F64);
-    v = b & 0xffffffff;
-    scratch |= v << scratchBits;
-    scratchBits += 32;
-    if (scratchBits >= 64) {
-      view.setUint64(wordIndex * 8, scratch, Endian.little);
-      wordIndex++;
-      scratchBits -= 64;
-      scratch = v >>> (32 - scratchBits);
-    }
-    v = (b >>> 32) & 0xffffffff;
-    scratch |= v << scratchBits;
-    scratchBits += 32;
-    if (scratchBits >= 64) {
-      view.setUint64(wordIndex * 8, scratch, Endian.little);
-      wordIndex++;
-      scratchBits -= 64;
-      scratch = v >>> (32 - scratchBits);
-    }
-  }
   assert(value.f049Ufixed >= 0);
   assert(value.f049Ufixed <= 49152);
-  v = (value.f049Ufixed) & 0xffff;
+  v = _float64BitsFromDouble(value.f048F64);
   scratch |= v << scratchBits;
-  scratchBits += 16;
+  scratchBits += 64;
   if (scratchBits >= 64) {
     view.setUint64(wordIndex * 8, scratch, Endian.little);
     wordIndex++;
     scratchBits -= 64;
-    scratch = v >>> (16 - scratchBits);
+    scratch = v >>> (64 - scratchBits);
   }
-  v = value.f050Bool ? 1 : 0;
+  v = ((value.f049Ufixed) & 0xffff) | ((value.f050Bool ? 1 : 0) << 16);
   scratch |= v << scratchBits;
-  scratchBits += 1;
+  scratchBits += 17;
   if (scratchBits >= 64) {
     view.setUint64(wordIndex * 8, scratch, Endian.little);
     wordIndex++;
     scratchBits -= 64;
-    scratch = v >>> (1 - scratchBits);
+    scratch = v >>> (17 - scratchBits);
   }
   if (value.f050Bool) {
-    v = value.f051Bool ? 1 : 0;
-    scratch |= v << scratchBits;
-    scratchBits += 1;
-    if (scratchBits >= 64) {
-      view.setUint64(wordIndex * 8, scratch, Endian.little);
-      wordIndex++;
-      scratchBits -= 64;
-      scratch = v >>> (1 - scratchBits);
-    }
     assert(value.f052Int >= -57);
     assert(value.f052Int <= 57);
-    v = (value.f052Int + 57) & 0x7f;
-    scratch |= v << scratchBits;
-    scratchBits += 7;
-    if (scratchBits >= 64) {
-      view.setUint64(wordIndex * 8, scratch, Endian.little);
-      wordIndex++;
-      scratchBits -= 64;
-      scratch = v >>> (7 - scratchBits);
-    }
-    v = _float32BitsFromDouble(value.f053F32);
-    scratch |= v << scratchBits;
-    scratchBits += 32;
-    if (scratchBits >= 64) {
-      view.setUint64(wordIndex * 8, scratch, Endian.little);
-      wordIndex++;
-      scratchBits -= 64;
-      scratch = v >>> (32 - scratchBits);
-    }
     assert(value.f054Int >= -35);
     assert(value.f054Int <= 35);
-    v = (value.f054Int + 35) & 0x7f;
+    v =
+        (value.f051Bool ? 1 : 0) |
+        (((value.f052Int + 57) & 0x7f) << 1) |
+        (_float32BitsFromDouble(value.f053F32) << 8) |
+        (((value.f054Int + 35) & 0x7f) << 40);
     scratch |= v << scratchBits;
-    scratchBits += 7;
+    scratchBits += 47;
     if (scratchBits >= 64) {
       view.setUint64(wordIndex * 8, scratch, Endian.little);
       wordIndex++;
       scratchBits -= 64;
-      scratch = v >>> (7 - scratchBits);
+      scratch = v >>> (47 - scratchBits);
     }
-  }
-  v = value.f055Bool ? 1 : 0;
-  scratch |= v << scratchBits;
-  scratchBits += 1;
-  if (scratchBits >= 64) {
-    view.setUint64(wordIndex * 8, scratch, Endian.little);
-    wordIndex++;
-    scratchBits -= 64;
-    scratch = v >>> (1 - scratchBits);
   }
   assert(value.f056Int >= -13);
   assert(value.f056Int <= 13);
-  v = (value.f056Int + 13) & 0x1f;
-  scratch |= v << scratchBits;
-  scratchBits += 5;
-  if (scratchBits >= 64) {
-    view.setUint64(wordIndex * 8, scratch, Endian.little);
-    wordIndex++;
-    scratchBits -= 64;
-    scratch = v >>> (5 - scratchBits);
-  }
   assert(value.f057Int >= -15);
   assert(value.f057Int <= 15);
-  v = (value.f057Int + 15) & 0x1f;
+  v =
+      (value.f055Bool ? 1 : 0) |
+      (((value.f056Int + 13) & 0x1f) << 1) |
+      (((value.f057Int + 15) & 0x1f) << 6) |
+      (_float32BitsFromDouble(value.f058F32) << 11);
   scratch |= v << scratchBits;
-  scratchBits += 5;
+  scratchBits += 43;
   if (scratchBits >= 64) {
     view.setUint64(wordIndex * 8, scratch, Endian.little);
     wordIndex++;
     scratchBits -= 64;
-    scratch = v >>> (5 - scratchBits);
+    scratch = v >>> (43 - scratchBits);
   }
-  v = _float32BitsFromDouble(value.f058F32);
+  v = _float64BitsFromDouble(value.f059F64);
   scratch |= v << scratchBits;
-  scratchBits += 32;
+  scratchBits += 64;
   if (scratchBits >= 64) {
     view.setUint64(wordIndex * 8, scratch, Endian.little);
     wordIndex++;
     scratchBits -= 64;
-    scratch = v >>> (32 - scratchBits);
+    scratch = v >>> (64 - scratchBits);
   }
-  {
-    final b = _float64BitsFromDouble(value.f059F64);
-    v = b & 0xffffffff;
-    scratch |= v << scratchBits;
-    scratchBits += 32;
-    if (scratchBits >= 64) {
-      view.setUint64(wordIndex * 8, scratch, Endian.little);
-      wordIndex++;
-      scratchBits -= 64;
-      scratch = v >>> (32 - scratchBits);
-    }
-    v = (b >>> 32) & 0xffffffff;
-    scratch |= v << scratchBits;
-    scratchBits += 32;
-    if (scratchBits >= 64) {
-      view.setUint64(wordIndex * 8, scratch, Endian.little);
-      wordIndex++;
-      scratchBits -= 64;
-      scratch = v >>> (32 - scratchBits);
-    }
-  }
-  v = value.f060Bits & 0xff;
+  v = ((value.f060Bits) & 0xff);
   scratch |= v << scratchBits;
   scratchBits += 8;
   if (scratchBits >= 64) {
@@ -1175,7 +865,7 @@ int writeRealPacket(RealPacket value, ByteData view) {
   }
   assert(value.f062Uint >= 0);
   assert(value.f062Uint <= 503);
-  v = (value.f062Uint) & 0x1ff;
+  v = ((value.f062Uint) & 0x1ff);
   scratch |= v << scratchBits;
   scratchBits += 9;
   if (scratchBits >= 64) {
@@ -1184,27 +874,18 @@ int writeRealPacket(RealPacket value, ByteData view) {
     scratchBits -= 64;
     scratch = v >>> (9 - scratchBits);
   }
-  v = value.f063I64 & 0xffffffff;
-  scratch |= v << scratchBits;
-  scratchBits += 32;
-  if (scratchBits >= 64) {
-    view.setUint64(wordIndex * 8, scratch, Endian.little);
-    wordIndex++;
-    scratchBits -= 64;
-    scratch = v >>> (32 - scratchBits);
-  }
-  v = (value.f063I64 >>> 32) & 0xffffffff;
-  scratch |= v << scratchBits;
-  scratchBits += 32;
-  if (scratchBits >= 64) {
-    view.setUint64(wordIndex * 8, scratch, Endian.little);
-    wordIndex++;
-    scratchBits -= 64;
-    scratch = v >>> (32 - scratchBits);
-  }
   assert(value.f064Uint >= 0);
   assert(value.f064Uint <= 299);
-  v = (value.f064Uint) & 0x1ff;
+  v = (value.f063I64);
+  scratch |= v << scratchBits;
+  scratchBits += 64;
+  if (scratchBits >= 64) {
+    view.setUint64(wordIndex * 8, scratch, Endian.little);
+    wordIndex++;
+    scratchBits -= 64;
+    scratch = v >>> (64 - scratchBits);
+  }
+  v = ((value.f064Uint) & 0x1ff);
   scratch |= v << scratchBits;
   scratchBits += 9;
   if (scratchBits >= 64) {
@@ -1234,7 +915,7 @@ int writeRealPacket(RealPacket value, ByteData view) {
   }
   assert(value.f066Ufixed >= 0);
   assert(value.f066Ufixed <= 32768);
-  v = (value.f066Ufixed) & 0xffff;
+  v = ((value.f066Ufixed) & 0xffff);
   scratch |= v << scratchBits;
   scratchBits += 16;
   if (scratchBits >= 64) {
@@ -1281,25 +962,16 @@ int writeRealPacket(RealPacket value, ByteData view) {
     scratchBits -= 64;
     scratch = v >>> (11 - scratchBits);
   }
-  v = value.f069Bits & 0x7ff;
-  scratch |= v << scratchBits;
-  scratchBits += 11;
-  if (scratchBits >= 64) {
-    view.setUint64(wordIndex * 8, scratch, Endian.little);
-    wordIndex++;
-    scratchBits -= 64;
-    scratch = v >>> (11 - scratchBits);
-  }
   assert(value.f070Uint >= 0);
   assert(value.f070Uint <= 2);
-  v = (value.f070Uint) & 0x3;
+  v = ((value.f069Bits) & 0x7ff) | (((value.f070Uint) & 0x3) << 11);
   scratch |= v << scratchBits;
-  scratchBits += 2;
+  scratchBits += 13;
   if (scratchBits >= 64) {
     view.setUint64(wordIndex * 8, scratch, Endian.little);
     wordIndex++;
     scratchBits -= 64;
-    scratch = v >>> (2 - scratchBits);
+    scratch = v >>> (13 - scratchBits);
   }
   {
     final x = _fround(value.f071Cf32);
@@ -1341,218 +1013,7 @@ int writeRealPacket(RealPacket value, ByteData view) {
   }
   assert(value.f073Int >= -4);
   assert(value.f073Int <= 4);
-  v = (value.f073Int + 4) & 0xf;
-  scratch |= v << scratchBits;
-  scratchBits += 4;
-  if (scratchBits >= 64) {
-    view.setUint64(wordIndex * 8, scratch, Endian.little);
-    wordIndex++;
-    scratchBits -= 64;
-    scratch = v >>> (4 - scratchBits);
-  }
-  v = value.f074Bool ? 1 : 0;
-  scratch |= v << scratchBits;
-  scratchBits += 1;
-  if (scratchBits >= 64) {
-    view.setUint64(wordIndex * 8, scratch, Endian.little);
-    wordIndex++;
-    scratchBits -= 64;
-    scratch = v >>> (1 - scratchBits);
-  }
-  if (value.f074Bool) {
-    v = value.f075U64 & 0xffffffff;
-    scratch |= v << scratchBits;
-    scratchBits += 32;
-    if (scratchBits >= 64) {
-      view.setUint64(wordIndex * 8, scratch, Endian.little);
-      wordIndex++;
-      scratchBits -= 64;
-      scratch = v >>> (32 - scratchBits);
-    }
-    v = (value.f075U64 >>> 32) & 0xffffffff;
-    scratch |= v << scratchBits;
-    scratchBits += 32;
-    if (scratchBits >= 64) {
-      view.setUint64(wordIndex * 8, scratch, Endian.little);
-      wordIndex++;
-      scratchBits -= 64;
-      scratch = v >>> (32 - scratchBits);
-    }
-    assert(value.f076Int >= -26218);
-    assert(value.f076Int <= 26218);
-    v = (value.f076Int + 26218) & 0xffff;
-    scratch |= v << scratchBits;
-    scratchBits += 16;
-    if (scratchBits >= 64) {
-      view.setUint64(wordIndex * 8, scratch, Endian.little);
-      wordIndex++;
-      scratchBits -= 64;
-      scratch = v >>> (16 - scratchBits);
-    }
-    assert(value.f077Int >= -17);
-    assert(value.f077Int <= 17);
-    v = (value.f077Int + 17) & 0x3f;
-    scratch |= v << scratchBits;
-    scratchBits += 6;
-    if (scratchBits >= 64) {
-      view.setUint64(wordIndex * 8, scratch, Endian.little);
-      wordIndex++;
-      scratchBits -= 64;
-      scratch = v >>> (6 - scratchBits);
-    }
-    v = value.f078Bits & 0x1ff;
-    scratch |= v << scratchBits;
-    scratchBits += 9;
-    if (scratchBits >= 64) {
-      view.setUint64(wordIndex * 8, scratch, Endian.little);
-      wordIndex++;
-      scratchBits -= 64;
-      scratch = v >>> (9 - scratchBits);
-    }
-    assert(value.f079Uint >= 0);
-    assert(value.f079Uint <= 17);
-    v = (value.f079Uint) & 0x1f;
-    scratch |= v << scratchBits;
-    scratchBits += 5;
-    if (scratchBits >= 64) {
-      view.setUint64(wordIndex * 8, scratch, Endian.little);
-      wordIndex++;
-      scratchBits -= 64;
-      scratch = v >>> (5 - scratchBits);
-    }
-  }
-  v = value.f080Bool ? 1 : 0;
-  scratch |= v << scratchBits;
-  scratchBits += 1;
-  if (scratchBits >= 64) {
-    view.setUint64(wordIndex * 8, scratch, Endian.little);
-    wordIndex++;
-    scratchBits -= 64;
-    scratch = v >>> (1 - scratchBits);
-  }
-  v = value.f081Bits & 0x1fffffff;
-  scratch |= v << scratchBits;
-  scratchBits += 29;
-  if (scratchBits >= 64) {
-    view.setUint64(wordIndex * 8, scratch, Endian.little);
-    wordIndex++;
-    scratchBits -= 64;
-    scratch = v >>> (29 - scratchBits);
-  }
-  v = value.f082Bits & 0x1ffffff;
-  scratch |= v << scratchBits;
-  scratchBits += 25;
-  if (scratchBits >= 64) {
-    view.setUint64(wordIndex * 8, scratch, Endian.little);
-    wordIndex++;
-    scratchBits -= 64;
-    scratch = v >>> (25 - scratchBits);
-  }
-  assert(value.f083Enum >= 0);
-  assert(value.f083Enum <= 5);
-  v = value.f083Enum & 0x7;
-  scratch |= v << scratchBits;
-  scratchBits += 3;
-  if (scratchBits >= 64) {
-    view.setUint64(wordIndex * 8, scratch, Endian.little);
-    wordIndex++;
-    scratchBits -= 64;
-    scratch = v >>> (3 - scratchBits);
-  }
-  assert(value.f084Ufixed >= 0);
-  assert(value.f084Ufixed <= 128);
-  v = (value.f084Ufixed) & 0xff;
-  scratch |= v << scratchBits;
-  scratchBits += 8;
-  if (scratchBits >= 64) {
-    view.setUint64(wordIndex * 8, scratch, Endian.little);
-    wordIndex++;
-    scratchBits -= 64;
-    scratch = v >>> (8 - scratchBits);
-  }
-  v = value.f085Bits & 0x1fffff;
-  scratch |= v << scratchBits;
-  scratchBits += 21;
-  if (scratchBits >= 64) {
-    view.setUint64(wordIndex * 8, scratch, Endian.little);
-    wordIndex++;
-    scratchBits -= 64;
-    scratch = v >>> (21 - scratchBits);
-  }
-  assert(value.f086Uint >= 0);
-  assert(value.f086Uint <= 399);
-  v = (value.f086Uint) & 0x1ff;
-  scratch |= v << scratchBits;
-  scratchBits += 9;
-  if (scratchBits >= 64) {
-    view.setUint64(wordIndex * 8, scratch, Endian.little);
-    wordIndex++;
-    scratchBits -= 64;
-    scratch = v >>> (9 - scratchBits);
-  }
-  {
-    final b = _float64BitsFromDouble(value.f087F64);
-    v = b & 0xffffffff;
-    scratch |= v << scratchBits;
-    scratchBits += 32;
-    if (scratchBits >= 64) {
-      view.setUint64(wordIndex * 8, scratch, Endian.little);
-      wordIndex++;
-      scratchBits -= 64;
-      scratch = v >>> (32 - scratchBits);
-    }
-    v = (b >>> 32) & 0xffffffff;
-    scratch |= v << scratchBits;
-    scratchBits += 32;
-    if (scratchBits >= 64) {
-      view.setUint64(wordIndex * 8, scratch, Endian.little);
-      wordIndex++;
-      scratchBits -= 64;
-      scratch = v >>> (32 - scratchBits);
-    }
-  }
-  assert(value.f088Int >= -694);
-  assert(value.f088Int <= 694);
-  v = (value.f088Int + 694) & 0x7ff;
-  scratch |= v << scratchBits;
-  scratchBits += 11;
-  if (scratchBits >= 64) {
-    view.setUint64(wordIndex * 8, scratch, Endian.little);
-    wordIndex++;
-    scratchBits -= 64;
-    scratch = v >>> (11 - scratchBits);
-  }
-  v = value.f089Bits & 0xffffffff;
-  scratch |= v << scratchBits;
-  scratchBits += 32;
-  if (scratchBits >= 64) {
-    view.setUint64(wordIndex * 8, scratch, Endian.little);
-    wordIndex++;
-    scratchBits -= 64;
-    scratch = v >>> (32 - scratchBits);
-  }
-  v = (value.f089Bits >>> 32) & 0xffff;
-  scratch |= v << scratchBits;
-  scratchBits += 16;
-  if (scratchBits >= 64) {
-    view.setUint64(wordIndex * 8, scratch, Endian.little);
-    wordIndex++;
-    scratchBits -= 64;
-    scratch = v >>> (16 - scratchBits);
-  }
-  assert(value.f090Uint >= 0);
-  assert(value.f090Uint <= 214);
-  v = (value.f090Uint) & 0xff;
-  scratch |= v << scratchBits;
-  scratchBits += 8;
-  if (scratchBits >= 64) {
-    view.setUint64(wordIndex * 8, scratch, Endian.little);
-    wordIndex++;
-    scratchBits -= 64;
-    scratch = v >>> (8 - scratchBits);
-  }
-  assert(value.f091Flags >>> 5 == 0);
-  v = value.f091Flags & 0x1f;
+  v = ((value.f073Int + 4) & 0xf) | ((value.f074Bool ? 1 : 0) << 4);
   scratch |= v << scratchBits;
   scratchBits += 5;
   if (scratchBits >= 64) {
@@ -1561,70 +1022,127 @@ int writeRealPacket(RealPacket value, ByteData view) {
     scratchBits -= 64;
     scratch = v >>> (5 - scratchBits);
   }
-  v = value.f092Bool ? 1 : 0;
-  scratch |= v << scratchBits;
-  scratchBits += 1;
-  if (scratchBits >= 64) {
-    view.setUint64(wordIndex * 8, scratch, Endian.little);
-    wordIndex++;
-    scratchBits -= 64;
-    scratch = v >>> (1 - scratchBits);
+  if (value.f074Bool) {
+    assert(value.f076Int >= -26218);
+    assert(value.f076Int <= 26218);
+    v = (value.f075U64);
+    scratch |= v << scratchBits;
+    scratchBits += 64;
+    if (scratchBits >= 64) {
+      view.setUint64(wordIndex * 8, scratch, Endian.little);
+      wordIndex++;
+      scratchBits -= 64;
+      scratch = v >>> (64 - scratchBits);
+    }
+    assert(value.f077Int >= -17);
+    assert(value.f077Int <= 17);
+    assert(value.f079Uint >= 0);
+    assert(value.f079Uint <= 17);
+    v =
+        ((value.f076Int + 26218) & 0xffff) |
+        (((value.f077Int + 17) & 0x3f) << 16) |
+        (((value.f078Bits) & 0x1ff) << 22) |
+        (((value.f079Uint) & 0x1f) << 31);
+    scratch |= v << scratchBits;
+    scratchBits += 36;
+    if (scratchBits >= 64) {
+      view.setUint64(wordIndex * 8, scratch, Endian.little);
+      wordIndex++;
+      scratchBits -= 64;
+      scratch = v >>> (36 - scratchBits);
+    }
   }
-  v = value.f093Bits & 0xffffffff;
+  assert(value.f083Enum >= 0);
+  assert(value.f083Enum <= 5);
+  assert(value.f084Ufixed >= 0);
+  assert(value.f084Ufixed <= 128);
+  v =
+      (value.f080Bool ? 1 : 0) |
+      (((value.f081Bits) & 0x1fffffff) << 1) |
+      (((value.f082Bits) & 0x1ffffff) << 30) |
+      (((value.f083Enum) & 0x7) << 55);
   scratch |= v << scratchBits;
-  scratchBits += 32;
+  scratchBits += 58;
   if (scratchBits >= 64) {
     view.setUint64(wordIndex * 8, scratch, Endian.little);
     wordIndex++;
     scratchBits -= 64;
-    scratch = v >>> (32 - scratchBits);
+    scratch = v >>> (58 - scratchBits);
   }
-  v = (value.f093Bits >>> 32) & 0xffffffff;
+  assert(value.f086Uint >= 0);
+  assert(value.f086Uint <= 399);
+  v =
+      ((value.f084Ufixed) & 0xff) |
+      (((value.f085Bits) & 0x1fffff) << 8) |
+      (((value.f086Uint) & 0x1ff) << 29);
   scratch |= v << scratchBits;
-  scratchBits += 32;
+  scratchBits += 38;
   if (scratchBits >= 64) {
     view.setUint64(wordIndex * 8, scratch, Endian.little);
     wordIndex++;
     scratchBits -= 64;
-    scratch = v >>> (32 - scratchBits);
+    scratch = v >>> (38 - scratchBits);
   }
-  v = value.f094Bool ? 1 : 0;
+  assert(value.f088Int >= -694);
+  assert(value.f088Int <= 694);
+  v = _float64BitsFromDouble(value.f087F64);
   scratch |= v << scratchBits;
-  scratchBits += 1;
+  scratchBits += 64;
   if (scratchBits >= 64) {
     view.setUint64(wordIndex * 8, scratch, Endian.little);
     wordIndex++;
     scratchBits -= 64;
-    scratch = v >>> (1 - scratchBits);
+    scratch = v >>> (64 - scratchBits);
+  }
+  assert(value.f090Uint >= 0);
+  assert(value.f090Uint <= 214);
+  v =
+      ((value.f088Int + 694) & 0x7ff) |
+      (((value.f089Bits) & 0xffffffffffff) << 11);
+  scratch |= v << scratchBits;
+  scratchBits += 59;
+  if (scratchBits >= 64) {
+    view.setUint64(wordIndex * 8, scratch, Endian.little);
+    wordIndex++;
+    scratchBits -= 64;
+    scratch = v >>> (59 - scratchBits);
+  }
+  assert(value.f091Flags >>> 5 == 0);
+  v =
+      ((value.f090Uint) & 0xff) |
+      (((value.f091Flags) & 0x1f) << 8) |
+      ((value.f092Bool ? 1 : 0) << 13);
+  scratch |= v << scratchBits;
+  scratchBits += 14;
+  if (scratchBits >= 64) {
+    view.setUint64(wordIndex * 8, scratch, Endian.little);
+    wordIndex++;
+    scratchBits -= 64;
+    scratch = v >>> (14 - scratchBits);
+  }
+  v = (value.f093Bits);
+  scratch |= v << scratchBits;
+  scratchBits += 64;
+  if (scratchBits >= 64) {
+    view.setUint64(wordIndex * 8, scratch, Endian.little);
+    wordIndex++;
+    scratchBits -= 64;
+    scratch = v >>> (64 - scratchBits);
   }
   assert(value.f095Fixed >= -103350272);
   assert(value.f095Fixed <= 103350272);
-  v = (value.f095Fixed + 103350272) & 0xfffffff;
+  v =
+      (value.f094Bool ? 1 : 0) |
+      (((value.f095Fixed + 103350272) & 0xfffffff) << 1) |
+      (((value.f096Bits) & 0x3ffff) << 29) |
+      (((value.f097Bits) & 0xfff) << 47);
   scratch |= v << scratchBits;
-  scratchBits += 28;
+  scratchBits += 59;
   if (scratchBits >= 64) {
     view.setUint64(wordIndex * 8, scratch, Endian.little);
     wordIndex++;
     scratchBits -= 64;
-    scratch = v >>> (28 - scratchBits);
-  }
-  v = value.f096Bits & 0x3ffff;
-  scratch |= v << scratchBits;
-  scratchBits += 18;
-  if (scratchBits >= 64) {
-    view.setUint64(wordIndex * 8, scratch, Endian.little);
-    wordIndex++;
-    scratchBits -= 64;
-    scratch = v >>> (18 - scratchBits);
-  }
-  v = value.f097Bits & 0xfff;
-  scratch |= v << scratchBits;
-  scratchBits += 12;
-  if (scratchBits >= 64) {
-    view.setUint64(wordIndex * 8, scratch, Endian.little);
-    wordIndex++;
-    scratchBits -= 64;
-    scratch = v >>> (12 - scratchBits);
+    scratch = v >>> (59 - scratchBits);
   }
   if (scratchBits != 0) {
     view.setUint64(wordIndex * 8, scratch, Endian.little);
