@@ -1172,20 +1172,27 @@ func (g *fgen) emitReadWide(bits int64, ind string) {
 		g.pf("%sbg = SC.getBigUint64(0, true);\n", ind)
 	case bits <= 96:
 		g.readR(32, ind)
-		g.pf("%sbg = BigInt(v);\n", ind)
+		g.pf("%sSC.setUint32(0, v, true);\n", ind)
 		g.readR(32, ind)
-		g.pf("%sbg |= BigInt(v) << 32n;\n", ind)
+		g.pf("%sSC.setUint32(4, v, true);\n", ind)
+		g.pf("%sbg = SC.getBigUint64(0, true);\n", ind)
 		g.readR(bits-64, ind)
 		g.pf("%sbg |= BigInt(v) << 64n;\n", ind)
 	default:
+		// two scratch-assembled 64-bit halves, one shift-or — each BigInt
+		// step here allocates, so the assembly uses two, not seven (the
+		// write-side scratch discipline's read twin; 3.2x on the 128-bit
+		// assembly, node 26, M2)
 		g.readR(32, ind)
-		g.pf("%sbg = BigInt(v);\n", ind)
+		g.pf("%sSC.setUint32(0, v, true);\n", ind)
 		g.readR(32, ind)
-		g.pf("%sbg |= BigInt(v) << 32n;\n", ind)
+		g.pf("%sSC.setUint32(4, v, true);\n", ind)
+		g.pf("%sbg = SC.getBigUint64(0, true);\n", ind)
 		g.readR(32, ind)
-		g.pf("%sbg |= BigInt(v) << 64n;\n", ind)
+		g.pf("%sSC.setUint32(0, v, true);\n", ind)
 		g.readR(bits-96, ind)
-		g.pf("%sbg |= BigInt(v) << 96n;\n", ind)
+		g.pf("%sSC.setUint32(4, v, true);\n", ind)
+		g.pf("%sbg |= SC.getBigUint64(0, true) << 64n;\n", ind)
 	}
 }
 

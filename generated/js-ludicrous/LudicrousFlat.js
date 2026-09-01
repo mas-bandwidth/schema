@@ -906,7 +906,7 @@ export function ReadWideProbeFlat(value, view, numBits) {
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
   br += 32;
   v = out >>> 0;
-  bg = BigInt(v);
+  SC.setUint32(0, v, true);
   bi = br >>> 3;
   wlo = view.getUint32(bi, true);
   whi = view.getUint32(bi + 4, true);
@@ -914,7 +914,8 @@ export function ReadWideProbeFlat(value, view, numBits) {
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
   br += 32;
   v = out >>> 0;
-  bg |= BigInt(v) << 32n;
+  SC.setUint32(4, v, true);
+  bg = SC.getBigUint64(0, true);
   bi = br >>> 3;
   wlo = view.getUint32(bi, true);
   whi = view.getUint32(bi + 4, true);
@@ -922,7 +923,7 @@ export function ReadWideProbeFlat(value, view, numBits) {
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
   br += 32;
   v = out >>> 0;
-  bg |= BigInt(v) << 64n;
+  SC.setUint32(0, v, true);
   bi = br >>> 3;
   wlo = view.getUint32(bi, true);
   whi = view.getUint32(bi + 4, true);
@@ -930,7 +931,8 @@ export function ReadWideProbeFlat(value, view, numBits) {
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
   br += 32;
   v = out >>> 0;
-  bg |= BigInt(v) << 96n;
+  SC.setUint32(4, v, true);
+  bg |= SC.getBigUint64(0, true) << 64n;
   value.EntityId = bg;
   bi = br >>> 3;
   wlo = view.getUint32(bi, true);
@@ -960,7 +962,7 @@ export function ReadWideProbeFlat(value, view, numBits) {
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
   br += 32;
   v = out >>> 0;
-  bg = BigInt(v);
+  SC.setUint32(0, v, true);
   bi = br >>> 3;
   wlo = view.getUint32(bi, true);
   whi = view.getUint32(bi + 4, true);
@@ -968,7 +970,8 @@ export function ReadWideProbeFlat(value, view, numBits) {
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
   br += 32;
   v = out >>> 0;
-  bg |= BigInt(v) << 32n;
+  SC.setUint32(4, v, true);
+  bg = SC.getBigUint64(0, true);
   bi = br >>> 3;
   wlo = view.getUint32(bi, true);
   whi = view.getUint32(bi + 4, true);
@@ -976,7 +979,7 @@ export function ReadWideProbeFlat(value, view, numBits) {
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
   br += 32;
   v = out >>> 0;
-  bg |= BigInt(v) << 64n;
+  SC.setUint32(0, v, true);
   bi = br >>> 3;
   wlo = view.getUint32(bi, true);
   whi = view.getUint32(bi + 4, true);
@@ -984,7 +987,8 @@ export function ReadWideProbeFlat(value, view, numBits) {
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
   br += 6;
   v = (out & 0x3f) >>> 0;
-  bg |= BigInt(v) << 96n;
+  SC.setUint32(4, v, true);
+  bg |= SC.getBigUint64(0, true) << 64n;
   if (bg > 2535301200456458802993406410752n) { // a smuggled offset is refused
     return false;
   }
@@ -1008,7 +1012,7 @@ export function ReadWideProbeFlat(value, view, numBits) {
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
   br += 32;
   v = out >>> 0;
-  bg = BigInt(v);
+  SC.setUint32(0, v, true);
   bi = br >>> 3;
   wlo = view.getUint32(bi, true);
   whi = view.getUint32(bi + 4, true);
@@ -1016,7 +1020,8 @@ export function ReadWideProbeFlat(value, view, numBits) {
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
   br += 32;
   v = out >>> 0;
-  bg |= BigInt(v) << 32n;
+  SC.setUint32(4, v, true);
+  bg = SC.getBigUint64(0, true);
   bi = br >>> 3;
   wlo = view.getUint32(bi, true);
   whi = view.getUint32(bi + 4, true);
@@ -1024,7 +1029,7 @@ export function ReadWideProbeFlat(value, view, numBits) {
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
   br += 32;
   v = out >>> 0;
-  bg |= BigInt(v) << 64n;
+  SC.setUint32(0, v, true);
   bi = br >>> 3;
   wlo = view.getUint32(bi, true);
   whi = view.getUint32(bi + 4, true);
@@ -1032,7 +1037,8 @@ export function ReadWideProbeFlat(value, view, numBits) {
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
   br += 32;
   v = out >>> 0;
-  bg |= BigInt(v) << 96n;
+  SC.setUint32(4, v, true);
+  bg |= SC.getBigUint64(0, true) << 64n;
   value.Seed = bg;
   return true;
 }
@@ -1811,7 +1817,7 @@ export function ReadLudicrousStateFlat(value, view, numBits) {
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
   br += 32;
   v = out >>> 0;
-  bg = BigInt(v);
+  SC.setUint32(0, v, true);
   bi = br >>> 3;
   wlo = view.getUint32(bi, true);
   whi = view.getUint32(bi + 4, true);
@@ -1819,7 +1825,8 @@ export function ReadLudicrousStateFlat(value, view, numBits) {
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
   br += 32;
   v = out >>> 0;
-  bg |= BigInt(v) << 32n;
+  SC.setUint32(4, v, true);
+  bg = SC.getBigUint64(0, true);
   bi = br >>> 3;
   wlo = view.getUint32(bi, true);
   whi = view.getUint32(bi + 4, true);
@@ -1827,7 +1834,7 @@ export function ReadLudicrousStateFlat(value, view, numBits) {
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
   br += 32;
   v = out >>> 0;
-  bg |= BigInt(v) << 64n;
+  SC.setUint32(0, v, true);
   bi = br >>> 3;
   wlo = view.getUint32(bi, true);
   whi = view.getUint32(bi + 4, true);
@@ -1835,7 +1842,8 @@ export function ReadLudicrousStateFlat(value, view, numBits) {
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
   br += 32;
   v = out >>> 0;
-  bg |= BigInt(v) << 96n;
+  SC.setUint32(4, v, true);
+  bg |= SC.getBigUint64(0, true) << 64n;
   value.Wide.EntityId = bg;
   bi = br >>> 3;
   wlo = view.getUint32(bi, true);
@@ -1865,7 +1873,7 @@ export function ReadLudicrousStateFlat(value, view, numBits) {
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
   br += 32;
   v = out >>> 0;
-  bg = BigInt(v);
+  SC.setUint32(0, v, true);
   bi = br >>> 3;
   wlo = view.getUint32(bi, true);
   whi = view.getUint32(bi + 4, true);
@@ -1873,7 +1881,8 @@ export function ReadLudicrousStateFlat(value, view, numBits) {
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
   br += 32;
   v = out >>> 0;
-  bg |= BigInt(v) << 32n;
+  SC.setUint32(4, v, true);
+  bg = SC.getBigUint64(0, true);
   bi = br >>> 3;
   wlo = view.getUint32(bi, true);
   whi = view.getUint32(bi + 4, true);
@@ -1881,7 +1890,7 @@ export function ReadLudicrousStateFlat(value, view, numBits) {
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
   br += 32;
   v = out >>> 0;
-  bg |= BigInt(v) << 64n;
+  SC.setUint32(0, v, true);
   bi = br >>> 3;
   wlo = view.getUint32(bi, true);
   whi = view.getUint32(bi + 4, true);
@@ -1889,7 +1898,8 @@ export function ReadLudicrousStateFlat(value, view, numBits) {
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
   br += 6;
   v = (out & 0x3f) >>> 0;
-  bg |= BigInt(v) << 96n;
+  SC.setUint32(4, v, true);
+  bg |= SC.getBigUint64(0, true) << 64n;
   if (bg > 2535301200456458802993406410752n) { // a smuggled offset is refused
     return false;
   }
@@ -1913,7 +1923,7 @@ export function ReadLudicrousStateFlat(value, view, numBits) {
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
   br += 32;
   v = out >>> 0;
-  bg = BigInt(v);
+  SC.setUint32(0, v, true);
   bi = br >>> 3;
   wlo = view.getUint32(bi, true);
   whi = view.getUint32(bi + 4, true);
@@ -1921,7 +1931,8 @@ export function ReadLudicrousStateFlat(value, view, numBits) {
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
   br += 32;
   v = out >>> 0;
-  bg |= BigInt(v) << 32n;
+  SC.setUint32(4, v, true);
+  bg = SC.getBigUint64(0, true);
   bi = br >>> 3;
   wlo = view.getUint32(bi, true);
   whi = view.getUint32(bi + 4, true);
@@ -1929,7 +1940,7 @@ export function ReadLudicrousStateFlat(value, view, numBits) {
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
   br += 32;
   v = out >>> 0;
-  bg |= BigInt(v) << 64n;
+  SC.setUint32(0, v, true);
   bi = br >>> 3;
   wlo = view.getUint32(bi, true);
   whi = view.getUint32(bi + 4, true);
@@ -1937,7 +1948,8 @@ export function ReadLudicrousStateFlat(value, view, numBits) {
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
   br += 32;
   v = out >>> 0;
-  bg |= BigInt(v) << 96n;
+  SC.setUint32(4, v, true);
+  bg |= SC.getBigUint64(0, true) << 64n;
   value.Wide.Seed = bg;
   if (br + 3 > numBits) {
     return false;
@@ -1964,7 +1976,7 @@ export function ReadLudicrousStateFlat(value, view, numBits) {
     out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
     br += 32;
     v = out >>> 0;
-    bg = BigInt(v);
+    SC.setUint32(0, v, true);
     bi = br >>> 3;
     wlo = view.getUint32(bi, true);
     whi = view.getUint32(bi + 4, true);
@@ -1972,7 +1984,8 @@ export function ReadLudicrousStateFlat(value, view, numBits) {
     out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
     br += 32;
     v = out >>> 0;
-    bg |= BigInt(v) << 32n;
+    SC.setUint32(4, v, true);
+    bg = SC.getBigUint64(0, true);
     bi = br >>> 3;
     wlo = view.getUint32(bi, true);
     whi = view.getUint32(bi + 4, true);
@@ -1980,7 +1993,7 @@ export function ReadLudicrousStateFlat(value, view, numBits) {
     out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
     br += 32;
     v = out >>> 0;
-    bg |= BigInt(v) << 64n;
+    SC.setUint32(0, v, true);
     bi = br >>> 3;
     wlo = view.getUint32(bi, true);
     whi = view.getUint32(bi + 4, true);
@@ -1988,7 +2001,8 @@ export function ReadLudicrousStateFlat(value, view, numBits) {
     out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
     br += 32;
     v = out >>> 0;
-    bg |= BigInt(v) << 96n;
+    SC.setUint32(4, v, true);
+    bg |= SC.getBigUint64(0, true) << 64n;
     value.Keys[i0] = bg;
   }
   if (br + 1 > numBits) {
@@ -2013,7 +2027,7 @@ export function ReadLudicrousStateFlat(value, view, numBits) {
     out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
     br += 32;
     v = out >>> 0;
-    bg = BigInt(v);
+    SC.setUint32(0, v, true);
     bi = br >>> 3;
     wlo = view.getUint32(bi, true);
     whi = view.getUint32(bi + 4, true);
@@ -2021,7 +2035,8 @@ export function ReadLudicrousStateFlat(value, view, numBits) {
     out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
     br += 32;
     v = out >>> 0;
-    bg |= BigInt(v) << 32n;
+    SC.setUint32(4, v, true);
+    bg = SC.getBigUint64(0, true);
     bi = br >>> 3;
     wlo = view.getUint32(bi, true);
     whi = view.getUint32(bi + 4, true);
@@ -2029,7 +2044,7 @@ export function ReadLudicrousStateFlat(value, view, numBits) {
     out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
     br += 32;
     v = out >>> 0;
-    bg |= BigInt(v) << 64n;
+    SC.setUint32(0, v, true);
     bi = br >>> 3;
     wlo = view.getUint32(bi, true);
     whi = view.getUint32(bi + 4, true);
@@ -2037,7 +2052,8 @@ export function ReadLudicrousStateFlat(value, view, numBits) {
     out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
     br += 32;
     v = out >>> 0;
-    bg |= BigInt(v) << 96n;
+    SC.setUint32(4, v, true);
+    bg |= SC.getBigUint64(0, true) << 64n;
     value.TargetId = bg;
   } else {
     value.TargetId = 0n;
