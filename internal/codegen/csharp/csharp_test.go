@@ -92,10 +92,7 @@ func TestFlatFallbackReEmitsItemsNotPieces(t *testing.T) {
 	const innerBits = 64
 	prefix := flatMaxRunBits - innerBits + 20 // a split would land inside Inner
 	for w := prefix; w > 0; {
-		n := w
-		if n > 64 {
-			n = 64
-		}
+		n := min(w, 64)
 		fmt.Fprintf(&src, "    pad%d bits(%d)\n", w, n)
 		w -= n
 	}
