@@ -205,38 +205,37 @@ export function ReadFixedProbeFlat(value, view, numBits) {
   whi = view.getUint32(bi + 4, true);
   s2 = br & 7;
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  br += 25;
   v = (out & 0x1ffffff) >>> 0;
   if (v > 23592960) { // a smuggled raw offset is refused
     return false;
   }
   value.Angle = -11796480 + v;
+  br += 25;
   bi = br >>> 3;
   wlo = view.getUint32(bi, true);
   whi = view.getUint32(bi + 4, true);
   s2 = br & 7;
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  br += 32;
   v = out >>> 0;
   bg = BigInt(v);
   if (bg > 3932160000n) { // a smuggled raw offset is refused
     return false;
   }
   value.Position = -1966080000n + bg;
+  br += 32;
   bi = br >>> 3;
   wlo = view.getUint32(bi, true);
   whi = view.getUint32(bi + 4, true);
   s2 = br & 7;
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  br += 32;
   v = out >>> 0;
   SC.setUint32(0, v, true);
+  br += 32;
   bi = br >>> 3;
   wlo = view.getUint32(bi, true);
   whi = view.getUint32(bi + 4, true);
   s2 = br & 7;
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  br += 5;
   v = (out & 0x1f) >>> 0;
   SC.setUint32(4, v, true);
   bg = SC.getBigUint64(0, true);
@@ -244,29 +243,24 @@ export function ReadFixedProbeFlat(value, view, numBits) {
     return false;
   }
   value.Reach = -65536000000n + bg;
-  bi = br >>> 3;
-  wlo = view.getUint32(bi, true);
-  whi = view.getUint32(bi + 4, true);
-  s2 = br & 7;
-  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  br += 20;
-  v = (out & 0xfffff) >>> 0;
+  v = (out >>> 5) & 0xfffff;
   if (v > 1000000) { // a smuggled raw offset is refused
     return false;
   }
   value.Ticks = v;
+  br += 25;
   for (let i0 = 0; i0 < 2; i0++) {
     bi = br >>> 3;
     wlo = view.getUint32(bi, true);
     whi = view.getUint32(bi + 4, true);
     s2 = br & 7;
     out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-    br += 21;
     v = (out & 0x1fffff) >>> 0;
     if (v > 1048576) { // a smuggled raw offset is refused
       return false;
     }
     value.Samples[i0] = -524288 + v;
+    br += 21;
   }
   return true;
 }
@@ -479,26 +473,25 @@ export function ReadUnsignedProbeFlat(value, view, numBits) {
   whi = view.getUint32(bi + 4, true);
   s2 = br & 7;
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  br += 25;
   v = (out & 0x1ffffff) >>> 0;
   if (v > 23592960) { // a smuggled raw offset is refused
     return false;
   }
   value.Angle = v;
+  br += 25;
   bi = br >>> 3;
   wlo = view.getUint32(bi, true);
   whi = view.getUint32(bi + 4, true);
   s2 = br & 7;
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  br += 32;
   v = out >>> 0;
   SC.setUint32(0, v, true);
+  br += 32;
   bi = br >>> 3;
   wlo = view.getUint32(bi, true);
   whi = view.getUint32(bi + 4, true);
   s2 = br & 7;
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  br += 32;
   v = out >>> 0;
   SC.setUint32(4, v, true);
   bg = SC.getBigUint64(0, true);
@@ -506,20 +499,20 @@ export function ReadUnsignedProbeFlat(value, view, numBits) {
     return false;
   }
   value.Span = bg;
+  br += 32;
   bi = br >>> 3;
   wlo = view.getUint32(bi, true);
   whi = view.getUint32(bi + 4, true);
   s2 = br & 7;
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  br += 32;
   v = out >>> 0;
   SC.setUint32(0, v, true);
+  br += 32;
   bi = br >>> 3;
   wlo = view.getUint32(bi, true);
   whi = view.getUint32(bi + 4, true);
   s2 = br & 7;
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  br += 5;
   v = (out & 0x1f) >>> 0;
   SC.setUint32(4, v, true);
   bg = SC.getBigUint64(0, true);
@@ -527,29 +520,24 @@ export function ReadUnsignedProbeFlat(value, view, numBits) {
     return false;
   }
   value.Reach = bg;
-  bi = br >>> 3;
-  wlo = view.getUint32(bi, true);
-  whi = view.getUint32(bi + 4, true);
-  s2 = br & 7;
-  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  br += 20;
-  v = (out & 0xfffff) >>> 0;
+  v = (out >>> 5) & 0xfffff;
   if (v > 1000000) { // a smuggled raw offset is refused
     return false;
   }
   value.Ticks = v;
+  br += 25;
   for (let i0 = 0; i0 < 2; i0++) {
     bi = br >>> 3;
     wlo = view.getUint32(bi, true);
     whi = view.getUint32(bi + 4, true);
     s2 = br & 7;
     out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-    br += 21;
     v = (out & 0x1fffff) >>> 0;
     if (v > 1048576) { // a smuggled raw offset is refused
       return false;
     }
     value.Samples[i0] = v;
+    br += 21;
   }
   value.Locked = 196608;
   bi = br >>> 3;
@@ -557,7 +545,6 @@ export function ReadUnsignedProbeFlat(value, view, numBits) {
   whi = view.getUint32(bi + 4, true);
   s2 = br & 7;
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  br += 8;
   v = (out & 0xff) >>> 0;
   value.Tail = v;
   return true;
@@ -893,7 +880,7 @@ export const WriteWideProbeFlat = PRODUCTION ? writeWideProbeFlatProduction : wr
 // ReadWideProbeFlat(value, view, numBits) -> bool. The buffer behind view must
 // extend FLAT_READ_SLACK bytes past the payload.
 export function ReadWideProbeFlat(value, view, numBits) {
-  let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0;
+  let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0, nw = 0, nl = 0;
   let bg = 0n;
   let br = 0;
   if (br + 403 > numBits) {
@@ -904,50 +891,49 @@ export function ReadWideProbeFlat(value, view, numBits) {
   whi = view.getUint32(bi + 4, true);
   s2 = br & 7;
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  br += 32;
   v = out >>> 0;
   SC.setUint32(0, v, true);
+  br += 32;
   bi = br >>> 3;
   wlo = view.getUint32(bi, true);
   whi = view.getUint32(bi + 4, true);
   s2 = br & 7;
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  br += 32;
   v = out >>> 0;
   SC.setUint32(4, v, true);
   bg = SC.getBigUint64(0, true);
+  br += 32;
   bi = br >>> 3;
   wlo = view.getUint32(bi, true);
   whi = view.getUint32(bi + 4, true);
   s2 = br & 7;
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  br += 32;
   v = out >>> 0;
   SC.setUint32(0, v, true);
+  br += 32;
   bi = br >>> 3;
   wlo = view.getUint32(bi, true);
   whi = view.getUint32(bi + 4, true);
   s2 = br & 7;
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  br += 32;
   v = out >>> 0;
   SC.setUint32(4, v, true);
   bg |= SC.getBigUint64(0, true) << 64n;
   value.EntityId = bg;
+  br += 32;
   bi = br >>> 3;
   wlo = view.getUint32(bi, true);
   whi = view.getUint32(bi + 4, true);
   s2 = br & 7;
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  br += 32;
   v = out >>> 0;
   SC.setUint32(0, v, true);
+  br += 32;
   bi = br >>> 3;
   wlo = view.getUint32(bi, true);
   whi = view.getUint32(bi + 4, true);
   s2 = br & 7;
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  br += 2;
   v = (out & 0x3) >>> 0;
   SC.setUint32(4, v, true);
   bg = SC.getBigUint64(0, true);
@@ -955,87 +941,84 @@ export function ReadWideProbeFlat(value, view, numBits) {
     return false;
   }
   value.Energy = -5000000000n + bg;
+  br += 2;
   bi = br >>> 3;
   wlo = view.getUint32(bi, true);
   whi = view.getUint32(bi + 4, true);
   s2 = br & 7;
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  br += 32;
   v = out >>> 0;
   SC.setUint32(0, v, true);
+  br += 32;
   bi = br >>> 3;
   wlo = view.getUint32(bi, true);
   whi = view.getUint32(bi + 4, true);
   s2 = br & 7;
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  br += 32;
   v = out >>> 0;
   SC.setUint32(4, v, true);
   bg = SC.getBigUint64(0, true);
-  bi = br >>> 3;
-  wlo = view.getUint32(bi, true);
-  whi = view.getUint32(bi + 4, true);
-  s2 = br & 7;
-  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
   br += 32;
-  v = out >>> 0;
-  SC.setUint32(0, v, true);
   bi = br >>> 3;
   wlo = view.getUint32(bi, true);
   whi = view.getUint32(bi + 4, true);
   s2 = br & 7;
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  br += 6;
+  v = out >>> 0;
+  nw = v;
+  br += 32;
+  bi = br >>> 3;
+  wlo = view.getUint32(bi, true);
+  whi = view.getUint32(bi + 4, true);
+  s2 = br & 7;
+  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
   v = (out & 0x3f) >>> 0;
-  SC.setUint32(4, v, true);
-  bg |= SC.getBigUint64(0, true) << 64n;
-  if (bg > 2535301200456458802993406410752n) { // a smuggled offset is refused
+  nw = v * 4294967296 + nw;
+  if (nw > 137438953472 || (nw === 137438953472 && bg > 0n)) { // a smuggled offset is refused
     return false;
   }
-  value.Flux = -1267650600228229401496703205376n + bg;
-  bi = br >>> 3;
-  wlo = view.getUint32(bi, true);
-  whi = view.getUint32(bi + 4, true);
-  s2 = br & 7;
-  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  br += 11;
-  v = (out & 0x7ff) >>> 0;
+  nw += -68719476736;
+  nl = nw >>> 0;
+  SC.setUint32(0, nl, true);
+  SC.setInt32(4, (nw - nl) / 4294967296, true);
+  value.Flux = (SC.getBigInt64(0, true) << 64n) + bg;
+  v = (out >>> 6) & 0x7ff;
   bg = BigInt(v);
   if (bg > 2000n) { // a smuggled offset is refused
     return false;
   }
   value.Bias = -1000n + bg;
+  br += 17;
   bi = br >>> 3;
   wlo = view.getUint32(bi, true);
   whi = view.getUint32(bi + 4, true);
   s2 = br & 7;
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  br += 32;
   v = out >>> 0;
   SC.setUint32(0, v, true);
+  br += 32;
   bi = br >>> 3;
   wlo = view.getUint32(bi, true);
   whi = view.getUint32(bi + 4, true);
   s2 = br & 7;
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  br += 32;
   v = out >>> 0;
   SC.setUint32(4, v, true);
   bg = SC.getBigUint64(0, true);
+  br += 32;
   bi = br >>> 3;
   wlo = view.getUint32(bi, true);
   whi = view.getUint32(bi + 4, true);
   s2 = br & 7;
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  br += 32;
   v = out >>> 0;
   SC.setUint32(0, v, true);
+  br += 32;
   bi = br >>> 3;
   wlo = view.getUint32(bi, true);
   whi = view.getUint32(bi + 4, true);
   s2 = br & 7;
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  br += 32;
   v = out >>> 0;
   SC.setUint32(4, v, true);
   bg |= SC.getBigUint64(0, true) << 64n;
@@ -1710,7 +1693,7 @@ export const WriteLudicrousStateFlat = PRODUCTION ? writeLudicrousStateFlatProdu
 // ReadLudicrousStateFlat(value, view, numBits) -> bool. The buffer behind view must
 // extend FLAT_READ_SLACK bytes past the payload.
 export function ReadLudicrousStateFlat(value, view, numBits) {
-  let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0;
+  let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0, nw = 0, nl = 0;
   let bg = 0n;
   let br = 0;
   if (br + 561 > numBits) {
@@ -1721,46 +1704,39 @@ export function ReadLudicrousStateFlat(value, view, numBits) {
   whi = view.getUint32(bi + 4, true);
   s2 = br & 7;
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  br += 2;
   v = (out & 0x3) >>> 0;
   value.Mode = v;
-  bi = br >>> 3;
-  wlo = view.getUint32(bi, true);
-  whi = view.getUint32(bi + 4, true);
-  s2 = br & 7;
-  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  br += 25;
-  v = (out & 0x1ffffff) >>> 0;
+  v = (out >>> 2) & 0x1ffffff;
   if (v > 23592960) { // a smuggled raw offset is refused
     return false;
   }
   value.Probe.Angle = -11796480 + v;
+  br += 27;
   bi = br >>> 3;
   wlo = view.getUint32(bi, true);
   whi = view.getUint32(bi + 4, true);
   s2 = br & 7;
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  br += 32;
   v = out >>> 0;
   bg = BigInt(v);
   if (bg > 3932160000n) { // a smuggled raw offset is refused
     return false;
   }
   value.Probe.Position = -1966080000n + bg;
+  br += 32;
   bi = br >>> 3;
   wlo = view.getUint32(bi, true);
   whi = view.getUint32(bi + 4, true);
   s2 = br & 7;
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  br += 32;
   v = out >>> 0;
   SC.setUint32(0, v, true);
+  br += 32;
   bi = br >>> 3;
   wlo = view.getUint32(bi, true);
   whi = view.getUint32(bi + 4, true);
   s2 = br & 7;
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  br += 5;
   v = (out & 0x1f) >>> 0;
   SC.setUint32(4, v, true);
   bg = SC.getBigUint64(0, true);
@@ -1768,79 +1744,73 @@ export function ReadLudicrousStateFlat(value, view, numBits) {
     return false;
   }
   value.Probe.Reach = -65536000000n + bg;
-  bi = br >>> 3;
-  wlo = view.getUint32(bi, true);
-  whi = view.getUint32(bi + 4, true);
-  s2 = br & 7;
-  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  br += 20;
-  v = (out & 0xfffff) >>> 0;
+  v = (out >>> 5) & 0xfffff;
   if (v > 1000000) { // a smuggled raw offset is refused
     return false;
   }
   value.Probe.Ticks = v;
+  br += 25;
   for (let i0 = 0; i0 < 2; i0++) {
     bi = br >>> 3;
     wlo = view.getUint32(bi, true);
     whi = view.getUint32(bi + 4, true);
     s2 = br & 7;
     out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-    br += 21;
     v = (out & 0x1fffff) >>> 0;
     if (v > 1048576) { // a smuggled raw offset is refused
       return false;
     }
     value.Probe.Samples[i0] = -524288 + v;
+    br += 21;
   }
   bi = br >>> 3;
   wlo = view.getUint32(bi, true);
   whi = view.getUint32(bi + 4, true);
   s2 = br & 7;
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  br += 32;
   v = out >>> 0;
   SC.setUint32(0, v, true);
+  br += 32;
   bi = br >>> 3;
   wlo = view.getUint32(bi, true);
   whi = view.getUint32(bi + 4, true);
   s2 = br & 7;
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  br += 32;
   v = out >>> 0;
   SC.setUint32(4, v, true);
   bg = SC.getBigUint64(0, true);
+  br += 32;
   bi = br >>> 3;
   wlo = view.getUint32(bi, true);
   whi = view.getUint32(bi + 4, true);
   s2 = br & 7;
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  br += 32;
   v = out >>> 0;
   SC.setUint32(0, v, true);
+  br += 32;
   bi = br >>> 3;
   wlo = view.getUint32(bi, true);
   whi = view.getUint32(bi + 4, true);
   s2 = br & 7;
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  br += 32;
   v = out >>> 0;
   SC.setUint32(4, v, true);
   bg |= SC.getBigUint64(0, true) << 64n;
   value.Wide.EntityId = bg;
+  br += 32;
   bi = br >>> 3;
   wlo = view.getUint32(bi, true);
   whi = view.getUint32(bi + 4, true);
   s2 = br & 7;
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  br += 32;
   v = out >>> 0;
   SC.setUint32(0, v, true);
+  br += 32;
   bi = br >>> 3;
   wlo = view.getUint32(bi, true);
   whi = view.getUint32(bi + 4, true);
   s2 = br & 7;
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  br += 2;
   v = (out & 0x3) >>> 0;
   SC.setUint32(4, v, true);
   bg = SC.getBigUint64(0, true);
@@ -1848,91 +1818,89 @@ export function ReadLudicrousStateFlat(value, view, numBits) {
     return false;
   }
   value.Wide.Energy = -5000000000n + bg;
+  br += 2;
   bi = br >>> 3;
   wlo = view.getUint32(bi, true);
   whi = view.getUint32(bi + 4, true);
   s2 = br & 7;
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  br += 32;
   v = out >>> 0;
   SC.setUint32(0, v, true);
+  br += 32;
   bi = br >>> 3;
   wlo = view.getUint32(bi, true);
   whi = view.getUint32(bi + 4, true);
   s2 = br & 7;
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  br += 32;
   v = out >>> 0;
   SC.setUint32(4, v, true);
   bg = SC.getBigUint64(0, true);
-  bi = br >>> 3;
-  wlo = view.getUint32(bi, true);
-  whi = view.getUint32(bi + 4, true);
-  s2 = br & 7;
-  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
   br += 32;
-  v = out >>> 0;
-  SC.setUint32(0, v, true);
   bi = br >>> 3;
   wlo = view.getUint32(bi, true);
   whi = view.getUint32(bi + 4, true);
   s2 = br & 7;
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  br += 6;
+  v = out >>> 0;
+  nw = v;
+  br += 32;
+  bi = br >>> 3;
+  wlo = view.getUint32(bi, true);
+  whi = view.getUint32(bi + 4, true);
+  s2 = br & 7;
+  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
   v = (out & 0x3f) >>> 0;
-  SC.setUint32(4, v, true);
-  bg |= SC.getBigUint64(0, true) << 64n;
-  if (bg > 2535301200456458802993406410752n) { // a smuggled offset is refused
+  nw = v * 4294967296 + nw;
+  if (nw > 137438953472 || (nw === 137438953472 && bg > 0n)) { // a smuggled offset is refused
     return false;
   }
-  value.Wide.Flux = -1267650600228229401496703205376n + bg;
-  bi = br >>> 3;
-  wlo = view.getUint32(bi, true);
-  whi = view.getUint32(bi + 4, true);
-  s2 = br & 7;
-  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  br += 11;
-  v = (out & 0x7ff) >>> 0;
+  nw += -68719476736;
+  nl = nw >>> 0;
+  SC.setUint32(0, nl, true);
+  SC.setInt32(4, (nw - nl) / 4294967296, true);
+  value.Wide.Flux = (SC.getBigInt64(0, true) << 64n) + bg;
+  v = (out >>> 6) & 0x7ff;
   bg = BigInt(v);
   if (bg > 2000n) { // a smuggled offset is refused
     return false;
   }
   value.Wide.Bias = -1000n + bg;
+  br += 17;
   bi = br >>> 3;
   wlo = view.getUint32(bi, true);
   whi = view.getUint32(bi + 4, true);
   s2 = br & 7;
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  br += 32;
   v = out >>> 0;
   SC.setUint32(0, v, true);
+  br += 32;
   bi = br >>> 3;
   wlo = view.getUint32(bi, true);
   whi = view.getUint32(bi + 4, true);
   s2 = br & 7;
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  br += 32;
   v = out >>> 0;
   SC.setUint32(4, v, true);
   bg = SC.getBigUint64(0, true);
+  br += 32;
   bi = br >>> 3;
   wlo = view.getUint32(bi, true);
   whi = view.getUint32(bi + 4, true);
   s2 = br & 7;
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  br += 32;
   v = out >>> 0;
   SC.setUint32(0, v, true);
+  br += 32;
   bi = br >>> 3;
   wlo = view.getUint32(bi, true);
   whi = view.getUint32(bi + 4, true);
   s2 = br & 7;
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  br += 32;
   v = out >>> 0;
   SC.setUint32(4, v, true);
   bg |= SC.getBigUint64(0, true) << 64n;
   value.Wide.Seed = bg;
+  br += 32;
   if (br + 3 > numBits) {
     return false;
   }
@@ -1941,12 +1909,12 @@ export function ReadLudicrousStateFlat(value, view, numBits) {
   whi = view.getUint32(bi + 4, true);
   s2 = br & 7;
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  br += 3;
   v = (out & 0x7) >>> 0;
   if (v > 4) { // the count guards the loop — reject, never clamp
     return false;
   }
   value.KeysCount = v;
+  br += 3;
   if (br + value.KeysCount * 128 > numBits) {
     return false;
   }
@@ -1956,36 +1924,36 @@ export function ReadLudicrousStateFlat(value, view, numBits) {
     whi = view.getUint32(bi + 4, true);
     s2 = br & 7;
     out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-    br += 32;
     v = out >>> 0;
     SC.setUint32(0, v, true);
+    br += 32;
     bi = br >>> 3;
     wlo = view.getUint32(bi, true);
     whi = view.getUint32(bi + 4, true);
     s2 = br & 7;
     out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-    br += 32;
     v = out >>> 0;
     SC.setUint32(4, v, true);
     bg = SC.getBigUint64(0, true);
+    br += 32;
     bi = br >>> 3;
     wlo = view.getUint32(bi, true);
     whi = view.getUint32(bi + 4, true);
     s2 = br & 7;
     out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-    br += 32;
     v = out >>> 0;
     SC.setUint32(0, v, true);
+    br += 32;
     bi = br >>> 3;
     wlo = view.getUint32(bi, true);
     whi = view.getUint32(bi + 4, true);
     s2 = br & 7;
     out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-    br += 32;
     v = out >>> 0;
     SC.setUint32(4, v, true);
     bg |= SC.getBigUint64(0, true) << 64n;
     value.Keys[i0] = bg;
+    br += 32;
   }
   if (br + 1 > numBits) {
     return false;
@@ -1995,9 +1963,9 @@ export function ReadLudicrousStateFlat(value, view, numBits) {
   whi = view.getUint32(bi + 4, true);
   s2 = br & 7;
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  br += 1;
   v = (out & 0x1) >>> 0;
   value.HasTarget = v !== 0;
+  br += 1;
   if (value.HasTarget) {
     if (br + 128 > numBits) {
       return false;
@@ -2007,36 +1975,36 @@ export function ReadLudicrousStateFlat(value, view, numBits) {
     whi = view.getUint32(bi + 4, true);
     s2 = br & 7;
     out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-    br += 32;
     v = out >>> 0;
     SC.setUint32(0, v, true);
+    br += 32;
     bi = br >>> 3;
     wlo = view.getUint32(bi, true);
     whi = view.getUint32(bi + 4, true);
     s2 = br & 7;
     out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-    br += 32;
     v = out >>> 0;
     SC.setUint32(4, v, true);
     bg = SC.getBigUint64(0, true);
+    br += 32;
     bi = br >>> 3;
     wlo = view.getUint32(bi, true);
     whi = view.getUint32(bi + 4, true);
     s2 = br & 7;
     out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-    br += 32;
     v = out >>> 0;
     SC.setUint32(0, v, true);
+    br += 32;
     bi = br >>> 3;
     wlo = view.getUint32(bi, true);
     whi = view.getUint32(bi + 4, true);
     s2 = br & 7;
     out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-    br += 32;
     v = out >>> 0;
     SC.setUint32(4, v, true);
     bg |= SC.getBigUint64(0, true) << 64n;
     value.TargetId = bg;
+    br += 32;
   } else {
     value.TargetId = 0n;
   }
@@ -2110,7 +2078,6 @@ export function ReadDegenerateProbeFlat(value, view, numBits) {
   whi = view.getUint32(bi + 4, true);
   s2 = br & 7;
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  br += 8;
   v = (out & 0xff) >>> 0;
   value.Tail = v;
   return true;
@@ -2277,15 +2244,14 @@ export function ReadFixedVecFlat(value, view, numBits) {
   whi = view.getUint32(bi + 4, true);
   s2 = br & 7;
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  br += 32;
   v = out >>> 0;
   SC.setUint32(0, v, true);
+  br += 32;
   bi = br >>> 3;
   wlo = view.getUint32(bi, true);
   whi = view.getUint32(bi + 4, true);
   s2 = br & 7;
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  br += 2;
   v = (out & 0x3) >>> 0;
   SC.setUint32(4, v, true);
   bg = SC.getBigUint64(0, true);
@@ -2293,20 +2259,20 @@ export function ReadFixedVecFlat(value, view, numBits) {
     return false;
   }
   value.X = -6553600000n + bg;
+  br += 2;
   bi = br >>> 3;
   wlo = view.getUint32(bi, true);
   whi = view.getUint32(bi + 4, true);
   s2 = br & 7;
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  br += 32;
   v = out >>> 0;
   SC.setUint32(0, v, true);
+  br += 32;
   bi = br >>> 3;
   wlo = view.getUint32(bi, true);
   whi = view.getUint32(bi + 4, true);
   s2 = br & 7;
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  br += 2;
   v = (out & 0x3) >>> 0;
   SC.setUint32(4, v, true);
   bg = SC.getBigUint64(0, true);
@@ -2314,20 +2280,20 @@ export function ReadFixedVecFlat(value, view, numBits) {
     return false;
   }
   value.Y = -6553600000n + bg;
+  br += 2;
   bi = br >>> 3;
   wlo = view.getUint32(bi, true);
   whi = view.getUint32(bi + 4, true);
   s2 = br & 7;
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  br += 32;
   v = out >>> 0;
   SC.setUint32(0, v, true);
+  br += 32;
   bi = br >>> 3;
   wlo = view.getUint32(bi, true);
   whi = view.getUint32(bi + 4, true);
   s2 = br & 7;
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  br += 2;
   v = (out & 0x3) >>> 0;
   SC.setUint32(4, v, true);
   bg = SC.getBigUint64(0, true);
@@ -2459,40 +2425,39 @@ export function ReadFixedQuatFlat(value, view, numBits) {
   whi = view.getUint32(bi + 4, true);
   s2 = br & 7;
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  br += 32;
   v = out >>> 0;
   if (v > 2147483648) { // a smuggled raw offset is refused
     return false;
   }
   value.X = -1073741824 + v;
+  br += 32;
   bi = br >>> 3;
   wlo = view.getUint32(bi, true);
   whi = view.getUint32(bi + 4, true);
   s2 = br & 7;
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  br += 32;
   v = out >>> 0;
   if (v > 2147483648) { // a smuggled raw offset is refused
     return false;
   }
   value.Y = -1073741824 + v;
+  br += 32;
   bi = br >>> 3;
   wlo = view.getUint32(bi, true);
   whi = view.getUint32(bi + 4, true);
   s2 = br & 7;
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  br += 32;
   v = out >>> 0;
   if (v > 2147483648) { // a smuggled raw offset is refused
     return false;
   }
   value.Z = -1073741824 + v;
+  br += 32;
   bi = br >>> 3;
   wlo = view.getUint32(bi, true);
   whi = view.getUint32(bi + 4, true);
   s2 = br & 7;
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  br += 32;
   v = out >>> 0;
   if (v > 2147483648) { // a smuggled raw offset is refused
     return false;

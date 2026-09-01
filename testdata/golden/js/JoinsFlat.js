@@ -132,44 +132,37 @@ export function ReadArmsAgreeFlat(value, view, numBits) {
   whi = view.getUint32(bi + 4, true);
   s2 = br & 7;
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  br += 5;
   v = (out & 0x1f) >>> 0;
   value.Lead = v;
-  bi = br >>> 3;
-  wlo = view.getUint32(bi, true);
-  whi = view.getUint32(bi + 4, true);
-  s2 = br & 7;
-  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  br += 1;
-  v = (out & 0x1) >>> 0;
+  v = (out >>> 5) & 0x1;
   value.Flag = v !== 0;
+  br += 6;
   if (value.Flag) {
     bi = br >>> 3;
     wlo = view.getUint32(bi, true);
     whi = view.getUint32(bi + 4, true);
     s2 = br & 7;
     out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-    br += 11;
     v = (out & 0x7ff) >>> 0;
     value.A = v;
     value.B = 0;
+    br += 11;
   } else {
     bi = br >>> 3;
     wlo = view.getUint32(bi, true);
     whi = view.getUint32(bi + 4, true);
     s2 = br & 7;
     out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-    br += 11;
     v = (out & 0x7ff) >>> 0;
     value.B = v;
     value.A = 0;
+    br += 11;
   }
   bi = br >>> 3;
   wlo = view.getUint32(bi, true);
   whi = view.getUint32(bi + 4, true);
   s2 = br & 7;
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  br += 7;
   v = (out & 0x7f) >>> 0;
   value.Tail = v;
   return true;
@@ -290,17 +283,11 @@ export function ReadArmsDisagreeFlat(value, view, numBits) {
   whi = view.getUint32(bi + 4, true);
   s2 = br & 7;
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  br += 5;
   v = (out & 0x1f) >>> 0;
   value.Lead = v;
-  bi = br >>> 3;
-  wlo = view.getUint32(bi, true);
-  whi = view.getUint32(bi + 4, true);
-  s2 = br & 7;
-  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  br += 1;
-  v = (out & 0x1) >>> 0;
+  v = (out >>> 5) & 0x1;
   value.Flag = v !== 0;
+  br += 6;
   if (value.Flag) {
     if (br + 11 > numBits) {
       return false;
@@ -310,10 +297,10 @@ export function ReadArmsDisagreeFlat(value, view, numBits) {
     whi = view.getUint32(bi + 4, true);
     s2 = br & 7;
     out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-    br += 11;
     v = (out & 0x7ff) >>> 0;
     value.A = v;
     value.B = 0;
+    br += 11;
   } else {
     if (br + 3 > numBits) {
       return false;
@@ -323,10 +310,10 @@ export function ReadArmsDisagreeFlat(value, view, numBits) {
     whi = view.getUint32(bi + 4, true);
     s2 = br & 7;
     out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-    br += 3;
     v = (out & 0x7) >>> 0;
     value.B = v;
     value.A = 0;
+    br += 3;
   }
   if (br + 7 > numBits) {
     return false;
@@ -336,7 +323,6 @@ export function ReadArmsDisagreeFlat(value, view, numBits) {
   whi = view.getUint32(bi + 4, true);
   s2 = br & 7;
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  br += 7;
   v = (out & 0x7f) >>> 0;
   value.Tail = v;
   return true;
@@ -437,17 +423,11 @@ export function ReadArmEmptyFlat(value, view, numBits) {
   whi = view.getUint32(bi + 4, true);
   s2 = br & 7;
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  br += 5;
   v = (out & 0x1f) >>> 0;
   value.Lead = v;
-  bi = br >>> 3;
-  wlo = view.getUint32(bi, true);
-  whi = view.getUint32(bi + 4, true);
-  s2 = br & 7;
-  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  br += 1;
-  v = (out & 0x1) >>> 0;
+  v = (out >>> 5) & 0x1;
   value.Flag = v !== 0;
+  br += 6;
   if (value.Flag) {
     if (br + 19 > numBits) {
       return false;
@@ -457,9 +437,9 @@ export function ReadArmEmptyFlat(value, view, numBits) {
     whi = view.getUint32(bi + 4, true);
     s2 = br & 7;
     out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-    br += 19;
     v = (out & 0x7ffff) >>> 0;
     value.A = v;
+    br += 19;
   } else {
     value.A = 0;
   }
@@ -471,7 +451,6 @@ export function ReadArmEmptyFlat(value, view, numBits) {
   whi = view.getUint32(bi + 4, true);
   s2 = br & 7;
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  br += 7;
   v = (out & 0x7f) >>> 0;
   value.Tail = v;
   return true;
@@ -634,17 +613,11 @@ export function ReadArmsNestedFlat(value, view, numBits) {
   whi = view.getUint32(bi + 4, true);
   s2 = br & 7;
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  br += 3;
   v = (out & 0x7) >>> 0;
   value.Lead = v;
-  bi = br >>> 3;
-  wlo = view.getUint32(bi, true);
-  whi = view.getUint32(bi + 4, true);
-  s2 = br & 7;
-  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  br += 1;
-  v = (out & 0x1) >>> 0;
+  v = (out >>> 3) & 0x1;
   value.Outer = v !== 0;
+  br += 4;
   if (value.Outer) {
     if (br + 1 > numBits) {
       return false;
@@ -654,9 +627,9 @@ export function ReadArmsNestedFlat(value, view, numBits) {
     whi = view.getUint32(bi + 4, true);
     s2 = br & 7;
     out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-    br += 1;
     v = (out & 0x1) >>> 0;
     value.Inner = v !== 0;
+    br += 1;
     if (value.Inner) {
       if (br + 29 > numBits) {
         return false;
@@ -666,10 +639,10 @@ export function ReadArmsNestedFlat(value, view, numBits) {
       whi = view.getUint32(bi + 4, true);
       s2 = br & 7;
       out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-      br += 29;
       v = (out & 0x1fffffff) >>> 0;
       value.X = v;
       value.Y = 0;
+      br += 29;
     } else {
       if (br + 5 > numBits) {
         return false;
@@ -679,10 +652,10 @@ export function ReadArmsNestedFlat(value, view, numBits) {
       whi = view.getUint32(bi + 4, true);
       s2 = br & 7;
       out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-      br += 5;
       v = (out & 0x1f) >>> 0;
       value.Y = v;
       value.X = 0;
+      br += 5;
     }
     value.Z = 0;
   } else {
@@ -694,12 +667,12 @@ export function ReadArmsNestedFlat(value, view, numBits) {
     whi = view.getUint32(bi + 4, true);
     s2 = br & 7;
     out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-    br += 13;
     v = (out & 0x1fff) >>> 0;
     value.Z = v;
     value.Inner = false;
     value.X = 0;
     value.Y = 0;
+    br += 13;
   }
   if (br + 6 > numBits) {
     return false;
@@ -709,7 +682,6 @@ export function ReadArmsNestedFlat(value, view, numBits) {
   whi = view.getUint32(bi + 4, true);
   s2 = br & 7;
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  br += 6;
   v = (out & 0x3f) >>> 0;
   value.Tail = v;
   return true;
@@ -897,17 +869,11 @@ export function ReadArmAlignFlat(value, view, numBits) {
   whi = view.getUint32(bi + 4, true);
   s2 = br & 7;
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  br += 5;
   v = (out & 0x1f) >>> 0;
   value.Lead = v;
-  bi = br >>> 3;
-  wlo = view.getUint32(bi, true);
-  whi = view.getUint32(bi + 4, true);
-  s2 = br & 7;
-  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  br += 1;
-  v = (out & 0x1) >>> 0;
+  v = (out >>> 5) & 0x1;
   value.Flag = v !== 0;
+  br += 6;
   if (value.Flag) {
     if (br + 3 > numBits) {
       return false;
@@ -917,12 +883,12 @@ export function ReadArmAlignFlat(value, view, numBits) {
     whi = view.getUint32(bi + 4, true);
     s2 = br & 7;
     out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-    br += 3;
     v = (out & 0x7) >>> 0;
     if (v > 4) { // the length guards the slice — reject, never clamp
       return false;
     }
     value.SLength = v;
+    br += 3;
     s2 = br & 7;
     if (s2 !== 0) {
       if (br + (8 - s2) > numBits) {
@@ -956,11 +922,11 @@ export function ReadArmAlignFlat(value, view, numBits) {
     whi = view.getUint32(bi + 4, true);
     s2 = br & 7;
     out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-    br += 10;
     v = (out & 0x3ff) >>> 0;
     value.B = v;
     value.S.fill(0);
     value.SLength = 0;
+    br += 10;
   }
   if (br + 7 > numBits) {
     return false;
@@ -970,7 +936,6 @@ export function ReadArmAlignFlat(value, view, numBits) {
   whi = view.getUint32(bi + 4, true);
   s2 = br & 7;
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  br += 7;
   v = (out & 0x7f) >>> 0;
   value.Tail = v;
   return true;
@@ -1119,17 +1084,11 @@ export function ReadArmArrayFlat(value, view, numBits) {
   whi = view.getUint32(bi + 4, true);
   s2 = br & 7;
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  br += 5;
   v = (out & 0x1f) >>> 0;
   value.Lead = v;
-  bi = br >>> 3;
-  wlo = view.getUint32(bi, true);
-  whi = view.getUint32(bi + 4, true);
-  s2 = br & 7;
-  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  br += 1;
-  v = (out & 0x1) >>> 0;
+  v = (out >>> 5) & 0x1;
   value.Flag = v !== 0;
+  br += 6;
   if (value.Flag) {
     if (br + 2 > numBits) {
       return false;
@@ -1139,9 +1098,9 @@ export function ReadArmArrayFlat(value, view, numBits) {
     whi = view.getUint32(bi + 4, true);
     s2 = br & 7;
     out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-    br += 2;
     v = (out & 0x3) >>> 0;
     value.ItemsCount = v;
+    br += 2;
     if (br + value.ItemsCount * 13 > numBits) {
       return false;
     }
@@ -1151,9 +1110,9 @@ export function ReadArmArrayFlat(value, view, numBits) {
       whi = view.getUint32(bi + 4, true);
       s2 = br & 7;
       out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-      br += 13;
       v = (out & 0x1fff) >>> 0;
       value.Items[i0] = v | 0;
+      br += 13;
     }
     value.B = 0;
   } else {
@@ -1165,11 +1124,11 @@ export function ReadArmArrayFlat(value, view, numBits) {
     whi = view.getUint32(bi + 4, true);
     s2 = br & 7;
     out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-    br += 9;
     v = (out & 0x1ff) >>> 0;
     value.B = v;
     value.Items.fill(0);
     value.ItemsCount = 0;
+    br += 9;
   }
   if (br + 7 > numBits) {
     return false;
@@ -1179,7 +1138,6 @@ export function ReadArmArrayFlat(value, view, numBits) {
   whi = view.getUint32(bi + 4, true);
   s2 = br & 7;
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  br += 7;
   v = (out & 0x7f) >>> 0;
   value.Tail = v;
   return true;
@@ -1240,7 +1198,6 @@ export function ReadNarrowFlat(value, view, numBits) {
   whi = view.getUint32(bi + 4, true);
   s2 = br & 7;
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  br += 3;
   v = (out & 0x7) >>> 0;
   value.N = v;
   return true;
@@ -1322,15 +1279,14 @@ export function ReadWideFlat(value, view, numBits) {
   whi = view.getUint32(bi + 4, true);
   s2 = br & 7;
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  br += 32;
   v = out >>> 0;
   SC.setUint32(0, v, true);
+  br += 32;
   bi = br >>> 3;
   wlo = view.getUint32(bi, true);
   whi = view.getUint32(bi + 4, true);
   s2 = br & 7;
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  br += 5;
   v = (out & 0x1f) >>> 0;
   SC.setUint32(4, v, true);
   bg = SC.getBigUint64(0, true);
@@ -1487,9 +1443,9 @@ export function ReadHoldsUnevenFlat(value, view, numBits) {
   whi = view.getUint32(bi + 4, true);
   s2 = br & 7;
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  br += 5;
   v = (out & 0x1f) >>> 0;
   value.Lead = v;
+  br += 5;
   if (br + 2 > numBits) {
     return false;
   }
@@ -1498,12 +1454,12 @@ export function ReadHoldsUnevenFlat(value, view, numBits) {
   whi = view.getUint32(bi + 4, true);
   s2 = br & 7;
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  br += 2;
   v = (out & 0x3) >>> 0;
   if (v > 2) { // not a wire-legal tag (SPEC §4.8)
     return false;
   }
   value.U.Type = v;
+  br += 2;
   switch (value.U.Type) {
     case 1: {
       value.U.Narrow.N = 0;
@@ -1515,9 +1471,9 @@ export function ReadHoldsUnevenFlat(value, view, numBits) {
       whi = view.getUint32(bi + 4, true);
       s2 = br & 7;
       out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-      br += 3;
       v = (out & 0x7) >>> 0;
       value.U.Narrow.N = v;
+      br += 3;
       break;
     }
     case 2: {
@@ -1530,19 +1486,19 @@ export function ReadHoldsUnevenFlat(value, view, numBits) {
       whi = view.getUint32(bi + 4, true);
       s2 = br & 7;
       out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-      br += 32;
       v = out >>> 0;
       SC.setUint32(0, v, true);
+      br += 32;
       bi = br >>> 3;
       wlo = view.getUint32(bi, true);
       whi = view.getUint32(bi + 4, true);
       s2 = br & 7;
       out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-      br += 5;
       v = (out & 0x1f) >>> 0;
       SC.setUint32(4, v, true);
       bg = SC.getBigUint64(0, true);
       value.U.Wide.W = bg;
+      br += 5;
       break;
     }
   }
@@ -1554,7 +1510,6 @@ export function ReadHoldsUnevenFlat(value, view, numBits) {
   whi = view.getUint32(bi + 4, true);
   s2 = br & 7;
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  br += 11;
   v = (out & 0x7ff) >>> 0;
   value.Tail = v;
   return true;
@@ -1736,9 +1691,9 @@ export function ReadArrUnevenFlat(value, view, numBits) {
   whi = view.getUint32(bi + 4, true);
   s2 = br & 7;
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  br += 5;
   v = (out & 0x1f) >>> 0;
   value.Lead = v;
+  br += 5;
   if (br + 2 > numBits) {
     return false;
   }
@@ -1747,9 +1702,9 @@ export function ReadArrUnevenFlat(value, view, numBits) {
   whi = view.getUint32(bi + 4, true);
   s2 = br & 7;
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  br += 2;
   v = (out & 0x3) >>> 0;
   value.ItemsCount = v;
+  br += 2;
   for (let i0 = 0; i0 < value.ItemsCount; i0++) {
     const e0 = value.Items[i0];
     if (br + 2 > numBits) {
@@ -1760,12 +1715,12 @@ export function ReadArrUnevenFlat(value, view, numBits) {
     whi = view.getUint32(bi + 4, true);
     s2 = br & 7;
     out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-    br += 2;
     v = (out & 0x3) >>> 0;
     if (v > 2) { // not a wire-legal tag (SPEC §4.8)
       return false;
     }
     e0.Type = v;
+    br += 2;
     switch (e0.Type) {
       case 1: {
         e0.Narrow.N = 0;
@@ -1777,9 +1732,9 @@ export function ReadArrUnevenFlat(value, view, numBits) {
         whi = view.getUint32(bi + 4, true);
         s2 = br & 7;
         out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-        br += 3;
         v = (out & 0x7) >>> 0;
         e0.Narrow.N = v;
+        br += 3;
         break;
       }
       case 2: {
@@ -1792,19 +1747,19 @@ export function ReadArrUnevenFlat(value, view, numBits) {
         whi = view.getUint32(bi + 4, true);
         s2 = br & 7;
         out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-        br += 32;
         v = out >>> 0;
         SC.setUint32(0, v, true);
+        br += 32;
         bi = br >>> 3;
         wlo = view.getUint32(bi, true);
         whi = view.getUint32(bi + 4, true);
         s2 = br & 7;
         out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-        br += 5;
         v = (out & 0x1f) >>> 0;
         SC.setUint32(4, v, true);
         bg = SC.getBigUint64(0, true);
         e0.Wide.W = bg;
+        br += 5;
         break;
       }
     }
@@ -1817,7 +1772,6 @@ export function ReadArrUnevenFlat(value, view, numBits) {
   whi = view.getUint32(bi + 4, true);
   s2 = br & 7;
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  br += 3;
   v = (out & 0x7) >>> 0;
   value.Tail = v;
   return true;
@@ -2045,9 +1999,9 @@ export function ReadRegainAfterAlignFlat(value, view, numBits) {
   whi = view.getUint32(bi + 4, true);
   s2 = br & 7;
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  br += 5;
   v = (out & 0x1f) >>> 0;
   value.Lead = v;
+  br += 5;
   if (br + 2 > numBits) {
     return false;
   }
@@ -2056,9 +2010,9 @@ export function ReadRegainAfterAlignFlat(value, view, numBits) {
   whi = view.getUint32(bi + 4, true);
   s2 = br & 7;
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  br += 2;
   v = (out & 0x3) >>> 0;
   value.ItemsCount = v;
+  br += 2;
   if (br + value.ItemsCount * 13 > numBits) {
     return false;
   }
@@ -2068,9 +2022,9 @@ export function ReadRegainAfterAlignFlat(value, view, numBits) {
     whi = view.getUint32(bi + 4, true);
     s2 = br & 7;
     out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-    br += 13;
     v = (out & 0x1fff) >>> 0;
     value.Items[i0] = v | 0;
+    br += 13;
   }
   if (br + 3 > numBits) {
     return false;
@@ -2080,12 +2034,12 @@ export function ReadRegainAfterAlignFlat(value, view, numBits) {
   whi = view.getUint32(bi + 4, true);
   s2 = br & 7;
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  br += 3;
   v = (out & 0x7) >>> 0;
   if (v > 4) { // the length guards the slice — reject, never clamp
     return false;
   }
   value.SLength = v;
+  br += 3;
   s2 = br & 7;
   if (s2 !== 0) {
     if (br + (8 - s2) > numBits) {
@@ -2117,32 +2071,25 @@ export function ReadRegainAfterAlignFlat(value, view, numBits) {
   whi = view.getUint32(bi + 4, true);
   s2 = br & 7;
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  br += 32;
   v = out >>> 0;
   value.P = v;
+  br += 32;
   bi = br >>> 3;
   wlo = view.getUint32(bi, true);
   whi = view.getUint32(bi + 4, true);
   s2 = br & 7;
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  br += 29;
   v = (out & 0x1fffffff) >>> 0;
   value.Q = v;
+  br += 29;
   bi = br >>> 3;
   wlo = view.getUint32(bi, true);
   whi = view.getUint32(bi + 4, true);
   s2 = br & 7;
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  br += 19;
   v = (out & 0x7ffff) >>> 0;
   value.R = v;
-  bi = br >>> 3;
-  wlo = view.getUint32(bi, true);
-  whi = view.getUint32(bi + 4, true);
-  s2 = br & 7;
-  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  br += 4;
-  v = (out & 0xf) >>> 0;
+  v = (out >>> 19) & 0xf;
   value.Tail = v;
   return true;
 }

@@ -2004,80 +2004,74 @@ export function ReadRealPacketFlat(value, view, numBits) {
   whi = view.getUint32(bi + 4, true);
   s2 = br & 7;
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  br += 21;
   v = (out & 0x1fffff) >>> 0;
   if (v > 1610990) { // a smuggled offset is refused
     return false;
   }
   value.F001Int = (v + 4294161801) | 0;
+  br += 21;
   bi = br >>> 3;
   wlo = view.getUint32(bi, true);
   whi = view.getUint32(bi + 4, true);
   s2 = br & 7;
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  br += 32;
   v = out >>> 0;
   SC.setUint32(0, v, true);
+  br += 32;
   bi = br >>> 3;
   wlo = view.getUint32(bi, true);
   whi = view.getUint32(bi + 4, true);
   s2 = br & 7;
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  br += 32;
   v = out >>> 0;
   SC.setUint32(4, v, true);
   value.F002F64 = SC.getFloat64(0, true);
+  br += 32;
   bi = br >>> 3;
   wlo = view.getUint32(bi, true);
   whi = view.getUint32(bi + 4, true);
   s2 = br & 7;
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  br += 21;
   v = (out & 0x1fffff) >>> 0;
   if (v > 1671794) { // a smuggled offset is refused
     return false;
   }
   value.F003Int = (v + 4294131399) | 0;
+  br += 21;
   bi = br >>> 3;
   wlo = view.getUint32(bi, true);
   whi = view.getUint32(bi + 4, true);
   s2 = br & 7;
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  br += 15;
   v = (out & 0x7fff) >>> 0;
   if (v > 20000) { // headroom above the quantum count is refused
     return false;
   }
   value.F004Cf32 = Math.fround(Math.fround(Math.fround(Math.fround(v) / 20000.0) * 2000.0) + 0.0);
-  bi = br >>> 3;
-  wlo = view.getUint32(bi, true);
-  whi = view.getUint32(bi + 4, true);
-  s2 = br & 7;
-  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  br += 13;
-  v = (out & 0x1fff) >>> 0;
+  v = (out >>> 15) & 0x1fff;
   if (v > 7316) { // a smuggled offset is refused
     return false;
   }
   value.F005Uint = v | 0;
+  br += 28;
   bi = br >>> 3;
   wlo = view.getUint32(bi, true);
   whi = view.getUint32(bi + 4, true);
   s2 = br & 7;
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  br += 12;
   v = (out & 0xfff) >>> 0;
   if (v > 3026) { // a smuggled offset is refused
     return false;
   }
   value.F006Int = (v + 4294965783) | 0;
+  br += 12;
   bi = br >>> 3;
   wlo = view.getUint32(bi, true);
   whi = view.getUint32(bi + 4, true);
   s2 = br & 7;
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  br += 32;
   v = out >>> 0;
+  br += 32;
   if ((v & 0x7f800000) === 0x7f800000 && (v & 0x7fffff) !== 0) {
     SC.setBigUint64(0, (BigInt(v >>> 31) << 63n) | 0x7ff0000000000000n | (BigInt(v & 0x7fffff) << 29n), true);
     value.F007F32 = SC.getFloat64(0, true);
@@ -2090,37 +2084,37 @@ export function ReadRealPacketFlat(value, view, numBits) {
   whi = view.getUint32(bi + 4, true);
   s2 = br & 7;
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  br += 32;
   v = out >>> 0;
   SC.setUint32(0, v, true);
+  br += 32;
   bi = br >>> 3;
   wlo = view.getUint32(bi, true);
   whi = view.getUint32(bi + 4, true);
   s2 = br & 7;
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  br += 32;
   v = out >>> 0;
   SC.setUint32(4, v, true);
   bg = SC.getBigUint64(0, true);
   value.F008U64 = bg;
+  br += 32;
   bi = br >>> 3;
   wlo = view.getUint32(bi, true);
   whi = view.getUint32(bi + 4, true);
   s2 = br & 7;
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  br += 6;
   v = (out & 0x3f) >>> 0;
   if (v > 44) { // a smuggled offset is refused
     return false;
   }
   value.F009Int = (v + 4294967274) | 0;
+  br += 6;
   bi = br >>> 3;
   wlo = view.getUint32(bi, true);
   whi = view.getUint32(bi + 4, true);
   s2 = br & 7;
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  br += 32;
   v = out >>> 0;
+  br += 32;
   if ((v & 0x7f800000) === 0x7f800000 && (v & 0x7fffff) !== 0) {
     SC.setBigUint64(0, (BigInt(v >>> 31) << 63n) | 0x7ff0000000000000n | (BigInt(v & 0x7fffff) << 29n), true);
     value.F010F32 = SC.getFloat64(0, true);
@@ -2133,17 +2127,11 @@ export function ReadRealPacketFlat(value, view, numBits) {
   whi = view.getUint32(bi + 4, true);
   s2 = br & 7;
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  br += 10;
   v = (out & 0x3ff) >>> 0;
   value.F011Bits = v;
-  bi = br >>> 3;
-  wlo = view.getUint32(bi, true);
-  whi = view.getUint32(bi + 4, true);
-  s2 = br & 7;
-  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  br += 1;
-  v = (out & 0x1) >>> 0;
+  v = (out >>> 10) & 0x1;
   value.F012Bool = v !== 0;
+  br += 11;
   if (value.F012Bool) {
     if (br + 88 > numBits) {
       return false;
@@ -2153,8 +2141,8 @@ export function ReadRealPacketFlat(value, view, numBits) {
     whi = view.getUint32(bi + 4, true);
     s2 = br & 7;
     out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-    br += 32;
     v = out >>> 0;
+    br += 32;
     if ((v & 0x7f800000) === 0x7f800000 && (v & 0x7fffff) !== 0) {
       SC.setBigUint64(0, (BigInt(v >>> 31) << 63n) | 0x7ff0000000000000n | (BigInt(v & 0x7fffff) << 29n), true);
       value.F013F32 = SC.getFloat64(0, true);
@@ -2167,45 +2155,39 @@ export function ReadRealPacketFlat(value, view, numBits) {
     whi = view.getUint32(bi + 4, true);
     s2 = br & 7;
     out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-    br += 10;
     v = (out & 0x3ff) >>> 0;
     if (v > 775) { // a smuggled offset is refused
       return false;
     }
     value.F014Uint = v | 0;
-    bi = br >>> 3;
-    wlo = view.getUint32(bi, true);
-    whi = view.getUint32(bi + 4, true);
-    s2 = br & 7;
-    out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-    br += 6;
-    v = (out & 0x3f) >>> 0;
+    v = (out >>> 10) & 0x3f;
     if (v > 42) { // a smuggled offset is refused
       return false;
     }
     value.F015Int = (v + 4294967275) | 0;
+    br += 16;
     bi = br >>> 3;
     wlo = view.getUint32(bi, true);
     whi = view.getUint32(bi + 4, true);
     s2 = br & 7;
     out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-    br += 27;
     v = (out & 0x7ffffff) >>> 0;
     if (v > 75497472) { // a smuggled raw offset is refused
       return false;
     }
     value.F016Fixed = -37748736 + v;
+    br += 27;
     bi = br >>> 3;
     wlo = view.getUint32(bi, true);
     whi = view.getUint32(bi + 4, true);
     s2 = br & 7;
     out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-    br += 13;
     v = (out & 0x1fff) >>> 0;
     if (v > 4606) { // a smuggled offset is refused
       return false;
     }
     value.F017Uint = v | 0;
+    br += 13;
   } else {
     value.F013F32 = 0;
     value.F014Uint = 0;
@@ -2221,36 +2203,36 @@ export function ReadRealPacketFlat(value, view, numBits) {
   whi = view.getUint32(bi + 4, true);
   s2 = br & 7;
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  br += 11;
   v = (out & 0x7ff) >>> 0;
   if (v > 1668) { // a smuggled offset is refused
     return false;
   }
   value.F018Int = (v + 4294966462) | 0;
+  br += 11;
   bi = br >>> 3;
   wlo = view.getUint32(bi, true);
   whi = view.getUint32(bi + 4, true);
   s2 = br & 7;
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  br += 32;
   v = out >>> 0;
   SC.setUint32(0, v, true);
+  br += 32;
   bi = br >>> 3;
   wlo = view.getUint32(bi, true);
   whi = view.getUint32(bi + 4, true);
   s2 = br & 7;
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  br += 32;
   v = out >>> 0;
   SC.setUint32(4, v, true);
   value.F019F64 = SC.getFloat64(0, true);
+  br += 32;
   bi = br >>> 3;
   wlo = view.getUint32(bi, true);
   whi = view.getUint32(bi + 4, true);
   s2 = br & 7;
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  br += 32;
   v = out >>> 0;
+  br += 32;
   if ((v & 0x7f800000) === 0x7f800000 && (v & 0x7fffff) !== 0) {
     SC.setBigUint64(0, (BigInt(v >>> 31) << 63n) | 0x7ff0000000000000n | (BigInt(v & 0x7fffff) << 29n), true);
     value.F020F32 = SC.getFloat64(0, true);
@@ -2263,19 +2245,19 @@ export function ReadRealPacketFlat(value, view, numBits) {
   whi = view.getUint32(bi + 4, true);
   s2 = br & 7;
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  br += 27;
   v = (out & 0x7ffffff) >>> 0;
   if (v > 102977536) { // a smuggled raw offset is refused
     return false;
   }
   value.F021Ufixed = v;
+  br += 27;
   bi = br >>> 3;
   wlo = view.getUint32(bi, true);
   whi = view.getUint32(bi + 4, true);
   s2 = br & 7;
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  br += 32;
   v = out >>> 0;
+  br += 32;
   if ((v & 0x7f800000) === 0x7f800000 && (v & 0x7fffff) !== 0) {
     SC.setBigUint64(0, (BigInt(v >>> 31) << 63n) | 0x7ff0000000000000n | (BigInt(v & 0x7fffff) << 29n), true);
     value.F022F32 = SC.getFloat64(0, true);
@@ -2288,16 +2270,16 @@ export function ReadRealPacketFlat(value, view, numBits) {
   whi = view.getUint32(bi + 4, true);
   s2 = br & 7;
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  br += 25;
   v = (out & 0x1ffffff) >>> 0;
   value.F023Bits = v;
+  br += 25;
   bi = br >>> 3;
   wlo = view.getUint32(bi, true);
   whi = view.getUint32(bi + 4, true);
   s2 = br & 7;
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  br += 32;
   v = out >>> 0;
+  br += 32;
   if ((v & 0x7f800000) === 0x7f800000 && (v & 0x7fffff) !== 0) {
     SC.setBigUint64(0, (BigInt(v >>> 31) << 63n) | 0x7ff0000000000000n | (BigInt(v & 0x7fffff) << 29n), true);
     value.F024F32 = SC.getFloat64(0, true);
@@ -2310,64 +2292,52 @@ export function ReadRealPacketFlat(value, view, numBits) {
   whi = view.getUint32(bi + 4, true);
   s2 = br & 7;
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  br += 16;
   v = (out & 0xffff) >>> 0;
   if (v > 60928) { // a smuggled raw offset is refused
     return false;
   }
   value.F025Fixed = -30464 + v;
-  bi = br >>> 3;
-  wlo = view.getUint32(bi, true);
-  whi = view.getUint32(bi + 4, true);
-  s2 = br & 7;
-  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  br += 9;
-  v = (out & 0x1ff) >>> 0;
+  v = (out >>> 16) & 0x1ff;
   value.F026Bits = v;
-  bi = br >>> 3;
-  wlo = view.getUint32(bi, true);
-  whi = view.getUint32(bi + 4, true);
-  s2 = br & 7;
-  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  br += 5;
-  v = (out & 0x1f) >>> 0;
+  v = (out >>> 25) & 0x1f;
   if (v > 16) { // headroom above the quantum count is refused
     return false;
   }
   value.F027Cf32 = Math.fround(Math.fround(Math.fround(Math.fround(v) / 16.0) * 4.0) + -2.0);
+  br += 30;
   bi = br >>> 3;
   wlo = view.getUint32(bi, true);
   whi = view.getUint32(bi + 4, true);
   s2 = br & 7;
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  br += 4;
   v = (out & 0xf) >>> 0;
   value.F028Bits = v;
+  br += 4;
   bi = br >>> 3;
   wlo = view.getUint32(bi, true);
   whi = view.getUint32(bi + 4, true);
   s2 = br & 7;
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  br += 32;
   v = out >>> 0;
   SC.setUint32(0, v, true);
+  br += 32;
   bi = br >>> 3;
   wlo = view.getUint32(bi, true);
   whi = view.getUint32(bi + 4, true);
   s2 = br & 7;
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  br += 32;
   v = out >>> 0;
   SC.setUint32(4, v, true);
   bg = SC.getBigUint64(0, true);
   value.F029I64 = BigInt.asIntN(64, bg);
+  br += 32;
   bi = br >>> 3;
   wlo = view.getUint32(bi, true);
   whi = view.getUint32(bi + 4, true);
   s2 = br & 7;
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  br += 32;
   v = out >>> 0;
+  br += 32;
   if ((v & 0x7f800000) === 0x7f800000 && (v & 0x7fffff) !== 0) {
     SC.setBigUint64(0, (BigInt(v >>> 31) << 63n) | 0x7ff0000000000000n | (BigInt(v & 0x7fffff) << 29n), true);
     value.F030F32 = SC.getFloat64(0, true);
@@ -2380,123 +2350,75 @@ export function ReadRealPacketFlat(value, view, numBits) {
   whi = view.getUint32(bi + 4, true);
   s2 = br & 7;
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  br += 1;
   v = (out & 0x1) >>> 0;
   value.F031Bits = v;
-  bi = br >>> 3;
-  wlo = view.getUint32(bi, true);
-  whi = view.getUint32(bi + 4, true);
-  s2 = br & 7;
-  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  br += 3;
-  v = (out & 0x7) >>> 0;
+  v = (out >>> 1) & 0x7;
   if (v > 6) { // a smuggled offset is refused
     return false;
   }
   value.F032Int = (v + 4294967293) | 0;
-  bi = br >>> 3;
-  wlo = view.getUint32(bi, true);
-  whi = view.getUint32(bi + 4, true);
-  s2 = br & 7;
-  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  br += 18;
-  v = (out & 0x3ffff) >>> 0;
+  v = (out >>> 4) & 0x3ffff;
   if (v > 142780) { // a smuggled offset is refused
     return false;
   }
   value.F033Uint = v | 0;
+  br += 22;
   bi = br >>> 3;
   wlo = view.getUint32(bi, true);
   whi = view.getUint32(bi + 4, true);
   s2 = br & 7;
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  br += 14;
   v = (out & 0x3fff) >>> 0;
   if (v > 14149) { // a smuggled offset is refused
     return false;
   }
   value.F034Uint = v | 0;
-  bi = br >>> 3;
-  wlo = view.getUint32(bi, true);
-  whi = view.getUint32(bi + 4, true);
-  s2 = br & 7;
-  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  br += 9;
-  v = (out & 0x1ff) >>> 0;
+  v = (out >>> 14) & 0x1ff;
   value.F035Bits = v;
-  bi = br >>> 3;
-  wlo = view.getUint32(bi, true);
-  whi = view.getUint32(bi + 4, true);
-  s2 = br & 7;
-  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  br += 3;
-  v = (out & 0x7) >>> 0;
+  v = (out >>> 23) & 0x7;
   if (v > 5) { // headroom above the wire range is refused
     return false;
   }
   value.F036Enum = v;
-  bi = br >>> 3;
-  wlo = view.getUint32(bi, true);
-  whi = view.getUint32(bi + 4, true);
-  s2 = br & 7;
-  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  br += 1;
-  v = (out & 0x1) >>> 0;
+  v = (out >>> 26) & 0x1;
   value.F037Bool = v !== 0;
-  bi = br >>> 3;
-  wlo = view.getUint32(bi, true);
-  whi = view.getUint32(bi + 4, true);
-  s2 = br & 7;
-  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  br += 1;
-  v = (out & 0x1) >>> 0;
+  v = (out >>> 27) & 0x1;
   value.F038Bool = v !== 0;
+  br += 28;
   bi = br >>> 3;
   wlo = view.getUint32(bi, true);
   whi = view.getUint32(bi + 4, true);
   s2 = br & 7;
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  br += 19;
   v = (out & 0x7ffff) >>> 0;
   value.F039Bits = v;
+  br += 19;
   bi = br >>> 3;
   wlo = view.getUint32(bi, true);
   whi = view.getUint32(bi + 4, true);
   s2 = br & 7;
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  br += 16;
   v = (out & 0xffff) >>> 0;
   if (v > 40960) { // a smuggled raw offset is refused
     return false;
   }
   value.F040Fixed = -20480 + v;
-  bi = br >>> 3;
-  wlo = view.getUint32(bi, true);
-  whi = view.getUint32(bi + 4, true);
-  s2 = br & 7;
-  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  br += 7;
-  v = (out & 0x7f) >>> 0;
+  v = (out >>> 16) & 0x7f;
   if (v > 110) { // a smuggled offset is refused
     return false;
   }
   value.F041Int = (v + 4294967241) | 0;
+  br += 23;
   bi = br >>> 3;
   wlo = view.getUint32(bi, true);
   whi = view.getUint32(bi + 4, true);
   s2 = br & 7;
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  br += 30;
   v = (out & 0x3fffffff) >>> 0;
   value.F042Bits = v;
-  bi = br >>> 3;
-  wlo = view.getUint32(bi, true);
-  whi = view.getUint32(bi + 4, true);
-  s2 = br & 7;
-  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  br += 1;
-  v = (out & 0x1) >>> 0;
+  v = (out >>> 30) & 0x1;
   value.F043Bool = v !== 0;
+  br += 31;
   if (value.F043Bool) {
     if (br + 81 > numBits) {
       return false;
@@ -2506,8 +2428,8 @@ export function ReadRealPacketFlat(value, view, numBits) {
     whi = view.getUint32(bi + 4, true);
     s2 = br & 7;
     out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-    br += 32;
     v = out >>> 0;
+    br += 32;
     if ((v & 0x7f800000) === 0x7f800000 && (v & 0x7fffff) !== 0) {
       SC.setBigUint64(0, (BigInt(v >>> 31) << 63n) | 0x7ff0000000000000n | (BigInt(v & 0x7fffff) << 29n), true);
       value.F044F32 = SC.getFloat64(0, true);
@@ -2520,31 +2442,25 @@ export function ReadRealPacketFlat(value, view, numBits) {
     whi = view.getUint32(bi + 4, true);
     s2 = br & 7;
     out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-    br += 12;
     v = (out & 0xfff) >>> 0;
     value.F045Bits = v;
-    bi = br >>> 3;
-    wlo = view.getUint32(bi, true);
-    whi = view.getUint32(bi + 4, true);
-    s2 = br & 7;
-    out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-    br += 17;
-    v = (out & 0x1ffff) >>> 0;
+    v = (out >>> 12) & 0x1ffff;
     if (v > 76063) { // a smuggled offset is refused
       return false;
     }
     value.F046Uint = v | 0;
+    br += 29;
     bi = br >>> 3;
     wlo = view.getUint32(bi, true);
     whi = view.getUint32(bi + 4, true);
     s2 = br & 7;
     out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-    br += 20;
     v = (out & 0xfffff) >>> 0;
     if (v > 861952) { // a smuggled offset is refused
       return false;
     }
     value.F047Int = (v + 4294536320) | 0;
+    br += 20;
   } else {
     value.F044F32 = 0;
     value.F045Bits = 0;
@@ -2559,37 +2475,31 @@ export function ReadRealPacketFlat(value, view, numBits) {
   whi = view.getUint32(bi + 4, true);
   s2 = br & 7;
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  br += 32;
   v = out >>> 0;
   SC.setUint32(0, v, true);
+  br += 32;
   bi = br >>> 3;
   wlo = view.getUint32(bi, true);
   whi = view.getUint32(bi + 4, true);
   s2 = br & 7;
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  br += 32;
   v = out >>> 0;
   SC.setUint32(4, v, true);
   value.F048F64 = SC.getFloat64(0, true);
+  br += 32;
   bi = br >>> 3;
   wlo = view.getUint32(bi, true);
   whi = view.getUint32(bi + 4, true);
   s2 = br & 7;
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  br += 16;
   v = (out & 0xffff) >>> 0;
   if (v > 49152) { // a smuggled raw offset is refused
     return false;
   }
   value.F049Ufixed = v;
-  bi = br >>> 3;
-  wlo = view.getUint32(bi, true);
-  whi = view.getUint32(bi + 4, true);
-  s2 = br & 7;
-  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  br += 1;
-  v = (out & 0x1) >>> 0;
+  v = (out >>> 16) & 0x1;
   value.F050Bool = v !== 0;
+  br += 17;
   if (value.F050Bool) {
     if (br + 47 > numBits) {
       return false;
@@ -2599,27 +2509,21 @@ export function ReadRealPacketFlat(value, view, numBits) {
     whi = view.getUint32(bi + 4, true);
     s2 = br & 7;
     out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-    br += 1;
     v = (out & 0x1) >>> 0;
     value.F051Bool = v !== 0;
-    bi = br >>> 3;
-    wlo = view.getUint32(bi, true);
-    whi = view.getUint32(bi + 4, true);
-    s2 = br & 7;
-    out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-    br += 7;
-    v = (out & 0x7f) >>> 0;
+    v = (out >>> 1) & 0x7f;
     if (v > 114) { // a smuggled offset is refused
       return false;
     }
     value.F052Int = (v + 4294967239) | 0;
+    br += 8;
     bi = br >>> 3;
     wlo = view.getUint32(bi, true);
     whi = view.getUint32(bi + 4, true);
     s2 = br & 7;
     out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-    br += 32;
     v = out >>> 0;
+    br += 32;
     if ((v & 0x7f800000) === 0x7f800000 && (v & 0x7fffff) !== 0) {
       SC.setBigUint64(0, (BigInt(v >>> 31) << 63n) | 0x7ff0000000000000n | (BigInt(v & 0x7fffff) << 29n), true);
       value.F053F32 = SC.getFloat64(0, true);
@@ -2632,12 +2536,12 @@ export function ReadRealPacketFlat(value, view, numBits) {
     whi = view.getUint32(bi + 4, true);
     s2 = br & 7;
     out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-    br += 7;
     v = (out & 0x7f) >>> 0;
     if (v > 70) { // a smuggled offset is refused
       return false;
     }
     value.F054Int = (v + 4294967261) | 0;
+    br += 7;
   } else {
     value.F051Bool = false;
     value.F052Int = 0;
@@ -2652,38 +2556,26 @@ export function ReadRealPacketFlat(value, view, numBits) {
   whi = view.getUint32(bi + 4, true);
   s2 = br & 7;
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  br += 1;
   v = (out & 0x1) >>> 0;
   value.F055Bool = v !== 0;
-  bi = br >>> 3;
-  wlo = view.getUint32(bi, true);
-  whi = view.getUint32(bi + 4, true);
-  s2 = br & 7;
-  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  br += 5;
-  v = (out & 0x1f) >>> 0;
+  v = (out >>> 1) & 0x1f;
   if (v > 26) { // a smuggled offset is refused
     return false;
   }
   value.F056Int = (v + 4294967283) | 0;
-  bi = br >>> 3;
-  wlo = view.getUint32(bi, true);
-  whi = view.getUint32(bi + 4, true);
-  s2 = br & 7;
-  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  br += 5;
-  v = (out & 0x1f) >>> 0;
+  v = (out >>> 6) & 0x1f;
   if (v > 30) { // a smuggled offset is refused
     return false;
   }
   value.F057Int = (v + 4294967281) | 0;
+  br += 11;
   bi = br >>> 3;
   wlo = view.getUint32(bi, true);
   whi = view.getUint32(bi + 4, true);
   s2 = br & 7;
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  br += 32;
   v = out >>> 0;
+  br += 32;
   if ((v & 0x7f800000) === 0x7f800000 && (v & 0x7fffff) !== 0) {
     SC.setBigUint64(0, (BigInt(v >>> 31) << 63n) | 0x7ff0000000000000n | (BigInt(v & 0x7fffff) << 29n), true);
     value.F058F32 = SC.getFloat64(0, true);
@@ -2696,181 +2588,121 @@ export function ReadRealPacketFlat(value, view, numBits) {
   whi = view.getUint32(bi + 4, true);
   s2 = br & 7;
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  br += 32;
   v = out >>> 0;
   SC.setUint32(0, v, true);
+  br += 32;
   bi = br >>> 3;
   wlo = view.getUint32(bi, true);
   whi = view.getUint32(bi + 4, true);
   s2 = br & 7;
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  br += 32;
   v = out >>> 0;
   SC.setUint32(4, v, true);
   value.F059F64 = SC.getFloat64(0, true);
+  br += 32;
   bi = br >>> 3;
   wlo = view.getUint32(bi, true);
   whi = view.getUint32(bi + 4, true);
   s2 = br & 7;
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  br += 8;
   v = (out & 0xff) >>> 0;
   value.F060Bits = v;
-  bi = br >>> 3;
-  wlo = view.getUint32(bi, true);
-  whi = view.getUint32(bi + 4, true);
-  s2 = br & 7;
-  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  br += 9;
-  v = (out & 0x1ff) >>> 0;
+  v = (out >>> 8) & 0x1ff;
   if (v > 360) { // headroom above the quantum count is refused
     return false;
   }
   value.F061Cf32 = Math.fround(Math.fround(Math.fround(Math.fround(v) / 360.0) * 180.0) + -90.0);
-  bi = br >>> 3;
-  wlo = view.getUint32(bi, true);
-  whi = view.getUint32(bi + 4, true);
-  s2 = br & 7;
-  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  br += 9;
-  v = (out & 0x1ff) >>> 0;
+  v = (out >>> 17) & 0x1ff;
   if (v > 503) { // a smuggled offset is refused
     return false;
   }
   value.F062Uint = v | 0;
+  br += 26;
   bi = br >>> 3;
   wlo = view.getUint32(bi, true);
   whi = view.getUint32(bi + 4, true);
   s2 = br & 7;
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  br += 32;
   v = out >>> 0;
   SC.setUint32(0, v, true);
+  br += 32;
   bi = br >>> 3;
   wlo = view.getUint32(bi, true);
   whi = view.getUint32(bi + 4, true);
   s2 = br & 7;
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  br += 32;
   v = out >>> 0;
   SC.setUint32(4, v, true);
   bg = SC.getBigUint64(0, true);
   value.F063I64 = BigInt.asIntN(64, bg);
+  br += 32;
   bi = br >>> 3;
   wlo = view.getUint32(bi, true);
   whi = view.getUint32(bi + 4, true);
   s2 = br & 7;
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  br += 9;
   v = (out & 0x1ff) >>> 0;
   if (v > 299) { // a smuggled offset is refused
     return false;
   }
   value.F064Uint = v | 0;
-  bi = br >>> 3;
-  wlo = view.getUint32(bi, true);
-  whi = view.getUint32(bi + 4, true);
-  s2 = br & 7;
-  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  br += 6;
-  v = (out & 0x3f) >>> 0;
+  v = (out >>> 9) & 0x3f;
   if (v > 60) { // headroom above the quantum count is refused
     return false;
   }
   value.F065Cf32 = Math.fround(Math.fround(Math.fround(Math.fround(v) / 60.0) * 30.0) + 0.0);
-  bi = br >>> 3;
-  wlo = view.getUint32(bi, true);
-  whi = view.getUint32(bi + 4, true);
-  s2 = br & 7;
-  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  br += 16;
-  v = (out & 0xffff) >>> 0;
+  v = (out >>> 15) & 0xffff;
   if (v > 32768) { // a smuggled raw offset is refused
     return false;
   }
   value.F066Ufixed = v;
+  br += 31;
   bi = br >>> 3;
   wlo = view.getUint32(bi, true);
   whi = view.getUint32(bi + 4, true);
   s2 = br & 7;
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  br += 10;
   v = (out & 0x3ff) >>> 0;
   if (v > 800) { // headroom above the quantum count is refused
     return false;
   }
   value.F067Cf32 = Math.fround(Math.fround(Math.fround(Math.fround(v) / 800.0) * 200.0) + -100.0);
-  bi = br >>> 3;
-  wlo = view.getUint32(bi, true);
-  whi = view.getUint32(bi + 4, true);
-  s2 = br & 7;
-  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  br += 11;
-  v = (out & 0x7ff) >>> 0;
+  v = (out >>> 10) & 0x7ff;
   if (v > 2000) { // headroom above the quantum count is refused
     return false;
   }
   value.F068Cf32 = Math.fround(Math.fround(Math.fround(Math.fround(v) / 2000.0) * 2000.0) + 0.0);
-  bi = br >>> 3;
-  wlo = view.getUint32(bi, true);
-  whi = view.getUint32(bi + 4, true);
-  s2 = br & 7;
-  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  br += 11;
-  v = (out & 0x7ff) >>> 0;
+  v = (out >>> 21) & 0x7ff;
   value.F069Bits = v;
+  br += 32;
   bi = br >>> 3;
   wlo = view.getUint32(bi, true);
   whi = view.getUint32(bi + 4, true);
   s2 = br & 7;
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  br += 2;
   v = (out & 0x3) >>> 0;
   if (v > 2) { // a smuggled offset is refused
     return false;
   }
   value.F070Uint = v | 0;
-  bi = br >>> 3;
-  wlo = view.getUint32(bi, true);
-  whi = view.getUint32(bi + 4, true);
-  s2 = br & 7;
-  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  br += 9;
-  v = (out & 0x1ff) >>> 0;
+  v = (out >>> 2) & 0x1ff;
   if (v > 500) { // headroom above the quantum count is refused
     return false;
   }
   value.F071Cf32 = Math.fround(Math.fround(Math.fround(Math.fround(v) / 500.0) * 10.0) + 0.0);
-  bi = br >>> 3;
-  wlo = view.getUint32(bi, true);
-  whi = view.getUint32(bi + 4, true);
-  s2 = br & 7;
-  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  br += 14;
-  v = (out & 0x3fff) >>> 0;
+  v = (out >>> 11) & 0x3fff;
   if (v > 10000) { // headroom above the quantum count is refused
     return false;
   }
   value.F072Cf32 = Math.fround(Math.fround(Math.fround(Math.fround(v) / 10000.0) * 100.0) + 0.0);
-  bi = br >>> 3;
-  wlo = view.getUint32(bi, true);
-  whi = view.getUint32(bi + 4, true);
-  s2 = br & 7;
-  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  br += 4;
-  v = (out & 0xf) >>> 0;
+  v = (out >>> 25) & 0xf;
   if (v > 8) { // a smuggled offset is refused
     return false;
   }
   value.F073Int = (v + 4294967292) | 0;
-  bi = br >>> 3;
-  wlo = view.getUint32(bi, true);
-  whi = view.getUint32(bi + 4, true);
-  s2 = br & 7;
-  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  br += 1;
-  v = (out & 0x1) >>> 0;
+  v = (out >>> 29) & 0x1;
   value.F074Bool = v !== 0;
+  br += 30;
   if (value.F074Bool) {
     if (br + 100 > numBits) {
       return false;
@@ -2880,60 +2712,48 @@ export function ReadRealPacketFlat(value, view, numBits) {
     whi = view.getUint32(bi + 4, true);
     s2 = br & 7;
     out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-    br += 32;
     v = out >>> 0;
     SC.setUint32(0, v, true);
+    br += 32;
     bi = br >>> 3;
     wlo = view.getUint32(bi, true);
     whi = view.getUint32(bi + 4, true);
     s2 = br & 7;
     out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-    br += 32;
     v = out >>> 0;
     SC.setUint32(4, v, true);
     bg = SC.getBigUint64(0, true);
     value.F075U64 = bg;
+    br += 32;
     bi = br >>> 3;
     wlo = view.getUint32(bi, true);
     whi = view.getUint32(bi + 4, true);
     s2 = br & 7;
     out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-    br += 16;
     v = (out & 0xffff) >>> 0;
     if (v > 52436) { // a smuggled offset is refused
       return false;
     }
     value.F076Int = (v + 4294941078) | 0;
-    bi = br >>> 3;
-    wlo = view.getUint32(bi, true);
-    whi = view.getUint32(bi + 4, true);
-    s2 = br & 7;
-    out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-    br += 6;
-    v = (out & 0x3f) >>> 0;
+    v = (out >>> 16) & 0x3f;
     if (v > 34) { // a smuggled offset is refused
       return false;
     }
     value.F077Int = (v + 4294967279) | 0;
-    bi = br >>> 3;
-    wlo = view.getUint32(bi, true);
-    whi = view.getUint32(bi + 4, true);
-    s2 = br & 7;
-    out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-    br += 9;
-    v = (out & 0x1ff) >>> 0;
+    v = (out >>> 22) & 0x1ff;
     value.F078Bits = v;
+    br += 31;
     bi = br >>> 3;
     wlo = view.getUint32(bi, true);
     whi = view.getUint32(bi + 4, true);
     s2 = br & 7;
     out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-    br += 5;
     v = (out & 0x1f) >>> 0;
     if (v > 17) { // a smuggled offset is refused
       return false;
     }
     value.F079Uint = v | 0;
+    br += 5;
   } else {
     value.F075U64 = 0n;
     value.F076Int = 0;
@@ -2949,191 +2769,142 @@ export function ReadRealPacketFlat(value, view, numBits) {
   whi = view.getUint32(bi + 4, true);
   s2 = br & 7;
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  br += 1;
   v = (out & 0x1) >>> 0;
   value.F080Bool = v !== 0;
-  bi = br >>> 3;
-  wlo = view.getUint32(bi, true);
-  whi = view.getUint32(bi + 4, true);
-  s2 = br & 7;
-  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  br += 29;
-  v = (out & 0x1fffffff) >>> 0;
+  v = (out >>> 1) & 0x1fffffff;
   value.F081Bits = v;
+  br += 30;
   bi = br >>> 3;
   wlo = view.getUint32(bi, true);
   whi = view.getUint32(bi + 4, true);
   s2 = br & 7;
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  br += 25;
   v = (out & 0x1ffffff) >>> 0;
   value.F082Bits = v;
-  bi = br >>> 3;
-  wlo = view.getUint32(bi, true);
-  whi = view.getUint32(bi + 4, true);
-  s2 = br & 7;
-  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  br += 3;
-  v = (out & 0x7) >>> 0;
+  v = (out >>> 25) & 0x7;
   if (v > 5) { // headroom above the wire range is refused
     return false;
   }
   value.F083Enum = v;
+  br += 28;
   bi = br >>> 3;
   wlo = view.getUint32(bi, true);
   whi = view.getUint32(bi + 4, true);
   s2 = br & 7;
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  br += 8;
   v = (out & 0xff) >>> 0;
   if (v > 128) { // a smuggled raw offset is refused
     return false;
   }
   value.F084Ufixed = v;
-  bi = br >>> 3;
-  wlo = view.getUint32(bi, true);
-  whi = view.getUint32(bi + 4, true);
-  s2 = br & 7;
-  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  br += 21;
-  v = (out & 0x1fffff) >>> 0;
+  v = (out >>> 8) & 0x1fffff;
   value.F085Bits = v;
+  br += 29;
   bi = br >>> 3;
   wlo = view.getUint32(bi, true);
   whi = view.getUint32(bi + 4, true);
   s2 = br & 7;
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  br += 9;
   v = (out & 0x1ff) >>> 0;
   if (v > 399) { // a smuggled offset is refused
     return false;
   }
   value.F086Uint = v | 0;
+  br += 9;
   bi = br >>> 3;
   wlo = view.getUint32(bi, true);
   whi = view.getUint32(bi + 4, true);
   s2 = br & 7;
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  br += 32;
   v = out >>> 0;
   SC.setUint32(0, v, true);
+  br += 32;
   bi = br >>> 3;
   wlo = view.getUint32(bi, true);
   whi = view.getUint32(bi + 4, true);
   s2 = br & 7;
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  br += 32;
   v = out >>> 0;
   SC.setUint32(4, v, true);
   value.F087F64 = SC.getFloat64(0, true);
+  br += 32;
   bi = br >>> 3;
   wlo = view.getUint32(bi, true);
   whi = view.getUint32(bi + 4, true);
   s2 = br & 7;
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  br += 11;
   v = (out & 0x7ff) >>> 0;
   if (v > 1388) { // a smuggled offset is refused
     return false;
   }
   value.F088Int = (v + 4294966602) | 0;
+  br += 11;
   bi = br >>> 3;
   wlo = view.getUint32(bi, true);
   whi = view.getUint32(bi + 4, true);
   s2 = br & 7;
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  br += 32;
   v = out >>> 0;
   SC.setUint32(0, v, true);
+  br += 32;
   bi = br >>> 3;
   wlo = view.getUint32(bi, true);
   whi = view.getUint32(bi + 4, true);
   s2 = br & 7;
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  br += 16;
   v = (out & 0xffff) >>> 0;
   SC.setUint32(4, v, true);
   bg = SC.getBigUint64(0, true);
   value.F089Bits = bg;
-  bi = br >>> 3;
-  wlo = view.getUint32(bi, true);
-  whi = view.getUint32(bi + 4, true);
-  s2 = br & 7;
-  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  br += 8;
-  v = (out & 0xff) >>> 0;
+  v = (out >>> 16) & 0xff;
   if (v > 214) { // a smuggled offset is refused
     return false;
   }
   value.F090Uint = v | 0;
-  bi = br >>> 3;
-  wlo = view.getUint32(bi, true);
-  whi = view.getUint32(bi + 4, true);
-  s2 = br & 7;
-  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  br += 5;
-  v = (out & 0x1f) >>> 0;
+  v = (out >>> 24) & 0x1f;
   value.F091Flags = BigInt(v);
-  bi = br >>> 3;
-  wlo = view.getUint32(bi, true);
-  whi = view.getUint32(bi + 4, true);
-  s2 = br & 7;
-  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  br += 1;
-  v = (out & 0x1) >>> 0;
+  v = (out >>> 29) & 0x1;
   value.F092Bool = v !== 0;
+  br += 30;
   bi = br >>> 3;
   wlo = view.getUint32(bi, true);
   whi = view.getUint32(bi + 4, true);
   s2 = br & 7;
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  br += 32;
   v = out >>> 0;
   SC.setUint32(0, v, true);
+  br += 32;
   bi = br >>> 3;
   wlo = view.getUint32(bi, true);
   whi = view.getUint32(bi + 4, true);
   s2 = br & 7;
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  br += 32;
   v = out >>> 0;
   SC.setUint32(4, v, true);
   bg = SC.getBigUint64(0, true);
   value.F093Bits = bg;
+  br += 32;
   bi = br >>> 3;
   wlo = view.getUint32(bi, true);
   whi = view.getUint32(bi + 4, true);
   s2 = br & 7;
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  br += 1;
   v = (out & 0x1) >>> 0;
   value.F094Bool = v !== 0;
-  bi = br >>> 3;
-  wlo = view.getUint32(bi, true);
-  whi = view.getUint32(bi + 4, true);
-  s2 = br & 7;
-  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  br += 28;
-  v = (out & 0xfffffff) >>> 0;
+  v = (out >>> 1) & 0xfffffff;
   if (v > 206700544) { // a smuggled raw offset is refused
     return false;
   }
   value.F095Fixed = -103350272 + v;
+  br += 29;
   bi = br >>> 3;
   wlo = view.getUint32(bi, true);
   whi = view.getUint32(bi + 4, true);
   s2 = br & 7;
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  br += 18;
   v = (out & 0x3ffff) >>> 0;
   value.F096Bits = v;
-  bi = br >>> 3;
-  wlo = view.getUint32(bi, true);
-  whi = view.getUint32(bi + 4, true);
-  s2 = br & 7;
-  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  br += 12;
-  v = (out & 0xfff) >>> 0;
+  v = (out >>> 18) & 0xfff;
   value.F097Bits = v;
   return true;
 }
